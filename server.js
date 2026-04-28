@@ -1,6 +1,6 @@
 // ============================================================
 // GOOD Devolucoes - Marketplaces - NFs Bling
-// Fase 1: Identificar venda a partir da etiqueta de devolucao
+// Fase 1.1: Identificar venda + diagnostico de falhas
 // ============================================================
 
 const express = require('express');
@@ -11,7 +11,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // ============================================================
-// CREDENCIAIS (lidas das Environment Variables do Render)
+// CREDENCIAIS
 // ============================================================
 const ML_CLIENT_ID = process.env.ML_CLIENT_ID;
 const ML_CLIENT_SECRET = process.env.ML_CLIENT_SECRET;
@@ -19,21 +19,20 @@ let ML_ACCESS_TOKEN = process.env.ML_ACCESS_TOKEN;
 let ML_REFRESH_TOKEN = process.env.ML_REFRESH_TOKEN;
 const ML_USER_ID = process.env.ML_USER_ID;
 
-// Render API - para salvar tokens renovados de volta nas env vars
 const RENDER_API_KEY = process.env.RENDER_API_KEY || null;
 const RENDER_SERVICE_ID = process.env.RENDER_SERVICE_ID || null;
 
 // ============================================================
-// CONFIGURACAO EXPRESS
+// EXPRESS
 // ============================================================
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
 // ============================================================
-// HELPER: Renovar token do ML automaticamente
+// HELPER: Renovar token
 // ============================================================
 async function renovarTokenML() {
-  console.log('[ML] Renovando access token via refresh token...');
+  console.log('[ML] Renovando access token...');
   try {
     const response = await axios.post(
       'https://api.mercadolibre.com/oauth/token',
@@ -43,34 +42,19 @@ async function renovarTokenML() {
         client_secret: ML_CLIENT_SECRET,
         refresh_token: ML_REFRESH_TOKEN,
       }).toString(),
-      {
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      }
+      { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
     );
-
     ML_ACCESS_TOKEN = response.data.access_token;
     ML_REFRESH_TOKEN = response.data.refresh_token;
-
-    console.log('[ML] Token renovado com sucesso!');
-    console.log('[ML] Novo token expira em:', response.data.expires_in, 'segundos');
-
-    // Atualiza no Render se as credenciais estiverem configuradas
-    if (RENDER_API_KEY && RENDER_SERVICE_ID) {
-      await atualizarTokensNoRender();
-    } else {
-      console.log('[ML] AVISO: tokens renovados em memoria. Configure RENDER_API_KEY e RENDER_SERVICE_ID para persistencia automatica.');
-    }
-
+    console.log('[ML] Token renovado!');
+    if (RENDER_API_KEY && RENDER_SERVICE_ID) await atualizarTokensNoRender();
     return true;
   } catch (error) {
-    console.error('[ML] ERRO ao renovar token:', error.response?.data || error.message);
+    console.error('[ML] ERRO renovar token:', error.response?.data || error.message);
     return false;
   }
 }
 
-// ============================================================
-// HELPER: Persistir tokens novos no Render (opcional)
-// ============================================================
 async function atualizarTokensNoRender() {
   try {
     await axios.put(
@@ -86,37 +70,31 @@ async function atualizarTokensNoRender() {
         },
       }
     );
-    console.log('[Render] Tokens atualizados nas env vars com sucesso!');
+    console.log('[Render] Tokens atualizados nas env vars');
   } catch (error) {
-    console.error('[Render] Erro ao atualizar env vars:', error.response?.data || error.message);
+    console.error('[Render] Erro:', error.response?.data || error.message);
   }
 }
 
 // ============================================================
-// HELPER: Fazer chamada ao ML com retry automatico em 401
+// HELPER: Chamada ao ML com retry
 // ============================================================
 async function chamarML(url, headersExtras = {}) {
-  const fazerChamada = async () => {
-    return axios.get(url, {
-      headers: {
-        Authorization: `Bearer ${ML_ACCESS_TOKEN}`,
-        ...headersExtras,
-      },
+  const fazer = () =>
+    axios.get(url, {
+      headers: { Authorization: `Bearer ${ML_ACCESS_TOKEN}`, ...headersExtras },
     });
-  };
 
   try {
-    const response = await fazerChamada();
-    return { ok: true, data: response.data };
+    const r = await fazer();
+    return { ok: true, data: r.data, status: r.status };
   } catch (error) {
-    // Se for 401 (token expirado), tenta renovar e refazer
     if (error.response?.status === 401) {
-      console.log('[ML] Token expirado. Tentando renovar...');
-      const renovou = await renovarTokenML();
-      if (renovou) {
+      console.log('[ML] 401 - tentando renovar token');
+      if (await renovarTokenML()) {
         try {
-          const response = await fazerChamada();
-          return { ok: true, data: response.data };
+          const r = await fazer();
+          return { ok: true, data: r.data, status: r.status };
         } catch (err2) {
           return {
             ok: false,
@@ -135,164 +113,212 @@ async function chamarML(url, headersExtras = {}) {
 }
 
 // ============================================================
-// ROTA: Health check (pra ver se ta no ar)
+// ROTAS
 // ============================================================
 app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
+    version: '1.1.0',
     timestamp: new Date().toISOString(),
   });
 });
 
-// ============================================================
-// ROTA PRINCIPAL: Identificar devolucao por codigo da etiqueta
-// Aceita: shipment_id ou pack_id (sistema descobre qual eh)
-// ============================================================
+// ----- BUSCAR CLAIM POR SHIPMENT -----
+async function buscarClaimPorShipment(shipmentId) {
+  console.log(`[CLAIM] Buscando claim para shipment ${shipmentId}`);
+  return chamarML(
+    `https://api.mercadolibre.com/post-purchase/v1/claims/search?resource=shipment&resource_id=${shipmentId}`
+  );
+}
+
+async function buscarReturnPorClaim(claimId) {
+  console.log(`[CLAIM] Buscando returns da claim ${claimId}`);
+  return chamarML(
+    `https://api.mercadolibre.com/post-purchase/v2/claims/${claimId}/returns`
+  );
+}
+
+// ----- ROTA PRINCIPAL -----
 app.get('/api/devolucao/identificar/:codigo', async (req, res) => {
   const codigoOriginal = String(req.params.codigo || '').trim();
 
   if (!codigoOriginal) {
-    return res.status(400).json({
-      ok: false,
-      erro: 'Codigo nao informado',
-    });
+    return res.status(400).json({ ok: false, erro: 'Codigo nao informado' });
   }
 
-  console.log(`\n[BUSCA] Codigo recebido: ${codigoOriginal}`);
-
-  // Tenta varios formatos: limpa caracteres especiais, espacos, etc
+  console.log(`\n========== NOVA BUSCA: ${codigoOriginal} ==========`);
   const codigoLimpo = codigoOriginal.replace(/[^0-9]/g, '');
-  console.log(`[BUSCA] Codigo limpo (so numeros): ${codigoLimpo}`);
 
-  // ============================================================
-  // ESTRATEGIA EM CASCATA - tenta varios caminhos
-  // ============================================================
   const resultado = {
     codigo_buscado: codigoOriginal,
     codigo_limpo: codigoLimpo,
     tentativas: [],
     encontrado: false,
+    avisos: [],
   };
 
-  // ----- TENTATIVA 1: Buscar como SHIPMENT_ID -----
-  // Codigo de barras de envio costuma ter 10-11 digitos
+  let shipment = null;
+  let order = null;
+  let pack = null;
+  let claim = null;
+  let returnData = null;
+  let metodoUsado = null;
+
+  // T1: shipment_id
   if (codigoLimpo.length >= 10 && codigoLimpo.length <= 13) {
-    console.log(`[TENTATIVA 1] Buscando como shipment_id: ${codigoLimpo}`);
-    const r1 = await chamarML(
+    const r = await chamarML(
       `https://api.mercadolibre.com/shipments/${codigoLimpo}`,
       { 'x-format-new': 'true' }
     );
-
     resultado.tentativas.push({
-      tipo: 'shipment_id',
-      codigo: codigoLimpo,
-      ok: r1.ok,
-      status: r1.status || 200,
+      tipo: 'shipment_id', codigo: codigoLimpo,
+      ok: r.ok, status: r.status, erro: r.ok ? null : r.error,
     });
-
-    if (r1.ok && r1.data?.id) {
-      console.log(`[TENTATIVA 1] Sucesso! Shipment encontrado.`);
-      const shipment = r1.data;
-      const orderId = shipment.order_id;
-
-      let order = null;
-      if (orderId) {
-        const r2 = await chamarML(`https://api.mercadolibre.com/orders/${orderId}`);
-        if (r2.ok) order = r2.data;
-      }
-
-      resultado.encontrado = true;
-      resultado.metodo = 'shipment_id';
-      resultado.shipment = shipment;
-      resultado.order = order;
-      return res.json(resultado);
-    }
-  }
-
-  // ----- TENTATIVA 2: Buscar como PACK_ID -----
-  // Pack IDs sao mais longos. Etiqueta mostra "20000 12153272513" (15 digitos)
-  // Mas as vezes vem so o nucleo "12153272513" (11 digitos), entao testamos com prefixo
-  const possiveisPackIds = [];
-
-  // Se ja tem 15+ digitos, usa direto
-  if (codigoLimpo.length >= 15) {
-    possiveisPackIds.push(codigoLimpo);
-  }
-
-  // Se tem 11 digitos, pode ser nucleo de pack_id - testa com prefixo "20000"
-  if (codigoLimpo.length === 11) {
-    possiveisPackIds.push('20000' + codigoLimpo);
-  }
-
-  for (const packId of possiveisPackIds) {
-    console.log(`[TENTATIVA 2] Buscando como pack_id: ${packId}`);
-    const r = await chamarML(`https://api.mercadolibre.com/packs/${packId}`);
-
-    resultado.tentativas.push({
-      tipo: 'pack_id',
-      codigo: packId,
-      ok: r.ok,
-      status: r.status || 200,
-    });
-
     if (r.ok && r.data?.id) {
-      console.log(`[TENTATIVA 2] Sucesso! Pack encontrado.`);
-      const pack = r.data;
-      const orderId = pack.orders?.[0]?.id;
-      const shipmentId = pack.shipment?.id;
-
-      let order = null;
-      let shipment = null;
-
-      if (orderId) {
-        const rOrder = await chamarML(`https://api.mercadolibre.com/orders/${orderId}`);
-        if (rOrder.ok) order = rOrder.data;
-      }
-      if (shipmentId) {
-        const rShip = await chamarML(
-          `https://api.mercadolibre.com/shipments/${shipmentId}`,
-          { 'x-format-new': 'true' }
-        );
-        if (rShip.ok) shipment = rShip.data;
-      }
-
-      resultado.encontrado = true;
-      resultado.metodo = 'pack_id';
-      resultado.pack = pack;
-      resultado.order = order;
-      resultado.shipment = shipment;
-      return res.json(resultado);
+      shipment = r.data;
+      metodoUsado = 'shipment_id';
     }
   }
 
-  // ----- NADA ENCONTRADO -----
-  console.log(`[BUSCA] Nada encontrado para o codigo ${codigoOriginal}`);
-  resultado.erro = 'Codigo nao encontrado em nenhum dos metodos';
-  return res.status(404).json(resultado);
+  // T2: pack_id
+  if (!shipment) {
+    const possiveis = [];
+    if (codigoLimpo.length >= 15) possiveis.push(codigoLimpo);
+    if (codigoLimpo.length === 11) possiveis.push('20000' + codigoLimpo);
+
+    for (const packId of possiveis) {
+      const r = await chamarML(`https://api.mercadolibre.com/packs/${packId}`);
+      resultado.tentativas.push({
+        tipo: 'pack_id', codigo: packId,
+        ok: r.ok, status: r.status, erro: r.ok ? null : r.error,
+      });
+      if (r.ok && r.data?.id) {
+        pack = r.data;
+        metodoUsado = 'pack_id';
+        if (pack.shipment?.id) {
+          const rShip = await chamarML(
+            `https://api.mercadolibre.com/shipments/${pack.shipment.id}`,
+            { 'x-format-new': 'true' }
+          );
+          if (rShip.ok) shipment = rShip.data;
+        }
+        break;
+      }
+    }
+  }
+
+  if (!shipment && !pack) {
+    resultado.erro = 'Codigo nao encontrado em shipments nem packs';
+    return res.status(404).json(resultado);
+  }
+
+  // BUSCAR ORDER
+  let orderId = shipment?.order_id || pack?.orders?.[0]?.id;
+  if (orderId) {
+    const r = await chamarML(`https://api.mercadolibre.com/orders/${orderId}`);
+    resultado.tentativas.push({
+      tipo: 'order', codigo: orderId,
+      ok: r.ok, status: r.status, erro: r.ok ? null : r.error,
+    });
+    if (r.ok) {
+      order = r.data;
+    } else {
+      resultado.avisos.push({
+        tipo: 'order_falhou',
+        mensagem: `Nao consegui obter detalhes da venda (status ${r.status}).`,
+      });
+    }
+  } else {
+    resultado.avisos.push({
+      tipo: 'sem_order_id',
+      mensagem: 'Shipment sem order_id direto. Tentando achar via claim...',
+    });
+  }
+
+  // BUSCAR CLAIM
+  const ehDevolucao =
+    shipment?.type === 'return' || shipment?.tags?.includes('claims_return');
+
+  if (ehDevolucao && shipment?.id) {
+    const rClaim = await buscarClaimPorShipment(shipment.id);
+    resultado.tentativas.push({
+      tipo: 'claim', codigo: shipment.id,
+      ok: rClaim.ok, status: rClaim.status, erro: rClaim.ok ? null : rClaim.error,
+    });
+
+    if (rClaim.ok && rClaim.data?.data?.length > 0) {
+      claim = rClaim.data.data[0];
+    } else if (rClaim.ok && rClaim.data?.results?.length > 0) {
+      claim = rClaim.data.results[0];
+    }
+
+    if (claim) {
+      const rRet = await buscarReturnPorClaim(claim.id);
+      if (rRet.ok) returnData = rRet.data;
+
+      // Se nao temos order ainda, tenta pelo resource_id da claim
+      if (!order && claim.resource_id) {
+        const r = await chamarML(`https://api.mercadolibre.com/orders/${claim.resource_id}`);
+        if (r.ok) order = r.data;
+      }
+    }
+  }
+
+  // BUSCAR PACK COMPLETO
+  if (!pack && order?.pack_id) {
+    const r = await chamarML(`https://api.mercadolibre.com/packs/${order.pack_id}`);
+    if (r.ok) pack = r.data;
+  }
+
+  // RESULTADO
+  resultado.encontrado = true;
+  resultado.metodo = metodoUsado;
+  resultado.eh_devolucao = ehDevolucao;
+  resultado.shipment = shipment;
+  resultado.order = order;
+  resultado.pack = pack;
+  resultado.claim = claim;
+  resultado.return = returnData;
+
+  console.log(`[BUSCA] OK | Devolucao=${ehDevolucao} | Order=${!!order} | Claim=${!!claim}`);
+  return res.json(resultado);
 });
 
-// ============================================================
-// ROTA: Renovar token manualmente (util pra debug)
-// ============================================================
+// ----- ADMIN -----
 app.post('/api/admin/renovar-token', async (req, res) => {
   const ok = await renovarTokenML();
-  res.json({
-    ok,
-    mensagem: ok ? 'Token renovado com sucesso' : 'Falha ao renovar token',
-    timestamp: new Date().toISOString(),
-  });
+  res.json({ ok, timestamp: new Date().toISOString() });
+});
+
+// ----- DEBUG -----
+app.get('/api/debug/shipment/:id', async (req, res) => {
+  const r = await chamarML(
+    `https://api.mercadolibre.com/shipments/${req.params.id}`,
+    { 'x-format-new': 'true' }
+  );
+  res.status(r.ok ? 200 : r.status || 500).json(r);
+});
+
+app.get('/api/debug/order/:id', async (req, res) => {
+  const r = await chamarML(`https://api.mercadolibre.com/orders/${req.params.id}`);
+  res.status(r.ok ? 200 : r.status || 500).json(r);
+});
+
+app.get('/api/debug/pack/:id', async (req, res) => {
+  const r = await chamarML(`https://api.mercadolibre.com/packs/${req.params.id}`);
+  res.status(r.ok ? 200 : r.status || 500).json(r);
 });
 
 // ============================================================
-// INICIAR SERVIDOR
+// INICIAR
 // ============================================================
 app.listen(PORT, () => {
   console.log('============================================');
-  console.log('GOOD Devolucoes - Marketplaces - NFs Bling');
-  console.log(`Servidor rodando na porta ${PORT}`);
-  console.log(`ML_CLIENT_ID: ${ML_CLIENT_ID ? 'configurado' : 'NAO CONFIGURADO'}`);
-  console.log(`ML_ACCESS_TOKEN: ${ML_ACCESS_TOKEN ? 'configurado' : 'NAO CONFIGURADO'}`);
-  console.log(`ML_USER_ID: ${ML_USER_ID || 'NAO CONFIGURADO'}`);
+  console.log('GOOD Devolucoes v1.1.0 - busca melhorada');
+  console.log(`Porta: ${PORT}`);
+  console.log(`ML_CLIENT_ID: ${ML_CLIENT_ID ? 'OK' : 'FALTA'}`);
+  console.log(`ML_ACCESS_TOKEN: ${ML_ACCESS_TOKEN ? 'OK' : 'FALTA'}`);
+  console.log(`ML_USER_ID: ${ML_USER_ID || 'FALTA'}`);
   console.log('============================================');
 });
