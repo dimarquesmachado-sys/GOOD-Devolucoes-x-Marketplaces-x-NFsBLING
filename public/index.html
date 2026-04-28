@@ -47,6 +47,7 @@
     .badge-erro { background: #ffd6d6; color: #b00020; }
     .badge-info { background: #d6e9ff; color: #003d99; }
     .badge-devolucao { background: #ffe0b3; color: #8a4d00; }
+    .badge-nfe { background: #c8e6c9; color: #1b5e20; }
 
     .item-grid {
       display: grid; grid-template-columns: 1fr 1fr; gap: 8px 14px; margin-top: 10px;
@@ -65,6 +66,15 @@
       letter-spacing: 0.4px; margin: 14px 0 6px; padding-bottom: 5px;
       border-bottom: 1px solid #f0f0f0;
     }
+    .secao-bling {
+      background: linear-gradient(135deg, #e8f5e9 0%, #f1f8e9 100%);
+      border-radius: 10px; padding: 14px; margin-top: 14px;
+      border-left: 4px solid #2e7d32;
+    }
+    .secao-bling-titulo {
+      font-size: 13px; font-weight: 700; color: #1b5e20;
+      text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 10px;
+    }
     .erro-box {
       background: #fff5f5; border: 1px solid #ffd6d6; border-radius: 10px;
       padding: 14px; color: #b00020; font-size: 14px;
@@ -73,6 +83,20 @@
       background: #fffbeb; border: 1px solid #fde68a; border-radius: 10px;
       padding: 12px; color: #92400e; font-size: 13px; margin-bottom: 10px;
     }
+    .nfe-numero {
+      font-size: 24px; font-weight: 800; color: #1b5e20; letter-spacing: 0.5px;
+    }
+    .nfe-chave {
+      font-family: 'Courier New', monospace; font-size: 12px;
+      background: white; padding: 8px 10px; border-radius: 6px;
+      word-break: break-all; margin-top: 4px; border: 1px solid #c8e6c9;
+    }
+    .btn-bling {
+      display: inline-block; padding: 8px 14px; background: #2e7d32;
+      color: white; border-radius: 8px; text-decoration: none;
+      font-size: 13px; font-weight: 600; margin-top: 8px; margin-right: 6px;
+    }
+    .btn-bling:hover { background: #1b5e20; }
     .loading { display: none; text-align: center; padding: 24px; }
     .loading.show { display: block; }
     .spinner {
@@ -125,7 +149,7 @@
 
     <header>
       <h1>📦 GOOD Devolucoes</h1>
-      <p>Identificar venda pela etiqueta de devolucao</p>
+      <p>Identificar venda + NF-e da etiqueta</p>
     </header>
 
     <div class="card">
@@ -137,14 +161,13 @@
         <button id="btnBuscar" onclick="buscar()">Buscar</button>
       </div>
       <p class="hint">
-        💡 Aceita Pack ID (ex: 2000012153272513) ou codigo de barras
-        de envio (ex: 46862577049). O sistema descobre sozinho.
+        💡 Aceita Pack ID (ex: 2000012153272513) ou codigo de barras de envio (ex: 46862577049).
       </p>
     </div>
 
     <div class="loading" id="loading">
       <div class="spinner"></div>
-      <p style="margin-top: 12px; color: #666;">Consultando API do Mercado Livre...</p>
+      <p style="margin-top: 12px; color: #666;">Consultando ML e Bling...</p>
     </div>
 
     <div class="resultado" id="resultado"></div>
@@ -194,6 +217,14 @@
         return new Date(iso).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
       } catch { return iso; }
     }
+    function dataFmtBling(s) {
+      if (!s) return '-';
+      // Bling retorna geralmente "2026-04-11 11:56:44" ou "2026-04-11"
+      try {
+        const iso = s.includes('T') ? s : s.replace(' ', 'T');
+        return new Date(iso).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
+      } catch { return s; }
+    }
 
     function renderizar(data, ok) {
       if (!ok || !data.encontrado) {
@@ -205,14 +236,14 @@
       const shipment = data.shipment || {};
       const pack = data.pack || {};
       const claim = data.claim || {};
+      const blingPedido = data.bling?.pedido || {};
+      const blingNFe = data.bling?.nfe || {};
 
-      // Pega item do order primeiro, senao do shipment
       const itemOrder = order.order_items?.[0];
       const itemShip = shipment.shipping_items?.[0];
       const buyer = order.buyer || {};
       const payment = order.payments?.[0] || {};
 
-      // === DADOS UNIFICADOS (order tem prioridade, shipment como fallback) ===
       const tituloProduto = itemOrder?.item?.title || itemShip?.description || '-';
       const mlb = itemOrder?.item?.id || itemShip?.id || '-';
       const sku = itemOrder?.item?.seller_sku || itemOrder?.item?.seller_custom_field || '-';
@@ -223,33 +254,71 @@
         ? itemOrder.item.variation_attributes.map(v => `${v.name}: ${v.value_name}`).join(' | ')
         : null;
 
-      // Comprador (do order, ou via sender_id do shipment)
       const buyerNome = buyer.first_name
         ? `${buyer.first_name} ${buyer.last_name || ''}`.trim()
         : '-';
       const buyerNick = buyer.nickname || '-';
-      const buyerId = buyer.id || shipment?.sender_id || '-';
+      const buyerId = buyer.id || shipment?.sender_id || shipment?.origin?.sender_id || '-';
 
       const ehDevolucao = data.eh_devolucao;
+      const temNFe = !!blingNFe.id;
 
       let html = '<div class="card">';
 
-      // Badges
+      // BADGES TOPO
       html += ehDevolucao
         ? '<span class="badge badge-devolucao">📦 DEVOLUCAO</span>'
         : '<span class="badge badge-info">📦 ENVIO</span>';
       html += `<span class="badge badge-info">Metodo: ${data.metodo || '-'}</span>`;
-      if (order && order.id) html += '<span class="badge badge-sucesso">✅ Order obtida</span>';
+      if (order && order.id) html += '<span class="badge badge-sucesso">✅ Order ML</span>';
       else html += '<span class="badge badge-aviso">⚠️ Sem order</span>';
+      if (blingPedido.id) html += '<span class="badge badge-sucesso">✅ Pedido Bling</span>';
+      if (temNFe) html += '<span class="badge badge-nfe">🧾 NF-e</span>';
 
-      // Avisos
+      // AVISOS
       if (data.avisos?.length) {
         data.avisos.forEach(a => {
           html += `<div class="aviso-box" style="margin-top:10px;">⚠️ ${a.mensagem}</div>`;
         });
       }
 
-      // PRODUTO
+      // ============ NOTA FISCAL BLING (DESTAQUE NO TOPO) ============
+      if (temNFe) {
+        const numNFe = blingNFe.numero || '-';
+        const serieNFe = blingNFe.serie || '-';
+        const chaveNFe = blingNFe.chaveAcesso || blingNFe.chave_acesso || '-';
+        const dataEmissao = blingNFe.dataEmissao || blingNFe.data_emissao;
+        const valorNFe = blingNFe.valorNota || blingNFe.valor || blingNFe.totalNota;
+        const linkPdf = blingNFe.linkPDF || blingNFe.linkDanfe || blingNFe.linkPdf;
+        const linkXml = blingNFe.linkXML || blingNFe.linkXml;
+        const idNFeBling = blingNFe.id;
+
+        html += '<div class="secao-bling">';
+        html += '<div class="secao-bling-titulo">🧾 Nota Fiscal (Bling)</div>';
+        html += '<div class="item-grid">';
+        html += `<div><div class="label">Numero NF-e</div><div class="valor"><span class="nfe-numero">${numNFe}</span></div></div>`;
+        html += `<div><div class="label">Serie</div><div class="valor"><strong>${serieNFe}</strong></div></div>`;
+        html += `<div><div class="label">Data emissao</div><div class="valor">${dataFmtBling(dataEmissao)}</div></div>`;
+        html += `<div><div class="label">Valor NF</div><div class="valor"><strong>${moeda(valorNFe)}</strong></div></div>`;
+        if (chaveNFe && chaveNFe !== '-') {
+          html += `<div style="grid-column: 1/-1;"><div class="label">Chave de acesso</div><div class="nfe-chave">${chaveNFe}</div></div>`;
+        }
+        html += '</div>';
+
+        // Botoes de acao
+        html += '<div style="margin-top: 12px;">';
+        if (linkPdf) html += `<a href="${linkPdf}" target="_blank" class="btn-bling">📄 Abrir DANFE</a>`;
+        if (linkXml) html += `<a href="${linkXml}" target="_blank" class="btn-bling">📋 XML</a>`;
+        if (idNFeBling) {
+          html += `<a href="https://www.bling.com.br/notas.fiscais.php#edit/${idNFeBling}" target="_blank" class="btn-bling">🔗 Abrir no Bling</a>`;
+        }
+        html += '</div>';
+        html += '</div>';
+      } else if (blingPedido.id) {
+        html += '<div class="aviso-box" style="margin-top:10px;">⚠️ Pedido encontrado no Bling, mas sem NF-e vinculada ainda.</div>';
+      }
+
+      // ============ PRODUTO ============
       html += '<div class="secao-titulo">Produto</div>';
       html += `<div class="produto-titulo">${tituloProduto}</div>`;
       if (mlb !== '-') html += `<div class="produto-mlb">${mlb}</div>`;
@@ -262,12 +331,9 @@
       if (variacao) {
         html += `<div style="grid-column: 1/-1;"><div class="label">Variacao</div><div class="valor">${variacao}</div></div>`;
       }
-      if (itemShip?.dimensions) {
-        html += `<div style="grid-column: 1/-1;"><div class="label">Dimensoes</div><div class="valor">${itemShip.dimensions}</div></div>`;
-      }
       html += '</div>';
 
-      // COMPRADOR
+      // ============ COMPRADOR ============
       html += '<div class="secao-titulo">Comprador</div>';
       html += '<div class="item-grid">';
       html += `<div><div class="label">Nome</div><div class="valor">${buyerNome}</div></div>`;
@@ -276,16 +342,21 @@
       html += `<div><div class="label">Data da venda</div><div class="valor">${dataFmt(order.date_created)}</div></div>`;
       html += '</div>';
 
-      // PEDIDO
+      // ============ PEDIDO ============
       html += '<div class="secao-titulo">Pedido</div>';
       html += '<div class="item-grid">';
-      html += `<div><div class="label">Order ID</div><div class="valor">${order.id || '-'}</div></div>`;
+      html += `<div><div class="label">Order ID (ML)</div><div class="valor">${order.id || '-'}</div></div>`;
       html += `<div><div class="label">Pack ID</div><div class="valor">${order.pack_id || pack.id || '-'}</div></div>`;
       html += `<div><div class="label">Status venda</div><div class="valor">${traduzirStatus(order.status)}</div></div>`;
       html += `<div><div class="label">Status pagamento</div><div class="valor">${traduzirPagamento(payment.status)}${payment.transaction_amount_refunded ? ' (estornado: ' + moeda(payment.transaction_amount_refunded) + ')' : ''}</div></div>`;
+      if (blingPedido.id) {
+        const numeroBling = blingPedido.numero || '-';
+        html += `<div><div class="label">Pedido Bling</div><div class="valor">${numeroBling}</div></div>`;
+        html += `<div><div class="label">ID Bling</div><div class="valor">${blingPedido.id}</div></div>`;
+      }
       html += '</div>';
 
-      // ENVIO/DEVOLUCAO
+      // ============ ENVIO ============
       if (shipment.id) {
         html += '<div class="secao-titulo">Envio / Devolucao</div>';
         html += '<div class="item-grid">';
@@ -293,9 +364,6 @@
         html += `<div><div class="label">Status envio</div><div class="valor">${traduzirStatusEnvio(shipment.status)}</div></div>`;
         html += `<div><div class="label">Tipo</div><div class="valor">${shipment.type || 'forward'}</div></div>`;
         html += `<div><div class="label">Custo do envio</div><div class="valor">${moeda(shipment.base_cost)}</div></div>`;
-        if (shipment.tracking_number) {
-          html += `<div style="grid-column: 1/-1;"><div class="label">Tracking</div><div class="valor">${shipment.tracking_number}</div></div>`;
-        }
         if (shipment.tags?.length) {
           html += `<div style="grid-column: 1/-1;"><div class="label">Tags ML</div><div class="valor">${shipment.tags.join(', ')}</div></div>`;
         }
@@ -313,7 +381,7 @@
         }
       }
 
-      // CLAIM
+      // ============ CLAIM ============
       if (claim.id) {
         html += '<div class="secao-titulo">⚖️ Reclamacao (Claim)</div>';
         html += '<div class="item-grid">';
@@ -327,12 +395,14 @@
         html += '</div>';
       }
 
-      // TENTATIVAS (debug colapsavel)
+      // DEBUG
       html += '<details><summary>🔧 Tentativas e diagnostico</summary>';
       html += '<ul class="tentativas-list">';
       data.tentativas.forEach(t => {
         const icone = t.ok ? '✅' : '❌';
         html += `<li>${icone} <strong>${t.tipo}</strong>: <code>${t.codigo}</code> → status ${t.status || '?'}`;
+        if (t.encontradas !== undefined) html += ` <em>(${t.encontradas} encontradas)</em>`;
+        if (t.claims_encontradas !== undefined) html += ` <em>(${t.claims_encontradas} claims)</em>`;
         if (t.erro) {
           const errStr = typeof t.erro === 'object' ? JSON.stringify(t.erro) : t.erro;
           html += ` <span style="color:#b00020;">(${errStr.substring(0, 100)})</span>`;
@@ -341,8 +411,7 @@
       });
       html += '</ul></details>';
 
-      // RAW JSON (debug)
-      html += '<details><summary>📋 Ver JSON completo da resposta</summary>';
+      html += '<details><summary>📋 Ver JSON completo</summary>';
       html += `<div class="json-raw">${JSON.stringify(data, null, 2)}</div>`;
       html += '</details>';
 
