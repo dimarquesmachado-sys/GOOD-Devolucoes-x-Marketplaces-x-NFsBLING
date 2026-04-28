@@ -1,2 +1,2 @@
-# GOOD-Devolu-es-x-Marketplaces-x-NFsBLING
+# GOOD-Devolucoes-x-Marketplaces-x-NFsBLING
 Escanear Etiquetas devoluções de pedidos marketplaces e tratar as devoluções no BLING
