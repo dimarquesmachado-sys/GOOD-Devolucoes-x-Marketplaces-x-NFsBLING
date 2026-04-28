@@ -1,6 +1,6 @@
 // ============================================================
 // GOOD Devolucoes - Marketplaces - NFs Bling
-// Fase 1.1: Identificar venda + diagnostico de falhas
+// Fase 1.3: parsing correto da resposta de claims
 // ============================================================
 
 const express = require('express');
@@ -10,9 +10,6 @@ const path = require('path');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// ============================================================
-// CREDENCIAIS
-// ============================================================
 const ML_CLIENT_ID = process.env.ML_CLIENT_ID;
 const ML_CLIENT_SECRET = process.env.ML_CLIENT_SECRET;
 let ML_ACCESS_TOKEN = process.env.ML_ACCESS_TOKEN;
@@ -22,15 +19,9 @@ const ML_USER_ID = process.env.ML_USER_ID;
 const RENDER_API_KEY = process.env.RENDER_API_KEY || null;
 const RENDER_SERVICE_ID = process.env.RENDER_SERVICE_ID || null;
 
-// ============================================================
-// EXPRESS
-// ============================================================
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// ============================================================
-// HELPER: Renovar token
-// ============================================================
 async function renovarTokenML() {
   console.log('[ML] Renovando access token...');
   try {
@@ -63,83 +54,98 @@ async function atualizarTokensNoRender() {
         { key: 'ML_ACCESS_TOKEN', value: ML_ACCESS_TOKEN },
         { key: 'ML_REFRESH_TOKEN', value: ML_REFRESH_TOKEN },
       ],
-      {
-        headers: {
-          Authorization: `Bearer ${RENDER_API_KEY}`,
-          'Content-Type': 'application/json',
-        },
-      }
+      { headers: { Authorization: `Bearer ${RENDER_API_KEY}`, 'Content-Type': 'application/json' } }
     );
-    console.log('[Render] Tokens atualizados nas env vars');
   } catch (error) {
     console.error('[Render] Erro:', error.response?.data || error.message);
   }
 }
 
-// ============================================================
-// HELPER: Chamada ao ML com retry
-// ============================================================
 async function chamarML(url, headersExtras = {}) {
-  const fazer = () =>
-    axios.get(url, {
-      headers: { Authorization: `Bearer ${ML_ACCESS_TOKEN}`, ...headersExtras },
-    });
-
+  const fazer = () => axios.get(url, { headers: { Authorization: `Bearer ${ML_ACCESS_TOKEN}`, ...headersExtras } });
   try {
     const r = await fazer();
     return { ok: true, data: r.data, status: r.status };
   } catch (error) {
     if (error.response?.status === 401) {
-      console.log('[ML] 401 - tentando renovar token');
       if (await renovarTokenML()) {
         try {
           const r = await fazer();
           return { ok: true, data: r.data, status: r.status };
         } catch (err2) {
-          return {
-            ok: false,
-            status: err2.response?.status,
-            error: err2.response?.data || err2.message,
-          };
+          return { ok: false, status: err2.response?.status, error: err2.response?.data || err2.message };
         }
       }
     }
-    return {
-      ok: false,
-      status: error.response?.status,
-      error: error.response?.data || error.message,
-    };
+    return { ok: false, status: error.response?.status, error: error.response?.data || error.message };
   }
 }
 
 // ============================================================
-// ROTAS
+// Extrair claim de varios formatos possiveis de resposta
+// ============================================================
+function extrairClaimsDaResposta(data) {
+  if (!data) return [];
+  // Possiveis estruturas que a API pode retornar
+  if (Array.isArray(data)) return data;
+  if (Array.isArray(data.data)) return data.data;
+  if (Array.isArray(data.results)) return data.results;
+  if (Array.isArray(data.claims)) return data.claims;
+  if (data.id) return [data]; // claim unica retornada direta
+  return [];
+}
+
+// ============================================================
+// HEALTH
 // ============================================================
 app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '1.1.0',
+    version: '1.3.0',
     timestamp: new Date().toISOString(),
   });
 });
 
-// ----- BUSCAR CLAIM POR SHIPMENT -----
-async function buscarClaimPorShipment(shipmentId) {
-  console.log(`[CLAIM] Buscando claim para shipment ${shipmentId}`);
-  return chamarML(
-    `https://api.mercadolibre.com/post-purchase/v1/claims/search?resource=shipment&resource_id=${shipmentId}`
-  );
+// ============================================================
+// HELPERS - busca em varios endpoints de claims
+// ============================================================
+async function buscarClaimsPorShipment(shipmentId) {
+  // Tenta varios endpoints e formatos
+  const tentativas = [
+    `https://api.mercadolibre.com/post-purchase/v1/claims/search?resource=shipment&resource_id=${shipmentId}`,
+    `https://api.mercadolibre.com/post-purchase/v1/claims/search?shipment_id=${shipmentId}`,
+  ];
+
+  for (const url of tentativas) {
+    const r = await chamarML(url);
+    if (r.ok) {
+      const claims = extrairClaimsDaResposta(r.data);
+      if (claims.length > 0) {
+        return { ok: true, claims, raw: r.data, urlUsada: url };
+      }
+    }
+  }
+  return { ok: false, claims: [], raw: null };
+}
+
+async function buscarClaimDetalhada(claimId) {
+  return chamarML(`https://api.mercadolibre.com/post-purchase/v1/claims/${claimId}`);
 }
 
 async function buscarReturnPorClaim(claimId) {
-  console.log(`[CLAIM] Buscando returns da claim ${claimId}`);
+  return chamarML(`https://api.mercadolibre.com/post-purchase/v2/claims/${claimId}/returns`);
+}
+
+async function buscarOrdersPorComprador(buyerId, sellerId) {
   return chamarML(
-    `https://api.mercadolibre.com/post-purchase/v2/claims/${claimId}/returns`
+    `https://api.mercadolibre.com/orders/search?seller=${sellerId}&buyer=${buyerId}&sort=date_desc&limit=20`
   );
 }
 
-// ----- ROTA PRINCIPAL -----
+// ============================================================
+// ROTA PRINCIPAL
+// ============================================================
 app.get('/api/devolucao/identificar/:codigo', async (req, res) => {
   const codigoOriginal = String(req.params.codigo || '').trim();
 
@@ -213,65 +219,110 @@ app.get('/api/devolucao/identificar/:codigo', async (req, res) => {
     return res.status(404).json(resultado);
   }
 
-  // BUSCAR ORDER
+  // CAMINHO A: order_id direto
   let orderId = shipment?.order_id || pack?.orders?.[0]?.id;
   if (orderId) {
     const r = await chamarML(`https://api.mercadolibre.com/orders/${orderId}`);
     resultado.tentativas.push({
-      tipo: 'order', codigo: orderId,
+      tipo: 'order_direto', codigo: orderId,
       ok: r.ok, status: r.status, erro: r.ok ? null : r.error,
     });
-    if (r.ok) {
-      order = r.data;
-    } else {
-      resultado.avisos.push({
-        tipo: 'order_falhou',
-        mensagem: `Nao consegui obter detalhes da venda (status ${r.status}).`,
-      });
-    }
-  } else {
-    resultado.avisos.push({
-      tipo: 'sem_order_id',
-      mensagem: 'Shipment sem order_id direto. Tentando achar via claim...',
-    });
+    if (r.ok) order = r.data;
   }
 
-  // BUSCAR CLAIM
-  const ehDevolucao =
-    shipment?.type === 'return' || shipment?.tags?.includes('claims_return');
+  // CAMINHO B: via claim
+  const ehDevolucao = shipment?.type === 'return' || shipment?.tags?.includes('claims_return');
 
-  if (ehDevolucao && shipment?.id) {
-    const rClaim = await buscarClaimPorShipment(shipment.id);
+  if (!order && ehDevolucao && shipment?.id) {
+    const rClaims = await buscarClaimsPorShipment(shipment.id);
     resultado.tentativas.push({
-      tipo: 'claim', codigo: shipment.id,
-      ok: rClaim.ok, status: rClaim.status, erro: rClaim.ok ? null : rClaim.error,
+      tipo: 'claims_search', codigo: shipment.id,
+      ok: rClaims.ok, status: rClaims.ok ? 200 : 404,
+      claims_encontradas: rClaims.claims?.length || 0,
+      url_usada: rClaims.urlUsada,
     });
 
-    if (rClaim.ok && rClaim.data?.data?.length > 0) {
-      claim = rClaim.data.data[0];
-    } else if (rClaim.ok && rClaim.data?.results?.length > 0) {
-      claim = rClaim.data.results[0];
-    }
+    if (rClaims.ok && rClaims.claims.length > 0) {
+      const claimResumo = rClaims.claims[0];
+      console.log(`[CLAIM] Encontrada claim ID=${claimResumo.id}, resource_id=${claimResumo.resource_id}`);
 
-    if (claim) {
-      const rRet = await buscarReturnPorClaim(claim.id);
+      // Busca detalhes completos da claim
+      const rDetalhada = await buscarClaimDetalhada(claimResumo.id);
+      claim = rDetalhada.ok ? rDetalhada.data : claimResumo;
+
+      // Busca return data
+      const rRet = await buscarReturnPorClaim(claimResumo.id);
       if (rRet.ok) returnData = rRet.data;
 
-      // Se nao temos order ainda, tenta pelo resource_id da claim
-      if (!order && claim.resource_id) {
-        const r = await chamarML(`https://api.mercadolibre.com/orders/${claim.resource_id}`);
-        if (r.ok) order = r.data;
+      // Busca order pelo resource_id da claim
+      const possibleOrderId = claim.resource_id || claimResumo.resource_id;
+      if (possibleOrderId) {
+        const rOrder = await chamarML(`https://api.mercadolibre.com/orders/${possibleOrderId}`);
+        resultado.tentativas.push({
+          tipo: 'order_via_claim', codigo: possibleOrderId,
+          ok: rOrder.ok, status: rOrder.status, erro: rOrder.ok ? null : rOrder.error,
+        });
+        if (rOrder.ok) order = rOrder.data;
       }
     }
   }
 
-  // BUSCAR PACK COMPLETO
+  // CAMINHO C: fallback via comprador (sender_id)
+  if (!order && shipment) {
+    const buyerId = shipment.origin?.sender_id || shipment.sender_id;
+    const sellerId = shipment.destination?.receiver_id || shipment.receiver_id || ML_USER_ID;
+
+    if (buyerId && sellerId) {
+      const rSearch = await buscarOrdersPorComprador(buyerId, sellerId);
+      resultado.tentativas.push({
+        tipo: 'orders_por_comprador',
+        codigo: `buyer=${buyerId}, seller=${sellerId}`,
+        ok: rSearch.ok, status: rSearch.status, erro: rSearch.ok ? null : rSearch.error,
+        encontradas: rSearch.data?.results?.length || 0,
+      });
+
+      if (rSearch.ok && rSearch.data?.results?.length > 0) {
+        const orders = rSearch.data.results;
+        let bestMatch = null;
+
+        if (shipment?.id) bestMatch = orders.find(o => o.shipping?.id === shipment.id);
+        if (!bestMatch && shipment?.declared_value) {
+          bestMatch = orders.find(o => Math.abs(o.total_amount - shipment.declared_value) < 0.01);
+        }
+        if (!bestMatch) {
+          bestMatch = orders.find(o =>
+            o.status === 'cancelled' || o.tags?.includes('not_paid') || o.mediations?.length > 0
+          );
+        }
+        if (!bestMatch) bestMatch = orders[0];
+
+        if (bestMatch?.id) {
+          const rFull = await chamarML(`https://api.mercadolibre.com/orders/${bestMatch.id}`);
+          if (rFull.ok) {
+            order = rFull.data;
+            resultado.avisos.push({
+              tipo: 'order_via_fallback',
+              mensagem: `Order encontrada via busca por comprador (${orders.length} candidatos)`,
+            });
+          }
+        }
+      }
+    }
+  }
+
+  // PACK COMPLETO
   if (!pack && order?.pack_id) {
     const r = await chamarML(`https://api.mercadolibre.com/packs/${order.pack_id}`);
     if (r.ok) pack = r.data;
   }
 
-  // RESULTADO
+  if (!order) {
+    resultado.avisos.push({
+      tipo: 'sem_order',
+      mensagem: 'Nao foi possivel obter detalhes da venda. Mostrando o que tem do shipment.',
+    });
+  }
+
   resultado.encontrado = true;
   resultado.metodo = metodoUsado;
   resultado.eh_devolucao = ehDevolucao;
@@ -293,10 +344,7 @@ app.post('/api/admin/renovar-token', async (req, res) => {
 
 // ----- DEBUG -----
 app.get('/api/debug/shipment/:id', async (req, res) => {
-  const r = await chamarML(
-    `https://api.mercadolibre.com/shipments/${req.params.id}`,
-    { 'x-format-new': 'true' }
-  );
+  const r = await chamarML(`https://api.mercadolibre.com/shipments/${req.params.id}`, { 'x-format-new': 'true' });
   res.status(r.ok ? 200 : r.status || 500).json(r);
 });
 
@@ -310,12 +358,32 @@ app.get('/api/debug/pack/:id', async (req, res) => {
   res.status(r.ok ? 200 : r.status || 500).json(r);
 });
 
+app.get('/api/debug/orders-buyer/:buyerId', async (req, res) => {
+  const sellerId = req.query.seller || ML_USER_ID;
+  const r = await chamarML(
+    `https://api.mercadolibre.com/orders/search?seller=${sellerId}&buyer=${req.params.buyerId}&sort=date_desc&limit=20`
+  );
+  res.status(r.ok ? 200 : r.status || 500).json(r);
+});
+
+// IMPORTANTE: debug das claims (raw)
+app.get('/api/debug/claims-search/:shipmentId', async (req, res) => {
+  const url = `https://api.mercadolibre.com/post-purchase/v1/claims/search?resource=shipment&resource_id=${req.params.shipmentId}`;
+  const r = await chamarML(url);
+  res.status(r.ok ? 200 : r.status || 500).json(r);
+});
+
+app.get('/api/debug/claim/:claimId', async (req, res) => {
+  const r = await chamarML(`https://api.mercadolibre.com/post-purchase/v1/claims/${req.params.claimId}`);
+  res.status(r.ok ? 200 : r.status || 500).json(r);
+});
+
 // ============================================================
 // INICIAR
 // ============================================================
 app.listen(PORT, () => {
   console.log('============================================');
-  console.log('GOOD Devolucoes v1.1.0 - busca melhorada');
+  console.log('GOOD Devolucoes v1.3.0 - parsing correto de claims');
   console.log(`Porta: ${PORT}`);
   console.log(`ML_CLIENT_ID: ${ML_CLIENT_ID ? 'OK' : 'FALTA'}`);
   console.log(`ML_ACCESS_TOKEN: ${ML_ACCESS_TOKEN ? 'OK' : 'FALTA'}`);
