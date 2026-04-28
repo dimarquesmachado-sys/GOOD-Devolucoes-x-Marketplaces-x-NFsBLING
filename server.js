@@ -1,6 +1,6 @@
 // ============================================================
 // GOOD Devolucoes - Marketplaces - NFs Bling
-// Fase 2.2: paginacao + filtro client-side por janela de data
+// Fase 2.3: paginacao sem filtro de data + debug detalhado
 // ============================================================
 
 const express = require('express');
@@ -165,72 +165,99 @@ async function chamarBling(url, opcoes = {}) {
   }
 }
 
-// Busca pedido Bling pelo numeroLoja - ESTRATEGIA NOVA
-// O filtro ?numeroLoja na API do Bling NAO funciona (retorna lista geral).
-// Solucao: paginar dentro de uma janela de data e filtrar client-side.
-async function buscarPedidoBlingPorNumeroLoja(numeroLoja, dataReferencia) {
-  console.log(`[Bling] Buscando numeroLoja=${numeroLoja} ref=${dataReferencia}`);
+// ============================================================
+// BUSCA BLING - paginacao SEM filtro de data
+// Como o GOOD faz ~35 pedidos/dia, em 90 dias sao ~3150 pedidos = 32 paginas
+// Ideia: pagina ate achar match exato em numeroLoja
+// ============================================================
+async function buscarPedidoBlingPorNumeroLoja(numeroLoja, dataReferencia, opcoes = {}) {
+  const numeroLojaStr = String(numeroLoja).trim();
+  const MAX_PAGINAS = opcoes.maxPaginas || 35;
+  const LIMITE_PAGINA = 100;
+  const usarFiltroData = !!opcoes.usarFiltroData;
 
-  // Janela de busca: ±7 dias da data de referencia
-  // (Bling cria pedido no mesmo dia/proximo da venda ML)
-  const ref = dataReferencia ? new Date(dataReferencia) : new Date();
-  if (isNaN(ref.getTime())) ref.setTime(Date.now());
+  console.log(`[Bling] Buscando numeroLoja=${numeroLojaStr} (max ${MAX_PAGINAS} paginas)`);
 
-  const dataInicial = new Date(ref.getTime() - 7 * 24 * 60 * 60 * 1000);
-  const dataFinal = new Date(ref.getTime() + 7 * 24 * 60 * 60 * 1000);
-  const fmt = (d) => d.toISOString().split('T')[0]; // YYYY-MM-DD
+  const baseParams = new URLSearchParams({ limite: String(LIMITE_PAGINA) });
 
-  const params = new URLSearchParams({
-    dataInicial: fmt(dataInicial),
-    dataFinal: fmt(dataFinal),
-    limite: '100',
-  });
+  // Se data referencia veio, expande pra 90 dias atras e 14 a frente
+  if (usarFiltroData && dataReferencia) {
+    const ref = new Date(dataReferencia);
+    if (!isNaN(ref.getTime())) {
+      const dInicial = new Date(ref.getTime() - 90 * 24 * 60 * 60 * 1000);
+      const dFinal = new Date(ref.getTime() + 14 * 24 * 60 * 60 * 1000);
+      const fmt = (d) => d.toISOString().split('T')[0];
+      baseParams.set('dataInicial', fmt(dInicial));
+      baseParams.set('dataFinal', fmt(dFinal));
+    }
+  }
 
-  // Pagina ate 5 paginas (500 pedidos na janela)
-  const MAX_PAGINAS = 5;
-  const todosPedidos = [];
+  let totalScanned = 0;
+  let primeiraDataVista = null;
+  let ultimaDataVista = null;
 
   for (let pagina = 1; pagina <= MAX_PAGINAS; pagina++) {
-    params.set('pagina', String(pagina));
-    const url = `https://www.bling.com.br/Api/v3/pedidos/vendas?${params.toString()}`;
+    baseParams.set('pagina', String(pagina));
+    const url = `https://www.bling.com.br/Api/v3/pedidos/vendas?${baseParams.toString()}`;
     const r = await chamarBling(url);
 
     if (!r.ok) {
       console.log(`[Bling] Falha pag ${pagina}: ${r.status}`);
-      return { ok: false, status: r.status, error: r.error, totalScanned: todosPedidos.length };
+      return { ok: false, status: r.status, error: r.error, totalScanned, primeiraDataVista, ultimaDataVista };
     }
 
     const lista = r.data?.data || [];
-    todosPedidos.push(...lista);
+    if (lista.length === 0) {
+      console.log(`[Bling] Pagina ${pagina} vazia, encerrando`);
+      break;
+    }
 
-    // Procura match exato nesta pagina
+    // Captura datas pra debug
+    if (pagina === 1 && lista[0]?.data) primeiraDataVista = lista[0].data;
+    if (lista.length > 0 && lista[lista.length - 1]?.data) ultimaDataVista = lista[lista.length - 1].data;
+
+    totalScanned += lista.length;
+
+    // Procura match exato
     const match = lista.find(p =>
-      String(p.numeroLoja || '').trim() === String(numeroLoja).trim()
+      String(p.numeroLoja || '').trim() === numeroLojaStr
     );
 
     if (match) {
-      console.log(`[Bling] Pedido encontrado na pagina ${pagina}: id=${match.id}`);
+      console.log(`[Bling] Pedido encontrado pagina ${pagina}: id=${match.id}`);
       return {
         ok: true,
         match,
         pagina,
-        totalScanned: todosPedidos.length,
-        janela: { dataInicial: fmt(dataInicial), dataFinal: fmt(dataFinal) },
+        totalScanned,
+        primeiraDataVista,
+        ultimaDataVista,
       };
     }
 
-    // Se a pagina veio com menos de 100, nao tem mais paginas
-    if (lista.length < 100) {
+    if (lista.length < LIMITE_PAGINA) {
       console.log(`[Bling] Fim das paginas (${pagina}, ${lista.length} pedidos)`);
       break;
+    }
+
+    // Otimizacao: se ja passou MUITO da data de referencia, parar
+    if (dataReferencia && lista[lista.length - 1]?.data) {
+      const dataPedido = new Date(lista[lista.length - 1].data);
+      const ref = new Date(dataReferencia);
+      const diffDias = (ref - dataPedido) / (24 * 60 * 60 * 1000);
+      if (diffDias > 90) {
+        console.log(`[Bling] Pedidos ja com >90 dias antes da venda, encerrando`);
+        break;
+      }
     }
   }
 
   return {
     ok: true,
     match: null,
-    totalScanned: todosPedidos.length,
-    janela: { dataInicial: fmt(dataInicial), dataFinal: fmt(dataFinal) },
+    totalScanned,
+    primeiraDataVista,
+    ultimaDataVista,
   };
 }
 
@@ -253,7 +280,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '2.2.0',
+    version: '2.3.0',
     integrations: {
       ml: !!ML_ACCESS_TOKEN,
       bling: !!BLING_ACCESS_TOKEN,
@@ -461,7 +488,7 @@ app.get('/api/devolucao/identificar/:codigo', async (req, res) => {
   }
 
   // ============================================================
-  // BLING: paginacao na janela de data + filtro client-side
+  // BLING: paginacao SEM filtro de data (mais confiavel)
   // ============================================================
   let blingPedido = null;
   let blingPedidoCompleto = null;
@@ -471,7 +498,11 @@ app.get('/api/devolucao/identificar/:codigo', async (req, res) => {
     const numeroLoja = String(order.id);
     const dataReferencia = order.date_created || order.date_closed;
 
-    const rBusca = await buscarPedidoBlingPorNumeroLoja(numeroLoja, dataReferencia);
+    const rBusca = await buscarPedidoBlingPorNumeroLoja(numeroLoja, dataReferencia, {
+      maxPaginas: 35,
+      usarFiltroData: false,
+    });
+
     resultado.tentativas.push({
       tipo: 'bling_busca_paginada',
       codigo: numeroLoja,
@@ -479,13 +510,13 @@ app.get('/api/devolucao/identificar/:codigo', async (req, res) => {
       status: rBusca.ok ? 200 : (rBusca.status || 500),
       erro: rBusca.ok ? null : rBusca.error,
       total_scanned: rBusca.totalScanned,
-      janela: rBusca.janela,
       pagina_match: rBusca.pagina,
+      primeira_data: rBusca.primeiraDataVista,
+      ultima_data: rBusca.ultimaDataVista,
       encontrou: !!rBusca.match,
     });
 
     if (rBusca.ok && rBusca.match) {
-      // Busca completo (com NF-e vinculada)
       const rCompleto = await buscarPedidoBlingPorId(rBusca.match.id);
       if (rCompleto.ok && rCompleto.data?.data) {
         blingPedidoCompleto = rCompleto.data.data;
@@ -509,7 +540,7 @@ app.get('/api/devolucao/identificar/:codigo', async (req, res) => {
     } else if (rBusca.ok) {
       resultado.avisos.push({
         tipo: 'pedido_nao_achado_bling',
-        mensagem: `Pedido com numeroLoja=${numeroLoja} nao encontrado na janela de ${rBusca.janela?.dataInicial} a ${rBusca.janela?.dataFinal} (${rBusca.totalScanned} pedidos verificados)`,
+        mensagem: `Pedido com numeroLoja=${numeroLoja} nao encontrado em ${rBusca.totalScanned} pedidos verificados (de ${rBusca.primeiraDataVista || '?'} a ${rBusca.ultimaDataVista || '?'})`,
       });
     }
   } else {
@@ -571,7 +602,7 @@ app.get('/api/debug/order/:id', async (req, res) => {
 
 app.get('/api/debug/bling-busca/:numeroLoja', async (req, res) => {
   const dataRef = req.query.data || null;
-  const r = await buscarPedidoBlingPorNumeroLoja(req.params.numeroLoja, dataRef);
+  const r = await buscarPedidoBlingPorNumeroLoja(req.params.numeroLoja, dataRef, { maxPaginas: 35 });
   res.json(r);
 });
 
@@ -587,6 +618,27 @@ app.get('/api/debug/bling-nfe/:id', async (req, res) => {
 
 app.get('/api/debug/bling-lojas', async (req, res) => {
   const r = await listarLojasBling();
+  res.status(r.ok ? 200 : r.status || 500).json(r);
+});
+
+// IMPORTANTE: pega 1 pagina de pedidos sem nenhum filtro
+// Pra investigar o que vem
+app.get('/api/debug/bling-primeira-pagina', async (req, res) => {
+  const limite = req.query.limite || 20;
+  const r = await chamarBling(`https://www.bling.com.br/Api/v3/pedidos/vendas?limite=${limite}&pagina=1`);
+  if (r.ok && r.data?.data) {
+    // Retorna lista resumida com numeroLoja, numero, data, id
+    const resumo = r.data.data.map(p => ({
+      id: p.id,
+      numero: p.numero,
+      numeroLoja: p.numeroLoja,
+      data: p.data,
+      total: p.total,
+      situacao: p.situacao?.id,
+      contato: p.contato?.nome,
+    }));
+    return res.json({ ok: true, total_na_pagina: r.data.data.length, primeiros: resumo });
+  }
   res.status(r.ok ? 200 : r.status || 500).json(r);
 });
 
@@ -606,7 +658,7 @@ app.get('/bling/callback', (req, res) => {
 // ============================================================
 app.listen(PORT, () => {
   console.log('============================================');
-  console.log('GOOD Devolucoes v2.2.0 - paginacao janela data');
+  console.log('GOOD Devolucoes v2.3.0 - paginacao sem filtro data');
   console.log(`Porta: ${PORT}`);
   console.log(`ML: ${ML_ACCESS_TOKEN ? 'OK' : 'FALTA'}`);
   console.log(`Bling: ${BLING_ACCESS_TOKEN ? 'OK' : 'FALTA'}`);
