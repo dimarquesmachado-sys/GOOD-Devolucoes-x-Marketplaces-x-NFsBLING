@@ -1,1 +1,498 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GOOD - Devolucoes Marketplaces</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f5f5f7;
+      min-height: 100vh;
+      padding: 16px;
+      color: #1d1d1f;
+    }
+    .container {
+      max-width: 720px;
+      margin: 0 auto;
+    }
+    header {
+      background: linear-gradient(135deg, #FFE600 0%, #FFCC00 100%);
+      border-radius: 12px;
+      padding: 24px;
+      margin-bottom: 16px;
+      text-align: center;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    }
+    header h1 {
+      font-size: 22px;
+      color: #1d1d1f;
+      margin-bottom: 4px;
+    }
+    header p {
+      font-size: 14px;
+      color: #555;
+    }
+    .card {
+      background: white;
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 16px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+    }
+    .card h2 {
+      font-size: 16px;
+      margin-bottom: 12px;
+      color: #1d1d1f;
+    }
+    .input-group {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+    input[type="text"] {
+      flex: 1;
+      padding: 14px 16px;
+      border: 2px solid #e0e0e0;
+      border-radius: 10px;
+      font-size: 16px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    input[type="text"]:focus {
+      border-color: #007AFF;
+    }
+    button {
+      padding: 14px 24px;
+      background: #007AFF;
+      color: white;
+      border: none;
+      border-radius: 10px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    button:hover {
+      background: #0051D5;
+    }
+    button:disabled {
+      background: #B0B0B0;
+      cursor: not-allowed;
+    }
+    .hint {
+      font-size: 13px;
+      color: #666;
+      line-height: 1.5;
+    }
+    .resultado {
+      display: none;
+    }
+    .resultado.show {
+      display: block;
+    }
+    .badge {
+      display: inline-block;
+      padding: 4px 12px;
+      border-radius: 12px;
+      font-size: 12px;
+      font-weight: 600;
+      margin-right: 6px;
+    }
+    .badge-sucesso { background: #d1f7c4; color: #1a7f3d; }
+    .badge-aviso { background: #fff4cc; color: #8a6d00; }
+    .badge-erro { background: #ffd6d6; color: #b00020; }
+    .badge-info { background: #d6e9ff; color: #003d99; }
 
+    .item-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px 16px;
+      margin-top: 12px;
+    }
+    .item-grid .label {
+      font-size: 12px;
+      color: #888;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .item-grid .valor {
+      font-size: 15px;
+      color: #1d1d1f;
+      font-weight: 500;
+      word-break: break-word;
+    }
+    .produto-titulo {
+      font-size: 17px;
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+    .produto-mlb {
+      font-size: 13px;
+      color: #007AFF;
+      margin-bottom: 12px;
+    }
+    .preco {
+      font-size: 24px;
+      font-weight: 700;
+      color: #1a7f3d;
+    }
+    .secao-titulo {
+      font-size: 13px;
+      font-weight: 600;
+      color: #888;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin: 16px 0 8px;
+      padding-bottom: 6px;
+      border-bottom: 1px solid #f0f0f0;
+    }
+    .erro-box {
+      background: #fff5f5;
+      border: 1px solid #ffd6d6;
+      border-radius: 10px;
+      padding: 16px;
+      color: #b00020;
+    }
+    .loading {
+      display: none;
+      text-align: center;
+      padding: 24px;
+    }
+    .loading.show { display: block; }
+    .spinner {
+      display: inline-block;
+      width: 32px;
+      height: 32px;
+      border: 3px solid #f0f0f0;
+      border-top-color: #007AFF;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    .timeline {
+      list-style: none;
+      padding-left: 0;
+    }
+    .timeline li {
+      padding: 6px 0 6px 20px;
+      position: relative;
+      font-size: 14px;
+    }
+    .timeline li::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 12px;
+      width: 8px;
+      height: 8px;
+      background: #007AFF;
+      border-radius: 50%;
+    }
+    .timeline-data {
+      color: #888;
+      font-size: 12px;
+    }
+    @media (max-width: 480px) {
+      .item-grid {
+        grid-template-columns: 1fr;
+      }
+      .input-group {
+        flex-direction: column;
+      }
+      button {
+        width: 100%;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+
+    <header>
+      <h1>📦 GOOD Devolucoes</h1>
+      <p>Identificar venda pela etiqueta de devolucao</p>
+    </header>
+
+    <div class="card">
+      <h2>🔍 Buscar devolucao</h2>
+      <div class="input-group">
+        <input
+          type="text"
+          id="codigo"
+          placeholder="Cole ou bipe o codigo da etiqueta"
+          autocomplete="off"
+          inputmode="numeric"
+        />
+        <button id="btnBuscar" onclick="buscar()">Buscar</button>
+      </div>
+      <p class="hint">
+        💡 Pode colar o <strong>Pack ID</strong> (ex: 2000012153272513) ou
+        o <strong>codigo de barras de envio</strong> (ex: 46862577049). O
+        sistema descobre automaticamente.
+      </p>
+    </div>
+
+    <div class="loading" id="loading">
+      <div class="spinner"></div>
+      <p style="margin-top: 12px; color: #666;">Buscando na API do Mercado Livre...</p>
+    </div>
+
+    <div class="resultado" id="resultado"></div>
+
+  </div>
+
+  <script>
+    const inputCodigo = document.getElementById('codigo');
+    const btnBuscar = document.getElementById('btnBuscar');
+    const divLoading = document.getElementById('loading');
+    const divResultado = document.getElementById('resultado');
+
+    // Bipar com leitor fisico geralmente termina com Enter
+    inputCodigo.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        buscar();
+      }
+    });
+
+    // Foco automatico no campo ao carregar (pra ja poder bipar)
+    window.addEventListener('load', () => {
+      inputCodigo.focus();
+    });
+
+    async function buscar() {
+      const codigo = inputCodigo.value.trim();
+      if (!codigo) {
+        alert('Digite ou bipe um codigo');
+        return;
+      }
+
+      divResultado.classList.remove('show');
+      divResultado.innerHTML = '';
+      divLoading.classList.add('show');
+      btnBuscar.disabled = true;
+
+      try {
+        const resp = await fetch(`/api/devolucao/identificar/${encodeURIComponent(codigo)}`);
+        const data = await resp.json();
+        renderizar(data, resp.ok);
+      } catch (err) {
+        renderizarErro('Erro de conexao: ' + err.message);
+      } finally {
+        divLoading.classList.remove('show');
+        btnBuscar.disabled = false;
+        inputCodigo.select();
+      }
+    }
+
+    function formatarMoeda(valor) {
+      if (valor == null) return '-';
+      return 'R$ ' + Number(valor).toFixed(2).replace('.', ',');
+    }
+
+    function formatarData(iso) {
+      if (!iso) return '-';
+      try {
+        const d = new Date(iso);
+        return d.toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
+      } catch {
+        return iso;
+      }
+    }
+
+    function renderizar(data, ok) {
+      if (!ok || !data.encontrado) {
+        renderizarErro(
+          data.erro || 'Codigo nao encontrado',
+          data.tentativas
+        );
+        return;
+      }
+
+      const order = data.order || {};
+      const shipment = data.shipment || {};
+      const item = order.order_items?.[0] || {};
+      const buyer = order.buyer || {};
+      const payment = order.payments?.[0] || {};
+
+      const ehDevolucao = shipment.type === 'return' || shipment.tags?.includes('claims_return');
+
+      const html = `
+        <div class="card">
+          ${ehDevolucao
+            ? '<span class="badge badge-aviso">📦 Devolucao</span>'
+            : '<span class="badge badge-info">📦 Envio</span>'}
+          <span class="badge badge-info">Metodo: ${data.metodo}</span>
+
+          <div class="secao-titulo">Produto</div>
+          <div class="produto-titulo">${item.item?.title || '-'}</div>
+          <div class="produto-mlb">${item.item?.id || ''}</div>
+
+          <div class="item-grid">
+            <div>
+              <div class="label">SKU (Bling)</div>
+              <div class="valor"><strong>${item.item?.seller_sku || '-'}</strong></div>
+            </div>
+            <div>
+              <div class="label">Quantidade</div>
+              <div class="valor">${item.quantity || '-'} un</div>
+            </div>
+            <div>
+              <div class="label">Valor unitario</div>
+              <div class="valor">${formatarMoeda(item.unit_price)}</div>
+            </div>
+            <div>
+              <div class="label">Valor total</div>
+              <div class="valor"><strong>${formatarMoeda(order.total_amount)}</strong></div>
+            </div>
+            ${item.item?.variation_attributes?.length ? `
+              <div style="grid-column: 1 / -1;">
+                <div class="label">Variacao</div>
+                <div class="valor">${item.item.variation_attributes.map(v => `${v.name}: ${v.value_name}`).join(' | ')}</div>
+              </div>
+            ` : ''}
+          </div>
+
+          <div class="secao-titulo">Comprador</div>
+          <div class="item-grid">
+            <div>
+              <div class="label">Nome</div>
+              <div class="valor">${buyer.first_name || ''} ${buyer.last_name || ''}</div>
+            </div>
+            <div>
+              <div class="label">Nickname</div>
+              <div class="valor">${buyer.nickname || '-'}</div>
+            </div>
+            <div>
+              <div class="label">ID</div>
+              <div class="valor">${buyer.id || '-'}</div>
+            </div>
+            <div>
+              <div class="label">Data da venda</div>
+              <div class="valor">${formatarData(order.date_created)}</div>
+            </div>
+          </div>
+
+          <div class="secao-titulo">Pedido</div>
+          <div class="item-grid">
+            <div>
+              <div class="label">Order ID</div>
+              <div class="valor">${order.id || '-'}</div>
+            </div>
+            <div>
+              <div class="label">Pack ID</div>
+              <div class="valor">${order.pack_id || '-'}</div>
+            </div>
+            <div>
+              <div class="label">Status venda</div>
+              <div class="valor">${traduzirStatus(order.status)}</div>
+            </div>
+            <div>
+              <div class="label">Status pagamento</div>
+              <div class="valor">${traduzirPagamento(payment.status)} ${payment.transaction_amount_refunded ? '(estornado: ' + formatarMoeda(payment.transaction_amount_refunded) + ')' : ''}</div>
+            </div>
+          </div>
+
+          ${shipment.id ? `
+            <div class="secao-titulo">Envio / Devolucao</div>
+            <div class="item-grid">
+              <div>
+                <div class="label">Shipment ID</div>
+                <div class="valor">${shipment.id}</div>
+              </div>
+              <div>
+                <div class="label">Status envio</div>
+                <div class="valor">${traduzirStatusEnvio(shipment.status)}</div>
+              </div>
+              <div>
+                <div class="label">Tipo</div>
+                <div class="valor">${shipment.type || '-'}</div>
+              </div>
+              <div>
+                <div class="label">Custo do envio</div>
+                <div class="valor">${formatarMoeda(shipment.base_cost)}</div>
+              </div>
+            </div>
+
+            ${shipment.status_history?.date_delivered ? `
+              <div class="secao-titulo">📍 Linha do tempo</div>
+              <ul class="timeline">
+                ${shipment.status_history.date_handling ? `<li>Preparado <span class="timeline-data">${formatarData(shipment.status_history.date_handling)}</span></li>` : ''}
+                ${shipment.status_history.date_ready_to_ship ? `<li>Etiqueta gerada <span class="timeline-data">${formatarData(shipment.status_history.date_ready_to_ship)}</span></li>` : ''}
+                ${shipment.status_history.date_shipped ? `<li>Enviado <span class="timeline-data">${formatarData(shipment.status_history.date_shipped)}</span></li>` : ''}
+                ${shipment.status_history.date_delivered ? `<li><strong>Entregue ${ehDevolucao ? 'no galpao' : 'ao comprador'}</strong> <span class="timeline-data">${formatarData(shipment.status_history.date_delivered)}</span></li>` : ''}
+              </ul>
+            ` : ''}
+          ` : ''}
+        </div>
+      `;
+
+      divResultado.innerHTML = html;
+      divResultado.classList.add('show');
+    }
+
+    function renderizarErro(mensagem, tentativas) {
+      let html = `
+        <div class="card">
+          <div class="erro-box">
+            <strong>❌ ${mensagem}</strong>
+          </div>
+      `;
+
+      if (tentativas?.length) {
+        html += '<div class="secao-titulo">Tentativas realizadas</div><ul style="font-size: 13px; padding-left: 20px; color: #666;">';
+        tentativas.forEach(t => {
+          html += `<li>${t.tipo}: <code>${t.codigo}</code> → status ${t.status}</li>`;
+        });
+        html += '</ul>';
+      }
+
+      html += '</div>';
+      divResultado.innerHTML = html;
+      divResultado.classList.add('show');
+    }
+
+    function traduzirStatus(s) {
+      const mapa = {
+        'paid': '✅ Paga',
+        'cancelled': '❌ Cancelada',
+        'pending': '⏳ Pendente',
+        'confirmed': '✅ Confirmada',
+        'invalid': '⚠️ Invalida',
+      };
+      return mapa[s] || s || '-';
+    }
+
+    function traduzirPagamento(s) {
+      const mapa = {
+        'approved': '✅ Aprovado',
+        'refunded': '↩️ Estornado',
+        'cancelled': '❌ Cancelado',
+        'pending': '⏳ Pendente',
+        'rejected': '⚠️ Rejeitado',
+      };
+      return mapa[s] || s || '-';
+    }
+
+    function traduzirStatusEnvio(s) {
+      const mapa = {
+        'delivered': '✅ Entregue',
+        'shipped': '🚚 Em transito',
+        'ready_to_ship': '📦 Pronto pra enviar',
+        'pending': '⏳ Pendente',
+        'cancelled': '❌ Cancelado',
+        'not_delivered': '⚠️ Nao entregue',
+      };
+      return mapa[s] || s || '-';
+    }
+  </script>
+</body>
+</html>
