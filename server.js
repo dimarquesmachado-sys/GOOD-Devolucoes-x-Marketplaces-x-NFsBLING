@@ -1,6 +1,6 @@
 // ============================================================
 // GOOD Devolucoes - Marketplaces - NFs Bling
-// Fase 2.1: match exato Bling + validacao por valor
+// Fase 2.2: paginacao + filtro client-side por janela de data
 // ============================================================
 
 const express = require('express');
@@ -51,7 +51,6 @@ async function atualizarTokensNoRender(updates) {
       allVars,
       { headers: { Authorization: `Bearer ${RENDER_API_KEY}`, 'Content-Type': 'application/json' } }
     );
-    console.log('[Render] Tokens atualizados');
     return true;
   } catch (error) {
     console.error('[Render] Erro:', error.response?.data || error.message);
@@ -166,22 +165,83 @@ async function chamarBling(url, opcoes = {}) {
   }
 }
 
-// Buscar pedido Bling pelo numeroLoja
-async function buscarPedidoBlingPorNumeroLoja(numeroLoja) {
-  return chamarBling(`https://www.bling.com.br/Api/v3/pedidos/vendas?numeroLoja=${encodeURIComponent(numeroLoja)}`);
+// Busca pedido Bling pelo numeroLoja - ESTRATEGIA NOVA
+// O filtro ?numeroLoja na API do Bling NAO funciona (retorna lista geral).
+// Solucao: paginar dentro de uma janela de data e filtrar client-side.
+async function buscarPedidoBlingPorNumeroLoja(numeroLoja, dataReferencia) {
+  console.log(`[Bling] Buscando numeroLoja=${numeroLoja} ref=${dataReferencia}`);
+
+  // Janela de busca: ±7 dias da data de referencia
+  // (Bling cria pedido no mesmo dia/proximo da venda ML)
+  const ref = dataReferencia ? new Date(dataReferencia) : new Date();
+  if (isNaN(ref.getTime())) ref.setTime(Date.now());
+
+  const dataInicial = new Date(ref.getTime() - 7 * 24 * 60 * 60 * 1000);
+  const dataFinal = new Date(ref.getTime() + 7 * 24 * 60 * 60 * 1000);
+  const fmt = (d) => d.toISOString().split('T')[0]; // YYYY-MM-DD
+
+  const params = new URLSearchParams({
+    dataInicial: fmt(dataInicial),
+    dataFinal: fmt(dataFinal),
+    limite: '100',
+  });
+
+  // Pagina ate 5 paginas (500 pedidos na janela)
+  const MAX_PAGINAS = 5;
+  const todosPedidos = [];
+
+  for (let pagina = 1; pagina <= MAX_PAGINAS; pagina++) {
+    params.set('pagina', String(pagina));
+    const url = `https://www.bling.com.br/Api/v3/pedidos/vendas?${params.toString()}`;
+    const r = await chamarBling(url);
+
+    if (!r.ok) {
+      console.log(`[Bling] Falha pag ${pagina}: ${r.status}`);
+      return { ok: false, status: r.status, error: r.error, totalScanned: todosPedidos.length };
+    }
+
+    const lista = r.data?.data || [];
+    todosPedidos.push(...lista);
+
+    // Procura match exato nesta pagina
+    const match = lista.find(p =>
+      String(p.numeroLoja || '').trim() === String(numeroLoja).trim()
+    );
+
+    if (match) {
+      console.log(`[Bling] Pedido encontrado na pagina ${pagina}: id=${match.id}`);
+      return {
+        ok: true,
+        match,
+        pagina,
+        totalScanned: todosPedidos.length,
+        janela: { dataInicial: fmt(dataInicial), dataFinal: fmt(dataFinal) },
+      };
+    }
+
+    // Se a pagina veio com menos de 100, nao tem mais paginas
+    if (lista.length < 100) {
+      console.log(`[Bling] Fim das paginas (${pagina}, ${lista.length} pedidos)`);
+      break;
+    }
+  }
+
+  return {
+    ok: true,
+    match: null,
+    totalScanned: todosPedidos.length,
+    janela: { dataInicial: fmt(dataInicial), dataFinal: fmt(dataFinal) },
+  };
 }
 
-// Buscar pedido completo
 async function buscarPedidoBlingPorId(idPedido) {
   return chamarBling(`https://www.bling.com.br/Api/v3/pedidos/vendas/${idPedido}`);
 }
 
-// Buscar NF-e
 async function buscarNFePorId(idNFe) {
   return chamarBling(`https://www.bling.com.br/Api/v3/nfe/${idNFe}`);
 }
 
-// Listar lojas Bling (pra debug, descobrir idLoja MLIVRE)
 async function listarLojasBling() {
   return chamarBling('https://www.bling.com.br/Api/v3/lojas');
 }
@@ -193,7 +253,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '2.1.0',
+    version: '2.2.0',
     integrations: {
       ml: !!ML_ACCESS_TOKEN,
       bling: !!BLING_ACCESS_TOKEN,
@@ -241,42 +301,6 @@ async function buscarOrdersPorComprador(buyerId, sellerId) {
   return chamarML(
     `https://api.mercadolibre.com/orders/search?seller=${sellerId}&buyer=${buyerId}&sort=date_desc&limit=20`
   );
-}
-
-// ============================================================
-// VALIDACAO DE MATCH BLING - garante que e o pedido certo
-// ============================================================
-function validarPedidoBlingCorreto(pedidoBling, orderML, valorEsperado) {
-  if (!pedidoBling) return { valido: false, motivo: 'Pedido Bling nulo' };
-
-  // 1. Match exato no numeroLoja
-  const numeroLojaBling = String(pedidoBling.numeroLoja || '').trim();
-  const orderIdML = String(orderML?.id || '').trim();
-
-  if (!numeroLojaBling) {
-    return { valido: false, motivo: 'Pedido Bling sem numeroLoja' };
-  }
-
-  if (numeroLojaBling !== orderIdML) {
-    return {
-      valido: false,
-      motivo: `numeroLoja Bling (${numeroLojaBling}) != order_id ML (${orderIdML})`,
-    };
-  }
-
-  // 2. Cross-check por valor (tolerancia 1 centavo)
-  const valorBling = parseFloat(pedidoBling.total || pedidoBling.totalProdutos || 0);
-  if (valorEsperado && valorBling > 0) {
-    const diff = Math.abs(valorBling - valorEsperado);
-    if (diff > 0.01) {
-      return {
-        valido: false,
-        motivo: `Valor Bling (R$ ${valorBling}) != ML (R$ ${valorEsperado})`,
-      };
-    }
-  }
-
-  return { valido: true };
 }
 
 // ============================================================
@@ -355,7 +379,7 @@ app.get('/api/devolucao/identificar/:codigo', async (req, res) => {
     return res.status(404).json(resultado);
   }
 
-  // ML: BUSCAR ORDER (3 caminhos)
+  // ML: ORDER (3 caminhos)
   let orderId = shipment?.order_id || pack?.orders?.[0]?.id;
   if (orderId) {
     const r = await chamarML(`https://api.mercadolibre.com/orders/${orderId}`);
@@ -437,7 +461,7 @@ app.get('/api/devolucao/identificar/:codigo', async (req, res) => {
   }
 
   // ============================================================
-  // BLING: Buscar pedido + NF-e (com VALIDACAO RIGOROSA)
+  // BLING: paginacao na janela de data + filtro client-side
   // ============================================================
   let blingPedido = null;
   let blingPedidoCompleto = null;
@@ -445,65 +469,29 @@ app.get('/api/devolucao/identificar/:codigo', async (req, res) => {
 
   if (order?.id) {
     const numeroLoja = String(order.id);
-    const valorEsperado = parseFloat(order.total_amount || 0);
+    const dataReferencia = order.date_created || order.date_closed;
 
-    const rBlingPedidos = await buscarPedidoBlingPorNumeroLoja(numeroLoja);
-
-    const lista = rBlingPedidos.data?.data || [];
+    const rBusca = await buscarPedidoBlingPorNumeroLoja(numeroLoja, dataReferencia);
     resultado.tentativas.push({
-      tipo: 'bling_pedidos_por_numeroLoja', codigo: numeroLoja,
-      ok: rBlingPedidos.ok, status: rBlingPedidos.status,
-      erro: rBlingPedidos.ok ? null : rBlingPedidos.error,
-      encontradas: lista.length,
-      valor_esperado: valorEsperado,
+      tipo: 'bling_busca_paginada',
+      codigo: numeroLoja,
+      ok: rBusca.ok,
+      status: rBusca.ok ? 200 : (rBusca.status || 500),
+      erro: rBusca.ok ? null : rBusca.error,
+      total_scanned: rBusca.totalScanned,
+      janela: rBusca.janela,
+      pagina_match: rBusca.pagina,
+      encontrou: !!rBusca.match,
     });
 
-    if (rBlingPedidos.ok && lista.length > 0) {
-      console.log(`[Bling] ${lista.length} pedido(s) retornado(s) pela API`);
+    if (rBusca.ok && rBusca.match) {
+      // Busca completo (com NF-e vinculada)
+      const rCompleto = await buscarPedidoBlingPorId(rBusca.match.id);
+      if (rCompleto.ok && rCompleto.data?.data) {
+        blingPedidoCompleto = rCompleto.data.data;
+        blingPedido = blingPedidoCompleto;
+        console.log(`[Bling] Pedido completo: id=${blingPedidoCompleto.id} numero=${blingPedidoCompleto.numero}`);
 
-      // VALIDACAO 1: filtrar por match exato de numeroLoja
-      const matchExato = lista.filter(p =>
-        String(p.numeroLoja || '').trim() === numeroLoja
-      );
-      console.log(`[Bling] ${matchExato.length} pedido(s) com numeroLoja exato`);
-
-      // VALIDACAO 2: pra cada candidato, busca completo e valida valor
-      let pedidoCorreto = null;
-      const validacoes = [];
-
-      for (const candidato of matchExato) {
-        const rCompleto = await buscarPedidoBlingPorId(candidato.id);
-        if (!rCompleto.ok || !rCompleto.data?.data) {
-          validacoes.push({ id: candidato.id, motivo: 'Falha ao buscar completo' });
-          continue;
-        }
-
-        const completo = rCompleto.data.data;
-        const validacao = validarPedidoBlingCorreto(completo, order, valorEsperado);
-
-        if (validacao.valido) {
-          pedidoCorreto = completo;
-          validacoes.push({ id: candidato.id, motivo: 'OK - match exato confirmado' });
-          break;
-        } else {
-          validacoes.push({ id: candidato.id, motivo: validacao.motivo });
-        }
-      }
-
-      resultado.tentativas.push({
-        tipo: 'bling_validacao_match',
-        codigo: numeroLoja,
-        ok: !!pedidoCorreto,
-        candidatos_avaliados: validacoes.length,
-        validacoes,
-      });
-
-      if (pedidoCorreto) {
-        blingPedido = pedidoCorreto;
-        blingPedidoCompleto = pedidoCorreto;
-        console.log(`[Bling] Pedido CONFIRMADO: id=${pedidoCorreto.id} numero=${pedidoCorreto.numero}`);
-
-        // BUSCAR NF-e
         const nfeId = blingPedidoCompleto.notaFiscal?.id;
         if (nfeId) {
           const rNFe = await buscarNFePorId(nfeId);
@@ -514,19 +502,14 @@ app.get('/api/devolucao/identificar/:codigo', async (req, res) => {
         } else {
           resultado.avisos.push({
             tipo: 'sem_nfe_no_pedido',
-            mensagem: 'Pedido encontrado e validado, mas sem NF-e vinculada',
+            mensagem: 'Pedido encontrado no Bling, mas sem NF-e vinculada ainda',
           });
         }
-      } else {
-        resultado.avisos.push({
-          tipo: 'pedido_bling_nao_validou',
-          mensagem: `${lista.length} pedido(s) Bling retornados mas nenhum bate com order_id=${numeroLoja}. Possivel busca aproximada da API.`,
-        });
       }
-    } else if (rBlingPedidos.ok) {
+    } else if (rBusca.ok) {
       resultado.avisos.push({
         tipo: 'pedido_nao_achado_bling',
-        mensagem: `Pedido com numeroLoja=${numeroLoja} nao encontrado no Bling`,
+        mensagem: `Pedido com numeroLoja=${numeroLoja} nao encontrado na janela de ${rBusca.janela?.dataInicial} a ${rBusca.janela?.dataFinal} (${rBusca.totalScanned} pedidos verificados)`,
       });
     }
   } else {
@@ -586,9 +569,10 @@ app.get('/api/debug/order/:id', async (req, res) => {
   res.status(r.ok ? 200 : r.status || 500).json(r);
 });
 
-app.get('/api/debug/bling-pedidos/:numeroLoja', async (req, res) => {
-  const r = await buscarPedidoBlingPorNumeroLoja(req.params.numeroLoja);
-  res.status(r.ok ? 200 : r.status || 500).json(r);
+app.get('/api/debug/bling-busca/:numeroLoja', async (req, res) => {
+  const dataRef = req.query.data || null;
+  const r = await buscarPedidoBlingPorNumeroLoja(req.params.numeroLoja, dataRef);
+  res.json(r);
 });
 
 app.get('/api/debug/bling-pedido/:id', async (req, res) => {
@@ -601,7 +585,6 @@ app.get('/api/debug/bling-nfe/:id', async (req, res) => {
   res.status(r.ok ? 200 : r.status || 500).json(r);
 });
 
-// IMPORTANTE: rota nova pra descobrir lojas Bling
 app.get('/api/debug/bling-lojas', async (req, res) => {
   const r = await listarLojasBling();
   res.status(r.ok ? 200 : r.status || 500).json(r);
@@ -623,7 +606,7 @@ app.get('/bling/callback', (req, res) => {
 // ============================================================
 app.listen(PORT, () => {
   console.log('============================================');
-  console.log('GOOD Devolucoes v2.1.0 - match exato Bling');
+  console.log('GOOD Devolucoes v2.2.0 - paginacao janela data');
   console.log(`Porta: ${PORT}`);
   console.log(`ML: ${ML_ACCESS_TOKEN ? 'OK' : 'FALTA'}`);
   console.log(`Bling: ${BLING_ACCESS_TOKEN ? 'OK' : 'FALTA'}`);
