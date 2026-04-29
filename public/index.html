@@ -538,7 +538,7 @@
     <header>
       <h1>📦 GOOD Devolucoes</h1>
       <p>Identificar venda + NF-e + Triagem</p>
-      <p style="font-size: 10px; color: #888; margin-top: 4px;">v3.13.6 (qtd na frente) | <span id="serverVersion">checando...</span></p>
+      <p style="font-size: 10px; color: #888; margin-top: 4px;">v3.14 (bipagem EAN obrigatoria) | <span id="serverVersion">checando...</span></p>
       <div class="user-badge">
         👤 <span id="userNome">-</span>
         <a href="/admin.html" id="btnPainelAdmin" style="display:none;background:#ffd700;color:#1d1d1f;padding:3px 10px;border-radius:10px;font-weight:700;margin-left:6px;">👑 Painel Admin</a>
@@ -570,18 +570,76 @@
 
   <!-- MODAL CONFIRMAR APROVAR -->
   <div class="modal-bg" id="modalAprovar">
-    <div class="modal">
+    <div class="modal" style="max-width: 520px;">
       <h3>✅ Confirmar inclusao no estoque</h3>
-      <p id="modalAprovarMsg">Confere que o produto e a quantidade estao corretos?</p>
+      <p id="modalAprovarMsg" style="font-size: 14px; color: #555;">Confira o produto e bipe o codigo de barras de cada unidade:</p>
+
+      <!-- Detalhes dos produtos esperados -->
       <div style="background:#f5f5f7;padding:12px;border-radius:8px;font-size:13px;">
         <div id="modalAprovarDetalhes"></div>
       </div>
-      <p style="font-size:13px;margin-top:12px;color:#666;">
+
+      <!-- Area de BIPAGEM -->
+      <div id="bipagemArea" style="margin-top: 16px;">
+        <div id="bipagemProgresso" style="text-align:center; margin-bottom:10px;">
+          <div style="font-size: 13px; color: #666; margin-bottom: 4px;">Progresso da bipagem</div>
+          <div id="bipagemContador" style="font-size: 28px; font-weight: 800; color: #2e7d32;">0 / 0</div>
+        </div>
+
+        <div style="background:#e3f2fd; border:2px dashed #1565c0; border-radius:10px; padding:14px;">
+          <label style="display:block; font-size:13px; font-weight:700; color:#1565c0; margin-bottom:6px;">
+            📷 Bipe o codigo de barras aqui:
+          </label>
+          <input type="text" id="bipagemInput"
+                 placeholder="Aguardando bipagem..."
+                 style="width:100%; padding:12px 14px; font-size:18px; font-family:'Courier New',monospace; font-weight:700; border:2px solid #1565c0; border-radius:8px; background:white;"
+                 autocomplete="off">
+        </div>
+
+        <!-- Erro de bipagem (1a vez) -->
+        <div id="bipagemErro" style="display:none; margin-top:10px; background:#ffebee; border:1px solid #c62828; border-radius:8px; padding:12px;">
+          <div style="font-size:14px; font-weight:700; color:#c62828; margin-bottom:4px;">
+            ❌ Codigo bipado nao confere
+          </div>
+          <div style="font-size:12px; color:#555;">
+            Esperado: <strong id="bipagemEsperado">-</strong><br>
+            Bipado: <strong id="bipagemRecebido">-</strong>
+          </div>
+          <div style="font-size:11px; color:#999; margin-top:6px;">Bipe novamente o produto correto.</div>
+        </div>
+
+        <!-- Forcar com observacao (aparece na 2a falha) -->
+        <div id="bipagemForcar" style="display:none; margin-top:10px; background:#fff3e0; border:2px solid #f57c00; border-radius:8px; padding:14px;">
+          <div style="font-size:14px; font-weight:700; color:#e65100; margin-bottom:8px;">
+            ⚠️ 2 erros de bipagem - voce pode finalizar com observacao
+          </div>
+          <label style="display:block; font-size:12px; color:#555; margin-bottom:4px;">
+            Explique o motivo (minimo 20 caracteres):
+          </label>
+          <textarea id="bipagemObservacao" rows="3"
+                    placeholder="Ex: produto com etiqueta danificada, codigo de barras ilegivel..."
+                    style="width:100%; padding:10px; font-size:13px; border:1px solid #f57c00; border-radius:6px; resize:vertical;"
+                    oninput="atualizarBotaoForcar()"></textarea>
+          <div id="bipagemObsContador" style="font-size:11px; color:#999; text-align:right; margin-top:2px;">0 / 20</div>
+          <button id="btnForcar" onclick="finalizarComObservacao()"
+                  disabled
+                  style="width:100%; margin-top:8px; padding:10px; background:#f57c00; color:white; border:none; border-radius:6px; font-weight:700; cursor:pointer; opacity:0.5;">
+            ✅ OK - Finalizar com observacao
+          </button>
+        </div>
+      </div>
+
+      <p style="font-size:11px; margin-top:12px; color:#999;">
         Apos confirmar, o produto sera marcado como aprovado e Diego emitira a NF de devolucao no Bling.
       </p>
+
       <div class="modal-acoes">
         <button class="btn-cancelar" onclick="fecharModal('modalAprovar')">Cancelar</button>
-        <button class="btn-action" style="margin:0;padding:12px;" onclick="confirmarAprovar()">✅ Confirmar</button>
+        <button class="btn-action" id="btnConfirmarAprovar" disabled
+                style="margin:0;padding:12px;opacity:0.5;cursor:not-allowed;"
+                onclick="confirmarAprovar()">
+          ✅ Confirmar
+        </button>
       </div>
     </div>
   </div>
@@ -1216,44 +1274,228 @@
       return ({ delivered:'✅ Entregue', shipped:'🚚 Em transito', ready_to_ship:'📦 Pronto', pending:'⏳ Pendente', cancelled:'❌ Cancelado', not_delivered:'⚠️ Nao entregue' })[s] || s || '-';
     }
 
-    // ================ TRIAGEM - APROVAR ================
+    // ================ TRIAGEM - APROVAR COM BIPAGEM ================
+    // Estado da bipagem
+    let bipagemEstado = {
+      itensEsperados: [],  // [{titulo, sku, ean, quantidade, bipados: 0}]
+      totalEsperado: 0,
+      totalBipado: 0,
+      tentativasErro: 0,    // conta erros consecutivos
+      forcado: false,
+      observacao: null,
+    };
+
     function abrirModalAprovar() {
       if (!ultimaBusca) return;
       const order = ultimaBusca.order || {};
-      // Itens do Bling se tiver, senao ML
       const nf = ultimaBusca.nf || {};
       const itensBling = Array.isArray(nf.itens) && nf.itens.length > 0 ? nf.itens : null;
       const itensML = Array.isArray(order.order_items) ? order.order_items : [];
 
+      // Reset estado bipagem
+      bipagemEstado = {
+        itensEsperados: [],
+        totalEsperado: 0,
+        totalBipado: 0,
+        tentativasErro: 0,
+        forcado: false,
+        observacao: null,
+      };
+
       let itensHtml = '';
       if (itensBling) {
         itensBling.forEach((it, i) => {
-          const qtd = it.quantidade || itensML[i]?.quantity || 1;
+          const qtd = Number(it.quantidade) || itensML[i]?.quantity || 1;
           const sku = it.sku || itensML[i]?.item?.seller_sku || '-';
           const ean = it.ean || '-';
-          itensHtml += `<div style="padding:6px 0;border-bottom:1px solid #eee;">
+          bipagemEstado.itensEsperados.push({
+            titulo: it.titulo || '-',
+            sku, ean, quantidade: qtd, bipados: 0,
+          });
+          bipagemEstado.totalEsperado += qtd;
+          itensHtml += `<div style="padding:6px 0;border-bottom:1px solid #eee;" data-item-idx="${i}">
             <strong>${escapeHtml(it.titulo || '-')}</strong><br>
             <span style="font-size:12px;color:#666;">
               SKU <strong>${escapeHtml(sku)}</strong>
               ${ean !== '-' ? ` · EAN <strong>${escapeHtml(ean)}</strong>` : ''}
-              · <strong>${qtd}x</strong>
+              · <strong id="bipItem${i}">0/${qtd}</strong>
             </span>
           </div>`;
         });
       } else {
-        itensML.forEach(it => {
-          itensHtml += `<div style="padding:6px 0;border-bottom:1px solid #eee;">
+        itensML.forEach((it, i) => {
+          const qtd = Number(it.quantity) || 1;
+          bipagemEstado.itensEsperados.push({
+            titulo: it.item?.title || '-',
+            sku: it.item?.seller_sku || '-',
+            ean: '-',
+            quantidade: qtd, bipados: 0,
+          });
+          bipagemEstado.totalEsperado += qtd;
+          itensHtml += `<div style="padding:6px 0;border-bottom:1px solid #eee;" data-item-idx="${i}">
             <strong>${escapeHtml(it.item?.title || '-')}</strong><br>
             <span style="font-size:12px;color:#666;">
               SKU <strong>${escapeHtml(it.item?.seller_sku || '-')}</strong>
-              · <strong>${it.quantity || 1}x</strong>
+              · <strong id="bipItem${i}">0/${qtd}</strong>
             </span>
           </div>`;
         });
       }
 
       document.getElementById('modalAprovarDetalhes').innerHTML = itensHtml || '<em>Nenhum item encontrado</em>';
+
+      // Verifica se TEM EAN cadastrado em todos os itens
+      const todosComEan = bipagemEstado.itensEsperados.every(it => it.ean && it.ean !== '-');
+      const bipagemArea = document.getElementById('bipagemArea');
+
+      if (!todosComEan) {
+        // Sem EAN cadastrado, não tem como validar - libera direto
+        bipagemArea.innerHTML = `<div style="background:#fff3e0;border:1px solid #ffc107;border-radius:8px;padding:10px;font-size:12px;color:#5d4037;text-align:center;">
+          ⚠️ Itens sem EAN cadastrado no Bling - bipagem desabilitada
+        </div>`;
+        document.getElementById('btnConfirmarAprovar').disabled = false;
+        document.getElementById('btnConfirmarAprovar').style.opacity = '1';
+        document.getElementById('btnConfirmarAprovar').style.cursor = 'pointer';
+      } else {
+        // Reset área bipagem ao estado inicial
+        document.getElementById('bipagemContador').textContent = `0 / ${bipagemEstado.totalEsperado}`;
+        document.getElementById('bipagemContador').style.color = '#2e7d32';
+        document.getElementById('bipagemInput').value = '';
+        document.getElementById('bipagemErro').style.display = 'none';
+        document.getElementById('bipagemForcar').style.display = 'none';
+        document.getElementById('bipagemObservacao').value = '';
+        document.getElementById('btnConfirmarAprovar').disabled = true;
+        document.getElementById('btnConfirmarAprovar').style.opacity = '0.5';
+        document.getElementById('btnConfirmarAprovar').style.cursor = 'not-allowed';
+
+        // Listener de bipagem - scanner manda Enter no fim
+        const inp = document.getElementById('bipagemInput');
+        inp.onkeydown = (e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            processarBipagem(inp.value.trim());
+            inp.value = '';
+          }
+        };
+        // Foca pra estoquista bipar direto
+        setTimeout(() => inp.focus(), 200);
+      }
+
       document.getElementById('modalAprovar').classList.add('show');
+    }
+
+    function processarBipagem(codigo) {
+      if (!codigo) return;
+
+      // Acha qual item ainda precisa de bip e cujo EAN bate
+      const itemMatch = bipagemEstado.itensEsperados.find(it =>
+        String(it.ean).trim() === codigo && it.bipados < it.quantidade
+      );
+
+      if (itemMatch) {
+        // ✅ BIPAGEM CORRETA
+        itemMatch.bipados++;
+        bipagemEstado.totalBipado++;
+        bipagemEstado.tentativasErro = 0; // reseta erros
+        beepOk();
+
+        // Atualiza contador geral
+        document.getElementById('bipagemContador').textContent =
+          `${bipagemEstado.totalBipado} / ${bipagemEstado.totalEsperado}`;
+
+        // Atualiza contador por item
+        const idx = bipagemEstado.itensEsperados.indexOf(itemMatch);
+        const elItem = document.getElementById(`bipItem${idx}`);
+        if (elItem) elItem.textContent = `${itemMatch.bipados}/${itemMatch.quantidade}`;
+
+        // Esconde erro se estava aparecendo
+        document.getElementById('bipagemErro').style.display = 'none';
+
+        // Completou tudo?
+        if (bipagemEstado.totalBipado >= bipagemEstado.totalEsperado) {
+          document.getElementById('bipagemContador').textContent = `✅ ${bipagemEstado.totalEsperado} / ${bipagemEstado.totalEsperado}`;
+          document.getElementById('btnConfirmarAprovar').disabled = false;
+          document.getElementById('btnConfirmarAprovar').style.opacity = '1';
+          document.getElementById('btnConfirmarAprovar').style.cursor = 'pointer';
+        }
+      } else {
+        // ❌ BIPAGEM ERRADA
+        bipagemEstado.tentativasErro++;
+        beepErro();
+
+        // Pega EAN(s) esperados pra mostrar
+        const eansEsperados = bipagemEstado.itensEsperados
+          .filter(it => it.bipados < it.quantidade)
+          .map(it => it.ean)
+          .join(' ou ');
+
+        document.getElementById('bipagemEsperado').textContent = eansEsperados;
+        document.getElementById('bipagemRecebido').textContent = codigo;
+        document.getElementById('bipagemErro').style.display = 'block';
+
+        // 2a tentativa errada - libera "forcar com observacao"
+        if (bipagemEstado.tentativasErro >= 2) {
+          document.getElementById('bipagemForcar').style.display = 'block';
+          atualizarBotaoForcar();
+        }
+      }
+    }
+
+    function atualizarBotaoForcar() {
+      const obs = document.getElementById('bipagemObservacao').value.trim();
+      const contador = document.getElementById('bipagemObsContador');
+      const btn = document.getElementById('btnForcar');
+
+      contador.textContent = `${obs.length} / 20`;
+      contador.style.color = obs.length >= 20 ? '#2e7d32' : '#999';
+
+      if (obs.length >= 20) {
+        btn.disabled = false;
+        btn.style.opacity = '1';
+        btn.style.cursor = 'pointer';
+      } else {
+        btn.disabled = true;
+        btn.style.opacity = '0.5';
+        btn.style.cursor = 'not-allowed';
+      }
+    }
+
+    function finalizarComObservacao() {
+      const obs = document.getElementById('bipagemObservacao').value.trim();
+      if (obs.length < 20) {
+        alert('A observacao precisa ter no minimo 20 caracteres.');
+        return;
+      }
+      bipagemEstado.forcado = true;
+      bipagemEstado.observacao = obs;
+      // Pula direto pra confirmar
+      confirmarAprovar();
+    }
+
+    // Sons de feedback
+    function beepOk() {
+      try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain); gain.connect(ctx.destination);
+        osc.frequency.value = 1000; osc.type = 'sine';
+        gain.gain.setValueAtTime(0.3, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.15);
+        osc.start(); osc.stop(ctx.currentTime + 0.15);
+      } catch(e) {}
+    }
+    function beepErro() {
+      try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain); gain.connect(ctx.destination);
+        osc.frequency.value = 250; osc.type = 'square';
+        gain.gain.setValueAtTime(0.3, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4);
+        osc.start(); osc.stop(ctx.currentTime + 0.4);
+      } catch(e) {}
     }
 
     function fecharModal(id) {
@@ -1262,7 +1504,7 @@
 
     async function confirmarAprovar() {
       if (!ultimaBusca) return;
-      const btn = document.querySelector('#modalAprovar .btn-action');
+      const btn = document.getElementById('btnConfirmarAprovar');
       btn.disabled = true;
       btn.innerHTML = '<span class="spinner-mini"></span>Salvando...';
 
@@ -1291,6 +1533,12 @@
 
         const payload = montarPayloadTriagem();
         if (window._forcarTriagem) payload.forcar = true;
+
+        // Inclui flags de bipagem se foi forcado
+        if (bipagemEstado.forcado && bipagemEstado.observacao) {
+          payload.bipagem_forcada = true;
+          payload.bipagem_observacao = bipagemEstado.observacao;
+        }
 
         const r = await fetch('/api/triagem/aprovar', {
           method: 'POST',
