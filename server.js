@@ -320,6 +320,31 @@ async function buscarNFePorId(idNFe) {
   return chamarBling(`https://www.bling.com.br/Api/v3/nfe/${idNFe}`);
 }
 
+// NOVO v3.14.4: buscar produto por SKU (codigo) pra pegar EAN
+// quando a NF nao foi achada automaticamente
+async function buscarProdutoBlingPorSku(sku) {
+  const skuStr = encodeURIComponent(String(sku).trim());
+  const url = `https://www.bling.com.br/Api/v3/produtos?codigo=${skuStr}&limite=5`;
+  const r = await chamarBling(url);
+  if (!r.ok) return { ok: false, error: r.error };
+
+  const lista = r.data?.data || [];
+  // Match exato pelo codigo (SKU)
+  const match = lista.find(p => String(p.codigo || '').trim() === String(sku).trim()) || lista[0];
+
+  if (!match) return { ok: true, produto: null };
+
+  // Lista vem resumida - busca detalhes individuais pra ter gtin
+  if (match.id) {
+    const rDetalhe = await chamarBling(`https://www.bling.com.br/Api/v3/produtos/${match.id}`);
+    if (rDetalhe.ok && rDetalhe.data?.data) {
+      return { ok: true, produto: rDetalhe.data.data };
+    }
+  }
+
+  return { ok: true, produto: match };
+}
+
 // NOVO v3.5: paginar /nfe procurando por NUMERO da NF (que vem do ML)
 // Estrategia mais robusta - listing do /nfe nao traz numeroPedidoLoja,
 // mas traz numero. Usamos invoice_number do ML pra match.
@@ -551,7 +576,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '3.14.0',
+    version: '3.14.4',
     integrations: {
       ml: !!ML_ACCESS_TOKEN,
       bling: !!BLING_ACCESS_TOKEN,
@@ -1023,6 +1048,30 @@ app.get('/api/debug/bling-busca/:numeroLoja', async (req, res) => {
   const dataRef = req.query.data || null;
   const r = await buscarPedidoBlingPorNumeroLoja(req.params.numeroLoja, dataRef, { maxPaginas: 50 });
   res.json(r);
+});
+
+// NOVO v3.14.4: rota pra buscar EAN do produto pelo SKU
+// Usado quando a NF nao foi achada automaticamente e o frontend precisa do EAN pra bipagem
+app.get('/api/produto/ean-por-sku/:sku', async (req, res) => {
+  const sku = String(req.params.sku || '').trim();
+  if (!sku) return res.status(400).json({ ok: false, erro: 'sku obrigatorio' });
+
+  const r = await buscarProdutoBlingPorSku(sku);
+  if (!r.ok) return res.status(500).json(r);
+  if (!r.produto) return res.json({ ok: true, encontrado: false, sku });
+
+  return res.json({
+    ok: true,
+    encontrado: true,
+    sku,
+    produto: {
+      id: r.produto.id,
+      nome: r.produto.nome,
+      codigo: r.produto.codigo,
+      gtin: r.produto.gtin,
+      gtinEmbalagem: r.produto.gtinEmbalagem,
+    },
+  });
 });
 
 app.get('/api/debug/bling-pedido/:id', async (req, res) => {
@@ -1528,7 +1577,7 @@ app.delete('/api/admin/devolucao/:id', requerAdmin, async (req, res) => {
 // ============================================================
 app.listen(PORT, () => {
   console.log('============================================');
-  console.log('GOOD Devolucoes v3.14.0 - bipagem EAN obrigatoria + observacao se 2 erros');
+  console.log('GOOD Devolucoes v3.14.4 - busca EAN do produto no Bling pra bipagem');
   console.log(`Porta: ${PORT}`);
   console.log(`ML: ${ML_ACCESS_TOKEN ? 'OK' : 'FALTA'}`);
   console.log(`Bling: ${BLING_ACCESS_TOKEN ? 'OK' : 'FALTA'}`);
