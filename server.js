@@ -616,6 +616,29 @@ app.get('/api/debug/bling-lojas', async (req, res) => {
   res.status(r.ok ? 200 : r.status || 500).json(r);
 });
 
+// ROTAS DEBUG NOVAS - investigar NF no ML
+app.get('/api/debug/ml-billing/:orderId', async (req, res) => {
+  const r = await chamarML(`https://api.mercadolibre.com/orders/${req.params.orderId}/billing_info`);
+  res.status(r.ok ? 200 : r.status || 500).json(r);
+});
+
+app.get('/api/debug/ml-pack-billing/:packId', async (req, res) => {
+  const r = await chamarML(`https://api.mercadolibre.com/packs/${req.params.packId}/billing_info`);
+  res.status(r.ok ? 200 : r.status || 500).json(r);
+});
+
+app.get('/api/debug/ml-fiscal/:orderId', async (req, res) => {
+  // tenta endpoint de fiscal documents
+  const r = await chamarML(`https://api.mercadolibre.com/orders/${req.params.orderId}/fiscal_documents`);
+  res.status(r.ok ? 200 : r.status || 500).json(r);
+});
+
+app.get('/api/debug/ml-shipment-invoice/:shipmentId', async (req, res) => {
+  // tenta endpoint de invoice no shipment (usado pra NF-e do envio)
+  const r = await chamarML(`https://api.mercadolibre.com/shipments/${req.params.shipmentId}/invoice_data`);
+  res.status(r.ok ? 200 : r.status || 500).json(r);
+});
+
 app.get('/api/debug/bling-primeira-pagina', async (req, res) => {
   const limite = req.query.limite || 20;
   const r = await chamarBling(`https://www.bling.com.br/Api/v3/pedidos/vendas?limite=${limite}&pagina=1`);
