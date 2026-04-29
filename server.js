@@ -483,9 +483,11 @@ function extrairClaimsDaResposta(data) {
 }
 
 async function buscarClaimsPorShipment(shipmentId) {
+  // Tenta varias formas - inclui claims fechados (status nao filtrado)
   const tentativas = [
     `https://api.mercadolibre.com/post-purchase/v1/claims/search?resource=shipment&resource_id=${shipmentId}`,
     `https://api.mercadolibre.com/post-purchase/v1/claims/search?shipment_id=${shipmentId}`,
+    `https://api.mercadolibre.com/post-purchase/v1/claims/search?resource=shipment&resource_id=${shipmentId}&status=closed`,
   ];
   for (const url of tentativas) {
     const r = await chamarML(url);
@@ -497,6 +499,36 @@ async function buscarClaimsPorShipment(shipmentId) {
   return { ok: false, claims: [] };
 }
 
+// NOVO v3.13: pra shipment com tags=claims_return mas sem order_id direto
+// Tenta buscar a order original via endpoint /shipments/{id}/orders
+async function buscarOrderViaShipmentReturn(shipmentId) {
+  const tentativas = [
+    // Endpoint que retorna a(s) order(s) vinculadas ao shipment
+    `https://api.mercadolibre.com/shipments/${shipmentId}/orders`,
+    // Alternativo - shipment items com expand de pack
+    `https://api.mercadolibre.com/shipments/${shipmentId}/items`,
+  ];
+  for (const url of tentativas) {
+    const r = await chamarML(url);
+    if (r.ok && r.data) {
+      // Busca order_id em varios formatos possiveis de resposta
+      const possiveis = [
+        r.data?.order_id,
+        r.data?.id,
+        r.data?.[0]?.order_id,
+        r.data?.[0]?.id,
+        r.data?.results?.[0]?.id,
+        r.data?.orders?.[0]?.id,
+      ].filter(Boolean);
+
+      if (possiveis.length > 0) {
+        return { ok: true, orderId: String(possiveis[0]), raw: r.data, url };
+      }
+    }
+  }
+  return { ok: false };
+}
+
 async function buscarClaimDetalhada(claimId) {
   return chamarML(`https://api.mercadolibre.com/post-purchase/v1/claims/${claimId}`);
 }
@@ -506,6 +538,7 @@ async function buscarReturnPorClaim(claimId) {
 }
 
 async function buscarOrdersPorComprador(buyerId, sellerId) {
+  // Limita a 20 mais recentes pra nao pegar venda antiga aleatoria
   return chamarML(
     `https://api.mercadolibre.com/orders/search?seller=${sellerId}&buyer=${buyerId}&sort=date_desc&limit=20`
   );
@@ -518,7 +551,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '3.10.0',
+    version: '3.13.0',
     integrations: {
       ml: !!ML_ACCESS_TOKEN,
       bling: !!BLING_ACCESS_TOKEN,
@@ -622,6 +655,28 @@ app.get('/api/devolucao/identificar/:codigo', async (req, res) => {
 
   const ehDevolucao = shipment?.type === 'return' || shipment?.tags?.includes('claims_return');
 
+  // NOVO v3.13: pra shipment de devolucao SEM order_id direto
+  // Tenta buscar order via /shipments/{id}/orders ou /items
+  if (!order && ehDevolucao && shipment?.id) {
+    const rRetOrder = await buscarOrderViaShipmentReturn(shipment.id);
+    resultado.tentativas.push({
+      tipo: 'shipment_orders_return',
+      codigo: shipment.id,
+      ok: rRetOrder.ok, status: rRetOrder.ok ? 200 : 404,
+      url_que_funcionou: rRetOrder.url || null,
+    });
+    if (rRetOrder.ok && rRetOrder.orderId) {
+      const rOrder = await chamarML(`https://api.mercadolibre.com/orders/${rRetOrder.orderId}`);
+      if (rOrder.ok) {
+        order = rOrder.data;
+        resultado.avisos.push({
+          tipo: 'order_via_shipment_return',
+          mensagem: `Order ${rRetOrder.orderId} achada via shipment de devolucao`,
+        });
+      }
+    }
+  }
+
   if (!order && ehDevolucao && shipment?.id) {
     const rClaims = await buscarClaimsPorShipment(shipment.id);
     resultado.tentativas.push({
@@ -662,13 +717,32 @@ app.get('/api/devolucao/identificar/:codigo', async (req, res) => {
       if (rSearch.ok && rSearch.data?.results?.length > 0) {
         const orders = rSearch.data.results;
         let bestMatch = null;
-        if (shipment?.id) bestMatch = orders.find(o => o.shipping?.id === shipment.id);
-        if (!bestMatch && shipment?.declared_value) {
-          bestMatch = orders.find(o => Math.abs(o.total_amount - shipment.declared_value) < 0.01);
+
+        // 1) Match exato por shipment.id (se a venda tem o mesmo shipment ASSOCIADO)
+        if (shipment?.id) {
+          bestMatch = orders.find(o => String(o.shipping?.id) === String(shipment.id));
         }
+
+        // 2) NOVO v3.13: Match por valor declarado E que tenha mediação/devolução em curso
+        // (devoluções aparecem com mediations não vazio)
+        if (!bestMatch && shipment?.declared_value) {
+          bestMatch = orders.find(o =>
+            Math.abs((o.total_amount || 0) - shipment.declared_value) < 0.01 &&
+            (o.mediations?.length > 0 || o.tags?.includes('claims_with_resolution'))
+          );
+        }
+
+        // 3) Match por valor declarado simples
+        if (!bestMatch && shipment?.declared_value) {
+          bestMatch = orders.find(o => Math.abs((o.total_amount || 0) - shipment.declared_value) < 0.01);
+        }
+
+        // 4) Order com mediação/cancelamento (sinal de devolução)
         if (!bestMatch) {
           bestMatch = orders.find(o => o.status === 'cancelled' || o.tags?.includes('not_paid') || o.mediations?.length > 0);
         }
+
+        // 5) Ultima opção - primeira venda do array (mais recente)
         if (!bestMatch) bestMatch = orders[0];
 
         if (bestMatch?.id) {
@@ -677,7 +751,7 @@ app.get('/api/devolucao/identificar/:codigo', async (req, res) => {
             order = rFull.data;
             resultado.avisos.push({
               tipo: 'order_via_fallback',
-              mensagem: `Order encontrada via busca por comprador (${orders.length} candidatos)`,
+              mensagem: `Order encontrada via busca por comprador (${orders.length} candidatos, valor=${shipment?.declared_value || '?'})`,
             });
           }
         }
@@ -1375,7 +1449,7 @@ app.delete('/api/admin/devolucao/:id', requerAdmin, async (req, res) => {
 // ============================================================
 app.listen(PORT, () => {
   console.log('============================================');
-  console.log('GOOD Devolucoes v3.10.0 - sem auto-limpeza + filtro pre-setado 4 meses');
+  console.log('GOOD Devolucoes v3.13.0 - fix devolucao FLEX (shipment sem order_id)');
   console.log(`Porta: ${PORT}`);
   console.log(`ML: ${ML_ACCESS_TOKEN ? 'OK' : 'FALTA'}`);
   console.log(`Bling: ${BLING_ACCESS_TOKEN ? 'OK' : 'FALTA'}`);
