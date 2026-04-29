@@ -382,9 +382,10 @@
     <header>
       <h1>📦 GOOD Devolucoes</h1>
       <p>Identificar venda + NF-e + Triagem</p>
-      <p style="font-size: 10px; color: #888; margin-top: 4px;">v3.7 (Fase 3) | <span id="serverVersion">checando...</span></p>
+      <p style="font-size: 10px; color: #888; margin-top: 4px;">v3.8 (anti-duplicata) | <span id="serverVersion">checando...</span></p>
       <div class="user-badge">
         👤 <span id="userNome">-</span>
+        <a href="/admin.html" id="btnPainelAdmin" style="display:none;background:#ffd700;color:#1d1d1f;padding:3px 10px;border-radius:10px;font-weight:700;margin-left:6px;">👑 Painel Admin</a>
         <a href="#" onclick="fazerLogout(event)">sair</a>
       </div>
     </header>
@@ -488,19 +489,21 @@
         const r = await fetch('/api/auth/me');
         const d = await r.json();
         if (d.ok) {
-          // Admin? Redireciona pro painel
-          if (d.tipo === 'admin') {
-            location.href = '/admin.html';
-            return true;
-          }
-          // Estoquista
+          // Tanto admin quanto estoquista vao pra mesma tela
+          // Admin so ve um botao extra "Painel Admin"
           usuarioLogado = d.usuario;
           document.getElementById('userNome').textContent = d.usuario;
+
+          // Mostra botao Admin se for admin
+          const btnAdmin = document.getElementById('btnPainelAdmin');
+          if (btnAdmin) {
+            btnAdmin.style.display = (d.tipo === 'admin') ? 'inline-block' : 'none';
+          }
+
           loginScreen.classList.remove('show');
           appContainer.style.display = '';
           inputCodigo.focus();
 
-          // Versao do server
           fetch('/health').then(r => r.json()).then(d => {
             const span = document.getElementById('serverVersion');
             if (span) span.textContent = `server v${d.version || '?'}`;
@@ -546,11 +549,7 @@
         const d = await r.json();
 
         if (d.ok) {
-          // Se for admin, redireciona pro painel
-          if (d.tipo === 'admin') {
-            location.href = '/admin.html';
-            return;
-          }
+          // Tanto admin quanto estoquista vao pra mesma tela
           await checarSessao();
         } else {
           erroEl.textContent = d.erro || 'Erro ao logar';
@@ -777,18 +776,11 @@
         html += `
           <div class="secao-triagem">
             <div class="secao-triagem-titulo">🎯 Triagem</div>
-            <div class="triagem-instrucao">
-              Confere o produto, abre o pacote e escolhe abaixo:
-            </div>
-            <div class="triagem-botoes">
-              <button class="triagem-btn triagem-btn-aprovar" onclick="abrirModalAprovar()">
-                <span class="triagem-btn-icon">✅</span>
-                INCLUIR<br>ESTOQUE
-              </button>
-              <button class="triagem-btn triagem-btn-problema" onclick="abrirModalProblema()">
-                <span class="triagem-btn-icon">⚠️</span>
-                REPORTAR<br>PROBLEMA
-              </button>
+            <div id="triagemConteudo">
+              <div style="text-align:center;padding:14px;color:#888;font-size:13px;">
+                <div class="spinner" style="width:20px;height:20px;display:inline-block;"></div>
+                <p style="margin-top:6px;">Verificando se ja foi triada...</p>
+              </div>
             </div>
             <div id="triagemSucesso"></div>
           </div>
@@ -882,6 +874,108 @@
 
       divResultado.innerHTML = html;
       divResultado.classList.add('show');
+
+      // Apos render, verifica triagem existente (nao bloqueia o render)
+      if (shipment.id) {
+        verificarTriagemExistente(shipment.id);
+      }
+    }
+
+    // ================ VERIFICAR TRIAGEM EXISTENTE ================
+    async function verificarTriagemExistente(shipmentId) {
+      window._forcarTriagem = false; // reset ao bipar nova etiqueta
+      const cont = document.getElementById('triagemConteudo');
+      if (!cont) return;
+
+      try {
+        const r = await fetch('/api/triagem/status/' + encodeURIComponent(shipmentId));
+        const d = await r.json();
+        if (!d.ok) {
+          renderizarBotoesTriagem();
+          return;
+        }
+        const registros = d.registros || [];
+        if (registros.length === 0) {
+          renderizarBotoesTriagem();
+          return;
+        }
+        renderizarTriagemDuplicata(registros[0]);
+      } catch (err) {
+        renderizarBotoesTriagem();
+      }
+    }
+
+    function renderizarBotoesTriagem() {
+      const cont = document.getElementById('triagemConteudo');
+      if (!cont) return;
+      cont.innerHTML = `
+        <div class="triagem-instrucao">
+          Confere o produto, abre o pacote e escolhe abaixo:
+        </div>
+        <div class="triagem-botoes">
+          <button class="triagem-btn triagem-btn-aprovar" onclick="abrirModalAprovar()">
+            <span class="triagem-btn-icon">✅</span>
+            INCLUIR<br>ESTOQUE
+          </button>
+          <button class="triagem-btn triagem-btn-problema" onclick="abrirModalProblema()">
+            <span class="triagem-btn-icon">⚠️</span>
+            REPORTAR<br>PROBLEMA
+          </button>
+        </div>
+      `;
+    }
+
+    function renderizarTriagemDuplicata(reg) {
+      const cont = document.getElementById('triagemConteudo');
+      if (!cont) return;
+
+      const tipoLabel = reg.tipo === 'aprovado'
+        ? '✅ APROVADA (incluida no estoque)'
+        : '⚠️ COM PROBLEMA';
+      const statusLabel = reg.status === 'concluido'
+        ? '<span style="background:#999;color:white;padding:3px 10px;border-radius:10px;font-size:11px;font-weight:700;">✅ CONCLUIDA POR DIEGO</span>'
+        : '<span style="background:#f57c00;color:white;padding:3px 10px;border-radius:10px;font-size:11px;font-weight:700;">⏳ AGUARDANDO DIEGO</span>';
+
+      const data = new Date(reg.created_at).toLocaleString('pt-BR', {
+        dateStyle: 'short', timeStyle: 'short',
+      });
+
+      // Extrair quem triou da descricao
+      let triadoPor = '?';
+      const desc = reg.problema_descricao || '';
+      const m1 = desc.match(/Aprovado por\s+(\w+)/i);
+      const m2 = desc.match(/\[Reportado por\s+(\w+)\]/i);
+      if (m1) triadoPor = m1[1];
+      else if (m2) triadoPor = m2[1];
+
+      cont.innerHTML = `
+        <div style="background:#fff3e0;border:2px solid #ff9800;border-radius:10px;padding:14px;text-align:center;">
+          <div style="font-size:32px;margin-bottom:6px;">⚠️</div>
+          <div style="font-size:15px;font-weight:700;color:#e65100;margin-bottom:4px;">
+            Esta devolucao JA FOI TRIADA
+          </div>
+          <div style="font-size:13px;color:#5d4037;line-height:1.6;">
+            <strong>${escapeHtml(tipoLabel)}</strong><br>
+            Por <strong>${escapeHtml(triadoPor)}</strong> em <strong>${escapeHtml(data)}</strong><br>
+            ${statusLabel}
+          </div>
+          <div style="margin-top:12px;padding-top:12px;border-top:1px solid #ffcc80;font-size:12px;color:#5d4037;">
+            ${reg.status === 'concluido'
+              ? 'Ja foi resolvida. Nao precisa fazer nada.'
+              : 'Diego ja foi avisado. Aguarde retorno.'}
+          </div>
+          <button class="btn-action cinza" style="margin-top:12px;font-size:11px;padding:6px 12px;"
+            onclick="if(confirm('Tem certeza que quer triar de novo? Isso vai criar um SEGUNDO registro.')) forcarReTriagem()">
+            🔄 Triar mesmo assim (so se foi engano)
+          </button>
+        </div>
+      `;
+    }
+
+    function forcarReTriagem() {
+      window._forcarTriagem = true;
+      renderizarBotoesTriagem();
+      toast('Modo re-triagem ativado', 'ok');
     }
 
     function renderizarErro(mensagem, tentativas) {
@@ -934,22 +1028,29 @@
       btn.innerHTML = '<span class="spinner-mini"></span>Salvando...';
 
       try {
+        const payload = montarPayloadTriagem();
+        if (window._forcarTriagem) payload.forcar = true;
+
         const r = await fetch('/api/triagem/aprovar', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(montarPayloadTriagem()),
+          body: JSON.stringify(payload),
         });
         const d = await r.json();
         if (d.ok) {
           fecharModal('modalAprovar');
           mostrarSucesso('✅ Incluido no estoque!', 'Diego ja foi avisado pra emitir a NF de devolucao no Bling.');
           toast('Aprovacao registrada!', 'ok');
-          // Limpa busca pra estoquista poder bipar a proxima
           setTimeout(() => {
             divResultado.classList.remove('show');
             inputCodigo.value = '';
             inputCodigo.focus();
           }, 2500);
+        } else if (r.status === 409 && d.erro === 'duplicata') {
+          fecharModal('modalAprovar');
+          toast('Esta devolucao ja foi triada antes!', 'err');
+          // Re-checa pra atualizar a tela com o aviso
+          if (ultimaBusca?.shipment?.id) verificarTriagemExistente(ultimaBusca.shipment.id);
         } else {
           toast('Erro: ' + (d.erro || 'falha'), 'err');
           btn.disabled = false;
@@ -1122,6 +1223,7 @@
         const payload = montarPayloadTriagem();
         payload.descricao = descricao;
         payload.fotos = fotosOk;
+        if (window._forcarTriagem) payload.forcar = true;
 
         const r = await fetch('/api/triagem/problema', {
           method: 'POST',
@@ -1138,6 +1240,10 @@
             inputCodigo.value = '';
             inputCodigo.focus();
           }, 2500);
+        } else if (r.status === 409 && d.erro === 'duplicata') {
+          fecharModal('modalProblema');
+          toast('Esta devolucao ja foi triada antes!', 'err');
+          if (ultimaBusca?.shipment?.id) verificarTriagemExistente(ultimaBusca.shipment.id);
         } else {
           toast('Erro: ' + (d.erro || 'falha'), 'err');
           btn.disabled = false;
