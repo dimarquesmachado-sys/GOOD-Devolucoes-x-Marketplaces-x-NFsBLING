@@ -538,7 +538,7 @@
     <header>
       <h1>📦 GOOD Devolucoes</h1>
       <p>Identificar venda + NF-e + Triagem</p>
-      <p style="font-size: 10px; color: #888; margin-top: 4px;">v3.14.3 (botao camera DESTACADO) | <span id="serverVersion">checando...</span></p>
+      <p style="font-size: 10px; color: #888; margin-top: 4px;">v3.14.4 (busca EAN auto Bling) | <span id="serverVersion">checando...</span></p>
       <div class="user-badge">
         👤 <span id="userNome">-</span>
         <a href="/admin.html" id="btnPainelAdmin" style="display:none;background:#ffd700;color:#1d1d1f;padding:3px 10px;border-radius:10px;font-weight:700;margin-left:6px;">👑 Painel Admin</a>
@@ -585,6 +585,11 @@
 
       <!-- Area de BIPAGEM -->
       <div id="bipagemArea" style="margin-top: 16px;">
+        <!-- Mensagem de aviso (sobreposta - quando sem EAN ou loading) -->
+        <div id="bipagemAviso" style="display:none; padding:14px; border-radius:10px; text-align:center; margin-bottom:10px;"></div>
+
+        <!-- Conteudo principal da bipagem -->
+        <div id="bipagemConteudo">
         <div id="bipagemProgresso" style="text-align:center; margin-bottom:10px;">
           <div style="font-size: 13px; color: #666; margin-bottom: 4px;">Progresso da bipagem</div>
           <div id="bipagemContador" style="font-size: 28px; font-weight: 800; color: #2e7d32;">0 / 0</div>
@@ -642,6 +647,7 @@
             ✅ OK - Finalizar com observacao
           </button>
         </div>
+        </div><!-- /bipagemConteudo -->
       </div>
 
       <p style="font-size:11px; margin-top:12px; color:#999;">
@@ -1381,18 +1387,102 @@
 
       // Verifica se TEM EAN cadastrado em todos os itens
       const todosComEan = bipagemEstado.itensEsperados.every(it => it.ean && it.ean !== '-');
-      const bipagemArea = document.getElementById('bipagemArea');
+      const aviso = document.getElementById('bipagemAviso');
+      const conteudo = document.getElementById('bipagemConteudo');
 
       if (!todosComEan) {
-        // Sem EAN cadastrado, não tem como validar - libera direto
-        bipagemArea.innerHTML = `<div style="background:#fff3e0;border:1px solid #ffc107;border-radius:8px;padding:10px;font-size:12px;color:#5d4037;text-align:center;">
-          ⚠️ Itens sem EAN cadastrado no Bling - bipagem desabilitada
-        </div>`;
+        // Tenta buscar EAN no Bling pelo SKU em background antes de desistir
+        aviso.style.display = 'block';
+        aviso.style.background = '#fff3e0';
+        aviso.style.border = '1px solid #ffc107';
+        aviso.style.color = '#5d4037';
+        aviso.innerHTML = `<div style="font-size:16px;margin-bottom:6px;">🔍 Buscando EAN do produto no Bling...</div>
+          <div style="font-size:11px;opacity:0.7;">Aguarde alguns segundos</div>`;
+        conteudo.style.display = 'none';
+
+        document.getElementById('btnConfirmarAprovar').disabled = true;
+        document.getElementById('btnConfirmarAprovar').style.opacity = '0.5';
+        document.getElementById('btnConfirmarAprovar').style.cursor = 'not-allowed';
+
+        // Mostra modal e busca EAN em paralelo
+        document.getElementById('modalAprovar').classList.add('show');
+        buscarEansFaltantes();
+        return;
+      }
+
+      // Tem EAN em todos - libera bipagem
+      aviso.style.display = 'none';
+      conteudo.style.display = 'block';
+      ativarBipagem();
+      document.getElementById('modalAprovar').classList.add('show');
+    }
+
+    async function buscarEansFaltantes() {
+      // Busca EAN no Bling pra cada item sem EAN, paralelamente
+      const promises = bipagemEstado.itensEsperados.map(async (it, idx) => {
+        if (it.ean && it.ean !== '-') return; // ja tem
+        if (!it.sku || it.sku === '-') return; // sem SKU nao tem como buscar
+
+        try {
+          const r = await fetch(`/api/produto/ean-por-sku/${encodeURIComponent(it.sku)}`);
+          const d = await r.json();
+          if (d.ok && d.encontrado && d.produto?.gtin) {
+            it.ean = String(d.produto.gtin).trim();
+            console.log(`[BIPAGEM] EAN achado pra ${it.sku}: ${it.ean}`);
+          }
+        } catch (e) {
+          console.warn(`[BIPAGEM] Erro busca EAN ${it.sku}:`, e);
+        }
+      });
+
+      await Promise.all(promises);
+
+      const aviso = document.getElementById('bipagemAviso');
+      const conteudo = document.getElementById('bipagemConteudo');
+
+      // Re-checa se TODOS estao com EAN agora
+      const todosComEan = bipagemEstado.itensEsperados.every(it => it.ean && it.ean !== '-');
+
+      if (todosComEan) {
+        // Atualiza UI dos itens (mostra EAN agora)
+        bipagemEstado.itensEsperados.forEach((it, idx) => {
+          const el = document.getElementById(`bipItem${idx}`);
+          if (el && el.parentElement) {
+            const span = el.parentElement;
+            // Adiciona EAN no texto se nao tiver
+            if (it.ean && !span.innerHTML.includes('EAN')) {
+              span.innerHTML = span.innerHTML.replace(
+                ` · <strong id="bipItem${idx}">`,
+                ` · EAN <strong>${it.ean}</strong> · <strong id="bipItem${idx}">`
+              );
+            }
+          }
+        });
+
+        aviso.style.display = 'none';
+        conteudo.style.display = 'block';
+        ativarBipagem();
+      } else {
+        // Continua sem EAN - libera confirmar SEM bipagem (com aviso)
+        const semEan = bipagemEstado.itensEsperados.filter(it => !it.ean || it.ean === '-');
+        const skusSemEan = semEan.map(it => it.sku).join(', ');
+
+        aviso.style.display = 'block';
+        aviso.style.background = '#fff3e0';
+        aviso.style.border = '1px solid #ffc107';
+        aviso.style.color = '#5d4037';
+        aviso.innerHTML = `⚠️ Produto(s) sem EAN no Bling: <strong>${escapeHtml(skusSemEan)}</strong><br>
+          <span style="font-size:11px;opacity:0.8;">Bipagem desabilitada - confira o produto visualmente.</span>`;
+        conteudo.style.display = 'none';
+
         document.getElementById('btnConfirmarAprovar').disabled = false;
         document.getElementById('btnConfirmarAprovar').style.opacity = '1';
         document.getElementById('btnConfirmarAprovar').style.cursor = 'pointer';
-      } else {
-        // Reset área bipagem ao estado inicial
+      }
+    }
+
+    function ativarBipagem() {
+      // Reset área bipagem ao estado inicial
         document.getElementById('bipagemContador').textContent = `0 / ${bipagemEstado.totalEsperado}`;
         document.getElementById('bipagemContador').style.color = '#2e7d32';
         document.getElementById('bipagemInput').value = '';
@@ -1414,9 +1504,6 @@
         };
         // Foca pra estoquista bipar direto
         setTimeout(() => inp.focus(), 200);
-      }
-
-      document.getElementById('modalAprovar').classList.add('show');
     }
 
     // ================ SCANNER CAMERA (bipar etiqueta de devolucao) ================
