@@ -514,7 +514,7 @@
     <header>
       <h1>📦 GOOD Devolucoes</h1>
       <p>Identificar venda + NF-e + Triagem</p>
-      <p style="font-size: 10px; color: #888; margin-top: 4px;">v3.12 (titulo+SKU+EAN bling) | <span id="serverVersion">checando...</span></p>
+      <p style="font-size: 10px; color: #888; margin-top: 4px;">v3.13 (NF auto Bling) | <span id="serverVersion">checando...</span></p>
       <div class="user-badge">
         👤 <span id="userNome">-</span>
         <a href="/admin.html" id="btnPainelAdmin" style="display:none;background:#ffd700;color:#1d1d1f;padding:3px 10px;border-radius:10px;font-weight:700;margin-left:6px;">👑 Painel Admin</a>
@@ -922,8 +922,6 @@
             <div class="item-card-info">
               ${it.sku && it.sku !== '-' ? `<span class="pill sku">SKU: ${escapeHtml(it.sku)}</span>` : ''}
               ${it.ean && it.ean !== '-' ? `<span class="pill ean">EAN: ${escapeHtml(it.ean)}</span>` : ''}
-              ${it.mlb ? `<span class="pill">${escapeHtml(it.mlb)}</span>` : ''}
-              ${it.valor ? `<span class="pill">${moeda(it.valor)}</span>` : ''}
             </div>
           </div>`;
         });
