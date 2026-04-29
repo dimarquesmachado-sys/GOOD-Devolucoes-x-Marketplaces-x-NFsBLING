@@ -155,10 +155,9 @@
     <header>
       <div>
         <h1>🔐 Admin - GOOD Devolucoes</h1>
-        <p>Painel restrito · v3.6</p>
+        <p>Painel restrito · v3.7</p>
       </div>
       <div class="header-acoes">
-        <a href="/" target="_blank">📦 Tela estoquista</a>
         <a href="#" onclick="logout(event)">🚪 Sair</a>
       </div>
     </header>
@@ -216,7 +215,7 @@
         const d = await r.json();
         if (!d.ok) {
           if (r.status === 401) {
-            location.href = '/admin-login.html';
+            location.href = '/';
             return;
           }
           throw new Error(d.erro || 'falha');
@@ -382,7 +381,7 @@
     async function logout(e) {
       e.preventDefault();
       try { await fetch('/api/auth/logout', { method: 'POST' }); } catch (err) {}
-      location.href = '/admin-login.html';
+      location.href = '/';
     }
 
     let toastTimeout;
