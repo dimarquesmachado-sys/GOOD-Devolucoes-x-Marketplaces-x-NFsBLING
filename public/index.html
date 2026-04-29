@@ -140,6 +140,46 @@
       font-size: 13px; color: #3e2723; margin-top: 6px; font-weight: 600;
     }
 
+    /* CARDS DE ITENS DA NF (1 ou multiplos produtos) */
+    .itens-lista {
+      margin: 10px 0; display: flex; flex-direction: column; gap: 8px;
+    }
+    .item-card {
+      background: white; border-radius: 10px; padding: 12px 14px;
+      border-left: 4px solid #f57c00;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+    }
+    .item-card-header {
+      display: flex; justify-content: space-between; align-items: flex-start;
+      gap: 10px; margin-bottom: 6px;
+    }
+    .item-card-titulo {
+      font-size: 14px; font-weight: 700; color: #1d1d1f; line-height: 1.35;
+      flex: 1;
+    }
+    .item-card-qtd {
+      background: linear-gradient(135deg, #FFE082 0%, #FFB300 100%);
+      color: #3e2723; padding: 4px 10px; border-radius: 8px;
+      font-weight: 800; font-size: 14px; white-space: nowrap;
+      box-shadow: 0 2px 6px rgba(255,179,0,0.3);
+      flex-shrink: 0;
+    }
+    .item-card-info {
+      display: flex; gap: 10px; flex-wrap: wrap;
+      font-size: 12px; color: #555;
+    }
+    .item-card-info .pill {
+      background: #f5f5f7; padding: 2px 8px; border-radius: 6px;
+      font-family: 'Courier New', monospace; font-weight: 600;
+    }
+    .item-card-info .pill.sku { background: #e3f2fd; color: #1565c0; }
+    .item-card-info .pill.ean { background: #f3e5f5; color: #6a1b9a; }
+    .multi-aviso {
+      background: #fff8e1; border: 1px solid #ffc107; border-radius: 8px;
+      padding: 8px 12px; font-size: 12px; color: #5d4037; font-weight: 600;
+      text-align: center; margin-bottom: 8px;
+    }
+
     .secao-nf {
       background: linear-gradient(135deg, #e8f5e9 0%, #f1f8e9 100%);
       border-radius: 10px; padding: 14px;
@@ -474,7 +514,7 @@
     <header>
       <h1>📦 GOOD Devolucoes</h1>
       <p>Identificar venda + NF-e + Triagem</p>
-      <p style="font-size: 10px; color: #888; margin-top: 4px;">v3.11 (atalho NF Bling) | <span id="serverVersion">checando...</span></p>
+      <p style="font-size: 10px; color: #888; margin-top: 4px;">v3.12 (titulo+SKU+EAN bling) | <span id="serverVersion">checando...</span></p>
       <div class="user-badge">
         👤 <span id="userNome">-</span>
         <a href="/admin.html" id="btnPainelAdmin" style="display:none;background:#ffd700;color:#1d1d1f;padding:3px 10px;border-radius:10px;font-weight:700;margin-left:6px;">👑 Painel Admin</a>
@@ -789,11 +829,48 @@
       const buyer = order.buyer || {};
       const payment = order.payments?.[0] || {};
 
-      const tituloProduto = itemOrder?.item?.title || itemShip?.description || '-';
-      const mlb = itemOrder?.item?.id || itemShip?.id || '-';
-      const sku = itemOrder?.item?.seller_sku || '-';
-      const qtd = itemOrder?.quantity || itemShip?.quantity || '-';
-      const valorUnit = itemOrder?.unit_price;
+      // Itens: prioriza Bling (titulo limpo + EAN), fallback pro ML
+      const itensBling = Array.isArray(nf?.itens) && nf.itens.length > 0 ? nf.itens : null;
+      const itensML = Array.isArray(order.order_items) ? order.order_items : [];
+
+      // Monta lista unificada de itens pra render
+      let itensRender = [];
+      if (itensBling) {
+        // Usa Bling como fonte principal
+        itensRender = itensBling.map((it, i) => ({
+          titulo: it.titulo || '-',
+          sku: it.sku || itensML[i]?.item?.seller_sku || '-',
+          ean: it.ean || '-',
+          quantidade: Number(it.quantidade) || itensML[i]?.quantity || 1,
+          valor: it.valor || itensML[i]?.unit_price,
+          mlb: itensML[i]?.item?.id || null,
+          fonte: 'bling',
+        }));
+      } else if (itensML.length > 0) {
+        // Fallback ML
+        itensRender = itensML.map(it => ({
+          titulo: it.item?.title || '-',
+          sku: it.item?.seller_sku || '-',
+          ean: '-',
+          quantidade: it.quantity || 1,
+          valor: it.unit_price,
+          mlb: it.item?.id || null,
+          fonte: 'ml',
+        }));
+      } else if (itemShip) {
+        // Fallback super basico
+        itensRender = [{
+          titulo: itemShip.description || '-',
+          sku: '-', ean: '-',
+          quantidade: itemShip.quantity || 1,
+          valor: null,
+          mlb: itemShip.id || null,
+          fonte: 'shipment',
+        }];
+      }
+
+      // Totais agregados
+      const qtdTotal = itensRender.reduce((s, i) => s + (Number(i.quantidade) || 0), 0);
       const valorTotal = order?.total_amount;
       const variacao = itemOrder?.item?.variation_attributes?.length
         ? itemOrder.item.variation_attributes.map(v => `${v.name}: ${v.value_name}`).join(' | ')
@@ -820,14 +897,37 @@
         html += '<span class="badge badge-fonte-ml">via Mercado Livre</span>';
       }
 
-      // QUANTIDADE EM DESTAQUE (pedido do Diego)
-      if (qtd && qtd !== '-') {
+      // QUANTIDADE EM DESTAQUE - total agregado
+      if (qtdTotal > 0) {
+        const ehMulti = itensRender.length > 1;
         html += `<div class="qtd-destaque">
           <div class="qtd-label">⚖️ Devolvendo</div>
-          <div class="qtd-valor">${qtd}</div>
-          <div class="qtd-unidade">unidade${qtd > 1 ? 's' : ''}</div>
-          <div class="qtd-produto">${escapeHtml(tituloProduto)}</div>
+          <div class="qtd-valor">${qtdTotal}</div>
+          <div class="qtd-unidade">unidade${qtdTotal > 1 ? 's' : ''}${ehMulti ? ` em ${itensRender.length} produtos` : ''}</div>
         </div>`;
+      }
+
+      // CARDS DOS PRODUTOS (Bling = titulo limpo + EAN, ML = fallback)
+      if (itensRender.length > 0) {
+        if (itensRender.length > 1) {
+          html += `<div class="multi-aviso">⚠️ Devolucao com ${itensRender.length} produtos diferentes - confira cada um abaixo</div>`;
+        }
+        html += '<div class="itens-lista">';
+        itensRender.forEach((it) => {
+          html += `<div class="item-card">
+            <div class="item-card-header">
+              <div class="item-card-titulo">${escapeHtml(it.titulo)}</div>
+              <div class="item-card-qtd">${it.quantidade}x</div>
+            </div>
+            <div class="item-card-info">
+              ${it.sku && it.sku !== '-' ? `<span class="pill sku">SKU: ${escapeHtml(it.sku)}</span>` : ''}
+              ${it.ean && it.ean !== '-' ? `<span class="pill ean">EAN: ${escapeHtml(it.ean)}</span>` : ''}
+              ${it.mlb ? `<span class="pill">${escapeHtml(it.mlb)}</span>` : ''}
+              ${it.valor ? `<span class="pill">${moeda(it.valor)}</span>` : ''}
+            </div>
+          </div>`;
+        });
+        html += '</div>';
       }
 
       // AVISOS
@@ -889,21 +989,20 @@
         `;
       }
 
-      // ============ PRODUTO ============
-      html += '<div class="bloco">';
-      html += '<div class="secao-titulo">Produto</div>';
-      html += `<div class="produto-titulo">${escapeHtml(tituloProduto)}</div>`;
-      if (mlb !== '-') html += `<div class="produto-mlb">${escapeHtml(mlb)}</div>`;
-      html += '<div class="item-grid">';
-      html += `<div><div class="label">SKU (Bling)</div><div class="valor"><strong>${escapeHtml(sku)}</strong></div></div>`;
-      html += `<div><div class="label">Quantidade</div><div class="valor">${qtd} un</div></div>`;
-      html += `<div><div class="label">Valor unitario</div><div class="valor">${moeda(valorUnit)}</div></div>`;
-      html += `<div><div class="label">Valor total</div><div class="valor"><strong>${moeda(valorTotal)}</strong></div></div>`;
-      if (variacao) {
-        html += `<div style="grid-column: 1/-1;"><div class="label">Variacao</div><div class="valor">${escapeHtml(variacao)}</div></div>`;
+      // ============ DETALHES EXTRAS (valor total, variacao) ============
+      if (valorTotal || variacao) {
+        html += '<div class="bloco">';
+        html += '<div class="secao-titulo">Detalhes do pedido</div>';
+        html += '<div class="item-grid">';
+        if (valorTotal) {
+          html += `<div><div class="label">Valor total</div><div class="valor"><strong>${moeda(valorTotal)}</strong></div></div>`;
+        }
+        if (variacao) {
+          html += `<div style="grid-column: 1/-1;"><div class="label">Variacao</div><div class="valor">${escapeHtml(variacao)}</div></div>`;
+        }
+        html += '</div>';
+        html += '</div>';
       }
-      html += '</div>';
-      html += '</div>';
 
       // ============ COMPRADOR ============
       html += '<div class="bloco">';
@@ -1108,14 +1207,39 @@
     function abrirModalAprovar() {
       if (!ultimaBusca) return;
       const order = ultimaBusca.order || {};
-      const itemOrder = order.order_items?.[0];
-      const titulo = itemOrder?.item?.title || '-';
-      const sku = itemOrder?.item?.seller_sku || '-';
-      const qtd = itemOrder?.quantity || '-';
-      document.getElementById('modalAprovarDetalhes').innerHTML = `
-        <strong>${escapeHtml(titulo)}</strong><br>
-        SKU: <strong>${escapeHtml(sku)}</strong> · Quantidade: <strong>${qtd} un</strong>
-      `;
+      // Itens do Bling se tiver, senao ML
+      const nf = ultimaBusca.nf || {};
+      const itensBling = Array.isArray(nf.itens) && nf.itens.length > 0 ? nf.itens : null;
+      const itensML = Array.isArray(order.order_items) ? order.order_items : [];
+
+      let itensHtml = '';
+      if (itensBling) {
+        itensBling.forEach((it, i) => {
+          const qtd = it.quantidade || itensML[i]?.quantity || 1;
+          const sku = it.sku || itensML[i]?.item?.seller_sku || '-';
+          const ean = it.ean || '-';
+          itensHtml += `<div style="padding:6px 0;border-bottom:1px solid #eee;">
+            <strong>${escapeHtml(it.titulo || '-')}</strong><br>
+            <span style="font-size:12px;color:#666;">
+              SKU <strong>${escapeHtml(sku)}</strong>
+              ${ean !== '-' ? ` · EAN <strong>${escapeHtml(ean)}</strong>` : ''}
+              · <strong>${qtd}x</strong>
+            </span>
+          </div>`;
+        });
+      } else {
+        itensML.forEach(it => {
+          itensHtml += `<div style="padding:6px 0;border-bottom:1px solid #eee;">
+            <strong>${escapeHtml(it.item?.title || '-')}</strong><br>
+            <span style="font-size:12px;color:#666;">
+              SKU <strong>${escapeHtml(it.item?.seller_sku || '-')}</strong>
+              · <strong>${it.quantity || 1}x</strong>
+            </span>
+          </div>`;
+        });
+      }
+
+      document.getElementById('modalAprovarDetalhes').innerHTML = itensHtml || '<em>Nenhum item encontrado</em>';
       document.getElementById('modalAprovar').classList.add('show');
     }
 
@@ -1197,16 +1321,24 @@
         ? `${buyer.first_name} ${buyer.last_name || ''}`.trim()
         : null;
 
+      // Prioriza dados do Bling (titulo limpo, EAN), fallback ML
+      const itemBling = (Array.isArray(nf.itens) && nf.itens.length > 0) ? nf.itens[0] : null;
+      const tituloProduto = itemBling?.titulo || itemOrder?.item?.title || null;
+      const skuProduto = itemBling?.sku || itemOrder?.item?.seller_sku || null;
+      const qtdTotal = (Array.isArray(nf.itens) && nf.itens.length > 0)
+        ? nf.itens.reduce((s, i) => s + (Number(i.quantidade) || 0), 0)
+        : (itemOrder?.quantity || null);
+
       return {
         shipment_id: shipment.id,
         order_id: order.id,
         pack_id: order.pack_id,
         buyer_id: buyer.id,
         buyer_nome: buyerNome,
-        produto_titulo: itemOrder?.item?.title,
+        produto_titulo: tituloProduto,
         produto_mlb: itemOrder?.item?.id,
-        produto_sku: itemOrder?.item?.seller_sku,
-        produto_qtd: itemOrder?.quantity,
+        produto_sku: skuProduto,
+        produto_qtd: qtdTotal,
         produto_valor_unit: itemOrder?.unit_price,
         nf_numero: nf.numero,
         nf_serie: nf.serie,
