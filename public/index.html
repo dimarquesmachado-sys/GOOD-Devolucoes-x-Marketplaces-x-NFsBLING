@@ -172,7 +172,7 @@
     <header>
       <h1>📦 GOOD Devolucoes</h1>
       <p>Identificar venda + NF-e da etiqueta</p>
-      <p style="font-size: 10px; color: #888; margin-top: 4px;">v3.4 (NFs Bling) | <span id="serverVersion">checando...</span></p>
+      <p style="font-size: 10px; color: #888; margin-top: 4px;">v3.5 (NFs Bling) | <span id="serverVersion">checando...</span></p>
     </header>
 
     <div class="card">
@@ -206,6 +206,7 @@
     // Estado pra suportar busca sob demanda
     let ultimaOrderId = null;
     let ultimaDataVenda = null;
+    let ultimoNumeroNF = null;
 
     inputCodigo.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') { e.preventDefault(); buscar(); }
@@ -242,14 +243,18 @@
     }
 
     // Busca sob demanda dos links Bling
-    async function buscarLinksBling(orderId, dataVenda) {
+    async function buscarLinksBling(orderId, dataVenda, numeroNF) {
       const btn = document.getElementById('btnBlingDemanda');
       if (!btn) return;
       btn.disabled = true;
-      btn.innerHTML = '<span class="spinner-mini"></span>Buscando no Bling (~5s)...';
+      btn.innerHTML = '<span class="spinner-mini"></span>Buscando no Bling...';
 
       try {
-        const url = `/api/nf/buscar-links-bling/${encodeURIComponent(orderId)}${dataVenda ? `?data=${encodeURIComponent(dataVenda)}` : ''}`;
+        const params = new URLSearchParams();
+        if (dataVenda) params.set('data', dataVenda);
+        if (numeroNF) params.set('numeroNF', numeroNF);
+        const queryStr = params.toString() ? `?${params.toString()}` : '';
+        const url = `/api/nf/buscar-links-bling/${encodeURIComponent(orderId)}${queryStr}`;
         const resp = await fetch(url);
         const data = await resp.json();
 
@@ -317,6 +322,7 @@
       // Salva pra busca sob demanda Bling
       ultimaOrderId = order.id || null;
       ultimaDataVenda = order.date_created || null;
+      ultimoNumeroNF = nf?.numero || null;
 
       const itemOrder = order.order_items?.[0];
       const itemShip = shipment.shipping_items?.[0];
@@ -384,7 +390,7 @@
         // Botoes - so o de buscar Bling sob demanda
         html += '<div style="margin-top: 12px;" id="botoesNF">';
         if (ultimaOrderId) {
-          html += `<button id="btnBlingDemanda" class="btn-action" onclick="buscarLinksBling('${ultimaOrderId}', '${ultimaDataVenda || ''}')">🔍 Buscar links da NF (~5s)</button>`;
+          html += `<button id="btnBlingDemanda" class="btn-action" onclick="buscarLinksBling('${ultimaOrderId}', '${ultimaDataVenda || ''}', '${ultimoNumeroNF || ''}')">🔍 Buscar links da NF (~3s)</button>`;
         }
         html += '</div>';
         html += '</div>';
@@ -394,7 +400,7 @@
         html += '<div class="secao-nf-titulo">🧾 Nota Fiscal</div>';
         html += '<p style="margin: 10px 0;">⚠️ NF-e nao localizada via Mercado Livre.</p>';
         html += '<div id="botoesNF">';
-        html += `<button id="btnBlingDemanda" class="btn-action" onclick="buscarLinksBling('${ultimaOrderId}', '${ultimaDataVenda || ''}')">🔍 Buscar no Bling (~5s)</button>`;
+        html += `<button id="btnBlingDemanda" class="btn-action" onclick="buscarLinksBling('${ultimaOrderId}', '${ultimaDataVenda || ''}', '')">🔍 Buscar no Bling (~5s)</button>`;
         html += '</div>';
         html += '</div>';
       }
