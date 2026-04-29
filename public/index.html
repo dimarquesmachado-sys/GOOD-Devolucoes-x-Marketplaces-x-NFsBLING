@@ -172,18 +172,33 @@
       background: #f5f5f7; padding: 2px 8px; border-radius: 6px;
       font-family: 'Courier New', monospace; font-weight: 600;
     }
-    /* SKU em destaque GIGANTE - estoquista ve de muuuito longe */
-    .item-card-info .pill.sku {
-      background: #e3f2fd; color: #1565c0;
-      font-size: 32px; padding: 12px 22px;
-      font-weight: 800; letter-spacing: 1.5px;
-      box-shadow: 0 2px 6px rgba(21,101,192,0.2);
+    /* SKU/EAN em formato vertical: label pequena em cima + codigo GRANDE embaixo */
+    .info-codigo {
+      display: flex; flex-direction: column; align-items: flex-start;
+      padding: 8px 14px; border-radius: 10px;
+      min-width: 140px;
     }
-    /* EAN tambem maior pra conferir codigo de barras */
-    .item-card-info .pill.ean {
+    .info-codigo .info-label {
+      font-size: 11px; font-weight: 700; opacity: 0.75;
+      letter-spacing: 0.5px; text-transform: uppercase;
+      margin-bottom: 2px;
+    }
+    .info-codigo .info-valor {
+      font-family: 'Courier New', monospace;
+      font-size: 22px; font-weight: 800;
+      letter-spacing: 1px;
+      white-space: nowrap;
+    }
+    .info-codigo.sku {
+      background: #e3f2fd; color: #1565c0;
+      box-shadow: 0 2px 6px rgba(21,101,192,0.15);
+    }
+    .info-codigo.ean {
       background: #f3e5f5; color: #6a1b9a;
-      font-size: 22px; padding: 10px 18px;
-      font-weight: 700; letter-spacing: 1px;
+    }
+    @media (max-width: 480px) {
+      .info-codigo { min-width: 120px; padding: 6px 12px; }
+      .info-codigo .info-valor { font-size: 18px; }
     }
     .multi-aviso {
       background: #fff8e1; border: 1px solid #ffc107; border-radius: 8px;
@@ -525,7 +540,7 @@
     <header>
       <h1>📦 GOOD Devolucoes</h1>
       <p>Identificar venda + NF-e + Triagem</p>
-      <p style="font-size: 10px; color: #888; margin-top: 4px;">v3.13.3 (SKU+EAN gigantes) | <span id="serverVersion">checando...</span></p>
+      <p style="font-size: 10px; color: #888; margin-top: 4px;">v3.13.4 (SKU/EAN vertical) | <span id="serverVersion">checando...</span></p>
       <div class="user-badge">
         👤 <span id="userNome">-</span>
         <a href="/admin.html" id="btnPainelAdmin" style="display:none;background:#ffd700;color:#1d1d1f;padding:3px 10px;border-radius:10px;font-weight:700;margin-left:6px;">👑 Painel Admin</a>
@@ -931,8 +946,8 @@
               <div class="item-card-qtd">${it.quantidade}x</div>
             </div>
             <div class="item-card-info">
-              ${it.sku && it.sku !== '-' ? `<span class="pill sku">SKU: ${escapeHtml(it.sku)}</span>` : ''}
-              ${it.ean && it.ean !== '-' ? `<span class="pill ean">EAN: ${escapeHtml(it.ean)}</span>` : ''}
+              ${it.sku && it.sku !== '-' ? `<div class="info-codigo sku"><span class="info-label">SKU</span><span class="info-valor">${escapeHtml(it.sku)}</span></div>` : ''}
+              ${it.ean && it.ean !== '-' ? `<div class="info-codigo ean"><span class="info-label">EAN</span><span class="info-valor">${escapeHtml(it.ean)}</span></div>` : ''}
             </div>
           </div>`;
         });
