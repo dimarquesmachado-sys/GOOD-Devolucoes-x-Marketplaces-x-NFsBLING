@@ -1,1 +1,97 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin - GOOD Devolucoes</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #1d1d1f; min-height: 100vh; padding: 12px; color: white;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .card {
+      background: white; color: #1d1d1f; border-radius: 14px; padding: 30px;
+      max-width: 400px; width: 100%; box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+    }
+    h1 { font-size: 22px; margin-bottom: 6px; }
+    .subtitle { color: #666; margin-bottom: 24px; font-size: 14px; }
+    label {
+      display: block; font-size: 12px; font-weight: 600; color: #555;
+      margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px;
+    }
+    input {
+      width: 100%; padding: 14px 16px; border: 2px solid #e0e0e0;
+      border-radius: 10px; font-size: 16px; margin-bottom: 14px;
+      font-family: inherit;
+    }
+    input:focus { border-color: #007AFF; outline: none; }
+    button {
+      width: 100%; padding: 16px; background: #007AFF; color: white;
+      border: none; border-radius: 10px; font-size: 16px; font-weight: 600;
+      cursor: pointer;
+    }
+    button:hover { background: #0051D5; }
+    button:disabled { background: #B0B0B0; cursor: not-allowed; }
+    .erro {
+      background: #fff5f5; border: 1px solid #ffd6d6; border-radius: 8px;
+      padding: 10px; color: #b00020; font-size: 13px; margin-bottom: 14px;
+      display: none;
+    }
+    .erro.show { display: block; }
+    .voltar {
+      display: block; text-align: center; margin-top: 14px;
+      color: #007AFF; text-decoration: none; font-size: 13px;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>🔐 Area Admin</h1>
+    <p class="subtitle">Restrita - so Diego acessa</p>
+    <div class="erro" id="erro"></div>
+    <form onsubmit="login(event)">
+      <label for="senha">Senha admin</label>
+      <input type="password" id="senha" required autocomplete="current-password" autofocus>
+      <button type="submit" id="btn">Entrar</button>
+    </form>
+    <a class="voltar" href="/">← Voltar pra tela do estoquista</a>
+  </div>
 
+  <script>
+    async function login(e) {
+      e.preventDefault();
+      const senha = document.getElementById('senha').value;
+      const erroEl = document.getElementById('erro');
+      const btn = document.getElementById('btn');
+
+      erroEl.classList.remove('show');
+      btn.disabled = true;
+      btn.textContent = 'Entrando...';
+
+      try {
+        const r = await fetch('/api/auth/admin-login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ senha }),
+        });
+        const d = await r.json();
+        if (d.ok) {
+          location.href = '/admin.html';
+        } else {
+          erroEl.textContent = d.erro || 'Senha invalida';
+          erroEl.classList.add('show');
+          btn.disabled = false;
+          btn.textContent = 'Entrar';
+        }
+      } catch (err) {
+        erroEl.textContent = 'Erro de conexao';
+        erroEl.classList.add('show');
+        btn.disabled = false;
+        btn.textContent = 'Entrar';
+      }
+    }
+  </script>
+</body>
+</html>
