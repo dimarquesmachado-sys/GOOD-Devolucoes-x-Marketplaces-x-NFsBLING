@@ -474,7 +474,7 @@
     <header>
       <h1>📦 GOOD Devolucoes</h1>
       <p>Identificar venda + NF-e + Triagem</p>
-      <p style="font-size: 10px; color: #888; margin-top: 4px;">v3.9 (camera dedicada) | <span id="serverVersion">checando...</span></p>
+      <p style="font-size: 10px; color: #888; margin-top: 4px;">v3.10 (sem auto-apagar) | <span id="serverVersion">checando...</span></p>
       <div class="user-badge">
         👤 <span id="userNome">-</span>
         <a href="/admin.html" id="btnPainelAdmin" style="display:none;background:#ffd700;color:#1d1d1f;padding:3px 10px;border-radius:10px;font-weight:700;margin-left:6px;">👑 Painel Admin</a>
@@ -1254,7 +1254,18 @@
       }
     }
 
-    function fecharCamera() {
+    function fecharCamera(forcar) {
+      const fotos = window.fotosUploadadas || [];
+      const total = fotos.filter(f => !f.uploading && f.url).length;
+
+      // Se ja tem fotos e nao chegou em 6, pergunta
+      if (!forcar && total > 0 && total < 6) {
+        if (!confirm(`Voce ja tirou ${total} foto${total === 1 ? '' : 's'}. Fechar agora vai DESCARTAR essas fotos. Continuar?`)) {
+          return;
+        }
+        window.fotosUploadadas = []; // limpa
+      }
+
       const overlay = document.getElementById('cameraOverlay');
       const video = document.getElementById('cameraVideo');
 
@@ -1352,17 +1363,15 @@
       if (total >= 6) btnCapture.classList.add('completo');
       else btnCapture.classList.remove('completo');
 
-      // Botao finalizar - libera com >=1 foto pronta
+      // Botao finalizar - SO libera com >=6 fotos prontas (sem upload pendente)
       const btnFinalizar = document.getElementById('cameraFinalizar');
-      btnFinalizar.disabled = total < 1 || subindo > 0;
+      btnFinalizar.disabled = total < 6 || subindo > 0;
       if (subindo > 0) {
         btnFinalizar.innerHTML = '<span class="spinner-mini"></span>Subindo...';
       } else if (total >= 6) {
         btnFinalizar.innerHTML = `📨 Enviar (${total} fotos)`;
-      } else if (total >= 1) {
-        btnFinalizar.innerHTML = `Enviar com ${total} (min 6)`;
       } else {
-        btnFinalizar.innerHTML = '📨 Enviar';
+        btnFinalizar.innerHTML = `🔒 Faltam ${6 - total}`;
       }
 
       // Hint
@@ -1403,25 +1412,22 @@
     function finalizarFotos() {
       const fotos = window.fotosUploadadas || [];
       const fotosOk = fotos.filter(f => !f.uploading && f.url).map(f => f.url);
-      if (fotosOk.length < 1) {
-        toast('Tire pelo menos 1 foto', 'err');
+      if (fotosOk.length < 6) {
+        toast(`Voce so tem ${fotosOk.length} fotos. MINIMO sao 6.`, 'err');
         return;
       }
-      // Confirma se < 6
-      if (fotosOk.length < 6) {
-        if (!confirm(`Voce so tirou ${fotosOk.length} fotos. O ideal sao 6. Enviar mesmo assim?`)) {
-          return;
-        }
-      }
-      // Fecha camera e envia
-      fecharCamera();
+      // Fecha camera (forcar=true pra nao perguntar) e envia
+      fecharCamera(true);
       enviarProblema();
     }
 
     async function enviarProblema() {
       const fotos = window.fotosUploadadas || [];
       const fotosOk = fotos.filter(f => !f.uploading && f.url).map(f => f.url);
-      if (fotosOk.length < 1) { toast('Tire pelo menos 1 foto', 'err'); return; }
+      if (fotosOk.length < 6) {
+        toast(`Minimo 6 fotos obrigatorias (atual: ${fotosOk.length})`, 'err');
+        return;
+      }
 
       const descricao = document.getElementById('problemaDescricao').value.trim();
 
