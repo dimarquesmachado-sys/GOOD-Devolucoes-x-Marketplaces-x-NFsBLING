@@ -322,20 +322,36 @@ async function buscarNFePorId(idNFe) {
 
 // NOVO v3.14.4: buscar produto por SKU (codigo) pra pegar EAN
 // quando a NF nao foi achada automaticamente
+// Licoes do projeto Localizacao Estoque GOOD: produtos com variacoes tem
+// codigo='COR:DOURADO' na listagem, EAN em varios campos diferentes
 async function buscarProdutoBlingPorSku(sku) {
-  const skuStr = encodeURIComponent(String(sku).trim());
-  const url = `https://www.bling.com.br/Api/v3/produtos?codigo=${skuStr}&limite=5`;
+  const skuClean = String(sku).trim();
+  if (!skuClean) return { ok: true, produto: null };
+
+  const skuEnc = encodeURIComponent(skuClean);
+  // Aumenta limite pra pegar produtos pai+filhos (variacoes)
+  const url = `https://www.bling.com.br/Api/v3/produtos?codigo=${skuEnc}&limite=20`;
   const r = await chamarBling(url);
   if (!r.ok) return { ok: false, error: r.error };
 
   const lista = r.data?.data || [];
-  // Match exato pelo codigo (SKU)
-  const match = lista.find(p => String(p.codigo || '').trim() === String(sku).trim()) || lista[0];
+  if (lista.length === 0) return { ok: true, produto: null };
 
-  if (!match) return { ok: true, produto: null };
+  // 1) Tenta match EXATO pelo codigo (case-sensitive)
+  let match = lista.find(p => String(p.codigo || '').trim() === skuClean);
 
-  // Lista vem resumida - busca detalhes individuais pra ter gtin
+  // 2) Tenta match case-insensitive (estoquista pode ter mudado caixa)
+  if (!match) {
+    const skuUpper = skuClean.toUpperCase();
+    match = lista.find(p => String(p.codigo || '').trim().toUpperCase() === skuUpper);
+  }
+
+  // 3) Ultima tentativa: pega o primeiro
+  if (!match) match = lista[0];
+
+  // Busca detalhes individuais (EAN so vem aqui)
   if (match.id) {
+    await sleep(300); // evita rate limit
     const rDetalhe = await chamarBling(`https://www.bling.com.br/Api/v3/produtos/${match.id}`);
     if (rDetalhe.ok && rDetalhe.data?.data) {
       return { ok: true, produto: rDetalhe.data.data };
@@ -576,7 +592,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '3.14.4',
+    version: '3.14.5',
     integrations: {
       ml: !!ML_ACCESS_TOKEN,
       bling: !!BLING_ACCESS_TOKEN,
@@ -1060,16 +1076,38 @@ app.get('/api/produto/ean-por-sku/:sku', async (req, res) => {
   if (!r.ok) return res.status(500).json(r);
   if (!r.produto) return res.json({ ok: true, encontrado: false, sku });
 
+  // EAN pode estar em VARIOS campos no Bling - licao do projeto Localizacao Estoque
+  const p = r.produto;
+  const ean = p.gtin
+           || p.gtinEmbalagem
+           || p.gtinTributario
+           || p.gtinEan
+           || p.ean
+           || p.codigoBarras
+           || p.tributacao?.gtin
+           || p.tributacao?.ean
+           || null;
+
   return res.json({
     ok: true,
     encontrado: true,
     sku,
     produto: {
-      id: r.produto.id,
-      nome: r.produto.nome,
-      codigo: r.produto.codigo,
-      gtin: r.produto.gtin,
-      gtinEmbalagem: r.produto.gtinEmbalagem,
+      id: p.id,
+      nome: p.nome,
+      codigo: p.codigo,
+      gtin: ean, // campo unificado
+      // Debug - todos os campos possiveis
+      _debug: {
+        gtin: p.gtin,
+        gtinEmbalagem: p.gtinEmbalagem,
+        gtinTributario: p.gtinTributario,
+        gtinEan: p.gtinEan,
+        ean: p.ean,
+        codigoBarras: p.codigoBarras,
+        tributacao_gtin: p.tributacao?.gtin,
+        tributacao_ean: p.tributacao?.ean,
+      },
     },
   });
 });
@@ -1577,7 +1615,7 @@ app.delete('/api/admin/devolucao/:id', requerAdmin, async (req, res) => {
 // ============================================================
 app.listen(PORT, () => {
   console.log('============================================');
-  console.log('GOOD Devolucoes v3.14.4 - busca EAN do produto no Bling pra bipagem');
+  console.log('GOOD Devolucoes v3.14.5 - busca EAN robusta (multi-campos+variacoes)');
   console.log(`Porta: ${PORT}`);
   console.log(`ML: ${ML_ACCESS_TOKEN ? 'OK' : 'FALTA'}`);
   console.log(`Bling: ${BLING_ACCESS_TOKEN ? 'OK' : 'FALTA'}`);
