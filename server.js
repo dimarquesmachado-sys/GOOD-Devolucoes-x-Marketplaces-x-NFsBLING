@@ -60,7 +60,7 @@ function parseUsers(envStr) {
   return out;
 }
 const USERS = parseUsers(process.env.USERS || '');
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || null;
+const ADMIN_USER = process.env.ADMIN_USER || null; // nome do usuario admin (deve estar no USERS tb)
 
 // Sessoes em memoria (token -> {usuario, criado, tipo})
 const sessoes = new Map();
@@ -518,7 +518,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '3.6.0',
+    version: '3.7.0',
     integrations: {
       ml: !!ML_ACCESS_TOKEN,
       bling: !!BLING_ACCESS_TOKEN,
@@ -526,7 +526,7 @@ app.get('/health', (req, res) => {
       supabase: !!supabase,
       email: !!mailer,
       auth: Object.keys(USERS).length > 0,
-      admin: !!ADMIN_PASSWORD,
+      admin: !!(ADMIN_USER && USERS[ADMIN_USER]),
     },
     usuarios_cadastrados: Object.keys(USERS),
     timestamp: new Date().toISOString(),
@@ -915,7 +915,8 @@ app.get('/bling/callback', (req, res) => {
 // FASE 3: AUTH (LOGIN ESTOQUISTA)
 // ============================================================
 
-// Login estoquista
+// Login unificado (estoquista + admin)
+// Se usuario == ADMIN_USER, recebe sessao com tipo='admin'
 app.post('/api/auth/login', (req, res) => {
   const { usuario, senha } = req.body || {};
   if (!usuario || !senha) {
@@ -925,79 +926,65 @@ app.post('/api/auth/login', (req, res) => {
   if (!senhaCorreta || senhaCorreta !== senha) {
     return res.status(401).json({ ok: false, erro: 'Usuario ou senha invalidos' });
   }
-  const token = novaSessao(usuario, 'estoquista');
+
+  // Define o tipo: admin se usuario == ADMIN_USER, senao estoquista
+  const tipo = (ADMIN_USER && usuario === ADMIN_USER) ? 'admin' : 'estoquista';
+
+  const token = novaSessao(usuario, tipo);
   res.cookie('sessao', token, {
     httpOnly: true,
     sameSite: 'lax',
     maxAge: 12 * 60 * 60 * 1000, // 12h
   });
-  console.log(`[LOGIN] ${usuario} (estoquista)`);
-  return res.json({ ok: true, usuario });
-});
-
-// Login admin (Diego)
-app.post('/api/auth/admin-login', (req, res) => {
-  const { senha } = req.body || {};
-  if (!senha || !ADMIN_PASSWORD || senha !== ADMIN_PASSWORD) {
-    return res.status(401).json({ ok: false, erro: 'Senha invalida' });
-  }
-  const token = novaSessao('admin', 'admin');
-  res.cookie('sessao_admin', token, {
-    httpOnly: true,
-    sameSite: 'lax',
-    maxAge: 12 * 60 * 60 * 1000,
-  });
-  console.log('[LOGIN] admin');
-  return res.json({ ok: true });
+  console.log(`[LOGIN] ${usuario} (${tipo})`);
+  return res.json({ ok: true, usuario, tipo });
 });
 
 // Logout
 app.post('/api/auth/logout', (req, res) => {
-  const tEst = req.cookies?.sessao;
-  const tAdm = req.cookies?.sessao_admin;
-  if (tEst) sessoes.delete(tEst);
-  if (tAdm) sessoes.delete(tAdm);
+  const t = req.cookies?.sessao;
+  if (t) sessoes.delete(t);
   res.clearCookie('sessao');
-  res.clearCookie('sessao_admin');
   return res.json({ ok: true });
 });
 
-// Quem sou eu (frontend usa pra validar sessao)
+// Quem sou eu (frontend usa pra validar sessao + saber se admin)
 app.get('/api/auth/me', (req, res) => {
-  const tEst = req.cookies?.sessao;
-  const sEst = validarSessao(tEst, 'estoquista');
-  if (sEst) return res.json({ ok: true, usuario: sEst.usuario, tipo: 'estoquista' });
-
-  const tAdm = req.cookies?.sessao_admin;
-  const sAdm = validarSessao(tAdm, 'admin');
-  if (sAdm) return res.json({ ok: true, usuario: 'admin', tipo: 'admin' });
-
+  const t = req.cookies?.sessao;
+  const s = validarSessao(t);
+  if (s) return res.json({ ok: true, usuario: s.usuario, tipo: s.tipo });
   return res.json({ ok: false });
 });
 
-// Middleware: requer sessao de estoquista
-function requerEstoquista(req, res, next) {
+// Middleware: requer sessao (qualquer tipo)
+function requerLogin(req, res, next) {
   const token = req.cookies?.sessao;
-  const sessao = validarSessao(token, 'estoquista');
+  const sessao = validarSessao(token);
   if (!sessao) {
     return res.status(401).json({ ok: false, erro: 'Sessao invalida ou expirada' });
   }
   req.usuario = sessao.usuario;
+  req.tipoUsuario = sessao.tipo;
   next();
 }
 
 // Middleware: requer sessao admin
 function requerAdmin(req, res, next) {
-  const token = req.cookies?.sessao_admin;
+  const token = req.cookies?.sessao;
   const sessao = validarSessao(token, 'admin');
   if (!sessao) {
     if (req.path.startsWith('/api/')) {
-      return res.status(401).json({ ok: false, erro: 'Sessao admin invalida' });
+      return res.status(401).json({ ok: false, erro: 'Acesso restrito a admin' });
     }
-    return res.redirect('/admin-login.html');
+    // Redireciona pro login (tela principal)
+    return res.redirect('/');
   }
+  req.usuario = sessao.usuario;
   next();
 }
+
+// Alias antigo pra compatibilidade
+const requerEstoquista = requerLogin;
 
 // ============================================================
 // FASE 3: TRIAGEM - INCLUIR ESTOQUE / REPORTAR PROBLEMA
@@ -1352,7 +1339,7 @@ if (supabase) {
 // ============================================================
 app.listen(PORT, () => {
   console.log('============================================');
-  console.log('GOOD Devolucoes v3.6.0 - Fase 3 (Triagem + Admin + Email)');
+  console.log('GOOD Devolucoes v3.7.0 - login unificado (estoquista + admin no mesmo lugar)');
   console.log(`Porta: ${PORT}`);
   console.log(`ML: ${ML_ACCESS_TOKEN ? 'OK' : 'FALTA'}`);
   console.log(`Bling: ${BLING_ACCESS_TOKEN ? 'OK' : 'FALTA'}`);
@@ -1360,6 +1347,6 @@ app.listen(PORT, () => {
   console.log(`Supabase: ${supabase ? 'OK' : 'FALTA'}`);
   console.log(`Email: ${mailer ? 'OK (' + EMAIL_USER + ' -> ' + EMAIL_TO + ')' : 'FALTA'}`);
   console.log(`Usuarios: ${Object.keys(USERS).length > 0 ? Object.keys(USERS).join(', ') : 'FALTA'}`);
-  console.log(`Admin: ${ADMIN_PASSWORD ? 'OK' : 'FALTA'}`);
+  console.log(`Admin: ${(ADMIN_USER && USERS[ADMIN_USER]) ? `OK (${ADMIN_USER})` : 'FALTA - defina ADMIN_USER e inclua no USERS'}`);
   console.log('============================================');
 });
