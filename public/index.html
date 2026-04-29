@@ -10,13 +10,8 @@
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
       background: #f5f5f7; min-height: 100vh; padding: 12px; color: #1d1d1f;
     }
-
-    /* ====== CONTAINER RESPONSIVO ====== */
     .container { max-width: 720px; margin: 0 auto; }
-    /* desktop: container mais largo */
-    @media (min-width: 900px) {
-      .container { max-width: 1200px; }
-    }
+    @media (min-width: 900px) { .container { max-width: 1200px; } }
 
     header {
       background: linear-gradient(135deg, #FFE600 0%, #FFCC00 100%);
@@ -46,20 +41,10 @@
     .resultado { display: none; }
     .resultado.show { display: block; }
 
-    /* ====== GRID DESKTOP - 2 COLUNAS ====== */
-    .grid-desktop {
-      display: grid;
-      grid-template-columns: 1fr;
-      gap: 14px;
-    }
+    .grid-desktop { display: grid; grid-template-columns: 1fr; gap: 14px; }
     @media (min-width: 900px) {
-      .grid-desktop {
-        grid-template-columns: 1fr 1fr;
-        gap: 14px 18px;
-      }
-      /* NF ocupa as 2 colunas no topo */
+      .grid-desktop { grid-template-columns: 1fr 1fr; gap: 14px 18px; }
       .grid-desktop > .secao-nf { grid-column: 1 / -1; }
-      /* Linha do tempo ocupa as 2 colunas */
       .grid-desktop > .secao-timeline { grid-column: 1 / -1; }
     }
 
@@ -68,7 +53,6 @@
       font-size: 11px; font-weight: 600; margin-right: 6px; margin-bottom: 4px;
     }
     .badge-sucesso { background: #d1f7c4; color: #1a7f3d; }
-    .badge-aviso { background: #fff4cc; color: #8a6d00; }
     .badge-info { background: #d6e9ff; color: #003d99; }
     .badge-devolucao { background: #ffe0b3; color: #8a4d00; }
     .badge-nfe { background: #c8e6c9; color: #1b5e20; }
@@ -86,18 +70,12 @@
     }
     .item-grid .valor strong { font-weight: 700; }
 
-    /* No desktop, dentro de cada coluna, NÃO precisa subdividir em 2 - mantém 2 colunas internas mesmo */
-    /* Mas pra blocos ja em coluna estreita do grid-desktop, manter compacto */
-
     .produto-titulo { font-size: 16px; font-weight: 600; margin-bottom: 4px; }
     .produto-mlb { font-size: 12px; color: #007AFF; margin-bottom: 8px; }
     .secao-titulo {
       font-size: 12px; font-weight: 600; color: #888; text-transform: uppercase;
       letter-spacing: 0.4px; margin: 0 0 6px; padding-bottom: 5px;
       border-bottom: 1px solid #f0f0f0;
-    }
-    .bloco {
-      /* Cada bloco ocupa uma celula da grade desktop */
     }
 
     .secao-nf {
@@ -129,16 +107,26 @@
       display: inline-block; padding: 8px 14px; background: #2e7d32;
       color: white; border-radius: 8px; text-decoration: none;
       font-size: 13px; font-weight: 600; margin-top: 8px; margin-right: 6px;
+      border: none; cursor: pointer; font-family: inherit;
     }
     .btn-action:hover { background: #1b5e20; }
     .btn-action.azul { background: #007AFF; }
     .btn-action.azul:hover { background: #0051D5; }
+    .btn-action.cinza { background: #6c757d; }
+    .btn-action.cinza:hover { background: #495057; }
+    .btn-action:disabled { background: #B0B0B0; cursor: not-allowed; }
     .loading { display: none; text-align: center; padding: 24px; }
     .loading.show { display: block; }
     .spinner {
       display: inline-block; width: 32px; height: 32px;
       border: 3px solid #f0f0f0; border-top-color: #007AFF;
       border-radius: 50%; animation: spin 0.8s linear infinite;
+    }
+    .spinner-mini {
+      display: inline-block; width: 14px; height: 14px;
+      border: 2px solid #fff; border-top-color: transparent;
+      border-radius: 50%; animation: spin 0.8s linear infinite;
+      vertical-align: middle; margin-right: 4px;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
     .timeline { list-style: none; padding-left: 0; }
@@ -201,7 +189,7 @@
 
     <div class="loading" id="loading">
       <div class="spinner"></div>
-      <p style="margin-top: 12px; color: #666;">Consultando ML e NF...</p>
+      <p style="margin-top: 12px; color: #666;">Consultando ML...</p>
     </div>
 
     <div class="resultado" id="resultado"></div>
@@ -213,6 +201,10 @@
     const btnBuscar = document.getElementById('btnBuscar');
     const divLoading = document.getElementById('loading');
     const divResultado = document.getElementById('resultado');
+
+    // Estado pra suportar busca sob demanda
+    let ultimaOrderId = null;
+    let ultimaDataVenda = null;
 
     inputCodigo.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') { e.preventDefault(); buscar(); }
@@ -241,6 +233,57 @@
       }
     }
 
+    // Busca sob demanda dos links Bling
+    async function buscarLinksBling(orderId, dataVenda) {
+      const btn = document.getElementById('btnBlingDemanda');
+      if (!btn) return;
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner-mini"></span>Buscando no Bling (~5s)...';
+
+      try {
+        const url = `/api/nf/buscar-links-bling/${encodeURIComponent(orderId)}${dataVenda ? `?data=${encodeURIComponent(dataVenda)}` : ''}`;
+        const resp = await fetch(url);
+        const data = await resp.json();
+
+        const containerBotoes = document.getElementById('botoesNF');
+        if (!containerBotoes) return;
+
+        if (data.ok && data.nf) {
+          // Sucesso - substitui o botao por links Bling
+          let novosBotoes = '';
+          if (data.nf.linkDanfe) novosBotoes += `<a href="${data.nf.linkDanfe}" target="_blank" class="btn-action">📄 DANFE Bling</a>`;
+          if (data.nf.linkPdf) novosBotoes += `<a href="${data.nf.linkPdf}" target="_blank" class="btn-action">📥 Baixar PDF</a>`;
+          if (data.nf.linkXml) novosBotoes += `<a href="${data.nf.linkXml}" target="_blank" class="btn-action">📋 XML</a>`;
+          if (data.nf.idBling) novosBotoes += `<a href="https://www.bling.com.br/notas.fiscais.php#edit/${data.nf.idBling}" target="_blank" class="btn-action azul">🔗 Editar no Bling</a>`;
+
+          // Adiciona badge de sucesso
+          const badgeFonte = document.querySelector('.badge-fonte-ml, .badge-fonte-bling');
+          if (badgeFonte) {
+            badgeFonte.className = 'badge badge-fonte-bling';
+            badgeFonte.textContent = 'via Bling + ML';
+          }
+
+          // Substitui o botao Bling pelos links Bling
+          btn.outerHTML = novosBotoes;
+        } else {
+          // Falha - mostra mensagem
+          btn.disabled = false;
+          btn.style.background = '#b00020';
+          btn.innerHTML = '⚠️ Nao localizado no Bling';
+          setTimeout(() => {
+            btn.style.background = '';
+            btn.innerHTML = '🔍 Tentar Bling de novo';
+            btn.disabled = false;
+          }, 3000);
+          console.warn('[Bling sob demanda] Falha:', data.erro);
+        }
+      } catch (err) {
+        btn.disabled = false;
+        btn.innerHTML = '⚠️ Erro de conexao';
+        console.error(err);
+      }
+    }
+
     function moeda(v) {
       if (v == null) return '-';
       return 'R$ ' + Number(v).toFixed(2).replace('.', ',');
@@ -262,7 +305,10 @@
       const shipment = data.shipment || {};
       const claim = data.claim || {};
       const nf = data.nf || null;
-      const blingPedido = data.bling?.pedido || null;
+
+      // Salva pra busca sob demanda Bling
+      ultimaOrderId = order.id || null;
+      ultimaDataVenda = order.date_created || null;
 
       const itemOrder = order.order_items?.[0];
       const itemShip = shipment.shipping_items?.[0];
@@ -297,9 +343,7 @@
       if (order && order.id) html += '<span class="badge badge-sucesso">✅ Order ML</span>';
       if (nf) {
         html += '<span class="badge badge-nfe">🧾 NF-e</span>';
-        if (nf.fonte === 'ml') html += '<span class="badge badge-fonte-ml">via Mercado Livre</span>';
-        else if (nf.fonte === 'bling') html += '<span class="badge badge-fonte-bling">via Bling</span>';
-        else if (nf.fonte === 'bling+ml') html += '<span class="badge badge-fonte-bling">via Bling + ML</span>';
+        html += '<span class="badge badge-fonte-ml">via Mercado Livre</span>';
       }
 
       // AVISOS
@@ -309,10 +353,10 @@
         });
       }
 
-      // ====== ABRE GRID 2 COLUNAS ======
+      // ====== GRID 2 COLUNAS ======
       html += '<div class="grid-desktop" style="margin-top:14px;">';
 
-      // ============ NF (DESTAQUE NO TOPO - OCUPA 2 COLUNAS) ============
+      // ============ NF (LARGURA TOTAL) ============
       if (nf) {
         html += '<div class="secao-nf">';
         html += '<div class="secao-nf-titulo">🧾 Nota Fiscal</div>';
@@ -329,18 +373,26 @@
         }
         html += '</div>';
 
-        // Botoes
-        html += '<div style="margin-top: 12px;">';
-        if (nf.linkDanfe) html += `<a href="${nf.linkDanfe}" target="_blank" class="btn-action">📄 DANFE Bling</a>`;
-        if (nf.linkPdf) html += `<a href="${nf.linkPdf}" target="_blank" class="btn-action">📥 Baixar PDF</a>`;
-        if (nf.linkXml) html += `<a href="${nf.linkXml}" target="_blank" class="btn-action">📋 XML</a>`;
-        if (nf.linkConsulta && !nf.linkDanfe) html += `<a href="${nf.linkConsulta}" target="_blank" class="btn-action">📄 Consultar DANFE</a>`;
-        if (nf.idBling) html += `<a href="https://www.bling.com.br/notas.fiscais.php#edit/${nf.idBling}" target="_blank" class="btn-action azul">🔗 Editar no Bling</a>`;
+        // Botoes - sempre tem Meu Danfe + botao sob demanda Bling
+        html += '<div style="margin-top: 12px;" id="botoesNF">';
+        if (nf.linkConsulta) html += `<a href="${nf.linkConsulta}" target="_blank" class="btn-action">📄 Consultar DANFE (Meu Danfe)</a>`;
+        if (ultimaOrderId) {
+          html += `<button id="btnBlingDemanda" class="btn-action cinza" onclick="buscarLinksBling('${ultimaOrderId}', '${ultimaDataVenda || ''}')">🔍 Buscar links Bling</button>`;
+        }
+        html += '</div>';
+        html += '</div>';
+      } else if (ultimaOrderId) {
+        // Sem NF do ML - oferece botao Bling como ultima alternativa
+        html += '<div class="secao-nf">';
+        html += '<div class="secao-nf-titulo">🧾 Nota Fiscal</div>';
+        html += '<p style="margin: 10px 0;">⚠️ NF-e nao localizada via Mercado Livre.</p>';
+        html += '<div id="botoesNF">';
+        html += `<button id="btnBlingDemanda" class="btn-action" onclick="buscarLinksBling('${ultimaOrderId}', '${ultimaDataVenda || ''}')">🔍 Buscar no Bling (~5s)</button>`;
         html += '</div>';
         html += '</div>';
       }
 
-      // ============ PRODUTO (coluna esquerda) ============
+      // ============ PRODUTO ============
       html += '<div class="bloco">';
       html += '<div class="secao-titulo">Produto</div>';
       html += `<div class="produto-titulo">${tituloProduto}</div>`;
@@ -356,7 +408,7 @@
       html += '</div>';
       html += '</div>';
 
-      // ============ COMPRADOR (coluna direita) ============
+      // ============ COMPRADOR ============
       html += '<div class="bloco">';
       html += '<div class="secao-titulo">Comprador</div>';
       html += '<div class="item-grid">';
@@ -367,7 +419,7 @@
       html += '</div>';
       html += '</div>';
 
-      // ============ PEDIDO (coluna esquerda linha 2) ============
+      // ============ PEDIDO ============
       html += '<div class="bloco">';
       html += '<div class="secao-titulo">Pedido</div>';
       html += '<div class="item-grid">';
@@ -375,14 +427,10 @@
       html += `<div><div class="label">Pack ID</div><div class="valor">${order.pack_id || '-'}</div></div>`;
       html += `<div><div class="label">Status venda</div><div class="valor">${traduzirStatus(order.status)}</div></div>`;
       html += `<div><div class="label">Status pagamento</div><div class="valor">${traduzirPagamento(payment.status)}${payment.transaction_amount_refunded ? ' (estornado: ' + moeda(payment.transaction_amount_refunded) + ')' : ''}</div></div>`;
-      if (blingPedido) {
-        html += `<div><div class="label">Pedido Bling</div><div class="valor">${blingPedido.numero || '-'}</div></div>`;
-        html += `<div><div class="label">ID Bling</div><div class="valor">${blingPedido.id || '-'}</div></div>`;
-      }
       html += '</div>';
       html += '</div>';
 
-      // ============ ENVIO (coluna direita linha 2) ============
+      // ============ ENVIO ============
       if (shipment.id) {
         html += '<div class="bloco">';
         html += '<div class="secao-titulo">Envio / Devolucao</div>';
@@ -398,7 +446,7 @@
         html += '</div>';
       }
 
-      // ============ TIMELINE (largura total) ============
+      // ============ TIMELINE ============
       if (shipment.status_history) {
         const sh = shipment.status_history;
         html += '<div class="secao-timeline">';
@@ -412,7 +460,7 @@
         html += '</div>';
       }
 
-      // ============ CLAIM (largura total se existir) ============
+      // ============ CLAIM ============
       if (claim.id) {
         html += '<div class="secao-timeline">';
         html += '<div class="secao-titulo">⚖️ Reclamacao (Claim)</div>';
@@ -430,7 +478,7 @@
 
       html += '</div>'; // fim grid-desktop
 
-      // DEBUG (fora da grid)
+      // DEBUG
       html += '<details><summary>🔧 Tentativas e diagnostico</summary>';
       html += '<ul class="tentativas-list">';
       data.tentativas.forEach(t => {
@@ -439,7 +487,6 @@
         if (t.tem_fiscal_key !== undefined) html += ` <em>(fiscal_key: ${t.tem_fiscal_key ? 'SIM' : 'NAO'})</em>`;
         if (t.encontradas !== undefined) html += ` <em>(${t.encontradas} encontradas)</em>`;
         if (t.claims_encontradas !== undefined) html += ` <em>(${t.claims_encontradas} claims)</em>`;
-        if (t.encontrou !== undefined) html += ` <em>(scan ${t.total_scanned} pedidos)</em>`;
         if (t.erro) {
           const errStr = typeof t.erro === 'object' ? JSON.stringify(t.erro) : t.erro;
           html += ` <span style="color:#b00020;">(${errStr.substring(0, 100)})</span>`;
