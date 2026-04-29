@@ -128,18 +128,39 @@
     }
 
     .filtros {
-      background: white; border-radius: 10px; padding: 12px 16px;
-      margin-bottom: 14px; display: flex; gap: 12px; align-items: center;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.06); font-size: 13px;
+      background: white; border-radius: 10px; padding: 14px 16px;
+      margin-bottom: 14px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.06);
     }
+    .filtros-linha {
+      display: flex; gap: 12px; align-items: center; flex-wrap: wrap;
+      font-size: 13px;
+    }
+    .filtros-linha + .filtros-linha { margin-top: 10px; }
     .filtros label {
       display: flex; align-items: center; gap: 6px; cursor: pointer;
-      user-select: none;
+      user-select: none; white-space: nowrap;
+    }
+    .filtros input[type="text"], .filtros input[type="date"] {
+      padding: 8px 12px; border: 1px solid #d0d0d0; border-radius: 6px;
+      font-size: 13px; font-family: inherit; outline: none;
+    }
+    .filtros input[type="text"]:focus, .filtros input[type="date"]:focus {
+      border-color: #007AFF;
+    }
+    .filtros .busca {
+      flex: 1; min-width: 200px;
     }
     .filtros button {
-      margin-left: auto; padding: 8px 14px; background: #007AFF; color: white;
+      padding: 8px 14px; background: #007AFF; color: white;
       border: none; border-radius: 6px; font-size: 13px; font-weight: 600;
       cursor: pointer;
+    }
+    .filtros button.ghost {
+      background: #f0f0f0; color: #555;
+    }
+    .filtros .resultado-info {
+      font-size: 12px; color: #888; margin-left: auto;
     }
     .loading { text-align: center; padding: 40px; color: #666; }
     .loading .spinner {
@@ -158,16 +179,31 @@
         <p>Painel restrito · v3.7</p>
       </div>
       <div class="header-acoes">
+        <a href="/">📦 Triagem (bipar)</a>
         <a href="#" onclick="logout(event)">🚪 Sair</a>
       </div>
     </header>
 
     <div class="filtros">
-      <label>
-        <input type="checkbox" id="mostrarConcluidos">
-        Mostrar concluidos
-      </label>
-      <button onclick="carregar()">🔄 Atualizar</button>
+      <div class="filtros-linha">
+        <input type="text" class="busca" id="filtroBusca"
+          placeholder="🔍 Buscar por NF, pedido, SKU, cliente, MLB..." />
+        <button class="ghost" onclick="limparBusca()">Limpar</button>
+      </div>
+      <div class="filtros-linha">
+        <label>De:
+          <input type="date" id="filtroDataIni">
+        </label>
+        <label>Ate:
+          <input type="date" id="filtroDataFim">
+        </label>
+        <label>
+          <input type="checkbox" id="mostrarConcluidos">
+          Mostrar concluidos
+        </label>
+        <button onclick="carregar()">🔄 Recarregar</button>
+        <span class="resultado-info" id="resultadoInfo"></span>
+      </div>
     </div>
 
     <div id="loadingArea" class="loading">
@@ -232,15 +268,52 @@
 
     function renderizar() {
       const mostrarConcluidos = document.getElementById('mostrarConcluidos').checked;
-      const filtrar = list => mostrarConcluidos ? list : list.filter(d => d.status !== 'concluido');
+      const busca = (document.getElementById('filtroBusca').value || '').trim().toLowerCase();
+      const dataIni = document.getElementById('filtroDataIni').value;
+      const dataFim = document.getElementById('filtroDataFim').value;
 
-      const aprovadas = filtrar(dados.aprovadas);
-      const problemas = filtrar(dados.problemas);
+      const dataIniMs = dataIni ? new Date(dataIni + 'T00:00:00').getTime() : null;
+      const dataFimMs = dataFim ? new Date(dataFim + 'T23:59:59').getTime() : null;
+
+      function passa(d) {
+        // Status
+        if (!mostrarConcluidos && d.status === 'concluido') return false;
+        // Data (usa created_at)
+        if (dataIniMs || dataFimMs) {
+          const t = new Date(d.created_at).getTime();
+          if (dataIniMs && t < dataIniMs) return false;
+          if (dataFimMs && t > dataFimMs) return false;
+        }
+        // Busca
+        if (busca) {
+          const campos = [
+            d.nf_numero, d.order_id, d.pack_id, d.shipment_id,
+            d.produto_titulo, d.produto_sku, d.produto_mlb,
+            d.buyer_nome, d.buyer_id,
+            d.problema_descricao,
+          ].map(v => String(v || '').toLowerCase());
+          if (!campos.some(c => c.includes(busca))) return false;
+        }
+        return true;
+      }
+
+      const aprovadas = dados.aprovadas.filter(passa);
+      const problemas = dados.problemas.filter(passa);
 
       document.getElementById('countAprovadas').textContent = aprovadas.length;
       document.getElementById('countProblemas').textContent = problemas.length;
       document.getElementById('countAprovadas').className = 'badge-count' + (aprovadas.length === 0 ? ' zero' : '');
       document.getElementById('countProblemas').className = 'badge-count problema' + (problemas.length === 0 ? ' zero' : '');
+
+      // Info no canto direito
+      const totalGeral = dados.aprovadas.length + dados.problemas.length;
+      const totalFiltrado = aprovadas.length + problemas.length;
+      const info = document.getElementById('resultadoInfo');
+      if (busca || dataIni || dataFim) {
+        info.textContent = `${totalFiltrado} de ${totalGeral} registros`;
+      } else {
+        info.textContent = `${totalGeral} registros (ultimos 30 dias)`;
+      }
 
       document.getElementById('listaAprovadas').innerHTML = aprovadas.length
         ? aprovadas.map(itemHtmlAprovado).join('')
@@ -249,6 +322,13 @@
       document.getElementById('listaProblemas').innerHTML = problemas.length
         ? problemas.map(itemHtmlProblema).join('')
         : '<div class="vazio">Nenhum problema reportado. 🎉</div>';
+    }
+
+    function limparBusca() {
+      document.getElementById('filtroBusca').value = '';
+      document.getElementById('filtroDataIni').value = '';
+      document.getElementById('filtroDataFim').value = '';
+      renderizar();
     }
 
     function escapeHtml(s) {
@@ -393,10 +473,14 @@
       toastTimeout = setTimeout(() => t.classList.remove('show'), 3000);
     }
 
+    // Listeners dos filtros (re-renderiza sem precisar buscar de novo)
     document.getElementById('mostrarConcluidos').addEventListener('change', renderizar);
+    document.getElementById('filtroBusca').addEventListener('input', renderizar);
+    document.getElementById('filtroDataIni').addEventListener('change', renderizar);
+    document.getElementById('filtroDataFim').addEventListener('change', renderizar);
 
+    // Carrega 1x ao abrir - sem auto-refresh (Diego pediu)
     carregar();
-    setInterval(carregar, 30000); // auto-refresh 30s
   </script>
 </body>
 </html>
