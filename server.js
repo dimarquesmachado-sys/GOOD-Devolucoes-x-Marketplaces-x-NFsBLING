@@ -800,10 +800,20 @@ app.get('/api/nf/buscar-links-bling/:orderId', async (req, res) => {
     });
   }
 
-  // Buscar NF completa pra ter linkDanfe etc
+  // Buscar NF completa pra ter linkDanfe e ITENS
   await sleep(400);
   const rCompleta = await buscarNFePorId(rBusca.match.id);
   const nf = (rCompleta.ok && rCompleta.data?.data) ? rCompleta.data.data : rBusca.match;
+
+  // Extrai itens (com titulo, SKU, EAN do Bling)
+  const itensBling = Array.isArray(nf.itens) ? nf.itens.map(it => ({
+    titulo: it.descricao || null,
+    sku: it.codigo || null,
+    ean: it.gtin || null,
+    quantidade: it.quantidade || null,
+    valor: it.valor || null,
+    unidade: it.unidade || null,
+  })) : [];
 
   return res.json({
     ok: true,
@@ -822,6 +832,7 @@ app.get('/api/nf/buscar-links-bling/:orderId', async (req, res) => {
       linkXml: nf.xml,
       idBling: nf.id,
       numeroPedidoLoja: nf.numeroPedidoLoja,
+      itens: itensBling,
     },
   });
 });
