@@ -16,21 +16,27 @@
     header {
       background: linear-gradient(135deg, #FFE600 0%, #FFCC00 100%);
       border-radius: 12px; padding: 20px; margin-bottom: 14px; text-align: center;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+      box-shadow: 0 2px 8px rgba(0,0,0,0.08); position: relative;
     }
     header h1 { font-size: 20px; margin-bottom: 4px; }
     header p { font-size: 13px; color: #555; }
+    .user-badge {
+      position: absolute; top: 12px; right: 12px;
+      background: rgba(0,0,0,0.1); padding: 4px 10px; border-radius: 12px;
+      font-size: 11px; font-weight: 600;
+    }
+    .user-badge a { color: #1d1d1f; text-decoration: none; margin-left: 8px; }
     .card {
       background: white; border-radius: 12px; padding: 18px; margin-bottom: 14px;
       box-shadow: 0 2px 8px rgba(0,0,0,0.06);
     }
     .card h2 { font-size: 16px; margin-bottom: 12px; }
     .input-group { display: flex; gap: 8px; margin-bottom: 10px; }
-    input[type="text"] {
+    input[type="text"], input[type="password"] {
       flex: 1; padding: 14px 16px; border: 2px solid #e0e0e0; border-radius: 10px;
-      font-size: 16px; outline: none;
+      font-size: 16px; outline: none; width: 100%;
     }
-    input[type="text"]:focus { border-color: #007AFF; }
+    input:focus { border-color: #007AFF; }
     button {
       padding: 14px 22px; background: #007AFF; color: white; border: none;
       border-radius: 10px; font-size: 15px; font-weight: 600; cursor: pointer;
@@ -41,10 +47,45 @@
     .resultado { display: none; }
     .resultado.show { display: block; }
 
+    /* TELA DE LOGIN */
+    .login-screen {
+      display: none; max-width: 400px; margin: 60px auto;
+    }
+    .login-screen.show { display: block; }
+    .login-screen .card {
+      padding: 30px; text-align: center;
+    }
+    .login-screen h2 {
+      font-size: 22px; margin-bottom: 6px;
+    }
+    .login-screen p {
+      color: #666; margin-bottom: 24px; font-size: 14px;
+    }
+    .login-form { text-align: left; }
+    .login-form label {
+      display: block; font-size: 12px; font-weight: 600; color: #555;
+      margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px;
+    }
+    .login-form input, .login-form select {
+      width: 100%; padding: 14px 16px; border: 2px solid #e0e0e0;
+      border-radius: 10px; font-size: 16px; margin-bottom: 14px;
+      font-family: inherit;
+    }
+    .login-form button {
+      width: 100%; padding: 16px; font-size: 16px;
+    }
+    .login-erro {
+      background: #fff5f5; border: 1px solid #ffd6d6; border-radius: 8px;
+      padding: 10px; color: #b00020; font-size: 13px; margin-bottom: 14px;
+      display: none;
+    }
+    .login-erro.show { display: block; }
+
     .grid-desktop { display: grid; grid-template-columns: 1fr; gap: 14px; }
     @media (min-width: 900px) {
       .grid-desktop { grid-template-columns: 1fr 1fr; gap: 14px 18px; }
       .grid-desktop > .secao-nf { grid-column: 1 / -1; }
+      .grid-desktop > .secao-triagem { grid-column: 1 / -1; }
       .grid-desktop > .secao-timeline { grid-column: 1 / -1; }
     }
 
@@ -76,6 +117,27 @@
       font-size: 12px; font-weight: 600; color: #888; text-transform: uppercase;
       letter-spacing: 0.4px; margin: 0 0 6px; padding-bottom: 5px;
       border-bottom: 1px solid #f0f0f0;
+    }
+
+    /* QUANTIDADE EM DESTAQUE */
+    .qtd-destaque {
+      background: linear-gradient(135deg, #FFE082 0%, #FFB300 100%);
+      border-radius: 12px; padding: 16px;
+      text-align: center; margin: 10px 0; box-shadow: 0 4px 12px rgba(255, 179, 0, 0.3);
+    }
+    .qtd-destaque .qtd-label {
+      font-size: 11px; color: #5d4037; text-transform: uppercase;
+      font-weight: 700; letter-spacing: 1px;
+    }
+    .qtd-destaque .qtd-valor {
+      font-size: 48px; font-weight: 900; color: #3e2723;
+      line-height: 1; margin: 4px 0;
+    }
+    .qtd-destaque .qtd-unidade {
+      font-size: 14px; color: #5d4037; font-weight: 600;
+    }
+    .qtd-destaque .qtd-produto {
+      font-size: 13px; color: #3e2723; margin-top: 6px; font-weight: 600;
     }
 
     .secao-nf {
@@ -115,6 +177,119 @@
     .btn-action.cinza { background: #6c757d; }
     .btn-action.cinza:hover { background: #495057; }
     .btn-action:disabled { background: #B0B0B0; cursor: not-allowed; }
+
+    /* SECAO TRIAGEM */
+    .secao-triagem {
+      background: linear-gradient(135deg, #fff3e0 0%, #fff8e1 100%);
+      border-radius: 12px; padding: 18px;
+      border-left: 4px solid #f57c00;
+    }
+    .secao-triagem-titulo {
+      font-size: 14px; font-weight: 800; color: #e65100;
+      text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 12px;
+      text-align: center;
+    }
+    .triagem-instrucao {
+      text-align: center; font-size: 13px; color: #5d4037;
+      margin-bottom: 14px;
+    }
+    .triagem-botoes {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
+    }
+    .triagem-btn {
+      padding: 24px 16px; border: none; border-radius: 12px;
+      font-size: 16px; font-weight: 700; cursor: pointer;
+      transition: all 0.15s; text-align: center; line-height: 1.3;
+    }
+    .triagem-btn:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
+    .triagem-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+    .triagem-btn-aprovar {
+      background: linear-gradient(135deg, #43a047 0%, #2e7d32 100%); color: white;
+    }
+    .triagem-btn-problema {
+      background: linear-gradient(135deg, #e53935 0%, #c62828 100%); color: white;
+    }
+    .triagem-btn-icon { font-size: 32px; display: block; margin-bottom: 8px; }
+    @media (max-width: 480px) {
+      .triagem-botoes { grid-template-columns: 1fr; }
+    }
+
+    /* SUCESSO POS-TRIAGEM */
+    .triagem-sucesso {
+      background: linear-gradient(135deg, #c8e6c9 0%, #a5d6a7 100%);
+      border-radius: 12px; padding: 20px; text-align: center;
+      margin-top: 14px; animation: pulseSucesso 0.5s;
+    }
+    .triagem-sucesso h3 { color: #1b5e20; font-size: 18px; margin-bottom: 8px; }
+    .triagem-sucesso p { color: #2e7d32; font-size: 14px; }
+    @keyframes pulseSucesso { 0% { transform: scale(0.95); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
+
+    /* MODAL */
+    .modal-bg {
+      position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.5); z-index: 1000;
+      display: none; align-items: center; justify-content: center; padding: 14px;
+    }
+    .modal-bg.show { display: flex; }
+    .modal {
+      background: white; border-radius: 14px; padding: 22px;
+      max-width: 480px; width: 100%; max-height: 90vh; overflow-y: auto;
+    }
+    .modal h3 { font-size: 18px; margin-bottom: 12px; }
+    .modal p { font-size: 14px; color: #444; line-height: 1.5; margin-bottom: 14px; }
+    .modal-acoes {
+      display: flex; gap: 10px; margin-top: 18px;
+    }
+    .modal-acoes button {
+      flex: 1; padding: 12px;
+    }
+    .btn-cancelar {
+      background: #f5f5f7; color: #333;
+    }
+    .btn-cancelar:hover { background: #e8e8e8; color: #000; }
+
+    /* MODAL FOTOS */
+    .modal-fotos textarea {
+      width: 100%; min-height: 80px; padding: 10px;
+      border: 2px solid #e0e0e0; border-radius: 8px; font-family: inherit;
+      font-size: 14px; resize: vertical; margin-bottom: 12px;
+    }
+    .fotos-grid {
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;
+      margin: 14px 0;
+    }
+    .foto-thumb {
+      aspect-ratio: 1; border-radius: 8px; overflow: hidden;
+      background: #f0f0f0; position: relative;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .foto-thumb img { width: 100%; height: 100%; object-fit: cover; }
+    .foto-thumb .progress {
+      position: absolute; bottom: 0; left: 0; right: 0;
+      background: rgba(0,0,0,0.6); color: white; font-size: 10px;
+      padding: 2px 4px; text-align: center;
+    }
+    .foto-thumb .remove-btn {
+      position: absolute; top: 4px; right: 4px;
+      width: 20px; height: 20px; border-radius: 50%;
+      background: rgba(220, 38, 38, 0.9); color: white; border: none;
+      font-size: 12px; cursor: pointer; padding: 0; line-height: 1;
+    }
+    .add-foto-btn {
+      aspect-ratio: 1; border: 2px dashed #cbd5e0; border-radius: 8px;
+      background: #f7fafc; cursor: pointer; display: flex; align-items: center;
+      justify-content: center; flex-direction: column; gap: 4px;
+      color: #4a5568; font-size: 12px; font-weight: 600;
+    }
+    .add-foto-btn:hover { border-color: #007AFF; background: #ebf8ff; color: #007AFF; }
+    .add-foto-btn .icon { font-size: 24px; }
+    .fotos-contador {
+      text-align: center; font-size: 13px; color: #555;
+      margin: 8px 0; font-weight: 600;
+    }
+    .fotos-contador.completo { color: #2e7d32; }
+    .fotos-contador.minimo { color: #f57c00; }
+
     .loading { display: none; text-align: center; padding: 24px; }
     .loading.show { display: block; }
     .spinner {
@@ -159,20 +334,59 @@
       font-family: 'Courier New', monospace;
     }
 
+    .toast {
+      position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+      background: #1d1d1f; color: white; padding: 12px 20px; border-radius: 10px;
+      font-size: 14px; font-weight: 600; box-shadow: 0 4px 14px rgba(0,0,0,0.3);
+      z-index: 2000; opacity: 0; transition: opacity 0.3s; pointer-events: none;
+      max-width: 90%; text-align: center;
+    }
+    .toast.show { opacity: 1; }
+    .toast.ok { background: #2e7d32; }
+    .toast.err { background: #c62828; }
+
     @media (max-width: 480px) {
       .item-grid { grid-template-columns: 1fr; }
       .input-group { flex-direction: column; }
-      button { width: 100%; }
+      .input-group button { width: 100%; }
+      .qtd-destaque .qtd-valor { font-size: 38px; }
     }
   </style>
 </head>
 <body>
-  <div class="container">
+
+  <!-- TELA DE LOGIN -->
+  <div class="login-screen" id="loginScreen">
+    <header style="margin-bottom:20px;">
+      <h1>📦 GOOD Devolucoes</h1>
+      <p>Faca login pra continuar</p>
+    </header>
+    <div class="card">
+      <h2>🔐 Login</h2>
+      <div class="login-erro" id="loginErro"></div>
+      <form class="login-form" id="loginForm" onsubmit="fazerLogin(event)">
+        <label for="loginUser">Usuario</label>
+        <select id="loginUser" required>
+          <option value="">Selecione...</option>
+        </select>
+        <label for="loginPass">Senha</label>
+        <input type="password" id="loginPass" required autocomplete="current-password">
+        <button type="submit" id="btnLogin">Entrar</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- APP PRINCIPAL -->
+  <div class="container" id="appContainer" style="display:none;">
 
     <header>
       <h1>📦 GOOD Devolucoes</h1>
-      <p>Identificar venda + NF-e da etiqueta</p>
-      <p style="font-size: 10px; color: #888; margin-top: 4px;">v3.5 (NFs Bling) | <span id="serverVersion">checando...</span></p>
+      <p>Identificar venda + NF-e + Triagem</p>
+      <p style="font-size: 10px; color: #888; margin-top: 4px;">v3.6 (Fase 3) | <span id="serverVersion">checando...</span></p>
+      <div class="user-badge">
+        👤 <span id="userNome">-</span>
+        <a href="#" onclick="fazerLogout(event)">sair</a>
+      </div>
     </header>
 
     <div class="card">
@@ -197,32 +411,168 @@
 
   </div>
 
+  <!-- MODAL CONFIRMAR APROVAR -->
+  <div class="modal-bg" id="modalAprovar">
+    <div class="modal">
+      <h3>✅ Confirmar inclusao no estoque</h3>
+      <p id="modalAprovarMsg">Confere que o produto e a quantidade estao corretos?</p>
+      <div style="background:#f5f5f7;padding:12px;border-radius:8px;font-size:13px;">
+        <div id="modalAprovarDetalhes"></div>
+      </div>
+      <p style="font-size:13px;margin-top:12px;color:#666;">
+        Apos confirmar, o produto sera marcado como aprovado e Diego emitira a NF de devolucao no Bling.
+      </p>
+      <div class="modal-acoes">
+        <button class="btn-cancelar" onclick="fecharModal('modalAprovar')">Cancelar</button>
+        <button class="btn-action" style="margin:0;padding:12px;" onclick="confirmarAprovar()">✅ Confirmar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL FOTOS PROBLEMA -->
+  <div class="modal-bg" id="modalProblema">
+    <div class="modal modal-fotos">
+      <h3>⚠️ Reportar problema</h3>
+      <p>Tire <strong>pelo menos 6 fotos</strong>: caixa fechada (1-2), produto (4) e etiqueta (1).</p>
+
+      <textarea id="problemaDescricao" placeholder="Descreva o problema (opcional, mas ajuda!)"></textarea>
+
+      <div class="fotos-contador" id="fotosContador">0 fotos · minimo 6</div>
+
+      <div class="fotos-grid" id="fotosGrid">
+        <button class="add-foto-btn" onclick="document.getElementById('inputFoto').click()">
+          <span class="icon">📷</span>
+          <span>Tirar foto</span>
+        </button>
+      </div>
+
+      <input type="file" id="inputFoto" accept="image/*" capture="environment" style="display:none" onchange="adicionarFoto(event)">
+
+      <div class="modal-acoes">
+        <button class="btn-cancelar" onclick="cancelarProblema()">Cancelar</button>
+        <button class="triagem-btn-problema btn-action" id="btnEnviarProblema" disabled onclick="enviarProblema()">
+          📨 Enviar para Diego
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
   <script>
     const inputCodigo = document.getElementById('codigo');
     const btnBuscar = document.getElementById('btnBuscar');
     const divLoading = document.getElementById('loading');
     const divResultado = document.getElementById('resultado');
+    const loginScreen = document.getElementById('loginScreen');
+    const appContainer = document.getElementById('appContainer');
 
-    // Estado pra suportar busca sob demanda
-    let ultimaOrderId = null;
-    let ultimaDataVenda = null;
-    let ultimoNumeroNF = null;
+    // Estado pra suportar busca sob demanda + triagem
+    let usuarioLogado = null;
+    let ultimaBusca = null; // dados completos da ultima busca
+    let fotosUploadadas = []; // URLs publicas das fotos uploadadas
+
+    // ================ TOAST ================
+    let toastTimeout;
+    function toast(msg, tipo = '') {
+      const t = document.getElementById('toast');
+      t.textContent = msg;
+      t.className = 'toast show ' + (tipo || '');
+      clearTimeout(toastTimeout);
+      toastTimeout = setTimeout(() => t.classList.remove('show'), 3000);
+    }
+
+    // ================ LOGIN ================
+    async function checarSessao() {
+      try {
+        const r = await fetch('/api/auth/me');
+        const d = await r.json();
+        if (d.ok && d.tipo === 'estoquista') {
+          usuarioLogado = d.usuario;
+          document.getElementById('userNome').textContent = d.usuario;
+          loginScreen.classList.remove('show');
+          appContainer.style.display = '';
+          inputCodigo.focus();
+
+          // Versao do server
+          fetch('/health').then(r => r.json()).then(d => {
+            const span = document.getElementById('serverVersion');
+            if (span) span.textContent = `server v${d.version || '?'}`;
+          }).catch(() => {});
+          return true;
+        }
+      } catch (e) {}
+
+      // Sem sessao - mostra login
+      loginScreen.classList.add('show');
+      appContainer.style.display = 'none';
+      // Carrega usuarios disponiveis
+      try {
+        const r = await fetch('/health');
+        const d = await r.json();
+        const sel = document.getElementById('loginUser');
+        sel.innerHTML = '<option value="">Selecione...</option>';
+        (d.usuarios_cadastrados || []).forEach(u => {
+          const opt = document.createElement('option');
+          opt.value = u; opt.textContent = u;
+          sel.appendChild(opt);
+        });
+      } catch (e) {}
+      return false;
+    }
+
+    async function fazerLogin(e) {
+      e.preventDefault();
+      const usuario = document.getElementById('loginUser').value;
+      const senha = document.getElementById('loginPass').value;
+      const erroEl = document.getElementById('loginErro');
+      const btn = document.getElementById('btnLogin');
+
+      erroEl.classList.remove('show');
+      btn.disabled = true;
+      btn.textContent = 'Entrando...';
+
+      try {
+        const r = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ usuario, senha }),
+        });
+        const d = await r.json();
+
+        if (d.ok) {
+          await checarSessao();
+        } else {
+          erroEl.textContent = d.erro || 'Erro ao logar';
+          erroEl.classList.add('show');
+          btn.disabled = false;
+          btn.textContent = 'Entrar';
+        }
+      } catch (err) {
+        erroEl.textContent = 'Erro de conexao';
+        erroEl.classList.add('show');
+        btn.disabled = false;
+        btn.textContent = 'Entrar';
+      }
+    }
+
+    async function fazerLogout(e) {
+      if (e) e.preventDefault();
+      try {
+        await fetch('/api/auth/logout', { method: 'POST' });
+      } catch (err) {}
+      location.reload();
+    }
 
     inputCodigo.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') { e.preventDefault(); buscar(); }
     });
-    window.addEventListener('load', () => {
-      inputCodigo.focus();
-      // Checa versao do server
-      fetch('/health').then(r => r.json()).then(d => {
-        const span = document.getElementById('serverVersion');
-        if (span) span.textContent = `server v${d.version || '?'}`;
-      }).catch(() => {});
-    });
+    window.addEventListener('load', checarSessao);
 
+    // ================ BUSCA ================
     async function buscar() {
       const codigo = inputCodigo.value.trim();
-      if (!codigo) { alert('Digite ou bipe um codigo'); return; }
+      if (!codigo) { toast('Digite ou bipe um codigo', 'err'); return; }
 
       divResultado.classList.remove('show');
       divResultado.innerHTML = '';
@@ -232,6 +582,7 @@
       try {
         const resp = await fetch(`/api/devolucao/identificar/${encodeURIComponent(codigo)}`);
         const data = await resp.json();
+        ultimaBusca = data;
         renderizar(data, resp.ok);
       } catch (err) {
         renderizarErro('Erro de conexao: ' + err.message);
@@ -242,7 +593,7 @@
       }
     }
 
-    // Busca sob demanda dos links Bling
+    // ================ BUSCA SOB DEMANDA BLING ================
     async function buscarLinksBling(orderId, dataVenda, numeroNF) {
       const btn = document.getElementById('btnBlingDemanda');
       if (!btn) return;
@@ -262,24 +613,22 @@
         if (!containerBotoes) return;
 
         if (data.ok && data.nf) {
-          // Sucesso - substitui o botao por links Bling
+          // Atualiza nf na busca atual pra triagem usar
+          if (ultimaBusca) ultimaBusca.nf = { ...(ultimaBusca.nf || {}), ...data.nf };
           let novosBotoes = '';
           if (data.nf.linkDanfe) novosBotoes += `<a href="${data.nf.linkDanfe}" target="_blank" class="btn-action">📄 DANFE Bling</a>`;
           if (data.nf.linkPdf) novosBotoes += `<a href="${data.nf.linkPdf}" target="_blank" class="btn-action">📥 Baixar PDF</a>`;
           if (data.nf.linkXml) novosBotoes += `<a href="${data.nf.linkXml}" target="_blank" class="btn-action">📋 XML</a>`;
           if (data.nf.idBling) novosBotoes += `<a href="https://www.bling.com.br/notas.fiscais.php#edit/${data.nf.idBling}" target="_blank" class="btn-action azul">🔗 Editar no Bling</a>`;
 
-          // Adiciona badge de sucesso
           const badgeFonte = document.querySelector('.badge-fonte-ml, .badge-fonte-bling');
           if (badgeFonte) {
             badgeFonte.className = 'badge badge-fonte-bling';
             badgeFonte.textContent = 'via Bling + ML';
           }
 
-          // Substitui o botao Bling pelos links Bling
           btn.outerHTML = novosBotoes;
         } else {
-          // Falha - mostra mensagem
           btn.disabled = false;
           btn.style.background = '#b00020';
           btn.innerHTML = '⚠️ Nao localizado no Bling';
@@ -288,15 +637,14 @@
             btn.innerHTML = '🔍 Tentar Bling de novo';
             btn.disabled = false;
           }, 3000);
-          console.warn('[Bling sob demanda] Falha:', data.erro);
         }
       } catch (err) {
         btn.disabled = false;
         btn.innerHTML = '⚠️ Erro de conexao';
-        console.error(err);
       }
     }
 
+    // ================ HELPERS ================
     function moeda(v) {
       if (v == null) return '-';
       return 'R$ ' + Number(v).toFixed(2).replace('.', ',');
@@ -307,7 +655,12 @@
         return new Date(iso).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
       } catch { return iso; }
     }
+    function escapeHtml(s) {
+      if (s == null) return '';
+      return String(s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+    }
 
+    // ================ RENDER ================
     function renderizar(data, ok) {
       if (!ok || !data.encontrado) {
         renderizarErro(data.erro || 'Codigo nao encontrado', data.tentativas);
@@ -318,11 +671,6 @@
       const shipment = data.shipment || {};
       const claim = data.claim || {};
       const nf = data.nf || null;
-
-      // Salva pra busca sob demanda Bling
-      ultimaOrderId = order.id || null;
-      ultimaDataVenda = order.date_created || null;
-      ultimoNumeroNF = nf?.numero || null;
 
       const itemOrder = order.order_items?.[0];
       const itemShip = shipment.shipping_items?.[0];
@@ -360,10 +708,20 @@
         html += '<span class="badge badge-fonte-ml">via Mercado Livre</span>';
       }
 
+      // QUANTIDADE EM DESTAQUE (pedido do Diego)
+      if (qtd && qtd !== '-') {
+        html += `<div class="qtd-destaque">
+          <div class="qtd-label">⚖️ Devolvendo</div>
+          <div class="qtd-valor">${qtd}</div>
+          <div class="qtd-unidade">unidade${qtd > 1 ? 's' : ''}</div>
+          <div class="qtd-produto">${escapeHtml(tituloProduto)}</div>
+        </div>`;
+      }
+
       // AVISOS
       if (data.avisos?.length) {
         data.avisos.forEach(a => {
-          html += `<div class="aviso-box" style="margin-top:10px;">⚠️ ${a.mensagem}</div>`;
+          html += `<div class="aviso-box" style="margin-top:10px;">⚠️ ${escapeHtml(a.mensagem)}</div>`;
         });
       }
 
@@ -375,48 +733,70 @@
         html += '<div class="secao-nf">';
         html += '<div class="secao-nf-titulo">🧾 Nota Fiscal</div>';
         html += '<div class="item-grid">';
-        html += `<div><div class="label">Numero NF-e</div><div class="valor"><span class="nfe-numero">${nf.numero || '-'}</span></div></div>`;
-        html += `<div><div class="label">Serie</div><div class="valor"><strong>${nf.serie || '-'}</strong></div></div>`;
+        html += `<div><div class="label">Numero NF-e</div><div class="valor"><span class="nfe-numero">${escapeHtml(nf.numero || '-')}</span></div></div>`;
+        html += `<div><div class="label">Serie</div><div class="valor"><strong>${escapeHtml(nf.serie || '-')}</strong></div></div>`;
         html += `<div><div class="label">Data emissao</div><div class="valor">${dataFmt(nf.dataEmissao)}</div></div>`;
         html += `<div><div class="label">Valor NF</div><div class="valor"><strong>${moeda(nf.valor)}</strong></div></div>`;
         if (nf.peso) {
           html += `<div><div class="label">Peso</div><div class="valor">${nf.peso}g</div></div>`;
         }
         if (nf.chaveAcesso) {
-          html += `<div style="grid-column: 1/-1;"><div class="label">Chave de acesso</div><div class="nfe-chave">${nf.chaveAcesso}</div></div>`;
+          html += `<div style="grid-column: 1/-1;"><div class="label">Chave de acesso</div><div class="nfe-chave">${escapeHtml(nf.chaveAcesso)}</div></div>`;
         }
         html += '</div>';
 
-        // Botoes - so o de buscar Bling sob demanda
         html += '<div style="margin-top: 12px;" id="botoesNF">';
-        if (ultimaOrderId) {
-          html += `<button id="btnBlingDemanda" class="btn-action" onclick="buscarLinksBling('${ultimaOrderId}', '${ultimaDataVenda || ''}', '${ultimoNumeroNF || ''}')">🔍 Buscar links da NF (~3s)</button>`;
+        if (nf.linkConsulta) html += `<a href="${nf.linkConsulta}" target="_blank" class="btn-action">📄 Consultar DANFE (Meu Danfe)</a>`;
+        if (order.id) {
+          html += `<button id="btnBlingDemanda" class="btn-action cinza" onclick="buscarLinksBling('${order.id}', '${order.date_created || ''}', '${nf.numero || ''}')">🔍 Buscar links Bling</button>`;
         }
         html += '</div>';
         html += '</div>';
-      } else if (ultimaOrderId) {
-        // Sem NF do ML - oferece botao Bling como ultima alternativa
+      } else if (order.id) {
         html += '<div class="secao-nf">';
         html += '<div class="secao-nf-titulo">🧾 Nota Fiscal</div>';
         html += '<p style="margin: 10px 0;">⚠️ NF-e nao localizada via Mercado Livre.</p>';
         html += '<div id="botoesNF">';
-        html += `<button id="btnBlingDemanda" class="btn-action" onclick="buscarLinksBling('${ultimaOrderId}', '${ultimaDataVenda || ''}', '')">🔍 Buscar no Bling (~5s)</button>`;
+        html += `<button id="btnBlingDemanda" class="btn-action" onclick="buscarLinksBling('${order.id}', '${order.date_created || ''}', '')">🔍 Buscar no Bling (~5s)</button>`;
         html += '</div>';
         html += '</div>';
+      }
+
+      // ============ TRIAGEM (NOVA Fase 3) ============
+      if (order.id) {
+        html += `
+          <div class="secao-triagem">
+            <div class="secao-triagem-titulo">🎯 Triagem</div>
+            <div class="triagem-instrucao">
+              Confere o produto, abre o pacote e escolhe abaixo:
+            </div>
+            <div class="triagem-botoes">
+              <button class="triagem-btn triagem-btn-aprovar" onclick="abrirModalAprovar()">
+                <span class="triagem-btn-icon">✅</span>
+                INCLUIR<br>ESTOQUE
+              </button>
+              <button class="triagem-btn triagem-btn-problema" onclick="abrirModalProblema()">
+                <span class="triagem-btn-icon">⚠️</span>
+                REPORTAR<br>PROBLEMA
+              </button>
+            </div>
+            <div id="triagemSucesso"></div>
+          </div>
+        `;
       }
 
       // ============ PRODUTO ============
       html += '<div class="bloco">';
       html += '<div class="secao-titulo">Produto</div>';
-      html += `<div class="produto-titulo">${tituloProduto}</div>`;
-      if (mlb !== '-') html += `<div class="produto-mlb">${mlb}</div>`;
+      html += `<div class="produto-titulo">${escapeHtml(tituloProduto)}</div>`;
+      if (mlb !== '-') html += `<div class="produto-mlb">${escapeHtml(mlb)}</div>`;
       html += '<div class="item-grid">';
-      html += `<div><div class="label">SKU (Bling)</div><div class="valor"><strong>${sku}</strong></div></div>`;
+      html += `<div><div class="label">SKU (Bling)</div><div class="valor"><strong>${escapeHtml(sku)}</strong></div></div>`;
       html += `<div><div class="label">Quantidade</div><div class="valor">${qtd} un</div></div>`;
       html += `<div><div class="label">Valor unitario</div><div class="valor">${moeda(valorUnit)}</div></div>`;
       html += `<div><div class="label">Valor total</div><div class="valor"><strong>${moeda(valorTotal)}</strong></div></div>`;
       if (variacao) {
-        html += `<div style="grid-column: 1/-1;"><div class="label">Variacao</div><div class="valor">${variacao}</div></div>`;
+        html += `<div style="grid-column: 1/-1;"><div class="label">Variacao</div><div class="valor">${escapeHtml(variacao)}</div></div>`;
       }
       html += '</div>';
       html += '</div>';
@@ -425,8 +805,8 @@
       html += '<div class="bloco">';
       html += '<div class="secao-titulo">Comprador</div>';
       html += '<div class="item-grid">';
-      html += `<div><div class="label">Nome</div><div class="valor">${buyerNome}</div></div>`;
-      html += `<div><div class="label">Nickname</div><div class="valor">${buyerNick}</div></div>`;
+      html += `<div><div class="label">Nome</div><div class="valor">${escapeHtml(buyerNome)}</div></div>`;
+      html += `<div><div class="label">Nickname</div><div class="valor">${escapeHtml(buyerNick)}</div></div>`;
       html += `<div><div class="label">ID</div><div class="valor">${buyerId}</div></div>`;
       html += `<div><div class="label">Data da venda</div><div class="valor">${dataFmt(order.date_created)}</div></div>`;
       html += '</div>';
@@ -450,10 +830,10 @@
         html += '<div class="item-grid">';
         html += `<div><div class="label">Shipment ID</div><div class="valor">${shipment.id}</div></div>`;
         html += `<div><div class="label">Status envio</div><div class="valor">${traduzirStatusEnvio(shipment.status)}</div></div>`;
-        html += `<div><div class="label">Tipo</div><div class="valor">${shipment.type || 'forward'}</div></div>`;
+        html += `<div><div class="label">Tipo</div><div class="valor">${escapeHtml(shipment.type || 'forward')}</div></div>`;
         html += `<div><div class="label">Custo do envio</div><div class="valor">${moeda(shipment.base_cost)}</div></div>`;
         if (shipment.tags?.length) {
-          html += `<div style="grid-column: 1/-1;"><div class="label">Tags ML</div><div class="valor">${shipment.tags.join(', ')}</div></div>`;
+          html += `<div style="grid-column: 1/-1;"><div class="label">Tags ML</div><div class="valor">${escapeHtml(shipment.tags.join(', '))}</div></div>`;
         }
         html += '</div>';
         html += '</div>';
@@ -473,22 +853,6 @@
         html += '</div>';
       }
 
-      // ============ CLAIM ============
-      if (claim.id) {
-        html += '<div class="secao-timeline">';
-        html += '<div class="secao-titulo">⚖️ Reclamacao (Claim)</div>';
-        html += '<div class="item-grid">';
-        html += `<div><div class="label">Claim ID</div><div class="valor">${claim.id}</div></div>`;
-        html += `<div><div class="label">Status</div><div class="valor">${claim.status || '-'}</div></div>`;
-        html += `<div><div class="label">Tipo</div><div class="valor">${claim.type || '-'}</div></div>`;
-        html += `<div><div class="label">Estagio</div><div class="valor">${claim.stage || '-'}</div></div>`;
-        if (claim.reason_id) {
-          html += `<div style="grid-column:1/-1;"><div class="label">Motivo</div><div class="valor">${claim.reason_id}</div></div>`;
-        }
-        html += '</div>';
-        html += '</div>';
-      }
-
       html += '</div>'; // fim grid-desktop
 
       // DEBUG
@@ -496,21 +860,13 @@
       html += '<ul class="tentativas-list">';
       data.tentativas.forEach(t => {
         const icone = t.ok ? '✅' : '❌';
-        html += `<li>${icone} <strong>${t.tipo}</strong>: <code>${t.codigo}</code> → status ${t.status || '?'}`;
+        html += `<li>${icone} <strong>${escapeHtml(t.tipo)}</strong>: <code>${escapeHtml(String(t.codigo))}</code> → status ${t.status || '?'}`;
         if (t.tem_fiscal_key !== undefined) html += ` <em>(fiscal_key: ${t.tem_fiscal_key ? 'SIM' : 'NAO'})</em>`;
         if (t.encontradas !== undefined) html += ` <em>(${t.encontradas} encontradas)</em>`;
         if (t.claims_encontradas !== undefined) html += ` <em>(${t.claims_encontradas} claims)</em>`;
-        if (t.erro) {
-          const errStr = typeof t.erro === 'object' ? JSON.stringify(t.erro) : t.erro;
-          html += ` <span style="color:#b00020;">(${errStr.substring(0, 100)})</span>`;
-        }
         html += '</li>';
       });
       html += '</ul></details>';
-
-      html += '<details><summary>📋 Ver JSON completo</summary>';
-      html += `<div class="json-raw">${JSON.stringify(data, null, 2)}</div>`;
-      html += '</details>';
 
       html += '</div>';
 
@@ -519,16 +875,11 @@
     }
 
     function renderizarErro(mensagem, tentativas) {
-      let html = '<div class="card"><div class="erro-box"><strong>❌ ' + mensagem + '</strong></div>';
+      let html = '<div class="card"><div class="erro-box"><strong>❌ ' + escapeHtml(mensagem) + '</strong></div>';
       if (tentativas?.length) {
         html += '<div class="secao-titulo" style="margin-top:14px;">Tentativas</div><ul class="tentativas-list">';
         tentativas.forEach(t => {
-          html += `<li>${t.tipo}: <code>${t.codigo}</code> → status ${t.status}`;
-          if (t.erro) {
-            const errStr = typeof t.erro === 'object' ? JSON.stringify(t.erro) : t.erro;
-            html += ` <span style="color:#b00020;">(${errStr.substring(0, 150)})</span>`;
-          }
-          html += '</li>';
+          html += `<li>${escapeHtml(t.tipo)}: <code>${escapeHtml(String(t.codigo))}</code> → status ${t.status}</li>`;
         });
         html += '</ul>';
       }
@@ -538,28 +889,255 @@
     }
 
     function traduzirStatus(s) {
-      const mapa = {
-        'paid': '✅ Paga', 'cancelled': '❌ Cancelada',
-        'pending': '⏳ Pendente', 'confirmed': '✅ Confirmada',
-        'invalid': '⚠️ Invalida',
-      };
-      return mapa[s] || s || '-';
+      return ({ paid:'✅ Paga', cancelled:'❌ Cancelada', pending:'⏳ Pendente', confirmed:'✅ Confirmada', invalid:'⚠️ Invalida' })[s] || s || '-';
     }
     function traduzirPagamento(s) {
-      const mapa = {
-        'approved': '✅ Aprovado', 'refunded': '↩️ Estornado',
-        'cancelled': '❌ Cancelado', 'pending': '⏳ Pendente',
-        'rejected': '⚠️ Rejeitado',
-      };
-      return mapa[s] || s || '-';
+      return ({ approved:'✅ Aprovado', refunded:'↩️ Estornado', cancelled:'❌ Cancelado', pending:'⏳ Pendente', rejected:'⚠️ Rejeitado' })[s] || s || '-';
     }
     function traduzirStatusEnvio(s) {
-      const mapa = {
-        'delivered': '✅ Entregue', 'shipped': '🚚 Em transito',
-        'ready_to_ship': '📦 Pronto', 'pending': '⏳ Pendente',
-        'cancelled': '❌ Cancelado', 'not_delivered': '⚠️ Nao entregue',
+      return ({ delivered:'✅ Entregue', shipped:'🚚 Em transito', ready_to_ship:'📦 Pronto', pending:'⏳ Pendente', cancelled:'❌ Cancelado', not_delivered:'⚠️ Nao entregue' })[s] || s || '-';
+    }
+
+    // ================ TRIAGEM - APROVAR ================
+    function abrirModalAprovar() {
+      if (!ultimaBusca) return;
+      const order = ultimaBusca.order || {};
+      const itemOrder = order.order_items?.[0];
+      const titulo = itemOrder?.item?.title || '-';
+      const sku = itemOrder?.item?.seller_sku || '-';
+      const qtd = itemOrder?.quantity || '-';
+      document.getElementById('modalAprovarDetalhes').innerHTML = `
+        <strong>${escapeHtml(titulo)}</strong><br>
+        SKU: <strong>${escapeHtml(sku)}</strong> · Quantidade: <strong>${qtd} un</strong>
+      `;
+      document.getElementById('modalAprovar').classList.add('show');
+    }
+
+    function fecharModal(id) {
+      document.getElementById(id).classList.remove('show');
+    }
+
+    async function confirmarAprovar() {
+      if (!ultimaBusca) return;
+      const btn = document.querySelector('#modalAprovar .btn-action');
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner-mini"></span>Salvando...';
+
+      try {
+        const r = await fetch('/api/triagem/aprovar', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(montarPayloadTriagem()),
+        });
+        const d = await r.json();
+        if (d.ok) {
+          fecharModal('modalAprovar');
+          mostrarSucesso('✅ Incluido no estoque!', 'Diego ja foi avisado pra emitir a NF de devolucao no Bling.');
+          toast('Aprovacao registrada!', 'ok');
+          // Limpa busca pra estoquista poder bipar a proxima
+          setTimeout(() => {
+            divResultado.classList.remove('show');
+            inputCodigo.value = '';
+            inputCodigo.focus();
+          }, 2500);
+        } else {
+          toast('Erro: ' + (d.erro || 'falha'), 'err');
+          btn.disabled = false;
+          btn.innerHTML = '✅ Confirmar';
+        }
+      } catch (err) {
+        toast('Erro de conexao', 'err');
+        btn.disabled = false;
+        btn.innerHTML = '✅ Confirmar';
+      }
+    }
+
+    function montarPayloadTriagem() {
+      const order = ultimaBusca.order || {};
+      const shipment = ultimaBusca.shipment || {};
+      const itemOrder = order.order_items?.[0];
+      const buyer = order.buyer || {};
+      const nf = ultimaBusca.nf || {};
+
+      const buyerNome = buyer.first_name
+        ? `${buyer.first_name} ${buyer.last_name || ''}`.trim()
+        : null;
+
+      return {
+        shipment_id: shipment.id,
+        order_id: order.id,
+        pack_id: order.pack_id,
+        buyer_id: buyer.id,
+        buyer_nome: buyerNome,
+        produto_titulo: itemOrder?.item?.title,
+        produto_mlb: itemOrder?.item?.id,
+        produto_sku: itemOrder?.item?.seller_sku,
+        produto_qtd: itemOrder?.quantity,
+        produto_valor_unit: itemOrder?.unit_price,
+        nf_numero: nf.numero,
+        nf_serie: nf.serie,
+        nf_chave: nf.chaveAcesso,
+        nf_valor: nf.valor,
+        nf_data_emissao: nf.dataEmissao,
+        nf_id_bling: nf.idBling,
+        nf_link_danfe: nf.linkDanfe || nf.linkConsulta,
       };
-      return mapa[s] || s || '-';
+    }
+
+    function mostrarSucesso(titulo, mensagem) {
+      const el = document.getElementById('triagemSucesso');
+      if (!el) return;
+      el.innerHTML = `
+        <div class="triagem-sucesso">
+          <h3>${escapeHtml(titulo)}</h3>
+          <p>${escapeHtml(mensagem)}</p>
+        </div>
+      `;
+      // Remove os botoes de triagem
+      const botoes = document.querySelector('.triagem-botoes');
+      if (botoes) botoes.style.display = 'none';
+    }
+
+    // ================ TRIAGEM - PROBLEMA ================
+    function abrirModalProblema() {
+      fotosUploadadas = [];
+      document.getElementById('problemaDescricao').value = '';
+      atualizarGridFotos();
+      atualizarContadorFotos();
+      document.getElementById('modalProblema').classList.add('show');
+    }
+
+    function cancelarProblema() {
+      // Pergunta confirmacao se ja tem fotos
+      if (fotosUploadadas.length > 0) {
+        if (!confirm('Cancelar vai descartar as fotos ja tiradas. Tem certeza?')) return;
+      }
+      fotosUploadadas = [];
+      fecharModal('modalProblema');
+    }
+
+    async function adicionarFoto(event) {
+      const file = event.target.files?.[0];
+      if (!file) return;
+      // Reset pra mesmo arquivo poder ser reselecionado
+      event.target.value = '';
+
+      // Adiciona placeholder com progresso
+      const idx = fotosUploadadas.length;
+      fotosUploadadas.push({ url: null, uploading: true, file });
+      atualizarGridFotos();
+      atualizarContadorFotos();
+
+      try {
+        const formData = new FormData();
+        formData.append('foto', file);
+        const r = await fetch('/api/triagem/upload-foto', {
+          method: 'POST',
+          body: formData,
+        });
+        const d = await r.json();
+        if (d.ok && d.url) {
+          fotosUploadadas[idx] = { url: d.url, uploading: false };
+        } else {
+          fotosUploadadas.splice(idx, 1);
+          toast('Erro ao subir foto: ' + (d.erro || 'falha'), 'err');
+        }
+      } catch (err) {
+        fotosUploadadas.splice(idx, 1);
+        toast('Erro ao subir foto', 'err');
+      }
+      atualizarGridFotos();
+      atualizarContadorFotos();
+    }
+
+    function removerFoto(idx) {
+      fotosUploadadas.splice(idx, 1);
+      atualizarGridFotos();
+      atualizarContadorFotos();
+    }
+
+    function atualizarGridFotos() {
+      const grid = document.getElementById('fotosGrid');
+      const html = fotosUploadadas.map((f, i) => {
+        if (f.uploading) {
+          return `<div class="foto-thumb">
+            <div class="spinner" style="width:24px;height:24px;"></div>
+            <div class="progress">enviando...</div>
+          </div>`;
+        }
+        return `<div class="foto-thumb">
+          <img src="${f.url}" alt="Foto ${i+1}">
+          <button class="remove-btn" onclick="removerFoto(${i})">✕</button>
+        </div>`;
+      }).join('');
+
+      grid.innerHTML = html + `
+        <button class="add-foto-btn" onclick="document.getElementById('inputFoto').click()">
+          <span class="icon">📷</span>
+          <span>Tirar foto</span>
+        </button>
+      `;
+    }
+
+    function atualizarContadorFotos() {
+      const totalProntas = fotosUploadadas.filter(f => !f.uploading && f.url).length;
+      const el = document.getElementById('fotosContador');
+      const btn = document.getElementById('btnEnviarProblema');
+
+      if (totalProntas >= 6) {
+        el.className = 'fotos-contador completo';
+        el.textContent = `✅ ${totalProntas} fotos · pronto pra enviar`;
+        btn.disabled = false;
+      } else if (totalProntas >= 1) {
+        el.className = 'fotos-contador minimo';
+        el.textContent = `⚠️ ${totalProntas} fotos · faltam ${6 - totalProntas} pra completar 6`;
+        btn.disabled = totalProntas < 1; // permite enviar com >=1
+      } else {
+        el.className = 'fotos-contador';
+        el.textContent = '0 fotos · minimo 6';
+        btn.disabled = true;
+      }
+    }
+
+    async function enviarProblema() {
+      const fotosOk = fotosUploadadas.filter(f => !f.uploading && f.url).map(f => f.url);
+      if (fotosOk.length < 1) { toast('Tire pelo menos 1 foto', 'err'); return; }
+
+      const descricao = document.getElementById('problemaDescricao').value.trim();
+      const btn = document.getElementById('btnEnviarProblema');
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner-mini"></span>Enviando...';
+
+      try {
+        const payload = montarPayloadTriagem();
+        payload.descricao = descricao;
+        payload.fotos = fotosOk;
+
+        const r = await fetch('/api/triagem/problema', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        const d = await r.json();
+        if (d.ok) {
+          fecharModal('modalProblema');
+          mostrarSucesso('⚠️ Problema reportado!', 'Email enviado pra Diego com as fotos. Aguarde retorno.');
+          toast('Problema enviado!', 'ok');
+          setTimeout(() => {
+            divResultado.classList.remove('show');
+            inputCodigo.value = '';
+            inputCodigo.focus();
+          }, 2500);
+        } else {
+          toast('Erro: ' + (d.erro || 'falha'), 'err');
+          btn.disabled = false;
+          btn.innerHTML = '📨 Enviar para Diego';
+        }
+      } catch (err) {
+        toast('Erro de conexao', 'err');
+        btn.disabled = false;
+        btn.innerHTML = '📨 Enviar para Diego';
+      }
     }
   </script>
 </body>
