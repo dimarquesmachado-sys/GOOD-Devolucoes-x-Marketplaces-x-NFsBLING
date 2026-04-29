@@ -518,7 +518,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '3.8.0',
+    version: '3.10.0',
     integrations: {
       ml: !!ML_ACCESS_TOKEN,
       bling: !!BLING_ACCESS_TOKEN,
@@ -1137,8 +1137,8 @@ app.post('/api/triagem/problema', requerEstoquista, async (req, res) => {
     return res.status(400).json({ ok: false, erro: 'shipment_id obrigatorio' });
   }
   const fotos = Array.isArray(dados.fotos) ? dados.fotos : [];
-  if (fotos.length < 1) {
-    return res.status(400).json({ ok: false, erro: 'Pelo menos 1 foto necessaria' });
+  if (fotos.length < 6) {
+    return res.status(400).json({ ok: false, erro: `Minimo 6 fotos obrigatorias (recebido: ${fotos.length})` });
   }
 
   // Bloqueia duplicata
@@ -1290,7 +1290,7 @@ app.get('/api/admin/devolucoes', requerAdmin, async (req, res) => {
       .from('devolucoes')
       .select('*')
       .order('created_at', { ascending: false })
-      .limit(200);
+      .limit(1000);
 
     if (error) {
       return res.status(500).json({ ok: false, erro: error.message });
@@ -1353,56 +1353,18 @@ app.delete('/api/admin/devolucao/:id', requerAdmin, async (req, res) => {
 });
 
 // ============================================================
-// FASE 3: LIMPEZA AUTOMATICA (registros >30 dias)
+// FASE 3: LIMPEZA AUTOMATICA - DESABILITADA (Diego pediu)
+// Registros sao mantidos para sempre. Quando atingir limite do plano free
+// Supabase, migrar pro Pro ($25/mes) com 100GB Storage.
 // ============================================================
-async function limparRegistrosAntigos() {
-  if (!supabase) return;
-  try {
-    const limite = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
-    const { data, error } = await supabase
-      .from('devolucoes')
-      .delete()
-      .lt('created_at', limite)
-      .select('id, problema_fotos');
-
-    if (error) {
-      console.error('[LIMPEZA] Erro:', error.message);
-      return;
-    }
-
-    // Apaga fotos do storage tambem
-    let totalFotosApagadas = 0;
-    for (const reg of (data || [])) {
-      const fotos = Array.isArray(reg.problema_fotos) ? reg.problema_fotos : [];
-      for (const url of fotos) {
-        const m = url.match(/\/fotos-problema\/(.+)$/);
-        if (m) {
-          await supabase.storage.from('fotos-problema').remove([m[1]]).catch(() => {});
-          totalFotosApagadas++;
-        }
-      }
-    }
-
-    if ((data || []).length > 0) {
-      console.log(`[LIMPEZA] ${data.length} registros + ${totalFotosApagadas} fotos apagados (>30 dias)`);
-    }
-  } catch (err) {
-    console.error('[LIMPEZA] Erro:', err);
-  }
-}
-
-// Roda 1x ao iniciar e depois 1x por dia
-if (supabase) {
-  setTimeout(limparRegistrosAntigos, 5000);
-  setInterval(limparRegistrosAntigos, 24 * 60 * 60 * 1000);
-}
+// (codigo de limpeza removido em v3.10)
 
 // ============================================================
 // INICIAR
 // ============================================================
 app.listen(PORT, () => {
   console.log('============================================');
-  console.log('GOOD Devolucoes v3.8.0 - anti-duplicata + filtros admin');
+  console.log('GOOD Devolucoes v3.10.0 - sem auto-limpeza + filtro pre-setado 4 meses');
   console.log(`Porta: ${PORT}`);
   console.log(`ML: ${ML_ACCESS_TOKEN ? 'OK' : 'FALTA'}`);
   console.log(`Bling: ${BLING_ACCESS_TOKEN ? 'OK' : 'FALTA'}`);
