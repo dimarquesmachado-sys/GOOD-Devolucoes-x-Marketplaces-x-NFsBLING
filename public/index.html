@@ -172,6 +172,7 @@
     <header>
       <h1>📦 GOOD Devolucoes</h1>
       <p>Identificar venda + NF-e da etiqueta</p>
+      <p style="font-size: 10px; color: #888; margin-top: 4px;">v3.4 (NFs Bling) | <span id="serverVersion">checando...</span></p>
     </header>
 
     <div class="card">
@@ -209,7 +210,14 @@
     inputCodigo.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') { e.preventDefault(); buscar(); }
     });
-    window.addEventListener('load', () => inputCodigo.focus());
+    window.addEventListener('load', () => {
+      inputCodigo.focus();
+      // Checa versao do server
+      fetch('/health').then(r => r.json()).then(d => {
+        const span = document.getElementById('serverVersion');
+        if (span) span.textContent = `server v${d.version || '?'}`;
+      }).catch(() => {});
+    });
 
     async function buscar() {
       const codigo = inputCodigo.value.trim();
@@ -373,11 +381,10 @@
         }
         html += '</div>';
 
-        // Botoes - sempre tem Meu Danfe + botao sob demanda Bling
+        // Botoes - so o de buscar Bling sob demanda
         html += '<div style="margin-top: 12px;" id="botoesNF">';
-        if (nf.linkConsulta) html += `<a href="${nf.linkConsulta}" target="_blank" class="btn-action">📄 Consultar DANFE (Meu Danfe)</a>`;
         if (ultimaOrderId) {
-          html += `<button id="btnBlingDemanda" class="btn-action cinza" onclick="buscarLinksBling('${ultimaOrderId}', '${ultimaDataVenda || ''}')">🔍 Buscar links Bling</button>`;
+          html += `<button id="btnBlingDemanda" class="btn-action" onclick="buscarLinksBling('${ultimaOrderId}', '${ultimaDataVenda || ''}')">🔍 Buscar links da NF (~5s)</button>`;
         }
         html += '</div>';
         html += '</div>';
