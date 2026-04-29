@@ -264,9 +264,9 @@
       if (order && order.id) html += '<span class="badge badge-sucesso">✅ Order ML</span>';
       if (nf) {
         html += '<span class="badge badge-nfe">🧾 NF-e</span>';
-        html += nf.fonte === 'ml'
-          ? '<span class="badge badge-fonte-ml">via Mercado Livre</span>'
-          : '<span class="badge badge-fonte-bling">via Bling</span>';
+        if (nf.fonte === 'ml') html += '<span class="badge badge-fonte-ml">via Mercado Livre</span>';
+        else if (nf.fonte === 'bling') html += '<span class="badge badge-fonte-bling">via Bling</span>';
+        else if (nf.fonte === 'bling+ml') html += '<span class="badge badge-fonte-bling">via Bling + ML</span>';
       }
 
       // AVISOS
@@ -293,12 +293,13 @@
         }
         html += '</div>';
 
-        // Botoes
+        // Botoes - Bling (prioritario, formato familiar) + Meu Danfe (backup)
         html += '<div style="margin-top: 12px;">';
-        if (nf.linkConsulta) html += `<a href="${nf.linkConsulta}" target="_blank" class="btn-action">📄 Consultar DANFE</a>`;
-        if (nf.linkPdf) html += `<a href="${nf.linkPdf}" target="_blank" class="btn-action">📄 PDF</a>`;
+        if (nf.linkDanfe) html += `<a href="${nf.linkDanfe}" target="_blank" class="btn-action">📄 DANFE Bling</a>`;
+        if (nf.linkPdf) html += `<a href="${nf.linkPdf}" target="_blank" class="btn-action">📥 Baixar PDF</a>`;
         if (nf.linkXml) html += `<a href="${nf.linkXml}" target="_blank" class="btn-action">📋 XML</a>`;
-        if (nf.idBling) html += `<a href="https://www.bling.com.br/notas.fiscais.php#edit/${nf.idBling}" target="_blank" class="btn-action azul">🔗 Bling</a>`;
+        if (nf.linkConsulta && !nf.linkDanfe) html += `<a href="${nf.linkConsulta}" target="_blank" class="btn-action">📄 Consultar DANFE</a>`;
+        if (nf.idBling) html += `<a href="https://www.bling.com.br/notas.fiscais.php#edit/${nf.idBling}" target="_blank" class="btn-action azul">🔗 Editar no Bling</a>`;
         html += '</div>';
         html += '</div>';
       }
