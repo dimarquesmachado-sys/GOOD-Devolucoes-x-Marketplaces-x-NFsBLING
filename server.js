@@ -799,10 +799,68 @@ app.get('/api/devolucao/identificar/:codigo', async (req, res) => {
   }
 
   if (!nfData) {
-    resultado.avisos.push({
-      tipo: 'sem_nf_ml',
-      mensagem: 'NF-e nao localizada via ML. Use o botao "Buscar links Bling" pra tentar via Bling.',
-    });
+    // NOVO v3.13: tenta automaticamente buscar no Bling antes de desistir
+    // (evita estoquista ter que clicar "Buscar links Bling")
+    if (order?.id) {
+      console.log(`[BUSCA] ML sem NF, tentando Bling automatico pra order=${order.id}`);
+      const dataRef = order.date_created || null;
+      const rBling = await buscarNFnoBlingPorOrderId(String(order.id), dataRef, { maxPaginas: 30 });
+
+      resultado.tentativas.push({
+        tipo: 'bling_auto_por_orderid',
+        codigo: order.id,
+        ok: rBling.ok,
+        status: rBling.ok ? 200 : 404,
+        paginas_verificadas: rBling.pagina,
+      });
+
+      if (rBling.ok && rBling.match) {
+        // Buscar NF completa pra ter linkDanfe E ITENS (titulo+SKU+EAN)
+        await sleep(400);
+        const rCompleta = await buscarNFePorId(rBling.match.id);
+        const nf = (rCompleta.ok && rCompleta.data?.data) ? rCompleta.data.data : rBling.match;
+
+        const itensBling = Array.isArray(nf.itens) ? nf.itens.map(it => ({
+          titulo: it.descricao || null,
+          sku: it.codigo || null,
+          ean: it.gtin || null,
+          quantidade: it.quantidade || null,
+          valor: it.valor || null,
+          unidade: it.unidade || null,
+        })) : [];
+
+        nfData = {
+          fonte: 'bling',
+          numero: nf.numero,
+          serie: nf.serie,
+          chaveAcesso: nf.chaveAcesso,
+          valor: nf.valorNota,
+          dataEmissao: nf.dataEmissao,
+          linkDanfe: nf.linkDanfe,
+          linkPdf: nf.linkPDF,
+          linkXml: nf.xml,
+          idBling: nf.id,
+          numeroPedidoLoja: nf.numeroPedidoLoja,
+          itens: itensBling,
+        };
+
+        resultado.avisos.push({
+          tipo: 'nf_via_bling_auto',
+          mensagem: `NF ${nf.numero} achada automaticamente no Bling`,
+        });
+        console.log(`[BUSCA] Bling auto SUCESSO: NF=${nf.numero} itens=${itensBling.length}`);
+      } else {
+        resultado.avisos.push({
+          tipo: 'sem_nf',
+          mensagem: 'NF-e nao localizada nem no ML nem no Bling automaticamente',
+        });
+      }
+    } else {
+      resultado.avisos.push({
+        tipo: 'sem_nf_ml',
+        mensagem: 'NF-e nao localizada via ML. Use o botao "Buscar links Bling" pra tentar via Bling.',
+      });
+    }
   }
 
   if (!order) {
