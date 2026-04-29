@@ -551,7 +551,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '3.13.1',
+    version: '3.14.0',
     integrations: {
       ml: !!ML_ACCESS_TOKEN,
       bling: !!BLING_ACCESS_TOKEN,
@@ -1230,7 +1230,9 @@ app.post('/api/triagem/aprovar', requerEstoquista, async (req, res) => {
         nf_link_danfe: dados.nf_link_danfe || null,
         tipo: 'aprovado',
         status: 'pendente',
-        problema_descricao: `Aprovado por ${req.usuario}`,
+        problema_descricao: dados.bipagem_forcada
+          ? `Aprovado por ${req.usuario} [BIPAGEM FORCADA] OBS: ${dados.bipagem_observacao}`
+          : `Aprovado por ${req.usuario} [bipagem OK]`,
       }])
       .select()
       .single();
@@ -1240,7 +1242,7 @@ app.post('/api/triagem/aprovar', requerEstoquista, async (req, res) => {
       return res.status(500).json({ ok: false, erro: error.message });
     }
 
-    console.log(`[TRIAGEM] APROVADO por ${req.usuario}: shipment=${dados.shipment_id} NF=${dados.nf_numero}`);
+    console.log(`[TRIAGEM] APROVADO por ${req.usuario}: shipment=${dados.shipment_id} NF=${dados.nf_numero}${dados.bipagem_forcada ? ' [FORCADO]' : ''}`);
     return res.json({ ok: true, id: data.id, registro: data });
   } catch (err) {
     console.error('[TRIAGEM] Erro:', err);
@@ -1526,7 +1528,7 @@ app.delete('/api/admin/devolucao/:id', requerAdmin, async (req, res) => {
 // ============================================================
 app.listen(PORT, () => {
   console.log('============================================');
-  console.log('GOOD Devolucoes v3.13.1 - busca NF via /pedidos/vendas (acha NFs canceladas)');
+  console.log('GOOD Devolucoes v3.14.0 - bipagem EAN obrigatoria + observacao se 2 erros');
   console.log(`Porta: ${PORT}`);
   console.log(`ML: ${ML_ACCESS_TOKEN ? 'OK' : 'FALTA'}`);
   console.log(`Bling: ${BLING_ACCESS_TOKEN ? 'OK' : 'FALTA'}`);
