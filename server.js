@@ -247,6 +247,73 @@ async function buscarNFePorId(idNFe) {
   return chamarBling(`https://www.bling.com.br/Api/v3/nfe/${idNFe}`);
 }
 
+// NOVO v3.5: paginar /nfe procurando por NUMERO da NF (que vem do ML)
+// Estrategia mais robusta - listing do /nfe nao traz numeroPedidoLoja,
+// mas traz numero. Usamos invoice_number do ML pra match.
+async function buscarNFnoBlingPorNumero(numeroNF, dataReferencia, opcoes = {}) {
+  const numeroNFStr = String(numeroNF).trim().padStart(6, '0'); // 71932 -> 071932
+  const numeroNFLimpo = String(numeroNF).trim().replace(/^0+/, ''); // remove zeros a esquerda
+  const MAX_PAGINAS = opcoes.maxPaginas || 50;
+  const LIMITE_PAGINA = 100;
+  const DELAY_MS = 400;
+  const DIAS_FOLGA = 5;
+
+  let dataLimite = null;
+  if (dataReferencia) {
+    const ref = new Date(dataReferencia);
+    if (!isNaN(ref.getTime())) {
+      dataLimite = new Date(ref.getTime() - DIAS_FOLGA * 24 * 60 * 60 * 1000);
+    }
+  }
+
+  console.log(`[Bling] BUSCA NF por numero=${numeroNFStr} (alt: ${numeroNFLimpo}) max ${MAX_PAGINAS}pgs`);
+
+  let totalScanned = 0;
+  let primeiraDataVista = null;
+  let ultimaDataVista = null;
+
+  for (let pagina = 1; pagina <= MAX_PAGINAS; pagina++) {
+    if (pagina > 1) await sleep(DELAY_MS);
+    const url = `https://www.bling.com.br/Api/v3/nfe?limite=${LIMITE_PAGINA}&pagina=${pagina}&tipo=1`;
+    const r = await chamarBling(url);
+
+    if (!r.ok) {
+      return { ok: false, status: r.status, error: r.error, totalScanned, primeiraDataVista, ultimaDataVista };
+    }
+
+    const lista = r.data?.data || [];
+    if (lista.length === 0) break;
+
+    if (pagina === 1 && lista[0]) primeiraDataVista = lista[0].dataEmissao;
+    if (lista[lista.length - 1]) ultimaDataVista = lista[lista.length - 1].dataEmissao;
+
+    totalScanned += lista.length;
+
+    // Match por numero - tenta varias formas
+    const match = lista.find(nf => {
+      const numeroBling = String(nf.numero || '').trim();
+      const numeroBlingLimpo = numeroBling.replace(/^0+/, '');
+      return numeroBling === numeroNFStr ||
+             numeroBlingLimpo === numeroNFLimpo ||
+             numeroBling === String(numeroNF);
+    });
+
+    if (match) {
+      console.log(`[Bling] NF ENCONTRADA pag ${pagina}: numero=${match.numero} id=${match.id}`);
+      return { ok: true, match, pagina, totalScanned, primeiraDataVista, ultimaDataVista };
+    }
+
+    if (dataLimite && lista[lista.length - 1]?.dataEmissao) {
+      const dataNF = new Date(lista[lista.length - 1].dataEmissao);
+      if (dataNF < dataLimite) break;
+    }
+
+    if (lista.length < LIMITE_PAGINA) break;
+  }
+
+  return { ok: true, match: null, totalScanned, primeiraDataVista, ultimaDataVista };
+}
+
 // NOVO: paginar /nfe procurando por numeroPedidoLoja=order_id ML
 // Vantagem: NFs nao somem mesmo se o pedido for cancelado depois
 // E se acharmos a NF aqui, ja temos linkDanfe direto sem precisar buscar pedido
@@ -378,7 +445,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '3.4.0',
+    version: '3.5.0',
     integrations: {
       ml: !!ML_ACCESS_TOKEN,
       bling: !!BLING_ACCESS_TOKEN,
@@ -608,27 +675,39 @@ app.get('/api/devolucao/identificar/:codigo', async (req, res) => {
 });
 
 // ============================================================
-// NOVO v3.4: Buscar links Bling sob demanda - PAGINANDO NFs
-// Estrategia: paginar /nfe procurando numeroPedidoLoja=order_id ML
-// Inclui pedidos cancelados (NFs ja emitidas nao somem)
-// Funciona em 1 chamada (NF ja vem com linkDanfe completo)
+// NOVO v3.5: Buscar links Bling sob demanda - PAGINANDO NFs
+// Estrategia rapida: usa invoice_number do ML (que vem rapido) e busca por NUMERO da NF.
+// Fallback: se nao tem numero, busca por numeroPedidoLoja (mais lento).
+// Funciona pra TUDO (canceladas, ativas, etc) - NFs nunca somem do Bling.
 // ============================================================
 app.get('/api/nf/buscar-links-bling/:orderId', async (req, res) => {
   const orderId = String(req.params.orderId || '').trim();
   const dataRef = req.query.data || null;
+  const numeroNF = req.query.numeroNF || null;
 
-  if (!orderId) {
-    return res.status(400).json({ ok: false, erro: 'orderId nao informado' });
+  if (!orderId && !numeroNF) {
+    return res.status(400).json({ ok: false, erro: 'orderId ou numeroNF necessario' });
   }
 
-  console.log(`[BLING-DEMANDA v3.4] orderId=${orderId} dataRef=${dataRef}`);
+  console.log(`[BLING-DEMANDA v3.5] orderId=${orderId} numeroNF=${numeroNF} dataRef=${dataRef}`);
 
-  // Estrategia v3.4: paginar NFs (em vez de pedidos)
-  const rBusca = await buscarNFnoBlingPorOrderId(orderId, dataRef, { maxPaginas: 50 });
+  let rBusca;
+  let estrategia;
+
+  // Se passou o numero da NF (do ML), busca rapida por numero
+  if (numeroNF) {
+    estrategia = 'por_numero_nf';
+    rBusca = await buscarNFnoBlingPorNumero(numeroNF, dataRef, { maxPaginas: 50 });
+  } else {
+    // Fallback: busca por numeroPedidoLoja (cada NF precisa GET individual, lento)
+    estrategia = 'por_numero_pedido_loja';
+    rBusca = await buscarNFnoBlingPorOrderId(orderId, dataRef, { maxPaginas: 50 });
+  }
 
   if (!rBusca.ok) {
     return res.json({
       ok: false,
+      estrategia,
       erro: 'Erro ao buscar NF no Bling',
       detalhes: rBusca,
     });
@@ -637,22 +716,20 @@ app.get('/api/nf/buscar-links-bling/:orderId', async (req, res) => {
   if (!rBusca.match) {
     return res.json({
       ok: false,
+      estrategia,
       erro: `NF nao encontrada em ${rBusca.totalScanned} NFs verificadas (de ${rBusca.primeiraDataVista || '?'} a ${rBusca.ultimaDataVista || '?'})`,
       detalhes: rBusca,
     });
   }
 
-  // A NF que veio do listing pode nao ter todos os campos.
-  // Buscar a NF completa pelo id pra garantir linkDanfe etc
-  const nfBasica = rBusca.match;
-
+  // Buscar NF completa pra ter linkDanfe etc
   await sleep(400);
-  const rCompleta = await buscarNFePorId(nfBasica.id);
-  const nf = (rCompleta.ok && rCompleta.data?.data) ? rCompleta.data.data : nfBasica;
+  const rCompleta = await buscarNFePorId(rBusca.match.id);
+  const nf = (rCompleta.ok && rCompleta.data?.data) ? rCompleta.data.data : rBusca.match;
 
   return res.json({
     ok: true,
-    fonte: 'nfe-direta',
+    estrategia,
     paginas_verificadas: rBusca.pagina,
     total_scanned: rBusca.totalScanned,
     nf: {
@@ -761,7 +838,7 @@ app.get('/bling/callback', (req, res) => {
 // ============================================================
 app.listen(PORT, () => {
   console.log('============================================');
-  console.log('GOOD Devolucoes v3.4.0 - busca NFs Bling (resolve canceladas)');
+  console.log('GOOD Devolucoes v3.5.0 - busca por numero NF (rapida)');
   console.log(`Porta: ${PORT}`);
   console.log(`ML: ${ML_ACCESS_TOKEN ? 'OK' : 'FALTA'}`);
   console.log(`Bling: ${BLING_ACCESS_TOKEN ? 'OK' : 'FALTA'}`);
