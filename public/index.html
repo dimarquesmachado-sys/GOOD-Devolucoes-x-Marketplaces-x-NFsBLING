@@ -26,7 +26,7 @@
     .input-group { display: flex; gap: 8px; margin-bottom: 10px; }
     input[type="text"] {
       flex: 1; padding: 14px 16px; border: 2px solid #e0e0e0; border-radius: 10px;
-      font-size: 16px; outline: none; transition: border-color 0.2s;
+      font-size: 16px; outline: none;
     }
     input[type="text"]:focus { border-color: #007AFF; }
     button {
@@ -44,10 +44,11 @@
     }
     .badge-sucesso { background: #d1f7c4; color: #1a7f3d; }
     .badge-aviso { background: #fff4cc; color: #8a6d00; }
-    .badge-erro { background: #ffd6d6; color: #b00020; }
     .badge-info { background: #d6e9ff; color: #003d99; }
     .badge-devolucao { background: #ffe0b3; color: #8a4d00; }
     .badge-nfe { background: #c8e6c9; color: #1b5e20; }
+    .badge-fonte-ml { background: #fff4cc; color: #8a6d00; }
+    .badge-fonte-bling { background: #d4edda; color: #155724; }
 
     .item-grid {
       display: grid; grid-template-columns: 1fr 1fr; gap: 8px 14px; margin-top: 10px;
@@ -66,12 +67,12 @@
       letter-spacing: 0.4px; margin: 14px 0 6px; padding-bottom: 5px;
       border-bottom: 1px solid #f0f0f0;
     }
-    .secao-bling {
+    .secao-nf {
       background: linear-gradient(135deg, #e8f5e9 0%, #f1f8e9 100%);
       border-radius: 10px; padding: 14px; margin-top: 14px;
       border-left: 4px solid #2e7d32;
     }
-    .secao-bling-titulo {
+    .secao-nf-titulo {
       font-size: 13px; font-weight: 700; color: #1b5e20;
       text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 10px;
     }
@@ -91,12 +92,14 @@
       background: white; padding: 8px 10px; border-radius: 6px;
       word-break: break-all; margin-top: 4px; border: 1px solid #c8e6c9;
     }
-    .btn-bling {
+    .btn-action {
       display: inline-block; padding: 8px 14px; background: #2e7d32;
       color: white; border-radius: 8px; text-decoration: none;
       font-size: 13px; font-weight: 600; margin-top: 8px; margin-right: 6px;
     }
-    .btn-bling:hover { background: #1b5e20; }
+    .btn-action:hover { background: #1b5e20; }
+    .btn-action.azul { background: #007AFF; }
+    .btn-action.azul:hover { background: #0051D5; }
     .loading { display: none; text-align: center; padding: 24px; }
     .loading.show { display: block; }
     .spinner {
@@ -119,9 +122,7 @@
       margin-top: 10px; border: 1px solid #e0e0e0; border-radius: 8px;
       padding: 8px 12px; background: #fafafa;
     }
-    summary {
-      cursor: pointer; font-size: 12px; color: #555; user-select: none;
-    }
+    summary { cursor: pointer; font-size: 12px; color: #555; user-select: none; }
     summary:hover { color: #007AFF; }
     .json-raw {
       background: #1d1d1f; color: #a8e6cf; padding: 12px; border-radius: 8px;
@@ -167,7 +168,7 @@
 
     <div class="loading" id="loading">
       <div class="spinner"></div>
-      <p style="margin-top: 12px; color: #666;">Consultando ML e Bling...</p>
+      <p style="margin-top: 12px; color: #666;">Consultando ML e NF...</p>
     </div>
 
     <div class="resultado" id="resultado"></div>
@@ -217,14 +218,6 @@
         return new Date(iso).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
       } catch { return iso; }
     }
-    function dataFmtBling(s) {
-      if (!s) return '-';
-      // Bling retorna geralmente "2026-04-11 11:56:44" ou "2026-04-11"
-      try {
-        const iso = s.includes('T') ? s : s.replace(' ', 'T');
-        return new Date(iso).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
-      } catch { return s; }
-    }
 
     function renderizar(data, ok) {
       if (!ok || !data.encontrado) {
@@ -234,10 +227,9 @@
 
       const order = data.order || {};
       const shipment = data.shipment || {};
-      const pack = data.pack || {};
       const claim = data.claim || {};
-      const blingPedido = data.bling?.pedido || {};
-      const blingNFe = data.bling?.nfe || {};
+      const nf = data.nf || null;
+      const blingPedido = data.bling?.pedido || null;
 
       const itemOrder = order.order_items?.[0];
       const itemShip = shipment.shipping_items?.[0];
@@ -246,10 +238,10 @@
 
       const tituloProduto = itemOrder?.item?.title || itemShip?.description || '-';
       const mlb = itemOrder?.item?.id || itemShip?.id || '-';
-      const sku = itemOrder?.item?.seller_sku || itemOrder?.item?.seller_custom_field || '-';
+      const sku = itemOrder?.item?.seller_sku || '-';
       const qtd = itemOrder?.quantity || itemShip?.quantity || '-';
       const valorUnit = itemOrder?.unit_price;
-      const valorTotal = order?.total_amount || itemOrder?.gross_price;
+      const valorTotal = order?.total_amount;
       const variacao = itemOrder?.item?.variation_attributes?.length
         ? itemOrder.item.variation_attributes.map(v => `${v.name}: ${v.value_name}`).join(' | ')
         : null;
@@ -258,10 +250,9 @@
         ? `${buyer.first_name} ${buyer.last_name || ''}`.trim()
         : '-';
       const buyerNick = buyer.nickname || '-';
-      const buyerId = buyer.id || shipment?.sender_id || shipment?.origin?.sender_id || '-';
+      const buyerId = buyer.id || '-';
 
       const ehDevolucao = data.eh_devolucao;
-      const temNFe = !!blingNFe.id;
 
       let html = '<div class="card">';
 
@@ -271,9 +262,12 @@
         : '<span class="badge badge-info">📦 ENVIO</span>';
       html += `<span class="badge badge-info">Metodo: ${data.metodo || '-'}</span>`;
       if (order && order.id) html += '<span class="badge badge-sucesso">✅ Order ML</span>';
-      else html += '<span class="badge badge-aviso">⚠️ Sem order</span>';
-      if (blingPedido.id) html += '<span class="badge badge-sucesso">✅ Pedido Bling</span>';
-      if (temNFe) html += '<span class="badge badge-nfe">🧾 NF-e</span>';
+      if (nf) {
+        html += '<span class="badge badge-nfe">🧾 NF-e</span>';
+        html += nf.fonte === 'ml'
+          ? '<span class="badge badge-fonte-ml">via Mercado Livre</span>'
+          : '<span class="badge badge-fonte-bling">via Bling</span>';
+      }
 
       // AVISOS
       if (data.avisos?.length) {
@@ -282,40 +276,31 @@
         });
       }
 
-      // ============ NOTA FISCAL BLING (DESTAQUE NO TOPO) ============
-      if (temNFe) {
-        const numNFe = blingNFe.numero || '-';
-        const serieNFe = blingNFe.serie || '-';
-        const chaveNFe = blingNFe.chaveAcesso || blingNFe.chave_acesso || '-';
-        const dataEmissao = blingNFe.dataEmissao || blingNFe.data_emissao;
-        const valorNFe = blingNFe.valorNota || blingNFe.valor || blingNFe.totalNota;
-        const linkPdf = blingNFe.linkPDF || blingNFe.linkDanfe || blingNFe.linkPdf;
-        const linkXml = blingNFe.linkXML || blingNFe.linkXml;
-        const idNFeBling = blingNFe.id;
-
-        html += '<div class="secao-bling">';
-        html += '<div class="secao-bling-titulo">🧾 Nota Fiscal (Bling)</div>';
+      // ============ NF (DESTAQUE NO TOPO) ============
+      if (nf) {
+        html += '<div class="secao-nf">';
+        html += '<div class="secao-nf-titulo">🧾 Nota Fiscal</div>';
         html += '<div class="item-grid">';
-        html += `<div><div class="label">Numero NF-e</div><div class="valor"><span class="nfe-numero">${numNFe}</span></div></div>`;
-        html += `<div><div class="label">Serie</div><div class="valor"><strong>${serieNFe}</strong></div></div>`;
-        html += `<div><div class="label">Data emissao</div><div class="valor">${dataFmtBling(dataEmissao)}</div></div>`;
-        html += `<div><div class="label">Valor NF</div><div class="valor"><strong>${moeda(valorNFe)}</strong></div></div>`;
-        if (chaveNFe && chaveNFe !== '-') {
-          html += `<div style="grid-column: 1/-1;"><div class="label">Chave de acesso</div><div class="nfe-chave">${chaveNFe}</div></div>`;
+        html += `<div><div class="label">Numero NF-e</div><div class="valor"><span class="nfe-numero">${nf.numero || '-'}</span></div></div>`;
+        html += `<div><div class="label">Serie</div><div class="valor"><strong>${nf.serie || '-'}</strong></div></div>`;
+        html += `<div><div class="label">Data emissao</div><div class="valor">${dataFmt(nf.dataEmissao)}</div></div>`;
+        html += `<div><div class="label">Valor NF</div><div class="valor"><strong>${moeda(nf.valor)}</strong></div></div>`;
+        if (nf.peso) {
+          html += `<div><div class="label">Peso</div><div class="valor">${nf.peso}g</div></div>`;
+        }
+        if (nf.chaveAcesso) {
+          html += `<div style="grid-column: 1/-1;"><div class="label">Chave de acesso</div><div class="nfe-chave">${nf.chaveAcesso}</div></div>`;
         }
         html += '</div>';
 
-        // Botoes de acao
+        // Botoes
         html += '<div style="margin-top: 12px;">';
-        if (linkPdf) html += `<a href="${linkPdf}" target="_blank" class="btn-bling">📄 Abrir DANFE</a>`;
-        if (linkXml) html += `<a href="${linkXml}" target="_blank" class="btn-bling">📋 XML</a>`;
-        if (idNFeBling) {
-          html += `<a href="https://www.bling.com.br/notas.fiscais.php#edit/${idNFeBling}" target="_blank" class="btn-bling">🔗 Abrir no Bling</a>`;
-        }
+        if (nf.linkConsulta) html += `<a href="${nf.linkConsulta}" target="_blank" class="btn-action">📄 Consultar DANFE</a>`;
+        if (nf.linkPdf) html += `<a href="${nf.linkPdf}" target="_blank" class="btn-action">📄 PDF</a>`;
+        if (nf.linkXml) html += `<a href="${nf.linkXml}" target="_blank" class="btn-action">📋 XML</a>`;
+        if (nf.idBling) html += `<a href="https://www.bling.com.br/notas.fiscais.php#edit/${nf.idBling}" target="_blank" class="btn-action azul">🔗 Bling</a>`;
         html += '</div>';
         html += '</div>';
-      } else if (blingPedido.id) {
-        html += '<div class="aviso-box" style="margin-top:10px;">⚠️ Pedido encontrado no Bling, mas sem NF-e vinculada ainda.</div>';
       }
 
       // ============ PRODUTO ============
@@ -346,13 +331,12 @@
       html += '<div class="secao-titulo">Pedido</div>';
       html += '<div class="item-grid">';
       html += `<div><div class="label">Order ID (ML)</div><div class="valor">${order.id || '-'}</div></div>`;
-      html += `<div><div class="label">Pack ID</div><div class="valor">${order.pack_id || pack.id || '-'}</div></div>`;
+      html += `<div><div class="label">Pack ID</div><div class="valor">${order.pack_id || '-'}</div></div>`;
       html += `<div><div class="label">Status venda</div><div class="valor">${traduzirStatus(order.status)}</div></div>`;
       html += `<div><div class="label">Status pagamento</div><div class="valor">${traduzirPagamento(payment.status)}${payment.transaction_amount_refunded ? ' (estornado: ' + moeda(payment.transaction_amount_refunded) + ')' : ''}</div></div>`;
-      if (blingPedido.id) {
-        const numeroBling = blingPedido.numero || '-';
-        html += `<div><div class="label">Pedido Bling</div><div class="valor">${numeroBling}</div></div>`;
-        html += `<div><div class="label">ID Bling</div><div class="valor">${blingPedido.id}</div></div>`;
+      if (blingPedido) {
+        html += `<div><div class="label">Pedido Bling</div><div class="valor">${blingPedido.numero || '-'}</div></div>`;
+        html += `<div><div class="label">ID Bling</div><div class="valor">${blingPedido.id || '-'}</div></div>`;
       }
       html += '</div>';
 
@@ -390,7 +374,7 @@
         html += `<div><div class="label">Tipo</div><div class="valor">${claim.type || '-'}</div></div>`;
         html += `<div><div class="label">Estagio</div><div class="valor">${claim.stage || '-'}</div></div>`;
         if (claim.reason_id) {
-          html += `<div style="grid-column:1/-1;"><div class="label">Motivo (reason_id)</div><div class="valor">${claim.reason_id}</div></div>`;
+          html += `<div style="grid-column:1/-1;"><div class="label">Motivo</div><div class="valor">${claim.reason_id}</div></div>`;
         }
         html += '</div>';
       }
@@ -401,8 +385,10 @@
       data.tentativas.forEach(t => {
         const icone = t.ok ? '✅' : '❌';
         html += `<li>${icone} <strong>${t.tipo}</strong>: <code>${t.codigo}</code> → status ${t.status || '?'}`;
+        if (t.tem_fiscal_key !== undefined) html += ` <em>(fiscal_key: ${t.tem_fiscal_key ? 'SIM' : 'NAO'})</em>`;
         if (t.encontradas !== undefined) html += ` <em>(${t.encontradas} encontradas)</em>`;
         if (t.claims_encontradas !== undefined) html += ` <em>(${t.claims_encontradas} claims)</em>`;
+        if (t.encontrou !== undefined) html += ` <em>(scan ${t.total_scanned} pedidos)</em>`;
         if (t.erro) {
           const errStr = typeof t.erro === 'object' ? JSON.stringify(t.erro) : t.erro;
           html += ` <span style="color:#b00020;">(${errStr.substring(0, 100)})</span>`;
