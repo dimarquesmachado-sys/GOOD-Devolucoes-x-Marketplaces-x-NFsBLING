@@ -10,7 +10,14 @@
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
       background: #f5f5f7; min-height: 100vh; padding: 12px; color: #1d1d1f;
     }
+
+    /* ====== CONTAINER RESPONSIVO ====== */
     .container { max-width: 720px; margin: 0 auto; }
+    /* desktop: container mais largo */
+    @media (min-width: 900px) {
+      .container { max-width: 1200px; }
+    }
+
     header {
       background: linear-gradient(135deg, #FFE600 0%, #FFCC00 100%);
       border-radius: 12px; padding: 20px; margin-bottom: 14px; text-align: center;
@@ -38,6 +45,24 @@
     .hint { font-size: 12px; color: #666; line-height: 1.5; }
     .resultado { display: none; }
     .resultado.show { display: block; }
+
+    /* ====== GRID DESKTOP - 2 COLUNAS ====== */
+    .grid-desktop {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 14px;
+    }
+    @media (min-width: 900px) {
+      .grid-desktop {
+        grid-template-columns: 1fr 1fr;
+        gap: 14px 18px;
+      }
+      /* NF ocupa as 2 colunas no topo */
+      .grid-desktop > .secao-nf { grid-column: 1 / -1; }
+      /* Linha do tempo ocupa as 2 colunas */
+      .grid-desktop > .secao-timeline { grid-column: 1 / -1; }
+    }
+
     .badge {
       display: inline-block; padding: 4px 10px; border-radius: 12px;
       font-size: 11px; font-weight: 600; margin-right: 6px; margin-bottom: 4px;
@@ -60,16 +85,24 @@
       font-size: 14px; color: #1d1d1f; font-weight: 500; word-break: break-word;
     }
     .item-grid .valor strong { font-weight: 700; }
+
+    /* No desktop, dentro de cada coluna, NÃO precisa subdividir em 2 - mantém 2 colunas internas mesmo */
+    /* Mas pra blocos ja em coluna estreita do grid-desktop, manter compacto */
+
     .produto-titulo { font-size: 16px; font-weight: 600; margin-bottom: 4px; }
     .produto-mlb { font-size: 12px; color: #007AFF; margin-bottom: 8px; }
     .secao-titulo {
       font-size: 12px; font-weight: 600; color: #888; text-transform: uppercase;
-      letter-spacing: 0.4px; margin: 14px 0 6px; padding-bottom: 5px;
+      letter-spacing: 0.4px; margin: 0 0 6px; padding-bottom: 5px;
       border-bottom: 1px solid #f0f0f0;
     }
+    .bloco {
+      /* Cada bloco ocupa uma celula da grade desktop */
+    }
+
     .secao-nf {
       background: linear-gradient(135deg, #e8f5e9 0%, #f1f8e9 100%);
-      border-radius: 10px; padding: 14px; margin-top: 14px;
+      border-radius: 10px; padding: 14px;
       border-left: 4px solid #2e7d32;
     }
     .secao-nf-titulo {
@@ -276,7 +309,10 @@
         });
       }
 
-      // ============ NF (DESTAQUE NO TOPO) ============
+      // ====== ABRE GRID 2 COLUNAS ======
+      html += '<div class="grid-desktop" style="margin-top:14px;">';
+
+      // ============ NF (DESTAQUE NO TOPO - OCUPA 2 COLUNAS) ============
       if (nf) {
         html += '<div class="secao-nf">';
         html += '<div class="secao-nf-titulo">🧾 Nota Fiscal</div>';
@@ -293,7 +329,7 @@
         }
         html += '</div>';
 
-        // Botoes - Bling (prioritario, formato familiar) + Meu Danfe (backup)
+        // Botoes
         html += '<div style="margin-top: 12px;">';
         if (nf.linkDanfe) html += `<a href="${nf.linkDanfe}" target="_blank" class="btn-action">📄 DANFE Bling</a>`;
         if (nf.linkPdf) html += `<a href="${nf.linkPdf}" target="_blank" class="btn-action">📥 Baixar PDF</a>`;
@@ -304,11 +340,11 @@
         html += '</div>';
       }
 
-      // ============ PRODUTO ============
+      // ============ PRODUTO (coluna esquerda) ============
+      html += '<div class="bloco">';
       html += '<div class="secao-titulo">Produto</div>';
       html += `<div class="produto-titulo">${tituloProduto}</div>`;
       if (mlb !== '-') html += `<div class="produto-mlb">${mlb}</div>`;
-
       html += '<div class="item-grid">';
       html += `<div><div class="label">SKU (Bling)</div><div class="valor"><strong>${sku}</strong></div></div>`;
       html += `<div><div class="label">Quantidade</div><div class="valor">${qtd} un</div></div>`;
@@ -318,8 +354,10 @@
         html += `<div style="grid-column: 1/-1;"><div class="label">Variacao</div><div class="valor">${variacao}</div></div>`;
       }
       html += '</div>';
+      html += '</div>';
 
-      // ============ COMPRADOR ============
+      // ============ COMPRADOR (coluna direita) ============
+      html += '<div class="bloco">';
       html += '<div class="secao-titulo">Comprador</div>';
       html += '<div class="item-grid">';
       html += `<div><div class="label">Nome</div><div class="valor">${buyerNome}</div></div>`;
@@ -327,8 +365,10 @@
       html += `<div><div class="label">ID</div><div class="valor">${buyerId}</div></div>`;
       html += `<div><div class="label">Data da venda</div><div class="valor">${dataFmt(order.date_created)}</div></div>`;
       html += '</div>';
+      html += '</div>';
 
-      // ============ PEDIDO ============
+      // ============ PEDIDO (coluna esquerda linha 2) ============
+      html += '<div class="bloco">';
       html += '<div class="secao-titulo">Pedido</div>';
       html += '<div class="item-grid">';
       html += `<div><div class="label">Order ID (ML)</div><div class="valor">${order.id || '-'}</div></div>`;
@@ -340,9 +380,11 @@
         html += `<div><div class="label">ID Bling</div><div class="valor">${blingPedido.id || '-'}</div></div>`;
       }
       html += '</div>';
+      html += '</div>';
 
-      // ============ ENVIO ============
+      // ============ ENVIO (coluna direita linha 2) ============
       if (shipment.id) {
+        html += '<div class="bloco">';
         html += '<div class="secao-titulo">Envio / Devolucao</div>';
         html += '<div class="item-grid">';
         html += `<div><div class="label">Shipment ID</div><div class="valor">${shipment.id}</div></div>`;
@@ -353,21 +395,26 @@
           html += `<div style="grid-column: 1/-1;"><div class="label">Tags ML</div><div class="valor">${shipment.tags.join(', ')}</div></div>`;
         }
         html += '</div>';
-
-        if (shipment.status_history) {
-          const sh = shipment.status_history;
-          html += '<div class="secao-titulo">📍 Linha do tempo</div>';
-          html += '<ul class="timeline">';
-          if (sh.date_handling) html += `<li>Preparado <span class="timeline-data">${dataFmt(sh.date_handling)}</span></li>`;
-          if (sh.date_ready_to_ship) html += `<li>Etiqueta gerada <span class="timeline-data">${dataFmt(sh.date_ready_to_ship)}</span></li>`;
-          if (sh.date_shipped) html += `<li>Enviado <span class="timeline-data">${dataFmt(sh.date_shipped)}</span></li>`;
-          if (sh.date_delivered) html += `<li><strong>Entregue ${ehDevolucao ? 'no galpao' : 'ao comprador'}</strong> <span class="timeline-data">${dataFmt(sh.date_delivered)}</span></li>`;
-          html += '</ul>';
-        }
+        html += '</div>';
       }
 
-      // ============ CLAIM ============
+      // ============ TIMELINE (largura total) ============
+      if (shipment.status_history) {
+        const sh = shipment.status_history;
+        html += '<div class="secao-timeline">';
+        html += '<div class="secao-titulo">📍 Linha do tempo</div>';
+        html += '<ul class="timeline">';
+        if (sh.date_handling) html += `<li>Preparado <span class="timeline-data">${dataFmt(sh.date_handling)}</span></li>`;
+        if (sh.date_ready_to_ship) html += `<li>Etiqueta gerada <span class="timeline-data">${dataFmt(sh.date_ready_to_ship)}</span></li>`;
+        if (sh.date_shipped) html += `<li>Enviado <span class="timeline-data">${dataFmt(sh.date_shipped)}</span></li>`;
+        if (sh.date_delivered) html += `<li><strong>Entregue ${ehDevolucao ? 'no galpao' : 'ao comprador'}</strong> <span class="timeline-data">${dataFmt(sh.date_delivered)}</span></li>`;
+        html += '</ul>';
+        html += '</div>';
+      }
+
+      // ============ CLAIM (largura total se existir) ============
       if (claim.id) {
+        html += '<div class="secao-timeline">';
         html += '<div class="secao-titulo">⚖️ Reclamacao (Claim)</div>';
         html += '<div class="item-grid">';
         html += `<div><div class="label">Claim ID</div><div class="valor">${claim.id}</div></div>`;
@@ -378,9 +425,12 @@
           html += `<div style="grid-column:1/-1;"><div class="label">Motivo</div><div class="valor">${claim.reason_id}</div></div>`;
         }
         html += '</div>';
+        html += '</div>';
       }
 
-      // DEBUG
+      html += '</div>'; // fim grid-desktop
+
+      // DEBUG (fora da grid)
       html += '<details><summary>🔧 Tentativas e diagnostico</summary>';
       html += '<ul class="tentativas-list">';
       data.tentativas.forEach(t => {
@@ -411,7 +461,7 @@
     function renderizarErro(mensagem, tentativas) {
       let html = '<div class="card"><div class="erro-box"><strong>❌ ' + mensagem + '</strong></div>';
       if (tentativas?.length) {
-        html += '<div class="secao-titulo">Tentativas</div><ul class="tentativas-list">';
+        html += '<div class="secao-titulo" style="margin-top:14px;">Tentativas</div><ul class="tentativas-list">';
         tentativas.forEach(t => {
           html += `<li>${t.tipo}: <code>${t.codigo}</code> → status ${t.status}`;
           if (t.erro) {
