@@ -1,6 +1,6 @@
 // ============================================================
 // GOOD Devolucoes - Marketplaces - NFs
-// Fase 3.0: NF direto do ML (rapido) + fallback Bling
+// Fase 3.1: ML rapido + Bling enriquecimento (paralelo)
 // ============================================================
 
 const express = require('express');
@@ -109,14 +109,13 @@ async function chamarML(url, headersExtras = {}) {
   }
 }
 
-// NOVO: Busca NF direto do ML pelo shipment id da venda
 async function buscarNFnoML(shipmentId) {
   console.log(`[ML] Buscando NF do shipment ${shipmentId}`);
   return chamarML(`https://api.mercadolibre.com/shipments/${shipmentId}/invoice_data?siteId=MLB`);
 }
 
 // ============================================================
-// BLING (fallback)
+// BLING
 // ============================================================
 async function renovarTokenBling() {
   console.log('[Bling] Renovando access token...');
@@ -249,8 +248,58 @@ async function buscarNFePorId(idNFe) {
   return chamarBling(`https://www.bling.com.br/Api/v3/nfe/${idNFe}`);
 }
 
+// Helper: pega NF completa do Bling a partir do order_id ML
+// Retorna { ok, pedido, nfe, tentativas }
+async function pegarNFCompletaBling(orderIdML, dataReferencia) {
+  const tentativas = [];
+  const numeroLoja = String(orderIdML);
+
+  // 1) Busca pedido por numeroLoja
+  const rBusca = await buscarPedidoBlingPorNumeroLoja(numeroLoja, dataReferencia, { maxPaginas: 50 });
+  tentativas.push({
+    tipo: 'bling_busca_paginada',
+    codigo: numeroLoja,
+    ok: rBusca.ok,
+    status: rBusca.ok ? 200 : (rBusca.status || 500),
+    total_scanned: rBusca.totalScanned,
+    pagina_match: rBusca.pagina,
+    primeira_data: rBusca.primeiraDataVista,
+    ultima_data: rBusca.ultimaDataVista,
+    encontrou: !!rBusca.match,
+  });
+
+  if (!rBusca.ok || !rBusca.match) {
+    return { ok: false, pedido: null, nfe: null, tentativas };
+  }
+
+  // 2) Busca pedido completo pra pegar notaFiscal.id
+  await sleep(400);
+  const rCompleto = await buscarPedidoBlingPorId(rBusca.match.id);
+  if (!rCompleto.ok || !rCompleto.data?.data) {
+    tentativas.push({ tipo: 'bling_pedido_completo', codigo: rBusca.match.id, ok: false, status: rCompleto.status });
+    return { ok: false, pedido: null, nfe: null, tentativas };
+  }
+
+  const pedido = rCompleto.data.data;
+  const nfeId = pedido.notaFiscal?.id;
+
+  if (!nfeId) {
+    return { ok: true, pedido, nfe: null, tentativas, sem_nfe: true };
+  }
+
+  // 3) Busca NF completa
+  await sleep(400);
+  const rNFe = await buscarNFePorId(nfeId);
+  if (!rNFe.ok || !rNFe.data?.data) {
+    tentativas.push({ tipo: 'bling_nfe', codigo: nfeId, ok: false, status: rNFe.status });
+    return { ok: true, pedido, nfe: null, tentativas };
+  }
+
+  return { ok: true, pedido, nfe: rNFe.data.data, tentativas };
+}
+
 // ============================================================
-// HELPERS ML
+// HELPERS ML claims/orders
 // ============================================================
 function extrairClaimsDaResposta(data) {
   if (!data) return [];
@@ -298,7 +347,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '3.0.0',
+    version: '3.1.0',
     integrations: {
       ml: !!ML_ACCESS_TOKEN,
       bling: !!BLING_ACCESS_TOKEN,
@@ -466,91 +515,78 @@ app.get('/api/devolucao/identificar/:codigo', async (req, res) => {
   }
 
   // ============================================================
-  // BUSCA NF: 1) Tenta ML primeiro (rapido), 2) Bling fallback
+  // BUSCA NF EM PARALELO: ML rapido + Bling enriquecimento
   // ============================================================
-  let nfData = null; // formato unificado pra exibicao
+  let nfData = null;
+  let blingPedido = null;
 
-  // === CAMINHO 1: ML invoice_data (rapido!) ===
-  // O shipment_id correto e o do envio ORIGINAL da venda (order.shipping.id),
-  // NUNCA o de devolucao
-  let shipmentOriginalId = order?.shipping?.id || (!ehDevolucao ? shipment?.id : null);
+  // Shipment original (nao o de devolucao) pra busca ML
+  const shipmentOriginalId = order?.shipping?.id || (!ehDevolucao ? shipment?.id : null);
 
-  if (shipmentOriginalId) {
-    const rNFML = await buscarNFnoML(shipmentOriginalId);
-    resultado.tentativas.push({
-      tipo: 'ml_invoice_data',
-      codigo: shipmentOriginalId,
-      ok: rNFML.ok,
-      status: rNFML.status,
-      erro: rNFML.ok ? null : rNFML.error,
-      tem_fiscal_key: !!rNFML.data?.fiscal_key,
-    });
+  if (order?.id) {
+    // Dispara as 2 buscas em PARALELO pra economizar tempo
+    const promiseML = shipmentOriginalId
+      ? buscarNFnoML(shipmentOriginalId)
+      : Promise.resolve({ ok: false });
 
-    if (rNFML.ok && rNFML.data?.fiscal_key) {
-      console.log(`[ML] NF encontrada via ML: numero=${rNFML.data.invoice_number}`);
+    const promiseBling = pegarNFCompletaBling(order.id, order.date_created || order.date_closed);
+
+    const [rNFML, rBling] = await Promise.all([promiseML, promiseBling]);
+
+    // Registra tentativas no resultado
+    if (shipmentOriginalId) {
+      resultado.tentativas.push({
+        tipo: 'ml_invoice_data',
+        codigo: shipmentOriginalId,
+        ok: rNFML.ok,
+        status: rNFML.status,
+        erro: rNFML.ok ? null : rNFML.error,
+        tem_fiscal_key: !!rNFML.data?.fiscal_key,
+      });
+    }
+
+    rBling.tentativas?.forEach(t => resultado.tentativas.push(t));
+
+    // Monta NF unificada usando o melhor de cada fonte
+    const nfML = rNFML.ok && rNFML.data?.fiscal_key ? rNFML.data : null;
+    const nfBling = rBling.nfe || null;
+    blingPedido = rBling.pedido || null;
+
+    if (nfBling) {
+      // Bling tem todos os links bonitos - prioritario
+      console.log(`[NF] Usando Bling como fonte (links completos)`);
+      nfData = {
+        fonte: nfML ? 'bling+ml' : 'bling',
+        numero: nfBling.numero,
+        serie: nfBling.serie,
+        chaveAcesso: nfBling.chaveAcesso || nfBling.chave_acesso,
+        valor: nfBling.valorNota || nfBling.valor || nfBling.totalNota,
+        dataEmissao: nfBling.dataEmissao || nfBling.data_emissao,
+        peso: nfBling.itens?.[0]?.pesoBruto ? Math.round(nfBling.itens[0].pesoBruto * 1000) : null,
+        // Links Bling - permanentes, sem login!
+        linkDanfe: nfBling.linkDanfe,
+        linkPdf: nfBling.linkPDF,
+        linkXml: nfBling.xml,
+        // Link Meu Danfe como backup
+        linkConsulta: (nfBling.chaveAcesso || nfBling.chave_acesso)
+          ? `https://meudanfe.com.br/consulta/${nfBling.chaveAcesso || nfBling.chave_acesso}`
+          : null,
+        idBling: nfBling.id,
+      };
+    } else if (nfML) {
+      // Bling falhou mas ML retornou - usa ML
+      console.log(`[NF] Usando ML como fonte (Bling falhou)`);
       nfData = {
         fonte: 'ml',
-        numero: rNFML.data.invoice_number,
-        serie: rNFML.data.invoice_serie,
-        chaveAcesso: rNFML.data.fiscal_key,
-        valor: rNFML.data.invoice_amount,
-        dataEmissao: rNFML.data.invoice_date,
-        peso: rNFML.data.weight,
-        // Link pra consulta na SEFAZ pelo Meu Danfe
-        linkConsulta: `https://meudanfe.com.br/consulta/${rNFML.data.fiscal_key}`,
-        idMLInvoice: rNFML.data.id,
+        numero: nfML.invoice_number,
+        serie: nfML.invoice_serie,
+        chaveAcesso: nfML.fiscal_key,
+        valor: nfML.invoice_amount,
+        dataEmissao: nfML.invoice_date,
+        peso: nfML.weight,
+        linkConsulta: `https://meudanfe.com.br/consulta/${nfML.fiscal_key}`,
+        idMLInvoice: nfML.id,
       };
-    }
-  }
-
-  // === CAMINHO 2: Bling fallback (se ML nao retornou) ===
-  let blingPedido = null;
-  if (!nfData && order?.id) {
-    console.log('[FALLBACK] ML nao retornou NF, tentando Bling...');
-    const numeroLoja = String(order.id);
-    const dataReferencia = order.date_created || order.date_closed;
-
-    const rBusca = await buscarPedidoBlingPorNumeroLoja(numeroLoja, dataReferencia, { maxPaginas: 50 });
-    resultado.tentativas.push({
-      tipo: 'bling_busca_paginada',
-      codigo: numeroLoja,
-      ok: rBusca.ok,
-      status: rBusca.ok ? 200 : (rBusca.status || 500),
-      total_scanned: rBusca.totalScanned,
-      pagina_match: rBusca.pagina,
-      primeira_data: rBusca.primeiraDataVista,
-      ultima_data: rBusca.ultimaDataVista,
-      encontrou: !!rBusca.match,
-    });
-
-    if (rBusca.ok && rBusca.match) {
-      await sleep(400);
-      const rCompleto = await buscarPedidoBlingPorId(rBusca.match.id);
-      if (rCompleto.ok && rCompleto.data?.data) {
-        blingPedido = rCompleto.data.data;
-        const nfeId = blingPedido.notaFiscal?.id;
-        if (nfeId) {
-          await sleep(400);
-          const rNFe = await buscarNFePorId(nfeId);
-          if (rNFe.ok && rNFe.data?.data) {
-            const nfBling = rNFe.data.data;
-            nfData = {
-              fonte: 'bling',
-              numero: nfBling.numero,
-              serie: nfBling.serie,
-              chaveAcesso: nfBling.chaveAcesso || nfBling.chave_acesso,
-              valor: nfBling.valorNota || nfBling.valor || nfBling.totalNota,
-              dataEmissao: nfBling.dataEmissao || nfBling.data_emissao,
-              linkPdf: nfBling.linkPDF || nfBling.linkDanfe || nfBling.linkPdf,
-              linkXml: nfBling.linkXML || nfBling.linkXml,
-              linkConsulta: (nfBling.chaveAcesso || nfBling.chave_acesso)
-                ? `https://meudanfe.com.br/consulta/${nfBling.chaveAcesso || nfBling.chave_acesso}`
-                : null,
-              idBling: nfBling.id,
-            };
-          }
-        }
-      }
     }
   }
 
@@ -620,15 +656,13 @@ app.get('/api/debug/bling-busca/:numeroLoja', async (req, res) => {
   res.json(r);
 });
 
-// Debug NF crua do Bling - pra investigar campos como hash de link compartilhavel
-app.get('/api/debug/bling-nfe-cru/:idNFe', async (req, res) => {
-  const r = await buscarNFePorId(req.params.idNFe);
+app.get('/api/debug/bling-pedido/:id', async (req, res) => {
+  const r = await buscarPedidoBlingPorId(req.params.id);
   res.status(r.ok ? 200 : r.status || 500).json(r);
 });
 
-// Debug pedido cru do Bling pelo id interno
-app.get('/api/debug/bling-pedido/:id', async (req, res) => {
-  const r = await buscarPedidoBlingPorId(req.params.id);
+app.get('/api/debug/bling-nfe-cru/:idNFe', async (req, res) => {
+  const r = await buscarNFePorId(req.params.idNFe);
   res.status(r.ok ? 200 : r.status || 500).json(r);
 });
 
@@ -648,7 +682,7 @@ app.get('/bling/callback', (req, res) => {
 // ============================================================
 app.listen(PORT, () => {
   console.log('============================================');
-  console.log('GOOD Devolucoes v3.0.0 - NF via ML + fallback Bling');
+  console.log('GOOD Devolucoes v3.1.0 - ML+Bling em paralelo');
   console.log(`Porta: ${PORT}`);
   console.log(`ML: ${ML_ACCESS_TOKEN ? 'OK' : 'FALTA'}`);
   console.log(`Bling: ${BLING_ACCESS_TOKEN ? 'OK' : 'FALTA'}`);
