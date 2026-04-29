@@ -524,11 +524,9 @@
       <div class="login-erro" id="loginErro"></div>
       <form class="login-form" id="loginForm" onsubmit="fazerLogin(event)">
         <label for="loginUser">Usuario</label>
-        <select id="loginUser" required>
-          <option value="">Selecione...</option>
-        </select>
+        <input type="text" id="loginUser" required autocomplete="username" placeholder="Digite seu nome">
         <label for="loginPass">Senha</label>
-        <input type="password" id="loginPass" required autocomplete="current-password">
+        <input type="password" id="loginPass" required autocomplete="current-password" placeholder="Digite sua senha">
         <button type="submit" id="btnLogin">Entrar</button>
       </form>
     </div>
@@ -540,7 +538,7 @@
     <header>
       <h1>📦 GOOD Devolucoes</h1>
       <p>Identificar venda + NF-e + Triagem</p>
-      <p style="font-size: 10px; color: #888; margin-top: 4px;">v3.13.4 (SKU/EAN vertical) | <span id="serverVersion">checando...</span></p>
+      <p style="font-size: 10px; color: #888; margin-top: 4px;">v3.13.5 (login texto livre) | <span id="serverVersion">checando...</span></p>
       <div class="user-badge">
         👤 <span id="userNome">-</span>
         <a href="/admin.html" id="btnPainelAdmin" style="display:none;background:#ffd700;color:#1d1d1f;padding:3px 10px;border-radius:10px;font-weight:700;margin-left:6px;">👑 Painel Admin</a>
@@ -684,23 +682,14 @@
       // Sem sessao - mostra login
       loginScreen.classList.add('show');
       appContainer.style.display = 'none';
-      try {
-        const r = await fetch('/health');
-        const d = await r.json();
-        const sel = document.getElementById('loginUser');
-        sel.innerHTML = '<option value="">Selecione...</option>';
-        (d.usuarios_cadastrados || []).forEach(u => {
-          const opt = document.createElement('option');
-          opt.value = u; opt.textContent = u;
-          sel.appendChild(opt);
-        });
-      } catch (e) {}
+      // Foca direto no campo usuario pra agilizar
+      setTimeout(() => document.getElementById('loginUser')?.focus(), 100);
       return false;
     }
 
     async function fazerLogin(e) {
       e.preventDefault();
-      const usuario = document.getElementById('loginUser').value;
+      const usuario = document.getElementById('loginUser').value.trim();
       const senha = document.getElementById('loginPass').value;
       const erroEl = document.getElementById('loginErro');
       const btn = document.getElementById('btnLogin');
