@@ -634,8 +634,24 @@ app.get('/api/debug/ml-fiscal/:orderId', async (req, res) => {
 });
 
 app.get('/api/debug/ml-shipment-invoice/:shipmentId', async (req, res) => {
-  // tenta endpoint de invoice no shipment (usado pra NF-e do envio)
-  const r = await chamarML(`https://api.mercadolibre.com/shipments/${req.params.shipmentId}/invoice_data`);
+  // endpoint oficial: GET /shipments/{id}/invoice_data?siteId=MLB
+  const r = await chamarML(`https://api.mercadolibre.com/shipments/${req.params.shipmentId}/invoice_data?siteId=MLB`);
+  res.status(r.ok ? 200 : r.status || 500).json(r);
+});
+
+// Lista os fiscal_documents (NFs) anexadas a um pack
+app.get('/api/debug/ml-pack-fiscal/:packId', async (req, res) => {
+  const r = await chamarML(`https://api.mercadolibre.com/packs/${req.params.packId}/fiscal_documents`);
+  res.status(r.ok ? 200 : r.status || 500).json(r);
+});
+
+// Lista invoices do usuario (vendedor) - ML_USER_ID setado nas envs
+app.get('/api/debug/ml-invoices', async (req, res) => {
+  const orderId = req.query.order_id;
+  const url = orderId
+    ? `https://api.mercadolibre.com/users/${ML_USER_ID}/invoices?order_id=${orderId}`
+    : `https://api.mercadolibre.com/users/${ML_USER_ID}/invoices`;
+  const r = await chamarML(url);
   res.status(r.ok ? 200 : r.status || 500).json(r);
 });
 
