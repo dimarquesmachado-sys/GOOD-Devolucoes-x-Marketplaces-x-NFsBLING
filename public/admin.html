@@ -176,7 +176,7 @@
     <header>
       <div>
         <h1>🔐 Admin - GOOD Devolucoes</h1>
-        <p>Painel restrito · v3.10</p>
+        <p>Painel restrito · v3.11</p>
       </div>
       <div class="header-acoes">
         <a href="/">📦 Triagem (bipar)</a>
@@ -370,7 +370,10 @@
           ${concluido ? '' : `
             <div class="item-acoes">
               ${d.nf_link_danfe ? `<a class="btn btn-cinza" href="${d.nf_link_danfe}" target="_blank">📄 Ver DANFE</a>` : ''}
-              <a class="btn" href="https://www.bling.com.br/notas.fiscais.php#list" target="_blank" onclick="copiarNF('${escapeHtml(d.nf_numero || '')}')">🔗 Abrir Bling</a>
+              ${d.nf_id_bling
+                ? `<a class="btn btn-verde" href="https://www.bling.com.br/notas.fiscais.php#edit/${d.nf_id_bling}" target="_blank" title="Abre a NF. Pra gerar devolu\u00e7\u00e3o, volte na lista, clique nos 3 pontos da NF.">🔗 Abrir NF no Bling</a>`
+                : `<a class="btn" href="https://www.bling.com.br/notas.fiscais.php#list" target="_blank" onclick="copiarNF('${escapeHtml(d.nf_numero || '')}')">🔗 Abrir lista Bling (copia NF)</a>`
+              }
               <button class="btn btn-verde" onclick="concluir('${d.id}')">✅ Marcar como concluido</button>
               <button class="btn btn-vermelho" onclick="deletar('${d.id}')" title="Deletar (caso erro)">🗑️</button>
             </div>
