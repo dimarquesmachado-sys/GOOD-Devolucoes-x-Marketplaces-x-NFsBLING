@@ -538,7 +538,7 @@
     <header>
       <h1>📦 GOOD Devolucoes</h1>
       <p>Identificar venda + NF-e + Triagem</p>
-      <p style="font-size: 10px; color: #888; margin-top: 4px;">v3.14.1 (camera scanner) | <span id="serverVersion">checando...</span></p>
+      <p style="font-size: 10px; color: #888; margin-top: 4px;">v3.14.3 (botao camera DESTACADO) | <span id="serverVersion">checando...</span></p>
       <div class="user-badge">
         👤 <span id="userNome">-</span>
         <a href="/admin.html" id="btnPainelAdmin" style="display:none;background:#ffd700;color:#1d1d1f;padding:3px 10px;border-radius:10px;font-weight:700;margin-left:6px;">👑 Painel Admin</a>
@@ -554,6 +554,10 @@
           autocomplete="off" inputmode="numeric" />
         <button id="btnBuscar" onclick="buscar()">Buscar</button>
       </div>
+      <button type="button" onclick="abrirCameraScanner()"
+              style="width:100%; margin-top:10px; padding:12px; background:#1565c0; color:white; border:none; border-radius:10px; font-weight:700; font-size:14px; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:8px;">
+        📷 Bipar etiqueta com a camera do celular
+      </button>
       <p class="hint">
         💡 Aceita Pack ID (ex: 2000012153272513) ou codigo de barras de envio (ex: 46862577049).
       </p>
@@ -586,18 +590,25 @@
           <div id="bipagemContador" style="font-size: 28px; font-weight: 800; color: #2e7d32;">0 / 0</div>
         </div>
 
+        <!-- BOTAO CAMERA EM DESTAQUE (no topo, verde grande) -->
+        <button type="button" onclick="abrirCameraScanner()"
+                style="width:100%; padding:18px; margin-bottom:10px; background:linear-gradient(135deg,#43a047,#2e7d32); color:white; border:none; border-radius:12px; font-weight:800; font-size:18px; cursor:pointer; box-shadow:0 4px 12px rgba(46,125,50,0.3); display:flex; align-items:center; justify-content:center; gap:10px;">
+          <span style="font-size:28px;">📷</span>
+          <span>USAR CAMERA DO CELULAR</span>
+        </button>
+
+        <div style="text-align:center; font-size:12px; color:#999; margin-bottom:10px;">
+          ─── ou bipe com leitor USB ───
+        </div>
+
         <div style="background:#e3f2fd; border:2px dashed #1565c0; border-radius:10px; padding:14px;">
           <label style="display:block; font-size:13px; font-weight:700; color:#1565c0; margin-bottom:6px;">
-            📷 Bipe o codigo de barras aqui:
+            ⌨️ Leitor USB / Digitar:
           </label>
           <input type="text" id="bipagemInput"
                  placeholder="Aguardando bipagem..."
                  style="width:100%; padding:12px 14px; font-size:18px; font-family:'Courier New',monospace; font-weight:700; border:2px solid #1565c0; border-radius:8px; background:white;"
                  autocomplete="off">
-          <button type="button" onclick="abrirCameraScanner()"
-                  style="width:100%; margin-top:10px; padding:10px; background:#1565c0; color:white; border:none; border-radius:8px; font-weight:700; font-size:14px; cursor:pointer;">
-            📷 Usar camera do celular
-          </button>
         </div>
 
         <!-- Erro de bipagem (1a vez) -->
@@ -687,13 +698,10 @@
     </div>
   </div>
 
-  <!-- CAMERA SCANNER FULLSCREEN (bipagem EAN) -->
+  <!-- CAMERA SCANNER FULLSCREEN (bipar etiqueta) -->
   <div id="scannerOverlay" style="display:none; position:fixed; inset:0; background:#000; z-index:10000; flex-direction:column;">
     <div style="display:flex; justify-content:space-between; align-items:center; padding:14px 16px; background:rgba(0,0,0,0.85); color:white; flex-shrink:0;">
-      <div style="font-size:14px;">
-        <div style="opacity:0.7; font-size:11px;">Bipe pelo celular</div>
-        <div id="scannerProgresso" style="font-weight:700; font-size:18px;">0 / 0</div>
-      </div>
+      <div style="font-size:14px; font-weight:700;">📷 Bipar etiqueta</div>
       <button onclick="fecharCameraScanner()"
               style="background:#e53935; color:white; border:none; width:40px; height:40px; border-radius:50%; font-size:22px; font-weight:700; cursor:pointer;">✕</button>
     </div>
@@ -1411,8 +1419,8 @@
       document.getElementById('modalAprovar').classList.add('show');
     }
 
-    // ================ SCANNER CAMERA (bipagem EAN via celular) ================
-    // Licoes Girassol: pausa 3s entre leituras, lastCode pra evitar dupla, BarcodeDetector
+    // ================ SCANNER CAMERA (bipar etiqueta de devolucao) ================
+    // Licoes Girassol: pausa entre leituras, lastCode pra evitar dupla, BarcodeDetector
     let scannerStream = null;
     let scannerDetector = null;
     let scannerScanning = false;
@@ -1423,12 +1431,12 @@
     async function abrirCameraScanner() {
       // Verifica se navegador suporta BarcodeDetector
       if (!('BarcodeDetector' in window)) {
-        toast('Camera scanner nao suportada neste navegador. Use Chrome ou Edge.', 'err');
+        toast('Camera scanner nao suportada. Use Chrome ou Edge no celular.', 'err');
         return;
       }
       try {
         scannerDetector = new BarcodeDetector({
-          formats: ['ean_13', 'ean_8', 'code_128', 'code_39', 'upc_a', 'upc_e', 'itf']
+          formats: ['code_128', 'code_39', 'ean_13', 'ean_8', 'itf', 'qr_code', 'pdf417']
         });
       } catch (e) {
         toast('Erro ao iniciar scanner: ' + e.message, 'err');
@@ -1437,9 +1445,6 @@
 
       const overlay = document.getElementById('scannerOverlay');
       overlay.style.display = 'flex';
-
-      // Atualiza progresso inicial
-      atualizarProgressoScanner();
 
       try {
         scannerStream = await navigator.mediaDevices.getUserMedia({
@@ -1478,15 +1483,12 @@
       scannerDetector.detect(video).then(codes => {
         if (codes.length > 0) {
           const raw = String(codes[0].rawValue).trim();
-          // Evita ler 2x o mesmo codigo em <4s
+          // Evita ler 2x o mesmo em <4s
           if (raw !== scannerLastCode || Date.now() - scannerLastCodeAt > 4000) {
             scannerLastCode = raw;
             scannerLastCodeAt = Date.now();
-            // Pausa de 2.5s pra evitar bipagem multipla
             scannerPaused = true;
-            setTimeout(() => { scannerPaused = false; }, 2500);
-            // Processa via mesmo fluxo da bipagem
-            processarBipagemViaScanner(raw);
+            processarBipagemEtiqueta(raw);
           }
         }
       }).catch(() => {}).finally(() => {
@@ -1494,86 +1496,48 @@
       });
     }
 
-    function processarBipagemViaScanner(codigo) {
+    function processarBipagemEtiqueta(codigo) {
       const status = document.getElementById('scannerStatus');
 
-      // Reaproveita a logica de bipagem - mas sem disparar UI dos campos do modal
-      const itemMatch = bipagemEstado.itensEsperados.find(it =>
-        String(it.ean).trim() === codigo && it.bipados < it.quantidade
-      );
+      // Etiquetas ML são so digitos (ex: 46912301194). Pack IDs são 16 digitos (ex: 2000012153272513).
+      // Se vier QR Code com JSON, tenta extrair id
+      let codigoLimpo = codigo;
+      try {
+        const j = JSON.parse(codigo);
+        if (j.id) codigoLimpo = String(j.id);
+      } catch(e) {}
 
-      if (itemMatch) {
-        // OK
-        itemMatch.bipados++;
-        bipagemEstado.totalBipado++;
-        bipagemEstado.tentativasErro = 0;
-        beepOk();
+      // Tira espaços, hifens e caracteres não numéricos
+      codigoLimpo = codigoLimpo.replace(/[^0-9]/g, '');
 
-        // Atualiza UI do modal subjacente
-        document.getElementById('bipagemContador').textContent =
-          `${bipagemEstado.totalBipado} / ${bipagemEstado.totalEsperado}`;
-        const idx = bipagemEstado.itensEsperados.indexOf(itemMatch);
-        const elItem = document.getElementById(`bipItem${idx}`);
-        if (elItem) elItem.textContent = `${itemMatch.bipados}/${itemMatch.quantidade}`;
-        document.getElementById('bipagemErro').style.display = 'none';
-
-        // Atualiza status do scanner
-        status.style.background = 'rgba(46,125,50,0.9)';
-        status.textContent = `✅ OK (${bipagemEstado.totalBipado}/${bipagemEstado.totalEsperado})`;
-        atualizarProgressoScanner();
-
+      // Etiquetas válidas: 9-20 dígitos
+      if (codigoLimpo.length < 9 || codigoLimpo.length > 20) {
+        beepErro();
+        status.style.background = 'rgba(198,40,40,0.95)';
+        status.textContent = `❌ Codigo invalido: ${codigo.slice(0, 30)}`;
+        // Volta a procurar depois de 2s
         setTimeout(() => {
           status.style.background = 'rgba(0,0,0,0.85)';
           status.textContent = 'Aponte para o codigo de barras';
-        }, 1500);
-
-        // Completou tudo? Fecha camera
-        if (bipagemEstado.totalBipado >= bipagemEstado.totalEsperado) {
-          document.getElementById('bipagemContador').textContent = `✅ ${bipagemEstado.totalEsperado} / ${bipagemEstado.totalEsperado}`;
-          document.getElementById('btnConfirmarAprovar').disabled = false;
-          document.getElementById('btnConfirmarAprovar').style.opacity = '1';
-          document.getElementById('btnConfirmarAprovar').style.cursor = 'pointer';
-          status.style.background = 'rgba(46,125,50,0.95)';
-          status.textContent = '✅ Tudo OK! Fechando...';
-          setTimeout(() => fecharCameraScanner(), 1200);
-        }
-      } else {
-        // ERRO
-        bipagemEstado.tentativasErro++;
-        beepErro();
-
-        const eansEsperados = bipagemEstado.itensEsperados
-          .filter(it => it.bipados < it.quantidade)
-          .map(it => it.ean)
-          .join(' ou ');
-
-        // Atualiza modal subjacente tambem
-        document.getElementById('bipagemEsperado').textContent = eansEsperados;
-        document.getElementById('bipagemRecebido').textContent = codigo;
-        document.getElementById('bipagemErro').style.display = 'block';
-
-        // Status do scanner
-        status.style.background = 'rgba(198,40,40,0.95)';
-        status.textContent = `❌ Codigo errado: ${codigo.slice(0, 20)}`;
-
-        // 2 erros - mostra observacao e fecha pra digitar
-        if (bipagemEstado.tentativasErro >= 2) {
-          document.getElementById('bipagemForcar').style.display = 'block';
-          atualizarBotaoForcar();
-          status.textContent = '❌ 2 erros - feche pra digitar observacao';
-          setTimeout(() => fecharCameraScanner(), 2000);
-        } else {
-          setTimeout(() => {
-            status.style.background = 'rgba(0,0,0,0.85)';
-            status.textContent = 'Aponte para o codigo de barras';
-          }, 2000);
-        }
+          scannerPaused = false;
+        }, 2000);
+        return;
       }
-    }
 
-    function atualizarProgressoScanner() {
-      const el = document.getElementById('scannerProgresso');
-      if (el) el.textContent = `${bipagemEstado.totalBipado} / ${bipagemEstado.totalEsperado}`;
+      // OK!
+      beepOk();
+      status.style.background = 'rgba(46,125,50,0.95)';
+      status.textContent = `✅ Lido: ${codigoLimpo}`;
+
+      // Preenche o campo de busca + fecha camera + dispara busca
+      const inp = document.getElementById('codigo');
+      if (inp) inp.value = codigoLimpo;
+
+      setTimeout(() => {
+        fecharCameraScanner();
+        // Dispara busca automatica
+        if (typeof buscar === 'function') buscar();
+      }, 800);
     }
 
     function fecharCameraScanner() {
