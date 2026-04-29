@@ -551,7 +551,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '3.13.0',
+    version: '3.13.1',
     integrations: {
       ml: !!ML_ACCESS_TOKEN,
       bling: !!BLING_ACCESS_TOKEN,
@@ -799,60 +799,79 @@ app.get('/api/devolucao/identificar/:codigo', async (req, res) => {
   }
 
   if (!nfData) {
-    // NOVO v3.13: tenta automaticamente buscar no Bling antes de desistir
-    // (evita estoquista ter que clicar "Buscar links Bling")
+    // NOVO v3.13.1: buscar via /pedidos/vendas (que tem numeroLoja na listagem)
+    // depois pega a NF associada ao pedido. Funciona pra NFs canceladas tambem.
     if (order?.id) {
-      console.log(`[BUSCA] ML sem NF, tentando Bling automatico pra order=${order.id}`);
+      console.log(`[BUSCA] ML sem NF, tentando Bling via /pedidos/vendas pra order=${order.id}`);
       const dataRef = order.date_created || null;
-      const rBling = await buscarNFnoBlingPorOrderId(String(order.id), dataRef, { maxPaginas: 30 });
+      const rPedido = await buscarPedidoBlingPorNumeroLoja(String(order.id), dataRef, { maxPaginas: 50 });
 
       resultado.tentativas.push({
-        tipo: 'bling_auto_por_orderid',
+        tipo: 'bling_auto_pedidos',
         codigo: order.id,
-        ok: rBling.ok,
-        status: rBling.ok ? 200 : 404,
-        paginas_verificadas: rBling.pagina,
+        ok: rPedido.ok,
+        status: rPedido.match ? 200 : 404,
+        paginas_verificadas: rPedido.pagina,
+        total_scanned: rPedido.totalScanned,
       });
 
-      if (rBling.ok && rBling.match) {
-        // Buscar NF completa pra ter linkDanfe E ITENS (titulo+SKU+EAN)
+      if (rPedido.ok && rPedido.match) {
+        // Pedido achado - busca detalhes completos pra ter NF associada
         await sleep(400);
-        const rCompleta = await buscarNFePorId(rBling.match.id);
-        const nf = (rCompleta.ok && rCompleta.data?.data) ? rCompleta.data.data : rBling.match;
+        const rPedFull = await buscarPedidoBlingPorId(rPedido.match.id);
+        const pedidoFull = rPedFull.ok ? rPedFull.data?.data : null;
 
-        const itensBling = Array.isArray(nf.itens) ? nf.itens.map(it => ({
-          titulo: it.descricao || null,
-          sku: it.codigo || null,
-          ean: it.gtin || null,
-          quantidade: it.quantidade || null,
-          valor: it.valor || null,
-          unidade: it.unidade || null,
-        })) : [];
+        // O pedido pode ter notaFiscal associada
+        const notaFiscalRef = pedidoFull?.notaFiscal;
+        const idNF = notaFiscalRef?.id || rPedido.match?.notaFiscal?.id;
 
-        nfData = {
-          fonte: 'bling',
-          numero: nf.numero,
-          serie: nf.serie,
-          chaveAcesso: nf.chaveAcesso,
-          valor: nf.valorNota,
-          dataEmissao: nf.dataEmissao,
-          linkDanfe: nf.linkDanfe,
-          linkPdf: nf.linkPDF,
-          linkXml: nf.xml,
-          idBling: nf.id,
-          numeroPedidoLoja: nf.numeroPedidoLoja,
-          itens: itensBling,
-        };
+        if (idNF) {
+          await sleep(400);
+          const rCompleta = await buscarNFePorId(idNF);
+          const nf = (rCompleta.ok && rCompleta.data?.data) ? rCompleta.data.data : null;
 
-        resultado.avisos.push({
-          tipo: 'nf_via_bling_auto',
-          mensagem: `NF ${nf.numero} achada automaticamente no Bling`,
-        });
-        console.log(`[BUSCA] Bling auto SUCESSO: NF=${nf.numero} itens=${itensBling.length}`);
+          if (nf) {
+            const itensBling = Array.isArray(nf.itens) ? nf.itens.map(it => ({
+              titulo: it.descricao || null,
+              sku: it.codigo || null,
+              ean: it.gtin || null,
+              quantidade: it.quantidade || null,
+              valor: it.valor || null,
+              unidade: it.unidade || null,
+            })) : [];
+
+            nfData = {
+              fonte: 'bling',
+              numero: nf.numero,
+              serie: nf.serie,
+              chaveAcesso: nf.chaveAcesso,
+              valor: nf.valorNota,
+              dataEmissao: nf.dataEmissao,
+              linkDanfe: nf.linkDanfe,
+              linkPdf: nf.linkPDF,
+              linkXml: nf.xml,
+              idBling: nf.id,
+              numeroPedidoLoja: nf.numeroPedidoLoja,
+              situacao: nf.situacao,
+              itens: itensBling,
+            };
+
+            resultado.avisos.push({
+              tipo: 'nf_via_bling_pedidos',
+              mensagem: `NF ${nf.numero} (situacao=${nf.situacao}) achada via pedido Bling ${rPedido.match.id}`,
+            });
+            console.log(`[BUSCA] Bling pedidos SUCESSO: NF=${nf.numero} situacao=${nf.situacao}`);
+          }
+        } else {
+          resultado.avisos.push({
+            tipo: 'pedido_sem_nf',
+            mensagem: `Pedido Bling ${rPedido.match.id} achado mas sem NF associada`,
+          });
+        }
       } else {
         resultado.avisos.push({
           tipo: 'sem_nf',
-          mensagem: 'NF-e nao localizada nem no ML nem no Bling automaticamente',
+          mensagem: `NF-e nao localizada via /pedidos/vendas (${rPedido.totalScanned || 0} pedidos verificados)`,
         });
       }
     } else {
@@ -1507,7 +1526,7 @@ app.delete('/api/admin/devolucao/:id', requerAdmin, async (req, res) => {
 // ============================================================
 app.listen(PORT, () => {
   console.log('============================================');
-  console.log('GOOD Devolucoes v3.13.0 - fix devolucao FLEX (shipment sem order_id)');
+  console.log('GOOD Devolucoes v3.13.1 - busca NF via /pedidos/vendas (acha NFs canceladas)');
   console.log(`Porta: ${PORT}`);
   console.log(`ML: ${ML_ACCESS_TOKEN ? 'OK' : 'FALTA'}`);
   console.log(`Bling: ${BLING_ACCESS_TOKEN ? 'OK' : 'FALTA'}`);
