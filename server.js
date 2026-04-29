@@ -620,6 +620,18 @@ app.get('/api/debug/bling-busca/:numeroLoja', async (req, res) => {
   res.json(r);
 });
 
+// Debug NF crua do Bling - pra investigar campos como hash de link compartilhavel
+app.get('/api/debug/bling-nfe-cru/:idNFe', async (req, res) => {
+  const r = await buscarNFePorId(req.params.idNFe);
+  res.status(r.ok ? 200 : r.status || 500).json(r);
+});
+
+// Debug pedido cru do Bling pelo id interno
+app.get('/api/debug/bling-pedido/:id', async (req, res) => {
+  const r = await buscarPedidoBlingPorId(req.params.id);
+  res.status(r.ok ? 200 : r.status || 500).json(r);
+});
+
 // ============================================================
 // CALLBACKS OAuth
 // ============================================================
