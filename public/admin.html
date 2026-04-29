@@ -176,7 +176,7 @@
     <header>
       <div>
         <h1>🔐 Admin - GOOD Devolucoes</h1>
-        <p>Painel restrito · v3.7</p>
+        <p>Painel restrito · v3.10</p>
       </div>
       <div class="header-acoes">
         <a href="/">📦 Triagem (bipar)</a>
@@ -187,7 +187,9 @@
     <div class="filtros">
       <div class="filtros-linha">
         <input type="text" class="busca" id="filtroBusca"
-          placeholder="🔍 Buscar por NF, pedido, SKU, cliente, MLB..." />
+          placeholder="🔍 Buscar por NF, pedido, SKU, cliente, MLB..."
+          onkeydown="if(event.key==='Enter') renderizar()" />
+        <button onclick="renderizar()">🔍 Buscar</button>
         <button class="ghost" onclick="limparBusca()">Limpar</button>
       </div>
       <div class="filtros-linha">
@@ -326,8 +328,8 @@
 
     function limparBusca() {
       document.getElementById('filtroBusca').value = '';
-      document.getElementById('filtroDataIni').value = '';
-      document.getElementById('filtroDataFim').value = '';
+      // Volta pras datas padrao (4 meses)
+      setarDatasPadrao(true);
       renderizar();
     }
 
@@ -473,13 +475,31 @@
       toastTimeout = setTimeout(() => t.classList.remove('show'), 3000);
     }
 
-    // Listeners dos filtros (re-renderiza sem precisar buscar de novo)
+    // Pre-setar datas: 4 meses atras ate hoje (sempre baseado no dia atual)
+    function setarDatasPadrao(forcar) {
+      const hoje = new Date();
+      const dataFim = hoje.toISOString().slice(0, 10);
+
+      const inicio = new Date();
+      inicio.setMonth(inicio.getMonth() - 4);
+      const dataIni = inicio.toISOString().slice(0, 10);
+
+      const inputIni = document.getElementById('filtroDataIni');
+      const inputFim = document.getElementById('filtroDataFim');
+
+      // So seta se nao tiver valor OU forcar=true
+      if (forcar || !inputIni.value) inputIni.value = dataIni;
+      if (forcar || !inputFim.value) inputFim.value = dataFim;
+    }
+
+    // Listeners (filtros aplicam ao mudar - busca em tempo real)
     document.getElementById('mostrarConcluidos').addEventListener('change', renderizar);
     document.getElementById('filtroBusca').addEventListener('input', renderizar);
     document.getElementById('filtroDataIni').addEventListener('change', renderizar);
     document.getElementById('filtroDataFim').addEventListener('change', renderizar);
 
-    // Carrega 1x ao abrir - sem auto-refresh (Diego pediu)
+    // Pre-seta datas e carrega
+    setarDatasPadrao();
     carregar();
   </script>
 </body>
