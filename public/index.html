@@ -474,7 +474,7 @@
     <header>
       <h1>📦 GOOD Devolucoes</h1>
       <p>Identificar venda + NF-e + Triagem</p>
-      <p style="font-size: 10px; color: #888; margin-top: 4px;">v3.10 (sem auto-apagar) | <span id="serverVersion">checando...</span></p>
+      <p style="font-size: 10px; color: #888; margin-top: 4px;">v3.11 (atalho NF Bling) | <span id="serverVersion">checando...</span></p>
       <div class="user-badge">
         👤 <span id="userNome">-</span>
         <a href="/admin.html" id="btnPainelAdmin" style="display:none;background:#ffd700;color:#1d1d1f;padding:3px 10px;border-radius:10px;font-weight:700;margin-left:6px;">👑 Painel Admin</a>
@@ -858,7 +858,6 @@
         html += '</div>';
 
         html += '<div style="margin-top: 12px;" id="botoesNF">';
-        if (nf.linkConsulta) html += `<a href="${nf.linkConsulta}" target="_blank" class="btn-action">📄 Consultar DANFE (Meu Danfe)</a>`;
         if (order.id) {
           html += `<button id="btnBlingDemanda" class="btn-action cinza" onclick="buscarLinksBling('${order.id}', '${order.date_created || ''}', '${nf.numero || ''}')">🔍 Buscar links Bling</button>`;
         }
@@ -1131,6 +1130,28 @@
       btn.innerHTML = '<span class="spinner-mini"></span>Salvando...';
 
       try {
+        // Se ainda nao tem idBling salvo, busca automaticamente em background
+        // pra Diego ter botao "Abrir NF no Bling" funcionando direto
+        const order = ultimaBusca.order || {};
+        const nf = ultimaBusca.nf || {};
+        if (order.id && nf.numero && !nf.idBling) {
+          btn.innerHTML = '<span class="spinner-mini"></span>Localizando NF no Bling...';
+          try {
+            const params = new URLSearchParams();
+            if (order.date_created) params.set('data', order.date_created);
+            params.set('numeroNF', nf.numero);
+            const url = `/api/nf/buscar-links-bling/${encodeURIComponent(order.id)}?${params.toString()}`;
+            const r = await fetch(url);
+            const d = await r.json();
+            if (d.ok && d.nf) {
+              ultimaBusca.nf = { ...nf, ...d.nf };
+            }
+          } catch (e) {
+            // sem stress, segue mesmo sem idBling
+          }
+          btn.innerHTML = '<span class="spinner-mini"></span>Salvando...';
+        }
+
         const payload = montarPayloadTriagem();
         if (window._forcarTriagem) payload.forcar = true;
 
@@ -1142,7 +1163,7 @@
         const d = await r.json();
         if (d.ok) {
           fecharModal('modalAprovar');
-          mostrarSucesso('✅ Incluido no estoque!', 'Diego ja foi avisado pra emitir a NF de devolucao no Bling.');
+          mostrarSucesso('✅ Incluido no estoque!', 'Diego ja foi avisado. Quando for emitir, basta clicar em "Abrir NF no Bling" no painel.');
           toast('Aprovacao registrada!', 'ok');
           setTimeout(() => {
             divResultado.classList.remove('show');
@@ -1152,7 +1173,6 @@
         } else if (r.status === 409 && d.erro === 'duplicata') {
           fecharModal('modalAprovar');
           toast('Esta devolucao ja foi triada antes!', 'err');
-          // Re-checa pra atualizar a tela com o aviso
           if (ultimaBusca?.shipment?.id) verificarTriagemExistente(ultimaBusca.shipment.id);
         } else {
           toast('Erro: ' + (d.erro || 'falha'), 'err');
