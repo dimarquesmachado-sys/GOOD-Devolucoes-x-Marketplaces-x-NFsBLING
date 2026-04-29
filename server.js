@@ -518,7 +518,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '3.7.0',
+    version: '3.8.0',
     integrations: {
       ml: !!ML_ACCESS_TOKEN,
       bling: !!BLING_ACCESS_TOKEN,
@@ -990,6 +990,31 @@ const requerEstoquista = requerLogin;
 // FASE 3: TRIAGEM - INCLUIR ESTOQUE / REPORTAR PROBLEMA
 // ============================================================
 
+// Verificar se shipment_id ja foi triado
+app.get('/api/triagem/status/:shipmentId', requerEstoquista, async (req, res) => {
+  if (!supabase) {
+    return res.json({ ok: false, erro: 'Supabase nao configurado' });
+  }
+  const shipmentId = String(req.params.shipmentId || '').trim();
+  if (!shipmentId) {
+    return res.status(400).json({ ok: false, erro: 'shipment_id obrigatorio' });
+  }
+  try {
+    const { data, error } = await supabase
+      .from('devolucoes')
+      .select('id, created_at, tipo, status, problema_descricao, problema_fotos, data_concluido, nf_numero, produto_qtd')
+      .eq('shipment_id', shipmentId)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      return res.status(500).json({ ok: false, erro: error.message });
+    }
+    return res.json({ ok: true, registros: data || [] });
+  } catch (err) {
+    return res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
 // Caminho APROVAR (INCLUIR ESTOQUE)
 app.post('/api/triagem/aprovar', requerEstoquista, async (req, res) => {
   if (!supabase) {
@@ -999,6 +1024,25 @@ app.post('/api/triagem/aprovar', requerEstoquista, async (req, res) => {
 
   if (!dados.shipment_id) {
     return res.status(400).json({ ok: false, erro: 'shipment_id obrigatorio' });
+  }
+
+  // Bloqueia duplicata - exceto se cliente passar forcar=true (re-triagem proposital)
+  if (!dados.forcar) {
+    const { data: existentes, error: errBusca } = await supabase
+      .from('devolucoes')
+      .select('id, created_at, tipo, status, problema_descricao')
+      .eq('shipment_id', String(dados.shipment_id))
+      .limit(1);
+    if (errBusca) {
+      console.error('[TRIAGEM] Erro busca duplicata:', errBusca);
+    } else if (existentes && existentes.length > 0) {
+      return res.status(409).json({
+        ok: false,
+        erro: 'duplicata',
+        mensagem: 'Esta devolucao ja foi triada antes',
+        registro_existente: existentes[0],
+      });
+    }
   }
 
   try {
@@ -1095,6 +1139,25 @@ app.post('/api/triagem/problema', requerEstoquista, async (req, res) => {
   const fotos = Array.isArray(dados.fotos) ? dados.fotos : [];
   if (fotos.length < 1) {
     return res.status(400).json({ ok: false, erro: 'Pelo menos 1 foto necessaria' });
+  }
+
+  // Bloqueia duplicata
+  if (!dados.forcar) {
+    const { data: existentes, error: errBusca } = await supabase
+      .from('devolucoes')
+      .select('id, created_at, tipo, status, problema_descricao')
+      .eq('shipment_id', String(dados.shipment_id))
+      .limit(1);
+    if (errBusca) {
+      console.error('[TRIAGEM] Erro busca duplicata:', errBusca);
+    } else if (existentes && existentes.length > 0) {
+      return res.status(409).json({
+        ok: false,
+        erro: 'duplicata',
+        mensagem: 'Esta devolucao ja foi triada antes',
+        registro_existente: existentes[0],
+      });
+    }
   }
 
   try {
@@ -1339,7 +1402,7 @@ if (supabase) {
 // ============================================================
 app.listen(PORT, () => {
   console.log('============================================');
-  console.log('GOOD Devolucoes v3.7.0 - login unificado (estoquista + admin no mesmo lugar)');
+  console.log('GOOD Devolucoes v3.8.0 - anti-duplicata + filtros admin');
   console.log(`Porta: ${PORT}`);
   console.log(`ML: ${ML_ACCESS_TOKEN ? 'OK' : 'FALTA'}`);
   console.log(`Bling: ${BLING_ACCESS_TOKEN ? 'OK' : 'FALTA'}`);
