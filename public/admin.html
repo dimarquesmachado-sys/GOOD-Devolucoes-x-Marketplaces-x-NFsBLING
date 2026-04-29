@@ -176,7 +176,7 @@
     <header>
       <div>
         <h1>🔐 Admin - GOOD Devolucoes</h1>
-        <p>Painel restrito · v3.11</p>
+        <p>Painel restrito · v3.14.6 (links ML + baixar fotos)</p>
       </div>
       <div class="header-acoes">
         <a href="/">📦 Triagem (bipar)</a>
@@ -365,7 +365,11 @@
             ${moeda(d.produto_valor_unit)}<br>
             <strong>NF:</strong> ${escapeHtml(d.nf_numero || '-')} ·
             <strong>Cliente:</strong> ${escapeHtml(d.buyer_nome || '-')}<br>
-            <strong>Order ML:</strong> <code>${d.order_id || '-'}</code>
+            <strong>Order ML:</strong> ${d.order_id
+              ? `<a href="https://www.mercadolivre.com.br/vendas/${d.order_id}/detalhe" target="_blank" style="color:#FFE600;font-weight:700;text-decoration:none;background:#1a1a1a;padding:2px 8px;border-radius:4px;font-family:monospace;">${d.order_id} 🔗</a>`
+              : '<code>-</code>'}
+            ${d.pack_id ? ` · <strong>Pack:</strong> <code>${d.pack_id}</code>` : ''}
+            ${d.shipment_id ? ` · <strong>Shipment:</strong> <code>${d.shipment_id}</code>` : ''}
           </div>
           ${concluido ? '' : `
             <div class="item-acoes">
@@ -400,12 +404,22 @@
             <strong>${d.produto_qtd || '-'} un</strong> ·
             ${moeda(d.produto_valor_unit)}<br>
             <strong>NF:</strong> ${escapeHtml(d.nf_numero || '-')} ·
-            <strong>Cliente:</strong> ${escapeHtml(d.buyer_nome || '-')}
+            <strong>Cliente:</strong> ${escapeHtml(d.buyer_nome || '-')}<br>
+            <strong>Order ML:</strong> ${d.order_id
+              ? `<a href="https://www.mercadolivre.com.br/vendas/${d.order_id}/detalhe" target="_blank" style="color:#FFE600;font-weight:700;text-decoration:none;background:#1a1a1a;padding:2px 8px;border-radius:4px;font-family:monospace;">${d.order_id} 🔗</a>`
+              : '<code>-</code>'}
+            ${d.pack_id ? ` · <strong>Pack:</strong> <code>${d.pack_id}</code>` : ''}
+            ${d.shipment_id ? ` · <strong>Shipment:</strong> <code>${d.shipment_id}</code>` : ''}
           </div>
           ${desc ? `<div class="descricao-problema">💬 ${escapeHtml(desc)}</div>` : ''}
           ${fotos.length ? `
             <div class="fotos-mini">
               ${fotos.map(url => `<img src="${url}" onclick="abrirFoto('${url}')" alt="foto">`).join('')}
+            </div>
+            <div style="margin-top:8px;">
+              <button class="btn" style="background:#1565c0;color:white;" onclick='baixarTodasFotos(${JSON.stringify(fotos)}, "${escapeHtml(d.nf_numero || d.order_id || d.id)}")'>
+                📥 Baixar todas as fotos (${fotos.length})
+              </button>
             </div>
           ` : ''}
           ${concluido ? '' : `
@@ -422,6 +436,29 @@
     function abrirFoto(url) {
       document.getElementById('modalFotoImg').src = url;
       document.getElementById('modalFoto').classList.add('show');
+    }
+
+    // Baixa todas as fotos sequencialmente (sem zip - mais simples e funciona em todos navegadores)
+    async function baixarTodasFotos(urls, identificador) {
+      if (!urls || urls.length === 0) return;
+      toast(`Baixando ${urls.length} fotos...`, 'ok');
+      for (let i = 0; i < urls.length; i++) {
+        try {
+          const r = await fetch(urls[i]);
+          const blob = await r.blob();
+          const link = document.createElement('a');
+          link.href = URL.createObjectURL(blob);
+          link.download = `${identificador}_foto_${String(i + 1).padStart(2, '0')}.jpg`;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          URL.revokeObjectURL(link.href);
+          await new Promise(resolve => setTimeout(resolve, 300));
+        } catch (e) {
+          console.error('Erro ao baixar foto', i + 1, e);
+        }
+      }
+      toast(`✅ ${urls.length} fotos baixadas!`, 'ok');
     }
 
     function copiarNF(num) {
