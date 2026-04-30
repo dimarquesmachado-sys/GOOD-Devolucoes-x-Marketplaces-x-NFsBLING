@@ -26,7 +26,8 @@ async function buscar() {
   } finally {
     divLoading.classList.remove('show');
     btnBuscar.disabled = false;
-    inputCodigo.select();
+    // v3.14.8: select() da foco e abre teclado virtual no celular - so faz em desktop
+    if (!('ontouchstart' in window)) inputCodigo.select();
   }
 }
 
