@@ -836,6 +836,40 @@ app.get('/api/devolucao/identificar/:codigo', async (req, res) => {
         linkConsulta: `https://meudanfe.com.br/consulta/${rNFML.data.fiscal_key}`,
         idMLInvoice: rNFML.data.id,
       };
+
+      // v3.14.8: enriquecer com itens do Bling (titulo limpo + EAN) quando ML achou NF
+      // Adiciona ~1s a busca mas evita clique manual em "Buscar links Bling" e da EAN no card
+      if (order?.id && rNFML.data.invoice_number) {
+        try {
+          const rEnriq = await buscarNFnoBlingPorNumero(rNFML.data.invoice_number, order.date_created, { maxPaginas: 30 });
+          if (rEnriq.ok && rEnriq.match?.id) {
+            await sleep(400);
+            const rCompleta = await buscarNFePorId(rEnriq.match.id);
+            if (rCompleta.ok && rCompleta.data?.data) {
+              const nfBling = rCompleta.data.data;
+              const itensBling = Array.isArray(nfBling.itens) ? nfBling.itens.map(it => ({
+                titulo: it.descricao || null,
+                sku: it.codigo || null,
+                ean: it.gtin || null,
+                quantidade: it.quantidade || null,
+                valor: it.valor || null,
+                unidade: it.unidade || null,
+              })) : [];
+              nfData.itens = itensBling;
+              nfData.idBling = nfBling.id;
+              nfData.linkDanfe = nfBling.linkDanfe || nfData.linkConsulta;
+              nfData.linkPdf = nfBling.linkPDF;
+              nfData.linkXml = nfBling.xml;
+              resultado.avisos.push({
+                tipo: 'enriquecido_bling',
+                mensagem: `Itens e links Bling carregados automaticamente`,
+              });
+            }
+          }
+        } catch (e) {
+          console.warn('[ENRIQ] Erro ao enriquecer NF ML com itens Bling:', e.message);
+        }
+      }
     }
   }
 
