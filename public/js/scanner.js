@@ -111,12 +111,21 @@ function processarBipagemEtiqueta(codigo) {
   status.style.background = 'rgba(46,125,50,0.95)';
   status.textContent = `✅ Lido: ${codigoLimpo}`;
 
-  // Preenche o campo de busca + fecha camera + dispara busca
+  // Preenche o campo de busca
   const inp = document.getElementById('codigo');
-  if (inp) inp.value = codigoLimpo;
+  if (inp) {
+    inp.value = codigoLimpo;
+    // v3.14.8: tira foco do campo pra nao abrir teclado virtual no celular
+    // (camera ja leu, nao precisa digitar mais nada)
+    inp.blur();
+  }
 
   setTimeout(() => {
     fecharCameraScanner();
+    // v3.14.8: garante que o foco NAO volta pro campo (que abriria teclado)
+    if (document.activeElement && document.activeElement.blur) {
+      document.activeElement.blur();
+    }
     // Dispara busca automatica
     if (typeof buscar === 'function') buscar();
   }, 800);
