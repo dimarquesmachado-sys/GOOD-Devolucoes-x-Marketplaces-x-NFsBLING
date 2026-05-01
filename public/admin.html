@@ -193,7 +193,7 @@
     <header>
       <div>
         <h1>🔐 Admin - GOOD Devolucoes</h1>
-        <p>Painel restrito · v3.14.9 (header responsivo)</p>
+        <p>Painel restrito · v3.15.0 (gerar NF devolução)</p>
       </div>
       <div class="header-acoes">
         <a href="/">📦 Triagem (bipar)</a>
@@ -254,6 +254,15 @@
 
   <div class="modal-foto" id="modalFoto" onclick="this.classList.remove('show')">
     <img id="modalFotoImg" src="" alt="">
+  </div>
+
+  <!-- v3.15.0: Modal Gerar NF Devolucao -->
+  <div id="modalGerarDevolucao" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.6); z-index:3000; align-items:center; justify-content:center; padding:20px;">
+    <div style="background:white; border-radius:12px; max-width:560px; width:100%; max-height:90vh; overflow-y:auto; padding:24px;">
+      <div id="modalGerarConteudo">
+        <!-- conteudo dinamico -->
+      </div>
+    </div>
   </div>
 
   <div class="toast" id="toast"></div>
@@ -392,8 +401,14 @@
             <div class="item-acoes">
               ${d.nf_link_danfe ? `<a class="btn btn-cinza" href="${d.nf_link_danfe}" target="_blank">📄 Ver DANFE</a>` : ''}
               ${d.nf_id_bling
-                ? `<a class="btn btn-verde" href="https://www.bling.com.br/notas.fiscais.php#edit/${d.nf_id_bling}" target="_blank" title="Abre a NF. Pra gerar devolu\u00e7\u00e3o, volte na lista, clique nos 3 pontos da NF.">🔗 Abrir NF no Bling</a>`
+                ? `<a class="btn btn-verde" href="https://www.bling.com.br/notas.fiscais.php#edit/${d.nf_id_bling}" target="_blank" title="Abre a NF. Pra gerar devolu\u00e7\u00e3o automaticamente, use o bot\u00e3o ao lado.">🔗 Abrir NF no Bling</a>`
                 : `<a class="btn" href="https://www.bling.com.br/notas.fiscais.php#list" target="_blank" onclick="copiarNF('${escapeHtml(d.nf_numero || '')}')">🔗 Abrir lista Bling (copia NF)</a>`
+              }
+              ${d.nf_id_bling && !d.nf_devolucao_id_bling
+                ? `<button class="btn" style="background:#1565c0;" onclick="abrirModalGerarDevolucao('${d.id}', '${d.nf_id_bling}', '${escapeHtml(d.nf_numero || '')}', '${escapeHtml(d.produto_titulo || '')}')" title="Cria rascunho de NF de devolu\u00e7\u00e3o no Bling automaticamente">🧾 Gerar NF Devolu\u00e7\u00e3o</button>`
+                : d.nf_devolucao_id_bling
+                  ? `<a class="btn btn-verde" href="https://www.bling.com.br/notas.entrada.php#edit/${d.nf_devolucao_id_bling}" target="_blank" title="NF de devolu\u00e7\u00e3o j\u00e1 gerada (rascunho)">📝 Rascunho criado: ${d.nf_devolucao_numero || 'ver'}</a>`
+                  : ''
               }
               <button class="btn btn-verde" onclick="concluir('${d.id}')">✅ Marcar como concluido</button>
               <button class="btn btn-vermelho" onclick="deletar('${d.id}')" title="Deletar (caso erro)">🗑️</button>
@@ -554,6 +569,258 @@
     document.getElementById('filtroBusca').addEventListener('input', renderizar);
     document.getElementById('filtroDataIni').addEventListener('change', renderizar);
     document.getElementById('filtroDataFim').addEventListener('change', renderizar);
+
+    // ============================================================
+    // v3.15.0 - GERAR NF DEVOLUCAO (Fase 3B)
+    // ============================================================
+    // Fluxo:
+    //  1. Diego clica "Gerar NF Devolucao" no card
+    //  2. Backend busca NF original via API v3 oficial -> retorna produtos+contato
+    //  3. Frontend monta XML xajax e chama /services/notas.fiscais.server.php?f=salvarNotaDevolucao
+    //     (com credentials:'include' usa cookie de sessao do Diego no Bling)
+    //  4. Bling cria rascunho e devolve {idNotaDevolucao, dadosEmissao:{numero, situacao:1}}
+    //  5. Backend salva idNotaDevolucao no Supabase
+    //  6. Frontend mostra "Rascunho criado: NF nº XXXX [Abrir no Bling]"
+    //  7. Diego abre, revisa, transmite manual no Bling
+
+    // IDs FIXOS DA GOOD IMPORT (descobertos por captura de fetch real do Bling)
+    const GOOD_BLING = {
+      idEmpresaControl: '4956030980',
+      idNaturezaOperacao: '5776118802',  // "Devolucao de Mercadoria - Entrada"
+    };
+
+    function abrirModalGerarDevolucao(devolucaoId, idNFOriginalBling, nfNumero, produtoTitulo) {
+      const conteudo = document.getElementById('modalGerarConteudo');
+      conteudo.innerHTML = `
+        <h3 style="font-size:18px; margin-bottom:12px;">🧾 Gerar NF Devolução</h3>
+        <p style="font-size:14px; color:#555; margin-bottom:16px;">
+          Vamos criar um <strong>rascunho</strong> de NF de devolução de entrada no Bling pra esta venda:
+        </p>
+        <div style="background:#f5f5f7; padding:12px; border-radius:8px; font-size:13px; margin-bottom:16px;">
+          <div><strong>NF original:</strong> ${escapeHtml(nfNumero)}</div>
+          <div><strong>Produto:</strong> ${escapeHtml(produtoTitulo)}</div>
+        </div>
+        <p style="font-size:13px; color:#666; margin-bottom:16px;">
+          ⚠️ Após criar, <strong>você abre no Bling</strong>, revisa e transmite manualmente. O rascunho NÃO é transmitido pra SEFAZ automaticamente.
+        </p>
+        <div style="display:flex; gap:8px; justify-content:flex-end;">
+          <button class="btn btn-cinza" onclick="fecharModalGerarDevolucao()">Cancelar</button>
+          <button class="btn btn-verde" id="btnConfirmarGerar"
+            onclick="confirmarGerarDevolucao('${devolucaoId}', '${idNFOriginalBling}')">
+            Criar Rascunho
+          </button>
+        </div>
+      `;
+      document.getElementById('modalGerarDevolucao').style.display = 'flex';
+    }
+
+    function fecharModalGerarDevolucao() {
+      document.getElementById('modalGerarDevolucao').style.display = 'none';
+    }
+
+    async function confirmarGerarDevolucao(devolucaoId, idNFOriginalBling) {
+      const btn = document.getElementById('btnConfirmarGerar');
+      const conteudo = document.getElementById('modalGerarConteudo');
+
+      // Loading
+      conteudo.innerHTML = `
+        <h3 style="font-size:18px; margin-bottom:12px;">🧾 Gerando NF Devolução...</h3>
+        <div style="text-align:center; padding:30px;">
+          <div class="spinner" style="display:inline-block; width:36px; height:36px; border:4px solid #f0f0f0; border-top-color:#1565c0; border-radius:50%; animation:spin 0.8s linear infinite;"></div>
+          <p id="statusGerar" style="margin-top:14px; color:#555; font-size:14px;">
+            Buscando dados da NF no Bling...
+          </p>
+        </div>
+      `;
+
+      try {
+        // PASSO 1: Backend busca dados da NF original via API v3 oficial
+        const r1 = await fetch(`/api/admin/preparar-devolucao/${idNFOriginalBling}`);
+        const d1 = await r1.json();
+        if (!d1.ok) {
+          throw new Error(d1.erro || 'Falha ao buscar dados da NF no Bling');
+        }
+        const { produtos, contato } = d1;
+        if (!produtos || produtos.length === 0) {
+          throw new Error('NF sem produtos');
+        }
+        if (!contato || !contato.id) {
+          throw new Error('NF sem dados do contato');
+        }
+
+        // PASSO 2: Monta XML xajax e chama Bling direto (com cookie de sessao)
+        document.getElementById('statusGerar').textContent = 'Criando rascunho no Bling...';
+
+        const xml = montarXmlDevolucao(produtos, contato);
+        const body =
+          'xajax=salvarNotaDevolucao' +
+          '&xajaxr=' + Date.now() +
+          '&xajaxargs[]=' + encodeURIComponent(idNFOriginalBling) +
+          '&xajaxargs[]=' + encodeURIComponent(xml) +
+          '&xajaxargs[]=false';
+
+        const r2 = await fetch('https://www.bling.com.br/services/notas.fiscais.server.php?f=salvarNotaDevolucao', {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: body
+        });
+
+        if (!r2.ok) {
+          throw new Error(`Bling respondeu HTTP ${r2.status}. Confirme que voce esta logado no Bling em outra aba.`);
+        }
+
+        const result = await r2.json();
+        if (!result || !result.idNotaDevolucao) {
+          throw new Error('Bling nao retornou ID da NF: ' + JSON.stringify(result).slice(0, 200));
+        }
+
+        const idNFDevolucao = result.idNotaDevolucao;
+        const numeroNF = result.dadosEmissao?.numero || '?';
+
+        // PASSO 3: Salva no Supabase pra nao gerar de novo
+        document.getElementById('statusGerar').textContent = 'Registrando no sistema...';
+
+        try {
+          await fetch(`/api/admin/registrar-devolucao-gerada/${devolucaoId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              nf_devolucao_id_bling: String(idNFDevolucao),
+              nf_devolucao_numero: String(numeroNF),
+            }),
+          });
+        } catch (e) {
+          console.warn('Falha ao registrar no Supabase (nao critico):', e);
+        }
+
+        // PASSO 4: Mostra sucesso
+        const linkBling = `https://www.bling.com.br/notas.entrada.php#edit/${idNFDevolucao}`;
+        conteudo.innerHTML = `
+          <h3 style="font-size:18px; margin-bottom:12px; color:#2e7d32;">✅ Rascunho criado!</h3>
+          <div style="background:#e8f5e9; padding:14px; border-radius:8px; margin-bottom:16px;">
+            <div style="font-size:14px; color:#1b5e20;">
+              <strong>NF nº ${escapeHtml(String(numeroNF))}</strong> criada como <strong>rascunho</strong> no Bling.
+            </div>
+            <div style="font-size:12px; color:#388e3c; margin-top:6px;">
+              ID: ${idNFDevolucao}
+            </div>
+          </div>
+          <p style="font-size:13px; color:#555; margin-bottom:16px;">
+            Próximos passos: abrir no Bling, revisar dados, e clicar em <strong>Salvar/Transmitir</strong>.
+          </p>
+          <div style="display:flex; gap:8px; justify-content:flex-end; flex-wrap:wrap;">
+            <button class="btn btn-cinza" onclick="fecharModalGerarDevolucao()">Fechar</button>
+            <a class="btn btn-verde" href="${linkBling}" target="_blank" onclick="setTimeout(()=>{ fecharModalGerarDevolucao(); carregar(); }, 500)">
+              🔗 Abrir Rascunho no Bling
+            </a>
+          </div>
+        `;
+        toast('Rascunho criado: NF nº ' + numeroNF, 'ok');
+
+      } catch (err) {
+        console.error('Erro gerar devolucao:', err);
+        conteudo.innerHTML = `
+          <h3 style="font-size:18px; margin-bottom:12px; color:#c62828;">❌ Erro ao gerar</h3>
+          <div style="background:#ffebee; padding:14px; border-radius:8px; margin-bottom:16px; font-size:13px; color:#b71c1c;">
+            ${escapeHtml(err.message || String(err))}
+          </div>
+          <div style="font-size:13px; color:#555; margin-bottom:16px;">
+            <strong>Possíveis causas:</strong><br>
+            • Você não está logado no Bling em outra aba<br>
+            • A NF original já tem todas devoluções emitidas<br>
+            • Bling mudou o endpoint interno (raro)<br><br>
+            <strong>Alternativa:</strong> abre a NF no Bling e gera devolução manualmente pelo menu de 3 pontos.
+          </div>
+          <div style="display:flex; gap:8px; justify-content:flex-end;">
+            <button class="btn btn-cinza" onclick="fecharModalGerarDevolucao()">Fechar</button>
+          </div>
+        `;
+        toast('Erro: ' + (err.message || err), 'err');
+      }
+    }
+
+    // Monta o XML proprietario do framework xajax do Bling
+    // Formato descoberto via captura de fetch real (30/04/2026)
+    function montarXmlDevolucao(produtos, contato) {
+      // produtos = [{ idBling, quantidade, valor }]
+      // contato = { id, nome, tipo, cnpj, ie, indIEDest, rg, cep, cidade, idMunicipio, uf, endereco, enderecoNro, bairro, complemento, email, fone, celular, dataNascimento, nomePais, idPais }
+
+      // Helper: monta um <e><k>...</k><v>...</v></e>
+      function entry(key, valueXml) {
+        return `<e><k>${escapeXajax(key)}</k><v>${valueXml}</v></e>`;
+      }
+      // Helper: valor leaf (texto simples, ja escapado)
+      function leaf(value) {
+        return escapeXajax(value == null ? '' : String(value));
+      }
+
+      // Bloco produtos: { idBling: { quantidade, valor } }
+      const produtosXml = '<xjxobj>' + produtos.map(p => {
+        const inner = '<xjxobj>' +
+          entry('quantidade', leaf(formatarQtde(p.quantidade))) +
+          entry('valor', leaf(formatarValor(p.valor))) +
+        '</xjxobj>';
+        return entry(String(p.idBling), inner);
+      }).join('') + '</xjxobj>';
+
+      // Bloco contato (mesma ordem que o Bling envia, por garantia)
+      const contatoXml = '<xjxobj>' +
+        entry('nome',           leaf(contato.nome)) +
+        entry('id',             leaf(contato.id)) +
+        entry('tipo',           leaf(contato.tipo || 'F')) +
+        entry('cnpj',           leaf(contato.cnpj || contato.cpf || '')) +
+        entry('ie',             leaf(contato.ie || '')) +
+        entry('indIEDest',      leaf(contato.indIEDest || '9')) +
+        entry('rg',             leaf(contato.rg || '')) +
+        entry('nomePais',       leaf(contato.nomePais || '')) +
+        entry('idPais',         leaf(contato.idPais || '')) +
+        entry('cep',            leaf(contato.cep || '')) +
+        entry('cidade',         leaf(contato.cidade || '')) +
+        entry('idMunicipio',    leaf(contato.idMunicipio || '')) +
+        entry('uf',             leaf(contato.uf || '')) +
+        entry('endereco',       leaf(contato.endereco || '')) +
+        entry('enderecoNro',    leaf(contato.enderecoNro || '')) +
+        entry('bairro',         leaf(contato.bairro || '')) +
+        entry('complemento',    leaf(contato.complemento || '')) +
+        entry('email',          leaf(contato.email || '')) +
+        entry('fone',           leaf(contato.fone || '')) +
+        entry('celular',        leaf(contato.celular || '')) +
+        entry('dataNascimento', leaf(contato.dataNascimento || '')) +
+      '</xjxobj>';
+
+      // Bloco raiz
+      const xml = '<xjxobj>' +
+        entry('produtos', produtosXml) +
+        entry('contato', contatoXml) +
+        entry('idNaturezaOperacao', leaf(GOOD_BLING.idNaturezaOperacao)) +
+        entry('idEmpresaControl', leaf(GOOD_BLING.idEmpresaControl)) +
+      '</xjxobj>';
+
+      return xml;
+    }
+
+    // Escapa caracteres XML mas SEM tocar em UTF-8 (acentos passam direto)
+    function escapeXajax(s) {
+      return String(s)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+    }
+
+    // Quantidade no formato Bling: virgula brasileira, 2 casas
+    function formatarQtde(q) {
+      const n = Number(q);
+      if (!isFinite(n)) return '1,00';
+      return n.toFixed(2).replace('.', ',');
+    }
+
+    // Valor unitario no formato Bling: virgula brasileira, 10 casas (decimais.price=10)
+    function formatarValor(v) {
+      const n = Number(v);
+      if (!isFinite(n)) return '0,0000000000';
+      return n.toFixed(10).replace('.', ',');
+    }
 
     // Pre-seta datas e carrega
     setarDatasPadrao();
