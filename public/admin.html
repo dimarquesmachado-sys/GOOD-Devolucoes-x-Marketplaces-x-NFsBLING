@@ -193,7 +193,7 @@
     <header>
       <div>
         <h1>🔐 Admin - GOOD Devolucoes</h1>
-        <p>Painel restrito · v3.15.0 (gerar NF devolução)</p>
+        <p>Painel restrito · v3.15.1 (gerar NF devolução via Bridge)</p>
       </div>
       <div class="header-acoes">
         <a href="/">📦 Triagem (bipar)</a>
@@ -648,35 +648,32 @@
           throw new Error('NF sem dados do contato');
         }
 
-        // PASSO 2: Monta XML xajax e chama Bling direto (com cookie de sessao)
-        document.getElementById('statusGerar').textContent = 'Criando rascunho no Bling...';
+        // PASSO 2: Monta XML xajax e pede pra extensao Bridge chamar o Bling
+        // (extensao tem privilegios pra burlar CORS)
+        document.getElementById('statusGerar').textContent = 'Criando rascunho no Bling (via extensão)...';
 
         const xml = montarXmlDevolucao(produtos, contato);
-        const body =
-          'xajax=salvarNotaDevolucao' +
-          '&xajaxr=' + Date.now() +
-          '&xajaxargs[]=' + encodeURIComponent(idNFOriginalBling) +
-          '&xajaxargs[]=' + encodeURIComponent(xml) +
-          '&xajaxargs[]=false';
 
-        const r2 = await fetch('https://www.bling.com.br/services/notas.fiscais.server.php?f=salvarNotaDevolucao', {
-          method: 'POST',
-          credentials: 'include',
-          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-          body: body
-        });
-
-        if (!r2.ok) {
-          throw new Error(`Bling respondeu HTTP ${r2.status}. Confirme que voce esta logado no Bling em outra aba.`);
+        // Verifica se a extensao Bridge esta instalada
+        if (!await verificarBridgeInstalada()) {
+          throw new Error(
+            'Extensão "GOOD Devoluções Bridge" não detectada. ' +
+            'Instale a extensão e recarregue a página. ' +
+            'Veja README pra instalação.'
+          );
         }
 
-        const result = await r2.json();
+        const result = await chamarBlingViaBridge({
+          idNFOriginal: String(idNFOriginalBling),
+          xmlXajax: xml,
+        });
+
         if (!result || !result.idNotaDevolucao) {
           throw new Error('Bling nao retornou ID da NF: ' + JSON.stringify(result).slice(0, 200));
         }
 
         const idNFDevolucao = result.idNotaDevolucao;
-        const numeroNF = result.dadosEmissao?.numero || '?';
+        const numeroNF = result.numero || '?';
 
         // PASSO 3: Salva no Supabase pra nao gerar de novo
         document.getElementById('statusGerar').textContent = 'Registrando no sistema...';
@@ -727,6 +724,7 @@
           </div>
           <div style="font-size:13px; color:#555; margin-bottom:16px;">
             <strong>Possíveis causas:</strong><br>
+            • Extensão "GOOD Devoluções Bridge" não está instalada<br>
             • Você não está logado no Bling em outra aba<br>
             • A NF original já tem todas devoluções emitidas<br>
             • Bling mudou o endpoint interno (raro)<br><br>
@@ -821,6 +819,85 @@
       if (!isFinite(n)) return '0,0000000000';
       return n.toFixed(10).replace('.', ',');
     }
+
+    // ============================================================
+    // v3.15.0 - Comunicacao com a Extensao "GOOD Devolucoes Bridge"
+    // ============================================================
+    // A extensao instalada no navegador escuta postMessage e faz
+    // chamadas ao Bling com privilegios (sem CORS).
+    // Sem a extensao instalada, a chamada vai dar timeout.
+
+    let bridgeInstaladaCache = null;
+
+    // Detecta se a extensao esta instalada (via postMessage PING/PONG)
+    function verificarBridgeInstalada() {
+      if (bridgeInstaladaCache !== null) return Promise.resolve(bridgeInstaladaCache);
+
+      return new Promise(resolve => {
+        let resolved = false;
+        function handler(event) {
+          if (event.source !== window) return;
+          if (event.data?.tipo === 'GOOD_BRIDGE_PONG' || event.data?.tipo === 'GOOD_BRIDGE_INSTALADA') {
+            resolved = true;
+            window.removeEventListener('message', handler);
+            bridgeInstaladaCache = true;
+            resolve(true);
+          }
+        }
+        window.addEventListener('message', handler);
+        window.postMessage({ tipo: 'GOOD_BRIDGE_PING' }, '*');
+
+        setTimeout(() => {
+          if (!resolved) {
+            window.removeEventListener('message', handler);
+            bridgeInstaladaCache = false;
+            resolve(false);
+          }
+        }, 1500);
+      });
+    }
+
+    // Manda pedido pra Bridge criar a devolucao no Bling
+    function chamarBlingViaBridge(payload) {
+      return new Promise((resolve, reject) => {
+        const requisicaoId = 'req_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+        let timeout;
+
+        function handler(event) {
+          if (event.source !== window) return;
+          if (event.data?.tipo !== 'GOOD_BRIDGE_RESPOSTA') return;
+          if (event.data.requisicaoId !== requisicaoId) return;
+
+          window.removeEventListener('message', handler);
+          clearTimeout(timeout);
+
+          if (event.data.ok) {
+            resolve(event.data.resultado);
+          } else {
+            reject(new Error(event.data.erro || 'Erro desconhecido na Bridge'));
+          }
+        }
+
+        window.addEventListener('message', handler);
+
+        window.postMessage({
+          tipo: 'GOOD_BRIDGE_CRIAR_DEVOLUCAO',
+          requisicaoId,
+          payload,
+        }, '*');
+
+        // Timeout de 30s pro Bling responder
+        timeout = setTimeout(() => {
+          window.removeEventListener('message', handler);
+          reject(new Error('Timeout - Bling demorou mais de 30s pra responder'));
+        }, 30000);
+      });
+    }
+
+    // Pre-detecta a Bridge logo no carregamento (atualiza badge na UI se quiser)
+    verificarBridgeInstalada().then(instalada => {
+      console.log('[GOOD Devolucoes] Extensao Bridge:', instalada ? 'INSTALADA ✅' : 'NAO instalada ❌');
+    });
 
     // Pre-seta datas e carrega
     setarDatasPadrao();
