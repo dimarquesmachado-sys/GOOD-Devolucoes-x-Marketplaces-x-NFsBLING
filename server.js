@@ -1611,17 +1611,17 @@ app.get('/api/admin/preparar-devolucao/:idBling', requerAdmin, async (req, res) 
 
   try {
     // Busca a NF completa via API v3 oficial
-    const url = `https://api.bling.com.br/Api/v3/nfe/${idBling}`;
-    const { response, data } = await blingFetchComRetry(url);
+    const url = `https://www.bling.com.br/Api/v3/nfe/${idBling}`;
+    const r = await chamarBling(url);
 
-    if (!response.ok) {
-      return res.status(response.status).json({
+    if (!r.ok) {
+      return res.status(r.status || 500).json({
         ok: false,
-        erro: `Bling API v3 retornou ${response.status}: ${(data?.error?.description || JSON.stringify(data || {})).slice(0, 200)}`,
+        erro: `Bling API v3 retornou ${r.status || 'erro'}: ${(r.error?.error?.description || JSON.stringify(r.error || {})).slice(0, 200)}`,
       });
     }
 
-    const nf = data?.data;
+    const nf = r.data?.data;
     if (!nf) {
       return res.status(404).json({ ok: false, erro: 'NF nao encontrada no Bling' });
     }
