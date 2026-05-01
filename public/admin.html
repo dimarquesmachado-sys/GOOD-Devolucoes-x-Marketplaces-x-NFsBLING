@@ -17,15 +17,32 @@
       border-radius: 12px; padding: 20px; margin-bottom: 14px;
       box-shadow: 0 2px 8px rgba(0,0,0,0.15); color: white;
       display: flex; align-items: center; justify-content: space-between;
+      gap: 12px; flex-wrap: wrap;
     }
     header h1 { font-size: 20px; }
     header p { font-size: 12px; opacity: 0.7; margin-top: 2px; }
+    .header-acoes {
+      display: flex; gap: 8px; flex-wrap: wrap;
+    }
     .header-acoes a {
       color: white; padding: 8px 14px; background: rgba(255,255,255,0.15);
       border-radius: 8px; text-decoration: none; font-size: 13px; font-weight: 600;
-      margin-left: 8px;
     }
     .header-acoes a:hover { background: rgba(255,255,255,0.25); }
+
+    /* v3.14.9: no mobile (<=600px), header em coluna pra nao sobrepor titulo */
+    @media (max-width: 600px) {
+      header {
+        flex-direction: column; align-items: flex-start;
+        padding: 16px;
+      }
+      header h1 { font-size: 18px; }
+      .header-acoes { width: 100%; }
+      .header-acoes a {
+        flex: 1; text-align: center; padding: 10px 8px;
+        font-size: 12px;
+      }
+    }
 
     .secoes {
       display: grid; grid-template-columns: 1fr; gap: 14px;
@@ -176,7 +193,7 @@
     <header>
       <div>
         <h1>🔐 Admin - GOOD Devolucoes</h1>
-        <p>Painel restrito · v3.14.6 (links ML + baixar fotos)</p>
+        <p>Painel restrito · v3.14.9 (header responsivo)</p>
       </div>
       <div class="header-acoes">
         <a href="/">📦 Triagem (bipar)</a>
