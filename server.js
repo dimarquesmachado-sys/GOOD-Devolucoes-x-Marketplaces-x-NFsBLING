@@ -1596,6 +1596,140 @@ app.get('/api/admin/devolucoes', requerAdmin, async (req, res) => {
   }
 });
 
+// ============================================================
+// v3.15.0 (Fase 3B) - Preparar dados pra gerar NF Devolucao no Bling
+// ============================================================
+// Frontend (admin.html) chama esse endpoint pra obter os dados completos
+// (produtos com idBling + contato com idMunicipio etc) que sao necessarios
+// pra montar o XML xajax do salvarNotaDevolucao.
+// Usa a API v3 oficial do Bling (escopo NF Leitura ja tem).
+app.get('/api/admin/preparar-devolucao/:idBling', requerAdmin, async (req, res) => {
+  const idBling = String(req.params.idBling || '').trim();
+  if (!idBling || !/^\d+$/.test(idBling)) {
+    return res.status(400).json({ ok: false, erro: 'idBling invalido' });
+  }
+
+  try {
+    // Busca a NF completa via API v3 oficial
+    const url = `https://api.bling.com.br/Api/v3/nfe/${idBling}`;
+    const { response, data } = await blingFetchComRetry(url);
+
+    if (!response.ok) {
+      return res.status(response.status).json({
+        ok: false,
+        erro: `Bling API v3 retornou ${response.status}: ${(data?.error?.description || JSON.stringify(data || {})).slice(0, 200)}`,
+      });
+    }
+
+    const nf = data?.data;
+    if (!nf) {
+      return res.status(404).json({ ok: false, erro: 'NF nao encontrada no Bling' });
+    }
+
+    // Extrai itens. API v3 NF nao retorna idProduto direto.
+    // Buscamos cada produto pelo SKU pra pegar o idBling (necessario pro XML xajax).
+    const itensNF = Array.isArray(nf.itens) ? nf.itens : [];
+    if (itensNF.length === 0) {
+      return res.status(400).json({ ok: false, erro: 'NF sem itens' });
+    }
+
+    const produtos = [];
+    for (const it of itensNF) {
+      const sku = it.codigo;
+      if (!sku) {
+        return res.status(400).json({ ok: false, erro: `Item da NF sem SKU: ${JSON.stringify(it).slice(0, 200)}` });
+      }
+      const rProd = await buscarProdutoBlingPorSku(sku);
+      if (!rProd.ok || !rProd.produto) {
+        return res.status(400).json({ ok: false, erro: `Produto nao encontrado no Bling para SKU ${sku}` });
+      }
+      produtos.push({
+        idBling: String(rProd.produto.id),
+        sku,
+        descricao: it.descricao,
+        quantidade: Number(it.quantidade) || 1,
+        valor: Number(it.valor) || 0,
+      });
+    }
+
+    // Extrai contato (vem completo na NF v3)
+    const contato = nf.contato || {};
+    const endereco = contato.endereco || {};
+
+    const contatoOut = {
+      id: String(contato.id || ''),
+      nome: contato.nome || '',
+      tipo: contato.tipoPessoa === 'J' ? 'J' : 'F',
+      cnpj: contato.numeroDocumento || '',
+      ie: contato.ie || '',
+      indIEDest: String(contato.indicadorIE || '9'),
+      rg: contato.rg || '',
+      nomePais: '',
+      idPais: '',
+      cep: endereco.cep || '',
+      cidade: endereco.municipio || '',
+      idMunicipio: String(endereco.codigoMunicipio || ''),
+      uf: endereco.uf || '',
+      endereco: endereco.endereco || '',
+      enderecoNro: endereco.numero || '',
+      bairro: endereco.bairro || '',
+      complemento: endereco.complemento || '',
+      email: contato.email || '',
+      fone: contato.telefone || '',
+      celular: '',
+      dataNascimento: '',
+    };
+
+    if (!contatoOut.id) {
+      return res.status(400).json({ ok: false, erro: 'NF sem ID de contato' });
+    }
+
+    return res.json({
+      ok: true,
+      idNFOriginal: idBling,
+      numeroNF: nf.numero,
+      produtos,
+      contato: contatoOut,
+    });
+
+  } catch (e) {
+    console.error('[preparar-devolucao] erro:', e);
+    return res.status(500).json({ ok: false, erro: e.message || 'erro interno' });
+  }
+});
+
+// v3.15.0: Registra no Supabase que a NF de devolucao foi gerada
+// pra evitar duplicatas e mostrar link direto no admin
+app.put('/api/admin/registrar-devolucao-gerada/:id', requerAdmin, async (req, res) => {
+  if (!supabase) {
+    return res.status(500).json({ ok: false, erro: 'Supabase nao configurado' });
+  }
+
+  const id = String(req.params.id || '').trim();
+  const { nf_devolucao_id_bling, nf_devolucao_numero } = req.body || {};
+
+  if (!id) return res.status(400).json({ ok: false, erro: 'id obrigatorio' });
+  if (!nf_devolucao_id_bling) return res.status(400).json({ ok: false, erro: 'nf_devolucao_id_bling obrigatorio' });
+
+  try {
+    const { error } = await supabase
+      .from('devolucoes')
+      .update({
+        nf_devolucao_id_bling: String(nf_devolucao_id_bling),
+        nf_devolucao_numero: String(nf_devolucao_numero || ''),
+        nf_devolucao_gerada_em: new Date().toISOString(),
+      })
+      .eq('id', id);
+
+    if (error) {
+      return res.status(500).json({ ok: false, erro: error.message });
+    }
+    return res.json({ ok: true });
+  } catch (e) {
+    return res.status(500).json({ ok: false, erro: e.message });
+  }
+});
+
 // API: marcar como concluido
 app.put('/api/admin/concluir/:id', requerAdmin, async (req, res) => {
   if (!supabase) {
