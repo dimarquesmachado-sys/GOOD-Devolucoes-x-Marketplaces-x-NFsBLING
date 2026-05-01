@@ -21,8 +21,20 @@ header p { font-size: 13px; color: #555; }
   position: absolute; top: 12px; right: 12px;
   background: rgba(0,0,0,0.1); padding: 4px 10px; border-radius: 12px;
   font-size: 11px; font-weight: 600;
+  max-width: calc(100% - 24px);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .user-badge a { color: #1d1d1f; text-decoration: none; margin-left: 8px; }
+
+/* v3.14.9: no mobile (telas pequenas), o user-badge fica EMBAIXO do titulo
+   pra nao cobrir/sobrepor "GOOD Devolucoes" quando o nome do usuario for longo */
+@media (max-width: 600px) {
+  header { padding-top: 14px; padding-bottom: 14px; }
+  .user-badge {
+    position: static; display: inline-block; margin-top: 8px;
+    max-width: 100%;
+  }
+}
 .card {
   background: white; border-radius: 12px; padding: 18px; margin-bottom: 14px;
   box-shadow: 0 2px 8px rgba(0,0,0,0.06);
