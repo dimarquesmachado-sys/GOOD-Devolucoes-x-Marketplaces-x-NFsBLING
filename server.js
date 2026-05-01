@@ -592,7 +592,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '3.14.5',
+    version: '3.15.0',
     integrations: {
       ml: !!ML_ACCESS_TOKEN,
       bling: !!BLING_ACCESS_TOKEN,
@@ -1597,6 +1597,91 @@ app.get('/api/admin/devolucoes', requerAdmin, async (req, res) => {
 });
 
 // ============================================================
+// v3.15.0 (Fase 3B) - Helpers pra montar payload de devolucao
+// ============================================================
+
+// Formata CPF/CNPJ no padrao Bling (com pontos e hifen)
+function formatarCpfCnpj(numero) {
+  const digitos = String(numero || '').replace(/\D/g, '');
+  if (digitos.length === 11) {
+    // CPF: 055.640.477-70
+    return digitos.slice(0,3) + '.' + digitos.slice(3,6) + '.' + digitos.slice(6,9) + '-' + digitos.slice(9);
+  }
+  if (digitos.length === 14) {
+    // CNPJ: 33.602.095/0001-72
+    return digitos.slice(0,2) + '.' + digitos.slice(2,5) + '.' + digitos.slice(5,8) + '/' + digitos.slice(8,12) + '-' + digitos.slice(12);
+  }
+  return numero || '';
+}
+
+// Detecta tipo de pessoa (F ou J) pelo numero de digitos do documento
+function detectarTipoPessoa(numero) {
+  const digitos = String(numero || '').replace(/\D/g, '');
+  if (digitos.length === 14) return 'J';
+  if (digitos.length === 11) return 'F';
+  return null; // indeterminado
+}
+
+// Cache em memoria pra busca IBGE (evita repetir chamadas)
+const ibgeCache = new Map();
+
+// Busca codigo IBGE de um municipio pelo nome + UF
+// Usa API publica do IBGE (gratuita, sem auth)
+async function buscarIdMunicipioIBGE(nomeMunicipio, uf) {
+  if (!nomeMunicipio || !uf) return null;
+  const cacheKey = (uf + '|' + nomeMunicipio).toLowerCase();
+  if (ibgeCache.has(cacheKey)) return ibgeCache.get(cacheKey);
+
+  try {
+    const url = `https://servicodados.ibge.gov.br/api/v1/localidades/estados/${encodeURIComponent(uf)}/municipios`;
+    const r = await fetch(url);
+    if (!r.ok) {
+      console.warn('[IBGE] HTTP', r.status, 'pra UF', uf);
+      return null;
+    }
+    const lista = await r.json();
+    if (!Array.isArray(lista)) return null;
+
+    // Normaliza nome (sem acento, lowercase) pra comparar
+    const norm = s => String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+    const alvo = norm(nomeMunicipio);
+
+    const match = lista.find(m => norm(m.nome) === alvo);
+    if (match && match.id) {
+      const id = String(match.id);
+      ibgeCache.set(cacheKey, id);
+      return id;
+    }
+    console.warn('[IBGE] Municipio nao achado:', nomeMunicipio, uf);
+    return null;
+  } catch (e) {
+    console.warn('[IBGE] Erro:', e.message);
+    return null;
+  }
+}
+
+// Fallback: busca codigo IBGE via CEP (BrasilAPI)
+async function buscarIdMunicipioPorCep(cep) {
+  if (!cep) return null;
+  const cepLimpo = String(cep).replace(/\D/g, '');
+  if (cepLimpo.length !== 8) return null;
+  if (ibgeCache.has('cep|' + cepLimpo)) return ibgeCache.get('cep|' + cepLimpo);
+
+  try {
+    const url = `https://brasilapi.com.br/api/cep/v2/${cepLimpo}`;
+    const r = await fetch(url);
+    if (!r.ok) return null;
+    const data = await r.json();
+    const id = data?.city_ibge ? String(data.city_ibge) : null;
+    if (id) ibgeCache.set('cep|' + cepLimpo, id);
+    return id;
+  } catch (e) {
+    console.warn('[BrasilAPI CEP] Erro:', e.message);
+    return null;
+  }
+}
+
+// ============================================================
 // v3.15.0 (Fase 3B) - Preparar dados pra gerar NF Devolucao no Bling
 // ============================================================
 // Frontend (admin.html) chama esse endpoint pra obter os dados completos
@@ -1656,11 +1741,32 @@ app.get('/api/admin/preparar-devolucao/:idBling', requerAdmin, async (req, res) 
     const contato = nf.contato || {};
     const endereco = contato.endereco || {};
 
+    // BUG 1 FIX: Detecta tipo F/J pelo numero de digitos do CPF/CNPJ
+    // (a API v3 nem sempre retorna tipoPessoa direito)
+    const docDigitos = String(contato.numeroDocumento || '').replace(/\D/g, '');
+    const tipoDetectado = detectarTipoPessoa(docDigitos);
+    const tipoFinal = tipoDetectado || (contato.tipoPessoa === 'J' ? 'J' : 'F');
+
+    // BUG 1 FIX: Formata CPF/CNPJ no padrao Bling
+    const cnpjFormatado = formatarCpfCnpj(docDigitos);
+
+    // BUG 2 FIX: Se idMunicipio nao veio, busca via IBGE pelo nome+UF
+    // Fallback: se IBGE falhar, busca pelo CEP (BrasilAPI)
+    let idMunicipioFinal = String(endereco.codigoMunicipio || '').trim();
+    if (!idMunicipioFinal && endereco.municipio && endereco.uf) {
+      console.log('[preparar-devolucao] Buscando idMunicipio via IBGE:', endereco.municipio, endereco.uf);
+      idMunicipioFinal = (await buscarIdMunicipioIBGE(endereco.municipio, endereco.uf)) || '';
+    }
+    if (!idMunicipioFinal && endereco.cep) {
+      console.log('[preparar-devolucao] Fallback - Buscando idMunicipio pelo CEP:', endereco.cep);
+      idMunicipioFinal = (await buscarIdMunicipioPorCep(endereco.cep)) || '';
+    }
+
     const contatoOut = {
       id: String(contato.id || ''),
       nome: contato.nome || '',
-      tipo: contato.tipoPessoa === 'J' ? 'J' : 'F',
-      cnpj: contato.numeroDocumento || '',
+      tipo: tipoFinal,
+      cnpj: cnpjFormatado,
       ie: contato.ie || '',
       indIEDest: String(contato.indicadorIE || '9'),
       rg: contato.rg || '',
@@ -1668,7 +1774,7 @@ app.get('/api/admin/preparar-devolucao/:idBling', requerAdmin, async (req, res) 
       idPais: '',
       cep: endereco.cep || '',
       cidade: endereco.municipio || '',
-      idMunicipio: String(endereco.codigoMunicipio || ''),
+      idMunicipio: idMunicipioFinal,
       uf: endereco.uf || '',
       endereco: endereco.endereco || '',
       enderecoNro: endereco.numero || '',
@@ -1682,6 +1788,9 @@ app.get('/api/admin/preparar-devolucao/:idBling', requerAdmin, async (req, res) 
 
     if (!contatoOut.id) {
       return res.status(400).json({ ok: false, erro: 'NF sem ID de contato' });
+    }
+    if (!contatoOut.idMunicipio) {
+      console.warn('[preparar-devolucao] AVISO: contato sem idMunicipio - Bling pode rejeitar');
     }
 
     return res.json({
