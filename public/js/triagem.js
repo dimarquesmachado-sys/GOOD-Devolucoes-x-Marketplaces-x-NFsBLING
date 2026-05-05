@@ -194,6 +194,7 @@ function montarPayloadTriagem() {
     pack_id: order.pack_id,
     buyer_id: buyer.id,
     buyer_nome: buyerNome,
+    buyer_nickname: buyer.nickname || null,
     produto_titulo: tituloProduto,
     produto_mlb: itemOrder?.item?.id,
     produto_sku: skuProduto,
