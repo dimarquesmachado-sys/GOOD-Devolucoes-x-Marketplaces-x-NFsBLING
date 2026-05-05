@@ -4,7 +4,6 @@
 // ============================================================
 
 const express = require('express');
-const axios = require('axios');
 const path = require('path');
 const { createClient } = require('@supabase/supabase-js');
 const nodemailer = require('nodemailer');
@@ -16,19 +15,24 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // === ML / Bling / Render (Fase 1+2) ===
-const ML_CLIENT_ID = process.env.ML_CLIENT_ID;
-const ML_CLIENT_SECRET = process.env.ML_CLIENT_SECRET;
-let ML_ACCESS_TOKEN = process.env.ML_ACCESS_TOKEN;
-let ML_REFRESH_TOKEN = process.env.ML_REFRESH_TOKEN;
+// Movidos para modulos em lib/ na v3.15.3
+const blingClient = require('./lib/bling');
+const mlClient = require('./lib/ml');
+
+// Re-exports pra manter mesma sintaxe nas chamadas existentes
+const chamarBling = blingClient.chamarBling;
+const renovarTokenBling = blingClient.renovarTokenBling;
+const buscarPedidoBlingPorNumeroLoja = blingClient.buscarPedidoBlingPorNumeroLoja;
+const buscarPedidoBlingPorId = blingClient.buscarPedidoBlingPorId;
+const buscarNFePorId = blingClient.buscarNFePorId;
+const buscarNFnoBlingPorNumero = blingClient.buscarNFnoBlingPorNumero;
+const buscarNFnoBlingPorOrderId = blingClient.buscarNFnoBlingPorOrderId;
+const buscarProdutoBlingPorSku = blingClient.buscarProdutoBlingPorSku;
+const chamarML = mlClient.chamarML;
+const renovarTokenML = mlClient.renovarTokenML;
+const buscarNFnoML = mlClient.buscarNFnoML;
+
 const ML_USER_ID = process.env.ML_USER_ID;
-
-const BLING_CLIENT_ID = process.env.BLING_CLIENT_ID;
-const BLING_CLIENT_SECRET = process.env.BLING_CLIENT_SECRET;
-let BLING_ACCESS_TOKEN = process.env.BLING_ACCESS_TOKEN;
-let BLING_REFRESH_TOKEN = process.env.BLING_REFRESH_TOKEN;
-
-const RENDER_API_KEY = process.env.RENDER_API_KEY || null;
-const RENDER_SERVICE_ID = process.env.RENDER_SERVICE_ID || null;
 
 // === FASE 3: Supabase + Email + Auth ===
 const SUPABASE_URL = process.env.SUPABASE_URL;
@@ -101,437 +105,6 @@ app.use((req, res, next) => {
   }
   next();
 });
-
-// ============================================================
-// Atualizar tokens no Render
-// ============================================================
-async function atualizarTokensNoRender(updates) {
-  if (!RENDER_API_KEY || !RENDER_SERVICE_ID) return false;
-  try {
-    const current = await axios.get(
-      `https://api.render.com/v1/services/${RENDER_SERVICE_ID}/env-vars`,
-      { headers: { Authorization: `Bearer ${RENDER_API_KEY}` } }
-    );
-    const allVars = (current.data || []).map(item => ({
-      key: item.envVar.key,
-      value: item.envVar.value,
-    }));
-    for (const u of updates) {
-      const existing = allVars.find(v => v.key === u.key);
-      if (existing) existing.value = u.value;
-      else allVars.push(u);
-    }
-    await axios.put(
-      `https://api.render.com/v1/services/${RENDER_SERVICE_ID}/env-vars`,
-      allVars,
-      { headers: { Authorization: `Bearer ${RENDER_API_KEY}`, 'Content-Type': 'application/json' } }
-    );
-    return true;
-  } catch (error) {
-    console.error('[Render] Erro:', error.response?.data || error.message);
-    return false;
-  }
-}
-
-// ============================================================
-// MERCADO LIVRE
-// ============================================================
-async function renovarTokenML() {
-  console.log('[ML] Renovando access token...');
-  try {
-    const response = await axios.post(
-      'https://api.mercadolibre.com/oauth/token',
-      new URLSearchParams({
-        grant_type: 'refresh_token',
-        client_id: ML_CLIENT_ID,
-        client_secret: ML_CLIENT_SECRET,
-        refresh_token: ML_REFRESH_TOKEN,
-      }).toString(),
-      { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
-    );
-    ML_ACCESS_TOKEN = response.data.access_token;
-    ML_REFRESH_TOKEN = response.data.refresh_token;
-    await atualizarTokensNoRender([
-      { key: 'ML_ACCESS_TOKEN', value: ML_ACCESS_TOKEN },
-      { key: 'ML_REFRESH_TOKEN', value: ML_REFRESH_TOKEN },
-    ]);
-    return true;
-  } catch (error) {
-    console.error('[ML] ERRO renovar:', error.response?.data || error.message);
-    return false;
-  }
-}
-
-async function chamarML(url, headersExtras = {}) {
-  const fazer = () => axios.get(url, { headers: { Authorization: `Bearer ${ML_ACCESS_TOKEN}`, ...headersExtras } });
-  try {
-    const r = await fazer();
-    return { ok: true, data: r.data, status: r.status };
-  } catch (error) {
-    if (error.response?.status === 401) {
-      if (await renovarTokenML()) {
-        try {
-          const r = await fazer();
-          return { ok: true, data: r.data, status: r.status };
-        } catch (err2) {
-          return { ok: false, status: err2.response?.status, error: err2.response?.data || err2.message };
-        }
-      }
-    }
-    return { ok: false, status: error.response?.status, error: error.response?.data || error.message };
-  }
-}
-
-async function buscarNFnoML(shipmentId) {
-  return chamarML(`https://api.mercadolibre.com/shipments/${shipmentId}/invoice_data?siteId=MLB`);
-}
-
-// ============================================================
-// BLING
-// ============================================================
-async function renovarTokenBling() {
-  console.log('[Bling] Renovando access token...');
-  try {
-    const basicAuth = Buffer.from(`${BLING_CLIENT_ID}:${BLING_CLIENT_SECRET}`).toString('base64');
-    const response = await axios.post(
-      'https://www.bling.com.br/Api/v3/oauth/token',
-      new URLSearchParams({
-        grant_type: 'refresh_token',
-        refresh_token: BLING_REFRESH_TOKEN,
-      }).toString(),
-      {
-        headers: {
-          Authorization: `Basic ${basicAuth}`,
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-      }
-    );
-    BLING_ACCESS_TOKEN = response.data.access_token;
-    if (response.data.refresh_token) BLING_REFRESH_TOKEN = response.data.refresh_token;
-    await atualizarTokensNoRender([
-      { key: 'BLING_ACCESS_TOKEN', value: BLING_ACCESS_TOKEN },
-      { key: 'BLING_REFRESH_TOKEN', value: BLING_REFRESH_TOKEN },
-    ]);
-    return true;
-  } catch (error) {
-    console.error('[Bling] ERRO renovar:', error.response?.data || error.message);
-    return false;
-  }
-}
-
-async function chamarBling(url, opcoes = {}) {
-  const fazer = () => axios({
-    url,
-    method: opcoes.method || 'GET',
-    headers: { Authorization: `Bearer ${BLING_ACCESS_TOKEN}`, ...(opcoes.headers || {}) },
-    data: opcoes.data,
-  });
-  try {
-    const r = await fazer();
-    return { ok: true, data: r.data, status: r.status };
-  } catch (error) {
-    if (error.response?.status === 401) {
-      if (await renovarTokenBling()) {
-        try {
-          const r = await fazer();
-          return { ok: true, data: r.data, status: r.status };
-        } catch (err2) {
-          return { ok: false, status: err2.response?.status, error: err2.response?.data || err2.message };
-        }
-      }
-    }
-    if (error.response?.status === 429) {
-      console.log('[Bling] 429 - aguardando 1.5s');
-      await sleep(1500);
-      try {
-        const r = await fazer();
-        return { ok: true, data: r.data, status: r.status };
-      } catch (err2) {
-        return { ok: false, status: err2.response?.status, error: err2.response?.data || err2.message };
-      }
-    }
-    return { ok: false, status: error.response?.status, error: error.response?.data || error.message };
-  }
-}
-
-async function buscarPedidoBlingPorNumeroLoja(numeroLoja, dataReferencia, opcoes = {}) {
-  const numeroLojaStr = String(numeroLoja).trim();
-  const MAX_PAGINAS = opcoes.maxPaginas || 50;
-  const LIMITE_PAGINA = 100;
-  const DELAY_MS = 400;
-  const DIAS_FOLGA = 5;
-
-  let dataLimite = null;
-  if (dataReferencia) {
-    const ref = new Date(dataReferencia);
-    if (!isNaN(ref.getTime())) {
-      dataLimite = new Date(ref.getTime() - DIAS_FOLGA * 24 * 60 * 60 * 1000);
-    }
-  }
-
-  console.log(`[Bling] Busca numeroLoja=${numeroLojaStr} max ${MAX_PAGINAS}pgs`);
-
-  let totalScanned = 0;
-  let primeiraDataVista = null;
-  let ultimaDataVista = null;
-
-  for (let pagina = 1; pagina <= MAX_PAGINAS; pagina++) {
-    if (pagina > 1) await sleep(DELAY_MS);
-    const url = `https://www.bling.com.br/Api/v3/pedidos/vendas?limite=${LIMITE_PAGINA}&pagina=${pagina}`;
-    const r = await chamarBling(url);
-
-    if (!r.ok) {
-      return { ok: false, status: r.status, error: r.error, totalScanned, primeiraDataVista, ultimaDataVista };
-    }
-
-    const lista = r.data?.data || [];
-    if (lista.length === 0) break;
-
-    if (pagina === 1 && lista[0]?.data) primeiraDataVista = lista[0].data;
-    if (lista[lista.length - 1]?.data) ultimaDataVista = lista[lista.length - 1].data;
-
-    totalScanned += lista.length;
-
-    const match = lista.find(p =>
-      String(p.numeroLoja || '').trim() === numeroLojaStr
-    );
-
-    if (match) {
-      console.log(`[Bling] Encontrado pag ${pagina}: id=${match.id}`);
-      return { ok: true, match, pagina, totalScanned, primeiraDataVista, ultimaDataVista };
-    }
-
-    if (dataLimite && lista[lista.length - 1]?.data) {
-      const dataPedido = new Date(lista[lista.length - 1].data);
-      if (dataPedido < dataLimite) break;
-    }
-
-    if (lista.length < LIMITE_PAGINA) break;
-  }
-
-  return { ok: true, match: null, totalScanned, primeiraDataVista, ultimaDataVista };
-}
-
-async function buscarPedidoBlingPorId(idPedido) {
-  return chamarBling(`https://www.bling.com.br/Api/v3/pedidos/vendas/${idPedido}`);
-}
-
-// v3.15.2 - Busca o numero do pedido de venda no Bling pelo order_id ML
-// Retorna {numero, id} ou null se nao achar
-async function buscarPedidoBlingPorNumeroLoja(numeroLoja) {
-  if (!numeroLoja) return null;
-  const numStr = String(numeroLoja).trim();
-  if (!numStr) return null;
-
-  try {
-    const url = `https://www.bling.com.br/Api/v3/pedidos/vendas?numeroLoja=${encodeURIComponent(numStr)}&limite=10`;
-    const r = await chamarBling(url);
-    if (!r.ok) return null;
-    const lista = r.data?.data || [];
-    const match = lista.find(p => String(p.numeroLoja || '').trim() === numStr);
-    if (match) {
-      return { numero: match.numero || null, id: match.id || null };
-    }
-    return null;
-  } catch (e) {
-    console.warn('[buscarPedidoBlingPorNumeroLoja] erro:', e.message);
-    return null;
-  }
-}
-
-async function buscarNFePorId(idNFe) {
-  return chamarBling(`https://www.bling.com.br/Api/v3/nfe/${idNFe}`);
-}
-
-// NOVO v3.14.4: buscar produto por SKU (codigo) pra pegar EAN
-// quando a NF nao foi achada automaticamente
-// Licoes do projeto Localizacao Estoque GOOD: produtos com variacoes tem
-// codigo='COR:DOURADO' na listagem, EAN em varios campos diferentes
-async function buscarProdutoBlingPorSku(sku) {
-  const skuClean = String(sku).trim();
-  if (!skuClean) return { ok: true, produto: null };
-
-  const skuEnc = encodeURIComponent(skuClean);
-  // Aumenta limite pra pegar produtos pai+filhos (variacoes)
-  const url = `https://www.bling.com.br/Api/v3/produtos?codigo=${skuEnc}&limite=20`;
-  const r = await chamarBling(url);
-  if (!r.ok) return { ok: false, error: r.error };
-
-  const lista = r.data?.data || [];
-  if (lista.length === 0) return { ok: true, produto: null };
-
-  // 1) Tenta match EXATO pelo codigo (case-sensitive)
-  let match = lista.find(p => String(p.codigo || '').trim() === skuClean);
-
-  // 2) Tenta match case-insensitive (estoquista pode ter mudado caixa)
-  if (!match) {
-    const skuUpper = skuClean.toUpperCase();
-    match = lista.find(p => String(p.codigo || '').trim().toUpperCase() === skuUpper);
-  }
-
-  // 3) Ultima tentativa: pega o primeiro
-  if (!match) match = lista[0];
-
-  // Busca detalhes individuais (EAN so vem aqui)
-  if (match.id) {
-    await sleep(300); // evita rate limit
-    const rDetalhe = await chamarBling(`https://www.bling.com.br/Api/v3/produtos/${match.id}`);
-    if (rDetalhe.ok && rDetalhe.data?.data) {
-      return { ok: true, produto: rDetalhe.data.data };
-    }
-  }
-
-  return { ok: true, produto: match };
-}
-
-// NOVO v3.5: paginar /nfe procurando por NUMERO da NF (que vem do ML)
-// Estrategia mais robusta - listing do /nfe nao traz numeroPedidoLoja,
-// mas traz numero. Usamos invoice_number do ML pra match.
-async function buscarNFnoBlingPorNumero(numeroNF, dataReferencia, opcoes = {}) {
-  const numeroNFStr = String(numeroNF).trim().padStart(6, '0'); // 71932 -> 071932
-  const numeroNFLimpo = String(numeroNF).trim().replace(/^0+/, ''); // remove zeros a esquerda
-  const MAX_PAGINAS = opcoes.maxPaginas || 50;
-  const LIMITE_PAGINA = 100;
-  const DELAY_MS = 400;
-  const DIAS_FOLGA = 5;
-
-  let dataLimite = null;
-  if (dataReferencia) {
-    const ref = new Date(dataReferencia);
-    if (!isNaN(ref.getTime())) {
-      dataLimite = new Date(ref.getTime() - DIAS_FOLGA * 24 * 60 * 60 * 1000);
-    }
-  }
-
-  console.log(`[Bling] BUSCA NF por numero=${numeroNFStr} (alt: ${numeroNFLimpo}) max ${MAX_PAGINAS}pgs`);
-
-  let totalScanned = 0;
-  let primeiraDataVista = null;
-  let ultimaDataVista = null;
-
-  for (let pagina = 1; pagina <= MAX_PAGINAS; pagina++) {
-    if (pagina > 1) await sleep(DELAY_MS);
-    const url = `https://www.bling.com.br/Api/v3/nfe?limite=${LIMITE_PAGINA}&pagina=${pagina}&tipo=1`;
-    const r = await chamarBling(url);
-
-    if (!r.ok) {
-      return { ok: false, status: r.status, error: r.error, totalScanned, primeiraDataVista, ultimaDataVista };
-    }
-
-    const lista = r.data?.data || [];
-    if (lista.length === 0) break;
-
-    if (pagina === 1 && lista[0]) primeiraDataVista = lista[0].dataEmissao;
-    if (lista[lista.length - 1]) ultimaDataVista = lista[lista.length - 1].dataEmissao;
-
-    totalScanned += lista.length;
-
-    // Match por numero - tenta varias formas
-    const match = lista.find(nf => {
-      const numeroBling = String(nf.numero || '').trim();
-      const numeroBlingLimpo = numeroBling.replace(/^0+/, '');
-      return numeroBling === numeroNFStr ||
-             numeroBlingLimpo === numeroNFLimpo ||
-             numeroBling === String(numeroNF);
-    });
-
-    if (match) {
-      console.log(`[Bling] NF ENCONTRADA pag ${pagina}: numero=${match.numero} id=${match.id}`);
-      return { ok: true, match, pagina, totalScanned, primeiraDataVista, ultimaDataVista };
-    }
-
-    if (dataLimite && lista[lista.length - 1]?.dataEmissao) {
-      const dataNF = new Date(lista[lista.length - 1].dataEmissao);
-      if (dataNF < dataLimite) break;
-    }
-
-    if (lista.length < LIMITE_PAGINA) break;
-  }
-
-  return { ok: true, match: null, totalScanned, primeiraDataVista, ultimaDataVista };
-}
-
-// NOVO: paginar /nfe procurando por numeroPedidoLoja=order_id ML
-// Vantagem: NFs nao somem mesmo se o pedido for cancelado depois
-// E se acharmos a NF aqui, ja temos linkDanfe direto sem precisar buscar pedido
-async function buscarNFnoBlingPorOrderId(orderIdML, dataReferencia, opcoes = {}) {
-  const orderIdStr = String(orderIdML).trim();
-  const MAX_PAGINAS = opcoes.maxPaginas || 50;
-  const LIMITE_PAGINA = 100;
-  const DELAY_MS = 400;
-  const DIAS_FOLGA = 5;
-
-  let dataLimite = null;
-  if (dataReferencia) {
-    const ref = new Date(dataReferencia);
-    if (!isNaN(ref.getTime())) {
-      dataLimite = new Date(ref.getTime() - DIAS_FOLGA * 24 * 60 * 60 * 1000);
-    }
-  }
-
-  console.log(`[Bling] BUSCA NFs por numeroPedidoLoja=${orderIdStr} max ${MAX_PAGINAS}pgs`);
-
-  let totalScanned = 0;
-  let primeiraDataVista = null;
-  let ultimaDataVista = null;
-  let primeiraNumero = null;
-  let ultimaNumero = null;
-
-  for (let pagina = 1; pagina <= MAX_PAGINAS; pagina++) {
-    if (pagina > 1) await sleep(DELAY_MS);
-    const url = `https://www.bling.com.br/Api/v3/nfe?limite=${LIMITE_PAGINA}&pagina=${pagina}&tipo=1`;
-    const r = await chamarBling(url);
-
-    if (!r.ok) {
-      return { ok: false, status: r.status, error: r.error, totalScanned, primeiraDataVista, ultimaDataVista };
-    }
-
-    const lista = r.data?.data || [];
-    if (lista.length === 0) break;
-
-    if (pagina === 1 && lista[0]) {
-      primeiraDataVista = lista[0].dataEmissao;
-      primeiraNumero = lista[0].numero;
-    }
-    if (lista[lista.length - 1]) {
-      ultimaDataVista = lista[lista.length - 1].dataEmissao;
-      ultimaNumero = lista[lista.length - 1].numero;
-    }
-
-    totalScanned += lista.length;
-
-    // Match por numeroPedidoLoja (order_id ML)
-    const match = lista.find(nf =>
-      String(nf.numeroPedidoLoja || '').trim() === orderIdStr
-    );
-
-    if (match) {
-      console.log(`[Bling] NF ENCONTRADA pag ${pagina}: numero=${match.numero} id=${match.id}`);
-      return { ok: true, match, pagina, totalScanned, primeiraDataVista, ultimaDataVista, primeiraNumero, ultimaNumero };
-    }
-
-    // Parada por data
-    if (dataLimite && lista[lista.length - 1]?.dataEmissao) {
-      const dataNF = new Date(lista[lista.length - 1].dataEmissao);
-      if (dataNF < dataLimite) {
-        console.log(`[Bling] Passou data limite, encerrando`);
-        break;
-      }
-    }
-
-    if (lista.length < LIMITE_PAGINA) break;
-  }
-
-  return {
-    ok: true,
-    match: null,
-    totalScanned,
-    primeiraDataVista,
-    ultimaDataVista,
-    primeiraNumero,
-    ultimaNumero,
-  };
-}
 
 // ============================================================
 // HELPERS ML claims/orders
@@ -615,11 +188,11 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '3.15.2',
+    version: '3.15.3',
     integrations: {
-      ml: !!ML_ACCESS_TOKEN,
-      bling: !!BLING_ACCESS_TOKEN,
-      render_persist: !!(RENDER_API_KEY && RENDER_SERVICE_ID),
+      ml: mlClient.hasToken(),
+      bling: blingClient.hasToken(),
+      render_persist: !!(process.env.RENDER_API_KEY && process.env.RENDER_SERVICE_ID),
       supabase: !!supabase,
       email: !!mailer,
       auth: Object.keys(USERS).length > 0,
@@ -1355,9 +928,11 @@ app.post('/api/triagem/aprovar', requerEstoquista, async (req, res) => {
     // v3.15.2 - Antes de gravar, busca numero do pedido Bling pelo order_id
     let pedidoBlingNumero = null;
     if (dados.order_id) {
-      const pedido = await buscarPedidoBlingPorNumeroLoja(dados.order_id);
-      if (pedido?.numero) {
-        pedidoBlingNumero = String(pedido.numero);
+      // Usa data da NF como referencia pra otimizar busca paginada
+      const dataRef = dados.nf_data_emissao || null;
+      const r = await buscarPedidoBlingPorNumeroLoja(String(dados.order_id), dataRef, { maxPaginas: 50 });
+      if (r?.ok && r.match?.numero) {
+        pedidoBlingNumero = String(r.match.numero);
       }
     }
 
@@ -1483,9 +1058,11 @@ app.post('/api/triagem/problema', requerEstoquista, async (req, res) => {
     // v3.15.2 - Antes de gravar, busca numero do pedido Bling pelo order_id
     let pedidoBlingNumero = null;
     if (dados.order_id) {
-      const pedido = await buscarPedidoBlingPorNumeroLoja(dados.order_id);
-      if (pedido?.numero) {
-        pedidoBlingNumero = String(pedido.numero);
+      // Usa data da NF como referencia pra otimizar busca paginada
+      const dataRef = dados.nf_data_emissao || null;
+      const r = await buscarPedidoBlingPorNumeroLoja(String(dados.order_id), dataRef, { maxPaginas: 50 });
+      if (r?.ok && r.match?.numero) {
+        pedidoBlingNumero = String(r.match.numero);
         console.log(`[TRIAGEM] Pedido Bling achado: ${pedidoBlingNumero} (order_id ML=${dados.order_id})`);
       }
     }
@@ -1947,9 +1524,9 @@ app.listen(PORT, () => {
   console.log('============================================');
   console.log('GOOD Devolucoes v3.14.5 - busca EAN robusta (multi-campos+variacoes)');
   console.log(`Porta: ${PORT}`);
-  console.log(`ML: ${ML_ACCESS_TOKEN ? 'OK' : 'FALTA'}`);
-  console.log(`Bling: ${BLING_ACCESS_TOKEN ? 'OK' : 'FALTA'}`);
-  console.log(`Render persist: ${(RENDER_API_KEY && RENDER_SERVICE_ID) ? 'OK' : 'FALTA'}`);
+  console.log(`ML: ${mlClient.hasToken() ? 'OK' : 'FALTA'}`);
+  console.log(`Bling: ${blingClient.hasToken() ? 'OK' : 'FALTA'}`);
+  console.log(`Render persist: ${(process.env.RENDER_API_KEY && process.env.RENDER_SERVICE_ID) ? 'OK' : 'FALTA'}`);
   console.log(`Supabase: ${supabase ? 'OK' : 'FALTA'}`);
   console.log(`Email: ${mailer ? 'OK (' + EMAIL_USER + ' -> ' + EMAIL_TO + ')' : 'FALTA'}`);
   console.log(`Usuarios: ${Object.keys(USERS).length > 0 ? Object.keys(USERS).join(', ') : 'FALTA'}`);
