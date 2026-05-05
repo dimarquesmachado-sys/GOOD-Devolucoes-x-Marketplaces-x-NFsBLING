@@ -316,6 +316,29 @@ async function buscarPedidoBlingPorId(idPedido) {
   return chamarBling(`https://www.bling.com.br/Api/v3/pedidos/vendas/${idPedido}`);
 }
 
+// v3.15.2 - Busca o numero do pedido de venda no Bling pelo order_id ML
+// Retorna {numero, id} ou null se nao achar
+async function buscarPedidoBlingPorNumeroLoja(numeroLoja) {
+  if (!numeroLoja) return null;
+  const numStr = String(numeroLoja).trim();
+  if (!numStr) return null;
+
+  try {
+    const url = `https://www.bling.com.br/Api/v3/pedidos/vendas?numeroLoja=${encodeURIComponent(numStr)}&limite=10`;
+    const r = await chamarBling(url);
+    if (!r.ok) return null;
+    const lista = r.data?.data || [];
+    const match = lista.find(p => String(p.numeroLoja || '').trim() === numStr);
+    if (match) {
+      return { numero: match.numero || null, id: match.id || null };
+    }
+    return null;
+  } catch (e) {
+    console.warn('[buscarPedidoBlingPorNumeroLoja] erro:', e.message);
+    return null;
+  }
+}
+
 async function buscarNFePorId(idNFe) {
   return chamarBling(`https://www.bling.com.br/Api/v3/nfe/${idNFe}`);
 }
@@ -592,7 +615,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '3.15.0',
+    version: '3.15.2',
     integrations: {
       ml: !!ML_ACCESS_TOKEN,
       bling: !!BLING_ACCESS_TOKEN,
@@ -1329,6 +1352,15 @@ app.post('/api/triagem/aprovar', requerEstoquista, async (req, res) => {
   }
 
   try {
+    // v3.15.2 - Antes de gravar, busca numero do pedido Bling pelo order_id
+    let pedidoBlingNumero = null;
+    if (dados.order_id) {
+      const pedido = await buscarPedidoBlingPorNumeroLoja(dados.order_id);
+      if (pedido?.numero) {
+        pedidoBlingNumero = String(pedido.numero);
+      }
+    }
+
     const { data, error } = await supabase
       .from('devolucoes')
       .insert([{
@@ -1337,6 +1369,8 @@ app.post('/api/triagem/aprovar', requerEstoquista, async (req, res) => {
         pack_id: dados.pack_id ? String(dados.pack_id) : null,
         buyer_id: dados.buyer_id ? String(dados.buyer_id) : null,
         buyer_nome: dados.buyer_nome || null,
+        buyer_nickname: dados.buyer_nickname || null,
+        pedido_bling_numero: pedidoBlingNumero,
         produto_titulo: dados.produto_titulo || null,
         produto_mlb: dados.produto_mlb || null,
         produto_sku: dados.produto_sku || null,
@@ -1446,6 +1480,16 @@ app.post('/api/triagem/problema', requerEstoquista, async (req, res) => {
   }
 
   try {
+    // v3.15.2 - Antes de gravar, busca numero do pedido Bling pelo order_id
+    let pedidoBlingNumero = null;
+    if (dados.order_id) {
+      const pedido = await buscarPedidoBlingPorNumeroLoja(dados.order_id);
+      if (pedido?.numero) {
+        pedidoBlingNumero = String(pedido.numero);
+        console.log(`[TRIAGEM] Pedido Bling achado: ${pedidoBlingNumero} (order_id ML=${dados.order_id})`);
+      }
+    }
+
     const { data, error } = await supabase
       .from('devolucoes')
       .insert([{
@@ -1454,6 +1498,8 @@ app.post('/api/triagem/problema', requerEstoquista, async (req, res) => {
         pack_id: dados.pack_id ? String(dados.pack_id) : null,
         buyer_id: dados.buyer_id ? String(dados.buyer_id) : null,
         buyer_nome: dados.buyer_nome || null,
+        buyer_nickname: dados.buyer_nickname || null,
+        pedido_bling_numero: pedidoBlingNumero,
         produto_titulo: dados.produto_titulo || null,
         produto_mlb: dados.produto_mlb || null,
         produto_sku: dados.produto_sku || null,
@@ -1523,6 +1569,13 @@ async function enviarEmailProblema(devolucao, fotos, usuario) {
       <h3 style="border-bottom:1px solid #eee;padding-bottom:5px;">Comprador</h3>
       <p>${devolucao.buyer_nome || '-'} | ID: ${devolucao.buyer_id || '-'}</p>
 
+      <h3 style="border-bottom:1px solid #eee;padding-bottom:5px;">Origem da Venda</h3>
+      <p>
+        <strong>Pedido ML:</strong> ${devolucao.order_id ? `#${devolucao.order_id}` : '—'}${devolucao.pack_id ? ` (pack #${devolucao.pack_id})` : ''}<br>
+        <strong>Apelido ML:</strong> ${devolucao.buyer_nickname || '—'}<br>
+        <strong>Pedido Bling:</strong> ${devolucao.pedido_bling_numero ? `#${devolucao.pedido_bling_numero}` : '—'}
+      </p>
+
       <h3 style="border-bottom:1px solid #eee;padding-bottom:5px;">NF-e</h3>
       <p>Numero: <strong>${devolucao.nf_numero || '-'}</strong> | Valor: R$ ${(devolucao.nf_valor || 0).toFixed(2)}<br>
          ${devolucao.nf_link_danfe ? `<a href="${devolucao.nf_link_danfe}">Abrir DANFE</a>` : ''}</p>
@@ -1543,7 +1596,7 @@ async function enviarEmailProblema(devolucao, fotos, usuario) {
 
       <p style="margin-top:20px;font-size:11px;color:#888;text-align:center;">
         ID interno: ${devolucao.id}<br>
-        Sistema GOOD Devolucoes v3.6
+        Sistema GOOD Devolucoes v3.15.2
       </p>
     </div>
   `;
