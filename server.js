@@ -19,6 +19,9 @@ const PORT = process.env.PORT || 3000;
 const blingClient = require('./lib/bling');
 const mlClient = require('./lib/ml');
 
+// v3.16.0 - Dashboard de relatorios
+const registrarRotasRelatorios = require('./lib/rotas-relatorios');
+
 // Re-exports pra manter mesma sintaxe nas chamadas existentes
 const chamarBling = blingClient.chamarBling;
 const renovarTokenBling = blingClient.renovarTokenBling;
@@ -188,7 +191,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '3.15.3',
+    version: '3.16.0',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -960,6 +963,7 @@ app.post('/api/triagem/aprovar', requerEstoquista, async (req, res) => {
         nf_link_danfe: dados.nf_link_danfe || null,
         tipo: 'aprovado',
         status: 'pendente',
+        funcionario: req.usuario,
         problema_descricao: dados.bipagem_forcada
           ? `Aprovado por ${req.usuario} [BIPAGEM FORCADA] OBS: ${dados.bipagem_observacao}`
           : `Aprovado por ${req.usuario} [bipagem OK]`,
@@ -1091,6 +1095,7 @@ app.post('/api/triagem/problema', requerEstoquista, async (req, res) => {
         nf_link_danfe: dados.nf_link_danfe || null,
         tipo: 'problema',
         status: 'pendente',
+        funcionario: req.usuario,
         problema_descricao: `[Reportado por ${req.usuario}] ${dados.descricao || ''}`.trim(),
         problema_fotos: fotos,
       }])
@@ -1173,7 +1178,7 @@ async function enviarEmailProblema(devolucao, fotos, usuario) {
 
       <p style="margin-top:20px;font-size:11px;color:#888;text-align:center;">
         ID interno: ${devolucao.id}<br>
-        Sistema GOOD Devolucoes v3.15.2
+        Sistema GOOD Devolucoes v3.16.0
       </p>
     </div>
   `;
@@ -1193,6 +1198,11 @@ async function enviarEmailProblema(devolucao, fotos, usuario) {
 // Pagina admin (requer auth)
 app.get('/admin.html', requerAdmin, (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'admin.html'));
+});
+
+// v3.16.0: Pagina de relatorios (requer auth)
+app.get('/admin/relatorios.html', requerAdmin, (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'admin', 'relatorios.html'));
 });
 
 // API: lista devolucoes pendentes (aprovadas + problemas)
@@ -1511,6 +1521,12 @@ app.delete('/api/admin/devolucao/:id', requerAdmin, async (req, res) => {
 });
 
 // ============================================================
+// v3.16.0: REGISTRA ROTAS DO DASHBOARD DE RELATORIOS
+// (deve vir DEPOIS das declaracoes de supabase, requerAdmin, etc)
+// ============================================================
+registrarRotasRelatorios(app, { supabase, requerAdmin });
+
+// ============================================================
 // FASE 3: LIMPEZA AUTOMATICA - DESABILITADA (Diego pediu)
 // Registros sao mantidos para sempre. Quando atingir limite do plano free
 // Supabase, migrar pro Pro ($25/mes) com 100GB Storage.
@@ -1522,7 +1538,7 @@ app.delete('/api/admin/devolucao/:id', requerAdmin, async (req, res) => {
 // ============================================================
 app.listen(PORT, () => {
   console.log('============================================');
-  console.log('GOOD Devolucoes v3.14.5 - busca EAN robusta (multi-campos+variacoes)');
+  console.log('GOOD Devolucoes v3.16.0 - Dashboard de Relatorios + TAGs');
   console.log(`Porta: ${PORT}`);
   console.log(`ML: ${mlClient.hasToken() ? 'OK' : 'FALTA'}`);
   console.log(`Bling: ${blingClient.hasToken() ? 'OK' : 'FALTA'}`);
