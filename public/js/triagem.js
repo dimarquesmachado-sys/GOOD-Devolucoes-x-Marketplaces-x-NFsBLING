@@ -1,8 +1,9 @@
 // ============================================================
 // triagem.js - fluxos APROVAR e PROBLEMA (orquestracao)
+// v3.17.0 - novo fluxo DEVOLUCAO PARCIAL (dentro do APROVAR)
 // ============================================================
 // Inclui: abrir/fechar modais, montar payload, confirmar aprovar,
-//         enviar problema, mostrar sucesso
+//         enviar problema, mostrar sucesso, fluxo parcial
 
 function fecharModal(id) {
   document.getElementById(id).classList.remove('show');
@@ -25,6 +26,9 @@ function abrirModalAprovar() {
     forcado: false,
     observacao: null,
   };
+
+  // v3.17.0 - reseta flag de fluxo parcial
+  window._fluxoParcial = false;
 
   let itensHtml = '';
   if (itensBling) {
@@ -228,6 +232,7 @@ function mostrarSucesso(titulo, mensagem) {
 function abrirModalProblema() {
   // Reset estado
   window.fotosUploadadas = [];
+  window._fluxoParcial = false; // v3.17.0 - garante fluxo problema (nao parcial)
   document.getElementById('problemaDescricao').value = '';
   document.getElementById('modalProblema').classList.add('show');
 }
@@ -274,5 +279,144 @@ async function enviarProblema() {
     }
   } catch (err) {
     toast('Erro de conexao', 'err');
+  }
+}
+
+// ============================================================
+// v3.17.0 - FLUXO DEVOLUCAO PARCIAL
+// ============================================================
+// Dispara quando estoquista bipou >=1 mas < total e clica botao laranja
+// Fluxo: modalDecisao -> camera (6 fotos) -> modalConfirmacao -> POST /api/triagem/aprovar com eh_parcial=true
+
+// Chamado pelo botao laranja no modal de aprovar
+function iniciarFluxoParcial() {
+  // Mostra contagem atual no modal de decisao
+  document.getElementById('parcialBipados').textContent = bipagemEstado.totalBipado;
+  document.getElementById('parcialTotal').textContent = bipagemEstado.totalEsperado;
+  document.getElementById('modalDecisaoParcial').classList.add('show');
+}
+
+// Opcao 1: faltou bipar - fecha modal, volta pra bipagem normal
+function parcialFaltouBipar() {
+  fecharModal('modalDecisaoParcial');
+  // Volta foco pro input de bipagem
+  setTimeout(() => {
+    const inp = document.getElementById('bipagemInput');
+    if (inp) inp.focus();
+  }, 200);
+}
+
+// Opcao 2: cliente devolveu parcial mesmo - segue pro fluxo de fotos
+function parcialConfirmarParcial() {
+  fecharModal('modalDecisaoParcial');
+  fecharModal('modalAprovar');
+
+  // Reset fotos e seta flag de fluxo parcial
+  window.fotosUploadadas = [];
+  window._fluxoParcial = true;
+
+  // Abre camera direto (sem passar pelo modal de descricao do problema)
+  abrirCameraParaParcial();
+}
+
+// Chamado pelo finalizarFotos() (camera.js) quando window._fluxoParcial=true
+function abrirConfirmacaoParcial(fotosOk) {
+  // Guarda fotos pra usar em encerrarParcial()
+  window._fotosParcial = fotosOk;
+
+  // Preenche dados de confirmacao
+  document.getElementById('confirmacaoBipados').textContent = bipagemEstado.totalBipado;
+  document.getElementById('confirmacaoTotal').textContent = bipagemEstado.totalEsperado;
+  document.getElementById('confirmacaoFotosCount').textContent = fotosOk.length;
+  document.getElementById('parcialObservacao').value = '';
+
+  // Abre modal de confirmacao final
+  document.getElementById('modalConfirmacaoParcial').classList.add('show');
+}
+
+// Envio final pro backend
+async function encerrarParcial() {
+  const btn = document.getElementById('btnEncerrarParcial');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-mini"></span>Enviando...';
+
+  try {
+    const fotosOk = window._fotosParcial || [];
+    if (fotosOk.length < 6) {
+      toast('Erro: precisa ter 6+ fotos', 'err');
+      btn.disabled = false;
+      btn.innerHTML = '✅ Sim, Encerrar';
+      return;
+    }
+
+    // Se ainda nao tem idBling salvo, busca automaticamente
+    const order = ultimaBusca.order || {};
+    const nf = ultimaBusca.nf || {};
+    if (order.id && nf.numero && !nf.idBling) {
+      try {
+        const params = new URLSearchParams();
+        if (order.date_created) params.set('data', order.date_created);
+        params.set('numeroNF', nf.numero);
+        const url = `/api/nf/buscar-links-bling/${encodeURIComponent(order.id)}?${params.toString()}`;
+        const r = await fetch(url);
+        const d = await r.json();
+        if (d.ok && d.nf) {
+          ultimaBusca.nf = { ...nf, ...d.nf };
+        }
+      } catch (e) {
+        // segue sem
+      }
+    }
+
+    // Monta payload base (igual ao APROVAR normal)
+    const payload = montarPayloadTriagem();
+
+    // Sobrescreve produto_qtd com a quantidade REALMENTE recebida (bipada)
+    payload.produto_qtd = bipagemEstado.totalBipado;
+
+    // Flags de devolucao parcial
+    payload.eh_parcial = true;
+    payload.produto_qtd_original = bipagemEstado.totalEsperado;
+    payload.fotos_parcial = fotosOk;
+    payload.observacao_parcial = document.getElementById('parcialObservacao').value.trim();
+
+    if (window._forcarTriagem) payload.forcar = true;
+
+    const r = await fetch('/api/triagem/aprovar', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const d = await r.json();
+    if (d.ok) {
+      fecharModal('modalConfirmacaoParcial');
+      // Reset flags
+      window._fluxoParcial = false;
+      window._fotosParcial = [];
+      window.fotosUploadadas = [];
+
+      mostrarSucesso(
+        '📦 Devolução PARCIAL registrada!',
+        `Documentação salva: ${bipagemEstado.totalBipado} de ${bipagemEstado.totalEsperado} unidades + ${fotosOk.length} fotos. Diego pode contestar com o marketplace se necessário.`
+      );
+      toast('Devolucao parcial registrada!', 'ok');
+      setTimeout(() => {
+        divResultado.classList.remove('show');
+        inputCodigo.value = '';
+        inputCodigo.focus();
+      }, 2800);
+    } else if (r.status === 409 && d.erro === 'duplicata') {
+      fecharModal('modalConfirmacaoParcial');
+      toast('Esta devolucao ja foi triada antes!', 'err');
+      if (ultimaBusca?.shipment?.id) verificarTriagemExistente(ultimaBusca.shipment.id);
+    } else {
+      toast('Erro: ' + (d.erro || 'falha'), 'err');
+      btn.disabled = false;
+      btn.innerHTML = '✅ Sim, Encerrar';
+    }
+  } catch (err) {
+    toast('Erro de conexao', 'err');
+    btn.disabled = false;
+    btn.innerHTML = '✅ Sim, Encerrar';
   }
 }
