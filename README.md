@@ -1,84 +1,160 @@
-# 🚀 v3.16.1 — Rankings melhorados + Tabela ordenável
+# 🚀 v3.17.0 — Devolução Parcial (com fotos como evidência)
 
-## ✅ Apenas 3 ARQUIVOS pra atualizar
+## ✅ ARQUIVOS PRA SUBIR (6 arquivos)
 
-São arquivos que **já existem** no GitHub. Você só **substitui** eles.
-
-| # | Arquivo | Onde está no GitHub |
+| # | Arquivo | Onde substitui no GitHub |
 |---|---|---|
-| 1 | `lib/rotas-relatorios.js` | `lib/rotas-relatorios.js` |
-| 2 | `public/admin/relatorios.html` | `public/admin/relatorios.html` |
-| 3 | `public/admin/relatorios.js` | `public/admin/relatorios.js` |
+| 1 | `server.js` | substitui o `server.js` da raiz |
+| 2 | `admin.html` | substitui `public/admin.html` |
+| 3 | `public/index.html` | substitui `public/index.html` |
+| 4 | `public/js/bipagem.js` | substitui `public/js/bipagem.js` |
+| 5 | `public/js/camera.js` | substitui `public/js/camera.js` |
+| 6 | `public/js/triagem.js` | substitui `public/js/triagem.js` |
 
-⚠️ **Não precisa mexer no `server.js` nem `admin.html`!**
+⚠️ **Sobe TODOS de uma vez** (uns dependem dos outros).
 
-## 📋 Como subir (3 min)
+## 📋 Como subir (8-10 min)
 
-Pra cada um dos 3 arquivos:
+Pra cada arquivo: GitHub → clica → ✏️ Editar → **Ctrl+A** + **Delete** → cola o novo → Commit.
 
-1. GitHub → clica no arquivo
-2. ✏️ Editar (lápis)
-3. **Ctrl+A** → **Delete** (apaga tudo)
-4. Cola o conteúdo do arquivo novo
-5. Commit: `v3.16.1: <nome do arquivo>`
+**Sugestão de ordem:**
+1. `public/js/bipagem.js`
+2. `public/js/camera.js`
+3. `public/js/triagem.js`
+4. `public/index.html`
+5. `admin.html`
+6. `server.js` (último — Render só vai redeployar a partir daqui)
 
-Render redeploya automático em ~1-2 min.
+Aguarda Render redeployar (~1-2 min) e testa.
 
-## 🎯 O QUE TÁ NOVO
+## 🎯 NOVO FLUXO (cliente devolveu menos)
 
-### 1) Ranking SKUs com 3 colunas extras
-Agora você vê:
+### Como o estoquista usa:
 
-| Pos | SKU | Unid. | **Devoluç.** | **Méd/dev** | **Status** |
-|---|---|---|---|---|---|
-| 🥇 | LTJ50-CINZA | 20 | **20** | **1** | 🔴 Sistêmico |
-| 🥈 | KJBD-AZUL | 15 | **1** | **15** | 🟢 Isolado |
-| 🥉 | MN05-VERDE | 12 | **8** | **1.5** | 🟡 Misto |
+1. **Bipa etiqueta** normalmente
+2. Sistema mostra venda + ex: "10 itens esperados"
+3. Clica **APROVAR**
+4. **Bipa só os 2 que vieram** (contador 2/10)
+5. Aparece automaticamente o **botão laranja "⚠️ DEVOLUÇÃO PARCIAL"**
+6. Clica nele → modal pergunta:
+   - 🔄 **Faltou bipar** (volta pra bipagem)
+   - 📦 **Cliente devolveu PARCIAL** (segue)
+   - ✖ Cancelar
+7. Se PARCIAL → abre câmera, **6 fotos mínimas**:
+   - 1 do pacote
+   - 1 da etiqueta
+   - 4 do(s) produto(s)
+8. Após 6 fotos → modal final:
+   - "Confirma: voltaram 2 de 10?"
+   - Campo de **observação opcional**
+   - Botão **✅ Sim, Encerrar**
+9. Sistema:
+   - Salva como `tipo='aprovado'` mas com `produto_qtd=2` (qtd recebida)
+   - Aplica **tag automática "Devolucao Parcial"** (laranja)
+   - Salva fotos como evidência
+   - **NÃO** dispara email
 
-**Status visual** baseado no número de devoluções distintas:
-- 🔴 **Sistêmico** = 6+ devoluções (problema do produto)
-- 🟡 **Misto** = 3-5 devoluções (atenção)
-- 🟢 **Isolado** = 1-2 devoluções (caso pontual)
+### Como aparece no admin
 
-Você bate o olho e SABE se é problema do produto ou caso isolado.
+- Card fica com **borda laranja** + fundo amarelinho
+- Badge **"📦 PARCIAL"** ao lado do nome do produto
+- **Bloco de fotos** logo abaixo dos detalhes
+- Botão **"📥 Baixar todas"** se você precisar contestar com ML
 
-### 2) Tabela de devoluções ORDENÁVEL
+### Como usar pra contestar golpe
 
-Clica no cabeçalho de qualquer coluna pra ordenar:
-- ↑ ASC (1ª clique)
-- ↓ DESC (2ª clique)
+Cliente tentou devolver 2 dizendo que mandou 10? 
+1. Vai no admin
+2. Acha a devolução parcial (badge laranja)
+3. Clica **📥 Baixar todas as fotos**
+4. Anexa no chamado do ML como evidência
 
-Colunas ordenáveis:
-- **Data** (mais nova → mais antiga)
-- **Tipo** (agrupa aprovado/problema)
-- **SKU** (A→Z, Z→A)
-- **Qtde** (maior, menor)
-- **Valor** (maior, menor)
-- **NF** (maior, menor)
-- **Comprador** (A→Z, Z→A)
-- **Funcionário** (agrupa por nome)
+## 🔍 Onde o botão Parcial aparece/some
 
-Hover do mouse mostra dica do que cada clique faz.
+- ❌ Não aparece quando bipou 0 (precisa tentar pelo menos 1)
+- ✅ Aparece entre 1 bipado e total-1 bipados
+- ❌ Some quando completa todos (ex: 10/10) — não faz sentido
 
-### 3) Bônus que prometi
+## 🧪 Como testar (passo a passo)
 
-✅ **Card novo "SKUs distintos"** — quantos produtos diferentes apareceram  
-✅ **Card novo "Total Unidades"** — soma de todas qtdes  
-✅ **Linha de TOTAIS** no rodapé da tabela — soma da qtde + valor filtrados  
-✅ **Excel melhorado** — exporta com a ordem que você deixou na tela + ranking com colunas novas + 3ª aba "Ranking Problemas"
+### Teste 1 — fluxo completo de parcial
+1. `/health` → `version: "3.17.0"` ✅
+2. Login no celular
+3. Bipa uma etiqueta de uma venda com **2+ itens**
+4. Clica APROVAR
+5. Bipa **menos** itens que o total (ex: 1 de 3)
+6. Vê o botão laranja aparecer ✅
+7. Clica → modal de 3 opções abre ✅
+8. Clica "Cliente devolveu PARCIAL"
+9. Câmera abre, tira 6 fotos
+10. Modal final, escreve obs (opcional), clica "Sim Encerrar"
+11. Toast verde "Devolucao parcial registrada!" ✅
 
-## 🧪 Como testar
+### Teste 2 — verificar admin
+12. Abre `/admin.html`
+13. Acha o registro novo
+14. Confere badge "📦 PARCIAL" ✅
+15. Confere fotos abaixo ✅
+16. Clica "Baixar todas" → 6 fotos baixam ✅
 
-1. `/health` → deve continuar `version: "3.16.0"` (não bumpei pra 3.16.1 — é micro-mudança)
-2. Abre `/admin/relatorios.html`
-3. **Ctrl+Shift+R** pra recarregar sem cache
-4. Vê os rankings com colunas novas
-5. Clica num cabeçalho da tabela → ordena
-6. Clica de novo → inverte
-7. Confere a linha de totais no rodapé
+### Teste 3 — ranking não infla
+17. Abre `/admin/relatorios.html`
+18. SKU não aparece como "problema" (porque é tipo='aprovado')
+19. Aparece na tabela de devoluções com a tag "Devolucao Parcial"
+20. Filtra pela tag → vê todos os parciais
 
-## 🚨 Se der erro
+### Teste 4 — fluxo PROBLEMA continua funcionando
+21. Bipa outra etiqueta
+22. Clica em PROBLEMA (não Aprovar)
+23. Câmera abre, 6 fotos
+24. Envia
+25. Email chega normalmente ✅
 
-GitHub → arquivo → **History** → reverte commit. Volta pra v3.16.0 anterior.
+## 🔄 Banco de dados
 
-Os 3 arquivos são independentes — se 1 quebrar, só esse precisa reverter.
+**Não precisa migration!** A tag "Devolucao Parcial" é criada automaticamente na primeira devolução parcial registrada (cor: laranja `#f57c00`).
+
+A coluna `produto_qtd` agora pode ter valor menor que a NF original (sem problema, é o esperado).
+
+## 🚨 Se algo der errado
+
+### Sintoma: botão laranja não aparece
+- Verifica se subiu o `bipagem.js` (tem a função `atualizarBotaoParcial()`)
+- Verifica se subiu o `index.html` (tem o `<button id="btnDevolucaoParcial">`)
+- Recarrega com **Ctrl+Shift+R**
+
+### Sintoma: clica no botão laranja e nada acontece
+- Verifica se subiu o `triagem.js` (tem `iniciarFluxoParcial()`)
+
+### Sintoma: tira 6 fotos mas não abre modal final
+- Verifica se subiu o `camera.js` (foi modificado pra bifurcar)
+- Verifica se subiu o `triagem.js` (tem `abrirConfirmacaoParcial()`)
+
+### Sintoma: backend retorna erro 400 "Devolucao parcial requer 6 fotos"
+- Foi enviado payload sem fotos. Verifica console do navegador.
+
+### Reverter
+GitHub → arquivo afetado → **History** → Revert do commit. 
+**Reverte os 6 ao mesmo tempo** se precisar.
+
+## 📦 Migrations? Tags?
+
+❌ **Nenhuma migration necessária.**
+
+A tag "Devolucao Parcial" (cor `#f57c00`) é criada automaticamente na 1ª devolução parcial. Se quiser pré-criar manualmente no Supabase:
+
+```sql
+INSERT INTO tags (nome, cor) VALUES ('Devolucao Parcial', '#f57c00');
+```
+
+Mas **não é obrigatório**.
+
+## 💡 Próxima sessão
+
+Quando tiver usado um pouco e quiser melhorar:
+- Filtro "só parciais" rápido no admin (botão dedicado)
+- Card "Devoluções parciais este mês" no dashboard de relatórios
+- Coluna específica nas exportações Excel
+- Cálculo de prejuízo em parciais (qtd recebida × custo Bling)
+
+**Frase-gatilho:** *"Bora ajustar v3.17 devolucao parcial. Testei, falta X."*
