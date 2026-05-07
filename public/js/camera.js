@@ -1,5 +1,6 @@
 // ============================================================
 // camera.js - camera fullscreen pra tirar fotos do PROBLEMA
+// v3.17.0 - tambem suporta fluxo de DEVOLUCAO PARCIAL (interceptado em finalizarFotos)
 // ============================================================
 // Tira no minimo 6 fotos e sobe pra Supabase em paralelo
 
@@ -36,6 +37,33 @@ async function abrirCamera() {
   }
 }
 
+// v3.17.0 - Versao especial pra abrir camera direto pelo fluxo PARCIAL
+// (sem precisar do modalProblema antes)
+async function abrirCameraParaParcial() {
+  const overlay = document.getElementById('cameraOverlay');
+  overlay.classList.add('show');
+  atualizarCameraUI();
+
+  const video = document.getElementById('cameraVideo');
+
+  try {
+    cameraStream = await navigator.mediaDevices.getUserMedia({
+      video: {
+        facingMode: { ideal: 'environment' },
+        width: { ideal: 1920 },
+        height: { ideal: 1080 },
+      },
+      audio: false,
+    });
+    video.srcObject = cameraStream;
+    await video.play().catch(() => {});
+  } catch (err) {
+    console.error('Camera error:', err);
+    toast('Erro ao abrir camera: ' + err.message, 'err');
+    fecharCamera();
+  }
+}
+
 function fecharCamera(forcar) {
   const fotos = window.fotosUploadadas || [];
   const total = fotos.filter(f => !f.uploading && f.url).length;
@@ -46,6 +74,8 @@ function fecharCamera(forcar) {
       return;
     }
     window.fotosUploadadas = []; // limpa
+    // v3.17.0: se cancelar fluxo parcial, limpa a flag
+    window._fluxoParcial = false;
   }
 
   const overlay = document.getElementById('cameraOverlay');
@@ -132,6 +162,9 @@ function atualizarCameraUI() {
   const total = fotos.filter(f => !f.uploading && f.url).length;
   const subindo = fotos.filter(f => f.uploading).length;
 
+  // v3.17.0 - texto adapta se for fluxo parcial
+  const ehParcial = !!window._fluxoParcial;
+
   // Contador
   const counter = document.getElementById('cameraCounter');
   if (total >= 6) {
@@ -151,7 +184,7 @@ function atualizarCameraUI() {
   if (subindo > 0) {
     btnFinalizar.innerHTML = '<span class="spinner-mini"></span>Subindo...';
   } else if (total >= 6) {
-    btnFinalizar.innerHTML = `📨 Enviar (${total} fotos)`;
+    btnFinalizar.innerHTML = ehParcial ? `▶️ Continuar (${total} fotos)` : `📨 Enviar (${total} fotos)`;
   } else {
     btnFinalizar.innerHTML = `🔒 Faltam ${6 - total}`;
   }
@@ -159,11 +192,15 @@ function atualizarCameraUI() {
   // Hint
   const hint = document.getElementById('cameraHint');
   if (total >= 6) {
-    hint.textContent = '✅ Minimo atingido. Pode tirar mais ou clicar Enviar';
+    hint.textContent = ehParcial
+      ? '✅ Mínimo atingido. Pode tirar mais ou clicar Continuar'
+      : '✅ Minimo atingido. Pode tirar mais ou clicar Enviar';
   } else if (total >= 1) {
     hint.textContent = `Faltam ${6 - total} fotos pra completar 6`;
   } else {
-    hint.textContent = 'Toque pra fotografar - sequencia: caixa, produto, etiqueta';
+    hint.textContent = ehParcial
+      ? 'Sequência: 1 do pacote, 1 da etiqueta, 4 do(s) produto(s)'
+      : 'Toque pra fotografar - sequencia: caixa, produto, etiqueta';
   }
 
   // Thumbnails
@@ -191,6 +228,7 @@ function atualizarCameraUI() {
   }).join('');
 }
 
+// v3.17.0 - finalizarFotos agora bifurca: se _fluxoParcial=true, vai pra confirmacao parcial
 function finalizarFotos() {
   const fotos = window.fotosUploadadas || [];
   const fotosOk = fotos.filter(f => !f.uploading && f.url).map(f => f.url);
@@ -198,7 +236,15 @@ function finalizarFotos() {
     toast(`Voce so tem ${fotosOk.length} fotos. MINIMO sao 6.`, 'err');
     return;
   }
-  // Fecha camera (forcar=true pra nao perguntar) e envia
+  // Fecha camera (forcar=true pra nao perguntar)
   fecharCamera(true);
-  enviarProblema();
+
+  // v3.17.0 - bifurca fluxo
+  if (window._fluxoParcial) {
+    // Fluxo PARCIAL: abre modal de confirmacao final (com obs opcional)
+    abrirConfirmacaoParcial(fotosOk);
+  } else {
+    // Fluxo PROBLEMA original
+    enviarProblema();
+  }
 }
