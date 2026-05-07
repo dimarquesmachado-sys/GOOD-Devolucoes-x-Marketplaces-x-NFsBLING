@@ -153,7 +153,7 @@ function montarTabelaRanking(lista, qtdeKey, devKey, statusKey, modo) {
     html += `<td class="pos ${posCls}">${i + 1}</td>`;
     html += `<td class="sku-col">
       <div class="sku-nome">${escapeHtml(s.sku)}</div>
-      <div class="produto-nome">${escapeHtml((s.titulo || '').substring(0, 50))}${s.titulo && s.titulo.length > 50 ? '...' : ''}</div>
+      <div class="produto-nome">${escapeHtml(s.titulo || '')}</div>
     </td>`;
     html += `<td class="num ${isProblema ? 'num-problema' : ''}">${qtde}</td>`;
     html += `<td class="num">${numDev}</td>`;
@@ -220,6 +220,11 @@ function ordenarLista(lista, col, dir) {
         va = (a.funcionario || '').toLowerCase();
         vb = (b.funcionario || '').toLowerCase();
         break;
+      case 'tags':
+        // Ordena pela 1a tag (alfabetica). Sem tag vai pro fim.
+        va = (a.tags && a.tags.length > 0) ? (a.tags[0].nome || '').toLowerCase() : 'zzzz_sem_tag';
+        vb = (b.tags && b.tags.length > 0) ? (b.tags[0].nome || '').toLowerCase() : 'zzzz_sem_tag';
+        break;
       default:
         return 0;
     }
@@ -274,7 +279,7 @@ function renderizarTabela(devolucoes) {
   html += '<th>Pedido ML</th>';
   html += '<th>Pedido Bling</th>';
   html += `<th class="${sortCls('funcionario')}" onclick="ordenarPor('funcionario')" title="Clique pra agrupar por funcionário">Funcionário</th>`;
-  html += '<th>Tags</th>';
+  html += `<th class="${sortCls('tags')}" onclick="ordenarPor('tags')" title="Clique pra agrupar por tag (1a tag)">Tags</th>`;
   html += '</tr></thead><tbody>';
 
   // v3.16.1 - acumula totais
@@ -295,7 +300,7 @@ function renderizarTabela(devolucoes) {
     html += `<td>${fmtData(d.created_at)}</td>`;
     html += `<td><span class="tipo-badge tipo-${d.tipo}">${d.tipo}</span></td>`;
     html += `<td><strong>${escapeHtml(d.produto_sku || '—')}</strong></td>`;
-    html += `<td>${escapeHtml((d.produto_titulo || '').substring(0, 50))}${d.produto_titulo && d.produto_titulo.length > 50 ? '...' : ''}</td>`;
+    html += `<td class="produto-celula">${escapeHtml(d.produto_titulo || '—')}</td>`;
     html += `<td>${qtde}</td>`;
     html += `<td>${fmtMoeda(valor)}</td>`;
     html += `<td>${d.nf_link_danfe ? `<a href="${escapeHtml(d.nf_link_danfe)}" target="_blank">${escapeHtml(d.nf_numero || '?')}</a>` : escapeHtml(d.nf_numero || '—')}</td>`;
