@@ -33,7 +33,7 @@
     <header>
       <h1>📦 GOOD Devolucoes</h1>
       <p>Identificar venda + NF-e + Triagem</p>
-      <p style="font-size: 10px; color: #888; margin-top: 4px;">v3.14.9 (camera bipagem) | <span id="serverVersion">checando...</span></p>
+      <p style="font-size: 10px; color: #888; margin-top: 4px;">v3.17.0 (devolucao parcial) | <span id="serverVersion">checando...</span></p>
       <div class="user-badge">
         👤 <span id="userNome">-</span>
         <a href="/admin.html" id="btnPainelAdmin" style="display:none;background:#ffd700;color:#1d1d1f;padding:3px 10px;border-radius:10px;font-weight:700;margin-left:6px;">👑 Painel Admin</a>
@@ -143,6 +143,14 @@
             ✅ OK - Finalizar com observacao
           </button>
         </div>
+
+        <!-- v3.17.0: Botao DEVOLUCAO PARCIAL (aparece apenas apos bipar pelo menos 1 e antes de completar tudo) -->
+        <button id="btnDevolucaoParcial" type="button" onclick="iniciarFluxoParcial()"
+                style="display:none; width:100%; margin-top:14px; padding:14px; background:linear-gradient(135deg,#ff9800,#e65100); color:white; border:none; border-radius:10px; font-weight:700; font-size:14px; cursor:pointer; box-shadow:0 3px 8px rgba(245,124,0,0.3); align-items:center; justify-content:center; gap:8px;">
+          <span style="font-size:20px;">⚠️</span>
+          <span>DEVOLUÇÃO PARCIAL</span>
+          <small style="display:block; font-size:11px; font-weight:400; opacity:0.95;">cliente devolveu menos itens</small>
+        </button>
         </div><!-- /bipagemConteudo -->
       </div>
 
@@ -156,6 +164,73 @@
                 style="margin:0;padding:12px;opacity:0.5;cursor:not-allowed;"
                 onclick="confirmarAprovar()">
           ✅ Confirmar
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- v3.17.0 - MODAL DECISAO PARCIAL (3 opcoes) -->
+  <div class="modal-bg" id="modalDecisaoParcial">
+    <div class="modal" style="max-width: 480px;">
+      <h3>⚠️ Devolução Parcial</h3>
+      <p style="font-size:14px; color:#555;">
+        Você bipou <strong id="parcialBipados">?</strong> de <strong id="parcialTotal">?</strong> itens da NF.
+      </p>
+      <p style="font-size:14px; color:#555;">O que aconteceu?</p>
+
+      <div style="display:flex; flex-direction:column; gap:10px; margin-top:16px;">
+        <button type="button" onclick="parcialFaltouBipar()"
+                style="padding:14px; background:#1565c0; color:white; border:none; border-radius:10px; font-weight:700; font-size:14px; cursor:pointer; text-align:left;">
+          🔄 Faltou bipar
+          <small style="display:block; font-size:11px; font-weight:400; opacity:0.9; margin-top:2px;">vou voltar e bipar os itens que faltam</small>
+        </button>
+
+        <button type="button" onclick="parcialConfirmarParcial()"
+                style="padding:14px; background:linear-gradient(135deg,#ff9800,#e65100); color:white; border:none; border-radius:10px; font-weight:700; font-size:14px; cursor:pointer; text-align:left;">
+          📦 Cliente devolveu PARCIAL
+          <small style="display:block; font-size:11px; font-weight:400; opacity:0.95; margin-top:2px;">vai pedir 6 fotos pra documentar (sem email)</small>
+        </button>
+
+        <button type="button" onclick="fecharModal('modalDecisaoParcial')"
+                style="padding:12px; background:#f0f0f0; color:#555; border:none; border-radius:10px; font-weight:600; font-size:14px; cursor:pointer;">
+          ✖ Cancelar
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- v3.17.0 - MODAL CONFIRMACAO FINAL PARCIAL (apos fotos) -->
+  <div class="modal-bg" id="modalConfirmacaoParcial">
+    <div class="modal" style="max-width: 500px;">
+      <h3>📦 Confirmar Devolução Parcial</h3>
+      <div style="background:#fff3e0; border:1px solid #f57c00; padding:12px; border-radius:8px; margin-bottom:14px;">
+        <div style="font-size:14px; color:#e65100; font-weight:700;">
+          Atenção! Você está confirmando que voltaram apenas
+          <span id="confirmacaoBipados">?</span> de
+          <span id="confirmacaoTotal">?</span> itens.
+        </div>
+        <div style="font-size:12px; color:#666; margin-top:6px;">
+          ✅ <span id="confirmacaoFotosCount">0</span> fotos anexadas como evidência
+        </div>
+      </div>
+
+      <label style="display:block; font-size:13px; color:#555; margin-bottom:4px;">
+        Observação (opcional):
+      </label>
+      <textarea id="parcialObservacao" rows="3"
+                placeholder="Algum comentário adicional? (não obrigatório)"
+                style="width:100%; padding:10px; font-size:13px; border:1px solid #ccc; border-radius:6px; resize:vertical; font-family:inherit;"></textarea>
+
+      <p style="font-size:11px; color:#999; margin-top:10px;">
+        🛡️ As fotos servirão como prova caso seja necessário contestar com o marketplace.
+      </p>
+
+      <div class="modal-acoes">
+        <button class="btn-cancelar" onclick="fecharModal('modalConfirmacaoParcial')">Cancelar</button>
+        <button class="btn-action" id="btnEncerrarParcial"
+                style="margin:0;padding:12px;background:linear-gradient(135deg,#ff9800,#e65100);"
+                onclick="encerrarParcial()">
+          ✅ Sim, Encerrar
         </button>
       </div>
     </div>
