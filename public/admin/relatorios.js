@@ -131,8 +131,6 @@ function montarTabelaRanking(lista, qtdeKey, devKey, statusKey, modo) {
   html += '<th>SKU / Produto</th>';
   html += '<th class="num" title="Soma de unidades devolvidas">Unid.</th>';
   html += '<th class="num" title="Quantas etiquetas foram bipadas (devoluções distintas)">Devoluç.</th>';
-  html += '<th class="num" title="Média de unidades por devolução">Méd/dev</th>';
-  html += '<th title="🔴 Sistêmico = 6+ devoluções (problema do produto). 🟡 Misto = 3-5. 🟢 Isolado = 1-2 (caso pontual)">Status</th>';
   html += '</tr></thead><tbody>';
 
   for (let i = 0; i < lista.length; i++) {
@@ -140,14 +138,6 @@ function montarTabelaRanking(lista, qtdeKey, devKey, statusKey, modo) {
     const posCls = i === 0 ? 'top1' : i === 1 ? 'top2' : i === 2 ? 'top3' : '';
     const qtde = s[qtdeKey];
     const numDev = s[devKey];
-    const status = s[statusKey];
-    const media = numDev > 0 ? (qtde / numDev) : 0;
-
-    const statusInfo = {
-      sistemico: { label: '🔴 Sistêmico', cls: 'status-sistemico' },
-      misto:     { label: '🟡 Misto',     cls: 'status-misto' },
-      isolado:   { label: '🟢 Isolado',   cls: 'status-isolado' },
-    }[status] || { label: '—', cls: '' };
 
     html += '<tr>';
     html += `<td class="pos ${posCls}">${i + 1}</td>`;
@@ -157,8 +147,6 @@ function montarTabelaRanking(lista, qtdeKey, devKey, statusKey, modo) {
     </td>`;
     html += `<td class="num ${isProblema ? 'num-problema' : ''}">${qtde}</td>`;
     html += `<td class="num">${numDev}</td>`;
-    html += `<td class="num">${media.toFixed(1)}</td>`;
-    html += `<td><span class="status-badge ${statusInfo.cls}">${statusInfo.label}</span></td>`;
     html += '</tr>';
   }
 
@@ -180,7 +168,8 @@ function renderizarFuncionarios(lista) {
 }
 
 // v3.16.1 - Estado da ordenação (persistente entre re-renders)
-let ordenacaoAtual = { col: 'created_at', dir: 'desc' };
+// Padrao: maiores quantidades primeiro
+let ordenacaoAtual = { col: 'produto_qtd', dir: 'desc' };
 
 function ordenarLista(lista, col, dir) {
   const mult = dir === 'asc' ? 1 : -1;
@@ -538,14 +527,12 @@ function exportarExcel() {
       'Produto': s.titulo || '',
       'Unidades total': s.qtde_total,
       'Nº devoluções': s.num_devolucoes,
-      'Média unid./devolução': s.qtde_media,
-      'Status': s.status === 'sistemico' ? 'Sistêmico' : (s.status === 'misto' ? 'Misto' : 'Isolado'),
       'Qtde aprovado': s.qtde_aprovado,
       'Qtde problema': s.qtde_problema,
       'Valor total devolvido': Number(s.valor_total || 0),
     }));
     const wsSku = XLSX.utils.json_to_sheet(linhasSku);
-    wsSku['!cols'] = [{ wch: 8 }, { wch: 18 }, { wch: 50 }, { wch: 13 }, { wch: 13 }, { wch: 18 }, { wch: 12 }, { wch: 13 }, { wch: 13 }, { wch: 18 }];
+    wsSku['!cols'] = [{ wch: 8 }, { wch: 18 }, { wch: 50 }, { wch: 13 }, { wch: 13 }, { wch: 13 }, { wch: 13 }, { wch: 18 }];
     XLSX.utils.book_append_sheet(wb, wsSku, 'Ranking SKUs');
   }
 
@@ -557,10 +544,9 @@ function exportarExcel() {
       'Produto': s.titulo || '',
       'Unidades com problema': s.qtde_problema,
       'Nº devoluções com problema': s.num_devolucoes_problema,
-      'Status': s.status_problema === 'sistemico' ? 'Sistêmico' : (s.status_problema === 'misto' ? 'Misto' : 'Isolado'),
     }));
     const wsProb = XLSX.utils.json_to_sheet(linhasProb);
-    wsProb['!cols'] = [{ wch: 8 }, { wch: 18 }, { wch: 50 }, { wch: 18 }, { wch: 22 }, { wch: 12 }];
+    wsProb['!cols'] = [{ wch: 8 }, { wch: 18 }, { wch: 50 }, { wch: 18 }, { wch: 22 }];
     XLSX.utils.book_append_sheet(wb, wsProb, 'Ranking Problemas');
   }
 
