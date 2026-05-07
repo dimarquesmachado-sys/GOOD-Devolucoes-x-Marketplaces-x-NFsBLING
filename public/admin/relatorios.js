@@ -101,6 +101,8 @@ function renderizarCards(c) {
   document.getElementById('cardAprovadas').textContent = c.totalAprovado;
   document.getElementById('cardProblemas').textContent = c.totalProblema;
   document.getElementById('cardPctProblema').textContent = c.percentualProblema + '%';
+  document.getElementById('cardSKUsUnicos').textContent = c.totalSKUsUnicos || 0;
+  document.getElementById('cardUnidades').textContent = c.totalUnidades || 0;
   document.getElementById('cardValor').textContent = fmtMoeda(c.valorTotal);
 }
 
@@ -109,39 +111,59 @@ function renderizarRankings(skus, problemas) {
   if (!skus || skus.length === 0) {
     elSku.innerHTML = '<div class="empty-state">Sem dados no período</div>';
   } else {
-    elSku.innerHTML = skus.map((s, i) => {
-      const posCls = i === 0 ? 'top1' : i === 1 ? 'top2' : i === 2 ? 'top3' : '';
-      return `
-        <div class="ranking-item">
-          <div class="ranking-pos ${posCls}">${i + 1}</div>
-          <div class="ranking-info">
-            <div class="sku">${escapeHtml(s.sku)}</div>
-            <div class="nome">${escapeHtml((s.titulo || '').substring(0, 60))}${s.titulo && s.titulo.length > 60 ? '...' : ''}</div>
-          </div>
-          <div class="ranking-numero">${s.qtde_total}</div>
-        </div>
-      `;
-    }).join('');
+    elSku.innerHTML = montarTabelaRanking(skus, 'qtde_total', 'num_devolucoes', 'status');
   }
 
   const elProb = document.getElementById('rankingProblemas');
   if (!problemas || problemas.length === 0) {
     elProb.innerHTML = '<div class="empty-state">Nenhum problema reportado no período</div>';
   } else {
-    elProb.innerHTML = problemas.map((s, i) => {
-      const posCls = i === 0 ? 'top1' : i === 1 ? 'top2' : i === 2 ? 'top3' : '';
-      return `
-        <div class="ranking-item">
-          <div class="ranking-pos ${posCls}">${i + 1}</div>
-          <div class="ranking-info">
-            <div class="sku">${escapeHtml(s.sku)}</div>
-            <div class="nome">${escapeHtml((s.titulo || '').substring(0, 60))}${s.titulo && s.titulo.length > 60 ? '...' : ''}</div>
-          </div>
-          <div class="ranking-numero problema">${s.qtde_problema}</div>
-        </div>
-      `;
-    }).join('');
+    elProb.innerHTML = montarTabelaRanking(problemas, 'qtde_problema', 'num_devolucoes_problema', 'status_problema', 'problema');
   }
+}
+
+// v3.16.1 - monta a tabela de ranking com colunas extras
+function montarTabelaRanking(lista, qtdeKey, devKey, statusKey, modo) {
+  const isProblema = modo === 'problema';
+  let html = '<table class="ranking">';
+  html += '<thead><tr>';
+  html += '<th></th>'; // posicao
+  html += '<th>SKU / Produto</th>';
+  html += '<th class="num" title="Soma de unidades devolvidas">Unid.</th>';
+  html += '<th class="num" title="Quantas etiquetas foram bipadas (devoluções distintas)">Devoluç.</th>';
+  html += '<th class="num" title="Média de unidades por devolução">Méd/dev</th>';
+  html += '<th title="🔴 Sistêmico = 6+ devoluções (problema do produto). 🟡 Misto = 3-5. 🟢 Isolado = 1-2 (caso pontual)">Status</th>';
+  html += '</tr></thead><tbody>';
+
+  for (let i = 0; i < lista.length; i++) {
+    const s = lista[i];
+    const posCls = i === 0 ? 'top1' : i === 1 ? 'top2' : i === 2 ? 'top3' : '';
+    const qtde = s[qtdeKey];
+    const numDev = s[devKey];
+    const status = s[statusKey];
+    const media = numDev > 0 ? (qtde / numDev) : 0;
+
+    const statusInfo = {
+      sistemico: { label: '🔴 Sistêmico', cls: 'status-sistemico' },
+      misto:     { label: '🟡 Misto',     cls: 'status-misto' },
+      isolado:   { label: '🟢 Isolado',   cls: 'status-isolado' },
+    }[status] || { label: '—', cls: '' };
+
+    html += '<tr>';
+    html += `<td class="pos ${posCls}">${i + 1}</td>`;
+    html += `<td class="sku-col">
+      <div class="sku-nome">${escapeHtml(s.sku)}</div>
+      <div class="produto-nome">${escapeHtml((s.titulo || '').substring(0, 50))}${s.titulo && s.titulo.length > 50 ? '...' : ''}</div>
+    </td>`;
+    html += `<td class="num ${isProblema ? 'num-problema' : ''}">${qtde}</td>`;
+    html += `<td class="num">${numDev}</td>`;
+    html += `<td class="num">${media.toFixed(1)}</td>`;
+    html += `<td><span class="status-badge ${statusInfo.cls}">${statusInfo.label}</span></td>`;
+    html += '</tr>';
+  }
+
+  html += '</tbody></table>';
+  return html;
 }
 
 function renderizarFuncionarios(lista) {
@@ -157,6 +179,71 @@ function renderizarFuncionarios(lista) {
   sel.value = valorAtual; // Mantém seleção
 }
 
+// v3.16.1 - Estado da ordenação (persistente entre re-renders)
+let ordenacaoAtual = { col: 'created_at', dir: 'desc' };
+
+function ordenarLista(lista, col, dir) {
+  const mult = dir === 'asc' ? 1 : -1;
+  return [...lista].sort((a, b) => {
+    let va, vb;
+    switch (col) {
+      case 'created_at':
+        va = new Date(a.created_at || 0).getTime();
+        vb = new Date(b.created_at || 0).getTime();
+        break;
+      case 'tipo':
+        va = a.tipo || '';
+        vb = b.tipo || '';
+        break;
+      case 'produto_sku':
+        va = (a.produto_sku || '').toLowerCase();
+        vb = (b.produto_sku || '').toLowerCase();
+        break;
+      case 'produto_qtd':
+        va = Number(a.produto_qtd || 0);
+        vb = Number(b.produto_qtd || 0);
+        break;
+      case 'valor_total':
+        va = Number(a.produto_valor_unit || 0) * Number(a.produto_qtd || 1);
+        vb = Number(b.produto_valor_unit || 0) * Number(b.produto_qtd || 1);
+        break;
+      case 'nf_numero':
+        // NF é número, mas pode vir como string. Tenta converter.
+        va = Number(a.nf_numero) || a.nf_numero || '';
+        vb = Number(b.nf_numero) || b.nf_numero || '';
+        break;
+      case 'buyer_nome':
+        va = (a.buyer_nome || '').toLowerCase();
+        vb = (b.buyer_nome || '').toLowerCase();
+        break;
+      case 'funcionario':
+        va = (a.funcionario || '').toLowerCase();
+        vb = (b.funcionario || '').toLowerCase();
+        break;
+      default:
+        return 0;
+    }
+    if (va < vb) return -1 * mult;
+    if (va > vb) return 1 * mult;
+    return 0;
+  });
+}
+
+function ordenarPor(col) {
+  if (ordenacaoAtual.col === col) {
+    // Mesma coluna: alterna direção
+    ordenacaoAtual.dir = ordenacaoAtual.dir === 'asc' ? 'desc' : 'asc';
+  } else {
+    // Nova coluna: começa desc pra numéricos, asc pra texto
+    const colsNumericas = ['created_at', 'produto_qtd', 'valor_total', 'nf_numero'];
+    ordenacaoAtual.col = col;
+    ordenacaoAtual.dir = colsNumericas.includes(col) ? 'desc' : 'asc';
+  }
+  if (dadosAtual && dadosAtual.devolucoes) {
+    renderizarTabela(dadosAtual.devolucoes);
+  }
+}
+
 function renderizarTabela(devolucoes) {
   const wrap = document.getElementById('tabelaWrap');
   document.getElementById('tabelaTitulo').textContent = `📋 Devoluções (${devolucoes.length})`;
@@ -166,33 +253,51 @@ function renderizarTabela(devolucoes) {
     return;
   }
 
+  // Aplica ordenação atual
+  const lista = ordenarLista(devolucoes, ordenacaoAtual.col, ordenacaoAtual.dir);
+
+  // Helper pra classes de ordenação
+  const sortCls = (col) => {
+    if (ordenacaoAtual.col !== col) return 'sortable';
+    return 'sortable sort-' + ordenacaoAtual.dir;
+  };
+
   let html = '<table class="devolucoes"><thead><tr>';
-  html += '<th>Data</th>';
-  html += '<th>Tipo</th>';
-  html += '<th>SKU</th>';
+  html += `<th class="${sortCls('created_at')}" onclick="ordenarPor('created_at')" title="Clique pra ordenar por data">Data</th>`;
+  html += `<th class="${sortCls('tipo')}" onclick="ordenarPor('tipo')" title="Clique pra agrupar por tipo">Tipo</th>`;
+  html += `<th class="${sortCls('produto_sku')}" onclick="ordenarPor('produto_sku')" title="Clique pra ordenar A-Z / Z-A">SKU</th>`;
   html += '<th>Produto</th>';
-  html += '<th>Qtde</th>';
-  html += '<th>Valor</th>';
-  html += '<th>NF</th>';
-  html += '<th>Comprador</th>';
+  html += `<th class="${sortCls('produto_qtd')}" onclick="ordenarPor('produto_qtd')" title="Clique pra ordenar por qtde">Qtde</th>`;
+  html += `<th class="${sortCls('valor_total')}" onclick="ordenarPor('valor_total')" title="Clique pra ordenar por valor">Valor</th>`;
+  html += `<th class="${sortCls('nf_numero')}" onclick="ordenarPor('nf_numero')" title="Clique pra ordenar por NF">NF</th>`;
+  html += `<th class="${sortCls('buyer_nome')}" onclick="ordenarPor('buyer_nome')" title="Clique pra ordenar por comprador A-Z / Z-A">Comprador</th>`;
   html += '<th>Pedido ML</th>';
   html += '<th>Pedido Bling</th>';
-  html += '<th>Funcionário</th>';
+  html += `<th class="${sortCls('funcionario')}" onclick="ordenarPor('funcionario')" title="Clique pra agrupar por funcionário">Funcionário</th>`;
   html += '<th>Tags</th>';
   html += '</tr></thead><tbody>';
 
-  for (const d of devolucoes) {
+  // v3.16.1 - acumula totais
+  let totalQtde = 0;
+  let totalValor = 0;
+
+  for (const d of lista) {
     const tagsHtml = (d.tags || []).map(t =>
       `<span class="tag" style="background:${escapeHtml(t.cor)};">${escapeHtml(t.nome)}</span>`
     ).join('');
+
+    const qtde = d.produto_qtd || 1;
+    const valor = (d.produto_valor_unit || 0) * qtde;
+    totalQtde += qtde;
+    totalValor += isFinite(valor) ? valor : 0;
 
     html += '<tr>';
     html += `<td>${fmtData(d.created_at)}</td>`;
     html += `<td><span class="tipo-badge tipo-${d.tipo}">${d.tipo}</span></td>`;
     html += `<td><strong>${escapeHtml(d.produto_sku || '—')}</strong></td>`;
     html += `<td>${escapeHtml((d.produto_titulo || '').substring(0, 50))}${d.produto_titulo && d.produto_titulo.length > 50 ? '...' : ''}</td>`;
-    html += `<td>${d.produto_qtd || 1}</td>`;
-    html += `<td>${fmtMoeda((d.produto_valor_unit || 0) * (d.produto_qtd || 1))}</td>`;
+    html += `<td>${qtde}</td>`;
+    html += `<td>${fmtMoeda(valor)}</td>`;
     html += `<td>${d.nf_link_danfe ? `<a href="${escapeHtml(d.nf_link_danfe)}" target="_blank">${escapeHtml(d.nf_numero || '?')}</a>` : escapeHtml(d.nf_numero || '—')}</td>`;
     html += `<td>${escapeHtml(d.buyer_nome || '—')}${d.buyer_nickname ? `<br><small style="color:#666;">${escapeHtml(d.buyer_nickname)}</small>` : ''}</td>`;
     html += `<td>${escapeHtml(d.order_id || '—')}</td>`;
@@ -202,7 +307,15 @@ function renderizarTabela(devolucoes) {
     html += '</tr>';
   }
 
-  html += '</tbody></table>';
+  html += '</tbody>';
+  // v3.16.1 - linha de totais
+  html += '<tfoot><tr>';
+  html += `<td colspan="4" style="text-align:right;">TOTAIS (${lista.length} registros):</td>`;
+  html += `<td>${totalQtde}</td>`;
+  html += `<td>${fmtMoeda(totalValor)}</td>`;
+  html += '<td colspan="6"></td>';
+  html += '</tr></tfoot>';
+  html += '</table>';
   wrap.innerHTML = html;
 }
 
@@ -359,7 +472,10 @@ function exportarExcel() {
     return;
   }
 
-  const linhas = dadosAtual.devolucoes.map(d => ({
+  // v3.16.1 - exporta na ordem atual
+  const listaOrdenada = ordenarLista(dadosAtual.devolucoes, ordenacaoAtual.col, ordenacaoAtual.dir);
+
+  const linhas = listaOrdenada.map(d => ({
     'Data': fmtDataCurta(d.created_at),
     'Hora': new Date(d.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
     'Tipo': d.tipo,
@@ -409,20 +525,38 @@ function exportarExcel() {
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Devoluções');
 
-  // Aba 2: Ranking SKUs
+  // Aba 2: Ranking SKUs (v3.16.1: com colunas novas)
   if (dadosAtual.rankingSKUs && dadosAtual.rankingSKUs.length > 0) {
     const linhasSku = dadosAtual.rankingSKUs.map((s, i) => ({
       'Posição': i + 1,
       'SKU': s.sku,
       'Produto': s.titulo || '',
-      'Qtde total': s.qtde_total,
+      'Unidades total': s.qtde_total,
+      'Nº devoluções': s.num_devolucoes,
+      'Média unid./devolução': s.qtde_media,
+      'Status': s.status === 'sistemico' ? 'Sistêmico' : (s.status === 'misto' ? 'Misto' : 'Isolado'),
       'Qtde aprovado': s.qtde_aprovado,
       'Qtde problema': s.qtde_problema,
       'Valor total devolvido': Number(s.valor_total || 0),
     }));
     const wsSku = XLSX.utils.json_to_sheet(linhasSku);
-    wsSku['!cols'] = [{ wch: 8 }, { wch: 18 }, { wch: 50 }, { wch: 11 }, { wch: 14 }, { wch: 14 }, { wch: 18 }];
+    wsSku['!cols'] = [{ wch: 8 }, { wch: 18 }, { wch: 50 }, { wch: 13 }, { wch: 13 }, { wch: 18 }, { wch: 12 }, { wch: 13 }, { wch: 13 }, { wch: 18 }];
     XLSX.utils.book_append_sheet(wb, wsSku, 'Ranking SKUs');
+  }
+
+  // Aba 3: Ranking Problemas
+  if (dadosAtual.rankingProblemas && dadosAtual.rankingProblemas.length > 0) {
+    const linhasProb = dadosAtual.rankingProblemas.map((s, i) => ({
+      'Posição': i + 1,
+      'SKU': s.sku,
+      'Produto': s.titulo || '',
+      'Unidades com problema': s.qtde_problema,
+      'Nº devoluções com problema': s.num_devolucoes_problema,
+      'Status': s.status_problema === 'sistemico' ? 'Sistêmico' : (s.status_problema === 'misto' ? 'Misto' : 'Isolado'),
+    }));
+    const wsProb = XLSX.utils.json_to_sheet(linhasProb);
+    wsProb['!cols'] = [{ wch: 8 }, { wch: 18 }, { wch: 50 }, { wch: 18 }, { wch: 22 }, { wch: 12 }];
+    XLSX.utils.book_append_sheet(wb, wsProb, 'Ranking Problemas');
   }
 
   // Nome do arquivo
@@ -479,3 +613,4 @@ document.addEventListener('DOMContentLoaded', async () => {
 // Expor pra HTML inline (botões da tabela)
 window.abrirAplicarTags = abrirAplicarTags;
 window.excluirTag = excluirTag;
+window.ordenarPor = ordenarPor;
