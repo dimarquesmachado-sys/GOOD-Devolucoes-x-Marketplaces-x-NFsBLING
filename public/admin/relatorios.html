@@ -152,9 +152,15 @@
     table.ranking td.pos.top1 { color: #b00020; }
     table.ranking td.pos.top2 { color: #d97706; }
     table.ranking td.pos.top3 { color: #ca8a04; }
-    .sku-col { min-width: 120px; }
+    .sku-col { min-width: 180px; max-width: 280px; }
     .sku-col .sku-nome { font-weight: 600; }
-    .sku-col .produto-nome { font-size: 11px; color: #666; line-height: 1.3; }
+    .sku-col .produto-nome {
+      font-size: 11px;
+      color: #666;
+      line-height: 1.3;
+      white-space: normal;
+      word-wrap: break-word;
+    }
 
     /* v3.16.1: badges de status (sistemico/misto/isolado) */
     .status-badge {
@@ -276,6 +282,13 @@
       font-size: 13px;
     }
     table.devolucoes tr:hover td { background: #f6f8fa; }
+    /* v3.16.1: celula de produto na tabela quebra linha (nome completo) */
+    table.devolucoes td.produto-celula {
+      max-width: 360px;
+      white-space: normal;
+      word-wrap: break-word;
+      line-height: 1.4;
+    }
     .tipo-badge {
       display: inline-block;
       padding: 2px 8px;
