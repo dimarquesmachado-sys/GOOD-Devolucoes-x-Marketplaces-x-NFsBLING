@@ -1,1 +1,432 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Relatórios · GOOD Devoluções</title>
+  <link rel="stylesheet" href="../styles.css">
+  <style>
+    /* Estilos especificos do relatorio */
+    .topbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px 20px;
+      background: #fff;
+      border-bottom: 1px solid #e0e0e0;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .topbar h1 { margin: 0; font-size: 20px; }
+    .topbar .right { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 
+    .container-rel {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 16px;
+    }
+
+    /* Cards do topo */
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+    .card {
+      background: #fff;
+      padding: 16px;
+      border-radius: 8px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    }
+    .card .label { font-size: 12px; color: #666; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
+    .card .valor { font-size: 24px; font-weight: 700; color: #222; }
+    .card.problema .valor { color: #b00020; }
+    .card.aprovado .valor { color: #1a7f37; }
+    .card.dinheiro .valor { color: #0969da; }
+
+    /* Filtros */
+    .filtros {
+      background: #fff;
+      padding: 16px;
+      border-radius: 8px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+      margin-bottom: 16px;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 12px;
+    }
+    .filtro-grupo label {
+      display: block;
+      font-size: 12px;
+      color: #666;
+      margin-bottom: 4px;
+    }
+    .filtro-grupo input,
+    .filtro-grupo select {
+      width: 100%;
+      padding: 8px;
+      border: 1px solid #d0d7de;
+      border-radius: 6px;
+      font-size: 14px;
+      box-sizing: border-box;
+    }
+    .filtros-acoes {
+      grid-column: 1 / -1;
+      display: flex;
+      gap: 8px;
+      justify-content: flex-end;
+      flex-wrap: wrap;
+    }
+    .btn {
+      padding: 8px 16px;
+      border: 1px solid #d0d7de;
+      border-radius: 6px;
+      background: #fff;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 500;
+      text-decoration: none;
+      display: inline-block;
+      color: #222;
+    }
+    .btn:hover { background: #f6f8fa; }
+    .btn.primary { background: #1a7f37; color: #fff; border-color: #1a7f37; }
+    .btn.primary:hover { background: #166c2e; }
+    .btn.excel { background: #1d6f42; color: #fff; border-color: #1d6f42; }
+    .btn.excel:hover { background: #155a35; }
+    .btn.secondary { background: #6c757d; color: #fff; border-color: #6c757d; }
+    .btn.danger { background: #b00020; color: #fff; border-color: #b00020; }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    /* Rankings (lado a lado) */
+    .rankings {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+    .ranking-box {
+      background: #fff;
+      padding: 16px;
+      border-radius: 8px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    }
+    .ranking-box h3 {
+      margin: 0 0 12px 0;
+      font-size: 14px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: #666;
+    }
+    .ranking-item {
+      display: grid;
+      grid-template-columns: 30px 1fr 80px;
+      gap: 10px;
+      padding: 8px 0;
+      border-bottom: 1px solid #f0f0f0;
+      align-items: center;
+    }
+    .ranking-item:last-child { border-bottom: none; }
+    .ranking-pos {
+      font-size: 14px;
+      font-weight: 700;
+      color: #999;
+      text-align: center;
+    }
+    .ranking-pos.top1 { color: #b00020; }
+    .ranking-pos.top2 { color: #d97706; }
+    .ranking-pos.top3 { color: #ca8a04; }
+    .ranking-info .sku { font-weight: 600; font-size: 13px; }
+    .ranking-info .nome { font-size: 12px; color: #666; }
+    .ranking-numero {
+      font-size: 18px;
+      font-weight: 700;
+      text-align: right;
+      color: #1a7f37;
+    }
+    .ranking-numero.problema { color: #b00020; }
+
+    /* Tabela */
+    .tabela-wrap {
+      background: #fff;
+      padding: 16px;
+      border-radius: 8px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+      overflow-x: auto;
+    }
+    .tabela-wrap h3 {
+      margin: 0 0 12px 0;
+      font-size: 14px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: #666;
+    }
+    table.devolucoes {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+    table.devolucoes th,
+    table.devolucoes td {
+      padding: 8px 10px;
+      text-align: left;
+      border-bottom: 1px solid #f0f0f0;
+      vertical-align: top;
+    }
+    table.devolucoes th {
+      background: #f6f8fa;
+      font-weight: 600;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: #555;
+      border-bottom: 2px solid #d0d7de;
+      white-space: nowrap;
+    }
+    table.devolucoes tr:hover td { background: #f6f8fa; }
+    .tipo-badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 12px;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+    .tipo-aprovado { background: #dafbe1; color: #1a7f37; }
+    .tipo-problema { background: #ffebe9; color: #b00020; }
+
+    /* Tags */
+    .tag {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 12px;
+      font-size: 11px;
+      color: #fff;
+      margin-right: 4px;
+      margin-bottom: 2px;
+      font-weight: 500;
+    }
+    .btn-tags {
+      cursor: pointer;
+      color: #0969da;
+      font-size: 12px;
+      background: none;
+      border: none;
+      text-decoration: underline;
+      padding: 0;
+    }
+
+    /* Modal de tags */
+    .modal-overlay {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.5);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+    }
+    .modal-overlay.show { display: flex; }
+    .modal {
+      background: #fff;
+      padding: 24px;
+      border-radius: 8px;
+      max-width: 500px;
+      width: 90%;
+      max-height: 90vh;
+      overflow-y: auto;
+    }
+    .modal h2 { margin-top: 0; }
+    .tag-pickable {
+      display: inline-block;
+      padding: 6px 12px;
+      margin: 4px;
+      border-radius: 16px;
+      font-size: 13px;
+      color: #fff;
+      cursor: pointer;
+      opacity: 0.5;
+      user-select: none;
+    }
+    .tag-pickable.selected { opacity: 1; box-shadow: 0 0 0 3px rgba(0,0,0,0.15); }
+    .tag-form {
+      display: flex;
+      gap: 8px;
+      margin-top: 12px;
+      flex-wrap: wrap;
+    }
+    .tag-form input[type="text"] {
+      flex: 1;
+      padding: 8px;
+      border: 1px solid #d0d7de;
+      border-radius: 6px;
+      min-width: 150px;
+    }
+    .tag-form input[type="color"] {
+      width: 50px;
+      height: 38px;
+      border: 1px solid #d0d7de;
+      border-radius: 6px;
+      padding: 2px;
+    }
+
+    /* Loader */
+    .loading {
+      text-align: center;
+      padding: 40px;
+      color: #666;
+    }
+
+    /* Rankings sem dados */
+    .empty-state {
+      text-align: center;
+      padding: 20px;
+      color: #999;
+      font-style: italic;
+      font-size: 13px;
+    }
+
+    /* Mobile */
+    @media (max-width: 600px) {
+      .cards { grid-template-columns: repeat(2, 1fr); }
+      .filtros { grid-template-columns: 1fr; }
+      .topbar { flex-direction: column; align-items: stretch; }
+    }
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <h1>📊 Relatórios de Devoluções</h1>
+    <div class="right">
+      <a href="../admin.html" class="btn">← Voltar ao Admin</a>
+      <button id="btnExportar" class="btn excel">📥 Exportar Excel</button>
+      <button id="btnGerenciarTags" class="btn">🏷️ Gerenciar Tags</button>
+    </div>
+  </div>
+
+  <div class="container-rel">
+
+    <!-- Cards do topo -->
+    <div class="cards" id="cards">
+      <div class="card">
+        <div class="label">Total Devoluções</div>
+        <div class="valor" id="cardTotal">—</div>
+      </div>
+      <div class="card aprovado">
+        <div class="label">Aprovadas</div>
+        <div class="valor" id="cardAprovadas">—</div>
+      </div>
+      <div class="card problema">
+        <div class="label">Com Problema</div>
+        <div class="valor" id="cardProblemas">—</div>
+      </div>
+      <div class="card">
+        <div class="label">% Problema</div>
+        <div class="valor" id="cardPctProblema">—</div>
+      </div>
+      <div class="card dinheiro">
+        <div class="label">Valor Devolvido</div>
+        <div class="valor" id="cardValor">—</div>
+      </div>
+    </div>
+
+    <!-- Filtros -->
+    <div class="filtros">
+      <div class="filtro-grupo">
+        <label>Data início</label>
+        <input type="date" id="dataInicio">
+      </div>
+      <div class="filtro-grupo">
+        <label>Data fim</label>
+        <input type="date" id="dataFim">
+      </div>
+      <div class="filtro-grupo">
+        <label>Tipo</label>
+        <select id="tipo">
+          <option value="todos">Todas</option>
+          <option value="aprovado">Aprovadas</option>
+          <option value="problema">Com problema</option>
+        </select>
+      </div>
+      <div class="filtro-grupo">
+        <label>SKU contém</label>
+        <input type="text" id="produtoSku" placeholder="ex: KJBD">
+      </div>
+      <div class="filtro-grupo">
+        <label>Funcionário</label>
+        <select id="funcionario">
+          <option value="">Todos</option>
+        </select>
+      </div>
+      <div class="filtro-grupo">
+        <label>Tag</label>
+        <select id="tagId">
+          <option value="">Todas</option>
+        </select>
+      </div>
+      <div class="filtros-acoes">
+        <button class="btn secondary" id="btnLimpar">Limpar filtros</button>
+        <button class="btn primary" id="btnFiltrar">Aplicar filtros</button>
+      </div>
+    </div>
+
+    <!-- Rankings lado a lado -->
+    <div class="rankings">
+      <div class="ranking-box">
+        <h3>🔥 Top 10 SKUs mais devolvidos</h3>
+        <div id="rankingSKUs"></div>
+      </div>
+      <div class="ranking-box">
+        <h3>⚠️ Top 10 SKUs com problema</h3>
+        <div id="rankingProblemas"></div>
+      </div>
+    </div>
+
+    <!-- Tabela detalhada -->
+    <div class="tabela-wrap">
+      <h3 id="tabelaTitulo">📋 Devoluções</h3>
+      <div id="tabelaWrap">
+        <div class="loading">Carregando...</div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Modal: aplicar tags numa devolução -->
+  <div class="modal-overlay" id="modalAplicarTags">
+    <div class="modal">
+      <h2>🏷️ Aplicar Tags</h2>
+      <p style="color:#666;font-size:13px;" id="modalAplicarInfo"></p>
+      <div id="modalAplicarLista"></div>
+      <div style="display:flex;gap:8px;margin-top:16px;justify-content:flex-end;">
+        <button class="btn secondary" id="modalAplicarCancelar">Cancelar</button>
+        <button class="btn primary" id="modalAplicarSalvar">Salvar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: gerenciar tags (CRUD) -->
+  <div class="modal-overlay" id="modalGerenciarTags">
+    <div class="modal">
+      <h2>🏷️ Gerenciar Tags</h2>
+      <p style="color:#666;font-size:13px;">
+        Crie tags pra categorizar devoluções: <em>"vidro quebrado"</em>, <em>"embalagem furada"</em>, etc.
+      </p>
+      <div id="modalGerenciarLista"></div>
+      <div class="tag-form">
+        <input type="text" id="novoTagNome" placeholder="Nome da nova tag" maxlength="50">
+        <input type="color" id="novoTagCor" value="#6c757d">
+        <button class="btn primary" id="btnAdicionarTag">+ Adicionar</button>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:16px;justify-content:flex-end;">
+        <button class="btn secondary" id="modalGerenciarFechar">Fechar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- SheetJS pra Excel -->
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js"></script>
+  <script src="relatorios.js"></script>
+</body>
+</html>
