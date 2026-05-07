@@ -1,41 +1,123 @@
-# GOOD Devolucoes - Marketplaces - NFs Bling
+# 🚀 v3.16.0 — Dashboard de Relatórios + TAGs
 
-Sistema de identificacao e inteligencia de devolucoes para o GOOD Import.
+## ✅ ARQUIVOS PRA SUBIR (6 arquivos)
 
-## Fase 1 (atual)
+| # | Arquivo (no seu PC) | Onde colocar no GitHub |
+|---|---|---|
+| 1 | `server.js` | substitui o `server.js` da raiz |
+| 2 | `admin.html` | substitui `public/admin.html` |
+| 3 | `lib/produtos-client.js` | criar arquivo novo `lib/produtos-client.js` |
+| 4 | `lib/rotas-relatorios.js` | criar arquivo novo `lib/rotas-relatorios.js` |
+| 5 | `public/admin/relatorios.html` | criar pasta `admin` dentro de `public` e arquivo dentro |
+| 6 | `public/admin/relatorios.js` | mesmo lugar do anterior |
 
-Identifica a venda original a partir do codigo da etiqueta de devolucao do Mercado Livre.
+## 📋 PASSO A PASSO (~10 min)
 
-- Aceita `pack_id` (ex: 2000012153272513) ou `shipment_id` (ex: 46862577049)
-- Busca em cascata na API do ML
-- Mostra produto, comprador, valores, datas e timeline da devolucao
-- Renovacao automatica do access token via refresh token
+### Passo 1: Subir os 4 arquivos NOVOS
 
-## Variaveis de ambiente
+#### 1a) `lib/produtos-client.js`
+- GitHub → **Add file** → **Create new file**
+- Nome: `lib/produtos-client.js`  (a barra `/` cria a pasta `lib`)
+- Cola o conteúdo do arquivo
+- Commit: `v3.16.0: lib/produtos-client.js`
 
-Configurar no Render:
+#### 1b) `lib/rotas-relatorios.js`
+- GitHub → **Add file** → **Create new file**
+- Nome: `lib/rotas-relatorios.js`
+- Cola o conteúdo
+- Commit: `v3.16.0: lib/rotas-relatorios.js`
 
-| Variavel | Descricao |
-|---|---|
-| `ML_CLIENT_ID` | Client ID da app no ML developer |
-| `ML_CLIENT_SECRET` | Client Secret da app |
-| `ML_ACCESS_TOKEN` | Access token inicial (renovado automaticamente depois) |
-| `ML_REFRESH_TOKEN` | Refresh token (vale ~6 meses) |
-| `ML_USER_ID` | ID da conta GOOD Import no ML |
-| `RENDER_API_KEY` | (opcional) Pra persistir tokens renovados |
-| `RENDER_SERVICE_ID` | (opcional) Pra persistir tokens renovados |
+#### 1c) `public/admin/relatorios.html`
+- GitHub → vai pra pasta `public`
+- **Add file** → **Create new file**
+- Nome: `admin/relatorios.html`  (cria a pasta `admin` dentro de `public`)
+- Cola o conteúdo
+- Commit: `v3.16.0: relatorios.html`
 
-## Endpoints
+#### 1d) `public/admin/relatorios.js`
+- Mesma pasta do anterior
+- **Add file** → **Create new file**
+- Nome: `admin/relatorios.js`
+- Cola o conteúdo
+- Commit: `v3.16.0: relatorios.js`
 
-- `GET /` - Pagina principal (interface do estoquista)
-- `GET /health` - Health check
-- `GET /api/devolucao/identificar/:codigo` - Identifica devolucao
-- `POST /api/admin/renovar-token` - Renova token manualmente
+### Passo 2: Substituir os 2 arquivos EXISTENTES
 
-## Roadmap
+#### 2a) `server.js`
+- GitHub → clica em `server.js`
+- ✏️ Editar (lápis)
+- **Ctrl+A** → **Delete** (apaga tudo)
+- Cola o `server.js` novo
+- Commit: `v3.16.0: server.js (relatorios + funcionario)`
 
-- [x] Fase 1: Identificacao de devolucao via API ML
-- [ ] Fase 2: Persistencia em banco + integracao Bling
-- [ ] Fase 3: Emissao automatica de NF-e de devolucao
-- [ ] Fase 4: Dashboard de inteligencia de devolucoes
-- [ ] Fase 5: OCR e leitura via foto da etiqueta
+#### 2b) `public/admin.html`
+- GitHub → vai pra `public/admin.html`
+- ✏️ Editar
+- **Ctrl+A** → **Delete**
+- Cola o `admin.html` novo
+- Commit: `v3.16.0: admin.html (botao relatorios)`
+
+### Passo 3: Aguarda Render redeployar (~1-2 min)
+
+### Passo 4: Testar
+
+#### a) `/health` retorna `version: "3.16.0"`
+```
+https://good-devolucoes-x-marketplaces-x-nfsbling.onrender.com/health
+```
+
+#### b) Botão "📊 Relatórios" aparece no admin
+```
+https://good-devolucoes-x-marketplaces-x-nfsbling.onrender.com/admin.html
+```
+
+#### c) Clica no botão → abre dashboard
+
+## 🎯 O QUE TÁ NOVO
+
+### Backend (`server.js`)
+- ✅ Importa `lib/rotas-relatorios.js`
+- ✅ Bump pra v3.16.0
+- ✅ Registra rotas novas: `/api/admin/relatorios/devolucoes`, `/api/admin/tags`, etc.
+- ✅ Grava `funcionario` em coluna separada quando triagem é feita (pra novos registros)
+- ✅ Servir página `/admin/relatorios.html`
+
+### Frontend admin (`admin.html`)
+- ✅ Botão "📊 Relatórios" no topo (em verde)
+- ✅ Bump pra v3.16.0 no rodapé
+- ✅ Tudo o resto **igual** (Gerar NF Devolução, lista, filtros, etc)
+
+### Páginas novas
+- ✅ `/admin/relatorios.html` + JS
+  - Cards no topo (total, aprovadas, problemas, % problema, valor)
+  - Filtros: período, tipo, SKU, funcionário, tag
+  - 2 rankings lado a lado: top SKUs devolvidos + top SKUs com problema
+  - Tabela detalhada
+  - Sistema completo de TAGs (criar, aplicar, filtrar)
+  - Export Excel
+
+## 🚨 SE ALGO DER ERRADO
+
+### Sintoma: deploy do Render falhou
+- Vai no GitHub → arquivo afetado → **History** → reverte commit
+- Geralmente é o `server.js`
+
+### Sintoma: `/admin/relatorios.html` retorna "Cannot GET"
+- Confere se você criou os arquivos `relatorios.html` e `relatorios.js` em `public/admin/` (não é em qualquer outro lugar)
+
+### Sintoma: dashboard carrega mas tabela tá vazia
+- Filtro padrão é últimos 30 dias
+- Muda data início pra 4 meses atrás → "Aplicar filtros"
+
+### Sintoma: erro 401 ao abrir relatório
+- Tem que estar logado como admin (`ADMIN_USER` env var)
+- Faz login no `/admin.html` antes
+
+## 💡 PRÓXIMA SESSÃO
+
+Depois que usar 2-3 dias, conta o que faltou. Vou implementar:
+- Cálculo de prejuízo (qtde × custo Bling)
+- Custo de devolução cobrado pelo ML
+- Busca textual de produto (autocomplete)
+
+**Frase-gatilho:** *"Bora continuar relatorios v3.17. Testei, falta X."*
