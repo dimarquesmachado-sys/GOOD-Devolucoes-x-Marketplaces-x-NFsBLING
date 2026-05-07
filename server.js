@@ -191,7 +191,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '3.16.0',
+    version: '3.17.0',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -908,6 +908,18 @@ app.post('/api/triagem/aprovar', requerEstoquista, async (req, res) => {
     return res.status(400).json({ ok: false, erro: 'shipment_id obrigatorio' });
   }
 
+  // v3.17.0 - Validacoes especificas pra devolucao parcial
+  const ehParcial = !!dados.eh_parcial;
+  const fotosParcial = Array.isArray(dados.fotos_parcial) ? dados.fotos_parcial : [];
+  if (ehParcial) {
+    if (fotosParcial.length < 6) {
+      return res.status(400).json({
+        ok: false,
+        erro: `Devolucao parcial requer no minimo 6 fotos (recebido: ${fotosParcial.length})`,
+      });
+    }
+  }
+
   // Bloqueia duplicata - exceto se cliente passar forcar=true (re-triagem proposital)
   if (!dados.forcar) {
     const { data: existentes, error: errBusca } = await supabase
@@ -939,6 +951,17 @@ app.post('/api/triagem/aprovar', requerEstoquista, async (req, res) => {
       }
     }
 
+    // v3.17.0 - monta descricao do registro
+    let descricaoRegistro;
+    if (ehParcial) {
+      const obs = (dados.observacao_parcial || '').trim();
+      descricaoRegistro = `[DEVOLUCAO PARCIAL por ${req.usuario}] Recebido: ${dados.produto_qtd} de ${dados.produto_qtd_original || '?'} unidades.${obs ? ' OBS: ' + obs : ''}`;
+    } else if (dados.bipagem_forcada) {
+      descricaoRegistro = `Aprovado por ${req.usuario} [BIPAGEM FORCADA] OBS: ${dados.bipagem_observacao}`;
+    } else {
+      descricaoRegistro = `Aprovado por ${req.usuario} [bipagem OK]`;
+    }
+
     const { data, error } = await supabase
       .from('devolucoes')
       .insert([{
@@ -964,9 +987,9 @@ app.post('/api/triagem/aprovar', requerEstoquista, async (req, res) => {
         tipo: 'aprovado',
         status: 'pendente',
         funcionario: req.usuario,
-        problema_descricao: dados.bipagem_forcada
-          ? `Aprovado por ${req.usuario} [BIPAGEM FORCADA] OBS: ${dados.bipagem_observacao}`
-          : `Aprovado por ${req.usuario} [bipagem OK]`,
+        problema_descricao: descricaoRegistro,
+        // v3.17.0 - se for parcial, salva as fotos no mesmo campo das fotos de problema
+        problema_fotos: ehParcial ? fotosParcial : null,
       }])
       .select()
       .single();
@@ -976,8 +999,41 @@ app.post('/api/triagem/aprovar', requerEstoquista, async (req, res) => {
       return res.status(500).json({ ok: false, erro: error.message });
     }
 
-    console.log(`[TRIAGEM] APROVADO por ${req.usuario}: shipment=${dados.shipment_id} NF=${dados.nf_numero}${dados.bipagem_forcada ? ' [FORCADO]' : ''}`);
-    return res.json({ ok: true, id: data.id, registro: data });
+    // v3.17.0 - Aplica tag automatica "Devolucao Parcial"
+    if (ehParcial) {
+      try {
+        // Busca tag (cria se nao existir)
+        let tagId = null;
+        const { data: tagsExistentes } = await supabase
+          .from('tags')
+          .select('id, nome')
+          .eq('nome', 'Devolucao Parcial')
+          .limit(1);
+        if (tagsExistentes && tagsExistentes.length > 0) {
+          tagId = tagsExistentes[0].id;
+        } else {
+          const { data: novaTag } = await supabase
+            .from('tags')
+            .insert([{ nome: 'Devolucao Parcial', cor: '#f57c00' }])
+            .select()
+            .single();
+          tagId = novaTag?.id;
+        }
+        // Vincula a tag a essa devolucao
+        if (tagId) {
+          await supabase
+            .from('devolucao_tags')
+            .insert([{ devolucao_id: data.id, tag_id: tagId }]);
+        }
+      } catch (e) {
+        console.warn('[TRIAGEM] Erro ao aplicar tag Parcial (nao critico):', e.message);
+      }
+    }
+
+    const flagLog = ehParcial ? '[PARCIAL]' : (dados.bipagem_forcada ? '[FORCADO]' : '');
+    console.log(`[TRIAGEM] APROVADO por ${req.usuario}: shipment=${dados.shipment_id} NF=${dados.nf_numero} ${flagLog}`);
+    // v3.17.0 - NAO dispara email pra parcial (Diego pediu)
+    return res.json({ ok: true, id: data.id, registro: data, eh_parcial: ehParcial });
   } catch (err) {
     console.error('[TRIAGEM] Erro:', err);
     return res.status(500).json({ ok: false, erro: err.message });
@@ -1178,7 +1234,7 @@ async function enviarEmailProblema(devolucao, fotos, usuario) {
 
       <p style="margin-top:20px;font-size:11px;color:#888;text-align:center;">
         ID interno: ${devolucao.id}<br>
-        Sistema GOOD Devolucoes v3.16.0
+        Sistema GOOD Devolucoes v3.17.0
       </p>
     </div>
   `;
@@ -1538,7 +1594,7 @@ registrarRotasRelatorios(app, { supabase, requerAdmin });
 // ============================================================
 app.listen(PORT, () => {
   console.log('============================================');
-  console.log('GOOD Devolucoes v3.16.0 - Dashboard de Relatorios + TAGs');
+  console.log('GOOD Devolucoes v3.17.0 - Devolucao parcial');
   console.log(`Porta: ${PORT}`);
   console.log(`ML: ${mlClient.hasToken() ? 'OK' : 'FALTA'}`);
   console.log(`Bling: ${blingClient.hasToken() ? 'OK' : 'FALTA'}`);
