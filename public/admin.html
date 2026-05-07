@@ -201,7 +201,7 @@
     <header>
       <div>
         <h1>🔐 Admin - GOOD Devolucoes</h1>
-        <p>Painel restrito · v3.16.0 (dashboard de relatórios + TAGs)</p>
+        <p>Painel restrito · v3.17.0 (devolução parcial + dashboard de relatórios + TAGs)</p>
       </div>
       <div class="header-acoes">
         <a href="/admin/relatorios.html" class="destaque">📊 Relatórios</a>
@@ -385,11 +385,38 @@
     function itemHtmlAprovado(d) {
       const concluido = d.status === 'concluido';
       const desc = (d.problema_descricao || '').replace(/^Aprovado por\s+/, '');
+
+      // v3.17.0 - detecta se eh devolucao parcial (tem fotos + descricao comeca com [DEVOLUCAO PARCIAL)
+      const ehParcial = (d.problema_descricao || '').startsWith('[DEVOLUCAO PARCIAL');
+      const fotosParcial = ehParcial && Array.isArray(d.problema_fotos) ? d.problema_fotos : [];
+
+      // Badge no topo
+      const badgeParcial = ehParcial
+        ? '<span style="background:#f57c00;color:white;padding:3px 8px;border-radius:10px;font-size:10px;font-weight:700;margin-left:6px;">📦 PARCIAL</span>'
+        : '';
+
+      // Bloco de fotos (so se for parcial)
+      const blocoFotos = (ehParcial && fotosParcial.length > 0) ? `
+        <div style="background:#fff3e0;border:1px solid #ffc107;border-radius:8px;padding:10px;margin-top:10px;">
+          <div style="font-size:12px;color:#e65100;font-weight:700;margin-bottom:6px;">
+            📸 ${fotosParcial.length} fotos da devolução parcial (evidência)
+          </div>
+          <div class="fotos-mini">
+            ${fotosParcial.map(url => `<img src="${url}" onclick="abrirFoto('${url}')" alt="foto">`).join('')}
+          </div>
+          <div style="margin-top:8px;">
+            <button class="btn" style="background:#1565c0;color:white;font-size:11px;padding:6px 10px;" onclick='baixarTodasFotos(${JSON.stringify(fotosParcial)}, "${escapeHtml(d.nf_numero || d.order_id || d.id)}_parcial")'>
+              📥 Baixar todas (${fotosParcial.length})
+            </button>
+          </div>
+        </div>
+      ` : '';
+
       return `
-        <div class="item ${concluido ? 'concluido' : ''}">
+        <div class="item ${concluido ? 'concluido' : ''}" ${ehParcial ? 'style="border-left-color:#f57c00;background:#fff8e7;"' : ''}>
           <div class="item-header">
             <div>
-              <div class="item-titulo">${escapeHtml(d.produto_titulo || '-')}</div>
+              <div class="item-titulo">${escapeHtml(d.produto_titulo || '-')}${badgeParcial}</div>
               <div class="item-data">por ${escapeHtml(desc)} · ${dataFmt(d.created_at)}</div>
             </div>
             ${concluido ? '<span style="background:#999;color:white;padding:3px 8px;border-radius:10px;font-size:10px;font-weight:700;">CONCLUIDO</span>' : ''}
@@ -406,6 +433,7 @@
             ${d.pack_id ? ` · <strong>Pack:</strong> <code>${d.pack_id}</code>` : ''}
             ${d.shipment_id ? ` · <strong>Shipment:</strong> <code>${d.shipment_id}</code>` : ''}
           </div>
+          ${blocoFotos}
           ${concluido ? '' : `
             <div class="item-acoes">
               ${d.nf_link_danfe ? `<a class="btn btn-cinza" href="${d.nf_link_danfe}" target="_blank">📄 Ver DANFE</a>` : ''}
