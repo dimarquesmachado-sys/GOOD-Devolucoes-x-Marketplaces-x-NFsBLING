@@ -162,45 +162,8 @@
       word-wrap: break-word;
     }
 
-    /* v3.16.1: badges de status (sistemico/misto/isolado) */
-    .status-badge {
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-      padding: 2px 8px;
-      border-radius: 12px;
-      font-size: 11px;
-      font-weight: 600;
-      white-space: nowrap;
-    }
-    .status-sistemico {
-      background: #ffebe9;
-      color: #b00020;
-    }
-    .status-misto {
-      background: #fff4d4;
-      color: #92660a;
-    }
-    .status-isolado {
-      background: #dafbe1;
-      color: #1a7f37;
-    }
     .num-problema { color: #b00020; }
     .num-aprovado { color: #1a7f37; }
-
-    /* v3.16.1: legenda dos status (embaixo dos rankings) */
-    .legenda-status {
-      margin-top: 12px;
-      padding-top: 10px;
-      border-top: 1px solid #f0f0f0;
-      font-size: 11px;
-      color: #666;
-      line-height: 1.8;
-    }
-    .legenda-status .status-badge {
-      font-size: 10px;
-      padding: 1px 6px;
-    }
 
     /* Tabela */
     .tabela-wrap {
@@ -488,22 +451,10 @@
       <div class="ranking-box">
         <h3>🔥 Top 10 SKUs mais devolvidos</h3>
         <div id="rankingSKUs"></div>
-        <div class="legenda-status">
-          <strong>Status:</strong>
-          <span class="status-badge status-isolado">🟢 Isolado</span> = 1-2 devoluções (caso pontual) ·
-          <span class="status-badge status-misto">🟡 Misto</span> = 3-5 devoluções (atenção) ·
-          <span class="status-badge status-sistemico">🔴 Sistêmico</span> = 6+ devoluções (problema do produto)
-        </div>
       </div>
       <div class="ranking-box">
         <h3>⚠️ Top 10 SKUs com problema</h3>
         <div id="rankingProblemas"></div>
-        <div class="legenda-status">
-          <strong>Status:</strong>
-          <span class="status-badge status-isolado">🟢 Isolado</span> 1-2 ·
-          <span class="status-badge status-misto">🟡 Misto</span> 3-5 ·
-          <span class="status-badge status-sistemico">🔴 Sistêmico</span> 6+ devoluções com problema
-        </div>
       </div>
     </div>
 
