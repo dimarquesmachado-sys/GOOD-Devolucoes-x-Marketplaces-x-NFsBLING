@@ -29,6 +29,14 @@
       border-radius: 8px; text-decoration: none; font-size: 13px; font-weight: 600;
     }
     .header-acoes a:hover { background: rgba(255,255,255,0.25); }
+    /* v3.16.0: destaque visual no botao novo */
+    .header-acoes a.destaque {
+      background: rgba(46, 125, 50, 0.5);
+      border: 1px solid rgba(46, 125, 50, 0.8);
+    }
+    .header-acoes a.destaque:hover {
+      background: rgba(46, 125, 50, 0.7);
+    }
 
     /* v3.14.9: no mobile (<=600px), header em coluna pra nao sobrepor titulo */
     @media (max-width: 600px) {
@@ -193,9 +201,10 @@
     <header>
       <div>
         <h1>🔐 Admin - GOOD Devolucoes</h1>
-        <p>Painel restrito · v3.15.1 (gerar NF devolução via Bridge)</p>
+        <p>Painel restrito · v3.16.0 (dashboard de relatórios + TAGs)</p>
       </div>
       <div class="header-acoes">
+        <a href="/admin/relatorios.html" class="destaque">📊 Relatórios</a>
         <a href="/">📦 Triagem (bipar)</a>
         <a href="#" onclick="logout(event)">🚪 Sair</a>
       </div>
