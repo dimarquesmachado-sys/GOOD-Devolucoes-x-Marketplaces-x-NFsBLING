@@ -1,5 +1,6 @@
 // ============================================================
 // bipagem.js - validacao EAN no modal de APROVAR
+// v3.17.0 - suporte a botao DEVOLUCAO PARCIAL
 // ============================================================
 // Estado e funcoes da bipagem obrigatoria EAN antes de aprovar inclusao no estoque
 
@@ -89,6 +90,9 @@ function ativarBipagem() {
   document.getElementById('btnConfirmarAprovar').style.opacity = '0.5';
   document.getElementById('btnConfirmarAprovar').style.cursor = 'not-allowed';
 
+  // v3.17.0: esconde botao parcial no inicio (so aparece apos 1a bipagem)
+  atualizarBotaoParcial();
+
   // Listener de bipagem - scanner manda Enter no fim
   const inp = document.getElementById('bipagemInput');
   inp.onkeydown = (e) => {
@@ -100,6 +104,22 @@ function ativarBipagem() {
   };
   // Foca pra estoquista bipar direto
   setTimeout(() => inp.focus(), 200);
+}
+
+// v3.17.0 - mostra/esconde botao DEVOLUCAO PARCIAL conforme progresso
+// REGRA: aparece apenas quando bipou >= 1 E < total esperado
+function atualizarBotaoParcial() {
+  const btn = document.getElementById('btnDevolucaoParcial');
+  if (!btn) return;
+
+  const bipados = bipagemEstado.totalBipado;
+  const total = bipagemEstado.totalEsperado;
+
+  if (bipados >= 1 && bipados < total) {
+    btn.style.display = 'flex';
+  } else {
+    btn.style.display = 'none';
+  }
 }
 
 function processarBipagem(codigo) {
@@ -136,6 +156,9 @@ function processarBipagem(codigo) {
       document.getElementById('btnConfirmarAprovar').style.opacity = '1';
       document.getElementById('btnConfirmarAprovar').style.cursor = 'pointer';
     }
+
+    // v3.17.0: atualiza botao parcial (aparece se 1 <= bipado < total)
+    atualizarBotaoParcial();
   } else {
     // ❌ BIPAGEM ERRADA
     bipagemEstado.tentativasErro++;
