@@ -283,8 +283,266 @@ async function enviarProblema() {
 }
 
 // ============================================================
-// v3.17.0 - FLUXO DEVOLUCAO PARCIAL
+// v3.18.0 - FLUXO PRODUTO DIVERGENTE (envio errado do estoque)
 // ============================================================
+// Cliente comprou A, estoque enviou B, cliente devolveu B.
+// Estoquista bipa o EAN de B -> sistema busca no Bling -> registra com SKU correto.
+
+// Estado global do fluxo divergente
+let divergenteEstado = {
+  produtoEsperado: null,  // {sku, titulo} - o que estava na NF
+  produtoCorreto: null,   // {sku, titulo, idBling} - o que voltou de fato
+  qtd: 1,
+  fotos: [],
+};
+
+function abrirModalDivergente() {
+  if (!ultimaBusca) return;
+
+  // Reset estado
+  divergenteEstado = {
+    produtoEsperado: null,
+    produtoCorreto: null,
+    qtd: 1,
+    fotos: [],
+  };
+  window._fluxoDivergente = false;
+  window.fotosUploadadas = [];
+
+  // Pega item esperado da NF (1o item)
+  const nf = ultimaBusca.nf || {};
+  const itemBling = (Array.isArray(nf.itens) && nf.itens.length > 0) ? nf.itens[0] : null;
+  const itemML = ultimaBusca.order?.order_items?.[0];
+
+  divergenteEstado.produtoEsperado = {
+    sku: itemBling?.sku || itemML?.item?.seller_sku || '?',
+    titulo: itemBling?.titulo || itemML?.item?.title || '?',
+    ean: itemBling?.ean || '?',
+  };
+
+  // Mostra info do esperado no modal
+  document.getElementById('divergenteEsperadoInfo').innerHTML = `
+    <strong>${escapeHtml(divergenteEstado.produtoEsperado.titulo)}</strong><br>
+    <span style="font-size:11px; color:#666;">
+      SKU <strong>${escapeHtml(divergenteEstado.produtoEsperado.sku)}</strong>
+      ${divergenteEstado.produtoEsperado.ean !== '?' ? ` · EAN <strong>${escapeHtml(divergenteEstado.produtoEsperado.ean)}</strong>` : ''}
+    </span>
+  `;
+
+  // Reseta campos
+  document.getElementById('divergenteEAN').value = '';
+  document.getElementById('divergenteResultado').style.display = 'none';
+  document.getElementById('divergenteRecebidoInfo').innerHTML = '—';
+  document.getElementById('divergenteQtd').value = '1';
+  document.getElementById('divergenteObs').value = '';
+  document.getElementById('btnContinuarDivergente').disabled = true;
+  document.getElementById('btnContinuarDivergente').style.opacity = '0.5';
+  document.getElementById('btnContinuarDivergente').style.cursor = 'not-allowed';
+
+  document.getElementById('modalDivergente').classList.add('show');
+  setTimeout(() => document.getElementById('divergenteEAN').focus(), 200);
+}
+
+// Busca produto no Bling pelo EAN ou SKU bipado
+async function buscarProdutoDivergente() {
+  const codigo = document.getElementById('divergenteEAN').value.trim();
+  if (!codigo) {
+    toast('Bipa o EAN ou digite o SKU', 'err');
+    return;
+  }
+
+  // Verifica se nao bipou o MESMO produto da NF (seria erro - se for igual nao eh divergente)
+  if (divergenteEstado.produtoEsperado.ean === codigo || divergenteEstado.produtoEsperado.sku === codigo) {
+    if (!confirm('Esse codigo é o MESMO da NF original. Tem certeza que é divergente? Se sim, continua.')) {
+      return;
+    }
+  }
+
+  const btn = document.querySelector('#modalDivergente button[onclick="buscarProdutoDivergente()"]');
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-mini"></span>Buscando...';
+  }
+
+  try {
+    // Tenta buscar pelo codigo como SKU primeiro (mais rapido)
+    let r = await fetch(`/api/produto/ean-por-sku/${encodeURIComponent(codigo)}`);
+    let d = await r.json();
+    let produto = d.encontrado ? d.produto : null;
+
+    // Se nao achou como SKU, tenta como EAN (precisa endpoint que busca por EAN)
+    // Por ora, se nao achou pelo SKU direto, mostra mensagem
+    if (!produto) {
+      // Mostra resultado mesmo sem dados completos do Bling
+      // (estoquista pode continuar registrando manualmente)
+      document.getElementById('divergenteResultado').style.display = 'block';
+      document.getElementById('divergenteResultado').style.background = '#fff8e1';
+      document.getElementById('divergenteResultado').style.borderColor = '#f57c00';
+      document.getElementById('divergenteRecebidoInfo').innerHTML = `
+        <span style="color:#e65100;">⚠️ Produto não encontrado no Bling pelo código <strong>${escapeHtml(codigo)}</strong></span><br>
+        <span style="font-size:11px; color:#666;">Vai ser registrado com o código bipado mesmo. Diego analisa depois.</span>
+      `;
+      divergenteEstado.produtoCorreto = {
+        sku: codigo,
+        titulo: '(produto não cadastrado no Bling)',
+        idBling: null,
+      };
+    } else {
+      // Achou! Mostra confirmacao
+      document.getElementById('divergenteResultado').style.display = 'block';
+      document.getElementById('divergenteResultado').style.background = '#e8f5e9';
+      document.getElementById('divergenteResultado').style.borderColor = '#2e7d32';
+      document.getElementById('divergenteRecebidoInfo').innerHTML = `
+        <strong>${escapeHtml(produto.nome || '?')}</strong><br>
+        <span style="font-size:11px; color:#666;">
+          SKU <strong>${escapeHtml(produto.codigo || codigo)}</strong>
+          ${produto.gtin ? ` · EAN <strong>${escapeHtml(produto.gtin)}</strong>` : ''}
+          · ID Bling: <code>${produto.id || '?'}</code>
+        </span>
+      `;
+      divergenteEstado.produtoCorreto = {
+        sku: produto.codigo || codigo,
+        titulo: produto.nome || '(sem nome)',
+        idBling: produto.id || null,
+      };
+    }
+
+    // Libera botao continuar
+    const btnCont = document.getElementById('btnContinuarDivergente');
+    btnCont.disabled = false;
+    btnCont.style.opacity = '1';
+    btnCont.style.cursor = 'pointer';
+
+  } catch (err) {
+    toast('Erro: ' + err.message, 'err');
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = '🔍 Buscar produto no Bling';
+    }
+  }
+}
+
+// Apos identificar produto, vai pra fotos (3 minimas)
+function continuarDivergenteFotos() {
+  if (!divergenteEstado.produtoCorreto) {
+    toast('Bipe o produto que voltou primeiro', 'err');
+    return;
+  }
+
+  // Salva qtd
+  divergenteEstado.qtd = Math.max(1, parseInt(document.getElementById('divergenteQtd').value, 10) || 1);
+
+  // Fecha modal e abre camera
+  fecharModal('modalDivergente');
+  window.fotosUploadadas = [];
+  window._fluxoDivergente = true;
+
+  // Reusa abertura de camera do fluxo parcial (sem modal de descricao)
+  abrirCameraParaParcial();
+}
+
+// Chamado pelo finalizarFotos() em camera.js quando _fluxoDivergente=true
+function abrirConfirmacaoDivergente(fotosOk) {
+  window._fotosDivergente = fotosOk;
+
+  document.getElementById('confirmacaoDivEsperado').innerHTML = `
+    ${escapeHtml(divergenteEstado.produtoEsperado.titulo)}<br>
+    <small style="color:#666;">SKU ${escapeHtml(divergenteEstado.produtoEsperado.sku)}</small>
+  `;
+  document.getElementById('confirmacaoDivRecebido').innerHTML = `
+    ${escapeHtml(divergenteEstado.produtoCorreto.titulo)} (${divergenteEstado.qtd}x)<br>
+    <small style="color:#666;">SKU ${escapeHtml(divergenteEstado.produtoCorreto.sku)}</small>
+  `;
+  document.getElementById('confirmacaoDivFotosCount').textContent = fotosOk.length;
+
+  document.getElementById('modalConfirmacaoDivergente').classList.add('show');
+}
+
+// Envio final pro backend
+async function encerrarDivergente() {
+  const btn = document.getElementById('btnEncerrarDivergente');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-mini"></span>Salvando...';
+
+  try {
+    const fotosOk = window._fotosDivergente || [];
+    if (fotosOk.length < 3) {
+      toast('Erro: precisa ter 3+ fotos', 'err');
+      btn.disabled = false;
+      btn.innerHTML = '✅ Sim, Registrar';
+      return;
+    }
+
+    // Busca idBling da NF se ainda nao tem
+    const order = ultimaBusca.order || {};
+    const nf = ultimaBusca.nf || {};
+    if (order.id && nf.numero && !nf.idBling) {
+      try {
+        const params = new URLSearchParams();
+        if (order.date_created) params.set('data', order.date_created);
+        params.set('numeroNF', nf.numero);
+        const url = `/api/nf/buscar-links-bling/${encodeURIComponent(order.id)}?${params.toString()}`;
+        const r = await fetch(url);
+        const d = await r.json();
+        if (d.ok && d.nf) {
+          ultimaBusca.nf = { ...nf, ...d.nf };
+        }
+      } catch (e) {}
+    }
+
+    // Monta payload baseado no triagem normal mas com SKU/titulo do produto que VOLTOU
+    const payload = montarPayloadTriagem();
+
+    // Sobrescreve com dados do produto correto (que voltou)
+    payload.produto_sku_esperado = divergenteEstado.produtoEsperado.sku;
+    payload.produto_correto_sku = divergenteEstado.produtoCorreto.sku;
+    payload.produto_correto_titulo = divergenteEstado.produtoCorreto.titulo;
+    payload.produto_qtd = divergenteEstado.qtd;
+    payload.fotos = fotosOk;
+    payload.observacao = document.getElementById('divergenteObs')?.value?.trim() || '';
+
+    if (window._forcarTriagem) payload.forcar = true;
+
+    const r = await fetch('/api/triagem/divergente', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const d = await r.json();
+    if (d.ok) {
+      fecharModal('modalConfirmacaoDivergente');
+      // Reset flags
+      window._fluxoDivergente = false;
+      window._fotosDivergente = [];
+      window.fotosUploadadas = [];
+
+      mostrarSucesso(
+        '🔄 Produto Divergente registrado!',
+        `Esperado: ${divergenteEstado.produtoEsperado.sku} · Voltou: ${divergenteEstado.produtoCorreto.sku} (${divergenteEstado.qtd} un) + ${fotosOk.length} fotos. Diego vai analisar.`
+      );
+      toast('Divergente registrado!', 'ok');
+      setTimeout(() => {
+        divResultado.classList.remove('show');
+        inputCodigo.value = '';
+        inputCodigo.focus();
+      }, 2800);
+    } else if (r.status === 409 && d.erro === 'duplicata') {
+      fecharModal('modalConfirmacaoDivergente');
+      toast('Esta devolucao ja foi triada antes!', 'err');
+      if (ultimaBusca?.shipment?.id) verificarTriagemExistente(ultimaBusca.shipment.id);
+    } else {
+      toast('Erro: ' + (d.erro || 'falha'), 'err');
+      btn.disabled = false;
+      btn.innerHTML = '✅ Sim, Registrar';
+    }
+  } catch (err) {
+    toast('Erro de conexao', 'err');
+    btn.disabled = false;
+    btn.innerHTML = '✅ Sim, Registrar';
+  }
+}
+
 // Dispara quando estoquista bipou >=1 mas < total e clica botao laranja
 // Fluxo: modalDecisao -> camera (6 fotos) -> modalConfirmacao -> POST /api/triagem/aprovar com eh_parcial=true
 
