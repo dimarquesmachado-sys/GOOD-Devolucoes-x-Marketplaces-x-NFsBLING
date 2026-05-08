@@ -191,7 +191,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '3.17.0',
+    version: '3.18.0',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -1181,6 +1181,114 @@ app.post('/api/triagem/problema', requerEstoquista, async (req, res) => {
   }
 });
 
+// ============================================================
+// v3.18.0 - PRODUTO DIVERGENTE (envio errado do estoque)
+// Quando estoquista bipa devolucao mas o produto que voltou
+// nao e o que estava na NF (ex: cliente comprou A, voltou B).
+// Diferenca pro PROBLEMA: nao tem defeito, foi erro do estoque.
+// Diferenca pro APROVADO: SKU eh diferente, precisa de bipagem
+// do EAN do produto que voltou (B), nao do esperado (A).
+// ============================================================
+app.post('/api/triagem/divergente', requerEstoquista, async (req, res) => {
+  if (!supabase) {
+    return res.status(500).json({ ok: false, erro: 'Supabase nao configurado' });
+  }
+  const dados = req.body || {};
+
+  if (!dados.shipment_id) {
+    return res.status(400).json({ ok: false, erro: 'shipment_id obrigatorio' });
+  }
+  // Validacoes especificas: produto correto bipado + minimo 3 fotos
+  if (!dados.produto_correto_sku) {
+    return res.status(400).json({ ok: false, erro: 'produto_correto_sku obrigatorio (SKU do que voltou)' });
+  }
+  const fotos = Array.isArray(dados.fotos) ? dados.fotos : [];
+  if (fotos.length < 3) {
+    return res.status(400).json({ ok: false, erro: `Minimo 3 fotos obrigatorias (recebido: ${fotos.length})` });
+  }
+
+  // Bloqueia duplicata
+  if (!dados.forcar) {
+    const { data: existentes, error: errBusca } = await supabase
+      .from('devolucoes')
+      .select('id, created_at, tipo, status, problema_descricao')
+      .eq('shipment_id', String(dados.shipment_id))
+      .limit(1);
+    if (errBusca) {
+      console.error('[TRIAGEM] Erro busca duplicata:', errBusca);
+    } else if (existentes && existentes.length > 0) {
+      return res.status(409).json({
+        ok: false,
+        erro: 'duplicata',
+        mensagem: 'Esta devolucao ja foi triada antes',
+        registro_existente: existentes[0],
+      });
+    }
+  }
+
+  try {
+    // Busca pedido Bling
+    let pedidoBlingNumero = null;
+    if (dados.order_id) {
+      const dataRef = dados.nf_data_emissao || null;
+      const r = await buscarPedidoBlingPorNumeroLoja(String(dados.order_id), dataRef, { maxPaginas: 50 });
+      if (r?.ok && r.match?.numero) {
+        pedidoBlingNumero = String(r.match.numero);
+      }
+    }
+
+    const obs = (dados.observacao || '').trim();
+    const skuEsperado = dados.produto_sku_esperado || '?';
+    const skuVoltou = dados.produto_correto_sku;
+    const descricao = `[DIVERGENTE por ${req.usuario}] NF tinha SKU ${skuEsperado}, mas voltou SKU ${skuVoltou} (${dados.produto_correto_titulo || '?'})${obs ? '. OBS: ' + obs : ''}`;
+
+    const { data, error } = await supabase
+      .from('devolucoes')
+      .insert([{
+        shipment_id: String(dados.shipment_id),
+        order_id: dados.order_id ? String(dados.order_id) : null,
+        pack_id: dados.pack_id ? String(dados.pack_id) : null,
+        buyer_id: dados.buyer_id ? String(dados.buyer_id) : null,
+        buyer_nome: dados.buyer_nome || null,
+        buyer_nickname: dados.buyer_nickname || null,
+        pedido_bling_numero: pedidoBlingNumero,
+        // SKU e titulo agora sao do produto que VOLTOU (nao do que estava na NF)
+        produto_titulo: dados.produto_correto_titulo || null,
+        produto_mlb: dados.produto_mlb || null,
+        produto_sku: skuVoltou,
+        produto_qtd: dados.produto_qtd || 1,
+        produto_valor_unit: dados.produto_valor_unit || null,
+        // NF original mantida pra rastrear o pedido que originou
+        nf_numero: dados.nf_numero || null,
+        nf_serie: dados.nf_serie || null,
+        nf_chave: dados.nf_chave || null,
+        nf_valor: dados.nf_valor || null,
+        nf_data_emissao: dados.nf_data_emissao || null,
+        nf_id_bling: dados.nf_id_bling || null,
+        nf_link_danfe: dados.nf_link_danfe || null,
+        tipo: 'divergente',
+        status: 'pendente',
+        funcionario: req.usuario,
+        problema_descricao: descricao,
+        problema_fotos: fotos,
+      }])
+      .select()
+      .single();
+
+    if (error) {
+      console.error('[TRIAGEM] Erro Supabase divergente:', error);
+      return res.status(500).json({ ok: false, erro: error.message });
+    }
+
+    console.log(`[TRIAGEM] DIVERGENTE por ${req.usuario}: shipment=${dados.shipment_id} esperado=${skuEsperado} voltou=${skuVoltou} fotos=${fotos.length}`);
+    // v3.18.0 - NAO dispara email (Diego pediu)
+    return res.json({ ok: true, id: data.id, registro: data });
+  } catch (err) {
+    console.error('[TRIAGEM] Erro divergente:', err);
+    return res.status(500).json({ ok: false, erro: err.message });
+  }
+});
+
 async function enviarEmailProblema(devolucao, fotos, usuario) {
   if (!mailer) return;
 
@@ -1234,7 +1342,7 @@ async function enviarEmailProblema(devolucao, fotos, usuario) {
 
       <p style="margin-top:20px;font-size:11px;color:#888;text-align:center;">
         ID interno: ${devolucao.id}<br>
-        Sistema GOOD Devolucoes v3.17.0
+        Sistema GOOD Devolucoes v3.18.0
       </p>
     </div>
   `;
@@ -1280,11 +1388,13 @@ app.get('/api/admin/devolucoes', requerAdmin, async (req, res) => {
     // Separa por tipo
     const aprovadas = data.filter(d => d.tipo === 'aprovado');
     const problemas = data.filter(d => d.tipo === 'problema');
+    const divergentes = data.filter(d => d.tipo === 'divergente'); // v3.18.0
 
     return res.json({
       ok: true,
       aprovadas,
       problemas,
+      divergentes, // v3.18.0
       total: data.length,
     });
   } catch (err) {
@@ -1594,7 +1704,7 @@ registrarRotasRelatorios(app, { supabase, requerAdmin });
 // ============================================================
 app.listen(PORT, () => {
   console.log('============================================');
-  console.log('GOOD Devolucoes v3.17.0 - Devolucao parcial');
+  console.log('GOOD Devolucoes v3.18.0 - Produto divergente (envio errado)');
   console.log(`Porta: ${PORT}`);
   console.log(`ML: ${mlClient.hasToken() ? 'OK' : 'FALTA'}`);
   console.log(`Bling: ${blingClient.hasToken() ? 'OK' : 'FALTA'}`);
