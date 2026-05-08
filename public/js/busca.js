@@ -1,5 +1,6 @@
 // ============================================================
 // busca.js - busca pela etiqueta, render do resultado completo
+// v3.18.0 - 3o botao PRODUTO DIVERGENTE
 // ============================================================
 // Inclui: buscar, buscarLinksBling, renderizar, renderizarErro,
 //         verificarTriagemExistente, renderizarBotoesTriagem,
@@ -377,6 +378,7 @@ async function verificarTriagemExistente(shipmentId) {
 function renderizarBotoesTriagem() {
   const cont = document.getElementById('triagemConteudo');
   if (!cont) return;
+  // v3.18.0 - 3 botoes: APROVAR (verde), PROBLEMA (vermelho), DIVERGENTE (roxo)
   cont.innerHTML = `
     <div class="triagem-instrucao">
       Confere o produto, abre o pacote e escolhe abaixo:
@@ -390,6 +392,15 @@ function renderizarBotoesTriagem() {
         <span class="triagem-btn-icon">⚠️</span>
         REPORTAR<br>PROBLEMA
       </button>
+      <button class="triagem-btn triagem-btn-divergente" onclick="abrirModalDivergente()"
+              style="background:linear-gradient(135deg,#7b1fa2,#4a148c); color:white;">
+        <span class="triagem-btn-icon">🔄</span>
+        PRODUTO<br>DIVERGENTE
+      </button>
+    </div>
+    <div style="font-size:11px; color:#666; margin-top:8px; text-align:center; line-height:1.5;">
+      💡 <strong>Divergente</strong> = produto que voltou é diferente do que estava na NF
+      (ex: enviamos o errado pelo cliente)
     </div>
   `;
 }
@@ -398,9 +409,18 @@ function renderizarTriagemDuplicata(reg) {
   const cont = document.getElementById('triagemConteudo');
   if (!cont) return;
 
-  const tipoLabel = reg.tipo === 'aprovado'
-    ? '✅ APROVADA (incluida no estoque)'
-    : '⚠️ COM PROBLEMA';
+  // v3.18.0 - inclui 'divergente' no label
+  let tipoLabel;
+  if (reg.tipo === 'aprovado') {
+    tipoLabel = '✅ APROVADA (incluida no estoque)';
+  } else if (reg.tipo === 'problema') {
+    tipoLabel = '⚠️ COM PROBLEMA';
+  } else if (reg.tipo === 'divergente') {
+    tipoLabel = '🔄 PRODUTO DIVERGENTE';
+  } else {
+    tipoLabel = reg.tipo || '?';
+  }
+
   const statusLabel = reg.status === 'concluido'
     ? '<span style="background:#999;color:white;padding:3px 10px;border-radius:10px;font-size:11px;font-weight:700;">✅ CONCLUIDA POR DIEGO</span>'
     : '<span style="background:#f57c00;color:white;padding:3px 10px;border-radius:10px;font-size:11px;font-weight:700;">⏳ AGUARDANDO DIEGO</span>';
@@ -414,8 +434,10 @@ function renderizarTriagemDuplicata(reg) {
   const desc = reg.problema_descricao || '';
   const m1 = desc.match(/Aprovado por\s+(\w+)/i);
   const m2 = desc.match(/\[Reportado por\s+(\w+)\]/i);
+  const m3 = desc.match(/\[DIVERGENTE por\s+(\w+)\]/i);
   if (m1) triadoPor = m1[1];
   else if (m2) triadoPor = m2[1];
+  else if (m3) triadoPor = m3[1];
 
   cont.innerHTML = `
     <div style="background:#fff3e0;border:2px solid #ff9800;border-radius:10px;padding:14px;text-align:center;">
