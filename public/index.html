@@ -33,7 +33,7 @@
     <header>
       <h1>📦 GOOD Devolucoes</h1>
       <p>Identificar venda + NF-e + Triagem</p>
-      <p style="font-size: 10px; color: #888; margin-top: 4px;">v3.17.0 (devolucao parcial) | <span id="serverVersion">checando...</span></p>
+      <p style="font-size: 10px; color: #888; margin-top: 4px;">v3.18.0 (produto divergente) | <span id="serverVersion">checando...</span></p>
       <div class="user-badge">
         👤 <span id="userNome">-</span>
         <a href="/admin.html" id="btnPainelAdmin" style="display:none;background:#ffd700;color:#1d1d1f;padding:3px 10px;border-radius:10px;font-weight:700;margin-left:6px;">👑 Painel Admin</a>
@@ -231,6 +231,108 @@
                 style="margin:0;padding:12px;background:linear-gradient(135deg,#ff9800,#e65100);"
                 onclick="encerrarParcial()">
           ✅ Sim, Encerrar
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- v3.18.0 - MODAL PRODUTO DIVERGENTE (cliente recebeu produto trocado) -->
+  <div class="modal-bg" id="modalDivergente">
+    <div class="modal" style="max-width: 520px;">
+      <h3>🔄 Produto Divergente</h3>
+      <p style="font-size: 13px; color: #555; margin-bottom: 8px;">
+        O produto que voltou é <strong>diferente</strong> do que estava na NF.
+      </p>
+
+      <!-- Esperado (na NF) vs Recebido -->
+      <div style="background:#fff3e0; border:1px solid #ff9800; padding:10px; border-radius:8px; margin-bottom:14px;">
+        <div style="font-size:11px; color:#e65100; font-weight:700; text-transform:uppercase; letter-spacing:0.5px;">
+          📋 Esperado na NF (o que o cliente comprou)
+        </div>
+        <div id="divergenteEsperadoInfo" style="font-size:13px; margin-top:4px;">—</div>
+      </div>
+
+      <!-- Bipar EAN do produto que voltou -->
+      <div style="background:#e8eaf6; border:2px dashed #5e35b1; padding:14px; border-radius:8px; margin-bottom:14px;">
+        <label style="display:block; font-size:13px; font-weight:700; color:#311b92; margin-bottom:6px;">
+          🔍 Bipa o EAN do produto que <strong>de fato</strong> voltou:
+        </label>
+        <input type="text" id="divergenteEAN"
+               placeholder="EAN ou SKU do produto recebido"
+               inputmode="numeric"
+               style="width:100%; padding:12px 14px; font-size:18px; font-family:'Courier New',monospace; font-weight:700; border:2px solid #5e35b1; border-radius:8px; background:white;"
+               autocomplete="off"
+               onkeydown="if(event.key==='Enter'){event.preventDefault(); buscarProdutoDivergente();}">
+        <button type="button" onclick="buscarProdutoDivergente()"
+                style="width:100%; margin-top:8px; padding:10px; background:#5e35b1; color:white; border:none; border-radius:6px; font-weight:700; cursor:pointer;">
+          🔍 Buscar produto no Bling
+        </button>
+      </div>
+
+      <!-- Resultado da busca (preenchido por buscarProdutoDivergente) -->
+      <div id="divergenteResultado" style="display:none; background:#e8f5e9; border:1px solid #2e7d32; padding:12px; border-radius:8px; margin-bottom:14px;">
+        <div style="font-size:11px; color:#1b5e20; font-weight:700; text-transform:uppercase; letter-spacing:0.5px;">
+          ✅ Produto que voltou (identificado no Bling)
+        </div>
+        <div id="divergenteRecebidoInfo" style="font-size:13px; margin-top:4px;">—</div>
+      </div>
+
+      <!-- Quantidade -->
+      <div style="margin-bottom:14px;">
+        <label style="display:block; font-size:12px; color:#555; margin-bottom:4px;">
+          Quantidade que voltou:
+        </label>
+        <input type="number" id="divergenteQtd" value="1" min="1" max="999"
+               style="width:100px; padding:8px 10px; font-size:14px; border:1px solid #ccc; border-radius:6px;">
+      </div>
+
+      <!-- Observacao opcional -->
+      <label style="display:block; font-size:12px; color:#555; margin-bottom:4px;">
+        Observação (opcional):
+      </label>
+      <textarea id="divergenteObs" rows="2"
+                placeholder="Algo a destacar? (não obrigatório)"
+                style="width:100%; padding:8px 10px; font-size:13px; border:1px solid #ccc; border-radius:6px; resize:vertical; font-family:inherit;"></textarea>
+
+      <p style="font-size:11px; margin-top:10px; color:#999;">
+        📸 Em seguida você vai tirar <strong>3 fotos mínimas</strong>: produto recebido, NF, etiqueta.
+      </p>
+
+      <div class="modal-acoes">
+        <button class="btn-cancelar" onclick="fecharModal('modalDivergente')">Cancelar</button>
+        <button class="btn-action" id="btnContinuarDivergente" disabled
+                style="margin:0; padding:12px; opacity:0.5; cursor:not-allowed; background:linear-gradient(135deg,#7b1fa2,#4a148c);"
+                onclick="continuarDivergenteFotos()">
+          📷 Continuar (tirar fotos)
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- v3.18.0 - MODAL CONFIRMACAO FINAL DIVERGENTE (apos fotos) -->
+  <div class="modal-bg" id="modalConfirmacaoDivergente">
+    <div class="modal" style="max-width: 500px;">
+      <h3>🔄 Confirmar Produto Divergente</h3>
+      <div style="background:#f3e5f5; border:1px solid #7b1fa2; padding:12px; border-radius:8px; margin-bottom:14px;">
+        <div style="font-size:12px; color:#4a148c; margin-bottom:4px;"><strong>Esperado (NF):</strong></div>
+        <div id="confirmacaoDivEsperado" style="font-size:13px; margin-bottom:8px;">—</div>
+        <div style="font-size:12px; color:#4a148c; margin-bottom:4px;"><strong>Voltou de fato:</strong></div>
+        <div id="confirmacaoDivRecebido" style="font-size:13px;">—</div>
+        <div style="font-size:11px; color:#7b1fa2; margin-top:8px;">
+          ✅ <span id="confirmacaoDivFotosCount">0</span> fotos anexadas
+        </div>
+      </div>
+
+      <p style="font-size:11px; color:#999; margin-top:10px;">
+        🛡️ Diego vai analisar caso a caso (cancelar venda, ajustar estoque, contestar com cliente, etc).
+      </p>
+
+      <div class="modal-acoes">
+        <button class="btn-cancelar" onclick="fecharModal('modalConfirmacaoDivergente')">Cancelar</button>
+        <button class="btn-action" id="btnEncerrarDivergente"
+                style="margin:0; padding:12px; background:linear-gradient(135deg,#7b1fa2,#4a148c);"
+                onclick="encerrarDivergente()">
+          ✅ Sim, Registrar
         </button>
       </div>
     </div>
