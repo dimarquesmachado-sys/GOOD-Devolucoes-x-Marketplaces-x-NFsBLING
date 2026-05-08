@@ -201,7 +201,7 @@
     <header>
       <div>
         <h1>🔐 Admin - GOOD Devolucoes</h1>
-        <p>Painel restrito · v3.17.0 (devolução parcial + dashboard de relatórios + TAGs)</p>
+        <p>Painel restrito · v3.18.0 (produto divergente + parcial + dashboard de relatórios + TAGs)</p>
       </div>
       <div class="header-acoes">
         <a href="/admin/relatorios.html" class="destaque">📊 Relatórios</a>
@@ -255,6 +255,15 @@
           <span class="badge-count problema" id="countProblemas">0</span>
         </h2>
         <div id="listaProblemas"></div>
+      </div>
+
+      <!-- v3.18.0 - secao DIVERGENTES (envio errado do estoque) -->
+      <div class="secao">
+        <h2>
+          🔄 Produtos divergentes (envio errado)
+          <span class="badge-count" id="countDivergentes" style="background:#7b1fa2;">0</span>
+        </h2>
+        <div id="listaDivergentes"></div>
       </div>
 
     </div>
@@ -336,15 +345,20 @@
 
       const aprovadas = dados.aprovadas.filter(passa);
       const problemas = dados.problemas.filter(passa);
+      const divergentes = (dados.divergentes || []).filter(passa); // v3.18.0
 
       document.getElementById('countAprovadas').textContent = aprovadas.length;
       document.getElementById('countProblemas').textContent = problemas.length;
+      document.getElementById('countDivergentes').textContent = divergentes.length; // v3.18.0
       document.getElementById('countAprovadas').className = 'badge-count' + (aprovadas.length === 0 ? ' zero' : '');
       document.getElementById('countProblemas').className = 'badge-count problema' + (problemas.length === 0 ? ' zero' : '');
+      // badge divergente (roxo) - aplica zero se vazio
+      document.getElementById('countDivergentes').className = 'badge-count' + (divergentes.length === 0 ? ' zero' : '');
+      document.getElementById('countDivergentes').style.background = divergentes.length === 0 ? '#999' : '#7b1fa2';
 
       // Info no canto direito
-      const totalGeral = dados.aprovadas.length + dados.problemas.length;
-      const totalFiltrado = aprovadas.length + problemas.length;
+      const totalGeral = dados.aprovadas.length + dados.problemas.length + (dados.divergentes?.length || 0);
+      const totalFiltrado = aprovadas.length + problemas.length + divergentes.length;
       const info = document.getElementById('resultadoInfo');
       if (busca || dataIni || dataFim) {
         info.textContent = `${totalFiltrado} de ${totalGeral} registros`;
@@ -359,6 +373,11 @@
       document.getElementById('listaProblemas').innerHTML = problemas.length
         ? problemas.map(itemHtmlProblema).join('')
         : '<div class="vazio">Nenhum problema reportado. 🎉</div>';
+
+      // v3.18.0 - render divergentes (reusa itemHtmlProblema com badge customizada)
+      document.getElementById('listaDivergentes').innerHTML = divergentes.length
+        ? divergentes.map(itemHtmlDivergente).join('')
+        : '<div class="vazio">Nenhum produto divergente. 🎉</div>';
     }
 
     function limparBusca() {
@@ -502,7 +521,86 @@
       `;
     }
 
-    function abrirFoto(url) {
+    // v3.18.0 - itemHtmlDivergente (similar ao problema, com badge roxo + extracao do esperado/recebido)
+    function itemHtmlDivergente(d) {
+      const concluido = d.status === 'concluido';
+      const fotos = Array.isArray(d.problema_fotos) ? d.problema_fotos : [];
+      const desc = d.problema_descricao || '';
+
+      // Tenta extrair "NF tinha SKU X, mas voltou SKU Y" da descricao
+      let esperadoTxt = '?';
+      let voltouTxt = '?';
+      const m = desc.match(/NF tinha SKU\s+(\S+),\s+mas voltou SKU\s+(\S+)/i);
+      if (m) {
+        esperadoTxt = m[1];
+        voltouTxt = m[2];
+      }
+
+      return `
+        <div class="item ${concluido ? 'concluido' : ''}" style="border-left-color:#7b1fa2; background:#f3e5f5;">
+          <div class="item-header">
+            <div>
+              <div class="item-titulo">${escapeHtml(d.produto_titulo || '-')} <span style="background:#7b1fa2;color:white;padding:3px 8px;border-radius:10px;font-size:10px;font-weight:700;margin-left:6px;">🔄 DIVERGENTE</span></div>
+              <div class="item-data">${dataFmt(d.created_at)}</div>
+            </div>
+            ${concluido ? '<span style="background:#999;color:white;padding:3px 8px;border-radius:10px;font-size:10px;font-weight:700;">RESOLVIDO</span>' : ''}
+          </div>
+
+          <!-- Comparativo esperado vs voltou -->
+          <div style="background:#fff;border:1px solid #ce93d8;border-radius:8px;padding:10px;margin:10px 0;font-size:12px;">
+            <div style="display:flex; justify-content:space-between; gap:10px;">
+              <div style="flex:1;">
+                <div style="color:#888; font-size:10px; text-transform:uppercase; letter-spacing:0.5px;">📋 Esperado (NF)</div>
+                <div style="color:#4a148c; font-weight:700; margin-top:2px;">SKU ${escapeHtml(esperadoTxt)}</div>
+              </div>
+              <div style="font-size:18px; color:#7b1fa2;">→</div>
+              <div style="flex:1; text-align:right;">
+                <div style="color:#888; font-size:10px; text-transform:uppercase; letter-spacing:0.5px;">✅ Voltou de fato</div>
+                <div style="color:#4a148c; font-weight:700; margin-top:2px;">SKU ${escapeHtml(voltouTxt)}</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="item-detalhes">
+            <strong>${escapeHtml(d.produto_sku || '-')}</strong> ·
+            <strong>${d.produto_qtd || '-'} un</strong> ·
+            ${moeda(d.produto_valor_unit)}<br>
+            <strong>NF original:</strong> ${escapeHtml(d.nf_numero || '-')} ·
+            <strong>Cliente:</strong> ${escapeHtml(d.buyer_nome || '-')}<br>
+            <strong>Order ML:</strong> ${d.order_id
+              ? `<a href="https://www.mercadolivre.com.br/vendas/${d.order_id}/detalhe" target="_blank" style="color:#FFE600;font-weight:700;text-decoration:none;background:#1a1a1a;padding:2px 8px;border-radius:4px;font-family:monospace;">${d.order_id} 🔗</a>`
+              : '<code>-</code>'}
+            ${d.pack_id ? ` · <strong>Pack:</strong> <code>${d.pack_id}</code>` : ''}
+            ${d.shipment_id ? ` · <strong>Shipment:</strong> <code>${d.shipment_id}</code>` : ''}
+          </div>
+
+          ${desc ? `<div class="descricao-problema" style="border-color:#ce93d8;background:#fff;color:#4a148c;">💬 ${escapeHtml(desc)}</div>` : ''}
+
+          ${fotos.length ? `
+            <div class="fotos-mini">
+              ${fotos.map(url => `<img src="${url}" onclick="abrirFoto('${url}')" alt="foto">`).join('')}
+            </div>
+            <div style="margin-top:8px;">
+              <button class="btn" style="background:#1565c0;color:white;" onclick='baixarTodasFotos(${JSON.stringify(fotos)}, "${escapeHtml(d.nf_numero || d.order_id || d.id)}_divergente")'>
+                📥 Baixar todas as fotos (${fotos.length})
+              </button>
+            </div>
+          ` : ''}
+
+          ${concluido ? '' : `
+            <div class="item-acoes">
+              ${d.nf_link_danfe ? `<a class="btn btn-cinza" href="${d.nf_link_danfe}" target="_blank">📄 DANFE</a>` : ''}
+              ${d.nf_id_bling
+                ? `<a class="btn btn-verde" href="https://www.bling.com.br/notas.fiscais.php#edit/${d.nf_id_bling}" target="_blank">🔗 Abrir NF no Bling</a>`
+                : ''
+              }
+              <button class="btn btn-verde" onclick="concluir('${d.id}')">✅ Marcar como resolvido</button>
+              <button class="btn btn-vermelho" onclick="deletar('${d.id}')">🗑️</button>
+            </div>
+          `}
+        </div>
+      `;
+    }
       document.getElementById('modalFotoImg').src = url;
       document.getElementById('modalFoto').classList.add('show');
     }
