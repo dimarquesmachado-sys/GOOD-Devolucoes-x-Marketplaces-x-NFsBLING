@@ -74,8 +74,9 @@ function fecharCamera(forcar) {
       return;
     }
     window.fotosUploadadas = []; // limpa
-    // v3.17.0: se cancelar fluxo parcial, limpa a flag
+    // v3.17.0/v3.18.0: se cancelar fluxo parcial OU divergente, limpa as flags
     window._fluxoParcial = false;
+    window._fluxoDivergente = false;
   }
 
   const overlay = document.getElementById('cameraOverlay');
@@ -164,43 +165,50 @@ function atualizarCameraUI() {
 
   // v3.17.0 - texto adapta se for fluxo parcial
   const ehParcial = !!window._fluxoParcial;
+  // v3.18.0 - novo: fluxo divergente usa minimo 3 fotos
+  const ehDivergente = !!window._fluxoDivergente;
+  const minFotos = ehDivergente ? 3 : 6;
 
   // Contador
   const counter = document.getElementById('cameraCounter');
-  if (total >= 6) {
+  if (total >= minFotos) {
     counter.textContent = `✅ ${total} fotos${subindo ? ` (+${subindo} subindo...)` : ''}`;
   } else {
-    counter.textContent = `${total} foto${total === 1 ? '' : 's'} · faltam ${Math.max(0, 6 - total)} pra completar 6${subindo ? ` (${subindo} subindo)` : ''}`;
+    counter.textContent = `${total} foto${total === 1 ? '' : 's'} · faltam ${Math.max(0, minFotos - total)} pra completar ${minFotos}${subindo ? ` (${subindo} subindo)` : ''}`;
   }
 
   // Botao captura - muda cor quando completo
   const btnCapture = document.getElementById('cameraCapture');
-  if (total >= 6) btnCapture.classList.add('completo');
+  if (total >= minFotos) btnCapture.classList.add('completo');
   else btnCapture.classList.remove('completo');
 
-  // Botao finalizar - SO libera com >=6 fotos prontas (sem upload pendente)
+  // Botao finalizar - SO libera com >=minFotos prontas (sem upload pendente)
   const btnFinalizar = document.getElementById('cameraFinalizar');
-  btnFinalizar.disabled = total < 6 || subindo > 0;
+  btnFinalizar.disabled = total < minFotos || subindo > 0;
   if (subindo > 0) {
     btnFinalizar.innerHTML = '<span class="spinner-mini"></span>Subindo...';
-  } else if (total >= 6) {
-    btnFinalizar.innerHTML = ehParcial ? `▶️ Continuar (${total} fotos)` : `📨 Enviar (${total} fotos)`;
+  } else if (total >= minFotos) {
+    btnFinalizar.innerHTML = (ehParcial || ehDivergente)
+      ? `▶️ Continuar (${total} fotos)`
+      : `📨 Enviar (${total} fotos)`;
   } else {
-    btnFinalizar.innerHTML = `🔒 Faltam ${6 - total}`;
+    btnFinalizar.innerHTML = `🔒 Faltam ${minFotos - total}`;
   }
 
   // Hint
   const hint = document.getElementById('cameraHint');
-  if (total >= 6) {
-    hint.textContent = ehParcial
+  if (total >= minFotos) {
+    hint.textContent = (ehParcial || ehDivergente)
       ? '✅ Mínimo atingido. Pode tirar mais ou clicar Continuar'
       : '✅ Minimo atingido. Pode tirar mais ou clicar Enviar';
   } else if (total >= 1) {
-    hint.textContent = `Faltam ${6 - total} fotos pra completar 6`;
+    hint.textContent = `Faltam ${minFotos - total} fotos pra completar ${minFotos}`;
+  } else if (ehDivergente) {
+    hint.textContent = 'Sequência: produto recebido, NF, etiqueta';
+  } else if (ehParcial) {
+    hint.textContent = 'Sequência: 1 do pacote, 1 da etiqueta, 4 do(s) produto(s)';
   } else {
-    hint.textContent = ehParcial
-      ? 'Sequência: 1 do pacote, 1 da etiqueta, 4 do(s) produto(s)'
-      : 'Toque pra fotografar - sequencia: caixa, produto, etiqueta';
+    hint.textContent = 'Toque pra fotografar - sequencia: caixa, produto, etiqueta';
   }
 
   // Thumbnails
@@ -228,23 +236,28 @@ function atualizarCameraUI() {
   }).join('');
 }
 
-// v3.17.0 - finalizarFotos agora bifurca: se _fluxoParcial=true, vai pra confirmacao parcial
+// v3.17.0/3.18.0 - finalizarFotos bifurca: parcial OU divergente OU problema
 function finalizarFotos() {
   const fotos = window.fotosUploadadas || [];
   const fotosOk = fotos.filter(f => !f.uploading && f.url).map(f => f.url);
-  if (fotosOk.length < 6) {
-    toast(`Voce so tem ${fotosOk.length} fotos. MINIMO sao 6.`, 'err');
+
+  // v3.18.0 - minimo varia conforme fluxo
+  const ehDivergente = !!window._fluxoDivergente;
+  const minFotos = ehDivergente ? 3 : 6;
+
+  if (fotosOk.length < minFotos) {
+    toast(`Voce so tem ${fotosOk.length} fotos. MINIMO sao ${minFotos}.`, 'err');
     return;
   }
   // Fecha camera (forcar=true pra nao perguntar)
   fecharCamera(true);
 
-  // v3.17.0 - bifurca fluxo
+  // v3.17.0 / v3.18.0 - bifurca fluxo
   if (window._fluxoParcial) {
-    // Fluxo PARCIAL: abre modal de confirmacao final (com obs opcional)
     abrirConfirmacaoParcial(fotosOk);
+  } else if (window._fluxoDivergente) {
+    abrirConfirmacaoDivergente(fotosOk);
   } else {
-    // Fluxo PROBLEMA original
     enviarProblema();
   }
 }
