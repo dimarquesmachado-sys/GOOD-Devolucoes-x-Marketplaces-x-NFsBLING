@@ -1,379 +1,607 @@
 // ============================================================
-// lib/rotas-relatorios.js
+// public/admin/relatorios.js
 // ------------------------------------------------------------
-// Rotas do dashboard de relatorios. Use:
-//   const registrarRotasRelatorios = require('./lib/rotas-relatorios');
-//   registrarRotasRelatorios(app, { supabase, requerAdmin });
-//
-// Isso mantem o server.js mais limpo - todas as rotas relacionadas
-// a relatorios ficam neste arquivo.
+// Frontend do relatorio. Usa fetch direto pros endpoints.
 // ============================================================
 
-const produtosClient = require('./produtos-client');
+// Estado global
+let dadosAtual = null;   // ultima resposta de /api/admin/relatorios/devolucoes
+let tagsCache = [];      // todas as tags
+let devolucaoSelecionadaId = null; // pro modal de aplicar tags
 
-function registrarRotasRelatorios(app, { supabase, requerAdmin }) {
+// ============================================================
+// HELPERS
+// ============================================================
 
-  // ============================================================
-  // GET /api/admin/relatorios/devolucoes
-  // Lista filtrada + agregacoes (rankings)
-  // ============================================================
-  app.get('/api/admin/relatorios/devolucoes', requerAdmin, async (req, res) => {
-    try {
-      // Filtros via query params
-      const {
-        data_inicio,
-        data_fim,
-        tipo,           // 'aprovado' | 'problema' | 'todos'
-        produto_sku,    // SKU exato OU palavra parcial
-        funcionario,
-        tag_id,         // filtrar por uma tag
-        marketplace,    // futuro
-      } = req.query;
-
-      // Monta query base
-      let query = supabase
-        .from('devolucoes')
-        .select(`
-          id,
-          created_at,
-          shipment_id,
-          order_id,
-          pack_id,
-          buyer_nome,
-          buyer_nickname,
-          pedido_bling_numero,
-          produto_titulo,
-          produto_mlb,
-          produto_sku,
-          produto_qtd,
-          produto_valor_unit,
-          nf_numero,
-          nf_data_emissao,
-          nf_link_danfe,
-          tipo,
-          status,
-          funcionario,
-          marketplace,
-          problema_descricao,
-          devolucao_tags ( tag_id, tags ( id, nome, cor ) )
-        `)
-        .order('created_at', { ascending: false });
-
-      // Aplica filtros
-      if (data_inicio) {
-        query = query.gte('created_at', data_inicio);
-      }
-      if (data_fim) {
-        // Adiciona 1 dia pra incluir o dia final inteiro
-        const fim = new Date(data_fim);
-        fim.setDate(fim.getDate() + 1);
-        query = query.lt('created_at', fim.toISOString());
-      }
-      if (tipo && tipo !== 'todos') {
-        query = query.eq('tipo', tipo);
-      }
-      if (produto_sku) {
-        query = query.ilike('produto_sku', `%${produto_sku}%`);
-      }
-      if (funcionario) {
-        query = query.eq('funcionario', funcionario);
-      }
-      if (marketplace) {
-        query = query.eq('marketplace', marketplace);
-      }
-
-      const { data: devolucoes, error } = await query;
-
-      if (error) {
-        console.error('[relatorios] erro Supabase:', error);
-        return res.status(500).json({ ok: false, erro: error.message });
-      }
-
-      let listaFinal = devolucoes || [];
-
-      // Filtro de tag (post-query, porque relacao e N:N)
-      if (tag_id) {
-        listaFinal = listaFinal.filter(d =>
-          (d.devolucao_tags || []).some(dt => dt.tag_id === tag_id)
-        );
-      }
-
-      // Normaliza tags pra ficar mais facil no frontend
-      listaFinal = listaFinal.map(d => ({
-        ...d,
-        tags: (d.devolucao_tags || []).map(dt => dt.tags).filter(Boolean),
-        devolucao_tags: undefined,
-      }));
-
-      // ============================================================
-      // AGREGACOES PRA OS CARDS E RANKINGS
-      // ============================================================
-      const total = listaFinal.length;
-      const totalAprovado = listaFinal.filter(d => d.tipo === 'aprovado').length;
-      const totalProblema = listaFinal.filter(d => d.tipo === 'problema').length;
-      const totalDivergente = listaFinal.filter(d => d.tipo === 'divergente').length; // v3.18.0
-
-      // Valor total (preco de venda) devolvido
-      const valorTotal = listaFinal.reduce((sum, d) => {
-        const v = Number(d.produto_valor_unit || 0) * Number(d.produto_qtd || 1);
-        return sum + (isFinite(v) ? v : 0);
-      }, 0);
-
-      // Ranking SKUs por qtde (top 10)
-      // v3.16.1 - tambem conta numero de devolucoes DISTINTAS (cada bipagem = 1 devolucao)
-      // pra distinguir caso isolado (1 cliente devolveu muito) de problema sistemico (varios clientes)
-      const skuMap = new Map();
-      for (const d of listaFinal) {
-        const sku = d.produto_sku || '(sem SKU)';
-        const atual = skuMap.get(sku) || {
-          sku,
-          titulo: d.produto_titulo,
-          qtde_total: 0,
-          qtde_aprovado: 0,
-          qtde_problema: 0,
-          valor_total: 0,
-          num_devolucoes: 0,           // v3.16.1: cada bipagem (id da devolucoes) = 1 devolucao
-          num_devolucoes_aprovado: 0,
-          num_devolucoes_problema: 0,
-        };
-        const q = Number(d.produto_qtd || 1);
-        const v = Number(d.produto_valor_unit || 0) * q;
-        atual.qtde_total += q;
-        atual.valor_total += isFinite(v) ? v : 0;
-        atual.num_devolucoes += 1;
-        if (d.tipo === 'aprovado') {
-          atual.qtde_aprovado += q;
-          atual.num_devolucoes_aprovado += 1;
-        }
-        if (d.tipo === 'problema') {
-          atual.qtde_problema += q;
-          atual.num_devolucoes_problema += 1;
-        }
-        skuMap.set(sku, atual);
-      }
-
-      // v3.16.1: calcula qtde_media e status (sistemico/misto/isolado) pra cada SKU
-      function classificarStatus(numDevolucoes) {
-        if (numDevolucoes >= 6) return 'sistemico';   // 🔴 problema do produto
-        if (numDevolucoes >= 3) return 'misto';        // 🟡 atencao
-        return 'isolado';                              // 🟢 caso pontual
-      }
-      for (const item of skuMap.values()) {
-        item.qtde_media = item.num_devolucoes > 0
-          ? Number((item.qtde_total / item.num_devolucoes).toFixed(2))
-          : 0;
-        item.status = classificarStatus(item.num_devolucoes);
-        // Status especifico pra ranking de problemas
-        item.status_problema = classificarStatus(item.num_devolucoes_problema);
-      }
-
-      const rankingSKUs = [...skuMap.values()]
-        .sort((a, b) => b.qtde_total - a.qtde_total)
-        .slice(0, 10);
-
-      const rankingProblemas = [...skuMap.values()]
-        .filter(s => s.qtde_problema > 0)
-        .sort((a, b) => b.qtde_problema - a.qtde_problema)
-        .slice(0, 10);
-
-      // Por funcionario
-      const funcionariosMap = new Map();
-      for (const d of listaFinal) {
-        const f = d.funcionario || '(nao identificado)';
-        funcionariosMap.set(f, (funcionariosMap.get(f) || 0) + 1);
-      }
-      const porFuncionario = [...funcionariosMap.entries()]
-        .map(([nome, total]) => ({ nome, total }))
-        .sort((a, b) => b.total - a.total);
-
-      // Por marketplace
-      const marketplacesMap = new Map();
-      for (const d of listaFinal) {
-        const m = d.marketplace || 'mercadolivre';
-        marketplacesMap.set(m, (marketplacesMap.get(m) || 0) + 1);
-      }
-      const porMarketplace = [...marketplacesMap.entries()]
-        .map(([nome, total]) => ({ nome, total }))
-        .sort((a, b) => b.total - a.total);
-
-      res.json({
-        ok: true,
-        cards: {
-          total,
-          totalAprovado,
-          totalProblema,
-          totalDivergente, // v3.18.0
-          valorTotal: Number(valorTotal.toFixed(2)),
-          percentualProblema: total > 0 ? Math.round((totalProblema / total) * 100) : 0,
-          // v3.16.1 - cards extras
-          totalSKUsUnicos: skuMap.size,                                                  // quantos SKUs diferentes
-          totalUnidades: [...skuMap.values()].reduce((s, x) => s + x.qtde_total, 0),    // soma de todas qtdes
-        },
-        rankingSKUs,
-        rankingProblemas,
-        porFuncionario,
-        porMarketplace,
-        devolucoes: listaFinal,
-      });
-    } catch (e) {
-      console.error('[/api/admin/relatorios/devolucoes] erro:', e);
-      res.status(500).json({ ok: false, erro: e.message });
-    }
-  });
-
-  // ============================================================
-  // GET /api/admin/produtos/buscar?q=globo
-  // Proxy pra busca textual de produtos (autocomplete)
-  // ============================================================
-  app.get('/api/admin/produtos/buscar', requerAdmin, async (req, res) => {
-    try {
-      const termo = String(req.query.q || '').trim();
-      if (termo.length < 2) {
-        return res.json({ ok: true, resultados: [] });
-      }
-      const limite = Math.min(parseInt(req.query.limite, 10) || 20, 50);
-      const resultados = await produtosClient.buscarTextual(termo, limite);
-      res.json({ ok: true, resultados });
-    } catch (e) {
-      console.error('[/api/admin/produtos/buscar] erro:', e);
-      res.status(500).json({ ok: false, erro: e.message });
-    }
-  });
-
-  // ============================================================
-  // TAGS - CRUD
-  // ============================================================
-  app.get('/api/admin/tags', requerAdmin, async (req, res) => {
-    try {
-      const { data, error } = await supabase
-        .from('tags')
-        .select('id, nome, cor, created_at')
-        .order('nome', { ascending: true });
-
-      if (error) {
-        return res.status(500).json({ ok: false, erro: error.message });
-      }
-      res.json({ ok: true, tags: data || [] });
-    } catch (e) {
-      console.error('[/api/admin/tags GET] erro:', e);
-      res.status(500).json({ ok: false, erro: e.message });
-    }
-  });
-
-  app.post('/api/admin/tags', requerAdmin, async (req, res) => {
-    try {
-      const { nome, cor } = req.body || {};
-      if (!nome || typeof nome !== 'string') {
-        return res.status(400).json({ ok: false, erro: 'Nome obrigatorio' });
-      }
-      const nomeLimpo = nome.trim();
-      if (nomeLimpo.length < 2 || nomeLimpo.length > 50) {
-        return res.status(400).json({ ok: false, erro: 'Nome deve ter 2-50 caracteres' });
-      }
-
-      const corHex = (typeof cor === 'string' && /^#[0-9a-f]{6}$/i.test(cor))
-        ? cor
-        : '#6c757d';
-
-      const { data, error } = await supabase
-        .from('tags')
-        .insert([{ nome: nomeLimpo, cor: corHex }])
-        .select()
-        .single();
-
-      if (error) {
-        if (error.code === '23505') {
-          return res.status(409).json({ ok: false, erro: 'Ja existe tag com esse nome' });
-        }
-        return res.status(500).json({ ok: false, erro: error.message });
-      }
-
-      res.json({ ok: true, tag: data });
-    } catch (e) {
-      console.error('[/api/admin/tags POST] erro:', e);
-      res.status(500).json({ ok: false, erro: e.message });
-    }
-  });
-
-  app.put('/api/admin/tags/:id', requerAdmin, async (req, res) => {
-    try {
-      const { id } = req.params;
-      const { nome, cor } = req.body || {};
-      const update = {};
-      if (nome) update.nome = String(nome).trim();
-      if (cor && /^#[0-9a-f]{6}$/i.test(cor)) update.cor = cor;
-
-      if (Object.keys(update).length === 0) {
-        return res.status(400).json({ ok: false, erro: 'Nada pra atualizar' });
-      }
-
-      const { data, error } = await supabase
-        .from('tags')
-        .update(update)
-        .eq('id', id)
-        .select()
-        .single();
-
-      if (error) return res.status(500).json({ ok: false, erro: error.message });
-      res.json({ ok: true, tag: data });
-    } catch (e) {
-      console.error('[/api/admin/tags PUT] erro:', e);
-      res.status(500).json({ ok: false, erro: e.message });
-    }
-  });
-
-  app.delete('/api/admin/tags/:id', requerAdmin, async (req, res) => {
-    try {
-      const { id } = req.params;
-      // Cascade vai apagar de devolucao_tags automaticamente
-      const { error } = await supabase
-        .from('tags')
-        .delete()
-        .eq('id', id);
-
-      if (error) return res.status(500).json({ ok: false, erro: error.message });
-      res.json({ ok: true });
-    } catch (e) {
-      console.error('[/api/admin/tags DELETE] erro:', e);
-      res.status(500).json({ ok: false, erro: e.message });
-    }
-  });
-
-  // ============================================================
-  // Aplicar/remover tags numa devolucao
-  // ============================================================
-  app.post('/api/admin/devolucao/:id/tags', requerAdmin, async (req, res) => {
-    try {
-      const { id } = req.params;
-      const { tag_ids } = req.body || {};
-      if (!Array.isArray(tag_ids)) {
-        return res.status(400).json({ ok: false, erro: 'tag_ids deve ser array' });
-      }
-
-      // Apaga as antigas
-      await supabase
-        .from('devolucao_tags')
-        .delete()
-        .eq('devolucao_id', id);
-
-      // Insere as novas
-      if (tag_ids.length > 0) {
-        const rows = tag_ids.map(tag_id => ({
-          devolucao_id: id,
-          tag_id,
-        }));
-        const { error } = await supabase
-          .from('devolucao_tags')
-          .insert(rows);
-        if (error) return res.status(500).json({ ok: false, erro: error.message });
-      }
-
-      res.json({ ok: true });
-    } catch (e) {
-      console.error('[/api/admin/devolucao/:id/tags] erro:', e);
-      res.status(500).json({ ok: false, erro: e.message });
-    }
+function fmtMoeda(v) {
+  if (v === null || v === undefined || isNaN(v)) return 'R$ 0,00';
+  return Number(v).toLocaleString('pt-BR', {
+    style: 'currency',
+    currency: 'BRL',
   });
 }
 
-module.exports = registrarRotasRelatorios;
+function fmtData(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  return d.toLocaleDateString('pt-BR') + ' ' + d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+}
+
+function fmtDataCurta(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  return d.toLocaleDateString('pt-BR');
+}
+
+function escapeHtml(str) {
+  if (str === null || str === undefined) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function setarDatasPadrao() {
+  // Default: ultimos 30 dias
+  const hoje = new Date();
+  const trintaAtras = new Date();
+  trintaAtras.setDate(hoje.getDate() - 30);
+  document.getElementById('dataInicio').value = trintaAtras.toISOString().split('T')[0];
+  document.getElementById('dataFim').value = hoje.toISOString().split('T')[0];
+}
+
+// ============================================================
+// CARREGAR DADOS
+// ============================================================
+
+async function carregar() {
+  const params = new URLSearchParams();
+  const dataInicio = document.getElementById('dataInicio').value;
+  const dataFim = document.getElementById('dataFim').value;
+  const tipo = document.getElementById('tipo').value;
+  const produtoSku = document.getElementById('produtoSku').value.trim();
+  const funcionario = document.getElementById('funcionario').value;
+  const tagId = document.getElementById('tagId').value;
+
+  if (dataInicio) params.set('data_inicio', dataInicio);
+  if (dataFim) params.set('data_fim', dataFim);
+  if (tipo && tipo !== 'todos') params.set('tipo', tipo);
+  if (produtoSku) params.set('produto_sku', produtoSku);
+  if (funcionario) params.set('funcionario', funcionario);
+  if (tagId) params.set('tag_id', tagId);
+
+  document.getElementById('tabelaWrap').innerHTML = '<div class="loading">Carregando...</div>';
+
+  try {
+    const r = await fetch('/api/admin/relatorios/devolucoes?' + params.toString(), {
+      credentials: 'include',
+    });
+    const d = await r.json();
+
+    if (!d.ok) {
+      document.getElementById('tabelaWrap').innerHTML = '<div class="loading" style="color:#b00020;">Erro: ' + escapeHtml(d.erro || 'desconhecido') + '</div>';
+      return;
+    }
+
+    dadosAtual = d;
+    renderizarCards(d.cards);
+    renderizarRankings(d.rankingSKUs, d.rankingProblemas);
+    renderizarFuncionarios(d.porFuncionario);
+    renderizarTabela(d.devolucoes);
+  } catch (err) {
+    console.error('[carregar] erro:', err);
+    document.getElementById('tabelaWrap').innerHTML = '<div class="loading" style="color:#b00020;">Erro ao carregar: ' + escapeHtml(err.message) + '</div>';
+  }
+}
+
+function renderizarCards(c) {
+  document.getElementById('cardTotal').textContent = c.total;
+  document.getElementById('cardAprovadas').textContent = c.totalAprovado;
+  document.getElementById('cardProblemas').textContent = c.totalProblema;
+  document.getElementById('cardPctProblema').textContent = c.percentualProblema + '%';
+  document.getElementById('cardSKUsUnicos').textContent = c.totalSKUsUnicos || 0;
+  document.getElementById('cardUnidades').textContent = c.totalUnidades || 0;
+  document.getElementById('cardValor').textContent = fmtMoeda(c.valorTotal);
+}
+
+function renderizarRankings(skus, problemas) {
+  const elSku = document.getElementById('rankingSKUs');
+  if (!skus || skus.length === 0) {
+    elSku.innerHTML = '<div class="empty-state">Sem dados no período</div>';
+  } else {
+    elSku.innerHTML = montarTabelaRanking(skus, 'qtde_total', 'num_devolucoes', 'status');
+  }
+
+  const elProb = document.getElementById('rankingProblemas');
+  if (!problemas || problemas.length === 0) {
+    elProb.innerHTML = '<div class="empty-state">Nenhum problema reportado no período</div>';
+  } else {
+    elProb.innerHTML = montarTabelaRanking(problemas, 'qtde_problema', 'num_devolucoes_problema', 'status_problema', 'problema');
+  }
+}
+
+// v3.16.1 - monta a tabela de ranking com colunas extras
+function montarTabelaRanking(lista, qtdeKey, devKey, statusKey, modo) {
+  const isProblema = modo === 'problema';
+  let html = '<table class="ranking">';
+  html += '<thead><tr>';
+  html += '<th></th>'; // posicao
+  html += '<th>SKU / Produto</th>';
+  html += '<th class="num" title="Soma de unidades devolvidas">Unid.</th>';
+  html += '<th class="num" title="Quantas etiquetas foram bipadas (devoluções distintas)">Devoluç.</th>';
+  html += '</tr></thead><tbody>';
+
+  for (let i = 0; i < lista.length; i++) {
+    const s = lista[i];
+    const posCls = i === 0 ? 'top1' : i === 1 ? 'top2' : i === 2 ? 'top3' : '';
+    const qtde = s[qtdeKey];
+    const numDev = s[devKey];
+
+    html += '<tr>';
+    html += `<td class="pos ${posCls}">${i + 1}</td>`;
+    html += `<td class="sku-col">
+      <div class="sku-nome">${escapeHtml(s.sku)}</div>
+      <div class="produto-nome">${escapeHtml(s.titulo || '')}</div>
+    </td>`;
+    html += `<td class="num ${isProblema ? 'num-problema' : ''}">${qtde}</td>`;
+    html += `<td class="num">${numDev}</td>`;
+    html += '</tr>';
+  }
+
+  html += '</tbody></table>';
+  return html;
+}
+
+function renderizarFuncionarios(lista) {
+  const sel = document.getElementById('funcionario');
+  const valorAtual = sel.value;
+  // Mantém a opção "Todos" + adiciona os outros
+  const opts = ['<option value="">Todos</option>'];
+  (lista || []).forEach(f => {
+    if (f.nome === '(nao identificado)') return;
+    opts.push(`<option value="${escapeHtml(f.nome)}">${escapeHtml(f.nome)} (${f.total})</option>`);
+  });
+  sel.innerHTML = opts.join('');
+  sel.value = valorAtual; // Mantém seleção
+}
+
+// v3.16.1 - Estado da ordenação (persistente entre re-renders)
+// Padrao: maiores quantidades primeiro
+let ordenacaoAtual = { col: 'produto_qtd', dir: 'desc' };
+
+function ordenarLista(lista, col, dir) {
+  const mult = dir === 'asc' ? 1 : -1;
+  return [...lista].sort((a, b) => {
+    let va, vb;
+    switch (col) {
+      case 'created_at':
+        va = new Date(a.created_at || 0).getTime();
+        vb = new Date(b.created_at || 0).getTime();
+        break;
+      case 'tipo':
+        va = a.tipo || '';
+        vb = b.tipo || '';
+        break;
+      case 'produto_sku':
+        va = (a.produto_sku || '').toLowerCase();
+        vb = (b.produto_sku || '').toLowerCase();
+        break;
+      case 'produto_qtd':
+        va = Number(a.produto_qtd || 0);
+        vb = Number(b.produto_qtd || 0);
+        break;
+      case 'valor_total':
+        va = Number(a.produto_valor_unit || 0) * Number(a.produto_qtd || 1);
+        vb = Number(b.produto_valor_unit || 0) * Number(b.produto_qtd || 1);
+        break;
+      case 'nf_numero':
+        // NF é número, mas pode vir como string. Tenta converter.
+        va = Number(a.nf_numero) || a.nf_numero || '';
+        vb = Number(b.nf_numero) || b.nf_numero || '';
+        break;
+      case 'buyer_nome':
+        va = (a.buyer_nome || '').toLowerCase();
+        vb = (b.buyer_nome || '').toLowerCase();
+        break;
+      case 'funcionario':
+        va = (a.funcionario || '').toLowerCase();
+        vb = (b.funcionario || '').toLowerCase();
+        break;
+      case 'tags':
+        // Ordena pela 1a tag (alfabetica). Sem tag vai pro fim.
+        va = (a.tags && a.tags.length > 0) ? (a.tags[0].nome || '').toLowerCase() : 'zzzz_sem_tag';
+        vb = (b.tags && b.tags.length > 0) ? (b.tags[0].nome || '').toLowerCase() : 'zzzz_sem_tag';
+        break;
+      default:
+        return 0;
+    }
+    if (va < vb) return -1 * mult;
+    if (va > vb) return 1 * mult;
+    return 0;
+  });
+}
+
+function ordenarPor(col) {
+  if (ordenacaoAtual.col === col) {
+    // Mesma coluna: alterna direção
+    ordenacaoAtual.dir = ordenacaoAtual.dir === 'asc' ? 'desc' : 'asc';
+  } else {
+    // Nova coluna: começa desc pra numéricos, asc pra texto
+    const colsNumericas = ['created_at', 'produto_qtd', 'valor_total', 'nf_numero'];
+    ordenacaoAtual.col = col;
+    ordenacaoAtual.dir = colsNumericas.includes(col) ? 'desc' : 'asc';
+  }
+  if (dadosAtual && dadosAtual.devolucoes) {
+    renderizarTabela(dadosAtual.devolucoes);
+  }
+}
+
+function renderizarTabela(devolucoes) {
+  const wrap = document.getElementById('tabelaWrap');
+  document.getElementById('tabelaTitulo').textContent = `📋 Devoluções (${devolucoes.length})`;
+
+  if (devolucoes.length === 0) {
+    wrap.innerHTML = '<div class="empty-state">Nenhuma devolução encontrada com esses filtros.</div>';
+    return;
+  }
+
+  // Aplica ordenação atual
+  const lista = ordenarLista(devolucoes, ordenacaoAtual.col, ordenacaoAtual.dir);
+
+  // Helper pra classes de ordenação
+  const sortCls = (col) => {
+    if (ordenacaoAtual.col !== col) return 'sortable';
+    return 'sortable sort-' + ordenacaoAtual.dir;
+  };
+
+  let html = '<table class="devolucoes"><thead><tr>';
+  html += `<th class="${sortCls('created_at')}" onclick="ordenarPor('created_at')" title="Clique pra ordenar por data">Data</th>`;
+  html += `<th class="${sortCls('tipo')}" onclick="ordenarPor('tipo')" title="Clique pra agrupar por tipo">Tipo</th>`;
+  html += `<th class="${sortCls('produto_sku')}" onclick="ordenarPor('produto_sku')" title="Clique pra ordenar A-Z / Z-A">SKU</th>`;
+  html += '<th>Produto</th>';
+  html += `<th class="${sortCls('produto_qtd')}" onclick="ordenarPor('produto_qtd')" title="Clique pra ordenar por qtde">Qtde</th>`;
+  html += `<th class="${sortCls('valor_total')}" onclick="ordenarPor('valor_total')" title="Clique pra ordenar por valor">Valor</th>`;
+  html += `<th class="${sortCls('nf_numero')}" onclick="ordenarPor('nf_numero')" title="Clique pra ordenar por NF">NF</th>`;
+  html += `<th class="${sortCls('buyer_nome')}" onclick="ordenarPor('buyer_nome')" title="Clique pra ordenar por comprador A-Z / Z-A">Comprador</th>`;
+  html += '<th>Pedido ML</th>';
+  html += '<th>Pedido Bling</th>';
+  html += `<th class="${sortCls('funcionario')}" onclick="ordenarPor('funcionario')" title="Clique pra agrupar por funcionário">Funcionário</th>`;
+  html += `<th class="${sortCls('tags')}" onclick="ordenarPor('tags')" title="Clique pra agrupar por tag (1a tag)">Tags</th>`;
+  html += '</tr></thead><tbody>';
+
+  // v3.16.1 - acumula totais
+  let totalQtde = 0;
+  let totalValor = 0;
+
+  for (const d of lista) {
+    const tagsHtml = (d.tags || []).map(t =>
+      `<span class="tag" style="background:${escapeHtml(t.cor)};">${escapeHtml(t.nome)}</span>`
+    ).join('');
+
+    const qtde = d.produto_qtd || 1;
+    const valor = (d.produto_valor_unit || 0) * qtde;
+    totalQtde += qtde;
+    totalValor += isFinite(valor) ? valor : 0;
+
+    html += '<tr>';
+    html += `<td>${fmtData(d.created_at)}</td>`;
+    html += `<td><span class="tipo-badge tipo-${d.tipo}">${d.tipo}</span></td>`;
+    html += `<td><strong>${escapeHtml(d.produto_sku || '—')}</strong></td>`;
+    html += `<td class="produto-celula">${escapeHtml(d.produto_titulo || '—')}</td>`;
+    html += `<td>${qtde}</td>`;
+    html += `<td>${fmtMoeda(valor)}</td>`;
+    html += `<td>${d.nf_link_danfe ? `<a href="${escapeHtml(d.nf_link_danfe)}" target="_blank">${escapeHtml(d.nf_numero || '?')}</a>` : escapeHtml(d.nf_numero || '—')}</td>`;
+    html += `<td>${escapeHtml(d.buyer_nome || '—')}${d.buyer_nickname ? `<br><small style="color:#666;">${escapeHtml(d.buyer_nickname)}</small>` : ''}</td>`;
+    html += `<td>${escapeHtml(d.order_id || '—')}</td>`;
+    html += `<td>${escapeHtml(d.pedido_bling_numero || '—')}</td>`;
+    html += `<td>${escapeHtml(d.funcionario || '—')}</td>`;
+    html += `<td>${tagsHtml}<br><button class="btn-tags" onclick="abrirAplicarTags('${d.id}')">+ Tags</button></td>`;
+    html += '</tr>';
+  }
+
+  html += '</tbody>';
+  // v3.16.1 - linha de totais
+  html += '<tfoot><tr>';
+  html += `<td colspan="4" style="text-align:right;">TOTAIS (${lista.length} registros):</td>`;
+  html += `<td>${totalQtde}</td>`;
+  html += `<td>${fmtMoeda(totalValor)}</td>`;
+  html += '<td colspan="6"></td>';
+  html += '</tr></tfoot>';
+  html += '</table>';
+  wrap.innerHTML = html;
+}
+
+// ============================================================
+// TAGS - GERENCIAR
+// ============================================================
+
+async function carregarTags() {
+  try {
+    const r = await fetch('/api/admin/tags', { credentials: 'include' });
+    const d = await r.json();
+    if (d.ok) {
+      tagsCache = d.tags || [];
+      // Atualiza dropdown de filtro
+      const sel = document.getElementById('tagId');
+      const valorAtual = sel.value;
+      const opts = ['<option value="">Todas</option>'];
+      tagsCache.forEach(t => {
+        opts.push(`<option value="${t.id}">${escapeHtml(t.nome)}</option>`);
+      });
+      sel.innerHTML = opts.join('');
+      sel.value = valorAtual;
+    }
+  } catch (e) {
+    console.error('[carregarTags] erro:', e);
+  }
+}
+
+function renderizarListaTags() {
+  const wrap = document.getElementById('modalGerenciarLista');
+  if (tagsCache.length === 0) {
+    wrap.innerHTML = '<div class="empty-state">Nenhuma tag cadastrada ainda.</div>';
+    return;
+  }
+  wrap.innerHTML = tagsCache.map(t => `
+    <div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #f0f0f0;">
+      <span class="tag" style="background:${escapeHtml(t.cor)};">${escapeHtml(t.nome)}</span>
+      <span style="flex:1;font-size:12px;color:#666;">${escapeHtml(t.cor)}</span>
+      <button class="btn danger" onclick="excluirTag('${t.id}', '${escapeHtml(t.nome).replace(/'/g, "\\'")}')">Excluir</button>
+    </div>
+  `).join('');
+}
+
+async function adicionarTag() {
+  const nome = document.getElementById('novoTagNome').value.trim();
+  const cor = document.getElementById('novoTagCor').value;
+  if (!nome) {
+    alert('Digite um nome');
+    return;
+  }
+  try {
+    const r = await fetch('/api/admin/tags', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ nome, cor }),
+    });
+    const d = await r.json();
+    if (!d.ok) {
+      alert('Erro: ' + (d.erro || 'desconhecido'));
+      return;
+    }
+    document.getElementById('novoTagNome').value = '';
+    await carregarTags();
+    renderizarListaTags();
+  } catch (e) {
+    alert('Erro: ' + e.message);
+  }
+}
+
+async function excluirTag(id, nome) {
+  if (!confirm(`Excluir a tag "${nome}"?\n\nIsso removerá ela de todas as devoluções marcadas.`)) return;
+  try {
+    const r = await fetch('/api/admin/tags/' + id, {
+      method: 'DELETE',
+      credentials: 'include',
+    });
+    const d = await r.json();
+    if (!d.ok) {
+      alert('Erro: ' + (d.erro || 'desconhecido'));
+      return;
+    }
+    await carregarTags();
+    renderizarListaTags();
+  } catch (e) {
+    alert('Erro: ' + e.message);
+  }
+}
+
+// ============================================================
+// TAGS - APLICAR NUMA DEVOLUCAO
+// ============================================================
+
+function abrirAplicarTags(devolucaoId) {
+  if (tagsCache.length === 0) {
+    alert('Você ainda não cadastrou nenhuma tag.\n\nClique em "🏷️ Gerenciar Tags" pra criar.');
+    return;
+  }
+
+  devolucaoSelecionadaId = devolucaoId;
+  const dev = (dadosAtual.devolucoes || []).find(d => d.id === devolucaoId);
+  if (!dev) return;
+
+  document.getElementById('modalAplicarInfo').innerHTML =
+    `<strong>${escapeHtml(dev.produto_sku || '?')}</strong> · NF ${escapeHtml(dev.nf_numero || '?')} · ${escapeHtml(dev.buyer_nome || '?')}`;
+
+  const tagsAtuais = new Set((dev.tags || []).map(t => t.id));
+
+  const html = tagsCache.map(t => {
+    const sel = tagsAtuais.has(t.id) ? 'selected' : '';
+    return `<span class="tag-pickable ${sel}" data-id="${t.id}" style="background:${escapeHtml(t.cor)};">${escapeHtml(t.nome)}</span>`;
+  }).join('');
+
+  document.getElementById('modalAplicarLista').innerHTML = html;
+
+  // Click pra alternar seleção
+  document.querySelectorAll('#modalAplicarLista .tag-pickable').forEach(el => {
+    el.addEventListener('click', () => el.classList.toggle('selected'));
+  });
+
+  document.getElementById('modalAplicarTags').classList.add('show');
+}
+
+async function salvarTagsAplicadas() {
+  const selecionadas = [...document.querySelectorAll('#modalAplicarLista .tag-pickable.selected')]
+    .map(el => el.dataset.id);
+
+  try {
+    const r = await fetch('/api/admin/devolucao/' + devolucaoSelecionadaId + '/tags', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ tag_ids: selecionadas }),
+    });
+    const d = await r.json();
+    if (!d.ok) {
+      alert('Erro: ' + (d.erro || 'desconhecido'));
+      return;
+    }
+    document.getElementById('modalAplicarTags').classList.remove('show');
+    await carregar(); // recarrega lista pra mostrar tags novas
+  } catch (e) {
+    alert('Erro: ' + e.message);
+  }
+}
+
+// ============================================================
+// EXPORTAR EXCEL
+// ============================================================
+
+function exportarExcel() {
+  if (!dadosAtual || !dadosAtual.devolucoes || dadosAtual.devolucoes.length === 0) {
+    alert('Nada pra exportar com esses filtros');
+    return;
+  }
+
+  // v3.16.1 - exporta na ordem atual
+  const listaOrdenada = ordenarLista(dadosAtual.devolucoes, ordenacaoAtual.col, ordenacaoAtual.dir);
+
+  const linhas = listaOrdenada.map(d => ({
+    'Data': fmtDataCurta(d.created_at),
+    'Hora': new Date(d.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+    'Tipo': d.tipo,
+    'SKU': d.produto_sku || '',
+    'Produto': d.produto_titulo || '',
+    'Qtde': d.produto_qtd || 1,
+    'Valor unit.': Number(d.produto_valor_unit || 0),
+    'Valor total': Number((d.produto_valor_unit || 0) * (d.produto_qtd || 1)),
+    'NF número': d.nf_numero || '',
+    'NF data': fmtDataCurta(d.nf_data_emissao),
+    'Comprador': d.buyer_nome || '',
+    'Apelido ML': d.buyer_nickname || '',
+    'Pedido ML': d.order_id || '',
+    'Pack ML': d.pack_id || '',
+    'Pedido Bling': d.pedido_bling_numero || '',
+    'Funcionário': d.funcionario || '',
+    'Tags': (d.tags || []).map(t => t.nome).join(', '),
+    'Descrição/Problema': d.problema_descricao || '',
+    'Marketplace': d.marketplace || 'mercadolivre',
+  }));
+
+  const ws = XLSX.utils.json_to_sheet(linhas);
+
+  // Formata colunas com largura
+  ws['!cols'] = [
+    { wch: 11 }, // Data
+    { wch: 6 },  // Hora
+    { wch: 10 }, // Tipo
+    { wch: 18 }, // SKU
+    { wch: 50 }, // Produto
+    { wch: 6 },  // Qtde
+    { wch: 12 }, // Valor unit
+    { wch: 12 }, // Valor total
+    { wch: 10 }, // NF número
+    { wch: 11 }, // NF data
+    { wch: 25 }, // Comprador
+    { wch: 18 }, // Apelido
+    { wch: 18 }, // Pedido ML
+    { wch: 18 }, // Pack ML
+    { wch: 12 }, // Pedido Bling
+    { wch: 12 }, // Funcionário
+    { wch: 30 }, // Tags
+    { wch: 50 }, // Descrição
+    { wch: 14 }, // Marketplace
+  ];
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Devoluções');
+
+  // Aba 2: Ranking SKUs (v3.16.1: com colunas novas)
+  if (dadosAtual.rankingSKUs && dadosAtual.rankingSKUs.length > 0) {
+    const linhasSku = dadosAtual.rankingSKUs.map((s, i) => ({
+      'Posição': i + 1,
+      'SKU': s.sku,
+      'Produto': s.titulo || '',
+      'Unidades total': s.qtde_total,
+      'Nº devoluções': s.num_devolucoes,
+      'Qtde aprovado': s.qtde_aprovado,
+      'Qtde problema': s.qtde_problema,
+      'Valor total devolvido': Number(s.valor_total || 0),
+    }));
+    const wsSku = XLSX.utils.json_to_sheet(linhasSku);
+    wsSku['!cols'] = [{ wch: 8 }, { wch: 18 }, { wch: 50 }, { wch: 13 }, { wch: 13 }, { wch: 13 }, { wch: 13 }, { wch: 18 }];
+    XLSX.utils.book_append_sheet(wb, wsSku, 'Ranking SKUs');
+  }
+
+  // Aba 3: Ranking Problemas
+  if (dadosAtual.rankingProblemas && dadosAtual.rankingProblemas.length > 0) {
+    const linhasProb = dadosAtual.rankingProblemas.map((s, i) => ({
+      'Posição': i + 1,
+      'SKU': s.sku,
+      'Produto': s.titulo || '',
+      'Unidades com problema': s.qtde_problema,
+      'Nº devoluções com problema': s.num_devolucoes_problema,
+    }));
+    const wsProb = XLSX.utils.json_to_sheet(linhasProb);
+    wsProb['!cols'] = [{ wch: 8 }, { wch: 18 }, { wch: 50 }, { wch: 18 }, { wch: 22 }];
+    XLSX.utils.book_append_sheet(wb, wsProb, 'Ranking Problemas');
+  }
+
+  // Nome do arquivo
+  const dataInicio = document.getElementById('dataInicio').value || 'inicio';
+  const dataFim = document.getElementById('dataFim').value || 'fim';
+  const filename = `devolucoes_${dataInicio}_a_${dataFim}.xlsx`;
+
+  XLSX.writeFile(wb, filename);
+}
+
+// ============================================================
+// EVENTS
+// ============================================================
+
+document.addEventListener('DOMContentLoaded', async () => {
+  setarDatasPadrao();
+  await carregarTags();
+
+  document.getElementById('btnFiltrar').addEventListener('click', carregar);
+  document.getElementById('btnLimpar').addEventListener('click', () => {
+    setarDatasPadrao();
+    document.getElementById('tipo').value = 'todos';
+    document.getElementById('produtoSku').value = '';
+    document.getElementById('funcionario').value = '';
+    document.getElementById('tagId').value = '';
+    carregar();
+  });
+
+  document.getElementById('btnExportar').addEventListener('click', exportarExcel);
+
+  // Modal aplicar tags
+  document.getElementById('modalAplicarCancelar').addEventListener('click', () => {
+    document.getElementById('modalAplicarTags').classList.remove('show');
+  });
+  document.getElementById('modalAplicarSalvar').addEventListener('click', salvarTagsAplicadas);
+
+  // Modal gerenciar tags
+  document.getElementById('btnGerenciarTags').addEventListener('click', () => {
+    renderizarListaTags();
+    document.getElementById('modalGerenciarTags').classList.add('show');
+  });
+  document.getElementById('modalGerenciarFechar').addEventListener('click', () => {
+    document.getElementById('modalGerenciarTags').classList.remove('show');
+  });
+  document.getElementById('btnAdicionarTag').addEventListener('click', adicionarTag);
+  document.getElementById('novoTagNome').addEventListener('keydown', e => {
+    if (e.key === 'Enter') adicionarTag();
+  });
+
+  // Carga inicial
+  await carregar();
+});
+
+// Expor pra HTML inline (botões da tabela)
+window.abrirAplicarTags = abrirAplicarTags;
+window.excluirTag = excluirTag;
+window.ordenarPor = ordenarPor;
