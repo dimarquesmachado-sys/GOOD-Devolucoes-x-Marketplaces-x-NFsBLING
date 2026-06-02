@@ -191,7 +191,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '3.18.0',
+    version: '3.18.1',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -204,6 +204,42 @@ app.get('/health', (req, res) => {
     usuarios_cadastrados: Object.keys(USERS),
     timestamp: new Date().toISOString(),
   });
+});
+
+// ============================================================
+// v3.18.1 - KEEPALIVE: rota publica que toca no Supabase
+// Pra evitar que o projeto free-tier pause apos 7 dias de inatividade.
+// Configurar cron-job.org pra bater nessa URL a cada 3-5 dias.
+// Faz um SELECT minimo (count) na tabela devolucoes - rapido e barato.
+// ============================================================
+app.get('/api/keepalive', async (req, res) => {
+  const inicio = Date.now();
+  if (!supabase) {
+    return res.status(500).json({ ok: false, erro: 'Supabase nao configurado' });
+  }
+  try {
+    // Query minima que toca no banco (count nao baixa dados, so contagem)
+    const { count, error } = await supabase
+      .from('devolucoes')
+      .select('*', { count: 'exact', head: true });
+
+    if (error) {
+      console.error('[KEEPALIVE] erro:', error.message);
+      return res.status(500).json({ ok: false, erro: error.message });
+    }
+
+    const tempoMs = Date.now() - inicio;
+    console.log(`[KEEPALIVE] OK - ${count} devolucoes no banco - ${tempoMs}ms`);
+    return res.json({
+      ok: true,
+      total_devolucoes: count,
+      tempo_ms: tempoMs,
+      timestamp: new Date().toISOString(),
+    });
+  } catch (err) {
+    console.error('[KEEPALIVE] erro:', err.message);
+    return res.status(500).json({ ok: false, erro: err.message });
+  }
 });
 
 // ============================================================
@@ -1704,7 +1740,7 @@ registrarRotasRelatorios(app, { supabase, requerAdmin });
 // ============================================================
 app.listen(PORT, () => {
   console.log('============================================');
-  console.log('GOOD Devolucoes v3.18.0 - Produto divergente (envio errado)');
+  console.log('GOOD Devolucoes v3.18.1 - keepalive (anti-pausa Supabase)');
   console.log(`Porta: ${PORT}`);
   console.log(`ML: ${mlClient.hasToken() ? 'OK' : 'FALTA'}`);
   console.log(`Bling: ${blingClient.hasToken() ? 'OK' : 'FALTA'}`);
