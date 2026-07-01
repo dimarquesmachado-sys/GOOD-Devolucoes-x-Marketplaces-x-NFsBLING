@@ -31,6 +31,7 @@ const buscarNFePorId = blingClient.buscarNFePorId;
 const buscarNFnoBlingPorNumero = blingClient.buscarNFnoBlingPorNumero;
 const buscarNFnoBlingPorOrderId = blingClient.buscarNFnoBlingPorOrderId;
 const buscarProdutoBlingPorSku = blingClient.buscarProdutoBlingPorSku;
+const trocarCodePorTokenBling = blingClient.trocarCodePorTokenBling;
 const chamarML = mlClient.chamarML;
 const renovarTokenML = mlClient.renovarTokenML;
 const buscarNFnoML = mlClient.buscarNFnoML;
@@ -858,6 +859,31 @@ app.get('/callback', (req, res) => {
 
 app.get('/bling/callback', (req, res) => {
   res.send(`<h2>Callback Bling recebido</h2><p>code: ${req.query.code || '(nenhum)'}</p>`);
+});
+
+// v3.19 - Reconexao do app Bling (troca o code por token com os escopos novos)
+// Uso: /bling/setup?code=SEU_CODE  (o code expira em 1 minuto!)
+app.get('/bling/setup', async (req, res) => {
+  const code = String(req.query.code || '').trim();
+  if (!code) {
+    return res.send('<h2>Falta o code</h2><p>Abra assim: <code>/bling/setup?code=SEU_CODE</code></p>');
+  }
+  try {
+    const data = await trocarCodePorTokenBling(code);
+    res.send(`
+      <h2 style="color:#2e7d32;">✅ Bling reconectado com sucesso!</h2>
+      <p><strong>Escopos ativos agora:</strong></p>
+      <pre style="background:#f5f5f5;padding:12px;border-radius:8px;white-space:pre-wrap;">${(data.scope || '(nao informado)')}</pre>
+      <p>Token salvo. Pode fechar esta aba.</p>
+    `);
+  } catch (e) {
+    const detalhe = e.response?.data ? JSON.stringify(e.response.data, null, 2) : (e.message || String(e));
+    res.send(`
+      <h2 style="color:#c62828;">❌ Erro ao reconectar</h2>
+      <pre style="background:#fff0f0;padding:12px;border-radius:8px;white-space:pre-wrap;">${detalhe}</pre>
+      <p><strong>Dica:</strong> o code expira em <strong>1 minuto</strong>. Se demorou, gere um novo (cole o link de convite de novo) e refaça rapidinho.</p>
+    `);
+  }
 });
 
 // ============================================================
