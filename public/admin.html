@@ -776,16 +776,19 @@
       `;
 
       try {
-        // Se nao temos o ID interno da NF, descobre pelo numero (backend usa API v3)
-        if (!idNFOriginalBling) {
-          document.getElementById('statusGerar').textContent = 'Localizando a NF no Bling...';
-          const rId = await fetch(`/api/admin/resolver-id-nf?numero=${encodeURIComponent(nfNumero || '')}`);
-          const dId = await rId.json();
-          if (!dId.ok || !dId.idBling) {
-            throw new Error(dId.erro || 'Não consegui achar o ID interno dessa NF no Bling.');
-          }
-          idNFOriginalBling = dId.idBling;
+        // SEMPRE resolve idNF + idLoja no backend (que usa a API v3 oficial).
+        // O idLoja e o ULTIMO segmento do obter-dados-devolucao - sem ele da 404.
+        document.getElementById('statusGerar').textContent = 'Localizando a NF no Bling...';
+        const qs = idNFOriginalBling
+          ? `id=${encodeURIComponent(idNFOriginalBling)}`
+          : `numero=${encodeURIComponent(nfNumero || '')}`;
+        const rId = await fetch(`/api/admin/resolver-id-nf?${qs}`);
+        const dId = await rId.json();
+        if (!dId.ok || !dId.idBling) {
+          throw new Error(dId.erro || 'Não consegui achar o ID interno dessa NF no Bling.');
         }
+        idNFOriginalBling = dId.idBling;
+        const idLoja = dId.idLoja || null;
 
         // Verifica se a extensao Bridge esta instalada/atualizada
         if (!await verificarBridgeInstalada()) {
@@ -800,6 +803,7 @@
         // valida duplicata, cria a NF e (se emitir) transmite pra SEFAZ.
         const result = await chamarBlingViaBridge({
           idNFOriginal: String(idNFOriginalBling),
+          idLoja: idLoja ? String(idLoja) : null,
           emitir: !!emitir,
         });
 
