@@ -460,10 +460,10 @@
                 ? `<a class="btn btn-verde" href="https://www.bling.com.br/notas.fiscais.php#edit/${d.nf_id_bling}" target="_blank" title="Abre a NF. Pra gerar devolu\u00e7\u00e3o automaticamente, use o bot\u00e3o ao lado.">🔗 Abrir NF no Bling</a>`
                 : `<a class="btn" href="https://www.bling.com.br/notas.fiscais.php#list" target="_blank" onclick="copiarNF('${escapeHtml(d.nf_numero || '')}')">🔗 Abrir lista Bling (copia NF)</a>`
               }
-              ${d.nf_id_bling && !d.nf_devolucao_id_bling
-                ? `<button class="btn" style="background:#1565c0;" onclick="abrirModalGerarDevolucao('${d.id}', '${d.nf_id_bling}', '${escapeHtml(d.nf_numero || '')}', '${escapeHtml(d.produto_titulo || '')}')" title="Cria rascunho de NF de devolu\u00e7\u00e3o no Bling automaticamente">🧾 Gerar NF Devolu\u00e7\u00e3o</button>`
+              ${!d.nf_devolucao_id_bling && (d.nf_id_bling || d.nf_numero)
+                ? `<button class="btn" style="background:#1565c0;" onclick="abrirModalGerarDevolucao('${d.id}', '${d.nf_id_bling || ''}', '${escapeHtml(d.nf_numero || '')}', '${escapeHtml(d.produto_titulo || '')}')" title="Gera a NF de devolu\u00e7\u00e3o no Bling automaticamente">🧾 Gerar NF Devolu\u00e7\u00e3o</button>`
                 : d.nf_devolucao_id_bling
-                  ? `<a class="btn btn-verde" href="https://www.bling.com.br/notas.entrada.php#edit/${d.nf_devolucao_id_bling}" target="_blank" title="NF de devolu\u00e7\u00e3o j\u00e1 gerada (rascunho)">📝 Rascunho criado: ${d.nf_devolucao_numero || 'ver'}</a>`
+                  ? `<a class="btn btn-verde" href="https://www.bling.com.br/notas.entrada.php#edit/${d.nf_devolucao_id_bling}" target="_blank" title="NF de devolu\u00e7\u00e3o j\u00e1 gerada">📝 Devolu\u00e7\u00e3o: ${d.nf_devolucao_numero || 'ver'}</a>`
                   : ''
               }
               <button class="btn btn-verde" onclick="concluir('${d.id}')">✅ Marcar como concluido</button>
@@ -744,11 +744,11 @@
         <div style="display:flex; gap:8px; justify-content:flex-end; flex-wrap:wrap;">
           <button class="btn btn-cinza" onclick="fecharModalGerarDevolucao()">Cancelar</button>
           <button class="btn" style="background:#455a64; color:#fff;" id="btnGerarRascunho"
-            onclick="confirmarGerarDevolucao('${devolucaoId}', '${idNFOriginalBling}', false)">
+            onclick="confirmarGerarDevolucao('${devolucaoId}', '${idNFOriginalBling}', '${nfNumero}', false)">
             🧪 Criar rascunho
           </button>
           <button class="btn btn-verde" id="btnGerarEmitir"
-            onclick="confirmarGerarDevolucao('${devolucaoId}', '${idNFOriginalBling}', true)">
+            onclick="confirmarGerarDevolucao('${devolucaoId}', '${idNFOriginalBling}', '${nfNumero}', true)">
             🧾 Gerar + Emitir NF
           </button>
         </div>
@@ -760,7 +760,7 @@
       document.getElementById('modalGerarDevolucao').style.display = 'none';
     }
 
-    async function confirmarGerarDevolucao(devolucaoId, idNFOriginalBling, emitir) {
+    async function confirmarGerarDevolucao(devolucaoId, idNFOriginalBling, nfNumero, emitir) {
       const conteudo = document.getElementById('modalGerarConteudo');
       const acao = emitir ? 'Gerando + emitindo NF' : 'Criando rascunho';
 
@@ -776,6 +776,17 @@
       `;
 
       try {
+        // Se nao temos o ID interno da NF, descobre pelo numero (backend usa API v3)
+        if (!idNFOriginalBling) {
+          document.getElementById('statusGerar').textContent = 'Localizando a NF no Bling...';
+          const rId = await fetch(`/api/admin/resolver-id-nf?numero=${encodeURIComponent(nfNumero || '')}`);
+          const dId = await rId.json();
+          if (!dId.ok || !dId.idBling) {
+            throw new Error(dId.erro || 'Não consegui achar o ID interno dessa NF no Bling.');
+          }
+          idNFOriginalBling = dId.idBling;
+        }
+
         // Verifica se a extensao Bridge esta instalada/atualizada
         if (!await verificarBridgeInstalada()) {
           throw new Error(
@@ -783,6 +794,7 @@
             'Instale/atualize a extensão e recarregue a página (Ctrl+Shift+R).'
           );
         }
+        document.getElementById('statusGerar').textContent = 'Falando com o Bling (via extensão)...';
 
         // A Bridge faz TUDO: busca os dados de devolucao (com IDs reais dos itens),
         // valida duplicata, cria a NF e (se emitir) transmite pra SEFAZ.
