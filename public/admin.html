@@ -246,6 +246,10 @@
         <h2>
           ✅ Aprovadas - aguardando NF
           <span class="badge-count" id="countAprovadas">0</span>
+          <span style="margin-left:12px; display:inline-flex; gap:8px; align-items:center; font-size:13px; font-weight:normal;">
+            <label style="display:inline-flex;align-items:center;gap:4px;cursor:pointer;" title="Marca/desmarca todos os cards elegíveis desta seção"><input type="checkbox" onchange="toggleTodasEsteira('aprovadas', this.checked)"> todas</label>
+            <button class="btn" id="btnEsteiraAprovadas" onclick="rodarEsteira('aprovadas')" style="background:#1565c0;color:#fff;" title="Gera + EMITE a NF de devolução dos cards selecionados, um por vez">🏭 Emitir selecionadas (0)</button>
+          </span>
         </h2>
         <div id="listaAprovadas"></div>
       </div>
@@ -254,6 +258,10 @@
         <h2>
           ⚠️ Problemas reportados
           <span class="badge-count problema" id="countProblemas">0</span>
+          <span style="margin-left:12px; display:inline-flex; gap:8px; align-items:center; font-size:13px; font-weight:normal;">
+            <label style="display:inline-flex;align-items:center;gap:4px;cursor:pointer;" title="Marca/desmarca todos os cards elegíveis desta seção"><input type="checkbox" onchange="toggleTodasEsteira('problemas', this.checked)"> todas</label>
+            <button class="btn" id="btnEsteiraProblemas" onclick="rodarEsteira('problemas')" style="background:#e65100;color:#fff;" title="Gera + EMITE a NF de devolução dos cards selecionados, um por vez">🏭 Emitir selecionadas (0)</button>
+          </span>
         </h2>
         <div id="listaProblemas"></div>
       </div>
@@ -462,7 +470,7 @@
                 : `<a class="btn" href="https://www.bling.com.br/notas.fiscais.php#list" target="_blank" onclick="copiarNF('${escapeHtml(d.nf_numero || '')}')">🔗 Abrir lista Bling (copia NF)</a>`
               }
               ${!d.nf_devolucao_id_bling && (d.nf_id_bling || d.nf_numero)
-                ? `<button class="btn" style="background:#1565c0;" onclick="abrirModalGerarDevolucao('${d.id}', '${d.nf_id_bling || ''}', '${escapeHtml(d.nf_numero || '')}', '${escapeHtml(d.produto_titulo || '')}')" title="Gera a NF de devolu\u00e7\u00e3o no Bling automaticamente">🧾 Gerar NF Devolu\u00e7\u00e3o</button>`
+                ? `<label style="display:inline-flex;align-items:center;gap:5px;font-size:12px;background:#e3f2fd;border:1px solid #90caf9;padding:5px 9px;border-radius:6px;cursor:pointer;" title="Seleciona pra esteira de emissão em lote"><input type="checkbox" class="chk-esteira" data-secao="aprovadas" data-id="${d.id}" data-nfid="${d.nf_id_bling || ''}" data-nfnum="${escapeHtml(String(d.nf_numero || ''))}" onchange="atualizarContadorEsteira('aprovadas')"> esteira</label><button class="btn" style="background:#1565c0;" onclick="abrirModalGerarDevolucao('${d.id}', '${d.nf_id_bling || ''}', '${escapeHtml(d.nf_numero || '')}', '${escapeHtml(d.produto_titulo || '')}')" title="Gera a NF de devolu\u00e7\u00e3o no Bling automaticamente">🧾 Gerar NF Devolu\u00e7\u00e3o</button>`
                 : d.nf_devolucao_id_bling
                   ? `<a class="btn btn-verde" href="https://www.bling.com.br/notas.entrada.php#edit/${d.nf_devolucao_id_bling}" target="_blank" title="NF de devolu\u00e7\u00e3o j\u00e1 gerada">📝 Devolu\u00e7\u00e3o: ${d.nf_devolucao_numero || 'ver'}</a>`
                   : ''
@@ -518,6 +526,12 @@
           ${concluido ? '' : `
             <div class="item-acoes">
               ${d.nf_link_danfe ? `<a class="btn btn-cinza" href="${d.nf_link_danfe}" target="_blank">📄 DANFE</a>` : ''}
+              ${!d.nf_devolucao_id_bling && (d.nf_id_bling || d.nf_numero)
+                ? `<label style="display:inline-flex;align-items:center;gap:5px;font-size:12px;background:#fff3e0;border:1px solid #ffcc80;padding:5px 9px;border-radius:6px;cursor:pointer;" title="Seleciona pra esteira de emissão em lote"><input type="checkbox" class="chk-esteira" data-secao="problemas" data-id="${d.id}" data-nfid="${d.nf_id_bling || ''}" data-nfnum="${escapeHtml(String(d.nf_numero || ''))}" onchange="atualizarContadorEsteira('problemas')"> esteira</label>`
+                : d.nf_devolucao_id_bling
+                  ? `<a class="btn btn-verde" href="https://www.bling.com.br/notas.entrada.php#edit/${d.nf_devolucao_id_bling}" target="_blank" title="NF de devolu\u00e7\u00e3o j\u00e1 gerada">📝 Devolu\u00e7\u00e3o: ${d.nf_devolucao_numero || 'ver'}</a>`
+                  : ''
+              }
               <button class="btn btn-verde" onclick="concluir('${d.id}')">✅ Marcar como resolvido</button>
               <button class="btn btn-vermelho" onclick="deletar('${d.id}')">🗑️</button>
             </div>
@@ -860,6 +874,167 @@
         `${parou ? 'Varredura PARADA' : 'Varredura concluída'}: ✅ ${ok} vinculada(s) · ❌ ${falha} não achada(s)` +
         (falha > 0 ? ' (detalhes no console F12)' : ''),
         falha > 0 ? 'err' : 'ok'
+      );
+      carregar();
+    }
+
+    // ============================================================
+    // v3.21 - ESTEIRA DE EMISSÃO EM LOTE
+    // Seleciona cards (checkbox "esteira"), 1 botão por seção,
+    // gera + EMITE as NFs de devolução uma a uma (SEFAZ é serial).
+    // Se um card já tiver devolução no Bling (órfão), VINCULA em
+    // vez de falhar. Clicar de novo no botão PARA a fila.
+    // ============================================================
+    let esteiraAtiva = false;
+    let esteiraSecao = null;
+
+    function rotuloEsteira(secao) {
+      return secao === 'aprovadas' ? 'btnEsteiraAprovadas' : 'btnEsteiraProblemas';
+    }
+
+    function atualizarContadorEsteira(secao) {
+      if (esteiraAtiva && esteiraSecao === secao) return; // placar tem prioridade
+      const n = document.querySelectorAll(`.chk-esteira[data-secao="${secao}"]:checked`).length;
+      const btn = document.getElementById(rotuloEsteira(secao));
+      if (btn) btn.textContent = `🏭 Emitir selecionadas (${n})`;
+    }
+
+    function toggleTodasEsteira(secao, ligado) {
+      document.querySelectorAll(`.chk-esteira[data-secao="${secao}"]`).forEach(c => { c.checked = ligado; });
+      atualizarContadorEsteira(secao);
+    }
+
+    // Mesmo fluxo do modal, mas sem DOM: resolve id/idLoja -> Bridge
+    // (gerar + emitir) -> registra. Lança erro com a mensagem original.
+    async function gerarDevolucaoSilenciosa(devolucaoId, idNFBling, nfNumero) {
+      const qs = idNFBling
+        ? `id=${encodeURIComponent(idNFBling)}`
+        : `numero=${encodeURIComponent(nfNumero || '')}`;
+      const rId = await fetch(`/api/admin/resolver-id-nf?${qs}`);
+      const dId = await rId.json();
+      if (!dId.ok || !dId.idBling) {
+        throw new Error(dId.erro || 'ID interno da NF não localizado no Bling');
+      }
+
+      const result = await chamarBlingViaBridge({
+        idNFOriginal: String(dId.idBling),
+        idLoja: dId.idLoja ? String(dId.idLoja) : null,
+        emitir: true,
+        devolucaoId: String(devolucaoId),
+      });
+      if (!result || !result.idNotaDevolucao) {
+        throw new Error('Bling não retornou ID da devolução: ' + JSON.stringify(result || {}).slice(0, 150));
+      }
+
+      try {
+        await fetch(`/api/admin/registrar-devolucao-gerada/${devolucaoId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            nf_devolucao_id_bling: String(result.idNotaDevolucao),
+            nf_devolucao_numero: String(result.numero || ''),
+          }),
+        });
+      } catch (e) { /* extensao ja registrou sozinha */ }
+
+      return { numero: result.numero || '?', emitida: !!result.emitida };
+    }
+
+    async function rodarEsteira(secao) {
+      const btn = document.getElementById(rotuloEsteira(secao));
+
+      // Clicar de novo na esteira que esta rodando = PARAR
+      if (esteiraAtiva && esteiraSecao === secao) {
+        esteiraAtiva = false;
+        if (btn) btn.textContent = '⏹ Parando...';
+        return;
+      }
+      if (esteiraAtiva) {
+        toast('Já tem uma esteira rodando na outra seção. Espere ou pare ela primeiro.', 'err');
+        return;
+      }
+
+      const marcados = [...document.querySelectorAll(`.chk-esteira[data-secao="${secao}"]:checked`)];
+      if (marcados.length === 0) {
+        toast('Nenhum card selecionado. Marque os checkboxes "esteira" (ou "todas") primeiro.', 'err');
+        return;
+      }
+      const fila = marcados.map(c => ({
+        id: c.dataset.id,
+        nfid: c.dataset.nfid || '',
+        nfnum: c.dataset.nfnum || '',
+      }));
+
+      if (!await verificarBridgeInstalada()) {
+        toast('Extensão Bridge não detectada. Confira a aba do Bling logada e recarregue o painel (Ctrl+Shift+R).', 'err');
+        return;
+      }
+
+      const estimMin = Math.ceil(fila.length * 30 / 60);
+      if (!confirm(
+        `🏭 ESTEIRA: gerar + EMITIR (SEFAZ) a NF de devolução de ${fila.length} card(s)?\n\n` +
+        `• Um por vez (SEFAZ é serial) — de 10s a 1min+ cada, estimativa ~${estimMin || 1} min no total\n` +
+        `• Precisa da aba do Bling aberta e logada (a tela vai "piscar" a cada card, é normal)\n` +
+        `• Card que já tiver devolução no Bling será apenas VINCULADO\n` +
+        `• Pra PARAR: clique de novo no botão (o que já foi emitido, fica)`
+      )) return;
+
+      esteiraAtiva = true;
+      esteiraSecao = secao;
+      const corOriginal = btn.style.background;
+      btn.style.background = '#c62828';
+
+      let emitidas = 0, vinculadas = 0, falhas = 0;
+      const erros = [];
+
+      for (let i = 0; i < fila.length; i++) {
+        if (!esteiraAtiva) break;
+        const item = fila[i];
+        btn.textContent = `⏹ Parar · ${i + 1}/${fila.length} (✅${emitidas} 🔗${vinculadas} ❌${falhas})`;
+        try {
+          const r = await gerarDevolucaoSilenciosa(item.id, item.nfid, item.nfnum);
+          emitidas++;
+          console.log(`[Esteira] NF ${item.nfnum}: devolução ${r.numero} ${r.emitida ? 'EMITIDA' : 'rascunho'}`);
+        } catch (err) {
+          const msg = String(err.message || err);
+          if (msg.toLowerCase().includes('ja possui devolucao')) {
+            // Card órfão: acha e vincula em vez de falhar
+            try {
+              const rV = await fetch(`/api/admin/vincular-devolucao-existente/${item.id}`, { method: 'POST' });
+              const dV = await rV.json();
+              if (dV.ok) {
+                vinculadas++;
+                console.log(`[Esteira] NF ${item.nfnum}: devolução ${dV.nf_devolucao_numero} já existia — VINCULADA`);
+              } else {
+                falhas++;
+                erros.push(`NF ${item.nfnum || item.id}: já tem devolução mas não achei pra vincular (${(dV.erro || '').slice(0, 60)})`);
+              }
+            } catch (e2) {
+              falhas++;
+              erros.push(`NF ${item.nfnum || item.id}: ${msg.slice(0, 80)}`);
+            }
+          } else {
+            falhas++;
+            erros.push(`NF ${item.nfnum || item.id}: ${msg.slice(0, 100)}`);
+          }
+        }
+        // Pausa entre cards (folga pro Bling e pra SEFAZ respirarem)
+        if (i < fila.length - 1 && esteiraAtiva) {
+          await new Promise(res => setTimeout(res, 2500));
+        }
+      }
+
+      const parou = !esteiraAtiva && (emitidas + vinculadas + falhas) < fila.length;
+      esteiraAtiva = false;
+      esteiraSecao = null;
+      btn.style.background = corOriginal;
+      btn.textContent = '🏭 Emitir selecionadas (0)';
+
+      if (erros.length > 0) console.warn('[Esteira] Falhas:', erros);
+      toast(
+        `${parou ? '⏹ Esteira PARADA' : '🏭 Esteira concluída'}: ✅ ${emitidas} emitida(s) · 🔗 ${vinculadas} vinculada(s) · ❌ ${falhas} falha(s)` +
+        (falhas > 0 ? ' (detalhes no console F12)' : ''),
+        falhas > 0 ? 'err' : 'ok'
       );
       carregar();
     }
