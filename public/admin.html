@@ -466,6 +466,10 @@
                   ? `<a class="btn btn-verde" href="https://www.bling.com.br/notas.entrada.php#edit/${d.nf_devolucao_id_bling}" target="_blank" title="NF de devolu\u00e7\u00e3o j\u00e1 gerada">📝 Devolu\u00e7\u00e3o: ${d.nf_devolucao_numero || 'ver'}</a>`
                   : ''
               }
+              ${!d.nf_numero && !d.nf_id_bling && d.order_id
+                ? `<button class="btn" style="background:#6a1b9a;" onclick="buscarNFRegistro('${d.id}', this)" title="Busca a NF desta venda no ML e no Bling (janela de datas) e vincula ao card">🔎 Buscar NF</button>`
+                : ''
+              }
               <button class="btn btn-verde" onclick="concluir('${d.id}')">✅ Marcar como concluido</button>
               <button class="btn btn-vermelho" onclick="deletar('${d.id}')" title="Deletar (caso erro)">🗑️</button>
             </div>
@@ -758,6 +762,27 @@
 
     function fecharModalGerarDevolucao() {
       document.getElementById('modalGerarDevolucao').style.display = 'none';
+    }
+
+    // v3.19 - Resgata a NF de um registro gravado sem NF ("NF: -").
+    // Chama o backend, que busca no ML + Bling (janela de datas) e grava.
+    async function buscarNFRegistro(devolucaoId, btn) {
+      const txtOriginal = btn ? btn.textContent : null;
+      if (btn) { btn.disabled = true; btn.textContent = '🔎 Buscando...'; }
+      try {
+        const r = await fetch(`/api/admin/buscar-nf/${devolucaoId}`, { method: 'POST' });
+        const d = await r.json();
+        if (d.ok) {
+          toast(`NF ${d.nf_numero}${d.nf_serie ? '/s' + d.nf_serie : ''} vinculada! (${d.via || 'ok'})`, 'ok');
+          carregar();
+        } else {
+          toast('NF não localizada: ' + (d.erro || 'sem detalhes'), 'err');
+          if (btn) { btn.disabled = false; btn.textContent = txtOriginal; }
+        }
+      } catch (e) {
+        toast('Erro ao buscar NF: ' + (e.message || e), 'err');
+        if (btn) { btn.disabled = false; btn.textContent = txtOriginal; }
+      }
     }
 
     async function confirmarGerarDevolucao(devolucaoId, idNFOriginalBling, nfNumero, emitir) {
