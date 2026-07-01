@@ -518,7 +518,7 @@ app.get('/api/devolucao/identificar/:codigo', async (req, res) => {
     if (order?.id) {
       console.log(`[BUSCA] ML sem NF, acionando busca BLINDADA pra order=${order.id}`);
       const rBlind = await buscarNFBlindada({
-        orderId: order.id,
+        orderIds: [order.id, order.pack_id || pack?.id || null],
         numeroNF: mlInvoice?.invoice_number || null,
         serieNF: mlInvoice?.invoice_serie || null,
         dataReferencia: order.date_created || null,
@@ -1613,9 +1613,10 @@ app.post('/api/admin/buscar-nf/:id', requerAdmin, async (req, res) => {
     // 2) Tenta invoice_data do ML (rapido, ja traz chave/serie)
     let nfInfo = null; // { numero, serie, chave, valor, dataEmissao, idBling, linkDanfe }
     let via = null;
-    const shipVenda = order?.shipping?.id || null;
-    if (shipVenda) {
-      const rNFML = await buscarNFnoML(shipVenda);
+
+    async function tentarInvoiceML(sid) {
+      if (!sid) return false;
+      const rNFML = await buscarNFnoML(sid);
       if (rNFML.ok && rNFML.data?.fiscal_key) {
         nfInfo = {
           numero: String(rNFML.data.invoice_number || ''),
@@ -1627,6 +1628,24 @@ app.post('/api/admin/buscar-nf/:id', requerAdmin, async (req, res) => {
           linkDanfe: `https://meudanfe.com.br/consulta/${rNFML.data.fiscal_key}`,
         };
         via = 'ml_invoice';
+        return true;
+      }
+      return false;
+    }
+
+    const shipVenda = order?.shipping?.id || null;
+    let achouML = await tentarInvoiceML(shipVenda);
+
+    // v3.19.1: venda de CARRINHO - a NF pode estar no shipment do PACK
+    if (!achouML) {
+      const packId = reg.pack_id || order?.pack_id || null;
+      if (packId) {
+        const rPack = await chamarML(`https://api.mercadolibre.com/packs/${packId}`);
+        const shipPack = rPack.ok ? rPack.data?.shipment?.id : null;
+        if (shipPack && String(shipPack) !== String(shipVenda || '')) {
+          achouML = await tentarInvoiceML(shipPack);
+          if (achouML) via = 'ml_invoice_pack';
+        }
       }
     }
 
@@ -1635,7 +1654,7 @@ app.post('/api/admin/buscar-nf/:id', requerAdmin, async (req, res) => {
     //    pro botao Gerar NF Devolucao usar o caminho rapido).
     const dataRef = order?.date_created || reg.created_at || null;
     const rBlind = await buscarNFBlindada({
-      orderId: reg.order_id,
+      orderIds: [reg.order_id, reg.pack_id || order?.pack_id || null],
       numeroNF: nfInfo?.numero || null,
       serieNF: nfInfo?.serie || null,
       dataReferencia: dataRef,
@@ -1655,9 +1674,10 @@ app.post('/api/admin/buscar-nf/:id', requerAdmin, async (req, res) => {
     }
 
     if (!nfInfo || !nfInfo.numero) {
+      const detalhe = (rBlind.tentado || []).join(' | ') || 'sem detalhes';
       return res.status(404).json({
         ok: false,
-        erro: 'NF nao localizada nem no ML nem no Bling',
+        erro: 'NF nao localizada no ML nem no Bling. Tentado: ' + detalhe,
         tentado: rBlind.tentado || [],
       });
     }
