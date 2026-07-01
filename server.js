@@ -818,6 +818,37 @@ app.get('/api/debug/bling-busca-nf/:orderId', async (req, res) => {
   res.json(r);
 });
 
+// v3.19 DEBUG: testa se obter-dados-devolucao funciona na API oficial
+// (api.bling.com.br + Bearer). Decide se dá pra o BACKEND buscar os dados
+// da devolucao (com os IDs reais dos itens) em vez da extensao.
+app.get('/api/debug/dados-devolucao-numero/:numero', async (req, res) => {
+  const numero = String(req.params.numero || '').trim();
+  try {
+    const rBusca = await buscarNFnoBlingPorNumero(numero, null, { maxPaginas: 50 });
+    if (!rBusca.ok || !rBusca.match) {
+      return res.json({ ok: false, etapa: 'buscar-numero', achou_nf: false });
+    }
+    const idNF = rBusca.match.id;
+    const url = `https://api.bling.com.br/Api/v3/nfe/${idNF}/obter-dados-devolucao/0`;
+    const r = await chamarBling(url);
+    return res.json({
+      ok: r.ok,
+      status: r.status,
+      idNF: String(idNF),
+      tem_data: !!r.data?.data,
+      tem_itens: !!(r.data?.data?.itens),
+      qtd_itens: r.data?.data?.itens ? Object.keys(r.data.data.itens).length : 0,
+      ids_itens: r.data?.data?.itens ? Object.keys(r.data.data.itens) : [],
+      dadosNota_id: r.data?.data?.dadosNota?.id || null,
+      idDeposito: r.data?.data?.dadosNota?.idDeposito || null,
+      devolucaoExistente: r.data?.data?.devolucaoExistente,
+      error: r.error || null,
+    });
+  } catch (e) {
+    return res.json({ ok: false, erro: e.message });
+  }
+});
+
 // ============================================================
 // CALLBACKS OAuth
 // ============================================================
