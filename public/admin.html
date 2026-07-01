@@ -731,20 +731,25 @@
       conteudo.innerHTML = `
         <h3 style="font-size:18px; margin-bottom:12px;">🧾 Gerar NF Devolução</h3>
         <p style="font-size:14px; color:#555; margin-bottom:16px;">
-          Vamos criar um <strong>rascunho</strong> de NF de devolução de entrada no Bling pra esta venda:
+          NF de devolução de entrada no Bling pra esta venda:
         </p>
         <div style="background:#f5f5f7; padding:12px; border-radius:8px; font-size:13px; margin-bottom:16px;">
           <div><strong>NF original:</strong> ${escapeHtml(nfNumero)}</div>
           <div><strong>Produto:</strong> ${escapeHtml(produtoTitulo)}</div>
         </div>
-        <p style="font-size:13px; color:#666; margin-bottom:16px;">
-          ⚠️ Após criar, <strong>você abre no Bling</strong>, revisa e transmite manualmente. O rascunho NÃO é transmitido pra SEFAZ automaticamente.
-        </p>
-        <div style="display:flex; gap:8px; justify-content:flex-end;">
+        <div style="background:#fff8e1; border:1px solid #ffe082; padding:12px; border-radius:8px; font-size:12.5px; color:#795548; margin-bottom:18px;">
+          🧪 <strong>Criar rascunho</strong>: cria a NF no Bling mas NÃO emite (você confere e emite depois).<br>
+          🧾 <strong>Gerar + Emitir</strong>: cria E transmite pra SEFAZ automaticamente (irreversível).
+        </div>
+        <div style="display:flex; gap:8px; justify-content:flex-end; flex-wrap:wrap;">
           <button class="btn btn-cinza" onclick="fecharModalGerarDevolucao()">Cancelar</button>
-          <button class="btn btn-verde" id="btnConfirmarGerar"
-            onclick="confirmarGerarDevolucao('${devolucaoId}', '${idNFOriginalBling}')">
-            Criar Rascunho
+          <button class="btn" style="background:#455a64; color:#fff;" id="btnGerarRascunho"
+            onclick="confirmarGerarDevolucao('${devolucaoId}', '${idNFOriginalBling}', false)">
+            🧪 Criar rascunho
+          </button>
+          <button class="btn btn-verde" id="btnGerarEmitir"
+            onclick="confirmarGerarDevolucao('${devolucaoId}', '${idNFOriginalBling}', true)">
+            🧾 Gerar + Emitir NF
           </button>
         </div>
       `;
@@ -755,54 +760,35 @@
       document.getElementById('modalGerarDevolucao').style.display = 'none';
     }
 
-    async function confirmarGerarDevolucao(devolucaoId, idNFOriginalBling) {
-      const btn = document.getElementById('btnConfirmarGerar');
+    async function confirmarGerarDevolucao(devolucaoId, idNFOriginalBling, emitir) {
       const conteudo = document.getElementById('modalGerarConteudo');
+      const acao = emitir ? 'Gerando + emitindo NF' : 'Criando rascunho';
 
       // Loading
       conteudo.innerHTML = `
-        <h3 style="font-size:18px; margin-bottom:12px;">🧾 Gerando NF Devolução...</h3>
+        <h3 style="font-size:18px; margin-bottom:12px;">🧾 ${acao}...</h3>
         <div style="text-align:center; padding:30px;">
           <div class="spinner" style="display:inline-block; width:36px; height:36px; border:4px solid #f0f0f0; border-top-color:#1565c0; border-radius:50%; animation:spin 0.8s linear infinite;"></div>
           <p id="statusGerar" style="margin-top:14px; color:#555; font-size:14px;">
-            Buscando dados da NF no Bling...
+            Falando com o Bling (via extensão)...
           </p>
         </div>
       `;
 
       try {
-        // PASSO 1: Backend busca dados da NF original via API v3 oficial
-        const r1 = await fetch(`/api/admin/preparar-devolucao/${idNFOriginalBling}`);
-        const d1 = await r1.json();
-        if (!d1.ok) {
-          throw new Error(d1.erro || 'Falha ao buscar dados da NF no Bling');
-        }
-        const { produtos, contato } = d1;
-        if (!produtos || produtos.length === 0) {
-          throw new Error('NF sem produtos');
-        }
-        if (!contato || !contato.id) {
-          throw new Error('NF sem dados do contato');
-        }
-
-        // PASSO 2: Monta XML xajax e pede pra extensao Bridge chamar o Bling
-        // (extensao tem privilegios pra burlar CORS)
-        document.getElementById('statusGerar').textContent = 'Criando rascunho no Bling (via extensão)...';
-
-        const xml = montarXmlDevolucao(produtos, contato);
-
-        // Verifica se a extensao Bridge esta instalada
+        // Verifica se a extensao Bridge esta instalada/atualizada
         if (!await verificarBridgeInstalada()) {
           throw new Error(
             'Extensão "GOOD Devoluções Bridge" não detectada. ' +
-            'Instale a extensão e recarregue a página. ' +
-            'Veja README pra instalação.'
+            'Instale/atualize a extensão e recarregue a página (Ctrl+Shift+R).'
           );
         }
 
+        // A Bridge faz TUDO: busca os dados de devolucao (com IDs reais dos itens),
+        // valida duplicata, cria a NF e (se emitir) transmite pra SEFAZ.
         const result = await chamarBlingViaBridge({
           idNFOriginal: String(idNFOriginalBling),
-          xmlXajax: xml,
+          emitir: !!emitir,
         });
 
         if (!result || !result.idNotaDevolucao) {
@@ -811,10 +797,10 @@
 
         const idNFDevolucao = result.idNotaDevolucao;
         const numeroNF = result.numero || '?';
+        const emitida = !!result.emitida;
 
-        // PASSO 3: Salva no Supabase pra nao gerar de novo
+        // Registra no Supabase pra nao gerar de novo (nao critico)
         document.getElementById('statusGerar').textContent = 'Registrando no sistema...';
-
         try {
           await fetch(`/api/admin/registrar-devolucao-gerada/${devolucaoId}`, {
             method: 'PUT',
@@ -828,29 +814,30 @@
           console.warn('Falha ao registrar no Supabase (nao critico):', e);
         }
 
-        // PASSO 4: Mostra sucesso
+        // Mostra sucesso (rascunho x emitida)
         const linkBling = `https://www.bling.com.br/notas.entrada.php#edit/${idNFDevolucao}`;
+        const tituloOk = emitida ? '✅ NF de devolução emitida!' : '✅ Rascunho criado!';
+        const selo = emitida
+          ? `<strong>NF nº ${escapeHtml(String(numeroNF))}</strong> emitida e <strong>autorizada pela SEFAZ</strong>. 🎉`
+          : `<strong>NF nº ${escapeHtml(String(numeroNF))}</strong> criada como <strong>rascunho</strong> (ainda NÃO transmitida).`;
+        const proximos = emitida
+          ? 'Pronto! A devolução de entrada já está autorizada no Bling.'
+          : 'Confira no Bling se o produto veio certo. Se estiver ok, dá pra emitir por lá — ou usar o botão "Gerar + Emitir".';
         conteudo.innerHTML = `
-          <h3 style="font-size:18px; margin-bottom:12px; color:#2e7d32;">✅ Rascunho criado!</h3>
+          <h3 style="font-size:18px; margin-bottom:12px; color:#2e7d32;">${tituloOk}</h3>
           <div style="background:#e8f5e9; padding:14px; border-radius:8px; margin-bottom:16px;">
-            <div style="font-size:14px; color:#1b5e20;">
-              <strong>NF nº ${escapeHtml(String(numeroNF))}</strong> criada como <strong>rascunho</strong> no Bling.
-            </div>
-            <div style="font-size:12px; color:#388e3c; margin-top:6px;">
-              ID: ${idNFDevolucao}
-            </div>
+            <div style="font-size:14px; color:#1b5e20;">${selo}</div>
+            <div style="font-size:12px; color:#388e3c; margin-top:6px;">ID: ${idNFDevolucao}</div>
           </div>
-          <p style="font-size:13px; color:#555; margin-bottom:16px;">
-            Próximos passos: abrir no Bling, revisar dados, e clicar em <strong>Salvar/Transmitir</strong>.
-          </p>
+          <p style="font-size:13px; color:#555; margin-bottom:16px;">${proximos}</p>
           <div style="display:flex; gap:8px; justify-content:flex-end; flex-wrap:wrap;">
             <button class="btn btn-cinza" onclick="fecharModalGerarDevolucao()">Fechar</button>
             <a class="btn btn-verde" href="${linkBling}" target="_blank" onclick="setTimeout(()=>{ fecharModalGerarDevolucao(); carregar(); }, 500)">
-              🔗 Abrir Rascunho no Bling
+              🔗 Abrir no Bling
             </a>
           </div>
         `;
-        toast('Rascunho criado: NF nº ' + numeroNF, 'ok');
+        toast((emitida ? 'NF emitida: nº ' : 'Rascunho criado: nº ') + numeroNF, 'ok');
 
       } catch (err) {
         console.error('Erro gerar devolucao:', err);
@@ -1023,11 +1010,11 @@
           payload,
         }, '*');
 
-        // Timeout de 30s pro Bling responder
+        // Timeout de 45s (obter-dados + salvar + emitir pode demorar)
         timeout = setTimeout(() => {
           window.removeEventListener('message', handler);
-          reject(new Error('Timeout - Bling demorou mais de 30s pra responder'));
-        }, 30000);
+          reject(new Error('Timeout - Bling demorou mais de 45s pra responder'));
+        }, 45000);
       });
     }
 
