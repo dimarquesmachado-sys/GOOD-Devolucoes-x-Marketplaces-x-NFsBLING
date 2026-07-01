@@ -794,7 +794,7 @@ app.get('/api/debug/bling-nfe-cru/:idNFe', async (req, res) => {
 // v3.4: ver primeira pagina de NFs (pra debug)
 app.get('/api/debug/bling-nfe-primeira-pagina', async (req, res) => {
   const limite = req.query.limite || 20;
-  const r = await chamarBling(`https://www.bling.com.br/Api/v3/nfe?limite=${limite}&pagina=1&tipo=1`);
+  const r = await chamarBling(`https://api.bling.com.br/Api/v3/nfe?limite=${limite}&pagina=1&tipo=1`);
   if (r.ok && r.data?.data) {
     const resumo = r.data.data.map(nf => ({
       id: nf.id,
@@ -1567,7 +1567,7 @@ app.get('/api/admin/preparar-devolucao/:idBling', requerAdmin, async (req, res) 
 
   try {
     // Busca a NF completa via API v3 oficial
-    const url = `https://www.bling.com.br/Api/v3/nfe/${idBling}`;
+    const url = `https://api.bling.com.br/Api/v3/nfe/${idBling}`;
     const r = await chamarBling(url);
 
     if (!r.ok) {
