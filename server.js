@@ -1580,6 +1580,80 @@ async function buscarIdMunicipioPorCep(cep) {
 // ============================================================
 // v3.19 (Fase 3B) - Resolve o ID interno do Bling pelo numero da NF
 // ============================================================
+// v3.20.1 - VINCULAR DEVOLUCAO JA EXISTENTE no Bling
+// ============================================================
+// Quando a NF de devolucao foi criada mas o resultado se perdeu
+// (timeout do painel), o card fica "orfao". Esta rota procura a
+// NF de ENTRADA (tipo=0) com a natureza de devolucao da GOOD na
+// janela recente, casa por nome do comprador OU valor, e grava.
+app.post('/api/admin/vincular-devolucao-existente/:id', requerAdmin, async (req, res) => {
+  if (!supabase) return res.status(500).json({ ok: false, erro: 'Supabase nao configurado' });
+  const NATUREZA_DEVOLUCAO_GOOD = '5776118802';
+  try {
+    const { data: reg, error: errReg } = await supabase
+      .from('devolucoes')
+      .select('*')
+      .eq('id', req.params.id)
+      .single();
+    if (errReg || !reg) return res.status(404).json({ ok: false, erro: 'Registro nao encontrado' });
+    if (reg.nf_devolucao_id_bling) {
+      return res.json({ ok: true, ja_tinha: true, nf_devolucao_numero: reg.nf_devolucao_numero });
+    }
+
+    // Janela: da criacao do registro (menos 1 dia) ate amanha
+    const f = (d) => d.toISOString().slice(0, 10);
+    const iniData = reg.created_at ? new Date(new Date(reg.created_at).getTime() - 864e5) : new Date(Date.now() - 30 * 864e5);
+    const ini = f(iniData);
+    const fim = f(new Date(Date.now() + 864e5));
+
+    const nomeBusca = String(reg.buyer_nome || '').trim().toLowerCase();
+    const valorEsperado = (Number(reg.produto_valor_unit) || 0) * (Number(reg.produto_qtd) || 1);
+
+    const candidatos = [];
+    for (let pg = 1; pg <= 4; pg++) {
+      if (pg > 1) await sleep(400);
+      const url = `https://api.bling.com.br/Api/v3/nfe?limite=100&pagina=${pg}&tipo=0&dataEmissaoInicial=${ini}&dataEmissaoFinal=${fim}`;
+      const r = await chamarBling(url);
+      if (!r.ok) break;
+      const lista = r.data?.data || [];
+      if (lista.length === 0) break;
+      for (const nf of lista) {
+        if (String(nf.naturezaOperacao?.id || '') !== NATUREZA_DEVOLUCAO_GOOD) continue;
+        const nomeNF = String(nf.contato?.nome || '').toLowerCase();
+        const bateNome = nomeBusca && nomeNF.includes(nomeBusca);
+        const bateValor = valorEsperado > 0 && nf.valorNota != null &&
+          Math.abs(Number(nf.valorNota) - valorEsperado) < 0.05;
+        if (bateNome || bateValor) candidatos.push(nf);
+      }
+      if (lista.length < 100) break;
+    }
+
+    if (candidatos.length === 0) {
+      return res.status(404).json({ ok: false, erro: 'Nenhuma NF de devolucao correspondente achada no Bling (janela ' + ini + '..' + fim + ')' });
+    }
+
+    // Mais recente primeiro
+    candidatos.sort((a, b) => new Date(b.dataEmissao || 0) - new Date(a.dataEmissao || 0));
+    const nf = candidatos[0];
+
+    const { error: errUpd } = await supabase
+      .from('devolucoes')
+      .update({
+        nf_devolucao_id_bling: String(nf.id),
+        nf_devolucao_numero: String(nf.numero || ''),
+      })
+      .eq('id', req.params.id);
+    if (errUpd) return res.status(500).json({ ok: false, erro: 'Achei a NF ' + nf.numero + ' mas falhou ao gravar: ' + errUpd.message });
+
+    console.log(`[VINCULAR-DEV] ${req.params.id}: NF devolucao ${nf.numero} (id ${nf.id}) vinculada (${candidatos.length} candidata(s))`);
+    return res.json({ ok: true, nf_devolucao_numero: String(nf.numero || ''), nf_devolucao_id_bling: String(nf.id), candidatas: candidatos.length });
+  } catch (e) {
+    console.error('[VINCULAR-DEV] erro:', e);
+    return res.status(500).json({ ok: false, erro: e.message || 'erro interno' });
+  }
+});
+
+// ============================================================
 // v3.19.2 - RAIO-X do resgate de NF (dry-run, abre no navegador)
 // GET /api/debug/resgate-nf/:orderId
 // Roda o MESMO fluxo do resgate mas NAO grava nada - mostra cada
