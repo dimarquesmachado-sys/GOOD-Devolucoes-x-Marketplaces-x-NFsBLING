@@ -1580,6 +1580,93 @@ async function buscarIdMunicipioPorCep(cep) {
 // ============================================================
 // v3.19 (Fase 3B) - Resolve o ID interno do Bling pelo numero da NF
 // ============================================================
+// v3.19.2 - RAIO-X do resgate de NF (dry-run, abre no navegador)
+// GET /api/debug/resgate-nf/:orderId
+// Roda o MESMO fluxo do resgate mas NAO grava nada - mostra cada
+// passo (ML invoice, pack, blindada com trace) pra diagnostico.
+// ============================================================
+app.get('/api/debug/resgate-nf/:orderId', async (req, res) => {
+  const orderIdParam = String(req.params.orderId || '').trim();
+  const saida = { orderId: orderIdParam };
+  try {
+    // Registro no Supabase (se existir)
+    let reg = null;
+    if (supabase) {
+      const { data } = await supabase
+        .from('devolucoes')
+        .select('id, order_id, pack_id, nf_numero, nf_id_bling, created_at')
+        .eq('order_id', orderIdParam)
+        .order('created_at', { ascending: false })
+        .limit(1);
+      reg = data && data[0] ? data[0] : null;
+    }
+    saida.registro = reg;
+
+    // Order no ML
+    let order = null;
+    const rOrder = await chamarML(`https://api.mercadolibre.com/orders/${orderIdParam}`);
+    if (rOrder.ok) order = rOrder.data;
+    saida.order_ml = order ? {
+      date_created: order.date_created,
+      pack_id: order.pack_id || null,
+      shipping_id: order.shipping?.id || null,
+      tags: order.tags || [],
+      fulfillment: (order.tags || []).some(t => String(t).includes('fulfillment')) || order.shipping?.logistic_type === 'fulfillment',
+    } : { erro: rOrder.status || 'sem resposta' };
+
+    // ML invoice_data (shipment da venda)
+    const shipVenda = order?.shipping?.id || null;
+    if (shipVenda) {
+      const rNF = await buscarNFnoML(shipVenda);
+      saida.ml_invoice_venda = {
+        shipment: shipVenda, ok: rNF.ok, status: rNF.status,
+        invoice_number: rNF.data?.invoice_number || null,
+        invoice_serie: rNF.data?.invoice_serie || null,
+        tem_fiscal_key: !!rNF.data?.fiscal_key,
+      };
+    } else saida.ml_invoice_venda = { erro: 'order sem shipping.id' };
+
+    // ML invoice_data (shipment do PACK)
+    const packId = reg?.pack_id || order?.pack_id || null;
+    if (packId) {
+      const rPack = await chamarML(`https://api.mercadolibre.com/packs/${packId}`);
+      const shipPack = rPack.ok ? rPack.data?.shipment?.id : null;
+      if (shipPack && String(shipPack) !== String(shipVenda || '')) {
+        const rNF2 = await buscarNFnoML(shipPack);
+        saida.ml_invoice_pack = {
+          shipment: shipPack, ok: rNF2.ok, status: rNF2.status,
+          invoice_number: rNF2.data?.invoice_number || null,
+          tem_fiscal_key: !!rNF2.data?.fiscal_key,
+        };
+      } else saida.ml_invoice_pack = { shipment: shipPack, igual_ao_da_venda: true };
+    }
+
+    // Blindada (dry-run)
+    const rBlind = await buscarNFBlindada({
+      orderIds: [orderIdParam, packId],
+      numeroNF: saida.ml_invoice_venda?.invoice_number || null,
+      serieNF: saida.ml_invoice_venda?.invoice_serie || null,
+      dataReferencia: order?.date_created || reg?.created_at || null,
+    });
+    saida.blindada = {
+      ok: rBlind.ok,
+      via: rBlind.via || null,
+      nf_numero: rBlind.nf?.numero || null,
+      nf_serie: rBlind.nf?.serie || null,
+      nf_id_bling: rBlind.idNF || null,
+      numeroPedidoLoja_na_nf: rBlind.nf?.numeroPedidoLoja || null,
+      tentado: rBlind.tentado || null,
+      trace: rBlind.trace || null,
+    };
+
+    return res.json(saida);
+  } catch (e) {
+    saida.erro = e.message || String(e);
+    return res.status(500).json(saida);
+  }
+});
+
+// ============================================================
 // v3.19 - RESGATE DE NF pra registros gravados sem NF ("NF: -")
 // ============================================================
 // Fluxo: le o registro -> busca a order no ML (data + shipment da
