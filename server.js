@@ -830,12 +830,24 @@ app.get('/api/debug/dados-devolucao-numero/:numero', async (req, res) => {
       return res.json({ ok: false, etapa: 'buscar-numero', achou_nf: false });
     }
     const idNF = rBusca.match.id;
-    const url = `https://api.bling.com.br/Api/v3/nfe/${idNF}/obter-dados-devolucao/0`;
+
+    // Descobre o idLoja pela API v3 (a NF individual traz "loja").
+    // Esse e o valor que vai no ULTIMO segmento do obter-dados-devolucao.
+    const rNFind = await buscarNFePorId(idNF);
+    const lojaId = rNFind.ok ? (rNFind.data?.data?.loja?.id ?? null) : null;
+
+    // Testa o obter-dados-devolucao via API oficial (Bearer) COM o idLoja real.
+    // Esperado: 403 - esse endpoint e INTERNO (so cookie/sessao no www), nao e
+    // exposto a apps de API. Serve so pra confirmar (a extensao e quem chama de verdade).
+    const seg = lojaId != null ? String(lojaId) : '0';
+    const url = `https://api.bling.com.br/Api/v3/nfe/${idNF}/obter-dados-devolucao/${seg}`;
     const r = await chamarBling(url);
     return res.json({
       ok: r.ok,
       status: r.status,
       idNF: String(idNF),
+      idLoja_apiV3: lojaId != null ? String(lojaId) : null,
+      url_testada: url,
       tem_data: !!r.data?.data,
       tem_itens: !!(r.data?.data?.itens),
       qtd_itens: r.data?.data?.itens ? Object.keys(r.data.data.itens).length : 0,
@@ -1588,21 +1600,51 @@ async function buscarIdMunicipioPorCep(cep) {
 // que o endpoint obter-dados-devolucao precisa.
 app.get('/api/admin/resolver-id-nf', requerAdmin, async (req, res) => {
   const numero = String(req.query.numero || '').trim();
+  const idParam = String(req.query.id || '').trim();
   const data = req.query.data || null;
-  if (!numero) return res.status(400).json({ ok: false, erro: 'numero da NF obrigatorio' });
+  if (!numero && !idParam) {
+    return res.status(400).json({ ok: false, erro: 'numero ou id da NF obrigatorio' });
+  }
 
   try {
-    const r = await buscarNFnoBlingPorNumero(numero, data, { maxPaginas: 50 });
-    if (!r.ok) {
-      return res.status(502).json({ ok: false, erro: 'Erro ao consultar o Bling ao buscar a NF' });
+    let idBling = idParam;
+    let numeroNF = numero;
+    let idLoja = null;
+
+    // Se nao veio o id interno, descobre pelo numero (varre /nfe)
+    if (!idBling) {
+      const r = await buscarNFnoBlingPorNumero(numero, data, { maxPaginas: 50 });
+      if (!r.ok) {
+        return res.status(502).json({ ok: false, erro: 'Erro ao consultar o Bling ao buscar a NF' });
+      }
+      if (!r.match) {
+        return res.status(404).json({
+          ok: false,
+          erro: `NF ${numero} nao encontrada nas ultimas ${r.totalScanned || 0} NFs do Bling`,
+        });
+      }
+      idBling = String(r.match.id);
+      numeroNF = r.match.numero;
+      if (r.match.loja && r.match.loja.id != null) idLoja = String(r.match.loja.id);
     }
-    if (!r.match) {
-      return res.status(404).json({
-        ok: false,
-        erro: `NF ${numero} nao encontrada nas ultimas ${r.totalScanned || 0} NFs do Bling`,
-      });
+
+    // Garante o idLoja: busca a NF individual (GET /nfe/{id}), que traz "loja".
+    // Esse idLoja e o ULTIMO segmento do obter-dados-devolucao - a extensao precisa dele.
+    if (!idLoja && idBling) {
+      const rNF = await buscarNFePorId(idBling);
+      const nf = rNF.ok ? rNF.data?.data : null;
+      if (nf) {
+        if (nf.loja && nf.loja.id != null) idLoja = String(nf.loja.id);
+        if (!numeroNF && nf.numero) numeroNF = nf.numero;
+      }
     }
-    return res.json({ ok: true, idBling: String(r.match.id), numero: r.match.numero });
+
+    return res.json({
+      ok: true,
+      idBling: String(idBling),
+      numero: numeroNF || null,
+      idLoja: idLoja || null,
+    });
   } catch (e) {
     console.error('[resolver-id-nf] erro:', e);
     return res.status(500).json({ ok: false, erro: e.message || 'erro interno' });
