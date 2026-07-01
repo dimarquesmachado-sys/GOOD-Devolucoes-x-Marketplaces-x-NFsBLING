@@ -1524,6 +1524,35 @@ async function buscarIdMunicipioPorCep(cep) {
 }
 
 // ============================================================
+// v3.19 (Fase 3B) - Resolve o ID interno do Bling pelo numero da NF
+// ============================================================
+// Usado quando a devolucao tem nf_numero mas NAO tem nf_id_bling salvo.
+// O botao "Gerar NF Devolucao" chama isto pra descobrir o ID interno
+// que o endpoint obter-dados-devolucao precisa.
+app.get('/api/admin/resolver-id-nf', requerAdmin, async (req, res) => {
+  const numero = String(req.query.numero || '').trim();
+  const data = req.query.data || null;
+  if (!numero) return res.status(400).json({ ok: false, erro: 'numero da NF obrigatorio' });
+
+  try {
+    const r = await buscarNFnoBlingPorNumero(numero, data, { maxPaginas: 50 });
+    if (!r.ok) {
+      return res.status(502).json({ ok: false, erro: 'Erro ao consultar o Bling ao buscar a NF' });
+    }
+    if (!r.match) {
+      return res.status(404).json({
+        ok: false,
+        erro: `NF ${numero} nao encontrada nas ultimas ${r.totalScanned || 0} NFs do Bling`,
+      });
+    }
+    return res.json({ ok: true, idBling: String(r.match.id), numero: r.match.numero });
+  } catch (e) {
+    console.error('[resolver-id-nf] erro:', e);
+    return res.status(500).json({ ok: false, erro: e.message || 'erro interno' });
+  }
+});
+
+// ============================================================
 // v3.15.0 (Fase 3B) - Preparar dados pra gerar NF Devolucao no Bling
 // ============================================================
 // Frontend (admin.html) chama esse endpoint pra obter os dados completos
