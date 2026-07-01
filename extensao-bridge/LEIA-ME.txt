@@ -1,0 +1,9 @@
+GOOD Devoluções Bridge - v1.4.1 (backup)
+Como reinstalar no Edge:
+1. Baixe manifest.json, content.js e background.js numa pasta do PC
+2. Edge -> edge://extensions -> ligue "Modo de desenvolvedor"
+3. Botão "Carregar sem compactação" -> escolha a pasta
+4. Use com uma aba do www.bling.com.br aberta e logada
+Crachá da API: x-api-revision 3.1.0
+(se o Bling mudar a versão: 3 pontinhos -> Gerar devolução -> Cancelar,
+e clicar de novo no painel - a extensão copia o crachá novo sozinha)
