@@ -30,6 +30,7 @@ const buscarPedidoBlingPorId = blingClient.buscarPedidoBlingPorId;
 const buscarNFePorId = blingClient.buscarNFePorId;
 const buscarNFnoBlingPorNumero = blingClient.buscarNFnoBlingPorNumero;
 const buscarNFnoBlingPorOrderId = blingClient.buscarNFnoBlingPorOrderId;
+const buscarNFBlindada = blingClient.buscarNFBlindada;
 const buscarProdutoBlingPorSku = blingClient.buscarProdutoBlingPorSku;
 const trocarCodePorTokenBling = blingClient.trocarCodePorTokenBling;
 const chamarML = mlClient.chamarML;
@@ -446,11 +447,13 @@ app.get('/api/devolucao/identificar/:codigo', async (req, res) => {
   // Se falhar, frontend mostra botao "Buscar links Bling" sob demanda
   // ============================================================
   let nfData = null;
+  let mlInvoice = null; // v3.19: guarda numero/serie do ML mesmo sem fiscal_key
 
   const shipmentOriginalId = order?.shipping?.id || (!ehDevolucao ? shipment?.id : null);
 
   if (shipmentOriginalId) {
     const rNFML = await buscarNFnoML(shipmentOriginalId);
+    if (rNFML.ok && rNFML.data) mlInvoice = rNFML.data;
     resultado.tentativas.push({
       tipo: 'ml_invoice_data',
       codigo: shipmentOriginalId,
@@ -510,79 +513,61 @@ app.get('/api/devolucao/identificar/:codigo', async (req, res) => {
   }
 
   if (!nfData) {
-    // NOVO v3.13.1: buscar via /pedidos/vendas (que tem numeroLoja na listagem)
-    // depois pega a NF associada ao pedido. Funciona pra NFs canceladas tambem.
+    // v3.19 BLINDADA: busca por JANELA DE DATAS da venda (rapida e a prova
+    // de serie 1/2). Substitui a varredura antiga de 50 paginas sem filtro.
     if (order?.id) {
-      console.log(`[BUSCA] ML sem NF, tentando Bling via /pedidos/vendas pra order=${order.id}`);
-      const dataRef = order.date_created || null;
-      const rPedido = await buscarPedidoBlingPorNumeroLoja(String(order.id), dataRef, { maxPaginas: 50 });
-
-      resultado.tentativas.push({
-        tipo: 'bling_auto_pedidos',
-        codigo: order.id,
-        ok: rPedido.ok,
-        status: rPedido.match ? 200 : 404,
-        paginas_verificadas: rPedido.pagina,
-        total_scanned: rPedido.totalScanned,
+      console.log(`[BUSCA] ML sem NF, acionando busca BLINDADA pra order=${order.id}`);
+      const rBlind = await buscarNFBlindada({
+        orderId: order.id,
+        numeroNF: mlInvoice?.invoice_number || null,
+        serieNF: mlInvoice?.invoice_serie || null,
+        dataReferencia: order.date_created || null,
       });
 
-      if (rPedido.ok && rPedido.match) {
-        // Pedido achado - busca detalhes completos pra ter NF associada
-        await sleep(400);
-        const rPedFull = await buscarPedidoBlingPorId(rPedido.match.id);
-        const pedidoFull = rPedFull.ok ? rPedFull.data?.data : null;
+      resultado.tentativas.push({
+        tipo: 'bling_blindada',
+        codigo: order.id,
+        ok: rBlind.ok,
+        via: rBlind.via || null,
+        tentado: rBlind.tentado || null,
+      });
 
-        // O pedido pode ter notaFiscal associada
-        const notaFiscalRef = pedidoFull?.notaFiscal;
-        const idNF = notaFiscalRef?.id || rPedido.match?.notaFiscal?.id;
+      if (rBlind.ok && rBlind.nf) {
+        const nf = rBlind.nf;
+        const itensBling = Array.isArray(nf.itens) ? nf.itens.map(it => ({
+          titulo: it.descricao || null,
+          sku: it.codigo || null,
+          ean: it.gtin || null,
+          quantidade: it.quantidade || null,
+          valor: it.valor || null,
+          unidade: it.unidade || null,
+        })) : [];
 
-        if (idNF) {
-          await sleep(400);
-          const rCompleta = await buscarNFePorId(idNF);
-          const nf = (rCompleta.ok && rCompleta.data?.data) ? rCompleta.data.data : null;
+        nfData = {
+          fonte: 'bling',
+          numero: nf.numero,
+          serie: nf.serie,
+          chaveAcesso: nf.chaveAcesso,
+          valor: nf.valorNota,
+          dataEmissao: nf.dataEmissao,
+          linkDanfe: nf.linkDanfe,
+          linkPdf: nf.linkPDF,
+          linkXml: nf.xml,
+          idBling: nf.id,
+          numeroPedidoLoja: nf.numeroPedidoLoja,
+          situacao: nf.situacao,
+          itens: itensBling,
+        };
 
-          if (nf) {
-            const itensBling = Array.isArray(nf.itens) ? nf.itens.map(it => ({
-              titulo: it.descricao || null,
-              sku: it.codigo || null,
-              ean: it.gtin || null,
-              quantidade: it.quantidade || null,
-              valor: it.valor || null,
-              unidade: it.unidade || null,
-            })) : [];
-
-            nfData = {
-              fonte: 'bling',
-              numero: nf.numero,
-              serie: nf.serie,
-              chaveAcesso: nf.chaveAcesso,
-              valor: nf.valorNota,
-              dataEmissao: nf.dataEmissao,
-              linkDanfe: nf.linkDanfe,
-              linkPdf: nf.linkPDF,
-              linkXml: nf.xml,
-              idBling: nf.id,
-              numeroPedidoLoja: nf.numeroPedidoLoja,
-              situacao: nf.situacao,
-              itens: itensBling,
-            };
-
-            resultado.avisos.push({
-              tipo: 'nf_via_bling_pedidos',
-              mensagem: `NF ${nf.numero} (situacao=${nf.situacao}) achada via pedido Bling ${rPedido.match.id}`,
-            });
-            console.log(`[BUSCA] Bling pedidos SUCESSO: NF=${nf.numero} situacao=${nf.situacao}`);
-          }
-        } else {
-          resultado.avisos.push({
-            tipo: 'pedido_sem_nf',
-            mensagem: `Pedido Bling ${rPedido.match.id} achado mas sem NF associada`,
-          });
-        }
+        resultado.avisos.push({
+          tipo: 'nf_via_blindada',
+          mensagem: `NF ${nf.numero} achada via busca blindada (${rBlind.via})`,
+        });
+        console.log(`[BUSCA] BLINDADA SUCESSO: NF=${nf.numero} via=${rBlind.via}`);
       } else {
         resultado.avisos.push({
           tipo: 'sem_nf',
-          mensagem: `NF-e nao localizada via /pedidos/vendas (${rPedido.totalScanned || 0} pedidos verificados)`,
+          mensagem: `NF-e nao localizada nem pela busca blindada (${(rBlind.tentado || []).join(' | ')})`,
         });
       }
     } else {
@@ -1594,6 +1579,114 @@ async function buscarIdMunicipioPorCep(cep) {
 
 // ============================================================
 // v3.19 (Fase 3B) - Resolve o ID interno do Bling pelo numero da NF
+// ============================================================
+// v3.19 - RESGATE DE NF pra registros gravados sem NF ("NF: -")
+// ============================================================
+// Fluxo: le o registro -> busca a order no ML (data + shipment da
+// venda) -> tenta invoice_data do ML -> se falhar, busca BLINDADA
+// no Bling (janela de datas) -> grava nf_* no registro.
+app.post('/api/admin/buscar-nf/:id', requerAdmin, async (req, res) => {
+  if (!supabase) return res.status(500).json({ ok: false, erro: 'Supabase nao configurado' });
+  const devId = req.params.id;
+
+  try {
+    const { data: reg, error: errReg } = await supabase
+      .from('devolucoes')
+      .select('*')
+      .eq('id', devId)
+      .single();
+    if (errReg || !reg) {
+      return res.status(404).json({ ok: false, erro: 'Registro nao encontrado' });
+    }
+    if (reg.nf_numero) {
+      return res.json({ ok: true, ja_tinha: true, nf_numero: reg.nf_numero });
+    }
+    if (!reg.order_id) {
+      return res.status(400).json({ ok: false, erro: 'Registro sem order_id - nao da pra localizar a NF automaticamente' });
+    }
+
+    // 1) Order no ML: da a data da venda e o shipment ORIGINAL
+    let order = null;
+    const rOrder = await chamarML(`https://api.mercadolibre.com/orders/${reg.order_id}`);
+    if (rOrder.ok) order = rOrder.data;
+
+    // 2) Tenta invoice_data do ML (rapido, ja traz chave/serie)
+    let nfInfo = null; // { numero, serie, chave, valor, dataEmissao, idBling, linkDanfe }
+    let via = null;
+    const shipVenda = order?.shipping?.id || null;
+    if (shipVenda) {
+      const rNFML = await buscarNFnoML(shipVenda);
+      if (rNFML.ok && rNFML.data?.fiscal_key) {
+        nfInfo = {
+          numero: String(rNFML.data.invoice_number || ''),
+          serie: rNFML.data.invoice_serie != null ? String(rNFML.data.invoice_serie) : null,
+          chave: rNFML.data.fiscal_key,
+          valor: rNFML.data.invoice_amount || null,
+          dataEmissao: rNFML.data.invoice_date || null,
+          idBling: null,
+          linkDanfe: `https://meudanfe.com.br/consulta/${rNFML.data.fiscal_key}`,
+        };
+        via = 'ml_invoice';
+      }
+    }
+
+    // 3) BLINDADA no Bling (janela de datas da venda) - acha o id Bling
+    //    Roda mesmo se o ML deu a NF, pra vincular o nf_id_bling (necessario
+    //    pro botao Gerar NF Devolucao usar o caminho rapido).
+    const dataRef = order?.date_created || reg.created_at || null;
+    const rBlind = await buscarNFBlindada({
+      orderId: reg.order_id,
+      numeroNF: nfInfo?.numero || null,
+      serieNF: nfInfo?.serie || null,
+      dataReferencia: dataRef,
+    });
+    if (rBlind.ok && rBlind.nf) {
+      const nf = rBlind.nf;
+      nfInfo = {
+        numero: String(nf.numero || nfInfo?.numero || ''),
+        serie: nf.serie != null ? String(nf.serie) : (nfInfo?.serie || null),
+        chave: nf.chaveAcesso || nfInfo?.chave || null,
+        valor: nf.valorNota || nfInfo?.valor || null,
+        dataEmissao: nf.dataEmissao || nfInfo?.dataEmissao || null,
+        idBling: nf.id ? String(nf.id) : null,
+        linkDanfe: nf.linkDanfe || nfInfo?.linkDanfe || (nf.chaveAcesso ? `https://meudanfe.com.br/consulta/${nf.chaveAcesso}` : null),
+      };
+      via = via ? via + '+' + rBlind.via : rBlind.via;
+    }
+
+    if (!nfInfo || !nfInfo.numero) {
+      return res.status(404).json({
+        ok: false,
+        erro: 'NF nao localizada nem no ML nem no Bling',
+        tentado: rBlind.tentado || [],
+      });
+    }
+
+    // 4) Grava no registro
+    const { error: errUpd } = await supabase
+      .from('devolucoes')
+      .update({
+        nf_numero: nfInfo.numero,
+        nf_serie: nfInfo.serie,
+        nf_chave: nfInfo.chave,
+        nf_valor: nfInfo.valor,
+        nf_data_emissao: nfInfo.dataEmissao,
+        nf_id_bling: nfInfo.idBling,
+        nf_link_danfe: nfInfo.linkDanfe,
+      })
+      .eq('id', devId);
+    if (errUpd) {
+      return res.status(500).json({ ok: false, erro: 'Achei a NF mas falhou ao gravar: ' + errUpd.message });
+    }
+
+    console.log(`[RESGATE-NF] ${devId}: NF ${nfInfo.numero}${nfInfo.serie ? '/s' + nfInfo.serie : ''} via ${via}`);
+    return res.json({ ok: true, via, nf_numero: nfInfo.numero, nf_serie: nfInfo.serie, nf_id_bling: nfInfo.idBling });
+  } catch (e) {
+    console.error('[RESGATE-NF] erro:', e);
+    return res.status(500).json({ ok: false, erro: e.message || 'erro interno' });
+  }
+});
+
 // ============================================================
 // Usado quando a devolucao tem nf_numero mas NAO tem nf_id_bling salvo.
 // O botao "Gerar NF Devolucao" chama isto pra descobrir o ID interno
