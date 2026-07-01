@@ -905,10 +905,13 @@
 
         // A Bridge faz TUDO: busca os dados de devolucao (com IDs reais dos itens),
         // valida duplicata, cria a NF e (se emitir) transmite pra SEFAZ.
+        // devolucaoId vai junto: a extensao GRAVA o resultado sozinha no
+        // sistema, mesmo se este painel desistir de esperar.
         const result = await chamarBlingViaBridge({
           idNFOriginal: String(idNFOriginalBling),
           idLoja: idLoja ? String(idLoja) : null,
           emitir: !!emitir,
+          devolucaoId: String(devolucaoId),
         });
 
         if (!result || !result.idNotaDevolucao) {
@@ -961,6 +964,37 @@
 
       } catch (err) {
         console.error('Erro gerar devolucao:', err);
+
+        // v3.20.1: "ja possui devolucao" = a NF existe no Bling mas o card
+        // ficou orfao (ex: timeout em tentativa anterior). Procura e vincula.
+        if (String(err.message || '').toLowerCase().includes('ja possui devolucao')) {
+          conteudo.innerHTML = `
+            <h3 style="font-size:18px; margin-bottom:12px;">🔗 Devolução já existe no Bling</h3>
+            <div style="text-align:center; padding:24px;">
+              <div class="spinner" style="display:inline-block; width:32px; height:32px; border:4px solid #f0f0f0; border-top-color:#6a1b9a; border-radius:50%; animation:spin 0.8s linear infinite;"></div>
+              <p style="margin-top:12px; color:#555; font-size:14px;">Localizando a NF de devolução no Bling pra vincular ao card...</p>
+            </div>
+          `;
+          try {
+            const rV = await fetch(`/api/admin/vincular-devolucao-existente/${devolucaoId}`, { method: 'POST' });
+            const dV = await rV.json();
+            if (dV.ok) {
+              conteudo.innerHTML = `
+                <h3 style="font-size:18px; margin-bottom:12px; color:#2e7d32;">✅ Devolução vinculada!</h3>
+                <div style="background:#e8f5e9; padding:14px; border-radius:8px; margin-bottom:16px; font-size:14px; color:#1b5e20;">
+                  A NF de devolução <strong>nº ${escapeHtml(String(dV.nf_devolucao_numero || '?'))}</strong> já existia no Bling
+                  (criada numa tentativa anterior) e agora está vinculada a este card.
+                </div>
+                <div style="display:flex; gap:8px; justify-content:flex-end;">
+                  <button class="btn btn-verde" onclick="fecharModalGerarDevolucao(); carregar();">OK</button>
+                </div>
+              `;
+              toast('Devolução nº ' + (dV.nf_devolucao_numero || '?') + ' vinculada!', 'ok');
+              return;
+            }
+          } catch (e2) { /* cai no erro generico abaixo */ }
+        }
+
         conteudo.innerHTML = `
           <h3 style="font-size:18px; margin-bottom:12px; color:#c62828;">❌ Erro ao gerar</h3>
           <div style="background:#ffebee; padding:14px; border-radius:8px; margin-bottom:16px; font-size:13px; color:#b71c1c;">
@@ -1130,11 +1164,12 @@
           payload,
         }, '*');
 
-        // Timeout de 45s (obter-dados + salvar + emitir pode demorar)
+        // Timeout de 110s (SEFAZ pode demorar mais de 1 min em dias lentos;
+        // a extensao tambem grava sozinha, entao nada se perde)
         timeout = setTimeout(() => {
           window.removeEventListener('message', handler);
-          reject(new Error('Timeout - Bling demorou mais de 45s pra responder'));
-        }, 45000);
+          reject(new Error('Timeout - Bling demorou mais de 110s pra responder. IMPORTANTE: a NF pode ter sido criada mesmo assim - clique em Gerar de novo que o sistema confere e vincula.'));
+        }, 110000);
       });
     }
 
