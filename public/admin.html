@@ -230,6 +230,7 @@
           Mostrar concluidos
         </label>
         <button onclick="carregar()">🔄 Recarregar</button>
+        <button id="btnVarreduraNF" onclick="varrerNFsFaltantes()" style="background:#6a1b9a; color:#fff;" title="Busca e vincula a NF de TODOS os registros sem NF, um por vez (respeita o limite do Bling)">🔎 Buscar NFs faltantes</button>
         <span class="resultado-info" id="resultadoInfo"></span>
       </div>
     </div>
@@ -783,6 +784,84 @@
         toast('Erro ao buscar NF: ' + (e.message || e), 'err');
         if (btn) { btn.disabled = false; btn.textContent = txtOriginal; }
       }
+    }
+
+    // v3.20 - VARREDURA: busca a NF de TODOS os registros sem NF, um por vez.
+    // Um clique inicia; clicar de novo PARA (o que já foi vinculado, fica).
+    let varreduraAtiva = false;
+    async function varrerNFsFaltantes() {
+      const btn = document.getElementById('btnVarreduraNF');
+
+      // Segundo clique = pedido de parada
+      if (varreduraAtiva) {
+        varreduraAtiva = false;
+        btn.textContent = '🔎 Parando...';
+        return;
+      }
+
+      // Monta a fila: todos os registros carregados, nao concluidos,
+      // com order_id e sem NF vinculada
+      const tudo = [
+        ...(dados.aprovadas || []),
+        ...(dados.problemas || []),
+        ...(dados.divergentes || []),
+      ];
+      const fila = tudo.filter(d =>
+        d.status !== 'concluido' && d.order_id && !d.nf_numero && !d.nf_id_bling
+      );
+
+      if (fila.length === 0) {
+        toast('Nenhum registro sem NF encontrado. Tudo vinculado! ✅', 'ok');
+        return;
+      }
+
+      const estim = Math.ceil(fila.length * 7 / 60); // ~7s por registro
+      if (!confirm(`Buscar a NF de ${fila.length} registro(s)?\n\nVai levar uns ${estim || 1} min (um por vez, respeitando o limite do Bling).\nPode parar quando quiser clicando de novo no botão.`)) {
+        return;
+      }
+
+      varreduraAtiva = true;
+      btn.style.background = '#c62828';
+      let ok = 0, falha = 0;
+      const naoAchadas = [];
+
+      for (let i = 0; i < fila.length; i++) {
+        if (!varreduraAtiva) break; // Diego pediu pra parar
+        const reg = fila[i];
+        btn.textContent = `⏹ Parar · ${i + 1}/${fila.length} (✅${ok} ❌${falha})`;
+        try {
+          const r = await fetch(`/api/admin/buscar-nf/${reg.id}`, { method: 'POST' });
+          const d = await r.json();
+          if (d.ok) {
+            ok++;
+          } else {
+            falha++;
+            naoAchadas.push(`${reg.nf_numero || reg.order_id}: ${(d.erro || '').slice(0, 80)}`);
+          }
+        } catch (e) {
+          falha++;
+          naoAchadas.push(`${reg.order_id}: ${e.message || e}`);
+        }
+        // Pausa entre registros (anti rate-limit do Bling)
+        if (i < fila.length - 1 && varreduraAtiva) {
+          await new Promise(res => setTimeout(res, 1500));
+        }
+      }
+
+      const parou = !varreduraAtiva && (ok + falha) < fila.length;
+      varreduraAtiva = false;
+      btn.style.background = '#6a1b9a';
+      btn.textContent = '🔎 Buscar NFs faltantes';
+
+      if (naoAchadas.length > 0) {
+        console.warn('[Varredura NF] Não localizadas:', naoAchadas);
+      }
+      toast(
+        `${parou ? 'Varredura PARADA' : 'Varredura concluída'}: ✅ ${ok} vinculada(s) · ❌ ${falha} não achada(s)` +
+        (falha > 0 ? ' (detalhes no console F12)' : ''),
+        falha > 0 ? 'err' : 'ok'
+      );
+      carregar();
     }
 
     async function confirmarGerarDevolucao(devolucaoId, idNFOriginalBling, nfNumero, emitir) {
