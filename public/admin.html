@@ -249,6 +249,7 @@
           <span style="margin-left:12px; display:inline-flex; gap:8px; align-items:center; font-size:13px; font-weight:normal;">
             <label style="display:inline-flex;align-items:center;gap:4px;cursor:pointer;" title="Marca/desmarca todos os cards elegíveis desta seção"><input type="checkbox" onchange="toggleTodasEsteira('aprovadas', this.checked)"> todas</label>
             <button class="btn" id="btnEsteiraAprovadas" onclick="rodarEsteira('aprovadas')" style="background:#1565c0;color:#fff;" title="Gera + EMITE a NF de devolução dos cards selecionados, um por vez">🏭 Emitir selecionadas (0)</button>
+            <button class="btn" id="btnConcluirAprovadas" onclick="concluirSelecionadas('aprovadas')" style="background:#2e7d32;color:#fff;" title="Marca como concluído todos os cards selecionados">✅ Concluir selecionadas (0)</button>
           </span>
         </h2>
         <div id="listaAprovadas"></div>
@@ -261,6 +262,7 @@
           <span style="margin-left:12px; display:inline-flex; gap:8px; align-items:center; font-size:13px; font-weight:normal;">
             <label style="display:inline-flex;align-items:center;gap:4px;cursor:pointer;" title="Marca/desmarca todos os cards elegíveis desta seção"><input type="checkbox" onchange="toggleTodasEsteira('problemas', this.checked)"> todas</label>
             <button class="btn" id="btnEsteiraProblemas" onclick="rodarEsteira('problemas')" style="background:#e65100;color:#fff;" title="Gera + EMITE a NF de devolução dos cards selecionados, um por vez">🏭 Emitir selecionadas (0)</button>
+            <button class="btn" id="btnConcluirProblemas" onclick="concluirSelecionadas('problemas')" style="background:#2e7d32;color:#fff;" title="Marca como concluído todos os cards selecionados">✅ Concluir selecionadas (0)</button>
           </span>
         </h2>
         <div id="listaProblemas"></div>
@@ -469,8 +471,9 @@
                 ? `<a class="btn btn-verde" href="https://www.bling.com.br/notas.fiscais.php#edit/${d.nf_id_bling}" target="_blank" title="Abre a NF. Pra gerar devolu\u00e7\u00e3o automaticamente, use o bot\u00e3o ao lado.">🔗 Abrir NF no Bling</a>`
                 : `<a class="btn" href="https://www.bling.com.br/notas.fiscais.php#list" target="_blank" onclick="copiarNF('${escapeHtml(d.nf_numero || '')}')">🔗 Abrir lista Bling (copia NF)</a>`
               }
+              <label style="display:inline-flex;align-items:center;gap:5px;font-size:12px;background:#e3f2fd;border:1px solid #90caf9;padding:5px 9px;border-radius:6px;cursor:pointer;" title="Seleciona pra ações em lote (emitir NF / concluir)"><input type="checkbox" class="chk-esteira" data-secao="aprovadas" data-id="${d.id}" data-nfid="${d.nf_id_bling || ''}" data-nfnum="${escapeHtml(String(d.nf_numero || ''))}" onchange="atualizarContadorEsteira('aprovadas')"> selecionar</label>
               ${!d.nf_devolucao_id_bling && (d.nf_id_bling || d.nf_numero)
-                ? `<label style="display:inline-flex;align-items:center;gap:5px;font-size:12px;background:#e3f2fd;border:1px solid #90caf9;padding:5px 9px;border-radius:6px;cursor:pointer;" title="Seleciona pra esteira de emissão em lote"><input type="checkbox" class="chk-esteira" data-secao="aprovadas" data-id="${d.id}" data-nfid="${d.nf_id_bling || ''}" data-nfnum="${escapeHtml(String(d.nf_numero || ''))}" onchange="atualizarContadorEsteira('aprovadas')"> esteira</label><button class="btn" style="background:#1565c0;" onclick="abrirModalGerarDevolucao('${d.id}', '${d.nf_id_bling || ''}', '${escapeHtml(d.nf_numero || '')}', '${escapeHtml(d.produto_titulo || '')}')" title="Gera a NF de devolu\u00e7\u00e3o no Bling automaticamente">🧾 Gerar NF Devolu\u00e7\u00e3o</button>`
+                ? `<button class="btn" style="background:#1565c0;" onclick="abrirModalGerarDevolucao('${d.id}', '${d.nf_id_bling || ''}', '${escapeHtml(d.nf_numero || '')}', '${escapeHtml(d.produto_titulo || '')}')" title="Gera a NF de devolu\u00e7\u00e3o no Bling automaticamente">🧾 Gerar NF Devolu\u00e7\u00e3o</button>`
                 : d.nf_devolucao_id_bling
                   ? `<a class="btn btn-verde" href="https://www.bling.com.br/notas.entrada.php#edit/${d.nf_devolucao_id_bling}" target="_blank" title="NF de devolu\u00e7\u00e3o j\u00e1 gerada">📝 Devolu\u00e7\u00e3o: ${d.nf_devolucao_numero || 'ver'}</a>`
                   : ''
@@ -526,8 +529,9 @@
           ${concluido ? '' : `
             <div class="item-acoes">
               ${d.nf_link_danfe ? `<a class="btn btn-cinza" href="${d.nf_link_danfe}" target="_blank">📄 DANFE</a>` : ''}
+              <label style="display:inline-flex;align-items:center;gap:5px;font-size:12px;background:#fff3e0;border:1px solid #ffcc80;padding:5px 9px;border-radius:6px;cursor:pointer;" title="Seleciona pra ações em lote (emitir NF / concluir)"><input type="checkbox" class="chk-esteira" data-secao="problemas" data-id="${d.id}" data-nfid="${d.nf_id_bling || ''}" data-nfnum="${escapeHtml(String(d.nf_numero || ''))}" onchange="atualizarContadorEsteira('problemas')"> selecionar</label>
               ${!d.nf_devolucao_id_bling && (d.nf_id_bling || d.nf_numero)
-                ? `<label style="display:inline-flex;align-items:center;gap:5px;font-size:12px;background:#fff3e0;border:1px solid #ffcc80;padding:5px 9px;border-radius:6px;cursor:pointer;" title="Seleciona pra esteira de emissão em lote"><input type="checkbox" class="chk-esteira" data-secao="problemas" data-id="${d.id}" data-nfid="${d.nf_id_bling || ''}" data-nfnum="${escapeHtml(String(d.nf_numero || ''))}" onchange="atualizarContadorEsteira('problemas')"> esteira</label>`
+                ? ''
                 : d.nf_devolucao_id_bling
                   ? `<a class="btn btn-verde" href="https://www.bling.com.br/notas.entrada.php#edit/${d.nf_devolucao_id_bling}" target="_blank" title="NF de devolu\u00e7\u00e3o j\u00e1 gerada">📝 Devolu\u00e7\u00e3o: ${d.nf_devolucao_numero || 'ver'}</a>`
                   : ''
@@ -887,16 +891,18 @@
     // ============================================================
     let esteiraAtiva = false;
     let esteiraSecao = null;
+    let concluindoLote = false;
 
     function rotuloEsteira(secao) {
       return secao === 'aprovadas' ? 'btnEsteiraAprovadas' : 'btnEsteiraProblemas';
     }
 
     function atualizarContadorEsteira(secao) {
-      if (esteiraAtiva && esteiraSecao === secao) return; // placar tem prioridade
       const n = document.querySelectorAll(`.chk-esteira[data-secao="${secao}"]:checked`).length;
-      const btn = document.getElementById(rotuloEsteira(secao));
-      if (btn) btn.textContent = `🏭 Emitir selecionadas (${n})`;
+      const btnE = document.getElementById(rotuloEsteira(secao));
+      const btnC = document.getElementById(secao === 'aprovadas' ? 'btnConcluirAprovadas' : 'btnConcluirProblemas');
+      if (btnE && !(esteiraAtiva && esteiraSecao === secao)) btnE.textContent = `🏭 Emitir selecionadas (${n})`;
+      if (btnC && !concluindoLote) btnC.textContent = `✅ Concluir selecionadas (${n})`;
     }
 
     function toggleTodasEsteira(secao, ligado) {
@@ -956,14 +962,22 @@
 
       const marcados = [...document.querySelectorAll(`.chk-esteira[data-secao="${secao}"]:checked`)];
       if (marcados.length === 0) {
-        toast('Nenhum card selecionado. Marque os checkboxes "esteira" (ou "todas") primeiro.', 'err');
+        toast('Nenhum card selecionado. Marque os checkboxes "selecionar" (ou "todas") primeiro.', 'err');
         return;
       }
-      const fila = marcados.map(c => ({
-        id: c.dataset.id,
-        nfid: c.dataset.nfid || '',
-        nfnum: c.dataset.nfnum || '',
-      }));
+      // Só entram na esteira os que têm NF pra devolver; o resto é pulado
+      const fila = marcados
+        .filter(c => (c.dataset.nfid || c.dataset.nfnum))
+        .map(c => ({
+          id: c.dataset.id,
+          nfid: c.dataset.nfid || '',
+          nfnum: c.dataset.nfnum || '',
+        }));
+      const pulados = marcados.length - fila.length;
+      if (fila.length === 0) {
+        toast('Nenhum dos selecionados tem NF vinculada (rode o 🔎 Buscar NFs primeiro).', 'err');
+        return;
+      }
 
       if (!await verificarBridgeInstalada()) {
         toast('Extensão Bridge não detectada. Confira a aba do Bling logada e recarregue o painel (Ctrl+Shift+R).', 'err');
@@ -973,9 +987,11 @@
       const estimMin = Math.ceil(fila.length * 30 / 60);
       if (!confirm(
         `🏭 ESTEIRA: gerar + EMITIR (SEFAZ) a NF de devolução de ${fila.length} card(s)?\n\n` +
+        (pulados > 0 ? `⚠️ ${pulados} selecionado(s) SEM NF serão pulados (rode o 🔎 Buscar NFs pra eles).\n\n` : '') +
         `• Um por vez (SEFAZ é serial) — de 10s a 1min+ cada, estimativa ~${estimMin || 1} min no total\n` +
         `• Precisa da aba do Bling aberta e logada (a tela vai "piscar" a cada card, é normal)\n` +
         `• Card que já tiver devolução no Bling será apenas VINCULADO\n` +
+        `• Emitida/vinculada com sucesso = card marcado como CONCLUÍDO automaticamente\n` +
         `• Pra PARAR: clique de novo no botão (o que já foi emitido, fica)`
       )) return;
 
@@ -984,8 +1000,16 @@
       const corOriginal = btn.style.background;
       btn.style.background = '#c62828';
 
-      let emitidas = 0, vinculadas = 0, falhas = 0;
+      let emitidas = 0, vinculadas = 0, rascunhos = 0, falhas = 0;
       const erros = [];
+
+      // Marca concluído sem barulho (não-crítico: se falhar, o card só
+      // fica aberto e dá pra concluir depois pelo botão de lote)
+      async function concluirQuieto(id) {
+        try {
+          await fetch('/api/admin/concluir/' + id, { method: 'PUT' });
+        } catch (e) { console.warn('[Esteira] concluir falhou (nao critico):', id, e.message || e); }
+      }
 
       for (let i = 0; i < fila.length; i++) {
         if (!esteiraAtiva) break;
@@ -993,8 +1017,14 @@
         btn.textContent = `⏹ Parar · ${i + 1}/${fila.length} (✅${emitidas} 🔗${vinculadas} ❌${falhas})`;
         try {
           const r = await gerarDevolucaoSilenciosa(item.id, item.nfid, item.nfnum);
-          emitidas++;
-          console.log(`[Esteira] NF ${item.nfnum}: devolução ${r.numero} ${r.emitida ? 'EMITIDA' : 'rascunho'}`);
+          if (r.emitida) {
+            emitidas++;
+            await concluirQuieto(item.id); // ciclo fechado = concluído
+            console.log(`[Esteira] NF ${item.nfnum}: devolução ${r.numero} EMITIDA + card concluído`);
+          } else {
+            rascunhos++; // SEFAZ não confirmou na hora: card fica aberto pra conferência
+            console.log(`[Esteira] NF ${item.nfnum}: devolução ${r.numero} ficou como RASCUNHO — card mantido aberto`);
+          }
         } catch (err) {
           const msg = String(err.message || err);
           if (msg.toLowerCase().includes('ja possui devolucao')) {
@@ -1004,7 +1034,8 @@
               const dV = await rV.json();
               if (dV.ok) {
                 vinculadas++;
-                console.log(`[Esteira] NF ${item.nfnum}: devolução ${dV.nf_devolucao_numero} já existia — VINCULADA`);
+                await concluirQuieto(item.id);
+                console.log(`[Esteira] NF ${item.nfnum}: devolução ${dV.nf_devolucao_numero} já existia — VINCULADA + card concluído`);
               } else {
                 falhas++;
                 erros.push(`NF ${item.nfnum || item.id}: já tem devolução mas não achei pra vincular (${(dV.erro || '').slice(0, 60)})`);
@@ -1024,7 +1055,7 @@
         }
       }
 
-      const parou = !esteiraAtiva && (emitidas + vinculadas + falhas) < fila.length;
+      const parou = !esteiraAtiva && (emitidas + vinculadas + rascunhos + falhas) < fila.length;
       esteiraAtiva = false;
       esteiraSecao = null;
       btn.style.background = corOriginal;
@@ -1032,10 +1063,62 @@
 
       if (erros.length > 0) console.warn('[Esteira] Falhas:', erros);
       toast(
-        `${parou ? '⏹ Esteira PARADA' : '🏭 Esteira concluída'}: ✅ ${emitidas} emitida(s) · 🔗 ${vinculadas} vinculada(s) · ❌ ${falhas} falha(s)` +
+        `${parou ? '⏹ Esteira PARADA' : '🏭 Esteira concluída'}: ✅ ${emitidas} emitida(s)` +
+        ` · 🔗 ${vinculadas} vinculada(s)` +
+        (rascunhos > 0 ? ` · 📝 ${rascunhos} rascunho(s) (card aberto pra conferir)` : '') +
+        ` · ❌ ${falhas} falha(s)` +
+        ((emitidas + vinculadas) > 0 ? ' — concluídas automaticamente ✅' : '') +
         (falhas > 0 ? ' (detalhes no console F12)' : ''),
         falhas > 0 ? 'err' : 'ok'
       );
+      carregar();
+    }
+
+    // v3.22 - CONCLUIR EM LOTE: marca todos os selecionados como concluídos.
+    // Rápido (só Supabase, sem Bling), roda em série com pausa curta.
+    async function concluirSelecionadas(secao) {
+      if (esteiraAtiva) {
+        toast('A esteira de emissão está rodando. Espere ou pare ela primeiro.', 'err');
+        return;
+      }
+      if (concluindoLote) return;
+
+      const marcados = [...document.querySelectorAll(`.chk-esteira[data-secao="${secao}"]:checked`)];
+      if (marcados.length === 0) {
+        toast('Nenhum card selecionado. Marque os checkboxes "selecionar" (ou "todas") primeiro.', 'err');
+        return;
+      }
+      const ids = marcados.map(c => c.dataset.id);
+
+      if (!confirm(
+        `✅ Marcar ${ids.length} card(s) como CONCLUÍDO?\n\n` +
+        `Eles somem da lista principal (dá pra rever marcando "Mostrar concluídos").`
+      )) return;
+
+      concluindoLote = true;
+      const btn = document.getElementById(secao === 'aprovadas' ? 'btnConcluirAprovadas' : 'btnConcluirProblemas');
+      const txtOriginal = btn ? btn.textContent : '';
+      let ok = 0, falha = 0;
+      const erros = [];
+
+      for (let i = 0; i < ids.length; i++) {
+        if (btn) btn.textContent = `⏳ Concluindo ${i + 1}/${ids.length}...`;
+        try {
+          const r = await fetch('/api/admin/concluir/' + ids[i], { method: 'PUT' });
+          const d = await r.json();
+          if (d.ok) ok++;
+          else { falha++; erros.push(`${ids[i]}: ${d.erro || 'falha'}`); }
+        } catch (e) {
+          falha++;
+          erros.push(`${ids[i]}: ${e.message || e}`);
+        }
+        if (i < ids.length - 1) await new Promise(res => setTimeout(res, 250));
+      }
+
+      concluindoLote = false;
+      if (btn) btn.textContent = txtOriginal;
+      if (erros.length > 0) console.warn('[Concluir lote] Falhas:', erros);
+      toast(`✅ ${ok} concluída(s)` + (falha > 0 ? ` · ❌ ${falha} falha(s) (console F12)` : ''), falha > 0 ? 'err' : 'ok');
       carregar();
     }
 
