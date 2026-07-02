@@ -532,7 +532,7 @@
               ${ehSerie2(d) && !d.nf_devolucao_id_bling
                 ? `<a class="btn" style="background:#00695c;color:#fff;" href="https://www.mercadolivre.com.br/emissor/vendas/${d.order_id || ''}/faturas" target="_blank" title="Venda FULL (s\u00e9rie 2): a NF de devolu\u00e7\u00e3o \u00e9 emitida pelo PR\u00d3PRIO Mercado Livre. N\u00c3O gere outra no Bling (duplicidade fiscal). Clique pra ver/baixar a NF no emissor do ML.">🏬 FULL</a><button class="btn" style="background:#00838f;" onclick="fullVincular('${d.id}', this)" title="Procura no Bling a NF de ENTRADA s\u00e9rie 2 que o ML emitiu pra esta devolu\u00e7\u00e3o e vincula ao card">🔗 Achar devolu\u00e7\u00e3o no Bling</button>`
                 : d.nf_devolucao_id_bling
-                  ? `<a class="btn btn-verde" href="https://www.bling.com.br/notas.entrada.php#edit/${d.nf_devolucao_id_bling}" target="_blank" title="NF de devolu\u00e7\u00e3o j\u00e1 gerada">📝 Devolu\u00e7\u00e3o: ${d.nf_devolucao_numero || 'ver'}</a>${ehSerie2(d) ? `<button class="btn" style="background:#4527a0;" onclick="fullLancarEstoque('${d.id}', this)" title="Lan\u00e7a o ESTOQUE de entrada desta devolu\u00e7\u00e3o no dep\u00f3sito GERAL (API oficial). S\u00f3 clique se ainda N\u00c3O lan\u00e7ou e o produto est\u00e1 ok pra revenda.">📦 Lan\u00e7ar estoque (Geral)</button>` : ''}`
+                  ? `<a class="btn btn-verde" href="https://www.bling.com.br/notas.entrada.php#edit/${d.nf_devolucao_id_bling}" target="_blank" title="NF de devolu\u00e7\u00e3o j\u00e1 gerada. Produto com problema: NF importada do ML n\u00e3o lan\u00e7a estoque (n\u00e3o fa\u00e7a nada); NF emitida aqui lan\u00e7ou estoque (cancele o lan\u00e7amento no Bling).">📝 Devolu\u00e7\u00e3o: ${d.nf_devolucao_numero || 'ver'}</a>`
                   : ''
               }
               <button class="btn btn-verde" onclick="concluir('${d.id}')">✅ Marcar como resolvido</button>
@@ -1062,7 +1062,9 @@
         `• Um por vez (SEFAZ é serial) — de 10s a 1min+ cada, estimativa ~${estimMin || 1} min no total\n` +
         `• Precisa da aba do Bling aberta e logada (a tela vai "piscar" a cada card, é normal)\n` +
         `• Card que já tiver devolução no Bling será apenas VINCULADO\n` +
-        `• Emitida/vinculada com sucesso = card marcado como CONCLUÍDO automaticamente\n` +
+        (secao === 'problemas'
+          ? `• PRODUTO C/ PROBLEMA: emitir lança estoque automático no Bling — os cards ficam ABERTOS e no fim aviso quais lançamentos você deve CANCELAR\n`
+          : `• Emitida/vinculada com sucesso = card marcado como CONCLUÍDO automaticamente\n`) +
         `• Pra PARAR: clique de novo no botão (o que já foi emitido, fica)`
       )) return;
 
@@ -1073,6 +1075,7 @@
 
       let emitidas = 0, vinculadas = 0, rascunhos = 0, falhas = 0;
       const erros = [];
+      const lembretesEstoque = []; // problemas: cancelar lançamento de estoque
 
       // Marca concluído sem barulho (não-crítico: se falhar, o card só
       // fica aberto e dá pra concluir depois pelo botão de lote)
@@ -1082,6 +1085,11 @@
         } catch (e) { console.warn('[Esteira] concluir falhou (nao critico):', id, e.message || e); }
       }
 
+      // Produto OK (aprovadas) = concluir; produto com problema = manter
+      // aberto e lembrar de CANCELAR o lançamento de estoque no Bling
+      // (a emissão dentro do Bling lança estoque automaticamente).
+      const ehProblemas = secao === 'problemas';
+
       for (let i = 0; i < fila.length; i++) {
         if (!esteiraAtiva) break;
         const item = fila[i];
@@ -1090,8 +1098,13 @@
           const r = await gerarDevolucaoSilenciosa(item.id, item.nfid, item.nfnum);
           if (r.emitida) {
             emitidas++;
-            await concluirQuieto(item.id); // ciclo fechado = concluído
-            console.log(`[Esteira] NF ${item.nfnum}: devolução ${r.numero} EMITIDA + card concluído`);
+            if (ehProblemas) {
+              lembretesEstoque.push(r.numero || item.nfnum);
+              console.log(`[Esteira] NF ${item.nfnum}: devolução ${r.numero} EMITIDA — card ABERTO (cancelar estoque no Bling)`);
+            } else {
+              await concluirQuieto(item.id); // ciclo fechado = concluído
+              console.log(`[Esteira] NF ${item.nfnum}: devolução ${r.numero} EMITIDA + card concluído`);
+            }
           } else {
             rascunhos++; // SEFAZ não confirmou na hora: card fica aberto pra conferência
             console.log(`[Esteira] NF ${item.nfnum}: devolução ${r.numero} ficou como RASCUNHO — card mantido aberto`);
@@ -1105,8 +1118,13 @@
               const dV = await rV.json();
               if (dV.ok) {
                 vinculadas++;
-                await concluirQuieto(item.id);
-                console.log(`[Esteira] NF ${item.nfnum}: devolução ${dV.nf_devolucao_numero} já existia — VINCULADA + card concluído`);
+                if (ehProblemas) {
+                  lembretesEstoque.push(dV.nf_devolucao_numero || item.nfnum);
+                  console.log(`[Esteira] NF ${item.nfnum}: devolução ${dV.nf_devolucao_numero} VINCULADA — card ABERTO (conferir estoque)`);
+                } else {
+                  await concluirQuieto(item.id);
+                  console.log(`[Esteira] NF ${item.nfnum}: devolução ${dV.nf_devolucao_numero} já existia — VINCULADA + card concluído`);
+                }
               } else {
                 falhas++;
                 erros.push(`NF ${item.nfnum || item.id}: já tem devolução mas não achei pra vincular (${(dV.erro || '').slice(0, 60)})`);
@@ -1133,14 +1151,17 @@
       btn.textContent = '🏭 Emitir selecionadas (0)';
 
       if (erros.length > 0) console.warn('[Esteira] Falhas:', erros);
+      if (lembretesEstoque.length > 0) console.warn('[Esteira] CANCELAR ESTOQUE das devoluções:', lembretesEstoque);
       toast(
         `${parou ? '⏹ Esteira PARADA' : '🏭 Esteira concluída'}: ✅ ${emitidas} emitida(s)` +
         ` · 🔗 ${vinculadas} vinculada(s)` +
         (rascunhos > 0 ? ` · 📝 ${rascunhos} rascunho(s) (card aberto pra conferir)` : '') +
         ` · ❌ ${falhas} falha(s)` +
-        ((emitidas + vinculadas) > 0 ? ' — concluídas automaticamente ✅' : '') +
+        (ehProblemas && lembretesEstoque.length > 0
+          ? ` — ⚠️ PRODUTO C/ PROBLEMA: cancele o lançamento de estoque no Bling das devoluções ${lembretesEstoque.join(', ')} (cards mantidos abertos)`
+          : ((emitidas + vinculadas) > 0 ? ' — concluídas automaticamente ✅' : '')) +
         (falhas > 0 ? ' (detalhes no console F12)' : ''),
-        falhas > 0 ? 'err' : 'ok'
+        (falhas > 0 || (ehProblemas && lembretesEstoque.length > 0)) ? 'err' : 'ok'
       );
       carregar();
     }
