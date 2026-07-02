@@ -181,13 +181,16 @@ async function buscarDevolucoesShopeeProxy(forcar) {
 const normShopee = (s) => String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
 
 async function acharDevolucaoShopee(codigo) {
+  // v3.34.3: retorna diagnostico junto -> { hit, qtd, exemplo, usouRefresh }
+  // qtd = -1 significa integracao sem as variaveis (proxy desligado)
+  const vazio = { hit: null, qtd: -1, exemplo: null, usouRefresh: false };
   const alvo = normShopee(codigo);
-  if (!alvo || alvo.length < 6) return null;
+  if (!alvo || alvo.length < 6) return vazio;
   const alvoDig = String(codigo).replace(/\D/g, '');
   const mTok = String(codigo).toUpperCase().match(/BR[A-Z0-9]{9,}/);
   const alvoTok = mTok ? mTok[0] : null;
   let lista = await buscarDevolucoesShopeeProxy(false);
-  if (lista === null) return null;
+  if (lista === null) return vazio;
   const casa = (d) => [d.tracking_number, d.return_sn, d.order_sn].some(v => {
     if (!v) return false;
     const nv = normShopee(v);
@@ -199,12 +202,17 @@ async function acharDevolucaoShopee(codigo) {
     return alvoDig.length >= 10 && dv.length >= 10 && dv === alvoDig;
   });
   let hit = lista.find(casa);
+  let usouRefresh = false;
   if (!hit) {
     // etiqueta de devolucao recem-criada pode nao estar no cache: fura 1x
+    usouRefresh = true;
     lista = await buscarDevolucoesShopeeProxy(true);
     hit = lista.find(casa);
   }
-  return hit || null;
+  const exemplo = lista[0]
+    ? (lista[0].tracking_number || lista[0].return_sn || lista[0].order_sn)
+    : null;
+  return { hit: hit || null, qtd: lista.length, exemplo, usouRefresh };
 }
 
 const EMAIL_HOST = process.env.EMAIL_HOST;
@@ -548,20 +556,32 @@ app.get('/api/devolucao/identificar/:codigo', async (req, res) => {
   // ===== SHOPEE (v3.33): tenta casar como etiqueta de devolucao Shopee =====
   if (!shipment && !pack) {
     let devShopee = null;
+    let infoShopee = null;
     if (SHOPEE_PROXY_URL && SHOPEE_PROXY_KEY) {
       try {
-        devShopee = await acharDevolucaoShopee(codigoOriginal);
-        resultado.tentativas.push({ tipo: 'shopee_return', codigo: codigoOriginal, ok: !!devShopee, status: devShopee ? 200 : 404 });
+        infoShopee = await acharDevolucaoShopee(codigoOriginal);
+        devShopee = infoShopee.hit;
+        resultado.tentativas.push({
+          tipo: 'shopee_return', v: '3.34.3', codigo: codigoOriginal,
+          ok: !!devShopee, status: devShopee ? 200 : 404,
+          lista_qtd: infoShopee.qtd, exemplo_tracking: infoShopee.exemplo,
+        });
       } catch (e) {
-        resultado.tentativas.push({ tipo: 'shopee_return', codigo: codigoOriginal, ok: false, status: 500, erro: e.message || String(e) });
+        resultado.tentativas.push({ tipo: 'shopee_return', v: '3.34.3', codigo: codigoOriginal, ok: false, status: 500, erro: e.message || String(e) });
         console.error('[BUSCA][shopee] proxy falhou:', e.message || e);
       }
+    } else {
+      // v3.34.3: mesmo desligada, a tentativa aparece e se explica
+      resultado.tentativas.push({ tipo: 'shopee_return', v: '3.34.3', codigo: codigoOriginal, ok: false, status: 0, erro: 'SHOPEE_PROXY_URL/SHOPEE_PROXY_KEY ausentes no Render deste servico' });
     }
     if (!devShopee) {
       const pareceSPX = /^BR[A-Z0-9]{8,}$/i.test(String(codigoOriginal).trim());
-      resultado.erro = pareceSPX
+      const diag = infoShopee
+        ? ` [diag: lista com ${infoShopee.qtd} devolucoes; exemplo de tracking: ${infoShopee.exemplo || '-'}]`
+        : ' [diag: integracao Shopee SEM as variaveis no Render!]';
+      resultado.erro = (pareceSPX
         ? 'Etiqueta Shopee (SPX) nao casou com as devolucoes. Tente: digitar o "Pedido" impresso na etiqueta (ex: 260527FMTSJM8C), ou bipar a chave da DANFE se o pacote voltou com a nota.'
-        : 'Codigo nao encontrado em shipments/packs do ML nem nas devolucoes Shopee';
+        : 'Codigo nao encontrado em shipments/packs do ML nem nas devolucoes Shopee.') + diag;
       return res.status(404).json(resultado);
     }
 
