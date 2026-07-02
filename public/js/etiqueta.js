@@ -100,6 +100,42 @@ function montarZplEtiqueta(p, copias) {
   return z.join('');
 }
 
+// ============================================================
+// v3.20 - IMPRESSAO REMOTA: aparelho sem QZ (celular)? A etiqueta
+// vai pra FILA do servidor e sai na Zebra da ESTACAO (o notebook
+// com esta pagina aberta). Zero configuracao no celular.
+let _qzLocalStatus = null; // null = nao testado | true | false
+
+async function conectarQZComTimeout(ms) {
+  try {
+    return await Promise.race([
+      conectarQZ().then(() => true),
+      new Promise((resolve) => setTimeout(() => resolve(false), ms)),
+    ]);
+  } catch (e) {
+    return false;
+  }
+}
+
+async function temQZLocal() {
+  if (_qzLocalStatus !== null) return _qzLocalStatus;
+  if (!qzDisponivel()) { _qzLocalStatus = false; return false; }
+  if (qz.websocket.isActive()) { _qzLocalStatus = true; return true; }
+  _qzLocalStatus = await conectarQZComTimeout(3500);
+  return _qzLocalStatus;
+}
+
+async function enviarPraFila(zpl, resumo) {
+  const r = await fetch('/api/etiqueta/fila', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ zpl, resumo }),
+  });
+  const d = await r.json();
+  if (!d.ok) throw new Error(d.erro || 'falha ao enfileirar');
+  return d;
+}
+
 async function imprimirEtiquetaProduto(prod, copias) {
   if (!prod) return;
   if (copias == null) {
@@ -113,7 +149,18 @@ async function imprimirEtiquetaProduto(prod, copias) {
     return;
   }
   try {
-    await conectarQZ();
+    const local = await temQZLocal();
+    if (!local) {
+      // Sem QZ aqui (celular): manda pra estacao
+      const resumo = (copias + 'x ' + (prod.sku || prod.nome || 'etiqueta')).slice(0, 100);
+      const d = await enviarPraFila(zpl, resumo);
+      if (d.estacao_online) {
+        toast('📱→🖨️ ' + copias + ' etiqueta(s) enviada(s) pra ESTACAO (sai na Zebra do notebook)', 'ok');
+      } else {
+        toast('⏳ ' + copias + ' etiqueta(s) na fila — a estacao esta OFFLINE. Abra a pagina do Devolucoes no notebook da Zebra que sai na hora.', 'err');
+      }
+      return;
+    }
     let printer = getImpressoraEtiqueta();
     if (!printer) {
       await escolherImpressoraEtiqueta();
@@ -144,3 +191,70 @@ function imprimirEtiquetaItemBipagem(idx) {
     quantidade: it.quantidade,
   });
 }
+
+// ============================================================
+// v3.20 - MODO ESTACAO: o notebook com QZ + certificado vira a
+// estacao de impressao SOZINHO ao abrir a pagina (long-poll na
+// fila; imprime o que o celular mandar). Badge fixo indica.
+let _estacaoAtiva = false;
+
+function badgeEstacao(texto) {
+  let el = document.getElementById('estacaoBadge');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'estacaoBadge';
+    el.style.cssText = 'position:fixed;left:10px;bottom:10px;background:#263238;color:#fff;padding:6px 12px;border-radius:16px;font-size:12px;z-index:9999;box-shadow:0 2px 8px rgba(0,0,0,.3);opacity:.92;';
+    document.body.appendChild(el);
+  }
+  el.textContent = texto;
+}
+
+async function loopEstacao() {
+  while (_estacaoAtiva) {
+    try {
+      const r = await fetch('/api/etiqueta/fila/proximo?espera=25');
+      const d = await r.json();
+      if (d && d.job) {
+        badgeEstacao('🖨️ Estacao: imprimindo... (' + (d.restam || 0) + ' na fila)');
+        try {
+          await conectarQZ();
+          let printer = getImpressoraEtiqueta();
+          if (!printer) {
+            // devolve o job pra fila e pausa ate escolherem a Zebra
+            await enviarPraFila(d.job.zpl, d.job.resumo);
+            _estacaoAtiva = false;
+            badgeEstacao('⏸ Estacao PAUSADA: escolha a Zebra no 🖨 e recarregue a pagina');
+            toast('Estacao sem impressora escolhida — job devolvido pra fila. Clique em 🖨 Zebra etiqueta, escolha, e recarregue.', 'err');
+            return;
+          }
+          const cfg = qz.configs.create(printer);
+          await qz.print(cfg, [{ type: 'raw', format: 'command', flavor: 'plain', data: d.job.zpl }]);
+          toast('🖨️ Estacao imprimiu: ' + (d.job.resumo || 'etiqueta') + ' (pedido de ' + (d.job.por || '?') + ')', 'ok');
+        } catch (e) {
+          toast('Estacao: erro ao imprimir — ' + (e.message || e), 'err');
+        }
+        badgeEstacao('🖨️ Estacao de impressao ATIVA');
+      }
+    } catch (e) {
+      // rede piscou: respira e tenta de novo
+      await new Promise(res => setTimeout(res, 3000));
+    }
+    await new Promise(res => setTimeout(res, 400));
+  }
+}
+
+async function iniciarEstacaoSePossivel() {
+  try {
+    // So auto-conecta quando ha certificado (conexao SILENCIOSA garantida
+    // pelo QZ assinado) - sem cert, nao incomoda ninguem com popup no load.
+    const r = await fetch('/api/qz/cert');
+    const t = r.ok ? await r.text() : '';
+    if (!t.includes('BEGIN CERTIFICATE')) return;
+    if (!(await temQZLocal())) return; // celular / PC sem QZ: nao e estacao
+    _estacaoAtiva = true;
+    badgeEstacao('🖨️ Estacao de impressao ATIVA');
+    loopEstacao();
+  } catch (e) { /* segue sem estacao */ }
+}
+
+window.addEventListener('load', iniciarEstacaoSePossivel);
