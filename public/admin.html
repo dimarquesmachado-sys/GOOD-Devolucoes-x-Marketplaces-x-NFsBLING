@@ -538,6 +538,8 @@
               <label style="display:inline-flex;align-items:center;gap:5px;font-size:12px;background:#fff3e0;border:1px solid #ffcc80;padding:5px 9px;border-radius:6px;cursor:pointer;" title="Seleciona pra ações em lote (emitir NF / concluir)"><input type="checkbox" class="chk-esteira" data-secao="problemas" data-id="${d.id}" data-nfid="${d.nf_id_bling || ''}" data-nfnum="${escapeHtml(String(d.nf_numero || ''))}" data-chave="${String(d.nf_chave || '').replace(/[^0-9]/g, '')}" data-full="${ehSerie2(d) ? '1' : '0'}" onchange="atualizarContadorEsteira('problemas')"> selecionar</label>
               ${ehSerie2(d) && !d.nf_devolucao_id_bling
                 ? `<a class="btn" style="background:#00695c;color:#fff;" href="https://www.mercadolivre.com.br/emissor/vendas/${d.order_id || ''}/faturas" target="_blank" title="Venda FULL (s\u00e9rie 2): a NF de devolu\u00e7\u00e3o \u00e9 emitida pelo PR\u00d3PRIO Mercado Livre. N\u00c3O gere outra no Bling (duplicidade fiscal). Clique pra ver/baixar a NF no emissor do ML.">🏬 FULL</a><button class="btn" style="background:#00838f;" onclick="fullVincular('${d.id}', this)" title="Procura no Bling a NF de ENTRADA s\u00e9rie 2 que o ML emitiu pra esta devolu\u00e7\u00e3o e vincula ao card">🔗 Achar devolu\u00e7\u00e3o no Bling</button>`
+                : !d.nf_devolucao_id_bling && (d.nf_id_bling || d.nf_numero)
+                ? `<button class="btn" style="background:#1565c0;" onclick="abrirModalGerarDevolucao('${d.id}', '${d.nf_id_bling || ''}', '${escapeHtml(d.nf_numero || '')}', '${escapeHtml(d.produto_titulo || '')}', '${String(d.nf_chave || '').replace(/[^0-9]/g, '')}')" title="Abre as op\u00e7\u00f5es: criar RASCUNHO (salvar sem emitir, pra editar no Bling) ou gerar + emitir direto">🧾 Gerar NF Devolu\u00e7\u00e3o</button>`
                 : d.nf_devolucao_id_bling
                   ? `<a class="btn btn-verde" href="https://www.bling.com.br/notas.entrada.php#edit/${d.nf_devolucao_id_bling}" target="_blank" title="NF de devolu\u00e7\u00e3o j\u00e1 gerada. Produto com problema: NF importada do ML n\u00e3o lan\u00e7a estoque (n\u00e3o fa\u00e7a nada); NF emitida aqui lan\u00e7ou estoque (cancele o lan\u00e7amento no Bling).">📝 Devolu\u00e7\u00e3o: ${d.nf_devolucao_numero || 'ver'}</a>`
                   : ''
@@ -776,7 +778,7 @@
           <span style="font-size:12px; color:#5e35b1;">(produto com defeito? use DEFEITOS API)</span>
         </div>
         <div style="background:#fff8e1; border:1px solid #ffe082; padding:12px; border-radius:8px; font-size:12.5px; color:#795548; margin-bottom:18px;">
-          🧪 <strong>Criar rascunho</strong>: cria a NF no Bling mas NÃO emite (você confere e emite depois).<br>
+          🧪 <strong>Criar rascunho</strong>: cria a NF no Bling mas NÃO emite — você <strong>edita o que precisar</strong> lá no Bling e emite por lá.<br>
           🧾 <strong>Gerar + Emitir</strong>: cria E transmite pra SEFAZ automaticamente (irreversível).
         </div>
         <div style="display:flex; gap:8px; justify-content:flex-end; flex-wrap:wrap;">
