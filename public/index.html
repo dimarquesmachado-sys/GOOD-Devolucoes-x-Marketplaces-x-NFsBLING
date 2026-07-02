@@ -33,7 +33,7 @@
     <header>
       <h1>📦 GOOD Devolucoes</h1>
       <p>Identificar venda + NF-e + Triagem</p>
-      <p style="font-size: 10px; color: #888; margin-top: 4px;">v3.18.0 (produto divergente) | <span id="serverVersion">checando...</span></p>
+      <p style="font-size: 10px; color: #888; margin-top: 4px;">v3.19.0 (etiqueta produto) | <span id="serverVersion">checando...</span></p>
       <div class="user-badge">
         👤 <span id="userNome">-</span>
         <a href="/admin.html" id="btnPainelAdmin" style="display:none;background:#ffd700;color:#1d1d1f;padding:3px 10px;border-radius:10px;font-weight:700;margin-left:6px;">👑 Painel Admin</a>
@@ -75,6 +75,9 @@
 
       <!-- Detalhes dos produtos esperados -->
       <div style="background:#f5f5f7;padding:12px;border-radius:8px;font-size:13px;">
+        <div style="display:flex; justify-content:flex-end; margin-bottom:6px;">
+          <button onclick="escolherImpressoraEtiqueta()" style="background:#455a64; color:#fff; border:none; border-radius:6px; padding:6px 12px; font-size:12px; cursor:pointer;" title="Escolhe (uma vez por computador) a Zebra que imprime a etiqueta 4x2,5 dos produtos">🖨 Zebra etiqueta</button>
+        </div>
         <div id="modalAprovarDetalhes"></div>
       </div>
 
@@ -416,6 +419,8 @@
   <script src="js/camera.js"></script>
   <script src="js/bipagem.js"></script>
   <script src="js/busca.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/qz-tray@2.2.4/qz-tray.js"></script>
+  <script src="js/etiqueta.js"></script>
   <script src="js/triagem.js"></script>
   <script src="js/app.js"></script>
 </body>
