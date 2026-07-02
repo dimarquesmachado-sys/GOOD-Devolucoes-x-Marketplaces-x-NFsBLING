@@ -1580,6 +1580,25 @@ async function buscarIdMunicipioPorCep(cep) {
 // ============================================================
 // v3.19 (Fase 3B) - Resolve o ID interno do Bling pelo numero da NF
 // ============================================================
+// v3.29 - Itens completos de uma NF (pro expansor "▼ itens da NF")
+app.get('/api/admin/nf-itens/:idBling', requerAdmin, async (req, res) => {
+  try {
+    const r = await buscarNFePorId(String(req.params.idBling).trim());
+    const nf = (r.ok && r.data?.data) ? r.data.data : null;
+    if (!nf) return res.status(404).json({ ok: false, erro: 'NF nao encontrada no Bling' });
+    const itens = Array.isArray(nf.itens) ? nf.itens.map(it => ({
+      titulo: it.descricao || null,
+      sku: it.codigo || null,
+      quantidade: it.quantidade || null,
+      valor: it.valor || null,
+    })) : [];
+    return res.json({ ok: true, numero: nf.numero, serie: nf.serie, itens });
+  } catch (e) {
+    return res.status(500).json({ ok: false, erro: e.message || 'erro interno' });
+  }
+});
+
+// ============================================================
 // v3.26 - INTELIGÊNCIA FULL
 // ============================================================
 // (1) full-vincular: acha no Bling a NF de ENTRADA série 2 que o
