@@ -31,6 +31,16 @@ const buscarNFePorId = blingClient.buscarNFePorId;
 const buscarNFnoBlingPorNumero = blingClient.buscarNFnoBlingPorNumero;
 const buscarNFnoBlingPorOrderId = blingClient.buscarNFnoBlingPorOrderId;
 const buscarNFBlindada = blingClient.buscarNFBlindada;
+
+// v3.30 - itens da NF no formato salvo em devolucoes.nf_itens (jsonb)
+function mapItensNF(nf) {
+  return (nf && Array.isArray(nf.itens)) ? nf.itens.map(it => ({
+    titulo: it.descricao || null,
+    sku: it.codigo || null,
+    quantidade: it.quantidade || null,
+    valor: it.valor || null,
+  })) : null;
+}
 const buscarProdutoBlingPorSku = blingClient.buscarProdutoBlingPorSku;
 const trocarCodePorTokenBling = blingClient.trocarCodePorTokenBling;
 const chamarML = mlClient.chamarML;
@@ -1041,6 +1051,16 @@ app.post('/api/triagem/aprovar', requerEstoquista, async (req, res) => {
       }
     }
 
+    // v3.30: guarda os itens da NF pro card das Aprovadas ja abrir com
+    // produtos e quantidades (1 busca no Bling na hora da aprovacao)
+    let nfItens = null;
+    if (dados.nf_id_bling) {
+      try {
+        const rIt = await buscarNFePorId(String(dados.nf_id_bling));
+        nfItens = (rIt.ok && rIt.data?.data) ? mapItensNF(rIt.data.data) : null;
+      } catch (e) { nfItens = null; }
+    }
+
     // v3.17.0 - monta descricao do registro
     let descricaoRegistro;
     if (ehParcial) {
@@ -1074,6 +1094,7 @@ app.post('/api/triagem/aprovar', requerEstoquista, async (req, res) => {
         nf_data_emissao: dados.nf_data_emissao || null,
         nf_id_bling: dados.nf_id_bling || null,
         nf_link_danfe: dados.nf_link_danfe || null,
+        nf_itens: nfItens,
         tipo: 'aprovado',
         status: 'pendente',
         funcionario: req.usuario,
@@ -1795,6 +1816,7 @@ app.post('/api/admin/lancar-por-nf', requerAdmin, async (req, res) => {
           nf_data_emissao: nf.dataEmissao || null,
           nf_id_bling: String(nf.id),
           nf_link_danfe: nf.linkDanfe || (nf.chaveAcesso ? 'https://meudanfe.com.br/consulta/' + nf.chaveAcesso : null),
+          nf_itens: mapItensNF(nf),
           tipo: 'aprovado',
           status: 'pendente',
           funcionario: req.usuario,
@@ -2084,6 +2106,7 @@ app.post('/api/admin/buscar-nf/:id', requerAdmin, async (req, res) => {
     }
 
     // 4) Grava no registro
+    const nfItensResgate = (rBlind.ok && rBlind.nf) ? mapItensNF(rBlind.nf) : null;
     const { error: errUpd } = await supabase
       .from('devolucoes')
       .update({
@@ -2094,6 +2117,7 @@ app.post('/api/admin/buscar-nf/:id', requerAdmin, async (req, res) => {
         nf_data_emissao: nfInfo.dataEmissao,
         nf_id_bling: nfInfo.idBling,
         nf_link_danfe: nfInfo.linkDanfe,
+        nf_itens: nfItensResgate,
       })
       .eq('id', devId);
     if (errUpd) {
