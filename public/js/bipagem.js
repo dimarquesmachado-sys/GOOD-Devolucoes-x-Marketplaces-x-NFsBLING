@@ -125,10 +125,20 @@ function atualizarBotaoParcial() {
 function processarBipagem(codigo) {
   if (!codigo) return;
 
-  // Acha qual item ainda precisa de bip e cujo EAN bate
-  const itemMatch = bipagemEstado.itensEsperados.find(it =>
-    String(it.ean).trim() === codigo && it.bipados < it.quantidade
-  );
+  // v3.19.1 - matching tolerante: EAN comparado DIGITO a DIGITO (imune a
+  // sujeira invisivel de leitor) OU SKU exato (cobre etiqueta de produto
+  // 4x2,5 que sai com SKU quando o item nao tem EAN, e caixas com SKU).
+  const cod = String(codigo).trim();
+  const codDigitos = cod.replace(/\D/g, '');
+  const codUpper = cod.toUpperCase();
+  const itemMatch = bipagemEstado.itensEsperados.find(it => {
+    if (it.bipados >= it.quantidade) return false;
+    const eanDig = String(it.ean || '').replace(/\D/g, '');
+    if (eanDig && codDigitos.length >= 8 && eanDig === codDigitos) return true;
+    const sku = String(it.sku || '').trim().toUpperCase();
+    if (sku && sku !== '-' && sku === codUpper) return true;
+    return false;
+  });
 
   if (itemMatch) {
     // ✅ BIPAGEM CORRETA
@@ -164,11 +174,16 @@ function processarBipagem(codigo) {
     bipagemEstado.tentativasErro++;
     beepErro();
 
-    // Pega EAN(s) esperados pra mostrar
+    // Pega EAN(s)/SKU(s) esperados pra mostrar
     const eansEsperados = bipagemEstado.itensEsperados
       .filter(it => it.bipados < it.quantidade)
-      .map(it => it.ean)
-      .join(' ou ');
+      .map(it => {
+        const partes = [];
+        if (it.ean && it.ean !== '-') partes.push(it.ean);
+        if (it.sku && it.sku !== '-') partes.push('SKU ' + it.sku);
+        return partes.join(' / ') || '-';
+      })
+      .join('  ou  ');
 
     document.getElementById('bipagemEsperado').textContent = eansEsperados;
     document.getElementById('bipagemRecebido').textContent = codigo;
