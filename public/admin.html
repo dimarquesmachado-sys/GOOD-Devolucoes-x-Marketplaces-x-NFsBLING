@@ -232,6 +232,7 @@
         <button onclick="carregar()">🔄 Recarregar</button>
         <button id="btnVarreduraNF" onclick="varrerNFsFaltantes()" style="background:#6a1b9a; color:#fff;" title="Busca e vincula a NF de TODOS os registros sem NF, um por vez (respeita o limite do Bling)">🔎 Buscar NFs faltantes</button>
         <button id="btnLancarNF" onclick="lancarPorNF()" style="background:#37474f; color:#fff;" title="Cria cards em Aprovadas a partir do número da NF de venda (série 1) — pra devoluções que não passaram pela bipagem">➕ Lançar por NF</button>
+        <button id="btnCarregarItens" onclick="carregarItensAntigos()" style="background:#2e7d32; color:#fff;" title="Retrofit: busca no Bling e grava os itens/quantidades dos cards ANTIGOS, pra caixinha verde já vir aberta">🧾 Carregar itens (antigos)</button>
         <span class="resultado-info" id="resultadoInfo"></span>
       </div>
     </div>
@@ -1319,6 +1320,73 @@
       if (btn) btn.textContent = txtOriginal;
       if (erros.length > 0) console.warn('[Concluir lote] Falhas:', erros);
       toast(`✅ ${ok} concluída(s)` + (falha > 0 ? ` · ❌ ${falha} falha(s) (console F12)` : ''), falha > 0 ? 'err' : 'ok');
+      carregar();
+    }
+
+    // v3.31 - RETROFIT DE ITENS: percorre os cards antigos (sem nf_itens)
+    // e grava produtos/quantidades vindos do Bling — 1 por vez, com placar.
+    // Clicar de novo PARA (o que já gravou, fica).
+    let retrofitAtivo = false;
+    async function carregarItensAntigos() {
+      const btn = document.getElementById('btnCarregarItens');
+      if (retrofitAtivo) {
+        retrofitAtivo = false;
+        btn.textContent = '⏹ Parando...';
+        return;
+      }
+
+      const tudo = [
+        ...(dados.aprovadas || []),
+        ...(dados.problemas || []),
+        ...(dados.divergentes || []),
+      ];
+      const fila = tudo.filter(d =>
+        d.status !== 'concluido' &&
+        !(Array.isArray(d.nf_itens) && d.nf_itens.length > 0) &&
+        (d.nf_id_bling || (d.nf_chave && d.nf_numero))
+      );
+      if (fila.length === 0) {
+        toast('Todos os cards já têm os itens gravados! ✅', 'ok');
+        return;
+      }
+
+      const estim = Math.ceil(fila.length * 4 / 60);
+      if (!confirm(`Carregar itens de ${fila.length} card(s) antigo(s)?\n\n~4s por card (busca no Bling), estimativa ${estim || 1} min.\nPra parar: clique de novo no botão.`)) return;
+
+      retrofitAtivo = true;
+      const corOriginal = btn.style.background;
+      btn.style.background = '#c62828';
+      let ok = 0, falha = 0;
+      const erros = [];
+
+      for (let i = 0; i < fila.length; i++) {
+        if (!retrofitAtivo) break;
+        const reg = fila[i];
+        btn.textContent = `⏹ Parar · ${i + 1}/${fila.length} (✅${ok} ❌${falha})`;
+        try {
+          const r = await fetch(`/api/admin/carregar-itens/${reg.id}`, { method: 'POST' });
+          const d = await r.json();
+          if (d.ok) ok++;
+          else { falha++; erros.push(`NF ${reg.nf_numero || reg.id}: ${(d.erro || '').slice(0, 80)}`); }
+        } catch (e) {
+          falha++;
+          erros.push(`NF ${reg.nf_numero || reg.id}: ${e.message || e}`);
+        }
+        if (i < fila.length - 1 && retrofitAtivo) {
+          await new Promise(res => setTimeout(res, 900));
+        }
+      }
+
+      const parou = !retrofitAtivo && (ok + falha) < fila.length;
+      retrofitAtivo = false;
+      btn.style.background = corOriginal;
+      btn.textContent = '🧾 Carregar itens (antigos)';
+      if (erros.length > 0) console.warn('[Retrofit itens] Falhas:', erros);
+      toast(
+        `${parou ? '⏹ Retrofit PARADO' : '🧾 Retrofit concluído'}: ✅ ${ok} card(s) com itens gravados · ❌ ${falha} falha(s)` +
+        (falha > 0 ? ' (console F12)' : ''),
+        falha > 0 ? 'err' : 'ok'
+      );
       carregar();
     }
 
