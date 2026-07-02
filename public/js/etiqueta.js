@@ -16,9 +16,38 @@ async function conectarQZ() {
     throw new Error('QZ Tray nao carregou nesta pagina (recarregue com Ctrl+Shift+R)');
   }
   if (qz.websocket.isActive()) return;
-  // Modo sem certificado: o QZ pergunta 1x ("Allow" + marcar Remember)
-  try { qz.security.setCertificatePromise(function (resolve) { resolve(); }); } catch (e) { /* ok */ }
-  try { qz.security.setSignaturePromise(function () { return function (resolve) { resolve(); }; }); } catch (e) { /* ok */ }
+
+  // v3.19.3 - MODO ASSINADO: o servidor entrega o certificado (o mesmo do
+  // checkout, ja confiado no QZ Tray do notebook) e assina cada pedido.
+  // Resultado: impressao SILENCIOSA, sem popup de Allow.
+  let certTxt = null;
+  try {
+    const r = await fetch('/api/qz/cert');
+    if (r.ok) {
+      const t = await r.text();
+      if (t.includes('BEGIN CERTIFICATE')) certTxt = t;
+    }
+  } catch (e) { /* sem certificado configurado */ }
+
+  if (certTxt) {
+    qz.security.setCertificatePromise(function (resolve) { resolve(certTxt); });
+    try { qz.security.setSignatureAlgorithm('SHA512'); } catch (e) { /* qz antigo */ }
+    qz.security.setSignaturePromise(function (toSign) {
+      return function (resolve, reject) {
+        fetch('/api/qz/sign?request=' + encodeURIComponent(toSign))
+          .then(function (r) {
+            if (!r.ok) throw new Error('assinatura falhou (HTTP ' + r.status + ')');
+            return r.text();
+          })
+          .then(resolve)
+          .catch(reject);
+      };
+    });
+  } else {
+    // Sem QZ_CERT/QZ_PRIVKEY no Render: modo antigo (popup Allow 1x)
+    try { qz.security.setCertificatePromise(function (resolve) { resolve(); }); } catch (e) { /* ok */ }
+    try { qz.security.setSignaturePromise(function () { return function (resolve) { resolve(); }; }); } catch (e) { /* ok */ }
+  }
   await qz.websocket.connect();
 }
 
