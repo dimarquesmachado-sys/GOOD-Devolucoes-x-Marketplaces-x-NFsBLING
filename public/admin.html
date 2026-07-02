@@ -457,7 +457,7 @@
           <div class="item-detalhes">
             <strong>${escapeHtml(d.produto_sku || '-')}</strong> ·
             <strong>${d.produto_qtd || '-'} un</strong> ·
-            ${moeda(d.produto_valor_unit)}<br>
+            ${moeda(d.produto_valor_unit)}${d.nf_id_bling ? ` · <a href="#" onclick="return verItensNF('${d.nf_id_bling}', this)" style="color:#1565c0;font-size:12px;text-decoration:none;font-weight:600;" title="Mostra todos os itens e quantidades desta NF">▼ itens da NF</a><span class="itens-nf-box" style="display:none;"></span>` : ''}<br>
             <strong>NF:</strong> ${escapeHtml(d.nf_numero || '-')} ·
             <strong>Cliente:</strong> ${escapeHtml(d.buyer_nome || '-')}<br>
             ${linkPedido(d)}
@@ -509,7 +509,7 @@
           <div class="item-detalhes">
             <strong>${escapeHtml(d.produto_sku || '-')}</strong> ·
             <strong>${d.produto_qtd || '-'} un</strong> ·
-            ${moeda(d.produto_valor_unit)}<br>
+            ${moeda(d.produto_valor_unit)}${d.nf_id_bling ? ` · <a href="#" onclick="return verItensNF('${d.nf_id_bling}', this)" style="color:#1565c0;font-size:12px;text-decoration:none;font-weight:600;" title="Mostra todos os itens e quantidades desta NF">▼ itens da NF</a><span class="itens-nf-box" style="display:none;"></span>` : ''}<br>
             <strong>NF:</strong> ${escapeHtml(d.nf_numero || '-')} ·
             <strong>Cliente:</strong> ${escapeHtml(d.buyer_nome || '-')}<br>
             ${linkPedido(d)}
@@ -588,7 +588,7 @@
           <div class="item-detalhes">
             <strong>${escapeHtml(d.produto_sku || '-')}</strong> ·
             <strong>${d.produto_qtd || '-'} un</strong> ·
-            ${moeda(d.produto_valor_unit)}<br>
+            ${moeda(d.produto_valor_unit)}${d.nf_id_bling ? ` · <a href="#" onclick="return verItensNF('${d.nf_id_bling}', this)" style="color:#1565c0;font-size:12px;text-decoration:none;font-weight:600;" title="Mostra todos os itens e quantidades desta NF">▼ itens da NF</a><span class="itens-nf-box" style="display:none;"></span>` : ''}<br>
             <strong>NF original:</strong> ${escapeHtml(d.nf_numero || '-')} ·
             <strong>Cliente:</strong> ${escapeHtml(d.buyer_nome || '-')}<br>
             ${linkPedido(d)}
@@ -933,6 +933,46 @@
     function depositoDaSecao(secao) {
       const sel = document.getElementById(secao === 'aprovadas' ? 'depAprovadas' : 'depProblemas');
       return (sel && sel.value) ? sel.value : DEPOSITO_GERAL_ID;
+    }
+
+    // v3.29 - Expansor: mostra TODOS os itens e quantidades da NF do card
+    // (busca direto no Bling pelo nf_id_bling; carrega 1x e vira toggle)
+    async function verItensNF(idBling, el) {
+      const box = el.nextElementSibling; // .itens-nf-box
+      if (!box) return false;
+      if (box.style.display !== 'none') {
+        box.style.display = 'none';
+        el.textContent = '▼ itens da NF';
+        return false;
+      }
+      if (box.dataset.carregado === '1') {
+        box.style.display = 'block';
+        el.textContent = '▲ itens da NF';
+        return false;
+      }
+      const txt = el.textContent;
+      el.textContent = '⏳ buscando itens...';
+      try {
+        const r = await fetch(`/api/admin/nf-itens/${idBling}`);
+        const d = await r.json();
+        if (!d.ok) throw new Error(d.erro || 'falha');
+        const linhas = (d.itens || []).map(i => {
+          const q = Number(i.quantidade);
+          const qtd = isNaN(q) ? (i.quantidade || '?') : (q % 1 === 0 ? q : q.toFixed(2));
+          return `<div style="padding:2px 0;">📦 <strong>${qtd}×</strong> <code>${escapeHtml(i.sku || '-')}</code> ${escapeHtml(i.titulo || '')} — ${moeda(i.valor)}</div>`;
+        }).join('');
+        box.innerHTML = `<div style="margin-top:6px; background:#f5f5f7; border:1px solid #e0e0e0; border-radius:8px; padding:8px 10px; font-size:12.5px;">
+          <div style="color:#666; margin-bottom:4px;"><strong>Itens da NF ${escapeHtml(String(d.numero || ''))}</strong> (${(d.itens || []).length}):</div>
+          ${linhas || 'NF sem itens?'}
+        </div>`;
+        box.dataset.carregado = '1';
+        box.style.display = 'block';
+        el.textContent = '▲ itens da NF';
+      } catch (e) {
+        toast('Erro ao buscar itens da NF: ' + (e.message || e), 'err');
+        el.textContent = txt;
+      }
+      return false;
     }
 
     // v3.26 - INTELIGÊNCIA FULL
