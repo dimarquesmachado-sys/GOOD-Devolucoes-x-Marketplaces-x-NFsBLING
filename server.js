@@ -1903,14 +1903,17 @@ async function buscarIdMunicipioPorCep(cep) {
 // v3.19 (Fase 3B) - Resolve o ID interno do Bling pelo numero da NF
 // ============================================================
 // v3.33 - DEBUG: lista as devolucoes Shopee que o proxy enxerga
-// (pra conferir tracking_number vs. etiquetas fisicas do galpao)
+// (v3.34.1: passthrough FIEL do proxy - inclui debug_amostra_crua
+//  quando a lista vier vazia, pra diagnostico em 1 clique)
 app.get('/api/debug/shopee-devolucoes', requerAdmin, async (req, res) => {
   try {
     if (!SHOPEE_PROXY_URL || !SHOPEE_PROXY_KEY) {
       return res.status(400).json({ ok: false, erro: 'Configure SHOPEE_PROXY_URL e SHOPEE_PROXY_KEY no Render deste servico' });
     }
-    const dados = await buscarDevolucoesShopeeProxy(req.query.refresh === '1');
-    return res.json({ ok: true, qtd: (dados || []).length, devolucoes: dados });
+    const url = `${SHOPEE_PROXY_URL}/${SHOPEE_LOJA_KEY}/interno/devolucoes${req.query.refresh === '1' ? '?refresh=1' : ''}`;
+    const r = await fetch(url, { headers: { 'x-internal-key': SHOPEE_PROXY_KEY } });
+    const d = await r.json().catch(() => null);
+    return res.status(r.ok ? 200 : 502).json(d || { ok: false, erro: 'resposta invalida do proxy (HTTP ' + r.status + ')' });
   } catch (e) {
     return res.status(500).json({ ok: false, erro: e.message || String(e) });
   }
