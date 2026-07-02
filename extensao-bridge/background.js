@@ -1,5 +1,5 @@
 // ============================================================
-// GOOD Devoluções Bridge - background.js  (v1.4.1)
+// GOOD Devoluções Bridge - background.js  (v1.4.3)
 // ============================================================
 // Roda como service worker da extensao.
 // Recebe mensagens do content.js (vindas do painel admin).
@@ -43,6 +43,10 @@
 // Se o Bling mudar a revisao um dia, o modo "espelho" (espiao) cobre
 // automaticamente ate a gente atualizar este valor.
 const BLING_API_REVISION = '3.1.0';
+
+// v1.4.2: endereco do sistema pra extensao gravar o resultado SOZINHA
+// (mesmo que o painel desista de esperar, nada se perde)
+const API_SISTEMA = 'https://good-devolucoes-x-marketplaces-x-nfsbling.onrender.com';
 
 // IDs FIXOS DA GOOD IMPORT (confirmados por captura real do Bling)
 // ATENCAO: sao especificos da GOOD. Girassol/AMB teriam outros.
@@ -156,7 +160,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 // payload = { idNFOriginal, idLoja, emitir }
 // ============================================================
 async function gerarDevolucao(payload, painelTab) {
-  const { idNFOriginal, idLoja, emitir } = payload || {};
+  const { idNFOriginal, idLoja, emitir, idDeposito } = payload || {};
 
   if (!idNFOriginal) throw new Error('idNFOriginal obrigatorio');
 
@@ -207,6 +211,7 @@ async function gerarDevolucao(payload, painelTab) {
             ? String(idLoja).trim()
             : '0',
           emitir: !!emitir,
+          idDepositoEscolhido: (idDeposito != null && String(idDeposito).trim() !== '') ? String(idDeposito).trim() : null,
           fixos: GOOD,
           apiRevision: BLING_API_REVISION,
           espelho: espelho,
@@ -226,14 +231,34 @@ async function gerarDevolucao(payload, painelTab) {
     if (!resposta.ok) {
       throw new Error(resposta.erro || 'Erro desconhecido dentro da aba do Bling');
     }
+
+    // v1.4.2: GRAVA o resultado direto no sistema (nao depende do painel
+    // estar esperando - se o painel der timeout, nada se perde).
+    if (payload.devolucaoId && resposta.resultado && resposta.resultado.idNotaDevolucao) {
+      try {
+        const rReg = await fetch(API_SISTEMA + '/api/admin/registrar-devolucao-gerada/' + encodeURIComponent(payload.devolucaoId), {
+          method: 'PUT',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            nf_devolucao_id_bling: String(resposta.resultado.idNotaDevolucao),
+            nf_devolucao_numero: String(resposta.resultado.numero || ''),
+          }),
+        });
+        console.log('[Bridge] auto-registro no sistema:', rReg.status);
+      } catch (e) {
+        console.log('[Bridge] auto-registro falhou (painel deve registrar):', e.message || e);
+      }
+    }
+
     return resposta.resultado;
   })();
 
-  // Trava de seguranca: nunca deixa o painel esperando mais de 35s
+  // Trava de seguranca: nunca deixa o painel esperando mais de 90s (SEFAZ tem dias lentos)
   const limite = new Promise((_, reject) => {
     setTimeout(() => {
-      reject(new Error('A extensao travou na etapa "' + etapa + '" (35s). Recarregue a aba do Bling (F5) e a pagina do painel (Ctrl+Shift+R) e tente de novo.'));
-    }, 35000);
+      reject(new Error('A extensao travou na etapa "' + etapa + '" (90s). A NF PODE ter sido criada mesmo assim - clique em Gerar de novo que o sistema confere e vincula. Se persistir, recarregue a aba do Bling (F5) e a pagina do painel (Ctrl+Shift+R) e tente de novo.'));
+    }, 90000);
   });
 
   try {
@@ -492,7 +517,11 @@ function fluxoDevolucaoNaPagina(p) {
     }
     const dadosNota = dados.dadosNota || {};
     const idNotaVenda = dadosNota.id;
-    const idDeposito = dadosNota.idDeposito;
+    // v1.4.3: o painel pode escolher o deposito (Geral/DEFEITOS/etc);
+    // sem escolha, vale o padrao da NF (Geral)
+    const idDeposito = (p.idDepositoEscolhido && String(p.idDepositoEscolhido).trim() !== '')
+      ? String(p.idDepositoEscolhido).trim()
+      : dadosNota.idDeposito;
     if (!idNotaVenda) return { ok: false, erro: 'obter-dados-devolucao nao trouxe dadosNota.id' };
 
     // ---------- PASSO 3: montar XML e salvar (cria a nota) ----------
@@ -610,5 +639,5 @@ function fluxoDevolucaoNaPagina(p) {
 
 // Log de instalacao (aparece em edge://extensions/ -> service worker)
 chrome.runtime.onInstalled.addListener(() => {
-  console.log('[GOOD Devolucoes Bridge] v1.4.1 instalada com sucesso');
+  console.log('[GOOD Devolucoes Bridge] v1.4.3 instalada com sucesso');
 });

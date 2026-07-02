@@ -1,11 +1,11 @@
 // ============================================================
-// GOOD Devoluções Bridge - content.js  (v1.4.1)
+// GOOD Devoluções Bridge - content.js  (v1.4.3)
 // ============================================================
 // Roda dentro da pagina do admin (onrender.com).
 // Escuta window.postMessage da pagina e faz "ponte" com a extensao.
 // ============================================================
 
-const BRIDGE_VERSAO = '1.4.1';
+const BRIDGE_VERSAO = '1.4.3';
 
 // Sinaliza pra pagina que a extensao esta presente (pra UI mostrar status)
 window.postMessage({
@@ -49,17 +49,17 @@ window.addEventListener('message', async (event) => {
   }
 
   try {
-    // Manda mensagem pro background.js com timeout proprio (40s)
+    // Manda mensagem pro background.js com timeout proprio (100s)
     const resposta = await Promise.race([
       chrome.runtime.sendMessage({
         tipo: 'BLING_DEVOLUCAO_CRIAR',
         payload: event.data.payload,   // { idNFOriginal, idLoja, emitir }
       }),
-      new Promise((resolve) => setTimeout(() => resolve(null), 40000)),
+      new Promise((resolve) => setTimeout(() => resolve(null), 100000)),
     ]);
 
     if (!resposta) {
-      responder(false, null, 'A extensao nao respondeu em 40s. Recarregue esta pagina do painel (Ctrl+Shift+R), confira se ha uma aba do Bling aberta e logada, e tente de novo.');
+      responder(false, null, 'A extensao nao respondeu em 100s. A NF PODE ter sido criada mesmo assim - recarregue o painel (Ctrl+Shift+R) e clique em Gerar de novo que o sistema confere e vincula.');
       return;
     }
 
