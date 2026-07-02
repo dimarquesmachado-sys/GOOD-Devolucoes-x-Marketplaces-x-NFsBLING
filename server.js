@@ -465,20 +465,92 @@ app.get('/api/devolucao/identificar/:codigo', async (req, res) => {
     }
   }
 
+  // ===== CHAVE NF-e (v3.34): bipou a chave de 44 digitos da DANFE =====
+  // Cobre devolucao com a embalagem original (qualquer marketplace) e o
+  // caso Shopee "recusa/insucesso" que volta com a etiqueta de IDA.
+  if (!shipment && !pack && codigoLimpo.length === 44) {
+    const modelo = codigoLimpo.substr(20, 2);
+    if (modelo !== '55') {
+      // DACE/DC-e do transporte (modelo 99) e afins: nao e a NF do produto
+      resultado.erro = `Isso e uma chave de documento de TRANSPORTE (modelo ${modelo}), nao a NF do produto. Bipe a chave da DANFE do produto ou o codigo de rastreio.`;
+      resultado.tentativas.push({ tipo: 'chave_danfe', codigo: codigoLimpo, ok: false, status: 422 });
+      return res.status(404).json(resultado);
+    }
+    const numeroDaChave = String(parseInt(codigoLimpo.substr(25, 9), 10));
+    const serieDaChave = String(parseInt(codigoLimpo.substr(22, 3), 10));
+    console.log(`[BUSCA] CHAVE DANFE: serie=${serieDaChave} numero=${numeroDaChave}`);
+    let idNF = null;
+    try { idNF = await resolverIdNFPorChave(numeroDaChave, codigoLimpo); } catch (e) { idNF = null; }
+    resultado.tentativas.push({ tipo: 'chave_danfe', codigo: codigoLimpo, ok: !!idNF, status: idNF ? 200 : 404 });
+    if (!idNF) {
+      resultado.erro = `Chave lida, mas a NF ${numeroDaChave} (serie ${serieDaChave}) nao foi localizada no Bling.`;
+      return res.status(404).json(resultado);
+    }
+    const rFullNF = await buscarNFePorId(idNF);
+    const nfCh = (rFullNF.ok && rFullNF.data?.data) ? rFullNF.data.data : null;
+    if (!nfCh) {
+      resultado.erro = `NF ${numeroDaChave} achada (id ${idNF}) mas falhou ao carregar do Bling.`;
+      return res.status(404).json(resultado);
+    }
+    const itensCh = Array.isArray(nfCh.itens) ? nfCh.itens.map(it => ({
+      titulo: it.descricao || null,
+      sku: it.codigo || null,
+      ean: it.gtin || null,
+      quantidade: it.quantidade || null,
+      valor: it.valor || null,
+      unidade: it.unidade || null,
+    })) : [];
+    resultado.nf = {
+      fonte: 'bling',
+      numero: nfCh.numero,
+      serie: nfCh.serie,
+      chaveAcesso: nfCh.chaveAcesso || codigoLimpo,
+      valor: nfCh.valorNota,
+      dataEmissao: nfCh.dataEmissao,
+      linkDanfe: nfCh.linkDanfe,
+      linkPdf: nfCh.linkPDF,
+      linkXml: nfCh.xml,
+      idBling: nfCh.id,
+      numeroPedidoLoja: nfCh.numeroPedidoLoja,
+      situacao: nfCh.situacao,
+      itens: itensCh,
+    };
+    const nomeClienteCh = (nfCh.contato && nfCh.contato.nome) ? nfCh.contato.nome : null;
+    const primeiroCh = itensCh.length ? itensCh[0] : null;
+    resultado.order = {
+      id: nfCh.numeroPedidoLoja || null,
+      pack_id: null,
+      buyer: { id: null, first_name: nomeClienteCh, last_name: '', nickname: null },
+      order_items: primeiroCh
+        ? [{ unit_price: Number(primeiroCh.valor) || null, quantity: null, item: { id: null, title: null, seller_sku: null } }]
+        : [],
+    };
+    resultado.shipment = { id: null };
+    resultado.encontrado = true;
+    resultado.metodo = 'chave_danfe';
+    resultado.eh_devolucao = true;
+    resultado.avisos.push({ tipo: 'nf_via_chave', mensagem: `NF ${nfCh.numero} localizada pela chave da DANFE (bissecao)` });
+    console.log(`[BUSCA] OK (CHAVE) | NF=${nfCh.numero} pedido=${nfCh.numeroPedidoLoja || '-'}`);
+    return res.json(resultado);
+  }
+
   // ===== SHOPEE (v3.33): tenta casar como etiqueta de devolucao Shopee =====
   if (!shipment && !pack) {
     let devShopee = null;
     if (SHOPEE_PROXY_URL && SHOPEE_PROXY_KEY) {
       try {
         devShopee = await acharDevolucaoShopee(codigoOriginal);
-        resultado.tentativas.push({ tipo: 'shopee_return', codigo: codigoOriginal, ok: !!devShopee });
+        resultado.tentativas.push({ tipo: 'shopee_return', codigo: codigoOriginal, ok: !!devShopee, status: devShopee ? 200 : 404 });
       } catch (e) {
-        resultado.tentativas.push({ tipo: 'shopee_return', codigo: codigoOriginal, ok: false, erro: e.message || String(e) });
+        resultado.tentativas.push({ tipo: 'shopee_return', codigo: codigoOriginal, ok: false, status: 500, erro: e.message || String(e) });
         console.error('[BUSCA][shopee] proxy falhou:', e.message || e);
       }
     }
     if (!devShopee) {
-      resultado.erro = 'Codigo nao encontrado em shipments/packs do ML nem nas devolucoes Shopee';
+      const pareceSPX = /^BR[A-Z0-9]{8,}$/i.test(String(codigoOriginal).trim());
+      resultado.erro = pareceSPX
+        ? 'Etiqueta Shopee (SPX) nao casou com as devolucoes. Tente: digitar o "Pedido" impresso na etiqueta (ex: 260527FMTSJM8C), ou bipar a chave da DANFE se o pacote voltou com a nota.'
+        : 'Codigo nao encontrado em shipments/packs do ML nem nas devolucoes Shopee';
       return res.status(404).json(resultado);
     }
 
