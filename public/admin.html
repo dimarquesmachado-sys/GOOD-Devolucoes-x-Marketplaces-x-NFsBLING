@@ -457,7 +457,7 @@
           <div class="item-detalhes">
             <strong>${escapeHtml(d.produto_sku || '-')}</strong> ·
             <strong>${d.produto_qtd || '-'} un</strong> ·
-            ${moeda(d.produto_valor_unit)}${d.nf_id_bling ? ` · <a href="#" onclick="return verItensNF('${d.nf_id_bling}', this)" style="color:#1565c0;font-size:12px;text-decoration:none;font-weight:600;" title="Mostra todos os itens e quantidades desta NF">▼ itens da NF</a><span class="itens-nf-box" style="display:none;"></span>` : ''}<br>
+            ${moeda(d.produto_valor_unit)}${renderItensCard(d)}<br>
             <strong>NF:</strong> ${escapeHtml(d.nf_numero || '-')} ·
             <strong>Cliente:</strong> ${escapeHtml(d.buyer_nome || '-')}<br>
             ${linkPedido(d)}
@@ -937,6 +937,28 @@
 
     // v3.29 - Expansor: mostra TODOS os itens e quantidades da NF do card
     // (busca direto no Bling pelo nf_id_bling; carrega 1x e vira toggle)
+    function linhaItemNF(i) {
+      const q = Number(i.quantidade);
+      const qtd = isNaN(q) ? (i.quantidade || '?') : (q % 1 === 0 ? q : q.toFixed(2));
+      return `<div style="padding:2px 0;">📦 <strong>${qtd}×</strong> <code>${escapeHtml(i.sku || '-')}</code> ${escapeHtml(i.titulo || '')} — ${moeda(i.valor)}</div>`;
+    }
+
+    // v3.30 - Aprovadas: itens JÁ ABERTOS quando gravados no registro
+    // (bipagem conferiu = conformidade com a NF); cards antigos sem
+    // itens gravados mantêm o toggle ▼ que busca no Bling.
+    function renderItensCard(d) {
+      if (Array.isArray(d.nf_itens) && d.nf_itens.length > 0) {
+        return `<span class="itens-nf-inline"><div style="margin-top:6px; background:#eef7ee; border:1px solid #c8e6c9; border-radius:8px; padding:8px 10px; font-size:12.5px;">
+          <div style="color:#2e7d32; margin-bottom:4px;">✔ <strong>Itens da NF ${escapeHtml(String(d.nf_numero || ''))}</strong> (${d.nf_itens.length}):</div>
+          ${d.nf_itens.map(linhaItemNF).join('')}
+        </div></span>`;
+      }
+      if (d.nf_id_bling) {
+        return ` · <a href="#" onclick="return verItensNF('${d.nf_id_bling}', this)" style="color:#1565c0;font-size:12px;text-decoration:none;font-weight:600;" title="Mostra todos os itens e quantidades desta NF">▼ itens da NF</a><span class="itens-nf-box" style="display:none;"></span>`;
+      }
+      return '';
+    }
+
     async function verItensNF(idBling, el) {
       const box = el.nextElementSibling; // .itens-nf-box
       if (!box) return false;
