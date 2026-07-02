@@ -362,7 +362,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '3.18.1',
+    version: '3.38 (shopee + fila + fotos)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -2959,7 +2959,7 @@ registrarRotasRelatorios(app, { supabase, requerAdmin });
 // ============================================================
 app.listen(PORT, () => {
   console.log('============================================');
-  console.log('GOOD Devolucoes v3.18.1 - keepalive (anti-pausa Supabase)');
+  console.log('GOOD Devolucoes v3.38 - shopee + fila de impressao + fotos blindadas');
   console.log(`Porta: ${PORT}`);
   console.log(`ML: ${mlClient.hasToken() ? 'OK' : 'FALTA'}`);
   console.log(`Bling: ${blingClient.hasToken() ? 'OK' : 'FALTA'}`);
