@@ -183,10 +183,21 @@ const normShopee = (s) => String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, ''
 async function acharDevolucaoShopee(codigo) {
   const alvo = normShopee(codigo);
   if (!alvo || alvo.length < 6) return null;
+  const alvoDig = String(codigo).replace(/\D/g, '');
+  const mTok = String(codigo).toUpperCase().match(/BR[A-Z0-9]{9,}/);
+  const alvoTok = mTok ? mTok[0] : null;
   let lista = await buscarDevolucoesShopeeProxy(false);
   if (lista === null) return null;
-  const casa = (d) => [d.tracking_number, d.return_sn, d.order_sn]
-    .some(v => v && normShopee(v) === alvo);
+  const casa = (d) => [d.tracking_number, d.return_sn, d.order_sn].some(v => {
+    if (!v) return false;
+    const nv = normShopee(v);
+    if (nv === alvo) return true;
+    if (alvoTok && nv === alvoTok) return true; // token SPX dentro de URL/QR
+    // leitor/camera que comeu as letras: compara so os digitos (>=10 evita
+    // colidir com order_sn, que tem poucos digitos)
+    const dv = String(v).replace(/\D/g, '');
+    return alvoDig.length >= 10 && dv.length >= 10 && dv === alvoDig;
+  });
   let hit = lista.find(casa);
   if (!hit) {
     // etiqueta de devolucao recem-criada pode nao estar no cache: fura 1x
