@@ -41,6 +41,37 @@ function mapItensNF(nf) {
     valor: it.valor || null,
   })) : null;
 }
+
+// v3.31 - acha o ID Bling de uma NF de VENDA usando a chave de acesso
+// (AAMM = mes de emissao, posicoes 3-6; serie = 23-25). Janela de 1 mes.
+async function resolverIdNFPorChave(numero, chaveBruta) {
+  const chave = String(chaveBruta || '').replace(/\D/g, '');
+  const alvo = String(numero || '').replace(/^0+/, '');
+  if (chave.length !== 44 || !alvo) return null;
+  const ano = 2000 + parseInt(chave.substr(2, 2), 10);
+  const mes = parseInt(chave.substr(4, 2), 10);
+  const serieChave = String(parseInt(chave.substr(22, 3), 10));
+  if (!(mes >= 1 && mes <= 12)) return null;
+  const f = (dt) => dt.toISOString().slice(0, 10);
+  const ini = f(new Date(Date.UTC(ano, mes - 1, 1) - 2 * 864e5));
+  const fim = f(new Date(Date.UTC(ano, mes, 0) + 5 * 864e5));
+  for (let pg = 1; pg <= 4; pg++) {
+    if (pg > 1) await sleep(400);
+    const url = `https://api.bling.com.br/Api/v3/nfe?limite=100&pagina=${pg}&tipo=1&dataEmissaoInicial=${ini}&dataEmissaoFinal=${fim}`;
+    const r = await chamarBling(url);
+    if (!r.ok) return null;
+    const lista = r.data?.data || [];
+    if (lista.length === 0) return null;
+    const m = lista.find(nf => {
+      if (String(nf.numero || '').replace(/^0+/, '') !== alvo) return false;
+      if (nf.serie != null && String(parseInt(nf.serie, 10)) !== serieChave) return false;
+      return true;
+    });
+    if (m) return String(m.id);
+    if (lista.length < 100) return null;
+  }
+  return null;
+}
 const buscarProdutoBlingPorSku = blingClient.buscarProdutoBlingPorSku;
 const trocarCodePorTokenBling = blingClient.trocarCodePorTokenBling;
 const chamarML = mlClient.chamarML;
@@ -1052,11 +1083,16 @@ app.post('/api/triagem/aprovar', requerEstoquista, async (req, res) => {
     }
 
     // v3.30: guarda os itens da NF pro card das Aprovadas ja abrir com
-    // produtos e quantidades (1 busca no Bling na hora da aprovacao)
+    // produtos e quantidades (1 busca no Bling na hora da aprovacao).
+    // v3.31: se nao veio o id Bling mas ha chave, descobre pela janela.
     let nfItens = null;
-    if (dados.nf_id_bling) {
+    let idBlingAprovar = dados.nf_id_bling || null;
+    if (!idBlingAprovar && dados.nf_chave && dados.nf_numero) {
+      try { idBlingAprovar = await resolverIdNFPorChave(dados.nf_numero, dados.nf_chave); } catch (e) { idBlingAprovar = null; }
+    }
+    if (idBlingAprovar) {
       try {
-        const rIt = await buscarNFePorId(String(dados.nf_id_bling));
+        const rIt = await buscarNFePorId(String(idBlingAprovar));
         nfItens = (rIt.ok && rIt.data?.data) ? mapItensNF(rIt.data.data) : null;
       } catch (e) { nfItens = null; }
     }
@@ -1092,7 +1128,7 @@ app.post('/api/triagem/aprovar', requerEstoquista, async (req, res) => {
         nf_chave: dados.nf_chave || null,
         nf_valor: dados.nf_valor || null,
         nf_data_emissao: dados.nf_data_emissao || null,
-        nf_id_bling: dados.nf_id_bling || null,
+        nf_id_bling: idBlingAprovar || null,
         nf_link_danfe: dados.nf_link_danfe || null,
         nf_itens: nfItens,
         tipo: 'aprovado',
@@ -1600,6 +1636,49 @@ async function buscarIdMunicipioPorCep(cep) {
 
 // ============================================================
 // v3.19 (Fase 3B) - Resolve o ID interno do Bling pelo numero da NF
+// ============================================================
+// v3.31 - RETROFIT: grava os itens da NF num card antigo (e o
+// nf_id_bling, se faltava e a chave permitir descobrir).
+app.post('/api/admin/carregar-itens/:id', requerAdmin, async (req, res) => {
+  if (!supabase) return res.status(500).json({ ok: false, erro: 'Supabase nao configurado' });
+  try {
+    const { data: reg, error: errReg } = await supabase
+      .from('devolucoes')
+      .select('id, nf_id_bling, nf_numero, nf_chave, nf_itens')
+      .eq('id', req.params.id)
+      .single();
+    if (errReg || !reg) return res.status(404).json({ ok: false, erro: 'Registro nao encontrado' });
+    if (Array.isArray(reg.nf_itens) && reg.nf_itens.length > 0) {
+      return res.json({ ok: true, ja_tinha: true, qtd: reg.nf_itens.length });
+    }
+
+    let idBling = reg.nf_id_bling ? String(reg.nf_id_bling) : null;
+    let idDescoberto = false;
+    if (!idBling && reg.nf_chave && reg.nf_numero) {
+      idBling = await resolverIdNFPorChave(reg.nf_numero, reg.nf_chave);
+      idDescoberto = !!idBling;
+    }
+    if (!idBling) {
+      return res.status(404).json({ ok: false, erro: 'Card sem nf_id_bling e sem chave utilizavel pra localizar a NF' });
+    }
+
+    await sleep(400);
+    const rFull = await buscarNFePorId(idBling);
+    const nf = (rFull.ok && rFull.data?.data) ? rFull.data.data : null;
+    if (!nf) return res.status(404).json({ ok: false, erro: 'NF nao encontrada no Bling (id ' + idBling + ')' });
+
+    const itens = mapItensNF(nf) || [];
+    const upd = { nf_itens: itens };
+    if (idDescoberto) upd.nf_id_bling = idBling; // brinde: card ganha o link Bling
+    const { error: errUpd } = await supabase.from('devolucoes').update(upd).eq('id', req.params.id);
+    if (errUpd) return res.status(500).json({ ok: false, erro: 'Falhou ao gravar: ' + errUpd.message });
+
+    return res.json({ ok: true, qtd: itens.length, id_descoberto: idDescoberto });
+  } catch (e) {
+    return res.status(500).json({ ok: false, erro: e.message || 'erro interno' });
+  }
+});
+
 // ============================================================
 // v3.29 - Itens completos de uma NF (pro expansor "▼ itens da NF")
 app.get('/api/admin/nf-itens/:idBling', requerAdmin, async (req, res) => {
