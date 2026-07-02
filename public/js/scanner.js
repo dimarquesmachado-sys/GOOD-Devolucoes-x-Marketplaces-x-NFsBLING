@@ -122,11 +122,14 @@ function processarBipagemEtiqueta(codigo) {
     if (j.id) codigoLimpo = String(j.id);
   } catch(e) {}
 
-  // Tira espaços, hifens e caracteres não numéricos
-  codigoLimpo = codigoLimpo.replace(/[^0-9]/g, '');
+  // v3.19.2: preserva LETRAS (tracking SPX da Shopee = BR...A/V/D).
+  // Se vier QR com URL, extrai o token BR...; senao so tira simbolos.
+  const mSpx = String(codigoLimpo).toUpperCase().match(/BR[A-Z0-9]{9,}/);
+  if (mSpx) codigoLimpo = mSpx[0];
+  codigoLimpo = String(codigoLimpo).replace(/[^0-9A-Za-z]/g, '');
 
-  // Etiquetas válidas: 9-20 dígitos
-  if (codigoLimpo.length < 9 || codigoLimpo.length > 20) {
+  // Etiquetas validas: 9-44 chars (ML digitos, SPX BR..., chave DANFE 44)
+  if (codigoLimpo.length < 9 || codigoLimpo.length > 44) {
     beepErro();
     status.style.background = 'rgba(198,40,40,0.95)';
     status.textContent = `❌ Codigo invalido: ${codigo.slice(0, 30)}`;
