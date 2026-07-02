@@ -1987,6 +1987,59 @@ app.get('/api/qz/sign', requerEstoquista, (req, res) => {
 });
 
 // ============================================================
+// v3.38 - FILA DE IMPRESSAO REMOTA: o celular clica 🏷️ e a
+// etiqueta sai na Zebra da ESTACAO (qualquer PC com esta pagina
+// aberta + QZ Tray). O index vira estacao sozinho ao carregar.
+const filaEtiquetas = [];
+let estacaoUltimoPoll = 0;
+
+app.post('/api/etiqueta/fila', requerEstoquista, (req, res) => {
+  try {
+    const zpl = String((req.body && req.body.zpl) || '');
+    if (!zpl.startsWith('^XA') || zpl.length > 20000) {
+      return res.status(400).json({ ok: false, erro: 'ZPL invalido' });
+    }
+    const agora = Date.now();
+    // limpeza: jobs com mais de 4h caem fora
+    while (filaEtiquetas.length && agora - filaEtiquetas[0].criadoEm > 4 * 3600e3) filaEtiquetas.shift();
+    if (filaEtiquetas.length >= 50) {
+      return res.status(429).json({ ok: false, erro: 'fila cheia (50 etiquetas aguardando)' });
+    }
+    const job = {
+      id: agora + '-' + Math.random().toString(36).slice(2, 7),
+      zpl,
+      resumo: String((req.body && req.body.resumo) || '').slice(0, 120),
+      por: req.usuario,
+      criadoEm: agora,
+    };
+    filaEtiquetas.push(job);
+    const estacaoOnline = (agora - estacaoUltimoPoll) < 60e3;
+    console.log(`[FILA-ETQ] +job de ${req.usuario} (${job.resumo}) | fila=${filaEtiquetas.length} | estacao=${estacaoOnline ? 'online' : 'offline'}`);
+    return res.json({ ok: true, id: job.id, aguardando: filaEtiquetas.length, estacao_online: estacaoOnline });
+  } catch (e) {
+    return res.status(500).json({ ok: false, erro: e.message || String(e) });
+  }
+});
+
+// Long-poll da estacao: segura a resposta ate ~25s esperando job chegar
+app.get('/api/etiqueta/fila/proximo', requerEstoquista, async (req, res) => {
+  const esperaMax = Math.min(25, parseInt(req.query.espera, 10) || 25) * 1000;
+  const inicio = Date.now();
+  estacaoUltimoPoll = inicio;
+  while (Date.now() - inicio < esperaMax) {
+    if (filaEtiquetas.length > 0) {
+      const job = filaEtiquetas.shift();
+      estacaoUltimoPoll = Date.now();
+      console.log(`[FILA-ETQ] entregue: ${job.resumo || job.id} (restam ${filaEtiquetas.length})`);
+      return res.json({ ok: true, job, restam: filaEtiquetas.length });
+    }
+    await sleep(500);
+    estacaoUltimoPoll = Date.now();
+  }
+  return res.json({ ok: true, vazio: true });
+});
+
+// ============================================================
 // v3.35 - FOTOS via servidor: baixa do bucket com a chave do
 // servico (funciona com bucket publico OU privado) e entrega
 // protegida pelo login do admin. Cura o "foto" quebrado quando
