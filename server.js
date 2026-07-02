@@ -153,6 +153,49 @@ const supabase = (SUPABASE_URL && SUPABASE_KEY)
   ? createClient(SUPABASE_URL, SUPABASE_KEY, { auth: { persistSession: false } })
   : null;
 
+// ============================================================
+// v3.33 - SHOPEE: devolucoes via proxy interno do shopee-nf-sync
+// (la vivem os tokens saudaveis da loja; aqui so consultamos).
+const SHOPEE_PROXY_URL = (process.env.SHOPEE_PROXY_URL || '').replace(/\/+$/, '');
+const SHOPEE_PROXY_KEY = process.env.SHOPEE_PROXY_KEY || '';
+const SHOPEE_LOJA_KEY = process.env.SHOPEE_LOJA_KEY || 'good';
+
+let _shopeeDevCache = { ts: 0, dados: [] };
+
+async function buscarDevolucoesShopeeProxy(forcar) {
+  if (!SHOPEE_PROXY_URL || !SHOPEE_PROXY_KEY) return null; // integracao desligada
+  const idade = Date.now() - _shopeeDevCache.ts;
+  if (!forcar && _shopeeDevCache.ts > 0 && idade < 5 * 60 * 1000) {
+    return _shopeeDevCache.dados;
+  }
+  const url = `${SHOPEE_PROXY_URL}/${SHOPEE_LOJA_KEY}/interno/devolucoes${forcar ? '?refresh=1' : ''}`;
+  const r = await fetch(url, { headers: { 'x-internal-key': SHOPEE_PROXY_KEY } });
+  const d = await r.json().catch(() => null);
+  if (!d || !d.ok) {
+    throw new Error('proxy shopee: ' + (d && d.erro ? d.erro : 'HTTP ' + r.status));
+  }
+  _shopeeDevCache = { ts: Date.now(), dados: d.devolucoes || [] };
+  return _shopeeDevCache.dados;
+}
+
+const normShopee = (s) => String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+
+async function acharDevolucaoShopee(codigo) {
+  const alvo = normShopee(codigo);
+  if (!alvo || alvo.length < 6) return null;
+  let lista = await buscarDevolucoesShopeeProxy(false);
+  if (lista === null) return null;
+  const casa = (d) => [d.tracking_number, d.return_sn, d.order_sn]
+    .some(v => v && normShopee(v) === alvo);
+  let hit = lista.find(casa);
+  if (!hit) {
+    // etiqueta de devolucao recem-criada pode nao estar no cache: fura 1x
+    lista = await buscarDevolucoesShopeeProxy(true);
+    hit = lista.find(casa);
+  }
+  return hit || null;
+}
+
 const EMAIL_HOST = process.env.EMAIL_HOST;
 const EMAIL_PORT = parseInt(process.env.EMAIL_PORT || '465', 10);
 const EMAIL_USER = process.env.EMAIL_USER;
@@ -422,9 +465,93 @@ app.get('/api/devolucao/identificar/:codigo', async (req, res) => {
     }
   }
 
+  // ===== SHOPEE (v3.33): tenta casar como etiqueta de devolucao Shopee =====
   if (!shipment && !pack) {
-    resultado.erro = 'Codigo nao encontrado em shipments nem packs';
-    return res.status(404).json(resultado);
+    let devShopee = null;
+    if (SHOPEE_PROXY_URL && SHOPEE_PROXY_KEY) {
+      try {
+        devShopee = await acharDevolucaoShopee(codigoOriginal);
+        resultado.tentativas.push({ tipo: 'shopee_return', codigo: codigoOriginal, ok: !!devShopee });
+      } catch (e) {
+        resultado.tentativas.push({ tipo: 'shopee_return', codigo: codigoOriginal, ok: false, erro: e.message || String(e) });
+        console.error('[BUSCA][shopee] proxy falhou:', e.message || e);
+      }
+    }
+    if (!devShopee) {
+      resultado.erro = 'Codigo nao encontrado em shipments/packs do ML nem nas devolucoes Shopee';
+      return res.status(404).json(resultado);
+    }
+
+    console.log(`[BUSCA] SHOPEE: return_sn=${devShopee.return_sn} order_sn=${devShopee.order_sn} tracking=${devShopee.tracking_number}`);
+
+    // NF pela blindada: order_sn da Shopee = numeroLoja da NF serie 1 (Fase 0 direto)
+    let nfData = null;
+    let nomeCliente = null;
+    const rBlind = await buscarNFBlindada({
+      orderIds: [devShopee.order_sn],
+      dataReferencia: devShopee.create_time
+        ? new Date(devShopee.create_time * 1000).toISOString().slice(0, 10)
+        : null,
+      janelaDias: 60,
+    });
+    if (rBlind.ok && rBlind.nf) {
+      const nf = rBlind.nf;
+      const itensBling = Array.isArray(nf.itens) ? nf.itens.map(it => ({
+        titulo: it.descricao || null,
+        sku: it.codigo || null,
+        ean: it.gtin || null,
+        quantidade: it.quantidade || null,
+        valor: it.valor || null,
+        unidade: it.unidade || null,
+      })) : [];
+      nfData = {
+        fonte: 'bling',
+        numero: nf.numero,
+        serie: nf.serie,
+        chaveAcesso: nf.chaveAcesso,
+        valor: nf.valorNota,
+        dataEmissao: nf.dataEmissao,
+        linkDanfe: nf.linkDanfe,
+        linkPdf: nf.linkPDF,
+        linkXml: nf.xml,
+        idBling: nf.id,
+        numeroPedidoLoja: nf.numeroPedidoLoja,
+        situacao: nf.situacao,
+        itens: itensBling,
+      };
+      nomeCliente = (nf.contato && nf.contato.nome) ? nf.contato.nome : null;
+      resultado.avisos.push({
+        tipo: 'nf_via_blindada',
+        mensagem: `NF ${nf.numero} achada via busca blindada (${rBlind.via})`,
+      });
+      console.log(`[BUSCA][shopee] BLINDADA SUCESSO: NF=${nf.numero} via=${rBlind.via}`);
+    } else {
+      resultado.avisos.push({
+        tipo: 'sem_nf',
+        mensagem: `Devolucao Shopee ${devShopee.return_sn} localizada, mas a NF do pedido ${devShopee.order_sn} nao foi achada no Bling`,
+      });
+    }
+
+    // order/shipment "minimos" no formato que o frontend ja entende
+    // (NF-first cobre titulo/SKU/EAN/qtd; aqui vai cliente + valor + ids)
+    const primeiroItem = nfData && nfData.itens.length ? nfData.itens[0] : null;
+    resultado.order = {
+      id: devShopee.order_sn,
+      pack_id: null,
+      buyer: { id: null, first_name: nomeCliente, last_name: '', nickname: 'SHOPEE' },
+      order_items: primeiroItem
+        ? [{ unit_price: Number(primeiroItem.valor) || null, quantity: null, item: { id: null, title: null, seller_sku: null } }]
+        : [],
+    };
+    resultado.shipment = { id: devShopee.tracking_number || devShopee.return_sn || null };
+    resultado.encontrado = true;
+    resultado.metodo = 'shopee_return';
+    resultado.marketplace = 'shopee';
+    resultado.eh_devolucao = true;
+    resultado.shopee = devShopee;
+    resultado.nf = nfData;
+    console.log(`[BUSCA] OK (SHOPEE) | NF=${nfData ? nfData.numero : 'nao'}`);
+    return res.json(resultado);
   }
 
   // ML: ORDER (3 caminhos)
@@ -1702,6 +1829,21 @@ async function buscarIdMunicipioPorCep(cep) {
 
 // ============================================================
 // v3.19 (Fase 3B) - Resolve o ID interno do Bling pelo numero da NF
+// ============================================================
+// v3.33 - DEBUG: lista as devolucoes Shopee que o proxy enxerga
+// (pra conferir tracking_number vs. etiquetas fisicas do galpao)
+app.get('/api/debug/shopee-devolucoes', requerAdmin, async (req, res) => {
+  try {
+    if (!SHOPEE_PROXY_URL || !SHOPEE_PROXY_KEY) {
+      return res.status(400).json({ ok: false, erro: 'Configure SHOPEE_PROXY_URL e SHOPEE_PROXY_KEY no Render deste servico' });
+    }
+    const dados = await buscarDevolucoesShopeeProxy(req.query.refresh === '1');
+    return res.json({ ok: true, qtd: (dados || []).length, devolucoes: dados });
+  } catch (e) {
+    return res.status(500).json({ ok: false, erro: e.message || String(e) });
+  }
+});
+
 // ============================================================
 // v3.31 - RETROFIT: grava os itens da NF num card antigo (e o
 // nf_id_bling, se faltava e a chave permitir descobrir).
