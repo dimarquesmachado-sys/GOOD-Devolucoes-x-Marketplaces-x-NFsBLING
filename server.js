@@ -2817,6 +2817,7 @@ app.listen(PORT, () => {
   console.log(`Bling: ${blingClient.hasToken() ? 'OK' : 'FALTA'}`);
   console.log(`Render persist: ${(process.env.RENDER_API_KEY && process.env.RENDER_SERVICE_ID) ? 'OK' : 'FALTA'}`);
   console.log(`Supabase: ${supabase ? 'OK' : 'FALTA'}`);
+  console.log(`Shopee proxy: ${(SHOPEE_PROXY_URL && SHOPEE_PROXY_KEY) ? 'OK (loja ' + SHOPEE_LOJA_KEY + ' via ' + SHOPEE_PROXY_URL + ')' : 'AUSENTE - configure SHOPEE_PROXY_URL e SHOPEE_PROXY_KEY'}`);
   console.log(`Email: ${mailer ? 'OK (' + EMAIL_USER + ' -> ' + EMAIL_TO + ')' : 'FALTA'}`);
   console.log(`Usuarios: ${Object.keys(USERS).length > 0 ? Object.keys(USERS).join(', ') : 'FALTA'}`);
   console.log(`Admin: ${(ADMIN_USER && USERS[ADMIN_USER]) ? `OK (${ADMIN_USER})` : 'FALTA - defina ADMIN_USER e inclua no USERS'}`);
