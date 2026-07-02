@@ -2139,6 +2139,7 @@ app.post('/api/admin/buscar-nf/:id', requerAdmin, async (req, res) => {
 app.get('/api/admin/resolver-id-nf', requerAdmin, async (req, res) => {
   const numero = String(req.query.numero || '').trim();
   const idParam = String(req.query.id || '').trim();
+  const chave = String(req.query.chave || '').replace(/\D/g, '');
   const data = req.query.data || null;
   if (!numero && !idParam) {
     return res.status(400).json({ ok: false, erro: 'numero ou id da NF obrigatorio' });
@@ -2148,6 +2149,42 @@ app.get('/api/admin/resolver-id-nf', requerAdmin, async (req, res) => {
     let idBling = idParam;
     let numeroNF = numero;
     let idLoja = null;
+
+    // v3.30.1 - FASE JANELA: a chave de acesso diz o MES de emissao
+    // (posicoes 3-6 = AAMM) e a serie (23-25). Em vez de varrer 5.000
+    // NFs do presente pro passado, pula DIRETO pro mes certo (1-4 pags).
+    if (!idBling && chave.length === 44 && numero) {
+      const ano = 2000 + parseInt(chave.substr(2, 2), 10);
+      const mes = parseInt(chave.substr(4, 2), 10);
+      const serieChave = String(parseInt(chave.substr(22, 3), 10));
+      if (mes >= 1 && mes <= 12) {
+        const f = (dt) => dt.toISOString().slice(0, 10);
+        const ini = f(new Date(Date.UTC(ano, mes - 1, 1) - 2 * 864e5));
+        const fim = f(new Date(Date.UTC(ano, mes, 0) + 5 * 864e5));
+        const alvo = numero.replace(/^0+/, '');
+        console.log(`[resolver-id-nf] janela pela chave: ${ini}..${fim} numero=${alvo} serie=${serieChave}`);
+        for (let pg = 1; pg <= 4 && !idBling; pg++) {
+          if (pg > 1) await sleep(400);
+          const url = `https://api.bling.com.br/Api/v3/nfe?limite=100&pagina=${pg}&tipo=1&dataEmissaoInicial=${ini}&dataEmissaoFinal=${fim}`;
+          const r = await chamarBling(url);
+          if (!r.ok) break;
+          const lista = r.data?.data || [];
+          if (lista.length === 0) break;
+          const m = lista.find(nf => {
+            if (String(nf.numero || '').replace(/^0+/, '') !== alvo) return false;
+            if (nf.serie != null && String(parseInt(nf.serie, 10)) !== serieChave) return false;
+            return true;
+          });
+          if (m) {
+            idBling = String(m.id);
+            numeroNF = m.numero;
+            if (m.loja && m.loja.id != null) idLoja = String(m.loja.id);
+            console.log(`[resolver-id-nf] achou pela janela: id=${idBling}`);
+          }
+          if (lista.length < 100) break;
+        }
+      }
+    }
 
     // Se nao veio o id interno, descobre pelo numero (varre /nfe)
     if (!idBling) {
