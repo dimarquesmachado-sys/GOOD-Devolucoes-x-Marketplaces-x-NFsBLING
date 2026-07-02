@@ -2044,18 +2044,53 @@ app.get('/api/etiqueta/fila/proximo', requerEstoquista, async (req, res) => {
 // servico (funciona com bucket publico OU privado) e entrega
 // protegida pelo login do admin. Cura o "foto" quebrado quando
 // o bucket deixa de ser publico no Supabase.
-app.get('/api/admin/foto/:arquivo', requerAdmin, async (req, res) => {
+// ============================================================
+// v3.35.1 - FOTOS via servidor, agora INDESTRUTIVEL:
+//   1) tenta o download autenticado (cobre bucket PRIVADO)
+//   2) se a chave/politica negar, busca a URL PUBLICA por dentro
+//      do servidor e repassa (cobre bucket publico)
+// Funciona em qualquer combinacao de bucket/chave. Erro vira
+// texto explicativo (abrir a imagem numa aba mostra o motivo).
+app.get('/api/admin/foto/*', requerAdmin, async (req, res) => {
   try {
     if (!supabase) return res.status(500).send('Supabase nao configurado');
-    const arquivo = String(req.params.arquivo || '').replace(/[^a-zA-Z0-9._-]/g, '');
+    const arquivo = String(req.params[0] || '')
+      .replace(/\\/g, '/')
+      .replace(/\.\./g, '')
+      .replace(/^\/+/, '')
+      .replace(/[^a-zA-Z0-9._/-]/g, '');
     if (!arquivo) return res.status(400).send('arquivo invalido');
-    const { data, error } = await supabase.storage.from('fotos-problema').download(arquivo);
-    if (error || !data) {
-      console.error('[FOTO]', arquivo, error ? error.message : 'vazio');
-      return res.status(404).send('foto nao encontrada: ' + (error ? error.message : arquivo));
+
+    let buf = null;
+    let tipo = null;
+    let erroDownload = null;
+
+    try {
+      const { data, error } = await supabase.storage.from('fotos-problema').download(arquivo);
+      if (!error && data) {
+        buf = Buffer.from(await data.arrayBuffer());
+        tipo = data.type || null;
+      } else {
+        erroDownload = error ? error.message : 'resposta vazia';
+      }
+    } catch (e) {
+      erroDownload = e.message || String(e);
     }
-    const buf = Buffer.from(await data.arrayBuffer());
-    res.set('Content-Type', data.type || 'image/jpeg');
+
+    if (!buf) {
+      const urlPub = `${SUPABASE_URL}/storage/v1/object/public/fotos-problema/` +
+        arquivo.split('/').map(encodeURIComponent).join('/');
+      const r2 = await fetch(urlPub);
+      if (r2.ok) {
+        buf = Buffer.from(await r2.arrayBuffer());
+        tipo = r2.headers.get('content-type');
+      } else {
+        console.error('[FOTO]', arquivo, '| download:', erroDownload, '| publico: HTTP', r2.status);
+        return res.status(404).send(`foto nao encontrada (download: ${erroDownload || '-'} | publico: HTTP ${r2.status})`);
+      }
+    }
+
+    res.set('Content-Type', tipo || 'image/jpeg');
     res.set('Cache-Control', 'private, max-age=86400');
     return res.send(buf);
   } catch (e) {
