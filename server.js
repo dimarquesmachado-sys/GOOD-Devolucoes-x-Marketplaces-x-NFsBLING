@@ -1580,6 +1580,108 @@ async function buscarIdMunicipioPorCep(cep) {
 // ============================================================
 // v3.19 (Fase 3B) - Resolve o ID interno do Bling pelo numero da NF
 // ============================================================
+// v3.25 - LANÇAR POR NF: cria cards em "Aprovadas" a partir do
+// número da NF de venda (série 1). Porta lateral pra devoluções
+// que não passaram pela bipagem — depois a esteira 🏭 emite tudo.
+// Guardas: pula série 2 (FULL), pula número já lançado.
+// ============================================================
+app.post('/api/admin/lancar-por-nf', requerAdmin, async (req, res) => {
+  if (!supabase) return res.status(500).json({ ok: false, erro: 'Supabase nao configurado' });
+  const brutos = Array.isArray(req.body?.numeros) ? req.body.numeros : [];
+  const numeros = [...new Set(brutos.map(n => String(n).replace(/\D/g, '')).filter(n => n.length >= 3))].slice(0, 15);
+  if (numeros.length === 0) return res.status(400).json({ ok: false, erro: 'Nenhum numero de NF valido informado' });
+
+  const resultados = [];
+  let criados = 0;
+
+  for (const num of numeros) {
+    try {
+      // 1) Ja existe card com essa NF?
+      const candidatos = [...new Set([num, num.padStart(6, '0'), num.replace(/^0+/, '')])];
+      const { data: jaTem } = await supabase
+        .from('devolucoes')
+        .select('id, status')
+        .in('nf_numero', candidatos)
+        .limit(1);
+      if (jaTem && jaTem.length > 0) {
+        resultados.push({ numero: num, ok: false, motivo: `ja existe card (${jaTem[0].status})` });
+        continue;
+      }
+
+      // 2) Busca a NF no Bling (varredura por numero, tipo=1)
+      const rBusca = await buscarNFnoBlingPorNumero(num, null, { maxPaginas: 30 });
+      if (!rBusca.ok || !rBusca.match?.id) {
+        resultados.push({ numero: num, ok: false, motivo: `NF nao achada no Bling (${rBusca.totalScanned || 0} varridas)` });
+        continue;
+      }
+      await sleep(400);
+      const rFull = await buscarNFePorId(rBusca.match.id);
+      const nf = (rFull.ok && rFull.data?.data) ? rFull.data.data : null;
+      if (!nf) {
+        resultados.push({ numero: num, ok: false, motivo: 'falha ao ler NF completa' });
+        continue;
+      }
+
+      // 3) Guarda FULL: serie 2 = devolucao emitida pelo proprio ML
+      const serie = nf.serie != null ? String(nf.serie).trim() : null;
+      const chave = nf.chaveAcesso ? String(nf.chaveAcesso).replace(/\D/g, '') : '';
+      if (serie === '2' || (chave.length === 44 && chave.substr(22, 3) === '002')) {
+        resultados.push({ numero: num, ok: false, motivo: 'serie 2 (FULL) - devolucao e emitida pelo ML, nao lancar aqui' });
+        continue;
+      }
+
+      // 4) Monta o card com os dados da propria NF
+      const itens = Array.isArray(nf.itens) ? nf.itens : [];
+      const it0 = itens[0] || {};
+      const titulo = (it0.descricao || 'Produto da NF ' + num) + (itens.length > 1 ? ` (+${itens.length - 1} itens)` : '');
+
+      const { data: novo, error: errIns } = await supabase
+        .from('devolucoes')
+        .insert([{
+          shipment_id: 'manual-nf-' + num,
+          order_id: nf.numeroPedidoLoja ? String(nf.numeroPedidoLoja) : null,
+          pack_id: null,
+          buyer_id: null,
+          buyer_nome: nf.contato?.nome || null,
+          buyer_nickname: null,
+          pedido_bling_numero: null,
+          produto_titulo: titulo,
+          produto_mlb: null,
+          produto_sku: it0.codigo || null,
+          produto_qtd: it0.quantidade || null,
+          produto_valor_unit: it0.valor || null,
+          nf_numero: String(nf.numero),
+          nf_serie: serie,
+          nf_chave: nf.chaveAcesso || null,
+          nf_valor: nf.valorNota || null,
+          nf_data_emissao: nf.dataEmissao || null,
+          nf_id_bling: String(nf.id),
+          nf_link_danfe: nf.linkDanfe || (nf.chaveAcesso ? 'https://meudanfe.com.br/consulta/' + nf.chaveAcesso : null),
+          tipo: 'aprovado',
+          status: 'pendente',
+          funcionario: req.usuario,
+          problema_descricao: `[LANCAMENTO MANUAL por ${req.usuario}] card criado pelo nº da NF`,
+        }])
+        .select('id')
+        .single();
+
+      if (errIns) {
+        resultados.push({ numero: num, ok: false, motivo: 'erro ao gravar: ' + errIns.message });
+        continue;
+      }
+      criados++;
+      resultados.push({ numero: num, ok: true, id: novo.id, cliente: nf.contato?.nome || null, valor: nf.valorNota || null });
+      console.log(`[LANCAR-NF] card criado: NF ${nf.numero} (${nf.contato?.nome || '?'}) id=${novo.id}`);
+    } catch (e) {
+      resultados.push({ numero: num, ok: false, motivo: e.message || 'erro' });
+    }
+    await sleep(400);
+  }
+
+  return res.json({ ok: true, criados, resultados });
+});
+
+// ============================================================
 // v3.20.1 - VINCULAR DEVOLUCAO JA EXISTENTE no Bling
 // ============================================================
 // Quando a NF de devolucao foi criada mas o resultado se perdeu
