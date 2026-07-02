@@ -1368,11 +1368,16 @@ app.post('/api/triagem/aprovar', requerEstoquista, async (req, res) => {
 
   try {
     // v3.15.2 - Antes de gravar, busca numero do pedido Bling pelo order_id
+    // v3.37 - teto de 20s: passou disso, salva SEM o numero (campo cosmetico)
+    // e responde - nunca mais "salvando infinito" pro estoquista.
     let pedidoBlingNumero = null;
     if (dados.order_id) {
-      // Usa data da NF como referencia pra otimizar busca paginada
       const dataRef = dados.nf_data_emissao || null;
-      const r = await buscarPedidoBlingPorNumeroLoja(String(dados.order_id), dataRef, { maxPaginas: 50 });
+      const r = await Promise.race([
+        buscarPedidoBlingPorNumeroLoja(String(dados.order_id), dataRef, { maxPaginas: 12 }),
+        new Promise(resolve => setTimeout(() => resolve({ ok: false, timeout: true }), 20000)),
+      ]);
+      if (r?.timeout) console.warn(`[TRIAGEM] busca do pedido ${dados.order_id} estourou 20s - seguindo sem`);
       if (r?.ok && r.match?.numero) {
         pedidoBlingNumero = String(r.match.numero);
       }
