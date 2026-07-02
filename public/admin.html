@@ -635,7 +635,8 @@
     // publico/privado no Supabase; protegidas pelo login do admin)
     function srcFoto(url) {
       const partes = String(url || '').split('/fotos-problema/');
-      return partes.length === 2 ? '/api/admin/foto/' + encodeURIComponent(partes[1]) : url;
+      if (partes.length !== 2) return url;
+      return '/api/admin/foto/' + partes[1].split('/').map(encodeURIComponent).join('/');
     }
 
     function abrirFoto(url) {
