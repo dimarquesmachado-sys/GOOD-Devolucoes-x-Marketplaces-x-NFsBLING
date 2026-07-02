@@ -249,6 +249,7 @@
           <span class="badge-count" id="countAprovadas">0</span>
           <span style="margin-left:12px; display:inline-flex; gap:8px; align-items:center; font-size:13px; font-weight:normal;">
             <label style="display:inline-flex;align-items:center;gap:4px;cursor:pointer;" title="Marca/desmarca todos os cards elegíveis desta seção"><input type="checkbox" onchange="toggleTodasEsteira('aprovadas', this.checked)"> todas</label>
+            <select id="depAprovadas" style="padding:5px 8px;border-radius:6px;border:1px solid #90caf9;font-size:12px;" title="Depósito onde a emissão lança o estoque (padrão: Geral)"><option value="4956031259" selected>📦 Geral</option><option value="14888947655">📦 DEFEITOS API</option><option value="14888156920">📦 DEFEITOS</option><option value="9596855161">📦 B2W FULL</option></select>
             <button class="btn" id="btnEsteiraAprovadas" onclick="rodarEsteira('aprovadas')" style="background:#1565c0;color:#fff;" title="Gera + EMITE a NF de devolução dos cards selecionados, um por vez">🏭 Emitir selecionadas (0)</button>
             <button class="btn" id="btnConcluirAprovadas" onclick="concluirSelecionadas('aprovadas')" style="background:#2e7d32;color:#fff;" title="Marca como concluído todos os cards selecionados">✅ Concluir selecionadas (0)</button>
           </span>
@@ -262,6 +263,7 @@
           <span class="badge-count problema" id="countProblemas">0</span>
           <span style="margin-left:12px; display:inline-flex; gap:8px; align-items:center; font-size:13px; font-weight:normal;">
             <label style="display:inline-flex;align-items:center;gap:4px;cursor:pointer;" title="Marca/desmarca todos os cards elegíveis desta seção"><input type="checkbox" onchange="toggleTodasEsteira('problemas', this.checked)"> todas</label>
+            <select id="depProblemas" style="padding:5px 8px;border-radius:6px;border:1px solid #ffcc80;font-size:12px;" title="Depósito onde a emissão lança o estoque (padrão: Geral)"><option value="4956031259" selected>📦 Geral</option><option value="14888947655">📦 DEFEITOS API</option><option value="14888156920">📦 DEFEITOS</option><option value="9596855161">📦 B2W FULL</option></select>
             <button class="btn" id="btnEsteiraProblemas" onclick="rodarEsteira('problemas')" style="background:#e65100;color:#fff;" title="Gera + EMITE a NF de devolução dos cards selecionados, um por vez">🏭 Emitir selecionadas (0)</button>
             <button class="btn" id="btnConcluirProblemas" onclick="concluirSelecionadas('problemas')" style="background:#2e7d32;color:#fff;" title="Marca como concluído todos os cards selecionados">✅ Concluir selecionadas (0)</button>
           </span>
@@ -757,6 +759,16 @@
           <div><strong>NF original:</strong> ${escapeHtml(nfNumero)}</div>
           <div><strong>Produto:</strong> ${escapeHtml(produtoTitulo)}</div>
         </div>
+        <div style="background:#ede7f6; border:1px solid #b39ddb; padding:12px; border-radius:8px; font-size:13px; margin-bottom:16px; display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+          <strong>📦 Depósito do estoque:</strong>
+          <select id="depModal" style="padding:6px 10px; border-radius:6px; border:1px solid #b39ddb; font-size:13px;">
+            <option value="4956031259" selected>Geral</option>
+            <option value="14888947655">DEFEITOS API</option>
+            <option value="14888156920">DEFEITOS</option>
+            <option value="9596855161">B2W FULL</option>
+          </select>
+          <span style="font-size:12px; color:#5e35b1;">(produto com defeito? use DEFEITOS API)</span>
+        </div>
         <div style="background:#fff8e1; border:1px solid #ffe082; padding:12px; border-radius:8px; font-size:12.5px; color:#795548; margin-bottom:18px;">
           🧪 <strong>Criar rascunho</strong>: cria a NF no Bling mas NÃO emite (você confere e emite depois).<br>
           🧾 <strong>Gerar + Emitir</strong>: cria E transmite pra SEFAZ automaticamente (irreversível).
@@ -912,6 +924,17 @@
       return `<strong>Pedido:</strong> <code>${escapeHtml(id)}</code>`;
     }
 
+    // v3.28 - Depósitos do Bling (espelho do popup Gerar Devolução)
+    const DEPOSITO_GERAL_ID = '4956031259';
+    function depositoNome(id) {
+      const mapa = { '4956031259': 'Geral', '14888947655': 'DEFEITOS API', '14888156920': 'DEFEITOS', '9596855161': 'B2W FULL' };
+      return mapa[String(id)] || String(id);
+    }
+    function depositoDaSecao(secao) {
+      const sel = document.getElementById(secao === 'aprovadas' ? 'depAprovadas' : 'depProblemas');
+      return (sel && sel.value) ? sel.value : DEPOSITO_GERAL_ID;
+    }
+
     // v3.26 - INTELIGÊNCIA FULL
     // Acha no Bling a NF de entrada série 2 que o ML emitiu e vincula ao card
     async function fullVincular(id, btn) {
@@ -933,20 +956,27 @@
       }
     }
 
-    // Lança o estoque de entrada da devolução vinculada (API oficial, depósito Geral)
+    // Lança o estoque de entrada da devolução vinculada (API oficial),
+    // no depósito escolhido no seletor da seção Aprovadas (padrão: Geral)
     async function fullLancarEstoque(id, btn) {
+      const idDeposito = depositoDaSecao('aprovadas');
+      const depNome = depositoNome(idDeposito);
       if (!confirm(
-        '📦 Lançar ESTOQUE de entrada desta devolução no depósito GERAL?\n\n' +
+        `📦 Lançar ESTOQUE de entrada desta devolução no depósito ${depNome}?\n\n` +
         '⚠️ Só clique se AINDA NÃO lançou (lançar 2x pode dobrar o estoque).\n' +
-        '⚠️ Produto quebrado/com defeito? NÃO lance aqui — trate manualmente.'
+        '⚠️ Produto quebrado/com defeito? Escolha DEFEITOS API no seletor 📦 antes, ou não lance.'
       )) return;
       const t = btn ? btn.textContent : '';
       if (btn) { btn.disabled = true; btn.textContent = '📦 Lançando...'; }
       try {
-        const r = await fetch(`/api/admin/full-lancar-estoque/${id}`, { method: 'POST' });
+        const r = await fetch(`/api/admin/full-lancar-estoque/${id}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ idDeposito }),
+        });
         const d = await r.json();
         if (d.ok) {
-          toast('Estoque lançado no depósito Geral! ✅', 'ok');
+          toast(`Estoque lançado no depósito ${depositoNome(d.deposito || idDeposito)}! ✅`, 'ok');
           if (btn) btn.textContent = '📦 Estoque lançado ✓';
         } else {
           toast('Bling recusou: ' + (d.erro || 'sem detalhes'), 'err');
@@ -977,7 +1007,7 @@
 
     // Mesmo fluxo do modal, mas sem DOM: resolve id/idLoja -> Bridge
     // (gerar + emitir) -> registra. Lança erro com a mensagem original.
-    async function gerarDevolucaoSilenciosa(devolucaoId, idNFBling, nfNumero) {
+    async function gerarDevolucaoSilenciosa(devolucaoId, idNFBling, nfNumero, idDeposito) {
       const qs = idNFBling
         ? `id=${encodeURIComponent(idNFBling)}`
         : `numero=${encodeURIComponent(nfNumero || '')}`;
@@ -992,6 +1022,7 @@
         idLoja: dId.idLoja ? String(dId.idLoja) : null,
         emitir: true,
         devolucaoId: String(devolucaoId),
+        idDeposito: String(idDeposito || DEPOSITO_GERAL_ID),
       });
       if (!result || !result.idNotaDevolucao) {
         throw new Error('Bling não retornou ID da devolução: ' + JSON.stringify(result || {}).slice(0, 150));
@@ -1053,17 +1084,25 @@
         return;
       }
 
+      // v3.28: deposito escolhido no seletor da secao (padrao: Geral)
+      const idDeposito = depositoDaSecao(secao);
+      const depNome = depositoNome(idDeposito);
+      const depGeral = idDeposito === DEPOSITO_GERAL_ID;
+
       const estimMin = Math.ceil(fila.length * 30 / 60);
       if (!confirm(
         `🏭 ESTEIRA: gerar + EMITIR (SEFAZ) a NF de devolução de ${fila.length} card(s)?\n\n` +
         (puladosFull > 0 ? `🏬 ${puladosFull} card(s) FULL serão pulados (NF de devolução é emitida pelo próprio ML).\n` : '') +
         (pulados > 0 ? `⚠️ ${pulados} selecionado(s) SEM NF serão pulados (rode o 🔎 Buscar NFs pra eles).\n` : '') +
         (puladosFull > 0 || pulados > 0 ? `\n` : '') +
+        `• 📦 Depósito do estoque: ${depNome}\n` +
         `• Um por vez (SEFAZ é serial) — de 10s a 1min+ cada, estimativa ~${estimMin || 1} min no total\n` +
         `• Precisa da aba do Bling aberta e logada (a tela vai "piscar" a cada card, é normal)\n` +
         `• Card que já tiver devolução no Bling será apenas VINCULADO\n` +
         (secao === 'problemas'
-          ? `• PRODUTO C/ PROBLEMA: emitir lança estoque automático no Bling — os cards ficam ABERTOS e no fim aviso quais lançamentos você deve CANCELAR\n`
+          ? (depGeral
+            ? `• Depósito GERAL escolhido: cards ficam ABERTOS e no fim aviso quais lançamentos de estoque CANCELAR (mude pra DEFEITOS API pra não precisar cancelar)\n`
+            : `• Estoque entra quarentenado em ${depNome}: nada a cancelar — cards emitidos serão CONCLUÍDOS automaticamente\n`)
           : `• Emitida/vinculada com sucesso = card marcado como CONCLUÍDO automaticamente\n`) +
         `• Pra PARAR: clique de novo no botão (o que já foi emitido, fica)`
       )) return;
@@ -1085,25 +1124,26 @@
         } catch (e) { console.warn('[Esteira] concluir falhou (nao critico):', id, e.message || e); }
       }
 
-      // Produto OK (aprovadas) = concluir; produto com problema = manter
-      // aberto e lembrar de CANCELAR o lançamento de estoque no Bling
-      // (a emissão dentro do Bling lança estoque automaticamente).
+      // Produto com problema + depósito GERAL = manter aberto e lembrar de
+      // CANCELAR o lançamento. Com DEFEITOS/quarentena escolhido, o estoque
+      // já entra no lugar certo → conclui normalmente.
       const ehProblemas = secao === 'problemas';
+      const manterAbertoProblemas = ehProblemas && depGeral;
 
       for (let i = 0; i < fila.length; i++) {
         if (!esteiraAtiva) break;
         const item = fila[i];
         btn.textContent = `⏹ Parar · ${i + 1}/${fila.length} (✅${emitidas} 🔗${vinculadas} ❌${falhas})`;
         try {
-          const r = await gerarDevolucaoSilenciosa(item.id, item.nfid, item.nfnum);
+          const r = await gerarDevolucaoSilenciosa(item.id, item.nfid, item.nfnum, idDeposito);
           if (r.emitida) {
             emitidas++;
-            if (ehProblemas) {
+            if (manterAbertoProblemas) {
               lembretesEstoque.push(r.numero || item.nfnum);
-              console.log(`[Esteira] NF ${item.nfnum}: devolução ${r.numero} EMITIDA — card ABERTO (cancelar estoque no Bling)`);
+              console.log(`[Esteira] NF ${item.nfnum}: devolução ${r.numero} EMITIDA (estoque no Geral) — card ABERTO pra cancelar lançamento`);
             } else {
               await concluirQuieto(item.id); // ciclo fechado = concluído
-              console.log(`[Esteira] NF ${item.nfnum}: devolução ${r.numero} EMITIDA + card concluído`);
+              console.log(`[Esteira] NF ${item.nfnum}: devolução ${r.numero} EMITIDA (depósito ${depNome}) + card concluído`);
             }
           } else {
             rascunhos++; // SEFAZ não confirmou na hora: card fica aberto pra conferência
@@ -1118,7 +1158,7 @@
               const dV = await rV.json();
               if (dV.ok) {
                 vinculadas++;
-                if (ehProblemas) {
+                if (manterAbertoProblemas) {
                   lembretesEstoque.push(dV.nf_devolucao_numero || item.nfnum);
                   console.log(`[Esteira] NF ${item.nfnum}: devolução ${dV.nf_devolucao_numero} VINCULADA — card ABERTO (conferir estoque)`);
                 } else {
@@ -1157,11 +1197,11 @@
         ` · 🔗 ${vinculadas} vinculada(s)` +
         (rascunhos > 0 ? ` · 📝 ${rascunhos} rascunho(s) (card aberto pra conferir)` : '') +
         ` · ❌ ${falhas} falha(s)` +
-        (ehProblemas && lembretesEstoque.length > 0
-          ? ` — ⚠️ PRODUTO C/ PROBLEMA: cancele o lançamento de estoque no Bling das devoluções ${lembretesEstoque.join(', ')} (cards mantidos abertos)`
-          : ((emitidas + vinculadas) > 0 ? ' — concluídas automaticamente ✅' : '')) +
+        (manterAbertoProblemas && lembretesEstoque.length > 0
+          ? ` — ⚠️ PRODUTO C/ PROBLEMA (depósito Geral): cancele o lançamento de estoque no Bling das devoluções ${lembretesEstoque.join(', ')} (cards mantidos abertos)`
+          : ((emitidas + vinculadas) > 0 ? ` — concluídas automaticamente ✅ (estoque: ${depNome})` : '')) +
         (falhas > 0 ? ' (detalhes no console F12)' : ''),
-        (falhas > 0 || (ehProblemas && lembretesEstoque.length > 0)) ? 'err' : 'ok'
+        (falhas > 0 || (manterAbertoProblemas && lembretesEstoque.length > 0)) ? 'err' : 'ok'
       );
       carregar();
     }
@@ -1266,6 +1306,9 @@
     }
 
     async function confirmarGerarDevolucao(devolucaoId, idNFOriginalBling, nfNumero, emitir) {
+      // v3.28: le o deposito ANTES de trocar o conteudo do modal pelo spinner
+      const depModalEl = document.getElementById('depModal');
+      const idDeposito = (depModalEl && depModalEl.value) ? depModalEl.value : DEPOSITO_GERAL_ID;
       const conteudo = document.getElementById('modalGerarConteudo');
       const acao = emitir ? 'Gerando + emitindo NF' : 'Criando rascunho';
 
@@ -1313,6 +1356,7 @@
           idLoja: idLoja ? String(idLoja) : null,
           emitir: !!emitir,
           devolucaoId: String(devolucaoId),
+          idDeposito: String(idDeposito),
         });
 
         if (!result || !result.idNotaDevolucao) {
