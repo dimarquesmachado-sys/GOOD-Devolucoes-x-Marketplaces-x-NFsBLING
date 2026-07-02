@@ -1951,6 +1951,61 @@ app.get('/api/debug/shopee-devolucoes', requerAdmin, async (req, res) => {
 });
 
 // ============================================================
+// v3.36 - QZ TRAY ASSINADO: o servidor entrega o certificado e
+// ASSINA cada pedido de impressao (RSA-SHA512). Com o mesmo
+// certificado que o checkout ja usa (override.crt confiado no
+// QZ Tray do notebook), o popup "Allow" some por completo.
+// Nomes iguais aos do checkout no Mover-Pedidos (GOODBKP_*) pra copiar
+// nome+valor ao pe da letra; aceita QZ_CERT/QZ_PRIVKEY como fallback.
+const QZ_CERT = process.env.GOODBKP_QZ_CERT || process.env.QZ_CERT || '';
+const QZ_PRIVKEY = process.env.GOODBKP_QZ_PRIVKEY || process.env.QZ_PRIVKEY || '';
+
+app.get('/api/qz/cert', requerEstoquista, (req, res) => {
+  if (!QZ_CERT) return res.status(404).send('');
+  res.type('text/plain').send(QZ_CERT);
+});
+
+app.get('/api/qz/sign', requerEstoquista, (req, res) => {
+  try {
+    if (!QZ_PRIVKEY) return res.status(404).send('');
+    const toSign = String(req.query.request || '');
+    if (!toSign) return res.status(400).send('');
+    const signer = crypto.createSign('RSA-SHA512');
+    signer.update(toSign);
+    signer.end();
+    const assinatura = signer.sign(QZ_PRIVKEY, 'base64');
+    res.type('text/plain').send(assinatura);
+  } catch (e) {
+    console.error('[QZ-SIGN]', e.message);
+    res.status(500).send('erro: ' + e.message);
+  }
+});
+
+// ============================================================
+// v3.35 - FOTOS via servidor: baixa do bucket com a chave do
+// servico (funciona com bucket publico OU privado) e entrega
+// protegida pelo login do admin. Cura o "foto" quebrado quando
+// o bucket deixa de ser publico no Supabase.
+app.get('/api/admin/foto/:arquivo', requerAdmin, async (req, res) => {
+  try {
+    if (!supabase) return res.status(500).send('Supabase nao configurado');
+    const arquivo = String(req.params.arquivo || '').replace(/[^a-zA-Z0-9._-]/g, '');
+    if (!arquivo) return res.status(400).send('arquivo invalido');
+    const { data, error } = await supabase.storage.from('fotos-problema').download(arquivo);
+    if (error || !data) {
+      console.error('[FOTO]', arquivo, error ? error.message : 'vazio');
+      return res.status(404).send('foto nao encontrada: ' + (error ? error.message : arquivo));
+    }
+    const buf = Buffer.from(await data.arrayBuffer());
+    res.set('Content-Type', data.type || 'image/jpeg');
+    res.set('Cache-Control', 'private, max-age=86400');
+    return res.send(buf);
+  } catch (e) {
+    return res.status(500).send('erro: ' + (e.message || String(e)));
+  }
+});
+
+// ============================================================
 // v3.31 - RETROFIT: grava os itens da NF num card antigo (e o
 // nf_id_bling, se faltava e a chave permitir descobrir).
 app.post('/api/admin/carregar-itens/:id', requerAdmin, async (req, res) => {
@@ -2818,6 +2873,7 @@ app.listen(PORT, () => {
   console.log(`Render persist: ${(process.env.RENDER_API_KEY && process.env.RENDER_SERVICE_ID) ? 'OK' : 'FALTA'}`);
   console.log(`Supabase: ${supabase ? 'OK' : 'FALTA'}`);
   console.log(`Shopee proxy: ${(SHOPEE_PROXY_URL && SHOPEE_PROXY_KEY) ? 'OK (loja ' + SHOPEE_LOJA_KEY + ' via ' + SHOPEE_PROXY_URL + ')' : 'AUSENTE - configure SHOPEE_PROXY_URL e SHOPEE_PROXY_KEY'}`);
+  console.log(`QZ assinatura: ${(QZ_CERT && QZ_PRIVKEY) ? 'OK (impressao sem popup)' : 'sem certificado (modo Allow) - configure GOODBKP_QZ_CERT e GOODBKP_QZ_PRIVKEY'}`);
   console.log(`Email: ${mailer ? 'OK (' + EMAIL_USER + ' -> ' + EMAIL_TO + ')' : 'FALTA'}`);
   console.log(`Usuarios: ${Object.keys(USERS).length > 0 ? Object.keys(USERS).join(', ') : 'FALTA'}`);
   console.log(`Admin: ${(ADMIN_USER && USERS[ADMIN_USER]) ? `OK (${ADMIN_USER})` : 'FALTA - defina ADMIN_USER e inclua no USERS'}`);
