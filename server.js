@@ -1678,15 +1678,20 @@ app.post('/api/admin/full-lancar-estoque/:id', requerAdmin, async (req, res) => 
       return res.status(400).json({ ok: false, erro: 'Card sem devolucao vinculada - use o 🔗 Achar devolucao primeiro' });
     }
 
-    const url = `https://api.bling.com.br/Api/v3/nfe/${reg.nf_devolucao_id_bling}/lancar-estoque/${DEPOSITO_GERAL_GOOD}`;
+    // v3.28: deposito escolhido no painel (whitelist), padrao Geral
+    const DEPOSITOS_VALIDOS = new Set(['4956031259', '14888156920', '14888947655', '9596855161']);
+    const pedidoDep = String(req.body?.idDeposito || '').trim();
+    const deposito = DEPOSITOS_VALIDOS.has(pedidoDep) ? pedidoDep : DEPOSITO_GERAL_GOOD;
+
+    const url = `https://api.bling.com.br/Api/v3/nfe/${reg.nf_devolucao_id_bling}/lancar-estoque/${deposito}`;
     const r = await chamarBling(url, { method: 'POST', data: {} });
     if (!r.ok) {
       const detalhe = r.error?.error?.description || r.error?.error?.message || JSON.stringify(r.error || {}).slice(0, 180);
       return res.status(502).json({ ok: false, erro: `Bling recusou (HTTP ${r.status}): ${detalhe}` });
     }
 
-    console.log(`[FULL-ESTOQUE] ${req.params.id}: estoque lancado (NF dev ${reg.nf_devolucao_numero}, deposito Geral)`);
-    return res.json({ ok: true, nf_devolucao_numero: reg.nf_devolucao_numero });
+    console.log(`[FULL-ESTOQUE] ${req.params.id}: estoque lancado (NF dev ${reg.nf_devolucao_numero}, deposito ${deposito})`);
+    return res.json({ ok: true, nf_devolucao_numero: reg.nf_devolucao_numero, deposito });
   } catch (e) {
     console.error('[FULL-ESTOQUE] erro:', e);
     return res.status(500).json({ ok: false, erro: e.message || 'erro interno' });
