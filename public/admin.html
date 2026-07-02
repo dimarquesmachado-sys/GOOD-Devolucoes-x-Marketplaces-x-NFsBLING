@@ -458,9 +458,7 @@
             ${moeda(d.produto_valor_unit)}<br>
             <strong>NF:</strong> ${escapeHtml(d.nf_numero || '-')} ·
             <strong>Cliente:</strong> ${escapeHtml(d.buyer_nome || '-')}<br>
-            <strong>Order ML:</strong> ${d.order_id
-              ? `<a href="https://www.mercadolivre.com.br/vendas/${d.order_id}/detalhe" target="_blank" style="color:#FFE600;font-weight:700;text-decoration:none;background:#1a1a1a;padding:2px 8px;border-radius:4px;font-family:monospace;">${d.order_id} 🔗</a>`
-              : '<code>-</code>'}
+            ${linkPedido(d)}
             ${d.pack_id ? ` · <strong>Pack:</strong> <code>${d.pack_id}</code>` : ''}
             ${d.shipment_id ? ` · <strong>Shipment:</strong> <code>${d.shipment_id}</code>` : ''}
           </div>
@@ -474,11 +472,11 @@
               }
               <label style="display:inline-flex;align-items:center;gap:5px;font-size:12px;background:#e3f2fd;border:1px solid #90caf9;padding:5px 9px;border-radius:6px;cursor:pointer;" title="Seleciona pra ações em lote (emitir NF / concluir)"><input type="checkbox" class="chk-esteira" data-secao="aprovadas" data-id="${d.id}" data-nfid="${d.nf_id_bling || ''}" data-nfnum="${escapeHtml(String(d.nf_numero || ''))}" data-full="${ehSerie2(d) ? '1' : '0'}" onchange="atualizarContadorEsteira('aprovadas')"> selecionar</label>
               ${ehSerie2(d) && !d.nf_devolucao_id_bling
-                ? `<a class="btn" style="background:#00695c;color:#fff;" href="https://www.mercadolivre.com.br/emissor/vendas/${d.order_id || ''}/faturas" target="_blank" title="Venda FULL (s\u00e9rie 2): a NF de devolu\u00e7\u00e3o \u00e9 emitida pelo PR\u00d3PRIO Mercado Livre. N\u00c3O gere outra no Bling (duplicidade fiscal). Clique pra ver/baixar a NF no emissor do ML.">🏬 FULL · NF devolu\u00e7\u00e3o \u00e9 do ML</a>`
+                ? `<a class="btn" style="background:#00695c;color:#fff;" href="https://www.mercadolivre.com.br/emissor/vendas/${d.order_id || ''}/faturas" target="_blank" title="Venda FULL (s\u00e9rie 2): a NF de devolu\u00e7\u00e3o \u00e9 emitida pelo PR\u00d3PRIO Mercado Livre. N\u00c3O gere outra no Bling (duplicidade fiscal). Clique pra ver/baixar a NF no emissor do ML.">🏬 FULL</a><button class="btn" style="background:#00838f;" onclick="fullVincular('${d.id}', this)" title="Procura no Bling a NF de ENTRADA s\u00e9rie 2 que o ML emitiu pra esta devolu\u00e7\u00e3o e vincula ao card">🔗 Achar devolu\u00e7\u00e3o no Bling</button>`
                 : !d.nf_devolucao_id_bling && (d.nf_id_bling || d.nf_numero)
                 ? `<button class="btn" style="background:#1565c0;" onclick="abrirModalGerarDevolucao('${d.id}', '${d.nf_id_bling || ''}', '${escapeHtml(d.nf_numero || '')}', '${escapeHtml(d.produto_titulo || '')}')" title="Gera a NF de devolu\u00e7\u00e3o no Bling automaticamente">🧾 Gerar NF Devolu\u00e7\u00e3o</button>`
                 : d.nf_devolucao_id_bling
-                  ? `<a class="btn btn-verde" href="https://www.bling.com.br/notas.entrada.php#edit/${d.nf_devolucao_id_bling}" target="_blank" title="NF de devolu\u00e7\u00e3o j\u00e1 gerada">📝 Devolu\u00e7\u00e3o: ${d.nf_devolucao_numero || 'ver'}</a>`
+                  ? `<a class="btn btn-verde" href="https://www.bling.com.br/notas.entrada.php#edit/${d.nf_devolucao_id_bling}" target="_blank" title="NF de devolu\u00e7\u00e3o j\u00e1 gerada">📝 Devolu\u00e7\u00e3o: ${d.nf_devolucao_numero || 'ver'}</a>${ehSerie2(d) ? `<button class="btn" style="background:#4527a0;" onclick="fullLancarEstoque('${d.id}', this)" title="Lan\u00e7a o ESTOQUE de entrada desta devolu\u00e7\u00e3o no dep\u00f3sito GERAL (API oficial). S\u00f3 clique se ainda N\u00c3O lan\u00e7ou e o produto est\u00e1 ok pra revenda.">📦 Lan\u00e7ar estoque (Geral)</button>` : ''}`
                   : ''
               }
               ${!d.nf_numero && !d.nf_id_bling && d.order_id
@@ -512,9 +510,7 @@
             ${moeda(d.produto_valor_unit)}<br>
             <strong>NF:</strong> ${escapeHtml(d.nf_numero || '-')} ·
             <strong>Cliente:</strong> ${escapeHtml(d.buyer_nome || '-')}<br>
-            <strong>Order ML:</strong> ${d.order_id
-              ? `<a href="https://www.mercadolivre.com.br/vendas/${d.order_id}/detalhe" target="_blank" style="color:#FFE600;font-weight:700;text-decoration:none;background:#1a1a1a;padding:2px 8px;border-radius:4px;font-family:monospace;">${d.order_id} 🔗</a>`
-              : '<code>-</code>'}
+            ${linkPedido(d)}
             ${d.pack_id ? ` · <strong>Pack:</strong> <code>${d.pack_id}</code>` : ''}
             ${d.shipment_id ? ` · <strong>Shipment:</strong> <code>${d.shipment_id}</code>` : ''}
           </div>
@@ -534,9 +530,9 @@
               ${d.nf_link_danfe ? `<a class="btn btn-cinza" href="${d.nf_link_danfe}" target="_blank">📄 DANFE</a>` : ''}
               <label style="display:inline-flex;align-items:center;gap:5px;font-size:12px;background:#fff3e0;border:1px solid #ffcc80;padding:5px 9px;border-radius:6px;cursor:pointer;" title="Seleciona pra ações em lote (emitir NF / concluir)"><input type="checkbox" class="chk-esteira" data-secao="problemas" data-id="${d.id}" data-nfid="${d.nf_id_bling || ''}" data-nfnum="${escapeHtml(String(d.nf_numero || ''))}" data-full="${ehSerie2(d) ? '1' : '0'}" onchange="atualizarContadorEsteira('problemas')"> selecionar</label>
               ${ehSerie2(d) && !d.nf_devolucao_id_bling
-                ? `<a class="btn" style="background:#00695c;color:#fff;" href="https://www.mercadolivre.com.br/emissor/vendas/${d.order_id || ''}/faturas" target="_blank" title="Venda FULL (s\u00e9rie 2): a NF de devolu\u00e7\u00e3o \u00e9 emitida pelo PR\u00d3PRIO Mercado Livre. N\u00c3O gere outra no Bling (duplicidade fiscal). Clique pra ver/baixar a NF no emissor do ML.">🏬 FULL · NF devolu\u00e7\u00e3o \u00e9 do ML</a>`
+                ? `<a class="btn" style="background:#00695c;color:#fff;" href="https://www.mercadolivre.com.br/emissor/vendas/${d.order_id || ''}/faturas" target="_blank" title="Venda FULL (s\u00e9rie 2): a NF de devolu\u00e7\u00e3o \u00e9 emitida pelo PR\u00d3PRIO Mercado Livre. N\u00c3O gere outra no Bling (duplicidade fiscal). Clique pra ver/baixar a NF no emissor do ML.">🏬 FULL</a><button class="btn" style="background:#00838f;" onclick="fullVincular('${d.id}', this)" title="Procura no Bling a NF de ENTRADA s\u00e9rie 2 que o ML emitiu pra esta devolu\u00e7\u00e3o e vincula ao card">🔗 Achar devolu\u00e7\u00e3o no Bling</button>`
                 : d.nf_devolucao_id_bling
-                  ? `<a class="btn btn-verde" href="https://www.bling.com.br/notas.entrada.php#edit/${d.nf_devolucao_id_bling}" target="_blank" title="NF de devolu\u00e7\u00e3o j\u00e1 gerada">📝 Devolu\u00e7\u00e3o: ${d.nf_devolucao_numero || 'ver'}</a>`
+                  ? `<a class="btn btn-verde" href="https://www.bling.com.br/notas.entrada.php#edit/${d.nf_devolucao_id_bling}" target="_blank" title="NF de devolu\u00e7\u00e3o j\u00e1 gerada">📝 Devolu\u00e7\u00e3o: ${d.nf_devolucao_numero || 'ver'}</a>${ehSerie2(d) ? `<button class="btn" style="background:#4527a0;" onclick="fullLancarEstoque('${d.id}', this)" title="Lan\u00e7a o ESTOQUE de entrada desta devolu\u00e7\u00e3o no dep\u00f3sito GERAL (API oficial). S\u00f3 clique se ainda N\u00c3O lan\u00e7ou e o produto est\u00e1 ok pra revenda.">📦 Lan\u00e7ar estoque (Geral)</button>` : ''}`
                   : ''
               }
               <button class="btn btn-verde" onclick="concluir('${d.id}')">✅ Marcar como resolvido</button>
@@ -593,9 +589,7 @@
             ${moeda(d.produto_valor_unit)}<br>
             <strong>NF original:</strong> ${escapeHtml(d.nf_numero || '-')} ·
             <strong>Cliente:</strong> ${escapeHtml(d.buyer_nome || '-')}<br>
-            <strong>Order ML:</strong> ${d.order_id
-              ? `<a href="https://www.mercadolivre.com.br/vendas/${d.order_id}/detalhe" target="_blank" style="color:#FFE600;font-weight:700;text-decoration:none;background:#1a1a1a;padding:2px 8px;border-radius:4px;font-family:monospace;">${d.order_id} 🔗</a>`
-              : '<code>-</code>'}
+            ${linkPedido(d)}
             ${d.pack_id ? ` · <strong>Pack:</strong> <code>${d.pack_id}</code>` : ''}
             ${d.shipment_id ? ` · <strong>Shipment:</strong> <code>${d.shipment_id}</code>` : ''}
           </div>
@@ -904,6 +898,64 @@
       const ch = String(d.nf_chave || '').replace(/\D/g, '');
       if (ch.length === 44 && ch.substr(22, 3) === '002') return true;
       return false;
+    }
+
+    // v3.25.1 - Link do pedido: só aponta pro ML quando o número TEM cara
+    // de order ML (16 dígitos começando com 20). Shopee/MM/outros aparecem
+    // como "Pedido:" sem link (evita link quebrado).
+    function linkPedido(d) {
+      const id = String(d.order_id || '').trim();
+      if (!id) return '<strong>Pedido:</strong> <code>-</code>';
+      if (/^20\d{14}$/.test(id)) {
+        return `<strong>Order ML:</strong> <a href="https://www.mercadolivre.com.br/vendas/${id}/detalhe" target="_blank" style="color:#FFE600;font-weight:700;text-decoration:none;background:#1a1a1a;padding:2px 8px;border-radius:4px;font-family:monospace;">${id} 🔗</a>`;
+      }
+      return `<strong>Pedido:</strong> <code>${escapeHtml(id)}</code>`;
+    }
+
+    // v3.26 - INTELIGÊNCIA FULL
+    // Acha no Bling a NF de entrada série 2 que o ML emitiu e vincula ao card
+    async function fullVincular(id, btn) {
+      const t = btn ? btn.textContent : '';
+      if (btn) { btn.disabled = true; btn.textContent = '🔗 Procurando...'; }
+      try {
+        const r = await fetch(`/api/admin/full-vincular/${id}`, { method: 'POST' });
+        const d = await r.json();
+        if (d.ok) {
+          toast(`Devolução ML nº ${d.nf_devolucao_numero || '?'} vinculada ao card!`, 'ok');
+          carregar();
+        } else {
+          toast('Não achei: ' + (d.erro || 'sem detalhes'), 'err');
+          if (btn) { btn.disabled = false; btn.textContent = t; }
+        }
+      } catch (e) {
+        toast('Erro: ' + (e.message || e), 'err');
+        if (btn) { btn.disabled = false; btn.textContent = t; }
+      }
+    }
+
+    // Lança o estoque de entrada da devolução vinculada (API oficial, depósito Geral)
+    async function fullLancarEstoque(id, btn) {
+      if (!confirm(
+        '📦 Lançar ESTOQUE de entrada desta devolução no depósito GERAL?\n\n' +
+        '⚠️ Só clique se AINDA NÃO lançou (lançar 2x pode dobrar o estoque).\n' +
+        '⚠️ Produto quebrado/com defeito? NÃO lance aqui — trate manualmente.'
+      )) return;
+      const t = btn ? btn.textContent : '';
+      if (btn) { btn.disabled = true; btn.textContent = '📦 Lançando...'; }
+      try {
+        const r = await fetch(`/api/admin/full-lancar-estoque/${id}`, { method: 'POST' });
+        const d = await r.json();
+        if (d.ok) {
+          toast('Estoque lançado no depósito Geral! ✅', 'ok');
+          if (btn) btn.textContent = '📦 Estoque lançado ✓';
+        } else {
+          toast('Bling recusou: ' + (d.erro || 'sem detalhes'), 'err');
+          if (btn) { btn.disabled = false; btn.textContent = t; }
+        }
+      } catch (e) {
+        toast('Erro: ' + (e.message || e), 'err');
+        if (btn) { btn.disabled = false; btn.textContent = t; }
+      }
     }
 
     function rotuloEsteira(secao) {
