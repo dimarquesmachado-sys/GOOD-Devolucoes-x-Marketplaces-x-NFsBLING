@@ -42,6 +42,7 @@ function abrirModalAprovar() {
       });
       bipagemEstado.totalEsperado += qtd;
       itensHtml += `<div style="padding:6px 0;border-bottom:1px solid #eee;" data-item-idx="${i}">
+        <button onclick="imprimirEtiquetaItemBipagem(${i})" style="float:right; background:#5e35b1; color:#fff; border:none; border-radius:6px; padding:6px 10px; font-size:14px; cursor:pointer; margin-left:8px;" title="Imprime a etiqueta 4x2,5 (EAN) na Zebra">🏷️</button>
         <strong>${escapeHtml(it.titulo || '-')}</strong><br>
         <span style="font-size:12px;color:#666;">
           SKU <strong>${escapeHtml(sku)}</strong>
@@ -61,6 +62,7 @@ function abrirModalAprovar() {
       });
       bipagemEstado.totalEsperado += qtd;
       itensHtml += `<div style="padding:6px 0;border-bottom:1px solid #eee;" data-item-idx="${i}">
+        <button onclick="imprimirEtiquetaItemBipagem(${i})" style="float:right; background:#5e35b1; color:#fff; border:none; border-radius:6px; padding:6px 10px; font-size:14px; cursor:pointer; margin-left:8px;" title="Imprime a etiqueta 4x2,5 (EAN) na Zebra">🏷️</button>
         <strong>${escapeHtml(it.item?.title || '-')}</strong><br>
         <span style="font-size:12px;color:#666;">
           SKU <strong>${escapeHtml(it.item?.seller_sku || '-')}</strong>
