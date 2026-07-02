@@ -1580,6 +1580,120 @@ async function buscarIdMunicipioPorCep(cep) {
 // ============================================================
 // v3.19 (Fase 3B) - Resolve o ID interno do Bling pelo numero da NF
 // ============================================================
+// v3.26 - INTELIGÊNCIA FULL
+// ============================================================
+// (1) full-vincular: acha no Bling a NF de ENTRADA série 2 que o
+//     ML emitiu pra devolução (janela da venda, match valor/nome,
+//     confirma série na NF completa) e vincula ao card.
+// (2) full-lancar-estoque: lança o estoque de entrada da devolução
+//     vinculada, via API OFICIAL, no depósito GERAL (caso "voltou
+//     pra matriz e está ok pra revenda").
+const DEPOSITO_GERAL_GOOD = '4956031259';
+
+app.post('/api/admin/full-vincular/:id', requerAdmin, async (req, res) => {
+  if (!supabase) return res.status(500).json({ ok: false, erro: 'Supabase nao configurado' });
+  try {
+    const { data: reg, error: errReg } = await supabase
+      .from('devolucoes').select('*').eq('id', req.params.id).single();
+    if (errReg || !reg) return res.status(404).json({ ok: false, erro: 'Registro nao encontrado' });
+    if (reg.nf_devolucao_id_bling) {
+      return res.json({ ok: true, ja_tinha: true, nf_devolucao_numero: reg.nf_devolucao_numero });
+    }
+
+    // Confere que e FULL (serie 2 da NF de venda)
+    const chaveV = String(reg.nf_chave || '').replace(/\D/g, '');
+    const ehFull = String(reg.nf_serie || '').trim() === '2' ||
+      (chaveV.length === 44 && chaveV.substr(22, 3) === '002');
+    if (!ehFull) return res.status(400).json({ ok: false, erro: 'Este card nao e FULL (serie 2) - use o Gerar NF Devolucao normal' });
+
+    const f = (dt) => dt.toISOString().slice(0, 10);
+    const base = reg.nf_data_emissao ? new Date(reg.nf_data_emissao) : (reg.created_at ? new Date(reg.created_at) : new Date(Date.now() - 60 * 864e5));
+    const ini = f(new Date(base.getTime() - 864e5));
+    const fim = f(new Date(Date.now() + 864e5));
+
+    const nomeBusca = String(reg.buyer_nome || '').trim().toLowerCase();
+    const valorEsperado = (Number(reg.produto_valor_unit) || 0) * (Number(reg.produto_qtd) || 1);
+
+    // Varre notas de ENTRADA na janela e junta candidatas por valor/nome
+    const candidatos = [];
+    for (let pg = 1; pg <= 5; pg++) {
+      if (pg > 1) await sleep(400);
+      const url = `https://api.bling.com.br/Api/v3/nfe?limite=100&pagina=${pg}&tipo=0&dataEmissaoInicial=${ini}&dataEmissaoFinal=${fim}`;
+      const r = await chamarBling(url);
+      if (!r.ok) break;
+      const lista = r.data?.data || [];
+      if (lista.length === 0) break;
+      for (const nf of lista) {
+        const nomeNF = String(nf.contato?.nome || '').toLowerCase();
+        const bateNome = nomeBusca && nomeNF.includes(nomeBusca);
+        const bateValor = valorEsperado > 0 && nf.valorNota != null &&
+          Math.abs(Number(nf.valorNota) - valorEsperado) < 0.05;
+        if (bateNome || bateValor) candidatos.push(nf);
+      }
+      if (lista.length < 100) break;
+    }
+    candidatos.sort((a, b) => new Date(b.dataEmissao || 0) - new Date(a.dataEmissao || 0));
+
+    // Confirma a serie 2 na NF completa (a lista pode nao trazer serie)
+    for (const cand of candidatos.slice(0, 3)) {
+      await sleep(400);
+      const rFull = await buscarNFePorId(cand.id);
+      const nf = (rFull.ok && rFull.data?.data) ? rFull.data.data : null;
+      if (!nf) continue;
+      const chaveD = String(nf.chaveAcesso || '').replace(/\D/g, '');
+      const serieOk = String(nf.serie || '').trim() === '2' ||
+        (chaveD.length === 44 && chaveD.substr(22, 3) === '002');
+      if (!serieOk) continue;
+
+      const { error: errUpd } = await supabase
+        .from('devolucoes')
+        .update({
+          nf_devolucao_id_bling: String(nf.id),
+          nf_devolucao_numero: String(nf.numero || ''),
+        })
+        .eq('id', req.params.id);
+      if (errUpd) return res.status(500).json({ ok: false, erro: 'Achei a NF ' + nf.numero + ' mas falhou ao gravar: ' + errUpd.message });
+
+      console.log(`[FULL-VINCULAR] ${req.params.id}: entrada serie 2 nº ${nf.numero} (id ${nf.id})`);
+      return res.json({ ok: true, nf_devolucao_numero: String(nf.numero || ''), nf_devolucao_id_bling: String(nf.id) });
+    }
+
+    return res.status(404).json({
+      ok: false,
+      erro: `Nenhuma NF de entrada serie 2 correspondente na janela ${ini}..${fim} (${candidatos.length} candidata(s) testada(s)). Se ainda nao importou o XML no Bling, use o selo 🏬 pra baixar.`,
+    });
+  } catch (e) {
+    console.error('[FULL-VINCULAR] erro:', e);
+    return res.status(500).json({ ok: false, erro: e.message || 'erro interno' });
+  }
+});
+
+app.post('/api/admin/full-lancar-estoque/:id', requerAdmin, async (req, res) => {
+  if (!supabase) return res.status(500).json({ ok: false, erro: 'Supabase nao configurado' });
+  try {
+    const { data: reg, error: errReg } = await supabase
+      .from('devolucoes').select('id, nf_devolucao_id_bling, nf_devolucao_numero').eq('id', req.params.id).single();
+    if (errReg || !reg) return res.status(404).json({ ok: false, erro: 'Registro nao encontrado' });
+    if (!reg.nf_devolucao_id_bling) {
+      return res.status(400).json({ ok: false, erro: 'Card sem devolucao vinculada - use o 🔗 Achar devolucao primeiro' });
+    }
+
+    const url = `https://api.bling.com.br/Api/v3/nfe/${reg.nf_devolucao_id_bling}/lancar-estoque/${DEPOSITO_GERAL_GOOD}`;
+    const r = await chamarBling(url, { method: 'POST', data: {} });
+    if (!r.ok) {
+      const detalhe = r.error?.error?.description || r.error?.error?.message || JSON.stringify(r.error || {}).slice(0, 180);
+      return res.status(502).json({ ok: false, erro: `Bling recusou (HTTP ${r.status}): ${detalhe}` });
+    }
+
+    console.log(`[FULL-ESTOQUE] ${req.params.id}: estoque lancado (NF dev ${reg.nf_devolucao_numero}, deposito Geral)`);
+    return res.json({ ok: true, nf_devolucao_numero: reg.nf_devolucao_numero });
+  } catch (e) {
+    console.error('[FULL-ESTOQUE] erro:', e);
+    return res.status(500).json({ ok: false, erro: e.message || 'erro interno' });
+  }
+});
+
+// ============================================================
 // v3.25 - LANÇAR POR NF: cria cards em "Aprovadas" a partir do
 // número da NF de venda (série 1). Porta lateral pra devoluções
 // que não passaram pela bipagem — depois a esteira 🏭 emite tudo.
