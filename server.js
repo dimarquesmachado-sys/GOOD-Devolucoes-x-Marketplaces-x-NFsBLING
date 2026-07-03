@@ -223,6 +223,21 @@ async function acharDevolucaoShopee(codigo) {
   return { hit: hit || null, qtd: lista.length, exemplo, usouRefresh };
 }
 
+// v3.39.1 - PRE-AQUECIMENTO: mantem a cache Shopee quente em background.
+// A varredura de 120 dias (~30-40s quando fria) passa a rodar AQUI, de
+// tempos em tempos - a busca do estoquista sempre encontra cache quente
+// e responde em ~1s. Silencioso e a prova de falha.
+if (SHOPEE_PROXY_URL && SHOPEE_PROXY_KEY) {
+  setTimeout(() => {
+    buscarDevolucoesShopeeProxy(false)
+      .then(l => console.log(`[SHOPEE] cache pre-aquecida: ${(l || []).length} devolucoes`))
+      .catch(e => console.warn('[SHOPEE] pre-aquecimento falhou:', e.message || e));
+  }, 30 * 1000);
+  setInterval(() => {
+    buscarDevolucoesShopeeProxy(false).catch(() => { /* tenta de novo no proximo */ });
+  }, 8 * 60 * 1000);
+}
+
 const EMAIL_HOST = process.env.EMAIL_HOST;
 const EMAIL_PORT = parseInt(process.env.EMAIL_PORT || '465', 10);
 const EMAIL_USER = process.env.EMAIL_USER;
@@ -370,7 +385,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '3.39 (qr ml + diag 403)',
+    version: '3.39.1 (cache quente)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -3001,7 +3016,7 @@ registrarRotasRelatorios(app, { supabase, requerAdmin });
 // ============================================================
 app.listen(PORT, () => {
   console.log('============================================');
-  console.log('GOOD Devolucoes v3.39 - qr ml + diagnostico 403');
+  console.log('GOOD Devolucoes v3.39.1 - qr ml + diag 403 + cache shopee quente');
   console.log(`Porta: ${PORT}`);
   console.log(`ML: ${mlClient.hasToken() ? 'OK' : 'FALTA'}`);
   console.log(`Bling: ${blingClient.hasToken() ? 'OK' : 'FALTA'}`);
