@@ -82,8 +82,9 @@ async function escolherImpressoraEtiqueta() {
   }
 }
 
-// 40x25mm @ 203dpi = 320x200 dots. Titulo ate 3 linhas, SKU,
-// codigo de barras Code128 do EAN + numero embaixo (= checkout).
+// 40x25mm @ 203dpi = 320x200 dots. v3.20.1: MARGENS de ~3mm (24 dots)
+// nos 4 lados — mesma receita aplicada no checkout. Titulo ate 3
+// linhas, SKU, Code128 do EAN, numero CENTRALIZADO embaixo.
 function montarZplEtiqueta(p, copias) {
   const clean = s => String(s || '').replace(/[\^~]/g, ' ');
   const titulo = clean(p.nome).slice(0, 120);
@@ -91,10 +92,12 @@ function montarZplEtiqueta(p, copias) {
   const ean = String(p.ean || '').replace(/\D/g, '');
   const dados = ean || sku.replace(/[^\x20-\x7E]/g, ''); // barras: EAN; sem EAN, o SKU
   if (!dados) return null;
+  // Area util: x 24..296 (272 de largura) · y 24..176
   const z = ['^XA', '^CI28', '^PW320', '^LL200', '^LH0,0',
-    '^FO8,8^A0N,17,17^FB306,3,3,L^FD' + titulo + '^FS',   // titulo (ate 3 linhas)
-    '^FO8,72^A0N,23,23^FD' + sku + '^FS',                 // SKU
-    '^FO12,102^BY2,2^BCN,62,Y,N,N^FD' + dados + '^FS'];   // barras + numero embaixo
+    '^FO24,22^A0N,16,16^FB272,3,2,L^FD' + titulo + '^FS',   // titulo (3 linhas, respiro)
+    '^FO24,80^A0N,21,21^FD' + sku + '^FS',                  // SKU
+    '^FO28,106^BY2,2^BCN,46,N,N,N^FD' + dados + '^FS',      // barras (sem numero colado)
+    '^FO24,156^A0N,18,18^FB272,1,0,C^FD' + dados + '^FS'];  // numero CENTRALIZADO
   if (copias && copias > 1) z.push('^PQ' + copias + ',0,0,N');
   z.push('^XZ');
   return z.join('');
