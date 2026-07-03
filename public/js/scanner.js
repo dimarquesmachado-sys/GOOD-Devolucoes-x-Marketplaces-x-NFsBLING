@@ -122,6 +122,15 @@ function processarBipagemEtiqueta(codigo) {
     if (j.id) codigoLimpo = String(j.id);
   } catch(e) {}
 
+  // v3.20.4: QR das etiquetas ML = {"id":"47416667668","t":"lm"} -
+  // extrai o id direto (vira busca de shipment limpa).
+  let mQrML = String(codigoLimpo).match(/["']?[ïi]d["']?\s*[:=]\s*["']?(\d{8,20})/i);
+  if (!mQrML && /^\{|"?t"?\s*[:=]\s*"?lm/i.test(String(codigoLimpo))) {
+    const runs = String(codigoLimpo).match(/\d{8,20}/g) || [];
+    if (runs.length === 1) mQrML = [null, runs[0]];
+  }
+  if (mQrML) codigoLimpo = mQrML[1];
+
   // v3.19.2: preserva LETRAS (tracking SPX da Shopee = BR...A/V/D).
   // Se vier QR com URL, extrai o token BR...; senao so tira simbolos.
   const mSpx = String(codigoLimpo).toUpperCase().match(/BR[A-Z0-9]{9,}/);
