@@ -189,6 +189,7 @@ async function acharDevolucaoShopee(codigo) {
   const alvoDig = String(codigo).replace(/\D/g, '');
   const mTok = String(codigo).toUpperCase().match(/BR[A-Z0-9]{9,}/);
   const alvoTok = mTok ? mTok[0] : null;
+  let usouRefresh = false;
   let lista = await buscarDevolucoesShopeeProxy(false);
   if (lista === null) return vazio;
   const casa = (d) => [d.tracking_number, d.return_sn, d.order_sn].some(v => {
@@ -202,12 +203,19 @@ async function acharDevolucaoShopee(codigo) {
     return alvoDig.length >= 10 && dv.length >= 10 && dv === alvoDig;
   });
   let hit = lista.find(casa);
-  let usouRefresh = false;
   if (!hit) {
-    // etiqueta de devolucao recem-criada pode nao estar no cache: fura 1x
-    usouRefresh = true;
-    lista = await buscarDevolucoesShopeeProxy(true);
-    hit = lista.find(casa);
+    // Re-busca (fura o cache) SO quando o codigo tem cara de Shopee:
+    // token BR..., order_sn (6 dig + alfanum), return_sn (8 dig + alfanum)
+    // ou tracking so-digitos (>=12). Lixo obvio nao dispara varredura dupla.
+    const pareceShopee = !!alvoTok
+      || /^\d{6}[A-Z0-9]{7,10}$/.test(alvo)
+      || /^\d{8}[A-Z0-9]{6,9}$/.test(alvo)
+      || (alvoDig.length >= 12 && alvo === alvoDig);
+    if (pareceShopee) {
+      usouRefresh = true;
+      lista = await buscarDevolucoesShopeeProxy(true);
+      hit = lista.find(casa);
+    }
   }
   const exemplo = lista[0]
     ? (lista[0].tracking_number || lista[0].return_sn || lista[0].order_sn)
@@ -424,7 +432,24 @@ app.get('/api/devolucao/identificar/:codigo', async (req, res) => {
   }
 
   console.log(`\n========== NOVA BUSCA: ${codigoOriginal} ==========`);
-  const codigoLimpo = codigoOriginal.replace(/[^0-9]/g, '');
+
+  // v3.39 - QR das etiquetas ML vem como {"id":"47416667668","t":"lm"}
+  // (leitor USB cospe o JSON cru no campo). Extrai o id e ja sabemos
+  // que e ML - se o shipment nao existir, falha RAPIDO com orientacao
+  // (padrao de devolucao FULL) em vez de vagar pela cascata.
+  let origemQrML = false;
+  let codigoLimpo = codigoOriginal.replace(/[^0-9]/g, '');
+  let mQrML = codigoOriginal.match(/["']?[ïi]d["']?\s*[:=]\s*["']?(\d{8,20})/i);
+  if (!mQrML && /^\{|"?t"?\s*[:=]\s*"?lm/i.test(codigoOriginal)) {
+    // leitor mutilou o "id" (layout de teclado): pesca o unico numerao
+    const runs = codigoOriginal.match(/\d{8,20}/g) || [];
+    if (runs.length === 1) mQrML = [null, runs[0]];
+  }
+  if (mQrML) {
+    codigoLimpo = mQrML[1];
+    origemQrML = true;
+    console.log(`[BUSCA] QR do ML detectado → shipment ${codigoLimpo}`);
+  }
 
   const resultado = {
     codigo_buscado: codigoOriginal,
@@ -482,6 +507,16 @@ app.get('/api/devolucao/identificar/:codigo', async (req, res) => {
         break;
       }
     }
+  }
+
+  // ===== QR-ML sem shipment (v3.39): falha RAPIDA com orientacao =====
+  // Etiqueta era do ML (QR) mas a API nao acha o envio - padrao classico
+  // de devolucao FULL (o ML esconde esses shipments). Nao adianta tentar
+  // chave/Shopee: responde em segundos com o caminho certo.
+  if (!shipment && !pack && origemQrML) {
+    resultado.erro = `Etiqueta do ML (QR) com shipment ${codigoLimpo} que a API não encontra — padrão de devolução FULL. Caminhos: bipe a chave da DANFE (se veio com nota) ou use ➕ Lançar por NF no painel admin com o número da NF de venda.`;
+    resultado.provavel_full = true;
+    return res.status(404).json(resultado);
   }
 
   // ===== CHAVE NF-e (v3.34): bipou a chave de 44 digitos da DANFE =====
