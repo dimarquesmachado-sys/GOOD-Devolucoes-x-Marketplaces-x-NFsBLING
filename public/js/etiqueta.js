@@ -82,26 +82,27 @@ async function escolherImpressoraEtiqueta() {
   }
 }
 
-// 40x25mm @ 203dpi = 320x200 dots. v3.20.2 (calibragem = checkout b84):
-// esquerda 3mm · DIREITA ~4,5mm (compensa offset fisico da impressora) ·
-// SKU auto-encolhe pra sempre caber · barras mais altas (56 dots ~7mm) ·
-// numero centralizado · margem inferior ~1,5mm.
+// 40x25mm @ 203dpi = 320x200 dots. v3.20.3 (calibragem = checkout b87 FINAL):
+// - BARRAS EM MODO A (compacto): sem o ,A o Code128 sai no modo "gordo"
+//   (1 simbolo por digito) e um EAN-13 fica ~356 dots — MAIOR que a etiqueta
+//   (320) — vazando pela borda direita. Com ,A cai pra ~246 dots e bipa igual.
+// - TITULO: fonte 14 e max 72 chars — se o texto precisar de 4a linha, o ZPL
+//   imprime o excesso POR CIMA da 3a (embola). 72 chars = no max 3 linhas.
+// - Conteudo em x=20, textos com 284 de largura → ~2mm de folga na direita.
+// - SKU auto-encolhe (altura 24 fixa, largura proporcional) pra sempre caber.
 function montarZplEtiqueta(p, copias) {
   const clean = s => String(s || '').replace(/[\^~]/g, ' ');
-  const titulo = clean(p.nome).slice(0, 120);
+  const titulo = clean(p.nome).slice(0, 72);
   const sku = clean(p.sku);
   const ean = String(p.ean || '').replace(/\D/g, '');
   const dados = ean || sku.replace(/[^\x20-\x7E]/g, ''); // barras: EAN; sem EAN, o SKU
   if (!dados) return null;
-  const LARG = 260; // 320 - 24(esq) - 36(dir)
-  // SKU auto-encolhe: fonte proporcional ao tamanho, entre 12 e 21
-  let hSku = Math.floor(LARG / (Math.max(sku.length, 1) * 0.68));
-  hSku = Math.max(12, Math.min(21, hSku));
+  const wSku = Math.max(10, Math.min(24, Math.floor(370 / Math.max(sku.length, 1))));
   const z = ['^XA', '^CI28', '^PW320', '^LL200', '^LH0,0',
-    '^FO24,22^A0N,16,16^FB' + LARG + ',3,2,L^FD' + titulo + '^FS',   // titulo (3 linhas)
-    '^FO24,82^A0N,' + hSku + ',' + hSku + '^FD' + sku + '^FS',       // SKU (auto-fit)
-    '^FO28,110^BY2,2^BCN,56,N,N,N^FD' + dados + '^FS',               // barras altas
-    '^FO24,170^A0N,18,18^FB' + LARG + ',1,0,C^FD' + dados + '^FS'];  // numero centralizado
+    '^FO20,24^A0N,14,14^FB284,3,2,L^FD' + titulo + '^FS',            // titulo (3 linhas)
+    '^FO20,80^A0N,24,' + wSku + '^FD' + sku + '^FS',                 // SKU (auto-fit)
+    '^FO20,112^BY2,2^BCN,56,N,N,N,A^FD' + dados + '^FS',             // barras (modo A compacto)
+    '^FO20,171^A0N,17,17^FB284,1,0,C^FD' + dados + '^FS'];           // numero centralizado
   if (copias && copias > 1) z.push('^PQ' + copias + ',0,0,N');
   z.push('^XZ');
   return z.join('');
