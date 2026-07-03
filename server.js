@@ -510,12 +510,12 @@ app.get('/api/devolucao/identificar/:codigo', async (req, res) => {
   }
 
   // ===== QR-ML sem shipment (v3.39): falha RAPIDA com orientacao =====
-  // Etiqueta era do ML (QR) mas a API nao acha o envio - padrao classico
-  // de devolucao FULL (o ML esconde esses shipments). Nao adianta tentar
-  // chave/Shopee: responde em segundos com o caminho certo.
+  // Etiqueta era do ML (QR) mas a API nao achou o envio por esse id.
+  // Nao adianta vagar por chave/Shopee: responde em segundos com os
+  // caminhos certos (a etiqueta fisica tem barras E Pack ID impressos).
   if (!shipment && !pack && origemQrML) {
-    resultado.erro = `Etiqueta do ML (QR) com shipment ${codigoLimpo} que a API não encontra — padrão de devolução FULL. Caminhos: bipe a chave da DANFE (se veio com nota) ou use ➕ Lançar por NF no painel admin com o número da NF de venda.`;
-    resultado.provavel_full = true;
+    resultado.erro = `QR do ML lido (shipment ${codigoLimpo}) mas a API não achou esse envio. Na MESMA etiqueta: (1) bipe o CÓDIGO DE BARRAS grande, ou (2) digite o Pack ID impresso (2000...). Se for devolução FULL (endereçada ao CD do ML), use a chave da DANFE ou ➕ Lançar por NF.`;
+    resultado.qr_ml_sem_shipment = true;
     return res.status(404).json(resultado);
   }
 
