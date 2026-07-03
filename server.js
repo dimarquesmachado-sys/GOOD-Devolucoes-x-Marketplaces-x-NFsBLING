@@ -370,7 +370,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '3.38 (shopee + fila + fotos)',
+    version: '3.39 (qr ml + diag 403)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -514,7 +514,12 @@ app.get('/api/devolucao/identificar/:codigo', async (req, res) => {
   // Nao adianta vagar por chave/Shopee: responde em segundos com os
   // caminhos certos (a etiqueta fisica tem barras E Pack ID impressos).
   if (!shipment && !pack && origemQrML) {
-    resultado.erro = `QR do ML lido (shipment ${codigoLimpo}) mas a API não achou esse envio. Na MESMA etiqueta: (1) bipe o CÓDIGO DE BARRAS grande, ou (2) digite o Pack ID impresso (2000...). Se for devolução FULL (endereçada ao CD do ML), use a chave da DANFE ou ➕ Lançar por NF.`;
+    const stShip = (resultado.tentativas.find(t => t.tipo === 'shipment_id') || {}).status;
+    if (stShip === 403) {
+      resultado.erro = `QR do ML lido (shipment ${codigoLimpo}) mas a API RECUSOU o acesso (403). Duas causas possíveis: token do ML expirado (teste com um shipment antigo — se também der 403, avise o Diego) OU devolução recém-criada que o ML ainda não liberou (tente de novo em algumas horas). Enquanto isso: digite o Pack ID impresso na etiqueta (2000...).`;
+    } else {
+      resultado.erro = `QR do ML lido (shipment ${codigoLimpo}) mas a API não achou esse envio. Na MESMA etiqueta: (1) bipe o CÓDIGO DE BARRAS grande, ou (2) digite o Pack ID impresso (2000...). Se for devolução FULL (endereçada ao CD do ML), use a chave da DANFE ou ➕ Lançar por NF.`;
+    }
     resultado.qr_ml_sem_shipment = true;
     return res.status(404).json(resultado);
   }
@@ -611,12 +616,14 @@ app.get('/api/devolucao/identificar/:codigo', async (req, res) => {
     }
     if (!devShopee) {
       const pareceSPX = /^BR[A-Z0-9]{8,}$/i.test(String(codigoOriginal).trim());
+      const houve403 = resultado.tentativas.some(t => t.status === 403);
       const diag = infoShopee
         ? ` [diag: lista com ${infoShopee.qtd} devolucoes; exemplo de tracking: ${infoShopee.exemplo || '-'}]`
-        : ' [diag: integracao Shopee SEM as variaveis no Render!]';
+        : (SHOPEE_PROXY_URL && SHOPEE_PROXY_KEY ? '' : ' [diag: integracao Shopee SEM as variaveis no Render!]');
+      const nota403 = houve403 ? ' ⚠️ O ML respondeu 403 (acesso recusado): token expirado ou devolução recém-criada ainda embargada — tente o Pack ID impresso ou aguarde algumas horas.' : '';
       resultado.erro = (pareceSPX
         ? 'Etiqueta Shopee (SPX) nao casou com as devolucoes. Tente: digitar o "Pedido" impresso na etiqueta (ex: 260527FMTSJM8C), ou bipar a chave da DANFE se o pacote voltou com a nota.'
-        : 'Codigo nao encontrado em shipments/packs do ML nem nas devolucoes Shopee.') + diag;
+        : 'Codigo nao encontrado em shipments/packs do ML nem nas devolucoes Shopee.') + diag + nota403;
       return res.status(404).json(resultado);
     }
 
@@ -2994,7 +3001,7 @@ registrarRotasRelatorios(app, { supabase, requerAdmin });
 // ============================================================
 app.listen(PORT, () => {
   console.log('============================================');
-  console.log('GOOD Devolucoes v3.38 - shopee + fila de impressao + fotos blindadas');
+  console.log('GOOD Devolucoes v3.39 - qr ml + diagnostico 403');
   console.log(`Porta: ${PORT}`);
   console.log(`ML: ${mlClient.hasToken() ? 'OK' : 'FALTA'}`);
   console.log(`Bling: ${blingClient.hasToken() ? 'OK' : 'FALTA'}`);
