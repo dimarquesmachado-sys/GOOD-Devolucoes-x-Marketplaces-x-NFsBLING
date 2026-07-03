@@ -82,7 +82,7 @@ async function escolherImpressoraEtiqueta() {
   }
 }
 
-// 40x25mm @ 203dpi = 320x200 dots. v3.20.3 (calibragem = checkout b87 FINAL):
+// 40x25mm @ 203dpi = 320x200 dots. v3.20.4 (barras CENTRALIZADAS na largura):
 // - BARRAS EM MODO A (compacto): sem o ,A o Code128 sai no modo "gordo"
 //   (1 simbolo por digito) e um EAN-13 fica ~356 dots — MAIOR que a etiqueta
 //   (320) — vazando pela borda direita. Com ,A cai pra ~246 dots e bipa igual.
@@ -98,11 +98,17 @@ function montarZplEtiqueta(p, copias) {
   const dados = ean || sku.replace(/[^\x20-\x7E]/g, ''); // barras: EAN; sem EAN, o SKU
   if (!dados) return null;
   const wSku = Math.max(10, Math.min(24, Math.floor(370 / Math.max(sku.length, 1))));
+  // Barras CENTRALIZADAS: Code128 nao estica (so degraus de 50%), entao estima
+  // a largura real e centraliza na faixa util (20..304). Numero centraliza junto.
+  const digitos = /^\d+$/.test(dados);
+  const simbolos = digitos ? (Math.floor(dados.length / 2) + (dados.length % 2 ? 2 : 0) + 2) : (dados.length + 2);
+  const wBar = (11 * simbolos + 13) * 2;                             // largura estimada das barras (dots)
+  const xBar = Math.max(20, 20 + Math.floor((284 - wBar) / 2));
   const z = ['^XA', '^CI28', '^PW320', '^LL200', '^LH0,0',
     '^FO20,24^A0N,14,14^FB284,3,2,L^FD' + titulo + '^FS',            // titulo (3 linhas)
     '^FO20,80^A0N,24,' + wSku + '^FD' + sku + '^FS',                 // SKU (auto-fit)
-    '^FO20,112^BY2,2^BCN,56,N,N,N,A^FD' + dados + '^FS',             // barras (modo A compacto)
-    '^FO20,171^A0N,17,17^FB284,1,0,C^FD' + dados + '^FS'];           // numero centralizado
+    '^FO' + xBar + ',112^BY2,2^BCN,56,N,N,N,A^FD' + dados + '^FS',   // barras (modo A, centralizadas)
+    '^FO20,172^A0N,17,17^FB284,1,0,C^FD' + dados + '^FS'];           // numero centralizado
   if (copias && copias > 1) z.push('^PQ' + copias + ',0,0,N');
   z.push('^XZ');
   return z.join('');
