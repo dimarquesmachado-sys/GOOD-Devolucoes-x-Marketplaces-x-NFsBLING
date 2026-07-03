@@ -385,7 +385,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '3.39.1 (cache quente)',
+    version: '3.40 (ml ressuscitador)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -1273,6 +1273,72 @@ app.get('/bling/setup', async (req, res) => {
       <h2 style="color:#c62828;">❌ Erro ao reconectar</h2>
       <pre style="background:#fff0f0;padding:12px;border-radius:8px;white-space:pre-wrap;">${detalhe}</pre>
       <p><strong>Dica:</strong> o code expira em <strong>1 minuto</strong>. Se demorou, gere um novo (cole o link de convite de novo) e refaça rapidinho.</p>
+    `);
+  }
+});
+
+// ============================================================
+// v3.40 - EXAME DE SANGUE do token ML: chama /users/me (dispara o
+// auto-refresh se preciso) e conta a verdade em 1 clique.
+app.get('/api/debug/ml-token', requerAdmin, async (req, res) => {
+  const r = await mlClient.chamarML('https://api.mercadolibre.com/users/me');
+  if (r.ok) {
+    return res.json({
+      ok: true,
+      veredito: '✅ TOKEN VIVO (renovou sozinho se precisou)',
+      user_id: r.data?.id,
+      nickname: r.data?.nickname,
+    });
+  }
+  return res.status(502).json({
+    ok: false,
+    veredito: '💀 TOKEN MORTO - o refresh falhou. Use o /ml/setup (instrucoes na resposta)',
+    status_ml: r.status,
+    erro_ml: r.error,
+    como_ressuscitar: [
+      '1) Logado na conta ML da GOOD, abra: https://auth.mercadolivre.com.br/authorization?response_type=code&client_id=SEU_ML_CLIENT_ID&redirect_uri=' + 'https://good-devolucoes-x-marketplaces-x-nfsbling.onrender.com/callback',
+      '2) Autorize - a pagina /callback mostra o CODE',
+      '3) EM ATE 1 MINUTO abra: /ml/setup?code=SEU_CODE',
+    ],
+  });
+});
+
+// v3.40 - Reconexao do app ML (espelho do /bling/setup)
+// Uso: /ml/setup?code=SEU_CODE  (o code expira em ~1 minuto!)
+app.get('/ml/setup', async (req, res) => {
+  const code = String(req.query.code || '').trim();
+  if (!code) {
+    return res.send('<h2>Falta o code</h2><p>Abra assim: <code>/ml/setup?code=SEU_CODE</code></p>');
+  }
+  try {
+    const { clientId, clientSecret } = mlClient.getClientML();
+    const r = await fetch('https://api.mercadolibre.com/oauth/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        grant_type: 'authorization_code',
+        client_id: clientId,
+        client_secret: clientSecret,
+        code,
+        redirect_uri: 'https://good-devolucoes-x-marketplaces-x-nfsbling.onrender.com/callback',
+      }),
+    });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok || !data.access_token) {
+      throw new Error(JSON.stringify(data, null, 2) || ('HTTP ' + r.status));
+    }
+    await mlClient.definirTokensML(data.access_token, data.refresh_token);
+    res.send(`
+      <h2 style="color:#2e7d32;">✅ Mercado Livre reconectado!</h2>
+      <p><strong>User ID:</strong> ${data.user_id || '?'} · <strong>Escopo:</strong> ${data.scope || '?'}</p>
+      <p>Tokens salvos na memória E no Render (sobrevivem a redeploy). Teste bipando uma etiqueta ML.</p>
+    `);
+  } catch (e) {
+    const detalhe = e.message || String(e);
+    res.send(`
+      <h2 style="color:#c62828;">❌ Erro ao reconectar o ML</h2>
+      <pre style="background:#fff0f0;padding:12px;border-radius:8px;white-space:pre-wrap;">${detalhe}</pre>
+      <p><strong>Dica:</strong> o code expira em ~1 minuto. Gere um novo (link de autorização) e refaça rapidinho.</p>
     `);
   }
 });
@@ -3016,7 +3082,7 @@ registrarRotasRelatorios(app, { supabase, requerAdmin });
 // ============================================================
 app.listen(PORT, () => {
   console.log('============================================');
-  console.log('GOOD Devolucoes v3.39.1 - qr ml + diag 403 + cache shopee quente');
+  console.log('GOOD Devolucoes v3.40 - ml auto-refresh 403 + ressuscitador');
   console.log(`Porta: ${PORT}`);
   console.log(`ML: ${mlClient.hasToken() ? 'OK' : 'FALTA'}`);
   console.log(`Bling: ${blingClient.hasToken() ? 'OK' : 'FALTA'}`);
