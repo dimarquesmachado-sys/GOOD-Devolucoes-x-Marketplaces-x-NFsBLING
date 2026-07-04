@@ -160,6 +160,11 @@ const SHOPEE_PROXY_URL = (process.env.SHOPEE_PROXY_URL || '').replace(/\/+$/, ''
 const SHOPEE_PROXY_KEY = process.env.SHOPEE_PROXY_KEY || '';
 const SHOPEE_LOJA_KEY = process.env.SHOPEE_LOJA_KEY || 'good';
 
+// ── Chave p/ rotas de diagnóstico/admin/setup (acessadas com ?k=CHAVE na URL) ──
+// Sem a env ADMIN_KEY configurada no Render, essas rotas ficam DESLIGADAS (404).
+const ADMIN_KEY = process.env.ADMIN_KEY || '';
+function adminOk(req) { return ADMIN_KEY && req.query.k === ADMIN_KEY; }
+
 let _shopeeDevCache = { ts: 0, dados: [] };
 
 async function buscarDevolucoesShopeeProxy(forcar) {
@@ -439,7 +444,7 @@ app.get('/api/keepalive', async (req, res) => {
 // ============================================================
 // ROTA PRINCIPAL - SO ML (rapido!)
 // ============================================================
-app.get('/api/devolucao/identificar/:codigo', async (req, res) => {
+app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
   const codigoOriginal = String(req.params.codigo || '').trim();
 
   if (!codigoOriginal) {
@@ -999,7 +1004,7 @@ app.get('/api/devolucao/identificar/:codigo', async (req, res) => {
 // Fallback: se nao tem numero, busca por numeroPedidoLoja (mais lento).
 // Funciona pra TUDO (canceladas, ativas, etc) - NFs nunca somem do Bling.
 // ============================================================
-app.get('/api/nf/buscar-links-bling/:orderId', async (req, res) => {
+app.get('/api/nf/buscar-links-bling/:orderId', requerLogin, async (req, res) => {
   const orderId = String(req.params.orderId || '').trim();
   const dataRef = req.query.data || null;
   const numeroNF = req.query.numeroNF || null;
@@ -1082,11 +1087,13 @@ app.get('/api/nf/buscar-links-bling/:orderId', async (req, res) => {
 // ADMIN
 // ============================================================
 app.post('/api/admin/renovar-token-ml', async (req, res) => {
+  if (!adminOk(req)) return res.status(404).send('Not found'); // protegido: exige ?k=ADMIN_KEY
   const ok = await renovarTokenML();
   res.json({ ok, timestamp: new Date().toISOString() });
 });
 
 app.post('/api/admin/renovar-token-bling', async (req, res) => {
+  if (!adminOk(req)) return res.status(404).send('Not found'); // protegido: exige ?k=ADMIN_KEY
   const ok = await renovarTokenBling();
   res.json({ ok, timestamp: new Date().toISOString() });
 });
@@ -1095,21 +1102,25 @@ app.post('/api/admin/renovar-token-bling', async (req, res) => {
 // DEBUG
 // ============================================================
 app.get('/api/debug/shipment/:id', async (req, res) => {
+  if (!adminOk(req)) return res.status(404).send('Not found'); // protegido: exige ?k=ADMIN_KEY
   const r = await chamarML(`https://api.mercadolibre.com/shipments/${req.params.id}`, { 'x-format-new': 'true' });
   res.status(r.ok ? 200 : r.status || 500).json(r);
 });
 
 app.get('/api/debug/order/:id', async (req, res) => {
+  if (!adminOk(req)) return res.status(404).send('Not found'); // protegido: exige ?k=ADMIN_KEY
   const r = await chamarML(`https://api.mercadolibre.com/orders/${req.params.id}`);
   res.status(r.ok ? 200 : r.status || 500).json(r);
 });
 
 app.get('/api/debug/ml-invoice/:shipmentId', async (req, res) => {
+  if (!adminOk(req)) return res.status(404).send('Not found'); // protegido: exige ?k=ADMIN_KEY
   const r = await buscarNFnoML(req.params.shipmentId);
   res.status(r.ok ? 200 : r.status || 500).json(r);
 });
 
 app.get('/api/debug/bling-busca/:numeroLoja', async (req, res) => {
+  if (!adminOk(req)) return res.status(404).send('Not found'); // protegido: exige ?k=ADMIN_KEY
   const dataRef = req.query.data || null;
   const r = await buscarPedidoBlingPorNumeroLoja(req.params.numeroLoja, dataRef, { maxPaginas: 50 });
   res.json(r);
@@ -1117,7 +1128,7 @@ app.get('/api/debug/bling-busca/:numeroLoja', async (req, res) => {
 
 // NOVO v3.14.4: rota pra buscar EAN do produto pelo SKU
 // Usado quando a NF nao foi achada automaticamente e o frontend precisa do EAN pra bipagem
-app.get('/api/produto/ean-por-sku/:sku', async (req, res) => {
+app.get('/api/produto/ean-por-sku/:sku', requerLogin, async (req, res) => {
   const sku = String(req.params.sku || '').trim();
   if (!sku) return res.status(400).json({ ok: false, erro: 'sku obrigatorio' });
 
@@ -1162,17 +1173,20 @@ app.get('/api/produto/ean-por-sku/:sku', async (req, res) => {
 });
 
 app.get('/api/debug/bling-pedido/:id', async (req, res) => {
+  if (!adminOk(req)) return res.status(404).send('Not found'); // protegido: exige ?k=ADMIN_KEY
   const r = await buscarPedidoBlingPorId(req.params.id);
   res.status(r.ok ? 200 : r.status || 500).json(r);
 });
 
 app.get('/api/debug/bling-nfe-cru/:idNFe', async (req, res) => {
+  if (!adminOk(req)) return res.status(404).send('Not found'); // protegido: exige ?k=ADMIN_KEY
   const r = await buscarNFePorId(req.params.idNFe);
   res.status(r.ok ? 200 : r.status || 500).json(r);
 });
 
 // v3.4: ver primeira pagina de NFs (pra debug)
 app.get('/api/debug/bling-nfe-primeira-pagina', async (req, res) => {
+  if (!adminOk(req)) return res.status(404).send('Not found'); // protegido: exige ?k=ADMIN_KEY
   const limite = req.query.limite || 20;
   const r = await chamarBling(`https://api.bling.com.br/Api/v3/nfe?limite=${limite}&pagina=1&tipo=1`);
   if (r.ok && r.data?.data) {
@@ -1193,6 +1207,7 @@ app.get('/api/debug/bling-nfe-primeira-pagina', async (req, res) => {
 
 // v3.4: busca NF por order_id ML (manual, pra debug)
 app.get('/api/debug/bling-busca-nf/:orderId', async (req, res) => {
+  if (!adminOk(req)) return res.status(404).send('Not found'); // protegido: exige ?k=ADMIN_KEY
   const dataRef = req.query.data || null;
   const r = await buscarNFnoBlingPorOrderId(req.params.orderId, dataRef, { maxPaginas: 50 });
   res.json(r);
@@ -1202,6 +1217,7 @@ app.get('/api/debug/bling-busca-nf/:orderId', async (req, res) => {
 // (api.bling.com.br + Bearer). Decide se dá pra o BACKEND buscar os dados
 // da devolucao (com os IDs reais dos itens) em vez da extensao.
 app.get('/api/debug/dados-devolucao-numero/:numero', async (req, res) => {
+  if (!adminOk(req)) return res.status(404).send('Not found'); // protegido: exige ?k=ADMIN_KEY
   const numero = String(req.params.numero || '').trim();
   try {
     const rBusca = await buscarNFnoBlingPorNumero(numero, null, { maxPaginas: 50 });
@@ -1255,6 +1271,7 @@ app.get('/bling/callback', (req, res) => {
 // v3.19 - Reconexao do app Bling (troca o code por token com os escopos novos)
 // Uso: /bling/setup?code=SEU_CODE  (o code expira em 1 minuto!)
 app.get('/bling/setup', async (req, res) => {
+  if (!adminOk(req)) return res.status(404).send('Not found'); // protegido: exige ?k=ADMIN_KEY
   const code = String(req.query.code || '').trim();
   if (!code) {
     return res.send('<h2>Falta o code</h2><p>Abra assim: <code>/bling/setup?code=SEU_CODE</code></p>');
@@ -1306,6 +1323,7 @@ app.get('/api/debug/ml-token', requerAdmin, async (req, res) => {
 // v3.40 - Reconexao do app ML (espelho do /bling/setup)
 // Uso: /ml/setup?code=SEU_CODE  (o code expira em ~1 minuto!)
 app.get('/ml/setup', async (req, res) => {
+  if (!adminOk(req)) return res.status(404).send('Not found'); // protegido: exige ?k=ADMIN_KEY
   const code = String(req.query.code || '').trim();
   if (!code) {
     return res.send('<h2>Falta o code</h2><p>Abra assim: <code>/ml/setup?code=SEU_CODE</code></p>');
@@ -2589,6 +2607,7 @@ app.post('/api/admin/vincular-devolucao-existente/:id', requerAdmin, async (req,
 // passo (ML invoice, pack, blindada com trace) pra diagnostico.
 // ============================================================
 app.get('/api/debug/resgate-nf/:orderId', async (req, res) => {
+  if (!adminOk(req)) return res.status(404).send('Not found'); // protegido: exige ?k=ADMIN_KEY
   const orderIdParam = String(req.params.orderId || '').trim();
   const saida = { orderId: orderIdParam };
   try {
