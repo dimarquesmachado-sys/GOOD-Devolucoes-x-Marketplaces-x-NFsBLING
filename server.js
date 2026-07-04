@@ -389,7 +389,7 @@ app.get('/health', (req, res) => {
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
-      render_persist: !!(process.env.RENDER_API_KEY && process.env.RENDER_SERVICE_ID),
+      render_persist: !!(process.env.RENDER_API_KEY_v2 && process.env.RENDER_SERVICE_ID),
       supabase: !!supabase,
       email: !!mailer,
       auth: Object.keys(USERS).length > 0,
@@ -1327,11 +1327,14 @@ app.get('/ml/setup', async (req, res) => {
     if (!r.ok || !data.access_token) {
       throw new Error(JSON.stringify(data, null, 2) || ('HTTP ' + r.status));
     }
-    await mlClient.definirTokensML(data.access_token, data.refresh_token);
+    const persist = await mlClient.definirTokensML(data.access_token, data.refresh_token);
     res.send(`
       <h2 style="color:#2e7d32;">✅ Mercado Livre reconectado!</h2>
       <p><strong>User ID:</strong> ${data.user_id || '?'} · <strong>Escopo:</strong> ${data.scope || '?'}</p>
-      <p>Tokens salvos na memória E no Render (sobrevivem a redeploy). Teste bipando uma etiqueta ML.</p>
+      <p><strong>Cofre (Render):</strong> ${persist.persistiu
+        ? 'tokens salvos ✅ (sobrevivem a redeploy)'
+        : '⚠️ NÃO persistiu (' + (persist.erro || 'RENDER_API_KEY_v2/RENDER_SERVICE_ID ausentes?') + ') — tokens ativos só na memória: funcionam AGORA, mas o próximo deploy apaga. Reponha as 2 vars e refaça o setup.'}</p>
+      <p>Teste bipando uma etiqueta ML.</p>
     `);
   } catch (e) {
     const detalhe = e.message || String(e);
@@ -3086,7 +3089,7 @@ app.listen(PORT, () => {
   console.log(`Porta: ${PORT}`);
   console.log(`ML: ${mlClient.hasToken() ? 'OK' : 'FALTA'}`);
   console.log(`Bling: ${blingClient.hasToken() ? 'OK' : 'FALTA'}`);
-  console.log(`Render persist: ${(process.env.RENDER_API_KEY && process.env.RENDER_SERVICE_ID) ? 'OK' : 'FALTA'}`);
+  console.log(`Render persist: ${(process.env.RENDER_API_KEY_v2 && process.env.RENDER_SERVICE_ID) ? 'OK' : 'FALTA'}`);
   console.log(`Supabase: ${supabase ? 'OK' : 'FALTA'}`);
   console.log(`Shopee proxy: ${(SHOPEE_PROXY_URL && SHOPEE_PROXY_KEY) ? 'OK (loja ' + SHOPEE_LOJA_KEY + ' via ' + SHOPEE_PROXY_URL + ')' : 'AUSENTE - configure SHOPEE_PROXY_URL e SHOPEE_PROXY_KEY'}`);
   console.log(`QZ assinatura: ${(QZ_CERT && QZ_PRIVKEY) ? 'OK (impressao sem popup)' : 'sem certificado (modo Allow) - configure GOODBKP_QZ_CERT e GOODBKP_QZ_PRIVKEY'}`);
