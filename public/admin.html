@@ -194,6 +194,18 @@
       border-radius: 50%; animation: spin 0.8s linear infinite;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
+    /* v3.28.1 - flash na borda do card recem-atualizado */
+    @keyframes cardFlash {
+      0%   { box-shadow: 0 0 0 0 rgba(46,125,50,0); border-color: transparent; }
+      15%  { box-shadow: 0 0 0 4px rgba(46,125,50,0.55); }
+      50%  { box-shadow: 0 0 0 4px rgba(46,125,50,0.55); }
+      100% { box-shadow: 0 0 0 0 rgba(46,125,50,0); }
+    }
+    .card-flash {
+      animation: cardFlash 2s ease-out;
+      border: 2px solid #2e7d32 !important;
+      border-radius: 8px;
+    }
   </style>
 </head>
 <body>
@@ -201,7 +213,7 @@
     <header>
       <div>
         <h1>🔐 Admin - GOOD Devolucoes</h1>
-        <p>Painel restrito · v3.18.0 (produto divergente + parcial + dashboard de relatórios + TAGs)</p>
+        <p>Painel restrito · v3.28.1 (atualiza card + flash apos gerar NF)</p>
       </div>
       <div class="header-acoes">
         <a href="/admin/relatorios.html" class="destaque">📊 Relatórios</a>
@@ -325,6 +337,27 @@
         document.getElementById('loadingArea').style.display = 'none';
         document.getElementById('secoes').style.display = '';
       }
+    }
+
+    // v3.28.1 - atualiza UM card sem recarregar a pagina toda: rebusca os
+    // dados, re-renderiza e PISCA a borda do card (feedback visual).
+    // Preserva scroll, filtros e selecoes.
+    async function atualizarUmCard(devolucaoId) {
+      try {
+        const r = await fetch('/api/admin/devolucoes');
+        const d = await r.json();
+        if (!d.ok) return;
+        dados = d;
+        renderizar();
+        requestAnimationFrame(() => {
+          const el = document.getElementById('card-' + devolucaoId);
+          if (el) {
+            el.classList.add('card-flash');
+            el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            setTimeout(() => el.classList.remove('card-flash'), 2000);
+          }
+        });
+      } catch (e) { /* silencioso - proximo carregar resolve */ }
     }
 
     function renderizar() {
@@ -451,7 +484,7 @@
       ` : '';
 
       return `
-        <div class="item ${concluido ? 'concluido' : ''}" ${ehParcial ? 'style="border-left-color:#f57c00;background:#fff8e7;"' : ''}>
+        <div class="item ${concluido ? 'concluido' : ''}" id="card-${d.id}" ${ehParcial ? 'style="border-left-color:#f57c00;background:#fff8e7;"' : ''}>
           <div class="item-header">
             <div>
               <div class="item-titulo">${escapeHtml(d.produto_titulo || '-')}${badgeParcial}</div>
@@ -503,7 +536,7 @@
       const fotos = Array.isArray(d.problema_fotos) ? d.problema_fotos : [];
       const desc = d.problema_descricao || '';
       return `
-        <div class="item problema ${concluido ? 'concluido' : ''}">
+        <div class="item problema ${concluido ? 'concluido' : ''}" id="card-${d.id}">
           <div class="item-header">
             <div>
               <div class="item-titulo">${escapeHtml(d.produto_titulo || '-')}</div>
@@ -568,7 +601,7 @@
       }
 
       return `
-        <div class="item ${concluido ? 'concluido' : ''}" style="border-left-color:#7b1fa2; background:#f3e5f5;">
+        <div class="item ${concluido ? 'concluido' : ''}" id="card-${d.id}" style="border-left-color:#7b1fa2; background:#f3e5f5;">
           <div class="item-header">
             <div>
               <div class="item-titulo">${escapeHtml(d.produto_titulo || '-')} <span style="background:#7b1fa2;color:white;padding:3px 8px;border-radius:10px;font-size:10px;font-weight:700;margin-left:6px;">🔄 DIVERGENTE</span></div>
@@ -804,8 +837,16 @@
       document.getElementById('modalGerarDevolucao').style.display = 'flex';
     }
 
+    // v3.28.1: ao fechar, se uma NF foi gerada, atualiza SO o card dela
+    // (com flash na borda) em vez de recarregar a pagina inteira.
+    let _cardParaAtualizar = null;
     function fecharModalGerarDevolucao() {
       document.getElementById('modalGerarDevolucao').style.display = 'none';
+      if (_cardParaAtualizar) {
+        const id = _cardParaAtualizar;
+        _cardParaAtualizar = null;
+        atualizarUmCard(id);
+      }
     }
 
     // v3.19 - Resgata a NF de um registro gravado sem NF ("NF: -").
@@ -1546,11 +1587,12 @@
           <p style="font-size:13px; color:#555; margin-bottom:16px;">${proximos}</p>
           <div style="display:flex; gap:8px; justify-content:flex-end; flex-wrap:wrap;">
             <button class="btn btn-cinza" onclick="fecharModalGerarDevolucao()">Fechar</button>
-            <a class="btn btn-verde" href="${linkBling}" target="_blank" onclick="setTimeout(()=>{ fecharModalGerarDevolucao(); carregar(); }, 500)">
+            <a class="btn btn-verde" href="${linkBling}" target="_blank" onclick="setTimeout(fecharModalGerarDevolucao, 400)">
               🔗 Abrir no Bling
             </a>
           </div>
         `;
+        _cardParaAtualizar = String(devolucaoId); // v3.28.1: atualiza so este card ao fechar
         toast((emitida ? 'NF emitida: nº ' : 'Rascunho criado: nº ') + numeroNF, 'ok');
 
       } catch (err) {
