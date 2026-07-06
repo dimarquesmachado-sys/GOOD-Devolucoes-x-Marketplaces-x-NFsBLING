@@ -213,7 +213,7 @@
     <header>
       <div>
         <h1>🔐 Admin - GOOD Devolucoes</h1>
-        <p>Painel restrito · v3.28.1 (atualiza card + flash apos gerar NF)</p>
+        <p>Painel restrito · v3.28.2 (troca so o card + flash, sem redesenhar lista)</p>
       </div>
       <div class="header-acoes">
         <a href="/admin/relatorios.html" class="destaque">📊 Relatórios</a>
@@ -339,25 +339,51 @@
       }
     }
 
-    // v3.28.1 - atualiza UM card sem recarregar a pagina toda: rebusca os
-    // dados, re-renderiza e PISCA a borda do card (feedback visual).
-    // Preserva scroll, filtros e selecoes.
+    // v3.28.2 - atualiza SO aquele card, sem redesenhar a lista inteira:
+    // rebusca os dados, regenera o HTML daquele unico card e o substitui
+    // no lugar (outerHTML). O resto da tela fica imovel - zero flicker,
+    // sem rolagem inesperada. Depois pisca a borda do card.
     async function atualizarUmCard(devolucaoId) {
+      const el = document.getElementById('card-' + devolucaoId);
       try {
         const r = await fetch('/api/admin/devolucoes');
         const d = await r.json();
         if (!d.ok) return;
-        dados = d;
-        renderizar();
+        dados = d; // mantem o estado global em dia (pra proximas acoes)
+
+        // acha o registro atualizado e a funcao de render da secao dele
+        const lista = [].concat(d.aprovadas || [], d.problemas || [], d.divergentes || []);
+        const reg = lista.find(x => String(x.id) === String(devolucaoId));
+        if (!reg || !el) { if (typeof renderizar === 'function') renderizar(); return; }
+
+        const geradores = {
+          aprovadas: (typeof itemHtmlAprovado === 'function') ? itemHtmlAprovado : null,
+          problemas: (typeof itemHtmlProblema === 'function') ? itemHtmlProblema : null,
+          divergentes: (typeof itemHtmlDivergente === 'function') ? itemHtmlDivergente : null,
+        };
+        // descobre a secao pela lista onde o reg esta
+        let ger = null;
+        if ((d.aprovadas || []).some(x => String(x.id) === String(devolucaoId))) ger = geradores.aprovadas;
+        else if ((d.problemas || []).some(x => String(x.id) === String(devolucaoId))) ger = geradores.problemas;
+        else if ((d.divergentes || []).some(x => String(x.id) === String(devolucaoId))) ger = geradores.divergentes;
+        if (!ger) { renderizar(); return; }
+
+        // gera o HTML novo do card e substitui SO ele
+        const tmp = document.createElement('div');
+        tmp.innerHTML = ger(reg);
+        const novo = tmp.firstElementChild;
+        if (!novo) { renderizar(); return; }
+        el.replaceWith(novo);
+
+        // pisca a borda do card novo
         requestAnimationFrame(() => {
-          const el = document.getElementById('card-' + devolucaoId);
-          if (el) {
-            el.classList.add('card-flash');
-            el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            setTimeout(() => el.classList.remove('card-flash'), 2000);
-          }
+          novo.classList.add('card-flash');
+          setTimeout(() => novo.classList.remove('card-flash'), 2000);
         });
-      } catch (e) { /* silencioso - proximo carregar resolve */ }
+      } catch (e) {
+        // se algo falhar, cai no reload da lista (seguro)
+        if (typeof renderizar === 'function') renderizar();
+      }
     }
 
     function renderizar() {
