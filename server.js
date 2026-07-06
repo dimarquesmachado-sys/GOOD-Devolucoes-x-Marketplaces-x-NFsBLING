@@ -158,7 +158,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '3.45 (refactor: impressao)',
+    version: '3.45.1 (fix banner QZ orfao)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -1836,14 +1836,14 @@ registrarRotasImpressao(app, { requerEstoquista, crypto, sleep });
 // ============================================================
 app.listen(PORT, () => {
   console.log('============================================');
-  console.log('GOOD Devolucoes v3.40 - ml auto-refresh 403 + ressuscitador');
+  console.log('GOOD Devolucoes v3.45.1 - refactor + fix banner QZ');
   console.log(`Porta: ${PORT}`);
   console.log(`ML: ${mlClient.hasToken() ? 'OK' : 'FALTA'}`);
   console.log(`Bling: ${blingClient.hasToken() ? 'OK' : 'FALTA'}`);
   console.log(`Render persist: ${((process.env.RENDER_API_KEY || process.env.RENDER_API_KEY_v2) && (process.env.RENDER_SERVICE_ID || process.env.RENDER_SERVICE_ID_v2)) ? 'OK' : 'FALTA'}`);
   console.log(`Supabase: ${supabase ? 'OK' : 'FALTA'}`);
   console.log(`Shopee proxy: ${shopee.cfg.ativo ? 'OK (loja ' + shopee.cfg.loja + ' via ' + shopee.cfg.url + ')' : 'AUSENTE - configure SHOPEE_PROXY_URL e SHOPEE_PROXY_KEY'}`);
-  console.log(`QZ assinatura: ${(QZ_CERT && QZ_PRIVKEY) ? 'OK (impressao sem popup)' : 'sem certificado (modo Allow) - configure GOODBKP_QZ_CERT e GOODBKP_QZ_PRIVKEY'}`);
+  console.log(`QZ assinatura: ${((process.env.GOODBKP_QZ_CERT || process.env.QZ_CERT) && (process.env.GOODBKP_QZ_PRIVKEY || process.env.QZ_PRIVKEY)) ? 'OK (impressao sem popup)' : 'sem certificado (modo Allow) - configure GOODBKP_QZ_CERT e GOODBKP_QZ_PRIVKEY'}`);
   console.log(`Email: ${mailer ? 'OK (' + EMAIL_USER + ' -> ' + EMAIL_TO + ')' : 'FALTA'}`);
   console.log(`Usuarios: ${Object.keys(USERS).length > 0 ? Object.keys(USERS).join(', ') : 'FALTA'}`);
   console.log(`Admin: ${(ADMIN_USER && USERS[ADMIN_USER]) ? `OK (${ADMIN_USER})` : 'FALTA - defina ADMIN_USER e inclua no USERS'}`);
