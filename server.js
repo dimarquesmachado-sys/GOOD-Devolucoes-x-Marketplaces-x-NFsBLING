@@ -154,94 +154,15 @@ const supabase = (SUPABASE_URL && SUPABASE_KEY)
   : null;
 
 // ============================================================
-// v3.33 - SHOPEE: devolucoes via proxy interno do shopee-nf-sync
-// (la vivem os tokens saudaveis da loja; aqui so consultamos).
-const SHOPEE_PROXY_URL = (process.env.SHOPEE_PROXY_URL || '').replace(/\/+$/, '');
-const SHOPEE_PROXY_KEY = process.env.SHOPEE_PROXY_KEY || '';
-const SHOPEE_LOJA_KEY = process.env.SHOPEE_LOJA_KEY || 'good';
+// v3.41 - SHOPEE extraida para lib/shopee-proxy.js (enxugamento)
+const shopee = require('./lib/shopee-proxy');
 
 // ── Chave p/ rotas de diagnóstico/admin/setup (acessadas com ?k=CHAVE na URL) ──
 // Sem a env ADMIN_KEY configurada no Render, essas rotas ficam DESLIGADAS (404).
 const ADMIN_KEY = process.env.ADMIN_KEY || '';
 function adminOk(req) { return ADMIN_KEY && req.query.k === ADMIN_KEY; }
 
-let _shopeeDevCache = { ts: 0, dados: [] };
-
-async function buscarDevolucoesShopeeProxy(forcar) {
-  if (!SHOPEE_PROXY_URL || !SHOPEE_PROXY_KEY) return null; // integracao desligada
-  const idade = Date.now() - _shopeeDevCache.ts;
-  if (!forcar && _shopeeDevCache.ts > 0 && idade < 5 * 60 * 1000) {
-    return _shopeeDevCache.dados;
-  }
-  const url = `${SHOPEE_PROXY_URL}/${SHOPEE_LOJA_KEY}/interno/devolucoes${forcar ? '?refresh=1' : ''}`;
-  const r = await fetch(url, { headers: { 'x-internal-key': SHOPEE_PROXY_KEY } });
-  const d = await r.json().catch(() => null);
-  if (!d || !d.ok) {
-    throw new Error('proxy shopee: ' + (d && d.erro ? d.erro : 'HTTP ' + r.status));
-  }
-  _shopeeDevCache = { ts: Date.now(), dados: d.devolucoes || [] };
-  return _shopeeDevCache.dados;
-}
-
-const normShopee = (s) => String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
-
-async function acharDevolucaoShopee(codigo) {
-  // v3.34.3: retorna diagnostico junto -> { hit, qtd, exemplo, usouRefresh }
-  // qtd = -1 significa integracao sem as variaveis (proxy desligado)
-  const vazio = { hit: null, qtd: -1, exemplo: null, usouRefresh: false };
-  const alvo = normShopee(codigo);
-  if (!alvo || alvo.length < 6) return vazio;
-  const alvoDig = String(codigo).replace(/\D/g, '');
-  const mTok = String(codigo).toUpperCase().match(/BR[A-Z0-9]{9,}/);
-  const alvoTok = mTok ? mTok[0] : null;
-  let usouRefresh = false;
-  let lista = await buscarDevolucoesShopeeProxy(false);
-  if (lista === null) return vazio;
-  const casa = (d) => [d.tracking_number, d.return_sn, d.order_sn].some(v => {
-    if (!v) return false;
-    const nv = normShopee(v);
-    if (nv === alvo) return true;
-    if (alvoTok && nv === alvoTok) return true; // token SPX dentro de URL/QR
-    // leitor/camera que comeu as letras: compara so os digitos (>=10 evita
-    // colidir com order_sn, que tem poucos digitos)
-    const dv = String(v).replace(/\D/g, '');
-    return alvoDig.length >= 10 && dv.length >= 10 && dv === alvoDig;
-  });
-  let hit = lista.find(casa);
-  if (!hit) {
-    // Re-busca (fura o cache) SO quando o codigo tem cara de Shopee:
-    // token BR..., order_sn (6 dig + alfanum), return_sn (8 dig + alfanum)
-    // ou tracking so-digitos (>=12). Lixo obvio nao dispara varredura dupla.
-    const pareceShopee = !!alvoTok
-      || /^\d{6}[A-Z0-9]{7,10}$/.test(alvo)
-      || /^\d{8}[A-Z0-9]{6,9}$/.test(alvo)
-      || (alvoDig.length >= 12 && alvo === alvoDig);
-    if (pareceShopee) {
-      usouRefresh = true;
-      lista = await buscarDevolucoesShopeeProxy(true);
-      hit = lista.find(casa);
-    }
-  }
-  const exemplo = lista[0]
-    ? (lista[0].tracking_number || lista[0].return_sn || lista[0].order_sn)
-    : null;
-  return { hit: hit || null, qtd: lista.length, exemplo, usouRefresh };
-}
-
-// v3.39.1 - PRE-AQUECIMENTO: mantem a cache Shopee quente em background.
-// A varredura de 120 dias (~30-40s quando fria) passa a rodar AQUI, de
-// tempos em tempos - a busca do estoquista sempre encontra cache quente
-// e responde em ~1s. Silencioso e a prova de falha.
-if (SHOPEE_PROXY_URL && SHOPEE_PROXY_KEY) {
-  setTimeout(() => {
-    buscarDevolucoesShopeeProxy(false)
-      .then(l => console.log(`[SHOPEE] cache pre-aquecida: ${(l || []).length} devolucoes`))
-      .catch(e => console.warn('[SHOPEE] pre-aquecimento falhou:', e.message || e));
-  }, 30 * 1000);
-  setInterval(() => {
-    buscarDevolucoesShopeeProxy(false).catch(() => { /* tenta de novo no proximo */ });
-  }, 8 * 60 * 1000);
-}
+shopee.iniciarPreAquecimento();
 
 const EMAIL_HOST = process.env.EMAIL_HOST;
 const EMAIL_PORT = parseInt(process.env.EMAIL_PORT || '465', 10);
@@ -390,7 +311,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '3.40.2 (anti-wipe env)',
+    version: '3.41 (refactor: shopee module)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -617,9 +538,9 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
   if (!shipment && !pack) {
     let devShopee = null;
     let infoShopee = null;
-    if (SHOPEE_PROXY_URL && SHOPEE_PROXY_KEY) {
+    if (shopee.cfg.ativo) {
       try {
-        infoShopee = await acharDevolucaoShopee(codigoOriginal);
+        infoShopee = await shopee.acharDevolucao(codigoOriginal);
         devShopee = infoShopee.hit;
         resultado.tentativas.push({
           tipo: 'shopee_return', v: '3.34.3', codigo: codigoOriginal,
@@ -639,7 +560,7 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
       const houve403 = resultado.tentativas.some(t => t.status === 403);
       const diag = infoShopee
         ? ` [diag: lista com ${infoShopee.qtd} devolucoes; exemplo de tracking: ${infoShopee.exemplo || '-'}]`
-        : (SHOPEE_PROXY_URL && SHOPEE_PROXY_KEY ? '' : ' [diag: integracao Shopee SEM as variaveis no Render!]');
+        : (shopee.cfg.ativo ? '' : ' [diag: integracao Shopee SEM as variaveis no Render!]');
       const nota403 = houve403 ? ' ⚠️ O ML respondeu 403 (acesso recusado): token expirado ou devolução recém-criada ainda embargada — tente o Pack ID impresso ou aguarde algumas horas.' : '';
       resultado.erro = (pareceSPX
         ? 'Etiqueta Shopee (SPX) nao casou com as devolucoes. Tente: digitar o "Pedido" impresso na etiqueta (ex: 260527FMTSJM8C), ou bipar a chave da DANFE se o pacote voltou com a nota.'
@@ -2087,13 +2008,11 @@ async function buscarIdMunicipioPorCep(cep) {
 //  quando a lista vier vazia, pra diagnostico em 1 clique)
 app.get('/api/debug/shopee-devolucoes', requerAdmin, async (req, res) => {
   try {
-    if (!SHOPEE_PROXY_URL || !SHOPEE_PROXY_KEY) {
+    if (!shopee.cfg.ativo) {
       return res.status(400).json({ ok: false, erro: 'Configure SHOPEE_PROXY_URL e SHOPEE_PROXY_KEY no Render deste servico' });
     }
-    const url = `${SHOPEE_PROXY_URL}/${SHOPEE_LOJA_KEY}/interno/devolucoes${req.query.refresh === '1' ? '?refresh=1' : ''}`;
-    const r = await fetch(url, { headers: { 'x-internal-key': SHOPEE_PROXY_KEY } });
-    const d = await r.json().catch(() => null);
-    return res.status(r.ok ? 200 : 502).json(d || { ok: false, erro: 'resposta invalida do proxy (HTTP ' + r.status + ')' });
+    const dados = await shopee.buscarDevolucoesProxy(req.query.refresh === '1');
+    return res.json({ ok: true, qtd: (dados || []).length, devolucoes: dados });
   } catch (e) {
     return res.status(500).json({ ok: false, erro: e.message || String(e) });
   }
@@ -3110,7 +3029,7 @@ app.listen(PORT, () => {
   console.log(`Bling: ${blingClient.hasToken() ? 'OK' : 'FALTA'}`);
   console.log(`Render persist: ${((process.env.RENDER_API_KEY || process.env.RENDER_API_KEY_v2) && (process.env.RENDER_SERVICE_ID || process.env.RENDER_SERVICE_ID_v2)) ? 'OK' : 'FALTA'}`);
   console.log(`Supabase: ${supabase ? 'OK' : 'FALTA'}`);
-  console.log(`Shopee proxy: ${(SHOPEE_PROXY_URL && SHOPEE_PROXY_KEY) ? 'OK (loja ' + SHOPEE_LOJA_KEY + ' via ' + SHOPEE_PROXY_URL + ')' : 'AUSENTE - configure SHOPEE_PROXY_URL e SHOPEE_PROXY_KEY'}`);
+  console.log(`Shopee proxy: ${shopee.cfg.ativo ? 'OK (loja ' + shopee.cfg.loja + ' via ' + shopee.cfg.url + ')' : 'AUSENTE - configure SHOPEE_PROXY_URL e SHOPEE_PROXY_KEY'}`);
   console.log(`QZ assinatura: ${(QZ_CERT && QZ_PRIVKEY) ? 'OK (impressao sem popup)' : 'sem certificado (modo Allow) - configure GOODBKP_QZ_CERT e GOODBKP_QZ_PRIVKEY'}`);
   console.log(`Email: ${mailer ? 'OK (' + EMAIL_USER + ' -> ' + EMAIL_TO + ')' : 'FALTA'}`);
   console.log(`Usuarios: ${Object.keys(USERS).length > 0 ? Object.keys(USERS).join(', ') : 'FALTA'}`);
