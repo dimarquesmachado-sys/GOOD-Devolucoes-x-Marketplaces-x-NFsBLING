@@ -158,7 +158,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '3.47.3 (ponte status indice)',
+    version: '3.47.4 (debug tracking cru)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -1845,7 +1845,8 @@ app.get('/api/debug/shopee-pedido', requerAdmin, async (req, res) => {
     if (!shopee.cfg.ativo) return res.status(400).json({ ok: false, erro: 'Shopee proxy sem envs' });
     const q = encodeURIComponent(String(req.query.q || '').trim());
     if (!q) return res.status(400).json({ ok: false, erro: 'informe ?q=ORDER_SN' });
-    const url = `${shopee.cfg.url}/${shopee.cfg.loja}/interno/devolucoes?pedido=${q}`;
+    const bruto = req.query.bruto === '1' ? '&bruto=1' : '';
+    const url = `${shopee.cfg.url}/${shopee.cfg.loja}/interno/devolucoes?pedido=${q}${bruto}`;
     const r = await fetch(url, { headers: { 'x-internal-key': shopee.cfg.key } });
     const d = await r.json().catch(() => null);
     return res.status(r.ok ? 200 : 502).json(d || { ok: false, erro: 'resposta invalida (HTTP ' + r.status + ')' });
