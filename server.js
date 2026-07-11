@@ -410,7 +410,7 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
         : (shopee.cfg.ativo ? '' : ' [diag: integracao Shopee SEM as variaveis no Render!]');
       const nota403 = houve403 ? ' ⚠️ O ML respondeu 403 (acesso recusado): token expirado ou devolução recém-criada ainda embargada — tente o Pack ID impresso ou aguarde algumas horas.' : '';
       resultado.erro = (pareceSPX
-        ? 'Etiqueta Shopee (SPX) nao casou com as devolucoes. Tente: digitar o "Pedido" impresso na etiqueta (ex: 260527FMTSJM8C), ou bipar a chave da DANFE se o pacote voltou com a nota.'
+        ? 'Etiqueta Shopee (SPX) nao casou com as devolucoes. Se ela diz "SPX INSUCESSO": o QR/barras so contem o rastreio (a Shopee nao indexa esse codigo) — DIGITE o "Pedido" impresso na etiqueta (ex: 260623TX31XFMT) que o sistema busca o pedido cancelado. Devolucao normal: tente o "Pedido" ou a chave da DANFE.'
         : 'Codigo nao encontrado em shipments/packs do ML nem nas devolucoes Shopee.') + diag + nota403;
       return res.status(404).json(resultado);
     }
