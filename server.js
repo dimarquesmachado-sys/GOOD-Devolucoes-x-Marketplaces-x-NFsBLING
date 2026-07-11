@@ -158,7 +158,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '3.47.2 (spx-first seguro, ML nunca pulado)',
+    version: '3.47.3 (ponte status indice)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -1813,6 +1813,18 @@ app.get('/api/admin/devolucoes', requerAdmin, async (req, res) => {
 // Uso (logado como admin):
 //   /api/debug/shopee-procurar?q=260623TX31XFMT&dias=180
 //   /api/debug/shopee-pedido?q=260623TX31XFMT
+app.get('/api/debug/shopee-indice-status', requerAdmin, async (req, res) => {
+  try {
+    if (!shopee.cfg.ativo) return res.status(400).json({ ok: false, erro: 'Shopee proxy sem envs' });
+    const url = `${shopee.cfg.url}/${shopee.cfg.loja}/interno/indice-status`;
+    const r = await fetch(url, { headers: { 'x-internal-key': shopee.cfg.key } });
+    const d = await r.json().catch(() => null);
+    return res.status(r.ok ? 200 : 502).json(d || { ok: false, erro: 'resposta invalida (HTTP ' + r.status + ')' });
+  } catch (e) {
+    return res.status(500).json({ ok: false, erro: e.message || String(e) });
+  }
+});
+
 app.get('/api/debug/shopee-procurar', requerAdmin, async (req, res) => {
   try {
     if (!shopee.cfg.ativo) return res.status(400).json({ ok: false, erro: 'Shopee proxy sem envs' });
@@ -1903,7 +1915,7 @@ registrarRotasImpressao(app, { requerEstoquista, crypto, sleep });
 // ============================================================
 app.listen(PORT, () => {
   console.log('============================================');
-  console.log('GOOD Devolucoes v3.47.2 - spx-first seguro');
+  console.log('GOOD Devolucoes v3.47.3 - ponte status indice');
   console.log(`Porta: ${PORT}`);
   console.log(`ML: ${mlClient.hasToken() ? 'OK' : 'FALTA'}`);
   console.log(`Bling: ${blingClient.hasToken() ? 'OK' : 'FALTA'}`);
