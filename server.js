@@ -158,7 +158,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '3.47 (bip do BR insucesso)',
+    version: '3.47.2 (spx-first seguro, ML nunca pulado)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -254,8 +254,39 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
   let returnData = null;
   let metodoUsado = null;
 
+  // v3.47.2 - PISTA SPX (nao atalho destrutivo!): codigo BR + 12+ digitos +
+  // 1 letra final e o padrao da etiqueta Shopee SPX. Correios tb comeca com
+  // BR mas TERMINA em "BR" (2 letras) - e ML usa Correios. Entao aqui a
+  // regra e CONSERVADORA: se parece SPX, a Shopee e tentada PRIMEIRO (mais
+  // abaixo). Mas o ML NUNCA e eliminado - se a Shopee nao achar, a cascata
+  // ML roda igual. Nenhum caminho e perdido (insucesso ML existe!).
+  const pistaSPX = /^BR\d{11,}[A-Z]$/i.test(codigoOriginal.trim());
+
+  // v3.47.2 - Quando o codigo tem PISTA de SPX (BR+12dig+1letra), tenta a
+  // Shopee JA AQUI (antes da cascata ML), pra o bipe de insucesso Shopee
+  // responder rapido sem os 404 de shipment/pack. MAS se a Shopee nao achar,
+  // NAO retorna - deixa a cascata ML rodar normal logo abaixo (insucesso ML
+  // usa etiqueta Correios, que tb comeca com BR). Nenhum caminho e perdido.
+  if (pistaSPX && shopee.cfg.ativo) {
+    try {
+      const infoSPX = await shopee.acharDevolucao(codigoOriginal);
+      if (infoSPX && infoSPX.hit) {
+        resultado.tentativas.push({ tipo: 'shopee_return', v: 'spx-first', codigo: codigoOriginal, ok: true, status: 200, lista_qtd: infoSPX.qtd });
+        const dev = infoSPX.hit;
+        // reaproveita o MESMO tratamento shopee da cascata (montagem + NF)
+        returnData = dev;
+        metodoUsado = 'shopee_return';
+        resultado._shopeeDev = dev; // sinaliza pro bloco shopee abaixo pular a re-busca
+      } else {
+        resultado.tentativas.push({ tipo: 'shopee_return', v: 'spx-first', codigo: codigoOriginal, ok: false, status: 404, lista_qtd: infoSPX ? infoSPX.qtd : null, nota: 'nao achou na Shopee - seguindo cascata ML (pode ser insucesso ML/Correios)' });
+      }
+    } catch (e) {
+      resultado.tentativas.push({ tipo: 'shopee_return', v: 'spx-first', codigo: codigoOriginal, ok: false, status: 500, erro: e.message || String(e) });
+    }
+  }
+
   // ML T1: shipment_id
-  if (codigoLimpo.length >= 10 && codigoLimpo.length <= 13) {
+  if (!returnData && codigoLimpo.length >= 10 && codigoLimpo.length <= 13) {
     const r = await chamarML(
       `https://api.mercadolibre.com/shipments/${codigoLimpo}`,
       { 'x-format-new': 'true' }
@@ -271,7 +302,7 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
   }
 
   // ML T2: pack_id
-  if (!shipment) {
+  if (!returnData && !shipment) {
     const possiveis = [];
     if (codigoLimpo.length >= 15) possiveis.push(codigoLimpo);
     if (codigoLimpo.length === 11) possiveis.push('20000' + codigoLimpo);
@@ -383,9 +414,10 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
 
   // ===== SHOPEE (v3.33): tenta casar como etiqueta de devolucao Shopee =====
   if (!shipment && !pack) {
-    let devShopee = null;
+    let devShopee = resultado._shopeeDev || null; // v3.47.2: reusa o spx-first
+    delete resultado._shopeeDev; // campo interno - nao vaza no JSON
     let infoShopee = null;
-    if (shopee.cfg.ativo) {
+    if (!devShopee && shopee.cfg.ativo) {
       try {
         infoShopee = await shopee.acharDevolucao(codigoOriginal);
         devShopee = infoShopee.hit;
@@ -1871,7 +1903,7 @@ registrarRotasImpressao(app, { requerEstoquista, crypto, sleep });
 // ============================================================
 app.listen(PORT, () => {
   console.log('============================================');
-  console.log('GOOD Devolucoes v3.47 - bip do BR insucesso');
+  console.log('GOOD Devolucoes v3.47.2 - spx-first seguro');
   console.log(`Porta: ${PORT}`);
   console.log(`ML: ${mlClient.hasToken() ? 'OK' : 'FALTA'}`);
   console.log(`Bling: ${blingClient.hasToken() ? 'OK' : 'FALTA'}`);
