@@ -158,7 +158,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '3.45.1 (fix banner QZ orfao)',
+    version: '3.45.2 (pontes debug shopee)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -1775,6 +1775,41 @@ app.get('/api/admin/devolucoes', requerAdmin, async (req, res) => {
 // v3.33 - DEBUG: lista as devolucoes Shopee que o proxy enxerga
 // (v3.34.1: passthrough FIEL do proxy - inclui debug_amostra_crua
 //  quando a lista vier vazia, pra diagnostico em 1 clique)
+// v3.45.2 - PONTES de debug pro shopee-sync: usam o login admin (cookie)
+// e repassam a chave por HEADER (o caminho que comprovadamente funciona).
+// Zero chave na URL - fim do 401 por caractere quebrado.
+// Uso (logado como admin):
+//   /api/debug/shopee-procurar?q=260623TX31XFMT&dias=180
+//   /api/debug/shopee-pedido?q=260623TX31XFMT
+app.get('/api/debug/shopee-procurar', requerAdmin, async (req, res) => {
+  try {
+    if (!shopee.cfg.ativo) return res.status(400).json({ ok: false, erro: 'Shopee proxy sem envs' });
+    const q = encodeURIComponent(String(req.query.q || '').trim());
+    if (!q) return res.status(400).json({ ok: false, erro: 'informe ?q=CODIGO' });
+    const dias = Math.min(180, parseInt(req.query.dias, 10) || 150);
+    const url = `${shopee.cfg.url}/${shopee.cfg.loja}/interno/devolucoes?procurar=${q}&dias=${dias}`;
+    const r = await fetch(url, { headers: { 'x-internal-key': shopee.cfg.key } });
+    const d = await r.json().catch(() => null);
+    return res.status(r.ok ? 200 : 502).json(d || { ok: false, erro: 'resposta invalida (HTTP ' + r.status + ')' });
+  } catch (e) {
+    return res.status(500).json({ ok: false, erro: e.message || String(e) });
+  }
+});
+
+app.get('/api/debug/shopee-pedido', requerAdmin, async (req, res) => {
+  try {
+    if (!shopee.cfg.ativo) return res.status(400).json({ ok: false, erro: 'Shopee proxy sem envs' });
+    const q = encodeURIComponent(String(req.query.q || '').trim());
+    if (!q) return res.status(400).json({ ok: false, erro: 'informe ?q=ORDER_SN' });
+    const url = `${shopee.cfg.url}/${shopee.cfg.loja}/interno/devolucoes?pedido=${q}`;
+    const r = await fetch(url, { headers: { 'x-internal-key': shopee.cfg.key } });
+    const d = await r.json().catch(() => null);
+    return res.status(r.ok ? 200 : 502).json(d || { ok: false, erro: 'resposta invalida (HTTP ' + r.status + ')' });
+  } catch (e) {
+    return res.status(500).json({ ok: false, erro: e.message || String(e) });
+  }
+});
+
 app.get('/api/debug/shopee-devolucoes', requerAdmin, async (req, res) => {
   try {
     if (!shopee.cfg.ativo) {
@@ -1836,7 +1871,7 @@ registrarRotasImpressao(app, { requerEstoquista, crypto, sleep });
 // ============================================================
 app.listen(PORT, () => {
   console.log('============================================');
-  console.log('GOOD Devolucoes v3.45.1 - refactor + fix banner QZ');
+  console.log('GOOD Devolucoes v3.45.2 - pontes debug shopee');
   console.log(`Porta: ${PORT}`);
   console.log(`ML: ${mlClient.hasToken() ? 'OK' : 'FALTA'}`);
   console.log(`Bling: ${blingClient.hasToken() ? 'OK' : 'FALTA'}`);
