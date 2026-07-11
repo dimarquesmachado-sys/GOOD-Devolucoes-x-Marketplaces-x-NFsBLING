@@ -158,7 +158,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '3.46 (insucesso shopee bipavel)',
+    version: '3.47 (bip do BR insucesso)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -1871,7 +1871,7 @@ registrarRotasImpressao(app, { requerEstoquista, crypto, sleep });
 // ============================================================
 app.listen(PORT, () => {
   console.log('============================================');
-  console.log('GOOD Devolucoes v3.46 - insucesso shopee bipavel');
+  console.log('GOOD Devolucoes v3.47 - bip do BR insucesso');
   console.log(`Porta: ${PORT}`);
   console.log(`ML: ${mlClient.hasToken() ? 'OK' : 'FALTA'}`);
   console.log(`Bling: ${blingClient.hasToken() ? 'OK' : 'FALTA'}`);
