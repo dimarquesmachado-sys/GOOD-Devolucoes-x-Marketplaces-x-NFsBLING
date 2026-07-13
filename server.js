@@ -164,7 +164,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '3.57 (MAGALU + cacador do codigo de barras)',
+    version: '3.58 (MAGALU - caminhos v1 + escopo entregas)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -2118,20 +2118,23 @@ app.get('/api/debug/magalu-caca', requerAdmin, async (req, res) => {
 
   const alvos = [];
   if (ticket) {
-    alvos.push(['ticket-detalhe', `/seller/v0/tickets/${ticket}`]);
-    alvos.push(['ticket-eventos', `/seller/v0/tickets/${ticket}/events`]);
-    alvos.push(['ticket-mensagens', `/seller/v0/tickets/${ticket}/messages`]);
-    alvos.push(['ticket-reversa', `/seller/v0/tickets/${ticket}/returns`]);
+    alvos.push(['sac: ticket-detalhe', `/seller/v0/tickets/${ticket}`]);
+    alvos.push(['sac: ticket-eventos', `/seller/v0/tickets/${ticket}/events`]);
+    alvos.push(['sac: ticket-reversa', `/seller/v0/tickets/${ticket}/returns`]);
   }
+  // v3.58 - CAMINHOS CERTOS: a API de Pedidos/Entregas e /seller/v1/ (nao v0).
+  // Era por isso que dava 404. Entregas exigem o escopo
+  // open:order-delivery-seller:read (adicionado via idm client add-scope).
   if (pedido) {
-    alvos.push(['pedido-detalhe', `/seller/v0/orders/${pedido}`]);
-    alvos.push(['pedido-entregas', `/seller/v0/orders/${pedido}/deliveries`]);
-    alvos.push(['pedido-nf', `/seller/v0/orders/${pedido}/invoices`]);
+    alvos.push(['v1: pedido-por-id', `/seller/v1/orders/${pedido}`]);
   }
   if (entrega) {
-    alvos.push(['entrega-detalhe', `/seller/v0/deliveries/${entrega}`]);
-    alvos.push(['entrega-rastreio', `/seller/v0/deliveries/${entrega}/tracking`]);
+    alvos.push(['v1: entrega-por-id', `/seller/v1/deliveries/${entrega}`]);
+    alvos.push(['v1: entrega-historico', `/seller/v1/deliveries/${entrega}/histories`]);
   }
+  // lista de entregas recentes (as vezes o rastreio so aparece na listagem)
+  alvos.push(['v1: entregas-lista', `/seller/v1/deliveries?_limit=10`]);
+  alvos.push(['v1: pedidos-lista', `/seller/v1/orders?_limit=5`]);
 
   const achados = [];
   for (const [nome, caminho] of alvos) {
