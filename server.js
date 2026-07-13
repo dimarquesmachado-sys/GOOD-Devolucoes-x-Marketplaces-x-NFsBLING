@@ -164,7 +164,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '3.54 (teste filtro data bling)',
+    version: '3.55 (fix filtro data bling - NF por numero funciona)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -2197,7 +2197,7 @@ registrarRotasImpressao(app, { requerEstoquista, crypto, sleep });
 // ============================================================
 app.listen(PORT, () => {
   console.log('============================================');
-  console.log('GOOD Devolucoes v3.52 - magalu oauth');
+  console.log('GOOD Devolucoes v3.55 - fix filtro data bling');
   console.log(`Porta: ${PORT}`);
   console.log(`ML: ${mlClient.hasToken() ? 'OK' : 'FALTA'}`);
   console.log(`Bling: ${blingClient.hasToken() ? 'OK' : 'FALTA'}`);
