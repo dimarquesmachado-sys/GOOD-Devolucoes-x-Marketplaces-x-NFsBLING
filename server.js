@@ -164,7 +164,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '3.59 (MAGALU - caca returns external_id)',
+    version: '3.60 (MAGALU - API de Remessas logistic-carrier)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -2117,30 +2117,23 @@ app.get('/api/debug/magalu-caca', requerAdmin, async (req, res) => {
   };
 
   const alvos = [];
+  // v3.60 - DESCOBERTA na doc oficial: existe uma "API de Remessas (Pedidos
+  // Logisticos)" com "Consultar Remessa por ID". Se o codigo de barras da
+  // etiqueta (196634440-01) for o ID da remessa (+ volume), acabou o jogo.
+  // Escopos: open:logistic-carrier-shippings:read e open:order-logistics-seller:read
+  const cod = alvo || '196634440';
+  alvos.push(['REMESSA: por id (cru)', `/logistic-carrier/v1/shippings/${cod}`]);
+  alvos.push(['REMESSA: por id -01', `/logistic-carrier/v1/shippings/${cod}-01`]);
+  alvos.push(['REMESSA: v0', `/logistic-carrier/v0/shippings/${cod}`]);
+  alvos.push(['REMESSA: lista', `/logistic-carrier/v1/shippings?_limit=5`]);
+  if (entrega) {
+    alvos.push(['LOGISTICS: da entrega', `/seller/v1/deliveries/${entrega}/logistics`]);
+    alvos.push(['LOGISTICS: shipments', `/seller/v1/deliveries/${entrega}/shipments`]);
+  }
+  alvos.push(['LOGISTICS: seller lista', `/seller/v1/logistics?_limit=5`]);
+  alvos.push(['LOGISTICS: seller shippings', `/seller/v1/logistics/shippings/${cod}`]);
   if (ticket) {
     alvos.push(['sac: ticket-reversa', `/seller/v0/tickets/${ticket}/returns`]);
-  }
-  // v3.59 - PISTA NOVA: o JSON da entrega tem returns[].external_id - uma
-  // TERCEIRA entidade de devolucao (nem ticket, nem reversa do SAC). Pode
-  // ser a devolucao no sistema de LOGISTICA, onde moraria o codigo Magalog.
-  const rid = String(req.query.rid || '').trim(); // returns[].external_id
-  if (entrega) {
-    alvos.push(['v1: entrega-returns (lista)', `/seller/v1/deliveries/${entrega}/returns`]);
-    if (rid) alvos.push(['v1: entrega-return-por-id', `/seller/v1/deliveries/${entrega}/returns/${rid}`]);
-  }
-  if (rid) {
-    alvos.push(['v1: return-direto', `/seller/v1/returns/${rid}`]);
-    alvos.push(['v0: return-direto', `/seller/v0/returns/${rid}`]);
-  }
-  // o /v1/orders com UUID deu ORDER_NOT_FOUND - o portal usa o CODE (LU-...).
-  if (pedido) {
-    alvos.push(['v1: pedido-por-uuid', `/seller/v1/orders/${pedido}`]);
-  }
-  const codePedido = String(req.query.code || '').trim(); // ex: 1546570114717824
-  if (codePedido) {
-    alvos.push(['v1: pedido-por-code', `/seller/v1/orders/${codePedido}`]);
-    alvos.push(['v1: pedido-por-LU', `/seller/v1/orders/LU-${codePedido}`]);
-    alvos.push(['v1: entrega-por-code', `/seller/v1/deliveries/LU-${codePedido}-1`]);
   }
 
   const achados = [];
