@@ -113,7 +113,7 @@ const nfp = require('./lib/nf-pessoa')({ chamarBling, sleep });
 const {
   mapItensNF,
   resolverIdNFPorChave,
-  resolverIdNFPorNumero,
+  buscarNFsPorNumero,
   formatarCpfCnpj,
   detectarTipoPessoa,
   buscarIdMunicipioIBGE,
@@ -159,7 +159,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '3.50 (busca por numero da NF)',
+    version: '3.51 (numero da NF multi-serie)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -372,16 +372,47 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
       console.log(`[BUSCA] CHAVE DANFE: serie=${serieDaChave} numero=${numeroDaChave}`);
       try { idNF = await resolverIdNFPorChave(numeroDaChave, codigoLimpo); } catch (e) { idNF = null; }
     } else {
-      // Numero da NF digitado (com serie opcional)
+      // Numero da NF digitado. MULTI-SERIE: a casa emite em varias series
+      // (1=normal, 2=ML FULL, outras p/ Magalu/Amazon FULL) e o MESMO numero
+      // pode existir em mais de uma. Nunca escolhemos sozinhos: se der
+      // ambiguidade, devolvemos as opcoes pro estoquista decidir.
       numeroDaChave = mNumSerie ? mNumSerie[1] : codigoLimpo;
-      serieDaChave = mNumSerie ? String(parseInt(mNumSerie[2], 10)) : '1';
+      serieDaChave = mNumSerie ? String(parseInt(mNumSerie[2], 10)) : null;
       tipoTentativa = 'numero_nf';
-      console.log(`[BUSCA] NUMERO NF: serie=${serieDaChave} numero=${numeroDaChave}`);
-      try { idNF = await resolverIdNFPorNumero(numeroDaChave, serieDaChave); } catch (e) { idNF = null; }
-      // Nao achou na serie pedida? tenta em QUALQUER serie antes de desistir
-      if (!idNF) {
-        try { idNF = await resolverIdNFPorNumero(numeroDaChave, null); } catch (e) { idNF = null; }
+      console.log(`[BUSCA] NUMERO NF: numero=${numeroDaChave} serie=${serieDaChave || '(todas)'}`);
+      let achadas = [];
+      try { achadas = await buscarNFsPorNumero(numeroDaChave, serieDaChave); } catch (e) { achadas = []; }
+
+      if (achadas.length > 1) {
+        // AMBIGUIDADE: mesma numeracao em series diferentes. Carrega o basico
+        // de cada uma (data, valor, produto) pro estoquista bater com a caixa.
+        const opcoes = [];
+        for (const a of achadas) {
+          const rr = await buscarNFePorId(a.id);
+          const n = (rr.ok && rr.data?.data) ? rr.data.data : null;
+          if (!n) continue;
+          const it0 = Array.isArray(n.itens) && n.itens.length ? n.itens[0] : null;
+          opcoes.push({
+            idBling: String(n.id),
+            numero: n.numero,
+            serie: n.serie,
+            chave: n.chaveAcesso || null,
+            dataEmissao: n.dataEmissao,
+            valor: n.valorNota,
+            cliente: (n.contato && n.contato.nome) ? n.contato.nome : null,
+            produto: it0 ? (it0.descricao || null) : null,
+            sku: it0 ? (it0.codigo || null) : null,
+            numeroPedidoLoja: n.numeroPedidoLoja || null,
+          });
+        }
+        resultado.tentativas.push({ tipo: 'numero_nf', codigo: String(codigoOriginal || '').trim(), ok: false, status: 300, erro: 'ambiguo (varias series)' });
+        resultado.ambiguidade_nf = { numero: numeroDaChave, opcoes };
+        resultado.erro = `Existem ${opcoes.length} NFs com o numero ${numeroDaChave}, em series diferentes. Escolha a que bate com o pacote (ou bipe a chave da DANFE).`;
+        console.log(`[BUSCA] NUMERO NF ${numeroDaChave}: AMBIGUO em ${opcoes.length} series`);
+        return res.status(409).json(resultado);
       }
+      idNF = achadas.length === 1 ? achadas[0].id : null;
+      if (achadas.length === 1) serieDaChave = achadas[0].serie;
     }
 
     resultado.tentativas.push({
@@ -392,7 +423,7 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
     if (!idNF) {
       resultado.erro = ehChaveNFe
         ? `Chave lida, mas a NF ${numeroDaChave} (serie ${serieDaChave}) nao foi localizada no Bling.`
-        : `NF ${numeroDaChave} nao localizada no Bling (procurei serie ${serieDaChave} e demais series, ultimos 18 meses). Confira o numero, ou bipe a chave da DANFE.`;
+        : `NF ${numeroDaChave} nao localizada no Bling (procurei em todas as series, ultimos 18 meses). Confira o numero, ou bipe a chave da DANFE.`;
       return res.status(404).json(resultado);
     }
     const rFullNF = await buscarNFePorId(idNF);
@@ -1958,7 +1989,7 @@ registrarRotasImpressao(app, { requerEstoquista, crypto, sleep });
 // ============================================================
 app.listen(PORT, () => {
   console.log('============================================');
-  console.log('GOOD Devolucoes v3.50 - busca por numero da NF');
+  console.log('GOOD Devolucoes v3.51 - numero NF multi-serie');
   console.log(`Porta: ${PORT}`);
   console.log(`ML: ${mlClient.hasToken() ? 'OK' : 'FALTA'}`);
   console.log(`Bling: ${blingClient.hasToken() ? 'OK' : 'FALTA'}`);
