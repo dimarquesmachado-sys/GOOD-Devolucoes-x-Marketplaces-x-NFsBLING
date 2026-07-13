@@ -158,7 +158,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '3.48 (insucesso rapido - tracking antes do refresh)',
+    version: '3.49 (triagem p outros marketplaces - fim da rodinha eterna)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -1248,21 +1248,26 @@ app.get('/api/triagem/status/:shipmentId', requerEstoquista, async (req, res) =>
   if (!supabase) {
     return res.json({ ok: false, erro: 'Supabase nao configurado' });
   }
-  const shipmentId = String(req.params.shipmentId || '').trim();
-  if (!shipmentId) {
-    return res.status(400).json({ ok: false, erro: 'shipment_id obrigatorio' });
+  const ident = String(req.params.shipmentId || '').trim();
+  if (!ident) {
+    return res.status(400).json({ ok: false, erro: 'identificador obrigatorio' });
   }
+  // v3.49 - vendas de outros marketplaces (Magalu, Amazon...) chegam pela
+  // chave da DANFE e NAO tem shipment_id. Se o identificador for uma chave
+  // de 44 digitos, procura por nf_chave; senao, por shipment_id (ML/Shopee).
+  const ehChaveNF = /^\d{44}$/.test(ident);
+  const coluna = ehChaveNF ? 'nf_chave' : 'shipment_id';
   try {
     const { data, error } = await supabase
       .from('devolucoes')
       .select('id, created_at, tipo, status, problema_descricao, problema_fotos, data_concluido, nf_numero, produto_qtd')
-      .eq('shipment_id', shipmentId)
+      .eq(coluna, ident)
       .order('created_at', { ascending: false });
 
     if (error) {
       return res.status(500).json({ ok: false, erro: error.message });
     }
-    return res.json({ ok: true, registros: data || [] });
+    return res.json({ ok: true, registros: data || [], via: coluna });
   } catch (err) {
     return res.status(500).json({ ok: false, erro: err.message });
   }
@@ -1356,7 +1361,7 @@ app.post('/api/triagem/aprovar', requerEstoquista, async (req, res) => {
     const { data, error } = await supabase
       .from('devolucoes')
       .insert([{
-        shipment_id: String(dados.shipment_id),
+        shipment_id: String(dados.shipment_id || dados.nf_chave || ''), // v3.49: outros marketplaces (Magalu...) nao tem shipment - usa a chave da NF
         order_id: dados.order_id ? String(dados.order_id) : null,
         pack_id: dados.pack_id ? String(dados.pack_id) : null,
         buyer_id: dados.buyer_id ? String(dados.buyer_id) : null,
@@ -1522,7 +1527,7 @@ app.post('/api/triagem/problema', requerEstoquista, async (req, res) => {
     const { data, error } = await supabase
       .from('devolucoes')
       .insert([{
-        shipment_id: String(dados.shipment_id),
+        shipment_id: String(dados.shipment_id || dados.nf_chave || ''), // v3.49: outros marketplaces (Magalu...) nao tem shipment - usa a chave da NF
         order_id: dados.order_id ? String(dados.order_id) : null,
         pack_id: dados.pack_id ? String(dados.pack_id) : null,
         buyer_id: dados.buyer_id ? String(dados.buyer_id) : null,
@@ -1637,7 +1642,7 @@ app.post('/api/triagem/divergente', requerEstoquista, async (req, res) => {
     const { data, error } = await supabase
       .from('devolucoes')
       .insert([{
-        shipment_id: String(dados.shipment_id),
+        shipment_id: String(dados.shipment_id || dados.nf_chave || ''), // v3.49: outros marketplaces (Magalu...) nao tem shipment - usa a chave da NF
         order_id: dados.order_id ? String(dados.order_id) : null,
         pack_id: dados.pack_id ? String(dados.pack_id) : null,
         buyer_id: dados.buyer_id ? String(dados.buyer_id) : null,
@@ -1917,7 +1922,7 @@ registrarRotasImpressao(app, { requerEstoquista, crypto, sleep });
 // ============================================================
 app.listen(PORT, () => {
   console.log('============================================');
-  console.log('GOOD Devolucoes v3.48 - insucesso rapido');
+  console.log('GOOD Devolucoes v3.49 - triagem outros marketplaces');
   console.log(`Porta: ${PORT}`);
   console.log(`ML: ${mlClient.hasToken() ? 'OK' : 'FALTA'}`);
   console.log(`Bling: ${blingClient.hasToken() ? 'OK' : 'FALTA'}`);
