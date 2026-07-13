@@ -86,6 +86,13 @@ async function buscarLinksBling(orderId, dataVenda, numeroNF) {
 // ================ RENDER ================
 function renderizar(data, ok) {
   if (!ok || !data.encontrado) {
+    // v3.51 - MESMO NUMERO em series diferentes (a casa emite serie 1=normal,
+    // 2=ML FULL, outras p/ Magalu/Amazon FULL). Nunca escolhemos por ele:
+    // mostra as NFs lado a lado pra bater com o que esta na caixa.
+    if (data.ambiguidade_nf?.opcoes?.length) {
+      renderizarEscolhaSerie(data.ambiguidade_nf);
+      return;
+    }
     renderizarErro(data.erro || 'Codigo nao encontrado', data.tentativas);
     return;
   }
@@ -475,6 +482,45 @@ function forcarReTriagem() {
   window._forcarTriagem = true;
   renderizarBotoesTriagem();
   toast('Modo re-triagem ativado', 'ok');
+}
+
+// v3.51 - Escolha de SERIE: o mesmo numero existe em mais de uma serie.
+// Mostra o essencial de cada NF (serie, data, valor, cliente, produto) pro
+// estoquista bater com o pacote e clicar na certa. Clicar re-busca pela
+// CHAVE da NF escolhida, que e inequivoca.
+function renderizarEscolhaSerie(amb) {
+  const opcoes = amb.opcoes || [];
+  let html = '<div class="card">';
+  html += '<div class="erro-box" style="background:#fff8e7;border-color:#f57c00;color:#8a5200;">';
+  html += '<strong>⚠️ Existem ' + opcoes.length + ' notas com o numero ' + escapeHtml(String(amb.numero)) + '</strong>';
+  html += '<div style="margin-top:6px;font-size:13px;">A empresa emite em varias series (1 = venda normal, 2 = ML FULL, e outras para Magalu/Amazon FULL). Confira o produto e o cliente na caixa e escolha a nota certa:</div>';
+  html += '</div>';
+
+  opcoes.forEach((o) => {
+    const data = o.dataEmissao ? new Date(o.dataEmissao).toLocaleDateString('pt-BR') : '-';
+    const valor = (o.valor != null) ? ('R$ ' + Number(o.valor).toFixed(2).replace('.', ',')) : '-';
+    html += '<div class="item" style="margin-top:12px;border-left-color:#f57c00;">';
+    html += '<div style="font-weight:700;font-size:15px;">NF ' + escapeHtml(String(o.numero)) + ' · <span style="color:#f57c00;">SERIE ' + escapeHtml(String(o.serie)) + '</span></div>';
+    if (o.produto) html += '<div style="margin-top:6px;font-size:13px;">📦 ' + escapeHtml(o.produto) + '</div>';
+    if (o.sku) html += '<div style="font-size:12px;color:#666;">SKU ' + escapeHtml(o.sku) + '</div>';
+    html += '<div style="margin-top:6px;font-size:12px;color:#666;">👤 ' + escapeHtml(o.cliente || '-') + ' &nbsp;·&nbsp; 📅 ' + data + ' &nbsp;·&nbsp; 💰 ' + valor + '</div>';
+    if (o.numeroPedidoLoja) html += '<div style="font-size:12px;color:#666;">Pedido loja: ' + escapeHtml(String(o.numeroPedidoLoja)) + '</div>';
+    if (o.chave) {
+      html += '<button class="btn btn-verde" style="margin-top:10px;" onclick="escolherNFSerie(\'' + escapeHtml(o.chave) + '\')">✅ E esta (serie ' + escapeHtml(String(o.serie)) + ')</button>';
+    }
+    html += '</div>';
+  });
+
+  html += '<div style="margin-top:14px;font-size:12px;color:#666;">💡 Se preferir, bipe a <b>chave da DANFE</b> (44 digitos) — ela ja identifica a serie sozinha.</div>';
+  html += '</div>';
+  divResultado.innerHTML = html;
+  divResultado.classList.add('show');
+}
+
+// Escolheu uma serie: re-busca pela chave (inequivoca) e segue o fluxo normal
+function escolherNFSerie(chave) {
+  inputCodigo.value = chave;
+  buscar();
 }
 
 function renderizarErro(mensagem, tentativas) {
