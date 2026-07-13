@@ -54,6 +54,11 @@ const supabase = (SUPABASE_URL && SUPABASE_KEY)
 // v3.41 - SHOPEE extraida para lib/shopee-proxy.js (enxugamento)
 const shopee = require('./lib/shopee-proxy');
 
+// v3.52 - MAGALU: devolucao la e um TICKET de pos-venda com "remessa reversa".
+// OAuth 2.0 via ID Magalu; tokens persistidos nas env vars do Render.
+const { atualizarTokensNoRender: _attRender } = require('./lib/render-tokens');
+const magalu = require('./lib/magalu')({ atualizarTokensNoRender: _attRender });
+
 // ── Chave p/ rotas de diagnóstico/admin/setup (acessadas com ?k=CHAVE na URL) ──
 // Sem a env ADMIN_KEY configurada no Render, essas rotas ficam DESLIGADAS (404).
 const ADMIN_KEY = process.env.ADMIN_KEY || '';
@@ -159,7 +164,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '3.51 (numero da NF multi-serie)',
+    version: '3.53 (raio-x busca NF + magalu oauth)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -1885,6 +1890,174 @@ app.get('/api/admin/devolucoes', requerAdmin, async (req, res) => {
 // Uso (logado como admin):
 //   /api/debug/shopee-procurar?q=260623TX31XFMT&dias=180
 //   /api/debug/shopee-pedido?q=260623TX31XFMT
+// ============================================================
+// MAGALU (v3.52) - OAuth + exploracao da API de devolucoes
+// ------------------------------------------------------------
+// PAGINAS PUBLICAS: a Magalu EXIGE URLs de Termos de Uso e Politica de
+// Privacidade na criacao do client (parametros --terms-of-use e
+// --privacy-term do IDM CLI). Servimos aqui pra nao depender de site externo.
+// ============================================================
+const _paginaLegal = (titulo, corpo) => `<!DOCTYPE html><html lang="pt-BR"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${titulo} - GOOD Import</title>
+<style>body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;max-width:760px;margin:40px auto;padding:0 20px;line-height:1.6;color:#222}
+h1{font-size:24px;border-bottom:2px solid #eee;padding-bottom:10px}h2{font-size:17px;margin-top:26px}
+p,li{font-size:15px}footer{margin-top:40px;padding-top:16px;border-top:1px solid #eee;color:#888;font-size:13px}</style>
+</head><body><h1>${titulo}</h1>${corpo}
+<footer>GOOD Import — sistema interno de gestao de devolucoes.<br>Contato: pelo Portal do Seller Magalu.</footer></body></html>`;
+
+app.get('/termos-de-uso', (req, res) => {
+  res.type('html').send(_paginaLegal('Termos de Uso', `
+    <p>Esta aplicacao e de uso <b>interno e exclusivo</b> da GOOD Import, destinada a
+    organizar o recebimento e a triagem de produtos devolvidos pelos marketplaces
+    em que a empresa vende.</p>
+    <h2>1. Finalidade</h2>
+    <p>O sistema identifica a venda de origem de um pacote devolvido, localiza a nota
+    fiscal correspondente e registra a conferencia feita pela equipe do galpao.</p>
+    <h2>2. Uso das integracoes</h2>
+    <p>A aplicacao se conecta a APIs de marketplaces (incluindo o Grupo Magalu) apenas
+    para <b>leitura</b> das informacoes das proprias vendas e devolucoes da GOOD Import,
+    com autorizacao expressa do titular da conta de vendedor.</p>
+    <h2>3. Acesso</h2>
+    <p>O acesso e restrito a colaboradores autorizados, mediante login. Nao ha cadastro
+    publico nem oferta do servico a terceiros.</p>
+    <h2>4. Responsabilidade</h2>
+    <p>A aplicacao e fornecida para uso operacional proprio, sem garantias comerciais,
+    e pode ser alterada ou descontinuada a qualquer momento pela GOOD Import.</p>
+  `));
+});
+
+app.get('/politica-de-privacidade', (req, res) => {
+  res.type('html').send(_paginaLegal('Politica de Privacidade', `
+    <p>Esta aplicacao e um sistema interno da GOOD Import. Nao coletamos dados de
+    visitantes nem comercializamos qualquer informacao.</p>
+    <h2>1. Dados acessados</h2>
+    <p>Com a autorizacao do titular da conta de vendedor, acessamos, <b>somente para
+    leitura</b>, dados das proprias vendas e devolucoes da GOOD Import nos marketplaces:
+    identificadores de pedido, itens, notas fiscais e dados de remessa reversa.</p>
+    <h2>2. Finalidade do tratamento</h2>
+    <p>Os dados sao usados exclusivamente para identificar a qual venda pertence um
+    pacote devolvido e registrar a conferencia interna do produto.</p>
+    <h2>3. Compartilhamento</h2>
+    <p>Nao compartilhamos dados com terceiros. As informacoes ficam restritas ao
+    ambiente da propria empresa e aos colaboradores autorizados.</p>
+    <h2>4. Armazenamento e seguranca</h2>
+    <p>Os registros ficam em banco de dados de acesso restrito. As credenciais de
+    integracao sao guardadas de forma segura no ambiente do servidor e usadas apenas
+    para as chamadas autorizadas pelos escopos consentidos.</p>
+    <h2>5. Revogacao</h2>
+    <p>O titular da conta de vendedor pode revogar a autorizacao a qualquer momento
+    pelo ID Magalu, encerrando imediatamente o acesso desta aplicacao.</p>
+    <h2>6. Titular</h2>
+    <p>Encarregado/contato: responsavel pela conta de vendedor da GOOD Import,
+    acessivel pelo Portal do Seller Magalu.</p>
+  `));
+});
+
+// Passo 1 do OAuth: manda o Diego (seller) pra tela de consentimento
+app.get('/magalu/autorizar', requerAdmin, (req, res) => {
+  if (!magalu.cfg.ativo) {
+    return res.status(400).type('html').send(_paginaLegal('Magalu - falta configurar', `
+      <p>Defina no Render as envs <b>MAGALU_CLIENT_ID</b>, <b>MAGALU_CLIENT_SECRET</b>
+      e <b>MAGALU_REDIRECT_URI</b> antes de autorizar.</p>`));
+  }
+  return res.redirect(magalu.urlConsentimento('good'));
+});
+
+// Passo 2 do OAuth: a Magalu devolve o ?code= aqui. Trocamos por tokens.
+// ATENCAO: esta rota e PUBLICA de proposito (o ID Magalu redireciona pra ca
+// sem cookie da nossa sessao). Ela so aceita um code valido de 10 min e de
+// uso unico - sem code valido, nao faz nada.
+app.get('/magalu/callback', async (req, res) => {
+  const code = String(req.query.code || '').trim();
+  if (!code) {
+    return res.status(400).type('html').send(_paginaLegal('Magalu', '<p>Callback sem <b>code</b>. Refaca a autorizacao.</p>'));
+  }
+  try {
+    const r = await magalu.trocarCodePorTokens(code);
+    return res.type('html').send(_paginaLegal('Magalu conectada ✅', `
+      <p><b>Autorizacao concluida.</b> Os tokens foram salvos.</p>
+      <p>Escopos concedidos:<br><code>${(r.scope || '-').replace(/</g, '&lt;')}</code></p>
+      <p>Pode fechar esta aba e voltar ao sistema.</p>`));
+  } catch (e) {
+    const det = e.response?.data ? JSON.stringify(e.response.data) : (e.message || String(e));
+    return res.status(500).type('html').send(_paginaLegal('Magalu - erro', `
+      <p>Falha ao trocar o code por tokens:</p><pre>${det.replace(/</g, '&lt;')}</pre>
+      <p>O code vale 10 minutos e e de uso unico - tente autorizar de novo.</p>`));
+  }
+});
+
+// Diagnostico: estado da conexao
+app.get('/api/debug/magalu-status', requerAdmin, (req, res) => {
+  return res.json({
+    ok: true,
+    configurado: magalu.cfg.ativo,
+    autorizado: magalu.cfg.autorizado,
+    client_id: magalu.cfg.clientId ? magalu.cfg.clientId.slice(0, 8) + '...' : null,
+    redirect_uri: magalu.cfg.redirectUri || null,
+    api_base: magalu.cfg.apiBase,
+    escopos: magalu.cfg.scopes,
+  });
+});
+
+// EXPLORACAO 1: lista tickets (as devolucoes vivem como ticket de pos-venda)
+app.get('/api/debug/magalu-tickets', requerAdmin, async (req, res) => {
+  const r = await magalu.listarTickets({
+    _limit: req.query.limit || 20,
+    _offset: req.query.offset || 0,
+    status: req.query.status || undefined,
+  });
+  return res.status(r.ok ? 200 : (r.status || 502)).json({ ok: r.ok, status: r.status, data: r.data });
+});
+
+// EXPLORACAO 2: remessas reversas de um ticket (AQUI mora o rastreio?)
+app.get('/api/debug/magalu-return', requerAdmin, async (req, res) => {
+  const t = String(req.query.ticket || '').trim();
+  if (!t) return res.status(400).json({ ok: false, erro: 'informe ?ticket=ID' });
+  const r = await magalu.remessasReversasDoTicket(t);
+  return res.status(r.ok ? 200 : (r.status || 502)).json({ ok: r.ok, status: r.status, data: r.data });
+});
+
+// EXPLORACAO 3: rota livre (pra tatear qualquer endpoint sem novo deploy)
+app.get('/api/debug/magalu-get', requerAdmin, async (req, res) => {
+  const p = String(req.query.path || '').trim();
+  if (!p.startsWith('/')) return res.status(400).json({ ok: false, erro: 'informe ?path=/seller/v0/...' });
+  const r = await magalu.chamarMagalu(p);
+  return res.status(r.ok ? 200 : (r.status || 502)).json({ ok: r.ok, status: r.status, data: r.data });
+});
+
+// v3.53 - RAIO-X da busca por numero da NF (mostra cada passo)
+app.get('/api/debug/nf-numero', requerAdmin, async (req, res) => {
+  const n = String(req.query.n || '').trim();
+  if (!n) return res.status(400).json({ ok: false, erro: 'informe ?n=75053' });
+  const serie = req.query.serie ? String(req.query.serie) : null;
+  const trace = [];
+  let achadas = [];
+  let erro = null;
+  try {
+    achadas = await buscarNFsPorNumero(n, serie, { trace });
+  } catch (e) { erro = e.message || String(e); }
+  return res.json({ ok: true, alvo: n, serie_pedida: serie, achadas, erro, trace });
+});
+
+// v3.53 - o Bling devolve MESMO as NFs de um dia? (checa a suposicao base)
+app.get('/api/debug/nf-dia', requerAdmin, async (req, res) => {
+  const dia = String(req.query.dia || '').trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dia)) return res.status(400).json({ ok: false, erro: 'informe ?dia=2026-06-20' });
+  const url = `https://api.bling.com.br/Api/v3/nfe?limite=100&pagina=1&tipo=1&dataEmissaoInicial=${dia}&dataEmissaoFinal=${dia}`;
+  const r = await chamarBling(url);
+  const lista = (r.ok && r.data?.data) ? r.data.data : [];
+  return res.json({
+    ok: r.ok,
+    status: r.status || null,
+    url_chamada: url,
+    qtd: lista.length,
+    // so o essencial de cada NF: e aqui que vejo se numero/serie vem mesmo
+    nfs: lista.slice(0, 100).map(nf => ({ id: nf.id, numero: nf.numero, serie: nf.serie, dataEmissao: nf.dataEmissao })),
+    resposta_crua_se_vazio: lista.length === 0 ? r.data : undefined,
+  });
+});
+
 app.get('/api/debug/shopee-indice-status', requerAdmin, async (req, res) => {
   try {
     if (!shopee.cfg.ativo) return res.status(400).json({ ok: false, erro: 'Shopee proxy sem envs' });
@@ -1989,7 +2162,7 @@ registrarRotasImpressao(app, { requerEstoquista, crypto, sleep });
 // ============================================================
 app.listen(PORT, () => {
   console.log('============================================');
-  console.log('GOOD Devolucoes v3.51 - numero NF multi-serie');
+  console.log('GOOD Devolucoes v3.52 - magalu oauth');
   console.log(`Porta: ${PORT}`);
   console.log(`ML: ${mlClient.hasToken() ? 'OK' : 'FALTA'}`);
   console.log(`Bling: ${blingClient.hasToken() ? 'OK' : 'FALTA'}`);
