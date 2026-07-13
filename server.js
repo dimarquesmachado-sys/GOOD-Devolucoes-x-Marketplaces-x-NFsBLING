@@ -164,7 +164,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '3.56 (MAGALU integrada - indice de devolucoes)',
+    version: '3.57 (MAGALU + cacador do codigo de barras)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -2097,6 +2097,58 @@ app.get('/api/debug/magalu-return', requerAdmin, async (req, res) => {
   if (!t) return res.status(400).json({ ok: false, erro: 'informe ?ticket=ID' });
   const r = await magalu.remessasReversasDoTicket(t);
   return res.status(r.ok ? 200 : (r.status || 502)).json({ ok: r.ok, status: r.status, data: r.data });
+});
+
+// v3.57 - CACADOR: onde mora o codigo de barras da etiqueta (196634440-01)?
+// Varre os endpoints que temos escopo e diz em QUAL deles o numero aparece.
+// Uso: /api/debug/magalu-caca?q=196634440&ticket=<id>&pedido=<uuid>
+app.get('/api/debug/magalu-caca', requerAdmin, async (req, res) => {
+  if (!magalu.cfg.autorizado) return res.status(400).json({ ok: false, erro: 'Magalu nao autorizada' });
+  const alvo = String(req.query.q || '').replace(/\D/g, '');
+  const ticket = String(req.query.ticket || '').trim();
+  const pedido = String(req.query.pedido || '').trim();   // uuid do order
+  const entrega = String(req.query.entrega || '').trim(); // uuid do delivery
+
+  // procura o numero em qualquer lugar do JSON (recursivo)
+  const contem = (obj) => {
+    if (!alvo) return false;
+    const txt = JSON.stringify(obj || {}).replace(/\D/g, '');
+    return txt.includes(alvo);
+  };
+
+  const alvos = [];
+  if (ticket) {
+    alvos.push(['ticket-detalhe', `/seller/v0/tickets/${ticket}`]);
+    alvos.push(['ticket-eventos', `/seller/v0/tickets/${ticket}/events`]);
+    alvos.push(['ticket-mensagens', `/seller/v0/tickets/${ticket}/messages`]);
+    alvos.push(['ticket-reversa', `/seller/v0/tickets/${ticket}/returns`]);
+  }
+  if (pedido) {
+    alvos.push(['pedido-detalhe', `/seller/v0/orders/${pedido}`]);
+    alvos.push(['pedido-entregas', `/seller/v0/orders/${pedido}/deliveries`]);
+    alvos.push(['pedido-nf', `/seller/v0/orders/${pedido}/invoices`]);
+  }
+  if (entrega) {
+    alvos.push(['entrega-detalhe', `/seller/v0/deliveries/${entrega}`]);
+    alvos.push(['entrega-rastreio', `/seller/v0/deliveries/${entrega}/tracking`]);
+  }
+
+  const achados = [];
+  for (const [nome, caminho] of alvos) {
+    await sleep(200);
+    const r = await magalu.chamarMagalu(caminho);
+    const bateu = r.ok && contem(r.data);
+    achados.push({
+      onde: nome,
+      caminho,
+      status: r.status,
+      ok: r.ok,
+      CONTEM_O_CODIGO: bateu || undefined,
+      // se achou, mostra o JSON inteiro pra eu ver o campo exato
+      resposta: bateu ? r.data : (r.ok ? '(ok, mas sem o codigo)' : r.data),
+    });
+  }
+  return res.json({ ok: true, procurando: alvo || '(nada)', achados });
 });
 
 // Status do indice de devolucoes Magalu (?rebuild=1 reconstroi na hora)
