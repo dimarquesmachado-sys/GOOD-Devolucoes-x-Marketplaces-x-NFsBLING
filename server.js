@@ -164,7 +164,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '3.60 (MAGALU - API de Remessas logistic-carrier)',
+    version: '3.61 (MAGALU - Shipping Open Api de seller)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -2117,24 +2117,24 @@ app.get('/api/debug/magalu-caca', requerAdmin, async (req, res) => {
   };
 
   const alvos = [];
-  // v3.60 - DESCOBERTA na doc oficial: existe uma "API de Remessas (Pedidos
-  // Logisticos)" com "Consultar Remessa por ID". Se o codigo de barras da
-  // etiqueta (196634440-01) for o ID da remessa (+ volume), acabou o jogo.
-  // Escopos: open:logistic-carrier-shippings:read e open:order-logistics-seller:read
+  // v3.61 - A LISTA DE ESCOPOS do Diego revelou a "Shipping Open Api" de
+  // SELLER: open:logistic-seller-shippings:read ("Leitura de remessas para
+  // sellers") e open:logistic-seller-trackings:read. O padrao de URL da API
+  // de carrier e /logistic-carrier/v1/shippings/{id} - entao a de seller
+  // deve ser /logistic-seller/v1/... A LISTAGEM revela o formato dos IDs.
   const cod = alvo || '196634440';
-  alvos.push(['REMESSA: por id (cru)', `/logistic-carrier/v1/shippings/${cod}`]);
-  alvos.push(['REMESSA: por id -01', `/logistic-carrier/v1/shippings/${cod}-01`]);
-  alvos.push(['REMESSA: v0', `/logistic-carrier/v0/shippings/${cod}`]);
-  alvos.push(['REMESSA: lista', `/logistic-carrier/v1/shippings?_limit=5`]);
+  alvos.push(['SELLER-SHIP: lista', `/logistic-seller/v1/shippings?_limit=5`]);
+  alvos.push(['SELLER-SHIP: por id', `/logistic-seller/v1/shippings/${cod}`]);
+  alvos.push(['SELLER-SHIP: id -01', `/logistic-seller/v1/shippings/${cod}-01`]);
+  alvos.push(['SELLER-TRACK: lista', `/logistic-seller/v1/trackings?_limit=5`]);
+  alvos.push(['SELLER-SHIP v0: lista', `/logistic-seller/v0/shippings?_limit=5`]);
+  alvos.push(['LOG/SELLER: lista', `/logistic/v1/seller/shippings?_limit=5`]);
+  alvos.push(['SHIPPING: lista', `/shipping/v1/shippings?_limit=5`]);
   if (entrega) {
-    alvos.push(['LOGISTICS: da entrega', `/seller/v1/deliveries/${entrega}/logistics`]);
-    alvos.push(['LOGISTICS: shipments', `/seller/v1/deliveries/${entrega}/shipments`]);
+    alvos.push(['ORDER-LOG: da entrega', `/seller/v1/deliveries/${entrega}/logistics`]);
   }
-  alvos.push(['LOGISTICS: seller lista', `/seller/v1/logistics?_limit=5`]);
-  alvos.push(['LOGISTICS: seller shippings', `/seller/v1/logistics/shippings/${cod}`]);
-  if (ticket) {
-    alvos.push(['sac: ticket-reversa', `/seller/v0/tickets/${ticket}/returns`]);
-  }
+  // carrier (provavel 403 pra seller, mas registra o comportamento)
+  alvos.push(['CARRIER: por id', `/logistic-carrier/v1/shippings/${cod}`]);
 
   const achados = [];
   for (const [nome, caminho] of alvos) {
