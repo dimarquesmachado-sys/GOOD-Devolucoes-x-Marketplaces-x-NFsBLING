@@ -345,9 +345,17 @@ function renderizar(data, ok) {
   divResultado.innerHTML = html;
   divResultado.classList.add('show');
 
-  // Apos render, verifica triagem existente (nao bloqueia o render)
-  if (shipment.id) {
-    verificarTriagemExistente(shipment.id);
+  // Apos render, verifica triagem existente (nao bloqueia o render).
+  // v3.21 - vendas de OUTROS marketplaces (Magalu, Amazon...) identificadas
+  // pela chave da DANFE NAO tem shipment (conceito do ML). Antes, o if
+  // abaixo era falso e a rodinha "Verificando..." girava pra sempre.
+  // Agora: usa a chave da NF como identificador alternativo; e se nao houver
+  // nada, ao menos renderiza os botoes (nunca deixa rodinha eterna).
+  const idParaTriagem = shipment.id || nf?.chave || null;
+  if (idParaTriagem) {
+    verificarTriagemExistente(idParaTriagem);
+  } else {
+    renderizarBotoesTriagem();
   }
 }
 
