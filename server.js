@@ -164,7 +164,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '3.53 (raio-x busca NF + magalu oauth)',
+    version: '3.54 (teste filtro data bling)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -2024,6 +2024,41 @@ app.get('/api/debug/magalu-get', requerAdmin, async (req, res) => {
   if (!p.startsWith('/')) return res.status(400).json({ ok: false, erro: 'informe ?path=/seller/v0/...' });
   const r = await magalu.chamarMagalu(p);
   return res.status(r.ok ? 200 : (r.status || 502)).json({ ok: r.ok, status: r.status, data: r.data });
+});
+
+// v3.54 - TESTE DO FILTRO DE DATA: descobrir por que 1 dia retorna vazio.
+// Hipotese: o Bling trata as datas como datetime (00:00), entao
+// inicial==final vira um intervalo vazio. Prova comparando variantes.
+app.get('/api/debug/nf-filtro', requerAdmin, async (req, res) => {
+  const dia = String(req.query.dia || '2026-06-20').trim();
+  const d = new Date(dia + 'T00:00:00Z');
+  const mais = (n) => new Date(d.getTime() + n * 864e5).toISOString().slice(0, 10);
+  const variantes = [
+    { nome: 'A) mesmo dia (o que eu usava)', ini: dia, fim: dia },
+    { nome: 'B) dia ate dia+1', ini: dia, fim: mais(1) },
+    { nome: 'C) dia-1 ate dia+1', ini: mais(-1), fim: mais(1) },
+    { nome: 'D) janela de 7 dias', ini: mais(-3), fim: mais(3) },
+    { nome: 'E) sem filtro de data', ini: null, fim: null },
+  ];
+  const out = [];
+  for (const v of variantes) {
+    await sleep(400);
+    let url = `https://api.bling.com.br/Api/v3/nfe?limite=100&pagina=1&tipo=1`;
+    if (v.ini) url += `&dataEmissaoInicial=${v.ini}&dataEmissaoFinal=${v.fim}`;
+    const r = await chamarBling(url);
+    const lista = (r.ok && r.data?.data) ? r.data.data : [];
+    out.push({
+      variante: v.nome,
+      intervalo: v.ini ? `${v.ini} .. ${v.fim}` : '(nenhum)',
+      status: r.status || null,
+      qtd: lista.length,
+      // amostra: primeiro e ultimo, pra ver a ORDEM e as datas reais
+      primeira: lista[0] ? { numero: lista[0].numero, serie: lista[0].serie, data: lista[0].dataEmissao } : null,
+      ultima: lista.length > 1 ? { numero: lista[lista.length - 1].numero, serie: lista[lista.length - 1].serie, data: lista[lista.length - 1].dataEmissao } : null,
+      tem_a_75053: lista.some(nf => String(nf.numero || '').replace(/^0+/, '') === '75053') || undefined,
+    });
+  }
+  return res.json({ ok: true, dia_testado: dia, variantes: out });
 });
 
 // v3.53 - RAIO-X da busca por numero da NF (mostra cada passo)
