@@ -113,6 +113,7 @@ const nfp = require('./lib/nf-pessoa')({ chamarBling, sleep });
 const {
   mapItensNF,
   resolverIdNFPorChave,
+  resolverIdNFPorNumero,
   formatarCpfCnpj,
   detectarTipoPessoa,
   buscarIdMunicipioIBGE,
@@ -158,7 +159,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '3.49 (triagem p outros marketplaces - fim da rodinha eterna)',
+    version: '3.50 (busca por numero da NF)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -346,22 +347,52 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
   // ===== CHAVE NF-e (v3.34): bipou a chave de 44 digitos da DANFE =====
   // Cobre devolucao com a embalagem original (qualquer marketplace) e o
   // caso Shopee "recusa/insucesso" que volta com a etiqueta de IDA.
-  if (!shipment && !pack && codigoLimpo.length === 44) {
-    const modelo = codigoLimpo.substr(20, 2);
-    if (modelo !== '55') {
-      // DACE/DC-e do transporte (modelo 99) e afins: nao e a NF do produto
-      resultado.erro = `Isso e uma chave de documento de TRANSPORTE (modelo ${modelo}), nao a NF do produto. Bipe a chave da DANFE do produto ou o codigo de rastreio.`;
-      resultado.tentativas.push({ tipo: 'chave_danfe', codigo: codigoLimpo, ok: false, status: 422 });
-      return res.status(404).json(resultado);
+  // v3.50 - NF por CHAVE (44 digitos) OU por NUMERO (4-9 digitos, ex: 75053).
+  // O numero da NF cai num vao livre da cascata: ML shipment usa 10-13,
+  // pack usa 15+, chave usa 44. Aceita tambem "75053/2" ou "75053-2" pra
+  // escolher a serie (default: serie 1, o padrao da casa).
+  const ehChaveNFe = codigoLimpo.length === 44;
+  const mNumSerie = String(codigoOriginal || '').trim().match(/^(\d{4,9})\s*[\/\-]\s*(\d{1,3})$/);
+  const ehNumeroNF = !ehChaveNFe && (mNumSerie || /^\d{4,9}$/.test(codigoLimpo));
+
+  if (!shipment && !pack && (ehChaveNFe || ehNumeroNF)) {
+    let numeroDaChave, serieDaChave, idNF = null, tipoTentativa;
+
+    if (ehChaveNFe) {
+      const modelo = codigoLimpo.substr(20, 2);
+      if (modelo !== '55') {
+        // DACE/DC-e do transporte (modelo 99) e afins: nao e a NF do produto
+        resultado.erro = `Isso e uma chave de documento de TRANSPORTE (modelo ${modelo}), nao a NF do produto. Bipe a chave da DANFE do produto ou o codigo de rastreio.`;
+        resultado.tentativas.push({ tipo: 'chave_danfe', codigo: codigoLimpo, ok: false, status: 422 });
+        return res.status(404).json(resultado);
+      }
+      numeroDaChave = String(parseInt(codigoLimpo.substr(25, 9), 10));
+      serieDaChave = String(parseInt(codigoLimpo.substr(22, 3), 10));
+      tipoTentativa = 'chave_danfe';
+      console.log(`[BUSCA] CHAVE DANFE: serie=${serieDaChave} numero=${numeroDaChave}`);
+      try { idNF = await resolverIdNFPorChave(numeroDaChave, codigoLimpo); } catch (e) { idNF = null; }
+    } else {
+      // Numero da NF digitado (com serie opcional)
+      numeroDaChave = mNumSerie ? mNumSerie[1] : codigoLimpo;
+      serieDaChave = mNumSerie ? String(parseInt(mNumSerie[2], 10)) : '1';
+      tipoTentativa = 'numero_nf';
+      console.log(`[BUSCA] NUMERO NF: serie=${serieDaChave} numero=${numeroDaChave}`);
+      try { idNF = await resolverIdNFPorNumero(numeroDaChave, serieDaChave); } catch (e) { idNF = null; }
+      // Nao achou na serie pedida? tenta em QUALQUER serie antes de desistir
+      if (!idNF) {
+        try { idNF = await resolverIdNFPorNumero(numeroDaChave, null); } catch (e) { idNF = null; }
+      }
     }
-    const numeroDaChave = String(parseInt(codigoLimpo.substr(25, 9), 10));
-    const serieDaChave = String(parseInt(codigoLimpo.substr(22, 3), 10));
-    console.log(`[BUSCA] CHAVE DANFE: serie=${serieDaChave} numero=${numeroDaChave}`);
-    let idNF = null;
-    try { idNF = await resolverIdNFPorChave(numeroDaChave, codigoLimpo); } catch (e) { idNF = null; }
-    resultado.tentativas.push({ tipo: 'chave_danfe', codigo: codigoLimpo, ok: !!idNF, status: idNF ? 200 : 404 });
+
+    resultado.tentativas.push({
+      tipo: tipoTentativa,
+      codigo: ehChaveNFe ? codigoLimpo : String(codigoOriginal || '').trim(),
+      ok: !!idNF, status: idNF ? 200 : 404,
+    });
     if (!idNF) {
-      resultado.erro = `Chave lida, mas a NF ${numeroDaChave} (serie ${serieDaChave}) nao foi localizada no Bling.`;
+      resultado.erro = ehChaveNFe
+        ? `Chave lida, mas a NF ${numeroDaChave} (serie ${serieDaChave}) nao foi localizada no Bling.`
+        : `NF ${numeroDaChave} nao localizada no Bling (procurei serie ${serieDaChave} e demais series, ultimos 18 meses). Confira o numero, ou bipe a chave da DANFE.`;
       return res.status(404).json(resultado);
     }
     const rFullNF = await buscarNFePorId(idNF);
@@ -382,7 +413,7 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
       fonte: 'bling',
       numero: nfCh.numero,
       serie: nfCh.serie,
-      chaveAcesso: nfCh.chaveAcesso || codigoLimpo,
+      chaveAcesso: nfCh.chaveAcesso || (ehChaveNFe ? codigoLimpo : null),
       valor: nfCh.valorNota,
       dataEmissao: nfCh.dataEmissao,
       linkDanfe: nfCh.linkDanfe,
@@ -405,10 +436,15 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
     };
     resultado.shipment = { id: null };
     resultado.encontrado = true;
-    resultado.metodo = 'chave_danfe';
+    resultado.metodo = ehChaveNFe ? 'chave_danfe' : 'numero_nf';
     resultado.eh_devolucao = true;
-    resultado.avisos.push({ tipo: 'nf_via_chave', mensagem: `NF ${nfCh.numero} localizada pela chave da DANFE (bissecao)` });
-    console.log(`[BUSCA] OK (CHAVE) | NF=${nfCh.numero} pedido=${nfCh.numeroPedidoLoja || '-'}`);
+    resultado.avisos.push({
+      tipo: ehChaveNFe ? 'nf_via_chave' : 'nf_via_numero',
+      mensagem: ehChaveNFe
+        ? `NF ${nfCh.numero} localizada pela chave da DANFE (bissecao)`
+        : `NF ${nfCh.numero} (serie ${nfCh.serie}) localizada pelo numero digitado`,
+    });
+    console.log(`[BUSCA] OK (${ehChaveNFe ? 'CHAVE' : 'NUMERO'}) | NF=${nfCh.numero} pedido=${nfCh.numeroPedidoLoja || '-'}`);
     return res.json(resultado);
   }
 
@@ -1922,7 +1958,7 @@ registrarRotasImpressao(app, { requerEstoquista, crypto, sleep });
 // ============================================================
 app.listen(PORT, () => {
   console.log('============================================');
-  console.log('GOOD Devolucoes v3.49 - triagem outros marketplaces');
+  console.log('GOOD Devolucoes v3.50 - busca por numero da NF');
   console.log(`Porta: ${PORT}`);
   console.log(`ML: ${mlClient.hasToken() ? 'OK' : 'FALTA'}`);
   console.log(`Bling: ${blingClient.hasToken() ? 'OK' : 'FALTA'}`);
