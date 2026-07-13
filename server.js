@@ -164,7 +164,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '3.55 (fix filtro data bling - NF por numero funciona)',
+    version: '3.56 (MAGALU integrada - indice de devolucoes)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -482,6 +482,87 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
     });
     console.log(`[BUSCA] OK (${ehChaveNFe ? 'CHAVE' : 'NUMERO'}) | NF=${nfCh.numero} pedido=${nfCh.numeroPedidoLoja || '-'}`);
     return res.json(resultado);
+  }
+
+  // ===== MAGALU (v3.56): protocolo da etiqueta, reverse_code ou pedido =====
+  // A etiqueta Magalu imprime "Protocolo: 2026062600477033" - e ele bate
+  // exatamente com o ticket.protocol da API (confirmado com dado real).
+  // Do ticket sai o PEDIDO, e do pedido sai a NF no Bling (numeroLoja).
+  if (!shipment && !pack && magalu.cfg.ativo && magalu.cfg.autorizado) {
+    let devMag = null;
+    try { devMag = await magalu.acharDevolucao(codigoLimpo); } catch (e) { devMag = null; }
+    resultado.tentativas.push({
+      tipo: 'magalu_devolucao', codigo: codigoLimpo,
+      ok: !!devMag, status: devMag ? 200 : 404,
+    });
+
+    if (devMag) {
+      console.log(`[BUSCA] MAGALU: protocolo=${devMag.protocolo} pedido=${devMag.pedido} status=${devMag.status}`);
+      // Ponte pro Bling: o pedido Magalu vira numeroLoja -> acha a NF
+      let nfMag = null;
+      if (devMag.pedido) {
+        try {
+          const rB = await buscarNFBlindada({ orderId: devMag.pedido, dataReferencia: devMag.criado_em || null, janelaDias: 45 });
+          if (rB.ok && rB.nf) nfMag = rB.nf;
+        } catch (e) { /* segue sem NF - o essencial ja veio da Magalu */ }
+      }
+
+      const itensMag = (devMag.itens || []).map(it => ({
+        titulo: it.titulo, sku: it.sku, ean: null,
+        quantidade: it.quantidade, valor: null, unidade: null,
+      }));
+
+      if (nfMag) {
+        resultado.nf = {
+          fonte: 'bling',
+          numero: nfMag.numero,
+          serie: nfMag.serie,
+          chaveAcesso: nfMag.chaveAcesso || null,
+          valor: nfMag.valorNota,
+          dataEmissao: nfMag.dataEmissao,
+          linkDanfe: nfMag.linkDanfe,
+          linkPdf: nfMag.linkPDF,
+          linkXml: nfMag.xml,
+          idBling: nfMag.id,
+          numeroPedidoLoja: nfMag.numeroPedidoLoja,
+          situacao: nfMag.situacao,
+          itens: mapItensNF(nfMag),
+        };
+      }
+
+      const prim = itensMag.length ? itensMag[0] : null;
+      resultado.order = {
+        id: devMag.pedido || null,
+        pack_id: null,
+        buyer: {
+          id: null,
+          first_name: (nfMag && nfMag.contato && nfMag.contato.nome) ? nfMag.contato.nome : null,
+          last_name: '', nickname: null,
+        },
+        order_items: prim
+          ? [{ unit_price: null, quantity: prim.quantidade, item: { id: null, title: prim.titulo, seller_sku: prim.sku } }]
+          : [],
+      };
+      resultado.shipment = { id: null };
+      resultado.itens_devolucao = itensMag;
+      resultado.encontrado = true;
+      resultado.metodo = 'magalu_devolucao';
+      resultado.eh_devolucao = true;
+      resultado.magalu = {
+        protocolo: devMag.protocolo,
+        reverse_code: devMag.reverse_code,
+        tipo: devMag.tipo,
+        motivo: devMag.motivo,
+        status: devMag.status,
+        fechado: devMag.fechado,
+      };
+      resultado.avisos.push({
+        tipo: 'magalu',
+        mensagem: `Devolucao MAGALU - protocolo ${devMag.protocolo}${devMag.status ? ' (' + devMag.status + ')' : ''}${nfMag ? ' - NF ' + nfMag.numero : ' - NF nao localizada no Bling'}`,
+      });
+      console.log(`[BUSCA] OK (MAGALU) | protocolo=${devMag.protocolo} pedido=${devMag.pedido} NF=${nfMag ? nfMag.numero : '-'}`);
+      return res.json(resultado);
+    }
   }
 
   // ===== SHOPEE (v3.33): tenta casar como etiqueta de devolucao Shopee =====
@@ -2018,6 +2099,15 @@ app.get('/api/debug/magalu-return', requerAdmin, async (req, res) => {
   return res.status(r.ok ? 200 : (r.status || 502)).json({ ok: r.ok, status: r.status, data: r.data });
 });
 
+// Status do indice de devolucoes Magalu (?rebuild=1 reconstroi na hora)
+app.get('/api/debug/magalu-indice', requerAdmin, async (req, res) => {
+  if (!magalu.cfg.autorizado) return res.status(400).json({ ok: false, erro: 'Magalu nao autorizada' });
+  if (req.query.rebuild === '1') {
+    try { await magalu.construirIndiceDevolucoes(); } catch (e) { return res.status(500).json({ ok: false, erro: e.message }); }
+  }
+  return res.json({ ok: true, ...magalu.statusIndice() });
+});
+
 // EXPLORACAO 3: rota livre (pra tatear qualquer endpoint sem novo deploy)
 app.get('/api/debug/magalu-get', requerAdmin, async (req, res) => {
   const p = String(req.query.path || '').trim();
@@ -2195,9 +2285,14 @@ registrarRotasImpressao(app, { requerEstoquista, crypto, sleep });
 // ============================================================
 // INICIAR
 // ============================================================
+// v3.56 - MAGALU: indice pre-aquecido (o pacote chega e o sistema JA sabe).
+// 20s apos o boot e a cada 25 min. Silencioso e a prova de falha.
+setTimeout(() => magalu.preAquecer(), 20 * 1000);
+setInterval(() => magalu.preAquecer(), 25 * 60 * 1000);
+
 app.listen(PORT, () => {
   console.log('============================================');
-  console.log('GOOD Devolucoes v3.55 - fix filtro data bling');
+  console.log('GOOD Devolucoes v3.56 - MAGALU integrada');
   console.log(`Porta: ${PORT}`);
   console.log(`ML: ${mlClient.hasToken() ? 'OK' : 'FALTA'}`);
   console.log(`Bling: ${blingClient.hasToken() ? 'OK' : 'FALTA'}`);
