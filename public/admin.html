@@ -491,6 +491,9 @@
       const badgeParcial = ehParcial
         ? '<span style="background:#f57c00;color:white;padding:3px 8px;border-radius:10px;font-size:10px;font-weight:700;margin-left:6px;">📦 PARCIAL</span>'
         : '';
+      const badgeRebipe = (d.problema_descricao || '').includes('[RE-BIPE]')
+        ? '<span style="background:#c62828;color:white;padding:3px 8px;border-radius:10px;font-size:10px;font-weight:700;margin-left:6px;">🔁 RE-BIPE</span>'
+        : '';
 
       // Bloco de fotos (so se for parcial)
       const blocoFotos = (ehParcial && fotosParcial.length > 0) ? `
@@ -513,7 +516,7 @@
         <div class="item ${concluido ? 'concluido' : ''}" id="card-${d.id}" ${ehParcial ? 'style="border-left-color:#f57c00;background:#fff8e7;"' : ''}>
           <div class="item-header">
             <div>
-              <div class="item-titulo">${escapeHtml(d.produto_titulo || '-')}${badgeParcial}</div>
+              <div class="item-titulo">${escapeHtml(d.produto_titulo || '-')}${badgeParcial}${badgeRebipe}</div>
               <div class="item-data">por ${escapeHtml(desc)} · ${dataFmt(d.created_at)}</div>
             </div>
             ${concluido ? '<span style="background:#999;color:white;padding:3px 8px;border-radius:10px;font-size:10px;font-weight:700;">CONCLUIDO</span>' : ''}
@@ -561,11 +564,14 @@
       const concluido = d.status === 'concluido';
       const fotos = Array.isArray(d.problema_fotos) ? d.problema_fotos : [];
       const desc = d.problema_descricao || '';
+      const badgeRebipe = (d.problema_descricao || '').includes('[RE-BIPE]')
+        ? '<span style="background:#c62828;color:white;padding:3px 8px;border-radius:10px;font-size:10px;font-weight:700;margin-left:6px;">🔁 RE-BIPE</span>'
+        : '';
       return `
         <div class="item problema ${concluido ? 'concluido' : ''}" id="card-${d.id}">
           <div class="item-header">
             <div>
-              <div class="item-titulo">${escapeHtml(d.produto_titulo || '-')}</div>
+              <div class="item-titulo">${escapeHtml(d.produto_titulo || '-')}${badgeRebipe}</div>
               <div class="item-data">${dataFmt(d.created_at)}</div>
             </div>
             ${concluido ? '<span style="background:#999;color:white;padding:3px 8px;border-radius:10px;font-size:10px;font-weight:700;">RESOLVIDO</span>' : ''}
@@ -616,6 +622,9 @@
       const concluido = d.status === 'concluido';
       const fotos = Array.isArray(d.problema_fotos) ? d.problema_fotos : [];
       const desc = d.problema_descricao || '';
+      const badgeRebipe = (d.problema_descricao || '').includes('[RE-BIPE]')
+        ? '<span style="background:#c62828;color:white;padding:3px 8px;border-radius:10px;font-size:10px;font-weight:700;margin-left:6px;">🔁 RE-BIPE</span>'
+        : '';
 
       // Tenta extrair "NF tinha SKU X, mas voltou SKU Y" da descricao
       let esperadoTxt = '?';
@@ -630,7 +639,7 @@
         <div class="item ${concluido ? 'concluido' : ''}" id="card-${d.id}" style="border-left-color:#7b1fa2; background:#f3e5f5;">
           <div class="item-header">
             <div>
-              <div class="item-titulo">${escapeHtml(d.produto_titulo || '-')} <span style="background:#7b1fa2;color:white;padding:3px 8px;border-radius:10px;font-size:10px;font-weight:700;margin-left:6px;">🔄 DIVERGENTE</span></div>
+              <div class="item-titulo">${escapeHtml(d.produto_titulo || '-')} <span style="background:#7b1fa2;color:white;padding:3px 8px;border-radius:10px;font-size:10px;font-weight:700;margin-left:6px;">🔄 DIVERGENTE</span>${badgeRebipe}</div>
               <div class="item-data">${dataFmt(d.created_at)}</div>
             </div>
             ${concluido ? '<span style="background:#999;color:white;padding:3px 8px;border-radius:10px;font-size:10px;font-weight:700;">RESOLVIDO</span>' : ''}
