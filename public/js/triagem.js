@@ -196,6 +196,7 @@ function montarPayloadTriagem() {
 
   return {
     shipment_id: shipment.id,
+    magalu_protocolo: (ultimaBusca && ultimaBusca.magalu && ultimaBusca.magalu.protocolo) || window._magaluProtocolo || null, // v3.28
     order_id: order.id,
     pack_id: order.pack_id,
     buyer_id: buyer.id,
