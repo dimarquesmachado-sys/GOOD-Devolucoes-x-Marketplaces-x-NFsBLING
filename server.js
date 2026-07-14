@@ -164,7 +164,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '3.63 (magalu-first + indice 2 fases - bipe rapido)',
+    version: '3.63.1 (NF do fluxo Magalu via invoices - CONFIRMAR ok)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -534,13 +534,41 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
 
     if (devMag) {
       console.log(`[BUSCA] MAGALU: protocolo=${devMag.protocolo} pedido=${devMag.pedido} status=${devMag.status}`);
-      // Ponte pro Bling: o pedido Magalu vira numeroLoja -> acha a NF
+      // v3.63.1 - A NF vinha VAZIA (e o CONFIRMAR barrava sem nf_chave):
+      // a janela usava a data do TICKET, que abre semanas DEPOIS da venda -
+      // a NF, emitida NA venda, ficava fora da janela (pra tras).
+      // Cura definitiva: a propria API Magalu entrega a CHAVE da NF no
+      // pedido (invoices[].key - confirmado em JSON real). Pegamos a chave
+      // la e resolvemos no Bling pela chave (caminho ja provado). Fallbacks:
+      // janela pela data da COMPRA (purchased_at) e, no pior caso, a chave
+      // da Magalu sozinha ja destrava a triagem (nf_chave no payload).
       let nfMag = null;
+      let chaveMagalu = null;
+      let compradoEm = null;
       if (devMag.pedido) {
         try {
-          const rB = await buscarNFBlindada({ orderId: devMag.pedido, dataReferencia: devMag.criado_em || null, janelaDias: 45 });
-          if (rB.ok && rB.nf) nfMag = rB.nf;
-        } catch (e) { /* segue sem NF - o essencial ja veio da Magalu */ }
+          const rPed = await magalu.chamarMagalu(`/seller/v1/orders/${encodeURIComponent(devMag.pedido)}`);
+          if (rPed.ok && rPed.data) {
+            chaveMagalu = (rPed.data.invoices || []).map(i => i && i.key).find(k => /^\d{44}$/.test(String(k || ''))) || null;
+            compradoEm = rPed.data.purchased_at || null;
+          }
+        } catch (e) { /* segue pros fallbacks */ }
+        if (chaveMagalu) {
+          try {
+            const numeroDaChaveMag = String(parseInt(chaveMagalu.substr(25, 9), 10));
+            const idNFMag = await resolverIdNFPorChave(numeroDaChaveMag, chaveMagalu);
+            if (idNFMag) {
+              const rFullMag = await buscarNFePorId(idNFMag);
+              nfMag = (rFullMag.ok && rFullMag.data?.data) ? rFullMag.data.data : null;
+            }
+          } catch (e) { nfMag = null; }
+        }
+        if (!nfMag) {
+          try {
+            const rB = await buscarNFBlindada({ orderId: devMag.pedido, dataReferencia: compradoEm || null, janelaDias: 45 });
+            if (rB.ok && rB.nf) nfMag = rB.nf;
+          } catch (e) { /* segue sem NF do Bling */ }
+        }
       }
 
       const itensMag = (devMag.itens || []).map(it => ({
@@ -553,7 +581,7 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
           fonte: 'bling',
           numero: nfMag.numero,
           serie: nfMag.serie,
-          chaveAcesso: nfMag.chaveAcesso || null,
+          chaveAcesso: nfMag.chaveAcesso || chaveMagalu || null,
           valor: nfMag.valorNota,
           dataEmissao: nfMag.dataEmissao,
           linkDanfe: nfMag.linkDanfe,
@@ -563,6 +591,19 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
           numeroPedidoLoja: nfMag.numeroPedidoLoja,
           situacao: nfMag.situacao,
           itens: mapItensNF(nfMag),
+        };
+      } else if (chaveMagalu) {
+        // Bling nao achou, mas a Magalu deu a chave: NF minima ja permite
+        // triar (nf_chave vai no payload) e o card mostra numero/serie.
+        resultado.nf = {
+          fonte: 'magalu',
+          numero: String(parseInt(chaveMagalu.substr(25, 9), 10)),
+          serie: String(parseInt(chaveMagalu.substr(22, 3), 10)),
+          chaveAcesso: chaveMagalu,
+          valor: null, dataEmissao: compradoEm || null,
+          linkDanfe: null, linkPdf: null, linkXml: null,
+          idBling: null, numeroPedidoLoja: devMag.pedido || null,
+          situacao: null, itens: [],
         };
       }
 
