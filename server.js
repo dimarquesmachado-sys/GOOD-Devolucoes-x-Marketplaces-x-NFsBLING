@@ -164,7 +164,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '3.62 (QR MAGALU decodificado - bipe funciona)',
+    version: '3.62.1 (fix triagem sem shipment - Magalu/DANFE)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -1457,8 +1457,12 @@ app.post('/api/triagem/aprovar', requerEstoquista, async (req, res) => {
   }
   const dados = req.body || {};
 
-  if (!dados.shipment_id) {
-    return res.status(400).json({ ok: false, erro: 'shipment_id obrigatorio' });
+  // v3.62.1 - vendas sem shipment (Magalu, chave DANFE, numero da NF) sao
+  // identificadas pela nf_chave. A validacao aceita qualquer um dos dois -
+  // era so o insert que aceitava (v3.49), a validacao ficou pra tras e
+  // barrava o CONFIRMAR com "shipment_id obrigatorio".
+  if (!dados.shipment_id && !dados.nf_chave) {
+    return res.status(400).json({ ok: false, erro: 'shipment_id ou nf_chave obrigatorio' });
   }
 
   // v3.17.0 - Validacoes especificas pra devolucao parcial
@@ -1661,8 +1665,12 @@ app.post('/api/triagem/problema', requerEstoquista, async (req, res) => {
   }
   const dados = req.body || {};
 
-  if (!dados.shipment_id) {
-    return res.status(400).json({ ok: false, erro: 'shipment_id obrigatorio' });
+  // v3.62.1 - vendas sem shipment (Magalu, chave DANFE, numero da NF) sao
+  // identificadas pela nf_chave. A validacao aceita qualquer um dos dois -
+  // era so o insert que aceitava (v3.49), a validacao ficou pra tras e
+  // barrava o CONFIRMAR com "shipment_id obrigatorio".
+  if (!dados.shipment_id && !dados.nf_chave) {
+    return res.status(400).json({ ok: false, erro: 'shipment_id ou nf_chave obrigatorio' });
   }
   const fotos = Array.isArray(dados.fotos) ? dados.fotos : [];
   if (fotos.length < 6) {
@@ -1769,8 +1777,12 @@ app.post('/api/triagem/divergente', requerEstoquista, async (req, res) => {
   }
   const dados = req.body || {};
 
-  if (!dados.shipment_id) {
-    return res.status(400).json({ ok: false, erro: 'shipment_id obrigatorio' });
+  // v3.62.1 - vendas sem shipment (Magalu, chave DANFE, numero da NF) sao
+  // identificadas pela nf_chave. A validacao aceita qualquer um dos dois -
+  // era so o insert que aceitava (v3.49), a validacao ficou pra tras e
+  // barrava o CONFIRMAR com "shipment_id obrigatorio".
+  if (!dados.shipment_id && !dados.nf_chave) {
+    return res.status(400).json({ ok: false, erro: 'shipment_id ou nf_chave obrigatorio' });
   }
   // Validacoes especificas: produto correto bipado + minimo 3 fotos
   if (!dados.produto_correto_sku) {
