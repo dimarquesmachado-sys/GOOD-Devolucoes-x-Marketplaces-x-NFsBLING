@@ -358,7 +358,11 @@ function renderizar(data, ok) {
   // abaixo era falso e a rodinha "Verificando..." girava pra sempre.
   // Agora: usa a chave da NF como identificador alternativo; e se nao houver
   // nada, ao menos renderiza os botoes (nunca deixa rodinha eterna).
-  const idParaTriagem = shipment.id || nf?.chave || null;
+  // v3.27 - o campo no JSON e "chaveAcesso" (nao "chave") - por isso a
+  // verificacao de "ja triada" nunca rodava pra vendas sem shipment
+  // (Magalu, DANFE, numero da NF): idParaTriagem ficava null e os botoes
+  // apareciam direto, sem checar duplicata.
+  const idParaTriagem = shipment.id || nf?.chaveAcesso || nf?.chave || null;
   if (idParaTriagem) {
     verificarTriagemExistente(idParaTriagem);
   } else {
