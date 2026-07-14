@@ -133,7 +133,13 @@ const upload = multer({
 
 app.use(express.json({ limit: '12mb' }));
 app.use(cookieParser());
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static(path.join(__dirname, 'public'), {
+  // v3.64 - HTML sempre revalida (celular segurava js velho em cache; agora
+  // o HTML fresco traz os ?v= novos e os scripts recarregam sozinhos).
+  setHeaders: (res, caminho) => {
+    if (caminho.endsWith('.html')) res.setHeader('Cache-Control', 'no-cache');
+  },
+}));
 
 // Middleware de log basico
 app.use((req, res, next) => {
@@ -164,7 +170,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '3.63.1 (NF do fluxo Magalu via invoices - CONFIRMAR ok)',
+    version: '3.64 (NF Magalu certa + duplicata por protocolo + cache)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -549,7 +555,13 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
         try {
           const rPed = await magalu.chamarMagalu(`/seller/v1/orders/${encodeURIComponent(devMag.pedido)}`);
           if (rPed.ok && rPed.data) {
-            chaveMagalu = (rPed.data.invoices || []).map(i => i && i.key).find(k => /^\d{44}$/.test(String(k || ''))) || null;
+            // v3.64 - CONFIRMADO em JSON real: no /orders/{code} os invoices
+            // vem DENTRO de deliveries[] (nao na raiz). Varre raiz + entregas.
+            const colecoesInv = [rPed.data.invoices, ...((rPed.data.deliveries || []).map(d => d && d.invoices))];
+            for (const arr of colecoesInv) {
+              const k = (arr || []).map(i => i && i.key).find(kk => /^\d{44}$/.test(String(kk || '')));
+              if (k) { chaveMagalu = String(k); break; }
+            }
             compradoEm = rPed.data.purchased_at || null;
           }
         } catch (e) { /* segue pros fallbacks */ }
@@ -1493,19 +1505,29 @@ app.get('/api/triagem/status/:shipmentId', requerEstoquista, async (req, res) =>
   // v3.49 - vendas de outros marketplaces (Magalu, Amazon...) chegam pela
   // chave da DANFE e NAO tem shipment_id. Se o identificador for uma chave
   // de 44 digitos, procura por nf_chave; senao, por shipment_id (ML/Shopee).
-  const ehChaveNF = /^\d{44}$/.test(ident);
-  const coluna = ehChaveNF ? 'nf_chave' : 'shipment_id';
+  // v3.64 - a MESMA devolucao pode ter sido gravada por identificadores
+  // diferentes (chave da NF num bipe, protocolo Magalu noutro). A checagem
+  // aceita um segundo id via ?tambem= e busca por OR nas duas colunas.
+  const ids = [ident];
+  const tambem = String(req.query.tambem || '').trim();
+  if (tambem && tambem !== ident) ids.push(tambem);
+  const ors = [];
+  for (const idv of ids) {
+    const seguro = idv.replace(/[",()]/g, '');
+    ors.push(`shipment_id.eq.${seguro}`);
+    if (/^\d{44}$/.test(seguro)) ors.push(`nf_chave.eq.${seguro}`);
+  }
   try {
     const { data, error } = await supabase
       .from('devolucoes')
       .select('id, created_at, tipo, status, problema_descricao, problema_fotos, data_concluido, nf_numero, produto_qtd')
-      .eq(coluna, ident)
+      .or(ors.join(','))
       .order('created_at', { ascending: false });
 
     if (error) {
       return res.status(500).json({ ok: false, erro: error.message });
     }
-    return res.json({ ok: true, registros: data || [], via: coluna });
+    return res.json({ ok: true, registros: data || [], ids_buscados: ids });
   } catch (err) {
     return res.status(500).json({ ok: false, erro: err.message });
   }
@@ -1522,8 +1544,8 @@ app.post('/api/triagem/aprovar', requerEstoquista, async (req, res) => {
   // identificadas pela nf_chave. A validacao aceita qualquer um dos dois -
   // era so o insert que aceitava (v3.49), a validacao ficou pra tras e
   // barrava o CONFIRMAR com "shipment_id obrigatorio".
-  if (!dados.shipment_id && !dados.nf_chave) {
-    return res.status(400).json({ ok: false, erro: 'shipment_id ou nf_chave obrigatorio' });
+  if (!dados.shipment_id && !dados.nf_chave && !dados.magalu_protocolo) {
+    return res.status(400).json({ ok: false, erro: 'shipment_id, nf_chave ou magalu_protocolo obrigatorio' });
   }
 
   // v3.17.0 - Validacoes especificas pra devolucao parcial
@@ -1543,7 +1565,7 @@ app.post('/api/triagem/aprovar', requerEstoquista, async (req, res) => {
     const { data: existentes, error: errBusca } = await supabase
       .from('devolucoes')
       .select('id, created_at, tipo, status, problema_descricao')
-      .eq('shipment_id', String(dados.shipment_id))
+      .eq('shipment_id', String(dados.shipment_id || dados.nf_chave || dados.magalu_protocolo || '')) // v3.64: mesmo identificador que o insert grava
       .limit(1);
     if (errBusca) {
       console.error('[TRIAGEM] Erro busca duplicata:', errBusca);
@@ -1603,7 +1625,7 @@ app.post('/api/triagem/aprovar', requerEstoquista, async (req, res) => {
     const { data, error } = await supabase
       .from('devolucoes')
       .insert([{
-        shipment_id: String(dados.shipment_id || dados.nf_chave || ''), // v3.49: outros marketplaces (Magalu...) nao tem shipment - usa a chave da NF
+        shipment_id: String(dados.shipment_id || dados.nf_chave || dados.magalu_protocolo || ''), // v3.64: identificador em cascata (shipment > chave NF > protocolo Magalu)
         order_id: dados.order_id ? String(dados.order_id) : null,
         pack_id: dados.pack_id ? String(dados.pack_id) : null,
         buyer_id: dados.buyer_id ? String(dados.buyer_id) : null,
@@ -1626,7 +1648,7 @@ app.post('/api/triagem/aprovar', requerEstoquista, async (req, res) => {
         tipo: 'aprovado',
         status: 'pendente',
         funcionario: req.usuario,
-        problema_descricao: descricaoRegistro,
+        problema_descricao: (dados.forcar ? '[RE-BIPE] ' : '') + descricaoRegistro,
         // v3.17.0 - se for parcial, salva as fotos no mesmo campo das fotos de problema
         problema_fotos: ehParcial ? fotosParcial : null,
       }])
@@ -1730,8 +1752,8 @@ app.post('/api/triagem/problema', requerEstoquista, async (req, res) => {
   // identificadas pela nf_chave. A validacao aceita qualquer um dos dois -
   // era so o insert que aceitava (v3.49), a validacao ficou pra tras e
   // barrava o CONFIRMAR com "shipment_id obrigatorio".
-  if (!dados.shipment_id && !dados.nf_chave) {
-    return res.status(400).json({ ok: false, erro: 'shipment_id ou nf_chave obrigatorio' });
+  if (!dados.shipment_id && !dados.nf_chave && !dados.magalu_protocolo) {
+    return res.status(400).json({ ok: false, erro: 'shipment_id, nf_chave ou magalu_protocolo obrigatorio' });
   }
   const fotos = Array.isArray(dados.fotos) ? dados.fotos : [];
   if (fotos.length < 6) {
@@ -1743,7 +1765,7 @@ app.post('/api/triagem/problema', requerEstoquista, async (req, res) => {
     const { data: existentes, error: errBusca } = await supabase
       .from('devolucoes')
       .select('id, created_at, tipo, status, problema_descricao')
-      .eq('shipment_id', String(dados.shipment_id))
+      .eq('shipment_id', String(dados.shipment_id || dados.nf_chave || dados.magalu_protocolo || '')) // v3.64: mesmo identificador que o insert grava
       .limit(1);
     if (errBusca) {
       console.error('[TRIAGEM] Erro busca duplicata:', errBusca);
@@ -1773,7 +1795,7 @@ app.post('/api/triagem/problema', requerEstoquista, async (req, res) => {
     const { data, error } = await supabase
       .from('devolucoes')
       .insert([{
-        shipment_id: String(dados.shipment_id || dados.nf_chave || ''), // v3.49: outros marketplaces (Magalu...) nao tem shipment - usa a chave da NF
+        shipment_id: String(dados.shipment_id || dados.nf_chave || dados.magalu_protocolo || ''), // v3.64: identificador em cascata (shipment > chave NF > protocolo Magalu)
         order_id: dados.order_id ? String(dados.order_id) : null,
         pack_id: dados.pack_id ? String(dados.pack_id) : null,
         buyer_id: dados.buyer_id ? String(dados.buyer_id) : null,
@@ -1795,7 +1817,7 @@ app.post('/api/triagem/problema', requerEstoquista, async (req, res) => {
         tipo: 'problema',
         status: 'pendente',
         funcionario: req.usuario,
-        problema_descricao: `[Reportado por ${req.usuario}] ${dados.descricao || ''}`.trim(),
+        problema_descricao: ((dados.forcar ? '[RE-BIPE] ' : '') + `[Reportado por ${req.usuario}] ${dados.descricao || ''}`).trim(),
         problema_fotos: fotos,
       }])
       .select()
@@ -1842,8 +1864,8 @@ app.post('/api/triagem/divergente', requerEstoquista, async (req, res) => {
   // identificadas pela nf_chave. A validacao aceita qualquer um dos dois -
   // era so o insert que aceitava (v3.49), a validacao ficou pra tras e
   // barrava o CONFIRMAR com "shipment_id obrigatorio".
-  if (!dados.shipment_id && !dados.nf_chave) {
-    return res.status(400).json({ ok: false, erro: 'shipment_id ou nf_chave obrigatorio' });
+  if (!dados.shipment_id && !dados.nf_chave && !dados.magalu_protocolo) {
+    return res.status(400).json({ ok: false, erro: 'shipment_id, nf_chave ou magalu_protocolo obrigatorio' });
   }
   // Validacoes especificas: produto correto bipado + minimo 3 fotos
   if (!dados.produto_correto_sku) {
@@ -1859,7 +1881,7 @@ app.post('/api/triagem/divergente', requerEstoquista, async (req, res) => {
     const { data: existentes, error: errBusca } = await supabase
       .from('devolucoes')
       .select('id, created_at, tipo, status, problema_descricao')
-      .eq('shipment_id', String(dados.shipment_id))
+      .eq('shipment_id', String(dados.shipment_id || dados.nf_chave || dados.magalu_protocolo || '')) // v3.64: mesmo identificador que o insert grava
       .limit(1);
     if (errBusca) {
       console.error('[TRIAGEM] Erro busca duplicata:', errBusca);
@@ -1892,7 +1914,7 @@ app.post('/api/triagem/divergente', requerEstoquista, async (req, res) => {
     const { data, error } = await supabase
       .from('devolucoes')
       .insert([{
-        shipment_id: String(dados.shipment_id || dados.nf_chave || ''), // v3.49: outros marketplaces (Magalu...) nao tem shipment - usa a chave da NF
+        shipment_id: String(dados.shipment_id || dados.nf_chave || dados.magalu_protocolo || ''), // v3.64: identificador em cascata (shipment > chave NF > protocolo Magalu)
         order_id: dados.order_id ? String(dados.order_id) : null,
         pack_id: dados.pack_id ? String(dados.pack_id) : null,
         buyer_id: dados.buyer_id ? String(dados.buyer_id) : null,
@@ -1916,7 +1938,7 @@ app.post('/api/triagem/divergente', requerEstoquista, async (req, res) => {
         tipo: 'divergente',
         status: 'pendente',
         funcionario: req.usuario,
-        problema_descricao: descricao,
+        problema_descricao: (dados.forcar ? '[RE-BIPE] ' : '') + descricao,
         problema_fotos: fotos,
       }])
       .select()
