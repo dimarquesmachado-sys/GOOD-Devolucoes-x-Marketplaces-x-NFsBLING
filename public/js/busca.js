@@ -169,10 +169,15 @@ function renderizar(data, ok) {
     ? '<span class="badge badge-devolucao">📦 DEVOLUCAO</span>'
     : '<span class="badge badge-info">📦 ENVIO</span>';
   html += `<span class="badge badge-info">Metodo: ${data.metodo || '-'}</span>`;
-  if (order && order.id) html += '<span class="badge badge-sucesso">✅ Order ML</span>';
+  // v3.28 - rotulo do marketplace conforme o metodo (era fixo "ML")
+  const nomeMkt = data.magalu ? 'Magalu'
+    : (data.shopee || String(data.metodo || '').includes('shopee')) ? 'Shopee'
+    : (String(data.metodo || '').includes('nf') || String(data.metodo || '').includes('chave')) ? (data.magalu ? 'Magalu' : 'Nota Fiscal')
+    : 'Mercado Livre';
+  if (order && order.id) html += `<span class="badge badge-sucesso">✅ Pedido ${nomeMkt === 'Nota Fiscal' ? '' : nomeMkt}</span>`;
   if (nf) {
     html += '<span class="badge badge-nfe">🧾 NF-e</span>';
-    html += '<span class="badge badge-fonte-ml">via Mercado Livre</span>';
+    html += `<span class="badge badge-fonte-ml">via ${nomeMkt}</span>`;
   }
 
   // QUANTIDADE EM DESTAQUE - total agregado
@@ -242,7 +247,7 @@ function renderizar(data, ok) {
   } else if (order.id) {
     html += '<div class="secao-nf">';
     html += '<div class="secao-nf-titulo">🧾 Nota Fiscal</div>';
-    html += '<p style="margin: 10px 0;">⚠️ NF-e nao localizada via Mercado Livre.</p>';
+    html += `<p style="margin: 10px 0;">⚠️ NF-e nao localizada${data.magalu ? ' (pedido Magalu ' + escapeHtml(String(data.magalu.protocolo || '')) + ')' : ' via ' + nomeMkt}.</p>`;
     html += '<div id="botoesNF">';
     html += `<button id="btnBlingDemanda" class="btn-action" onclick="buscarLinksBling('${order.id}', '${order.date_created || ''}', '')">🔍 Buscar no Bling (~5s)</button>`;
     html += '</div>';
@@ -362,22 +367,28 @@ function renderizar(data, ok) {
   // verificacao de "ja triada" nunca rodava pra vendas sem shipment
   // (Magalu, DANFE, numero da NF): idParaTriagem ficava null e os botoes
   // apareciam direto, sem checar duplicata.
-  const idParaTriagem = shipment.id || nf?.chaveAcesso || nf?.chave || null;
-  if (idParaTriagem) {
-    verificarTriagemExistente(idParaTriagem);
+  // v3.28 - a MESMA devolucao pode ter sido triada por outro identificador
+  // (ex: Diego triou pela chave da NF; o QR chega com o protocolo). Passamos
+  // os DOIS pro status, que busca por OR - reconhece por qualquer porta.
+  const idPrincipal = shipment.id || nf?.chaveAcesso || nf?.chave || data.magalu?.protocolo || null;
+  const idAlternativo = (data.magalu?.protocolo && data.magalu.protocolo !== idPrincipal) ? data.magalu.protocolo : null;
+  window._magaluProtocolo = data.magalu?.protocolo || null; // p/ triagem gravar
+  if (idPrincipal) {
+    verificarTriagemExistente(idPrincipal, idAlternativo);
   } else {
     renderizarBotoesTriagem();
   }
 }
 
 // ================ VERIFICAR TRIAGEM EXISTENTE ================
-async function verificarTriagemExistente(shipmentId) {
+async function verificarTriagemExistente(shipmentId, idAlternativo) {
   window._forcarTriagem = false; // reset ao bipar nova etiqueta
   const cont = document.getElementById('triagemConteudo');
   if (!cont) return;
 
   try {
-    const r = await fetch('/api/triagem/status/' + encodeURIComponent(shipmentId));
+    const extra = idAlternativo ? ('?tambem=' + encodeURIComponent(idAlternativo)) : '';
+    const r = await fetch('/api/triagem/status/' + encodeURIComponent(shipmentId) + extra);
     const d = await r.json();
     if (!d.ok) {
       renderizarBotoesTriagem();
