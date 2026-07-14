@@ -164,7 +164,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '3.61 (MAGALU - Shipping Open Api de seller)',
+    version: '3.62 (QR MAGALU decodificado - bipe funciona)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -227,14 +227,38 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
 
   console.log(`\n========== NOVA BUSCA: ${codigoOriginal} ==========`);
 
+  // v3.62 - QR da etiqueta MAGALU: um JSON com external_grouper_code (= o
+  // PROTOCOLO do ticket, que o indice Magalu ja resolve na hora), alem de
+  // external_code e tag_code (o codigo de barras 196634440-01). Formato
+  // decodificado de etiqueta real. Detecta e extrai o protocolo ANTES de
+  // qualquer outra coisa - o bipe do QR vira busca instantanea.
+  let origemQrMagalu = false;
+  let codigoLimpo = codigoOriginal.replace(/[^0-9]/g, '');
+  if (/external_grouper_code|tag_code|logistical_flow/i.test(codigoOriginal)) {
+    let proto = null;
+    try {
+      const j = JSON.parse(codigoOriginal);
+      proto = String(j.external_grouper_code || '').replace(/\D/g, '');
+    } catch (e) {
+      // leitor USB pode mutilar o JSON (layout de teclado): o protocolo e o
+      // unico numerao de 16 digitos comecando com o ano (20...)
+      const m = codigoOriginal.match(/20\d{14}/);
+      if (m) proto = m[0];
+    }
+    if (proto) {
+      codigoLimpo = proto;
+      origemQrMagalu = true;
+      console.log(`[BUSCA] QR MAGALU detectado → protocolo ${proto}`);
+    }
+  }
+
   // v3.39 - QR das etiquetas ML vem como {"id":"47416667668","t":"lm"}
   // (leitor USB cospe o JSON cru no campo). Extrai o id e ja sabemos
   // que e ML - se o shipment nao existir, falha RAPIDO com orientacao
   // (padrao de devolucao FULL) em vez de vagar pela cascata.
   let origemQrML = false;
-  let codigoLimpo = codigoOriginal.replace(/[^0-9]/g, '');
-  let mQrML = codigoOriginal.match(/["']?[ïi]d["']?\s*[:=]\s*["']?(\d{8,20})/i);
-  if (!mQrML && /^\{|"?t"?\s*[:=]\s*"?lm/i.test(codigoOriginal)) {
+  let mQrML = origemQrMagalu ? null : codigoOriginal.match(/["']?[ïi]d["']?\s*[:=]\s*["']?(\d{8,20})/i);
+  if (!origemQrMagalu && !mQrML && /^\{|"?t"?\s*[:=]\s*"?lm/i.test(codigoOriginal)) {
     // leitor mutilou o "id" (layout de teclado): pesca o unico numerao
     const runs = codigoOriginal.match(/\d{8,20}/g) || [];
     if (runs.length === 1) mQrML = [null, runs[0]];
