@@ -175,7 +175,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '3.68 (status obrigatorio - 2 passadas opened+closed)',
+    version: '3.69 (pagina ate esgotar os 60d - sem teto de 150)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
