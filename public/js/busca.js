@@ -93,6 +93,12 @@ function renderizar(data, ok) {
       renderizarEscolhaSerie(data.ambiguidade_nf);
       return;
     }
+    // v3.30 - candidatos por NOME (etiqueta Correios Amazon etc): lista
+    // clicavel; o clique dispara a busca pela NF (fluxo que ja existe).
+    if (data.candidatos_nome && data.candidatos_nome.length > 0) {
+      renderizarCandidatosNome(data.erro, data.candidatos_nome);
+      return;
+    }
     renderizarErro(data.erro || 'Codigo nao encontrado', data.tentativas);
     return;
   }
@@ -536,6 +542,28 @@ function renderizarEscolhaSerie(amb) {
 function escolherNFSerie(chave) {
   inputCodigo.value = chave;
   buscar();
+}
+
+// v3.30 - lista de candidatos achados pelo NOME do remetente
+function renderizarCandidatosNome(mensagem, candidatos) {
+  const area = document.getElementById('resultado');
+  if (!area) return;
+  let html = '<div class="card" style="border-left: 4px solid #f57c00;">';
+  html += '<h3 style="margin-top:0;">👤 ' + escapeHtml(mensagem || 'Candidatos pelo nome') + '</h3>';
+  html += '<div style="display:flex; flex-direction:column; gap:8px;">';
+  for (const c of candidatos) {
+    const dt = c.dataEmissao ? String(c.dataEmissao).slice(0, 10).split('-').reverse().join('/') : '-';
+    const vl = (c.valor != null) ? ('R$ ' + Number(c.valor).toFixed(2).replace('.', ',')) : '-';
+    const alvo = c.serie && c.serie !== '1' ? (c.numero + '/' + c.serie) : c.numero;
+    html += '<button class="btn" style="text-align:left; padding:10px 12px;" onclick="document.getElementById(\'codigo\').value=\'' + alvo + '\'; buscar();">'
+      + '<b>' + escapeHtml(c.nome) + '</b><br>'
+      + '🧾 NF ' + escapeHtml(c.numero) + (c.serie ? ' (série ' + escapeHtml(c.serie) + ')' : '') + ' · ' + dt + ' · ' + vl
+      + '</button>';
+  }
+  html += '</div>';
+  html += '<p style="font-size:12px; color:#888; margin-bottom:0;">⚠️ Confere o produto da CAIXA antes de escolher — nomes podem se repetir.</p>';
+  html += '</div>';
+  area.innerHTML = html;
 }
 
 function renderizarErro(mensagem, tentativas) {
