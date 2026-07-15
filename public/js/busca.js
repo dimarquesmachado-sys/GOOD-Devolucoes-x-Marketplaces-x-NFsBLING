@@ -546,8 +546,8 @@ function escolherNFSerie(chave) {
 
 // v3.30 - lista de candidatos achados pelo NOME do remetente
 function renderizarCandidatosNome(mensagem, candidatos) {
-  const area = document.getElementById('resultado');
-  if (!area) return;
+  // v3.30.1 - padrao da casa: divResultado + classList.add('show')
+  // (sem o 'show' o CSS esconde a area - era o "nada acontece na tela")
   let html = '<div class="card" style="border-left: 4px solid #f57c00;">';
   html += '<h3 style="margin-top:0;">👤 ' + escapeHtml(mensagem || 'Candidatos pelo nome') + '</h3>';
   html += '<div style="display:flex; flex-direction:column; gap:8px;">';
@@ -563,7 +563,8 @@ function renderizarCandidatosNome(mensagem, candidatos) {
   html += '</div>';
   html += '<p style="font-size:12px; color:#888; margin-bottom:0;">⚠️ Confere o produto da CAIXA antes de escolher — nomes podem se repetir.</p>';
   html += '</div>';
-  area.innerHTML = html;
+  divResultado.innerHTML = html;
+  divResultado.classList.add('show');
 }
 
 function renderizarErro(mensagem, tentativas) {
