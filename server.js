@@ -59,6 +59,11 @@ const shopee = require('./lib/shopee-proxy');
 const { atualizarTokensNoRender: _attRender } = require('./lib/render-tokens');
 const magalu = require('./lib/magalu')({ atualizarTokensNoRender: _attRender });
 
+// v3.65 - CORREIOS REVERSO: devolucoes ML "por agencia" chegam com etiqueta
+// dos Correios (AD/AP...BR). O indice claims->returns mapeia esse rastreio
+// de volta pra venda. ~95% das devolucoes Correios do GOOD sao ML.
+const mlReturns = require('./lib/ml-returns')({ chamarML });
+
 // ── Chave p/ rotas de diagnóstico/admin/setup (acessadas com ?k=CHAVE na URL) ──
 // Sem a env ADMIN_KEY configurada no Render, essas rotas ficam DESLIGADAS (404).
 const ADMIN_KEY = process.env.ADMIN_KEY || '';
@@ -170,7 +175,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '3.64 (NF Magalu certa + duplicata por protocolo + cache)',
+    version: '3.65 (Correios reverso -> devolucao ML)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -327,6 +332,43 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
   const pistaMagalu = origemQrMagalu || /^20\d{14}$/.test(codigoLimpo);
   if (pistaMagalu) {
     if (await tentarDevolucaoMagalu()) return;
+  }
+
+  // CORREIOS REVERSO (v3.65): AD/AP...BR = devolucao por agencia. O codigo
+  // e o rastreio da VOLTA (nao e shipment ML). O indice claims->returns
+  // resolve tracking -> order -> preenche o shipment de IDA e o fluxo ML
+  // existente faz o resto (buyer, NF, triagem, duplicata por shipment).
+  const mCorreios = String(codigoOriginal || '').toUpperCase().replace(/\s+/g, '').match(/^([A-Z]{2}\d{9}BR)$/);
+  if (!shipment && !pack && mCorreios) {
+    const trk = mCorreios[1];
+    let devML = null;
+    try { devML = await mlReturns.acharPorTracking(trk); } catch (e) { devML = null; }
+    resultado.tentativas.push({ tipo: 'correios_reverso_ml', codigo: trk, ok: !!(devML && devML.order_id), status: devML ? 200 : 404 });
+
+    if (devML && devML.order_id) {
+      console.log(`[BUSCA] CORREIOS ${trk} -> claim ${devML.claim_id} -> order ${devML.order_id}`);
+      const rO = await chamarML(`https://api.mercadolibre.com/orders/${devML.order_id}`);
+      const shipIdIda = rO.ok ? rO.data?.shipping?.id : null;
+      if (shipIdIda) {
+        const rS = await chamarML(`https://api.mercadolibre.com/shipments/${shipIdIda}`, { 'x-format-new': 'true' });
+        if (rS.ok && rS.data?.id) { shipment = rS.data; metodoUsado = 'correios_reverso_ml'; }
+      }
+      resultado.ml_return = {
+        tracking: trk, claim_id: devML.claim_id,
+        shipment_devolucao: devML.shipment_devolucao, status_devolucao: devML.status_devolucao,
+      };
+      resultado.eh_devolucao = true;
+      resultado.avisos.push({ tipo: 'correios_ml', mensagem: `Devolucao ML via CORREIOS (${trk}) - claim ${devML.claim_id}${devML.status_devolucao ? ' (' + devML.status_devolucao + ')' : ''}` });
+      if (!shipment) {
+        resultado.erro = `Rastreio ${trk} achou a devolucao ML (claim ${devML.claim_id}, pedido ${devML.order_id}) mas falhou ao carregar o pedido. Tente digitar o pedido, ou identifique pela NF.`;
+        return res.status(404).json(resultado);
+      }
+    } else {
+      // Sem match: orientacao clara (nao vaga pela cascata - 9 digitos
+      // limpos cairiam na bissecao de NF e perderiam tempo a toa).
+      resultado.erro = `Rastreio CORREIOS ${trk} nao encontrado nas devolucoes ML recentes${devML && devML.claim_id ? ` (claim ${devML.claim_id} sem pedido vinculado)` : ''}. Pode ser devolucao de OUTRO marketplace orientada pelos Correios (Shopee, TikTok...) - confira o REMETENTE na etiqueta, ou bipe a chave da DANFE se a nota vier na caixa.`;
+      return res.status(404).json(resultado);
+    }
   }
 
   // ML T1: shipment_id
@@ -2273,6 +2315,22 @@ app.get('/api/debug/magalu-caca', requerAdmin, async (req, res) => {
   return res.json({ ok: true, procurando: alvo || '(nada)', achados });
 });
 
+// Indice de devolucoes ML por rastreio Correios (?rebuild=1 reconstroi)
+app.get('/api/debug/ml-returns-indice', requerAdmin, async (req, res) => {
+  if (req.query.rebuild === '1') {
+    try { await mlReturns.construirIndice(); } catch (e) { return res.status(500).json({ ok: false, erro: e.message }); }
+  }
+  return res.json({ ok: true, ...mlReturns.statusIndice() });
+});
+
+// Exploracao crua: returns de um claim especifico (validar campos reais)
+app.get('/api/debug/ml-returns', requerAdmin, async (req, res) => {
+  const claim = String(req.query.claim || '').trim();
+  if (!claim) return res.status(400).json({ ok: false, erro: 'informe ?claim=ID' });
+  const r = await chamarML(`https://api.mercadolibre.com/post-purchase/v2/claims/${encodeURIComponent(claim)}/returns`);
+  return res.status(r.ok ? 200 : (r.status || 502)).json({ ok: r.ok, status: r.status, data: r.ok ? r.data : r.error });
+});
+
 // Status do indice de devolucoes Magalu (?rebuild=1 reconstroi na hora)
 app.get('/api/debug/magalu-indice', requerAdmin, async (req, res) => {
   if (!magalu.cfg.autorizado) return res.status(400).json({ ok: false, erro: 'Magalu nao autorizada' });
@@ -2462,7 +2520,9 @@ registrarRotasImpressao(app, { requerEstoquista, crypto, sleep });
 // v3.56 - MAGALU: indice pre-aquecido (o pacote chega e o sistema JA sabe).
 // 20s apos o boot e a cada 25 min. Silencioso e a prova de falha.
 setTimeout(() => magalu.preAquecer(), 20 * 1000);
+setTimeout(() => mlReturns.preAquecer(), 30 * 1000);
 setInterval(() => magalu.preAquecer(), 25 * 60 * 1000);
+setInterval(() => mlReturns.preAquecer(), 25 * 60 * 1000);
 
 app.listen(PORT, () => {
   console.log('============================================');
