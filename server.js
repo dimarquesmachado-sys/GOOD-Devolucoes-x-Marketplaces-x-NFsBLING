@@ -175,7 +175,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '3.69 (pagina ate esgotar os 60d - sem teto de 150)',
+    version: '3.70 (janela 120d + comprador no card Correios)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -349,6 +349,9 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
       console.log(`[BUSCA] CORREIOS ${trk} -> claim ${devML.claim_id} -> order ${devML.order_id}`);
       const rO = await chamarML(`https://api.mercadolibre.com/orders/${devML.order_id}`);
       const shipIdIda = rO.ok ? rO.data?.shipping?.id : null;
+      // v3.70 - o order do claim JA veio completo (comprador, itens): entrega
+      // ao fluxo em vez de deixar o downstream refazer a busca (e falhar).
+      if (rO.ok && rO.data?.id) order = rO.data;
       if (shipIdIda) {
         const rS = await chamarML(`https://api.mercadolibre.com/shipments/${shipIdIda}`, { 'x-format-new': 'true' });
         if (rS.ok && rS.data?.id) { shipment = rS.data; metodoUsado = 'correios_reverso_ml'; }
