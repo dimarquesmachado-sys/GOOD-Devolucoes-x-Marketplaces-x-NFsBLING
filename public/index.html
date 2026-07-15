@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>GOOD - Devolucoes Marketplaces</title>
-  <link rel="stylesheet" href="styles.css?v=3275">
+  <link rel="stylesheet" href="styles.css?v=3276">
 </head>
 <body>
 
@@ -33,7 +33,7 @@
     <header>
       <h1>📦 GOOD Devolucoes</h1>
       <p>Identificar venda + NF-e + Triagem</p>
-      <p style="font-size: 10px; color: #888; margin-top: 4px;">v3.30.1 (fix render candidatos) | <span id="serverVersion">checando...</span></p>
+      <p style="font-size: 10px; color: #888; margin-top: 4px;">v3.31 (OCR do remetente) | <span id="serverVersion">checando...</span></p>
       <div class="user-badge">
         👤 <span id="userNome">-</span>
         <a href="/admin.html" id="btnPainelAdmin" style="display:none;background:#ffd700;color:#1d1d1f;padding:3px 10px;border-radius:10px;font-weight:700;margin-left:6px;">👑 Painel Admin</a>
@@ -53,6 +53,33 @@
               style="width:100%; margin-top:10px; padding:12px; background:#1565c0; color:white; border:none; border-radius:10px; font-weight:700; font-size:14px; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:8px;">
         📷 Bipar etiqueta com a camera do celular
       </button>
+      <button type="button" onclick="abrirOcrRemetente()"
+              style="width:100%; margin-top:8px; padding:12px; background:#6a1b9a; color:white; border:none; border-radius:10px; font-weight:700; font-size:14px; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:8px;">
+        👤 Ler NOME do remetente pela camera (OCR)
+      </button>
+
+      <!-- v3.31 - painel do OCR do remetente (etiquetas Correios sem codigo util) -->
+      <div id="ocrPanel" style="display:none; margin-top:12px; border:2px solid #6a1b9a; border-radius:12px; padding:12px; background:#faf5ff;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+          <b style="color:#6a1b9a;">👤 Ler REMETENTE (OCR)</b>
+          <button type="button" onclick="fecharOcrRemetente()" style="background:#999; color:white; border:none; border-radius:8px; padding:6px 12px; cursor:pointer;">✕ Fechar</button>
+        </div>
+        <video id="ocrVideo" playsinline muted style="width:100%; border-radius:10px; background:#000;"></video>
+        <button type="button" onclick="capturarELerOcr()"
+                style="width:100%; margin-top:8px; padding:12px; background:#6a1b9a; color:white; border:none; border-radius:10px; font-weight:700; cursor:pointer;">
+          📸 Capturar e ler
+        </button>
+        <p id="ocrStatus" style="font-size:13px; margin:8px 0 0;">Abrindo camera...</p>
+        <div id="ocrResultadoArea" style="display:none; margin-top:8px;">
+          <input type="text" id="ocrNome" placeholder="Nome lido (edite se precisar)"
+                 style="width:100%; padding:10px; border:1px solid #ccc; border-radius:8px; font-size:15px; box-sizing:border-box;" />
+          <button type="button" onclick="buscarNomeDoOcr()"
+                  style="width:100%; margin-top:8px; padding:12px; background:#2e7d32; color:white; border:none; border-radius:10px; font-weight:700; cursor:pointer;">
+            🔍 Buscar esse nome
+          </button>
+        </div>
+        <p style="font-size:11px; color:#888; margin:8px 0 0;">💡 Aproxima a camera SO do bloco REMETENTE — leitura mais rapida e certeira. 1a vez baixa o leitor (~15MB).</p>
+      </div>
       <p class="hint">
         💡 Aceita: etiqueta ML, <b>Correios reverso</b> (AD/AP...BR), Shopee, <b>Magalu</b> (QR/Protocolo), chave DANFE, <b>numero da NF</b> ou o <b>NOME do remetente</b> (ex: RENATONEVES — mesmo colado, como vem na etiqueta).
       </p>
@@ -413,15 +440,17 @@
        7. triagem   -> usa bipagemEstado, fecharModal, etc
        8. app       -> entry point (DOM refs, event listeners, init)
        ============================================================ -->
-  <script src="js/helpers.js?v=3275"></script>
-  <script src="js/auth.js?v=3275"></script>
-  <script src="js/scanner.js?v=3275"></script>
-  <script src="js/camera.js?v=3275"></script>
-  <script src="js/bipagem.js?v=3275"></script>
-  <script src="js/busca.js?v=3275"></script>
+  <script src="js/helpers.js?v=3276"></script>
+  <script src="js/auth.js?v=3276"></script>
+  <script src="js/scanner.js?v=3276"></script>
+  <script src="js/camera.js?v=3276"></script>
+  <script src="js/bipagem.js?v=3276"></script>
+  <script src="js/busca.js?v=3276"></script>
   <script src="https://cdn.jsdelivr.net/npm/qz-tray@2.2.4/qz-tray.js"></script>
-  <script src="js/etiqueta.js?v=3275"></script>
-  <script src="js/triagem.js?v=3275"></script>
-  <script src="js/app.js?v=3275"></script>
+  <script src="js/etiqueta.js?v=3276"></script>
+  <script src="js/triagem.js?v=3276"></script>
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+  <script src="js/ocr.js?v=3276"></script>
+  <script src="js/app.js?v=3276"></script>
 </body>
 </html>
