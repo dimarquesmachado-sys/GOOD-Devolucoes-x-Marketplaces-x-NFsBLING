@@ -64,6 +64,11 @@ const magalu = require('./lib/magalu')({ atualizarTokensNoRender: _attRender });
 // de volta pra venda. ~95% das devolucoes Correios do GOOD sao ML.
 const mlReturns = require('./lib/ml-returns')({ chamarML });
 
+// v3.71 - busca de NF pelo NOME do remetente (etiquetas Correios da Amazon
+// etc). O nome vem COLADO na etiqueta (RENATONEVES) - o indice colapsa os
+// nomes do Bling tambem e compara colapsado com colapsado.
+const nfNomes = require('./lib/nf-nomes')({ chamarBling });
+
 // ── Chave p/ rotas de diagnóstico/admin/setup (acessadas com ?k=CHAVE na URL) ──
 // Sem a env ADMIN_KEY configurada no Render, essas rotas ficam DESLIGADAS (404).
 const ADMIN_KEY = process.env.ADMIN_KEY || '';
@@ -175,7 +180,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '3.70 (janela 120d + comprador no card Correios)',
+    version: '3.71.1 (indice de nomes 120d)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -730,6 +735,22 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
       resultado.tentativas.push({ tipo: 'shopee_return', v: '3.34.3', codigo: codigoOriginal, ok: false, status: 0, erro: 'SHOPEE_PROXY_URL/SHOPEE_PROXY_KEY ausentes no Render deste servico' });
     }
     if (!devShopee) {
+      // v3.71 - ULTIMO RECURSO: o texto tem cara de NOME? (>=5 letras apos
+      // colapsar). Casos: remetente da etiqueta Correios digitado/colado
+      // ("RENATONEVES", "Renato Neves"). Devolve CANDIDATOS - o estoquista
+      // confere com a caixa e escolhe (nada de casamento automatico).
+      const alvoNome = nfNomes.colapsar(codigoOriginal);
+      if (alvoNome.length >= 5 && !/^\d+$/.test(String(codigoOriginal).trim())) {
+        try {
+          const rN = await nfNomes.buscarPorNome(codigoOriginal);
+          resultado.tentativas.push({ tipo: 'nf_por_nome', codigo: alvoNome, ok: rN.candidatos.length > 0, status: rN.candidatos.length ? 200 : 404, qtd: rN.candidatos.length });
+          if (rN.candidatos.length > 0) {
+            resultado.candidatos_nome = rN.candidatos;
+            resultado.erro = `Achei ${rN.candidatos.length} NF(s) recente(s) com esse nome. Confere com a CAIXA e escolhe abaixo:`;
+            return res.status(300).json(resultado); // 300 Multiple Choices
+          }
+        } catch (e) { resultado.tentativas.push({ tipo: 'nf_por_nome', codigo: alvoNome, ok: false, status: 500, erro: e.message }); }
+      }
       const pareceSPX = /^BR[A-Z0-9]{8,}$/i.test(String(codigoOriginal).trim());
       const houve403 = resultado.tentativas.some(t => t.status === 403);
       const diag = infoShopee
@@ -2327,6 +2348,16 @@ app.get('/api/debug/ml-get', requerAdmin, async (req, res) => {
   return res.status(r.ok ? 200 : (r.status || 502)).json({ ok: r.ok, status: r.status, data: r.ok ? r.data : r.error });
 });
 
+// Indice de NFs por nome (?rebuild=1 | ?q=nome testa a busca)
+app.get('/api/debug/nf-nomes-indice', requerAdmin, async (req, res) => {
+  if (req.query.rebuild === '1') {
+    try { await nfNomes.construirIndice(); } catch (e) { return res.status(500).json({ ok: false, erro: e.message }); }
+  }
+  const out = { ok: true, ...nfNomes.statusIndice() };
+  if (req.query.q) out.busca = await nfNomes.buscarPorNome(String(req.query.q));
+  return res.json(out);
+});
+
 // Indice de devolucoes ML por rastreio Correios (?rebuild=1 reconstroi)
 app.get('/api/debug/ml-returns-indice', requerAdmin, async (req, res) => {
   if (req.query.rebuild === '1') {
@@ -2533,8 +2564,10 @@ registrarRotasImpressao(app, { requerEstoquista, crypto, sleep });
 // 20s apos o boot e a cada 25 min. Silencioso e a prova de falha.
 setTimeout(() => magalu.preAquecer(), 20 * 1000);
 setTimeout(() => mlReturns.preAquecer(), 30 * 1000);
+setTimeout(() => nfNomes.preAquecer(), 40 * 1000);
 setInterval(() => magalu.preAquecer(), 25 * 60 * 1000);
 setInterval(() => mlReturns.preAquecer(), 25 * 60 * 1000);
+setInterval(() => nfNomes.preAquecer(), 25 * 60 * 1000);
 
 app.listen(PORT, () => {
   console.log('============================================');
