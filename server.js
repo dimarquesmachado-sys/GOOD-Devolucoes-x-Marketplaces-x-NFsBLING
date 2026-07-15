@@ -175,7 +175,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '3.65 (Correios reverso -> devolucao ML)',
+    version: '3.65.1 (+ debug ml-get)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -2313,6 +2313,15 @@ app.get('/api/debug/magalu-caca', requerAdmin, async (req, res) => {
     });
   }
   return res.json({ ok: true, procurando: alvo || '(nada)', achados });
+});
+
+// EXPLORACAO livre ML (v3.65.1): tatear qualquer endpoint sem novo deploy
+// Uso: /api/debug/ml-get?path=/post-purchase/v1/claims/search
+app.get('/api/debug/ml-get', requerAdmin, async (req, res) => {
+  const p = String(req.query.path || '').trim();
+  if (!p.startsWith('/')) return res.status(400).json({ ok: false, erro: 'informe ?path=/...' });
+  const r = await chamarML(`https://api.mercadolibre.com${p}`);
+  return res.status(r.ok ? 200 : (r.status || 502)).json({ ok: r.ok, status: r.status, data: r.ok ? r.data : r.error });
 });
 
 // Indice de devolucoes ML por rastreio Correios (?rebuild=1 reconstroi)
