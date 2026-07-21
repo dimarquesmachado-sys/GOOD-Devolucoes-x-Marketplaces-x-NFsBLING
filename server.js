@@ -180,7 +180,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '3.71.1 (indice de nomes 120d)',
+    version: '3.72 (retry nos returns ML - fim das falhas silenciosas)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
