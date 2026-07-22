@@ -180,7 +180,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '3.74 (401/403 = sem acesso por design - contador limpo)',
+    version: '3.75 (teste BFF devolucoes Magalu Entregas)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -2346,6 +2346,23 @@ app.get('/api/debug/ml-get', requerAdmin, async (req, res) => {
   if (!p.startsWith('/')) return res.status(400).json({ ok: false, erro: 'informe ?path=/...' });
   const r = await chamarML(`https://api.mercadolibre.com${p}`);
   return res.status(r.ok ? 200 : (r.status || 502)).json({ ok: r.ok, status: r.status, data: r.ok ? r.data : r.error });
+});
+
+// v3.75 - TESTE DO BFF de devolucoes do portal Magalu Entregas: sera que o
+// NOSSO token OAuth (escopo logistic-seller-shippings ja concedido) e aceito
+// pela API interna do portal (seller-devolution-bff.mglu.io)?
+// Endpoints vistos no DevTools: /v1/fulfillment/{tenant}?limit&offset (lista),
+// /v1/fulfillment/totalizers/{tenant}. Abas Correios/Agencias por analogia.
+// Uso: /api/debug/magalu-bff?path=/v1/fulfillment/goodimport-magazine%3Flimit=5
+app.get('/api/debug/magalu-bff', requerAdmin, async (req, res) => {
+  if (!magalu.cfg.autorizado) return res.status(400).json({ ok: false, erro: 'Magalu nao autorizada' });
+  const p = String(req.query.path || '').trim();
+  if (!p.startsWith('/')) return res.status(400).json({ ok: false, erro: 'informe ?path=/v1/...' });
+  const tenant = String(req.query.tenant || 'goodimport-magazine').trim();
+  const r = await magalu.chamarMagalu(`https://seller-devolution-bff.mglu.io${p}`, {
+    headers: { 'x-tenant-id': tenant, Origin: 'https://seller.magaluentregas.com.br', Referer: 'https://seller.magaluentregas.com.br/' },
+  });
+  return res.status(200).json({ ok: r.ok, status: r.status, data: r.data });
 });
 
 // Indice de NFs por nome (?rebuild=1 | ?q=nome testa a busca)
