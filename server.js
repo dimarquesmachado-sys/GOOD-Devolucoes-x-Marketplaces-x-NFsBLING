@@ -69,6 +69,9 @@ const mlReturns = require('./lib/ml-returns')({ chamarML });
 // nomes do Bling tambem e compara colapsado com colapsado.
 const nfNomes = require('./lib/nf-nomes')({ chamarBling });
 
+// v3.76 - devolucoes ESPERADAS do portal Magalu Entregas (indice 'a espreita')
+const espreita = require('./lib/magalu-espreita')({ chamarMagalu: magalu.chamarMagalu });
+
 // ── Chave p/ rotas de diagnóstico/admin/setup (acessadas com ?k=CHAVE na URL) ──
 // Sem a env ADMIN_KEY configurada no Render, essas rotas ficam DESLIGADAS (404).
 const ADMIN_KEY = process.env.ADMIN_KEY || '';
@@ -180,7 +183,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '3.75 (teste BFF devolucoes Magalu Entregas)',
+    version: '3.77 (a espreita unificada - Magalu + ML + Shopee)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -687,6 +690,10 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
       resultado.encontrado = true;
       resultado.metodo = 'magalu_devolucao';
       resultado.eh_devolucao = true;
+      const esp = espreita.porPedido(devolucao.pedido_id || devolucao.order_id);
+      if (esp) {
+        resultado.avisos.push({ tipo: 'espreita', mensagem: `📮 Devolucao REGISTRADA no portal Magalu Entregas (${esp.categoria}${esp.status ? ' - ' + esp.status : ''}${esp.entregue_em ? ' - entregue ' + String(esp.entregue_em).slice(0, 10) : ''})` });
+      }
       resultado.magalu = {
         protocolo: devMag.protocolo,
         reverse_code: devMag.reverse_code,
@@ -2348,6 +2355,36 @@ app.get('/api/debug/ml-get', requerAdmin, async (req, res) => {
   return res.status(r.ok ? 200 : (r.status || 502)).json({ ok: r.ok, status: r.status, data: r.ok ? r.data : r.error });
 });
 
+// v3.76 - painel 'a espreita': devolucoes esperadas (em transito/atrasadas)
+app.get('/api/admin/espreita', requerAdmin, async (req, res) => {
+  // v3.77 - agregador: Magalu (BFF) + ML (indice claims->returns) + Shopee (proxy)
+  const magaluR = espreita.resumo();
+  const mlR = mlReturns.resumoEspreita();
+  let shopeeR = { quente: false, em_transito: [] };
+  try { shopeeR = await shopee.resumoEspreita(); } catch (e) { shopeeR = { quente: false, erro: e.message, em_transito: [] }; }
+  const unificada = [
+    ...magaluR.em_transito.map(d => ({ marketplace: 'magalu', pedido: d.pedido, tracking: null, status: (d.categoria || '') + (d.status ? ' / ' + d.status : ''), dias_em_transito: d.dias_em_transito, valor: d.valor })),
+    ...mlR.em_transito,
+    ...shopeeR.em_transito,
+  ].sort((x, y) => (y.dias_em_transito || 0) - (x.dias_em_transito || 0));
+  return res.json({
+    ok: true,
+    quente: magaluR.quente || mlR.quente || shopeeR.quente,
+    em_transito: unificada,
+    atrasadas_30d: unificada.filter(d => (d.dias_em_transito || 0) > 30),
+    ml_aguardando_postagem: mlR.aguardando_postagem || 0,
+    magalu_chegadas_30d: magaluR.chegadas_30d || 0,
+    fontes: { magalu: magaluR.quente, ml: mlR.quente, shopee: shopeeR.quente },
+    erro: magaluR.erro || shopeeR.erro || null,
+  });
+});
+app.get('/api/debug/espreita-indice', requerAdmin, async (req, res) => {
+  if (req.query.rebuild === '1') {
+    try { await espreita.construirIndice(); } catch (e) { return res.status(500).json({ ok: false, erro: e.message }); }
+  }
+  return res.json({ ok: true, ...espreita.resumo() });
+});
+
 // v3.75 - TESTE DO BFF de devolucoes do portal Magalu Entregas: sera que o
 // NOSSO token OAuth (escopo logistic-seller-shippings ja concedido) e aceito
 // pela API interna do portal (seller-devolution-bff.mglu.io)?
@@ -2582,9 +2619,11 @@ registrarRotasImpressao(app, { requerEstoquista, crypto, sleep });
 setTimeout(() => magalu.preAquecer(), 20 * 1000);
 setTimeout(() => mlReturns.preAquecer(), 30 * 1000);
 setTimeout(() => nfNomes.preAquecer(), 40 * 1000);
+setTimeout(() => { if (magalu.cfg.autorizado) espreita.preAquecer(); }, 50 * 1000);
 setInterval(() => magalu.preAquecer(), 25 * 60 * 1000);
 setInterval(() => mlReturns.preAquecer(), 25 * 60 * 1000);
 setInterval(() => nfNomes.preAquecer(), 25 * 60 * 1000);
+setInterval(() => { if (magalu.cfg.autorizado) espreita.preAquecer(); }, 25 * 60 * 1000);
 
 app.listen(PORT, () => {
   console.log('============================================');
