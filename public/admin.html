@@ -256,6 +256,15 @@
 
     <div class="secoes" id="secoes" style="display:none;">
 
+      <!-- v3.76 - A ESPREITA: devolucoes esperadas do portal Magalu Entregas -->
+      <div class="secao" id="secaoEspreita" style="display:none;">
+        <h2>
+          📮 À espreita — devoluções Magalu a caminho
+          <span class="badge-count" id="countEspreita" style="background:#6a1b9a;">0</span>
+        </h2>
+        <div id="listaEspreita"></div>
+      </div>
+
       <div class="secao">
         <h2>
           ✅ Aprovadas - aguardando NF
@@ -337,6 +346,36 @@
         document.getElementById('loadingArea').style.display = 'none';
         document.getElementById('secoes').style.display = '';
       }
+      carregarEspreita(); // v3.76 - nao bloqueia o principal
+    }
+
+    // v3.76 - devolucoes esperadas do portal Magalu Entregas (indice a espreita)
+    async function carregarEspreita() {
+      try {
+        const r = await fetch('/api/admin/espreita');
+        const d = await r.json();
+        if (!d.ok || !d.quente) return; // indice frio: some quieto
+        const sec = document.getElementById('secaoEspreita');
+        const lista = document.getElementById('listaEspreita');
+        const emT = d.em_transito || [];
+        const atras = d.atrasadas_30d || [];
+        document.getElementById('countEspreita').textContent = emT.length;
+        if (emT.length === 0 && atras.length === 0) {
+          sec.style.display = 'none';
+          return;
+        }
+        let html = '<p style="font-size:13px;color:#666;margin:4px 0 10px;">' +
+          '🚚 <b>' + emT.length + '</b> em trânsito · ⏰ <b style="color:#c62828;">' + atras.length + '</b> atrasada(s) +30d · 📥 ' + (d.chegadas_30d || 0) + ' chegaram nos últimos 30d</p>';
+        for (const e of emT) {
+          const atrasada = (e.dias_em_transito || 0) > 30;
+          html += '<div style="border:1px solid ' + (atrasada ? '#ef9a9a' : '#ce93d8') + ';border-left:5px solid ' + (atrasada ? '#c62828' : '#6a1b9a') + ';border-radius:8px;padding:10px 12px;margin-bottom:8px;background:' + (atrasada ? '#fff5f5' : '#faf5ff') + ';">' +
+            '<b>Pedido ' + escapeHtml(e.pedido) + '</b> · ' + escapeHtml(e.categoria || '') + (e.valor != null ? ' · R$ ' + Number(e.valor).toFixed(2).replace('.', ',') : '') +
+            '<br><span style="font-size:12px;color:#555;">Em trânsito há <b>' + (e.dias_em_transito != null ? e.dias_em_transito : '?') + ' dia(s)</b> (devolução iniciada ' + (e.data_devolucao ? String(e.data_devolucao).slice(0, 10).split('-').reverse().join('/') : '-') + ')' +
+            (atrasada ? ' — <b style="color:#c62828;">⚠️ candidata a extravio, cobrar a Magalu</b>' : '') + '</span></div>';
+        }
+        lista.innerHTML = html;
+        sec.style.display = '';
+      } catch (e) { /* espreita e opcional: falha nao atrapalha o admin */ }
     }
 
     // v3.28.2 - atualiza SO aquele card, sem redesenhar a lista inteira:
