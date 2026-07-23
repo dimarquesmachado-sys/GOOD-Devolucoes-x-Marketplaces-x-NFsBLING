@@ -360,10 +360,30 @@
         const atras = d.atrasadas_30d || [];
         document.getElementById('countEspreita').textContent = emT.length;
         if (emT.length === 0) { sec.style.display = 'none'; return; }
+        // v3.80 - acoes por item da espreita
+    async function espreitaNotaPost(payload) {
+      const r = await fetch('/api/admin/espreita/nota', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+      });
+      const d = await r.json();
+      if (!d.ok) { alert('Falhou: ' + (d.erro || 'erro desconhecido')); return false; }
+      return true;
+    }
+    async function espreitaProcessado(chave) {
+      if (!confirm('Marcar como JÁ PROCESSADO?\n\nEla some do painel (chegou antes do app, ou já tratada).')) return;
+      if (await espreitaNotaPost({ chave, baixado: true })) carregarEspreita();
+    }
+    async function espreitaComentario(chave, btn) {
+      const atual = (btn && btn.dataset && btn.dataset.comentario) || '';
+      const texto = prompt('Comentário / tratativa com o marketplace:', atual);
+      if (texto === null) return;
+      if (await espreitaNotaPost({ chave, comentario: texto })) carregarEspreita();
+    }
+
         // v3.78 - link direto pra venda/devolucao no marketplace
         const linkVenda = (e) => {
           if (e.marketplace === 'ml' && e.pedido) return 'https://www.mercadolivre.com.br/vendas/' + encodeURIComponent(e.pedido) + '/detalhe';
-          if (e.marketplace === 'shopee' && e.pedido) return 'https://seller.shopee.com.br/portal/sale/order?keyword=' + encodeURIComponent(e.pedido);
+          if (e.marketplace === 'shopee' && e.pedido) return 'https://mover-pedidos-aguardando-x-atendido.onrender.com/good-checkout-offline/ir-shopee?sn=' + encodeURIComponent(e.pedido); // v3.80 - de-para order_sn->id interno, cai DENTRO do pedido
           if (e.marketplace === 'magalu') {
             if (e.uuid && e.categoria === 'agencia') return 'https://seller.magaluentregas.com.br/gestao-de-devolucoes/detalhes?id=' + encodeURIComponent(e.uuid) + '&type=' + encodeURIComponent(e.tipo || 'CUSTOMER_RETURN') + '&category=orders';
             return 'https://seller.magaluentregas.com.br/gestao-de-devolucoes';
@@ -379,7 +399,8 @@
           '🚚 <b>' + emT.length + '</b> em trânsito · ⏰ <b style="color:#c62828;">' + atras.length + '</b> atrasada(s) +30d' +
           (d.ml_aguardando_postagem ? ' · 🏷️ ' + d.ml_aguardando_postagem + ' ML aguardando o cliente postar' : '') +
           (d.magalu_chegadas_30d ? ' · 📥 ' + d.magalu_chegadas_30d + ' Magalu chegaram em 30d' : '') +
-          (d.shopee_recebidas_baixadas ? ' · ✅ ' + d.shopee_recebidas_baixadas + ' Shopee já bipadas (baixa automática)' : '') + '</p>';
+          (d.shopee_recebidas_baixadas ? ' · ✅ ' + d.shopee_recebidas_baixadas + ' Shopee já bipadas (baixa automática)' : '') +
+          (d.baixadas_manuais ? ' · 🧹 ' + d.baixadas_manuais + ' baixadas manualmente' : '') + '</p>';
         for (const e of emT) {
           const m = MKT[e.marketplace] || { nome: e.marketplace || '?', cor: '#616161' };
           const atrasada = (e.dias_em_transito || 0) > 30;
@@ -392,7 +413,12 @@
             '<br><span style="font-size:12px;color:#555;">' +
             (e.dias_em_transito != null ? 'Em trânsito há <b>' + e.dias_em_transito + ' dia(s)</b>' : 'Em trânsito') +
             (e.status ? ' · ' + escapeHtml(String(e.status)) : '') +
-            (e.congelada ? ' — <b style="color:#616161;">🧊 status congelado na Shopee, confirmar no 🔗</b>' : (atrasada ? ' — <b style="color:#c62828;">⚠️ candidata a extravio, cobrar o marketplace</b>' : '')) + '</span></div>';
+            (e.congelada ? ' — <b style="color:#616161;">🧊 status congelado na Shopee, confirmar no 🔗</b>' : (atrasada ? ' — <b style="color:#c62828;">⚠️ candidata a extravio, cobrar o marketplace</b>' : '')) + '</span>' +
+            (e.comentario ? '<div style="font-size:12px;color:#4a148c;background:#f3e5f5;border-radius:6px;padding:6px 8px;margin-top:6px;">💬 ' + escapeHtml(e.comentario) + '</div>' : '') +
+            '<div style="margin-top:6px;">' +
+              '<button onclick="espreitaProcessado(\'' + e.chave_nota + '\')" style="background:#2e7d32;color:#fff;border:none;border-radius:8px;padding:5px 10px;font-size:12px;font-weight:700;cursor:pointer;">✓ já processado</button> ' +
+              '<button onclick="espreitaComentario(\'' + e.chave_nota + '\', this)" data-comentario="' + escapeHtml(e.comentario || '') + '" style="background:#6a1b9a;color:#fff;border:none;border-radius:8px;padding:5px 10px;font-size:12px;font-weight:700;cursor:pointer;">💬 comentário</button>' +
+            '</div></div>';
         }
         lista.innerHTML = html;
         sec.style.display = '';
