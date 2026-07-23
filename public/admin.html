@@ -259,7 +259,7 @@
       <!-- v3.76 - A ESPREITA: devolucoes esperadas do portal Magalu Entregas -->
       <div class="secao" id="secaoEspreita" style="display:none;">
         <h2>
-          📮 À espreita — devoluções Magalu a caminho
+          📮 À espreita — devoluções a caminho (Magalu · ML · Shopee)
           <span class="badge-count" id="countEspreita" style="background:#6a1b9a;">0</span>
         </h2>
         <div id="listaEspreita"></div>
@@ -349,29 +349,39 @@
       carregarEspreita(); // v3.76 - nao bloqueia o principal
     }
 
-    // v3.76 - devolucoes esperadas do portal Magalu Entregas (indice a espreita)
+    // v3.77 - A ESPREITA UNIFICADA: Magalu + ML + Shopee (devolucoes a caminho)
     async function carregarEspreita() {
       try {
         const r = await fetch('/api/admin/espreita');
         const d = await r.json();
-        if (!d.ok || !d.quente) return; // indice frio: some quieto
+        if (!d.ok || !d.quente) return;
         const sec = document.getElementById('secaoEspreita');
         const lista = document.getElementById('listaEspreita');
         const emT = d.em_transito || [];
         const atras = d.atrasadas_30d || [];
         document.getElementById('countEspreita').textContent = emT.length;
-        if (emT.length === 0 && atras.length === 0) {
-          sec.style.display = 'none';
-          return;
-        }
+        if (emT.length === 0) { sec.style.display = 'none'; return; }
+        const MKT = {
+          magalu: { nome: 'Magalu', cor: '#1565c0' },
+          ml: { nome: 'Mercado Livre', cor: '#f9a825' },
+          shopee: { nome: 'Shopee', cor: '#e65100' },
+        };
         let html = '<p style="font-size:13px;color:#666;margin:4px 0 10px;">' +
-          '🚚 <b>' + emT.length + '</b> em trânsito · ⏰ <b style="color:#c62828;">' + atras.length + '</b> atrasada(s) +30d · 📥 ' + (d.chegadas_30d || 0) + ' chegaram nos últimos 30d</p>';
+          '🚚 <b>' + emT.length + '</b> em trânsito · ⏰ <b style="color:#c62828;">' + atras.length + '</b> atrasada(s) +30d' +
+          (d.ml_aguardando_postagem ? ' · 🏷️ ' + d.ml_aguardando_postagem + ' ML aguardando o cliente postar' : '') +
+          (d.magalu_chegadas_30d ? ' · 📥 ' + d.magalu_chegadas_30d + ' Magalu chegaram em 30d' : '') + '</p>';
         for (const e of emT) {
+          const m = MKT[e.marketplace] || { nome: e.marketplace || '?', cor: '#616161' };
           const atrasada = (e.dias_em_transito || 0) > 30;
           html += '<div style="border:1px solid ' + (atrasada ? '#ef9a9a' : '#ce93d8') + ';border-left:5px solid ' + (atrasada ? '#c62828' : '#6a1b9a') + ';border-radius:8px;padding:10px 12px;margin-bottom:8px;background:' + (atrasada ? '#fff5f5' : '#faf5ff') + ';">' +
-            '<b>Pedido ' + escapeHtml(e.pedido) + '</b> · ' + escapeHtml(e.categoria || '') + (e.valor != null ? ' · R$ ' + Number(e.valor).toFixed(2).replace('.', ',') : '') +
-            '<br><span style="font-size:12px;color:#555;">Em trânsito há <b>' + (e.dias_em_transito != null ? e.dias_em_transito : '?') + ' dia(s)</b> (devolução iniciada ' + (e.data_devolucao ? String(e.data_devolucao).slice(0, 10).split('-').reverse().join('/') : '-') + ')' +
-            (atrasada ? ' — <b style="color:#c62828;">⚠️ candidata a extravio, cobrar a Magalu</b>' : '') + '</span></div>';
+            '<span style="background:' + m.cor + ';color:#fff;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;">' + m.nome + '</span> ' +
+            '<b>' + escapeHtml(String(e.pedido || e.tracking || '-')) + '</b>' +
+            (e.pedido && e.tracking ? ' · <code style="font-size:11px;">' + escapeHtml(String(e.tracking)) + '</code>' : '') +
+            (e.valor != null ? ' · R$ ' + Number(e.valor).toFixed(2).replace('.', ',') : '') +
+            '<br><span style="font-size:12px;color:#555;">' +
+            (e.dias_em_transito != null ? 'Em trânsito há <b>' + e.dias_em_transito + ' dia(s)</b>' : 'Em trânsito') +
+            (e.status ? ' · ' + escapeHtml(String(e.status)) : '') +
+            (atrasada ? ' — <b style="color:#c62828;">⚠️ candidata a extravio, cobrar o marketplace</b>' : '') + '</span></div>';
         }
         lista.innerHTML = html;
         sec.style.display = '';
