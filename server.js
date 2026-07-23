@@ -183,7 +183,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '3.77 (a espreita unificada - Magalu + ML + Shopee)',
+    version: '3.79 (baixa automatica por triagem + rotulo congelada)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -2362,11 +2362,32 @@ app.get('/api/admin/espreita', requerAdmin, async (req, res) => {
   const mlR = mlReturns.resumoEspreita();
   let shopeeR = { quente: false, em_transito: [] };
   try { shopeeR = await shopee.resumoEspreita(); } catch (e) { shopeeR = { quente: false, erro: e.message, em_transito: [] }; }
-  const unificada = [
-    ...magaluR.em_transito.map(d => ({ marketplace: 'magalu', pedido: d.pedido, tracking: null, status: (d.categoria || '') + (d.status ? ' / ' + d.status : ''), dias_em_transito: d.dias_em_transito, valor: d.valor })),
+  let unificada = [
+    ...magaluR.em_transito.map(d => ({ marketplace: 'magalu', pedido: d.pedido, tracking: null, status: (d.categoria || '') + (d.status ? ' / ' + d.status : ''), dias_em_transito: d.dias_em_transito, valor: d.valor, uuid: d.chave || null, tipo: d.tipo || null, categoria: d.categoria || null })),
     ...mlR.em_transito,
     ...shopeeR.em_transito,
   ].sort((x, y) => (y.dias_em_transito || 0) - (x.dias_em_transito || 0));
+
+  // v3.79 - BAIXA AUTOMATICA por triagem: devolucao Shopee ja BIPADA no
+  // galpao sai do "em transito" (o status ACCEPTED congela na origem; a
+  // triagem fisica e a verdade). Cruzamento pelo tracking == shipment_id.
+  let recebidasShopee = 0;
+  try {
+    const trks = unificada.filter(d => d.marketplace === 'shopee' && d.tracking).map(d => String(d.tracking));
+    if (trks.length > 0) {
+      const { data: tri } = await supabase.from('devolucoes').select('shipment_id').in('shipment_id', trks);
+      const bipados = new Set((tri || []).map(t => String(t.shipment_id)));
+      if (bipados.size > 0) {
+        recebidasShopee = unificada.filter(d => d.marketplace === 'shopee' && bipados.has(String(d.tracking))).length;
+        unificada = unificada.filter(d => !(d.marketplace === 'shopee' && bipados.has(String(d.tracking))));
+      }
+    }
+  } catch (e) { /* baixa e opcional: falha nao derruba o painel */ }
+
+  // legado congelado: Shopee ACCEPTED ha 60+ dias = origem parou de atualizar
+  for (const d of unificada) {
+    if (d.marketplace === 'shopee' && (d.dias_em_transito || 0) > 60) d.congelada = true;
+  }
   return res.json({
     ok: true,
     quente: magaluR.quente || mlR.quente || shopeeR.quente,
@@ -2374,6 +2395,7 @@ app.get('/api/admin/espreita', requerAdmin, async (req, res) => {
     atrasadas_30d: unificada.filter(d => (d.dias_em_transito || 0) > 30),
     ml_aguardando_postagem: mlR.aguardando_postagem || 0,
     magalu_chegadas_30d: magaluR.chegadas_30d || 0,
+    shopee_recebidas_baixadas: recebidasShopee,
     fontes: { magalu: magaluR.quente, ml: mlR.quente, shopee: shopeeR.quente },
     erro: magaluR.erro || shopeeR.erro || null,
   });
