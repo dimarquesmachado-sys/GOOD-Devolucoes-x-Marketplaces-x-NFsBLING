@@ -348,19 +348,7 @@
       carregarEspreita(); // v3.76 - nao bloqueia o principal
     }
 
-    // v3.77 - A ESPREITA UNIFICADA: Magalu + ML + Shopee (devolucoes a caminho)
-    async function carregarEspreita() {
-      try {
-        const r = await fetch('/api/admin/espreita');
-        const d = await r.json();
-        if (!d.ok || !d.quente) return;
-        const sec = document.getElementById('secaoEspreita');
-        const lista = document.getElementById('listaEspreita');
-        const emT = d.em_transito || [];
-        const atras = d.atrasadas_30d || [];
-        document.getElementById('countEspreita').textContent = emT.length;
-        if (emT.length === 0) { sec.style.display = 'none'; return; }
-        // v3.80 - acoes por item da espreita
+    // v3.80.1 - acoes por item da espreita (ESCOPO GLOBAL - o onclick precisa achar)
     async function espreitaNotaPost(payload) {
       const r = await fetch('/api/admin/espreita/nota', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
@@ -380,6 +368,18 @@
       if (await espreitaNotaPost({ chave, comentario: texto })) carregarEspreita();
     }
 
+        // v3.77 - A ESPREITA UNIFICADA: Magalu + ML + Shopee (devolucoes a caminho)
+    async function carregarEspreita() {
+      try {
+        const r = await fetch('/api/admin/espreita');
+        const d = await r.json();
+        if (!d.ok || !d.quente) return;
+        const sec = document.getElementById('secaoEspreita');
+        const lista = document.getElementById('listaEspreita');
+        const emT = d.em_transito || [];
+        const atras = d.atrasadas_30d || [];
+        document.getElementById('countEspreita').textContent = emT.length;
+        if (emT.length === 0) { sec.style.display = 'none'; return; }
         // v3.78 - link direto pra venda/devolucao no marketplace
         const linkVenda = (e) => {
           if (e.marketplace === 'ml' && e.pedido) return 'https://www.mercadolivre.com.br/vendas/' + encodeURIComponent(e.pedido) + '/detalhe';
