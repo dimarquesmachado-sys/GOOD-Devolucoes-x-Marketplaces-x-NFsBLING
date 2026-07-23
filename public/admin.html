@@ -361,6 +361,16 @@
         const atras = d.atrasadas_30d || [];
         document.getElementById('countEspreita').textContent = emT.length;
         if (emT.length === 0) { sec.style.display = 'none'; return; }
+        // v3.78 - link direto pra venda/devolucao no marketplace
+        const linkVenda = (e) => {
+          if (e.marketplace === 'ml' && e.pedido) return 'https://www.mercadolivre.com.br/vendas/' + encodeURIComponent(e.pedido) + '/detalhe';
+          if (e.marketplace === 'shopee' && e.pedido) return 'https://seller.shopee.com.br/portal/sale/order?keyword=' + encodeURIComponent(e.pedido);
+          if (e.marketplace === 'magalu') {
+            if (e.uuid && e.categoria === 'agencia') return 'https://seller.magaluentregas.com.br/gestao-de-devolucoes/detalhes?id=' + encodeURIComponent(e.uuid) + '&type=' + encodeURIComponent(e.tipo || 'CUSTOMER_RETURN') + '&category=orders';
+            return 'https://seller.magaluentregas.com.br/gestao-de-devolucoes';
+          }
+          return null;
+        };
         const MKT = {
           magalu: { nome: 'Magalu', cor: '#1565c0' },
           ml: { nome: 'Mercado Livre', cor: '#f9a825' },
@@ -369,7 +379,8 @@
         let html = '<p style="font-size:13px;color:#666;margin:4px 0 10px;">' +
           '🚚 <b>' + emT.length + '</b> em trânsito · ⏰ <b style="color:#c62828;">' + atras.length + '</b> atrasada(s) +30d' +
           (d.ml_aguardando_postagem ? ' · 🏷️ ' + d.ml_aguardando_postagem + ' ML aguardando o cliente postar' : '') +
-          (d.magalu_chegadas_30d ? ' · 📥 ' + d.magalu_chegadas_30d + ' Magalu chegaram em 30d' : '') + '</p>';
+          (d.magalu_chegadas_30d ? ' · 📥 ' + d.magalu_chegadas_30d + ' Magalu chegaram em 30d' : '') +
+          (d.shopee_recebidas_baixadas ? ' · ✅ ' + d.shopee_recebidas_baixadas + ' Shopee já bipadas (baixa automática)' : '') + '</p>';
         for (const e of emT) {
           const m = MKT[e.marketplace] || { nome: e.marketplace || '?', cor: '#616161' };
           const atrasada = (e.dias_em_transito || 0) > 30;
@@ -378,10 +389,11 @@
             '<b>' + escapeHtml(String(e.pedido || e.tracking || '-')) + '</b>' +
             (e.pedido && e.tracking ? ' · <code style="font-size:11px;">' + escapeHtml(String(e.tracking)) + '</code>' : '') +
             (e.valor != null ? ' · R$ ' + Number(e.valor).toFixed(2).replace('.', ',') : '') +
+            (linkVenda(e) ? ' <a href="' + linkVenda(e) + '" target="_blank" rel="noopener" style="background:#1565c0;color:#fff;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;text-decoration:none;margin-left:6px;">🔗 abrir</a>' : '') +
             '<br><span style="font-size:12px;color:#555;">' +
             (e.dias_em_transito != null ? 'Em trânsito há <b>' + e.dias_em_transito + ' dia(s)</b>' : 'Em trânsito') +
             (e.status ? ' · ' + escapeHtml(String(e.status)) : '') +
-            (atrasada ? ' — <b style="color:#c62828;">⚠️ candidata a extravio, cobrar o marketplace</b>' : '') + '</span></div>';
+            (e.congelada ? ' — <b style="color:#616161;">🧊 status congelado na Shopee, confirmar no 🔗</b>' : (atrasada ? ' — <b style="color:#c62828;">⚠️ candidata a extravio, cobrar o marketplace</b>' : '')) + '</span></div>';
         }
         lista.innerHTML = html;
         sec.style.display = '';
