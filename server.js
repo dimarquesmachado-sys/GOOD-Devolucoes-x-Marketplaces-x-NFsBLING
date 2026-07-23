@@ -183,7 +183,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '3.79 (baixa automatica por triagem + rotulo congelada)',
+    version: '3.80 (baixa manual + comentarios na espreita)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -2355,6 +2355,26 @@ app.get('/api/debug/ml-get', requerAdmin, async (req, res) => {
   return res.status(r.ok ? 200 : (r.status || 502)).json({ ok: r.ok, status: r.status, data: r.ok ? r.data : r.error });
 });
 
+// v3.80 - baixa manual + comentario por item da espreita (tabela espreita_notas)
+app.post('/api/admin/espreita/nota', requerAdmin, async (req, res) => {
+  const chave = String(req.body?.chave || '').trim();
+  if (!chave) return res.status(400).json({ ok: false, erro: 'chave obrigatoria' });
+  const registro = { chave, atualizado_em: new Date().toISOString(), usuario: req.usuario || null };
+  if (typeof req.body.baixado === 'boolean') registro.baixado = req.body.baixado;
+  if (typeof req.body.comentario === 'string') registro.comentario = req.body.comentario.slice(0, 2000);
+  try {
+    const { error } = await supabase.from('espreita_notas').upsert(registro, { onConflict: 'chave' });
+    if (error) {
+      const msg = String(error.message || '');
+      if (/espreita_notas/.test(msg) && /not exist|find the table|schema cache/i.test(msg)) {
+        return res.status(500).json({ ok: false, erro: 'Tabela espreita_notas ainda nao existe no Supabase - rode o SQL que o Claude passou.' });
+      }
+      return res.status(500).json({ ok: false, erro: msg });
+    }
+    return res.json({ ok: true });
+  } catch (e) { return res.status(500).json({ ok: false, erro: e.message }); }
+});
+
 // v3.76 - painel 'a espreita': devolucoes esperadas (em transito/atrasadas)
 app.get('/api/admin/espreita', requerAdmin, async (req, res) => {
   // v3.77 - agregador: Magalu (BFF) + ML (indice claims->returns) + Shopee (proxy)
@@ -2388,6 +2408,25 @@ app.get('/api/admin/espreita', requerAdmin, async (req, res) => {
   for (const d of unificada) {
     if (d.marketplace === 'shopee' && (d.dias_em_transito || 0) > 60) d.congelada = true;
   }
+
+  // v3.80 - notas manuais: "ja processado" some da lista; comentarios anexam
+  const chaveEspreita = (d) => String(d.tracking || (d.marketplace + ':' + d.pedido));
+  let baixadasManuais = 0;
+  try {
+    const chaves = unificada.map(chaveEspreita);
+    if (chaves.length > 0) {
+      const { data: notas } = await supabase.from('espreita_notas').select('chave, baixado, comentario').in('chave', chaves);
+      const porChave = {};
+      for (const n of (notas || [])) porChave[n.chave] = n;
+      baixadasManuais = unificada.filter(d => porChave[chaveEspreita(d)]?.baixado).length;
+      unificada = unificada.filter(d => !porChave[chaveEspreita(d)]?.baixado);
+      for (const d of unificada) {
+        const n = porChave[chaveEspreita(d)];
+        if (n && n.comentario) d.comentario = n.comentario;
+        d.chave_nota = chaveEspreita(d);
+      }
+    }
+  } catch (e) { for (const d of unificada) d.chave_nota = chaveEspreita(d); }
   return res.json({
     ok: true,
     quente: magaluR.quente || mlR.quente || shopeeR.quente,
@@ -2396,6 +2435,7 @@ app.get('/api/admin/espreita', requerAdmin, async (req, res) => {
     ml_aguardando_postagem: mlR.aguardando_postagem || 0,
     magalu_chegadas_30d: magaluR.chegadas_30d || 0,
     shopee_recebidas_baixadas: recebidasShopee,
+    baixadas_manuais: baixadasManuais,
     fontes: { magalu: magaluR.quente, ml: mlR.quente, shopee: shopeeR.quente },
     erro: magaluR.erro || shopeeR.erro || null,
   });
