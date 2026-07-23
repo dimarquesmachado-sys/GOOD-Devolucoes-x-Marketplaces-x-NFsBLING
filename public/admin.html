@@ -348,27 +348,62 @@
       carregarEspreita(); // v3.76 - nao bloqueia o principal
     }
 
-    // v3.80.1 - acoes por item da espreita (ESCOPO GLOBAL - o onclick precisa achar)
+    // v3.80.2 - acoes da espreita INLINE no card (zero popups)
+    window._espComentarios = {};
     async function espreitaNotaPost(payload) {
       const r = await fetch('/api/admin/espreita/nota', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
       });
-      const d = await r.json();
-      if (!d.ok) { alert('Falhou: ' + (d.erro || 'erro desconhecido')); return false; }
-      return true;
+      return await r.json();
     }
-    async function espreitaProcessado(chave) {
-      if (!confirm('Marcar como JÁ PROCESSADO?\n\nEla some do painel (chegou antes do app, ou já tratada).')) return;
-      if (await espreitaNotaPost({ chave, baixado: true })) carregarEspreita();
+    function espreitaFechar(chave) {
+      const area = document.getElementById('espArea-' + chave);
+      if (area) { area.style.display = 'none'; area.innerHTML = ''; }
     }
-    async function espreitaComentario(chave, btn) {
-      const atual = (btn && btn.dataset && btn.dataset.comentario) || '';
-      const texto = prompt('Comentário / tratativa com o marketplace:', atual);
-      if (texto === null) return;
-      if (await espreitaNotaPost({ chave, comentario: texto })) carregarEspreita();
+    function espreitaErro(chave, msg) {
+      const el = document.getElementById('espErro-' + chave);
+      if (el) el.textContent = '❌ ' + msg;
+    }
+    function espreitaAbrir(chave, modo) {
+      const area = document.getElementById('espArea-' + chave);
+      if (!area) return;
+      const btnCss = 'border:none;border-radius:8px;padding:7px 14px;font-size:12px;font-weight:700;cursor:pointer;';
+      if (modo === 'comentar') {
+        const atual = window._espComentarios[chave] || '';
+        area.innerHTML = '<div style="background:#faf5ff;border:1px solid #ce93d8;border-radius:8px;padding:10px;margin-top:8px;">'
+          + '<b style="font-size:12px;color:#4a148c;">💬 Comentário / tratativa com o marketplace</b>'
+          + '<textarea id="espTexto-' + chave + '" rows="3" style="width:100%;box-sizing:border-box;margin-top:6px;padding:8px;border:1px solid #ccc;border-radius:8px;font-size:13px;">' + escapeHtml(atual) + '</textarea>'
+          + '<div style="margin-top:6px;">'
+          + '<button onclick="espreitaSalvarComentario(\'' + chave + '\')" style="background:#2e7d32;color:#fff;' + btnCss + '">💾 Salvar</button> '
+          + '<button onclick="espreitaFechar(\'' + chave + '\')" style="background:#999;color:#fff;' + btnCss + '">✖ Cancelar</button>'
+          + '<span id="espErro-' + chave + '" style="font-size:12px;color:#c62828;margin-left:8px;"></span>'
+          + '</div></div>';
+      } else {
+        area.innerHTML = '<div style="background:#fff8e1;border:1px solid #ffcc80;border-radius:8px;padding:10px;margin-top:8px;">'
+          + '<b style="font-size:12px;">Marcar como JÁ PROCESSADO?</b> <span style="font-size:12px;color:#666;">Some do painel (chegou antes do app, ou já tratado).</span>'
+          + '<div style="margin-top:6px;">'
+          + '<button onclick="espreitaConfirmarProcessado(\'' + chave + '\')" style="background:#2e7d32;color:#fff;' + btnCss + '">✅ Sim, processar</button> '
+          + '<button onclick="espreitaFechar(\'' + chave + '\')" style="background:#999;color:#fff;' + btnCss + '">✖ Cancelar</button>'
+          + '<span id="espErro-' + chave + '" style="font-size:12px;color:#c62828;margin-left:8px;"></span>'
+          + '</div></div>';
+      }
+      area.style.display = '';
+      const ta = document.getElementById('espTexto-' + chave);
+      if (ta) ta.focus();
+    }
+    async function espreitaSalvarComentario(chave) {
+      const ta = document.getElementById('espTexto-' + chave);
+      const d = await espreitaNotaPost({ chave, comentario: String(ta ? ta.value : '') });
+      if (!d.ok) return espreitaErro(chave, d.erro || 'erro desconhecido');
+      carregarEspreita();
+    }
+    async function espreitaConfirmarProcessado(chave) {
+      const d = await espreitaNotaPost({ chave, baixado: true });
+      if (!d.ok) return espreitaErro(chave, d.erro || 'erro desconhecido');
+      carregarEspreita();
     }
 
-        // v3.77 - A ESPREITA UNIFICADA: Magalu + ML + Shopee (devolucoes a caminho)
+    // v3.77 - A ESPREITA UNIFICADA: Magalu + ML + Shopee (devolucoes a caminho)
     async function carregarEspreita() {
       try {
         const r = await fetch('/api/admin/espreita');
@@ -376,6 +411,7 @@
         if (!d.ok || !d.quente) return;
         const sec = document.getElementById('secaoEspreita');
         const lista = document.getElementById('listaEspreita');
+        window._espComentarios = {};
         const emT = d.em_transito || [];
         const atras = d.atrasadas_30d || [];
         document.getElementById('countEspreita').textContent = emT.length;
@@ -416,9 +452,11 @@
             (e.congelada ? ' — <b style="color:#616161;">🧊 status congelado na Shopee, confirmar no 🔗</b>' : (atrasada ? ' — <b style="color:#c62828;">⚠️ candidata a extravio, cobrar o marketplace</b>' : '')) + '</span>' +
             (e.comentario ? '<div style="font-size:12px;color:#4a148c;background:#f3e5f5;border-radius:6px;padding:6px 8px;margin-top:6px;">💬 ' + escapeHtml(e.comentario) + '</div>' : '') +
             '<div style="margin-top:6px;">' +
-              '<button onclick="espreitaProcessado(\'' + e.chave_nota + '\')" style="background:#2e7d32;color:#fff;border:none;border-radius:8px;padding:5px 10px;font-size:12px;font-weight:700;cursor:pointer;">✓ já processado</button> ' +
-              '<button onclick="espreitaComentario(\'' + e.chave_nota + '\', this)" data-comentario="' + escapeHtml(e.comentario || '') + '" style="background:#6a1b9a;color:#fff;border:none;border-radius:8px;padding:5px 10px;font-size:12px;font-weight:700;cursor:pointer;">💬 comentário</button>' +
-            '</div></div>';
+              '<button onclick="espreitaAbrir(\'' + e.chave_nota + '\', \'processar\')" style="background:#2e7d32;color:#fff;border:none;border-radius:8px;padding:5px 10px;font-size:12px;font-weight:700;cursor:pointer;">✓ já processado</button> ' +
+              '<button onclick="espreitaAbrir(\'' + e.chave_nota + '\', \'comentar\')" style="background:#6a1b9a;color:#fff;border:none;border-radius:8px;padding:5px 10px;font-size:12px;font-weight:700;cursor:pointer;">💬 ' + (e.comentario ? 'editar comentário' : 'comentário') + '</button>' +
+            '</div>' +
+            '<div id="espArea-' + e.chave_nota + '" style="display:none;"></div></div>';
+          window._espComentarios[e.chave_nota] = e.comentario || '';
         }
         lista.innerHTML = html;
         sec.style.display = '';
