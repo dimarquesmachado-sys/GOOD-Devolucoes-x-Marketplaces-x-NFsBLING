@@ -408,14 +408,25 @@
       try {
         const r = await fetch('/api/admin/espreita');
         const d = await r.json();
-        if (!d.ok || !d.quente) return;
         const sec = document.getElementById('secaoEspreita');
         const lista = document.getElementById('listaEspreita');
+        // v3.80.3 - indice frio (logo apos deploy) NAO some mais: avisa e re-tenta
+        if (!d.ok || !d.quente) {
+          document.getElementById('countEspreita').textContent = '…';
+          lista.innerHTML = '<p style="color:#888;font-size:13px;">⏳ Aquecendo os índices (normal por ~3 min após um deploy)… atualiza sozinho.</p>';
+          sec.style.display = '';
+          setTimeout(carregarEspreita, 45000);
+          return;
+        }
         window._espComentarios = {};
         const emT = d.em_transito || [];
         const atras = d.atrasadas_30d || [];
         document.getElementById('countEspreita').textContent = emT.length;
-        if (emT.length === 0) { sec.style.display = 'none'; return; }
+        if (emT.length === 0) {
+          lista.innerHTML = '<p style="color:#888;font-size:13px;">Nenhuma devolução a caminho. 🎉</p>';
+          sec.style.display = '';
+          return;
+        }
         // v3.78 - link direto pra venda/devolucao no marketplace
         const linkVenda = (e) => {
           if (e.marketplace === 'ml' && e.pedido) return 'https://www.mercadolivre.com.br/vendas/' + encodeURIComponent(e.pedido) + '/detalhe';
