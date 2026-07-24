@@ -301,6 +301,19 @@
         <div id="listaEspreita"></div>
       </div>
 
+      <!-- v3.83 - RECADOS pro estoquista (aviso preso a uma venda/NF) -->
+      <div class="secao" style="grid-column: 1 / -1;">
+        <h2>📣 Recados pro estoquista <span class="badge-count" id="countRecados" style="background:#c62828;">0</span></h2>
+        <div style="font-size:13px;color:#666;margin-bottom:10px;">Prenda um aviso a uma venda/NF/rastreio. Quando alguém bipar essa devolução, o recado aparece em destaque e exige "OK, ciente".</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-start;">
+          <input type="text" id="recadoChave" placeholder="Pedido, NF, chave ou rastreio" style="flex:1;min-width:220px;padding:10px;border:1px solid #ccc;border-radius:8px;font-size:14px;">
+          <input type="text" id="recadoTexto" placeholder="Ex: cliente avisou que veio com vidro trincado - NAO reenviar" style="flex:2;min-width:280px;padding:10px;border:1px solid #ccc;border-radius:8px;font-size:14px;">
+          <button onclick="salvarRecado()" style="background:#c62828;color:#fff;border:none;border-radius:8px;padding:10px 18px;font-weight:700;cursor:pointer;">📣 Criar recado</button>
+        </div>
+        <div id="recadoMsg" style="font-size:13px;margin-top:6px;"></div>
+        <div id="listaRecados" style="margin-top:12px;"></div>
+      </div>
+
     </div>
 
   </div>
@@ -346,6 +359,7 @@
         document.getElementById('secoes').style.display = '';
       }
       carregarEspreita(); // v3.76 - nao bloqueia o principal
+      carregarRecados();
     }
 
     // v3.80.2 - acoes da espreita INLINE no card (zero popups)
@@ -401,6 +415,47 @@
       const d = await espreitaNotaPost({ chave, baixado: true });
       if (!d.ok) return espreitaErro(chave, d.erro || 'erro desconhecido');
       carregarEspreita();
+    }
+
+    // v3.83 - recados pro estoquista
+    async function salvarRecado() {
+      const chave = document.getElementById('recadoChave').value.trim();
+      const texto = document.getElementById('recadoTexto').value.trim();
+      const msg = document.getElementById('recadoMsg');
+      if (!chave || !texto) { msg.innerHTML = '<span style="color:#c62828;">Preencha o identificador e o texto.</span>'; return; }
+      const r = await fetch('/api/admin/recado', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ chave, texto }) });
+      const d = await r.json();
+      if (!d.ok) { msg.innerHTML = '<span style="color:#c62828;">❌ ' + escapeHtml(d.erro || 'erro') + '</span>'; return; }
+      msg.innerHTML = '<span style="color:#2e7d32;">✅ Recado criado para <b>' + escapeHtml(d.chave) + '</b></span>';
+      document.getElementById('recadoChave').value = '';
+      document.getElementById('recadoTexto').value = '';
+      carregarRecados();
+    }
+    async function removerRecado(id) {
+      await fetch('/api/admin/recado/' + id + '/remover', { method: 'POST' });
+      carregarRecados();
+    }
+    async function carregarRecados() {
+      try {
+        const r = await fetch('/api/admin/recados');
+        const d = await r.json();
+        const lista = document.getElementById('listaRecados');
+        if (!d.ok) { lista.innerHTML = '<span style="color:#c62828;font-size:13px;">' + escapeHtml(d.erro || 'erro') + '</span>'; return; }
+        const rs = d.recados || [];
+        document.getElementById('countRecados').textContent = rs.length;
+        if (rs.length === 0) { lista.innerHTML = '<span style="color:#888;font-size:13px;">Nenhum recado ativo.</span>'; return; }
+        let h = '';
+        for (const rc of rs) {
+          const lido = !!rc.ciente_em;
+          h += '<div style="border:1px solid ' + (lido ? '#c8e6c9' : '#ffcdd2') + ';background:' + (lido ? '#f1f8e9' : '#fff5f5') + ';border-radius:8px;padding:10px;margin-bottom:6px;">'
+            + '<b>' + escapeHtml(rc.chave) + '</b> · <span style="font-size:13px;">' + escapeHtml(rc.texto) + '</span>'
+            + '<br><span style="font-size:12px;color:#666;">' + (lido ? '✅ ciente por ' + escapeHtml(rc.ciente_por || '-') : '⏳ ainda não lido pelo galpão')
+            + ' · criado por ' + escapeHtml(rc.criado_por || '-') + '</span> '
+            + '<button onclick="removerRecado(' + rc.id + ')" style="background:#999;color:#fff;border:none;border-radius:8px;padding:4px 10px;font-size:12px;cursor:pointer;margin-left:8px;">✖ remover</button>'
+            + '</div>';
+        }
+        lista.innerHTML = h;
+      } catch (e) { /* opcional */ }
     }
 
     // v3.81 - filtro/ordenacao client-side (re-render sem novo fetch)
