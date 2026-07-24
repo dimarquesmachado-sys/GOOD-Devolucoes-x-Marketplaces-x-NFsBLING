@@ -183,7 +183,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '3.85 (CD do ML + produto/cliente/NF/FULL-FLEX no card)',
+    version: '3.86 (pack_id ML no card e na busca)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -2468,7 +2468,7 @@ function mapLogistica(lt) {
 let ESP_ENRIQ_RODANDO = false;
 const nfDaChave = (k) => { const m = String(k || '').match(/^\d{44}$/) ? String(k).slice(25, 34).replace(/^0+/, '') : null; return m || null; };
 async function enriquecerItemEspreita(d) {
-  const out = { cliente: null, nf: null, produto: null, qtd: null, logistica: null }; // v3.85: mais dados no card
+  const out = { cliente: null, nf: null, produto: null, qtd: null, logistica: null, pack_id: null }; // v3.86
   try {
     if (d.marketplace === 'ml' && d.pedido) {
       const rO = await chamarML(`https://api.mercadolibre.com/orders/${d.pedido}`);
@@ -2477,6 +2477,7 @@ async function enriquecerItemEspreita(d) {
         out.cliente = [b.first_name, b.last_name].filter(Boolean).join(' ') || b.nickname || null;
         const it = (rO.data.order_items || [])[0];
         if (it) { out.produto = it.item?.title || null; out.qtd = (rO.data.order_items || []).reduce((a, x) => a + (x.quantity || 0), 0); }
+        out.pack_id = rO.data.pack_id ? String(rO.data.pack_id) : null; // v3.86: pack_id vem na etiqueta de devolucao ML
         const shipIda = rO.data.shipping?.id;
         if (shipIda) {
           const rS = await chamarML(`https://api.mercadolibre.com/shipments/${shipIda}`, { 'x-format-new': 'true' });
@@ -2623,7 +2624,7 @@ app.get('/api/admin/espreita', requerAdmin, async (req, res) => {
   // v3.81 - anexa cliente/NF do cache; dinheiro: ML tem status_money nativo
   for (const d of unificada) {
     const en = ESP_ENRIQ.get(d.chave_nota);
-    if (en) { d.cliente = en.cliente; d.nf = en.nf; d.produto = en.produto; d.qtd = en.qtd; if (en.logistica) d.logistica = en.logistica; }
+    if (en) { d.cliente = en.cliente; d.nf = en.nf; d.produto = en.produto; d.qtd = en.qtd; d.pack_id = en.pack_id; if (en.logistica) d.logistica = en.logistica; }
     if (d.marketplace === 'ml') d.dinheiro = d.status_money === 'refunded' ? 'estornado_cliente' : (d.status_money === 'retained' ? 'retido_com_voce' : null);
   }
   dispararEnriquecimentoEspreita(unificada);
@@ -2660,7 +2661,7 @@ app.get('/api/admin/espreita', requerAdmin, async (req, res) => {
         .filter(d => !notasN[d.chave_nota]?.baixado)
         .map(d => {
           const en = ESP_ENRIQ.get(d.chave_nota);
-          return { ...d, comentario: notasN[d.chave_nota]?.comentario || null, cliente: en?.cliente || null, nf: en?.nf || null, produto: en?.produto || null, qtd: en?.qtd || null, logistica: en?.logistica || null };
+          return { ...d, comentario: notasN[d.chave_nota]?.comentario || null, cliente: en?.cliente || null, nf: en?.nf || null, produto: en?.produto || null, qtd: en?.qtd || null, logistica: en?.logistica || null, pack_id: en?.pack_id || null };
         });
       dispararEnriquecimentoEspreita(nuncaBipadas);
     }
