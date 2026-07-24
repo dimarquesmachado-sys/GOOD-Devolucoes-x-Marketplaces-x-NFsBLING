@@ -403,6 +403,12 @@
       carregarEspreita();
     }
 
+    // v3.81 - filtro/ordenacao client-side (re-render sem novo fetch)
+    window._espFiltro = 'todos';
+    window._espOrdem = 'antigas'; // 'antigas' = mais dias primeiro | 'novas' = menos dias primeiro
+    function espreitaFiltrar(f) { window._espFiltro = f; if (window._espDados) renderEspreita(window._espDados); }
+    function espreitaOrdenar() { window._espOrdem = (window._espOrdem === 'antigas') ? 'novas' : 'antigas'; if (window._espDados) renderEspreita(window._espDados); }
+
     // v3.77 - A ESPREITA UNIFICADA: Magalu + ML + Shopee (devolucoes a caminho)
     async function carregarEspreita() {
       try {
@@ -418,6 +424,14 @@
           setTimeout(carregarEspreita, 45000);
           return;
         }
+        window._espDados = d;
+        renderEspreita(d);
+      } catch (e) { /* espreita e opcional: falha nao atrapalha o admin */ }
+    }
+
+    function renderEspreita(d) {
+        const sec = document.getElementById('secaoEspreita');
+        const lista = document.getElementById('listaEspreita');
         window._espComentarios = {};
         const emT = d.em_transito || [];
         const atras = d.atrasadas_30d || [];
@@ -448,7 +462,20 @@
           (d.magalu_chegadas_30d ? ' · 📥 ' + d.magalu_chegadas_30d + ' Magalu chegaram em 30d' : '') +
           (d.shopee_recebidas_baixadas ? ' · ✅ ' + d.shopee_recebidas_baixadas + ' Shopee já bipadas (baixa automática)' : '') +
           (d.baixadas_manuais ? ' · 🧹 ' + d.baixadas_manuais + ' baixadas manualmente' : '') + '</p>';
-        for (const e of emT) {
+        const F = window._espFiltro || 'todos';
+        let itens = (F === 'todos') ? emT : emT.filter(x => x.marketplace === F);
+        itens = [...itens].sort((x, y) => (window._espOrdem === 'novas')
+          ? ((x.dias_em_transito || 0) - (y.dias_em_transito || 0))
+          : ((y.dias_em_transito || 0) - (x.dias_em_transito || 0)));
+        const fb = (id, rot, cor) => '<button onclick="espreitaFiltrar(\'' + id + '\')" style="border:none;border-radius:14px;padding:5px 12px;font-size:12px;font-weight:700;cursor:pointer;margin-right:6px;background:' + (F === id ? cor : '#e0e0e0') + ';color:' + (F === id ? '#fff' : '#555') + ';">' + rot + '</button>';
+        html += '<div style="margin:2px 0 10px;">'
+          + fb('todos', 'Todos (' + emT.length + ')', '#37474f')
+          + fb('ml', 'Mercado Livre (' + emT.filter(x => x.marketplace === 'ml').length + ')', '#f9a825')
+          + fb('magalu', 'Magalu (' + emT.filter(x => x.marketplace === 'magalu').length + ')', '#1565c0')
+          + fb('shopee', 'Shopee (' + emT.filter(x => x.marketplace === 'shopee').length + ')', '#e65100')
+          + '<button onclick="espreitaOrdenar()" style="border:1px solid #6a1b9a;background:#fff;color:#6a1b9a;border-radius:14px;padding:5px 12px;font-size:12px;font-weight:700;cursor:pointer;">' + (window._espOrdem === 'antigas' ? '⌛ mais antigas primeiro' : '🕐 mais recentes primeiro') + ' ↕</button>'
+          + '</div>';
+        for (const e of itens) {
           const m = MKT[e.marketplace] || { nome: e.marketplace || '?', cor: '#616161' };
           const atrasada = (e.dias_em_transito || 0) > 30;
           html += '<div style="border:1px solid ' + (atrasada ? '#ef9a9a' : '#ce93d8') + ';border-left:5px solid ' + (atrasada ? '#c62828' : '#6a1b9a') + ';border-radius:8px;padding:10px 12px;margin-bottom:8px;background:' + (atrasada ? '#fff5f5' : '#faf5ff') + ';">' +
@@ -461,6 +488,14 @@
             (e.dias_em_transito != null ? 'Em trânsito há <b>' + e.dias_em_transito + ' dia(s)</b>' : 'Em trânsito') +
             (e.status ? ' · ' + escapeHtml(String(e.status)) : '') +
             (e.congelada ? ' — <b style="color:#616161;">🧊 status congelado na Shopee, confirmar no 🔗</b>' : (atrasada ? ' — <b style="color:#c62828;">⚠️ candidata a extravio, cobrar o marketplace</b>' : '')) + '</span>' +
+            ((e.cliente || e.nf || e.dinheiro || e.marketplace === 'ml') ?
+              '<br><span style="font-size:12px;color:#333;">' +
+              (e.cliente ? '👤 ' + escapeHtml(e.cliente) + '  ' : '') +
+              (e.nf ? '🧾 NF ' + escapeHtml(String(e.nf)) + '  ' : '') +
+              (e.dinheiro === 'retido_com_voce' ? '💰 <b style="color:#2e7d32;">dinheiro retido com você</b>' :
+               e.dinheiro === 'estornado_cliente' ? '↩️ <b style="color:#e65100;">dinheiro estornado ao cliente</b>' :
+               (e.marketplace === 'magalu' ? '💰 reembolso: ver no 🔗' : '')) +
+              '</span>' : '') +
             (e.comentario ? '<div style="font-size:12px;color:#4a148c;background:#f3e5f5;border-radius:6px;padding:6px 8px;margin-top:6px;">💬 ' + escapeHtml(e.comentario) + '</div>' : '') +
             '<div style="margin-top:6px;">' +
               '<button onclick="espreitaAbrir(\'' + e.chave_nota + '\', \'processar\')" style="background:#2e7d32;color:#fff;border:none;border-radius:8px;padding:5px 10px;font-size:12px;font-weight:700;cursor:pointer;">✓ já processado</button> ' +
@@ -471,7 +506,6 @@
         }
         lista.innerHTML = html;
         sec.style.display = '';
-      } catch (e) { /* espreita e opcional: falha nao atrapalha o admin */ }
     }
 
     // v3.28.2 - atualiza SO aquele card, sem redesenhar a lista inteira:
