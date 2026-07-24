@@ -183,7 +183,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '3.88 (alerta conta da ENTREGA real, nao do claim)',
+    version: '3.89 (catalogo de defeitos: campos, etiqueta 10x15 e menu localizacao)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -1969,6 +1969,8 @@ app.post('/api/triagem/problema', requerEstoquista, async (req, res) => {
         funcionario: req.usuario,
         problema_descricao: ((dados.forcar ? '[RE-BIPE] ' : '') + `[Reportado por ${req.usuario}] ${dados.descricao || ''}`).trim(),
         problema_fotos: fotos,
+        localizacao: dados.localizacao || null,
+        defeito_qtd: dados.defeito_qtd || null,
       }])
       .select()
       .single();
@@ -2153,6 +2155,10 @@ async function enviarEmailProblema(devolucao, fotos, usuario) {
       <p style="background:#fff8e1;padding:12px;border-radius:8px;border-left:4px solid #f57c00;">
         ${(devolucao.problema_descricao || '').replace(/\n/g, '<br>')}
       </p>
+      <p style="font-size:14px;">
+        <strong>🔧 Qtd com defeito:</strong> ${devolucao.defeito_qtd || '-'} &nbsp;|&nbsp;
+        <strong>📍 Guardado em:</strong> ${devolucao.localizacao || '-'}
+      </p>
 
       <h3 style="border-bottom:1px solid #eee;padding-bottom:5px;">Fotos (${fotos.length})</h3>
       ${fotosHtml}
@@ -2188,6 +2194,9 @@ app.get('/admin.html', requerAdmin, (req, res) => {
 });
 
 // v3.16.0: Pagina de relatorios (requer auth)
+app.get('/admin/defeitos.html', requerAdmin, (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'admin', 'defeitos.html'));
+});
 app.get('/admin/relatorios.html', requerAdmin, (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'admin', 'relatorios.html'));
 });
@@ -2453,6 +2462,43 @@ app.post('/api/admin/espreita/nota', requerAdmin, async (req, res) => {
       return res.status(500).json({ ok: false, erro: msg });
     }
     return res.json({ ok: true });
+  } catch (e) { return res.status(500).json({ ok: false, erro: e.message }); }
+});
+
+// v3.89 - LOCALIZACAO DEFEITOS: consulta do estoque de defeitos (so itens
+// que tem localizacao preenchida), agrupavel por SKU ou por local.
+app.get('/api/admin/defeitos', requerAdmin, async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('devolucoes')
+      .select('id, created_at, produto_titulo, produto_sku, nf_numero, localizacao, defeito_qtd, problema_descricao, status')
+      .eq('tipo', 'problema')
+      .not('localizacao', 'is', null)
+      .neq('localizacao', '')
+      .order('localizacao', { ascending: true })
+      .limit(1000);
+    if (error) {
+      const m = String(error.message || '');
+      if (/localizacao|defeito_qtd/.test(m) && /column|does not exist|schema cache/i.test(m)) {
+        return res.status(500).json({ ok: false, erro: 'Colunas localizacao/defeito_qtd ainda nao existem - rode o SQL.' });
+      }
+      return res.status(500).json({ ok: false, erro: m });
+    }
+    const q = String(req.query.q || '').trim().toUpperCase();
+    let itens = (data || []).map(d => ({
+      id: d.id,
+      quando: d.created_at,
+      produto: d.produto_titulo || null,
+      sku: d.produto_sku || null,
+      nf: d.nf_numero || null,
+      local: d.localizacao || null,
+      qtd: d.defeito_qtd || null,
+      defeito: (d.problema_descricao || '').replace(/^\[RE-BIPE\]\s*/, '').replace(/^\[Reportado por [^\]]+\]\s*/, ''),
+      status: d.status,
+    }));
+    if (q) itens = itens.filter(x => [x.sku, x.local, x.produto, x.nf].some(v => String(v || '').toUpperCase().includes(q)));
+    const totalDefeitos = itens.reduce((a, x) => a + (Number(x.qtd) || 1), 0);
+    return res.json({ ok: true, total_registros: itens.length, total_pecas: totalDefeitos, itens });
   } catch (e) { return res.status(500).json({ ok: false, erro: e.message }); }
 });
 
