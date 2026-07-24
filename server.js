@@ -183,7 +183,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '3.83 (recados do Diego pro estoquista no bipe)',
+    version: '3.84 (recado trava a triagem ate a ciencia)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -242,6 +242,19 @@ app.get('/api/keepalive', async (req, res) => {
 // - NAO reenviar"). Este middleware intercepta a resposta da identificacao e
 // anexa os recados que casem com QUALQUER identificador do resultado - assim
 // funciona em todos os caminhos (ML, Shopee, Magalu, Correios, NF, nome).
+// v3.84 - TRAVA NO SERVIDOR: nao aceita triagem enquanto houver recado sem
+// ciencia (o front ja bloqueia, mas celular com cache antigo burlaria).
+async function recadoPendente(dados) {
+  try {
+    const ids = new Set();
+    for (const v of [dados?.shipment_id, dados?.order_id, dados?.pack_id, dados?.nf_chave, dados?.nf_numero, dados?.magalu_protocolo]) {
+      for (const x of variantesId(v)) ids.add(x);
+    }
+    if (ids.size === 0) return null;
+    const { data } = await supabase.from('recados').select('id, texto').eq('ativo', true).is('ciente_em', null).in('chave', [...ids]).limit(1);
+    return (data && data[0]) || null;
+  } catch (e) { return null; }
+}
 function normId(v) {
   const s = String(v == null ? '' : v).toUpperCase().replace(/[^A-Z0-9]/g, '');
   return s || null;
@@ -1664,6 +1677,10 @@ app.get('/api/triagem/status/:shipmentId', requerEstoquista, async (req, res) =>
 
 // Caminho APROVAR (INCLUIR ESTOQUE)
 app.post('/api/triagem/aprovar', requerEstoquista, async (req, res) => {
+  {
+    const pend = await recadoPendente(req.body?.dados || req.body);
+    if (pend) return res.status(409).json({ ok: false, erro: 'RECADO PENDENTE: leia o recado e clique em "OK, ciente" antes de triar. ("' + String(pend.texto).slice(0, 120) + '")' });
+  }
   if (!supabase) {
     return res.status(500).json({ ok: false, erro: 'Supabase nao configurado' });
   }
@@ -1872,6 +1889,10 @@ app.post('/api/triagem/upload-foto', requerEstoquista, upload.single('foto'), as
 
 // Caminho PROBLEMA - registra com fotos ja uploadadas + manda email
 app.post('/api/triagem/problema', requerEstoquista, async (req, res) => {
+  {
+    const pend = await recadoPendente(req.body?.dados || req.body);
+    if (pend) return res.status(409).json({ ok: false, erro: 'RECADO PENDENTE: leia o recado e clique em "OK, ciente" antes de triar. ("' + String(pend.texto).slice(0, 120) + '")' });
+  }
   if (!supabase) {
     return res.status(500).json({ ok: false, erro: 'Supabase nao configurado' });
   }
@@ -1984,6 +2005,10 @@ app.post('/api/triagem/problema', requerEstoquista, async (req, res) => {
 // do EAN do produto que voltou (B), nao do esperado (A).
 // ============================================================
 app.post('/api/triagem/divergente', requerEstoquista, async (req, res) => {
+  {
+    const pend = await recadoPendente(req.body?.dados || req.body);
+    if (pend) return res.status(409).json({ ok: false, erro: 'RECADO PENDENTE: leia o recado e clique em "OK, ciente" antes de triar.' });
+  }
   if (!supabase) {
     return res.status(500).json({ ok: false, erro: 'Supabase nao configurado' });
   }
