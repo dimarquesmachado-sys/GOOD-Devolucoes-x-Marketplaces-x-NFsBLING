@@ -183,7 +183,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '3.80 (baixa manual + comentarios na espreita)',
+    version: '3.81 (filtros + cliente/NF + status do dinheiro)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -2376,6 +2376,61 @@ app.post('/api/admin/espreita/nota', requerAdmin, async (req, res) => {
 });
 
 // v3.76 - painel 'a espreita': devolucoes esperadas (em transito/atrasadas)
+// v3.81 - ENRIQUECIMENTO da espreita (cliente + NF) com cache permanente:
+// dados imutaveis, busca 1x em background e anexa pra sempre.
+const ESP_ENRIQ = new Map();
+let ESP_ENRIQ_RODANDO = false;
+const nfDaChave = (k) => { const m = String(k || '').match(/^\d{44}$/) ? String(k).slice(25, 34).replace(/^0+/, '') : null; return m || null; };
+async function enriquecerItemEspreita(d) {
+  const out = { cliente: null, nf: null };
+  try {
+    if (d.marketplace === 'ml' && d.pedido) {
+      const rO = await chamarML(`https://api.mercadolibre.com/orders/${d.pedido}`);
+      if (rO.ok && rO.data) {
+        const b = rO.data.buyer || {};
+        out.cliente = [b.first_name, b.last_name].filter(Boolean).join(' ') || b.nickname || null;
+        const shipIda = rO.data.shipping?.id;
+        if (shipIda) {
+          const rN = await buscarNFnoML(shipIda);
+          if (rN.ok && rN.data?.fiscal_key) out.nf = nfDaChave(rN.data.fiscal_key);
+        }
+      }
+    } else if (d.marketplace === 'magalu' && d.pedido) {
+      const rP = await magalu.chamarMagalu(`https://api.magalu.com/seller/v1/orders/${d.pedido}`);
+      if (rP.ok && rP.data) {
+        out.cliente = rP.data.customer?.name || null;
+        const cols = [rP.data.invoices, ...((rP.data.deliveries || []).map(x => x && x.invoices))];
+        for (const arr of cols) {
+          const k = (arr || []).map(i => i && i.key).find(kk => /^\d{44}$/.test(String(kk || '')));
+          if (k) { out.nf = nfDaChave(k); break; }
+        }
+      }
+    } else if (d.marketplace === 'shopee' && d.pedido) {
+      const rB = await buscarNFBlindada({ orderId: d.pedido });
+      if (rB && rB.ok && rB.nf) {
+        out.nf = rB.nf.numero ? String(rB.nf.numero).replace(/^0+/, '') : null;
+        out.cliente = rB.nf.contato?.nome || null;
+      }
+    }
+  } catch (e) { /* item fica sem enriquecer nesta rodada */ }
+  return out;
+}
+function dispararEnriquecimentoEspreita(itens) {
+  if (ESP_ENRIQ_RODANDO) return;
+  const fila = itens.filter(d => d.chave_nota && !ESP_ENRIQ.has(d.chave_nota)).slice(0, 80);
+  if (fila.length === 0) return;
+  ESP_ENRIQ_RODANDO = true;
+  (async () => {
+    console.log(`[ESPREITA] enriquecendo ${fila.length} item(ns) em background...`);
+    for (const d of fila) {
+      const en = await enriquecerItemEspreita(d);
+      ESP_ENRIQ.set(d.chave_nota, en);
+      await new Promise(r => setTimeout(r, 350));
+    }
+    console.log('[ESPREITA] enriquecimento concluido');
+  })().catch(() => {}).finally(() => { ESP_ENRIQ_RODANDO = false; });
+}
+
 app.get('/api/admin/espreita', requerAdmin, async (req, res) => {
   // v3.77 - agregador: Magalu (BFF) + ML (indice claims->returns) + Shopee (proxy)
   const magaluR = espreita.resumo();
@@ -2427,6 +2482,14 @@ app.get('/api/admin/espreita', requerAdmin, async (req, res) => {
       }
     }
   } catch (e) { for (const d of unificada) d.chave_nota = chaveEspreita(d); }
+
+  // v3.81 - anexa cliente/NF do cache; dinheiro: ML tem status_money nativo
+  for (const d of unificada) {
+    const en = ESP_ENRIQ.get(d.chave_nota);
+    if (en) { d.cliente = en.cliente; d.nf = en.nf; }
+    if (d.marketplace === 'ml') d.dinheiro = d.status_money === 'refunded' ? 'estornado_cliente' : (d.status_money === 'retained' ? 'retido_com_voce' : null);
+  }
+  dispararEnriquecimentoEspreita(unificada);
   return res.json({
     ok: true,
     quente: magaluR.quente || mlR.quente || shopeeR.quente,
