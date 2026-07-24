@@ -183,7 +183,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '3.82 (alerta: consta entregue e ninguem bipou)',
+    version: '3.83 (recados do Diego pro estoquista no bipe)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -237,6 +237,62 @@ app.get('/api/keepalive', async (req, res) => {
 // ============================================================
 // ROTA PRINCIPAL - SO ML (rapido!)
 // ============================================================
+// v3.83 - RECADOS DO DIEGO PRO ESTOQUISTA: aviso preso a uma venda/NF que
+// aparece no momento do bipe (ex: "cliente disse que veio com vidro trincado
+// - NAO reenviar"). Este middleware intercepta a resposta da identificacao e
+// anexa os recados que casem com QUALQUER identificador do resultado - assim
+// funciona em todos os caminhos (ML, Shopee, Magalu, Correios, NF, nome).
+function normId(v) {
+  const s = String(v == null ? '' : v).toUpperCase().replace(/[^A-Z0-9]/g, '');
+  return s || null;
+}
+function variantesId(v) {
+  const n = normId(v);
+  if (!n) return [];
+  const out = [n];
+  if (/^\d+$/.test(n)) {
+    const semZeros = n.replace(/^0+/, '');
+    if (semZeros && semZeros !== n) out.push(semZeros);
+    if (n.length < 9) out.push(n.padStart(6, '0'));
+  }
+  return out;
+}
+function idsDoResultado(b) {
+  const brutos = [
+    b.order?.id, b.order_id, b.pack?.id, b.pack_id,
+    b.shipment?.id, b.shipment_id,
+    b.nf?.numero, b.nf?.chaveAcesso, b.nf?.chave,
+    b.magalu?.protocolo, b.magalu?.pedido, b.magalu?.reverse_code,
+    b.shopee?.order_sn, b.shopee?.tracking_number,
+    b.ml_return?.tracking, b.codigo, b.codigo_original,
+  ];
+  const set = new Set();
+  for (const x of brutos) for (const v of variantesId(x)) set.add(v);
+  return [...set];
+}
+async function buscarRecados(body) {
+  const ids = idsDoResultado(body);
+  if (ids.length === 0) return [];
+  const { data } = await supabase
+    .from('recados')
+    .select('id, chave, texto, criado_por, criado_em, ciente_por, ciente_em')
+    .eq('ativo', true)
+    .in('chave', ids)
+    .order('criado_em', { ascending: false });
+  return data || [];
+}
+app.use('/api/devolucao/identificar', (req, res, next) => {
+  const enviar = res.json.bind(res);
+  res.json = (body) => {
+    if (!body || !body.encontrado) return enviar(body);
+    buscarRecados(body)
+      .then(recados => { if (recados.length) body.recados = recados; enviar(body); })
+      .catch(() => enviar(body));
+    return res;
+  };
+  next();
+});
+
 app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
   const codigoOriginal = String(req.params.codigo || '').trim();
 
@@ -2430,6 +2486,48 @@ function dispararEnriquecimentoEspreita(itens) {
     console.log('[ESPREITA] enriquecimento concluido');
   })().catch(() => {}).finally(() => { ESP_ENRIQ_RODANDO = false; });
 }
+
+// v3.83 - CRUD dos recados
+app.post('/api/admin/recado', requerAdmin, async (req, res) => {
+  const chave = normId(req.body?.chave);
+  const texto = String(req.body?.texto || '').trim();
+  if (!chave || !texto) return res.status(400).json({ ok: false, erro: 'informe o identificador (pedido/NF/rastreio) e o texto' });
+  try {
+    const { error } = await supabase.from('recados').insert([{ chave, texto: texto.slice(0, 2000), criado_por: req.usuario || null, ativo: true }]);
+    if (error) {
+      const m = String(error.message || '');
+      if (/recados/.test(m) && /not exist|find the table|schema cache/i.test(m)) {
+        return res.status(500).json({ ok: false, erro: 'Tabela recados ainda nao existe no Supabase - rode o SQL.' });
+      }
+      return res.status(500).json({ ok: false, erro: m });
+    }
+    return res.json({ ok: true, chave });
+  } catch (e) { return res.status(500).json({ ok: false, erro: e.message }); }
+});
+app.get('/api/admin/recados', requerAdmin, async (req, res) => {
+  try {
+    const { data, error } = await supabase.from('recados').select('*').eq('ativo', true).order('criado_em', { ascending: false }).limit(100);
+    if (error) return res.status(500).json({ ok: false, erro: error.message });
+    return res.json({ ok: true, recados: data || [] });
+  } catch (e) { return res.status(500).json({ ok: false, erro: e.message }); }
+});
+app.post('/api/admin/recado/:id/remover', requerAdmin, async (req, res) => {
+  try {
+    const { error } = await supabase.from('recados').update({ ativo: false }).eq('id', req.params.id);
+    if (error) return res.status(500).json({ ok: false, erro: error.message });
+    return res.json({ ok: true });
+  } catch (e) { return res.status(500).json({ ok: false, erro: e.message }); }
+});
+// ciencia do estoquista (fica registrado quem leu e quando)
+app.post('/api/recado/:id/ciente', requerLogin, async (req, res) => {
+  try {
+    const { error } = await supabase.from('recados')
+      .update({ ciente_por: req.usuario || null, ciente_em: new Date().toISOString() })
+      .eq('id', req.params.id);
+    if (error) return res.status(500).json({ ok: false, erro: error.message });
+    return res.json({ ok: true, usuario: req.usuario });
+  } catch (e) { return res.status(500).json({ ok: false, erro: e.message }); }
+});
 
 app.get('/api/admin/espreita', requerAdmin, async (req, res) => {
   // v3.77 - agregador: Magalu (BFF) + ML (indice claims->returns) + Shopee (proxy)
