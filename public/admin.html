@@ -436,7 +436,7 @@
         const emT = d.em_transito || [];
         const atras = d.atrasadas_30d || [];
         document.getElementById('countEspreita').textContent = emT.length;
-        if (emT.length === 0) {
+        if (emT.length === 0 && (d.nunca_bipadas || []).length === 0) {
           lista.innerHTML = '<p style="color:#888;font-size:13px;">Nenhuma devolução a caminho. 🎉</p>';
           sec.style.display = '';
           return;
@@ -462,6 +462,32 @@
           (d.magalu_chegadas_30d ? ' · 📥 ' + d.magalu_chegadas_30d + ' Magalu chegaram em 30d' : '') +
           (d.shopee_recebidas_baixadas ? ' · ✅ ' + d.shopee_recebidas_baixadas + ' Shopee já bipadas (baixa automática)' : '') +
           (d.baixadas_manuais ? ' · 🧹 ' + d.baixadas_manuais + ' baixadas manualmente' : '') + '</p>';
+        // v3.82 - bloco de alerta: consta ENTREGUE e ninguem bipou aqui
+        const nb = d.nunca_bipadas || [];
+        if (nb.length > 0) {
+          html += '<div style="border:2px solid #c62828;border-radius:10px;padding:12px;margin-bottom:14px;background:#fff5f5;">'
+            + '<b style="color:#c62828;">🚨 Consta ENTREGUE no marketplace, mas ninguém bipou aqui (' + nb.length + ')</b>'
+            + '<div style="font-size:12px;color:#666;margin:4px 0 8px;">Confere no galpão: pode estar guardado sem registro — ou não chegou de verdade.</div>';
+          for (const e of nb) {
+            const m = MKT[e.marketplace] || { nome: e.marketplace, cor: '#616161' };
+            html += '<div style="border-left:4px solid ' + m.cor + ';background:#fff;border-radius:8px;padding:8px 10px;margin-bottom:6px;">'
+              + '<span style="background:' + m.cor + ';color:#fff;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;">' + m.nome + '</span> '
+              + '<b>' + escapeHtml(String(e.pedido || e.tracking || '-')) + '</b>'
+              + (e.pedido && e.tracking ? ' · <code style="font-size:11px;">' + escapeHtml(String(e.tracking)) + '</code>' : '')
+              + (e.valor != null ? ' · R$ ' + Number(e.valor).toFixed(2).replace('.', ',') : '')
+              + (linkVenda(e) ? ' <a href="' + linkVenda(e) + '" target="_blank" rel="noopener" style="background:#1565c0;color:#fff;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;text-decoration:none;margin-left:6px;">🔗 abrir</a>' : '')
+              + '<br><span style="font-size:12px;color:#555;">Entregue há <b>' + (e.dias_desde != null ? e.dias_desde : '?') + ' dia(s)</b> · sem triagem no sistema'
+              + (e.cliente ? ' · 👤 ' + escapeHtml(e.cliente) : '') + (e.nf ? ' · 🧾 NF ' + escapeHtml(String(e.nf)) : '') + '</span>'
+              + (e.comentario ? '<div style="font-size:12px;color:#4a148c;background:#f3e5f5;border-radius:6px;padding:6px 8px;margin-top:6px;">💬 ' + escapeHtml(e.comentario) + '</div>' : '')
+              + '<div style="margin-top:6px;">'
+              + '<button onclick="espreitaAbrir(' + esc + Q + " + e.chave_nota + " + Q + esc + ', ' + esc + 'processar' + esc + ')" style="background:#2e7d32;color:#fff;border:none;border-radius:8px;padding:5px 10px;font-size:12px;font-weight:700;cursor:pointer;">✓ achei / já processado</button> '
+              + '<button onclick="espreitaAbrir(' + esc + Q + " + e.chave_nota + " + Q + esc + ', ' + esc + 'comentar' + esc + ')" style="background:#6a1b9a;color:#fff;border:none;border-radius:8px;padding:5px 10px;font-size:12px;font-weight:700;cursor:pointer;">💬 ' + Q + " + (e.comentario ? " + Q + "editar comentário" + Q + " : " + Q + "comentário" + Q + ") + " + Q + '</button>'
+              + '</div><div id="espArea-' + Q + " + e.chave_nota + " + Q + '" style="display:none;"></div></div>';
+            window._espComentarios[e.chave_nota] = e.comentario || '';
+          }
+          html += '</div>';
+        }
+
         const F = window._espFiltro || 'todos';
         let itens = (F === 'todos') ? emT : emT.filter(x => x.marketplace === F);
         itens = [...itens].sort((x, y) => (window._espOrdem === 'novas')
