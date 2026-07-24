@@ -183,7 +183,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '3.89 (catalogo de defeitos: campos, etiqueta 10x15 e menu localizacao)',
+    version: '3.90 (localizacao defeitos na tela de triagem - acesso estoquista)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -2194,8 +2194,8 @@ app.get('/admin.html', requerAdmin, (req, res) => {
 });
 
 // v3.16.0: Pagina de relatorios (requer auth)
-app.get('/admin/defeitos.html', requerAdmin, (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'admin', 'defeitos.html'));
+app.get('/defeitos.html', requerEstoquista, (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'defeitos.html'));
 });
 app.get('/admin/relatorios.html', requerAdmin, (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'admin', 'relatorios.html'));
@@ -2467,7 +2467,7 @@ app.post('/api/admin/espreita/nota', requerAdmin, async (req, res) => {
 
 // v3.89 - LOCALIZACAO DEFEITOS: consulta do estoque de defeitos (so itens
 // que tem localizacao preenchida), agrupavel por SKU ou por local.
-app.get('/api/admin/defeitos', requerAdmin, async (req, res) => {
+app.get('/api/defeitos', requerEstoquista, async (req, res) => { // v3.90: estoquista consulta (so tem acesso a triagem)
   try {
     const { data, error } = await supabase
       .from('devolucoes')
