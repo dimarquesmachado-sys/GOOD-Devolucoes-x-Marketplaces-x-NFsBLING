@@ -183,7 +183,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '3.86 (pack_id ML no card e na busca)',
+    version: '3.87 (alerta so apos 5 dias - fim do alarme prematuro)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -2635,8 +2635,11 @@ app.get('/api/admin/espreita', requerAdmin, async (req, res) => {
   // pra nao inundar com o legado anterior ao sistema.
   let nuncaBipadas = [];
   try {
+    // v3.87 - PISO de 5 dias: recem-entregue pode estar so na fila de
+    // recebimento do galpao (caso real: entregue hoje 14h, alerta as 15h e
+    // falso alarme). Alerta so entre 5 e 90 dias - tempo de sumico real.
     const candidatos = [...(mlR.entregues || []), ...(magaluR.entregues || [])]
-      .filter(d => (d.dias_desde != null) && d.dias_desde <= 90 && (d.pedido || d.tracking));
+      .filter(d => (d.dias_desde != null) && d.dias_desde >= 5 && d.dias_desde <= 90 && (d.pedido || d.tracking));
     if (candidatos.length > 0) {
       const pedidos = [...new Set(candidatos.map(d => String(d.pedido || '')).filter(Boolean))];
       const trks = [...new Set(candidatos.map(d => String(d.tracking || '')).filter(Boolean))];
