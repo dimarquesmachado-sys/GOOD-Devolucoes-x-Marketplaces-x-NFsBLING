@@ -272,3 +272,119 @@ async function iniciarEstacaoSePossivel() {
 }
 
 window.addEventListener('load', iniciarEstacaoSePossivel);
+
+// ============================================================
+// v3.89 - ETIQUETA DE DEFEITO 10x15cm (ZPL). Grita "DEFEITO" pra
+// colar na caixa: NF de venda, defeito digitado, SKU, EAN, qtd e
+// localizacao. Reusa o pipeline fila-local<->estacao ja existente.
+// 10x15cm @203dpi = 812x1218 dots.
+// ============================================================
+function _zplLinhasDefeito(texto, maxChars, maxLinhas) {
+  const palavras = String(texto || '').split(/\s+/);
+  const linhas = [];
+  let atual = '';
+  for (const p of palavras) {
+    if ((atual + ' ' + p).trim().length <= maxChars) {
+      atual = (atual + ' ' + p).trim();
+    } else {
+      if (atual) linhas.push(atual);
+      atual = p.length > maxChars ? p.slice(0, maxChars) : p;
+    }
+    if (linhas.length >= maxLinhas) break;
+  }
+  if (atual && linhas.length < maxLinhas) linhas.push(atual);
+  return linhas;
+}
+
+function montarZplDefeito(etq) {
+  const sku = String(etq.sku || '-').toUpperCase();
+  const ean = String(etq.ean || '').replace(/\D/g, '');
+  const nf = String(etq.nf || '-');
+  const qtd = String(etq.qtd || 1);
+  const local = String(etq.local || '-').toUpperCase();
+  const z = ['^XA', '^CI28', '^PW812', '^LL1218', '^LH0,0'];
+  // Faixa preta no topo com "DEFEITO" invertido (impossivel nao ver)
+  z.push('^FO0,0^GB812,150,150^FS');                                   // bloco preto
+  z.push('^FO0,35^A0N,90,90^FR^FB812,1,0,C^FDDEFEITO^FS');             // texto branco (invertido)
+  // Produto (titulo)
+  let y = 175;
+  const tit = _zplLinhasDefeito(etq.produto || '-', 34, 2);
+  for (const ln of tit) { z.push('^FO20,' + y + '^A0N,34,34^FD' + ln + '^FS'); y += 40; }
+  y += 8;
+  // SKU grande
+  z.push('^FO20,' + y + '^A0N,60,60^FDSKU ' + sku + '^FS'); y += 74;
+  // Barras do EAN (se houver)
+  if (ean) {
+    z.push('^FO20,' + y + '^BY3,2^BEN,90,Y,N^FD' + ean + '^FS'); y += 150;
+  } else {
+    z.push('^FO20,' + y + '^A0N,34,34^FDEAN: -^FS'); y += 44;
+  }
+  // Linha separadora
+  z.push('^FO20,' + y + '^GB772,3,3^FS'); y += 20;
+  // O DEFEITO (o texto que o estoquista digitou), destacado
+  z.push('^FO20,' + y + '^A0N,40,40^FDPROBLEMA:^FS'); y += 48;
+  const defL = _zplLinhasDefeito(etq.defeito || '-', 30, 4);
+  for (const ln of defL) { z.push('^FO20,' + y + '^A0N,44,44^FD' + ln + '^FS'); y += 52; }
+  y += 10;
+  // Rodape: NF, qtd, localizacao
+  z.push('^FO20,' + y + '^GB772,3,3^FS'); y += 16;
+  z.push('^FO20,' + y + '^A0N,40,40^FDNF venda: ' + nf + '^FS'); y += 48;
+  z.push('^FO20,' + y + '^A0N,40,40^FDQtd com defeito: ' + qtd + '^FS'); y += 48;
+  z.push('^FO20,' + y + '^A0N,44,44^FDLocal: ' + local + '^FS');
+  z.push('^XZ');
+  return z.join('');
+}
+
+async function imprimirEtiquetaDefeito(etq) {
+  const zpl = montarZplDefeito(etq);
+  const resumo = ('DEFEITO ' + (etq.sku || '') + ' NF' + (etq.nf || '')).slice(0, 100);
+  try {
+    const local = await temQZLocal();
+    if (!local) {
+      const d = await enviarPraFila(zpl, resumo);
+      if (d.estacao_online) toast('📱→🖨️ Etiqueta de DEFEITO enviada pra ESTACAO (Zebra do notebook)', 'ok');
+      else toast('⏳ Etiqueta na fila — a estacao esta OFFLINE. Abra o Devolucoes no notebook da Zebra.', 'err');
+      return;
+    }
+    let printer = getImpressoraEtiqueta();
+    if (!printer) { await escolherImpressoraEtiqueta(); printer = getImpressoraEtiqueta(); }
+    if (!printer) return;
+    const cfg = qz.configs.create(printer);
+    await qz.print(cfg, [{ type: 'raw', format: 'command', flavor: 'plain', data: zpl }]);
+    toast('🏷️ Etiqueta de DEFEITO impressa → ' + printer, 'ok');
+  } catch (e) {
+    toast('Erro na impressao: ' + (e.message || e) + ' — QZ Tray aberto? Zebra ligada?', 'err');
+  }
+}
+
+// Popup mostrado ao finalizar um PROBLEMA: imprimir a etiqueta 10x15?
+function abrirPopupEtiquetaDefeito(etq, aoFechar) {
+  const jaExiste = document.getElementById('popupEtqDefeito');
+  if (jaExiste) jaExiste.remove();
+  const esc = (t) => String(t == null ? '' : t).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const ov = document.createElement('div');
+  ov.id = 'popupEtqDefeito';
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:10050;display:flex;align-items:center;justify-content:center;padding:16px;';
+  ov.innerHTML =
+    '<div style="background:#fff;border-radius:14px;max-width:420px;width:100%;padding:22px;box-shadow:0 10px 40px rgba(0,0,0,0.3);">'
+    + '<div style="font-size:20px;font-weight:800;color:#c62828;text-align:center;">🏷️ Imprimir etiqueta de DEFEITO?</div>'
+    + '<div style="font-size:13px;color:#666;text-align:center;margin:6px 0 14px;">Cola na caixa pra identificar fácil no estoque (10×15cm).</div>'
+    + '<div style="background:#fff5f5;border:2px solid #ef9a9a;border-radius:10px;padding:12px;font-size:13px;line-height:1.5;">'
+    + '<b>DEFEITO:</b> ' + esc(etq.defeito) + '<br>'
+    + '<b>SKU:</b> ' + esc(etq.sku || '-') + (etq.ean ? ' · <b>EAN:</b> ' + esc(etq.ean) : '') + '<br>'
+    + '<b>NF venda:</b> ' + esc(etq.nf || '-') + ' · <b>Qtd:</b> ' + esc(etq.qtd) + (etq.local ? ' · <b>Local:</b> ' + esc(etq.local) : '')
+    + '</div>'
+    + '<div style="display:flex;gap:10px;margin-top:16px;">'
+    + '<button id="popupEtqNao" style="flex:1;background:#999;color:#fff;border:none;border-radius:10px;padding:14px;font-size:15px;font-weight:700;cursor:pointer;">Pular</button>'
+    + '<button id="popupEtqSim" style="flex:2;background:#c62828;color:#fff;border:none;border-radius:10px;padding:14px;font-size:15px;font-weight:800;cursor:pointer;">🖨️ Imprimir etiqueta</button>'
+    + '</div></div>';
+  document.body.appendChild(ov);
+  const fechar = () => { ov.remove(); if (typeof aoFechar === 'function') aoFechar(); };
+  document.getElementById('popupEtqNao').onclick = fechar;
+  document.getElementById('popupEtqSim').onclick = async () => {
+    document.getElementById('popupEtqSim').disabled = true;
+    document.getElementById('popupEtqSim').textContent = 'imprimindo...';
+    await imprimirEtiquetaDefeito(etq);
+    fechar();
+  };
+}
