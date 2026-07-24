@@ -543,7 +543,8 @@
               + (e.valor != null ? ' · R$ ' + Number(e.valor).toFixed(2).replace('.', ',') : '')
               + (linkVenda(e) ? ' <a href="' + linkVenda(e) + '" target="_blank" rel="noopener" style="background:#1565c0;color:#fff;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;text-decoration:none;margin-left:6px;">🔗 abrir</a>' : '')
               + '<br><span style="font-size:12px;color:#555;">Entregue há <b>' + (e.dias_desde != null ? e.dias_desde : '?') + ' dia(s)</b> · sem triagem no sistema'
-              + (e.cliente ? ' · 👤 ' + escapeHtml(e.cliente) : '') + (e.nf ? ' · 🧾 NF ' + escapeHtml(String(e.nf)) : '') + '</span>'
+              + (e.cliente ? ' · 👤 ' + escapeHtml(e.cliente) : '') + (e.nf ? ' · 🧾 NF ' + escapeHtml(String(e.nf)) : '') + (e.logistica ? ' · <span style="background:#455a64;color:#fff;padding:1px 6px;border-radius:8px;font-size:10px;font-weight:700;">' + escapeHtml(e.logistica) + '</span>' : '') + '</span>'
+              + (e.produto ? '<br><span style="font-size:12px;color:#333;">📦 ' + escapeHtml(e.produto) + (e.qtd ? ' ×' + e.qtd : '') + '</span>' : '')
               + (e.comentario ? '<div style="font-size:12px;color:#4a148c;background:#f3e5f5;border-radius:6px;padding:6px 8px;margin-top:6px;">💬 ' + escapeHtml(e.comentario) + '</div>' : '')
               + '<div style="margin-top:6px;">'
               + '<button onclick="espreitaAbrir(\'' + e.chave_nota + '\', \'processar\')" style="background:#2e7d32;color:#fff;border:none;border-radius:8px;padding:5px 10px;font-size:12px;font-weight:700;cursor:pointer;">✓ achei / já processado</button> '
@@ -579,11 +580,13 @@
             '<br><span style="font-size:12px;color:#555;">' +
             (e.dias_em_transito != null ? 'Em trânsito há <b>' + e.dias_em_transito + ' dia(s)</b>' : 'Em trânsito') +
             (e.status ? ' · ' + escapeHtml(String(e.status)) : '') +
-            (e.congelada ? ' — <b style="color:#616161;">🧊 status congelado na Shopee, confirmar no 🔗</b>' : (atrasada ? ' — <b style="color:#c62828;">⚠️ candidata a extravio, cobrar o marketplace</b>' : '')) + '</span>' +
-            ((e.cliente || e.nf || e.dinheiro || e.marketplace === 'ml') ?
+            (e.no_cd_ml ? ' — <b style="color:#00695c;">🏭 em revisão no CD do ML (ainda não despachado pra você)</b>' : (e.congelada ? ' — <b style="color:#616161;">🧊 status congelado na Shopee, confirmar no 🔗</b>' : (atrasada ? ' — <b style="color:#c62828;">⚠️ candidata a extravio, cobrar o marketplace</b>' : ''))) + '</span>' +
+            (e.produto ? '<br><span style="font-size:12px;color:#333;">📦 ' + escapeHtml(e.produto) + (e.qtd ? ' <b>×' + e.qtd + '</b>' : '') + '</span>' : '') +
+            ((e.cliente || e.nf || e.dinheiro || e.logistica || e.marketplace === 'ml') ?
               '<br><span style="font-size:12px;color:#333;">' +
               (e.cliente ? '👤 ' + escapeHtml(e.cliente) + '  ' : '') +
               (e.nf ? '🧾 NF ' + escapeHtml(String(e.nf)) + '  ' : '') +
+              (e.logistica ? '<span style="background:#455a64;color:#fff;padding:1px 7px;border-radius:8px;font-size:11px;font-weight:700;">' + escapeHtml(e.logistica) + '</span>  ' : '') +
               (e.dinheiro === 'retido_com_voce' ? '💰 <b style="color:#2e7d32;">dinheiro retido com você</b>' :
                e.dinheiro === 'estornado_cliente' ? '↩️ <b style="color:#e65100;">dinheiro estornado ao cliente</b>' :
                (e.marketplace === 'magalu' ? '💰 reembolso: ver no 🔗' : '')) +
