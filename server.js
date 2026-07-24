@@ -183,7 +183,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '3.81 (filtros + cliente/NF + status do dinheiro)',
+    version: '3.82 (alerta: consta entregue e ninguem bipou)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -2490,6 +2490,44 @@ app.get('/api/admin/espreita', requerAdmin, async (req, res) => {
     if (d.marketplace === 'ml') d.dinheiro = d.status_money === 'refunded' ? 'estornado_cliente' : (d.status_money === 'retained' ? 'retido_com_voce' : null);
   }
   dispararEnriquecimentoEspreita(unificada);
+
+  // v3.82 - ALERTA "DEVERIA TER CHEGADO": a origem afirma que ENTREGOU no
+  // seller, mas NINGUEM bipou aqui. Cruza por order_id (pedido) e por
+  // shipment_id (tracking/chave) na tabela de triagens. Corte de 90 dias
+  // pra nao inundar com o legado anterior ao sistema.
+  let nuncaBipadas = [];
+  try {
+    const candidatos = [...(mlR.entregues || []), ...(magaluR.entregues || [])]
+      .filter(d => (d.dias_desde != null) && d.dias_desde <= 90 && (d.pedido || d.tracking));
+    if (candidatos.length > 0) {
+      const pedidos = [...new Set(candidatos.map(d => String(d.pedido || '')).filter(Boolean))];
+      const trks = [...new Set(candidatos.map(d => String(d.tracking || '')).filter(Boolean))];
+      const achados = new Set();
+      if (pedidos.length) {
+        const { data } = await supabase.from('devolucoes').select('order_id').in('order_id', pedidos);
+        for (const r of (data || [])) achados.add(String(r.order_id));
+      }
+      if (trks.length) {
+        const { data } = await supabase.from('devolucoes').select('shipment_id').in('shipment_id', trks);
+        for (const r of (data || [])) achados.add(String(r.shipment_id));
+      }
+      const chavesN = candidatos.map(d => String(d.tracking || (d.marketplace + ':' + d.pedido)));
+      const notasN = {};
+      try {
+        const { data } = await supabase.from('espreita_notas').select('chave, baixado, comentario').in('chave', chavesN);
+        for (const n of (data || [])) notasN[n.chave] = n;
+      } catch (e) { /* segue sem notas */ }
+      nuncaBipadas = candidatos
+        .filter(d => !achados.has(String(d.pedido || '')) && !achados.has(String(d.tracking || '')))
+        .map(d => ({ ...d, chave_nota: String(d.tracking || (d.marketplace + ':' + d.pedido)) }))
+        .filter(d => !notasN[d.chave_nota]?.baixado)
+        .map(d => {
+          const en = ESP_ENRIQ.get(d.chave_nota);
+          return { ...d, comentario: notasN[d.chave_nota]?.comentario || null, cliente: en?.cliente || null, nf: en?.nf || null };
+        });
+      dispararEnriquecimentoEspreita(nuncaBipadas);
+    }
+  } catch (e) { nuncaBipadas = []; }
   return res.json({
     ok: true,
     quente: magaluR.quente || mlR.quente || shopeeR.quente,
@@ -2499,6 +2537,7 @@ app.get('/api/admin/espreita', requerAdmin, async (req, res) => {
     magalu_chegadas_30d: magaluR.chegadas_30d || 0,
     shopee_recebidas_baixadas: recebidasShopee,
     baixadas_manuais: baixadasManuais,
+    nunca_bipadas: nuncaBipadas,
     fontes: { magalu: magaluR.quente, ml: mlR.quente, shopee: shopeeR.quente },
     erro: magaluR.erro || shopeeR.erro || null,
   });
