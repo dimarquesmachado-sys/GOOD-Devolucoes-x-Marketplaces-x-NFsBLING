@@ -183,7 +183,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '3.87 (alerta so apos 5 dias - fim do alarme prematuro)',
+    version: '3.88 (alerta conta da ENTREGA real, nao do claim)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
