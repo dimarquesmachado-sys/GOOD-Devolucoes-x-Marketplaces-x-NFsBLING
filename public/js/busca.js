@@ -171,6 +171,7 @@ function renderizar(data, ok) {
   // v3.32 - RECADOS: aviso que o Diego prendeu a essa venda/NF. Aparece em
   // destaque no topo e exige ciencia do estoquista (fica registrado quem leu).
   let html = '<div class="card">';
+  window._recadosPendentes = (data.recados || []).filter(rc => !rc.ciente_em).map(rc => rc.id);
   for (const rc of (data.recados || [])) {
     const lido = !!rc.ciente_em;
     html += '<div id="recado-' + rc.id + '" style="border:3px solid ' + (lido ? '#9e9e9e' : '#c62828') + ';background:' + (lido ? '#fafafa' : '#fff3e0') + ';border-radius:10px;padding:12px;margin-bottom:12px;">'
@@ -426,6 +427,15 @@ async function verificarTriagemExistente(shipmentId, idAlternativo) {
 function renderizarBotoesTriagem() {
   const cont = document.getElementById('triagemConteudo');
   if (!cont) return;
+  // v3.33 - TRAVA: recado sem ciencia bloqueia a triagem. O estoquista tem
+  // que ler e clicar "OK, ciente" antes de incluir no estoque/reportar.
+  if ((window._recadosPendentes || []).length > 0) {
+    cont.innerHTML = '<div style="border:3px solid #c62828;background:#fff3e0;border-radius:10px;padding:16px;text-align:center;">'
+      + '<div style="font-size:16px;font-weight:800;color:#c62828;">🔒 Triagem bloqueada</div>'
+      + '<div style="font-size:14px;margin-top:6px;">Leia o <b>RECADO</b> no topo da tela e clique em <b>"✓ OK, ciente"</b> para liberar os botões.</div>'
+      + '</div>';
+    return;
+  }
   // v3.18.0 - 3 botoes: APROVAR (verde), PROBLEMA (vermelho), DIVERGENTE (roxo)
   cont.innerHTML = `
     <div class="triagem-instrucao">
@@ -587,6 +597,8 @@ async function recadoCiente(id, btn) {
     const r = await fetch('/api/recado/' + id + '/ciente', { method: 'POST' });
     const d = await r.json();
     if (!d.ok) { btn.disabled = false; btn.textContent = '✓ OK, ciente'; alert('Falhou: ' + (d.erro || '')); return; }
+    window._recadosPendentes = (window._recadosPendentes || []).filter(x => x !== id);
+    if ((window._recadosPendentes || []).length === 0) renderizarBotoesTriagem(); // libera a triagem
     const box = document.getElementById('recado-' + id);
     if (box) {
       box.style.borderColor = '#9e9e9e';
