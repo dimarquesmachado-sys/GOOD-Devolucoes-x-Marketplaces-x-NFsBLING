@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>🔧 Localização Defeitos - GOOD Devoluções</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: -apple-system, "Segoe UI", Roboto, sans-serif; margin: 0; background: #f4f5f7; color: #222; }
+    header { background: #b00020; color: #fff; padding: 16px 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
+    header h1 { font-size: 20px; margin: 0; }
+    header a { color: #fff; text-decoration: none; font-size: 14px; margin-left: 14px; opacity: .9; }
+    header a:hover { opacity: 1; }
+    .wrap { max-width: 1100px; margin: 20px auto; padding: 0 16px; }
+    .barra { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 14px; }
+    .barra input { flex: 1; min-width: 240px; padding: 12px; border: 1px solid #ccc; border-radius: 10px; font-size: 15px; }
+    .barra button { padding: 12px 18px; border: none; border-radius: 10px; font-size: 14px; font-weight: 700; cursor: pointer; }
+    .btn-buscar { background: #b00020; color: #fff; }
+    .btn-limpar { background: #e0e0e0; color: #555; }
+    .resumo { font-size: 14px; color: #555; margin-bottom: 12px; }
+    .resumo b { color: #b00020; }
+    .grupo { background: #fff; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,.06); margin-bottom: 14px; overflow: hidden; }
+    .grupo-head { background: #37474f; color: #fff; padding: 10px 16px; font-size: 15px; font-weight: 800; display: flex; justify-content: space-between; }
+    .grupo-head .badge { background: rgba(255,255,255,.25); border-radius: 10px; padding: 2px 10px; font-size: 12px; }
+    .item { padding: 12px 16px; border-bottom: 1px solid #f0f0f0; }
+    .item:last-child { border-bottom: none; }
+    .item .prod { font-weight: 700; font-size: 14px; }
+    .item .meta { font-size: 12px; color: #666; margin-top: 3px; }
+    .item .meta code { background: #f0f0f0; padding: 1px 6px; border-radius: 5px; }
+    .item .defeito { font-size: 13px; color: #c62828; background: #fff5f5; border-radius: 6px; padding: 6px 8px; margin-top: 6px; }
+    .item .qtd { display: inline-block; background: #c62828; color: #fff; border-radius: 8px; padding: 1px 8px; font-size: 12px; font-weight: 700; }
+    .vazio { text-align: center; color: #888; padding: 40px; font-size: 15px; }
+    .loading { text-align: center; padding: 40px; color: #888; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>🔧 Localização Defeitos</h1>
+    <div>
+      <a href="/admin.html">← Voltar ao Admin</a>
+      <a href="/">📦 Triagem</a>
+    </div>
+  </header>
+
+  <div class="wrap">
+    <div class="barra">
+      <input type="text" id="busca" placeholder="Buscar por SKU, localização, produto ou NF..." onkeydown="if(event.key==='Enter')carregar()">
+      <button class="btn-buscar" onclick="carregar()">🔍 Buscar</button>
+      <button class="btn-limpar" onclick="document.getElementById('busca').value='';carregar()">Limpar</button>
+    </div>
+    <div class="resumo" id="resumo"></div>
+    <div id="lista"><div class="loading">Carregando estoque de defeitos...</div></div>
+  </div>
+
+  <script>
+    function esc(t) { return String(t == null ? '' : t).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+
+    async function carregar() {
+      const lista = document.getElementById('lista');
+      const resumo = document.getElementById('resumo');
+      lista.innerHTML = '<div class="loading">Carregando...</div>';
+      const q = document.getElementById('busca').value.trim();
+      try {
+        const r = await fetch('/api/admin/defeitos' + (q ? '?q=' + encodeURIComponent(q) : ''));
+        const d = await r.json();
+        if (!d.ok) {
+          if (r.status === 401) { location.href = '/'; return; }
+          lista.innerHTML = '<div class="vazio">⚠️ ' + esc(d.erro || 'erro') + '</div>';
+          resumo.textContent = '';
+          return;
+        }
+        const itens = d.itens || [];
+        resumo.innerHTML = '📦 <b>' + d.total_registros + '</b> registro(s) · <b>' + d.total_pecas + '</b> peça(s) com defeito no estoque' + (q ? ' · filtro: "' + esc(q) + '"' : '');
+        if (itens.length === 0) { lista.innerHTML = '<div class="vazio">Nenhum defeito com localização registrada' + (q ? ' pra "' + esc(q) + '"' : '') + '.</div>'; return; }
+        // agrupa por localizacao
+        const grupos = {};
+        for (const it of itens) { const k = (it.local || '(sem local)').toUpperCase(); (grupos[k] = grupos[k] || []).push(it); }
+        let html = '';
+        for (const local of Object.keys(grupos).sort()) {
+          const g = grupos[local];
+          const pcs = g.reduce((a, x) => a + (Number(x.qtd) || 1), 0);
+          html += '<div class="grupo"><div class="grupo-head"><span>📍 ' + esc(local) + '</span><span class="badge">' + pcs + ' peça(s)</span></div>';
+          for (const it of g) {
+            html += '<div class="item">'
+              + '<div class="prod">' + esc(it.produto || '-') + (it.qtd ? ' <span class="qtd">×' + it.qtd + '</span>' : '') + '</div>'
+              + '<div class="meta">SKU <code>' + esc(it.sku || '-') + '</code>' + (it.nf ? ' · NF <code>' + esc(it.nf) + '</code>' : '') + ' · ' + (it.quando ? String(it.quando).slice(0, 10).split('-').reverse().join('/') : '-') + '</div>'
+              + (it.defeito ? '<div class="defeito">🔧 ' + esc(it.defeito) + '</div>' : '')
+              + '</div>';
+          }
+          html += '</div>';
+        }
+        lista.innerHTML = html;
+      } catch (e) {
+        lista.innerHTML = '<div class="vazio">Erro de conexão</div>';
+      }
+    }
+    carregar();
+  </script>
+</body>
+</html>
