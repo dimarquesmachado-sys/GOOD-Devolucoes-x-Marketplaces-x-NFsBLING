@@ -255,6 +255,19 @@
 
     <div class="secoes" id="secoes" style="display:none;">
 
+      <!-- v3.83 - RECADOS pro estoquista (aviso preso a uma venda/NF) -->
+      <div class="secao" style="grid-column: 1 / -1;">
+        <h2>📣 Recados pro estoquista <span class="badge-count" id="countRecados" style="background:#c62828;">0</span></h2>
+        <div style="font-size:13px;color:#666;margin-bottom:10px;">Prenda um aviso a uma venda/NF/rastreio. Quando alguém bipar essa devolução, o recado aparece em destaque e exige "OK, ciente".</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-start;">
+          <input type="text" id="recadoChave" placeholder="Pedido, NF, chave ou rastreio" style="flex:1;min-width:220px;padding:10px;border:1px solid #ccc;border-radius:8px;font-size:14px;">
+          <input type="text" id="recadoTexto" placeholder="Ex: cliente avisou que veio com vidro trincado - NAO reenviar" style="flex:2;min-width:280px;padding:10px;border:1px solid #ccc;border-radius:8px;font-size:14px;">
+          <button onclick="salvarRecado()" style="background:#c62828;color:#fff;border:none;border-radius:8px;padding:10px 18px;font-weight:700;cursor:pointer;">📣 Criar recado</button>
+        </div>
+        <div id="recadoMsg" style="font-size:13px;margin-top:6px;"></div>
+        <div id="listaRecados" style="margin-top:12px;"></div>
+      </div>
+
       <div class="secao">
         <h2>
           ✅ Aprovadas - aguardando NF
@@ -301,18 +314,7 @@
         <div id="listaEspreita"></div>
       </div>
 
-      <!-- v3.83 - RECADOS pro estoquista (aviso preso a uma venda/NF) -->
-      <div class="secao" style="grid-column: 1 / -1;">
-        <h2>📣 Recados pro estoquista <span class="badge-count" id="countRecados" style="background:#c62828;">0</span></h2>
-        <div style="font-size:13px;color:#666;margin-bottom:10px;">Prenda um aviso a uma venda/NF/rastreio. Quando alguém bipar essa devolução, o recado aparece em destaque e exige "OK, ciente".</div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-start;">
-          <input type="text" id="recadoChave" placeholder="Pedido, NF, chave ou rastreio" style="flex:1;min-width:220px;padding:10px;border:1px solid #ccc;border-radius:8px;font-size:14px;">
-          <input type="text" id="recadoTexto" placeholder="Ex: cliente avisou que veio com vidro trincado - NAO reenviar" style="flex:2;min-width:280px;padding:10px;border:1px solid #ccc;border-radius:8px;font-size:14px;">
-          <button onclick="salvarRecado()" style="background:#c62828;color:#fff;border:none;border-radius:8px;padding:10px 18px;font-weight:700;cursor:pointer;">📣 Criar recado</button>
-        </div>
-        <div id="recadoMsg" style="font-size:13px;margin-top:6px;"></div>
-        <div id="listaRecados" style="margin-top:12px;"></div>
-      </div>
+
 
     </div>
 
@@ -481,7 +483,16 @@
         }
         window._espDados = d;
         renderEspreita(d);
-      } catch (e) { /* espreita e opcional: falha nao atrapalha o admin */ }
+      } catch (e) {
+        // v3.83.1 - antes o erro era engolido e a secao sumia sem explicacao
+        console.error('[ESPREITA] falhou:', e);
+        const sec = document.getElementById('secaoEspreita');
+        const lista = document.getElementById('listaEspreita');
+        if (sec && lista) {
+          lista.innerHTML = '<p style="color:#c62828;font-size:13px;">⚠️ Erro ao montar o painel: ' + escapeHtml(String(e && e.message || e)) + '</p>';
+          sec.style.display = '';
+        }
+      }
     }
 
     function renderEspreita(d) {
@@ -535,9 +546,9 @@
               + (e.cliente ? ' · 👤 ' + escapeHtml(e.cliente) : '') + (e.nf ? ' · 🧾 NF ' + escapeHtml(String(e.nf)) : '') + '</span>'
               + (e.comentario ? '<div style="font-size:12px;color:#4a148c;background:#f3e5f5;border-radius:6px;padding:6px 8px;margin-top:6px;">💬 ' + escapeHtml(e.comentario) + '</div>' : '')
               + '<div style="margin-top:6px;">'
-              + '<button onclick="espreitaAbrir(' + esc + Q + " + e.chave_nota + " + Q + esc + ', ' + esc + 'processar' + esc + ')" style="background:#2e7d32;color:#fff;border:none;border-radius:8px;padding:5px 10px;font-size:12px;font-weight:700;cursor:pointer;">✓ achei / já processado</button> '
-              + '<button onclick="espreitaAbrir(' + esc + Q + " + e.chave_nota + " + Q + esc + ', ' + esc + 'comentar' + esc + ')" style="background:#6a1b9a;color:#fff;border:none;border-radius:8px;padding:5px 10px;font-size:12px;font-weight:700;cursor:pointer;">💬 ' + Q + " + (e.comentario ? " + Q + "editar comentário" + Q + " : " + Q + "comentário" + Q + ") + " + Q + '</button>'
-              + '</div><div id="espArea-' + Q + " + e.chave_nota + " + Q + '" style="display:none;"></div></div>';
+              + '<button onclick="espreitaAbrir(\'' + e.chave_nota + '\', \'processar\')" style="background:#2e7d32;color:#fff;border:none;border-radius:8px;padding:5px 10px;font-size:12px;font-weight:700;cursor:pointer;">✓ achei / já processado</button> '
+              + '<button onclick="espreitaAbrir(\'' + e.chave_nota + '\', \'comentar\')" style="background:#6a1b9a;color:#fff;border:none;border-radius:8px;padding:5px 10px;font-size:12px;font-weight:700;cursor:pointer;">💬 ' + (e.comentario ? 'editar comentário' : 'comentário') + '</button>'
+              + '</div><div id="espArea-' + e.chave_nota + '" style="display:none;"></div></div>';
             window._espComentarios[e.chave_nota] = e.comentario || '';
           }
           html += '</div>';
