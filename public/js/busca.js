@@ -168,7 +168,19 @@ function renderizar(data, ok) {
 
   const ehDevolucao = data.eh_devolucao;
 
+  // v3.32 - RECADOS: aviso que o Diego prendeu a essa venda/NF. Aparece em
+  // destaque no topo e exige ciencia do estoquista (fica registrado quem leu).
   let html = '<div class="card">';
+  for (const rc of (data.recados || [])) {
+    const lido = !!rc.ciente_em;
+    html += '<div id="recado-' + rc.id + '" style="border:3px solid ' + (lido ? '#9e9e9e' : '#c62828') + ';background:' + (lido ? '#fafafa' : '#fff3e0') + ';border-radius:10px;padding:12px;margin-bottom:12px;">'
+      + '<div style="font-size:15px;font-weight:800;color:' + (lido ? '#616161' : '#c62828') + ';">📣 RECADO SOBRE ESSA DEVOLUÇÃO</div>'
+      + '<div style="font-size:15px;margin:6px 0;white-space:pre-wrap;">' + escapeHtml(rc.texto) + '</div>'
+      + (lido
+          ? '<div style="font-size:12px;color:#666;">✅ ciente por ' + escapeHtml(rc.ciente_por || '-') + ' em ' + (rc.ciente_em ? String(rc.ciente_em).slice(0, 10).split('-').reverse().join('/') : '-') + '</div>'
+          : '<button onclick="recadoCiente(' + rc.id + ', this)" style="background:#2e7d32;color:#fff;border:none;border-radius:8px;padding:10px 18px;font-size:14px;font-weight:800;cursor:pointer;">✓ OK, ciente</button>')
+      + '</div>';
+  }
 
   // BADGES TOPO
   html += ehDevolucao
@@ -565,6 +577,23 @@ function renderizarCandidatosNome(mensagem, candidatos) {
   html += '</div>';
   divResultado.innerHTML = html;
   divResultado.classList.add('show');
+}
+
+// v3.32 - ciencia do recado (registra quem leu e quando)
+async function recadoCiente(id, btn) {
+  btn.disabled = true;
+  btn.textContent = 'salvando...';
+  try {
+    const r = await fetch('/api/recado/' + id + '/ciente', { method: 'POST' });
+    const d = await r.json();
+    if (!d.ok) { btn.disabled = false; btn.textContent = '✓ OK, ciente'; alert('Falhou: ' + (d.erro || '')); return; }
+    const box = document.getElementById('recado-' + id);
+    if (box) {
+      box.style.borderColor = '#9e9e9e';
+      box.style.background = '#fafafa';
+      btn.outerHTML = '<div style="font-size:12px;color:#666;">✅ ciente por ' + escapeHtml(d.usuario || '-') + ' agora</div>';
+    }
+  } catch (e) { btn.disabled = false; btn.textContent = '✓ OK, ciente'; }
 }
 
 function renderizarErro(mensagem, tentativas) {
