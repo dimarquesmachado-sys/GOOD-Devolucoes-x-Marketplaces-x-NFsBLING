@@ -237,6 +237,8 @@ function abrirModalProblema() {
   window.fotosUploadadas = [];
   window._fluxoParcial = false; // v3.17.0 - garante fluxo problema (nao parcial)
   document.getElementById('problemaDescricao').value = '';
+  if (document.getElementById('problemaLocal')) document.getElementById('problemaLocal').value = '';
+  if (document.getElementById('problemaQtd')) document.getElementById('problemaQtd').value = '1';
   document.getElementById('modalProblema').classList.add('show');
 }
 
@@ -254,9 +256,13 @@ async function enviarProblema() {
   toast('Enviando problema...', '');
 
   try {
+    const localizacao = (document.getElementById('problemaLocal') ? document.getElementById('problemaLocal').value : '').trim();
+    const defeitoQtd = Math.max(1, parseInt(document.getElementById('problemaQtd') ? document.getElementById('problemaQtd').value : '1', 10) || 1);
     const payload = montarPayloadTriagem();
     payload.descricao = descricao;
     payload.fotos = fotosOk;
+    payload.localizacao = localizacao || null;
+    payload.defeito_qtd = defeitoQtd;
     if (window._forcarTriagem) payload.forcar = true;
 
     const r = await fetch('/api/triagem/problema', {
@@ -266,14 +272,28 @@ async function enviarProblema() {
     });
     const d = await r.json();
     if (d.ok) {
-      mostrarSucesso('⚠️ Problema reportado!', 'Email enviado pra Diego com as fotos. Aguarde retorno.');
       toast('Problema enviado!', 'ok');
       window.fotosUploadadas = [];
-      setTimeout(() => {
+      var etq = {
+        nf: payload.nf_numero || null,
+        sku: payload.produto_sku || null,
+        ean: (Array.isArray(ultimaBusca && ultimaBusca.nf && ultimaBusca.nf.itens) && ultimaBusca.nf.itens[0] ? ultimaBusca.nf.itens[0].ean : null),
+        produto: payload.produto_titulo || null,
+        defeito: descricao || '(sem descricao)',
+        qtd: defeitoQtd,
+        local: localizacao || null
+      };
+      var fecharELimpar = function () {
         divResultado.classList.remove('show');
         inputCodigo.value = '';
         inputCodigo.focus();
-      }, 2500);
+      };
+      if (typeof abrirPopupEtiquetaDefeito === 'function') {
+        abrirPopupEtiquetaDefeito(etq, fecharELimpar);
+      } else {
+        mostrarSucesso('\u26a0\ufe0f Problema reportado!', 'Email enviado pra Diego. Aguarde retorno.');
+        setTimeout(fecharELimpar, 2500);
+      }
     } else if (r.status === 409 && d.erro === 'duplicata') {
       toast('Esta devolucao ja foi triada antes!', 'err');
       if (ultimaBusca?.shipment?.id) verificarTriagemExistente(ultimaBusca.shipment.id);
