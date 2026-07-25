@@ -183,7 +183,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '3.95 (data REAL de entrega no alerta + rename painel)',
+    version: '3.96 (lancar defeito manual + busca de produto por nome)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -2466,6 +2466,63 @@ app.post('/api/admin/espreita/nota', requerAdmin, async (req, res) => {
       return res.status(500).json({ ok: false, erro: msg });
     }
     return res.json({ ok: true });
+  } catch (e) { return res.status(500).json({ ok: false, erro: e.message }); }
+});
+
+// v3.96 - BUSCA DE PRODUTO pra lancar defeito: aceita parte do nome, SKU ou
+// EAN. Devolve candidatos pro estoquista ESCOLHER (nunca adivinha sozinho).
+app.get('/api/produtos/buscar', requerEstoquista, async (req, res) => {
+  const q = String(req.query.q || '').trim();
+  if (q.length < 2) return res.json({ ok: true, produtos: [] });
+  const vistos = new Set();
+  const out = [];
+  const push = (p) => {
+    const sku = String(p.codigo || '').trim();
+    if (!sku || vistos.has(sku)) return;
+    vistos.add(sku);
+    out.push({ sku, nome: p.nome || p.descricao || '', ean: p.gtin || p.ean || '', id: p.id || null });
+  };
+  try {
+    // 1) match exato por SKU (o caminho mais comum: bipou ou digitou o codigo)
+    const rSku = await chamarBling(`https://api.bling.com.br/Api/v3/produtos?codigo=${encodeURIComponent(q)}&limite=20`);
+    if (rSku.ok) for (const p of (rSku.data?.data || [])) push(p);
+    // 2) busca textual (parte do nome) - o Bling procura no nome e no codigo
+    if (out.length < 15) {
+      await new Promise(r => setTimeout(r, 250));
+      const rTxt = await chamarBling(`https://api.bling.com.br/Api/v3/produtos?pesquisa=${encodeURIComponent(q)}&limite=30`);
+      if (rTxt.ok) for (const p of (rTxt.data?.data || [])) push(p);
+    }
+    return res.json({ ok: true, produtos: out.slice(0, 25) });
+  } catch (e) { return res.status(500).json({ ok: false, erro: e.message }); }
+});
+
+// v3.96 - LANCAR DEFEITO manualmente (produto que ja esta no galpao, sem
+// passar por devolucao). So aceita SKU que existe no Bling - assim a relacao
+// nunca fica com codigo inventado.
+app.post('/api/defeitos/adicionar', requerEstoquista, async (req, res) => {
+  const sku = String(req.body?.sku || '').trim();
+  const defeito = String(req.body?.defeito || '').trim();
+  const localizacao = String(req.body?.localizacao || '').trim();
+  const qtd = Math.max(1, parseInt(req.body?.qtd, 10) || 1);
+  if (!sku || !defeito) return res.status(400).json({ ok: false, erro: 'informe o produto e o defeito' });
+  try {
+    // valida o SKU no Bling (nunca grava codigo que nao existe)
+    const rP = await buscarProdutoBlingPorSku(sku);
+    const prod = rP.ok ? rP.produto : null;
+    if (!prod) return res.status(400).json({ ok: false, erro: `SKU "${sku}" nao encontrado no Bling` });
+    const { error } = await supabase.from('devolucoes').insert([{
+      tipo: 'problema',
+      status: 'pendente',
+      funcionario: req.usuario,
+      produto_sku: String(prod.codigo || sku),
+      produto_titulo: prod.nome || null,
+      produto_ean: prod.gtin || prod.ean || null,
+      problema_descricao: `[LANCADO MANUAL por ${req.usuario}] ${defeito}`,
+      localizacao: localizacao || null,
+      defeito_qtd: qtd,
+    }]);
+    if (error) return res.status(500).json({ ok: false, erro: error.message });
+    return res.json({ ok: true, sku: prod.codigo || sku, nome: prod.nome || null, ean: prod.gtin || prod.ean || null, qtd });
   } catch (e) { return res.status(500).json({ ok: false, erro: e.message }); }
 });
 
