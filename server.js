@@ -183,7 +183,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.11 (claim via mediations + deteccao correta de nao-entregue)',
+    version: '4.13 (motivo real da reclamacao + data de entrega correta)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -1181,6 +1181,23 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
   resultado.eh_devolucao = ehDevolucao;
   resultado.shipment = shipment;
   resultado.order = order;
+  // v4.13 - POR QUE voltou + o resumo do caso (o ML explica em portugues)
+  try {
+    const mot = classificarMotivoDevolucao(order, shipment);
+    if (mot) {
+      if (mot.reclamacao_id) {
+        const ctx = await contextoDaReclamacao(mot.reclamacao_id);
+        if (ctx) {
+          mot.contexto = ctx;
+          const rot = { arrependimento: 'Cliente se ARREPENDEU da compra', defeito: 'Cliente relatou DEFEITO no produto', item_errado: 'Cliente diz que veio o produto ERRADO', incompleto: 'Cliente diz que veio INCOMPLETO', devolvido: 'Produto devolvido' };
+          if (ctx.motivo && rot[ctx.motivo]) mot.titulo = '⚠️ ' + rot[ctx.motivo];
+          if (ctx.motivo === 'arrependimento') mot.detalhe = 'Não é defeito: o cliente só desistiu. O produto tende a estar em bom estado — confira e, se estiver ok, inclua no estoque.';
+          else if (ctx.motivo === 'defeito') mot.detalhe = 'O cliente relatou defeito. Abra e procure o problema com atenção.';
+        }
+      }
+      resultado.motivo_devolucao = mot;
+    }
+  } catch (e) { /* opcional: nunca atrapalha o bipe */ }
   resultado.pack = pack;
   resultado.claim = claim;
   resultado.return = returnData;
@@ -2871,6 +2888,96 @@ app.get('/api/produtos/buscar', requerEstoquista, async (req, res) => {
   } catch (e) { return res.status(500).json({ ok: false, erro: e.message }); }
 });
 
+// v4.13 - limpa o HTML das mensagens do ML e resume o caso em portugues.
+function limparHtmlML(t) {
+  return String(t || '')
+    .replace(/<br\s*\/?>/gi, ' ')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+// Cache do contexto da reclamacao (o caso nao muda depois de fechado)
+const CLAIM_CTX = new Map();
+async function contextoDaReclamacao(claimId) {
+  const k = String(claimId || '');
+  if (!k) return null;
+  if (CLAIM_CTX.has(k)) return CLAIM_CTX.get(k);
+  const ctx = { claim_id: k, motivo: null, pontos: [], pacote_consolidado: false, sem_custo_pra_voce: false, resolucao: null };
+  try {
+    const rc = await chamarML(`https://api.mercadolibre.com/post-purchase/v1/claims/${k}`);
+    if (rc.ok && rc.data) {
+      ctx.resolucao = rc.data.resolution?.reason || null;
+      ctx.reason_id = rc.data.reason_id || null;
+      ctx.status_claim = rc.data.status || null;
+    }
+    const rm = await chamarML(`https://api.mercadolibre.com/post-purchase/v1/claims/${k}/messages`);
+    const msgs = (rm.ok && Array.isArray(rm.data)) ? rm.data : [];
+    const textoTudo = msgs.map(m => String(m.message || '')).join(' ');
+    // os <li> da mensagem do mediador sao o resumo do caso
+    const lis = [...textoTudo.matchAll(/<li>([\s\S]*?)<\/li>/gi)].map(m => limparHtmlML(m[1])).filter(Boolean);
+    ctx.pontos = lis.slice(0, 4);
+    ctx.pacote_consolidado = /consolidad|um .{0,3}nico pacote|mesmo pacote/i.test(textoTudo);
+    ctx.sem_custo_pra_voce = /n.{0,3}o precisa pagar nada|cobre todos os custos/i.test(textoTudo);
+    // motivo em linguagem do galpao
+    const t = limparHtmlML(textoTudo).toLowerCase();
+    if (/arrepend|desist|n.{0,3}o quer mais/.test(t)) ctx.motivo = 'arrependimento';
+    else if (/defeito|avaria|quebrad|trincad|n.{0,3}o funciona|n.{0,3}o liga|n.{0,3}o acende/.test(t)) ctx.motivo = 'defeito';
+    else if (/diferente|errado|n.{0,3}o .{0,3}o que/.test(t)) ctx.motivo = 'item_errado';
+    else if (/incomplet|falta/.test(t)) ctx.motivo = 'incompleto';
+    if (!ctx.motivo && ctx.resolucao === 'item_returned') ctx.motivo = 'devolvido';
+  } catch (e) { /* melhor sem contexto do que quebrar o bipe */ }
+  CLAIM_CTX.set(k, ctx);
+  return ctx;
+}
+
+// v4.12/4.13 - MOTIVO DA DEVOLUCAO com dados confirmados no ML.
+function classificarMotivoDevolucao(order, shipment) {
+  if (!order) return null;
+  const tags = order.tags || [];
+  const cd = order.cancel_detail || {};
+  const st = String(shipment?.status || '');
+  const sub = String(shipment?.substatus || '');
+  const temReclamacao = Array.isArray(order.mediations) && order.mediations.length > 0;
+  const fraude = tags.includes('fraud_risk_detected');
+
+  const naoEntregue = cd.code === 'shipment_not_delivered'
+    || cd.group === 'shipment'
+    || st === 'not_delivered'
+    || sub === 'returned'
+    || (tags.includes('not_delivered') && !tags.includes('delivered'));
+
+  if (naoEntregue) {
+    return {
+      tipo: 'nao_entregue',
+      titulo: '🚫 O cliente NUNCA recebeu este produto',
+      detalhe: 'Voltou sem ser entregue (recusa, endereço não encontrado ou ausente). O produto deve estar LACRADO e intacto — confira e devolva ao estoque.',
+      cor: '#1565c0',
+      reclamacao_id: null,
+      risco_fraude: fraude,
+    };
+  }
+  if (temReclamacao || cd.group === 'mediations') {
+    return {
+      tipo: 'reclamacao',
+      titulo: '⚠️ O cliente ABRIU RECLAMAÇÃO',
+      detalhe: 'Foi entregue e o cliente reclamou. Abra e confira bem o produto antes de decidir.',
+      cor: '#e65100',
+      reclamacao_id: temReclamacao ? String(order.mediations[0].id) : null,
+      risco_fraude: fraude,
+    };
+  }
+  return {
+    tipo: 'devolucao_simples',
+    titulo: '📦 Devolução sem reclamação registrada',
+    detalhe: 'Confira o produto normalmente.',
+    cor: '#616161',
+    reclamacao_id: null,
+    risco_fraude: fraude,
+  };
+}
+
 // v4.10 - DIAGNOSTICO: o que da pra saber sobre o MOTIVO da devolucao antes
 // do estoquista abrir o pacote. Testa cada fonte e diz o que veio e o que foi
 // negado - sem chutar. Uso: /api/debug/motivo-devolucao?order=2000017466406326
@@ -3154,7 +3261,15 @@ function dispararDatasEntrega(itens) {
       const sid = String(d.shipment_devolucao);
       try {
         const r = await chamarML(`https://api.mercadolibre.com/shipments/${sid}`, { 'x-format-new': 'true' });
-        const dt = r.ok ? (r.data?.status_history?.date_delivered || null) : null;
+        // v4.13 - a data REAL de entrega vem de /shipments/{id}/history, no
+        // campo date_history.date_delivered. A v3.95 procurava em
+        // status_history.date_delivered, que NAO existe nessa resposta -
+        // por isso a contagem de dias do alerta seguia errada.
+        let dt = r.ok ? (r.data?.status_history?.date_delivered || null) : null;
+        if (!dt) {
+          const rh = await chamarML(`https://api.mercadolibre.com/shipments/${sid}/history`);
+          dt = (rh.ok && rh.data?.date_history?.date_delivered) || null;
+        }
         ESP_ENTREGA.set(sid, dt);
       } catch (e) { ESP_ENTREGA.set(sid, null); }
       await new Promise(r => setTimeout(r, 300));
