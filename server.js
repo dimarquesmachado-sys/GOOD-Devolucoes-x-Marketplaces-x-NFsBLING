@@ -183,7 +183,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '3.98 (defeito de devolucao so entra na tabela apos a NF)',
+    version: '3.99 (canibalizacao: consulta por SKU + conserto com peca)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -2469,6 +2469,125 @@ app.post('/api/admin/espreita/nota', requerAdmin, async (req, res) => {
   } catch (e) { return res.status(500).json({ ok: false, erro: e.message }); }
 });
 
+// v3.99 - "JA TENHO ESTE SKU EM DEFEITO?": mostrado pro estoquista no momento
+// de reportar o problema. Se existe unidade do mesmo SKU guardada, ele pode
+// canibalizar uma peca e salvar o produto que acabou de voltar.
+app.get('/api/defeitos/por-sku', requerEstoquista, async (req, res) => {
+  const sku = String(req.query.sku || '').trim();
+  if (!sku) return res.json({ ok: true, itens: [] });
+  try {
+    const { data, error } = await supabase
+      .from('devolucoes')
+      .select('id, created_at, tipo, status, produto_titulo, produto_sku, localizacao, defeito_qtd, problema_descricao')
+      .in('tipo', ['problema', 'defeito_estoque'])
+      .ilike('produto_sku', sku)
+      .order('created_at', { ascending: false })
+      .limit(50);
+    if (error) return res.status(500).json({ ok: false, erro: error.message });
+    // so o que ja esta guardado de fato (regra: devolucao so conta apos a NF)
+    const liberados = (data || []).filter(d => d.tipo === 'defeito_estoque' || d.status === 'concluido');
+    if (liberados.length === 0) return res.json({ ok: true, itens: [] });
+    // pecas ja retiradas de cada um (pra ele saber o que ainda tem)
+    const ids = liberados.map(d => d.id);
+    let porItem = {};
+    try {
+      const { data: pcs } = await supabase.from('pecas_retiradas').select('defeito_id, peca, quem, criado_em, usada_em').in('defeito_id', ids);
+      for (const p of (pcs || [])) (porItem[p.defeito_id] = porItem[p.defeito_id] || []).push(p);
+    } catch (e) { /* tabela pode nao existir ainda */ }
+    const itens = liberados.map(d => ({
+      id: d.id,
+      produto: d.produto_titulo || null,
+      sku: d.produto_sku || null,
+      local: d.localizacao || null,
+      qtd: d.defeito_qtd || 1,
+      origem: d.tipo === 'defeito_estoque' ? 'estoque' : 'devolucao',
+      defeito: (d.problema_descricao || '')
+        .replace(/^\[RE-BIPE\]\s*/, '')
+        .replace(/^\[Reportado por [^\]]+\]\s*/, '')
+        .replace(/^\[LANCADO MANUAL por [^\]]+\]\s*/, ''),
+      pecas_retiradas: (porItem[d.id] || []).map(p => ({ peca: p.peca, quem: p.quem, quando: p.criado_em, usada_em: p.usada_em })),
+    }));
+    return res.json({ ok: true, itens });
+  } catch (e) { return res.status(500).json({ ok: false, erro: e.message }); }
+});
+
+// v3.99 - CONSERTADO: o estoquista salvou o produto (eventualmente com peca
+// tirada de outra unidade em defeito). O item vai pra fila de APROVADAS - o
+// Diego emite a NF incluindo em estoque e ainda contesta o marketplace. O
+// item doador CONTINUA contando como defeito, so ganha a nota do que saiu.
+app.post('/api/triagem/consertado', requerEstoquista, async (req, res) => {
+  {
+    const pend = await recadoPendente(req.body?.dados || req.body);
+    if (pend) return res.status(409).json({ ok: false, erro: 'RECADO PENDENTE: leia o recado e clique em "OK, ciente" antes de triar.' });
+  }
+  if (!supabase) return res.status(500).json({ ok: false, erro: 'Supabase nao configurado' });
+  const dados = req.body || {};
+  if (!dados.shipment_id && !dados.nf_chave && !dados.magalu_protocolo) {
+    return res.status(400).json({ ok: false, erro: 'shipment_id, nf_chave ou magalu_protocolo obrigatorio' });
+  }
+  const problema = String(dados.descricao || '').trim();
+  const peca = String(dados.peca || '').trim();
+  const doadorId = dados.doador_id ? Number(dados.doador_id) : null;
+  if (!problema) return res.status(400).json({ ok: false, erro: 'descreva o que estava com defeito' });
+
+  const infoConserto = 'CONSERTADO por ' + req.usuario + ': ' + problema
+    + (peca ? (' | peca usada: ' + peca) : '')
+    + (doadorId ? (' | retirada do defeito #' + doadorId) : '');
+
+  try {
+    const { data, error } = await supabase
+      .from('devolucoes')
+      .insert([{
+        shipment_id: String(dados.shipment_id || dados.nf_chave || dados.magalu_protocolo || ''),
+        order_id: dados.order_id ? String(dados.order_id) : null,
+        pack_id: dados.pack_id ? String(dados.pack_id) : null,
+        buyer_id: dados.buyer_id ? String(dados.buyer_id) : null,
+        buyer_nome: dados.buyer_nome || null,
+        buyer_nickname: dados.buyer_nickname || null,
+        produto_titulo: dados.produto_titulo || null,
+        produto_mlb: dados.produto_mlb || null,
+        produto_sku: dados.produto_sku || null,
+        produto_qtd: dados.produto_qtd || null,
+        produto_valor_unit: dados.produto_valor_unit || null,
+        nf_numero: dados.nf_numero || null,
+        nf_serie: dados.nf_serie || null,
+        nf_chave: dados.nf_chave || null,
+        nf_valor: dados.nf_valor || null,
+        nf_data_emissao: dados.nf_data_emissao || null,
+        nf_id_bling: dados.nf_id_bling || null,
+        nf_link_danfe: dados.nf_link_danfe || null,
+        tipo: 'aprovado',
+        status: 'pendente',
+        funcionario: req.usuario,
+        problema_descricao: '[CONSERTADO] ' + problema + (peca ? (' (peca: ' + peca + ')') : ''),
+        problema_fotos: Array.isArray(dados.fotos) ? dados.fotos : null,
+        conserto_info: infoConserto,
+      }])
+      .select()
+      .single();
+    if (error) {
+      const m = String(error.message || '');
+      if (/conserto_info/.test(m)) return res.status(500).json({ ok: false, erro: 'Coluna conserto_info ainda nao existe - rode o SQL.' });
+      return res.status(500).json({ ok: false, erro: m });
+    }
+
+    // nota permanente no item que doou a peca (ele CONTINUA em defeito)
+    if (doadorId && peca) {
+      try {
+        await supabase.from('pecas_retiradas').insert([{
+          defeito_id: doadorId,
+          peca: peca,
+          usada_em: (dados.nf_numero ? ('NF ' + dados.nf_numero) : (dados.order_id ? ('pedido ' + dados.order_id) : null)),
+          quem: req.usuario,
+        }]);
+      } catch (e) { console.warn('[CONSERTO] nao gravou a peca retirada:', e.message); }
+    }
+
+    try { await enviarEmailProblema({ ...data, problema_descricao: infoConserto }, [], req.usuario); } catch (e) { /* email e best-effort */ }
+    return res.json({ ok: true, id: data.id, conserto: infoConserto });
+  } catch (e) { return res.status(500).json({ ok: false, erro: e.message }); }
+});
+
 // v3.96 - BUSCA DE PRODUTO pra lancar defeito: aceita parte do nome, SKU ou
 // EAN. Devolve candidatos pro estoquista ESCOLHER (nunca adivinha sozinho).
 app.get('/api/produtos/buscar', requerEstoquista, async (req, res) => {
@@ -2571,6 +2690,20 @@ app.get('/api/defeitos', requerEstoquista, async (req, res) => { // v3.90: estoq
       status: d.status,
     }));
     if (q) itens = itens.filter(x => [x.sku, x.local, x.produto, x.nf].some(v => String(v || '').toUpperCase().includes(q)));
+    // v3.99 - anexa o historico de pecas retiradas (o item continua contando
+    // como defeito; a nota mostra o que ja saiu dele)
+    try {
+      const ids = itens.map(x => x.id).filter(Boolean);
+      if (ids.length > 0) {
+        const { data: pcs } = await supabase.from('pecas_retiradas').select('defeito_id, peca, quem, criado_em, usada_em').in('defeito_id', ids);
+        const porItem = {};
+        for (const p of (pcs || [])) (porItem[p.defeito_id] = porItem[p.defeito_id] || []).push(p);
+        for (const it of itens) {
+          it.pecas_retiradas = (porItem[it.id] || []).map(p => ({ peca: p.peca, quem: p.quem, quando: p.criado_em, usada_em: p.usada_em }));
+        }
+      }
+    } catch (e) { /* tabela pode nao existir ainda */ }
+
     const totalDefeitos = itens.reduce((a, x) => a + (Number(x.qtd) || 1), 0);
     return res.json({ ok: true, total_registros: itens.length, total_pecas: totalDefeitos, aguardando_nf: aguardandoNF, itens });
   } catch (e) { return res.status(500).json({ ok: false, erro: e.message }); }
