@@ -170,6 +170,11 @@ function renderizar(data, ok) {
 
   // v3.32 - RECADOS: aviso que o Diego prendeu a essa venda/NF. Aparece em
   // destaque no topo e exige ciencia do estoquista (fica registrado quem leu).
+  // v3.35 - POR QUE ESTE PRODUTO VOLTOU (declarado ANTES do uso: na v3.34
+  // a const ficava 25 linhas depois do if e quebrava com "Cannot access
+  // '_mot' before initialization")
+  const _mot = data.motivo_devolucao || null;
+
   let html = '<div class="card">';
   if (_mot) {
     const _ctx = _mot.contexto || {};
@@ -195,8 +200,6 @@ function renderizar(data, ok) {
   }
   window._recadosPendentes = (data.recados || []).filter(rc => !rc.ciente_em).map(rc => rc.id);
 
-  // v3.34 - POR QUE ESTE PRODUTO VOLTOU (muda o trabalho do estoquista)
-  const _mot = data.motivo_devolucao || null;
   for (const rc of (data.recados || [])) {
     const lido = !!rc.ciente_em;
     html += '<div id="recado-' + rc.id + '" style="border:3px solid ' + (lido ? '#9e9e9e' : '#c62828') + ';background:' + (lido ? '#fafafa' : '#fff3e0') + ';border-radius:10px;padding:12px;margin-bottom:12px;">'
