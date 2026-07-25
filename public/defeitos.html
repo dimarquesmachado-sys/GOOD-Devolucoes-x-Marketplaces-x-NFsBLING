@@ -104,6 +104,19 @@
               + '<div class="meta">SKU <code>' + esc(linha.sku || '-') + '</code>'
               + (linha.ocorrencias.length > 1 ? ' · <b>' + linha.ocorrencias.length + ' lançamentos</b>' : '') + '</div>';
             for (const oc of linha.ocorrencias) {
+              // v3.99 - o item continua contando como defeito; a nota mostra
+              // o que ja foi canibalizado dele
+              var notaPecas = '';
+              if (oc.pecas_retiradas && oc.pecas_retiradas.length) {
+                notaPecas = '<div style="font-size:11px;color:#e65100;background:#fff3e0;border-radius:6px;padding:4px 7px;margin-top:4px;">🔩 já retirado daqui: '
+                  + oc.pecas_retiradas.map(function (p) {
+                      return esc(p.peca) + (p.quem ? ' (' + esc(p.quem) : '')
+                        + (p.quando ? ' · ' + String(p.quando).slice(0, 10).split('-').reverse().join('/') : '')
+                        + (p.quem ? ')' : '')
+                        + (p.usada_em ? ' → ' + esc(p.usada_em) : '');
+                    }).join(' · ')
+                  + '</div>';
+              }
               html += '<div class="defeito">'
                 + (oc.origem === 'estoque'
                     ? '<span style="background:#455a64;color:#fff;padding:1px 6px;border-radius:8px;font-size:10px;font-weight:700;">ESTOQUE</span> '
@@ -112,7 +125,7 @@
                 + ' <span style="color:#888;font-size:11px;">('
                 + (oc.qtd ? '×' + oc.qtd + ' · ' : '')
                 + (oc.quando ? String(oc.quando).slice(0, 10).split('-').reverse().join('/') : '-')
-                + (oc.nf ? ' · NF ' + esc(oc.nf) : '') + ')</span></div>';
+                + (oc.nf ? ' · NF ' + esc(oc.nf) : '') + ')</span>' + notaPecas + '</div>';
             }
             html += '</div>';
           }
