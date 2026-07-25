@@ -440,6 +440,23 @@
         </div>
       </div>
 
+      <!-- v3.99 - JA TENHO ESTE SKU EM DEFEITO? (canibalizar peca) -->
+      <div id="jaTenhoDefeito" style="display:none; margin:10px 0; border:2px solid #455a64; border-radius:10px; padding:10px; background:#eceff1;">
+        <b style="font-size:13px; color:#263238;">🔧 Você já tem este SKU em defeito:</b>
+        <div id="jaTenhoLista" style="margin-top:6px;"></div>
+        <div style="margin-top:8px; padding-top:8px; border-top:1px dashed #90a4ae;">
+          <label style="font-size:12px; color:#37474f;">
+            <input type="checkbox" id="chkConsertei" onchange="toggleConserto()"> <b>Consegui consertar este produto</b> (vai pro estoque, não pro defeito)
+          </label>
+          <div id="boxConserto" style="display:none; margin-top:8px;">
+            <label style="font-size:12px; color:#555; font-weight:600;">Qual peça você usou?</label>
+            <input type="text" id="conPeca" placeholder="Ex: fiação, soquete, globo, parafuso" style="width:100%; box-sizing:border-box; padding:8px; border:1px solid #ccc; border-radius:8px; font-size:14px;">
+            <label style="font-size:12px; color:#555; font-weight:600; display:block; margin-top:6px;">De qual unidade tirou?</label>
+            <select id="conDoador" style="width:100%; padding:8px; border:1px solid #ccc; border-radius:8px; font-size:14px;"></select>
+          </div>
+        </div>
+      </div>
+
       <div class="modal-acoes">
         <button class="btn-cancelar" onclick="fecharModal('modalProblema')">Cancelar</button>
         <button class="triagem-btn-problema btn-action" onclick="abrirCamera()">
