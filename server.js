@@ -183,7 +183,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.15 (diagnostico da contagem de dias do alerta)',
+    version: '4.16 (aviso de fraude so quando faz sentido)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -2979,13 +2979,19 @@ function classificarMotivoDevolucao(order, shipment) {
     || (tags.includes('not_delivered') && !tags.includes('delivered'));
 
   if (naoEntregue) {
+    // v4.16 - se o ML marcou irregularidade E o produto nao foi entregue, foi
+    // ELE que bloqueou o envio no meio do caminho. O produto nem chegou perto
+    // do cliente - nao faz sentido pedir "cuidado ao conferir".
     return {
       tipo: 'nao_entregue',
       titulo: '🚫 O cliente NUNCA recebeu este produto',
-      detalhe: 'Voltou sem ser entregue (recusa, endereço não encontrado ou ausente). O produto deve estar LACRADO e intacto — confira e devolva ao estoque.',
+      detalhe: fraude
+        ? 'O Mercado Livre bloqueou este envio no meio do caminho por irregularidade na operação. O produto nem chegou ao cliente — deve estar LACRADO e intacto.'
+        : 'Voltou sem ser entregue (recusa, endereço não encontrado ou ausente). O produto deve estar LACRADO e intacto — confira e devolva ao estoque.',
       cor: '#1565c0',
       reclamacao_id: null,
-      risco_fraude: fraude,
+      risco_fraude: false,          // nada a alertar: o produto nao circulou
+      bloqueado_pelo_ml: fraude,
     };
   }
   if (temReclamacao || cd.group === 'mediations') {
