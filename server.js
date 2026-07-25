@@ -183,7 +183,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.00 (busca de produto por indice local - filtro do Bling ignorava o termo)',
+    version: '4.01 (busca por EAN + diagnostico dos filtros do Bling)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -2651,6 +2651,39 @@ app.get('/api/produtos/buscar', requerEstoquista, async (req, res) => {
     out.push({ sku, nome: p.nome || p.descricao || '', ean: p.ean || p.gtin || '', id: p.id || null });
   };
   try {
+    // v4.01 - EAN: a LISTAGEM do Bling nao devolve o gtin (so o detalhe de cada
+    // produto traz), entao o indice local nunca acha por EAN. Quando o termo
+    // parece um codigo de barras, perguntamos direto ao Bling pelos filtros
+    // dedicados - e se um deles responder, ja resolve.
+    const pareceEan = /^\d{8,14}$/.test(q);
+    if (pareceEan) {
+      for (const filtro of ['gtin', 'codigo']) {
+        const rE = await chamarBling(`https://api.bling.com.br/Api/v3/produtos?${filtro}=${encodeURIComponent(q)}&limite=10`);
+        if (rE.ok) {
+          for (const p of (rE.data?.data || [])) {
+            // so aceita se o produto realmente casar com o termo (o Bling as
+            // vezes ignora o filtro e devolve a listagem padrao)
+            if (normProd(p.gtin).includes(alvo) || normProd(p.codigo).includes(alvo)) push(p);
+          }
+        }
+        if (out.length > 0) break;
+        await new Promise(r2 => setTimeout(r2, 200));
+      }
+      // ultimo recurso: confere o detalhe dos candidatos por codigo
+      if (out.length === 0) {
+        const rC = await chamarBling(`https://api.bling.com.br/Api/v3/produtos?codigo=${encodeURIComponent(q)}&limite=5`);
+        for (const p of ((rC.ok && rC.data?.data) || [])) {
+          if (!p.id) continue;
+          const rD = await chamarBling(`https://api.bling.com.br/Api/v3/produtos/${p.id}`);
+          const det = rD.ok ? (rD.data?.data || {}) : {};
+          if (normProd(det.gtin).includes(alvo) || normProd(det.gtinEmbalagem).includes(alvo)) push({ ...p, gtin: det.gtin });
+        }
+      }
+      if (out.length > 0) {
+        return res.json({ ok: true, produtos: out.slice(0, 30), via: 'ean' });
+      }
+    }
+
     // 1) match exato pelo codigo - o caminho mais rapido (bipou ou digitou o SKU)
     const rSku = await chamarBling(`https://api.bling.com.br/Api/v3/produtos?codigo=${encodeURIComponent(q)}&limite=20`);
     if (rSku.ok) {
@@ -2670,9 +2703,40 @@ app.get('/api/produtos/buscar', requerEstoquista, async (req, res) => {
     return res.json({
       ok: true,
       produtos: out.slice(0, 30),
+      dica: (out.length === 0 && /^\d{8,14}$/.test(q))
+        ? 'O Bling nao devolveu esse EAN na busca. Tenta pelo SKU ou por parte do nome do produto.'
+        : null,
       indice: { total: IDX_PROD.itens.length, idade_min: IDX_PROD.ts ? Math.round((Date.now() - IDX_PROD.ts) / 60000) : null, erro: IDX_PROD.erro },
     });
   } catch (e) { return res.status(500).json({ ok: false, erro: e.message }); }
+});
+
+// v4.01 - diagnostico do EAN: mostra QUAIS campos a listagem do Bling devolve
+// e testa os filtros dedicados, pra parar de adivinhar.
+app.get('/api/debug/bling-ean', requerEstoquista, async (req, res) => {
+  const ean = String(req.query.ean || '').trim();
+  const out = { ean, testes: [], campos_da_listagem: null };
+  try {
+    const rL = await chamarBling('https://api.bling.com.br/Api/v3/produtos?pagina=1&limite=1');
+    const amostra = (rL.ok && rL.data?.data && rL.data.data[0]) || null;
+    out.campos_da_listagem = amostra ? Object.keys(amostra) : null;
+    out.listagem_tem_gtin = amostra ? ('gtin' in amostra) : null;
+    out.amostra_listagem = amostra || null;
+    if (ean) {
+      for (const filtro of ['gtin', 'codigo', 'pesquisa', 'nome']) {
+        const r = await chamarBling(`https://api.bling.com.br/Api/v3/produtos?${filtro}=${encodeURIComponent(ean)}&limite=5`);
+        const lista = (r.ok && r.data?.data) || [];
+        out.testes.push({
+          filtro,
+          http_ok: r.ok,
+          qtd: lista.length,
+          primeiros: lista.slice(0, 3).map(p => ({ sku: p.codigo, nome: (p.nome || '').slice(0, 45), gtin: p.gtin || null })),
+        });
+        await new Promise(r2 => setTimeout(r2, 250));
+      }
+    }
+    return res.json({ ok: true, ...out });
+  } catch (e2) { return res.status(500).json({ ok: false, erro: e2.message, ...out }); }
 });
 
 // diagnostico do indice de produtos
