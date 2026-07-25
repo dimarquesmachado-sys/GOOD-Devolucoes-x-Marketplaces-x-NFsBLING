@@ -61,10 +61,15 @@
       lista.innerHTML = '<div class="loading">Carregando...</div>';
       const q = document.getElementById('busca').value.trim();
       try {
-        const r = await fetch('/api/defeitos' + (q ? '?q=' + encodeURIComponent(q) : ''));
+        const r = await fetch('/api/defeitos' + (q ? '?q=' + encodeURIComponent(q) : ''), { credentials: 'same-origin' });
+        if (r.status === 401) {
+          // v3.91 - NAO redireciona (isso causava o "piscar" em loop). Mostra aviso.
+          resumo.textContent = '';
+          lista.innerHTML = '<div class="vazio">🔒 Sessão expirada. <a href="/" style="color:#b00020;font-weight:700;">Voltar à triagem e entrar de novo</a></div>';
+          return;
+        }
         const d = await r.json();
         if (!d.ok) {
-          if (r.status === 401) { location.href = '/'; return; }
           lista.innerHTML = '<div class="vazio">⚠️ ' + esc(d.erro || 'erro') + '</div>';
           resumo.textContent = '';
           return;
