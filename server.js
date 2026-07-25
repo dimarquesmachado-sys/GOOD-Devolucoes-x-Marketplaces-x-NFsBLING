@@ -183,7 +183,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.01 (busca por EAN + diagnostico dos filtros do Bling)',
+    version: '4.02 (EAN pelo detalhe do produto - multi-campo, como no Localizacao x Estoque)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -2597,6 +2597,24 @@ app.post('/api/triagem/consertado', requerEstoquista, async (req, res) => {
 const IDX_PROD = { ts: 0, itens: [], construindo: false, erro: null };
 const PROD_TTL_MS = 30 * 60 * 1000;
 
+// v4.02 - O EAN no Bling aparece com MUITOS nomes diferentes (o produto do
+// Diego guarda em "GTIN/EAN tributario"). Esta funcao varre todos os campos
+// conhecidos - licao aprendida no projeto Localizacao x Estoque GOOD.
+function possiveisGtins(p) {
+  if (!p) return [];
+  const t = p.tributacao || {};
+  const cands = [
+    p.gtin, p.ean, p.codigoBarras, p.gtinEan, p.gtinTributario, p.gtinEmbalagem,
+    t.gtin, t.ean, t.gtinTributario, t.codigoBarras,
+  ];
+  const out = [];
+  for (const c of cands) {
+    const v = String(c == null ? '' : c).replace(/\D/g, '');
+    if (v.length >= 8 && !out.includes(v)) out.push(v);
+  }
+  return out;
+}
+
 function normProd(t) {
   return String(t == null ? '' : t)
     .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
@@ -2627,6 +2645,7 @@ async function construirIndiceProdutos() {
     }
     IDX_PROD.itens = itens;
     IDX_PROD.ts = Date.now();
+    enriquecerEansEmBackground();
     IDX_PROD.erro = itens.length === 0 ? (IDX_PROD.erro || 'catalogo vazio') : null;
     console.log(`[PRODUTOS] indice: ${itens.length} produtos em ${Math.round((Date.now() - t0) / 1000)}s`);
   } catch (e) {
@@ -2636,6 +2655,43 @@ async function construirIndiceProdutos() {
     IDX_PROD.construindo = false;
   }
   return IDX_PROD;
+}
+
+// v4.02 - busca o DETALHE de cada produto pra descobrir o EAN. E lento (um
+// por vez, pra nao tomar 429), mas roda em background e o resultado fica em
+// cache - depois disso a busca por codigo de barras e instantanea.
+let EAN_RODANDO = false;
+const EAN_PROGRESSO = { feitos: 0, total: 0, comEan: 0, concluido: false };
+function enriquecerEansEmBackground() {
+  if (EAN_RODANDO) return;
+  const fila = IDX_PROD.itens.filter(p => p.id && !p.eansCarregados);
+  if (fila.length === 0) { EAN_PROGRESSO.concluido = true; return; }
+  EAN_RODANDO = true;
+  EAN_PROGRESSO.total = fila.length;
+  EAN_PROGRESSO.feitos = 0;
+  EAN_PROGRESSO.concluido = false;
+  (async () => {
+    console.log(`[PRODUTOS] buscando EAN de ${fila.length} produtos (background)...`);
+    for (const p of fila) {
+      try {
+        const r = await chamarBling(`https://api.bling.com.br/Api/v3/produtos/${p.id}`);
+        const det = (r.ok && (r.data?.data || r.data)) || null;
+        const eans = possiveisGtins(det);
+        p.eans = eans;
+        p.eansCarregados = true;
+        if (eans.length) {
+          p.ean = eans[0];
+          p.busca = normProd(p.sku + ' ' + p.nome + ' ' + eans.join(' '));
+          EAN_PROGRESSO.comEan++;
+        }
+      } catch (e2) { p.eansCarregados = true; }
+      EAN_PROGRESSO.feitos++;
+      await new Promise(r2 => setTimeout(r2, 340));
+    }
+    EAN_PROGRESSO.concluido = true;
+    console.log(`[PRODUTOS] EANs prontos: ${EAN_PROGRESSO.comEan} de ${fila.length}`);
+  })().catch(e2 => console.error('[PRODUTOS] enriquecimento EAN falhou:', e2.message))
+    .finally(() => { EAN_RODANDO = false; });
 }
 
 app.get('/api/produtos/buscar', requerEstoquista, async (req, res) => {
@@ -2680,8 +2736,31 @@ app.get('/api/produtos/buscar', requerEstoquista, async (req, res) => {
         }
       }
       if (out.length > 0) {
-        return res.json({ ok: true, produtos: out.slice(0, 30), via: 'ean' });
+        return res.json({ ok: true, produtos: out.slice(0, 30), via: 'ean_bling' });
       }
+
+      // v4.02 - o filtro de EAN do Bling nao e confiavel (documentado no
+      // projeto Localizacao x Estoque). A fonte boa e o indice enriquecido
+      // com o detalhe de cada produto.
+      if (!IDX_PROD.ts || (Date.now() - IDX_PROD.ts) > PROD_TTL_MS) await construirIndiceProdutos();
+      for (const p of IDX_PROD.itens) {
+        if ((p.eans || []).includes(q) || normProd(p.ean) === alvo) push(p);
+        if (out.length >= 10) break;
+      }
+      if (out.length > 0) {
+        return res.json({ ok: true, produtos: out.slice(0, 30), via: 'ean_indice' });
+      }
+      // ainda indexando? avisa em vez de dizer que nao existe
+      if (!EAN_PROGRESSO.concluido && EAN_PROGRESSO.total > 0) {
+        const pct = Math.round((EAN_PROGRESSO.feitos / EAN_PROGRESSO.total) * 100);
+        return res.json({
+          ok: true,
+          produtos: [],
+          indexando: true,
+          dica: `Ainda estou lendo os códigos de barras do catálogo (${pct}% — ${EAN_PROGRESSO.feitos} de ${EAN_PROGRESSO.total}). Tenta daqui a pouco, ou busca pelo SKU/nome que já funciona.`,
+        });
+      }
+      enriquecerEansEmBackground();
     }
 
     // 1) match exato pelo codigo - o caminho mais rapido (bipou ou digitou o SKU)
@@ -2741,6 +2820,7 @@ app.get('/api/debug/bling-ean', requerEstoquista, async (req, res) => {
 
 // diagnostico do indice de produtos
 app.get('/api/debug/produtos-indice', requerEstoquista, async (req, res) => {
+  if (req.query.eans === '1') enriquecerEansEmBackground();
   if (req.query.rebuild === '1') await construirIndiceProdutos();
   const q = String(req.query.q || '').trim();
   const alvo = normProd(q);
@@ -2752,6 +2832,8 @@ app.get('/api/debug/produtos-indice', requerEstoquista, async (req, res) => {
     idade_min: IDX_PROD.ts ? Math.round((Date.now() - IDX_PROD.ts) / 60000) : null,
     erro: IDX_PROD.erro,
     exemplos: IDX_PROD.itens.slice(0, 5).map(p => p.sku),
+    eans: { ...EAN_PROGRESSO, rodando: EAN_RODANDO, com_ean_no_indice: IDX_PROD.itens.filter(p => (p.eans || []).length).length },
+    amostra_com_ean: IDX_PROD.itens.filter(p => (p.eans || []).length).slice(0, 5).map(p => ({ sku: p.sku, ean: p.ean })),
     busca_teste: q ? { termo: q, achou: amostra.length, amostra } : null,
   });
 });
