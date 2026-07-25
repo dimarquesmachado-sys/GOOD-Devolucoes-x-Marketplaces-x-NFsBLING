@@ -194,7 +194,7 @@ function renderizar(data, ok) {
       html += '<div style="font-size:11px;color:#777;margin-top:3px;">Reclamação nº ' + escapeHtml(_mot.reclamacao_id) + '</div>';
     }
     if (_mot.risco_fraude) {
-      html += '<div style="margin-top:6px;background:#c62828;color:#fff;border-radius:6px;padding:5px 8px;font-size:12px;font-weight:700;">⚠️ O Mercado Livre marcou RISCO DE FRAUDE neste pedido — confira com muito cuidado e avise o Diego</div>';
+      html += '<div style="margin-top:6px;background:#c62828;color:#fff;border-radius:6px;padding:5px 8px;font-size:12px;font-weight:700;">⚠️ O Mercado Livre marcou irregularidade neste pedido — confira o produto com atenção</div>';
     }
     html += '</div>';
   }
