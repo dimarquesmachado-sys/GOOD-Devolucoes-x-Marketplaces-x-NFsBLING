@@ -183,7 +183,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.07 (EANs em cache por SKU - nao se perdem no rebuild)',
+    version: '4.08 (imagem do produto na busca)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -2600,6 +2600,33 @@ const IDX_PROD = { ts: 0, itens: [], construindo: false, erro: null };
 // recriava os objetos e os EANs sumiam - enquanto a leitura antiga seguia
 // preenchendo objetos orfaos. Agora o rebuild reaproveita o que ja foi lido.
 const EAN_POR_SKU = new Map();
+// v4.08 - imagem do produto: o Bling nao tem campo padrao (pode vir em
+// imagemURL, linkImagem, imagens[], midia.imagens.internas[], anexos[]...).
+// Varremos o objeto atras da primeira URL que pareca imagem.
+const IMG_POR_SKU = new Map();
+function extrairImagem(obj, prof = 0) {
+  if (!obj || prof > 6) return null;
+  if (typeof obj === 'string') {
+    const u = obj.trim();
+    return /^https?:\/\//i.test(u) && /\.(jpe?g|png|webp|gif|bmp)(\?|$)/i.test(u) ? u : null;
+  }
+  if (Array.isArray(obj)) {
+    for (const it of obj) { const r = extrairImagem(it, prof + 1); if (r) return r; }
+    return null;
+  }
+  if (typeof obj === 'object') {
+    // campos mais provaveis primeiro
+    for (const k of ['link', 'linkMiniatura', 'imagemURL', 'imagemUrl', 'urlImagem', 'linkImagem', 'url', 'src']) {
+      const r = extrairImagem(obj[k], prof + 1);
+      if (r) return r;
+    }
+    for (const k of Object.keys(obj)) {
+      const r = extrairImagem(obj[k], prof + 1);
+      if (r) return r;
+    }
+  }
+  return null;
+}
 const PROD_TTL_MS = 30 * 60 * 1000;
 
 // v4.02 - O EAN no Bling aparece com MUITOS nomes diferentes (o produto do
@@ -2653,6 +2680,7 @@ async function construirIndiceProdutos() {
       for (const p of lista) {
         const skuItem = String(p.codigo || '').trim();
         const eansCache = EAN_POR_SKU.get(skuItem.toUpperCase()) || null;
+        const imgCache = IMG_POR_SKU.get(skuItem.toUpperCase()) || extrairImagem(p) || null;
         itens.push({
           id: p.id || null,
           sku: skuItem,
@@ -2660,6 +2688,7 @@ async function construirIndiceProdutos() {
           ean: (eansCache && eansCache[0]) || p.gtin || '',
           eans: eansCache || undefined,
           eansCarregados: !!eansCache,
+          imagem: imgCache,
           busca: normProd(skuItem + ' ' + (p.nome || '') + ' ' + ((eansCache || []).join(' ') || p.gtin || '')),
         });
       }
@@ -2715,6 +2744,9 @@ function enriquecerEansEmBackground() {
           EAN_POR_SKU.set(String(p.sku || '').toUpperCase(), eans); // v4.07: sobrevive ao rebuild
           EAN_PROGRESSO.comEan++;
         }
+        // v4.08 - mesma leitura ja traz a imagem (sem chamada extra)
+        const img = extrairImagem(det);
+        if (img) { p.imagem = img; IMG_POR_SKU.set(String(p.sku || '').toUpperCase(), img); }
       } catch (e) { p.eansCarregados = true; }
       EAN_PROGRESSO.feitos++;
       await new Promise(r2 => setTimeout(r2, 340));
@@ -2740,7 +2772,7 @@ app.get('/api/produtos/buscar', requerEstoquista, async (req, res) => {
     const sku = String(p.sku || p.codigo || '').trim();
     if (!sku || vistos.has(sku)) return;
     vistos.add(sku);
-    out.push({ sku, nome: p.nome || p.descricao || '', ean: p.ean || p.gtin || '', id: p.id || null });
+    out.push({ sku, nome: p.nome || p.descricao || '', ean: p.ean || p.gtin || '', id: p.id || null, imagem: p.imagem || IMG_POR_SKU.get(sku.toUpperCase()) || extrairImagem(p) || null });
   };
   try {
     // v4.01 - EAN: a LISTAGEM do Bling nao devolve o gtin (so o detalhe de cada
