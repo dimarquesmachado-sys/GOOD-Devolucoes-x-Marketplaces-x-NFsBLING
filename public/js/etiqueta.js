@@ -331,18 +331,26 @@ function montarZplDefeito(etq) {
   z.push('^FO20,' + y + '^A0N,40,40^FDNF venda: ' + nf + '^FS'); y += 48;
   z.push('^FO20,' + y + '^A0N,40,40^FDQtd com defeito: ' + qtd + '^FS'); y += 48;
   z.push('^FO20,' + y + '^A0N,44,44^FDLocal: ' + local + '^FS');
+  if (etq.seq) { y += 52; z.push('^FO20,' + y + '^A0N,40,40^FDEtiqueta ' + etq.seq + '^FS'); }
   z.push('^XZ');
   return z.join('');
 }
 
 async function imprimirEtiquetaDefeito(etq) {
-  const zpl = montarZplDefeito(etq);
-  const resumo = ('DEFEITO ' + (etq.sku || '') + ' NF' + (etq.nf || '')).slice(0, 100);
+  // v3.98 - UMA ETIQUETA POR UNIDADE: 3 pecas com defeito = 3 etiquetas, pra
+  // colar em cada caixa. Cada uma leva "1 de 3", "2 de 3"...
+  const total = Math.max(1, parseInt(etq.qtd, 10) || 1);
+  const zpls = [];
+  for (let i = 1; i <= total; i++) {
+    zpls.push(montarZplDefeito(Object.assign({}, etq, { seq: total > 1 ? (i + ' de ' + total) : null })));
+  }
+  const zpl = zpls.join('');
+  const resumo = ('DEFEITO ' + (etq.sku || '') + ' NF' + (etq.nf || '') + ' x' + total).slice(0, 100);
   try {
     const local = await temQZLocal();
     if (!local) {
       const d = await enviarPraFila(zpl, resumo);
-      if (d.estacao_online) toast('📱→🖨️ Etiqueta de DEFEITO enviada pra ESTACAO (Zebra do notebook)', 'ok');
+      if (d.estacao_online) toast('📱→🖨️ ' + total + ' etiqueta(s) de DEFEITO enviada(s) pra ESTACAO (Zebra do notebook)', 'ok');
       else toast('⏳ Etiqueta na fila — a estacao esta OFFLINE. Abra o Devolucoes no notebook da Zebra.', 'err');
       return;
     }
@@ -351,7 +359,7 @@ async function imprimirEtiquetaDefeito(etq) {
     if (!printer) return;
     const cfg = qz.configs.create(printer);
     await qz.print(cfg, [{ type: 'raw', format: 'command', flavor: 'plain', data: zpl }]);
-    toast('🏷️ Etiqueta de DEFEITO impressa → ' + printer, 'ok');
+    toast('🏷️ ' + total + ' etiqueta(s) de DEFEITO impressa(s) → ' + printer, 'ok');
   } catch (e) {
     toast('Erro na impressao: ' + (e.message || e) + ' — QZ Tray aberto? Zebra ligada?', 'err');
   }
@@ -376,7 +384,7 @@ function abrirPopupEtiquetaDefeito(etq, aoFechar) {
     + '</div>'
     + '<div style="display:flex;gap:10px;margin-top:16px;">'
     + '<button id="popupEtqNao" style="flex:1;background:#999;color:#fff;border:none;border-radius:10px;padding:14px;font-size:15px;font-weight:700;cursor:pointer;">Pular</button>'
-    + '<button id="popupEtqSim" style="flex:2;background:#c62828;color:#fff;border:none;border-radius:10px;padding:14px;font-size:15px;font-weight:800;cursor:pointer;">🖨️ Imprimir etiqueta</button>'
+    + '<button id="popupEtqSim" style="flex:2;background:#c62828;color:#fff;border:none;border-radius:10px;padding:14px;font-size:15px;font-weight:800;cursor:pointer;">🖨️ Imprimir ' + (Number(etq.qtd) > 1 ? (etq.qtd + ' etiquetas') : 'etiqueta') + '</button>'
     + '</div></div>';
   document.body.appendChild(ov);
   const fechar = () => { ov.remove(); if (typeof aoFechar === 'function') aoFechar(); };
