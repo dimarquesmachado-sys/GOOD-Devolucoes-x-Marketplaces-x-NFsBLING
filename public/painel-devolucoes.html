@@ -1,0 +1,2135 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin - GOOD Devolucoes</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f5f5f7; min-height: 100vh; padding: 12px; color: #1d1d1f;
+    }
+    .container { max-width: 1200px; margin: 0 auto; }
+
+    header {
+      background: linear-gradient(135deg, #1d1d1f 0%, #3a3a3c 100%);
+      border-radius: 12px; padding: 20px; margin-bottom: 14px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.15); color: white;
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 12px; flex-wrap: wrap;
+    }
+    header h1 { font-size: 20px; }
+    header p { font-size: 12px; opacity: 0.7; margin-top: 2px; }
+    .header-acoes {
+      display: flex; gap: 8px; flex-wrap: wrap;
+    }
+    .header-acoes a {
+      color: white; padding: 8px 14px; background: rgba(255,255,255,0.15);
+      border-radius: 8px; text-decoration: none; font-size: 13px; font-weight: 600;
+    }
+    .header-acoes a:hover { background: rgba(255,255,255,0.25); }
+    /* v3.16.0: destaque visual no botao novo */
+    .header-acoes a.destaque {
+      background: rgba(46, 125, 50, 0.5);
+      border: 1px solid rgba(46, 125, 50, 0.8);
+    }
+    .header-acoes a.destaque:hover {
+      background: rgba(46, 125, 50, 0.7);
+    }
+
+    /* v3.14.9: no mobile (<=600px), header em coluna pra nao sobrepor titulo */
+    @media (max-width: 600px) {
+      header {
+        flex-direction: column; align-items: flex-start;
+        padding: 16px;
+      }
+      header h1 { font-size: 18px; }
+      .header-acoes { width: 100%; }
+      .header-acoes a {
+        flex: 1; text-align: center; padding: 10px 8px;
+        font-size: 12px;
+      }
+    }
+
+    .secoes {
+      display: grid; grid-template-columns: 1fr; gap: 14px;
+    }
+    /* v3.79.2 - todas as secoes em coluna unica, largura total da pagina
+       (antes viravam 2 colunas em telas largas) */
+
+    .secao {
+      background: white; border-radius: 12px; padding: 18px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+    }
+    .secao h2 {
+      font-size: 16px; margin-bottom: 12px; padding-bottom: 8px;
+      border-bottom: 2px solid #f0f0f0;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .badge-count {
+      background: #007AFF; color: white; padding: 2px 8px;
+      border-radius: 10px; font-size: 12px; font-weight: 700; margin-left: auto;
+    }
+    .badge-count.zero { background: #999; }
+    .badge-count.problema { background: #c62828; }
+
+    .item {
+      background: #fafafa; border-radius: 10px; padding: 14px;
+      margin-bottom: 10px; border-left: 4px solid #43a047;
+    }
+    .item.problema { border-left-color: #c62828; background: #fff5f5; }
+    .item.concluido { opacity: 0.6; border-left-color: #999; background: #f0f0f0; }
+
+    .item-header {
+      display: flex; justify-content: space-between; align-items: flex-start;
+      margin-bottom: 8px;
+    }
+    .item-titulo {
+      font-size: 14px; font-weight: 700; color: #1d1d1f;
+    }
+    .item-data {
+      font-size: 11px; color: #888;
+    }
+    .item-detalhes {
+      font-size: 12px; color: #555; line-height: 1.6;
+    }
+    .item-detalhes strong { color: #1d1d1f; }
+    .item-acoes {
+      display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap;
+    }
+    .btn {
+      padding: 8px 12px; background: #007AFF; color: white; border: none;
+      border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer;
+      text-decoration: none; display: inline-block; font-family: inherit;
+    }
+    .btn:hover { background: #0051D5; }
+    .btn-verde { background: #2e7d32; }
+    .btn-verde:hover { background: #1b5e20; }
+    .btn-cinza { background: #6c757d; }
+    .btn-cinza:hover { background: #495057; }
+    .btn-vermelho { background: #c62828; }
+    .btn-vermelho:hover { background: #b71c1c; }
+
+    .vazio {
+      text-align: center; padding: 40px 20px; color: #999; font-size: 14px;
+    }
+
+    .fotos-mini {
+      display: flex; gap: 6px; flex-wrap: wrap; margin: 10px 0;
+    }
+    .fotos-mini img {
+      width: 70px; height: 70px; object-fit: cover; border-radius: 6px;
+      border: 1px solid #ddd; cursor: pointer; transition: transform 0.1s;
+    }
+    .fotos-mini img:hover { transform: scale(1.05); border-color: #007AFF; }
+
+    .descricao-problema {
+      background: white; border: 1px solid #fde68a; border-radius: 8px;
+      padding: 8px 10px; margin-top: 8px; font-size: 13px;
+      color: #92400e; font-style: italic; line-height: 1.5;
+    }
+
+    .toast {
+      position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+      background: #1d1d1f; color: white; padding: 12px 20px; border-radius: 10px;
+      font-size: 14px; font-weight: 600; box-shadow: 0 4px 14px rgba(0,0,0,0.3);
+      z-index: 2000; opacity: 0; transition: opacity 0.3s; pointer-events: none;
+    }
+    .toast.show { opacity: 1; }
+    .toast.ok { background: #2e7d32; }
+    .toast.err { background: #c62828; }
+
+    /* Modal foto fullscreen */
+    .modal-foto {
+      position: fixed; top:0;left:0;right:0;bottom:0;
+      background: rgba(0,0,0,0.9); display: none; align-items: center;
+      justify-content: center; z-index: 3000; padding: 20px; cursor: pointer;
+    }
+    .modal-foto.show { display: flex; }
+    .modal-foto img {
+      max-width: 100%; max-height: 100%; border-radius: 8px;
+    }
+
+    .filtros {
+      background: white; border-radius: 10px; padding: 14px 16px;
+      margin-bottom: 14px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+    }
+    .filtros-linha {
+      display: flex; gap: 12px; align-items: center; flex-wrap: wrap;
+      font-size: 13px;
+    }
+    .filtros-linha + .filtros-linha { margin-top: 10px; }
+    .filtros label {
+      display: flex; align-items: center; gap: 6px; cursor: pointer;
+      user-select: none; white-space: nowrap;
+    }
+    .filtros input[type="text"], .filtros input[type="date"] {
+      padding: 8px 12px; border: 1px solid #d0d0d0; border-radius: 6px;
+      font-size: 13px; font-family: inherit; outline: none;
+    }
+    .filtros input[type="text"]:focus, .filtros input[type="date"]:focus {
+      border-color: #007AFF;
+    }
+    .filtros .busca {
+      flex: 1; min-width: 200px;
+    }
+    .filtros button {
+      padding: 8px 14px; background: #007AFF; color: white;
+      border: none; border-radius: 6px; font-size: 13px; font-weight: 600;
+      cursor: pointer;
+    }
+    .filtros button.ghost {
+      background: #f0f0f0; color: #555;
+    }
+    .filtros .resultado-info {
+      font-size: 12px; color: #888; margin-left: auto;
+    }
+    .loading { text-align: center; padding: 40px; color: #666; }
+    .loading .spinner {
+      display: inline-block; width: 28px; height: 28px;
+      border: 3px solid #f0f0f0; border-top-color: #007AFF;
+      border-radius: 50%; animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    /* v3.28.1 - flash na borda do card recem-atualizado */
+    @keyframes cardFlash {
+      0%   { box-shadow: 0 0 0 0 rgba(46,125,50,0); border-color: transparent; }
+      15%  { box-shadow: 0 0 0 4px rgba(46,125,50,0.55); }
+      50%  { box-shadow: 0 0 0 4px rgba(46,125,50,0.55); }
+      100% { box-shadow: 0 0 0 0 rgba(46,125,50,0); }
+    }
+    .card-flash {
+      animation: cardFlash 2s ease-out;
+      border: 2px solid #2e7d32 !important;
+      border-radius: 8px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div>
+        <h1>🔐 Admin - GOOD Devolucoes</h1>
+        <p>Painel restrito · v3.94 (arquivo renomeado: painel-devolucoes.html)</p>
+      </div>
+      <div class="header-acoes">
+        <a href="/admin/relatorios.html" class="destaque">📊 Relatórios</a>
+        <a href="/defeitos.html" style="background:#c62828;color:#fff;">🔧 Defeitos</a>
+        <a href="/">📦 Triagem (bipar)</a>
+        <a href="#" onclick="logout(event)">🚪 Sair</a>
+      </div>
+    </header>
+
+    <div class="filtros">
+      <div class="filtros-linha">
+        <input type="text" class="busca" id="filtroBusca"
+          placeholder="🔍 Buscar por NF, pedido, SKU, cliente, MLB..."
+          onkeydown="if(event.key==='Enter') renderizar()" />
+        <button onclick="renderizar()">🔍 Buscar</button>
+        <button class="ghost" onclick="limparBusca()">Limpar</button>
+      </div>
+      <div class="filtros-linha">
+        <label>De:
+          <input type="date" id="filtroDataIni">
+        </label>
+        <label>Ate:
+          <input type="date" id="filtroDataFim">
+        </label>
+        <label>
+          <input type="checkbox" id="mostrarConcluidos">
+          Mostrar concluidos
+        </label>
+        <button onclick="carregar()">🔄 Recarregar</button>
+        <button id="btnVarreduraNF" onclick="varrerNFsFaltantes()" style="background:#6a1b9a; color:#fff;" title="Busca e vincula a NF de TODOS os registros sem NF, um por vez (respeita o limite do Bling)">🔎 Buscar NFs faltantes</button>
+        <button id="btnLancarNF" onclick="lancarPorNF()" style="background:#37474f; color:#fff;" title="Cria cards em Aprovadas a partir do número da NF de venda (série 1) — pra devoluções que não passaram pela bipagem">➕ Lançar por NF</button>
+        <button id="btnCarregarItens" onclick="carregarItensAntigos()" style="background:#2e7d32; color:#fff;" title="Retrofit: busca no Bling e grava os itens/quantidades dos cards ANTIGOS, pra caixinha verde já vir aberta">🧾 Carregar itens (antigos)</button>
+        <span class="resultado-info" id="resultadoInfo"></span>
+      </div>
+    </div>
+
+    <div id="loadingArea" class="loading">
+      <div class="spinner"></div>
+      <p style="margin-top:12px;">Carregando devolucoes...</p>
+    </div>
+
+    <div class="secoes" id="secoes" style="display:none;">
+
+      <!-- v3.83 - RECADOS pro estoquista (aviso preso a uma venda/NF) -->
+      <div class="secao" style="grid-column: 1 / -1;">
+        <h2>📣 Recados pro estoquista <span class="badge-count" id="countRecados" style="background:#c62828;">0</span></h2>
+        <div style="font-size:13px;color:#666;margin-bottom:10px;">Prenda um aviso a uma venda/NF/rastreio. Quando alguém bipar essa devolução, o recado aparece em destaque e exige "OK, ciente".</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-start;">
+          <input type="text" id="recadoChave" placeholder="Pedido, NF, chave ou rastreio" style="flex:1;min-width:220px;padding:10px;border:1px solid #ccc;border-radius:8px;font-size:14px;">
+          <input type="text" id="recadoTexto" placeholder="Ex: cliente avisou que veio com vidro trincado - NAO reenviar" style="flex:2;min-width:280px;padding:10px;border:1px solid #ccc;border-radius:8px;font-size:14px;">
+          <button onclick="salvarRecado()" style="background:#c62828;color:#fff;border:none;border-radius:8px;padding:10px 18px;font-weight:700;cursor:pointer;">📣 Criar recado</button>
+        </div>
+        <div id="recadoMsg" style="font-size:13px;margin-top:6px;"></div>
+        <div id="listaRecados" style="margin-top:12px;"></div>
+      </div>
+
+      <div class="secao">
+        <h2>
+          ✅ Aprovadas - aguardando NF
+          <span class="badge-count" id="countAprovadas">0</span>
+          <span style="margin-left:12px; display:inline-flex; gap:8px; align-items:center; font-size:13px; font-weight:normal;">
+            <label style="display:inline-flex;align-items:center;gap:4px;cursor:pointer;" title="Marca/desmarca todos os cards elegíveis desta seção"><input type="checkbox" onchange="toggleTodasEsteira('aprovadas', this.checked)"> todas</label>
+            <select id="depAprovadas" style="padding:5px 8px;border-radius:6px;border:1px solid #90caf9;font-size:12px;" title="Depósito onde a emissão lança o estoque (padrão: Geral)"><option value="4956031259" selected>📦 Geral</option><option value="14888947655">📦 DEFEITOS API</option><option value="14888156920">📦 DEFEITOS</option><option value="9596855161">📦 B2W FULL</option></select>
+            <button class="btn" id="btnEsteiraAprovadas" onclick="rodarEsteira('aprovadas')" style="background:#1565c0;color:#fff;" title="Gera + EMITE a NF de devolução dos cards selecionados, um por vez">🏭 Emitir selecionadas (0)</button>
+            <button class="btn" id="btnConcluirAprovadas" onclick="concluirSelecionadas('aprovadas')" style="background:#2e7d32;color:#fff;" title="Marca como concluído todos os cards selecionados">✅ Concluir selecionadas (0)</button>
+          </span>
+        </h2>
+        <div id="listaAprovadas"></div>
+      </div>
+
+      <div class="secao">
+        <h2>
+          ⚠️ Problemas reportados
+          <span class="badge-count problema" id="countProblemas">0</span>
+          <span style="margin-left:12px; display:inline-flex; gap:8px; align-items:center; font-size:13px; font-weight:normal;">
+            <label style="display:inline-flex;align-items:center;gap:4px;cursor:pointer;" title="Marca/desmarca todos os cards elegíveis desta seção"><input type="checkbox" onchange="toggleTodasEsteira('problemas', this.checked)"> todas</label>
+            <select id="depProblemas" style="padding:5px 8px;border-radius:6px;border:1px solid #ffcc80;font-size:12px;" title="Depósito onde a emissão lança o estoque (padrão: Geral)"><option value="4956031259" selected>📦 Geral</option><option value="14888947655">📦 DEFEITOS API</option><option value="14888156920">📦 DEFEITOS</option><option value="9596855161">📦 B2W FULL</option></select>
+            <button class="btn" id="btnEsteiraProblemas" onclick="rodarEsteira('problemas')" style="background:#e65100;color:#fff;" title="Gera + EMITE a NF de devolução dos cards selecionados, um por vez">🏭 Emitir selecionadas (0)</button>
+            <button class="btn" id="btnConcluirProblemas" onclick="concluirSelecionadas('problemas')" style="background:#2e7d32;color:#fff;" title="Marca como concluído todos os cards selecionados">✅ Concluir selecionadas (0)</button>
+          </span>
+        </h2>
+        <div id="listaProblemas"></div>
+      </div>
+
+      <!-- v3.18.0 - secao DIVERGENTES (envio errado do estoque) -->
+      <div class="secao">
+        <h2>
+          🔄 Produtos divergentes (envio errado)
+          <span class="badge-count" id="countDivergentes" style="background:#7b1fa2;">0</span>
+        </h2>
+        <div id="listaDivergentes"></div>
+      </div>
+
+      <!-- v3.79.1 - A ESPREITA no FIM, largura total (monitoramento, nao fila) -->
+      <div class="secao" id="secaoEspreita" style="display:none; grid-column: 1 / -1;">
+        <h2>
+          📮 À espreita — devoluções a caminho (Magalu · ML · Shopee)
+          <span class="badge-count" id="countEspreita" style="background:#6a1b9a;">0</span>
+        </h2>
+        <div id="listaEspreita"></div>
+      </div>
+
+
+
+    </div>
+
+  </div>
+
+  <div class="modal-foto" id="modalFoto" onclick="this.classList.remove('show')">
+    <img id="modalFotoImg" src="" alt="">
+  </div>
+
+  <!-- v3.15.0: Modal Gerar NF Devolucao -->
+  <div id="modalGerarDevolucao" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.6); z-index:3000; align-items:center; justify-content:center; padding:20px;">
+    <div style="background:white; border-radius:12px; max-width:560px; width:100%; max-height:90vh; overflow-y:auto; padding:24px;">
+      <div id="modalGerarConteudo">
+        <!-- conteudo dinamico -->
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    let dados = { aprovadas: [], problemas: [] };
+
+    async function carregar() {
+      document.getElementById('loadingArea').style.display = '';
+      document.getElementById('secoes').style.display = 'none';
+
+      try {
+        const r = await fetch('/api/admin/devolucoes', { credentials: 'same-origin' });
+        if (r.status === 401) {
+          // v3.93 - NAO redireciona (isso causava o painel PISCAR em loop quando
+          // a sessao de admin expirava). Mostra aviso com botao de entrar.
+          document.getElementById('loadingArea').style.display = 'none';
+          const sec = document.getElementById('secoes');
+          sec.style.display = '';
+          sec.innerHTML = '<div style="background:#fff5f5;border:2px solid #ef9a9a;border-radius:12px;padding:24px;text-align:center;margin:20px 0;">'
+            + '<div style="font-size:20px;font-weight:800;color:#c62828;">🔒 Sessão de admin expirada</div>'
+            + '<div style="font-size:14px;color:#666;margin:8px 0 16px;">Faça login de novo para ver o painel.</div>'
+            + '<a href="/" style="display:inline-block;background:#c62828;color:#fff;text-decoration:none;padding:12px 24px;border-radius:10px;font-weight:700;">Ir para o login →</a>'
+            + '</div>';
+          return;
+        }
+        const d = await r.json();
+        if (!d.ok) {
+          throw new Error(d.erro || 'falha');
+        }
+        dados = d;
+        renderizar();
+      } catch (err) {
+        toast('Erro: ' + err.message, 'err');
+      } finally {
+        document.getElementById('loadingArea').style.display = 'none';
+        document.getElementById('secoes').style.display = '';
+      }
+      carregarEspreita(); // v3.76 - nao bloqueia o principal
+      carregarRecados();
+    }
+
+    // v3.80.2 - acoes da espreita INLINE no card (zero popups)
+    window._espComentarios = {};
+    async function espreitaNotaPost(payload) {
+      const r = await fetch('/api/admin/espreita/nota', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+      });
+      return await r.json();
+    }
+    function espreitaFechar(chave) {
+      const area = document.getElementById('espArea-' + chave);
+      if (area) { area.style.display = 'none'; area.innerHTML = ''; }
+    }
+    function espreitaErro(chave, msg) {
+      const el = document.getElementById('espErro-' + chave);
+      if (el) el.textContent = '❌ ' + msg;
+    }
+    function espreitaAbrir(chave, modo) {
+      const area = document.getElementById('espArea-' + chave);
+      if (!area) return;
+      const btnCss = 'border:none;border-radius:8px;padding:7px 14px;font-size:12px;font-weight:700;cursor:pointer;';
+      if (modo === 'comentar') {
+        const atual = window._espComentarios[chave] || '';
+        area.innerHTML = '<div style="background:#faf5ff;border:1px solid #ce93d8;border-radius:8px;padding:10px;margin-top:8px;">'
+          + '<b style="font-size:12px;color:#4a148c;">💬 Comentário / tratativa com o marketplace</b>'
+          + '<textarea id="espTexto-' + chave + '" rows="3" style="width:100%;box-sizing:border-box;margin-top:6px;padding:8px;border:1px solid #ccc;border-radius:8px;font-size:13px;">' + escapeHtml(atual) + '</textarea>'
+          + '<div style="margin-top:6px;">'
+          + '<button onclick="espreitaSalvarComentario(\'' + chave + '\')" style="background:#2e7d32;color:#fff;' + btnCss + '">💾 Salvar</button> '
+          + '<button onclick="espreitaFechar(\'' + chave + '\')" style="background:#999;color:#fff;' + btnCss + '">✖ Cancelar</button>'
+          + '<span id="espErro-' + chave + '" style="font-size:12px;color:#c62828;margin-left:8px;"></span>'
+          + '</div></div>';
+      } else {
+        area.innerHTML = '<div style="background:#fff8e1;border:1px solid #ffcc80;border-radius:8px;padding:10px;margin-top:8px;">'
+          + '<b style="font-size:12px;">Marcar como JÁ PROCESSADO?</b> <span style="font-size:12px;color:#666;">Some do painel (chegou antes do app, ou já tratado).</span>'
+          + '<div style="margin-top:6px;">'
+          + '<button onclick="espreitaConfirmarProcessado(\'' + chave + '\')" style="background:#2e7d32;color:#fff;' + btnCss + '">✅ Sim, processar</button> '
+          + '<button onclick="espreitaFechar(\'' + chave + '\')" style="background:#999;color:#fff;' + btnCss + '">✖ Cancelar</button>'
+          + '<span id="espErro-' + chave + '" style="font-size:12px;color:#c62828;margin-left:8px;"></span>'
+          + '</div></div>';
+      }
+      area.style.display = '';
+      const ta = document.getElementById('espTexto-' + chave);
+      if (ta) ta.focus();
+    }
+    async function espreitaSalvarComentario(chave) {
+      const ta = document.getElementById('espTexto-' + chave);
+      const d = await espreitaNotaPost({ chave, comentario: String(ta ? ta.value : '') });
+      if (!d.ok) return espreitaErro(chave, d.erro || 'erro desconhecido');
+      carregarEspreita();
+    }
+    async function espreitaConfirmarProcessado(chave) {
+      const d = await espreitaNotaPost({ chave, baixado: true });
+      if (!d.ok) return espreitaErro(chave, d.erro || 'erro desconhecido');
+      carregarEspreita();
+    }
+
+    // v3.83 - recados pro estoquista
+    async function salvarRecado() {
+      const chave = document.getElementById('recadoChave').value.trim();
+      const texto = document.getElementById('recadoTexto').value.trim();
+      const msg = document.getElementById('recadoMsg');
+      if (!chave || !texto) { msg.innerHTML = '<span style="color:#c62828;">Preencha o identificador e o texto.</span>'; return; }
+      const r = await fetch('/api/admin/recado', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ chave, texto }) });
+      const d = await r.json();
+      if (!d.ok) { msg.innerHTML = '<span style="color:#c62828;">❌ ' + escapeHtml(d.erro || 'erro') + '</span>'; return; }
+      msg.innerHTML = '<span style="color:#2e7d32;">✅ Recado criado para <b>' + escapeHtml(d.chave) + '</b></span>';
+      document.getElementById('recadoChave').value = '';
+      document.getElementById('recadoTexto').value = '';
+      carregarRecados();
+    }
+    async function removerRecado(id) {
+      await fetch('/api/admin/recado/' + id + '/remover', { method: 'POST' });
+      carregarRecados();
+    }
+    async function carregarRecados() {
+      try {
+        const r = await fetch('/api/admin/recados');
+        const d = await r.json();
+        const lista = document.getElementById('listaRecados');
+        if (!d.ok) { lista.innerHTML = '<span style="color:#c62828;font-size:13px;">' + escapeHtml(d.erro || 'erro') + '</span>'; return; }
+        const rs = d.recados || [];
+        document.getElementById('countRecados').textContent = rs.length;
+        if (rs.length === 0) { lista.innerHTML = '<span style="color:#888;font-size:13px;">Nenhum recado ativo.</span>'; return; }
+        let h = '';
+        for (const rc of rs) {
+          const lido = !!rc.ciente_em;
+          h += '<div style="border:1px solid ' + (lido ? '#c8e6c9' : '#ffcdd2') + ';background:' + (lido ? '#f1f8e9' : '#fff5f5') + ';border-radius:8px;padding:10px;margin-bottom:6px;">'
+            + '<b>' + escapeHtml(rc.chave) + '</b> · <span style="font-size:13px;">' + escapeHtml(rc.texto) + '</span>'
+            + '<br><span style="font-size:12px;color:#666;">' + (lido ? '✅ ciente por ' + escapeHtml(rc.ciente_por || '-') : '⏳ ainda não lido pelo galpão')
+            + ' · criado por ' + escapeHtml(rc.criado_por || '-') + '</span> '
+            + '<button onclick="removerRecado(' + rc.id + ')" style="background:#999;color:#fff;border:none;border-radius:8px;padding:4px 10px;font-size:12px;cursor:pointer;margin-left:8px;">✖ remover</button>'
+            + '</div>';
+        }
+        lista.innerHTML = h;
+      } catch (e) { /* opcional */ }
+    }
+
+    // v3.81 - filtro/ordenacao client-side (re-render sem novo fetch)
+    window._espFiltro = 'todos';
+    window._espOrdem = 'antigas'; // 'antigas' = mais dias primeiro | 'novas' = menos dias primeiro
+    function espreitaFiltrar(f) { window._espFiltro = f; if (window._espDados) renderEspreita(window._espDados); }
+    function espreitaOrdenar() { window._espOrdem = (window._espOrdem === 'antigas') ? 'novas' : 'antigas'; if (window._espDados) renderEspreita(window._espDados); }
+
+    // v3.77 - A ESPREITA UNIFICADA: Magalu + ML + Shopee (devolucoes a caminho)
+    async function carregarEspreita() {
+      try {
+        const r = await fetch('/api/admin/espreita');
+        const d = await r.json();
+        const sec = document.getElementById('secaoEspreita');
+        const lista = document.getElementById('listaEspreita');
+        // v3.80.3 - indice frio (logo apos deploy) NAO some mais: avisa e re-tenta
+        if (!d.ok || !d.quente) {
+          document.getElementById('countEspreita').textContent = '…';
+          lista.innerHTML = '<p style="color:#888;font-size:13px;">⏳ Aquecendo os índices (normal por ~3 min após um deploy)… atualiza sozinho.</p>';
+          sec.style.display = '';
+          setTimeout(carregarEspreita, 45000);
+          return;
+        }
+        window._espDados = d;
+        renderEspreita(d);
+      } catch (e) {
+        // v3.83.1 - antes o erro era engolido e a secao sumia sem explicacao
+        console.error('[ESPREITA] falhou:', e);
+        const sec = document.getElementById('secaoEspreita');
+        const lista = document.getElementById('listaEspreita');
+        if (sec && lista) {
+          lista.innerHTML = '<p style="color:#c62828;font-size:13px;">⚠️ Erro ao montar o painel: ' + escapeHtml(String(e && e.message || e)) + '</p>';
+          sec.style.display = '';
+        }
+      }
+    }
+
+    function renderEspreita(d) {
+        const sec = document.getElementById('secaoEspreita');
+        const lista = document.getElementById('listaEspreita');
+        window._espComentarios = {};
+        const emT = d.em_transito || [];
+        const atras = d.atrasadas_30d || [];
+        document.getElementById('countEspreita').textContent = emT.length;
+        if (emT.length === 0 && (d.nunca_bipadas || []).length === 0) {
+          lista.innerHTML = '<p style="color:#888;font-size:13px;">Nenhuma devolução a caminho. 🎉</p>';
+          sec.style.display = '';
+          return;
+        }
+        // v3.78 - link direto pra venda/devolucao no marketplace
+        const linkVenda = (e) => {
+          if (e.marketplace === 'ml' && e.pedido) return 'https://www.mercadolivre.com.br/vendas/' + encodeURIComponent(e.pedido) + '/detalhe';
+          if (e.marketplace === 'shopee' && e.pedido) return 'https://mover-pedidos-aguardando-x-atendido.onrender.com/good-checkout-offline/ir-shopee?sn=' + encodeURIComponent(e.pedido); // v3.80 - de-para order_sn->id interno, cai DENTRO do pedido
+          if (e.marketplace === 'magalu') {
+            // v3.92 - link OFICIAL via API OAuth (servico Mover Pedidos, GOOD conectada):
+            // resolve numero->deliveries[0].id e cai DENTRO do pacote no portal.
+            // Qualquer falha la -> 302 pro portal de pedidos (nunca fica pior).
+            if (e.pedido) return 'https://mover-pedidos-aguardando-x-atendido.onrender.com/magalu/ir/good?n=' + encodeURIComponent(e.pedido);
+            // fallback: sem numero do pedido, cai no portal de devolucoes por uuid
+            if (e.uuid && e.categoria === 'agencia') return 'https://seller.magaluentregas.com.br/gestao-de-devolucoes/detalhes?id=' + encodeURIComponent(e.uuid) + '&type=' + encodeURIComponent(e.tipo || 'CUSTOMER_RETURN') + '&category=orders';
+            return 'https://seller.magaluentregas.com.br/gestao-de-devolucoes';
+          }
+          return null;
+        };
+        const MKT = {
+          magalu: { nome: 'Magalu', cor: '#1565c0' },
+          ml: { nome: 'Mercado Livre', cor: '#f9a825' },
+          shopee: { nome: 'Shopee', cor: '#e65100' },
+        };
+        let html = '<p style="font-size:13px;color:#666;margin:4px 0 10px;">' +
+          '🚚 <b>' + emT.length + '</b> em trânsito · ⏰ <b style="color:#c62828;">' + atras.length + '</b> atrasada(s) +30d' +
+          (d.ml_aguardando_postagem ? ' · 🏷️ ' + d.ml_aguardando_postagem + ' ML aguardando o cliente postar' : '') +
+          (d.magalu_chegadas_30d ? ' · 📥 ' + d.magalu_chegadas_30d + ' Magalu chegaram em 30d' : '') +
+          (d.shopee_recebidas_baixadas ? ' · ✅ ' + d.shopee_recebidas_baixadas + ' Shopee já bipadas (baixa automática)' : '') +
+          (d.baixadas_manuais ? ' · 🧹 ' + d.baixadas_manuais + ' baixadas manualmente' : '') + '</p>';
+        // v3.82 - bloco de alerta: consta ENTREGUE e ninguem bipou aqui
+        const nb = d.nunca_bipadas || [];
+        if (nb.length > 0) {
+          html += '<div style="border:2px solid #c62828;border-radius:10px;padding:12px;margin-bottom:14px;background:#fff5f5;">'
+            + '<b style="color:#c62828;">🚨 Consta ENTREGUE no marketplace, mas ninguém bipou aqui (' + nb.length + ')</b>'
+            + '<div style="font-size:12px;color:#666;margin:4px 0 8px;">Confere no galpão: pode estar guardado sem registro — ou não chegou de verdade.</div>';
+          for (const e of nb) {
+            const m = MKT[e.marketplace] || { nome: e.marketplace, cor: '#616161' };
+            html += '<div style="border-left:4px solid ' + m.cor + ';background:#fff;border-radius:8px;padding:8px 10px;margin-bottom:6px;">'
+              + '<span style="background:' + m.cor + ';color:#fff;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;">' + m.nome + '</span> '
+              + '<b>' + escapeHtml(String(e.pedido || e.tracking || '-')) + '</b>'
+              + (e.pack_id ? ' · <span style="font-size:11px;color:#555;">pack <code>' + escapeHtml(String(e.pack_id)) + '</code></span>' : '')
+              + (e.pedido && e.tracking ? ' · <code style="font-size:11px;">' + escapeHtml(String(e.tracking)) + '</code>' : '')
+              + (e.valor != null ? ' · R$ ' + Number(e.valor).toFixed(2).replace('.', ',') : '')
+              + (linkVenda(e) ? ' <a href="' + linkVenda(e) + '" target="_blank" rel="noopener" style="background:#1565c0;color:#fff;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;text-decoration:none;margin-left:6px;">🔗 abrir</a>' : '')
+              + '<br><span style="font-size:12px;color:#555;">Entregue há <b>' + (e.dias_desde != null ? e.dias_desde : '?') + ' dia(s)</b> · sem triagem no sistema'
+              + (e.cliente ? ' · 👤 ' + escapeHtml(e.cliente) : '') + (e.nf ? ' · 🧾 NF ' + escapeHtml(String(e.nf)) : '') + (e.logistica ? ' · <span style="background:#455a64;color:#fff;padding:1px 6px;border-radius:8px;font-size:10px;font-weight:700;">' + escapeHtml(e.logistica) + '</span>' : '') + '</span>'
+              + (e.produto ? '<br><span style="font-size:12px;color:#333;">📦 ' + escapeHtml(e.produto) + (e.qtd ? ' ×' + e.qtd : '') + '</span>' : '')
+              + (e.comentario ? '<div style="font-size:12px;color:#4a148c;background:#f3e5f5;border-radius:6px;padding:6px 8px;margin-top:6px;">💬 ' + escapeHtml(e.comentario) + '</div>' : '')
+              + '<div style="margin-top:6px;">'
+              + '<button onclick="espreitaAbrir(\'' + e.chave_nota + '\', \'processar\')" style="background:#2e7d32;color:#fff;border:none;border-radius:8px;padding:5px 10px;font-size:12px;font-weight:700;cursor:pointer;">✓ achei / já processado</button> '
+              + '<button onclick="espreitaAbrir(\'' + e.chave_nota + '\', \'comentar\')" style="background:#6a1b9a;color:#fff;border:none;border-radius:8px;padding:5px 10px;font-size:12px;font-weight:700;cursor:pointer;">💬 ' + (e.comentario ? 'editar comentário' : 'comentário') + '</button>'
+              + '</div><div id="espArea-' + e.chave_nota + '" style="display:none;"></div></div>';
+            window._espComentarios[e.chave_nota] = e.comentario || '';
+          }
+          html += '</div>';
+        }
+
+        const F = window._espFiltro || 'todos';
+        let itens = (F === 'todos') ? emT : emT.filter(x => x.marketplace === F);
+        itens = [...itens].sort((x, y) => (window._espOrdem === 'novas')
+          ? ((x.dias_em_transito || 0) - (y.dias_em_transito || 0))
+          : ((y.dias_em_transito || 0) - (x.dias_em_transito || 0)));
+        const fb = (id, rot, cor) => '<button onclick="espreitaFiltrar(\'' + id + '\')" style="border:none;border-radius:14px;padding:5px 12px;font-size:12px;font-weight:700;cursor:pointer;margin-right:6px;background:' + (F === id ? cor : '#e0e0e0') + ';color:' + (F === id ? '#fff' : '#555') + ';">' + rot + '</button>';
+        html += '<div style="margin:2px 0 10px;">'
+          + fb('todos', 'Todos (' + emT.length + ')', '#37474f')
+          + fb('ml', 'Mercado Livre (' + emT.filter(x => x.marketplace === 'ml').length + ')', '#f9a825')
+          + fb('magalu', 'Magalu (' + emT.filter(x => x.marketplace === 'magalu').length + ')', '#1565c0')
+          + fb('shopee', 'Shopee (' + emT.filter(x => x.marketplace === 'shopee').length + ')', '#e65100')
+          + '<button onclick="espreitaOrdenar()" style="border:1px solid #6a1b9a;background:#fff;color:#6a1b9a;border-radius:14px;padding:5px 12px;font-size:12px;font-weight:700;cursor:pointer;">' + (window._espOrdem === 'antigas' ? '⌛ mais antigas primeiro' : '🕐 mais recentes primeiro') + ' ↕</button>'
+          + '</div>';
+        for (const e of itens) {
+          const m = MKT[e.marketplace] || { nome: e.marketplace || '?', cor: '#616161' };
+          const atrasada = (e.dias_em_transito || 0) > 30;
+          html += '<div style="border:1px solid ' + (atrasada ? '#ef9a9a' : '#ce93d8') + ';border-left:5px solid ' + (atrasada ? '#c62828' : '#6a1b9a') + ';border-radius:8px;padding:10px 12px;margin-bottom:8px;background:' + (atrasada ? '#fff5f5' : '#faf5ff') + ';">' +
+            '<span style="background:' + m.cor + ';color:#fff;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;">' + m.nome + '</span> ' +
+            '<b>' + escapeHtml(String(e.pedido || e.tracking || '-')) + '</b>' +
+            (e.pack_id ? ' · <span style="font-size:11px;color:#555;">pack <code>' + escapeHtml(String(e.pack_id)) + '</code></span>' : '') +
+            (e.pedido && e.tracking ? ' · <code style="font-size:11px;">' + escapeHtml(String(e.tracking)) + '</code>' : '') +
+            (e.valor != null ? ' · R$ ' + Number(e.valor).toFixed(2).replace('.', ',') : '') +
+            (linkVenda(e) ? ' <a href="' + linkVenda(e) + '" target="_blank" rel="noopener" style="background:#1565c0;color:#fff;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;text-decoration:none;margin-left:6px;">🔗 abrir</a>' : '') +
+            '<br><span style="font-size:12px;color:#555;">' +
+            (e.dias_em_transito != null ? 'Em trânsito há <b>' + e.dias_em_transito + ' dia(s)</b>' : 'Em trânsito') +
+            (e.status ? ' · ' + escapeHtml(String(e.status)) : '') +
+            (e.no_cd_ml ? ' — <b style="color:#00695c;">🏭 em revisão no CD do ML (ainda não despachado pra você)</b>' : (e.congelada ? ' — <b style="color:#616161;">🧊 status congelado na Shopee, confirmar no 🔗</b>' : (atrasada ? ' — <b style="color:#c62828;">⚠️ candidata a extravio, cobrar o marketplace</b>' : ''))) + '</span>' +
+            (e.produto ? '<br><span style="font-size:12px;color:#333;">📦 ' + escapeHtml(e.produto) + (e.qtd ? ' <b>×' + e.qtd + '</b>' : '') + '</span>' : '') +
+            ((e.cliente || e.nf || e.dinheiro || e.logistica || e.marketplace === 'ml') ?
+              '<br><span style="font-size:12px;color:#333;">' +
+              (e.cliente ? '👤 ' + escapeHtml(e.cliente) + '  ' : '') +
+              (e.nf ? '🧾 NF ' + escapeHtml(String(e.nf)) + '  ' : '') +
+              (e.logistica ? '<span style="background:#455a64;color:#fff;padding:1px 7px;border-radius:8px;font-size:11px;font-weight:700;">' + escapeHtml(e.logistica) + '</span>  ' : '') +
+              (e.dinheiro === 'retido_com_voce' ? '💰 <b style="color:#2e7d32;">dinheiro retido com você</b>' :
+               e.dinheiro === 'estornado_cliente' ? '↩️ <b style="color:#e65100;">dinheiro estornado ao cliente</b>' :
+               (e.marketplace === 'magalu' ? '💰 reembolso: ver no 🔗' : '')) +
+              '</span>' : '') +
+            (e.comentario ? '<div style="font-size:12px;color:#4a148c;background:#f3e5f5;border-radius:6px;padding:6px 8px;margin-top:6px;">💬 ' + escapeHtml(e.comentario) + '</div>' : '') +
+            '<div style="margin-top:6px;">' +
+              '<button onclick="espreitaAbrir(\'' + e.chave_nota + '\', \'processar\')" style="background:#2e7d32;color:#fff;border:none;border-radius:8px;padding:5px 10px;font-size:12px;font-weight:700;cursor:pointer;">✓ já processado</button> ' +
+              '<button onclick="espreitaAbrir(\'' + e.chave_nota + '\', \'comentar\')" style="background:#6a1b9a;color:#fff;border:none;border-radius:8px;padding:5px 10px;font-size:12px;font-weight:700;cursor:pointer;">💬 ' + (e.comentario ? 'editar comentário' : 'comentário') + '</button>' +
+            '</div>' +
+            '<div id="espArea-' + e.chave_nota + '" style="display:none;"></div></div>';
+          window._espComentarios[e.chave_nota] = e.comentario || '';
+        }
+        lista.innerHTML = html;
+        sec.style.display = '';
+    }
+
+    // v3.28.2 - atualiza SO aquele card, sem redesenhar a lista inteira:
+    // rebusca os dados, regenera o HTML daquele unico card e o substitui
+    // no lugar (outerHTML). O resto da tela fica imovel - zero flicker,
+    // sem rolagem inesperada. Depois pisca a borda do card.
+    async function atualizarUmCard(devolucaoId) {
+      const el = document.getElementById('card-' + devolucaoId);
+      try {
+        const r = await fetch('/api/admin/devolucoes');
+        const d = await r.json();
+        if (!d.ok) return;
+        dados = d; // mantem o estado global em dia (pra proximas acoes)
+
+        // acha o registro atualizado e a funcao de render da secao dele
+        const lista = [].concat(d.aprovadas || [], d.problemas || [], d.divergentes || []);
+        const reg = lista.find(x => String(x.id) === String(devolucaoId));
+        if (!reg || !el) { if (typeof renderizar === 'function') renderizar(); return; }
+
+        const geradores = {
+          aprovadas: (typeof itemHtmlAprovado === 'function') ? itemHtmlAprovado : null,
+          problemas: (typeof itemHtmlProblema === 'function') ? itemHtmlProblema : null,
+          divergentes: (typeof itemHtmlDivergente === 'function') ? itemHtmlDivergente : null,
+        };
+        // descobre a secao pela lista onde o reg esta
+        let ger = null;
+        if ((d.aprovadas || []).some(x => String(x.id) === String(devolucaoId))) ger = geradores.aprovadas;
+        else if ((d.problemas || []).some(x => String(x.id) === String(devolucaoId))) ger = geradores.problemas;
+        else if ((d.divergentes || []).some(x => String(x.id) === String(devolucaoId))) ger = geradores.divergentes;
+        if (!ger) { renderizar(); return; }
+
+        // gera o HTML novo do card e substitui SO ele
+        const tmp = document.createElement('div');
+        tmp.innerHTML = ger(reg);
+        const novo = tmp.firstElementChild;
+        if (!novo) { renderizar(); return; }
+        el.replaceWith(novo);
+
+        // pisca a borda do card novo
+        requestAnimationFrame(() => {
+          novo.classList.add('card-flash');
+          setTimeout(() => novo.classList.remove('card-flash'), 2000);
+        });
+      } catch (e) {
+        // se algo falhar, cai no reload da lista (seguro)
+        if (typeof renderizar === 'function') renderizar();
+      }
+    }
+
+    function renderizar() {
+      const mostrarConcluidos = document.getElementById('mostrarConcluidos').checked;
+      const busca = (document.getElementById('filtroBusca').value || '').trim().toLowerCase();
+      const dataIni = document.getElementById('filtroDataIni').value;
+      const dataFim = document.getElementById('filtroDataFim').value;
+
+      const dataIniMs = dataIni ? new Date(dataIni + 'T00:00:00').getTime() : null;
+      const dataFimMs = dataFim ? new Date(dataFim + 'T23:59:59').getTime() : null;
+
+      function passa(d) {
+        // Status
+        if (!mostrarConcluidos && d.status === 'concluido') return false;
+        // Data (usa created_at)
+        if (dataIniMs || dataFimMs) {
+          const t = new Date(d.created_at).getTime();
+          if (dataIniMs && t < dataIniMs) return false;
+          if (dataFimMs && t > dataFimMs) return false;
+        }
+        // Busca
+        if (busca) {
+          const campos = [
+            d.nf_numero, d.order_id, d.pack_id, d.shipment_id,
+            d.produto_titulo, d.produto_sku, d.produto_mlb,
+            d.buyer_nome, d.buyer_id,
+            d.problema_descricao,
+          ].map(v => String(v || '').toLowerCase());
+          if (!campos.some(c => c.includes(busca))) return false;
+        }
+        return true;
+      }
+
+      const aprovadas = dados.aprovadas.filter(passa);
+      const problemas = dados.problemas.filter(passa);
+      const divergentes = (dados.divergentes || []).filter(passa); // v3.18.0
+
+      document.getElementById('countAprovadas').textContent = aprovadas.length;
+      document.getElementById('countProblemas').textContent = problemas.length;
+      document.getElementById('countDivergentes').textContent = divergentes.length; // v3.18.0
+      document.getElementById('countAprovadas').className = 'badge-count' + (aprovadas.length === 0 ? ' zero' : '');
+      document.getElementById('countProblemas').className = 'badge-count problema' + (problemas.length === 0 ? ' zero' : '');
+      // badge divergente (roxo) - aplica zero se vazio
+      document.getElementById('countDivergentes').className = 'badge-count' + (divergentes.length === 0 ? ' zero' : '');
+      document.getElementById('countDivergentes').style.background = divergentes.length === 0 ? '#999' : '#7b1fa2';
+
+      // v3.30.1 - re-render zera os checkboxes: recalcula os contadores dos botões
+      atualizarContadorEsteira('aprovadas');
+      atualizarContadorEsteira('problemas');
+
+      // Info no canto direito
+      const totalGeral = dados.aprovadas.length + dados.problemas.length + (dados.divergentes?.length || 0);
+      const totalFiltrado = aprovadas.length + problemas.length + divergentes.length;
+      const info = document.getElementById('resultadoInfo');
+      if (busca || dataIni || dataFim) {
+        info.textContent = `${totalFiltrado} de ${totalGeral} registros`;
+      } else {
+        info.textContent = `${totalGeral} registros (ultimos 30 dias)`;
+      }
+
+      document.getElementById('listaAprovadas').innerHTML = aprovadas.length
+        ? aprovadas.map(itemHtmlAprovado).join('')
+        : '<div class="vazio">Nenhuma devolucao aprovada pendente. 🎉</div>';
+
+      document.getElementById('listaProblemas').innerHTML = problemas.length
+        ? problemas.map(itemHtmlProblema).join('')
+        : '<div class="vazio">Nenhum problema reportado. 🎉</div>';
+
+      // v3.18.0 - render divergentes (reusa itemHtmlProblema com badge customizada)
+      document.getElementById('listaDivergentes').innerHTML = divergentes.length
+        ? divergentes.map(itemHtmlDivergente).join('')
+        : '<div class="vazio">Nenhum produto divergente. 🎉</div>';
+    }
+
+    function limparBusca() {
+      document.getElementById('filtroBusca').value = '';
+      // Volta pras datas padrao (4 meses)
+      setarDatasPadrao(true);
+      renderizar();
+    }
+
+    function escapeHtml(s) {
+      if (s == null) return '';
+      return String(s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+    }
+    function moeda(v) {
+      if (v == null) return '-';
+      return 'R$ ' + Number(v).toFixed(2).replace('.', ',');
+    }
+    function dataFmt(iso) {
+      if (!iso) return '-';
+      try { return new Date(iso).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }); }
+      catch { return iso; }
+    }
+
+    function itemHtmlAprovado(d) {
+      const concluido = d.status === 'concluido';
+      const desc = (d.problema_descricao || '').replace(/^Aprovado por\s+/, '');
+
+      // v3.17.0 - detecta se eh devolucao parcial (tem fotos + descricao comeca com [DEVOLUCAO PARCIAL)
+      const ehParcial = (d.problema_descricao || '').startsWith('[DEVOLUCAO PARCIAL');
+      const fotosParcial = ehParcial && Array.isArray(d.problema_fotos) ? d.problema_fotos : [];
+
+      // Badge no topo
+      const badgeParcial = ehParcial
+        ? '<span style="background:#f57c00;color:white;padding:3px 8px;border-radius:10px;font-size:10px;font-weight:700;margin-left:6px;">📦 PARCIAL</span>'
+        : '';
+      const badgeRebipe = (d.problema_descricao || '').includes('[RE-BIPE]')
+        ? '<span style="background:#c62828;color:white;padding:3px 8px;border-radius:10px;font-size:10px;font-weight:700;margin-left:6px;">🔁 RE-BIPE</span>'
+        : '';
+
+      // Bloco de fotos (so se for parcial)
+      const blocoFotos = (ehParcial && fotosParcial.length > 0) ? `
+        <div style="background:#fff3e0;border:1px solid #ffc107;border-radius:8px;padding:10px;margin-top:10px;">
+          <div style="font-size:12px;color:#e65100;font-weight:700;margin-bottom:6px;">
+            📸 ${fotosParcial.length} fotos da devolução parcial (evidência)
+          </div>
+          <div class="fotos-mini">
+            ${fotosParcial.map(url => `<img src="${srcFoto(url)}" onclick="abrirFoto('${url}')" alt="foto">`).join('')}
+          </div>
+          <div style="margin-top:8px;">
+            <button class="btn" style="background:#1565c0;color:white;font-size:11px;padding:6px 10px;" onclick='baixarTodasFotos(${JSON.stringify(fotosParcial)}, "${escapeHtml(d.nf_numero || d.order_id || d.id)}_parcial")'>
+              📥 Baixar todas (${fotosParcial.length})
+            </button>
+          </div>
+        </div>
+      ` : '';
+
+      return `
+        <div class="item ${concluido ? 'concluido' : ''}" id="card-${d.id}" ${ehParcial ? 'style="border-left-color:#f57c00;background:#fff8e7;"' : ''}>
+          <div class="item-header">
+            <div>
+              <div class="item-titulo">${escapeHtml(d.produto_titulo || '-')}${badgeParcial}${badgeRebipe}</div>
+              <div class="item-data">por ${escapeHtml(desc)} · ${dataFmt(d.created_at)}</div>
+            </div>
+            ${concluido ? '<span style="background:#999;color:white;padding:3px 8px;border-radius:10px;font-size:10px;font-weight:700;">CONCLUIDO</span>' : ''}
+          </div>
+          <div class="item-detalhes">
+            <strong>${escapeHtml(d.produto_sku || '-')}</strong> ·
+            <strong>${d.produto_qtd || '-'} un</strong> ·
+            ${moeda(d.produto_valor_unit)}${renderItensCard(d)}<br>
+            <strong>NF:</strong> ${escapeHtml(d.nf_numero || '-')} ·
+            <strong>Cliente:</strong> ${escapeHtml(d.buyer_nome || '-')}<br>
+            ${linkPedido(d)}
+            ${d.pack_id ? ` · <strong>Pack:</strong> <code>${d.pack_id}</code>` : ''}
+            ${d.shipment_id ? ` · <strong>Shipment:</strong> <code>${d.shipment_id}</code>` : ''}
+          </div>
+          ${blocoFotos}
+          ${concluido ? '' : `
+            <div class="item-acoes">
+              ${d.nf_link_danfe ? `<a class="btn btn-cinza" href="${d.nf_link_danfe}" target="_blank">📄 Ver DANFE</a>` : ''}
+              ${d.nf_id_bling
+                ? `<a class="btn btn-verde" href="https://www.bling.com.br/notas.fiscais.php#edit/${d.nf_id_bling}" target="_blank" title="Abre a NF. Pra gerar devolu\u00e7\u00e3o automaticamente, use o bot\u00e3o ao lado.">🔗 Abrir NF no Bling</a>`
+                : `<a class="btn" href="https://www.bling.com.br/notas.fiscais.php#list" target="_blank" onclick="copiarNF('${escapeHtml(d.nf_numero || '')}')">🔗 Abrir lista Bling (copia NF)</a>`
+              }
+              <label style="display:inline-flex;align-items:center;gap:5px;font-size:12px;background:#e3f2fd;border:1px solid #90caf9;padding:5px 9px;border-radius:6px;cursor:pointer;" title="Seleciona pra ações em lote (emitir NF / concluir)"><input type="checkbox" class="chk-esteira" data-secao="aprovadas" data-id="${d.id}" data-nfid="${d.nf_id_bling || ''}" data-nfnum="${escapeHtml(String(d.nf_numero || ''))}" data-chave="${String(d.nf_chave || '').replace(/[^0-9]/g, '')}" data-full="${ehSerie2(d) ? '1' : '0'}" onchange="atualizarContadorEsteira('aprovadas')"> selecionar</label>
+              ${ehSerie2(d) && !d.nf_devolucao_id_bling
+                ? `<a class="btn" style="background:#00695c;color:#fff;" href="https://www.mercadolivre.com.br/emissor/vendas/${d.order_id || ''}/faturas" target="_blank" title="Venda FULL (s\u00e9rie 2): a NF de devolu\u00e7\u00e3o \u00e9 emitida pelo PR\u00d3PRIO Mercado Livre. N\u00c3O gere outra no Bling (duplicidade fiscal). Clique pra ver/baixar a NF no emissor do ML.">🏬 FULL</a><button class="btn" style="background:#00838f;" onclick="fullVincular('${d.id}', this)" title="Procura no Bling a NF de ENTRADA s\u00e9rie 2 que o ML emitiu pra esta devolu\u00e7\u00e3o e vincula ao card">🔗 Achar devolu\u00e7\u00e3o no Bling</button>`
+                : !d.nf_devolucao_id_bling && (d.nf_id_bling || d.nf_numero)
+                ? `<button class="btn" style="background:#1565c0;" onclick="abrirModalGerarDevolucao('${d.id}', '${d.nf_id_bling || ''}', '${escapeHtml(d.nf_numero || '')}', '${escapeHtml(d.produto_titulo || '')}', '${String(d.nf_chave || '').replace(/[^0-9]/g, '')}')" title="Abre as op\u00e7\u00f5es: criar RASCUNHO (salvar sem emitir, pra editar no Bling) ou gerar + emitir direto">🧾 Gerar NF (rascunho ou emitir)</button>`
+                : d.nf_devolucao_id_bling
+                  ? `<a class="btn btn-verde" href="https://www.bling.com.br/notas.entrada.php#edit/${d.nf_devolucao_id_bling}" target="_blank" title="NF de devolu\u00e7\u00e3o j\u00e1 gerada">📝 Devolu\u00e7\u00e3o: ${d.nf_devolucao_numero || 'ver'}</a>${ehSerie2(d) ? `<button class="btn" style="background:#4527a0;" onclick="fullLancarEstoque('${d.id}', this)" title="Lan\u00e7a o ESTOQUE de entrada desta devolu\u00e7\u00e3o no dep\u00f3sito GERAL (API oficial). S\u00f3 clique se ainda N\u00c3O lan\u00e7ou e o produto est\u00e1 ok pra revenda.">📦 Lan\u00e7ar estoque (Geral)</button>` : ''}`
+                  : ''
+              }
+              ${!d.nf_numero && !d.nf_id_bling && d.order_id
+                ? `<button class="btn" style="background:#6a1b9a;" onclick="buscarNFRegistro('${d.id}', this)" title="Busca a NF desta venda no ML e no Bling (janela de datas) e vincula ao card">🔎 Buscar NF</button>`
+                : ''
+              }
+              <button class="btn btn-verde" onclick="concluir('${d.id}')">✅ Marcar como concluido</button>
+              <button class="btn btn-vermelho" onclick="deletar('${d.id}')" title="Deletar (caso erro)">🗑️</button>
+            </div>
+          `}
+        </div>
+      `;
+    }
+
+    function itemHtmlProblema(d) {
+      const concluido = d.status === 'concluido';
+      const fotos = Array.isArray(d.problema_fotos) ? d.problema_fotos : [];
+      const desc = d.problema_descricao || '';
+      const badgeRebipe = (d.problema_descricao || '').includes('[RE-BIPE]')
+        ? '<span style="background:#c62828;color:white;padding:3px 8px;border-radius:10px;font-size:10px;font-weight:700;margin-left:6px;">🔁 RE-BIPE</span>'
+        : '';
+      return `
+        <div class="item problema ${concluido ? 'concluido' : ''}" id="card-${d.id}">
+          <div class="item-header">
+            <div>
+              <div class="item-titulo">${escapeHtml(d.produto_titulo || '-')}${badgeRebipe}</div>
+              <div class="item-data">${dataFmt(d.created_at)}</div>
+            </div>
+            ${concluido ? '<span style="background:#999;color:white;padding:3px 8px;border-radius:10px;font-size:10px;font-weight:700;">RESOLVIDO</span>' : ''}
+          </div>
+          <div class="item-detalhes">
+            <strong>${escapeHtml(d.produto_sku || '-')}</strong> ·
+            <strong>${d.produto_qtd || '-'} un</strong> ·
+            ${moeda(d.produto_valor_unit)}${d.nf_id_bling ? ` · <a href="#" onclick="return verItensNF('${d.nf_id_bling}', this)" style="color:#1565c0;font-size:12px;text-decoration:none;font-weight:600;" title="Mostra todos os itens e quantidades desta NF">▼ itens da NF</a><span class="itens-nf-box" style="display:none;"></span>` : ''}<br>
+            <strong>NF:</strong> ${escapeHtml(d.nf_numero || '-')} ·
+            <strong>Cliente:</strong> ${escapeHtml(d.buyer_nome || '-')}<br>
+            ${linkPedido(d)}
+            ${d.pack_id ? ` · <strong>Pack:</strong> <code>${d.pack_id}</code>` : ''}
+            ${d.shipment_id ? ` · <strong>Shipment:</strong> <code>${d.shipment_id}</code>` : ''}
+          </div>
+          ${desc ? `<div class="descricao-problema">💬 ${escapeHtml(desc)}</div>` : ''}
+          ${fotos.length ? `
+            <div class="fotos-mini">
+              ${fotos.map(url => `<img src="${srcFoto(url)}" onclick="abrirFoto('${url}')" alt="foto">`).join('')}
+            </div>
+            <div style="margin-top:8px;">
+              <button class="btn" style="background:#1565c0;color:white;" onclick='baixarTodasFotos(${JSON.stringify(fotos)}, "${escapeHtml(d.nf_numero || d.order_id || d.id)}")'>
+                📥 Baixar todas as fotos (${fotos.length})
+              </button>
+            </div>
+          ` : ''}
+          ${concluido ? '' : `
+            <div class="item-acoes">
+              ${d.nf_link_danfe ? `<a class="btn btn-cinza" href="${d.nf_link_danfe}" target="_blank">📄 DANFE</a>` : ''}
+              <label style="display:inline-flex;align-items:center;gap:5px;font-size:12px;background:#fff3e0;border:1px solid #ffcc80;padding:5px 9px;border-radius:6px;cursor:pointer;" title="Seleciona pra ações em lote (emitir NF / concluir)"><input type="checkbox" class="chk-esteira" data-secao="problemas" data-id="${d.id}" data-nfid="${d.nf_id_bling || ''}" data-nfnum="${escapeHtml(String(d.nf_numero || ''))}" data-chave="${String(d.nf_chave || '').replace(/[^0-9]/g, '')}" data-full="${ehSerie2(d) ? '1' : '0'}" onchange="atualizarContadorEsteira('problemas')"> selecionar</label>
+              ${ehSerie2(d) && !d.nf_devolucao_id_bling
+                ? `<a class="btn" style="background:#00695c;color:#fff;" href="https://www.mercadolivre.com.br/emissor/vendas/${d.order_id || ''}/faturas" target="_blank" title="Venda FULL (s\u00e9rie 2): a NF de devolu\u00e7\u00e3o \u00e9 emitida pelo PR\u00d3PRIO Mercado Livre. N\u00c3O gere outra no Bling (duplicidade fiscal). Clique pra ver/baixar a NF no emissor do ML.">🏬 FULL</a><button class="btn" style="background:#00838f;" onclick="fullVincular('${d.id}', this)" title="Procura no Bling a NF de ENTRADA s\u00e9rie 2 que o ML emitiu pra esta devolu\u00e7\u00e3o e vincula ao card">🔗 Achar devolu\u00e7\u00e3o no Bling</button>`
+                : !d.nf_devolucao_id_bling && (d.nf_id_bling || d.nf_numero)
+                ? `<button class="btn" style="background:#1565c0;" onclick="abrirModalGerarDevolucao('${d.id}', '${d.nf_id_bling || ''}', '${escapeHtml(d.nf_numero || '')}', '${escapeHtml(d.produto_titulo || '')}', '${String(d.nf_chave || '').replace(/[^0-9]/g, '')}')" title="Abre as op\u00e7\u00f5es: criar RASCUNHO (salvar sem emitir, pra editar no Bling) ou gerar + emitir direto">🧾 Gerar NF (rascunho ou emitir)</button>`
+                : d.nf_devolucao_id_bling
+                  ? `<a class="btn btn-verde" href="https://www.bling.com.br/notas.entrada.php#edit/${d.nf_devolucao_id_bling}" target="_blank" title="NF de devolu\u00e7\u00e3o j\u00e1 gerada. Produto com problema: NF importada do ML n\u00e3o lan\u00e7a estoque (n\u00e3o fa\u00e7a nada); NF emitida aqui lan\u00e7ou estoque (cancele o lan\u00e7amento no Bling).">📝 Devolu\u00e7\u00e3o: ${d.nf_devolucao_numero || 'ver'}</a>`
+                  : ''
+              }
+              <button class="btn btn-verde" onclick="concluir('${d.id}')">✅ Marcar como resolvido</button>
+              <button class="btn btn-vermelho" onclick="deletar('${d.id}')">🗑️</button>
+            </div>
+          `}
+        </div>
+      `;
+    }
+
+    // v3.18.0 - itemHtmlDivergente (similar ao problema, com badge roxo + extracao do esperado/recebido)
+    function itemHtmlDivergente(d) {
+      const concluido = d.status === 'concluido';
+      const fotos = Array.isArray(d.problema_fotos) ? d.problema_fotos : [];
+      const desc = d.problema_descricao || '';
+      const badgeRebipe = (d.problema_descricao || '').includes('[RE-BIPE]')
+        ? '<span style="background:#c62828;color:white;padding:3px 8px;border-radius:10px;font-size:10px;font-weight:700;margin-left:6px;">🔁 RE-BIPE</span>'
+        : '';
+
+      // Tenta extrair "NF tinha SKU X, mas voltou SKU Y" da descricao
+      let esperadoTxt = '?';
+      let voltouTxt = '?';
+      const m = desc.match(/NF tinha SKU\s+(\S+),\s+mas voltou SKU\s+(\S+)/i);
+      if (m) {
+        esperadoTxt = m[1];
+        voltouTxt = m[2];
+      }
+
+      return `
+        <div class="item ${concluido ? 'concluido' : ''}" id="card-${d.id}" style="border-left-color:#7b1fa2; background:#f3e5f5;">
+          <div class="item-header">
+            <div>
+              <div class="item-titulo">${escapeHtml(d.produto_titulo || '-')} <span style="background:#7b1fa2;color:white;padding:3px 8px;border-radius:10px;font-size:10px;font-weight:700;margin-left:6px;">🔄 DIVERGENTE</span>${badgeRebipe}</div>
+              <div class="item-data">${dataFmt(d.created_at)}</div>
+            </div>
+            ${concluido ? '<span style="background:#999;color:white;padding:3px 8px;border-radius:10px;font-size:10px;font-weight:700;">RESOLVIDO</span>' : ''}
+          </div>
+
+          <!-- Comparativo esperado vs voltou -->
+          <div style="background:#fff;border:1px solid #ce93d8;border-radius:8px;padding:10px;margin:10px 0;font-size:12px;">
+            <div style="display:flex; justify-content:space-between; gap:10px;">
+              <div style="flex:1;">
+                <div style="color:#888; font-size:10px; text-transform:uppercase; letter-spacing:0.5px;">📋 Esperado (NF)</div>
+                <div style="color:#4a148c; font-weight:700; margin-top:2px;">SKU ${escapeHtml(esperadoTxt)}</div>
+              </div>
+              <div style="font-size:18px; color:#7b1fa2;">→</div>
+              <div style="flex:1; text-align:right;">
+                <div style="color:#888; font-size:10px; text-transform:uppercase; letter-spacing:0.5px;">✅ Voltou de fato</div>
+                <div style="color:#4a148c; font-weight:700; margin-top:2px;">SKU ${escapeHtml(voltouTxt)}</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="item-detalhes">
+            <strong>${escapeHtml(d.produto_sku || '-')}</strong> ·
+            <strong>${d.produto_qtd || '-'} un</strong> ·
+            ${moeda(d.produto_valor_unit)}${d.nf_id_bling ? ` · <a href="#" onclick="return verItensNF('${d.nf_id_bling}', this)" style="color:#1565c0;font-size:12px;text-decoration:none;font-weight:600;" title="Mostra todos os itens e quantidades desta NF">▼ itens da NF</a><span class="itens-nf-box" style="display:none;"></span>` : ''}<br>
+            <strong>NF original:</strong> ${escapeHtml(d.nf_numero || '-')} ·
+            <strong>Cliente:</strong> ${escapeHtml(d.buyer_nome || '-')}<br>
+            ${linkPedido(d)}
+            ${d.pack_id ? ` · <strong>Pack:</strong> <code>${d.pack_id}</code>` : ''}
+            ${d.shipment_id ? ` · <strong>Shipment:</strong> <code>${d.shipment_id}</code>` : ''}
+          </div>
+
+          ${desc ? `<div class="descricao-problema" style="border-color:#ce93d8;background:#fff;color:#4a148c;">💬 ${escapeHtml(desc)}</div>` : ''}
+
+          ${fotos.length ? `
+            <div class="fotos-mini">
+              ${fotos.map(url => `<img src="${srcFoto(url)}" onclick="abrirFoto('${url}')" alt="foto">`).join('')}
+            </div>
+            <div style="margin-top:8px;">
+              <button class="btn" style="background:#1565c0;color:white;" onclick='baixarTodasFotos(${JSON.stringify(fotos)}, "${escapeHtml(d.nf_numero || d.order_id || d.id)}_divergente")'>
+                📥 Baixar todas as fotos (${fotos.length})
+              </button>
+            </div>
+          ` : ''}
+
+          ${concluido ? '' : `
+            <div class="item-acoes">
+              ${d.nf_link_danfe ? `<a class="btn btn-cinza" href="${d.nf_link_danfe}" target="_blank">📄 DANFE</a>` : ''}
+              ${d.nf_id_bling
+                ? `<a class="btn btn-verde" href="https://www.bling.com.br/notas.fiscais.php#edit/${d.nf_id_bling}" target="_blank">🔗 Abrir NF no Bling</a>`
+                : ''
+              }
+              <button class="btn btn-verde" onclick="concluir('${d.id}')">✅ Marcar como resolvido</button>
+              <button class="btn btn-vermelho" onclick="deletar('${d.id}')">🗑️</button>
+            </div>
+          `}
+        </div>
+      `;
+    }
+
+    // v3.33 - fotos servidas pelo PROPRIO servidor (imune a bucket
+    // publico/privado no Supabase; protegidas pelo login do admin)
+    function srcFoto(url) {
+      const partes = String(url || '').split('/fotos-problema/');
+      if (partes.length !== 2) return url;
+      return '/api/admin/foto/' + partes[1].split('/').map(encodeURIComponent).join('/');
+    }
+
+    function abrirFoto(url) {
+      document.getElementById('modalFotoImg').src = srcFoto(url);
+      document.getElementById('modalFoto').classList.add('show');
+    }
+
+    // Baixa todas as fotos sequencialmente (sem zip - mais simples e funciona em todos navegadores)
+    async function baixarTodasFotos(urls, identificador) {
+      if (!urls || urls.length === 0) return;
+      toast(`Baixando ${urls.length} fotos...`, 'ok');
+      for (let i = 0; i < urls.length; i++) {
+        try {
+          const r = await fetch(srcFoto(urls[i]));
+          const blob = await r.blob();
+          const link = document.createElement('a');
+          link.href = URL.createObjectURL(blob);
+          link.download = `${identificador}_foto_${String(i + 1).padStart(2, '0')}.jpg`;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          URL.revokeObjectURL(link.href);
+          await new Promise(resolve => setTimeout(resolve, 300));
+        } catch (e) {
+          console.error('Erro ao baixar foto', i + 1, e);
+        }
+      }
+      toast(`✅ ${urls.length} fotos baixadas!`, 'ok');
+    }
+
+    function copiarNF(num) {
+      if (!num) return;
+      navigator.clipboard?.writeText(num).then(() => {
+        toast('NF ' + num + ' copiada! Cola na busca do Bling.', 'ok');
+      }).catch(() => {});
+    }
+
+    async function concluir(id) {
+      if (!confirm('Marcar como concluido?')) return;
+      try {
+        const r = await fetch('/api/admin/concluir/' + id, { method: 'PUT' });
+        const d = await r.json();
+        if (d.ok) {
+          toast('Concluido!', 'ok');
+          carregar();
+        } else {
+          toast('Erro: ' + (d.erro || 'falha'), 'err');
+        }
+      } catch (err) {
+        toast('Erro de conexao', 'err');
+      }
+    }
+
+    async function deletar(id) {
+      if (!confirm('Deletar permanentemente este registro?')) return;
+      try {
+        const r = await fetch('/api/admin/devolucao/' + id, { method: 'DELETE' });
+        const d = await r.json();
+        if (d.ok) {
+          toast('Deletado!', 'ok');
+          carregar();
+        } else {
+          toast('Erro: ' + (d.erro || 'falha'), 'err');
+        }
+      } catch (err) {
+        toast('Erro de conexao', 'err');
+      }
+    }
+
+    async function logout(e) {
+      e.preventDefault();
+      try { await fetch('/api/auth/logout', { method: 'POST' }); } catch (err) {}
+      location.href = '/';
+    }
+
+    let toastTimeout;
+    function toast(msg, tipo = '') {
+      const t = document.getElementById('toast');
+      t.textContent = msg;
+      t.className = 'toast show ' + (tipo || '');
+      clearTimeout(toastTimeout);
+      toastTimeout = setTimeout(() => t.classList.remove('show'), 3000);
+    }
+
+    // Pre-setar datas: 4 meses atras ate hoje (sempre baseado no dia atual)
+    function setarDatasPadrao(forcar) {
+      const hoje = new Date();
+      const dataFim = hoje.toISOString().slice(0, 10);
+
+      const inicio = new Date();
+      inicio.setMonth(inicio.getMonth() - 4);
+      const dataIni = inicio.toISOString().slice(0, 10);
+
+      const inputIni = document.getElementById('filtroDataIni');
+      const inputFim = document.getElementById('filtroDataFim');
+
+      // So seta se nao tiver valor OU forcar=true
+      if (forcar || !inputIni.value) inputIni.value = dataIni;
+      if (forcar || !inputFim.value) inputFim.value = dataFim;
+    }
+
+    // Listeners (filtros aplicam ao mudar - busca em tempo real)
+    document.getElementById('mostrarConcluidos').addEventListener('change', renderizar);
+    document.getElementById('filtroBusca').addEventListener('input', renderizar);
+    document.getElementById('filtroDataIni').addEventListener('change', renderizar);
+    document.getElementById('filtroDataFim').addEventListener('change', renderizar);
+
+    // ============================================================
+    // v3.15.0 - GERAR NF DEVOLUCAO (Fase 3B)
+    // ============================================================
+    // Fluxo:
+    //  1. Diego clica "Gerar NF Devolucao" no card
+    //  2. Backend busca NF original via API v3 oficial -> retorna produtos+contato
+    //  3. Frontend monta XML xajax e chama /services/notas.fiscais.server.php?f=salvarNotaDevolucao
+    //     (com credentials:'include' usa cookie de sessao do Diego no Bling)
+    //  4. Bling cria rascunho e devolve {idNotaDevolucao, dadosEmissao:{numero, situacao:1}}
+    //  5. Backend salva idNotaDevolucao no Supabase
+    //  6. Frontend mostra "Rascunho criado: NF nº XXXX [Abrir no Bling]"
+    //  7. Diego abre, revisa, transmite manual no Bling
+
+    // IDs FIXOS DA GOOD IMPORT (descobertos por captura de fetch real do Bling)
+    const GOOD_BLING = {
+      idEmpresaControl: '4956030980',
+      idNaturezaOperacao: '5776118802',  // "Devolucao de Mercadoria - Entrada"
+    };
+
+    function abrirModalGerarDevolucao(devolucaoId, idNFOriginalBling, nfNumero, produtoTitulo, chaveNF) {
+      chaveNF = chaveNF || '';
+      const conteudo = document.getElementById('modalGerarConteudo');
+      conteudo.innerHTML = `
+        <h3 style="font-size:18px; margin-bottom:12px;">🧾 Gerar NF Devolução</h3>
+        <p style="font-size:14px; color:#555; margin-bottom:16px;">
+          NF de devolução de entrada no Bling pra esta venda:
+        </p>
+        <div style="background:#f5f5f7; padding:12px; border-radius:8px; font-size:13px; margin-bottom:16px;">
+          <div><strong>NF original:</strong> ${escapeHtml(nfNumero)}</div>
+          <div><strong>Produto:</strong> ${escapeHtml(produtoTitulo)}</div>
+        </div>
+        <div style="background:#ede7f6; border:1px solid #b39ddb; padding:12px; border-radius:8px; font-size:13px; margin-bottom:16px; display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+          <strong>📦 Depósito do estoque:</strong>
+          <select id="depModal" style="padding:6px 10px; border-radius:6px; border:1px solid #b39ddb; font-size:13px;">
+            <option value="4956031259" selected>Geral</option>
+            <option value="14888947655">DEFEITOS API</option>
+            <option value="14888156920">DEFEITOS</option>
+            <option value="9596855161">B2W FULL</option>
+          </select>
+          <span style="font-size:12px; color:#5e35b1;">(produto com defeito? use DEFEITOS API)</span>
+        </div>
+        <div style="background:#fff8e1; border:1px solid #ffe082; padding:12px; border-radius:8px; font-size:12.5px; color:#795548; margin-bottom:18px;">
+          🧪 <strong>Criar rascunho</strong>: cria a NF no Bling mas NÃO emite — você <strong>edita o que precisar</strong> lá no Bling e emite por lá.<br>
+          🧾 <strong>Gerar + Emitir</strong>: cria E transmite pra SEFAZ automaticamente (irreversível).
+        </div>
+        <div style="display:flex; gap:8px; justify-content:flex-end; flex-wrap:wrap;">
+          <button class="btn btn-cinza" onclick="fecharModalGerarDevolucao()">Cancelar</button>
+          <button class="btn" style="background:#455a64; color:#fff;" id="btnGerarRascunho"
+            onclick="confirmarGerarDevolucao('${devolucaoId}', '${idNFOriginalBling}', '${nfNumero}', false, '${chaveNF}')">
+            🧪 Criar rascunho
+          </button>
+          <button class="btn btn-verde" id="btnGerarEmitir"
+            onclick="confirmarGerarDevolucao('${devolucaoId}', '${idNFOriginalBling}', '${nfNumero}', true, '${chaveNF}')">
+            🧾 Gerar + Emitir NF
+          </button>
+        </div>
+      `;
+      document.getElementById('modalGerarDevolucao').style.display = 'flex';
+    }
+
+    // v3.28.1: ao fechar, se uma NF foi gerada, atualiza SO o card dela
+    // (com flash na borda) em vez de recarregar a pagina inteira.
+    let _cardParaAtualizar = null;
+    function fecharModalGerarDevolucao() {
+      document.getElementById('modalGerarDevolucao').style.display = 'none';
+      if (_cardParaAtualizar) {
+        const id = _cardParaAtualizar;
+        _cardParaAtualizar = null;
+        atualizarUmCard(id);
+      }
+    }
+
+    // v3.19 - Resgata a NF de um registro gravado sem NF ("NF: -").
+    // Chama o backend, que busca no ML + Bling (janela de datas) e grava.
+    async function buscarNFRegistro(devolucaoId, btn) {
+      const txtOriginal = btn ? btn.textContent : null;
+      if (btn) { btn.disabled = true; btn.textContent = '🔎 Buscando...'; }
+      try {
+        const r = await fetch(`/api/admin/buscar-nf/${devolucaoId}`, { method: 'POST' });
+        const d = await r.json();
+        if (d.ok) {
+          toast(`NF ${d.nf_numero}${d.nf_serie ? '/s' + d.nf_serie : ''} vinculada! (${d.via || 'ok'})`, 'ok');
+          carregar();
+        } else {
+          toast('NF não localizada: ' + (d.erro || 'sem detalhes'), 'err');
+          if (btn) { btn.disabled = false; btn.textContent = txtOriginal; }
+        }
+      } catch (e) {
+        toast('Erro ao buscar NF: ' + (e.message || e), 'err');
+        if (btn) { btn.disabled = false; btn.textContent = txtOriginal; }
+      }
+    }
+
+    // v3.20 - VARREDURA: busca a NF de TODOS os registros sem NF, um por vez.
+    // Um clique inicia; clicar de novo PARA (o que já foi vinculado, fica).
+    let varreduraAtiva = false;
+    async function varrerNFsFaltantes() {
+      const btn = document.getElementById('btnVarreduraNF');
+
+      // Segundo clique = pedido de parada
+      if (varreduraAtiva) {
+        varreduraAtiva = false;
+        btn.textContent = '🔎 Parando...';
+        return;
+      }
+
+      // Monta a fila: todos os registros carregados, nao concluidos,
+      // com order_id e sem NF vinculada
+      const tudo = [
+        ...(dados.aprovadas || []),
+        ...(dados.problemas || []),
+        ...(dados.divergentes || []),
+      ];
+      const fila = tudo.filter(d =>
+        d.status !== 'concluido' && d.order_id && !d.nf_numero && !d.nf_id_bling
+      );
+
+      if (fila.length === 0) {
+        toast('Nenhum registro sem NF encontrado. Tudo vinculado! ✅', 'ok');
+        return;
+      }
+
+      const estim = Math.ceil(fila.length * 7 / 60); // ~7s por registro
+      if (!confirm(`Buscar a NF de ${fila.length} registro(s)?\n\nVai levar uns ${estim || 1} min (um por vez, respeitando o limite do Bling).\nPode parar quando quiser clicando de novo no botão.`)) {
+        return;
+      }
+
+      varreduraAtiva = true;
+      btn.style.background = '#c62828';
+      let ok = 0, falha = 0;
+      const naoAchadas = [];
+
+      for (let i = 0; i < fila.length; i++) {
+        if (!varreduraAtiva) break; // Diego pediu pra parar
+        const reg = fila[i];
+        btn.textContent = `⏹ Parar · ${i + 1}/${fila.length} (✅${ok} ❌${falha})`;
+        try {
+          const r = await fetch(`/api/admin/buscar-nf/${reg.id}`, { method: 'POST' });
+          const d = await r.json();
+          if (d.ok) {
+            ok++;
+          } else {
+            falha++;
+            naoAchadas.push(`${reg.nf_numero || reg.order_id}: ${(d.erro || '').slice(0, 80)}`);
+          }
+        } catch (e) {
+          falha++;
+          naoAchadas.push(`${reg.order_id}: ${e.message || e}`);
+        }
+        // Pausa entre registros (anti rate-limit do Bling)
+        if (i < fila.length - 1 && varreduraAtiva) {
+          await new Promise(res => setTimeout(res, 1500));
+        }
+      }
+
+      const parou = !varreduraAtiva && (ok + falha) < fila.length;
+      varreduraAtiva = false;
+      btn.style.background = '#6a1b9a';
+      btn.textContent = '🔎 Buscar NFs faltantes';
+
+      if (naoAchadas.length > 0) {
+        console.warn('[Varredura NF] Não localizadas:', naoAchadas);
+      }
+      toast(
+        `${parou ? 'Varredura PARADA' : 'Varredura concluída'}: ✅ ${ok} vinculada(s) · ❌ ${falha} não achada(s)` +
+        (falha > 0 ? ' (detalhes no console F12)' : ''),
+        falha > 0 ? 'err' : 'ok'
+      );
+      carregar();
+    }
+
+    // ============================================================
+    // v3.21 - ESTEIRA DE EMISSÃO EM LOTE
+    // Seleciona cards (checkbox "esteira"), 1 botão por seção,
+    // gera + EMITE as NFs de devolução uma a uma (SEFAZ é serial).
+    // Se um card já tiver devolução no Bling (órfão), VINCULA em
+    // vez de falhar. Clicar de novo no botão PARA a fila.
+    // ============================================================
+    let esteiraAtiva = false;
+    let esteiraSecao = null;
+    let concluindoLote = false;
+
+    // v3.24 - FULL (série 2): a NF de devolução é emitida pelo PRÓPRIO ML.
+    // Gerar outra no Bling seria DUPLICIDADE FISCAL. Detecta pela série
+    // gravada OU pela chave de acesso (posições 23-25 = série "002").
+    function ehSerie2(d) {
+      if (String(d.nf_serie || '').trim() === '2') return true;
+      const ch = String(d.nf_chave || '').replace(/\D/g, '');
+      if (ch.length === 44 && ch.substr(22, 3) === '002') return true;
+      return false;
+    }
+
+    // v3.25.1 - Link do pedido: só aponta pro ML quando o número TEM cara
+    // de order ML (16 dígitos começando com 20). Shopee/MM/outros aparecem
+    // como "Pedido:" sem link (evita link quebrado).
+    function linkPedido(d) {
+      const id = String(d.order_id || '').trim();
+      if (!id) return '<strong>Pedido:</strong> <code>-</code>';
+      if (/^20\d{14}$/.test(id)) {
+        return `<strong>Order ML:</strong> <a href="https://www.mercadolivre.com.br/vendas/${id}/detalhe" target="_blank" style="color:#FFE600;font-weight:700;text-decoration:none;background:#1a1a1a;padding:2px 8px;border-radius:4px;font-family:monospace;">${id} 🔗</a>`;
+      }
+      return `<strong>Pedido:</strong> <code>${escapeHtml(id)}</code>`;
+    }
+
+    // v3.28 - Depósitos do Bling (espelho do popup Gerar Devolução)
+    const DEPOSITO_GERAL_ID = '4956031259';
+    function depositoNome(id) {
+      const mapa = { '4956031259': 'Geral', '14888947655': 'DEFEITOS API', '14888156920': 'DEFEITOS', '9596855161': 'B2W FULL' };
+      return mapa[String(id)] || String(id);
+    }
+    function depositoDaSecao(secao) {
+      const sel = document.getElementById(secao === 'aprovadas' ? 'depAprovadas' : 'depProblemas');
+      return (sel && sel.value) ? sel.value : DEPOSITO_GERAL_ID;
+    }
+
+    // v3.29 - Expansor: mostra TODOS os itens e quantidades da NF do card
+    // (busca direto no Bling pelo nf_id_bling; carrega 1x e vira toggle)
+    function linhaItemNF(i) {
+      const q = Number(i.quantidade);
+      const qtd = isNaN(q) ? (i.quantidade || '?') : (q % 1 === 0 ? q : q.toFixed(2));
+      return `<div style="padding:2px 0;">📦 <strong>${qtd}×</strong> <code>${escapeHtml(i.sku || '-')}</code> ${escapeHtml(i.titulo || '')} — ${moeda(i.valor)}</div>`;
+    }
+
+    // v3.30 - Aprovadas: itens JÁ ABERTOS quando gravados no registro
+    // (bipagem conferiu = conformidade com a NF); cards antigos sem
+    // itens gravados mantêm o toggle ▼ que busca no Bling.
+    function renderItensCard(d) {
+      if (Array.isArray(d.nf_itens) && d.nf_itens.length > 0) {
+        return `<span class="itens-nf-inline"><div style="margin-top:6px; background:#eef7ee; border:1px solid #c8e6c9; border-radius:8px; padding:8px 10px; font-size:12.5px;">
+          <div style="color:#2e7d32; margin-bottom:4px;">✔ <strong>Itens da NF ${escapeHtml(String(d.nf_numero || ''))}</strong> (${d.nf_itens.length}):</div>
+          ${d.nf_itens.map(linhaItemNF).join('')}
+        </div></span>`;
+      }
+      if (d.nf_id_bling) {
+        return ` · <a href="#" onclick="return verItensNF('${d.nf_id_bling}', this)" style="color:#1565c0;font-size:12px;text-decoration:none;font-weight:600;" title="Mostra todos os itens e quantidades desta NF">▼ itens da NF</a><span class="itens-nf-box" style="display:none;"></span>`;
+      }
+      return '';
+    }
+
+    async function verItensNF(idBling, el) {
+      const box = el.nextElementSibling; // .itens-nf-box
+      if (!box) return false;
+      if (box.style.display !== 'none') {
+        box.style.display = 'none';
+        el.textContent = '▼ itens da NF';
+        return false;
+      }
+      if (box.dataset.carregado === '1') {
+        box.style.display = 'block';
+        el.textContent = '▲ itens da NF';
+        return false;
+      }
+      const txt = el.textContent;
+      el.textContent = '⏳ buscando itens...';
+      try {
+        const r = await fetch(`/api/admin/nf-itens/${idBling}`);
+        const d = await r.json();
+        if (!d.ok) throw new Error(d.erro || 'falha');
+        const linhas = (d.itens || []).map(i => {
+          const q = Number(i.quantidade);
+          const qtd = isNaN(q) ? (i.quantidade || '?') : (q % 1 === 0 ? q : q.toFixed(2));
+          return `<div style="padding:2px 0;">📦 <strong>${qtd}×</strong> <code>${escapeHtml(i.sku || '-')}</code> ${escapeHtml(i.titulo || '')} — ${moeda(i.valor)}</div>`;
+        }).join('');
+        box.innerHTML = `<div style="margin-top:6px; background:#f5f5f7; border:1px solid #e0e0e0; border-radius:8px; padding:8px 10px; font-size:12.5px;">
+          <div style="color:#666; margin-bottom:4px;"><strong>Itens da NF ${escapeHtml(String(d.numero || ''))}</strong> (${(d.itens || []).length}):</div>
+          ${linhas || 'NF sem itens?'}
+        </div>`;
+        box.dataset.carregado = '1';
+        box.style.display = 'block';
+        el.textContent = '▲ itens da NF';
+      } catch (e) {
+        toast('Erro ao buscar itens da NF: ' + (e.message || e), 'err');
+        el.textContent = txt;
+      }
+      return false;
+    }
+
+    // v3.26 - INTELIGÊNCIA FULL
+    // Acha no Bling a NF de entrada série 2 que o ML emitiu e vincula ao card
+    async function fullVincular(id, btn) {
+      const t = btn ? btn.textContent : '';
+      if (btn) { btn.disabled = true; btn.textContent = '🔗 Procurando...'; }
+      try {
+        const r = await fetch(`/api/admin/full-vincular/${id}`, { method: 'POST' });
+        const d = await r.json();
+        if (d.ok) {
+          toast(`Devolução ML nº ${d.nf_devolucao_numero || '?'} vinculada ao card!`, 'ok');
+          carregar();
+        } else {
+          toast('Não achei: ' + (d.erro || 'sem detalhes'), 'err');
+          if (btn) { btn.disabled = false; btn.textContent = t; }
+        }
+      } catch (e) {
+        toast('Erro: ' + (e.message || e), 'err');
+        if (btn) { btn.disabled = false; btn.textContent = t; }
+      }
+    }
+
+    // Lança o estoque de entrada da devolução vinculada (API oficial),
+    // no depósito escolhido no seletor da seção Aprovadas (padrão: Geral)
+    async function fullLancarEstoque(id, btn) {
+      const idDeposito = depositoDaSecao('aprovadas');
+      const depNome = depositoNome(idDeposito);
+      if (!confirm(
+        `📦 Lançar ESTOQUE de entrada desta devolução no depósito ${depNome}?\n\n` +
+        '⚠️ Só clique se AINDA NÃO lançou (lançar 2x pode dobrar o estoque).\n' +
+        '⚠️ Produto quebrado/com defeito? Escolha DEFEITOS API no seletor 📦 antes, ou não lance.'
+      )) return;
+      const t = btn ? btn.textContent : '';
+      if (btn) { btn.disabled = true; btn.textContent = '📦 Lançando...'; }
+      try {
+        const r = await fetch(`/api/admin/full-lancar-estoque/${id}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ idDeposito }),
+        });
+        const d = await r.json();
+        if (d.ok) {
+          toast(`Estoque lançado no depósito ${depositoNome(d.deposito || idDeposito)}! ✅`, 'ok');
+          if (btn) btn.textContent = '📦 Estoque lançado ✓';
+        } else {
+          toast('Bling recusou: ' + (d.erro || 'sem detalhes'), 'err');
+          if (btn) { btn.disabled = false; btn.textContent = t; }
+        }
+      } catch (e) {
+        toast('Erro: ' + (e.message || e), 'err');
+        if (btn) { btn.disabled = false; btn.textContent = t; }
+      }
+    }
+
+    function rotuloEsteira(secao) {
+      return secao === 'aprovadas' ? 'btnEsteiraAprovadas' : 'btnEsteiraProblemas';
+    }
+
+    function atualizarContadorEsteira(secao) {
+      const n = document.querySelectorAll(`.chk-esteira[data-secao="${secao}"]:checked`).length;
+      const btnE = document.getElementById(rotuloEsteira(secao));
+      const btnC = document.getElementById(secao === 'aprovadas' ? 'btnConcluirAprovadas' : 'btnConcluirProblemas');
+      if (btnE && !(esteiraAtiva && esteiraSecao === secao)) btnE.textContent = `🏭 Emitir selecionadas (${n})`;
+      if (btnC && !concluindoLote) btnC.textContent = `✅ Concluir selecionadas (${n})`;
+    }
+
+    function toggleTodasEsteira(secao, ligado) {
+      document.querySelectorAll(`.chk-esteira[data-secao="${secao}"]`).forEach(c => { c.checked = ligado; });
+      atualizarContadorEsteira(secao);
+    }
+
+    // Mesmo fluxo do modal, mas sem DOM: resolve id/idLoja -> Bridge
+    // (gerar + emitir) -> registra. Lança erro com a mensagem original.
+    async function gerarDevolucaoSilenciosa(devolucaoId, idNFBling, nfNumero, idDeposito, chaveNF) {
+      const qs = idNFBling
+        ? `id=${encodeURIComponent(idNFBling)}`
+        : `numero=${encodeURIComponent(nfNumero || '')}&chave=${encodeURIComponent(chaveNF || '')}`;
+      const rId = await fetch(`/api/admin/resolver-id-nf?${qs}`);
+      const dId = await rId.json();
+      if (!dId.ok || !dId.idBling) {
+        throw new Error(dId.erro || 'ID interno da NF não localizado no Bling');
+      }
+
+      const result = await chamarBlingViaBridge({
+        idNFOriginal: String(dId.idBling),
+        idLoja: dId.idLoja ? String(dId.idLoja) : null,
+        emitir: true,
+        devolucaoId: String(devolucaoId),
+        idDeposito: String(idDeposito || DEPOSITO_GERAL_ID),
+      });
+      if (!result || !result.idNotaDevolucao) {
+        throw new Error('Bling não retornou ID da devolução: ' + JSON.stringify(result || {}).slice(0, 150));
+      }
+
+      try {
+        await fetch(`/api/admin/registrar-devolucao-gerada/${devolucaoId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            nf_devolucao_id_bling: String(result.idNotaDevolucao),
+            nf_devolucao_numero: String(result.numero || ''),
+          }),
+        });
+      } catch (e) { /* extensao ja registrou sozinha */ }
+
+      return { numero: result.numero || '?', emitida: !!result.emitida };
+    }
+
+    async function rodarEsteira(secao) {
+      const btn = document.getElementById(rotuloEsteira(secao));
+
+      // Clicar de novo na esteira que esta rodando = PARAR
+      if (esteiraAtiva && esteiraSecao === secao) {
+        esteiraAtiva = false;
+        if (btn) btn.textContent = '⏹ Parando...';
+        return;
+      }
+      if (esteiraAtiva) {
+        toast('Já tem uma esteira rodando na outra seção. Espere ou pare ela primeiro.', 'err');
+        return;
+      }
+
+      const marcados = [...document.querySelectorAll(`.chk-esteira[data-secao="${secao}"]:checked`)];
+      if (marcados.length === 0) {
+        toast('Nenhum card selecionado. Marque os checkboxes "selecionar" (ou "todas") primeiro.', 'err');
+        return;
+      }
+      // Só entram na esteira os que têm NF pra devolver; o resto é pulado.
+      // FULL (série 2) NUNCA entra: a devolução é emitida pelo próprio ML.
+      const fila = marcados
+        .filter(c => (c.dataset.nfid || c.dataset.nfnum) && c.dataset.full !== '1')
+        .map(c => ({
+          id: c.dataset.id,
+          nfid: c.dataset.nfid || '',
+          nfnum: c.dataset.nfnum || '',
+          chave: c.dataset.chave || '',
+        }));
+      const puladosFull = marcados.filter(c => c.dataset.full === '1').length;
+      const pulados = marcados.length - fila.length - puladosFull;
+      if (fila.length === 0) {
+        toast(puladosFull > 0
+          ? 'Só tem card FULL selecionado — a NF de devolução deles é emitida pelo próprio ML (selo 🏬).'
+          : 'Nenhum dos selecionados tem NF vinculada (rode o 🔎 Buscar NFs primeiro).', 'err');
+        return;
+      }
+
+      if (!await verificarBridgeInstalada()) {
+        toast('Extensão Bridge não detectada. Confira a aba do Bling logada e recarregue o painel (Ctrl+Shift+R).', 'err');
+        return;
+      }
+
+      // v3.28: deposito escolhido no seletor da secao (padrao: Geral)
+      const idDeposito = depositoDaSecao(secao);
+      const depNome = depositoNome(idDeposito);
+      const depGeral = idDeposito === DEPOSITO_GERAL_ID;
+
+      const estimMin = Math.ceil(fila.length * 30 / 60);
+      if (!confirm(
+        `🏭 ESTEIRA: gerar + EMITIR (SEFAZ) a NF de devolução de ${fila.length} card(s)?\n\n` +
+        (puladosFull > 0 ? `🏬 ${puladosFull} card(s) FULL serão pulados (NF de devolução é emitida pelo próprio ML).\n` : '') +
+        (pulados > 0 ? `⚠️ ${pulados} selecionado(s) SEM NF serão pulados (rode o 🔎 Buscar NFs pra eles).\n` : '') +
+        (puladosFull > 0 || pulados > 0 ? `\n` : '') +
+        `• 📦 Depósito do estoque: ${depNome}\n` +
+        `• Um por vez (SEFAZ é serial) — de 10s a 1min+ cada, estimativa ~${estimMin || 1} min no total\n` +
+        `• Precisa da aba do Bling aberta e logada (a tela vai "piscar" a cada card, é normal)\n` +
+        `• Card que já tiver devolução no Bling será apenas VINCULADO\n` +
+        (secao === 'problemas'
+          ? (depGeral
+            ? `• Depósito GERAL escolhido: cards ficam ABERTOS e no fim aviso quais lançamentos de estoque CANCELAR (mude pra DEFEITOS API pra não precisar cancelar)\n`
+            : `• Estoque entra quarentenado em ${depNome}: nada a cancelar — cards emitidos serão CONCLUÍDOS automaticamente\n`)
+          : `• Emitida/vinculada com sucesso = card marcado como CONCLUÍDO automaticamente\n`) +
+        `• Pra PARAR: clique de novo no botão (o que já foi emitido, fica)`
+      )) return;
+
+      esteiraAtiva = true;
+      esteiraSecao = secao;
+      const corOriginal = btn.style.background;
+      btn.style.background = '#c62828';
+
+      let emitidas = 0, vinculadas = 0, rascunhos = 0, falhas = 0;
+      const erros = [];
+      const lembretesEstoque = []; // problemas: cancelar lançamento de estoque
+
+      // Marca concluído sem barulho (não-crítico: se falhar, o card só
+      // fica aberto e dá pra concluir depois pelo botão de lote)
+      async function concluirQuieto(id) {
+        try {
+          await fetch('/api/admin/concluir/' + id, { method: 'PUT' });
+        } catch (e) { console.warn('[Esteira] concluir falhou (nao critico):', id, e.message || e); }
+      }
+
+      // Produto com problema + depósito GERAL = manter aberto e lembrar de
+      // CANCELAR o lançamento. Com DEFEITOS/quarentena escolhido, o estoque
+      // já entra no lugar certo → conclui normalmente.
+      const ehProblemas = secao === 'problemas';
+      const manterAbertoProblemas = ehProblemas && depGeral;
+
+      for (let i = 0; i < fila.length; i++) {
+        if (!esteiraAtiva) break;
+        const item = fila[i];
+        btn.textContent = `⏹ Parar · ${i + 1}/${fila.length} (✅${emitidas} 🔗${vinculadas} ❌${falhas})`;
+        try {
+          const r = await gerarDevolucaoSilenciosa(item.id, item.nfid, item.nfnum, idDeposito, item.chave);
+          if (r.emitida) {
+            emitidas++;
+            if (manterAbertoProblemas) {
+              lembretesEstoque.push(r.numero || item.nfnum);
+              console.log(`[Esteira] NF ${item.nfnum}: devolução ${r.numero} EMITIDA (estoque no Geral) — card ABERTO pra cancelar lançamento`);
+            } else {
+              await concluirQuieto(item.id); // ciclo fechado = concluído
+              console.log(`[Esteira] NF ${item.nfnum}: devolução ${r.numero} EMITIDA (depósito ${depNome}) + card concluído`);
+            }
+          } else {
+            rascunhos++; // SEFAZ não confirmou na hora: card fica aberto pra conferência
+            console.log(`[Esteira] NF ${item.nfnum}: devolução ${r.numero} ficou como RASCUNHO — card mantido aberto`);
+          }
+        } catch (err) {
+          const msg = String(err.message || err);
+          if (msg.toLowerCase().includes('ja possui devolucao')) {
+            // Card órfão: acha e vincula em vez de falhar
+            try {
+              const rV = await fetch(`/api/admin/vincular-devolucao-existente/${item.id}`, { method: 'POST' });
+              const dV = await rV.json();
+              if (dV.ok) {
+                vinculadas++;
+                if (manterAbertoProblemas) {
+                  lembretesEstoque.push(dV.nf_devolucao_numero || item.nfnum);
+                  console.log(`[Esteira] NF ${item.nfnum}: devolução ${dV.nf_devolucao_numero} VINCULADA — card ABERTO (conferir estoque)`);
+                } else {
+                  await concluirQuieto(item.id);
+                  console.log(`[Esteira] NF ${item.nfnum}: devolução ${dV.nf_devolucao_numero} já existia — VINCULADA + card concluído`);
+                }
+              } else {
+                falhas++;
+                erros.push(`NF ${item.nfnum || item.id}: já tem devolução mas não achei pra vincular (${(dV.erro || '').slice(0, 60)})`);
+              }
+            } catch (e2) {
+              falhas++;
+              erros.push(`NF ${item.nfnum || item.id}: ${msg.slice(0, 80)}`);
+            }
+          } else {
+            falhas++;
+            erros.push(`NF ${item.nfnum || item.id}: ${msg.slice(0, 100)}`);
+          }
+        }
+        // Pausa entre cards (folga pro Bling e pra SEFAZ respirarem)
+        if (i < fila.length - 1 && esteiraAtiva) {
+          await new Promise(res => setTimeout(res, 2500));
+        }
+      }
+
+      const parou = !esteiraAtiva && (emitidas + vinculadas + rascunhos + falhas) < fila.length;
+      esteiraAtiva = false;
+      esteiraSecao = null;
+      btn.style.background = corOriginal;
+      btn.textContent = '🏭 Emitir selecionadas (0)';
+
+      if (erros.length > 0) console.warn('[Esteira] Falhas:', erros);
+      if (lembretesEstoque.length > 0) console.warn('[Esteira] CANCELAR ESTOQUE das devoluções:', lembretesEstoque);
+      toast(
+        `${parou ? '⏹ Esteira PARADA' : '🏭 Esteira concluída'}: ✅ ${emitidas} emitida(s)` +
+        ` · 🔗 ${vinculadas} vinculada(s)` +
+        (rascunhos > 0 ? ` · 📝 ${rascunhos} rascunho(s) (card aberto pra conferir)` : '') +
+        ` · ❌ ${falhas} falha(s)` +
+        (manterAbertoProblemas && lembretesEstoque.length > 0
+          ? ` — ⚠️ PRODUTO C/ PROBLEMA (depósito Geral): cancele o lançamento de estoque no Bling das devoluções ${lembretesEstoque.join(', ')} (cards mantidos abertos)`
+          : ((emitidas + vinculadas) > 0 ? ` — concluídas automaticamente ✅ (estoque: ${depNome})` : '')) +
+        (falhas > 0 ? ' (detalhes no console F12)' : ''),
+        (falhas > 0 || (manterAbertoProblemas && lembretesEstoque.length > 0)) ? 'err' : 'ok'
+      );
+      carregar();
+    }
+
+    // v3.22 - CONCLUIR EM LOTE: marca todos os selecionados como concluídos.
+    // Rápido (só Supabase, sem Bling), roda em série com pausa curta.
+    async function concluirSelecionadas(secao) {
+      if (esteiraAtiva) {
+        toast('A esteira de emissão está rodando. Espere ou pare ela primeiro.', 'err');
+        return;
+      }
+      if (concluindoLote) return;
+
+      const marcados = [...document.querySelectorAll(`.chk-esteira[data-secao="${secao}"]:checked`)];
+      if (marcados.length === 0) {
+        toast('Nenhum card selecionado. Marque os checkboxes "selecionar" (ou "todas") primeiro.', 'err');
+        return;
+      }
+      const ids = marcados.map(c => c.dataset.id);
+
+      if (!confirm(
+        `✅ Marcar ${ids.length} card(s) como CONCLUÍDO?\n\n` +
+        `Eles somem da lista principal (dá pra rever marcando "Mostrar concluídos").`
+      )) return;
+
+      concluindoLote = true;
+      const btn = document.getElementById(secao === 'aprovadas' ? 'btnConcluirAprovadas' : 'btnConcluirProblemas');
+      const txtOriginal = btn ? btn.textContent : '';
+      let ok = 0, falha = 0;
+      const erros = [];
+
+      for (let i = 0; i < ids.length; i++) {
+        if (btn) btn.textContent = `⏳ Concluindo ${i + 1}/${ids.length}...`;
+        try {
+          const r = await fetch('/api/admin/concluir/' + ids[i], { method: 'PUT' });
+          const d = await r.json();
+          if (d.ok) ok++;
+          else { falha++; erros.push(`${ids[i]}: ${d.erro || 'falha'}`); }
+        } catch (e) {
+          falha++;
+          erros.push(`${ids[i]}: ${e.message || e}`);
+        }
+        if (i < ids.length - 1) await new Promise(res => setTimeout(res, 250));
+      }
+
+      concluindoLote = false;
+      if (btn) btn.textContent = txtOriginal;
+      if (erros.length > 0) console.warn('[Concluir lote] Falhas:', erros);
+      toast(`✅ ${ok} concluída(s)` + (falha > 0 ? ` · ❌ ${falha} falha(s) (console F12)` : ''), falha > 0 ? 'err' : 'ok');
+      carregar();
+    }
+
+    // v3.31 - RETROFIT DE ITENS: percorre os cards antigos (sem nf_itens)
+    // e grava produtos/quantidades vindos do Bling — 1 por vez, com placar.
+    // Clicar de novo PARA (o que já gravou, fica).
+    let retrofitAtivo = false;
+    async function carregarItensAntigos() {
+      const btn = document.getElementById('btnCarregarItens');
+      if (retrofitAtivo) {
+        retrofitAtivo = false;
+        btn.textContent = '⏹ Parando...';
+        return;
+      }
+
+      const tudo = [
+        ...(dados.aprovadas || []),
+        ...(dados.problemas || []),
+        ...(dados.divergentes || []),
+      ];
+      const fila = tudo.filter(d =>
+        d.status !== 'concluido' &&
+        !(Array.isArray(d.nf_itens) && d.nf_itens.length > 0) &&
+        (d.nf_id_bling || (d.nf_chave && d.nf_numero))
+      );
+      if (fila.length === 0) {
+        toast('Todos os cards já têm os itens gravados! ✅', 'ok');
+        return;
+      }
+
+      const estim = Math.ceil(fila.length * 4 / 60);
+      if (!confirm(`Carregar itens de ${fila.length} card(s) antigo(s)?\n\n~4s por card (busca no Bling), estimativa ${estim || 1} min.\nPra parar: clique de novo no botão.`)) return;
+
+      retrofitAtivo = true;
+      const corOriginal = btn.style.background;
+      btn.style.background = '#c62828';
+      let ok = 0, falha = 0;
+      const erros = [];
+
+      for (let i = 0; i < fila.length; i++) {
+        if (!retrofitAtivo) break;
+        const reg = fila[i];
+        btn.textContent = `⏹ Parar · ${i + 1}/${fila.length} (✅${ok} ❌${falha})`;
+        try {
+          const r = await fetch(`/api/admin/carregar-itens/${reg.id}`, { method: 'POST' });
+          const d = await r.json();
+          if (d.ok) ok++;
+          else { falha++; erros.push(`NF ${reg.nf_numero || reg.id}: ${(d.erro || '').slice(0, 80)}`); }
+        } catch (e) {
+          falha++;
+          erros.push(`NF ${reg.nf_numero || reg.id}: ${e.message || e}`);
+        }
+        if (i < fila.length - 1 && retrofitAtivo) {
+          await new Promise(res => setTimeout(res, 900));
+        }
+      }
+
+      const parou = !retrofitAtivo && (ok + falha) < fila.length;
+      retrofitAtivo = false;
+      btn.style.background = corOriginal;
+      btn.textContent = '🧾 Carregar itens (antigos)';
+      if (erros.length > 0) console.warn('[Retrofit itens] Falhas:', erros);
+      toast(
+        `${parou ? '⏹ Retrofit PARADO' : '🧾 Retrofit concluído'}: ✅ ${ok} card(s) com itens gravados · ❌ ${falha} falha(s)` +
+        (falha > 0 ? ' (console F12)' : ''),
+        falha > 0 ? 'err' : 'ok'
+      );
+      carregar();
+    }
+
+    // v3.25 - LANÇAR POR NF: cria cards em Aprovadas a partir dos números
+    // das NFs de venda (série 1). O servidor busca cada NF no Bling e monta
+    // o card completo (cliente, produto, valor, order, DANFE).
+    async function lancarPorNF() {
+      const btn = document.getElementById('btnLancarNF');
+      const entrada = prompt(
+        '➕ LANÇAR POR NF\n\n' +
+        'Cole os números das NFs de VENDA (série 1), separados por espaço, vírgula ou linha.\n' +
+        'Máximo 15 por vez. Exemplo: 74241, 74655 74702\n\n' +
+        'Guardas automáticas: NF já lançada é pulada · série 2 (FULL) é recusada.'
+      );
+      if (!entrada) return;
+
+      let numeros = [...new Set((entrada.match(/\d{3,9}/g) || []))];
+      if (numeros.length === 0) {
+        toast('Nenhum número de NF reconhecido no texto colado.', 'err');
+        return;
+      }
+      if (numeros.length > 15) {
+        toast(`Limite de 15 por vez — vou lançar os 15 primeiros (${numeros.length - 15} ficaram de fora).`, 'err');
+        numeros = numeros.slice(0, 15);
+      }
+      if (!confirm(`Lançar ${numeros.length} card(s) pelo número da NF?\n\n${numeros.join(', ')}\n\nO servidor busca cada NF no Bling (~5-15s por nota). Aguarde o resumo.`)) return;
+
+      const txtOriginal = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = `⏳ Lançando ${numeros.length} NF(s)...`;
+      try {
+        const r = await fetch('/api/admin/lancar-por-nf', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ numeros }),
+        });
+        const d = await r.json();
+        if (!d.ok) throw new Error(d.erro || 'falha');
+        const pulados = (d.resultados || []).filter(x => !x.ok);
+        if (pulados.length > 0) console.warn('[Lançar por NF] Pulados:', pulados);
+        toast(
+          `➕ ${d.criados} card(s) criado(s)` +
+          (pulados.length > 0 ? ` · ⚠️ ${pulados.length} pulado(s) (detalhes no console F12)` : ''),
+          pulados.length > 0 && d.criados === 0 ? 'err' : 'ok'
+        );
+        carregar();
+      } catch (e) {
+        toast('Erro ao lançar: ' + (e.message || e), 'err');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = txtOriginal;
+      }
+    }
+
+    async function confirmarGerarDevolucao(devolucaoId, idNFOriginalBling, nfNumero, emitir, chaveNF) {
+      // v3.28: le o deposito ANTES de trocar o conteudo do modal pelo spinner
+      const depModalEl = document.getElementById('depModal');
+      const idDeposito = (depModalEl && depModalEl.value) ? depModalEl.value : DEPOSITO_GERAL_ID;
+      const conteudo = document.getElementById('modalGerarConteudo');
+      const acao = emitir ? 'Gerando + emitindo NF' : 'Criando rascunho';
+
+      // Loading
+      conteudo.innerHTML = `
+        <h3 style="font-size:18px; margin-bottom:12px;">🧾 ${acao}...</h3>
+        <div style="text-align:center; padding:30px;">
+          <div class="spinner" style="display:inline-block; width:36px; height:36px; border:4px solid #f0f0f0; border-top-color:#1565c0; border-radius:50%; animation:spin 0.8s linear infinite;"></div>
+          <p id="statusGerar" style="margin-top:14px; color:#555; font-size:14px;">
+            Falando com o Bling (via extensão)...
+          </p>
+        </div>
+      `;
+
+      try {
+        // SEMPRE resolve idNF + idLoja no backend (que usa a API v3 oficial).
+        // O idLoja e o ULTIMO segmento do obter-dados-devolucao - sem ele da 404.
+        document.getElementById('statusGerar').textContent = 'Localizando a NF no Bling...';
+        const qs = idNFOriginalBling
+          ? `id=${encodeURIComponent(idNFOriginalBling)}`
+          : `numero=${encodeURIComponent(nfNumero || '')}&chave=${encodeURIComponent(chaveNF || '')}`;
+        const rId = await fetch(`/api/admin/resolver-id-nf?${qs}`);
+        const dId = await rId.json();
+        if (!dId.ok || !dId.idBling) {
+          throw new Error(dId.erro || 'Não consegui achar o ID interno dessa NF no Bling.');
+        }
+        idNFOriginalBling = dId.idBling;
+        const idLoja = dId.idLoja || null;
+
+        // Verifica se a extensao Bridge esta instalada/atualizada
+        if (!await verificarBridgeInstalada()) {
+          throw new Error(
+            'Extensão "GOOD Devoluções Bridge" não detectada. ' +
+            'Instale/atualize a extensão e recarregue a página (Ctrl+Shift+R).'
+          );
+        }
+        document.getElementById('statusGerar').textContent = 'Falando com o Bling (via extensão)...';
+
+        // A Bridge faz TUDO: busca os dados de devolucao (com IDs reais dos itens),
+        // valida duplicata, cria a NF e (se emitir) transmite pra SEFAZ.
+        // devolucaoId vai junto: a extensao GRAVA o resultado sozinha no
+        // sistema, mesmo se este painel desistir de esperar.
+        const result = await chamarBlingViaBridge({
+          idNFOriginal: String(idNFOriginalBling),
+          idLoja: idLoja ? String(idLoja) : null,
+          emitir: !!emitir,
+          devolucaoId: String(devolucaoId),
+          idDeposito: String(idDeposito),
+        });
+
+        if (!result || !result.idNotaDevolucao) {
+          throw new Error('Bling nao retornou ID da NF: ' + JSON.stringify(result).slice(0, 200));
+        }
+
+        const idNFDevolucao = result.idNotaDevolucao;
+        const numeroNF = result.numero || '?';
+        const emitida = !!result.emitida;
+
+        // Registra no Supabase pra nao gerar de novo (nao critico)
+        document.getElementById('statusGerar').textContent = 'Registrando no sistema...';
+        try {
+          await fetch(`/api/admin/registrar-devolucao-gerada/${devolucaoId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              nf_devolucao_id_bling: String(idNFDevolucao),
+              nf_devolucao_numero: String(numeroNF),
+            }),
+          });
+        } catch (e) {
+          console.warn('Falha ao registrar no Supabase (nao critico):', e);
+        }
+
+        // Mostra sucesso (rascunho x emitida)
+        const linkBling = `https://www.bling.com.br/notas.entrada.php#edit/${idNFDevolucao}`;
+        const tituloOk = emitida ? '✅ NF de devolução emitida!' : '✅ Rascunho criado!';
+        const selo = emitida
+          ? `<strong>NF nº ${escapeHtml(String(numeroNF))}</strong> emitida e <strong>autorizada pela SEFAZ</strong>. 🎉`
+          : `<strong>NF nº ${escapeHtml(String(numeroNF))}</strong> criada como <strong>rascunho</strong> (ainda NÃO transmitida).`;
+        const proximos = emitida
+          ? 'Pronto! A devolução de entrada já está autorizada no Bling.'
+          : 'Confira no Bling se o produto veio certo. Se estiver ok, dá pra emitir por lá — ou usar o botão "Gerar + Emitir".';
+        conteudo.innerHTML = `
+          <h3 style="font-size:18px; margin-bottom:12px; color:#2e7d32;">${tituloOk}</h3>
+          <div style="background:#e8f5e9; padding:14px; border-radius:8px; margin-bottom:16px;">
+            <div style="font-size:14px; color:#1b5e20;">${selo}</div>
+            <div style="font-size:12px; color:#388e3c; margin-top:6px;">ID: ${idNFDevolucao}</div>
+          </div>
+          <p style="font-size:13px; color:#555; margin-bottom:16px;">${proximos}</p>
+          <div style="display:flex; gap:8px; justify-content:flex-end; flex-wrap:wrap;">
+            <button class="btn btn-cinza" onclick="fecharModalGerarDevolucao()">Fechar</button>
+            <a class="btn btn-verde" href="${linkBling}" target="_blank" onclick="setTimeout(fecharModalGerarDevolucao, 400)">
+              🔗 Abrir no Bling
+            </a>
+          </div>
+        `;
+        _cardParaAtualizar = String(devolucaoId); // v3.28.1: atualiza so este card ao fechar
+        toast((emitida ? 'NF emitida: nº ' : 'Rascunho criado: nº ') + numeroNF, 'ok');
+
+      } catch (err) {
+        console.error('Erro gerar devolucao:', err);
+
+        // v3.20.1: "ja possui devolucao" = a NF existe no Bling mas o card
+        // ficou orfao (ex: timeout em tentativa anterior). Procura e vincula.
+        if (String(err.message || '').toLowerCase().includes('ja possui devolucao')) {
+          conteudo.innerHTML = `
+            <h3 style="font-size:18px; margin-bottom:12px;">🔗 Devolução já existe no Bling</h3>
+            <div style="text-align:center; padding:24px;">
+              <div class="spinner" style="display:inline-block; width:32px; height:32px; border:4px solid #f0f0f0; border-top-color:#6a1b9a; border-radius:50%; animation:spin 0.8s linear infinite;"></div>
+              <p style="margin-top:12px; color:#555; font-size:14px;">Localizando a NF de devolução no Bling pra vincular ao card...</p>
+            </div>
+          `;
+          try {
+            const rV = await fetch(`/api/admin/vincular-devolucao-existente/${devolucaoId}`, { method: 'POST' });
+            const dV = await rV.json();
+            if (dV.ok) {
+              conteudo.innerHTML = `
+                <h3 style="font-size:18px; margin-bottom:12px; color:#2e7d32;">✅ Devolução vinculada!</h3>
+                <div style="background:#e8f5e9; padding:14px; border-radius:8px; margin-bottom:16px; font-size:14px; color:#1b5e20;">
+                  A NF de devolução <strong>nº ${escapeHtml(String(dV.nf_devolucao_numero || '?'))}</strong> já existia no Bling
+                  (criada numa tentativa anterior) e agora está vinculada a este card.
+                </div>
+                <div style="display:flex; gap:8px; justify-content:flex-end;">
+                  <button class="btn btn-verde" onclick="fecharModalGerarDevolucao(); carregar();">OK</button>
+                </div>
+              `;
+              toast('Devolução nº ' + (dV.nf_devolucao_numero || '?') + ' vinculada!', 'ok');
+              return;
+            }
+          } catch (e2) { /* cai no erro generico abaixo */ }
+        }
+
+        conteudo.innerHTML = `
+          <h3 style="font-size:18px; margin-bottom:12px; color:#c62828;">❌ Erro ao gerar</h3>
+          <div style="background:#ffebee; padding:14px; border-radius:8px; margin-bottom:16px; font-size:13px; color:#b71c1c;">
+            ${escapeHtml(err.message || String(err))}
+          </div>
+          <div style="font-size:13px; color:#555; margin-bottom:16px;">
+            <strong>Possíveis causas:</strong><br>
+            • Extensão "GOOD Devoluções Bridge" não está instalada<br>
+            • Você não está logado no Bling em outra aba<br>
+            • A NF original já tem todas devoluções emitidas<br>
+            • Bling mudou o endpoint interno (raro)<br><br>
+            <strong>Alternativa:</strong> abre a NF no Bling e gera devolução manualmente pelo menu de 3 pontos.
+          </div>
+          <div style="display:flex; gap:8px; justify-content:flex-end;">
+            <button class="btn btn-cinza" onclick="fecharModalGerarDevolucao()">Fechar</button>
+          </div>
+        `;
+        toast('Erro: ' + (err.message || err), 'err');
+      }
+    }
+
+    // Monta o XML proprietario do framework xajax do Bling
+    // Formato descoberto via captura de fetch real (30/04/2026)
+    function montarXmlDevolucao(produtos, contato) {
+      // produtos = [{ idBling, quantidade, valor }]
+      // contato = { id, nome, tipo, cnpj, ie, indIEDest, rg, cep, cidade, idMunicipio, uf, endereco, enderecoNro, bairro, complemento, email, fone, celular, dataNascimento, nomePais, idPais }
+
+      // Helper: monta um <e><k>...</k><v>...</v></e>
+      function entry(key, valueXml) {
+        return `<e><k>${escapeXajax(key)}</k><v>${valueXml}</v></e>`;
+      }
+      // Helper: valor leaf (texto simples, ja escapado)
+      function leaf(value) {
+        return escapeXajax(value == null ? '' : String(value));
+      }
+
+      // Bloco produtos: { idBling: { quantidade, valor } }
+      const produtosXml = '<xjxobj>' + produtos.map(p => {
+        const inner = '<xjxobj>' +
+          entry('quantidade', leaf(formatarQtde(p.quantidade))) +
+          entry('valor', leaf(formatarValor(p.valor))) +
+        '</xjxobj>';
+        return entry(String(p.idBling), inner);
+      }).join('') + '</xjxobj>';
+
+      // Bloco contato (mesma ordem que o Bling envia, por garantia)
+      const contatoXml = '<xjxobj>' +
+        entry('nome',           leaf(contato.nome)) +
+        entry('id',             leaf(contato.id)) +
+        entry('tipo',           leaf(contato.tipo || 'F')) +
+        entry('cnpj',           leaf(contato.cnpj || contato.cpf || '')) +
+        entry('ie',             leaf(contato.ie || '')) +
+        entry('indIEDest',      leaf(contato.indIEDest || '9')) +
+        entry('rg',             leaf(contato.rg || '')) +
+        entry('nomePais',       leaf(contato.nomePais || '')) +
+        entry('idPais',         leaf(contato.idPais || '')) +
+        entry('cep',            leaf(contato.cep || '')) +
+        entry('cidade',         leaf(contato.cidade || '')) +
+        entry('idMunicipio',    leaf(contato.idMunicipio || '')) +
+        entry('uf',             leaf(contato.uf || '')) +
+        entry('endereco',       leaf(contato.endereco || '')) +
+        entry('enderecoNro',    leaf(contato.enderecoNro || '')) +
+        entry('bairro',         leaf(contato.bairro || '')) +
+        entry('complemento',    leaf(contato.complemento || '')) +
+        entry('email',          leaf(contato.email || '')) +
+        entry('fone',           leaf(contato.fone || '')) +
+        entry('celular',        leaf(contato.celular || '')) +
+        entry('dataNascimento', leaf(contato.dataNascimento || '')) +
+      '</xjxobj>';
+
+      // Bloco raiz
+      const xml = '<xjxobj>' +
+        entry('produtos', produtosXml) +
+        entry('contato', contatoXml) +
+        entry('idNaturezaOperacao', leaf(GOOD_BLING.idNaturezaOperacao)) +
+        entry('idEmpresaControl', leaf(GOOD_BLING.idEmpresaControl)) +
+      '</xjxobj>';
+
+      return xml;
+    }
+
+    // Escapa caracteres XML mas SEM tocar em UTF-8 (acentos passam direto)
+    function escapeXajax(s) {
+      return String(s)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+    }
+
+    // Quantidade no formato Bling: virgula brasileira, 2 casas
+    function formatarQtde(q) {
+      const n = Number(q);
+      if (!isFinite(n)) return '1,00';
+      return n.toFixed(2).replace('.', ',');
+    }
+
+    // Valor unitario no formato Bling: virgula brasileira, 10 casas (decimais.price=10)
+    function formatarValor(v) {
+      const n = Number(v);
+      if (!isFinite(n)) return '0,0000000000';
+      return n.toFixed(10).replace('.', ',');
+    }
+
+    // ============================================================
+    // v3.15.0 - Comunicacao com a Extensao "GOOD Devolucoes Bridge"
+    // ============================================================
+    // A extensao instalada no navegador escuta postMessage e faz
+    // chamadas ao Bling com privilegios (sem CORS).
+    // Sem a extensao instalada, a chamada vai dar timeout.
+
+    let bridgeInstaladaCache = null;
+
+    // Detecta se a extensao esta instalada (via postMessage PING/PONG)
+    function verificarBridgeInstalada() {
+      if (bridgeInstaladaCache !== null) return Promise.resolve(bridgeInstaladaCache);
+
+      return new Promise(resolve => {
+        let resolved = false;
+        function handler(event) {
+          if (event.source !== window) return;
+          if (event.data?.tipo === 'GOOD_BRIDGE_PONG' || event.data?.tipo === 'GOOD_BRIDGE_INSTALADA') {
+            resolved = true;
+            window.removeEventListener('message', handler);
+            bridgeInstaladaCache = true;
+            resolve(true);
+          }
+        }
+        window.addEventListener('message', handler);
+        window.postMessage({ tipo: 'GOOD_BRIDGE_PING' }, '*');
+
+        setTimeout(() => {
+          if (!resolved) {
+            window.removeEventListener('message', handler);
+            bridgeInstaladaCache = false;
+            resolve(false);
+          }
+        }, 1500);
+      });
+    }
+
+    // Manda pedido pra Bridge criar a devolucao no Bling
+    function chamarBlingViaBridge(payload) {
+      return new Promise((resolve, reject) => {
+        const requisicaoId = 'req_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+        let timeout;
+
+        function handler(event) {
+          if (event.source !== window) return;
+          if (event.data?.tipo !== 'GOOD_BRIDGE_RESPOSTA') return;
+          if (event.data.requisicaoId !== requisicaoId) return;
+
+          window.removeEventListener('message', handler);
+          clearTimeout(timeout);
+
+          if (event.data.ok) {
+            resolve(event.data.resultado);
+          } else {
+            reject(new Error(event.data.erro || 'Erro desconhecido na Bridge'));
+          }
+        }
+
+        window.addEventListener('message', handler);
+
+        window.postMessage({
+          tipo: 'GOOD_BRIDGE_CRIAR_DEVOLUCAO',
+          requisicaoId,
+          payload,
+        }, '*');
+
+        // Timeout de 110s (SEFAZ pode demorar mais de 1 min em dias lentos;
+        // a extensao tambem grava sozinha, entao nada se perde)
+        timeout = setTimeout(() => {
+          window.removeEventListener('message', handler);
+          reject(new Error('Timeout - Bling demorou mais de 110s pra responder. IMPORTANTE: a NF pode ter sido criada mesmo assim - clique em Gerar de novo que o sistema confere e vincula.'));
+        }, 110000);
+      });
+    }
+
+    // Pre-detecta a Bridge logo no carregamento (atualiza badge na UI se quiser)
+    verificarBridgeInstalada().then(instalada => {
+      console.log('[GOOD Devolucoes] Extensao Bridge:', instalada ? 'INSTALADA ✅' : 'NAO instalada ❌');
+    });
+
+    // Pre-seta datas e carrega
+    setarDatasPadrao();
+    carregar();
+  </script>
+</body>
+</html>
