@@ -183,7 +183,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '3.91 (fix piscar na tela de defeitos - sem redirect em loop)',
+    version: '3.94 (admin.html renomeado para painel-devolucoes.html)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -2118,7 +2118,7 @@ async function enviarEmailProblema(devolucao, fotos, usuario) {
   if (!mailer) return;
 
   const baseUrl = (process.env.RENDER_EXTERNAL_URL || '').replace(/\/$/, '');
-  const linkAdmin = baseUrl ? `${baseUrl}/admin.html` : '/admin.html';
+  const linkAdmin = baseUrl ? `${baseUrl}/painel-devolucoes.html` : '/painel-devolucoes.html';
 
   const fotosHtml = fotos.map((url, i) =>
     `<a href="${url}" target="_blank" style="display:inline-block;margin:4px;text-decoration:none;">
@@ -2189,8 +2189,12 @@ async function enviarEmailProblema(devolucao, fotos, usuario) {
 // ============================================================
 
 // Pagina admin (requer auth)
-app.get('/admin.html', requerAdmin, (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'admin.html'));
+// v3.94 - arquivo renomeado para painel-devolucoes.html (admin.html se
+// confundia com index.html na hora de subir). O /admin.html antigo continua
+// funcionando como redirect, entao links e favoritos nao quebram.
+app.get('/admin.html', (req, res) => res.redirect('/painel-devolucoes.html'));
+app.get('/painel-devolucoes.html', requerAdmin, (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'painel-devolucoes.html'));
 });
 
 // v3.16.0: Pagina de relatorios (requer auth)
