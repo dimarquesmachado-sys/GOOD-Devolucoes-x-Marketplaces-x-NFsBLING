@@ -308,6 +308,26 @@ async function enviarProblema() {
 
   const descricao = document.getElementById('problemaDescricao').value.trim();
 
+  // v4.09 - LOCALIZACAO OBRIGATORIA: sem ela o defeito nao entra na consulta
+  // de localizacao (o filtro exige o campo preenchido) e a peca some do mapa.
+  // Excecao: se o estoquista CONSERTOU, o produto vai pro estoque, nao pro
+  // defeito - ai nao faz sentido pedir onde guardar.
+  const chkConsertou = document.getElementById('chkConsertei');
+  const consertou = !!(chkConsertou && chkConsertou.checked);
+  const localInput = document.getElementById('problemaLocal');
+  const localTxt = (localInput ? localInput.value : '').trim();
+  if (!consertou && !localTxt) {
+    toast('Informe ONDE VAI GUARDAR o produto com defeito', 'err');
+    if (localInput) {
+      localInput.style.borderColor = '#c62828';
+      localInput.style.background = '#fff5f5';
+      localInput.focus();
+      localInput.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    }
+    return;
+  }
+  if (localInput) { localInput.style.borderColor = '#ccc'; localInput.style.background = '#fff'; }
+
   // Loading no botao captura (caso voltar) e toast geral
   toast('Enviando problema...', '');
 
