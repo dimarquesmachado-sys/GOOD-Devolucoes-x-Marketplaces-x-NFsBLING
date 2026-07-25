@@ -183,7 +183,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '3.94 (admin.html renomeado para painel-devolucoes.html)',
+    version: '3.95 (data REAL de entrega no alerta + rename painel)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -2510,6 +2510,32 @@ app.get('/api/defeitos', requerEstoquista, async (req, res) => { // v3.90: estoq
 // v3.81 - ENRIQUECIMENTO da espreita (cliente + NF) com cache permanente:
 // dados imutaveis, busca 1x em background e anexa pra sempre.
 const ESP_ENRIQ = new Map();
+// v3.95 - DATA REAL DA ENTREGA (bug: eu usava rr.last_updated do return, que
+// e a ultima modificacao do registro - quando o ML mexe no return depois da
+// entrega, a data "anda" e a conta de dias encolhe). A data certa esta no
+// shipment: status_history.date_delivered. Busca em background, com cache
+// permanente (a data nunca muda).
+const ESP_ENTREGA = new Map();
+let ESP_ENTREGA_RODANDO = false;
+function dispararDatasEntrega(itens) {
+  if (ESP_ENTREGA_RODANDO) return;
+  const fila = itens.filter(d => d.shipment_devolucao && !ESP_ENTREGA.has(String(d.shipment_devolucao))).slice(0, 60);
+  if (fila.length === 0) return;
+  ESP_ENTREGA_RODANDO = true;
+  (async () => {
+    console.log(`[ESPREITA] buscando data real de entrega de ${fila.length} shipment(s)...`);
+    for (const d of fila) {
+      const sid = String(d.shipment_devolucao);
+      try {
+        const r = await chamarML(`https://api.mercadolibre.com/shipments/${sid}`, { 'x-format-new': 'true' });
+        const dt = r.ok ? (r.data?.status_history?.date_delivered || null) : null;
+        ESP_ENTREGA.set(sid, dt);
+      } catch (e) { ESP_ENTREGA.set(sid, null); }
+      await new Promise(r => setTimeout(r, 300));
+    }
+    console.log('[ESPREITA] datas de entrega atualizadas');
+  })().catch(() => {}).finally(() => { ESP_ENTREGA_RODANDO = false; });
+}
 // v3.85 - logistic_type do ML -> rotulo curto (FULL/FLEX/Coletas/Correios)
 function mapLogistica(lt) {
   const m = { fulfillment: 'FULL', self_service: 'FLEX', cross_docking: 'Coletas', xd_drop_off: 'Agência', drop_off: 'Correios', default: null };
@@ -2688,7 +2714,19 @@ app.get('/api/admin/espreita', requerAdmin, async (req, res) => {
     // v3.87 - PISO de 5 dias: recem-entregue pode estar so na fila de
     // recebimento do galpao (caso real: entregue hoje 14h, alerta as 15h e
     // falso alarme). Alerta so entre 5 e 90 dias - tempo de sumico real.
-    const candidatos = [...(mlR.entregues || []), ...(magaluR.entregues || [])]
+    // v3.95 - usa a data REAL de entrega quando ja estiver no cache; o corte de
+    // 5-90 dias e aplicado DEPOIS da correcao (antes, o last_updated do return
+    // encolhia a conta e o item aparecia com menos dias do que os reais).
+    const brutos = [...(mlR.entregues || []), ...(magaluR.entregues || [])];
+    dispararDatasEntrega(brutos);
+    for (const d of brutos) {
+      const real = d.shipment_devolucao ? ESP_ENTREGA.get(String(d.shipment_devolucao)) : null;
+      if (real) {
+        d.entregue_em = real;
+        d.dias_desde = Math.floor((Date.now() - Date.parse(real)) / 864e5);
+      }
+    }
+    const candidatos = brutos
       .filter(d => (d.dias_desde != null) && d.dias_desde >= 5 && d.dias_desde <= 90 && (d.pedido || d.tracking));
     if (candidatos.length > 0) {
       const pedidos = [...new Set(candidatos.map(d => String(d.pedido || '')).filter(Boolean))];
