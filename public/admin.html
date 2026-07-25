@@ -212,7 +212,7 @@
     <header>
       <div>
         <h1>🔐 Admin - GOOD Devolucoes</h1>
-        <p>Painel restrito · v3.92 (link Magalu oficial pelo OAuth - cai no pacote certo)</p>
+        <p>Painel restrito · v3.93 (fim do piscar no admin quando a sessao expira)</p>
       </div>
       <div class="header-acoes">
         <a href="/admin/relatorios.html" class="destaque">📊 Relatórios</a>
@@ -344,13 +344,22 @@
       document.getElementById('secoes').style.display = 'none';
 
       try {
-        const r = await fetch('/api/admin/devolucoes');
+        const r = await fetch('/api/admin/devolucoes', { credentials: 'same-origin' });
+        if (r.status === 401) {
+          // v3.93 - NAO redireciona (isso causava o painel PISCAR em loop quando
+          // a sessao de admin expirava). Mostra aviso com botao de entrar.
+          document.getElementById('loadingArea').style.display = 'none';
+          const sec = document.getElementById('secoes');
+          sec.style.display = '';
+          sec.innerHTML = '<div style="background:#fff5f5;border:2px solid #ef9a9a;border-radius:12px;padding:24px;text-align:center;margin:20px 0;">'
+            + '<div style="font-size:20px;font-weight:800;color:#c62828;">🔒 Sessão de admin expirada</div>'
+            + '<div style="font-size:14px;color:#666;margin:8px 0 16px;">Faça login de novo para ver o painel.</div>'
+            + '<a href="/" style="display:inline-block;background:#c62828;color:#fff;text-decoration:none;padding:12px 24px;border-radius:10px;font-weight:700;">Ir para o login →</a>'
+            + '</div>';
+          return;
+        }
         const d = await r.json();
         if (!d.ok) {
-          if (r.status === 401) {
-            location.href = '/';
-            return;
-          }
           throw new Error(d.erro || 'falha');
         }
         dados = d;
