@@ -183,7 +183,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '3.90 (localizacao defeitos na tela de triagem - acesso estoquista)',
+    version: '3.91 (fix piscar na tela de defeitos - sem redirect em loop)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -2194,9 +2194,9 @@ app.get('/admin.html', requerAdmin, (req, res) => {
 });
 
 // v3.16.0: Pagina de relatorios (requer auth)
-app.get('/defeitos.html', requerEstoquista, (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'defeitos.html'));
-});
+// v3.91 - /defeitos.html e servido pelo express.static (public/). A API
+// /api/defeitos e quem exige sessao de estoquista. (rota dedicada removida:
+// era inalcancavel pois o static resolve primeiro, e causava confusao.)
 app.get('/admin/relatorios.html', requerAdmin, (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'admin', 'relatorios.html'));
 });
