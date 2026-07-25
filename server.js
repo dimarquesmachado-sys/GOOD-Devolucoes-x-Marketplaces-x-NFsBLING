@@ -183,7 +183,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.16 (aviso de fraude so quando faz sentido)',
+    version: '4.17 (diagnostico de data por pedido, sem depender do indice)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -3018,6 +3018,38 @@ function classificarMotivoDevolucao(order, shipment) {
 // Mostra, item a item, de onde saiu a data usada - e testa o /history do
 // shipment de devolucao pra ver se ele responde a data certa.
 app.get('/api/debug/alerta-datas', requerAdmin, async (req, res) => {
+  // v4.17 - modo PEDIDO ESPECIFICO: nao depende do indice (que zera a cada
+  // deploy e leva ~2 min pra montar). Segue a cadeia inteira do zero:
+  // pedido -> reclamacao -> devolucao -> envio de volta -> data real.
+  const alvoOrder = String(req.query.order || '').trim();
+  if (alvoOrder) {
+    const passos = {};
+    try {
+      const rO = await chamarML(`https://api.mercadolibre.com/orders/${alvoOrder}`);
+      passos['1_pedido'] = { http: rO.status || (rO.ok ? 200 : null), mediations: rO.ok ? (rO.data?.mediations || []) : null };
+      const claimId = rO.ok && rO.data?.mediations?.[0]?.id ? String(rO.data.mediations[0].id) : null;
+      passos['2_claim_id'] = claimId || '(pedido sem reclamacao)';
+      if (claimId) {
+        const rR = await chamarML(`https://api.mercadolibre.com/post-purchase/v1/claims/${claimId}/returns`);
+        passos['3_returns'] = { http: rR.status || (rR.ok ? 200 : null), ok: !!rR.ok };
+        const shipments = (rR.ok && (rR.data?.shipments || (Array.isArray(rR.data) ? rR.data[0]?.shipments : null))) || [];
+        passos['3_shipments_encontrados'] = shipments.map(x => ({ id: x.shipment_id || x.id, status: x.status, tipo: x.type, tracking: x.tracking_number }));
+        passos['3_last_updated_do_return'] = rR.ok ? (rR.data?.last_updated || (Array.isArray(rR.data) ? rR.data[0]?.last_updated : null) || null) : null;
+        const sid = shipments[0] ? String(shipments[0].shipment_id || shipments[0].id) : null;
+        passos['4_shipment_da_devolucao'] = sid || '(nenhum shipment no return)';
+        if (sid) {
+          const rh = await chamarML(`https://api.mercadolibre.com/shipments/${sid}/history`);
+          const dt = rh.ok ? (rh.data?.date_history?.date_delivered || null) : null;
+          passos['5_history'] = { http: rh.status || (rh.ok ? 200 : null), date_delivered: dt, date_history: rh.ok ? rh.data?.date_history : null };
+          if (dt) passos['6_dias_pela_data_certa'] = Math.floor((Date.now() - Date.parse(dt)) / 864e5);
+          if (passos['3_last_updated_do_return']) passos['6_dias_pelo_last_updated'] = Math.floor((Date.now() - Date.parse(passos['3_last_updated_do_return'])) / 864e5);
+          passos['7_ja_esta_no_cache'] = ESP_ENTREGA.has(sid) ? ESP_ENTREGA.get(sid) : '(nao)';
+        }
+      }
+    } catch (e) { passos.erro = e.message; }
+    return res.json({ ok: true, modo: 'pedido_especifico', order: alvoOrder, passos });
+  }
+
   const mlR = mlReturns.resumoEspreita();
   const lista = (mlR.entregues || []).slice(0, Number(req.query.n || 8));
   const out = [];
@@ -3048,7 +3080,8 @@ app.get('/api/debug/alerta-datas', requerAdmin, async (req, res) => {
   }
   return res.json({
     ok: true,
-    dica: 'rode com &testar=1 pra consultar o /history de cada um',
+    dica: alvoOrder ? null : 'indice vazio? use ?order=NUMERO_DA_VENDA&testar=1 - esse modo nao depende do indice',
+    indice_ml_quente: !!mlR.quente,
     cache_tamanho: ESP_ENTREGA.size,
     enriquecimento_rodando: ESP_ENTREGA_RODANDO,
     total_entregues_no_indice: (mlR.entregues || []).length,
