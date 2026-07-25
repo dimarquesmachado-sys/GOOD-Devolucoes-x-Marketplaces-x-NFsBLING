@@ -183,7 +183,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.13 (motivo real da reclamacao + data de entrega correta)',
+    version: '4.14 (busca aceita o ID da venda - order_id)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -490,6 +490,36 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
           if (rShip.ok) shipment = rShip.data;
         }
         break;
+      }
+    }
+  }
+
+  // ML T2b (v4.14): ORDER ID. Faltava esta porta - o numero da venda que
+  // aparece no painel do ML (2000...) e o que o Diego tem na mao quando
+  // esta olhando o pedido. Antes so tentavamos pack_id, que devolve 400
+  // porque o formato e parecido mas o recurso e outro.
+  if (!returnData && !shipment && !pack && codigoLimpo.length >= 15 && /^\d+$/.test(codigoLimpo)) {
+    const rOrd = await chamarML(`https://api.mercadolibre.com/orders/${codigoLimpo}`);
+    resultado.tentativas.push({
+      tipo: 'order_id', codigo: codigoLimpo,
+      ok: rOrd.ok, status: rOrd.status, erro: rOrd.ok ? null : rOrd.error,
+    });
+    if (rOrd.ok && rOrd.data?.id) {
+      order = rOrd.data;
+      metodoUsado = 'order_id';
+      // do pedido chegamos no envio (e dali segue o fluxo normal)
+      const shipDoPedido = rOrd.data.shipping?.id;
+      if (shipDoPedido) {
+        const rShip = await chamarML(
+          `https://api.mercadolibre.com/shipments/${shipDoPedido}`,
+          { 'x-format-new': 'true' }
+        );
+        if (rShip.ok) shipment = rShip.data;
+      }
+      // e no pack, quando a venda faz parte de um
+      if (!pack && rOrd.data.pack_id) {
+        const rPk = await chamarML(`https://api.mercadolibre.com/packs/${rOrd.data.pack_id}`);
+        if (rPk.ok && rPk.data?.id) pack = rPk.data;
       }
     }
   }
