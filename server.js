@@ -183,7 +183,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.02 (EAN pelo detalhe do produto - multi-campo, como no Localizacao x Estoque)',
+    version: '4.03 (indice parava em 1 pagina e escondia o erro - retry + diagnostico)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -2626,11 +2626,25 @@ async function construirIndiceProdutos() {
   IDX_PROD.construindo = true;
   const t0 = Date.now();
   const itens = [];
+  const falhas = [];
+  let paginasLidas = 0;
+  IDX_PROD.erro = null;
   try {
-    for (let pagina = 1; pagina <= 25; pagina++) {
-      const r = await chamarBling(`https://api.bling.com.br/Api/v3/produtos?pagina=${pagina}&limite=100`);
-      if (!r.ok) { IDX_PROD.erro = `pagina ${pagina}: ${r.error || 'falhou'}`; break; }
-      const lista = r.data?.data || [];
+    // v4.03 - antes eu parava na PRIMEIRA recusa do Bling (ele derruba
+    // requisicao muito seguida) e ainda apagava a mensagem de erro no fim -
+    // o indice ficava com 1 pagina e dizia "erro: null". Agora insiste e
+    // guarda o motivo real de cada falha.
+    for (let pagina = 1; pagina <= 40; pagina++) {
+      let r = null;
+      for (let tent = 1; tent <= 3; tent++) {
+        r = await chamarBling(`https://api.bling.com.br/Api/v3/produtos?pagina=${pagina}&limite=100`);
+        if (r && r.ok) break;
+        falhas.push(`pagina ${pagina} tentativa ${tent}: ${(r && (r.status || r.error)) || 'falhou'}`);
+        await new Promise(r2 => setTimeout(r2, 1200 * tent));
+      }
+      if (!r || !r.ok) { IDX_PROD.erro = `parou na pagina ${pagina} apos 3 tentativas`; break; }
+      paginasLidas++;
+      const lista = (r.data && r.data.data) || [];
       for (const p of lista) {
         itens.push({
           id: p.id || null,
@@ -2641,13 +2655,15 @@ async function construirIndiceProdutos() {
         });
       }
       if (lista.length < 100) break;
-      await new Promise(r2 => setTimeout(r2, 350));
+      await new Promise(r2 => setTimeout(r2, 700));
     }
     IDX_PROD.itens = itens;
     IDX_PROD.ts = Date.now();
+    IDX_PROD.paginas = paginasLidas;
+    IDX_PROD.falhas = falhas.slice(0, 8);
+    if (itens.length === 0 && !IDX_PROD.erro) IDX_PROD.erro = 'catalogo vazio';
+    console.log(`[PRODUTOS] indice: ${itens.length} produtos, ${paginasLidas} pagina(s), ${falhas.length} falha(s), em ${Math.round((Date.now() - t0) / 1000)}s`);
     enriquecerEansEmBackground();
-    IDX_PROD.erro = itens.length === 0 ? (IDX_PROD.erro || 'catalogo vazio') : null;
-    console.log(`[PRODUTOS] indice: ${itens.length} produtos em ${Math.round((Date.now() - t0) / 1000)}s`);
   } catch (e) {
     IDX_PROD.erro = e.message;
     console.error('[PRODUTOS] indice falhou:', e.message);
@@ -2655,43 +2671,6 @@ async function construirIndiceProdutos() {
     IDX_PROD.construindo = false;
   }
   return IDX_PROD;
-}
-
-// v4.02 - busca o DETALHE de cada produto pra descobrir o EAN. E lento (um
-// por vez, pra nao tomar 429), mas roda em background e o resultado fica em
-// cache - depois disso a busca por codigo de barras e instantanea.
-let EAN_RODANDO = false;
-const EAN_PROGRESSO = { feitos: 0, total: 0, comEan: 0, concluido: false };
-function enriquecerEansEmBackground() {
-  if (EAN_RODANDO) return;
-  const fila = IDX_PROD.itens.filter(p => p.id && !p.eansCarregados);
-  if (fila.length === 0) { EAN_PROGRESSO.concluido = true; return; }
-  EAN_RODANDO = true;
-  EAN_PROGRESSO.total = fila.length;
-  EAN_PROGRESSO.feitos = 0;
-  EAN_PROGRESSO.concluido = false;
-  (async () => {
-    console.log(`[PRODUTOS] buscando EAN de ${fila.length} produtos (background)...`);
-    for (const p of fila) {
-      try {
-        const r = await chamarBling(`https://api.bling.com.br/Api/v3/produtos/${p.id}`);
-        const det = (r.ok && (r.data?.data || r.data)) || null;
-        const eans = possiveisGtins(det);
-        p.eans = eans;
-        p.eansCarregados = true;
-        if (eans.length) {
-          p.ean = eans[0];
-          p.busca = normProd(p.sku + ' ' + p.nome + ' ' + eans.join(' '));
-          EAN_PROGRESSO.comEan++;
-        }
-      } catch (e2) { p.eansCarregados = true; }
-      EAN_PROGRESSO.feitos++;
-      await new Promise(r2 => setTimeout(r2, 340));
-    }
-    EAN_PROGRESSO.concluido = true;
-    console.log(`[PRODUTOS] EANs prontos: ${EAN_PROGRESSO.comEan} de ${fila.length}`);
-  })().catch(e2 => console.error('[PRODUTOS] enriquecimento EAN falhou:', e2.message))
-    .finally(() => { EAN_RODANDO = false; });
 }
 
 app.get('/api/produtos/buscar', requerEstoquista, async (req, res) => {
@@ -2831,6 +2810,8 @@ app.get('/api/debug/produtos-indice', requerEstoquista, async (req, res) => {
     total_no_indice: IDX_PROD.itens.length,
     idade_min: IDX_PROD.ts ? Math.round((Date.now() - IDX_PROD.ts) / 60000) : null,
     erro: IDX_PROD.erro,
+    paginas_lidas: IDX_PROD.paginas || 0,
+    falhas: IDX_PROD.falhas || [],
     exemplos: IDX_PROD.itens.slice(0, 5).map(p => p.sku),
     eans: { ...EAN_PROGRESSO, rodando: EAN_RODANDO, com_ean_no_indice: IDX_PROD.itens.filter(p => (p.eans || []).length).length },
     amostra_com_ean: IDX_PROD.itens.filter(p => (p.eans || []).length).slice(0, 5).map(p => ({ sku: p.sku, ean: p.ean })),
