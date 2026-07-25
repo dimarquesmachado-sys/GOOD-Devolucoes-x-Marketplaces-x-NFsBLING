@@ -183,7 +183,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '3.99 (canibalizacao: consulta por SKU + conserto com peca)',
+    version: '4.00 (busca de produto por indice local - filtro do Bling ignorava o termo)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -2588,31 +2588,108 @@ app.post('/api/triagem/consertado', requerEstoquista, async (req, res) => {
   } catch (e) { return res.status(500).json({ ok: false, erro: e.message }); }
 });
 
-// v3.96 - BUSCA DE PRODUTO pra lancar defeito: aceita parte do nome, SKU ou
-// EAN. Devolve candidatos pro estoquista ESCOLHER (nunca adivinha sozinho).
+// v4.00 - BUSCA DE PRODUTO com INDICE LOCAL.
+// Por que: o filtro textual do Bling ignorou o termo e devolveu a listagem
+// padrao (buscar "930b" trouxe produtos aleatorios comecando com L). Entao
+// paramos de confiar no filtro deles: montamos um indice do catalogo uma vez
+// e filtramos AQUI por substring de verdade - acha "930b" dentro de
+// "930bPRETO-1xLed-1xGarra", em qualquer posicao, no nome ou no codigo.
+const IDX_PROD = { ts: 0, itens: [], construindo: false, erro: null };
+const PROD_TTL_MS = 30 * 60 * 1000;
+
+function normProd(t) {
+  return String(t == null ? '' : t)
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase().trim();
+}
+
+async function construirIndiceProdutos() {
+  if (IDX_PROD.construindo) return IDX_PROD;
+  IDX_PROD.construindo = true;
+  const t0 = Date.now();
+  const itens = [];
+  try {
+    for (let pagina = 1; pagina <= 25; pagina++) {
+      const r = await chamarBling(`https://api.bling.com.br/Api/v3/produtos?pagina=${pagina}&limite=100`);
+      if (!r.ok) { IDX_PROD.erro = `pagina ${pagina}: ${r.error || 'falhou'}`; break; }
+      const lista = r.data?.data || [];
+      for (const p of lista) {
+        itens.push({
+          id: p.id || null,
+          sku: String(p.codigo || '').trim(),
+          nome: p.nome || p.descricao || '',
+          ean: p.gtin || '',
+          busca: normProd((p.codigo || '') + ' ' + (p.nome || '') + ' ' + (p.gtin || '')),
+        });
+      }
+      if (lista.length < 100) break;
+      await new Promise(r2 => setTimeout(r2, 350));
+    }
+    IDX_PROD.itens = itens;
+    IDX_PROD.ts = Date.now();
+    IDX_PROD.erro = itens.length === 0 ? (IDX_PROD.erro || 'catalogo vazio') : null;
+    console.log(`[PRODUTOS] indice: ${itens.length} produtos em ${Math.round((Date.now() - t0) / 1000)}s`);
+  } catch (e) {
+    IDX_PROD.erro = e.message;
+    console.error('[PRODUTOS] indice falhou:', e.message);
+  } finally {
+    IDX_PROD.construindo = false;
+  }
+  return IDX_PROD;
+}
+
 app.get('/api/produtos/buscar', requerEstoquista, async (req, res) => {
   const q = String(req.query.q || '').trim();
   if (q.length < 2) return res.json({ ok: true, produtos: [] });
-  const vistos = new Set();
+  const alvo = normProd(q);
   const out = [];
+  const vistos = new Set();
   const push = (p) => {
-    const sku = String(p.codigo || '').trim();
+    const sku = String(p.sku || p.codigo || '').trim();
     if (!sku || vistos.has(sku)) return;
     vistos.add(sku);
-    out.push({ sku, nome: p.nome || p.descricao || '', ean: p.gtin || p.ean || '', id: p.id || null });
+    out.push({ sku, nome: p.nome || p.descricao || '', ean: p.ean || p.gtin || '', id: p.id || null });
   };
   try {
-    // 1) match exato por SKU (o caminho mais comum: bipou ou digitou o codigo)
+    // 1) match exato pelo codigo - o caminho mais rapido (bipou ou digitou o SKU)
     const rSku = await chamarBling(`https://api.bling.com.br/Api/v3/produtos?codigo=${encodeURIComponent(q)}&limite=20`);
-    if (rSku.ok) for (const p of (rSku.data?.data || [])) push(p);
-    // 2) busca textual (parte do nome) - o Bling procura no nome e no codigo
-    if (out.length < 15) {
-      await new Promise(r => setTimeout(r, 250));
-      const rTxt = await chamarBling(`https://api.bling.com.br/Api/v3/produtos?pesquisa=${encodeURIComponent(q)}&limite=30`);
-      if (rTxt.ok) for (const p of (rTxt.data?.data || [])) push(p);
+    if (rSku.ok) {
+      for (const p of (rSku.data?.data || [])) {
+        if (normProd(p.codigo).includes(alvo) || normProd(p.nome).includes(alvo)) push(p);
+      }
     }
-    return res.json({ ok: true, produtos: out.slice(0, 25) });
+    // 2) indice local: TODAS as palavras do termo tem que aparecer (em
+    // qualquer ordem/posicao). Assim "arandela 60" acha "Luminaria Arandela
+    // 60cm Parede", e "930b" acha "930bPRETO-1xLed-1xGarra".
+    if (!IDX_PROD.ts || (Date.now() - IDX_PROD.ts) > PROD_TTL_MS) await construirIndiceProdutos();
+    const palavras = alvo.split(/\s+/).filter(Boolean);
+    for (const p of IDX_PROD.itens) {
+      if (out.length >= 30) break;
+      if (palavras.every(w => p.busca.includes(w))) push(p);
+    }
+    return res.json({
+      ok: true,
+      produtos: out.slice(0, 30),
+      indice: { total: IDX_PROD.itens.length, idade_min: IDX_PROD.ts ? Math.round((Date.now() - IDX_PROD.ts) / 60000) : null, erro: IDX_PROD.erro },
+    });
   } catch (e) { return res.status(500).json({ ok: false, erro: e.message }); }
+});
+
+// diagnostico do indice de produtos
+app.get('/api/debug/produtos-indice', requerEstoquista, async (req, res) => {
+  if (req.query.rebuild === '1') await construirIndiceProdutos();
+  const q = String(req.query.q || '').trim();
+  const alvo = normProd(q);
+  const pal = alvo.split(/\s+/).filter(Boolean);
+  const amostra = q ? IDX_PROD.itens.filter(p => pal.every(w => p.busca.includes(w))).slice(0, 10).map(p => ({ sku: p.sku, nome: p.nome })) : [];
+  return res.json({
+    ok: true,
+    total_no_indice: IDX_PROD.itens.length,
+    idade_min: IDX_PROD.ts ? Math.round((Date.now() - IDX_PROD.ts) / 60000) : null,
+    erro: IDX_PROD.erro,
+    exemplos: IDX_PROD.itens.slice(0, 5).map(p => p.sku),
+    busca_teste: q ? { termo: q, achou: amostra.length, amostra } : null,
+  });
 });
 
 // v3.96 - LANCAR DEFEITO manualmente (produto que ja esta no galpao, sem
