@@ -183,7 +183,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.03 (indice parava em 1 pagina e escondia o erro - retry + diagnostico)',
+    version: '4.04 (indice em background - a requisicao nao estoura mais o tempo)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -2721,13 +2721,18 @@ app.get('/api/produtos/buscar', requerEstoquista, async (req, res) => {
       // v4.02 - o filtro de EAN do Bling nao e confiavel (documentado no
       // projeto Localizacao x Estoque). A fonte boa e o indice enriquecido
       // com o detalhe de cada produto.
-      if (!IDX_PROD.ts || (Date.now() - IDX_PROD.ts) > PROD_TTL_MS) await construirIndiceProdutos();
+      // v4.04 - NAO espera o indice construir (isso derrubava a requisicao)
+      if (!IDX_PROD.ts && !IDX_PROD.construindo) { construirIndiceProdutos().catch(() => {}); }
       for (const p of IDX_PROD.itens) {
         if ((p.eans || []).includes(q) || normProd(p.ean) === alvo) push(p);
         if (out.length >= 10) break;
       }
       if (out.length > 0) {
         return res.json({ ok: true, produtos: out.slice(0, 30), via: 'ean_indice' });
+      }
+      // ainda montando o catalogo? avisa em vez de dizer que nao existe
+      if (IDX_PROD.construindo || !IDX_PROD.ts) {
+        return res.json({ ok: true, produtos: [], indexando: true, dica: 'Estou montando o catálogo agora. Tenta de novo em 1 minuto, ou busca pelo SKU/nome.' });
       }
       // ainda indexando? avisa em vez de dizer que nao existe
       if (!EAN_PROGRESSO.concluido && EAN_PROGRESSO.total > 0) {
@@ -2752,7 +2757,8 @@ app.get('/api/produtos/buscar', requerEstoquista, async (req, res) => {
     // 2) indice local: TODAS as palavras do termo tem que aparecer (em
     // qualquer ordem/posicao). Assim "arandela 60" acha "Luminaria Arandela
     // 60cm Parede", e "930b" acha "930bPRETO-1xLed-1xGarra".
-    if (!IDX_PROD.ts || (Date.now() - IDX_PROD.ts) > PROD_TTL_MS) await construirIndiceProdutos();
+    // v4.04 - NAO espera o indice construir (isso derrubava a requisicao)
+    if (!IDX_PROD.ts && !IDX_PROD.construindo) { construirIndiceProdutos().catch(() => {}); }
     const palavras = alvo.split(/\s+/).filter(Boolean);
     for (const p of IDX_PROD.itens) {
       if (out.length >= 30) break;
@@ -2800,7 +2806,9 @@ app.get('/api/debug/bling-ean', requerEstoquista, async (req, res) => {
 // diagnostico do indice de produtos
 app.get('/api/debug/produtos-indice', requerEstoquista, async (req, res) => {
   if (req.query.eans === '1') enriquecerEansEmBackground();
-  if (req.query.rebuild === '1') await construirIndiceProdutos();
+  // v4.04 - dispara em background e responde na hora (antes esperava o
+  // indice inteiro e a requisicao estourava o tempo do Render = 502)
+  if (req.query.rebuild === '1' && !IDX_PROD.construindo) { construirIndiceProdutos().catch(() => {}); }
   const q = String(req.query.q || '').trim();
   const alvo = normProd(q);
   const pal = alvo.split(/\s+/).filter(Boolean);
@@ -2810,6 +2818,7 @@ app.get('/api/debug/produtos-indice', requerEstoquista, async (req, res) => {
     total_no_indice: IDX_PROD.itens.length,
     idade_min: IDX_PROD.ts ? Math.round((Date.now() - IDX_PROD.ts) / 60000) : null,
     erro: IDX_PROD.erro,
+    construindo: !!IDX_PROD.construindo,
     paginas_lidas: IDX_PROD.paginas || 0,
     falhas: IDX_PROD.falhas || [],
     exemplos: IDX_PROD.itens.slice(0, 5).map(p => p.sku),
@@ -3419,6 +3428,8 @@ registrarRotasImpressao(app, { requerEstoquista, crypto, sleep });
 setTimeout(() => magalu.preAquecer(), 20 * 1000);
 setTimeout(() => mlReturns.preAquecer(), 30 * 1000);
 setTimeout(() => nfNomes.preAquecer(), 40 * 1000);
+// v4.04 - catalogo de produtos pre-aquecido (a busca do estoquista nunca espera)
+setTimeout(() => { construirIndiceProdutos().catch(() => {}); }, 70 * 1000);
 setTimeout(() => { if (magalu.cfg.autorizado) espreita.preAquecer(); }, 50 * 1000);
 setInterval(() => magalu.preAquecer(), 25 * 60 * 1000);
 setInterval(() => mlReturns.preAquecer(), 25 * 60 * 1000);
