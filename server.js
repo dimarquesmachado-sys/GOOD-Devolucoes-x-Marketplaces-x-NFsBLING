@@ -183,7 +183,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.10 (diagnostico: motivo da devolucao, notas e mediacao)',
+    version: '4.11 (claim via mediations + deteccao correta de nao-entregue)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -2913,25 +2913,37 @@ app.get('/api/debug/motivo-devolucao', requerAdmin, async (req, res) => {
       }
       // 2) OBSERVACOES da venda (o "Adicionar nota" do painel do ML)
       await tentar('observacoes_da_venda', `https://api.mercadolibre.com/orders/${orderId}/notes`);
-      // 3) o claim daquele pedido
-      if (!claimId) {
-        const busca = await tentar('claim_do_pedido', `https://api.mercadolibre.com/post-purchase/v1/claims/search?resource_id=${orderId}`);
-        const achado = busca?.data?.[0] || busca?.results?.[0] || null;
-        if (achado?.id) { claimId = String(achado.id); out.claim_id = claimId; }
+      // v4.11 - DESCOBERTA: o proprio pedido traz o id da reclamacao em
+      // mediations[]. Nao precisa da busca (que dava 400).
+      if (!claimId && order?.mediations?.length) {
+        claimId = String(order.mediations[0].id);
+        out.claim_id = claimId;
+        out.fontes['claim_via_mediations'] = { ok: true, http: 200, amostra: order.mediations };
       }
+      if (!claimId) out.fontes['claim_via_mediations'] = { ok: false, erro: 'pedido sem mediations (nao houve reclamacao)' };
       // 4) o ENVIO ORIGINAL: e aqui que aparece "nem foi entregue ao cliente"
       const shipIda = order?.shipping?.id;
       if (shipIda) {
         const sh = await tentar('envio_original', `https://api.mercadolibre.com/shipments/${shipIda}`, { 'x-format-new': 'true' });
         if (sh) {
+          // v4.11 - o campo status_history.date_delivered NAO vem nesta
+          // resposta. O que vale e o status/substatus e as tags do pedido.
+          const st = String(sh.status || '');
+          const sub = String(sh.substatus || '');
+          const tags = order?.tags || [];
           out.resumo_envio_ida = {
-            status: sh.status || null,
-            substatus: sh.substatus || sh.status_detail || null,
-            entregue_em: sh.status_history?.date_delivered || null,
-            // sem data de entrega + voltando = o cliente nunca recebeu
-            nunca_entregue: !sh.status_history?.date_delivered,
+            status: st || null,
+            substatus: sub || null,
+            last_updated: sh.last_updated || null,
+            tem_status_history: !!sh.status_history,
+            // so isso prova que o cliente nao recebeu:
+            nunca_entregue: st === 'not_delivered' || sub === 'returned' || tags.includes('not_delivered'),
+            risco_fraude: tags.includes('fraud_risk_detected'),
           };
         }
+        // v4.11 - o historico fica em endpoint separado: e de la que sai a
+        // data REAL da entrega (a v3.95 procurava no lugar errado)
+        await tentar('historico_do_envio', `https://api.mercadolibre.com/shipments/${shipIda}/history`);
       }
     }
 
@@ -2950,8 +2962,10 @@ app.get('/api/debug/motivo-devolucao', requerAdmin, async (req, res) => {
       }
       // 6) MENSAGENS da mediacao (texto livre do cliente - candidato a resumo por IA)
       await tentar('mensagens_mediacao', `https://api.mercadolibre.com/post-purchase/v1/claims/${claimId}/messages`);
-      // 7) motivo detalhado (endpoint separado em algumas contas)
+      // 7) variacoes do endpoint de motivo/mensagens (qual responde?)
       await tentar('claim_reason', `https://api.mercadolibre.com/post-purchase/v1/claims/${claimId}/reasons`);
+      await tentar('claim_v2', `https://api.mercadolibre.com/v1/claims/${claimId}`);
+      await tentar('claim_mensagens_v2', `https://api.mercadolibre.com/v1/claims/${claimId}/messages`);
       // 8) o RETURN (ja usamos no indice, mas aqui mostra o objeto inteiro)
       await tentar('return_do_claim', `https://api.mercadolibre.com/post-purchase/v1/claims/${claimId}/returns`);
     }
