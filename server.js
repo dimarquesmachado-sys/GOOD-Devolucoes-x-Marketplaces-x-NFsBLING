@@ -183,7 +183,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.05 (restaura funcao apagada na v4.03 que derrubava o servico)',
+    version: '4.07 (EANs em cache por SKU - nao se perdem no rebuild)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -2595,6 +2595,11 @@ app.post('/api/triagem/consertado', requerEstoquista, async (req, res) => {
 // e filtramos AQUI por substring de verdade - acha "930b" dentro de
 // "930bPRETO-1xLed-1xGarra", em qualquer posicao, no nome ou no codigo.
 const IDX_PROD = { ts: 0, itens: [], construindo: false, erro: null };
+// v4.07 - os EANs lidos ficam num cache por SKU. Antes viviam so dentro dos
+// objetos do indice: qualquer rebuild (ou o pre-aquecimento apos um deploy)
+// recriava os objetos e os EANs sumiam - enquanto a leitura antiga seguia
+// preenchendo objetos orfaos. Agora o rebuild reaproveita o que ja foi lido.
+const EAN_POR_SKU = new Map();
 const PROD_TTL_MS = 30 * 60 * 1000;
 
 // v4.02 - O EAN no Bling aparece com MUITOS nomes diferentes (o produto do
@@ -2646,12 +2651,16 @@ async function construirIndiceProdutos() {
       paginasLidas++;
       const lista = (r.data && r.data.data) || [];
       for (const p of lista) {
+        const skuItem = String(p.codigo || '').trim();
+        const eansCache = EAN_POR_SKU.get(skuItem.toUpperCase()) || null;
         itens.push({
           id: p.id || null,
-          sku: String(p.codigo || '').trim(),
+          sku: skuItem,
           nome: p.nome || p.descricao || '',
-          ean: p.gtin || '',
-          busca: normProd((p.codigo || '') + ' ' + (p.nome || '') + ' ' + (p.gtin || '')),
+          ean: (eansCache && eansCache[0]) || p.gtin || '',
+          eans: eansCache || undefined,
+          eansCarregados: !!eansCache,
+          busca: normProd(skuItem + ' ' + (p.nome || '') + ' ' + ((eansCache || []).join(' ') || p.gtin || '')),
         });
       }
       if (lista.length < 100) break;
@@ -2703,6 +2712,7 @@ function enriquecerEansEmBackground() {
         if (eans.length) {
           p.ean = eans[0];
           p.busca = normProd(p.sku + ' ' + p.nome + ' ' + eans.join(' '));
+          EAN_POR_SKU.set(String(p.sku || '').toUpperCase(), eans); // v4.07: sobrevive ao rebuild
           EAN_PROGRESSO.comEan++;
         }
       } catch (e) { p.eansCarregados = true; }
@@ -2710,7 +2720,12 @@ function enriquecerEansEmBackground() {
       await new Promise(r2 => setTimeout(r2, 340));
     }
     EAN_PROGRESSO.concluido = true;
-    console.log(`[PRODUTOS] EANs prontos: ${EAN_PROGRESSO.comEan} de ${fila.length}`);
+    console.log(`[PRODUTOS] EANs prontos: ${EAN_PROGRESSO.comEan} de ${fila.length} (cache: ${EAN_POR_SKU.size} SKUs)`);
+    // v4.07 - se o indice foi reconstruido no meio do caminho, retoma o que ficou
+    if (IDX_PROD.itens.some(x => x.id && !x.eansCarregados)) {
+      EAN_RODANDO = false;
+      setTimeout(() => enriquecerEansEmBackground(), 1500);
+    }
   })().catch(e => console.error('[PRODUTOS] enriquecimento EAN falhou:', e.message))
     .finally(() => { EAN_RODANDO = false; });
 }
@@ -2864,7 +2879,7 @@ app.get('/api/debug/produtos-indice', requerEstoquista, async (req, res) => {
     paginas_lidas: IDX_PROD.paginas || 0,
     falhas: IDX_PROD.falhas || [],
     exemplos: IDX_PROD.itens.slice(0, 5).map(p => p.sku),
-    eans: { ...EAN_PROGRESSO, rodando: EAN_RODANDO, com_ean_no_indice: IDX_PROD.itens.filter(p => (p.eans || []).length).length },
+    eans: { ...EAN_PROGRESSO, rodando: EAN_RODANDO, cache_skus: EAN_POR_SKU.size, com_ean_no_indice: IDX_PROD.itens.filter(p => (p.eans || []).length).length },
     amostra_com_ean: IDX_PROD.itens.filter(p => (p.eans || []).length).slice(0, 5).map(p => ({ sku: p.sku, ean: p.ean })),
     busca_teste: q ? { termo: q, achou: amostra.length, amostra } : null,
   });
