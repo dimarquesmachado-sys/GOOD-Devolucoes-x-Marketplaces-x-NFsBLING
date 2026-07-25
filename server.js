@@ -183,7 +183,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.14 (busca aceita o ID da venda - order_id)',
+    version: '4.15 (diagnostico da contagem de dias do alerta)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -3007,6 +3007,48 @@ function classificarMotivoDevolucao(order, shipment) {
     risco_fraude: fraude,
   };
 }
+
+// v4.15 - DIAGNOSTICO DO ALERTA: por que a contagem de dias ainda erra.
+// Mostra, item a item, de onde saiu a data usada - e testa o /history do
+// shipment de devolucao pra ver se ele responde a data certa.
+app.get('/api/debug/alerta-datas', requerAdmin, async (req, res) => {
+  const mlR = mlReturns.resumoEspreita();
+  const lista = (mlR.entregues || []).slice(0, Number(req.query.n || 8));
+  const out = [];
+  for (const d of lista) {
+    const sid = d.shipment_devolucao ? String(d.shipment_devolucao) : null;
+    const item = {
+      pedido: d.pedido,
+      tracking: d.tracking,
+      shipment_devolucao: sid,
+      entregue_em_do_return: d.entregue_em || null,   // last_updated (pode estar errado)
+      data_no_cache: sid ? (ESP_ENTREGA.has(sid) ? ESP_ENTREGA.get(sid) : '(nao buscado ainda)') : '(sem shipment)',
+      dias_que_o_painel_mostra: d.dias_desde,
+    };
+    // testa o /history AGORA, pra saber se ele responde a data certa
+    if (sid && req.query.testar === '1') {
+      try {
+        const rh = await chamarML(`https://api.mercadolibre.com/shipments/${sid}/history`);
+        item.history_http = rh.status || (rh.ok ? 200 : null);
+        item.history_date_delivered = rh.ok ? (rh.data?.date_history?.date_delivered || null) : null;
+        item.history_status = rh.ok ? (rh.data?.status || null) : null;
+        if (item.history_date_delivered) {
+          item.dias_pela_data_certa = Math.floor((Date.now() - Date.parse(item.history_date_delivered)) / 864e5);
+        }
+      } catch (e) { item.history_erro = e.message; }
+      await new Promise(r => setTimeout(r, 250));
+    }
+    out.push(item);
+  }
+  return res.json({
+    ok: true,
+    dica: 'rode com &testar=1 pra consultar o /history de cada um',
+    cache_tamanho: ESP_ENTREGA.size,
+    enriquecimento_rodando: ESP_ENTREGA_RODANDO,
+    total_entregues_no_indice: (mlR.entregues || []).length,
+    itens: out,
+  });
+});
 
 // v4.10 - DIAGNOSTICO: o que da pra saber sobre o MOTIVO da devolucao antes
 // do estoquista abrir o pacote. Testa cada fonte e diz o que veio e o que foi
