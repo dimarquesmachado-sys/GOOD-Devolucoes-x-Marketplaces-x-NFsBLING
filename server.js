@@ -183,7 +183,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.08 (imagem do produto na busca)',
+    version: '4.09 (localizacao do defeito passa a ser obrigatoria)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -1890,6 +1890,13 @@ app.post('/api/triagem/upload-foto', requerEstoquista, upload.single('foto'), as
 // Caminho PROBLEMA - registra com fotos ja uploadadas + manda email
 app.post('/api/triagem/problema', requerEstoquista, async (req, res) => {
   {
+    // v4.09 - localizacao obrigatoria (o produto vai ficar guardado em algum
+    // lugar; sem isso ninguem acha depois). Nao se aplica ao fluxo de conserto,
+    // que tem rota propria e manda o item pro estoque.
+    const dloc = String((req.body && (req.body.localizacao || (req.body.dados && req.body.dados.localizacao))) || '').trim();
+    if (!dloc) return res.status(400).json({ ok: false, erro: 'Informe ONDE VAI GUARDAR o produto com defeito' });
+  }
+  {
     const pend = await recadoPendente(req.body?.dados || req.body);
     if (pend) return res.status(409).json({ ok: false, erro: 'RECADO PENDENTE: leia o recado e clique em "OK, ciente" antes de triar. ("' + String(pend.texto).slice(0, 120) + '")' });
   }
@@ -2926,6 +2933,10 @@ app.post('/api/defeitos/adicionar', requerEstoquista, async (req, res) => {
   const localizacao = String(req.body?.localizacao || '').trim();
   const qtd = Math.max(1, parseInt(req.body?.qtd, 10) || 1);
   if (!sku || !defeito) return res.status(400).json({ ok: false, erro: 'informe o produto e o defeito' });
+  // v4.09 - localizacao OBRIGATORIA: sem ela o item nao entra na consulta de
+  // localizacao e a peca some do mapa. Validado tambem aqui porque celular
+  // com tela em cache burlaria a checagem do navegador.
+  if (!localizacao) return res.status(400).json({ ok: false, erro: 'informe ONDE VAI GUARDAR o produto' });
   try {
     // valida o SKU no Bling (nunca grava codigo que nao existe)
     const rP = await buscarProdutoBlingPorSku(sku);
