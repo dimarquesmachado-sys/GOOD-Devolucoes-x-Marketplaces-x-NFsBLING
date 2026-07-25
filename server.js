@@ -183,7 +183,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '3.96 (lancar defeito manual + busca de produto por nome)',
+    version: '3.98 (defeito de devolucao so entra na tabela apos a NF)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -2511,8 +2511,12 @@ app.post('/api/defeitos/adicionar', requerEstoquista, async (req, res) => {
     const prod = rP.ok ? rP.produto : null;
     if (!prod) return res.status(400).json({ ok: false, erro: `SKU "${sku}" nao encontrado no Bling` });
     const { error } = await supabase.from('devolucoes').insert([{
-      tipo: 'problema',
-      status: 'pendente',
+      // v3.97 - tipo PROPRIO: defeito de estoque NAO entra na fila de
+      // "Problemas reportados" (aquela e a fila fiscal do Diego, de produto
+      // que voltou de venda e precisa de NF de devolucao). Este aqui nao tem
+      // NF de venda nem cliente - e controle interno de estoque.
+      tipo: 'defeito_estoque',
+      status: 'registrado',
       funcionario: req.usuario,
       produto_sku: String(prod.codigo || sku),
       produto_titulo: prod.nome || null,
@@ -2532,8 +2536,8 @@ app.get('/api/defeitos', requerEstoquista, async (req, res) => { // v3.90: estoq
   try {
     const { data, error } = await supabase
       .from('devolucoes')
-      .select('id, created_at, produto_titulo, produto_sku, nf_numero, localizacao, defeito_qtd, problema_descricao, status')
-      .eq('tipo', 'problema')
+      .select('id, created_at, tipo, produto_titulo, produto_sku, nf_numero, localizacao, defeito_qtd, problema_descricao, status')
+      .in('tipo', ['problema', 'defeito_estoque']) // v3.97: devolucao com defeito + defeito lancado do estoque
       .not('localizacao', 'is', null)
       .neq('localizacao', '')
       .order('localizacao', { ascending: true })
@@ -2545,8 +2549,16 @@ app.get('/api/defeitos', requerEstoquista, async (req, res) => { // v3.90: estoq
       }
       return res.status(500).json({ ok: false, erro: m });
     }
+    // v3.98 - REGRA DE NEGOCIO: defeito vindo de DEVOLUCAO so existe de verdade
+    // na tabela de defeitos depois que o Diego emite a NF e conclui - e ai que o
+    // item foi liquidado e foi pro deposito DEFEITO (e nao pro GERAL, que volta
+    // pra venda). Defeito lancado do ESTOQUE entra na hora (nao depende de NF).
+    const todos = data || [];
+    const aguardandoNF = todos.filter(x => x.tipo === 'problema' && x.status !== 'concluido').length;
+    const liberados = todos.filter(x => x.tipo === 'defeito_estoque' || x.status === 'concluido');
+
     const q = String(req.query.q || '').trim().toUpperCase();
-    let itens = (data || []).map(d => ({
+    let itens = liberados.map(d => ({
       id: d.id,
       quando: d.created_at,
       produto: d.produto_titulo || null,
@@ -2554,12 +2566,13 @@ app.get('/api/defeitos', requerEstoquista, async (req, res) => { // v3.90: estoq
       nf: d.nf_numero || null,
       local: d.localizacao || null,
       qtd: d.defeito_qtd || null,
-      defeito: (d.problema_descricao || '').replace(/^\[RE-BIPE\]\s*/, '').replace(/^\[Reportado por [^\]]+\]\s*/, ''),
+      defeito: (d.problema_descricao || '').replace(/^\[RE-BIPE\]\s*/, '').replace(/^\[Reportado por [^\]]+\]\s*/, '').replace(/^\[LANCADO MANUAL por [^\]]+\]\s*/, ''),
+      origem: d.tipo === 'defeito_estoque' ? 'estoque' : 'devolucao', // v3.97
       status: d.status,
     }));
     if (q) itens = itens.filter(x => [x.sku, x.local, x.produto, x.nf].some(v => String(v || '').toUpperCase().includes(q)));
     const totalDefeitos = itens.reduce((a, x) => a + (Number(x.qtd) || 1), 0);
-    return res.json({ ok: true, total_registros: itens.length, total_pecas: totalDefeitos, itens });
+    return res.json({ ok: true, total_registros: itens.length, total_pecas: totalDefeitos, aguardando_nf: aguardandoNF, itens });
   } catch (e) { return res.status(500).json({ ok: false, erro: e.message }); }
 });
 
