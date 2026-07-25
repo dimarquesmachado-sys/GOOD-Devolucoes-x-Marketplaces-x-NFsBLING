@@ -183,7 +183,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.04 (indice em background - a requisicao nao estoura mais o tempo)',
+    version: '4.05 (restaura funcao apagada na v4.03 que derrubava o servico)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -2671,6 +2671,48 @@ async function construirIndiceProdutos() {
     IDX_PROD.construindo = false;
   }
   return IDX_PROD;
+}
+
+// v4.05 - RESTAURADO: este bloco foi apagado por engano na v4.03 (ao
+// reescrever a funcao do indice por fatia de texto, levei junto o que vinha
+// logo depois). O arquivo chamava enriquecerEansEmBackground() em 3 lugares
+// sem a funcao existir: o servidor subia e caia ~70s depois, em loop.
+//
+// Busca o DETALHE de cada produto pra descobrir o EAN - e a unica fonte
+// confiavel (a listagem do Bling nao traz GTIN). Roda em background, um por
+// vez, pra nao tomar bloqueio.
+let EAN_RODANDO = false;
+const EAN_PROGRESSO = { feitos: 0, total: 0, comEan: 0, concluido: false };
+function enriquecerEansEmBackground() {
+  if (EAN_RODANDO) return;
+  const fila = IDX_PROD.itens.filter(p => p.id && !p.eansCarregados);
+  if (fila.length === 0) { EAN_PROGRESSO.concluido = true; return; }
+  EAN_RODANDO = true;
+  EAN_PROGRESSO.total = fila.length;
+  EAN_PROGRESSO.feitos = 0;
+  EAN_PROGRESSO.concluido = false;
+  (async () => {
+    console.log(`[PRODUTOS] buscando EAN de ${fila.length} produtos (background)...`);
+    for (const p of fila) {
+      try {
+        const r = await chamarBling(`https://api.bling.com.br/Api/v3/produtos/${p.id}`);
+        const det = (r && r.ok && ((r.data && r.data.data) || r.data)) || null;
+        const eans = possiveisGtins(det);
+        p.eans = eans;
+        p.eansCarregados = true;
+        if (eans.length) {
+          p.ean = eans[0];
+          p.busca = normProd(p.sku + ' ' + p.nome + ' ' + eans.join(' '));
+          EAN_PROGRESSO.comEan++;
+        }
+      } catch (e) { p.eansCarregados = true; }
+      EAN_PROGRESSO.feitos++;
+      await new Promise(r2 => setTimeout(r2, 340));
+    }
+    EAN_PROGRESSO.concluido = true;
+    console.log(`[PRODUTOS] EANs prontos: ${EAN_PROGRESSO.comEan} de ${fila.length}`);
+  })().catch(e => console.error('[PRODUTOS] enriquecimento EAN falhou:', e.message))
+    .finally(() => { EAN_RODANDO = false; });
 }
 
 app.get('/api/produtos/buscar', requerEstoquista, async (req, res) => {
