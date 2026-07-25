@@ -75,7 +75,8 @@
           return;
         }
         const itens = d.itens || [];
-        resumo.innerHTML = '📦 <b>' + d.total_registros + '</b> registro(s) · <b>' + d.total_pecas + '</b> peça(s) com defeito no estoque' + (q ? ' · filtro: "' + esc(q) + '"' : '');
+        resumo.innerHTML = '📦 <b>' + d.total_registros + '</b> registro(s) · <b>' + d.total_pecas + '</b> peça(s) com defeito no estoque' + (q ? ' · filtro: "' + esc(q) + '"' : '')
+          + (d.aguardando_nf ? '<br><span style="color:#e65100;">⏳ <b>' + d.aguardando_nf + '</b> devolução(ões) com defeito aguardando a emissão da NF — entram aqui depois de concluídas no painel.</span>' : '');
         if (itens.length === 0) { lista.innerHTML = '<div class="vazio">Nenhum defeito com localização registrada' + (q ? ' pra "' + esc(q) + '"' : '') + '.</div>'; return; }
         // v3.96 - agrupa por LOCAL e, dentro dele, por SKU (soma as quantidades
         // em vez de repetir o mesmo SKU em varias linhas)
@@ -103,7 +104,11 @@
               + '<div class="meta">SKU <code>' + esc(linha.sku || '-') + '</code>'
               + (linha.ocorrencias.length > 1 ? ' · <b>' + linha.ocorrencias.length + ' lançamentos</b>' : '') + '</div>';
             for (const oc of linha.ocorrencias) {
-              html += '<div class="defeito">🔧 ' + esc(oc.defeito || '-')
+              html += '<div class="defeito">'
+                + (oc.origem === 'estoque'
+                    ? '<span style="background:#455a64;color:#fff;padding:1px 6px;border-radius:8px;font-size:10px;font-weight:700;">ESTOQUE</span> '
+                    : '<span style="background:#c62828;color:#fff;padding:1px 6px;border-radius:8px;font-size:10px;font-weight:700;">DEVOLUÇÃO</span> ')
+                + '🔧 ' + esc(oc.defeito || '-')
                 + ' <span style="color:#888;font-size:11px;">('
                 + (oc.qtd ? '×' + oc.qtd + ' · ' : '')
                 + (oc.quando ? String(oc.quando).slice(0, 10).split('-').reverse().join('/') : '-')
