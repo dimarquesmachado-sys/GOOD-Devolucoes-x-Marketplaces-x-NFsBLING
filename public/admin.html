@@ -212,11 +212,11 @@
     <header>
       <div>
         <h1>🔐 Admin - GOOD Devolucoes</h1>
-        <p>Painel restrito · v3.28.2 (troca so o card + flash, sem redesenhar lista)</p>
+        <p>Painel restrito · v3.92 (link Magalu oficial pelo OAuth - cai no pacote certo)</p>
       </div>
       <div class="header-acoes">
         <a href="/admin/relatorios.html" class="destaque">📊 Relatórios</a>
-        <a href="/admin/defeitos.html" class="destaque" style="background:#c62828;">🔧 Localização Defeitos</a>
+        <a href="/defeitos.html" style="background:#c62828;color:#fff;">🔧 Defeitos</a>
         <a href="/">📦 Triagem (bipar)</a>
         <a href="#" onclick="logout(event)">🚪 Sair</a>
       </div>
@@ -513,6 +513,11 @@
           if (e.marketplace === 'ml' && e.pedido) return 'https://www.mercadolivre.com.br/vendas/' + encodeURIComponent(e.pedido) + '/detalhe';
           if (e.marketplace === 'shopee' && e.pedido) return 'https://mover-pedidos-aguardando-x-atendido.onrender.com/good-checkout-offline/ir-shopee?sn=' + encodeURIComponent(e.pedido); // v3.80 - de-para order_sn->id interno, cai DENTRO do pedido
           if (e.marketplace === 'magalu') {
+            // v3.92 - link OFICIAL via API OAuth (servico Mover Pedidos, GOOD conectada):
+            // resolve numero->deliveries[0].id e cai DENTRO do pacote no portal.
+            // Qualquer falha la -> 302 pro portal de pedidos (nunca fica pior).
+            if (e.pedido) return 'https://mover-pedidos-aguardando-x-atendido.onrender.com/magalu/ir/good?n=' + encodeURIComponent(e.pedido);
+            // fallback: sem numero do pedido, cai no portal de devolucoes por uuid
             if (e.uuid && e.categoria === 'agencia') return 'https://seller.magaluentregas.com.br/gestao-de-devolucoes/detalhes?id=' + encodeURIComponent(e.uuid) + '&type=' + encodeURIComponent(e.tipo || 'CUSTOMER_RETURN') + '&category=orders';
             return 'https://seller.magaluentregas.com.br/gestao-de-devolucoes';
           }
