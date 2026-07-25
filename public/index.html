@@ -53,9 +53,6 @@
               style="width:100%; margin-top:10px; padding:12px; background:#1565c0; color:white; border:none; border-radius:10px; font-weight:700; font-size:14px; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:8px;">
         📷 Bipar etiqueta com a camera do celular
       </button>
-      <a href="/defeitos.html" style="display:flex; width:100%; margin-top:8px; padding:11px; background:#c62828; color:white; text-decoration:none; border-radius:10px; font-weight:700; font-size:14px; align-items:center; justify-content:center; gap:8px;">
-        🔧 Consultar Localização de Defeitos
-      </a>
       <button type="button" onclick="abrirOcrRemetente()"
               style="width:100%; margin-top:8px; padding:12px; background:#6a1b9a; color:white; border:none; border-radius:10px; font-weight:700; font-size:14px; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:8px;">
         👤 Ler NOME do remetente pela camera (OCR)
@@ -88,6 +85,19 @@
       </p>
     </div>
 
+    <!-- v3.96 - ESTOQUE DE DEFEITOS: fora da barra de busca, card proprio -->
+    <div class="card" style="border-left:5px solid #c62828;">
+      <h2 style="margin-bottom:10px;">🔧 Estoque de defeitos</h2>
+      <div style="display:flex; gap:8px; flex-wrap:wrap;">
+        <a href="/defeitos.html" style="flex:1; min-width:180px; display:flex; padding:12px; background:#455a64; color:white; text-decoration:none; border-radius:10px; font-weight:700; font-size:14px; align-items:center; justify-content:center; gap:8px;">
+          📍 Consultar localização
+        </a>
+        <button type="button" onclick="abrirModalDefeito()" style="flex:1; min-width:180px; padding:12px; background:#c62828; color:white; border:none; border-radius:10px; font-weight:700; font-size:14px; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:8px;">
+          ➕ Lançar produto com defeito
+        </button>
+      </div>
+    </div>
+
     <div class="loading" id="loading">
       <div class="spinner"></div>
       <p style="margin-top: 12px; color: #666;">Consultando ML...</p>
@@ -95,6 +105,46 @@
 
     <div class="resultado" id="resultado"></div>
 
+  </div>
+
+  <!-- v3.96 - MODAL: lancar produto com defeito (busca por nome/SKU/EAN) -->
+  <div class="modal-bg" id="modalDefeito">
+    <div class="modal" style="max-width: 560px;">
+      <h3>➕ Lançar produto com defeito</h3>
+      <p style="font-size:13px; color:#666; margin-bottom:10px;">Busca por <b>parte do nome</b>, SKU ou EAN e escolhe o produto certo na lista.</p>
+
+      <div style="display:flex; gap:8px;">
+        <input type="text" id="defBusca" placeholder="Ex: arandela 60, KJDD-E-187, 7898..." style="flex:1; padding:11px; border:1px solid #ccc; border-radius:8px; font-size:15px;" onkeydown="if(event.key==='Enter'){event.preventDefault();buscarProdutoDefeito();}">
+        <button type="button" onclick="buscarProdutoDefeito()" style="background:#1565c0; color:#fff; border:none; border-radius:8px; padding:11px 18px; font-weight:700; cursor:pointer;">🔍</button>
+      </div>
+      <div id="defResultados" style="margin-top:10px; max-height:230px; overflow-y:auto;"></div>
+
+      <div id="defEscolhido" style="display:none; margin-top:12px; background:#fff5f5; border:2px solid #ef9a9a; border-radius:10px; padding:12px;">
+        <div style="font-size:14px;"><b>Produto:</b> <span id="defNome">-</span></div>
+        <div style="font-size:12px; color:#666; margin-top:3px;">SKU <code id="defSku">-</code> <span id="defEan"></span></div>
+        <div style="display:flex; gap:10px; margin-top:10px;">
+          <div style="flex:2;">
+            <label style="font-size:12px; color:#555; font-weight:600;">Qual o defeito?</label>
+            <input type="text" id="defProblema" placeholder="Ex: globo trincado, não acende, falta peça" style="width:100%; box-sizing:border-box; padding:9px; border:1px solid #ccc; border-radius:8px; font-size:14px;">
+          </div>
+          <div style="width:90px;">
+            <label style="font-size:12px; color:#555; font-weight:600;">Qtd</label>
+            <input type="number" id="defQtd" value="1" min="1" max="999" style="width:100%; box-sizing:border-box; padding:9px; border:1px solid #ccc; border-radius:8px; font-size:14px;">
+          </div>
+        </div>
+        <div style="margin-top:8px;">
+          <label style="font-size:12px; color:#555; font-weight:600;">📍 Onde vai guardar</label>
+          <input type="text" id="defLocal" placeholder="Ex: DEF-A3, prateleira 12..." style="width:100%; box-sizing:border-box; padding:9px; border:1px solid #ccc; border-radius:8px; font-size:14px;">
+        </div>
+      </div>
+
+      <p id="defMsg" style="font-size:13px; margin:8px 0 0;"></p>
+
+      <div class="modal-acoes" style="margin-top:14px;">
+        <button type="button" onclick="fecharModalDefeito()" style="background:#999; color:#fff; border:none; border-radius:10px; padding:12px 20px; font-weight:700; cursor:pointer;">Cancelar</button>
+        <button type="button" id="defBtnSalvar" onclick="salvarDefeitoManual()" disabled style="background:#c62828; color:#fff; border:none; border-radius:10px; padding:12px 20px; font-weight:800; cursor:pointer; opacity:.5;">💾 Lançar defeito</button>
+      </div>
+    </div>
   </div>
 
   <!-- MODAL CONFIRMAR APROVAR -->
@@ -466,5 +516,116 @@
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
   <script src="js/ocr.js?v=3276"></script>
   <script src="js/app.js?v=3276"></script>
+
+  <!-- v3.96 - lancar produto com defeito (busca por parte do nome) -->
+  <script>
+    var _defProdutoEscolhido = null;
+
+    function abrirModalDefeito() {
+      _defProdutoEscolhido = null;
+      document.getElementById('defBusca').value = '';
+      document.getElementById('defResultados').innerHTML = '';
+      document.getElementById('defEscolhido').style.display = 'none';
+      document.getElementById('defProblema').value = '';
+      document.getElementById('defLocal').value = '';
+      document.getElementById('defQtd').value = '1';
+      document.getElementById('defMsg').textContent = '';
+      var b = document.getElementById('defBtnSalvar');
+      b.disabled = true; b.style.opacity = '.5';
+      document.getElementById('modalDefeito').classList.add('show');
+      setTimeout(function () { document.getElementById('defBusca').focus(); }, 100);
+    }
+
+    function fecharModalDefeito() {
+      document.getElementById('modalDefeito').classList.remove('show');
+    }
+
+    function escDef(t) {
+      return String(t == null ? '' : t).replace(/[&<>"']/g, function (c) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+      });
+    }
+
+    async function buscarProdutoDefeito() {
+      var q = document.getElementById('defBusca').value.trim();
+      var box = document.getElementById('defResultados');
+      if (q.length < 2) { box.innerHTML = '<p style="font-size:13px;color:#c62828;">Digite pelo menos 2 letras.</p>'; return; }
+      box.innerHTML = '<p style="font-size:13px;color:#888;">Buscando no Bling...</p>';
+      try {
+        var r = await fetch('/api/produtos/buscar?q=' + encodeURIComponent(q), { credentials: 'same-origin' });
+        var d = await r.json();
+        if (!d.ok) { box.innerHTML = '<p style="font-size:13px;color:#c62828;">' + escDef(d.erro || 'erro') + '</p>'; return; }
+        var lista = d.produtos || [];
+        if (lista.length === 0) { box.innerHTML = '<p style="font-size:13px;color:#888;">Nada encontrado pra "' + escDef(q) + '".</p>'; return; }
+        var h = '';
+        for (var i = 0; i < lista.length; i++) {
+          var p = lista[i];
+          h += '<div onclick="escolherProdutoDefeito(' + i + ')" data-i="' + i + '" style="border:1px solid #ddd;border-radius:8px;padding:9px 11px;margin-bottom:5px;cursor:pointer;background:#fff;">'
+            + '<div style="font-size:13px;font-weight:600;">' + escDef(p.nome) + '</div>'
+            + '<div style="font-size:11px;color:#666;margin-top:2px;">SKU <code>' + escDef(p.sku) + '</code>'
+            + (p.ean ? ' &middot; EAN ' + escDef(p.ean) : '') + '</div></div>';
+        }
+        window._defLista = lista;
+        box.innerHTML = h;
+      } catch (e) {
+        box.innerHTML = '<p style="font-size:13px;color:#c62828;">Erro de conexao.</p>';
+      }
+    }
+
+    function escolherProdutoDefeito(i) {
+      var p = (window._defLista || [])[i];
+      if (!p) return;
+      _defProdutoEscolhido = p;
+      document.getElementById('defNome').textContent = p.nome || '-';
+      document.getElementById('defSku').textContent = p.sku || '-';
+      document.getElementById('defEan').textContent = p.ean ? ('\u00b7 EAN ' + p.ean) : '';
+      document.getElementById('defEscolhido').style.display = '';
+      document.getElementById('defResultados').innerHTML = '';
+      var b = document.getElementById('defBtnSalvar');
+      b.disabled = false; b.style.opacity = '1';
+      setTimeout(function () { document.getElementById('defProblema').focus(); }, 80);
+    }
+
+    async function salvarDefeitoManual() {
+      if (!_defProdutoEscolhido) return;
+      var defeito = document.getElementById('defProblema').value.trim();
+      var msg = document.getElementById('defMsg');
+      if (!defeito) { msg.innerHTML = '<span style="color:#c62828;">Descreva o defeito.</span>'; return; }
+      var btn = document.getElementById('defBtnSalvar');
+      btn.disabled = true; btn.textContent = 'salvando...';
+      var payload = {
+        sku: _defProdutoEscolhido.sku,
+        defeito: defeito,
+        localizacao: document.getElementById('defLocal').value.trim(),
+        qtd: parseInt(document.getElementById('defQtd').value, 10) || 1
+      };
+      try {
+        var r = await fetch('/api/defeitos/adicionar', {
+          method: 'POST', credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        var d = await r.json();
+        if (!d.ok) {
+          msg.innerHTML = '<span style="color:#c62828;">' + escDef(d.erro || 'erro') + '</span>';
+          btn.disabled = false; btn.textContent = '\ud83d\udcbe Lancar defeito';
+          return;
+        }
+        msg.innerHTML = '<span style="color:#2e7d32;">\u2705 Lancado!</span>';
+        // oferece a etiqueta 10x15 (mesmo fluxo do problema na triagem)
+        var etq = {
+          nf: null, sku: d.sku, ean: d.ean, produto: d.nome,
+          defeito: defeito, qtd: payload.qtd, local: payload.localizacao || null
+        };
+        setTimeout(function () {
+          fecharModalDefeito();
+          if (typeof abrirPopupEtiquetaDefeito === 'function') abrirPopupEtiquetaDefeito(etq, function () {});
+        }, 600);
+      } catch (e) {
+        msg.innerHTML = '<span style="color:#c62828;">Erro de conexao.</span>';
+        btn.disabled = false; btn.textContent = '\ud83d\udcbe Lancar defeito';
+      }
+    }
+  </script>
 </body>
 </html>
