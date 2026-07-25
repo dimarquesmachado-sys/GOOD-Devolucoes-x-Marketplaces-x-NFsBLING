@@ -183,7 +183,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.09 (localizacao do defeito passa a ser obrigatoria)',
+    version: '4.10 (diagnostico: motivo da devolucao, notas e mediacao)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -2869,6 +2869,102 @@ app.get('/api/produtos/buscar', requerEstoquista, async (req, res) => {
       indice: { total: IDX_PROD.itens.length, idade_min: IDX_PROD.ts ? Math.round((Date.now() - IDX_PROD.ts) / 60000) : null, erro: IDX_PROD.erro },
     });
   } catch (e) { return res.status(500).json({ ok: false, erro: e.message }); }
+});
+
+// v4.10 - DIAGNOSTICO: o que da pra saber sobre o MOTIVO da devolucao antes
+// do estoquista abrir o pacote. Testa cada fonte e diz o que veio e o que foi
+// negado - sem chutar. Uso: /api/debug/motivo-devolucao?order=2000017466406326
+//                       ou /api/debug/motivo-devolucao?claim=5546944136
+app.get('/api/debug/motivo-devolucao', requerAdmin, async (req, res) => {
+  const orderId = String(req.query.order || '').trim();
+  let claimId = String(req.query.claim || '').trim();
+  const out = { order_id: orderId || null, claim_id: claimId || null, fontes: {} };
+
+  const tentar = async (nome, url, opts) => {
+    try {
+      const r = await chamarML(url, opts);
+      out.fontes[nome] = {
+        url: url.replace('https://api.mercadolibre.com', ''),
+        http: r.status || (r.ok ? 200 : null),
+        ok: !!r.ok,
+        erro: r.ok ? null : String(r.error || '').slice(0, 200),
+        amostra: r.ok ? r.data : null,
+      };
+      return r.ok ? r.data : null;
+    } catch (e) {
+      out.fontes[nome] = { url, ok: false, erro: e.message };
+      return null;
+    }
+  };
+
+  try {
+    // 1) o PEDIDO: traz status, tags e o motivo do cancelamento quando existe
+    let order = null;
+    if (orderId) {
+      order = await tentar('pedido', `https://api.mercadolibre.com/orders/${orderId}`);
+      if (order) {
+        out.resumo_pedido = {
+          status: order.status || null,
+          status_detail: order.status_detail || null,
+          tags: order.tags || [],
+          shipping_id: order.shipping?.id || null,
+          pack_id: order.pack_id || null,
+        };
+      }
+      // 2) OBSERVACOES da venda (o "Adicionar nota" do painel do ML)
+      await tentar('observacoes_da_venda', `https://api.mercadolibre.com/orders/${orderId}/notes`);
+      // 3) o claim daquele pedido
+      if (!claimId) {
+        const busca = await tentar('claim_do_pedido', `https://api.mercadolibre.com/post-purchase/v1/claims/search?resource_id=${orderId}`);
+        const achado = busca?.data?.[0] || busca?.results?.[0] || null;
+        if (achado?.id) { claimId = String(achado.id); out.claim_id = claimId; }
+      }
+      // 4) o ENVIO ORIGINAL: e aqui que aparece "nem foi entregue ao cliente"
+      const shipIda = order?.shipping?.id;
+      if (shipIda) {
+        const sh = await tentar('envio_original', `https://api.mercadolibre.com/shipments/${shipIda}`, { 'x-format-new': 'true' });
+        if (sh) {
+          out.resumo_envio_ida = {
+            status: sh.status || null,
+            substatus: sh.substatus || sh.status_detail || null,
+            entregue_em: sh.status_history?.date_delivered || null,
+            // sem data de entrega + voltando = o cliente nunca recebeu
+            nunca_entregue: !sh.status_history?.date_delivered,
+          };
+        }
+      }
+    }
+
+    // 5) o CLAIM: motivo classificado, tipo e estagio
+    if (claimId) {
+      const cl = await tentar('claim_detalhe', `https://api.mercadolibre.com/post-purchase/v1/claims/${claimId}`);
+      if (cl) {
+        out.resumo_claim = {
+          tipo: cl.type || null,
+          status: cl.status || null,
+          stage: cl.stage || null,
+          reason_id: cl.reason_id || null,
+          motivo_texto: cl.reason?.name || cl.reason?.description || null,
+          resolucao: cl.resolution?.reason || null,
+        };
+      }
+      // 6) MENSAGENS da mediacao (texto livre do cliente - candidato a resumo por IA)
+      await tentar('mensagens_mediacao', `https://api.mercadolibre.com/post-purchase/v1/claims/${claimId}/messages`);
+      // 7) motivo detalhado (endpoint separado em algumas contas)
+      await tentar('claim_reason', `https://api.mercadolibre.com/post-purchase/v1/claims/${claimId}/reasons`);
+      // 8) o RETURN (ja usamos no indice, mas aqui mostra o objeto inteiro)
+      await tentar('return_do_claim', `https://api.mercadolibre.com/post-purchase/v1/claims/${claimId}/returns`);
+    }
+
+    // veredito rapido: o que DA pra mostrar pro estoquista hoje
+    out.veredito = {};
+    for (const [k, v] of Object.entries(out.fontes)) {
+      out.veredito[k] = v.ok ? '✅ liberado' : `❌ ${v.http || ''} ${String(v.erro || '').slice(0, 60)}`;
+    }
+    return res.json({ ok: true, ...out });
+  } catch (e) {
+    return res.status(500).json({ ok: false, erro: e.message, ...out });
+  }
 });
 
 // v4.01 - diagnostico do EAN: mostra QUAIS campos a listagem do Bling devolve
