@@ -573,7 +573,17 @@
         var d = await r.json();
         if (!d.ok) { box.innerHTML = '<p style="font-size:13px;color:#c62828;">' + escDef(d.erro || 'erro') + '</p>'; return; }
         var lista = d.produtos || [];
-        if (lista.length === 0) { box.innerHTML = '<p style="font-size:13px;color:#888;">Nada encontrado pra "' + escDef(q) + '".</p>'; return; }
+        if (lista.length === 0) {
+          // v4.06 - o servidor avisa quando ainda esta lendo o catalogo; antes
+          // a tela ignorava e dizia "nada encontrado", parecendo que o produto
+          // nao existia.
+          if (d.indexando || d.dica) {
+            box.innerHTML = '<p style="font-size:13px;color:#e65100;background:#fff3e0;border-radius:8px;padding:9px 11px;">⏳ ' + escDef(d.dica || 'Ainda estou lendo o catálogo. Tenta de novo em instantes.') + '</p>';
+          } else {
+            box.innerHTML = '<p style="font-size:13px;color:#888;">Nada encontrado pra "' + escDef(q) + '".</p>';
+          }
+          return;
+        }
         var h = '';
         for (var i = 0; i < lista.length; i++) {
           var p = lista[i];
