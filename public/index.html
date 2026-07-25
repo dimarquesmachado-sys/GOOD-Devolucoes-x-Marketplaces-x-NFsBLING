@@ -143,7 +143,7 @@
           </div>
         </div>
         <div style="margin-top:8px;">
-          <label style="font-size:12px; color:#555; font-weight:600;">📍 Onde vai guardar</label>
+          <label style="font-size:12px; color:#555; font-weight:600;">📍 Onde vai guardar <span style="color:#c62828;">*obrigatório</span></label>
           <input type="text" id="defLocal" placeholder="Ex: DEF-A3, prateleira 12..." style="width:100%; box-sizing:border-box; padding:9px; border:1px solid #ccc; border-radius:8px; font-size:14px;">
         </div>
       </div>
@@ -441,7 +441,7 @@
 
       <div style="display:flex; gap:10px; margin:8px 0;">
         <div style="flex:1;">
-          <label style="font-size:12px; color:#555; font-weight:600;">📍 Onde vai guardar</label>
+          <label style="font-size:12px; color:#555; font-weight:600;">📍 Onde vai guardar <span style="color:#c62828;">*obrigatório</span></label>
           <input type="text" id="problemaLocal" placeholder="Ex: DEF-A3, prateleira 12..." style="width:100%; box-sizing:border-box; padding:8px; border:1px solid #ccc; border-radius:8px; font-size:14px;">
         </div>
         <div style="width:110px;">
@@ -645,14 +645,24 @@
     async function salvarDefeitoManual() {
       if (!_defProdutoEscolhido) return;
       var defeito = document.getElementById('defProblema').value.trim();
+      var localDef = document.getElementById('defLocal').value.trim();
       var msg = document.getElementById('defMsg');
-      if (!defeito) { msg.innerHTML = '<span style="color:#c62828;">Descreva o defeito.</span>'; return; }
+      if (!defeito) { msg.innerHTML = '<span style="color:#c62828;">Descreva o defeito.</span>'; document.getElementById('defProblema').focus(); return; }
+      // v4.09 - sem localizacao o produto some do mapa: campo obrigatorio
+      if (!localDef) {
+        msg.innerHTML = '<span style="color:#c62828;">Informe ONDE VAI GUARDAR o produto.</span>';
+        var elLoc = document.getElementById('defLocal');
+        elLoc.style.borderColor = '#c62828'; elLoc.style.background = '#fff5f5'; elLoc.focus();
+        return;
+      }
+      document.getElementById('defLocal').style.borderColor = '#ccc';
+      document.getElementById('defLocal').style.background = '#fff';
       var btn = document.getElementById('defBtnSalvar');
       btn.disabled = true; btn.textContent = 'salvando...';
       var payload = {
         sku: _defProdutoEscolhido.sku,
         defeito: defeito,
-        localizacao: document.getElementById('defLocal').value.trim(),
+        localizacao: localDef,
         qtd: parseInt(document.getElementById('defQtd').value, 10) || 1
       };
       try {
