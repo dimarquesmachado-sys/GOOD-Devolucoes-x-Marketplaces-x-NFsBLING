@@ -77,7 +77,8 @@
         const itens = d.itens || [];
         resumo.innerHTML = '📦 <b>' + d.total_registros + '</b> registro(s) · <b>' + d.total_pecas + '</b> peça(s) com defeito no estoque' + (q ? ' · filtro: "' + esc(q) + '"' : '');
         if (itens.length === 0) { lista.innerHTML = '<div class="vazio">Nenhum defeito com localização registrada' + (q ? ' pra "' + esc(q) + '"' : '') + '.</div>'; return; }
-        // agrupa por localizacao
+        // v3.96 - agrupa por LOCAL e, dentro dele, por SKU (soma as quantidades
+        // em vez de repetir o mesmo SKU em varias linhas)
         const grupos = {};
         for (const it of itens) { const k = (it.local || '(sem local)').toUpperCase(); (grupos[k] = grupos[k] || []).push(it); }
         let html = '';
@@ -85,12 +86,30 @@
           const g = grupos[local];
           const pcs = g.reduce((a, x) => a + (Number(x.qtd) || 1), 0);
           html += '<div class="grupo"><div class="grupo-head"><span>📍 ' + esc(local) + '</span><span class="badge">' + pcs + ' peça(s)</span></div>';
+          // junta os registros do mesmo SKU
+          const porSku = {};
           for (const it of g) {
+            const k = (it.sku || '(sem sku)').toUpperCase();
+            if (!porSku[k]) porSku[k] = { sku: it.sku, produto: it.produto, total: 0, ocorrencias: [] };
+            porSku[k].total += (Number(it.qtd) || 1);
+            if (!porSku[k].produto && it.produto) porSku[k].produto = it.produto;
+            porSku[k].ocorrencias.push(it);
+          }
+          const skus = Object.keys(porSku).sort((a, b) => porSku[b].total - porSku[a].total);
+          for (const k of skus) {
+            const linha = porSku[k];
             html += '<div class="item">'
-              + '<div class="prod">' + esc(it.produto || '-') + (it.qtd ? ' <span class="qtd">×' + it.qtd + '</span>' : '') + '</div>'
-              + '<div class="meta">SKU <code>' + esc(it.sku || '-') + '</code>' + (it.nf ? ' · NF <code>' + esc(it.nf) + '</code>' : '') + ' · ' + (it.quando ? String(it.quando).slice(0, 10).split('-').reverse().join('/') : '-') + '</div>'
-              + (it.defeito ? '<div class="defeito">🔧 ' + esc(it.defeito) + '</div>' : '')
-              + '</div>';
+              + '<div class="prod">' + esc(linha.produto || '-') + ' <span class="qtd">×' + linha.total + '</span></div>'
+              + '<div class="meta">SKU <code>' + esc(linha.sku || '-') + '</code>'
+              + (linha.ocorrencias.length > 1 ? ' · <b>' + linha.ocorrencias.length + ' lançamentos</b>' : '') + '</div>';
+            for (const oc of linha.ocorrencias) {
+              html += '<div class="defeito">🔧 ' + esc(oc.defeito || '-')
+                + ' <span style="color:#888;font-size:11px;">('
+                + (oc.qtd ? '×' + oc.qtd + ' · ' : '')
+                + (oc.quando ? String(oc.quando).slice(0, 10).split('-').reverse().join('/') : '-')
+                + (oc.nf ? ' · NF ' + esc(oc.nf) : '') + ')</span></div>';
+            }
+            html += '</div>';
           }
           html += '</div>';
         }
