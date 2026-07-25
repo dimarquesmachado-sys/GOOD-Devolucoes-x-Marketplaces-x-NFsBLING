@@ -239,7 +239,63 @@ function abrirModalProblema() {
   document.getElementById('problemaDescricao').value = '';
   if (document.getElementById('problemaLocal')) document.getElementById('problemaLocal').value = '';
   if (document.getElementById('problemaQtd')) document.getElementById('problemaQtd').value = '1';
+  // v3.99 - reset do bloco de canibalizacao
+  var box = document.getElementById('jaTenhoDefeito');
+  if (box) { box.style.display = 'none'; document.getElementById('jaTenhoLista').innerHTML = ''; }
+  var chk = document.getElementById('chkConsertei');
+  if (chk) { chk.checked = false; }
+  var bc = document.getElementById('boxConserto');
+  if (bc) bc.style.display = 'none';
+  if (document.getElementById('conPeca')) document.getElementById('conPeca').value = '';
+  window._defeitosMesmoSku = [];
+
   document.getElementById('modalProblema').classList.add('show');
+  consultarDefeitosMesmoSku();
+}
+
+// v3.99 - mostra ao estoquista o que ja existe em defeito deste SKU, com
+// localizacao e as pecas que ja foram retiradas de cada unidade.
+async function consultarDefeitosMesmoSku() {
+  var sku = null;
+  try {
+    var p = (typeof montarPayloadTriagem === 'function') ? montarPayloadTriagem() : null;
+    sku = p && p.produto_sku ? p.produto_sku : null;
+  } catch (e) { sku = null; }
+  if (!sku) return;
+  try {
+    var r = await fetch('/api/defeitos/por-sku?sku=' + encodeURIComponent(sku), { credentials: 'same-origin' });
+    var d = await r.json();
+    if (!d.ok || !d.itens || d.itens.length === 0) return;
+    window._defeitosMesmoSku = d.itens;
+    var esc = function (t) {
+      return String(t == null ? '' : t).replace(/[&<>"']/g, function (c) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+      });
+    };
+    var h = '';
+    var opts = '';
+    for (var i = 0; i < d.itens.length; i++) {
+      var it = d.itens[i];
+      h += '<div style="background:#fff;border-radius:8px;padding:8px 10px;margin-bottom:5px;font-size:12px;">'
+        + '<b>📍 ' + esc(it.local || '(sem local)') + '</b> · ×' + (it.qtd || 1)
+        + ' <span style="background:' + (it.origem === 'estoque' ? '#455a64' : '#c62828') + ';color:#fff;padding:1px 6px;border-radius:8px;font-size:10px;">' + (it.origem === 'estoque' ? 'ESTOQUE' : 'DEVOLUÇÃO') + '</span>'
+        + '<br><span style="color:#c62828;">🔧 ' + esc(it.defeito || '-') + '</span>';
+      if (it.pecas_retiradas && it.pecas_retiradas.length) {
+        h += '<br><span style="color:#e65100;font-size:11px;">⚠️ já saiu daqui: '
+          + it.pecas_retiradas.map(function (p) { return esc(p.peca); }).join(', ') + '</span>';
+      }
+      h += '</div>';
+      opts += '<option value="' + it.id + '">' + esc(it.local || 's/ local') + ' — ' + esc((it.defeito || '').slice(0, 40)) + '</option>';
+    }
+    document.getElementById('jaTenhoLista').innerHTML = h;
+    document.getElementById('conDoador').innerHTML = opts;
+    document.getElementById('jaTenhoDefeito').style.display = '';
+  } catch (e) { /* opcional: se falhar, o fluxo normal segue */ }
+}
+
+function toggleConserto() {
+  var on = document.getElementById('chkConsertei').checked;
+  document.getElementById('boxConserto').style.display = on ? '' : 'none';
 }
 
 async function enviarProblema() {
@@ -264,6 +320,35 @@ async function enviarProblema() {
     payload.localizacao = localizacao || null;
     payload.defeito_qtd = defeitoQtd;
     if (window._forcarTriagem) payload.forcar = true;
+
+    // v3.99 - se o estoquista consertou, o item NAO vira defeito: vai pra fila
+    // de aprovadas (o Diego emite a NF incluindo em estoque) e a peca usada
+    // fica registrada no item que doou.
+    var chkC = document.getElementById('chkConsertei');
+    if (chkC && chkC.checked) {
+      var pc = montarPayloadTriagem();
+      pc.descricao = descricao;
+      pc.fotos = fotosOk;
+      pc.peca = (document.getElementById('conPeca') || {}).value || '';
+      pc.doador_id = (document.getElementById('conDoador') || {}).value || null;
+      if (window._forcarTriagem) pc.forcar = true;
+      var rc = await fetch('/api/triagem/consertado', {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(pc),
+      });
+      var dc = await rc.json();
+      if (!dc.ok) { toast(dc.erro || 'falhou', 'err'); return; }
+      toast('🔧 Consertado! Vai pro estoque.', 'ok');
+      window.fotosUploadadas = [];
+      mostrarSucesso('🔧 Produto consertado!', 'Foi pra fila de aprovadas — o Diego emite a NF e inclui no estoque.');
+      setTimeout(function () {
+        divResultado.classList.remove('show');
+        inputCodigo.value = '';
+        inputCodigo.focus();
+      }, 2600);
+      return;
+    }
 
     const r = await fetch('/api/triagem/problema', {
       method: 'POST',
