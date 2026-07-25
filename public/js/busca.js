@@ -171,7 +171,32 @@ function renderizar(data, ok) {
   // v3.32 - RECADOS: aviso que o Diego prendeu a essa venda/NF. Aparece em
   // destaque no topo e exige ciencia do estoquista (fica registrado quem leu).
   let html = '<div class="card">';
+  if (_mot) {
+    const _ctx = _mot.contexto || {};
+    html += '<div style="border-left:6px solid ' + _mot.cor + ';background:#fafafa;border-radius:10px;padding:11px 13px;margin-bottom:12px;">'
+      + '<div style="font-size:15px;font-weight:800;color:' + _mot.cor + ';">' + escapeHtml(_mot.titulo) + '</div>'
+      + '<div style="font-size:13px;color:#444;margin-top:3px;">' + escapeHtml(_mot.detalhe) + '</div>';
+    if (_ctx.pontos && _ctx.pontos.length) {
+      html += '<div style="font-size:12px;color:#555;margin-top:6px;background:#fff;border-radius:6px;padding:6px 8px;">'
+        + '<b>O que o Mercado Livre informou:</b><br>'
+        + _ctx.pontos.map(function (p) { return '• ' + escapeHtml(p); }).join('<br>')
+        + '</div>';
+    }
+    if (_ctx.pacote_consolidado) {
+      html += '<div style="margin-top:6px;background:#e3f2fd;border:1px solid #90caf9;border-radius:6px;padding:6px 8px;font-size:12px;color:#0d47a1;font-weight:700;">📦 ATENÇÃO: o Mercado Livre juntou MAIS DE UMA devolução neste mesmo pacote — confira se veio mais de um produto na caixa.</div>';
+    }
+    if (_mot.reclamacao_id) {
+      html += '<div style="font-size:11px;color:#777;margin-top:3px;">Reclamação nº ' + escapeHtml(_mot.reclamacao_id) + '</div>';
+    }
+    if (_mot.risco_fraude) {
+      html += '<div style="margin-top:6px;background:#c62828;color:#fff;border-radius:6px;padding:5px 8px;font-size:12px;font-weight:700;">⚠️ O Mercado Livre marcou RISCO DE FRAUDE neste pedido — confira com muito cuidado e avise o Diego</div>';
+    }
+    html += '</div>';
+  }
   window._recadosPendentes = (data.recados || []).filter(rc => !rc.ciente_em).map(rc => rc.id);
+
+  // v3.34 - POR QUE ESTE PRODUTO VOLTOU (muda o trabalho do estoquista)
+  const _mot = data.motivo_devolucao || null;
   for (const rc of (data.recados || [])) {
     const lido = !!rc.ciente_em;
     html += '<div id="recado-' + rc.id + '" style="border:3px solid ' + (lido ? '#9e9e9e' : '#c62828') + ';background:' + (lido ? '#fafafa' : '#fff3e0') + ';border-radius:10px;padding:12px;margin-bottom:12px;">'
