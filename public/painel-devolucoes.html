@@ -527,7 +527,6 @@
         const atual = window._espComentarios[chave] || '';
         area.innerHTML = '<div style="background:#faf5ff;border:1px solid #ce93d8;border-radius:8px;padding:10px;margin-top:8px;">'
           + '<b style="font-size:12px;color:#4a148c;">💬 Comentário / tratativa com o marketplace</b>'
-          + '<div style="font-size:11px;color:#777;margin:3px 0 5px;">Dica: cole o número do ticket/protocolo (ex: 147110817). Na Magalu ele vira link clicável pra você voltar na reclamação.</div>'
           + '<textarea id="espTexto-' + chave + '" rows="3" style="width:100%;box-sizing:border-box;margin-top:6px;padding:8px;border:1px solid #ccc;border-radius:8px;font-size:13px;">' + escapeHtml(atual) + '</textarea>'
           + '<div style="margin-top:6px;">'
           + '<button onclick="espreitaSalvarComentario(\'' + chave + '\')" style="background:#2e7d32;color:#fff;' + btnCss + '">💾 Salvar</button> '
@@ -822,31 +821,25 @@
             (e.marketplace === 'shopee' && e.pedido ? (
               ' <a href="https://mover-pedidos-aguardando-x-atendido.onrender.com/good-checkout-offline/ir-shopee?sn=' + encodeURIComponent(e.pedido) + '" target="_blank" rel="noopener" style="background:#e65100;color:#fff;border-radius:8px;padding:5px 10px;font-size:12px;font-weight:700;text-decoration:none;">📦 abrir pedido Shopee</a>'
             ) : '') +
-            // v4.31 - Magalu: campo TICKET (salva + vira link). Se ja tem ticket,
-            // o botao de abrir NOVA reclamacao some.
-            // v4.38 - protocolos automaticos (aparecem sempre que a API traz)
+            // v4.40 - protocolos AUTOMATICOS (a API nao filtra por pedido, entao
+            // o server monta um indice global e casa por order.code)
             (e.marketplace === 'magalu' ? magaluProtocolosHtml(e) : '') +
-            // campo manual = FALLBACK so quando a API nao trouxe nenhum protocolo
-            (e.marketplace === 'magalu' && (!e.magalu_tickets || !e.magalu_tickets.length) ? (
-              // v4.32 - se JA TEM ticket: mostra so o link + editar/apagar (sem caixinha,
-              // que confundia). Se NAO tem: mostra a caixinha pra digitar.
+            // v4.40 - TICKET MANUAL: sempre presente pra Magalu, num bloco proprio
+            // (separado do comentario). Se tem ticket salvo -> link + editar/apagar,
+            // SEM caixinha e SEM botao de abrir nova. Se nao tem -> so a caixinha.
+            (e.marketplace === 'magalu' ? (
+              '<div style="margin-top:6px;background:#eef;border-radius:8px;padding:6px 9px;">' +
               (e.ticket ? (
-                '<div style="margin-top:6px;display:flex;gap:5px;align-items:center;flex-wrap:wrap;">' +
-                  '<span style="font-size:11px;color:#555;font-weight:700;">🎫 Ticket:</span>' +
-                  '<a href="' + magaluLinkTicket(e.ticket) + '" target="_blank" rel="noopener" style="background:#1565c0;color:#fff;border-radius:7px;padding:4px 9px;font-size:12px;font-weight:700;text-decoration:none;">🔗 ' + escapeHtml(String(e.ticket)) + '</a>' +
-                  ' <button title="alterar" onclick="magaluEditarTicket(\'' + escapeHtml(String(e.chave_nota)) + '\', \'' + escapeHtml(String(e.ticket)) + '\')" style="background:#6a1b9a;color:#fff;border:none;border-radius:7px;padding:4px 8px;font-size:12px;font-weight:700;cursor:pointer;">✏️</button>' +
-                  ' <button title="apagar" onclick="magaluApagarTicket(\'' + escapeHtml(String(e.chave_nota)) + '\')" style="background:#c62828;color:#fff;border:none;border-radius:7px;padding:4px 8px;font-size:12px;font-weight:700;cursor:pointer;">🗑️</button>' +
-                '</div>'
+                '<span style="font-size:11px;color:#555;font-weight:700;">🎫 Ticket salvo:</span> ' +
+                '<a href="' + magaluLinkTicket(e.ticket) + '" target="_blank" rel="noopener" style="color:#1565c0;font-weight:700;text-decoration:none;">🔗 ' + escapeHtml(String(e.ticket)) + '</a>' +
+                ' <button title="alterar" onclick="magaluEditarTicket(\'' + escapeHtml(String(e.chave_nota)) + '\', \'' + escapeHtml(String(e.ticket)) + '\')" style="background:#6a1b9a;color:#fff;border:none;border-radius:6px;padding:3px 7px;font-size:11px;font-weight:700;cursor:pointer;">✏️ alterar</button>' +
+                ' <button title="apagar" onclick="magaluApagarTicket(\'' + escapeHtml(String(e.chave_nota)) + '\')" style="background:#c62828;color:#fff;border:none;border-radius:6px;padding:3px 7px;font-size:11px;font-weight:700;cursor:pointer;">🗑️</button>'
               ) : (
-                '<div style="margin-top:6px;display:flex;gap:5px;align-items:center;flex-wrap:wrap;">' +
-                  '<span style="font-size:11px;color:#555;font-weight:700;">🎫 Ticket:</span>' +
-                  '<input id="tk_' + escapeHtml(String(e.chave_nota)) + '" placeholder="nº da reclamação" style="width:130px;padding:4px 7px;border:1px solid #ce93d8;border-radius:7px;font-size:12px;">' +
-                  '<button onclick="magaluSalvarTicket(\'' + escapeHtml(String(e.chave_nota)) + '\')" style="background:#6a1b9a;color:#fff;border:none;border-radius:7px;padding:4px 9px;font-size:12px;font-weight:700;cursor:pointer;">salvar</button>' +
-                '</div>'
+                '<span style="font-size:11px;color:#555;font-weight:700;">🎫 Nº do ticket:</span> ' +
+                '<input id="tk_' + escapeHtml(String(e.chave_nota)) + '" placeholder="cole o protocolo" style="width:130px;padding:4px 7px;border:1px solid #ce93d8;border-radius:6px;font-size:12px;">' +
+                ' <button onclick="magaluSalvarTicket(\'' + escapeHtml(String(e.chave_nota)) + '\')" style="background:#6a1b9a;color:#fff;border:none;border-radius:6px;padding:4px 9px;font-size:12px;font-weight:700;cursor:pointer;">salvar ticket</button>' +
+                ' <button id="cp_' + escapeHtml(String(e.pedido || '')) + '" onclick="magaluCopiarReclamacao(\'' + escapeHtml(String(e.pedido || '')) + '\', \'' + btoa(unescape(encodeURIComponent(String(e.produto || '')))) + '\', ' + (e.dias_em_transito || 0) + ', ' + (e.valor != null ? Number(e.valor) : 'null') + ')" style="background:#00695c;color:#fff;border:none;border-radius:6px;padding:4px 9px;font-size:11px;font-weight:700;cursor:pointer;">📋 copiar texto</button>'
               )) +
-              '<div style="margin-top:5px;">' +
-                (e.ticket ? '' : ' <a href="https://marketplacemagalu.zendesk.com/hc/pt-br/requests/new" target="_blank" rel="noopener" style="background:#1565c0;color:#fff;border-radius:8px;padding:5px 10px;font-size:12px;font-weight:700;text-decoration:none;">📨 abrir reclamação Magalu</a>') +
-                ' <button id="cp_' + escapeHtml(String(e.pedido || '')) + '" onclick="magaluCopiarReclamacao(\'' + escapeHtml(String(e.pedido || '')) + '\', \'' + btoa(unescape(encodeURIComponent(String(e.produto || '')))) + '\', ' + (e.dias_em_transito || 0) + ', ' + (e.valor != null ? Number(e.valor) : 'null') + ')" style="background:#00695c;color:#fff;border:none;border-radius:8px;padding:5px 10px;font-size:12px;font-weight:700;cursor:pointer;">📋 copiar texto da reclamação</button>' +
               '</div>'
             ) : '') +
             '</div>' +
