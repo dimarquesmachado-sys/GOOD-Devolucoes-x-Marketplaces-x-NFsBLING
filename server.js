@@ -183,7 +183,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.36 (link do pedido Magalu com o UUID certo da entrega)',
+    version: '4.37 (sondagem da API oficial de tickets/SAC Magalu)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -2541,6 +2541,46 @@ app.get('/api/debug/magalu-links', requerAdmin, async (req, res) => {
       link_pedido: 'https://seller.magalu.com/pedidos/{numero}/{UUID} - preciso saber qual dos uuids_encontrados e o certo',
       link_protocolo: 'https://seller.magalu.com/tickets/{UUID_ticket}?tenantId=goodimport-magazine',
     };
+    return res.json({ ok: true, ...out });
+  } catch (e) { return res.status(500).json({ ok: false, erro: e.message, ...out }); }
+});
+
+// v4.37 - SONDAGEM da API de SAC/TICKETS da Magalu. A DOC OFICIAL confirma o
+// endpoint (eu antes tinha chutado /orders/{id}/protocols, que nao existe):
+//   GET /seller/v0/tickets              -> lista os protocolos
+//   GET /seller/v0/tickets/{id}         -> um protocolo
+//   escopo: open:tickets-seller:read  (contas vindas do Integracommerce ja tem)
+// Testa se o nosso token acessa, e como filtrar por pedido.
+app.get('/api/debug/magalu-sac', requerAdmin, async (req, res) => {
+  if (!magalu.cfg.autorizado) return res.status(400).json({ ok: false, erro: 'Magalu nao autorizada' });
+  const pedido = String(req.query.pedido || '').replace(/\D/g, '');
+  const out = { pedido: pedido || null, fontes: {} };
+  const proba = async (nome, caminho) => {
+    try {
+      const r = await magalu.chamarMagalu(`https://api.magalu.com${caminho}`);
+      const arr = r.ok ? (r.data?.results || r.data?.data || r.data || []) : null;
+      out.fontes[nome] = {
+        caminho, http: r.status, ok: !!r.ok,
+        qtd: Array.isArray(arr) ? arr.length : (arr ? 'obj' : 0),
+        erro: r.ok ? null : String(JSON.stringify(r.error || '')).slice(0, 200),
+        amostra: r.ok ? (Array.isArray(arr) ? arr.slice(0, 2) : arr) : null,
+      };
+      return arr;
+    } catch (e) { out.fontes[nome] = { caminho, erro: e.message }; return null; }
+  };
+  try {
+    // 1) lista geral (o escopo funciona?)
+    await proba('tickets_lista', '/seller/v0/tickets?_limit=5');
+    // 2) filtros provaveis por pedido (a doc nao detalhou os query params aqui,
+    //    entao testo os nomes mais comuns - o que voltar filtrado e o certo)
+    if (pedido) {
+      await proba('por_order_id', `/seller/v0/tickets?order_id=${pedido}&_limit=10`);
+      await proba('por_orderId', `/seller/v0/tickets?orderId=${pedido}&_limit=10`);
+      await proba('por_order', `/seller/v0/tickets?order=${pedido}&_limit=10`);
+      await proba('por_q', `/seller/v0/tickets?q=${pedido}&_limit=10`);
+    }
+    out.doc = 'GET /seller/v0/tickets - escopo open:tickets-seller:read';
+    out.proxima = 'se tickets_lista vier 200, olho os campos pra montar o link e achar o filtro por pedido';
     return res.json({ ok: true, ...out });
   } catch (e) { return res.status(500).json({ ok: false, erro: e.message, ...out }); }
 });
