@@ -183,7 +183,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.28 (sondagem: NFs de devolucao no Bling)',
+    version: '4.31 (campo ticket Magalu na espreita)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -2513,6 +2513,7 @@ app.post('/api/admin/espreita/nota', requerAdmin, async (req, res) => {
   const registro = { chave, atualizado_em: new Date().toISOString(), usuario: req.usuario || null };
   if (typeof req.body.baixado === 'boolean') registro.baixado = req.body.baixado;
   if (typeof req.body.comentario === 'string') registro.comentario = req.body.comentario.slice(0, 2000);
+  if (typeof req.body.ticket === 'string') registro.ticket = req.body.ticket.slice(0, 60); // v4.31
   try {
     const { error } = await supabase.from('espreita_notas').upsert(registro, { onConflict: 'chave' });
     if (error) {
@@ -3798,7 +3799,7 @@ app.get('/api/admin/espreita', requerAdmin, async (req, res) => {
   try {
     const chaves = unificada.map(chaveEspreita);
     if (chaves.length > 0) {
-      const { data: notas } = await supabase.from('espreita_notas').select('chave, baixado, comentario').in('chave', chaves);
+      const { data: notas } = await supabase.from('espreita_notas').select('chave, baixado, comentario, ticket').in('chave', chaves);
       const porChave = {};
       for (const n of (notas || [])) porChave[n.chave] = n;
       baixadasManuais = unificada.filter(d => porChave[chaveEspreita(d)]?.baixado).length;
@@ -3806,6 +3807,7 @@ app.get('/api/admin/espreita', requerAdmin, async (req, res) => {
       for (const d of unificada) {
         const n = porChave[chaveEspreita(d)];
         if (n && n.comentario) d.comentario = n.comentario;
+        if (n && n.ticket) d.ticket = n.ticket; // v4.31
         d.chave_nota = chaveEspreita(d);
       }
     }
