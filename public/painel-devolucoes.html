@@ -387,7 +387,7 @@
       var ts = e.magalu_tickets || [];
       if (!ts.length) return '';
       var linhas = ts.map(function (t) {
-        var url = t.id ? ('https://seller.magalu.com/tickets/' + encodeURIComponent(t.id) + '?tenantId=goodimport-magazine') : null;
+        var url = t.id ? ('https://seller.magalu.com/tickets/' + encodeURIComponent(t.id)) : null; // v4.39 - link LIMPO (o ?tenantId travava o carregamento do painel)
         var cor = t.aguarda_voce ? '#c62828' : (t.fechado ? '#777' : '#1565c0');
         var selo = t.aguarda_voce ? ' <span style="background:#c62828;color:#fff;padding:1px 6px;border-radius:8px;font-size:10px;font-weight:800;">RESPONDER</span>' : (t.fechado ? ' <span style="background:#777;color:#fff;padding:1px 6px;border-radius:8px;font-size:10px;">fechado</span>' : '');
         var prazo = (t.prazo && t.aguarda_voce) ? (' · prazo ' + String(t.prazo).slice(0, 10).split('-').reverse().join('/')) : '';
