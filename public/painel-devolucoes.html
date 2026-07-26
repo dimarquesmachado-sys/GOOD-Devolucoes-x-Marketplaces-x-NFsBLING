@@ -371,6 +371,13 @@
         document.getElementById('secoes').style.display = '';
       }
       carregarEspreita(); // v3.76 - nao bloqueia o principal
+      // v3.99 - atualiza sozinho a cada 4 min: o que ja foi bipado ou mandado
+      // pra fila de NF sai da lista sem precisar recarregar a pagina na mao.
+      if (!window._espAuto) {
+        window._espAuto = setInterval(function () {
+          if (!document.hidden) carregarEspreita();
+        }, 4 * 60 * 1000);
+      }
       carregarRecados();
     }
 
@@ -544,6 +551,7 @@
         const emT = d.em_transito || [];
         const atras = d.atrasadas_30d || [];
         document.getElementById('countEspreita').textContent = emT.length;
+        window._espUltima = new Date();
         if (emT.length === 0 && (d.nunca_bipadas || []).length === 0) {
           lista.innerHTML = '<p style="color:#888;font-size:13px;">Nenhuma devolução a caminho. 🎉</p>';
           sec.style.display = '';
@@ -571,6 +579,7 @@
         };
         let html = '<p style="font-size:13px;color:#666;margin:4px 0 10px;">' +
           (window._espBusca ? '🔍 <b>filtrando por "' + escapeHtml(window._espBusca) + '"</b> · ' : '') +
+          '<span style="color:#888;">🕐 atualizado ' + (window._espUltima ? window._espUltima.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '') + ' · atualiza sozinho a cada 4 min</span> · ' +
           '🚚 <b>' + emT.length + '</b> em trânsito · ⏰ <b style="color:#c62828;">' + atras.length + '</b> atrasada(s) +30d' +
           (d.ml_aguardando_postagem ? ' · 🏷️ ' + d.ml_aguardando_postagem + ' ML aguardando o cliente postar' : '') +
           (d.magalu_chegadas_30d ? ' · 📥 ' + d.magalu_chegadas_30d + ' Magalu chegaram em 30d' : '') +
