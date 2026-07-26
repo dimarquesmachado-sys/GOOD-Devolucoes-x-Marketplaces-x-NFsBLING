@@ -183,7 +183,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.19 (diagnostico usando a v2 da API de returns)',
+    version: '4.20 (a data de entrega passa a ser buscada sozinha)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -3873,6 +3873,23 @@ setTimeout(() => mlReturns.preAquecer(), 30 * 1000);
 setTimeout(() => nfNomes.preAquecer(), 40 * 1000);
 // v4.04 - catalogo de produtos pre-aquecido (a busca do estoquista nunca espera)
 setTimeout(() => { construirIndiceProdutos().catch(() => {}); }, 70 * 1000);
+// v4.20 - a busca da data REAL de entrega roda sozinha, em ciclo proprio.
+// Antes so era disparada quando alguem abria o painel - e como o indice do ML
+// zera a cada deploy e leva ~2 min pra montar, o cache nunca enchia e o alerta
+// seguia contando pela data errada (8 dias no lugar de 11).
+function cicloDatasEntrega() {
+  try {
+    const r = mlReturns.resumoEspreita();
+    if (!r || !r.quente) return;
+    const pendentes = (r.entregues || []).filter(d => d.shipment_devolucao && !ESP_ENTREGA.has(String(d.shipment_devolucao)));
+    if (pendentes.length) {
+      console.log(`[ALERTA] buscando data de entrega de ${pendentes.length} devolucao(oes)...`);
+      dispararDatasEntrega(pendentes);
+    }
+  } catch (e) { /* tenta de novo no proximo ciclo */ }
+}
+setTimeout(cicloDatasEntrega, 3 * 60 * 1000);
+setInterval(cicloDatasEntrega, 5 * 60 * 1000);
 setTimeout(() => { if (magalu.cfg.autorizado) espreita.preAquecer(); }, 50 * 1000);
 setInterval(() => magalu.preAquecer(), 25 * 60 * 1000);
 setInterval(() => mlReturns.preAquecer(), 25 * 60 * 1000);
