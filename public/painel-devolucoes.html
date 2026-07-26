@@ -212,7 +212,7 @@
     <header>
       <div>
         <h1>🔐 Admin - GOOD Devolucoes</h1>
-        <p>Painel restrito · v3.94 (arquivo renomeado: painel-devolucoes.html)</p>
+        <p>Painel restrito · v3.95 (busca dentro do painel à espreita)</p>
       </div>
       <div class="header-acoes">
         <a href="/admin/relatorios.html" class="destaque">📊 Relatórios</a>
@@ -472,6 +472,11 @@
 
     // v3.81 - filtro/ordenacao client-side (re-render sem novo fetch)
     window._espFiltro = 'todos';
+    window._espBusca = '';
+    function espreitaBuscar(v) {
+      window._espBusca = String(v || '').trim().toUpperCase();
+      if (window._espDados) renderEspreita(window._espDados);
+    }
     window._espOrdem = 'antigas'; // 'antigas' = mais dias primeiro | 'novas' = menos dias primeiro
     function espreitaFiltrar(f) { window._espFiltro = f; if (window._espDados) renderEspreita(window._espDados); }
     function espreitaOrdenar() { window._espOrdem = (window._espOrdem === 'antigas') ? 'novas' : 'antigas'; if (window._espDados) renderEspreita(window._espDados); }
@@ -538,6 +543,7 @@
           shopee: { nome: 'Shopee', cor: '#e65100' },
         };
         let html = '<p style="font-size:13px;color:#666;margin:4px 0 10px;">' +
+          (window._espBusca ? '🔍 <b>filtrando por "' + escapeHtml(window._espBusca) + '"</b> · ' : '') +
           '🚚 <b>' + emT.length + '</b> em trânsito · ⏰ <b style="color:#c62828;">' + atras.length + '</b> atrasada(s) +30d' +
           (d.ml_aguardando_postagem ? ' · 🏷️ ' + d.ml_aguardando_postagem + ' ML aguardando o cliente postar' : '') +
           (d.magalu_chegadas_30d ? ' · 📥 ' + d.magalu_chegadas_30d + ' Magalu chegaram em 30d' : '') +
@@ -573,10 +579,23 @@
 
         const F = window._espFiltro || 'todos';
         let itens = (F === 'todos') ? emT : emT.filter(x => x.marketplace === F);
+        // v3.95 - busca por texto (com 45 itens, o Ctrl+F nao dava conta)
+        const _q = window._espBusca || '';
+        if (_q) {
+          itens = itens.filter(function (x) {
+            return [x.pedido, x.tracking, x.nf, x.cliente, x.produto, x.pack_id, x.status]
+              .some(function (v) { return String(v == null ? '' : v).toUpperCase().indexOf(_q) >= 0; });
+          });
+        }
         itens = [...itens].sort((x, y) => (window._espOrdem === 'novas')
           ? ((x.dias_em_transito || 0) - (y.dias_em_transito || 0))
           : ((y.dias_em_transito || 0) - (x.dias_em_transito || 0)));
         const fb = (id, rot, cor) => '<button onclick="espreitaFiltrar(\'' + id + '\')" style="border:none;border-radius:14px;padding:5px 12px;font-size:12px;font-weight:700;cursor:pointer;margin-right:6px;background:' + (F === id ? cor : '#e0e0e0') + ';color:' + (F === id ? '#fff' : '#555') + ';">' + rot + '</button>';
+        html += '<div style="margin:2px 0 8px;">'
+          + '<input type="text" id="espBuscaInput" value="' + escapeHtml(window._espBusca || '') + '" placeholder="🔍 Filtrar por pedido, rastreio, NF, cliente ou produto..." '
+          + 'oninput="espreitaBuscar(this.value)" '
+          + 'style="width:100%;box-sizing:border-box;padding:9px 12px;border:1px solid #ccc;border-radius:8px;font-size:14px;">'
+          + '</div>';
         html += '<div style="margin:2px 0 10px;">'
           + fb('todos', 'Todos (' + emT.length + ')', '#37474f')
           + fb('ml', 'Mercado Livre (' + emT.filter(x => x.marketplace === 'ml').length + ')', '#f9a825')
@@ -618,6 +637,11 @@
         }
         lista.innerHTML = html;
         sec.style.display = '';
+        // devolve o foco e o cursor pro campo (o render recria o input)
+        if (window._espBusca) {
+          const inp = document.getElementById('espBuscaInput');
+          if (inp) { inp.focus(); inp.setSelectionRange(inp.value.length, inp.value.length); }
+        }
     }
 
     // v3.28.2 - atualiza SO aquele card, sem redesenhar a lista inteira:
