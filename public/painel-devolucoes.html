@@ -1997,6 +1997,20 @@
 
       } catch (err) {
         console.error('Erro gerar devolucao:', err);
+        window.marcarFeitaNoBling = async function (id) {
+          // v4.00 - saida manual: a NF ja existe no Bling mas o app nao
+          // conseguiu vincular. Antes o card ficava preso na fila e o Diego
+          // reabria depois sem saber que ja estava resolvido.
+          if (!confirm('Confirmar que a NF de devolução JÁ foi emitida no Bling?\n\nO card sai da fila e fica marcado como concluído.')) return;
+          try {
+            const r = await fetch('/api/admin/concluir/' + id, { method: 'PUT' });
+            const d2 = await r.json();
+            if (d2 && d2.ok === false) { alert('Falhou: ' + (d2.erro || '')); return; }
+            toast('Marcado como concluído', 'ok');
+            fecharModalGerarDevolucao();
+            carregar();
+          } catch (e) { alert('Erro de conexão'); }
+        };
 
         // v3.20.1: "ja possui devolucao" = a NF existe no Bling mas o card
         // ficou orfao (ex: timeout em tentativa anterior). Procura e vincula.
@@ -2030,6 +2044,14 @@
 
         conteudo.innerHTML = `
           <h3 style="font-size:18px; margin-bottom:12px; color:#c62828;">❌ Erro ao gerar</h3>
+          ${String(err.message || '').toLowerCase().includes('ja possui devolucao') ? `
+            <div style="background:#e3f2fd; border:1px solid #90caf9; border-radius:8px; padding:12px; margin-bottom:14px; font-size:14px; color:#0d47a1;">
+              A NF de devolução <b>já foi emitida no Bling</b> — o app só não conseguiu localizá-la pra vincular.
+              Se você já gerou essa devolução, pode marcar o card como concluído aqui e ele sai da fila.
+              <div style="margin-top:10px;">
+                <button class="btn btn-verde" onclick="marcarFeitaNoBling(${devolucaoId})">✅ Já emiti no Bling — marcar como concluído</button>
+              </div>
+            </div>` : ''}
           <div style="background:#ffebee; padding:14px; border-radius:8px; margin-bottom:16px; font-size:13px; color:#b71c1c;">
             ${escapeHtml(err.message || String(err))}
           </div>
