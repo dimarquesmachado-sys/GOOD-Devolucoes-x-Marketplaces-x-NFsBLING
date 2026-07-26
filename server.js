@@ -183,7 +183,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.17 (diagnostico de data por pedido, sem depender do indice)',
+    version: '4.18 (tira do painel as devolucoes que o ML ja encerrou)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -3505,7 +3505,7 @@ app.get('/api/admin/espreita', requerAdmin, async (req, res) => {
   try { shopeeR = await shopee.resumoEspreita(); } catch (e) { shopeeR = { quente: false, erro: e.message, em_transito: [] }; }
   let unificada = [
     ...magaluR.em_transito.map(d => ({ marketplace: 'magalu', pedido: d.pedido, tracking: null, status: (d.categoria || '') + (d.status ? ' / ' + d.status : ''), dias_em_transito: d.dias_em_transito, valor: d.valor, uuid: d.chave || null, tipo: d.tipo || null, categoria: d.categoria || null })),
-    ...mlR.em_transito,
+    ...(mlR.em_transito || []).filter(d => (d.dias_em_transito == null) || d.dias_em_transito <= 120), // v4.18: corte de sanidade
     ...shopeeR.em_transito,
   ].sort((x, y) => (y.dias_em_transito || 0) - (x.dias_em_transito || 0));
 
