@@ -183,7 +183,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.22 (itens completos no alerta + mandar pra fila de NF)',
+    version: '4.24 (grava o id da NF no Bling - conserta o vinculo da devolucao)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -3128,6 +3128,20 @@ app.post('/api/admin/espreita/lancar-nf', requerAdmin, async (req, res) => {
       }
       if (!nf) { semNf.push(oid); continue; }
 
+      // v4.24 - BUSCA O ID DA NF NO BLING. Sem ele o gerador de devolucao
+      // trabalha as cegas e a nota sai SEM VINCULO com a venda original (foi
+      // o que aconteceu: as devolucoes saíram "Nao vinculado" no Bling).
+      try {
+        const rB = await buscarNFnoBlingPorNumero(nf.numero, nf.serie || '1');
+        const nfB = (rB && rB.ok && (rB.nf || rB.data)) || null;
+        if (nfB && nfB.id) {
+          nf.id_bling = String(nfB.id);
+          nf.link_danfe = nfB.linkDanfe || nfB.link_danfe || null;
+          nf.valor = nfB.valorNota || nfB.valor || null;
+          nf.data_emissao = nfB.dataEmissao || nfB.data_emissao || null;
+        }
+      } catch (e) { /* segue sem o id; o gerador ainda tenta pela chave */ }
+
       const b = od.buyer || {};
       const itens = od.order_items || [];
       const qtdTotal = itens.reduce((a, x) => a + (x.quantity || 0), 0);
@@ -3149,6 +3163,10 @@ app.post('/api/admin/espreita/lancar-nf', requerAdmin, async (req, res) => {
         nf_numero: nf.numero,
         nf_serie: nf.serie,
         nf_chave: nf.chave,
+        nf_id_bling: nf.id_bling || null,     // v4.24: sem isso a devolucao sai sem vinculo
+        nf_link_danfe: nf.link_danfe || null,
+        nf_valor: nf.valor || null,
+        nf_data_emissao: nf.data_emissao || null,
         tipo: 'aprovado',
         status: 'pendente',
         funcionario: req.usuario || 'admin',
@@ -3156,7 +3174,7 @@ app.post('/api/admin/espreita/lancar-nf', requerAdmin, async (req, res) => {
       }]).select().single();
 
       if (error) { falhas.push({ pedido: oid, erro: error.message }); continue; }
-      criados.push({ pedido: oid, id: novo.id, nf: nf.numero, itens: itens.length, qtd: qtdTotal });
+      criados.push({ pedido: oid, id: novo.id, nf: nf.numero, id_bling: nf.id_bling || null, itens: itens.length, qtd: qtdTotal });
       await new Promise(r => setTimeout(r, 250));
     } catch (e) { falhas.push({ pedido: String(orderId), erro: e.message }); }
   }
@@ -3167,6 +3185,45 @@ app.post('/api/admin/espreita/lancar-nf', requerAdmin, async (req, res) => {
     sem_nf: semNf, ja_existiam: jaExistiam, falhas,
     aviso: semNf.length ? 'Estas vendas nao tem NF identificada no app - confira no Bling antes de emitir' : null,
   });
+});
+
+// v4.24 - REPARO dos cards que ja foram criados sem o id da NF no Bling.
+// Sao os 14 que ficaram na fila: sem esse id o gerador emitiu a devolucao
+// sem vinculo com a nota de venda.
+app.post('/api/admin/reparar-nf-bling', requerAdmin, async (req, res) => {
+  try {
+    const { data: cards } = await supabase
+      .from('devolucoes')
+      .select('id, nf_numero, nf_serie, nf_chave, nf_id_bling, produto_titulo')
+      .is('nf_id_bling', null)
+      .not('nf_numero', 'is', null)
+      .neq('status', 'concluido')
+      .limit(Number(req.query.n || 10));
+    const corrigidos = [], naoAchados = [];
+    for (const c of (cards || [])) {
+      try {
+        const rB = await buscarNFnoBlingPorNumero(c.nf_numero, c.nf_serie || '1');
+        const nfB = (rB && rB.ok && (rB.nf || rB.data)) || null;
+        if (nfB && nfB.id) {
+          await supabase.from('devolucoes').update({
+            nf_id_bling: String(nfB.id),
+            nf_link_danfe: nfB.linkDanfe || nfB.link_danfe || null,
+          }).eq('id', c.id);
+          corrigidos.push({ card: c.id, nf: c.nf_numero, id_bling: String(nfB.id) });
+        } else {
+          naoAchados.push({ card: c.id, nf: c.nf_numero });
+        }
+      } catch (e) { naoAchados.push({ card: c.id, nf: c.nf_numero, erro: e.message }); }
+      await new Promise(r => setTimeout(r, 350));
+    }
+    return res.json({
+      ok: true,
+      analisados: (cards || []).length,
+      corrigidos: corrigidos.length, detalhe: corrigidos,
+      nao_achados: naoAchados,
+      dica: (cards || []).length >= Number(req.query.n || 10) ? 'ainda pode haver mais - rode de novo' : 'todos os pendentes foram analisados',
+    });
+  } catch (e) { return res.status(500).json({ ok: false, erro: e.message }); }
 });
 
 // v4.10 - DIAGNOSTICO: o que da pra saber sobre o MOTIVO da devolucao antes
