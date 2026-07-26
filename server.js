@@ -183,7 +183,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.27 (alerta espera a data real de entrega - conta dias certo)',
+    version: '4.28 (sondagem: NFs de devolucao no Bling)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -3261,6 +3261,66 @@ app.get('/api/debug/shopee-return', requerAdmin, async (req, res) => {
       amostra_2_itens: lista.slice(0, 2),
     });
   } catch (e) { return res.status(500).json({ ok: false, erro: e.message }); }
+});
+
+// v4.28 - SONDAGEM: como o Bling lista as NFs de DEVOLUCAO (entrada)?
+// Objetivo: cruzar o "a espreita" com as notas de devolucao ja emitidas -
+// se a NF de devolucao existe no Bling, o produto ja chegou, mesmo que o
+// marketplace ainda nao tenha atualizado. Testa os filtros reais antes de
+// construir, pra nao chutar.
+app.get('/api/debug/bling-nf-devolucao', requerAdmin, async (req, res) => {
+  const out = { testes: {} };
+  const proba = async (nome, url) => {
+    try {
+      const r = await chamarBling(url);
+      const lista = (r.ok && r.data?.data) || [];
+      out.testes[nome] = {
+        url: url.replace('https://api.bling.com.br/Api/v3', ''),
+        http: r.ok ? 200 : (r.status || null),
+        erro: r.ok ? null : String(r.error || '').slice(0, 150),
+        qtd: lista.length,
+        // so os campos que interessam pra nao vazar a nota inteira
+        amostra: lista.slice(0, 3).map(n => ({
+          id: n.id, numero: n.numero, tipo: n.tipo, serie: n.serie,
+          situacao: n.situacao, dataEmissao: n.dataEmissao,
+          natureza: n.naturezaOperacao?.descricao || n.naturezaOperacao || null,
+          contato: n.contato?.nome || null,
+        })),
+      };
+      return lista;
+    } catch (e) { out.testes[nome] = { url, erro: e.message }; return []; }
+  };
+
+  try {
+    // tipo=0 saida, tipo=1 entrada. Devolucao de cliente = ENTRADA.
+    await proba('entrada_tipo1', 'https://api.bling.com.br/Api/v3/nfe?tipo=1&limite=15');
+    // sem filtro, so pra ver o formato e quais campos vem
+    await proba('todas_recentes', 'https://api.bling.com.br/Api/v3/nfe?limite=5');
+    // se aceitar filtro por natureza/finalidade (pode nao existir)
+    await proba('por_situacao_5', 'https://api.bling.com.br/Api/v3/nfe?tipo=1&situacao=5&limite=15');
+
+    // se o Diego mandar uma chave de NF de venda, tenta achar a devolucao que a referencia
+    const chaveRef = String(req.query.chave || '').replace(/\D/g, '');
+    if (chaveRef.length === 44) {
+      const lista = await proba('busca_por_chave_referenciada', `https://api.bling.com.br/Api/v3/nfe?limite=50&tipo=1`);
+      // e detalha uma nota de entrada pra ver se traz a chave referenciada
+      if (lista[0]?.id) {
+        const rDet = await chamarBling(`https://api.bling.com.br/Api/v3/nfe/${lista[0].id}`);
+        const det = rDet.ok ? (rDet.data?.data || {}) : {};
+        out.exemplo_detalhe_entrada = {
+          id: det.id, numero: det.numero, tipo: det.tipo,
+          tem_notaReferenciada: !!(det.notaReferenciada || det.notasReferenciadas || det.chaveAcesso),
+          campos_no_detalhe: Object.keys(det).slice(0, 40),
+        };
+      }
+    }
+
+    out.legenda = {
+      tipo: '0 = saida (venda), 1 = entrada (devolucao de cliente)',
+      objetivo: 'achar as notas tipo 1 e cruzar a chave da NF de venda original com o campo referenciado',
+    };
+    return res.json({ ok: true, ...out });
+  } catch (e) { return res.status(500).json({ ok: false, erro: e.message, ...out }); }
 });
 
 // v4.10 - DIAGNOSTICO: o que da pra saber sobre o MOTIVO da devolucao antes
