@@ -212,7 +212,7 @@
     <header>
       <div>
         <h1>🔐 Admin - GOOD Devolucoes</h1>
-        <p>Painel restrito · v3.95 (busca dentro do painel à espreita)</p>
+        <p>Painel restrito · v3.96 (mandar do alerta pra fila de NF)</p>
       </div>
       <div class="header-acoes">
         <a href="/admin/relatorios.html" class="destaque">📊 Relatórios</a>
@@ -473,6 +473,33 @@
     // v3.81 - filtro/ordenacao client-side (re-render sem novo fetch)
     window._espFiltro = 'todos';
     window._espBusca = '';
+
+    // v3.96 - selecionar itens do alerta e mandar pra fila de NF
+    function alertaMarcarTodos(on) {
+      document.querySelectorAll('.chkAlerta').forEach(function (c) { c.checked = on; });
+    }
+    async function alertaMandarParaNF() {
+      const sel = [...document.querySelectorAll('.chkAlerta:checked')].map(function (c) { return c.value; });
+      const msg = document.getElementById('alertaMsg');
+      if (sel.length === 0) { msg.innerHTML = '<span style="color:#c62828;">Marque pelo menos um.</span>'; return; }
+      if (!confirm('Mandar ' + sel.length + ' devolução(ões) pra fila "Aprovadas - aguardando NF"?\n\nElas vão aparecer lá com todos os itens da venda, pra você escolher o depósito e emitir.')) return;
+      msg.innerHTML = '<span style="color:#666;">enviando...</span>';
+      try {
+        const r = await fetch('/api/admin/espreita/lancar-nf', {
+          method: 'POST', credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pedidos: sel }),
+        });
+        const d = await r.json();
+        if (!d.ok) { msg.innerHTML = '<span style="color:#c62828;">' + escapeHtml(d.erro || 'erro') + '</span>'; return; }
+        let t = '<span style="color:#2e7d32;">✅ ' + d.criados + ' na fila de NF</span>';
+        if ((d.ja_existiam || []).length) t += ' <span style="color:#666;">· ' + d.ja_existiam.length + ' já tinham registro</span>';
+        if ((d.sem_nf || []).length) t += ' <span style="color:#c62828;">· ⚠️ ' + d.sem_nf.length + ' SEM NF: ' + d.sem_nf.join(', ') + '</span>';
+        if ((d.falhas || []).length) t += ' <span style="color:#c62828;">· ' + d.falhas.length + ' falharam</span>';
+        msg.innerHTML = t;
+        setTimeout(function () { carregar(); }, 1800);
+      } catch (e) { msg.innerHTML = '<span style="color:#c62828;">erro de conexão</span>'; }
+    }
     function espreitaBuscar(v) {
       window._espBusca = String(v || '').trim().toUpperCase();
       if (window._espDados) renderEspreita(window._espDados);
@@ -554,11 +581,17 @@
         if (nb.length > 0) {
           html += '<div style="border:2px solid #c62828;border-radius:10px;padding:12px;margin-bottom:14px;background:#fff5f5;">'
             + '<b style="color:#c62828;">🚨 Consta ENTREGUE no marketplace, mas ninguém bipou aqui (' + nb.length + ')</b>'
-            + '<div style="font-size:12px;color:#666;margin:4px 0 8px;">Confere no galpão: pode estar guardado sem registro — ou não chegou de verdade.</div>';
+            + '<div style="font-size:12px;color:#666;margin:4px 0 8px;">Confere no galpão: pode estar guardado sem registro — ou não chegou de verdade.</div>'
+            + '<div style="margin:6px 0 10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">'
+            + '<label style="font-size:12px;"><input type="checkbox" onchange="alertaMarcarTodos(this.checked)"> marcar todos</label>'
+            + '<button onclick="alertaMandarParaNF()" style="background:#1565c0;color:#fff;border:none;border-radius:8px;padding:7px 14px;font-size:12px;font-weight:700;cursor:pointer;">📥 Mandar selecionados pra fila de NF</button>'
+            + '<span id="alertaMsg" style="font-size:12px;"></span>'
+            + '</div>';
           for (const e of nb) {
             const m = MKT[e.marketplace] || { nome: e.marketplace, cor: '#616161' };
             html += '<div style="border-left:4px solid ' + m.cor + ';background:#fff;border-radius:8px;padding:8px 10px;margin-bottom:6px;">'
               + '<span style="background:' + m.cor + ';color:#fff;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;">' + m.nome + '</span> '
+              + (e.pedido ? '<input type="checkbox" class="chkAlerta" value="' + escapeHtml(String(e.pedido)) + '" style="margin-right:7px;transform:scale(1.2);"> ' : '')
               + '<b>' + escapeHtml(String(e.pedido || e.tracking || '-')) + '</b>'
               + (e.pack_id ? ' · <span style="font-size:11px;color:#555;">pack <code>' + escapeHtml(String(e.pack_id)) + '</code></span>' : '')
               + (e.pedido && e.tracking ? ' · <code style="font-size:11px;">' + escapeHtml(String(e.tracking)) + '</code>' : '')
@@ -566,7 +599,14 @@
               + (linkVenda(e) ? ' <a href="' + linkVenda(e) + '" target="_blank" rel="noopener" style="background:#1565c0;color:#fff;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;text-decoration:none;margin-left:6px;">🔗 abrir</a>' : '')
               + '<br><span style="font-size:12px;color:#555;">Entregue há <b>' + (e.dias_desde != null ? e.dias_desde : '?') + ' dia(s)</b> · sem triagem no sistema'
               + (e.cliente ? ' · 👤 ' + escapeHtml(e.cliente) : '') + (e.nf ? ' · 🧾 NF ' + escapeHtml(String(e.nf)) : '') + (e.logistica ? ' · <span style="background:#455a64;color:#fff;padding:1px 6px;border-radius:8px;font-size:10px;font-weight:700;">' + escapeHtml(e.logistica) + '</span>' : '') + '</span>'
-              + (e.produto ? '<br><span style="font-size:12px;color:#333;">📦 ' + escapeHtml(e.produto) + (e.qtd ? ' ×' + e.qtd : '') + '</span>' : '')
+              + ((e.itens && e.itens.length)
+                  ? '<div style="font-size:12px;color:#333;margin-top:4px;background:#fff;border-radius:6px;padding:5px 8px;">'
+                    + e.itens.map(function (it) {
+                        return '📦 <b>' + (it.qtd || 1) + '×</b> ' + escapeHtml(it.titulo || '-')
+                          + (it.sku ? ' · <code style="font-size:11px;">' + escapeHtml(it.sku) + '</code>' : '');
+                      }).join('<br>')
+                    + '</div>'
+                  : (e.produto ? '<br><span style="font-size:12px;color:#333;">📦 ' + escapeHtml(e.produto) + (e.qtd ? ' ×' + e.qtd : '') + '</span>' : ''))
               + (e.comentario ? '<div style="font-size:12px;color:#4a148c;background:#f3e5f5;border-radius:6px;padding:6px 8px;margin-top:6px;">💬 ' + escapeHtml(e.comentario) + '</div>' : '')
               + '<div style="margin-top:6px;">'
               + '<button onclick="espreitaAbrir(\'' + e.chave_nota + '\', \'processar\')" style="background:#2e7d32;color:#fff;border:none;border-radius:8px;padding:5px 10px;font-size:12px;font-weight:700;cursor:pointer;">✓ achei / já processado</button> '
