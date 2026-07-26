@@ -183,7 +183,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.25 (cookie de sessao so trafega por HTTPS)',
+    version: '4.26 (diagnostico do status real da devolucao Shopee)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -3225,6 +3225,40 @@ app.post('/api/admin/reparar-nf-bling', requerAdmin, async (req, res) => {
       corrigidos: corrigidos.length, detalhe: corrigidos,
       nao_achados: naoAchados,
       dica: (cards || []).length >= Number(req.query.n || 10) ? 'ainda pode haver mais - rode de novo' : 'todos os pendentes foram analisados',
+    });
+  } catch (e) { return res.status(500).json({ ok: false, erro: e.message }); }
+});
+
+// v4.26 - DIAGNOSTICO SHOPEE: 39 devolucoes aparecem "em transito ha 80-118
+// dias", mas pelo menos uma (260323UXCCNA3X) foi devolvida em 11/04. O status
+// ACCEPTED que eu uso nao e o final. Esta rota mostra o objeto CRU que a
+// Shopee devolve, pra achar o campo que diz que acabou - e o id interno da
+// solicitacao, pro link da reclamacao que o Diego pediu.
+app.get('/api/debug/shopee-return', requerAdmin, async (req, res) => {
+  const alvo = String(req.query.sn || '').trim().toUpperCase();
+  try {
+    const lista = await shopee.buscarDevolucoesProxy(false);
+    if (!Array.isArray(lista)) return res.json({ ok: false, erro: 'proxy nao devolveu lista', tipo: typeof lista });
+    const achado = alvo
+      ? lista.find(d => [d.order_sn, d.return_sn, d.tracking_number].some(v => String(v || '').toUpperCase() === alvo))
+      : null;
+    const statusVistos = {}, logVistos = {};
+    for (const d of lista) {
+      const st = String(d.status || '(vazio)');
+      statusVistos[st] = (statusVistos[st] || 0) + 1;
+      const ls = String(d.logistics_status || d.logistic_status || '(vazio)');
+      logVistos[ls] = (logVistos[ls] || 0) + 1;
+    }
+    return res.json({
+      ok: true,
+      total_na_lista: lista.length,
+      campos_disponiveis: lista[0] ? Object.keys(lista[0]) : [],
+      valores_de_status: statusVistos,
+      valores_de_logistics_status: logVistos,
+      procurado: alvo || '(nenhum)',
+      objeto_cru: achado || null,
+      dica: achado ? 'olhe o objeto_cru: qual campo diz que a devolucao terminou?' : 'nao achei esse codigo na lista do proxy',
+      amostra_2_itens: lista.slice(0, 2),
     });
   } catch (e) { return res.status(500).json({ ok: false, erro: e.message }); }
 });
