@@ -183,7 +183,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.26 (diagnostico do status real da devolucao Shopee)',
+    version: '4.27 (alerta espera a data real de entrega - conta dias certo)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -3535,6 +3535,26 @@ const ESP_ENRIQ = new Map();
 // permanente (a data nunca muda).
 const ESP_ENTREGA = new Map();
 let ESP_ENTREGA_RODANDO = false;
+// v4.27 - versao que ESPERA (usada pelo alerta, onde a precisao importa mais
+// que a velocidade). Busca so o que ainda nao esta no cache, em paralelo
+// controlado, e nao mexe na trava do disparo em background.
+async function garantirDatasEntrega(itens) {
+  const faltam = [...new Set(
+    (itens || [])
+      .map(d => d.shipment_devolucao ? String(d.shipment_devolucao) : null)
+      .filter(sid => sid && !ESP_ENTREGA.has(sid))
+  )].slice(0, 40);
+  if (faltam.length === 0) return;
+  for (const sid of faltam) {
+    try {
+      const rh = await chamarML(`https://api.mercadolibre.com/shipments/${sid}/history`);
+      const dt = (rh.ok && rh.data?.date_history?.date_delivered) || null;
+      ESP_ENTREGA.set(sid, dt);
+    } catch (e) { /* deixa sem data; melhor cair no fallback do que travar */ }
+    await new Promise(r => setTimeout(r, 200));
+  }
+}
+
 function dispararDatasEntrega(itens) {
   if (ESP_ENTREGA_RODANDO) return;
   const fila = itens.filter(d => d.shipment_devolucao && !ESP_ENTREGA.has(String(d.shipment_devolucao))).slice(0, 60);
@@ -3752,7 +3772,12 @@ app.get('/api/admin/espreita', requerAdmin, async (req, res) => {
     // 5-90 dias e aplicado DEPOIS da correcao (antes, o last_updated do return
     // encolhia a conta e o item aparecia com menos dias do que os reais).
     const brutos = [...(mlR.entregues || []), ...(magaluR.entregues || [])];
-    dispararDatasEntrega(brutos);
+    // v4.27 - a data REAL de entrega e o que decide os dias. Buscar em
+    // background NAO chega a tempo na primeira carga (o alerta responde antes),
+    // e o painel acaba mostrando o last_updated do return, que e sempre MAIOR
+    // que a entrega real (a devolucao "fecha" dias depois de chegar). Como os
+    // candidatos do alerta sao poucos, ESPERAMOS a data deles aqui.
+    await garantirDatasEntrega(brutos);
     for (const d of brutos) {
       const real = d.shipment_devolucao ? ESP_ENTREGA.get(String(d.shipment_devolucao)) : null;
       if (real) {
