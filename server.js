@@ -183,7 +183,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.39 (filtro orderNumber + so protocolos do pedido)',
+    version: '4.40 (indice global de tickets Magalu - filtro por order.code)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -3742,7 +3742,9 @@ const nfDaChave = (k) => { const m = String(k || '').match(/^\d{44}$/) ? String(
 // v4.38 - protocolos/tickets do SAC Magalu por pedido. A API oficial
 // (/seller/v0/tickets?order_id=) devolve id (link), protocolo, motivo, status
 // e prazo. Cache curto porque o status muda (waiting_seller -> respondido).
-const MG_TICKETS = new Map(); // pedido -> { ts, lista }
+const MG_TICKETS = new Map();          // pedido(code) -> lista de tickets
+let MG_TICKETS_TS = 0;                  // quando o indice global foi montado
+let MG_TICKETS_CARREGANDO = null;       // promessa em voo (evita corrida)
 const MG_TICKETS_TTL = 10 * 60 * 1000;
 const MG_REASON = {
   defective_product: 'produto com defeito', product_not_received: 'não recebido',
@@ -3751,35 +3753,51 @@ const MG_REASON = {
   different_product: 'produto diferente', damaged_product: 'produto danificado',
 };
 const MG_TYPE = { cancellation: 'cancelamento', general: 'dúvida/geral', return: 'devolução', exchange: 'troca' };
+// v4.40 - a API de tickets IGNORA o filtro por pedido (order_id, orderNumber,
+// tudo testado = trazia a loja inteira). Entao buscamos a lista completa UMA
+// vez (paginando), montamos um indice por order.code, e cada pedido pega a sua
+// fatia. Cache global de 10 min; uma so busca serve todos os cards.
+async function montarIndiceTickets() {
+  if ((Date.now() - MG_TICKETS_TS) < MG_TICKETS_TTL && MG_TICKETS.size) return;
+  if (MG_TICKETS_CARREGANDO) return MG_TICKETS_CARREGANDO;
+  MG_TICKETS_CARREGANDO = (async () => {
+    const novo = new Map();
+    try {
+      for (let off = 0; off < 500; off += 50) {  // ate 500 tickets (10 paginas)
+        const r = await magalu.chamarMagalu(`https://api.magalu.com/seller/v0/tickets?_limit=50&_offset=${off}`);
+        const arr = (r.ok && (r.data?.results || r.data?.data || (Array.isArray(r.data) ? r.data : []))) || [];
+        if (!arr.length) break;
+        for (const t of arr) {
+          const code = String(t.order?.code || t.order?.order_id || '').replace(/\D/g, '');
+          if (!code) continue;
+          if (!novo.has(code)) novo.set(code, []);
+          novo.get(code).push({
+            id: t.id || null,
+            protocolo: t.protocol || null,
+            tipo: MG_TYPE[t.type] || t.type || null,
+            motivo: MG_REASON[t.reason] || t.reason || null,
+            status: t.status || null,
+            aguarda_voce: t.status === 'waiting_seller',
+            prazo: t.due_date || null,
+            fechado: !!t.closed,
+            criado: t.created_at || null,
+          });
+        }
+        if (arr.length < 50) break;
+      }
+      MG_TICKETS.clear();
+      for (const [k, v] of novo) MG_TICKETS.set(k, v);
+      MG_TICKETS_TS = Date.now();
+    } catch (e) { /* mantem o indice anterior */ }
+    finally { MG_TICKETS_CARREGANDO = null; }
+  })();
+  return MG_TICKETS_CARREGANDO;
+}
 async function magaluTicketsDoPedido(pedido) {
   const p = String(pedido || '').replace(/\D/g, '');
   if (!p) return [];
-  const cache = MG_TICKETS.get(p);
-  if (cache && (Date.now() - cache.ts) < MG_TICKETS_TTL) return cache.lista;
-  try {
-    // v4.39 - o filtro certo e orderNumber (order_id era ignorado e trazia a
-    // loja inteira). E ainda assim conferimos t.order.code === pedido no codigo,
-    // pra o card so mostrar os protocolos DESTE pedido mesmo que a API afrouxe.
-    const r = await magalu.chamarMagalu(`https://api.magalu.com/seller/v0/tickets?orderNumber=${p}&_limit=50`);
-    const arrBruto = (r.ok && (r.data?.results || r.data?.data || (Array.isArray(r.data) ? r.data : []))) || [];
-    const arr = arrBruto.filter(t => {
-      const code = String(t.order?.code || t.order?.order_id || '').replace(/\D/g, '');
-      return !code || code === p;   // se o ticket nao traz o pedido, mantem; se traz, tem que bater
-    });
-    const lista = arr.map(t => ({
-      id: t.id || null,                       // UUID do link
-      protocolo: t.protocol || null,          // numero visivel
-      tipo: MG_TYPE[t.type] || t.type || null,
-      motivo: MG_REASON[t.reason] || t.reason || null,
-      status: t.status || null,               // waiting_seller = precisa responder
-      aguarda_voce: t.status === 'waiting_seller',
-      prazo: t.due_date || null,
-      fechado: !!t.closed,
-      criado: t.created_at || null,
-    }));
-    MG_TICKETS.set(p, { ts: Date.now(), lista });
-    return lista;
-  } catch (e) { return []; }
+  await montarIndiceTickets();
+  return MG_TICKETS.get(p) || [];
 }
 
 async function enriquecerItemEspreita(d) {
