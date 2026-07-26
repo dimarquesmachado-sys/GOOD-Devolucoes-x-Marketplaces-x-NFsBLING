@@ -183,7 +183,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.20 (a data de entrega passa a ser buscada sozinha)',
+    version: '4.22 (itens completos no alerta + mandar pra fila de NF)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -3096,6 +3096,79 @@ app.get('/api/debug/alerta-datas', requerAdmin, async (req, res) => {
   });
 });
 
+// v4.22 - MANDAR PRA FILA DE NF direto do alerta. Cria o registro como se
+// tivesse sido triado, com TODOS os itens da venda - e ele cai na fila
+// "Aprovadas - aguardando NF", onde o Diego ja escolhe o deposito e emite.
+// Regra dele: venda sem NF nao passa - se nao achou, e problema do app.
+app.post('/api/admin/espreita/lancar-nf', requerAdmin, async (req, res) => {
+  const pedidos = Array.isArray(req.body?.pedidos) ? req.body.pedidos : [];
+  if (pedidos.length === 0) return res.status(400).json({ ok: false, erro: 'nenhum pedido selecionado' });
+  const criados = [], semNf = [], jaExistiam = [], falhas = [];
+
+  for (const orderId of pedidos.slice(0, 40)) {
+    try {
+      const oid = String(orderId).trim();
+      // ja foi triado antes?
+      const { data: existe } = await supabase.from('devolucoes').select('id').eq('order_id', oid).limit(1);
+      if (existe && existe.length) { jaExistiam.push(oid); continue; }
+
+      const rO = await chamarML(`https://api.mercadolibre.com/orders/${oid}`);
+      if (!rO.ok || !rO.data) { falhas.push({ pedido: oid, erro: 'nao achei a venda no ML' }); continue; }
+      const od = rO.data;
+
+      // NF da venda - obrigatoria
+      let nf = null;
+      const shipIda = od.shipping?.id;
+      if (shipIda) {
+        const rN = await buscarNFnoML(shipIda);
+        if (rN.ok && rN.data?.fiscal_key) {
+          const ch = String(rN.data.fiscal_key);
+          nf = { chave: ch, numero: ch.slice(25, 34).replace(/^0+/, ''), serie: ch.slice(22, 25).replace(/^0+/, '') || '1' };
+        }
+      }
+      if (!nf) { semNf.push(oid); continue; }
+
+      const b = od.buyer || {};
+      const itens = od.order_items || [];
+      const qtdTotal = itens.reduce((a, x) => a + (x.quantity || 0), 0);
+      const primeiro = itens[0] || {};
+      const resumoItens = itens.map(x => `${x.quantity || 1}x ${x.item?.seller_sku || x.item?.seller_custom_field || '?'} - ${x.item?.title || ''}`).join(' | ');
+
+      const { data: novo, error } = await supabase.from('devolucoes').insert([{
+        shipment_id: String(shipIda || oid),
+        order_id: oid,
+        pack_id: od.pack_id ? String(od.pack_id) : null,
+        buyer_id: b.id ? String(b.id) : null,
+        buyer_nome: [b.first_name, b.last_name].filter(Boolean).join(' ') || b.nickname || null,
+        buyer_nickname: b.nickname || null,
+        produto_titulo: primeiro.item?.title || null,
+        produto_mlb: primeiro.item?.id || null,
+        produto_sku: primeiro.item?.seller_sku || primeiro.item?.seller_custom_field || null,
+        produto_qtd: qtdTotal || 1,
+        produto_valor_unit: primeiro.unit_price || null,
+        nf_numero: nf.numero,
+        nf_serie: nf.serie,
+        nf_chave: nf.chave,
+        tipo: 'aprovado',
+        status: 'pendente',
+        funcionario: req.usuario || 'admin',
+        problema_descricao: `[LANCADO DO PAINEL A ESPREITA por ${req.usuario || 'admin'}] itens da venda: ${resumoItens}`,
+      }]).select().single();
+
+      if (error) { falhas.push({ pedido: oid, erro: error.message }); continue; }
+      criados.push({ pedido: oid, id: novo.id, nf: nf.numero, itens: itens.length, qtd: qtdTotal });
+      await new Promise(r => setTimeout(r, 250));
+    } catch (e) { falhas.push({ pedido: String(orderId), erro: e.message }); }
+  }
+
+  return res.json({
+    ok: true,
+    criados: criados.length, detalhe_criados: criados,
+    sem_nf: semNf, ja_existiam: jaExistiam, falhas,
+    aviso: semNf.length ? 'Estas vendas nao tem NF identificada no app - confira no Bling antes de emitir' : null,
+  });
+});
+
 // v4.10 - DIAGNOSTICO: o que da pra saber sobre o MOTIVO da devolucao antes
 // do estoquista abrir o pacote. Testa cada fonte e diz o que veio e o que foi
 // negado - sem chutar. Uso: /api/debug/motivo-devolucao?order=2000017466406326
@@ -3403,7 +3476,7 @@ function mapLogistica(lt) {
 let ESP_ENRIQ_RODANDO = false;
 const nfDaChave = (k) => { const m = String(k || '').match(/^\d{44}$/) ? String(k).slice(25, 34).replace(/^0+/, '') : null; return m || null; };
 async function enriquecerItemEspreita(d) {
-  const out = { cliente: null, nf: null, produto: null, qtd: null, logistica: null, pack_id: null }; // v3.86
+  const out = { cliente: null, nf: null, produto: null, qtd: null, logistica: null, pack_id: null, itens: [] }; // v4.22
   try {
     if (d.marketplace === 'ml' && d.pedido) {
       const rO = await chamarML(`https://api.mercadolibre.com/orders/${d.pedido}`);
@@ -3412,6 +3485,14 @@ async function enriquecerItemEspreita(d) {
         out.cliente = [b.first_name, b.last_name].filter(Boolean).join(' ') || b.nickname || null;
         const it = (rO.data.order_items || [])[0];
         if (it) { out.produto = it.item?.title || null; out.qtd = (rO.data.order_items || []).reduce((a, x) => a + (x.quantity || 0), 0); }
+        // v4.22 - TODOS os itens da venda (o alerta mostra e a fila de NF usa)
+        out.itens = (rO.data.order_items || []).map(x => ({
+          titulo: x.item?.title || null,
+          sku: x.item?.seller_sku || x.item?.seller_custom_field || null,
+          mlb: x.item?.id || null,
+          qtd: x.quantity || 1,
+          valor_unit: x.unit_price || null,
+        }));
         out.pack_id = rO.data.pack_id ? String(rO.data.pack_id) : null; // v3.86: pack_id vem na etiqueta de devolucao ML
         const shipIda = rO.data.shipping?.id;
         if (shipIda) {
@@ -3611,7 +3692,7 @@ app.get('/api/admin/espreita', requerAdmin, async (req, res) => {
         .filter(d => !notasN[d.chave_nota]?.baixado)
         .map(d => {
           const en = ESP_ENRIQ.get(d.chave_nota);
-          return { ...d, comentario: notasN[d.chave_nota]?.comentario || null, cliente: en?.cliente || null, nf: en?.nf || null, produto: en?.produto || null, qtd: en?.qtd || null, logistica: en?.logistica || null, pack_id: en?.pack_id || null };
+          return { ...d, comentario: notasN[d.chave_nota]?.comentario || null, cliente: en?.cliente || null, nf: en?.nf || null, produto: en?.produto || null, qtd: en?.qtd || null, logistica: en?.logistica || null, pack_id: en?.pack_id || null, itens: en?.itens || [] };
         });
       dispararEnriquecimentoEspreita(nuncaBipadas);
     }
