@@ -665,9 +665,11 @@
           if (e.marketplace === 'ml' && e.pedido) return 'https://www.mercadolivre.com.br/vendas/' + encodeURIComponent(e.pedido) + '/detalhe';
           if (e.marketplace === 'shopee' && e.pedido) return 'https://mover-pedidos-aguardando-x-atendido.onrender.com/good-checkout-offline/ir-shopee?sn=' + encodeURIComponent(e.pedido); // v3.80 - de-para order_sn->id interno, cai DENTRO do pedido
           if (e.marketplace === 'magalu') {
-            // v3.92 - link OFICIAL via API OAuth (servico Mover Pedidos, GOOD conectada):
-            // resolve numero->deliveries[0].id e cai DENTRO do pacote no portal.
-            // Qualquer falha la -> 302 pro portal de pedidos (nunca fica pior).
+            // v4.36 - com o UUID da entrega em maos (deliveries[0].id, descoberto
+            // via HAR), montamos o link DIRETO pro portal do seller - sem depender
+            // do redirect externo.
+            if (e.pedido && e.magalu_delivery_uuid) return 'https://seller.magalu.com/pedidos/' + encodeURIComponent(e.pedido) + '/' + encodeURIComponent(e.magalu_delivery_uuid);
+            // v3.92 - fallback: redirect oficial que resolve o uuid no servico Mover Pedidos
             if (e.pedido) return 'https://mover-pedidos-aguardando-x-atendido.onrender.com/magalu/ir/good?n=' + encodeURIComponent(e.pedido);
             // fallback: sem numero do pedido, cai no portal de devolucoes por uuid
             if (e.uuid && e.categoria === 'agencia') return 'https://seller.magaluentregas.com.br/gestao-de-devolucoes/detalhes?id=' + encodeURIComponent(e.uuid) + '&type=' + encodeURIComponent(e.tipo || 'CUSTOMER_RETURN') + '&category=orders';
