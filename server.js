@@ -183,7 +183,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.18 (tira do painel as devolucoes que o ML ja encerrou)',
+    version: '4.19 (diagnostico usando a v2 da API de returns)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -3030,8 +3030,15 @@ app.get('/api/debug/alerta-datas', requerAdmin, async (req, res) => {
       const claimId = rO.ok && rO.data?.mediations?.[0]?.id ? String(rO.data.mediations[0].id) : null;
       passos['2_claim_id'] = claimId || '(pedido sem reclamacao)';
       if (claimId) {
-        const rR = await chamarML(`https://api.mercadolibre.com/post-purchase/v1/claims/${claimId}/returns`);
-        passos['3_returns'] = { http: rR.status || (rR.ok ? 200 : null), ok: !!rR.ok };
+        // v4.19 - o indice usa a V2 desta API; a v1 devolve 400 (foi o que
+        // fez este diagnostico vir vazio na rodada anterior)
+        let rR = await chamarML(`https://api.mercadolibre.com/post-purchase/v2/claims/${claimId}/returns`);
+        passos['3_returns_v2'] = { http: rR.status || (rR.ok ? 200 : null), ok: !!rR.ok };
+        if (!rR.ok) {
+          rR = await chamarML(`https://api.mercadolibre.com/post-purchase/v1/claims/${claimId}/returns`);
+          passos['3_returns_v1_fallback'] = { http: rR.status || (rR.ok ? 200 : null), ok: !!rR.ok };
+        }
+        passos['3_return_completo'] = rR.ok ? rR.data : null;
         const shipments = (rR.ok && (rR.data?.shipments || (Array.isArray(rR.data) ? rR.data[0]?.shipments : null))) || [];
         passos['3_shipments_encontrados'] = shipments.map(x => ({ id: x.shipment_id || x.id, status: x.status, tipo: x.type, tracking: x.tracking_number }));
         passos['3_last_updated_do_return'] = rR.ok ? (rR.data?.last_updated || (Array.isArray(rR.data) ? rR.data[0]?.last_updated : null) || null) : null;
