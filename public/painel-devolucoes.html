@@ -384,21 +384,16 @@
     // v4.38 - protocolos AUTOMATICOS da Magalu (API oficial de SAC). Cada
     // reclamacao do pedido vira link, com motivo, status e prazo.
     function magaluProtocolosHtml(e) {
-      var ts = e.magalu_tickets || [];
-      if (!ts.length) return '';
-      var linhas = ts.map(function (t) {
-        var url = t.id ? ('https://seller.magalu.com/tickets/' + encodeURIComponent(t.id)) : null; // v4.39 - link LIMPO (o ?tenantId travava o carregamento do painel)
-        var cor = t.aguarda_voce ? '#c62828' : (t.fechado ? '#777' : '#1565c0');
-        var selo = t.aguarda_voce ? ' <span style="background:#c62828;color:#fff;padding:1px 6px;border-radius:8px;font-size:10px;font-weight:800;">RESPONDER</span>' : (t.fechado ? ' <span style="background:#777;color:#fff;padding:1px 6px;border-radius:8px;font-size:10px;">fechado</span>' : '');
-        var prazo = (t.prazo && t.aguarda_voce) ? (' · prazo ' + String(t.prazo).slice(0, 10).split('-').reverse().join('/')) : '';
-        var txt = (t.motivo ? escapeHtml(t.motivo) : (t.tipo ? escapeHtml(t.tipo) : 'protocolo')) + (t.protocolo ? ' — ' + escapeHtml(String(t.protocolo)) : '');
-        return '<div style="margin-top:4px;font-size:12px;">'
-          + (url ? '<a href="' + url + '" target="_blank" rel="noopener" style="color:' + cor + ';font-weight:700;text-decoration:none;">🎫 ' + txt + '</a>' : '🎫 ' + txt)
-          + selo + prazo + '</div>';
-      }).join('');
-      return '<div style="margin-top:6px;background:#f3e5f5;border-radius:8px;padding:7px 9px;">'
-        + '<b style="font-size:11px;color:#4a148c;">📋 Reclamações Magalu (' + ts.length + '):</b>'
-        + linhas + '</div>';
+      // v4.42 - a API de tickets nao bate com a pagina real (protocolos trocados)
+      // e nao da o UUID v4 do link do protocolo. O caminho CONFIAVEL e a pagina
+      // oficial de protocolos do pedido, montavel so com o numero do pedido:
+      //   seller.magalu.com/tickets/?orderNumber={pedido}
+      // Um clique abre a lista real; outro abre o protocolo pra ler a reclamacao.
+      if (!e.pedido) return '';
+      var url = 'https://seller.magalu.com/tickets/?orderNumber=' + encodeURIComponent(String(e.pedido).replace(/\D/g, ''));
+      return '<div style="margin-top:6px;">' +
+        '<a href="' + url + '" target="_blank" rel="noopener" style="background:#6a1b9a;color:#fff;border-radius:8px;padding:5px 10px;font-size:12px;font-weight:700;text-decoration:none;">📋 ver protocolos/reclamações deste pedido</a>' +
+        '</div>';
     }
 
     // v4.31 - campo TICKET so pra Magalu: salva o numero da reclamacao e monta
