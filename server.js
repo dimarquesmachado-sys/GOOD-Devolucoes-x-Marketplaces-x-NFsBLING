@@ -183,7 +183,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.35 (sondagem dos links de pedido e protocolo Magalu)',
+    version: '4.36 (link do pedido Magalu com o UUID certo da entrega)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -3699,7 +3699,7 @@ function mapLogistica(lt) {
 let ESP_ENRIQ_RODANDO = false;
 const nfDaChave = (k) => { const m = String(k || '').match(/^\d{44}$/) ? String(k).slice(25, 34).replace(/^0+/, '') : null; return m || null; };
 async function enriquecerItemEspreita(d) {
-  const out = { cliente: null, nf: null, produto: null, sku: null, qtd: null, valor_nf: null, logistica: null, pack_id: null, itens: [] }; // v4.22 / v4.32
+  const out = { cliente: null, nf: null, produto: null, sku: null, qtd: null, valor_nf: null, logistica: null, pack_id: null, itens: [], magalu_delivery_uuid: null, magalu_returns: [] }; // v4.22 / v4.32 / v4.36
   try {
     if (d.marketplace === 'ml' && d.pedido) {
       const rO = await chamarML(`https://api.mercadolibre.com/orders/${d.pedido}`);
@@ -3732,6 +3732,12 @@ async function enriquecerItemEspreita(d) {
       const rP = await magalu.chamarMagalu(`https://api.magalu.com/seller/v1/orders/${d.pedido}`);
       if (rP.ok && rP.data) {
         out.cliente = rP.data.customer?.name || null;
+        // v4.36 - UUID da entrega = o que monta o link do pedido no seller.magalu.com
+        // (descoberto no HAR do Diego: deliveries[0].id). E as devolucoes associadas.
+        const dlv = (rP.data.deliveries || [])[0];
+        if (dlv?.id) out.magalu_delivery_uuid = dlv.id;
+        out.magalu_returns = (dlv?.returns || rP.data.deliveries?.flatMap(x => x.returns || []) || [])
+          .map(r => r.external_id).filter(Boolean);
         const items = rP.data.items || (rP.data.deliveries || []).flatMap(x => x.items || []);
         if (items[0]) { out.produto = items[0].product?.name || items[0].name || null; out.sku = items[0].product?.code || items[0].sku || null; out.qtd = items.reduce((a, x) => a + (x.quantity || 0), 0); }
         out.valor_nf = items.reduce((a, x) => a + ((x.price || x.unit_price || 0) * (x.quantity || 1)), 0) || null;
@@ -3886,7 +3892,7 @@ app.get('/api/admin/espreita', requerAdmin, async (req, res) => {
   await garantirEnriquecimentoEspreita(prioritarios);
   for (const d of unificada) {
     const en = ESP_ENRIQ.get(d.chave_nota);
-    if (en) { d.cliente = en.cliente; d.nf = en.nf; d.produto = en.produto; d.sku = en.sku; d.qtd = en.qtd; d.valor_nf = en.valor_nf; d.pack_id = en.pack_id; if (en.logistica) d.logistica = en.logistica; }
+    if (en) { d.cliente = en.cliente; d.nf = en.nf; d.produto = en.produto; d.sku = en.sku; d.qtd = en.qtd; d.valor_nf = en.valor_nf; d.pack_id = en.pack_id; d.magalu_delivery_uuid = en.magalu_delivery_uuid; d.magalu_returns = en.magalu_returns; if (en.logistica) d.logistica = en.logistica; }
     if (d.marketplace === 'ml') d.dinheiro = d.status_money === 'refunded' ? 'estornado_cliente' : (d.status_money === 'retained' ? 'retido_com_voce' : null);
   }
   dispararEnriquecimentoEspreita(unificada);
@@ -3946,7 +3952,7 @@ app.get('/api/admin/espreita', requerAdmin, async (req, res) => {
       await garantirEnriquecimentoEspreita(baseAlerta);
       nuncaBipadas = baseAlerta.map(d => {
         const en = ESP_ENRIQ.get(d.chave_nota);
-        return { ...d, comentario: notasN[d.chave_nota]?.comentario || null, ticket: notasN[d.chave_nota]?.ticket || null, cliente: en?.cliente || null, nf: en?.nf || null, produto: en?.produto || null, sku: en?.sku || null, qtd: en?.qtd || null, valor_nf: en?.valor_nf || null, logistica: en?.logistica || null, pack_id: en?.pack_id || null, itens: en?.itens || [] };
+        return { ...d, comentario: notasN[d.chave_nota]?.comentario || null, ticket: notasN[d.chave_nota]?.ticket || null, cliente: en?.cliente || null, nf: en?.nf || null, produto: en?.produto || null, sku: en?.sku || null, qtd: en?.qtd || null, valor_nf: en?.valor_nf || null, logistica: en?.logistica || null, pack_id: en?.pack_id || null, itens: en?.itens || [], magalu_delivery_uuid: en?.magalu_delivery_uuid || null, magalu_returns: en?.magalu_returns || [] };
       });
     }
   } catch (e) { nuncaBipadas = []; }
