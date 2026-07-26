@@ -381,6 +381,26 @@
       carregarRecados();
     }
 
+    // v4.38 - protocolos AUTOMATICOS da Magalu (API oficial de SAC). Cada
+    // reclamacao do pedido vira link, com motivo, status e prazo.
+    function magaluProtocolosHtml(e) {
+      var ts = e.magalu_tickets || [];
+      if (!ts.length) return '';
+      var linhas = ts.map(function (t) {
+        var url = t.id ? ('https://seller.magalu.com/tickets/' + encodeURIComponent(t.id) + '?tenantId=goodimport-magazine') : null;
+        var cor = t.aguarda_voce ? '#c62828' : (t.fechado ? '#777' : '#1565c0');
+        var selo = t.aguarda_voce ? ' <span style="background:#c62828;color:#fff;padding:1px 6px;border-radius:8px;font-size:10px;font-weight:800;">RESPONDER</span>' : (t.fechado ? ' <span style="background:#777;color:#fff;padding:1px 6px;border-radius:8px;font-size:10px;">fechado</span>' : '');
+        var prazo = (t.prazo && t.aguarda_voce) ? (' · prazo ' + String(t.prazo).slice(0, 10).split('-').reverse().join('/')) : '';
+        var txt = (t.motivo ? escapeHtml(t.motivo) : (t.tipo ? escapeHtml(t.tipo) : 'protocolo')) + (t.protocolo ? ' — ' + escapeHtml(String(t.protocolo)) : '');
+        return '<div style="margin-top:4px;font-size:12px;">'
+          + (url ? '<a href="' + url + '" target="_blank" rel="noopener" style="color:' + cor + ';font-weight:700;text-decoration:none;">🎫 ' + txt + '</a>' : '🎫 ' + txt)
+          + selo + prazo + '</div>';
+      }).join('');
+      return '<div style="margin-top:6px;background:#f3e5f5;border-radius:8px;padding:7px 9px;">'
+        + '<b style="font-size:11px;color:#4a148c;">📋 Reclamações Magalu (' + ts.length + '):</b>'
+        + linhas + '</div>';
+    }
+
     // v4.31 - campo TICKET so pra Magalu: salva o numero da reclamacao e monta
     // o link direto pra request no Zendesk. Se ja tem ticket, o botao de abrir
     // NOVA reclamacao some (nao faz sentido abrir outra).
@@ -804,7 +824,10 @@
             ) : '') +
             // v4.31 - Magalu: campo TICKET (salva + vira link). Se ja tem ticket,
             // o botao de abrir NOVA reclamacao some.
-            (e.marketplace === 'magalu' ? (
+            // v4.38 - protocolos automaticos (aparecem sempre que a API traz)
+            (e.marketplace === 'magalu' ? magaluProtocolosHtml(e) : '') +
+            // campo manual = FALLBACK so quando a API nao trouxe nenhum protocolo
+            (e.marketplace === 'magalu' && (!e.magalu_tickets || !e.magalu_tickets.length) ? (
               // v4.32 - se JA TEM ticket: mostra so o link + editar/apagar (sem caixinha,
               // que confundia). Se NAO tem: mostra a caixinha pra digitar.
               (e.ticket ? (
