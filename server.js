@@ -183,7 +183,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.32 (ticket em modo leitura + detalhes fiscais nos cards)',
+    version: '4.33 (alerta espera os detalhes fiscais antes de responder)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -3706,6 +3706,19 @@ async function enriquecerItemEspreita(d) {
   } catch (e) { /* item fica sem enriquecer nesta rodada */ }
   return out;
 }
+// v4.33 - versao que ESPERA (usada pelo alerta: sao poucos itens e a gente
+// quer os detalhes ja na primeira carga, nao daqui a um minuto).
+async function garantirEnriquecimentoEspreita(itens) {
+  const faltam = (itens || []).filter(d => d.chave_nota && !ESP_ENRIQ.has(d.chave_nota)).slice(0, 30);
+  for (const d of faltam) {
+    try {
+      const en = await enriquecerItemEspreita(d);
+      ESP_ENRIQ.set(d.chave_nota, en);
+    } catch (e) { /* segue sem enriquecer este */ }
+    await new Promise(r => setTimeout(r, 200));
+  }
+}
+
 function dispararEnriquecimentoEspreita(itens) {
   if (ESP_ENRIQ_RODANDO) return;
   const fila = itens.filter(d => d.chave_nota && !ESP_ENRIQ.has(d.chave_nota)).slice(0, 80);
@@ -3871,15 +3884,17 @@ app.get('/api/admin/espreita', requerAdmin, async (req, res) => {
         const { data } = await supabase.from('espreita_notas').select('chave, baixado, comentario').in('chave', chavesN);
         for (const n of (data || [])) notasN[n.chave] = n;
       } catch (e) { /* segue sem notas */ }
-      nuncaBipadas = candidatos
+      const baseAlerta = candidatos
         .filter(d => !achados.has(String(d.pedido || '')) && !achados.has(String(d.tracking || '')))
         .map(d => ({ ...d, chave_nota: String(d.tracking || (d.marketplace + ':' + d.pedido)) }))
-        .filter(d => !notasN[d.chave_nota]?.baixado)
-        .map(d => {
-          const en = ESP_ENRIQ.get(d.chave_nota);
-          return { ...d, comentario: notasN[d.chave_nota]?.comentario || null, ticket: notasN[d.chave_nota]?.ticket || null, cliente: en?.cliente || null, nf: en?.nf || null, produto: en?.produto || null, sku: en?.sku || null, qtd: en?.qtd || null, valor_nf: en?.valor_nf || null, logistica: en?.logistica || null, pack_id: en?.pack_id || null, itens: en?.itens || [] };
-        });
-      dispararEnriquecimentoEspreita(nuncaBipadas);
+        .filter(d => !notasN[d.chave_nota]?.baixado);
+      // v4.33 - espera os detalhes ANTES de responder (na primeira carga vinham
+      // vazios porque o enriquecimento era so disparado em background)
+      await garantirEnriquecimentoEspreita(baseAlerta);
+      nuncaBipadas = baseAlerta.map(d => {
+        const en = ESP_ENRIQ.get(d.chave_nota);
+        return { ...d, comentario: notasN[d.chave_nota]?.comentario || null, ticket: notasN[d.chave_nota]?.ticket || null, cliente: en?.cliente || null, nf: en?.nf || null, produto: en?.produto || null, sku: en?.sku || null, qtd: en?.qtd || null, valor_nf: en?.valor_nf || null, logistica: en?.logistica || null, pack_id: en?.pack_id || null, itens: en?.itens || [] };
+      });
     }
   } catch (e) { nuncaBipadas = []; }
   return res.json({
