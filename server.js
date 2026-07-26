@@ -183,7 +183,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.33 (alerta espera os detalhes fiscais antes de responder)',
+    version: '4.34 (lista em transito espera detalhes dos atrasados)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -3831,6 +3831,11 @@ app.get('/api/admin/espreita', requerAdmin, async (req, res) => {
   } catch (e) { for (const d of unificada) d.chave_nota = chaveEspreita(d); }
 
   // v3.81 - anexa cliente/NF do cache; dinheiro: ML tem status_money nativo
+  // v4.34 - espera o enriquecimento dos itens ATRASADOS (+30 dias, os que a
+  // gente de fato vai cobrar) antes de responder; o resto enriquece em
+  // background pra nao deixar a carga lenta com dezenas de itens.
+  const prioritarios = unificada.filter(d => (d.dias_em_transito || 0) > 30).slice(0, 25);
+  await garantirEnriquecimentoEspreita(prioritarios);
   for (const d of unificada) {
     const en = ESP_ENRIQ.get(d.chave_nota);
     if (en) { d.cliente = en.cliente; d.nf = en.nf; d.produto = en.produto; d.sku = en.sku; d.qtd = en.qtd; d.valor_nf = en.valor_nf; d.pack_id = en.pack_id; if (en.logistica) d.logistica = en.logistica; }
