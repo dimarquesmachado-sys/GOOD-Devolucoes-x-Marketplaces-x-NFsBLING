@@ -183,7 +183,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.24 (grava o id da NF no Bling - conserta o vinculo da devolucao)',
+    version: '4.25 (cookie de sessao so trafega por HTTPS)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -1626,6 +1626,9 @@ app.post('/api/auth/login', (req, res) => {
   res.cookie('sessao', token, {
     httpOnly: true,
     sameSite: 'lax',
+    // v4.25 - em producao (Render, HTTPS) o cookie so trafega criptografado.
+    // Em localhost fica desligado pra nao atrapalhar teste local.
+    secure: process.env.NODE_ENV === 'production' || !!process.env.RENDER,
     maxAge: 12 * 60 * 60 * 1000, // 12h
   });
   console.log(`[LOGIN] ${usuario} (${tipo})`);
