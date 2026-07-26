@@ -381,6 +381,22 @@
       carregarRecados();
     }
 
+    // v4.31 - campo TICKET so pra Magalu: salva o numero da reclamacao e monta
+    // o link direto pra request no Zendesk. Se ja tem ticket, o botao de abrir
+    // NOVA reclamacao some (nao faz sentido abrir outra).
+    function magaluLinkTicket(num) {
+      return 'https://marketplacemagalu.zendesk.com/hc/pt-br/requests/' + encodeURIComponent(String(num).replace(/\D/g, ''));
+    }
+    async function magaluSalvarTicket(chave) {
+      var inp = document.getElementById('tk_' + chave);
+      if (!inp) return;
+      var val = String(inp.value || '').replace(/\D/g, '').slice(0, 20);
+      var d = await espreitaNotaPost({ chave: chave, ticket: val });
+      if (!d.ok) { alert(d.erro || 'erro ao salvar ticket'); return; }
+      // atualiza a UI na hora
+      if (window._espDados) renderEspreita(window._espDados);
+    }
+
     // v4.30 - o comentario do a espreita e onde o Diego cola o numero do ticket
     // aberto no marketplace. O numero E parte da URL, entao detectamos e viramos
     // link clicavel - assim da pra voltar direto na reclamacao depois.
@@ -759,10 +775,19 @@
             (e.marketplace === 'shopee' && e.pedido ? (
               ' <a href="https://mover-pedidos-aguardando-x-atendido.onrender.com/good-checkout-offline/ir-shopee?sn=' + encodeURIComponent(e.pedido) + '" target="_blank" rel="noopener" style="background:#e65100;color:#fff;border-radius:8px;padding:5px 10px;font-size:12px;font-weight:700;text-decoration:none;">📦 abrir pedido Shopee</a>'
             ) : '') +
-            // v4.29 - Magalu atrasada: abrir o formulario de reclamacao + copiar o texto pronto
+            // v4.31 - Magalu: campo TICKET (salva + vira link). Se ja tem ticket,
+            // o botao de abrir NOVA reclamacao some.
             (e.marketplace === 'magalu' ? (
-              ' <a href="https://marketplacemagalu.zendesk.com/hc/pt-br/requests/new" target="_blank" rel="noopener" style="background:#1565c0;color:#fff;border-radius:8px;padding:5px 10px;font-size:12px;font-weight:700;text-decoration:none;">📨 abrir reclamação Magalu</a>' +
-              ' <button id="cp_' + escapeHtml(String(e.pedido || '')) + '" onclick="magaluCopiarReclamacao(\'' + escapeHtml(String(e.pedido || '')) + '\', \'' + btoa(unescape(encodeURIComponent(String(e.produto || '')))) + '\', ' + (e.dias_em_transito || 0) + ', ' + (e.valor != null ? Number(e.valor) : 'null') + ')" style="background:#00695c;color:#fff;border:none;border-radius:8px;padding:5px 10px;font-size:12px;font-weight:700;cursor:pointer;">📋 copiar texto da reclamação</button>'
+              '<div style="margin-top:6px;display:flex;gap:5px;align-items:center;flex-wrap:wrap;">' +
+                '<span style="font-size:11px;color:#555;font-weight:700;">🎫 Ticket:</span>' +
+                '<input id="tk_' + escapeHtml(String(e.chave_nota)) + '" value="' + escapeHtml(String(e.ticket || '')) + '" placeholder="nº da reclamação" style="width:130px;padding:4px 7px;border:1px solid #ce93d8;border-radius:7px;font-size:12px;">' +
+                '<button onclick="magaluSalvarTicket(\'' + escapeHtml(String(e.chave_nota)) + '\')" style="background:#6a1b9a;color:#fff;border:none;border-radius:7px;padding:4px 9px;font-size:12px;font-weight:700;cursor:pointer;">salvar</button>' +
+                (e.ticket ? ' <a href="' + magaluLinkTicket(e.ticket) + '" target="_blank" rel="noopener" style="background:#1565c0;color:#fff;border-radius:7px;padding:4px 9px;font-size:12px;font-weight:700;text-decoration:none;">🔗 abrir ticket ' + escapeHtml(String(e.ticket)) + '</a>' : '') +
+              '</div>' +
+              '<div style="margin-top:5px;">' +
+                (e.ticket ? '' : ' <a href="https://marketplacemagalu.zendesk.com/hc/pt-br/requests/new" target="_blank" rel="noopener" style="background:#1565c0;color:#fff;border-radius:8px;padding:5px 10px;font-size:12px;font-weight:700;text-decoration:none;">📨 abrir reclamação Magalu</a>') +
+                ' <button id="cp_' + escapeHtml(String(e.pedido || '')) + '" onclick="magaluCopiarReclamacao(\'' + escapeHtml(String(e.pedido || '')) + '\', \'' + btoa(unescape(encodeURIComponent(String(e.produto || '')))) + '\', ' + (e.dias_em_transito || 0) + ', ' + (e.valor != null ? Number(e.valor) : 'null') + ')" style="background:#00695c;color:#fff;border:none;border-radius:8px;padding:5px 10px;font-size:12px;font-weight:700;cursor:pointer;">📋 copiar texto da reclamação</button>' +
+              '</div>'
             ) : '') +
             '</div>' +
             '<div id="espArea-' + e.chave_nota + '" style="display:none;"></div></div>';
