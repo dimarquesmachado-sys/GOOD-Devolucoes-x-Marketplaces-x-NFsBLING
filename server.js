@@ -183,7 +183,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.42 (link pra pagina oficial de protocolos do pedido)',
+    version: '4.43 (detalhes Magalu do lugar certo + card do alerta limpo)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -3843,9 +3843,24 @@ async function enriquecerItemEspreita(d) {
         // v4.42 - nao busca mais tickets da API aqui: o card usa a pagina oficial
         // (seller.magalu.com/tickets/?orderNumber=) que e confiavel. A API de
         // tickets ficou so nas rotas de debug, se precisar investigar.
-        const items = rP.data.items || (rP.data.deliveries || []).flatMap(x => x.items || []);
-        if (items[0]) { out.produto = items[0].product?.name || items[0].name || null; out.sku = items[0].product?.code || items[0].sku || null; out.qtd = items.reduce((a, x) => a + (x.quantity || 0), 0); }
-        out.valor_nf = items.reduce((a, x) => a + ((x.price || x.unit_price || 0) * (x.quantity || 1)), 0) || null;
+        // v4.43 - estrutura real: deliveries[].items[].info.{name,sku} + unit_price.value
+        // (com normalizer 100 = centavos). O codigo antigo procurava items[].product,
+        // que nao existe nesse formato - por isso vinha vazio.
+        const items = (rP.data.deliveries || []).flatMap(x => x.items || []);
+        const norm = (rP.data.amounts?.normalizer) || 100;
+        if (items[0]) {
+          const inf = items[0].info || {};
+          out.produto = inf.name || inf.description || null;
+          out.sku = inf.sku || (items[0].external_sku) || null;
+          out.qtd = items.reduce((a, x) => a + (x.quantity || 0), 0);
+        }
+        // valor: soma dos unit_price.value * quantidade, convertendo o normalizer
+        out.valor_nf = items.reduce((a, x) => {
+          const v = (x.unit_price?.value != null) ? x.unit_price.value : (x.amounts?.total || 0);
+          return a + (v * (x.quantity || 1));
+        }, 0) / norm || null;
+        // se preferir o total do pedido: rP.data.amounts.total / normalizer
+        if (!out.valor_nf && rP.data.amounts?.total) out.valor_nf = rP.data.amounts.total / norm;
         out.logistica = 'Magalu';
         const cols = [rP.data.invoices, ...((rP.data.deliveries || []).map(x => x && x.invoices))];
         for (const arr of cols) {
