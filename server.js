@@ -183,7 +183,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.34 (lista em transito espera detalhes dos atrasados)',
+    version: '4.35 (sondagem dos links de pedido e protocolo Magalu)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -2495,6 +2495,54 @@ app.get('/api/debug/magalu-caca', requerAdmin, async (req, res) => {
     });
   }
   return res.json({ ok: true, procurando: alvo || '(nada)', achados });
+});
+
+// v4.35 - SONDAGEM dos links do seller.magalu.com. O HAR do Diego revelou:
+//   pedido:    seller.magalu.com/pedidos/{numero}/{UUID_pedido}
+//   protocolo: seller.magalu.com/tickets/{UUID_ticket}?tenantId=goodimport-magazine
+// A duvida: o UUID que ja temos (da espreita Magalu Entregas) e o mesmo
+// UUID_pedido da URL? E como listar os protocolos de um pedido? Esta rota
+// pega um numero de pedido e testa os endpoints que podem devolver esses IDs.
+app.get('/api/debug/magalu-links', requerAdmin, async (req, res) => {
+  if (!magalu.cfg.autorizado) return res.status(400).json({ ok: false, erro: 'Magalu nao autorizada' });
+  const pedido = String(req.query.pedido || '').replace(/\D/g, '');
+  if (!pedido) return res.status(400).json({ ok: false, erro: 'informe ?pedido=NUMERO' });
+  const out = { pedido, fontes: {} };
+  const proba = async (nome, caminho) => {
+    try {
+      const r = await magalu.chamarMagalu(caminho);
+      out.fontes[nome] = { caminho, http: r.status, ok: !!r.ok, dados: r.ok ? r.data : String(JSON.stringify(r.error || '')).slice(0, 200) };
+      return r.ok ? r.data : null;
+    } catch (e) { out.fontes[nome] = { caminho, erro: e.message }; return null; }
+  };
+  try {
+    // 1) o pedido pelo numero - procuramos um UUID na resposta
+    const ped = await proba('pedido_por_numero', `https://api.magalu.com/seller/v1/orders/${pedido}`);
+    if (ped) {
+      // varre atras de qualquer uuid (id do pedido, do pacote, etc)
+      const uuids = [];
+      const busca = (o, path) => {
+        if (!o || typeof o !== 'object') return;
+        for (const k of Object.keys(o)) {
+          const v = o[k];
+          if (typeof v === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v)) uuids.push({ campo: (path ? path + '.' : '') + k, uuid: v });
+          else if (typeof v === 'object') busca(v, (path ? path + '.' : '') + k);
+        }
+      };
+      busca(ped, '');
+      out.uuids_encontrados_no_pedido = uuids;
+      out.campos_topo = Object.keys(ped);
+    }
+    // 2) endpoints de protocolo/ticket que podem existir
+    await proba('protocolos_v1', `https://api.magalu.com/seller/v1/orders/${pedido}/protocols`);
+    await proba('tickets_do_pedido', `https://api.magalu.com/seller/v1/orders/${pedido}/tickets`);
+
+    out.como_montar = {
+      link_pedido: 'https://seller.magalu.com/pedidos/{numero}/{UUID} - preciso saber qual dos uuids_encontrados e o certo',
+      link_protocolo: 'https://seller.magalu.com/tickets/{UUID_ticket}?tenantId=goodimport-magazine',
+    };
+    return res.json({ ok: true, ...out });
+  } catch (e) { return res.status(500).json({ ok: false, erro: e.message, ...out }); }
 });
 
 // EXPLORACAO livre ML (v3.65.1): tatear qualquer endpoint sem novo deploy
