@@ -381,6 +381,75 @@
       carregarRecados();
     }
 
+    // v4.30 - o comentario do a espreita e onde o Diego cola o numero do ticket
+    // aberto no marketplace. O numero E parte da URL, entao detectamos e viramos
+    // link clicavel - assim da pra voltar direto na reclamacao depois.
+    function comentarioComLinks(txt, marketplace) {
+      var esc = escapeHtml(String(txt || ''));
+      // "ticket 147110817", "protocolo: 147110817", "chamado #147110817" ou o numero solto de 6-12 digitos
+      esc = esc.replace(/\b(\d{6,12})\b/g, function (num) {
+        var url = null;
+        if (marketplace === 'magalu') url = 'https://marketplacemagalu.zendesk.com/hc/pt-br/requests/' + num;
+        // ML e Shopee: o ticket normalmente e acessado dentro do proprio pedido,
+        // entao aqui so realca o numero (o link do pedido ja esta no card).
+        if (url) return '<a href="' + url + '" target="_blank" rel="noopener" style="color:#1565c0;font-weight:700;">🎫 ' + num + '</a>';
+        return '<b>' + num + '</b>';
+      });
+      return esc;
+    }
+
+    // v4.29 - Magalu nao tem API de pos-venda: a reclamacao e feita num
+    // formulario (Zendesk). Geramos o texto pronto e abrimos o formulario.
+    // Portal: marketplacemagalu.zendesk.com/hc/pt-br/requests/new
+    function magaluTextoReclamacao(pedido, produto, dias, valor) {
+      const val = (valor != null && !isNaN(valor)) ? ('R$ ' + Number(valor).toFixed(2).replace('.', ',')) : 'o valor integral do pedido';
+      const prod = produto ? (' referente ao produto "' + produto + '"') : '';
+      const d = dias ? (' Já se passaram ' + dias + ' dias desde o início do trânsito da devolução.') : '';
+      return 'Prezados,\n\n'
+        + 'Referente ao pedido ' + (pedido || '(informe o número)') + prod + ', a devolução consta como enviada pelo cliente, porém NÃO foi recebida em nosso endereço até o momento.' + d + '\n\n'
+        + 'Como o produto não retornou fisicamente para nós e o prazo já se esgotou, entendemos que houve extravio da devolução durante o transporte sob responsabilidade da Magalu Entregas.\n\n'
+        + 'Solicitamos o ressarcimento/indenização do valor do pedido (' + val + '), uma vez que o reembolso ao cliente já foi processado e não recebemos a mercadoria de volta.\n\n'
+        + 'Ficamos no aguardo de uma posição. Obrigado.';
+    }
+
+    // v4.30 - ML: reclamacao vai DENTRO do pedido (aba mensagens). Texto pronto
+    // pra colar la, cobrando o extravio da devolucao.
+    function mlTextoReclamacao(pedido, produto, dias, valor) {
+      var val = (valor != null && !isNaN(valor)) ? ('R$ ' + Number(valor).toFixed(2).replace('.', ',')) : 'o valor do pedido';
+      var prod = produto ? (' (' + produto + ')') : '';
+      var d = dias ? (' Já são ' + dias + ' dias desde o início do trânsito.') : '';
+      return 'Olá. A devolução deste pedido' + prod + ' consta como enviada, mas NÃO chegou até nós.' + d
+        + ' Como o produto não retornou e o reembolso ao comprador já foi feito, solicitamos o ressarcimento de ' + val
+        + ' referente ao extravio da devolução. Obrigado.';
+    }
+    function mlCopiarReclamacao(pedido, produtoB64, dias, valor) {
+      var produto = ''; try { produto = produtoB64 ? decodeURIComponent(escape(atob(produtoB64))) : ''; } catch (e) {}
+      var txt = mlTextoReclamacao(pedido, produto, dias, valor);
+      var ok = function () { var el = document.getElementById('cpml_' + pedido); if (el) { var o = el.textContent; el.textContent = '✅ copiado!'; setTimeout(function () { el.textContent = o; }, 1800); } };
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(txt).then(ok).catch(function () { magaluCopiarFallback(txt, ok); });
+      else magaluCopiarFallback(txt, ok);
+    }
+
+    function magaluCopiarReclamacao(pedido, produtoB64, dias, valor) {
+      var produto = '';
+      try { produto = produtoB64 ? decodeURIComponent(escape(atob(produtoB64))) : ''; } catch (e) { produto = ''; }
+      var txt = magaluTextoReclamacao(pedido, produto, dias, valor);
+      var ok = function () {
+        var el = document.getElementById('cp_' + pedido);
+        if (el) { var o = el.textContent; el.textContent = '✅ copiado!'; setTimeout(function () { el.textContent = o; }, 1800); }
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(txt).then(ok).catch(function () { magaluCopiarFallback(txt, ok); });
+      } else { magaluCopiarFallback(txt, ok); }
+    }
+    function magaluCopiarFallback(txt, cb) {
+      var ta = document.createElement('textarea');
+      ta.value = txt; ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta); ta.select();
+      try { document.execCommand('copy'); } catch (e) {}
+      document.body.removeChild(ta); if (cb) cb();
+    }
+
     // v3.80.2 - acoes da espreita INLINE no card (zero popups)
     window._espComentarios = {};
     async function espreitaNotaPost(payload) {
@@ -405,6 +474,7 @@
         const atual = window._espComentarios[chave] || '';
         area.innerHTML = '<div style="background:#faf5ff;border:1px solid #ce93d8;border-radius:8px;padding:10px;margin-top:8px;">'
           + '<b style="font-size:12px;color:#4a148c;">💬 Comentário / tratativa com o marketplace</b>'
+          + '<div style="font-size:11px;color:#777;margin:3px 0 5px;">Dica: cole o número do ticket/protocolo (ex: 147110817). Na Magalu ele vira link clicável pra você voltar na reclamação.</div>'
           + '<textarea id="espTexto-' + chave + '" rows="3" style="width:100%;box-sizing:border-box;margin-top:6px;padding:8px;border:1px solid #ccc;border-radius:8px;font-size:13px;">' + escapeHtml(atual) + '</textarea>'
           + '<div style="margin-top:6px;">'
           + '<button onclick="espreitaSalvarComentario(\'' + chave + '\')" style="background:#2e7d32;color:#fff;' + btnCss + '">💾 Salvar</button> '
@@ -616,7 +686,7 @@
                       }).join('<br>')
                     + '</div>'
                   : (e.produto ? '<br><span style="font-size:12px;color:#333;">📦 ' + escapeHtml(e.produto) + (e.qtd ? ' ×' + e.qtd : '') + '</span>' : ''))
-              + (e.comentario ? '<div style="font-size:12px;color:#4a148c;background:#f3e5f5;border-radius:6px;padding:6px 8px;margin-top:6px;">💬 ' + escapeHtml(e.comentario) + '</div>' : '')
+              + (e.comentario ? '<div style="font-size:12px;color:#4a148c;background:#f3e5f5;border-radius:6px;padding:6px 8px;margin-top:6px;">💬 ' + comentarioComLinks(e.comentario, e.marketplace) + '</div>' : '')
               + '<div style="margin-top:6px;">'
               + '<button onclick="espreitaAbrir(\'' + e.chave_nota + '\', \'processar\')" style="background:#2e7d32;color:#fff;border:none;border-radius:8px;padding:5px 10px;font-size:12px;font-weight:700;cursor:pointer;">✓ achei / já processado</button> '
               + '<button onclick="espreitaAbrir(\'' + e.chave_nota + '\', \'comentar\')" style="background:#6a1b9a;color:#fff;border:none;border-radius:8px;padding:5px 10px;font-size:12px;font-weight:700;cursor:pointer;">💬 ' + (e.comentario ? 'editar comentário' : 'comentário') + '</button>'
@@ -676,10 +746,24 @@
                e.dinheiro === 'estornado_cliente' ? '↩️ <b style="color:#e65100;">dinheiro estornado ao cliente</b>' :
                (e.marketplace === 'magalu' ? '💰 reembolso: ver no 🔗' : '')) +
               '</span>' : '') +
-            (e.comentario ? '<div style="font-size:12px;color:#4a148c;background:#f3e5f5;border-radius:6px;padding:6px 8px;margin-top:6px;">💬 ' + escapeHtml(e.comentario) + '</div>' : '') +
+            (e.comentario ? '<div style="font-size:12px;color:#4a148c;background:#f3e5f5;border-radius:6px;padding:6px 8px;margin-top:6px;">💬 ' + comentarioComLinks(e.comentario, e.marketplace) + '</div>' : '') +
             '<div style="margin-top:6px;">' +
               '<button onclick="espreitaAbrir(\'' + e.chave_nota + '\', \'processar\')" style="background:#2e7d32;color:#fff;border:none;border-radius:8px;padding:5px 10px;font-size:12px;font-weight:700;cursor:pointer;">✓ já processado</button> ' +
               '<button onclick="espreitaAbrir(\'' + e.chave_nota + '\', \'comentar\')" style="background:#6a1b9a;color:#fff;border:none;border-radius:8px;padding:5px 10px;font-size:12px;font-weight:700;cursor:pointer;">💬 ' + (e.comentario ? 'editar comentário' : 'comentário') + '</button>' +
+            // v4.30 - ML: link pra mensagens DENTRO do pedido + texto pronto pra colar
+            (e.marketplace === 'ml' && e.pedido ? (
+              ' <a href="https://www.mercadolivre.com.br/vendas/novo/mensagens/' + encodeURIComponent(e.pedido) + '" target="_blank" rel="noopener" style="background:#f9a825;color:#000;border-radius:8px;padding:5px 10px;font-size:12px;font-weight:700;text-decoration:none;">💬 mensagens do pedido</a>' +
+              ' <button id="cpml_' + escapeHtml(String(e.pedido)) + '" onclick="mlCopiarReclamacao(\'' + escapeHtml(String(e.pedido)) + '\', \'' + btoa(unescape(encodeURIComponent(String(e.produto || '')))) + '\', ' + (e.dias_em_transito || 0) + ', ' + (e.valor != null ? Number(e.valor) : 'null') + ')" style="background:#00695c;color:#fff;border:none;border-radius:8px;padding:5px 10px;font-size:12px;font-weight:700;cursor:pointer;">📋 copiar texto</button>'
+            ) : '') +
+            // v4.30 - Shopee: link pro pedido (o 🔗 ja resolve o de-para order_sn->id interno)
+            (e.marketplace === 'shopee' && e.pedido ? (
+              ' <a href="https://mover-pedidos-aguardando-x-atendido.onrender.com/good-checkout-offline/ir-shopee?sn=' + encodeURIComponent(e.pedido) + '" target="_blank" rel="noopener" style="background:#e65100;color:#fff;border-radius:8px;padding:5px 10px;font-size:12px;font-weight:700;text-decoration:none;">📦 abrir pedido Shopee</a>'
+            ) : '') +
+            // v4.29 - Magalu atrasada: abrir o formulario de reclamacao + copiar o texto pronto
+            (e.marketplace === 'magalu' ? (
+              ' <a href="https://marketplacemagalu.zendesk.com/hc/pt-br/requests/new" target="_blank" rel="noopener" style="background:#1565c0;color:#fff;border-radius:8px;padding:5px 10px;font-size:12px;font-weight:700;text-decoration:none;">📨 abrir reclamação Magalu</a>' +
+              ' <button id="cp_' + escapeHtml(String(e.pedido || '')) + '" onclick="magaluCopiarReclamacao(\'' + escapeHtml(String(e.pedido || '')) + '\', \'' + btoa(unescape(encodeURIComponent(String(e.produto || '')))) + '\', ' + (e.dias_em_transito || 0) + ', ' + (e.valor != null ? Number(e.valor) : 'null') + ')" style="background:#00695c;color:#fff;border:none;border-radius:8px;padding:5px 10px;font-size:12px;font-weight:700;cursor:pointer;">📋 copiar texto da reclamação</button>'
+            ) : '') +
             '</div>' +
             '<div id="espArea-' + e.chave_nota + '" style="display:none;"></div></div>';
           window._espComentarios[e.chave_nota] = e.comentario || '';
