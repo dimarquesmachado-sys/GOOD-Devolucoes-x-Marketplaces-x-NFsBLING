@@ -183,7 +183,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.40 (indice global de tickets Magalu - filtro por order.code)',
+    version: '4.42 (link pra pagina oficial de protocolos do pedido)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -3840,8 +3840,9 @@ async function enriquecerItemEspreita(d) {
         if (dlv?.id) out.magalu_delivery_uuid = dlv.id;
         out.magalu_returns = (dlv?.returns || rP.data.deliveries?.flatMap(x => x.returns || []) || [])
           .map(r => r.external_id).filter(Boolean);
-        // v4.38 - protocolos/reclamacoes desse pedido (API oficial de SAC)
-        out.magalu_tickets = await magaluTicketsDoPedido(d.pedido);
+        // v4.42 - nao busca mais tickets da API aqui: o card usa a pagina oficial
+        // (seller.magalu.com/tickets/?orderNumber=) que e confiavel. A API de
+        // tickets ficou so nas rotas de debug, se precisar investigar.
         const items = rP.data.items || (rP.data.deliveries || []).flatMap(x => x.items || []);
         if (items[0]) { out.produto = items[0].product?.name || items[0].name || null; out.sku = items[0].product?.code || items[0].sku || null; out.qtd = items.reduce((a, x) => a + (x.quantity || 0), 0); }
         out.valor_nf = items.reduce((a, x) => a + ((x.price || x.unit_price || 0) * (x.quantity || 1)), 0) || null;
