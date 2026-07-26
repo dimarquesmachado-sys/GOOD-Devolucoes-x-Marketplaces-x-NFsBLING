@@ -183,7 +183,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.38 (protocolos Magalu automaticos no card - API de SAC)',
+    version: '4.39 (filtro orderNumber + so protocolos do pedido)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -2578,6 +2578,7 @@ app.get('/api/debug/magalu-sac', requerAdmin, async (req, res) => {
       await proba('por_orderId', `/seller/v0/tickets?orderId=${pedido}&_limit=10`);
       await proba('por_order', `/seller/v0/tickets?order=${pedido}&_limit=10`);
       await proba('por_q', `/seller/v0/tickets?q=${pedido}&_limit=10`);
+      await proba('por_orderNumber', `/seller/v0/tickets?orderNumber=${pedido}&_limit=10`); // v4.39 - o que a pagina do seller usa
     }
     out.doc = 'GET /seller/v0/tickets - escopo open:tickets-seller:read';
     out.proxima = 'se tickets_lista vier 200, olho os campos pra montar o link e achar o filtro por pedido';
@@ -3756,8 +3757,15 @@ async function magaluTicketsDoPedido(pedido) {
   const cache = MG_TICKETS.get(p);
   if (cache && (Date.now() - cache.ts) < MG_TICKETS_TTL) return cache.lista;
   try {
-    const r = await magalu.chamarMagalu(`https://api.magalu.com/seller/v0/tickets?order_id=${p}&_limit=20`);
-    const arr = (r.ok && (r.data?.results || r.data?.data || (Array.isArray(r.data) ? r.data : []))) || [];
+    // v4.39 - o filtro certo e orderNumber (order_id era ignorado e trazia a
+    // loja inteira). E ainda assim conferimos t.order.code === pedido no codigo,
+    // pra o card so mostrar os protocolos DESTE pedido mesmo que a API afrouxe.
+    const r = await magalu.chamarMagalu(`https://api.magalu.com/seller/v0/tickets?orderNumber=${p}&_limit=50`);
+    const arrBruto = (r.ok && (r.data?.results || r.data?.data || (Array.isArray(r.data) ? r.data : []))) || [];
+    const arr = arrBruto.filter(t => {
+      const code = String(t.order?.code || t.order?.order_id || '').replace(/\D/g, '');
+      return !code || code === p;   // se o ticket nao traz o pedido, mantem; se traz, tem que bater
+    });
     const lista = arr.map(t => ({
       id: t.id || null,                       // UUID do link
       protocolo: t.protocol || null,          // numero visivel
