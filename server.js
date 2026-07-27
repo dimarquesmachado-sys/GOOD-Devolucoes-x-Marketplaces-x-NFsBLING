@@ -183,7 +183,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.43 (detalhes Magalu do lugar certo + card do alerta limpo)',
+    version: '4.45 (recado some da triagem quando resolvido, fica no historico)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -244,6 +244,33 @@ app.get('/api/keepalive', async (req, res) => {
 // funciona em todos os caminhos (ML, Shopee, Magalu, Correios, NF, nome).
 // v3.84 - TRAVA NO SERVIDOR: nao aceita triagem enquanto houver recado sem
 // ciencia (o front ja bloqueia, mas celular com cache antigo burlaria).
+// v4.45 - o recado deve SUMIR da triagem quando a devolucao ja foi resolvida
+// (triada com status concluido, ou NF emitida). Mas continua no banco pro
+// historico - agarrado ao pedido, pra consulta futura. Cruza os ids do recado
+// com a tabela devolucoes.
+async function devolucaoJaResolvida(ids) {
+  try {
+    if (!ids || !ids.length) return false;
+    const ors = [];
+    for (const idv of ids) {
+      const seguro = String(idv).replace(/[",()]/g, '');
+      if (!seguro) continue;
+      ors.push(`shipment_id.eq.${seguro}`);
+      ors.push(`order_id.eq.${seguro}`);
+      if (/^\d{44}$/.test(seguro)) ors.push(`nf_chave.eq.${seguro}`);
+    }
+    if (!ors.length) return false;
+    const { data } = await supabase
+      .from('devolucoes')
+      .select('status, nf_numero')
+      .or(ors.join(','))
+      .limit(20);
+    if (!data || !data.length) return false;
+    // resolvida = alguma triagem concluida OU com NF emitida
+    return data.some(d => d.status === 'concluido' || (d.nf_numero != null && String(d.nf_numero).trim() !== ''));
+  } catch (e) { return false; }
+}
+
 async function recadoPendente(dados) {
   try {
     const ids = new Set();
@@ -252,7 +279,10 @@ async function recadoPendente(dados) {
     }
     if (ids.size === 0) return null;
     const { data } = await supabase.from('recados').select('id, texto').eq('ativo', true).is('ciente_em', null).in('chave', [...ids]).limit(1);
-    return (data && data[0]) || null;
+    if (!data || !data[0]) return null;
+    // v4.45 - se a devolucao ja foi triada/tem NF, o recado ja cumpriu o papel
+    if (await devolucaoJaResolvida([...ids])) return null;
+    return data[0];
   } catch (e) { return null; }
 }
 function normId(v) {
@@ -3930,7 +3960,14 @@ app.get('/api/admin/recados', requerAdmin, async (req, res) => {
   try {
     const { data, error } = await supabase.from('recados').select('*').eq('ativo', true).order('criado_em', { ascending: false }).limit(100);
     if (error) return res.status(500).json({ ok: false, erro: error.message });
-    return res.json({ ok: true, recados: data || [] });
+    // v4.45 - anexa se a devolucao daquele recado ja foi resolvida (triada/NF).
+    // O recado continua na lista (historico agarrado ao pedido), mas sinalizado.
+    const recados = data || [];
+    await Promise.all(recados.map(async (rc) => {
+      try { rc.resolvido = await devolucaoJaResolvida(variantesId(rc.chave)); }
+      catch (e) { rc.resolvido = false; }
+    }));
+    return res.json({ ok: true, recados });
   } catch (e) { return res.status(500).json({ ok: false, erro: e.message }); }
 });
 app.post('/api/admin/recado/:id/remover', requerAdmin, async (req, res) => {
