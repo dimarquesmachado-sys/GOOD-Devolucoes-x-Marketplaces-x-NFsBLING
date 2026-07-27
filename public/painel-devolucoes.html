@@ -554,18 +554,71 @@
 
     // v3.83 - recados pro estoquista
     // v4.46 - atalho: cria recado pro estoquista JA PRESO a esta venda, do card
-    async function alertarEstoquista(pedido, tracking) {
+    // v4.47 - cache dos recados, pra cada card saber se ja tem aviso pra ele
+    window._recadosCache = window._recadosCache || [];
+    async function atualizarCacheRecados() {
+      try {
+        var r = await fetch('/api/admin/recados');
+        var d = await r.json();
+        window._recadosCache = (d.ok && d.recados) ? d.recados : [];
+      } catch (e) {}
+    }
+    function recadoDaChave(pedido, tracking) {
+      var alvos = [String(pedido || ''), String(tracking || '')].filter(Boolean);
+      return (window._recadosCache || []).find(function (rc) {
+        return alvos.indexOf(String(rc.chave)) !== -1;
+      }) || null;
+    }
+
+    // v4.47 - abre uma CAIXINHA inline no card (nao mais popup) pra escrever/editar
+    // o aviso ao estoquista. Fica no proprio card.
+    function alertarEstoquista(pedido, tracking, chaveNota) {
+      var area = document.getElementById('recadoArea-' + chaveNota);
+      if (!area) return;
+      if (area.style.display === 'block') { area.style.display = 'none'; return; }
       var chave = String(pedido || tracking || '').trim();
-      if (!chave) { alert('Sem identificador pra prender o recado.'); return; }
-      var texto = prompt('Alerta pro estoquista sobre ESTA venda (' + chave + '):\n\nEx: cliente disse que veio com vidro trincado — conferir antes de guardar.');
-      if (texto === null) return;
-      texto = String(texto).trim();
-      if (!texto) return;
+      var existente = recadoDaChave(pedido, tracking);
+      var val = existente ? String(existente.texto || '') : '';
+      area.innerHTML =
+        '<div style="background:#fff5f5;border:1px solid #ffcdd2;border-radius:8px;padding:8px;margin-top:6px;">' +
+        '<div style="font-size:11px;color:#c62828;font-weight:700;margin-bottom:4px;">📣 Aviso pro estoquista (aparece quando bipar esta venda):</div>' +
+        '<textarea id="recadoTxt-' + chaveNota + '" rows="2" style="width:100%;box-sizing:border-box;padding:6px;border:1px solid #ce93d8;border-radius:6px;font-size:12px;" placeholder="Ex: conferir o vidro antes de guardar — cliente reclamou que veio trincado.">' + escapeHtml(val) + '</textarea>' +
+        '<div style="margin-top:5px;display:flex;gap:5px;flex-wrap:wrap;">' +
+          '<button onclick="salvarAlertaEstoquista(\'' + chave + '\', \'' + chaveNota + '\')" style="background:#2e7d32;color:#fff;border:none;border-radius:6px;padding:5px 11px;font-size:12px;font-weight:700;cursor:pointer;">💾 salvar aviso</button>' +
+          (existente ? '<button onclick="removerAlertaEstoquista(' + existente.id + ', \'' + chaveNota + '\')" style="background:#c62828;color:#fff;border:none;border-radius:6px;padding:5px 11px;font-size:12px;font-weight:700;cursor:pointer;">🗑️ remover aviso</button>' : '') +
+          '<button onclick="document.getElementById(\'recadoArea-' + chaveNota + '\').style.display=\'none\'" style="background:#999;color:#fff;border:none;border-radius:6px;padding:5px 11px;font-size:12px;cursor:pointer;">✖ fechar</button>' +
+          (existente ? '<span style="font-size:11px;color:' + (existente.ciente_em ? '#2e7d32' : '#e65100') + ';align-self:center;">' + (existente.ciente_em ? '✅ já visto pelo galpão' : '⏳ ainda não lido') + '</span>' : '') +
+        '</div></div>';
+      area.style.display = 'block';
+      var ta = document.getElementById('recadoTxt-' + chaveNota);
+      if (ta) ta.focus();
+    }
+    async function salvarAlertaEstoquista(chave, chaveNota) {
+      var ta = document.getElementById('recadoTxt-' + chaveNota);
+      if (!ta) return;
+      var texto = String(ta.value || '').trim();
+      if (!texto) { alert('Escreva o aviso antes de salvar.'); return; }
+      if (!chave) { alert('Sem identificador pra prender o aviso.'); return; }
       try {
         var r = await fetch('/api/admin/recado', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ chave: chave, texto: texto }) });
         var d = await r.json();
-        if (!d.ok) { alert(d.erro || 'erro ao criar o alerta'); return; }
-        alert('✅ Alerta criado! Quando o estoquista bipar esta venda, ele vê o aviso e precisa dar "OK, ciente" antes de triar.');
+        if (!d.ok) { alert(d.erro || 'erro ao salvar'); return; }
+        await atualizarCacheRecados();
+        var area = document.getElementById('recadoArea-' + chaveNota);
+        if (area) area.style.display = 'none';
+        if (typeof carregarRecados === 'function') carregarRecados();
+        // feedback discreto no botao
+        var btn = document.getElementById('btnAlerta-' + chaveNota);
+        if (btn) { btn.textContent = '✅ aviso salvo'; setTimeout(function () { btn.textContent = '📣 aviso estoquista'; }, 2000); }
+      } catch (e) { alert('erro: ' + e.message); }
+    }
+    async function removerAlertaEstoquista(id, chaveNota) {
+      if (!confirm('Remover este aviso pro estoquista?')) return;
+      try {
+        await fetch('/api/admin/recado/' + id + '/remover', { method: 'POST' });
+        await atualizarCacheRecados();
+        var area = document.getElementById('recadoArea-' + chaveNota);
+        if (area) area.style.display = 'none';
         if (typeof carregarRecados === 'function') carregarRecados();
       } catch (e) { alert('erro: ' + e.message); }
     }
@@ -669,6 +722,7 @@
 
     // v3.77 - A ESPREITA UNIFICADA: Magalu + ML + Shopee (devolucoes a caminho)
     async function carregarEspreita() {
+      atualizarCacheRecados();
       try {
         const r = await fetch('/api/admin/espreita');
         const d = await r.json();
@@ -777,7 +831,7 @@
               + '<div style="margin-top:6px;">'
               + '<button onclick="espreitaAbrir(\'' + e.chave_nota + '\', \'processar\')" style="background:#2e7d32;color:#fff;border:none;border-radius:8px;padding:5px 10px;font-size:12px;font-weight:700;cursor:pointer;">✓ achei / já processado</button> '
               + '<button onclick="espreitaAbrir(\'' + e.chave_nota + '\', \'comentar\')" style="background:#6a1b9a;color:#fff;border:none;border-radius:8px;padding:5px 10px;font-size:12px;font-weight:700;cursor:pointer;">💬 ' + (e.comentario ? 'editar comentário' : 'comentário') + '</button>'
-              + ' <button onclick="alertarEstoquista(\'' + escapeHtml(String(e.pedido || '')) + '\', \'' + escapeHtml(String(e.tracking || '')) + '\')" style="background:#c62828;color:#fff;border:none;border-radius:8px;padding:5px 10px;font-size:12px;font-weight:700;cursor:pointer;">📣 alertar estoquista</button>'
+              + ' <button id="btnAlerta-' + e.chave_nota + '" onclick="alertarEstoquista(\'' + escapeHtml(String(e.pedido || '')) + '\', \'' + escapeHtml(String(e.tracking || '')) + '\', \'' + e.chave_nota + '\')" style="background:#c62828;color:#fff;border:none;border-radius:8px;padding:5px 10px;font-size:12px;font-weight:700;cursor:pointer;">📣 ' + (recadoDaChave(e.pedido, e.tracking) ? 'aviso ✔' : 'aviso estoquista') + '</button>'
               + '</div>'
               + (e.marketplace === 'magalu' && e.ticket ? (
                   '<div style="margin-top:5px;font-size:11px;color:#555;">🎫 Ticket: <a href="' + magaluLinkTicket(e.ticket) + '" target="_blank" rel="noopener" style="color:#1565c0;font-weight:700;text-decoration:none;">' + escapeHtml(String(e.ticket)) + '</a>'
@@ -790,7 +844,7 @@
                   + '<input id="tk_' + escapeHtml(String(e.chave_nota)) + '" placeholder="cole o protocolo" style="width:130px;padding:4px 7px;border:1px solid #ce93d8;border-radius:6px;font-size:12px;">'
                   + ' <button onclick="magaluSalvarTicket(\'' + escapeHtml(String(e.chave_nota)) + '\')" style="background:#6a1b9a;color:#fff;border:none;border-radius:6px;padding:4px 9px;font-size:12px;font-weight:700;cursor:pointer;">salvar ticket</button></div>'
                 ) : '')
-              + '<div id="espArea-' + e.chave_nota + '" style="display:none;"></div></div>';
+              + '<div id="espArea-' + e.chave_nota + '" style="display:none;"></div>' + '<div id="recadoArea-' + e.chave_nota + '" style="display:none;"></div></div>';
             window._espComentarios[e.chave_nota] = e.comentario || '';
           }
           html += '</div>';
@@ -859,7 +913,7 @@
             '<div style="margin-top:6px;">' +
               '<button onclick="espreitaAbrir(\'' + e.chave_nota + '\', \'processar\')" style="background:#2e7d32;color:#fff;border:none;border-radius:8px;padding:5px 10px;font-size:12px;font-weight:700;cursor:pointer;">✓ já processado</button> ' +
               '<button onclick="espreitaAbrir(\'' + e.chave_nota + '\', \'comentar\')" style="background:#6a1b9a;color:#fff;border:none;border-radius:8px;padding:5px 10px;font-size:12px;font-weight:700;cursor:pointer;">💬 ' + (e.comentario ? 'editar comentário' : 'comentário') + '</button>' +
-              ' <button onclick="alertarEstoquista(\'' + escapeHtml(String(e.pedido || '')) + '\', \'' + escapeHtml(String(e.tracking || '')) + '\')" style="background:#c62828;color:#fff;border:none;border-radius:8px;padding:5px 10px;font-size:12px;font-weight:700;cursor:pointer;">📣 alertar estoquista</button>' +
+              ' <button id="btnAlerta-' + e.chave_nota + '" onclick="alertarEstoquista(\'' + escapeHtml(String(e.pedido || '')) + '\', \'' + escapeHtml(String(e.tracking || '')) + '\', \'' + e.chave_nota + '\')" style="background:#c62828;color:#fff;border:none;border-radius:8px;padding:5px 10px;font-size:12px;font-weight:700;cursor:pointer;">📣 ' + (recadoDaChave(e.pedido, e.tracking) ? 'aviso ✔' : 'aviso estoquista') + '</button>' +
             // v4.30 - ML: link pra mensagens DENTRO do pedido + texto pronto pra colar
             (e.marketplace === 'ml' && e.pedido ? (
               ' <a href="https://www.mercadolivre.com.br/vendas/novo/mensagens/' + encodeURIComponent(e.pedido) + '" target="_blank" rel="noopener" style="background:#f9a825;color:#000;border-radius:8px;padding:5px 10px;font-size:12px;font-weight:700;text-decoration:none;">💬 mensagens do pedido</a>' +
@@ -890,7 +944,7 @@
               '</div>'
             ) : '') +
             '</div>' +
-            '<div id="espArea-' + e.chave_nota + '" style="display:none;"></div></div>';
+            '<div id="espArea-' + e.chave_nota + '" style="display:none;"></div>' + '<div id="recadoArea-' + e.chave_nota + '" style="display:none;"></div></div>';
           window._espComentarios[e.chave_nota] = e.comentario || '';
         }
         lista.innerHTML = html;
