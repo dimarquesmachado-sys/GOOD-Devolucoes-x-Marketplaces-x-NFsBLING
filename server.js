@@ -183,7 +183,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.48 (lista NFs de devolucao do Bling pra cruzar com o espreita)',
+    version: '4.49 (detalhe da NF devolucao: pedido, chave referenciada, itens)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -3412,16 +3412,55 @@ app.get('/api/admin/nfs-devolucao', requerAdmin, async (req, res) => {
       }
       if (lista.length < 100) break;
     }
-    // detalhar UMA (a primeira) pra ver se o detalhe traz a nota referenciada
+    // detalhar ATE 3 notas pra ver o padrao (numeroPedidoLoja, chave referenciada, itens)
     let detalheExemplo = null;
-    if (todas[0]?.id && req.query.detalhe === '1') {
+    let detalhes3 = [];
+    if (todas.length && req.query.detalhe === '1') {
+      for (let k = 0; k < Math.min(3, todas.length); k++) {
+        const rDx = await chamarBling(`https://api.bling.com.br/Api/v3/nfe/${todas[k].id}`);
+        const dx = rDx.ok ? (rDx.data?.data || {}) : {};
+        var ch44 = [];
+        (function procura(o, path) {
+          if (!o || typeof o !== 'object') return;
+          for (var kk in o) { var vv = o[kk];
+            if (typeof vv === 'string' && /^\d{44}$/.test(vv)) ch44.push({ campo: (path ? path + '.' : '') + kk, chave: vv });
+            else if (typeof vv === 'object') procura(vv, (path ? path + '.' : '') + kk); }
+        })(dx, '');
+        detalhes3.push({
+          numero: dx.numero,
+          numeroPedidoLoja: dx.numeroPedidoLoja || null,
+          contato: dx.contato?.nome || null,
+          chaveAcesso_propria: dx.chaveAcesso || null,
+          chaves_44_no_detalhe: ch44,
+          qtd_itens: Array.isArray(dx.itens) ? dx.itens.length : 0,
+          primeiro_item: (Array.isArray(dx.itens) && dx.itens[0]) ? { descricao: dx.itens[0].descricao, codigo: dx.itens[0].codigo } : null,
+          observacoes: (dx.observacoes || '').slice(0, 200),
+        });
+        await new Promise(r => setTimeout(r, 200));
+      }
+    }
+    if (false) {
       const rD = await chamarBling(`https://api.bling.com.br/Api/v3/nfe/${todas[0].id}`);
       const d = rD.ok ? (rD.data?.data || {}) : {};
+      // varre atras de QUALQUER chave de NFe (44 digitos) e do pedido no detalhe
+      var chaves44 = [];
+      var procura = function (o, path) {
+        if (!o || typeof o !== 'object') return;
+        for (var k in o) {
+          var v = o[k];
+          if (typeof v === 'string' && /^\d{44}$/.test(v)) chaves44.push({ campo: (path ? path + '.' : '') + k, chave: v });
+          else if (typeof v === 'object') procura(v, (path ? path + '.' : '') + k);
+        }
+      };
+      procura(d, '');
       detalheExemplo = {
         id: d.id, numero: d.numero,
-        campos: Object.keys(d).slice(0, 50),
-        notaReferenciada: d.notaReferenciada || d.notasReferenciadas || null,
-        chaveReferenciada: d.chaveAcessoReferenciada || d.chaveReferenciada || null,
+        numeroPedidoLoja: d.numeroPedidoLoja || null,
+        contato: d.contato?.nome || null,
+        chaveAcesso_propria: d.chaveAcesso || null,
+        chaves_44_no_detalhe: chaves44,          // pode ter a chave da NF de venda referenciada
+        tem_itens: Array.isArray(d.itens) ? d.itens.length : 0,
+        primeiro_item: (Array.isArray(d.itens) && d.itens[0]) ? { descricao: d.itens[0].descricao, codigo: d.itens[0].codigo, valor: d.itens[0].valor } : null,
         observacoes: (d.observacoes || '').slice(0, 300),
       };
     }
@@ -3430,6 +3469,7 @@ app.get('/api/admin/nfs-devolucao', requerAdmin, async (req, res) => {
       total: todas.length,
       dica: 'adicione &detalhe=1 pra ver os campos do detalhe de uma nota (achar a referencia ao pedido)',
       notas: todas,
+      detalhes3,
       detalhe_exemplo: detalheExemplo,
     });
   } catch (e) { return res.status(500).json({ ok: false, erro: e.message }); }
