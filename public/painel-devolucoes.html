@@ -578,10 +578,16 @@
         const lista = document.getElementById('listaRecados');
         if (!d.ok) { lista.innerHTML = '<span style="color:#c62828;font-size:13px;">' + escapeHtml(d.erro || 'erro') + '</span>'; return; }
         const rs = d.recados || [];
-        document.getElementById('countRecados').textContent = rs.length;
         if (rs.length === 0) { lista.innerHTML = '<span style="color:#888;font-size:13px;">Nenhum recado ativo.</span>'; return; }
+        // (a separacao ativos/resolvidos e feita abaixo)
         let h = '';
-        for (const rc of rs) {
+        // v4.45 - tres estados: ATIVO (aparece na triagem), resolvido (devolucao
+        // ja triada/com NF - saiu da triagem mas fica no historico), lido (o
+        // estoquista deu ciencia). O resolvido tem prioridade visual (esmaecido).
+        var ativos = rs.filter(function (x) { return !x.resolvido; });
+        var resolvidos = rs.filter(function (x) { return x.resolvido; });
+        document.getElementById('countRecados').textContent = ativos.length;
+        for (const rc of ativos) {
           const lido = !!rc.ciente_em;
           h += '<div style="border:1px solid ' + (lido ? '#c8e6c9' : '#ffcdd2') + ';background:' + (lido ? '#f1f8e9' : '#fff5f5') + ';border-radius:8px;padding:10px;margin-bottom:6px;">'
             + '<b>' + escapeHtml(rc.chave) + '</b> · <span style="font-size:13px;">' + escapeHtml(rc.texto) + '</span>'
@@ -589,6 +595,19 @@
             + ' · criado por ' + escapeHtml(rc.criado_por || '-') + '</span> '
             + '<button onclick="removerRecado(' + rc.id + ')" style="background:#999;color:#fff;border:none;border-radius:8px;padding:4px 10px;font-size:12px;cursor:pointer;margin-left:8px;">✖ remover</button>'
             + '</div>';
+        }
+        // bloco do historico (resolvidos): recolhido, esmaecido, so pra consulta
+        if (resolvidos.length) {
+          h += '<div style="margin-top:10px;"><details><summary style="cursor:pointer;font-size:13px;color:#666;font-weight:700;">✅ Já resolvidos / triados (' + resolvidos.length + ') — ficam agarrados ao pedido pra consulta</summary>';
+          for (const rc of resolvidos) {
+            h += '<div style="border:1px solid #ddd;background:#fafafa;border-radius:8px;padding:9px;margin:6px 0;opacity:0.75;">'
+              + '<b>' + escapeHtml(rc.chave) + '</b> · <span style="font-size:13px;">' + escapeHtml(rc.texto) + '</span>'
+              + '<br><span style="font-size:12px;color:#2e7d32;font-weight:700;">✅ devolução já triada / NF emitida — saiu da triagem</span>'
+              + '<span style="font-size:12px;color:#666;"> · criado por ' + escapeHtml(rc.criado_por || '-') + '</span> '
+              + '<button onclick="removerRecado(' + rc.id + ')" style="background:#bbb;color:#fff;border:none;border-radius:8px;padding:3px 9px;font-size:11px;cursor:pointer;margin-left:8px;">✖ remover</button>'
+              + '</div>';
+          }
+          h += '</details></div>';
         }
         lista.innerHTML = h;
       } catch (e) { /* opcional */ }
