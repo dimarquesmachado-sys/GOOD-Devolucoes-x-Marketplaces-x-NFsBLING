@@ -183,7 +183,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.49 (detalhe da NF devolucao: pedido, chave referenciada, itens)',
+    version: '4.50 (cruza a espreita com NF de devolucao do Bling por numeroPedidoLoja)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -3388,6 +3388,67 @@ app.get('/api/debug/shopee-return', requerAdmin, async (req, res) => {
 // se a NF de devolucao existe no Bling, o produto ja chegou, mesmo que o
 // marketplace ainda nao tenha atualizado. Testa os filtros reais antes de
 // construir, pra nao chutar.
+// v4.50 - INDICE de pedidos que ja tem NF de devolucao emitida. O detalhe de
+// cada nota de entrada traz numeroPedidoLoja (= o pedido do marketplace, ex
+// 2000017611449926). Cruzando com o a espreita, sabemos quais devolucoes ja
+// foram resolvidas - inclusive as antigas, de antes do app de triagem.
+const NF_DEV_INDICE = new Map();     // pedido -> { nf, data, contato, sku }
+let NF_DEV_INDICE_TS = 0;
+let NF_DEV_CARREGANDO = null;
+const NF_DEV_TTL = 15 * 60 * 1000;
+
+async function montarIndiceNFDevolucao(maxPaginas) {
+  if ((Date.now() - NF_DEV_INDICE_TS) < NF_DEV_TTL && NF_DEV_INDICE.size) return;
+  if (NF_DEV_CARREGANDO) return NF_DEV_CARREGANDO;
+  NF_DEV_CARREGANDO = (async () => {
+    const novo = new Map();
+    try {
+      const paginas = Math.min(maxPaginas || 5, 15);
+      // 1) lista as notas de entrada (so id + numero, rapido)
+      const ids = [];
+      for (let p = 1; p <= paginas; p++) {
+        const r = await chamarBling(`https://api.bling.com.br/Api/v3/nfe?tipo=1&pagina=${p}&limite=100`);
+        const lista = (r.ok && r.data?.data) || [];
+        if (!lista.length) break;
+        for (const n of lista) ids.push({ id: n.id, numero: n.numero, dataEmissao: n.dataEmissao, contato: n.contato?.nome || null });
+        if (lista.length < 100) break;
+      }
+      // 2) detalha cada nota pra pegar o numeroPedidoLoja (em lotes, com pausa)
+      for (const it of ids) {
+        try {
+          const rD = await chamarBling(`https://api.bling.com.br/Api/v3/nfe/${it.id}`);
+          const d = rD.ok ? (rD.data?.data || {}) : {};
+          const pedido = String(d.numeroPedidoLoja || '').replace(/\s/g, '');
+          if (pedido) {
+            novo.set(pedido, {
+              nf: it.numero, data: (it.dataEmissao || '').slice(0, 10),
+              contato: it.contato,
+              sku: (Array.isArray(d.itens) && d.itens[0]) ? d.itens[0].codigo : null,
+              chave: d.chaveAcesso || null,
+            });
+          }
+        } catch (e) { /* pula essa nota */ }
+        await new Promise(r => setTimeout(r, 120));
+      }
+      NF_DEV_INDICE.clear();
+      for (const [k, v] of novo) NF_DEV_INDICE.set(k, v);
+      NF_DEV_INDICE_TS = Date.now();
+    } catch (e) { /* mantem o indice anterior */ }
+    finally { NF_DEV_CARREGANDO = null; }
+  })();
+  return NF_DEV_CARREGANDO;
+}
+
+// rota: dispara/consulta o indice. O front chama e depois cruza com o a espreita.
+app.get('/api/admin/indice-nf-devolucao', requerAdmin, async (req, res) => {
+  try {
+    await montarIndiceNFDevolucao(Number(req.query.paginas || 5));
+    const mapa = {};
+    for (const [ped, info] of NF_DEV_INDICE) mapa[ped] = info;
+    return res.json({ ok: true, total: NF_DEV_INDICE.size, atualizado_em: NF_DEV_INDICE_TS, pedidos: mapa });
+  } catch (e) { return res.status(500).json({ ok: false, erro: e.message }); }
+});
+
 // v4.48 - lista as NFs de DEVOLUCAO (entrada) do Bling pra cruzar com o a
 // espreita. Cada nota de entrada referencia a NF de venda original; com isso
 // sabemos quais devolucoes ja foram resolvidas (nota emitida) mesmo as antigas.
@@ -4127,6 +4188,7 @@ app.get('/api/admin/espreita', requerAdmin, async (req, res) => {
       }
     }
   } catch (e) { for (const d of unificada) d.chave_nota = chaveEspreita(d); }
+  marcarNFDev(unificada); // v4.50
 
   // v3.81 - anexa cliente/NF do cache; dinheiro: ML tem status_money nativo
   // v4.34 - espera o enriquecimento dos itens ATRASADOS (+30 dias, os que a
@@ -4153,7 +4215,14 @@ app.get('/api/admin/espreita', requerAdmin, async (req, res) => {
     // v3.95 - usa a data REAL de entrega quando ja estiver no cache; o corte de
     // 5-90 dias e aplicado DEPOIS da correcao (antes, o last_updated do return
     // encolhia a conta e o item aparecia com menos dias do que os reais).
-    const brutos = [...(mlR.entregues || []), ...(magaluR.entregues || [])];
+    // v4.50 - marca itens que ja tem NF de devolucao emitida (indice do Bling)
+  const marcarNFDev = (arr) => {
+    for (const d of arr) {
+      const ped = String(d.pedido || '').replace(/\s/g, '');
+      if (ped && NF_DEV_INDICE.has(ped)) d.nf_devolucao = NF_DEV_INDICE.get(ped);
+    }
+  };
+  const brutos = [...(mlR.entregues || []), ...(magaluR.entregues || [])];
     // v4.27 - a data REAL de entrega e o que decide os dias. Buscar em
     // background NAO chega a tempo na primeira carga (o alerta responde antes),
     // e o painel acaba mostrando o last_updated do return, que e sempre MAIOR
