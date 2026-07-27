@@ -269,6 +269,15 @@
         <div id="listaRecados" style="margin-top:12px;"></div>
       </div>
 
+      <!-- v4.48 - NFs de devolucao do Bling: cruzar com o a espreita -->
+      <div class="secao">
+        <h2>🧾 NFs de devolução emitidas (Bling)</h2>
+        <div style="font-size:13px;color:#666;margin-bottom:10px;">Lista as notas de <b>entrada</b> (devolução) já emitidas no Bling. Serve pra achar devoluções antigas que já foram resolvidas mas ainda constam no à espreita — pra você consultar e dar baixa.</div>
+        <button onclick="carregarNFsDevolucao()" style="background:#00695c;color:#fff;border:none;border-radius:8px;padding:9px 16px;font-weight:700;cursor:pointer;">🔍 Carregar NFs de devolução</button>
+        <span id="nfDevMsg" style="font-size:13px;margin-left:10px;"></span>
+        <div id="listaNFsDevolucao" style="margin-top:12px;"></div>
+      </div>
+
       <div class="secao">
         <h2>
           ✅ Aprovadas - aguardando NF
@@ -640,6 +649,48 @@
       await fetch('/api/admin/recado/' + id + '/remover', { method: 'POST' });
       carregarRecados();
     }
+    // v4.48 - carrega as NFs de devolucao do Bling e mostra numa tabela.
+    // Modo diagnostico: mostra os campos crus + o detalhe de uma, pra o Diego
+    // me dizer como a nota referencia o pedido (ai eu ligo o cruzamento auto).
+    async function carregarNFsDevolucao() {
+      var msg = document.getElementById('nfDevMsg');
+      var lista = document.getElementById('listaNFsDevolucao');
+      msg.textContent = '⏳ buscando no Bling (pode levar alguns segundos)...';
+      lista.innerHTML = '';
+      try {
+        var r = await fetch('/api/admin/nfs-devolucao?paginas=3&detalhe=1');
+        var d = await r.json();
+        if (!d.ok) { msg.innerHTML = '<span style="color:#c62828;">' + escapeHtml(d.erro || 'erro') + '</span>'; return; }
+        msg.innerHTML = '<b>' + d.total + '</b> notas de devolução encontradas.';
+        var h = '';
+        // o detalhe de exemplo (pra achar a referencia ao pedido)
+        if (d.detalhe_exemplo) {
+          h += '<div style="background:#fffde7;border:1px solid #fff59d;border-radius:8px;padding:10px;margin-bottom:12px;font-size:12px;">'
+            + '<b>🔬 Detalhe de exemplo (nota ' + escapeHtml(String(d.detalhe_exemplo.numero || '')) + '):</b><br>'
+            + 'Campos disponíveis: <code>' + escapeHtml((d.detalhe_exemplo.campos || []).join(', ')) + '</code><br>'
+            + (d.detalhe_exemplo.notaReferenciada ? 'Nota referenciada: <code>' + escapeHtml(JSON.stringify(d.detalhe_exemplo.notaReferenciada)) + '</code><br>' : '<span style="color:#e65100;">Sem campo notaReferenciada direto</span><br>')
+            + (d.detalhe_exemplo.chaveReferenciada ? 'Chave referenciada: <code>' + escapeHtml(String(d.detalhe_exemplo.chaveReferenciada)) + '</code><br>' : '')
+            + (d.detalhe_exemplo.observacoes ? 'Observações: <i>' + escapeHtml(d.detalhe_exemplo.observacoes) + '</i>' : '')
+            + '</div>';
+        }
+        h += '<table style="width:100%;border-collapse:collapse;font-size:12px;">'
+          + '<tr style="background:#f5f5f5;text-align:left;"><th style="padding:6px;">NF</th><th style="padding:6px;">Data</th><th style="padding:6px;">Contato</th><th style="padding:6px;">Natureza</th><th style="padding:6px;">Pedido</th><th style="padding:6px;">Valor</th></tr>';
+        for (var i = 0; i < (d.notas || []).length; i++) {
+          var n = d.notas[i];
+          h += '<tr style="border-bottom:1px solid #eee;">'
+            + '<td style="padding:6px;"><b>' + escapeHtml(String(n.numero || '-')) + '</b>/' + escapeHtml(String(n.serie || '')) + '</td>'
+            + '<td style="padding:6px;">' + escapeHtml(String(n.dataEmissao || '-').slice(0, 10)) + '</td>'
+            + '<td style="padding:6px;">' + escapeHtml(String(n.contato || '-')) + '</td>'
+            + '<td style="padding:6px;">' + escapeHtml(String(n.natureza || '-')) + '</td>'
+            + '<td style="padding:6px;"><code>' + escapeHtml(String(n.numeroPedidoLoja || '-')) + '</code></td>'
+            + '<td style="padding:6px;">' + (n.valor != null ? 'R$ ' + Number(n.valor).toFixed(2).replace('.', ',') : '-') + '</td>'
+            + '</tr>';
+        }
+        h += '</table>';
+        lista.innerHTML = h;
+      } catch (e) { msg.innerHTML = '<span style="color:#c62828;">erro: ' + escapeHtml(e.message) + '</span>'; }
+    }
+
     async function carregarRecados() {
       try {
         const r = await fetch('/api/admin/recados');
