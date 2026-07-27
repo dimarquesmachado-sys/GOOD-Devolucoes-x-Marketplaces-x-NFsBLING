@@ -663,8 +663,24 @@
         if (!d.ok) { msg.innerHTML = '<span style="color:#c62828;">' + escapeHtml(d.erro || 'erro') + '</span>'; return; }
         msg.innerHTML = '<b>' + d.total + '</b> notas de devolução encontradas.';
         var h = '';
-        // o detalhe de exemplo (pra achar a referencia ao pedido)
-        if (d.detalhe_exemplo) {
+        // v4.49 - 3 detalhes (pra confirmar o padrao de referencia ao pedido)
+        if (d.detalhes3 && d.detalhes3.length) {
+          h += '<div style="background:#fffde7;border:1px solid #fff59d;border-radius:8px;padding:10px;margin-bottom:12px;font-size:12px;">'
+            + '<b>🔬 Detalhe de 3 notas (pra ligar ao pedido):</b><br><br>';
+          for (var j = 0; j < d.detalhes3.length; j++) {
+            var dt = d.detalhes3[j];
+            h += '<div style="border-bottom:1px dashed #ccc;padding-bottom:6px;margin-bottom:6px;">'
+              + '<b>NF ' + escapeHtml(String(dt.numero || '')) + '</b> · ' + escapeHtml(String(dt.contato || '-')) + '<br>'
+              + 'numeroPedidoLoja: <code>' + escapeHtml(String(dt.numeroPedidoLoja || '(vazio)')) + '</code><br>'
+              + 'chaveAcesso própria: <code>' + escapeHtml(String(dt.chaveAcesso_propria || '-').slice(0, 50)) + '</code><br>'
+              + 'chaves de 44 díg no detalhe: <code>' + escapeHtml(JSON.stringify(dt.chaves_44_no_detalhe || [])) + '</code><br>'
+              + 'itens: ' + dt.qtd_itens + (dt.primeiro_item ? ' · 1º: ' + escapeHtml(String(dt.primeiro_item.descricao || '').slice(0, 40)) + ' (SKU ' + escapeHtml(String(dt.primeiro_item.codigo || '-')) + ')' : '') + '<br>'
+              + (dt.observacoes ? 'obs: <i>' + escapeHtml(dt.observacoes) + '</i>' : '')
+              + '</div>';
+          }
+          h += '</div>';
+        }
+        if (d.detalhe_exemplo && false) {
           h += '<div style="background:#fffde7;border:1px solid #fff59d;border-radius:8px;padding:10px;margin-bottom:12px;font-size:12px;">'
             + '<b>🔬 Detalhe de exemplo (nota ' + escapeHtml(String(d.detalhe_exemplo.numero || '')) + '):</b><br>'
             + 'Campos disponíveis: <code>' + escapeHtml((d.detalhe_exemplo.campos || []).join(', ')) + '</code><br>'
