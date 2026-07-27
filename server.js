@@ -183,7 +183,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.45 (recado some da triagem quando resolvido, fica no historico)',
+    version: '4.48 (lista NFs de devolucao do Bling pra cruzar com o espreita)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -3388,6 +3388,53 @@ app.get('/api/debug/shopee-return', requerAdmin, async (req, res) => {
 // se a NF de devolucao existe no Bling, o produto ja chegou, mesmo que o
 // marketplace ainda nao tenha atualizado. Testa os filtros reais antes de
 // construir, pra nao chutar.
+// v4.48 - lista as NFs de DEVOLUCAO (entrada) do Bling pra cruzar com o a
+// espreita. Cada nota de entrada referencia a NF de venda original; com isso
+// sabemos quais devolucoes ja foram resolvidas (nota emitida) mesmo as antigas.
+app.get('/api/admin/nfs-devolucao', requerAdmin, async (req, res) => {
+  try {
+    const paginas = Math.min(Number(req.query.paginas || 3), 10);
+    const todas = [];
+    for (let p = 1; p <= paginas; p++) {
+      const r = await chamarBling(`https://api.bling.com.br/Api/v3/nfe?tipo=1&pagina=${p}&limite=100`);
+      const lista = (r.ok && r.data?.data) || [];
+      if (!lista.length) break;
+      for (const n of lista) {
+        todas.push({
+          id: n.id, numero: n.numero, serie: n.serie,
+          situacao: n.situacao, dataEmissao: n.dataEmissao,
+          natureza: n.naturezaOperacao?.descricao || (typeof n.naturezaOperacao === 'string' ? n.naturezaOperacao : null),
+          chave: n.chaveAcesso || null,
+          contato: n.contato?.nome || null,
+          numeroPedidoLoja: n.numeroLoja || n.numeroPedidoLoja || null,
+          valor: n.valorNota || n.valor || null,
+        });
+      }
+      if (lista.length < 100) break;
+    }
+    // detalhar UMA (a primeira) pra ver se o detalhe traz a nota referenciada
+    let detalheExemplo = null;
+    if (todas[0]?.id && req.query.detalhe === '1') {
+      const rD = await chamarBling(`https://api.bling.com.br/Api/v3/nfe/${todas[0].id}`);
+      const d = rD.ok ? (rD.data?.data || {}) : {};
+      detalheExemplo = {
+        id: d.id, numero: d.numero,
+        campos: Object.keys(d).slice(0, 50),
+        notaReferenciada: d.notaReferenciada || d.notasReferenciadas || null,
+        chaveReferenciada: d.chaveAcessoReferenciada || d.chaveReferenciada || null,
+        observacoes: (d.observacoes || '').slice(0, 300),
+      };
+    }
+    return res.json({
+      ok: true,
+      total: todas.length,
+      dica: 'adicione &detalhe=1 pra ver os campos do detalhe de uma nota (achar a referencia ao pedido)',
+      notas: todas,
+      detalhe_exemplo: detalheExemplo,
+    });
+  } catch (e) { return res.status(500).json({ ok: false, erro: e.message }); }
+});
+
 app.get('/api/debug/bling-nf-devolucao', requerAdmin, async (req, res) => {
   const out = { testes: {} };
   const proba = async (nome, url) => {
