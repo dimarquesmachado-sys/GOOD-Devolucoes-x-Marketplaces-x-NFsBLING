@@ -391,9 +391,8 @@
       // Um clique abre a lista real; outro abre o protocolo pra ler a reclamacao.
       if (!e.pedido) return '';
       var url = 'https://seller.magalu.com/tickets/?orderNumber=' + encodeURIComponent(String(e.pedido).replace(/\D/g, ''));
-      return '<div style="margin-top:6px;">' +
-        '<a href="' + url + '" target="_blank" rel="noopener" style="background:#6a1b9a;color:#fff;border-radius:8px;padding:5px 10px;font-size:12px;font-weight:700;text-decoration:none;">📋 ver protocolos/reclamações deste pedido</a>' +
-        '</div>';
+      // v4.46 - pilula compacta, fica na MESMA linha do 🔗 abrir do pedido
+      return ' <a href="' + url + '" target="_blank" rel="noopener" style="background:#6a1b9a;color:#fff;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;text-decoration:none;margin-left:4px;">📋 protocolos</a>';
     }
 
     // v4.31 - campo TICKET so pra Magalu: salva o numero da reclamacao e monta
@@ -554,6 +553,23 @@
     }
 
     // v3.83 - recados pro estoquista
+    // v4.46 - atalho: cria recado pro estoquista JA PRESO a esta venda, do card
+    async function alertarEstoquista(pedido, tracking) {
+      var chave = String(pedido || tracking || '').trim();
+      if (!chave) { alert('Sem identificador pra prender o recado.'); return; }
+      var texto = prompt('Alerta pro estoquista sobre ESTA venda (' + chave + '):\n\nEx: cliente disse que veio com vidro trincado — conferir antes de guardar.');
+      if (texto === null) return;
+      texto = String(texto).trim();
+      if (!texto) return;
+      try {
+        var r = await fetch('/api/admin/recado', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ chave: chave, texto: texto }) });
+        var d = await r.json();
+        if (!d.ok) { alert(d.erro || 'erro ao criar o alerta'); return; }
+        alert('✅ Alerta criado! Quando o estoquista bipar esta venda, ele vê o aviso e precisa dar "OK, ciente" antes de triar.');
+        if (typeof carregarRecados === 'function') carregarRecados();
+      } catch (e) { alert('erro: ' + e.message); }
+    }
+
     async function salvarRecado() {
       const chave = document.getElementById('recadoChave').value.trim();
       const texto = document.getElementById('recadoTexto').value.trim();
@@ -744,6 +760,7 @@
               + (e.pedido && e.tracking ? ' · <code style="font-size:11px;">' + escapeHtml(String(e.tracking)) + '</code>' : '')
               + (e.valor != null ? ' · R$ ' + Number(e.valor).toFixed(2).replace('.', ',') : '')
               + (linkVenda(e) ? ' <a href="' + linkVenda(e) + '" target="_blank" rel="noopener" style="background:#1565c0;color:#fff;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;text-decoration:none;margin-left:6px;">🔗 abrir</a>' : '')
+              + (e.marketplace === 'magalu' ? magaluProtocolosHtml(e) : '') // v4.46 - protocolos na linha do abrir (alerta)
               + '<br><span style="font-size:12px;color:#555;">Entregue há <b>' + (e.dias_desde != null ? e.dias_desde : '?') + ' dia(s)</b> · sem triagem no sistema'
               + (e.cliente ? ' · 👤 ' + escapeHtml(e.cliente) : '') + (e.nf ? ' · 🧾 NF ' + escapeHtml(String(e.nf)) : '') + (e.logistica ? ' · <span style="background:#455a64;color:#fff;padding:1px 6px;border-radius:8px;font-size:10px;font-weight:700;">' + escapeHtml(e.logistica) + '</span>' : '') + '</span>'
               + ((e.itens && e.itens.length)
@@ -760,7 +777,20 @@
               + '<div style="margin-top:6px;">'
               + '<button onclick="espreitaAbrir(\'' + e.chave_nota + '\', \'processar\')" style="background:#2e7d32;color:#fff;border:none;border-radius:8px;padding:5px 10px;font-size:12px;font-weight:700;cursor:pointer;">✓ achei / já processado</button> '
               + '<button onclick="espreitaAbrir(\'' + e.chave_nota + '\', \'comentar\')" style="background:#6a1b9a;color:#fff;border:none;border-radius:8px;padding:5px 10px;font-size:12px;font-weight:700;cursor:pointer;">💬 ' + (e.comentario ? 'editar comentário' : 'comentário') + '</button>'
-              + '</div><div id="espArea-' + e.chave_nota + '" style="display:none;"></div></div>';
+              + ' <button onclick="alertarEstoquista(\'' + escapeHtml(String(e.pedido || '')) + '\', \'' + escapeHtml(String(e.tracking || '')) + '\')" style="background:#c62828;color:#fff;border:none;border-radius:8px;padding:5px 10px;font-size:12px;font-weight:700;cursor:pointer;">📣 alertar estoquista</button>'
+              + '</div>'
+              + (e.marketplace === 'magalu' && e.ticket ? (
+                  '<div style="margin-top:5px;font-size:11px;color:#555;">🎫 Ticket: <a href="' + magaluLinkTicket(e.ticket) + '" target="_blank" rel="noopener" style="color:#1565c0;font-weight:700;text-decoration:none;">' + escapeHtml(String(e.ticket)) + '</a>'
+                  + ' <button title="alterar" onclick="magaluEditarTicket(\'' + escapeHtml(String(e.chave_nota)) + '\', \'' + escapeHtml(String(e.ticket)) + '\')" style="background:none;border:none;cursor:pointer;font-size:12px;">✏️</button>'
+                  + ' <button title="apagar" onclick="magaluApagarTicket(\'' + escapeHtml(String(e.chave_nota)) + '\')" style="background:none;border:none;cursor:pointer;font-size:12px;">🗑️</button></div>'
+                ) : '')
+              + (e.marketplace === 'magalu' && !e.ticket ? (
+                  '<div style="margin-top:5px;background:#eef;border-radius:8px;padding:6px 9px;">'
+                  + '<span style="font-size:11px;color:#555;font-weight:700;">🎫 Nº do ticket:</span> '
+                  + '<input id="tk_' + escapeHtml(String(e.chave_nota)) + '" placeholder="cole o protocolo" style="width:130px;padding:4px 7px;border:1px solid #ce93d8;border-radius:6px;font-size:12px;">'
+                  + ' <button onclick="magaluSalvarTicket(\'' + escapeHtml(String(e.chave_nota)) + '\')" style="background:#6a1b9a;color:#fff;border:none;border-radius:6px;padding:4px 9px;font-size:12px;font-weight:700;cursor:pointer;">salvar ticket</button></div>'
+                ) : '')
+              + '<div id="espArea-' + e.chave_nota + '" style="display:none;"></div></div>';
             window._espComentarios[e.chave_nota] = e.comentario || '';
           }
           html += '</div>';
@@ -802,6 +832,7 @@
             (e.pedido && e.tracking ? ' · <code style="font-size:11px;">' + escapeHtml(String(e.tracking)) + '</code>' : '') +
             (e.valor != null ? ' · R$ ' + Number(e.valor).toFixed(2).replace('.', ',') : '') +
             (linkVenda(e) ? ' <a href="' + linkVenda(e) + '" target="_blank" rel="noopener" style="background:#1565c0;color:#fff;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;text-decoration:none;margin-left:6px;">🔗 abrir</a>' : '') +
+            (e.marketplace === 'magalu' ? magaluProtocolosHtml(e) : '') + // v4.46 - protocolos na linha do abrir
             '<br><span style="font-size:12px;color:#555;">' +
             (e.dias_em_transito != null ? 'Em trânsito há <b>' + e.dias_em_transito + ' dia(s)</b>' : 'Em trânsito') +
             (e.status ? ' · ' + escapeHtml(String(e.status)) : '') +
@@ -828,6 +859,7 @@
             '<div style="margin-top:6px;">' +
               '<button onclick="espreitaAbrir(\'' + e.chave_nota + '\', \'processar\')" style="background:#2e7d32;color:#fff;border:none;border-radius:8px;padding:5px 10px;font-size:12px;font-weight:700;cursor:pointer;">✓ já processado</button> ' +
               '<button onclick="espreitaAbrir(\'' + e.chave_nota + '\', \'comentar\')" style="background:#6a1b9a;color:#fff;border:none;border-radius:8px;padding:5px 10px;font-size:12px;font-weight:700;cursor:pointer;">💬 ' + (e.comentario ? 'editar comentário' : 'comentário') + '</button>' +
+              ' <button onclick="alertarEstoquista(\'' + escapeHtml(String(e.pedido || '')) + '\', \'' + escapeHtml(String(e.tracking || '')) + '\')" style="background:#c62828;color:#fff;border:none;border-radius:8px;padding:5px 10px;font-size:12px;font-weight:700;cursor:pointer;">📣 alertar estoquista</button>' +
             // v4.30 - ML: link pra mensagens DENTRO do pedido + texto pronto pra colar
             (e.marketplace === 'ml' && e.pedido ? (
               ' <a href="https://www.mercadolivre.com.br/vendas/novo/mensagens/' + encodeURIComponent(e.pedido) + '" target="_blank" rel="noopener" style="background:#f9a825;color:#000;border-radius:8px;padding:5px 10px;font-size:12px;font-weight:700;text-decoration:none;">💬 mensagens do pedido</a>' +
@@ -837,25 +869,24 @@
             (e.marketplace === 'shopee' && e.pedido ? (
               ' <a href="https://mover-pedidos-aguardando-x-atendido.onrender.com/good-checkout-offline/ir-shopee?sn=' + encodeURIComponent(e.pedido) + '" target="_blank" rel="noopener" style="background:#e65100;color:#fff;border-radius:8px;padding:5px 10px;font-size:12px;font-weight:700;text-decoration:none;">📦 abrir pedido Shopee</a>'
             ) : '') +
-            // v4.40 - protocolos AUTOMATICOS (a API nao filtra por pedido, entao
-            // o server monta um indice global e casa por order.code)
-            (e.marketplace === 'magalu' ? magaluProtocolosHtml(e) : '') +
-            // v4.40 - TICKET MANUAL: sempre presente pra Magalu, num bloco proprio
+            // v4.46 - TICKET MANUAL: sempre presente pra Magalu, num bloco proprio
             // (separado do comentario). Se tem ticket salvo -> link + editar/apagar,
             // SEM caixinha e SEM botao de abrir nova. Se nao tem -> so a caixinha.
-            (e.marketplace === 'magalu' ? (
+            // v4.46 - TICKET: se JA TEM, so uma linha discreta com o link + editar/apagar.
+            // se NAO TEM, a caixinha pra colar + copiar texto. Sem quadro grande quando ja salvo.
+            (e.marketplace === 'magalu' && e.ticket ? (
+              '<div style="margin-top:6px;font-size:11px;color:#555;">' +
+                '🎫 Ticket: <a href="' + magaluLinkTicket(e.ticket) + '" target="_blank" rel="noopener" style="color:#1565c0;font-weight:700;text-decoration:none;">' + escapeHtml(String(e.ticket)) + '</a>' +
+                ' <button title="alterar" onclick="magaluEditarTicket(\'' + escapeHtml(String(e.chave_nota)) + '\', \'' + escapeHtml(String(e.ticket)) + '\')" style="background:none;border:none;cursor:pointer;font-size:12px;">✏️</button>' +
+                ' <button title="apagar" onclick="magaluApagarTicket(\'' + escapeHtml(String(e.chave_nota)) + '\')" style="background:none;border:none;cursor:pointer;font-size:12px;">🗑️</button>' +
+              '</div>'
+            ) : '') +
+            (e.marketplace === 'magalu' && !e.ticket ? (
               '<div style="margin-top:6px;background:#eef;border-radius:8px;padding:6px 9px;">' +
-              (e.ticket ? (
-                '<span style="font-size:11px;color:#555;font-weight:700;">🎫 Ticket salvo:</span> ' +
-                '<a href="' + magaluLinkTicket(e.ticket) + '" target="_blank" rel="noopener" style="color:#1565c0;font-weight:700;text-decoration:none;">🔗 ' + escapeHtml(String(e.ticket)) + '</a>' +
-                ' <button title="alterar" onclick="magaluEditarTicket(\'' + escapeHtml(String(e.chave_nota)) + '\', \'' + escapeHtml(String(e.ticket)) + '\')" style="background:#6a1b9a;color:#fff;border:none;border-radius:6px;padding:3px 7px;font-size:11px;font-weight:700;cursor:pointer;">✏️ alterar</button>' +
-                ' <button title="apagar" onclick="magaluApagarTicket(\'' + escapeHtml(String(e.chave_nota)) + '\')" style="background:#c62828;color:#fff;border:none;border-radius:6px;padding:3px 7px;font-size:11px;font-weight:700;cursor:pointer;">🗑️</button>'
-              ) : (
                 '<span style="font-size:11px;color:#555;font-weight:700;">🎫 Nº do ticket:</span> ' +
                 '<input id="tk_' + escapeHtml(String(e.chave_nota)) + '" placeholder="cole o protocolo" style="width:130px;padding:4px 7px;border:1px solid #ce93d8;border-radius:6px;font-size:12px;">' +
                 ' <button onclick="magaluSalvarTicket(\'' + escapeHtml(String(e.chave_nota)) + '\')" style="background:#6a1b9a;color:#fff;border:none;border-radius:6px;padding:4px 9px;font-size:12px;font-weight:700;cursor:pointer;">salvar ticket</button>' +
-                ' <button id="cp_' + escapeHtml(String(e.pedido || '')) + '" onclick="magaluCopiarReclamacao(\'' + escapeHtml(String(e.pedido || '')) + '\', \'' + btoa(unescape(encodeURIComponent(String(e.produto || '')))) + '\', ' + (e.dias_em_transito || 0) + ', ' + (e.valor != null ? Number(e.valor) : 'null') + ')" style="background:#00695c;color:#fff;border:none;border-radius:6px;padding:4px 9px;font-size:11px;font-weight:700;cursor:pointer;">📋 copiar texto</button>'
-              )) +
+                ' <button id="cp_' + escapeHtml(String(e.pedido || '')) + '" onclick="magaluCopiarReclamacao(\'' + escapeHtml(String(e.pedido || '')) + '\', \'' + btoa(unescape(encodeURIComponent(String(e.produto || '')))) + '\', ' + (e.dias_em_transito || 0) + ', ' + (e.valor != null ? Number(e.valor) : 'null') + ')" style="background:#00695c;color:#fff;border:none;border-radius:6px;padding:4px 9px;font-size:11px;font-weight:700;cursor:pointer;">📋 copiar texto</button>' +
               '</div>'
             ) : '') +
             '</div>' +
