@@ -652,59 +652,84 @@
     // v4.48 - carrega as NFs de devolucao do Bling e mostra numa tabela.
     // Modo diagnostico: mostra os campos crus + o detalhe de uma, pra o Diego
     // me dizer como a nota referencia o pedido (ai eu ligo o cruzamento auto).
+    // v4.50 - carrega o indice de NFs de devolucao e cruza com o a espreita.
+    // Mostra quantas devolucoes em aberto ja tem nota emitida (= resolvidas) e
+    // permite dar baixa em massa. Limpa os antigos de uma vez.
+    window._indiceNFDev = {};
     async function carregarNFsDevolucao() {
       var msg = document.getElementById('nfDevMsg');
       var lista = document.getElementById('listaNFsDevolucao');
-      msg.textContent = '⏳ buscando no Bling (pode levar alguns segundos)...';
+      msg.innerHTML = '⏳ Consultando o Bling e cruzando com o à espreita... isso detalha ~100 notas, leva de 30s a 1min. Aguarde.';
       lista.innerHTML = '';
       try {
-        var r = await fetch('/api/admin/nfs-devolucao?paginas=3&detalhe=1');
+        // 1) monta o indice de pedidos com NF de devolucao
+        var r = await fetch('/api/admin/indice-nf-devolucao?paginas=5');
         var d = await r.json();
         if (!d.ok) { msg.innerHTML = '<span style="color:#c62828;">' + escapeHtml(d.erro || 'erro') + '</span>'; return; }
-        msg.innerHTML = '<b>' + d.total + '</b> notas de devolução encontradas.';
-        var h = '';
-        // v4.49 - 3 detalhes (pra confirmar o padrao de referencia ao pedido)
-        if (d.detalhes3 && d.detalhes3.length) {
-          h += '<div style="background:#fffde7;border:1px solid #fff59d;border-radius:8px;padding:10px;margin-bottom:12px;font-size:12px;">'
-            + '<b>🔬 Detalhe de 3 notas (pra ligar ao pedido):</b><br><br>';
-          for (var j = 0; j < d.detalhes3.length; j++) {
-            var dt = d.detalhes3[j];
-            h += '<div style="border-bottom:1px dashed #ccc;padding-bottom:6px;margin-bottom:6px;">'
-              + '<b>NF ' + escapeHtml(String(dt.numero || '')) + '</b> · ' + escapeHtml(String(dt.contato || '-')) + '<br>'
-              + 'numeroPedidoLoja: <code>' + escapeHtml(String(dt.numeroPedidoLoja || '(vazio)')) + '</code><br>'
-              + 'chaveAcesso própria: <code>' + escapeHtml(String(dt.chaveAcesso_propria || '-').slice(0, 50)) + '</code><br>'
-              + 'chaves de 44 díg no detalhe: <code>' + escapeHtml(JSON.stringify(dt.chaves_44_no_detalhe || [])) + '</code><br>'
-              + 'itens: ' + dt.qtd_itens + (dt.primeiro_item ? ' · 1º: ' + escapeHtml(String(dt.primeiro_item.descricao || '').slice(0, 40)) + ' (SKU ' + escapeHtml(String(dt.primeiro_item.codigo || '-')) + ')' : '') + '<br>'
-              + (dt.observacoes ? 'obs: <i>' + escapeHtml(dt.observacoes) + '</i>' : '')
-              + '</div>';
-          }
-          h += '</div>';
+        window._indiceNFDev = d.pedidos || {};
+        var totalIndice = d.total || 0;
+
+        // 2) pega o a espreita atual pra cruzar
+        var re2 = await fetch('/api/admin/espreita');
+        var esp = await re2.json();
+        var emT = (esp.em_transito || []);
+        var nb = (esp.nunca_bipadas || []);
+        var todos = emT.concat(nb);
+
+        // 3) quais itens em aberto tem NF de devolucao?
+        var comNF = todos.filter(function (it) {
+          var ped = String(it.pedido || '').replace(/\s/g, '');
+          return ped && window._indiceNFDev[ped];
+        });
+
+        msg.innerHTML = '<b>' + totalIndice + '</b> pedidos com NF de devolução no Bling · <b style="color:#2e7d32;">' + comNF.length + '</b> deles ainda constam no à espreita (já resolvidos — dá pra baixar).';
+
+        if (comNF.length === 0) {
+          lista.innerHTML = '<div style="background:#e8f5e9;border-radius:8px;padding:12px;font-size:13px;color:#2e7d32;">🎉 Nenhuma devolução em aberto tem NF emitida. Tudo que já foi resolvido no Bling também já saiu do à espreita.</div>';
+          return;
         }
-        if (d.detalhe_exemplo && false) {
-          h += '<div style="background:#fffde7;border:1px solid #fff59d;border-radius:8px;padding:10px;margin-bottom:12px;font-size:12px;">'
-            + '<b>🔬 Detalhe de exemplo (nota ' + escapeHtml(String(d.detalhe_exemplo.numero || '')) + '):</b><br>'
-            + 'Campos disponíveis: <code>' + escapeHtml((d.detalhe_exemplo.campos || []).join(', ')) + '</code><br>'
-            + (d.detalhe_exemplo.notaReferenciada ? 'Nota referenciada: <code>' + escapeHtml(JSON.stringify(d.detalhe_exemplo.notaReferenciada)) + '</code><br>' : '<span style="color:#e65100;">Sem campo notaReferenciada direto</span><br>')
-            + (d.detalhe_exemplo.chaveReferenciada ? 'Chave referenciada: <code>' + escapeHtml(String(d.detalhe_exemplo.chaveReferenciada)) + '</code><br>' : '')
-            + (d.detalhe_exemplo.observacoes ? 'Observações: <i>' + escapeHtml(d.detalhe_exemplo.observacoes) + '</i>' : '')
-            + '</div>';
-        }
+
+        var h = '<div style="background:#fff5f5;border:1px solid #ffcdd2;border-radius:8px;padding:10px;margin-bottom:10px;">'
+          + '<b>' + comNF.length + ' devoluções</b> ainda no à espreita já têm NF de devolução emitida — ou seja, já foram resolvidas. Você pode dar baixa em todas de uma vez:<br>'
+          + '<button onclick="baixarComNF()" style="background:#c62828;color:#fff;border:none;border-radius:8px;padding:9px 16px;font-weight:700;cursor:pointer;margin-top:8px;">🧹 Dar baixa nas ' + comNF.length + ' devoluções resolvidas</button>'
+          + '<span id="baixaNFMsg" style="font-size:12px;margin-left:10px;"></span></div>';
         h += '<table style="width:100%;border-collapse:collapse;font-size:12px;">'
-          + '<tr style="background:#f5f5f5;text-align:left;"><th style="padding:6px;">NF</th><th style="padding:6px;">Data</th><th style="padding:6px;">Contato</th><th style="padding:6px;">Natureza</th><th style="padding:6px;">Pedido</th><th style="padding:6px;">Valor</th></tr>';
-        for (var i = 0; i < (d.notas || []).length; i++) {
-          var n = d.notas[i];
+          + '<tr style="background:#f5f5f5;text-align:left;"><th style="padding:6px;">Marketplace</th><th style="padding:6px;">Pedido</th><th style="padding:6px;">Cliente</th><th style="padding:6px;">NF devol.</th><th style="padding:6px;">Data NF</th></tr>';
+        window._comNFparaBaixar = comNF;
+        for (var i = 0; i < comNF.length; i++) {
+          var it = comNF[i];
+          var info = window._indiceNFDev[String(it.pedido).replace(/\s/g, '')] || {};
           h += '<tr style="border-bottom:1px solid #eee;">'
-            + '<td style="padding:6px;"><b>' + escapeHtml(String(n.numero || '-')) + '</b>/' + escapeHtml(String(n.serie || '')) + '</td>'
-            + '<td style="padding:6px;">' + escapeHtml(String(n.dataEmissao || '-').slice(0, 10)) + '</td>'
-            + '<td style="padding:6px;">' + escapeHtml(String(n.contato || '-')) + '</td>'
-            + '<td style="padding:6px;">' + escapeHtml(String(n.natureza || '-')) + '</td>'
-            + '<td style="padding:6px;"><code>' + escapeHtml(String(n.numeroPedidoLoja || '-')) + '</code></td>'
-            + '<td style="padding:6px;">' + (n.valor != null ? 'R$ ' + Number(n.valor).toFixed(2).replace('.', ',') : '-') + '</td>'
+            + '<td style="padding:6px;">' + escapeHtml(String(it.marketplace || '-')) + '</td>'
+            + '<td style="padding:6px;"><code>' + escapeHtml(String(it.pedido || '-')) + '</code></td>'
+            + '<td style="padding:6px;">' + escapeHtml(String(it.cliente || '-')) + '</td>'
+            + '<td style="padding:6px;"><b>' + escapeHtml(String(info.nf || '-')) + '</b></td>'
+            + '<td style="padding:6px;">' + escapeHtml(String(info.data || '-')) + '</td>'
             + '</tr>';
         }
         h += '</table>';
         lista.innerHTML = h;
       } catch (e) { msg.innerHTML = '<span style="color:#c62828;">erro: ' + escapeHtml(e.message) + '</span>'; }
+    }
+
+    // baixa em massa dos itens que tem NF de devolucao
+    async function baixarComNF() {
+      var comNF = window._comNFparaBaixar || [];
+      if (!comNF.length) return;
+      if (!confirm('Dar baixa em ' + comNF.length + ' devoluções que já têm NF emitida? Elas saem do à espreita (mas ficam no histórico).')) return;
+      var bmsg = document.getElementById('baixaNFMsg');
+      var ok = 0, erro = 0;
+      for (var i = 0; i < comNF.length; i++) {
+        bmsg.textContent = 'baixando ' + (i + 1) + '/' + comNF.length + '...';
+        try {
+          var chave = comNF[i].chave_nota || comNF[i].chave || String(comNF[i].tracking || (comNF[i].marketplace + ':' + comNF[i].pedido));
+          var r = await fetch('/api/admin/espreita/nota', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ chave: chave, baixado: true, comentario: 'Baixa automática: NF de devolução já emitida no Bling.' }) });
+          var d = await r.json();
+          if (d.ok) ok++; else erro++;
+        } catch (e) { erro++; }
+        await new Promise(function (res) { setTimeout(res, 100); });
+      }
+      bmsg.innerHTML = '<b style="color:#2e7d32;">✅ ' + ok + ' baixadas</b>' + (erro ? ' · <span style="color:#c62828;">' + erro + ' com erro</span>' : '') + '. Recarregue o à espreita.';
     }
 
     async function carregarRecados() {
@@ -883,7 +908,7 @@
               + (linkVenda(e) ? ' <a href="' + linkVenda(e) + '" target="_blank" rel="noopener" style="background:#1565c0;color:#fff;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;text-decoration:none;margin-left:6px;">🔗 abrir</a>' : '')
               + (e.marketplace === 'magalu' ? magaluProtocolosHtml(e) : '') // v4.46 - protocolos na linha do abrir (alerta)
               + '<br><span style="font-size:12px;color:#555;">Entregue há <b>' + (e.dias_desde != null ? e.dias_desde : '?') + ' dia(s)</b> · sem triagem no sistema'
-              + (e.cliente ? ' · 👤 ' + escapeHtml(e.cliente) : '') + (e.nf ? ' · 🧾 NF ' + escapeHtml(String(e.nf)) : '') + (e.logistica ? ' · <span style="background:#455a64;color:#fff;padding:1px 6px;border-radius:8px;font-size:10px;font-weight:700;">' + escapeHtml(e.logistica) + '</span>' : '') + '</span>'
+              + (e.cliente ? ' · 👤 ' + escapeHtml(e.cliente) : '') + (e.nf ? ' · 🧾 NF ' + escapeHtml(String(e.nf)) : '') + (e.logistica ? ' · <span style="background:#455a64;color:#fff;padding:1px 6px;border-radius:8px;font-size:10px;font-weight:700;">' + escapeHtml(e.logistica) + (e.nf_devolucao ? ' · <span style="background:#2e7d32;color:#fff;padding:1px 7px;border-radius:8px;font-size:10px;font-weight:800;">✅ NF DEVOLUÇÃO ' + escapeHtml(String(e.nf_devolucao.nf || '')) + '</span>' : '') + '</span>' : '') + (e.nf_devolucao ? ' · <span style="background:#2e7d32;color:#fff;padding:1px 7px;border-radius:8px;font-size:10px;font-weight:800;">✅ NF DEVOLUÇÃO ' + escapeHtml(String(e.nf_devolucao.nf || '')) + '</span>' : '') + '</span>'
               + ((e.itens && e.itens.length)
                   ? '<div style="font-size:12px;color:#333;margin-top:4px;background:#fff;border-radius:6px;padding:5px 8px;">'
                     + e.itens.map(function (it) {
@@ -967,6 +992,8 @@
               (e.dinheiro === 'retido_com_voce' ? '💰 <b style="color:#2e7d32;">dinheiro retido com você</b>' :
                e.dinheiro === 'estornado_cliente' ? '↩️ <b style="color:#e65100;">dinheiro estornado ao cliente</b>' : '') +
               '</span>' : '') +
+            // v4.50 - selo verde quando ja tem NF de devolucao emitida no Bling
+            (e.nf_devolucao ? '<br><span style="background:#2e7d32;color:#fff;padding:2px 8px;border-radius:8px;font-size:11px;font-weight:800;">✅ TEM NF DE DEVOLUÇÃO — NF ' + escapeHtml(String(e.nf_devolucao.nf || '')) + ' de ' + escapeHtml(String(e.nf_devolucao.data || '')) + '</span> <span style="font-size:11px;color:#666;">(já resolvida — pode dar baixa)</span>' : '') +
             // v4.43 - linha 2: produto + qtd + SKU + valor da NF (sem repetir a NF)
             ((e.produto || e.sku || e.valor_nf != null) ?
               '<br><span style="font-size:12px;color:#333;">' +
