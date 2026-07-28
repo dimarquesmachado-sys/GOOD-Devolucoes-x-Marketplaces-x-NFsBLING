@@ -183,7 +183,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.50.1 (corrige crash: marcacao NF devolucao inline)',
+    version: '4.51.1 (cache so quando as 3 fontes estao quentes - corrige Magalu sumindo)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -3393,6 +3393,42 @@ app.get('/api/debug/shopee-return', requerAdmin, async (req, res) => {
 // 2000017611449926). Cruzando com o a espreita, sabemos quais devolucoes ja
 // foram resolvidas - inclusive as antigas, de antes do app de triagem.
 const NF_DEV_INDICE = new Map();     // pedido -> { nf, data, contato, sku }
+
+// v4.51 - CACHE do resultado final do a espreita (o painel montado, pronto).
+// Montar o a espreita e caro (junta 3 marketplaces, enriquece cliente/NF).
+// Guardamos a ultima resposta boa e servimos ela instantaneo enquanto uma nova
+// e montada em background. Assim o painel abre rapido mesmo com muitos itens.
+let ESP_CACHE = null;            // ultima resposta boa (objeto json)
+let ESP_CACHE_TS = 0;           // quando foi montada
+let ESP_MONTANDO = null;        // promessa em voo (evita montar 2x ao mesmo tempo)
+// v4.51.1 - so aceita cachear um resultado se as 3 fontes principais estao
+// quentes. Sem isso, um pre-aquecimento que rodou antes da Magalu esquentar
+// cacheava a Magalu VAZIA e servia por 3 min (bug: os Magalu sumiam).
+function contarPorMarketplace(r) {
+  const c = { magalu: 0, ml: 0, shopee: 0 };
+  const arr = (r && r.em_transito) || [];
+  for (const d of arr) { if (c[d.marketplace] != null) c[d.marketplace]++; }
+  return c;
+}
+function guardarCacheEspreita(r) {
+  if (!r || !r.ok) return false;
+  // primeira vez: aceita
+  if (!ESP_CACHE) { ESP_CACHE = r; ESP_CACHE_TS = Date.now(); return true; }
+  // se o cache ja esta velho, qualquer resultado novo e melhor - aceita
+  if ((Date.now() - ESP_CACHE_TS) > ESP_CACHE_TTL) { ESP_CACHE = r; ESP_CACHE_TS = Date.now(); return true; }
+  // cache recente: protege contra a fonte DESABAR a zero (o bug dos Magalu
+  // sumindo). So bloqueia quedas bruscas: o cache tinha varios (>=2) e o novo
+  // veio ZERO - sinal de fonte que ainda nao aqueceu. Variacao de 1 e normal.
+  const novo = contarPorMarketplace(r);
+  const velho = contarPorMarketplace(ESP_CACHE);
+  const desabou = (velho.magalu >= 2 && novo.magalu === 0) ||
+                  (velho.ml >= 2 && novo.ml === 0) ||
+                  (velho.shopee >= 2 && novo.shopee === 0);
+  if (desabou) return false;   // mantem o cache anterior (a fonte deve estar fria)
+  ESP_CACHE = r; ESP_CACHE_TS = Date.now();
+  return true;
+}
+const ESP_CACHE_TTL = 3 * 60 * 1000;   // 3 min: abaixo disso, serve o cache na hora
 let NF_DEV_INDICE_TS = 0;
 let NF_DEV_CARREGANDO = null;
 const NF_DEV_TTL = 15 * 60 * 1000;
@@ -4136,7 +4172,7 @@ app.post('/api/recado/:id/ciente', requerLogin, async (req, res) => {
   } catch (e) { return res.status(500).json({ ok: false, erro: e.message }); }
 });
 
-app.get('/api/admin/espreita', requerAdmin, async (req, res) => {
+async function montarEspreita() {
   // v3.77 - agregador: Magalu (BFF) + ML (indice claims->returns) + Shopee (proxy)
   const magaluR = espreita.resumo();
   const mlR = mlReturns.resumoEspreita();
@@ -4266,7 +4302,7 @@ app.get('/api/admin/espreita', requerAdmin, async (req, res) => {
       });
     }
   } catch (e) { nuncaBipadas = []; }
-  return res.json({
+  return ({
     ok: true,
     quente: magaluR.quente || mlR.quente || shopeeR.quente,
     em_transito: unificada,
@@ -4279,7 +4315,38 @@ app.get('/api/admin/espreita', requerAdmin, async (req, res) => {
     fontes: { magalu: magaluR.quente, ml: mlR.quente, shopee: shopeeR.quente },
     erro: magaluR.erro || shopeeR.erro || null,
   });
+}
+
+// v4.51 - a rota: serve o cache instantaneo se recente; senao monta e cacheia.
+app.get('/api/admin/espreita', requerAdmin, async (req, res) => {
+  const agora = Date.now();
+  const forcar = req.query.fresh === '1';
+  // cache quente e recente -> responde na hora, e atualiza em background
+  if (!forcar && ESP_CACHE && (agora - ESP_CACHE_TS) < ESP_CACHE_TTL) {
+    // dispara atualizacao em background (sem travar a resposta)
+    if (!ESP_MONTANDO) {
+      ESP_MONTANDO = montarEspreita()
+        .then(r => { guardarCacheEspreita(r); })
+        .catch(() => {})
+        .finally(() => { ESP_MONTANDO = null; });
+    }
+    return res.json({ ...ESP_CACHE, _cache: true, _idade_seg: Math.round((agora - ESP_CACHE_TS) / 1000) });
+  }
+  // sem cache ou expirado -> monta agora (reaproveita a montagem em voo se houver)
+  try {
+    if (!ESP_MONTANDO) {
+      ESP_MONTANDO = montarEspreita()
+        .then(r => { guardarCacheEspreita(r); return r; })
+        .finally(() => { ESP_MONTANDO = null; });
+    }
+    const r = await ESP_MONTANDO;
+    return res.json({ ...(r || ESP_CACHE || { ok: false, erro: 'sem dados' }), _cache: false });
+  } catch (e) {
+    if (ESP_CACHE) return res.json({ ...ESP_CACHE, _cache: true, _stale: true });
+    return res.status(500).json({ ok: false, erro: e.message });
+  }
 });
+;
 app.get('/api/debug/espreita-indice', requerAdmin, async (req, res) => {
   if (req.query.rebuild === '1') {
     try { await espreita.construirIndice(); } catch (e) { return res.status(500).json({ ok: false, erro: e.message }); }
@@ -4545,6 +4612,18 @@ setInterval(() => magalu.preAquecer(), 25 * 60 * 1000);
 setInterval(() => mlReturns.preAquecer(), 25 * 60 * 1000);
 setInterval(() => nfNomes.preAquecer(), 25 * 60 * 1000);
 setInterval(() => { if (magalu.cfg.autorizado) espreita.preAquecer(); }, 25 * 60 * 1000);
+
+// v4.51 - pre-aquece o RESULTADO FINAL do a espreita (o painel montado), pra
+// abrir instantaneo. 90s apos o boot (depois dos componentes) e a cada 3 min.
+function preAquecerEspreita() {
+  if (ESP_MONTANDO) return;
+  ESP_MONTANDO = montarEspreita()
+    .then(r => { guardarCacheEspreita(r); })
+    .catch(() => {})
+    .finally(() => { ESP_MONTANDO = null; });
+}
+setTimeout(preAquecerEspreita, 90 * 1000);
+setInterval(preAquecerEspreita, 3 * 60 * 1000);
 
 app.listen(PORT, () => {
   console.log('============================================');
