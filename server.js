@@ -183,7 +183,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.50 (cruza a espreita com NF de devolucao do Bling por numeroPedidoLoja)',
+    version: '4.50.1 (corrige crash: marcacao NF devolucao inline)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -4188,7 +4188,11 @@ app.get('/api/admin/espreita', requerAdmin, async (req, res) => {
       }
     }
   } catch (e) { for (const d of unificada) d.chave_nota = chaveEspreita(d); }
-  marcarNFDev(unificada); // v4.50
+  // v4.50 - marca itens que ja tem NF de devolucao emitida (indice do Bling)
+  for (const d of unificada) {
+    const ped = String(d.pedido || '').replace(/\s/g, '');
+    if (ped && NF_DEV_INDICE.has(ped)) d.nf_devolucao = NF_DEV_INDICE.get(ped);
+  }
 
   // v3.81 - anexa cliente/NF do cache; dinheiro: ML tem status_money nativo
   // v4.34 - espera o enriquecimento dos itens ATRASADOS (+30 dias, os que a
@@ -4215,13 +4219,6 @@ app.get('/api/admin/espreita', requerAdmin, async (req, res) => {
     // v3.95 - usa a data REAL de entrega quando ja estiver no cache; o corte de
     // 5-90 dias e aplicado DEPOIS da correcao (antes, o last_updated do return
     // encolhia a conta e o item aparecia com menos dias do que os reais).
-    // v4.50 - marca itens que ja tem NF de devolucao emitida (indice do Bling)
-  const marcarNFDev = (arr) => {
-    for (const d of arr) {
-      const ped = String(d.pedido || '').replace(/\s/g, '');
-      if (ped && NF_DEV_INDICE.has(ped)) d.nf_devolucao = NF_DEV_INDICE.get(ped);
-    }
-  };
   const brutos = [...(mlR.entregues || []), ...(magaluR.entregues || [])];
     // v4.27 - a data REAL de entrega e o que decide os dias. Buscar em
     // background NAO chega a tempo na primeira carga (o alerta responde antes),
