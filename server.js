@@ -145,6 +145,7 @@ const upload = multer({
 });
 
 app.use(express.json({ limit: '12mb' }));
+app.use('/amb', require('./amb-devolucoes/app-AMB'));
 app.use(cookieParser());
 app.use(express.static(path.join(__dirname, 'public'), {
   // v3.64 - HTML sempre revalida (celular segurava js velho em cache; agora
