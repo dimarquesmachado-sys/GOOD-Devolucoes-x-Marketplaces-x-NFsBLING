@@ -1,9 +1,14 @@
 // ============================================================
-// amb-devolucoes/app-AMB.js                    (AMB Devol. b4)
+// amb-devolucoes/app-AMB.js                    (AMB Devol. b5)
 // ------------------------------------------------------------
 // Router Express do Devolucoes da AMBTotal.
 //
-// b4 traz a BUSCA POR NOME DO REMETENTE — o pega-tudo que cobre
+// b5 conserta a busca por nome: PAGINACAO de verdade (total real
+// + "tem mais") e uma rota que abre os ITENS de uma NF sob
+// demanda, pra desempatar quando o mesmo cliente tem varias
+// compras e o nome nao distingue.
+//
+// b4 trouxe a BUSCA POR NOME DO REMETENTE — o pega-tudo que cobre
 // os canais SEM integracao. A AMBTotal vende no TikTok Shop (e a
 // Amazon comeca em breve): dessas origens a caixa chega so com o
 // nome do cliente na etiqueta, e nenhum indice de marketplace
@@ -35,7 +40,7 @@ const mlReturns = require('./lib-AMB/ml-returns-AMB');
 const nfNomes = require('./lib-AMB/nf-nomes-AMB');
 const tokens = require('./lib-AMB/render-tokens-AMB');
 
-const VERSAO = 'AMB Devolucoes b4';
+const VERSAO = 'AMB Devolucoes b5';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -340,16 +345,70 @@ router.get('/nf/indice/construir', admin, (req, res) => {
 router.get('/nf/nome', admin, async (req, res) => {
   const q = req.query.q;
   if (!q) {
-    return res.status(400).json({ ok: false, erro: 'falta o q', uso: '/amb/nf/nome?q=NOMEDOCLIENTE&k=SUA_CHAVE' });
+    return res.status(400).json({ ok: false, erro: 'falta o q', uso: '/amb/nf/nome?q=NOMEDOCLIENTE&pagina=1&k=SUA_CHAVE' });
   }
-  const r = await nfNomes.buscarPorNome(String(q));
+  const r = await nfNomes.buscarPorNome(String(q), {
+    pagina: req.query.pagina,
+    porPagina: req.query.por_pagina,
+  });
   res.json({
     ok: true,
     procurado: r.alvo,
     via: r.via,
-    total: r.candidatos.length,
+    total_encontrados: r.total,
+    mostrando: r.candidatos.length,
+    pagina: r.pagina,
+    tem_mais: r.tem_mais,
+    proxima_pagina: r.tem_mais
+      ? `${cfg.urlBase()}/amb/nf/nome?q=${encodeURIComponent(String(q))}&pagina=${r.pagina + 1}&k=SUA_CHAVE`
+      : null,
+    mesmo_cliente_repetido: r.muitos_iguais || false,
+    dica_desempate: r.muitos_iguais
+      ? 'todas as NFs sao do mesmo nome - use /amb/nf/itens?id=ID_DA_NF para ver os produtos de cada uma'
+      : null,
     candidatos: r.candidatos,
     indice: nfNomes.statusIndice(),
+  });
+});
+
+/**
+ * ITENS DE UMA NF — o desempate.
+ * Quando o mesmo cliente comprou varias vezes, o nome nao resolve.
+ * Aqui o estoquista abre uma NF especifica e ve o que tem dentro.
+ * E SOB DEMANDA de proposito: trazer os itens dos 8 candidatos
+ * custaria 8 chamadas ao Bling (~6s) em toda busca, quase sempre
+ * a toa. Uma chamada, quando ele clica, custa menos de 1s.
+ */
+router.get('/nf/itens', admin, async (req, res) => {
+  const id = req.query.id;
+  if (!id) {
+    return res.status(400).json({ ok: false, erro: 'falta o id', uso: '/amb/nf/itens?id=25994228847&k=SUA_CHAVE' });
+  }
+  const r = await bling.buscarNFePorId(String(id));
+  if (!r.ok) return res.json({ ok: false, erro: r.error, status: r.status });
+
+  const nfe = r.nfe || {};
+  const itens = (nfe.itens || []).map(i => ({
+    sku: i.codigo || null,
+    descricao: i.descricao || null,
+    quantidade: i.quantidade != null ? i.quantidade : null,
+    valor_unit: i.valor != null ? i.valor : null,
+  }));
+
+  res.json({
+    ok: true,
+    nf: {
+      id: String(nfe.id || id),
+      numero: nfe.numero || null,
+      serie: nfe.serie || null,
+      chave: nfe.chaveAcesso || nfe.chave || null,
+      data_emissao: nfe.dataEmissao || null,
+      valor: nfe.valorNota != null ? nfe.valorNota : null,
+      cliente: (nfe.contato && nfe.contato.nome) || null,
+      numero_pedido_loja: nfe.numeroPedidoLoja || null,
+    },
+    itens,
+    total_itens: itens.length,
   });
 });
 
@@ -378,12 +437,18 @@ router.get('/identificar', admin, async (req, res) => {
   }
 
   // 2) nome do remetente
-  const porNome = await nfNomes.buscarPorNome(codigo);
-  tentativas.push({ via: 'nome do remetente', achou: porNome.candidatos.length > 0, quantos: porNome.candidatos.length });
-  if (porNome.candidatos.length > 0) {
+  const porNome = await nfNomes.buscarPorNome(codigo, { pagina: req.query.pagina });
+  tentativas.push({ via: 'nome do remetente', achou: porNome.total > 0, quantos: porNome.total });
+  if (porNome.total > 0) {
     return res.json({
       ok: true, encontrado: true, via: 'nome do remetente',
-      match: porNome.via, candidatos: porNome.candidatos,
+      match: porNome.via,
+      total_encontrados: porNome.total,
+      mostrando: porNome.candidatos.length,
+      pagina: porNome.pagina,
+      tem_mais: porNome.tem_mais,
+      mesmo_cliente_repetido: porNome.muitos_iguais || false,
+      candidatos: porNome.candidatos,
       aviso: 'confira com a caixa antes de confirmar - sao candidatos, nao certeza',
       tentativas,
     });
@@ -425,7 +490,7 @@ router.use((req, res) => {
     rotas: [
       '/amb/conectar', '/amb/status', '/amb/config',
       '/amb/ml/indice', '/amb/ml/indice/construir', '/amb/ml/rastreio', '/amb/ml/espreita',
-      '/amb/identificar', '/amb/nf/nome', '/amb/nf/indice', '/amb/nf/indice/construir',
+      '/amb/identificar', '/amb/nf/nome', '/amb/nf/itens', '/amb/nf/indice', '/amb/nf/indice/construir',
       '/amb/ml/teste', '/amb/ml/eu', '/amb/bling/teste', '/amb/bling/produto',
     ],
   });
