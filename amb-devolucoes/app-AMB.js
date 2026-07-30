@@ -1,5 +1,5 @@
 // ============================================================
-// amb-devolucoes/app-AMB.js                    (AMB Devol. b6)
+// amb-devolucoes/app-AMB.js                    (AMB Devol. b7)
 // ------------------------------------------------------------
 // Router Express do Devolucoes da AMBTotal.
 //
@@ -47,7 +47,7 @@ const tokens = require('./lib-AMB/render-tokens-AMB');
 const auth = require('./lib-AMB/auth-AMB');
 const db = require('./lib-AMB/supabase-AMB');
 
-const VERSAO = 'AMB Devolucoes b6';
+const VERSAO = 'AMB Devolucoes b7';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -479,16 +479,18 @@ router.post('/api/auth/login', (req, res) => {
   if (!usuario || !senha) {
     return res.status(400).json({ ok: false, erro: 'informe usuario e senha' });
   }
-  const tipo = auth.autenticar(String(usuario), String(senha));
-  if (!tipo) {
+  const conta = auth.autenticar(String(usuario), String(senha));
+  if (!conta) {
     // Mensagem generica de proposito: nao dizer se o usuario
     // existe evita descobrir nomes validos por tentativa.
     return res.status(401).json({ ok: false, erro: 'usuario ou senha invalidos' });
   }
-  const token = auth.novaSessao(String(usuario), tipo);
+  // Guarda o nome na grafia CADASTRADA, nao como foi digitado —
+  // assim o registro da triagem sai sempre igual no banco.
+  const token = auth.novaSessao(conta.nome, conta.tipo);
   res.cookie(auth.COOKIE, token, auth.opcoesCookie());
-  console.log(`[AMB/LOGIN] ${usuario} (${tipo})`);
-  res.json({ ok: true, usuario, tipo });
+  console.log(`[AMB/LOGIN] ${conta.nome} (${conta.tipo})`);
+  res.json({ ok: true, usuario: conta.nome, tipo: conta.tipo });
 });
 
 router.post('/api/auth/logout', (req, res) => {
