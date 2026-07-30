@@ -1,5 +1,5 @@
 // ============================================================
-// amb-devolucoes/lib-AMB/auth-AMB.js           (AMB Devol. b6)
+// amb-devolucoes/lib-AMB/auth-AMB.js           (AMB Devol. b7)
 // ------------------------------------------------------------
 // Login do galpao da AMBTotal.
 //
@@ -12,8 +12,19 @@
 //
 // Usuarios vem da env var AMB_USERS, no formato:
 //     usuario:senha,outro:senha2
-// E o admin e o nome que estiver em AMB_ADMIN_USER (que precisa
-// tambem estar na lista de AMB_USERS).
+//
+// AMB_ADMIN_USER aceita UM nome ou VARIOS separados por virgula:
+//     AMB_ADMIN_USER = Diego,Angelica
+// (b7 — antes so aceitava um; com dois nomes o codigo procurava
+// um usuario chamado literalmente "Diego,Angelica", nao achava, e
+// NINGUEM ficava admin. Pego pela rota /amb/auth/diag.)
+//
+// O nome de usuario e comparado SEM diferenciar maiuscula de
+// minuscula. Motivo pratico: o teclado do celular capitaliza a
+// primeira letra sozinho, entao o estoquista digita "Lucas" onde
+// esta cadastrado "lucas" e levaria "usuario ou senha invalidos"
+// sem entender por que. A SENHA continua exata — ali a diferenca
+// e proposital.
 //
 // Dois niveis apenas, igual a GOOD:
 //   admin      -> configuracao, indices, gestao
@@ -39,13 +50,21 @@ function parseUsers(txt) {
     if (i < 1) return;
     const u = par.slice(0, i).trim();
     const s = par.slice(i + 1).trim();
-    if (u && s) out[u] = s;
+    if (u && s) out[u.toLowerCase()] = { nome: u, senha: s };
   });
   return out;
 }
 
+/** Aceita "Diego" ou "Diego,Angelica" (com ou sem espaco). */
+function parseAdmins(txt) {
+  return String(txt || '')
+    .split(',')
+    .map(x => x.trim().toLowerCase())
+    .filter(Boolean);
+}
+
 const USERS = parseUsers(process.env.AMB_USERS || '');
-const ADMIN_USER = process.env.AMB_ADMIN_USER || null;
+const ADMINS = parseAdmins(process.env.AMB_ADMIN_USER || '');
 
 const sessoes = new Map();   // token -> { usuario, tipo, criado }
 
@@ -71,11 +90,18 @@ function validarSessao(token, tipoEsperado) {
   return s;
 }
 
-/** Confere usuario e senha. Devolve o tipo, ou null se nao bater. */
+/**
+ * Confere usuario e senha.
+ * Devolve { nome, tipo } com o nome na grafia cadastrada, ou null.
+ */
 function autenticar(usuario, senha) {
-  const esperada = USERS[usuario];
-  if (!esperada || esperada !== senha) return null;
-  return (ADMIN_USER && usuario === ADMIN_USER) ? 'admin' : 'estoquista';
+  const chave = String(usuario || '').trim().toLowerCase();
+  const reg = USERS[chave];
+  if (!reg || reg.senha !== String(senha)) return null;
+  return {
+    nome: reg.nome,
+    tipo: ADMINS.includes(chave) ? 'admin' : 'estoquista',
+  };
 }
 
 function opcoesCookie() {
@@ -112,11 +138,16 @@ function requerAdmin(req, res, next) {
 }
 
 function diagnostico() {
+  const nomes = Object.values(USERS).map(u => u.nome);
+  const adminsOk = ADMINS.filter(a => USERS[a]).map(a => USERS[a].nome);
+  const adminsFora = ADMINS.filter(a => !USERS[a]);
   return {
-    usuarios_configurados: Object.keys(USERS).length,
-    nomes: Object.keys(USERS),                 // nomes apenas, nunca senha
-    admin: ADMIN_USER || null,
-    admin_esta_na_lista: !!(ADMIN_USER && USERS[ADMIN_USER]),
+    usuarios_configurados: nomes.length,
+    nomes,                                   // nomes apenas, nunca senha
+    admins: adminsOk,
+    admins_nao_cadastrados: adminsFora,      // se vier cheio, ha erro de digitacao
+    tudo_certo: nomes.length > 0 && adminsOk.length > 0 && adminsFora.length === 0,
+    estoquistas: nomes.filter(n => !adminsOk.includes(n)),
     sessoes_ativas: sessoes.size,
     cookie: COOKIE,
   };
