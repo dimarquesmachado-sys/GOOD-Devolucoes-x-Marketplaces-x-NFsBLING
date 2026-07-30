@@ -1,9 +1,15 @@
 // ============================================================
-// amb-devolucoes/app-AMB.js                    (AMB Devol. b3)
+// amb-devolucoes/app-AMB.js                    (AMB Devol. b4)
 // ------------------------------------------------------------
 // Router Express do Devolucoes da AMBTotal.
 //
-// b3 traz o INDICE claims->returns do ML — a peca que faz o bipe
+// b4 traz a BUSCA POR NOME DO REMETENTE — o pega-tudo que cobre
+// os canais SEM integracao. A AMBTotal vende no TikTok Shop (e a
+// Amazon comeca em breve): dessas origens a caixa chega so com o
+// nome do cliente na etiqueta, e nenhum indice de marketplace
+// resolve. Ver lib-AMB/nf-nomes-AMB.js.
+//
+// b3 trouxe o INDICE claims->returns do ML — a peca que faz o bipe
 // da etiqueta dos Correios reconhecer de que venda e a caixa.
 //
 // CORRECAO DA b3: a tela /amb/conectar mostrava "falta autorizar"
@@ -26,9 +32,10 @@ const cfg = require('./config-AMB');
 const bling = require('./lib-AMB/bling-AMB');
 const ml = require('./lib-AMB/ml-AMB');
 const mlReturns = require('./lib-AMB/ml-returns-AMB');
+const nfNomes = require('./lib-AMB/nf-nomes-AMB');
 const tokens = require('./lib-AMB/render-tokens-AMB');
 
-const VERSAO = 'AMB Devolucoes b3';
+const VERSAO = 'AMB Devolucoes b4';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -107,6 +114,9 @@ router.get('/conectar', admin, (req, res) => {
       <table>
         ${linha('Bling', bling.temToken())}
         ${linha('Mercado Livre', ml.temToken(), ml.userId() ? ('user ' + ml.userId()) : '')}
+        <tr><td>Indice de nomes (NFs)</td><td>${(() => { const n = nfNomes.statusIndice();
+          return n.quente ? `<span class="ok">${n.total_nfs} NFs</span> &middot; ${n.idade_min} min`
+                          : (n.construindo ? 'montando agora...' : '<span class="erro">ainda frio</span>'); })()}</td></tr>
         <tr><td>Indice de devolucoes ML</td><td>${idx.quente
           ? `<span class="ok">${idx.com_tracking} rastreios</span> &middot; ${idx.idade_min} min`
           : (idx.construindo ? 'montando agora...' : '<span class="erro">ainda frio</span>')}</td></tr>
@@ -117,6 +127,7 @@ router.get('/conectar', admin, (req, res) => {
       <a class="btn" href="/amb/oauth/iniciar?servico=bling&k=${k}">Conectar o Bling da AMBTotal</a>
       <a class="btn" href="/amb/oauth/iniciar?servico=ml&k=${k}">Conectar o Mercado Livre da AMBTotal</a>
       <a class="btn cinza" href="/amb/ml/indice?k=${k}">Ver o indice de devolucoes</a>
+      <a class="btn cinza" href="/amb/nf/indice?k=${k}">Ver o indice de nomes</a>
       <a class="btn cinza" href="/amb/config?k=${k}">Ver diagnostico completo</a>
     </div>
 
@@ -233,6 +244,7 @@ router.get('/status', (req, res) => {
     memoria_mb: Math.round(process.memoryUsage().rss / 1048576),
     conectado: { bling: bling.temToken(), ml: ml.temToken(), ml_user: ml.userId() || null },
     indice_ml: { quente: idx.quente, construindo: idx.construindo, rastreios: idx.com_tracking, idade_min: idx.idade_min },
+    indice_nomes: { quente: nfNomes.statusIndice().quente, nfs: nfNomes.statusIndice().total_nfs },
   });
 });
 
@@ -299,6 +311,91 @@ router.get('/ml/espreita', admin, (req, res) => {
   res.json({ ok: true, versao: VERSAO, espreita: mlReturns.resumoEspreita() });
 });
 
+// ── BUSCA POR NOME (pega-tudo: TikTok, Amazon, qualquer canal) ─
+
+/** Estado do indice de NFs por nome. */
+router.get('/nf/indice', admin, (req, res) => {
+  res.json({ ok: true, versao: VERSAO, indice: nfNomes.statusIndice() });
+});
+
+/** Forca a reconstrucao do indice de nomes. */
+router.get('/nf/indice/construir', admin, (req, res) => {
+  const st = nfNomes.statusIndice();
+  if (st.construindo) {
+    return res.json({ ok: true, ja_construindo: true });
+  }
+  nfNomes.construirIndice().catch(e => console.error('[AMB] indice de nomes falhou:', e.message));
+  res.json({
+    ok: true, iniciado: true,
+    aviso: 'montando em background',
+    acompanhe: cfg.urlBase() + '/amb/nf/indice?k=SUA_CHAVE',
+  });
+});
+
+/**
+ * Busca a NF pelo nome do remetente. Aceita o nome colado como sai
+ * na etiqueta ("IANDRAMATIASRIBEIRO") ou digitado com espaco.
+ * SEMPRE devolve CANDIDATOS — a decisao e do estoquista.
+ */
+router.get('/nf/nome', admin, async (req, res) => {
+  const q = req.query.q;
+  if (!q) {
+    return res.status(400).json({ ok: false, erro: 'falta o q', uso: '/amb/nf/nome?q=NOMEDOCLIENTE&k=SUA_CHAVE' });
+  }
+  const r = await nfNomes.buscarPorNome(String(q));
+  res.json({
+    ok: true,
+    procurado: r.alvo,
+    via: r.via,
+    total: r.candidatos.length,
+    candidatos: r.candidatos,
+    indice: nfNomes.statusIndice(),
+  });
+});
+
+// ── IDENTIFICAR: a porta unica do bipe ───────────────────────
+/**
+ * Recebe qualquer coisa que o estoquista bipe ou digite e tenta
+ * descobrir de que venda e. Ordem das tentativas:
+ *   1. rastreio no indice do ML (Correios/Mercado Envios)
+ *   2. nome do remetente
+ * Quando nada bate, diz o que ja foi tentado — em vez de so
+ * responder "nao achei", que nao ajuda ninguem no galpao.
+ */
+router.get('/identificar', admin, async (req, res) => {
+  const codigo = String(req.query.codigo || '').trim();
+  if (!codigo) {
+    return res.status(400).json({ ok: false, erro: 'falta o codigo', uso: '/amb/identificar?codigo=XXX&k=SUA_CHAVE' });
+  }
+
+  const tentativas = [];
+
+  // 1) rastreio conhecido do ML
+  const porTracking = await mlReturns.acharPorTracking(codigo);
+  tentativas.push({ via: 'rastreio ML', achou: !!porTracking });
+  if (porTracking) {
+    return res.json({ ok: true, encontrado: true, via: 'rastreio ML', devolucao: porTracking, tentativas });
+  }
+
+  // 2) nome do remetente
+  const porNome = await nfNomes.buscarPorNome(codigo);
+  tentativas.push({ via: 'nome do remetente', achou: porNome.candidatos.length > 0, quantos: porNome.candidatos.length });
+  if (porNome.candidatos.length > 0) {
+    return res.json({
+      ok: true, encontrado: true, via: 'nome do remetente',
+      match: porNome.via, candidatos: porNome.candidatos,
+      aviso: 'confira com a caixa antes de confirmar - sao candidatos, nao certeza',
+      tentativas,
+    });
+  }
+
+  res.json({
+    ok: true, encontrado: false, codigo, tentativas,
+    indices: { ml: mlReturns.statusIndice(), nomes: nfNomes.statusIndice() },
+    dica: 'se for de canal sem integracao (TikTok, Amazon), tente o nome do remetente da etiqueta',
+  });
+});
+
 // ── Testes ───────────────────────────────────────────────────
 router.get('/bling/teste', admin, async (req, res) => {
   res.json({ ok: true, versao: VERSAO, resultado: await bling.testeDeVida() });
@@ -328,6 +425,7 @@ router.use((req, res) => {
     rotas: [
       '/amb/conectar', '/amb/status', '/amb/config',
       '/amb/ml/indice', '/amb/ml/indice/construir', '/amb/ml/rastreio', '/amb/ml/espreita',
+      '/amb/identificar', '/amb/nf/nome', '/amb/nf/indice', '/amb/nf/indice/construir',
       '/amb/ml/teste', '/amb/ml/eu', '/amb/bling/teste', '/amb/bling/produto',
     ],
   });
@@ -340,7 +438,15 @@ router.use((req, res) => {
 if (ml.temToken()) {
   mlReturns.preAquecer(Number(process.env.AMB_ML_PREAQUECER_MS || 180000));
 } else {
-  console.log('[amb-devolucoes] ML sem token - indice so sera montado apos autorizar');
+  console.log('[amb-devolucoes] ML sem token - indice de devolucoes so apos autorizar');
+}
+
+// O indice de nomes bate no Bling, nao no ML — sao cotas separadas.
+// Ainda assim vai 1 minuto depois do outro pra nao empilhar tudo.
+if (bling.temToken()) {
+  nfNomes.preAquecer(Number(process.env.AMB_NF_PREAQUECER_MS || 240000));
+} else {
+  console.log('[amb-devolucoes] Bling sem token - indice de nomes so apos autorizar');
 }
 
 console.log(`[amb-devolucoes] ${VERSAO} carregado - prefixo ${cfg.PREFIXO}`);
