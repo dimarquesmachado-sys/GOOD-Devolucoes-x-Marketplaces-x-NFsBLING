@@ -1,5 +1,5 @@
 // ============================================================
-// amb-devolucoes/lib-AMB/nf-nomes-AMB.js       (AMB Devol. b4)
+// amb-devolucoes/lib-AMB/nf-nomes-AMB.js       (AMB Devol. b5)
 // ------------------------------------------------------------
 // O PEGA-TUDO: acha a venda pelo NOME DO REMETENTE da etiqueta.
 //
@@ -16,6 +16,14 @@
 //
 // A busca devolve CANDIDATOS. Quem decide e sempre o estoquista,
 // conferindo com a caixa na mao — o sistema nunca escolhe sozinho.
+//
+// b5 — PAGINACAO DE VERDADE. Antes a busca cortava em 8 e NAO
+// avisava que havia mais: se a NF certa fosse a 9a, ela era
+// invisivel. Acontece de verdade em dois casos — cliente que
+// comprou 12 vezes em 120 dias, e colisao de nome curto (com
+// 3.575 nomes curtos, existe mais de um "JOSESILVA"). Agora a
+// busca conta o TOTAL real, devolve a pagina pedida e diz se
+// tem mais.
 //
 // ============================================================
 // MELHORIA SOBRE A GOOD (pendencia conhecida de la):
@@ -151,52 +159,94 @@ function statusIndice() {
 }
 
 /**
- * Busca candidatos pelo nome. Ordem das tentativas:
- *   1. nome completo exato        (IANDRAMATIASRIBEIRODEFREITAS)
- *   2. primeiro+ultimo nome       (IANDRAFREITAS)  <- novo
- *   3. prefixo ou contem          (nome parcial digitado na mao)
- * Devolve no maximo 8, mais recentes primeiro, com o motivo do match.
+ * Busca candidatos pelo nome.
+ *
+ * Roda as TRES estrategias e junta o resultado, em vez de parar na
+ * primeira que da match. Motivo descoberto no teste: "Jose Silva
+ * Ramos" vira JOSERAMOS no indice curto, entao uma etiqueta escrita
+ * JOSESILVA achava so o "Jose Antonio Silva" e escondia o outro —
+ * sendo que JOSESILVA e prefixo de JOSESILVARAMOS. Parar na
+ * primeira estrategia custava recall justamente nos casos ambiguos,
+ * que sao os que mais precisam de ajuda.
+ *
+ * A ordem de confianca vira a ordem da lista:
+ *   1. nome completo exato    (mais confiavel)
+ *   2. primeiro+ultimo nome
+ *   3. prefixo / contem       (menos confiavel)
+ * Dentro de cada faixa, mais recente primeiro.
  */
-async function buscarPorNome(texto) {
+async function buscarPorNome(texto, opts = {}) {
+  const porPagina = Math.min(Math.max(Number(opts.porPagina) || 8, 1), 50);
+  const pagina = Math.max(Number(opts.pagina) || 1, 1);
   const alvo = colapsar(texto);
-  if (alvo.length < 5) {
-    return { alvo, via: null, candidatos: [], aviso: 'texto curto demais (minimo 5 letras)' };
-  }
+
+  const vazio = (aviso) => ({
+    alvo, via: null, candidatos: [],
+    total: 0, pagina, por_pagina: porPagina, tem_mais: false, aviso,
+  });
+
+  if (alvo.length < 5) return vazio('texto curto demais (minimo 5 letras)');
 
   if (!IDX.ts || (Date.now() - IDX.ts) > 30 * 60000) {
     try { await construirIndice(); } catch (e) { /* segue com o que tiver */ }
   }
 
-  // 1) exato
-  if (IDX.mapa[alvo]) {
-    return { alvo, via: 'nome completo', candidatos: ordenar([...IDX.mapa[alvo]]) };
-  }
-
-  // 2) primeiro+ultimo
-  if (IDX.mapaCurto[alvo]) {
-    return { alvo, via: 'primeiro+ultimo nome', candidatos: ordenar([...IDX.mapaCurto[alvo]]) };
-  }
-
-  // 3) prefixo / contem
-  const hits = [];
   const jaVi = new Set();
+  const hits = [];
+  const vias = [];
+
+  const juntar = (lista, forca, nomeVia) => {
+    let entrou = 0;
+    for (const nf of lista || []) {
+      if (jaVi.has(nf.id)) continue;
+      jaVi.add(nf.id);
+      hits.push({ ...nf, forca, via: nomeVia });
+      entrou++;
+    }
+    if (entrou > 0) vias.push(nomeVia);
+  };
+
+  // 1) nome completo exato
+  juntar(IDX.mapa[alvo], 1, 'nome completo');
+
+  // 2) primeiro+ultimo nome
+  juntar(IDX.mapaCurto[alvo], 2, 'primeiro+ultimo nome');
+
+  // 3) aproximado — sem teto artificial, pra o total nao mentir
+  const aprox = [];
   for (const [nome, nfs] of Object.entries(IDX.mapa)) {
     if (nome.startsWith(alvo) || nome.includes(alvo) || alvo.includes(nome)) {
-      for (const nf of nfs) {
-        if (jaVi.has(nf.id)) continue;
-        jaVi.add(nf.id);
-        hits.push(nf);
-      }
+      aprox.push(...nfs);
     }
-    if (hits.length >= 24) break;
   }
+  juntar(aprox, 3, 'aproximado');
 
-  return { alvo, via: hits.length ? 'aproximado' : null, candidatos: ordenar(hits) };
+  // confianca primeiro, data depois
+  hits.sort((a, b) => (a.forca - b.forca)
+    || String(b.dataEmissao || '').localeCompare(String(a.dataEmissao || '')));
+
+  const total = hits.length;
+  const inicio = (pagina - 1) * porPagina;
+  const fatia = hits.slice(inicio, inicio + porPagina);
+
+  return {
+    alvo,
+    via: vias[0] || null,
+    vias,
+    candidatos: fatia,
+    total,
+    pagina,
+    por_pagina: porPagina,
+    tem_mais: inicio + fatia.length < total,
+    // todas do mesmo cliente: o nome nao desempata, so os itens
+    muitos_iguais: total > porPagina && new Set(hits.map(h => h.nome)).size === 1,
+  };
 }
 
+/** Ordena no lugar: mais recente primeiro. NAO corta mais. */
 function ordenar(lista) {
   lista.sort((a, b) => String(b.dataEmissao || '').localeCompare(String(a.dataEmissao || '')));
-  return lista.slice(0, 8);
+  return lista;
 }
 
 /** Pre-aquecimento atrasado, pelo mesmo motivo do indice do ML. */
