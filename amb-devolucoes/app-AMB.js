@@ -1,9 +1,14 @@
 // ============================================================
-// amb-devolucoes/app-AMB.js                    (AMB Devol. b5)
+// amb-devolucoes/app-AMB.js                    (AMB Devol. b6)
 // ------------------------------------------------------------
 // Router Express do Devolucoes da AMBTotal.
 //
-// b5 conserta a busca por nome: PAGINACAO de verdade (total real
+// b6 traz LOGIN e TRIAGEM: o galpao passa a ter como entrar e o
+// que for bipado passa a ser GRAVADO no Supabase (tabelas _amb).
+// O cookie de sessao e "sessao_amb", isolado do da GOOD, que
+// roda no mesmo dominio — ver lib-AMB/auth-AMB.js.
+//
+// b5 consertou a busca por nome: PAGINACAO de verdade (total real
 // + "tem mais") e uma rota que abre os ITENS de uma NF sob
 // demanda, pra desempatar quando o mesmo cliente tem varias
 // compras e o nome nao distingue.
@@ -39,8 +44,10 @@ const ml = require('./lib-AMB/ml-AMB');
 const mlReturns = require('./lib-AMB/ml-returns-AMB');
 const nfNomes = require('./lib-AMB/nf-nomes-AMB');
 const tokens = require('./lib-AMB/render-tokens-AMB');
+const auth = require('./lib-AMB/auth-AMB');
+const db = require('./lib-AMB/supabase-AMB');
 
-const VERSAO = 'AMB Devolucoes b5';
+const VERSAO = 'AMB Devolucoes b6';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -250,6 +257,8 @@ router.get('/status', (req, res) => {
     conectado: { bling: bling.temToken(), ml: ml.temToken(), ml_user: ml.userId() || null },
     indice_ml: { quente: idx.quente, construindo: idx.construindo, rastreios: idx.com_tracking, idade_min: idx.idade_min },
     indice_nomes: { quente: nfNomes.statusIndice().quente, nfs: nfNomes.statusIndice().total_nfs },
+    login_configurado: auth.temUsuarios(),
+    banco_ligado: db.ligado(),
   });
 });
 
@@ -461,6 +470,123 @@ router.get('/identificar', admin, async (req, res) => {
   });
 });
 
+// ── LOGIN DO GALPAO ──────────────────────────────────────────
+// Estas rotas usam COOKIE, nao a ADMIN_KEY: quem usa e o
+// estoquista no celular, que nao tem (nem deve ter) a chave.
+
+router.post('/api/auth/login', (req, res) => {
+  const { usuario, senha } = req.body || {};
+  if (!usuario || !senha) {
+    return res.status(400).json({ ok: false, erro: 'informe usuario e senha' });
+  }
+  const tipo = auth.autenticar(String(usuario), String(senha));
+  if (!tipo) {
+    // Mensagem generica de proposito: nao dizer se o usuario
+    // existe evita descobrir nomes validos por tentativa.
+    return res.status(401).json({ ok: false, erro: 'usuario ou senha invalidos' });
+  }
+  const token = auth.novaSessao(String(usuario), tipo);
+  res.cookie(auth.COOKIE, token, auth.opcoesCookie());
+  console.log(`[AMB/LOGIN] ${usuario} (${tipo})`);
+  res.json({ ok: true, usuario, tipo });
+});
+
+router.post('/api/auth/logout', (req, res) => {
+  const t = auth.tokenDaRequisicao(req);
+  if (t) auth.sair(t);
+  res.clearCookie(auth.COOKIE, { path: auth.CAMINHO_COOKIE });
+  res.json({ ok: true });
+});
+
+router.get('/api/auth/me', (req, res) => {
+  const s = auth.validarSessao(auth.tokenDaRequisicao(req));
+  if (!s) return res.json({ ok: false });
+  res.json({ ok: true, usuario: s.usuario, tipo: s.tipo });
+});
+
+// Diagnostico do login (admin) - nunca devolve senha
+router.get('/auth/diag', admin, (req, res) => {
+  res.json({ ok: true, versao: VERSAO, login: auth.diagnostico() });
+});
+
+// ── TRIAGEM (o que o estoquista faz) ─────────────────────────
+
+/** Bipa/digita e descobre o que e. Versao logada do /identificar. */
+router.get('/api/triagem/identificar', auth.requerLogin, async (req, res) => {
+  const codigo = String(req.query.codigo || '').trim();
+  if (!codigo) return res.status(400).json({ ok: false, erro: 'falta o codigo' });
+
+  const tentativas = [];
+  let achado = null, via = null, candidatos = null, extras = {};
+
+  const porTracking = await mlReturns.acharPorTracking(codigo);
+  tentativas.push({ via: 'rastreio ML', achou: !!porTracking });
+  if (porTracking) { achado = porTracking; via = 'rastreio ML'; }
+
+  if (!achado) {
+    const porNome = await nfNomes.buscarPorNome(codigo, { pagina: req.query.pagina });
+    tentativas.push({ via: 'nome do remetente', achou: porNome.total > 0, quantos: porNome.total });
+    if (porNome.total > 0) {
+      via = 'nome do remetente';
+      candidatos = porNome.candidatos;
+      extras = {
+        match: porNome.via,
+        total_encontrados: porNome.total,
+        pagina: porNome.pagina,
+        tem_mais: porNome.tem_mais,
+        mesmo_cliente_repetido: porNome.muitos_iguais || false,
+      };
+    }
+  }
+
+  // Duas checagens que evitam erro no galpao:
+  //  - ja triaram esta caixa antes?
+  //  - existe recado preso a este pedido?
+  const chaves = {
+    orderId: (achado && achado.order_id) || null,
+    tracking: (achado && achado.tracking) || codigo,
+  };
+  const [dup, rec] = await Promise.all([
+    db.jaTriado(chaves),
+    db.recadoDe(chaves.orderId || chaves.tracking),
+  ]);
+
+  res.json({
+    ok: true,
+    encontrado: !!(achado || candidatos),
+    via,
+    devolucao: achado,
+    candidatos,
+    ...extras,
+    ja_triado: dup.ok ? dup.triado : null,
+    triagem_anterior: dup.ok ? dup.registro : null,
+    recado: rec.ok ? rec.recado : null,
+    tentativas,
+    usuario: req.usuario,
+  });
+});
+
+/** Grava a triagem. */
+router.post('/api/triagem/registrar', auth.requerLogin, async (req, res) => {
+  const d = req.body || {};
+  if (!d.order_id && !d.tracking && !d.nf_numero) {
+    return res.status(400).json({ ok: false, erro: 'informe ao menos order_id, tracking ou nf_numero' });
+  }
+  const r = await db.registrarTriagem({ ...d, funcionario: req.usuario });
+  if (!r.ok) return res.status(200).json({ ok: false, erro: r.erro });
+  res.json({ ok: true, registro: r.registro });
+});
+
+/** Ultimas triagens. */
+router.get('/api/triagem/recentes', auth.requerLogin, async (req, res) => {
+  res.json(await db.listarRecentes(req.query.limite));
+});
+
+/** Saude do banco (admin). */
+router.get('/db/teste', admin, async (req, res) => {
+  res.json({ ok: true, versao: VERSAO, supabase: await db.testeDeVida(), tabelas: db.tabelas });
+});
+
 // ── Testes ───────────────────────────────────────────────────
 router.get('/bling/teste', admin, async (req, res) => {
   res.json({ ok: true, versao: VERSAO, resultado: await bling.testeDeVida() });
@@ -491,6 +617,8 @@ router.use((req, res) => {
       '/amb/conectar', '/amb/status', '/amb/config',
       '/amb/ml/indice', '/amb/ml/indice/construir', '/amb/ml/rastreio', '/amb/ml/espreita',
       '/amb/identificar', '/amb/nf/nome', '/amb/nf/itens', '/amb/nf/indice', '/amb/nf/indice/construir',
+      '/amb/api/auth/login', '/amb/api/auth/me', '/amb/api/triagem/identificar', '/amb/api/triagem/registrar',
+      '/amb/auth/diag', '/amb/db/teste',
       '/amb/ml/teste', '/amb/ml/eu', '/amb/bling/teste', '/amb/bling/produto',
     ],
   });
@@ -512,6 +640,10 @@ if (bling.temToken()) {
   nfNomes.preAquecer(Number(process.env.AMB_NF_PREAQUECER_MS || 240000));
 } else {
   console.log('[amb-devolucoes] Bling sem token - indice de nomes so apos autorizar');
+}
+
+if (!auth.temUsuarios()) {
+  console.log('[amb-devolucoes] AMB_USERS vazio - ninguem consegue logar ainda');
 }
 
 console.log(`[amb-devolucoes] ${VERSAO} carregado - prefixo ${cfg.PREFIXO}`);
