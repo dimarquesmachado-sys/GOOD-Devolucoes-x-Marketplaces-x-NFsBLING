@@ -1,22 +1,21 @@
 // ============================================================
-// amb-devolucoes/app-AMB.js                    (AMB Devol. b2)
+// amb-devolucoes/app-AMB.js                    (AMB Devol. b3)
 // ------------------------------------------------------------
 // Router Express do Devolucoes da AMBTotal.
 //
-// NOVIDADE DA b2 — CONEXAO EM UM CLIQUE:
-// antes era preciso pegar a URL numa rota, colar no navegador,
-// copiar o "code" da barra de endereco e abrir outra rota em
-// menos de 1 minuto. Agora existe /amb/conectar: uma tela com
-// botoes. Voce clica, autoriza no Bling ou no ML, e o callback
-// faz TUDO sozinho — troca o code, grava os tokens, descobre o
-// user_id e ja testa a conexao. Sem cronometro, sem copiar nada.
+// b3 traz o INDICE claims->returns do ML — a peca que faz o bipe
+// da etiqueta dos Correios reconhecer de que venda e a caixa.
 //
-// COMO A SEGURANCA FUNCIONA AQUI: a rota de callback precisa ser
-// publica (quem chama e o Bling/ML, sem a ADMIN_KEY). Entao ela
-// nao aceita qualquer chamada: no momento em que voce clica no
-// botao, geramos um "state" aleatorio de uso unico, com validade
-// de 10 minutos. O callback so trabalha se o state bater. Sem
-// isso, um link malicioso poderia mandar um code plantado.
+// CORRECAO DA b3: a tela /amb/conectar mostrava "falta autorizar"
+// mesmo depois de conectar. Causa: ela lia o config, que e uma
+// FOTO das env vars tirada quando o servico subiu. Como o token
+// e gravado depois, a foto ficava velha ate o proximo restart.
+// Agora a tela pergunta aos proprios modulos (bling.temToken(),
+// ml.temToken()), que sabem o estado de agora.
+//
+// Toda rota administrativa exige ?k=ADMIN_KEY e responde 404
+// quando a chave falta. A unica publica alem do /status e o
+// /oauth/callback, protegido por state de uso unico.
 // ============================================================
 
 'use strict';
@@ -26,9 +25,10 @@ const crypto = require('crypto');
 const cfg = require('./config-AMB');
 const bling = require('./lib-AMB/bling-AMB');
 const ml = require('./lib-AMB/ml-AMB');
+const mlReturns = require('./lib-AMB/ml-returns-AMB');
 const tokens = require('./lib-AMB/render-tokens-AMB');
 
-const VERSAO = 'AMB Devolucoes b2';
+const VERSAO = 'AMB Devolucoes b3';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -43,13 +43,12 @@ function admin(req, res, next) {
 }
 
 // ── State de uso unico pro OAuth ─────────────────────────────
-const PENDENTES = new Map();   // state -> { servico, criado_em }
+const PENDENTES = new Map();
 const VALIDADE_MS = 10 * 60 * 1000;
 
 function novoState(servico) {
   const s = crypto.randomBytes(24).toString('hex');
   PENDENTES.set(s, { servico, criado_em: Date.now() });
-  // limpeza dos vencidos (a Map nunca cresce sem controle)
   for (const [k, v] of PENDENTES) {
     if (Date.now() - v.criado_em > VALIDADE_MS) PENDENTES.delete(k);
   }
@@ -59,17 +58,16 @@ function novoState(servico) {
 function consumirState(s) {
   const reg = PENDENTES.get(s);
   if (!reg) return null;
-  PENDENTES.delete(s);                                  // uso unico
+  PENDENTES.delete(s);
   if (Date.now() - reg.criado_em > VALIDADE_MS) return null;
   return reg;
 }
 
-// O redirect_uri precisa ser IDENTICO ao cadastrado nos apps.
 function redirectOAuth() {
   return cfg.urlBase() + '/amb/oauth/callback';
 }
 
-// ── Paginas (HTML simples, sem dependencia externa) ──────────
+// ── Paginas ──────────────────────────────────────────────────
 function pagina(titulo, corpo, cor) {
   return `<!DOCTYPE html><html lang="pt-br"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -92,10 +90,11 @@ td:last-child{text-align:right;color:#8b949e}
 </style></head><body><div class="caixa">${corpo}</div></body></html>`;
 }
 
-// ── /amb/conectar — a tela com os botoes ─────────────────────
+// ── /amb/conectar ────────────────────────────────────────────
 router.get('/conectar', admin, (req, res) => {
   const k = encodeURIComponent(req.query.k);
-  const cfgAtual = cfg.statusConfig();
+  // Estado AO VIVO, perguntado aos modulos (nao a foto do config).
+  const idx = mlReturns.statusIndice();
 
   const linha = (nome, pronto, detalhe) =>
     `<tr><td>${nome}</td><td>${pronto ? '<span class="ok">conectado</span>' : '<span class="erro">falta autorizar</span>'}${detalhe ? ' &middot; ' + detalhe : ''}</td></tr>`;
@@ -106,44 +105,43 @@ router.get('/conectar', admin, (req, res) => {
 
     <div class="card">
       <table>
-        ${linha('Bling', cfgAtual.bling.token)}
-        ${linha('Mercado Livre', cfgAtual.ml.token, cfgAtual.ml.user_id ? ('user ' + cfgAtual.ml.user_id) : '')}
+        ${linha('Bling', bling.temToken())}
+        ${linha('Mercado Livre', ml.temToken(), ml.userId() ? ('user ' + ml.userId()) : '')}
+        <tr><td>Indice de devolucoes ML</td><td>${idx.quente
+          ? `<span class="ok">${idx.com_tracking} rastreios</span> &middot; ${idx.idade_min} min`
+          : (idx.construindo ? 'montando agora...' : '<span class="erro">ainda frio</span>')}</td></tr>
       </table>
     </div>
 
     <div class="card">
       <a class="btn" href="/amb/oauth/iniciar?servico=bling&k=${k}">Conectar o Bling da AMBTotal</a>
       <a class="btn" href="/amb/oauth/iniciar?servico=ml&k=${k}">Conectar o Mercado Livre da AMBTotal</a>
+      <a class="btn cinza" href="/amb/ml/indice?k=${k}">Ver o indice de devolucoes</a>
       <a class="btn cinza" href="/amb/config?k=${k}">Ver diagnostico completo</a>
     </div>
 
     <div class="aviso">
       Clique, autorize na tela do marketplace e pronto — o resto acontece sozinho.
-      Confira antes que o navegador esteja logado na conta da <b>AMBTotal</b>,
-      nao na da GOOD.<br><br>
-      O endereco de retorno cadastrado nos dois apps precisa ser exatamente:<br>
-      <code>${redirectOAuth()}</code>
+      Confira antes que o navegador esteja logado na conta da <b>AMBTotal</b>.<br><br>
+      Endereco de retorno cadastrado nos apps:<br><code>${redirectOAuth()}</code>
     </div>`;
   res.set('Content-Type', 'text/html; charset=utf-8').send(pagina('Conectar AMBTotal', corpo));
 });
 
-// ── /amb/oauth/iniciar — gera o state e manda pro marketplace ─
+// ── OAuth ────────────────────────────────────────────────────
 router.get('/oauth/iniciar', admin, (req, res) => {
   const servico = String(req.query.servico || '').toLowerCase();
 
   if (servico === 'bling') {
     if (!bling.temCredenciais()) {
       return res.status(200).send(pagina('Falta credencial',
-        `<h1>Faltam credenciais do Bling</h1>
-         <div class="card">Configure <code>AMB_BLING_CLIENT_ID</code> e <code>AMB_BLING_CLIENT_SECRET</code>
-         no Render, servico GOOD-Devolucoes-x-Marketplaces-x-NFsBLING, aba Environment.</div>`));
+        `<h1>Faltam credenciais do Bling</h1><div class="card">Configure
+         <code>AMB_BLING_CLIENT_ID</code> e <code>AMB_BLING_CLIENT_SECRET</code> no Render.</div>`));
     }
     const state = novoState('bling');
     const p = new URLSearchParams({
-      response_type: 'code',
-      client_id: cfg.bling.clientId,
-      redirect_uri: redirectOAuth(),
-      state,
+      response_type: 'code', client_id: cfg.bling.clientId,
+      redirect_uri: redirectOAuth(), state,
     });
     return res.redirect(`${cfg.bling.apiBase}/oauth/authorize?${p.toString()}`);
   }
@@ -151,9 +149,8 @@ router.get('/oauth/iniciar', admin, (req, res) => {
   if (servico === 'ml') {
     if (!ml.temCredenciais()) {
       return res.status(200).send(pagina('Falta credencial',
-        `<h1>Faltam credenciais do Mercado Livre</h1>
-         <div class="card">Configure <code>AMB_ML_CLIENT_ID</code> e <code>AMB_ML_CLIENT_SECRET</code>
-         no Render, servico GOOD-Devolucoes-x-Marketplaces-x-NFsBLING, aba Environment.</div>`));
+        `<h1>Faltam credenciais do Mercado Livre</h1><div class="card">Configure
+         <code>AMB_ML_CLIENT_ID</code> e <code>AMB_ML_CLIENT_SECRET</code> no Render.</div>`));
     }
     const state = novoState('ml');
     return res.redirect(ml.urlAutorizacao(state, redirectOAuth()));
@@ -162,7 +159,6 @@ router.get('/oauth/iniciar', admin, (req, res) => {
   res.status(400).json({ ok: false, erro: 'servico invalido', use: 'bling ou ml' });
 });
 
-// ── /amb/oauth/callback — PUBLICA, protegida pelo state ──────
 router.get('/oauth/callback', async (req, res) => {
   const { code, state, error, error_description } = req.query;
 
@@ -176,8 +172,8 @@ router.get('/oauth/callback', async (req, res) => {
   if (!reg) {
     return res.status(400).send(pagina('Link invalido',
       `<h1 class="erro">Link invalido ou expirado</h1>
-       <div class="card">Este endereco so funciona logo depois de voce clicar no botao de conectar,
-       e vale por 10 minutos. Volte para a tela de conexao e clique de novo.</div>`, '#da3633'));
+       <div class="card">Este endereco so vale por 10 minutos depois de voce clicar no botao.
+       Volte para a tela de conexao e clique de novo.</div>`, '#da3633'));
   }
 
   if (!code) {
@@ -196,14 +192,14 @@ router.get('/oauth/callback', async (req, res) => {
           <tr><td>Token gravado no Render</td><td>${r.persistiu ? 'sim' : 'NAO'}</td></tr>
           <tr><td>Escopos</td><td>${(r.dados && r.dados.scope) || '-'}</td></tr>
           <tr><td>Teste de leitura</td><td>${teste.ok ? 'respondeu' : 'falhou'}</td></tr>
-        </table></div>
-        ${r.persistiu ? '' : '<div class="card erro">O token foi obtido mas nao gravado. Confira RENDER_API_KEY e RENDER_SERVICE_ID, senao ele se perde no proximo restart.</div>'}
-      `));
+        </table></div>`));
     }
 
     if (reg.servico === 'ml') {
       const r = await ml.trocarCodePorToken(String(code), redirectOAuth());
       const teste = await ml.testeDeVida();
+      // Com o ML recem-conectado, ja vale montar o indice.
+      mlReturns.preAquecer(5000);
       return res.send(pagina('Mercado Livre conectado', `
         <h1 class="ok">Mercado Livre da AMBTotal conectado</h1>
         <div class="card"><table>
@@ -212,24 +208,21 @@ router.get('/oauth/callback', async (req, res) => {
           <tr><td>Token gravado no Render</td><td>${r.persistiu ? 'sim' : 'NAO'}</td></tr>
           <tr><td>Validade do acesso</td><td>${r.expira_em_s ? Math.round(r.expira_em_s / 3600) + 'h (renova sozinho)' : '-'}</td></tr>
         </table></div>
-        ${r.persistiu ? '' : '<div class="card erro">Token obtido mas nao gravado. Confira RENDER_API_KEY e RENDER_SERVICE_ID.</div>'}
-        <div class="aviso">Confira se a conta acima e mesmo a da AMBTotal. Se aparecer a conta da GOOD,
-        voce autorizou logado na conta errada — troque de conta no Mercado Livre e conecte de novo.</div>
-      `));
+        <div class="aviso">O indice de devolucoes comecou a ser montado agora e leva alguns minutos.
+        Acompanhe em <code>/amb/ml/indice?k=SUA_CHAVE</code>.</div>`));
     }
 
     res.status(400).json({ ok: false, erro: 'servico desconhecido no state' });
   } catch (erro) {
     const detalhe = (erro.response && JSON.stringify(erro.response.data)) || erro.message;
-    res.status(200).send(pagina('Falhou', `
-      <h1 class="erro">Nao consegui concluir</h1>
-      <div class="card"><code>${detalhe}</code></div>
-      <div class="aviso">Volte para a tela de conexao e tente de novo.</div>`, '#da3633'));
+    res.status(200).send(pagina('Falhou',
+      `<h1 class="erro">Nao consegui concluir</h1><div class="card"><code>${detalhe}</code></div>`, '#da3633'));
   }
 });
 
-// ── /amb/status ──────────────────────────────────────────────
+// ── Status e config ──────────────────────────────────────────
 router.get('/status', (req, res) => {
+  const idx = mlReturns.statusIndice();
   res.json({
     ok: true,
     modulo: 'amb-devolucoes',
@@ -238,19 +231,20 @@ router.get('/status', (req, res) => {
     subiu_em: SUBIU_EM,
     uptime_s: Math.round(process.uptime()),
     memoria_mb: Math.round(process.memoryUsage().rss / 1048576),
-    conectado: { bling: bling.temToken(), ml: ml.temToken() },
+    conectado: { bling: bling.temToken(), ml: ml.temToken(), ml_user: ml.userId() || null },
+    indice_ml: { quente: idx.quente, construindo: idx.construindo, rastreios: idx.com_tracking, idade_min: idx.idade_min },
   });
 });
 
-// ── /amb/config ──────────────────────────────────────────────
 router.get('/config', admin, (req, res) => {
   res.json({
     ok: true,
     versao: VERSAO,
     empresa: cfg.NOME_EMPRESA,
-    prefixo: cfg.PREFIXO,
     url_base: cfg.urlBase(),
     redirect_oauth: redirectOAuth(),
+    // ao vivo, nao a foto do boot
+    conectado_agora: { bling: bling.temToken(), ml: ml.temToken(), ml_user: ml.userId() || null },
     configurado: cfg.statusConfig(),
     persistencia_token: tokens.diagnostico(),
     tabelas_supabase: cfg.supabase.tabelas,
@@ -258,10 +252,56 @@ router.get('/config', admin, (req, res) => {
   });
 });
 
-// ── Rotas de teste ───────────────────────────────────────────
+// ── INDICE DE DEVOLUCOES DO ML ───────────────────────────────
+
+/** Estado do indice. */
+router.get('/ml/indice', admin, (req, res) => {
+  res.json({ ok: true, versao: VERSAO, indice: mlReturns.statusIndice() });
+});
+
+/** Forca a reconstrucao. Responde na hora e monta em background. */
+router.get('/ml/indice/construir', admin, (req, res) => {
+  const st = mlReturns.statusIndice();
+  if (st.construindo) {
+    return res.json({ ok: true, ja_construindo: true, aviso: 'ja existe uma construcao em andamento' });
+  }
+  mlReturns.construirIndice().catch(e => console.error('[AMB] construcao falhou:', e.message));
+  res.json({
+    ok: true,
+    iniciado: true,
+    aviso: 'montando em background - pode levar alguns minutos',
+    acompanhe: cfg.urlBase() + '/amb/ml/indice?k=SUA_CHAVE',
+  });
+});
+
+/**
+ * O CORACAO DO BIPE: recebe o codigo dos Correios e diz de que
+ * venda e a caixa. Aceita o codigo sujo (espaco, ponto, minuscula).
+ */
+router.get('/ml/rastreio', admin, async (req, res) => {
+  const codigo = req.query.codigo;
+  if (!codigo) {
+    return res.status(400).json({ ok: false, erro: 'falta o codigo', uso: '/amb/ml/rastreio?codigo=AD123456789BR&k=SUA_CHAVE' });
+  }
+  const achado = await mlReturns.acharPorTracking(String(codigo));
+  if (!achado) {
+    return res.json({
+      ok: true, encontrado: false, codigo: String(codigo),
+      indice: mlReturns.statusIndice(),
+      dica: 'se o indice estiver frio ou a janela de dias for curta, o rastreio pode existir e nao estar no mapa',
+    });
+  }
+  res.json({ ok: true, encontrado: true, devolucao: achado });
+});
+
+/** Base do painel "a espreita": o que esta vindo pro galpao. */
+router.get('/ml/espreita', admin, (req, res) => {
+  res.json({ ok: true, versao: VERSAO, espreita: mlReturns.resumoEspreita() });
+});
+
+// ── Testes ───────────────────────────────────────────────────
 router.get('/bling/teste', admin, async (req, res) => {
-  const r = await bling.testeDeVida();
-  res.json({ ok: r.ok, versao: VERSAO, resultado: r });
+  res.json({ ok: true, versao: VERSAO, resultado: await bling.testeDeVida() });
 });
 
 router.get('/bling/produto', admin, async (req, res) => {
@@ -271,24 +311,37 @@ router.get('/bling/produto', admin, async (req, res) => {
 });
 
 router.get('/ml/teste', admin, async (req, res) => {
-  const r = await ml.testeDeVida();
-  res.json({ ok: r.ok, versao: VERSAO, resultado: r });
+  res.json({ ok: true, versao: VERSAO, resultado: await ml.testeDeVida() });
 });
 
 router.get('/ml/eu', admin, async (req, res) => {
   res.json(await ml.quemSouEu());
 });
 
-// ── 404 do modulo (sempre JSON) ──────────────────────────────
+// ── 404 do modulo ────────────────────────────────────────────
 router.use((req, res) => {
   res.status(404).json({
     ok: false,
     erro: 'rota nao existe neste modulo',
     modulo: 'amb-devolucoes',
     versao: VERSAO,
-    rotas: ['/amb/conectar', '/amb/status', '/amb/config', '/amb/ml/teste', '/amb/ml/eu', '/amb/bling/teste', '/amb/bling/produto'],
+    rotas: [
+      '/amb/conectar', '/amb/status', '/amb/config',
+      '/amb/ml/indice', '/amb/ml/indice/construir', '/amb/ml/rastreio', '/amb/ml/espreita',
+      '/amb/ml/teste', '/amb/ml/eu', '/amb/bling/teste', '/amb/bling/produto',
+    ],
   });
 });
+
+// ── Pre-aquecimento atrasado ─────────────────────────────────
+// Nao competir com o boot do Devolucoes da GOOD, que monta os
+// indices dele nos primeiros segundos. Ninguem bipa caixa nos
+// 3 minutos seguintes a um deploy.
+if (ml.temToken()) {
+  mlReturns.preAquecer(Number(process.env.AMB_ML_PREAQUECER_MS || 180000));
+} else {
+  console.log('[amb-devolucoes] ML sem token - indice so sera montado apos autorizar');
+}
 
 console.log(`[amb-devolucoes] ${VERSAO} carregado - prefixo ${cfg.PREFIXO}`);
 
