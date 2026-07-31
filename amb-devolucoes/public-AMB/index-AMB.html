@@ -3,147 +3,213 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<meta name="theme-color" content="#0f1419">
+<meta name="theme-color" content="#1a0b2e">
 <title>AMBTotal - Devolucoes</title>
+
+<link rel="icon" type="image/png" href="icone-AMB.png">
+<link rel="apple-touch-icon" href="icone-AMB.png">
+<link rel="manifest" href="manifest-AMB.json">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Devolucoes AMB">
 <!--
   =========================================================
-  amb-devolucoes/public-AMB/index-AMB.html   (AMB Devol. b8)
+  amb-devolucoes/public-AMB/index-AMB.html   (AMB Devol. b9)
   ---------------------------------------------------------
   Tela de triagem do galpao da AMBTotal.
 
-  O NOME DO ARQUIVO e index-AMB.html de proposito: no mesmo
-  repositorio ja existe o index.html da GOOD, e os dois se
-  confundiam na pasta de Downloads. Nome unico = upload sem
-  risco de sobrescrever a tela da GOOD.
+  NOME COM SUFIXO -AMB de proposito: no mesmo repositorio ja
+  existe o index.html da GOOD, e os dois se confundiam na
+  pasta de Downloads.
 
-  Feita para CELULAR e para quem esta de pe com uma caixa na
-  mao: campo grande, botao grande, um passo de cada vez.
+  b9 — parte visual: logo da marca, favicon, icone de app
+  (da pra "adicionar a tela de inicio" no celular e abrir
+  como aplicativo), cores tiradas do proprio logo, e layout
+  que usa a tela larga do desktop em vez de uma coluna fina
+  no meio.
 
-  Nao usa nenhuma biblioteca externa — carrega em rede ruim
-  de galpao e nao quebra quando um CDN sai do ar.
+  Continua SEM biblioteca externa: carrega em rede ruim de
+  galpao e nao quebra quando um CDN sai do ar.
   =========================================================
 -->
 <style>
+  :root {
+    --roxo:        #561A9E;
+    --roxo-claro:  #7B3FC4;
+    --magenta:     #9F1254;
+    --laranja:     #FD8B00;
+    --laranja-cl:  #FFB55F;
+    --fundo:       #150a24;
+    --painel:      #1e1033;
+    --borda:       #35204f;
+    --texto:       #f0e9f7;
+    --apagado:     #a992c4;
+    --verde:       #2ea043;
+    --vermelho:    #e5484d;
+  }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   body {
-    margin: 0; padding: 0;
+    margin: 0; padding: 0; min-height: 100vh;
     font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-    background: #0f1419; color: #e6edf3;
-    font-size: 16px; /* 16px evita o zoom automatico do iOS ao focar input */
+    background: var(--fundo);
+    background-image:
+      radial-gradient(ellipse 80% 50% at 50% -10%, rgba(86,26,158,.55), transparent),
+      radial-gradient(ellipse 60% 40% at 100% 100%, rgba(159,18,84,.25), transparent);
+    background-attachment: fixed;
+    color: var(--texto);
+    font-size: 16px;  /* 16px evita o zoom automatico do iOS no input */
   }
-  .topo {
-    position: sticky; top: 0; z-index: 10;
-    background: #161b22; border-bottom: 1px solid #30363d;
-    padding: 12px 16px; display: flex; align-items: center; gap: 10px;
-  }
-  .topo h1 { font-size: 16px; margin: 0; flex: 1; font-weight: 700; }
-  .topo .quem { font-size: 12px; color: #8b949e; }
-  .sair { background: none; border: none; color: #8b949e; font-size: 13px; cursor: pointer; padding: 4px; }
-  .area { padding: 16px; max-width: 620px; margin: 0 auto; }
 
+  /* ---------- topo ---------- */
+  .topo {
+    position: sticky; top: 0; z-index: 20;
+    background: rgba(30,16,51,.92); backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--borda);
+    padding: 10px 16px; display: flex; align-items: center; gap: 10px;
+  }
+  .topo img { width: 34px; height: 34px; border-radius: 8px; }
+  .topo .titulo { flex: 1; line-height: 1.15; }
+  .topo .titulo b { font-size: 15px; display: block; }
+  .topo .titulo span { font-size: 11px; color: var(--apagado); }
+  .quem {
+    font-size: 12px; color: var(--apagado);
+    background: rgba(86,26,158,.35); padding: 5px 10px; border-radius: 20px;
+    white-space: nowrap;
+  }
+  .sair { background: none; border: none; color: var(--apagado);
+          font-size: 13px; cursor: pointer; padding: 6px; }
+
+  /* ---------- layout ---------- */
+  .area { padding: 16px; max-width: 640px; margin: 0 auto; }
+  .colunas { display: block; }
+
+  /* No desktop a tela e larga: bipe de um lado, resultado do
+     outro, sem obrigar a rolar. No celular vira uma coluna so. */
+  @media (min-width: 900px) {
+    .area { max-width: 1100px; padding: 24px; }
+    .colunas { display: grid; grid-template-columns: 380px 1fr; gap: 24px; align-items: start; }
+    #blocoBipe { position: sticky; top: 80px; }
+  }
+
+  /* ---------- formulario ---------- */
   input, button, select, textarea { font-family: inherit; font-size: 16px; }
   .campo {
-    width: 100%; padding: 16px; border-radius: 10px;
-    border: 2px solid #30363d; background: #0d1117; color: #e6edf3;
-    margin-bottom: 10px;
+    width: 100%; padding: 15px; border-radius: 12px;
+    border: 2px solid var(--borda); background: rgba(0,0,0,.28);
+    color: var(--texto); margin-bottom: 10px; transition: border-color .15s;
   }
-  .campo:focus { outline: none; border-color: #1f6feb; }
-  .bipe { font-size: 20px; text-align: center; letter-spacing: 0.5px; }
+  .campo::placeholder { color: #7d6494; }
+  .campo:focus { outline: none; border-color: var(--laranja); }
+  .bipe { font-size: 21px; text-align: center; letter-spacing: 1px; font-weight: 600; }
 
   .btn {
-    width: 100%; padding: 16px; border: none; border-radius: 10px;
-    background: #238636; color: #fff; font-weight: 700; font-size: 17px;
-    cursor: pointer; margin-bottom: 10px;
+    width: 100%; padding: 15px; border: none; border-radius: 12px;
+    background: linear-gradient(135deg, var(--laranja), #f2650a);
+    color: #fff; font-weight: 700; font-size: 17px; cursor: pointer;
+    margin-bottom: 10px; box-shadow: 0 3px 14px rgba(253,139,0,.28);
   }
-  .btn:active { transform: scale(0.99); }
-  .btn:disabled { opacity: .5; }
-  .btn.cinza { background: #30363d; }
-  .btn.azul  { background: #1f6feb; }
-  .btn.verm  { background: #da3633; }
-  .btn.peq   { padding: 10px; font-size: 14px; width: auto; margin: 0; }
+  .btn:active { transform: translateY(1px); }
+  .btn:disabled { opacity: .5; box-shadow: none; }
+  .btn.roxo   { background: linear-gradient(135deg, var(--roxo-claro), var(--roxo)); box-shadow: 0 3px 14px rgba(86,26,158,.35); }
+  .btn.cinza  { background: rgba(255,255,255,.07); box-shadow: none; }
+  .btn.verde  { background: linear-gradient(135deg, #3fb950, var(--verde)); box-shadow: 0 3px 14px rgba(46,160,67,.28); }
+  .btn.verm   { background: linear-gradient(135deg, #f0666b, var(--vermelho)); box-shadow: 0 3px 14px rgba(229,72,77,.28); }
+  .btn.peq    { padding: 9px 14px; font-size: 14px; width: auto; margin: 0; box-shadow: none; }
 
+  /* ---------- blocos ---------- */
   .card {
-    background: #161b22; border: 1px solid #30363d; border-radius: 12px;
-    padding: 16px; margin-bottom: 12px;
+    background: var(--painel); border: 1px solid var(--borda);
+    border-radius: 14px; padding: 16px; margin-bottom: 12px;
   }
-  .card h2 { font-size: 15px; margin: 0 0 10px; }
+  .card h2 { font-size: 15px; margin: 0 0 10px; display: flex;
+             align-items: center; gap: 8px; flex-wrap: wrap; }
   .linha { display: flex; justify-content: space-between; gap: 12px;
-           padding: 7px 0; border-bottom: 1px solid #21262d; font-size: 14px; }
+           padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,.06); font-size: 14px; }
   .linha:last-child { border-bottom: none; }
-  .linha .rot { color: #8b949e; flex-shrink: 0; }
-  .linha .val { text-align: right; word-break: break-word; }
+  .linha .rot { color: var(--apagado); flex-shrink: 0; }
+  .linha .val { text-align: right; word-break: break-word; font-weight: 500; }
 
-  .alerta {
-    border-radius: 12px; padding: 16px; margin-bottom: 12px;
-    border-left: 5px solid; font-size: 15px; line-height: 1.5;
-  }
-  .alerta.vermelho { background: #2d1214; border-color: #f85149; }
-  .alerta.amarelo  { background: #2b2512; border-color: #d29922; }
-  .alerta.azul     { background: #12233d; border-color: #1f6feb; }
-  .alerta b { display: block; margin-bottom: 6px; }
+  .alerta { border-radius: 14px; padding: 15px; margin-bottom: 12px;
+            border-left: 5px solid; font-size: 15px; line-height: 1.5; }
+  .alerta.vermelho { background: rgba(229,72,77,.14);  border-color: var(--vermelho); }
+  .alerta.amarelo  { background: rgba(253,139,0,.14);  border-color: var(--laranja); }
+  .alerta.azul     { background: rgba(86,26,158,.28);  border-color: var(--roxo-claro); }
+  .alerta b { display: block; margin-bottom: 6px; font-size: 15px; }
 
-  .selo { display: inline-block; padding: 3px 9px; border-radius: 20px;
-          font-size: 12px; font-weight: 700; background: #30363d; }
-  .selo.ml { background: #3d3610; color: #e3b341; }
-  .selo.tiktok { background: #3d1030; color: #db61a2; }
-  .selo.shopee { background: #3d2410; color: #f0883e; }
-  .selo.magalu { background: #12233d; color: #58a6ff; }
+  .selo { display: inline-block; padding: 3px 10px; border-radius: 20px;
+          font-size: 12px; font-weight: 700; background: rgba(255,255,255,.1); }
+  .selo.ml     { background: rgba(255,224,0,.16);  color: #ffe066; }
+  .selo.tiktok { background: rgba(233,30,140,.18); color: #ff7ac0; }
+  .selo.shopee { background: rgba(253,139,0,.18);  color: var(--laranja-cl); }
+  .selo.magalu { background: rgba(56,139,253,.18); color: #79c0ff; }
 
-  .cand {
-    background: #0d1117; border: 1px solid #30363d; border-radius: 10px;
-    padding: 12px; margin-bottom: 8px;
-  }
-  .cand .nome { font-weight: 600; margin-bottom: 4px; }
-  .cand .meta { font-size: 13px; color: #8b949e; }
+  .cand { background: rgba(0,0,0,.22); border: 1px solid var(--borda);
+          border-radius: 12px; padding: 13px; margin-bottom: 8px; }
+  .cand .nome { font-weight: 600; margin-bottom: 3px; }
+  .cand .meta { font-size: 13px; color: var(--apagado); }
   .cand .acoes { display: flex; gap: 8px; margin-top: 10px; }
-  .itens { margin-top: 10px; padding-top: 10px; border-top: 1px dashed #30363d; font-size: 13px; }
+  .itens { margin-top: 10px; padding-top: 10px;
+           border-top: 1px dashed var(--borda); font-size: 13px; }
   .itens div { padding: 3px 0; }
 
-  .aviso { font-size: 13px; color: #8b949e; text-align: center; margin: 12px 0; line-height: 1.5; }
-  .erro  { color: #f85149; }
-  .ok    { color: #3fb950; }
+  .aviso { font-size: 13px; color: var(--apagado); margin: 12px 0; line-height: 1.55; }
+  .erro { color: #ff8085; } .ok { color: #56d364; }
   .esconde { display: none !important; }
-  #camera { width: 100%; border-radius: 10px; margin-bottom: 10px; background: #000; }
+  #camera { width: 100%; border-radius: 12px; margin-bottom: 10px; background: #000; }
+
+  /* ---------- login ---------- */
+  .login-caixa { max-width: 380px; margin: 0 auto; padding: 40px 20px 20px; text-align: center; }
+  .login-caixa img.logo { width: 210px; max-width: 68vw; margin-bottom: 8px; }
+  .login-caixa h1 { font-size: 19px; margin: 0 0 2px; }
+  .login-caixa .sub { color: var(--apagado); font-size: 13px; margin-bottom: 26px; }
+  .login-caixa input { text-align: center; }
+  .rodape { text-align: center; font-size: 11px; color: #6b5384; padding: 26px 0 12px; }
 </style>
 </head>
 <body>
 
 <!-- ===================== LOGIN ===================== -->
 <div id="telaLogin">
-  <div class="area" style="padding-top:60px">
-    <h1 style="font-size:22px;margin:0 0 4px">AMBTotal</h1>
-    <div class="aviso" style="text-align:left;margin:0 0 24px">Devolucoes &middot; triagem do galpao</div>
-    <input class="campo" id="usuario" placeholder="usuario" autocapitalize="off" autocomplete="username">
+  <div class="login-caixa">
+    <img class="logo" src="logo-AMB.png" alt="AMBTotal Devolucoes">
+    <h1>Devolucoes</h1>
+    <div class="sub">triagem do galpao &middot; AMBTotal</div>
+    <input class="campo" id="usuario" placeholder="usuario"
+           autocapitalize="off" autocorrect="off" autocomplete="username">
     <input class="campo" id="senha" type="password" placeholder="senha" autocomplete="current-password">
     <button class="btn" id="btnEntrar">Entrar</button>
     <div class="aviso erro esconde" id="erroLogin"></div>
   </div>
+  <div class="rodape">AMBTotal &middot; sistema interno</div>
 </div>
 
 <!-- ===================== APP ===================== -->
 <div id="telaApp" class="esconde">
   <div class="topo">
-    <h1>AMBTotal &middot; Devolucoes</h1>
+    <img src="icone-AMB.png" alt="">
+    <div class="titulo"><b>Devolucoes</b><span>AMBTotal</span></div>
     <span class="quem" id="quemSou"></span>
     <button class="sair" id="btnSair">sair</button>
   </div>
 
   <div class="area">
-    <!-- BIPE -->
-    <div id="blocoBipe">
-      <input class="campo bipe" id="codigo" placeholder="bipe ou digite"
-             autocapitalize="characters" autocomplete="off" enterkeyhint="search">
-      <button class="btn" id="btnBuscar">Buscar</button>
-      <button class="btn cinza" id="btnCamera">Usar a camera</button>
-      <video id="camera" class="esconde" playsinline muted></video>
-      <div class="aviso">
-        Bipe a etiqueta, ou digite o <b>nome do remetente</b> quando a caixa
-        nao tiver codigo que o sistema conheca (TikTok, Amazon).
+    <div class="colunas">
+      <!-- BIPE -->
+      <div id="blocoBipe">
+        <input class="campo bipe" id="codigo" placeholder="bipe ou digite"
+               autocapitalize="characters" autocorrect="off" autocomplete="off" enterkeyhint="search">
+        <button class="btn" id="btnBuscar">Buscar</button>
+        <button class="btn roxo" id="btnCamera">Usar a camera</button>
+        <video id="camera" class="esconde" playsinline muted></video>
+        <div class="aviso">
+          Bipe a etiqueta, ou digite o <b>nome do remetente</b> quando a caixa
+          nao tiver codigo conhecido (TikTok, Amazon).
+        </div>
       </div>
-    </div>
 
-    <!-- RESULTADO -->
-    <div id="resultado"></div>
+      <!-- RESULTADO -->
+      <div id="resultado"></div>
+    </div>
   </div>
 </div>
 
@@ -153,14 +219,13 @@
    ========================================================= */
 const API = '/amb';
 let usuario = null, tipoUsuario = null;
-let escolhido = null;          // NF escolhida pelo estoquista
 let ultimoCodigo = '';
 let paginaAtual = 1;
 
 const $ = (id) => document.getElementById(id);
 const esc = (t) => String(t == null ? '' : t)
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-  .replace(/"/g, '&quot;');
+  .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 
 async function api(caminho, opcoes = {}) {
   const r = await fetch(API + caminho, {
@@ -184,7 +249,7 @@ function mostrarLogin() {
 function mostrarApp() {
   $('telaLogin').classList.add('esconde');
   $('telaApp').classList.remove('esconde');
-  $('quemSou').textContent = usuario + (tipoUsuario === 'admin' ? ' (admin)' : '');
+  $('quemSou').textContent = usuario + (tipoUsuario === 'admin' ? ' \u00b7 admin' : '');
   $('codigo').focus();
 }
 
@@ -226,7 +291,6 @@ async function sair() {
    ========================================================= */
 function limpar() {
   $('resultado').innerHTML = '';
-  escolhido = null;
   paginaAtual = 1;
 }
 
@@ -257,14 +321,14 @@ function desenhar(r) {
   /* RECADO primeiro, sempre. O aviso tem que chegar ANTES de o
      estoquista mexer na caixa — depois nao adianta. */
   if (r.recado) {
-    h += '<div class="alerta vermelho"><b>&#9888; RECADO PARA VOCE</b>' +
+    h += '<div class="alerta vermelho"><b>&#9888;&#65039; RECADO PARA VOCE</b>' +
          esc(r.recado.texto) + '</div>';
   }
 
   /* Ja triado: evita registrar a mesma caixa duas vezes. */
   if (r.ja_triado && r.triagem_anterior) {
     const t = r.triagem_anterior;
-    h += '<div class="alerta amarelo"><b>&#9888; ESTA CAIXA JA FOI TRIADA</b>' +
+    h += '<div class="alerta amarelo"><b>&#9888;&#65039; ESTA CAIXA JA FOI TRIADA</b>' +
          'por ' + esc(t.funcionario || '?') + ' em ' +
          esc(String(t.criado_em || '').slice(0, 16).replace('T', ' ')) +
          ' &middot; status ' + esc(t.status || '?') + '</div>';
@@ -274,8 +338,8 @@ function desenhar(r) {
     h += '<div class="alerta azul"><b>Nao identifiquei esta caixa</b>' +
          'Ja tentei: ' + (r.tentativas || []).map(t => esc(t.via)).join(', ') + '.<br><br>' +
          'Se a etiqueta for de TikTok ou Amazon, digite o <b>nome do remetente</b> ' +
-         'exatamente como esta impresso.</div>';
-    h += '<button class="btn cinza" onclick="limpar()">Limpar</button>';
+         'exatamente como esta impresso.</div>' +
+         '<button class="btn cinza" onclick="limpar()">Limpar</button>';
     $('resultado').innerHTML = h;
     return;
   }
@@ -307,30 +371,25 @@ function desenhar(r) {
   }
 
   h += '<div class="card"><h2>' + r.total_encontrados +
-       ' nota(s) encontrada(s) &middot; mostrando ' + r.candidatos.length + '</h2>' +
-       '<div class="aviso" style="text-align:left;margin:0">' +
-       'Confira com a caixa antes de confirmar. ' +
+       ' nota(s) &middot; mostrando ' + r.candidatos.length + '</h2>' +
+       '<div class="aviso" style="margin:0">Confira com a caixa antes de confirmar. ' +
        (r.mesmo_cliente_repetido
-         ? 'Todas sao do <b>mesmo cliente</b> — use "ver itens" para achar a certa.'
+         ? 'Todas sao do <b>mesmo cliente</b> &mdash; use "ver itens" para achar a certa.'
          : '') + '</div></div>';
 
   r.candidatos.forEach((c, i) => {
-    h += '<div class="cand" id="cand' + i + '">' +
+    h += '<div class="cand">' +
          '<div class="nome">' + esc(c.nome) + '</div>' +
          '<div class="meta">NF ' + esc(c.numero) + ' &middot; ' +
          esc(String(c.dataEmissao || '').slice(0, 10)) + '</div>' +
          '<div class="acoes">' +
-         '<button class="btn peq azul" onclick="verItens(' + i + ',\'' + esc(c.id) + '\')">ver itens</button>' +
+         '<button class="btn peq roxo" onclick="verItens(' + i + ',\'' + esc(c.id) + '\')">ver itens</button>' +
          '<button class="btn peq" onclick="escolher(' + i + ',\'' + esc(c.id) + '\',\'' + esc(c.numero) + '\',\'' + esc(c.nome) + '\')">e esta</button>' +
          '</div><div class="itens esconde" id="itens' + i + '"></div></div>';
   });
 
-  if (r.tem_mais) {
-    h += '<button class="btn cinza" onclick="buscar(' + (paginaAtual + 1) + ')">Ver mais 8</button>';
-  }
-  if (paginaAtual > 1) {
-    h += '<button class="btn cinza" onclick="buscar(' + (paginaAtual - 1) + ')">Voltar</button>';
-  }
+  if (r.tem_mais)     h += '<button class="btn cinza" onclick="buscar(' + (paginaAtual + 1) + ')">Ver mais 8</button>';
+  if (paginaAtual > 1) h += '<button class="btn cinza" onclick="buscar(' + (paginaAtual - 1) + ')">Voltar</button>';
   h += '<button class="btn cinza" onclick="limpar()">Limpar</button>';
   $('resultado').innerHTML = h;
 }
@@ -341,7 +400,8 @@ function linha(rot, val) {
          '</span><span class="val">' + esc(val) + '</span></div>';
 }
 
-/* Itens sob demanda: uma chamada, so quando o estoquista clica. */
+/* Itens sob demanda: uma chamada, so quando o estoquista clica.
+   Trazer os 8 de uma vez custaria 8 chamadas ao Bling por busca. */
 async function verItens(i, id) {
   const alvo = $('itens' + i);
   if (!alvo.classList.contains('esconde')) { alvo.classList.add('esconde'); return; }
@@ -352,13 +412,14 @@ async function verItens(i, id) {
     if (!r.ok) { alvo.innerHTML = '<span class="erro">' + esc(r.erro) + '</span>'; return; }
     let h = '';
     if (r.marketplace && r.marketplace !== 'desconhecido') {
-      h += '<div><span class="selo ' + esc(r.marketplace) + '">' + esc(r.marketplace_nome) + '</span></div>';
+      h += '<div style="margin-bottom:6px"><span class="selo ' + esc(r.marketplace) + '">' +
+           esc(r.marketplace_nome) + '</span></div>';
     }
     (r.itens || []).forEach(it => {
       h += '<div>' + esc(it.quantidade) + 'x <b>' + esc(it.sku) + '</b> &mdash; ' +
            esc(String(it.descricao || '').slice(0, 60)) + '</div>';
     });
-    if (r.nf && r.nf.valor != null) h += '<div>total da nota: R$ ' + esc(r.nf.valor) + '</div>';
+    if (r.nf && r.nf.valor != null) h += '<div style="color:var(--apagado)">total da nota: R$ ' + esc(r.nf.valor) + '</div>';
     alvo.innerHTML = h || 'nota sem itens';
     alvo.dataset.marketplace = r.marketplace || '';
     alvo.dataset.sku = (r.itens && r.itens[0] && r.itens[0].sku) || '';
@@ -370,7 +431,7 @@ async function verItens(i, id) {
 
 function escolher(i, id, numero, nome) {
   const cx = $('itens' + i);
-  escolhido = {
+  const dados = {
     nf_id_bling: id, nf_numero: numero, buyer_nome: nome,
     marketplace: (cx && cx.dataset.marketplace) || null,
     produto_sku: (cx && cx.dataset.sku) || null,
@@ -379,14 +440,14 @@ function escolher(i, id, numero, nome) {
   $('resultado').innerHTML =
     '<div class="card"><h2>Confirmar</h2>' +
     linha('Cliente', nome) + linha('NF', numero) +
-    (escolhido.produto_sku ? linha('SKU', escolhido.produto_sku) : '') +
-    '</div>' + botoesConfirmar(escolhido);
+    (dados.produto_sku ? linha('SKU', dados.produto_sku) : '') +
+    '</div>' + botoesConfirmar(dados);
   window.scrollTo(0, 0);
 }
 
 function botoesConfirmar(dados) {
   window._paraGravar = dados;
-  return '<button class="btn" onclick="gravar(\'aprovado\')">Incluir no estoque</button>' +
+  return '<button class="btn verde" onclick="gravar(\'aprovado\')">Incluir no estoque</button>' +
          '<button class="btn verm" onclick="gravar(\'problema\')">Reportar problema</button>' +
          '<button class="btn cinza" onclick="limpar()">Cancelar</button>';
 }
@@ -401,8 +462,8 @@ async function gravar(status) {
   try {
     const r = await api('/api/triagem/registrar', { method: 'POST', body: JSON.stringify(d) });
     if (!r.ok) {
-      $('resultado').innerHTML = '<div class="alerta vermelho"><b>Nao gravou</b>' + esc(r.erro) + '</div>' +
-        botoesConfirmar(d);
+      $('resultado').innerHTML = '<div class="alerta vermelho"><b>Nao gravou</b>' +
+        esc(r.erro) + '</div>' + botoesConfirmar(d);
       return;
     }
     $('resultado').innerHTML =
@@ -412,7 +473,7 @@ async function gravar(status) {
     window.scrollTo(0, 0);
   } catch (e) {
     if (e.message !== 'sessao') {
-      $('resultado').innerHTML = '<div class="alerta vermelho">sem conexao - nao gravou. tente de novo.</div>' +
+      $('resultado').innerHTML = '<div class="alerta vermelho">sem conexao &mdash; NAO gravou. tente de novo.</div>' +
         botoesConfirmar(d);
     }
   }
@@ -425,13 +486,13 @@ function proxima() {
 }
 
 /* =========================================================
-   Camera (usa o leitor nativo quando existe)
+   Camera (usa o leitor nativo do proprio celular)
    ========================================================= */
 let stream = null, lendo = false;
 async function camera() {
   if (stream) { pararCamera(); return; }
   if (!('BarcodeDetector' in window)) {
-    alert('Este celular nao tem leitor nativo de codigo. Use o teclado ou o app da camera.');
+    alert('Este celular nao tem leitor nativo de codigo de barras. Use o teclado.');
     return;
   }
   try {
@@ -469,12 +530,12 @@ function pararCamera() {
    Ligacoes
    ========================================================= */
 $('btnEntrar').onclick = entrar;
-$('senha').onkeydown = (e) => { if (e.key === 'Enter') entrar(); };
+$('senha').onkeydown   = (e) => { if (e.key === 'Enter') entrar(); };
 $('usuario').onkeydown = (e) => { if (e.key === 'Enter') $('senha').focus(); };
 $('btnBuscar').onclick = () => buscar(1);
-$('codigo').onkeydown = (e) => { if (e.key === 'Enter') buscar(1); };
+$('codigo').onkeydown  = (e) => { if (e.key === 'Enter') buscar(1); };
 $('btnCamera').onclick = camera;
-$('btnSair').onclick = sair;
+$('btnSair').onclick   = sair;
 
 /* Ao abrir: se ja houver sessao valida, entra direto. */
 (async () => {
