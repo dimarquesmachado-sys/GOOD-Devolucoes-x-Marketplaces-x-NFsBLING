@@ -14,7 +14,7 @@
 <meta name="apple-mobile-web-app-title" content="Devolucoes AMB">
 <!--
   =========================================================
-  amb-devolucoes/public-AMB/index-AMB.html   (AMB Devol. b18)
+  amb-devolucoes/public-AMB/index-AMB.html   (AMB Devol. b19)
   ---------------------------------------------------------
   Tela de triagem do galpao da AMBTotal.
 
@@ -60,8 +60,12 @@
   .banner h1 { margin:0; font-size:22px; letter-spacing:.3px; }
   .banner .sub { font-size:13px; opacity:.92; margin-top:3px; }
   .banner .ver { font-size:11.5px; opacity:.85; margin-top:6px; }
-  .chips { display:flex; justify-content:flex-end; gap:8px; align-items:center;
-           flex-wrap:wrap; margin:-4px 0 8px; }
+  /* b19 - pedido do Diego: o nome fica DEBAIXO do botao Painel
+     Admin, em coluna encostada a direita — nunca mais por cima
+     do titulo, em nenhuma largura de tela. */
+  .chips { display:flex; flex-direction:column; align-items:flex-end;
+           gap:5px; margin:-4px 0 6px; }
+  .chips .linha-botoes { display:flex; gap:8px; align-items:center; }
   .quem { font-size:12.5px; color:#fff; opacity:.95; }
   .sair { background:rgba(255,255,255,.18); border:none; color:#fff;
           border-radius:16px; padding:5px 12px; font-size:12px; cursor:pointer; }
@@ -178,13 +182,15 @@
 <div id="telaApp" class="esconde">
   <div class="banner">
     <div class="chips">
+      <div class="linha-botoes">
+        <a class="btn-topo" href="/amb/painel">&#128081; Painel Admin</a>
+        <button class="sair" id="btnSair">sair</button>
+      </div>
       <span class="quem" id="quemSou"></span>
-      <a class="btn-topo" href="/amb/painel">&#128081; Painel Admin</a>
-      <button class="sair" id="btnSair">sair</button>
     </div>
     <h1>&#128230; AMBTotal Devolucoes</h1>
     <div class="sub">Identificar venda + NF-e + Triagem</div>
-    <div class="ver">tela <b>b18</b> &middot; <span id="versaoServidor">servidor ...</span></div>
+    <div class="ver">tela <b>b19</b> &middot; <span id="versaoServidor">servidor ...</span></div>
   </div>
 
   <div class="area">
