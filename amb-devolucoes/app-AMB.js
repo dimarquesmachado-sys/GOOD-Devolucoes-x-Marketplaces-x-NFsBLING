@@ -72,7 +72,7 @@ const impressao = require('./lib-AMB/impressao-AMB');
 const emailAMB = require('./lib-AMB/email-AMB');
 const nfEntrada = require('./lib-AMB/nf-entrada-AMB');
 
-const VERSAO = 'AMB Devolucoes b22';
+const VERSAO = 'AMB Devolucoes b24';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -854,7 +854,7 @@ router.get('/depositos', admin, async (req, res) => {
  * Exige o card com a devolucao VINCULADA (nf_devolucao_id_bling) —
  * sem o id, o Bling nao tem em qual nota lancar.
  */
-router.post('/api/triagem/:id/lancar-estoque', auth.requerLogin, async (req, res) => {
+router.post('/api/triagem/:id/lancar-estoque', auth.requerAdmin, async (req, res) => {
   const reg = await db.obterTriagem(req.params.id);
   if (!reg.ok) return res.status(404).json(reg);
   const t = reg.registro;
@@ -884,7 +884,7 @@ router.post('/api/triagem/:id/lancar-estoque', auth.requerLogin, async (req, res
 });
 
 /** NF de devolucao gerada no Bling -> registra o numero no card. */
-router.put('/api/triagem/:id/nf-devolucao', auth.requerLogin, async (req, res) => {
+router.put('/api/triagem/:id/nf-devolucao', auth.requerAdmin, async (req, res) => {
   let { numero, id_bling, texto } = req.body || {};
   // b20 - aceita o LINK do Bling colado inteiro: extrai o id do #edit/{id}
   if (!id_bling && texto) {
@@ -908,13 +908,13 @@ router.put('/api/triagem/:id/nf-devolucao', auth.requerLogin, async (req, res) =
 });
 
 /** Concluida: some das filas. */
-router.post('/api/triagem/:id/concluir', auth.requerLogin, async (req, res) => {
+router.post('/api/triagem/:id/concluir', auth.requerAdmin, async (req, res) => {
   res.json(await db.atualizarTriagem(req.params.id, { status: 'finalizado' }));
 });
 
 /** A Bridge da AMB grava aqui o resultado da NF gerada (mesmo
  *  contrato da GOOD: PUT registrar-devolucao-gerada/:id). */
-router.put('/api/admin/registrar-devolucao-gerada/:id', auth.requerLogin, async (req, res) => {
+router.put('/api/admin/registrar-devolucao-gerada/:id', auth.requerAdmin, async (req, res) => {
   const { nf_devolucao_id_bling, nf_devolucao_numero } = req.body || {};
   if (!nf_devolucao_id_bling && !nf_devolucao_numero) {
     return res.status(400).json({ ok: false, erro: 'sem dados da NF gerada' });
