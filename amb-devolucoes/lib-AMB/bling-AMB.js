@@ -1,5 +1,5 @@
 // ============================================================
-// amb-devolucoes/lib-AMB/bling-AMB.js          (AMB Devol. b1)
+// amb-devolucoes/lib-AMB/bling-AMB.js          (AMB Devol. b20)
 // ------------------------------------------------------------
 // Cliente Bling ERP v3 da AMBTotal.
 // Espelho do lib/bling.js da GOOD, com duas diferencas:
@@ -192,6 +192,49 @@ async function testeDeVida() {
   return { ok: true, respondeu: true, produtos_na_pagina: qtd };
 }
 
+// ============================================================
+// DEPOSITOS + LANCAR ESTOQUE (b20)
+// ------------------------------------------------------------
+// Porta do fluxo da GOOD (lib/rotas-admin-nf.js):
+//   POST /nfe/{id_nf_devolucao}/lancar-estoque/{id_deposito}
+// lanca a ENTRADA de estoque daquela NF de devolucao no deposito
+// escolhido. Na GOOD os depositos sao fixos no codigo; aqui a
+// lista vem VIVA do Bling da AMB (GET /depositos) — os IDs das
+// duas empresas sao diferentes e chumbar seria erro na certa.
+// ============================================================
+
+let _depCache = { ts: 0, lista: [] };
+
+async function listarDepositos(forcar) {
+  if (!forcar && _depCache.ts && (Date.now() - _depCache.ts) < 10 * 60 * 1000) {
+    return { ok: true, depositos: _depCache.lista, cache: true };
+  }
+  const r = await chamarBling('/depositos?limite=100&pagina=1');
+  if (!r.ok) return { ok: false, status: r.status, erro: 'Bling nao devolveu os depositos' };
+  const lista = ((r.data && r.data.data) || []).map(d => ({
+    id: String(d.id),
+    descricao: d.descricao || ('deposito ' + d.id),
+    padrao: !!d.padrao,
+    situacao: d.situacao != null ? d.situacao : null,
+  }));
+  _depCache = { ts: Date.now(), lista };
+  return { ok: true, depositos: lista };
+}
+
+/** POST /nfe/{idNf}/lancar-estoque/{idDeposito} — corpo vazio, como na GOOD. */
+async function lancarEstoqueNf(idNfDevolucao, idDeposito) {
+  const r = await chamarBling(`/nfe/${idNfDevolucao}/lancar-estoque/${idDeposito}`, {
+    method: 'POST', data: {},
+  });
+  if (!r.ok) {
+    const e = r.error || r.data || {};
+    const detalhe = (e.error && (e.error.description || e.error.message)) ||
+      JSON.stringify(e).slice(0, 180);
+    return { ok: false, status: r.status, erro: `Bling recusou (HTTP ${r.status}): ${detalhe}` };
+  }
+  return { ok: true };
+}
+
 module.exports = {
   chamarBling,
   renovarToken,
@@ -203,4 +246,5 @@ module.exports = {
   testeDeVida,
   temToken: () => !!ACCESS_TOKEN,
   temCredenciais: () => !!(cfg.bling.clientId && cfg.bling.clientSecret),
+  listarDepositos, lancarEstoqueNf,
 };
