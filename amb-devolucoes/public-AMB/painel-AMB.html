@@ -8,7 +8,7 @@
 <link rel="icon" type="image/png" href="icone-AMB.png">
 <!--
   =========================================================
-  amb-devolucoes/public-AMB/painel-AMB.html  (AMB Devol. b18)
+  amb-devolucoes/public-AMB/painel-AMB.html  (AMB Devol. b19)
   ---------------------------------------------------------
   PAINEL em PAGINA UNICA, no formato da GOOD (pedido do Diego
   comparando os prints): nada de abas — secoes empilhadas,
@@ -54,8 +54,12 @@
   .banner h1 { margin:0; font-size:21px; }
   .banner .sub { font-size:13px; opacity:.92; margin-top:3px; }
   .banner .ver { font-size:11.5px; opacity:.85; margin-top:6px; }
-  .chips { display:flex; justify-content:flex-end; gap:8px; align-items:center;
-           flex-wrap:wrap; margin:-4px 0 8px; }
+  /* b19 - pedido do Diego: o nome fica DEBAIXO do botao Painel
+     Admin, em coluna encostada a direita — nunca mais por cima
+     do titulo, em nenhuma largura de tela. */
+  .chips { display:flex; flex-direction:column; align-items:flex-end;
+           gap:5px; margin:-4px 0 6px; }
+  .chips .linha-botoes { display:flex; gap:8px; align-items:center; }
   .quem { font-size:12.5px; color:#fff; opacity:.95; }
   .chips a, .chips button { background:rgba(255,255,255,.18); border:none; color:#fff;
     border-radius:16px; padding:6px 13px; font-size:12.5px; font-weight:700;
@@ -131,23 +135,38 @@
 
 <div class="banner">
   <div class="chips">
+    <div class="linha-botoes">
+      <a class="forte" href="/amb/">&#128230; bipar</a>
+      <button id="btnSair">sair</button>
+    </div>
     <span class="quem" id="quemSou"></span>
-    <a class="forte" href="/amb/">&#128230; bipar</a>
-    <button id="btnSair">sair</button>
   </div>
   <h1>&#128081; Painel de Devolucoes &mdash; AMBTotal</h1>
   <div class="sub">Triagens + A espreita + Defeitos + Recados</div>
-  <div class="ver">painel <b>b18</b> &middot; <span id="versaoServidor">servidor ...</span></div>
+  <div class="ver">painel <b>b19</b> &middot; <span id="versaoServidor">servidor ...</span></div>
 </div>
 
 <div class="area">
 
-  <!-- ================= 1) TRIAGENS ================= -->
+  <!-- ============ 1) TRIAGENS — as duas filas, como na GOOD ============ -->
   <div class="secao">
-    <h2>&#128221; Triagens <span class="cont" id="nTriagens">-</span>
-      <button class="btn cinza" style="margin-left:auto" onclick="verTriagens()">atualizar</button></h2>
-    <div class="sub">O que ja foi bipado no galpao, com quem fez e quando.</div>
-    <div id="scTriagens"><div class="vazio">carregando...</div></div>
+    <h2>&#9989; Aprovadas &mdash; aguardando NF <span class="cont" id="nAprovadas">-</span>
+      <label style="margin-left:auto;font-size:12.5px;color:var(--apagado)">
+        <input type="checkbox" onchange="marcarTodas('aprovado',this.checked)"> todas</label>
+      <button class="btn verde" onclick="concluirSelecionadas('aprovado',this)">&#10003; Concluir selecionadas (<span id="selAprovado">0</span>)</button>
+      <button class="btn cinza" onclick="verFila('aprovado')">atualizar</button></h2>
+    <div class="sub">Produto conferido e ok. Gere a NF de devolucao no Bling (botao do card) e registre o numero &mdash; ou conclua direto.</div>
+    <div id="scAprovado"><div class="vazio">carregando...</div></div>
+  </div>
+
+  <div class="secao">
+    <h2>&#9888;&#65039; Problemas reportados <span class="cont" id="nProblemas">-</span>
+      <label style="margin-left:auto;font-size:12.5px;color:var(--apagado)">
+        <input type="checkbox" onchange="marcarTodas('problema',this.checked)"> todas</label>
+      <button class="btn verde" onclick="concluirSelecionadas('problema',this)">&#10003; Concluir selecionadas (<span id="selProblema">0</span>)</button>
+      <button class="btn cinza" onclick="verFila('problema')">atualizar</button></h2>
+    <div class="sub">O galpao achou algo errado. Decida o destino, gere a NF quando couber, e conclua.</div>
+    <div id="scProblema"><div class="vazio">carregando...</div></div>
   </div>
 
   <!-- ================= 2) A ESPREITA ================= -->
@@ -219,33 +238,102 @@ function abrirCaixinha(botao, { valor, placeholder, aoSalvar }) {
   div.querySelector('.btn.cinza').onclick = () => div.remove();
 }
 
-/* ================= TRIAGENS (primeira secao) ================= */
-async function verTriagens() {
+/* ============ FILAS DA TRIAGEM (Aprovadas x Problemas) ============ */
+const _sel = { aprovado: new Set(), problema: new Set() };
+
+function cardFila(x, status) {
+  const marcado = _sel[status].has(String(x.id));
+  let h = '<div class="card" data-id="' + esc(x.id) + '"><div class="cab">' +
+    '<input type="checkbox" ' + (marcado ? 'checked ' : '') +
+      'onchange="selecionar(\'' + status + '\',\'' + esc(x.id) + '\',this.checked)">' +
+    (x.marketplace ? '<span class="selo ' + esc(x.marketplace) + '">' + esc(x.marketplace) + '</span>' : '') +
+    (x.buyer_nome ? '<b>' + esc(x.buyer_nome) + '</b>' : '<b>' + esc(x.order_id || '?') + '</b>') +
+    (x.nf_numero ? '<span class="selo">NF venda ' + esc(x.nf_numero) + '</span>' : '') +
+    (x.nf_devolucao_numero ? '<span class="selo ok">devolucao ' + esc(x.nf_devolucao_numero) + ' &#10003;</span>' : '') +
+    '</div><div class="meta">' +
+    (x.produto_sku ? '<span class="sku">' + esc(x.produto_sku) + '</span> &middot; ' : '') +
+    (x.produto_titulo ? esc(String(x.produto_titulo).slice(0, 60)) + ' &middot; ' : '') +
+    (x.defeito_qtd ? x.defeito_qtd + ' un &middot; ' : '') +
+    (x.problema_descricao ? '&#9888;&#65039; ' + esc(x.problema_descricao) + ' &middot; ' : '') +
+    (x.localizacao ? '&#128205; ' + esc(x.localizacao) + ' &middot; ' : '') +
+    'por ' + esc(x.funcionario || '?') + ' em ' +
+    esc(String(x.criado_em || '').slice(0, 16).replace('T', ' ')) + '</div>';
+
+  h += '<div class="acoes">' +
+    (x.link_nf_bling
+      ? '<a class="btn cinza" style="text-decoration:none" target="_blank" rel="noopener" href="' +
+        esc(x.link_nf_bling) + '">&#128279; Abrir NF no Bling</a>'
+      : '<span class="selo">NF da venda nao localizada no indice</span>') +
+    '<button class="btn roxo" onclick="registrarNfDevolucao(this,\'' + esc(x.id) + '\',\'' + status + '\')">&#128221; registrar NF de devolucao</button>' +
+    '<button class="btn verde" onclick="concluirUma(\'' + esc(x.id) + '\',\'' + status + '\')">&#10003; concluir</button>' +
+    '</div></div>';
+  return h;
+}
+
+async function verFila(status) {
+  const alvo = status === 'problema' ? 'scProblema' : 'scAprovado';
+  const cont = status === 'problema' ? 'nProblemas' : 'nAprovadas';
   try {
-    const r = await api('/api/triagem/recentes?limite=40');
-    if (!r.ok) { $('scTriagens').innerHTML = '<div class="vazio">' + esc(r.erro) + '</div>'; return; }
-    $('nTriagens').textContent = r.registros.length;
-    if (!r.registros.length) {
-      $('scTriagens').innerHTML = '<div class="vazio">Nenhuma caixa triada ainda. ' +
-        'Assim que o galpao bipar a primeira, ela aparece aqui. &#127881;</div>';
-      return;
-    }
-    let h = '';
-    r.registros.forEach(x => {
-      h += '<div class="card"><div class="cab">' +
-        (x.marketplace ? '<span class="selo ' + esc(x.marketplace) + '">' + esc(x.marketplace) + '</span>' : '') +
-        '<span class="selo ' + (x.status === 'problema' ? 'velho' : 'ok') + '">' + esc(x.status) + '</span>' +
-        (x.buyer_nome ? '<b>' + esc(x.buyer_nome) + '</b>' : '') +
-        '</div><div class="meta">' +
-        (x.nf_numero ? '&#129534; NF ' + esc(x.nf_numero) + ' &middot; ' : '') +
-        (x.produto_sku ? '<span class="sku">' + esc(x.produto_sku) + '</span> &middot; ' : '') +
-        (x.problema_descricao ? esc(x.problema_descricao) + ' &middot; ' : '') +
-        'por <b>' + esc(x.funcionario || '?') + '</b> em ' +
-        esc(String(x.criado_em || '').slice(0, 16).replace('T', ' ')) +
-        '</div></div>';
-    });
-    $('scTriagens').innerHTML = h;
+    const r = await api('/api/triagem/fila?status=' + status);
+    if (!r.ok) { $(alvo).innerHTML = '<div class="vazio">' + esc(r.erro) + '</div>'; return; }
+    $(cont).textContent = r.total;
+    _sel[status] = new Set([..._sel[status]].filter(id => r.registros.some(x => String(x.id) === id)));
+    atualizarContadorSel(status);
+    $(alvo).innerHTML = r.registros.length
+      ? r.registros.map(x => cardFila(x, status)).join('')
+      : '<div class="vazio">' + (status === 'problema'
+          ? 'Nenhum problema reportado. &#127881;'
+          : 'Nenhuma devolucao aprovada pendente. &#127881;') + '</div>';
   } catch (e) {}
+}
+
+function selecionar(status, id, on) {
+  if (on) _sel[status].add(String(id)); else _sel[status].delete(String(id));
+  atualizarContadorSel(status);
+}
+function marcarTodas(status, on) {
+  const alvo = status === 'problema' ? 'scProblema' : 'scAprovado';
+  $(alvo).querySelectorAll('input[type=checkbox]').forEach(c => {
+    c.checked = on;
+    selecionar(status, c.closest('.card').dataset.id, on);
+  });
+}
+function atualizarContadorSel(status) {
+  $(status === 'problema' ? 'selProblema' : 'selAprovado').textContent = _sel[status].size;
+}
+
+function registrarNfDevolucao(bt, id, status) {
+  abrirCaixinha(bt, {
+    valor: '',
+    placeholder: 'numero da NF de devolucao gerada no Bling (so o numero)',
+    aoSalvar: async (numero) => {
+      if (!numero) return;
+      const r = await api('/api/triagem/' + id + '/nf-devolucao', {
+        method: 'PUT', body: JSON.stringify({ numero }) });
+      if (!r.ok) { alert('Nao gravou: ' + r.erro); return; }
+      verFila(status);
+    },
+  });
+}
+
+async function concluirUma(id, status) {
+  if (!confirm('Concluir esta devolucao? Ela some da fila.')) return;
+  const r = await api('/api/triagem/' + id + '/concluir', { method: 'POST' });
+  if (!r.ok) { alert('Falhou: ' + r.erro); return; }
+  verFila(status);
+}
+
+async function concluirSelecionadas(status, bt) {
+  const ids = [..._sel[status]];
+  if (!ids.length) { alert('Nenhum card selecionado.'); return; }
+  if (!confirm('Concluir ' + ids.length + ' devolucao(oes)? Elas somem da fila.')) return;
+  bt.disabled = true;
+  for (const id of ids) {
+    await api('/api/triagem/' + id + '/concluir', { method: 'POST' }).catch(() => {});
+  }
+  bt.disabled = false;
+  _sel[status].clear();
+  verFila(status);
 }
 
 /* ================= A ESPREITA ================= */
@@ -279,6 +367,9 @@ function cardEspreita(x, entregue) {
   if (!entregue && x.status) cli.push(esc(x.status));
   if (cli.length) h += '<div class="meta">' + cli.join(' &middot; ') + '</div>';
 
+  if (x.marketplace === 'ml' && !(x.itens || []).length) {
+    h += '<div class="item" style="color:var(--apagado)">&#8987; itens e apelido chegando (enriquecimento em andamento) &mdash; atualiza sozinho</div>';
+  }
   (x.itens || []).forEach(it => {
     h += '<div class="item">&#128230; <b>' + (it.qtd || 1) + '&times;</b> ' +
       esc(String(it.titulo || '').slice(0, 70)) +
@@ -511,7 +602,7 @@ $('btnSair').onclick = async () => {
   fetch(API + '/status').then(r => r.json()).then(d => {
     $('versaoServidor').textContent = 'servidor ' + String(d.versao || '?').replace('AMB Devolucoes ', '');
   }).catch(() => {});
-  verTriagens(); verEspreita(); verDefeitos(); verRecados();
+  verFila('aprovado'); verFila('problema'); verEspreita(); verDefeitos(); verRecados();
   setInterval(verEspreita, 4 * 60 * 1000);          // atualiza sozinho
   if (window.innerWidth >= 900 && await carregarQZ()) setInterval(cicloEstacao, 5000);
 })();
