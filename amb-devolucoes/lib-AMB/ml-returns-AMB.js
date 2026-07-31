@@ -1,5 +1,5 @@
 // ============================================================
-// amb-devolucoes/lib-AMB/ml-returns-AMB.js     (AMB Devol. b29)
+// amb-devolucoes/lib-AMB/ml-returns-AMB.js     (AMB Devol. b30)
 // ------------------------------------------------------------
 // INDICE DE DEVOLUCOES DO ML POR RASTREIO DOS CORREIOS.
 //
@@ -56,27 +56,47 @@ const PEDIDOS = new Map();
 // GOOD): o return NAO traz a data; ela vem de /shipments/{id}/history
 // no campo date_history.date_delivered. Cache permanente (data de
 // entrega nunca muda). Enquanto nao chega, o painel mostra "~" (estimado).
-const ENTREGA_REAL = new Map();
+const ENTREGA_REAL = new Map();   // sid -> { v: dataISO|null, tent: n, http: status }
 let ENTREGA_RODANDO = false;
+
+/** Data real (ou null) já resolvida pra este envio. */
+function entregaRealData(sid) {
+  const e = sid ? ENTREGA_REAL.get(String(sid)) : null;
+  return (e && e.v) || null;
+}
 
 function dispararDatasEntrega(itens) {
   if (ENTREGA_RODANDO) return;
-  const fila = (itens || [])
+  // b30 - null NAO e mais permanente: re-tenta ate 4 vezes (o /history
+  // pode falhar num soluco e a data ficar presa como "estimada" pra
+  // sempre — foi o que travou os ~ do painel em 01/08).
+  const fila = [...new Set((itens || [])
     .map(d => d.shipment_devolucao ? String(d.shipment_devolucao) : null)
-    .filter(sid => sid && !ENTREGA_REAL.has(sid));
-  const unicos = [...new Set(fila)].slice(0, 60);
-  if (!unicos.length) return;
+    .filter(Boolean))]
+    .filter(sid => {
+      const e = ENTREGA_REAL.get(sid);
+      return !e || (!e.v && (e.tent || 0) < 4);
+    }).slice(0, 60);
+  if (!fila.length) return;
   ENTREGA_RODANDO = true;
   (async () => {
-    for (const sid of unicos) {
+    for (const sid of fila) {
+      const antes = ENTREGA_REAL.get(sid) || { tent: 0 };
       try {
         const rh = await ml.chamarML('/shipments/' + sid + '/history');
-        ENTREGA_REAL.set(sid, (rh.ok && rh.data && rh.data.date_history &&
-          rh.data.date_history.date_delivered) || null);
-      } catch (e) { ENTREGA_REAL.set(sid, null); }
+        ENTREGA_REAL.set(sid, {
+          v: (rh.ok && rh.data && rh.data.date_history &&
+              rh.data.date_history.date_delivered) || null,
+          tent: (antes.tent || 0) + 1,
+          http: rh.status || (rh.ok ? 200 : null),
+        });
+      } catch (e) {
+        ENTREGA_REAL.set(sid, { v: null, tent: (antes.tent || 0) + 1, http: 'exc:' + e.message.slice(0, 40) });
+      }
       await new Promise(r => setTimeout(r, 300));
     }
-    console.log('[AMB/ML-RETURNS] datas reais de entrega no cache: ' + ENTREGA_REAL.size);
+    const ok = [...ENTREGA_REAL.values()].filter(e => e.v).length;
+    console.log('[AMB/ML-RETURNS] datas de entrega: ' + ok + ' reais / ' + ENTREGA_REAL.size + ' consultadas');
   })().catch(() => {}).finally(() => { ENTREGA_RODANDO = false; });
 }
 let ENRIQ_ERRO = null;
@@ -101,7 +121,20 @@ async function enriquecerPedido(orderId) {
 
     // NF DA VENDA direto do ML (invoice_data do envio) - a fonte da
     // GOOD; nao depende de campo nenhum da lista do Bling.
-    const shipId = o.shipping && o.shipping.id;
+    let shipId = o.shipping && o.shipping.id;
+    // b30 - venda de carrinho pode vir sem shipping no pedido: o envio
+    // mora no PACK. Sem shipId = sem invoice_data = card sem NF (caso
+    // real da MALHEIROSAUDREY, 01/08).
+    if (!shipId && o.pack_id) {
+      try {
+        const rP = await ml.chamarML('/packs/' + o.pack_id);
+        const pk = rP.ok && rP.data;
+        shipId = (pk && pk.shipment && pk.shipment.id)
+          || (pk && Array.isArray(pk.shipments) && pk.shipments[0] && pk.shipments[0].id)
+          || null;
+      } catch (e) { /* segue sem */ }
+    }
+    info.ship_venda = shipId || null;
     if (shipId) {
       try {
         const rN = await ml.chamarML('/shipments/' + shipId + '/invoice_data?siteId=MLB');
@@ -111,6 +144,7 @@ async function enriquecerPedido(orderId) {
           info.nf_ml_numero = ch.slice(25, 34).replace(/^0+/, '');
           info.nf_ml_serie = ch.slice(22, 25).replace(/^0+/, '') || '1';
         }
+        info.nf_http = rN.status || (rN.ok ? 200 : null);
         // fallback: alguns retornos trazem o numero sem a chave
         if (!info.nf_ml_numero && rN.ok && rN.data) {
           const inv = rN.data.invoice_number || rN.data.number || null;
@@ -321,7 +355,10 @@ async function construirIndice(opts = {}) {
 function statusIndice() {
   return {
     pedidos_enriquecidos: PEDIDOS.size,
-    datas_entrega_no_cache: ENTREGA_REAL.size,
+    datas_entrega_reais: [...ENTREGA_REAL.values()].filter(e => e.v).length,
+    datas_entrega_nulas: [...ENTREGA_REAL.values()].filter(e => !e.v).length,
+    datas_entrega_amostra: [...ENTREGA_REAL.entries()].slice(0, 3)
+      .map(([sid, e]) => ({ sid, v: e.v, tent: e.tent, http: e.http })),
     enriquecimento_erro: ENRIQ_ERRO,
     quente: IDX.ts > 0,
     construindo,
@@ -385,8 +422,7 @@ function resumoEspreita() {
       });
         continue;
       }
-      const real = d.shipment_devolucao
-        ? ENTREGA_REAL.get(String(d.shipment_devolucao)) : null;
+      const real = entregaRealData(d.shipment_devolucao);
       entreguesLista.push({
         marketplace: 'ml', pedido: d.order_id, tracking: d.tracking,
         dias_desde: real ? dias(real) : dias(d.entregue_em || d.claim_date),
