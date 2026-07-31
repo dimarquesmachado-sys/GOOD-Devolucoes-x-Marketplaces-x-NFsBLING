@@ -1,9 +1,12 @@
 // ============================================================
-// amb-devolucoes/app-AMB.js                    (AMB Devol. b8)
+// amb-devolucoes/app-AMB.js                    (AMB Devol. b10)
 // ------------------------------------------------------------
 // Router Express do Devolucoes da AMBTotal.
 //
-// b8 traz A TELA. Ate agora tudo era API: so funcionava por URL
+// b10 traz o PAINEL: a espreita (o que esta vindo), triagens,
+// defeitos agrupados por local, e recados pro estoquista.
+//
+// b8 trouxe A TELA de bipe. Ate agora tudo era API: so funcionava por URL
 // com a chave de admin. Agora o galpao abre /amb/ no celular,
 // loga e bipa. Ver public-AMB/index-AMB.html.
 //
@@ -53,7 +56,7 @@ const auth = require('./lib-AMB/auth-AMB');
 const db = require('./lib-AMB/supabase-AMB');
 const mkt = require('./lib-AMB/marketplace-AMB');
 
-const VERSAO = 'AMB Devolucoes b8';
+const VERSAO = 'AMB Devolucoes b10';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -486,6 +489,10 @@ router.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public-AMB', 'index-AMB.html'));
 });
 
+router.get('/painel', auth.requerLogin, (req, res) => {
+  res.sendFile(path.join(__dirname, 'public-AMB', 'painel-AMB.html'));
+});
+
 router.use(express.static(path.join(__dirname, 'public-AMB'), {
   setHeaders: (res, caminho) => {
     // HTML sempre revalida: o celular do estoquista segurava
@@ -656,6 +663,96 @@ router.get('/db/teste', admin, async (req, res) => {
   res.json({ ok: true, versao: VERSAO, supabase: await db.testeDeVida(), tabelas: db.tabelas });
 });
 
+// ── A ESPREITA (o que esta vindo pro galpao) ─────────────────
+router.get('/api/espreita', auth.requerLogin, async (req, res) => {
+  const base = mlReturns.resumoEspreita();
+  const notas = await db.notasEspreita();
+  const mapa = notas.ok ? notas.notas : {};
+
+  // Junta a anotacao manual e esconde o que ja foi baixado.
+  const enriquecer = (lista) => (lista || []).map(x => {
+    const n = mapa[x.tracking] || mapa[x.pedido] || null;
+    return { ...x, comentario: n && n.comentario, ticket: n && n.ticket, baixado: !!(n && n.baixado) };
+  }).filter(x => !x.baixado);
+
+  const emTransito = enriquecer(base.em_transito);
+  res.json({
+    ok: true,
+    versao: VERSAO,
+    indice: mlReturns.statusIndice(),
+    em_transito: emTransito,
+    atrasadas_30d: emTransito.filter(x => (x.dias_em_transito || 0) > 30).length,
+    aguardando_postagem: base.aguardando_postagem,
+    entregues: enriquecer(base.entregues),
+  });
+});
+
+router.post('/api/espreita/nota', auth.requerLogin, async (req, res) => {
+  const { chave, marketplace, comentario, ticket, baixado } = req.body || {};
+  if (!chave) return res.status(400).json({ ok: false, erro: 'falta a chave' });
+  res.json(await db.notaEspreita({ chave, marketplace, comentario, ticket, baixado }));
+});
+
+// ── RECADOS PRO ESTOQUISTA ───────────────────────────────────
+router.get('/api/recados', auth.requerLogin, async (req, res) => {
+  res.json(await db.listarRecados({ resolvidos: req.query.resolvidos === '1' }));
+});
+
+router.post('/api/recados', auth.requerLogin, async (req, res) => {
+  const { identificador, texto } = req.body || {};
+  if (!identificador || !texto) {
+    return res.status(400).json({ ok: false, erro: 'informe identificador e texto' });
+  }
+  res.json(await db.criarRecado({ identificador, texto, criadoPor: req.usuario }));
+});
+
+router.post('/api/recados/:id/ciente', auth.requerLogin, async (req, res) => {
+  res.json(await db.marcarCiente(req.params.id, req.usuario));
+});
+
+router.post('/api/recados/:id/resolver', auth.requerLogin, async (req, res) => {
+  res.json(await db.resolverRecado(req.params.id));
+});
+
+// ── DEFEITOS ─────────────────────────────────────────────────
+router.get('/api/defeitos', auth.requerLogin, async (req, res) => {
+  res.json(await db.listarDefeitos({ busca: req.query.q }));
+});
+
+/** Lancar produto que JA esta quebrado no galpao (nao veio de devolucao). */
+router.post('/api/defeitos/lancar', auth.requerLogin, async (req, res) => {
+  const { sku, descricao, localizacao, quantidade } = req.body || {};
+  if (!sku || !localizacao) {
+    return res.status(400).json({ ok: false, erro: 'informe ao menos sku e localizacao' });
+  }
+  // Valida o SKU no Bling antes de gravar: evita defeito fantasma
+  // por causa de um codigo digitado errado.
+  const prod = await bling.buscarProdutoPorSku(String(sku));
+  const exato = prod.ok ? prod.exato : null;
+
+  const r = await db.registrarTriagem({
+    tipo: 'defeito_estoque',
+    status: 'concluido',
+    produto_sku: exato ? exato.codigo : sku,
+    produto_titulo: exato ? exato.nome : null,
+    problema_descricao: descricao || null,
+    localizacao,
+    defeito_qtd: Number(quantidade || 1),
+    funcionario: req.usuario,
+  });
+  res.json({ ...r, sku_validado_no_bling: !!exato });
+});
+
+/** Ha o mesmo SKU guardado em defeito? (canibalizacao) */
+router.get('/api/defeitos/sku', auth.requerLogin, async (req, res) => {
+  res.json(await db.defeitosDoSku(req.query.sku));
+});
+
+router.post('/api/defeitos/peca', auth.requerLogin, async (req, res) => {
+  const { defeito_id, peca, usada_em } = req.body || {};
+  res.json(await db.registrarPecaRetirada({ defeitoId: defeito_id, peca, usadaEm: usada_em, quem: req.usuario }));
+});
+
 // ── Testes ───────────────────────────────────────────────────
 router.get('/bling/teste', admin, async (req, res) => {
   res.json({ ok: true, versao: VERSAO, resultado: await bling.testeDeVida() });
@@ -688,6 +785,7 @@ router.use((req, res) => {
       '/amb/identificar', '/amb/nf/nome', '/amb/nf/itens', '/amb/nf/indice', '/amb/nf/indice/construir',
       '/amb/api/auth/login', '/amb/api/auth/me', '/amb/api/triagem/identificar', '/amb/api/triagem/registrar',
       '/amb/auth/diag', '/amb/db/teste', '/amb/api/nf/itens', '/amb/api/triagem/recentes',
+      '/amb/painel', '/amb/api/espreita', '/amb/api/recados', '/amb/api/defeitos',
       '/amb/ml/teste', '/amb/ml/eu', '/amb/bling/teste', '/amb/bling/produto',
     ],
   });
