@@ -72,7 +72,7 @@ const impressao = require('./lib-AMB/impressao-AMB');
 const emailAMB = require('./lib-AMB/email-AMB');
 const nfEntrada = require('./lib-AMB/nf-entrada-AMB');
 
-const VERSAO = 'AMB Devolucoes b18';
+const VERSAO = 'AMB Devolucoes b19';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -575,14 +575,24 @@ router.get('/identificar', admin, async (req, res) => {
 // express.static nao serve sozinho na raiz — por isso a rota
 // explicita abaixo.
 router.get('/', (req, res) => {
+  res.set('Cache-Control', 'no-cache, must-revalidate');
   res.sendFile(path.join(__dirname, 'public-AMB', 'index-AMB.html'));
 });
 
 router.get('/painel', auth.requerLogin, (req, res) => {
+  res.set('Cache-Control', 'no-cache, must-revalidate');   // b19: tela nunca presa
   res.sendFile(path.join(__dirname, 'public-AMB', 'painel-AMB.html'));
 });
 
 router.use(express.static(path.join(__dirname, 'public-AMB'), {
+  // b19 - HTML sempre revalida (mesma licao da v3.64 da GOOD: o
+  // navegador segurava a tela velha e o Diego via "tela b17" com
+  // "servidor b18"). Imagens continuam com cache normal.
+  setHeaders: (res, caminho) => {
+    if (String(caminho).endsWith('.html')) {
+      res.setHeader('Cache-Control', 'no-cache, must-revalidate');
+    }
+  },
   setHeaders: (res, caminho) => {
     // HTML sempre revalida: o celular do estoquista segurava
     // versao velha em cache e ficava sem as correcoes.
@@ -810,6 +820,39 @@ router.get('/db/teste', admin, async (req, res) => {
   res.json({ ok: true, versao: VERSAO, supabase: await db.testeDeVida(), tabelas: db.tabelas });
 });
 
+// ── FILAS DA TRIAGEM (Aprovadas x Problemas, como na GOOD) ───
+router.get('/api/triagem/fila', auth.requerLogin, async (req, res) => {
+  const status = req.query.status === 'problema' ? 'problema' : 'aprovado';
+  const r = await db.listarFila({ status });
+  if (!r.ok) return res.json(r);
+  // junta o link da NF DA VENDA no Bling (id vem do indice de nomes)
+  const registros = (r.registros || []).map(x => {
+    const venda = nfNomes.acharPorPedido(x.order_id);
+    return {
+      ...x,
+      nf_id_bling: (venda && venda.id) || null,
+      link_nf_bling: venda && venda.id
+        ? `https://www.bling.com.br/notas.fiscais.php#edit/${venda.id}` : null,
+    };
+  });
+  res.json({ ok: true, status, total: registros.length, registros });
+});
+
+/** NF de devolucao gerada no Bling -> registra o numero no card. */
+router.put('/api/triagem/:id/nf-devolucao', auth.requerLogin, async (req, res) => {
+  const { numero, id_bling } = req.body || {};
+  if (!numero) return res.status(400).json({ ok: false, erro: 'informe o numero da NF de devolucao' });
+  res.json(await db.atualizarTriagem(req.params.id, {
+    nf_devolucao_numero: String(numero),
+    nf_devolucao_id_bling: id_bling ? String(id_bling) : null,
+  }));
+});
+
+/** Concluida: some das filas. */
+router.post('/api/triagem/:id/concluir', auth.requerLogin, async (req, res) => {
+  res.json(await db.atualizarTriagem(req.params.id, { status: 'finalizado' }));
+});
+
 // ── A ESPREITA (o que esta vindo pro galpao) ─────────────────
 router.get('/api/espreita', auth.requerLogin, async (req, res) => {
   const baseML = mlReturns.resumoEspreita();
@@ -851,6 +894,15 @@ router.get('/api/espreita', auth.requerLogin, async (req, res) => {
     ...enriquecer(baseShopee.em_transito),
     ...enriquecer(baseMagalu.em_transito),
   ].sort((a, b) => (b.dias_em_transito || 0) - (a.dias_em_transito || 0));
+
+  // b19 - pedidos ML que ainda estao sem itens/apelido: dispara o
+  // enriquecimento agora, em background; a proxima atualizacao da
+  // tela (4 min) ja vem preenchida.
+  const pendentes = emTransito
+    .concat(enriquecer(baseML.entregues))
+    .filter(x => x.marketplace === 'ml' && !x.itens && x.pedido)
+    .map(x => String(x.pedido)).slice(0, 60);
+  if (pendentes.length) mlReturns.enriquecerLista(pendentes).catch(() => {});
 
   res.json({
     ok: true,
