@@ -1,9 +1,19 @@
 // ============================================================
-// amb-devolucoes/app-AMB.js                    (AMB Devol. b10)
+// amb-devolucoes/app-AMB.js                    (AMB Devol. b11)
 // ------------------------------------------------------------
 // Router Express do Devolucoes da AMBTotal.
 //
-// b10 traz o PAINEL: a espreita (o que esta vindo), triagens,
+// b11 — FORCA MAXIMA (paridade com a GOOD):
+//   SHOPEE no bipe e no a espreita (proxy do shopee-nf-sync,
+//   loja 'amb'); MAGALU com OAuth proprio da conta AMB + as 3
+//   modalidades (agencia, correios, FULFILLMENT); MOTIVO da
+//   devolucao em linguagem de galpao (arrependeu x defeito x
+//   nunca recebeu); RECLAMACAO em 2 cliques; cruzamento com as
+//   NFs de DEVOLUCAO do Bling ("ja emitida ✓"); e-mail quando
+//   o galpao reporta problema; etiqueta ZPL de defeito na Zebra
+//   via QZ Tray (mesmo certificado da GOOD, fila remota).
+//
+// b10 trouxe o PAINEL: a espreita (o que esta vindo), triagens,
 // defeitos agrupados por local, e recados pro estoquista.
 //
 // b8 trouxe A TELA de bipe. Ate agora tudo era API: so funcionava por URL
@@ -55,8 +65,14 @@ const tokens = require('./lib-AMB/render-tokens-AMB');
 const auth = require('./lib-AMB/auth-AMB');
 const db = require('./lib-AMB/supabase-AMB');
 const mkt = require('./lib-AMB/marketplace-AMB');
+const shopee = require('./lib-AMB/shopee-AMB');
+const magalu = require('./lib-AMB/magalu-AMB');
+const mlMotivo = require('./lib-AMB/ml-motivo-AMB');
+const impressao = require('./lib-AMB/impressao-AMB');
+const emailAMB = require('./lib-AMB/email-AMB');
+const nfEntrada = require('./lib-AMB/nf-entrada-AMB');
 
-const VERSAO = 'AMB Devolucoes b10';
+const VERSAO = 'AMB Devolucoes b11';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -89,6 +105,28 @@ function consumirState(s) {
   PENDENTES.delete(s);
   if (Date.now() - reg.criado_em > VALIDADE_MS) return null;
   return reg;
+}
+
+/** Reclamacao em 2 cliques: o link certo por marketplace. */
+function linksReclamacao(marketplace, d = {}) {
+  if (marketplace === 'ml') {
+    const alvo = d.pack_id || d.order_id;
+    return alvo ? {
+      rotulo: 'Abrir a venda no Mercado Livre',
+      url: `https://www.mercadolivre.com.br/vendas/${alvo}/detalhe`,
+    } : null;
+  }
+  if (marketplace === 'shopee') {
+    return {
+      rotulo: 'Abrir devolucoes na Shopee' + (d.return_sn ? ` (procure ${d.return_sn})` : ''),
+      url: 'https://seller.shopee.com.br/portal/sale/return',
+      copiar: d.return_sn || d.pedido || null,
+    };
+  }
+  if (marketplace === 'magalu') {
+    return { rotulo: 'Abrir devolucoes no Magalu Entregas', url: 'https://seller.magaluentregas.com.br/', copiar: d.pedido || null };
+  }
+  return null;
 }
 
 function redirectOAuth() {
@@ -188,7 +226,18 @@ router.get('/oauth/iniciar', admin, (req, res) => {
     return res.redirect(ml.urlAutorizacao(state, redirectOAuth()));
   }
 
-  res.status(400).json({ ok: false, erro: 'servico invalido', use: 'bling ou ml' });
+  if (servico === 'magalu') {
+    if (!magalu.temCredenciais()) {
+      return res.status(200).send(pagina('Falta credencial',
+        `<h1>Faltam credenciais do Magalu</h1><div class="card">Este servico precisa das vars
+         <code>MAGALU_CLIENT_ID</code> e <code>MAGALU_CLIENT_SECRET</code> (as mesmas da GOOD —
+         nao tem prefixo AMB porque o app e compartilhado; a CONTA autorizada e decidida no login).</div>`));
+    }
+    const state = novoState('magalu');
+    return res.redirect(magalu.urlAutorizacao(state, redirectOAuth()));
+  }
+
+  res.status(400).json({ ok: false, erro: 'servico invalido', use: 'bling, ml ou magalu' });
 });
 
 router.get('/oauth/callback', async (req, res) => {
@@ -242,6 +291,20 @@ router.get('/oauth/callback', async (req, res) => {
         </table></div>
         <div class="aviso">O indice de devolucoes comecou a ser montado agora e leva alguns minutos.
         Acompanhe em <code>/amb/ml/indice?k=SUA_CHAVE</code>.</div>`));
+    }
+
+    if (reg.servico === 'magalu') {
+      const r = await magalu.trocarCodePorToken(String(code), redirectOAuth());
+      magalu.preAquecer();
+      return res.send(pagina('Magalu conectado', `
+        <h1 class="ok">Magalu da AMBTotal conectado</h1>
+        <div class="card"><table>
+          <tr><td>Token gravado no Render</td><td>${r.persistiu ? 'sim' : 'NAO'}</td></tr>
+          <tr><td>Tenant configurado</td><td>${magalu.temTenant() ? 'sim' : '<b>FALTA AMB_MAGALU_TENANT_ID</b>'}</td></tr>
+        </table></div>
+        <div class="aviso">⚠️ Confira que o login foi feito na conta Magalu <b>da AMBTotal</b> —
+        e a conta logada que fica autorizada, nao o app.
+        ${magalu.temTenant() ? '' : '<br><br>Falta o tenant: abra seller.magaluentregas.com.br logado na AMB, F12 → Network → qualquer chamada ao seller-devolution-bff → header <code>x-tenant-id</code>. Grave em <code>AMB_MAGALU_TENANT_ID</code> no Render.'}</div>`));
     }
 
     res.status(400).json({ ok: false, erro: 'servico desconhecido no state' });
@@ -556,7 +619,19 @@ router.get('/api/triagem/identificar', auth.requerLogin, async (req, res) => {
   tentativas.push({ via: 'rastreio ML', achou: !!porTracking });
   if (porTracking) { achado = porTracking; via = 'rastreio ML'; }
 
-  if (!achado) {
+  // SHOPEE: tracking SPX (BR...), return_sn ou order_sn
+  let devShopee = null;
+  if (!achado && shopee.cfg.ativo) {
+    try {
+      const infoS = await shopee.acharDevolucao(codigo);
+      tentativas.push({ via: 'devolucao Shopee', achou: !!infoS.hit, na_lista: infoS.qtd });
+      if (infoS.hit) { devShopee = infoS.hit; via = 'devolucao Shopee'; }
+    } catch (e) {
+      tentativas.push({ via: 'devolucao Shopee', achou: false, erro: e.message });
+    }
+  }
+
+  if (!achado && !devShopee) {
     const porNome = await nfNomes.buscarPorNome(codigo, { pagina: req.query.pagina });
     tentativas.push({ via: 'nome do remetente', achou: porNome.total > 0, quantos: porNome.total });
     if (porNome.total > 0) {
@@ -591,14 +666,43 @@ router.get('/api/triagem/identificar', auth.requerLogin, async (req, res) => {
   // Origem da venda descoberta sozinha, sem o estoquista escolher.
   const origem = achado
     ? mkt.detectar(null, { temClaimML: true, tracking: achado.tracking })
-    : { marketplace: 'desconhecido', confianca: 'nenhuma' };
+    : (devShopee ? { marketplace: 'shopee', confianca: 'alta' }
+                 : { marketplace: 'desconhecido', confianca: 'nenhuma' });
+
+  // MOTIVO (so no hit do ML: e de la que temos claim + pedido)
+  let motivo = null;
+  if (achado && achado.order_id) {
+    motivo = await mlMotivo.motivoDaDevolucao({ orderId: achado.order_id, claimId: achado.claim_id });
+  }
+
+  // NF de devolucao ja emitida?
+  const nfDev = nfEntrada.jaEmitida({
+    pedido: (achado && achado.order_id) || (devShopee && devShopee.order_sn) || null,
+    nome: null,
+  });
+
+  const reclamacao = linksReclamacao(origem.marketplace, {
+    order_id: achado && achado.order_id,
+    pack_id: motivo && motivo.pack_id,
+    return_sn: devShopee && devShopee.return_sn,
+    pedido: devShopee && devShopee.order_sn,
+  });
 
   res.json({
     ok: true,
-    encontrado: !!(achado || candidatos),
+    encontrado: !!(achado || devShopee || candidatos),
     via,
     marketplace: origem.marketplace,
     marketplace_nome: mkt.nomeBonito(origem.marketplace),
+    motivo_devolucao: motivo,
+    reclamacao,
+    nf_devolucao: nfDev,
+    devolucao_shopee: devShopee ? {
+      pedido: devShopee.order_sn || null,
+      return_sn: devShopee.return_sn || null,
+      tracking: devShopee.tracking_number || null,
+      status: [devShopee.status, devShopee.logistics_status || devShopee.logistic_status].filter(Boolean).join(' / ') || null,
+    } : null,
     devolucao: achado,
     candidatos,
     ...extras,
@@ -618,7 +722,24 @@ router.post('/api/triagem/registrar', auth.requerLogin, async (req, res) => {
   }
   const r = await db.registrarTriagem({ ...d, funcionario: req.usuario });
   if (!r.ok) return res.status(200).json({ ok: false, erro: r.erro });
-  res.json({ ok: true, registro: r.registro });
+
+  // PROBLEMA: avisa o Diego por e-mail (fire and forget) e ja
+  // responde se ha outras unidades do mesmo SKU em defeito — a
+  // tela usa isso pro alerta de canibalizacao.
+  let canibalizacao = null;
+  if (d.status === 'problema') {
+    emailAMB.avisarProblema({ ...d, funcionario: req.usuario });
+    if (d.produto_sku) {
+      const outras = await db.defeitosDoSku(d.produto_sku);
+      if (outras.ok && outras.unidades.length > 1) {
+        canibalizacao = {
+          outras_unidades: outras.unidades.length - 1,
+          locais: [...new Set(outras.unidades.map(u => u.localizacao).filter(Boolean))].slice(0, 4),
+        };
+      }
+    }
+  }
+  res.json({ ok: true, registro: r.registro, email_enviado: d.status === 'problema' && emailAMB.ligado(), canibalizacao });
 });
 
 /** Itens de uma NF, para o estoquista logado desempatar. */
@@ -665,25 +786,44 @@ router.get('/db/teste', admin, async (req, res) => {
 
 // ── A ESPREITA (o que esta vindo pro galpao) ─────────────────
 router.get('/api/espreita', auth.requerLogin, async (req, res) => {
-  const base = mlReturns.resumoEspreita();
+  const baseML = mlReturns.resumoEspreita();
+  const baseShopee = await shopee.resumoEspreita();
+  const baseMagalu = magalu.resumoEspreita();
   const notas = await db.notasEspreita();
   const mapa = notas.ok ? notas.notas : {};
 
-  // Junta a anotacao manual e esconde o que ja foi baixado.
+  // Junta a anotacao manual, o "NF de devolucao ja emitida ✓" e
+  // esconde o que ja foi baixado.
   const enriquecer = (lista) => (lista || []).map(x => {
     const n = mapa[x.tracking] || mapa[x.pedido] || null;
-    return { ...x, comentario: n && n.comentario, ticket: n && n.ticket, baixado: !!(n && n.baixado) };
+    const nf = nfEntrada.jaEmitida({ pedido: x.pedido });
+    return {
+      ...x,
+      comentario: n && n.comentario, ticket: n && n.ticket,
+      baixado: !!(n && n.baixado),
+      nf_devolucao_emitida: nf.emitida === true ? (nf.nf && nf.nf.numero) || true : false,
+    };
   }).filter(x => !x.baixado);
 
-  const emTransito = enriquecer(base.em_transito);
+  const emTransito = [
+    ...enriquecer(baseML.em_transito),
+    ...enriquecer(baseShopee.em_transito),
+    ...enriquecer(baseMagalu.em_transito),
+  ].sort((a, b) => (b.dias_em_transito || 0) - (a.dias_em_transito || 0));
+
   res.json({
     ok: true,
     versao: VERSAO,
-    indice: mlReturns.statusIndice(),
+    fontes: {
+      ml: { quente: baseML.quente },
+      shopee: { quente: baseShopee.quente, desligada: !!baseShopee.desligada, erro: baseShopee.erro || null },
+      magalu: { quente: baseMagalu.quente, desligada: !!baseMagalu.desligada, falta: baseMagalu.falta || null },
+      nf_entrada: nfEntrada.statusIndice(),
+    },
     em_transito: emTransito,
     atrasadas_30d: emTransito.filter(x => (x.dias_em_transito || 0) > 30).length,
-    aguardando_postagem: base.aguardando_postagem,
-    entregues: enriquecer(base.entregues),
+    aguardando_postagem: baseML.aguardando_postagem,
+    entregues: enriquecer(baseML.entregues),
   });
 });
 
@@ -753,6 +893,45 @@ router.post('/api/defeitos/peca', auth.requerLogin, async (req, res) => {
   res.json(await db.registrarPecaRetirada({ defeitoId: defeito_id, peca, usadaEm: usada_em, quem: req.usuario }));
 });
 
+// ── SHOPEE / MAGALU / NF-ENTRADA (diagnostico e indices) ─────
+router.get('/shopee/teste', admin, async (req, res) => {
+  try {
+    const lista = await shopee.buscarDevolucoesProxy(req.query.refresh === '1');
+    res.json({ ok: true, versao: VERSAO, loja: shopee.cfg.loja, ativo: shopee.cfg.ativo,
+      total: Array.isArray(lista) ? lista.length : null,
+      amostra: Array.isArray(lista) ? lista.slice(0, 2) : null });
+  } catch (e) {
+    res.json({ ok: false, loja: shopee.cfg.loja, erro: e.message,
+      dica: 'se o erro for loja desconhecida, o shopee-nf-sync nao tem a loja amb cadastrada' });
+  }
+});
+
+router.get('/magalu/status', admin, (req, res) => {
+  res.json({ ok: true, versao: VERSAO, magalu: magalu.statusIndice() });
+});
+
+router.get('/magalu/indice/construir', admin, (req, res) => {
+  magalu.construirIndice().catch(e => console.error('[AMB/MAGALU]', e.message));
+  res.json({ ok: true, iniciado: true });
+});
+
+router.get('/nf/entrada/indice', admin, (req, res) => {
+  res.json({ ok: true, versao: VERSAO, indice: nfEntrada.statusIndice() });
+});
+
+router.get('/nf/entrada/indice/construir', admin, (req, res) => {
+  nfEntrada.construirIndice().catch(e => console.error('[AMB/NF-ENTRADA]', e.message));
+  res.json({ ok: true, iniciado: true });
+});
+
+/** Um clique e o Diego descobre qual tipo lista as devolucoes. */
+router.get('/nf/entrada/sonda', admin, async (req, res) => {
+  res.json({ ok: true, versao: VERSAO,
+    procure: 'o tipo cuja natureza diga Devolucao de venda',
+    depois: 'grave o numero em AMB_NF_ENTRADA_TIPO no Render (padrao atual: ' + (process.env.AMB_NF_ENTRADA_TIPO || '0') + ')',
+    tipos: await nfEntrada.sondarTipos() });
+});
+
 // ── Testes ───────────────────────────────────────────────────
 router.get('/bling/teste', admin, async (req, res) => {
   res.json({ ok: true, versao: VERSAO, resultado: await bling.testeDeVida() });
@@ -772,6 +951,11 @@ router.get('/ml/eu', admin, async (req, res) => {
   res.json(await ml.quemSouEu());
 });
 
+// Etiqueta de defeito (QZ Tray + fila remota) — registrada ANTES
+// do 404: o Express casa rotas na ordem em que foram declaradas,
+// e o pega-tudo engoliria qualquer coisa registrada depois dele.
+impressao.registrarRotas(router, auth.requerLogin);
+
 // ── 404 do modulo ────────────────────────────────────────────
 router.use((req, res) => {
   res.status(404).json({
@@ -786,6 +970,7 @@ router.use((req, res) => {
       '/amb/api/auth/login', '/amb/api/auth/me', '/amb/api/triagem/identificar', '/amb/api/triagem/registrar',
       '/amb/auth/diag', '/amb/db/teste', '/amb/api/nf/itens', '/amb/api/triagem/recentes',
       '/amb/painel', '/amb/api/espreita', '/amb/api/recados', '/amb/api/defeitos',
+      '/amb/shopee/teste', '/amb/magalu/status', '/amb/nf/entrada/sonda', '/amb/api/etiqueta/fila',
       '/amb/ml/teste', '/amb/ml/eu', '/amb/bling/teste', '/amb/bling/produto',
     ],
   });
@@ -805,9 +990,14 @@ if (ml.temToken()) {
 // Ainda assim vai 1 minuto depois do outro pra nao empilhar tudo.
 if (bling.temToken()) {
   nfNomes.preAquecer(Number(process.env.AMB_NF_PREAQUECER_MS || 240000));
+  nfEntrada.preAquecer();
 } else {
-  console.log('[amb-devolucoes] Bling sem token - indice de nomes so apos autorizar');
+  console.log('[amb-devolucoes] Bling sem token - indices de nomes/entrada so apos autorizar');
 }
+
+shopee.preAquecer();
+magalu.preAquecer();
+
 
 if (!auth.temUsuarios()) {
   console.log('[amb-devolucoes] AMB_USERS vazio - ninguem consegue logar ainda');
