@@ -1,5 +1,5 @@
 // ============================================================
-// amb-devolucoes/lib-AMB/ml-returns-AMB.js     (AMB Devol. b3)
+// amb-devolucoes/lib-AMB/ml-returns-AMB.js     (AMB Devol. b8)
 // ------------------------------------------------------------
 // INDICE DE DEVOLUCOES DO ML POR RASTREIO DOS CORREIOS.
 //
@@ -236,8 +236,11 @@ function statusIndice() {
 async function acharPorTracking(codigo) {
   const trk = normTrack(codigo);
   if (!trk) return null;
-  if (!IDX.ts || (Date.now() - IDX.ts) > 30 * 60000) {
-    try { await construirIndice(); } catch (e) { /* segue com o que tiver */ }
+  // Mesma regra do indice de nomes: so espera quando esta vazio.
+  if (!IDX.ts) {
+    try { await construirIndice(); } catch (e) { /* segue vazio */ }
+  } else if ((Date.now() - IDX.ts) > 30 * 60000) {
+    construirIndice().catch(e => console.error('[AMB/ML-RETURNS] atualizacao em background falhou:', e.message));
   }
   return IDX.mapa[trk] || null;
 }
