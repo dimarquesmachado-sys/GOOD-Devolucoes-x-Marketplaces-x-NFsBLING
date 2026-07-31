@@ -72,7 +72,7 @@ const impressao = require('./lib-AMB/impressao-AMB');
 const emailAMB = require('./lib-AMB/email-AMB');
 const nfEntrada = require('./lib-AMB/nf-entrada-AMB');
 
-const VERSAO = 'AMB Devolucoes b11';
+const VERSAO = 'AMB Devolucoes b13';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -345,6 +345,7 @@ router.get('/config', admin, (req, res) => {
     conectado_agora: { bling: bling.temToken(), ml: ml.temToken(), ml_user: ml.userId() || null },
     configurado: cfg.statusConfig(),
     persistencia_token: tokens.diagnostico(),
+    email: emailAMB.diagnostico(),
     tabelas_supabase: cfg.supabase.tabelas,
     oauth_pendentes: PENDENTES.size,
   });
