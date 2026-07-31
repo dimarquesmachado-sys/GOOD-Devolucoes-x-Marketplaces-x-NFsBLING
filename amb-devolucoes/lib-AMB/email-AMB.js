@@ -1,5 +1,5 @@
 // ============================================================
-// amb-devolucoes/lib-AMB/email-AMB.js          (AMB Devol. b13)
+// amb-devolucoes/lib-AMB/email-AMB.js          (AMB Devol. b14)
 // ------------------------------------------------------------
 // Aviso por e-mail quando o galpao reporta PROBLEMA.
 //
@@ -10,15 +10,19 @@
 // DESLIGADO (a triagem funciona normal, so nao avisa por
 // e-mail) e o /amb/config diz exatamente o que falta.
 //
-// Variaveis (servico GOOD-Devolucoes-x-Marketplaces-x-NFsBLING,
-// aba Environment):
-//     AMB_EMAIL_HOST   ex: smtp.gmail.com
-//     AMB_EMAIL_PORT   opcional (padrao 587)
-//     AMB_EMAIL_USER   o endereco da AMBTotal
-//     AMB_EMAIL_PASS   SENHA DE APP (nao a senha normal)
-//     AMB_EMAIL_PARA   opcional (quem recebe; sem ela, o aviso
-//                      vai pro proprio AMB_EMAIL_USER)
+// b14 — o Diego criou as variaveis com os nomes da familia do
+// Mover-Pedidos (AMBBKP_SMTP_*), que e como o SMTP da AMB ja se
+// chama no resto do ecossistema. Em vez de obriga-lo a renomear,
+// o codigo aceita AS DUAS familias — e assim os nomes ficam
+// iguais nos dois servicos, uma coisa a menos pra decorar:
 //
+//     AMB_EMAIL_HOST  ou  AMBBKP_SMTP_HOST   (br226.hostgator.com.br)
+//     AMB_EMAIL_PORT  ou  AMBBKP_SMTP_PORT   (HostGator: 465)
+//     AMB_EMAIL_USER  ou  AMBBKP_SMTP_USER   (o e-mail completo)
+//     AMB_EMAIL_PASS  ou  AMBBKP_SMTP_PASS   (senha da caixa)
+//     AMB_EMAIL_PARA  ou  AMBBKP_SMTP_PARA   (opcional; destino)
+//
+// Se as duas existirem, AMB_EMAIL_* vence.
 // As vars EMAIL_* (da GOOD) NUNCA sao lidas aqui.
 //
 // Envio e "fire and forget": falha de e-mail NUNCA derruba a
@@ -30,12 +34,14 @@
 let mailer = null;
 let motivoDesligado = null;
 
+const pega = (a, b) => process.env[a] || process.env[b] || '';
+
 function credenciais() {
-  const host = process.env.AMB_EMAIL_HOST;
-  const user = process.env.AMB_EMAIL_USER;
-  const pass = process.env.AMB_EMAIL_PASS;
+  const host = pega('AMB_EMAIL_HOST', 'AMBBKP_SMTP_HOST');
+  const user = pega('AMB_EMAIL_USER', 'AMBBKP_SMTP_USER');
+  const pass = pega('AMB_EMAIL_PASS', 'AMBBKP_SMTP_PASS');
   if (!host || !user || !pass) return null;      // sem conta da AMB = desligado
-  return { host, user, pass, port: Number(process.env.AMB_EMAIL_PORT || 587) };
+  return { host, user, pass, port: Number(pega('AMB_EMAIL_PORT', 'AMBBKP_SMTP_PORT') || 587) };
 }
 
 function transporte() {
@@ -63,7 +69,7 @@ function transporte() {
 
 function destino() {
   const c = credenciais();
-  return process.env.AMB_EMAIL_PARA || (c && c.user) || null;
+  return pega('AMB_EMAIL_PARA', 'AMBBKP_SMTP_PARA') || (c && c.user) || null;
 }
 
 /** Problema reportado na triagem -> e-mail pro Diego. */
@@ -101,7 +107,7 @@ function diagnostico() {
     conta: c ? 'AMBTotal (propria)' : null,
     remetente: c ? c.user : null,
     destino: destino(),
-    falta: c ? null : 'AMB_EMAIL_HOST, AMB_EMAIL_USER e AMB_EMAIL_PASS no Render (senha de APP)',
+    falta: c ? null : 'AMBBKP_SMTP_HOST, AMBBKP_SMTP_USER e AMBBKP_SMTP_PASS (ou a familia AMB_EMAIL_*) no Render',
     observacao: 'este modulo nunca usa a conta de e-mail da GOOD',
   };
 }
