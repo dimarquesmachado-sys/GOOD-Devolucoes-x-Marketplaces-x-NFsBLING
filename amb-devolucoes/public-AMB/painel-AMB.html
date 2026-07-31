@@ -8,7 +8,7 @@
 <link rel="icon" type="image/png" href="icone-AMB.png">
 <!--
   =========================================================
-  amb-devolucoes/public-AMB/painel-AMB.html  (AMB Devol. b26)
+  amb-devolucoes/public-AMB/painel-AMB.html  (AMB Devol. b27)
   ---------------------------------------------------------
   PAINEL em PAGINA UNICA, no formato da GOOD (pedido do Diego
   comparando os prints): nada de abas — secoes empilhadas,
@@ -149,7 +149,7 @@
   <div class="miolo">
   <h1>&#128081; Painel de Devolucoes &mdash; AMBTotal</h1>
   <div class="sub">Triagens + A espreita + Defeitos + Recados</div>
-  <div class="ver">painel <b>b26</b> &middot; <span id="versaoServidor">servidor ...</span></div>
+  <div class="ver">painel <b>b27</b> &middot; <span id="versaoServidor">servidor ...</span></div>
   </div>
 </div>
 
@@ -524,7 +524,11 @@ function cardEspreita(x, entregue) {
       ? '<span class="selo velho">' + x.dias_em_transito + ' dias &middot; candidata a extravio</span>'
       : '<span class="selo">' + (x.dias_em_transito == null ? '?' : x.dias_em_transito) + ' dia(s)</span>';
   }
-  h += (x.no_cd_ml ? '<span class="selo">no CD do ML</span>' : '') +
+  h += (x.link_marketplace
+      ? '<a class="btn cinza" style="text-decoration:none;padding:5px 11px;font-size:12.5px" target="_blank" rel="noopener" href="' +
+        esc(x.link_marketplace) + '">&#128279; abrir</a>'
+      : '') +
+    (x.no_cd_ml ? '<span class="selo">no CD do ML</span>' : '') +
     (x.status_money === 'refunded' ? '<span class="selo velho">dinheiro estornado</span>' :
      x.status_money === 'retained' ? '<span class="selo ok">dinheiro retido</span>' : '') +
     (x.nf_devolucao_emitida ? '<span class="selo ok">NF devolucao &#10003;' +
@@ -535,7 +539,10 @@ function cardEspreita(x, entregue) {
   const cli = [];
   if (x.cliente) cli.push('&#128100; ' + esc(x.cliente));
   else if (x.nickname) cli.push('&#128100; ' + esc(x.nickname));
-  if (x.cliente && x.nickname) cli.push('(' + esc(x.nickname) + ')');
+  if (x.cliente && x.nickname &&
+      !String(x.cliente).toLowerCase().includes(String(x.nickname).toLowerCase())) {
+    cli.push('(' + esc(x.nickname) + ')');
+  }
   if (x.nf_venda) cli.push('&#129534; NF ' + esc(x.nf_venda));
   if (x.motivo_curto) cli.push('&#128172; ' + esc(x.motivo_curto));
   if (!entregue && x.status) cli.push(esc(x.status));
@@ -557,10 +564,6 @@ function cardEspreita(x, entregue) {
 
   const chave = esc(x.tracking || x.pedido);
   h += '<div class="acoes">' +
-    (x.link_marketplace
-      ? '<a class="btn cinza" style="text-decoration:none" target="_blank" rel="noopener" href="' +
-        esc(x.link_marketplace) + '">&#128279; abrir</a>'
-      : '') +
     '<button class="btn verde" onclick="baixar(this,\'' + chave + '\')">&#10003; achei / ja processado</button>' +
     '<button class="btn roxo" onclick="observar(this,\'' + chave + '\',\'' + esc(x.marketplace) + '\')">&#128172; observacao</button>' +
     '<button class="btn verm" onclick="avisarEstoquista(this,\'' + chave + '\')">&#128276; aviso estoquista</button>' +
