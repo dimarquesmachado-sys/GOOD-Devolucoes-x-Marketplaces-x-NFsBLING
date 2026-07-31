@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta name="theme-color" content="#0f1419">
+<title>AMBTotal - Devolucoes</title>
+<!--
+  =========================================================
+  amb-devolucoes/public-AMB/index-AMB.html   (AMB Devol. b8)
+  ---------------------------------------------------------
+  Tela de triagem do galpao da AMBTotal.
+
+  O NOME DO ARQUIVO e index-AMB.html de proposito: no mesmo
+  repositorio ja existe o index.html da GOOD, e os dois se
+  confundiam na pasta de Downloads. Nome unico = upload sem
+  risco de sobrescrever a tela da GOOD.
+
+  Feita para CELULAR e para quem esta de pe com uma caixa na
+  mao: campo grande, botao grande, um passo de cada vez.
+
+  Nao usa nenhuma biblioteca externa — carrega em rede ruim
+  de galpao e nao quebra quando um CDN sai do ar.
+  =========================================================
+-->
+<style>
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body {
+    margin: 0; padding: 0;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    background: #0f1419; color: #e6edf3;
+    font-size: 16px; /* 16px evita o zoom automatico do iOS ao focar input */
+  }
+  .topo {
+    position: sticky; top: 0; z-index: 10;
+    background: #161b22; border-bottom: 1px solid #30363d;
+    padding: 12px 16px; display: flex; align-items: center; gap: 10px;
+  }
+  .topo h1 { font-size: 16px; margin: 0; flex: 1; font-weight: 700; }
+  .topo .quem { font-size: 12px; color: #8b949e; }
+  .sair { background: none; border: none; color: #8b949e; font-size: 13px; cursor: pointer; padding: 4px; }
+  .area { padding: 16px; max-width: 620px; margin: 0 auto; }
+
+  input, button, select, textarea { font-family: inherit; font-size: 16px; }
+  .campo {
+    width: 100%; padding: 16px; border-radius: 10px;
+    border: 2px solid #30363d; background: #0d1117; color: #e6edf3;
+    margin-bottom: 10px;
+  }
+  .campo:focus { outline: none; border-color: #1f6feb; }
+  .bipe { font-size: 20px; text-align: center; letter-spacing: 0.5px; }
+
+  .btn {
+    width: 100%; padding: 16px; border: none; border-radius: 10px;
+    background: #238636; color: #fff; font-weight: 700; font-size: 17px;
+    cursor: pointer; margin-bottom: 10px;
+  }
+  .btn:active { transform: scale(0.99); }
+  .btn:disabled { opacity: .5; }
+  .btn.cinza { background: #30363d; }
+  .btn.azul  { background: #1f6feb; }
+  .btn.verm  { background: #da3633; }
+  .btn.peq   { padding: 10px; font-size: 14px; width: auto; margin: 0; }
+
+  .card {
+    background: #161b22; border: 1px solid #30363d; border-radius: 12px;
+    padding: 16px; margin-bottom: 12px;
+  }
+  .card h2 { font-size: 15px; margin: 0 0 10px; }
+  .linha { display: flex; justify-content: space-between; gap: 12px;
+           padding: 7px 0; border-bottom: 1px solid #21262d; font-size: 14px; }
+  .linha:last-child { border-bottom: none; }
+  .linha .rot { color: #8b949e; flex-shrink: 0; }
+  .linha .val { text-align: right; word-break: break-word; }
+
+  .alerta {
+    border-radius: 12px; padding: 16px; margin-bottom: 12px;
+    border-left: 5px solid; font-size: 15px; line-height: 1.5;
+  }
+  .alerta.vermelho { background: #2d1214; border-color: #f85149; }
+  .alerta.amarelo  { background: #2b2512; border-color: #d29922; }
+  .alerta.azul     { background: #12233d; border-color: #1f6feb; }
+  .alerta b { display: block; margin-bottom: 6px; }
+
+  .selo { display: inline-block; padding: 3px 9px; border-radius: 20px;
+          font-size: 12px; font-weight: 700; background: #30363d; }
+  .selo.ml { background: #3d3610; color: #e3b341; }
+  .selo.tiktok { background: #3d1030; color: #db61a2; }
+  .selo.shopee { background: #3d2410; color: #f0883e; }
+  .selo.magalu { background: #12233d; color: #58a6ff; }
+
+  .cand {
+    background: #0d1117; border: 1px solid #30363d; border-radius: 10px;
+    padding: 12px; margin-bottom: 8px;
+  }
+  .cand .nome { font-weight: 600; margin-bottom: 4px; }
+  .cand .meta { font-size: 13px; color: #8b949e; }
+  .cand .acoes { display: flex; gap: 8px; margin-top: 10px; }
+  .itens { margin-top: 10px; padding-top: 10px; border-top: 1px dashed #30363d; font-size: 13px; }
+  .itens div { padding: 3px 0; }
+
+  .aviso { font-size: 13px; color: #8b949e; text-align: center; margin: 12px 0; line-height: 1.5; }
+  .erro  { color: #f85149; }
+  .ok    { color: #3fb950; }
+  .esconde { display: none !important; }
+  #camera { width: 100%; border-radius: 10px; margin-bottom: 10px; background: #000; }
+</style>
+</head>
+<body>
+
+<!-- ===================== LOGIN ===================== -->
+<div id="telaLogin">
+  <div class="area" style="padding-top:60px">
+    <h1 style="font-size:22px;margin:0 0 4px">AMBTotal</h1>
+    <div class="aviso" style="text-align:left;margin:0 0 24px">Devolucoes &middot; triagem do galpao</div>
+    <input class="campo" id="usuario" placeholder="usuario" autocapitalize="off" autocomplete="username">
+    <input class="campo" id="senha" type="password" placeholder="senha" autocomplete="current-password">
+    <button class="btn" id="btnEntrar">Entrar</button>
+    <div class="aviso erro esconde" id="erroLogin"></div>
+  </div>
+</div>
+
+<!-- ===================== APP ===================== -->
+<div id="telaApp" class="esconde">
+  <div class="topo">
+    <h1>AMBTotal &middot; Devolucoes</h1>
+    <span class="quem" id="quemSou"></span>
+    <button class="sair" id="btnSair">sair</button>
+  </div>
+
+  <div class="area">
+    <!-- BIPE -->
+    <div id="blocoBipe">
+      <input class="campo bipe" id="codigo" placeholder="bipe ou digite"
+             autocapitalize="characters" autocomplete="off" enterkeyhint="search">
+      <button class="btn" id="btnBuscar">Buscar</button>
+      <button class="btn cinza" id="btnCamera">Usar a camera</button>
+      <video id="camera" class="esconde" playsinline muted></video>
+      <div class="aviso">
+        Bipe a etiqueta, ou digite o <b>nome do remetente</b> quando a caixa
+        nao tiver codigo que o sistema conheca (TikTok, Amazon).
+      </div>
+    </div>
+
+    <!-- RESULTADO -->
+    <div id="resultado"></div>
+  </div>
+</div>
+
+<script>
+/* =========================================================
+   Estado e utilidades
+   ========================================================= */
+const API = '/amb';
+let usuario = null, tipoUsuario = null;
+let escolhido = null;          // NF escolhida pelo estoquista
+let ultimoCodigo = '';
+let paginaAtual = 1;
+
+const $ = (id) => document.getElementById(id);
+const esc = (t) => String(t == null ? '' : t)
+  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;');
+
+async function api(caminho, opcoes = {}) {
+  const r = await fetch(API + caminho, {
+    credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json' },
+    ...opcoes,
+  });
+  // Sessao caiu (o servico reinicia e desloga todo mundo):
+  // volta pro login em vez de mostrar erro tecnico.
+  if (r.status === 401) { mostrarLogin(); throw new Error('sessao'); }
+  return r.json();
+}
+
+/* =========================================================
+   Login
+   ========================================================= */
+function mostrarLogin() {
+  $('telaApp').classList.add('esconde');
+  $('telaLogin').classList.remove('esconde');
+}
+function mostrarApp() {
+  $('telaLogin').classList.add('esconde');
+  $('telaApp').classList.remove('esconde');
+  $('quemSou').textContent = usuario + (tipoUsuario === 'admin' ? ' (admin)' : '');
+  $('codigo').focus();
+}
+
+async function entrar() {
+  const u = $('usuario').value.trim();
+  const s = $('senha').value;
+  if (!u || !s) return;
+  $('btnEntrar').disabled = true;
+  $('erroLogin').classList.add('esconde');
+  try {
+    const r = await fetch(API + '/api/auth/login', {
+      method: 'POST', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ usuario: u, senha: s }),
+    }).then(x => x.json());
+    if (!r.ok) {
+      $('erroLogin').textContent = r.erro || 'nao consegui entrar';
+      $('erroLogin').classList.remove('esconde');
+      return;
+    }
+    usuario = r.usuario; tipoUsuario = r.tipo;
+    $('senha').value = '';
+    mostrarApp();
+  } catch (e) {
+    $('erroLogin').textContent = 'sem conexao com o servidor';
+    $('erroLogin').classList.remove('esconde');
+  } finally {
+    $('btnEntrar').disabled = false;
+  }
+}
+
+async function sair() {
+  try { await fetch(API + '/api/auth/logout', { method: 'POST', credentials: 'same-origin' }); } catch (e) {}
+  usuario = null; limpar(); mostrarLogin();
+}
+
+/* =========================================================
+   Busca / identificacao
+   ========================================================= */
+function limpar() {
+  $('resultado').innerHTML = '';
+  escolhido = null;
+  paginaAtual = 1;
+}
+
+async function buscar(pagina) {
+  const codigo = $('codigo').value.trim();
+  if (!codigo) return;
+  ultimoCodigo = codigo;
+  paginaAtual = pagina || 1;
+
+  $('btnBuscar').disabled = true;
+  $('resultado').innerHTML = '<div class="card">procurando...</div>';
+  try {
+    const r = await api('/api/triagem/identificar?codigo=' +
+      encodeURIComponent(codigo) + '&pagina=' + paginaAtual);
+    desenhar(r);
+  } catch (e) {
+    if (e.message !== 'sessao') {
+      $('resultado').innerHTML = '<div class="alerta vermelho">sem conexao. tente de novo.</div>';
+    }
+  } finally {
+    $('btnBuscar').disabled = false;
+  }
+}
+
+function desenhar(r) {
+  let h = '';
+
+  /* RECADO primeiro, sempre. O aviso tem que chegar ANTES de o
+     estoquista mexer na caixa — depois nao adianta. */
+  if (r.recado) {
+    h += '<div class="alerta vermelho"><b>&#9888; RECADO PARA VOCE</b>' +
+         esc(r.recado.texto) + '</div>';
+  }
+
+  /* Ja triado: evita registrar a mesma caixa duas vezes. */
+  if (r.ja_triado && r.triagem_anterior) {
+    const t = r.triagem_anterior;
+    h += '<div class="alerta amarelo"><b>&#9888; ESTA CAIXA JA FOI TRIADA</b>' +
+         'por ' + esc(t.funcionario || '?') + ' em ' +
+         esc(String(t.criado_em || '').slice(0, 16).replace('T', ' ')) +
+         ' &middot; status ' + esc(t.status || '?') + '</div>';
+  }
+
+  if (!r.encontrado) {
+    h += '<div class="alerta azul"><b>Nao identifiquei esta caixa</b>' +
+         'Ja tentei: ' + (r.tentativas || []).map(t => esc(t.via)).join(', ') + '.<br><br>' +
+         'Se a etiqueta for de TikTok ou Amazon, digite o <b>nome do remetente</b> ' +
+         'exatamente como esta impresso.</div>';
+    h += '<button class="btn cinza" onclick="limpar()">Limpar</button>';
+    $('resultado').innerHTML = h;
+    return;
+  }
+
+  /* Achou pelo rastreio do ML: e certeza, nao candidato. */
+  if (r.devolucao) {
+    const d = r.devolucao;
+    h += '<div class="card"><h2>Devolucao identificada ' +
+         '<span class="selo ' + esc(r.marketplace) + '">' + esc(r.marketplace_nome) + '</span></h2>' +
+         linha('Pedido', d.order_id) +
+         linha('Rastreio', d.tracking) +
+         linha('Status do envio', d.status_devolucao) +
+         linha('Dinheiro', d.status_money === 'refunded' ? 'ja estornado ao cliente'
+               : (d.status_money === 'retained' ? 'retido com voce' : d.status_money)) +
+         '</div>';
+    h += botoesConfirmar({
+      marketplace: r.marketplace, order_id: d.order_id, tracking: d.tracking,
+      shipment_id: d.shipment_devolucao,
+    });
+    $('resultado').innerHTML = h;
+    return;
+  }
+
+  /* Achou por nome: sao CANDIDATOS, quem decide e o estoquista. */
+  if (r.busca_generica) {
+    h += '<div class="alerta amarelo"><b>Busca muito ampla</b>' +
+         r.total_encontrados + ' notas tem esse texto no nome. ' +
+         'Digite o <b>nome completo</b> do remetente que esta na etiqueta.</div>';
+  }
+
+  h += '<div class="card"><h2>' + r.total_encontrados +
+       ' nota(s) encontrada(s) &middot; mostrando ' + r.candidatos.length + '</h2>' +
+       '<div class="aviso" style="text-align:left;margin:0">' +
+       'Confira com a caixa antes de confirmar. ' +
+       (r.mesmo_cliente_repetido
+         ? 'Todas sao do <b>mesmo cliente</b> — use "ver itens" para achar a certa.'
+         : '') + '</div></div>';
+
+  r.candidatos.forEach((c, i) => {
+    h += '<div class="cand" id="cand' + i + '">' +
+         '<div class="nome">' + esc(c.nome) + '</div>' +
+         '<div class="meta">NF ' + esc(c.numero) + ' &middot; ' +
+         esc(String(c.dataEmissao || '').slice(0, 10)) + '</div>' +
+         '<div class="acoes">' +
+         '<button class="btn peq azul" onclick="verItens(' + i + ',\'' + esc(c.id) + '\')">ver itens</button>' +
+         '<button class="btn peq" onclick="escolher(' + i + ',\'' + esc(c.id) + '\',\'' + esc(c.numero) + '\',\'' + esc(c.nome) + '\')">e esta</button>' +
+         '</div><div class="itens esconde" id="itens' + i + '"></div></div>';
+  });
+
+  if (r.tem_mais) {
+    h += '<button class="btn cinza" onclick="buscar(' + (paginaAtual + 1) + ')">Ver mais 8</button>';
+  }
+  if (paginaAtual > 1) {
+    h += '<button class="btn cinza" onclick="buscar(' + (paginaAtual - 1) + ')">Voltar</button>';
+  }
+  h += '<button class="btn cinza" onclick="limpar()">Limpar</button>';
+  $('resultado').innerHTML = h;
+}
+
+function linha(rot, val) {
+  if (val == null || val === '') return '';
+  return '<div class="linha"><span class="rot">' + esc(rot) +
+         '</span><span class="val">' + esc(val) + '</span></div>';
+}
+
+/* Itens sob demanda: uma chamada, so quando o estoquista clica. */
+async function verItens(i, id) {
+  const alvo = $('itens' + i);
+  if (!alvo.classList.contains('esconde')) { alvo.classList.add('esconde'); return; }
+  alvo.classList.remove('esconde');
+  alvo.innerHTML = 'buscando...';
+  try {
+    const r = await api('/api/nf/itens?id=' + encodeURIComponent(id));
+    if (!r.ok) { alvo.innerHTML = '<span class="erro">' + esc(r.erro) + '</span>'; return; }
+    let h = '';
+    if (r.marketplace && r.marketplace !== 'desconhecido') {
+      h += '<div><span class="selo ' + esc(r.marketplace) + '">' + esc(r.marketplace_nome) + '</span></div>';
+    }
+    (r.itens || []).forEach(it => {
+      h += '<div>' + esc(it.quantidade) + 'x <b>' + esc(it.sku) + '</b> &mdash; ' +
+           esc(String(it.descricao || '').slice(0, 60)) + '</div>';
+    });
+    if (r.nf && r.nf.valor != null) h += '<div>total da nota: R$ ' + esc(r.nf.valor) + '</div>';
+    alvo.innerHTML = h || 'nota sem itens';
+    alvo.dataset.marketplace = r.marketplace || '';
+    alvo.dataset.sku = (r.itens && r.itens[0] && r.itens[0].sku) || '';
+    alvo.dataset.valor = (r.nf && r.nf.valor) || '';
+  } catch (e) {
+    if (e.message !== 'sessao') alvo.innerHTML = '<span class="erro">falhou</span>';
+  }
+}
+
+function escolher(i, id, numero, nome) {
+  const cx = $('itens' + i);
+  escolhido = {
+    nf_id_bling: id, nf_numero: numero, buyer_nome: nome,
+    marketplace: (cx && cx.dataset.marketplace) || null,
+    produto_sku: (cx && cx.dataset.sku) || null,
+    nf_valor: (cx && cx.dataset.valor) || null,
+  };
+  $('resultado').innerHTML =
+    '<div class="card"><h2>Confirmar</h2>' +
+    linha('Cliente', nome) + linha('NF', numero) +
+    (escolhido.produto_sku ? linha('SKU', escolhido.produto_sku) : '') +
+    '</div>' + botoesConfirmar(escolhido);
+  window.scrollTo(0, 0);
+}
+
+function botoesConfirmar(dados) {
+  window._paraGravar = dados;
+  return '<button class="btn" onclick="gravar(\'aprovado\')">Incluir no estoque</button>' +
+         '<button class="btn verm" onclick="gravar(\'problema\')">Reportar problema</button>' +
+         '<button class="btn cinza" onclick="limpar()">Cancelar</button>';
+}
+
+async function gravar(status) {
+  const d = Object.assign({}, window._paraGravar || {}, { status, tipo: 'devolucao' });
+  if (status === 'problema') {
+    const desc = prompt('O que houve com o produto?');
+    if (!desc) return;
+    d.problema_descricao = desc;
+  }
+  try {
+    const r = await api('/api/triagem/registrar', { method: 'POST', body: JSON.stringify(d) });
+    if (!r.ok) {
+      $('resultado').innerHTML = '<div class="alerta vermelho"><b>Nao gravou</b>' + esc(r.erro) + '</div>' +
+        botoesConfirmar(d);
+      return;
+    }
+    $('resultado').innerHTML =
+      '<div class="alerta azul"><b class="ok">&#10003; Registrado</b>' +
+      (status === 'problema' ? 'Marcado como problema. O Diego vai ver.' : 'Pode incluir no estoque.') +
+      '</div><button class="btn" onclick="proxima()">Proxima caixa</button>';
+    window.scrollTo(0, 0);
+  } catch (e) {
+    if (e.message !== 'sessao') {
+      $('resultado').innerHTML = '<div class="alerta vermelho">sem conexao - nao gravou. tente de novo.</div>' +
+        botoesConfirmar(d);
+    }
+  }
+}
+
+function proxima() {
+  $('codigo').value = '';
+  limpar();
+  $('codigo').focus();
+}
+
+/* =========================================================
+   Camera (usa o leitor nativo quando existe)
+   ========================================================= */
+let stream = null, lendo = false;
+async function camera() {
+  if (stream) { pararCamera(); return; }
+  if (!('BarcodeDetector' in window)) {
+    alert('Este celular nao tem leitor nativo de codigo. Use o teclado ou o app da camera.');
+    return;
+  }
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+    const v = $('camera');
+    v.srcObject = stream; v.classList.remove('esconde'); await v.play();
+    const det = new BarcodeDetector();
+    lendo = true;
+    const loop = async () => {
+      if (!lendo) return;
+      try {
+        const cods = await det.detect(v);
+        if (cods && cods.length) {
+          $('codigo').value = cods[0].rawValue;
+          pararCamera();
+          buscar(1);
+          return;
+        }
+      } catch (e) { /* quadro ruim: tenta o proximo */ }
+      requestAnimationFrame(loop);
+    };
+    loop();
+  } catch (e) {
+    alert('Nao consegui abrir a camera: ' + e.message);
+  }
+}
+function pararCamera() {
+  lendo = false;
+  if (stream) stream.getTracks().forEach(t => t.stop());
+  stream = null;
+  $('camera').classList.add('esconde');
+}
+
+/* =========================================================
+   Ligacoes
+   ========================================================= */
+$('btnEntrar').onclick = entrar;
+$('senha').onkeydown = (e) => { if (e.key === 'Enter') entrar(); };
+$('usuario').onkeydown = (e) => { if (e.key === 'Enter') $('senha').focus(); };
+$('btnBuscar').onclick = () => buscar(1);
+$('codigo').onkeydown = (e) => { if (e.key === 'Enter') buscar(1); };
+$('btnCamera').onclick = camera;
+$('btnSair').onclick = sair;
+
+/* Ao abrir: se ja houver sessao valida, entra direto. */
+(async () => {
+  try {
+    const r = await fetch(API + '/api/auth/me', { credentials: 'same-origin' }).then(x => x.json());
+    if (r.ok) { usuario = r.usuario; tipoUsuario = r.tipo; mostrarApp(); return; }
+  } catch (e) {}
+  mostrarLogin();
+})();
+</script>
+</body>
+</html>
