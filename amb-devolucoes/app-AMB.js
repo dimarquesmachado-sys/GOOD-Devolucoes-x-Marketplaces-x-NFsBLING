@@ -72,7 +72,7 @@ const impressao = require('./lib-AMB/impressao-AMB');
 const emailAMB = require('./lib-AMB/email-AMB');
 const nfEntrada = require('./lib-AMB/nf-entrada-AMB');
 
-const VERSAO = 'AMB Devolucoes b26';
+const VERSAO = 'AMB Devolucoes b27';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -951,7 +951,11 @@ router.get('/api/espreita', auth.requerLogin, async (req, res) => {
     const nf = nfEntrada.jaEmitida({ pedido: x.pedido });
     // b17 - cliente e NF DA VENDA vem do indice de nomes (numeroLoja
     // do Bling = numero do pedido no marketplace, pros 3 canais)
-    const venda = nfNomes.acharPorPedido(x.pedido) || nfNomes.acharPorNumero(x.nf_ml_numero);
+    // b27 - venda de CARRINHO: o Bling grava o numero do PACK no
+    // numeroLoja, nao o do pedido — cobrimos os dois + o numero da NF
+    const venda = nfNomes.acharPorPedido(x.pedido)
+      || nfNomes.acharPorPedido(x.pack_id)
+      || nfNomes.acharPorNumero(x.nf_ml_numero);
     // b18 - link direto pro marketplace, pedido do Diego no painel
     let link = null;
     if (x.marketplace === 'ml' && x.pedido) {
