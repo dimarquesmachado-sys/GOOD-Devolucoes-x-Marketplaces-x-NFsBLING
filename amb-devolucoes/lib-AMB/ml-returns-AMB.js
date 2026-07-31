@@ -1,5 +1,5 @@
 // ============================================================
-// amb-devolucoes/lib-AMB/ml-returns-AMB.js     (AMB Devol. b8)
+// amb-devolucoes/lib-AMB/ml-returns-AMB.js     (AMB Devol. b17)
 // ------------------------------------------------------------
 // INDICE DE DEVOLUCOES DO ML POR RASTREIO DOS CORREIOS.
 //
@@ -45,6 +45,40 @@
 
 const cfg = require('../config-AMB');
 const ml = require('./ml-AMB');
+
+// b17 - detalhes do PEDIDO (apelido do comprador + itens) num
+// cache proprio: buscados em BACKGROUND depois que o indice
+// monta, 1 pedido por vez, e reaproveitados entre reconstrucoes
+// (pedido nao muda de dono nem de itens).
+const PEDIDOS = new Map();
+
+async function enriquecerPedido(orderId) {
+  const k = String(orderId || '');
+  if (!k || PEDIDOS.has(k)) return PEDIDOS.get(k) || null;
+  try {
+    const r = await ml.chamarML(`/orders/${k}`);
+    if (!r.ok || !r.data) return null;
+    const o = r.data;
+    const info = {
+      nickname: (o.buyer && o.buyer.nickname) || null,
+      itens: (o.order_items || []).slice(0, 3).map(it => ({
+        titulo: (it.item && it.item.title) || null,
+        sku: (it.item && (it.item.seller_sku || it.item.seller_custom_field)) || null,
+        qtd: it.quantity || 1,
+      })),
+    };
+    PEDIDOS.set(k, info);
+    return info;
+  } catch (e) { return null; }
+}
+
+async function enriquecerLista(pedidos) {
+  for (const pid of pedidos) {
+    if (PEDIDOS.has(String(pid))) continue;
+    await enriquecerPedido(pid);
+    await new Promise(r => setTimeout(r, 140));
+  }
+}
 
 const IDX = {
   ts: 0, mapa: {}, totalClaims: 0, comTracking: 0,
@@ -210,6 +244,13 @@ async function construirIndice(opts = {}) {
     IDX.erro = erroBusca;
 
     console.log(`[AMB/ML-RETURNS] indice: ${claims.length} claims, ${comTracking} com rastreio, em ${IDX.duracaoSeg}s`);
+
+    // enriquece em background os pedidos que o painel mostra
+    const paraEnriquecer = [...new Set(
+      dados.filter(d => d.order_id).map(d => String(d.order_id)))].slice(0, 120);
+    enriquecerLista(paraEnriquecer)
+      .then(() => console.log(`[AMB/ML-RETURNS] pedidos enriquecidos: ${PEDIDOS.size}`))
+      .catch(() => {});
     return IDX;
   } finally {
     construindo = false;
@@ -267,13 +308,17 @@ function resumoEspreita() {
           marketplace: 'ml', pedido: d.order_id, tracking: d.tracking,
           status: 'em revisão no CD do ML', dias_em_transito: dias(d.claim_date),
           claim_id: d.claim_id, status_money: d.status_money || null, no_cd_ml: true,
-        });
+        
+        ...(PEDIDOS.get(String(d.order_id)) || {}),
+      });
         continue;
       }
       entreguesLista.push({
         marketplace: 'ml', pedido: d.order_id, tracking: d.tracking,
         dias_desde: dias(d.entregue_em || d.claim_date), entregue_em: d.entregue_em || null,
         claim_id: d.claim_id, shipment_devolucao: d.shipment_devolucao || null,
+      
+        ...(PEDIDOS.get(String(d.order_id)) || {}),
       });
       continue;
     }
@@ -285,6 +330,8 @@ function resumoEspreita() {
         marketplace: 'ml', pedido: d.order_id, tracking: d.tracking, status: st,
         dias_em_transito: dias(d.claim_date), claim_id: d.claim_id,
         status_money: d.status_money || null, no_cd_ml: d.destino === 'warehouse',
+      
+        ...(PEDIDOS.get(String(d.order_id)) || {}),
       });
     }
   }
