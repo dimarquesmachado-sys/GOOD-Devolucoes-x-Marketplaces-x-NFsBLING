@@ -14,7 +14,7 @@
 <meta name="apple-mobile-web-app-title" content="Devolucoes AMB">
 <!--
   =========================================================
-  amb-devolucoes/public-AMB/index-AMB.html   (AMB Devol. b9)
+  amb-devolucoes/public-AMB/index-AMB.html   (AMB Devol. b10)
   ---------------------------------------------------------
   Tela de triagem do galpao da AMBTotal.
 
@@ -188,6 +188,7 @@
   <div class="topo">
     <img src="icone-AMB.png" alt="">
     <div class="titulo"><b>Devolucoes</b><span>AMBTotal</span></div>
+    <a href="/amb/painel" style="color:var(--apagado);font-size:13px;text-decoration:none;padding:6px">painel</a>
     <span class="quem" id="quemSou"></span>
     <button class="sair" id="btnSair">sair</button>
   </div>
@@ -458,6 +459,10 @@ async function gravar(status) {
     const desc = prompt('O que houve com o produto?');
     if (!desc) return;
     d.problema_descricao = desc;
+    // Localizacao e quantidade sao o que permite ACHAR a peca
+    // depois no galpao — sem isso o defeito vira um numero solto.
+    d.localizacao = prompt('Onde voce vai guardar? (ex: prateleira D3)') || null;
+    d.defeito_qtd = Number(prompt('Quantas unidades com defeito?', '1') || 1);
   }
   try {
     const r = await api('/api/triagem/registrar', { method: 'POST', body: JSON.stringify(d) });
