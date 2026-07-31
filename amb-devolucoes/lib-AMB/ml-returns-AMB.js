@@ -1,5 +1,5 @@
 // ============================================================
-// amb-devolucoes/lib-AMB/ml-returns-AMB.js     (AMB Devol. b19)
+// amb-devolucoes/lib-AMB/ml-returns-AMB.js     (AMB Devol. b22)
 // ------------------------------------------------------------
 // INDICE DE DEVOLUCOES DO ML POR RASTREIO DOS CORREIOS.
 //
@@ -51,6 +51,7 @@ const ml = require('./ml-AMB');
 // monta, 1 pedido por vez, e reaproveitados entre reconstrucoes
 // (pedido nao muda de dono nem de itens).
 const PEDIDOS = new Map();
+let ENRIQ_ERRO = null;
 
 async function enriquecerPedido(orderId) {
   const k = String(orderId || '');
@@ -66,7 +67,23 @@ async function enriquecerPedido(orderId) {
         sku: (it.item && (it.item.seller_sku || it.item.seller_custom_field)) || null,
         qtd: it.quantity || 1,
       })),
+      nf_ml_numero: null, nf_ml_serie: null, nf_ml_chave: null,
     };
+
+    // NF DA VENDA direto do ML (invoice_data do envio) - a fonte da
+    // GOOD; nao depende de campo nenhum da lista do Bling.
+    const shipId = o.shipping && o.shipping.id;
+    if (shipId) {
+      try {
+        const rN = await ml.chamarML('/shipments/' + shipId + '/invoice_data?siteId=MLB');
+        const ch = rN.ok && rN.data && rN.data.fiscal_key ? String(rN.data.fiscal_key) : null;
+        if (ch && ch.length === 44) {
+          info.nf_ml_chave = ch;
+          info.nf_ml_numero = ch.slice(25, 34).replace(/^0+/, '');
+          info.nf_ml_serie = ch.slice(22, 25).replace(/^0+/, '') || '1';
+        }
+      } catch (e) { /* segue sem NF */ }
+    }
     PEDIDOS.set(k, info);
     return info;
   } catch (e) { return null; }
@@ -245,12 +262,19 @@ async function construirIndice(opts = {}) {
 
     console.log(`[AMB/ML-RETURNS] indice: ${claims.length} claims, ${comTracking} com rastreio, em ${IDX.duracaoSeg}s`);
 
-    // enriquece em background os pedidos que o painel mostra
-    const paraEnriquecer = [...new Set(
-      dados.filter(d => d.order_id).map(d => String(d.order_id)))].slice(0, 120);
-    enriquecerLista(paraEnriquecer)
-      .then(() => console.log(`[AMB/ML-RETURNS] pedidos enriquecidos: ${PEDIDOS.size}`))
-      .catch(() => {});
+    // b22 - CONSERTO da 3a reclamacao do Diego: o gatilho antigo
+    // usava uma variavel `dados` que NAO EXISTE neste escopo ->
+    // ReferenceError silencioso todo boot -> apelido/itens/NF nunca
+    // chegavam na tela. Agora a lista sai do PROPRIO indice, e
+    // qualquer erro fica visivel em statusIndice().
+    try {
+      const paraEnriquecer = [...new Set(
+        Object.values(mapa || {}).map(d => d && d.order_id).filter(Boolean)
+          .map(String))].slice(0, 120);
+      enriquecerLista(paraEnriquecer)
+        .then(() => console.log('[AMB/ML-RETURNS] pedidos enriquecidos: ' + PEDIDOS.size))
+        .catch(e => { ENRIQ_ERRO = e.message; });
+    } catch (e) { ENRIQ_ERRO = e.message; console.error('[AMB/ML-RETURNS] gatilho:', e.message); }
     return IDX;
   } finally {
     construindo = false;
@@ -259,6 +283,8 @@ async function construirIndice(opts = {}) {
 
 function statusIndice() {
   return {
+    pedidos_enriquecidos: PEDIDOS.size,
+    enriquecimento_erro: ENRIQ_ERRO,
     quente: IDX.ts > 0,
     construindo,
     idade_min: IDX.ts ? Math.round((Date.now() - IDX.ts) / 60000) : null,
