@@ -1,5 +1,5 @@
 // ============================================================
-// amb-devolucoes/lib-AMB/nf-nomes-AMB.js       (AMB Devol. b5)
+// amb-devolucoes/lib-AMB/nf-nomes-AMB.js       (AMB Devol. b8)
 // ------------------------------------------------------------
 // O PEGA-TUDO: acha a venda pelo NOME DO REMETENTE da etiqueta.
 //
@@ -187,8 +187,18 @@ async function buscarPorNome(texto, opts = {}) {
 
   if (alvo.length < 5) return vazio('texto curto demais (minimo 5 letras)');
 
-  if (!IDX.ts || (Date.now() - IDX.ts) > 30 * 60000) {
-    try { await construirIndice(); } catch (e) { /* segue com o que tiver */ }
+  // ESPERAR SO QUANDO NAO HA ALTERNATIVA.
+  // Visto em producao: depois de um restart o indice esfria, e a
+  // busca ficava 57s montando com o estoquista e a caixa na mao.
+  // Agora: indice VAZIO -> espera (nao ha o que responder).
+  // Indice VELHO mas cheio -> responde JA com o que tem e
+  // reconstroi por tras. O pior caso vira "a NF de 10 minutos
+  // atras ainda nao entrou", e devolucao que chega hoje e de
+  // venda de semanas atras — nao atrapalha nada.
+  if (!IDX.ts) {
+    try { await construirIndice(); } catch (e) { /* segue vazio */ }
+  } else if ((Date.now() - IDX.ts) > 30 * 60000) {
+    construirIndice().catch(e => console.error('[AMB/NF-NOMES] atualizacao em background falhou:', e.message));
   }
 
   const jaVi = new Set();
@@ -240,6 +250,10 @@ async function buscarPorNome(texto, opts = {}) {
     tem_mais: inicio + fatia.length < total,
     // todas do mesmo cliente: o nome nao desempata, so os itens
     muitos_iguais: total > porPagina && new Set(hits.map(h => h.nome)).size === 1,
+    // busca generica demais: buscar "SILVA" trouxe 503 NFs reais.
+    // Paginar 63 vezes nao ajuda ninguem — melhor pedir o nome
+    // completo do remetente, que e o que esta impresso na caixa.
+    generica: total > 50,
   };
 }
 
