@@ -9,7 +9,7 @@
 <link rel="apple-touch-icon" href="icone-AMB.png">
 <!--
   =========================================================
-  amb-devolucoes/public-AMB/painel-AMB.html  (AMB Devol. b10)
+  amb-devolucoes/public-AMB/painel-AMB.html  (AMB Devol. b11)
   ---------------------------------------------------------
   PAINEL. E a tela de gestao, separada da tela de bipe:
 
@@ -168,9 +168,21 @@ async function verEspreita() {
     box(r.entregues.length, 'entregues') +
     '</div>';
 
-  if (!r.indice.quente) {
-    h += '<div class="vazio">O indice do Mercado Livre ainda esta montando. ' +
-         'Recarregue em 1 minuto.</div>';
+  /* uma linha por fonte: montando / desligada / o que falta */
+  const f = r.fontes || {};
+  const fontes = [];
+  if (f.ml && !f.ml.quente) fontes.push('Mercado Livre: indice ainda montando');
+  if (f.shopee) {
+    if (f.shopee.desligada) fontes.push('Shopee: desligada (SHOPEE_PROXY_URL/KEY)');
+    else if (f.shopee.erro) fontes.push('Shopee: ' + esc(f.shopee.erro));
+    else if (!f.shopee.quente) fontes.push('Shopee: cache montando');
+  }
+  if (f.magalu && !f.magalu.quente) {
+    fontes.push('Magalu: ' + esc(f.magalu.falta || 'indice montando') +
+      (f.magalu.desligada ? ' — <a href="/amb/conectar" style="color:#ffb55f">conectar</a>' : ''));
+  }
+  if (fontes.length) {
+    h += '<div class="item"><div class="meta">' + fontes.join('<br>') + '</div></div>';
   }
 
   if (r.em_transito.length === 0) {
@@ -187,6 +199,8 @@ async function verEspreita() {
         (x.no_cd_ml ? '<span class="selo">no CD do ML</span>' : '') +
         (x.status_money === 'refunded' ? '<span class="selo velho">dinheiro ja estornado</span>' :
          (x.status_money === 'retained' ? '<span class="selo ok">dinheiro retido</span>' : '')) +
+        (x.nf_devolucao_emitida ? '<span class="selo ok">NF &#10003;' +
+          (x.nf_devolucao_emitida !== true ? ' ' + esc(x.nf_devolucao_emitida) : '') + '</span>' : '') +
       '</div>' +
       '<div class="meta">pedido <b>' + esc(x.pedido) + '</b><br>' +
       'rastreio ' + esc(x.tracking) + ' &middot; ' + esc(x.status) +
@@ -270,9 +284,21 @@ async function verDefeitos(busca) {
       '<div class="meta"><b>' + esc(g.sku) + '</b>' +
       (g.produto ? ' &mdash; ' + esc(String(g.produto).slice(0,60)) : '') +
       (g.defeitos.length ? '<br>' + g.defeitos.map(d => '&bull; ' + esc(d)).join('<br>') : '') +
-      '</div></div>';
+      '</div><div class="acoes"><button class="btn cinza" onclick="retirarPeca(\'' + esc(g.sku) +
+      '\',\'' + esc(g.localizacao) + '\')">&#128295; retirar peca</button></div></div>';
   });
   $('conteudo').innerHTML = h;
+}
+
+/* Peca tirada de uma unidade quebrada pra salvar outra — fica
+   registrado o que saiu, de onde e pra que foi usada. */
+async function retirarPeca(sku, local) {
+  const peca = prompt('Qual peca foi retirada de ' + sku + ' (' + local + ')?');
+  if (!peca) return;
+  const usada = prompt('Usada em que? (pedido, conserto, cliente...)');
+  const r = await api('/api/defeitos/peca', { method:'POST',
+    body: JSON.stringify({ peca: sku + ': ' + peca, usada_em: usada }) });
+  alert(r.ok ? 'Registrado.' : 'Falhou: ' + r.erro);
 }
 
 async function lancarDefeito() {
@@ -332,6 +358,56 @@ async function resolver(id) {
   await api('/api/recados/' + id + '/resolver', { method:'POST' });
   verRecados();
 }
+
+/* =========================================================
+   ESTACAO DE IMPRESSAO — este painel aberto num COMPUTADOR
+   com QZ Tray vira a impressora do galpao: puxa a fila a cada
+   5s e manda o ZPL cru pra Zebra. No celular nao roda (sem QZ).
+   ========================================================= */
+let qzLigado = false;
+async function ligarQZ() {
+  if (qzLigado || !window.qz) return qzLigado;
+  try {
+    qz.security.setCertificatePromise((res) => fetch(API + '/api/qz/cert', { credentials:'same-origin' }).then(r => r.ok ? r.text() : Promise.reject('sem cert')).then(res));
+    qz.security.setSignaturePromise((toSign) => (res) => fetch(API + '/api/qz/sign?request=' + encodeURIComponent(toSign), { credentials:'same-origin' }).then(r => r.text()).then(res));
+    if (!qz.websocket.isActive()) await qz.websocket.connect();
+    qzLigado = true;
+    console.log('[estacao] QZ conectado');
+  } catch (e) { console.log('[estacao] QZ indisponivel:', e); }
+  return qzLigado;
+}
+
+function carregarQZ() {
+  return new Promise((res) => {
+    if (window.qz) return res(true);
+    const sc = document.createElement('script');
+    sc.src = 'https://cdn.jsdelivr.net/npm/qz-tray@2.2/qz-tray.min.js';
+    sc.onload = () => res(true);
+    sc.onerror = () => res(false);
+    document.head.appendChild(sc);
+  });
+}
+
+async function cicloEstacao() {
+  try {
+    const r = await api('/api/etiqueta/proxima');
+    if (r.ok && r.etiqueta) {
+      if (await ligarQZ()) {
+        const imp = await qz.printers.getDefault().catch(() => null);
+        const cfgz = qz.configs.create(imp || null);
+        await qz.print(cfgz, [{ type:'raw', format:'plain', data: r.etiqueta.zpl }]);
+        console.log('[estacao] etiqueta impressa', r.etiqueta.id);
+      }
+    }
+  } catch (e) { /* proxima rodada tenta */ }
+}
+
+(async () => {
+  // so vira estacao em tela grande (desktop) — celular nao tem QZ
+  if (window.innerWidth >= 900 && await carregarQZ()) {
+    setInterval(cicloEstacao, 5000);
+  }
+})();
 
 /* contadores das abas ao abrir */
 (async () => {
