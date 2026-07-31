@@ -1,5 +1,5 @@
 // ============================================================
-// amb-devolucoes/lib-AMB/shopee-AMB.js         (AMB Devol. b31)
+// amb-devolucoes/lib-AMB/shopee-AMB.js         (AMB Devol. b33)
 // ------------------------------------------------------------
 // Devolucoes da SHOPEE via o proxy interno do shopee-nf-sync —
 // la vivem os tokens saudaveis das lojas; aqui so consultamos.
@@ -106,7 +106,7 @@ async function resumoEspreita() {
     if (FIM.test(st) || /DELIVERY_DONE/i.test(lst)) { encerradas++; continue; }
     // b17 - o proxy ja entrega motivo e itens; traduzimos o motivo
     // pra linguagem de galpao e passamos os itens adiante.
-    const MOTIVO = { CHANGE_MIND: 'arrependimento', NOT_RECEIPT: 'nao recebeu',
+    const MOTIVO = { CHANGE_MIND: 'arrependimento', NOT_RECEIPT: 'não recebeu',
       DAMAGED: 'chegou danificado', DEFECTIVE: 'defeito', WRONG_ITEM: 'item errado',
       MISSING_PART: 'incompleto' };
     emTransito.push({
