@@ -1,5 +1,5 @@
 // ============================================================
-// amb-devolucoes/lib-AMB/nf-nomes-AMB.js       (AMB Devol. b22)
+// amb-devolucoes/lib-AMB/nf-nomes-AMB.js       (AMB Devol. b34)
 // ------------------------------------------------------------
 // O PEGA-TUDO: acha a venda pelo NOME DO REMETENTE da etiqueta.
 //
@@ -81,6 +81,7 @@ async function construirIndice(opts = {}) {
     const mapa = {};
     const mapaCurto = {};
     const porPedido = {};
+    const vendasPorLoja = {};   // b34 - numeroLoja GARANTIDO nas vendas
     const porNumero = {};
     let totalNFs = 0, erroBusca = null, parouPorData = false;
 
@@ -134,6 +135,40 @@ async function construirIndice(opts = {}) {
       await sleep(cfg.bling.pausaMs / 2);   // respeita o rate limit do Bling
     }
 
+    // ── b34: PASSE 2 — VENDAS do Bling. /pedidos/vendas traz
+    // numeroLoja SEMPRE (mais contato e total) — é a espinha dos
+    // checkouts. Cobre Shopee/TikTok/Amazon quando a lista de NFs
+    // não casa pelo pedido. Erro aqui NÃO derruba o índice de NFs.
+    let vendasLidas = 0, erroVendas = null;
+    try {
+      for (let pg = 1; pg <= maxPaginas; pg++) {
+        const r = await bling.chamarBling(`/pedidos/vendas?limite=100&pagina=${pg}`);
+        if (!r.ok) { erroVendas = `vendas pagina ${pg} HTTP ${r.status}`; break; }
+        const lote = (r.data && r.data.data) || [];
+        if (!lote.length) break;
+        let velhas = 0;
+        for (const v of lote) {
+          const quando = Date.parse(v.data || '') || 0;
+          if (quando && quando < corte) { velhas++; continue; }
+          const loja = String(v.numeroLoja || '').trim();
+          if (!loja) continue;
+          vendasLidas++;
+          const ja = vendasPorLoja[loja];
+          if (!ja || (quando && quando > (ja._q || 0))) {
+            vendasPorLoja[loja] = {
+              nome: (v.contato && v.contato.nome) || null,
+              valor: (v.total != null ? v.total : null),
+              id_venda: String(v.id || ''),
+              numero_venda: String(v.numero || ''),
+              _q: quando,
+            };
+          }
+        }
+        if (velhas === lote.length) break;   // página inteira antes do corte
+        await sleep(350);
+      }
+    } catch (e) { erroVendas = e.message; }
+
     // Mesma regra do indice do ML: se falhou e nao veio nada, nao
     // marca como quente — o proximo bipe tenta de novo em vez de
     // confiar num indice vazio por 30 minutos.
@@ -141,6 +176,9 @@ async function construirIndice(opts = {}) {
     IDX.ts = falhouGeral ? 0 : Date.now();
     IDX.mapa = mapa;
     IDX.porPedido = porPedido;
+    IDX.vendasPorLoja = vendasPorLoja;
+    IDX.vendasLidas = vendasLidas;
+    IDX.erroVendas = erroVendas;
     IDX.porNumero = porNumero;
     IDX.mapaCurto = mapaCurto;
     IDX.totalNFs = totalNFs;
@@ -158,6 +196,9 @@ async function construirIndice(opts = {}) {
 function statusIndice() {
   return {
     com_pedido: IDX.porPedido ? Object.keys(IDX.porPedido).length : 0,
+    vendas_com_loja: Object.keys(IDX.vendasPorLoja || {}).length,
+    vendas_lidas: IDX.vendasLidas || 0,
+    erro_vendas: IDX.erroVendas || null,
     com_numero: IDX.porNumero ? Object.keys(IDX.porNumero).length : 0,
     quente: IDX.ts > 0,
     construindo,
@@ -286,6 +327,11 @@ function preAquecer(atrasoMs) {
 }
 
 /** Cliente e NF da venda pelo numero do pedido do marketplace. */
+function acharVendaPorLoja(k) {
+  const c = String(k || '').trim();
+  return (c && IDX.vendasPorLoja && IDX.vendasPorLoja[c]) || null;
+}
+
 function acharPorNumero(numero) {
   const k = String(numero || '').replace(/^0+/, '');
   return (k && IDX.porNumero && IDX.porNumero[k]) || null;
@@ -297,6 +343,6 @@ function acharPorPedido(pedido) {
 }
 
 module.exports = {
-  construirIndice, statusIndice, buscarPorNome, acharPorPedido, acharPorNumero, preAquecer,
+  construirIndice, statusIndice, buscarPorNome, acharPorPedido, acharPorNumero, acharVendaPorLoja, preAquecer,
   colapsar, primeiroUltimo,
 };
