@@ -14,7 +14,7 @@
 <meta name="apple-mobile-web-app-title" content="Devolucoes AMB">
 <!--
   =========================================================
-  amb-devolucoes/public-AMB/index-AMB.html   (AMB Devol. b10)
+  amb-devolucoes/public-AMB/index-AMB.html   (AMB Devol. b11)
   ---------------------------------------------------------
   Tela de triagem do galpao da AMBTotal.
 
@@ -201,6 +201,7 @@
                autocapitalize="characters" autocorrect="off" autocomplete="off" enterkeyhint="search">
         <button class="btn" id="btnBuscar">Buscar</button>
         <button class="btn roxo" id="btnCamera">Usar a camera</button>
+        <button class="btn cinza" id="btnOcr">Ler o NOME pela camera (OCR)</button>
         <video id="camera" class="esconde" playsinline muted></video>
         <div class="aviso">
           Bipe a etiqueta, ou digite o <b>nome do remetente</b> quando a caixa
@@ -345,6 +346,48 @@ function desenhar(r) {
     return;
   }
 
+  /* MOTIVO da devolucao — a informacao que muda o que o
+     estoquista faz com a caixa. Vem colorido do servidor. */
+  if (r.motivo_devolucao) {
+    const m = r.motivo_devolucao;
+    h += '<div class="alerta" style="border-color:' + esc(m.cor || '#616161') +
+         ';background:rgba(255,255,255,.05)"><b>' + esc(m.titulo) + '</b>' + esc(m.detalhe || '') +
+         ((m.pontos_do_mediador || []).length
+           ? '<br><br>' + m.pontos_do_mediador.map(x => '&bull; ' + esc(x)).join('<br>') : '') +
+         (m.sem_custo_pra_voce ? '<br><br>&#128176; O ML disse que <b>voce nao paga nada</b> neste caso.' : '') +
+         (m.pacote_consolidado ? '<br>&#128230; Pacote CONSOLIDADO: pode ter mais de uma devolucao dentro.' : '') +
+         '</div>';
+  }
+  if (r.nf_devolucao && r.nf_devolucao.emitida) {
+    h += '<div class="alerta azul"><b>&#9989; NF de devolucao JA EMITIDA</b>' +
+         (r.nf_devolucao.nf ? 'Nota ' + esc(r.nf_devolucao.nf.numero) + ' de ' +
+           esc(String(r.nf_devolucao.nf.dataEmissao || '').slice(0, 10)) : '') +
+         ' &mdash; nao precisa emitir de novo.</div>';
+  }
+  if (r.reclamacao) {
+    h += '<a class="btn roxo" style="display:block;text-align:center;text-decoration:none" ' +
+         'href="' + esc(r.reclamacao.url) + '" target="_blank" rel="noopener">' +
+         esc(r.reclamacao.rotulo) + '</a>';
+    if (r.reclamacao.copiar) {
+      h += '<button class="btn cinza" onclick="navigator.clipboard.writeText(\'' + esc(r.reclamacao.copiar) +
+           '\');this.textContent=\'copiado!\'">copiar ' + esc(r.reclamacao.copiar) + '</button>';
+    }
+  }
+
+  /* Devolucao SHOPEE identificada pelo proxy */
+  if (r.devolucao_shopee) {
+    const ds = r.devolucao_shopee;
+    h += '<div class="card"><h2>Devolucao identificada ' +
+         '<span class="selo shopee">Shopee</span></h2>' +
+         linha('Pedido', ds.pedido) +
+         linha('Solicitacao', ds.return_sn) +
+         linha('Rastreio', ds.tracking) +
+         linha('Status', ds.status) + '</div>';
+    h += botoesConfirmar({ marketplace: 'shopee', order_id: ds.pedido, tracking: ds.tracking });
+    $('resultado').innerHTML = h;
+    return;
+  }
+
   /* Achou pelo rastreio do ML: e certeza, nao candidato. */
   if (r.devolucao) {
     const d = r.devolucao;
@@ -471,10 +514,25 @@ async function gravar(status) {
         esc(r.erro) + '</div>' + botoesConfirmar(d);
       return;
     }
-    $('resultado').innerHTML =
-      '<div class="alerta azul"><b class="ok">&#10003; Registrado</b>' +
-      (status === 'problema' ? 'Marcado como problema. O Diego vai ver.' : 'Pode incluir no estoque.') +
-      '</div><button class="btn" onclick="proxima()">Proxima caixa</button>';
+    let fim = '<div class="alerta azul"><b class="ok">&#10003; Registrado</b>' +
+      (status === 'problema'
+        ? 'Marcado como problema.' + (r.email_enviado ? ' O Diego foi avisado por e-mail.' : '')
+        : 'Pode incluir no estoque.') + '</div>';
+
+    /* CANIBALIZACAO: ja existem outras unidades do mesmo SKU
+       quebradas — da pra tirar peca de uma pra salvar outra. */
+    if (r.canibalizacao) {
+      fim += '<div class="alerta amarelo"><b>&#128295; Tem mais ' + r.canibalizacao.outras_unidades +
+        ' unidade(s) deste SKU em defeito</b>' +
+        (r.canibalizacao.locais.length ? 'Guardadas em: ' + r.canibalizacao.locais.map(esc).join(', ') + '. ' : '') +
+        'Antes de descartar, veja se uma completa a outra.</div>';
+    }
+    if (status === 'problema' && d.produto_sku) {
+      window._ultimoDefeito = d;
+      fim += '<button class="btn roxo" onclick="imprimirEtiqueta()">&#127991; Imprimir etiqueta de defeito</button>';
+    }
+    fim += '<button class="btn" onclick="proxima()">Proxima caixa</button>';
+    $('resultado').innerHTML = fim;
     window.scrollTo(0, 0);
   } catch (e) {
     if (e.message !== 'sessao') {
@@ -488,6 +546,72 @@ function proxima() {
   $('codigo').value = '';
   limpar();
   $('codigo').focus();
+}
+
+/* Etiqueta de defeito: enfileira; a Zebra imprime na estacao
+   (o painel aberto num PC com QZ Tray). */
+async function imprimirEtiqueta() {
+  const d = window._ultimoDefeito || {};
+  try {
+    const r = await api('/api/etiqueta/fila', { method: 'POST', body: JSON.stringify({
+      sku: d.produto_sku, defeito: d.problema_descricao,
+      localizacao: d.localizacao, nf: d.nf_numero,
+    }) });
+    alert(r.ok
+      ? (r.estacao_ativa ? 'Na fila - vai sair na Zebra.' : 'Na fila, mas ' + (r.aviso || 'nenhuma estacao ativa'))
+      : 'Falhou: ' + r.erro);
+  } catch (e) { alert('Sem conexao - tente de novo.'); }
+}
+
+/* =========================================================
+   OCR do NOME do remetente — o caminho pro TikTok/Amazon.
+   O Tesseract roda NO CELULAR (nada sobe pra servidor) e so
+   e baixado quando o estoquista pede — o fluxo normal continua
+   funcionando sem nenhum CDN.
+   ========================================================= */
+let ocrPronto = false;
+function carregarTesseract() {
+  return new Promise((res, rej) => {
+    if (ocrPronto || window.Tesseract) { ocrPronto = true; return res(); }
+    const sc = document.createElement('script');
+    sc.src = 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';
+    sc.onload = () => { ocrPronto = true; res(); };
+    sc.onerror = () => rej(new Error('sem internet pra baixar o leitor'));
+    document.head.appendChild(sc);
+  });
+}
+
+async function lerNomeOCR() {
+  const btn = $('btnOcr');
+  btn.disabled = true; btn.textContent = 'preparando o leitor...';
+  try {
+    await carregarTesseract();
+    // abre a camera e captura UM quadro apontado pro bloco REMETENTE
+    const st = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment', width: { ideal: 1280 } } });
+    const v = $('camera');
+    v.srcObject = st; v.classList.remove('esconde'); await v.play();
+    btn.textContent = 'aponte pro REMETENTE e toque no video';
+    await new Promise(res => { v.onclick = res; });
+    const cv = document.createElement('canvas');
+    cv.width = v.videoWidth; cv.height = v.videoHeight;
+    cv.getContext('2d').drawImage(v, 0, 0);
+    st.getTracks().forEach(t => t.stop());
+    v.classList.add('esconde'); v.onclick = null;
+
+    btn.textContent = 'lendo...';
+    const { data } = await Tesseract.recognize(cv, 'por');
+    // pega a linha mais parecida com nome: só letras/espaco, 2+ palavras
+    const linhas = String(data.text || '').split('\n').map(x => x.trim())
+      .filter(x => /^[A-Za-zÀ-ÿ ]{8,}$/.test(x) && x.split(/\s+/).length >= 2)
+      .sort((a, b) => b.length - a.length);
+    if (!linhas.length) { alert('Nao achei um nome na foto. Aproxime do bloco REMETENTE e tente de novo.'); return; }
+    $('codigo').value = linhas[0];
+    buscar(1);
+  } catch (e) {
+    alert('OCR falhou: ' + e.message);
+  } finally {
+    btn.disabled = false; btn.textContent = 'Ler o NOME pela camera (OCR)';
+  }
 }
 
 /* =========================================================
@@ -540,6 +664,7 @@ $('usuario').onkeydown = (e) => { if (e.key === 'Enter') $('senha').focus(); };
 $('btnBuscar').onclick = () => buscar(1);
 $('codigo').onkeydown  = (e) => { if (e.key === 'Enter') buscar(1); };
 $('btnCamera').onclick = camera;
+$('btnOcr').onclick    = lerNomeOCR;
 $('btnSair').onclick   = sair;
 
 /* Ao abrir: se ja houver sessao valida, entra direto. */
