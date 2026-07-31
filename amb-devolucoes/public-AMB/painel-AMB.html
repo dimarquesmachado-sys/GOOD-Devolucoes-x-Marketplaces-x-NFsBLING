@@ -4,11 +4,11 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#561A9E">
-<title>AMBTotal - Painel de Devolucoes</title>
+<title>AMBTotal - Painel de Devoluções</title>
 <link rel="icon" type="image/png" href="icone-AMB.png">
 <!--
   =========================================================
-  amb-devolucoes/public-AMB/painel-AMB.html  (AMB Devol. b32)
+  amb-devolucoes/public-AMB/painel-AMB.html  (AMB Devol. b33)
   ---------------------------------------------------------
   PAINEL em PAGINA UNICA, no formato da GOOD (pedido do Diego
   comparando os prints): nada de abas — secoes empilhadas,
@@ -146,15 +146,15 @@
 <div class="banner">
   <div class="chips">
     <div class="linha-botoes">
-      <a class="forte" href="/amb/">&#128230; bipar</a>
-      <button id="btnSair">sair</button>
+      <a class="forte" href="/amb/">&#128230; Bipar</a>
+      <button id="btnSair">Sair</button>
     </div>
     <span class="quem" id="quemSou"></span>
   </div>
   <div class="miolo">
-  <h1>&#128081; Painel de Devolucoes &mdash; AMBTotal</h1>
-  <div class="sub">Triagens + A espreita + Defeitos + Recados</div>
-  <div class="ver">painel <b>b32</b> &middot; <span id="versaoServidor">servidor ...</span></div>
+  <h1>&#128081; Painel de Devoluções &mdash; AMBTotal</h1>
+  <div class="sub">Triagens + À Espreita + Defeitos + Recados</div>
+  <div class="ver">painel <b>b33</b> &middot; <span id="versaoServidor">servidor ...</span></div>
   </div>
 </div>
 
@@ -164,10 +164,10 @@
   <div class="secao">
     <h2>&#9989; Aprovadas &mdash; aguardando NF <span class="cont" id="nAprovadas">-</span>
       <label style="margin-left:auto;font-size:12.5px;color:var(--apagado)">
-        <input type="checkbox" onchange="marcarTodas('aprovado',this.checked)"> todas</label>
+        <input type="checkbox" onchange="marcarTodas('aprovado',this.checked)"> Todas</label>
       <select id="depAprovado" class="campo" style="width:auto;padding:8px 10px;font-size:12.5px" title="Deposito onde o estoque da devolucao entra"><option value="">&#128230; carregando depositos...</option></select>
-      <button class="btn" style="background:linear-gradient(135deg,#1e88e5,#1565c0)" onclick="emitirSelecionadas('aprovado',this)" title="Gera + EMITE a NF de devolucao dos cards selecionados, um por vez (via Bridge)">&#127981; Emitir selecionadas (<span id="selE_aprovado">0</span>)</button>
-      <button class="btn verde" onclick="concluirSelecionadas('aprovado',this)">&#10003; Concluir selecionadas (<span id="selAprovado">0</span>)</button>
+      <button class="btn" style="background:linear-gradient(135deg,#1e88e5,#1565c0)" onclick="emitirSelecionadas('aprovado',this)" title="Gera + EMITE a NF de devolução dos cards selecionados, um por vez (via Bridge)">&#127981; Emitir Selecionadas (<span id="selE_aprovado">0</span>)</button>
+      <button class="btn verde" onclick="concluirSelecionadas('aprovado',this)">&#10003; Concluir Selecionadas (<span id="selAprovado">0</span>)</button>
       <button class="btn cinza" onclick="verFila('aprovado')">atualizar</button></h2>
     <div class="sub">Produto conferido e ok. Gere a NF de devolucao no Bling (botao do card) e registre o numero &mdash; ou conclua direto.</div>
     <div id="scAprovado"><div class="vazio">carregando...</div></div>
@@ -176,18 +176,18 @@
   <div class="secao">
     <h2>&#9888;&#65039; Problemas reportados <span class="cont" id="nProblemas">-</span>
       <label style="margin-left:auto;font-size:12.5px;color:var(--apagado)">
-        <input type="checkbox" onchange="marcarTodas('problema',this.checked)"> todas</label>
+        <input type="checkbox" onchange="marcarTodas('problema',this.checked)"> Todas</label>
       <select id="depProblema" class="campo" style="width:auto;padding:8px 10px;font-size:12.5px" title="Deposito onde o estoque da devolucao entra"><option value="">&#128230; carregando depositos...</option></select>
-      <button class="btn" style="background:linear-gradient(135deg,#1e88e5,#1565c0)" onclick="emitirSelecionadas('problema',this)" title="Gera + EMITE a NF de devolucao dos cards selecionados, um por vez (via Bridge)">&#127981; Emitir selecionadas (<span id="selE_problema">0</span>)</button>
-      <button class="btn verde" onclick="concluirSelecionadas('problema',this)">&#10003; Concluir selecionadas (<span id="selProblema">0</span>)</button>
+      <button class="btn" style="background:linear-gradient(135deg,#1e88e5,#1565c0)" onclick="emitirSelecionadas('problema',this)" title="Gera + EMITE a NF de devolução dos cards selecionados, um por vez (via Bridge)">&#127981; Emitir Selecionadas (<span id="selE_problema">0</span>)</button>
+      <button class="btn verde" onclick="concluirSelecionadas('problema',this)">&#10003; Concluir Selecionadas (<span id="selProblema">0</span>)</button>
       <button class="btn cinza" onclick="verFila('problema')">atualizar</button></h2>
-    <div class="sub">O galpao achou algo errado. Padrao da fila: deposito <b>DEFEITOS</b> &mdash; a NF entra, o produto NAO volta pro estoque de venda.</div>
+    <div class="sub">O galpão achou algo errado. Padrão da fila: depósito <b>DEFEITOS</b> &mdash; a NF entra, o produto NÃO volta pro estoque de venda.</div>
     <div id="scProblema"><div class="vazio">carregando...</div></div>
   </div>
 
   <!-- ================= 2) A ESPREITA ================= -->
   <div class="secao">
-    <h2>&#128666; A espreita &mdash; devolucoes a caminho <span class="cont" id="nEspreita">-</span>
+    <h2>&#128666; À Espreita &mdash; devoluções a caminho <span class="cont" id="nEspreita">-</span>
       <button class="btn cinza" style="margin-left:auto" onclick="verEspreita()">atualizar</button></h2>
     <div class="sub" id="subEspreita">Magalu &middot; ML &middot; Shopee &middot; atualiza sozinho a cada 4 min</div>
     <div id="scEspreita"><div class="vazio">carregando...</div></div>
@@ -279,21 +279,21 @@ function cardFila(x, status) {
   if (!_souAdmin) {
     h += '<div class="acoes">' + (x.link_nf_bling
       ? '<a class="btn cinza" style="text-decoration:none" target="_blank" rel="noopener" href="' + esc(x.link_nf_bling) + '">&#128279; Abrir NF no Bling</a>' : '') +
-      '<span class="selo">geracao de NF: so admin</span></div></div>';
+      '<span class="selo">geração de NF: só admin</span></div></div>';
     return h;
   }
   h += '<div class="acoes">' +
     (x.link_nf_bling
       ? '<a class="btn cinza" style="text-decoration:none" target="_blank" rel="noopener" href="' +
         esc(x.link_nf_bling) + '">&#128279; Abrir NF no Bling</a>'
-      : '<span class="selo">NF da venda nao localizada no indice</span>') +
+      : '<span class="selo">NF da venda não localizada no índice</span>') +
     (x.nf_id_bling && !x.nf_devolucao_id_bling
-      ? '<button class="btn" style="background:linear-gradient(135deg,#26a69a,#00796b)" onclick="gerarDevolucao(this,\'' + esc(x.id) + '\',\'' + status + '\',false)">&#129534; gerar rascunho</button>' +
-        '<button class="btn" style="background:linear-gradient(135deg,#1e88e5,#1565c0)" onclick="gerarDevolucao(this,\'' + esc(x.id) + '\',\'' + status + '\',true)">&#127981; gerar + emitir</button>'
+      ? '<button class="btn" style="background:linear-gradient(135deg,#26a69a,#00796b)" onclick="gerarDevolucao(this,\'' + esc(x.id) + '\',\'' + status + '\',false)">&#129534; Gerar Rascunho</button>' +
+        '<button class="btn" style="background:linear-gradient(135deg,#1e88e5,#1565c0)" onclick="gerarDevolucao(this,\'' + esc(x.id) + '\',\'' + status + '\',true)">&#127981; Gerar + Emitir</button>'
       : '') +
-    '<button class="btn roxo" onclick="registrarNfDevolucao(this,\'' + esc(x.id) + '\',\'' + status + '\')">&#128221; registrar NF de devolucao</button>' +
+    '<button class="btn roxo" onclick="registrarNfDevolucao(this,\'' + esc(x.id) + '\',\'' + status + '\')">&#128221; Registrar NF de Devolução</button>' +
     (x.nf_devolucao_id_bling
-      ? '<button class="btn" style="background:linear-gradient(135deg,#6a3fc4,#4527a0)" onclick="lancarEstoque(this,\'' + esc(x.id) + '\',\'' + status + '\')">&#128230; lancar estoque</button>'
+      ? '<button class="btn" style="background:linear-gradient(135deg,#6a3fc4,#4527a0)" onclick="lancarEstoque(this,\'' + esc(x.id) + '\',\'' + status + '\')">&#128230; Lançar Estoque</button>'
       : '') +
     (x.estoque_lancado_em
       ? '<span class="selo ok">estoque &#10003;' + (x.estoque_deposito ? ' ' + esc(x.estoque_deposito) : '') + '</span>'
@@ -374,10 +374,10 @@ async function lancarEstoque(bt, id, status) {
   try {
     const r = await api('/api/triagem/' + id + '/lancar-estoque', {
       method: 'POST', body: JSON.stringify({ deposito_id: dep }) });
-    if (!r.ok) { alert('Nao lancou: ' + r.erro); bt.disabled = false; bt.textContent = '\uD83D\uDCE6 lancar estoque'; return; }
+    if (!r.ok) { alert('Não lançou: ' + r.erro); bt.disabled = false; bt.textContent = '\uD83D\uDCE6 Lançar Estoque'; return; }
     alert('Estoque lancado em ' + r.deposito + (r.aviso ? '\n(aviso: ' + r.aviso + ')' : ''));
     verFila(status);
-  } catch (e) { bt.disabled = false; bt.textContent = '\uD83D\uDCE6 lancar estoque'; }
+  } catch (e) { bt.disabled = false; bt.textContent = '\uD83D\uDCE6 Lançar Estoque'; }
 }
 
 /* ============ GERAR NF via a Bridge JA INSTALADA ============
@@ -420,16 +420,16 @@ function chamarBridge(payload) {
     };
     window.addEventListener('message', ouvir);
     window.postMessage({ tipo: 'GOOD_BRIDGE_CRIAR_DEVOLUCAO', requisicaoId, payload }, '*');
-    setTimeout(() => { window.removeEventListener('message', ouvir); rej(new Error('Bridge nao respondeu em 110s')); }, 110000);
+    setTimeout(() => { window.removeEventListener('message', ouvir); rej(new Error('Bridge não respondeu em 110s')); }, 110000);
   });
 }
 
 async function gerarDevolucao(bt, id, status, emitir) {
   const card = bt.closest('.card');
   const x = _cardsFila[String(id)] || {};
-  if (!x.nf_id_bling) { alert('Este card esta sem a NF da venda localizada no Bling - nao da pra gerar.'); return; }
+  if (!x.nf_id_bling) { alert('Este card está sem a NF da venda localizada no Bling - não dá pra gerar.'); return; }
   if (!await bridgePresente()) {
-    alert('Nao consegui falar com a extensao Bridge (a mesma da GOOD).\nSe o gerar funciona no painel da GOOD neste navegador, aqui tambem funciona - recarregue esta pagina (Ctrl+Shift+R) e tente de novo.');
+    alert('Não consegui falar com a extensão Bridge (a mesma da GOOD).\nSe o gerar funciona no painel da GOOD neste navegador, aqui tambem funciona - recarregue esta pagina (Ctrl+Shift+R) e tente de novo.');
     return;
   }
   const sel = $(status === 'problema' ? 'depProblema' : 'depAprovado');
@@ -443,14 +443,14 @@ async function gerarDevolucao(bt, id, status, emitir) {
       emitir: !!emitir, devolucaoId: 'amb-' + String(id),
       idDeposito: dep ? String(dep) : null,
     });
-    if (!r || !r.idNotaDevolucao) throw new Error('Bling nao devolveu o id da NF');
+    if (!r || !r.idNotaDevolucao) throw new Error('Bling não devolveu o id da NF');
     // cinto e suspensorio: a extensao ja gravou; o painel grava tambem
     await api('/api/triagem/' + id + '/nf-devolucao', { method: 'PUT',
       body: JSON.stringify({ numero: String(r.numero || ''), id_bling: String(r.idNotaDevolucao) }) }).catch(() => {});
     alert((r.emitida ? 'NF EMITIDA e autorizada: n\u00ba ' : 'RASCUNHO criado: n\u00ba ') + (r.numero || r.idNotaDevolucao));
     verFila(status);
   } catch (e) {
-    alert('Nao gerou: ' + e.message);
+    alert('Não gerou: ' + e.message);
     bt.disabled = false; bt.textContent = antes;
   }
 }
@@ -458,7 +458,7 @@ async function gerarDevolucao(bt, id, status, emitir) {
 async function emitirSelecionadas(status, bt) {
   const ids = [..._sel[status]];
   if (!ids.length) { alert('Nenhum card selecionado.'); return; }
-  if (!await bridgePresente()) { alert('Nao consegui falar com a extensao Bridge (a mesma da GOOD) - recarregue a pagina (Ctrl+Shift+R) e tente de novo.'); return; }
+  if (!await bridgePresente()) { alert('Não consegui falar com a extensão Bridge (a mesma da GOOD) - recarregue a pagina (Ctrl+Shift+R) e tente de novo.'); return; }
   if (!confirm('ATENCAO: o navegador precisa estar logado no BLING DA AMBTOTAL agora. Gerar + EMITIR ' + ids.length + ' NF(s) de devolucao, uma por vez?')) return;
   bt.disabled = true;
   const sel = $(status === 'problema' ? 'depProblema' : 'depAprovado');
@@ -489,7 +489,7 @@ function registrarNfDevolucao(bt, id, status) {
       if (!texto) return;
       const r = await api('/api/triagem/' + id + '/nf-devolucao', {
         method: 'PUT', body: JSON.stringify({ texto }) });
-      if (!r.ok) { alert('Nao gravou: ' + r.erro); return; }
+      if (!r.ok) { alert('Não gravou: ' + r.erro); return; }
       verFila(status);
     },
   });
@@ -529,7 +529,7 @@ function cardEspreita(x, entregue) {
       var _d = new Date(x.entregue_em);
       if (!isNaN(_d)) _dataBr = ' &middot; ' + ('0' + _d.getDate()).slice(-2) + '/' + ('0' + (_d.getMonth() + 1)).slice(-2);
     }
-    h += '<span class="selo velho" title="' + (_tilde ? 'estimado - a data real chega em minutos' : 'data real de entrega') + '">entregue ha ' + _tilde + (x.dias_desde == null ? '?' : x.dias_desde) + ' dia(s)' + _dataBr + '</span>';
+    h += '<span class="selo velho" title="' + (_tilde ? 'estimado - a data real chega em minutos' : 'data real de entrega') + '">entregue há ' + _tilde + (x.dias_desde == null ? '?' : x.dias_desde) + ' dia(s)' + _dataBr + '</span>';
   } else {
     var _dt = '';
     if (x.desde) {
@@ -542,7 +542,7 @@ function cardEspreita(x, entregue) {
   }
   h += (x.link_marketplace
       ? '<a class="btn cinza" style="text-decoration:none;padding:5px 11px;font-size:12.5px" target="_blank" rel="noopener" href="' +
-        esc(x.link_marketplace) + '">&#128279; abrir</a>'
+        esc(x.link_marketplace) + '">&#128279; Abrir</a>'
       : '') +
     (x.no_cd_ml ? '<span class="selo">no CD do ML</span>' : '') +
     (x.status_money === 'refunded' ? '<span class="selo velho">dinheiro estornado</span>' :
@@ -560,6 +560,9 @@ function cardEspreita(x, entregue) {
     cli.push('(' + esc(x.nickname) + ')');
   }
   if (x.nf_venda) cli.push('&#129534; NF ' + esc(x.nf_venda));
+  if (x.nf_valor != null && !isNaN(Number(x.nf_valor))) {
+    cli.push('&#128176; R$ ' + Number(x.nf_valor).toFixed(2).replace('.', ','));
+  }
   if (x.motivo_curto) cli.push('&#128172; ' + esc(x.motivo_curto));
   if (!entregue && x.status) cli.push(esc(x.status));
   if (cli.length) h += '<div class="meta">' + cli.join(' &middot; ') + '</div>';
@@ -581,8 +584,8 @@ function cardEspreita(x, entregue) {
   const chave = esc(x.tracking || x.pedido);
   h += '<div class="acoes">' +
     '<button class="btn verde" onclick="baixar(this,\'' + chave + '\')">&#10003; achei / ja processado</button>' +
-    '<button class="btn roxo" onclick="observar(this,\'' + chave + '\',\'' + esc(x.marketplace) + '\')">&#128172; observacao</button>' +
-    '<button class="btn verm" onclick="avisarEstoquista(this,\'' + chave + '\')">&#128276; aviso estoquista</button>' +
+    '<button class="btn roxo" onclick="observar(this,\'' + chave + '\',\'' + esc(x.marketplace) + '\')">&#128172; Observação</button>' +
+    '<button class="btn verm" onclick="avisarEstoquista(this,\'' + chave + '\')">&#128276; Aviso Estoquista</button>' +
     '</div></div>';
   return h;
 }
@@ -597,9 +600,9 @@ async function verEspreita() {
     $('nEspreita').textContent = r.em_transito.length + r.entregues.length;
 
     let h = '<div class="resumo">' +
-      box(r.em_transito.length, 'em transito') +
+      box(r.em_transito.length, 'em trânsito') +
       box(r.atrasadas_30d, 'atrasadas +30d', r.atrasadas_30d > 0) +
-      box(r.aguardando_postagem, 'nao postadas') +
+      box(r.aguardando_postagem, 'não postadas') +
       box(r.entregues.length, 'entregues sem bipe', r.entregues.length > 0) +
       '</div>';
 
@@ -607,19 +610,19 @@ async function verEspreita() {
     const avisos = [];
     if (f.ml && !f.ml.quente) {
       avisos.push(f.ml.erro
-        ? '<span style="color:var(--vermelho);font-weight:700">Mercado Livre: ERRO ao montar o indice — ' + esc(f.ml.erro) + '</span> (tentando de novo sozinho)'
-        : 'Mercado Livre: indice montando' + (f.ml.construindo ? ' (em andamento)' : ''));
+        ? '<span style="color:var(--vermelho);font-weight:700">Mercado Livre: ERRO ao montar o índice — ' + esc(f.ml.erro) + '</span> (tentando de novo sozinho)'
+        : 'Mercado Livre: índice montando' + (f.ml.construindo ? ' (em andamento)' : ''));
     }
     if (f.shopee && !f.shopee.quente) avisos.push('Shopee: ' + (f.shopee.desligada ? 'desligada' : (f.shopee.erro || 'cache montando')));
-    if (f.magalu && !f.magalu.quente) avisos.push('Magalu: ' + (f.magalu.falta || 'indice montando') +
+    if (f.magalu && !f.magalu.quente) avisos.push('Magalu: ' + (f.magalu.falta || 'índice montando') +
       (f.magalu.desligada ? ' — <a href="/amb/conectar">conectar</a>' : ''));
     if (avisos.length) h += '<div class="vazio" style="padding:8px">' + avisos.join(' &middot; ') + '</div>';
 
     // ENTREGUE no marketplace mas ninguem bipou — o destaque vermelho da GOOD
     if (r.entregues.length) {
-      h += '<div class="vermelha"><b>&#128680; Consta ENTREGUE no marketplace, mas ninguem bipou aqui (' +
+      h += '<div class="vermelha"><b>&#128680; Consta ENTREGUE no marketplace, mas ninguém bipou aqui (' +
         r.entregues.length + ')</b>' +
-        '<div class="sub">Confere no galpao: pode estar guardado sem registro — ou nao chegou de verdade.</div>' +
+        '<div class="sub">Confere no galpão: pode estar guardado sem registro — ou não chegou de verdade.</div>' +
         r.entregues.map(x => cardEspreita(x, true)).join('') + '</div>';
     }
     h += r.em_transito.map(x => cardEspreita(x, false)).join('') ||
@@ -709,8 +712,8 @@ async function lancarDefeito() {
   const descricao = prompt('Qual o defeito?');
   const r = await api('/api/defeitos/lancar', { method:'POST',
     body: JSON.stringify({ sku, localizacao, quantidade, descricao }) });
-  if (!r.ok) { alert('Nao gravou: ' + r.erro); return; }
-  if (!r.sku_validado_no_bling) alert('Gravado, mas esse SKU nao existe no Bling. Confira o codigo.');
+  if (!r.ok) { alert('Não gravou: ' + r.erro); return; }
+  if (!r.sku_validado_no_bling) alert('Gravado, mas esse SKU não existe no Bling. Confira o código.');
   verDefeitos();
 }
 
@@ -728,7 +731,7 @@ async function verRecados() {
       h += '<div class="card"><div class="cab">' +
         '<span class="selo">' + esc(x.identificador) + '</span>' +
         (x.ciente_por ? '<span class="selo ok">lido por ' + esc(x.ciente_por) + '</span>'
-                      : '<span class="selo velho">ainda nao lido</span>') +
+                      : '<span class="selo velho">ainda não lido</span>') +
         '</div><div class="meta">' + esc(x.texto) + '<br>por ' + esc(x.criado_por || '?') +
         ' em ' + esc(String(x.criado_em || '').slice(0, 16).replace('T', ' ')) + '</div>' +
         '<div class="acoes"><button class="btn cinza" onclick="resolver(' + x.id + ')">resolver</button></div></div>';
@@ -743,7 +746,7 @@ async function novoRecado() {
   const texto = prompt('O recado:');
   if (!texto) return;
   const r = await api('/api/recados', { method:'POST', body: JSON.stringify({ identificador, texto }) });
-  if (!r.ok) { alert('Nao gravou: ' + r.erro); return; }
+  if (!r.ok) { alert('Não gravou: ' + r.erro); return; }
   verRecados();
 }
 
