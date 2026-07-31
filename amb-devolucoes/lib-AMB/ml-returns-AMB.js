@@ -1,5 +1,5 @@
 // ============================================================
-// amb-devolucoes/lib-AMB/ml-returns-AMB.js     (AMB Devol. b17)
+// amb-devolucoes/lib-AMB/ml-returns-AMB.js     (AMB Devol. b19)
 // ------------------------------------------------------------
 // INDICE DE DEVOLUCOES DO ML POR RASTREIO DOS CORREIOS.
 //
@@ -367,5 +367,6 @@ function preAquecer(atrasoMs) {
 
 module.exports = {
   construirIndice, statusIndice, acharPorTracking, resumoEspreita, preAquecer,
+  enriquecerLista,
   tamanho: () => Object.keys(IDX.mapa).length,
 };
