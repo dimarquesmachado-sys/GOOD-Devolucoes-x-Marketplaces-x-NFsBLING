@@ -1,5 +1,5 @@
 // ============================================================
-// amb-devolucoes/lib-AMB/supabase-AMB.js       (AMB Devol. b10)
+// amb-devolucoes/lib-AMB/supabase-AMB.js       (AMB Devol. b19)
 // ------------------------------------------------------------
 // Acesso ao Supabase da AMBTotal.
 //
@@ -347,9 +347,44 @@ async function notasEspreita() {
   } catch (e) { return { ok: false, erro: e.message }; }
 }
 
+// ============================================================
+// FILAS DO PAINEL — a triagem dividida como na GOOD:
+//   'aprovado' -> Aprovadas, aguardando a NF de devolucao
+//   'problema' -> Problemas reportados
+//   'finalizado' -> ja concluida (some das filas)
+// ============================================================
+
+async function listarFila({ status, limite = 80 } = {}) {
+  const dbc = conectar();
+  if (!dbc) return { ok: false, erro: erroInicial };
+  try {
+    const r = await dbc.from(T.devolucoes)
+      .select('*')
+      .eq('status', String(status))
+      .order('criado_em', { ascending: false })
+      .limit(Math.min(Number(limite) || 80, 200));
+    if (r.error) return { ok: false, erro: r.error.message };
+    return { ok: true, total: (r.data || []).length, registros: r.data || [] };
+  } catch (e) { return { ok: false, erro: e.message }; }
+}
+
+/** Atualiza campos de uma triagem (concluir, registrar NF gerada...). */
+async function atualizarTriagem(id, campos) {
+  const dbc = conectar();
+  if (!dbc) return { ok: false, erro: erroInicial };
+  try {
+    const r = await dbc.from(T.devolucoes)
+      .update(campos).eq('id', id).select().limit(1);
+    if (r.error) return { ok: false, erro: r.error.message };
+    if (!r.data || !r.data.length) return { ok: false, erro: 'triagem nao encontrada' };
+    return { ok: true, registro: r.data[0] };
+  } catch (e) { return { ok: false, erro: e.message }; }
+}
+
 module.exports = {
   conectar, testeDeVida,
   jaTriado, registrarTriagem, listarRecentes, recadoDe,
+  listarFila, atualizarTriagem,
   criarRecado, listarRecados, marcarCiente, resolverRecado,
   listarDefeitos, registrarPecaRetirada, defeitosDoSku,
   notaEspreita, notasEspreita,
