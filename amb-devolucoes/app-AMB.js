@@ -72,7 +72,7 @@ const impressao = require('./lib-AMB/impressao-AMB');
 const emailAMB = require('./lib-AMB/email-AMB');
 const nfEntrada = require('./lib-AMB/nf-entrada-AMB');
 
-const VERSAO = 'AMB Devolucoes b24';
+const VERSAO = 'AMB Devolucoes b25';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
