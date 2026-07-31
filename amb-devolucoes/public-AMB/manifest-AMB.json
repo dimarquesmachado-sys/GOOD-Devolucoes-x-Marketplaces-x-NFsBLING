@@ -1,0 +1,16 @@
+{
+  "name": "AMBTotal - Devolucoes",
+  "short_name": "Devolucoes AMB",
+  "description": "Triagem de devolucoes do galpao da AMBTotal",
+  "start_url": "/amb/",
+  "scope": "/amb/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#150a24",
+  "theme_color": "#1a0b2e",
+  "lang": "pt-BR",
+  "icons": [
+    { "src": "icone-AMB.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icone-AMB.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
+  ]
+}
