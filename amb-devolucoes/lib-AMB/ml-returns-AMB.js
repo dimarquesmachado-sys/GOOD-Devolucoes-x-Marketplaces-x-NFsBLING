@@ -1,5 +1,5 @@
 // ============================================================
-// amb-devolucoes/lib-AMB/ml-returns-AMB.js     (AMB Devol. b27)
+// amb-devolucoes/lib-AMB/ml-returns-AMB.js     (AMB Devol. b28)
 // ------------------------------------------------------------
 // INDICE DE DEVOLUCOES DO ML POR RASTREIO DOS CORREIOS.
 //
@@ -51,6 +51,34 @@ const ml = require('./ml-AMB');
 // monta, 1 pedido por vez, e reaproveitados entre reconstrucoes
 // (pedido nao muda de dono nem de itens).
 const PEDIDOS = new Map();
+
+// b28 - DATA REAL DE ENTREGA da devolucao (licao das v3.95/v4.13 da
+// GOOD): o return NAO traz a data; ela vem de /shipments/{id}/history
+// no campo date_history.date_delivered. Cache permanente (data de
+// entrega nunca muda). Enquanto nao chega, o painel mostra "~" (estimado).
+const ENTREGA_REAL = new Map();
+let ENTREGA_RODANDO = false;
+
+function dispararDatasEntrega(itens) {
+  if (ENTREGA_RODANDO) return;
+  const fila = (itens || [])
+    .map(d => d.shipment_devolucao ? String(d.shipment_devolucao) : null)
+    .filter(sid => sid && !ENTREGA_REAL.has(sid));
+  const unicos = [...new Set(fila)].slice(0, 60);
+  if (!unicos.length) return;
+  ENTREGA_RODANDO = true;
+  (async () => {
+    for (const sid of unicos) {
+      try {
+        const rh = await ml.chamarML('/shipments/' + sid + '/history');
+        ENTREGA_REAL.set(sid, (rh.ok && rh.data && rh.data.date_history &&
+          rh.data.date_history.date_delivered) || null);
+      } catch (e) { ENTREGA_REAL.set(sid, null); }
+      await new Promise(r => setTimeout(r, 300));
+    }
+    console.log('[AMB/ML-RETURNS] datas reais de entrega no cache: ' + ENTREGA_REAL.size);
+  })().catch(() => {}).finally(() => { ENTREGA_RODANDO = false; });
+}
 let ENRIQ_ERRO = null;
 
 async function enriquecerPedido(orderId) {
@@ -293,6 +321,7 @@ async function construirIndice(opts = {}) {
 function statusIndice() {
   return {
     pedidos_enriquecidos: PEDIDOS.size,
+    datas_entrega_no_cache: ENTREGA_REAL.size,
     enriquecimento_erro: ENRIQ_ERRO,
     quente: IDX.ts > 0,
     construindo,
@@ -348,9 +377,13 @@ function resumoEspreita() {
       });
         continue;
       }
+      const real = d.shipment_devolucao
+        ? ENTREGA_REAL.get(String(d.shipment_devolucao)) : null;
       entreguesLista.push({
         marketplace: 'ml', pedido: d.order_id, tracking: d.tracking,
-        dias_desde: dias(d.entregue_em || d.claim_date), entregue_em: d.entregue_em || null,
+        dias_desde: real ? dias(real) : dias(d.entregue_em || d.claim_date),
+        entregue_em: real || d.entregue_em || null,
+        data_precisa: !!real,
         claim_id: d.claim_id, shipment_devolucao: d.shipment_devolucao || null,
       
         ...(PEDIDOS.get(String(d.order_id)) || {}),
@@ -371,12 +404,16 @@ function resumoEspreita() {
     }
   }
 
-  emTransito.sort((x, y) => (y.dias_em_transito || 0) - (x.dias_em_transito || 0));
+  dispararDatasEntrega(entreguesLista);
+  const emTransitoSano = emTransito.filter(d =>
+    d.dias_em_transito == null || d.dias_em_transito <= 120);
+
+  emTransitoSano.sort((x, y) => (y.dias_em_transito || 0) - (x.dias_em_transito || 0));
   entreguesLista.sort((x, y) => (x.dias_desde || 0) - (y.dias_desde || 0));
 
   return {
     quente: IDX.ts > 0,
-    em_transito: emTransito,
+    em_transito: emTransitoSano,
     atrasadas_30d: emTransito.filter(x => (x.dias_em_transito || 0) > 30).length,
     aguardando_postagem: aguardando,
     entregues_indice: entregues,
