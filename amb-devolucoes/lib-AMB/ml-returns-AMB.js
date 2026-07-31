@@ -1,5 +1,5 @@
 // ============================================================
-// amb-devolucoes/lib-AMB/ml-returns-AMB.js     (AMB Devol. b22)
+// amb-devolucoes/lib-AMB/ml-returns-AMB.js     (AMB Devol. b27)
 // ------------------------------------------------------------
 // INDICE DE DEVOLUCOES DO ML POR RASTREIO DOS CORREIOS.
 //
@@ -68,6 +68,7 @@ async function enriquecerPedido(orderId) {
         qtd: it.quantity || 1,
       })),
       nf_ml_numero: null, nf_ml_serie: null, nf_ml_chave: null,
+      pack_id: o.pack_id ? String(o.pack_id) : null,
     };
 
     // NF DA VENDA direto do ML (invoice_data do envio) - a fonte da
@@ -81,6 +82,14 @@ async function enriquecerPedido(orderId) {
           info.nf_ml_chave = ch;
           info.nf_ml_numero = ch.slice(25, 34).replace(/^0+/, '');
           info.nf_ml_serie = ch.slice(22, 25).replace(/^0+/, '') || '1';
+        }
+        // fallback: alguns retornos trazem o numero sem a chave
+        if (!info.nf_ml_numero && rN.ok && rN.data) {
+          const inv = rN.data.invoice_number || rN.data.number || null;
+          if (inv) {
+            info.nf_ml_numero = String(inv).replace(/^0+/, '');
+            info.nf_ml_serie = String(rN.data.invoice_series || rN.data.serie || '').replace(/^0+/, '') || null;
+          }
         }
       } catch (e) { /* segue sem NF */ }
     }
