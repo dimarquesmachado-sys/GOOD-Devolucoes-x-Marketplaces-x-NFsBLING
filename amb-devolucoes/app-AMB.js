@@ -72,7 +72,7 @@ const impressao = require('./lib-AMB/impressao-AMB');
 const emailAMB = require('./lib-AMB/email-AMB');
 const nfEntrada = require('./lib-AMB/nf-entrada-AMB');
 
-const VERSAO = 'AMB Devolucoes b17';
+const VERSAO = 'AMB Devolucoes b18';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -826,8 +826,18 @@ router.get('/api/espreita', auth.requerLogin, async (req, res) => {
     // b17 - cliente e NF DA VENDA vem do indice de nomes (numeroLoja
     // do Bling = numero do pedido no marketplace, pros 3 canais)
     const venda = nfNomes.acharPorPedido(x.pedido);
+    // b18 - link direto pro marketplace, pedido do Diego no painel
+    let link = null;
+    if (x.marketplace === 'ml' && x.pedido) {
+      link = `https://www.mercadolivre.com.br/vendas/${x.pedido}/detalhe`;
+    } else if (x.marketplace === 'shopee') {
+      link = 'https://seller.shopee.com.br/portal/sale/return';
+    } else if (x.marketplace === 'magalu') {
+      link = 'https://seller.magaluentregas.com.br/';
+    }
     return {
       ...x,
+      link_marketplace: link,
       cliente: (venda && venda.nome) || null,
       nf_venda: (venda && venda.numero) || null,
       comentario: n && n.comentario, ticket: n && n.ticket,
