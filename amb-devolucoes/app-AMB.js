@@ -1,9 +1,13 @@
 // ============================================================
-// amb-devolucoes/app-AMB.js                    (AMB Devol. b7)
+// amb-devolucoes/app-AMB.js                    (AMB Devol. b8)
 // ------------------------------------------------------------
 // Router Express do Devolucoes da AMBTotal.
 //
-// b6 traz LOGIN e TRIAGEM: o galpao passa a ter como entrar e o
+// b8 traz A TELA. Ate agora tudo era API: so funcionava por URL
+// com a chave de admin. Agora o galpao abre /amb/ no celular,
+// loga e bipa. Ver public-AMB/index-AMB.html.
+//
+// b6 trouxe LOGIN e TRIAGEM: o galpao passa a ter como entrar e o
 // que for bipado passa a ser GRAVADO no Supabase (tabelas _amb).
 // O cookie de sessao e "sessao_amb", isolado do da GOOD, que
 // roda no mesmo dominio — ver lib-AMB/auth-AMB.js.
@@ -37,6 +41,7 @@
 'use strict';
 
 const express = require('express');
+const path = require('path');
 const crypto = require('crypto');
 const cfg = require('./config-AMB');
 const bling = require('./lib-AMB/bling-AMB');
@@ -46,8 +51,9 @@ const nfNomes = require('./lib-AMB/nf-nomes-AMB');
 const tokens = require('./lib-AMB/render-tokens-AMB');
 const auth = require('./lib-AMB/auth-AMB');
 const db = require('./lib-AMB/supabase-AMB');
+const mkt = require('./lib-AMB/marketplace-AMB');
 
-const VERSAO = 'AMB Devolucoes b7';
+const VERSAO = 'AMB Devolucoes b8';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -470,6 +476,24 @@ router.get('/identificar', admin, async (req, res) => {
   });
 });
 
+// ── A TELA DO GALPAO ─────────────────────────────────────────
+// O arquivo se chama index-AMB.html (e nao index.html) porque no
+// mesmo repo ja existe o index.html da GOOD, e os dois se
+// confundiam na pasta de Downloads. Como o nome nao e index, o
+// express.static nao serve sozinho na raiz — por isso a rota
+// explicita abaixo.
+router.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public-AMB', 'index-AMB.html'));
+});
+
+router.use(express.static(path.join(__dirname, 'public-AMB'), {
+  setHeaders: (res, caminho) => {
+    // HTML sempre revalida: o celular do estoquista segurava
+    // versao velha em cache e ficava sem as correcoes.
+    if (caminho.endsWith('.html')) res.setHeader('Cache-Control', 'no-cache');
+  },
+}));
+
 // ── LOGIN DO GALPAO ──────────────────────────────────────────
 // Estas rotas usam COOKIE, nao a ADMIN_KEY: quem usa e o
 // estoquista no celular, que nao tem (nem deve ter) a chave.
@@ -537,6 +561,10 @@ router.get('/api/triagem/identificar', auth.requerLogin, async (req, res) => {
         pagina: porNome.pagina,
         tem_mais: porNome.tem_mais,
         mesmo_cliente_repetido: porNome.muitos_iguais || false,
+        busca_generica: porNome.generica || false,
+        aviso_generico: porNome.generica
+          ? 'muitos resultados - digite o nome COMPLETO do remetente que esta na etiqueta'
+          : null,
       };
     }
   }
@@ -553,10 +581,17 @@ router.get('/api/triagem/identificar', auth.requerLogin, async (req, res) => {
     db.recadoDe(chaves.orderId || chaves.tracking),
   ]);
 
+  // Origem da venda descoberta sozinha, sem o estoquista escolher.
+  const origem = achado
+    ? mkt.detectar(null, { temClaimML: true, tracking: achado.tracking })
+    : { marketplace: 'desconhecido', confianca: 'nenhuma' };
+
   res.json({
     ok: true,
     encontrado: !!(achado || candidatos),
     via,
+    marketplace: origem.marketplace,
+    marketplace_nome: mkt.nomeBonito(origem.marketplace),
     devolucao: achado,
     candidatos,
     ...extras,
@@ -577,6 +612,38 @@ router.post('/api/triagem/registrar', auth.requerLogin, async (req, res) => {
   const r = await db.registrarTriagem({ ...d, funcionario: req.usuario });
   if (!r.ok) return res.status(200).json({ ok: false, erro: r.erro });
   res.json({ ok: true, registro: r.registro });
+});
+
+/** Itens de uma NF, para o estoquista logado desempatar. */
+router.get('/api/nf/itens', auth.requerLogin, async (req, res) => {
+  const id = req.query.id;
+  if (!id) return res.status(400).json({ ok: false, erro: 'falta o id' });
+  const r = await bling.buscarNFePorId(String(id));
+  if (!r.ok) return res.json({ ok: false, erro: r.error });
+  const nfe = r.nfe || {};
+  const origem = mkt.detectar(nfe.numeroPedidoLoja, {});
+  res.json({
+    ok: true,
+    nf: {
+      id: String(nfe.id || id),
+      numero: nfe.numero || null,
+      serie: nfe.serie || null,
+      chave: nfe.chaveAcesso || nfe.chave || null,
+      data_emissao: nfe.dataEmissao || null,
+      valor: nfe.valorNota != null ? nfe.valorNota : null,
+      cliente: (nfe.contato && nfe.contato.nome) || null,
+      numero_pedido_loja: nfe.numeroPedidoLoja || null,
+    },
+    marketplace: origem.marketplace,
+    marketplace_nome: mkt.nomeBonito(origem.marketplace),
+    marketplace_confianca: origem.confianca,
+    itens: (nfe.itens || []).map(i => ({
+      sku: i.codigo || null,
+      descricao: i.descricao || null,
+      quantidade: i.quantidade != null ? i.quantidade : null,
+      valor_unit: i.valor != null ? i.valor : null,
+    })),
+  });
 });
 
 /** Ultimas triagens. */
@@ -620,7 +687,7 @@ router.use((req, res) => {
       '/amb/ml/indice', '/amb/ml/indice/construir', '/amb/ml/rastreio', '/amb/ml/espreita',
       '/amb/identificar', '/amb/nf/nome', '/amb/nf/itens', '/amb/nf/indice', '/amb/nf/indice/construir',
       '/amb/api/auth/login', '/amb/api/auth/me', '/amb/api/triagem/identificar', '/amb/api/triagem/registrar',
-      '/amb/auth/diag', '/amb/db/teste',
+      '/amb/auth/diag', '/amb/db/teste', '/amb/api/nf/itens', '/amb/api/triagem/recentes',
       '/amb/ml/teste', '/amb/ml/eu', '/amb/bling/teste', '/amb/bling/produto',
     ],
   });
