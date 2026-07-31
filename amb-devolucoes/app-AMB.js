@@ -72,7 +72,7 @@ const impressao = require('./lib-AMB/impressao-AMB');
 const emailAMB = require('./lib-AMB/email-AMB');
 const nfEntrada = require('./lib-AMB/nf-entrada-AMB');
 
-const VERSAO = 'AMB Devolucoes b16';
+const VERSAO = 'AMB Devolucoes b17';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -823,8 +823,13 @@ router.get('/api/espreita', auth.requerLogin, async (req, res) => {
   const enriquecer = (lista) => (lista || []).map(x => {
     const n = mapa[x.tracking] || mapa[x.pedido] || null;
     const nf = nfEntrada.jaEmitida({ pedido: x.pedido });
+    // b17 - cliente e NF DA VENDA vem do indice de nomes (numeroLoja
+    // do Bling = numero do pedido no marketplace, pros 3 canais)
+    const venda = nfNomes.acharPorPedido(x.pedido);
     return {
       ...x,
+      cliente: (venda && venda.nome) || null,
+      nf_venda: (venda && venda.numero) || null,
       comentario: n && n.comentario, ticket: n && n.ticket,
       baixado: !!(n && n.baixado),
       nf_devolucao_emitida: nf.emitida === true ? (nf.nf && nf.nf.numero) || true : false,
