@@ -1,5 +1,5 @@
 // ============================================================
-// amb-devolucoes/lib-AMB/shopee-AMB.js         (AMB Devol. b11)
+// amb-devolucoes/lib-AMB/shopee-AMB.js         (AMB Devol. b17)
 // ------------------------------------------------------------
 // Devolucoes da SHOPEE via o proxy interno do shopee-nf-sync —
 // la vivem os tokens saudaveis das lojas; aqui so consultamos.
@@ -104,6 +104,11 @@ async function resumoEspreita() {
     const st = String(d.status || '');
     const lst = String(d.logistics_status || d.logistic_status || '');
     if (FIM.test(st) || /DELIVERY_DONE/i.test(lst)) { encerradas++; continue; }
+    // b17 - o proxy ja entrega motivo e itens; traduzimos o motivo
+    // pra linguagem de galpao e passamos os itens adiante.
+    const MOTIVO = { CHANGE_MIND: 'arrependimento', NOT_RECEIPT: 'nao recebeu',
+      DAMAGED: 'chegou danificado', DEFECTIVE: 'defeito', WRONG_ITEM: 'item errado',
+      MISSING_PART: 'incompleto' };
     emTransito.push({
       marketplace: 'shopee',
       pedido: d.order_sn || null,
@@ -111,6 +116,8 @@ async function resumoEspreita() {
       return_sn: d.return_sn || null,
       status: [st, lst].filter(Boolean).join(' / ') || null,
       dias_em_transito: dias(d.create_time || d.data || d.created_at),
+      motivo_curto: MOTIVO[String(d.reason || '').toUpperCase()] || d.reason || null,
+      itens: (d.itens || []).slice(0, 3).map(i => ({ titulo: i.nome || null, sku: i.sku || null, qtd: i.qtd || 1 })),
     });
   }
   emTransito.sort((x, y) => (y.dias_em_transito || 0) - (x.dias_em_transito || 0));
