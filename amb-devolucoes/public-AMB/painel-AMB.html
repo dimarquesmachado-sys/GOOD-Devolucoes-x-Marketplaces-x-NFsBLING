@@ -8,7 +8,7 @@
 <link rel="icon" type="image/png" href="icone-AMB.png">
 <!--
   =========================================================
-  amb-devolucoes/public-AMB/painel-AMB.html  (AMB Devol. b17)
+  amb-devolucoes/public-AMB/painel-AMB.html  (AMB Devol. b18)
   ---------------------------------------------------------
   PAINEL em PAGINA UNICA, no formato da GOOD (pedido do Diego
   comparando os prints): nada de abas — secoes empilhadas,
@@ -54,13 +54,14 @@
   .banner h1 { margin:0; font-size:21px; }
   .banner .sub { font-size:13px; opacity:.92; margin-top:3px; }
   .banner .ver { font-size:11.5px; opacity:.85; margin-top:6px; }
-  .chips { position:absolute; top:12px; right:12px; display:flex; gap:8px; align-items:center; }
+  .chips { display:flex; justify-content:flex-end; gap:8px; align-items:center;
+           flex-wrap:wrap; margin:-4px 0 8px; }
   .quem { font-size:12.5px; color:#fff; opacity:.95; }
   .chips a, .chips button { background:rgba(255,255,255,.18); border:none; color:#fff;
     border-radius:16px; padding:6px 13px; font-size:12.5px; font-weight:700;
     cursor:pointer; text-decoration:none; }
   .chips .forte { background:var(--laranja); box-shadow:0 3px 10px rgba(0,0,0,.25); }
-  @media (max-width:760px) { .banner { margin:10px 10px 0; padding-top:46px; } }
+  @media (max-width:760px) { .banner { margin:10px 10px 0; } }
 
   .area { max-width:1100px; margin:0 auto; padding:14px 16px 50px; }
   .secao { background:var(--painel); border:1px solid var(--borda); border-radius:14px;
@@ -136,7 +137,7 @@
   </div>
   <h1>&#128081; Painel de Devolucoes &mdash; AMBTotal</h1>
   <div class="sub">Triagens + A espreita + Defeitos + Recados</div>
-  <div class="ver">painel <b>b17</b> &middot; <span id="versaoServidor">servidor ...</span></div>
+  <div class="ver">painel <b>b18</b> &middot; <span id="versaoServidor">servidor ...</span></div>
 </div>
 
 <div class="area">
@@ -285,8 +286,16 @@ function cardEspreita(x, entregue) {
   });
   if (x.comentario) h += '<div class="meta">&#128221; ' + esc(x.comentario) + '</div>';
 
+  if (x.return_sn && x.return_sn !== x.tracking) {
+    h += '<div class="meta">solicitacao <span class="mono">' + esc(x.return_sn) + '</span></div>';
+  }
+
   const chave = esc(x.tracking || x.pedido);
   h += '<div class="acoes">' +
+    (x.link_marketplace
+      ? '<a class="btn cinza" style="text-decoration:none" target="_blank" rel="noopener" href="' +
+        esc(x.link_marketplace) + '">&#128279; abrir</a>'
+      : '') +
     '<button class="btn verde" onclick="baixar(this,\'' + chave + '\')">&#10003; achei / ja processado</button>' +
     '<button class="btn roxo" onclick="observar(this,\'' + chave + '\',\'' + esc(x.marketplace) + '\')">&#128172; observacao</button>' +
     '<button class="btn verm" onclick="avisarEstoquista(this,\'' + chave + '\')">&#128276; aviso estoquista</button>' +
