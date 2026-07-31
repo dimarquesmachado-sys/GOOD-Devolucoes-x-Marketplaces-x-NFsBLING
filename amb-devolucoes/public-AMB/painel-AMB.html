@@ -8,7 +8,7 @@
 <link rel="icon" type="image/png" href="icone-AMB.png">
 <!--
   =========================================================
-  amb-devolucoes/public-AMB/painel-AMB.html  (AMB Devol. b27)
+  amb-devolucoes/public-AMB/painel-AMB.html  (AMB Devol. b28)
   ---------------------------------------------------------
   PAINEL em PAGINA UNICA, no formato da GOOD (pedido do Diego
   comparando os prints): nada de abas — secoes empilhadas,
@@ -149,7 +149,7 @@
   <div class="miolo">
   <h1>&#128081; Painel de Devolucoes &mdash; AMBTotal</h1>
   <div class="sub">Triagens + A espreita + Defeitos + Recados</div>
-  <div class="ver">painel <b>b27</b> &middot; <span id="versaoServidor">servidor ...</span></div>
+  <div class="ver">painel <b>b28</b> &middot; <span id="versaoServidor">servidor ...</span></div>
   </div>
 </div>
 
@@ -518,7 +518,8 @@ function cardEspreita(x, entregue) {
     '<b>' + esc(x.pedido || '?') + '</b>' +
     (x.tracking ? '<span class="mono">' + esc(x.tracking) + '</span>' : '');
   if (entregue) {
-    h += '<span class="selo velho">entregue ha ' + (x.dias_desde == null ? '?' : x.dias_desde) + ' dia(s)</span>';
+    var _tilde = (x.marketplace === 'ml' && x.data_precisa === false) ? '~' : '';
+    h += '<span class="selo velho" title="' + (_tilde ? 'estimado - a data real chega em minutos' : 'data real de entrega') + '">entregue ha ' + _tilde + (x.dias_desde == null ? '?' : x.dias_desde) + ' dia(s)</span>';
   } else {
     h += velho
       ? '<span class="selo velho">' + x.dias_em_transito + ' dias &middot; candidata a extravio</span>'
