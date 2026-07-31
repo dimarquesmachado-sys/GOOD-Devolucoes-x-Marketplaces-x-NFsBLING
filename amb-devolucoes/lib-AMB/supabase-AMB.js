@@ -1,5 +1,5 @@
 // ============================================================
-// amb-devolucoes/lib-AMB/supabase-AMB.js       (AMB Devol. b19)
+// amb-devolucoes/lib-AMB/supabase-AMB.js       (AMB Devol. b20)
 // ------------------------------------------------------------
 // Acesso ao Supabase da AMBTotal.
 //
@@ -368,6 +368,17 @@ async function listarFila({ status, limite = 80 } = {}) {
   } catch (e) { return { ok: false, erro: e.message }; }
 }
 
+async function obterTriagem(id) {
+  const dbc = conectar();
+  if (!dbc) return { ok: false, erro: erroInicial };
+  try {
+    const r = await dbc.from(T.devolucoes).select('*').eq('id', id).limit(1);
+    if (r.error) return { ok: false, erro: r.error.message };
+    if (!r.data || !r.data.length) return { ok: false, erro: 'triagem nao encontrada' };
+    return { ok: true, registro: r.data[0] };
+  } catch (e) { return { ok: false, erro: e.message }; }
+}
+
 /** Atualiza campos de uma triagem (concluir, registrar NF gerada...). */
 async function atualizarTriagem(id, campos) {
   const dbc = conectar();
@@ -384,7 +395,7 @@ async function atualizarTriagem(id, campos) {
 module.exports = {
   conectar, testeDeVida,
   jaTriado, registrarTriagem, listarRecentes, recadoDe,
-  listarFila, atualizarTriagem,
+  listarFila, atualizarTriagem, obterTriagem,
   criarRecado, listarRecados, marcarCiente, resolverRecado,
   listarDefeitos, registrarPecaRetirada, defeitosDoSku,
   notaEspreita, notasEspreita,
