@@ -14,7 +14,7 @@
 <meta name="apple-mobile-web-app-title" content="Devolucoes AMB">
 <!--
   =========================================================
-  amb-devolucoes/public-AMB/index-AMB.html   (AMB Devol. b25)
+  amb-devolucoes/public-AMB/index-AMB.html   (AMB Devol. b26)
   ---------------------------------------------------------
   Tela de triagem do galpao da AMBTotal.
 
@@ -65,8 +65,8 @@
   /* b25 - banner em grade: miolo (titulo) na celula do centro,
      chips na celula da direita — o nome fica DEBAIXO do botao
      (pedido b19) e NADA empurra o titulo pra baixo (pedido b25). */
-  .banner .miolo { grid-column:2; }
-  .chips { grid-column:3; justify-self:end; align-self:start;
+  .banner .miolo { grid-column:2; grid-row:1; }
+  .chips { grid-column:3; grid-row:1; justify-self:end; align-self:start;
            display:flex; flex-direction:column; align-items:flex-end; gap:5px; }
   .chips .linha-botoes { display:flex; gap:8px; align-items:center; }
   .quem { font-size:12.5px; color:#fff; opacity:.95; }
@@ -196,7 +196,7 @@
     <div class="miolo">
   <h1>&#128230; AMBTotal Devolucoes</h1>
     <div class="sub">Identificar venda + NF-e + Triagem</div>
-    <div class="ver">tela <b>b25</b> &middot; <span id="versaoServidor">servidor ...</span></div>
+    <div class="ver">tela <b>b26</b> &middot; <span id="versaoServidor">servidor ...</span></div>
   </div>
   </div>
 
