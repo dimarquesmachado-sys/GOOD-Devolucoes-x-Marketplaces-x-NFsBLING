@@ -14,7 +14,7 @@
 <meta name="apple-mobile-web-app-title" content="Devolucoes AMB">
 <!--
   =========================================================
-  amb-devolucoes/public-AMB/index-AMB.html   (AMB Devol. b11)
+  amb-devolucoes/public-AMB/index-AMB.html   (AMB Devol. b15)
   ---------------------------------------------------------
   Tela de triagem do galpao da AMBTotal.
 
@@ -188,30 +188,40 @@
   <div class="topo">
     <img src="icone-AMB.png" alt="">
     <div class="titulo"><b>Devolucoes</b><span>AMBTotal</span></div>
-    <a href="/amb/painel" style="color:var(--apagado);font-size:13px;text-decoration:none;padding:6px">painel</a>
+    <a class="btn-topo" href="/amb/painel">Painel Admin</a>
     <span class="quem" id="quemSou"></span>
     <button class="sair" id="btnSair">sair</button>
   </div>
 
   <div class="area">
-    <div class="colunas">
-      <!-- BIPE -->
-      <div id="blocoBipe">
-        <input class="campo bipe" id="codigo" placeholder="bipe ou digite"
+    <!-- BUSCAR DEVOLUCAO -->
+    <div class="secao" id="blocoBipe">
+      <h3>&#128269; Buscar devolucao</h3>
+      <div class="linha-busca">
+        <input class="campo bipe" id="codigo" placeholder="bipe ou cole o codigo da etiqueta"
                autocapitalize="characters" autocorrect="off" autocomplete="off" enterkeyhint="search">
         <button class="btn" id="btnBuscar">Buscar</button>
-        <button class="btn roxo" id="btnCamera">Usar a camera</button>
-        <button class="btn cinza" id="btnOcr">Ler o NOME pela camera (OCR)</button>
-        <video id="camera" class="esconde" playsinline muted></video>
-        <div class="aviso">
-          Bipe a etiqueta, ou digite o <b>nome do remetente</b> quando a caixa
-          nao tiver codigo conhecido (TikTok, Amazon).
-        </div>
       </div>
-
-      <!-- RESULTADO -->
-      <div id="resultado"></div>
+      <div style="height:10px"></div>
+      <button class="btn roxo" id="btnCamera">&#128247; Bipar etiqueta com a camera</button>
+      <button class="btn cinza" id="btnOcr">&#128100; Ler o NOME do remetente pela camera (OCR)</button>
+      <video id="camera" class="esconde" playsinline muted></video>
+      <div class="dica">&#128161; Aceita: etiqueta <b>ML</b>, <b>Correios reverso</b> (AD/AP...BR),
+        <b>Shopee</b> (rastreio SPX, solicitacao ou pedido) ou o <b>NOME do remetente</b>
+        (ex: RENATONEVES &mdash; colado, como vem na etiqueta). TikTok e Amazon entram pelo nome.</div>
     </div>
+
+    <!-- ESTOQUE DE DEFEITOS -->
+    <div class="secao" style="border-left:4px solid var(--vermelho)">
+      <h3>&#128295; Estoque de defeitos</h3>
+      <div class="linha-busca">
+        <button class="btn cinza" style="flex:1" id="btnConsultarLocal">&#128205; Consultar localizacao</button>
+        <button class="btn verm" style="flex:1" id="btnLancarDefeito">&#10133; Lancar produto com defeito</button>
+      </div>
+    </div>
+
+    <!-- RESULTADO -->
+    <div id="resultado"></div>
   </div>
 </div>
 
@@ -548,6 +558,60 @@ function proxima() {
   $('codigo').focus();
 }
 
+/* ============ ESTOQUE DE DEFEITOS (na tela, como na GOOD) ==== */
+async function consultarLocal() {
+  const q = prompt('SKU, local ou nome do produto:');
+  if (q === null) return;
+  $('resultado').innerHTML = '<div class="card">procurando no estoque de defeitos...</div>';
+  try {
+    const r = await api('/api/defeitos' + (q ? '?q=' + encodeURIComponent(q) : ''));
+    if (!r.ok) { $('resultado').innerHTML = '<div class="alerta vermelho">' + esc(r.erro) + '</div>'; return; }
+    if (!r.grupos.length) {
+      $('resultado').innerHTML = '<div class="alerta azul"><b>Nada encontrado</b>' +
+        (q ? 'Nenhum defeito bate com "' + esc(q) + '".' : 'O estoque de defeitos esta vazio.') + '</div>';
+      return;
+    }
+    let h = '<div class="card"><h2>' + r.grupos.length + ' local(is) com defeito</h2></div>';
+    r.grupos.forEach(g => {
+      h += '<div class="cand"><div class="nome">&#128205; ' + esc(g.localizacao) +
+           ' &mdash; ' + g.qtd + ' un</div>' +
+           '<div class="meta"><b>' + esc(g.sku) + '</b>' +
+           (g.produto ? ' &middot; ' + esc(String(g.produto).slice(0, 55)) : '') +
+           (g.defeitos.length ? '<br>' + g.defeitos.map(d => '&bull; ' + esc(d)).join('<br>') : '') +
+           '</div></div>';
+    });
+    h += '<button class="btn cinza" onclick="limpar()">Limpar</button>';
+    $('resultado').innerHTML = h;
+  } catch (e) {
+    if (e.message !== 'sessao') $('resultado').innerHTML = '<div class="alerta vermelho">sem conexao.</div>';
+  }
+}
+
+async function lancarDefeitoTela() {
+  const sku = prompt('SKU do produto quebrado:');
+  if (!sku) return;
+  const localizacao = prompt('Onde vai ficar guardado? (ex: prateleira D3)');
+  if (!localizacao) return;
+  const quantidade = prompt('Quantas unidades?', '1');
+  const descricao = prompt('Qual o defeito?');
+  try {
+    const r = await api('/api/defeitos/lancar', { method: 'POST',
+      body: JSON.stringify({ sku, localizacao, quantidade, descricao }) });
+    if (!r.ok) { alert('Nao gravou: ' + r.erro); return; }
+    let msg = 'Defeito registrado em ' + localizacao + '.';
+    if (!r.sku_validado_no_bling) msg += '\nATENCAO: esse SKU nao existe no Bling - confira o codigo.';
+    alert(msg);
+    window._ultimoDefeito = { produto_sku: sku, problema_descricao: descricao, localizacao };
+    $('resultado').innerHTML =
+      '<div class="alerta azul"><b class="ok">&#10003; Defeito lancado</b>' + esc(sku) +
+      ' em ' + esc(localizacao) + '</div>' +
+      '<button class="btn roxo" onclick="imprimirEtiqueta()">&#127991; Imprimir etiqueta de defeito</button>' +
+      '<button class="btn cinza" onclick="limpar()">Limpar</button>';
+  } catch (e) {
+    if (e.message !== 'sessao') alert('Sem conexao - tente de novo.');
+  }
+}
+
 /* Etiqueta de defeito: enfileira; a Zebra imprime na estacao
    (o painel aberto num PC com QZ Tray). */
 async function imprimirEtiqueta() {
@@ -665,6 +729,8 @@ $('btnBuscar').onclick = () => buscar(1);
 $('codigo').onkeydown  = (e) => { if (e.key === 'Enter') buscar(1); };
 $('btnCamera').onclick = camera;
 $('btnOcr').onclick    = lerNomeOCR;
+$('btnConsultarLocal').onclick = consultarLocal;
+$('btnLancarDefeito').onclick  = lancarDefeitoTela;
 $('btnSair').onclick   = sair;
 
 /* Ao abrir: se ja houver sessao valida, entra direto. */
