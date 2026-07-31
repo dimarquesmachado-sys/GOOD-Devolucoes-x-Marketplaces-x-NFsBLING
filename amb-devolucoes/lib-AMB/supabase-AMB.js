@@ -1,5 +1,5 @@
 // ============================================================
-// amb-devolucoes/lib-AMB/supabase-AMB.js       (AMB Devol. b6)
+// amb-devolucoes/lib-AMB/supabase-AMB.js       (AMB Devol. b10)
 // ------------------------------------------------------------
 // Acesso ao Supabase da AMBTotal.
 //
@@ -163,9 +163,196 @@ async function recadoDe(identificador) {
   }
 }
 
+// ============================================================
+// RECADOS — aviso preso a um pedido/NF/rastreio
+// ------------------------------------------------------------
+// Regra de negocio da GOOD que vale aqui: recado sem ciencia
+// TRAVA a triagem. O estoquista precisa clicar "OK, ciente"
+// antes de poder aprovar ou reportar. E fica registrado QUEM
+// leu — pensando em mais de um estoquista no futuro.
+// ============================================================
+
+async function criarRecado({ identificador, texto, criadoPor }) {
+  const dbc = conectar();
+  if (!dbc) return { ok: false, erro: erroInicial };
+  try {
+    const r = await dbc.from(T.recados).insert([{
+      identificador: String(identificador).trim(),
+      texto: String(texto),
+      criado_por: criadoPor || null,
+    }]).select().limit(1);
+    if (r.error) return { ok: false, erro: r.error.message };
+    return { ok: true, recado: (r.data || [])[0] || null };
+  } catch (e) { return { ok: false, erro: e.message }; }
+}
+
+async function listarRecados({ resolvidos = false, limite = 100 } = {}) {
+  const dbc = conectar();
+  if (!dbc) return { ok: false, erro: erroInicial };
+  try {
+    const r = await dbc.from(T.recados)
+      .select('*')
+      .eq('resolvido', !!resolvidos)
+      .order('criado_em', { ascending: false })
+      .limit(Math.min(Number(limite) || 100, 300));
+    if (r.error) return { ok: false, erro: r.error.message };
+    return { ok: true, total: (r.data || []).length, recados: r.data || [] };
+  } catch (e) { return { ok: false, erro: e.message }; }
+}
+
+async function marcarCiente(id, quem) {
+  const dbc = conectar();
+  if (!dbc) return { ok: false, erro: erroInicial };
+  try {
+    const r = await dbc.from(T.recados)
+      .update({ ciente_por: quem, ciente_em: new Date().toISOString() })
+      .eq('id', id).select().limit(1);
+    if (r.error) return { ok: false, erro: r.error.message };
+    return { ok: true, recado: (r.data || [])[0] || null };
+  } catch (e) { return { ok: false, erro: e.message }; }
+}
+
+async function resolverRecado(id) {
+  const dbc = conectar();
+  if (!dbc) return { ok: false, erro: erroInicial };
+  try {
+    const r = await dbc.from(T.recados).update({ resolvido: true }).eq('id', id);
+    if (r.error) return { ok: false, erro: r.error.message };
+    return { ok: true };
+  } catch (e) { return { ok: false, erro: e.message }; }
+}
+
+// ============================================================
+// DEFEITOS — o estoque quebrado, agrupado por onde esta guardado
+// ------------------------------------------------------------
+// Existem DOIS caminhos, e nao se misturam (regra do Diego na GOOD):
+//  1) defeito vindo de DEVOLUCAO  -> tipo 'devolucao', status
+//     'problema'. So conta como defeito de verdade depois que a NF
+//     e emitida e o item vai pro deposito DEFEITO. Antes disso e
+//     so "aguardando NF".
+//  2) defeito JA EM ESTOQUE        -> tipo 'defeito_estoque', entra
+//     na consulta na hora, sem passar pela fila fiscal.
+// ============================================================
+
+async function listarDefeitos({ busca } = {}) {
+  const dbc = conectar();
+  if (!dbc) return { ok: false, erro: erroInicial };
+  try {
+    let q = dbc.from(T.devolucoes)
+      .select('id, produto_sku, produto_titulo, localizacao, defeito_qtd, problema_descricao, tipo, status, funcionario, nf_numero, criado_em')
+      .or('tipo.eq.defeito_estoque,status.eq.problema')
+      .order('criado_em', { ascending: false })
+      .limit(400);
+    const r = await q;
+    if (r.error) return { ok: false, erro: r.error.message };
+
+    let linhas = r.data || [];
+    if (busca) {
+      const b = String(busca).toLowerCase();
+      linhas = linhas.filter(x =>
+        String(x.produto_sku || '').toLowerCase().includes(b) ||
+        String(x.localizacao || '').toLowerCase().includes(b) ||
+        String(x.produto_titulo || '').toLowerCase().includes(b) ||
+        String(x.nf_numero || '').toLowerCase().includes(b));
+    }
+
+    // Agrupa por local + SKU, somando as quantidades — e assim que
+    // o estoquista procura: "o que tem na prateleira X".
+    const grupos = {};
+    let aguardandoNF = 0;
+    for (const x of linhas) {
+      const contaComoDefeito = x.tipo === 'defeito_estoque' || x.status === 'concluido';
+      if (x.status === 'problema' && x.tipo !== 'defeito_estoque') aguardandoNF++;
+      const local = x.localizacao || '(sem local)';
+      const chave = local + '||' + (x.produto_sku || '?');
+      if (!grupos[chave]) {
+        grupos[chave] = {
+          localizacao: local, sku: x.produto_sku || null,
+          produto: x.produto_titulo || null, qtd: 0,
+          origem: x.tipo === 'defeito_estoque' ? 'ESTOQUE' : 'DEVOLUCAO',
+          defeitos: [], confirmado: contaComoDefeito,
+        };
+      }
+      grupos[chave].qtd += Number(x.defeito_qtd || 1);
+      if (x.problema_descricao && grupos[chave].defeitos.length < 6) {
+        grupos[chave].defeitos.push(x.problema_descricao);
+      }
+    }
+    const lista = Object.values(grupos).sort((a, b) =>
+      String(a.localizacao).localeCompare(String(b.localizacao)));
+
+    return { ok: true, total_linhas: linhas.length, aguardando_nf: aguardandoNF, grupos: lista };
+  } catch (e) { return { ok: false, erro: e.message }; }
+}
+
+/** Peca retirada de uma unidade defeituosa para consertar outra. */
+async function registrarPecaRetirada({ defeitoId, peca, usadaEm, quem }) {
+  const dbc = conectar();
+  if (!dbc) return { ok: false, erro: erroInicial };
+  try {
+    const r = await dbc.from(T.pecasRetiradas).insert([{
+      defeito_id: defeitoId || null,
+      peca: peca || null,
+      usada_em: usadaEm || null,
+      quem: quem || null,
+    }]).select().limit(1);
+    if (r.error) return { ok: false, erro: r.error.message };
+    return { ok: true, registro: (r.data || [])[0] || null };
+  } catch (e) { return { ok: false, erro: e.message }; }
+}
+
+/** Ha o MESMO SKU guardado em defeito? Base da canibalizacao. */
+async function defeitosDoSku(sku) {
+  const dbc = conectar();
+  if (!dbc || !sku) return { ok: true, unidades: [] };
+  try {
+    const r = await dbc.from(T.devolucoes)
+      .select('id, produto_sku, localizacao, defeito_qtd, problema_descricao, criado_em')
+      .eq('produto_sku', String(sku))
+      .or('tipo.eq.defeito_estoque,status.eq.problema')
+      .order('criado_em', { ascending: false })
+      .limit(20);
+    if (r.error) return { ok: false, erro: r.error.message };
+    return { ok: true, unidades: r.data || [] };
+  } catch (e) { return { ok: false, erro: e.message }; }
+}
+
+// ============================================================
+// ESPREITA — anotacoes e baixa manual das devolucoes a caminho
+// ============================================================
+
+async function notaEspreita({ chave, marketplace, comentario, ticket, baixado }) {
+  const dbc = conectar();
+  if (!dbc) return { ok: false, erro: erroInicial };
+  try {
+    const linha = { chave: String(chave), marketplace: marketplace || null, atualizado_em: new Date().toISOString() };
+    if (comentario !== undefined) linha.comentario = comentario;
+    if (ticket !== undefined) linha.ticket = ticket;
+    if (baixado !== undefined) linha.baixado = !!baixado;
+    const r = await dbc.from(T.espreitaNotas).upsert([linha], { onConflict: 'chave' }).select().limit(1);
+    if (r.error) return { ok: false, erro: r.error.message };
+    return { ok: true, nota: (r.data || [])[0] || null };
+  } catch (e) { return { ok: false, erro: e.message }; }
+}
+
+async function notasEspreita() {
+  const dbc = conectar();
+  if (!dbc) return { ok: true, notas: {} };
+  try {
+    const r = await dbc.from(T.espreitaNotas).select('*').limit(1000);
+    if (r.error) return { ok: false, erro: r.error.message };
+    const mapa = {};
+    for (const n of (r.data || [])) mapa[n.chave] = n;
+    return { ok: true, notas: mapa };
+  } catch (e) { return { ok: false, erro: e.message }; }
+}
+
 module.exports = {
   conectar, testeDeVida,
   jaTriado, registrarTriagem, listarRecentes, recadoDe,
+  criarRecado, listarRecados, marcarCiente, resolverRecado,
+  listarDefeitos, registrarPecaRetirada, defeitosDoSku,
+  notaEspreita, notasEspreita,
   ligado: () => !!conectar(),
   tabelas: T,
 };
