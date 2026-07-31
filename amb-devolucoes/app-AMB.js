@@ -72,7 +72,7 @@ const impressao = require('./lib-AMB/impressao-AMB');
 const emailAMB = require('./lib-AMB/email-AMB');
 const nfEntrada = require('./lib-AMB/nf-entrada-AMB');
 
-const VERSAO = 'AMB Devolucoes b29';
+const VERSAO = 'AMB Devolucoes b30';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -933,7 +933,8 @@ router.get('/debug/espreita', admin, async (req, res) => {
   res.json({ ok: true, versao: VERSAO,
     indice_ml: mlReturns.statusIndice(),
     indice_nomes: nfNomes.statusIndice(),
-    primeiro_item_cru: um });
+    primeiro_item_cru: um,
+    entregues_amostra: (base.entregues || []).slice(0, 2) });
 });
 
 // ── A ESPREITA (o que esta vindo pro galpao) ─────────────────
