@@ -72,7 +72,7 @@ const impressao = require('./lib-AMB/impressao-AMB');
 const emailAMB = require('./lib-AMB/email-AMB');
 const nfEntrada = require('./lib-AMB/nf-entrada-AMB');
 
-const VERSAO = 'AMB Devolucoes b30';
+const VERSAO = 'AMB Devolucoes b31';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -996,7 +996,9 @@ router.get('/api/espreita', auth.requerLogin, async (req, res) => {
     ...enriquecer(baseML.em_transito),
     ...enriquecer(baseShopee.em_transito),
     ...enriquecer(baseMagalu.em_transito),
-  ].sort((a, b) => (b.dias_em_transito || 0) - (a.dias_em_transito || 0));
+  ].sort((a, b) => (a.dias_em_transito ?? 9999) - (b.dias_em_transito ?? 9999));
+  // b31 - pedido do Diego: TUDO junto (ML + Shopee + Magalu misturados)
+  // e sempre o MAIS RECENTE em cima, o mais antigo embaixo.
 
   // b19 - pedidos ML que ainda estao sem itens/apelido: dispara o
   // enriquecimento agora, em background; a proxima atualizacao da
