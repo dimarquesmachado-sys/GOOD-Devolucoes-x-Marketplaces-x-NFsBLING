@@ -4,17 +4,17 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
 <meta name="theme-color" content="#1a0b2e">
-<title>AMBTotal - Devolucoes</title>
+<title>AMBTotal - Devoluções</title>
 
 <link rel="icon" type="image/png" href="icone-AMB.png">
 <link rel="apple-touch-icon" href="icone-AMB.png">
 <link rel="manifest" href="manifest-AMB.json">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Devolucoes AMB">
+<meta name="apple-mobile-web-app-title" content="Devoluções AMB">
 <!--
   =========================================================
-  amb-devolucoes/public-AMB/index-AMB.html   (AMB Devol. b32)
+  amb-devolucoes/public-AMB/index-AMB.html   (AMB Devol. b33)
   ---------------------------------------------------------
   Tela de triagem do galpao da AMBTotal.
 
@@ -171,8 +171,8 @@
 <!-- ===================== LOGIN ===================== -->
 <div id="telaLogin">
   <div class="login-caixa">
-    <img class="logo" src="logo-AMB.png" alt="AMBTotal Devolucoes">
-    <h1>Devolucoes</h1>
+    <img class="logo" src="logo-AMB.png" alt="AMBTotal Devoluções">
+    <h1>Devoluções</h1>
     <div class="sub">triagem do galpao &middot; AMBTotal</div>
     <input class="campo" id="usuario" placeholder="usuario"
            autocapitalize="off" autocorrect="off" autocomplete="username">
@@ -189,14 +189,14 @@
     <div class="chips">
       <div class="linha-botoes">
         <a class="btn-topo" href="/amb/painel">&#128081; Painel Admin</a>
-        <button class="sair" id="btnSair">sair</button>
+        <button class="sair" id="btnSair">Sair</button>
       </div>
       <span class="quem" id="quemSou"></span>
     </div>
     <div class="miolo">
-  <h1>&#128230; AMBTotal Devolucoes</h1>
+  <h1>&#128230; AMBTotal Devoluções</h1>
     <div class="sub">Identificar venda + NF-e + Triagem</div>
-    <div class="ver">tela <b>b32</b> &middot; <span id="versaoServidor">servidor ...</span></div>
+    <div class="ver">tela <b>b33</b> &middot; <span id="versaoServidor">servidor ...</span></div>
   </div>
   </div>
 
@@ -285,7 +285,7 @@ async function entrar() {
       body: JSON.stringify({ usuario: u, senha: s }),
     }).then(x => x.json());
     if (!r.ok) {
-      $('erroLogin').textContent = r.erro || 'nao consegui entrar';
+      $('erroLogin').textContent = r.erro || 'não consegui entrar';
       $('erroLogin').classList.remove('esconde');
       return;
     }
@@ -354,7 +354,7 @@ function desenhar(r) {
   }
 
   if (!r.encontrado) {
-    h += '<div class="alerta azul"><b>Nao identifiquei esta caixa</b>' +
+    h += '<div class="alerta azul"><b>Não identifiquei esta caixa</b>' +
          'Ja tentei: ' + (r.tentativas || []).map(t => esc(t.via)).join(', ') + '.<br><br>' +
          'Se a etiqueta for de TikTok ou Amazon, digite o <b>nome do remetente</b> ' +
          'exatamente como esta impresso.</div>' +
@@ -371,7 +371,7 @@ function desenhar(r) {
          ';background:rgba(255,255,255,.05)"><b>' + esc(m.titulo) + '</b>' + esc(m.detalhe || '') +
          ((m.pontos_do_mediador || []).length
            ? '<br><br>' + m.pontos_do_mediador.map(x => '&bull; ' + esc(x)).join('<br>') : '') +
-         (m.sem_custo_pra_voce ? '<br><br>&#128176; O ML disse que <b>voce nao paga nada</b> neste caso.' : '') +
+         (m.sem_custo_pra_voce ? '<br><br>&#128176; O ML disse que <b>você não paga nada</b> neste caso.' : '') +
          (m.pacote_consolidado ? '<br>&#128230; Pacote CONSOLIDADO: pode ter mais de uma devolucao dentro.' : '') +
          '</div>';
   }
@@ -379,7 +379,7 @@ function desenhar(r) {
     h += '<div class="alerta azul"><b>&#9989; NF de devolucao JA EMITIDA</b>' +
          (r.nf_devolucao.nf ? 'Nota ' + esc(r.nf_devolucao.nf.numero) + ' de ' +
            esc(String(r.nf_devolucao.nf.dataEmissao || '').slice(0, 10)) : '') +
-         ' &mdash; nao precisa emitir de novo.</div>';
+         ' &mdash; não precisa emitir de novo.</div>';
   }
   if (r.reclamacao) {
     h += '<a class="btn roxo" style="display:block;text-align:center;text-decoration:none" ' +
@@ -414,7 +414,7 @@ function desenhar(r) {
          linha('Rastreio', d.tracking) +
          linha('Status do envio', d.status_devolucao) +
          linha('Dinheiro', d.status_money === 'refunded' ? 'ja estornado ao cliente'
-               : (d.status_money === 'retained' ? 'retido com voce' : d.status_money)) +
+               : (d.status_money === 'retained' ? 'retido com você' : d.status_money)) +
          '</div>';
     h += botoesConfirmar({
       marketplace: r.marketplace, order_id: d.order_id, tracking: d.tracking,
@@ -521,13 +521,13 @@ async function gravar(status) {
     d.problema_descricao = desc;
     // Localizacao e quantidade sao o que permite ACHAR a peca
     // depois no galpao — sem isso o defeito vira um numero solto.
-    d.localizacao = prompt('Onde voce vai guardar? (ex: prateleira D3)') || null;
+    d.localizacao = prompt('Onde você vai guardar? (ex: prateleira D3)') || null;
     d.defeito_qtd = Number(prompt('Quantas unidades com defeito?', '1') || 1);
   }
   try {
     const r = await api('/api/triagem/registrar', { method: 'POST', body: JSON.stringify(d) });
     if (!r.ok) {
-      $('resultado').innerHTML = '<div class="alerta vermelho"><b>Nao gravou</b>' +
+      $('resultado').innerHTML = '<div class="alerta vermelho"><b>Não gravou</b>' +
         esc(r.erro) + '</div>' + botoesConfirmar(d);
       return;
     }
@@ -604,9 +604,9 @@ async function lancarDefeitoTela() {
   try {
     const r = await api('/api/defeitos/lancar', { method: 'POST',
       body: JSON.stringify({ sku, localizacao, quantidade, descricao }) });
-    if (!r.ok) { alert('Nao gravou: ' + r.erro); return; }
+    if (!r.ok) { alert('Não gravou: ' + r.erro); return; }
     let msg = 'Defeito registrado em ' + localizacao + '.';
-    if (!r.sku_validado_no_bling) msg += '\nATENCAO: esse SKU nao existe no Bling - confira o codigo.';
+    if (!r.sku_validado_no_bling) msg += '\nATENÇÃO: esse SKU não existe no Bling — confira o código.';
     alert(msg);
     window._ultimoDefeito = { produto_sku: sku, problema_descricao: descricao, localizacao };
     $('resultado').innerHTML =
@@ -716,7 +716,7 @@ async function camera() {
     };
     loop();
   } catch (e) {
-    alert('Nao consegui abrir a camera: ' + e.message);
+    alert('Não consegui abrir a câmera: ' + e.message);
   }
 }
 function pararCamera() {
