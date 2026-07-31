@@ -8,7 +8,7 @@
 <link rel="icon" type="image/png" href="icone-AMB.png">
 <!--
   =========================================================
-  amb-devolucoes/public-AMB/painel-AMB.html  (AMB Devol. b29)
+  amb-devolucoes/public-AMB/painel-AMB.html  (AMB Devol. b30)
   ---------------------------------------------------------
   PAINEL em PAGINA UNICA, no formato da GOOD (pedido do Diego
   comparando os prints): nada de abas — secoes empilhadas,
@@ -149,7 +149,7 @@
   <div class="miolo">
   <h1>&#128081; Painel de Devolucoes &mdash; AMBTotal</h1>
   <div class="sub">Triagens + A espreita + Defeitos + Recados</div>
-  <div class="ver">painel <b>b29</b> &middot; <span id="versaoServidor">servidor ...</span></div>
+  <div class="ver">painel <b>b30</b> &middot; <span id="versaoServidor">servidor ...</span></div>
   </div>
 </div>
 
@@ -519,7 +519,12 @@ function cardEspreita(x, entregue) {
     (x.tracking ? '<span class="mono">' + esc(x.tracking) + '</span>' : '');
   if (entregue) {
     var _tilde = (x.marketplace === 'ml' && x.data_precisa === false) ? '~' : '';
-    h += '<span class="selo velho" title="' + (_tilde ? 'estimado - a data real chega em minutos' : 'data real de entrega') + '">entregue ha ' + _tilde + (x.dias_desde == null ? '?' : x.dias_desde) + ' dia(s)</span>';
+    var _dataBr = '';
+    if (!_tilde && x.entregue_em) {
+      var _d = new Date(x.entregue_em);
+      if (!isNaN(_d)) _dataBr = ' &middot; ' + ('0' + _d.getDate()).slice(-2) + '/' + ('0' + (_d.getMonth() + 1)).slice(-2);
+    }
+    h += '<span class="selo velho" title="' + (_tilde ? 'estimado - a data real chega em minutos' : 'data real de entrega') + '">entregue ha ' + _tilde + (x.dias_desde == null ? '?' : x.dias_desde) + ' dia(s)' + _dataBr + '</span>';
   } else {
     h += velho
       ? '<span class="selo velho">' + x.dias_em_transito + ' dias &middot; candidata a extravio</span>'
