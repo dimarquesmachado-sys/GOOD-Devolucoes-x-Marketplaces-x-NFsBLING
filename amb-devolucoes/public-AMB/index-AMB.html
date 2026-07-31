@@ -14,7 +14,7 @@
 <meta name="apple-mobile-web-app-title" content="Devolucoes AMB">
 <!--
   =========================================================
-  amb-devolucoes/public-AMB/index-AMB.html   (AMB Devol. b15)
+  amb-devolucoes/public-AMB/index-AMB.html   (AMB Devol. b17)
   ---------------------------------------------------------
   Tela de triagem do galpao da AMBTotal.
 
@@ -33,137 +33,127 @@
   =========================================================
 -->
 <style>
+  /* ============ TEMA CLARO b17 — identidade AMBTotal ============
+     Pedido do Diego: manter as cores da AMB (roxo/laranja) mas
+     "mais clarinha", no formato da GOOD: banner colorido no topo
+     com titulo e VERSOES, cartoes brancos centralizados. */
   :root {
-    --roxo:        #561A9E;
-    --roxo-claro:  #7B3FC4;
-    --magenta:     #9F1254;
-    --laranja:     #FD8B00;
-    --laranja-cl:  #FFB55F;
-    --fundo:       #150a24;
-    --painel:      #1e1033;
-    --borda:       #35204f;
-    --texto:       #f0e9f7;
-    --apagado:     #a992c4;
-    --verde:       #2ea043;
-    --vermelho:    #e5484d;
+    --roxo:#561A9E; --roxo-claro:#7B3FC4; --magenta:#9F1254;
+    --laranja:#FD8B00; --laranja-esc:#e07500;
+    --fundo:#f5f2fb; --painel:#ffffff;
+    --borda:#e4dcf1; --texto:#241a35; --apagado:#71659a;
+    --verde:#1a7f37; --vermelho:#c93c40;
   }
-  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html, body { margin:0; }
   body {
-    margin: 0; padding: 0; min-height: 100vh;
-    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-    background: var(--fundo);
-    background-image:
-      radial-gradient(ellipse 80% 50% at 50% -10%, rgba(86,26,158,.55), transparent),
-      radial-gradient(ellipse 60% 40% at 100% 100%, rgba(159,18,84,.25), transparent);
-    background-attachment: fixed;
-    color: var(--texto);
-    font-size: 16px;  /* 16px evita o zoom automatico do iOS no input */
+    min-height:100vh; font-size:16px;
+    font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    background:var(--fundo); color:var(--texto);
   }
 
-  /* ---------- topo ---------- */
-  .topo {
-    position: sticky; top: 0; z-index: 20;
-    background: rgba(30,16,51,.92); backdrop-filter: blur(8px);
-    border-bottom: 1px solid var(--borda);
-    padding: 10px 16px; display: flex; align-items: center; gap: 10px;
-  }
-  .topo img { width: 34px; height: 34px; border-radius: 8px; }
-  .topo .titulo { flex: 1; line-height: 1.15; }
-  .topo .titulo b { font-size: 15px; display: block; }
-  .topo .titulo span { font-size: 11px; color: var(--apagado); }
-  .quem {
-    font-size: 12px; color: var(--apagado);
-    background: rgba(86,26,158,.35); padding: 5px 10px; border-radius: 20px;
-    white-space: nowrap;
-  }
-  .sair { background: none; border: none; color: var(--apagado);
-          font-size: 13px; cursor: pointer; padding: 6px; }
-
-  /* ---------- layout ---------- */
-  .area { padding: 16px; max-width: 640px; margin: 0 auto; }
-  .colunas { display: block; }
-
-  /* No desktop a tela e larga: bipe de um lado, resultado do
-     outro, sem obrigar a rolar. No celular vira uma coluna so. */
-  @media (min-width: 900px) {
-    .area { max-width: 1100px; padding: 24px; }
-    .colunas { display: grid; grid-template-columns: 380px 1fr; gap: 24px; align-items: start; }
-    #blocoBipe { position: sticky; top: 80px; }
+  /* ---------- banner (estilo GOOD, cores AMB) ---------- */
+  .banner { max-width:780px; margin:14px auto 0; padding:16px 18px 15px;
+    border-radius:16px; color:#fff; position:relative; text-align:center;
+    background:linear-gradient(135deg,var(--roxo) 0%,var(--roxo-claro) 60%,var(--magenta) 130%);
+    box-shadow:0 6px 22px rgba(86,26,158,.28); }
+  .banner h1 { margin:0; font-size:22px; letter-spacing:.3px; }
+  .banner .sub { font-size:13px; opacity:.92; margin-top:3px; }
+  .banner .ver { font-size:11.5px; opacity:.85; margin-top:6px; }
+  .chips { position:absolute; top:12px; right:12px; display:flex; gap:8px; align-items:center; }
+  .quem { font-size:12.5px; color:#fff; opacity:.95; }
+  .sair { background:rgba(255,255,255,.18); border:none; color:#fff;
+          border-radius:16px; padding:5px 12px; font-size:12px; cursor:pointer; }
+  .btn-topo { background:var(--laranja); color:#fff; border:none; border-radius:18px;
+              padding:7px 15px; font-size:13px; font-weight:800; cursor:pointer;
+              text-decoration:none; box-shadow:0 3px 10px rgba(0,0,0,.25); white-space:nowrap; }
+  @media (max-width:680px) {
+    .banner { margin:10px 10px 0; padding-top:46px; }
   }
 
-  /* ---------- formulario ---------- */
-  input, button, select, textarea { font-family: inherit; font-size: 16px; }
-  .campo {
-    width: 100%; padding: 15px; border-radius: 12px;
-    border: 2px solid var(--borda); background: rgba(0,0,0,.28);
-    color: var(--texto); margin-bottom: 10px; transition: border-color .15s;
+  /* ---------- estrutura ---------- */
+  .area { padding:16px; max-width:780px; margin:0 auto; }
+  .secao { background:var(--painel); border:1px solid var(--borda);
+           border-radius:14px; padding:18px; margin-bottom:16px;
+           box-shadow:0 2px 10px rgba(36,26,53,.05); }
+  .secao h3 { margin:0 0 12px; font-size:15px; }
+  .linha-busca { display:flex; gap:10px; }
+  .linha-busca .campo { flex:1; margin-bottom:0; }
+  .linha-busca .btn { width:auto; margin:0; padding:15px 26px; }
+  @media (max-width:560px) {
+    .linha-busca { flex-direction:column; }
+    .linha-busca .btn { width:100%; }
   }
-  .campo::placeholder { color: #7d6494; }
-  .campo:focus { outline: none; border-color: var(--laranja); }
-  .bipe { font-size: 21px; text-align: center; letter-spacing: 1px; font-weight: 600; }
-
-  .btn {
-    width: 100%; padding: 15px; border: none; border-radius: 12px;
-    background: linear-gradient(135deg, var(--laranja), #f2650a);
-    color: #fff; font-weight: 700; font-size: 17px; cursor: pointer;
-    margin-bottom: 10px; box-shadow: 0 3px 14px rgba(253,139,0,.28);
-  }
-  .btn:active { transform: translateY(1px); }
-  .btn:disabled { opacity: .5; box-shadow: none; }
-  .btn.roxo   { background: linear-gradient(135deg, var(--roxo-claro), var(--roxo)); box-shadow: 0 3px 14px rgba(86,26,158,.35); }
-  .btn.cinza  { background: rgba(255,255,255,.07); box-shadow: none; }
-  .btn.verde  { background: linear-gradient(135deg, #3fb950, var(--verde)); box-shadow: 0 3px 14px rgba(46,160,67,.28); }
-  .btn.verm   { background: linear-gradient(135deg, #f0666b, var(--vermelho)); box-shadow: 0 3px 14px rgba(229,72,77,.28); }
-  .btn.peq    { padding: 9px 14px; font-size: 14px; width: auto; margin: 0; box-shadow: none; }
-
-  /* ---------- blocos ---------- */
-  .card {
-    background: var(--painel); border: 1px solid var(--borda);
-    border-radius: 14px; padding: 16px; margin-bottom: 12px;
-  }
-  .card h2 { font-size: 15px; margin: 0 0 10px; display: flex;
-             align-items: center; gap: 8px; flex-wrap: wrap; }
-  .linha { display: flex; justify-content: space-between; gap: 12px;
-           padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,.06); font-size: 14px; }
-  .linha:last-child { border-bottom: none; }
-  .linha .rot { color: var(--apagado); flex-shrink: 0; }
-  .linha .val { text-align: right; word-break: break-word; font-weight: 500; }
-
-  .alerta { border-radius: 14px; padding: 15px; margin-bottom: 12px;
-            border-left: 5px solid; font-size: 15px; line-height: 1.5; }
-  .alerta.vermelho { background: rgba(229,72,77,.14);  border-color: var(--vermelho); }
-  .alerta.amarelo  { background: rgba(253,139,0,.14);  border-color: var(--laranja); }
-  .alerta.azul     { background: rgba(86,26,158,.28);  border-color: var(--roxo-claro); }
-  .alerta b { display: block; margin-bottom: 6px; font-size: 15px; }
-
-  .selo { display: inline-block; padding: 3px 10px; border-radius: 20px;
-          font-size: 12px; font-weight: 700; background: rgba(255,255,255,.1); }
-  .selo.ml     { background: rgba(255,224,0,.16);  color: #ffe066; }
-  .selo.tiktok { background: rgba(233,30,140,.18); color: #ff7ac0; }
-  .selo.shopee { background: rgba(253,139,0,.18);  color: var(--laranja-cl); }
-  .selo.magalu { background: rgba(56,139,253,.18); color: #79c0ff; }
-
-  .cand { background: rgba(0,0,0,.22); border: 1px solid var(--borda);
-          border-radius: 12px; padding: 13px; margin-bottom: 8px; }
-  .cand .nome { font-weight: 600; margin-bottom: 3px; }
-  .cand .meta { font-size: 13px; color: var(--apagado); }
-  .cand .acoes { display: flex; gap: 8px; margin-top: 10px; }
-  .itens { margin-top: 10px; padding-top: 10px;
-           border-top: 1px dashed var(--borda); font-size: 13px; }
-  .itens div { padding: 3px 0; }
-
-  .aviso { font-size: 13px; color: var(--apagado); margin: 12px 0; line-height: 1.55; }
-  .erro { color: #ff8085; } .ok { color: #56d364; }
-  .esconde { display: none !important; }
-  #camera { width: 100%; border-radius: 12px; margin-bottom: 10px; background: #000; }
+  .dica { font-size:12.5px; color:var(--apagado); margin-top:12px; line-height:1.55; }
 
   /* ---------- login ---------- */
-  .login-caixa { max-width: 380px; margin: 0 auto; padding: 40px 20px 20px; text-align: center; }
-  .login-caixa img.logo { width: 210px; max-width: 68vw; margin-bottom: 8px; }
-  .login-caixa h1 { font-size: 19px; margin: 0 0 2px; }
-  .login-caixa .sub { color: var(--apagado); font-size: 13px; margin-bottom: 26px; }
-  .login-caixa input { text-align: center; }
-  .rodape { text-align: center; font-size: 11px; color: #6b5384; padding: 26px 0 12px; }
+  .login-caixa { max-width:360px; margin:8vh auto 0; padding:0 18px; text-align:center; }
+  .logo { width:86px; height:86px; border-radius:20px; margin-bottom:14px;
+          box-shadow:0 8px 26px rgba(86,26,158,.30); }
+  .login-caixa h1 { font-size:21px; margin:0 0 4px; }
+  .login-caixa .sub { color:var(--apagado); font-size:13.5px; margin-bottom:22px; }
+
+  /* ---------- campos e botoes ---------- */
+  input, button { font-family:inherit; font-size:16px; }
+  .campo { width:100%; padding:14px; border-radius:12px; margin-bottom:10px;
+           border:2px solid var(--borda); background:#fff; color:var(--texto); }
+  .campo::placeholder { color:#a294bd; }
+  .campo:focus { outline:none; border-color:var(--laranja); }
+  .bipe { font-size:21px; text-align:center; letter-spacing:1px; font-weight:600; }
+  .btn { width:100%; padding:15px; border:none; border-radius:12px; margin-bottom:10px;
+         font-size:16px; font-weight:800; cursor:pointer; color:#fff;
+         background:linear-gradient(135deg,var(--laranja),var(--laranja-esc));
+         box-shadow:0 3px 14px rgba(253,139,0,.35); }
+  .btn:active { transform:translateY(1px); }
+  .btn:disabled { opacity:.5; box-shadow:none; }
+  .btn.roxo  { background:linear-gradient(135deg,var(--roxo-claro),var(--roxo)); box-shadow:0 3px 14px rgba(86,26,158,.30); }
+  .btn.cinza { background:#f0ecf7; color:#4a3b66; box-shadow:none; }
+  .btn.verde { background:linear-gradient(135deg,#2ea043,var(--verde)); box-shadow:0 3px 14px rgba(26,127,55,.25); }
+  .btn.verm  { background:linear-gradient(135deg,#e5484d,var(--vermelho)); box-shadow:0 3px 14px rgba(201,60,64,.25); }
+  .btn.peq   { width:auto; padding:9px 14px; font-size:13.5px; margin:4px 6px 4px 0; }
+
+  /* ---------- cartoes de resultado ---------- */
+  .card { background:var(--painel); border:1px solid var(--borda); border-radius:14px;
+          padding:16px; margin-bottom:12px; box-shadow:0 2px 10px rgba(36,26,53,.05); }
+  .card h2 { margin:0 0 10px; font-size:16px; }
+  .linha { display:flex; justify-content:space-between; gap:10px;
+           padding:7px 0; border-bottom:1px dashed var(--borda); font-size:14.5px; }
+  .linha:last-child { border-bottom:none; }
+  .rot { color:var(--apagado); }
+  .val { font-weight:700; text-align:right; word-break:break-word; }
+  .cand { background:#faf8fd; border:1px solid var(--borda); border-radius:12px;
+          padding:13px; margin-bottom:9px; }
+  .cand .nome { font-weight:800; margin-bottom:3px; }
+  .cand .meta { font-size:13px; color:var(--apagado); line-height:1.6; }
+  .itens { margin-top:8px; }
+  .acoes { margin-top:6px; }
+
+  /* ---------- selos ---------- */
+  .selo { display:inline-block; padding:2px 9px; border-radius:20px;
+          font-size:11px; font-weight:800; background:#efe9f8; color:#4a3b66;
+          vertical-align:middle; }
+  .selo.ml { background:#fff3bf; color:#7a5d00; }
+  .selo.tiktok { background:#ffe0ef; color:#a11c62; }
+  .selo.shopee { background:#ffe8d1; color:#a04d00; }
+  .selo.magalu { background:#dbe9ff; color:#1c4f9c; }
+  .selo.correios { background:#fef3c7; color:#8a6100; }
+  .selo.amazon { background:#e5e7eb; color:#374151; }
+  .selo.desconhecido { background:#eceaf1; color:#666; }
+
+  /* ---------- alertas ---------- */
+  .alerta { border-radius:12px; padding:13px 15px; margin-bottom:12px;
+            font-size:14.5px; line-height:1.55; border:1px solid; }
+  .alerta b { display:block; margin-bottom:3px; }
+  .alerta.azul     { background:#eef4ff; border-color:#c4d7fb; color:#1f3f77; }
+  .alerta.amarelo  { background:#fff8e1; border-color:#f3e2a0; color:#6d5200; }
+  .alerta.vermelho { background:#fdeeee; border-color:#f3c4c6; color:#7d2a2d; }
+  .ok { color:var(--verde); }
+  .erro { color:var(--vermelho); }
+  .aviso { font-size:13px; color:var(--apagado); line-height:1.6; margin-top:6px; }
+
+  video { width:100%; border-radius:12px; margin-bottom:10px; background:#000; }
+  .rodape { text-align:center; color:#a294bd; font-size:11.5px; padding:18px 0 26px; }
+  .esconde { display:none !important; }
 </style>
 </head>
 <body>
@@ -185,12 +175,15 @@
 
 <!-- ===================== APP ===================== -->
 <div id="telaApp" class="esconde">
-  <div class="topo">
-    <img src="icone-AMB.png" alt="">
-    <div class="titulo"><b>Devolucoes</b><span>AMBTotal</span></div>
-    <a class="btn-topo" href="/amb/painel">Painel Admin</a>
-    <span class="quem" id="quemSou"></span>
-    <button class="sair" id="btnSair">sair</button>
+  <div class="banner">
+    <div class="chips">
+      <span class="quem" id="quemSou"></span>
+      <a class="btn-topo" href="/amb/painel">&#128081; Painel Admin</a>
+      <button class="sair" id="btnSair">sair</button>
+    </div>
+    <h1>&#128230; AMBTotal Devolucoes</h1>
+    <div class="sub">Identificar venda + NF-e + Triagem</div>
+    <div class="ver">tela <b>b17</b> &middot; <span id="versaoServidor">servidor ...</span></div>
   </div>
 
   <div class="area">
@@ -730,6 +723,9 @@ $('codigo').onkeydown  = (e) => { if (e.key === 'Enter') buscar(1); };
 $('btnCamera').onclick = camera;
 $('btnOcr').onclick    = lerNomeOCR;
 $('btnConsultarLocal').onclick = consultarLocal;
+fetch(API + '/status').then(r => r.json()).then(d => {
+  $('versaoServidor').textContent = 'servidor ' + String(d.versao || '?').replace('AMB Devolucoes ', '');
+}).catch(() => { $('versaoServidor').textContent = 'servidor ?'; });
 $('btnLancarDefeito').onclick  = lancarDefeitoTela;
 $('btnSair').onclick   = sair;
 
