@@ -1,5 +1,5 @@
 // ============================================================
-// amb-devolucoes/app-AMB.js                    (AMB Devol. b11)
+// amb-devolucoes/app-AMB.js                    (AMB Devol. b22)
 // ------------------------------------------------------------
 // Router Express do Devolucoes da AMBTotal.
 //
@@ -72,7 +72,7 @@ const impressao = require('./lib-AMB/impressao-AMB');
 const emailAMB = require('./lib-AMB/email-AMB');
 const nfEntrada = require('./lib-AMB/nf-entrada-AMB');
 
-const VERSAO = 'AMB Devolucoes b21';
+const VERSAO = 'AMB Devolucoes b22';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -827,7 +827,7 @@ router.get('/api/triagem/fila', auth.requerLogin, async (req, res) => {
   if (!r.ok) return res.json(r);
   // junta o link da NF DA VENDA no Bling (id vem do indice de nomes)
   const registros = (r.registros || []).map(x => {
-    const venda = nfNomes.acharPorPedido(x.order_id);
+    const venda = nfNomes.acharPorPedido(x.order_id) || nfNomes.acharPorNumero(x.nf_numero);
     return {
       ...x,
       nf_id_bling: (venda && venda.id) || null,
@@ -912,6 +912,30 @@ router.post('/api/triagem/:id/concluir', auth.requerLogin, async (req, res) => {
   res.json(await db.atualizarTriagem(req.params.id, { status: 'finalizado' }));
 });
 
+/** A Bridge da AMB grava aqui o resultado da NF gerada (mesmo
+ *  contrato da GOOD: PUT registrar-devolucao-gerada/:id). */
+router.put('/api/admin/registrar-devolucao-gerada/:id', auth.requerLogin, async (req, res) => {
+  const { nf_devolucao_id_bling, nf_devolucao_numero } = req.body || {};
+  if (!nf_devolucao_id_bling && !nf_devolucao_numero) {
+    return res.status(400).json({ ok: false, erro: 'sem dados da NF gerada' });
+  }
+  res.json(await db.atualizarTriagem(req.params.id, {
+    nf_devolucao_id_bling: nf_devolucao_id_bling ? String(nf_devolucao_id_bling) : null,
+    nf_devolucao_numero: nf_devolucao_numero ? String(nf_devolucao_numero) : null,
+  }));
+});
+
+/** Debug com 1 clique: o que cada card da espreita esta recebendo
+ *  de verdade + a saude dos indices e do enriquecimento. */
+router.get('/debug/espreita', admin, async (req, res) => {
+  const base = mlReturns.resumoEspreita();
+  const um = (base.em_transito || [])[0] || (base.entregues || [])[0] || null;
+  res.json({ ok: true, versao: VERSAO,
+    indice_ml: mlReturns.statusIndice(),
+    indice_nomes: nfNomes.statusIndice(),
+    primeiro_item_cru: um });
+});
+
 // ── A ESPREITA (o que esta vindo pro galpao) ─────────────────
 router.get('/api/espreita', auth.requerLogin, async (req, res) => {
   const baseML = mlReturns.resumoEspreita();
@@ -927,7 +951,7 @@ router.get('/api/espreita', auth.requerLogin, async (req, res) => {
     const nf = nfEntrada.jaEmitida({ pedido: x.pedido });
     // b17 - cliente e NF DA VENDA vem do indice de nomes (numeroLoja
     // do Bling = numero do pedido no marketplace, pros 3 canais)
-    const venda = nfNomes.acharPorPedido(x.pedido);
+    const venda = nfNomes.acharPorPedido(x.pedido) || nfNomes.acharPorNumero(x.nf_ml_numero);
     // b18 - link direto pro marketplace, pedido do Diego no painel
     let link = null;
     if (x.marketplace === 'ml' && x.pedido) {
@@ -941,7 +965,9 @@ router.get('/api/espreita', auth.requerLogin, async (req, res) => {
       ...x,
       link_marketplace: link,
       cliente: (venda && venda.nome) || null,
-      nf_venda: (venda && venda.numero) || null,
+      nf_venda: x.nf_ml_numero || (venda && venda.numero) || null,
+      link_nf_bling: (venda && venda.id)
+        ? ('https://www.bling.com.br/notas.fiscais.php#edit/' + venda.id) : null,
       comentario: n && n.comentario, ticket: n && n.ticket,
       baixado: !!(n && n.baixado),
       nf_devolucao_emitida: nf.emitida === true ? (nf.nf && nf.nf.numero) || true : false,
