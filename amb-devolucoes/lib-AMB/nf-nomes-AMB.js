@@ -1,5 +1,5 @@
 // ============================================================
-// amb-devolucoes/lib-AMB/nf-nomes-AMB.js       (AMB Devol. b17)
+// amb-devolucoes/lib-AMB/nf-nomes-AMB.js       (AMB Devol. b22)
 // ------------------------------------------------------------
 // O PEGA-TUDO: acha a venda pelo NOME DO REMETENTE da etiqueta.
 //
@@ -81,6 +81,7 @@ async function construirIndice(opts = {}) {
     const mapa = {};
     const mapaCurto = {};
     const porPedido = {};
+    const porNumero = {};
     let totalNFs = 0, erroBusca = null, parouPorData = false;
 
     // A listagem do Bling vem naturalmente da mais nova pra mais
@@ -115,6 +116,8 @@ async function construirIndice(opts = {}) {
         // cliente e a NF da venda pra cada devolucao a espreita.
         const nlj = String(nf.numeroLoja || nf.numeroPedidoLoja || '').trim();
         if (nlj) porPedido[nlj] = registro;
+        const numN = String(nf.numero || '').replace(/^0+/, '');
+        if (numN) porNumero[numN] = registro;
 
         (mapa[chave] = mapa[chave] || []).push(registro);
 
@@ -138,6 +141,7 @@ async function construirIndice(opts = {}) {
     IDX.ts = falhouGeral ? 0 : Date.now();
     IDX.mapa = mapa;
     IDX.porPedido = porPedido;
+    IDX.porNumero = porNumero;
     IDX.mapaCurto = mapaCurto;
     IDX.totalNFs = totalNFs;
     IDX.nomes = Object.keys(mapa).length;
@@ -153,6 +157,8 @@ async function construirIndice(opts = {}) {
 
 function statusIndice() {
   return {
+    com_pedido: IDX.porPedido ? Object.keys(IDX.porPedido).length : 0,
+    com_numero: IDX.porNumero ? Object.keys(IDX.porNumero).length : 0,
     quente: IDX.ts > 0,
     construindo,
     idade_min: IDX.ts ? Math.round((Date.now() - IDX.ts) / 60000) : null,
@@ -280,12 +286,17 @@ function preAquecer(atrasoMs) {
 }
 
 /** Cliente e NF da venda pelo numero do pedido do marketplace. */
+function acharPorNumero(numero) {
+  const k = String(numero || '').replace(/^0+/, '');
+  return (k && IDX.porNumero && IDX.porNumero[k]) || null;
+}
+
 function acharPorPedido(pedido) {
   const k = String(pedido || '').trim();
   return (k && IDX.porPedido && IDX.porPedido[k]) || null;
 }
 
 module.exports = {
-  construirIndice, statusIndice, buscarPorNome, acharPorPedido, preAquecer,
+  construirIndice, statusIndice, buscarPorNome, acharPorPedido, acharPorNumero, preAquecer,
   colapsar, primeiroUltimo,
 };
