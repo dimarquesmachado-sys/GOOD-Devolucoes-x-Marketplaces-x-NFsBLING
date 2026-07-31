@@ -1,5 +1,5 @@
 // ============================================================
-// amb-devolucoes/lib-AMB/nf-nomes-AMB.js       (AMB Devol. b8)
+// amb-devolucoes/lib-AMB/nf-nomes-AMB.js       (AMB Devol. b17)
 // ------------------------------------------------------------
 // O PEGA-TUDO: acha a venda pelo NOME DO REMETENTE da etiqueta.
 //
@@ -80,6 +80,7 @@ async function construirIndice(opts = {}) {
     const corte = Date.now() - dias * 864e5;
     const mapa = {};
     const mapaCurto = {};
+    const porPedido = {};
     let totalNFs = 0, erroBusca = null, parouPorData = false;
 
     // A listagem do Bling vem naturalmente da mais nova pra mais
@@ -110,6 +111,11 @@ async function construirIndice(opts = {}) {
           valor: nf.valorNota != null ? nf.valorNota : null,
         };
 
+        // b17 - indice POR PEDIDO: e daqui que o painel puxa o
+        // cliente e a NF da venda pra cada devolucao a espreita.
+        const nlj = String(nf.numeroLoja || nf.numeroPedidoLoja || '').trim();
+        if (nlj) porPedido[nlj] = registro;
+
         (mapa[chave] = mapa[chave] || []).push(registro);
 
         // indice extra: primeiro+ultimo nome
@@ -131,6 +137,7 @@ async function construirIndice(opts = {}) {
     const falhouGeral = !!erroBusca && totalNFs === 0;
     IDX.ts = falhouGeral ? 0 : Date.now();
     IDX.mapa = mapa;
+    IDX.porPedido = porPedido;
     IDX.mapaCurto = mapaCurto;
     IDX.totalNFs = totalNFs;
     IDX.nomes = Object.keys(mapa).length;
@@ -272,7 +279,13 @@ function preAquecer(atrasoMs) {
   }, atraso).unref();
 }
 
+/** Cliente e NF da venda pelo numero do pedido do marketplace. */
+function acharPorPedido(pedido) {
+  const k = String(pedido || '').trim();
+  return (k && IDX.porPedido && IDX.porPedido[k]) || null;
+}
+
 module.exports = {
-  construirIndice, statusIndice, buscarPorNome, preAquecer,
+  construirIndice, statusIndice, buscarPorNome, acharPorPedido, preAquecer,
   colapsar, primeiroUltimo,
 };
