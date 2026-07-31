@@ -1,5 +1,5 @@
 // ============================================================
-// amb-devolucoes/lib-AMB/ml-returns-AMB.js     (AMB Devol. b31)
+// amb-devolucoes/lib-AMB/ml-returns-AMB.js     (AMB Devol. b33)
 // ------------------------------------------------------------
 // INDICE DE DEVOLUCOES DO ML POR RASTREIO DOS CORREIOS.
 //
@@ -110,6 +110,9 @@ async function enriquecerPedido(orderId) {
     const o = r.data;
     const info = {
       nickname: (o.buyer && o.buyer.nickname) || null,
+      valor_venda: (o.total_amount != null ? o.total_amount : null),
+      cliente_ml: [o.buyer && o.buyer.first_name, o.buyer && o.buyer.last_name]
+        .filter(Boolean).join(' ').trim() || null,
       itens: (o.order_items || []).slice(0, 3).map(it => ({
         titulo: (it.item && it.item.title) || null,
         sku: (it.item && (it.item.seller_sku || it.item.seller_custom_field)) || null,
