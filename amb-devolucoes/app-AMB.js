@@ -72,7 +72,7 @@ const impressao = require('./lib-AMB/impressao-AMB');
 const emailAMB = require('./lib-AMB/email-AMB');
 const nfEntrada = require('./lib-AMB/nf-entrada-AMB');
 
-const VERSAO = 'AMB Devolucoes b33';
+const VERSAO = 'AMB Devolucoes b34';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -963,6 +963,9 @@ router.get('/api/espreita', auth.requerLogin, async (req, res) => {
     const venda = nfNomes.acharPorPedido(x.pedido)
       || nfNomes.acharPorPedido(x.pack_id)
       || nfNomes.acharPorNumero(x.nf_ml_numero);
+    // b34 - Shopee/TikTok/Amazon: sem NF casada, a VENDA do Bling
+    // (numeroLoja garantido) entrega cliente e valor mesmo assim.
+    const vendaLoja = venda ? null : nfNomes.acharVendaPorLoja(x.pedido);
     // b18 - link direto pro marketplace, pedido do Diego no painel
     let link = null;
     if (x.marketplace === 'ml' && x.pedido) {
@@ -982,9 +985,10 @@ router.get('/api/espreita', auth.requerLogin, async (req, res) => {
     return {
       ...x,
       link_marketplace: link,
-      cliente: (venda && venda.nome) || x.cliente_ml || null,
+      cliente: (venda && venda.nome) || (vendaLoja && vendaLoja.nome) || x.cliente_ml || null,
       nf_venda: x.nf_ml_numero || (venda && venda.numero) || null,
       nf_valor: (venda && venda.valor != null) ? venda.valor
+        : (vendaLoja && vendaLoja.valor != null) ? vendaLoja.valor
         : (x.valor_venda != null ? x.valor_venda : null),
       link_nf_bling: (venda && venda.id)
         ? ('https://www.bling.com.br/notas.fiscais.php#edit/' + venda.id) : null,
