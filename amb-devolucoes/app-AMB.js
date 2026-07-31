@@ -72,7 +72,7 @@ const impressao = require('./lib-AMB/impressao-AMB');
 const emailAMB = require('./lib-AMB/email-AMB');
 const nfEntrada = require('./lib-AMB/nf-entrada-AMB');
 
-const VERSAO = 'AMB Devolucoes b28';
+const VERSAO = 'AMB Devolucoes b29';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -938,9 +938,15 @@ router.get('/debug/espreita', admin, async (req, res) => {
 
 // ── A ESPREITA (o que esta vindo pro galpao) ─────────────────
 router.get('/api/espreita', auth.requerLogin, async (req, res) => {
-  const baseML = mlReturns.resumoEspreita();
-  const baseShopee = await shopee.resumoEspreita();
-  const baseMagalu = magalu.resumoEspreita();
+  // b29 - cada fonte com a propria rede de protecao: uma quebrar
+  // NUNCA derruba as outras, e o erro vai ESCRITO pro painel.
+  const vazio = { quente: false, em_transito: [], entregues: [], aguardando_postagem: 0 };
+  let baseML = vazio, baseShopee = vazio, baseMagalu = vazio;
+  let erroML = null, erroShopee = null, erroMagalu = null;
+  try { baseML = mlReturns.resumoEspreita(); } catch (e) { erroML = e.message; }
+  try { baseShopee = await shopee.resumoEspreita(); } catch (e) { erroShopee = e.message; }
+  try { baseMagalu = magalu.resumoEspreita(); } catch (e) { erroMagalu = e.message; }
+  const stML = mlReturns.statusIndice();
   const notas = await db.notasEspreita();
   const mapa = notas.ok ? notas.notas : {};
 
@@ -960,10 +966,17 @@ router.get('/api/espreita', auth.requerLogin, async (req, res) => {
     let link = null;
     if (x.marketplace === 'ml' && x.pedido) {
       link = `https://www.mercadolivre.com.br/vendas/${x.pedido}/detalhe`;
-    } else if (x.marketplace === 'shopee') {
-      link = 'https://seller.shopee.com.br/portal/sale/return';
-    } else if (x.marketplace === 'magalu') {
-      link = 'https://seller.magaluentregas.com.br/';
+    } else if (x.marketplace === 'shopee' && x.pedido) {
+      // b29 - a rota do Mover-Pedidos faz o de-para order_sn -> id
+      // interno e cai DENTRO do pedido (mesma solucao dos checkouts;
+      // exige a conta Shopee da AMB logada no navegador de destino)
+      link = 'https://mover-pedidos-aguardando-x-atendido.onrender.com/amb-checkout-offline/ir-shopee?sn=' +
+        encodeURIComponent(x.pedido);
+    } else if (x.marketplace === 'magalu' && x.pedido) {
+      // b29 - modulo magalu-oauth (API oficial): resolve o UUID do
+      // pacote e abre a tela exata do pedido no portal
+      link = 'https://mover-pedidos-aguardando-x-atendido.onrender.com/magalu/ir/amb?n=' +
+        encodeURIComponent(x.pedido);
     }
     return {
       ...x,
@@ -997,8 +1010,9 @@ router.get('/api/espreita', auth.requerLogin, async (req, res) => {
     ok: true,
     versao: VERSAO,
     fontes: {
-      ml: { quente: baseML.quente },
-      shopee: { quente: baseShopee.quente, desligada: !!baseShopee.desligada, erro: baseShopee.erro || null },
+      ml: { quente: baseML.quente, construindo: !!stML.construindo,
+            erro: erroML || stML.erro || null, total_claims: stML.total_claims || 0 },
+      shopee: { quente: baseShopee.quente, desligada: !!baseShopee.desligada, erro: erroShopee || baseShopee.erro || null },
       magalu: { quente: baseMagalu.quente, desligada: !!baseMagalu.desligada, falta: baseMagalu.falta || null },
       nf_entrada: nfEntrada.statusIndice(),
     },
