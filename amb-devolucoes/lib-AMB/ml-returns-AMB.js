@@ -1,5 +1,5 @@
 // ============================================================
-// amb-devolucoes/lib-AMB/ml-returns-AMB.js     (AMB Devol. b28)
+// amb-devolucoes/lib-AMB/ml-returns-AMB.js     (AMB Devol. b29)
 // ------------------------------------------------------------
 // INDICE DE DEVOLUCOES DO ML POR RASTREIO DOS CORREIOS.
 //
@@ -354,6 +354,14 @@ async function acharPorTracking(codigo) {
 function resumoEspreita() {
   const dias = (iso) => iso ? Math.floor((Date.now() - Date.parse(iso)) / 864e5) : null;
   const EM_TRANSITO = ['shipped', 'ready_to_ship', 'handling', 'pending'];
+  // b29 - AUTOCURA: se o indice esta FRIO (build do boot falhou) e
+  // ninguem esta construindo, a propria espreita dispara a
+  // reconstrucao. Antes so o bipe religava — galpao parado = ML
+  // sumido do painel pra sempre (foi o que o Diego viu em 01/08).
+  if (!IDX.ts && !construindo) {
+    construirIndice().catch(e => { IDX.erro = e.message; });
+  }
+
   const emTransito = [], entreguesLista = [];
   let aguardando = 0, entregues = 0;
 
