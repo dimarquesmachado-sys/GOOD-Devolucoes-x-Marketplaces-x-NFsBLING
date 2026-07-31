@@ -8,7 +8,7 @@
 <link rel="icon" type="image/png" href="icone-AMB.png">
 <!--
   =========================================================
-  amb-devolucoes/public-AMB/painel-AMB.html  (AMB Devol. b21)
+  amb-devolucoes/public-AMB/painel-AMB.html  (AMB Devol. b22)
   ---------------------------------------------------------
   PAINEL em PAGINA UNICA, no formato da GOOD (pedido do Diego
   comparando os prints): nada de abas — secoes empilhadas,
@@ -143,7 +143,7 @@
   </div>
   <h1>&#128081; Painel de Devolucoes &mdash; AMBTotal</h1>
   <div class="sub">Triagens + A espreita + Defeitos + Recados</div>
-  <div class="ver">painel <b>b21</b> &middot; <span id="versaoServidor">servidor ...</span></div>
+  <div class="ver">painel <b>b22</b> &middot; <span id="versaoServidor">servidor ...</span></div>
 </div>
 
 <div class="area">
@@ -154,6 +154,7 @@
       <label style="margin-left:auto;font-size:12.5px;color:var(--apagado)">
         <input type="checkbox" onchange="marcarTodas('aprovado',this.checked)"> todas</label>
       <select id="depAprovado" class="campo" style="width:auto;padding:8px 10px;font-size:12.5px" title="Deposito onde o estoque da devolucao entra"><option value="">&#128230; carregando depositos...</option></select>
+      <button class="btn" style="background:linear-gradient(135deg,#1e88e5,#1565c0)" onclick="emitirSelecionadas('aprovado',this)" title="Gera + EMITE a NF de devolucao dos cards selecionados, um por vez (via Bridge)">&#127981; Emitir selecionadas (<span id="selE_aprovado">0</span>)</button>
       <button class="btn verde" onclick="concluirSelecionadas('aprovado',this)">&#10003; Concluir selecionadas (<span id="selAprovado">0</span>)</button>
       <button class="btn cinza" onclick="verFila('aprovado')">atualizar</button></h2>
     <div class="sub">Produto conferido e ok. Gere a NF de devolucao no Bling (botao do card) e registre o numero &mdash; ou conclua direto.</div>
@@ -165,6 +166,7 @@
       <label style="margin-left:auto;font-size:12.5px;color:var(--apagado)">
         <input type="checkbox" onchange="marcarTodas('problema',this.checked)"> todas</label>
       <select id="depProblema" class="campo" style="width:auto;padding:8px 10px;font-size:12.5px" title="Deposito onde o estoque da devolucao entra"><option value="">&#128230; carregando depositos...</option></select>
+      <button class="btn" style="background:linear-gradient(135deg,#1e88e5,#1565c0)" onclick="emitirSelecionadas('problema',this)" title="Gera + EMITE a NF de devolucao dos cards selecionados, um por vez (via Bridge)">&#127981; Emitir selecionadas (<span id="selE_problema">0</span>)</button>
       <button class="btn verde" onclick="concluirSelecionadas('problema',this)">&#10003; Concluir selecionadas (<span id="selProblema">0</span>)</button>
       <button class="btn cinza" onclick="verFila('problema')">atualizar</button></h2>
     <div class="sub">O galpao achou algo errado. Padrao da fila: deposito <b>DEFEITOS</b> &mdash; a NF entra, o produto NAO volta pro estoque de venda.</div>
@@ -242,6 +244,7 @@ function abrirCaixinha(botao, { valor, placeholder, aoSalvar }) {
 
 /* ============ FILAS DA TRIAGEM (Aprovadas x Problemas) ============ */
 const _sel = { aprovado: new Set(), problema: new Set() };
+const _cardsFila = {};   // id -> registro cru (a Bridge precisa do nf_id_bling)
 
 function cardFila(x, status) {
   const marcado = _sel[status].has(String(x.id));
@@ -266,6 +269,10 @@ function cardFila(x, status) {
       ? '<a class="btn cinza" style="text-decoration:none" target="_blank" rel="noopener" href="' +
         esc(x.link_nf_bling) + '">&#128279; Abrir NF no Bling</a>'
       : '<span class="selo">NF da venda nao localizada no indice</span>') +
+    (x.nf_id_bling && !x.nf_devolucao_id_bling
+      ? '<button class="btn" style="background:linear-gradient(135deg,#26a69a,#00796b)" onclick="gerarDevolucao(this,\'' + esc(x.id) + '\',\'' + status + '\',false)">&#129534; gerar rascunho</button>' +
+        '<button class="btn" style="background:linear-gradient(135deg,#1e88e5,#1565c0)" onclick="gerarDevolucao(this,\'' + esc(x.id) + '\',\'' + status + '\',true)">&#127981; gerar + emitir</button>'
+      : '') +
     '<button class="btn roxo" onclick="registrarNfDevolucao(this,\'' + esc(x.id) + '\',\'' + status + '\')">&#128221; registrar NF de devolucao</button>' +
     (x.nf_devolucao_id_bling
       ? '<button class="btn" style="background:linear-gradient(135deg,#6a3fc4,#4527a0)" onclick="lancarEstoque(this,\'' + esc(x.id) + '\',\'' + status + '\')">&#128230; lancar estoque</button>'
@@ -285,6 +292,7 @@ async function verFila(status) {
     const r = await api('/api/triagem/fila?status=' + status);
     if (!r.ok) { $(alvo).innerHTML = '<div class="vazio">' + esc(r.erro) + '</div>'; return; }
     $(cont).textContent = r.total;
+    r.registros.forEach(x => { _cardsFila[String(x.id)] = x; });
     _sel[status] = new Set([..._sel[status]].filter(id => r.registros.some(x => String(x.id) === id)));
     atualizarContadorSel(status);
     $(alvo).innerHTML = r.registros.length
@@ -308,6 +316,7 @@ function marcarTodas(status, on) {
 }
 function atualizarContadorSel(status) {
   $(status === 'problema' ? 'selProblema' : 'selAprovado').textContent = _sel[status].size;
+  const e = $('selE_' + status); if (e) e.textContent = _sel[status].size;
 }
 
 let _depositos = [];
@@ -351,6 +360,97 @@ async function lancarEstoque(bt, id, status) {
     alert('Estoque lancado em ' + r.deposito + (r.aviso ? '\n(aviso: ' + r.aviso + ')' : ''));
     verFila(status);
   } catch (e) { bt.disabled = false; bt.textContent = '\uD83D\uDCE6 lancar estoque'; }
+}
+
+/* ============ BRIDGE DA AMB (gerar NF de devolucao) ============
+   Mesmo protocolo da GOOD, canais renomeados (AMB_BRIDGE_*):
+   a pagina fala por postMessage com a extensao, que usa a SESSAO
+   do Bling logada no navegador pra criar a devolucao VINCULADA
+   e (se pedir) transmitir pra SEFAZ. Sem extensao instalada, os
+   botoes avisam em vez de fingir. */
+let _bridgeVersao = null;
+window.addEventListener('message', (ev) => {
+  if (ev.source !== window || !ev.data) return;
+  if (ev.data.tipo === 'AMB_BRIDGE_INSTALADA' || ev.data.tipo === 'AMB_BRIDGE_PONG') {
+    _bridgeVersao = ev.data.versao || '?';
+  }
+});
+function bridgePresente() {
+  return new Promise((res) => {
+    if (_bridgeVersao) return res(true);
+    window.postMessage({ tipo: 'AMB_BRIDGE_PING' }, '*');
+    setTimeout(() => res(!!_bridgeVersao), 600);
+  });
+}
+function chamarBridge(payload) {
+  return new Promise((res, rej) => {
+    const requisicaoId = 'r' + Date.now() + Math.random().toString(36).slice(2, 7);
+    const ouvir = (ev) => {
+      if (ev.source !== window || !ev.data) return;
+      if (ev.data.tipo !== 'AMB_BRIDGE_RESPOSTA' || ev.data.requisicaoId !== requisicaoId) return;
+      window.removeEventListener('message', ouvir);
+      ev.data.ok ? res(ev.data.resultado) : rej(new Error(ev.data.erro || 'falha na Bridge'));
+    };
+    window.addEventListener('message', ouvir);
+    window.postMessage({ tipo: 'AMB_BRIDGE_CRIAR_DEVOLUCAO', requisicaoId, payload }, '*');
+    setTimeout(() => { window.removeEventListener('message', ouvir); rej(new Error('Bridge nao respondeu em 110s')); }, 110000);
+  });
+}
+
+async function gerarDevolucao(bt, id, status, emitir) {
+  const card = bt.closest('.card');
+  const x = _cardsFila[String(id)] || {};
+  if (!x.nf_id_bling) { alert('Este card esta sem a NF da venda localizada no Bling - nao da pra gerar.'); return; }
+  if (!await bridgePresente()) {
+    alert('Extensao "AMB Devolucoes Bridge" nao detectada.\nInstale (esta no zip que veio junto), confira que o navegador esta logado no Bling DA AMB, e recarregue esta pagina (Ctrl+Shift+R).');
+    return;
+  }
+  const sel = $(status === 'problema' ? 'depProblema' : 'depAprovado');
+  const dep = sel && sel.value;
+  if (emitir && !confirm('GERAR e EMITIR (transmite pra SEFAZ) a NF de devolucao deste card?\nDeposito do estoque: ' + (sel.options[sel.selectedIndex] || {}).textContent)) return;
+  bt.disabled = true; const antes = bt.textContent; bt.textContent = 'falando com o Bling...';
+  try {
+    const r = await chamarBridge({
+      idNFOriginal: String(x.nf_id_bling), idLoja: null,
+      emitir: !!emitir, devolucaoId: String(id),
+      idDeposito: dep ? String(dep) : null,
+    });
+    if (!r || !r.idNotaDevolucao) throw new Error('Bling nao devolveu o id da NF');
+    // cinto e suspensorio: a extensao ja gravou; o painel grava tambem
+    await api('/api/triagem/' + id + '/nf-devolucao', { method: 'PUT',
+      body: JSON.stringify({ numero: String(r.numero || ''), id_bling: String(r.idNotaDevolucao) }) }).catch(() => {});
+    alert((r.emitida ? 'NF EMITIDA e autorizada: n\u00ba ' : 'RASCUNHO criado: n\u00ba ') + (r.numero || r.idNotaDevolucao));
+    verFila(status);
+  } catch (e) {
+    alert('Nao gerou: ' + e.message);
+    bt.disabled = false; bt.textContent = antes;
+  }
+}
+
+async function emitirSelecionadas(status, bt) {
+  const ids = [..._sel[status]];
+  if (!ids.length) { alert('Nenhum card selecionado.'); return; }
+  if (!await bridgePresente()) { alert('Extensao AMB Devolucoes Bridge nao detectada - instale e recarregue.'); return; }
+  if (!confirm('Gerar + EMITIR ' + ids.length + ' NF(s) de devolucao, uma por vez?')) return;
+  bt.disabled = true;
+  const sel = $(status === 'problema' ? 'depProblema' : 'depAprovado');
+  let okz = 0, falhas = [];
+  for (const id of ids) {
+    const x = _cardsFila[String(id)] || {};
+    if (!x.nf_id_bling) { falhas.push(id + ': sem NF da venda'); continue; }
+    try {
+      const r = await chamarBridge({ idNFOriginal: String(x.nf_id_bling), idLoja: null,
+        emitir: true, devolucaoId: String(id), idDeposito: sel && sel.value ? String(sel.value) : null });
+      if (r && r.idNotaDevolucao) {
+        okz++;
+        await api('/api/triagem/' + id + '/nf-devolucao', { method: 'PUT',
+          body: JSON.stringify({ numero: String(r.numero || ''), id_bling: String(r.idNotaDevolucao) }) }).catch(() => {});
+      } else falhas.push(id + ': sem id de retorno');
+    } catch (e) { falhas.push(id + ': ' + e.message); }
+  }
+  bt.disabled = false; _sel[status].clear();
+  alert('Esteira: ' + okz + ' emitida(s)' + (falhas.length ? '\nFalhas:\n' + falhas.join('\n') : ''));
+  verFila(status);
 }
 
 function registrarNfDevolucao(bt, id, status) {
