@@ -3,124 +3,183 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="theme-color" content="#1a0b2e">
+<meta name="theme-color" content="#561A9E">
 <title>AMBTotal - Painel de Devolucoes</title>
 <link rel="icon" type="image/png" href="icone-AMB.png">
-<link rel="apple-touch-icon" href="icone-AMB.png">
 <!--
   =========================================================
-  amb-devolucoes/public-AMB/painel-AMB.html  (AMB Devol. b11)
+  amb-devolucoes/public-AMB/painel-AMB.html  (AMB Devol. b17)
   ---------------------------------------------------------
-  PAINEL. E a tela de gestao, separada da tela de bipe:
+  PAINEL em PAGINA UNICA, no formato da GOOD (pedido do Diego
+  comparando os prints): nada de abas — secoes empilhadas,
+  TRIAGENS primeiro e A ESPREITA logo depois, tudo visivel
+  numa rolada so.
 
-   - A ESPREITA: o que esta a caminho do galpao, com dias em
-     transito, atrasadas +30 dias (candidatas a extravio) e o
-     status do dinheiro. Anotacao e baixa manual por item.
-   - TRIAGENS: o que ja foi bipado, com quem e quando.
-   - DEFEITOS: o estoque quebrado agrupado por LOCAL e SKU,
-     que e como o estoquista procura ("o que tem na prateleira").
-   - RECADOS: avisos presos a um pedido/NF/rastreio. Aparecem
-     em vermelho na tela do bipe antes de mexer na caixa.
+  A espreita agora e RICA como a da GOOD: alem do pedido e
+  rastreio, cada card traz o CLIENTE e a NF da venda (do
+  indice de nomes do Bling), o APELIDO do comprador no ML e
+  os ITENS (titulo, SKU, quantidade) do proprio pedido.
 
-  Nome com sufixo -AMB e pasta public-AMB/ pra nao colidir com
-  o painel-devolucoes.html da GOOD.
+  Tres acoes por card:
+   - "achei / ja processado"  -> baixa (some da lista)
+   - "observacao"             -> CAIXINHA inline (nao popup),
+                                 pre-preenchida pra editar
+   - "aviso estoquista"       -> cria um RECADO preso ao
+                                 rastreio/pedido; aparece em
+                                 vermelho na hora do bipe
+
+  Tema claro com a identidade AMB (roxo/laranja) e as versoes
+  no banner. Estacao de impressao mantida: este painel aberto
+  num PC com QZ Tray imprime as etiquetas da fila.
   =========================================================
 -->
 <style>
   :root {
     --roxo:#561A9E; --roxo-claro:#7B3FC4; --magenta:#9F1254;
-    --laranja:#FD8B00; --fundo:#150a24; --painel:#1e1033;
-    --borda:#35204f; --texto:#f0e9f7; --apagado:#a992c4;
-    --verde:#2ea043; --vermelho:#e5484d;
+    --laranja:#FD8B00; --laranja-esc:#e07500;
+    --fundo:#f5f2fb; --painel:#ffffff;
+    --borda:#e4dcf1; --texto:#241a35; --apagado:#71659a;
+    --verde:#1a7f37; --vermelho:#c93c40;
   }
   * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
-  body {
-    margin:0; min-height:100vh; font-size:16px;
+  html, body { margin:0; }
+  body { min-height:100vh; font-size:15.5px; color:var(--texto);
     font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
-    background:var(--fundo);
-    background-image:radial-gradient(ellipse 80% 50% at 50% -10%,rgba(86,26,158,.5),transparent);
-    background-attachment:fixed; color:var(--texto);
-  }
-  .topo { position:sticky; top:0; z-index:20; background:rgba(30,16,51,.94);
-          backdrop-filter:blur(8px); border-bottom:1px solid var(--borda);
-          padding:10px 16px; display:flex; align-items:center; gap:10px; }
-  .topo img { width:32px; height:32px; border-radius:8px; }
-  .topo .titulo { flex:1; line-height:1.15; }
-  .topo .titulo b { font-size:15px; display:block; }
-  .topo .titulo span { font-size:11px; color:var(--apagado); }
-  .topo a { color:var(--apagado); font-size:13px; text-decoration:none; padding:6px; }
+    background:var(--fundo); }
 
-  .abas { display:flex; gap:6px; padding:12px 16px 0; overflow-x:auto;
-          max-width:1200px; margin:0 auto; }
-  .aba { padding:10px 16px; border-radius:10px 10px 0 0; border:1px solid transparent;
-         border-bottom:none; background:transparent; color:var(--apagado);
-         font-size:14px; font-weight:600; cursor:pointer; white-space:nowrap; }
-  .aba.on { background:var(--painel); border-color:var(--borda); color:var(--texto); }
-  .aba .n { background:rgba(253,139,0,.22); color:var(--laranja);
-            border-radius:20px; padding:1px 7px; font-size:12px; margin-left:5px; }
+  .banner { max-width:1100px; margin:14px auto 0; padding:16px 18px 15px;
+    border-radius:16px; color:#fff; position:relative; text-align:center;
+    background:linear-gradient(135deg,var(--roxo) 0%,var(--roxo-claro) 60%,var(--magenta) 130%);
+    box-shadow:0 6px 22px rgba(86,26,158,.28); }
+  .banner h1 { margin:0; font-size:21px; }
+  .banner .sub { font-size:13px; opacity:.92; margin-top:3px; }
+  .banner .ver { font-size:11.5px; opacity:.85; margin-top:6px; }
+  .chips { position:absolute; top:12px; right:12px; display:flex; gap:8px; align-items:center; }
+  .quem { font-size:12.5px; color:#fff; opacity:.95; }
+  .chips a, .chips button { background:rgba(255,255,255,.18); border:none; color:#fff;
+    border-radius:16px; padding:6px 13px; font-size:12.5px; font-weight:700;
+    cursor:pointer; text-decoration:none; }
+  .chips .forte { background:var(--laranja); box-shadow:0 3px 10px rgba(0,0,0,.25); }
+  @media (max-width:760px) { .banner { margin:10px 10px 0; padding-top:46px; } }
 
-  .area { max-width:1200px; margin:0 auto; padding:0 16px 40px; }
-  .painel-caixa { background:var(--painel); border:1px solid var(--borda);
-                  border-radius:0 12px 12px 12px; padding:16px; }
+  .area { max-width:1100px; margin:0 auto; padding:14px 16px 50px; }
+  .secao { background:var(--painel); border:1px solid var(--borda); border-radius:14px;
+    padding:16px 18px; margin-bottom:16px; box-shadow:0 2px 10px rgba(36,26,53,.05); }
+  .secao > h2 { margin:0 0 4px; font-size:16.5px; display:flex; align-items:center; gap:8px; }
+  .secao .sub { color:var(--apagado); font-size:12.5px; margin-bottom:12px; }
+  .cont { background:var(--roxo-claro); color:#fff; border-radius:20px;
+          padding:1px 9px; font-size:12px; font-weight:800; }
 
-  .resumo { display:grid; grid-template-columns:repeat(auto-fit,minmax(130px,1fr));
-            gap:10px; margin-bottom:16px; }
-  .box { background:rgba(0,0,0,.25); border:1px solid var(--borda);
-         border-radius:12px; padding:14px; text-align:center; }
-  .box .n { font-size:26px; font-weight:800; display:block; }
-  .box .r { font-size:12px; color:var(--apagado); }
+  .resumo { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:12px; }
+  .box { background:#faf8fd; border:1px solid var(--borda); border-radius:12px;
+         padding:10px 16px; text-align:center; min-width:104px; }
+  .box .n { font-size:22px; font-weight:800; display:block; }
+  .box .r { font-size:11.5px; color:var(--apagado); }
   .box.alerta .n { color:var(--vermelho); }
 
-  .item { background:rgba(0,0,0,.22); border:1px solid var(--borda);
-          border-radius:12px; padding:13px; margin-bottom:9px; }
-  .item .cab { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:5px; }
-  .item .meta { font-size:13px; color:var(--apagado); line-height:1.6; }
-  .item .acoes { display:flex; gap:7px; margin-top:9px; flex-wrap:wrap; }
+  .card { background:#fdfcff; border:1px solid var(--borda); border-radius:12px;
+          padding:12px 14px; margin-bottom:10px; }
+  .card .cab { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  .card .cab b { font-size:15px; letter-spacing:.3px; }
+  .card .mono { font-family:ui-monospace,Consolas,monospace; font-size:12px; color:var(--apagado); }
+  .card .meta { font-size:13.5px; color:#54476f; line-height:1.65; margin-top:5px; }
+  .card .item { font-size:13.5px; margin-top:4px; }
+  .card .sku { font-family:ui-monospace,Consolas,monospace; font-size:12px;
+               background:#efe9f8; border-radius:6px; padding:1px 6px; }
+  .acoes { display:flex; gap:7px; margin-top:10px; flex-wrap:wrap; }
+
+  .vermelha { border:2px solid #f3c4c6; background:#fdf3f3; border-radius:14px;
+              padding:13px 14px; margin-bottom:12px; }
+  .vermelha > b { color:#a12d31; font-size:15px; }
+  .vermelha .sub { color:#8a5a5c; font-size:12.5px; margin:3px 0 10px; }
 
   .selo { display:inline-block; padding:2px 9px; border-radius:20px;
-          font-size:11px; font-weight:700; background:rgba(255,255,255,.1); }
-  .selo.ml { background:rgba(255,224,0,.16); color:#ffe066; }
-  .selo.tiktok { background:rgba(233,30,140,.18); color:#ff7ac0; }
-  .selo.shopee { background:rgba(253,139,0,.18); color:#ffb55f; }
-  .selo.magalu { background:rgba(56,139,253,.18); color:#79c0ff; }
-  .selo.velho { background:rgba(229,72,77,.2); color:#ff8085; }
-  .selo.ok { background:rgba(46,160,67,.2); color:#56d364; }
+          font-size:11px; font-weight:800; background:#efe9f8; color:#4a3b66; }
+  .selo.ml { background:#fff3bf; color:#7a5d00; }
+  .selo.shopee { background:#ffe8d1; color:#a04d00; }
+  .selo.magalu { background:#dbe9ff; color:#1c4f9c; }
+  .selo.tiktok { background:#ffe0ef; color:#a11c62; }
+  .selo.velho { background:#fdeeee; color:#a12d31; }
+  .selo.ok { background:#e2f5e6; color:#166b2d; }
 
-  input, button, textarea { font-family:inherit; font-size:15px; }
+  input, button, textarea { font-family:inherit; font-size:14.5px; }
   .campo { width:100%; padding:11px; border-radius:10px; border:2px solid var(--borda);
-           background:rgba(0,0,0,.28); color:var(--texto); margin-bottom:9px; }
+           background:#fff; color:var(--texto); }
   .campo:focus { outline:none; border-color:var(--laranja); }
-  .btn { padding:9px 15px; border:none; border-radius:9px; font-weight:700;
-         font-size:14px; cursor:pointer; color:#fff;
-         background:linear-gradient(135deg,var(--laranja),#f2650a); }
+  .btn { padding:9px 15px; border:none; border-radius:9px; font-weight:800;
+         font-size:13.5px; cursor:pointer; color:#fff;
+         background:linear-gradient(135deg,var(--laranja),var(--laranja-esc)); }
   .btn.roxo { background:linear-gradient(135deg,var(--roxo-claro),var(--roxo)); }
-  .btn.cinza { background:rgba(255,255,255,.09); }
-  .btn.verde { background:linear-gradient(135deg,#3fb950,var(--verde)); }
-  .btn.larga { width:100%; padding:13px; font-size:16px; }
-  .vazio { text-align:center; color:var(--apagado); padding:30px 10px; line-height:1.6; }
+  .btn.cinza { background:#f0ecf7; color:#4a3b66; }
+  .btn.verde { background:linear-gradient(135deg,#2ea043,var(--verde)); }
+  .btn.verm { background:linear-gradient(135deg,#e5484d,var(--vermelho)); }
+
+  .caixinha { margin-top:9px; }
+  .caixinha textarea { width:100%; min-height:64px; padding:10px; border-radius:10px;
+    border:2px solid var(--borda); background:#fff; color:var(--texto); resize:vertical; }
+  .caixinha textarea:focus { outline:none; border-color:var(--laranja); }
+  .caixinha .acoes { margin-top:7px; }
+
+  .vazio { text-align:center; color:var(--apagado); padding:22px 10px; line-height:1.6; }
   .esconde { display:none !important; }
-  .linhaf { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px; }
-  .linhaf .campo { flex:1; min-width:160px; margin:0; }
+  .flex { display:flex; gap:8px; flex-wrap:wrap; }
+  .flex .campo { flex:1; min-width:150px; }
 </style>
 </head>
 <body>
 
-<div class="topo">
-  <img src="icone-AMB.png" alt="">
-  <div class="titulo"><b>Painel de Devolucoes</b><span>AMBTotal</span></div>
-  <a href="/amb/">bipar &rarr;</a>
+<div class="banner">
+  <div class="chips">
+    <span class="quem" id="quemSou"></span>
+    <a class="forte" href="/amb/">&#128230; bipar</a>
+    <button id="btnSair">sair</button>
+  </div>
+  <h1>&#128081; Painel de Devolucoes &mdash; AMBTotal</h1>
+  <div class="sub">Triagens + A espreita + Defeitos + Recados</div>
+  <div class="ver">painel <b>b17</b> &middot; <span id="versaoServidor">servidor ...</span></div>
 </div>
 
-<div class="abas">
-  <button class="aba on" data-aba="espreita">A espreita <span class="n" id="nEspreita">-</span></button>
-  <button class="aba" data-aba="triagens">Triagens</button>
-  <button class="aba" data-aba="defeitos">Defeitos</button>
-  <button class="aba" data-aba="recados">Recados <span class="n" id="nRecados">-</span></button>
-</div>
+<div class="area">
 
-<div class="area"><div class="painel-caixa">
-  <div id="conteudo"><div class="vazio">carregando...</div></div>
-</div></div>
+  <!-- ================= 1) TRIAGENS ================= -->
+  <div class="secao">
+    <h2>&#128221; Triagens <span class="cont" id="nTriagens">-</span>
+      <button class="btn cinza" style="margin-left:auto" onclick="verTriagens()">atualizar</button></h2>
+    <div class="sub">O que ja foi bipado no galpao, com quem fez e quando.</div>
+    <div id="scTriagens"><div class="vazio">carregando...</div></div>
+  </div>
+
+  <!-- ================= 2) A ESPREITA ================= -->
+  <div class="secao">
+    <h2>&#128666; A espreita &mdash; devolucoes a caminho <span class="cont" id="nEspreita">-</span>
+      <button class="btn cinza" style="margin-left:auto" onclick="verEspreita()">atualizar</button></h2>
+    <div class="sub" id="subEspreita">Magalu &middot; ML &middot; Shopee &middot; atualiza sozinho a cada 4 min</div>
+    <div id="scEspreita"><div class="vazio">carregando...</div></div>
+  </div>
+
+  <!-- ================= 3) DEFEITOS ================= -->
+  <div class="secao">
+    <h2>&#128295; Estoque de defeitos
+      <button class="btn cinza" style="margin-left:auto" onclick="verDefeitos()">atualizar</button></h2>
+    <div class="sub">Agrupado por onde esta guardado &mdash; e assim que se procura na prateleira.</div>
+    <div class="flex" style="margin-bottom:10px">
+      <input class="campo" id="buscaDef" placeholder="SKU, local ou produto">
+      <button class="btn" onclick="verDefeitos($('buscaDef').value)">buscar</button>
+      <button class="btn verm" onclick="lancarDefeito()">&#10133; lancar defeito</button>
+    </div>
+    <div id="scDefeitos"><div class="vazio">carregando...</div></div>
+  </div>
+
+  <!-- ================= 4) RECADOS ================= -->
+  <div class="secao">
+    <h2>&#128204; Recados pro estoquista <span class="cont" id="nRecados">-</span>
+      <button class="btn cinza" style="margin-left:auto" onclick="verRecados()">atualizar</button></h2>
+    <div class="sub">Preso a um pedido, NF ou rastreio &mdash; trava a triagem ate o estoquista dar ciencia.</div>
+    <button class="btn roxo" style="width:100%;margin-bottom:10px" onclick="novoRecado()">Deixar recado</button>
+    <div id="scRecados"><div class="vazio">carregando...</div></div>
+  </div>
+
+</div>
 
 <script>
 const API = '/amb';
@@ -137,161 +196,204 @@ async function api(caminho, opcoes = {}) {
   return r.json();
 }
 
-let abaAtual = 'espreita';
-document.querySelectorAll('.aba').forEach(b => {
-  b.onclick = () => {
-    document.querySelectorAll('.aba').forEach(x => x.classList.remove('on'));
-    b.classList.add('on');
-    abaAtual = b.dataset.aba;
-    carregar();
+/* ---------- caixinha inline (observacao / aviso) ----------
+   Nao e popup: abre um textarea DENTRO do card, ja preenchido
+   quando e edicao. bem mais pratico no dia a dia. */
+function abrirCaixinha(botao, { valor, placeholder, aoSalvar }) {
+  const card = botao.closest('.card');
+  const aberta = card.querySelector('.caixinha');
+  if (aberta) { aberta.remove(); return; }
+  const div = document.createElement('div');
+  div.className = 'caixinha';
+  div.innerHTML = '<textarea placeholder="' + esc(placeholder || '') + '">' + esc(valor || '') + '</textarea>' +
+    '<div class="acoes"><button class="btn verde">salvar</button>' +
+    '<button class="btn cinza">cancelar</button></div>';
+  card.appendChild(div);
+  const ta = div.querySelector('textarea');
+  ta.focus();
+  div.querySelector('.btn.verde').onclick = async () => {
+    await aoSalvar(ta.value.trim());
+    div.remove();
   };
-});
+  div.querySelector('.btn.cinza').onclick = () => div.remove();
+}
 
-function carregar() {
-  $('conteudo').innerHTML = '<div class="vazio">carregando...</div>';
-  if (abaAtual === 'espreita') return verEspreita();
-  if (abaAtual === 'triagens') return verTriagens();
-  if (abaAtual === 'defeitos') return verDefeitos();
-  if (abaAtual === 'recados')  return verRecados();
+/* ================= TRIAGENS (primeira secao) ================= */
+async function verTriagens() {
+  try {
+    const r = await api('/api/triagem/recentes?limite=40');
+    if (!r.ok) { $('scTriagens').innerHTML = '<div class="vazio">' + esc(r.erro) + '</div>'; return; }
+    $('nTriagens').textContent = r.registros.length;
+    if (!r.registros.length) {
+      $('scTriagens').innerHTML = '<div class="vazio">Nenhuma caixa triada ainda. ' +
+        'Assim que o galpao bipar a primeira, ela aparece aqui. &#127881;</div>';
+      return;
+    }
+    let h = '';
+    r.registros.forEach(x => {
+      h += '<div class="card"><div class="cab">' +
+        (x.marketplace ? '<span class="selo ' + esc(x.marketplace) + '">' + esc(x.marketplace) + '</span>' : '') +
+        '<span class="selo ' + (x.status === 'problema' ? 'velho' : 'ok') + '">' + esc(x.status) + '</span>' +
+        (x.buyer_nome ? '<b>' + esc(x.buyer_nome) + '</b>' : '') +
+        '</div><div class="meta">' +
+        (x.nf_numero ? '&#129534; NF ' + esc(x.nf_numero) + ' &middot; ' : '') +
+        (x.produto_sku ? '<span class="sku">' + esc(x.produto_sku) + '</span> &middot; ' : '') +
+        (x.problema_descricao ? esc(x.problema_descricao) + ' &middot; ' : '') +
+        'por <b>' + esc(x.funcionario || '?') + '</b> em ' +
+        esc(String(x.criado_em || '').slice(0, 16).replace('T', ' ')) +
+        '</div></div>';
+    });
+    $('scTriagens').innerHTML = h;
+  } catch (e) {}
 }
 
 /* ================= A ESPREITA ================= */
-async function verEspreita() {
-  const r = await api('/api/espreita');
-  if (!r.ok) { $('conteudo').innerHTML = '<div class="vazio">' + esc(r.erro) + '</div>'; return; }
-  $('nEspreita').textContent = r.em_transito.length;
-
-  let h = '<div class="resumo">' +
-    box(r.em_transito.length, 'a caminho') +
-    box(r.atrasadas_30d, 'atrasadas +30d', r.atrasadas_30d > 0) +
-    box(r.aguardando_postagem, 'nao postadas') +
-    box(r.entregues.length, 'entregues') +
+function cardEspreita(x, entregue) {
+  const velho = (x.dias_em_transito || 0) > 30;
+  let h = '<div class="card"><div class="cab">' +
+    '<span class="selo ' + esc(x.marketplace) + '">' + esc(x.marketplace === 'ml' ? 'Mercado Livre' : x.marketplace) + '</span>' +
+    '<b>' + esc(x.pedido || '?') + '</b>' +
+    (x.tracking ? '<span class="mono">' + esc(x.tracking) + '</span>' : '');
+  if (entregue) {
+    h += '<span class="selo velho">entregue ha ' + (x.dias_desde == null ? '?' : x.dias_desde) + ' dia(s)</span>';
+  } else {
+    h += velho
+      ? '<span class="selo velho">' + x.dias_em_transito + ' dias &middot; candidata a extravio</span>'
+      : '<span class="selo">' + (x.dias_em_transito == null ? '?' : x.dias_em_transito) + ' dia(s)</span>';
+  }
+  h += (x.no_cd_ml ? '<span class="selo">no CD do ML</span>' : '') +
+    (x.status_money === 'refunded' ? '<span class="selo velho">dinheiro estornado</span>' :
+     x.status_money === 'retained' ? '<span class="selo ok">dinheiro retido</span>' : '') +
+    (x.nf_devolucao_emitida ? '<span class="selo ok">NF devolucao &#10003;' +
+      (x.nf_devolucao_emitida !== true ? ' ' + esc(x.nf_devolucao_emitida) : '') + '</span>' : '') +
     '</div>';
 
-  /* uma linha por fonte: montando / desligada / o que falta */
-  const f = r.fontes || {};
-  const fontes = [];
-  if (f.ml && !f.ml.quente) fontes.push('Mercado Livre: indice ainda montando');
-  if (f.shopee) {
-    if (f.shopee.desligada) fontes.push('Shopee: desligada (SHOPEE_PROXY_URL/KEY)');
-    else if (f.shopee.erro) fontes.push('Shopee: ' + esc(f.shopee.erro));
-    else if (!f.shopee.quente) fontes.push('Shopee: cache montando');
-  }
-  if (f.magalu && !f.magalu.quente) {
-    fontes.push('Magalu: ' + esc(f.magalu.falta || 'indice montando') +
-      (f.magalu.desligada ? ' — <a href="/amb/conectar" style="color:#ffb55f">conectar</a>' : ''));
-  }
-  if (fontes.length) {
-    h += '<div class="item"><div class="meta">' + fontes.join('<br>') + '</div></div>';
-  }
+  // linha do CLIENTE: nome (do Bling) + apelido ML + NF da venda
+  const cli = [];
+  if (x.cliente) cli.push('&#128100; ' + esc(x.cliente));
+  else if (x.nickname) cli.push('&#128100; ' + esc(x.nickname));
+  if (x.cliente && x.nickname) cli.push('(' + esc(x.nickname) + ')');
+  if (x.nf_venda) cli.push('&#129534; NF ' + esc(x.nf_venda));
+  if (x.motivo_curto) cli.push('&#128172; ' + esc(x.motivo_curto));
+  if (!entregue && x.status) cli.push(esc(x.status));
+  if (cli.length) h += '<div class="meta">' + cli.join(' &middot; ') + '</div>';
 
-  if (r.em_transito.length === 0) {
-    h += '<div class="vazio">Nada a caminho no momento.</div>';
-  }
-
-  r.em_transito.forEach(x => {
-    const velho = (x.dias_em_transito || 0) > 30;
-    h += '<div class="item">' +
-      '<div class="cab">' +
-        '<span class="selo ' + esc(x.marketplace) + '">' + esc(x.marketplace) + '</span>' +
-        (velho ? '<span class="selo velho">' + x.dias_em_transito + ' dias &middot; candidata a extravio</span>'
-               : '<span class="selo">' + (x.dias_em_transito == null ? '?' : x.dias_em_transito) + ' dias</span>') +
-        (x.no_cd_ml ? '<span class="selo">no CD do ML</span>' : '') +
-        (x.status_money === 'refunded' ? '<span class="selo velho">dinheiro ja estornado</span>' :
-         (x.status_money === 'retained' ? '<span class="selo ok">dinheiro retido</span>' : '')) +
-        (x.nf_devolucao_emitida ? '<span class="selo ok">NF &#10003;' +
-          (x.nf_devolucao_emitida !== true ? ' ' + esc(x.nf_devolucao_emitida) : '') + '</span>' : '') +
-      '</div>' +
-      '<div class="meta">pedido <b>' + esc(x.pedido) + '</b><br>' +
-      'rastreio ' + esc(x.tracking) + ' &middot; ' + esc(x.status) +
-      (x.comentario ? '<br>&#128172; ' + esc(x.comentario) : '') + '</div>' +
-      '<div class="acoes">' +
-        '<button class="btn cinza" onclick="comentar(\'' + esc(x.tracking) + '\',\'' + esc(x.marketplace) + '\')">anotar</button>' +
-        '<button class="btn roxo" onclick="baixar(\'' + esc(x.tracking) + '\')">dar baixa</button>' +
-      '</div></div>';
+  (x.itens || []).forEach(it => {
+    h += '<div class="item">&#128230; <b>' + (it.qtd || 1) + '&times;</b> ' +
+      esc(String(it.titulo || '').slice(0, 70)) +
+      (it.sku ? ' &middot; <span class="sku">' + esc(it.sku) + '</span>' : '') + '</div>';
   });
-  $('conteudo').innerHTML = h;
+  if (x.comentario) h += '<div class="meta">&#128221; ' + esc(x.comentario) + '</div>';
+
+  const chave = esc(x.tracking || x.pedido);
+  h += '<div class="acoes">' +
+    '<button class="btn verde" onclick="baixar(this,\'' + chave + '\')">&#10003; achei / ja processado</button>' +
+    '<button class="btn roxo" onclick="observar(this,\'' + chave + '\',\'' + esc(x.marketplace) + '\')">&#128172; observacao</button>' +
+    '<button class="btn verm" onclick="avisarEstoquista(this,\'' + chave + '\')">&#128276; aviso estoquista</button>' +
+    '</div></div>';
+  return h;
+}
+
+let _espreitaCache = {};
+async function verEspreita() {
+  try {
+    const r = await api('/api/espreita');
+    if (!r.ok) { $('scEspreita').innerHTML = '<div class="vazio">' + esc(r.erro) + '</div>'; return; }
+    _espreitaCache = {};
+    [...r.em_transito, ...r.entregues].forEach(x => { _espreitaCache[x.tracking || x.pedido] = x; });
+    $('nEspreita').textContent = r.em_transito.length + r.entregues.length;
+
+    let h = '<div class="resumo">' +
+      box(r.em_transito.length, 'em transito') +
+      box(r.atrasadas_30d, 'atrasadas +30d', r.atrasadas_30d > 0) +
+      box(r.aguardando_postagem, 'nao postadas') +
+      box(r.entregues.length, 'entregues sem bipe', r.entregues.length > 0) +
+      '</div>';
+
+    const f = r.fontes || {};
+    const avisos = [];
+    if (f.ml && !f.ml.quente) avisos.push('Mercado Livre: indice montando');
+    if (f.shopee && !f.shopee.quente) avisos.push('Shopee: ' + (f.shopee.desligada ? 'desligada' : (f.shopee.erro || 'cache montando')));
+    if (f.magalu && !f.magalu.quente) avisos.push('Magalu: ' + (f.magalu.falta || 'indice montando') +
+      (f.magalu.desligada ? ' — <a href="/amb/conectar">conectar</a>' : ''));
+    if (avisos.length) h += '<div class="vazio" style="padding:8px">' + avisos.join(' &middot; ') + '</div>';
+
+    // ENTREGUE no marketplace mas ninguem bipou — o destaque vermelho da GOOD
+    if (r.entregues.length) {
+      h += '<div class="vermelha"><b>&#128680; Consta ENTREGUE no marketplace, mas ninguem bipou aqui (' +
+        r.entregues.length + ')</b>' +
+        '<div class="sub">Confere no galpao: pode estar guardado sem registro — ou nao chegou de verdade.</div>' +
+        r.entregues.map(x => cardEspreita(x, true)).join('') + '</div>';
+    }
+    h += r.em_transito.map(x => cardEspreita(x, false)).join('') ||
+         '<div class="vazio">Nada a caminho no momento.</div>';
+    $('scEspreita').innerHTML = h;
+  } catch (e) {}
 }
 
 function box(n, rot, alerta) {
-  return '<div class="box' + (alerta ? ' alerta' : '') + '"><span class="n">' +
-         n + '</span><span class="r">' + rot + '</span></div>';
+  return '<div class="box' + (alerta ? ' alerta' : '') + '"><span class="n">' + n +
+         '</span><span class="r">' + rot + '</span></div>';
 }
 
-async function comentar(chave, marketplace) {
-  const txt = prompt('Anotacao para ' + chave + ':');
-  if (txt === null) return;
-  await api('/api/espreita/nota', { method:'POST', body: JSON.stringify({ chave, marketplace, comentario: txt }) });
-  carregar();
-}
-async function baixar(chave) {
+async function baixar(bt, chave) {
   if (!confirm('Dar baixa em ' + chave + '? Some da lista.')) return;
   await api('/api/espreita/nota', { method:'POST', body: JSON.stringify({ chave, baixado: true }) });
-  carregar();
+  verEspreita();
 }
 
-/* ================= TRIAGENS ================= */
-async function verTriagens() {
-  const r = await api('/api/triagem/recentes?limite=60');
-  if (!r.ok) { $('conteudo').innerHTML = '<div class="vazio">' + esc(r.erro) + '</div>'; return; }
-  if (!r.registros.length) {
-    $('conteudo').innerHTML = '<div class="vazio">Nenhuma caixa triada ainda.<br>' +
-      'Assim que o galpao bipar a primeira, ela aparece aqui.</div>';
-    return;
-  }
-  let h = '';
-  r.registros.forEach(x => {
-    h += '<div class="item"><div class="cab">' +
-      (x.marketplace ? '<span class="selo ' + esc(x.marketplace) + '">' + esc(x.marketplace) + '</span>' : '') +
-      '<span class="selo ' + (x.status === 'problema' ? 'velho' : 'ok') + '">' + esc(x.status) + '</span>' +
-      '</div><div class="meta">' +
-      (x.buyer_nome ? esc(x.buyer_nome) + '<br>' : '') +
-      (x.nf_numero ? 'NF ' + esc(x.nf_numero) + ' &middot; ' : '') +
-      (x.produto_sku ? esc(x.produto_sku) + ' &middot; ' : '') +
-      'por ' + esc(x.funcionario || '?') + ' em ' +
-      esc(String(x.criado_em || '').slice(0,16).replace('T',' ')) +
-      '</div></div>';
+function observar(bt, chave, marketplace) {
+  const atual = (_espreitaCache[chave] || {}).comentario || '';
+  abrirCaixinha(bt, {
+    valor: atual,
+    placeholder: 'observacao sobre esta devolucao...',
+    aoSalvar: async (texto) => {
+      await api('/api/espreita/nota', { method:'POST',
+        body: JSON.stringify({ chave, marketplace, comentario: texto }) });
+      verEspreita();
+    },
   });
-  $('conteudo').innerHTML = h;
+}
+
+function avisarEstoquista(bt, chave) {
+  abrirCaixinha(bt, {
+    valor: '',
+    placeholder: 'o que o estoquista precisa saber ANTES de mexer nesta caixa...',
+    aoSalvar: async (texto) => {
+      if (!texto) return;
+      await api('/api/recados', { method:'POST',
+        body: JSON.stringify({ identificador: chave, texto }) });
+      bt.textContent = 'recado criado ✓';
+      bt.disabled = true;
+      verRecados();
+    },
+  });
 }
 
 /* ================= DEFEITOS ================= */
 async function verDefeitos(busca) {
-  const r = await api('/api/defeitos' + (busca ? '?q=' + encodeURIComponent(busca) : ''));
-  if (!r.ok) { $('conteudo').innerHTML = '<div class="vazio">' + esc(r.erro) + '</div>'; return; }
-
-  let h = '<div class="linhaf">' +
-    '<input class="campo" id="buscaDef" placeholder="SKU, local ou produto" value="' + esc(busca || '') + '">' +
-    '<button class="btn" onclick="verDefeitos($(\'buscaDef\').value)">buscar</button>' +
-    '<button class="btn roxo" onclick="lancarDefeito()">lancar defeito</button></div>';
-
-  h += '<div class="resumo">' +
-    box(r.grupos.length, 'locais com defeito') +
-    box(r.grupos.reduce((s,g) => s + g.qtd, 0), 'unidades') +
-    box(r.aguardando_nf, 'aguardando NF') +
-    '</div>';
-
-  if (!r.grupos.length) {
-    h += '<div class="vazio">Nenhum defeito registrado.<br>' +
-         'Use "lancar defeito" para cadastrar o que ja esta quebrado no galpao.</div>';
-  }
-
-  r.grupos.forEach(g => {
-    h += '<div class="item"><div class="cab">' +
-      '<b>' + esc(g.localizacao) + '</b>' +
-      '<span class="selo">' + esc(g.origem) + '</span>' +
-      '<span class="selo ok">' + g.qtd + ' un</span></div>' +
-      '<div class="meta"><b>' + esc(g.sku) + '</b>' +
-      (g.produto ? ' &mdash; ' + esc(String(g.produto).slice(0,60)) : '') +
-      (g.defeitos.length ? '<br>' + g.defeitos.map(d => '&bull; ' + esc(d)).join('<br>') : '') +
-      '</div><div class="acoes"><button class="btn cinza" onclick="retirarPeca(\'' + esc(g.sku) +
-      '\',\'' + esc(g.localizacao) + '\')">&#128295; retirar peca</button></div></div>';
-  });
-  $('conteudo').innerHTML = h;
+  try {
+    const r = await api('/api/defeitos' + (busca ? '?q=' + encodeURIComponent(busca) : ''));
+    if (!r.ok) { $('scDefeitos').innerHTML = '<div class="vazio">' + esc(r.erro) + '</div>'; return; }
+    let h = '<div class="resumo">' +
+      box(r.grupos.length, 'locais') +
+      box(r.grupos.reduce((s, g) => s + g.qtd, 0), 'unidades') +
+      box(r.aguardando_nf, 'aguardando NF') + '</div>';
+    if (!r.grupos.length) h += '<div class="vazio">Nenhum defeito registrado.</div>';
+    r.grupos.forEach(g => {
+      h += '<div class="card"><div class="cab"><b>&#128205; ' + esc(g.localizacao) + '</b>' +
+        '<span class="selo">' + esc(g.origem) + '</span>' +
+        '<span class="selo ok">' + g.qtd + ' un</span></div>' +
+        '<div class="meta"><span class="sku">' + esc(g.sku) + '</span>' +
+        (g.produto ? ' &middot; ' + esc(String(g.produto).slice(0, 60)) : '') +
+        (g.defeitos.length ? '<br>' + g.defeitos.map(d => '&bull; ' + esc(d)).join('<br>') : '') +
+        '</div><div class="acoes"><button class="btn cinza" onclick="retirarPeca(\'' +
+        esc(g.sku) + '\',\'' + esc(g.localizacao) + '\')">&#128295; retirar peca</button></div></div>';
+    });
+    $('scDefeitos').innerHTML = h;
+  } catch (e) {}
 }
 
-/* Peca tirada de uma unidade quebrada pra salvar outra — fica
-   registrado o que saiu, de onde e pra que foi usada. */
 async function retirarPeca(sku, local) {
   const peca = prompt('Qual peca foi retirada de ' + sku + ' (' + local + ')?');
   if (!peca) return;
@@ -317,31 +419,25 @@ async function lancarDefeito() {
 
 /* ================= RECADOS ================= */
 async function verRecados() {
-  const r = await api('/api/recados');
-  if (!r.ok) { $('conteudo').innerHTML = '<div class="vazio">' + esc(r.erro) + '</div>'; return; }
-  $('nRecados').textContent = r.total;
-
-  let h = '<button class="btn larga roxo" onclick="novoRecado()" style="margin-bottom:14px">' +
-          'Deixar recado para o estoquista</button>';
-
-  if (!r.recados.length) {
-    h += '<div class="vazio">Nenhum recado ativo.<br>' +
-         'Um recado fica preso a um pedido, NF, chave ou rastreio, e aparece ' +
-         'em vermelho na tela do bipe <b>antes</b> de o estoquista mexer na caixa.</div>';
-  }
-
-  r.recados.forEach(x => {
-    h += '<div class="item"><div class="cab">' +
-      '<span class="selo">' + esc(x.identificador) + '</span>' +
-      (x.ciente_por ? '<span class="selo ok">lido por ' + esc(x.ciente_por) + '</span>'
-                    : '<span class="selo velho">ainda nao lido</span>') +
-      '</div><div class="meta">' + esc(x.texto) + '<br>' +
-      'criado por ' + esc(x.criado_por || '?') + ' em ' +
-      esc(String(x.criado_em || '').slice(0,16).replace('T',' ')) + '</div>' +
-      '<div class="acoes"><button class="btn cinza" onclick="resolver(' + x.id + ')">resolver</button></div>' +
-      '</div>';
-  });
-  $('conteudo').innerHTML = h;
+  try {
+    const r = await api('/api/recados');
+    if (!r.ok) { $('scRecados').innerHTML = '<div class="vazio">' + esc(r.erro) + '</div>'; return; }
+    $('nRecados').textContent = r.total;
+    if (!r.recados.length) {
+      $('scRecados').innerHTML = '<div class="vazio">Nenhum recado ativo.</div>'; return;
+    }
+    let h = '';
+    r.recados.forEach(x => {
+      h += '<div class="card"><div class="cab">' +
+        '<span class="selo">' + esc(x.identificador) + '</span>' +
+        (x.ciente_por ? '<span class="selo ok">lido por ' + esc(x.ciente_por) + '</span>'
+                      : '<span class="selo velho">ainda nao lido</span>') +
+        '</div><div class="meta">' + esc(x.texto) + '<br>por ' + esc(x.criado_por || '?') +
+        ' em ' + esc(String(x.criado_em || '').slice(0, 16).replace('T', ' ')) + '</div>' +
+        '<div class="acoes"><button class="btn cinza" onclick="resolver(' + x.id + ')">resolver</button></div></div>';
+    });
+    $('scRecados').innerHTML = h;
+  } catch (e) {}
 }
 
 async function novoRecado() {
@@ -353,69 +449,62 @@ async function novoRecado() {
   if (!r.ok) { alert('Nao gravou: ' + r.erro); return; }
   verRecados();
 }
+
 async function resolver(id) {
   if (!confirm('Marcar como resolvido?')) return;
   await api('/api/recados/' + id + '/resolver', { method:'POST' });
   verRecados();
 }
 
-/* =========================================================
-   ESTACAO DE IMPRESSAO — este painel aberto num COMPUTADOR
-   com QZ Tray vira a impressora do galpao: puxa a fila a cada
-   5s e manda o ZPL cru pra Zebra. No celular nao roda (sem QZ).
-   ========================================================= */
+/* ============ ESTACAO DE IMPRESSAO (PC + QZ Tray) ============ */
 let qzLigado = false;
 async function ligarQZ() {
   if (qzLigado || !window.qz) return qzLigado;
   try {
-    qz.security.setCertificatePromise((res) => fetch(API + '/api/qz/cert', { credentials:'same-origin' }).then(r => r.ok ? r.text() : Promise.reject('sem cert')).then(res));
-    qz.security.setSignaturePromise((toSign) => (res) => fetch(API + '/api/qz/sign?request=' + encodeURIComponent(toSign), { credentials:'same-origin' }).then(r => r.text()).then(res));
+    qz.security.setCertificatePromise((res) => fetch(API + '/api/qz/cert', { credentials:'same-origin' })
+      .then(r => r.ok ? r.text() : Promise.reject('sem cert')).then(res));
+    qz.security.setSignaturePromise((toSign) => (res) => fetch(API + '/api/qz/sign?request=' +
+      encodeURIComponent(toSign), { credentials:'same-origin' }).then(r => r.text()).then(res));
     if (!qz.websocket.isActive()) await qz.websocket.connect();
     qzLigado = true;
-    console.log('[estacao] QZ conectado');
-  } catch (e) { console.log('[estacao] QZ indisponivel:', e); }
+  } catch (e) {}
   return qzLigado;
 }
-
 function carregarQZ() {
   return new Promise((res) => {
     if (window.qz) return res(true);
     const sc = document.createElement('script');
     sc.src = 'https://cdn.jsdelivr.net/npm/qz-tray@2.2/qz-tray.min.js';
-    sc.onload = () => res(true);
-    sc.onerror = () => res(false);
+    sc.onload = () => res(true); sc.onerror = () => res(false);
     document.head.appendChild(sc);
   });
 }
-
 async function cicloEstacao() {
   try {
     const r = await api('/api/etiqueta/proxima');
-    if (r.ok && r.etiqueta) {
-      if (await ligarQZ()) {
-        const imp = await qz.printers.getDefault().catch(() => null);
-        const cfgz = qz.configs.create(imp || null);
-        await qz.print(cfgz, [{ type:'raw', format:'plain', data: r.etiqueta.zpl }]);
-        console.log('[estacao] etiqueta impressa', r.etiqueta.id);
-      }
+    if (r.ok && r.etiqueta && await ligarQZ()) {
+      const imp = await qz.printers.getDefault().catch(() => null);
+      await qz.print(qz.configs.create(imp || null), [{ type:'raw', format:'plain', data: r.etiqueta.zpl }]);
     }
-  } catch (e) { /* proxima rodada tenta */ }
+  } catch (e) {}
 }
 
-(async () => {
-  // so vira estacao em tela grande (desktop) — celular nao tem QZ
-  if (window.innerWidth >= 900 && await carregarQZ()) {
-    setInterval(cicloEstacao, 5000);
-  }
-})();
-
-/* contadores das abas ao abrir */
+/* ================= arranque ================= */
+$('btnSair').onclick = async () => {
+  await api('/api/auth/logout', { method:'POST' }).catch(() => {});
+  location.href = '/amb/';
+};
 (async () => {
   try {
-    const rec = await api('/api/recados');
-    if (rec.ok) $('nRecados').textContent = rec.total;
-  } catch (e) {}
-  carregar();
+    const eu = await api('/api/auth/me');
+    if (eu.ok) $('quemSou').textContent = eu.usuario + (eu.tipo === 'admin' ? ' \u00b7 admin' : '');
+  } catch (e) { return; }
+  fetch(API + '/status').then(r => r.json()).then(d => {
+    $('versaoServidor').textContent = 'servidor ' + String(d.versao || '?').replace('AMB Devolucoes ', '');
+  }).catch(() => {});
+  verTriagens(); verEspreita(); verDefeitos(); verRecados();
+  setInterval(verEspreita, 4 * 60 * 1000);          // atualiza sozinho
+  if (window.innerWidth >= 900 && await carregarQZ()) setInterval(cicloEstacao, 5000);
 })();
 </script>
 </body>
