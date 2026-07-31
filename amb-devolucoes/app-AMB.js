@@ -72,10 +72,24 @@ const impressao = require('./lib-AMB/impressao-AMB');
 const emailAMB = require('./lib-AMB/email-AMB');
 const nfEntrada = require('./lib-AMB/nf-entrada-AMB');
 
-const VERSAO = 'AMB Devolucoes b14';
+const VERSAO = 'AMB Devolucoes b15';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
+
+// ── AUTOSSUFICIENCIA DE PARSERS (b15) ────────────────────────
+// BUG REAL pego em producao: no server.js da GOOD o
+// cookieParser() esta na linha 148, e o /amb foi montado logo
+// apos a 147 — ou seja, ANTES do leitor de cookies. Resultado:
+// dentro deste router req.cookies vinha undefined e TODA rota
+// com sessao respondia "sessao invalida", mesmo logado (o login
+// em si funcionava porque criar cookie nao exige ler cookie).
+// Agora o modulo le os proprios cookies e body — os dois
+// middlewares abaixo pulam sozinhos quando o server ja fez o
+// trabalho, entao nao ha custo em duplicar.
+const cookieParser = require('cookie-parser');
+router.use(express.json({ limit: '12mb' }));
+router.use(cookieParser());
 
 // ── Trava de admin ───────────────────────────────────────────
 function admin(req, res, next) {
