@@ -72,7 +72,7 @@ const impressao = require('./lib-AMB/impressao-AMB');
 const emailAMB = require('./lib-AMB/email-AMB');
 const nfEntrada = require('./lib-AMB/nf-entrada-AMB');
 
-const VERSAO = 'AMB Devolucoes b19';
+const VERSAO = 'AMB Devolucoes b20';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -838,12 +838,71 @@ router.get('/api/triagem/fila', auth.requerLogin, async (req, res) => {
   res.json({ ok: true, status, total: registros.length, registros });
 });
 
+// ── DEPOSITOS (a lista viva do Bling da AMB) ─────────────────
+router.get('/api/depositos', auth.requerLogin, async (req, res) => {
+  res.json({ ok: true, ...(await bling.listarDepositos(req.query.refresh === '1')) });
+});
+
+// diagnostico com 1 clique: quais depositos existem no Bling da AMB
+router.get('/depositos', admin, async (req, res) => {
+  res.json({ ok: true, versao: VERSAO, ...(await bling.listarDepositos(true)) });
+});
+
+/**
+ * Lanca a ENTRADA de estoque da NF de devolucao no deposito
+ * escolhido (mesma chamada da GOOD: POST /nfe/{id}/lancar-estoque/{dep}).
+ * Exige o card com a devolucao VINCULADA (nf_devolucao_id_bling) —
+ * sem o id, o Bling nao tem em qual nota lancar.
+ */
+router.post('/api/triagem/:id/lancar-estoque', auth.requerLogin, async (req, res) => {
+  const reg = await db.obterTriagem(req.params.id);
+  if (!reg.ok) return res.status(404).json(reg);
+  const t = reg.registro;
+  if (!t.nf_devolucao_id_bling) {
+    return res.status(400).json({ ok: false,
+      erro: 'este card ainda nao tem a NF de devolucao VINCULADA - registre pela caixinha colando o LINK do Bling (o link traz o id)' });
+  }
+  // deposito precisa existir no Bling da AMB (whitelist viva)
+  const deps = await bling.listarDepositos(false);
+  const idDep = String((req.body || {}).deposito_id || '').trim();
+  const dep = deps.ok ? (deps.depositos || []).find(d => d.id === idDep) : null;
+  if (!dep) {
+    return res.status(400).json({ ok: false, erro: 'deposito invalido ou lista indisponivel',
+      depositos_validos: deps.ok ? deps.depositos : null });
+  }
+
+  const r = await bling.lancarEstoqueNf(t.nf_devolucao_id_bling, dep.id);
+  if (!r.ok) return res.status(502).json(r);
+
+  // marca no card; se as colunas nao existirem no banco, segue ok
+  const upd = await db.atualizarTriagem(t.id, {
+    estoque_lancado_em: new Date().toISOString(),
+    estoque_deposito: dep.descricao,
+  });
+  res.json({ ok: true, deposito: dep.descricao,
+    persistiu: upd.ok, aviso: upd.ok ? null : ('lancou no Bling, mas nao gravou no card: ' + upd.erro) });
+});
+
 /** NF de devolucao gerada no Bling -> registra o numero no card. */
 router.put('/api/triagem/:id/nf-devolucao', auth.requerLogin, async (req, res) => {
-  const { numero, id_bling } = req.body || {};
-  if (!numero) return res.status(400).json({ ok: false, erro: 'informe o numero da NF de devolucao' });
+  let { numero, id_bling, texto } = req.body || {};
+  // b20 - aceita o LINK do Bling colado inteiro: extrai o id do #edit/{id}
+  if (!id_bling && texto) {
+    const m = String(texto).match(/#edit\/(\d{6,})/) || String(texto).match(/\b(\d{9,})\b/);
+    if (m) id_bling = m[1];
+    if (!numero) { const mn = String(texto).match(/\b(\d{3,8})\b/); if (mn && mn[1] !== id_bling) numero = mn[1]; }
+  }
+  if (!numero && id_bling) {
+    // completa o numero direto do Bling
+    const rNf = await bling.chamarBling(`/nfe/${id_bling}`);
+    const nf = rNf.ok && rNf.data && rNf.data.data;
+    if (nf && nf.numero) numero = String(nf.numero);
+  }
+  if (!numero && !id_bling) {
+    return res.status(400).json({ ok: false, erro: 'cole o numero OU o link da NF de devolucao no Bling' });
+  }
   res.json(await db.atualizarTriagem(req.params.id, {
-    nf_devolucao_numero: String(numero),
+    nf_devolucao_numero: numero ? String(numero) : '(ver Bling)',
     nf_devolucao_id_bling: id_bling ? String(id_bling) : null,
   }));
 });
