@@ -72,7 +72,7 @@ const impressao = require('./lib-AMB/impressao-AMB');
 const emailAMB = require('./lib-AMB/email-AMB');
 const nfEntrada = require('./lib-AMB/nf-entrada-AMB');
 
-const VERSAO = 'AMB Devolucoes b32';
+const VERSAO = 'AMB Devolucoes b33';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -982,8 +982,10 @@ router.get('/api/espreita', auth.requerLogin, async (req, res) => {
     return {
       ...x,
       link_marketplace: link,
-      cliente: (venda && venda.nome) || null,
+      cliente: (venda && venda.nome) || x.cliente_ml || null,
       nf_venda: x.nf_ml_numero || (venda && venda.numero) || null,
+      nf_valor: (venda && venda.valor != null) ? venda.valor
+        : (x.valor_venda != null ? x.valor_venda : null),
       link_nf_bling: (venda && venda.id)
         ? ('https://www.bling.com.br/notas.fiscais.php#edit/' + venda.id) : null,
       comentario: n && n.comentario, ticket: n && n.ticket,
