@@ -72,7 +72,7 @@ const impressao = require('./lib-AMB/impressao-AMB');
 const emailAMB = require('./lib-AMB/email-AMB');
 const nfEntrada = require('./lib-AMB/nf-entrada-AMB');
 
-const VERSAO = 'AMB Devolucoes b15';
+const VERSAO = 'AMB Devolucoes b16';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -193,12 +193,21 @@ router.get('/conectar', admin, (req, res) => {
         <tr><td>Indice de devolucoes ML</td><td>${idx.quente
           ? `<span class="ok">${idx.com_tracking} rastreios</span> &middot; ${idx.idade_min} min`
           : (idx.construindo ? 'montando agora...' : '<span class="erro">ainda frio</span>')}</td></tr>
+        <tr><td>Magalu</td><td>${
+          !magalu.temCredenciais() ? '<span class="erro">sem credenciais do app no servico</span>'
+          : !magalu.temToken() ? '<b>falta o consentimento</b> (botao abaixo)'
+          : !magalu.temTenant() ? '<span class="ok">autorizado</span> &middot; <b>falta AMB_MAGALU_TENANT_ID</b>'
+          : `<span class="ok">conectado</span> &middot; tenant ${process.env.AMB_MAGALU_TENANT_ID}`}</td></tr>
+        <tr><td>Shopee</td><td>${shopee.cfg.ativo
+          ? `<span class="ok">ligada</span> &middot; loja ${shopee.cfg.loja}`
+          : '<span class="erro">desligada</span>'}</td></tr>
       </table>
     </div>
 
     <div class="card">
       <a class="btn" href="/amb/oauth/iniciar?servico=bling&k=${k}">Conectar o Bling da AMBTotal</a>
       <a class="btn" href="/amb/oauth/iniciar?servico=ml&k=${k}">Conectar o Mercado Livre da AMBTotal</a>
+      <a class="btn" href="/amb/oauth/iniciar?servico=magalu&k=${k}">Conectar o Magalu da AMBTotal</a>
       <a class="btn cinza" href="/amb/ml/indice?k=${k}">Ver o indice de devolucoes</a>
       <a class="btn cinza" href="/amb/nf/indice?k=${k}">Ver o indice de nomes</a>
       <a class="btn cinza" href="/amb/config?k=${k}">Ver diagnostico completo</a>
@@ -206,7 +215,9 @@ router.get('/conectar', admin, (req, res) => {
 
     <div class="aviso">
       Clique, autorize na tela do marketplace e pronto — o resto acontece sozinho.
-      Confira antes que o navegador esteja logado na conta da <b>AMBTotal</b>.<br><br>
+      Confira antes que o navegador esteja logado na conta da <b>AMBTotal</b>.<br>
+      &#9888;&#65039; No <b>Magalu</b> vale dobrado: e a conta LOGADA na hora do consentimento
+      que fica autorizada — saia da conta da GOOD (ou use janela anonima) antes de clicar.<br><br>
       Endereco de retorno cadastrado nos apps:<br><code>${redirectOAuth()}</code>
     </div>`;
   res.set('Content-Type', 'text/html; charset=utf-8').send(pagina('Conectar AMBTotal', corpo));
