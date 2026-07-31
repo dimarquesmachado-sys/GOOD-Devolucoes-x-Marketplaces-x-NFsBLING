@@ -8,7 +8,7 @@
 <link rel="icon" type="image/png" href="icone-AMB.png">
 <!--
   =========================================================
-  amb-devolucoes/public-AMB/painel-AMB.html  (AMB Devol. b20)
+  amb-devolucoes/public-AMB/painel-AMB.html  (AMB Devol. b21)
   ---------------------------------------------------------
   PAINEL em PAGINA UNICA, no formato da GOOD (pedido do Diego
   comparando os prints): nada de abas — secoes empilhadas,
@@ -143,7 +143,7 @@
   </div>
   <h1>&#128081; Painel de Devolucoes &mdash; AMBTotal</h1>
   <div class="sub">Triagens + A espreita + Defeitos + Recados</div>
-  <div class="ver">painel <b>b20</b> &middot; <span id="versaoServidor">servidor ...</span></div>
+  <div class="ver">painel <b>b21</b> &middot; <span id="versaoServidor">servidor ...</span></div>
 </div>
 
 <div class="area">
@@ -167,7 +167,7 @@
       <select id="depProblema" class="campo" style="width:auto;padding:8px 10px;font-size:12.5px" title="Deposito onde o estoque da devolucao entra"><option value="">&#128230; carregando depositos...</option></select>
       <button class="btn verde" onclick="concluirSelecionadas('problema',this)">&#10003; Concluir selecionadas (<span id="selProblema">0</span>)</button>
       <button class="btn cinza" onclick="verFila('problema')">atualizar</button></h2>
-    <div class="sub">O galpao achou algo errado. Decida o destino, gere a NF quando couber, e conclua.</div>
+    <div class="sub">O galpao achou algo errado. Padrao da fila: deposito <b>DEFEITOS</b> &mdash; a NF entra, o produto NAO volta pro estoque de venda.</div>
     <div id="scProblema"><div class="vazio">carregando...</div></div>
   </div>
 
@@ -315,13 +315,20 @@ async function carregarDepositos() {
   try {
     const r = await api('/api/depositos');
     if (!r.ok || !r.depositos) throw new Error(r.erro || 'sem lista');
-    _depositos = r.depositos;
-    ['depAprovado','depProblema'].forEach(idsel => {
-      const sel = $(idsel);
-      sel.innerHTML = _depositos.map(d =>
-        '<option value="' + esc(d.id) + '"' + (d.padrao ? ' selected' : '') + '>&#128230; ' +
-        esc(d.descricao) + '</option>').join('') || '<option value="">(sem depositos)</option>';
-    });
+    // REGRA DO DIEGO (31/07): Geral = produto ok, volta pro estoque
+    // de venda; DEFEITOS = registra a NF mas NAO volta pro vendavel.
+    // Depositos de FULFILLMENT (Magalu/Shopee full) ficam FORA do
+    // seletor: ninguem lanca devolucao manual dentro de um full.
+    _depositos = r.depositos.filter(d => !/full?fill?ment|^full\b/i.test(d.descricao || ''));
+    const idDefeitos = (_depositos.find(d => /defeito/i.test(d.descricao)) || {}).id || null;
+    const idGeral = (_depositos.find(d => d.padrao) ||
+                     _depositos.find(d => /geral/i.test(d.descricao)) || _depositos[0] || {}).id || null;
+    const montar = (padraoId) => _depositos.map(d =>
+      '<option value="' + esc(d.id) + '"' + (d.id === padraoId ? ' selected' : '') + '>&#128230; ' +
+      esc(d.descricao) + '</option>').join('') || '<option value="">(sem depositos)</option>';
+    // padrao POR FILA: aprovadas -> Geral; problemas -> DEFEITOS
+    $('depAprovado').innerHTML = montar(idGeral);
+    $('depProblema').innerHTML = montar(idDefeitos || idGeral);
   } catch (e) {
     ['depAprovado','depProblema'].forEach(idsel => {
       $(idsel).innerHTML = '<option value="">depositos indisponiveis</option>';
