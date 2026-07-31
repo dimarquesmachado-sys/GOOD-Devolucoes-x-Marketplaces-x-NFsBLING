@@ -8,7 +8,7 @@
 <link rel="icon" type="image/png" href="icone-AMB.png">
 <!--
   =========================================================
-  amb-devolucoes/public-AMB/painel-AMB.html  (AMB Devol. b19)
+  amb-devolucoes/public-AMB/painel-AMB.html  (AMB Devol. b20)
   ---------------------------------------------------------
   PAINEL em PAGINA UNICA, no formato da GOOD (pedido do Diego
   comparando os prints): nada de abas — secoes empilhadas,
@@ -143,7 +143,7 @@
   </div>
   <h1>&#128081; Painel de Devolucoes &mdash; AMBTotal</h1>
   <div class="sub">Triagens + A espreita + Defeitos + Recados</div>
-  <div class="ver">painel <b>b19</b> &middot; <span id="versaoServidor">servidor ...</span></div>
+  <div class="ver">painel <b>b20</b> &middot; <span id="versaoServidor">servidor ...</span></div>
 </div>
 
 <div class="area">
@@ -153,6 +153,7 @@
     <h2>&#9989; Aprovadas &mdash; aguardando NF <span class="cont" id="nAprovadas">-</span>
       <label style="margin-left:auto;font-size:12.5px;color:var(--apagado)">
         <input type="checkbox" onchange="marcarTodas('aprovado',this.checked)"> todas</label>
+      <select id="depAprovado" class="campo" style="width:auto;padding:8px 10px;font-size:12.5px" title="Deposito onde o estoque da devolucao entra"><option value="">&#128230; carregando depositos...</option></select>
       <button class="btn verde" onclick="concluirSelecionadas('aprovado',this)">&#10003; Concluir selecionadas (<span id="selAprovado">0</span>)</button>
       <button class="btn cinza" onclick="verFila('aprovado')">atualizar</button></h2>
     <div class="sub">Produto conferido e ok. Gere a NF de devolucao no Bling (botao do card) e registre o numero &mdash; ou conclua direto.</div>
@@ -163,6 +164,7 @@
     <h2>&#9888;&#65039; Problemas reportados <span class="cont" id="nProblemas">-</span>
       <label style="margin-left:auto;font-size:12.5px;color:var(--apagado)">
         <input type="checkbox" onchange="marcarTodas('problema',this.checked)"> todas</label>
+      <select id="depProblema" class="campo" style="width:auto;padding:8px 10px;font-size:12.5px" title="Deposito onde o estoque da devolucao entra"><option value="">&#128230; carregando depositos...</option></select>
       <button class="btn verde" onclick="concluirSelecionadas('problema',this)">&#10003; Concluir selecionadas (<span id="selProblema">0</span>)</button>
       <button class="btn cinza" onclick="verFila('problema')">atualizar</button></h2>
     <div class="sub">O galpao achou algo errado. Decida o destino, gere a NF quando couber, e conclua.</div>
@@ -265,6 +267,12 @@ function cardFila(x, status) {
         esc(x.link_nf_bling) + '">&#128279; Abrir NF no Bling</a>'
       : '<span class="selo">NF da venda nao localizada no indice</span>') +
     '<button class="btn roxo" onclick="registrarNfDevolucao(this,\'' + esc(x.id) + '\',\'' + status + '\')">&#128221; registrar NF de devolucao</button>' +
+    (x.nf_devolucao_id_bling
+      ? '<button class="btn" style="background:linear-gradient(135deg,#6a3fc4,#4527a0)" onclick="lancarEstoque(this,\'' + esc(x.id) + '\',\'' + status + '\')">&#128230; lancar estoque</button>'
+      : '') +
+    (x.estoque_lancado_em
+      ? '<span class="selo ok">estoque &#10003;' + (x.estoque_deposito ? ' ' + esc(x.estoque_deposito) : '') + '</span>'
+      : '') +
     '<button class="btn verde" onclick="concluirUma(\'' + esc(x.id) + '\',\'' + status + '\')">&#10003; concluir</button>' +
     '</div></div>';
   return h;
@@ -302,14 +310,50 @@ function atualizarContadorSel(status) {
   $(status === 'problema' ? 'selProblema' : 'selAprovado').textContent = _sel[status].size;
 }
 
+let _depositos = [];
+async function carregarDepositos() {
+  try {
+    const r = await api('/api/depositos');
+    if (!r.ok || !r.depositos) throw new Error(r.erro || 'sem lista');
+    _depositos = r.depositos;
+    ['depAprovado','depProblema'].forEach(idsel => {
+      const sel = $(idsel);
+      sel.innerHTML = _depositos.map(d =>
+        '<option value="' + esc(d.id) + '"' + (d.padrao ? ' selected' : '') + '>&#128230; ' +
+        esc(d.descricao) + '</option>').join('') || '<option value="">(sem depositos)</option>';
+    });
+  } catch (e) {
+    ['depAprovado','depProblema'].forEach(idsel => {
+      $(idsel).innerHTML = '<option value="">depositos indisponiveis</option>';
+    });
+  }
+}
+
+async function lancarEstoque(bt, id, status) {
+  const sel = $(status === 'problema' ? 'depProblema' : 'depAprovado');
+  const dep = sel && sel.value;
+  if (!dep) { alert('Escolha o deposito no topo da fila.'); return; }
+  const nomeDep = sel.options[sel.selectedIndex].textContent.trim();
+  if (!confirm('Lancar o ESTOQUE desta devolucao no deposito ' + nomeDep +
+    '?\nSo confirme se ainda NAO lancou e o produto esta ok pra esse destino.')) return;
+  bt.disabled = true; bt.textContent = 'lancando...';
+  try {
+    const r = await api('/api/triagem/' + id + '/lancar-estoque', {
+      method: 'POST', body: JSON.stringify({ deposito_id: dep }) });
+    if (!r.ok) { alert('Nao lancou: ' + r.erro); bt.disabled = false; bt.textContent = '\uD83D\uDCE6 lancar estoque'; return; }
+    alert('Estoque lancado em ' + r.deposito + (r.aviso ? '\n(aviso: ' + r.aviso + ')' : ''));
+    verFila(status);
+  } catch (e) { bt.disabled = false; bt.textContent = '\uD83D\uDCE6 lancar estoque'; }
+}
+
 function registrarNfDevolucao(bt, id, status) {
   abrirCaixinha(bt, {
     valor: '',
-    placeholder: 'numero da NF de devolucao gerada no Bling (so o numero)',
-    aoSalvar: async (numero) => {
-      if (!numero) return;
+    placeholder: 'cole o LINK da NF de devolucao no Bling (o id vem junto) ou so o numero',
+    aoSalvar: async (texto) => {
+      if (!texto) return;
       const r = await api('/api/triagem/' + id + '/nf-devolucao', {
-        method: 'PUT', body: JSON.stringify({ numero }) });
+        method: 'PUT', body: JSON.stringify({ texto }) });
       if (!r.ok) { alert('Nao gravou: ' + r.erro); return; }
       verFila(status);
     },
@@ -602,6 +646,7 @@ $('btnSair').onclick = async () => {
   fetch(API + '/status').then(r => r.json()).then(d => {
     $('versaoServidor').textContent = 'servidor ' + String(d.versao || '?').replace('AMB Devolucoes ', '');
   }).catch(() => {});
+  carregarDepositos();
   verFila('aprovado'); verFila('problema'); verEspreita(); verDefeitos(); verRecados();
   setInterval(verEspreita, 4 * 60 * 1000);          // atualiza sozinho
   if (window.innerWidth >= 900 && await carregarQZ()) setInterval(cicloEstacao, 5000);
