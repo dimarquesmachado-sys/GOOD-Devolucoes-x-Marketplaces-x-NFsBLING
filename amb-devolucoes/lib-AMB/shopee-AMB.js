@@ -1,5 +1,5 @@
 // ============================================================
-// amb-devolucoes/lib-AMB/shopee-AMB.js         (AMB Devol. b17)
+// amb-devolucoes/lib-AMB/shopee-AMB.js         (AMB Devol. b31)
 // ------------------------------------------------------------
 // Devolucoes da SHOPEE via o proxy interno do shopee-nf-sync —
 // la vivem os tokens saudaveis das lojas; aqui so consultamos.
@@ -116,6 +116,13 @@ async function resumoEspreita() {
       return_sn: d.return_sn || null,
       status: [st, lst].filter(Boolean).join(' / ') || null,
       dias_em_transito: dias(d.create_time || d.data || d.created_at),
+      desde: (() => {
+        const t = d.create_time || d.data || d.created_at;
+        if (!t) return null;
+        const n = Number(t);
+        const dt = new Date(Number.isFinite(n) && n > 1e9 && n < 1e12 ? n * 1000 : t);
+        return isNaN(dt) ? null : dt.toISOString();
+      })(),
       motivo_curto: MOTIVO[String(d.reason || '').toUpperCase()] || d.reason || null,
       itens: (d.itens || []).slice(0, 3).map(i => ({ titulo: i.nome || null, sku: i.sku || null, qtd: i.qtd || 1 })),
     });
