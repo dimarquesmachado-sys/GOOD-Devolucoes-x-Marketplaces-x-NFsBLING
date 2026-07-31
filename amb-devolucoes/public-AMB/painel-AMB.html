@@ -8,7 +8,7 @@
 <link rel="icon" type="image/png" href="icone-AMB.png">
 <!--
   =========================================================
-  amb-devolucoes/public-AMB/painel-AMB.html  (AMB Devol. b22)
+  amb-devolucoes/public-AMB/painel-AMB.html  (AMB Devol. b24)
   ---------------------------------------------------------
   PAINEL em PAGINA UNICA, no formato da GOOD (pedido do Diego
   comparando os prints): nada de abas — secoes empilhadas,
@@ -143,7 +143,7 @@
   </div>
   <h1>&#128081; Painel de Devolucoes &mdash; AMBTotal</h1>
   <div class="sub">Triagens + A espreita + Defeitos + Recados</div>
-  <div class="ver">painel <b>b22</b> &middot; <span id="versaoServidor">servidor ...</span></div>
+  <div class="ver">painel <b>b24</b> &middot; <span id="versaoServidor">servidor ...</span></div>
 </div>
 
 <div class="area">
@@ -264,6 +264,12 @@ function cardFila(x, status) {
     'por ' + esc(x.funcionario || '?') + ' em ' +
     esc(String(x.criado_em || '').slice(0, 16).replace('T', ' ')) + '</div>';
 
+  if (!_souAdmin) {
+    h += '<div class="acoes">' + (x.link_nf_bling
+      ? '<a class="btn cinza" style="text-decoration:none" target="_blank" rel="noopener" href="' + esc(x.link_nf_bling) + '">&#128279; Abrir NF no Bling</a>' : '') +
+      '<span class="selo">geracao de NF: so admin</span></div></div>';
+    return h;
+  }
   h += '<div class="acoes">' +
     (x.link_nf_bling
       ? '<a class="btn cinza" style="text-decoration:none" target="_blank" rel="noopener" href="' +
@@ -362,23 +368,32 @@ async function lancarEstoque(bt, id, status) {
   } catch (e) { bt.disabled = false; bt.textContent = '\uD83D\uDCE6 lancar estoque'; }
 }
 
-/* ============ BRIDGE DA AMB (gerar NF de devolucao) ============
-   Mesmo protocolo da GOOD, canais renomeados (AMB_BRIDGE_*):
+/* ============ GERAR NF via a Bridge JA INSTALADA ============
+   Decisao do Diego (31/07): nao instalar outra extensao. A
+   GOOD Devolucoes Bridge que ele ja tem cobre o dominio todo
+   (o content script casa com /*), entao este painel fala com
+   ELA, nos canais originais GOOD_BRIDGE_*. O devolucaoId vai
+   com prefixo amb-: o registro automatico que a extensao
+   tenta na rota da GOOD falha INOFENSIVAMENTE (id nao
+   numerico, nao critico por design) e quem grava de verdade
+   e este painel, na rota da AMB.
+   Mesmo protocolo da GOOD, canais renomeados (GOOD_BRIDGE_*):
    a pagina fala por postMessage com a extensao, que usa a SESSAO
    do Bling logada no navegador pra criar a devolucao VINCULADA
    e (se pedir) transmitir pra SEFAZ. Sem extensao instalada, os
    botoes avisam em vez de fingir. */
+let _souAdmin = false;   // b24: gerar NF / lancar estoque / concluir = so os 2 admins
 let _bridgeVersao = null;
 window.addEventListener('message', (ev) => {
   if (ev.source !== window || !ev.data) return;
-  if (ev.data.tipo === 'AMB_BRIDGE_INSTALADA' || ev.data.tipo === 'AMB_BRIDGE_PONG') {
+  if (ev.data.tipo === 'GOOD_BRIDGE_INSTALADA' || ev.data.tipo === 'GOOD_BRIDGE_PONG') {
     _bridgeVersao = ev.data.versao || '?';
   }
 });
 function bridgePresente() {
   return new Promise((res) => {
     if (_bridgeVersao) return res(true);
-    window.postMessage({ tipo: 'AMB_BRIDGE_PING' }, '*');
+    window.postMessage({ tipo: 'GOOD_BRIDGE_PING' }, '*');
     setTimeout(() => res(!!_bridgeVersao), 600);
   });
 }
@@ -387,12 +402,12 @@ function chamarBridge(payload) {
     const requisicaoId = 'r' + Date.now() + Math.random().toString(36).slice(2, 7);
     const ouvir = (ev) => {
       if (ev.source !== window || !ev.data) return;
-      if (ev.data.tipo !== 'AMB_BRIDGE_RESPOSTA' || ev.data.requisicaoId !== requisicaoId) return;
+      if (ev.data.tipo !== 'GOOD_BRIDGE_RESPOSTA' || ev.data.requisicaoId !== requisicaoId) return;
       window.removeEventListener('message', ouvir);
       ev.data.ok ? res(ev.data.resultado) : rej(new Error(ev.data.erro || 'falha na Bridge'));
     };
     window.addEventListener('message', ouvir);
-    window.postMessage({ tipo: 'AMB_BRIDGE_CRIAR_DEVOLUCAO', requisicaoId, payload }, '*');
+    window.postMessage({ tipo: 'GOOD_BRIDGE_CRIAR_DEVOLUCAO', requisicaoId, payload }, '*');
     setTimeout(() => { window.removeEventListener('message', ouvir); rej(new Error('Bridge nao respondeu em 110s')); }, 110000);
   });
 }
@@ -402,17 +417,18 @@ async function gerarDevolucao(bt, id, status, emitir) {
   const x = _cardsFila[String(id)] || {};
   if (!x.nf_id_bling) { alert('Este card esta sem a NF da venda localizada no Bling - nao da pra gerar.'); return; }
   if (!await bridgePresente()) {
-    alert('Extensao "AMB Devolucoes Bridge" nao detectada.\nInstale (esta no zip que veio junto), confira que o navegador esta logado no Bling DA AMB, e recarregue esta pagina (Ctrl+Shift+R).');
+    alert('Nao consegui falar com a extensao Bridge (a mesma da GOOD).\nSe o gerar funciona no painel da GOOD neste navegador, aqui tambem funciona - recarregue esta pagina (Ctrl+Shift+R) e tente de novo.');
     return;
   }
   const sel = $(status === 'problema' ? 'depProblema' : 'depAprovado');
   const dep = sel && sel.value;
+  if (!confirm('ATENCAO: o navegador precisa estar logado no BLING DA AMBTOTAL agora (a Bridge usa a sessao logada). Continuar?')) return;
   if (emitir && !confirm('GERAR e EMITIR (transmite pra SEFAZ) a NF de devolucao deste card?\nDeposito do estoque: ' + (sel.options[sel.selectedIndex] || {}).textContent)) return;
   bt.disabled = true; const antes = bt.textContent; bt.textContent = 'falando com o Bling...';
   try {
     const r = await chamarBridge({
       idNFOriginal: String(x.nf_id_bling), idLoja: null,
-      emitir: !!emitir, devolucaoId: String(id),
+      emitir: !!emitir, devolucaoId: 'amb-' + String(id),
       idDeposito: dep ? String(dep) : null,
     });
     if (!r || !r.idNotaDevolucao) throw new Error('Bling nao devolveu o id da NF');
@@ -430,8 +446,8 @@ async function gerarDevolucao(bt, id, status, emitir) {
 async function emitirSelecionadas(status, bt) {
   const ids = [..._sel[status]];
   if (!ids.length) { alert('Nenhum card selecionado.'); return; }
-  if (!await bridgePresente()) { alert('Extensao AMB Devolucoes Bridge nao detectada - instale e recarregue.'); return; }
-  if (!confirm('Gerar + EMITIR ' + ids.length + ' NF(s) de devolucao, uma por vez?')) return;
+  if (!await bridgePresente()) { alert('Nao consegui falar com a extensao Bridge (a mesma da GOOD) - recarregue a pagina (Ctrl+Shift+R) e tente de novo.'); return; }
+  if (!confirm('ATENCAO: o navegador precisa estar logado no BLING DA AMBTOTAL agora. Gerar + EMITIR ' + ids.length + ' NF(s) de devolucao, uma por vez?')) return;
   bt.disabled = true;
   const sel = $(status === 'problema' ? 'depProblema' : 'depAprovado');
   let okz = 0, falhas = [];
@@ -440,7 +456,7 @@ async function emitirSelecionadas(status, bt) {
     if (!x.nf_id_bling) { falhas.push(id + ': sem NF da venda'); continue; }
     try {
       const r = await chamarBridge({ idNFOriginal: String(x.nf_id_bling), idLoja: null,
-        emitir: true, devolucaoId: String(id), idDeposito: sel && sel.value ? String(sel.value) : null });
+        emitir: true, devolucaoId: 'amb-' + String(id), idDeposito: sel && sel.value ? String(sel.value) : null });
       if (r && r.idNotaDevolucao) {
         okz++;
         await api('/api/triagem/' + id + '/nf-devolucao', { method: 'PUT',
@@ -749,10 +765,16 @@ $('btnSair').onclick = async () => {
   try {
     const eu = await api('/api/auth/me');
     if (eu.ok) $('quemSou').textContent = eu.usuario + (eu.tipo === 'admin' ? ' \u00b7 admin' : '');
+    _souAdmin = eu.ok && eu.tipo === 'admin';
   } catch (e) { return; }
   fetch(API + '/status').then(r => r.json()).then(d => {
     $('versaoServidor').textContent = 'servidor ' + String(d.versao || '?').replace('AMB Devolucoes ', '');
   }).catch(() => {});
+  if (!_souAdmin) {
+    document.querySelectorAll('[id^=selE_], [id^=sel]').forEach(el => {
+      const bt = el.closest('button'); if (bt) bt.style.display = 'none';
+    });
+  }
   carregarDepositos();
   verFila('aprovado'); verFila('problema'); verEspreita(); verDefeitos(); verRecados();
   setInterval(verEspreita, 4 * 60 * 1000);          // atualiza sozinho
