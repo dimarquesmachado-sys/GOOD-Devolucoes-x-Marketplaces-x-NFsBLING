@@ -1,5 +1,5 @@
 // ============================================================
-// amb-devolucoes/lib-AMB/nf-nomes-AMB.js       (AMB Devol. b39)
+// amb-devolucoes/lib-AMB/nf-nomes-AMB.js       (AMB Devol. b40)
 // ------------------------------------------------------------
 // O PEGA-TUDO: acha a venda pelo NOME DO REMETENTE da etiqueta.
 //
@@ -144,8 +144,21 @@ async function construirIndice(opts = {}) {
     let vendasLidas = 0, erroVendas = null;
     try {
       for (let pg = 1; pg <= maxPaginas; pg++) {
-        const r = await bling.chamarBling(`/pedidos/vendas?limite=100&pagina=${pg}`);
-        if (!r.ok) { erroVendas = `vendas pagina ${pg} HTTP ${r.status}`; break; }
+        // b40 - 429 (rate limit do Bling) na leitura de vendas NAO derruba mais
+        // o indice: espera e tenta a MESMA pagina de novo, ate 4x com backoff.
+        let r = null;
+        for (let tent = 1; tent <= 4; tent++) {
+          r = await bling.chamarBling(`/pedidos/vendas?limite=100&pagina=${pg}`);
+          if (r.ok) { erroVendas = null; break; }
+          if (r.status === 429 || r.status === 503) {
+            erroVendas = `vendas pagina ${pg} HTTP ${r.status} (tent ${tent}/4)`;
+            await sleep(1500 * tent);   // 1.5s, 3s, 4.5s
+            continue;
+          }
+          erroVendas = `vendas pagina ${pg} HTTP ${r.status}`;
+          break;   // erro nao-recuperavel: para
+        }
+        if (!r || !r.ok) break;   // esgotou as tentativas desta pagina
         const lote = (r.data && r.data.data) || [];
         if (!lote.length) break;
         let velhas = 0;
