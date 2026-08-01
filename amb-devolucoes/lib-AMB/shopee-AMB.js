@@ -1,5 +1,5 @@
 // ============================================================
-// amb-devolucoes/lib-AMB/shopee-AMB.js         (AMB Devol. b33)
+// amb-devolucoes/lib-AMB/shopee-AMB.js         (AMB Devol. b37)
 // ------------------------------------------------------------
 // Devolucoes da SHOPEE via o proxy interno do shopee-nf-sync —
 // la vivem os tokens saudaveis das lojas; aqui so consultamos.
@@ -98,18 +98,22 @@ async function resumoEspreita() {
   // dados reais (o ACCEPTED sozinho NAO e final).
   const FIM = /DONE|CLOSED|CANCELLED|REFUND_PAID|SELLER_COMPENSAT/i;
 
-  const emTransito = [];
+  const emTransito = [], entregues = [];
   let encerradas = 0;
   for (const d of lista) {
     const st = String(d.status || '');
     const lst = String(d.logistics_status || d.logistic_status || '');
-    if (FIM.test(st) || /DELIVERY_DONE/i.test(lst)) { encerradas++; continue; }
+    // b37 - DELIVERY_DONE = devolução ENTREGUE. Antes isso era
+    // descartado como "encerrada" (mesma falha herdada da GOOD) —
+    // mas entregue SEM bipe é exatamente o alerta do bloco vermelho.
+    const entregouLst = /DELIVERY_DONE/i.test(lst);
+    if (!entregouLst && FIM.test(st)) { encerradas++; continue; }
     // b17 - o proxy ja entrega motivo e itens; traduzimos o motivo
     // pra linguagem de galpao e passamos os itens adiante.
     const MOTIVO = { CHANGE_MIND: 'arrependimento', NOT_RECEIPT: 'não recebeu',
       DAMAGED: 'chegou danificado', DEFECTIVE: 'defeito', WRONG_ITEM: 'item errado',
       MISSING_PART: 'incompleto' };
-    emTransito.push({
+    const card = {
       marketplace: 'shopee',
       pedido: d.order_sn || null,
       tracking: d.tracking_number || d.return_sn || null,
@@ -125,10 +129,20 @@ async function resumoEspreita() {
       })(),
       motivo_curto: MOTIVO[String(d.reason || '').toUpperCase()] || d.reason || null,
       itens: (d.itens || []).slice(0, 3).map(i => ({ titulo: i.nome || null, sku: i.sku || null, qtd: i.qtd || 1 })),
-    });
+    };
+    if (entregouLst) {
+      // dias desde a ABERTURA com "~" (estimado) — a data exata de
+      // entrega vem na fase 2 (rota do portal via Mover-Pedidos)
+      entregues.push({ ...card, dias_desde: card.dias_em_transito,
+        data_precisa: false, entregue_em: null });
+    } else {
+      emTransito.push(card);
+    }
   }
+  entregues.sort((x, y) => (x.dias_desde ?? 9999) - (y.dias_desde ?? 9999));
   emTransito.sort((x, y) => (y.dias_em_transito || 0) - (x.dias_em_transito || 0));
-  return { quente: true, em_transito: emTransito.slice(0, 60), encerradas_indice: encerradas };
+  return { quente: true, em_transito: emTransito.slice(0, 60),
+    entregues: entregues.slice(0, 60), encerradas_indice: encerradas };
 }
 
 function preAquecer() {
