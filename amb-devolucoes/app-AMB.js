@@ -72,7 +72,7 @@ const impressao = require('./lib-AMB/impressao-AMB');
 const emailAMB = require('./lib-AMB/email-AMB');
 const nfEntrada = require('./lib-AMB/nf-entrada-AMB');
 
-const VERSAO = 'AMB Devolucoes b34';
+const VERSAO = 'AMB Devolucoes b35';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -953,6 +953,7 @@ router.get('/api/espreita', auth.requerLogin, async (req, res) => {
 
   // Junta a anotacao manual, o "NF de devolucao ja emitida ✓" e
   // esconde o que ja foi baixado.
+  const idsPraNF = [];   // b35 - vendas cuja NF vamos buscar em background
   const enriquecer = (lista) => (lista || []).map(x => {
     const n = mapa[x.tracking] || mapa[x.pedido] || null;
     const nf = nfEntrada.jaEmitida({ pedido: x.pedido });
@@ -966,6 +967,10 @@ router.get('/api/espreita', auth.requerLogin, async (req, res) => {
     // b34 - Shopee/TikTok/Amazon: sem NF casada, a VENDA do Bling
     // (numeroLoja garantido) entrega cliente e valor mesmo assim.
     const vendaLoja = venda ? null : nfNomes.acharVendaPorLoja(x.pedido);
+    // b35 - NF pela venda vinculada (cache; o disparo enche em background)
+    const nfv = (!x.nf_ml_numero && !venda && vendaLoja)
+      ? nfNomes.nfDaVenda(vendaLoja.id_venda) : null;
+    if (!x.nf_ml_numero && !venda && vendaLoja && !nfv) idsPraNF.push(vendaLoja.id_venda);
     // b18 - link direto pro marketplace, pedido do Diego no painel
     let link = null;
     if (x.marketplace === 'ml' && x.pedido) {
@@ -986,7 +991,7 @@ router.get('/api/espreita', auth.requerLogin, async (req, res) => {
       ...x,
       link_marketplace: link,
       cliente: (venda && venda.nome) || (vendaLoja && vendaLoja.nome) || x.cliente_ml || null,
-      nf_venda: x.nf_ml_numero || (venda && venda.numero) || null,
+      nf_venda: x.nf_ml_numero || (venda && venda.numero) || (nfv && nfv.numero) || null,
       nf_valor: (venda && venda.valor != null) ? venda.valor
         : (vendaLoja && vendaLoja.valor != null) ? vendaLoja.valor
         : (x.valor_venda != null ? x.valor_venda : null),
@@ -1013,6 +1018,7 @@ router.get('/api/espreita', auth.requerLogin, async (req, res) => {
     .concat(enriquecer(baseML.entregues))
     .filter(x => x.marketplace === 'ml' && !x.itens && x.pedido)
     .map(x => String(x.pedido)).slice(0, 60);
+  nfNomes.dispararNfPorVenda(idsPraNF);   // b35
   if (pendentes.length) mlReturns.enriquecerLista(pendentes).catch(() => {});
 
   res.json({
