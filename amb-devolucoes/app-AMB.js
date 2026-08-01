@@ -72,7 +72,7 @@ const impressao = require('./lib-AMB/impressao-AMB');
 const emailAMB = require('./lib-AMB/email-AMB');
 const nfEntrada = require('./lib-AMB/nf-entrada-AMB');
 
-const VERSAO = 'AMB Devolucoes b37';
+const VERSAO = 'AMB Devolucoes b38';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -972,11 +972,17 @@ router.get('/api/espreita', auth.requerLogin, async (req, res) => {
       || nfNomes.acharPorNumero(x.nf_ml_numero);
     // b34 - Shopee/TikTok/Amazon: sem NF casada, a VENDA do Bling
     // (numeroLoja garantido) entrega cliente e valor mesmo assim.
-    const vendaLoja = venda ? null : nfNomes.acharVendaPorLoja(x.pedido);
-    // b35 - NF pela venda vinculada (cache; o disparo enche em background)
-    const nfv = (!x.nf_ml_numero && !venda && vendaLoja)
-      ? nfNomes.nfDaVenda(vendaLoja.id_venda) : null;
-    if (!x.nf_ml_numero && !venda && vendaLoja && !nfv) idsPraNF.push(vendaLoja.id_venda);
+    // b38 - vendaLoja tambem pelo PACK (ML de carrinho grava numeroLoja
+    // = pack_id, nao order_id) — sem isso a NF-pela-venda nunca
+    // disparava pros cards ML de carrinho, e por isso a 🧾 sumia deles.
+    const vendaLoja = venda ? null
+      : (nfNomes.acharVendaPorLoja(x.pedido) || nfNomes.acharVendaPorLoja(x.pack_id));
+    // id da venda pra buscar a NF vinculada — de qualquer fonte que tenha
+    const idVendaNF = (venda && venda.id_venda) || (vendaLoja && vendaLoja.id_venda) || null;
+    // b35/b38 - NF pela venda vinculada (cache; o disparo enche em background)
+    const nfv = (!x.nf_ml_numero && !(venda && venda.numero) && idVendaNF)
+      ? nfNomes.nfDaVenda(idVendaNF) : null;
+    if (!x.nf_ml_numero && !(venda && venda.numero) && idVendaNF && !nfv) idsPraNF.push(idVendaNF);
     // b18 - link direto pro marketplace, pedido do Diego no painel
     let link = null;
     if (x.marketplace === 'ml' && x.pedido) {
