@@ -72,7 +72,7 @@ const impressao = require('./lib-AMB/impressao-AMB');
 const emailAMB = require('./lib-AMB/email-AMB');
 const nfEntrada = require('./lib-AMB/nf-entrada-AMB');
 
-const VERSAO = 'AMB Devolucoes b35';
+const VERSAO = 'AMB Devolucoes b37';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -948,6 +948,12 @@ router.get('/api/espreita', auth.requerLogin, async (req, res) => {
   try { baseShopee = await shopee.resumoEspreita(); } catch (e) { erroShopee = e.message; }
   try { baseMagalu = magalu.resumoEspreita(); } catch (e) { erroMagalu = e.message; }
   const stML = mlReturns.statusIndice();
+  const stNomes = nfNomes.statusIndice() || {};
+  // b36 - AUTOCURA do índice de NOMES (espelho da b29 pro ML): é ele
+  // que dá cliente/NF/valor pra Shopee — frio = tela seca sem aviso.
+  if (!stNomes.quente && !stNomes.construindo) {
+    try { nfNomes.construirIndice().catch(() => {}); } catch (e) {}
+  }
   const notas = await db.notasEspreita();
   const mapa = notas.ok ? notas.notas : {};
 
@@ -1018,7 +1024,9 @@ router.get('/api/espreita', auth.requerLogin, async (req, res) => {
     .concat(enriquecer(baseML.entregues))
     .filter(x => x.marketplace === 'ml' && !x.itens && x.pedido)
     .map(x => String(x.pedido)).slice(0, 60);
-  nfNomes.dispararNfPorVenda(idsPraNF);   // b35
+  // b36 - só dispara com o índice QUENTE: a busca de NF não pode
+  // concorrer no Bling com a CONSTRUÇÃO (429 abortaria o build).
+  if (stNomes.quente) nfNomes.dispararNfPorVenda(idsPraNF);
   if (pendentes.length) mlReturns.enriquecerLista(pendentes).catch(() => {});
 
   res.json({
@@ -1030,11 +1038,17 @@ router.get('/api/espreita', auth.requerLogin, async (req, res) => {
       shopee: { quente: baseShopee.quente, desligada: !!baseShopee.desligada, erro: erroShopee || baseShopee.erro || null },
       magalu: { quente: baseMagalu.quente, desligada: !!baseMagalu.desligada, falta: baseMagalu.falta || null },
       nf_entrada: nfEntrada.statusIndice(),
+      nomes: { quente: !!stNomes.quente, construindo: !!stNomes.construindo,
+               erro: stNomes.erro || stNomes.erro_busca || stNomes.erro_vendas || null,
+               nfs: (stNomes.total_nfs != null ? stNomes.total_nfs : null),
+               vendas: (stNomes.vendas_com_loja != null ? stNomes.vendas_com_loja : null) },
     },
     em_transito: emTransito,
     atrasadas_30d: emTransito.filter(x => (x.dias_em_transito || 0) > 30).length,
     aguardando_postagem: baseML.aguardando_postagem,
-    entregues: enriquecer(baseML.entregues),
+    entregues: [...enriquecer(baseML.entregues),
+      ...enriquecer(baseShopee.entregues || [])]
+      .sort((x, y) => (x.dias_desde ?? 9999) - (y.dias_desde ?? 9999)),
   });
 });
 
