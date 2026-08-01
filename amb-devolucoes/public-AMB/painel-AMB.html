@@ -8,7 +8,7 @@
 <link rel="icon" type="image/png" href="icone-AMB.png">
 <!--
   =========================================================
-  amb-devolucoes/public-AMB/painel-AMB.html  (AMB Devol. b37)
+  amb-devolucoes/public-AMB/painel-AMB.html  (AMB Devol. b38)
   ---------------------------------------------------------
   PAINEL em PAGINA UNICA, no formato da GOOD (pedido do Diego
   comparando os prints): nada de abas — secoes empilhadas,
@@ -154,7 +154,7 @@
   <div class="miolo">
   <h1>&#128081; Painel de Devoluções &mdash; AMBTotal</h1>
   <div class="sub">Triagens + À Espreita + Defeitos + Recados</div>
-  <div class="ver">painel <b>b37</b> &middot; <span id="versaoServidor">servidor ...</span></div>
+  <div class="ver">painel <b>b38</b> &middot; <span id="versaoServidor">servidor ...</span></div>
   </div>
 </div>
 
@@ -559,7 +559,7 @@ function cardEspreita(x, entregue) {
       !String(x.cliente).toLowerCase().includes(String(x.nickname).toLowerCase())) {
     cli.push('(' + esc(x.nickname) + ')');
   }
-  if (x.nf_venda) cli.push('&#129534; NF ' + esc(x.nf_venda));
+  if (x.nf_venda) cli.push('&#129534; NF ' + esc(x.nf_venda) + (x.nf_serie ? '-' + esc(x.nf_serie) : ''));
   if (x.nf_valor != null && !isNaN(Number(x.nf_valor))) {
     cli.push('&#128176; R$ ' + Number(x.nf_valor).toFixed(2).replace('.', ','));
   }
