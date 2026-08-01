@@ -72,7 +72,7 @@ const impressao = require('./lib-AMB/impressao-AMB');
 const emailAMB = require('./lib-AMB/email-AMB');
 const nfEntrada = require('./lib-AMB/nf-entrada-AMB');
 
-const VERSAO = 'AMB Devolucoes b38';
+const VERSAO = 'AMB Devolucoes b39';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -979,10 +979,17 @@ router.get('/api/espreita', auth.requerLogin, async (req, res) => {
       : (nfNomes.acharVendaPorLoja(x.pedido) || nfNomes.acharVendaPorLoja(x.pack_id));
     // id da venda pra buscar a NF vinculada — de qualquer fonte que tenha
     const idVendaNF = (venda && venda.id_venda) || (vendaLoja && vendaLoja.id_venda) || null;
-    // b35/b38 - NF pela venda vinculada (cache; o disparo enche em background)
-    const nfv = (!x.nf_ml_numero && !(venda && venda.numero) && idVendaNF)
-      ? nfNomes.nfDaVenda(idVendaNF) : null;
-    if (!x.nf_ml_numero && !(venda && venda.numero) && idVendaNF && !nfv) idsPraNF.push(idVendaNF);
+    // b39 - a NF-pela-venda agora e lida por numeroLoja (a chave que o
+    // card SEMPRE tem: x.pedido ou x.pack_id), nao por id_venda (que
+    // dependia do vendaLoja resolver). A busca em background preenche.
+    const chaveLoja = x.pedido || x.pack_id || null;
+    const nfv = (!x.nf_ml_numero && !(venda && venda.numero))
+      ? (nfNomes.nfDaLoja(x.pedido) || nfNomes.nfDaLoja(x.pack_id) ||
+         (idVendaNF ? nfNomes.nfDaVenda(idVendaNF) : null)) : null;
+    // enfileira {id, loja} pro disparo indexar nos dois mapas
+    if (!x.nf_ml_numero && !(venda && venda.numero) && idVendaNF && !nfv) {
+      idsPraNF.push({ id: idVendaNF, loja: chaveLoja });
+    }
     // b18 - link direto pro marketplace, pedido do Diego no painel
     let link = null;
     if (x.marketplace === 'ml' && x.pedido) {
