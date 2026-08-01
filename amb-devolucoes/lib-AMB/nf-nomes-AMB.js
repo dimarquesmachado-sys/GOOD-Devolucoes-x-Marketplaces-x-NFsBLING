@@ -1,5 +1,5 @@
 // ============================================================
-// amb-devolucoes/lib-AMB/nf-nomes-AMB.js       (AMB Devol. b35)
+// amb-devolucoes/lib-AMB/nf-nomes-AMB.js       (AMB Devol. b39)
 // ------------------------------------------------------------
 // O PEGA-TUDO: acha a venda pelo NOME DO REMETENTE da etiqueta.
 //
@@ -201,6 +201,7 @@ function statusIndice() {
     com_pedido: IDX.porPedido ? Object.keys(IDX.porPedido).length : 0,
     vendas_com_loja: Object.keys(IDX.vendasPorLoja || {}).length,
     nf_por_venda_ok: [...NF_POR_VENDA.values()].filter(e => e.numero).length,
+    nf_por_loja_ok: NF_POR_LOJA.size,
     nf_por_venda_nulas: [...NF_POR_VENDA.values()].filter(e => !e.numero).length,
     nf_por_venda_amostra: [...NF_POR_VENDA.entries()].slice(0, 3)
       .map(([id, e]) => ({ id_venda: id, numero: e.numero, http: e.http, tent: e.tent })),
@@ -338,25 +339,35 @@ function preAquecer(atrasoMs) {
 // chave (invoice_data 404) e a lista de NFs não casa (com_pedido 0),
 // o detalhe da venda (GET /pedidos/vendas/{id}) aponta a NF gerada.
 // Cache permanente com retentativa (padrão da ENTREGA_REAL/b30).
-const NF_POR_VENDA = new Map();   // id_venda -> { numero, serie, id_nf, tent, http }
+const NF_POR_VENDA = new Map();
+const NF_POR_LOJA = new Map();   // b39 - numeroLoja -> {numero,serie} (a chave que o card sempre tem)   // id_venda -> { numero, serie, id_nf, tent, http }
 let NFV_RODANDO = false;
+
+function nfDaLoja(numeroLoja) {
+  const e = numeroLoja ? NF_POR_LOJA.get(String(numeroLoja).trim()) : null;
+  return (e && e.numero) ? e : null;
+}
 
 function nfDaVenda(idVenda) {
   const e = idVenda ? NF_POR_VENDA.get(String(idVenda)) : null;
   return (e && e.numero) ? e : null;
 }
 
-function dispararNfPorVenda(ids) {
+function dispararNfPorVenda(pares) {
   if (NFV_RODANDO) return;
-  const fila = [...new Set((ids || []).filter(Boolean).map(String))]
-    .filter(id => {
-      const e = NF_POR_VENDA.get(id);
-      return !e || (!e.numero && (e.tent || 0) < 3);
-    }).slice(0, 40);
+  // aceita ['id', ...] (compat) OU [{id, loja}, ...] (b39). Normaliza.
+  const norm = (pares || []).map(x => (x && typeof x === 'object') ? { id: String(x.id || ''), loja: String(x.loja || '') } : { id: String(x || ''), loja: '' }).filter(x => x.id);
+  const vistos = new Set();
+  const fila = norm.filter(x => {
+    if (vistos.has(x.id)) return false; vistos.add(x.id);
+    const e = NF_POR_VENDA.get(x.id);
+    return !e || (!e.numero && (e.tent || 0) < 3);
+  }).slice(0, 40);
   if (!fila.length) return;
   NFV_RODANDO = true;
   (async () => {
-    for (const id of fila) {
+    for (const item of fila) {
+      const id = item.id, loja = item.loja;
       const antes = NF_POR_VENDA.get(id) || { tent: 0 };
       try {
         const r = await bling.chamarBling('/pedidos/vendas/' + id);
@@ -375,6 +386,7 @@ function dispararNfPorVenda(ids) {
           }
         }
         NF_POR_VENDA.set(id, { numero, serie, id_nf: nfId, tent: (antes.tent || 0) + 1, http });
+        if (loja && numero) NF_POR_LOJA.set(loja, { numero, serie });
       } catch (e) {
         NF_POR_VENDA.set(id, { numero: null, serie: null, id_nf: null, tent: (antes.tent || 0) + 1, http: 'exc:' + String(e.message).slice(0, 40) });
       }
@@ -401,6 +413,6 @@ function acharPorPedido(pedido) {
 }
 
 module.exports = {
-  construirIndice, statusIndice, buscarPorNome, acharPorPedido, acharPorNumero, acharVendaPorLoja, nfDaVenda, dispararNfPorVenda, preAquecer,
+  construirIndice, statusIndice, buscarPorNome, acharPorPedido, acharPorNumero, acharVendaPorLoja, nfDaVenda, nfDaLoja, dispararNfPorVenda, preAquecer,
   colapsar, primeiroUltimo,
 };
