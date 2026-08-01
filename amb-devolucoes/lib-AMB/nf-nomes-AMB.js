@@ -1,5 +1,5 @@
 // ============================================================
-// amb-devolucoes/lib-AMB/nf-nomes-AMB.js       (AMB Devol. b34)
+// amb-devolucoes/lib-AMB/nf-nomes-AMB.js       (AMB Devol. b35)
 // ------------------------------------------------------------
 // O PEGA-TUDO: acha a venda pelo NOME DO REMETENTE da etiqueta.
 //
@@ -81,6 +81,7 @@ async function construirIndice(opts = {}) {
     const mapa = {};
     const mapaCurto = {};
     const porPedido = {};
+    const porId = {};   // b35 - NF por id do Bling (casa com a venda vinculada)
     const vendasPorLoja = {};   // b34 - numeroLoja GARANTIDO nas vendas
     const porNumero = {};
     let totalNFs = 0, erroBusca = null, parouPorData = false;
@@ -119,6 +120,7 @@ async function construirIndice(opts = {}) {
         if (nlj) porPedido[nlj] = registro;
         const numN = String(nf.numero || '').replace(/^0+/, '');
         if (numN) porNumero[numN] = registro;
+        if (numN) if (nf.id) porId[String(nf.id)] = registro;
 
         (mapa[chave] = mapa[chave] || []).push(registro);
 
@@ -176,6 +178,7 @@ async function construirIndice(opts = {}) {
     IDX.ts = falhouGeral ? 0 : Date.now();
     IDX.mapa = mapa;
     IDX.porPedido = porPedido;
+    IDX.porId = porId;
     IDX.vendasPorLoja = vendasPorLoja;
     IDX.vendasLidas = vendasLidas;
     IDX.erroVendas = erroVendas;
@@ -197,6 +200,10 @@ function statusIndice() {
   return {
     com_pedido: IDX.porPedido ? Object.keys(IDX.porPedido).length : 0,
     vendas_com_loja: Object.keys(IDX.vendasPorLoja || {}).length,
+    nf_por_venda_ok: [...NF_POR_VENDA.values()].filter(e => e.numero).length,
+    nf_por_venda_nulas: [...NF_POR_VENDA.values()].filter(e => !e.numero).length,
+    nf_por_venda_amostra: [...NF_POR_VENDA.entries()].slice(0, 3)
+      .map(([id, e]) => ({ id_venda: id, numero: e.numero, http: e.http, tent: e.tent })),
     vendas_lidas: IDX.vendasLidas || 0,
     erro_vendas: IDX.erroVendas || null,
     com_numero: IDX.porNumero ? Object.keys(IDX.porNumero).length : 0,
@@ -327,6 +334,56 @@ function preAquecer(atrasoMs) {
 }
 
 /** Cliente e NF da venda pelo numero do pedido do marketplace. */
+// ── b35: NF pela VENDA vinculada. Pros cards em que o ML nega a
+// chave (invoice_data 404) e a lista de NFs não casa (com_pedido 0),
+// o detalhe da venda (GET /pedidos/vendas/{id}) aponta a NF gerada.
+// Cache permanente com retentativa (padrão da ENTREGA_REAL/b30).
+const NF_POR_VENDA = new Map();   // id_venda -> { numero, id_nf, tent, http }
+let NFV_RODANDO = false;
+
+function nfDaVenda(idVenda) {
+  const e = idVenda ? NF_POR_VENDA.get(String(idVenda)) : null;
+  return (e && e.numero) ? e : null;
+}
+
+function dispararNfPorVenda(ids) {
+  if (NFV_RODANDO) return;
+  const fila = [...new Set((ids || []).filter(Boolean).map(String))]
+    .filter(id => {
+      const e = NF_POR_VENDA.get(id);
+      return !e || (!e.numero && (e.tent || 0) < 3);
+    }).slice(0, 40);
+  if (!fila.length) return;
+  NFV_RODANDO = true;
+  (async () => {
+    for (const id of fila) {
+      const antes = NF_POR_VENDA.get(id) || { tent: 0 };
+      try {
+        const r = await bling.chamarBling('/pedidos/vendas/' + id);
+        const v = (r.ok && r.data && r.data.data) || null;
+        const nfId = v && v.notaFiscal && v.notaFiscal.id ? String(v.notaFiscal.id) : null;
+        let numero = null, http = r.status || (r.ok ? 200 : null);
+        if (nfId) {
+          const reg = (IDX.porId && IDX.porId[nfId]) || null;
+          if (reg && reg.numero) numero = String(reg.numero);
+          else {
+            const rn = await bling.chamarBling('/nfe/' + nfId);
+            const nf = (rn.ok && rn.data && rn.data.data) || null;
+            if (nf && nf.numero) numero = String(nf.numero).replace(/^0+/, '');
+            http = rn.status || http;
+          }
+        }
+        NF_POR_VENDA.set(id, { numero, id_nf: nfId, tent: (antes.tent || 0) + 1, http });
+      } catch (e) {
+        NF_POR_VENDA.set(id, { numero: null, id_nf: null, tent: (antes.tent || 0) + 1, http: 'exc:' + String(e.message).slice(0, 40) });
+      }
+      await new Promise(rs => setTimeout(rs, 350));
+    }
+    const ok = [...NF_POR_VENDA.values()].filter(e => e.numero).length;
+    console.log('[AMB/NF-NOMES] NFs pela venda: ' + ok + ' de ' + NF_POR_VENDA.size + ' consultadas');
+  })().catch(() => {}).finally(() => { NFV_RODANDO = false; });
+}
+
 function acharVendaPorLoja(k) {
   const c = String(k || '').trim();
   return (c && IDX.vendasPorLoja && IDX.vendasPorLoja[c]) || null;
@@ -343,6 +400,6 @@ function acharPorPedido(pedido) {
 }
 
 module.exports = {
-  construirIndice, statusIndice, buscarPorNome, acharPorPedido, acharPorNumero, acharVendaPorLoja, preAquecer,
+  construirIndice, statusIndice, buscarPorNome, acharPorPedido, acharPorNumero, acharVendaPorLoja, nfDaVenda, dispararNfPorVenda, preAquecer,
   colapsar, primeiroUltimo,
 };
