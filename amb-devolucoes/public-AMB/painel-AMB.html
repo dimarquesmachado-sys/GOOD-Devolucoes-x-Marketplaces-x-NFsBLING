@@ -8,7 +8,7 @@
 <link rel="icon" type="image/png" href="icone-AMB.png">
 <!--
   =========================================================
-  amb-devolucoes/public-AMB/painel-AMB.html  (AMB Devol. b35)
+  amb-devolucoes/public-AMB/painel-AMB.html  (AMB Devol. b37)
   ---------------------------------------------------------
   PAINEL em PAGINA UNICA, no formato da GOOD (pedido do Diego
   comparando os prints): nada de abas — secoes empilhadas,
@@ -154,7 +154,7 @@
   <div class="miolo">
   <h1>&#128081; Painel de Devoluções &mdash; AMBTotal</h1>
   <div class="sub">Triagens + À Espreita + Defeitos + Recados</div>
-  <div class="ver">painel <b>b35</b> &middot; <span id="versaoServidor">servidor ...</span></div>
+  <div class="ver">painel <b>b37</b> &middot; <span id="versaoServidor">servidor ...</span></div>
   </div>
 </div>
 
@@ -612,6 +612,11 @@ async function verEspreita() {
       avisos.push(f.ml.erro
         ? '<span style="color:var(--vermelho);font-weight:700">Mercado Livre: ERRO ao montar o índice — ' + esc(f.ml.erro) + '</span> (tentando de novo sozinho)'
         : 'Mercado Livre: índice montando' + (f.ml.construindo ? ' (em andamento)' : ''));
+    }
+    if (f.nomes && !f.nomes.quente) {
+      avisos.push(f.nomes.erro
+        ? '<span style="color:var(--vermelho);font-weight:700">Bling (notas/vendas): ERRO — ' + esc(f.nomes.erro) + '</span> (Shopee sem cliente/NF/valor até voltar; tentando sozinho)'
+        : 'Bling (notas/vendas): índice montando — cliente/NF/valor da Shopee chegam quando terminar' + (f.nomes.construindo ? ' (em andamento)' : ''));
     }
     if (f.shopee && !f.shopee.quente) avisos.push('Shopee: ' + (f.shopee.desligada ? 'desligada' : (f.shopee.erro || 'cache montando')));
     if (f.magalu && !f.magalu.quente) avisos.push('Magalu: ' + (f.magalu.falta || 'índice montando') +
