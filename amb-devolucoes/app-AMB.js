@@ -1004,6 +1004,8 @@ router.get('/api/espreita', auth.requerLogin, async (req, res) => {
       link_marketplace: link,
       cliente: (venda && venda.nome) || (vendaLoja && vendaLoja.nome) || x.cliente_ml || null,
       nf_venda: x.nf_ml_numero || (venda && venda.numero) || (nfv && nfv.numero) || null,
+      // b38 - serie da NF, da mesma fonte que deu o numero
+      nf_serie: x.nf_ml_serie || (venda && venda.serie) || (nfv && nfv.serie) || null,
       nf_valor: (venda && venda.valor != null) ? venda.valor
         : (vendaLoja && vendaLoja.valor != null) ? vendaLoja.valor
         : (x.valor_venda != null ? x.valor_venda : null),
