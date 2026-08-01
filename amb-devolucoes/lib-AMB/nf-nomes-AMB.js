@@ -338,7 +338,7 @@ function preAquecer(atrasoMs) {
 // chave (invoice_data 404) e a lista de NFs não casa (com_pedido 0),
 // o detalhe da venda (GET /pedidos/vendas/{id}) aponta a NF gerada.
 // Cache permanente com retentativa (padrão da ENTREGA_REAL/b30).
-const NF_POR_VENDA = new Map();   // id_venda -> { numero, id_nf, tent, http }
+const NF_POR_VENDA = new Map();   // id_venda -> { numero, serie, id_nf, tent, http }
 let NFV_RODANDO = false;
 
 function nfDaVenda(idVenda) {
@@ -363,19 +363,20 @@ function dispararNfPorVenda(ids) {
         const v = (r.ok && r.data && r.data.data) || null;
         const nfId = v && v.notaFiscal && v.notaFiscal.id ? String(v.notaFiscal.id) : null;
         let numero = null, http = r.status || (r.ok ? 200 : null);
+        let serie = null;
         if (nfId) {
           const reg = (IDX.porId && IDX.porId[nfId]) || null;
-          if (reg && reg.numero) numero = String(reg.numero);
+          if (reg && reg.numero) { numero = String(reg.numero); serie = reg.serie || null; }
           else {
             const rn = await bling.chamarBling('/nfe/' + nfId);
             const nf = (rn.ok && rn.data && rn.data.data) || null;
-            if (nf && nf.numero) numero = String(nf.numero).replace(/^0+/, '');
+            if (nf && nf.numero) { numero = String(nf.numero).replace(/^0+/, ''); serie = nf.serie != null ? String(nf.serie) : null; }
             http = rn.status || http;
           }
         }
-        NF_POR_VENDA.set(id, { numero, id_nf: nfId, tent: (antes.tent || 0) + 1, http });
+        NF_POR_VENDA.set(id, { numero, serie, id_nf: nfId, tent: (antes.tent || 0) + 1, http });
       } catch (e) {
-        NF_POR_VENDA.set(id, { numero: null, id_nf: null, tent: (antes.tent || 0) + 1, http: 'exc:' + String(e.message).slice(0, 40) });
+        NF_POR_VENDA.set(id, { numero: null, serie: null, id_nf: null, tent: (antes.tent || 0) + 1, http: 'exc:' + String(e.message).slice(0, 40) });
       }
       await new Promise(rs => setTimeout(rs, 350));
     }
