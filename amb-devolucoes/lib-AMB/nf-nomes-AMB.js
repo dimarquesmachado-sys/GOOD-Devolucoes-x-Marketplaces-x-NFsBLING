@@ -1,5 +1,5 @@
 // ============================================================
-// amb-devolucoes/lib-AMB/nf-nomes-AMB.js       (AMB Devol. b45-sonda-nffull2)
+// amb-devolucoes/lib-AMB/nf-nomes-AMB.js       (AMB Devol. b45-sonda-nfid)
 // ------------------------------------------------------------
 // O PEGA-TUDO: acha a venda pelo NOME DO REMETENTE da etiqueta.
 //
@@ -407,6 +407,25 @@ async function sondaLoja(numeroLoja) {
   // caminho 4 (b45-nffull): a NF do FULL esta na listagem /nfe (XML importado
   // por extensao), NAO como filha de uma venda. VARRER a listagem /nfe AO VIVO
   // procurando o order_sn em qualquer campo. Paginar ate achar (ou ~8 pgs).
+  // b45-nfid: se ?interno= for um ID numerico de NF, busca ela DIRETO pelo detalhe
+  const talvezId = String(_sondaInterno || '').trim();
+  if (/^\d{6,}$/.test(talvezId)) {
+    try {
+      const rn = await bling.chamarBling('/nfe/' + talvezId);
+      const nf = (rn.ok && rn.data && rn.data.data) || null;
+      aoVivo.nf_por_id = nf ? {
+        http: rn.status,
+        campos: Object.keys(nf),
+        id: nf.id, numero: nf.numero, serie: nf.serie, tipo: nf.tipo,
+        numeroPedidoLoja: nf.numeroPedidoLoja, numeroLoja: nf.numeroLoja,
+        chaveAcesso: nf.chaveAcesso, contato: nf.contato,
+        naturezaOperacao: nf.naturezaOperacao, loja: nf.loja,
+        situacao: nf.situacao, dataEmissao: nf.dataEmissao,
+        vendedor: nf.vendedor, observacoes: nf.observacoes,
+      } : { http: rn.status, vazio: true };
+    } catch (e) { aoVivo.nf_por_id = { erro: String(e.message || e).slice(0, 120) }; }
+  }
+
   try {
     const nomeAlvo = String(_sondaInterno || '').trim().toLowerCase();   // reuso: ?interno= passa o NOME
     let porOrderSn = [], porNome = [], amostraCampos = null, pgs = 0;
