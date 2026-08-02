@@ -1,5 +1,5 @@
 // ============================================================
-// amb-devolucoes/lib-AMB/shopee-AMB.js         (AMB Devol. b37)
+// amb-devolucoes/lib-AMB/shopee-AMB.js         (AMB Devol. b50)
 // ------------------------------------------------------------
 // Devolucoes da SHOPEE via o proxy interno do shopee-nf-sync —
 // la vivem os tokens saudaveis das lojas; aqui so consultamos.
@@ -38,6 +38,84 @@ async function buscarDevolucoesProxy(forcar) {
   }
   cache = { ts: Date.now(), dados: d.devolucoes || [] };
   return cache.dados;
+}
+
+// ============================================================
+// b50 - FASE 3: DATA REAL DE CHEGADA NO ESTOQUE (API oficial)
+// ------------------------------------------------------------
+// O status da devolucao NAO diz quando (nem se) a mercadoria
+// chegou aqui. Quem sabe isso e o rastreio REVERSO da Shopee,
+// exposto pela rota /:loja/devolucao?order_sn= do shopee-nf-sync
+// (mesmo servico do proxy — reusa SHOPEE_PROXY_URL/KEY).
+// Retorna { chegou_no_estoque, chegou_em }.
+//
+// Padrao igual ao das datas de entrega do ML: cache em memoria,
+// fila em background (a rota e LENTA — varre janelas de 15 dias),
+// e o card mostra o estimado ate a data real chegar.
+// ============================================================
+const CHEGADA = new Map();   // order_sn -> { v: dataISO|null, chegou: bool|null, tent: n, http, ts }
+let CHEGADA_RODANDO = false;
+let CHEGADA_ERRO = null;
+
+async function consultarChegada(orderSn) {
+  const url = `${URL_PROXY}/${LOJA}/devolucao?order_sn=${encodeURIComponent(orderSn)}` +
+              `&k=${encodeURIComponent(KEY_PROXY)}`;
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), 30000);          // a rota varre 15d por vez
+  try {
+    const r = await fetch(url, {
+      headers: { 'x-internal-key': KEY_PROXY },             // aceita as duas formas de auth
+      signal: ctrl.signal,
+    });
+    const d = await r.json().catch(() => null);
+    const raiz = (d && d.devolucao) || d || {};
+    return {
+      http: r.status,
+      chegou: raiz.chegou_no_estoque === true,
+      quando: raiz.chegou_em || null,
+      erro: (d && d.ok === false) ? (d.erro || 'resposta ok:false') : null,
+    };
+  } finally { clearTimeout(t); }
+}
+
+/** Dispara em background a consulta da chegada real dos cards Shopee. */
+function dispararChegadas(cards) {
+  if (!cfg.ativo || CHEGADA_RODANDO) return;
+  const fila = [...new Set((cards || []).map(c => c && c.pedido).filter(Boolean))]
+    .filter(sn => {
+      const e = CHEGADA.get(sn);
+      if (!e) return true;
+      if (e.v) return false;                                  // ja tem data real: permanente
+      if (e.chegou === false) return (Date.now() - (e.ts || 0)) > 30 * 60000;  // reconfere depois
+      return (e.tent || 0) < 4;                               // erro: tenta de novo
+    })
+    .slice(0, 15);                                            // rota lenta: poucos por rodada
+  if (!fila.length) return;
+  CHEGADA_RODANDO = true;
+  (async () => {
+    for (const sn of fila) {
+      const antes = CHEGADA.get(sn) || { tent: 0 };
+      try {
+        const r = await consultarChegada(sn);
+        CHEGADA.set(sn, {
+          v: r.chegou ? r.quando : null,
+          chegou: r.chegou,
+          tent: (antes.tent || 0) + 1,
+          http: r.http, ts: Date.now(),
+        });
+        if (r.erro) CHEGADA_ERRO = `HTTP ${r.http}: ${r.erro}`;
+        else if (r.http >= 400) CHEGADA_ERRO = `HTTP ${r.http}`;
+        else CHEGADA_ERRO = null;
+      } catch (e) {
+        CHEGADA.set(sn, { v: null, chegou: null, tent: (antes.tent || 0) + 1,
+          http: 'exc', ts: Date.now() });
+        CHEGADA_ERRO = 'excecao: ' + String(e.message || e).slice(0, 60);
+      }
+      await new Promise(r => setTimeout(r, 500));
+    }
+    const comData = [...CHEGADA.values()].filter(e => e.v).length;
+    console.log(`[AMB/SHOPEE] chegada real: ${comData} com data / ${CHEGADA.size} consultadas`);
+  })().catch(() => {}).finally(() => { CHEGADA_RODANDO = false; });
 }
 
 const norm = (s) => String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
@@ -130,9 +208,18 @@ async function resumoEspreita() {
       motivo_curto: MOTIVO[String(d.reason || '').toUpperCase()] || d.reason || null,
       itens: (d.itens || []).slice(0, 3).map(i => ({ titulo: i.nome || null, sku: i.sku || null, qtd: i.qtd || 1 })),
     };
-    if (entregouLst) {
-      // dias desde a ABERTURA com "~" (estimado) — a data exata de
-      // entrega vem na fase 2 (rota do portal via Mover-Pedidos)
+    // b50 - CONSTATADO vence DEDUZIDO: se o rastreio reverso ja disse
+    // que chegou (e quando), o card usa a DATA REAL e vai pro quadro
+    // "chegou na sua matriz". Sem esse dado, mantem o comportamento
+    // antigo (DELIVERY_DONE = entregue, data estimada da abertura).
+    // Nunca REBAIXA um card por chegou:false — a janela de busca da
+    // API e limitada e um falso negativo esconderia trabalho real.
+    const _ch = CHEGADA.get(String(d.order_sn || ''));
+    const _chegouReal = !!(_ch && _ch.chegou === true && _ch.v);
+    if (_chegouReal) {
+      entregues.push({ ...card, dias_desde: dias(_ch.v),
+        data_precisa: true, entregue_em: _ch.v });
+    } else if (entregouLst) {
       entregues.push({ ...card, dias_desde: card.dias_em_transito,
         data_precisa: false, entregue_em: null });
     } else {
@@ -141,8 +228,17 @@ async function resumoEspreita() {
   }
   entregues.sort((x, y) => (x.dias_desde ?? 9999) - (y.dias_desde ?? 9999));
   emTransito.sort((x, y) => (y.dias_em_transito || 0) - (x.dias_em_transito || 0));
+  // b50 - busca a chegada real em background (entregues primeiro).
+  // Na 1a passada o card sai estimado; nas seguintes ja vem com a data.
+  dispararChegadas([...entregues, ...emTransito]);
   return { quente: true, em_transito: emTransito.slice(0, 60),
-    entregues: entregues.slice(0, 60), encerradas_indice: encerradas };
+    entregues: entregues.slice(0, 60), encerradas_indice: encerradas,
+    chegadas: {
+      consultadas: CHEGADA.size,
+      com_data: [...CHEGADA.values()].filter(e => e.v).length,
+      ainda_nao: [...CHEGADA.values()].filter(e => e.chegou === false).length,
+      erro: CHEGADA_ERRO,
+    } };
 }
 
 function preAquecer() {
@@ -163,4 +259,5 @@ function preAquecer() {
   }, 8 * 60 * 1000).unref();
 }
 
-module.exports = { cfg, buscarDevolucoesProxy, acharDevolucao, resumoEspreita, preAquecer, norm };
+module.exports = { cfg, buscarDevolucoesProxy, acharDevolucao, resumoEspreita, preAquecer, norm,
+  consultarChegada, dispararChegadas };
