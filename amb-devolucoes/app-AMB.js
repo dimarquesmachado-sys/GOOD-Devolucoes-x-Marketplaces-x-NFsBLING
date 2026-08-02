@@ -72,7 +72,7 @@ const impressao = require('./lib-AMB/impressao-AMB');
 const emailAMB = require('./lib-AMB/email-AMB');
 const nfEntrada = require('./lib-AMB/nf-entrada-AMB');
 
-const VERSAO = 'AMB Devolucoes b45-sonda';
+const VERSAO = 'AMB Devolucoes b45-sonda-viva';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -449,10 +449,11 @@ router.get('/nf/indice/construir', admin, (req, res) => {
  * na etiqueta ("IANDRAMATIASRIBEIRO") ou digitado com espaco.
  * SEMPRE devolve CANDIDATOS — a decisao e do estoquista.
  */
-router.get('/nf/sonda-loja', admin, (req, res) => {
+router.get('/nf/sonda-loja', admin, async (req, res) => {
   const sn = req.query.sn || req.query.pedido;
   if (!sn) return res.status(400).json({ ok: false, uso: '/amb/nf/sonda-loja?sn=ORDER_SN&k=SUA_CHAVE' });
-  res.json({ ok: true, resultado: nfNomes.sondaLoja(String(sn)) });
+  const resultado = await nfNomes.sondaLoja(String(sn));
+  res.json({ ok: true, resultado });
 });
 
 router.get('/nf/nome', admin, async (req, res) => {
