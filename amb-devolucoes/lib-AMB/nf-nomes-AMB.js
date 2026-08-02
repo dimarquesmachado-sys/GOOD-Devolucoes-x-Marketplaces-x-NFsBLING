@@ -1,5 +1,5 @@
 // ============================================================
-// amb-devolucoes/lib-AMB/nf-nomes-AMB.js       (AMB Devol. b45-sonda)
+// amb-devolucoes/lib-AMB/nf-nomes-AMB.js       (AMB Devol. b45-sonda-viva)
 // ------------------------------------------------------------
 // O PEGA-TUDO: acha a venda pelo NOME DO REMETENTE da etiqueta.
 //
@@ -371,21 +371,44 @@ const NF_POR_LOJA = new Map();   // b39 - numeroLoja -> {numero,serie} (a chave 
 let NFV_RODANDO = false;
 
 // SONDA b45 - dado um numeroLoja (order_sn), diz o que o indice tem pra ele
-function sondaLoja(numeroLoja) {
+async function sondaLoja(numeroLoja) {
   const k = String(numeroLoja || '').trim();
   const venda = IDX.vendasPorLoja && IDX.vendasPorLoja[k];
   const nfLoja = NF_POR_LOJA.get(k);
-  const nfVenda = venda && venda.id_venda ? NF_POR_VENDA.get(String(venda.id_venda)) : null;
-  // procurar tambem por match parcial (caso o numeroLoja da venda seja diferente do order_sn)
   const chavesParecidas = Object.keys(IDX.vendasPorLoja || {}).filter(x => x.includes(k) || k.includes(x)).slice(0, 5);
+
+  // SONDA VIVA b45 - bate no Bling AO VIVO por varios caminhos pra achar a
+  // venda/NF do Full, que nao entra no indice de /pedidos/vendas normal.
+  const aoVivo = {};
+  const tentar = async (nome, path) => {
+    try {
+      const r = await bling.chamarBling(path);
+      const arr = (r.ok && r.data && r.data.data) || [];
+      aoVivo[nome] = {
+        http: r.status, achou: Array.isArray(arr) ? arr.length : 0,
+        amostra: (Array.isArray(arr) ? arr : []).slice(0, 3).map(x => ({
+          id: x.id, numero: x.numero, numeroLoja: x.numeroLoja || x.numeroPedidoLoja,
+          serie: x.serie, chaveAcesso: x.chaveAcesso,
+          contato: x.contato && x.contato.nome, situacao: x.situacao,
+        })),
+      };
+    } catch (e) { aoVivo[nome] = { erro: String(e.message || e).slice(0, 100) }; }
+  };
+  // caminho 1: vendas filtrando por numeroLoja
+  await tentar('vendas_por_numeroLoja', `/pedidos/vendas?numeroLoja=${encodeURIComponent(k)}`);
+  // caminho 2: NFs filtrando por numeroLoja
+  await tentar('nfe_por_numeroLoja', `/nfe?numeroLoja=${encodeURIComponent(k)}`);
+  // caminho 3: NFs tipo 1 filtrando por numero da loja (campo alternativo)
+  await tentar('nfe_por_numeroPedidoLoja', `/nfe?numeroPedidoLoja=${encodeURIComponent(k)}`);
+
   return {
     procurado: k,
     achou_venda: !!venda,
     venda: venda ? { id_venda: venda.id_venda, numero_venda: venda.numero_venda, nome: venda.nome, valor: venda.valor } : null,
     achou_nf_por_loja: !!nfLoja,
     nf_por_loja: nfLoja || null,
-    nf_por_venda: nfVenda || null,
     chaves_parecidas: chavesParecidas,
+    ao_vivo: aoVivo,
   };
 }
 
