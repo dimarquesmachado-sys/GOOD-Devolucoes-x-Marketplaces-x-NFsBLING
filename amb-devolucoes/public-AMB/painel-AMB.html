@@ -8,7 +8,7 @@
 <link rel="icon" type="image/png" href="icone-AMB.png">
 <!--
   =========================================================
-  amb-devolucoes/public-AMB/painel-AMB.html  (AMB Devol. b48)
+  amb-devolucoes/public-AMB/painel-AMB.html  (AMB Devol. b49)
   ---------------------------------------------------------
   PAINEL em PAGINA UNICA, no formato da GOOD (pedido do Diego
   comparando os prints): nada de abas — secoes empilhadas,
@@ -108,6 +108,17 @@
   .vermelha > b { color:#a12d31; font-size:15px; }
   .vermelha .sub { color:#8a5a5c; font-size:12.5px; margin:3px 0 10px; }
 
+  /* b49 - quadro AMARELO: chegou em outro lugar (CD do ML / Full) */
+  .outrolugar { border:2px solid #f4e2b8; background:#fdf9ef; border-radius:14px;
+                padding:13px 14px; margin-bottom:12px; }
+  .outrolugar > b { color:#8a6d1f; font-size:15px; }
+  .outrolugar .sub { color:#8a7a52; font-size:12.5px; margin:3px 0 10px; }
+  /* b49 - quadro BRANCO/CINZA: em transito (a caminho) */
+  .transito { border:1.5px solid var(--borda); background:var(--cartao); border-radius:14px;
+              padding:13px 14px; margin-bottom:12px; }
+  .transito > b { color:var(--texto); font-size:15px; }
+  .transito .sub { color:var(--apagado); font-size:12.5px; margin:3px 0 10px; }
+
   .selo { display:inline-block; padding:2px 9px; border-radius:20px;
           font-size:11px; font-weight:800; background:#efe9f8; color:#4a3b66; }
   .selo.ml { background:#fff3bf; color:#7a5d00; }
@@ -154,7 +165,7 @@
   <div class="miolo">
   <h1>&#128081; Painel de Devoluções &mdash; AMBTotal</h1>
   <div class="sub">Triagens + À Espreita + Defeitos + Recados</div>
-  <div class="ver">painel <b>b48</b> &middot; <span id="versaoServidor">servidor ...</span></div>
+  <div class="ver">painel <b>b49</b> &middot; <span id="versaoServidor">servidor ...</span></div>
   </div>
 </div>
 
@@ -641,15 +652,42 @@ async function verEspreita() {
       (f.magalu.desligada ? ' — <a href="/amb/conectar">conectar</a>' : ''));
     if (avisos.length) h += '<div class="vazio" style="padding:8px">' + avisos.join(' &middot; ') + '</div>';
 
-    // ENTREGUE no marketplace mas ninguem bipou — o destaque vermelho da GOOD
+    // b49 - TRES QUADROS CLAROS por ONDE a devolucao esta:
+    // 1) VERMELHO: chegou na SUA MATRIZ (precisa bipar/conferir)
+    // 2) AMARELO: chegou em OUTRO LUGAR (CD do ML / Full) - nao e problema seu
+    // 3) BRANCO: ainda EM TRANSITO (a caminho)
+    // A separacao usa no_cd_ml (o backend ja marca): os "em revisao no CD do ML"
+    // vem em em_transito com no_cd_ml=true; os de verdade a caminho, sem a flag.
+    const outroLugar = r.em_transito.filter(x => x.no_cd_ml);
+    const aCaminho   = r.em_transito.filter(x => !x.no_cd_ml);
+
+    // QUADRO 1 - chegou na matriz (vermelho)
     if (r.entregues.length) {
-      h += '<div class="vermelha"><b>&#128680; Consta ENTREGUE no marketplace, mas ninguém bipou aqui (' +
+      h += '<div class="vermelha"><b>&#128680; Chegou na sua matriz — falta bipar (' +
         r.entregues.length + ')</b>' +
-        '<div class="sub">Confere no galpão: pode estar guardado sem registro — ou não chegou de verdade.</div>' +
+        '<div class="sub">O marketplace marcou como entregue no seu endereço. Confere no galpão e dá baixa — ou registra a entrada.</div>' +
         r.entregues.map(x => cardEspreita(x, true)).join('') + '</div>';
     }
-    h += r.em_transito.map(x => cardEspreita(x, false)).join('') ||
-         '<div class="vazio">Nada a caminho no momento.</div>';
+
+    // QUADRO 2 - chegou em outro lugar (amarelo) - CD do ML / Full
+    if (outroLugar.length) {
+      h += '<div class="outrolugar"><b>&#127981; Chegou em outro lugar — não é com você (' +
+        outroLugar.length + ')</b>' +
+        '<div class="sub">Está no CD do Mercado Livre ou no Full — o marketplace resolve por lá. Aqui é só acompanhamento; não precisa bipar.</div>' +
+        outroLugar.map(x => cardEspreita(x, false)).join('') + '</div>';
+    }
+
+    // QUADRO 3 - em transito (branco)
+    if (aCaminho.length) {
+      h += '<div class="transito"><b>&#128666; Em trânsito — a caminho (' +
+        aCaminho.length + ')</b>' +
+        '<div class="sub">A devolução ainda está viajando. Nada a fazer até chegar.</div>' +
+        aCaminho.map(x => cardEspreita(x, false)).join('') + '</div>';
+    }
+
+    if (!r.entregues.length && !outroLugar.length && !aCaminho.length) {
+      h += '<div class="vazio">Nada em aberto no momento.</div>';
+    }
     $('scEspreita').innerHTML = h;
   } catch (e) {}
 }
