@@ -1,5 +1,5 @@
 // ============================================================
-// amb-devolucoes/lib-AMB/nf-nomes-AMB.js       (AMB Devol. b43-sonda2)
+// amb-devolucoes/lib-AMB/nf-nomes-AMB.js       (AMB Devol. b44)
 // ------------------------------------------------------------
 // O PEGA-TUDO: acha a venda pelo NOME DO REMETENTE da etiqueta.
 //
@@ -49,6 +49,20 @@ const IDX = {
 let construindo = false;
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
+// b44 - SERIE REAL da NF: sai da chave de acesso NF-e (44 digitos),
+// posicoes 22-25. É o dado CONSTATADO, emitido na nota. O campo
+// nf.serie da listagem /nfe vem vazio/undefined, entao usamos a chave.
+// Mapa de series da AMB (so referencia): 1=matriz, 2=ML Full,
+// 3=Magalu Full venda, 4=Magalu Full devolucao, 5=Shopee Full.
+function serieDaChave(chave, fallback) {
+  const ch = String(chave || '').replace(/\D/g, '');
+  if (ch.length === 44) {
+    const s = ch.slice(22, 25).replace(/^0+/, '');
+    if (s) return s;
+  }
+  return fallback || null;
+}
+
 /** Tira acento, pontuacao e espaco. Sobram so letras maiusculas. */
 const colapsar = (s) => String(s || '')
   .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
@@ -90,7 +104,6 @@ async function construirIndice(opts = {}) {
     // velha. Nao usamos filtro de data de proposito: o Bling anexa a
     // hora atual na data e o filtro de mesmo dia sempre volta zero.
     // Paginamos e cortamos pela data no nosso lado.
-    _amostraCruNfe = [];   // reset sonda (antes do loop NFe)
     for (let pg = 1; pg <= maxPaginas; pg++) {
       const r = await bling.chamarBling(`/nfe?limite=100&pagina=${pg}&tipo=1`);
       if (!r.ok) { erroBusca = `nfe pagina ${pg} HTTP ${r.status}`; break; }
@@ -99,14 +112,6 @@ async function construirIndice(opts = {}) {
       if (lista.length === 0) break;
 
       for (const nf of lista) {
-        if (_amostraCruNfe.length < 6) {
-          _amostraCruNfe.push({
-            campos: Object.keys(nf),
-            numero: nf.numero, serie: nf.serie,
-            serie_tipo: typeof nf.serie,
-            chaveAcesso: nf.chaveAcesso || nf.chave || nf.chaveNfe || null,
-          });
-        }
         const quando = Date.parse(String(nf.dataEmissao || '').replace(' ', 'T'));
         if (quando && quando < corte) { parouPorData = true; break; }
 
@@ -117,7 +122,7 @@ async function construirIndice(opts = {}) {
         const registro = {
           id: String(nf.id),
           numero: String(nf.numero || '').replace(/^0+/, ''),   // b41 - sem zeros a esquerda
-          serie: String(nf.serie || '').trim() || '1',   // b42 - serie da matriz e 1 quando o Bling nao informa
+          serie: serieDaChave(nf.chaveAcesso, String(nf.serie || '').trim() || null),   // b44 - serie REAL da chave de acesso
           nome: nomeOriginal,
           dataEmissao: nf.dataEmissao || null,
           valor: nf.valorNota != null ? nf.valorNota : null,
@@ -224,7 +229,6 @@ function statusIndice() {
     vendas_com_loja: Object.keys(IDX.vendasPorLoja || {}).length,
     nf_por_venda_ok: [...NF_POR_VENDA.values()].filter(e => e.numero).length,
     nf_por_loja_ok: NF_POR_LOJA.size,
-    amostra_cru_nfe: _amostraCruNfe,   // SONDA b43
     nf_por_venda_nulas: [...NF_POR_VENDA.values()].filter(e => !e.numero).length,
     nf_por_venda_amostra: [...NF_POR_VENDA.entries()].slice(0, 3)
       .map(([id, e]) => ({ id_venda: id, numero: e.numero, http: e.http, tent: e.tent })),
@@ -363,8 +367,7 @@ function preAquecer(atrasoMs) {
 // o detalhe da venda (GET /pedidos/vendas/{id}) aponta a NF gerada.
 // Cache permanente com retentativa (padrão da ENTREGA_REAL/b30).
 const NF_POR_VENDA = new Map();
-const NF_POR_LOJA = new Map();
-let _amostraCruNfe = [];   // SONDA b43 - campos crus da listagem /nfe   // b39 - numeroLoja -> {numero,serie} (a chave que o card sempre tem)   // id_venda -> { numero, serie, id_nf, tent, http }
+const NF_POR_LOJA = new Map();   // b39 - numeroLoja -> {numero,serie} (a chave que o card sempre tem)   // id_venda -> { numero, serie, id_nf, tent, http }
 let NFV_RODANDO = false;
 
 function nfDaLoja(numeroLoja) {
@@ -401,11 +404,11 @@ function dispararNfPorVenda(pares) {
         let serie = null;
         if (nfId) {
           const reg = (IDX.porId && IDX.porId[nfId]) || null;
-          if (reg && reg.numero) { numero = String(reg.numero); serie = (reg.serie && String(reg.serie).trim()) ? String(reg.serie).trim() : '1'; }
+          if (reg && reg.numero) { numero = String(reg.numero); serie = reg.serie || null; }   // b44 - reg.serie ja vem da chave
           else {
             const rn = await bling.chamarBling('/nfe/' + nfId);
             const nf = (rn.ok && rn.data && rn.data.data) || null;
-            if (nf && nf.numero) { numero = String(nf.numero).replace(/^0+/, ''); serie = (nf.serie != null && String(nf.serie).trim()) ? String(nf.serie).trim() : '1'; }
+            if (nf && nf.numero) { numero = String(nf.numero).replace(/^0+/, ''); serie = serieDaChave(nf.chaveAcesso, (nf.serie != null && String(nf.serie).trim()) ? String(nf.serie).trim() : null); }   // b44 - serie da chave
             http = rn.status || http;
           }
         }
