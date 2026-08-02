@@ -8,7 +8,7 @@
 <link rel="icon" type="image/png" href="icone-AMB.png">
 <!--
   =========================================================
-  amb-devolucoes/public-AMB/painel-AMB.html  (AMB Devol. b49)
+  amb-devolucoes/public-AMB/painel-AMB.html  (AMB Devol. b51)
   ---------------------------------------------------------
   PAINEL em PAGINA UNICA, no formato da GOOD (pedido do Diego
   comparando os prints): nada de abas — secoes empilhadas,
@@ -165,7 +165,7 @@
   <div class="miolo">
   <h1>&#128081; Painel de Devoluções &mdash; AMBTotal</h1>
   <div class="sub">Triagens + À Espreita + Defeitos + Recados</div>
-  <div class="ver">painel <b>b49</b> &middot; <span id="versaoServidor">servidor ...</span></div>
+  <div class="ver">painel <b>b51</b> &middot; <span id="versaoServidor">servidor ...</span></div>
   </div>
 </div>
 
@@ -565,15 +565,18 @@ function cardEspreita(x, entregue) {
       var _dd = new Date(x.desde);
       if (!isNaN(_dd)) _dt = ' &middot; ' + ('0' + _dd.getDate()).slice(-2) + '/' + ('0' + (_dd.getMonth() + 1)).slice(-2);
     }
+    // b51 - a data aqui e a da ABERTURA da devolucao, nunca de chegada.
+    // Sem esse rotulo o numero era lido como "entregue em tal dia".
     h += velho
-      ? '<span class="selo velho">' + x.dias_em_transito + ' dias' + _dt + ' &middot; candidata a extravio</span>'
-      : '<span class="selo">' + (x.dias_em_transito == null ? '?' : x.dias_em_transito) + ' dia(s)' + _dt + '</span>';
+      ? '<span class="selo velho" title="tempo desde a abertura da devolu&ccedil;&atilde;o - n&atilde;o &eacute; data de chegada">devolu&ccedil;&atilde;o aberta h&aacute; ' + x.dias_em_transito + ' dias' + _dt + ' &middot; candidata a extravio</span>'
+      : '<span class="selo" title="tempo desde a abertura da devolu&ccedil;&atilde;o - n&atilde;o &eacute; data de chegada">devolu&ccedil;&atilde;o aberta h&aacute; ' + (x.dias_em_transito == null ? '?' : x.dias_em_transito) + ' dia(s)' + _dt + '</span>';
   }
   h += (x.link_marketplace
       ? '<a class="btn cinza" style="text-decoration:none;padding:5px 11px;font-size:12.5px" target="_blank" rel="noopener" href="' +
         esc(x.link_marketplace) + '">&#128279; Abrir</a>'
       : '') +
-    (x.no_cd_ml ? '<span class="selo">no CD do ML</span>' : '') +
+    (x.chegou_cd ? '<span class="selo">no CD do ML</span>'
+      : (x.no_cd_ml ? '<span class="selo">a caminho do CD do ML</span>' : '')) +
     (x.status_money === 'refunded' ? '<span class="selo velho">dinheiro estornado</span>' :
      x.status_money === 'retained' ? '<span class="selo ok">dinheiro retido</span>' : '') +
     (x.nf_devolucao_emitida ? '<span class="selo ok">NF devolucao &#10003;' +
@@ -658,8 +661,13 @@ async function verEspreita() {
     // 3) BRANCO: ainda EM TRANSITO (a caminho)
     // A separacao usa no_cd_ml (o backend ja marca): os "em revisao no CD do ML"
     // vem em em_transito com no_cd_ml=true; os de verdade a caminho, sem a flag.
-    const outroLugar = r.em_transito.filter(x => x.no_cd_ml);
-    const aCaminho   = r.em_transito.filter(x => !x.no_cd_ml);
+    // b51 - "destino e o CD" NAO e "chegou no CD". So entra no quadro
+    // amarelo quem o marketplace ja marcou como ENTREGUE la (chegou_cd).
+    // Quem ainda esta viajando pra la fica em transito (com selo avisando
+    // que o destino e o CD) — era o caso da devolucao que ainda estava
+    // nos Correios e o painel dava como "chegou em outro lugar".
+    const outroLugar = r.em_transito.filter(x => x.chegou_cd === true);
+    const aCaminho   = r.em_transito.filter(x => x.chegou_cd !== true);
 
     // QUADRO 1 - chegou na matriz (vermelho)
     if (r.entregues.length) {
