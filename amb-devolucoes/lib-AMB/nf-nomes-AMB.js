@@ -1,5 +1,5 @@
 // ============================================================
-// amb-devolucoes/lib-AMB/nf-nomes-AMB.js       (AMB Devol. b46)
+// amb-devolucoes/lib-AMB/nf-nomes-AMB.js       (AMB Devol. b45-sonda-nf2)
 // ------------------------------------------------------------
 // O PEGA-TUDO: acha a venda pelo NOME DO REMETENTE da etiqueta.
 //
@@ -367,8 +367,100 @@ function preAquecer(atrasoMs) {
 // o detalhe da venda (GET /pedidos/vendas/{id}) aponta a NF gerada.
 // Cache permanente com retentativa (padrão da ENTREGA_REAL/b30).
 const NF_POR_VENDA = new Map();
+let _sondaInterno = '';
 const NF_POR_LOJA = new Map();   // b39 - numeroLoja -> {numero,serie} (a chave que o card sempre tem)   // id_venda -> { numero, serie, id_nf, tent, http }
 let NFV_RODANDO = false;
+
+// SONDA b45 - dado um numeroLoja (order_sn), diz o que o indice tem pra ele
+function setSondaInterno(v) { _sondaInterno = String(v || ''); }
+
+async function sondaLoja(numeroLoja) {
+  const k = String(numeroLoja || '').trim();
+  const venda = IDX.vendasPorLoja && IDX.vendasPorLoja[k];
+  const nfLoja = NF_POR_LOJA.get(k);
+  const chavesParecidas = Object.keys(IDX.vendasPorLoja || {}).filter(x => x.includes(k) || k.includes(x)).slice(0, 5);
+
+  // SONDA VIVA b45 - bate no Bling AO VIVO por varios caminhos pra achar a
+  // venda/NF do Full, que nao entra no indice de /pedidos/vendas normal.
+  const aoVivo = {};
+  const tentar = async (nome, path) => {
+    try {
+      const r = await bling.chamarBling(path);
+      const arr = (r.ok && r.data && r.data.data) || [];
+      aoVivo[nome] = {
+        http: r.status, achou: Array.isArray(arr) ? arr.length : 0,
+        amostra: (Array.isArray(arr) ? arr : []).slice(0, 3).map(x => ({
+          id: x.id, numero: x.numero, numeroLoja: x.numeroLoja || x.numeroPedidoLoja,
+          serie: x.serie, chaveAcesso: x.chaveAcesso,
+          contato: x.contato && x.contato.nome, situacao: x.situacao,
+        })),
+      };
+    } catch (e) { aoVivo[nome] = { erro: String(e.message || e).slice(0, 100) }; }
+  };
+  // caminho 1: vendas filtrando por numeroLoja
+  await tentar('vendas_por_numeroLoja', `/pedidos/vendas?numeroLoja=${encodeURIComponent(k)}`);
+  // caminho 2: NFs filtrando por numeroLoja
+  await tentar('nfe_por_numeroLoja', `/nfe?numeroLoja=${encodeURIComponent(k)}`);
+  // caminho 3: NFs tipo 1 filtrando por numero da loja (campo alternativo)
+  await tentar('nfe_por_numeroPedidoLoja', `/nfe?numeroPedidoLoja=${encodeURIComponent(k)}`);
+
+  // caminho 4 (b45-nf): se a VENDA existe, buscar a NF dela pelo detalhe.
+  // GET /pedidos/vendas/{id} aponta notaFiscal.id -> GET /nfe/{id} tem chave+serie.
+  if (venda && venda.id_venda) {
+    try {
+      const rv = await bling.chamarBling('/pedidos/vendas/' + venda.id_venda);
+      const det = (rv.ok && rv.data && rv.data.data) || null;
+      const nfId = det && det.notaFiscal && det.notaFiscal.id;
+      aoVivo.detalhe_venda = {
+        http: rv.status,
+        tem_notaFiscal: !!(det && det.notaFiscal),
+        notaFiscal_id: nfId || null,
+        // b45-nf2: DESPEJA o objeto notaFiscal inteiro + campos do detalhe pra
+        // achar onde a NF da venda FULL esta referenciada (o .id veio null).
+        notaFiscal_obj: det && det.notaFiscal,
+        situacao: det && det.situacao,
+        campos_venda: det ? Object.keys(det) : [],
+        numeroLoja: det && (det.numeroLoja || det.numeroPedidoLoja),
+        tem_transporte: !!(det && det.transporte),
+      };
+      if (nfId) {
+        const rn = await bling.chamarBling('/nfe/' + nfId);
+        const nf = (rn.ok && rn.data && rn.data.data) || null;
+        aoVivo.nf_da_venda = {
+          http: rn.status,
+          numero: nf && nf.numero,
+          serie: nf && nf.serie,
+          chaveAcesso: nf && nf.chaveAcesso,
+          situacao: nf && nf.situacao,
+        };
+      } else {
+        aoVivo.nf_da_venda = { info: 'venda SEM notaFiscal.id — NF ainda nao emitida/vinculada' };
+      }
+    } catch (e) { aoVivo.detalhe_venda = { erro: String(e.message || e).slice(0, 100) }; }
+  }
+
+  // procurar o numero (order_sn OU interno) entre TODAS as vendas ja indexadas
+  const todas = Object.keys(IDX.vendasPorLoja || {});
+  const bateExato = todas.filter(x => x === k);
+  // se passaram um 2o numero (interno), procura ele tb
+  const interno = String((typeof _sondaInterno !== 'undefined' && _sondaInterno) || '').trim();
+  const bateInterno = interno ? todas.filter(x => x === interno) : [];
+  const vendaInterno = interno && IDX.vendasPorLoja && IDX.vendasPorLoja[interno] ? IDX.vendasPorLoja[interno] : null;
+
+  return {
+    procurado: k,
+    interno_procurado: interno || null,
+    achou_venda: !!venda,
+    venda: venda ? { id_venda: venda.id_venda, numero_venda: venda.numero_venda, nome: venda.nome, valor: venda.valor } : null,
+    achou_por_interno: !!vendaInterno,
+    venda_por_interno: vendaInterno ? { id_venda: vendaInterno.id_venda, numero_venda: vendaInterno.numero_venda, nome: vendaInterno.nome } : null,
+    achou_nf_por_loja: !!nfLoja,
+    nf_por_loja: nfLoja || null,
+    chaves_parecidas: chavesParecidas,
+    total_vendas_indexadas: todas.length,
+    ao_vivo: aoVivo,
+  };
+}
 
 function nfDaLoja(numeroLoja) {
   const e = numeroLoja ? NF_POR_LOJA.get(String(numeroLoja).trim()) : null;
@@ -440,6 +532,6 @@ function acharPorPedido(pedido) {
 }
 
 module.exports = {
-  construirIndice, statusIndice, buscarPorNome, acharPorPedido, acharPorNumero, acharVendaPorLoja, nfDaVenda, nfDaLoja, dispararNfPorVenda, preAquecer,
+  construirIndice, statusIndice, buscarPorNome, acharPorPedido, acharPorNumero, acharVendaPorLoja, nfDaVenda, nfDaLoja, sondaLoja, setSondaInterno, dispararNfPorVenda, preAquecer,
   colapsar, primeiroUltimo,
 };
