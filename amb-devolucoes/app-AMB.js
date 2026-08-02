@@ -72,7 +72,7 @@ const impressao = require('./lib-AMB/impressao-AMB');
 const emailAMB = require('./lib-AMB/email-AMB');
 const nfEntrada = require('./lib-AMB/nf-entrada-AMB');
 
-const VERSAO = 'AMB Devolucoes b47';
+const VERSAO = 'AMB Devolucoes b50';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -449,6 +449,20 @@ router.get('/nf/indice/construir', admin, (req, res) => {
  * na etiqueta ("IANDRAMATIASRIBEIRO") ou digitado com espaco.
  * SEMPRE devolve CANDIDATOS — a decisao e do estoquista.
  */
+router.get('/shopee/chegada', admin, async (req, res) => {
+  const sn = req.query.sn || req.query.order_sn;
+  if (!sn) return res.status(400).json({ ok: false, uso: '/amb/shopee/chegada?sn=ORDER_SN&k=SUA_CHAVE' });
+  if (!shopee.cfg.ativo) {
+    return res.json({ ok: false, erro: 'integracao Shopee desligada — faltam SHOPEE_PROXY_URL / SHOPEE_PROXY_KEY no servico' });
+  }
+  try {
+    const r = await shopee.consultarChegada(String(sn));
+    res.json({ ok: true, order_sn: String(sn), resultado: r });
+  } catch (e) {
+    res.status(500).json({ ok: false, erro: String(e.message || e) });
+  }
+});
+
 router.get('/nf/nome', admin, async (req, res) => {
   const q = req.query.q;
   if (!q) {
@@ -1058,7 +1072,8 @@ router.get('/api/espreita', auth.requerLogin, async (req, res) => {
     fontes: {
       ml: { quente: baseML.quente, construindo: !!stML.construindo,
             erro: erroML || stML.erro || null, total_claims: stML.total_claims || 0 },
-      shopee: { quente: baseShopee.quente, desligada: !!baseShopee.desligada, erro: erroShopee || baseShopee.erro || null },
+      shopee: { quente: baseShopee.quente, desligada: !!baseShopee.desligada, erro: erroShopee || baseShopee.erro || null,
+                chegadas: baseShopee.chegadas || null },
       magalu: { quente: baseMagalu.quente, desligada: !!baseMagalu.desligada, falta: baseMagalu.falta || null },
       nf_entrada: nfEntrada.statusIndice(),
       nomes: { quente: !!stNomes.quente, construindo: !!stNomes.construindo,
