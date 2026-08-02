@@ -1,5 +1,5 @@
 // ============================================================
-// amb-devolucoes/lib-AMB/nf-nomes-AMB.js       (AMB Devol. b45-sonda-nfid)
+// amb-devolucoes/lib-AMB/nf-nomes-AMB.js       (AMB Devol. b47)
 // ------------------------------------------------------------
 // O PEGA-TUDO: acha a venda pelo NOME DO REMETENTE da etiqueta.
 //
@@ -367,118 +367,28 @@ function preAquecer(atrasoMs) {
 // o detalhe da venda (GET /pedidos/vendas/{id}) aponta a NF gerada.
 // Cache permanente com retentativa (padrão da ENTREGA_REAL/b30).
 const NF_POR_VENDA = new Map();
-let _sondaInterno = '';
 const NF_POR_LOJA = new Map();   // b39 - numeroLoja -> {numero,serie} (a chave que o card sempre tem)   // id_venda -> { numero, serie, id_nf, tent, http }
 let NFV_RODANDO = false;
 
-// SONDA b45 - dado um numeroLoja (order_sn), diz o que o indice tem pra ele
-function setSondaInterno(v) { _sondaInterno = String(v || ''); }
-
-async function sondaLoja(numeroLoja) {
-  const k = String(numeroLoja || '').trim();
-  const venda = IDX.vendasPorLoja && IDX.vendasPorLoja[k];
-  const nfLoja = NF_POR_LOJA.get(k);
-  const chavesParecidas = Object.keys(IDX.vendasPorLoja || {}).filter(x => x.includes(k) || k.includes(x)).slice(0, 5);
-
-  // SONDA VIVA b45 - bate no Bling AO VIVO por varios caminhos pra achar a
-  // venda/NF do Full, que nao entra no indice de /pedidos/vendas normal.
-  const aoVivo = {};
-  const tentar = async (nome, path) => {
-    try {
-      const r = await bling.chamarBling(path);
-      const arr = (r.ok && r.data && r.data.data) || [];
-      aoVivo[nome] = {
-        http: r.status, achou: Array.isArray(arr) ? arr.length : 0,
-        amostra: (Array.isArray(arr) ? arr : []).slice(0, 3).map(x => ({
-          id: x.id, numero: x.numero, numeroLoja: x.numeroLoja || x.numeroPedidoLoja,
-          serie: x.serie, chaveAcesso: x.chaveAcesso,
-          contato: x.contato && x.contato.nome, situacao: x.situacao,
-        })),
-      };
-    } catch (e) { aoVivo[nome] = { erro: String(e.message || e).slice(0, 100) }; }
-  };
-  // caminho 1: vendas filtrando por numeroLoja
-  await tentar('vendas_por_numeroLoja', `/pedidos/vendas?numeroLoja=${encodeURIComponent(k)}`);
-  // caminho 2: NFs filtrando por numeroLoja
-  await tentar('nfe_por_numeroLoja', `/nfe?numeroLoja=${encodeURIComponent(k)}`);
-  // caminho 3: NFs tipo 1 filtrando por numero da loja (campo alternativo)
-  await tentar('nfe_por_numeroPedidoLoja', `/nfe?numeroPedidoLoja=${encodeURIComponent(k)}`);
-
-  // caminho 4 (b45-nffull): a NF do FULL esta na listagem /nfe (XML importado
-  // por extensao), NAO como filha de uma venda. VARRER a listagem /nfe AO VIVO
-  // procurando o order_sn em qualquer campo. Paginar ate achar (ou ~8 pgs).
-  // b45-nfid: se ?interno= for um ID numerico de NF, busca ela DIRETO pelo detalhe
-  const talvezId = String(_sondaInterno || '').trim();
-  if (/^\d{6,}$/.test(talvezId)) {
-    try {
-      const rn = await bling.chamarBling('/nfe/' + talvezId);
-      const nf = (rn.ok && rn.data && rn.data.data) || null;
-      aoVivo.nf_por_id = nf ? {
-        http: rn.status,
-        campos: Object.keys(nf),
-        id: nf.id, numero: nf.numero, serie: nf.serie, tipo: nf.tipo,
-        numeroPedidoLoja: nf.numeroPedidoLoja, numeroLoja: nf.numeroLoja,
-        chaveAcesso: nf.chaveAcesso, contato: nf.contato,
-        naturezaOperacao: nf.naturezaOperacao, loja: nf.loja,
-        situacao: nf.situacao, dataEmissao: nf.dataEmissao,
-        vendedor: nf.vendedor, observacoes: nf.observacoes,
-      } : { http: rn.status, vazio: true };
-    } catch (e) { aoVivo.nf_por_id = { erro: String(e.message || e).slice(0, 120) }; }
+// b47 - acha a NF por NOME direto no indice em memoria (SINCRONO, sem rebuild).
+// Serve pro FULL: a NF do Full (serie 5 Shopee, 2/3/4 etc) entra por XML sem
+// numeroPedidoLoja, entao nao casa por pedido — mas o nome do cliente casa.
+// Devolve a NF mais recente que bate o nome (mesma logica do buscarPorNome).
+function acharNfPorNomeIndice(nome) {
+  const alvo = colapsar(nome);
+  if (!alvo || alvo.length < 5 || !IDX.mapa) return null;
+  // mesmas vias 1 e 2 do buscarPorNome: nome completo, depois primeiro+ultimo
+  let cand = (IDX.mapa[alvo] && IDX.mapa[alvo].length) ? IDX.mapa[alvo]
+           : (IDX.mapaCurto[alvo] && IDX.mapaCurto[alvo].length) ? IDX.mapaCurto[alvo]
+           : null;
+  if (!cand || !cand.length) return null;
+  // a mais recente (maior dataEmissao) que tenha numero
+  let melhor = null;
+  for (const nf of cand) {
+    if (!nf || !nf.numero) continue;
+    if (!melhor || String(nf.dataEmissao || '') > String(melhor.dataEmissao || '')) melhor = nf;
   }
-
-  try {
-    const nomeAlvo = String(_sondaInterno || '').trim().toLowerCase();   // reuso: ?interno= passa o NOME
-    let porOrderSn = [], porNome = [], amostraCampos = null, pgs = 0;
-    for (let pg = 1; pg <= 12; pg++) {
-      const r = await bling.chamarBling(`/nfe?limite=100&pagina=${pg}&tipo=1`);
-      const arr = (r.ok && r.data && r.data.data) || [];
-      if (!Array.isArray(arr) || arr.length === 0) break;
-      if (!amostraCampos && arr[0]) amostraCampos = Object.keys(arr[0]);
-      for (const nf of arr) {
-        const alvos = [nf.numeroPedidoLoja, nf.numeroLoja, nf.numero, nf.chaveAcesso].map(x => String(x || ''));
-        const reg = {
-          id: nf.id, numero: nf.numero, serie: nf.serie,
-          numeroPedidoLoja: nf.numeroPedidoLoja, numeroLoja: nf.numeroLoja,
-          chaveAcesso: nf.chaveAcesso, contato: nf.contato && nf.contato.nome,
-          natureza: nf.naturezaOperacao,
-        };
-        if (alvos.some(a => a.includes(k))) porOrderSn.push(reg);
-        if (nomeAlvo && nf.contato && String(nf.contato.nome || '').toLowerCase().includes(nomeAlvo)) porNome.push(reg);
-      }
-      pgs = pg;
-      if (porOrderSn.length && (!nomeAlvo || porNome.length)) break;
-    }
-    aoVivo.nfe_listagem = {
-      paginas_varridas: pgs,
-      por_order_sn: porOrderSn.length,
-      por_nome: porNome.length,
-      notas_order_sn: porOrderSn.slice(0, 5),
-      notas_nome: porNome.slice(0, 8),
-      campos_da_nfe: amostraCampos,
-    };
-  } catch (e) { aoVivo.nfe_listagem = { erro: String(e.message || e).slice(0, 100) }; }
-
-  // procurar o numero (order_sn OU interno) entre TODAS as vendas ja indexadas
-  const todas = Object.keys(IDX.vendasPorLoja || {});
-  const bateExato = todas.filter(x => x === k);
-  // se passaram um 2o numero (interno), procura ele tb
-  const interno = String((typeof _sondaInterno !== 'undefined' && _sondaInterno) || '').trim();
-  const bateInterno = interno ? todas.filter(x => x === interno) : [];
-  const vendaInterno = interno && IDX.vendasPorLoja && IDX.vendasPorLoja[interno] ? IDX.vendasPorLoja[interno] : null;
-
-  return {
-    procurado: k,
-    interno_procurado: interno || null,
-    achou_venda: !!venda,
-    venda: venda ? { id_venda: venda.id_venda, numero_venda: venda.numero_venda, nome: venda.nome, valor: venda.valor } : null,
-    achou_por_interno: !!vendaInterno,
-    venda_por_interno: vendaInterno ? { id_venda: vendaInterno.id_venda, numero_venda: vendaInterno.numero_venda, nome: vendaInterno.nome } : null,
-    achou_nf_por_loja: !!nfLoja,
-    nf_por_loja: nfLoja || null,
-    chaves_parecidas: chavesParecidas,
-    total_vendas_indexadas: todas.length,
-    ao_vivo: aoVivo,
-  };
+  return melhor ? { numero: melhor.numero, serie: melhor.serie, id: melhor.id } : null;
 }
 
 function nfDaLoja(numeroLoja) {
@@ -551,6 +461,6 @@ function acharPorPedido(pedido) {
 }
 
 module.exports = {
-  construirIndice, statusIndice, buscarPorNome, acharPorPedido, acharPorNumero, acharVendaPorLoja, nfDaVenda, nfDaLoja, sondaLoja, setSondaInterno, dispararNfPorVenda, preAquecer,
+  construirIndice, statusIndice, buscarPorNome, acharPorPedido, acharPorNumero, acharVendaPorLoja, nfDaVenda, nfDaLoja, acharNfPorNomeIndice, dispararNfPorVenda, preAquecer,
   colapsar, primeiroUltimo,
 };
