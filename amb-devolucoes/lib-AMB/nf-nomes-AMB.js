@@ -1,5 +1,5 @@
 // ============================================================
-// amb-devolucoes/lib-AMB/nf-nomes-AMB.js       (AMB Devol. b45-sonda-viva2)
+// amb-devolucoes/lib-AMB/nf-nomes-AMB.js       (AMB Devol. b45-sonda-nf)
 // ------------------------------------------------------------
 // O PEGA-TUDO: acha a venda pelo NOME DO REMETENTE da etiqueta.
 //
@@ -403,6 +403,35 @@ async function sondaLoja(numeroLoja) {
   await tentar('nfe_por_numeroLoja', `/nfe?numeroLoja=${encodeURIComponent(k)}`);
   // caminho 3: NFs tipo 1 filtrando por numero da loja (campo alternativo)
   await tentar('nfe_por_numeroPedidoLoja', `/nfe?numeroPedidoLoja=${encodeURIComponent(k)}`);
+
+  // caminho 4 (b45-nf): se a VENDA existe, buscar a NF dela pelo detalhe.
+  // GET /pedidos/vendas/{id} aponta notaFiscal.id -> GET /nfe/{id} tem chave+serie.
+  if (venda && venda.id_venda) {
+    try {
+      const rv = await bling.chamarBling('/pedidos/vendas/' + venda.id_venda);
+      const det = (rv.ok && rv.data && rv.data.data) || null;
+      const nfId = det && det.notaFiscal && det.notaFiscal.id;
+      aoVivo.detalhe_venda = {
+        http: rv.status,
+        tem_notaFiscal: !!(det && det.notaFiscal),
+        notaFiscal_id: nfId || null,
+        situacao: det && det.situacao,
+      };
+      if (nfId) {
+        const rn = await bling.chamarBling('/nfe/' + nfId);
+        const nf = (rn.ok && rn.data && rn.data.data) || null;
+        aoVivo.nf_da_venda = {
+          http: rn.status,
+          numero: nf && nf.numero,
+          serie: nf && nf.serie,
+          chaveAcesso: nf && nf.chaveAcesso,
+          situacao: nf && nf.situacao,
+        };
+      } else {
+        aoVivo.nf_da_venda = { info: 'venda SEM notaFiscal.id — NF ainda nao emitida/vinculada' };
+      }
+    } catch (e) { aoVivo.detalhe_venda = { erro: String(e.message || e).slice(0, 100) }; }
+  }
 
   // procurar o numero (order_sn OU interno) entre TODAS as vendas ja indexadas
   const todas = Object.keys(IDX.vendasPorLoja || {});
