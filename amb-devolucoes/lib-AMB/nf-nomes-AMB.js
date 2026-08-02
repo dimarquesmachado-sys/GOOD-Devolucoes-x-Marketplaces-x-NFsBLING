@@ -1,5 +1,5 @@
 // ============================================================
-// amb-devolucoes/lib-AMB/nf-nomes-AMB.js       (AMB Devol. b45-sonda-viva)
+// amb-devolucoes/lib-AMB/nf-nomes-AMB.js       (AMB Devol. b45-sonda-viva2)
 // ------------------------------------------------------------
 // O PEGA-TUDO: acha a venda pelo NOME DO REMETENTE da etiqueta.
 //
@@ -367,10 +367,13 @@ function preAquecer(atrasoMs) {
 // o detalhe da venda (GET /pedidos/vendas/{id}) aponta a NF gerada.
 // Cache permanente com retentativa (padrão da ENTREGA_REAL/b30).
 const NF_POR_VENDA = new Map();
+let _sondaInterno = '';
 const NF_POR_LOJA = new Map();   // b39 - numeroLoja -> {numero,serie} (a chave que o card sempre tem)   // id_venda -> { numero, serie, id_nf, tent, http }
 let NFV_RODANDO = false;
 
 // SONDA b45 - dado um numeroLoja (order_sn), diz o que o indice tem pra ele
+function setSondaInterno(v) { _sondaInterno = String(v || ''); }
+
 async function sondaLoja(numeroLoja) {
   const k = String(numeroLoja || '').trim();
   const venda = IDX.vendasPorLoja && IDX.vendasPorLoja[k];
@@ -401,13 +404,25 @@ async function sondaLoja(numeroLoja) {
   // caminho 3: NFs tipo 1 filtrando por numero da loja (campo alternativo)
   await tentar('nfe_por_numeroPedidoLoja', `/nfe?numeroPedidoLoja=${encodeURIComponent(k)}`);
 
+  // procurar o numero (order_sn OU interno) entre TODAS as vendas ja indexadas
+  const todas = Object.keys(IDX.vendasPorLoja || {});
+  const bateExato = todas.filter(x => x === k);
+  // se passaram um 2o numero (interno), procura ele tb
+  const interno = String((typeof _sondaInterno !== 'undefined' && _sondaInterno) || '').trim();
+  const bateInterno = interno ? todas.filter(x => x === interno) : [];
+  const vendaInterno = interno && IDX.vendasPorLoja && IDX.vendasPorLoja[interno] ? IDX.vendasPorLoja[interno] : null;
+
   return {
     procurado: k,
+    interno_procurado: interno || null,
     achou_venda: !!venda,
     venda: venda ? { id_venda: venda.id_venda, numero_venda: venda.numero_venda, nome: venda.nome, valor: venda.valor } : null,
+    achou_por_interno: !!vendaInterno,
+    venda_por_interno: vendaInterno ? { id_venda: vendaInterno.id_venda, numero_venda: vendaInterno.numero_venda, nome: vendaInterno.nome } : null,
     achou_nf_por_loja: !!nfLoja,
     nf_por_loja: nfLoja || null,
     chaves_parecidas: chavesParecidas,
+    total_vendas_indexadas: todas.length,
     ao_vivo: aoVivo,
   };
 }
@@ -482,6 +497,6 @@ function acharPorPedido(pedido) {
 }
 
 module.exports = {
-  construirIndice, statusIndice, buscarPorNome, acharPorPedido, acharPorNumero, acharVendaPorLoja, nfDaVenda, nfDaLoja, sondaLoja, dispararNfPorVenda, preAquecer,
+  construirIndice, statusIndice, buscarPorNome, acharPorPedido, acharPorNumero, acharVendaPorLoja, nfDaVenda, nfDaLoja, sondaLoja, setSondaInterno, dispararNfPorVenda, preAquecer,
   colapsar, primeiroUltimo,
 };
