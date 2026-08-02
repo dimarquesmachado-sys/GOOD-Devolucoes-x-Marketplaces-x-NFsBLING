@@ -1,5 +1,5 @@
 // ============================================================
-// amb-devolucoes/lib-AMB/nf-nomes-AMB.js       (AMB Devol. b44)
+// amb-devolucoes/lib-AMB/nf-nomes-AMB.js       (AMB Devol. b45-sonda)
 // ------------------------------------------------------------
 // O PEGA-TUDO: acha a venda pelo NOME DO REMETENTE da etiqueta.
 //
@@ -370,6 +370,25 @@ const NF_POR_VENDA = new Map();
 const NF_POR_LOJA = new Map();   // b39 - numeroLoja -> {numero,serie} (a chave que o card sempre tem)   // id_venda -> { numero, serie, id_nf, tent, http }
 let NFV_RODANDO = false;
 
+// SONDA b45 - dado um numeroLoja (order_sn), diz o que o indice tem pra ele
+function sondaLoja(numeroLoja) {
+  const k = String(numeroLoja || '').trim();
+  const venda = IDX.vendasPorLoja && IDX.vendasPorLoja[k];
+  const nfLoja = NF_POR_LOJA.get(k);
+  const nfVenda = venda && venda.id_venda ? NF_POR_VENDA.get(String(venda.id_venda)) : null;
+  // procurar tambem por match parcial (caso o numeroLoja da venda seja diferente do order_sn)
+  const chavesParecidas = Object.keys(IDX.vendasPorLoja || {}).filter(x => x.includes(k) || k.includes(x)).slice(0, 5);
+  return {
+    procurado: k,
+    achou_venda: !!venda,
+    venda: venda ? { id_venda: venda.id_venda, numero_venda: venda.numero_venda, nome: venda.nome, valor: venda.valor } : null,
+    achou_nf_por_loja: !!nfLoja,
+    nf_por_loja: nfLoja || null,
+    nf_por_venda: nfVenda || null,
+    chaves_parecidas: chavesParecidas,
+  };
+}
+
 function nfDaLoja(numeroLoja) {
   const e = numeroLoja ? NF_POR_LOJA.get(String(numeroLoja).trim()) : null;
   return (e && e.numero) ? e : null;
@@ -440,6 +459,6 @@ function acharPorPedido(pedido) {
 }
 
 module.exports = {
-  construirIndice, statusIndice, buscarPorNome, acharPorPedido, acharPorNumero, acharVendaPorLoja, nfDaVenda, nfDaLoja, dispararNfPorVenda, preAquecer,
+  construirIndice, statusIndice, buscarPorNome, acharPorPedido, acharPorNumero, acharVendaPorLoja, nfDaVenda, nfDaLoja, sondaLoja, dispararNfPorVenda, preAquecer,
   colapsar, primeiroUltimo,
 };
