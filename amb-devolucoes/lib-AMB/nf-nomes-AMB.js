@@ -1,5 +1,5 @@
 // ============================================================
-// amb-devolucoes/lib-AMB/nf-nomes-AMB.js       (AMB Devol. b42)
+// amb-devolucoes/lib-AMB/nf-nomes-AMB.js       (AMB Devol. b43-sonda)
 // ------------------------------------------------------------
 // O PEGA-TUDO: acha a venda pelo NOME DO REMETENTE da etiqueta.
 //
@@ -98,6 +98,14 @@ async function construirIndice(opts = {}) {
       if (lista.length === 0) break;
 
       for (const nf of lista) {
+        if (_amostraCruNfe.length < 6) {
+          _amostraCruNfe.push({
+            campos: Object.keys(nf),
+            numero: nf.numero, serie: nf.serie,
+            serie_tipo: typeof nf.serie,
+            chaveAcesso: nf.chaveAcesso || nf.chave || nf.chaveNfe || null,
+          });
+        }
         const quando = Date.parse(String(nf.dataEmissao || '').replace(' ', 'T'));
         if (quando && quando < corte) { parouPorData = true; break; }
 
@@ -141,6 +149,7 @@ async function construirIndice(opts = {}) {
     // numeroLoja SEMPRE (mais contato e total) — é a espinha dos
     // checkouts. Cobre Shopee/TikTok/Amazon quando a lista de NFs
     // não casa pelo pedido. Erro aqui NÃO derruba o índice de NFs.
+    _amostraCruNfe = [];   // reset sonda por build
     let vendasLidas = 0, erroVendas = null;
     try {
       for (let pg = 1; pg <= maxPaginas; pg++) {
@@ -215,6 +224,7 @@ function statusIndice() {
     vendas_com_loja: Object.keys(IDX.vendasPorLoja || {}).length,
     nf_por_venda_ok: [...NF_POR_VENDA.values()].filter(e => e.numero).length,
     nf_por_loja_ok: NF_POR_LOJA.size,
+    amostra_cru_nfe: _amostraCruNfe,   // SONDA b43
     nf_por_venda_nulas: [...NF_POR_VENDA.values()].filter(e => !e.numero).length,
     nf_por_venda_amostra: [...NF_POR_VENDA.entries()].slice(0, 3)
       .map(([id, e]) => ({ id_venda: id, numero: e.numero, http: e.http, tent: e.tent })),
@@ -353,7 +363,8 @@ function preAquecer(atrasoMs) {
 // o detalhe da venda (GET /pedidos/vendas/{id}) aponta a NF gerada.
 // Cache permanente com retentativa (padrão da ENTREGA_REAL/b30).
 const NF_POR_VENDA = new Map();
-const NF_POR_LOJA = new Map();   // b39 - numeroLoja -> {numero,serie} (a chave que o card sempre tem)   // id_venda -> { numero, serie, id_nf, tent, http }
+const NF_POR_LOJA = new Map();
+let _amostraCruNfe = [];   // SONDA b43 - campos crus da listagem /nfe   // b39 - numeroLoja -> {numero,serie} (a chave que o card sempre tem)   // id_venda -> { numero, serie, id_nf, tent, http }
 let NFV_RODANDO = false;
 
 function nfDaLoja(numeroLoja) {
