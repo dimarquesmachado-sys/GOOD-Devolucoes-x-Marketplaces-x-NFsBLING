@@ -1,5 +1,5 @@
 // ============================================================
-// amb-devolucoes/lib-AMB/nf-nomes-AMB.js       (AMB Devol. b45-sonda-nf2)
+// amb-devolucoes/lib-AMB/nf-nomes-AMB.js       (AMB Devol. b45-sonda-nffull2)
 // ------------------------------------------------------------
 // O PEGA-TUDO: acha a venda pelo NOME DO REMETENTE da etiqueta.
 //
@@ -404,40 +404,40 @@ async function sondaLoja(numeroLoja) {
   // caminho 3: NFs tipo 1 filtrando por numero da loja (campo alternativo)
   await tentar('nfe_por_numeroPedidoLoja', `/nfe?numeroPedidoLoja=${encodeURIComponent(k)}`);
 
-  // caminho 4 (b45-nf): se a VENDA existe, buscar a NF dela pelo detalhe.
-  // GET /pedidos/vendas/{id} aponta notaFiscal.id -> GET /nfe/{id} tem chave+serie.
-  if (venda && venda.id_venda) {
-    try {
-      const rv = await bling.chamarBling('/pedidos/vendas/' + venda.id_venda);
-      const det = (rv.ok && rv.data && rv.data.data) || null;
-      const nfId = det && det.notaFiscal && det.notaFiscal.id;
-      aoVivo.detalhe_venda = {
-        http: rv.status,
-        tem_notaFiscal: !!(det && det.notaFiscal),
-        notaFiscal_id: nfId || null,
-        // b45-nf2: DESPEJA o objeto notaFiscal inteiro + campos do detalhe pra
-        // achar onde a NF da venda FULL esta referenciada (o .id veio null).
-        notaFiscal_obj: det && det.notaFiscal,
-        situacao: det && det.situacao,
-        campos_venda: det ? Object.keys(det) : [],
-        numeroLoja: det && (det.numeroLoja || det.numeroPedidoLoja),
-        tem_transporte: !!(det && det.transporte),
-      };
-      if (nfId) {
-        const rn = await bling.chamarBling('/nfe/' + nfId);
-        const nf = (rn.ok && rn.data && rn.data.data) || null;
-        aoVivo.nf_da_venda = {
-          http: rn.status,
-          numero: nf && nf.numero,
-          serie: nf && nf.serie,
-          chaveAcesso: nf && nf.chaveAcesso,
-          situacao: nf && nf.situacao,
+  // caminho 4 (b45-nffull): a NF do FULL esta na listagem /nfe (XML importado
+  // por extensao), NAO como filha de uma venda. VARRER a listagem /nfe AO VIVO
+  // procurando o order_sn em qualquer campo. Paginar ate achar (ou ~8 pgs).
+  try {
+    const nomeAlvo = String(_sondaInterno || '').trim().toLowerCase();   // reuso: ?interno= passa o NOME
+    let porOrderSn = [], porNome = [], amostraCampos = null, pgs = 0;
+    for (let pg = 1; pg <= 12; pg++) {
+      const r = await bling.chamarBling(`/nfe?limite=100&pagina=${pg}&tipo=1`);
+      const arr = (r.ok && r.data && r.data.data) || [];
+      if (!Array.isArray(arr) || arr.length === 0) break;
+      if (!amostraCampos && arr[0]) amostraCampos = Object.keys(arr[0]);
+      for (const nf of arr) {
+        const alvos = [nf.numeroPedidoLoja, nf.numeroLoja, nf.numero, nf.chaveAcesso].map(x => String(x || ''));
+        const reg = {
+          id: nf.id, numero: nf.numero, serie: nf.serie,
+          numeroPedidoLoja: nf.numeroPedidoLoja, numeroLoja: nf.numeroLoja,
+          chaveAcesso: nf.chaveAcesso, contato: nf.contato && nf.contato.nome,
+          natureza: nf.naturezaOperacao,
         };
-      } else {
-        aoVivo.nf_da_venda = { info: 'venda SEM notaFiscal.id — NF ainda nao emitida/vinculada' };
+        if (alvos.some(a => a.includes(k))) porOrderSn.push(reg);
+        if (nomeAlvo && nf.contato && String(nf.contato.nome || '').toLowerCase().includes(nomeAlvo)) porNome.push(reg);
       }
-    } catch (e) { aoVivo.detalhe_venda = { erro: String(e.message || e).slice(0, 100) }; }
-  }
+      pgs = pg;
+      if (porOrderSn.length && (!nomeAlvo || porNome.length)) break;
+    }
+    aoVivo.nfe_listagem = {
+      paginas_varridas: pgs,
+      por_order_sn: porOrderSn.length,
+      por_nome: porNome.length,
+      notas_order_sn: porOrderSn.slice(0, 5),
+      notas_nome: porNome.slice(0, 8),
+      campos_da_nfe: amostraCampos,
+    };
+  } catch (e) { aoVivo.nfe_listagem = { erro: String(e.message || e).slice(0, 100) }; }
 
   // procurar o numero (order_sn OU interno) entre TODAS as vendas ja indexadas
   const todas = Object.keys(IDX.vendasPorLoja || {});
