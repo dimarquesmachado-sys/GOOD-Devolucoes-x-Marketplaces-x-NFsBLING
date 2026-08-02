@@ -72,7 +72,7 @@ const impressao = require('./lib-AMB/impressao-AMB');
 const emailAMB = require('./lib-AMB/email-AMB');
 const nfEntrada = require('./lib-AMB/nf-entrada-AMB');
 
-const VERSAO = 'AMB Devolucoes b45-sonda-nf';
+const VERSAO = 'AMB Devolucoes b47';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -449,14 +449,6 @@ router.get('/nf/indice/construir', admin, (req, res) => {
  * na etiqueta ("IANDRAMATIASRIBEIRO") ou digitado com espaco.
  * SEMPRE devolve CANDIDATOS — a decisao e do estoquista.
  */
-router.get('/nf/sonda-loja', admin, async (req, res) => {
-  const sn = req.query.sn || req.query.pedido;
-  if (!sn) return res.status(400).json({ ok: false, uso: '/amb/nf/sonda-loja?sn=ORDER_SN&k=SUA_CHAVE' });
-  if (req.query.interno) nfNomes.setSondaInterno(String(req.query.interno));
-  const resultado = await nfNomes.sondaLoja(String(sn));
-  res.json({ ok: true, resultado });
-});
-
 router.get('/nf/nome', admin, async (req, res) => {
   const q = req.query.q;
   if (!q) {
@@ -998,6 +990,14 @@ router.get('/api/espreita', auth.requerLogin, async (req, res) => {
     if (!x.nf_ml_numero && !(venda && venda.numero) && idVendaNF && !nfv) {
       idsPraNF.push({ id: idVendaNF, loja: chaveLoja });
     }
+    // b47 - FULL: a NF do Full (Shopee serie 5, ML/Magalu Full serie 2/3/4)
+    // entra por XML SEM numeroPedidoLoja, entao nao casa por pedido nem tem
+    // venda-mae. Mas o NOME do cliente casa. Se nenhuma via achou a NF ainda,
+    // busca por nome no indice em memoria (sincrono). O cliente vem da venda,
+    // vendaLoja ou do proprio marketplace.
+    const jaTemNf = !!(x.nf_ml_numero || (venda && venda.numero) || (nfv && nfv.numero));
+    const nomeCli = (venda && venda.nome) || (vendaLoja && vendaLoja.nome) || x.cliente_ml || x.cliente || null;
+    const nfNome = (!jaTemNf && nomeCli) ? nfNomes.acharNfPorNomeIndice(nomeCli) : null;
     // b18 - link direto pro marketplace, pedido do Diego no painel
     let link = null;
     if (x.marketplace === 'ml' && x.pedido) {
@@ -1018,14 +1018,14 @@ router.get('/api/espreita', auth.requerLogin, async (req, res) => {
       ...x,
       link_marketplace: link,
       cliente: (venda && venda.nome) || (vendaLoja && vendaLoja.nome) || x.cliente_ml || null,
-      nf_venda: x.nf_ml_numero || (venda && venda.numero) || (nfv && nfv.numero) || null,
+      nf_venda: x.nf_ml_numero || (venda && venda.numero) || (nfv && nfv.numero) || (nfNome && nfNome.numero) || null,
       // b38 - serie da NF, da mesma fonte que deu o numero
-      nf_serie: x.nf_ml_serie || (venda && venda.serie) || (nfv && nfv.serie) || null,
+      nf_serie: x.nf_ml_serie || (venda && venda.serie) || (nfv && nfv.serie) || (nfNome && nfNome.serie) || null,
       nf_valor: (venda && venda.valor != null) ? venda.valor
         : (vendaLoja && vendaLoja.valor != null) ? vendaLoja.valor
         : (x.valor_venda != null ? x.valor_venda : null),
-      link_nf_bling: (venda && venda.id)
-        ? ('https://www.bling.com.br/notas.fiscais.php#edit/' + venda.id) : null,
+      link_nf_bling: (venda && venda.id) ? ('https://www.bling.com.br/notas.fiscais.php#edit/' + venda.id)
+        : (nfNome && nfNome.id) ? ('https://www.bling.com.br/notas.fiscais.php#edit/' + nfNome.id) : null,
       comentario: n && n.comentario, ticket: n && n.ticket,
       baixado: !!(n && n.baixado),
       nf_devolucao_emitida: nf.emitida === true ? (nf.nf && nf.nf.numero) || true : false,
