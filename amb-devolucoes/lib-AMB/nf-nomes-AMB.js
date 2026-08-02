@@ -1,5 +1,5 @@
 // ============================================================
-// amb-devolucoes/lib-AMB/nf-nomes-AMB.js       (AMB Devol. b43-sonda)
+// amb-devolucoes/lib-AMB/nf-nomes-AMB.js       (AMB Devol. b43-sonda2)
 // ------------------------------------------------------------
 // O PEGA-TUDO: acha a venda pelo NOME DO REMETENTE da etiqueta.
 //
@@ -90,6 +90,7 @@ async function construirIndice(opts = {}) {
     // velha. Nao usamos filtro de data de proposito: o Bling anexa a
     // hora atual na data e o filtro de mesmo dia sempre volta zero.
     // Paginamos e cortamos pela data no nosso lado.
+    _amostraCruNfe = [];   // reset sonda (antes do loop NFe)
     for (let pg = 1; pg <= maxPaginas; pg++) {
       const r = await bling.chamarBling(`/nfe?limite=100&pagina=${pg}&tipo=1`);
       if (!r.ok) { erroBusca = `nfe pagina ${pg} HTTP ${r.status}`; break; }
@@ -149,7 +150,6 @@ async function construirIndice(opts = {}) {
     // numeroLoja SEMPRE (mais contato e total) — é a espinha dos
     // checkouts. Cobre Shopee/TikTok/Amazon quando a lista de NFs
     // não casa pelo pedido. Erro aqui NÃO derruba o índice de NFs.
-    _amostraCruNfe = [];   // reset sonda por build
     let vendasLidas = 0, erroVendas = null;
     try {
       for (let pg = 1; pg <= maxPaginas; pg++) {
