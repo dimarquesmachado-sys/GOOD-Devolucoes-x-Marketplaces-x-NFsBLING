@@ -8,7 +8,7 @@
 <link rel="icon" type="image/png" href="icone-AMB.png">
 <!--
   =========================================================
-  amb-devolucoes/public-AMB/painel-AMB.html  (AMB Devol. b42)
+  amb-devolucoes/public-AMB/painel-AMB.html  (AMB Devol. b48)
   ---------------------------------------------------------
   PAINEL em PAGINA UNICA, no formato da GOOD (pedido do Diego
   comparando os prints): nada de abas — secoes empilhadas,
@@ -154,7 +154,7 @@
   <div class="miolo">
   <h1>&#128081; Painel de Devoluções &mdash; AMBTotal</h1>
   <div class="sub">Triagens + À Espreita + Defeitos + Recados</div>
-  <div class="ver">painel <b>b42</b> &middot; <span id="versaoServidor">servidor ...</span></div>
+  <div class="ver">painel <b>b48</b> &middot; <span id="versaoServidor">servidor ...</span></div>
   </div>
 </div>
 
@@ -523,13 +523,31 @@ function cardEspreita(x, entregue) {
     '<b>' + esc(x.pedido || '?') + '</b>' +
     (x.tracking ? '<span class="mono">' + esc(x.tracking) + '</span>' : '');
   if (entregue) {
+    // b48 - so afirmamos "entregue há X dias" quando ha DATA REAL de chegada
+    // (entregue_em preenchido). Sem ela (ex.: Shopee, que hoje so tem a data de
+    // ABERTURA da solicitacao de devolucao), NAO dizer "entregue" - a data da
+    // solicitacao nao e data de chegada. Mostrar como "devolucao aberta ha X dias".
     var _tilde = (x.marketplace === 'ml' && x.data_precisa === false) ? '~' : '';
+    var _temDataReal = !!x.entregue_em && x.data_precisa !== false;
     var _dataBr = '';
-    if (!_tilde && x.entregue_em) {
+    if (x.entregue_em) {
       var _d = new Date(x.entregue_em);
       if (!isNaN(_d)) _dataBr = ' &middot; ' + ('0' + _d.getDate()).slice(-2) + '/' + ('0' + (_d.getMonth() + 1)).slice(-2);
     }
-    h += '<span class="selo velho" title="' + (_tilde ? 'estimado - a data real chega em minutos' : 'data real de entrega') + '">entregue há ' + _tilde + (x.dias_desde == null ? '?' : x.dias_desde) + ' dia(s)' + _dataBr + '</span>';
+    if (_temDataReal) {
+      h += '<span class="selo velho" title="data real de entrega">entregue há ' + (x.dias_desde == null ? '?' : x.dias_desde) + ' dia(s)' + _dataBr + '</span>';
+    } else if (x.marketplace === 'ml') {
+      // ML sem data precisa: comportamento antigo (estimativa com "~", data real chega em minutos)
+      var _dtml = '';
+      if (x.desde) { var _dm = new Date(x.desde); if (!isNaN(_dm)) _dtml = ' &middot; ' + ('0' + _dm.getDate()).slice(-2) + '/' + ('0' + (_dm.getMonth() + 1)).slice(-2); }
+      h += '<span class="selo velho" title="estimado - a data real chega em minutos">entregue há ~' + (x.dias_desde == null ? '?' : x.dias_desde) + ' dia(s)' + _dtml + '</span>';
+    } else {
+      // Shopee/outros sem data real: a data e da SOLICITACAO da devolucao, nao da chegada
+      var _dtsol = '';
+      var _base = x.desde || x.entregue_em;
+      if (_base) { var _ds = new Date(_base); if (!isNaN(_ds)) _dtsol = ' &middot; ' + ('0' + _ds.getDate()).slice(-2) + '/' + ('0' + (_ds.getMonth() + 1)).slice(-2); }
+      h += '<span class="selo velho" title="data em que a devolucao foi SOLICITADA no marketplace - nao e a data de chegada no seu estoque">devolu&ccedil;&atilde;o aberta h&aacute; ' + (x.dias_desde == null ? '?' : x.dias_desde) + ' dia(s)' + _dtsol + '</span>';
+    }
   } else {
     var _dt = '';
     if (x.desde) {
