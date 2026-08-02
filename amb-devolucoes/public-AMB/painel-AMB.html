@@ -8,7 +8,7 @@
 <link rel="icon" type="image/png" href="icone-AMB.png">
 <!--
   =========================================================
-  amb-devolucoes/public-AMB/painel-AMB.html  (AMB Devol. b51)
+  amb-devolucoes/public-AMB/painel-AMB.html  (AMB Devol. b52)
   ---------------------------------------------------------
   PAINEL em PAGINA UNICA, no formato da GOOD (pedido do Diego
   comparando os prints): nada de abas — secoes empilhadas,
@@ -108,16 +108,17 @@
   .vermelha > b { color:#a12d31; font-size:15px; }
   .vermelha .sub { color:#8a5a5c; font-size:12.5px; margin:3px 0 10px; }
 
-  /* b49 - quadro AMARELO: chegou em outro lugar (CD do ML / Full) */
-  .outrolugar { border:2px solid #f4e2b8; background:#fdf9ef; border-radius:14px;
-                padding:13px 14px; margin-bottom:12px; }
-  .outrolugar > b { color:#8a6d1f; font-size:15px; }
-  .outrolugar .sub { color:#8a7a52; font-size:12.5px; margin:3px 0 10px; }
-  /* b49 - quadro BRANCO/CINZA: em transito (a caminho) */
-  .transito { border:1.5px solid var(--borda); background:var(--cartao); border-radius:14px;
+  /* b52 - quadro AMARELO = EM TRANSITO (o que esta vindo pra ca merece
+     destaque; o que ficou no CD nao e problema dele) */
+  .qamarelo { border:2px solid #f4e2b8; background:#fdf9ef; border-radius:14px;
               padding:13px 14px; margin-bottom:12px; }
-  .transito > b { color:var(--texto); font-size:15px; }
-  .transito .sub { color:var(--apagado); font-size:12.5px; margin:3px 0 10px; }
+  .qamarelo > b { color:#8a6d1f; font-size:15px; }
+  .qamarelo .sub { color:#8a7a52; font-size:12.5px; margin:3px 0 10px; }
+  /* b52 - quadro NEUTRO = chegou em outro lugar (CD do ML / Full) */
+  .qneutro { border:1.5px solid var(--borda); background:var(--cartao); border-radius:14px;
+             padding:13px 14px; margin-bottom:12px; }
+  .qneutro > b { color:var(--texto); font-size:15px; }
+  .qneutro .sub { color:var(--apagado); font-size:12.5px; margin:3px 0 10px; }
 
   .selo { display:inline-block; padding:2px 9px; border-radius:20px;
           font-size:11px; font-weight:800; background:#efe9f8; color:#4a3b66; }
@@ -165,7 +166,7 @@
   <div class="miolo">
   <h1>&#128081; Painel de Devoluções &mdash; AMBTotal</h1>
   <div class="sub">Triagens + À Espreita + Defeitos + Recados</div>
-  <div class="ver">painel <b>b51</b> &middot; <span id="versaoServidor">servidor ...</span></div>
+  <div class="ver">painel <b>b52</b> &middot; <span id="versaoServidor">servidor ...</span></div>
   </div>
 </div>
 
@@ -677,20 +678,22 @@ async function verEspreita() {
         r.entregues.map(x => cardEspreita(x, true)).join('') + '</div>';
     }
 
-    // QUADRO 2 - chegou em outro lugar (amarelo) - CD do ML / Full
-    if (outroLugar.length) {
-      h += '<div class="outrolugar"><b>&#127981; Chegou em outro lugar — não é com você (' +
-        outroLugar.length + ')</b>' +
-        '<div class="sub">Está no CD do Mercado Livre ou no Full — o marketplace resolve por lá. Aqui é só acompanhamento; não precisa bipar.</div>' +
-        outroLugar.map(x => cardEspreita(x, false)).join('') + '</div>';
-    }
-
-    // QUADRO 3 - em transito (branco)
+    // QUADRO 2 (b52) - EM TRANSITO no AMARELO: e o que esta a caminho,
+    // o que interessa acompanhar. Vem logo depois do vermelho.
     if (aCaminho.length) {
-      h += '<div class="transito"><b>&#128666; Em trânsito — a caminho (' +
+      h += '<div class="qamarelo"><b>&#128666; Em trânsito — a caminho (' +
         aCaminho.length + ')</b>' +
         '<div class="sub">A devolução ainda está viajando. Nada a fazer até chegar.</div>' +
         aCaminho.map(x => cardEspreita(x, false)).join('') + '</div>';
+    }
+
+    // QUADRO 3 (b52) - chegou em OUTRO LUGAR, em tom neutro: nao exige
+    // nada dele, e so acompanhamento.
+    if (outroLugar.length) {
+      h += '<div class="qneutro"><b>&#127981; Chegou em outro lugar — não é com você (' +
+        outroLugar.length + ')</b>' +
+        '<div class="sub">Está no CD do Mercado Livre ou no Full — o marketplace resolve por lá. Aqui é só acompanhamento; não precisa bipar.</div>' +
+        outroLugar.map(x => cardEspreita(x, false)).join('') + '</div>';
     }
 
     if (!r.entregues.length && !outroLugar.length && !aCaminho.length) {
