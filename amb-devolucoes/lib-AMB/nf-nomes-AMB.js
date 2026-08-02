@@ -1,5 +1,5 @@
 // ============================================================
-// amb-devolucoes/lib-AMB/nf-nomes-AMB.js       (AMB Devol. b41-sonda)
+// amb-devolucoes/lib-AMB/nf-nomes-AMB.js       (AMB Devol. b42)
 // ------------------------------------------------------------
 // O PEGA-TUDO: acha a venda pelo NOME DO REMETENTE da etiqueta.
 //
@@ -108,7 +108,7 @@ async function construirIndice(opts = {}) {
         const registro = {
           id: String(nf.id),
           numero: String(nf.numero || '').replace(/^0+/, ''),   // b41 - sem zeros a esquerda
-          serie: String(nf.serie || ''),
+          serie: String(nf.serie || '').trim() || '1',   // b42 - serie da matriz e 1 quando o Bling nao informa
           nome: nomeOriginal,
           dataEmissao: nf.dataEmissao || null,
           valor: nf.valorNota != null ? nf.valorNota : null,
@@ -215,9 +215,6 @@ function statusIndice() {
     vendas_com_loja: Object.keys(IDX.vendasPorLoja || {}).length,
     nf_por_venda_ok: [...NF_POR_VENDA.values()].filter(e => e.numero).length,
     nf_por_loja_ok: NF_POR_LOJA.size,
-    // SONDA b41 - o que o Bling manda no campo serie de cada NF (pra diagnosticar)
-    amostra_serie_nf: Object.values(IDX.porId || {}).slice(0, 8)
-      .map(r => ({ numero: r.numero, serie: r.serie, serie_tipo: typeof r.serie })),
     nf_por_venda_nulas: [...NF_POR_VENDA.values()].filter(e => !e.numero).length,
     nf_por_venda_amostra: [...NF_POR_VENDA.entries()].slice(0, 3)
       .map(([id, e]) => ({ id_venda: id, numero: e.numero, http: e.http, tent: e.tent })),
@@ -393,11 +390,11 @@ function dispararNfPorVenda(pares) {
         let serie = null;
         if (nfId) {
           const reg = (IDX.porId && IDX.porId[nfId]) || null;
-          if (reg && reg.numero) { numero = String(reg.numero); serie = reg.serie || null; }
+          if (reg && reg.numero) { numero = String(reg.numero); serie = (reg.serie && String(reg.serie).trim()) ? String(reg.serie).trim() : '1'; }
           else {
             const rn = await bling.chamarBling('/nfe/' + nfId);
             const nf = (rn.ok && rn.data && rn.data.data) || null;
-            if (nf && nf.numero) { numero = String(nf.numero).replace(/^0+/, ''); serie = nf.serie != null ? String(nf.serie) : null; }
+            if (nf && nf.numero) { numero = String(nf.numero).replace(/^0+/, ''); serie = (nf.serie != null && String(nf.serie).trim()) ? String(nf.serie).trim() : '1'; }
             http = rn.status || http;
           }
         }
