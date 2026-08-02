@@ -1,5 +1,5 @@
 // ============================================================
-// amb-devolucoes/lib-AMB/nf-nomes-AMB.js       (AMB Devol. b40)
+// amb-devolucoes/lib-AMB/nf-nomes-AMB.js       (AMB Devol. b41)
 // ------------------------------------------------------------
 // O PEGA-TUDO: acha a venda pelo NOME DO REMETENTE da etiqueta.
 //
@@ -107,7 +107,7 @@ async function construirIndice(opts = {}) {
 
         const registro = {
           id: String(nf.id),
-          numero: String(nf.numero || ''),
+          numero: String(nf.numero || '').replace(/^0+/, ''),   // b41 - sem zeros a esquerda
           serie: String(nf.serie || ''),
           nome: nomeOriginal,
           dataEmissao: nf.dataEmissao || null,
