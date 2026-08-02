@@ -145,7 +145,7 @@ async function enriquecerPedido(orderId) {
         if (ch && ch.length === 44) {
           info.nf_ml_chave = ch;
           info.nf_ml_numero = ch.slice(25, 34).replace(/^0+/, '');
-          info.nf_ml_serie = ch.slice(22, 25).replace(/^0+/, '');   // b41 - sem forcar 1
+          info.nf_ml_serie = ch.slice(22, 25).replace(/^0+/, '') || '1';   // b42 - serie 1 quando vazia (matriz)
         }
         info.nf_http = rN.status || (rN.ok ? 200 : null);
         // fallback: alguns retornos trazem o numero sem a chave
@@ -153,7 +153,7 @@ async function enriquecerPedido(orderId) {
           const inv = rN.data.invoice_number || rN.data.number || null;
           if (inv) {
             info.nf_ml_numero = String(inv).replace(/^0+/, '');
-            info.nf_ml_serie = String(rN.data.invoice_series || rN.data.serie || '').replace(/^0+/, '') || null;
+            info.nf_ml_serie = String(rN.data.invoice_series || rN.data.serie || '').replace(/^0+/, '') || '1';   // b42
           }
         }
       } catch (e) { /* segue sem NF */ }
