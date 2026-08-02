@@ -1,5 +1,5 @@
 // ============================================================
-// amb-devolucoes/lib-AMB/ml-returns-AMB.js     (AMB Devol. b33)
+// amb-devolucoes/lib-AMB/ml-returns-AMB.js     (AMB Devol. b51)
 // ------------------------------------------------------------
 // INDICE DE DEVOLUCOES DO ML POR RASTREIO DOS CORREIOS.
 //
@@ -419,7 +419,9 @@ function resumoEspreita() {
         emTransito.push({
           marketplace: 'ml', pedido: d.order_id, tracking: d.tracking,
           status: 'em revisão no CD do ML', dias_em_transito: dias(d.claim_date),
-          claim_id: d.claim_id, status_money: d.status_money || null, no_cd_ml: true, desde: d.claim_date || null,
+          claim_id: d.claim_id, status_money: d.status_money || null, no_cd_ml: true,
+          chegou_cd: true,                          // b51 - ENTREGUE no CD (constatado pelo ML)
+          desde: d.claim_date || null,
         
         ...(PEDIDOS.get(String(d.order_id)) || {}),
       });
@@ -444,7 +446,9 @@ function resumoEspreita() {
       emTransito.push({
         marketplace: 'ml', pedido: d.order_id, tracking: d.tracking, status: st,
         dias_em_transito: dias(d.claim_date), claim_id: d.claim_id,
-        status_money: d.status_money || null, no_cd_ml: d.destino === 'warehouse', desde: d.claim_date || null,
+        status_money: d.status_money || null, no_cd_ml: d.destino === 'warehouse',
+        chegou_cd: false,                           // b51 - destino e o CD, mas AINDA NAO chegou la
+        desde: d.claim_date || null,
       
         ...(PEDIDOS.get(String(d.order_id)) || {}),
       });
