@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════════════════════════════════
-//  amb-devolucoes · lib/compat  (AMB Devol. b66)
+//  amb-devolucoes · lib/compat  (AMB Devol. b68)
 //  LEVA 1a do porte GOOD → AMB.
 //
 //  A tela de bipe da GOOD (index.html + 10 modulos JS) chama 18 endpoints.
@@ -352,8 +352,26 @@ function montar(router, deps) {
     res.json(await db.marcarCiente(req.params.id, req.usuario));
   });
 
-  /** A tela chama /health no boot pra saber se o servidor respondeu. */
-  router.get('/health', (req, res) => res.json({ ok: true, modulo: 'amb-devolucoes' }));
+  /**
+   * A tela chama /health no boot e mostra `server v{version}` no topo.
+   * O meu devolvia so {ok, modulo} — sem o campo `version` a tela
+   * escrevia "server v?". Agora responde o que ela le.
+   * A versao vem por injecao quando o app passar (deps.versao); enquanto
+   * nao passar, usa a constante abaixo — se voce ver um numero velho no
+   * topo da tela, e esta linha que precisa subir junto.
+   */
+  const VERSAO_MODULO = (deps && deps.versao) || 'AMB b68';
+  router.get('/health', (req, res) => {
+    res.json({
+      status: 'ok',
+      service: 'amb-devolucoes',
+      version: VERSAO_MODULO,
+      integrations: {
+        bling: !!(bling.temToken && bling.temToken()),
+        supabase: !!(db.ligado && db.ligado()),
+      },
+    });
+  });
 
   // ═══════════════════════════════════════════════════════════════════
   // b62 - ROTAS /api/admin/* QUE O PAINEL DA GOOD CHAMA
