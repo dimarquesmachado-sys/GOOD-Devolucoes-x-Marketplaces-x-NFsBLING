@@ -47,7 +47,7 @@
       <img class="logo" src="logo-AMB.png" alt="" style="max-height:44px;vertical-align:middle;margin-right:8px;">
       <h1 style="display:inline-block;vertical-align:middle;">AMBTotal Devoluções</h1>
       <p>Identificar venda + NF-e + Triagem</p>
-      <p style="font-size: 10px; color: #888; margin-top: 4px;">v3.37 (colar imagem) | <span id="serverVersion">checando...</span></p>
+      <p style="font-size: 10px; color: #888; margin-top: 4px;">v3.38 (hierarquia e NF) | <span id="serverVersion">checando...</span></p>
       <div class="user-badge">
         👤 <span id="userNome">-</span>
         <a href="/amb/painel" id="btnPainelAdmin" style="display:none;background:#ffd700;color:#1d1d1f;padding:3px 10px;border-radius:10px;font-weight:700;margin-left:6px;">👑 Painel Admin</a>
@@ -63,14 +63,19 @@
           autocomplete="off" inputmode="numeric" />
         <button id="btnBuscar" onclick="buscar()">Buscar</button>
       </div>
-      <button type="button" onclick="abrirCameraScanner()"
-              style="width:100%; margin-top:10px; padding:12px; background:#1565c0; color:white; border:none; border-radius:10px; font-weight:700; font-size:14px; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:8px;">
-        📷 Bipar etiqueta com a câmera do celular
-      </button>
-      <button type="button" onclick="abrirOcrRemetente()"
-              style="width:100%; margin-top:8px; padding:12px; background:#6a1b9a; color:white; border:none; border-radius:10px; font-weight:700; font-size:14px; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:8px;">
-        👤 Ler NOME do remetente pela câmera (OCR)
-      </button>
+      <!-- HIERARQUIA: bipar e a acao do dia a dia (cheia, ocupa o vao);
+           o OCR do remetente e apoio - so entra quando a etiqueta nao tem
+           codigo legivel - entao fica menor, so com contorno, do lado. -->
+      <div style="display:flex; gap:8px; align-items:stretch; margin-top:10px;">
+        <button type="button" onclick="abrirCameraScanner()"
+                style="flex:1; padding:13px; background:#1565c0; color:white; border:none; border-radius:10px; font-weight:700; font-size:15px; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:8px;">
+          📷 Bipar etiqueta com a câmera
+        </button>
+        <button type="button" onclick="abrirOcrRemetente()" title="quando a etiqueta não tem código legível"
+                style="flex:0 0 auto; max-width:132px; padding:8px 12px; background:transparent; color:#534AB7; border:1px solid #CECBF6; border-radius:10px; font-weight:500; font-size:12.5px; line-height:1.2; cursor:pointer;">
+          👤<br>ler nome do remetente
+        </button>
+      </div>
 
       <!-- v3.31 - painel do OCR do remetente (etiquetas Correios sem codigo util) -->
       <div id="ocrPanel" style="display:none; margin-top:12px; border:2px solid #6a1b9a; border-radius:12px; padding:12px; background:#faf5ff;">
@@ -546,21 +551,21 @@
        8. app       -> entry point (DOM refs, event listeners, init)
        ============================================================ -->
   <!-- adaptador de caminho: TEM que vir antes dos modulos -->
-  <script src="js-AMB/base-amb.js?v=b81"></script>
-  <script src="js-AMB/helpers.js?v=b81"></script>
-  <script src="js-AMB/auth.js?v=b81"></script>
-  <script src="js-AMB/scanner.js?v=b81"></script>
-  <script src="js-AMB/camera.js?v=b81"></script>
-  <script src="js-AMB/bipagem.js?v=b81"></script>
-  <script src="js-AMB/busca.js?v=b81"></script>
+  <script src="js-AMB/base-amb.js?v=b82"></script>
+  <script src="js-AMB/helpers.js?v=b82"></script>
+  <script src="js-AMB/auth.js?v=b82"></script>
+  <script src="js-AMB/scanner.js?v=b82"></script>
+  <script src="js-AMB/camera.js?v=b82"></script>
+  <script src="js-AMB/bipagem.js?v=b82"></script>
+  <script src="js-AMB/busca.js?v=b82"></script>
   <script src="https://cdn.jsdelivr.net/npm/qz-tray@2.2.4/qz-tray.js"></script>
-  <script src="js-AMB/etiqueta.js?v=b81"></script>
-  <script src="js-AMB/triagem.js?v=b81"></script>
+  <script src="js-AMB/etiqueta.js?v=b82"></script>
+  <script src="js-AMB/triagem.js?v=b82"></script>
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
-  <script src="js-AMB/ocr.js?v=b81"></script>
-  <script src="js-AMB/app.js?v=b81"></script>
+  <script src="js-AMB/ocr.js?v=b82"></script>
+  <script src="js-AMB/app.js?v=b82"></script>
   <!-- b81 - colar/arrastar imagem da etiqueta na busca -->
-  <script src="js-AMB/colar-imagem.js?v=b81"></script>
+  <script src="js-AMB/colar-imagem.js?v=b82"></script>
 
   <!-- v3.96 - lancar produto com defeito (busca por parte do nome) -->
   <script>
