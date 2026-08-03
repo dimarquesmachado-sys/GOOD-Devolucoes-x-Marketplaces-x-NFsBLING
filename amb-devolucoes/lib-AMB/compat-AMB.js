@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════════════════════════════════
-//  amb-devolucoes · lib/compat  (AMB Devol. b76)
+//  amb-devolucoes · lib/compat  (AMB Devol. b78)
 //  LEVA 1a do porte GOOD → AMB.
 //
 //  A tela de bipe da GOOD (index.html + 10 modulos JS) chama 18 endpoints.
@@ -171,6 +171,36 @@ function montar(router, deps) {
         await new Promise(r2 => setTimeout(r2, 180));
       }
       res.json({ ok: true, produtos: comFoto, termo: q });
+    } catch (e) {
+      res.status(500).json({ ok: false, erro: String(e.message || e) });
+    }
+  });
+
+  // ─────────────────────────────────────────────────────────────────────
+  // GET /api/produto/imagem/:chave   (b78)
+  // A tela pede a foto pelo SKU (que e o que ela tem do item da NF) ou
+  // pelo id do produto. Resolve o id quando vier SKU, busca o detalhe e
+  // extrai a imagem. Cache por chave: bipar o mesmo produto de novo nao
+  // consulta o Bling.
+  // ─────────────────────────────────────────────────────────────────────
+  router.get('/api/produto/imagem/:chave', auth.requerLogin, async (req, res) => {
+    const chave = String(req.params.chave || '').trim();
+    if (!chave) return res.status(400).json({ ok: false, erro: 'informe o sku ou o id' });
+    if (IMG_CACHE.has(chave)) {
+      return res.json({ ok: true, chave, imagem: IMG_CACHE.get(chave), cache: true });
+    }
+    try {
+      let id = /^\d{6,}$/.test(chave) ? chave : null;
+      if (!id) {
+        const rP = await bling.buscarProdutoPorSku(chave);
+        id = (rP.ok && rP.exato && rP.exato.id) ? rP.exato.id : null;
+      }
+      if (!id) { IMG_CACHE.set(chave, null); return res.json({ ok: true, chave, imagem: null }); }
+      const rD = await bling.chamarBling(`/produtos/${id}`);
+      const det = (rD.ok && rD.data && rD.data.data) || null;
+      const url = imagemProfunda(det);
+      IMG_CACHE.set(chave, url);
+      res.json({ ok: true, chave, imagem: url });
     } catch (e) {
       res.status(500).json({ ok: false, erro: String(e.message || e) });
     }
