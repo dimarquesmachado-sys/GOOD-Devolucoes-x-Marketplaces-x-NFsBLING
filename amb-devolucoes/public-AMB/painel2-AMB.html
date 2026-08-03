@@ -219,7 +219,7 @@
       <div class="header-acoes">
         <a href="/amb/painel" class="destaque">📊 Painel</a>
         <a href="/amb/defeitos-AMB.html" style="background:#c62828;color:#fff;">🔧 Defeitos</a>
-        <a href="/">📦 Triagem (bipar)</a>
+        <a href="/amb/">📦 Triagem (bipar)</a>
         <a href="#" onclick="logout(event)">🚪 Sair</a>
       </div>
     </header>
@@ -364,8 +364,8 @@
           sec.style.display = '';
           sec.innerHTML = '<div style="background:#fff5f5;border:2px solid #ef9a9a;border-radius:12px;padding:24px;text-align:center;margin:20px 0;">'
             + '<div style="font-size:20px;font-weight:800;color:#c62828;">🔒 Sessão de admin expirada</div>'
-            + '<div style="font-size:14px;color:#666;margin:8px 0 16px;">Faça login de novo para ver o painel.</div>'
-            + '<a href="/" style="display:inline-block;background:#c62828;color:#fff;text-decoration:none;padding:12px 24px;border-radius:10px;font-weight:700;">Ir para o login →</a>'
+            + '<div style="font-size:14px;color:#666;margin:8px 0 16px;">Faça login de novo na AMBTotal para ver o painel.</div>'
+            + '<a href="/amb/" style="display:inline-block;background:#561A9E;color:#fff;text-decoration:none;padding:12px 24px;border-radius:10px;font-weight:700;">Ir para o login →</a>'
             + '</div>';
           return;
         }
@@ -1501,7 +1501,7 @@
     async function logout(e) {
       e.preventDefault();
       try { await fetch('/api/auth/logout', { method: 'POST' }); } catch (err) {}
-      location.href = '/';
+      location.href = '/amb/';   // b65 - login da AMB, nao o da GOOD
     }
 
     let toastTimeout;
