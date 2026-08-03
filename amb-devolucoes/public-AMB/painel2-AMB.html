@@ -1555,8 +1555,15 @@
     // no Bling da AMB, gere uma devolucao de entrada com o F12 aberto na
     // aba Rede e olhe o payload da requisicao — os dois ids estao la.
     const GOOD_BLING = {
-      idEmpresaControl: '',              // <- id da empresa AMBTOTAL no Bling
-      idNaturezaOperacao: '',            // <- "Devolucao de Mercadoria - Entrada" da AMB
+      // Capturados no Bling da AMBTOTAL em 02/08 (nao sao os da GOOD):
+      //  - idEmpresaControl veio de depositos[].idEmpresa na resposta do
+      //    notas.fiscais.server.php?f=obterConfiguracoesDevolucao
+      //  - a natureza e a "Devolucao de Mercadoria - Entrada" (padrao
+      //    "devolucao (entrada)"), confirmada em DOIS lugares: a URL
+      //    operacao.fiscal.php?buscaid=15110128838 e o campo
+      //    idNaturezaPadraoDevolucao da mesma resposta.
+      idEmpresaControl: '14901993834',
+      idNaturezaOperacao: '15110128838',
     };
     function idsFiscaisOk() {
       if (GOOD_BLING.idEmpresaControl && GOOD_BLING.idNaturezaOperacao) return true;
