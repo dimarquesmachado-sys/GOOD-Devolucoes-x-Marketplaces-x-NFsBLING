@@ -255,15 +255,25 @@ function renderizar(data, ok) {
       .dvi-cod{justify-content:center;}
       .dvi-cod span{font-size:15px;}
     }
-    .nfl{display:flex;flex-wrap:wrap;align-items:baseline;gap:5px 13px;}
+    .nfl{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px;}
+    .nfl-tit{font-size:12px;font-weight:700;color:#1b5e20;letter-spacing:.4px;flex:0 0 auto;}
     .nfl-n{font-size:20px;font-weight:700;color:#1b5e20;}
-    .nfl-s{font-size:14px;color:#1b5e20;}
-    .nfl-x{color:#b0b0b0;}
+    .nfl-s{font-size:12.5px;color:#0F6E56;background:#E1F5EE;border-radius:6px;padding:2px 9px;}
     .nfl-v{font-size:15px;font-weight:700;}
-    .nfc-v{flex:1 1 300px;min-width:0;background:#fff;border:1px solid #ddd;border-radius:6px;padding:5px 9px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:11.5px;overflow-x:auto;white-space:nowrap;}
+    .nfc-v{flex:1;min-width:0;background:#fff;border:1px solid #ddd;border-radius:6px;padding:5px 9px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:11.5px;overflow-x:auto;white-space:nowrap;}
     .nfl-b{flex:0 0 auto;padding:5px 10px;font-size:12.5px;}
-    .nfl-btns{display:flex;gap:6px;flex:0 0 auto;}
-    @media (max-width:600px){.nfl{gap:6px 10px;} .nfc-v{flex:1 1 100%;} .nfl-btns{flex:1 1 100%;}}
+    .nfl-btns{display:flex;gap:6px;flex:0 0 auto;margin-left:auto;}
+    .nfk{display:flex;align-items:center;gap:8px;margin-top:8px;}
+    .nfk-l{font-size:10px;color:#5F5E5A;letter-spacing:.4px;flex:0 0 auto;}
+    @media (max-width:600px){
+      .nfl{gap:5px 10px;}
+      .nfl-tit{flex:1 1 100%;}
+      .nfl-btns{flex:1 1 100%;margin-left:0;}
+      .nfl-btns .btn-action{flex:1;}
+      .nfk{flex-wrap:wrap;background:#f3f7f3;border-radius:8px;padding:8px 9px;}
+      .nfk-l{flex:1 1 100%;}
+      .nfc-v{flex:1 1 100%;white-space:normal;word-break:break-all;font-size:12px;line-height:1.45;border:none;background:none;padding:0;overflow:visible;}
+    }
   </style>`;
     html += '<div class="itens-lista">';
     // v4.31 - FOTO DO PRODUTO no card do item, a esquerda do 2x/titulo/
@@ -297,19 +307,13 @@ function renderizar(data, ok) {
   // ============ NF (LARGURA TOTAL) ============
   if (nf) {
     html += '<div class="secao-nf">';
-    html += '<div class="secao-nf-titulo">🧾 Nota Fiscal</div>';
     html += '<div class="nfl">';
+    html += '<span class="nfl-tit">\u{1F9FE} NOTA FISCAL</span>';
     html += `<span class="nfl-n">NF ${escapeHtml(nf.numero || '-')}</span>`;
     html += `<span class="nfl-s">serie ${escapeHtml(nf.serie || '-')}</span>`;
-    html += '<span class="nfl-x">&middot;</span>';
     html += `<span>${dataFmt(nf.dataEmissao)}</span>`;
-    html += '<span class="nfl-x">&middot;</span>';
     html += `<span class="nfl-v">${moeda(nf.valor)}</span>`;
-    if (nf.peso) { html += `<span class="nfl-x">&middot;</span><span>${nf.peso}g</span>`; }
-    if (nf.chaveAcesso) {
-      html += `<span class="nfc-v" id="nfChave" title="chave de acesso">${escapeHtml(nf.chaveAcesso)}</span>`
-        + `<button class="btn-action cinza nfl-b" onclick="copiarChaveNF(this)" title="copiar a chave">\u{1F4CB}</button>`;
-    }
+    if (nf.peso) { html += `<span>${nf.peso}g</span>`; }
 
     html += '<span id="botoesNF" class="nfl-btns">';
     if (order.id) {
@@ -317,6 +321,11 @@ function renderizar(data, ok) {
     }
     html += '</span>';
     html += '</div>';
+    if (nf.chaveAcesso) {
+      html += '<div class="nfk"><span class="nfk-l">CHAVE</span>'
+        + `<span class="nfc-v" id="nfChave">${escapeHtml(nf.chaveAcesso)}</span>`
+        + `<button class="btn-action cinza nfl-b" onclick="copiarChaveNF(this)" title="copiar a chave">\u{1F4CB}</button></div>`;
+    }
     html += '</div>';
   } else if (order.id) {
     html += '<div class="secao-nf">';
