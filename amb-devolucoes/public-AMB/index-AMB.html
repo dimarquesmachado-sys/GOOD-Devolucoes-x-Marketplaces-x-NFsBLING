@@ -14,18 +14,24 @@
     /* os 2 links do estoque de defeitos: a DIREITA no computador, igual
        o cracha do usuario (que e absolute, top/right). No celular o
        cracha vira estatico e centralizado, entao eles centralizam junto. */
-    /* b90 - a logo sai do fluxo e ancora na esquerda; o titulo ocupa a
-       largura toda e centraliza de verdade, sem ser empurrado por ela.
-       No celular a logo encolhe e o titulo ganha margem pra nao encostar. */
-    .logo-topo {
-      position: absolute; left: 16px; top: 50%; transform: translateY(-50%);
-      max-height: 62px; width: auto;
-    }
-    .titulo-topo { font-size: 30px; line-height: 1.15; margin: 0 0 2px; }
+    /* b91 - CABECALHO EM FAIXA BAIXA (opcao C aprovada) */
+    header { text-align: left; padding: 14px 18px; }
+    .topo-faixa { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+    .topo-logo { width: 52px; height: 52px; object-fit: contain; border-radius: 11px;
+                 background: rgba(255,255,255,.9); padding: 4px; flex: 0 0 auto; }
+    .topo-txt { flex: 1; min-width: 0; }
+    .topo-txt h1 { font-size: 22px; line-height: 1.15; margin: 0; }
+    .topo-txt p { font-size: 12.5px; opacity: .85; margin: 2px 0 0; }
+    .topo-versao { opacity: .65; font-size: 11px; }
+    /* o cracha sai do canto absoluto e entra na propria faixa, a direita */
+    header .user-badge { position: static; flex: 0 0 auto; margin: 0;
+                         display: flex; gap: 6px; align-items: center; }
     @media (max-width: 600px) {
-      .logo-topo { max-height: 36px; left: 10px; top: 14px; transform: none; }
-      .titulo-topo { font-size: 19px; margin-left: 44px; }
-      header p { margin-left: 44px; }
+      header { padding: 12px 14px; }
+      .topo-logo { width: 42px; height: 42px; }
+      .topo-txt h1 { font-size: 17px; }
+      .topo-txt p { font-size: 11.5px; }
+      header .user-badge { flex: 1 1 100%; justify-content: center; margin-top: 8px; }
     }
     .links-defeitos {
       display: flex; gap: 7px; flex-wrap: wrap; justify-content: flex-end;
@@ -73,17 +79,23 @@
   <div class="container" id="appContainer" style="display:none;">
 
     <header>
-      <!-- b90 - logo ANCORADA A ESQUERDA e o titulo CENTRALIZADO na largura
-           inteira do cabecalho. Antes os dois eram inline e o conjunto
-           centralizava junto, empurrando o titulo pra direita. -->
-      <img class="logo-topo" src="logo-AMB.png" alt="">
-      <h1 class="titulo-topo">AMBTotal Devoluções</h1>
-      <p>Identificar venda + NF-e + Triagem</p>
-      <p style="font-size: 10px; color: #888; margin-top: 4px;">v3.42 (cabecalho) | <span id="serverVersion">checando...</span></p>
-      <div class="user-badge">
-        👤 <span id="userNome">-</span>
-        <a href="/amb/painel" id="btnPainelAdmin" style="display:none;background:#ffd700;color:#1d1d1f;padding:3px 10px;border-radius:10px;font-weight:700;margin-left:6px;">👑 Painel Admin</a>
-        <a href="#" onclick="fazerLogout(event)">sair</a>
+      <!-- b91 - FAIXA BAIXA (opcao C): logo, titulo e acoes na MESMA linha.
+           Ocupa quase metade da altura do cabecalho antigo - o que rende no
+           celular, onde o topo comia tela do estoquista. O subtitulo e a
+           versao viraram uma linha so, com pontos separando. -->
+      <div class="topo-faixa">
+        <img class="topo-logo" src="logo-AMB.png" alt="">
+        <div class="topo-txt">
+          <h1>AMBTotal Devoluções</h1>
+          <p>Identificar venda &middot; NF-e &middot; Triagem
+            <span class="topo-versao">&middot; v3.43 &middot; <span id="serverVersion">checando...</span></span>
+          </p>
+        </div>
+        <div class="user-badge">
+          👤 <span id="userNome">-</span>
+          <a href="/amb/painel" id="btnPainelAdmin" style="display:none;">👑 Painel</a>
+          <a href="#" onclick="fazerLogout(event)">sair</a>
+        </div>
       </div>
       <!-- ESTOQUE DE DEFEITOS logo abaixo da linha do usuario. O cabecalho
            e CENTRALIZADO (text-align:center), entao esta linha tambem
@@ -582,21 +594,21 @@
        8. app       -> entry point (DOM refs, event listeners, init)
        ============================================================ -->
   <!-- adaptador de caminho: TEM que vir antes dos modulos -->
-  <script src="js-AMB/base-amb.js?v=b90"></script>
-  <script src="js-AMB/helpers.js?v=b90"></script>
-  <script src="js-AMB/auth.js?v=b90"></script>
-  <script src="js-AMB/scanner.js?v=b90"></script>
-  <script src="js-AMB/camera.js?v=b90"></script>
-  <script src="js-AMB/bipagem.js?v=b90"></script>
-  <script src="js-AMB/busca.js?v=b90"></script>
+  <script src="js-AMB/base-amb.js?v=b91"></script>
+  <script src="js-AMB/helpers.js?v=b91"></script>
+  <script src="js-AMB/auth.js?v=b91"></script>
+  <script src="js-AMB/scanner.js?v=b91"></script>
+  <script src="js-AMB/camera.js?v=b91"></script>
+  <script src="js-AMB/bipagem.js?v=b91"></script>
+  <script src="js-AMB/busca.js?v=b91"></script>
   <script src="https://cdn.jsdelivr.net/npm/qz-tray@2.2.4/qz-tray.js"></script>
-  <script src="js-AMB/etiqueta.js?v=b90"></script>
-  <script src="js-AMB/triagem.js?v=b90"></script>
+  <script src="js-AMB/etiqueta.js?v=b91"></script>
+  <script src="js-AMB/triagem.js?v=b91"></script>
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
-  <script src="js-AMB/ocr.js?v=b90"></script>
-  <script src="js-AMB/app.js?v=b90"></script>
+  <script src="js-AMB/ocr.js?v=b91"></script>
+  <script src="js-AMB/app.js?v=b91"></script>
   <!-- b81 - colar/arrastar imagem da etiqueta na busca -->
-  <script src="js-AMB/colar-imagem.js?v=b90"></script>
+  <script src="js-AMB/colar-imagem.js?v=b91"></script>
 
   <!-- v3.96 - lancar produto com defeito (busca por parte do nome) -->
   <script>
