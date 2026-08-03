@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════════════════════════════════
-//  amb-devolucoes · lib/compat  (AMB Devol. b56)
+//  amb-devolucoes · lib/compat  (AMB Devol. b62)
 //  LEVA 1a do porte GOOD → AMB.
 //
 //  A tela de bipe da GOOD (index.html + 10 modulos JS) chama 18 endpoints.
@@ -316,6 +316,61 @@ function montar(router, deps) {
 
   /** A tela chama /health no boot pra saber se o servidor respondeu. */
   router.get('/health', (req, res) => res.json({ ok: true, modulo: 'amb-devolucoes' }));
+
+  // ═══════════════════════════════════════════════════════════════════
+  // b62 - ROTAS /api/admin/* QUE O PAINEL DA GOOD CHAMA
+  // A b61 trouxe as 13 do modulo rotas-admin-nf. Estas outras moram no
+  // server.js da GOOD e a AMB ja tem o equivalente com OUTRO NOME —
+  // entao aqui e so traduzir nome e formato.
+  // ═══════════════════════════════════════════════════════════════════
+
+  /** As 3 filas de uma vez, no formato que o painel espera. */
+  router.get('/api/admin/devolucoes', auth.requerLogin, async (req, res) => {
+    try {
+      const [apr, prob, div] = await Promise.all([
+        db.listarFila({ status: 'aprovado' }),
+        db.listarFila({ status: 'problema' }),
+        db.listarFila({ status: 'divergente' }),
+      ]);
+      const lista = (r) => (r && r.ok && Array.isArray(r.registros)) ? r.registros : [];
+      const aprovadas = lista(apr), problemas = lista(prob), divergentes = lista(div);
+      res.json({
+        ok: true, aprovadas, problemas, divergentes,
+        total: aprovadas.length + problemas.length + divergentes.length,
+      });
+    } catch (e) {
+      res.status(500).json({ ok: false, erro: String(e.message || e) });
+    }
+  });
+
+  /** Recados: mesma coisa, so o nome muda (singular na GOOD). */
+  router.get('/api/admin/recados', auth.requerLogin, async (req, res) => {
+    res.json(await db.listarRecados({ resolvidos: req.query.resolvidos === '1' }));
+  });
+
+  router.post('/api/admin/recado', auth.requerLogin, async (req, res) => {
+    const b = corpo(req);
+    const identificador = b.identificador || b.chave || b.pedido || b.tracking || null;
+    const texto = b.texto || b.recado || null;
+    if (!identificador || !texto) {
+      return res.status(400).json({ ok: false, erro: 'informe identificador e texto' });
+    }
+    res.json(await db.criarRecado({ identificador, texto, criadoPor: req.usuario }));
+  });
+
+  router.post('/api/admin/recado/:id/remover', auth.requerLogin, async (req, res) => {
+    res.json(await db.resolverRecado(req.params.id));
+  });
+
+  /** A espreita e a mesma - o painel so a chama por outro caminho. */
+  router.get('/api/admin/espreita', auth.requerLogin, (req, res) => {
+    const qs = req.originalUrl.includes('?') ? req.originalUrl.slice(req.originalUrl.indexOf('?')) : '';
+    res.redirect(307, '/amb/api/espreita' + qs);
+  });
+
+  router.post('/api/admin/espreita/nota', auth.requerLogin, (req, res) => {
+    res.redirect(307, '/amb/api/espreita/nota');
+  });
 
   return router;
 }
