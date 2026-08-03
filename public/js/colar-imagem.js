@@ -1,161 +1,182 @@
 // ════════════════════════════════════════════════════════════════════════
-//  colar-imagem.js — COLAR (Ctrl+V) ou ARRASTAR uma imagem na busca
+//  colar-imagem.js  v2 — COLAR (Ctrl+V), ARRASTAR ou ESCOLHER a foto
 //  ------------------------------------------------------------------
-//  Caso real do Diego: o cliente manda a foto da etiqueta pelo WhatsApp,
-//  ele esta no COMPUTADOR e nao tem como bipar com a camera. Agora ele
-//  copia a imagem (Ctrl+C no WhatsApp Web, ou "copiar imagem" no print)
-//  e da Ctrl+V em qualquer lugar da tela.
+//  Igual ao 1688/AliExpress: copia a imagem, clica na busca, Ctrl+V.
 //
-//  Ordem de tentativa — a barata primeiro:
-//   1. BarcodeDetector na imagem (mesmo motor da camera). Resolve na
-//      hora quando o codigo esta legivel.
-//   2. Se nao ler o codigo, OCR (Tesseract, o mesmo do "ler nome do
-//      remetente") e procura no texto os padroes que a busca entende.
-//      Isso salva a maioria dos prints do WhatsApp: a compressao
-//      costuma estragar as barras finas, mas o NUMERO impresso embaixo
-//      delas o OCR le bem.
+//  Por que a v1 nao funcionou no computador:
+//   - O BarcodeDetector (leitor de codigo) so existe no Android. No
+//     Chrome/Edge de computador ele NAO existe, entao o passo 1 sempre
+//     falhava calado e caia direto no OCR.
+//   - O OCR baixa ~10MB de idioma na primeira vez. Sem aviso claro,
+//     parecia travado.
+//   - E nao havia nada na tela dizendo que dava pra colar.
 //
-//  Se achar mais de um candidato, PERGUNTA — nao adivinha.
+//  Agora: uma AREA VISIVEL na busca, tres jeitos de mandar a imagem
+//  (colar, arrastar, escolher arquivo) e o status escrito em cada passo.
 // ════════════════════════════════════════════════════════════════════════
 
 (function () {
   'use strict';
 
-  var painel = null;
-
-  // ── os formatos que a busca ja entende, do mais especifico pro mais geral
   var PADROES = [
-    { nome: 'chave da NF-e',      re: /\b(\d{44})\b/,                       peso: 10 },
-    { nome: 'rastreio Correios',  re: /\b([A-Z]{2}\d{9}[A-Z]{2})\b/i,       peso: 9 },
-    { nome: 'rastreio Shopee',    re: /\b(BR[A-Z0-9]{10,})\b/i,             peso: 9 },
-    { nome: 'pedido Shopee',      re: /\b(\d{6}[A-Z0-9]{6,10})\b/,          peso: 8 },
-    { nome: 'pedido Mercado Livre', re: /\b(20000\d{11})\b/,                peso: 8 },
-    { nome: 'numero da NF',       re: /\bNF[-\s:]*0*(\d{3,9})\b/i,          peso: 6 },
+    { nome: 'chave da NF-e',        re: /\b(\d{44})\b/,                 peso: 10 },
+    { nome: 'rastreio Correios',    re: /\b([A-Z]{2}\d{9}[A-Z]{2})\b/i, peso: 9 },
+    { nome: 'rastreio Shopee',      re: /\b(BR[A-Z0-9]{10,})\b/i,       peso: 9 },
+    { nome: 'pedido Shopee',        re: /\b(\d{6}[A-Z0-9]{6,10})\b/,    peso: 8 },
+    { nome: 'pedido Mercado Livre', re: /\b(20000\d{11})\b/,            peso: 8 },
+    { nome: 'numero da NF',         re: /\bNF[-\s:]*0*(\d{3,9})\b/i,    peso: 6 },
   ];
 
-  function acharCandidatos(texto) {
+  function candidatos(texto) {
     var t = String(texto || '').replace(/\s+/g, ' ');
-    var vistos = {}, out = [];
+    var visto = {}, out = [];
     PADROES.forEach(function (p) {
       var m = t.match(p.re);
-      if (m && m[1]) {
-        var v = m[1].toUpperCase();
-        if (!vistos[v]) { vistos[v] = 1; out.push({ valor: v, tipo: p.nome, peso: p.peso }); }
+      if (m && m[1] && !visto[m[1].toUpperCase()]) {
+        visto[m[1].toUpperCase()] = 1;
+        out.push({ valor: m[1].toUpperCase(), tipo: p.nome, peso: p.peso });
       }
     });
     return out.sort(function (a, b) { return b.peso - a.peso; });
   }
 
-  // ── painel que mostra o que esta acontecendo (sem ele o usuario acha
-  //    que nao funcionou, porque o OCR demora alguns segundos)
-  function abrirPainel(dataUrl) {
-    fecharPainel();
-    painel = document.createElement('div');
-    painel.id = 'painelColar';
-    painel.style.cssText = 'margin:12px 0;padding:12px;border:2px dashed #7B3FC4;border-radius:12px;'
-      + 'background:#faf7ff;display:flex;gap:12px;align-items:flex-start;';
-    painel.innerHTML =
-      '<img src="' + dataUrl + '" alt="" style="width:110px;height:110px;object-fit:contain;'
-      + 'background:#fff;border:1px solid #e4dcf1;border-radius:8px;flex:0 0 auto;">'
+  // ── a area visivel, criada por JS (nao precisa mexer no index) ──
+  var zona, statusEl, previaEl, opcoesEl, inputArquivo;
+
+  function montarZona() {
+    var input = document.getElementById('codigo');
+    var ancora = input ? (input.closest('.input-group') || input.parentNode) : null;
+    if (!ancora || document.getElementById('zonaColar')) return;
+
+    zona = document.createElement('div');
+    zona.id = 'zonaColar';
+    zona.style.cssText = 'margin-top:8px;border:1.5px dashed #CECBF6;border-radius:10px;'
+      + 'padding:9px 12px;background:#faf8ff;cursor:pointer;display:flex;align-items:center;gap:10px;';
+    zona.innerHTML =
+      '<span style="font-size:19px;flex:0 0 auto;">\u{1F4CE}</span>'
       + '<div style="flex:1;min-width:0;">'
-      + '  <div style="font-weight:700;color:#561A9E;font-size:14px;">Imagem colada</div>'
-      + '  <div id="colarStatus" style="font-size:13px;color:#555;margin-top:5px;">lendo o codigo de barras...</div>'
-      + '  <div id="colarOpcoes" style="margin-top:8px;"></div>'
+      + '  <div id="zonaColarTxt" style="font-size:13px;color:#534AB7;font-weight:500;">'
+      + '    Cole a foto da etiqueta aqui (Ctrl+V), arraste, ou clique para escolher</div>'
+      + '  <div id="zonaColarStatus" style="font-size:12px;color:#71659a;margin-top:2px;"></div>'
+      + '  <div id="zonaColarOpcoes" style="margin-top:6px;"></div>'
       + '</div>'
-      + '<button onclick="fecharPainelColar()" title="fechar" style="flex:0 0 auto;background:none;'
-      + 'border:none;font-size:20px;cursor:pointer;color:#888;line-height:1;">&times;</button>';
-    var alvo = document.querySelector('.card') || document.body;
-    alvo.appendChild(painel);
-    painel.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      + '<img id="zonaColarPrevia" alt="" style="display:none;width:56px;height:56px;object-fit:contain;'
+      + 'background:#fff;border:1px solid #e4dcf1;border-radius:8px;flex:0 0 auto;">';
+    ancora.parentNode.insertBefore(zona, ancora.nextSibling);
+
+    statusEl = document.getElementById('zonaColarStatus');
+    previaEl = document.getElementById('zonaColarPrevia');
+    opcoesEl = document.getElementById('zonaColarOpcoes');
+
+    inputArquivo = document.createElement('input');
+    inputArquivo.type = 'file';
+    inputArquivo.accept = 'image/*';
+    inputArquivo.style.display = 'none';
+    document.body.appendChild(inputArquivo);
+    inputArquivo.addEventListener('change', function () {
+      if (inputArquivo.files && inputArquivo.files[0]) processar(inputArquivo.files[0]);
+    });
+
+    zona.addEventListener('click', function () { inputArquivo.click(); });
+    zona.addEventListener('dragover', function (e) {
+      e.preventDefault(); zona.style.background = '#f0e9ff'; zona.style.borderColor = '#7F77DD';
+    });
+    zona.addEventListener('dragleave', function () {
+      zona.style.background = '#faf8ff'; zona.style.borderColor = '#CECBF6';
+    });
   }
 
-  function fecharPainel() {
-    if (painel && painel.parentNode) painel.parentNode.removeChild(painel);
-    painel = null;
-  }
-  window.fecharPainelColar = fecharPainel;
-
-  function status(txt) {
-    var el = document.getElementById('colarStatus');
-    if (el) el.textContent = txt;
-  }
+  function status(txt) { if (statusEl) statusEl.textContent = txt || ''; }
 
   function usar(valor) {
     var input = document.getElementById('codigo');
-    if (input) { input.value = valor; }
-    fecharPainel();
+    if (input) input.value = valor;
+    status('achei ' + valor + ' — buscando...');
+    if (opcoesEl) opcoesEl.innerHTML = '';
     if (typeof buscar === 'function') buscar();
   }
   window.usarCodigoColado = usar;
 
-  function mostrarOpcoes(lista) {
-    var box = document.getElementById('colarOpcoes');
-    if (!box) return;
+  function oferecer(lista) {
+    if (!opcoesEl) return;
     if (!lista.length) {
-      status('Nao achei codigo nem texto reconhecivel nessa imagem.');
-      box.innerHTML = '<div style="font-size:12.5px;color:#777;">Tenta uma imagem mais nitida, '
-        + 'ou digita o codigo na mao.</div>';
+      status('não achei código nem texto reconhecível nessa imagem — tente uma foto mais nítida ou digite o código.');
       return;
     }
-    if (lista.length === 1) { status('Achei: ' + lista[0].tipo); usar(lista[0].valor); return; }
-    status('Achei mais de um codigo — qual e o certo?');
-    box.innerHTML = lista.slice(0, 4).map(function (c) {
-      return '<button onclick="usarCodigoColado(\'' + c.valor + '\')" '
-        + 'style="display:block;width:100%;text-align:left;margin-bottom:5px;background:#fff;'
-        + 'border:1px solid #e4dcf1;border-radius:8px;padding:8px 10px;cursor:pointer;font-size:13px;">'
-        + '<b style="font-family:ui-monospace,monospace;">' + c.valor + '</b>'
-        + ' <span style="color:#71659a;font-size:11.5px;">' + c.tipo + '</span></button>';
+    if (lista.length === 1) { usar(lista[0].valor); return; }
+    status('achei mais de um código — qual é o certo?');
+    opcoesEl.innerHTML = lista.slice(0, 4).map(function (c) {
+      return '<button type="button" onclick="usarCodigoColado(\'' + c.valor + '\')" '
+        + 'style="display:block;width:100%;text-align:left;margin-bottom:4px;background:#fff;'
+        + 'border:1px solid #e4dcf1;border-radius:8px;padding:7px 9px;cursor:pointer;font-size:12.5px;">'
+        + '<b style="font-family:ui-monospace,monospace;">' + c.valor + '</b> '
+        + '<span style="color:#71659a;font-size:11px;">' + c.tipo + '</span></button>';
     }).join('');
   }
 
-  // ── 1) codigo de barras direto da imagem
-  async function lerCodigo(bitmapOuImg) {
-    if (!('BarcodeDetector' in window)) return null;
+  async function lerCodigo(img) {
+    if (!('BarcodeDetector' in window)) return null;   // computador nao tem
     try {
       var det = new BarcodeDetector({
         formats: ['code_128', 'code_39', 'ean_13', 'ean_8', 'itf', 'qr_code', 'pdf417'],
       });
-      var codes = await det.detect(bitmapOuImg);
+      var codes = await det.detect(img);
       if (codes && codes.length) return String(codes[0].rawValue || '').trim();
-    } catch (e) { /* segue pro OCR */ }
+    } catch (e) {}
     return null;
   }
 
-  // ── 2) OCR (mesmo Tesseract que a tela ja carrega pro nome do remetente)
   async function lerTexto(dataUrl) {
-    if (typeof Tesseract === 'undefined') return '';
-    status('nao li o codigo — lendo o texto da etiqueta (demora alguns segundos)...');
+    if (typeof Tesseract === 'undefined') {
+      status('o leitor de texto não carregou nesta página.');
+      return '';
+    }
+    status('lendo o texto da etiqueta... (a primeira vez baixa o idioma e demora ~20s)');
     try {
-      var worker = await Tesseract.createWorker('por', 1);
+      var worker = await Tesseract.createWorker('por', 1, {
+        logger: function (m) {
+          if (m && m.status === 'recognizing text') {
+            status('lendo o texto da etiqueta... ' + Math.round((m.progress || 0) * 100) + '%');
+          }
+        },
+      });
       var r = await worker.recognize(dataUrl);
       await worker.terminate();
       return (r && r.data && r.data.text) || '';
-    } catch (e) { return ''; }
+    } catch (e) {
+      status('não consegui ler o texto: ' + (e.message || e));
+      return '';
+    }
   }
 
   async function processar(blob) {
+    montarZona();
+    if (opcoesEl) opcoesEl.innerHTML = '';
     var dataUrl = await new Promise(function (res) {
       var fr = new FileReader();
       fr.onload = function () { res(fr.result); };
       fr.readAsDataURL(blob);
     });
-    abrirPainel(dataUrl);
+    if (previaEl) { previaEl.src = dataUrl; previaEl.style.display = ''; }
+    status('imagem recebida, procurando o código de barras...');
 
     var img = new Image();
-    await new Promise(function (res) { img.onload = res; img.onerror = res; img.src = dataUrl; });
+    await new Promise(function (r) { img.onload = r; img.onerror = r; img.src = dataUrl; });
 
     var codigo = await lerCodigo(img);
-    if (codigo) { status('codigo de barras lido'); usar(codigo); return; }
+    if (codigo) { usar(codigo); return; }
 
-    var texto = await lerTexto(dataUrl);
-    mostrarOpcoes(acharCandidatos(texto));
+    oferecer(candidatos(await lerTexto(dataUrl)));
   }
 
-  function daTransferencia(dt) {
+  function imagemDe(dt) {
     if (!dt) return null;
     var itens = dt.items || [];
     for (var i = 0; i < itens.length; i++) {
-      if (itens[i].type && itens[i].type.indexOf('image/') === 0) return itens[i].getAsFile();
+      if (itens[i].type && itens[i].type.indexOf('image/') === 0) {
+        var f = itens[i].getAsFile();
+        if (f) return f;
+      }
     }
     var arqs = dt.files || [];
     for (var j = 0; j < arqs.length; j++) {
@@ -164,20 +185,27 @@
     return null;
   }
 
-  document.addEventListener('paste', function (e) {
-    var blob = daTransferencia(e.clipboardData);
-    if (!blob) return;                 // colou texto: deixa o navegador fazer o normal
+  // colar em QUALQUER lugar (inclusive dentro do campo de busca)
+  ['paste'].forEach(function (ev) {
+    document.addEventListener(ev, function (e) {
+      var blob = imagemDe(e.clipboardData || window.clipboardData);
+      if (!blob) return;                  // colou texto: comportamento normal
+      e.preventDefault();
+      processar(blob);
+    }, true);
+  });
+
+  document.addEventListener('dragover', function (e) { e.preventDefault(); });
+  document.addEventListener('drop', function (e) {
+    var blob = imagemDe(e.dataTransfer);
+    if (!blob) return;
     e.preventDefault();
     processar(blob);
   });
 
-  ['dragover', 'drop'].forEach(function (ev) {
-    document.addEventListener(ev, function (e) {
-      if (ev === 'dragover') { e.preventDefault(); return; }
-      var blob = daTransferencia(e.dataTransfer);
-      if (!blob) return;
-      e.preventDefault();
-      processar(blob);
-    });
-  });
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', montarZona);
+  } else {
+    montarZona();
+  }
 })();
