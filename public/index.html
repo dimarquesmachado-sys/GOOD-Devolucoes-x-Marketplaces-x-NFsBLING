@@ -536,7 +536,7 @@
   <script src="js/scanner.js?v=3276"></script>
   <script src="js/camera.js?v=3276"></script>
   <script src="js/bipagem.js?v=3276"></script>
-  <script src="js/busca.js?v=3276"></script>
+  <script src="js/busca.js?v=4310"></script>
   <script src="https://cdn.jsdelivr.net/npm/qz-tray@2.2.4/qz-tray.js"></script>
   <script src="js/etiqueta.js?v=3276"></script>
   <script src="js/triagem.js?v=3276"></script>
@@ -608,7 +608,7 @@
           h += '<div onclick="escolherProdutoDefeito(' + i + ')" data-i="' + i + '" style="border:1px solid #ddd;border-radius:8px;padding:9px 11px;margin-bottom:5px;cursor:pointer;background:#fff;display:flex;gap:10px;align-items:center;">'
             + (p.imagem
                 ? '<img src="' + escDef(p.imagem) + '" onclick="event.stopPropagation();abrirZoomProduto(this.src)" onerror="this.style.display=\'none\'" style="width:52px;height:52px;border-radius:8px;object-fit:cover;border:1px solid #eee;cursor:zoom-in;flex:0 0 auto;">'
-                : '<div style="width:52px;height:52px;border-radius:8px;background:#f0f0f0;display:flex;align-items:center;justify-content:center;font-size:20px;flex:0 0 auto;">📦</div>')
+                : '<div id="defimg-' + i + '" style="width:52px;height:52px;border-radius:8px;background:#f0f0f0;display:flex;align-items:center;justify-content:center;font-size:20px;flex:0 0 auto;">📦</div>')
             + '<div style="flex:1;min-width:0;">'
             + '<div style="font-size:13px;font-weight:600;">' + escDef(p.nome) + '</div>'
             + '<div style="font-size:11px;color:#666;margin-top:2px;">SKU <code>' + escDef(p.sku) + '</code>'
@@ -617,8 +617,37 @@
         }
         window._defLista = lista;
         box.innerHTML = h;
+        buscarFotosDefeito(lista);   // v4.31 - preenche as fotos que faltaram
       } catch (e) {
         box.innerHTML = '<p style="font-size:13px;color:#c62828;">Erro de conexao.</p>';
+      }
+    }
+
+    /**
+     * v4.31 - FOTO DO PRODUTO. A busca do Bling nao devolve imagem (so o
+     * detalhe de cada produto traz), entao aqui pedimos a foto DEPOIS,
+     * so dos resultados que estao na tela. Uma de cada vez com pausa: e
+     * chamada ao Bling, e disparar todas juntas daria 429. O servidor
+     * cacheia por produto, entao a segunda busca ja vem instantanea.
+     */
+    async function buscarFotosDefeito(lista) {
+      for (var i = 0; i < lista.length && i < 6; i++) {
+        var p = lista[i];
+        if (!p || p.imagem || !p.id) continue;
+        try {
+          var r = await fetch('/api/produto/imagem/' + encodeURIComponent(p.id), { credentials: 'same-origin' });
+          var d = await r.json();
+          if (d && d.ok && d.imagem) {
+            p.imagem = d.imagem;                       // guarda pro "escolhido" usar
+            var alvo = document.getElementById('defimg-' + i);
+            if (alvo) {
+              alvo.outerHTML = '<img src="' + escDef(d.imagem) + '" onclick="event.stopPropagation();abrirZoomProduto(this.src)"'
+                + ' onerror="this.style.display=\'none\'" style="width:52px;height:52px;border-radius:8px;object-fit:cover;'
+                + 'border:1px solid #eee;cursor:zoom-in;flex:0 0 auto;">';
+            }
+          }
+        } catch (e) { /* sem foto nao impede lancar o defeito */ }
+        await new Promise(function (r2) { setTimeout(r2, 150); });
       }
     }
 
