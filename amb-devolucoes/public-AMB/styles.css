@@ -1,30 +1,40 @@
 /* ============================================================
-   GOOD Devolucoes - Estilos
+   AMBTotal Devolucoes - Estilos  (b60)
+   Base: o styles.css da GOOD, com a PALETA DA AMBTOTAL - o mesmo
+   roxo do painel admin, pra tela de triagem e painel combinarem.
+   Trocas: amarelo do cabecalho -> roxo; azul dos botoes -> roxo;
+   fundo e bordas no tom lilas claro. Verde/vermelho de status
+   ficaram como estao (significam certo/errado, nao marca).
    ============================================================ */
+:root {
+  --roxo:#561A9E; --roxo-claro:#7B3FC4; --magenta:#9F1254;
+  --fundo:#f5f2fb; --painel:#ffffff; --borda:#e4dcf1;
+  --texto:#241a35; --apagado:#71659a;
+}
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  background: #f5f5f7; min-height: 100vh; padding: 12px; color: #1d1d1f;
+  background: #f5f2fb; min-height: 100vh; padding: 12px; color: #241a35;
 }
 .container { max-width: 720px; margin: 0 auto; }
 @media (min-width: 900px) { .container { max-width: 1200px; } }
 
 header {
-  background: linear-gradient(135deg, #FFE600 0%, #FFCC00 100%);
+  background: linear-gradient(135deg, #561A9E 0%, #7B3FC4 100%);
   border-radius: 12px; padding: 20px; margin-bottom: 14px; text-align: center;
   box-shadow: 0 2px 8px rgba(0,0,0,0.08); position: relative;
 }
-header h1 { font-size: 20px; margin-bottom: 4px; }
-header p { font-size: 13px; color: #555; }
+header h1 { font-size: 20px; margin-bottom: 4px; color: #fff; }
+header p { font-size: 13px; color: rgba(255,255,255,.9); }
 .user-badge {
   position: absolute; top: 12px; right: 12px;
-  background: rgba(0,0,0,0.1); padding: 4px 10px; border-radius: 12px;
+  background: rgba(255,255,255,0.18); color: #fff; padding: 4px 10px; border-radius: 12px;
   font-size: 11px; font-weight: 600;
   max-width: calc(100% - 24px);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.user-badge a { color: #1d1d1f; text-decoration: none; margin-left: 8px; }
+.user-badge a { color: #fff; text-decoration: underline; margin-left: 8px; }
 
 /* v3.14.9: no mobile (telas pequenas), o user-badge fica EMBAIXO do titulo
    pra nao cobrir/sobrepor "GOOD Devolucoes" quando o nome do usuario for longo */
@@ -42,12 +52,12 @@ header p { font-size: 13px; color: #555; }
 .card h2 { font-size: 16px; margin-bottom: 12px; }
 .input-group { display: flex; gap: 8px; margin-bottom: 10px; }
 input[type="text"], input[type="password"] {
-  flex: 1; padding: 14px 16px; border: 2px solid #e0e0e0; border-radius: 10px;
+  flex: 1; padding: 14px 16px; border: 2px solid #e4dcf1; border-radius: 10px;
   font-size: 16px; outline: none; width: 100%;
 }
-input:focus { border-color: #007AFF; }
+input:focus { border-color: #561A9E; }
 button {
-  padding: 14px 22px; background: #007AFF; color: white; border: none;
+  padding: 14px 22px; background: #561A9E; color: white; border: none;
   border-radius: 10px; font-size: 15px; font-weight: 600; cursor: pointer;
 }
 button:hover { background: #0051D5; }
@@ -76,7 +86,7 @@ button:disabled { background: #B0B0B0; cursor: not-allowed; }
   margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px;
 }
 .login-form input, .login-form select {
-  width: 100%; padding: 14px 16px; border: 2px solid #e0e0e0;
+  width: 100%; padding: 14px 16px; border: 2px solid #e4dcf1;
   border-radius: 10px; font-size: 16px; margin-bottom: 14px;
   font-family: inherit;
 }
@@ -116,12 +126,12 @@ button:disabled { background: #B0B0B0; cursor: not-allowed; }
   font-size: 11px; color: #888; text-transform: uppercase; letter-spacing: 0.4px;
 }
 .item-grid .valor {
-  font-size: 14px; color: #1d1d1f; font-weight: 500; word-break: break-word;
+  font-size: 14px; color: #241a35; font-weight: 500; word-break: break-word;
 }
 .item-grid .valor strong { font-weight: 700; }
 
 .produto-titulo { font-size: 16px; font-weight: 600; margin-bottom: 4px; }
-.produto-mlb { font-size: 12px; color: #007AFF; margin-bottom: 8px; }
+.produto-mlb { font-size: 12px; color: #561A9E; margin-bottom: 8px; }
 .secao-titulo {
   font-size: 12px; font-weight: 600; color: #888; text-transform: uppercase;
   letter-spacing: 0.4px; margin: 0 0 6px; padding-bottom: 5px;
@@ -163,7 +173,7 @@ button:disabled { background: #B0B0B0; cursor: not-allowed; }
   gap: 8px; margin-bottom: 6px;
 }
 .item-card-titulo {
-  font-size: 14px; font-weight: 700; color: #1d1d1f; line-height: 1.35;
+  font-size: 14px; font-weight: 700; color: #241a35; line-height: 1.35;
   flex: 1;
 }
 .item-card-qtd {
@@ -178,7 +188,7 @@ button:disabled { background: #B0B0B0; cursor: not-allowed; }
   font-size: 12px; color: #555;
 }
 .item-card-info .pill {
-  background: #f5f5f7; padding: 2px 8px; border-radius: 6px;
+  background: #f5f2fb; padding: 2px 8px; border-radius: 6px;
   font-family: 'Courier New', monospace; font-weight: 600;
 }
 /* SKU/EAN em formato vertical: label pequena em cima + codigo GRANDE embaixo */
@@ -247,7 +257,7 @@ button:disabled { background: #B0B0B0; cursor: not-allowed; }
   border: none; cursor: pointer; font-family: inherit;
 }
 .btn-action:hover { background: #1b5e20; }
-.btn-action.azul { background: #007AFF; }
+.btn-action.azul { background: #561A9E; }
 .btn-action.azul:hover { background: #0051D5; }
 .btn-action.cinza { background: #6c757d; }
 .btn-action.cinza:hover { background: #495057; }
@@ -319,7 +329,7 @@ button:disabled { background: #B0B0B0; cursor: not-allowed; }
   flex: 1; padding: 12px;
 }
 .btn-cancelar {
-  background: #f5f5f7; color: #333;
+  background: #f5f2fb; color: #333;
 }
 .btn-cancelar:hover { background: #e8e8e8; color: #000; }
 
@@ -418,7 +428,7 @@ button:disabled { background: #B0B0B0; cursor: not-allowed; }
 /* MODAL FOTOS */
 .modal-fotos textarea {
   width: 100%; min-height: 80px; padding: 10px;
-  border: 2px solid #e0e0e0; border-radius: 8px; font-family: inherit;
+  border: 2px solid #e4dcf1; border-radius: 8px; font-family: inherit;
   font-size: 14px; resize: vertical; margin-bottom: 12px;
 }
 .fotos-grid {
@@ -448,7 +458,7 @@ button:disabled { background: #B0B0B0; cursor: not-allowed; }
   justify-content: center; flex-direction: column; gap: 4px;
   color: #4a5568; font-size: 12px; font-weight: 600;
 }
-.add-foto-btn:hover { border-color: #007AFF; background: #ebf8ff; color: #007AFF; }
+.add-foto-btn:hover { border-color: #561A9E; background: #ebf8ff; color: #561A9E; }
 .add-foto-btn .icon { font-size: 24px; }
 .fotos-contador {
   text-align: center; font-size: 13px; color: #555;
@@ -461,7 +471,7 @@ button:disabled { background: #B0B0B0; cursor: not-allowed; }
 .loading.show { display: block; }
 .spinner {
   display: inline-block; width: 32px; height: 32px;
-  border: 3px solid #f0f0f0; border-top-color: #007AFF;
+  border: 3px solid #f0f0f0; border-top-color: #561A9E;
   border-radius: 50%; animation: spin 0.8s linear infinite;
 }
 .spinner-mini {
@@ -477,16 +487,16 @@ button:disabled { background: #B0B0B0; cursor: not-allowed; }
 }
 .timeline li::before {
   content: ''; position: absolute; left: 0; top: 11px;
-  width: 7px; height: 7px; background: #007AFF; border-radius: 50%;
+  width: 7px; height: 7px; background: #561A9E; border-radius: 50%;
 }
 .timeline-data { color: #888; font-size: 11px; }
 
 details {
-  margin-top: 10px; border: 1px solid #e0e0e0; border-radius: 8px;
+  margin-top: 10px; border: 1px solid #e4dcf1; border-radius: 8px;
   padding: 8px 12px; background: #fafafa;
 }
 summary { cursor: pointer; font-size: 12px; color: #555; user-select: none; }
-summary:hover { color: #007AFF; }
+summary:hover { color: #561A9E; }
 .json-raw {
   background: #1d1d1f; color: #a8e6cf; padding: 12px; border-radius: 8px;
   margin-top: 8px; font-family: 'Courier New', monospace; font-size: 11px;
