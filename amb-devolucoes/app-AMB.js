@@ -79,7 +79,7 @@ const registrarRotasAdminNF = require('./lib-AMB/rotas-admin-AMB');
 const criarMlBuscas = require('./lib-AMB/ml-buscas-AMB');
 const registrarIdentificar = require('./lib-AMB/identificar-AMB');
 
-const VERSAO = 'AMB Devolucoes b71';
+const VERSAO = 'AMB Devolucoes b73';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -1244,11 +1244,21 @@ compat.montar(router, { auth, db, bling, cfg, multer });
 // MESMO da GOOD, sem edicao: ele recebe tudo por injecao, e um Router
 // do express tem .get/.post/.put igual ao app.
 const dorme = (ms) => new Promise(r => setTimeout(r, ms));
+// ══════════════════════════════════════════════════════════════════════
+// b73 - A DIFERENCA QUE QUEBRAVA A NF EM TODOS OS CANAIS
+// O codigo copiado da GOOD faz: rFull.data.data  (o envelope CRU do Bling).
+// Mas o buscarNFePorId da AMB devolve {ok, nfe:{...}} — ja desembrulhado e
+// com OUTRA CHAVE. Resultado: a busca achava o id da NF e o detalhe vinha
+// null, entao numero e serie saiam vazios e a tela dizia "NF nao achada"
+// mesmo com a nota existindo (id 26351839464 = NF 2228, caso real).
+// Aqui passamos o CRU, no formato que o codigo da GOOD espera.
+// ══════════════════════════════════════════════════════════════════════
+const nfePorIdCru = (id) => bling.chamarBling(`/nfe/${id}`);
 const nfp = criarNfPessoa({ chamarBling: bling.chamarBling, sleep: dorme });
 const ajudantes = criarAdminHelpers({
   chamarBling: bling.chamarBling,
   chamarML: ml.chamarML,
-  buscarNFePorId: bling.buscarNFePorId,
+  buscarNFePorId: nfePorIdCru,   // b73 - formato cru, como a GOOD espera
   sleep: dorme,
 });
 // b71 - a rota /api/devolucao/identificar da GOOD, que a tela de bipe
@@ -1263,7 +1273,7 @@ registrarIdentificar(router, {
   chamarBling: bling.chamarBling,
   chamarMagalu: magalu.chamarMagalu,
   buscarNFnoML: ajudantes.buscarNFnoML,
-  buscarNFePorId: bling.buscarNFePorId,
+  buscarNFePorId: nfePorIdCru,   // b73 - formato cru, como a GOOD espera
   buscarNFBlindada: ajudantes.buscarNFBlindada,
   buscarNFnoBlingPorNumero: ajudantes.buscarNFnoBlingPorNumero,
   mapItensNF: nfp.mapItensNF,
@@ -1300,7 +1310,7 @@ registrarRotasAdminNF(router, {
   chamarBling: bling.chamarBling,
   chamarML: ml.chamarML,
   buscarNFnoML: ajudantes.buscarNFnoML,
-  buscarNFePorId: bling.buscarNFePorId,
+  buscarNFePorId: nfePorIdCru,   // b73 - formato cru, como a GOOD espera
   buscarNFBlindada: ajudantes.buscarNFBlindada,
   resolverIdNFPorChave: nfp.resolverIdNFPorChave,
   mapItensNF: nfp.mapItensNF,
