@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════════════════════════════════
-//  amb-devolucoes · lib/identificar  (AMB Devol. b71)
+//  amb-devolucoes · lib/identificar  (AMB Devol. b72)
 //  A rota /api/devolucao/identificar da GOOD, PORTADA SEM EDICAO.
 //
 //  Por que ela existe aqui: a tela de bipe (os modulos js-AMB) le do
@@ -633,10 +633,63 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
       });
       console.log(`[BUSCA][shopee] BLINDADA SUCESSO: NF=${nf.numero} via=${rBlind.via}`);
     } else {
-      resultado.avisos.push({
-        tipo: 'sem_nf',
-        mensagem: `Devolucao Shopee ${devShopee.return_sn} localizada, mas a NF do pedido ${devShopee.order_sn} nao foi achada no Bling`,
-      });
+      // ══════════════════════════════════════════════════════════════
+      // b72 - CAMINHO DA AMB (a busca blindada da GOOD e cega aqui)
+      // A blindada procura /nfe?numeroLoja=... . No Bling da AMBTOTAL
+      // esse filtro e IGNORADO e a listagem /nfe nem traz o campo
+      // numeroLoja (foi o com_pedido:0 que medimos). Entao ela nunca
+      // acha, por mais que a NF exista — e TODO PEDIDO TEM NF.
+      // O caminho que funciona aqui e o indice da propria AMB:
+      //   1) pela venda (em /pedidos/vendas o numeroLoja SEMPRE vem)
+      //   2) pelo NOME do comprador (pega ate a NF do Full, que entra
+      //      como XML avulso sem numeroPedidoLoja)
+      // ══════════════════════════════════════════════════════════════
+      const nomeCompradorShopee = (devShopee.user && (devShopee.user.username || devShopee.user.nome))
+        || devShopee.buyer_nome || devShopee.comprador || null;
+      let achadaAMB = null;
+      try {
+        achadaAMB = nfNomes.nfDaLoja(String(devShopee.order_sn || ''))
+          || (nomeCompradorShopee ? nfNomes.acharNfPorNomeIndice(nomeCompradorShopee) : null);
+      } catch (e) { achadaAMB = null; }
+
+      if (achadaAMB && achadaAMB.id) {
+        const rDet = await buscarNFePorId(achadaAMB.id);
+        const nf = (rDet && rDet.ok && rDet.data && (rDet.data.data || rDet.data)) || null;
+        if (nf && nf.numero) {
+          nfData = {
+            fonte: 'bling-indice-amb',
+            numero: nf.numero,
+            serie: nf.serie,
+            chaveAcesso: nf.chaveAcesso,
+            valor: nf.valorNota,
+            dataEmissao: nf.dataEmissao,
+            linkDanfe: nf.linkDanfe,
+            linkPdf: nf.linkPDF,
+            linkXml: nf.xml,
+            idBling: nf.id,
+            numeroPedidoLoja: nf.numeroPedidoLoja,
+            situacao: nf.situacao,
+            itens: Array.isArray(nf.itens) ? nf.itens.map(it => ({
+              titulo: it.descricao || null, sku: it.codigo || null, ean: it.gtin || null,
+              quantidade: it.quantidade || null, valor: it.valor || null, unidade: it.unidade || null,
+            })) : [],
+          };
+          nomeCliente = (nf.contato && nf.contato.nome) ? nf.contato.nome : nomeCliente;
+          resultado.avisos.push({
+            tipo: 'nf_via_indice_amb',
+            mensagem: `NF ${nf.numero}${nf.serie ? ' serie ' + nf.serie : ''} achada pelo indice da AMB`,
+          });
+          console.log(`[BUSCA][shopee] INDICE AMB: NF=${nf.numero} pedido=${devShopee.order_sn}`);
+        }
+      }
+
+      if (!nfData) {
+        resultado.avisos.push({
+          tipo: 'sem_nf',
+          mensagem: `Pedido ${devShopee.order_sn} localizado, mas a NF ainda nao entrou no indice. `
+            + `Se o indice acabou de reiniciar (todo deploy esfria), espere 1-2 min e bipe de novo.`,
+        });
+      }
     }
 
     // order/shipment "minimos" no formato que o frontend ja entende
