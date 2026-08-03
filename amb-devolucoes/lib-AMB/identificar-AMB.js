@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════════════════════════════════
-//  amb-devolucoes · lib/identificar  (AMB Devol. b74)
+//  amb-devolucoes · lib/identificar  (AMB Devol. b75)
 //  A rota /api/devolucao/identificar da GOOD, PORTADA SEM EDICAO.
 //
 //  Por que ela existe aqui: a tela de bipe (os modulos js-AMB) le do
@@ -698,15 +698,40 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
     // order/shipment "minimos" no formato que o frontend ja entende
     // (NF-first cobre titulo/SKU/EAN/qtd; aqui vai cliente + valor + ids)
     const primeiroItem = nfData && nfData.itens.length ? nfData.itens[0] : null;
+    // b75 - PREENCHER O QUE A SHOPEE DA. O bloco vinha quase todo "-"
+    // porque este formato foi escrito pro pedido do ML. A Shopee nao
+    // manda os mesmos campos, mas manda equivalentes: data e status do
+    // pedido, motivo, valor e o comprador. O que ela realmente nao tem
+    // (id do comprador, status de pagamento, custo do frete) segue "-",
+    // que e honesto — melhor vazio do que inventado.
+    const _quando = devShopee.create_time
+      ? new Date(devShopee.create_time * 1000).toISOString()
+      : (nfData && nfData.dataEmissao) || null;
     resultado.order = {
       id: devShopee.order_sn,
       pack_id: null,
-      buyer: { id: null, first_name: nomeCliente, last_name: '', nickname: 'SHOPEE' },
+      date_created: _quando,
+      status: devShopee.status || null,
+      total_amount: nfData ? nfData.valor : null,
+      buyer: {
+        id: (devShopee.user && (devShopee.user.username || devShopee.user.email)) || null,
+        first_name: nomeCliente, last_name: '', nickname: 'SHOPEE',
+      },
       order_items: primeiroItem
         ? [{ unit_price: Number(primeiroItem.valor) || null, quantity: null, item: { id: null, title: null, seller_sku: null } }]
         : [],
     };
-    resultado.shipment = { id: devShopee.tracking_number || devShopee.return_sn || null };
+    resultado.shipment = {
+      id: devShopee.tracking_number || devShopee.return_sn || null,
+      status: devShopee.reason || devShopee.status || null,
+    };
+    // link pro painel da Shopee: passa pelo de-para do checkout, que
+    // resolve o order_sn no id interno (senao cai na busca geral)
+    resultado.link_marketplace = {
+      nome: 'Shopee',
+      url: 'https://mover-pedidos-aguardando-x-atendido.onrender.com/amb-checkout-offline/ir-shopee?sn='
+        + encodeURIComponent(devShopee.order_sn),
+    };
     resultado.encontrado = true;
     resultado.metodo = 'shopee_return';
     resultado.marketplace = 'shopee';
