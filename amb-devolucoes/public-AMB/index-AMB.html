@@ -1,755 +1,742 @@
 <!DOCTYPE html>
-<html lang="pt-br">
+<html lang="pt-BR">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<meta name="theme-color" content="#1a0b2e">
-<title>AMBTotal - Devoluções</title>
-
-<link rel="icon" type="image/png" href="icone-AMB.png">
-<link rel="apple-touch-icon" href="icone-AMB.png">
-<link rel="manifest" href="manifest-AMB.json">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Devoluções AMB">
-<!--
-  =========================================================
-  amb-devolucoes/public-AMB/index-AMB.html   (AMB Devol. b37)
-  ---------------------------------------------------------
-  Tela de triagem do galpao da AMBTotal.
-
-  NOME COM SUFIXO -AMB de proposito: no mesmo repositorio ja
-  existe o index.html da GOOD, e os dois se confundiam na
-  pasta de Downloads.
-
-  b9 — parte visual: logo da marca, favicon, icone de app
-  (da pra "adicionar a tela de inicio" no celular e abrir
-  como aplicativo), cores tiradas do proprio logo, e layout
-  que usa a tela larga do desktop em vez de uma coluna fina
-  no meio.
-
-  Continua SEM biblioteca externa: carrega em rede ruim de
-  galpao e nao quebra quando um CDN sai do ar.
-  =========================================================
--->
-<style>
-  /* ============ TEMA CLARO b17 — identidade AMBTotal ============
-     Pedido do Diego: manter as cores da AMB (roxo/laranja) mas
-     "mais clarinha", no formato da GOOD: banner colorido no topo
-     com titulo e VERSOES, cartoes brancos centralizados. */
-  :root {
-    --roxo:#561A9E; --roxo-claro:#7B3FC4; --magenta:#9F1254;
-    --laranja:#FD8B00; --laranja-esc:#e07500;
-    --fundo:#f5f2fb; --painel:#ffffff;
-    --borda:#e4dcf1; --texto:#241a35; --apagado:#71659a;
-    --verde:#1a7f37; --vermelho:#c93c40;
-  }
-  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
-  html, body { margin:0; }
-  body {
-    min-height:100vh; font-size:16px;
-    font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
-    background:var(--fundo); color:var(--texto);
-  }
-
-  /* ---------- banner (estilo GOOD, cores AMB) ---------- */
-  .banner { max-width:1100px; margin:14px auto 0; padding:16px 18px 15px;
-    display:grid; grid-template-columns:1fr auto 1fr;
-    align-items:center; column-gap:10px;
-    border-radius:16px; color:#fff; position:relative; text-align:center;
-    background:linear-gradient(135deg,var(--roxo) 0%,var(--roxo-claro) 60%,var(--magenta) 130%);
-    box-shadow:0 6px 22px rgba(86,26,158,.28); }
-  .banner h1 { margin:0; font-size:22px; letter-spacing:.3px; }
-  .banner .sub { font-size:13px; opacity:.92; margin-top:3px; }
-  .banner .ver { font-size:11.5px; opacity:.85; margin-top:6px; }
-  /* b25 - banner em grade: miolo (titulo) na celula do centro,
-     chips na celula da direita — o nome fica DEBAIXO do botao
-     (pedido b19) e NADA empurra o titulo pra baixo (pedido b25). */
-  .banner .miolo { grid-column:2; grid-row:1; }
-  .chips { grid-column:3; grid-row:1; justify-self:end; align-self:center;
-           display:flex; flex-direction:column; align-items:flex-end; gap:5px; }
-  .chips .linha-botoes { display:flex; gap:8px; align-items:center; }
-  .quem { font-size:12.5px; color:#fff; opacity:.95; }
-  .sair { background:rgba(255,255,255,.18); border:none; color:#fff;
-          border-radius:16px; padding:5px 12px; font-size:12px; cursor:pointer; }
-  .btn-topo { background:var(--laranja); color:#fff; border:none; border-radius:18px;
-              padding:7px 15px; font-size:13px; font-weight:800; cursor:pointer;
-              text-decoration:none; box-shadow:0 3px 10px rgba(0,0,0,.25); white-space:nowrap; }
-  @media (max-width:680px) {
-    .banner { display:block; }
-    .chips { margin-bottom:8px; }
-    .banner { margin:10px 10px 0; }
-  }
-
-  /* ---------- estrutura ---------- */
-  .area { padding:16px; max-width:1100px; margin:0 auto; }
-  .secao { background:var(--painel); border:1px solid var(--borda);
-           border-radius:14px; padding:18px; margin-bottom:16px;
-           box-shadow:0 2px 10px rgba(36,26,53,.05); }
-  .secao h3 { margin:0 0 12px; font-size:15px; }
-  .linha-busca { display:flex; gap:10px; }
-  .linha-busca .campo { flex:1; margin-bottom:0; }
-  .linha-busca .btn { width:auto; margin:0; padding:15px 26px; }
-  @media (max-width:560px) {
-    .linha-busca { flex-direction:column; }
-    .linha-busca .btn { width:100%; }
-  }
-  .dica { font-size:12.5px; color:var(--apagado); margin-top:12px; line-height:1.55; }
-
-  /* ---------- login ---------- */
-  .login-caixa { max-width:360px; margin:8vh auto 0; padding:0 18px; text-align:center; }
-  .logo { width:86px; height:86px; border-radius:20px; margin-bottom:14px;
-          box-shadow:0 8px 26px rgba(86,26,158,.30); }
-  .login-caixa h1 { font-size:21px; margin:0 0 4px; }
-  .login-caixa .sub { color:var(--apagado); font-size:13.5px; margin-bottom:22px; }
-
-  /* ---------- campos e botoes ---------- */
-  input, button { font-family:inherit; font-size:16px; }
-  .campo { width:100%; padding:14px; border-radius:12px; margin-bottom:10px;
-           border:2px solid var(--borda); background:#fff; color:var(--texto); }
-  .campo::placeholder { color:#a294bd; }
-  .campo:focus { outline:none; border-color:var(--laranja); }
-  .bipe { font-size:21px; text-align:center; letter-spacing:1px; font-weight:600; }
-  .btn { width:100%; padding:15px; border:none; border-radius:12px; margin-bottom:10px;
-         font-size:16px; font-weight:800; cursor:pointer; color:#fff;
-         background:linear-gradient(135deg,var(--laranja),var(--laranja-esc));
-         box-shadow:0 3px 14px rgba(253,139,0,.35); }
-  .btn:active { transform:translateY(1px); }
-  .btn:disabled { opacity:.5; box-shadow:none; }
-  .btn.roxo  { background:linear-gradient(135deg,var(--roxo-claro),var(--roxo)); box-shadow:0 3px 14px rgba(86,26,158,.30); }
-  .btn.cinza { background:#f0ecf7; color:#4a3b66; box-shadow:none; }
-  .btn.verde { background:linear-gradient(135deg,#2ea043,var(--verde)); box-shadow:0 3px 14px rgba(26,127,55,.25); }
-  .btn.verm  { background:linear-gradient(135deg,#e5484d,var(--vermelho)); box-shadow:0 3px 14px rgba(201,60,64,.25); }
-  .btn.peq   { width:auto; padding:9px 14px; font-size:13.5px; margin:4px 6px 4px 0; }
-
-  /* ---------- cartoes de resultado ---------- */
-  .card { background:var(--painel); border:1px solid var(--borda); border-radius:14px;
-          padding:16px; margin-bottom:12px; box-shadow:0 2px 10px rgba(36,26,53,.05); }
-  .card h2 { margin:0 0 10px; font-size:16px; }
-  .linha { display:flex; justify-content:space-between; gap:10px;
-           padding:7px 0; border-bottom:1px dashed var(--borda); font-size:14.5px; }
-  .linha:last-child { border-bottom:none; }
-  .rot { color:var(--apagado); }
-  .val { font-weight:700; text-align:right; word-break:break-word; }
-  .cand { background:#faf8fd; border:1px solid var(--borda); border-radius:12px;
-          padding:13px; margin-bottom:9px; }
-  .cand .nome { font-weight:800; margin-bottom:3px; }
-  .cand .meta { font-size:13px; color:var(--apagado); line-height:1.6; }
-  .itens { margin-top:8px; }
-  .acoes { margin-top:6px; }
-
-  /* ---------- selos ---------- */
-  .selo { display:inline-block; padding:2px 9px; border-radius:20px;
-          font-size:11px; font-weight:800; background:#efe9f8; color:#4a3b66;
-          vertical-align:middle; }
-  .selo.ml { background:#fff3bf; color:#7a5d00; }
-  .selo.tiktok { background:#ffe0ef; color:#a11c62; }
-  .selo.shopee { background:#ffe8d1; color:#a04d00; }
-  .selo.magalu { background:#dbe9ff; color:#1c4f9c; }
-  .selo.correios { background:#fef3c7; color:#8a6100; }
-  .selo.amazon { background:#e5e7eb; color:#374151; }
-  .selo.desconhecido { background:#eceaf1; color:#666; }
-
-  /* ---------- alertas ---------- */
-  .alerta { border-radius:12px; padding:13px 15px; margin-bottom:12px;
-            font-size:14.5px; line-height:1.55; border:1px solid; }
-  .alerta b { display:block; margin-bottom:3px; }
-  .alerta.azul     { background:#eef4ff; border-color:#c4d7fb; color:#1f3f77; }
-  .alerta.amarelo  { background:#fff8e1; border-color:#f3e2a0; color:#6d5200; }
-  .alerta.vermelho { background:#fdeeee; border-color:#f3c4c6; color:#7d2a2d; }
-  .ok { color:var(--verde); }
-  .erro { color:var(--vermelho); }
-  .aviso { font-size:13px; color:var(--apagado); line-height:1.6; margin-top:6px; }
-
-  video { width:100%; border-radius:12px; margin-bottom:10px; background:#000; }
-  .rodape { text-align:center; color:#a294bd; font-size:11.5px; padding:18px 0 26px; }
-  .esconde { display:none !important; }
-</style>
+  <meta charset="UTF-8">
+  <!-- b59: viewport SEM zoom — o estoquista bipa no celular e o pinch
+       atrapalhava; era assim no index anterior da AMB -->
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+  <meta name="theme-color" content="#1a0b2e">
+  <title>AMBTotal - Devoluções Marketplaces</title>
+  <!-- AMB Devol. b59 - tela portada da GOOD (modulos identicos + adaptador),
+       com o CSS e o app de celular (PWA) da AMB de volta -->
+  <link rel="stylesheet" href="styles.css?v=b59">
+  <!-- PWA da AMB: da pra "adicionar a tela de inicio" e abrir como aplicativo -->
+  <link rel="icon" type="image/png" href="icone-AMB.png">
+  <link rel="apple-touch-icon" href="icone-AMB.png">
+  <link rel="manifest" href="manifest-AMB.json">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Devolucoes AMB">
 </head>
 <body>
 
-<!-- ===================== LOGIN ===================== -->
-<div id="telaLogin">
-  <div class="login-caixa">
-    <img class="logo" src="logo-AMB.png" alt="AMBTotal Devoluções">
-    <h1>Devoluções</h1>
-    <div class="sub">triagem do galpao &middot; AMBTotal</div>
-    <input class="campo" id="usuario" placeholder="usuario"
-           autocapitalize="off" autocorrect="off" autocomplete="username">
-    <input class="campo" id="senha" type="password" placeholder="senha" autocomplete="current-password">
-    <button class="btn" id="btnEntrar">Entrar</button>
-    <div class="aviso erro esconde" id="erroLogin"></div>
-  </div>
-  <div class="rodape">AMBTotal &middot; sistema interno</div>
-</div>
-
-<!-- ===================== APP ===================== -->
-<div id="telaApp" class="esconde">
-  <div class="banner">
-    <div class="chips">
-      <div class="linha-botoes">
-        <a class="btn-topo" href="/amb/painel">&#128081; Painel Admin</a>
-        <button class="sair" id="btnSair">Sair</button>
-      </div>
-      <span class="quem" id="quemSou"></span>
+  <!-- TELA DE LOGIN -->
+  <div class="login-screen" id="loginScreen">
+    <header style="margin-bottom:20px;">
+      <img class="logo" src="logo-AMB.png" alt="AMBTotal Devolucoes" style="max-height:44px;vertical-align:middle;margin-right:8px;">
+      <h1 style="display:inline-block;vertical-align:middle;">AMBTotal Devoluções</h1>
+      <p>Faça login pra continuar</p>
+    </header>
+    <div class="card">
+      <h2>🔐 Login</h2>
+      <div class="login-erro" id="loginErro"></div>
+      <form class="login-form" id="loginForm" onsubmit="fazerLogin(event)">
+        <label for="loginUser">Usuário</label>
+        <input type="text" id="loginUser" required autocomplete="username" placeholder="Digite seu nome">
+        <label for="loginPass">Senha</label>
+        <input type="password" id="loginPass" required autocomplete="current-password" placeholder="Digite sua senha">
+        <button type="submit" id="btnLogin">Entrar</button>
+      </form>
     </div>
-    <div class="miolo">
-  <h1>&#128230; AMBTotal Devoluções</h1>
-    <div class="sub">Identificar venda + NF-e + Triagem</div>
-    <div class="ver">tela <b>b37</b> &middot; <span id="versaoServidor">servidor ...</span></div>
-  </div>
   </div>
 
-  <div class="area">
-    <!-- BUSCAR DEVOLUCAO -->
-    <div class="secao" id="blocoBipe">
-      <h3>&#128269; Buscar devolucao</h3>
-      <div class="linha-busca">
-        <input class="campo bipe" id="codigo" placeholder="bipe ou cole o codigo da etiqueta"
-               autocapitalize="characters" autocorrect="off" autocomplete="off" enterkeyhint="search">
-        <button class="btn" id="btnBuscar">Buscar</button>
+  <!-- APP PRINCIPAL -->
+  <div class="container" id="appContainer" style="display:none;">
+
+    <header>
+      <img class="logo" src="logo-AMB.png" alt="AMBTotal Devolucoes" style="max-height:44px;vertical-align:middle;margin-right:8px;">
+      <h1 style="display:inline-block;vertical-align:middle;">AMBTotal Devoluções</h1>
+      <p>Identificar venda + NF-e + Triagem</p>
+      <p style="font-size: 10px; color: #888; margin-top: 4px;">v3.32 (menu curto no celular) | <span id="serverVersion">checando...</span></p>
+      <div class="user-badge">
+        👤 <span id="userNome">-</span>
+        <a href="/amb/painel" id="btnPainelAdmin" style="display:none;background:#ffd700;color:#1d1d1f;padding:3px 10px;border-radius:10px;font-weight:700;margin-left:6px;">👑 Painel Admin</a>
+        <a href="#" onclick="fazerLogout(event)">sair</a>
       </div>
-      <div style="height:10px"></div>
-      <button class="btn roxo" id="btnCamera">&#128247; Bipar etiqueta com a camera</button>
-      <button class="btn cinza" id="btnOcr">&#128100; Ler o NOME do remetente pela camera (OCR)</button>
-      <video id="camera" class="esconde" playsinline muted></video>
-      <div class="dica">&#128161; Aceita: etiqueta <b>ML</b>, <b>Correios reverso</b> (AD/AP...BR),
-        <b>Shopee</b> (rastreio SPX, solicitacao ou pedido) ou o <b>NOME do remetente</b>
-        (ex: RENATONEVES &mdash; colado, como vem na etiqueta). TikTok e Amazon entram pelo nome.</div>
+    </header>
+
+    <div class="card">
+      <h2>🔍 Buscar devolução</h2>
+      <div class="input-group">
+        <input type="text" id="codigo"
+          placeholder="Bipe ou cole o codigo da etiqueta"
+          autocomplete="off" inputmode="numeric" />
+        <button id="btnBuscar" onclick="buscar()">Buscar</button>
+      </div>
+      <button type="button" onclick="abrirCameraScanner()"
+              style="width:100%; margin-top:10px; padding:12px; background:#1565c0; color:white; border:none; border-radius:10px; font-weight:700; font-size:14px; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:8px;">
+        📷 Bipar etiqueta com a câmera do celular
+      </button>
+      <button type="button" onclick="abrirOcrRemetente()"
+              style="width:100%; margin-top:8px; padding:12px; background:#6a1b9a; color:white; border:none; border-radius:10px; font-weight:700; font-size:14px; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:8px;">
+        👤 Ler NOME do remetente pela câmera (OCR)
+      </button>
+
+      <!-- v3.31 - painel do OCR do remetente (etiquetas Correios sem codigo util) -->
+      <div id="ocrPanel" style="display:none; margin-top:12px; border:2px solid #6a1b9a; border-radius:12px; padding:12px; background:#faf5ff;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+          <b style="color:#6a1b9a;">👤 Ler REMETENTE (OCR)</b>
+          <button type="button" onclick="fecharOcrRemetente()" style="background:#999; color:white; border:none; border-radius:8px; padding:6px 12px; cursor:pointer;">✕ Fechar</button>
+        </div>
+        <video id="ocrVideo" playsinline muted style="width:100%; border-radius:10px; background:#000;"></video>
+        <button type="button" onclick="capturarELerOcr()"
+                style="width:100%; margin-top:8px; padding:12px; background:#6a1b9a; color:white; border:none; border-radius:10px; font-weight:700; cursor:pointer;">
+          📸 Capturar e ler
+        </button>
+        <p id="ocrStatus" style="font-size:13px; margin:8px 0 0;">Abrindo câmera...</p>
+        <div id="ocrResultadoArea" style="display:none; margin-top:8px;">
+          <input type="text" id="ocrNome" placeholder="Nome lido (edite se precisar)"
+                 style="width:100%; padding:10px; border:1px solid #ccc; border-radius:8px; font-size:15px; box-sizing:border-box;" />
+          <button type="button" onclick="buscarNomeDoOcr()"
+                  style="width:100%; margin-top:8px; padding:12px; background:#2e7d32; color:white; border:none; border-radius:10px; font-weight:700; cursor:pointer;">
+            🔍 Buscar esse nome
+          </button>
+        </div>
+        <p style="font-size:11px; color:#888; margin:8px 0 0;">💡 Aproxima a câmera SO do bloco REMETENTE — leitura mais rapida e certeira. 1a vez baixa o leitor (~15MB).</p>
+      </div>
+      <p class="hint dica-formatos" onclick="this.classList.toggle('aberta')" title="toque para ver todos os formatos">
+        💡 Aceita: etiqueta ML, <b>Correios reverso</b> (AD/AP...BR), Shopee, <b>Magalu</b> (QR/Protocolo), chave DANFE, <b>número da NF</b> ou o <b>NOME do remetente</b> (ex: RENATONEVES — mesmo colado, como vem na etiqueta).
+      </p>
     </div>
 
-    <!-- ESTOQUE DE DEFEITOS -->
-    <div class="secao" style="border-left:4px solid var(--vermelho)">
-      <h3>&#128295; Estoque de defeitos</h3>
-      <div class="linha-busca">
-        <button class="btn cinza" style="flex:1" id="btnConsultarLocal">&#128205; Consultar localizacao</button>
-        <button class="btn verm" style="flex:1" id="btnLancarDefeito">&#10133; Lancar produto com defeito</button>
+    <!-- v3.96 - ESTOQUE DE DEFEITOS: fora da barra de busca, card proprio -->
+    <div class="card" style="border-left:5px solid #c62828;">
+      <h2 style="margin-bottom:10px;">🔧 Estoque de defeitos</h2>
+      <div style="display:flex; gap:8px; flex-wrap:wrap;">
+        <a href="/amb/defeitos-AMB.html" style="flex:1; min-width:180px; display:flex; padding:12px; background:#455a64; color:white; text-decoration:none; border-radius:10px; font-weight:700; font-size:14px; align-items:center; justify-content:center; gap:8px;">
+          📍 Consultar localização
+        </a>
+        <button type="button" onclick="abrirModalDefeito()" style="flex:1; min-width:180px; padding:12px; background:#c62828; color:white; border:none; border-radius:10px; font-weight:700; font-size:14px; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:8px;">
+          ➕ Lançar produto com defeito
+        </button>
       </div>
     </div>
 
-    <!-- RESULTADO -->
-    <div id="resultado"></div>
+    <div class="loading" id="loading">
+      <div class="spinner"></div>
+      <p style="margin-top: 12px; color: #666;">Consultando ML...</p>
+    </div>
+
+    <div class="resultado" id="resultado"></div>
+
   </div>
-</div>
 
-<script>
-/* =========================================================
-   Estado e utilidades
-   ========================================================= */
-const API = '/amb';
-let usuario = null, tipoUsuario = null;
-let ultimoCodigo = '';
-let paginaAtual = 1;
+  <!-- v4.08 - lightbox pra ampliar a imagem do produto (igual ao checkout) -->
+  <div id="zoomProduto" onclick="this.style.display='none'" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.85); z-index:10100; align-items:center; justify-content:center; cursor:zoom-out; padding:20px;">
+    <img id="zoomProdutoImg" src="" style="max-width:96%; max-height:96%; border-radius:10px;">
+  </div>
 
-const $ = (id) => document.getElementById(id);
-const esc = (t) => String(t == null ? '' : t)
-  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-  .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  <!-- v3.96 - MODAL: lancar produto com defeito (busca por nome/SKU/EAN) -->
+  <div class="modal-bg" id="modalDefeito">
+    <div class="modal" style="max-width: 560px;">
+      <h3>➕ Lançar produto com defeito</h3>
+      <p style="font-size:13px; color:#666; margin-bottom:10px;">Busca por <b>parte do nome</b>, SKU ou EAN e escolhe o produto certo na lista.</p>
 
-async function api(caminho, opcoes = {}) {
-  const r = await fetch(API + caminho, {
-    credentials: 'same-origin',
-    headers: { 'Content-Type': 'application/json' },
-    ...opcoes,
-  });
-  // Sessao caiu (o servico reinicia e desloga todo mundo):
-  // volta pro login em vez de mostrar erro tecnico.
-  if (r.status === 401) { mostrarLogin(); throw new Error('sessao'); }
-  return r.json();
-}
+      <div style="display:flex; gap:8px;">
+        <input type="text" id="defBusca" placeholder="Ex: arandela 60, KJDD-E-187, 7898..." style="flex:1; padding:11px; border:1px solid #ccc; border-radius:8px; font-size:15px;" onkeydown="if(event.key==='Enter'){event.preventDefault();buscarProdutoDefeito();}">
+        <button type="button" onclick="buscarProdutoDefeito()" style="background:#1565c0; color:#fff; border:none; border-radius:8px; padding:11px 18px; font-weight:700; cursor:pointer;">🔍</button>
+      </div>
+      <div id="defResultados" style="margin-top:10px; max-height:230px; overflow-y:auto;"></div>
 
-/* =========================================================
-   Login
-   ========================================================= */
-function mostrarLogin() {
-  $('telaApp').classList.add('esconde');
-  $('telaLogin').classList.remove('esconde');
-}
-function mostrarApp() {
-  $('telaLogin').classList.add('esconde');
-  $('telaApp').classList.remove('esconde');
-  $('quemSou').textContent = usuario + (tipoUsuario === 'admin' ? ' \u00b7 admin' : '');
-  $('codigo').focus();
-}
+      <div id="defEscolhido" style="display:none; margin-top:12px; background:#fff5f5; border:2px solid #ef9a9a; border-radius:10px; padding:12px;">
+        <div style="display:flex; gap:10px; align-items:flex-start;">
+          <div id="defImg"></div>
+          <div style="flex:1; min-width:0;">
+        <div style="font-size:14px;"><b>Produto:</b> <span id="defNome">-</span></div>
+        <div style="font-size:12px; color:#666; margin-top:3px;">SKU <code id="defSku">-</code> <span id="defEan"></span></div>
+          </div>
+        </div>
+        <div style="display:flex; gap:10px; margin-top:10px;">
+          <div style="flex:2;">
+            <label style="font-size:12px; color:#555; font-weight:600;">Qual o defeito?</label>
+            <input type="text" id="defProblema" placeholder="Ex: globo trincado, não acende, falta peça" style="width:100%; box-sizing:border-box; padding:9px; border:1px solid #ccc; border-radius:8px; font-size:14px;">
+          </div>
+          <div style="width:90px;">
+            <label style="font-size:12px; color:#555; font-weight:600;">Qtd</label>
+            <input type="number" id="defQtd" value="1" min="1" max="999" style="width:100%; box-sizing:border-box; padding:9px; border:1px solid #ccc; border-radius:8px; font-size:14px;">
+          </div>
+        </div>
+        <div style="margin-top:8px;">
+          <label style="font-size:12px; color:#555; font-weight:600;">📍 Onde vai guardar <span style="color:#c62828;">*obrigatório</span></label>
+          <input type="text" id="defLocal" placeholder="Ex: DEF-A3, prateleira 12..." style="width:100%; box-sizing:border-box; padding:9px; border:1px solid #ccc; border-radius:8px; font-size:14px;">
+        </div>
+      </div>
 
-async function entrar() {
-  const u = $('usuario').value.trim();
-  const s = $('senha').value;
-  if (!u || !s) return;
-  $('btnEntrar').disabled = true;
-  $('erroLogin').classList.add('esconde');
-  try {
-    const r = await fetch(API + '/api/auth/login', {
-      method: 'POST', credentials: 'same-origin',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ usuario: u, senha: s }),
-    }).then(x => x.json());
-    if (!r.ok) {
-      $('erroLogin').textContent = r.erro || 'não consegui entrar';
-      $('erroLogin').classList.remove('esconde');
-      return;
+      <p id="defMsg" style="font-size:13px; margin:8px 0 0;"></p>
+
+      <div class="modal-acoes" style="margin-top:14px;">
+        <button type="button" onclick="fecharModalDefeito()" style="background:#999; color:#fff; border:none; border-radius:10px; padding:12px 20px; font-weight:700; cursor:pointer;">Cancelar</button>
+        <button type="button" id="defBtnSalvar" onclick="salvarDefeitoManual()" disabled style="background:#c62828; color:#fff; border:none; border-radius:10px; padding:12px 20px; font-weight:800; cursor:pointer; opacity:.5;">💾 Lançar defeito</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL CONFIRMAR APROVAR -->
+  <div class="modal-bg" id="modalAprovar">
+    <div class="modal" style="max-width: 520px;">
+      <h3>✅ Confirmar inclusão no estoque</h3>
+      <p id="modalAprovarMsg" style="font-size: 14px; color: #555;">Confira o produto e bipe o código de barras de cada unidade:</p>
+
+      <!-- Detalhes dos produtos esperados -->
+      <div style="background:#f5f5f7;padding:12px;border-radius:8px;font-size:13px;">
+        <div style="display:flex; justify-content:flex-end; margin-bottom:6px;">
+          <button onclick="escolherImpressoraEtiqueta()" style="background:#455a64; color:#fff; border:none; border-radius:6px; padding:6px 12px; font-size:12px; cursor:pointer;" title="Escolhe (uma vez por computador) a Zebra que imprime a etiqueta 4x2,5 dos produtos">🖨 Zebra etiqueta</button>
+        </div>
+        <div id="modalAprovarDetalhes"></div>
+      </div>
+
+      <!-- Area de BIPAGEM -->
+      <div id="bipagemArea" style="margin-top: 16px;">
+        <!-- Mensagem de aviso (sobreposta - quando sem EAN ou loading) -->
+        <div id="bipagemAviso" style="display:none; padding:14px; border-radius:10px; text-align:center; margin-bottom:10px;"></div>
+
+        <!-- Conteudo principal da bipagem -->
+        <div id="bipagemConteudo">
+        <div id="bipagemProgresso" style="text-align:center; margin-bottom:10px;">
+          <div style="font-size: 13px; color: #666; margin-bottom: 4px;">Progresso da bipagem</div>
+          <div id="bipagemContador" style="font-size: 28px; font-weight: 800; color: #2e7d32;">0 / 0</div>
+        </div>
+
+        <!-- BOTAO CAMERA EM DESTAQUE (no topo, verde grande) -->
+        <button type="button" onclick="abrirCameraBipagem()"
+                style="width:100%; padding:18px; margin-bottom:10px; background:linear-gradient(135deg,#43a047,#2e7d32); color:white; border:none; border-radius:12px; font-weight:800; font-size:18px; cursor:pointer; box-shadow:0 4px 12px rgba(46,125,50,0.3); display:flex; align-items:center; justify-content:center; gap:10px;">
+          <span style="font-size:28px;">📷</span>
+          <span>USAR CÂMERA DO CELULAR</span>
+        </button>
+
+        <div style="text-align:center; font-size:12px; color:#999; margin-bottom:10px;">
+          ─── ou bipe com leitor USB ───
+        </div>
+
+        <div style="background:#e3f2fd; border:2px dashed #1565c0; border-radius:10px; padding:14px;">
+          <label style="display:block; font-size:13px; font-weight:700; color:#1565c0; margin-bottom:6px;">
+            ⌨️ Leitor USB / Digitar:
+          </label>
+          <input type="text" id="bipagemInput"
+                 placeholder="Aguardando bipagem..."
+                 inputmode="numeric"
+                 style="width:100%; padding:12px 14px; font-size:18px; font-family:'Courier New',monospace; font-weight:700; border:2px solid #1565c0; border-radius:8px; background:white;"
+                 autocomplete="off">
+        </div>
+
+        <!-- Erro de bipagem (1a vez) -->
+        <div id="bipagemErro" style="display:none; margin-top:10px; background:#ffebee; border:1px solid #c62828; border-radius:8px; padding:12px;">
+          <div style="font-size:14px; font-weight:700; color:#c62828; margin-bottom:4px;">
+            ❌ Código bipado não confere
+          </div>
+          <div style="font-size:12px; color:#555;">
+            Esperado: <strong id="bipagemEsperado">-</strong><br>
+            Bipado: <strong id="bipagemRecebido">-</strong>
+          </div>
+          <div style="font-size:11px; color:#999; margin-top:6px;">Bipe novamente o produto correto.</div>
+        </div>
+
+        <!-- Forcar com observacao (aparece na 2a falha) -->
+        <div id="bipagemForcar" style="display:none; margin-top:10px; background:#fff3e0; border:2px solid #f57c00; border-radius:8px; padding:14px;">
+          <div style="font-size:14px; font-weight:700; color:#e65100; margin-bottom:8px;">
+            ⚠️ 2 erros de bipagem - você pode finalizar com observação
+          </div>
+          <label style="display:block; font-size:12px; color:#555; margin-bottom:4px;">
+            Explique o motivo (mínimo 20 caracteres):
+          </label>
+          <textarea id="bipagemObservacao" rows="3"
+                    placeholder="Ex: produto com etiqueta danificada, codigo de barras ilegivel..."
+                    style="width:100%; padding:10px; font-size:13px; border:1px solid #f57c00; border-radius:6px; resize:vertical;"
+                    oninput="atualizarBotaoForcar()"></textarea>
+          <div id="bipagemObsContador" style="font-size:11px; color:#999; text-align:right; margin-top:2px;">0 / 20</div>
+          <button id="btnForcar" onclick="finalizarComObservacao()"
+                  disabled
+                  style="width:100%; margin-top:8px; padding:10px; background:#f57c00; color:white; border:none; border-radius:6px; font-weight:700; cursor:pointer; opacity:0.5;">
+            ✅ OK - Finalizar com observação
+          </button>
+        </div>
+
+        <!-- v3.17.0: Botao DEVOLUCAO PARCIAL (aparece apenas apos bipar pelo menos 1 e antes de completar tudo) -->
+        <button id="btnDevolucaoParcial" type="button" onclick="iniciarFluxoParcial()"
+                style="display:none; width:100%; margin-top:14px; padding:14px; background:linear-gradient(135deg,#ff9800,#e65100); color:white; border:none; border-radius:10px; font-weight:700; font-size:14px; cursor:pointer; box-shadow:0 3px 8px rgba(245,124,0,0.3); align-items:center; justify-content:center; gap:8px;">
+          <span style="font-size:20px;">⚠️</span>
+          <span>DEVOLUÇÃO PARCIAL</span>
+          <small style="display:block; font-size:11px; font-weight:400; opacity:0.95;">cliente devolveu menos itens</small>
+        </button>
+        </div><!-- /bipagemConteudo -->
+      </div>
+
+      <p style="font-size:11px; margin-top:12px; color:#999;">
+        Após confirmar, o produto será marcado como aprovado e Diego emitirá a NF de devolução no Bling.
+      </p>
+
+      <div class="modal-acoes">
+        <button class="btn-cancelar" onclick="fecharModal('modalAprovar')">Cancelar</button>
+        <button class="btn-action" id="btnConfirmarAprovar" disabled
+                style="margin:0;padding:12px;opacity:0.5;cursor:not-allowed;"
+                onclick="confirmarAprovar()">
+          ✅ Confirmar
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- v3.17.0 - MODAL DECISAO PARCIAL (3 opcoes) -->
+  <div class="modal-bg" id="modalDecisaoParcial">
+    <div class="modal" style="max-width: 480px;">
+      <h3>⚠️ Devolução Parcial</h3>
+      <p style="font-size:14px; color:#555;">
+        Você bipou <strong id="parcialBipados">?</strong> de <strong id="parcialTotal">?</strong> itens da NF.
+      </p>
+      <p style="font-size:14px; color:#555;">O que aconteceu?</p>
+
+      <div style="display:flex; flex-direction:column; gap:10px; margin-top:16px;">
+        <button type="button" onclick="parcialFaltouBipar()"
+                style="padding:14px; background:#1565c0; color:white; border:none; border-radius:10px; font-weight:700; font-size:14px; cursor:pointer; text-align:left;">
+          🔄 Faltou bipar
+          <small style="display:block; font-size:11px; font-weight:400; opacity:0.9; margin-top:2px;">vou voltar e bipar os itens que faltam</small>
+        </button>
+
+        <button type="button" onclick="parcialConfirmarParcial()"
+                style="padding:14px; background:linear-gradient(135deg,#ff9800,#e65100); color:white; border:none; border-radius:10px; font-weight:700; font-size:14px; cursor:pointer; text-align:left;">
+          📦 Cliente devolveu PARCIAL
+          <small style="display:block; font-size:11px; font-weight:400; opacity:0.95; margin-top:2px;">vai pedir 6 fotos pra documentar (sem email)</small>
+        </button>
+
+        <button type="button" onclick="fecharModal('modalDecisaoParcial')"
+                style="padding:12px; background:#f0f0f0; color:#555; border:none; border-radius:10px; font-weight:600; font-size:14px; cursor:pointer;">
+          ✖ Cancelar
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- v3.17.0 - MODAL CONFIRMACAO FINAL PARCIAL (apos fotos) -->
+  <div class="modal-bg" id="modalConfirmacaoParcial">
+    <div class="modal" style="max-width: 500px;">
+      <h3>📦 Confirmar Devolução Parcial</h3>
+      <div style="background:#fff3e0; border:1px solid #f57c00; padding:12px; border-radius:8px; margin-bottom:14px;">
+        <div style="font-size:14px; color:#e65100; font-weight:700;">
+          Atenção! Você está confirmando que voltaram apenas
+          <span id="confirmacaoBipados">?</span> de
+          <span id="confirmacaoTotal">?</span> itens.
+        </div>
+        <div style="font-size:12px; color:#666; margin-top:6px;">
+          ✅ <span id="confirmacaoFotosCount">0</span> fotos anexadas como evidência
+        </div>
+      </div>
+
+      <label style="display:block; font-size:13px; color:#555; margin-bottom:4px;">
+        Observação (opcional):
+      </label>
+      <textarea id="parcialObservacao" rows="3"
+                placeholder="Algum comentário adicional? (não obrigatório)"
+                style="width:100%; padding:10px; font-size:13px; border:1px solid #ccc; border-radius:6px; resize:vertical; font-family:inherit;"></textarea>
+
+      <p style="font-size:11px; color:#999; margin-top:10px;">
+        🛡️ As fotos servirão como prova caso seja necessário contestar com o marketplace.
+      </p>
+
+      <div class="modal-acoes">
+        <button class="btn-cancelar" onclick="fecharModal('modalConfirmacaoParcial')">Cancelar</button>
+        <button class="btn-action" id="btnEncerrarParcial"
+                style="margin:0;padding:12px;background:linear-gradient(135deg,#ff9800,#e65100);"
+                onclick="encerrarParcial()">
+          ✅ Sim, Encerrar
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- v3.18.0 - MODAL PRODUTO DIVERGENTE (cliente recebeu produto trocado) -->
+  <div class="modal-bg" id="modalDivergente">
+    <div class="modal" style="max-width: 520px;">
+      <h3>🔄 Produto Divergente</h3>
+      <p style="font-size: 13px; color: #555; margin-bottom: 8px;">
+        O produto que voltou é <strong>diferente</strong> do que estava na NF.
+      </p>
+
+      <!-- Esperado (na NF) vs Recebido -->
+      <div style="background:#fff3e0; border:1px solid #ff9800; padding:10px; border-radius:8px; margin-bottom:14px;">
+        <div style="font-size:11px; color:#e65100; font-weight:700; text-transform:uppercase; letter-spacing:0.5px;">
+          📋 Esperado na NF (o que o cliente comprou)
+        </div>
+        <div id="divergenteEsperadoInfo" style="font-size:13px; margin-top:4px;">—</div>
+      </div>
+
+      <!-- Bipar EAN do produto que voltou -->
+      <div style="background:#e8eaf6; border:2px dashed #5e35b1; padding:14px; border-radius:8px; margin-bottom:14px;">
+        <label style="display:block; font-size:13px; font-weight:700; color:#311b92; margin-bottom:6px;">
+          🔍 Bipa o EAN do produto que <strong>de fato</strong> voltou:
+        </label>
+        <input type="text" id="divergenteEAN"
+               placeholder="EAN ou SKU do produto recebido"
+               inputmode="numeric"
+               style="width:100%; padding:12px 14px; font-size:18px; font-family:'Courier New',monospace; font-weight:700; border:2px solid #5e35b1; border-radius:8px; background:white;"
+               autocomplete="off"
+               onkeydown="if(event.key==='Enter'){event.preventDefault(); buscarProdutoDivergente();}">
+        <button type="button" onclick="buscarProdutoDivergente()"
+                style="width:100%; margin-top:8px; padding:10px; background:#5e35b1; color:white; border:none; border-radius:6px; font-weight:700; cursor:pointer;">
+          🔍 Buscar produto no Bling
+        </button>
+      </div>
+
+      <!-- Resultado da busca (preenchido por buscarProdutoDivergente) -->
+      <div id="divergenteResultado" style="display:none; background:#e8f5e9; border:1px solid #2e7d32; padding:12px; border-radius:8px; margin-bottom:14px;">
+        <div style="font-size:11px; color:#1b5e20; font-weight:700; text-transform:uppercase; letter-spacing:0.5px;">
+          ✅ Produto que voltou (identificado no Bling)
+        </div>
+        <div id="divergenteRecebidoInfo" style="font-size:13px; margin-top:4px;">—</div>
+      </div>
+
+      <!-- Quantidade -->
+      <div style="margin-bottom:14px;">
+        <label style="display:block; font-size:12px; color:#555; margin-bottom:4px;">
+          Quantidade que voltou:
+        </label>
+        <input type="number" id="divergenteQtd" value="1" min="1" max="999"
+               style="width:100px; padding:8px 10px; font-size:14px; border:1px solid #ccc; border-radius:6px;">
+      </div>
+
+      <!-- Observacao opcional -->
+      <label style="display:block; font-size:12px; color:#555; margin-bottom:4px;">
+        Observação (opcional):
+      </label>
+      <textarea id="divergenteObs" rows="2"
+                placeholder="Algo a destacar? (não obrigatório)"
+                style="width:100%; padding:8px 10px; font-size:13px; border:1px solid #ccc; border-radius:6px; resize:vertical; font-family:inherit;"></textarea>
+
+      <p style="font-size:11px; margin-top:10px; color:#999;">
+        📸 Em seguida você vai tirar <strong>3 fotos mínimas</strong>: produto recebido, NF, etiqueta.
+      </p>
+
+      <div class="modal-acoes">
+        <button class="btn-cancelar" onclick="fecharModal('modalDivergente')">Cancelar</button>
+        <button class="btn-action" id="btnContinuarDivergente" disabled
+                style="margin:0; padding:12px; opacity:0.5; cursor:not-allowed; background:linear-gradient(135deg,#7b1fa2,#4a148c);"
+                onclick="continuarDivergenteFotos()">
+          📷 Continuar (tirar fotos)
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- v3.18.0 - MODAL CONFIRMACAO FINAL DIVERGENTE (apos fotos) -->
+  <div class="modal-bg" id="modalConfirmacaoDivergente">
+    <div class="modal" style="max-width: 500px;">
+      <h3>🔄 Confirmar Produto Divergente</h3>
+      <div style="background:#f3e5f5; border:1px solid #7b1fa2; padding:12px; border-radius:8px; margin-bottom:14px;">
+        <div style="font-size:12px; color:#4a148c; margin-bottom:4px;"><strong>Esperado (NF):</strong></div>
+        <div id="confirmacaoDivEsperado" style="font-size:13px; margin-bottom:8px;">—</div>
+        <div style="font-size:12px; color:#4a148c; margin-bottom:4px;"><strong>Voltou de fato:</strong></div>
+        <div id="confirmacaoDivRecebido" style="font-size:13px;">—</div>
+        <div style="font-size:11px; color:#7b1fa2; margin-top:8px;">
+          ✅ <span id="confirmacaoDivFotosCount">0</span> fotos anexadas
+        </div>
+      </div>
+
+      <p style="font-size:11px; color:#999; margin-top:10px;">
+        🛡️ Diego vai analisar caso a caso (cancelar venda, ajustar estoque, contestar com cliente, etc).
+      </p>
+
+      <div class="modal-acoes">
+        <button class="btn-cancelar" onclick="fecharModal('modalConfirmacaoDivergente')">Cancelar</button>
+        <button class="btn-action" id="btnEncerrarDivergente"
+                style="margin:0; padding:12px; background:linear-gradient(135deg,#7b1fa2,#4a148c);"
+                onclick="encerrarDivergente()">
+          ✅ Sim, Registrar
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL DESCRICAO PROBLEMA (entra antes de abrir camera) -->
+  <div class="modal-bg" id="modalProblema">
+    <div class="modal modal-fotos">
+      <h3>⚠️ Reportar problema</h3>
+      <p>Descreva o problema (opcional) e tire <strong>pelo menos 6 fotos</strong>: caixa fechada (1-2), produto (4) e etiqueta (1).</p>
+
+      <textarea id="problemaDescricao" placeholder="Qual o defeito? Ex: globo trincado, falta parafuso, não acende, fiação solta..."></textarea>
+
+      <div style="display:flex; gap:10px; margin:8px 0;">
+        <div style="flex:1;">
+          <label style="font-size:12px; color:#555; font-weight:600;">📍 Onde vai guardar <span style="color:#c62828;">*obrigatório</span></label>
+          <input type="text" id="problemaLocal" placeholder="Ex: DEF-A3, prateleira 12..." style="width:100%; box-sizing:border-box; padding:8px; border:1px solid #ccc; border-radius:8px; font-size:14px;">
+        </div>
+        <div style="width:110px;">
+          <label style="font-size:12px; color:#555; font-weight:600;">Qtd c/ defeito</label>
+          <input type="number" id="problemaQtd" value="1" min="1" max="999" style="width:100%; box-sizing:border-box; padding:8px; border:1px solid #ccc; border-radius:8px; font-size:14px;">
+        </div>
+      </div>
+
+      <!-- v3.99 - JA TENHO ESTE SKU EM DEFEITO? (canibalizar peca) -->
+      <div id="jaTenhoDefeito" style="display:none; margin:10px 0; border:2px solid #455a64; border-radius:10px; padding:10px; background:#eceff1;">
+        <b style="font-size:13px; color:#263238;">🔧 Você já tem este SKU em defeito:</b>
+        <div id="jaTenhoLista" style="margin-top:6px;"></div>
+        <div style="margin-top:8px; padding-top:8px; border-top:1px dashed #90a4ae;">
+          <label style="font-size:12px; color:#37474f;">
+            <input type="checkbox" id="chkConsertei" onchange="toggleConserto()"> <b>Consegui consertar este produto</b> (vai pro estoque, não pro defeito)
+          </label>
+          <div id="boxConserto" style="display:none; margin-top:8px;">
+            <label style="font-size:12px; color:#555; font-weight:600;">Qual peça você usou?</label>
+            <input type="text" id="conPeca" placeholder="Ex: fiação, soquete, globo, parafuso" style="width:100%; box-sizing:border-box; padding:8px; border:1px solid #ccc; border-radius:8px; font-size:14px;">
+            <label style="font-size:12px; color:#555; font-weight:600; display:block; margin-top:6px;">De qual unidade tirou?</label>
+            <select id="conDoador" style="width:100%; padding:8px; border:1px solid #ccc; border-radius:8px; font-size:14px;"></select>
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-acoes">
+        <button class="btn-cancelar" onclick="fecharModal('modalProblema')">Cancelar</button>
+        <button class="triagem-btn-problema btn-action" onclick="abrirCamera()">
+          📷 Abrir câmera
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- CAMERA FULLSCREEN -->
+  <div class="camera-overlay" id="cameraOverlay">
+    <div class="camera-header">
+      <div class="camera-counter" id="cameraCounter">0 fotos · mínimo 6</div>
+      <button class="camera-close" onclick="fecharCamera()">✕</button>
+    </div>
+    <video class="camera-video" id="cameraVideo" autoplay playsinline muted></video>
+    <canvas class="camera-canvas" id="cameraCanvas"></canvas>
+    <div class="camera-footer">
+      <div class="camera-thumbs" id="cameraThumbs"></div>
+      <div class="camera-controls">
+        <button class="camera-capture" id="cameraCapture" onclick="capturarFoto()">
+          <div class="camera-capture-inner"></div>
+        </button>
+        <button class="camera-finalizar" id="cameraFinalizar" disabled onclick="finalizarFotos()">
+          📨 Enviar
+        </button>
+      </div>
+      <div class="camera-hint" id="cameraHint">Toque pra fotografar - mantenha tudo a mostra</div>
+    </div>
+  </div>
+
+  <!-- CAMERA SCANNER FULLSCREEN (bipar etiqueta) -->
+  <div id="scannerOverlay" style="display:none; position:fixed; inset:0; background:#000; z-index:10000; flex-direction:column;">
+    <div style="display:flex; justify-content:space-between; align-items:center; padding:14px 16px; background:rgba(0,0,0,0.85); color:white; flex-shrink:0;">
+      <div style="font-size:14px; font-weight:700;">📷 Bipar etiqueta</div>
+      <button onclick="fecharCameraScanner()"
+              style="background:#e53935; color:white; border:none; width:40px; height:40px; border-radius:50%; font-size:22px; font-weight:700; cursor:pointer;">✕</button>
+    </div>
+    <div style="flex:1; position:relative; overflow:hidden; background:#000;">
+      <video id="scannerVideo" autoplay playsinline muted
+             style="width:100%; height:100%; object-fit:cover;"></video>
+      <!-- mira -->
+      <div style="position:absolute; top:50%; left:10%; right:10%; height:2px; background:#ff1744; box-shadow:0 0 20px #ff1744; transform:translateY(-50%);"></div>
+      <div style="position:absolute; top:30%; bottom:30%; left:10%; right:10%; border:2px dashed rgba(255,255,255,0.4); border-radius:12px; pointer-events:none;"></div>
+      <!-- status flutuante -->
+      <div id="scannerStatus" style="position:absolute; bottom:20px; left:50%; transform:translateX(-50%); background:rgba(0,0,0,0.85); color:white; padding:10px 18px; border-radius:20px; font-size:13px; max-width:90%; text-align:center;">
+        Aponte para o código de barras
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <!-- ============================================================
+       MODULOS JS - ordem importa
+       1. helpers   -> nao depende de nada
+       2. auth      -> usa toast/escapeHtml
+       3. scanner   -> usa toast, beepOk/Erro
+       4. camera    -> usa toast
+       5. bipagem   -> usa toast, beepOk/Erro, escapeHtml
+       6. busca     -> usa toast, escapeHtml, moeda, dataFmt, traduz*
+       7. triagem   -> usa bipagemEstado, fecharModal, etc
+       8. app       -> entry point (DOM refs, event listeners, init)
+       ============================================================ -->
+  <!-- adaptador de caminho: TEM que vir antes dos modulos -->
+  <script src="js-AMB/base-amb.js?v=b59"></script>
+  <script src="js-AMB/helpers.js?v=b59"></script>
+  <script src="js-AMB/auth.js?v=b59"></script>
+  <script src="js-AMB/scanner.js?v=b59"></script>
+  <script src="js-AMB/camera.js?v=b59"></script>
+  <script src="js-AMB/bipagem.js?v=b59"></script>
+  <script src="js-AMB/busca.js?v=b59"></script>
+  <script src="https://cdn.jsdelivr.net/npm/qz-tray@2.2.4/qz-tray.js"></script>
+  <script src="js-AMB/etiqueta.js?v=b59"></script>
+  <script src="js-AMB/triagem.js?v=b59"></script>
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+  <script src="js-AMB/ocr.js?v=b59"></script>
+  <script src="js-AMB/app.js?v=b59"></script>
+
+  <!-- v3.96 - lancar produto com defeito (busca por parte do nome) -->
+  <script>
+    var _defProdutoEscolhido = null;
+
+    function abrirZoomProduto(src) {
+      if (!src) return;
+      document.getElementById('zoomProdutoImg').src = src;
+      var z = document.getElementById('zoomProduto');
+      z.style.display = 'flex';
     }
-    usuario = r.usuario; tipoUsuario = r.tipo;
-    $('senha').value = '';
-    mostrarApp();
-  } catch (e) {
-    $('erroLogin').textContent = 'sem conexao com o servidor';
-    $('erroLogin').classList.remove('esconde');
-  } finally {
-    $('btnEntrar').disabled = false;
-  }
-}
 
-async function sair() {
-  try { await fetch(API + '/api/auth/logout', { method: 'POST', credentials: 'same-origin' }); } catch (e) {}
-  usuario = null; limpar(); mostrarLogin();
-}
-
-/* =========================================================
-   Busca / identificacao
-   ========================================================= */
-function limpar() {
-  $('resultado').innerHTML = '';
-  paginaAtual = 1;
-}
-
-async function buscar(pagina) {
-  const codigo = $('codigo').value.trim();
-  if (!codigo) return;
-  ultimoCodigo = codigo;
-  paginaAtual = pagina || 1;
-
-  $('btnBuscar').disabled = true;
-  $('resultado').innerHTML = '<div class="card">procurando...</div>';
-  try {
-    const r = await api('/api/triagem/identificar?codigo=' +
-      encodeURIComponent(codigo) + '&pagina=' + paginaAtual);
-    desenhar(r);
-  } catch (e) {
-    if (e.message !== 'sessao') {
-      $('resultado').innerHTML = '<div class="alerta vermelho">sem conexao. tente de novo.</div>';
+    function abrirModalDefeito() {
+      _defProdutoEscolhido = null;
+      document.getElementById('defBusca').value = '';
+      document.getElementById('defResultados').innerHTML = '';
+      document.getElementById('defEscolhido').style.display = 'none';
+      if (document.getElementById('defImg')) document.getElementById('defImg').innerHTML = '';
+      document.getElementById('defProblema').value = '';
+      document.getElementById('defLocal').value = '';
+      document.getElementById('defQtd').value = '1';
+      document.getElementById('defMsg').textContent = '';
+      var b = document.getElementById('defBtnSalvar');
+      b.disabled = true; b.style.opacity = '.5';
+      document.getElementById('modalDefeito').classList.add('show');
+      setTimeout(function () { document.getElementById('defBusca').focus(); }, 100);
     }
-  } finally {
-    $('btnBuscar').disabled = false;
-  }
-}
 
-function desenhar(r) {
-  let h = '';
-
-  /* RECADO primeiro, sempre. O aviso tem que chegar ANTES de o
-     estoquista mexer na caixa — depois nao adianta. */
-  if (r.recado) {
-    h += '<div class="alerta vermelho"><b>&#9888;&#65039; RECADO PARA VOCE</b>' +
-         esc(r.recado.texto) + '</div>';
-  }
-
-  /* Ja triado: evita registrar a mesma caixa duas vezes. */
-  if (r.ja_triado && r.triagem_anterior) {
-    const t = r.triagem_anterior;
-    h += '<div class="alerta amarelo"><b>&#9888;&#65039; ESTA CAIXA JA FOI TRIADA</b>' +
-         'por ' + esc(t.funcionario || '?') + ' em ' +
-         esc(String(t.criado_em || '').slice(0, 16).replace('T', ' ')) +
-         ' &middot; status ' + esc(t.status || '?') + '</div>';
-  }
-
-  if (!r.encontrado) {
-    h += '<div class="alerta azul"><b>Não identifiquei esta caixa</b>' +
-         'Ja tentei: ' + (r.tentativas || []).map(t => esc(t.via)).join(', ') + '.<br><br>' +
-         'Se a etiqueta for de TikTok ou Amazon, digite o <b>nome do remetente</b> ' +
-         'exatamente como esta impresso.</div>' +
-         '<button class="btn cinza" onclick="limpar()">Limpar</button>';
-    $('resultado').innerHTML = h;
-    return;
-  }
-
-  /* MOTIVO da devolucao — a informacao que muda o que o
-     estoquista faz com a caixa. Vem colorido do servidor. */
-  if (r.motivo_devolucao) {
-    const m = r.motivo_devolucao;
-    h += '<div class="alerta" style="border-color:' + esc(m.cor || '#616161') +
-         ';background:rgba(255,255,255,.05)"><b>' + esc(m.titulo) + '</b>' + esc(m.detalhe || '') +
-         ((m.pontos_do_mediador || []).length
-           ? '<br><br>' + m.pontos_do_mediador.map(x => '&bull; ' + esc(x)).join('<br>') : '') +
-         (m.sem_custo_pra_voce ? '<br><br>&#128176; O ML disse que <b>você não paga nada</b> neste caso.' : '') +
-         (m.pacote_consolidado ? '<br>&#128230; Pacote CONSOLIDADO: pode ter mais de uma devolucao dentro.' : '') +
-         '</div>';
-  }
-  if (r.nf_devolucao && r.nf_devolucao.emitida) {
-    h += '<div class="alerta azul"><b>&#9989; NF de devolucao JA EMITIDA</b>' +
-         (r.nf_devolucao.nf ? 'Nota ' + esc(r.nf_devolucao.nf.numero) + ' de ' +
-           esc(String(r.nf_devolucao.nf.dataEmissao || '').slice(0, 10)) : '') +
-         ' &mdash; não precisa emitir de novo.</div>';
-  }
-  if (r.reclamacao) {
-    h += '<a class="btn roxo" style="display:block;text-align:center;text-decoration:none" ' +
-         'href="' + esc(r.reclamacao.url) + '" target="_blank" rel="noopener">' +
-         esc(r.reclamacao.rotulo) + '</a>';
-    if (r.reclamacao.copiar) {
-      h += '<button class="btn cinza" onclick="navigator.clipboard.writeText(\'' + esc(r.reclamacao.copiar) +
-           '\');this.textContent=\'copiado!\'">copiar ' + esc(r.reclamacao.copiar) + '</button>';
+    function fecharModalDefeito() {
+      document.getElementById('modalDefeito').classList.remove('show');
     }
-  }
 
-  /* Devolucao SHOPEE identificada pelo proxy */
-  if (r.devolucao_shopee) {
-    const ds = r.devolucao_shopee;
-    h += '<div class="card"><h2>Devolucao identificada ' +
-         '<span class="selo shopee">Shopee</span></h2>' +
-         linha('Pedido', ds.pedido) +
-         linha('Solicitacao', ds.return_sn) +
-         linha('Rastreio', ds.tracking) +
-         linha('Status', ds.status) + '</div>';
-    h += botoesConfirmar({ marketplace: 'shopee', order_id: ds.pedido, tracking: ds.tracking });
-    $('resultado').innerHTML = h;
-    return;
-  }
-
-  /* Achou pelo rastreio do ML: e certeza, nao candidato. */
-  if (r.devolucao) {
-    const d = r.devolucao;
-    h += '<div class="card"><h2>Devolucao identificada ' +
-         '<span class="selo ' + esc(r.marketplace) + '">' + esc(r.marketplace_nome) + '</span></h2>' +
-         linha('Pedido', d.order_id) +
-         linha('Rastreio', d.tracking) +
-         linha('Status do envio', d.status_devolucao) +
-         linha('Dinheiro', d.status_money === 'refunded' ? 'ja estornado ao cliente'
-               : (d.status_money === 'retained' ? 'retido com você' : d.status_money)) +
-         '</div>';
-    h += botoesConfirmar({
-      marketplace: r.marketplace, order_id: d.order_id, tracking: d.tracking,
-      shipment_id: d.shipment_devolucao,
-    });
-    $('resultado').innerHTML = h;
-    return;
-  }
-
-  /* Achou por nome: sao CANDIDATOS, quem decide e o estoquista. */
-  if (r.busca_generica) {
-    h += '<div class="alerta amarelo"><b>Busca muito ampla</b>' +
-         r.total_encontrados + ' notas tem esse texto no nome. ' +
-         'Digite o <b>nome completo</b> do remetente que esta na etiqueta.</div>';
-  }
-
-  h += '<div class="card"><h2>' + r.total_encontrados +
-       ' nota(s) &middot; mostrando ' + r.candidatos.length + '</h2>' +
-       '<div class="aviso" style="margin:0">Confira com a caixa antes de confirmar. ' +
-       (r.mesmo_cliente_repetido
-         ? 'Todas sao do <b>mesmo cliente</b> &mdash; use "ver itens" para achar a certa.'
-         : '') + '</div></div>';
-
-  r.candidatos.forEach((c, i) => {
-    h += '<div class="cand">' +
-         '<div class="nome">' + esc(c.nome) + '</div>' +
-         '<div class="meta">NF ' + esc(c.numero) + ' &middot; ' +
-         esc(String(c.dataEmissao || '').slice(0, 10)) + '</div>' +
-         '<div class="acoes">' +
-         '<button class="btn peq roxo" onclick="verItens(' + i + ',\'' + esc(c.id) + '\')">ver itens</button>' +
-         '<button class="btn peq" onclick="escolher(' + i + ',\'' + esc(c.id) + '\',\'' + esc(c.numero) + '\',\'' + esc(c.nome) + '\')">e esta</button>' +
-         '</div><div class="itens esconde" id="itens' + i + '"></div></div>';
-  });
-
-  if (r.tem_mais)     h += '<button class="btn cinza" onclick="buscar(' + (paginaAtual + 1) + ')">Ver mais 8</button>';
-  if (paginaAtual > 1) h += '<button class="btn cinza" onclick="buscar(' + (paginaAtual - 1) + ')">Voltar</button>';
-  h += '<button class="btn cinza" onclick="limpar()">Limpar</button>';
-  $('resultado').innerHTML = h;
-}
-
-function linha(rot, val) {
-  if (val == null || val === '') return '';
-  return '<div class="linha"><span class="rot">' + esc(rot) +
-         '</span><span class="val">' + esc(val) + '</span></div>';
-}
-
-/* Itens sob demanda: uma chamada, so quando o estoquista clica.
-   Trazer os 8 de uma vez custaria 8 chamadas ao Bling por busca. */
-async function verItens(i, id) {
-  const alvo = $('itens' + i);
-  if (!alvo.classList.contains('esconde')) { alvo.classList.add('esconde'); return; }
-  alvo.classList.remove('esconde');
-  alvo.innerHTML = 'buscando...';
-  try {
-    const r = await api('/api/nf/itens?id=' + encodeURIComponent(id));
-    if (!r.ok) { alvo.innerHTML = '<span class="erro">' + esc(r.erro) + '</span>'; return; }
-    let h = '';
-    if (r.marketplace && r.marketplace !== 'desconhecido') {
-      h += '<div style="margin-bottom:6px"><span class="selo ' + esc(r.marketplace) + '">' +
-           esc(r.marketplace_nome) + '</span></div>';
+    function escDef(t) {
+      return String(t == null ? '' : t).replace(/[&<>"']/g, function (c) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+      });
     }
-    (r.itens || []).forEach(it => {
-      h += '<div>' + esc(it.quantidade) + 'x <b>' + esc(it.sku) + '</b> &mdash; ' +
-           esc(String(it.descricao || '').slice(0, 60)) + '</div>';
-    });
-    if (r.nf && r.nf.valor != null) h += '<div style="color:var(--apagado)">total da nota: R$ ' + esc(r.nf.valor) + '</div>';
-    alvo.innerHTML = h || 'nota sem itens';
-    alvo.dataset.marketplace = r.marketplace || '';
-    alvo.dataset.sku = (r.itens && r.itens[0] && r.itens[0].sku) || '';
-    alvo.dataset.valor = (r.nf && r.nf.valor) || '';
-  } catch (e) {
-    if (e.message !== 'sessao') alvo.innerHTML = '<span class="erro">falhou</span>';
-  }
-}
 
-function escolher(i, id, numero, nome) {
-  const cx = $('itens' + i);
-  const dados = {
-    nf_id_bling: id, nf_numero: numero, buyer_nome: nome,
-    marketplace: (cx && cx.dataset.marketplace) || null,
-    produto_sku: (cx && cx.dataset.sku) || null,
-    nf_valor: (cx && cx.dataset.valor) || null,
-  };
-  $('resultado').innerHTML =
-    '<div class="card"><h2>Confirmar</h2>' +
-    linha('Cliente', nome) + linha('NF', numero) +
-    (dados.produto_sku ? linha('SKU', dados.produto_sku) : '') +
-    '</div>' + botoesConfirmar(dados);
-  window.scrollTo(0, 0);
-}
-
-function botoesConfirmar(dados) {
-  window._paraGravar = dados;
-  return '<button class="btn verde" onclick="gravar(\'aprovado\')">Incluir no estoque</button>' +
-         '<button class="btn verm" onclick="gravar(\'problema\')">Reportar problema</button>' +
-         '<button class="btn cinza" onclick="limpar()">Cancelar</button>';
-}
-
-async function gravar(status) {
-  const d = Object.assign({}, window._paraGravar || {}, { status, tipo: 'devolucao' });
-  if (status === 'problema') {
-    const desc = prompt('O que houve com o produto?');
-    if (!desc) return;
-    d.problema_descricao = desc;
-    // Localizacao e quantidade sao o que permite ACHAR a peca
-    // depois no galpao — sem isso o defeito vira um numero solto.
-    d.localizacao = prompt('Onde você vai guardar? (ex: prateleira D3)') || null;
-    d.defeito_qtd = Number(prompt('Quantas unidades com defeito?', '1') || 1);
-  }
-  try {
-    const r = await api('/api/triagem/registrar', { method: 'POST', body: JSON.stringify(d) });
-    if (!r.ok) {
-      $('resultado').innerHTML = '<div class="alerta vermelho"><b>Não gravou</b>' +
-        esc(r.erro) + '</div>' + botoesConfirmar(d);
-      return;
-    }
-    let fim = '<div class="alerta azul"><b class="ok">&#10003; Registrado</b>' +
-      (status === 'problema'
-        ? 'Marcado como problema.' + (r.email_enviado ? ' O Diego foi avisado por e-mail.' : '')
-        : 'Pode incluir no estoque.') + '</div>';
-
-    /* CANIBALIZACAO: ja existem outras unidades do mesmo SKU
-       quebradas — da pra tirar peca de uma pra salvar outra. */
-    if (r.canibalizacao) {
-      fim += '<div class="alerta amarelo"><b>&#128295; Tem mais ' + r.canibalizacao.outras_unidades +
-        ' unidade(s) deste SKU em defeito</b>' +
-        (r.canibalizacao.locais.length ? 'Guardadas em: ' + r.canibalizacao.locais.map(esc).join(', ') + '. ' : '') +
-        'Antes de descartar, veja se uma completa a outra.</div>';
-    }
-    if (status === 'problema' && d.produto_sku) {
-      window._ultimoDefeito = d;
-      fim += '<button class="btn roxo" onclick="imprimirEtiqueta()">&#127991; Imprimir etiqueta de defeito</button>';
-    }
-    fim += '<button class="btn" onclick="proxima()">Proxima caixa</button>';
-    $('resultado').innerHTML = fim;
-    window.scrollTo(0, 0);
-  } catch (e) {
-    if (e.message !== 'sessao') {
-      $('resultado').innerHTML = '<div class="alerta vermelho">sem conexao &mdash; NAO gravou. tente de novo.</div>' +
-        botoesConfirmar(d);
-    }
-  }
-}
-
-function proxima() {
-  $('codigo').value = '';
-  limpar();
-  $('codigo').focus();
-}
-
-/* ============ ESTOQUE DE DEFEITOS (na tela, como na GOOD) ==== */
-async function consultarLocal() {
-  const q = prompt('SKU, local ou nome do produto:');
-  if (q === null) return;
-  $('resultado').innerHTML = '<div class="card">procurando no estoque de defeitos...</div>';
-  try {
-    const r = await api('/api/defeitos' + (q ? '?q=' + encodeURIComponent(q) : ''));
-    if (!r.ok) { $('resultado').innerHTML = '<div class="alerta vermelho">' + esc(r.erro) + '</div>'; return; }
-    if (!r.grupos.length) {
-      $('resultado').innerHTML = '<div class="alerta azul"><b>Nada encontrado</b>' +
-        (q ? 'Nenhum defeito bate com "' + esc(q) + '".' : 'O estoque de defeitos esta vazio.') + '</div>';
-      return;
-    }
-    let h = '<div class="card"><h2>' + r.grupos.length + ' local(is) com defeito</h2></div>';
-    r.grupos.forEach(g => {
-      h += '<div class="cand"><div class="nome">&#128205; ' + esc(g.localizacao) +
-           ' &mdash; ' + g.qtd + ' un</div>' +
-           '<div class="meta"><b>' + esc(g.sku) + '</b>' +
-           (g.produto ? ' &middot; ' + esc(String(g.produto).slice(0, 55)) : '') +
-           (g.defeitos.length ? '<br>' + g.defeitos.map(d => '&bull; ' + esc(d)).join('<br>') : '') +
-           '</div></div>';
-    });
-    h += '<button class="btn cinza" onclick="limpar()">Limpar</button>';
-    $('resultado').innerHTML = h;
-  } catch (e) {
-    if (e.message !== 'sessao') $('resultado').innerHTML = '<div class="alerta vermelho">sem conexao.</div>';
-  }
-}
-
-async function lancarDefeitoTela() {
-  const sku = prompt('SKU do produto quebrado:');
-  if (!sku) return;
-  const localizacao = prompt('Onde vai ficar guardado? (ex: prateleira D3)');
-  if (!localizacao) return;
-  const quantidade = prompt('Quantas unidades?', '1');
-  const descricao = prompt('Qual o defeito?');
-  try {
-    const r = await api('/api/defeitos/lancar', { method: 'POST',
-      body: JSON.stringify({ sku, localizacao, quantidade, descricao }) });
-    if (!r.ok) { alert('Não gravou: ' + r.erro); return; }
-    let msg = 'Defeito registrado em ' + localizacao + '.';
-    if (!r.sku_validado_no_bling) msg += '\nATENÇÃO: esse SKU não existe no Bling — confira o código.';
-    alert(msg);
-    window._ultimoDefeito = { produto_sku: sku, problema_descricao: descricao, localizacao };
-    $('resultado').innerHTML =
-      '<div class="alerta azul"><b class="ok">&#10003; Defeito lancado</b>' + esc(sku) +
-      ' em ' + esc(localizacao) + '</div>' +
-      '<button class="btn roxo" onclick="imprimirEtiqueta()">&#127991; Imprimir etiqueta de defeito</button>' +
-      '<button class="btn cinza" onclick="limpar()">Limpar</button>';
-  } catch (e) {
-    if (e.message !== 'sessao') alert('Sem conexao - tente de novo.');
-  }
-}
-
-/* Etiqueta de defeito: enfileira; a Zebra imprime na estacao
-   (o painel aberto num PC com QZ Tray). */
-async function imprimirEtiqueta() {
-  const d = window._ultimoDefeito || {};
-  try {
-    const r = await api('/api/etiqueta/fila', { method: 'POST', body: JSON.stringify({
-      sku: d.produto_sku, defeito: d.problema_descricao,
-      localizacao: d.localizacao, nf: d.nf_numero,
-    }) });
-    alert(r.ok
-      ? (r.estacao_ativa ? 'Na fila - vai sair na Zebra.' : 'Na fila, mas ' + (r.aviso || 'nenhuma estacao ativa'))
-      : 'Falhou: ' + r.erro);
-  } catch (e) { alert('Sem conexao - tente de novo.'); }
-}
-
-/* =========================================================
-   OCR do NOME do remetente — o caminho pro TikTok/Amazon.
-   O Tesseract roda NO CELULAR (nada sobe pra servidor) e so
-   e baixado quando o estoquista pede — o fluxo normal continua
-   funcionando sem nenhum CDN.
-   ========================================================= */
-let ocrPronto = false;
-function carregarTesseract() {
-  return new Promise((res, rej) => {
-    if (ocrPronto || window.Tesseract) { ocrPronto = true; return res(); }
-    const sc = document.createElement('script');
-    sc.src = 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';
-    sc.onload = () => { ocrPronto = true; res(); };
-    sc.onerror = () => rej(new Error('sem internet pra baixar o leitor'));
-    document.head.appendChild(sc);
-  });
-}
-
-async function lerNomeOCR() {
-  const btn = $('btnOcr');
-  btn.disabled = true; btn.textContent = 'preparando o leitor...';
-  try {
-    await carregarTesseract();
-    // abre a camera e captura UM quadro apontado pro bloco REMETENTE
-    const st = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment', width: { ideal: 1280 } } });
-    const v = $('camera');
-    v.srcObject = st; v.classList.remove('esconde'); await v.play();
-    btn.textContent = 'aponte pro REMETENTE e toque no video';
-    await new Promise(res => { v.onclick = res; });
-    const cv = document.createElement('canvas');
-    cv.width = v.videoWidth; cv.height = v.videoHeight;
-    cv.getContext('2d').drawImage(v, 0, 0);
-    st.getTracks().forEach(t => t.stop());
-    v.classList.add('esconde'); v.onclick = null;
-
-    btn.textContent = 'lendo...';
-    const { data } = await Tesseract.recognize(cv, 'por');
-    // pega a linha mais parecida com nome: só letras/espaco, 2+ palavras
-    const linhas = String(data.text || '').split('\n').map(x => x.trim())
-      .filter(x => /^[A-Za-zÀ-ÿ ]{8,}$/.test(x) && x.split(/\s+/).length >= 2)
-      .sort((a, b) => b.length - a.length);
-    if (!linhas.length) { alert('Nao achei um nome na foto. Aproxime do bloco REMETENTE e tente de novo.'); return; }
-    $('codigo').value = linhas[0];
-    buscar(1);
-  } catch (e) {
-    alert('OCR falhou: ' + e.message);
-  } finally {
-    btn.disabled = false; btn.textContent = 'Ler o NOME pela camera (OCR)';
-  }
-}
-
-/* =========================================================
-   Camera (usa o leitor nativo do proprio celular)
-   ========================================================= */
-let stream = null, lendo = false;
-async function camera() {
-  if (stream) { pararCamera(); return; }
-  if (!('BarcodeDetector' in window)) {
-    alert('Este celular nao tem leitor nativo de codigo de barras. Use o teclado.');
-    return;
-  }
-  try {
-    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
-    const v = $('camera');
-    v.srcObject = stream; v.classList.remove('esconde'); await v.play();
-    const det = new BarcodeDetector();
-    lendo = true;
-    const loop = async () => {
-      if (!lendo) return;
+    async function buscarProdutoDefeito() {
+      var q = document.getElementById('defBusca').value.trim();
+      var box = document.getElementById('defResultados');
+      if (q.length < 2) { box.innerHTML = '<p style="font-size:13px;color:#c62828;">Digite pelo menos 2 letras.</p>'; return; }
+      box.innerHTML = '<p style="font-size:13px;color:#888;">Buscando no Bling...</p>';
       try {
-        const cods = await det.detect(v);
-        if (cods && cods.length) {
-          $('codigo').value = cods[0].rawValue;
-          pararCamera();
-          buscar(1);
+        var r = await fetch('/api/produtos/buscar?q=' + encodeURIComponent(q), { credentials: 'same-origin' });
+        var d = await r.json();
+        if (!d.ok) { box.innerHTML = '<p style="font-size:13px;color:#c62828;">' + escDef(d.erro || 'erro') + '</p>'; return; }
+        var lista = d.produtos || [];
+        if (lista.length === 0) {
+          // v4.06 - o servidor avisa quando ainda esta lendo o catalogo; antes
+          // a tela ignorava e dizia "nada encontrado", parecendo que o produto
+          // nao existia.
+          if (d.indexando || d.dica) {
+            box.innerHTML = '<p style="font-size:13px;color:#e65100;background:#fff3e0;border-radius:8px;padding:9px 11px;">⏳ ' + escDef(d.dica || 'Ainda estou lendo o catálogo. Tenta de novo em instantes.') + '</p>';
+          } else {
+            box.innerHTML = '<p style="font-size:13px;color:#888;">Nada encontrado pra "' + escDef(q) + '".</p>';
+          }
           return;
         }
-      } catch (e) { /* quadro ruim: tenta o proximo */ }
-      requestAnimationFrame(loop);
-    };
-    loop();
-  } catch (e) {
-    alert('Não consegui abrir a câmera: ' + e.message);
+        var h = '';
+        for (var i = 0; i < lista.length; i++) {
+          var p = lista[i];
+          h += '<div onclick="escolherProdutoDefeito(' + i + ')" data-i="' + i + '" style="border:1px solid #ddd;border-radius:8px;padding:9px 11px;margin-bottom:5px;cursor:pointer;background:#fff;display:flex;gap:10px;align-items:center;">'
+            + (p.imagem
+                ? '<img src="' + escDef(p.imagem) + '" onclick="event.stopPropagation();abrirZoomProduto(this.src)" onerror="this.style.display=\'none\'" style="width:52px;height:52px;border-radius:8px;object-fit:cover;border:1px solid #eee;cursor:zoom-in;flex:0 0 auto;">'
+                : '<div style="width:52px;height:52px;border-radius:8px;background:#f0f0f0;display:flex;align-items:center;justify-content:center;font-size:20px;flex:0 0 auto;">📦</div>')
+            + '<div style="flex:1;min-width:0;">'
+            + '<div style="font-size:13px;font-weight:600;">' + escDef(p.nome) + '</div>'
+            + '<div style="font-size:11px;color:#666;margin-top:2px;">SKU <code>' + escDef(p.sku) + '</code>'
+            + (p.ean ? ' &middot; EAN ' + escDef(p.ean) : '') + '</div>'
+            + '</div></div>';
+        }
+        window._defLista = lista;
+        box.innerHTML = h;
+      } catch (e) {
+        box.innerHTML = '<p style="font-size:13px;color:#c62828;">Erro de conexao.</p>';
+      }
+    }
+
+    function escolherProdutoDefeito(i) {
+      var p = (window._defLista || [])[i];
+      if (!p) return;
+      _defProdutoEscolhido = p;
+      var boxImg = document.getElementById('defImg');
+      if (boxImg) {
+        boxImg.innerHTML = p.imagem
+          ? '<img src="' + escDef(p.imagem) + '" onclick="abrirZoomProduto(this.src)" onerror="this.style.display=\'none\'" style="width:70px;height:70px;border-radius:8px;object-fit:cover;border:1px solid #ddd;cursor:zoom-in;">'
+          : '';
+      }
+      document.getElementById('defNome').textContent = p.nome || '-';
+      document.getElementById('defSku').textContent = p.sku || '-';
+      document.getElementById('defEan').textContent = p.ean ? ('\u00b7 EAN ' + p.ean) : '';
+      document.getElementById('defEscolhido').style.display = '';
+      document.getElementById('defResultados').innerHTML = '';
+      var b = document.getElementById('defBtnSalvar');
+      b.disabled = false; b.style.opacity = '1';
+      setTimeout(function () { document.getElementById('defProblema').focus(); }, 80);
+    }
+
+    async function salvarDefeitoManual() {
+      if (!_defProdutoEscolhido) return;
+      var defeito = document.getElementById('defProblema').value.trim();
+      var localDef = document.getElementById('defLocal').value.trim();
+      var msg = document.getElementById('defMsg');
+      if (!defeito) { msg.innerHTML = '<span style="color:#c62828;">Descreva o defeito.</span>'; document.getElementById('defProblema').focus(); return; }
+      // v4.09 - sem localizacao o produto some do mapa: campo obrigatorio
+      if (!localDef) {
+        msg.innerHTML = '<span style="color:#c62828;">Informe ONDE VAI GUARDAR o produto.</span>';
+        var elLoc = document.getElementById('defLocal');
+        elLoc.style.borderColor = '#c62828'; elLoc.style.background = '#fff5f5'; elLoc.focus();
+        return;
+      }
+      document.getElementById('defLocal').style.borderColor = '#ccc';
+      document.getElementById('defLocal').style.background = '#fff';
+      var btn = document.getElementById('defBtnSalvar');
+      btn.disabled = true; btn.textContent = 'salvando...';
+      var payload = {
+        sku: _defProdutoEscolhido.sku,
+        defeito: defeito,
+        localizacao: localDef,
+        qtd: parseInt(document.getElementById('defQtd').value, 10) || 1
+      };
+      try {
+        var r = await fetch('/api/defeitos/adicionar', {
+          method: 'POST', credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        var d = await r.json();
+        if (!d.ok) {
+          msg.innerHTML = '<span style="color:#c62828;">' + escDef(d.erro || 'erro') + '</span>';
+          btn.disabled = false; btn.textContent = '\ud83d\udcbe Lancar defeito';
+          return;
+        }
+        msg.innerHTML = '<span style="color:#2e7d32;">\u2705 Lancado!</span>';
+        // oferece a etiqueta 10x15 (mesmo fluxo do problema na triagem)
+        var etq = {
+          nf: null, sku: d.sku, ean: d.ean, produto: d.nome,
+          defeito: defeito, qtd: payload.qtd, local: payload.localizacao || null
+        };
+        setTimeout(function () {
+          fecharModalDefeito();
+          if (typeof abrirPopupEtiquetaDefeito === 'function') abrirPopupEtiquetaDefeito(etq, function () {});
+        }, 600);
+      } catch (e) {
+        msg.innerHTML = '<span style="color:#c62828;">Erro de conexao.</span>';
+        btn.disabled = false; btn.textContent = '\ud83d\udcbe Lancar defeito';
+      }
+    }
+  </script>
+
+<script>
+// b69 - ROLA SOZINHO ATE O QUE IMPORTA.
+// No celular, depois de bipar, o "Consultando ML..." e o resultado ficam
+// abaixo da dobra e o estoquista tinha que rolar pra saber se algo estava
+// acontecendo. Este observador olha o #loading e o #resultado: quando um
+// deles aparece, traz a tela ate ele. Nao mexe em nenhum modulo JS.
+(function () {
+  function trazerPraTela(el) {
+    if (!el) return;
+    try { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (e) { el.scrollIntoView(); }
   }
-}
-function pararCamera() {
-  lendo = false;
-  if (stream) stream.getTracks().forEach(t => t.stop());
-  stream = null;
-  $('camera').classList.add('esconde');
-}
-
-/* =========================================================
-   Ligacoes
-   ========================================================= */
-$('btnEntrar').onclick = entrar;
-$('senha').onkeydown   = (e) => { if (e.key === 'Enter') entrar(); };
-$('usuario').onkeydown = (e) => { if (e.key === 'Enter') $('senha').focus(); };
-$('btnBuscar').onclick = () => buscar(1);
-$('codigo').onkeydown  = (e) => { if (e.key === 'Enter') buscar(1); };
-$('btnCamera').onclick = camera;
-$('btnOcr').onclick    = lerNomeOCR;
-$('btnConsultarLocal').onclick = consultarLocal;
-fetch(API + '/status').then(r => r.json()).then(d => {
-  $('versaoServidor').textContent = 'servidor ' + String(d.versao || '?').replace('AMB Devolucoes ', '');
-}).catch(() => { $('versaoServidor').textContent = 'servidor ?'; });
-$('btnLancarDefeito').onclick  = lancarDefeitoTela;
-$('btnSair').onclick   = sair;
-
-/* Ao abrir: se ja houver sessao valida, entra direto. */
-(async () => {
-  try {
-    const r = await fetch(API + '/api/auth/me', { credentials: 'same-origin' }).then(x => x.json());
-    if (r.ok) { usuario = r.usuario; tipoUsuario = r.tipo; mostrarApp(); return; }
-  } catch (e) {}
-  mostrarLogin();
+  function visivel(el) {
+    return !!(el && el.offsetParent !== null && el.getBoundingClientRect().height > 4);
+  }
+  document.addEventListener('DOMContentLoaded', function () {
+    ['loading', 'resultado'].forEach(function (id) {
+      var el = document.getElementById(id);
+      if (!el) return;
+      var estava = visivel(el);
+      new MutationObserver(function () {
+        var agora = visivel(el);
+        if (agora && !estava) trazerPraTela(el);   // so quando ACABA de aparecer
+        estava = agora;
+      }).observe(el, { attributes: true, childList: true, subtree: true,
+                       attributeFilter: ['style', 'class'] });
+    });
+  });
 })();
 </script>
 </body>
