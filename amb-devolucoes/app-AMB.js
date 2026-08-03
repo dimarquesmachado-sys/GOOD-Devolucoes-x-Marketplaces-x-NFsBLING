@@ -76,8 +76,10 @@ const compat = require('./lib-AMB/compat-AMB');
 const criarAdminHelpers = require('./lib-AMB/admin-helpers-AMB');
 const criarNfPessoa = require('./lib-AMB/nf-pessoa-AMB');
 const registrarRotasAdminNF = require('./lib-AMB/rotas-admin-AMB');
+const criarMlBuscas = require('./lib-AMB/ml-buscas-AMB');
+const registrarIdentificar = require('./lib-AMB/identificar-AMB');
 
-const VERSAO = 'AMB Devolucoes b61';
+const VERSAO = 'AMB Devolucoes b71';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -1249,6 +1251,45 @@ const ajudantes = criarAdminHelpers({
   buscarNFePorId: bling.buscarNFePorId,
   sleep: dorme,
 });
+// b71 - a rota /api/devolucao/identificar da GOOD, que a tela de bipe
+// espera. Os ajudantes: 5 de claim/return do ML vem do ml-buscas (copia
+// da GOOD), 2 do admin-helpers, 2 do nf-pessoa, e o resto dos modulos
+// que a AMB ja tinha (ml, bling, magalu, shopee, nf-nomes).
+const mlBuscas = criarMlBuscas(ml.chamarML);
+registrarIdentificar(router, {
+  requerLogin: auth.requerLogin,
+  sleep: dorme,
+  chamarML: ml.chamarML,
+  chamarBling: bling.chamarBling,
+  chamarMagalu: magalu.chamarMagalu,
+  buscarNFnoML: ajudantes.buscarNFnoML,
+  buscarNFePorId: bling.buscarNFePorId,
+  buscarNFBlindada: ajudantes.buscarNFBlindada,
+  buscarNFnoBlingPorNumero: ajudantes.buscarNFnoBlingPorNumero,
+  mapItensNF: nfp.mapItensNF,
+  resolverIdNFPorChave: nfp.resolverIdNFPorChave,
+  buscarClaimsPorShipment: mlBuscas.buscarClaimsPorShipment,
+  buscarClaimDetalhada: mlBuscas.buscarClaimDetalhada,
+  buscarReturnPorClaim: mlBuscas.buscarReturnPorClaim,
+  buscarOrderViaShipmentReturn: mlBuscas.buscarOrderViaShipmentReturn,
+  buscarOrdersPorComprador: mlBuscas.buscarOrdersPorComprador,
+  classificarMotivoDevolucao: ajudantes.classificarMotivoDevolucao,
+  acharDevolucao: shopee.acharDevolucao,
+  buscarPorNome: nfNomes.buscarPorNome,
+  shopee, nfNomes,         // a rota usa shopee.cfg.ativo e nfNomes.colapsar
+  // b71 - RAMO DO MAGALU DESLIGADO POR ORA: a rota da GOOD espera um
+  // cliente com .cfg.ativo/.cfg.autorizado e .acharDevolucao(); o
+  // magalu-AMB tem outra interface (temCredenciais/temToken/porPedido).
+  // Em vez de adivinhar o de-para, deixo o ramo inerte — devolucao do
+  // Magalu cai no "nao encontrado" ate eu portar isso direito. ML,
+  // Shopee, NF, chave e nome funcionam normalmente.
+  magalu: {
+    cfg: { ativo: false, autorizado: false },
+    acharDevolucao: async () => null,
+    chamarMagalu: magalu.chamarMagalu,
+  },
+});
+
 registrarRotasAdminNF(router, {
   supabase: db.conectar(),
   requerAdmin: auth.requerAdmin,
