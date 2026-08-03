@@ -261,7 +261,10 @@ function renderizar(data, ok) {
   html += `<style>
     .dvi{display:grid;grid-template-columns:150px minmax(0,1fr);grid-template-areas:"f q" "f t" "f c";gap:7px 16px;align-items:center;}
     .dvi-f{grid-area:f;width:150px;height:150px;border-radius:10px;object-fit:contain;background:#fff;border:1px solid #e4dcf1;display:flex;align-items:center;justify-content:center;font-size:34px;}
-    .dvi-q{grid-area:q;font-weight:700;color:#854F0B;font-size:16px;letter-spacing:.3px;}
+    .dvi-q{grid-area:q;justify-self:start;display:inline-flex;align-items:baseline;gap:8px;
+      background:#FAC775;color:#412402;font-weight:700;padding:7px 14px;border-radius:8px;
+      font-size:14px;letter-spacing:.3px;}
+    .dvi-q b{font-size:22px;font-weight:700;}
     .dvi-t{grid-area:t;font-size:15.5px;line-height:1.35;}
     .dvi-c{grid-area:c;display:flex;flex-wrap:wrap;gap:7px;}
     .dvi-cod{display:flex;align-items:center;gap:8px;border-radius:7px;padding:6px 11px;font-size:13.5px;}
@@ -271,7 +274,8 @@ function renderizar(data, ok) {
     .dvi-ean{background:#EEEDFE;color:#3C3489;} .dvi-ean span{color:#26215C;}
     @media (max-width:600px){
       .dvi{grid-template-columns:minmax(0,1fr);grid-template-areas:"q" "f" "t" "c";text-align:center;gap:9px 0;}
-      .dvi-q{background:#FAC775;color:#412402;padding:8px 10px;border-radius:8px;font-size:14.5px;}
+      .dvi-q{justify-self:stretch;justify-content:center;padding:9px 10px;font-size:13.5px;}
+      .dvi-q b{font-size:20px;}
       .dvi-f{justify-self:center;}
       .dvi-t{font-size:14px;}
       .dvi-c{flex-direction:column;gap:5px;}
@@ -535,7 +539,9 @@ function qtdPorExtenso(n) {
     'NOVE', 'DEZ', 'ONZE', 'DOZE', 'TREZE', 'QUATORZE', 'QUINZE', 'DEZESSEIS',
     'DEZESSETE', 'DEZOITO', 'DEZENOVE', 'VINTE'];
   var palavra = nomes[q] ? ' (' + nomes[q] + ')' : '';
-  return q + palavra + (q === 1 ? ' UNIDADE VOLTANDO' : ' UNIDADES VOLTANDO');
+  // o numero sai em <b> pra ficar maior dentro da pastilha amarela
+  return '<b>' + q + '</b><span>' + palavra.trim()
+    + (q === 1 ? ' UNIDADE VOLTANDO' : ' UNIDADES VOLTANDO') + '</span>';
 }
 
 /** Copia a chave da NF (antes so dava pra selecionar na mao). */
