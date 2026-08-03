@@ -85,12 +85,23 @@ function registrarRotas(router, requerLogin) {
   // O celular poe a etiqueta na fila
   router.post('/api/etiqueta/fila', requerLogin, (req, res) => {
     const b = req.body || {};
-    if (!b.sku) return res.status(400).json({ ok: false, erro: 'falta o sku' });
-    const zpl = zplDefeito({
-      sku: b.sku, defeito: b.defeito, localizacao: b.localizacao,
-      quem: req.usuario, nf: b.nf,
-    });
-    fila.push({ id: Date.now() + '-' + Math.random().toString(36).slice(2, 7), zpl, criado: Date.now() });
+    // b58 - dois jeitos de enfileirar:
+    //  (a) {zpl, resumo}  -> a tela monta o ZPL no navegador (fluxo da GOOD:
+    //      etiqueta de produto, varias copias, devolucao de job)
+    //  (b) {sku, defeito, localizacao, nf} -> o servidor monta (fluxo do
+    //      celular, que so sabe o SKU). Continua funcionando igual.
+    let zpl = String(b.zpl || '').trim();
+    let resumo = b.resumo || null;
+    if (!zpl) {
+      if (!b.sku) return res.status(400).json({ ok: false, erro: 'falta o zpl ou o sku' });
+      zpl = zplDefeito({
+        sku: b.sku, defeito: b.defeito, localizacao: b.localizacao,
+        quem: req.usuario, nf: b.nf,
+      });
+      resumo = resumo || (b.sku + (b.defeito ? ' - ' + b.defeito : ''));
+    }
+    fila.push({ id: Date.now() + '-' + Math.random().toString(36).slice(2, 7),
+      zpl, resumo, por: req.usuario, criado: Date.now() });
     if (fila.length > 50) fila.shift();
     res.json({
       ok: true,
@@ -107,6 +118,23 @@ function registrarRotas(router, requerLogin) {
     ultimoPollEstacao = Date.now();
     const prox = fila.shift() || null;
     res.json({ ok: true, etiqueta: prox, restam: fila.length });
+  });
+
+  // b58 - MESMA coisa, no nome e no formato que a estacao de impressao da
+  // tela espera: {job:{zpl,resumo,por}}. Aceita ?espera=N (segundos) e
+  // segura a resposta ate aparecer etiqueta — assim a estacao nao fica
+  // martelando o servidor de meio em meio segundo.
+  router.get('/api/etiqueta/fila/proximo', requerLogin, async (req, res) => {
+    const espera = Math.max(0, Math.min(30, Number(req.query.espera) || 0));
+    const limite = Date.now() + espera * 1000;
+    let job = null;
+    for (;;) {
+      ultimoPollEstacao = Date.now();          // "estou viva" enquanto espero
+      job = fila.shift() || null;
+      if (job || Date.now() >= limite) break;
+      await new Promise(r => setTimeout(r, 500));
+    }
+    res.json({ ok: true, job, restam: fila.length });
   });
 
   // Preview do ZPL (debug / conferencia)
