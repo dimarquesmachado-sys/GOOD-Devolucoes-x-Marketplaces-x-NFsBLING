@@ -250,38 +250,56 @@ function renderizar(data, ok) {
     }
   })();
 
-  // QUANTIDADE EM DESTAQUE - total agregado
-  if (qtdTotal > 0) {
-    const ehMulti = itensRender.length > 1;
-    html += `<div class="qtd-destaque">
-      <div class="qtd-label">⚖️ Devolvendo</div>
-      <div class="qtd-valor">${qtdTotal}</div>
-      <div class="qtd-unidade">unidade${qtdTotal > 1 ? 's' : ''}${ehMulti ? ` em ${itensRender.length} produtos` : ''}</div>
-    </div>`;
-  }
+  // b80 - a barra amarela gigante saiu: a quantidade agora vive
+  // dentro do card do produto, em cima do titulo (sem repetir).
 
   // CARDS DOS PRODUTOS (Bling = titulo limpo + EAN, ML = fallback)
   if (itensRender.length > 0) {
     if (itensRender.length > 1) {
       html += `<div class="multi-aviso">⚠️ Devolucao com ${itensRender.length} produtos diferentes - confira cada um abaixo</div>`;
     }
+  html += `<style>
+    .dvi{display:grid;grid-template-columns:150px minmax(0,1fr);grid-template-areas:"f q" "f t" "f c";gap:7px 16px;align-items:center;}
+    .dvi-f{grid-area:f;width:150px;height:150px;border-radius:10px;object-fit:cover;background:#f2f2f4;border:1px solid #e4dcf1;display:flex;align-items:center;justify-content:center;font-size:34px;}
+    .dvi-q{grid-area:q;font-weight:700;color:#854F0B;font-size:16px;letter-spacing:.3px;}
+    .dvi-t{grid-area:t;font-size:15.5px;line-height:1.35;}
+    .dvi-c{grid-area:c;display:flex;flex-wrap:wrap;gap:7px;}
+    .dvi-cod{display:flex;align-items:center;gap:8px;border-radius:7px;padding:6px 11px;font-size:13.5px;}
+    .dvi-cod b{font-size:10.5px;font-weight:500;letter-spacing:.4px;}
+    .dvi-cod span{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:14px;}
+    .dvi-sku{background:#E6F1FB;color:#0C447C;} .dvi-sku span{color:#042C53;}
+    .dvi-ean{background:#EEEDFE;color:#3C3489;} .dvi-ean span{color:#26215C;}
+    @media (max-width:600px){
+      .dvi{grid-template-columns:minmax(0,1fr);grid-template-areas:"q" "f" "t" "c";text-align:center;gap:9px 0;}
+      .dvi-q{background:#FAC775;color:#412402;padding:8px 10px;border-radius:8px;font-size:14.5px;}
+      .dvi-f{justify-self:center;}
+      .dvi-t{font-size:14px;}
+      .dvi-c{flex-direction:column;gap:5px;}
+      .dvi-cod{justify-content:center;}
+      .dvi-cod span{font-size:15px;}
+    }
+    .nfl{display:flex;flex-wrap:wrap;align-items:baseline;gap:5px 13px;}
+    .nfl-n{font-size:20px;font-weight:700;color:#1b5e20;}
+    .nfl-s{font-size:14px;color:#1b5e20;}
+    .nfl-x{color:#b0b0b0;}
+    .nfl-v{font-size:15px;font-weight:700;}
+    .nfc{display:flex;align-items:center;gap:8px;margin-top:9px;}
+    .nfc-l{font-size:10.5px;color:#5F5E5A;flex:0 0 auto;letter-spacing:.4px;}
+    .nfc-v{flex:1;min-width:0;background:#fff;border:1px solid #ddd;border-radius:6px;padding:6px 9px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:11.5px;overflow-x:auto;white-space:nowrap;}
+  </style>`;
     html += '<div class="itens-lista">';
     // b78 - FOTO DO PRODUTO no card do item. Fica a ESQUERDA, do lado do
     // 2x/titulo/SKU/EAN, pra o estoquista bater o olho e conferir com a
     // caixa sem procurar em outro canto. A imagem entra depois (a busca
     // nao espera por ela) - ver buscarFotosItens() abaixo.
     itensRender.forEach((it, _i) => {
-      html += `<div class="item-card" style="display:flex;gap:12px;align-items:flex-start;">
-        <div id="fotoitem-${_i}" style="width:88px;height:88px;flex:0 0 auto;border-radius:10px;background:#f0eef7;border:1px solid #e4dcf1;display:flex;align-items:center;justify-content:center;font-size:30px;">📦</div>
-        <div style="flex:1;min-width:0;">
-          <div class="item-card-header">
-            <div class="item-card-qtd">${it.quantidade}x</div>
-            <div class="item-card-titulo">${escapeHtml(it.titulo)}</div>
-          </div>
-          <div class="item-card-info">
-            ${it.sku && it.sku !== '-' ? `<div class="info-codigo sku"><span class="info-label">SKU</span><span class="info-valor">${escapeHtml(it.sku)}</span></div>` : ''}
-            ${it.ean && it.ean !== '-' ? `<div class="info-codigo ean"><span class="info-label">EAN</span><span class="info-valor">${escapeHtml(it.ean)}</span></div>` : ''}
-          </div>
+      html += `<div class="item-card dvi">
+        <div class="dvi-f" id="fotoitem-${_i}">\u{1F4E6}</div>
+        <div class="dvi-q">${qtdPorExtenso(it.quantidade)}</div>
+        <div class="dvi-t">${escapeHtml(it.titulo)}</div>
+        <div class="dvi-c">
+          ${it.sku && it.sku !== '-' ? `<div class="dvi-cod dvi-sku"><b>SKU</b><span>${escapeHtml(it.sku)}</span></div>` : ''}
+          ${it.ean && it.ean !== '-' ? `<div class="dvi-cod dvi-ean"><b>EAN</b><span>${escapeHtml(it.ean)}</span></div>` : ''}
         </div>
       </div>`;
     });
@@ -308,20 +326,22 @@ function renderizar(data, ok) {
   if (nf) {
     html += '<div class="secao-nf">';
     html += '<div class="secao-nf-titulo">🧾 Nota Fiscal</div>';
-    html += '<div class="item-grid">';
-    html += `<div><div class="label">Numero NF-e</div><div class="valor"><span class="nfe-numero">${escapeHtml(nf.numero || '-')}</span></div></div>`;
-    html += `<div><div class="label">Serie</div><div class="valor"><strong>${escapeHtml(nf.serie || '-')}</strong></div></div>`;
-    html += `<div><div class="label">Data emissao</div><div class="valor">${dataFmt(nf.dataEmissao)}</div></div>`;
-    html += `<div><div class="label">Valor NF</div><div class="valor"><strong>${moeda(nf.valor)}</strong></div></div>`;
-    if (nf.peso) {
-      html += `<div><div class="label">Peso</div><div class="valor">${nf.peso}g</div></div>`;
-    }
-    if (nf.chaveAcesso) {
-      html += `<div style="grid-column: 1/-1;"><div class="label">Chave de acesso</div><div class="nfe-chave">${escapeHtml(nf.chaveAcesso)}</div></div>`;
-    }
+    html += '<div class="nfl">';
+    html += `<span class="nfl-n">NF ${escapeHtml(nf.numero || '-')}</span>`;
+    html += `<span class="nfl-s">serie ${escapeHtml(nf.serie || '-')}</span>`;
+    html += '<span class="nfl-x">&middot;</span>';
+    html += `<span>${dataFmt(nf.dataEmissao)}</span>`;
+    html += '<span class="nfl-x">&middot;</span>';
+    html += `<span class="nfl-v">${moeda(nf.valor)}</span>`;
+    if (nf.peso) { html += `<span class="nfl-x">&middot;</span><span>${nf.peso}g</span>`; }
     html += '</div>';
+    if (nf.chaveAcesso) {
+      html += '<div class="nfc"><span class="nfc-l">CHAVE</span>'
+        + `<span class="nfc-v" id="nfChave">${escapeHtml(nf.chaveAcesso)}</span>`
+        + `<button class="btn-action cinza" style="flex:0 0 auto;padding:6px 10px;" onclick="copiarChaveNF(this)" title="copiar a chave">\u{1F4CB}</button></div>`;
+    }
 
-    html += '<div style="margin-top: 12px;" id="botoesNF">';
+    html += '<div style="margin-top: 10px;" id="botoesNF">';
     if (order.id) {
       html += `<button id="btnBlingDemanda" class="btn-action cinza" onclick="buscarLinksBling('${order.id}', '${order.date_created || ''}', '${nf.numero || ''}')">🔍 Buscar links Bling</button>`;
     }
@@ -489,14 +509,41 @@ async function buscarFotosItens(itens) {
       const r = await fetch('/api/produto/imagem/' + encodeURIComponent(chave), { credentials: 'same-origin' });
       const d = await r.json();
       if (d && d.ok && d.imagem) {
-        alvo.outerHTML = '<img src="' + escapeHtml(d.imagem) + '" alt=""'
+        alvo.outerHTML = '<img class="dvi-f" src="' + escapeHtml(d.imagem) + '" alt=""'
           + ' onclick="abrirZoomProduto(this.src)" onerror="this.style.display=\'none\'"'
-          + ' style="width:88px;height:88px;flex:0 0 auto;border-radius:10px;object-fit:cover;'
-          + 'border:1px solid #e4dcf1;cursor:zoom-in;">';
+          + ' style="cursor:zoom-in;">';
       }
     } catch (e) { /* sem foto nao atrapalha a triagem */ }
     await new Promise(r2 => setTimeout(r2, 150));
   }
+}
+
+/**
+ * Quantidade por extenso, como na nota fiscal: "2 (DUAS) UNIDADES".
+ * Ate 20 escreve a palavra; acima disso so o numero (o galpao nunca
+ * recebe devolucao com 30 pecas do mesmo item, e "TRINTA E TRES" na
+ * tela nao ajuda ninguem).
+ */
+function qtdPorExtenso(n) {
+  var q = Number(n) || 0;
+  var nomes = ['ZERO', 'UMA', 'DUAS', 'TRES', 'QUATRO', 'CINCO', 'SEIS', 'SETE', 'OITO',
+    'NOVE', 'DEZ', 'ONZE', 'DOZE', 'TREZE', 'QUATORZE', 'QUINZE', 'DEZESSEIS',
+    'DEZESSETE', 'DEZOITO', 'DEZENOVE', 'VINTE'];
+  var palavra = nomes[q] ? ' (' + nomes[q] + ')' : '';
+  return q + palavra + (q === 1 ? ' UNIDADE VOLTANDO' : ' UNIDADES VOLTANDO');
+}
+
+/** Copia a chave da NF (antes so dava pra selecionar na mao). */
+function copiarChaveNF(btn) {
+  var el = document.getElementById('nfChave');
+  if (!el) return;
+  var txt = el.textContent.trim();
+  try { navigator.clipboard.writeText(txt); } catch (e) {
+    var t = document.createElement('textarea'); t.value = txt; document.body.appendChild(t);
+    t.select(); try { document.execCommand('copy'); } catch (e2) {} document.body.removeChild(t);
+  }
+  var antes = btn.innerHTML; btn.innerHTML = '\u2705';
+  setTimeout(function () { btn.innerHTML = antes; }, 1200);
 }
 
 async function verificarTriagemExistente(shipmentId, idAlternativo) {
