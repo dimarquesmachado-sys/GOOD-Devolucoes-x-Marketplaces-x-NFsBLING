@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════════════════════════════════
-//  amb-devolucoes · lib/compat  (AMB Devol. b62)
+//  amb-devolucoes · lib/compat  (AMB Devol. b66)
 //  LEVA 1a do porte GOOD → AMB.
 //
 //  A tela de bipe da GOOD (index.html + 10 modulos JS) chama 18 endpoints.
@@ -223,10 +223,46 @@ function montar(router, deps) {
   // ═══════════════════════════════════════════════════════════════════
   const corpo = (req) => (req.body && req.body.dados) || req.body || {};
 
+  /**
+   * b66 - A tela manda MAIS campos do que o registrarTriagem da AMB
+   * grava (produto_valor_unit, nf_link_danfe, buyer_id, buyer_nickname,
+   * produto_mlb, magalu_protocolo, marketplace, tracking). Sem eles o
+   * card do painel fica sem valor, sem link da DANFE e sem o link do
+   * pedido no marketplace.
+   * Aqui completamos o registro DEPOIS do insert. Se alguma coluna nao
+   * existir na tabela, o update inteiro falha — entao neste caso tenta
+   * campo a campo e salva o que der. Nunca derruba a triagem: o
+   * registro principal ja foi gravado.
+   */
+  const EXTRAS = ['produto_valor_unit', 'nf_link_danfe', 'buyer_id', 'buyer_nickname',
+                  'produto_mlb', 'magalu_protocolo', 'marketplace', 'tracking'];
+  async function completarRegistro(r, d) {
+    const id = r && r.registro && r.registro.id;
+    if (!id) return r;
+    const campos = {};
+    for (const k of EXTRAS) if (d[k] != null && d[k] !== '') campos[k] = d[k];
+    if (!Object.keys(campos).length) return r;
+    try {
+      const u = await db.atualizarTriagem(id, campos);
+      if (u.ok) return { ...r, registro: u.registro };
+      // alguma coluna nao existe: salva uma a uma o que a tabela aceitar
+      let ultimo = r;
+      for (const [k, v] of Object.entries(campos)) {
+        try {
+          const u2 = await db.atualizarTriagem(id, { [k]: v });
+          if (u2.ok) ultimo = { ...ultimo, registro: u2.registro };
+        } catch (e) { /* coluna inexistente: ignora esse campo */ }
+      }
+      return ultimo;
+    } catch (e) { return r; }
+  }
+
+
   /** Triagem OK: o que voltou confere com a NF. */
   router.post('/api/triagem/aprovar', auth.requerLogin, async (req, res) => {
     const d = corpo(req);
-    res.json(await db.registrarTriagem({ ...d, status: 'aprovado', funcionario: req.usuario }));
+    const r = await db.registrarTriagem({ ...d, status: 'aprovado', funcionario: req.usuario });
+    res.json(r.ok ? await completarRegistro(r, d) : r);
   });
 
   /** Produto com problema: avisa por e-mail e responde se ha outras
@@ -234,8 +270,9 @@ function montar(router, deps) {
    *  canibalizacao) — mesmo comportamento do /api/triagem/registrar. */
   router.post('/api/triagem/problema', auth.requerLogin, async (req, res) => {
     const d = corpo(req);
-    const r = await db.registrarTriagem({ ...d, status: 'problema', funcionario: req.usuario });
+    let r = await db.registrarTriagem({ ...d, status: 'problema', funcionario: req.usuario });
     if (!r.ok) return res.json(r);
+    r = await completarRegistro(r, d);
     try { emailAMB.avisarProblema({ ...d, funcionario: req.usuario }); } catch (e) {}
     let canibalizacao = null;
     if (d.produto_sku) {
@@ -250,7 +287,8 @@ function montar(router, deps) {
   /** Veio produto DIFERENTE do que a NF diz. */
   router.post('/api/triagem/divergente', auth.requerLogin, async (req, res) => {
     const d = corpo(req);
-    res.json(await db.registrarTriagem({ ...d, status: 'divergente', funcionario: req.usuario }));
+    const r = await db.registrarTriagem({ ...d, status: 'divergente', funcionario: req.usuario });
+    res.json(r.ok ? await completarRegistro(r, d) : r);
   });
 
   /** Chegou com defeito mas o estoquista CONSERTOU: entra como aprovado,
