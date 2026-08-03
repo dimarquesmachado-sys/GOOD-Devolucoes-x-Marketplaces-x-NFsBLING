@@ -1260,7 +1260,7 @@
             <div class="item-acoes">
               ${d.nf_link_danfe ? `<a class="btn btn-cinza" href="${d.nf_link_danfe}" target="_blank">📄 Ver DANFE</a>` : ''}
               ${d.nf_id_bling
-                ? `<a class="btn btn-verde" href="https://www.bling.com.br/notas.fiscais.php#edit/${d.nf_id_bling}" target="_blank" title="Abre a NF. Pra gerar devolu\u00e7\u00e3o automaticamente, use o bot\u00e3o ao lado.">🔗 Abrir NF no Bling</a>`
+                ? `<a class="btn btn-verde" href="https://www.bling.com.br/notas.fiscais.php#edit/${d.nf_id_bling}" target="_blank" title="Abre a NF. Pra gerar devolu\u00e7\u00e3o automaticamente, use o bot\u00e3o ao lado.">🔗 Abrir NF no Bling</a>${linkPedidoMkt(d)}`
                 : `<a class="btn" href="https://www.bling.com.br/notas.fiscais.php#list" target="_blank" onclick="copiarNF('${escapeHtml(d.nf_numero || '')}')">🔗 Abrir lista Bling (copia NF)</a>`
               }
               <label style="display:inline-flex;align-items:center;gap:5px;font-size:12px;background:#e3f2fd;border:1px solid #90caf9;padding:5px 9px;border-radius:6px;cursor:pointer;" title="Seleciona pra ações em lote (emitir NF / concluir)"><input type="checkbox" class="chk-esteira" data-secao="aprovadas" data-id="${d.id}" data-nfid="${d.nf_id_bling || ''}" data-nfnum="${escapeHtml(String(d.nf_numero || ''))}" data-chave="${String(d.nf_chave || '').replace(/[^0-9]/g, '')}" data-full="${ehSerie2(d) ? '1' : '0'}" onchange="atualizarContadorEsteira('aprovadas')"> selecionar</label>
@@ -1412,7 +1412,7 @@
             <div class="item-acoes">
               ${d.nf_link_danfe ? `<a class="btn btn-cinza" href="${d.nf_link_danfe}" target="_blank">📄 DANFE</a>` : ''}
               ${d.nf_id_bling
-                ? `<a class="btn btn-verde" href="https://www.bling.com.br/notas.fiscais.php#edit/${d.nf_id_bling}" target="_blank">🔗 Abrir NF no Bling</a>`
+                ? `<a class="btn btn-verde" href="https://www.bling.com.br/notas.fiscais.php#edit/${d.nf_id_bling}" target="_blank">🔗 Abrir NF no Bling</a>${linkPedidoMkt(d)}`
                 : ''
               }
               <button class="btn btn-verde" onclick="concluir('${d.id}')">✅ Marcar como resolvido</button>
@@ -1778,6 +1778,28 @@
     // v3.30 - Aprovadas: itens JÁ ABERTOS quando gravados no registro
     // (bipagem conferiu = conformidade com a NF); cards antigos sem
     // itens gravados mantêm o toggle ▼ que busca no Bling.
+
+    // b66 - LINK DO PEDIDO NO MARKETPLACE nos cards triados.
+    // O painel so tinha o link da NF; o do pedido existia apenas na
+    // espreita. Mesma regra do linkVenda: ML abre a venda, Shopee passa
+    // pelo de-para do checkout (order_sn -> id interno) e Magalu pela
+    // rota OAuth que resolve o uuid do pacote.
+    function linkPedidoMkt(d) {
+      const nOrder = d.order_id || d.shipment_id || d.pack_id || '';
+      if (!nOrder) return '';
+      const mkt = String(d.marketplace || '').toLowerCase();
+      let url = null, nome = 'pedido';
+      if (mkt === 'ml' || mkt === 'mercadolivre') {
+        url = 'https://www.mercadolivre.com.br/vendas/' + encodeURIComponent(nOrder) + '/detalhe'; nome = 'Mercado Livre';
+      } else if (mkt === 'shopee') {
+        url = 'https://mover-pedidos-aguardando-x-atendido.onrender.com/amb-checkout-offline/ir-shopee?sn=' + encodeURIComponent(nOrder); nome = 'Shopee';
+      } else if (mkt === 'magalu') {
+        url = '/magalu/ir/amb?n=' + encodeURIComponent(String(nOrder).replace(/\D/g, '')); nome = 'Magalu';
+      }
+      if (!url) return '';
+      return ` <a class="btn" style="background:#561A9E;color:#fff;" href="${url}" target="_blank" rel="noopener" title="Abre o pedido no painel do marketplace">📦 Abrir pedido ${escapeHtml(nome)}</a>`;
+    }
+
     function renderItensCard(d) {
       if (Array.isArray(d.nf_itens) && d.nf_itens.length > 0) {
         return `<span class="itens-nf-inline"><div style="margin-top:6px; background:#eef7ee; border:1px solid #c8e6c9; border-radius:8px; padding:8px 10px; font-size:12.5px;">
