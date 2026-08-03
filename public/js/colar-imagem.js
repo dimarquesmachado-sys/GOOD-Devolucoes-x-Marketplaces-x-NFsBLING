@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════════════════════════════════
-//  colar-imagem.js  v3 — COLAR (Ctrl+V), ARRASTAR ou ESCOLHER a foto
+//  colar-imagem.js  v4 — COLAR (Ctrl+V), ARRASTAR ou ESCOLHER a foto
 //  ------------------------------------------------------------------
 //  Igual ao 1688/AliExpress: copia a imagem, clica na busca, Ctrl+V.
 //
@@ -44,27 +44,37 @@
   var zona, statusEl, previaEl, opcoesEl, inputArquivo;
 
   function montarZona() {
+    if (document.getElementById('btnAnexarEtiqueta')) return;
+    // v4 - vira um BOTAO pequeno ao lado do "ler nome do remetente", com o
+    // mesmo peso visual dele. O painel de status so aparece enquanto le a
+    // imagem, e some depois.
+    var ocr = document.querySelector('[onclick*="abrirOcrRemetente"]');
+    var linha = ocr ? ocr.parentNode : null;
     var input = document.getElementById('codigo');
-    var ancora = input ? (input.closest('.input-group') || input.parentNode) : null;
-    if (!ancora || document.getElementById('zonaColar')) return;
+    if (!linha || !input) return;
+
+    var btn = document.createElement('button');
+    btn.id = 'btnAnexarEtiqueta';
+    btn.type = 'button';
+    btn.title = 'cole (Ctrl+V), arraste ou escolha a foto da etiqueta';
+    btn.style.cssText = 'flex:0 0 auto;max-width:132px;padding:8px 12px;background:transparent;'
+      + 'color:#534AB7;border:1px solid #CECBF6;border-radius:10px;font-weight:500;font-size:12.5px;'
+      + 'line-height:1.2;cursor:pointer;';
+    btn.innerHTML = '\u{1F4CE}<br>anexar imagem etiqueta';
+    linha.appendChild(btn);
 
     zona = document.createElement('div');
     zona.id = 'zonaColar';
-    // v3 - discreto: uma linha fina de dica. So cresce (e mostra previa e
-    // status) enquanto esta lendo a imagem; terminando, volta ao normal.
-    zona.style.cssText = 'margin-top:6px;border-radius:8px;padding:4px 2px;cursor:pointer;'
-      + 'display:flex;align-items:center;gap:8px;transition:background .2s;';
+    zona.style.cssText = 'display:none;margin-top:8px;border:1.5px dashed #CECBF6;border-radius:10px;'
+      + 'padding:9px 12px;background:#faf8ff;align-items:center;gap:10px;';
     zona.innerHTML =
-      '<span style="font-size:14px;flex:0 0 auto;opacity:.6;">\u{1F4CE}</span>'
+      '<img id="zonaColarPrevia" alt="" style="display:none;width:52px;height:52px;object-fit:contain;'
+      + 'background:#fff;border:1px solid #e4dcf1;border-radius:8px;flex:0 0 auto;">'
       + '<div style="flex:1;min-width:0;">'
-      + '  <div id="zonaColarTxt" style="font-size:11.5px;color:#9b93b8;">'
-      + '    dica: pode colar (Ctrl+V) ou arrastar a foto da etiqueta aqui</div>'
-      + '  <div id="zonaColarStatus" style="font-size:12px;color:#71659a;margin-top:2px;"></div>'
+      + '  <div id="zonaColarStatus" style="font-size:12.5px;color:#534AB7;"></div>'
       + '  <div id="zonaColarOpcoes" style="margin-top:6px;"></div>'
-      + '</div>'
-      + '<img id="zonaColarPrevia" alt="" style="display:none;width:56px;height:56px;object-fit:contain;'
-      + 'background:#fff;border:1px solid #e4dcf1;border-radius:8px;flex:0 0 auto;">';
-    ancora.parentNode.insertBefore(zona, ancora.nextSibling);
+      + '</div>';
+    linha.parentNode.insertBefore(zona, linha.nextSibling);
 
     statusEl = document.getElementById('zonaColarStatus');
     previaEl = document.getElementById('zonaColarPrevia');
@@ -78,25 +88,13 @@
     inputArquivo.addEventListener('change', function () {
       if (inputArquivo.files && inputArquivo.files[0]) processar(inputArquivo.files[0]);
     });
-
-    zona.addEventListener('click', function () { inputArquivo.click(); });
-    zona.addEventListener('dragover', function (e) {
-      e.preventDefault(); zona.style.background = '#f0e9ff'; zona.style.borderColor = '#7F77DD';
-    });
-    zona.addEventListener('dragleave', function () {
-      zona.style.background = '#faf8ff'; zona.style.borderColor = '#CECBF6';
-    });
+    btn.addEventListener('click', function () { inputArquivo.click(); });
   }
 
   function trabalhando(sim) {
     if (!zona) return;
-    zona.style.background = sim ? '#faf8ff' : '';
-    zona.style.border = sim ? '1.5px dashed #CECBF6' : '';
-    zona.style.padding = sim ? '9px 12px' : '4px 2px';
-    var txt = document.getElementById('zonaColarTxt');
-    if (txt) txt.style.display = sim ? 'none' : '';
-    if (previaEl) previaEl.style.display = sim ? '' : 'none';
-    if (!sim) { status(''); if (opcoesEl) opcoesEl.innerHTML = ''; }
+    zona.style.display = sim ? 'flex' : 'none';
+    if (!sim) { status(''); if (opcoesEl) opcoesEl.innerHTML = ''; if (previaEl) previaEl.style.display = 'none'; }
   }
 
   function status(txt) { if (statusEl) statusEl.textContent = txt || ''; }
