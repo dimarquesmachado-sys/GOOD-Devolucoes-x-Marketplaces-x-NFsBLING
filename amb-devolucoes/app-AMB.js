@@ -79,7 +79,7 @@ const registrarRotasAdminNF = require('./lib-AMB/rotas-admin-AMB');
 const criarMlBuscas = require('./lib-AMB/ml-buscas-AMB');
 const registrarIdentificar = require('./lib-AMB/identificar-AMB');
 
-const VERSAO = 'AMB Devolucoes b73';
+const VERSAO = 'AMB Devolucoes b74';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -1236,7 +1236,9 @@ impressao.registrarRotas(router, auth.requerLogin);
 // b55 - LEVA 1a do porte GOOD -> AMB: rotas que a tela de bipe da GOOD usa e
 // que a AMB nao tinha (busca de produto, EAN por SKU, foto de evidencia,
 // status de triagem). Tem que ser montado ANTES do catch-all 404 abaixo.
-compat.montar(router, { auth, db, bling, cfg, multer });
+// b74 - passa a VERSAO pro compat: o /health mostrava um numero fixo
+// ('AMB b68') e a tela imprimia ele no topo, desencontrado do servidor.
+compat.montar(router, { auth, db, bling, cfg, multer, versao: VERSAO });
 
 // b61 - LEVA 4a do porte GOOD -> AMB: as 13 rotas /api/admin/* que o
 // painel usa (fotos, itens da NF, vincular/lancar Full, lancar por NF,
