@@ -39,7 +39,25 @@ header p { font-size: 13px; color: rgba(255,255,255,.9); }
 /* v3.14.9: no mobile (telas pequenas), o user-badge fica EMBAIXO do titulo
    pra nao cobrir/sobrepor "GOOD Devolucoes" quando o nome do usuario for longo */
 @media (max-width: 600px) {
-  header { padding-top: 14px; padding-bottom: 14px; }
+  /* b69 - CABECALHO CURTO NO CELULAR.
+     O estoquista bipa e precisa ver o "Consultando..." sem rolar. O
+     cabecalho comia meia tela: logo grande, titulo, subtitulo, linha de
+     versao e o cracha. Aqui ele encolhe pra uma faixa fina — nada some
+     de vez, so o que nao ajuda a bipar. */
+  header { padding: 8px 12px 10px; margin-bottom: 8px; }
+  header .logo { max-height: 26px !important; margin-right: 6px !important; }
+  header h1 { font-size: 15px; margin-bottom: 0; }
+  header p { display: none; }                 /* subtitulo e linha de versao */
+  .user-badge { margin-top: 4px; font-size: 10px; padding: 2px 8px; }
+  /* a dica dos formatos aceitos fica em 2 linhas; toca pra abrir */
+  .dica-formatos {
+    font-size: 11px; line-height: 1.35;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+    overflow: hidden; cursor: pointer;
+  }
+  .dica-formatos.aberta { -webkit-line-clamp: unset; }
+  .card { padding: 12px; margin-bottom: 10px; }
+  .card h2 { font-size: 16px; margin-bottom: 8px; }
   .user-badge {
     position: static; display: inline-block; margin-top: 8px;
     max-width: 100%;
