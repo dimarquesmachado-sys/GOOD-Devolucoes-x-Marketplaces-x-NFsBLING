@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════════════════════════════════
-//  amb-devolucoes · lib/compat  (AMB Devol. b68)
+//  amb-devolucoes · lib/compat  (AMB Devol. b71)
 //  LEVA 1a do porte GOOD → AMB.
 //
 //  A tela de bipe da GOOD (index.html + 10 modulos JS) chama 18 endpoints.
@@ -342,10 +342,10 @@ function montar(router, deps) {
     res.json({ ...r, sku_validado_no_bling: !!exato });
   });
 
-  /** Nome que a GOOD usa pra identificar o pacote bipado. */
-  router.get('/api/devolucao/identificar/:codigo', auth.requerLogin, (req, res) => {
-    res.redirect(307, '/amb/api/triagem/identificar?codigo=' + encodeURIComponent(req.params.codigo));
-  });
+  // b71 - o atalho 307 pra /api/triagem/identificar SAIU daqui.
+  // A rota /api/devolucao/identificar agora e a da GOOD de verdade
+  // (lib-AMB/identificar-AMB.js), que devolve o formato que a tela le:
+  // data.order, data.nf, data.metodo, data.eh_devolucao.
 
   /** O estoquista leu o recado. */
   router.post('/api/recado/:id/ciente', auth.requerLogin, async (req, res) => {
