@@ -1,5 +1,5 @@
 // ============================================================
-// amb-devolucoes/lib-AMB/shopee-AMB.js         (AMB Devol. b50)
+// amb-devolucoes/lib-AMB/shopee-AMB.js         (AMB Devol. b53)
 // ------------------------------------------------------------
 // Devolucoes da SHOPEE via o proxy interno do shopee-nf-sync —
 // la vivem os tokens saudaveis das lojas; aqui so consultamos.
@@ -125,6 +125,39 @@ const norm = (s) => String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
  * SPX (BR...), return_sn ou order_sn. Mesmas 3 comparacoes da
  * GOOD: normalizado, so-digitos e token BR embutido.
  */
+/**
+ * b53 - INSUCESSO DE ENTREGA: quando a entrega falha, a Shopee CANCELA o
+ * pedido e reembolsa SEM criar devolucao — entao o pacote chega no galpao
+ * com etiqueta "SPX Insucesso" e o bipe nao achava nada (get_return_list
+ * nao traz esses).
+ * O servico shopee-nf-sync ja resolve isso e nao estava sendo usado:
+ *   ?pedido=ORDER_SN  -> get_order_detail, devolve se estiver CANCELLED
+ *   ?tracking=BR...   -> indice tracking->pedido dos cancelados (pre-aquecido)
+ * Os dois devolvem no MESMO formato dos itens da lista, entao o card trata igual.
+ */
+async function consultarPedidoCancelado(codigo) {
+  if (!cfg.ativo) return null;
+  const cod = String(codigo || '').trim();
+  if (!cod) return null;
+  // etiqueta de insucesso traz o BR do rastreio; codigo alfanumerico curto e order_sn
+  const ehTracking = /^[A-Z]{2}[A-Z0-9]{8,}$/i.test(cod.replace(/[^A-Za-z0-9]/g, ''));
+  const tentativas = ehTracking
+    ? [`tracking=${encodeURIComponent(cod)}`, `pedido=${encodeURIComponent(cod)}`]
+    : [`pedido=${encodeURIComponent(cod)}`, `tracking=${encodeURIComponent(cod)}`];
+  for (const qs of tentativas) {
+    try {
+      const r = await fetch(`${URL_PROXY}/${LOJA}/interno/devolucoes?${qs}`,
+        { headers: { 'x-internal-key': KEY_PROXY } });
+      const d = await r.json().catch(() => null);
+      if (d && d.ok && d.encontrado && d.devolucao) {
+        console.log(`[AMB/SHOPEE] insucesso/cancelado achado via ${qs.split('=')[0]}: ${d.devolucao.order_sn}`);
+        return d.devolucao;
+      }
+    } catch (e) { /* tenta a proxima via */ }
+  }
+  return null;
+}
+
 async function acharDevolucao(codigo) {
   const vazio = { hit: null, qtd: -1, usouRefresh: false };
   const alvo = norm(codigo);
@@ -156,6 +189,14 @@ async function acharDevolucao(codigo) {
       usouRefresh = true;
       hit = lista.find(casa) || null;
     } catch (e) { /* fica com a cache */ }
+  }
+
+  // b53 - ULTIMA VIA: nao esta na lista de devolucoes SOLICITADAS. Pode ser
+  // INSUCESSO DE ENTREGA (Shopee cancela o pedido, nao abre devolucao) —
+  // pergunta direto pra Shopee pelo tracking da etiqueta ou pelo order_sn.
+  if (!hit) {
+    const cancelado = await consultarPedidoCancelado(codigo);
+    if (cancelado) return { hit: cancelado, qtd: (lista || []).length, usouRefresh, viaPedidoCancelado: true };
   }
   return { hit, qtd: (lista || []).length, usouRefresh };
 }
@@ -260,4 +301,4 @@ function preAquecer() {
 }
 
 module.exports = { cfg, buscarDevolucoesProxy, acharDevolucao, resumoEspreita, preAquecer, norm,
-  consultarChegada, dispararChegadas };
+  consultarChegada, dispararChegadas, consultarPedidoCancelado };
