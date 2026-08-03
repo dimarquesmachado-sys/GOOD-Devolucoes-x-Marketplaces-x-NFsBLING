@@ -211,7 +211,8 @@ function renderizar(data, ok) {
       + '</div>';
   }
 
-  // BADGES TOPO
+  // BADGES TOPO — v4.37: linha flex, com o botao do marketplace no canto
+  html += '<div class="linha-selos">';
   html += ehDevolucao
     ? '<span class="badge badge-devolucao">📦 DEVOLUCAO</span>'
     : '<span class="badge badge-info">📦 ENVIO</span>';
@@ -229,6 +230,28 @@ function renderizar(data, ok) {
 
   // v4.33 - a barra amarela gigante saiu: a quantidade agora vive
   // dentro do card do produto, em cima do titulo (sem repetir).
+
+  // v4.37 - BOTAO PRA ABRIR O PEDIDO NO MARKETPLACE, no canto direito da
+  // linha dos selos. Shopee passa pelo de-para do checkout da GOOD (que
+  // resolve o order_sn no id interno) e Magalu pela rota OAuth da GOOD.
+  (function () {
+    let alvo = data.link_marketplace || null;
+    if (!alvo && order && order.id) {
+      const m = String(data.metodo || '').toLowerCase();
+      if (data.magalu || m.includes('magalu')) {
+        alvo = { nome: 'Magalu', url: '/magalu/ir/good?n=' + encodeURIComponent(String(order.id).replace(/\D/g, '')) };
+      } else if (data.shopee || m.includes('shopee')) {
+        alvo = { nome: 'Shopee', url: 'https://mover-pedidos-aguardando-x-atendido.onrender.com/good-checkout-offline/ir-shopee?sn=' + encodeURIComponent(order.id) };
+      } else if (/^\d{10,}$/.test(String(order.id))) {
+        alvo = { nome: 'Mercado Livre', url: 'https://www.mercadolivre.com.br/vendas/' + encodeURIComponent(order.id) + '/detalhe' };
+      }
+    }
+    if (alvo) {
+      html += `<a class="selo-mkt" href="${alvo.url}" target="_blank" rel="noopener"
+        >🔗 Abrir pedido na ${escapeHtml(alvo.nome)}</a>`;
+    }
+  })();
+  html += '</div>';
 
   // CARDS DOS PRODUTOS (Bling = titulo limpo + EAN, ML = fallback)
   if (itensRender.length > 0) {
@@ -255,6 +278,9 @@ function renderizar(data, ok) {
       .dvi-cod{justify-content:center;}
       .dvi-cod span{font-size:15px;}
     }
+    .linha-selos{display:flex;flex-wrap:wrap;align-items:center;gap:7px;margin-bottom:10px;}
+    .selo-mkt{margin-left:auto;background:#561A9E;color:#fff;text-decoration:none;padding:8px 14px;border-radius:9px;font-weight:700;font-size:13px;white-space:nowrap;}
+    @media (max-width:600px){.selo-mkt{margin-left:0;flex:1 1 100%;text-align:center;}}
     .triagem-botoes{grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:9px!important;}
     .triagem-btn{padding:14px 8px!important;font-size:13px!important;line-height:1.25!important;}
     .triagem-btn-icon{font-size:22px!important;}
