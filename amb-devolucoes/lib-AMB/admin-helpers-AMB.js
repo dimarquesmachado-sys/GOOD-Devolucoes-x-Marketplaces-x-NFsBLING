@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════════════════════════════
-//  amb-devolucoes · lib/admin-helpers  (AMB Devol. b61)
+//  amb-devolucoes · lib/admin-helpers  (AMB Devol. b71)
 //  Os dois ajudantes que o modulo de rotas do painel pede e que a AMB
 //  nao tinha. Sao os MESMOS da GOOD (lib/ml.js e lib/bling.js),
 //  recebendo por injecao o chamarBling/chamarML/sleep da AMB — que
@@ -140,5 +140,123 @@ async function buscarNFBlindada(opts = {}) {
   return { ok: false, tentado, trace };
 }
 
-return { buscarNFnoML, buscarNFBlindada };
+
+// ── b71: os 2 que a rota identificar da GOOD tambem pede ──
+
+function classificarMotivoDevolucao(order, shipment) {
+  if (!order) return null;
+  const tags = order.tags || [];
+  const cd = order.cancel_detail || {};
+  const st = String(shipment?.status || '');
+  const sub = String(shipment?.substatus || '');
+  const temReclamacao = Array.isArray(order.mediations) && order.mediations.length > 0;
+  const fraude = tags.includes('fraud_risk_detected');
+
+  const naoEntregue = cd.code === 'shipment_not_delivered'
+    || cd.group === 'shipment'
+    || st === 'not_delivered'
+    || sub === 'returned'
+    || (tags.includes('not_delivered') && !tags.includes('delivered'));
+
+  if (naoEntregue) {
+    // v4.16 - se o ML marcou irregularidade E o produto nao foi entregue, foi
+    // ELE que bloqueou o envio no meio do caminho. O produto nem chegou perto
+    // do cliente - nao faz sentido pedir "cuidado ao conferir".
+    return {
+      tipo: 'nao_entregue',
+      titulo: '🚫 O cliente NUNCA recebeu este produto',
+      detalhe: fraude
+        ? 'O Mercado Livre bloqueou este envio no meio do caminho por irregularidade na operação. O produto nem chegou ao cliente — deve estar LACRADO e intacto.'
+        : 'Voltou sem ser entregue (recusa, endereço não encontrado ou ausente). O produto deve estar LACRADO e intacto — confira e devolva ao estoque.',
+      cor: '#1565c0',
+      reclamacao_id: null,
+      risco_fraude: false,          // nada a alertar: o produto nao circulou
+      bloqueado_pelo_ml: fraude,
+    };
+  }
+  if (temReclamacao || cd.group === 'mediations') {
+    return {
+      tipo: 'reclamacao',
+      titulo: '⚠️ O cliente ABRIU RECLAMAÇÃO',
+      detalhe: 'Foi entregue e o cliente reclamou. Abra e confira bem o produto antes de decidir.',
+      cor: '#e65100',
+      reclamacao_id: temReclamacao ? String(order.mediations[0].id) : null,
+      risco_fraude: fraude,
+    };
+  }
+  return {
+    tipo: 'devolucao_simples',
+    titulo: '📦 Devolução sem reclamação registrada',
+    detalhe: 'Confira o produto normalmente.',
+    cor: '#616161',
+    reclamacao_id: null,
+    risco_fraude: fraude,
+  };
+}
+
+async function buscarNFnoBlingPorNumero(numeroNF, dataReferencia, opcoes = {}) {
+  const numeroNFStr = String(numeroNF).trim().padStart(6, '0'); // 71932 -> 071932
+  const numeroNFLimpo = String(numeroNF).trim().replace(/^0+/, ''); // remove zeros a esquerda
+  const MAX_PAGINAS = opcoes.maxPaginas || 50;
+  const LIMITE_PAGINA = 100;
+  const DELAY_MS = 400;
+  const DIAS_FOLGA = 5;
+
+  let dataLimite = null;
+  if (dataReferencia) {
+    const ref = new Date(dataReferencia);
+    if (!isNaN(ref.getTime())) {
+      dataLimite = new Date(ref.getTime() - DIAS_FOLGA * 24 * 60 * 60 * 1000);
+    }
+  }
+
+  console.log(`[Bling] BUSCA NF por numero=${numeroNFStr} (alt: ${numeroNFLimpo}) max ${MAX_PAGINAS}pgs`);
+
+  let totalScanned = 0;
+  let primeiraDataVista = null;
+  let ultimaDataVista = null;
+
+  for (let pagina = 1; pagina <= MAX_PAGINAS; pagina++) {
+    if (pagina > 1) await sleep(DELAY_MS);
+    const url = `https://api.bling.com.br/Api/v3/nfe?limite=${LIMITE_PAGINA}&pagina=${pagina}&tipo=1`;
+    const r = await chamarBling(url);
+
+    if (!r.ok) {
+      return { ok: false, status: r.status, error: r.error, totalScanned, primeiraDataVista, ultimaDataVista };
+    }
+
+    const lista = r.data?.data || [];
+    if (lista.length === 0) break;
+
+    if (pagina === 1 && lista[0]) primeiraDataVista = lista[0].dataEmissao;
+    if (lista[lista.length - 1]) ultimaDataVista = lista[lista.length - 1].dataEmissao;
+
+    totalScanned += lista.length;
+
+    // Match por numero - tenta varias formas
+    const match = lista.find(nf => {
+      const numeroBling = String(nf.numero || '').trim();
+      const numeroBlingLimpo = numeroBling.replace(/^0+/, '');
+      return numeroBling === numeroNFStr ||
+             numeroBlingLimpo === numeroNFLimpo ||
+             numeroBling === String(numeroNF);
+    });
+
+    if (match) {
+      console.log(`[Bling] NF ENCONTRADA pag ${pagina}: numero=${match.numero} id=${match.id}`);
+      return { ok: true, match, pagina, totalScanned, primeiraDataVista, ultimaDataVista };
+    }
+
+    if (dataLimite && lista[lista.length - 1]?.dataEmissao) {
+      const dataNF = new Date(lista[lista.length - 1].dataEmissao);
+      if (dataNF < dataLimite) break;
+    }
+
+    if (lista.length < LIMITE_PAGINA) break;
+  }
+
+  return { ok: true, match: null, totalScanned, primeiraDataVista, ultimaDataVista };
+}
+
+return { buscarNFnoML, buscarNFBlindada, classificarMotivoDevolucao, buscarNFnoBlingPorNumero };
 };
