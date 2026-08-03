@@ -211,7 +211,9 @@ function renderizar(data, ok) {
       + '</div>';
   }
 
-  // BADGES TOPO
+  // BADGES TOPO — b85: viram uma linha flex pra o botao do marketplace
+  // caber no canto direito, em vez de ocupar uma linha so pra ele.
+  html += '<div class="linha-selos">';
   html += ehDevolucao
     ? '<span class="badge badge-devolucao">📦 DEVOLUCAO</span>'
     : '<span class="badge badge-info">📦 ENVIO</span>';
@@ -244,11 +246,11 @@ function renderizar(data, ok) {
       }
     }
     if (alvo) {
-      html += `<div style="margin:10px 0;"><a href="${alvo.url}" target="_blank" rel="noopener"
-        style="display:inline-block;background:#561A9E;color:#fff;text-decoration:none;padding:11px 18px;border-radius:10px;font-weight:700;font-size:14px;">
-        🔗 Abrir pedido na ${escapeHtml(alvo.nome)}</a></div>`;
+      html += `<a class="selo-mkt" href="${alvo.url}" target="_blank" rel="noopener"
+        >🔗 Abrir pedido na ${escapeHtml(alvo.nome)}</a>`;
     }
   })();
+  html += '</div>';
 
   // b80 - a barra amarela gigante saiu: a quantidade agora vive
   // dentro do card do produto, em cima do titulo (sem repetir).
@@ -278,6 +280,9 @@ function renderizar(data, ok) {
       .dvi-cod{justify-content:center;}
       .dvi-cod span{font-size:15px;}
     }
+    .linha-selos{display:flex;flex-wrap:wrap;align-items:center;gap:7px;margin-bottom:10px;}
+    .selo-mkt{margin-left:auto;background:#561A9E;color:#fff;text-decoration:none;padding:8px 14px;border-radius:9px;font-weight:700;font-size:13px;white-space:nowrap;}
+    @media (max-width:600px){.selo-mkt{margin-left:0;flex:1 1 100%;text-align:center;}}
     .triagem-botoes{grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:9px!important;}
     .triagem-btn{padding:14px 8px!important;font-size:13px!important;line-height:1.25!important;}
     .triagem-btn-icon{font-size:22px!important;}
