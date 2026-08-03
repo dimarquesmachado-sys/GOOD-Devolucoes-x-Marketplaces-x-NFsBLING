@@ -73,8 +73,11 @@ const emailAMB = require('./lib-AMB/email-AMB');
 const nfEntrada = require('./lib-AMB/nf-entrada-AMB');
 const multer = require('multer');
 const compat = require('./lib-AMB/compat-AMB');
+const criarAdminHelpers = require('./lib-AMB/admin-helpers-AMB');
+const criarNfPessoa = require('./lib-AMB/nf-pessoa-AMB');
+const registrarRotasAdminNF = require('./lib-AMB/rotas-admin-AMB');
 
-const VERSAO = 'AMB Devolucoes b55';
+const VERSAO = 'AMB Devolucoes b61';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -1232,6 +1235,35 @@ impressao.registrarRotas(router, auth.requerLogin);
 // que a AMB nao tinha (busca de produto, EAN por SKU, foto de evidencia,
 // status de triagem). Tem que ser montado ANTES do catch-all 404 abaixo.
 compat.montar(router, { auth, db, bling, cfg, multer });
+
+// b61 - LEVA 4a do porte GOOD -> AMB: as 13 rotas /api/admin/* que o
+// painel usa (fotos, itens da NF, vincular/lancar Full, lancar por NF,
+// preparar e registrar a devolucao gerada, concluir...). O modulo e o
+// MESMO da GOOD, sem edicao: ele recebe tudo por injecao, e um Router
+// do express tem .get/.post/.put igual ao app.
+const dorme = (ms) => new Promise(r => setTimeout(r, ms));
+const nfp = criarNfPessoa({ chamarBling: bling.chamarBling, sleep: dorme });
+const ajudantes = criarAdminHelpers({
+  chamarBling: bling.chamarBling,
+  chamarML: ml.chamarML,
+  buscarNFePorId: bling.buscarNFePorId,
+  sleep: dorme,
+});
+registrarRotasAdminNF(router, {
+  supabase: db.conectar(),
+  requerAdmin: auth.requerAdmin,
+  // usado nas fotos: aceita sessao de admin OU a chave ?k=ADMIN_KEY
+  adminOk: (req) => !!auth.validarSessao(auth.tokenDaRequisicao(req), 'admin')
+    || !!(process.env.ADMIN_KEY && req.query.k === process.env.ADMIN_KEY),
+  sleep: dorme,
+  chamarBling: bling.chamarBling,
+  chamarML: ml.chamarML,
+  buscarNFnoML: ajudantes.buscarNFnoML,
+  buscarNFePorId: bling.buscarNFePorId,
+  buscarNFBlindada: ajudantes.buscarNFBlindada,
+  resolverIdNFPorChave: nfp.resolverIdNFPorChave,
+  mapItensNF: nfp.mapItensNF,
+});
 
 router.use((req, res) => {
   res.status(404).json({
