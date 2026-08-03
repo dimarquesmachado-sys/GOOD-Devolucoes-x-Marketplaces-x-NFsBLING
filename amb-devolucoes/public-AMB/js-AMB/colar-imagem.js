@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════════════════════════════════
-//  colar-imagem.js  v2 — COLAR (Ctrl+V), ARRASTAR ou ESCOLHER a foto
+//  colar-imagem.js  v3 — COLAR (Ctrl+V), ARRASTAR ou ESCOLHER a foto
 //  ------------------------------------------------------------------
 //  Igual ao 1688/AliExpress: copia a imagem, clica na busca, Ctrl+V.
 //
@@ -50,13 +50,15 @@
 
     zona = document.createElement('div');
     zona.id = 'zonaColar';
-    zona.style.cssText = 'margin-top:8px;border:1.5px dashed #CECBF6;border-radius:10px;'
-      + 'padding:9px 12px;background:#faf8ff;cursor:pointer;display:flex;align-items:center;gap:10px;';
+    // v3 - discreto: uma linha fina de dica. So cresce (e mostra previa e
+    // status) enquanto esta lendo a imagem; terminando, volta ao normal.
+    zona.style.cssText = 'margin-top:6px;border-radius:8px;padding:4px 2px;cursor:pointer;'
+      + 'display:flex;align-items:center;gap:8px;transition:background .2s;';
     zona.innerHTML =
-      '<span style="font-size:19px;flex:0 0 auto;">\u{1F4CE}</span>'
+      '<span style="font-size:14px;flex:0 0 auto;opacity:.6;">\u{1F4CE}</span>'
       + '<div style="flex:1;min-width:0;">'
-      + '  <div id="zonaColarTxt" style="font-size:13px;color:#534AB7;font-weight:500;">'
-      + '    Cole a foto da etiqueta aqui (Ctrl+V), arraste, ou clique para escolher</div>'
+      + '  <div id="zonaColarTxt" style="font-size:11.5px;color:#9b93b8;">'
+      + '    dica: pode colar (Ctrl+V) ou arrastar a foto da etiqueta aqui</div>'
       + '  <div id="zonaColarStatus" style="font-size:12px;color:#71659a;margin-top:2px;"></div>'
       + '  <div id="zonaColarOpcoes" style="margin-top:6px;"></div>'
       + '</div>'
@@ -86,6 +88,17 @@
     });
   }
 
+  function trabalhando(sim) {
+    if (!zona) return;
+    zona.style.background = sim ? '#faf8ff' : '';
+    zona.style.border = sim ? '1.5px dashed #CECBF6' : '';
+    zona.style.padding = sim ? '9px 12px' : '4px 2px';
+    var txt = document.getElementById('zonaColarTxt');
+    if (txt) txt.style.display = sim ? 'none' : '';
+    if (previaEl) previaEl.style.display = sim ? '' : 'none';
+    if (!sim) { status(''); if (opcoesEl) opcoesEl.innerHTML = ''; }
+  }
+
   function status(txt) { if (statusEl) statusEl.textContent = txt || ''; }
 
   function usar(valor) {
@@ -94,6 +107,7 @@
     status('achei ' + valor + ' — buscando...');
     if (opcoesEl) opcoesEl.innerHTML = '';
     if (typeof buscar === 'function') buscar();
+    setTimeout(function () { trabalhando(false); }, 1500);   // v3 - o aviso some
   }
   window.usarCodigoColado = usar;
 
@@ -133,6 +147,7 @@
     }
     status('lendo o texto da etiqueta... (a primeira vez baixa o idioma e demora ~20s)');
     try {
+      dataUrl = await prepararImagem(dataUrl);   // v3 - melhora a leitura
       var worker = await Tesseract.createWorker('por', 1, {
         logger: function (m) {
           if (m && m.status === 'recognizing text') {
@@ -140,6 +155,14 @@
           }
         },
       });
+      // v3 - so letras MAIUSCULAS, numeros e pontuacao de etiqueta. Sem
+      // isso o Tesseract inventa acentos e confunde 6 com 8 (foi o que
+      // aconteceu: leu BR264131068541Q no lugar de BR264131066541Q).
+      try {
+        await worker.setParameters({
+          tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 .-/:',
+        });
+      } catch (e) {}
       var r = await worker.recognize(dataUrl);
       await worker.terminate();
       return (r && r.data && r.data.text) || '';
@@ -147,6 +170,43 @@
       status('não consegui ler o texto: ' + (e.message || e));
       return '';
     }
+  }
+
+  /**
+   * v3 - PREPARO DA IMAGEM (o que mais melhora a leitura).
+   * Amplia 2x, tira a cor e estica o contraste. Print de WhatsApp vem
+   * pequeno e comprimido; sem isso o Tesseract erra digito parecido
+   * (6/8, 0/O, 5/S). Nao mexe na imagem original — trabalha numa copia.
+   */
+  async function prepararImagem(dataUrl) {
+    try {
+      var img = new Image();
+      await new Promise(function (r) { img.onload = r; img.onerror = r; img.src = dataUrl; });
+      if (!img.width) return dataUrl;
+      var escala = img.width < 1400 ? 2 : 1;
+      var c = document.createElement('canvas');
+      c.width = img.width * escala; c.height = img.height * escala;
+      var ctx = c.getContext('2d');
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(img, 0, 0, c.width, c.height);
+      var d = ctx.getImageData(0, 0, c.width, c.height);
+      var px = d.data, min = 255, max = 0, i;
+      for (i = 0; i < px.length; i += 4) {
+        var g = (px[i] * 0.299 + px[i + 1] * 0.587 + px[i + 2] * 0.114) | 0;
+        px[i] = px[i + 1] = px[i + 2] = g;
+        if (g < min) min = g;
+        if (g > max) max = g;
+      }
+      var faixa = Math.max(1, max - min);
+      for (i = 0; i < px.length; i += 4) {
+        var v = ((px[i] - min) * 255 / faixa) | 0;
+        v = v < 0 ? 0 : (v > 255 ? 255 : v);
+        px[i] = px[i + 1] = px[i + 2] = v;
+      }
+      ctx.putImageData(d, 0, 0);
+      return c.toDataURL('image/png');
+    } catch (e) { return dataUrl; }
   }
 
   async function processar(blob) {
@@ -157,6 +217,7 @@
       fr.onload = function () { res(fr.result); };
       fr.readAsDataURL(blob);
     });
+    trabalhando(true);
     if (previaEl) { previaEl.src = dataUrl; previaEl.style.display = ''; }
     status('imagem recebida, procurando o código de barras...');
 
@@ -167,6 +228,7 @@
     if (codigo) { usar(codigo); return; }
 
     oferecer(candidatos(await lerTexto(dataUrl)));
+    setTimeout(function () { trabalhando(false); }, 6000);
   }
 
   function imagemDe(dt) {
