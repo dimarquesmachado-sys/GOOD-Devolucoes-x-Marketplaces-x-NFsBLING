@@ -237,7 +237,7 @@ function renderizar(data, ok) {
     }
   html += `<style>
     .dvi{display:grid;grid-template-columns:150px minmax(0,1fr);grid-template-areas:"f q" "f t" "f c";gap:7px 16px;align-items:center;}
-    .dvi-f{grid-area:f;width:150px;height:150px;border-radius:10px;object-fit:cover;background:#f2f2f4;border:1px solid #e4dcf1;display:flex;align-items:center;justify-content:center;font-size:34px;}
+    .dvi-f{grid-area:f;width:150px;height:150px;border-radius:10px;object-fit:contain;background:#fff;border:1px solid #e4dcf1;display:flex;align-items:center;justify-content:center;font-size:34px;}
     .dvi-q{grid-area:q;font-weight:700;color:#854F0B;font-size:16px;letter-spacing:.3px;}
     .dvi-t{grid-area:t;font-size:15.5px;line-height:1.35;}
     .dvi-c{grid-area:c;display:flex;flex-wrap:wrap;gap:7px;}
@@ -260,9 +260,10 @@ function renderizar(data, ok) {
     .nfl-s{font-size:14px;color:#1b5e20;}
     .nfl-x{color:#b0b0b0;}
     .nfl-v{font-size:15px;font-weight:700;}
-    .nfc{display:flex;align-items:center;gap:8px;margin-top:9px;}
-    .nfc-l{font-size:10.5px;color:#5F5E5A;flex:0 0 auto;letter-spacing:.4px;}
-    .nfc-v{flex:1;min-width:0;background:#fff;border:1px solid #ddd;border-radius:6px;padding:6px 9px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:11.5px;overflow-x:auto;white-space:nowrap;}
+    .nfc-v{flex:1 1 300px;min-width:0;background:#fff;border:1px solid #ddd;border-radius:6px;padding:5px 9px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:11.5px;overflow-x:auto;white-space:nowrap;}
+    .nfl-b{flex:0 0 auto;padding:5px 10px;font-size:12.5px;}
+    .nfl-btns{display:flex;gap:6px;flex:0 0 auto;}
+    @media (max-width:600px){.nfl{gap:6px 10px;} .nfc-v{flex:1 1 100%;} .nfl-btns{flex:1 1 100%;}}
   </style>`;
     html += '<div class="itens-lista">';
     // v4.31 - FOTO DO PRODUTO no card do item, a esquerda do 2x/titulo/
@@ -305,17 +306,16 @@ function renderizar(data, ok) {
     html += '<span class="nfl-x">&middot;</span>';
     html += `<span class="nfl-v">${moeda(nf.valor)}</span>`;
     if (nf.peso) { html += `<span class="nfl-x">&middot;</span><span>${nf.peso}g</span>`; }
-    html += '</div>';
     if (nf.chaveAcesso) {
-      html += '<div class="nfc"><span class="nfc-l">CHAVE</span>'
-        + `<span class="nfc-v" id="nfChave">${escapeHtml(nf.chaveAcesso)}</span>`
-        + `<button class="btn-action cinza" style="flex:0 0 auto;padding:6px 10px;" onclick="copiarChaveNF(this)" title="copiar a chave">\u{1F4CB}</button></div>`;
+      html += `<span class="nfc-v" id="nfChave" title="chave de acesso">${escapeHtml(nf.chaveAcesso)}</span>`
+        + `<button class="btn-action cinza nfl-b" onclick="copiarChaveNF(this)" title="copiar a chave">\u{1F4CB}</button>`;
     }
 
-    html += '<div style="margin-top: 10px;" id="botoesNF">';
+    html += '<span id="botoesNF" class="nfl-btns">';
     if (order.id) {
-      html += `<button id="btnBlingDemanda" class="btn-action cinza" onclick="buscarLinksBling('${order.id}', '${order.date_created || ''}', '${nf.numero || ''}')">🔍 Buscar links Bling</button>`;
+      html += `<button id="btnBlingDemanda" class="btn-action cinza" onclick="buscarLinksBling('${order.id}', '${order.date_created || ''}', '${nf.numero || ''}')">🔍 Links Bling</button>`;
     }
+    html += '</span>';
     html += '</div>';
     html += '</div>';
   } else if (order.id) {
