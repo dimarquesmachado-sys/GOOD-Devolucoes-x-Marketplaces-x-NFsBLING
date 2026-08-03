@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════════════════════════════════
-//  amb-devolucoes · lib/identificar  (AMB Devol. b72)
+//  amb-devolucoes · lib/identificar  (AMB Devol. b74)
 //  A rota /api/devolucao/identificar da GOOD, PORTADA SEM EDICAO.
 //
 //  Por que ela existe aqui: a tela de bipe (os modulos js-AMB) le do
@@ -556,8 +556,11 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
         resultado.tentativas.push({ tipo: 'shopee_return', v: '3.34.3', codigo: codigoOriginal, ok: false, status: 500, erro: e.message || String(e) });
         console.error('[BUSCA][shopee] proxy falhou:', e.message || e);
       }
-    } else {
-      // v3.34.3: mesmo desligada, a tentativa aparece e se explica
+    } else if (!shopee.cfg.ativo) {
+      // v3.34.3: mesmo desligada, a tentativa aparece e se explica.
+      // b74 - so entra aqui quando a integracao esta DESLIGADA. Antes
+      // este else tambem pegava o caso "ja achei pelo SPX", e a tela
+      // mostrava um ❌ shopee_return fantasma ao lado do ✅ que deu certo.
       resultado.tentativas.push({ tipo: 'shopee_return', v: '3.34.3', codigo: codigoOriginal, ok: false, status: 0, erro: 'SHOPEE_PROXY_URL/SHOPEE_PROXY_KEY ausentes no Render deste servico' });
     }
     if (!devShopee) {
