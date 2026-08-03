@@ -8,7 +8,7 @@
 <link rel="icon" type="image/png" href="icone-AMB.png">
 <!--
   =========================================================
-  amb-devolucoes/public-AMB/painel-AMB.html  (AMB Devol. b52)
+  amb-devolucoes/public-AMB/painel-AMB.html  (AMB Devol. b54)
   ---------------------------------------------------------
   PAINEL em PAGINA UNICA, no formato da GOOD (pedido do Diego
   comparando os prints): nada de abas — secoes empilhadas,
@@ -166,7 +166,7 @@
   <div class="miolo">
   <h1>&#128081; Painel de Devoluções &mdash; AMBTotal</h1>
   <div class="sub">Triagens + À Espreita + Defeitos + Recados</div>
-  <div class="ver">painel <b>b52</b> &middot; <span id="versaoServidor">servidor ...</span></div>
+  <div class="ver">painel <b>b54</b> &middot; <span id="versaoServidor">servidor ...</span></div>
   </div>
 </div>
 
@@ -303,7 +303,6 @@ function cardFila(x, status) {
       ? '<button class="btn" style="background:linear-gradient(135deg,#26a69a,#00796b)" onclick="gerarDevolucao(this,\'' + esc(x.id) + '\',\'' + status + '\',false)">&#129534; Gerar Rascunho</button>' +
         '<button class="btn" style="background:linear-gradient(135deg,#1e88e5,#1565c0)" onclick="gerarDevolucao(this,\'' + esc(x.id) + '\',\'' + status + '\',true)">&#127981; Gerar + Emitir</button>'
       : '') +
-    '<button class="btn roxo" onclick="registrarNfDevolucao(this,\'' + esc(x.id) + '\',\'' + status + '\')">&#128221; Registrar NF de Devolução</button>' +
     (x.nf_devolucao_id_bling
       ? '<button class="btn" style="background:linear-gradient(135deg,#6a3fc4,#4527a0)" onclick="lancarEstoque(this,\'' + esc(x.id) + '\',\'' + status + '\')">&#128230; Lançar Estoque</button>'
       : '') +
@@ -493,19 +492,6 @@ async function emitirSelecionadas(status, bt) {
   verFila(status);
 }
 
-function registrarNfDevolucao(bt, id, status) {
-  abrirCaixinha(bt, {
-    valor: '',
-    placeholder: 'cole o LINK da NF de devolucao no Bling (o id vem junto) ou so o numero',
-    aoSalvar: async (texto) => {
-      if (!texto) return;
-      const r = await api('/api/triagem/' + id + '/nf-devolucao', {
-        method: 'PUT', body: JSON.stringify({ texto }) });
-      if (!r.ok) { alert('Não gravou: ' + r.erro); return; }
-      verFila(status);
-    },
-  });
-}
 
 async function concluirUma(id, status) {
   if (!confirm('Concluir esta devolucao? Ela some da fila.')) return;
