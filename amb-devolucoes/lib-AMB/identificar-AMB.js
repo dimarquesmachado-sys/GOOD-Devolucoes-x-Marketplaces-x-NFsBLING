@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════════════════════════════════
-//  amb-devolucoes · lib/identificar  (AMB Devol. b75)
+//  amb-devolucoes · lib/identificar  (AMB Devol. b89)
 //  A rota /api/devolucao/identificar da GOOD, PORTADA SEM EDICAO.
 //
 //  Por que ela existe aqui: a tela de bipe (os modulos js-AMB) le do
@@ -28,6 +28,25 @@ module.exports = function registrarIdentificar(app, deps) {
 
 app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
   const codigoOriginal = String(req.params.codigo || '').trim();
+  // ══════════════════════════════════════════════════════════════════
+  // b89 - RELOGIO DA BUSCA
+  // A rota faz ate 18 chamadas de rede EM SEQUENCIA. Sem medir, apertar
+  // uma etapa e chute. Envelopo o res.json (em vez de mexer em cada
+  // saida) pra TODA resposta trazer _ms (tempo total) e _marcos (quanto
+  // custou cada fase). Assim da pra ver onde o tempo vai de verdade.
+  // ══════════════════════════════════════════════════════════════════
+  const _t0 = Date.now();
+  const _marcos = [];
+  const marcar = (fase) => { _marcos.push({ fase, ms: Date.now() - _t0 }); };
+  const _jsonOriginal = res.json.bind(res);
+  res.json = function (obj) {
+    if (obj && typeof obj === 'object') {
+      delete obj._shopeeJaTentado;
+      obj._ms = Date.now() - _t0;
+      obj._marcos = _marcos;
+    }
+    return _jsonOriginal(obj);
+  };
 
   if (!codigoOriginal) {
     return res.status(400).json({ ok: false, erro: 'Codigo nao informado' });
@@ -107,7 +126,9 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
   // usa etiqueta Correios, que tb comeca com BR). Nenhum caminho e perdido.
   if (pistaSPX && shopee.cfg.ativo) {
     try {
+      marcar('shopee-spx:inicio');
       const infoSPX = await shopee.acharDevolucao(codigoOriginal);
+      marcar('shopee-spx:fim');
       if (infoSPX && infoSPX.hit) {
         resultado.tentativas.push({ tipo: 'shopee_return', v: 'spx-first', codigo: codigoOriginal, ok: true, status: 200, lista_qtd: infoSPX.qtd });
         const dev = infoSPX.hit;
@@ -116,6 +137,7 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
         metodoUsado = 'shopee_return';
         resultado._shopeeDev = dev; // sinaliza pro bloco shopee abaixo pular a re-busca
       } else {
+        resultado._shopeeJaTentado = true;
         resultado.tentativas.push({ tipo: 'shopee_return', v: 'spx-first', codigo: codigoOriginal, ok: false, status: 404, lista_qtd: infoSPX ? infoSPX.qtd : null, nota: 'nao achou na Shopee - seguindo cascata ML (pode ser insucesso ML/Correios)' });
       }
     } catch (e) {
@@ -543,9 +565,14 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
     let devShopee = resultado._shopeeDev || null; // v3.47.2: reusa o spx-first
     delete resultado._shopeeDev; // campo interno - nao vaza no JSON
     let infoShopee = null;
-    if (!devShopee && shopee.cfg.ativo) {
+    // b89 - o spx-first ja consultou a Shopee com ESTE codigo e nao achou:
+    // repetir a consulta so dobra o tempo (o proxy varre a lista de
+    // devolucoes em janelas de 15 dias) pra dar o mesmo resultado.
+    if (!devShopee && shopee.cfg.ativo && !resultado._shopeeJaTentado) {
       try {
+        marcar('shopee-2a-vez:inicio');
         infoShopee = await shopee.acharDevolucao(codigoOriginal);
+        marcar('shopee-2a-vez:fim');
         devShopee = infoShopee.hit;
         resultado.tentativas.push({
           tipo: 'shopee_return', v: '3.34.3', codigo: codigoOriginal,
@@ -597,6 +624,7 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
     // NF pela blindada: order_sn da Shopee = numeroLoja da NF serie 1 (Fase 0 direto)
     let nfData = null;
     let nomeCliente = null;
+    marcar('nf-blindada:inicio');
     const rBlind = await buscarNFBlindada({
       orderIds: [devShopee.order_sn],
       dataReferencia: devShopee.create_time
@@ -604,6 +632,7 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
         : null,
       janelaDias: 60,
     });
+    marcar('nf-blindada:fim');
     if (rBlind.ok && rBlind.nf) {
       const nf = rBlind.nf;
       const itensBling = Array.isArray(nf.itens) ? nf.itens.map(it => ({
@@ -939,7 +968,8 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
     // de serie 1/2). Substitui a varredura antiga de 50 paginas sem filtro.
     if (order?.id) {
       console.log(`[BUSCA] ML sem NF, acionando busca BLINDADA pra order=${order.id}`);
-      const rBlind = await buscarNFBlindada({
+      marcar('nf-blindada:inicio');
+    const rBlind = await buscarNFBlindada({
         orderIds: [order.id, order.pack_id || pack?.id || null],
         numeroNF: mlInvoice?.invoice_number || null,
         serieNF: mlInvoice?.invoice_serie || null,
@@ -954,7 +984,8 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
         tentado: rBlind.tentado || null,
       });
 
-      if (rBlind.ok && rBlind.nf) {
+      marcar('nf-blindada:fim');
+    if (rBlind.ok && rBlind.nf) {
         const nf = rBlind.nf;
         const itensBling = Array.isArray(nf.itens) ? nf.itens.map(it => ({
           titulo: it.descricao || null,
