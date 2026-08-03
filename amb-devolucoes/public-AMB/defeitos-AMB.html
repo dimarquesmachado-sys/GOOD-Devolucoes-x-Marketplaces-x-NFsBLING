@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AMBTotal - Estoque de defeitos</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: -apple-system, "Segoe UI", Roboto, sans-serif; margin: 0; background: #f4f5f7; color: #222; }
+    header { background: #b00020; color: #fff; padding: 16px 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
+    header h1 { font-size: 20px; margin: 0; }
+    header a { color: #fff; text-decoration: none; font-size: 14px; margin-left: 14px; opacity: .9; }
+    header a:hover { opacity: 1; }
+    .wrap { max-width: 1100px; margin: 20px auto; padding: 0 16px; }
+    .barra { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 14px; }
+    .barra input { flex: 1; min-width: 240px; padding: 12px; border: 1px solid #ccc; border-radius: 10px; font-size: 15px; }
+    .barra button { padding: 12px 18px; border: none; border-radius: 10px; font-size: 14px; font-weight: 700; cursor: pointer; }
+    .btn-buscar { background: #b00020; color: #fff; }
+    .btn-limpar { background: #e0e0e0; color: #555; }
+    .resumo { font-size: 14px; color: #555; margin-bottom: 12px; }
+    .resumo b { color: #b00020; }
+    .grupo { background: #fff; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,.06); margin-bottom: 14px; overflow: hidden; }
+    .grupo-head { background: #37474f; color: #fff; padding: 10px 16px; font-size: 15px; font-weight: 800; display: flex; justify-content: space-between; }
+    .grupo-head .badge { background: rgba(255,255,255,.25); border-radius: 10px; padding: 2px 10px; font-size: 12px; }
+    .item { padding: 12px 16px; border-bottom: 1px solid #f0f0f0; }
+    .item:last-child { border-bottom: none; }
+    .item .prod { font-weight: 700; font-size: 14px; }
+    .item .meta { font-size: 12px; color: #666; margin-top: 3px; }
+    .item .meta code { background: #f0f0f0; padding: 1px 6px; border-radius: 5px; }
+    .item .defeito { font-size: 13px; color: #c62828; background: #fff5f5; border-radius: 6px; padding: 6px 8px; margin-top: 6px; }
+    .item .qtd { display: inline-block; background: #c62828; color: #fff; border-radius: 8px; padding: 1px 8px; font-size: 12px; font-weight: 700; }
+    .vazio { text-align: center; color: #888; padding: 40px; font-size: 15px; }
+    .loading { text-align: center; padding: 40px; color: #888; }
+  </style>
+  <!-- adaptador de caminho (poe /amb nas chamadas de API) -->
+  <script src="js-AMB/base-amb.js?v=b57"></script>
+</head>
+<body>
+  <header>
+    <h1>🔧 Localização Defeitos</h1>
+    <div>
+      <a href="/">← Voltar à Triagem</a>
+      <a href="/">📦 Triagem</a>
+    </div>
+  </header>
+
+  <div class="wrap">
+    <div class="barra">
+      <input type="text" id="busca" placeholder="Buscar por SKU, localização, produto ou NF..." onkeydown="if(event.key==='Enter')carregar()">
+      <button class="btn-buscar" onclick="carregar()">🔍 Buscar</button>
+      <button class="btn-limpar" onclick="document.getElementById('busca').value='';carregar()">Limpar</button>
+    </div>
+    <div class="resumo" id="resumo"></div>
+    <div id="lista"><div class="loading">Carregando estoque de defeitos...</div></div>
+  </div>
+
+  <script>
+    function esc(t) { return String(t == null ? '' : t).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+
+    async function carregar() {
+      const lista = document.getElementById('lista');
+      const resumo = document.getElementById('resumo');
+      lista.innerHTML = '<div class="loading">Carregando...</div>';
+      const q = document.getElementById('busca').value.trim();
+      try {
+        const r = await fetch('/api/defeitos' + (q ? '?q=' + encodeURIComponent(q) : ''), { credentials: 'same-origin' });
+        if (r.status === 401) {
+          // v3.91 - NAO redireciona (isso causava o "piscar" em loop). Mostra aviso.
+          resumo.textContent = '';
+          lista.innerHTML = '<div class="vazio">🔒 Sessão expirada. <a href="/" style="color:#b00020;font-weight:700;">Voltar à triagem e entrar de novo</a></div>';
+          return;
+        }
+        const d = await r.json();
+        if (!d.ok) {
+          lista.innerHTML = '<div class="vazio">⚠️ ' + esc(d.erro || 'erro') + '</div>';
+          resumo.textContent = '';
+          return;
+        }
+        const itens = d.itens || [];
+        resumo.innerHTML = '📦 <b>' + d.total_registros + '</b> registro(s) · <b>' + d.total_pecas + '</b> peça(s) com defeito no estoque' + (q ? ' · filtro: "' + esc(q) + '"' : '')
+          + (d.aguardando_nf ? '<br><span style="color:#e65100;">⏳ <b>' + d.aguardando_nf + '</b> devolução(ões) com defeito aguardando a emissão da NF — entram aqui depois de concluídas no painel.</span>' : '');
+        if (itens.length === 0) { lista.innerHTML = '<div class="vazio">Nenhum defeito com localização registrada' + (q ? ' pra "' + esc(q) + '"' : '') + '.</div>'; return; }
+        // v3.96 - agrupa por LOCAL e, dentro dele, por SKU (soma as quantidades
+        // em vez de repetir o mesmo SKU em varias linhas)
+        const grupos = {};
+        for (const it of itens) { const k = (it.local || '(sem local)').toUpperCase(); (grupos[k] = grupos[k] || []).push(it); }
+        let html = '';
+        for (const local of Object.keys(grupos).sort()) {
+          const g = grupos[local];
+          const pcs = g.reduce((a, x) => a + (Number(x.qtd) || 1), 0);
+          html += '<div class="grupo"><div class="grupo-head"><span>📍 ' + esc(local) + '</span><span class="badge">' + pcs + ' peça(s)</span></div>';
+          // junta os registros do mesmo SKU
+          const porSku = {};
+          for (const it of g) {
+            const k = (it.sku || '(sem sku)').toUpperCase();
+            if (!porSku[k]) porSku[k] = { sku: it.sku, produto: it.produto, total: 0, ocorrencias: [] };
+            porSku[k].total += (Number(it.qtd) || 1);
+            if (!porSku[k].produto && it.produto) porSku[k].produto = it.produto;
+            porSku[k].ocorrencias.push(it);
+          }
+          const skus = Object.keys(porSku).sort((a, b) => porSku[b].total - porSku[a].total);
+          for (const k of skus) {
+            const linha = porSku[k];
+            html += '<div class="item">'
+              + '<div class="prod">' + esc(linha.produto || '-') + ' <span class="qtd">×' + linha.total + '</span></div>'
+              + '<div class="meta">SKU <code>' + esc(linha.sku || '-') + '</code>'
+              + (linha.ocorrencias.length > 1 ? ' · <b>' + linha.ocorrencias.length + ' lançamentos</b>' : '') + '</div>';
+            for (const oc of linha.ocorrencias) {
+              // v3.99 - o item continua contando como defeito; a nota mostra
+              // o que ja foi canibalizado dele
+              var notaPecas = '';
+              if (oc.pecas_retiradas && oc.pecas_retiradas.length) {
+                notaPecas = '<div style="font-size:11px;color:#e65100;background:#fff3e0;border-radius:6px;padding:4px 7px;margin-top:4px;">🔩 já retirado daqui: '
+                  + oc.pecas_retiradas.map(function (p) {
+                      return esc(p.peca) + (p.quem ? ' (' + esc(p.quem) : '')
+                        + (p.quando ? ' · ' + String(p.quando).slice(0, 10).split('-').reverse().join('/') : '')
+                        + (p.quem ? ')' : '')
+                        + (p.usada_em ? ' → ' + esc(p.usada_em) : '');
+                    }).join(' · ')
+                  + '</div>';
+              }
+              html += '<div class="defeito">'
+                + (oc.origem === 'estoque'
+                    ? '<span style="background:#455a64;color:#fff;padding:1px 6px;border-radius:8px;font-size:10px;font-weight:700;">ESTOQUE</span> '
+                    : '<span style="background:#c62828;color:#fff;padding:1px 6px;border-radius:8px;font-size:10px;font-weight:700;">DEVOLUÇÃO</span> ')
+                + '🔧 ' + esc(oc.defeito || '-')
+                + ' <span style="color:#888;font-size:11px;">('
+                + (oc.qtd ? '×' + oc.qtd + ' · ' : '')
+                + (oc.quando ? String(oc.quando).slice(0, 10).split('-').reverse().join('/') : '-')
+                + (oc.nf ? ' · NF ' + esc(oc.nf) : '') + ')</span>' + notaPecas + '</div>';
+            }
+            html += '</div>';
+          }
+          html += '</div>';
+        }
+        lista.innerHTML = html;
+      } catch (e) {
+        lista.innerHTML = '<div class="vazio">Erro de conexão</div>';
+      }
+    }
+    carregar();
+  </script>
+</body>
+</html>
