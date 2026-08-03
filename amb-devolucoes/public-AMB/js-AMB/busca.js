@@ -471,6 +471,19 @@ function renderizar(data, ok) {
 
   // DEBUG
   html += '<details><summary>🔧 Tentativas e diagnostico</summary>';
+  // b89 - quanto a busca demorou e onde. A rota faz varias chamadas de
+  // rede em sequencia; com isso na tela da pra ver qual etapa pesa.
+  if (data._ms) {
+    const seg = (data._ms / 1000).toFixed(1);
+    html += `<div style="font-size:12.5px;color:#555;margin:6px 0;">`
+      + `⏱️ a busca levou <b>${seg}s</b>`;
+    if (Array.isArray(data._marcos) && data._marcos.length) {
+      html += ' &mdash; ' + data._marcos.map(function (m) {
+        return escapeHtml(m.fase) + ' ' + (m.ms / 1000).toFixed(1) + 's';
+      }).join(' · ');
+    }
+    html += '</div>';
+  }
   html += '<ul class="tentativas-list">';
   data.tentativas.forEach(t => {
     const icone = t.ok ? '✅' : '❌';
