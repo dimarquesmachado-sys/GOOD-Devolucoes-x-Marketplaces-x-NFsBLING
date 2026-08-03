@@ -255,6 +255,10 @@ function renderizar(data, ok) {
       .dvi-cod{justify-content:center;}
       .dvi-cod span{font-size:15px;}
     }
+    .triagem-botoes{grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:9px!important;}
+    .triagem-btn{padding:14px 8px!important;font-size:13px!important;line-height:1.25!important;}
+    .triagem-btn-icon{font-size:22px!important;}
+    @media (max-width:600px){.triagem-botoes{grid-template-columns:1fr!important;} .triagem-btn{padding:16px 10px!important;font-size:15px!important;}}
     .nfl{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px;}
     .nfl-tit{font-size:12px;font-weight:700;color:#1b5e20;letter-spacing:.4px;flex:0 0 auto;}
     .nfl-n{font-size:20px;font-weight:700;color:#1b5e20;}
