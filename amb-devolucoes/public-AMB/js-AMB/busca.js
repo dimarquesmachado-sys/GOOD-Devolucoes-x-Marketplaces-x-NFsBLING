@@ -261,7 +261,13 @@ function renderizar(data, ok) {
   // AVISOS
   if (data.avisos?.length) {
     data.avisos.forEach(a => {
-      html += `<div class="aviso-box" style="margin-top:10px;">⚠️ ${escapeHtml(a.mensagem)}</div>`;
+      // b74 - aviso de SUCESSO nao pode ter cara de alerta. "NF achada"
+      // aparecia com ⚠️ igual a um erro. Agora o que deu certo vem em
+      // verde com ✅; o que e problema segue amarelo com ⚠️.
+      const ehBoa = /^(nf_via_|nf_achada|ok_)/.test(String(a.tipo || ''));
+      html += ehBoa
+        ? `<div style="margin-top:10px;background:#e8f5e9;border:1px solid #a5d6a7;border-radius:8px;padding:9px 11px;font-size:13px;color:#1b5e20;">✅ ${escapeHtml(a.mensagem)}</div>`
+        : `<div class="aviso-box" style="margin-top:10px;">⚠️ ${escapeHtml(a.mensagem)}</div>`;
     });
   }
 
@@ -347,7 +353,12 @@ function renderizar(data, ok) {
   html += '<div class="bloco">';
   html += '<div class="secao-titulo">Pedido</div>';
   html += '<div class="item-grid">';
-  html += `<div><div class="label">Order ID (ML)</div><div class="valor">${order.id || '-'}</div></div>`;
+  // b74 - o rotulo era fixo "Order ID (ML)" e aparecia assim tambem em
+  // pedido Shopee/Magalu. Agora segue o canal identificado.
+  const _rotuloPedido = data.magalu ? 'Pedido Magalu'
+    : (data.shopee || String(data.metodo || '').includes('shopee')) ? 'Pedido Shopee'
+    : 'Order ID (ML)';
+  html += `<div><div class="label">${_rotuloPedido}</div><div class="valor">${order.id || '-'}</div></div>`;
   html += `<div><div class="label">Pack ID</div><div class="valor">${order.pack_id || '-'}</div></div>`;
   html += `<div><div class="label">Status venda</div><div class="valor">${traduzirStatus(order.status)}</div></div>`;
   html += `<div><div class="label">Status pagamento</div><div class="valor">${traduzirPagamento(payment.status)}${payment.transaction_amount_refunded ? ' (estornado: ' + moeda(payment.transaction_amount_refunded) + ')' : ''}</div></div>`;
