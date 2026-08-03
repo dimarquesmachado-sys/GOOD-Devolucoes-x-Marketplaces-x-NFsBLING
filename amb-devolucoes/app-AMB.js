@@ -71,11 +71,19 @@ const mlMotivo = require('./lib-AMB/ml-motivo-AMB');
 const impressao = require('./lib-AMB/impressao-AMB');
 const emailAMB = require('./lib-AMB/email-AMB');
 const nfEntrada = require('./lib-AMB/nf-entrada-AMB');
+const multer = require('multer');
+const compat = require('./lib-AMB/compat-AMB');
 
-const VERSAO = 'AMB Devolucoes b50';
+const VERSAO = 'AMB Devolucoes b55';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
+
+// b55 - LEVA 1a do porte GOOD -> AMB: rotas que a tela de bipe da GOOD usa
+// e que a AMB nao tinha (busca de produto, EAN por SKU, foto de evidencia,
+// status de triagem). As demais a AMB ja tem com outro nome — sao apontadas
+// no proprio front quando os modulos JS forem portados (leva 2).
+
 
 // ── AUTOSSUFICIENCIA DE PARSERS (b15) ────────────────────────
 // BUG REAL pego em producao: no server.js da GOOD o
@@ -1220,6 +1228,11 @@ router.get('/ml/eu', admin, async (req, res) => {
 impressao.registrarRotas(router, auth.requerLogin);
 
 // ── 404 do modulo ────────────────────────────────────────────
+// b55 - LEVA 1a do porte GOOD -> AMB: rotas que a tela de bipe da GOOD usa e
+// que a AMB nao tinha (busca de produto, EAN por SKU, foto de evidencia,
+// status de triagem). Tem que ser montado ANTES do catch-all 404 abaixo.
+compat.montar(router, { auth, db, bling, cfg, multer });
+
 router.use((req, res) => {
   res.status(404).json({
     ok: false,
