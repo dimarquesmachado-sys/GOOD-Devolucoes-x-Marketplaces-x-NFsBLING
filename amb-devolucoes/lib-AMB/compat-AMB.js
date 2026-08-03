@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════════════════════════════════
-//  amb-devolucoes · lib/compat  (AMB Devol. b78)
+//  amb-devolucoes · lib/compat  (AMB Devol. b79)
 //  LEVA 1a do porte GOOD → AMB.
 //
 //  A tela de bipe da GOOD (index.html + 10 modulos JS) chama 18 endpoints.
@@ -40,26 +40,22 @@ const emailAMB = require('./email-AMB');
  */
 const IMG_CACHE = new Map();          // idProduto -> url|null
 
-function imagemProfunda(obj, prof = 0) {
-  if (!obj || prof > 6) return null;
-  if (typeof obj === 'string') {
-    const u = obj.trim();
-    return /^https?:\/\//i.test(u) && /\.(jpe?g|png|webp|gif|bmp)(\?|$)/i.test(u) ? u : null;
-  }
-  if (Array.isArray(obj)) {
-    for (const it of obj) { const r = imagemProfunda(it, prof + 1); if (r) return r; }
-    return null;
-  }
-  if (typeof obj === 'object') {
-    for (const k of ['link', 'linkMiniatura', 'imagemURL', 'imagemUrl', 'urlImagem', 'linkImagem', 'url', 'src']) {
-      const r = imagemProfunda(obj[k], prof + 1);
-      if (r) return r;
-    }
-    for (const k of Object.keys(obj)) {
-      const r = imagemProfunda(obj[k], prof + 1);
-      if (r) return r;
-    }
-  }
+/**
+ * b79 - COPIADO DO CHECKOUT OFFLINE (amb-checkout-offline/produtos.js,
+ * funcao primeiraImagem), que ja busca imagem do Bling ha meses.
+ * Por que o meu extrator anterior falhava: eu exigia que a URL
+ * terminasse em .jpg/.png/etc — e as URLs do Bling nem sempre tem
+ * extensao. Alem disso eu nao olhava midia.imagens.imagensURL[].
+ */
+function primeiraImagem(prod) {
+  if (!prod) return null;
+  if (prod.imagemURL) return prod.imagemURL;
+  const ext = prod.midia && prod.midia.imagens && prod.midia.imagens.externas;
+  if (ext && ext[0] && ext[0].link) return ext[0].link;
+  const url = prod.midia && prod.midia.imagens && prod.midia.imagens.imagensURL;
+  if (url && url[0] && (url[0].link || url[0])) return url[0].link || url[0];
+  const int = prod.midia && prod.midia.imagens && prod.midia.imagens.internas;
+  if (int && int[0] && int[0].link) return int[0].link;
   return null;
 }
 
@@ -163,10 +159,10 @@ function montar(router, deps) {
         try {
           const rD = await bling.chamarBling(`/produtos/${item.id}`);
           const det = (rD.ok && rD.data && rD.data.data) || null;
-          const url = imagemProfunda(det);
-          IMG_CACHE.set(item.id, url);
+          const url = primeiraImagem(det);
+          if (url) IMG_CACHE.set(item.id, url);   // so sucesso
           item.imagem = url;
-        } catch (e) { IMG_CACHE.set(item.id, null); }
+        } catch (e) { /* falha nao vira cache */ }
         buscados++;
         await new Promise(r2 => setTimeout(r2, 180));
       }
@@ -190,16 +186,22 @@ function montar(router, deps) {
       return res.json({ ok: true, chave, imagem: IMG_CACHE.get(chave), cache: true });
     }
     try {
+      // mesmo caminho do checkout offline: lista por codigo (que ja pode
+      // trazer imagemURL) e, se precisar, abre o detalhe do produto
       let id = /^\d{6,}$/.test(chave) ? chave : null;
+      let url = null;
       if (!id) {
-        const rP = await bling.buscarProdutoPorSku(chave);
-        id = (rP.ok && rP.exato && rP.exato.id) ? rP.exato.id : null;
+        const rL = await bling.chamarBling(`/produtos?codigo=${encodeURIComponent(chave)}&limite=1`);
+        const item = (rL.ok && rL.data && rL.data.data && rL.data.data[0]) || null;
+        if (item) { url = primeiraImagem(item); id = item.id || null; }
       }
-      if (!id) { IMG_CACHE.set(chave, null); return res.json({ ok: true, chave, imagem: null }); }
-      const rD = await bling.chamarBling(`/produtos/${id}`);
-      const det = (rD.ok && rD.data && rD.data.data) || null;
-      const url = imagemProfunda(det);
-      IMG_CACHE.set(chave, url);
+      if (!url && id) {
+        const rD = await bling.chamarBling(`/produtos/${id}`);
+        url = primeiraImagem((rD.ok && rD.data && rD.data.data) || null);
+      }
+      // so cacheia SUCESSO — nunca fixa uma falha (licao do produtoDetalhe
+      // do checkout: um 429 passageiro deixaria o produto sem foto pra sempre)
+      if (url) IMG_CACHE.set(chave, url);
       res.json({ ok: true, chave, imagem: url });
     } catch (e) {
       res.status(500).json({ ok: false, erro: String(e.message || e) });
