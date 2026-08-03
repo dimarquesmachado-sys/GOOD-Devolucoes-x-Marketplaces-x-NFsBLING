@@ -227,6 +227,29 @@ function renderizar(data, ok) {
     html += `<span class="badge badge-fonte-ml">via ${nomeMkt}</span>`;
   }
 
+  // b75 - BOTAO PRA ABRIR O PEDIDO NO MARKETPLACE.
+  // O backend manda data.link_marketplace pronto (na Shopee ele passa
+  // pelo de-para que resolve o order_sn no id interno). Se nao vier,
+  // monta pelo canal identificado — assim vale pro ML e pro Magalu.
+  (function () {
+    let alvo = data.link_marketplace || null;
+    if (!alvo && order && order.id) {
+      const m = String(data.metodo || '').toLowerCase();
+      if (data.magalu || m.includes('magalu')) {
+        alvo = { nome: 'Magalu', url: '/magalu/ir/amb?n=' + encodeURIComponent(String(order.id).replace(/\D/g, '')) };
+      } else if (data.shopee || m.includes('shopee')) {
+        alvo = { nome: 'Shopee', url: 'https://mover-pedidos-aguardando-x-atendido.onrender.com/amb-checkout-offline/ir-shopee?sn=' + encodeURIComponent(order.id) };
+      } else if (/^\d{10,}$/.test(String(order.id))) {
+        alvo = { nome: 'Mercado Livre', url: 'https://www.mercadolivre.com.br/vendas/' + encodeURIComponent(order.id) + '/detalhe' };
+      }
+    }
+    if (alvo) {
+      html += `<div style="margin:10px 0;"><a href="${alvo.url}" target="_blank" rel="noopener"
+        style="display:inline-block;background:#561A9E;color:#fff;text-decoration:none;padding:11px 18px;border-radius:10px;font-weight:700;font-size:14px;">
+        🔗 Abrir pedido na ${escapeHtml(alvo.nome)}</a></div>`;
+    }
+  })();
+
   // QUANTIDADE EM DESTAQUE - total agregado
   if (qtdTotal > 0) {
     const ehMulti = itensRender.length > 1;
