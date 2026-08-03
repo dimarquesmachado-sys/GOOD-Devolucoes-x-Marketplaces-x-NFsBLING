@@ -47,7 +47,7 @@
       <img class="logo" src="logo-AMB.png" alt="AMBTotal Devolucoes" style="max-height:44px;vertical-align:middle;margin-right:8px;">
       <h1 style="display:inline-block;vertical-align:middle;">AMBTotal Devoluções</h1>
       <p>Identificar venda + NF-e + Triagem</p>
-      <p style="font-size: 10px; color: #888; margin-top: 4px;">v3.31 (OCR do remetente) | <span id="serverVersion">checando...</span></p>
+      <p style="font-size: 10px; color: #888; margin-top: 4px;">v3.32 (menu curto no celular) | <span id="serverVersion">checando...</span></p>
       <div class="user-badge">
         👤 <span id="userNome">-</span>
         <a href="/amb/painel" id="btnPainelAdmin" style="display:none;background:#ffd700;color:#1d1d1f;padding:3px 10px;border-radius:10px;font-weight:700;margin-left:6px;">👑 Painel Admin</a>
@@ -94,7 +94,7 @@
         </div>
         <p style="font-size:11px; color:#888; margin:8px 0 0;">💡 Aproxima a câmera SO do bloco REMETENTE — leitura mais rapida e certeira. 1a vez baixa o leitor (~15MB).</p>
       </div>
-      <p class="hint">
+      <p class="hint dica-formatos" onclick="this.classList.toggle('aberta')" title="toque para ver todos os formatos">
         💡 Aceita: etiqueta ML, <b>Correios reverso</b> (AD/AP...BR), Shopee, <b>Magalu</b> (QR/Protocolo), chave DANFE, <b>número da NF</b> ou o <b>NOME do remetente</b> (ex: RENATONEVES — mesmo colado, como vem na etiqueta).
       </p>
     </div>
@@ -709,5 +709,35 @@
       }
     }
   </script>
+
+<script>
+// b69 - ROLA SOZINHO ATE O QUE IMPORTA.
+// No celular, depois de bipar, o "Consultando ML..." e o resultado ficam
+// abaixo da dobra e o estoquista tinha que rolar pra saber se algo estava
+// acontecendo. Este observador olha o #loading e o #resultado: quando um
+// deles aparece, traz a tela ate ele. Nao mexe em nenhum modulo JS.
+(function () {
+  function trazerPraTela(el) {
+    if (!el) return;
+    try { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (e) { el.scrollIntoView(); }
+  }
+  function visivel(el) {
+    return !!(el && el.offsetParent !== null && el.getBoundingClientRect().height > 4);
+  }
+  document.addEventListener('DOMContentLoaded', function () {
+    ['loading', 'resultado'].forEach(function (id) {
+      var el = document.getElementById(id);
+      if (!el) return;
+      var estava = visivel(el);
+      new MutationObserver(function () {
+        var agora = visivel(el);
+        if (agora && !estava) trazerPraTela(el);   // so quando ACABA de aparecer
+        estava = agora;
+      }).observe(el, { attributes: true, childList: true, subtree: true,
+                       attributeFilter: ['style', 'class'] });
+    });
+  });
+})();
+</script>
 </body>
 </html>
