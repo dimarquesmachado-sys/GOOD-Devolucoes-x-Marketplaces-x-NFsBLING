@@ -243,15 +243,22 @@ function renderizar(data, ok) {
       html += `<div class="multi-aviso">⚠️ Devolucao com ${itensRender.length} produtos diferentes - confira cada um abaixo</div>`;
     }
     html += '<div class="itens-lista">';
-    itensRender.forEach((it) => {
-      html += `<div class="item-card">
-        <div class="item-card-header">
-          <div class="item-card-qtd">${it.quantidade}x</div>
-          <div class="item-card-titulo">${escapeHtml(it.titulo)}</div>
-        </div>
-        <div class="item-card-info">
-          ${it.sku && it.sku !== '-' ? `<div class="info-codigo sku"><span class="info-label">SKU</span><span class="info-valor">${escapeHtml(it.sku)}</span></div>` : ''}
-          ${it.ean && it.ean !== '-' ? `<div class="info-codigo ean"><span class="info-label">EAN</span><span class="info-valor">${escapeHtml(it.ean)}</span></div>` : ''}
+    // v4.31 - FOTO DO PRODUTO no card do item, a esquerda do 2x/titulo/
+    // SKU/EAN: o estoquista bate o olho e confere com a caixa sem
+    // procurar em outro canto. A imagem entra depois (a identificacao
+    // nao espera por ela) - ver buscarFotosItens().
+    itensRender.forEach((it, _i) => {
+      html += `<div class="item-card" style="display:flex;gap:12px;align-items:flex-start;">
+        <div id="fotoitem-${_i}" style="width:88px;height:88px;flex:0 0 auto;border-radius:10px;background:#f2f2f4;border:1px solid #e0e0e0;display:flex;align-items:center;justify-content:center;font-size:30px;">📦</div>
+        <div style="flex:1;min-width:0;">
+          <div class="item-card-header">
+            <div class="item-card-qtd">${it.quantidade}x</div>
+            <div class="item-card-titulo">${escapeHtml(it.titulo)}</div>
+          </div>
+          <div class="item-card-info">
+            ${it.sku && it.sku !== '-' ? `<div class="info-codigo sku"><span class="info-label">SKU</span><span class="info-valor">${escapeHtml(it.sku)}</span></div>` : ''}
+            ${it.ean && it.ean !== '-' ? `<div class="info-codigo ean"><span class="info-label">EAN</span><span class="info-valor">${escapeHtml(it.ean)}</span></div>` : ''}
+          </div>
         </div>
       </div>`;
     });
@@ -403,6 +410,7 @@ function renderizar(data, ok) {
 
   divResultado.innerHTML = html;
   divResultado.classList.add('show');
+  buscarFotosItens(itensRender);   // v4.31 - fotos dos itens (nao bloqueia)
 
   // Apos render, verifica triagem existente (nao bloqueia o render).
   // v3.21 - vendas de OUTROS marketplaces (Magalu, Amazon...) identificadas
@@ -428,6 +436,35 @@ function renderizar(data, ok) {
 }
 
 // ================ VERIFICAR TRIAGEM EXISTENTE ================
+/**
+ * v4.31 - Busca a foto de cada item DEPOIS que o resultado ja apareceu.
+ * A identificacao nao pode esperar por imagem. O servidor resolve pelo
+ * SKU (ou pelo id do produto) e cacheia, entao bipar o mesmo produto de
+ * novo ja vem instantaneo. Uma de cada vez com pausa: sao chamadas ao
+ * Bling. Se nao vier foto, o 📦 fica e nada quebra.
+ */
+async function buscarFotosItens(itens) {
+  if (!Array.isArray(itens) || !itens.length) return;
+  for (let i = 0; i < itens.length && i < 4; i++) {
+    const it = itens[i];
+    const chave = (it && (it.sku || it.id)) || null;
+    if (!chave || chave === '-') continue;
+    const alvo = document.getElementById('fotoitem-' + i);
+    if (!alvo) continue;
+    try {
+      const r = await fetch('/api/produto/imagem/' + encodeURIComponent(chave), { credentials: 'same-origin' });
+      const d = await r.json();
+      if (d && d.ok && d.imagem) {
+        alvo.outerHTML = '<img src="' + escapeHtml(d.imagem) + '" alt=""'
+          + ' onclick="abrirZoomProduto(this.src)" onerror="this.style.display=\'none\'"'
+          + ' style="width:88px;height:88px;flex:0 0 auto;border-radius:10px;object-fit:cover;'
+          + 'border:1px solid #e4dcf1;cursor:zoom-in;">';
+      }
+    } catch (e) { /* sem foto nao atrapalha a triagem */ }
+    await new Promise(r2 => setTimeout(r2, 150));
+  }
+}
+
 async function verificarTriagemExistente(shipmentId, idAlternativo) {
   window._forcarTriagem = false; // reset ao bipar nova etiqueta
   const cont = document.getElementById('triagemConteudo');
