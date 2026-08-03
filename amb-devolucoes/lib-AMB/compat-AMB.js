@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════════════════════════════════
-//  amb-devolucoes · lib/compat  (AMB Devol. b71)
+//  amb-devolucoes · lib/compat  (AMB Devol. b76)
 //  LEVA 1a do porte GOOD → AMB.
 //
 //  A tela de bipe da GOOD (index.html + 10 modulos JS) chama 18 endpoints.
@@ -30,6 +30,38 @@
 
 const crypto = require('crypto');
 const emailAMB = require('./email-AMB');
+
+/**
+ * b76 - FOTO DO PRODUTO no "Lançar produto com defeito".
+ * A LISTAGEM do Bling nao traz imagem nenhuma — so o DETALHE traz, e em
+ * lugares que variam (midia.imagens.externas[].link, internas[], anexos...).
+ * Por isso: busca profunda no objeto do detalhe e cache por id, pra a
+ * segunda busca do mesmo produto ser instantanea.
+ */
+const IMG_CACHE = new Map();          // idProduto -> url|null
+
+function imagemProfunda(obj, prof = 0) {
+  if (!obj || prof > 6) return null;
+  if (typeof obj === 'string') {
+    const u = obj.trim();
+    return /^https?:\/\//i.test(u) && /\.(jpe?g|png|webp|gif|bmp)(\?|$)/i.test(u) ? u : null;
+  }
+  if (Array.isArray(obj)) {
+    for (const it of obj) { const r = imagemProfunda(it, prof + 1); if (r) return r; }
+    return null;
+  }
+  if (typeof obj === 'object') {
+    for (const k of ['link', 'linkMiniatura', 'imagemURL', 'imagemUrl', 'urlImagem', 'linkImagem', 'url', 'src']) {
+      const r = imagemProfunda(obj[k], prof + 1);
+      if (r) return r;
+    }
+    for (const k of Object.keys(obj)) {
+      const r = imagemProfunda(obj[k], prof + 1);
+      if (r) return r;
+    }
+  }
+  return null;
+}
 
 /** normaliza pra comparar codigo/EAN sem ruido */
 const norm = (s) => String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
@@ -121,7 +153,24 @@ function montar(router, deps) {
         for (const p of ((rS.ok && rS.data && rS.data.data) || [])) push(p);
       }
 
-      res.json({ ok: true, produtos: out.slice(0, 20), termo: q });
+      // b76 - completa com a FOTO (so os primeiros, um de cada vez):
+      // e uma chamada por produto, entao limito a 6 e cacheio por id.
+      const comFoto = out.slice(0, 20);
+      let buscados = 0;
+      for (const item of comFoto) {
+        if (item.imagem || !item.id || buscados >= 6) continue;
+        if (IMG_CACHE.has(item.id)) { item.imagem = IMG_CACHE.get(item.id); continue; }
+        try {
+          const rD = await bling.chamarBling(`/produtos/${item.id}`);
+          const det = (rD.ok && rD.data && rD.data.data) || null;
+          const url = imagemProfunda(det);
+          IMG_CACHE.set(item.id, url);
+          item.imagem = url;
+        } catch (e) { IMG_CACHE.set(item.id, null); }
+        buscados++;
+        await new Promise(r2 => setTimeout(r2, 180));
+      }
+      res.json({ ok: true, produtos: comFoto, termo: q });
     } catch (e) {
       res.status(500).json({ ok: false, erro: String(e.message || e) });
     }
