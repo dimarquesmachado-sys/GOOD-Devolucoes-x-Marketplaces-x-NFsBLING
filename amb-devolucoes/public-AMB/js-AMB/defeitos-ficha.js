@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════════════════════════════════
-//  defeitos-ficha.js  (AMB Devol. b96)
+//  defeitos-ficha.js  (AMB Devol. b97)
 //  ------------------------------------------------------------------
 //  A TELA do ciclo do estoque de defeitos. Um arquivo so, carregado tanto
 //  pela TRIAGEM quanto pelo PAINEL ADMIN - por isso ele monta o proprio
@@ -99,15 +99,19 @@
     var q = (document.getElementById('defBusca') || {}).value || '';
     el.innerHTML = '<div style="color:#888;font-size:13px;">procurando...</div>';
     try {
-      var d = await api('/api/defeitos?q=' + encodeURIComponent(q.trim()));
-      var itens = d.itens || d.defeitos || d.registros || [];
+      var d = await api('/api/defeitos/lista?q=' + encodeURIComponent(q.trim()));
+      var itens = d.itens || [];
       if (!d.ok || !itens.length) {
         el.innerHTML = '<div style="color:#888;font-size:13px;">nada encontrado'
           + (d.erro ? ' (' + esc(d.erro) + ')' : '') + '.</div>';
         return;
       }
-      el.innerHTML = itens.map(function (it) {
-        var sku = it.produto_sku || it.sku || '-';
+      var aviso = d.via_ean
+        ? '<div style="background:#E6F1FB;color:#0C447C;border-radius:8px;padding:8px 11px;font-size:12.5px;margin-bottom:8px;">'
+          + 'EAN ' + esc(d.via_ean.ean) + ' &rarr; SKU <b>' + esc(d.via_ean.sku) + '</b></div>'
+        : '';
+      el.innerHTML = aviso + itens.map(function (it) {
+        var sku = it.sku || '-';
         return '<div onclick="abrirFichaDefeito(\'' + esc(it.id) + '\')" '
           + 'style="border:1px solid #eee;border-left:4px solid #9E1A1A;border-radius:9px;padding:10px 12px;'
           + 'margin-bottom:7px;cursor:pointer;">'
@@ -115,9 +119,9 @@
           + '<b style="font-size:13.5px;">📍 ' + esc(it.localizacao || 'sem local') + '</b>'
           + '<code style="background:#f2f2f7;border-radius:5px;padding:1px 7px;font-size:12px;">' + esc(sku) + '</code>'
           + '<span style="margin-left:auto;background:#FBEAE8;color:#8C1D18;border-radius:11px;padding:1px 9px;font-size:11.5px;">'
-          + esc(it.defeito_qtd || it.quantidade || 1) + ' peça(s)</span></div>'
-          + '<div style="font-size:13px;margin-top:4px;">' + esc(it.produto_titulo || it.titulo || '') + '</div>'
-          + '<div style="font-size:12px;color:#777;margin-top:2px;">' + esc(it.problema_descricao || it.defeito || '') + '</div>'
+          + esc(it.quantidade || 1) + ' peça(s)</span></div>'
+          + '<div style="font-size:13px;margin-top:4px;">' + esc(it.titulo || '') + '</div>'
+          + '<div style="font-size:12px;color:#777;margin-top:2px;">' + esc(it.laudo || '') + (it.tem_fotos ? ' 📷' + it.tem_fotos : '') + '</div>'
           + '</div>';
       }).join('');
     } catch (e) {
@@ -215,8 +219,8 @@
   // ── 3) MONTEI UMA BOA (com doadores obrigatorios) ──────────────────
   window.abrirMontarBoa = async function (id, sku) {
     selecionados = {};
-    var d = await api('/api/defeitos?q=' + encodeURIComponent(sku || ''));
-    var itens = (d.itens || d.defeitos || d.registros || []).filter(function (x) { return String(x.id) !== String(id); });
+    var d = await api('/api/defeitos/lista?q=' + encodeURIComponent(sku || ''));
+    var itens = (d.itens || []).filter(function (x) { return String(x.id) !== String(id); });
     var html = topo('🔧 Montei uma boa')
       + '<div style="padding:14px;">'
       + '<div style="background:#FEF6E7;border-left:3px solid #EF9F27;border-radius:0 8px 8px 0;padding:10px 12px;font-size:13px;margin-bottom:12px;">'
@@ -234,7 +238,7 @@
             + '<label style="display:flex;gap:8px;align-items:center;cursor:pointer;">'
             + '<input type="checkbox" onchange="marcarDoador(this,\'' + esc(x.id) + '\')">'
             + '<span style="font-size:13px;"><b>📍 ' + esc(x.localizacao || '-') + '</b> · '
-            + esc(x.produto_titulo || x.titulo || '') + '</span></label>'
+            + esc(x.titulo || '') + '</span></label>'
             + '<input id="peca_' + esc(x.id) + '" placeholder="o que você tirou desta? (ex: cúpula, base)" '
             + 'oninput="marcarPeca(\'' + esc(x.id) + '\',this.value)" '
             + 'style="width:100%;height:34px;margin-top:7px;padding:0 10px;border:1px solid #ddd;border-radius:8px;font-size:12.5px;display:none;"></div>';
