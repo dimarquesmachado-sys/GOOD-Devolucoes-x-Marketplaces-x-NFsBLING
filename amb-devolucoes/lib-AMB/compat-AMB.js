@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════════════════════════════════
-//  amb-devolucoes · lib/compat  (AMB Devol. b79)
+//  amb-devolucoes · lib/compat  (AMB Devol. b98)
 //  LEVA 1a do porte GOOD → AMB.
 //
 //  A tela de bipe da GOOD (index.html + 10 modulos JS) chama 18 endpoints.
@@ -139,15 +139,35 @@ function montar(router, deps) {
         }
       }
 
-      // Busca por NOME/SKU (o pesquisa do Bling cobre os dois)
+      // ═══════════════════════════════════════════════════════════════
+      // b98 - O CODIGO VEM PRIMEIRO, SEMPRE.
+      // Antes ia direto no ?pesquisa= do Bling, que casa pelo NOME. Ao
+      // procurar FL-1011-BRANCO-2LAMPS ele trazia os ACESSORIOS (Kit 2
+      // Roscas, Bracadeira "da Luminaria FL-1011") e NAO o produto certo,
+      // porque o nome dele nao contem "BRANCO-2LAMPS". Pior: a busca por
+      // ?codigo= so rodava se o nome nao achasse nada — e como achava,
+      // nunca rodava.
+      // Agora: procura pelo CODIGO primeiro (o exato lidera a lista) e
+      // depois COMPLEMENTA pelo nome, sem descartar nada.
+      // ═══════════════════════════════════════════════════════════════
       if (!out.length) {
+        const rS = await bling.chamarBling(`/produtos?codigo=${encodeURIComponent(q)}&limite=10`);
+        for (const p of ((rS.ok && rS.data && rS.data.data) || [])) {
+          // o Bling as vezes ignora o filtro e devolve a listagem padrao
+          if (norm(p.codigo).includes(alvo)) push(p);
+        }
+      }
+      const achouExato = out.some(p => norm(p.sku) === alvo);
+      if (!achouExato || out.length < 5) {
         const rN = await bling.chamarBling(`/produtos?pesquisa=${encodeURIComponent(q)}&limite=20`);
         for (const p of ((rN.ok && rN.data && rN.data.data) || [])) push(p);
       }
-      if (!out.length) {
-        const rS = await bling.chamarBling(`/produtos?codigo=${encodeURIComponent(q)}&limite=10`);
-        for (const p of ((rS.ok && rS.data && rS.data.data) || [])) push(p);
-      }
+      // quem casa EXATO com o que foi digitado sobe pro topo
+      out.sort((a, b) => {
+        const ea = norm(a.sku) === alvo ? 0 : (norm(a.sku).includes(alvo) ? 1 : 2);
+        const eb = norm(b.sku) === alvo ? 0 : (norm(b.sku).includes(alvo) ? 1 : 2);
+        return ea - eb;
+      });
 
       // b76 - completa com a FOTO (so os primeiros, um de cada vez):
       // e uma chamada por produto, entao limito a 6 e cacheio por id.
