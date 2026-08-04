@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════════════════════════════════
-//  amb-devolucoes · lib/compat  (AMB Devol. b110)
+//  amb-devolucoes · lib/compat  (AMB Devol. b111)
 //  LEVA 1a do porte GOOD → AMB.
 //
 //  A tela de bipe da GOOD (index.html + 10 modulos JS) chama 18 endpoints.
@@ -244,13 +244,30 @@ function montar(router, deps) {
     try {
       // mesmo caminho do checkout offline: lista por codigo (que ja pode
       // trazer imagemURL) e, se precisar, abre o detalhe do produto
-      let id = /^\d{6,}$/.test(chave) ? chave : null;
+      // ═══════════════════════════════════════════════════════════════
+      // b111 - NUMERO NAO E ID. Eu assumia que chave so de digitos era o
+      // id do produto no Bling — mas tem SKU numerico (ex: o
+      // 3933398010054 da luminaria preta). Resultado: pedia
+      // /produtos/3933398010054, nao achava, e a foto vinha vazia.
+      // Agora tenta sempre pelo CODIGO primeiro (serve pros dois casos),
+      // depois pelo EAN, e so por ultimo trata como id.
+      // ═══════════════════════════════════════════════════════════════
+      let id = null;
       let url = null;
-      if (!id) {
-        const rL = await bling.chamarBling(`/produtos?codigo=${encodeURIComponent(chave)}&limite=1`);
-        const item = (rL.ok && rL.data && rL.data.data && rL.data.data[0]) || null;
-        if (item) { url = primeiraImagem(item); id = item.id || null; }
+
+      const rL = await bling.chamarBling(`/produtos?codigo=${encodeURIComponent(chave)}&limite=3`);
+      const porCodigo = ((rL.ok && rL.data && rL.data.data) || [])
+        .find(p => String(p.codigo || '').trim().toUpperCase() === chave.toUpperCase())
+        || ((rL.ok && rL.data && rL.data.data) || [])[0] || null;
+      if (porCodigo) { url = primeiraImagem(porCodigo); id = porCodigo.id || null; }
+
+      if (!id && /^\d{12,14}$/.test(chave)) {
+        const rE = await bling.chamarBling(`/produtos?gtin=${encodeURIComponent(chave)}&limite=1`);
+        const porEan = (rE.ok && rE.data && rE.data.data && rE.data.data[0]) || null;
+        if (porEan) { url = url || primeiraImagem(porEan); id = porEan.id || null; }
       }
+
+      if (!id && /^\d{6,}$/.test(chave)) id = chave;   // ai sim: e um id
       if (!url && id) {
         const rD = await bling.chamarBling(`/produtos/${id}`);
         url = primeiraImagem((rD.ok && rD.data && rD.data.data) || null);
