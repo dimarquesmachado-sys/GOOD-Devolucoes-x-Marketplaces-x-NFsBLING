@@ -76,7 +76,7 @@
 
   // ── 1) BUSCA ───────────────────────────────────────────────────────
   window.abrirBuscaDefeitos = function (termo) {
-    abrir(topo('🔧 Estoque de defeitos',
+    abrir(topo('🔧 Estoque de Defeitos',
       euSouAdmin ? '<button onclick="abrirFilaPedidos()" style="background:rgba(255,255,255,.2);color:#fff;border:none;border-radius:8px;padding:6px 12px;cursor:pointer;">📥 Pedidos</button>' : '')
       + '<div style="padding:14px;">'
       + '<div style="display:flex;gap:7px;margin-bottom:12px;">'
@@ -205,10 +205,14 @@
     html += '<div style="font-size:11px;color:#888;letter-spacing:.4px;margin-bottom:6px;">HISTÓRICO DA PEÇA</div>'
       + '<div style="border-left:2px solid #eee;padding-left:12px;margin-bottom:10px;">'
       + '<div style="margin-bottom:9px;"><div style="font-size:13.5px;' + (it.laudo ? 'color:#8C1D18;font-weight:600;' : 'color:#999;font-style:italic;') + '">'
-      + esc(it.laudo || 'sem descrição do defeito') + '</div>'
+      + esc(it.laudo || 'sem descrição do defeito')
+      + ' <a href="#" onclick="event.preventDefault();corrigirLaudo(\'' + esc(it.id) + '\',' + JSON.stringify(it.laudo || '') + ')" '
+      + 'style="font-size:11.5px;color:#561A9E;text-decoration:none;">✏️ corrigir</a></div>'
       + '<div style="font-size:11.5px;color:#888;">' + esc(it.quem || '-') + ' · ' + dataBr(it.criado_em) + ' · entrada</div></div>'
       + com.map(function (c) {
-          return '<div style="margin-bottom:9px;"><div style="font-size:13.5px;">' + esc(c.texto) + '</div>'
+          return '<div style="margin-bottom:9px;"><div style="font-size:13.5px;">' + esc(c.texto)
+            + ' <a href="#" onclick="event.preventDefault();corrigirComentario(\'' + esc(c.id) + '\',\'' + esc(it.id) + '\',' + JSON.stringify(c.texto || '') + ')" '
+            + 'style="font-size:11.5px;color:#561A9E;text-decoration:none;">✏️</a></div>'
             + '<div style="font-size:11.5px;color:#888;">' + esc(c.quem || '-') + ' · ' + dataBr(c.criado_em) + '</div></div>';
         }).join('')
       + '</div>'
@@ -216,7 +220,7 @@
       + '<input id="defCom" placeholder="escrever no histórico desta peça..." '
       + 'style="flex:1;height:38px;font-size:13px;padding:0 10px;border:1px solid #ddd;border-radius:8px;">'
       + '<button onclick="comentarDefeito(\'' + esc(it.id) + '\')" style="border:1px solid #561A9E;background:#561A9E;'
-      + 'color:#fff;border-radius:8px;padding:0 16px;height:38px;cursor:pointer;font-weight:600;">adicionar</button></div>';
+      + 'color:#fff;border-radius:8px;padding:0 16px;height:38px;cursor:pointer;font-weight:600;">Adicionar</button></div>';
 
     // pecas retiradas
     html += '<div style="font-size:11px;color:#888;letter-spacing:.4px;margin-bottom:6px;">PEÇAS RETIRADAS DESTA</div>';
@@ -242,11 +246,11 @@
     // servia pra isso, e a retirada acabava nao sendo registrada.
     html += '<div style="border-top:1px solid #eee;margin-top:16px;padding-top:12px;display:flex;gap:8px;flex-wrap:wrap;">'
       + '<button onclick="retirarPeca(\'' + esc(it.id) + '\')" '
-      + 'style="flex:1;min-width:150px;background:#854F0B;color:#fff;border:none;border-radius:9px;padding:13px;font-weight:700;cursor:pointer;">🔧 retirei uma peça</button>'
+      + 'style="flex:1;min-width:150px;background:#854F0B;color:#fff;border:none;border-radius:9px;padding:13px;font-weight:700;cursor:pointer;">🔧 Peça Retirada</button>'
       + '<button onclick="abrirMontarBoa(\'' + esc(it.id) + '\',\'' + esc(it.sku || '') + '\')" '
-      + 'style="flex:1;min-width:150px;background:#116B4E;color:#fff;border:none;border-radius:9px;padding:13px;font-weight:700;cursor:pointer;">🔧 montei uma boa</button>'
+      + 'style="flex:1;min-width:150px;background:#116B4E;color:#fff;border:none;border-radius:9px;padding:13px;font-weight:700;cursor:pointer;">✅ Montei Uma Boa</button>'
       + '<button onclick="pedirDescarte(\'' + esc(it.id) + '\',\'' + esc(it.sku || '') + '\')" '
-      + 'style="flex:1;min-width:150px;background:#9E1A1A;color:#fff;border:none;border-radius:9px;padding:13px;font-weight:700;cursor:pointer;">🗑️ pedir descarte</button>'
+      + 'style="flex:1;min-width:150px;background:#9E1A1A;color:#fff;border:none;border-radius:9px;padding:13px;font-weight:700;cursor:pointer;">🗑️ Pedir Descarte</button>'
       + '</div></div>';
     abrir(html);
   };
@@ -281,6 +285,35 @@
     abrirFichaDefeito(id);
   };
 
+  /**
+   * b114 - CORRIGIR o que ja foi escrito. Antes so dava pra acrescentar:
+   * um defeito digitado errado na entrada ficava errado pra sempre. A
+   * correcao fica registrada no historico, entao nao se perde o rastro.
+   */
+  window.corrigirLaudo = async function (id, atual) {
+    var novo = prompt('Descrição do defeito:', atual || '');
+    if (novo === null) return;
+    novo = String(novo).trim();
+    if (novo.length < 3) { alert('escreva a descrição do defeito'); return; }
+    var r = await api('/api/defeitos/' + encodeURIComponent(id) + '/laudo', {
+      method: 'PUT', body: JSON.stringify({ texto: novo }),
+    });
+    if (!r.ok) { alert(r.erro || 'não consegui corrigir'); return; }
+    abrirFichaDefeito(id);
+  };
+
+  window.corrigirComentario = async function (cid, id, atual) {
+    var novo = prompt('Corrigir o texto:', atual || '');
+    if (novo === null) return;
+    novo = String(novo).trim();
+    if (novo.length < 2) { alert('escreva o texto'); return; }
+    var r = await api('/api/defeitos/comentario/' + encodeURIComponent(cid), {
+      method: 'PUT', body: JSON.stringify({ texto: novo }),
+    });
+    if (!r.ok) { alert(r.erro || 'não consegui corrigir'); return; }
+    abrirFichaDefeito(id);
+  };
+
   // ── 3) MONTEI UMA BOA (com doadores obrigatorios) ──────────────────
   window.abrirMontarBoa = async function (id, sku) {
     selecionados = {};
@@ -310,7 +343,7 @@
         }).join('')
       : '<div style="font-size:12.5px;color:#999;">nenhuma outra peça com esse SKU no estoque de defeitos.</div>';
     html += '<textarea id="boaObs" placeholder="observação (opcional)" style="width:100%;margin-top:12px;padding:9px;border:1px solid #ddd;border-radius:8px;font-size:13px;min-height:56px;"></textarea>'
-      + '<button onclick="enviarPedidoBoa(\'' + esc(id) + '\')" style="width:100%;margin-top:12px;background:#116B4E;color:#fff;border:none;border-radius:9px;padding:14px;font-weight:700;font-size:15px;cursor:pointer;">enviar pro admin lançar no estoque</button>'
+      + '<button onclick="enviarPedidoBoa(\'' + esc(id) + '\')" style="width:100%;margin-top:12px;background:#116B4E;color:#fff;border:none;border-radius:9px;padding:14px;font-weight:700;font-size:15px;cursor:pointer;">Enviar Pro Admin Lançar No Estoque</button>'
       + '</div>';
     abrir(html);
   };
@@ -389,14 +422,14 @@
       h += '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">';
       if (p.tipo === 'recuperado') {
         h += '<input id="q_' + p.id + '" type="number" min="1" value="' + esc(p.quantidade || 1) + '" style="width:64px;height:34px;padding:0 8px;border:1px solid #ddd;border-radius:8px;">'
-          + '<button onclick="decidirPedido(' + p.id + ',\'autorizar\')" style="flex:1;background:#116B4E;color:#fff;border:none;border-radius:8px;padding:9px;cursor:pointer;font-weight:600;">lançar no estoque</button>';
+          + '<button onclick="decidirPedido(' + p.id + ',\'autorizar\')" style="flex:1;background:#116B4E;color:#fff;border:none;border-radius:8px;padding:9px;cursor:pointer;font-weight:600;">Lançar No Estoque</button>';
       } else {
-        h += '<button onclick="decidirPedido(' + p.id + ',\'autorizar\')" style="flex:1;background:#9E1A1A;color:#fff;border:none;border-radius:8px;padding:9px;cursor:pointer;font-weight:600;">autorizar descarte</button>';
+        h += '<button onclick="decidirPedido(' + p.id + ',\'autorizar\')" style="flex:1;background:#9E1A1A;color:#fff;border:none;border-radius:8px;padding:9px;cursor:pointer;font-weight:600;">Autorizar Descarte</button>';
       }
-      h += '<button onclick="decidirPedido(' + p.id + ',\'recusar\')" style="border:1px solid #ddd;background:#fff;border-radius:8px;padding:9px 14px;cursor:pointer;">recusar</button></div>';
+      h += '<button onclick="decidirPedido(' + p.id + ',\'recusar\')" style="border:1px solid #ddd;background:#fff;border-radius:8px;padding:9px 14px;cursor:pointer;">Recusar</button></div>';
     }
     if (comAcoes && p.status === 'autorizado') {
-      h += '<button onclick="decidirPedido(' + p.id + ',\'concluir\')" style="width:100%;margin-top:4px;border:1px solid #ddd;background:#fff;border-radius:8px;padding:9px;cursor:pointer;">marcar como feito</button>';
+      h += '<button onclick="decidirPedido(' + p.id + ',\'concluir\')" style="width:100%;margin-top:4px;border:1px solid #ddd;background:#fff;border-radius:8px;padding:9px;cursor:pointer;">Marcar Como Feito</button>';
     }
     return h + '</div>';
   }
