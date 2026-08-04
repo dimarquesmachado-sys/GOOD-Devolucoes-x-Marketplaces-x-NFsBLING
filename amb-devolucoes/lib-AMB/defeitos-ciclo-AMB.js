@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════════════════════════════════
-//  amb-devolucoes · lib/defeitos-ciclo  (AMB Devol. b114)
+//  amb-devolucoes · lib/defeitos-ciclo  (AMB Devol. b116)
 //  ------------------------------------------------------------------
 //  O CICLO DA PECA COM DEFEITO, do jeito que o Diego descreveu:
 //
@@ -220,6 +220,30 @@ module.exports = function registrarCicloDefeitos(router, deps) {
         .eq('id', req.params.cid).select().limit(1);
       if (r.error) throw new Error(r.error.message);
       res.json({ ok: true, comentario: (r.data || [])[0] || null });
+    } catch (e) {
+      res.status(500).json({ ok: false, erro: String(e.message || e) });
+    }
+  });
+
+  // b116 - EXCLUIR um comentario. Corrigir nao basta: as vezes a anotacao
+  // nao devia existir. Some da lista, mas fica o rastro de que alguem
+  // apagou - senao o historico deixa de ser confiavel.
+  router.delete('/api/defeitos/comentario/:cid', auth.requerLogin, async (req, res) => {
+    const dbc = cli();
+    if (!dbc) return erroSemBanco(res);
+    try {
+      const antes = await dbc.from(T_COM).select('*').eq('id', req.params.cid).limit(1);
+      const alvo = (antes.data || [])[0] || null;
+      const r = await dbc.from(T_COM).delete().eq('id', req.params.cid);
+      if (r.error) throw new Error(r.error.message);
+      if (alvo) {
+        await dbc.from(T_COM).insert([{
+          defeito_id: alvo.defeito_id,
+          texto: '(apagou uma anotacao: "' + String(alvo.texto || '').slice(0, 60) + '")',
+          quem: req.usuario,
+        }]);
+      }
+      res.json({ ok: true });
     } catch (e) {
       res.status(500).json({ ok: false, erro: String(e.message || e) });
     }
