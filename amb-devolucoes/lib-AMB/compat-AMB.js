@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════════════════════════════════
-//  amb-devolucoes · lib/compat  (AMB Devol. b111)
+//  amb-devolucoes · lib/compat  (AMB Devol. b113)
 //  LEVA 1a do porte GOOD → AMB.
 //
 //  A tela de bipe da GOOD (index.html + 10 modulos JS) chama 18 endpoints.
@@ -388,9 +388,19 @@ function montar(router, deps) {
    * campo a campo e salva o que der. Nunca derruba a triagem: o
    * registro principal ja foi gravado.
    */
+  // b113 - problema_fotos entra aqui: o registrarTriagem da AMB NAO aceita
+  // essa coluna, entao as 6 fotos da triagem eram enviadas, subiam pro
+  // Storage e sumiam na hora de gravar a linha. Era por isso que a ficha
+  // dizia "FOTOS DA TRIAGEM (0)".
   const EXTRAS = ['produto_valor_unit', 'nf_link_danfe', 'buyer_id', 'buyer_nickname',
-                  'produto_mlb', 'magalu_protocolo', 'marketplace', 'tracking'];
+                  'produto_mlb', 'magalu_protocolo', 'marketplace', 'tracking',
+                  'problema_fotos'];
   async function completarRegistro(r, d) {
+    // a tela manda as fotos com nomes diferentes conforme o fluxo
+    if (!d.problema_fotos) {
+      const alt = d.fotos || d.fotos_parcial || d.problemaFotos;
+      if (Array.isArray(alt) && alt.length) d = Object.assign({}, d, { problema_fotos: alt });
+    }
     const id = r && r.registro && r.registro.id;
     if (!id) return r;
     const campos = {};
@@ -495,7 +505,12 @@ function montar(router, deps) {
     }
     const prod = await bling.buscarProdutoPorSku(String(sku));
     const exato = prod.ok ? prod.exato : null;
-    const r = await db.registrarTriagem({
+    // b113 - FOTOS TAMBEM NO LANCAMENTO. Antes so a triagem do pacote
+    // gerava foto, e a peca lancada a mao ficava sem prova nenhuma do
+    // estado dela. Elas vao pra mesma coluna (problema_fotos), entao a
+    // ficha mostra as duas origens no mesmo carrossel.
+    const fotos = Array.isArray(b.fotos) ? b.fotos.filter(Boolean) : [];
+    let r = await db.registrarTriagem({
       tipo: 'defeito_estoque', status: 'concluido',
       produto_sku: exato ? exato.codigo : sku,
       produto_titulo: exato ? exato.nome : null,
@@ -503,6 +518,8 @@ function montar(router, deps) {
       localizacao, defeito_qtd: Number(quantidade || 1),
       funcionario: req.usuario,
     });
+    // as fotos vao num segundo passo, pelo mesmo caminho da triagem
+    if (r.ok && fotos.length) r = await completarRegistro(r, { problema_fotos: fotos });
     res.json({ ...r, sku_validado_no_bling: !!exato });
   });
 
