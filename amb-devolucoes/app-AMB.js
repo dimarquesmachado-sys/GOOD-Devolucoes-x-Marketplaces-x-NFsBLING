@@ -78,6 +78,7 @@ const criarNfPessoa = require('./lib-AMB/nf-pessoa-AMB');
 const registrarRotasAdminNF = require('./lib-AMB/rotas-admin-AMB');
 const criarMlBuscas = require('./lib-AMB/ml-buscas-AMB');
 const registrarIdentificar = require('./lib-AMB/identificar-AMB');
+const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 
 const VERSAO = 'AMB Devolucoes b74';
 const SUBIU_EM = new Date().toISOString();
@@ -1268,6 +1269,9 @@ const ajudantes = criarAdminHelpers({
 // da GOOD), 2 do admin-helpers, 2 do nf-pessoa, e o resto dos modulos
 // que a AMB ja tinha (ml, bling, magalu, shopee, nf-nomes).
 const mlBuscas = criarMlBuscas(ml.chamarML);
+// b95 - ciclo do estoque de defeitos (ficha, comentarios, pedidos)
+registrarCicloDefeitos(router, { auth, db });
+
 registrarIdentificar(router, {
   requerLogin: auth.requerLogin,
   sleep: dorme,
