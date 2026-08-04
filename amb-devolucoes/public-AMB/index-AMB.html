@@ -204,7 +204,7 @@
              logo | titulo | defeitos | usuario. No celular tudo quebra
              e centraliza. -->
         <div class="links-defeitos">
-          <a href="#" onclick="event.preventDefault();abrirBuscaDefeitos()">📍 Localização</a>
+          <a href="#" onclick="event.preventDefault();abrirBuscaDefeitos()">🔧 Defeitos</a>
           <a href="#" onclick="event.preventDefault();abrirModalDefeito()">➕ Lançar defeito</a>
         </div>
         <div class="user-badge">
@@ -276,7 +276,7 @@
       <div class="card-defeitos" style="margin-top:12px;padding-top:11px;border-top:1px solid #eee;">
         <div style="font-size:11px;color:#8a8a8a;letter-spacing:.4px;margin-bottom:7px;">ESTOQUE DE DEFEITOS</div>
         <div style="display:flex;gap:7px;">
-          <button type="button" class="btn-apoio" onclick="abrirBuscaDefeitos()">📍 localização</button>
+          <button type="button" class="btn-apoio" onclick="abrirBuscaDefeitos()">🔧 defeitos</button>
           <button type="button" class="btn-apoio" onclick="abrirModalDefeito()">➕ lançar</button>
         </div>
       </div>
@@ -334,6 +334,16 @@
         <div style="margin-top:8px;">
           <label style="font-size:12px; color:#555; font-weight:600;">📍 Onde vai guardar <span style="color:#c62828;">*obrigatório</span></label>
           <input type="text" id="defLocal" placeholder="Ex: DEF-A3, prateleira 12..." style="width:100%; box-sizing:border-box; padding:9px; border:1px solid #ccc; border-radius:8px; font-size:14px;">
+        </div>
+        <!-- b113 - FOTOS no lancamento. Antes so a triagem do pacote gerava
+             foto; a peca lancada a mao ficava sem prova nenhuma do estado.
+             Vao pra mesma coluna, entao a ficha mostra tudo junto. -->
+        <div style="margin-top:10px;">
+          <label style="font-size:12px; color:#555; font-weight:600;">📷 Fotos do defeito <span style="color:#888;font-weight:400;">(opcional)</span></label>
+          <input type="file" id="defFotos" accept="image/*" multiple capture="environment"
+                 onchange="previewFotosDefeito()"
+                 style="width:100%; box-sizing:border-box; padding:8px; border:1px dashed #ccc; border-radius:8px; font-size:13px; background:#fff;">
+          <div id="defFotosPreview" style="display:flex; gap:6px; flex-wrap:wrap; margin-top:7px;"></div>
         </div>
           </div>
         </div>
@@ -723,23 +733,23 @@
        8. app       -> entry point (DOM refs, event listeners, init)
        ============================================================ -->
   <!-- adaptador de caminho: TEM que vir antes dos modulos -->
-  <script src="js-AMB/base-amb.js?v=b108"></script>
-  <script src="js-AMB/helpers.js?v=b108"></script>
-  <script src="js-AMB/auth.js?v=b108"></script>
-  <script src="js-AMB/scanner.js?v=b108"></script>
-  <script src="js-AMB/camera.js?v=b108"></script>
-  <script src="js-AMB/bipagem.js?v=b108"></script>
-  <script src="js-AMB/busca.js?v=b108"></script>
+  <script src="js-AMB/base-amb.js?v=b113"></script>
+  <script src="js-AMB/helpers.js?v=b113"></script>
+  <script src="js-AMB/auth.js?v=b113"></script>
+  <script src="js-AMB/scanner.js?v=b113"></script>
+  <script src="js-AMB/camera.js?v=b113"></script>
+  <script src="js-AMB/bipagem.js?v=b113"></script>
+  <script src="js-AMB/busca.js?v=b113"></script>
   <script src="https://cdn.jsdelivr.net/npm/qz-tray@2.2.4/qz-tray.js"></script>
-  <script src="js-AMB/etiqueta.js?v=b108"></script>
-  <script src="js-AMB/triagem.js?v=b108"></script>
+  <script src="js-AMB/etiqueta.js?v=b113"></script>
+  <script src="js-AMB/triagem.js?v=b113"></script>
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
-  <script src="js-AMB/ocr.js?v=b108"></script>
-  <script src="js-AMB/app.js?v=b108"></script>
+  <script src="js-AMB/ocr.js?v=b113"></script>
+  <script src="js-AMB/app.js?v=b113"></script>
   <!-- b96 - ciclo do estoque de defeitos (ficha, fotos, pedidos) -->
-  <script src="js-AMB/defeitos-ficha.js?v=b108"></script>
+  <script src="js-AMB/defeitos-ficha.js?v=b113"></script>
   <!-- b81 - colar/arrastar imagem da etiqueta na busca -->
-  <script src="js-AMB/colar-imagem.js?v=b108"></script>
+  <script src="js-AMB/colar-imagem.js?v=b113"></script>
 
   <!-- v3.96 - lancar produto com defeito (busca por parte do nome) -->
   <script>
@@ -759,6 +769,8 @@
       document.getElementById('defEscolhido').style.display = 'none';
       if (document.getElementById('defImg')) document.getElementById('defImg').innerHTML = '';
       document.getElementById('defProblema').value = '';
+      var fz = document.getElementById('defFotos'); if (fz) fz.value = '';
+      var fp = document.getElementById('defFotosPreview'); if (fp) fp.innerHTML = '';
       document.getElementById('defLocal').value = '';
       document.getElementById('defQtd').value = '1';
       document.getElementById('defMsg').textContent = '';
@@ -873,6 +885,45 @@
       setTimeout(function () { document.getElementById('defProblema').focus(); }, 80);
     }
 
+    // b113 - miniatura das fotos escolhidas, pra ele conferir antes de salvar
+    function previewFotosDefeito() {
+      var inp = document.getElementById('defFotos');
+      var box = document.getElementById('defFotosPreview');
+      if (!inp || !box) return;
+      box.innerHTML = '';
+      for (var i = 0; i < inp.files.length && i < 8; i++) {
+        var img = document.createElement('img');
+        img.style.cssText = 'width:56px;height:56px;object-fit:cover;border-radius:7px;border:1px solid #ddd;';
+        img.src = URL.createObjectURL(inp.files[i]);
+        box.appendChild(img);
+      }
+      if (inp.files.length) {
+        var t = document.createElement('span');
+        t.style.cssText = 'font-size:11.5px;color:#777;align-self:center;';
+        t.textContent = inp.files.length + ' foto(s)';
+        box.appendChild(t);
+      }
+    }
+
+    /** Sobe as fotos escolhidas e devolve as URLs (mesma rota da triagem). */
+    async function subirFotosDefeito() {
+      var inp = document.getElementById('defFotos');
+      if (!inp || !inp.files.length) return [];
+      var urls = [];
+      for (var i = 0; i < inp.files.length && i < 8; i++) {
+        var fd = new FormData();
+        fd.append('foto', inp.files[i]);
+        try {
+          var r = await fetch('/api/triagem/upload-foto', {
+            method: 'POST', credentials: 'same-origin', body: fd,
+          });
+          var d = await r.json();
+          if (d && d.ok && d.url) urls.push(d.url);
+        } catch (e) { /* uma foto que falha nao impede o lancamento */ }
+      }
+      return urls;
+    }
+
     async function salvarDefeitoManual() {
       if (!_defProdutoEscolhido) return;
       var defeito = document.getElementById('defProblema').value.trim();
@@ -890,11 +941,14 @@
       document.getElementById('defLocal').style.background = '#fff';
       var btn = document.getElementById('defBtnSalvar');
       btn.disabled = true; btn.textContent = 'salvando...';
+      msg.innerHTML = '<span style="color:#555;">subindo fotos...</span>';
+      var fotosUrls = await subirFotosDefeito();
       var payload = {
         sku: _defProdutoEscolhido.sku,
         defeito: defeito,
         localizacao: localDef,
-        qtd: parseInt(document.getElementById('defQtd').value, 10) || 1
+        qtd: parseInt(document.getElementById('defQtd').value, 10) || 1,
+        fotos: fotosUrls
       };
       try {
         var r = await fetch('/api/defeitos/adicionar', {
