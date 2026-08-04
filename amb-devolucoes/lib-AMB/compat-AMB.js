@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════════════════════════════════
-//  amb-devolucoes · lib/compat  (AMB Devol. b99)
+//  amb-devolucoes · lib/compat  (AMB Devol. b109)
 //  LEVA 1a do porte GOOD → AMB.
 //
 //  A tela de bipe da GOOD (index.html + 10 modulos JS) chama 18 endpoints.
@@ -61,6 +61,15 @@ function primeiraImagem(prod) {
 
 /** normaliza pra comparar codigo/EAN sem ruido */
 const norm = (s) => String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+
+/**
+ * b109 - texto sem acento e sem pontuacao, PRESERVANDO os espacos, pra
+ * comparar "luminária" com "Luminaria Chao 177cm". O norm() acima cola
+ * tudo e serve pra codigo/EAN; este serve pra NOME.
+ */
+const normTexto = (s) => String(s || '')
+  .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+  .toUpperCase().replace(/[^A-Z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
 
 /**
  * O EAN no Bling mora em ate 6 campos diferentes dependendo de como o
@@ -165,8 +174,29 @@ function montar(router, deps) {
       // exato foi encontrado, ele e a resposta; nao ha o que completar.
       const achouExato = out.some(p => norm(p.sku) === alvo);
       if (!achouExato) {
-        const rN = await bling.chamarBling(`/produtos?pesquisa=${encodeURIComponent(q)}&limite=20`);
-        for (const p of ((rN.ok && rN.data && rN.data.data) || [])) push(p);
+        // ═══════════════════════════════════════════════════════════════
+        // b109 - O BLING AS VEZES IGNORA O FILTRO e devolve o catalogo
+        // geral. Foi o que aconteceu ao buscar "luminaria": voltaram
+        // carrinho de ferramentas, cavalete, macaco... nada a ver.
+        // Antes eu aceitava tudo que viesse. Agora CONFIRMO aqui: so
+        // entra quem tem o termo no NOME ou no CODIGO, ignorando acento.
+        // Com varias palavras, TODAS precisam aparecer ("luminaria mesa"
+        // nao traz toda luminaria da loja).
+        // ═══════════════════════════════════════════════════════════════
+        const palavras = normTexto(q).split(' ').filter(w => w.length >= 2);
+        const casa = (p) => {
+          if (!palavras.length) return true;
+          const nome = normTexto(p.nome || p.descricao || '');
+          const cod = norm(p.codigo || p.sku || '');
+          return palavras.every(w => nome.includes(w) || cod.includes(norm(w)));
+        };
+        const rN = await bling.chamarBling(`/produtos?pesquisa=${encodeURIComponent(q)}&limite=50`);
+        let entraram = 0;
+        for (const p of ((rN.ok && rN.data && rN.data.data) || [])) {
+          if (!casa(p)) continue;
+          push(p);
+          if (++entraram >= 20) break;
+        }
       }
       // quem casa EXATO com o que foi digitado sobe pro topo
       out.sort((a, b) => {
