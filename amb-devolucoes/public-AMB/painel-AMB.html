@@ -218,7 +218,11 @@
       </div>
       <div class="header-acoes">
         <a href="/amb/painel" class="destaque">📊 Painel</a>
-        <a href="/amb/defeitos-AMB.html" style="background:#c62828;color:#fff;">🔧 Defeitos</a>
+        <!-- b126 - abre o MESMO card da triagem, por cima. Antes navegava
+             pra pagina antiga /amb/defeitos-AMB.html, e o "voltar" de la
+             apontava pra raiz - que sob /amb cai no Devolucoes da GOOD. -->
+        <a href="#" onclick="event.preventDefault();abrirBuscaDefeitos()" style="background:#c62828;color:#fff;">🔧 Defeitos</a>
+        <a href="#" id="linkPedidos" onclick="event.preventDefault();abrirFilaPedidos()" style="background:#0F6E56;color:#fff;">📥 Pedidos<span id="badgePedidos"></span></a>
         <a href="/amb/">📦 Triagem (bipar)</a>
         <a href="#" onclick="logout(event)">🚪 Sair</a>
       </div>
@@ -2702,20 +2706,30 @@
   }
 })();
 </script>
-<script src="js-AMB/defeitos-ficha.js?v=b96"></script>
+<script src="js-AMB/defeitos-ficha.js?v=b126"></script>
 <script>
-  // b96 - atalhos no painel: o mesmo card da triagem, sem sair da tela
-  (function () {
-    var barra = document.querySelector('.header-acoes') || document.querySelector('header');
-    if (!barra) return;
-    var a = document.createElement('a');
-    a.href = '#'; a.textContent = '🔧 Defeitos';
-    a.onclick = function (e) { e.preventDefault(); abrirBuscaDefeitos(); };
-    var b = document.createElement('a');
-    b.href = '#'; b.textContent = '📥 Pedidos';
-    b.onclick = function (e) { e.preventDefault(); abrirFilaPedidos(); };
-    barra.appendChild(a); barra.appendChild(b);
+  // b126 - AVISO de pedidos esperando. Sem isso o admin so descobre que
+  // tem coisa pra autorizar se abrir a fila por acaso.
+  (async function verPendentes() {
+    try {
+      var r = await fetch('/amb/api/defeitos/pedidos?status=pendente', { credentials: 'same-origin' });
+      var d = await r.json();
+      var n = (d && d.pedidos && d.pedidos.length) || 0;
+      var b = document.getElementById('badgePedidos');
+      var a = document.getElementById('linkPedidos');
+      if (!b || !a) return;
+      if (n > 0) {
+        b.textContent = ' ' + n;
+        b.style.cssText = 'background:#FFD400;color:#412402;border-radius:11px;padding:1px 8px;'
+          + 'font-size:11.5px;font-weight:800;margin-left:6px;';
+        a.style.animation = 'piscaPedidos 1.6s ease-in-out 3';
+      } else { b.textContent = ''; }
+    } catch (e) {}
+    setTimeout(verPendentes, 60000);   // reconfere de minuto em minuto
   })();
 </script>
+<style>
+  @keyframes piscaPedidos { 0%,100% { box-shadow: none; } 50% { box-shadow: 0 0 0 4px rgba(255,212,0,.55); } }
+</style>
 </body>
 </html>
