@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════════════════════════════════
-//  amb-devolucoes · lib/compat  (AMB Devol. b114)
+//  amb-devolucoes · lib/compat  (AMB Devol. b122)
 //  LEVA 1a do porte GOOD → AMB.
 //
 //  A tela de bipe da GOOD (index.html + 10 modulos JS) chama 18 endpoints.
@@ -523,7 +523,13 @@ function montar(router, deps) {
     // b114 - devolve o que FICOU GRAVADO. A tela mostra isso na hora, entao
     // se a descricao nao entrar da pra ver no ato, e nao dias depois ao
     // abrir a ficha.
+    // b122 - devolve tambem o produto e o NUMERO da peca: e o que a
+    // etiqueta 10x15 imprime. Sem isso ela saia com "SKU: -".
     if (r.ok && r.registro) {
+      r.peca_id = r.registro.id;
+      r.sku = r.registro.produto_sku;
+      r.nome = r.registro.produto_titulo;
+      r.ean = exato ? (exato.gtin || exato.ean || null) : null;
       r.gravado = {
         defeito: r.registro.problema_descricao || null,
         quantidade: r.registro.defeito_qtd,
