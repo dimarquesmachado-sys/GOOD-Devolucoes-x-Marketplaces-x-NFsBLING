@@ -160,7 +160,7 @@
         <div class="topo-txt">
           <h1>AMBTotal Devoluções</h1>
           <p>Identificar venda &middot; NF-e &middot; Triagem
-            <span class="topo-versao">&middot; v3.50 &middot; <span id="serverVersion">checando...</span></span>
+            <span class="topo-versao">&middot; v3.52 &middot; <span id="serverVersion">checando...</span></span>
           </p>
         </div>
         <!-- b92 - os 2 do estoque de defeitos subiram pra MESMA faixa:
@@ -686,23 +686,23 @@
        8. app       -> entry point (DOM refs, event listeners, init)
        ============================================================ -->
   <!-- adaptador de caminho: TEM que vir antes dos modulos -->
-  <script src="js-AMB/base-amb.js?v=b103"></script>
-  <script src="js-AMB/helpers.js?v=b103"></script>
-  <script src="js-AMB/auth.js?v=b103"></script>
-  <script src="js-AMB/scanner.js?v=b103"></script>
-  <script src="js-AMB/camera.js?v=b103"></script>
-  <script src="js-AMB/bipagem.js?v=b103"></script>
-  <script src="js-AMB/busca.js?v=b103"></script>
+  <script src="js-AMB/base-amb.js?v=b105"></script>
+  <script src="js-AMB/helpers.js?v=b105"></script>
+  <script src="js-AMB/auth.js?v=b105"></script>
+  <script src="js-AMB/scanner.js?v=b105"></script>
+  <script src="js-AMB/camera.js?v=b105"></script>
+  <script src="js-AMB/bipagem.js?v=b105"></script>
+  <script src="js-AMB/busca.js?v=b105"></script>
   <script src="https://cdn.jsdelivr.net/npm/qz-tray@2.2.4/qz-tray.js"></script>
-  <script src="js-AMB/etiqueta.js?v=b103"></script>
-  <script src="js-AMB/triagem.js?v=b103"></script>
+  <script src="js-AMB/etiqueta.js?v=b105"></script>
+  <script src="js-AMB/triagem.js?v=b105"></script>
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
-  <script src="js-AMB/ocr.js?v=b103"></script>
-  <script src="js-AMB/app.js?v=b103"></script>
+  <script src="js-AMB/ocr.js?v=b105"></script>
+  <script src="js-AMB/app.js?v=b105"></script>
   <!-- b96 - ciclo do estoque de defeitos (ficha, fotos, pedidos) -->
-  <script src="js-AMB/defeitos-ficha.js?v=b103"></script>
+  <script src="js-AMB/defeitos-ficha.js?v=b105"></script>
   <!-- b81 - colar/arrastar imagem da etiqueta na busca -->
-  <script src="js-AMB/colar-imagem.js?v=b103"></script>
+  <script src="js-AMB/colar-imagem.js?v=b105"></script>
 
   <!-- v3.96 - lancar produto com defeito (busca por parte do nome) -->
   <script>
@@ -746,6 +746,13 @@
       var box = document.getElementById('defResultados');
       if (q.length < 2) { box.innerHTML = '<p style="font-size:13px;color:#c62828;">Digite pelo menos 2 letras.</p>'; return; }
       box.innerHTML = '<p style="font-size:13px;color:#888;">Buscando no Bling...</p>';
+      // b104 - buscando de novo, a escolha anterior sai de cena (senao
+      // ele lancaria o defeito no produto errado sem perceber)
+      _defProdutoEscolhido = null;
+      var esc = document.getElementById('defEscolhido');
+      if (esc) esc.style.display = 'none';
+      var btn = document.getElementById('defBtnSalvar');
+      if (btn) { btn.disabled = true; btn.style.opacity = .5; }
       try {
         var r = await fetch('/api/produtos/buscar?q=' + encodeURIComponent(q), { credentials: 'same-origin' });
         var d = await r.json();
@@ -765,17 +772,33 @@
         var h = '';
         for (var i = 0; i < lista.length; i++) {
           var p = lista[i];
-          h += '<div onclick="escolherProdutoDefeito(' + i + ')" data-i="' + i + '" style="border:1px solid #ddd;border-radius:8px;padding:9px 11px;margin-bottom:5px;cursor:pointer;background:#fff;display:flex;gap:10px;align-items:center;">'
+          // b104 - ninguem sabia que era pra CLICAR na linha. Agora cada
+          // resultado tem um botao verde explicito. A linha inteira segue
+          // clicavel pra quem descobrir, mas o botao e o caminho obvio.
+          h += '<div id="defRes' + i + '" onclick="escolherProdutoDefeito(' + i + ')" data-i="' + i + '" style="border:1px solid #ddd;border-radius:10px;padding:10px;margin-bottom:7px;cursor:pointer;background:#fff;display:flex;gap:14px;align-items:center;">'
             + (p.imagem
                 ? '<img src="' + escDef(p.imagem) + '" onclick="event.stopPropagation();abrirZoomProduto(this.src)" onerror="this.style.display=\'none\'" class="foto-produto-lista" style="cursor:zoom-in;">'
                 : '<div class="foto-produto-lista vazia">📦</div>')
             + '<div style="flex:1;min-width:0;">'
-            + '<div style="font-size:13px;font-weight:600;">' + escDef(p.nome) + '</div>'
-            + '<div style="font-size:11px;color:#666;margin-top:2px;">SKU <code>' + escDef(p.sku) + '</code>'
+            + '<div style="font-size:15px;font-weight:600;line-height:1.3;">' + escDef(p.nome) + '</div>'
+            + '<div style="font-size:12px;color:#666;margin-top:4px;">SKU <code>' + escDef(p.sku) + '</code>'
             + (p.ean ? ' &middot; EAN ' + escDef(p.ean) : '') + '</div>'
+            + '<button type="button" onclick="event.stopPropagation();escolherProdutoDefeito(' + i + ')" '
+            + 'style="margin-top:12px;background:#116B4E;color:#fff;border:none;border-radius:9px;padding:11px 20px;font-weight:700;font-size:14px;cursor:pointer;">'
+            + '&#10003; É este produto</button>'
             + '</div></div>';
         }
         window._defLista = lista;
+        // b105 - RESULTADO UNICO ja abre escolhido. Mostrar uma lista de um
+        // item so pra ele clicar e passo a mais sem ganho: o quadro ja
+        // aparece pronto pra preencher o defeito e a localizacao.
+        if (lista.length === 1) {
+          box.innerHTML = '';
+          escolherProdutoDefeito(0);
+          var campo = document.getElementById('defProblema');
+          if (campo) campo.focus();          // cursor ja no "qual o defeito?"
+          return;
+        }
         box.innerHTML = h;
       } catch (e) {
         box.innerHTML = '<p style="font-size:13px;color:#c62828;">Erro de conexao.</p>';
@@ -796,7 +819,18 @@
       document.getElementById('defSku').textContent = p.sku || '-';
       document.getElementById('defEan').textContent = p.ean ? ('\u00b7 EAN ' + p.ean) : '';
       document.getElementById('defEscolhido').style.display = '';
-      document.getElementById('defResultados').innerHTML = '';
+      // b104 - a lista FICA na tela: ele pode buscar outro produto mesmo
+      // com um ja selecionado (antes a lista sumia e parecia travado).
+      // A linha escolhida ganha destaque verde.
+      var res = document.getElementById('defResultados');
+      if (res) {
+        var linhas = res.querySelectorAll('[data-i]');
+        for (var k = 0; k < linhas.length; k++) {
+          var sel = String(linhas[k].getAttribute('data-i')) === String(i);
+          linhas[k].style.border = sel ? '2px solid #116B4E' : '1px solid #ddd';
+          linhas[k].style.background = sel ? '#f2fbf7' : '#fff';
+        }
+      }
       var b = document.getElementById('defBtnSalvar');
       b.disabled = false; b.style.opacity = '1';
       setTimeout(function () { document.getElementById('defProblema').focus(); }, 80);
