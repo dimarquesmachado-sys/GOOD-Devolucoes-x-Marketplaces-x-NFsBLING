@@ -23,11 +23,24 @@
        imagem, mas nao dava pra RECONHECER o produto, que e o ponto.
        Agora 260px (5x), com contain pra nao cortar as pontas. No celular
        cai pra 150px, senao a foto sozinha ocupa a tela toda. */
-    .foto-produto-lista, .foto-produto-escolhido {
+    /* b107 - DOIS TAMANHOS, e nao um so. A foto de 260px foi pensada pro
+       produto ESCOLHIDO, onde ela confirma que e aquele mesmo. Na LISTA
+       (que so aparece com 2+ resultados) ela virava uma rolagem sem fim —
+       pior nos produtos sem foto, que mostravam um quadrado enorme com um
+       📦 no meio. Lista: 96px. Escolhido: 260px. */
+    .foto-produto-lista {
+      width: 96px; height: 96px; flex: 0 0 auto;
+      border-radius: 9px; object-fit: contain; background: #fff;
+      border: 1px solid #e4dcf1;
+    }
+    .foto-produto-escolhido {
       width: 260px; height: 260px; flex: 0 0 auto;
       border-radius: 10px; object-fit: contain; background: #fff;
       border: 1px solid #e4dcf1;
     }
+    /* a lista volta a ser lista: linhas baixas e botao menor */
+    #defResultados > div { padding: 9px 11px !important; gap: 12px !important; margin-bottom: 6px !important; }
+    #defResultados .btn-escolher { margin-top: 8px !important; padding: 8px 16px !important; font-size: 13px !important; }
     /* b102 - a foto nao estava sendo cortada pelo object-fit (que ja e
        "contain"): quem cortava era a CAIXA dos resultados, presa em
        230px de altura enquanto a imagem passou a ter 260px. */
@@ -49,11 +62,14 @@
     }
     .foto-produto-lista.vazia, .foto-produto-escolhido.vazia {
       display: flex; align-items: center; justify-content: center;
-      background: #f2f2f7; font-size: 46px; color: #bbb;
+      background: #f2f2f7; color: #bbb;
     }
+    .foto-produto-lista.vazia { font-size: 30px; }
+    .foto-produto-escolhido.vazia { font-size: 46px; }
     @media (max-width: 600px) {
-      .foto-produto-lista, .foto-produto-escolhido { width: 150px; height: 150px; }
-      .foto-produto-lista.vazia, .foto-produto-escolhido.vazia { font-size: 34px; }
+      .foto-produto-lista { width: 72px; height: 72px; }
+      .foto-produto-escolhido { width: 150px; height: 150px; }
+      .foto-produto-escolhido.vazia { font-size: 34px; }
     }
     /* b100 - no computador os tres dividem UMA linha: bipar ocupa o vao,
        os dois de apoio ficam pequenos a direita. */
@@ -168,7 +184,7 @@
         <div class="topo-txt">
           <h1>AMBTotal Devoluções</h1>
           <p>Identificar venda &middot; NF-e &middot; Triagem
-            <span class="topo-versao">&middot; v3.53 &middot; <span id="serverVersion">checando...</span></span>
+            <span class="topo-versao">&middot; v3.54 &middot; <span id="serverVersion">checando...</span></span>
           </p>
         </div>
         <!-- b92 - os 2 do estoque de defeitos subiram pra MESMA faixa:
@@ -694,23 +710,23 @@
        8. app       -> entry point (DOM refs, event listeners, init)
        ============================================================ -->
   <!-- adaptador de caminho: TEM que vir antes dos modulos -->
-  <script src="js-AMB/base-amb.js?v=b106"></script>
-  <script src="js-AMB/helpers.js?v=b106"></script>
-  <script src="js-AMB/auth.js?v=b106"></script>
-  <script src="js-AMB/scanner.js?v=b106"></script>
-  <script src="js-AMB/camera.js?v=b106"></script>
-  <script src="js-AMB/bipagem.js?v=b106"></script>
-  <script src="js-AMB/busca.js?v=b106"></script>
+  <script src="js-AMB/base-amb.js?v=b107"></script>
+  <script src="js-AMB/helpers.js?v=b107"></script>
+  <script src="js-AMB/auth.js?v=b107"></script>
+  <script src="js-AMB/scanner.js?v=b107"></script>
+  <script src="js-AMB/camera.js?v=b107"></script>
+  <script src="js-AMB/bipagem.js?v=b107"></script>
+  <script src="js-AMB/busca.js?v=b107"></script>
   <script src="https://cdn.jsdelivr.net/npm/qz-tray@2.2.4/qz-tray.js"></script>
-  <script src="js-AMB/etiqueta.js?v=b106"></script>
-  <script src="js-AMB/triagem.js?v=b106"></script>
+  <script src="js-AMB/etiqueta.js?v=b107"></script>
+  <script src="js-AMB/triagem.js?v=b107"></script>
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
-  <script src="js-AMB/ocr.js?v=b106"></script>
-  <script src="js-AMB/app.js?v=b106"></script>
+  <script src="js-AMB/ocr.js?v=b107"></script>
+  <script src="js-AMB/app.js?v=b107"></script>
   <!-- b96 - ciclo do estoque de defeitos (ficha, fotos, pedidos) -->
-  <script src="js-AMB/defeitos-ficha.js?v=b106"></script>
+  <script src="js-AMB/defeitos-ficha.js?v=b107"></script>
   <!-- b81 - colar/arrastar imagem da etiqueta na busca -->
-  <script src="js-AMB/colar-imagem.js?v=b106"></script>
+  <script src="js-AMB/colar-imagem.js?v=b107"></script>
 
   <!-- v3.96 - lancar produto com defeito (busca por parte do nome) -->
   <script>
@@ -788,11 +804,11 @@
                 ? '<img src="' + escDef(p.imagem) + '" onclick="event.stopPropagation();abrirZoomProduto(this.src)" onerror="this.style.display=\'none\'" class="foto-produto-lista" style="cursor:zoom-in;">'
                 : '<div class="foto-produto-lista vazia">📦</div>')
             + '<div style="flex:1;min-width:0;">'
-            + '<div style="font-size:15px;font-weight:600;line-height:1.3;">' + escDef(p.nome) + '</div>'
+            + '<div style="font-size:14px;font-weight:600;line-height:1.3;">' + escDef(p.nome) + '</div>'
             + '<div style="font-size:12px;color:#666;margin-top:4px;">SKU <code>' + escDef(p.sku) + '</code>'
             + (p.ean ? ' &middot; EAN ' + escDef(p.ean) : '') + '</div>'
             + '<button type="button" onclick="event.stopPropagation();escolherProdutoDefeito(' + i + ')" '
-            + 'style="margin-top:12px;background:#116B4E;color:#fff;border:none;border-radius:9px;padding:11px 20px;font-weight:700;font-size:14px;cursor:pointer;">'
+            + 'class="btn-escolher" style="margin-top:12px;background:#116B4E;color:#fff;border:none;border-radius:9px;padding:11px 20px;font-weight:700;font-size:14px;cursor:pointer;">'
             + '&#10003; É este produto</button>'
             + '</div></div>';
         }
