@@ -21,6 +21,11 @@
   var BASE = (location.pathname.indexOf('/amb') === 0) ? '/amb' : '';
   var euSouAdmin = false;
   var selecionados = {};        // defeito_id -> peca retirada (montar uma boa)
+  // b115 - a ficha aberta fica AQUI. Antes eu mandava o texto atual dentro
+  // do onclick com JSON.stringify: ele gera aspas DUPLAS e o atributo HTML
+  // tambem usa aspas duplas, entao o atributo quebrava e o clique no lapis
+  // nao chamava nada. Agora o botao passa so o id e a funcao le daqui.
+  var fichaAberta = null;
 
   function esc(s) {
     return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
@@ -64,6 +69,13 @@
     selecionados = {};
   }
   window.fecharCaixaDefeitos = fechar;
+
+  // b115 - subtitulo em negrito, escuro e com uma linha embaixo: antes era
+  // cinza claro e sumia no meio do conteudo.
+  function SUB(txt) {
+    return '<div style="font-size:12px;font-weight:800;color:#3a3a44;letter-spacing:.6px;'
+      + 'margin:16px 0 7px;padding-bottom:4px;border-bottom:2px solid #eee;">' + txt + '</div>';
+  }
 
   function topo(titulo, extra) {
     return '<div style="position:sticky;top:0;background:#561A9E;color:#fff;padding:12px 16px;'
@@ -177,6 +189,7 @@
         + esc((d && d.erro) || 'não consegui abrir') + '</div>');
       return;
     }
+    fichaAberta = d;
     var it = d.item, fotos = d.fotos || [], com = d.comentarios || [],
         pec = d.pecas_retiradas || [], ped = d.pedidos || [];
 
@@ -190,28 +203,28 @@
       + '<div style="font-size:15px;font-weight:600;margin-bottom:12px;">' + esc(it.titulo || '') + '</div>';
 
     // fotos
-    html += '<div style="font-size:11px;color:#888;letter-spacing:.4px;margin-bottom:6px;">FOTOS DA TRIAGEM ('
-      + fotos.length + ')</div>';
-    html += fotos.length
-      ? '<div style="display:flex;gap:7px;overflow-x:auto;padding-bottom:6px;margin-bottom:14px;">'
+    // b115 - sem foto, a secao inteira SOME (nao adianta anunciar ausencia)
+    if (fotos.length) {
+      html += SUB('FOTOS (' + fotos.length + ')')
+        + '<div style="display:flex;gap:7px;overflow-x:auto;padding-bottom:6px;margin-bottom:14px;">'
         + fotos.map(function (f) {
             return '<img src="' + esc(f) + '" alt="" onclick="window.open(this.src,\'_blank\')" '
-              + 'style="width:96px;height:96px;flex:0 0 auto;object-fit:cover;border-radius:9px;'
+              + 'style="width:96px;height:96px;flex:0 0 auto;object-fit:contain;background:#fff;border-radius:9px;'
               + 'border:1px solid #e4dcf1;cursor:zoom-in;">';
-          }).join('') + '</div>'
-      : '<div style="font-size:12.5px;color:#999;margin-bottom:14px;">sem fotos nesta peça.</div>';
+          }).join('') + '</div>';
+    }
 
     // historico
-    html += '<div style="font-size:11px;color:#888;letter-spacing:.4px;margin-bottom:6px;">HISTÓRICO DA PEÇA</div>'
+    html += SUB('HISTÓRICO DA PEÇA')
       + '<div style="border-left:2px solid #eee;padding-left:12px;margin-bottom:10px;">'
       + '<div style="margin-bottom:9px;"><div style="font-size:13.5px;' + (it.laudo ? 'color:#8C1D18;font-weight:600;' : 'color:#999;font-style:italic;') + '">'
       + esc(it.laudo || 'sem descrição do defeito')
-      + ' <a href="#" onclick="event.preventDefault();corrigirLaudo(\'' + esc(it.id) + '\',' + JSON.stringify(it.laudo || '') + ')" '
-      + 'style="font-size:11.5px;color:#561A9E;text-decoration:none;">✏️ corrigir</a></div>'
+      + ' <a href="#" onclick="event.preventDefault();corrigirLaudo()" '
+      + 'style="font-size:11.5px;color:#561A9E;text-decoration:none;">✏️ Corrigir</a></div>'
       + '<div style="font-size:11.5px;color:#888;">' + esc(it.quem || '-') + ' · ' + dataBr(it.criado_em) + ' · entrada</div></div>'
       + com.map(function (c) {
           return '<div style="margin-bottom:9px;"><div style="font-size:13.5px;">' + esc(c.texto)
-            + ' <a href="#" onclick="event.preventDefault();corrigirComentario(\'' + esc(c.id) + '\',\'' + esc(it.id) + '\',' + JSON.stringify(c.texto || '') + ')" '
+            + ' <a href="#" onclick="event.preventDefault();corrigirComentario(\'' + esc(c.id) + '\')" '
             + 'style="font-size:11.5px;color:#561A9E;text-decoration:none;">✏️</a></div>'
             + '<div style="font-size:11.5px;color:#888;">' + esc(c.quem || '-') + ' · ' + dataBr(c.criado_em) + '</div></div>';
         }).join('')
@@ -223,7 +236,7 @@
       + 'color:#fff;border-radius:8px;padding:0 16px;height:38px;cursor:pointer;font-weight:600;">Adicionar</button></div>';
 
     // pecas retiradas
-    html += '<div style="font-size:11px;color:#888;letter-spacing:.4px;margin-bottom:6px;">PEÇAS RETIRADAS DESTA</div>';
+    html += SUB('PEÇAS RETIRADAS DESTA');
     html += pec.length
       ? pec.map(function (p) {
           return '<div style="background:#f7f7fa;border-radius:8px;padding:8px 11px;font-size:13px;margin-bottom:5px;">'
@@ -235,7 +248,7 @@
 
     // pedidos ja feitos
     if (ped.length) {
-      html += '<div style="font-size:11px;color:#888;letter-spacing:.4px;margin:14px 0 6px;">PEDIDOS DESTA PEÇA</div>'
+      html += SUB('PEDIDOS DESTA PEÇA')
         + ped.map(function (p) { return linhaPedido(p, false); }).join('');
     }
 
@@ -290,8 +303,10 @@
    * um defeito digitado errado na entrada ficava errado pra sempre. A
    * correcao fica registrada no historico, entao nao se perde o rastro.
    */
-  window.corrigirLaudo = async function (id, atual) {
-    var novo = prompt('Descrição do defeito:', atual || '');
+  window.corrigirLaudo = async function () {
+    if (!fichaAberta || !fichaAberta.item) return;
+    var id = fichaAberta.item.id;
+    var novo = prompt('Descrição do defeito:', fichaAberta.item.laudo || '');
     if (novo === null) return;
     novo = String(novo).trim();
     if (novo.length < 3) { alert('escreva a descrição do defeito'); return; }
@@ -302,8 +317,11 @@
     abrirFichaDefeito(id);
   };
 
-  window.corrigirComentario = async function (cid, id, atual) {
-    var novo = prompt('Corrigir o texto:', atual || '');
+  window.corrigirComentario = async function (cid) {
+    if (!fichaAberta || !fichaAberta.item) return;
+    var id = fichaAberta.item.id;
+    var atual = (fichaAberta.comentarios || []).find(function (c) { return String(c.id) === String(cid); });
+    var novo = prompt('Corrigir o texto:', (atual && atual.texto) || '');
     if (novo === null) return;
     novo = String(novo).trim();
     if (novo.length < 2) { alert('escreva o texto'); return; }
