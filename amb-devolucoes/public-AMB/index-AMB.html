@@ -14,6 +14,51 @@
     /* os 2 links do estoque de defeitos: a DIREITA no computador, igual
        o cracha do usuario (que e absolute, top/right). No celular o
        cracha vira estatico e centralizado, entao eles centralizam junto. */
+    /* ═══ b93 - CELULAR: cada coisa na sua faixa ═══════════════════
+       O que estourava a largura era a linha com 3 botoes (bipar + ler
+       nome + anexar). Agora bipar fica sozinho e largo, e os dois de
+       apoio dividem a linha de baixo. No computador nada muda. */
+    .linha-acao-principal { margin-top: 10px; }
+    .btn-bipar {
+      width: 100%; padding: 14px; background: #1565c0; color: #fff; border: none;
+      border-radius: 10px; font-weight: 700; font-size: 15px; cursor: pointer;
+    }
+    .linha-apoio { display: flex; gap: 7px; margin-top: 7px; }
+    .btn-apoio {
+      flex: 1 1 0; min-width: 0; padding: 10px 8px; background: transparent;
+      color: #534AB7; border: 1px solid #CECBF6; border-radius: 9px;
+      font-weight: 500; font-size: 12.5px; cursor: pointer;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    /* menu ⋮ do topo: so existe no celular */
+    #btnMenuTopo { display: none; }
+    #menuTopo { display: none; }
+    @media (max-width: 600px) {
+      .topo-txt h1 { font-size: 17px; }
+      #btnMenuTopo {
+        display: block; flex: 0 0 auto; width: 34px; height: 34px; padding: 0;
+        background: rgba(255,255,255,.18); color: #fff; border: none;
+        border-radius: 9px; font-size: 19px; line-height: 1; cursor: pointer;
+      }
+      /* o cracha e os links saem da faixa e vao pro menu */
+      header .user-badge { display: none; }
+      .links-defeitos { display: none; }
+      #menuTopo.aberto {
+        display: flex; flex-direction: column; gap: 6px; flex: 1 1 100%;
+        margin-top: 9px; padding-top: 9px; border-top: 1px solid rgba(255,255,255,.22);
+      }
+      #menuTopo a {
+        background: rgba(255,255,255,.16); color: #fff; text-decoration: none;
+        padding: 10px 12px; border-radius: 9px; font-size: 13.5px; text-align: center;
+      }
+      /* alvos de dedo: campo e botoes mais altos */
+      .input-group input { height: 46px; font-size: 15px; }
+      .btn-bipar { padding: 16px; font-size: 16px; }
+      .btn-apoio { padding: 12px 6px; font-size: 12.5px; }
+      /* o estoque de defeitos vira um card proprio, com os 2 lado a lado */
+      .card-defeitos { display: block; }
+    }
+    .card-defeitos { display: none; }
     /* b91 - CABECALHO EM FAIXA BAIXA (opcao C aprovada) */
     header { text-align: left; padding: 14px 18px; }
     .topo-faixa { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
@@ -85,20 +130,27 @@
         <div class="topo-txt">
           <h1>AMBTotal Devoluções</h1>
           <p>Identificar venda &middot; NF-e &middot; Triagem
-            <span class="topo-versao">&middot; v3.44 &middot; <span id="serverVersion">checando...</span></span>
+            <span class="topo-versao">&middot; v3.46 &middot; <span id="serverVersion">checando...</span></span>
           </p>
         </div>
         <!-- b92 - os 2 do estoque de defeitos subiram pra MESMA faixa:
              logo | titulo | defeitos | usuario. No celular tudo quebra
              e centraliza. -->
         <div class="links-defeitos">
-          <a href="#" onclick="event.preventDefault();abrirLocalizacao('/amb/defeitos-AMB.html')">📍 Localização</a>
+          <a href="#" onclick="event.preventDefault();abrirBuscaDefeitos()">📍 Localização</a>
           <a href="#" onclick="event.preventDefault();abrirModalDefeito()">➕ Lançar defeito</a>
         </div>
         <div class="user-badge">
           👤 <span id="userNome">-</span>
           <a href="/amb/painel" id="btnPainelAdmin" style="display:none;">👑 Painel</a>
           <a href="#" onclick="fazerLogout(event)">sair</a>
+        </div>
+        <!-- b93 - no CELULAR o cracha e os links viram este menu, pra a
+             largura toda sobrar pro titulo. No computador ele nem aparece. -->
+        <button type="button" id="btnMenuTopo" onclick="alternarMenuTopo(event)" aria-label="menu">⋮</button>
+        <div id="menuTopo">
+          <a href="/amb/painel" id="menuPainel" style="display:none;">👑 Painel Admin</a>
+          <a href="#" onclick="fazerLogout(event)">🚪 Sair</a>
         </div>
       </div>
     </header>
@@ -107,21 +159,25 @@
       <h2>🔍 Buscar devolução</h2>
       <div class="input-group">
         <input type="text" id="codigo"
-          placeholder="Bipe ou cole o codigo da etiqueta"
+          placeholder="Bipe, cole ou digite o codigo"
           autocomplete="off" inputmode="numeric" />
         <button id="btnBuscar" onclick="buscar()">Buscar</button>
       </div>
       <!-- HIERARQUIA: bipar e a acao do dia a dia (cheia, ocupa o vao);
            o OCR do remetente e apoio - so entra quando a etiqueta nao tem
            codigo legivel - entao fica menor, so com contorno, do lado. -->
-      <div style="display:flex; gap:8px; align-items:stretch; margin-top:10px;">
-        <button type="button" onclick="abrirCameraScanner()"
-                style="flex:1; padding:13px; background:#1565c0; color:white; border:none; border-radius:10px; font-weight:700; font-size:15px; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:8px;">
-          📷 Bipar etiqueta com a câmera
+      <!-- b93 - No CELULAR os 3 botoes numa linha so estouravam a largura.
+           Agora: bipar sozinho e largo (e a acao do dia a dia), e os dois
+           de apoio dividem a linha de baixo, meio a meio. -->
+      <div class="linha-acao-principal">
+        <button type="button" onclick="abrirCameraScanner()" class="btn-bipar">
+          📷 Bipar com a câmera
         </button>
-        <button type="button" onclick="abrirOcrRemetente()" title="quando a etiqueta não tem código legível"
-                style="flex:0 0 auto; max-width:132px; padding:8px 12px; background:transparent; color:#534AB7; border:1px solid #CECBF6; border-radius:10px; font-weight:500; font-size:12.5px; line-height:1.2; cursor:pointer;">
-          👤<br>ler nome do remetente
+      </div>
+      <div class="linha-apoio">
+        <button type="button" onclick="abrirOcrRemetente()" class="btn-apoio"
+                title="quando a etiqueta não tem código legível">
+          👤 ler nome
         </button>
       </div>
 
@@ -146,6 +202,15 @@
           </button>
         </div>
         <p style="font-size:11px; color:#888; margin:8px 0 0;">💡 Aproxima a câmera SO do bloco REMETENTE — leitura mais rapida e certeira. 1a vez baixa o leitor (~15MB).</p>
+      </div>
+      <!-- b93 - no CELULAR o estoque de defeitos volta a ser um card, com os
+           dois botoes 50/50 - em vez de dois links espremidos no cabecalho. -->
+      <div class="card-defeitos" style="margin-top:12px;padding-top:11px;border-top:1px solid #eee;">
+        <div style="font-size:11px;color:#8a8a8a;letter-spacing:.4px;margin-bottom:7px;">ESTOQUE DE DEFEITOS</div>
+        <div style="display:flex;gap:7px;">
+          <button type="button" class="btn-apoio" onclick="abrirBuscaDefeitos()">📍 localização</button>
+          <button type="button" class="btn-apoio" onclick="abrirModalDefeito()">➕ lançar</button>
+        </div>
       </div>
       <p class="hint dica-formatos" onclick="this.classList.toggle('aberta')" title="toque para ver todos os formatos">
         💡 Aceita: etiqueta ML, <b>Correios reverso</b> (AD/AP...BR), Shopee, <b>Magalu</b> (QR/Protocolo), chave DANFE, <b>número da NF</b> ou o <b>NOME do remetente</b> (ex: RENATONEVES — mesmo colado, como vem na etiqueta).
@@ -587,21 +652,23 @@
        8. app       -> entry point (DOM refs, event listeners, init)
        ============================================================ -->
   <!-- adaptador de caminho: TEM que vir antes dos modulos -->
-  <script src="js-AMB/base-amb.js?v=b92"></script>
-  <script src="js-AMB/helpers.js?v=b92"></script>
-  <script src="js-AMB/auth.js?v=b92"></script>
-  <script src="js-AMB/scanner.js?v=b92"></script>
-  <script src="js-AMB/camera.js?v=b92"></script>
-  <script src="js-AMB/bipagem.js?v=b92"></script>
-  <script src="js-AMB/busca.js?v=b92"></script>
+  <script src="js-AMB/base-amb.js?v=b96"></script>
+  <script src="js-AMB/helpers.js?v=b96"></script>
+  <script src="js-AMB/auth.js?v=b96"></script>
+  <script src="js-AMB/scanner.js?v=b96"></script>
+  <script src="js-AMB/camera.js?v=b96"></script>
+  <script src="js-AMB/bipagem.js?v=b96"></script>
+  <script src="js-AMB/busca.js?v=b96"></script>
   <script src="https://cdn.jsdelivr.net/npm/qz-tray@2.2.4/qz-tray.js"></script>
-  <script src="js-AMB/etiqueta.js?v=b92"></script>
-  <script src="js-AMB/triagem.js?v=b92"></script>
+  <script src="js-AMB/etiqueta.js?v=b96"></script>
+  <script src="js-AMB/triagem.js?v=b96"></script>
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
-  <script src="js-AMB/ocr.js?v=b92"></script>
-  <script src="js-AMB/app.js?v=b92"></script>
+  <script src="js-AMB/ocr.js?v=b96"></script>
+  <script src="js-AMB/app.js?v=b96"></script>
+  <!-- b96 - ciclo do estoque de defeitos (ficha, fotos, pedidos) -->
+  <script src="js-AMB/defeitos-ficha.js?v=b96"></script>
   <!-- b81 - colar/arrastar imagem da etiqueta na busca -->
-  <script src="js-AMB/colar-imagem.js?v=b92"></script>
+  <script src="js-AMB/colar-imagem.js?v=b96"></script>
 
   <!-- v3.96 - lancar produto com defeito (busca por parte do nome) -->
   <script>
@@ -803,6 +870,16 @@
       if (!m || !f) { window.open(url, '_blank'); return; }
       if (!f.src) f.src = url;
       m.classList.add('show');
+    }
+    // b93 - menu ⋮ do topo (so aparece no celular)
+    function alternarMenuTopo(e) {
+      if (e) e.preventDefault();
+      // o Painel Admin so aparece no menu se o auth liberou pro usuario
+      var b = document.getElementById('btnPainelAdmin');
+      var mp = document.getElementById('menuPainel');
+      if (b && mp) mp.style.display = (b.style.display === 'none') ? 'none' : 'block';
+      var m = document.getElementById('menuTopo');
+      if (m) m.classList.toggle('aberto');
     }
     function fecharLocalizacao() {
       var m = document.getElementById('modalLocalizacao');
