@@ -311,6 +311,12 @@ function montarZplDefeito(etq) {
   const tit = _zplLinhasDefeito(etq.produto || '-', 34, 2);
   for (const ln of tit) { z.push('^FO20,' + y + '^A0N,34,34^FD' + ln + '^FS'); y += 40; }
   y += 8;
+  // b122 - NUMERO DA PECA em destaque. Sem ele, duas luminarias iguais na
+  // prateleira sao indistinguiveis - e e justamente esse numero que a
+  // ficha usa no "foi para a peca #4". A etiqueta precisa carregar ele.
+  if (etq.peca_id) {
+    z.push('^FO20,' + y + '^A0N,70,70^FDPECA #' + String(etq.peca_id) + '^FS'); y += 84;
+  }
   // SKU grande
   z.push('^FO20,' + y + '^A0N,60,60^FDSKU ' + sku + '^FS'); y += 74;
   // Barras do EAN (se houver)
@@ -379,6 +385,7 @@ function abrirPopupEtiquetaDefeito(etq, aoFechar) {
     + '<div style="font-size:13px;color:#666;text-align:center;margin:6px 0 14px;">Cola na caixa pra identificar fácil no estoque (10×15cm).</div>'
     + '<div style="background:#fff5f5;border:2px solid #ef9a9a;border-radius:10px;padding:12px;font-size:13px;line-height:1.5;">'
     + '<b>DEFEITO:</b> ' + esc(etq.defeito) + '<br>'
+    + (etq.peca_id ? '<b>Peça:</b> #' + esc(etq.peca_id) + '<br>' : '')
     + '<b>SKU:</b> ' + esc(etq.sku || '-') + (etq.ean ? ' · <b>EAN:</b> ' + esc(etq.ean) : '') + '<br>'
     + '<b>NF venda:</b> ' + esc(etq.nf || '-') + ' · <b>Qtd:</b> ' + esc(etq.qtd) + (etq.local ? ' · <b>Local:</b> ' + esc(etq.local) : '')
     + '</div>'
