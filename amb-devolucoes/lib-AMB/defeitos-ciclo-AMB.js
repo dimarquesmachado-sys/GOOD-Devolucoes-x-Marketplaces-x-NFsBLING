@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════════════════════════════════
-//  amb-devolucoes · lib/defeitos-ciclo  (AMB Devol. b95)
+//  amb-devolucoes · lib/defeitos-ciclo  (AMB Devol. b97)
 //  ------------------------------------------------------------------
 //  O CICLO DA PECA COM DEFEITO, do jeito que o Diego descreveu:
 //
@@ -21,7 +21,7 @@
 'use strict';
 
 module.exports = function registrarCicloDefeitos(router, deps) {
-  const { auth, db } = deps;
+  const { auth, db, bling } = deps;
 
   // as tabelas novas ficam aqui, nao no supabase-AMB, pra este modulo ser
   // autocontido (o supabase-AMB nao precisa mudar)
@@ -46,6 +46,78 @@ module.exports = function registrarCicloDefeitos(router, deps) {
     }
     return [];
   }
+
+  // ─────────────────────────────────────────────────────────────────────
+  // GET /api/defeitos/lista?q=
+  // A rota /api/defeitos que ja existia devolve os defeitos AGRUPADOS por
+  // local+SKU (campo `grupos`) e SEM id — serve pra "o que tem na
+  // prateleira X", mas nao pra abrir a ficha de uma peca. Esta aqui
+  // devolve as LINHAS, com id.
+  // Busca por SKU, localizacao, produto ou NF; e se o termo for um EAN
+  // (12 a 14 digitos), resolve o EAN no Bling pra achar o SKU e busca
+  // por ele — que e como o Diego procura na pratica.
+  // ─────────────────────────────────────────────────────────────────────
+  router.get('/api/defeitos/lista', auth.requerLogin, async (req, res) => {
+    const dbc = cli();
+    if (!dbc) return erroSemBanco(res);
+    const q = String(req.query.q || '').trim();
+
+    async function buscar(termo) {
+      let sel = dbc.from(db.tabelas.devolucoes)
+        .select('id, produto_sku, produto_titulo, localizacao, defeito_qtd, produto_qtd, problema_descricao, problema_fotos, tipo, status, funcionario, nf_numero, criado_em')
+        .or('tipo.eq.defeito_estoque,status.eq.problema')
+        .order('criado_em', { ascending: false })
+        .limit(300);
+      const r = await sel;
+      if (r.error) throw new Error(r.error.message);
+      let linhas = r.data || [];
+      if (termo) {
+        const b = termo.toLowerCase();
+        linhas = linhas.filter(x =>
+          String(x.produto_sku || '').toLowerCase().includes(b) ||
+          String(x.localizacao || '').toLowerCase().includes(b) ||
+          String(x.produto_titulo || '').toLowerCase().includes(b) ||
+          String(x.nf_numero || '').toLowerCase().includes(b));
+      }
+      return linhas;
+    }
+
+    try {
+      let linhas = await buscar(q);
+      let viaEan = null;
+
+      // nada achado e o termo parece EAN: resolve no Bling e tenta pelo SKU
+      if (!linhas.length && /^\d{12,14}$/.test(q) && bling && bling.chamarBling) {
+        try {
+          const rB = await bling.chamarBling(`/produtos?gtin=${encodeURIComponent(q)}&limite=3`);
+          const prod = (rB.ok && rB.data && rB.data.data && rB.data.data[0]) || null;
+          if (prod && prod.codigo) {
+            viaEan = { ean: q, sku: prod.codigo, nome: prod.nome || null };
+            linhas = await buscar(String(prod.codigo).toLowerCase());
+          }
+        } catch (e) { /* segue sem o de-para */ }
+      }
+
+      res.json({
+        ok: true,
+        via_ean: viaEan,
+        itens: linhas.map(x => ({
+          id: x.id,
+          sku: x.produto_sku,
+          titulo: x.produto_titulo,
+          localizacao: x.localizacao,
+          quantidade: x.defeito_qtd || x.produto_qtd || 1,
+          laudo: x.problema_descricao,
+          nf_numero: x.nf_numero,
+          quem: x.funcionario,
+          criado_em: x.criado_em,
+          tem_fotos: fotosDe(x).length,
+        })),
+      });
+    } catch (e) {
+      res.status(500).json({ ok: false, erro: String(e.message || e) });
+    }
+  });
 
   // ─────────────────────────────────────────────────────────────────────
   // GET /api/defeitos/ficha/:id
