@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════════════════════════════════
-//  amb-devolucoes · lib/compat  (AMB Devol. b113)
+//  amb-devolucoes · lib/compat  (AMB Devol. b114)
 //  LEVA 1a do porte GOOD → AMB.
 //
 //  A tela de bipe da GOOD (index.html + 10 modulos JS) chama 18 endpoints.
@@ -520,6 +520,16 @@ function montar(router, deps) {
     });
     // as fotos vao num segundo passo, pelo mesmo caminho da triagem
     if (r.ok && fotos.length) r = await completarRegistro(r, { problema_fotos: fotos });
+    // b114 - devolve o que FICOU GRAVADO. A tela mostra isso na hora, entao
+    // se a descricao nao entrar da pra ver no ato, e nao dias depois ao
+    // abrir a ficha.
+    if (r.ok && r.registro) {
+      r.gravado = {
+        defeito: r.registro.problema_descricao || null,
+        quantidade: r.registro.defeito_qtd,
+        fotos: Array.isArray(r.registro.problema_fotos) ? r.registro.problema_fotos.length : 0,
+      };
+    }
     res.json({ ...r, sku_validado_no_bling: !!exato });
   });
 
