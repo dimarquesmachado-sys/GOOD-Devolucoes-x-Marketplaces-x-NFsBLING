@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════════════════════════════════
-//  amb-devolucoes · lib/defeitos-ciclo  (AMB Devol. b126)
+//  amb-devolucoes · lib/defeitos-ciclo  (AMB Devol. b127)
 //  ------------------------------------------------------------------
 //  O CICLO DA PECA COM DEFEITO, do jeito que o Diego descreveu:
 //
@@ -89,10 +89,7 @@ module.exports = function registrarCicloDefeitos(router, deps) {
         .limit(300);
       const r = await sel;
       if (r.error) throw new Error(r.error.message);
-      // b126 - peca ja recuperada ou descartada nao aparece mais pro
-      // estoquista: nao ha o que fazer com ela, e deixa-la na lista so
-      // gera duvida ("mexo ou nao mexo?")
-      let linhas = (r.data || []).filter(x => x.tipo !== 'recuperado' && x.tipo !== 'descartado');
+      let linhas = r.data || [];
       if (termo) {
         const b = termo.toLowerCase();
         // b124 - buscar pelo NUMERO DA PECA, que e como ele identifica a
@@ -114,6 +111,34 @@ module.exports = function registrarCicloDefeitos(router, deps) {
       let linhas = await buscar(q);
       let viaEan = null;
 
+      // ═══════════════════════════════════════════════════════════════
+      // b127 - EM QUE PRATELEIRA CADA PECA ESTA: ainda com defeito,
+      // recuperada ou descartada. O tipo da linha diz isso nas novas,
+      // mas as pecas autorizadas ANTES desse controle nao tem o tipo
+      // marcado - entao eu tambem olho os PEDIDOS ja autorizados. Assim
+      // o historico antigo aparece na aba certa em vez de sumir.
+      // ═══════════════════════════════════════════════════════════════
+      const porPedido = {};
+      try {
+        const rp = await dbc.from(T_PED)
+          .select('defeito_id, tipo, status')
+          .in('status', ['autorizado', 'concluido']);
+        for (const p of (rp.data || [])) {
+          if (!p.defeito_id) continue;
+          porPedido[p.defeito_id] = p.tipo === 'descarte' ? 'descartado' : 'recuperado';
+        }
+      } catch (e) { /* sem os pedidos, vale so o tipo da linha */ }
+
+      const situacaoDe = (x) => {
+        if (x.tipo === 'recuperado' || x.tipo === 'descartado') return x.tipo;
+        return porPedido[x.id] || 'defeito';
+      };
+
+      const estado = String(req.query.estado || 'defeito').trim();
+      if (estado !== 'todos') {
+        linhas = linhas.filter(x => situacaoDe(x) === estado);
+      }
+
       // nada achado e o termo parece EAN: resolve no Bling e tenta pelo SKU
       if (!linhas.length && /^\d{12,14}$/.test(q) && bling && bling.chamarBling) {
         try {
@@ -126,9 +151,15 @@ module.exports = function registrarCicloDefeitos(router, deps) {
         } catch (e) { /* segue sem o de-para */ }
       }
 
+      // contagem de cada aba, pra tela mostrar quantas tem em cada uma
+      const todas = await buscar(q);
+      const contagem = { defeito: 0, recuperado: 0, descartado: 0 };
+      for (const x of todas) contagem[situacaoDe(x)] = (contagem[situacaoDe(x)] || 0) + 1;
+
       res.json({
         ok: true,
         via_ean: viaEan,
+        contagem,
         itens: linhas.map(x => ({
           id: x.id,
           sku: x.produto_sku,
@@ -140,6 +171,7 @@ module.exports = function registrarCicloDefeitos(router, deps) {
           quem: x.funcionario,
           criado_em: x.criado_em,
           tem_fotos: fotosDe(x).length,
+          situacao: situacaoDe(x),
         })),
       });
     } catch (e) {
@@ -187,6 +219,12 @@ module.exports = function registrarCicloDefeitos(router, deps) {
           criado_em: item.criado_em,
           status: item.status,
           tipo: item.tipo,               // b126 - recuperado / descartado / defeito_estoque
+          situacao: (item.tipo === 'recuperado' || item.tipo === 'descartado')
+            ? item.tipo
+            : ((rPed.data || []).some(p => ['autorizado', 'concluido'].includes(p.status))
+                ? ((rPed.data || []).find(p => ['autorizado', 'concluido'].includes(p.status)).tipo === 'descarte'
+                    ? 'descartado' : 'recuperado')
+                : 'defeito'),
         },
         fotos: fotosDe(item),
         comentarios: rCom.data || [],
