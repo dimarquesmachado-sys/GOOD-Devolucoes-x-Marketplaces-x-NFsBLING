@@ -26,6 +26,26 @@
   // tambem usa aspas duplas, entao o atributo quebrava e o clique no lapis
   // nao chamava nada. Agora o botao passa so o id e a funcao le daqui.
   var fichaAberta = null;
+  // b123 - PILHA DE NAVEGACAO. Cada clique trocava a tela inteira e o unico
+  // jeito de voltar era fechar e abrir de novo. Aqui guardamos por onde ele
+  // passou: busca -> ficha -> outra ficha (seguindo "foi para a peca #4"),
+  // e a seta desfaz passo a passo.
+  var atual = null;
+  var pilha = [];
+
+  function registrar(tipo, arg, voltando) {
+    if (voltando) { atual = { tipo: tipo, arg: arg }; return; }
+    if (atual) pilha.push(atual);
+    atual = { tipo: tipo, arg: arg };
+  }
+
+  window.voltarDefeitos = function () {
+    var v = pilha.pop();
+    if (!v) return;
+    if (v.tipo === 'busca') abrirBuscaDefeitos(v.arg, true);
+    else if (v.tipo === 'ficha') abrirFichaDefeito(v.arg, true);
+    else if (v.tipo === 'fila') abrirFilaPedidos(true);
+  };
 
   // b117 - aviso escrito NA TELA, no lugar de pop-up
   function avisoEm(id, txt, cor) {
@@ -75,6 +95,8 @@
     var d = document.getElementById('caixaDefeitos');
     if (d) d.style.display = 'none';
     selecionados = {};
+    pilha = [];
+    atual = null;
   }
   window.fecharCaixaDefeitos = fechar;
 
@@ -88,6 +110,10 @@
   function topo(titulo, extra) {
     return '<div style="position:sticky;top:0;background:#561A9E;color:#fff;padding:12px 16px;'
       + 'display:flex;align-items:center;gap:10px;z-index:2;">'
+      + (pilha.length
+          ? '<button onclick="voltarDefeitos()" title="voltar" style="background:rgba(255,255,255,.2);color:#fff;'
+            + 'border:none;border-radius:8px;padding:6px 12px;cursor:pointer;font-size:15px;">&larr;</button>'
+          : '')
       + '<b style="font-size:16px;flex:1;">' + titulo + '</b>'
       + (extra || '')
       + '<button onclick="fecharCaixaDefeitos()" style="background:rgba(255,255,255,.2);color:#fff;'
@@ -95,7 +121,8 @@
   }
 
   // ── 1) BUSCA ───────────────────────────────────────────────────────
-  window.abrirBuscaDefeitos = function (termo) {
+  window.abrirBuscaDefeitos = function (termo, voltando) {
+    registrar('busca', termo, voltando);
     abrir(topo('🔧 Estoque de Defeitos',
       euSouAdmin ? '<button onclick="abrirFilaPedidos()" style="background:rgba(255,255,255,.2);color:#fff;border:none;border-radius:8px;padding:6px 12px;cursor:pointer;">📥 Pedidos</button>' : '')
       + '<div style="padding:14px;">'
@@ -288,7 +315,8 @@
     if (el) el.innerHTML = htmlPecas();
   }
 
-  window.abrirFichaDefeito = async function (id) {
+  window.abrirFichaDefeito = async function (id, voltando) {
+    registrar('ficha', id, voltando);
     abrir(topo('carregando ficha...') + '<div style="padding:16px;color:#888;">um instante</div>');
     var d;
     try { d = await api('/api/defeitos/ficha/' + encodeURIComponent(id)); }
@@ -673,7 +701,8 @@
     return h + '</div>';
   }
 
-  window.abrirFilaPedidos = async function () {
+  window.abrirFilaPedidos = async function (voltando) {
+    registrar('fila', null, voltando);
     abrir(topo('📥 Pedidos do galpão') + '<div style="padding:16px;color:#888;">carregando...</div>');
     var d = await api('/api/defeitos/pedidos');
     var lista = (d && d.pedidos) || [];
