@@ -110,24 +110,61 @@
         ? '<div style="background:#E6F1FB;color:#0C447C;border-radius:8px;padding:8px 11px;font-size:12.5px;margin-bottom:8px;">'
           + 'EAN ' + esc(d.via_ean.ean) + ' &rarr; SKU <b>' + esc(d.via_ean.sku) + '</b></div>'
         : '';
-      el.innerHTML = aviso + itens.map(function (it) {
+      // b110 - cada linha ganha a FOTO do produto (igual no "lancar
+      // defeito") e mostra o DEFEITO sempre: quando nao ha descricao, diz
+      // isso em vez de deixar um espaco vazio - que era o que fazia
+      // parecer que o sistema tinha perdido a informacao.
+      el.innerHTML = aviso + itens.map(function (it, i) {
         var sku = it.sku || '-';
+        var laudo = String(it.laudo || '').trim();
         return '<div onclick="abrirFichaDefeito(\'' + esc(it.id) + '\')" '
           + 'style="border:1px solid #eee;border-left:4px solid #9E1A1A;border-radius:9px;padding:10px 12px;'
-          + 'margin-bottom:7px;cursor:pointer;">'
+          + 'margin-bottom:7px;cursor:pointer;display:flex;gap:12px;align-items:flex-start;">'
+          + '<div id="fotodef-' + i + '" data-sku="' + esc(sku) + '" '
+          + 'style="width:84px;height:84px;flex:0 0 auto;border-radius:9px;background:#f2f2f7;'
+          + 'border:1px solid #e4dcf1;display:flex;align-items:center;justify-content:center;font-size:26px;color:#bbb;">📦</div>'
+          + '<div style="flex:1;min-width:0;">'
           + '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">'
           + '<b style="font-size:13.5px;">📍 ' + esc(it.localizacao || 'sem local') + '</b>'
           + '<code style="background:#f2f2f7;border-radius:5px;padding:1px 7px;font-size:12px;">' + esc(sku) + '</code>'
           + '<span style="margin-left:auto;background:#FBEAE8;color:#8C1D18;border-radius:11px;padding:1px 9px;font-size:11.5px;">'
           + esc(it.quantidade || 1) + ' peça(s)</span></div>'
-          + '<div style="font-size:13px;margin-top:4px;">' + esc(it.titulo || '') + '</div>'
-          + '<div style="font-size:12px;color:#777;margin-top:2px;">' + esc(it.laudo || '') + (it.tem_fotos ? ' 📷' + it.tem_fotos : '') + '</div>'
-          + '</div>';
+          + '<div style="font-size:13px;margin-top:4px;font-weight:600;">' + esc(it.titulo || '') + '</div>'
+          + (laudo
+              ? '<div style="font-size:12.5px;color:#8C1D18;background:#FBEAE8;border-radius:7px;padding:5px 9px;margin-top:6px;">🔧 ' + esc(laudo) + '</div>'
+              : '<div style="font-size:12px;color:#999;margin-top:6px;font-style:italic;">sem descrição do defeito — abra a ficha e escreva no histórico</div>')
+          + (it.tem_fotos ? '<div style="font-size:11.5px;color:#777;margin-top:4px;">📷 ' + it.tem_fotos + ' foto(s)</div>' : '')
+          + '</div></div>';
       }).join('');
+      buscarFotosDefeitos(itens);
     } catch (e) {
       el.innerHTML = '<div style="color:#c62828;font-size:13px;">erro ao buscar</div>';
     }
   };
+
+  /**
+   * b110 - Busca a foto de cada linha DEPOIS que a lista ja apareceu. A
+   * rota /api/produto/imagem aceita o SKU e cacheia no servidor, entao a
+   * segunda consulta do mesmo produto e instantanea. Uma de cada vez com
+   * pausa: sao chamadas ao Bling.
+   */
+  async function buscarFotosDefeitos(itens) {
+    for (var i = 0; i < itens.length && i < 12; i++) {
+      var cx = document.getElementById('fotodef-' + i);
+      if (!cx || !cx.dataset.sku || cx.dataset.sku === '-') continue;
+      try {
+        var d = await api('/api/produto/imagem/' + encodeURIComponent(cx.dataset.sku));
+        if (d && d.ok && d.imagem) {
+          cx.outerHTML = '<img src="' + esc(d.imagem) + '" alt="" '
+            + 'onclick="event.stopPropagation();window.open(this.src,\'_blank\')" '
+            + 'onerror="this.style.display=\'none\'" '
+            + 'style="width:84px;height:84px;flex:0 0 auto;border-radius:9px;object-fit:contain;'
+            + 'background:#fff;border:1px solid #e4dcf1;cursor:zoom-in;">';
+        }
+      } catch (e) { /* sem foto nao atrapalha */ }
+      await new Promise(function (r) { setTimeout(r, 140); });
+    }
+  }
 
   // ── 2) FICHA ───────────────────────────────────────────────────────
   window.abrirFichaDefeito = async function (id) {
@@ -167,7 +204,8 @@
     // historico
     html += '<div style="font-size:11px;color:#888;letter-spacing:.4px;margin-bottom:6px;">HISTÓRICO DA PEÇA</div>'
       + '<div style="border-left:2px solid #eee;padding-left:12px;margin-bottom:10px;">'
-      + '<div style="margin-bottom:9px;"><div style="font-size:13.5px;">' + esc(it.laudo || '(sem laudo)') + '</div>'
+      + '<div style="margin-bottom:9px;"><div style="font-size:13.5px;' + (it.laudo ? 'color:#8C1D18;font-weight:600;' : 'color:#999;font-style:italic;') + '">'
+      + esc(it.laudo || 'sem descrição do defeito') + '</div>'
       + '<div style="font-size:11.5px;color:#888;">' + esc(it.quem || '-') + ' · ' + dataBr(it.criado_em) + ' · entrada</div></div>'
       + com.map(function (c) {
           return '<div style="margin-bottom:9px;"><div style="font-size:13.5px;">' + esc(c.texto) + '</div>'
