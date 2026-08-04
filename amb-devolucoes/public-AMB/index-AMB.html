@@ -28,6 +28,17 @@
       border-radius: 10px; object-fit: contain; background: #fff;
       border: 1px solid #e4dcf1;
     }
+    /* b102 - a foto nao estava sendo cortada pelo object-fit (que ja e
+       "contain"): quem cortava era a CAIXA dos resultados, presa em
+       230px de altura enquanto a imagem passou a ter 260px. */
+    #defResultados > div { align-items: flex-start; }
+    /* b103 - o quadro abre INTEIRO, sem barra de rolagem por dentro.
+       So volta a rolar no celular, onde nao ha altura pra tudo. */
+    .modal-defeito { max-height: none; overflow: visible; }
+    @media (max-width: 700px) {
+      .modal-defeito { max-height: 92vh; overflow-y: auto; }
+      #defEscolhido > div { flex-direction: column; }
+    }
     .foto-produto-lista.vazia, .foto-produto-escolhido.vazia {
       display: flex; align-items: center; justify-content: center;
       background: #f2f2f7; font-size: 46px; color: #bbb;
@@ -149,7 +160,7 @@
         <div class="topo-txt">
           <h1>AMBTotal Devoluções</h1>
           <p>Identificar venda &middot; NF-e &middot; Triagem
-            <span class="topo-versao">&middot; v3.48 &middot; <span id="serverVersion">checando...</span></span>
+            <span class="topo-versao">&middot; v3.50 &middot; <span id="serverVersion">checando...</span></span>
           </p>
         </div>
         <!-- b92 - os 2 do estoque de defeitos subiram pra MESMA faixa:
@@ -254,7 +265,7 @@
 
   <!-- v3.96 - MODAL: lancar produto com defeito (busca por nome/SKU/EAN) -->
   <div class="modal-bg" id="modalDefeito">
-    <div class="modal" style="max-width: 560px;">
+    <div class="modal modal-defeito" style="max-width: 940px;">
       <h3>➕ Lançar produto com defeito</h3>
       <p style="font-size:13px; color:#666; margin-bottom:10px;">Busca por <b>parte do nome</b>, SKU ou EAN e escolhe o produto certo na lista.</p>
 
@@ -262,16 +273,17 @@
         <input type="text" id="defBusca" placeholder="Ex: arandela 60, KJDD-E-187, 7898..." style="flex:1; padding:11px; border:1px solid #ccc; border-radius:8px; font-size:15px;" onkeydown="if(event.key==='Enter'){event.preventDefault();buscarProdutoDefeito();}">
         <button type="button" onclick="buscarProdutoDefeito()" style="background:#1565c0; color:#fff; border:none; border-radius:8px; padding:11px 18px; font-weight:700; cursor:pointer;">🔍</button>
       </div>
-      <div id="defResultados" style="margin-top:10px; max-height:230px; overflow-y:auto;"></div>
+      <div id="defResultados" style="margin-top:10px;"></div>
 
       <div id="defEscolhido" style="display:none; margin-top:12px; background:#fff5f5; border:2px solid #ef9a9a; border-radius:10px; padding:12px;">
-        <div style="display:flex; gap:10px; align-items:flex-start;">
+        <!-- b103 - a foto fica a ESQUERDA e os campos do defeito a DIREITA,
+             na mesma altura. Empilhado, com a foto de 260px, o quadro
+             passava da tela e obrigava a rolar. -->
+        <div style="display:flex; gap:14px; align-items:flex-start;">
           <div id="defImg"></div>
           <div style="flex:1; min-width:0;">
         <div style="font-size:14px;"><b>Produto:</b> <span id="defNome">-</span></div>
         <div style="font-size:12px; color:#666; margin-top:3px;">SKU <code id="defSku">-</code> <span id="defEan"></span></div>
-          </div>
-        </div>
         <div style="display:flex; gap:10px; margin-top:10px;">
           <div style="flex:2;">
             <label style="font-size:12px; color:#555; font-weight:600;">Qual o defeito?</label>
@@ -285,6 +297,8 @@
         <div style="margin-top:8px;">
           <label style="font-size:12px; color:#555; font-weight:600;">📍 Onde vai guardar <span style="color:#c62828;">*obrigatório</span></label>
           <input type="text" id="defLocal" placeholder="Ex: DEF-A3, prateleira 12..." style="width:100%; box-sizing:border-box; padding:9px; border:1px solid #ccc; border-radius:8px; font-size:14px;">
+        </div>
+          </div>
         </div>
       </div>
 
@@ -672,23 +686,23 @@
        8. app       -> entry point (DOM refs, event listeners, init)
        ============================================================ -->
   <!-- adaptador de caminho: TEM que vir antes dos modulos -->
-  <script src="js-AMB/base-amb.js?v=b101"></script>
-  <script src="js-AMB/helpers.js?v=b101"></script>
-  <script src="js-AMB/auth.js?v=b101"></script>
-  <script src="js-AMB/scanner.js?v=b101"></script>
-  <script src="js-AMB/camera.js?v=b101"></script>
-  <script src="js-AMB/bipagem.js?v=b101"></script>
-  <script src="js-AMB/busca.js?v=b101"></script>
+  <script src="js-AMB/base-amb.js?v=b103"></script>
+  <script src="js-AMB/helpers.js?v=b103"></script>
+  <script src="js-AMB/auth.js?v=b103"></script>
+  <script src="js-AMB/scanner.js?v=b103"></script>
+  <script src="js-AMB/camera.js?v=b103"></script>
+  <script src="js-AMB/bipagem.js?v=b103"></script>
+  <script src="js-AMB/busca.js?v=b103"></script>
   <script src="https://cdn.jsdelivr.net/npm/qz-tray@2.2.4/qz-tray.js"></script>
-  <script src="js-AMB/etiqueta.js?v=b101"></script>
-  <script src="js-AMB/triagem.js?v=b101"></script>
+  <script src="js-AMB/etiqueta.js?v=b103"></script>
+  <script src="js-AMB/triagem.js?v=b103"></script>
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
-  <script src="js-AMB/ocr.js?v=b101"></script>
-  <script src="js-AMB/app.js?v=b101"></script>
+  <script src="js-AMB/ocr.js?v=b103"></script>
+  <script src="js-AMB/app.js?v=b103"></script>
   <!-- b96 - ciclo do estoque de defeitos (ficha, fotos, pedidos) -->
-  <script src="js-AMB/defeitos-ficha.js?v=b101"></script>
+  <script src="js-AMB/defeitos-ficha.js?v=b103"></script>
   <!-- b81 - colar/arrastar imagem da etiqueta na busca -->
-  <script src="js-AMB/colar-imagem.js?v=b101"></script>
+  <script src="js-AMB/colar-imagem.js?v=b103"></script>
 
   <!-- v3.96 - lancar produto com defeito (busca por parte do nome) -->
   <script>
