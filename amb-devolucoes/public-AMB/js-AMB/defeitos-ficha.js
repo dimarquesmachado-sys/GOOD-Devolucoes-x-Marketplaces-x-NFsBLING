@@ -26,6 +26,10 @@
   // tambem usa aspas duplas, entao o atributo quebrava e o clique no lapis
   // nao chamava nada. Agora o botao passa so o id e a funcao le daqui.
   var fichaAberta = null;
+  // b127 - a prateleira que esta sendo olhada: com defeito, recuperados ou
+  // descartados. Sem isso a peca ja resolvida ficava no meio das outras e
+  // o estoquista nao sabia em qual mexer.
+  var abaAtual = 'defeito';
   // b123 - PILHA DE NAVEGACAO. Cada clique trocava a tela inteira e o unico
   // jeito de voltar era fechar e abrir de novo. Aqui guardamos por onde ele
   // passou: busca -> ficha -> outra ficha (seguindo "foi para a peca #4"),
@@ -153,8 +157,10 @@
     var q = (document.getElementById('defBusca') || {}).value || '';
     el.innerHTML = '<div style="color:#888;font-size:13px;">procurando...</div>';
     try {
-      var d = await api('/api/defeitos/lista?q=' + encodeURIComponent(q.trim()));
+      var d = await api('/api/defeitos/lista?q=' + encodeURIComponent(q.trim())
+        + '&estado=' + encodeURIComponent(abaAtual));
       var itens = d.itens || [];
+      pintarAbas(d.contagem || {});
       if (!d.ok || !itens.length) {
         el.innerHTML = '<div style="color:#888;font-size:13px;">nada encontrado'
           + (d.erro ? ' (' + esc(d.erro) + ')' : '') + '.</div>';
@@ -171,6 +177,11 @@
       el.innerHTML = aviso + itens.map(function (it, i) {
         var sku = it.sku || '-';
         var laudo = String(it.laudo || '').trim();
+        var selo = it.situacao === 'recuperado'
+          ? '<span style="background:#E1F5EE;color:#0F6E56;border-radius:5px;padding:2px 8px;font-size:11.5px;font-weight:700;">RECUPERADA</span>'
+          : (it.situacao === 'descartado'
+              ? '<span style="background:#eee;color:#555;border-radius:5px;padding:2px 8px;font-size:11.5px;font-weight:700;">DESCARTADA</span>'
+              : '');
         return '<div onclick="abrirFichaDefeito(\'' + esc(it.id) + '\')" '
           + 'style="border:1px solid #eee;border-left:4px solid #9E1A1A;border-radius:9px;padding:10px 12px;'
           + 'margin-bottom:7px;cursor:pointer;display:flex;gap:12px;align-items:flex-start;">'
@@ -182,6 +193,7 @@
           + '<b style="font-size:13.5px;">📍 ' + esc(it.localizacao || 'sem local') + '</b>'
           + '<span style="background:#3C3489;color:#fff;border-radius:6px;padding:3px 10px;font-size:13px;font-weight:800;letter-spacing:.3px;">Peça #' + esc(it.id) + '</span>'
           + '<code style="background:#f2f2f7;border-radius:5px;padding:1px 7px;font-size:12px;">' + esc(sku) + '</code>'
+          + selo
           + '<span style="margin-left:auto;background:#FBEAE8;color:#8C1D18;border-radius:11px;padding:1px 9px;font-size:11.5px;">'
           + esc(it.quantidade || 1) + ' peça(s)</span></div>'
           + '<div style="font-size:13px;margin-top:4px;font-weight:600;">' + esc(it.titulo || '') + '</div>'
@@ -220,6 +232,31 @@
       await new Promise(function (r) { setTimeout(r, 140); });
     }
   }
+
+  /** b127 - as tres prateleiras, com quantas pecas ha em cada. */
+  function pintarAbas(cont) {
+    var el = document.getElementById('defAbas');
+    if (!el) return;
+    var lista = [
+      { id: 'defeito',    nome: '🔧 Com Defeito',  cor: '#9E1A1A' },
+      { id: 'recuperado', nome: '✅ Recuperados',   cor: '#116B4E' },
+      { id: 'descartado', nome: '🗑️ Descartados',  cor: '#555' },
+    ];
+    el.innerHTML = lista.map(function (a) {
+      var ativa = abaAtual === a.id;
+      var n = cont[a.id] || 0;
+      return '<button type="button" onclick="trocarAba(\'' + a.id + '\')" '
+        + 'style="border:1px solid ' + (ativa ? a.cor : '#ddd') + ';background:' + (ativa ? a.cor : '#fff')
+        + ';color:' + (ativa ? '#fff' : '#555') + ';border-radius:9px;padding:8px 14px;font-size:13.5px;'
+        + 'font-weight:' + (ativa ? '800' : '500') + ';cursor:pointer;">'
+        + a.nome + ' <span style="opacity:.8;">(' + n + ')</span></button>';
+    }).join('');
+  }
+
+  window.trocarAba = function (id) {
+    abaAtual = id;
+    buscarDefeitos();
+  };
 
   // ── 2) FICHA ───────────────────────────────────────────────────────
   /** b118 - HTML do historico, montado a partir da ficha em memoria. */
@@ -381,9 +418,11 @@
     // b126 - PECA FECHADA: recuperada (liberada pelo admin) ou descartada.
     // Aqui o estoquista nao tem mais nada a fazer - e pior, NAO DEVE
     // mexer. Os tres botoes somem e entra o aviso no lugar.
-    var fechada = it.tipo === 'recuperado' || it.tipo === 'descartado';
+    // b127 - usa a situacao derivada (inclui as pecas autorizadas antes de
+    // eu marcar o tipo na linha)
+    var fechada = it.situacao === 'recuperado' || it.situacao === 'descartado';
     if (fechada) {
-      var recup = it.tipo === 'recuperado';
+      var recup = it.situacao === 'recuperado';
       html += '<div style="border-top:1px solid #eee;margin-top:16px;padding-top:14px;">'
         + '<div style="background:' + (recup ? '#E1F5EE' : '#FBEAE8') + ';border-left:5px solid '
         + (recup ? '#116B4E' : '#9E1A1A') + ';border-radius:0 10px 10px 0;padding:14px 16px;">'
