@@ -146,6 +146,7 @@
           + '<div style="flex:1;min-width:0;">'
           + '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">'
           + '<b style="font-size:13.5px;">📍 ' + esc(it.localizacao || 'sem local') + '</b>'
+          + '<span style="background:#EEEDFE;color:#3C3489;border-radius:5px;padding:1px 7px;font-size:11.5px;font-weight:700;">peça #' + esc(it.id) + '</span>'
           + '<code style="background:#f2f2f7;border-radius:5px;padding:1px 7px;font-size:12px;">' + esc(sku) + '</code>'
           + '<span style="margin-left:auto;background:#FBEAE8;color:#8C1D18;border-radius:11px;padding:1px 9px;font-size:11.5px;">'
           + esc(it.quantidade || 1) + ' peça(s)</span></div>'
@@ -219,7 +220,9 @@
       + '</div>'
       + '<div style="display:flex;gap:7px;margin-bottom:4px;">'
       + '<input id="defCom" placeholder="escrever no histórico desta peça..." '
-      + 'style="flex:1;height:38px;font-size:13px;padding:0 10px;border:1px solid #ddd;border-radius:8px;">'
+      // b121 - borda azul SEMPRE, nao so no clique: assim se enxerga que
+      // ali da pra escrever, sem precisar descobrir clicando
+      + 'style="flex:1;height:38px;font-size:13px;padding:0 10px;border:2px solid #7B3FC4;border-radius:8px;outline:none;">'
       + '<button onclick="comentarDefeito(\'' + esc(it.id) + '\')" style="border:1px solid #561A9E;background:#561A9E;'
       + 'color:#fff;border-radius:8px;padding:0 16px;height:38px;cursor:pointer;font-weight:600;">Adicionar</button></div>'
       + '<div id="msgCom" style="font-size:12px;color:#8C1D18;margin-bottom:12px;"></div>';
@@ -299,7 +302,9 @@
     var it = d.item, fotos = d.fotos || [], com = d.comentarios || [],
         pec = d.pecas_retiradas || [], ped = d.pedidos || [];
 
-    var html = topo('📍 ' + esc(it.localizacao || 'sem local'))
+    // b121 - o numero da peca no titulo: e ele que voce ve no "foi para a
+    // peca #4" e no dropdown, entao precisa estar visivel aqui tambem
+    var html = topo('📍 ' + esc(it.localizacao || 'sem local') + ' &nbsp;<span style="opacity:.75;font-weight:400;">peça #' + esc(it.id) + '</span>')
       + '<div style="padding:14px;">'
       + '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px;">'
       + '<code style="background:#f2f2f7;border-radius:5px;padding:2px 8px;font-size:13px;">' + esc(it.sku || '-') + '</code>'
@@ -396,7 +401,17 @@
         + '<select id="destinoPeca" style="margin-left:6px;padding:5px 8px;border:1px solid #ddd;border-radius:7px;font-size:12.5px;">'
         + '<option value="">— não foi pra outra peça —</option>'
         + destinos.map(function (x) {
-            return '<option value="' + esc(x.id) + '">📍 ' + esc(x.localizacao || '-') + ' · ' + esc(x.titulo || '') + '</option>';
+            // b121 - com varias pecas iguais o dropdown ficava impossivel de
+            // ler. Cada uma ja tem numero proprio (o id): mostro ele na
+            // frente, com o local, a data e o defeito - que e o que
+            // distingue duas luminarias iguais na prateleira.
+            var quando = x.criado_em ? new Date(x.criado_em).toLocaleDateString('pt-BR') : '';
+            var laudoCurto = String(x.laudo || '').slice(0, 34);
+            return '<option value="' + esc(x.id) + '">#' + esc(x.id)
+              + ' · 📍 ' + esc(x.localizacao || '-')
+              + (quando ? ' · ' + quando : '')
+              + (laudoCurto ? ' · ' + esc(laudoCurto) : '')
+              + '</option>';
           }).join('')
         + '</select></div>');
     }
@@ -556,8 +571,11 @@
           return '<div style="border:1px solid #eee;border-radius:9px;padding:9px 11px;margin-bottom:6px;">'
             + '<label style="display:flex;gap:8px;align-items:center;cursor:pointer;">'
             + '<input type="checkbox" onchange="marcarDoador(this,\'' + esc(x.id) + '\')">'
-            + '<span style="font-size:13px;"><b>📍 ' + esc(x.localizacao || '-') + '</b> · '
-            + esc(x.titulo || '') + '</span></label>'
+            + '<span style="font-size:13px;"><b>📍 ' + esc(x.localizacao || '-') + '</b> '
+            + '<span style="background:#EEEDFE;color:#3C3489;border-radius:5px;padding:1px 6px;font-size:11px;font-weight:700;">peça #' + esc(x.id) + '</span> · '
+            + esc(x.titulo || '')
+            + (x.laudo ? ' <span style="color:#8C1D18;font-size:11.5px;">(' + esc(String(x.laudo).slice(0, 40)) + ')</span>' : '')
+            + '</span></label>'
             + '<input id="peca_' + esc(x.id) + '" placeholder="o que você tirou desta? (ex: cúpula, base)" '
             + 'oninput="marcarPeca(\'' + esc(x.id) + '\',this.value)" '
             + 'style="width:100%;height:34px;margin-top:7px;padding:0 10px;border:1px solid #ddd;border-radius:8px;font-size:12.5px;display:none;"></div>';
