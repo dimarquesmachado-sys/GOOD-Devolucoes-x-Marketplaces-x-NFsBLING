@@ -204,7 +204,7 @@
              logo | titulo | defeitos | usuario. No celular tudo quebra
              e centraliza. -->
         <div class="links-defeitos">
-          <a href="#" onclick="event.preventDefault();abrirBuscaDefeitos()">🔧 Defeitos</a>
+          <a href="#" id="linkDefeitos" onclick="event.preventDefault();abrirBuscaDefeitos()">🔧 Defeitos<span id="avisoDefeitos"></span></a>
           <a href="#" onclick="event.preventDefault();abrirModalDefeito()">➕ Lançar Defeito</a>
         </div>
         <div class="user-badge">
@@ -733,23 +733,23 @@
        8. app       -> entry point (DOM refs, event listeners, init)
        ============================================================ -->
   <!-- adaptador de caminho: TEM que vir antes dos modulos -->
-  <script src="js-AMB/base-amb.js?v=b122"></script>
-  <script src="js-AMB/helpers.js?v=b122"></script>
-  <script src="js-AMB/auth.js?v=b122"></script>
-  <script src="js-AMB/scanner.js?v=b122"></script>
-  <script src="js-AMB/camera.js?v=b122"></script>
-  <script src="js-AMB/bipagem.js?v=b122"></script>
-  <script src="js-AMB/busca.js?v=b122"></script>
+  <script src="js-AMB/base-amb.js?v=b128"></script>
+  <script src="js-AMB/helpers.js?v=b128"></script>
+  <script src="js-AMB/auth.js?v=b128"></script>
+  <script src="js-AMB/scanner.js?v=b128"></script>
+  <script src="js-AMB/camera.js?v=b128"></script>
+  <script src="js-AMB/bipagem.js?v=b128"></script>
+  <script src="js-AMB/busca.js?v=b128"></script>
   <script src="https://cdn.jsdelivr.net/npm/qz-tray@2.2.4/qz-tray.js"></script>
-  <script src="js-AMB/etiqueta.js?v=b122"></script>
-  <script src="js-AMB/triagem.js?v=b122"></script>
+  <script src="js-AMB/etiqueta.js?v=b128"></script>
+  <script src="js-AMB/triagem.js?v=b128"></script>
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
-  <script src="js-AMB/ocr.js?v=b122"></script>
-  <script src="js-AMB/app.js?v=b122"></script>
+  <script src="js-AMB/ocr.js?v=b128"></script>
+  <script src="js-AMB/app.js?v=b128"></script>
   <!-- b96 - ciclo do estoque de defeitos (ficha, fotos, pedidos) -->
-  <script src="js-AMB/defeitos-ficha.js?v=b122"></script>
+  <script src="js-AMB/defeitos-ficha.js?v=b128"></script>
   <!-- b81 - colar/arrastar imagem da etiqueta na busca -->
-  <script src="js-AMB/colar-imagem.js?v=b122"></script>
+  <script src="js-AMB/colar-imagem.js?v=b128"></script>
 
   <!-- v3.96 - lancar produto com defeito (busca por parte do nome) -->
   <script>
@@ -1094,6 +1094,55 @@
       }
       if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', montar);
       else montar();
+    })();
+  </script>
+
+  <script>
+    // b128 - AVISO PRO ESTOQUISTA.
+    // Ele monta a peca boa e manda pro admin; depois nao tinha como saber
+    // que o admin ja tinha liberado - so abrindo a ficha pra conferir. Aqui
+    // o botao Defeitos mostra quantas pecas foram DECIDIDAS desde a ultima
+    // vez que ele abriu o card. A marca de "ja vi" fica no navegador dele,
+    // entao nao precisa de tabela nem de nada no servidor.
+    (function () {
+      var CHAVE = 'amb_defeitos_visto_em';
+
+      window.marcarDefeitosVistos = function () {
+        try { localStorage.setItem(CHAVE, new Date().toISOString()); } catch (e) {}
+        var b = document.getElementById('avisoDefeitos');
+        if (b) b.textContent = '';
+      };
+
+      async function conferir() {
+        try {
+          var visto = null;
+          try { visto = localStorage.getItem(CHAVE); } catch (e) {}
+          var r = await fetch('/amb/api/defeitos/pedidos', { credentials: 'same-origin' });
+          var d = await r.json();
+          if (!d || !d.ok) return;
+          var novos = (d.pedidos || []).filter(function (p) {
+            if (!p.decidido_em) return false;                    // ainda esperando o admin
+            if (p.status !== 'autorizado' && p.status !== 'recusado') return false;
+            return !visto || new Date(p.decidido_em) > new Date(visto);
+          });
+          var b = document.getElementById('avisoDefeitos');
+          if (!b) return;
+          if (novos.length) {
+            b.textContent = ' ' + novos.length;
+            b.style.cssText = 'background:#FFD400;color:#412402;border-radius:11px;padding:1px 8px;'
+              + 'font-size:11.5px;font-weight:800;margin-left:6px;';
+            b.title = novos.length + ' peça(s) decidida(s) pelo admin';
+            var a = document.getElementById('linkDefeitos');
+            if (a) a.style.boxShadow = '0 0 0 3px rgba(255,212,0,.5)';
+          } else {
+            b.textContent = '';
+            var a2 = document.getElementById('linkDefeitos');
+            if (a2) a2.style.boxShadow = 'none';
+          }
+        } catch (e) { /* sem aviso nao atrapalha o trabalho */ }
+        setTimeout(conferir, 60000);
+      }
+      setTimeout(conferir, 1500);
     })();
   </script>
 </body>
