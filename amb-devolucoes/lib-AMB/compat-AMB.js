@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════════════════════════════════
-//  amb-devolucoes · lib/compat  (AMB Devol. b98)
+//  amb-devolucoes · lib/compat  (AMB Devol. b99)
 //  LEVA 1a do porte GOOD → AMB.
 //
 //  A tela de bipe da GOOD (index.html + 10 modulos JS) chama 18 endpoints.
@@ -157,8 +157,14 @@ function montar(router, deps) {
           if (norm(p.codigo).includes(alvo)) push(p);
         }
       }
+      // b99 - ACHOU O CODIGO EXATO? ENTAO ACABOU.
+      // Antes eu complementava pelo nome tambem quando vinham poucos
+      // resultados (`|| out.length < 5`). Como a busca por codigo devolve
+      // UM item — o certo —, essa condicao disparava sempre e colava na
+      // lista todos os acessorios que tem "FL-1011" no NOME. Se o SKU
+      // exato foi encontrado, ele e a resposta; nao ha o que completar.
       const achouExato = out.some(p => norm(p.sku) === alvo);
-      if (!achouExato || out.length < 5) {
+      if (!achouExato) {
         const rN = await bling.chamarBling(`/produtos?pesquisa=${encodeURIComponent(q)}&limite=20`);
         for (const p of ((rN.ok && rN.data && rN.data.data) || [])) push(p);
       }
