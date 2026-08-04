@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════════════════════════════════
-//  amb-devolucoes · lib/defeitos-ciclo  (AMB Devol. b117)
+//  amb-devolucoes · lib/defeitos-ciclo  (AMB Devol. b120)
 //  ------------------------------------------------------------------
 //  O CICLO DA PECA COM DEFEITO, do jeito que o Diego descreveu:
 //
@@ -33,6 +33,25 @@ module.exports = function registrarCicloDefeitos(router, deps) {
 
   function erroSemBanco(res) {
     return res.status(503).json({ ok: false, erro: 'Supabase nao configurado' });
+  }
+
+  /**
+   * b120 - COMO A PECA ESTA AGORA, em uma frase.
+   * A descricao do defeito conta como ela CHEGOU; esta frase conta como
+   * ela ESTA - que e o que interessa a quem abre a ficha meses depois pra
+   * decidir se aproveita. Monta sozinha (entrada + o que saiu + o que
+   * entrou) e o usuario pode sobrescrever com as palavras dele.
+   */
+  function montarEstado(item, saiu, entrou) {
+    const partes = [];
+    if (item.problema_descricao) partes.push(String(item.problema_descricao).trim());
+    const nomes = (lista) => Array.from(new Set(
+      (lista || []).map(p => String(p.peca || '').trim()).filter(Boolean)));
+    const fora = nomes(saiu);
+    const dentro = nomes(entrou);
+    if (fora.length) partes.push('sem ' + fora.join(', ') + ' (retirada' + (fora.length > 1 ? 's' : '') + ')');
+    if (dentro.length) partes.push('recebeu ' + dentro.join(', ') + ' de outra peca');
+    return partes.join(' \u00b7 ') || null;
   }
 
   /** Normaliza a lista de fotos: a coluna as vezes vem string JSON. */
@@ -136,10 +155,13 @@ module.exports = function registrarCicloDefeitos(router, deps) {
       const item = (rItem.data || [])[0];
       if (!item) return res.status(404).json({ ok: false, erro: 'peca nao encontrada' });
 
-      const [rCom, rPec, rPed] = await Promise.all([
+      // b120 - a ficha tambem le o que ENTROU nesta peca (o outro lado da
+      // movimentacao). Antes so existia o lado de quem perdeu a peca.
+      const [rCom, rPec, rPed, rEnt] = await Promise.all([
         dbc.from(T_COM).select('*').eq('defeito_id', id).order('criado_em', { ascending: true }),
         dbc.from(db.tabelas.pecasRetiradas).select('*').eq('defeito_id', id).order('criado_em', { ascending: true }),
         dbc.from(T_PED).select('*').eq('defeito_id', id).order('criado_em', { ascending: false }),
+        dbc.from(db.tabelas.pecasRetiradas).select('*').eq('destino_defeito_id', id).order('criado_em', { ascending: true }),
       ]);
 
       res.json({
@@ -159,7 +181,10 @@ module.exports = function registrarCicloDefeitos(router, deps) {
         fotos: fotosDe(item),
         comentarios: rCom.data || [],
         pecas_retiradas: rPec.data || [],
+        pecas_recebidas: rEnt.data || [],
         pedidos: rPed.data || [],
+        estado_atual: item.estado_atual || null,
+        estado_sugerido: montarEstado(item, rPec.data || [], rEnt.data || []),
       });
     } catch (e) {
       res.status(500).json({ ok: false, erro: String(e.message || e) });
@@ -261,10 +286,25 @@ module.exports = function registrarCicloDefeitos(router, deps) {
     const b = corpo(req);
     const peca = String(b.peca || '').trim();
     if (!peca) return res.status(400).json({ ok: false, erro: 'diga qual peca foi retirada' });
+    // b120 - UM lancamento, DOIS lados: quem perdeu a peca e quem recebeu.
+    // Sem o destino, a peca que ganhou a parte nunca ficava sabendo.
+    const destino = b.destino_defeito_id || null;
     const r = await db.registrarPecaRetirada({
       defeitoId: req.params.id, peca, usadaEm: b.usada_em || null, quem: req.usuario,
     });
     if (!r.ok) return res.status(500).json(r);
+    if (destino && r.registro) {
+      try {
+        await cli().from(db.tabelas.pecasRetiradas)
+          .update({ destino_defeito_id: destino }).eq('id', r.registro.id);
+        r.registro.destino_defeito_id = destino;
+        await cli().from(T_COM).insert([{
+          defeito_id: destino,
+          texto: 'Recebeu a peca "' + peca + '" da peca #' + req.params.id,
+          quem: req.usuario,
+        }]);
+      } catch (e) { /* o registro principal ja foi */ }
+    }
     // o historico registra junto, pra quem ler a ficha entender sem cruzar tabela
     try {
       await cli().from(T_COM).insert([{
@@ -286,6 +326,22 @@ module.exports = function registrarCicloDefeitos(router, deps) {
   // retirada ja fica registrada em cada doador - senao a informacao se
   // perderia esperando o admin.
   // ─────────────────────────────────────────────────────────────────────
+  // b120 - o ESTADO ATUAL e editavel a vontade: e o campo que muda o tempo
+  // todo, ao contrario da descricao de entrada, que e historia.
+  router.put('/api/defeitos/:id/estado', auth.requerLogin, async (req, res) => {
+    const texto = String(corpo(req).texto || '').trim();
+    const r = await db.atualizarTriagem(req.params.id, { estado_atual: texto || null });
+    if (!r.ok) return res.status(500).json(r);
+    try {
+      await cli().from(T_COM).insert([{
+        defeito_id: req.params.id,
+        texto: texto ? 'Atualizou o estado: ' + texto : 'Limpou o estado (volta a ser calculado)',
+        quem: req.usuario,
+      }]);
+    } catch (e) {}
+    res.json(r);
+  });
+
   router.post('/api/defeitos/pedido', auth.requerLogin, async (req, res) => {
     const b = corpo(req);
     const tipo = b.tipo === 'descarte' ? 'descarte' : 'recuperado';
