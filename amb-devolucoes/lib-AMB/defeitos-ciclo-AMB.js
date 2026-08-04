@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════════════════════════════════
-//  amb-devolucoes · lib/defeitos-ciclo  (AMB Devol. b97)
+//  amb-devolucoes · lib/defeitos-ciclo  (AMB Devol. b114)
 //  ------------------------------------------------------------------
 //  O CICLO DA PECA COM DEFEITO, do jeito que o Diego descreveu:
 //
@@ -180,6 +180,44 @@ module.exports = function registrarCicloDefeitos(router, deps) {
       const r = await dbc.from(T_COM).insert([{
         defeito_id: req.params.id, texto, quem: req.usuario,
       }]).select().limit(1);
+      if (r.error) throw new Error(r.error.message);
+      res.json({ ok: true, comentario: (r.data || [])[0] || null });
+    } catch (e) {
+      res.status(500).json({ ok: false, erro: String(e.message || e) });
+    }
+  });
+
+  // ─────────────────────────────────────────────────────────────────────
+  // b114 - CORRIGIR O QUE JA FOI ESCRITO
+  // Ate agora so dava pra ACRESCENTAR no historico. Se o defeito foi
+  // digitado errado na entrada, ficava errado pra sempre. Estas duas
+  // rotas deixam corrigir — e o historico registra que houve correcao,
+  // pra ninguem achar que o texto sempre foi aquele.
+  // ─────────────────────────────────────────────────────────────────────
+  router.put('/api/defeitos/:id/laudo', auth.requerLogin, async (req, res) => {
+    const texto = String(corpo(req).texto || '').trim();
+    if (texto.length < 3) return res.status(400).json({ ok: false, erro: 'escreva a descricao do defeito' });
+    const r = await db.atualizarTriagem(req.params.id, { problema_descricao: texto });
+    if (!r.ok) return res.status(500).json(r);
+    try {
+      await cli().from(T_COM).insert([{
+        defeito_id: req.params.id,
+        texto: 'Corrigiu a descricao do defeito para: ' + texto,
+        quem: req.usuario,
+      }]);
+    } catch (e) { /* a correcao principal ja foi */ }
+    res.json(r);
+  });
+
+  router.put('/api/defeitos/comentario/:cid', auth.requerLogin, async (req, res) => {
+    const dbc = cli();
+    if (!dbc) return erroSemBanco(res);
+    const texto = String(corpo(req).texto || '').trim();
+    if (texto.length < 2) return res.status(400).json({ ok: false, erro: 'escreva o comentario' });
+    try {
+      const r = await dbc.from(T_COM)
+        .update({ texto: texto + '  (editado por ' + req.usuario + ')' })
+        .eq('id', req.params.cid).select().limit(1);
       if (r.error) throw new Error(r.error.message);
       res.json({ ok: true, comentario: (r.data || [])[0] || null });
     } catch (e) {
