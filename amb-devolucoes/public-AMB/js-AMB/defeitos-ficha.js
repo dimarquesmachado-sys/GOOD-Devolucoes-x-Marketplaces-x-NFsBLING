@@ -225,16 +225,54 @@
       + '<div id="msgCom" style="font-size:12px;color:#8C1D18;margin-bottom:12px;"></div>';
   }
 
-  /** b118 - HTML das pecas retiradas. */
+  /** b120 - o que SAIU e o que ENTROU, com a direcao visivel. */
   function htmlPecas() {
-    var pec = (fichaAberta && fichaAberta.pecas_retiradas) || [];
-    if (!pec.length) return '<div style="font-size:12.5px;color:#999;margin-bottom:6px;">nada foi retirado ainda.</div>';
-    return pec.map(function (p) {
-      return '<div style="background:#f7f7fa;border-radius:8px;padding:8px 11px;font-size:13px;margin-bottom:5px;">'
-        + '🔧 <b>' + esc(p.peca) + '</b>'
-        + (p.usada_em ? ' <span style="color:#777;font-size:11.5px;">→ ' + esc(p.usada_em) + '</span>' : '')
+    var saiu = (fichaAberta && fichaAberta.pecas_retiradas) || [];
+    var entrou = (fichaAberta && fichaAberta.pecas_recebidas) || [];
+    if (!saiu.length && !entrou.length) {
+      return '<div style="font-size:12.5px;color:#999;margin-bottom:6px;">nada saiu nem entrou ainda.</div>';
+    }
+    var h = '';
+    h += saiu.map(function (p) {
+      return '<div style="background:#FBEAE8;border-left:3px solid #9E1A1A;border-radius:0 8px 8px 0;padding:8px 11px;font-size:13px;margin-bottom:5px;">'
+        + '<b style="color:#8C1D18;">SAIU</b> ' + esc(p.peca)
+        + (p.destino_defeito_id
+            ? ' <a href="#" onclick="event.preventDefault();abrirFichaDefeito(\'' + esc(p.destino_defeito_id) + '\')" '
+              + 'style="color:#561A9E;font-size:11.5px;">→ foi para a peça #' + esc(p.destino_defeito_id) + '</a>'
+            : (p.usada_em ? ' <span style="color:#777;font-size:11.5px;">→ ' + esc(p.usada_em) + '</span>' : ''))
         + ' <span style="color:#999;font-size:11.5px;">· ' + esc(p.quem || '-') + ' · ' + dataBr(p.criado_em) + '</span></div>';
     }).join('');
+    h += entrou.map(function (p) {
+      return '<div style="background:#E1F5EE;border-left:3px solid #116B4E;border-radius:0 8px 8px 0;padding:8px 11px;font-size:13px;margin-bottom:5px;">'
+        + '<b style="color:#0F6E56;">ENTROU</b> ' + esc(p.peca)
+        + ' <a href="#" onclick="event.preventDefault();abrirFichaDefeito(\'' + esc(p.defeito_id) + '\')" '
+        + 'style="color:#561A9E;font-size:11.5px;">← veio da peça #' + esc(p.defeito_id) + '</a>'
+        + ' <span style="color:#999;font-size:11.5px;">· ' + esc(p.quem || '-') + ' · ' + dataBr(p.criado_em) + '</span></div>';
+    }).join('');
+    return h;
+  }
+
+  /** b120 - a frase do estado: a escrita por voce, ou a calculada. */
+  function htmlEstado() {
+    if (!fichaAberta) return '';
+    var proprio = fichaAberta.estado_atual;
+    var txt = proprio || fichaAberta.estado_sugerido || 'sem informação do estado';
+    return '<div style="background:#FEF6E7;border-left:4px solid #EF9F27;border-radius:0 9px 9px 0;'
+      + 'padding:10px 13px;margin:10px 0 4px;">'
+      + '<div style="font-size:10.5px;color:#854F0B;letter-spacing:.5px;font-weight:800;margin-bottom:3px;">COMO ESTÁ AGORA</div>'
+      + '<div style="font-size:14px;font-weight:600;color:#412402;">' + esc(txt)
+      + ' <a href="#" onclick="event.preventDefault();editarEstado()" style="font-size:11.5px;color:#561A9E;text-decoration:none;font-weight:400;">✏️ Ajustar</a>'
+      + (proprio
+          ? ' <a href="#" onclick="event.preventDefault();limparEstado()" style="font-size:11.5px;color:#8C1D18;text-decoration:none;font-weight:400;">🗑️</a>'
+          : '')
+      + '</div>'
+      + (proprio ? '' : '<div style="font-size:11px;color:#8a6d00;margin-top:3px;">calculado pelas movimentações</div>')
+      + '<div id="edEstado"></div></div>';
+  }
+
+  function pintaEstado() {
+    var el = document.getElementById('blocoEstado');
+    if (el) el.innerHTML = htmlEstado();
   }
 
   /** Redesenha SO o pedaco que mudou - sem recarregar a ficha. */
@@ -286,6 +324,11 @@
     // b118 - o historico mora num bloco proprio que se redesenha sozinho.
     // Antes qualquer salvar/apagar recarregava a FICHA INTEIRA do servidor
     // e o card piscava.
+    // b120 - COMO ESTA AGORA vem antes de tudo: e o que voce le pra decidir
+    // se aproveita a peca. A descricao de entrada continua no historico,
+    // como historia de como ela chegou.
+    html += '<div id="blocoEstado">' + htmlEstado() + '</div>';
+
     html += SUB('HISTÓRICO DA PEÇA') + '<div id="blocoHist">' + htmlHistorico() + '</div>'
     html += SUB('PEÇAS RETIRADAS DESTA') + '<div id="blocoPecas">' + htmlPecas() + '</div>';
 
@@ -319,17 +362,44 @@
    * e escreve no historico - sem virar pedido nenhum, porque nao ha nada
    * pra o admin autorizar.
    */
-  window.retirarPeca = function (id) {
+  window.retirarPeca = async function (id) {
+    // b120 - pergunta PARA ONDE a peca foi: mesmo lancamento, dois lados.
+    // A lista traz as outras pecas do mesmo SKU, que e o caso real.
+    var destinos = [];
+    try {
+      var d = await api('/api/defeitos/lista?q=' + encodeURIComponent((fichaAberta && fichaAberta.item.sku) || ''));
+      destinos = (d.itens || []).filter(function (x) { return String(x.id) !== String(id); });
+    } catch (e) {}
+    var sel = document.getElementById('edRetirada');
+    if (sel) sel.innerHTML = '';
     caixaEdicao('edRetirada', '', async function (txt, aviso) {
       if (txt.length < 2) { aviso('escreva o que foi retirado'); return; }
+      var alvo = document.getElementById('destinoPeca');
       var r = await api('/api/defeitos/' + encodeURIComponent(id) + '/peca-retirada', {
-        method: 'POST', body: JSON.stringify({ peca: txt }),
+        method: 'POST',
+        body: JSON.stringify({
+          peca: txt,
+          destino_defeito_id: (alvo && alvo.value) || null,
+        }),
       });
       if (!r.ok) { aviso(r.erro || 'não consegui registrar'); return; }
       if (r.registro) (fichaAberta.pecas_retiradas = fichaAberta.pecas_retiradas || []).push(r.registro);
       pintaPecas();
       pintaHistorico();
+      pintaEstado();
     });
+    // o seletor de destino entra dentro da caixinha que acabou de abrir
+    var cx = document.getElementById('edRetirada');
+    if (cx && destinos.length) {
+      cx.querySelector('div').insertAdjacentHTML('beforeend',
+        '<div style="margin-top:7px;font-size:12.5px;color:#555;">Foi para qual peça? '
+        + '<select id="destinoPeca" style="margin-left:6px;padding:5px 8px;border:1px solid #ddd;border-radius:7px;font-size:12.5px;">'
+        + '<option value="">— não foi pra outra peça —</option>'
+        + destinos.map(function (x) {
+            return '<option value="' + esc(x.id) + '">📍 ' + esc(x.localizacao || '-') + ' · ' + esc(x.titulo || '') + '</option>';
+          }).join('')
+        + '</select></div>');
+    }
   };
 
   window.comentarDefeito = async function (id) {
@@ -396,6 +466,29 @@
       if (r.registro) fichaAberta.item.laudo = r.registro.problema_descricao || null;
       pintaHistorico();
     });
+  };
+
+  window.editarEstado = function () {
+    if (!fichaAberta || !fichaAberta.item) return;
+    var id = fichaAberta.item.id;
+    caixaEdicao('edEstado', fichaAberta.estado_atual || fichaAberta.estado_sugerido || '', async function (txt, aviso) {
+      var r = await api('/api/defeitos/' + encodeURIComponent(id) + '/estado', {
+        method: 'PUT', body: JSON.stringify({ texto: txt }),
+      });
+      if (!r.ok) { aviso(r.erro || 'não consegui salvar'); return; }
+      fichaAberta.estado_atual = txt || null;
+      pintaEstado();
+    });
+  };
+
+  window.limparEstado = async function () {
+    if (!fichaAberta || !fichaAberta.item) return;
+    var r = await api('/api/defeitos/' + encodeURIComponent(fichaAberta.item.id) + '/estado', {
+      method: 'PUT', body: JSON.stringify({ texto: '' }),
+    });
+    if (!r.ok) return;
+    fichaAberta.estado_atual = null;
+    pintaEstado();
   };
 
   window.apagarLaudo = async function () {
