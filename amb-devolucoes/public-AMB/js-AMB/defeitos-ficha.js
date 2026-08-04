@@ -219,13 +219,17 @@
       + '<div style="border-left:2px solid #eee;padding-left:12px;margin-bottom:10px;">'
       + '<div style="margin-bottom:9px;"><div style="font-size:13.5px;' + (it.laudo ? 'color:#8C1D18;font-weight:600;' : 'color:#999;font-style:italic;') + '">'
       + esc(it.laudo || 'sem descrição do defeito')
-      + ' <a href="#" onclick="event.preventDefault();corrigirLaudo()" '
+      + ' <a href="#" onclick="event.preventDefault();editarLaudo()" '
       + 'style="font-size:11.5px;color:#561A9E;text-decoration:none;">✏️ Corrigir</a></div>'
+      + '<div id="edLaudo"></div>'
       + '<div style="font-size:11.5px;color:#888;">' + esc(it.quem || '-') + ' · ' + dataBr(it.criado_em) + ' · entrada</div></div>'
       + com.map(function (c) {
           return '<div style="margin-bottom:9px;"><div style="font-size:13.5px;">' + esc(c.texto)
-            + ' <a href="#" onclick="event.preventDefault();corrigirComentario(\'' + esc(c.id) + '\')" '
-            + 'style="font-size:11.5px;color:#561A9E;text-decoration:none;">✏️</a></div>'
+            + ' <a href="#" onclick="event.preventDefault();editarComentario(\'' + esc(c.id) + '\')" '
+            + 'style="font-size:11.5px;color:#561A9E;text-decoration:none;">✏️</a>'
+            + ' <a href="#" onclick="event.preventDefault();excluirComentario(\'' + esc(c.id) + '\')" '
+            + 'style="font-size:11.5px;color:#8C1D18;text-decoration:none;">🗑️</a>'
+            + '<div id="edCom' + esc(c.id) + '"></div></div>'
             + '<div style="font-size:11.5px;color:#888;">' + esc(c.quem || '-') + ' · ' + dataBr(c.criado_em) + '</div></div>';
         }).join('')
       + '</div>'
@@ -264,7 +268,9 @@
       + 'style="flex:1;min-width:150px;background:#116B4E;color:#fff;border:none;border-radius:9px;padding:13px;font-weight:700;cursor:pointer;">✅ Montei Uma Boa</button>'
       + '<button onclick="pedirDescarte(\'' + esc(it.id) + '\',\'' + esc(it.sku || '') + '\')" '
       + 'style="flex:1;min-width:150px;background:#9E1A1A;color:#fff;border:none;border-radius:9px;padding:13px;font-weight:700;cursor:pointer;">🗑️ Pedir Descarte</button>'
-      + '</div></div>';
+      + '</div>'
+      + '<div id="edRetirada"></div><div id="edDescarte"></div>'
+      + '</div>';
     abrir(html);
   };
 
@@ -274,18 +280,15 @@
    * e escreve no historico - sem virar pedido nenhum, porque nao ha nada
    * pra o admin autorizar.
    */
-  window.retirarPeca = async function (id) {
-    var peca = prompt('O que você retirou desta peça? (ex: parafuso, cúpula, lâmpada)');
-    if (peca === null) return;
-    peca = String(peca).trim();
-    if (peca.length < 2) { alert('escreva o que foi retirado'); return; }
-    var onde = prompt('Usou em quê? (opcional — ex: NF 076823, ou a peça que consertou)') || '';
-    var r = await api('/api/defeitos/' + encodeURIComponent(id) + '/peca-retirada', {
-      method: 'POST',
-      body: JSON.stringify({ peca: peca, usada_em: String(onde).trim() || null }),
+  window.retirarPeca = function (id) {
+    caixaEdicao('edRetirada', '', async function (txt) {
+      if (txt.length < 2) { alert('escreva o que foi retirado'); return; }
+      var r = await api('/api/defeitos/' + encodeURIComponent(id) + '/peca-retirada', {
+        method: 'POST', body: JSON.stringify({ peca: txt }),
+      });
+      if (!r.ok) { alert(r.erro || 'não consegui registrar'); return; }
+      abrirFichaDefeito(id);
     });
-    if (!r.ok) { alert(r.erro || 'não consegui registrar'); return; }
-    abrirFichaDefeito(id);
   };
 
   window.comentarDefeito = async function (id) {
@@ -303,32 +306,68 @@
    * um defeito digitado errado na entrada ficava errado pra sempre. A
    * correcao fica registrada no historico, entao nao se perde o rastro.
    */
-  window.corrigirLaudo = async function () {
+  /**
+   * b116 - EDICAO NO PROPRIO CARD, sem pop-up do navegador (regra do
+   * Diego). O texto vira uma caixa ali mesmo, com Salvar e Cancelar - e,
+   * no caso do comentario, tambem Excluir.
+   */
+  function caixaEdicao(idCaixa, valor, onSalvar, onExcluir) {
+    var alvo = document.getElementById(idCaixa);
+    if (!alvo) return;
+    if (alvo.innerHTML) { alvo.innerHTML = ''; return; }   // clicou de novo: fecha
+    alvo.innerHTML =
+      '<div style="margin:6px 0 4px;">'
+      + '<textarea id="' + idCaixa + 'Txt" style="width:100%;box-sizing:border-box;min-height:58px;'
+      + 'padding:8px 10px;border:1px solid #CECBF6;border-radius:8px;font-size:13.5px;font-family:inherit;"></textarea>'
+      + '<div style="display:flex;gap:6px;margin-top:6px;">'
+      + '<button type="button" onclick="' + idCaixa + 'Salvar()" style="background:#116B4E;color:#fff;border:none;'
+      + 'border-radius:8px;padding:7px 14px;font-weight:600;cursor:pointer;font-size:12.5px;">Salvar</button>'
+      + '<button type="button" onclick="document.getElementById(\'' + idCaixa + '\').innerHTML=\'\'" '
+      + 'style="background:#eee;color:#444;border:none;border-radius:8px;padding:7px 14px;cursor:pointer;font-size:12.5px;">Cancelar</button>'
+      + (onExcluir ? '<button type="button" onclick="' + idCaixa + 'Excluir()" style="margin-left:auto;background:#9E1A1A;'
+          + 'color:#fff;border:none;border-radius:8px;padding:7px 14px;cursor:pointer;font-size:12.5px;">Excluir</button>' : '')
+      + '</div></div>';
+    document.getElementById(idCaixa + 'Txt').value = valor || '';
+    document.getElementById(idCaixa + 'Txt').focus();
+    window[idCaixa + 'Salvar'] = function () {
+      onSalvar(document.getElementById(idCaixa + 'Txt').value.trim());
+    };
+    if (onExcluir) window[idCaixa + 'Excluir'] = onExcluir;
+  }
+
+  window.editarLaudo = function () {
     if (!fichaAberta || !fichaAberta.item) return;
     var id = fichaAberta.item.id;
-    var novo = prompt('Descrição do defeito:', fichaAberta.item.laudo || '');
-    if (novo === null) return;
-    novo = String(novo).trim();
-    if (novo.length < 3) { alert('escreva a descrição do defeito'); return; }
-    var r = await api('/api/defeitos/' + encodeURIComponent(id) + '/laudo', {
-      method: 'PUT', body: JSON.stringify({ texto: novo }),
+    caixaEdicao('edLaudo', fichaAberta.item.laudo || '', async function (txt) {
+      if (txt.length < 3) { alert('escreva a descrição do defeito'); return; }
+      var r = await api('/api/defeitos/' + encodeURIComponent(id) + '/laudo', {
+        method: 'PUT', body: JSON.stringify({ texto: txt }),
+      });
+      if (!r.ok) { alert(r.erro || 'não consegui corrigir'); return; }
+      abrirFichaDefeito(id);
     });
-    if (!r.ok) { alert(r.erro || 'não consegui corrigir'); return; }
-    abrirFichaDefeito(id);
   };
 
-  window.corrigirComentario = async function (cid) {
+  window.editarComentario = function (cid) {
     if (!fichaAberta || !fichaAberta.item) return;
     var id = fichaAberta.item.id;
     var atual = (fichaAberta.comentarios || []).find(function (c) { return String(c.id) === String(cid); });
-    var novo = prompt('Corrigir o texto:', (atual && atual.texto) || '');
-    if (novo === null) return;
-    novo = String(novo).trim();
-    if (novo.length < 2) { alert('escreva o texto'); return; }
-    var r = await api('/api/defeitos/comentario/' + encodeURIComponent(cid), {
-      method: 'PUT', body: JSON.stringify({ texto: novo }),
-    });
-    if (!r.ok) { alert(r.erro || 'não consegui corrigir'); return; }
+    caixaEdicao('edCom' + cid, (atual && atual.texto) || '', async function (txt) {
+      if (txt.length < 2) { alert('escreva o texto'); return; }
+      var r = await api('/api/defeitos/comentario/' + encodeURIComponent(cid), {
+        method: 'PUT', body: JSON.stringify({ texto: txt }),
+      });
+      if (!r.ok) { alert(r.erro || 'não consegui corrigir'); return; }
+      abrirFichaDefeito(id);
+    }, function () { excluirComentario(cid); });
+  };
+
+  window.excluirComentario = async function (cid) {
+    if (!fichaAberta || !fichaAberta.item) return;
+    if (!confirm('Apagar esta anotação? Fica registrado que ela foi apagada.')) return;
+    var id = fichaAberta.item.id;
+    var r = await api('/api/defeitos/comentario/' + encodeURIComponent(cid), { method: 'DELETE' });
+    if (!r.ok) { alert(r.erro || 'não consegui apagar'); return; }
     abrirFichaDefeito(id);
   };
 
@@ -398,17 +437,16 @@
     abrirFichaDefeito(id);
   };
 
-  window.pedirDescarte = async function (id, sku) {
-    var motivo = prompt('Por que essa peça não serve mais? (fica registrado)');
-    if (motivo === null) return;
-    if (String(motivo).trim().length < 3) { alert('escreva o motivo'); return; }
-    var r = await api('/api/defeitos/pedido', {
-      method: 'POST',
-      body: JSON.stringify({ tipo: 'descarte', defeito_id: id, sku: sku, observacao: motivo }),
+  window.pedirDescarte = function (id, sku) {
+    caixaEdicao('edDescarte', '', async function (txt) {
+      if (txt.length < 3) { alert('escreva por que ela não serve mais'); return; }
+      var r = await api('/api/defeitos/pedido', {
+        method: 'POST',
+        body: JSON.stringify({ tipo: 'descarte', defeito_id: id, sku: sku, observacao: txt }),
+      });
+      if (!r.ok) { alert(r.erro || 'não consegui enviar'); return; }
+      abrirFichaDefeito(id);
     });
-    if (!r.ok) { alert(r.erro || 'não consegui enviar'); return; }
-    alert('Pedido de descarte enviado. Aguarde a autorização.');
-    abrirFichaDefeito(id);
   };
 
   // ── 4) FILA DE PEDIDOS ─────────────────────────────────────────────
