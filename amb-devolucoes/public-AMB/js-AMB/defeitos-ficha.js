@@ -88,7 +88,7 @@
     d.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:2000;'
       + 'display:none;align-items:center;justify-content:center;padding:12px;';
     d.innerHTML = '<div id="caixaDefeitosCorpo" style="background:#fff;border-radius:14px;'
-      + 'width:100%;max-width:860px;max-height:92vh;overflow:auto;box-shadow:0 12px 40px rgba(0,0,0,.3);"></div>';
+      + 'width:100%;max-width:1000px;max-height:92vh;overflow:auto;box-shadow:0 12px 40px rgba(0,0,0,.3);"></div>';
     d.addEventListener('click', function (e) { if (e.target === d) fechar(); });
     document.body.appendChild(d);
     return d;
@@ -378,6 +378,26 @@
         + ped.map(function (p) { return linhaPedido(p, false); }).join('');
     }
 
+    // b126 - PECA FECHADA: recuperada (liberada pelo admin) ou descartada.
+    // Aqui o estoquista nao tem mais nada a fazer - e pior, NAO DEVE
+    // mexer. Os tres botoes somem e entra o aviso no lugar.
+    var fechada = it.tipo === 'recuperado' || it.tipo === 'descartado';
+    if (fechada) {
+      var recup = it.tipo === 'recuperado';
+      html += '<div style="border-top:1px solid #eee;margin-top:16px;padding-top:14px;">'
+        + '<div style="background:' + (recup ? '#E1F5EE' : '#FBEAE8') + ';border-left:5px solid '
+        + (recup ? '#116B4E' : '#9E1A1A') + ';border-radius:0 10px 10px 0;padding:14px 16px;">'
+        + '<div style="font-size:16px;font-weight:800;color:' + (recup ? '#0F6E56' : '#8C1D18') + ';">'
+        + (recup ? '✅ PEÇA RECUPERADA — LIBERADA' : '🗑️ DESCARTE AUTORIZADO') + '</div>'
+        + '<div style="font-size:14px;margin-top:5px;color:#333;">'
+        + (recup
+            ? 'O admin já viu e liberou. Guarde a peça boa no armazém — não precisa mais mexer neste registro.'
+            : 'O admin autorizou. Pode jogar fora.')
+        + '</div></div></div>';
+      abrir(html);
+      return;
+    }
+
     // acoes do estoquista
     // b112 - TRES caminhos, e nao dois. O mais comum e este primeiro:
     // tirei uma peca (um parafuso, a cupula) e a peca CONTINUA quebrada.
@@ -592,28 +612,28 @@
     var itens = (d.itens || []).filter(function (x) { return String(x.id) !== String(id); });
     var html = topo('🔧 Montei uma boa')
       + '<div style="padding:14px;">'
-      + '<div style="background:#FEF6E7;border-left:3px solid #EF9F27;border-radius:0 8px 8px 0;padding:10px 12px;font-size:13px;margin-bottom:12px;">'
+      + '<div style="background:#FEF6E7;border-left:3px solid #EF9F27;border-radius:0 8px 8px 0;padding:12px 14px;font-size:14.5px;line-height:1.45;margin-bottom:14px;">'
       + 'Marque <b>de quais peças você tirou partes</b> e escreva o que tirou de cada uma. '
       + 'Sem isso não dá pra enviar — é o que deixa registrado de onde saiu cada parte.</div>'
-      + '<div style="font-size:11px;color:#888;letter-spacing:.4px;margin-bottom:6px;">A PEÇA QUE VOCÊ MONTOU</div>'
+      + '<div style="font-size:12.5px;color:#666;letter-spacing:.4px;font-weight:700;margin-bottom:6px;">A PEÇA QUE VOCÊ MONTOU</div>'
       + '<div style="display:flex;gap:7px;margin-bottom:14px;">'
-      + '<input id="boaSku" value="' + esc(sku || '') + '" placeholder="SKU do produto bom" style="flex:1;height:38px;padding:0 10px;border:1px solid #ddd;border-radius:8px;font-size:13px;">'
+      + '<input id="boaSku" value="' + esc(sku || '') + '" placeholder="SKU do produto bom" style="flex:1;height:44px;padding:0 12px;border:1px solid #ddd;border-radius:8px;font-size:15px;">'
       + '<input id="boaQtd" type="number" min="1" value="1" style="width:76px;height:38px;padding:0 10px;border:1px solid #ddd;border-radius:8px;font-size:13px;">'
       + '</div>'
-      + '<div style="font-size:11px;color:#888;letter-spacing:.4px;margin-bottom:6px;">DE ONDE VIERAM AS PARTES</div>';
+      + '<div style="font-size:12.5px;color:#666;letter-spacing:.4px;font-weight:700;margin-bottom:6px;">DE ONDE VIERAM AS PARTES</div>';
     html += itens.length
       ? itens.map(function (x) {
           return '<div style="border:1px solid #eee;border-radius:9px;padding:9px 11px;margin-bottom:6px;">'
             + '<label style="display:flex;gap:8px;align-items:center;cursor:pointer;">'
             + '<input type="checkbox" onchange="marcarDoador(this,\'' + esc(x.id) + '\')">'
-            + '<span style="font-size:13px;"><b>📍 ' + esc(x.localizacao || '-') + '</b> '
+            + '<span style="font-size:14.5px;"><b>📍 ' + esc(x.localizacao || '-') + '</b> '
             + '<span style="background:#3C3489;color:#fff;border-radius:6px;padding:2px 9px;font-size:12px;font-weight:800;">Peça #' + esc(x.id) + '</span> · '
             + esc(x.titulo || '')
             + (x.laudo ? ' <span style="color:#8C1D18;font-size:11.5px;">(' + esc(String(x.laudo).slice(0, 40)) + ')</span>' : '')
             + '</span></label>'
             + '<input id="peca_' + esc(x.id) + '" placeholder="o que você tirou desta? (ex: cúpula, base)" '
             + 'oninput="marcarPeca(\'' + esc(x.id) + '\',this.value)" '
-            + 'style="width:100%;height:34px;margin-top:7px;padding:0 10px;border:1px solid #ddd;border-radius:8px;font-size:12.5px;display:none;"></div>';
+            + 'style="width:100%;height:42px;margin-top:8px;padding:0 12px;border:2px solid #7B3FC4;border-radius:8px;font-size:14px;display:none;"></div>';
         }).join('')
       : '<div style="font-size:12.5px;color:#999;">nenhuma outra peça com esse SKU no estoque de defeitos.</div>';
     html += '<textarea id="boaObs" placeholder="observação (opcional)" style="width:100%;margin-top:12px;padding:9px;border:1px solid #ddd;border-radius:8px;font-size:13px;min-height:56px;"></textarea>'
