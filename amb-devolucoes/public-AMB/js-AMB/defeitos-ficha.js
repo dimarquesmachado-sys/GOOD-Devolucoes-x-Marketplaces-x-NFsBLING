@@ -55,6 +55,13 @@
     el.style.color = cor || '#8C1D18';
   }
 
+  // b124 - primeira letra maiuscula no que aparece na tela. O estoquista
+  // digita "teste 1" e fica "Teste 1" - sem mexer no que esta gravado.
+  function capitalizar(t) {
+    var x = String(t == null ? '' : t).trim();
+    return x ? x.charAt(0).toUpperCase() + x.slice(1) : x;
+  }
+
   function esc(s) {
     return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
       return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
@@ -127,7 +134,7 @@
       euSouAdmin ? '<button onclick="abrirFilaPedidos()" style="background:rgba(255,255,255,.2);color:#fff;border:none;border-radius:8px;padding:6px 12px;cursor:pointer;">📥 Pedidos</button>' : '')
       + '<div style="padding:14px;">'
       + '<div style="display:flex;gap:7px;margin-bottom:12px;">'
-      + '<input id="defBusca" placeholder="SKU, EAN, localização ou nome do produto"'
+      + '<input id="defBusca" placeholder="SKU, EAN, localização, produto ou o número da peça (ex: peça 4)"'
       + ' style="flex:1;height:42px;font-size:14px;padding:0 12px;border:1px solid #ddd;border-radius:9px;">'
       + '<button onclick="buscarDefeitos()" style="background:#561A9E;color:#fff;border:none;border-radius:9px;padding:0 18px;font-weight:700;cursor:pointer;">Buscar</button>'
       + '</div><div id="defLista"><div style="color:#888;font-size:13px;">Digite e busque, ou veja os últimos abaixo.</div></div></div>');
@@ -173,14 +180,14 @@
           + '<div style="flex:1;min-width:0;">'
           + '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">'
           + '<b style="font-size:13.5px;">📍 ' + esc(it.localizacao || 'sem local') + '</b>'
-          + '<span style="background:#EEEDFE;color:#3C3489;border-radius:5px;padding:1px 7px;font-size:11.5px;font-weight:700;">peça #' + esc(it.id) + '</span>'
+          + '<span style="background:#3C3489;color:#fff;border-radius:6px;padding:3px 10px;font-size:13px;font-weight:800;letter-spacing:.3px;">Peça #' + esc(it.id) + '</span>'
           + '<code style="background:#f2f2f7;border-radius:5px;padding:1px 7px;font-size:12px;">' + esc(sku) + '</code>'
           + '<span style="margin-left:auto;background:#FBEAE8;color:#8C1D18;border-radius:11px;padding:1px 9px;font-size:11.5px;">'
           + esc(it.quantidade || 1) + ' peça(s)</span></div>'
           + '<div style="font-size:13px;margin-top:4px;font-weight:600;">' + esc(it.titulo || '') + '</div>'
           + (laudo
-              ? '<div style="font-size:12.5px;color:#8C1D18;background:#FBEAE8;border-radius:7px;padding:5px 9px;margin-top:6px;">🔧 ' + esc(laudo) + '</div>'
-              : '<div style="font-size:12px;color:#999;margin-top:6px;font-style:italic;">sem descrição do defeito — abra a ficha e escreva no histórico</div>')
+              ? '<div style="font-size:12.5px;color:#8C1D18;background:#FBEAE8;border-radius:7px;padding:5px 9px;margin-top:6px;">🔧 ' + esc(capitalizar(laudo)) + '</div>'
+              : '<div style="font-size:12px;color:#999;margin-top:6px;font-style:italic;">Sem descrição do defeito — abra a ficha e escreva no histórico</div>')
           + (it.tem_fotos ? '<div style="font-size:11.5px;color:#777;margin-top:4px;">📷 ' + it.tem_fotos + ' foto(s)</div>' : '')
           + '</div></div>';
       }).join('');
@@ -221,7 +228,7 @@
     var it = fichaAberta.item, com = fichaAberta.comentarios || [];
     return '<div style="border-left:2px solid #eee;padding-left:12px;margin-bottom:10px;">'
       + '<div style="margin-bottom:9px;"><div style="font-size:13.5px;' + (it.laudo ? 'color:#8C1D18;font-weight:600;' : 'color:#999;font-style:italic;') + '">'
-      + esc(it.laudo || 'sem descrição do defeito')
+      + esc(capitalizar(it.laudo) || 'Sem descrição do defeito')
       + ' <a href="#" onclick="event.preventDefault();editarLaudo()" '
       + 'style="font-size:11.5px;color:#561A9E;text-decoration:none;">✏️ Corrigir</a>'
       // b119 - a descricao do defeito tambem ganha o 🗑️. Ela so tinha o
@@ -236,7 +243,7 @@
       + '<div id="edLaudo"></div>'
       + '<div style="font-size:11.5px;color:#888;">' + esc(it.quem || '-') + ' · ' + dataBr(it.criado_em) + ' · entrada</div></div>'
       + com.map(function (c) {
-          return '<div style="margin-bottom:9px;"><div style="font-size:13.5px;">' + esc(c.texto)
+          return '<div style="margin-bottom:9px;"><div style="font-size:13.5px;">' + esc(capitalizar(c.texto))
             + ' <a href="#" onclick="event.preventDefault();editarComentario(\'' + esc(c.id) + '\')" '
             + 'style="font-size:11.5px;color:#561A9E;text-decoration:none;">✏️</a>'
             + ' <a href="#" onclick="event.preventDefault();excluirComentario(\'' + esc(c.id) + '\')" '
@@ -265,7 +272,7 @@
     var h = '';
     h += saiu.map(function (p) {
       return '<div style="background:#FBEAE8;border-left:3px solid #9E1A1A;border-radius:0 8px 8px 0;padding:8px 11px;font-size:13px;margin-bottom:5px;">'
-        + '<b style="color:#8C1D18;">SAIU</b> ' + esc(p.peca)
+        + '<b style="color:#8C1D18;">SAIU</b> ' + esc(capitalizar(p.peca))
         + (p.destino_defeito_id
             ? ' <a href="#" onclick="event.preventDefault();abrirFichaDefeito(\'' + esc(p.destino_defeito_id) + '\')" '
               + 'style="color:#561A9E;font-size:11.5px;">→ foi para a peça #' + esc(p.destino_defeito_id) + '</a>'
@@ -274,7 +281,7 @@
     }).join('');
     h += entrou.map(function (p) {
       return '<div style="background:#E1F5EE;border-left:3px solid #116B4E;border-radius:0 8px 8px 0;padding:8px 11px;font-size:13px;margin-bottom:5px;">'
-        + '<b style="color:#0F6E56;">ENTROU</b> ' + esc(p.peca)
+        + '<b style="color:#0F6E56;">ENTROU</b> ' + esc(capitalizar(p.peca))
         + ' <a href="#" onclick="event.preventDefault();abrirFichaDefeito(\'' + esc(p.defeito_id) + '\')" '
         + 'style="color:#561A9E;font-size:11.5px;">← veio da peça #' + esc(p.defeito_id) + '</a>'
         + ' <span style="color:#999;font-size:11.5px;">· ' + esc(p.quem || '-') + ' · ' + dataBr(p.criado_em) + '</span></div>';
@@ -286,7 +293,7 @@
   function htmlEstado() {
     if (!fichaAberta) return '';
     var proprio = fichaAberta.estado_atual;
-    var txt = proprio || fichaAberta.estado_sugerido || 'sem informação do estado';
+    var txt = capitalizar(proprio || fichaAberta.estado_sugerido || 'sem informação do estado');
     return '<div style="background:#FEF6E7;border-left:4px solid #EF9F27;border-radius:0 9px 9px 0;'
       + 'padding:10px 13px;margin:10px 0 4px;">'
       + '<div style="font-size:10.5px;color:#854F0B;letter-spacing:.5px;font-weight:800;margin-bottom:3px;">COMO ESTÁ AGORA</div>'
@@ -435,7 +442,7 @@
             // distingue duas luminarias iguais na prateleira.
             var quando = x.criado_em ? new Date(x.criado_em).toLocaleDateString('pt-BR') : '';
             var laudoCurto = String(x.laudo || '').slice(0, 34);
-            return '<option value="' + esc(x.id) + '">#' + esc(x.id)
+            return '<option value="' + esc(x.id) + '">Peça #' + esc(x.id)
               + ' · 📍 ' + esc(x.localizacao || '-')
               + (quando ? ' · ' + quando : '')
               + (laudoCurto ? ' · ' + esc(laudoCurto) : '')
@@ -600,7 +607,7 @@
             + '<label style="display:flex;gap:8px;align-items:center;cursor:pointer;">'
             + '<input type="checkbox" onchange="marcarDoador(this,\'' + esc(x.id) + '\')">'
             + '<span style="font-size:13px;"><b>📍 ' + esc(x.localizacao || '-') + '</b> '
-            + '<span style="background:#EEEDFE;color:#3C3489;border-radius:5px;padding:1px 6px;font-size:11px;font-weight:700;">peça #' + esc(x.id) + '</span> · '
+            + '<span style="background:#3C3489;color:#fff;border-radius:6px;padding:2px 9px;font-size:12px;font-weight:800;">Peça #' + esc(x.id) + '</span> · '
             + esc(x.titulo || '')
             + (x.laudo ? ' <span style="color:#8C1D18;font-size:11.5px;">(' + esc(String(x.laudo).slice(0, 40)) + ')</span>' : '')
             + '</span></label>'
