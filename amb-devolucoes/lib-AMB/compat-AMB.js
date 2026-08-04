@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════════════════════════════════
-//  amb-devolucoes · lib/compat  (AMB Devol. b109)
+//  amb-devolucoes · lib/compat  (AMB Devol. b110)
 //  LEVA 1a do porte GOOD → AMB.
 //
 //  A tela de bipe da GOOD (index.html + 10 modulos JS) chama 18 endpoints.
@@ -462,7 +462,17 @@ function montar(router, deps) {
   /** Lancar produto com defeito no estoque (o "+ Lançar produto com
    *  defeito" da tela). Valida o SKU no Bling antes de gravar. */
   router.post('/api/defeitos/adicionar', auth.requerLogin, async (req, res) => {
-    const { sku, descricao, localizacao, quantidade } = corpo(req);
+    // ═══════════════════════════════════════════════════════════════════
+    // b110 - A TELA MANDA OUTROS NOMES. Ela envia {defeito, qtd} e eu lia
+    // {descricao, quantidade}: a descricao do defeito virava NULL e a
+    // quantidade voltava pra 1, sempre. Por isso o card do estoque de
+    // defeitos aparecia sem o problema escrito. Aceito os dois nomes.
+    // ═══════════════════════════════════════════════════════════════════
+    const b = corpo(req);
+    const sku = b.sku;
+    const localizacao = b.localizacao;
+    const descricao = b.descricao || b.defeito || null;
+    const quantidade = b.quantidade || b.qtd || 1;
     if (!sku || !localizacao) {
       return res.status(400).json({ ok: false, erro: 'informe ao menos sku e localizacao' });
     }
