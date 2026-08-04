@@ -195,7 +195,16 @@
       + '<div style="margin-bottom:9px;"><div style="font-size:13.5px;' + (it.laudo ? 'color:#8C1D18;font-weight:600;' : 'color:#999;font-style:italic;') + '">'
       + esc(it.laudo || 'sem descrição do defeito')
       + ' <a href="#" onclick="event.preventDefault();editarLaudo()" '
-      + 'style="font-size:11.5px;color:#561A9E;text-decoration:none;">✏️ Corrigir</a></div>'
+      + 'style="font-size:11.5px;color:#561A9E;text-decoration:none;">✏️ Corrigir</a>'
+      // b119 - a descricao do defeito tambem ganha o 🗑️. Ela so tinha o
+      // lapis, e apagar dependia de abrir, limpar o texto e salvar - coisa
+      // que ninguem adivinha, ainda mais com o comentario logo abaixo
+      // mostrando um 🗑️ do lado. Agora as duas linhas se comportam igual.
+      + (it.laudo
+          ? ' <a href="#" onclick="event.preventDefault();apagarLaudo()" '
+            + 'style="font-size:11.5px;color:#8C1D18;text-decoration:none;">🗑️</a>'
+          : '')
+      + '</div>'
       + '<div id="edLaudo"></div>'
       + '<div style="font-size:11.5px;color:#888;">' + esc(it.quem || '-') + ' · ' + dataBr(it.criado_em) + ' · entrada</div></div>'
       + com.map(function (c) {
@@ -387,6 +396,22 @@
       if (r.registro) fichaAberta.item.laudo = r.registro.problema_descricao || null;
       pintaHistorico();
     });
+  };
+
+  window.apagarLaudo = async function () {
+    if (!fichaAberta || !fichaAberta.item) return;
+    var id = fichaAberta.item.id;
+    var r = await api('/api/defeitos/' + encodeURIComponent(id) + '/laudo', {
+      method: 'PUT', body: JSON.stringify({ texto: '' }),
+    });
+    if (!r.ok) { avisoEm('msgCom', r.erro || 'não consegui apagar'); return; }
+    fichaAberta.item.laudo = null;
+    // recarrega os comentarios pra aparecer o registro "apagou a descricao"
+    try {
+      var d = await api('/api/defeitos/ficha/' + encodeURIComponent(id));
+      if (d && d.ok) fichaAberta.comentarios = d.comentarios || [];
+    } catch (e) {}
+    pintaHistorico();
   };
 
   window.editarComentario = function (cid) {
