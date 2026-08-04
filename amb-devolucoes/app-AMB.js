@@ -1270,7 +1270,7 @@ const ajudantes = criarAdminHelpers({
 // que a AMB ja tinha (ml, bling, magalu, shopee, nf-nomes).
 const mlBuscas = criarMlBuscas(ml.chamarML);
 // b95 - ciclo do estoque de defeitos (ficha, comentarios, pedidos)
-registrarCicloDefeitos(router, { auth, db });
+registrarCicloDefeitos(router, { auth, db, bling });
 
 registrarIdentificar(router, {
   requerLogin: auth.requerLogin,
