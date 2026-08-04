@@ -187,6 +187,57 @@
   }
 
   // ── 2) FICHA ───────────────────────────────────────────────────────
+  /** b118 - HTML do historico, montado a partir da ficha em memoria. */
+  function htmlHistorico() {
+    if (!fichaAberta) return '';
+    var it = fichaAberta.item, com = fichaAberta.comentarios || [];
+    return '<div style="border-left:2px solid #eee;padding-left:12px;margin-bottom:10px;">'
+      + '<div style="margin-bottom:9px;"><div style="font-size:13.5px;' + (it.laudo ? 'color:#8C1D18;font-weight:600;' : 'color:#999;font-style:italic;') + '">'
+      + esc(it.laudo || 'sem descrição do defeito')
+      + ' <a href="#" onclick="event.preventDefault();editarLaudo()" '
+      + 'style="font-size:11.5px;color:#561A9E;text-decoration:none;">✏️ Corrigir</a></div>'
+      + '<div id="edLaudo"></div>'
+      + '<div style="font-size:11.5px;color:#888;">' + esc(it.quem || '-') + ' · ' + dataBr(it.criado_em) + ' · entrada</div></div>'
+      + com.map(function (c) {
+          return '<div style="margin-bottom:9px;"><div style="font-size:13.5px;">' + esc(c.texto)
+            + ' <a href="#" onclick="event.preventDefault();editarComentario(\'' + esc(c.id) + '\')" '
+            + 'style="font-size:11.5px;color:#561A9E;text-decoration:none;">✏️</a>'
+            + ' <a href="#" onclick="event.preventDefault();excluirComentario(\'' + esc(c.id) + '\')" '
+            + 'style="font-size:11.5px;color:#8C1D18;text-decoration:none;">🗑️</a>'
+            + '<div id="edCom' + esc(c.id) + '"></div></div>'
+            + '<div style="font-size:11.5px;color:#888;">' + esc(c.quem || '-') + ' · ' + dataBr(c.criado_em) + '</div></div>';
+        }).join('')
+      + '</div>'
+      + '<div style="display:flex;gap:7px;margin-bottom:4px;">'
+      + '<input id="defCom" placeholder="escrever no histórico desta peça..." '
+      + 'style="flex:1;height:38px;font-size:13px;padding:0 10px;border:1px solid #ddd;border-radius:8px;">'
+      + '<button onclick="comentarDefeito(\'' + esc(it.id) + '\')" style="border:1px solid #561A9E;background:#561A9E;'
+      + 'color:#fff;border-radius:8px;padding:0 16px;height:38px;cursor:pointer;font-weight:600;">Adicionar</button></div>'
+      + '<div id="msgCom" style="font-size:12px;color:#8C1D18;margin-bottom:12px;"></div>';
+  }
+
+  /** b118 - HTML das pecas retiradas. */
+  function htmlPecas() {
+    var pec = (fichaAberta && fichaAberta.pecas_retiradas) || [];
+    if (!pec.length) return '<div style="font-size:12.5px;color:#999;margin-bottom:6px;">nada foi retirado ainda.</div>';
+    return pec.map(function (p) {
+      return '<div style="background:#f7f7fa;border-radius:8px;padding:8px 11px;font-size:13px;margin-bottom:5px;">'
+        + '🔧 <b>' + esc(p.peca) + '</b>'
+        + (p.usada_em ? ' <span style="color:#777;font-size:11.5px;">→ ' + esc(p.usada_em) + '</span>' : '')
+        + ' <span style="color:#999;font-size:11.5px;">· ' + esc(p.quem || '-') + ' · ' + dataBr(p.criado_em) + '</span></div>';
+    }).join('');
+  }
+
+  /** Redesenha SO o pedaco que mudou - sem recarregar a ficha. */
+  function pintaHistorico() {
+    var el = document.getElementById('blocoHist');
+    if (el) el.innerHTML = htmlHistorico();
+  }
+  function pintaPecas() {
+    var el = document.getElementById('blocoPecas');
+    if (el) el.innerHTML = htmlPecas();
+  }
+
   window.abrirFichaDefeito = async function (id) {
     abrir(topo('carregando ficha...') + '<div style="padding:16px;color:#888;">um instante</div>');
     var d;
@@ -223,41 +274,11 @@
     }
 
     // historico
-    html += SUB('HISTÓRICO DA PEÇA')
-      + '<div style="border-left:2px solid #eee;padding-left:12px;margin-bottom:10px;">'
-      + '<div style="margin-bottom:9px;"><div style="font-size:13.5px;' + (it.laudo ? 'color:#8C1D18;font-weight:600;' : 'color:#999;font-style:italic;') + '">'
-      + esc(it.laudo || 'sem descrição do defeito')
-      + ' <a href="#" onclick="event.preventDefault();editarLaudo()" '
-      + 'style="font-size:11.5px;color:#561A9E;text-decoration:none;">✏️ Corrigir</a></div>'
-      + '<div id="edLaudo"></div>'
-      + '<div style="font-size:11.5px;color:#888;">' + esc(it.quem || '-') + ' · ' + dataBr(it.criado_em) + ' · entrada</div></div>'
-      + com.map(function (c) {
-          return '<div style="margin-bottom:9px;"><div style="font-size:13.5px;">' + esc(c.texto)
-            + ' <a href="#" onclick="event.preventDefault();editarComentario(\'' + esc(c.id) + '\')" '
-            + 'style="font-size:11.5px;color:#561A9E;text-decoration:none;">✏️</a>'
-            + ' <a href="#" onclick="event.preventDefault();excluirComentario(\'' + esc(c.id) + '\')" '
-            + 'style="font-size:11.5px;color:#8C1D18;text-decoration:none;">🗑️</a>'
-            + '<div id="edCom' + esc(c.id) + '"></div></div>'
-            + '<div style="font-size:11.5px;color:#888;">' + esc(c.quem || '-') + ' · ' + dataBr(c.criado_em) + '</div></div>';
-        }).join('')
-      + '</div>'
-      + '<div style="display:flex;gap:7px;margin-bottom:14px;">'
-      + '<input id="defCom" placeholder="escrever no histórico desta peça..." '
-      + 'style="flex:1;height:38px;font-size:13px;padding:0 10px;border:1px solid #ddd;border-radius:8px;">'
-      + '<button onclick="comentarDefeito(\'' + esc(it.id) + '\')" style="border:1px solid #561A9E;background:#561A9E;'
-      + 'color:#fff;border-radius:8px;padding:0 16px;height:38px;cursor:pointer;font-weight:600;">Adicionar</button></div>'
-      + '<div id="msgCom" style="font-size:12px;color:#8C1D18;margin:-8px 0 12px;"></div>';
-
-    // pecas retiradas
-    html += SUB('PEÇAS RETIRADAS DESTA');
-    html += pec.length
-      ? pec.map(function (p) {
-          return '<div style="background:#f7f7fa;border-radius:8px;padding:8px 11px;font-size:13px;margin-bottom:5px;">'
-            + '🔧 <b>' + esc(p.peca) + '</b>'
-            + (p.usada_em ? ' <span style="color:#777;font-size:11.5px;">→ ' + esc(p.usada_em) + '</span>' : '')
-            + ' <span style="color:#999;font-size:11.5px;">· ' + esc(p.quem || '-') + ' · ' + dataBr(p.criado_em) + '</span></div>';
-        }).join('')
-      : '<div style="font-size:12.5px;color:#999;margin-bottom:6px;">nada foi retirado ainda.</div>';
+    // b118 - o historico mora num bloco proprio que se redesenha sozinho.
+    // Antes qualquer salvar/apagar recarregava a FICHA INTEIRA do servidor
+    // e o card piscava.
+    html += SUB('HISTÓRICO DA PEÇA') + '<div id="blocoHist">' + htmlHistorico() + '</div>'
+    html += SUB('PEÇAS RETIRADAS DESTA') + '<div id="blocoPecas">' + htmlPecas() + '</div>';
 
     // pedidos ja feitos
     if (ped.length) {
@@ -296,7 +317,9 @@
         method: 'POST', body: JSON.stringify({ peca: txt }),
       });
       if (!r.ok) { aviso(r.erro || 'não consegui registrar'); return; }
-      abrirFichaDefeito(id);
+      if (r.registro) (fichaAberta.pecas_retiradas = fichaAberta.pecas_retiradas || []).push(r.registro);
+      pintaPecas();
+      pintaHistorico();
     });
   };
 
@@ -307,7 +330,8 @@
     var r = await api('/api/defeitos/' + encodeURIComponent(id) + '/comentario',
       { method: 'POST', body: JSON.stringify({ texto: texto }) });
     if (!r.ok) { avisoEm('msgCom', r.erro || 'não consegui salvar'); return; }
-    abrirFichaDefeito(id);
+    if (r.comentario) (fichaAberta.comentarios = fichaAberta.comentarios || []).push(r.comentario);
+    pintaHistorico();
   };
 
   /**
@@ -359,7 +383,9 @@
         method: 'PUT', body: JSON.stringify({ texto: txt }),
       });
       if (!r.ok) { aviso(r.erro || 'não consegui salvar'); return; }
-      abrirFichaDefeito(id);
+      fichaAberta.item.laudo = txt || null;
+      if (r.registro) fichaAberta.item.laudo = r.registro.problema_descricao || null;
+      pintaHistorico();
     });
   };
 
@@ -373,7 +399,9 @@
         method: 'PUT', body: JSON.stringify({ texto: txt }),
       });
       if (!r.ok) { aviso(r.erro || 'não consegui salvar'); return; }
-      abrirFichaDefeito(id);
+      var alvo = (fichaAberta.comentarios || []).find(function (c) { return String(c.id) === String(cid); });
+      if (alvo) alvo.texto = (r.comentario && r.comentario.texto) || txt;
+      pintaHistorico();
     }, function () { excluirComentario(cid); });
   };
 
@@ -383,8 +411,10 @@
     // desfazer sabendo o que havia
     var id = fichaAberta.item.id;
     var r = await api('/api/defeitos/comentario/' + encodeURIComponent(cid), { method: 'DELETE' });
-    if (!r.ok) { alert(r.erro || 'não consegui apagar'); return; }
-    abrirFichaDefeito(id);
+    if (!r.ok) { avisoEm('msgCom', r.erro || 'não consegui apagar'); return; }
+    fichaAberta.comentarios = (fichaAberta.comentarios || [])
+      .filter(function (c) { return String(c.id) !== String(cid); });
+    pintaHistorico();
   };
 
   // ── 3) MONTEI UMA BOA (com doadores obrigatorios) ──────────────────
