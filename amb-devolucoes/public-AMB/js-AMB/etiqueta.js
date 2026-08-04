@@ -383,8 +383,11 @@ function abrirPopupEtiquetaDefeito(etq, aoFechar) {
     + '<b>NF venda:</b> ' + esc(etq.nf || '-') + ' · <b>Qtd:</b> ' + esc(etq.qtd) + (etq.local ? ' · <b>Local:</b> ' + esc(etq.local) : '')
     + '</div>'
     + '<div style="display:flex;gap:10px;margin-top:16px;">'
-    + '<button id="popupEtqNao" style="flex:1;background:#999;color:#fff;border:none;border-radius:10px;padding:14px;font-size:15px;font-weight:700;cursor:pointer;">Pular</button>'
-    + '<button id="popupEtqSim" style="flex:2;background:#c62828;color:#fff;border:none;border-radius:10px;padding:14px;font-size:15px;font-weight:800;cursor:pointer;">🖨️ Imprimir ' + (Number(etq.qtd) > 1 ? (etq.qtd + ' etiquetas') : 'etiqueta') + '</button>'
+    // b121 - INVERTIDO: quem fecha e o botao grande. Na maioria das vezes
+    // o estoquista so quer sair daqui; imprimir e a excecao, entao ela
+    // fica no botao pequeno e discreto, do lado.
+    + '<button id="popupEtqSim" style="flex:1;background:#fff;color:#c62828;border:1px solid #c62828;border-radius:10px;padding:12px;font-size:13.5px;font-weight:700;cursor:pointer;">🖨️ Imprimir ' + (Number(etq.qtd) > 1 ? (etq.qtd + ' Etiquetas') : 'Etiqueta') + '</button>'
+    + '<button id="popupEtqNao" style="flex:2;background:#561A9E;color:#fff;border:none;border-radius:10px;padding:14px;font-size:15px;font-weight:800;cursor:pointer;">Fechar</button>'
     + '</div></div>';
   document.body.appendChild(ov);
   const fechar = () => { ov.remove(); if (typeof aoFechar === 'function') aoFechar(); };
