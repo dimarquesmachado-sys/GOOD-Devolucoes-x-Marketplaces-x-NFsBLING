@@ -215,7 +215,8 @@
       + '<div style="display:flex;gap:7px;margin-bottom:14px;">'
       + '<input id="defCom" placeholder="escrever no histórico desta peça..." '
       + 'style="flex:1;height:38px;font-size:13px;padding:0 10px;border:1px solid #ddd;border-radius:8px;">'
-      + '<button onclick="comentarDefeito(\'' + esc(it.id) + '\')" style="border:1px solid #ddd;background:#fff;border-radius:8px;padding:0 14px;cursor:pointer;">adicionar</button></div>';
+      + '<button onclick="comentarDefeito(\'' + esc(it.id) + '\')" style="border:1px solid #561A9E;background:#561A9E;'
+      + 'color:#fff;border-radius:8px;padding:0 16px;height:38px;cursor:pointer;font-weight:600;">adicionar</button></div>';
 
     // pecas retiradas
     html += '<div style="font-size:11px;color:#888;letter-spacing:.4px;margin-bottom:6px;">PEÇAS RETIRADAS DESTA</div>';
@@ -235,13 +236,39 @@
     }
 
     // acoes do estoquista
+    // b112 - TRES caminhos, e nao dois. O mais comum e este primeiro:
+    // tirei uma peca (um parafuso, a cupula) e a peca CONTINUA quebrada.
+    // Antes so havia "montei uma boa" e "descarte" - nenhum dos dois
+    // servia pra isso, e a retirada acabava nao sendo registrada.
     html += '<div style="border-top:1px solid #eee;margin-top:16px;padding-top:12px;display:flex;gap:8px;flex-wrap:wrap;">'
+      + '<button onclick="retirarPeca(\'' + esc(it.id) + '\')" '
+      + 'style="flex:1;min-width:150px;background:#854F0B;color:#fff;border:none;border-radius:9px;padding:13px;font-weight:700;cursor:pointer;">🔧 retirei uma peça</button>'
       + '<button onclick="abrirMontarBoa(\'' + esc(it.id) + '\',\'' + esc(it.sku || '') + '\')" '
       + 'style="flex:1;min-width:150px;background:#116B4E;color:#fff;border:none;border-radius:9px;padding:13px;font-weight:700;cursor:pointer;">🔧 montei uma boa</button>'
       + '<button onclick="pedirDescarte(\'' + esc(it.id) + '\',\'' + esc(it.sku || '') + '\')" '
       + 'style="flex:1;min-width:150px;background:#9E1A1A;color:#fff;border:none;border-radius:9px;padding:13px;font-weight:700;cursor:pointer;">🗑️ pedir descarte</button>'
       + '</div></div>';
     abrir(html);
+  };
+
+  /**
+   * b112 - Retirada avulsa: o estoquista tirou uma peca pra usar em outro
+   * conserto, mas ESTA continua com defeito. Registra em pecas_retiradas
+   * e escreve no historico - sem virar pedido nenhum, porque nao ha nada
+   * pra o admin autorizar.
+   */
+  window.retirarPeca = async function (id) {
+    var peca = prompt('O que você retirou desta peça? (ex: parafuso, cúpula, lâmpada)');
+    if (peca === null) return;
+    peca = String(peca).trim();
+    if (peca.length < 2) { alert('escreva o que foi retirado'); return; }
+    var onde = prompt('Usou em quê? (opcional — ex: NF 076823, ou a peça que consertou)') || '';
+    var r = await api('/api/defeitos/' + encodeURIComponent(id) + '/peca-retirada', {
+      method: 'POST',
+      body: JSON.stringify({ peca: peca, usada_em: String(onde).trim() || null }),
+    });
+    if (!r.ok) { alert(r.erro || 'não consegui registrar'); return; }
+    abrirFichaDefeito(id);
   };
 
   window.comentarDefeito = async function (id) {
