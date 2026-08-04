@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════════════════════════════════
-//  amb-devolucoes · lib/defeitos-ciclo  (AMB Devol. b120)
+//  amb-devolucoes · lib/defeitos-ciclo  (AMB Devol. b124)
 //  ------------------------------------------------------------------
 //  O CICLO DA PECA COM DEFEITO, do jeito que o Diego descreveu:
 //
@@ -92,7 +92,13 @@ module.exports = function registrarCicloDefeitos(router, deps) {
       let linhas = r.data || [];
       if (termo) {
         const b = termo.toLowerCase();
+        // b124 - buscar pelo NUMERO DA PECA, que e como ele identifica a
+        // peca na prateleira (a etiqueta imprime "PECA #4"). Aceita
+        // "peca 4", "peça 4", "#4" e "4" solto.
+        const m = b.match(/^(?:pe[cç]a\s*)?#?\s*(\d{1,9})$/);
+        const numero = m ? m[1] : null;
         linhas = linhas.filter(x =>
+          (numero && String(x.id) === numero) ||
           String(x.produto_sku || '').toLowerCase().includes(b) ||
           String(x.localizacao || '').toLowerCase().includes(b) ||
           String(x.produto_titulo || '').toLowerCase().includes(b) ||
