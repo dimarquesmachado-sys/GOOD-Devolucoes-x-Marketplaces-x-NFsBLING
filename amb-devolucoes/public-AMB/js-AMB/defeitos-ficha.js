@@ -134,6 +134,8 @@
   // ── 1) BUSCA ───────────────────────────────────────────────────────
   window.abrirBuscaDefeitos = function (termo, voltando) {
     registrar('busca', termo, voltando);
+    // b128 - abriu, entao ele ja viu: o aviso do botao zera
+    if (typeof window.marcarDefeitosVistos === 'function') window.marcarDefeitosVistos();
     abrir(topo('🔧 Estoque de Defeitos',
       euSouAdmin ? '<button onclick="abrirFilaPedidos()" style="background:rgba(255,255,255,.2);color:#fff;border:none;border-radius:8px;padding:6px 12px;cursor:pointer;">📥 Pedidos</button>' : '')
       + '<div style="padding:14px;">'
