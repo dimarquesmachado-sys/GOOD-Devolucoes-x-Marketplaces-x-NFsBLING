@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════════════════════════════════
-//  amb-devolucoes · lib/defeitos-ciclo  (AMB Devol. b124)
+//  amb-devolucoes · lib/defeitos-ciclo  (AMB Devol. b126)
 //  ------------------------------------------------------------------
 //  O CICLO DA PECA COM DEFEITO, do jeito que o Diego descreveu:
 //
@@ -89,7 +89,10 @@ module.exports = function registrarCicloDefeitos(router, deps) {
         .limit(300);
       const r = await sel;
       if (r.error) throw new Error(r.error.message);
-      let linhas = r.data || [];
+      // b126 - peca ja recuperada ou descartada nao aparece mais pro
+      // estoquista: nao ha o que fazer com ela, e deixa-la na lista so
+      // gera duvida ("mexo ou nao mexo?")
+      let linhas = (r.data || []).filter(x => x.tipo !== 'recuperado' && x.tipo !== 'descartado');
       if (termo) {
         const b = termo.toLowerCase();
         // b124 - buscar pelo NUMERO DA PECA, que e como ele identifica a
@@ -183,6 +186,7 @@ module.exports = function registrarCicloDefeitos(router, deps) {
           quem: item.funcionario,
           criado_em: item.criado_em,
           status: item.status,
+          tipo: item.tipo,               // b126 - recuperado / descartado / defeito_estoque
         },
         fotos: fotosDe(item),
         comentarios: rCom.data || [],
@@ -472,6 +476,27 @@ module.exports = function registrarCicloDefeitos(router, deps) {
       const r = await dbc.from(T_PED).update(campos).eq('id', req.params.id).select().limit(1);
       if (r.error) throw new Error(r.error.message);
       const pedido = (r.data || [])[0] || null;
+
+      // ═══════════════════════════════════════════════════════════════
+      // b126 - AUTORIZOU: a peca SAI da vista do estoquista.
+      // O combinado com o Diego: depois que ele autoriza, o estoquista
+      // nao espera mais nada - ja guarda a peca boa no armazem (ou joga
+      // fora, no descarte) e nao deve mais mexer naquele registro.
+      // Marco o tipo, que e o que a lista usa pra esconder, e escrevo o
+      // estado em caixa alta pra quem abrir a ficha entender na hora.
+      // ═══════════════════════════════════════════════════════════════
+      if (pedido && pedido.defeito_id && acao === 'autorizar') {
+        const quando = new Date().toLocaleDateString('pt-BR');
+        const recuperada = pedido.tipo === 'recuperado';
+        try {
+          await db.atualizarTriagem(pedido.defeito_id, {
+            tipo: recuperada ? 'recuperado' : 'descartado',
+            estado_atual: recuperada
+              ? 'RECUPERADA - liberada por ' + req.usuario + ' em ' + quando + '. Guarde no armazem; nao mexer mais.'
+              : 'DESCARTE AUTORIZADO por ' + req.usuario + ' em ' + quando + '. Pode jogar fora.',
+          });
+        } catch (e) { /* a decisao principal ja foi */ }
+      }
 
       // deixa o rastro na ficha da peca
       if (pedido && pedido.defeito_id) {
