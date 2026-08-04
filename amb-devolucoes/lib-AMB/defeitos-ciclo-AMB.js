@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════════════════════════════════
-//  amb-devolucoes · lib/defeitos-ciclo  (AMB Devol. b116)
+//  amb-devolucoes · lib/defeitos-ciclo  (AMB Devol. b117)
 //  ------------------------------------------------------------------
 //  O CICLO DA PECA COM DEFEITO, do jeito que o Diego descreveu:
 //
@@ -195,14 +195,18 @@ module.exports = function registrarCicloDefeitos(router, deps) {
   // pra ninguem achar que o texto sempre foi aquele.
   // ─────────────────────────────────────────────────────────────────────
   router.put('/api/defeitos/:id/laudo', auth.requerLogin, async (req, res) => {
+    // b117 - VAZIO APAGA. Antes eu exigia 3 letras, entao nao havia como
+    // limpar uma descricao escrita errado - so trocar por outra. Agora
+    // salvar vazio apaga o texto, e o historico registra que foi apagado.
     const texto = String(corpo(req).texto || '').trim();
-    if (texto.length < 3) return res.status(400).json({ ok: false, erro: 'escreva a descricao do defeito' });
-    const r = await db.atualizarTriagem(req.params.id, { problema_descricao: texto });
+    const r = await db.atualizarTriagem(req.params.id, { problema_descricao: texto || null });
     if (!r.ok) return res.status(500).json(r);
     try {
       await cli().from(T_COM).insert([{
         defeito_id: req.params.id,
-        texto: 'Corrigiu a descricao do defeito para: ' + texto,
+        texto: texto
+          ? 'Corrigiu a descricao do defeito para: ' + texto
+          : 'Apagou a descricao do defeito',
         quem: req.usuario,
       }]);
     } catch (e) { /* a correcao principal ja foi */ }
