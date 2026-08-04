@@ -205,7 +205,7 @@
              e centraliza. -->
         <div class="links-defeitos">
           <a href="#" onclick="event.preventDefault();abrirBuscaDefeitos()">🔧 Defeitos</a>
-          <a href="#" onclick="event.preventDefault();abrirModalDefeito()">➕ Lançar defeito</a>
+          <a href="#" onclick="event.preventDefault();abrirModalDefeito()">➕ Lançar Defeito</a>
         </div>
         <div class="user-badge">
           👤 <span id="userNome">-</span>
@@ -241,11 +241,11 @@
            cima, os dois embaixo meio a meio) - era ali que estourava. -->
       <div class="linha-acao">
         <button type="button" onclick="abrirCameraScanner()" class="btn-bipar">
-          📷 Bipar com a câmera
+          📷 Bipar Com A Câmera
         </button>
         <button type="button" onclick="abrirOcrRemetente()" class="btn-apoio"
                 title="quando a etiqueta não tem código legível">
-          👤<br>ler nome
+          👤<br>Ler Nome
         </button>
       </div>
 
@@ -353,7 +353,7 @@
 
       <div class="modal-acoes" style="margin-top:14px;">
         <button type="button" onclick="fecharModalDefeito()" style="background:#999; color:#fff; border:none; border-radius:10px; padding:12px 20px; font-weight:700; cursor:pointer;">Cancelar</button>
-        <button type="button" id="defBtnSalvar" onclick="salvarDefeitoManual()" disabled style="background:#c62828; color:#fff; border:none; border-radius:10px; padding:12px 20px; font-weight:800; cursor:pointer; opacity:.5;">💾 Lançar defeito</button>
+        <button type="button" id="defBtnSalvar" onclick="salvarDefeitoManual()" disabled style="background:#c62828; color:#fff; border:none; border-radius:10px; padding:12px 20px; font-weight:800; cursor:pointer; opacity:.5;">💾 Lançar Defeito</button>
       </div>
     </div>
   </div>
@@ -733,23 +733,23 @@
        8. app       -> entry point (DOM refs, event listeners, init)
        ============================================================ -->
   <!-- adaptador de caminho: TEM que vir antes dos modulos -->
-  <script src="js-AMB/base-amb.js?v=b113"></script>
-  <script src="js-AMB/helpers.js?v=b113"></script>
-  <script src="js-AMB/auth.js?v=b113"></script>
-  <script src="js-AMB/scanner.js?v=b113"></script>
-  <script src="js-AMB/camera.js?v=b113"></script>
-  <script src="js-AMB/bipagem.js?v=b113"></script>
-  <script src="js-AMB/busca.js?v=b113"></script>
+  <script src="js-AMB/base-amb.js?v=b114"></script>
+  <script src="js-AMB/helpers.js?v=b114"></script>
+  <script src="js-AMB/auth.js?v=b114"></script>
+  <script src="js-AMB/scanner.js?v=b114"></script>
+  <script src="js-AMB/camera.js?v=b114"></script>
+  <script src="js-AMB/bipagem.js?v=b114"></script>
+  <script src="js-AMB/busca.js?v=b114"></script>
   <script src="https://cdn.jsdelivr.net/npm/qz-tray@2.2.4/qz-tray.js"></script>
-  <script src="js-AMB/etiqueta.js?v=b113"></script>
-  <script src="js-AMB/triagem.js?v=b113"></script>
+  <script src="js-AMB/etiqueta.js?v=b114"></script>
+  <script src="js-AMB/triagem.js?v=b114"></script>
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
-  <script src="js-AMB/ocr.js?v=b113"></script>
-  <script src="js-AMB/app.js?v=b113"></script>
+  <script src="js-AMB/ocr.js?v=b114"></script>
+  <script src="js-AMB/app.js?v=b114"></script>
   <!-- b96 - ciclo do estoque de defeitos (ficha, fotos, pedidos) -->
-  <script src="js-AMB/defeitos-ficha.js?v=b113"></script>
+  <script src="js-AMB/defeitos-ficha.js?v=b114"></script>
   <!-- b81 - colar/arrastar imagem da etiqueta na busca -->
-  <script src="js-AMB/colar-imagem.js?v=b113"></script>
+  <script src="js-AMB/colar-imagem.js?v=b114"></script>
 
   <!-- v3.96 - lancar produto com defeito (busca por parte do nome) -->
   <script>
@@ -834,7 +834,7 @@
             + (p.ean ? ' &middot; EAN ' + escDef(p.ean) : '') + '</div>'
             + '<button type="button" onclick="event.stopPropagation();escolherProdutoDefeito(' + i + ')" '
             + 'class="btn-escolher" style="margin-top:12px;background:#116B4E;color:#fff;border:none;border-radius:9px;padding:11px 20px;font-weight:700;font-size:14px;cursor:pointer;">'
-            + '&#10003; É este produto</button>'
+            + '&#10003; É Este Produto</button>'
             + '</div></div>';
         }
         window._defLista = lista;
@@ -959,8 +959,15 @@
         var d = await r.json();
         if (!d.ok) {
           msg.innerHTML = '<span style="color:#c62828;">' + escDef(d.erro || 'erro') + '</span>';
-          btn.disabled = false; btn.textContent = '\ud83d\udcbe Lancar defeito';
+          btn.disabled = false; btn.textContent = '\ud83d\udcbe Lançar Defeito';
           return;
+        }
+        // b114 - confirma NA TELA o que ficou gravado
+        if (d.gravado) {
+          msg.innerHTML = d.gravado.defeito
+            ? '<span style="color:#116B4E;">✅ Gravado: "' + escDef(d.gravado.defeito) + '"'
+              + (d.gravado.fotos ? ' · ' + d.gravado.fotos + ' foto(s)' : '') + '</span>'
+            : '<span style="color:#c62828;">⚠️ Salvou, mas a descrição do defeito NÃO foi gravada — me avise.</span>';
         }
         msg.innerHTML = '<span style="color:#2e7d32;">\u2705 Lancado!</span>';
         // oferece a etiqueta 10x15 (mesmo fluxo do problema na triagem)
@@ -974,7 +981,7 @@
         }, 600);
       } catch (e) {
         msg.innerHTML = '<span style="color:#c62828;">Erro de conexao.</span>';
-        btn.disabled = false; btn.textContent = '\ud83d\udcbe Lancar defeito';
+        btn.disabled = false; btn.textContent = '\ud83d\udcbe Lançar Defeito';
       }
     }
   </script>
