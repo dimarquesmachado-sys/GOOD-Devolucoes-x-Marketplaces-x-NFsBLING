@@ -2702,5 +2702,20 @@
   }
 })();
 </script>
+<script src="js-AMB/defeitos-ficha.js?v=b96"></script>
+<script>
+  // b96 - atalhos no painel: o mesmo card da triagem, sem sair da tela
+  (function () {
+    var barra = document.querySelector('.header-acoes') || document.querySelector('header');
+    if (!barra) return;
+    var a = document.createElement('a');
+    a.href = '#'; a.textContent = '🔧 Defeitos';
+    a.onclick = function (e) { e.preventDefault(); abrirBuscaDefeitos(); };
+    var b = document.createElement('a');
+    b.href = '#'; b.textContent = '📥 Pedidos';
+    b.onclick = function (e) { e.preventDefault(); abrirFilaPedidos(); };
+    barra.appendChild(a); barra.appendChild(b);
+  })();
+</script>
 </body>
 </html>
