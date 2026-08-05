@@ -4787,7 +4787,7 @@ registrarRotasAdminNF(app, {
 const registrarCicloDefeitos = require('./lib/defeitos-ciclo');
 registrarCicloDefeitos(app, {
   supabase, requerLogin, chamarBling, adminOk,
-  DEPOSITO_GERAL: process.env.GOOD_DEPOSITO_GERAL,
+  DEPOSITO_GERAL: process.env.GOOD_DEPOSITO_GERAL || '4956031259',   // v4.57 - Geral da GOOD
 });
 
 // v3.45 - rotas de impressao (QZ assinado + fila remota)
