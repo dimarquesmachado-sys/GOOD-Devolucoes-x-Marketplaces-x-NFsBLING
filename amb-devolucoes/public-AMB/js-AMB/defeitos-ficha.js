@@ -193,7 +193,7 @@
           + '<div style="flex:1;min-width:0;">'
           + '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">'
           + '<b style="font-size:13.5px;">📍 ' + esc(it.localizacao || 'sem local') + '</b>'
-          + '<span style="background:#3C3489;color:#fff;border-radius:6px;padding:3px 10px;font-size:13px;font-weight:800;letter-spacing:.3px;">Peça #' + esc(it.id) + '</span>'
+          + '<span style="background:#3C3489;color:#fff;border-radius:6px;padding:3px 10px;font-size:13px;font-weight:800;letter-spacing:.3px;">PEÇA #' + esc(it.id) + '</span>'
           + '<code style="background:#f2f2f7;border-radius:5px;padding:1px 7px;font-size:12px;">' + esc(sku) + '</code>'
           + selo
           + '<span style="margin-left:auto;background:#FBEAE8;color:#8C1D18;border-radius:11px;padding:1px 9px;font-size:11.5px;">'
@@ -314,7 +314,7 @@
         + '<b style="color:#8C1D18;">SAIU</b> ' + esc(capitalizar(p.peca))
         + (p.destino_defeito_id
             ? ' <a href="#" onclick="event.preventDefault();abrirFichaDefeito(\'' + esc(p.destino_defeito_id) + '\')" '
-              + 'style="color:#561A9E;font-size:11.5px;">→ foi para a peça #' + esc(p.destino_defeito_id) + '</a>'
+              + 'style="color:#561A9E;font-size:11.5px;">→ foi para a PEÇA #' + esc(p.destino_defeito_id) + '</a>'
             : (p.usada_em ? ' <span style="color:#777;font-size:11.5px;">→ ' + esc(p.usada_em) + '</span>' : ''))
         + ' <span style="color:#999;font-size:11.5px;">· ' + esc(p.quem || '-') + ' · ' + dataBr(p.criado_em) + '</span></div>';
     }).join('');
@@ -322,7 +322,7 @@
       return '<div style="background:#E1F5EE;border-left:3px solid #116B4E;border-radius:0 8px 8px 0;padding:8px 11px;font-size:13px;margin-bottom:5px;">'
         + '<b style="color:#0F6E56;">ENTROU</b> ' + esc(capitalizar(p.peca))
         + ' <a href="#" onclick="event.preventDefault();abrirFichaDefeito(\'' + esc(p.defeito_id) + '\')" '
-        + 'style="color:#561A9E;font-size:11.5px;">← veio da peça #' + esc(p.defeito_id) + '</a>'
+        + 'style="color:#561A9E;font-size:11.5px;">← veio da PEÇA #' + esc(p.defeito_id) + '</a>'
         + ' <span style="color:#999;font-size:11.5px;">· ' + esc(p.quem || '-') + ' · ' + dataBr(p.criado_em) + '</span></div>';
     }).join('');
     return h;
@@ -378,7 +378,7 @@
 
     // b121 - o numero da peca no titulo: e ele que voce ve no "foi para a
     // peca #4" e no dropdown, entao precisa estar visivel aqui tambem
-    var html = topo('📍 ' + esc(it.localizacao || 'sem local') + ' &nbsp;<span style="opacity:.75;font-weight:400;">peça #' + esc(it.id) + '</span>')
+    var html = topo('📍 ' + esc(it.localizacao || 'sem local') + ' &nbsp;<span style="opacity:.75;font-weight:400;">PEÇA #' + esc(it.id) + '</span>')
       + '<div style="padding:14px;">'
       + '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px;">'
       + '<code style="background:#f2f2f7;border-radius:5px;padding:2px 8px;font-size:13px;">' + esc(it.sku || '-') + '</code>'
@@ -503,7 +503,7 @@
             // distingue duas luminarias iguais na prateleira.
             var quando = x.criado_em ? new Date(x.criado_em).toLocaleDateString('pt-BR') : '';
             var laudoCurto = String(x.laudo || '').slice(0, 34);
-            return '<option value="' + esc(x.id) + '">Peça #' + esc(x.id)
+            return '<option value="' + esc(x.id) + '">PEÇA #' + esc(x.id)
               + ' · 📍 ' + esc(x.localizacao || '-')
               + (quando ? ' · ' + quando : '')
               + (laudoCurto ? ' · ' + esc(laudoCurto) : '')
@@ -674,7 +674,7 @@
             + '<label style="display:flex;gap:8px;align-items:center;cursor:pointer;">'
             + '<input type="checkbox" onchange="marcarDoador(this,\'' + esc(x.id) + '\')">'
             + '<span style="font-size:14.5px;"><b>📍 ' + esc(x.localizacao || '-') + '</b> '
-            + '<span style="background:#3C3489;color:#fff;border-radius:6px;padding:2px 9px;font-size:12px;font-weight:800;">Peça #' + esc(x.id) + '</span> · '
+            + '<span style="background:#3C3489;color:#fff;border-radius:6px;padding:2px 9px;font-size:12px;font-weight:800;">PEÇA #' + esc(x.id) + '</span> · '
             + esc(x.titulo || '')
             + (x.laudo ? ' <span style="color:#8C1D18;font-size:11.5px;">(' + esc(String(x.laudo).slice(0, 40)) + ')</span>' : '')
             + '</span></label>'
@@ -760,7 +760,17 @@
       concluido: '<span style="color:#555;">concluído</span>',
     }[p.status] || esc(p.status);
 
-    var h = '<div style="border:1px solid #eee;border-left:4px solid ' + cor + ';border-radius:9px;padding:11px;margin-bottom:8px;">'
+    // b131 - o NUMERO DA PECA em faixa azul no topo do pedido. Sem isso a
+    // fila virava uma lista de SKUs iguais e nao dava pra saber de qual
+    // luminaria era cada pedido.
+    var h = '<div style="border:1px solid #eee;border-left:4px solid ' + cor + ';border-radius:9px;overflow:hidden;margin-bottom:8px;">'
+      + (p.defeito_id
+          ? '<div onclick="abrirFichaDefeito(\'' + esc(p.defeito_id) + '\')" '
+            + 'style="background:#3C3489;color:#fff;padding:8px 12px;font-size:15px;font-weight:800;'
+            + 'letter-spacing:.4px;cursor:pointer;">PEÇA #' + esc(p.defeito_id)
+            + '<span style="float:right;font-weight:400;font-size:12px;opacity:.85;">abrir ficha →</span></div>'
+          : '')
+      + '<div style="padding:11px;">'
       + '<div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap;margin-bottom:5px;">' + selo
       + '<b style="font-size:13.5px;">' + esc(p.sku || '-') + '</b>'
       + '<span style="color:#888;font-size:11.5px;">' + esc(p.quem_pediu || '-') + ' · ' + dataBr(p.criado_em) + '</span>'
@@ -770,7 +780,7 @@
     var doa = Array.isArray(p.doadores) ? p.doadores : [];
     if (doa.length) {
       h += '<div style="font-size:12px;color:#666;margin-bottom:6px;">tirou: '
-        + doa.map(function (d) { return esc(d.peca) + ' (peça #' + esc(d.defeito_id) + ')'; }).join(' · ') + '</div>';
+        + doa.map(function (d) { return esc(d.peca) + ' (PEÇA #' + esc(d.defeito_id) + ')'; }).join(' · ') + '</div>';
     }
     if (comAcoes && p.status === 'pendente') {
       h += '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">';
@@ -785,7 +795,7 @@
     if (comAcoes && p.status === 'autorizado') {
       h += '<button onclick="decidirPedido(' + p.id + ',\'concluir\')" style="width:100%;margin-top:4px;border:1px solid #ddd;background:#fff;border-radius:8px;padding:9px;cursor:pointer;">Marcar Como Feito</button>';
     }
-    return h + '</div>';
+    return h + '</div></div>';
   }
 
   window.abrirFilaPedidos = async function (voltando) {
