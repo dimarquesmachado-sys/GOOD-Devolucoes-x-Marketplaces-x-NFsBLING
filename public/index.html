@@ -6,6 +6,36 @@
   <title>GOOD - Devolucoes Marketplaces</title>
   <link rel="stylesheet" href="styles.css?v=3276">
   <style>
+    /* v4.50 - o quadro do defeito abre inteiro; so a LISTA rola por dentro,
+       pra o titulo, a busca e os botoes ficarem sempre a vista */
+    .modal-defeito { max-height: 92vh; overflow-y: auto; }
+    #defResultados { max-height: 46vh; overflow-y: auto; }
+    .modal-defeito .input-group { position: sticky; top: 0; z-index: 4; background: #fff; padding-bottom: 8px; }
+    /* foto do produto: miniatura na lista, grande no escolhido */
+    .foto-produto-lista { width: 96px; height: 96px; flex: 0 0 auto; border-radius: 9px;
+      object-fit: contain; background: #fff; border: 1px solid #e4dcf1; }
+    .foto-produto-escolhido { width: 260px; height: 260px; flex: 0 0 auto; border-radius: 10px;
+      object-fit: contain; background: #fff; border: 1px solid #e4dcf1; }
+    .foto-produto-lista.vazia, .foto-produto-escolhido.vazia { display: flex; align-items: center;
+      justify-content: center; background: #f2f2f7; color: #bbb; }
+    .foto-produto-lista.vazia { font-size: 30px; }
+    .foto-produto-escolhido.vazia { font-size: 46px; }
+    #defResultados > div { padding: 9px 11px !important; gap: 12px !important; margin-bottom: 6px !important; }
+    #defResultados .btn-escolher { margin-top: 8px !important; padding: 8px 16px !important; font-size: 13px !important; }
+    /* o X dos popups */
+    .btn-x-popup { position: absolute; top: 10px; right: 12px; z-index: 5; width: 32px; height: 32px;
+      padding: 0; line-height: 1; background: #f0f0f2; color: #666; border: none; border-radius: 8px;
+      font-size: 16px; cursor: pointer; }
+    .btn-x-popup:hover { background: #e2e2e6; color: #222; }
+    @media (max-width: 700px) {
+      #defResultados { max-height: 40vh; }
+      #defEscolhido > div { flex-direction: column; }
+      .foto-produto-lista { width: 72px; height: 72px; }
+      .foto-produto-escolhido { width: 150px; height: 150px; }
+    }
+  </style>
+
+  <style>
     /* os 2 links do estoque de defeitos: a DIREITA no computador, igual
        o cracha do usuario (que e absolute, top/right). No celular o
        cracha vira estatico e centralizado, entao eles centralizam junto. */
@@ -52,18 +82,20 @@
       <p style="font-size: 10px; color: #888; margin-top: 4px;">v3.31 (OCR do remetente) | <span id="serverVersion">checando...</span></p>
       <div class="user-badge">
         👤 <span id="userNome">-</span>
-        <a href="/admin.html" id="btnPainelAdmin" style="display:none;background:#ffd700;color:#1d1d1f;padding:3px 10px;border-radius:10px;font-weight:700;margin-left:6px;">👑 Painel Admin</a>
+        <a href="/admin.html" id="btnPainelAdmin" style="display:none;background:#ffd700;color:#1d1d1f;padding:3px 10px;border-radius:10px;font-weight:700;margin-left:6px;">👑 Painel Admin<span id="avisoPainel"></span></a>
         <a href="#" onclick="fazerLogout(event)">sair</a>
       </div>
       <!-- ESTOQUE DE DEFEITOS logo abaixo da linha do usuario. O cabecalho
            e CENTRALIZADO (text-align:center), entao esta linha tambem
            centraliza - senao ela puxa tudo pra esquerda e desalinha. -->
       <div class="links-defeitos">
-        <a href="#" onclick="event.preventDefault();abrirLocalizacao('/defeitos.html')">
-          📍 Consultar localização
+        <!-- v4.50 - abre o CARD por cima (a pagina /defeitos.html era uma
+             tela separada, sem foto, sem historico e sem os pedidos) -->
+        <a href="#" id="linkDefeitos" onclick="event.preventDefault();abrirBuscaDefeitos()">
+          🔧 Defeitos<span id="avisoDefeitos"></span>
         </a>
         <a href="#" onclick="event.preventDefault();abrirModalDefeito()">
-          ➕ Lançar produto com defeito
+          ➕ Lançar Defeito
         </a>
       </div>
     </header>
@@ -134,7 +166,7 @@
 
   <!-- v3.96 - MODAL: lancar produto com defeito (busca por nome/SKU/EAN) -->
   <div class="modal-bg" id="modalDefeito">
-    <div class="modal" style="max-width: 560px;">
+    <div class="modal modal-defeito" style="max-width: 940px;">
       <h3>➕ Lançar produto com defeito</h3>
       <p style="font-size:13px; color:#666; margin-bottom:10px;">Busca por <b>parte do nome</b>, SKU ou EAN e escolhe o produto certo na lista.</p>
 
@@ -142,7 +174,7 @@
         <input type="text" id="defBusca" placeholder="Ex: arandela 60, KJDD-E-187, 7898..." style="flex:1; padding:11px; border:1px solid #ccc; border-radius:8px; font-size:15px;" onkeydown="if(event.key==='Enter'){event.preventDefault();buscarProdutoDefeito();}">
         <button type="button" onclick="buscarProdutoDefeito()" style="background:#1565c0; color:#fff; border:none; border-radius:8px; padding:11px 18px; font-weight:700; cursor:pointer;">🔍</button>
       </div>
-      <div id="defResultados" style="margin-top:10px; max-height:230px; overflow-y:auto;"></div>
+      <div id="defResultados" style="margin-top:10px;"></div>
 
       <div id="defEscolhido" style="display:none; margin-top:12px; background:#fff5f5; border:2px solid #ef9a9a; border-radius:10px; padding:12px;">
         <div style="display:flex; gap:10px; align-items:flex-start;">
@@ -565,6 +597,8 @@
   <script src="js/app.js?v=4400"></script>
   <!-- v4.34 - colar/arrastar imagem da etiqueta na busca -->
   <script src="js/colar-imagem.js?v=4400"></script>
+  <!-- v4.50 - ciclo do estoque de defeitos (ficha, pecas, pedidos) -->
+  <script src="js/defeitos-ficha.js?v=4500"></script>
 
   <!-- v3.96 - lancar produto com defeito (busca por parte do nome) -->
   <script>
@@ -770,6 +804,74 @@
       var m = document.getElementById('modalLocalizacao');
       if (m) m.classList.remove('show');
     }
+  </script>
+
+  <script>
+    // v4.50 - X em todo popup + avisos do ciclo de defeitos.
+    (function () {
+      function fecharPopup(btn) {
+        var bg = btn.closest('.modal-bg'); if (!bg) return;
+        var id = bg.id || '';
+        var proprias = { modalDefeito: 'fecharModalDefeito', modalLocalizacao: 'fecharLocalizacao' };
+        var nome = proprias[id] || ('fechar' + id.charAt(0).toUpperCase() + id.slice(1));
+        if (typeof window[nome] === 'function') { window[nome](); return; }
+        bg.classList.remove('show');
+      }
+      function montarX() {
+        var caixas = document.querySelectorAll('.modal-bg > .modal');
+        for (var i = 0; i < caixas.length; i++) {
+          var m = caixas[i];
+          if (m.querySelector('.btn-x-popup')) continue;
+          if (getComputedStyle(m).position === 'static') m.style.position = 'relative';
+          var b = document.createElement('button');
+          b.type = 'button'; b.className = 'btn-x-popup';
+          b.setAttribute('aria-label', 'fechar'); b.textContent = '\u2715';
+          b.onclick = function (e) { e.stopPropagation(); fecharPopup(this); };
+          m.appendChild(b);
+        }
+      }
+      if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', montarX);
+      else montarX();
+
+      // aviso do estoquista (pecas decididas) e do admin (pedidos esperando)
+      var CHAVE = 'good_defeitos_visto_em';
+      window.marcarDefeitosVistos = function () {
+        try { localStorage.setItem(CHAVE, new Date().toISOString()); } catch (e) {}
+        var b = document.getElementById('avisoDefeitos'); if (b) b.textContent = '';
+      };
+      function selo(el, n, titulo) {
+        if (!el) return;
+        if (n > 0) {
+          el.textContent = ' ' + n;
+          el.style.cssText = 'background:#FFD400;color:#412402;border-radius:11px;padding:1px 8px;'
+            + 'font-size:11.5px;font-weight:800;margin-left:6px;';
+          el.title = titulo;
+        } else { el.textContent = ''; }
+      }
+      async function conferir() {
+        try {
+          var visto = null;
+          try { visto = localStorage.getItem(CHAVE); } catch (e) {}
+          var r = await fetch('/api/defeitos/pedidos', { credentials: 'same-origin' });
+          var d = await r.json();
+          if (d && d.ok) {
+            var novos = (d.pedidos || []).filter(function (p) {
+              if (!p.decidido_em) return false;
+              if (p.status !== 'autorizado' && p.status !== 'recusado') return false;
+              return !visto || new Date(p.decidido_em) > new Date(visto);
+            });
+            selo(document.getElementById('avisoDefeitos'), novos.length, novos.length + ' peça(s) decidida(s) pelo admin');
+            var link = document.getElementById('btnPainelAdmin');
+            if (link && link.style.display !== 'none') {
+              var pend = (d.pedidos || []).filter(function (p) { return p.status === 'pendente'; });
+              selo(document.getElementById('avisoPainel'), pend.length, pend.length + ' pedido(s) esperando você');
+            }
+          }
+        } catch (e) {}
+        setTimeout(conferir, 60000);
+      }
+      setTimeout(conferir, 1500);
+    })();
   </script>
 </body>
 </html>
