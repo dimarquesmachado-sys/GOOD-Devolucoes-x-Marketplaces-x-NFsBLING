@@ -661,6 +661,12 @@
       + '<input id="boaSku" value="' + esc(sku || '') + '" placeholder="SKU do produto bom" style="flex:1;height:44px;padding:0 12px;border:1px solid #ddd;border-radius:8px;font-size:15px;">'
       + '<input id="boaQtd" type="number" min="1" value="1" style="width:76px;height:38px;padding:0 10px;border:1px solid #ddd;border-radius:8px;font-size:13px;">'
       + '</div>'
+      // b129 - conserto simples: nem sempre ele canibaliza outra peca
+      + '<label style="display:flex;gap:9px;align-items:center;background:#E6F1FB;border:1px solid #b8d4ef;'
+      + 'border-radius:9px;padding:11px 13px;margin-bottom:14px;cursor:pointer;font-size:14px;">'
+      + '<input type="checkbox" id="soConserto" onchange="alternarSoConserto()" style="width:18px;height:18px;">'
+      + '<span>Foi <b>só conserto</b> — não peguei peça de nenhuma outra</span></label>'
+      + '<div id="blocoDoadores">'
       + '<div style="font-size:12.5px;color:#666;letter-spacing:.4px;font-weight:700;margin-bottom:6px;">DE ONDE VIERAM AS PARTES</div>';
     html += itens.length
       ? itens.map(function (x) {
@@ -677,11 +683,19 @@
             + 'style="width:100%;height:42px;margin-top:8px;padding:0 12px;border:2px solid #7B3FC4;border-radius:8px;font-size:14px;display:none;"></div>';
         }).join('')
       : '<div style="font-size:12.5px;color:#999;">nenhuma outra peça com esse SKU no estoque de defeitos.</div>';
-    html += '<textarea id="boaObs" placeholder="observação (opcional)" style="width:100%;margin-top:12px;padding:9px;border:1px solid #ddd;border-radius:8px;font-size:13px;min-height:56px;"></textarea>'
+    html += '</div>'
+      + '<textarea id="boaObs" placeholder="observação (opcional)" style="width:100%;margin-top:12px;padding:9px;border:1px solid #ddd;border-radius:8px;font-size:13px;min-height:56px;"></textarea>'
       + '<div id="msgBoa" style="font-size:12.5px;color:#8C1D18;margin-top:8px;"></div>'
       + '<button onclick="enviarPedidoBoa(\'' + esc(id) + '\')" style="width:100%;margin-top:8px;background:#116B4E;color:#fff;border:none;border-radius:9px;padding:14px;font-weight:700;font-size:15px;cursor:pointer;">Enviar Pro Admin Lançar No Estoque</button>'
       + '</div>';
     abrir(html);
+  };
+
+  window.alternarSoConserto = function () {
+    var c = document.getElementById('soConserto');
+    var bloco = document.getElementById('blocoDoadores');
+    if (bloco) bloco.style.display = (c && c.checked) ? 'none' : '';
+    if (c && c.checked) selecionados = {};
   };
 
   window.marcarDoador = function (chk, id) {
@@ -698,9 +712,13 @@
     var doadores = Object.keys(selecionados).map(function (k) {
       return { defeito_id: k, peca: selecionados[k] };
     });
-    if (!doadores.length) { avisoEm('msgBoa', 'Marque de quais peças você tirou as partes.'); return; }
-    var vazio = doadores.filter(function (d) { return !d.peca; });
-    if (vazio.length) { avisoEm('msgBoa', 'Escreva o que você tirou de cada peça marcada.'); return; }
+    var c = document.getElementById('soConserto');
+    var soConserto = !!(c && c.checked);
+    if (!soConserto) {
+      if (!doadores.length) { avisoEm('msgBoa', 'Marque de quais peças você tirou as partes — ou marque "foi só conserto".'); return; }
+      var vazio = doadores.filter(function (d) { return !d.peca; });
+      if (vazio.length) { avisoEm('msgBoa', 'Escreva o que você tirou de cada peça marcada.'); return; }
+    }
     var r = await api('/api/defeitos/pedido', {
       method: 'POST',
       body: JSON.stringify({
@@ -708,7 +726,8 @@
         sku: (document.getElementById('boaSku') || {}).value || '',
         quantidade: (document.getElementById('boaQtd') || {}).value || 1,
         observacao: (document.getElementById('boaObs') || {}).value || '',
-        doadores: doadores,
+        doadores: soConserto ? [] : doadores,
+        sem_doadores: soConserto,
       }),
     });
     if (!r.ok) { avisoEm('msgBoa', r.erro || 'não consegui enviar'); return; }
