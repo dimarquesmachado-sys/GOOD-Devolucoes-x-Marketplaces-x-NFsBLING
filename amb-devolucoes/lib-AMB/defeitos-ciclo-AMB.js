@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════════════════════════════════
-//  amb-devolucoes · lib/defeitos-ciclo  (AMB Devol. b133)
+//  amb-devolucoes · lib/defeitos-ciclo  (AMB Devol. b134)
 //  ------------------------------------------------------------------
 //  O CICLO DA PECA COM DEFEITO, do jeito que o Diego descreveu:
 //
@@ -74,7 +74,11 @@ module.exports = function registrarCicloDefeitos(router, deps) {
         produto_id: prod.id,
         deposito,
         quantidade: Number(quantidade) || 1,
-        link: 'https://www.bling.com.br/produtos.php#list/' + prod.id,
+        // b134 - URLs confirmadas pelo Diego:
+        //   produto (edicao) : produtos.php#edit/{id}
+        //   estoque do produto: estoque.php?buscaid={id}   <- e o que interessa
+        link: 'https://www.bling.com.br/estoque.php?buscaid=' + prod.id,
+        link_produto: 'https://www.bling.com.br/produtos.php#edit/' + prod.id,
       };
     } catch (e) {
       return { ok: false, erro: String(e.message || e) };
@@ -606,6 +610,14 @@ module.exports = function registrarCicloDefeitos(router, deps) {
           observacao: 'Peca #' + pedido.defeito_id + ' recuperada - liberada por ' + req.usuario,
         });
         pedido.estoque_bling = est;
+        if (est.ok && est.produto_id) {
+          try {
+            await dbc.from(T_PED)
+              .update({ estoque_produto_id: est.produto_id })
+              .eq('id', req.params.id);
+            pedido.estoque_produto_id = est.produto_id;
+          } catch (e) { /* o link some, o lancamento fica */ }
+        }
         try {
           await dbc.from(T_COM).insert([{
             defeito_id: pedido.defeito_id,
