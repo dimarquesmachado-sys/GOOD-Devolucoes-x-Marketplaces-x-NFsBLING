@@ -724,6 +724,8 @@
       body: JSON.stringify({
         tipo: 'recuperado', defeito_id: id,
         sku: (document.getElementById('boaSku') || {}).value || '',
+        titulo: (fichaAberta && fichaAberta.item && fichaAberta.item.titulo) || null,
+        localizacao: (fichaAberta && fichaAberta.item && fichaAberta.item.localizacao) || null,
         quantidade: (document.getElementById('boaQtd') || {}).value || 1,
         observacao: (document.getElementById('boaObs') || {}).value || '',
         doadores: soConserto ? [] : doadores,
@@ -740,7 +742,11 @@
       if (txt.length < 3) { aviso('escreva por que ela não serve mais'); return; }
       var r = await api('/api/defeitos/pedido', {
         method: 'POST',
-        body: JSON.stringify({ tipo: 'descarte', defeito_id: id, sku: sku, observacao: txt }),
+        body: JSON.stringify({
+        tipo: 'descarte', defeito_id: id, sku: sku, observacao: txt,
+        titulo: (fichaAberta && fichaAberta.item && fichaAberta.item.titulo) || null,
+        localizacao: (fichaAberta && fichaAberta.item && fichaAberta.item.localizacao) || null,
+      }),
       });
       if (!r.ok) { aviso(r.erro || 'não consegui enviar'); return; }
       abrirFichaDefeito(id);
@@ -775,6 +781,15 @@
       + '<b style="font-size:13.5px;">' + esc(p.sku || '-') + '</b>'
       + '<span style="color:#888;font-size:11.5px;">' + esc(p.quem_pediu || '-') + ' · ' + dataBr(p.criado_em) + '</span>'
       + '<span style="margin-left:auto;font-size:12px;">' + estado + '</span></div>'
+      + (p.titulo
+          ? '<div style="font-size:14px;font-weight:600;margin:2px 0 6px;">' + esc(p.titulo) + '</div>'
+          : '')
+      + (p.localizacao ? '<div style="font-size:12px;color:#777;margin-bottom:5px;">📍 ' + esc(p.localizacao) + '</div>' : '')
+      + (p.estoque_qtd
+          ? '<div style="font-size:12.5px;color:#0F6E56;margin-bottom:5px;">📦 ' + esc(p.estoque_qtd)
+            + ' un. lançadas no Bling · <a href="https://www.bling.com.br/produtos.php#list" target="_blank" '
+            + 'style="color:#561A9E;">conferir no Bling</a></div>'
+          : '')
       + (p.observacao ? '<div style="font-size:12.5px;color:#555;margin-bottom:6px;">' + esc(p.observacao) + '</div>' : '');
 
     var doa = Array.isArray(p.doadores) ? p.doadores : [];
@@ -785,8 +800,14 @@
     if (comAcoes && p.status === 'pendente') {
       h += '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">';
       if (p.tipo === 'recuperado') {
-        h += '<input id="q_' + p.id + '" type="number" min="1" value="' + esc(p.quantidade || 1) + '" style="width:64px;height:34px;padding:0 8px;border:1px solid #ddd;border-radius:8px;">'
-          + '<button onclick="decidirPedido(' + p.id + ',\'autorizar\')" style="flex:1;background:#116B4E;color:#fff;border:none;border-radius:8px;padding:9px;cursor:pointer;font-weight:600;">Lançar No Estoque</button>';
+        // b132 - o nome antigo ("Lançar No Estoque") dava a entender que o
+        // sistema lancava sozinho no Bling. NAO lanca: ele registra a
+        // liberacao, fecha a peca e some da lista do estoquista. A entrada
+        // no Bling continua sendo feita por voce, la.
+        h += '<div style="width:100%;font-size:11.5px;color:#777;margin-bottom:5px;">'
+          + 'Quantas unidades boas saíram desta peça — vão entrar no depósito <b>Geral</b> do Bling:</div>'
+          + '<input id="q_' + p.id + '" type="number" min="1" value="' + esc(p.quantidade || 1) + '" style="width:64px;height:34px;padding:0 8px;border:1px solid #ddd;border-radius:8px;">'
+          + '<button onclick="decidirPedido(' + p.id + ',\'autorizar\')" style="flex:1;background:#116B4E;color:#fff;border:none;border-radius:8px;padding:9px;cursor:pointer;font-weight:600;">📦 Lançar Estoque no Bling</button>';
       } else {
         h += '<button onclick="decidirPedido(' + p.id + ',\'autorizar\')" style="flex:1;background:#9E1A1A;color:#fff;border:none;border-radius:8px;padding:9px;cursor:pointer;font-weight:600;">Autorizar Descarte</button>';
       }
@@ -818,6 +839,19 @@
       body: JSON.stringify({ acao: acao, quantidade: q ? q.value : undefined }),
     });
     if (!r.ok) { alert(r.erro || 'não consegui'); return; }
+
+    // b133 - o lancamento no Bling pode falhar sem invalidar a liberacao.
+    // Aviso na hora, com o link pra conferir - ou pra lancar a mao.
+    var est = r.pedido && r.pedido.estoque_bling;
+    if (est) {
+      if (est.ok) {
+        alert('Liberado e lançado no Bling: ' + est.quantidade + ' un. no depósito Geral.');
+        if (est.link) window.open(est.link, '_blank');
+      } else {
+        alert('Peça liberada, MAS o Bling não aceitou o lançamento:\n' + (est.erro || '')
+          + '\n\nLance a entrada à mão no Bling. Ficou anotado no histórico da peça.');
+      }
+    }
     abrirFilaPedidos();
   };
 
