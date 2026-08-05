@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════════════════════════════════
-//  amb-devolucoes · lib/defeitos-ciclo  (AMB Devol. b129)
+//  amb-devolucoes · lib/defeitos-ciclo  (AMB Devol. b133)
 //  ------------------------------------------------------------------
 //  O CICLO DA PECA COM DEFEITO, do jeito que o Diego descreveu:
 //
@@ -21,7 +21,7 @@
 'use strict';
 
 module.exports = function registrarCicloDefeitos(router, deps) {
-  const { auth, db, bling } = deps;
+  const { auth, db, bling, cfg } = deps;
 
   // as tabelas novas ficam aqui, nao no supabase-AMB, pra este modulo ser
   // autocontido (o supabase-AMB nao precisa mudar)
@@ -33,6 +33,52 @@ module.exports = function registrarCicloDefeitos(router, deps) {
 
   function erroSemBanco(res) {
     return res.status(503).json({ ok: false, erro: 'Supabase nao configurado' });
+  }
+
+  /**
+   * b133 - ENTRADA DE ESTOQUE NO BLING, no deposito GERAL.
+   * A peca foi consertada: volta a ser vendavel, entao vai pro Geral e
+   * fica a venda de novo. Antes o botao so registrava a liberacao e o
+   * Diego lancava a mao.
+   *
+   * O endpoint /estoques quer o ID do produto (nao o codigo), entao
+   * primeiro resolvo o SKU -> id. Se qualquer passo falhar, a LIBERACAO
+   * NAO E DESFEITA: a peca ja saiu do galpao, e travar isso por um erro
+   * de API deixaria o estoquista parado. O erro volta escrito pra ele
+   * lancar a mao e saber que precisa.
+   */
+  async function entradaNoEstoque({ sku, quantidade, observacao }) {
+    if (!bling || !bling.chamarBling) return { ok: false, erro: 'Bling nao disponivel' };
+    const deposito = (cfg && cfg.depositos && cfg.depositos.geral)
+      || process.env.AMB_DEPOSITO_GERAL || '14888917703';   // Geral da AMBTotal
+    try {
+      const rP = await bling.chamarBling('/produtos?codigo=' + encodeURIComponent(sku) + '&limite=3');
+      const lista = (rP.ok && rP.data && rP.data.data) || [];
+      const prod = lista.find(x => String(x.codigo || '').toUpperCase() === String(sku).toUpperCase())
+        || lista[0] || null;
+      if (!prod || !prod.id) return { ok: false, erro: 'produto ' + sku + ' nao encontrado no Bling' };
+
+      const r = await bling.chamarBling('/estoques', {
+        method: 'POST',
+        body: JSON.stringify({
+          produto: { id: prod.id },
+          deposito: { id: Number(deposito) },
+          operacao: 'E',                       // E = entrada
+          quantidade: Number(quantidade) || 1,
+          observacoes: String(observacao || 'Peca recuperada do estoque de defeitos').slice(0, 200),
+        }),
+      });
+      if (!r.ok) return { ok: false, erro: 'Bling recusou o lancamento', detalhe: r.data || null };
+      return {
+        ok: true,
+        produto_id: prod.id,
+        deposito,
+        quantidade: Number(quantidade) || 1,
+        link: 'https://www.bling.com.br/produtos.php#list/' + prod.id,
+      };
+    } catch (e) {
+      return { ok: false, erro: String(e.message || e) };
+    }
   }
 
   /**
@@ -476,6 +522,28 @@ module.exports = function registrarCicloDefeitos(router, deps) {
       const r = await q;
       if (r.error) throw new Error(r.error.message);
       const lista = r.data || [];
+
+      // b132 - junta o TITULO e o LOCAL da peca em cada pedido. A fila
+      // mostrava so o SKU, e com varias luminarias iguais isso nao
+      // identificava nada. Busco pelos defeito_id de uma vez so - e assim
+      // os pedidos ANTIGOS (gravados sem titulo) tambem passam a mostrar.
+      const ids = Array.from(new Set(lista.map(p => p.defeito_id).filter(Boolean)));
+      if (ids.length) {
+        try {
+          const rt = await dbc.from(db.tabelas.devolucoes)
+            .select('id, produto_titulo, localizacao, produto_sku').in('id', ids);
+          const porId = {};
+          for (const x of (rt.data || [])) porId[x.id] = x;
+          for (const p of lista) {
+            const info = porId[p.defeito_id];
+            if (!info) continue;
+            p.titulo = p.titulo || info.produto_titulo || null;
+            p.localizacao = p.localizacao || info.localizacao || null;
+            p.sku = p.sku || info.produto_sku || null;
+          }
+        } catch (e) { /* sem o titulo a fila ainda funciona */ }
+      }
+
       res.json({
         ok: true,
         pedidos: lista,
@@ -530,6 +598,25 @@ module.exports = function registrarCicloDefeitos(router, deps) {
       // Marco o tipo, que e o que a lista usa pra esconder, e escrevo o
       // estado em caixa alta pra quem abrir a ficha entender na hora.
       // ═══════════════════════════════════════════════════════════════
+      // b133 - autorizou uma RECUPERADA: lanca a entrada no Bling
+      if (pedido && acao === 'autorizar' && pedido.tipo === 'recuperado') {
+        const est = await entradaNoEstoque({
+          sku: campos.estoque_sku || pedido.sku,
+          quantidade: campos.estoque_qtd || pedido.quantidade || 1,
+          observacao: 'Peca #' + pedido.defeito_id + ' recuperada - liberada por ' + req.usuario,
+        });
+        pedido.estoque_bling = est;
+        try {
+          await dbc.from(T_COM).insert([{
+            defeito_id: pedido.defeito_id,
+            texto: est.ok
+              ? 'Entrada no Bling: ' + est.quantidade + ' un. no deposito Geral'
+              : 'NAO consegui lancar no Bling (' + est.erro + ') - lance a mao',
+            quem: req.usuario,
+          }]);
+        } catch (e) {}
+      }
+
       if (pedido && pedido.defeito_id && acao === 'autorizar') {
         const quando = new Date().toLocaleDateString('pt-BR');
         const recuperada = pedido.tipo === 'recuperado';
