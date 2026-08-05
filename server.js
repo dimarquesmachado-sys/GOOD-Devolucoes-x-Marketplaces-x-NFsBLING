@@ -3013,44 +3013,81 @@ const FORMATO_CACHE = new Map();
  * e no maximo dos primeiros 12 - o resto passa (melhor mostrar um kit
  * raro do que fazer 30 chamadas e a busca demorar).
  */
-async function tirarKits(lista) {
+async function tirarKits(lista, diag) {
   const saida = [];
   let consultados = 0;
   for (const item of lista) {
     const id = item.id;
     if (!id) { saida.push(item); continue; }
+
+    // v4.55 - a LISTAGEM as vezes ja denuncia o kit; se denunciar, nem
+    // precisa consultar o detalhe
     let fmt = FORMATO_CACHE.get(id);
+    if (fmt === undefined) {
+      const fmtLista = String(item.formato || '').toUpperCase();
+      const compLista = (item.estrutura && Array.isArray(item.estrutura.componentes))
+        ? item.estrutura.componentes.length : 0;
+      if (fmtLista === 'E' || compLista > 0) { fmt = 'E'; FORMATO_CACHE.set(id, 'E'); }
+    }
+
+    let det = null;
     if (fmt === undefined && consultados < 12) {
       consultados++;
+      // ═══════════════════════════════════════════════════════════════
+      // v4.55 - O CALCULO FICA SOZINHO NO SEU PROPRIO try.
+      // Na versao anterior o codigo da FOTO morava dentro deste mesmo
+      // bloco, e o catch fazia `fmt = 'S'`. Bastava qualquer erro depois
+      // do calculo pra o 'E' ja apurado virar 'S' - e o kit voltava pra
+      // lista. Agora nada que venha depois consegue mexer no veredito.
+      // ═══════════════════════════════════════════════════════════════
       try {
         const rD = await chamarBling(`https://api.bling.com.br/Api/v3/produtos/${id}`);
-        const det = (rD.ok && rD.data && rD.data.data) || null;
-        const comp = det && det.estrutura && Array.isArray(det.estrutura.componentes)
-          ? det.estrutura.componentes.length : 0;
-        fmt = comp > 0 ? 'E' : String((det && det.formato) || 'S').toUpperCase();
-        FORMATO_CACHE.set(id, fmt);
-        // v4.54 - APROVEITA O MESMO DETALHE PRA PEGAR A FOTO.
-        // Esta conferencia passou a consumir chamadas ao Bling, e o limite
-        // por segundo derrubava as chamadas seguintes - as da FOTO. Como o
-        // detalhe ja veio e e nele que a imagem mora, pego aqui: a tela
-        // deixa de precisar pedir de novo, e some o gargalo.
-        if (det && !item.imagem) {
-          const img = imagemDoProduto(det);
-          if (img) {
-            item.imagem = img;
-            if (item.sku) IMG_POR_SKU.set(String(item.sku).toUpperCase(), img);
-          }
+        det = (rD.ok && rD.data && rD.data.data) || null;
+        if (det) {
+          const comp = (det.estrutura && Array.isArray(det.estrutura.componentes))
+            ? det.estrutura.componentes.length : 0;
+          fmt = comp > 0 ? 'E' : String(det.formato || 'S').toUpperCase();
+          FORMATO_CACHE.set(id, fmt);      // so cacheia o que foi APURADO
         }
-      } catch (e) { fmt = 'S'; }
+        if (diag) {
+          diag.push({
+            sku: item.sku, id,
+            bling_ok: !!det,
+            formato: det ? (det.formato || null) : null,
+            componentes: det && det.estrutura && Array.isArray(det.estrutura.componentes)
+              ? det.estrutura.componentes.length : null,
+            veredito: fmt || 'indefinido',
+          });
+        }
+      } catch (e) {
+        if (diag) diag.push({ sku: item.sku, id, erro: String(e.message || e) });
+      }
       await new Promise(r => setTimeout(r, 120));
     }
-    if (fmt === 'E') continue;          // kit/composicao: fora
+
+    // a foto vem do mesmo detalhe, mas em bloco separado: se falhar aqui,
+    // o veredito de kit continua de pe
+    try {
+      if (det && !item.imagem) {
+        const img = imagemDoProduto(det);
+        if (img) {
+          item.imagem = img;
+          if (item.sku) IMG_POR_SKU.set(String(item.sku).toUpperCase(), img);
+        }
+      }
+    } catch (e) { /* sem foto nao muda o veredito */ }
+
+    if (fmt === 'E') continue;          // kit/composicao: fora da lista
     saida.push(item);
   }
   return saida;
 }
 
 app.get('/api/produtos/buscar', requerEstoquista, async (req, res) => {
+  // v4.55 - ?debugkit=1 mostra o que o Bling respondeu sobre cada produto
+  // (formato, quantos componentes, veredito). Serve pra descobrir POR QUE
+  // um kit passou, em vez de ficar no chute.
+  const _diagKit = req.query.debugkit ? [] : null;
   const q = String(req.query.q || '').trim();
   if (q.length < 2) return res.json({ ok: true, produtos: [] });
   const alvo = normProd(q);
@@ -3104,7 +3141,7 @@ app.get('/api/produtos/buscar', requerEstoquista, async (req, res) => {
         }
       }
       if (out.length > 0) {
-        return res.json({ ok: true, produtos: (await tirarKits(out)).slice(0, 30), via: 'ean_bling' });
+        return res.json({ ok: true, produtos: (await tirarKits(out, _diagKit)).slice(0, 30), diag_kit: _diagKit || undefined, via: 'ean_bling' });
       }
 
       // v4.02 - o filtro de EAN do Bling nao e confiavel (documentado no
@@ -3117,7 +3154,7 @@ app.get('/api/produtos/buscar', requerEstoquista, async (req, res) => {
         if (out.length >= 10) break;
       }
       if (out.length > 0) {
-        return res.json({ ok: true, produtos: (await tirarKits(out)).slice(0, 30), via: 'ean_indice' });
+        return res.json({ ok: true, produtos: (await tirarKits(out, _diagKit)).slice(0, 30), diag_kit: _diagKit || undefined, via: 'ean_indice' });
       }
       // ainda montando o catalogo? avisa em vez de dizer que nao existe
       if (IDX_PROD.construindo || !IDX_PROD.ts) {
@@ -3155,7 +3192,8 @@ app.get('/api/produtos/buscar', requerEstoquista, async (req, res) => {
     }
     return res.json({
       ok: true,
-      produtos: (await tirarKits(out)).slice(0, 30),
+      produtos: (await tirarKits(out, _diagKit)).slice(0, 30),
+      diag_kit: _diagKit || undefined,
       dica: (out.length === 0 && /^\d{8,14}$/.test(q))
         ? 'O Bling nao devolveu esse EAN na busca. Tenta pelo SKU ou por parte do nome do produto.'
         : null,
