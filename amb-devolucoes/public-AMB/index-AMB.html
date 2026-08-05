@@ -209,7 +209,7 @@
         </div>
         <div class="user-badge">
           👤 <span id="userNome">-</span>
-          <a href="/amb/painel" id="btnPainelAdmin" style="display:none;">👑 Painel</a>
+          <a href="/amb/painel" id="btnPainelAdmin" style="display:none;">👑 Painel<span id="avisoPainel"></span></a>
           <a href="#" onclick="fazerLogout(event)">sair</a>
         </div>
         <!-- b93 - no CELULAR o cracha e os links viram este menu, pra a
@@ -733,23 +733,23 @@
        8. app       -> entry point (DOM refs, event listeners, init)
        ============================================================ -->
   <!-- adaptador de caminho: TEM que vir antes dos modulos -->
-  <script src="js-AMB/base-amb.js?v=b128"></script>
-  <script src="js-AMB/helpers.js?v=b128"></script>
-  <script src="js-AMB/auth.js?v=b128"></script>
-  <script src="js-AMB/scanner.js?v=b128"></script>
-  <script src="js-AMB/camera.js?v=b128"></script>
-  <script src="js-AMB/bipagem.js?v=b128"></script>
-  <script src="js-AMB/busca.js?v=b128"></script>
+  <script src="js-AMB/base-amb.js?v=b129"></script>
+  <script src="js-AMB/helpers.js?v=b129"></script>
+  <script src="js-AMB/auth.js?v=b129"></script>
+  <script src="js-AMB/scanner.js?v=b129"></script>
+  <script src="js-AMB/camera.js?v=b129"></script>
+  <script src="js-AMB/bipagem.js?v=b129"></script>
+  <script src="js-AMB/busca.js?v=b129"></script>
   <script src="https://cdn.jsdelivr.net/npm/qz-tray@2.2.4/qz-tray.js"></script>
-  <script src="js-AMB/etiqueta.js?v=b128"></script>
-  <script src="js-AMB/triagem.js?v=b128"></script>
+  <script src="js-AMB/etiqueta.js?v=b129"></script>
+  <script src="js-AMB/triagem.js?v=b129"></script>
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
-  <script src="js-AMB/ocr.js?v=b128"></script>
-  <script src="js-AMB/app.js?v=b128"></script>
+  <script src="js-AMB/ocr.js?v=b129"></script>
+  <script src="js-AMB/app.js?v=b129"></script>
   <!-- b96 - ciclo do estoque de defeitos (ficha, fotos, pedidos) -->
-  <script src="js-AMB/defeitos-ficha.js?v=b128"></script>
+  <script src="js-AMB/defeitos-ficha.js?v=b129"></script>
   <!-- b81 - colar/arrastar imagem da etiqueta na busca -->
-  <script src="js-AMB/colar-imagem.js?v=b128"></script>
+  <script src="js-AMB/colar-imagem.js?v=b129"></script>
 
   <!-- v3.96 - lancar produto com defeito (busca por parte do nome) -->
   <script>
@@ -1113,6 +1113,26 @@
         if (b) b.textContent = '';
       };
 
+      // b129 - o ADMIN tambem precisa ver de longe que ha coisa esperando.
+      // O contador ja existia dentro do painel, mas so aparecia pra quem
+      // abrisse o painel. Aqui ele aparece no proprio link.
+      async function conferirAdmin(pedidos) {
+        var b = document.getElementById('avisoPainel');
+        var link = document.getElementById('btnPainelAdmin');
+        if (!b || !link || link.style.display === 'none') return;
+        var pend = (pedidos || []).filter(function (p) { return p.status === 'pendente'; });
+        if (pend.length) {
+          b.textContent = ' ' + pend.length;
+          b.style.cssText = 'background:#FFD400;color:#412402;border-radius:11px;padding:1px 8px;'
+            + 'font-size:11.5px;font-weight:800;margin-left:6px;';
+          b.title = pend.length + ' pedido(s) do galpão esperando você';
+          link.style.boxShadow = '0 0 0 3px rgba(255,212,0,.5)';
+        } else {
+          b.textContent = '';
+          link.style.boxShadow = 'none';
+        }
+      }
+
       async function conferir() {
         try {
           var visto = null;
@@ -1125,6 +1145,7 @@
             if (p.status !== 'autorizado' && p.status !== 'recusado') return false;
             return !visto || new Date(p.decidido_em) > new Date(visto);
           });
+          conferirAdmin(d.pedidos || []);
           var b = document.getElementById('avisoDefeitos');
           if (!b) return;
           if (novos.length) {
