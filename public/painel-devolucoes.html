@@ -216,7 +216,11 @@
       </div>
       <div class="header-acoes">
         <a href="/admin/relatorios.html" class="destaque">📊 Relatórios</a>
-        <a href="/defeitos.html" style="background:#c62828;color:#fff;">🔧 Defeitos</a>
+        <!-- v4.50 - abre o CARD por cima, igual na triagem. A pagina
+             /defeitos.html era uma tela separada, sem foto, sem historico
+             e sem os pedidos do galpao. -->
+        <a href="#" onclick="event.preventDefault();abrirBuscaDefeitos()" style="background:#c62828;color:#fff;">🔧 Defeitos</a>
+        <a href="#" id="linkPedidos" onclick="event.preventDefault();abrirFilaPedidos()" style="background:#0F6E56;color:#fff;">📥 Pedidos<span id="badgePedidos"></span></a>
         <a href="/">📦 Triagem (bipar)</a>
         <a href="#" onclick="logout(event)">🚪 Sair</a>
       </div>
@@ -2594,5 +2598,27 @@
     setarDatasPadrao();
     carregar();
   </script>
+<script src="js/defeitos-ficha.js?v=4500"></script>
+<script>
+  // v4.50 - AVISO de pedidos esperando. Sem isso o admin so descobre que
+  // tem coisa pra autorizar se abrir a fila por acaso.
+  (async function verPendentes() {
+    try {
+      var r = await fetch('/api/defeitos/pedidos?status=pendente', { credentials: 'same-origin' });
+      var d = await r.json();
+      var n = (d && d.pedidos && d.pedidos.length) || 0;
+      var b = document.getElementById('badgePedidos');
+      var a = document.getElementById('linkPedidos');
+      if (!b || !a) return;
+      if (n > 0) {
+        b.textContent = ' ' + n;
+        b.style.cssText = 'background:#FFD400;color:#412402;border-radius:11px;padding:1px 8px;'
+          + 'font-size:11.5px;font-weight:800;margin-left:6px;';
+        a.style.boxShadow = '0 0 0 3px rgba(255,212,0,.5)';
+      } else { b.textContent = ''; a.style.boxShadow = 'none'; }
+    } catch (e) {}
+    setTimeout(verPendentes, 60000);
+  })();
+</script>
 </body>
 </html>
