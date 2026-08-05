@@ -516,6 +516,34 @@ function montar(router, deps) {
     }
     const prod = await bling.buscarProdutoPorSku(String(sku));
     const exato = prod.ok ? prod.exato : null;
+
+    // b137 - MESMA TRAVA DE KIT DA GOOD. O filtro da busca e conveniencia;
+    // aqui e o ponto que nao depende do estoquista reparar na tela.
+    if (exato && exato.id) {
+      try {
+        const rDet = await bling.chamarBling('/produtos/' + exato.id);
+        const det = (rDet.ok && rDet.data && rDet.data.data) || null;
+        const comps = (det && det.estrutura && Array.isArray(det.estrutura.componentes))
+          ? det.estrutura.componentes : [];
+        const ehKit = comps.length > 0 || String((det && det.formato) || '').toUpperCase() === 'E';
+        if (ehKit) {
+          const sugestoes = comps.map(c => {
+            const p2 = c && c.produto;
+            const cod = (p2 && (p2.codigo || p2.sku)) || '';
+            const q = c && (c.quantidade || c.qtd);
+            return cod ? (q ? q + 'x ' + cod : cod) : null;
+          }).filter(Boolean);
+          return res.status(400).json({
+            ok: false,
+            erro: '"' + (exato.codigo || sku) + '" e um KIT, nao um produto simples.'
+              + (sugestoes.length ? ' Ele e composto por ' + sugestoes.join(' + ') + '.' : '')
+              + ' Lance o defeito no produto simples - e ele que existe na prateleira,'
+              + ' no estoque e na nota fiscal.',
+            kit: true, componentes: sugestoes,
+          });
+        }
+      } catch (e) { /* Bling fora do ar nao pode travar o galpao */ }
+    }
     // b113 - FOTOS TAMBEM NO LANCAMENTO. Antes so a triagem do pacote
     // gerava foto, e a peca lancada a mao ficava sem prova nenhuma do
     // estado dela. Elas vao pra mesma coluna (problema_fotos), entao a
