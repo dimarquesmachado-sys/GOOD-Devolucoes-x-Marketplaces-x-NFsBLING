@@ -787,8 +787,12 @@
       + (p.localizacao ? '<div style="font-size:12px;color:#777;margin-bottom:5px;">📍 ' + esc(p.localizacao) + '</div>' : '')
       + (p.estoque_qtd
           ? '<div style="font-size:12.5px;color:#0F6E56;margin-bottom:5px;">📦 ' + esc(p.estoque_qtd)
-            + ' un. lançadas no Bling · <a href="https://www.bling.com.br/produtos.php#list" target="_blank" '
-            + 'style="color:#561A9E;">conferir no Bling</a></div>'
+            + ' un. lançadas no Bling'
+            + (p.estoque_produto_id
+                ? ' · <a href="https://www.bling.com.br/estoque.php?buscaid=' + esc(p.estoque_produto_id)
+                  + '" target="_blank" style="color:#561A9E;font-weight:600;">conferir a entrada no Bling ↗</a>'
+                : '')
+            + '</div>'
           : '')
       + (p.observacao ? '<div style="font-size:12.5px;color:#555;margin-bottom:6px;">' + esc(p.observacao) + '</div>' : '');
 
