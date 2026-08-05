@@ -2824,6 +2824,26 @@ const EAN_POR_SKU = new Map();
 // imagemURL, linkImagem, imagens[], midia.imagens.internas[], anexos[]...).
 // Varremos o objeto atras da primeira URL que pareca imagem.
 const IMG_POR_SKU = new Map();
+/**
+ * v4.54 - IMAGEM DO PRODUTO sem exigir extensao na URL.
+ * O extrairImagem abaixo so aceita link terminado em .jpg/.png/etc - e as
+ * fotos do catalogo vem do Google Drive (lh3.googleusercontent.com/d/ID),
+ * que NAO tem extensao. Resultado: a foto existia e era descartada.
+ * Esta funcao le os lugares certos do Bling, na ordem, sem esse filtro -
+ * e a mesma logica que ja funciona no checkout offline.
+ */
+function imagemDoProduto(prod) {
+  if (!prod) return null;
+  if (prod.imagemURL) return prod.imagemURL;
+  const im = prod.midia && prod.midia.imagens;
+  if (im) {
+    if (im.externas && im.externas[0] && im.externas[0].link) return im.externas[0].link;
+    if (im.imagensURL && im.imagensURL[0]) return im.imagensURL[0].link || im.imagensURL[0];
+    if (im.internas && im.internas[0] && im.internas[0].link) return im.internas[0].link;
+  }
+  return extrairImagem(prod);   // ultimo recurso: a varredura antiga
+}
+
 function extrairImagem(obj, prof = 0) {
   if (!obj || prof > 6) return null;
   if (typeof obj === 'string') {
@@ -3009,6 +3029,18 @@ async function tirarKits(lista) {
           ? det.estrutura.componentes.length : 0;
         fmt = comp > 0 ? 'E' : String((det && det.formato) || 'S').toUpperCase();
         FORMATO_CACHE.set(id, fmt);
+        // v4.54 - APROVEITA O MESMO DETALHE PRA PEGAR A FOTO.
+        // Esta conferencia passou a consumir chamadas ao Bling, e o limite
+        // por segundo derrubava as chamadas seguintes - as da FOTO. Como o
+        // detalhe ja veio e e nele que a imagem mora, pego aqui: a tela
+        // deixa de precisar pedir de novo, e some o gargalo.
+        if (det && !item.imagem) {
+          const img = imagemDoProduto(det);
+          if (img) {
+            item.imagem = img;
+            if (item.sku) IMG_POR_SKU.set(String(item.sku).toUpperCase(), img);
+          }
+        }
       } catch (e) { fmt = 'S'; }
       await new Promise(r => setTimeout(r, 120));
     }
@@ -3040,7 +3072,7 @@ app.get('/api/produtos/buscar', requerEstoquista, async (req, res) => {
     if (fmt === 'E') return;                                       // composicao/kit
     if (p.estrutura && Array.isArray(p.estrutura.componentes) && p.estrutura.componentes.length) return;
     vistos.add(sku);
-    out.push({ sku, nome: p.nome || p.descricao || '', ean: p.ean || p.gtin || '', id: p.id || null, imagem: p.imagem || IMG_POR_SKU.get(sku.toUpperCase()) || extrairImagem(p) || null });
+    out.push({ sku, nome: p.nome || p.descricao || '', ean: p.ean || p.gtin || '', id: p.id || null, imagem: p.imagem || IMG_POR_SKU.get(sku.toUpperCase()) || imagemDoProduto(p) || null });
   };
   try {
     // v4.01 - EAN: a LISTAGEM do Bling nao devolve o gtin (so o detalhe de cada
