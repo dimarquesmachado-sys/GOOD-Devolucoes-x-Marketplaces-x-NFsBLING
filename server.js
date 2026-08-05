@@ -4570,6 +4570,16 @@ registrarRotasAdminNF(app, {
   resolverIdNFPorChave, mapItensNF,
 });
 
+// v4.50 - CICLO DO ESTOQUE DE DEFEITOS (ficha, comentarios, pecas,
+// pedidos do galpao, lancamento de estoque no Bling). Mesmo conjunto que
+// roda na AMBTotal, adaptado pra forma da GOOD: recebe o app e o supabase
+// cru, e a checagem de admin usa req.tipoUsuario ou a chave ?k=.
+const registrarCicloDefeitos = require('./lib/defeitos-ciclo');
+registrarCicloDefeitos(app, {
+  supabase, requerLogin, chamarBling, adminOk,
+  DEPOSITO_GERAL: process.env.GOOD_DEPOSITO_GERAL,
+});
+
 // v3.45 - rotas de impressao (QZ assinado + fila remota)
 const registrarRotasImpressao = require('./lib/rotas-impressao');
 registrarRotasImpressao(app, { requerEstoquista, crypto, sleep });
