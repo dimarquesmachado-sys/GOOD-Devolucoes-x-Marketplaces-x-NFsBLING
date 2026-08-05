@@ -2982,6 +2982,42 @@ function enriquecerEansEmBackground() {
     .finally(() => { EAN_RODANDO = false; });
 }
 
+// v4.53 - cache do FORMATO de cada produto. A listagem do Bling nem sempre
+// diz se e kit; o detalhe diz. Como o mesmo produto reaparece em varias
+// buscas, guardamos o resultado (o formato de um produto quase nunca muda).
+const FORMATO_CACHE = new Map();
+
+/**
+ * Tira da lista o que o estoquista nao pode lancar: KIT e COMPOSICAO.
+ * Variacao passa. So consulta o detalhe de quem ainda nao esta no cache,
+ * e no maximo dos primeiros 12 - o resto passa (melhor mostrar um kit
+ * raro do que fazer 30 chamadas e a busca demorar).
+ */
+async function tirarKits(lista) {
+  const saida = [];
+  let consultados = 0;
+  for (const item of lista) {
+    const id = item.id;
+    if (!id) { saida.push(item); continue; }
+    let fmt = FORMATO_CACHE.get(id);
+    if (fmt === undefined && consultados < 12) {
+      consultados++;
+      try {
+        const rD = await chamarBling(`https://api.bling.com.br/Api/v3/produtos/${id}`);
+        const det = (rD.ok && rD.data && rD.data.data) || null;
+        const comp = det && det.estrutura && Array.isArray(det.estrutura.componentes)
+          ? det.estrutura.componentes.length : 0;
+        fmt = comp > 0 ? 'E' : String((det && det.formato) || 'S').toUpperCase();
+        FORMATO_CACHE.set(id, fmt);
+      } catch (e) { fmt = 'S'; }
+      await new Promise(r => setTimeout(r, 120));
+    }
+    if (fmt === 'E') continue;          // kit/composicao: fora
+    saida.push(item);
+  }
+  return saida;
+}
+
 app.get('/api/produtos/buscar', requerEstoquista, async (req, res) => {
   const q = String(req.query.q || '').trim();
   if (q.length < 2) return res.json({ ok: true, produtos: [] });
@@ -2991,15 +3027,18 @@ app.get('/api/produtos/buscar', requerEstoquista, async (req, res) => {
   const push = (p) => {
     const sku = String(p.sku || p.codigo || '').trim();
     if (!sku || vistos.has(sku)) return;
-    // v4.50 - SO PRODUTO SIMPLES. Kit, composicao, variacao e servico nao
-    // existem na prateleira: o estoquista nao consegue por um "kit" numa
-    // caixa de defeito, e lancar defeito num pai de variacao bagunca o
-    // estoque. Bling: formato 'S'=simples, 'V'=variacoes, 'E'=composicao;
-    // tipo 'S'=servico.
-    const fmt = String(p.formato || 'S').toUpperCase();
-    if (fmt !== 'S') return;
-    if (String(p.tipo || 'P').toUpperCase() === 'S') return;
-    if (p.produtoPai && p.produtoPai.id) return;
+    // v4.53 - SEM KIT E SEM COMPOSICAO. Variacao PODE.
+    // Regra do Diego: no estoque e na nota fiscal quem figura e sempre o
+    // produto simples. Um kit (ex: LPR40x2 = 2x LPR40) nao existe como
+    // peca na prateleira - se o estoquista lancar defeito nele, a baixa
+    // sai errada. Ja variacao (cor/tamanho) e produto de verdade e vale.
+    // ATENCAO: a LISTAGEM do Bling nem sempre traz o campo `formato` -
+    // por isso o kit LPR40x2 passava batido. Quando o campo nao vem, o
+    // produto e conferido no DETALHE (com cache) mais abaixo.
+    if (String(p.tipo || 'P').toUpperCase() === 'S') return;      // servico
+    const fmt = String(p.formato || '').toUpperCase();
+    if (fmt === 'E') return;                                       // composicao/kit
+    if (p.estrutura && Array.isArray(p.estrutura.componentes) && p.estrutura.componentes.length) return;
     vistos.add(sku);
     out.push({ sku, nome: p.nome || p.descricao || '', ean: p.ean || p.gtin || '', id: p.id || null, imagem: p.imagem || IMG_POR_SKU.get(sku.toUpperCase()) || extrairImagem(p) || null });
   };
@@ -3033,7 +3072,7 @@ app.get('/api/produtos/buscar', requerEstoquista, async (req, res) => {
         }
       }
       if (out.length > 0) {
-        return res.json({ ok: true, produtos: out.slice(0, 30), via: 'ean_bling' });
+        return res.json({ ok: true, produtos: (await tirarKits(out)).slice(0, 30), via: 'ean_bling' });
       }
 
       // v4.02 - o filtro de EAN do Bling nao e confiavel (documentado no
@@ -3046,7 +3085,7 @@ app.get('/api/produtos/buscar', requerEstoquista, async (req, res) => {
         if (out.length >= 10) break;
       }
       if (out.length > 0) {
-        return res.json({ ok: true, produtos: out.slice(0, 30), via: 'ean_indice' });
+        return res.json({ ok: true, produtos: (await tirarKits(out)).slice(0, 30), via: 'ean_indice' });
       }
       // ainda montando o catalogo? avisa em vez de dizer que nao existe
       if (IDX_PROD.construindo || !IDX_PROD.ts) {
@@ -3084,7 +3123,7 @@ app.get('/api/produtos/buscar', requerEstoquista, async (req, res) => {
     }
     return res.json({
       ok: true,
-      produtos: out.slice(0, 30),
+      produtos: (await tirarKits(out)).slice(0, 30),
       dica: (out.length === 0 && /^\d{8,14}$/.test(q))
         ? 'O Bling nao devolveu esse EAN na busca. Tenta pelo SKU ou por parte do nome do produto.'
         : null,
@@ -3860,6 +3899,40 @@ app.post('/api/defeitos/adicionar', requerEstoquista, async (req, res) => {
     const rP = await buscarProdutoBlingPorSku(sku);
     const prod = rP.ok ? rP.produto : null;
     if (!prod) return res.status(400).json({ ok: false, erro: `SKU "${sku}" nao encontrado no Bling` });
+
+    // ═══════════════════════════════════════════════════════════════════
+    // v4.53 - TRAVA DE KIT NA GRAVACAO.
+    // O filtro da busca ja tira os kits da lista, mas isso e conveniencia:
+    // se um escapar (o Bling nem sempre manda o `formato` na listagem), o
+    // estoquista olha a foto, nao repara, e lanca o kit. Aqui e o ponto
+    // que nao depende de ele reparar - e a peca de verdade e sempre o
+    // produto SIMPLES, que e o que figura no estoque e na nota.
+    // ═══════════════════════════════════════════════════════════════════
+    try {
+      const rDet = await chamarBling(`https://api.bling.com.br/Api/v3/produtos/${prod.id}`);
+      const det = (rDet.ok && rDet.data && rDet.data.data) || null;
+      const comps = (det && det.estrutura && Array.isArray(det.estrutura.componentes))
+        ? det.estrutura.componentes : [];
+      const ehKit = comps.length > 0 || String((det && det.formato) || '').toUpperCase() === 'E';
+      if (ehKit) {
+        // se der, ja diz QUAL produto simples ele deve usar no lugar
+        const sugestoes = comps.map(c => {
+          const p2 = c && c.produto;
+          const cod = (p2 && (p2.codigo || p2.sku)) || '';
+          const q = c && (c.quantidade || c.qtd);
+          return cod ? (q ? `${q}x ${cod}` : cod) : null;
+        }).filter(Boolean);
+        return res.status(400).json({
+          ok: false,
+          erro: `"${prod.codigo || sku}" e um KIT, nao um produto simples.`
+            + (sugestoes.length ? ` Ele e composto por ${sugestoes.join(' + ')}.` : '')
+            + ' Lance o defeito no produto simples - e ele que existe na prateleira,'
+            + ' no estoque e na nota fiscal.',
+          kit: true,
+          componentes: sugestoes,
+        });
+      }
+    } catch (e) { /* se o Bling nao responder, segue - nao trava o galpao */ }
     // v4.50 - as FOTOS do defeito e o retorno com o numero da peca (a
     // etiqueta imprime "PECA #N" e o card mostra as fotos)
     const fotos = Array.isArray(req.body?.fotos) ? req.body.fotos.filter(Boolean) : [];
