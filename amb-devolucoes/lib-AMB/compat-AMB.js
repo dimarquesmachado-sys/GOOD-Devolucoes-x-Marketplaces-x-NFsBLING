@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════════════════════════════════
-//  amb-devolucoes · lib/compat  (AMB Devol. b122)
+//  amb-devolucoes · lib/compat  (AMB Devol. b133)
 //  LEVA 1a do porte GOOD → AMB.
 //
 //  A tela de bipe da GOOD (index.html + 10 modulos JS) chama 18 endpoints.
@@ -106,6 +106,17 @@ function montar(router, deps) {
     const push = (p) => {
       const sku = String(p.codigo || p.sku || '').trim();
       if (!sku || vistos.has(sku)) return;
+      // ═══════════════════════════════════════════════════════════════
+      // b133 - SO PRODUTO SIMPLES pro estoquista. Kit, composicao,
+      // variacao e servico nao existem na prateleira: ele nao consegue
+      // por um "kit" numa caixa de defeito, e lancar defeito num pai de
+      // variacao bagunca o estoque. No Bling: formato 'S' = simples,
+      // 'V' = com variacoes, 'E' = com composicao; tipo 'S' = servico.
+      // ═══════════════════════════════════════════════════════════════
+      const fmt = String(p.formato || 'S').toUpperCase();
+      if (fmt !== 'S') return;
+      if (String(p.tipo || 'P').toUpperCase() === 'S') return;   // servico
+      if (p.produtoPai && p.produtoPai.id) return;               // filho de variacao
       vistos.add(sku);
       out.push({
         sku,
