@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════════════════════════════════
-//  amb-devolucoes · lib/defeitos-ciclo  (AMB Devol. b127)
+//  amb-devolucoes · lib/defeitos-ciclo  (AMB Devol. b129)
 //  ------------------------------------------------------------------
 //  O CICLO DA PECA COM DEFEITO, do jeito que o Diego descreveu:
 //
@@ -397,7 +397,12 @@ module.exports = function registrarCicloDefeitos(router, deps) {
     // a REGRA vem antes do banco: assim o estoquista recebe o aviso certo
     // ("diga de onde tirou") em vez de um erro de infraestrutura.
 
-    if (tipo === 'recuperado') {
+    // b129 - NEM TODO CONSERTO CANIBALIZA. As vezes o estoquista resolve
+    // com uma chave de fenda, sem tirar peca de ninguem. Nesse caso ele
+    // marca "foi so conserto" e a exigencia dos doadores nao se aplica -
+    // a regra continua valendo pra quando ele DIZ que pegou peca.
+    const soConserto = b.sem_doadores === true || b.so_conserto === true;
+    if (tipo === 'recuperado' && !soConserto) {
       if (!doadores.length) {
         return res.status(400).json({
           ok: false,
@@ -423,7 +428,9 @@ module.exports = function registrarCicloDefeitos(router, deps) {
         titulo: b.titulo || null,
         localizacao: b.localizacao || null,
         quantidade: Number(b.quantidade) > 0 ? Number(b.quantidade) : 1,
-        observacao: b.observacao || null,
+        observacao: (soConserto
+          ? '[conserto simples, sem peca de outra] ' + (b.observacao || '')
+          : (b.observacao || null)),
         doadores,
         quem_pediu: req.usuario,
         status: 'pendente',
