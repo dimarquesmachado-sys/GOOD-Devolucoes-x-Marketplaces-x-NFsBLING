@@ -107,12 +107,21 @@ const ADMIN_USER = process.env.ADMIN_USER || null; // nome do usuario admin (dev
 // Sessoes em memoria (token -> {usuario, criado, tipo})
 const sessoes = new Map();
 function novaSessao(usuario, tipo = 'estoquista') {
-  const token = crypto.randomBytes(24).toString('hex');
+  // v4.50 - token ASSINADO: nao depende da memoria, entao o deploy nao
+  // desloga mais ninguem. O Map segue alimentado como ponte pros antigos.
+  const token = novaSessaoAssinada(usuario, tipo, 12 * 60 * 60 * 1000);
   sessoes.set(token, { usuario, tipo, criado: Date.now() });
   return token;
 }
 function validarSessao(token, tipoEsperado = null) {
   if (!token) return null;
+  // 1) token assinado - vale mesmo depois do restart
+  const assinada = validarSessaoAssinada(token);
+  if (assinada) {
+    if (tipoEsperado && assinada.tipo !== tipoEsperado) return null;
+    return assinada;
+  }
+  // 2) token antigo, ainda na memoria deste processo
   const s = sessoes.get(token);
   if (!s) return null;
   // Sessao expira em 12h
@@ -1683,6 +1692,39 @@ app.get('/api/auth/me', (req, res) => {
 });
 
 // Middleware: requer sessao (qualquer tipo)
+// v4.50 - SESSAO ASSINADA: sobrevive ao restart do servico.
+// Antes as sessoes viviam so em memoria e cada deploy deslogava todo mundo.
+// Agora o token carrega usuario/tipo/validade com uma assinatura HMAC.
+// Os tokens antigos continuam aceitos enquanto o processo viver.
+function _segredoSessao() {
+  return String(process.env.SESSION_SECRET || process.env.ADMIN_KEY || 'good-sem-segredo');
+}
+function _assinar(p) {
+  return crypto.createHmac('sha256', _segredoSessao()).update(p).digest('base64')
+    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+function novaSessaoAssinada(usuario, tipo, validadeMs) {
+  const payload = JSON.stringify({ u: usuario, t: tipo, e: Date.now() + (validadeMs || 12 * 60 * 60 * 1000) });
+  const p = Buffer.from(payload).toString('base64')
+    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  return p + '.' + _assinar(p);
+}
+function validarSessaoAssinada(token) {
+  if (!token || !token.includes('.')) return null;
+  const [p, assin] = token.split('.');
+  if (!p || !assin) return null;
+  let esperada;
+  try { esperada = _assinar(p); } catch (e) { return null; }
+  if (esperada.length !== assin.length) return null;
+  try {
+    if (!crypto.timingSafeEqual(Buffer.from(esperada), Buffer.from(assin))) return null;
+    const d = JSON.parse(Buffer.from(p.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString());
+    if (!d || !d.u) return null;
+    if (d.e && Date.now() > d.e) return null;
+    return { usuario: d.u, tipo: d.t };
+  } catch (e) { return null; }
+}
+
 function requerLogin(req, res, next) {
   const token = req.cookies?.sessao;
   const sessao = validarSessao(token);
@@ -2949,6 +2991,15 @@ app.get('/api/produtos/buscar', requerEstoquista, async (req, res) => {
   const push = (p) => {
     const sku = String(p.sku || p.codigo || '').trim();
     if (!sku || vistos.has(sku)) return;
+    // v4.50 - SO PRODUTO SIMPLES. Kit, composicao, variacao e servico nao
+    // existem na prateleira: o estoquista nao consegue por um "kit" numa
+    // caixa de defeito, e lancar defeito num pai de variacao bagunca o
+    // estoque. Bling: formato 'S'=simples, 'V'=variacoes, 'E'=composicao;
+    // tipo 'S'=servico.
+    const fmt = String(p.formato || 'S').toUpperCase();
+    if (fmt !== 'S') return;
+    if (String(p.tipo || 'P').toUpperCase() === 'S') return;
+    if (p.produtoPai && p.produtoPai.id) return;
     vistos.add(sku);
     out.push({ sku, nome: p.nome || p.descricao || '', ean: p.ean || p.gtin || '', id: p.id || null, imagem: p.imagem || IMG_POR_SKU.get(sku.toUpperCase()) || extrairImagem(p) || null });
   };
@@ -3809,7 +3860,10 @@ app.post('/api/defeitos/adicionar', requerEstoquista, async (req, res) => {
     const rP = await buscarProdutoBlingPorSku(sku);
     const prod = rP.ok ? rP.produto : null;
     if (!prod) return res.status(400).json({ ok: false, erro: `SKU "${sku}" nao encontrado no Bling` });
-    const { error } = await supabase.from('devolucoes').insert([{
+    // v4.50 - as FOTOS do defeito e o retorno com o numero da peca (a
+    // etiqueta imprime "PECA #N" e o card mostra as fotos)
+    const fotos = Array.isArray(req.body?.fotos) ? req.body.fotos.filter(Boolean) : [];
+    const { data: criado, error } = await supabase.from('devolucoes').insert([{
       // v3.97 - tipo PROPRIO: defeito de estoque NAO entra na fila de
       // "Problemas reportados" (aquela e a fila fiscal do Diego, de produto
       // que voltou de venda e precisa de NF de devolucao). Este aqui nao tem
@@ -3823,9 +3877,22 @@ app.post('/api/defeitos/adicionar', requerEstoquista, async (req, res) => {
       problema_descricao: `[LANCADO MANUAL por ${req.usuario}] ${defeito}`,
       localizacao: localizacao || null,
       defeito_qtd: qtd,
-    }]);
+      problema_fotos: fotos.length ? fotos : null,
+    }]).select().limit(1);
     if (error) return res.status(500).json({ ok: false, erro: error.message });
-    return res.json({ ok: true, sku: prod.codigo || sku, nome: prod.nome || null, ean: prod.gtin || prod.ean || null, qtd });
+    const linha = (criado || [])[0] || null;
+    return res.json({
+      ok: true,
+      sku: prod.codigo || sku, nome: prod.nome || null,
+      ean: prod.gtin || prod.ean || null, qtd,
+      peca_id: linha ? linha.id : null,
+      registro: linha,
+      gravado: linha ? {
+        defeito: linha.problema_descricao || null,
+        quantidade: linha.defeito_qtd,
+        fotos: Array.isArray(linha.problema_fotos) ? linha.problema_fotos.length : 0,
+      } : null,
+    });
   } catch (e) { return res.status(500).json({ ok: false, erro: e.message }); }
 });
 
