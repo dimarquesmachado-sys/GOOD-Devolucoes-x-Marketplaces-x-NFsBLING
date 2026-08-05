@@ -1,5 +1,5 @@
 // ============================================================
-// amb-devolucoes/lib-AMB/auth-AMB.js           (AMB Devol. b7)
+// amb-devolucoes/lib-AMB/auth-AMB.js           (AMB Devol. b130)
 // ------------------------------------------------------------
 // Login do galpao da AMBTotal.
 //
@@ -30,9 +30,26 @@
 //   admin      -> configuracao, indices, gestao
 //   estoquista -> bipar, triar, reportar problema
 //
-// As sessoes ficam em MEMORIA. Restart do servico desloga todo
-// mundo — e aceitavel (o servico reinicia em segundos e o login
-// e uma tela so), mas e bom saber para nao estranhar.
+// b130 — AS SESSOES SOBREVIVEM AO DEPLOY.
+// Antes elas ficavam so em memoria: cada arquivo subido no GitHub
+// reinicia o servico no Render e deslogava todo mundo. Como o Diego
+// sobe arquivo dezenas de vezes por dia, isso virou um estorvo real
+// (e assustava: "sessao invalida" parecia bug do sistema).
+//
+// Agora o TOKEN CARREGA quem e o usuario, o tipo e a validade, com
+// uma assinatura HMAC que so o servidor sabe conferir. Nao ha lista
+// pra se perder no restart, e nao precisa de banco.
+//
+//   formato:  <payload em base64url>.<assinatura>
+//   payload:  {"u":"diego","t":"admin","e":<expira em ms>}
+//
+// O segredo vem de AMB_SESSION_SECRET; se nao existir, usa a
+// ADMIN_KEY (que ja e estavel no Render). Trocar o segredo invalida
+// os tokens — que e o comportamento desejado.
+//
+// COMPATIBILIDADE: os tokens ANTIGOS (aleatorios, guardados no Map)
+// continuam sendo aceitos enquanto o processo viver. Assim ninguem
+// e derrubado no momento exato do deploy desta mudanca.
 // ============================================================
 
 'use strict';
@@ -68,10 +85,27 @@ const ADMINS = parseAdmins(process.env.AMB_ADMIN_USER || '');
 
 const sessoes = new Map();   // token -> { usuario, tipo, criado }
 
+/** Segredo da assinatura. Estavel entre deploys — e esse o ponto. */
+function segredo() {
+  return String(process.env.AMB_SESSION_SECRET || process.env.ADMIN_KEY || '')
+    || 'amb-sem-segredo-configurado';
+}
+
+const b64url = (buf) => Buffer.from(buf).toString('base64')
+  .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+
+function assinar(payloadB64) {
+  return crypto.createHmac('sha256', segredo()).update(payloadB64).digest('base64')
+    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
 function novaSessao(usuario, tipo) {
-  const token = crypto.randomBytes(24).toString('hex');
+  const payload = JSON.stringify({ u: usuario, t: tipo, e: Date.now() + VALIDADE_MS });
+  const p = b64url(payload);
+  const token = p + '.' + assinar(p);
+  // o Map continua alimentado: serve de ponte pros tokens antigos e
+  // nao atrapalha em nada
   sessoes.set(token, { usuario, tipo, criado: Date.now() });
-  // limpeza das vencidas, pra Map nao crescer sem fim
   for (const [t, s] of sessoes) {
     if (Date.now() - s.criado > VALIDADE_MS) sessoes.delete(t);
   }
@@ -80,6 +114,29 @@ function novaSessao(usuario, tipo) {
 
 function validarSessao(token, tipoEsperado) {
   if (!token) return null;
+
+  // 1) token assinado (o novo formato) - nao depende de memoria nenhuma
+  if (token.includes('.')) {
+    const [p, assinatura] = token.split('.');
+    if (p && assinatura) {
+      let esperada;
+      try { esperada = assinar(p); } catch (e) { esperada = null; }
+      // comparacao de tempo constante, pra nao vazar o segredo pelo relogio
+      const iguais = esperada && esperada.length === assinatura.length
+        && crypto.timingSafeEqual(Buffer.from(esperada), Buffer.from(assinatura));
+      if (iguais) {
+        try {
+          const dados = JSON.parse(Buffer.from(p.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString());
+          if (!dados || !dados.u) return null;
+          if (dados.e && Date.now() > dados.e) return null;          // venceu
+          if (tipoEsperado && dados.t !== tipoEsperado) return null;
+          return { usuario: dados.u, tipo: dados.t, criado: (dados.e || 0) - VALIDADE_MS };
+        } catch (e) { return null; }
+      }
+    }
+  }
+
+  // 2) token antigo, ainda na memoria deste processo
   const s = sessoes.get(token);
   if (!s) return null;
   if (Date.now() - s.criado > VALIDADE_MS) {
