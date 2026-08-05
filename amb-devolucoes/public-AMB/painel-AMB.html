@@ -1117,7 +1117,7 @@
         if (!mostrarConcluidos && d.status === 'concluido') return false;
         // Data (usa created_at)
         if (dataIniMs || dataFimMs) {
-          const t = new Date(d.created_at).getTime();
+          const t = new Date((d.criado_em || d.created_at)).getTime();
           if (dataIniMs && t < dataIniMs) return false;
           if (dataFimMs && t > dataFimMs) return false;
         }
@@ -1247,7 +1247,7 @@
           <div class="item-header">
             <div>
               <div class="item-titulo">${escapeHtml(d.produto_titulo || '-')}${badgeParcial}${badgeRebipe}${badgeConsertado}</div>
-              <div class="item-data">por ${escapeHtml(desc)} · ${dataFmt(d.created_at)}</div>
+              <div class="item-data">por ${escapeHtml(desc)} · ${dataFmt((d.criado_em || d.created_at))}</div>
             </div>
             ${concluido ? '<span style="background:#999;color:white;padding:3px 8px;border-radius:10px;font-size:10px;font-weight:700;">CONCLUIDO</span>' : ''}
           </div>
@@ -1302,7 +1302,7 @@
           <div class="item-header">
             <div>
               <div class="item-titulo">${escapeHtml(d.produto_titulo || '-')}${badgeRebipe}</div>
-              <div class="item-data">${dataFmt(d.created_at)}</div>
+              <div class="item-data">${dataFmt((d.criado_em || d.created_at))}</div>
             </div>
             ${concluido ? '<span style="background:#999;color:white;padding:3px 8px;border-radius:10px;font-size:10px;font-weight:700;">RESOLVIDO</span>' : ''}
           </div>
@@ -1370,7 +1370,7 @@
           <div class="item-header">
             <div>
               <div class="item-titulo">${escapeHtml(d.produto_titulo || '-')} <span style="background:#7b1fa2;color:white;padding:3px 8px;border-radius:10px;font-size:10px;font-weight:700;margin-left:6px;">🔄 DIVERGENTE</span>${badgeRebipe}</div>
-              <div class="item-data">${dataFmt(d.created_at)}</div>
+              <div class="item-data">${dataFmt((d.criado_em || d.created_at))}</div>
             </div>
             ${concluido ? '<span style="background:#999;color:white;padding:3px 8px;border-radius:10px;font-size:10px;font-weight:700;">RESOLVIDO</span>' : ''}
           </div>
@@ -1755,7 +1755,17 @@
     // como "Pedido:" sem link (evita link quebrado).
     function linkPedido(d) {
       const id = String(d.order_id || '').trim();
-      if (!id) return '<strong>Pedido:</strong> <code>-</code>';
+      // b136 - IDENTIFICADA PELA NF. Quando a devolucao e achada so pela nota
+      // (sem pedido de marketplace), nao existe order_id nem marketplace - e
+      // o card mostrava "Pedido: -" e "por -", parecendo dado perdido. Agora
+      // ele diz o que aconteceu, em vez de deixar um traco.
+      if (!id) {
+        return d.nf_numero
+          ? '<span style="background:#E6F1FB;color:#0C447C;border-radius:6px;padding:2px 9px;'
+            + 'font-size:12px;font-weight:700;">🧾 Identificada pela NF ' + escapeHtml(String(d.nf_numero)) + '</span>'
+            + ' <span style="color:#999;font-size:11.5px;">(sem pedido de marketplace)</span>'
+          : '<span style="color:#999;">sem pedido e sem NF</span>';
+      }
       if (/^20\d{14}$/.test(id)) {
         return `<strong>Order ML:</strong> <a href="https://www.mercadolivre.com.br/vendas/${id}/detalhe" target="_blank" style="color:#FFE600;font-weight:700;text-decoration:none;background:#1a1a1a;padding:2px 8px;border-radius:4px;font-family:monospace;">${id} 🔗</a>`;
       }
