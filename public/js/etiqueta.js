@@ -311,6 +311,19 @@ function montarZplDefeito(etq) {
   const tit = _zplLinhasDefeito(etq.produto || '-', 34, 2);
   for (const ln of tit) { z.push('^FO20,' + y + '^A0N,34,34^FD' + ln + '^FS'); y += 40; }
   y += 8;
+  // b122 - NUMERO DA PECA em destaque. Sem ele, duas luminarias iguais na
+  // prateleira sao indistinguiveis - e e justamente esse numero que a
+  // ficha usa no "foi para a peca #4". A etiqueta precisa carregar ele.
+  if (etq.peca_id) {
+    z.push('^FO20,' + y + '^A0N,70,70^FDPECA #' + String(etq.peca_id) + '^FS'); y += 84;
+    // b125 - CODIGO DE BARRAS do numero da peca. Assim o estoquista bipa
+    // em vez de digitar. O conteudo e "#<numero>" porque e exatamente o
+    // que a busca do estoque de defeitos entende (aceita "#6", "peca 6"
+    // ou "6" solto) - bipar cai direto na ficha certa.
+    // Code 128 (BCN): aceita o "#" e le bem em etiqueta 10x15.
+    z.push('^FO20,' + y + '^BY3,2^BCN,80,Y,N,N^FD#' + String(etq.peca_id) + '^FS');
+    y += 130;
+  }
   // SKU grande
   z.push('^FO20,' + y + '^A0N,60,60^FDSKU ' + sku + '^FS'); y += 74;
   // Barras do EAN (se houver)
@@ -376,15 +389,19 @@ function abrirPopupEtiquetaDefeito(etq, aoFechar) {
   ov.innerHTML =
     '<div style="background:#fff;border-radius:14px;max-width:420px;width:100%;padding:22px;box-shadow:0 10px 40px rgba(0,0,0,0.3);">'
     + '<div style="font-size:20px;font-weight:800;color:#c62828;text-align:center;">🏷️ Imprimir etiqueta de DEFEITO?</div>'
-    + '<div style="font-size:13px;color:#666;text-align:center;margin:6px 0 14px;">Cola na caixa pra identificar fácil no estoque (10×15cm).</div>'
+    + '<div style="font-size:13px;color:#666;text-align:center;margin:6px 0 14px;">Cola na caixa pra identificar fácil no estoque.</div>'
     + '<div style="background:#fff5f5;border:2px solid #ef9a9a;border-radius:10px;padding:12px;font-size:13px;line-height:1.5;">'
     + '<b>DEFEITO:</b> ' + esc(etq.defeito) + '<br>'
+    + (etq.peca_id ? '<b>Peça:</b> #' + esc(etq.peca_id) + '<br>' : '')
     + '<b>SKU:</b> ' + esc(etq.sku || '-') + (etq.ean ? ' · <b>EAN:</b> ' + esc(etq.ean) : '') + '<br>'
     + '<b>NF venda:</b> ' + esc(etq.nf || '-') + ' · <b>Qtd:</b> ' + esc(etq.qtd) + (etq.local ? ' · <b>Local:</b> ' + esc(etq.local) : '')
     + '</div>'
     + '<div style="display:flex;gap:10px;margin-top:16px;">'
-    + '<button id="popupEtqNao" style="flex:1;background:#999;color:#fff;border:none;border-radius:10px;padding:14px;font-size:15px;font-weight:700;cursor:pointer;">Pular</button>'
-    + '<button id="popupEtqSim" style="flex:2;background:#c62828;color:#fff;border:none;border-radius:10px;padding:14px;font-size:15px;font-weight:800;cursor:pointer;">🖨️ Imprimir ' + (Number(etq.qtd) > 1 ? (etq.qtd + ' etiquetas') : 'etiqueta') + '</button>'
+    // b121 - INVERTIDO: quem fecha e o botao grande. Na maioria das vezes
+    // o estoquista so quer sair daqui; imprimir e a excecao, entao ela
+    // fica no botao pequeno e discreto, do lado.
+    + '<button id="popupEtqSim" style="flex:1;background:#fff;color:#c62828;border:1px solid #c62828;border-radius:10px;padding:12px;font-size:13.5px;font-weight:700;cursor:pointer;">🖨️ Imprimir ' + (Number(etq.qtd) > 1 ? (etq.qtd + ' Etiquetas') : 'Etiqueta') + '<br><span style="font-size:11px;font-weight:400;">10x15cm</span></button>'
+    + '<button id="popupEtqNao" style="flex:2;background:#561A9E;color:#fff;border:none;border-radius:10px;padding:14px;font-size:15px;font-weight:800;cursor:pointer;">Fechar</button>'
     + '</div></div>';
   document.body.appendChild(ov);
   const fechar = () => { ov.remove(); if (typeof aoFechar === 'function') aoFechar(); };
