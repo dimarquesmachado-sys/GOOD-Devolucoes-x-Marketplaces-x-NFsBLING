@@ -39,15 +39,22 @@
     /* os 2 links do estoque de defeitos: a DIREITA no computador, igual
        o cracha do usuario (que e absolute, top/right). No celular o
        cracha vira estatico e centralizado, entao eles centralizam junto. */
+    /* v4.51 - O CABECALHO DA GOOD E AMARELO (#FFE600), nao roxo como o da
+       AMB. Eu trouxe de la o texto branco sobre fundo claro translucido -
+       que no amarelo fica ilegivel. Aqui a leitura vem do contraste ao
+       contrario: fundo escuro translucido e texto preto, como ja faz o
+       cracha do usuario dessa mesma tela. */
     .links-defeitos {
       display: flex; gap: 7px; flex-wrap: wrap; justify-content: flex-end;
       margin-top: 10px; padding-top: 9px;
-      border-top: 1px solid rgba(255,255,255,.22);
+      border-top: 1px solid rgba(0,0,0,.14);
     }
     .links-defeitos a {
-      background: rgba(255,255,255,.16); color: #fff; text-decoration: none;
-      padding: 6px 12px; border-radius: 9px; font-size: 12.5px; font-weight: 500;
+      background: rgba(0,0,0,.10); color: #1d1d1f; text-decoration: none;
+      padding: 6px 12px; border-radius: 9px; font-size: 12.5px; font-weight: 700;
+      border: 1px solid rgba(0,0,0,.12);
     }
+    .links-defeitos a:hover { background: rgba(0,0,0,.18); }
     @media (max-width: 600px) { .links-defeitos { justify-content: center; } }
   </style>
 
@@ -909,7 +916,9 @@
         if (!el) return;
         if (n > 0) {
           el.textContent = ' ' + n;
-          el.style.cssText = 'background:#FFD400;color:#412402;border-radius:11px;padding:1px 8px;'
+          // v4.51 - no cabecalho amarelo, um selo amarelo nao aparece:
+          // aqui ele e vermelho, que salta no fundo da GOOD
+          el.style.cssText = 'background:#c62828;color:#fff;border-radius:11px;padding:1px 8px;'
             + 'font-size:11.5px;font-weight:800;margin-left:6px;';
           el.title = titulo;
         } else { el.textContent = ''; }
