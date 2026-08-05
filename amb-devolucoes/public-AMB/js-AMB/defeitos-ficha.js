@@ -801,7 +801,14 @@
       h += '<div style="font-size:12px;color:#666;margin-bottom:6px;">tirou: '
         + doa.map(function (d) { return esc(d.peca) + ' (PEÇA #' + esc(d.defeito_id) + ')'; }).join(' · ') + '</div>';
     }
-    if (comAcoes && p.status === 'pendente') {
+    // b135 - so o ADMIN ve os botoes de decidir. O servidor ja recusava
+    // (403 em autorizar/recusar), mas mostrar um botao que nao funciona e
+    // pior do que nao mostrar: o estoquista clicaria achando que resolveu.
+    if (comAcoes && p.status === 'pendente' && !euSouAdmin) {
+      h += '<div style="font-size:12.5px;color:#8a6d00;background:#FEF6E7;border-radius:7px;'
+        + 'padding:7px 10px;">⏳ Aguardando o admin liberar.</div>';
+    }
+    if (comAcoes && p.status === 'pendente' && euSouAdmin) {
       h += '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">';
       if (p.tipo === 'recuperado') {
         // b132 - o nome antigo ("Lançar No Estoque") dava a entender que o
