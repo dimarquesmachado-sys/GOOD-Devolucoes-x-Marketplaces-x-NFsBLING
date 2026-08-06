@@ -107,17 +107,32 @@ module.exports = function registrarCicloDefeitos(router, deps) {
       // o Bling aceita os dois nomes conforme a versao do endpoint
       if (custo != null) { corpoEstoque.custo = custo; corpoEstoque.preco = custo; }
 
-      const r = await bling.chamarBling('/estoques', {
-        method: 'POST',
-        body: JSON.stringify(corpoEstoque),
-      });
+      // ═══════════════════════════════════════════════════════════════
+      // b161 - RE-TENTATIVA quando o Bling recusa por LIMITE (429). O
+      // chamarBling ja re-tenta 1x com 1.5s, mas em rajada nao basta -
+      // aqui esperamos mais (3s, depois 6s) antes de desistir.
+      // ═══════════════════════════════════════════════════════════════
+      let r = null;
+      for (let tent = 1; tent <= 3; tent++) {
+        r = await bling.chamarBling('/estoques', {
+          method: 'POST',
+          body: JSON.stringify(corpoEstoque),
+        });
+        if (r.ok) break;
+        const ehLimite = r.status === 429
+          || /limit|requisi|too many/i.test(JSON.stringify(r.error || r.data || ''));
+        if (!ehLimite || tent === 3) break;
+        console.log('[AMB/DEFEITOS] estoque 429 - tentativa ' + tent + ', aguardando ' + (tent * 3) + 's');
+        await new Promise(s => setTimeout(s, tent * 3000));
+      }
       if (!r.ok) {
         // b160 - o MOTIVO REAL do Bling vinha capturado em 'detalhe' mas
         // nunca era mostrado nem gravado - o alerta e o historico ficavam
         // no generico. Agora o motivo vai dentro do proprio 'erro'.
         let motivo = '';
         try {
-          const d = r.data || {};
+          // b161 - na FALHA o chamarBling devolve o corpo em r.error
+          const d = r.error || r.data || {};
           motivo = (d.error && (d.error.description || d.error.message))
             || (d.error && d.error.fields && d.error.fields[0] && (d.error.fields[0].msg || d.error.fields[0].message))
             || (typeof d === 'string' ? d : JSON.stringify(d));
@@ -126,7 +141,7 @@ module.exports = function registrarCicloDefeitos(router, deps) {
         return {
           ok: false,
           erro: 'Bling recusou o lancamento (HTTP ' + r.status + ')' + (motivo ? ': ' + motivo : ''),
-          detalhe: r.data || null,
+          detalhe: r.error || r.data || null,
         };
       }
       return {
@@ -613,6 +628,60 @@ module.exports = function registrarCicloDefeitos(router, deps) {
         pedidos: lista,
         pendentes: lista.filter(p => p.status === 'pendente').length,
       });
+    } catch (e) {
+      res.status(500).json({ ok: false, erro: String(e.message || e) });
+    }
+  });
+
+  // ─────────────────────────────────────────────────────────────────────
+  // b161 - POST /api/defeitos/pedido/:id/lancar-estoque   (so ADMIN)
+  // Relanca no Bling a entrada de uma peca RECUPERADA ja autorizada cuja
+  // entrada automatica falhou (ex: 429 na hora). E o botao da ficha -
+  // mata o "lance a mao" na maioria dos casos.
+  // ─────────────────────────────────────────────────────────────────────
+  router.post('/api/defeitos/pedido/:id/lancar-estoque', auth.requerLogin, async (req, res) => {
+    const s = auth.validarSessao(auth.tokenDaRequisicao(req), 'admin');
+    if (!s) return res.status(403).json({ ok: false, erro: 'so o admin pode lancar estoque' });
+    const dbc = cli();
+    if (!dbc) return erroSemBanco(res);
+    try {
+      const rP = await dbc.from(T_PED).select('*').eq('id', req.params.id).limit(1);
+      const pedido = (rP.data || [])[0] || null;
+      if (!pedido) return res.status(404).json({ ok: false, erro: 'pedido nao encontrado' });
+      if (pedido.tipo !== 'recuperado') return res.status(400).json({ ok: false, erro: 'so peca RECUPERADA tem entrada de estoque' });
+      if (!['autorizado', 'concluido'].includes(String(pedido.status || ''))) {
+        return res.status(400).json({ ok: false, erro: 'o pedido ainda nao foi autorizado' });
+      }
+      if (pedido.estoque_produto_id) {
+        return res.json({ ok: true, ja_lancado: true, defeito_id: pedido.defeito_id,
+          link: 'https://www.bling.com.br/estoque.php?buscaid=' + pedido.estoque_produto_id });
+      }
+      const est = await entradaNoEstoque({
+        sku: pedido.estoque_sku || pedido.sku,
+        quantidade: pedido.estoque_qtd || pedido.quantidade || 1,
+        observacao: 'Peca #' + pedido.defeito_id + ' recuperada - relancamento por ' + req.usuario,
+      });
+      try {
+        await dbc.from(T_COM).insert([{
+          defeito_id: pedido.defeito_id,
+          texto: est.ok
+            ? 'Entrada no Bling (relancada): ' + est.quantidade + ' un. no deposito Geral'
+            : 'Relancamento tambem falhou (' + est.erro + ')',
+          quem: req.usuario,
+        }]);
+      } catch (e) {}
+      if (est.ok && est.produto_id) {
+        try {
+          await dbc.from(T_PED).update({
+            estoque_produto_id: est.produto_id,
+            estoque_sku: pedido.estoque_sku || pedido.sku,
+            estoque_qtd: pedido.estoque_qtd || pedido.quantidade || 1,
+            estoque_em: new Date().toISOString(),
+          }).eq('id', req.params.id);
+        } catch (e) { /* o lancamento fica mesmo sem o update */ }
+      }
+      res.json({ ok: !!est.ok, erro: est.ok ? null : est.erro, defeito_id: pedido.defeito_id,
+        link: est.ok ? est.link : null, quantidade: est.quantidade || null });
     } catch (e) {
       res.status(500).json({ ok: false, erro: String(e.message || e) });
     }
