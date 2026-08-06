@@ -22,7 +22,19 @@ module.exports = function registrarRotasAdminNF(app, deps) {
     chamarBling, chamarML, buscarNFnoML,
     buscarNFePorId, buscarNFBlindada,
     resolverIdNFPorChave, mapItensNF,
+    tabelaDevolucoes,
   } = deps;
+
+  // ═══════════════════════════════════════════════════════════════════
+  // b144 - O NOME DA TABELA VEM DE FORA.
+  // Este modulo nasceu como copia do lib/rotas-admin-nf.js da GOOD e
+  // ficou com from(TAB) em 15 lugares - a tabela DA GOOD. Na
+  // AMB a tabela e devolucoes_amb, entao TODA acao do painel batia numa
+  // tabela que nao existe aqui e voltava "Registro nao encontrado" -
+  // por isso o "Achar devolucao no Bling" nunca chegava nem a consultar
+  // o Bling.
+  // ═══════════════════════════════════════════════════════════════════
+  const TAB = tabelaDevolucoes || 'devolucoes';
 
 app.get('/api/admin/foto/*', requerAdmin, async (req, res) => {
   try {
@@ -78,7 +90,7 @@ app.post('/api/admin/carregar-itens/:id', requerAdmin, async (req, res) => {
   if (!supabase) return res.status(500).json({ ok: false, erro: 'Supabase nao configurado' });
   try {
     const { data: reg, error: errReg } = await supabase
-      .from('devolucoes')
+      .from(TAB)
       .select('id, nf_id_bling, nf_numero, nf_chave, nf_itens')
       .eq('id', req.params.id)
       .single();
@@ -105,7 +117,7 @@ app.post('/api/admin/carregar-itens/:id', requerAdmin, async (req, res) => {
     const itens = mapItensNF(nf) || [];
     const upd = { nf_itens: itens };
     if (idDescoberto) upd.nf_id_bling = idBling; // brinde: card ganha o link Bling
-    const { error: errUpd } = await supabase.from('devolucoes').update(upd).eq('id', req.params.id);
+    const { error: errUpd } = await supabase.from(TAB).update(upd).eq('id', req.params.id);
     if (errUpd) return res.status(500).json({ ok: false, erro: 'Falhou ao gravar: ' + errUpd.message });
 
     return res.json({ ok: true, qtd: itens.length, id_descoberto: idDescoberto });
@@ -184,7 +196,7 @@ app.post('/api/admin/full-vincular/:id', requerAdmin, async (req, res) => {
   if (!supabase) return res.status(500).json({ ok: false, erro: 'Supabase nao configurado' });
   try {
     const { data: reg, error: errReg } = await supabase
-      .from('devolucoes').select('*').eq('id', req.params.id).single();
+      .from(TAB).select('*').eq('id', req.params.id).single();
     if (errReg || !reg) return res.status(404).json({ ok: false, erro: 'Registro nao encontrado' });
     if (reg.nf_devolucao_id_bling) {
       return res.json({ ok: true, ja_tinha: true, nf_devolucao_numero: reg.nf_devolucao_numero });
@@ -294,7 +306,7 @@ app.post('/api/admin/full-vincular/:id', requerAdmin, async (req, res) => {
       const nf = melhor.nf;
 
       const { error: errUpd } = await supabase
-        .from('devolucoes')
+        .from(TAB)
         .update({
           nf_devolucao_id_bling: String(nf.id),
           nf_devolucao_numero: String(nf.numero || ''),
@@ -345,7 +357,7 @@ app.post('/api/admin/full-lancar-estoque/:id', requerAdmin, async (req, res) => 
   if (!supabase) return res.status(500).json({ ok: false, erro: 'Supabase nao configurado' });
   try {
     const { data: reg, error: errReg } = await supabase
-      .from('devolucoes').select('id, nf_devolucao_id_bling, nf_devolucao_numero').eq('id', req.params.id).single();
+      .from(TAB).select('id, nf_devolucao_id_bling, nf_devolucao_numero').eq('id', req.params.id).single();
     if (errReg || !reg) return res.status(404).json({ ok: false, erro: 'Registro nao encontrado' });
     if (!reg.nf_devolucao_id_bling) {
       return res.status(400).json({ ok: false, erro: 'Card sem devolucao vinculada - use o 🔗 Achar devolucao primeiro' });
@@ -391,7 +403,7 @@ app.post('/api/admin/lancar-por-nf', requerAdmin, async (req, res) => {
       // 1) Ja existe card com essa NF?
       const candidatos = [...new Set([num, num.padStart(6, '0'), num.replace(/^0+/, '')])];
       const { data: jaTem } = await supabase
-        .from('devolucoes')
+        .from(TAB)
         .select('id, status')
         .in('nf_numero', candidatos)
         .limit(1);
@@ -428,7 +440,7 @@ app.post('/api/admin/lancar-por-nf', requerAdmin, async (req, res) => {
       const titulo = (it0.descricao || 'Produto da NF ' + num) + (itens.length > 1 ? ` (+${itens.length - 1} itens)` : '');
 
       const { data: novo, error: errIns } = await supabase
-        .from('devolucoes')
+        .from(TAB)
         .insert([{
           shipment_id: 'manual-nf-' + num,
           order_id: nf.numeroPedidoLoja ? String(nf.numeroPedidoLoja) : null,
@@ -486,7 +498,7 @@ app.post('/api/admin/vincular-devolucao-existente/:id', requerAdmin, async (req,
   const NATUREZA_DEVOLUCAO_GOOD = '5776118802';
   try {
     const { data: reg, error: errReg } = await supabase
-      .from('devolucoes')
+      .from(TAB)
       .select('*')
       .eq('id', req.params.id)
       .single();
@@ -540,7 +552,7 @@ app.post('/api/admin/vincular-devolucao-existente/:id', requerAdmin, async (req,
     const nf = candidatos[0];
 
     const { error: errUpd } = await supabase
-      .from('devolucoes')
+      .from(TAB)
       .update({
         nf_devolucao_id_bling: String(nf.id),
         nf_devolucao_numero: String(nf.numero || ''),
@@ -571,7 +583,7 @@ app.get('/api/debug/resgate-nf/:orderId', async (req, res) => {
     let reg = null;
     if (supabase) {
       const { data } = await supabase
-        .from('devolucoes')
+        .from(TAB)
         .select('id, order_id, pack_id, nf_numero, nf_id_bling, created_at')
         .eq('order_id', orderIdParam)
         .order('created_at', { ascending: false })
@@ -656,7 +668,7 @@ app.post('/api/admin/buscar-nf/:id', requerAdmin, async (req, res) => {
 
   try {
     const { data: reg, error: errReg } = await supabase
-      .from('devolucoes')
+      .from(TAB)
       .select('*')
       .eq('id', devId)
       .single();
@@ -750,7 +762,7 @@ app.post('/api/admin/buscar-nf/:id', requerAdmin, async (req, res) => {
     // 4) Grava no registro
     const nfItensResgate = (rBlind.ok && rBlind.nf) ? mapItensNF(rBlind.nf) : null;
     const { error: errUpd } = await supabase
-      .from('devolucoes')
+      .from(TAB)
       .update({
         nf_numero: nfInfo.numero,
         nf_serie: nfInfo.serie,
@@ -984,7 +996,7 @@ app.put('/api/admin/registrar-devolucao-gerada/:id', requerAdmin, async (req, re
 
   try {
     const { error } = await supabase
-      .from('devolucoes')
+      .from(TAB)
       .update({
         nf_devolucao_id_bling: String(nf_devolucao_id_bling),
         nf_devolucao_numero: String(nf_devolucao_numero || ''),
@@ -1008,7 +1020,7 @@ app.put('/api/admin/concluir/:id', requerAdmin, async (req, res) => {
   }
   try {
     const { error } = await supabase
-      .from('devolucoes')
+      .from(TAB)
       .update({
         status: 'concluido',
         data_concluido: new Date().toISOString(),
@@ -1031,7 +1043,7 @@ app.delete('/api/admin/devolucao/:id', requerAdmin, async (req, res) => {
   }
   try {
     const { error } = await supabase
-      .from('devolucoes')
+      .from(TAB)
       .delete()
       .eq('id', req.params.id);
 
