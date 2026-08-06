@@ -84,12 +84,19 @@ module.exports = function registrarCicloDefeitos(router, deps) {
       try {
         const rDet = await bling.chamarBling(`/produtos/${prod.id}`);
         const det = (rDet.ok && rDet.data && rDet.data.data) || null;
+        // b163 - mais cantos: o Bling guarda o custo em lugares diferentes
+        // conforme a epoca/forma do cadastro; leio todos e uso o primeiro > 0
         const candidatos = det ? [
           det.precoCusto,
           det.estoque && det.estoque.precoCusto,
           det.custo,
           det.precos && det.precos.custo,
+          det.precos && det.precos.precoCusto,
+          det.custos && det.custos.custo,
+          det.custos && det.custos.precoCusto,
+          det.fornecedor && det.fornecedor.precoCusto,
           det.fornecedores && det.fornecedores[0] && det.fornecedores[0].precoCusto,
+          det.precoCompra,
         ] : [];
         for (const c of candidatos) {
           const n = Number(c);
@@ -104,8 +111,15 @@ module.exports = function registrarCicloDefeitos(router, deps) {
         quantidade: Number(quantidade) || 1,
         observacoes: String(observacao || 'Peca recuperada do estoque de defeitos').slice(0, 200),
       };
-      // o Bling aceita os dois nomes conforme a versao do endpoint
-      if (custo != null) { corpoEstoque.custo = custo; corpoEstoque.preco = custo; }
+      // b163 - o custo vai em TODOS os nomes plausiveis (o Bling ignora os
+      // que nao conhece): precoUnitario e o do lancamento avulso; custo e
+      // preco cobrem as variantes. E o Diego quer preco de compra E preco
+      // de custo preenchidos com o custo do cadastro do SKU.
+      if (custo != null) {
+        corpoEstoque.precoUnitario = custo;
+        corpoEstoque.custo = custo;
+        corpoEstoque.preco = custo;
+      }
 
       // ═══════════════════════════════════════════════════════════════
       // b161 - RE-TENTATIVA quando o Bling recusa por LIMITE (429). O
@@ -153,6 +167,7 @@ module.exports = function registrarCicloDefeitos(router, deps) {
         ok: true,
         produto_id: prod.id,
         deposito,
+        custo: custo,
         quantidade: Number(quantidade) || 1,
         // b134 - URLs confirmadas pelo Diego:
         //   produto (edicao) : produtos.php#edit/{id}
@@ -639,6 +654,23 @@ module.exports = function registrarCicloDefeitos(router, deps) {
   });
 
   // ─────────────────────────────────────────────────────────────────────
+  // b163 - GET /api/defeitos/produto-raiox/:id   (so ADMIN)
+  // JSON CRU do GET /produtos/{id} do Bling - pra CONSTATAR em qual campo
+  // o custo do cadastro mora, se a entrada ainda sair com valor zero.
+  // ─────────────────────────────────────────────────────────────────────
+  router.get('/api/defeitos/produto-raiox/:id', auth.requerLogin, async (req, res) => {
+    const s = auth.validarSessao(auth.tokenDaRequisicao(req), 'admin');
+    if (!s) return res.status(403).json({ ok: false, erro: 'so o admin' });
+    if (!bling || !bling.chamarBling) return res.status(500).json({ ok: false, erro: 'Bling nao disponivel' });
+    try {
+      const r = await bling.chamarBling('/produtos/' + encodeURIComponent(req.params.id));
+      res.json({ ok: !!r.ok, http: r.status, cru: r.ok ? r.data : (r.error || r.data) });
+    } catch (e) {
+      res.status(500).json({ ok: false, erro: String(e.message || e) });
+    }
+  });
+
+  // ─────────────────────────────────────────────────────────────────────
   // b161 - POST /api/defeitos/pedido/:id/lancar-estoque   (so ADMIN)
   // Relanca no Bling a entrada de uma peca RECUPERADA ja autorizada cuja
   // entrada automatica falhou (ex: 429 na hora). E o botao da ficha -
@@ -671,6 +703,7 @@ module.exports = function registrarCicloDefeitos(router, deps) {
           defeito_id: pedido.defeito_id,
           texto: est.ok
             ? 'Entrada no Bling (relancada): ' + est.quantidade + ' un. no deposito Geral'
+              + (est.custo != null ? ' · custo R$ ' + Number(est.custo).toFixed(2).replace('.', ',') : ' · SEM custo (nao achei no cadastro)')
             : 'Relancamento tambem falhou (' + est.erro + ')',
           quem: req.usuario,
         }]);
@@ -757,6 +790,7 @@ module.exports = function registrarCicloDefeitos(router, deps) {
             defeito_id: pedido.defeito_id,
             texto: est.ok
               ? 'Entrada no Bling: ' + est.quantidade + ' un. no deposito Geral'
+                + (est.custo != null ? ' · custo R$ ' + Number(est.custo).toFixed(2).replace('.', ',') : ' · SEM custo (nao achei no cadastro)')
               : 'NAO consegui lancar no Bling (' + est.erro + ') - lance a mao',
             quem: req.usuario,
           }]);
