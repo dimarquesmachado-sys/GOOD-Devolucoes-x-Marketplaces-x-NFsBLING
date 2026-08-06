@@ -58,15 +58,42 @@ module.exports = function registrarCicloDefeitos(router, deps) {
         || lista[0] || null;
       if (!prod || !prod.id) return { ok: false, erro: 'produto ' + sku + ' nao encontrado no Bling' };
 
+      // ═══════════════════════════════════════════════════════════════
+      // b138 - ENTRADA COM O CUSTO. Lancar sem custo faz a peca entrar
+      // valendo zero e distorce a margem depois. O custo vem do proprio
+      // cadastro do produto - o Bling guarda ele em lugares diferentes
+      // conforme como o produto foi cadastrado, entao leio todos.
+      // ═══════════════════════════════════════════════════════════════
+      let custo = null;
+      try {
+        const rDet = await bling.chamarBling(`/produtos/${prod.id}`);
+        const det = (rDet.ok && rDet.data && rDet.data.data) || null;
+        const candidatos = det ? [
+          det.precoCusto,
+          det.estoque && det.estoque.precoCusto,
+          det.custo,
+          det.precos && det.precos.custo,
+          det.fornecedores && det.fornecedores[0] && det.fornecedores[0].precoCusto,
+        ] : [];
+        for (const c of candidatos) {
+          const n = Number(c);
+          if (Number.isFinite(n) && n > 0) { custo = n; break; }
+        }
+      } catch (e) { /* sem custo o lancamento ainda vale */ }
+
+      const corpoEstoque = {
+        produto: { id: prod.id },
+        deposito: { id: Number(deposito) },
+        operacao: 'E',                       // E = entrada
+        quantidade: Number(quantidade) || 1,
+        observacoes: String(observacao || 'Peca recuperada do estoque de defeitos').slice(0, 200),
+      };
+      // o Bling aceita os dois nomes conforme a versao do endpoint
+      if (custo != null) { corpoEstoque.custo = custo; corpoEstoque.preco = custo; }
+
       const r = await bling.chamarBling('/estoques', {
         method: 'POST',
-        body: JSON.stringify({
-          produto: { id: prod.id },
-          deposito: { id: Number(deposito) },
-          operacao: 'E',                       // E = entrada
-          quantidade: Number(quantidade) || 1,
-          observacoes: String(observacao || 'Peca recuperada do estoque de defeitos').slice(0, 200),
-        }),
+        body: JSON.stringify(corpoEstoque),
       });
       if (!r.ok) return { ok: false, erro: 'Bling recusou o lancamento', detalhe: r.data || null };
       return {
