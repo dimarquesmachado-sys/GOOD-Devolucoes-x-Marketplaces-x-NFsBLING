@@ -1,5 +1,5 @@
 // ============================================================
-// amb-devolucoes/lib-AMB/magalu-AMB.js         (AMB Devol. b11)
+// amb-devolucoes/lib-AMB/magalu-AMB.js         (AMB Devol. b150)
 // ------------------------------------------------------------
 // Magalu da AMBTotal.
 //
@@ -105,10 +105,18 @@ async function trocarCodePorToken(code, redirectUri) {
 
   ACCESS = r.data.access_token || '';
   REFRESH = r.data.refresh_token || REFRESH;
-  const persistiu = await tokens.persistir({
-    AMB_MAGALU_ACCESS_TOKEN: ACCESS,
-    AMB_MAGALU_REFRESH_TOKEN: REFRESH,
-  });
+  // ═══════════════════════════════════════════════════════════════════
+  // b150 - PERSISTENCIA CONSERTADA. O consentimento da AMB passou
+  // inteiro (login, lojas, code no callback) e quebrava AQUI: o modulo
+  // chamava tokens.persistir({obj}), funcao que a lib nao exporta. O
+  // nome real e atualizarTokensNoRender e ela recebe ARRAY de
+  // {key, value} - mesmo padrao do bling-AMB/ml-AMB, que persistem em
+  // producao ha semanas.
+  // ═══════════════════════════════════════════════════════════════════
+  const persistiu = await tokens.atualizarTokensNoRender([
+    { key: 'AMB_MAGALU_ACCESS_TOKEN',  value: ACCESS },
+    { key: 'AMB_MAGALU_REFRESH_TOKEN', value: REFRESH },
+  ]);
   return { ok: true, persistiu, expira_em_s: r.data.expires_in || null };
 }
 
@@ -123,10 +131,10 @@ async function renovar() {
   });
   ACCESS = r.data.access_token || '';
   if (r.data.refresh_token) REFRESH = r.data.refresh_token;
-  await tokens.persistir({
-    AMB_MAGALU_ACCESS_TOKEN: ACCESS,
-    AMB_MAGALU_REFRESH_TOKEN: REFRESH,
-  });
+  await tokens.atualizarTokensNoRender([   // b150: nome/formato certos
+    { key: 'AMB_MAGALU_ACCESS_TOKEN',  value: ACCESS },
+    { key: 'AMB_MAGALU_REFRESH_TOKEN', value: REFRESH },
+  ]);
   return ACCESS;
 }
 
