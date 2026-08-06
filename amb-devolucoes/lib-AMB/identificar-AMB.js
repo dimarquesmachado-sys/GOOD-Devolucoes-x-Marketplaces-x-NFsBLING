@@ -24,6 +24,7 @@ module.exports = function registrarIdentificar(app, deps) {
     classificarMotivoDevolucao,
     acharDevolucao, buscarPorNome,
     shopee, magalu, nfNomes, // b71 - a rota usa os modulos inteiros
+    mlReturns,               // b142 - indice claims->returns do ML (faltava)
   } = deps;                  //       (shopee.cfg.ativo, shopee.acharDevolucao...)
 
 app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
@@ -161,15 +162,24 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
   if (!shipment && !pack && mCorreios) {
     const trk = mCorreios[1];
     let devML = null;
-    try { devML = await mlReturns.acharPorTracking(trk); } catch (e) { devML = null; }
+    // b142 - o catch mudo aqui escondeu por semanas um ReferenceError:
+    // qualquer falha virava "nao encontrado". Agora o motivo vai junto.
+    let erroTrk = null;
+    try {
+      devML = mlReturns && typeof mlReturns.acharPorTracking === 'function'
+        ? await mlReturns.acharPorTracking(trk)
+        : null;
+      if (!mlReturns) erroTrk = 'modulo ml-returns nao injetado nesta rota';
+    } catch (e) { devML = null; erroTrk = String(e.message || e); }
     // b139 - quando nao acha, mostra o ESTADO DO INDICE junto: quantos
     // rastreios ele tem, de quando e, e se a montagem deu erro. Sem isso o
     // 404 nao diz se o indice estava vazio ou se o rastreio nao esta nele.
-    const diagTrk = (!devML && typeof mlReturns.ultimaBuscaTracking === 'function')
+    const diagTrk = (!devML && mlReturns && typeof mlReturns.ultimaBuscaTracking === 'function')
       ? mlReturns.ultimaBuscaTracking() : null;
     resultado.tentativas.push({
       tipo: 'correios_reverso_ml', codigo: trk,
       ok: !!(devML && devML.order_id), status: devML ? 200 : 404,
+      erro_interno: erroTrk || undefined,
       indice: diagTrk ? {
         rastreios: diagTrk.no_indice,
         montado_em: diagTrk.indice_em,
