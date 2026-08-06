@@ -1293,6 +1293,14 @@ registrarIdentificar(router, {
   acharDevolucao: shopee.acharDevolucao,
   buscarPorNome: nfNomes.buscarPorNome,
   shopee, nfNomes,         // a rota usa shopee.cfg.ativo e nfNomes.colapsar
+  // ═══════════════════════════════════════════════════════════════════
+  // b142 - mlReturns FALTAVA AQUI, e era a causa do bipe de etiqueta
+  // Correios reverso nunca funcionar na AMB. A rota chama
+  // mlReturns.acharPorTracking() dentro de um try/catch; sem a injecao
+  // dava ReferenceError, o catch engolia e devolvia null - entao o
+  // sintoma aparecia como "rastreio nao encontrado", nunca como erro.
+  // ═══════════════════════════════════════════════════════════════════
+  mlReturns,
   // b71 - RAMO DO MAGALU DESLIGADO POR ORA: a rota da GOOD espera um
   // cliente com .cfg.ativo/.cfg.autorizado e .acharDevolucao(); o
   // magalu-AMB tem outra interface (temCredenciais/temToken/porPedido).
