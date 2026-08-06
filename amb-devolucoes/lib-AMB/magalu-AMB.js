@@ -29,8 +29,18 @@ const tokens = require('./render-tokens-AMB');
 const ID_BASE = 'https://id.magalu.com';
 const BFF = 'https://seller-devolution-bff.mglu.io';
 
-const CLIENT_ID = process.env.MAGALU_CLIENT_ID || '';
-const CLIENT_SECRET = process.env.MAGALU_CLIENT_SECRET || '';
+// ═══════════════════════════════════════════════════════════════════════
+// b149 - APP PROPRIO DA AMB, se existir.
+// No Magalu o app pertence a UMA conta. Se a AMBTotal nao conseguir
+// consentir no app da GOOD, a saida e criar um app proprio pra ela no
+// portal de desenvolvedores e por as credenciais dele aqui:
+//     AMB_MAGALU_CLIENT_ID / AMB_MAGALU_CLIENT_SECRET   (no Render)
+// Sem essas variaveis, segue usando o app compartilhado com a GOOD -
+// entao criar isto nao muda nada enquanto voce nao preencher.
+// ═══════════════════════════════════════════════════════════════════════
+const CLIENT_ID = process.env.AMB_MAGALU_CLIENT_ID || process.env.MAGALU_CLIENT_ID || '';
+const CLIENT_SECRET = process.env.AMB_MAGALU_CLIENT_SECRET || process.env.MAGALU_CLIENT_SECRET || '';
+const APP_PROPRIO = !!process.env.AMB_MAGALU_CLIENT_ID;
 // ═══════════════════════════════════════════════════════════════════════
 // b148 - OS ESCOPOS SAO OS MESMOS DA GOOD.
 // O app do Magalu e COMPARTILHADO pelas duas empresas, entao os escopos
@@ -239,7 +249,13 @@ function preAquecer() {
   setInterval(() => { construirIndice().catch(() => {}); }, 30 * 60 * 1000).unref();
 }
 
+// b149 - pra a tela de conexoes dizer qual app esta sendo usado
+function appEmUso() {
+  return { proprio: APP_PROPRIO, client_id_final: CLIENT_ID ? CLIENT_ID.slice(0, 6) + '...' : null };
+}
+
 module.exports = {
+  appEmUso,
   temCredenciais, temToken, temTenant,
   urlAutorizacao, trocarCodePorToken, chamarMagalu,
   construirIndice, resumoEspreita, statusIndice, preAquecer,
