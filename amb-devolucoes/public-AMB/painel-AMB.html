@@ -243,9 +243,17 @@
         <label>Ate:
           <input type="date" id="filtroDataFim">
         </label>
+        <!-- v3.62 - ANTES ERA UMA CAIXINHA "Mostrar concluidos", que na
+             verdade queria dizer "INCLUIR os concluidos": marcando, ela
+             somava os dois e nao havia jeito de ver SO os concluidos.
+             Agora sao tres estados explicitos. -->
         <label>
-          <input type="checkbox" id="mostrarConcluidos">
-          Mostrar concluídos
+          Mostrar
+          <select id="mostrarConcluidos" style="margin-left:5px;padding:4px 8px;border:1px solid #ccc;border-radius:7px;">
+            <option value="pendentes">só pendentes</option>
+            <option value="concluidos">só concluídos</option>
+            <option value="todos">todos</option>
+          </select>
         </label>
         <button onclick="carregar()">🔄 Recarregar</button>
         <button id="btnVarreduraNF" onclick="varrerNFsFaltantes()" style="background:#561A9E; color:#fff;" title="Busca e vincula a NF de TODOS os registros sem NF, um por vez (respeita o limite do Bling)">🔎 Buscar NFs faltantes</button>
@@ -1104,7 +1112,7 @@
     }
 
     function renderizar() {
-      const mostrarConcluidos = document.getElementById('mostrarConcluidos').checked;
+      const mostrarConcluidos = document.getElementById('mostrarConcluidos').value;
       const busca = (document.getElementById('filtroBusca').value || '').trim().toLowerCase();
       const dataIni = document.getElementById('filtroDataIni').value;
       const dataFim = document.getElementById('filtroDataFim').value;
@@ -1114,7 +1122,10 @@
 
       function passa(d) {
         // Status
-        if (!mostrarConcluidos && d.status === 'concluido') return false;
+        // v3.62 - tres estados, sem ambiguidade
+        const ehConcluido = d.status === 'concluido';
+        if (mostrarConcluidos === 'pendentes' && ehConcluido) return false;
+        if (mostrarConcluidos === 'concluidos' && !ehConcluido) return false;
         // Data (usa created_at)
         if (dataIniMs || dataFimMs) {
           const t = new Date((d.criado_em || d.created_at)).getTime();
