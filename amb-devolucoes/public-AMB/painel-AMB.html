@@ -387,10 +387,6 @@
         }
         dados = d;
         renderizar();
-        // b145 - depois de desenhar, tenta vincular os FULL sozinho.
-        // Junta as tres filas: o card FULL pode estar em qualquer uma.
-        acharDevolucoesFullSozinho([]
-          .concat(d.aprovadas || [], d.problemas || [], d.divergentes || [], d.entregues || []));
       } catch (err) {
         toast('Erro: ' + err.message, 'err');
       } finally {
@@ -1922,41 +1918,6 @@
 
     // v3.26 - INTELIGÊNCIA FULL
     // Acha no Bling a NF de entrada série 2 que o ML emitiu e vincula ao card
-    // ═══════════════════════════════════════════════════════════════════
-    // b145 - PROCURA SOZINHO. Se o card e FULL e ainda nao tem a NF de
-    // devolucao vinculada, o painel busca no Bling ao carregar - sem voce
-    // clicar em nada. Cuidados: so os FULL sem vinculo, um de cada vez com
-    // pausa (cada busca varre notas no Bling), no maximo 5 por carga, e
-    // marca os que ja tentou pra nao repetir a cada re-render.
-    // ═══════════════════════════════════════════════════════════════════
-    const JA_TENTOU_FULL = new Set();
-
-    async function acharDevolucoesFullSozinho(lista) {
-      const alvos = (lista || []).filter(d => {
-        if (!d || !d.id) return false;
-        if (d.nf_devolucao_id_bling) return false;          // ja vinculado
-        if (JA_TENTOU_FULL.has(String(d.id))) return false;  // ja tentei nesta sessao
-        const chaveV = String(d.nf_chave || '').replace(/\D/g, '');
-        const ehFull = String(d.nf_serie || '').trim() === '2' ||
-          (chaveV.length === 44 && chaveV.substr(22, 3) === '002');
-        return ehFull;
-      }).slice(0, 5);
-
-      for (const d of alvos) {
-        JA_TENTOU_FULL.add(String(d.id));
-        try {
-          const r = await fetch(`/api/admin/full-vincular/${d.id}`, { method: 'POST' });
-          const res = await r.json();
-          if (res.ok) {
-            toast(`Devolução nº ${res.nf_devolucao_numero || '?'} vinculada sozinha (${(res.casou_por || []).join(', ')})`, 'ok');
-            carregar();
-            return;                       // recarregou: o resto vem na proxima
-          }
-        } catch (e) { /* silencioso: e uma cortesia, nao uma obrigacao */ }
-        await new Promise(r => setTimeout(r, 900));
-      }
-    }
-
     async function fullVincular(id, btn) {
       const t = btn ? btn.textContent : '';
       if (btn) { btn.disabled = true; btn.textContent = '🔗 Procurando...'; }
