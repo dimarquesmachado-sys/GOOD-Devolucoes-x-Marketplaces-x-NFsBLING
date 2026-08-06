@@ -76,6 +76,27 @@
     try { return new Date(v).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }); }
     catch (e) { return String(v); }
   }
+  // b161 - relanca a entrada de estoque de um pedido (botao da ficha)
+  window.relancarEstoque = async function (pedidoId, btn) {
+    if (btn) { btn.disabled = true; btn.textContent = 'Lançando…'; }
+    try {
+      var r = await api('/api/defeitos/pedido/' + encodeURIComponent(pedidoId) + '/lancar-estoque',
+        { method: 'POST', body: '{}' });
+      if (r && r.ok) {
+        alert('✅ Entrada lançada no Bling!' + (r.ja_lancado ? ' (já estava lançada)' : '')
+          + (r.link ? '\n\nConfira: ' + r.link : ''));
+        if (r.defeito_id && typeof abrirFichaDefeito === 'function') abrirFichaDefeito(r.defeito_id);
+      } else {
+        alert('❌ O Bling recusou de novo:\n\n' + ((r && r.erro) || 'erro desconhecido')
+          + '\n\nSe for limite de requisições, espere 1 minuto e clique de novo.');
+        if (btn) { btn.disabled = false; btn.textContent = '🔄 Lançar estoque no Bling'; }
+      }
+    } catch (e) {
+      alert('Erro de conexão: ' + e.message);
+      if (btn) { btn.disabled = false; btn.textContent = '🔄 Lançar estoque no Bling'; }
+    }
+  };
+
   async function api(caminho, opcoes) {
     var r = await fetch(BASE + caminho, Object.assign({
       credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
@@ -794,7 +815,15 @@
                 : '')
             + '</div>'
           : '')
-      + (p.observacao ? '<div style="font-size:12.5px;color:#555;margin-bottom:6px;">' + esc(p.observacao) + '</div>' : '');
+      + (p.observacao ? '<div style="font-size:12.5px;color:#555;margin-bottom:6px;">' + esc(p.observacao) + '</div>' : '')
+      // b161 - a entrada automatica falhou? botao de relancar (so faz
+      // sentido pra RECUPERADA ja autorizada e ainda sem o id do produto)
+      + ((p.tipo === 'recuperado' && (p.status === 'autorizado' || p.status === 'concluido') && !p.estoque_produto_id)
+          ? '<div style="margin:4px 0 6px;"><button type="button" onclick="relancarEstoque(\'' + esc(p.id) + '\', this)"'
+            + ' style="background:#0F6E56;color:#fff;border:none;border-radius:8px;padding:8px 14px;font-weight:700;cursor:pointer;">'
+            + '🔄 Lançar estoque no Bling</button>'
+            + ' <span style="font-size:11.5px;color:#a05a00;">a entrada automática não entrou — clique pra tentar de novo</span></div>'
+          : '');
 
     var doa = Array.isArray(p.doadores) ? p.doadores : [];
     if (doa.length) {
