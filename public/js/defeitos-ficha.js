@@ -78,6 +78,27 @@
     try { return new Date(v).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }); }
     catch (e) { return String(v); }
   }
+  // v4.60 (= b161 da AMB) - relanca a entrada de estoque (botao da ficha)
+  window.relancarEstoque = async function (pedidoId, btn) {
+    if (btn) { btn.disabled = true; btn.textContent = 'Lançando…'; }
+    try {
+      var r = await api('/api/defeitos/pedido/' + encodeURIComponent(pedidoId) + '/lancar-estoque',
+        { method: 'POST', body: '{}' });
+      if (r && r.ok) {
+        alert('✅ Entrada lançada no Bling!' + (r.ja_lancado ? ' (já estava lançada)' : '')
+          + (r.link ? '\n\nConfira: ' + r.link : ''));
+        if (r.defeito_id && typeof abrirFichaDefeito === 'function') abrirFichaDefeito(r.defeito_id);
+      } else {
+        alert('❌ O Bling recusou de novo:\n\n' + ((r && r.erro) || 'erro desconhecido')
+          + '\n\nSe for limite de requisições, espere 1 minuto e clique de novo.');
+        if (btn) { btn.disabled = false; btn.textContent = '🔄 Lançar estoque no Bling'; }
+      }
+    } catch (e) {
+      alert('Erro de conexão: ' + e.message);
+      if (btn) { btn.disabled = false; btn.textContent = '🔄 Lançar estoque no Bling'; }
+    }
+  };
+
   async function api(caminho, opcoes) {
     var r = await fetch(BASE + caminho, Object.assign({
       credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
@@ -788,15 +809,22 @@
           : '')
       + (p.localizacao ? '<div style="font-size:12px;color:#777;margin-bottom:5px;">📍 ' + esc(p.localizacao) + '</div>' : '')
       + (p.estoque_qtd
-          ? '<div style="font-size:12.5px;color:#0F6E56;margin-bottom:5px;">📦 ' + esc(p.estoque_qtd)
-            + ' un. lançadas no Bling'
+          ? '<div style="background:#e9f7ef;border:1.5px solid #0F6E56;border-radius:9px;padding:8px 12px;margin:4px 0 7px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">'
+            + '<b style="color:#0F6E56;font-size:14px;letter-spacing:.3px;">📦 LANÇADO EM ESTOQUE · ' + esc(p.estoque_qtd) + ' un.</b>'
             + (p.estoque_produto_id
-                ? ' · <a href="https://www.bling.com.br/estoque.php?buscaid=' + esc(p.estoque_produto_id)
-                  + '" target="_blank" style="color:#561A9E;font-weight:600;">conferir a entrada no Bling ↗</a>'
+                ? '<a href="https://www.bling.com.br/estoque.php?buscaid=' + esc(p.estoque_produto_id)
+                  + '" target="_blank" style="color:#561A9E;font-weight:600;font-size:12.5px;">conferir no Bling ↗</a>'
                 : '')
             + '</div>'
           : '')
-      + (p.observacao ? '<div style="font-size:12.5px;color:#555;margin-bottom:6px;">' + esc(p.observacao) + '</div>' : '');
+      + (p.observacao ? '<div style="font-size:12.5px;color:#555;margin-bottom:6px;">' + esc(p.observacao) + '</div>' : '')
+      // v4.60 (= b161 da AMB) - a entrada automatica falhou? botao de relancar
+      + ((p.tipo === 'recuperado' && (p.status === 'autorizado' || p.status === 'concluido') && !p.estoque_produto_id)
+          ? '<div style="margin:4px 0 6px;"><button type="button" onclick="relancarEstoque(\'' + esc(p.id) + '\', this)"'
+            + ' style="background:#0F6E56;color:#fff;border:none;border-radius:8px;padding:8px 14px;font-weight:700;cursor:pointer;">'
+            + '🔄 Lançar estoque no Bling</button>'
+            + ' <span style="font-size:11.5px;color:#a05a00;">a entrada automática não entrou — clique pra tentar de novo</span></div>'
+          : '');
 
     var doa = Array.isArray(p.doadores) ? p.doadores : [];
     if (doa.length) {
@@ -826,7 +854,9 @@
       }
       h += '<button onclick="decidirPedido(' + p.id + ',\'recusar\')" style="border:1px solid #ddd;background:#fff;border-radius:8px;padding:9px 14px;cursor:pointer;">Recusar</button></div>';
     }
-    if (comAcoes && p.status === 'autorizado') {
+    // v4.60 (= b164 da AMB) - recuperada COM estoque lancado ja esta
+    // concluida: sem "Marcar Como Feito" (cobre tambem pedidos antigos).
+    if (comAcoes && p.status === 'autorizado' && !(p.tipo === 'recuperado' && p.estoque_produto_id)) {
       h += '<button onclick="decidirPedido(' + p.id + ',\'concluir\')" style="width:100%;margin-top:4px;border:1px solid #ddd;background:#fff;border-radius:8px;padding:9px;cursor:pointer;">Marcar Como Feito</button>';
     }
     return h + '</div></div>';
@@ -861,7 +891,8 @@
         alert('Liberado e lançado no Bling: ' + est.quantidade + ' un. no depósito Geral'
           + (est.custo ? ' · custo R$ ' + Number(est.custo).toFixed(2).replace('.', ',') + ' por unidade' : ' (SEM custo no cadastro do produto)')
           + '.');
-        if (est.link) window.open(est.link, '_blank');
+        // v4.60 (= b164 da AMB) - NAO abre a aba do Bling sozinho: o link
+        // "conferir no Bling" fica no card, clica quem quiser.
       } else {
         alert('Peça liberada, MAS o Bling não aceitou o lançamento:\n' + (est.erro || '')
           + '\n\nLance a entrada à mão no Bling. Ficou anotado no histórico da peça.');
