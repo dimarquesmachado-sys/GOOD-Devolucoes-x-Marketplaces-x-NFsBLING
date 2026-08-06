@@ -227,7 +227,11 @@
       <div class="input-group">
         <input type="text" id="codigo"
           placeholder="Bipe, cole ou digite o codigo"
-          autocomplete="off" inputmode="numeric" />
+          autocomplete="off" inputmode="text" autocapitalize="characters" />
+          <!-- b140 - era inputmode="text": no celular abria o teclado
+               numerico e nao dava pra digitar NOME do remetente, que a busca
+               aceita ("betania", "RENATONEVES"). Agora abre o teclado normal
+               e ja vem em maiuscula, que e como o nome vem na etiqueta. -->
         <button id="btnBuscar" onclick="buscar()">Buscar</button>
       </div>
       <!-- HIERARQUIA: bipar e a acao do dia a dia (cheia, ocupa o vao);
@@ -401,7 +405,7 @@
           </label>
           <input type="text" id="bipagemInput"
                  placeholder="Aguardando bipagem..."
-                 inputmode="numeric"
+                 inputmode="text"
                  style="width:100%; padding:12px 14px; font-size:18px; font-family:'Courier New',monospace; font-weight:700; border:2px solid #1565c0; border-radius:8px; background:white;"
                  autocomplete="off">
         </div>
@@ -553,7 +557,7 @@
         </label>
         <input type="text" id="divergenteEAN"
                placeholder="EAN ou SKU do produto recebido"
-               inputmode="numeric"
+               inputmode="text"
                style="width:100%; padding:12px 14px; font-size:18px; font-family:'Courier New',monospace; font-weight:700; border:2px solid #5e35b1; border-radius:8px; background:white;"
                autocomplete="off"
                onkeydown="if(event.key==='Enter'){event.preventDefault(); buscarProdutoDivergente();}">
