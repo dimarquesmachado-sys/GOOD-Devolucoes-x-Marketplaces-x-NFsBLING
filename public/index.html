@@ -57,7 +57,7 @@
     .links-defeitos a:hover { background: rgba(0,0,0,.18); }
     @media (max-width: 600px) { .links-defeitos { justify-content: center; } }
 
-    /* v4.54 - COLINHA "o que bipar em cada etiqueta": link no cabecalho
+    /* v4.55 - COLINHA "o que bipar em cada etiqueta": link no cabecalho
        que abre um modal (mesma feature da AMB b157; textos identicos). */
     .cola-mkt { margin:10px 0 2px; font-weight:800; font-size:12.5px; display:flex; align-items:center; gap:6px; }
     .cola-chip { width:10px; height:10px; border-radius:3px; display:inline-block; flex:0 0 auto; }
@@ -186,7 +186,7 @@
   </div>
 
   <!-- v3.96 - MODAL: lancar produto com defeito (busca por nome/SKU/EAN) -->
-  <!-- v4.54 - a COLINHA em modal: abre pelo "❓ O que bipar" do cabecalho. -->
+  <!-- v4.55 - a COLINHA em modal: abre pelo "❓ O que bipar" do cabecalho. -->
   <div id="modalColaBipe" class="modal-bg" onclick="if(event.target===this)fecharColaBipe()">
     <div class="modal" style="max-width:520px;width:94%;padding:0;overflow:hidden;">
       <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid #eee;background:#fff9d6;">
@@ -658,7 +658,7 @@
   <!-- v4.34 - colar/arrastar imagem da etiqueta na busca -->
   <script src="js/colar-imagem.js?v=4560"></script>
   <!-- v4.50 - ciclo do estoque de defeitos (ficha, pecas, pedidos) -->
-  <script src="js/defeitos-ficha.js?v=4560"></script>
+  <script src="js/defeitos-ficha.js?v=4600"></script>
 
   <!-- v3.96 - lancar produto com defeito (busca por parte do nome) -->
   <script>
@@ -995,7 +995,7 @@
     })();
   </script>
   <script>
-    // v4.54 - colinha em modal
+    // v4.55 - colinha em modal
     function abrirColaBipe() {
       var m = document.getElementById('modalColaBipe');
       if (m) m.classList.add('show');
