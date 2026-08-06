@@ -1,5 +1,5 @@
 // ============================================================
-// amb-devolucoes/lib-AMB/magalu-AMB.js         (AMB Devol. b152)
+// amb-devolucoes/lib-AMB/magalu-AMB.js         (AMB Devol. b156)
 // ------------------------------------------------------------
 // Magalu da AMBTotal.
 //
@@ -252,7 +252,17 @@ async function construirIndiceDevolucoes(opts = {}) {
       };
       if (dev.protocolo) mapa['P:' + dev.protocolo] = dev;
       if (dev.pedido) mapa['O:' + dev.pedido] = dev;
-      if (!t.closed) abertos.push(dev);
+      // ═══════════════════════════════════════════════════════════════
+      // b156 - a fase 2 varre TODOS os tickets, fechados incluidos.
+      // CONSTATADO 06/08 pelo raio-X (b155) no JSON cru: o Magalu FECHA
+      // o ticket com o pacote ainda na rua (Ana: fechado 09/07, POSTED
+      // em 06/08) e o /tickets/{id}/returns RESPONDE remessa de ticket
+      // fechado (count 1). A premissa da GOOD "fechado nao tem pacote
+      // voltando" pulava exatamente os tickets que importam - por isso
+      // nenhum reverse_code era indexado (com_remessa_reversa: 0).
+      // Custo: ~1 chamada por ticket (hoje 23), em lotes de 4.
+      // ═══════════════════════════════════════════════════════════════
+      abertos.push(dev);
     }
     if (lista.length < 100) break;
     await new Promise(s => setTimeout(s, 250));
@@ -264,7 +274,7 @@ async function construirIndiceDevolucoes(opts = {}) {
   TIDX.total = total;
   TIDX.duracaoSeg = Math.round((Date.now() - t0) / 1000);
   if (total > 0) TIDX.erro = null;
-  console.log(`[AMB/MAGALU] tickets fase 1: ${total} (protocolo+pedido) em ${TIDX.duracaoSeg}s - ${abertos.length} abertos p/ fase 2`);
+  console.log(`[AMB/MAGALU] tickets fase 1: ${total} (protocolo+pedido) em ${TIDX.duracaoSeg}s - ${abertos.length} p/ fase 2 (todos, fechados incluidos - b156)`);
   if (opts.reverseEmBackground) {
     setImmediate(() => _fase2ReverseCodes(abertos)); // nao segura o bipe
   } else {
