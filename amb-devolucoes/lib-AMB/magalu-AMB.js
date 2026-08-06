@@ -31,8 +31,28 @@ const BFF = 'https://seller-devolution-bff.mglu.io';
 
 const CLIENT_ID = process.env.MAGALU_CLIENT_ID || '';
 const CLIENT_SECRET = process.env.MAGALU_CLIENT_SECRET || '';
-const SCOPES = (process.env.MAGALU_SCOPES ||
-  'open:portfolio:read open:order-order:read open:order-delivery:read offline_access').trim();
+// ═══════════════════════════════════════════════════════════════════════
+// b148 - OS ESCOPOS SAO OS MESMOS DA GOOD.
+// O app do Magalu e COMPARTILHADO pelas duas empresas, entao os escopos
+// permitidos sao os mesmos - e o Magalu recusa o consentimento inteiro
+// ("Houve um erro com a sua solicitacao") quando se pede um escopo que o
+// app nao tem. A AMB pedia escopos ADIVINHADOS: sem o sufixo -seller
+// (open:order-order:read em vez de open:order-order-seller:read) e mais
+// dois que o app nao possui (open:portfolio:read e offline_access).
+// Aqui vai a lista EXATA que a GOOD usa e que funciona hoje.
+// ═══════════════════════════════════════════════════════════════════════
+const SCOPES = (process.env.MAGALU_SCOPES || [
+  'open:tickets-seller:read',
+  'open:ticket-returns-seller:read',
+  'open:ticket-events-seller:read',
+  'open:ticket-messages-seller:read',
+  'open:order-order-seller:read',
+  'open:order-invoice-seller:read',
+  'open:order-delivery-seller:read',
+  'open:order-logistics-seller:read',
+  'open:logistic-seller-shippings:read',
+  'open:logistic-seller-trackings:read',
+].join(' ')).trim();
 
 let ACCESS = process.env.AMB_MAGALU_ACCESS_TOKEN || '';
 let REFRESH = process.env.AMB_MAGALU_REFRESH_TOKEN || '';
@@ -53,11 +73,14 @@ function urlAutorizacao(state, redirectUri) {
   // Pra voltar ao comportamento antigo: crie AMB_MAGALU_CHOOSE_TENANTS=true
   // no Render.
   // ═══════════════════════════════════════════════════════════════════
+  // b148 - choose_tenants VOLTA a ser padrao: a GOOD usa e funciona, entao
+  // nao era ele o problema (eram os escopos). Pra desligar, crie
+  // AMB_MAGALU_CHOOSE_TENANTS=false no Render.
   const p = new URLSearchParams({
     client_id: CLIENT_ID, redirect_uri: redirectUri,
     response_type: 'code', scope: SCOPES, state,
   });
-  if (String(process.env.AMB_MAGALU_CHOOSE_TENANTS || '').toLowerCase() === 'true') {
+  if (String(process.env.AMB_MAGALU_CHOOSE_TENANTS || 'true').toLowerCase() !== 'false') {
     p.set('choose_tenants', 'true');
   }
   return `${ID_BASE}/login?${p.toString()}`;
