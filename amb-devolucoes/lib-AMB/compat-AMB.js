@@ -362,10 +362,36 @@ function montar(router, deps) {
   // O mesmo pacote pode ter sido gravado por identificadores diferentes
   // (order_id num bipe, tracking noutro, numero da NF noutro), entao
   // procura pelos tres de uma vez. ?tambem= aceita um 2o identificador.
+  //
+  // b151 - AVISO DE "JA TRIADO" CONSERTADO. A tela (busca.js da GOOD)
+  // le d.registros[] com tipo / status / created_at / problema_descricao
+  // — e esta rota devolvia {triado, registro} (singular, nomes da AMB).
+  // registros vinha sempre vazio e o aviso de duplicata NUNCA aparecia:
+  // bipar um pacote ja triado abria a triagem de novo como se fosse
+  // novo. Agora: acha via jaTriado, carrega o registro COMPLETO via
+  // obterTriagem e traduz pro formato da GOOD — na AMB o "tipo" mora no
+  // campo status (aprovado/problema/divergente; concluido ao concluir),
+  // a data e criado_em e quem triou esta na coluna funcionario (a GOOD
+  // extrai da descricao por regex, entao anexamos "[Reportado por X]"
+  // NA RESPOSTA quando a descricao nao traz o padrao — o banco nao muda).
   // ─────────────────────────────────────────────────────────────────────
+  const TIPOS_TRIAGEM = ['aprovado', 'problema', 'divergente'];
+  function registroParaGood(reg) {
+    if (!reg) return null;
+    const tipo = reg.tipo || (TIPOS_TRIAGEM.includes(reg.status) ? reg.status : '');
+    let desc = String(reg.problema_descricao || '');
+    const temPadrao = /Aprovado por\s+\w+|\[Reportado por\s+\w+\]|\[DIVERGENTE por\s+\w+\]/i.test(desc);
+    if (!temPadrao && reg.funcionario) desc = (desc + ' [Reportado por ' + reg.funcionario + ']').trim();
+    return Object.assign({}, reg, {
+      tipo,
+      created_at: reg.created_at || reg.criado_em || null,
+      problema_descricao: desc,
+    });
+  }
+
   router.get('/api/triagem/status/:id', auth.requerLogin, async (req, res) => {
     const id = String(req.params.id || '').trim();
-    if (!id) return res.status(400).json({ ok: false, erro: 'identificador obrigatorio' });
+    if (!id) return res.status(400).json({ ok: false, erro: 'identificador obrigatorio', registros: [] });
     const tambem = String(req.query.tambem || '').trim();
 
     try {
@@ -374,9 +400,21 @@ function montar(router, deps) {
         const r2 = await db.jaTriado({ orderId: tambem, tracking: tambem, nfNumero: tambem });
         if (r2.ok && r2.triado) r = r2;
       }
-      res.json(r);
+      if (!r.ok) return res.json({ ok: false, erro: r.erro || '', registros: [] });
+
+      let reg = r.registro || null;
+      if (reg && reg.id) {
+        const full = await db.obterTriagem(reg.id);   // select * — traz tipo/descricao
+        if (full.ok && full.registro) reg = full.registro;
+      }
+      res.json({
+        ok: true,
+        triado: !!reg,                       // formato antigo preservado
+        registro: reg,
+        registros: reg ? [registroParaGood(reg)] : [],   // o que a tela le
+      });
     } catch (e) {
-      res.status(500).json({ ok: false, erro: String(e.message || e) });
+      res.status(500).json({ ok: false, erro: String(e.message || e), registros: [] });
     }
   });
 
