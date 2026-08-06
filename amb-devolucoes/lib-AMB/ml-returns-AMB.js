@@ -227,7 +227,11 @@ async function construirIndice(opts = {}) {
 
   try {
     const maxPaginas = opts.maxPaginas || 30;
-    const janelaDias = opts.janelaDias || cfg.ml.janelaDias;   // AMB: 60 dias
+    // b139 - JANELA IGUAL A DA GOOD: 120 dias.
+    // A AMB varria 60 e a GOOD 120, com um comentario la dizendo o motivo:
+    // a devolucao fica MESES na pilha antes de alguem bipar. Uma etiqueta
+    // de uma venda de julho batia justamente nessa borda.
+    const janelaDias = opts.janelaDias || Math.max(Number(cfg.ml.janelaDias) || 0, 120);
     const mapa = {};
     let comTracking = 0;
     let erroBusca = null;
@@ -387,8 +391,24 @@ async function acharPorTracking(codigo) {
   } else if ((Date.now() - IDX.ts) > 30 * 60000) {
     construirIndice().catch(e => console.error('[AMB/ML-RETURNS] atualizacao em background falhou:', e.message));
   }
-  return IDX.mapa[trk] || null;
+  const achado = IDX.mapa[trk] || null;
+  // b139 - quando NAO acha, deixa o porque a mao de quem chamou: sem isso
+  // o "404" nao distingue "o indice esta vazio" de "o rastreio nao esta la"
+  if (!achado) {
+    ULTIMA_BUSCA = {
+      tracking: trk,
+      no_indice: Object.keys(IDX.mapa).length,
+      indice_em: IDX.ts ? new Date(IDX.ts).toISOString() : null,
+      erro_indice: IDX.erro || null,
+      exemplos: Object.keys(IDX.mapa).slice(0, 5),
+    };
+  }
+  return achado;
 }
+
+/** b139 - o diagnostico da ultima busca por rastreio que falhou. */
+let ULTIMA_BUSCA = null;
+function ultimaBuscaTracking() { return ULTIMA_BUSCA; }
 
 /** Classifica as devolucoes do indice — base do painel "a espreita". */
 function resumoEspreita() {
@@ -489,7 +509,7 @@ function preAquecer(atrasoMs) {
 }
 
 module.exports = {
-  construirIndice, statusIndice, acharPorTracking, resumoEspreita, preAquecer,
+  construirIndice, statusIndice, acharPorTracking, ultimaBuscaTracking, resumoEspreita, preAquecer,
   enriquecerLista,
   tamanho: () => Object.keys(IDX.mapa).length,
 };
