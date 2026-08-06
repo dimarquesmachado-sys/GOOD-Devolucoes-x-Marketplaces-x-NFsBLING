@@ -1315,6 +1315,7 @@ registrarIdentificar(router, {
 });
 
 registrarRotasAdminNF(router, {
+  tabelaDevolucoes: db.tabelas.devolucoes,   // b144 - devolucoes_amb
   supabase: db.conectar(),
   requerAdmin: auth.requerAdmin,
   // usado nas fotos: aceita sessao de admin OU a chave ?k=ADMIN_KEY
