@@ -57,7 +57,7 @@
     .links-defeitos a:hover { background: rgba(0,0,0,.18); }
     @media (max-width: 600px) { .links-defeitos { justify-content: center; } }
 
-    /* v4.53 - COLINHA "o que bipar em cada etiqueta": link no cabecalho
+    /* v4.54 - COLINHA "o que bipar em cada etiqueta": link no cabecalho
        que abre um modal (mesma feature da AMB b157; textos identicos). */
     .cola-mkt { margin:10px 0 2px; font-weight:800; font-size:12.5px; display:flex; align-items:center; gap:6px; }
     .cola-chip { width:10px; height:10px; border-radius:3px; display:inline-block; flex:0 0 auto; }
@@ -186,7 +186,7 @@
   </div>
 
   <!-- v3.96 - MODAL: lancar produto com defeito (busca por nome/SKU/EAN) -->
-  <!-- v4.53 - a COLINHA em modal: abre pelo "❓ O que bipar" do cabecalho. -->
+  <!-- v4.54 - a COLINHA em modal: abre pelo "❓ O que bipar" do cabecalho. -->
   <div id="modalColaBipe" class="modal-bg" onclick="if(event.target===this)fecharColaBipe()">
     <div class="modal" style="max-width:520px;width:94%;padding:0;overflow:hidden;">
       <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid #eee;background:#fff9d6;">
@@ -207,7 +207,7 @@
         <div class="cola-mkt" style="color:#7b1fa2;"><span class="cola-chip" style="background:#7b1fa2;"></span> TIKTOK · AMAZON · OUTROS</div>
         <div class="cola-li"><b>NOME do remetente</b> (colado, como vem na etiqueta)</div>
         <div class="cola-mkt" style="color:#1a7f37;"><span class="cola-chip" style="background:#1a7f37;"></span> CORINGAS (valem pra tudo)</div>
-        <div class="cola-li"><b>Chave da DANFE</b> (os 44 números da nota) · <b>nº da NF</b> · <b>📎 foto da etiqueta</b></div>
+        <div class="cola-li"><b>NOME do remetente</b> (acha em qualquer marketplace) · <b>Chave da DANFE</b> (os 44 números da nota) · <b>nº da NF</b> · <b>📎 foto da etiqueta</b></div>
       </div>
     </div>
   </div>
@@ -995,7 +995,7 @@
     })();
   </script>
   <script>
-    // v4.53 - colinha em modal
+    // v4.54 - colinha em modal
     function abrirColaBipe() {
       var m = document.getElementById('modalColaBipe');
       if (m) m.classList.add('show');
