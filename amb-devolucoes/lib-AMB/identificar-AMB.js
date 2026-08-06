@@ -162,7 +162,20 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
     const trk = mCorreios[1];
     let devML = null;
     try { devML = await mlReturns.acharPorTracking(trk); } catch (e) { devML = null; }
-    resultado.tentativas.push({ tipo: 'correios_reverso_ml', codigo: trk, ok: !!(devML && devML.order_id), status: devML ? 200 : 404 });
+    // b139 - quando nao acha, mostra o ESTADO DO INDICE junto: quantos
+    // rastreios ele tem, de quando e, e se a montagem deu erro. Sem isso o
+    // 404 nao diz se o indice estava vazio ou se o rastreio nao esta nele.
+    const diagTrk = (!devML && typeof mlReturns.ultimaBuscaTracking === 'function')
+      ? mlReturns.ultimaBuscaTracking() : null;
+    resultado.tentativas.push({
+      tipo: 'correios_reverso_ml', codigo: trk,
+      ok: !!(devML && devML.order_id), status: devML ? 200 : 404,
+      indice: diagTrk ? {
+        rastreios: diagTrk.no_indice,
+        montado_em: diagTrk.indice_em,
+        erro: diagTrk.erro_indice,
+      } : undefined,
+    });
 
     if (devML && devML.order_id) {
       console.log(`[BUSCA] CORREIOS ${trk} -> claim ${devML.claim_id} -> order ${devML.order_id}`);
