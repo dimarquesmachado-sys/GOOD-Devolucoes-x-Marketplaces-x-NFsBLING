@@ -116,7 +116,12 @@ module.exports = function registrarCicloDefeitos(router, deps) {
       for (let tent = 1; tent <= 3; tent++) {
         r = await bling.chamarBling('/estoques', {
           method: 'POST',
-          body: JSON.stringify(corpoEstoque),
+          // b162 - O BUG DE SEMPRE: o chamarBling da AMB e axios e le
+          // opcoes.DATA - eu mandava opcoes.BODY, que o axios ignora, e o
+          // POST saia VAZIO ("Nenhum dado foi inserido no body da
+          // requisicao", HTTP 400). Era ISSO desde a b133 - nao era 429.
+          // Constatado 07/08 pelo motivo por extenso da b161.
+          data: corpoEstoque,
         });
         if (r.ok) break;
         const ehLimite = r.status === 429
