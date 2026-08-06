@@ -144,6 +144,42 @@ app.get('/api/admin/nf-itens/:idBling', requerAdmin, async (req, res) => {
 //     pra matriz e está ok pra revenda").
 const DEPOSITO_GERAL_GOOD = '4956031259';
 
+// ═══════════════════════════════════════════════════════════════════
+// b143 - SONDA: mostra a NF de entrada CRUA, como o Bling devolve.
+// Casar por NOME e ruim (cliente que compra 2x, homonimo, cadastro
+// fiscal diferente do nome do ML). O certo e casar por algo UNICO -
+// a chave da NF de venda referenciada na devolucao, ou o numero do
+// pedido. Mas cada emissor preenche isso num campo diferente, e eu
+// nao quero adivinhar: esta rota mostra o objeto inteiro pra a gente
+// ver QUAL campo carrega o vinculo, e implementar em cima do dado.
+//
+//   /amb/api/admin/sonda-nf-entrada/26444189130
+// ═══════════════════════════════════════════════════════════════════
+app.get('/api/admin/sonda-nf-entrada/:id', requerAdmin, async (req, res) => {
+  try {
+    const r = await buscarNFePorId(req.params.id);
+    const nf = (r.ok && r.data?.data) ? r.data.data : null;
+    if (!nf) return res.status(404).json({ ok: false, erro: 'NF nao encontrada', bruto: r.data || null });
+    res.json({
+      ok: true,
+      resumo: {
+        numero: nf.numero, serie: nf.serie, tipo: nf.tipo,
+        chave: nf.chaveAcesso,
+        data: nf.dataEmissao,
+        valor: nf.valorNota,
+        contato: nf.contato ? { nome: nf.contato.nome, documento: nf.contato.numeroDocumento } : null,
+        numero_loja: nf.numeroLoja || null,
+        observacoes: nf.observacoes || null,
+        notas_referenciadas: nf.notasReferenciadas || nf.notaReferenciada || null,
+      },
+      campos_no_topo: Object.keys(nf),
+      nf_completa: nf,
+    });
+  } catch (e) {
+    res.status(500).json({ ok: false, erro: String(e.message || e) });
+  }
+});
+
 app.post('/api/admin/full-vincular/:id', requerAdmin, async (req, res) => {
   if (!supabase) return res.status(500).json({ ok: false, erro: 'Supabase nao configurado' });
   try {
@@ -162,13 +198,19 @@ app.post('/api/admin/full-vincular/:id', requerAdmin, async (req, res) => {
 
     const f = (dt) => dt.toISOString().slice(0, 10);
     const base = reg.nf_data_emissao ? new Date(reg.nf_data_emissao) : (reg.created_at ? new Date(reg.created_at) : new Date(Date.now() - 60 * 864e5));
-    const ini = f(new Date(base.getTime() - 864e5));
+    const ini = f(new Date(base.getTime() - 5 * 864e5));   // b141 - 5 dias de folga
     const fim = f(new Date(Date.now() + 864e5));
 
     const nomeBusca = String(reg.buyer_nome || '').trim().toLowerCase();
+    // b141 - casar por PEDACOS do nome. O nome do card vem do ML e o da NF
+    // vem do cadastro fiscal - quase nunca sao identicos ("Monica Rosrigues"
+    // no card, "Monica Maria Rodrigues" na nota). O includes() da string
+    // inteira falhava sempre nesses casos.
+    const pedacos = nomeBusca.split(/\s+/).filter(w => w.length >= 4);
     const valorEsperado = (Number(reg.produto_valor_unit) || 0) * (Number(reg.produto_qtd) || 1);
 
     // Varre notas de ENTRADA na janela e junta candidatas por valor/nome
+    let varridas = 0;                      // b141 - pro diagnostico
     const candidatos = [];
     for (let pg = 1; pg <= 5; pg++) {
       if (pg > 1) await sleep(400);
@@ -178,8 +220,10 @@ app.post('/api/admin/full-vincular/:id', requerAdmin, async (req, res) => {
       const lista = r.data?.data || [];
       if (lista.length === 0) break;
       for (const nf of lista) {
+        varridas++;
         const nomeNF = String(nf.contato?.nome || '').toLowerCase();
-        const bateNome = nomeBusca && nomeNF.includes(nomeBusca);
+        // basta UM pedaco do nome bater (o sobrenome, normalmente)
+        const bateNome = pedacos.length > 0 && pedacos.some(w => nomeNF.includes(w));
         const bateValor = valorEsperado > 0 && nf.valorNota != null &&
           Math.abs(Number(nf.valorNota) - valorEsperado) < 0.05;
         if (bateNome || bateValor) candidatos.push(nf);
@@ -215,6 +259,24 @@ app.post('/api/admin/full-vincular/:id', requerAdmin, async (req, res) => {
     return res.status(404).json({
       ok: false,
       erro: `Nenhuma NF de entrada serie 2 correspondente na janela ${ini}..${fim} (${candidatos.length} candidata(s) testada(s)). Se ainda nao importou o XML no Bling, use o selo 🏬 pra baixar.`,
+      // b141 - DIZ O QUE FEZ. Antes so avisava que nao achou, e nao dava pra
+      // saber se a janela estava curta, se o nome nao bateu, se o valor nao
+      // bateu, ou se o Bling nem devolveu notas de entrada.
+      diag: {
+        janela: { de: ini, ate: fim },
+        notas_de_entrada_varridas: varridas,
+        candidatas: candidatos.length,
+        procurei_por: {
+          nome_do_card: reg.buyer_nome || null,
+          pedacos_do_nome: pedacos,
+          valor_esperado: valorEsperado || null,
+        },
+        dica: varridas === 0
+          ? 'O Bling nao devolveu NENHUMA nota de entrada nessa janela - confira o periodo e o acesso do token'
+          : (candidatos.length === 0
+              ? 'Varri as notas mas nenhuma bateu por nome nem por valor - confira o valor do card e o nome na nota'
+              : 'Havia candidatas, mas nenhuma era serie 2'),
+      },
     });
   } catch (e) {
     console.error('[FULL-VINCULAR] erro:', e);
@@ -383,8 +445,14 @@ app.post('/api/admin/vincular-devolucao-existente/:id', requerAdmin, async (req,
     const fim = f(new Date(Date.now() + 864e5));
 
     const nomeBusca = String(reg.buyer_nome || '').trim().toLowerCase();
+    // b141 - casar por PEDACOS do nome. O nome do card vem do ML e o da NF
+    // vem do cadastro fiscal - quase nunca sao identicos ("Monica Rosrigues"
+    // no card, "Monica Maria Rodrigues" na nota). O includes() da string
+    // inteira falhava sempre nesses casos.
+    const pedacos = nomeBusca.split(/\s+/).filter(w => w.length >= 4);
     const valorEsperado = (Number(reg.produto_valor_unit) || 0) * (Number(reg.produto_qtd) || 1);
 
+    let varridas = 0;                      // b141 - pro diagnostico
     const candidatos = [];
     for (let pg = 1; pg <= 4; pg++) {
       if (pg > 1) await sleep(400);
@@ -395,8 +463,10 @@ app.post('/api/admin/vincular-devolucao-existente/:id', requerAdmin, async (req,
       if (lista.length === 0) break;
       for (const nf of lista) {
         if (String(nf.naturezaOperacao?.id || '') !== NATUREZA_DEVOLUCAO_GOOD) continue;
+        varridas++;
         const nomeNF = String(nf.contato?.nome || '').toLowerCase();
-        const bateNome = nomeBusca && nomeNF.includes(nomeBusca);
+        // basta UM pedaco do nome bater (o sobrenome, normalmente)
+        const bateNome = pedacos.length > 0 && pedacos.some(w => nomeNF.includes(w));
         const bateValor = valorEsperado > 0 && nf.valorNota != null &&
           Math.abs(Number(nf.valorNota) - valorEsperado) < 0.05;
         if (bateNome || bateValor) candidatos.push(nf);
