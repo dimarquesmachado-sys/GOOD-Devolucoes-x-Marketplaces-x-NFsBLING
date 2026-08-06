@@ -80,7 +80,7 @@ const criarMlBuscas = require('./lib-AMB/ml-buscas-AMB');
 const registrarIdentificar = require('./lib-AMB/identificar-AMB');
 const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 
-const VERSAO = 'AMB Devolucoes b152';
+const VERSAO = 'AMB Devolucoes b155';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -1204,6 +1204,22 @@ router.get('/magalu/achar', admin, async (req, res) => {
       achou: !!dev, devolucao: dev,
       tickets: magalu.statusIndice().tickets,
     });
+  } catch (e) {
+    res.status(500).json({ ok: false, erro: String(e.message || e) });
+  }
+});
+
+// b155 - RAIO-X da remessa reversa: devolve o JSON CRU do
+// /seller/v0/tickets/{id}/returns, campo a campo, direto da API oficial.
+// Motivo: a doc publica esconde o schema, e a fase 2 do indice so varria
+// tickets ABERTOS - mas os dados reais da AMB (06/08) mostraram que o
+// Magalu FECHA o ticket com o pacote ainda viajando. Esta rota constata
+// o que a API expoe pra qualquer ticket, aberto ou fechado.
+// Ex: /amb/magalu/ticket/UUID-DO-TICKET/returns?k=ADMIN_KEY
+router.get('/magalu/ticket/:id/returns', admin, async (req, res) => {
+  try {
+    const r = await magalu.remessasReversasDoTicket(String(req.params.id || ''));
+    res.json({ ok: true, versao: VERSAO, ticket_id: req.params.id, http: r.status, cru: r.data });
   } catch (e) {
     res.status(500).json({ ok: false, erro: String(e.message || e) });
   }
