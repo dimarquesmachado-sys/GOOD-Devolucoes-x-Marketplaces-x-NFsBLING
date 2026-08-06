@@ -856,7 +856,9 @@
     var est = r.pedido && r.pedido.estoque_bling;
     if (est) {
       if (est.ok) {
-        alert('Liberado e lançado no Bling: ' + est.quantidade + ' un. no depósito Geral.');
+        alert('Liberado e lançado no Bling: ' + est.quantidade + ' un. no depósito Geral'
+          + (est.custo ? ' · custo R$ ' + Number(est.custo).toFixed(2).replace('.', ',') + ' por unidade' : ' (SEM custo no cadastro do produto)')
+          + '.');
         if (est.link) window.open(est.link, '_blank');
       } else {
         alert('Peça liberada, MAS o Bling não aceitou o lançamento:\n' + (est.erro || '')
