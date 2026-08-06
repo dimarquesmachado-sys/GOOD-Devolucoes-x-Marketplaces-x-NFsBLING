@@ -232,16 +232,66 @@ app.post('/api/admin/full-vincular/:id', requerAdmin, async (req, res) => {
     }
     candidatos.sort((a, b) => new Date(b.dataEmissao || 0) - new Date(a.dataEmissao || 0));
 
+    // ═══════════════════════════════════════════════════════════════════
+    // b143 - CASAR POR EVIDENCIA, NAO POR NOME.
+    // A sonda mostrou que a NF de entrada do ML nao traz numeroPedidoLoja,
+    // observacoes nem notasReferenciadas: o vinculo com a venda nao esta
+    // em campo nenhum da API. Mas traz os ITENS (com o codigo do produto)
+    // e o link do XML - e e no XML que mora a <refNFe>, a chave da nota de
+    // VENDA que esta sendo devolvida.
+    //
+    // Pontos (nome vale pouco de proposito: cliente compra duas vezes,
+    // existe homonimo, e o cadastro fiscal quase nunca bate com o ML):
+    //   +6  o XML referencia a chave da NOSSA NF de venda   <- prova cabal
+    //   +3  algum item tem o MESMO SKU do card
+    //   +2  o valor da nota bate
+    //   +1  um pedaco do nome bate
+    // Exige 3: SKU sozinho basta, ou valor+nome. So nome (1) nao passa.
+    // ═══════════════════════════════════════════════════════════════════
+    const chaveVenda = String(reg.nf_chave || '').replace(/\D/g, '');
+    const skuCard = String(reg.produto_sku || '').trim().toUpperCase();
+
+    async function pontuar(nf) {
+      let pts = 0; const porque = [];
+      if (skuCard && Array.isArray(nf.itens) &&
+          nf.itens.some(it => String(it.codigo || '').trim().toUpperCase() === skuCard)) {
+        pts += 3; porque.push('mesmo SKU');
+      }
+      if (valorEsperado > 0 && Math.abs(Number(nf.valorNota) - valorEsperado) < 0.05) {
+        pts += 2; porque.push('mesmo valor');
+      }
+      const nomeNF2 = String(nf.contato?.nome || '').toLowerCase();
+      if (pedacos.length && pedacos.some(w => nomeNF2.includes(w))) { pts += 1; porque.push('nome parecido'); }
+      if (chaveVenda.length === 44 && nf.xml) {
+        try {
+          const rx = await fetch(nf.xml);
+          if (rx.ok) {
+            const txt = await rx.text();
+            if (txt.replace(/\D/g, '').includes(chaveVenda)) { pts += 6; porque.push('XML referencia a NF de venda'); }
+          }
+        } catch (e) { /* sem o XML, decide pelos outros sinais */ }
+      }
+      return { pts, porque };
+    }
+
     // Confirma a serie 2 na NF completa (a lista pode nao trazer serie)
-    for (const cand of candidatos.slice(0, 3)) {
+    let melhor = null;
+    for (const cand of candidatos.slice(0, 6)) {
       await sleep(400);
       const rFull = await buscarNFePorId(cand.id);
-      const nf = (rFull.ok && rFull.data?.data) ? rFull.data.data : null;
-      if (!nf) continue;
-      const chaveD = String(nf.chaveAcesso || '').replace(/\D/g, '');
-      const serieOk = String(nf.serie || '').trim() === '2' ||
+      const nfc = (rFull.ok && rFull.data?.data) ? rFull.data.data : null;
+      if (!nfc) continue;
+      const chaveD = String(nfc.chaveAcesso || '').replace(/\D/g, '');
+      const serieOk = String(nfc.serie || '').trim() === '2' ||
         (chaveD.length === 44 && chaveD.substr(22, 3) === '002');
       if (!serieOk) continue;
+      const p = await pontuar(nfc);
+      if (!melhor || p.pts > melhor.pts) melhor = { nf: nfc, ...p };
+      if (p.pts >= 9) break;                 // chave + SKU: nao ha o que melhorar
+    }
+
+    if (melhor && melhor.pts >= 3) {
+      const nf = melhor.nf;
 
       const { error: errUpd } = await supabase
         .from('devolucoes')
@@ -253,7 +303,13 @@ app.post('/api/admin/full-vincular/:id', requerAdmin, async (req, res) => {
       if (errUpd) return res.status(500).json({ ok: false, erro: 'Achei a NF ' + nf.numero + ' mas falhou ao gravar: ' + errUpd.message });
 
       console.log(`[FULL-VINCULAR] ${req.params.id}: entrada serie 2 nº ${nf.numero} (id ${nf.id})`);
-      return res.json({ ok: true, nf_devolucao_numero: String(nf.numero || ''), nf_devolucao_id_bling: String(nf.id) });
+      return res.json({
+        ok: true,
+        nf_devolucao_numero: String(nf.numero || ''),
+        nf_devolucao_id_bling: String(nf.id),
+        casou_por: melhor.porque,          // b143 - por que essa e nao outra
+        pontos: melhor.pts,
+      });
     }
 
     return res.status(404).json({
@@ -266,6 +322,7 @@ app.post('/api/admin/full-vincular/:id', requerAdmin, async (req, res) => {
         janela: { de: ini, ate: fim },
         notas_de_entrada_varridas: varridas,
         candidatas: candidatos.length,
+        melhor_pontuacao: (typeof melhor !== 'undefined' && melhor) ? { pontos: melhor.pts, sinais: melhor.porque, nf: melhor.nf?.numero } : null,
         procurei_por: {
           nome_do_card: reg.buyer_nome || null,
           pedacos_do_nome: pedacos,
