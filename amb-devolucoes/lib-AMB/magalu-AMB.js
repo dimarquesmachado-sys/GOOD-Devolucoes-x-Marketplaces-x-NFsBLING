@@ -43,10 +43,23 @@ const temToken = () => !!(ACCESS || REFRESH);
 const temTenant = () => !!TENANT;
 
 function urlAutorizacao(state, redirectUri) {
+  // ═══════════════════════════════════════════════════════════════════
+  // b147 - choose_tenants VIROU OPCIONAL.
+  // Com ele ligado, depois de confirmar a conta o Magalu tenta mostrar o
+  // seletor de LOJAS. Se a conta da AMBTotal ainda nao tem loja vinculada
+  // a este app, ele nao tem o que exibir e a tela simplesmente trava no
+  // "continuar" - foi o que aconteceu. Sem o parametro, quando ha uma
+  // unica loja ele nem pergunta.
+  // Pra voltar ao comportamento antigo: crie AMB_MAGALU_CHOOSE_TENANTS=true
+  // no Render.
+  // ═══════════════════════════════════════════════════════════════════
   const p = new URLSearchParams({
     client_id: CLIENT_ID, redirect_uri: redirectUri,
-    response_type: 'code', scope: SCOPES, state, choose_tenants: 'true',
+    response_type: 'code', scope: SCOPES, state,
   });
+  if (String(process.env.AMB_MAGALU_CHOOSE_TENANTS || '').toLowerCase() === 'true') {
+    p.set('choose_tenants', 'true');
+  }
   return `${ID_BASE}/login?${p.toString()}`;
 }
 
