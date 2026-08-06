@@ -715,6 +715,7 @@ module.exports = function registrarCicloDefeitos(router, deps) {
             estoque_sku: pedido.estoque_sku || pedido.sku,
             estoque_qtd: pedido.estoque_qtd || pedido.quantidade || 1,
             estoque_em: new Date().toISOString(),
+            status: 'concluido',   // b164 - lancou = concluiu
           }).eq('id', req.params.id);
         } catch (e) { /* o lancamento fica mesmo sem o update */ }
       }
@@ -780,7 +781,9 @@ module.exports = function registrarCicloDefeitos(router, deps) {
         if (est.ok && est.produto_id) {
           try {
             await dbc.from(T_PED)
-              .update({ estoque_produto_id: est.produto_id })
+              // b164 - estoque lancado = pedido CONCLUIDO (sem "Marcar
+              // Como Feito" depois - pedido do Diego)
+              .update({ estoque_produto_id: est.produto_id, status: 'concluido' })
               .eq('id', req.params.id);
             pedido.estoque_produto_id = est.produto_id;
           } catch (e) { /* o link some, o lancamento fica */ }
