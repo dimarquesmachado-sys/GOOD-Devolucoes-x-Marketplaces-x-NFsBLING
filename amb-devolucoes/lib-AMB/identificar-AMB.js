@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════════════════════════════════
-//  amb-devolucoes · lib/identificar  (AMB Devol. b89)
+//  amb-devolucoes · lib/identificar  (AMB Devol. b153)
 //  A rota /api/devolucao/identificar da GOOD, PORTADA SEM EDICAO.
 //
 //  Por que ela existe aqui: a tela de bipe (os modulos js-AMB) le do
@@ -554,7 +554,18 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
       resultado.encontrado = true;
       resultado.metodo = 'magalu_devolucao';
       resultado.eh_devolucao = true;
-      const esp = espreita.porPedido(devolucao.pedido_id || devolucao.order_id);
+      // ═══════════════════════════════════════════════════════════════
+      // b153 - CRASH NO PRIMEIRO BIPE MAGALU QUE ACHAVA (06/08). Esta
+      // linha veio da GOOD referenciando `espreita` e `devolucao`, que
+      // NAO existem neste escopo (aqui o modulo e `magalu` e a variavel
+      // e `devMag`). Com o ramo desligado (b71) nunca rodava; a b152
+      // religou e o ReferenceError estourava FORA de try/catch ->
+      // unhandledRejection -> o Node mata o processo (Exited 1) e a
+      // tela mostra "JSON.parse: unexpected character". A sonda
+      // /magalu/achar passava porque nao passa por esta linha.
+      // ═══════════════════════════════════════════════════════════════
+      let esp = null;
+      try { esp = magalu.porPedido(devMag.pedido); } catch (e) { esp = null; }
       if (esp) {
         resultado.avisos.push({ tipo: 'espreita', mensagem: `📮 Devolucao REGISTRADA no portal Magalu Entregas (${esp.categoria}${esp.status ? ' - ' + esp.status : ''}${esp.entregue_em ? ' - entregue ' + String(esp.entregue_em).slice(0, 10) : ''})` });
       }
