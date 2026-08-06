@@ -52,11 +52,27 @@ module.exports = function registrarCicloDefeitos(router, deps) {
     const deposito = (cfg && cfg.depositos && cfg.depositos.geral)
       || process.env.AMB_DEPOSITO_GERAL || '14888917703';   // Geral da AMBTotal
     try {
-      const rP = await bling.chamarBling('/produtos?codigo=' + encodeURIComponent(sku) + '&limite=3');
-      const lista = (rP.ok && rP.data && rP.data.data) || [];
-      const prod = lista.find(x => String(x.codigo || '').toUpperCase() === String(sku).toUpperCase())
-        || lista[0] || null;
-      if (!prod || !prod.id) return { ok: false, erro: 'produto ' + sku + ' nao encontrado no Bling' };
+      // ═══════════════════════════════════════════════════════════════
+      // b160 - RESOLUCAO BLINDADA DO PRODUTO. Antes, se o ?codigo= nao
+      // casasse, caia em lista[0] (o Bling as vezes ignora o filtro e
+      // devolve a listagem padrao - b98) → risco de lancar entrada no
+      // PRODUTO ERRADO. Agora: (1) casamento EXATO por codigo; (2) se o
+      // termo tem cara de EAN (12-14 dig), o de-para ?gtin= → codigo
+      // (mesma via da b97); (3) sem achar, erro claro. Nunca lista[0].
+      // ═══════════════════════════════════════════════════════════════
+      const buscaExata = async (cod) => {
+        const r = await bling.chamarBling('/produtos?codigo=' + encodeURIComponent(cod) + '&limite=5');
+        const l = (r.ok && r.data && r.data.data) || [];
+        return l.find(x => String(x.codigo || '').toUpperCase() === String(cod).toUpperCase()) || null;
+      };
+      let prod = await buscaExata(sku);
+      if (!prod && /^\d{12,14}$/.test(String(sku))) {
+        const rG = await bling.chamarBling('/produtos?gtin=' + encodeURIComponent(sku) + '&limite=3');
+        const lG = (rG.ok && rG.data && rG.data.data) || [];
+        const porGtin = lG.find(x => x && x.codigo) || null;
+        if (porGtin) prod = (await buscaExata(porGtin.codigo)) || porGtin;
+      }
+      if (!prod || !prod.id) return { ok: false, erro: 'produto ' + sku + ' nao encontrado no Bling (nem por codigo nem por EAN)' };
 
       // ═══════════════════════════════════════════════════════════════
       // b138 - ENTRADA COM O CUSTO. Lancar sem custo faz a peca entrar
@@ -95,7 +111,24 @@ module.exports = function registrarCicloDefeitos(router, deps) {
         method: 'POST',
         body: JSON.stringify(corpoEstoque),
       });
-      if (!r.ok) return { ok: false, erro: 'Bling recusou o lancamento', detalhe: r.data || null };
+      if (!r.ok) {
+        // b160 - o MOTIVO REAL do Bling vinha capturado em 'detalhe' mas
+        // nunca era mostrado nem gravado - o alerta e o historico ficavam
+        // no generico. Agora o motivo vai dentro do proprio 'erro'.
+        let motivo = '';
+        try {
+          const d = r.data || {};
+          motivo = (d.error && (d.error.description || d.error.message))
+            || (d.error && d.error.fields && d.error.fields[0] && (d.error.fields[0].msg || d.error.fields[0].message))
+            || (typeof d === 'string' ? d : JSON.stringify(d));
+        } catch (e) { motivo = ''; }
+        motivo = String(motivo || '').slice(0, 300);
+        return {
+          ok: false,
+          erro: 'Bling recusou o lancamento (HTTP ' + r.status + ')' + (motivo ? ': ' + motivo : ''),
+          detalhe: r.data || null,
+        };
+      }
       return {
         ok: true,
         produto_id: prod.id,
