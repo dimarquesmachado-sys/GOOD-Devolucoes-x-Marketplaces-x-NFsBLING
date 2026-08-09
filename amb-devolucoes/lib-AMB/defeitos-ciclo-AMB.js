@@ -221,6 +221,54 @@ module.exports = function registrarCicloDefeitos(router, deps) {
   // (12 a 14 digitos), resolve o EAN no Bling pra achar o SKU e busca
   // por ele — que e como o Diego procura na pratica.
   // ─────────────────────────────────────────────────────────────────────
+  // ─────────────────────────────────────────────────────────────────────
+  // b166 - POST /api/defeitos/:id/excluir   (so ADMIN, motivo OBRIGATORIO)
+  // Decisao do Diego (07/08): em vez de apagar a descricao de entrada
+  // (peca sem defeito descrito e o cenario que ele quer evitar), o admin
+  // EXCLUI O REGISTRO INTEIRO - soft delete: o tipo vira
+  // 'defeito_excluido', a linha some das listas do ciclo, e o historico
+  // inteiro (fotos, comentarios, retiradas) fica preservado na ficha.
+  // Nada e deletado do banco. Com pedido PENDENTE, recusa.
+  // ─────────────────────────────────────────────────────────────────────
+  router.post('/api/defeitos/:id/excluir', auth.requerLogin, async (req, res) => {
+    const s = auth.validarSessao(auth.tokenDaRequisicao(req), 'admin');
+    if (!s) return res.status(403).json({ ok: false, erro: 'so o admin pode excluir um registro' });
+    // b166 - o motivo valida ANTES do banco (licao da Parte 1: a entrada
+    // se valida primeiro, senao o usuario ve "Supabase nao configurado")
+    const b = corpo(req);
+    const motivo = String(b.motivo || '').trim();
+    if (motivo.length < 5) {
+      return res.status(400).json({ ok: false, erro: 'o motivo da exclusao e obrigatorio (minimo 5 letras)' });
+    }
+    const dbc = cli();
+    if (!dbc) return erroSemBanco(res);
+    try {
+      const rI = await dbc.from(db.tabelas.devolucoes).select('id, tipo, produto_sku').eq('id', req.params.id).limit(1);
+      const item = (rI.data || [])[0] || null;
+      if (!item) return res.status(404).json({ ok: false, erro: 'registro nao encontrado' });
+      if (item.tipo === 'defeito_excluido') return res.json({ ok: true, ja_excluido: true });
+      const rP = await dbc.from(T_PED).select('id').eq('defeito_id', req.params.id).eq('status', 'pendente').limit(1);
+      if ((rP.data || []).length) {
+        return res.status(400).json({ ok: false, erro: 'ha um pedido PENDENTE desta peca - decida ele antes de excluir' });
+      }
+      const quando = new Date().toLocaleDateString('pt-BR');
+      await dbc.from(db.tabelas.devolucoes).update({
+        tipo: 'defeito_excluido',
+        estado_atual: '🗑️ REGISTRO EXCLUIDO por ' + req.usuario + ' em ' + quando + ' — motivo: ' + motivo.slice(0, 300),
+      }).eq('id', req.params.id);
+      try {
+        await dbc.from(T_COM).insert([{
+          defeito_id: req.params.id,
+          texto: 'Registro EXCLUIDO do estoque de defeitos — motivo: ' + motivo.slice(0, 300),
+          quem: req.usuario,
+        }]);
+      } catch (e) {}
+      res.json({ ok: true });
+    } catch (e) {
+      res.status(500).json({ ok: false, erro: String(e.message || e) });
+    }
+  });
+
   router.get('/api/defeitos/lista', auth.requerLogin, async (req, res) => {
     const dbc = cli();
     if (!dbc) return erroSemBanco(res);
@@ -230,6 +278,7 @@ module.exports = function registrarCicloDefeitos(router, deps) {
       let sel = dbc.from(db.tabelas.devolucoes)
         .select('id, produto_sku, produto_titulo, localizacao, defeito_qtd, produto_qtd, problema_descricao, problema_fotos, tipo, status, funcionario, nf_numero, criado_em')
         .or('tipo.eq.defeito_estoque,status.eq.problema')
+        .neq('tipo', 'defeito_excluido')   // b166 - registro excluido some da lista
         .order('criado_em', { ascending: false })
         .limit(300);
       const r = await sel;
@@ -275,6 +324,7 @@ module.exports = function registrarCicloDefeitos(router, deps) {
       } catch (e) { /* sem os pedidos, vale so o tipo da linha */ }
 
       const situacaoDe = (x) => {
+        if (x.tipo === 'defeito_excluido') return 'excluido';   // b166
         if (x.tipo === 'recuperado' || x.tipo === 'descartado') return x.tipo;
         return porPedido[x.id] || 'defeito';
       };
@@ -364,7 +414,8 @@ module.exports = function registrarCicloDefeitos(router, deps) {
           criado_em: item.criado_em,
           status: item.status,
           tipo: item.tipo,               // b126 - recuperado / descartado / defeito_estoque
-          situacao: (item.tipo === 'recuperado' || item.tipo === 'descartado')
+          situacao: item.tipo === 'defeito_excluido' ? 'excluido'
+            : (item.tipo === 'recuperado' || item.tipo === 'descartado')
             ? item.tipo
             : ((rPed.data || []).some(p => ['autorizado', 'concluido'].includes(p.status))
                 ? ((rPed.data || []).find(p => ['autorizado', 'concluido'].includes(p.status)).tipo === 'descarte'
