@@ -1827,17 +1827,43 @@
       return ` <a class="btn" style="background:#561A9E;color:#fff;" href="${url}" target="_blank" rel="noopener" title="Abre o pedido no painel do marketplace">📦 Abrir pedido ${escapeHtml(nome)}</a>`;
     }
 
+    // b170 - DECISAO do bloco de itens (pedido do Diego: "ta redundante"):
+    //   1 item, MESMO SKU e MESMA qtd do card  -> NADA (so repetiria)
+    //   1 item, MESMO SKU e qtd DIFERENTE      -> aviso AMARELO da divergencia
+    //   resto (2+ itens, SKU diferente, card sem dados) -> lista completa
+    function decidirBlocoItens(numero, itens, cardSku, cardQtd) {
+      const lista = Array.isArray(itens) ? itens : [];
+      if (!lista.length) return '';
+      const sku = String(cardSku || '').trim().toUpperCase();
+      const qtdCard = Number(cardQtd);
+      if (lista.length === 1 && sku && String(lista[0].sku || '').trim().toUpperCase() === sku) {
+        const qtdNf = Number(lista[0].quantidade);
+        if (!isNaN(qtdCard) && !isNaN(qtdNf)) {
+          if (qtdCard === qtdNf) return '';   // nada de novo - some
+          return `<div style="margin-top:6px;background:#fff8e1;border:1px solid #ffe082;border-radius:8px;padding:8px 10px;font-size:12.5px;color:#7a5c00;">
+            ⚠ <strong>Quantidade diverge:</strong> a NF ${escapeHtml(String(numero || ''))} diz <strong>${qtdNf}×</strong> ${escapeHtml(lista[0].sku || '')} — a triagem registrou <strong>${qtdCard}×</strong></div>`;
+        }
+      }
+      const linhas = lista.map(i => {
+        const q = Number(i.quantidade);
+        const qtd = isNaN(q) ? (i.quantidade || '?') : (q % 1 === 0 ? q : q.toFixed(2));
+        return `<div style="padding:2px 0;">📦 <strong>${qtd}×</strong> <code>${escapeHtml(i.sku || '-')}</code> ${escapeHtml(i.titulo || '')} — ${moeda(i.valor)}</div>`;
+      }).join('');
+      return `<div style="margin-top:6px;background:#eef7ee;border:1px solid #c8e6c9;border-radius:8px;padding:8px 10px;font-size:12.5px;">
+        <div style="color:#2e7d32;margin-bottom:4px;">✔ <strong>Itens da NF ${escapeHtml(String(numero || ''))}</strong> (${lista.length}):</div>${linhas}</div>`;
+    }
+
     function renderItensCard(d) {
       if (Array.isArray(d.nf_itens) && d.nf_itens.length > 0) {
-        return `<span class="itens-nf-inline"><div style="margin-top:6px; background:#eef7ee; border:1px solid #c8e6c9; border-radius:8px; padding:8px 10px; font-size:12.5px;">
-          <div style="color:#2e7d32; margin-bottom:4px;">✔ <strong>Itens da NF ${escapeHtml(String(d.nf_numero || ''))}</strong> (${d.nf_itens.length}):</div>
-          ${d.nf_itens.map(linhaItemNF).join('')}
-        </div></span>`;
+        const bloco = decidirBlocoItens(d.nf_numero, d.nf_itens, d.produto_sku, d.produto_qtd);   // b170
+        return bloco ? `<span class="itens-nf-inline">${bloco}</span>` : '';
       }
       if (d.nf_id_bling) {
         // b67 - JA VEM ABERTO: nada de setinha. A caixa nasce visivel e se
         // preenche sozinha assim que a lista termina de renderizar.
+        // b170 - leva junto o SKU/qtd do card pro confronto na chegada.
         return `<span class="itens-nf-auto" data-nf="${escapeHtml(String(d.nf_id_bling))}"
+          data-sku="${escapeHtml(String(d.produto_sku || ''))}" data-qtd="${escapeHtml(String(d.produto_qtd || ''))}"
           style="display:block;margin-top:6px;background:#faf7ff;border:1px solid #e4dcf1;border-radius:8px;padding:8px 10px;font-size:12.5px;color:#71659a;">
           buscando itens da NF...</span>`;
       }
@@ -1860,22 +1886,32 @@
           const r = await fetch(`/api/admin/nf-itens/${idBling}`);
           const d = await r.json();
           if (!d.ok) throw new Error(d.erro || 'falha');
-          const linhas = (d.itens || []).map(i => {
-            const q = Number(i.quantidade);
-            const qtd = isNaN(q) ? (i.quantidade || '?') : (q % 1 === 0 ? q : q.toFixed(2));
-            return `<div style="padding:2px 0;">📦 <strong>${qtd}×</strong> <code>${escapeHtml(i.sku || '-')}</code>`
-              + `${i.ean ? ' <span style="color:#71659a;">EAN ' + escapeHtml(i.ean) + '</span>' : ''} `
-              + `${escapeHtml(i.titulo || '')} — ${moeda(i.valor)}</div>`;
-          }).join('');
-          box.innerHTML = `<div style="color:#561A9E;margin-bottom:4px;"><strong>Itens da NF `
-            + `${escapeHtml(String(d.numero || ''))}</strong> (${(d.itens || []).length}):</div>`
-            + (linhas || 'NF sem itens');
+          // b170 - mesma decisao do render: some se so repete, amarelo se
+          // diverge, lista quando ha informacao nova de verdade
+          const bloco = decidirBlocoItens(d.numero, d.itens || [], box.dataset.sku, box.dataset.qtd);
+          if (!bloco) { box.remove(); continue; }
+          box.innerHTML = bloco;
+          box.style.background = 'none'; box.style.border = 'none'; box.style.padding = '0';
           box.style.color = '#241a35';
         } catch (e) {
-          box.innerHTML = '<span style="color:#c93c40;">nao consegui buscar os itens desta NF</span>';
+          // b170 - falha momentanea do Bling nao pode ser terminal: da
+          // pra tentar de novo sem F5 (caso real da NF 001500 da Barbara)
+          box.innerHTML = '<span style="color:#c93c40;">nao consegui buscar os itens desta NF · '
+            + '<a href="#" onclick="return tentarItensDeNovo(this)" style="color:#1565c0;font-weight:700;text-decoration:none;">🔄 tentar de novo</a></span>';
         }
         await new Promise(r => setTimeout(r, 220));
       }
+    }
+
+    // b170 - refaz a busca de UMA caixa que falhou
+    function tentarItensDeNovo(a) {
+      var box = a.closest('.itens-nf-auto');
+      if (box) {
+        delete box.dataset.feito;
+        box.textContent = 'buscando itens da NF...';
+        autoCarregarItens();
+      }
+      return false;
     }
 
     async function verItensNF(idBling, el) {
