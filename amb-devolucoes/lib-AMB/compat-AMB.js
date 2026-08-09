@@ -114,13 +114,19 @@ function montar(router, deps) {
       // 'V' = com variacoes, 'E' = com composicao; tipo 'S' = servico.
       // ═══════════════════════════════════════════════════════════════
       const fmt = String(p.formato || 'S').toUpperCase();
-      if (fmt !== 'S') return;
+      // b167 - o KIT ('E') agora APARECE na busca, com o nome marcado,
+      // porque a gravacao oferece a EXPLOSAO em N unidades do produto
+      // simples (b166) - esconder o kit deixava a explosao sem caminho.
+      // Pai de variacao ('V'), servico e filho de variacao seguem fora.
+      const ehKitBusca = (fmt === 'E');
+      if (fmt !== 'S' && !ehKitBusca) return;
       if (String(p.tipo || 'P').toUpperCase() === 'S') return;   // servico
       if (p.produtoPai && p.produtoPai.id) return;               // filho de variacao
       vistos.add(sku);
       out.push({
         sku,
-        nome: p.nome || p.descricao || '',
+        ehKit: ehKitBusca,
+        nome: (ehKitBusca ? '📦 KIT · ' : '') + (p.nome || p.descricao || ''),
         ean: eanDoProduto(p) || '',
         id: p.id || null,
         imagem: (p.imagemURL || (p.midia && p.midia.imagens && p.midia.imagens[0] &&
