@@ -100,6 +100,20 @@
   };
 
   // v4.62 - excluir o registro inteiro (so admin; motivo obrigatorio)
+  // v4.63 - desfaz a exclusao (so admin)
+  window.restaurarRegistro = async function (id) {
+    if (!confirm('Restaurar este registro? Ele volta pra aba de origem.')) return;
+    try {
+      var r = await api('/api/defeitos/' + encodeURIComponent(id) + '/restaurar', { method: 'POST', body: '{}' });
+      if (r && r.ok) {
+        alert('↩️ Registro restaurado!');
+        if (typeof abrirFichaDefeito === 'function') abrirFichaDefeito(id);
+      } else {
+        alert('Nao consegui restaurar: ' + ((r && r.erro) || 'erro desconhecido'));
+      }
+    } catch (e) { alert('Erro de conexao: ' + e.message); }
+  };
+
   window.excluirRegistro = async function (id) {
     var motivo = prompt('EXCLUIR este registro do estoque de defeitos?\n\nEle some das listas (o historico fica guardado).\n\nMotivo da exclusao (obrigatorio):');
     if (motivo === null) return;
@@ -284,6 +298,7 @@
       { id: 'defeito',    nome: '🔧 Com Defeito',  cor: '#9E1A1A' },
       { id: 'recuperado', nome: '✅ Recuperados',   cor: '#116B4E' },
       { id: 'descartado', nome: '🗑️ Descartados',  cor: '#555' },
+      { id: 'excluido',   nome: '🚫 Excluídos',    cor: '#8C1D18' },   // v4.63
     ];
     el.innerHTML = lista.map(function (a) {
       var ativa = abaAtual === a.id;
@@ -469,6 +484,11 @@
         + (recup ? '#116B4E' : '#9E1A1A') + ';border-radius:0 10px 10px 0;padding:14px 16px;">'
         + '<div style="font-size:16px;font-weight:800;color:' + (recup ? '#0F6E56' : '#8C1D18') + ';">'
         + (recup ? '✅ PEÇA RECUPERADA — LIBERADA' : (it.situacao === 'excluido' ? '🚫 REGISTRO EXCLUÍDO' : '🗑️ DESCARTE AUTORIZADO')) + '</div>'
+        // v4.63 - o admin pode DESFAZER a exclusao
+        + (it.situacao === 'excluido' && euSouAdmin
+            ? '<div style="margin-top:8px;"><button type="button" onclick="restaurarRegistro(\'' + esc(it.id) + '\')"'
+              + ' style="background:#561A9E;color:#fff;border:none;border-radius:8px;padding:9px 14px;font-weight:700;cursor:pointer;">↩️ Restaurar registro (admin)</button></div>'
+            : '')
         + '<div style="font-size:14px;margin-top:5px;color:#333;">'
         + (recup
             ? 'O admin já viu e liberou. Guarde a peça boa no armazém — não precisa mais mexer neste registro.'
