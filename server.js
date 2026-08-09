@@ -3077,7 +3077,12 @@ async function tirarKits(lista, diag) {
       }
     } catch (e) { /* sem foto nao muda o veredito */ }
 
-    if (fmt === 'E') continue;          // kit/composicao: fora da lista
+    // v4.62 - o kit apurado no detalhe tambem fica NA LISTA, marcado
+    // (antes era descartado; agora a explosao da gravacao precisa dele)
+    if (fmt === 'E') {
+      item.ehKit = true;
+      if (String(item.nome || '').indexOf('📦 KIT · ') !== 0) item.nome = '📦 KIT · ' + (item.nome || '');
+    }
     saida.push(item);
   }
   return saida;
@@ -3106,10 +3111,13 @@ app.get('/api/produtos/buscar', requerEstoquista, async (req, res) => {
     // produto e conferido no DETALHE (com cache) mais abaixo.
     if (String(p.tipo || 'P').toUpperCase() === 'S') return;      // servico
     const fmt = String(p.formato || '').toUpperCase();
-    if (fmt === 'E') return;                                       // composicao/kit
-    if (p.estrutura && Array.isArray(p.estrutura.componentes) && p.estrutura.componentes.length) return;
+    // v4.62 - o KIT agora APARECE marcado (a gravacao oferece a explosao
+    // em N unidades do produto simples); esconder deixava a explosao sem
+    // caminho. Pai de variacao e servico seguem fora.
+    const ehKitLista = fmt === 'E'
+      || !!(p.estrutura && Array.isArray(p.estrutura.componentes) && p.estrutura.componentes.length);
     vistos.add(sku);
-    out.push({ sku, nome: p.nome || p.descricao || '', ean: p.ean || p.gtin || '', id: p.id || null, imagem: p.imagem || IMG_POR_SKU.get(sku.toUpperCase()) || imagemDoProduto(p) || null });
+    out.push({ sku, ehKit: ehKitLista, nome: (ehKitLista ? '📦 KIT · ' : '') + (p.nome || p.descricao || ''), ean: p.ean || p.gtin || '', id: p.id || null, imagem: p.imagem || IMG_POR_SKU.get(sku.toUpperCase()) || imagemDoProduto(p) || null });
   };
   try {
     // v4.01 - EAN: a LISTAGEM do Bling nao devolve o gtin (so o detalhe de cada
@@ -3992,6 +4000,12 @@ app.post('/api/defeitos/adicionar', requerEstoquista, async (req, res) => {
           const q = c && (c.quantidade || c.qtd);
           return cod ? (q ? `${q}x ${cod}` : cod) : null;
         }).filter(Boolean);
+        // v4.62 - componentes ESTRUTURADOS pra tela oferecer a explosao
+        const componentesDet = comps.map(c => {
+          const p2 = c && c.produto;
+          const cod = (p2 && (p2.codigo || p2.sku)) || '';
+          return cod ? { sku: cod, quantidade: Number(c.quantidade || c.qtd) || 1 } : null;
+        }).filter(Boolean);
         return res.status(400).json({
           ok: false,
           erro: `"${prod.codigo || sku}" e um KIT, nao um produto simples.`
@@ -4000,6 +4014,8 @@ app.post('/api/defeitos/adicionar', requerEstoquista, async (req, res) => {
             + ' no estoque e na nota fiscal.',
           kit: true,
           componentes: sugestoes,
+          kit_sku: prod.codigo || sku,
+          componentes_det: componentesDet,
         });
       }
     } catch (e) { /* se o Bling nao responder, segue - nao trava o galpao */ }

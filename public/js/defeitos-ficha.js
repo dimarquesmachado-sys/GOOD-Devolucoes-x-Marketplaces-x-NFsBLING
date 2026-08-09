@@ -99,6 +99,24 @@
     }
   };
 
+  // v4.62 - excluir o registro inteiro (so admin; motivo obrigatorio)
+  window.excluirRegistro = async function (id) {
+    var motivo = prompt('EXCLUIR este registro do estoque de defeitos?\n\nEle some das listas (o historico fica guardado).\n\nMotivo da exclusao (obrigatorio):');
+    if (motivo === null) return;
+    motivo = String(motivo || '').trim();
+    if (motivo.length < 5) { alert('Escreva o motivo (minimo 5 letras).'); return; }
+    try {
+      var r = await api('/api/defeitos/' + encodeURIComponent(id) + '/excluir',
+        { method: 'POST', body: JSON.stringify({ motivo: motivo }) });
+      if (r && r.ok) {
+        alert('🚫 Registro excluido. Ele sai das listas; o historico fica guardado.');
+        if (typeof abrirBuscaDefeitos === 'function') abrirBuscaDefeitos();
+      } else {
+        alert('Nao consegui excluir: ' + ((r && r.erro) || 'erro desconhecido'));
+      }
+    } catch (e) { alert('Erro de conexao: ' + e.message); }
+  };
+
   async function api(caminho, opcoes) {
     var r = await fetch(BASE + caminho, Object.assign({
       credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
@@ -297,10 +315,8 @@
       // lapis, e apagar dependia de abrir, limpar o texto e salvar - coisa
       // que ninguem adivinha, ainda mais com o comentario logo abaixo
       // mostrando um 🗑️ do lado. Agora as duas linhas se comportam igual.
-      + (it.laudo
-          ? ' <a href="#" onclick="event.preventDefault();apagarLaudo()" '
-            + 'style="font-size:11.5px;color:#8C1D18;text-decoration:none;">🗑️</a>'
-          : '')
+      // v4.62 - o 🗑️ da descricao de entrada SAIU (decisao do Diego):
+      // errou o registro? o admin exclui o REGISTRO INTEIRO (rodape).
       + '</div>'
       + '<div id="edLaudo"></div>'
       + '<div style="font-size:11.5px;color:#888;">' + esc(it.quem || '-') + ' · ' + dataBr(it.criado_em) + ' · entrada</div></div>'
@@ -445,14 +461,14 @@
     // mexer. Os tres botoes somem e entra o aviso no lugar.
     // b127 - usa a situacao derivada (inclui as pecas autorizadas antes de
     // eu marcar o tipo na linha)
-    var fechada = it.situacao === 'recuperado' || it.situacao === 'descartado';
+    var fechada = it.situacao === 'recuperado' || it.situacao === 'descartado' || it.situacao === 'excluido';   // v4.62
     if (fechada) {
       var recup = it.situacao === 'recuperado';
       html += '<div style="border-top:1px solid #eee;margin-top:16px;padding-top:14px;">'
         + '<div style="background:' + (recup ? '#E1F5EE' : '#FBEAE8') + ';border-left:5px solid '
         + (recup ? '#116B4E' : '#9E1A1A') + ';border-radius:0 10px 10px 0;padding:14px 16px;">'
         + '<div style="font-size:16px;font-weight:800;color:' + (recup ? '#0F6E56' : '#8C1D18') + ';">'
-        + (recup ? '✅ PEÇA RECUPERADA — LIBERADA' : '🗑️ DESCARTE AUTORIZADO') + '</div>'
+        + (recup ? '✅ PEÇA RECUPERADA — LIBERADA' : (it.situacao === 'excluido' ? '🚫 REGISTRO EXCLUÍDO' : '🗑️ DESCARTE AUTORIZADO')) + '</div>'
         + '<div style="font-size:14px;margin-top:5px;color:#333;">'
         + (recup
             ? 'O admin já viu e liberou. Guarde a peça boa no armazém — não precisa mais mexer neste registro.'
@@ -474,6 +490,14 @@
       + 'style="flex:1;min-width:150px;background:#116B4E;color:#fff;border:none;border-radius:9px;padding:13px;font-weight:700;cursor:pointer;">✅ Montei Uma Boa</button>'
       + '<button onclick="pedirDescarte(\'' + esc(it.id) + '\',\'' + esc(it.sku || '') + '\')" '
       + 'style="flex:1;min-width:150px;background:#9E1A1A;color:#fff;border:none;border-radius:9px;padding:13px;font-weight:700;cursor:pointer;">🗑️ Pedir Descarte</button>'
+      + '</div>'
+      // v4.62 - EXCLUIR REGISTRO (so admin, motivo obrigatorio; soft delete)
+      + (euSouAdmin
+          ? '<div style="margin-top:10px;text-align:right;">'
+            + '<a href="#" onclick="event.preventDefault();excluirRegistro(\'' + esc(it.id) + '\')" '
+            + 'style="font-size:12px;color:#8C1D18;">🚫 Excluir este registro (admin)</a></div>'
+          : '')
+      + '<div style="display:none;">'
       + '</div>'
       + '<div id="edRetirada"></div><div id="edDescarte"></div>'
       + '</div>';

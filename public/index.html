@@ -57,7 +57,7 @@
     .links-defeitos a:hover { background: rgba(0,0,0,.18); }
     @media (max-width: 600px) { .links-defeitos { justify-content: center; } }
 
-    /* v4.56 - COLINHA "o que bipar em cada etiqueta": link no cabecalho
+    /* v4.57 - COLINHA "o que bipar em cada etiqueta": link no cabecalho
        que abre um modal (mesma feature da AMB b157; textos identicos). */
     .cola-mkt { margin:10px 0 2px; font-weight:800; font-size:12.5px; display:flex; align-items:center; gap:6px; }
     .cola-chip { width:10px; height:10px; border-radius:3px; display:inline-block; flex:0 0 auto; }
@@ -186,7 +186,7 @@
   </div>
 
   <!-- v3.96 - MODAL: lancar produto com defeito (busca por nome/SKU/EAN) -->
-  <!-- v4.56 - a COLINHA em modal: abre pelo "❓ O que bipar" do cabecalho. -->
+  <!-- v4.57 - a COLINHA em modal: abre pelo "❓ O que bipar" do cabecalho. -->
   <div id="modalColaBipe" class="modal-bg" onclick="if(event.target===this)fecharColaBipe()">
     <div class="modal" style="max-width:520px;width:94%;padding:0;overflow:hidden;">
       <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid #eee;background:#fff9d6;">
@@ -229,7 +229,7 @@
           <div style="flex:1; min-width:0;">
         <div style="font-size:14px;"><b>Produto:</b> <span id="defNome">-</span></div>
         <div style="font-size:12px; color:#666; margin-top:3px;">SKU <code id="defSku">-</code> <span id="defEan"></span></div>
-        <!-- v4.56 - os campos ficam AO LADO da foto, nao abaixo dela. Com a
+        <!-- v4.57 - os campos ficam AO LADO da foto, nao abaixo dela. Com a
              foto de 260px, empilhado o quadro passava da tela e obrigava a
              rolar (mesma correcao que a AMB ja tinha). -->
         <div style="display:flex; gap:10px; margin-top:10px;">
@@ -658,7 +658,7 @@
   <!-- v4.34 - colar/arrastar imagem da etiqueta na busca -->
   <script src="js/colar-imagem.js?v=4560"></script>
   <!-- v4.50 - ciclo do estoque de defeitos (ficha, pecas, pedidos) -->
-  <script src="js/defeitos-ficha.js?v=4600"></script>
+  <script src="js/defeitos-ficha.js?v=4630"></script>
 
   <!-- v3.96 - lancar produto com defeito (busca por parte do nome) -->
   <script>
@@ -789,7 +789,7 @@
       var boxImg = document.getElementById('defImg');
       if (boxImg) {
         boxImg.innerHTML = p.imagem
-          // v4.56 - a foto do produto ESCOLHIDO usa a classe grande (260px),
+          // v4.57 - a foto do produto ESCOLHIDO usa a classe grande (260px),
           // igual na AMB. Aqui ela ficou com o tamanho antigo de 70px porque
           // o CSS foi portado mas este trecho, nao.
           ? '<img src="' + escDef(p.imagem) + '" onclick="abrirZoomProduto(this.src)" onerror="this.style.display=\'none\'" class="foto-produto-escolhido" style="cursor:zoom-in;">'
@@ -876,6 +876,12 @@
         });
         var d = await r.json();
         if (!d.ok) {
+          // v4.62 - kit devolvido explode em N unidades do produto simples
+          if (d.kit && d.componentes_det && d.componentes_det.length) {
+            btn.disabled = false; btn.textContent = '\ud83d\udcbe Lancar defeito';
+            explodirKitDefeito(d, payload, msg);
+            return;
+          }
           msg.innerHTML = '<span style="color:#c62828;">' + escDef(d.erro || 'erro') + '</span>';
           btn.disabled = false; btn.textContent = '\ud83d\udcbe Lancar defeito';
           return;
@@ -896,7 +902,42 @@
         btn.disabled = false; btn.textContent = '\ud83d\udcbe Lancar defeito';
       }
     }
-  </script>
+  
+    // v4.62 - a explosao do kit: confirma componente a componente e lanca
+    // cada um como defeito proprio (mesma descricao, local e fotos).
+    async function explodirKitDefeito(d, payload, msg) {
+      var lancados = 0;
+      for (var i = 0; i < d.componentes_det.length; i++) {
+        var comp = d.componentes_det[i];
+        var qtd = (parseInt(payload.qtd, 10) || 1) * (comp.quantidade || 1);
+        var ok = confirm(
+          (d.kit_sku || 'Este produto') + ' é um KIT — no estoque quem existe é o produto simples.\n\n'
+          + 'Lançar o defeito como ' + qtd + '× ' + comp.sku + '?'
+          + (d.componentes_det.length > 1 ? '\n\n(componente ' + (i + 1) + ' de ' + d.componentes_det.length + ')' : ''));
+        if (!ok) continue;
+        msg.innerHTML = '<span style="color:#555;">lançando ' + qtd + '× ' + comp.sku + '…</span>';
+        try {
+          var r2 = await fetch('/api/defeitos/adicionar', {
+            method: 'POST', credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ sku: comp.sku, defeito: payload.defeito,
+              localizacao: payload.localizacao, qtd: qtd, fotos: payload.fotos })
+          });
+          var d2 = await r2.json();
+          if (d2 && d2.ok) lancados++;
+          else msg.innerHTML = '<span style="color:#c62828;">' + escDef((d2 && d2.erro) || 'erro no ' + comp.sku) + '</span>';
+        } catch (e) {
+          msg.innerHTML = '<span style="color:#c62828;">Erro de conexão no ' + comp.sku + '.</span>';
+        }
+      }
+      if (lancados) {
+        msg.innerHTML = '<span style="color:#2e7d32;">\u2705 ' + lancados + ' peça(s) lançada(s) no produto simples! Abra 🔧 Defeitos pra ver e imprimir etiquetas.</span>';
+        setTimeout(function () { fecharModalDefeito(); }, 2200);
+      } else if (!msg.innerHTML || msg.innerHTML.indexOf('c62828') === -1) {
+        msg.innerHTML = '<span style="color:#555;">Nada lançado.</span>';
+      }
+    }
+</script>
 
   <!-- ESTOQUE DE DEFEITOS: a consulta abre AQUI dentro, numa janela, pra
        nao tirar o estoquista da tela de triagem no meio do trabalho. -->
@@ -1003,7 +1044,7 @@
     })();
   </script>
   <script>
-    // v4.56 - colinha em modal
+    // v4.57 - colinha em modal
     function abrirColaBipe() {
       var m = document.getElementById('modalColaBipe');
       if (m) m.classList.add('show');
