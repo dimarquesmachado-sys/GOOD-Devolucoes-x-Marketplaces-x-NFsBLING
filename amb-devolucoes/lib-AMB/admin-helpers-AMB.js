@@ -49,6 +49,17 @@ async function buscarNFBlindada(opts = {}) {
   }
 
   const bateOrder = (nf) => orderIds.length > 0 && orderIds.includes(String(nf.numeroPedidoLoja || '').trim());
+  // b172 - NF cancelada (2) ou denegada (9) nao serve: chave/DANFE de nota
+  // morta. Um pedido pode ter a cancelada E a substituta - entre as vivas,
+  // vence a MAIS RECENTE (a ordem que o Bling devolve nao e garantida).
+  const NFE_DESCARTAVEL = new Set([2, 9]);
+  const nfeViva = (nf) => !NFE_DESCARTAVEL.has(Number(nf && nf.situacao));
+  const maisRecenteViva = (candidatas) => {
+    const vivas = (candidatas || []).filter(nfeViva);
+    if (!vivas.length) return null;
+    vivas.sort((x, y) => String(y.dataEmissao || '').localeCompare(String(x.dataEmissao || '')));
+    return vivas[0];
+  };
   const bateNumero = (nf) => {
     if (!numeroNF) return false;
     const a = String(nf.numero || '').trim().replace(/^0+/, '');
@@ -76,9 +87,16 @@ async function buscarNFBlindada(opts = {}) {
     trace.push({ passo: 'nfe-numeroLoja', id: oid, status: r.status || null, qtd: lista.length });
     if (!r.ok) { tentado.push(`nfe-numeroLoja(${oid}): HTTP ${r.status}`); continue; }
     if (lista.length > 0) {
-      const m = lista.find(bateOrder) || lista[0];
-      console.log(`[Bling/blindada] ACHOU via numeroLoja=${oid}: NF ${m.numero} (id ${m.id})`);
-      return completar(m.id, 'nfe-numeroLoja');
+      // b172 - antes: find(bateOrder) || lista[0], sem olhar situacao. Agora
+      // escolhe a mais recente VIVA (entre as que batem; senao entre todas,
+      // ja que o filtro numeroLoja= ja e do pedido). So morta? Segue as fases.
+      const m = maisRecenteViva(lista.filter(bateOrder)) || maisRecenteViva(lista);
+      if (m) {
+        console.log(`[Bling/blindada] ACHOU via numeroLoja=${oid}: NF ${m.numero} (id ${m.id})`);
+        return completar(m.id, 'nfe-numeroLoja');
+      }
+      trace.push({ passo: 'nfe-numeroLoja', id: oid, so_mortas: lista.length });
+      tentado.push(`nfe-numeroLoja(${oid}): ${lista.length} NF(s) mas todas canceladas/denegadas`);
     }
     tentado.push(`nfe-numeroLoja(${oid}): 0 NFs`);
   }
@@ -94,9 +112,9 @@ async function buscarNFBlindada(opts = {}) {
       const lista = r.data?.data || [];
       trace.push({ passo: 'nfe-janela', pg, status: 200, qtd: lista.length, primeira: lista[0]?.dataEmissao || null, ultima: lista[lista.length - 1]?.dataEmissao || null });
       if (lista.length === 0) { tentado.push(`nfe-janela: sem NFs na janela (pg${pg})`); break; }
-      let m = lista.find(bateOrder);
+      let m = maisRecenteViva(lista.filter(bateOrder));   // b172
       if (m) return completar(m.id, 'nfe-janela-orderId');
-      m = lista.find(bateNumero);
+      m = maisRecenteViva(lista.filter(bateNumero));       // b172
       if (m) return completar(m.id, 'nfe-janela-numero');
       if (lista.length < LIMITE) { tentado.push(`nfe-janela: ${(pg - 1) * LIMITE + lista.length} NFs sem match`); break; }
       if (pg === MAXP_JANELA) tentado.push(`nfe-janela: ${pg * LIMITE}+ NFs sem match (limite de paginas)`);
@@ -129,8 +147,29 @@ async function buscarNFBlindada(opts = {}) {
   }
 
   // ---- FASE 3: fundo (varredura limitada, ultimo recurso) ----
+  // b172 - BUG LATENTE MORTO: esta fase chamava buscarNFnoBlingPorOrderId,
+  // que NUNCA existiu neste modulo (nao e injetada nem definida) - se as
+  // fases 0-2 falhassem, estourava ReferenceError. Agora a varredura de
+  // fundo e local, com o mesmo criterio vivo+mais-recente das outras fases.
+  async function varreduraFundo(oid, maxPaginas) {
+    let totalScanned = 0, primeiraDataVista = null, ultimaDataVista = null;
+    for (let pg = 1; pg <= maxPaginas; pg++) {
+      if (pg > 1) await sleep(DELAY_MS);
+      const r = await chamarBling(`https://api.bling.com.br/Api/v3/nfe?limite=100&pagina=${pg}&tipo=1`);
+      if (!r.ok) return { ok: false, totalScanned, primeiraDataVista, ultimaDataVista };
+      const lista = r.data?.data || [];
+      if (!lista.length) break;
+      if (pg === 1 && lista[0]) primeiraDataVista = lista[0].dataEmissao;
+      ultimaDataVista = lista[lista.length - 1]?.dataEmissao || ultimaDataVista;
+      totalScanned += lista.length;
+      const m = maisRecenteViva(lista.filter(nf => String(nf.numeroPedidoLoja || '').trim() === oid));
+      if (m) return { ok: true, match: m, totalScanned, primeiraDataVista, ultimaDataVista };
+      if (lista.length < 100) break;
+    }
+    return { ok: true, match: null, totalScanned, primeiraDataVista, ultimaDataVista };
+  }
   for (const oid of orderIds) {
-    const r = await buscarNFnoBlingPorOrderId(oid, opts.dataReferencia || null, { maxPaginas: opts.maxPaginasFundo || 15 });
+    const r = await varreduraFundo(oid, opts.maxPaginasFundo || 15);
     trace.push({ passo: 'nfe-fundo', id: oid, qtd: r.totalScanned || 0, primeira: r.primeiraDataVista || null, ultima: r.ultimaDataVista || null });
     if (r.ok && r.match) return completar(r.match.id, 'nfe-fundo-orderId');
     tentado.push(`nfe-fundo(${oid}): ${r.totalScanned || 0} NFs varridas sem match`);
