@@ -1918,7 +1918,9 @@
 
     // v3.26 - INTELIGÊNCIA FULL
     // Acha no Bling a NF de entrada série 2 que o ML emitiu e vincula ao card
-    async function fullVincular(id, btn) {
+    // b168 - `silencioso` = chamada do VIGIA automatico: sem alert
+    // bloqueante (so toast) e com retorno {ok, status} pro vigia decidir
+    async function fullVincular(id, btn, silencioso) {
       const t = btn ? btn.textContent : '';
       if (btn) { btn.disabled = true; btn.textContent = '🔗 Procurando...'; }
       try {
@@ -1927,7 +1929,13 @@
         if (d.ok) {
           toast(`Devolução ML nº ${d.nf_devolucao_numero || '?'} vinculada ao card!`, 'ok');
           carregar();
+          return { ok: true, status: r.status };
         } else {
+          if (silencioso) {
+            toast(d.erro || 'full-vincular: nao achou', 'erro');
+            if (btn) { btn.disabled = false; btn.textContent = t; }
+            return { ok: false, status: r.status };
+          }
             // b141 - mostra o DIAGNOSTICO junto do erro, pra dar pra ver o que
             // ele varreu e por que nao casou
             let extra = '';
@@ -1942,12 +1950,49 @@
             alert((d.erro || 'nao consegui') + extra);
             toast(d.erro || 'nao consegui', 'erro');
           if (btn) { btn.disabled = false; btn.textContent = t; }
+          return { ok: false, status: r.status };
         }
       } catch (e) {
         toast('Erro: ' + (e.message || e), 'err');
         if (btn) { btn.disabled = false; btn.textContent = t; }
+        return { ok: false, status: 0 };
       }
     }
+
+    // ═══════════════════════════════════════════════════════════════
+    // b168 - VIGIA DO FULL (a volta SEGURA do automatico da b145).
+    // O que deu errado na b145: disparava pra ate 5 cards a cada
+    // carregada, estourava o limite do Bling e TRAVAVA a triagem do
+    // galpao. Regras de seguranca agora, combinadas com o Diego:
+    //  - UM card por ciclo (literalmente "clica" 1 botao 🔗 da tela)
+    //  - so com esta aba EM FOCO (document.hasFocus)
+    //  - ciclo a cada 90s, comecando 60s apos abrir o painel
+    //  - QUALQUER erro (429, rede, nao-achou com status de limite)
+    //    DESLIGA o vigia ate o proximo F5 - nunca insiste
+    // ═══════════════════════════════════════════════════════════════
+    (function vigiaFull() {
+      var PAROU = false;
+      var RODANDO = false;
+      async function ciclo() {
+        if (PAROU || RODANDO) return;
+        if (!document.hasFocus()) return;
+        var botao = document.querySelector('button[onclick*="fullVincular"]');
+        if (!botao) return;                      // nada pendente na tela
+        var m = String(botao.getAttribute('onclick') || '').match(/fullVincular\((\d+)/);
+        if (!m) return;
+        RODANDO = true;
+        try {
+          var r = await fullVincular(Number(m[1]), botao, true);
+          if (!r || !r.ok) {
+            PAROU = true;
+            console.warn('[VIGIA-FULL] parou nesta sessao (erro/limite). F5 religa.');
+            toast('Busca automática do Full pausada (limite/erro). O botão 🔗 manual continua.', 'erro');
+          }
+        } finally { RODANDO = false; }
+      }
+      setInterval(ciclo, 90000);
+      setTimeout(ciclo, 60000);
+    })();
 
     // Lança o estoque de entrada da devolução vinculada (API oficial),
     // no depósito escolhido no seletor da seção Aprovadas (padrão: Geral)
