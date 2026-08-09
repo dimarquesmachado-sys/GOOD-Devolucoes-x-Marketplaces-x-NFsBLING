@@ -571,6 +571,13 @@ function montar(router, deps) {
             const q = c && (c.quantidade || c.qtd);
             return cod ? (q ? q + 'x ' + cod : cod) : null;
           }).filter(Boolean);
+          // b166 - alem do texto, os componentes ESTRUTURADOS, pra tela
+          // oferecer a explosao do kit em N unidades do produto simples
+          const componentesDet = comps.map(c => {
+            const p2 = c && c.produto;
+            const cod = (p2 && (p2.codigo || p2.sku)) || '';
+            return cod ? { sku: cod, quantidade: Number(c.quantidade || c.qtd) || 1 } : null;
+          }).filter(Boolean);
           return res.status(400).json({
             ok: false,
             erro: '"' + (exato.codigo || sku) + '" e um KIT, nao um produto simples.'
@@ -578,6 +585,8 @@ function montar(router, deps) {
               + ' Lance o defeito no produto simples - e ele que existe na prateleira,'
               + ' no estoque e na nota fiscal.',
             kit: true, componentes: sugestoes,
+            kit_sku: exato.codigo || sku,
+            componentes_det: componentesDet,
           });
         }
       } catch (e) { /* Bling fora do ar nao pode travar o galpao */ }
