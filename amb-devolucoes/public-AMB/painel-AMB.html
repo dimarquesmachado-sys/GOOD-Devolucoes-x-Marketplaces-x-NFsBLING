@@ -1894,10 +1894,16 @@
           box.style.background = 'none'; box.style.border = 'none'; box.style.padding = '0';
           box.style.color = '#241a35';
         } catch (e) {
-          // b170 - falha momentanea do Bling nao pode ser terminal: da
-          // pra tentar de novo sem F5 (caso real da NF 001500 da Barbara)
-          box.innerHTML = '<span style="color:#c93c40;">nao consegui buscar os itens desta NF · '
-            + '<a href="#" onclick="return tentarItensDeNovo(this)" style="color:#1565c0;font-weight:700;text-decoration:none;">🔄 tentar de novo</a></span>';
+          // b171 - REPESCAGEM SOZINHA: a 1a falha agenda nova tentativa em
+          // 30s (o 429 do Bling passa); so a 2a falha mostra o botao manual
+          if (!box.dataset.retry) {
+            box.dataset.retry = '1';
+            box.innerHTML = '<span style="color:#8a6d00;">itens da NF nao vieram — repescando sozinho em 30s…</span>';
+            setTimeout(function () { delete box.dataset.feito; autoCarregarItens(); }, 30000);
+          } else {
+            box.innerHTML = '<span style="color:#c93c40;">nao consegui buscar os itens desta NF · '
+              + '<a href="#" onclick="return tentarItensDeNovo(this)" style="color:#1565c0;font-weight:700;text-decoration:none;">🔄 tentar de novo</a></span>';
+          }
         }
         await new Promise(r => setTimeout(r, 220));
       }

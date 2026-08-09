@@ -127,6 +127,73 @@ app.post('/api/admin/carregar-itens/:id', requerAdmin, async (req, res) => {
 });
 
 // ============================================================
+// b171 - RETROFIT AUTOMATICO MANSO dos itens da NF.
+// Pedido do Diego: "fazer sempre, sem precisar acessar o painel,
+// pra quando eu abrir ja entregar repescado". A rotina grava
+// nf_itens nos cards ABERTOS que ainda nao tem, pra o painel nem
+// precisar buscar no Bling na hora.
+// SEGURANCA (licao do incidente do "salvando infinito"):
+//   - 1 chamada leve por card (GET /nfe/{id}), teto de 15 por rodada
+//   - pausa de 3s entre cards; roda no boot (+4min) e a cada 6h
+//   - DUAS falhas seguidas = desiste da rodada inteira (limite/Bling fora)
+//   - trava anti-reentrancia
+// ============================================================
+let RETRO_ITENS_RODANDO = false;
+async function retrofitItensPendentes() {
+  if (RETRO_ITENS_RODANDO || !supabase) return;
+  RETRO_ITENS_RODANDO = true;
+  try {
+    const corte = new Date(Date.now() - 60 * 864e5).toISOString();
+    const { data } = await supabase.from(TAB)
+      .select('id, nf_id_bling, nf_numero, nf_chave, nf_itens, status, criado_em')
+      .in('status', ['aprovado', 'problema', 'divergente'])
+      .gte('criado_em', corte)
+      .order('criado_em', { ascending: false })
+      .limit(60);
+    const pendentes = (data || [])
+      .filter(r => (!Array.isArray(r.nf_itens) || r.nf_itens.length === 0)
+                && (r.nf_id_bling || (r.nf_chave && r.nf_numero)))
+      .slice(0, 15);
+    if (!pendentes.length) return;
+    let feitos = 0, falhasSeguidas = 0;
+    for (const reg of pendentes) {
+      try {
+        let idBling = reg.nf_id_bling ? String(reg.nf_id_bling) : null;
+        let idDescoberto = false;
+        if (!idBling) {
+          idBling = await resolverIdNFPorChave(reg.nf_numero, reg.nf_chave);
+          idDescoberto = !!idBling;
+        }
+        if (!idBling) continue;
+        const rFull = await buscarNFePorId(idBling);
+        const nf = (rFull.ok && rFull.data?.data) ? rFull.data.data : null;
+        if (!nf) {
+          falhasSeguidas++;
+          if (falhasSeguidas >= 2) { console.log('[RETRO-ITENS] 2 falhas seguidas - desisto da rodada'); break; }
+          continue;
+        }
+        falhasSeguidas = 0;
+        const upd = { nf_itens: mapItensNF(nf) || [] };
+        if (idDescoberto) upd.nf_id_bling = idBling;
+        await supabase.from(TAB).update(upd).eq('id', reg.id);
+        feitos++;
+      } catch (e) {
+        falhasSeguidas++;
+        if (falhasSeguidas >= 2) { console.log('[RETRO-ITENS] 2 falhas seguidas - desisto da rodada'); break; }
+      }
+      await sleep(3000);
+    }
+    if (feitos) console.log(`[RETRO-ITENS] itens gravados em ${feitos} card(s) - o painel abre pronto`);
+  } catch (e) {
+    console.log('[RETRO-ITENS] rodada abortada:', e.message || e);
+  } finally {
+    RETRO_ITENS_RODANDO = false;
+  }
+}
+setTimeout(retrofitItensPendentes, 4 * 60 * 1000);        // depois do pre-aquecimento
+setInterval(retrofitItensPendentes, 6 * 60 * 60 * 1000);  // e a cada 6 horas
+
+// ============================================================
 // v3.29 - Itens completos de uma NF (pro expansor "▼ itens da NF")
 app.get('/api/admin/nf-itens/:idBling', requerAdmin, async (req, res) => {
   try {
