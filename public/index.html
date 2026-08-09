@@ -57,7 +57,7 @@
     .links-defeitos a:hover { background: rgba(0,0,0,.18); }
     @media (max-width: 600px) { .links-defeitos { justify-content: center; } }
 
-    /* v4.55 - COLINHA "o que bipar em cada etiqueta": link no cabecalho
+    /* v4.56 - COLINHA "o que bipar em cada etiqueta": link no cabecalho
        que abre um modal (mesma feature da AMB b157; textos identicos). */
     .cola-mkt { margin:10px 0 2px; font-weight:800; font-size:12.5px; display:flex; align-items:center; gap:6px; }
     .cola-chip { width:10px; height:10px; border-radius:3px; display:inline-block; flex:0 0 auto; }
@@ -186,7 +186,7 @@
   </div>
 
   <!-- v3.96 - MODAL: lancar produto com defeito (busca por nome/SKU/EAN) -->
-  <!-- v4.55 - a COLINHA em modal: abre pelo "❓ O que bipar" do cabecalho. -->
+  <!-- v4.56 - a COLINHA em modal: abre pelo "❓ O que bipar" do cabecalho. -->
   <div id="modalColaBipe" class="modal-bg" onclick="if(event.target===this)fecharColaBipe()">
     <div class="modal" style="max-width:520px;width:94%;padding:0;overflow:hidden;">
       <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid #eee;background:#fff9d6;">
@@ -978,7 +978,15 @@
           if (d && d.ok) {
             var novos = (d.pedidos || []).filter(function (p) {
               if (!p.decidido_em) return false;
-              if (p.status !== 'autorizado' && p.status !== 'recusado') return false;
+              // v4.61 - desde a b164, liberar uma recuperada ja CONCLUI o
+              // pedido (lancou = concluiu) - o aviso conta esse caso tambem,
+              // senao a liberacao nova nunca acende o sinal do estoquista.
+              var decidida = p.status === 'autorizado' || p.status === 'recusado'
+                || (p.status === 'concluido' && p.estoque_produto_id);
+              if (!decidida) return false;
+              // v4.61 - ninguem e avisado do que ELE MESMO decidiu
+              var eu = ((document.getElementById('userNome') || {}).textContent || '').trim();
+              if (eu && eu !== '-' && p.quem_decidiu && String(p.quem_decidiu).trim() === eu) return false;
               return !visto || new Date(p.decidido_em) > new Date(visto);
             });
             selo(document.getElementById('avisoDefeitos'), novos.length, novos.length + ' peça(s) decidida(s) pelo admin');
@@ -995,7 +1003,7 @@
     })();
   </script>
   <script>
-    // v4.55 - colinha em modal
+    // v4.56 - colinha em modal
     function abrirColaBipe() {
       var m = document.getElementById('modalColaBipe');
       if (m) m.classList.add('show');
