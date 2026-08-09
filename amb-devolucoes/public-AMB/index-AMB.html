@@ -206,7 +206,7 @@
         <div class="topo-txt">
           <h1>AMBTotal Devoluções</h1>
           <p>Identificar venda &middot; NF-e &middot; Triagem
-            <span class="topo-versao">&middot; v3.62 &middot; <span id="serverVersion">checando...</span></span>
+            <span class="topo-versao">&middot; v3.63 &middot; <span id="serverVersion">checando...</span></span>
           </p>
         </div>
         <!-- b92 - os 2 do estoque de defeitos subiram pra MESMA faixa:
@@ -763,7 +763,7 @@
   <script src="js-AMB/ocr.js?v=b129"></script>
   <script src="js-AMB/app.js?v=b129"></script>
   <!-- b96 - ciclo do estoque de defeitos (ficha, fotos, pedidos) -->
-  <script src="js-AMB/defeitos-ficha.js?v=b164"></script>
+  <script src="js-AMB/defeitos-ficha.js?v=b166"></script>
   <!-- b81 - colar/arrastar imagem da etiqueta na busca -->
   <script src="js-AMB/colar-imagem.js?v=b129"></script>
 
@@ -974,6 +974,14 @@
         });
         var d = await r.json();
         if (!d.ok) {
+          // b166 - IDEIA DO DIEGO: kit devolvido explode em N unidades do
+          // produto simples. Em vez de so recusar, a trava agora oferece
+          // lancar o defeito nos componentes, com a quantidade certa.
+          if (d.kit && d.componentes_det && d.componentes_det.length) {
+            btn.disabled = false; btn.textContent = '\ud83d\udcbe Lançar Defeito';
+            explodirKitDefeito(d, payload, msg);
+            return;
+          }
           msg.innerHTML = '<span style="color:#c62828;">' + escDef(d.erro || 'erro') + '</span>';
           btn.disabled = false; btn.textContent = '\ud83d\udcbe Lançar Defeito';
           return;
@@ -1001,7 +1009,42 @@
         btn.disabled = false; btn.textContent = '\ud83d\udcbe Lançar Defeito';
       }
     }
-  </script>
+  
+    // b166 - a explosao do kit: confirma componente a componente e lanca
+    // cada um como defeito proprio (mesma descricao, local e fotos).
+    async function explodirKitDefeito(d, payload, msg) {
+      var lancados = 0;
+      for (var i = 0; i < d.componentes_det.length; i++) {
+        var comp = d.componentes_det[i];
+        var qtd = (parseInt(payload.qtd, 10) || 1) * (comp.quantidade || 1);
+        var ok = confirm(
+          (d.kit_sku || 'Este produto') + ' é um KIT — no estoque quem existe é o produto simples.\n\n'
+          + 'Lançar o defeito como ' + qtd + '× ' + comp.sku + '?'
+          + (d.componentes_det.length > 1 ? '\n\n(componente ' + (i + 1) + ' de ' + d.componentes_det.length + ')' : ''));
+        if (!ok) continue;
+        msg.innerHTML = '<span style="color:#555;">lançando ' + qtd + '× ' + comp.sku + '…</span>';
+        try {
+          var r2 = await fetch('/api/defeitos/adicionar', {
+            method: 'POST', credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ sku: comp.sku, defeito: payload.defeito,
+              localizacao: payload.localizacao, qtd: qtd, fotos: payload.fotos })
+          });
+          var d2 = await r2.json();
+          if (d2 && d2.ok) lancados++;
+          else msg.innerHTML = '<span style="color:#c62828;">' + escDef((d2 && d2.erro) || 'erro no ' + comp.sku) + '</span>';
+        } catch (e) {
+          msg.innerHTML = '<span style="color:#c62828;">Erro de conexão no ' + comp.sku + '.</span>';
+        }
+      }
+      if (lancados) {
+        msg.innerHTML = '<span style="color:#2e7d32;">\u2705 ' + lancados + ' peça(s) lançada(s) no produto simples! Abra 🔧 Defeitos pra ver e imprimir etiquetas.</span>';
+        setTimeout(function () { fecharModalDefeito(); }, 2200);
+      } else if (!msg.innerHTML || msg.innerHTML.indexOf('c62828') === -1) {
+        msg.innerHTML = '<span style="color:#555;">Nada lançado.</span>';
+      }
+    }
+</script>
 
 <script>
 // b69 - ROLA SOZINHO ATE O QUE IMPORTA.
