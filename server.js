@@ -4862,6 +4862,50 @@ function preAquecerEspreita() {
 setTimeout(preAquecerEspreita, 90 * 1000);
 setInterval(preAquecerEspreita, 3 * 60 * 1000);
 
+// ============================================================
+// ev1 - EVENTOS DO CHECKOUT (o Mover-Pedidos avisa; fica pesquisavel).
+// O checkout offline registra aqui etiquetas anexadas (e depois NFs),
+// pra busca posterior. Tabela: eventos_checkout (SQL a parte).
+// Ingestao autenticada pela ADMIN_KEY no corpo (quem chama e o servico).
+app.post('/api/interno/evento-checkout', express.json({ limit: '1mb' }), async (req, res) => {
+  try {
+    const b = req.body || {};
+    if (!ADMIN_KEY || String(b.k || '') !== ADMIN_KEY) return res.status(403).json({ ok: false });
+    const reg = {
+      empresa: String(b.empresa || '').slice(0, 20),
+      tipo: String(b.tipo || '').slice(0, 40),
+      codigo: String(b.codigo || '').trim().slice(0, 80),
+      quem: String((b.extra && b.extra.quem) || '').slice(0, 60),
+      extra: (b.extra && typeof b.extra === 'object') ? b.extra : {},
+    };
+    // ev1 - a entrada valida ANTES do banco (licao repetida da casa)
+    if (!reg.codigo || !reg.tipo) return res.status(400).json({ ok: false, erro: 'codigo e tipo obrigatorios' });
+    if (!supabase) return res.status(500).json({ ok: false, erro: 'Supabase nao configurado' });
+    const { error } = await supabase.from('eventos_checkout').insert([reg]);
+    if (error) return res.status(500).json({ ok: false, erro: error.message });
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ ok: false, erro: e.message || 'erro' });
+  }
+});
+
+// ev1 - consulta pro Diego: /api/admin/eventos-checkout?k=ADMIN_KEY&q=CODIGO
+// (sem q = os 40 mais recentes; q casa por pedaco do codigo/pedido)
+app.get('/api/admin/eventos-checkout', async (req, res) => {
+  try {
+    if (!adminOk(req)) return res.status(403).json({ ok: false });
+    if (!supabase) return res.status(500).json({ ok: false, erro: 'Supabase nao configurado' });
+    const q = String(req.query.q || '').trim();
+    let cons = supabase.from('eventos_checkout').select('*').order('criado_em', { ascending: false }).limit(40);
+    if (q) cons = cons.ilike('codigo', '%' + q + '%');
+    const { data, error } = await cons;
+    if (error) return res.status(500).json({ ok: false, erro: error.message });
+    res.json({ ok: true, total: (data || []).length, eventos: data || [] });
+  } catch (e) {
+    res.status(500).json({ ok: false, erro: e.message || 'erro' });
+  }
+});
+
 app.listen(PORT, () => {
   console.log('============================================');
   console.log('GOOD Devolucoes v3.56 - MAGALU integrada');
