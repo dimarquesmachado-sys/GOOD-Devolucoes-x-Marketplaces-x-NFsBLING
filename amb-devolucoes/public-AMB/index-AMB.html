@@ -206,7 +206,7 @@
         <div class="topo-txt">
           <h1>AMBTotal Devoluções</h1>
           <p>Identificar venda &middot; NF-e &middot; Triagem
-            <span class="topo-versao">&middot; v3.61 &middot; <span id="serverVersion">checando...</span></span>
+            <span class="topo-versao">&middot; v3.62 &middot; <span id="serverVersion">checando...</span></span>
           </p>
         </div>
         <!-- b92 - os 2 do estoque de defeitos subiram pra MESMA faixa:
@@ -1185,7 +1185,15 @@
           if (!d || !d.ok) return;
           var novos = (d.pedidos || []).filter(function (p) {
             if (!p.decidido_em) return false;                    // ainda esperando o admin
-            if (p.status !== 'autorizado' && p.status !== 'recusado') return false;
+            // b165 - desde a b164, liberar uma recuperada ja CONCLUI o
+            // pedido (lancou = concluiu) - o aviso conta esse caso tambem,
+            // senao a liberacao nova nunca acende o sinal do estoquista.
+            var decidida = p.status === 'autorizado' || p.status === 'recusado'
+              || (p.status === 'concluido' && p.estoque_produto_id);
+            if (!decidida) return false;
+            // b165 - ninguem e avisado do que ELE MESMO decidiu
+            var eu = ((document.getElementById('userNome') || {}).textContent || '').trim();
+            if (eu && eu !== '-' && p.quem_decidiu && String(p.quem_decidiu).trim() === eu) return false;
             return !visto || new Date(p.decidido_em) > new Date(visto);
           });
           conferirAdmin(d.pedidos || []);
