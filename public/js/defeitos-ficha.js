@@ -192,7 +192,7 @@
     // b128 - abriu, entao ele ja viu: o aviso do botao zera
     if (typeof window.marcarDefeitosVistos === 'function') window.marcarDefeitosVistos();
     abrir(topo('🔧 Estoque de Defeitos',
-      euSouAdmin ? '<button onclick="abrirFilaPedidos()" style="background:rgba(255,255,255,.2);color:#fff;border:none;border-radius:8px;padding:6px 12px;cursor:pointer;">📥 Pedidos</button>' : '')
+      euSouAdmin ? '<button onclick="abrirFilaPedidos()" style="background:rgba(255,255,255,.2);color:#fff;border:none;border-radius:8px;padding:6px 12px;cursor:pointer;">📥 Solicitações</button>' : '')
       + '<div style="padding:14px;">'
       + '<div style="display:flex;gap:7px;margin-bottom:12px;">'
       + '<input id="defBusca" placeholder="SKU, EAN, localização, produto ou o número da peça (ex: peça 4)"'
@@ -908,10 +908,10 @@
 
   window.abrirFilaPedidos = async function (voltando) {
     registrar('fila', null, voltando);
-    abrir(topo('📥 Pedidos do galpão') + '<div style="padding:16px;color:#888;">carregando...</div>');
+    abrir(topo('📥 Solicitações do Galpão') + '<div style="padding:16px;color:#888;">carregando...</div>');
     var d = await api('/api/defeitos/pedidos');
     var lista = (d && d.pedidos) || [];
-    var html = topo('📥 Pedidos do galpão')
+    var html = topo('📥 Solicitações do Galpão')
       + '<div style="padding:14px;">'
       + (lista.length ? lista.map(function (p) { return linhaPedido(p, true); }).join('')
                       : '<div style="color:#888;font-size:13px;">nenhum pedido por enquanto.</div>')
