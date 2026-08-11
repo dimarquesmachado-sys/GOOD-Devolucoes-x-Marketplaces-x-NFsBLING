@@ -12,6 +12,11 @@ const cookieParser = require('cookie-parser');
 const crypto = require('crypto');
 
 const app = express();
+// seg1.2 - no Render a aplicacao roda atras do proxy da plataforma. Sem
+// isto, req.ip seria o IP do proxy (todo mundo igual) e o freio do login
+// nao distinguiria clientes; com 1 salto confiavel, req.ip e o endereco
+// carimbado pelo proxy - nao o X-Forwarded-For cru enviado pelo cliente.
+app.set('trust proxy', 1);
 const PORT = process.env.PORT || 3000;
 
 // === ML / Bling / Render (Fase 1+2) ===
@@ -203,7 +208,9 @@ app.get('/health', (req, res) => {
       auth: Object.keys(USERS).length > 0,
       admin: !!(ADMIN_USER && USERS[ADMIN_USER]),
     },
-    usuarios_cadastrados: Object.keys(USERS),
+    // seg1.2 - o /health e PUBLICO e devolvia a lista de logins, que e
+    // meio caminho andado pra um ataque de senha. Agora so a contagem.
+    usuarios_cadastrados: Object.keys(USERS).length,
     timestamp: new Date().toISOString(),
   });
 });
@@ -1673,79 +1680,109 @@ app.get('/ml/setup', async (req, res) => {
 // Login unificado (estoquista + admin)
 // Se usuario == ADMIN_USER, recebe sessao com tipo='admin'
 
-// ── seg1 - FREIO DE FORCA-BRUTA NO LOGIN ──────────────────────────────
-// Antes: senha errada podia ser tentada infinitas vezes, sem custo nenhum.
-// Agora: a partir de 8 erros na mesma janela de 10 min (contados por
-// usuario+IP), o login responde 429 por 5 min. Acerto zera na hora.
-// Memoria apenas (some no restart) e generoso de proposito: o galpao
-// erra senha de vez em quando e NAO pode ficar travado no meio do dia.
+// ── seg1.2 - FREIO DE FORCA-BRUTA NO LOGIN (2a rodada da review) ──────
+// Historia: seg1 usava usuario+X-Forwarded-For (o cliente escolhe o header
+// = furava); seg1.1 passou a usar so o usuario (= um estranho conseguia
+// TRANCAR a conta de todo mundo, ainda mais com os nomes vazando no
+// /health). Agora sao DOIS baldes, e nenhum deles pode ser fechado por
+// terceiros:
+//   1) usuario + cliente -> 8 falhas em 10 min = 429 por 5 min
+//   2) cliente (IP)      -> 30 falhas em 10 min = 429 por 5 min (spray)
+// O IP vem de req.ip com "trust proxy" ligado, ou seja, o endereco que o
+// proxy do Render carimba - nao o primeiro valor que o cliente mandou.
+// Quem esta de castigo NUNCA e despejado pelo teto (senao bastava encher
+// o mapa pra zerar a punicao); com o mapa cheio, chave nova nao entra.
 const LOGIN_FALHAS = new Map();
-const LOGIN_MAX = 8;
+const LOGIN_MAX_USUARIO = 8;
+const LOGIN_MAX_CLIENTE = 30;
 const LOGIN_JANELA_MS = 10 * 60 * 1000;
 const LOGIN_CASTIGO_MS = 5 * 60 * 1000;
-const LOGIN_TETO_CHAVES = 500;   // teto RIGIDO de chaves guardadas
-// seg1.1 (review do Codex, P1 #1 e #2): a chave NAO usa mais o IP.
-// O X-Forwarded-For e enviado pelo cliente e pode ser trocado a cada
-// tentativa, o que criava uma chave nova e furava o freio. Sem proxy
-// confiavel declarado, o unico dado confiavel aqui e o usuario — e ele
-// e normalizado EXATAMENTE como a autenticacao faz (trim + minusculas),
-// senao " Diego" e "Diego" contariam separado. O corte em 60 chars evita
-// que nomes gigantes inchem a memoria.
-function loginChave(usuario) {
+const LOGIN_TETO_CHAVES = 1000;
+
+function loginIdent(usuario) {
   return String(usuario || '').trim().toLowerCase().slice(0, 60);
 }
-function loginBloqueado(chave) {
+function loginIp(req) {
+  return String((req && (req.ip || (req.socket && req.socket.remoteAddress))) || '').slice(0, 45);
+}
+function loginChaves(req, usuario) {
+  const ip = loginIp(req);
+  return { doUsuario: 'u:' + loginIdent(usuario) + '|' + ip, doCliente: 'c:' + ip };
+}
+function castigoRestante(chave, agora) {
   const reg = LOGIN_FALHAS.get(chave);
-  if (!reg) return 0;
-  if (reg.ate && Date.now() < reg.ate) return Math.ceil((reg.ate - Date.now()) / 1000);
-  if (reg.ate && Date.now() >= reg.ate) { LOGIN_FALHAS.delete(chave); return 0; }
+  if (!reg || !reg.ate) return 0;
+  if (agora < reg.ate) return Math.ceil((reg.ate - agora) / 1000);
+  LOGIN_FALHAS.delete(chave);
   return 0;
 }
-function loginErrou(chave) {
+function loginBloqueado(chaves) {
   const agora = Date.now();
-  const reg = LOGIN_FALHAS.get(chave) || { n: 0, desde: agora, ate: 0 };
-  if (agora - reg.desde > LOGIN_JANELA_MS) { reg.n = 0; reg.desde = agora; }
-  reg.n += 1;
-  if (reg.n >= LOGIN_MAX) reg.ate = agora + LOGIN_CASTIGO_MS;
-  LOGIN_FALHAS.set(chave, reg);
-  // seg1.1 (review do Codex, P1 #3): teto RIGIDO. Antes so limpava os
-  // expirados — dentro da janela, usuarios inventados enchiam o mapa sem
-  // limite. Agora, depois de limpar, descarta as chaves mais ANTIGAS ate
-  // caber no teto, entao o mapa nunca passa de LOGIN_TETO_CHAVES.
-  if (LOGIN_FALHAS.size > LOGIN_TETO_CHAVES) {
-    for (const [k, v] of LOGIN_FALHAS) {
-      if (agora - v.desde > LOGIN_JANELA_MS && (!v.ate || agora > v.ate)) LOGIN_FALHAS.delete(k);
-    }
-    if (LOGIN_FALHAS.size > LOGIN_TETO_CHAVES) {
-      const porIdade = [...LOGIN_FALHAS.entries()].sort((a, b) => a[1].desde - b[1].desde);
-      const sobrando = LOGIN_FALHAS.size - LOGIN_TETO_CHAVES;
-      for (let i = 0; i < sobrando; i++) LOGIN_FALHAS.delete(porIdade[i][0]);
-    }
+  return Math.max(castigoRestante(chaves.doUsuario, agora), castigoRestante(chaves.doCliente, agora));
+}
+function podarFalhas(agora) {
+  for (const [k, v] of LOGIN_FALHAS) {
+    if (agora - v.desde > LOGIN_JANELA_MS && (!v.ate || agora > v.ate)) LOGIN_FALHAS.delete(k);
+  }
+  if (LOGIN_FALHAS.size <= LOGIN_TETO_CHAVES) return;
+  const descartaveis = [...LOGIN_FALHAS.entries()]
+    .filter(([, v]) => !(v.ate && agora < v.ate))     // em castigo fica
+    .sort((a, b) => a[1].desde - b[1].desde);          // mais antigos primeiro
+  let sobrando = LOGIN_FALHAS.size - LOGIN_TETO_CHAVES;
+  for (const [k] of descartaveis) {
+    if (sobrando <= 0) break;
+    LOGIN_FALHAS.delete(k);
+    sobrando -= 1;
   }
 }
-function loginAcertou(chave) { LOGIN_FALHAS.delete(chave); }
+function marcarFalha(chave, limite, agora) {
+  const existente = LOGIN_FALHAS.get(chave);
+  if (!existente && LOGIN_FALHAS.size >= LOGIN_TETO_CHAVES) return;   // cheio de castigos: nao cria chave nova
+  const reg = existente || { n: 0, desde: agora, ate: 0 };
+  if (agora - reg.desde > LOGIN_JANELA_MS) { reg.n = 0; reg.desde = agora; reg.ate = 0; }
+  reg.n += 1;
+  if (reg.n >= limite) reg.ate = agora + LOGIN_CASTIGO_MS;
+  LOGIN_FALHAS.set(chave, reg);
+}
+function loginErrou(chaves) {
+  const agora = Date.now();
+  podarFalhas(agora);
+  marcarFalha(chaves.doUsuario, LOGIN_MAX_USUARIO, agora);
+  marcarFalha(chaves.doCliente, LOGIN_MAX_CLIENTE, agora);
+}
+function loginAcertou(chaves) {
+  // limpa so o balde do usuario naquele cliente; o do cliente segue
+  // contando, senao um acerto no meio zeraria a varredura
+  LOGIN_FALHAS.delete(chaves.doUsuario);
+}
 
 app.post('/api/auth/login', (req, res) => {
   const { usuario, senha } = req.body || {};
   if (!usuario || !senha) {
     return res.status(400).json({ ok: false, erro: 'Usuario ou senha faltando' });
   }
-  const chaveFreio = loginChave(usuario);
-  const esperar = loginBloqueado(chaveFreio);
+  // seg1.2 (P2 da review) - o USERS da GOOD e sensivel a maiusculas, mas a
+  // chave do freio normaliza. Resolvendo a conta REAL antes, as duas coisas
+  // passam a falar da mesma identidade (e "diego" entra na conta "Diego",
+  // igual a AMB ja fazia) - e o nome gravado na sessao sai na grafia
+  // CADASTRADA, nao como foi digitado.
+  const contaReal = Object.keys(USERS).find(u => loginIdent(u) === loginIdent(usuario)) || null;
+  const chavesFreio = loginChaves(req, contaReal || usuario);
+  const esperar = loginBloqueado(chavesFreio);
   if (esperar) {
     return res.status(429).json({ ok: false, erro: `Muitas tentativas. Tente de novo em ${Math.ceil(esperar / 60)} min.` });
   }
-  const senhaCorreta = USERS[usuario];
+  const senhaCorreta = contaReal ? USERS[contaReal] : null;
   if (!senhaCorreta || senhaCorreta !== senha) {
-    loginErrou(chaveFreio);
+    loginErrou(chavesFreio);
     return res.status(401).json({ ok: false, erro: 'Usuario ou senha invalidos' });
   }
-  loginAcertou(chaveFreio);
+  loginAcertou(chavesFreio);
 
-  // Define o tipo: admin se usuario == ADMIN_USER, senao estoquista
-  const tipo = (ADMIN_USER && usuario === ADMIN_USER) ? 'admin' : 'estoquista';
+  // Define o tipo: admin se a conta == ADMIN_USER, senao estoquista
+  const tipo = (ADMIN_USER && loginIdent(contaReal) === loginIdent(ADMIN_USER)) ? 'admin' : 'estoquista';
 
-  const token = novaSessao(usuario, tipo);
+  const token = novaSessao(contaReal, tipo);
   res.cookie('sessao', token, {
     httpOnly: true,
     sameSite: 'lax',
@@ -1754,8 +1791,8 @@ app.post('/api/auth/login', (req, res) => {
     secure: process.env.NODE_ENV === 'production' || !!process.env.RENDER,
     maxAge: 12 * 60 * 60 * 1000, // 12h
   });
-  console.log(`[LOGIN] ${usuario} (${tipo})`);
-  return res.json({ ok: true, usuario, tipo });
+  console.log(`[LOGIN] ${contaReal} (${tipo})`);
+  return res.json({ ok: true, usuario: contaReal, tipo });
 });
 
 // Logout
