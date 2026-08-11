@@ -364,6 +364,12 @@ function montar(router, deps) {
           if (String(item.nome || '').indexOf('📦 KIT · ') !== 0) {
             item.nome = '📦 KIT · ' + (item.nomeBase || item.nome || '');
           }
+        } else if (item._fmt === 'S' && item.ehKit) {
+          // b179 (review do Codex) - deixou de ser kit no Bling: tira o
+          // rotulo, senao o produto seguiria marcado 📦 (e a gravacao
+          // ofereceria uma explosao que nao existe mais)
+          item.ehKit = false;
+          item.nome = item.nomeBase || String(item.nome || '').replace('📦 KIT · ', '');
         }
         delete item._fmt; delete item.nomeBase;
         entregues.push(item);
