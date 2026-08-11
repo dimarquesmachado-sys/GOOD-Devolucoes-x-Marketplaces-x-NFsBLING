@@ -269,7 +269,10 @@ function montar(router, deps) {
         for (const p of ((rN.ok && rN.data && rN.data.data) || [])) {
           if (!casa(p)) continue;
           push(p);
-          if (++entraram >= 20) break;
+          // b177 - coleta ate 30: o corte final em 20 acontece DEPOIS de
+          // tirar os pais de variacao, entao a folga aqui garante a lista
+          // cheia de produtos simples mesmo quando varios 'V' sao descartados
+          if (++entraram >= 30) break;
         }
       }
       // quem casa EXATO com o que foi digitado sobe pro topo
@@ -283,8 +286,17 @@ function montar(router, deps) {
       // detalhe ja e baixado aqui, e e ele que diz com certeza se o
       // produto e kit. Teto de 12 consultas (era 6 so pra foto), uma de
       // cada vez, com cache por id — quem ja tem veredito nao consulta.
-      const comFoto = out.slice(0, 20);
+      // b177 (P2 da 3a review) - O CORTE EM 20 VEM DEPOIS DO FILTRO.
+      // Antes eu cortava primeiro e so entao descartava pai de variacao:
+      // com muitos candidatos, os 'V' ocupavam vagas e produtos simples
+      // validos, que ja estavam em `out`, nunca chegavam na tela.
+      const candidatos = out.slice(0, 30);
       let buscados = 0;
+      // b177 (P2 da 3a review) - ids cujo DETALHE ja veio nesta requisicao.
+      // Produto sem foto nao alimenta o IMG_CACHE (de proposito: falha nao
+      // vira cache), e a passada da foto pedia o MESMO produto de novo,
+      // gastando duas chamadas e duas vagas do limitador por item.
+      const jaBaixado = new Set();
       // b175 (P1 do Codex) - O FORMATO VEM PRIMEIRO, a foto e opcional.
       // Antes, a mesma fila servia aos dois e uma busca com muitos
       // resultados gastava o teto em fotos, deixando itens SEM veredito
@@ -292,6 +304,7 @@ function montar(router, deps) {
       const buscarDetalhe = async (item) => {
         await esperarVezDetalhe();
         const rD = await bling.chamarBling(`/produtos/${item.id}`);
+        jaBaixado.add(item.id);                 // b177 - nao pedir de novo
         const det = (rD.ok && rD.data && rD.data.data) || null;
         if (det) {
           const comp = (det.estrutura && Array.isArray(det.estrutura.componentes))
@@ -305,7 +318,7 @@ function montar(router, deps) {
         if (!item.imagem) item.imagem = url;
       };
       // 1a passada: veredito de formato (o que protege o estoque)
-      for (const item of comFoto) {
+      for (const item of candidatos) {
         if (!item.id) continue;
         if (!item._fmt) {
           const doCache = FORMATO_CACHE_get(item.id);
@@ -315,18 +328,11 @@ function montar(router, deps) {
         try { await buscarDetalhe(item); } catch (e) { /* falha nao vira veredito */ }
         buscados++;
       }
-      // 2a passada: foto, so com o que sobrou do teto
-      for (const item of comFoto) {
-        if (!item.id || item.imagem) continue;
-        if (IMG_CACHE.has(item.id)) { item.imagem = IMG_CACHE.get(item.id); continue; }
-        if (buscados >= 12) break;
-        try { await buscarDetalhe(item); } catch (e) { /* sem foto e ok */ }
-        buscados++;
-      }
-      // b174 - com o veredito na mao: kit ganha o marcador (se ainda nao
-      // tiver) e o pai de variacao sai da lista de vez.
-      const finais = [];
-      for (const item of comFoto) {
+      // b174/b177 - com o veredito na mao: pai de variacao sai, kit ganha o
+      // marcador, e SO ENTAO o corte em 20 acontece (assim um 'V' nao rouba
+      // a vaga de um produto simples valido que estava logo atras na fila).
+      const filtrados = [];
+      for (const item of candidatos) {
         if (item._fmt === 'V') continue;
         if (item._fmt === 'E') {
           item.ehKit = true;
@@ -334,9 +340,19 @@ function montar(router, deps) {
             item.nome = '📦 KIT · ' + (item.nomeBase || item.nome || '');
           }
         }
-        delete item._fmt; delete item.nomeBase;
-        finais.push(item);
+        filtrados.push(item);
       }
+      const finais = filtrados.slice(0, 20);
+      // 2a passada: foto — so nos que VAO PRA TELA, e pulando quem ja teve
+      // o detalhe baixado agora ha pouco (b177: ja sabemos que nao tem foto)
+      for (const item of finais) {
+        if (!item.id || item.imagem || jaBaixado.has(item.id)) continue;
+        if (IMG_CACHE.has(item.id)) { item.imagem = IMG_CACHE.get(item.id); continue; }
+        if (buscados >= 12) break;
+        try { await buscarDetalhe(item); } catch (e) { /* sem foto e ok */ }
+        buscados++;
+      }
+      for (const item of finais) { delete item._fmt; delete item.nomeBase; }
       res.json({ ok: true, produtos: finais, termo: q });
     } catch (e) {
       res.status(500).json({ ok: false, erro: String(e.message || e) });
