@@ -674,7 +674,15 @@ function castigoRestante(chave, agora) {
   const reg = LOGIN_FALHAS.get(chave);
   if (!reg || !reg.ate) return 0;
   if (agora < reg.ate) return Math.ceil((reg.ate - agora) / 1000);
-  LOGIN_FALHAS.delete(chave);
+  // seg1.5 (P2 da 5a rodada) - castigo cumprido zerava o balde INTEIRO, e
+  // dentro da mesma janela de 10 min dava pra gastar 8 tentativas, esperar
+  // os 5 min e gastar mais 8 (o dobro do limite anunciado). Agora so a
+  // PUNICAO e liberada; a contagem sobrevive ate a janela fechar, entao o
+  // proximo erro dentro dela volta a bloquear na hora. O acerto continua
+  // limpando o balde do usuario naquele cliente.
+  if (agora - reg.desde > LOGIN_JANELA_MS) { LOGIN_FALHAS.delete(chave); return 0; }
+  reg.ate = 0;
+  LOGIN_FALHAS.set(chave, reg);
   return 0;
 }
 function loginBloqueado(chaves) {
