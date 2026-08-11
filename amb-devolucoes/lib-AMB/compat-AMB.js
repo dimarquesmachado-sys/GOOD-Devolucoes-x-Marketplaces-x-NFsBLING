@@ -59,6 +59,22 @@ function FORMATO_CACHE_get(id) {
 // cliente do Bling tem cota de ~3 req/s; com o intervalo preso dentro de
 // cada busca, duas buscas simultaneas somavam o dobro do ritmo. Agora o
 // intervalo e compartilhado pelo processo inteiro.
+// b180 - COMPONENTES DO KIT: o Bling devolve a estrutura com o produto
+// SO PELO ID (sem `codigo`), entao o mapeamento antigo — que exigia
+// c.produto.codigo — saia VAZIO: a mensagem nao citava a composicao e a
+// tela nao tinha o que oferecer pra explodir. Agora: extrator tolerante a
+// onde a estrutura vem + resolucao do id -> SKU (com cache por id).
+const SKU_POR_ID = new Map();          // idProduto -> { sku, nome }
+function extrairComponentes(det) {
+  if (!det) return [];
+  const lugares = [
+    det.estrutura && det.estrutura.componentes,
+    det.componentes,
+    det.estrutura && det.estrutura.itens,
+  ];
+  for (const l of lugares) if (Array.isArray(l) && l.length) return l;
+  return [];
+}
 const DETALHE_INTERVALO_MS = 350;
 let DETALHE_PROXIMO = 0;
 async function esperarVezDetalhe() {
@@ -120,6 +136,38 @@ function montar(router, deps) {
     storage: multer.memoryStorage(),
     limits: { fileSize: 12 * 1024 * 1024 },   // 12MB por foto
   });
+
+  // b180 - transforma a estrutura crua do Bling em [{sku, quantidade, nome}],
+  // consultando o produto do componente quando so veio o id. Teto de 12,
+  // cache por id e o mesmo espacamento global das outras consultas.
+  async function resolverComponentes(comps) {
+    const out = [];
+    for (const c of (comps || []).slice(0, 12)) {
+      const p = (c && c.produto) || {};
+      const id = p.id || c.idProduto || c.produtoId || null;
+      let sku = String(p.codigo || p.sku || '').trim();
+      let nome = String(p.nome || p.descricao || '').trim();
+      if (!sku && id) {
+        const emCache = SKU_POR_ID.get(id);
+        if (emCache) { sku = emCache.sku; nome = nome || emCache.nome; }
+        else {
+          try {
+            await esperarVezDetalhe();
+            const r = await bling.chamarBling('/produtos/' + id);
+            const d = (r.ok && r.data && r.data.data) || null;
+            if (d) {
+              sku = String(d.codigo || d.sku || '').trim();
+              nome = nome || String(d.nome || d.descricao || '').trim();
+              if (sku) SKU_POR_ID.set(id, { sku, nome });
+            }
+          } catch (e) { /* componente que nao resolve fica de fora */ }
+        }
+      }
+      const q = Number(c && (c.quantidade || c.qtd)) || 1;
+      if (sku) out.push({ sku, quantidade: q, nome });
+    }
+    return out;
+  }
 
   // ─────────────────────────────────────────────────────────────────────
   // GET /api/produtos/buscar?q=  — usado pelo modal "Lançar produto com
@@ -702,8 +750,7 @@ function montar(router, deps) {
       try {
         const rDet = await bling.chamarBling('/produtos/' + exato.id);
         const det = (rDet.ok && rDet.data && rDet.data.data) || null;
-        const comps = (det && det.estrutura && Array.isArray(det.estrutura.componentes))
-          ? det.estrutura.componentes : [];
+        const comps = extrairComponentes(det);   // b180 - tolerante ao formato
         const fmtDet = String((det && det.formato) || '').toUpperCase();
         if (det && det.id) FORMATO_CACHE_set(det.id, comps.length > 0 ? 'E' : (fmtDet || 'S'));
         // b175 (P1 da review do Codex no PR #2) - a busca resolve o formato
@@ -723,19 +770,10 @@ function montar(router, deps) {
         }
         const ehKit = comps.length > 0 || fmtDet === 'E';
         if (ehKit) {
-          const sugestoes = comps.map(c => {
-            const p2 = c && c.produto;
-            const cod = (p2 && (p2.codigo || p2.sku)) || '';
-            const q = c && (c.quantidade || c.qtd);
-            return cod ? (q ? q + 'x ' + cod : cod) : null;
-          }).filter(Boolean);
-          // b166 - alem do texto, os componentes ESTRUTURADOS, pra tela
-          // oferecer a explosao do kit em N unidades do produto simples
-          const componentesDet = comps.map(c => {
-            const p2 = c && c.produto;
-            const cod = (p2 && (p2.codigo || p2.sku)) || '';
-            return cod ? { sku: cod, quantidade: Number(c.quantidade || c.qtd) || 1 } : null;
-          }).filter(Boolean);
+          // b166/b180 - componentes ESTRUTURADOS (resolvendo id -> SKU),
+          // pra tela oferecer a explosao em N unidades do produto simples
+          const componentesDet = await resolverComponentes(comps);
+          const sugestoes = componentesDet.map(c => c.quantidade + 'x ' + c.sku);
           return res.status(400).json({
             ok: false,
             erro: '"' + (exato.codigo || sku) + '" e um KIT, nao um produto simples.'

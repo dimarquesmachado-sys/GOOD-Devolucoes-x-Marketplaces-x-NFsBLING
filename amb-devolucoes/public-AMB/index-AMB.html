@@ -206,7 +206,7 @@
         <div class="topo-txt">
           <h1>AMBTotal Devoluções</h1>
           <p>Identificar venda &middot; NF-e &middot; Triagem
-            <span class="topo-versao">&middot; v3.66 &middot; <span id="serverVersion">checando...</span></span>
+            <span class="topo-versao">&middot; v3.67 &middot; <span id="serverVersion">checando...</span></span>
           </p>
         </div>
         <!-- b92 - os 2 do estoque de defeitos subiram pra MESMA faixa:
@@ -1015,36 +1015,75 @@
   
     // b166 - a explosao do kit: confirma componente a componente e lanca
     // cada um como defeito proprio (mesma descricao, local e fotos).
-    async function explodirKitDefeito(d, payload, msg) {
-      var lancados = 0;
-      for (var i = 0; i < d.componentes_det.length; i++) {
-        var comp = d.componentes_det[i];
-        var qtd = (parseInt(payload.qtd, 10) || 1) * (comp.quantidade || 1);
-        var ok = confirm(
-          (d.kit_sku || 'Este produto') + ' é um KIT — no estoque quem existe é o produto simples.\n\n'
-          + 'Lançar o defeito como ' + qtd + '× ' + comp.sku + '?'
-          + (d.componentes_det.length > 1 ? '\n\n(componente ' + (i + 1) + ' de ' + d.componentes_det.length + ')' : ''));
-        if (!ok) continue;
-        msg.innerHTML = '<span style="color:#555;">lançando ' + qtd + '× ' + comp.sku + '…</span>';
+    // b180 - A COMPOSICAO DO KIT APARECE NA TELA, clicavel. Antes era uma
+    // fila de confirm() ("OK/Cancelar" um a um), que o Diego achou ruim com
+    // razao: ele nao via o que o kit tinha, so um aviso escrito embaixo.
+    // Agora o proprio card mostra os componentes e ele escolhe onde lancar.
+    function explodirKitDefeito(d, payload, msg) {
+      var lista = d.componentes_det || [];
+      if (!lista.length) {
+        msg.innerHTML = '<span style="color:#c62828;">' + escDef(d.erro || 'kit sem composicao') + '</span>';
+        return;
+      }
+      window._kitPendente = { d: d, payload: payload };
+      var qtdBase = parseInt(payload.qtd, 10) || 1;
+      var linhas = lista.map(function (c, i) {
+        var qtd = qtdBase * (c.quantidade || 1);
+        return '<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-top:1px solid #f0e6ef;">'
+          + '<div style="flex:1;min-width:0;">'
+            + '<div style="font-weight:700;font-size:13px;color:#241a35;">' + qtd + '× <code>' + escDef(c.sku) + '</code></div>'
+            + (c.nome ? '<div style="font-size:11.5px;color:#71659a;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + escDef(c.nome) + '</div>' : '')
+          + '</div>'
+          + '<button type="button" onclick="lancarComponenteKit(' + i + ')" '
+            + 'style="background:#561A9E;color:#fff;border:none;border-radius:8px;padding:9px 13px;font-weight:700;cursor:pointer;white-space:nowrap;">'
+            + '💾 Lançar aqui</button></div>';
+      }).join('');
+      msg.innerHTML = '<div style="background:#faf7ff;border:1px solid #e4dcf1;border-radius:10px;padding:11px 12px;text-align:left;">'
+        + '<div style="font-size:13px;color:#241a35;margin-bottom:4px;">'
+          + '📦 <b>' + escDef(d.kit_sku || '') + ' é um KIT.</b> No estoque quem existe é o produto simples —'
+          + ' escolha em qual peça lançar o defeito:</div>'
+        + linhas
+        + (lista.length > 1
+            ? '<div style="margin-top:9px;text-align:right;"><button type="button" onclick="lancarComponenteKit(-1)" '
+              + 'style="background:#0F6E56;color:#fff;border:none;border-radius:8px;padding:9px 14px;font-weight:700;cursor:pointer;">'
+              + '⚡ Lançar em TODAS as peças</button></div>'
+            : '')
+        + '</div>';
+    }
+
+    // b180 - lanca em UM componente (indice) ou em TODOS (-1)
+    async function lancarComponenteKit(indice) {
+      var pend = window._kitPendente;
+      var msg = document.getElementById('defMsg');
+      if (!pend) { if (msg) msg.innerHTML = '<span style="color:#c62828;">recomece a busca do produto.</span>'; return; }
+      var lista = pend.d.componentes_det || [];
+      var alvos = indice < 0 ? lista : [lista[indice]];
+      var qtdBase = parseInt(pend.payload.qtd, 10) || 1;
+      var lancados = 0, erro = '';
+      for (var i = 0; i < alvos.length; i++) {
+        var c = alvos[i];
+        if (!c) continue;
+        var qtd = qtdBase * (c.quantidade || 1);
+        if (msg) msg.innerHTML = '<span style="color:#555;">lançando ' + qtd + '× ' + escDef(c.sku) + '…</span>';
         try {
-          var r2 = await fetch('/api/defeitos/adicionar', {
+          var r = await fetch('/api/defeitos/adicionar', {
             method: 'POST', credentials: 'same-origin',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ sku: comp.sku, defeito: payload.defeito,
-              localizacao: payload.localizacao, qtd: qtd, fotos: payload.fotos })
+            body: JSON.stringify({ sku: c.sku, defeito: pend.payload.defeito, descricao: pend.payload.defeito,
+              localizacao: pend.payload.localizacao, qtd: qtd, fotos: pend.payload.fotos })
           });
-          var d2 = await r2.json();
+          var d2 = await r.json();
           if (d2 && d2.ok) lancados++;
-          else msg.innerHTML = '<span style="color:#c62828;">' + escDef((d2 && d2.erro) || 'erro no ' + comp.sku) + '</span>';
-        } catch (e) {
-          msg.innerHTML = '<span style="color:#c62828;">Erro de conexão no ' + comp.sku + '.</span>';
-        }
+          else erro = (d2 && d2.erro) || ('erro no ' + c.sku);
+        } catch (e) { erro = 'Erro de conexão no ' + c.sku + '.'; }
       }
-      if (lancados) {
-        msg.innerHTML = '<span style="color:#2e7d32;">\u2705 ' + lancados + ' peça(s) lançada(s) no produto simples! Abra 🔧 Defeitos pra ver e imprimir etiquetas.</span>';
+      if (lancados && msg) {
+        window._kitPendente = null;
+        msg.innerHTML = '<span style="color:#2e7d32;">\u2705 ' + lancados + ' peça(s) lançada(s) no produto simples!'
+          + ' Abra 🔧 Defeitos pra ver e imprimir etiquetas.</span>';
         setTimeout(function () { fecharModalDefeito(); }, 2200);
-      } else if (!msg.innerHTML || msg.innerHTML.indexOf('c62828') === -1) {
-        msg.innerHTML = '<span style="color:#555;">Nada lançado.</span>';
+      } else if (msg) {
+        msg.innerHTML = '<span style="color:#c62828;">' + escDef(erro || 'nada lançado') + '</span>';
       }
     }
 </script>
