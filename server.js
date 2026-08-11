@@ -1683,9 +1683,16 @@ const LOGIN_FALHAS = new Map();
 const LOGIN_MAX = 8;
 const LOGIN_JANELA_MS = 10 * 60 * 1000;
 const LOGIN_CASTIGO_MS = 5 * 60 * 1000;
-function loginChave(req, usuario) {
-  const ip = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.ip || '';
-  return String(usuario || '').toLowerCase() + '|' + ip;
+const LOGIN_TETO_CHAVES = 500;   // teto RIGIDO de chaves guardadas
+// seg1.1 (review do Codex, P1 #1 e #2): a chave NAO usa mais o IP.
+// O X-Forwarded-For e enviado pelo cliente e pode ser trocado a cada
+// tentativa, o que criava uma chave nova e furava o freio. Sem proxy
+// confiavel declarado, o unico dado confiavel aqui e o usuario — e ele
+// e normalizado EXATAMENTE como a autenticacao faz (trim + minusculas),
+// senao " Diego" e "Diego" contariam separado. O corte em 60 chars evita
+// que nomes gigantes inchem a memoria.
+function loginChave(usuario) {
+  return String(usuario || '').trim().toLowerCase().slice(0, 60);
 }
 function loginBloqueado(chave) {
   const reg = LOGIN_FALHAS.get(chave);
@@ -1701,9 +1708,18 @@ function loginErrou(chave) {
   reg.n += 1;
   if (reg.n >= LOGIN_MAX) reg.ate = agora + LOGIN_CASTIGO_MS;
   LOGIN_FALHAS.set(chave, reg);
-  if (LOGIN_FALHAS.size > 500) {
+  // seg1.1 (review do Codex, P1 #3): teto RIGIDO. Antes so limpava os
+  // expirados — dentro da janela, usuarios inventados enchiam o mapa sem
+  // limite. Agora, depois de limpar, descarta as chaves mais ANTIGAS ate
+  // caber no teto, entao o mapa nunca passa de LOGIN_TETO_CHAVES.
+  if (LOGIN_FALHAS.size > LOGIN_TETO_CHAVES) {
     for (const [k, v] of LOGIN_FALHAS) {
       if (agora - v.desde > LOGIN_JANELA_MS && (!v.ate || agora > v.ate)) LOGIN_FALHAS.delete(k);
+    }
+    if (LOGIN_FALHAS.size > LOGIN_TETO_CHAVES) {
+      const porIdade = [...LOGIN_FALHAS.entries()].sort((a, b) => a[1].desde - b[1].desde);
+      const sobrando = LOGIN_FALHAS.size - LOGIN_TETO_CHAVES;
+      for (let i = 0; i < sobrando; i++) LOGIN_FALHAS.delete(porIdade[i][0]);
     }
   }
 }
@@ -1714,7 +1730,7 @@ app.post('/api/auth/login', (req, res) => {
   if (!usuario || !senha) {
     return res.status(400).json({ ok: false, erro: 'Usuario ou senha faltando' });
   }
-  const chaveFreio = loginChave(req, usuario);
+  const chaveFreio = loginChave(usuario);
   const esperar = loginBloqueado(chaveFreio);
   if (esperar) {
     return res.status(429).json({ ok: false, erro: `Muitas tentativas. Tente de novo em ${Math.ceil(esperar / 60)} min.` });
