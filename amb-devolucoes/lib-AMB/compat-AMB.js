@@ -39,6 +39,35 @@ const emailAMB = require('./email-AMB');
  * segunda busca do mesmo produto ser instantanea.
  */
 const IMG_CACHE = new Map();          // idProduto -> url|null
+// b174 - veredito de FORMATO por produto: 'S' simples · 'E' kit/composicao
+// · 'V' pai de variacao. So guarda o que foi APURADO (listagem conclusiva
+// ou detalhe), nunca um palpite — assim um erro do Bling nao vira verdade.
+const FORMATO_CACHE = new Map();      // idProduto -> { fmt, ts }
+// b175 (P2 do Codex) - o veredito EXPIRA. Sem isso, produto que virou kit
+// depois continuaria passando como simples ate o servico reiniciar.
+const FORMATO_TTL_MS = 6 * 60 * 60 * 1000;   // 6h
+function FORMATO_CACHE_set(id, fmt) {
+  if (id && fmt) FORMATO_CACHE.set(id, { fmt, ts: Date.now() });
+}
+function FORMATO_CACHE_get(id) {
+  const reg = id ? FORMATO_CACHE.get(id) : null;
+  if (!reg) return undefined;
+  if (Date.now() - reg.ts > FORMATO_TTL_MS) { FORMATO_CACHE.delete(id); return undefined; }
+  return reg.fmt;
+}
+// b175 (P2 do Codex) - ESPACAMENTO GLOBAL das consultas de detalhe. O
+// cliente do Bling tem cota de ~3 req/s; com o intervalo preso dentro de
+// cada busca, duas buscas simultaneas somavam o dobro do ritmo. Agora o
+// intervalo e compartilhado pelo processo inteiro.
+const DETALHE_INTERVALO_MS = 350;
+let DETALHE_PROXIMO = 0;
+async function esperarVezDetalhe() {
+  const agora = Date.now();
+  const alvo = Math.max(agora, DETALHE_PROXIMO);
+  DETALHE_PROXIMO = alvo + DETALHE_INTERVALO_MS;
+  const espera = alvo - agora;
+  if (espera > 0) await new Promise(r => setTimeout(r, espera));
+}
 
 /**
  * b79 - COPIADO DO CHECKOUT OFFLINE (amb-checkout-offline/produtos.js,
@@ -113,19 +142,36 @@ function montar(router, deps) {
       // variacao bagunca o estoque. No Bling: formato 'S' = simples,
       // 'V' = com variacoes, 'E' = com composicao; tipo 'S' = servico.
       // ═══════════════════════════════════════════════════════════════
-      const fmt = String(p.formato || 'S').toUpperCase();
-      // b167 - o KIT ('E') agora APARECE na busca, com o nome marcado,
-      // porque a gravacao oferece a EXPLOSAO em N unidades do produto
-      // simples (b166) - esconder o kit deixava a explosao sem caminho.
-      // Pai de variacao ('V'), servico e filho de variacao seguem fora.
+      // b174 - a LISTAGEM do Bling nem sempre traz o campo `formato`
+      // (quando falta, o codigo antigo assumia 'S' e o KIT passava batido,
+      // sem o marcador - foi o caso do 9W3KE27-5W3kE14). Agora: se a
+      // listagem nao for conclusiva, o veredito fica PENDENTE e sai do
+      // detalhe la embaixo, na mesma chamada que ja busca a foto.
+      const fmtBruto = String(p.formato || '').toUpperCase();
+      const compLista = (p.estrutura && Array.isArray(p.estrutura.componentes))
+        ? p.estrutura.componentes.length : 0;
+      const idP = p.id || null;
+      // b176 (P2 da 2a review do Codex) - TTL NAO DESLIZA. Antes, ler o
+      // cache reescrevia o carimbo de hora: produto buscado ao menos uma
+      // vez a cada 6h nunca expirava, e um que virasse kit depois ficaria
+      // eternamente como simples. Agora so EVIDENCIA NOVA (o campo da
+      // listagem ou a estrutura) renova o prazo; leitura de cache nao.
+      const fmtFresco = (compLista > 0) ? 'E' : fmtBruto;
+      let fmt = fmtFresco || FORMATO_CACHE_get(idP) || '';
+      if (fmtFresco) FORMATO_CACHE_set(idP, fmtFresco);  // so evidencia nova renova
       const ehKitBusca = (fmt === 'E');
-      if (fmt !== 'S' && !ehKitBusca) return;
+      if (fmt && fmt !== 'S' && !ehKitBusca) return;     // 'V' e cia continuam fora
+      // b167 - o KIT aparece na busca MARCADO, porque a gravacao oferece a
+      // EXPLOSAO em N unidades do produto simples (b166); escondido, a
+      // explosao ficava sem caminho. Servico e filho de variacao, fora.
       if (String(p.tipo || 'P').toUpperCase() === 'S') return;   // servico
       if (p.produtoPai && p.produtoPai.id) return;               // filho de variacao
       vistos.add(sku);
       out.push({
         sku,
         ehKit: ehKitBusca,
+        _fmt: fmt || null,          // b174 - null = ainda a apurar no detalhe
+        nomeBase: p.nome || p.descricao || '',
         nome: (ehKitBusca ? '📦 KIT · ' : '') + (p.nome || p.descricao || ''),
         ean: eanDoProduto(p) || '',
         id: p.id || null,
@@ -157,8 +203,19 @@ function montar(router, deps) {
           const rC = await bling.chamarBling(`/produtos?codigo=${encodeURIComponent(q)}&limite=5`);
           for (const p of ((rC.ok && rC.data && rC.data.data) || [])) {
             if (!p.id) continue;
+            await esperarVezDetalhe();
             const rD = await bling.chamarBling(`/produtos/${p.id}`);
             const det = (rD.ok && rD.data && rD.data.data) || {};
+            // b175 (P2 do Codex) - este detalhe ja esta na mao: semeia os
+            // caches aqui pra o loop la embaixo nao pedir a MESMA coisa de
+            // novo (era uma chamada a toa e um lugar do teto de 12).
+            if (det && det.id) {
+              const compE = (det.estrutura && Array.isArray(det.estrutura.componentes))
+                ? det.estrutura.componentes.length : 0;
+              FORMATO_CACHE_set(det.id, compE > 0 ? 'E' : (String(det.formato || 'S').toUpperCase()));
+              const urlE = primeiraImagem(det);
+              if (urlE) IMG_CACHE.set(det.id, urlE);
+            }
             if (norm(eanDoProduto(det)).includes(alvo)) push({ ...p, gtin: eanDoProduto(det) });
             await new Promise(r2 => setTimeout(r2, 150));
           }
@@ -212,7 +269,10 @@ function montar(router, deps) {
         for (const p of ((rN.ok && rN.data && rN.data.data) || [])) {
           if (!casa(p)) continue;
           push(p);
-          if (++entraram >= 20) break;
+          // b177 - coleta ate 30: o corte final em 20 acontece DEPOIS de
+          // tirar os pais de variacao, entao a folga aqui garante a lista
+          // cheia de produtos simples mesmo quando varios 'V' sao descartados
+          if (++entraram >= 30) break;
         }
       }
       // quem casa EXATO com o que foi digitado sobe pro topo
@@ -222,24 +282,99 @@ function montar(router, deps) {
         return ea - eb;
       });
 
-      // b76 - completa com a FOTO (so os primeiros, um de cada vez):
-      // e uma chamada por produto, entao limito a 6 e cacheio por id.
-      const comFoto = out.slice(0, 20);
+      // b76/b174 - completa com a FOTO e, de quebra, APURA O FORMATO: o
+      // detalhe ja e baixado aqui, e e ele que diz com certeza se o
+      // produto e kit. Teto de 12 consultas (era 6 so pra foto), uma de
+      // cada vez, com cache por id — quem ja tem veredito nao consulta.
+      // b177 (P2 da 3a review) - O CORTE EM 20 VEM DEPOIS DO FILTRO.
+      // Antes eu cortava primeiro e so entao descartava pai de variacao:
+      // com muitos candidatos, os 'V' ocupavam vagas e produtos simples
+      // validos, que ja estavam em `out`, nunca chegavam na tela.
+      const candidatos = out;   // b178 - todos os coletados concorrem; o corte em 20 e no fim
       let buscados = 0;
-      for (const item of comFoto) {
-        if (item.imagem || !item.id || buscados >= 6) continue;
-        if (IMG_CACHE.has(item.id)) { item.imagem = IMG_CACHE.get(item.id); continue; }
-        try {
-          const rD = await bling.chamarBling(`/produtos/${item.id}`);
-          const det = (rD.ok && rD.data && rD.data.data) || null;
-          const url = primeiraImagem(det);
-          if (url) IMG_CACHE.set(item.id, url);   // so sucesso
-          item.imagem = url;
-        } catch (e) { /* falha nao vira cache */ }
+      // b177 (P2 da 3a review) - ids cujo DETALHE ja veio nesta requisicao.
+      // Produto sem foto nao alimenta o IMG_CACHE (de proposito: falha nao
+      // vira cache), e a passada da foto pedia o MESMO produto de novo,
+      // gastando duas chamadas e duas vagas do limitador por item.
+      const jaBaixado = new Set();
+      // b175 (P1 do Codex) - O FORMATO VEM PRIMEIRO, a foto e opcional.
+      // Antes, a mesma fila servia aos dois e uma busca com muitos
+      // resultados gastava o teto em fotos, deixando itens SEM veredito
+      // (um pai de variacao podia ser escolhido sem ninguem barrar).
+      const buscarDetalhe = async (item) => {
+        await esperarVezDetalhe();
+        const rD = await bling.chamarBling(`/produtos/${item.id}`);
+        jaBaixado.add(item.id);                 // b177 - nao pedir de novo
+        const det = (rD.ok && rD.data && rD.data.data) || null;
+        if (det) {
+          const comp = (det.estrutura && Array.isArray(det.estrutura.componentes))
+            ? det.estrutura.componentes.length : 0;
+          const fmtDet = comp > 0 ? 'E' : String(det.formato || 'S').toUpperCase();
+          item._fmt = fmtDet;
+          FORMATO_CACHE_set(item.id, fmtDet);     // so o APURADO vira cache
+        }
+        const url = primeiraImagem(det);
+        if (url) IMG_CACHE.set(item.id, url);     // so sucesso
+        if (!item.imagem) item.imagem = url;
+      };
+      // 1a passada: veredito de formato (o que protege o estoque)
+      for (const item of candidatos) {
+        if (!item.id) continue;
+        if (!item._fmt) {
+          const doCache = FORMATO_CACHE_get(item.id);
+          if (doCache) { item._fmt = doCache; }
+        }
+        if (item._fmt || buscados >= 12) continue;
+        try { await buscarDetalhe(item); } catch (e) { /* falha nao vira veredito */ }
         buscados++;
-        await new Promise(r2 => setTimeout(r2, 180));
       }
-      res.json({ ok: true, produtos: comFoto, termo: q });
+      // b174/b177 - com o veredito na mao: pai de variacao sai, kit ganha o
+      // marcador, e SO ENTAO o corte em 20 acontece (assim um 'V' nao rouba
+      // a vaga de um produto simples valido que estava logo atras na fila).
+      const filtrados = [];
+      for (const item of candidatos) {
+        if (item._fmt === 'V') continue;
+        if (item._fmt === 'E') {
+          item.ehKit = true;
+          if (String(item.nome || '').indexOf('📦 KIT · ') !== 0) {
+            item.nome = '📦 KIT · ' + (item.nomeBase || item.nome || '');
+          }
+        }
+        filtrados.push(item);
+      }
+      const finais = filtrados.slice(0, 20);
+      // 2a passada: foto — so nos que VAO PRA TELA, e pulando quem ja teve
+      // o detalhe baixado agora ha pouco (b177: ja sabemos que nao tem foto)
+      for (const item of finais) {
+        if (!item.id || item.imagem || jaBaixado.has(item.id)) continue;
+        if (IMG_CACHE.has(item.id)) { item.imagem = IMG_CACHE.get(item.id); continue; }
+        if (buscados >= 12) break;
+        try { await buscarDetalhe(item); } catch (e) { /* sem foto e ok */ }
+        buscados++;
+      }
+      // b178 (review do Codex) - a passada da foto tambem APURA formato: um
+      // item que entrou sem veredito pode se revelar 'V' (ou kit) ali. Sem
+      // este segundo filtro, o pai de variacao recem-descoberto seguiria na
+      // lista — o filtro de cima ja tinha passado por ele.
+      const entregues = [];
+      for (const item of finais) {
+        if (item._fmt === 'V') continue;
+        if (item._fmt === 'E') {
+          item.ehKit = true;
+          if (String(item.nome || '').indexOf('📦 KIT · ') !== 0) {
+            item.nome = '📦 KIT · ' + (item.nomeBase || item.nome || '');
+          }
+        } else if (item._fmt === 'S' && item.ehKit) {
+          // b179 (review do Codex) - deixou de ser kit no Bling: tira o
+          // rotulo, senao o produto seguiria marcado 📦 (e a gravacao
+          // ofereceria uma explosao que nao existe mais)
+          item.ehKit = false;
+          item.nome = item.nomeBase || String(item.nome || '').replace('📦 KIT · ', '');
+        }
+        delete item._fmt; delete item.nomeBase;
+        entregues.push(item);
+      }
+      res.json({ ok: true, produtos: entregues, termo: q });
     } catch (e) {
       res.status(500).json({ ok: false, erro: String(e.message || e) });
     }
@@ -569,7 +704,24 @@ function montar(router, deps) {
         const det = (rDet.ok && rDet.data && rDet.data.data) || null;
         const comps = (det && det.estrutura && Array.isArray(det.estrutura.componentes))
           ? det.estrutura.componentes : [];
-        const ehKit = comps.length > 0 || String((det && det.formato) || '').toUpperCase() === 'E';
+        const fmtDet = String((det && det.formato) || '').toUpperCase();
+        if (det && det.id) FORMATO_CACHE_set(det.id, comps.length > 0 ? 'E' : (fmtDet || 'S'));
+        // b175 (P1 da review do Codex no PR #2) - a busca resolve o formato
+        // de ate 12 candidatos; o que passar disso chega aqui SEM veredito.
+        // Entao a trava — que ja baixa o detalhe e nao depende do
+        // estoquista reparar na tela — passa a barrar tambem o PAI DE
+        // VARIACAO ('V'), que antes so era filtrado na busca: lancar
+        // defeito nele bagunca o estoque de todos os filhos.
+        if (fmtDet === 'V') {
+          return res.status(400).json({
+            ok: false,
+            erro: '"' + (exato.codigo || sku) + '" e um produto PAI de variacoes, nao uma peca.'
+              + ' Escolha a variacao exata (cor/tamanho) que esta com defeito — e ela que'
+              + ' existe na prateleira e no estoque.',
+            variacao_pai: true,
+          });
+        }
+        const ehKit = comps.length > 0 || fmtDet === 'E';
         if (ehKit) {
           const sugestoes = comps.map(c => {
             const p2 = c && c.produto;
