@@ -1699,8 +1699,15 @@ const LOGIN_JANELA_MS = 10 * 60 * 1000;
 const LOGIN_CASTIGO_MS = 5 * 60 * 1000;
 const LOGIN_TETO_CHAVES = 1000;
 
+// seg1.3 (P2 da 3a rodada) - loginNome e a identidade COMPLETA (sem corte):
+// e ela que resolve a conta e decide privilegio. O corte de 60 chars vive
+// so na CHAVE do freio, senao duas contas com os mesmos 60 primeiros
+// caracteres virariam a mesma identidade - e uma delas podia herdar admin.
+function loginNome(usuario) {
+  return String(usuario || '').trim().toLowerCase();
+}
 function loginIdent(usuario) {
-  return String(usuario || '').trim().toLowerCase().slice(0, 60);
+  return loginNome(usuario).slice(0, 60);
 }
 function loginIp(req) {
   return String((req && (req.ip || (req.socket && req.socket.remoteAddress))) || '').slice(0, 45);
@@ -1744,6 +1751,16 @@ function marcarFalha(chave, limite, agora) {
   if (reg.n >= limite) reg.ate = agora + LOGIN_CASTIGO_MS;
   LOGIN_FALHAS.set(chave, reg);
 }
+// seg1.3 (P1 da 3a rodada) - com o mapa cheio, marcarFalha simplesmente
+// nao registrava: um cliente novo ganhava tentativas ilimitadas (fail-OPEN).
+// Agora, se nao ha capacidade nem chave existente, a tentativa e RECUSADA
+// antes de olhar a senha - o limitador degrada FECHANDO, nao abrindo.
+function loginSemCapacidade(chaves) {
+  if (LOGIN_FALHAS.size < LOGIN_TETO_CHAVES) return false;
+  podarFalhas(Date.now());
+  if (LOGIN_FALHAS.size < LOGIN_TETO_CHAVES) return false;
+  return !LOGIN_FALHAS.has(chaves.doUsuario) && !LOGIN_FALHAS.has(chaves.doCliente);
+}
 function loginErrou(chaves) {
   const agora = Date.now();
   podarFalhas(agora);
@@ -1766,11 +1783,14 @@ app.post('/api/auth/login', (req, res) => {
   // passam a falar da mesma identidade (e "diego" entra na conta "Diego",
   // igual a AMB ja fazia) - e o nome gravado na sessao sai na grafia
   // CADASTRADA, nao como foi digitado.
-  const contaReal = Object.keys(USERS).find(u => loginIdent(u) === loginIdent(usuario)) || null;
+  const contaReal = Object.keys(USERS).find(u => loginNome(u) === loginNome(usuario)) || null;
   const chavesFreio = loginChaves(req, contaReal || usuario);
   const esperar = loginBloqueado(chavesFreio);
   if (esperar) {
     return res.status(429).json({ ok: false, erro: `Muitas tentativas. Tente de novo em ${Math.ceil(esperar / 60)} min.` });
+  }
+  if (loginSemCapacidade(chavesFreio)) {
+    return res.status(429).json({ ok: false, erro: 'Sistema recebendo muitas tentativas de login. Tente de novo em alguns minutos.' });
   }
   const senhaCorreta = contaReal ? USERS[contaReal] : null;
   if (!senhaCorreta || senhaCorreta !== senha) {
@@ -1780,7 +1800,7 @@ app.post('/api/auth/login', (req, res) => {
   loginAcertou(chavesFreio);
 
   // Define o tipo: admin se a conta == ADMIN_USER, senao estoquista
-  const tipo = (ADMIN_USER && loginIdent(contaReal) === loginIdent(ADMIN_USER)) ? 'admin' : 'estoquista';
+  const tipo = (ADMIN_USER && loginNome(contaReal) === loginNome(ADMIN_USER)) ? 'admin' : 'estoquista';
 
   const token = novaSessao(contaReal, tipo);
   res.cookie('sessao', token, {
