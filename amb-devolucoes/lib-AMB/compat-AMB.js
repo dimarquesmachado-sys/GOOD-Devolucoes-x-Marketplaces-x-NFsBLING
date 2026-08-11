@@ -151,9 +151,14 @@ function montar(router, deps) {
       const compLista = (p.estrutura && Array.isArray(p.estrutura.componentes))
         ? p.estrutura.componentes.length : 0;
       const idP = p.id || null;
-      let fmt = fmtBruto || FORMATO_CACHE_get(idP) || '';
-      if (compLista > 0) fmt = 'E';                      // estrutura na listagem ja denuncia
-      if (fmt) FORMATO_CACHE_set(idP, fmt);              // so o apurado vira cache
+      // b176 (P2 da 2a review do Codex) - TTL NAO DESLIZA. Antes, ler o
+      // cache reescrevia o carimbo de hora: produto buscado ao menos uma
+      // vez a cada 6h nunca expirava, e um que virasse kit depois ficaria
+      // eternamente como simples. Agora so EVIDENCIA NOVA (o campo da
+      // listagem ou a estrutura) renova o prazo; leitura de cache nao.
+      const fmtFresco = (compLista > 0) ? 'E' : fmtBruto;
+      let fmt = fmtFresco || FORMATO_CACHE_get(idP) || '';
+      if (fmtFresco) FORMATO_CACHE_set(idP, fmtFresco);  // so evidencia nova renova
       const ehKitBusca = (fmt === 'E');
       if (fmt && fmt !== 'S' && !ehKitBusca) return;     // 'V' e cia continuam fora
       // b167 - o KIT aparece na busca MARCADO, porque a gravacao oferece a
