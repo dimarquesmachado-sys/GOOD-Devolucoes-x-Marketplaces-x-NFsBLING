@@ -1672,15 +1672,59 @@ app.get('/ml/setup', async (req, res) => {
 
 // Login unificado (estoquista + admin)
 // Se usuario == ADMIN_USER, recebe sessao com tipo='admin'
+
+// ── seg1 - FREIO DE FORCA-BRUTA NO LOGIN ──────────────────────────────
+// Antes: senha errada podia ser tentada infinitas vezes, sem custo nenhum.
+// Agora: a partir de 8 erros na mesma janela de 10 min (contados por
+// usuario+IP), o login responde 429 por 5 min. Acerto zera na hora.
+// Memoria apenas (some no restart) e generoso de proposito: o galpao
+// erra senha de vez em quando e NAO pode ficar travado no meio do dia.
+const LOGIN_FALHAS = new Map();
+const LOGIN_MAX = 8;
+const LOGIN_JANELA_MS = 10 * 60 * 1000;
+const LOGIN_CASTIGO_MS = 5 * 60 * 1000;
+function loginChave(req, usuario) {
+  const ip = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.ip || '';
+  return String(usuario || '').toLowerCase() + '|' + ip;
+}
+function loginBloqueado(chave) {
+  const reg = LOGIN_FALHAS.get(chave);
+  if (!reg) return 0;
+  if (reg.ate && Date.now() < reg.ate) return Math.ceil((reg.ate - Date.now()) / 1000);
+  if (reg.ate && Date.now() >= reg.ate) { LOGIN_FALHAS.delete(chave); return 0; }
+  return 0;
+}
+function loginErrou(chave) {
+  const agora = Date.now();
+  const reg = LOGIN_FALHAS.get(chave) || { n: 0, desde: agora, ate: 0 };
+  if (agora - reg.desde > LOGIN_JANELA_MS) { reg.n = 0; reg.desde = agora; }
+  reg.n += 1;
+  if (reg.n >= LOGIN_MAX) reg.ate = agora + LOGIN_CASTIGO_MS;
+  LOGIN_FALHAS.set(chave, reg);
+  if (LOGIN_FALHAS.size > 500) {
+    for (const [k, v] of LOGIN_FALHAS) {
+      if (agora - v.desde > LOGIN_JANELA_MS && (!v.ate || agora > v.ate)) LOGIN_FALHAS.delete(k);
+    }
+  }
+}
+function loginAcertou(chave) { LOGIN_FALHAS.delete(chave); }
+
 app.post('/api/auth/login', (req, res) => {
   const { usuario, senha } = req.body || {};
   if (!usuario || !senha) {
     return res.status(400).json({ ok: false, erro: 'Usuario ou senha faltando' });
   }
+  const chaveFreio = loginChave(req, usuario);
+  const esperar = loginBloqueado(chaveFreio);
+  if (esperar) {
+    return res.status(429).json({ ok: false, erro: `Muitas tentativas. Tente de novo em ${Math.ceil(esperar / 60)} min.` });
+  }
   const senhaCorreta = USERS[usuario];
   if (!senhaCorreta || senhaCorreta !== senha) {
+    loginErrou(chaveFreio);
     return res.status(401).json({ ok: false, erro: 'Usuario ou senha invalidos' });
   }
+  loginAcertou(chaveFreio);
 
   // Define o tipo: admin se usuario == ADMIN_USER, senao estoquista
   const tipo = (ADMIN_USER && usuario === ADMIN_USER) ? 'admin' : 'estoquista';

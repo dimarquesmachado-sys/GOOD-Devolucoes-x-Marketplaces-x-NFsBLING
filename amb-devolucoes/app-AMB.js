@@ -632,17 +632,61 @@ router.use(express.static(path.join(__dirname, 'public-AMB'), {
 // Estas rotas usam COOKIE, nao a ADMIN_KEY: quem usa e o
 // estoquista no celular, que nao tem (nem deve ter) a chave.
 
+
+// ── seg1 - FREIO DE FORCA-BRUTA NO LOGIN ──────────────────────────────
+// Antes: senha errada podia ser tentada infinitas vezes, sem custo nenhum.
+// Agora: a partir de 8 erros na mesma janela de 10 min (contados por
+// usuario+IP), o login responde 429 por 5 min. Acerto zera na hora.
+// Memoria apenas (some no restart) e generoso de proposito: o galpao
+// erra senha de vez em quando e NAO pode ficar travado no meio do dia.
+const LOGIN_FALHAS = new Map();
+const LOGIN_MAX = 8;
+const LOGIN_JANELA_MS = 10 * 60 * 1000;
+const LOGIN_CASTIGO_MS = 5 * 60 * 1000;
+function loginChave(req, usuario) {
+  const ip = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.ip || '';
+  return String(usuario || '').toLowerCase() + '|' + ip;
+}
+function loginBloqueado(chave) {
+  const reg = LOGIN_FALHAS.get(chave);
+  if (!reg) return 0;
+  if (reg.ate && Date.now() < reg.ate) return Math.ceil((reg.ate - Date.now()) / 1000);
+  if (reg.ate && Date.now() >= reg.ate) { LOGIN_FALHAS.delete(chave); return 0; }
+  return 0;
+}
+function loginErrou(chave) {
+  const agora = Date.now();
+  const reg = LOGIN_FALHAS.get(chave) || { n: 0, desde: agora, ate: 0 };
+  if (agora - reg.desde > LOGIN_JANELA_MS) { reg.n = 0; reg.desde = agora; }
+  reg.n += 1;
+  if (reg.n >= LOGIN_MAX) reg.ate = agora + LOGIN_CASTIGO_MS;
+  LOGIN_FALHAS.set(chave, reg);
+  if (LOGIN_FALHAS.size > 500) {
+    for (const [k, v] of LOGIN_FALHAS) {
+      if (agora - v.desde > LOGIN_JANELA_MS && (!v.ate || agora > v.ate)) LOGIN_FALHAS.delete(k);
+    }
+  }
+}
+function loginAcertou(chave) { LOGIN_FALHAS.delete(chave); }
+
 router.post('/api/auth/login', (req, res) => {
   const { usuario, senha } = req.body || {};
   if (!usuario || !senha) {
     return res.status(400).json({ ok: false, erro: 'informe usuario e senha' });
   }
+  const chaveFreio = loginChave(req, usuario);
+  const esperar = loginBloqueado(chaveFreio);
+  if (esperar) {
+    return res.status(429).json({ ok: false, erro: `muitas tentativas — tente de novo em ${Math.ceil(esperar / 60)} min` });
+  }
   const conta = auth.autenticar(String(usuario), String(senha));
   if (!conta) {
+    loginErrou(chaveFreio);
     // Mensagem generica de proposito: nao dizer se o usuario
     // existe evita descobrir nomes validos por tentativa.
     return res.status(401).json({ ok: false, erro: 'usuario ou senha invalidos' });
   }
+  loginAcertou(chaveFreio);
   // Guarda o nome na grafia CADASTRADA, nao como foi digitado —
   // assim o registro da triagem sai sempre igual no banco.
   const token = auth.novaSessao(conta.nome, conta.tipo);
