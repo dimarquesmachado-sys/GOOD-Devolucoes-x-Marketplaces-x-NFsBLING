@@ -782,6 +782,7 @@
     }
 
     function abrirModalDefeito() {
+      limparKitPendente();   // b181 - estado do kit anterior nunca sobrevive
       _defProdutoEscolhido = null;
       document.getElementById('defBusca').value = '';
       document.getElementById('defResultados').innerHTML = '';
@@ -800,6 +801,7 @@
     }
 
     function fecharModalDefeito() {
+      limparKitPendente();   // b181 - estado do kit anterior nunca sobrevive
       document.getElementById('modalDefeito').classList.remove('show');
     }
 
@@ -810,6 +812,7 @@
     }
 
     async function buscarProdutoDefeito() {
+      limparKitPendente();   // b181 - estado do kit anterior nunca sobrevive
       var q = document.getElementById('defBusca').value.trim();
       var box = document.getElementById('defResultados');
       if (q.length < 2) { box.innerHTML = '<p style="font-size:13px;color:#c62828;">Digite pelo menos 2 letras.</p>'; return; }
@@ -874,6 +877,7 @@
     }
 
     function escolherProdutoDefeito(i) {
+      limparKitPendente();   // b181 - estado do kit anterior nunca sobrevive
       var p = (window._defLista || [])[i];
       if (!p) return;
       _defProdutoEscolhido = p;
@@ -1015,6 +1019,17 @@
   
     // b166 - a explosao do kit: confirma componente a componente e lanca
     // cada um como defeito proprio (mesma descricao, local e fotos).
+    // b181 (review do Codex) - o kit pendente e o aviso na tela morrem a
+    // cada abertura/fechamento/busca/escolha. Sem isso, dava pra escolher
+    // outro produto e clicar nos botoes do kit ANTERIOR, lancando o defeito
+    // nos SKUs errados com a descricao e o local antigos.
+    function limparKitPendente() {
+      window._kitPendente = null;
+      window._kitOcupado = false;
+      var m = document.getElementById('defMsg');
+      if (m) m.innerHTML = '';
+    }
+
     // b180 - A COMPOSICAO DO KIT APARECE NA TELA, clicavel. Antes era uma
     // fila de confirm() ("OK/Cancelar" um a um), que o Diego achou ruim com
     // razao: ele nao via o que o kit tinha, so um aviso escrito embaixo.
@@ -1026,6 +1041,9 @@
         return;
       }
       window._kitPendente = { d: d, payload: payload };
+      window._kitOcupado = false;
+      var completa = d.composicao_completa !== false;   // b181
+      var faltando = Number(d.componentes_faltando) || 0;
       var qtdBase = parseInt(payload.qtd, 10) || 1;
       var linhas = lista.map(function (c, i) {
         var qtd = qtdBase * (c.quantidade || 1);
@@ -1043,7 +1061,14 @@
           + '📦 <b>' + escDef(d.kit_sku || '') + ' é um KIT.</b> No estoque quem existe é o produto simples —'
           + ' escolha em qual peça lançar o defeito:</div>'
         + linhas
-        + (lista.length > 1
+        // b181 - composicao INCOMPLETA (Bling falhou, kit grande ou prazo):
+        // avisa e NAO oferece "todas", que daria a falsa impressao de kit inteiro
+        + (!completa
+            ? '<div style="margin-top:9px;background:#fff8e1;border:1px solid #ffe082;border-radius:8px;padding:8px 10px;font-size:12px;color:#7a5c00;">'
+              + '⚠ Não consegui resolver ' + faltando + ' peça(s) deste kit agora. Lance nas peças acima e'
+              + ' tente de novo em instantes para as demais (ou lance pelo SKU direto).</div>'
+            : '')
+        + (lista.length > 1 && completa
             ? '<div style="margin-top:9px;text-align:right;"><button type="button" onclick="lancarComponenteKit(-1)" '
               + 'style="background:#0F6E56;color:#fff;border:none;border-radius:8px;padding:9px 14px;font-weight:700;cursor:pointer;">'
               + '⚡ Lançar em TODAS as peças</button></div>'
@@ -1056,10 +1081,16 @@
       var pend = window._kitPendente;
       var msg = document.getElementById('defMsg');
       if (!pend) { if (msg) msg.innerHTML = '<span style="color:#c62828;">recomece a busca do produto.</span>'; return; }
+      // b181 (review do Codex) - toque duplo abria DUAS execucoes e gravava a
+      // mesma peca duas vezes (o registro nao tem chave de idempotencia)
+      if (window._kitOcupado) return;
+      window._kitOcupado = true;
+      var botoes = document.querySelectorAll('#defMsg button');
+      for (var b = 0; b < botoes.length; b++) { botoes[b].disabled = true; botoes[b].style.opacity = '.55'; }
       var lista = pend.d.componentes_det || [];
       var alvos = indice < 0 ? lista : [lista[indice]];
       var qtdBase = parseInt(pend.payload.qtd, 10) || 1;
-      var lancados = 0, erro = '';
+      var lancados = 0, erro = '', falharam = [];
       for (var i = 0; i < alvos.length; i++) {
         var c = alvos[i];
         if (!c) continue;
@@ -1074,14 +1105,26 @@
           });
           var d2 = await r.json();
           if (d2 && d2.ok) lancados++;
-          else erro = (d2 && d2.erro) || ('erro no ' + c.sku);
-        } catch (e) { erro = 'Erro de conexão no ' + c.sku + '.'; }
+          else { erro = (d2 && d2.erro) || ('erro no ' + c.sku); falharam.push(c); }
+        } catch (e) { erro = 'Erro de conexão no ' + c.sku + '.'; falharam.push(c); }
       }
-      if (lancados && msg) {
+      window._kitOcupado = false;
+      // b181 (review do Codex) - SUCESSO PARCIAL nao pode fechar o modal com
+      // o joinha verde: o que falhou some da frente e o operador so descobre
+      // depois (ou repete o que ja gravou). As que falharam ficam na tela.
+      if (lancados && !falharam.length && msg) {
         window._kitPendente = null;
         msg.innerHTML = '<span style="color:#2e7d32;">\u2705 ' + lancados + ' peça(s) lançada(s) no produto simples!'
           + ' Abra 🔧 Defeitos pra ver e imprimir etiquetas.</span>';
         setTimeout(function () { fecharModalDefeito(); }, 2200);
+      } else if (falharam.length && msg) {
+        pend.d = Object.assign({}, pend.d, { componentes_det: falharam, composicao_completa: true });
+        explodirKitDefeito(pend.d, pend.payload, msg);
+        msg.innerHTML = '<div style="background:#fdecea;border:1px solid #f5c6c3;border-radius:8px;padding:8px 10px;'
+          + 'font-size:12.5px;color:#8C1D18;margin-bottom:8px;">'
+          + (lancados ? '\u2705 ' + lancados + ' peça(s) lançada(s). ' : '')
+          + '❌ Falhou em ' + falharam.length + ': ' + escDef(erro || '') + '<br>Tente de novo só nas peças abaixo.'
+          + '</div>' + msg.innerHTML;
       } else if (msg) {
         msg.innerHTML = '<span style="color:#c62828;">' + escDef(erro || 'nada lançado') + '</span>';
       }
