@@ -39,6 +39,10 @@ const emailAMB = require('./email-AMB');
  * segunda busca do mesmo produto ser instantanea.
  */
 const IMG_CACHE = new Map();          // idProduto -> url|null
+// b174 - veredito de FORMATO por produto: 'S' simples · 'E' kit/composicao
+// · 'V' pai de variacao. So guarda o que foi APURADO (listagem conclusiva
+// ou detalhe), nunca um palpite — assim um erro do Bling nao vira verdade.
+const FORMATO_CACHE = new Map();      // idProduto -> 'S'|'E'|'V'
 
 /**
  * b79 - COPIADO DO CHECKOUT OFFLINE (amb-checkout-offline/produtos.js,
@@ -113,19 +117,31 @@ function montar(router, deps) {
       // variacao bagunca o estoque. No Bling: formato 'S' = simples,
       // 'V' = com variacoes, 'E' = com composicao; tipo 'S' = servico.
       // ═══════════════════════════════════════════════════════════════
-      const fmt = String(p.formato || 'S').toUpperCase();
-      // b167 - o KIT ('E') agora APARECE na busca, com o nome marcado,
-      // porque a gravacao oferece a EXPLOSAO em N unidades do produto
-      // simples (b166) - esconder o kit deixava a explosao sem caminho.
-      // Pai de variacao ('V'), servico e filho de variacao seguem fora.
+      // b174 - a LISTAGEM do Bling nem sempre traz o campo `formato`
+      // (quando falta, o codigo antigo assumia 'S' e o KIT passava batido,
+      // sem o marcador - foi o caso do 9W3KE27-5W3kE14). Agora: se a
+      // listagem nao for conclusiva, o veredito fica PENDENTE e sai do
+      // detalhe la embaixo, na mesma chamada que ja busca a foto.
+      const fmtBruto = String(p.formato || '').toUpperCase();
+      const compLista = (p.estrutura && Array.isArray(p.estrutura.componentes))
+        ? p.estrutura.componentes.length : 0;
+      const idP = p.id || null;
+      let fmt = fmtBruto || (idP ? FORMATO_CACHE.get(idP) : undefined) || '';
+      if (compLista > 0) fmt = 'E';                      // estrutura na listagem ja denuncia
+      if (fmt && idP) FORMATO_CACHE.set(idP, fmt);       // so o apurado vira cache
       const ehKitBusca = (fmt === 'E');
-      if (fmt !== 'S' && !ehKitBusca) return;
+      if (fmt && fmt !== 'S' && !ehKitBusca) return;     // 'V' e cia continuam fora
+      // b167 - o KIT aparece na busca MARCADO, porque a gravacao oferece a
+      // EXPLOSAO em N unidades do produto simples (b166); escondido, a
+      // explosao ficava sem caminho. Servico e filho de variacao, fora.
       if (String(p.tipo || 'P').toUpperCase() === 'S') return;   // servico
       if (p.produtoPai && p.produtoPai.id) return;               // filho de variacao
       vistos.add(sku);
       out.push({
         sku,
         ehKit: ehKitBusca,
+        _fmt: fmt || null,          // b174 - null = ainda a apurar no detalhe
+        nomeBase: p.nome || p.descricao || '',
         nome: (ehKitBusca ? '📦 KIT · ' : '') + (p.nome || p.descricao || ''),
         ean: eanDoProduto(p) || '',
         id: p.id || null,
@@ -222,24 +238,55 @@ function montar(router, deps) {
         return ea - eb;
       });
 
-      // b76 - completa com a FOTO (so os primeiros, um de cada vez):
-      // e uma chamada por produto, entao limito a 6 e cacheio por id.
+      // b76/b174 - completa com a FOTO e, de quebra, APURA O FORMATO: o
+      // detalhe ja e baixado aqui, e e ele que diz com certeza se o
+      // produto e kit. Teto de 12 consultas (era 6 so pra foto), uma de
+      // cada vez, com cache por id — quem ja tem veredito nao consulta.
       const comFoto = out.slice(0, 20);
       let buscados = 0;
       for (const item of comFoto) {
-        if (item.imagem || !item.id || buscados >= 6) continue;
-        if (IMG_CACHE.has(item.id)) { item.imagem = IMG_CACHE.get(item.id); continue; }
+        if (!item.id) continue;
+        if (item.imagem && IMG_CACHE.has(item.id)) { /* nada a fazer */ }
+        const precisaFoto = !item.imagem && !IMG_CACHE.has(item.id);
+        const precisaFmt = !item._fmt && !FORMATO_CACHE.has(item.id);
+        if (!precisaFoto && !precisaFmt) {
+          if (!item.imagem && IMG_CACHE.has(item.id)) item.imagem = IMG_CACHE.get(item.id);
+          if (!item._fmt && FORMATO_CACHE.has(item.id)) item._fmt = FORMATO_CACHE.get(item.id);
+          continue;
+        }
+        if (buscados >= 12) continue;
         try {
           const rD = await bling.chamarBling(`/produtos/${item.id}`);
           const det = (rD.ok && rD.data && rD.data.data) || null;
+          if (det) {
+            const comp = (det.estrutura && Array.isArray(det.estrutura.componentes))
+              ? det.estrutura.componentes.length : 0;
+            const fmtDet = comp > 0 ? 'E' : String(det.formato || 'S').toUpperCase();
+            item._fmt = fmtDet;
+            FORMATO_CACHE.set(item.id, fmtDet);   // so o APURADO vira cache
+          }
           const url = primeiraImagem(det);
           if (url) IMG_CACHE.set(item.id, url);   // so sucesso
-          item.imagem = url;
-        } catch (e) { /* falha nao vira cache */ }
+          if (!item.imagem) item.imagem = url;
+        } catch (e) { /* falha nao vira cache nem veredito */ }
         buscados++;
         await new Promise(r2 => setTimeout(r2, 180));
       }
-      res.json({ ok: true, produtos: comFoto, termo: q });
+      // b174 - com o veredito na mao: kit ganha o marcador (se ainda nao
+      // tiver) e o pai de variacao sai da lista de vez.
+      const finais = [];
+      for (const item of comFoto) {
+        if (item._fmt === 'V') continue;
+        if (item._fmt === 'E') {
+          item.ehKit = true;
+          if (String(item.nome || '').indexOf('📦 KIT · ') !== 0) {
+            item.nome = '📦 KIT · ' + (item.nomeBase || item.nome || '');
+          }
+        }
+        delete item._fmt; delete item.nomeBase;
+        finais.push(item);
+      }
+      res.json({ ok: true, produtos: finais, termo: q });
     } catch (e) {
       res.status(500).json({ ok: false, erro: String(e.message || e) });
     }
