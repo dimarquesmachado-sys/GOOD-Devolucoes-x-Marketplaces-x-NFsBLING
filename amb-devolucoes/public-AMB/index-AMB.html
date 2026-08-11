@@ -206,7 +206,7 @@
         <div class="topo-txt">
           <h1>AMBTotal Devoluções</h1>
           <p>Identificar venda &middot; NF-e &middot; Triagem
-            <span class="topo-versao">&middot; v3.67 &middot; <span id="serverVersion">checando...</span></span>
+            <span class="topo-versao">&middot; v3.68 &middot; <span id="serverVersion">checando...</span></span>
           </p>
         </div>
         <!-- b92 - os 2 do estoque de defeitos subiram pra MESMA faixa:
@@ -846,7 +846,11 @@
           // b104 - ninguem sabia que era pra CLICAR na linha. Agora cada
           // resultado tem um botao verde explicito. A linha inteira segue
           // clicavel pra quem descobrir, mas o botao e o caminho obvio.
-          h += '<div id="defRes' + i + '" onclick="escolherProdutoDefeito(' + i + ')" data-i="' + i + '" style="border:1px solid #ddd;border-radius:10px;padding:10px;margin-bottom:7px;cursor:pointer;background:#fff;display:flex;gap:14px;align-items:center;">'
+          // b182 (pedido do Diego) - KIT ja vem DESTRINCHADO no proprio card:
+          // as pecas aparecem na lista e ele clica direto na que quer. O kit
+          // em si deixa de ser clicavel (nao existe na prateleira).
+          var ehKitCard = !!(p.ehKit && p.componentes && p.componentes.length);
+          h += '<div id="defRes' + i + '"' + (ehKitCard ? '' : ' onclick="escolherProdutoDefeito(' + i + ')"') + ' data-i="' + i + '" style="border:1px solid ' + (ehKitCard ? '#e4dcf1' : '#ddd') + ';border-radius:10px;padding:10px;margin-bottom:7px;' + (ehKitCard ? 'background:#faf7ff;' : 'cursor:pointer;background:#fff;') + 'display:flex;gap:14px;align-items:center;">'
             + (p.imagem
                 ? '<img src="' + escDef(p.imagem) + '" onclick="event.stopPropagation();abrirZoomProduto(this.src)" onerror="this.style.display=\'none\'" class="foto-produto-lista" style="cursor:zoom-in;">'
                 : '<div class="foto-produto-lista vazia">📦</div>')
@@ -854,16 +858,37 @@
             + '<div style="font-size:14px;font-weight:600;line-height:1.3;">' + escDef(p.nome) + '</div>'
             + '<div style="font-size:12px;color:#666;margin-top:4px;">SKU <code>' + escDef(p.sku) + '</code>'
             + (p.ean ? ' &middot; EAN ' + escDef(p.ean) : '') + '</div>'
-            + '<button type="button" onclick="event.stopPropagation();escolherProdutoDefeito(' + i + ')" '
-            + 'class="btn-escolher" style="margin-top:12px;background:#116B4E;color:#fff;border:none;border-radius:9px;padding:11px 20px;font-weight:700;font-size:14px;cursor:pointer;">'
-            + '&#10003; É Este Produto</button>'
+            + (ehKitCard
+                ? '<div style="margin-top:9px;">'
+                    + '<div style="font-size:12.5px;color:#561A9E;font-weight:700;margin-bottom:5px;">'
+                      + 'Este kit é montado com estas peças — clique na que está com defeito:</div>'
+                    + p.componentes.map(function (c, j) {
+                        return '<div style="display:flex;align-items:center;gap:9px;padding:6px 0;border-top:1px solid #efe8f7;">'
+                          + '<div style="flex:1;min-width:0;">'
+                            + '<div style="font-size:13.5px;font-weight:600;color:#241a35;">' + escDef(c.nome || c.sku) + '</div>'
+                            + '<div style="font-size:11.5px;color:#71659a;">SKU <code>' + escDef(c.sku) + '</code>'
+                              + (c.quantidade > 1 ? ' &middot; ' + c.quantidade + '× no kit' : '') + '</div>'
+                          + '</div>'
+                          + '<button type="button" onclick="event.stopPropagation();escolherComponenteKit(' + i + ',' + j + ')" '
+                          + 'style="background:#116B4E;color:#fff;border:none;border-radius:9px;padding:10px 16px;font-weight:700;font-size:13.5px;cursor:pointer;white-space:nowrap;">'
+                          + '&#10003; É Esta Peça</button></div>';
+                      }).join('')
+                    + (p.componentes_faltando
+                        ? '<div style="margin-top:7px;font-size:11.5px;color:#7a5c00;background:#fff8e1;border:1px solid #ffe082;border-radius:7px;padding:6px 8px;">'
+                          + '⚠ Não consegui listar ' + p.componentes_faltando + ' peça(s) deste kit agora.</div>'
+                        : '')
+                  + '</div>'
+                : '<button type="button" onclick="event.stopPropagation();escolherProdutoDefeito(' + i + ')" '
+                  + 'class="btn-escolher" style="margin-top:12px;background:#116B4E;color:#fff;border:none;border-radius:9px;padding:11px 20px;font-weight:700;font-size:14px;cursor:pointer;">'
+                  + '&#10003; É Este Produto')
+            + (ehKitCard ? '' : '</button>')
             + '</div></div>';
         }
         window._defLista = lista;
         // b105 - RESULTADO UNICO ja abre escolhido. Mostrar uma lista de um
         // item so pra ele clicar e passo a mais sem ganho: o quadro ja
         // aparece pronto pra preencher o defeito e a localizacao.
-        if (lista.length === 1) {
+        if (lista.length === 1 && !(lista[0].ehKit && lista[0].componentes && lista[0].componentes.length)) {
           box.innerHTML = '';
           escolherProdutoDefeito(0);
           var campo = document.getElementById('defProblema');
@@ -877,9 +902,29 @@
     }
 
     function escolherProdutoDefeito(i) {
-      limparKitPendente();   // b181 - estado do kit anterior nunca sobrevive
       var p = (window._defLista || [])[i];
       if (!p) return;
+      selecionarProdutoDefeito(p, i);
+    }
+
+    // b182 - clicou na PECA de um kit: segue com o produto SIMPLES dela
+    // (e ja sugere a quantidade que o kit leva daquela peca).
+    function escolherComponenteKit(i, j) {
+      var kit = (window._defLista || [])[i];
+      var c = kit && kit.componentes && kit.componentes[j];
+      if (!c) return;
+      selecionarProdutoDefeito({
+        sku: c.sku, nome: c.nome || c.sku, ean: '',
+        imagem: c.imagem || kit.imagem || null,
+      }, i);
+      var campoQtd = document.getElementById('defQtd');
+      if (campoQtd && (c.quantidade || 1) > 1) campoQtd.value = c.quantidade;
+      var campo = document.getElementById('defProblema');
+      if (campo) campo.focus();
+    }
+
+    function selecionarProdutoDefeito(p, i) {
+      limparKitPendente();   // b181 - estado do kit anterior nunca sobrevive
       _defProdutoEscolhido = p;
       var boxImg = document.getElementById('defImg');
       if (boxImg) {

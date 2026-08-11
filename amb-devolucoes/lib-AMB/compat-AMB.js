@@ -80,6 +80,15 @@ function skuCacheSet(id, sku, nome) {
 // b181 - teto de componentes e PRAZO total da resolucao. Sem prazo, um kit
 // de 12 pecas com o Bling lento (30s por chamada) segurava o POST por
 // minutos antes de o operador ver qualquer opcao.
+// b182 - composicao JA RESOLVIDA por kit (evita refazer as consultas a
+// cada busca). Mesmo TTL dos outros vereditos.
+const COMPS_POR_KIT = new Map();       // idKit -> { itens, faltando, ts }
+function compsCacheGet(id) {
+  const reg = id ? COMPS_POR_KIT.get(id) : null;
+  if (!reg) return null;
+  if (Date.now() - reg.ts > SKU_TTL_MS) { COMPS_POR_KIT.delete(id); return null; }
+  return reg;
+}
 const COMPONENTES_MAX = 12;
 const COMPONENTES_PRAZO_MS = 8000;
 function extrairComponentes(det) {
@@ -387,6 +396,7 @@ function montar(router, deps) {
             ? det.estrutura.componentes.length : 0;
           const fmtDet = comp > 0 ? 'E' : String(det.formato || 'S').toUpperCase();
           item._fmt = fmtDet;
+          if (fmtDet === 'E') item._compsCru = extrairComponentes(det);   // b182
           FORMATO_CACHE_set(item.id, fmtDet);     // so o APURADO vira cache
         }
         const url = primeiraImagem(det);
@@ -432,6 +442,37 @@ function montar(router, deps) {
       // item que entrou sem veredito pode se revelar 'V' (ou kit) ali. Sem
       // este segundo filtro, o pai de variacao recem-descoberto seguiria na
       // lista — o filtro de cima ja tinha passado por ele.
+      // b182 (pedido do Diego: "no proprio card ja destrinchar") - os kits
+      // que vao pra tela levam a COMPOSICAO junto, pra o estoquista escolher
+      // a peca ali mesmo: sem popup e sem precisar preencher e salvar antes.
+      let kitsResolvidos = 0;
+      for (const item of finais) {
+        if (item._fmt !== 'E' || !item.id) continue;
+        if (kitsResolvidos >= 3) break;          // kit e excecao na busca; teto barato
+        const doCache = compsCacheGet(item.id);
+        if (doCache) {
+          item.componentes = doCache.itens;
+          item.componentes_faltando = doCache.faltando;
+          kitsResolvidos++;
+          continue;
+        }
+        let cru = item._compsCru;
+        if (!cru) {
+          try {
+            await esperarVezDetalhe();
+            const rK = await bling.chamarBling('/produtos/' + item.id);
+            const dK = (rK.ok && rK.data && rK.data.data) || null;
+            cru = extrairComponentes(dK);
+          } catch (e) { cru = null; }
+        }
+        if (cru && cru.length) {
+          const rC = await resolverComponentes(cru);
+          item.componentes = rC.itens;
+          item.componentes_faltando = rC.faltando;
+          COMPS_POR_KIT.set(item.id, { itens: rC.itens, faltando: rC.faltando, ts: Date.now() });
+        }
+        kitsResolvidos++;
+      }
       const entregues = [];
       for (const item of finais) {
         if (item._fmt === 'V') continue;
@@ -447,7 +488,7 @@ function montar(router, deps) {
           item.ehKit = false;
           item.nome = item.nomeBase || String(item.nome || '').replace('📦 KIT · ', '');
         }
-        delete item._fmt; delete item.nomeBase;
+        delete item._fmt; delete item.nomeBase; delete item._compsCru;
         entregues.push(item);
       }
       res.json({ ok: true, produtos: entregues, termo: q });
