@@ -632,17 +632,133 @@ router.use(express.static(path.join(__dirname, 'public-AMB'), {
 // Estas rotas usam COOKIE, nao a ADMIN_KEY: quem usa e o
 // estoquista no celular, que nao tem (nem deve ter) a chave.
 
+
+// ── seg1.2 - FREIO DE FORCA-BRUTA NO LOGIN (2a rodada da review) ──────
+// Historia: seg1 usava usuario+X-Forwarded-For (o cliente escolhe o header
+// = furava); seg1.1 passou a usar so o usuario (= um estranho conseguia
+// TRANCAR a conta de todo mundo, ainda mais com os nomes vazando no
+// /health). Agora sao DOIS baldes, e nenhum deles pode ser fechado por
+// terceiros:
+//   1) usuario + cliente -> 8 falhas em 10 min = 429 por 5 min
+//   2) cliente (IP)      -> 30 falhas em 10 min = 429 por 5 min (spray)
+// O IP vem de req.ip com "trust proxy" ligado, ou seja, o endereco que o
+// proxy do Render carimba - nao o primeiro valor que o cliente mandou.
+// Quem esta de castigo NUNCA e despejado pelo teto (senao bastava encher
+// o mapa pra zerar a punicao); com o mapa cheio, chave nova nao entra.
+const LOGIN_FALHAS = new Map();
+const LOGIN_MAX_USUARIO = 8;
+const LOGIN_MAX_CLIENTE = 30;
+const LOGIN_JANELA_MS = 10 * 60 * 1000;
+const LOGIN_CASTIGO_MS = 5 * 60 * 1000;
+const LOGIN_TETO_CHAVES = 1000;
+
+// seg1.3 (P2 da 3a rodada) - loginNome e a identidade COMPLETA (sem corte):
+// e ela que resolve a conta e decide privilegio. O corte de 60 chars vive
+// so na CHAVE do freio, senao duas contas com os mesmos 60 primeiros
+// caracteres virariam a mesma identidade - e uma delas podia herdar admin.
+function loginNome(usuario) {
+  return String(usuario || '').trim().toLowerCase();
+}
+function loginIdent(usuario) {
+  return loginNome(usuario).slice(0, 60);
+}
+const LOGIN_NOME_MAX = 100;   // seg1.4 - nome absurdo nem chega a ser processado
+function loginIp(req) {
+  return String((req && (req.ip || (req.socket && req.socket.remoteAddress))) || '').slice(0, 45);
+}
+function loginChaves(req, usuario) {
+  const ip = loginIp(req);
+  return { doUsuario: 'u:' + loginIdent(usuario) + '|' + ip, doCliente: 'c:' + ip };
+}
+function castigoRestante(chave, agora) {
+  const reg = LOGIN_FALHAS.get(chave);
+  if (!reg || !reg.ate) return 0;
+  if (agora < reg.ate) return Math.ceil((reg.ate - agora) / 1000);
+  // seg1.5 (P2 da 5a rodada) - castigo cumprido zerava o balde INTEIRO, e
+  // dentro da mesma janela de 10 min dava pra gastar 8 tentativas, esperar
+  // os 5 min e gastar mais 8 (o dobro do limite anunciado). Agora so a
+  // PUNICAO e liberada; a contagem sobrevive ate a janela fechar, entao o
+  // proximo erro dentro dela volta a bloquear na hora. O acerto continua
+  // limpando o balde do usuario naquele cliente.
+  if (agora - reg.desde > LOGIN_JANELA_MS) { LOGIN_FALHAS.delete(chave); return 0; }
+  reg.ate = 0;
+  LOGIN_FALHAS.set(chave, reg);
+  return 0;
+}
+function loginBloqueado(chaves) {
+  const agora = Date.now();
+  return Math.max(castigoRestante(chaves.doUsuario, agora), castigoRestante(chaves.doCliente, agora));
+}
+function podarFalhas(agora) {
+  for (const [k, v] of LOGIN_FALHAS) {
+    if (agora - v.desde > LOGIN_JANELA_MS && (!v.ate || agora > v.ate)) LOGIN_FALHAS.delete(k);
+  }
+  if (LOGIN_FALHAS.size <= LOGIN_TETO_CHAVES) return;
+  const descartaveis = [...LOGIN_FALHAS.entries()]
+    .filter(([, v]) => !(v.ate && agora < v.ate))     // em castigo fica
+    .sort((a, b) => a[1].desde - b[1].desde);          // mais antigos primeiro
+  let sobrando = LOGIN_FALHAS.size - LOGIN_TETO_CHAVES;
+  for (const [k] of descartaveis) {
+    if (sobrando <= 0) break;
+    LOGIN_FALHAS.delete(k);
+    sobrando -= 1;
+  }
+}
+function marcarFalha(chave, limite, agora) {
+  const existente = LOGIN_FALHAS.get(chave);
+  if (!existente && LOGIN_FALHAS.size >= LOGIN_TETO_CHAVES) return;   // cheio de castigos: nao cria chave nova
+  const reg = existente || { n: 0, desde: agora, ate: 0 };
+  if (agora - reg.desde > LOGIN_JANELA_MS) { reg.n = 0; reg.desde = agora; reg.ate = 0; }
+  reg.n += 1;
+  if (reg.n >= limite) reg.ate = agora + LOGIN_CASTIGO_MS;
+  LOGIN_FALHAS.set(chave, reg);
+}
+// seg1.3 (P1 da 3a rodada) - com o mapa cheio, marcarFalha simplesmente
+// nao registrava: um cliente novo ganhava tentativas ilimitadas (fail-OPEN).
+// Agora, se nao ha capacidade nem chave existente, a tentativa e RECUSADA
+// antes de olhar a senha - o limitador degrada FECHANDO, nao abrindo.
+function loginSemCapacidade(chaves) {
+  if (LOGIN_FALHAS.size < LOGIN_TETO_CHAVES) return false;
+  podarFalhas(Date.now());
+  if (LOGIN_FALHAS.size < LOGIN_TETO_CHAVES) return false;
+  return !LOGIN_FALHAS.has(chaves.doUsuario) && !LOGIN_FALHAS.has(chaves.doCliente);
+}
+function loginErrou(chaves) {
+  const agora = Date.now();
+  podarFalhas(agora);
+  marcarFalha(chaves.doUsuario, LOGIN_MAX_USUARIO, agora);
+  marcarFalha(chaves.doCliente, LOGIN_MAX_CLIENTE, agora);
+}
+function loginAcertou(chaves) {
+  // limpa so o balde do usuario naquele cliente; o do cliente segue
+  // contando, senao um acerto no meio zeraria a varredura
+  LOGIN_FALHAS.delete(chaves.doUsuario);
+}
+
 router.post('/api/auth/login', (req, res) => {
   const { usuario, senha } = req.body || {};
   if (!usuario || !senha) {
     return res.status(400).json({ ok: false, erro: 'informe usuario e senha' });
   }
+  if (String(usuario).length > LOGIN_NOME_MAX) {
+    return res.status(401).json({ ok: false, erro: 'usuario ou senha invalidos' });
+  }
+  const chavesFreio = loginChaves(req, usuario);
+  const esperar = loginBloqueado(chavesFreio);
+  if (esperar) {
+    return res.status(429).json({ ok: false, erro: `muitas tentativas — tente de novo em ${Math.ceil(esperar / 60)} min` });
+  }
+  if (loginSemCapacidade(chavesFreio)) {
+    return res.status(429).json({ ok: false, erro: 'sistema recebendo muitas tentativas de login — tente de novo em alguns minutos' });
+  }
   const conta = auth.autenticar(String(usuario), String(senha));
   if (!conta) {
+    loginErrou(chavesFreio);
     // Mensagem generica de proposito: nao dizer se o usuario
     // existe evita descobrir nomes validos por tentativa.
     return res.status(401).json({ ok: false, erro: 'usuario ou senha invalidos' });
   }
+  loginAcertou(chavesFreio);
   // Guarda o nome na grafia CADASTRADA, nao como foi digitado —
   // assim o registro da triagem sai sempre igual no banco.
   const token = auth.novaSessao(conta.nome, conta.tipo);
