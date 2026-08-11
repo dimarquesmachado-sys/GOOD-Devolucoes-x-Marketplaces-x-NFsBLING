@@ -215,14 +215,14 @@
         <p>Painel restrito · v3.96 (mandar do alerta pra fila de NF)</p>
       </div>
       <div class="header-acoes">
-        <a href="/admin/relatorios.html" class="destaque">📊 Relatórios</a>
+        <a href="/admin/relatorios.html" class="destaque" title="Abre a pagina de relatorios das devolucoes">📊 Relatórios</a>
         <!-- v4.50 - abre o CARD por cima, igual na triagem. A pagina
              /defeitos.html era uma tela separada, sem foto, sem historico
              e sem os pedidos do galpao. -->
-        <a href="#" onclick="event.preventDefault();abrirBuscaDefeitos()" style="background:#c62828;color:#fff;">🔧 Defeitos</a>
-        <a href="#" id="linkPedidos" onclick="event.preventDefault();abrirFilaPedidos()" style="background:#0F6E56;color:#fff;">📥 Pedidos<span id="badgePedidos"></span></a>
-        <a href="/">📦 Triagem (bipar)</a>
-        <a href="#" onclick="logout(event)">🚪 Sair</a>
+        <a href="#" title="Estoque de pecas com defeito: buscar por SKU, abrir a ficha (fotos, historico, comentarios) e imprimir etiqueta" onclick="event.preventDefault();abrirBuscaDefeitos()" style="background:#c62828;color:#fff;">🔧 Defeitos</a>
+        <a href="#" id="linkPedidos" title="Fila de decisoes do galpao: liberar peca recuperada ou autorizar descarte (o numero verde e quantos esperam voce)" onclick="event.preventDefault();abrirFilaPedidos()" style="background:#0F6E56;color:#fff;">📥 Pedidos<span id="badgePedidos"></span></a>
+        <a href="/" title="Vai para a tela de bipar as devolucoes que chegam">📦 Triagem (bipar)</a>
+        <a href="#" title="Encerra a sessao neste navegador" onclick="logout(event)">🚪 Sair</a>
       </div>
     </header>
 

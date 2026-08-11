@@ -206,16 +206,16 @@
         <div class="topo-txt">
           <h1>AMBTotal Devoluções</h1>
           <p>Identificar venda &middot; NF-e &middot; Triagem
-            <span class="topo-versao">&middot; v3.64 &middot; <span id="serverVersion">checando...</span></span>
+            <span class="topo-versao">&middot; v3.65 &middot; <span id="serverVersion">checando...</span></span>
           </p>
         </div>
         <!-- b92 - os 2 do estoque de defeitos subiram pra MESMA faixa:
              logo | titulo | defeitos | usuario. No celular tudo quebra
              e centraliza. -->
         <div class="links-defeitos">
-          <a href="#" id="linkDefeitos" onclick="event.preventDefault();abrirBuscaDefeitos()">🔧 Defeitos<span id="avisoDefeitos"></span></a>
-          <a href="#" onclick="event.preventDefault();abrirModalDefeito()">➕ Lançar Defeito</a>
-          <a href="#" onclick="event.preventDefault();abrirColaBipe()">❓ O que bipar</a>
+          <a href="#" id="linkDefeitos" title="Estoque de pecas com defeito: buscar por SKU, abrir a ficha (fotos, historico, comentarios) e imprimir etiqueta" onclick="event.preventDefault();abrirBuscaDefeitos()">🔧 Defeitos<span id="avisoDefeitos"></span></a>
+          <a href="#" title="Cadastra uma peca com defeito no estoque: busca o SKU, descreve o defeito, anexa fotos e gera a etiqueta" onclick="event.preventDefault();abrirModalDefeito()">➕ Lançar Defeito</a>
+          <a href="#" title="Colinha: qual codigo bipar em cada marketplace (ML, Shopee, Magalu, Correios)" onclick="event.preventDefault();abrirColaBipe()">❓ O que bipar</a>
         </div>
         <div class="user-badge">
           👤 <span id="userNome">-</span>

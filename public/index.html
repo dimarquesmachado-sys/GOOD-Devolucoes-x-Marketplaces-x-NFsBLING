@@ -57,7 +57,7 @@
     .links-defeitos a:hover { background: rgba(0,0,0,.18); }
     @media (max-width: 600px) { .links-defeitos { justify-content: center; } }
 
-    /* v4.58 - COLINHA "o que bipar em cada etiqueta": link no cabecalho
+    /* v4.59 - COLINHA "o que bipar em cada etiqueta": link no cabecalho
        que abre um modal (mesma feature da AMB b157; textos identicos). */
     .cola-mkt { margin:10px 0 2px; font-weight:800; font-size:12.5px; display:flex; align-items:center; gap:6px; }
     .cola-chip { width:10px; height:10px; border-radius:3px; display:inline-block; flex:0 0 auto; }
@@ -106,13 +106,13 @@
       <div class="links-defeitos">
         <!-- v4.50 - abre o CARD por cima (a pagina /defeitos.html era uma
              tela separada, sem foto, sem historico e sem os pedidos) -->
-        <a href="#" id="linkDefeitos" onclick="event.preventDefault();abrirBuscaDefeitos()">
+        <a href="#" id="linkDefeitos" title="Estoque de pecas com defeito: buscar por SKU, abrir a ficha (fotos, historico, comentarios) e imprimir etiqueta" onclick="event.preventDefault();abrirBuscaDefeitos()">
           🔧 Defeitos<span id="avisoDefeitos"></span>
         </a>
-        <a href="#" onclick="event.preventDefault();abrirModalDefeito()">
+        <a href="#" title="Cadastra uma peca com defeito no estoque: busca o SKU, descreve o defeito, anexa fotos e gera a etiqueta" onclick="event.preventDefault();abrirModalDefeito()">
           ➕ Lançar Defeito
         </a>
-        <a href="#" onclick="event.preventDefault();abrirColaBipe()">
+        <a href="#" title="Colinha: qual codigo bipar em cada marketplace (ML, Shopee, Magalu, Correios)" onclick="event.preventDefault();abrirColaBipe()">
           ❓ O que bipar
         </a>
       </div>
@@ -186,7 +186,7 @@
   </div>
 
   <!-- v3.96 - MODAL: lancar produto com defeito (busca por nome/SKU/EAN) -->
-  <!-- v4.58 - a COLINHA em modal: abre pelo "❓ O que bipar" do cabecalho. -->
+  <!-- v4.59 - a COLINHA em modal: abre pelo "❓ O que bipar" do cabecalho. -->
   <div id="modalColaBipe" class="modal-bg" onclick="if(event.target===this)fecharColaBipe()">
     <div class="modal" style="max-width:520px;width:94%;padding:0;overflow:hidden;">
       <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid #eee;background:#fff9d6;">
@@ -229,7 +229,7 @@
           <div style="flex:1; min-width:0;">
         <div style="font-size:14px;"><b>Produto:</b> <span id="defNome">-</span></div>
         <div style="font-size:12px; color:#666; margin-top:3px;">SKU <code id="defSku">-</code> <span id="defEan"></span></div>
-        <!-- v4.58 - os campos ficam AO LADO da foto, nao abaixo dela. Com a
+        <!-- v4.59 - os campos ficam AO LADO da foto, nao abaixo dela. Com a
              foto de 260px, empilhado o quadro passava da tela e obrigava a
              rolar (mesma correcao que a AMB ja tinha). -->
         <div style="display:flex; gap:10px; margin-top:10px;">
@@ -789,7 +789,7 @@
       var boxImg = document.getElementById('defImg');
       if (boxImg) {
         boxImg.innerHTML = p.imagem
-          // v4.58 - a foto do produto ESCOLHIDO usa a classe grande (260px),
+          // v4.59 - a foto do produto ESCOLHIDO usa a classe grande (260px),
           // igual na AMB. Aqui ela ficou com o tamanho antigo de 70px porque
           // o CSS foi portado mas este trecho, nao.
           ? '<img src="' + escDef(p.imagem) + '" onclick="abrirZoomProduto(this.src)" onerror="this.style.display=\'none\'" class="foto-produto-escolhido" style="cursor:zoom-in;">'
@@ -1044,7 +1044,7 @@
     })();
   </script>
   <script>
-    // v4.58 - colinha em modal
+    // v4.59 - colinha em modal
     function abrirColaBipe() {
       var m = document.getElementById('modalColaBipe');
       if (m) m.classList.add('show');
