@@ -290,7 +290,7 @@ function montar(router, deps) {
       // Antes eu cortava primeiro e so entao descartava pai de variacao:
       // com muitos candidatos, os 'V' ocupavam vagas e produtos simples
       // validos, que ja estavam em `out`, nunca chegavam na tela.
-      const candidatos = out.slice(0, 30);
+      const candidatos = out;   // b178 - todos os coletados concorrem; o corte em 20 e no fim
       let buscados = 0;
       // b177 (P2 da 3a review) - ids cujo DETALHE ja veio nesta requisicao.
       // Produto sem foto nao alimenta o IMG_CACHE (de proposito: falha nao
@@ -352,8 +352,23 @@ function montar(router, deps) {
         try { await buscarDetalhe(item); } catch (e) { /* sem foto e ok */ }
         buscados++;
       }
-      for (const item of finais) { delete item._fmt; delete item.nomeBase; }
-      res.json({ ok: true, produtos: finais, termo: q });
+      // b178 (review do Codex) - a passada da foto tambem APURA formato: um
+      // item que entrou sem veredito pode se revelar 'V' (ou kit) ali. Sem
+      // este segundo filtro, o pai de variacao recem-descoberto seguiria na
+      // lista — o filtro de cima ja tinha passado por ele.
+      const entregues = [];
+      for (const item of finais) {
+        if (item._fmt === 'V') continue;
+        if (item._fmt === 'E') {
+          item.ehKit = true;
+          if (String(item.nome || '').indexOf('📦 KIT · ') !== 0) {
+            item.nome = '📦 KIT · ' + (item.nomeBase || item.nome || '');
+          }
+        }
+        delete item._fmt; delete item.nomeBase;
+        entregues.push(item);
+      }
+      res.json({ ok: true, produtos: entregues, termo: q });
     } catch (e) {
       res.status(500).json({ ok: false, erro: String(e.message || e) });
     }
