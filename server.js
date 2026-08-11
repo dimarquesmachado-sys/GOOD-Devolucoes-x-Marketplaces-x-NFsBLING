@@ -334,13 +334,36 @@ async function buscarRecados(body) {
     .order('criado_em', { ascending: false });
   return data || [];
 }
+// ev2 - o bipe consulta o registro do CHECKOUT OFFLINE (eventos_checkout):
+// se o codigo bipado casar com um pedido/NF que passou pelo checkout, o
+// card mostra — inclusive (e principalmente) quando NADA mais achou.
+async function buscarEventosCheckout(empresa, codigo) {
+  try {
+    if (!supabase) return [];
+    const q = String(codigo || '').trim();
+    if (!/^[A-Za-z0-9_-]{5,60}$/.test(q)) return [];
+    const { data } = await supabase.from('eventos_checkout')
+      .select('tipo, codigo, quem, criado_em, extra')
+      .eq('empresa', empresa)
+      .or('codigo.eq.' + q + ',codigo.ilike.%' + q + '%')
+      .order('criado_em', { ascending: false })
+      .limit(3);
+    return data || [];
+  } catch (e) { return []; }
+}
+
 app.use('/api/devolucao/identificar', (req, res, next) => {
   const enviar = res.json.bind(res);
+  const codigoBipado = decodeURIComponent(String(req.path.split('/').pop() || '')).trim();
   res.json = (body) => {
-    if (!body || !body.encontrado) return enviar(body);
-    buscarRecados(body)
-      .then(recados => { if (recados.length) body.recados = recados; enviar(body); })
-      .catch(() => enviar(body));
+    if (!body) return enviar(body);
+    const tarefas = [];
+    if (body.encontrado) {
+      tarefas.push(buscarRecados(body).then(recados => { if (recados.length) body.recados = recados; }).catch(() => {}));
+    }
+    // ev2 - eventos do checkout entram SEMPRE (achado ou nao)
+    tarefas.push(buscarEventosCheckout('good', codigoBipado).then(evs => { if (evs.length) body.eventos_checkout = evs; }).catch(() => {}));
+    Promise.all(tarefas).then(() => enviar(body)).catch(() => enviar(body));
     return res;
   };
   next();

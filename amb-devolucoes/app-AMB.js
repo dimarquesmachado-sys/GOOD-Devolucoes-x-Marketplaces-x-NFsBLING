@@ -1306,6 +1306,7 @@ const mlBuscas = criarMlBuscas(ml.chamarML);
 registrarCicloDefeitos(router, { auth, db, bling, cfg });
 
 registrarIdentificar(router, {
+  supabase: db.conectar(),   // ev2 - registro do checkout offline
   requerLogin: auth.requerLogin,
   sleep: dorme,
   chamarML: ml.chamarML,

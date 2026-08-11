@@ -8,6 +8,25 @@
 
 let ultimaBusca = null; // dados completos da ultima busca
 
+
+// ev2 - o codigo passou pelo CHECKOUT OFFLINE? (etiqueta anexada / NF)
+// A resposta do bipe fica em window._ultimaRespostaBipe; este bloco
+// aparece em TODOS os caminhos de render (achado, serie, nome, nada).
+function blocoEventosCheckout() {
+  var data = window._ultimaRespostaBipe;
+  if (!data || !Array.isArray(data.eventos_checkout) || !data.eventos_checkout.length) return '';
+  var evs = data.eventos_checkout.map(function (e) {
+    var quando = '';
+    try { quando = e.criado_em ? new Date(e.criado_em).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : ''; } catch (x) {}
+    var tipoLegivel = e.tipo === 'nf_anexada' ? '🧾 NF anexada' : '📎 Etiqueta anexada';
+    var ped = (e.extra && e.extra.pedido) ? ' · pedido <code>' + escapeHtml(String(e.extra.pedido)) + '</code>' : '';
+    return '<div style="padding:2px 0;">' + tipoLegivel + ' · <code>' + escapeHtml(e.codigo || '') + '</code>' + ped
+      + (e.quem ? ' · por ' + escapeHtml(e.quem) : '') + (quando ? ' · ' + quando : '') + '</div>';
+  }).join('');
+  return '<div style="margin-top:10px;background:#eef3fb;border:1px solid #c9d8f0;border-radius:8px;padding:8px 10px;font-size:12.5px;color:#1c3a63;">'
+    + '<div style="margin-bottom:3px;"><b>📦 Registro do checkout offline</b></div>' + evs + '</div>';
+}
+
 async function buscar() {
   const codigo = inputCodigo.value.trim();
   if (!codigo) { toast('Digite ou bipe um codigo', 'err'); return; }
@@ -20,6 +39,7 @@ async function buscar() {
   try {
     const resp = await fetch(`/api/devolucao/identificar/${encodeURIComponent(codigo)}`);
     const data = await resp.json();
+    window._ultimaRespostaBipe = data;   // ev2 - pro bloco do checkout
     ultimaBusca = data;
     renderizar(data, resp.ok);
   } catch (err) {
@@ -497,7 +517,7 @@ function renderizar(data, ok) {
 
   html += '</div>';
 
-  divResultado.innerHTML = html;
+  divResultado.innerHTML = html + blocoEventosCheckout();   // ev2
   divResultado.classList.add('show');
   buscarFotosItens(itensRender);   // b78 - fotos dos itens (nao bloqueia)
 
@@ -739,7 +759,7 @@ function renderizarEscolhaSerie(amb) {
 
   html += '<div style="margin-top:14px;font-size:12px;color:#666;">💡 Se preferir, bipe a <b>chave da DANFE</b> (44 digitos) — ela ja identifica a serie sozinha.</div>';
   html += '</div>';
-  divResultado.innerHTML = html;
+  divResultado.innerHTML = html + blocoEventosCheckout();   // ev2
   divResultado.classList.add('show');
 }
 
@@ -768,7 +788,7 @@ function renderizarCandidatosNome(mensagem, candidatos) {
   html += '</div>';
   html += '<p style="font-size:12px; color:#888; margin-bottom:0;">⚠️ Confere o produto da CAIXA antes de escolher — nomes podem se repetir.</p>';
   html += '</div>';
-  divResultado.innerHTML = html;
+  divResultado.innerHTML = html + blocoEventosCheckout();   // ev2
   divResultado.classList.add('show');
 }
 
@@ -801,6 +821,6 @@ function renderizarErro(mensagem, tentativas) {
     html += '</ul>';
   }
   html += '</div>';
-  divResultado.innerHTML = html;
+  divResultado.innerHTML = html + blocoEventosCheckout();   // ev2
   divResultado.classList.add('show');
 }

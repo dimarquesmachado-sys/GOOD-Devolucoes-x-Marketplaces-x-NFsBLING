@@ -25,7 +25,24 @@ module.exports = function registrarIdentificar(app, deps) {
     acharDevolucao, buscarPorNome,
     shopee, magalu, nfNomes, // b71 - a rota usa os modulos inteiros
     mlReturns,               // b142 - indice claims->returns do ML (faltava)
-  } = deps;                  //       (shopee.cfg.ativo, shopee.acharDevolucao...)
+    supabase,                // ev2 - pro registro do checkout offline
+  } = deps;
+
+  // ev2 - eventos do CHECKOUT OFFLINE que casam com o codigo bipado
+  async function buscarEventosCheckout(codigo) {
+    try {
+      if (!supabase) return [];
+      const q = String(codigo || '').trim();
+      if (!/^[A-Za-z0-9_-]{5,60}$/.test(q)) return [];
+      const { data } = await supabase.from('eventos_checkout')
+        .select('tipo, codigo, quem, criado_em, extra')
+        .eq('empresa', 'amb')
+        .or('codigo.eq.' + q + ',codigo.ilike.%' + q + '%')
+        .order('criado_em', { ascending: false })
+        .limit(3);
+      return data || [];
+    } catch (e) { return []; }
+  }                  //       (shopee.cfg.ativo, shopee.acharDevolucao...)
 
 app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
   const codigoOriginal = String(req.params.codigo || '').trim();
@@ -47,6 +64,18 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
       obj._marcos = _marcos;
     }
     return _jsonOriginal(obj);
+  };
+
+  // ev2 - segundo envelope (async): antes de QUALQUER resposta sair,
+  // consulta o registro do checkout offline e anexa se casar. Falha ou
+  // demora nunca segura a resposta alem do try (catch devolve sem extra).
+  const _jsonComRelogio = res.json.bind(res);
+  res.json = function (obj) {
+    if (!obj || typeof obj !== 'object') return _jsonComRelogio(obj);
+    buscarEventosCheckout(codigoOriginal)
+      .then((evs) => { if (evs.length) obj.eventos_checkout = evs; _jsonComRelogio(obj); })
+      .catch(() => _jsonComRelogio(obj));
+    return res;
   };
 
   if (!codigoOriginal) {
