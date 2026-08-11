@@ -662,6 +662,7 @@ function loginNome(usuario) {
 function loginIdent(usuario) {
   return loginNome(usuario).slice(0, 60);
 }
+const LOGIN_NOME_MAX = 100;   // seg1.4 - nome absurdo nem chega a ser processado
 function loginIp(req) {
   return String((req && (req.ip || (req.socket && req.socket.remoteAddress))) || '').slice(0, 45);
 }
@@ -730,6 +731,9 @@ router.post('/api/auth/login', (req, res) => {
   const { usuario, senha } = req.body || {};
   if (!usuario || !senha) {
     return res.status(400).json({ ok: false, erro: 'informe usuario e senha' });
+  }
+  if (String(usuario).length > LOGIN_NOME_MAX) {
+    return res.status(401).json({ ok: false, erro: 'usuario ou senha invalidos' });
   }
   const chavesFreio = loginChaves(req, usuario);
   const esperar = loginBloqueado(chavesFreio);

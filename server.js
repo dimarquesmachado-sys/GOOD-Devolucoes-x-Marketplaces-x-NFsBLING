@@ -1709,6 +1709,29 @@ function loginNome(usuario) {
 function loginIdent(usuario) {
   return loginNome(usuario).slice(0, 60);
 }
+// seg1.4 (P1 da 4a rodada) - nome maior que isto nem e olhado: normalizar
+// uma string de megabytes uma vez POR CONTA cadastrada travava o event loop
+// de graca, e nenhum login real tem 100 caracteres.
+const LOGIN_NOME_MAX = 100;
+// seg1.4 (P1 da 4a rodada) - o de-para normalizado sai UMA vez, no boot,
+// em vez de percorrer USERS a cada tentativa. Nomes que colidem depois de
+// normalizar (ex.: "Diego" e "diego" cadastrados juntos) ficam de FORA:
+// nesse caso so a digitacao exata resolve, e nenhuma conta herda a
+// identidade - nem o privilegio - da outra.
+const USERS_NORM = (() => {
+  const mapa = new Map();
+  const ambiguos = new Set();
+  for (const u of Object.keys(USERS)) {
+    const n = loginNome(u);
+    if (mapa.has(n)) { ambiguos.add(n); continue; }
+    mapa.set(n, u);
+  }
+  for (const n of ambiguos) {
+    mapa.delete(n);
+    console.warn(`[LOGIN] atencao: contas que so diferem por maiusculas ("${n}") — sera exigida a digitacao exata`);
+  }
+  return mapa;
+})();
 function loginIp(req) {
   return String((req && (req.ip || (req.socket && req.socket.remoteAddress))) || '').slice(0, 45);
 }
@@ -1783,7 +1806,13 @@ app.post('/api/auth/login', (req, res) => {
   // passam a falar da mesma identidade (e "diego" entra na conta "Diego",
   // igual a AMB ja fazia) - e o nome gravado na sessao sai na grafia
   // CADASTRADA, nao como foi digitado.
-  const contaReal = Object.keys(USERS).find(u => loginNome(u) === loginNome(usuario)) || null;
+  if (String(usuario).length > LOGIN_NOME_MAX) {
+    return res.status(401).json({ ok: false, erro: 'Usuario ou senha invalidos' });
+  }
+  // exata primeiro; senao o de-para normalizado (sem ambiguas)
+  const contaReal = Object.prototype.hasOwnProperty.call(USERS, usuario)
+    ? usuario
+    : (USERS_NORM.get(loginNome(usuario)) || null);
   const chavesFreio = loginChaves(req, contaReal || usuario);
   const esperar = loginBloqueado(chavesFreio);
   if (esperar) {
@@ -1800,7 +1829,10 @@ app.post('/api/auth/login', (req, res) => {
   loginAcertou(chavesFreio);
 
   // Define o tipo: admin se a conta == ADMIN_USER, senao estoquista
-  const tipo = (ADMIN_USER && loginNome(contaReal) === loginNome(ADMIN_USER)) ? 'admin' : 'estoquista';
+  // seg1.4 (P1 da 4a rodada) - privilegio exige igualdade EXATA com a conta
+  // configurada como admin. Comparar normalizado permitiria que a conta
+  // "Diego" recebesse admin quando o ADMIN_USER e "diego" (ou vice-versa).
+  const tipo = (ADMIN_USER && contaReal === ADMIN_USER) ? 'admin' : 'estoquista';
 
   const token = novaSessao(contaReal, tipo);
   res.cookie('sessao', token, {
