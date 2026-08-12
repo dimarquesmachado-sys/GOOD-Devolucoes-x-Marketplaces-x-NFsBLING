@@ -1391,7 +1391,7 @@
         try {
           var visto = null;
           try { visto = localStorage.getItem(CHAVE); } catch (e) {}
-          var r = await fetch('/amb/api/defeitos/pedidos', { credentials: 'same-origin' });
+          var r = await fetch('/amb/api/defeitos/pedidos?arquivados=todos', { credentials: 'same-origin' });
           var d = await r.json();
           if (!d || !d.ok) return;
           var novos = (d.pedidos || []).filter(function (p) {

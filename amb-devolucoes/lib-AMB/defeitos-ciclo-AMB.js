@@ -720,14 +720,32 @@ module.exports = function registrarCicloDefeitos(router, deps) {
       let q = dbc.from(T_PED).select('*').order('criado_em', { ascending: false }).limit(200);
       const st = String(req.query.status || '').trim();
       if (st) q = q.eq('status', st);
-      const r = await q;
+      // b190 (review do Codex) - o filtro de arquivadas entra NA CONSULTA,
+      // antes do limit(200): filtrando so depois, com a tabela grande, o
+      // banco cortava as 200 mais recentes e solicitacoes antigas ainda na
+      // fila sumiam da tela e do contador. Se a coluna ainda nao existir,
+      // a consulta falha e a gente refaz sem o filtro (nada quebra).
+      const modo = String(req.query.arquivados || '').trim();   // ''|'1'|'todos'
+      let r;
+      if (modo !== 'todos') {
+        const qF = modo === '1' ? q.not('arquivado_em', 'is', null) : q.is('arquivado_em', null);
+        r = await qF;
+        if (r.error && /arquivado_em|column/i.test(String(r.error.message || ''))) {
+          r = await dbc.from(T_PED).select('*').order('criado_em', { ascending: false }).limit(200);
+          if (!r.error && modo === '1') r = { data: [], error: null };   // sem coluna, nada foi arquivado
+        }
+      } else {
+        r = await q;
+      }
       if (r.error) throw new Error(r.error.message);
       // b189 - a fila principal mostra so o que NAO foi arquivado; a aba
       // "ja tratadas" pede ?arquivados=1. O filtro e em JS de proposito:
       // se a coluna ainda nao existir no banco, `arquivado_em` vem
       // undefined e tudo continua aparecendo como antes (nada quebra).
-      const verArquivados = String(req.query.arquivados || '') === '1';
-      const lista = (r.data || []).filter(p => (verArquivados ? !!p.arquivado_em : !p.arquivado_em));
+      // b190 - `?arquivados=todos` NAO filtra: e o que o AVISO DO ESTOQUISTA
+      // usa. Sem isso, o admin decidir e "tirar da frente" antes do proximo
+      // poll fazia o estoquista NUNCA saber que podia executar.
+      const lista = r.data || [];
 
       // b132 - junta o TITULO e o LOCAL da peca em cada pedido. A fila
       // mostrava so o SKU, e com varias luminarias iguais isso nao
