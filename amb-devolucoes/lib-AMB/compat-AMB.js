@@ -483,7 +483,10 @@ function montar(router, deps) {
         if (!cru) {
           try {
             await esperarVezDetalhe();
-            const rK = await comPrazo(bling.chamarBling('/produtos/' + item.id), prazoKit - Date.now());   // b183/b184
+            // b185 (review do Codex) - a espera na FILA tambem conta no prazo
+            const restanteKit = prazoKit - Date.now();
+            if (restanteKit <= 0) throw new Error('prazo do kit esgotado na fila');
+            const rK = await comPrazo(bling.chamarBling('/produtos/' + item.id), restanteKit);   // b183/b184
             const dK = (rK && rK.ok && rK.data && rK.data.data) || null;
             cru = extrairComponentes(dK);
           } catch (e) { cru = null; }

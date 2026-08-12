@@ -3403,9 +3403,15 @@ async function tirarKits(lista, diag) {
     if (!cru || !cru.length) {
       try {
         await esperarVezDetalhe();                      // v4.67 - ritmo global
-        // v4.68 (review do Codex) - o prazo vale TAMBEM pra esta consulta:
-        // ela e pre-requisito da composicao e travava a busca inteira.
-        const rK = await comPrazo(chamarBling(`https://api.bling.com.br/Api/v3/produtos/${item.id}`), prazoKit - Date.now());
+        // v4.70 (review do Codex) - a ESPERA NA FILA conta no prazo: com
+        // buscas concorrentes, o agendador podia segurar mais que o prazo
+        // do kit e o `Math.max(500, ...)` do comPrazo ressuscitava meio
+        // segundo extra. Passado o prazo, a consulta nem comeca.
+        const restanteKit = prazoKit - Date.now();
+        if (restanteKit <= 0) throw new Error('prazo do kit esgotado na fila');
+        // v4.68 - o prazo vale TAMBEM pra esta consulta: ela e pre-requisito
+        // da composicao e travava a busca inteira.
+        const rK = await comPrazo(chamarBling(`https://api.bling.com.br/Api/v3/produtos/${item.id}`), restanteKit);
         const dK = (rK && rK.ok && rK.data && rK.data.data) || null;
         cru = extrairComponentes(dK);
       } catch (e) { cru = null; }
