@@ -3185,6 +3185,79 @@ function enriquecerEansEmBackground() {
 // v4.53 - cache do FORMATO de cada produto. A listagem do Bling nem sempre
 // diz se e kit; o detalhe diz. Como o mesmo produto reaparece em varias
 // buscas, guardamos o resultado (o formato de um produto quase nunca muda).
+// v4.66 (porte da AMB b180-b182) - COMPONENTES DO KIT.
+// O Bling entrega a estrutura do kit com o produto SO PELO ID (sem
+// `codigo`), entao o mapeamento que exigia c.produto.codigo saia VAZIO:
+// a mensagem nao citava a composicao e a tela nao tinha o que oferecer.
+const SKU_POR_ID = new Map();          // idProduto -> { sku, nome, ts }
+const COMPS_POR_KIT = new Map();       // idKit -> { itens, faltando, ts }
+const KIT_TTL_MS = 6 * 60 * 60 * 1000;
+const COMPONENTES_MAX = 12;
+const COMPONENTES_PRAZO_MS = 8000;
+function skuCacheGet(id) {
+  const reg = id ? SKU_POR_ID.get(id) : null;
+  if (!reg) return null;
+  if (Date.now() - reg.ts > KIT_TTL_MS) { SKU_POR_ID.delete(id); return null; }
+  return reg;
+}
+function skuCacheSet(id, sku, nome) {
+  if (id && sku) SKU_POR_ID.set(id, { sku, nome: nome || '', ts: Date.now() });
+}
+function compsCacheGet(id) {
+  const reg = id ? COMPS_POR_KIT.get(id) : null;
+  if (!reg) return null;
+  if (Date.now() - reg.ts > KIT_TTL_MS) { COMPS_POR_KIT.delete(id); return null; }
+  return reg;
+}
+function extrairComponentes(det) {
+  if (!det) return [];
+  const lugares = [
+    det.estrutura && det.estrutura.componentes,
+    det.componentes,
+    det.estrutura && det.estrutura.itens,
+  ];
+  for (const l of lugares) if (Array.isArray(l) && l.length) return l;
+  return [];
+}
+// Devolve TAMBEM o que nao resolveu: entregar so as pecas resolvidas como
+// se fossem a composicao inteira faria o estoquista lancar em metade do
+// kit sem saber (falha do Bling, kit grande, ou o prazo estourando).
+async function resolverComponentesKit(comps) {
+  const lista = Array.isArray(comps) ? comps.filter(Boolean) : [];
+  const limite = Date.now() + COMPONENTES_PRAZO_MS;
+  const alvos = lista.slice(0, COMPONENTES_MAX);
+  const truncados = Math.max(0, lista.length - alvos.length);
+  const out = [];
+  let naoResolvidos = 0;
+  for (const c of alvos) {
+    const p = (c && c.produto) || {};
+    const id = p.id || c.idProduto || c.produtoId || null;
+    let sku = String(p.codigo || p.sku || '').trim();
+    let nome = String(p.nome || p.descricao || '').trim();
+    if (!sku && id) {
+      const emCache = skuCacheGet(id);
+      if (emCache) { sku = emCache.sku; nome = nome || emCache.nome; }
+      else if (Date.now() >= limite) { naoResolvidos++; continue; }
+      else {
+        try {
+          const r = await chamarBling(`https://api.bling.com.br/Api/v3/produtos/${id}`);
+          const d = (r.ok && r.data && r.data.data) || null;
+          if (d) {
+            sku = String(d.codigo || d.sku || '').trim();
+            nome = nome || String(d.nome || d.descricao || '').trim();
+            skuCacheSet(id, sku, nome);
+          }
+          await new Promise(r2 => setTimeout(r2, 350));
+        } catch (e) { /* conta como nao resolvido abaixo */ }
+      }
+    }
+    const q = Number(c && (c.quantidade || c.qtd)) || 1;
+    if (sku) out.push({ sku, quantidade: q, nome });
+    else naoResolvidos++;
+  }
+  return { itens: out, faltando: naoResolvidos + truncados };
+}
+
 const FORMATO_CACHE = new Map();
 
 /**
@@ -3262,9 +3335,44 @@ async function tirarKits(lista, diag) {
     if (fmt === 'E') {
       item.ehKit = true;
       if (String(item.nome || '').indexOf('📦 KIT · ') !== 0) item.nome = '📦 KIT · ' + (item.nome || '');
+      // v4.66 - guarda a estrutura crua deste detalhe (se veio), pra a
+      // composicao ser resolvida sem pedir o produto de novo
+      if (det) item._compsCru = extrairComponentes(det);
     }
     saida.push(item);
   }
+  // v4.66 (pedido do Diego, portado da AMB) - os kits que vao pra tela
+  // levam a COMPOSICAO junto: o estoquista escolhe a peca no proprio card,
+  // sem popup e sem precisar preencher e salvar antes.
+  let kitsResolvidos = 0;
+  for (const item of saida) {
+    if (!item.ehKit || !item.id) continue;
+    if (kitsResolvidos >= 3) break;      // kit e excecao numa busca de estoquista
+    const doCache = compsCacheGet(item.id);
+    if (doCache) {
+      item.componentes = doCache.itens;
+      item.componentes_faltando = doCache.faltando;
+      kitsResolvidos++;
+      continue;
+    }
+    let cru = item._compsCru;
+    if (!cru || !cru.length) {
+      try {
+        const rK = await chamarBling(`https://api.bling.com.br/Api/v3/produtos/${item.id}`);
+        const dK = (rK.ok && rK.data && rK.data.data) || null;
+        cru = extrairComponentes(dK);
+        await new Promise(r => setTimeout(r, 350));
+      } catch (e) { cru = null; }
+    }
+    if (cru && cru.length) {
+      const rC = await resolverComponentesKit(cru);
+      item.componentes = rC.itens;
+      item.componentes_faltando = rC.faltando;
+      COMPS_POR_KIT.set(item.id, { itens: rC.itens, faltando: rC.faltando, ts: Date.now() });
+    }
+    kitsResolvidos++;
+  }
+  for (const item of saida) delete item._compsCru;
   return saida;
 }
 
@@ -4169,23 +4277,14 @@ app.post('/api/defeitos/adicionar', requerEstoquista, async (req, res) => {
     try {
       const rDet = await chamarBling(`https://api.bling.com.br/Api/v3/produtos/${prod.id}`);
       const det = (rDet.ok && rDet.data && rDet.data.data) || null;
-      const comps = (det && det.estrutura && Array.isArray(det.estrutura.componentes))
-        ? det.estrutura.componentes : [];
+      const comps = extrairComponentes(det);   // v4.66 - tolerante ao formato
       const ehKit = comps.length > 0 || String((det && det.formato) || '').toUpperCase() === 'E';
       if (ehKit) {
         // se der, ja diz QUAL produto simples ele deve usar no lugar
-        const sugestoes = comps.map(c => {
-          const p2 = c && c.produto;
-          const cod = (p2 && (p2.codigo || p2.sku)) || '';
-          const q = c && (c.quantidade || c.qtd);
-          return cod ? (q ? `${q}x ${cod}` : cod) : null;
-        }).filter(Boolean);
-        // v4.62 - componentes ESTRUTURADOS pra tela oferecer a explosao
-        const componentesDet = comps.map(c => {
-          const p2 = c && c.produto;
-          const cod = (p2 && (p2.codigo || p2.sku)) || '';
-          return cod ? { sku: cod, quantidade: Number(c.quantidade || c.qtd) || 1 } : null;
-        }).filter(Boolean);
+        // v4.66 - componentes resolvendo id -> SKU (o Bling manda so o id)
+        const resolucao = await resolverComponentesKit(comps);
+        const componentesDet = resolucao.itens;
+        const sugestoes = componentesDet.map(c => `${c.quantidade}x ${c.sku}`);
         return res.status(400).json({
           ok: false,
           erro: `"${prod.codigo || sku}" e um KIT, nao um produto simples.`
@@ -4196,6 +4295,9 @@ app.post('/api/defeitos/adicionar', requerEstoquista, async (req, res) => {
           componentes: sugestoes,
           kit_sku: prod.codigo || sku,
           componentes_det: componentesDet,
+          // v4.66 - a tela precisa saber que a composicao veio INCOMPLETA
+          composicao_completa: resolucao.faltando === 0,
+          componentes_faltando: resolucao.faltando,
         });
       }
     } catch (e) { /* se o Bling nao responder, segue - nao trava o galpao */ }
