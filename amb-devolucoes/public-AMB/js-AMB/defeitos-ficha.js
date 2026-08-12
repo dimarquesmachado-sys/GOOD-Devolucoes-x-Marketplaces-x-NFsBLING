@@ -879,16 +879,19 @@
       + '<b style="font-size:13.5px;">' + esc(p.sku || '-') + '</b>'
       + '<span style="color:#888;font-size:11.5px;">' + esc(p.quem_pediu || '-') + ' · ' + dataBr(p.criado_em) + '</span>'
       + '<span style="margin-left:auto;font-size:12px;">' + estado + '</span>'
-      // b191 - botaozinho de canto: so avisa que ele ja tratou (ou
-      // devolve pra fila). Titulo no hover explica, sem ocupar espaco.
+      // b194 (pedido do Diego) - o botao passa a se CHAMAR "Arquivar",
+      // com a pastinha ao lado do nome (antes era so o icone solto, que
+      // nao dizia o que fazia sem passar o mouse).
       + ((comAcoes && euSouAdmin)
           ? (daAbaArquivadas
               ? '<button type="button" title="Devolver esta solicitação para a fila" onclick="arquivarPedido(' + p.id + ',false,true)" '
                 + 'style="border:1px solid #cfc7ea;background:#f4f1fb;color:#3C3489;border-radius:7px;'
-                + 'padding:4px 9px;font-size:12px;font-weight:700;cursor:pointer;line-height:1.4;">↩️</button>'
-              : '<button type="button" title="Já tratei — tirar da frente" onclick="arquivarPedido(' + p.id + ',true,false)" '
+                + 'padding:4px 10px;font-size:12px;font-weight:700;cursor:pointer;line-height:1.4;white-space:nowrap;">'
+                + 'Desarquivar ↩️</button>'
+              : '<button type="button" title="Já tratei — arquivar esta solicitação" onclick="arquivarPedido(' + p.id + ',true,false)" '
                 + 'style="border:1px solid #ddd;background:#fff;color:#666;border-radius:7px;'
-                + 'padding:4px 9px;font-size:12px;cursor:pointer;line-height:1.4;">🗂️</button>')
+                + 'padding:4px 10px;font-size:12px;cursor:pointer;line-height:1.4;white-space:nowrap;">'
+                + 'Arquivar 🗂️</button>')
           : '')
       + '</div>'
       + (p.titulo
@@ -995,14 +998,14 @@
         + (ativo ? 'background:#3C3489;color:#fff;' : 'background:#eee;color:#555;') + '">' + rotulo + '</button>';
     };
     var vazio = arq
-      ? 'nada tratado ainda — o que você tirar da frente aparece aqui.'
+      ? 'nada arquivado ainda — o que você arquivar aparece aqui.'
       : 'nenhuma solicitação na fila. 🎉';
     var html = topo('📥 Solicitações do Galpão')
       + '<div style="padding:14px;">'
       + '<div id="filaAviso"></div>'
       + '<div style="margin-bottom:11px;">'
         + aba('⏳ Na fila', !arq, false)
-        + aba('✅ Já tratadas', arq, true)
+        + aba('🗂️ Arquivadas', arq, true)   // b194 - era "Já tratadas"
       + '</div>'
       + (lista.length ? lista.map(function (p) { return linhaPedido(p, true, arq); }).join('')
                       : '<div style="color:#888;font-size:13px;">' + vazio + '</div>')
