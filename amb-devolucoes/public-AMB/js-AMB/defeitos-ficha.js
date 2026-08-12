@@ -828,7 +828,13 @@
     //   VERDE  = recuperada que JA entrou no estoque do Bling
     //   AMBAR  = recuperada que ainda NAO teve lancamento (e o que sobra pra fazer)
     //   VERMELHO = descarte (nao envolve entrada de estoque)
-    var jaNoEstoque = p.tipo === 'recuperado' && !!p.estoque_produto_id;
+    // b192 (review do Codex) - lancamento AUTOMATICO e MANUAL contam:
+    // quando a entrada automatica falha, a propria tela manda lancar a mao
+    // no Bling e concluir; sem isso o card ficaria ambar pra sempre,
+    // aparecendo como trabalho que ainda falta.
+    var estoqueAuto = p.tipo === 'recuperado' && !!p.estoque_produto_id;
+    var estoqueManual = p.tipo === 'recuperado' && !p.estoque_produto_id && p.status === 'concluido';
+    var jaNoEstoque = estoqueAuto || estoqueManual;
     var cor = p.tipo === 'descarte' ? '#9E1A1A' : (jaNoEstoque ? '#0F6E56' : '#B26A00');
     var fundoTopo = p.tipo === 'descarte' ? '#FDF7F7' : (jaNoEstoque ? '#F3FBF7' : '#FFFBF0');
     var selo = p.tipo === 'descarte'
@@ -874,14 +880,26 @@
           ? '<div style="font-size:14px;font-weight:600;margin:2px 0 6px;">' + esc(p.titulo) + '</div>'
           : '')
       + (p.localizacao ? '<div style="font-size:12px;color:#777;margin-bottom:5px;">📍 ' + esc(p.localizacao) + '</div>' : '')
-      + (p.estoque_qtd
+      // b192 (review do Codex) - o selo NAO depende mais de `estoque_qtd`
+      // (que so e gravado quando o pedido leva sku): quem nao distingue as
+      // cores precisa LER que houve lancamento. Sem quantidade, mostra sem ela.
+      + ((p.estoque_qtd || jaNoEstoque)
           ? '<div style="background:#e9f7ef;border:1.5px solid #0F6E56;border-radius:9px;padding:8px 12px;margin:4px 0 7px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">'
-            + '<b style="color:#0F6E56;font-size:14px;letter-spacing:.3px;">📦 LANÇADO EM ESTOQUE · ' + esc(p.estoque_qtd) + ' un.</b>'
+            + '<b style="color:#0F6E56;font-size:14px;letter-spacing:.3px;">'
+            + (estoqueManual && !p.estoque_qtd
+                ? '✅ CONCLUÍDA — lançamento feito à mão no Bling'
+                : '📦 LANÇADO EM ESTOQUE' + (p.estoque_qtd ? ' · ' + esc(p.estoque_qtd) + ' un.' : ''))
+            + '</b>'
             + (p.estoque_produto_id
                 ? '<a href="https://www.bling.com.br/estoque.php?buscaid=' + esc(p.estoque_produto_id)
                   + '" target="_blank" style="color:#561A9E;font-weight:600;font-size:12.5px;">conferir no Bling ↗</a>'
                 : '')
             + '</div>'
+          : '')
+      // b192 - o AMBAR tambem se explica por escrito
+      + ((p.tipo === 'recuperado' && !jaNoEstoque && !p.estoque_qtd)
+          ? '<div style="background:#FFF8E7;border:1.5px solid #B26A00;border-radius:9px;padding:7px 11px;margin:4px 0 7px;'
+            + 'font-size:12.5px;color:#8a5200;font-weight:600;">⏳ AINDA SEM LANÇAMENTO NO ESTOQUE</div>'
           : '')
       + (p.observacao ? '<div style="font-size:12.5px;color:#555;margin-bottom:6px;">' + esc(p.observacao) + '</div>' : '')
       // b161 - a entrada automatica falhou? botao de relancar (so faz
