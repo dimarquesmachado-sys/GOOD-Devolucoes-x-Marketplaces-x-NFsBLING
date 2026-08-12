@@ -3255,7 +3255,7 @@ async function resolverComponentesKit(comps, limiteExterno) {
           const restante = limite - Date.now();
           if (restante <= 0) { naoResolvidos++; continue; }
           const r = await comPrazo(
-            chamarBling(`https://api.bling.com.br/Api/v3/produtos/${id}`, { timeout: restante }),
+            chamarBling(`https://api.bling.com.br/Api/v3/produtos/${id}`, { timeout: restante, semRetentativa: true }),
             restante);
           const d = (r && r.ok && r.data && r.data.data) || null;
           if (d) {
@@ -3305,7 +3305,21 @@ async function comPrazo(promessa, ms) {
   } finally { clearTimeout(t); }
 }
 
-const FORMATO_CACHE = new Map();
+// v4.72 (review do Codex) - o veredito de formato da GOOD nunca expirava:
+// um 'E' antigo deixava o produto marcado como kit PARA SEMPRE e, com o
+// card do kit nao-clicavel, o item ficava impossivel de escolher mesmo
+// depois de virar simples no Bling. TTL igual ao da AMB.
+const FORMATO_CACHE = new Map();          // id -> { fmt, ts }
+const FORMATO_TTL_MS = 6 * 60 * 60 * 1000;
+function formatoCacheGet(id) {
+  const reg = id ? FORMATO_CACHE.get(id) : null;
+  if (!reg) return undefined;
+  if (Date.now() - reg.ts > FORMATO_TTL_MS) { FORMATO_CACHE.delete(id); return undefined; }
+  return reg.fmt;
+}
+function formatoCacheSet(id, fmt) {
+  if (id && fmt) FORMATO_CACHE.set(id, { fmt, ts: Date.now() });
+}
 
 /**
  * Tira da lista o que o estoquista nao pode lancar: KIT e COMPOSICAO.
@@ -3322,12 +3336,12 @@ async function tirarKits(lista, diag) {
 
     // v4.55 - a LISTAGEM as vezes ja denuncia o kit; se denunciar, nem
     // precisa consultar o detalhe
-    let fmt = FORMATO_CACHE.get(id);
+    let fmt = formatoCacheGet(id);
     if (fmt === undefined) {
       const fmtLista = String(item.formato || '').toUpperCase();
       const compLista = (item.estrutura && Array.isArray(item.estrutura.componentes))
         ? item.estrutura.componentes.length : 0;
-      if (fmtLista === 'E' || compLista > 0) { fmt = 'E'; FORMATO_CACHE.set(id, 'E'); }
+      if (fmtLista === 'E' || compLista > 0) { fmt = 'E'; formatoCacheSet(id, 'E'); }
     }
 
     let det = null;
@@ -3348,7 +3362,7 @@ async function tirarKits(lista, diag) {
           const comp = (det.estrutura && Array.isArray(det.estrutura.componentes))
             ? det.estrutura.componentes.length : 0;
           fmt = comp > 0 ? 'E' : String(det.formato || 'S').toUpperCase();
-          FORMATO_CACHE.set(id, fmt);      // so cacheia o que foi APURADO
+          formatoCacheSet(id, fmt);      // so cacheia o que foi APURADO
         }
         if (diag) {
           diag.push({
@@ -3420,7 +3434,8 @@ async function tirarKits(lista, diag) {
     let cru = item._compsCru;
     if (!cru || !cru.length) {
       try {
-        await esperarVezDetalhe();                      // v4.67 - ritmo global
+        // v4.72 - a vaga na fila NEM E RESERVADA se nascer depois do prazo
+        if (!(await esperarVezDetalhe(prazoKit - Date.now()))) throw new Error('fila alem do prazo do kit');
         // v4.70 (review do Codex) - a ESPERA NA FILA conta no prazo: com
         // buscas concorrentes, o agendador podia segurar mais que o prazo
         // do kit e o `Math.max(500, ...)` do comPrazo ressuscitava meio
@@ -3431,7 +3446,7 @@ async function tirarKits(lista, diag) {
         // da composicao e travava a busca inteira.
         // v4.71 - timeout REAL no axios (o race so ignorava a resposta)
         const rK = await comPrazo(
-          chamarBling(`https://api.bling.com.br/Api/v3/produtos/${item.id}`, { timeout: restanteKit }),
+          chamarBling(`https://api.bling.com.br/Api/v3/produtos/${item.id}`, { timeout: restanteKit, semRetentativa: true }),
           restanteKit);
         const dK = (rK && rK.ok && rK.data && rK.data.data) || null;
         cru = extrairComponentes(dK);

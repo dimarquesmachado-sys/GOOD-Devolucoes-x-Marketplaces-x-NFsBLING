@@ -206,7 +206,7 @@
         <div class="topo-txt">
           <h1>AMBTotal Devoluções</h1>
           <p>Identificar venda &middot; NF-e &middot; Triagem
-            <span class="topo-versao">&middot; v3.71 &middot; <span id="serverVersion">checando...</span></span>
+            <span class="topo-versao">&middot; v3.72 &middot; <span id="serverVersion">checando...</span></span>
           </p>
         </div>
         <!-- b92 - os 2 do estoque de defeitos subiram pra MESMA faixa:
@@ -1147,6 +1147,7 @@
       // mesma peca duas vezes (o registro nao tem chave de idempotencia)
       if (window._kitOcupado) return;
       window._kitOcupado = true;
+      var minhaEpoca = window._kitEpoca || 0;   // b187
       var botoes = document.querySelectorAll('#defMsg button');
       for (var b = 0; b < botoes.length; b++) { botoes[b].disabled = true; botoes[b].style.opacity = '.55'; }
       // b186 (review do Codex) - o botao PRINCIPAL de salvar tambem trava:
@@ -1160,6 +1161,8 @@
       for (var i = 0; i < alvos.length; i++) {
         var c = alvos[i];
         if (!c) continue;
+        // b187 - o operador trocou de produto/fechou o modal? o laco para aqui
+        if ((window._kitEpoca || 0) !== minhaEpoca) break;
         var qtd = qtdBase * (c.quantidade || 1);
         if (msg) msg.innerHTML = '<span style="color:#555;">lançando ' + qtd + '× ' + escDef(c.sku) + '…</span>';
         try {
@@ -1176,6 +1179,8 @@
       }
       window._kitOcupado = false;
       if (btnSalvar) { btnSalvar.disabled = false; btnSalvar.style.opacity = ''; }
+      // b187 - laco obsoleto nao escreve na tela nova nem fecha o modal dela
+      if ((window._kitEpoca || 0) !== minhaEpoca) return;
       // b181 (review do Codex) - SUCESSO PARCIAL nao pode fechar o modal com
       // o joinha verde: o que falhou some da frente e o operador so descobre
       // depois (ou repete o que ja gravou). As que falharam ficam na tela.

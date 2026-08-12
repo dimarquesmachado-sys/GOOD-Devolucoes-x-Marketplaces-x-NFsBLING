@@ -213,7 +213,7 @@ function montar(router, deps) {
             const restante = limite - Date.now();
             if (restante <= 0) { naoResolvidos++; continue; }
             // b186 - timeout REAL no axios, nao so o race
-            const r = await comPrazo(bling.chamarBling('/produtos/' + id, { timeout: restante }), restante);
+            const r = await comPrazo(bling.chamarBling('/produtos/' + id, { timeout: restante, semRetentativa: true }), restante);
             const d = (r && r.ok && r.data && r.data.data) || null;
             if (d) {
               sku = String(d.codigo || d.sku || '').trim();
@@ -486,11 +486,17 @@ function montar(router, deps) {
         let cru = item._compsCru;
         if (!cru) {
           try {
-            await esperarVezDetalhe();
+            // b187 - a vaga NEM E RESERVADA se nascer depois do prazo
+            if (!(await esperarVezDetalhe(prazoKit - Date.now()))) throw new Error('fila alem do prazo do kit');
             // b185 (review do Codex) - a espera na FILA tambem conta no prazo
             const restanteKit = prazoKit - Date.now();
             if (restanteKit <= 0) throw new Error('prazo do kit esgotado na fila');
-            const rK = await comPrazo(bling.chamarBling('/produtos/' + item.id), restanteKit);   // b183/b184
+            // b187 - timeout real + sem retentativa orfa (o 429/401 do
+            // chamarBling dormia 1,5s e disparava outra requisicao depois
+            // que este laco ja tinha desistido)
+            const rK = await comPrazo(
+              bling.chamarBling('/produtos/' + item.id, { timeout: restanteKit, semRetentativa: true }),
+              restanteKit);
             const dK = (rK && rK.ok && rK.data && rK.data.data) || null;
             cru = extrairComponentes(dK);
           } catch (e) { cru = null; }

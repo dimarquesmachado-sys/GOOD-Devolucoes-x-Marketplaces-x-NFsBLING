@@ -825,8 +825,12 @@
 
     // v4.66 - o kit pendente e o aviso morrem a cada abertura/busca/escolha
     function limparKitPendente() {
+      // v4.72 (review do Codex) - trocar de produto/fechar o modal NAO pode
+      // zerar a guarda de um laco AINDA RODANDO: o laco velho continuava
+      // gravando e a tela nova ja aceitava outro salvamento. Agora a "epoca"
+      // muda, o laco velho se descobre obsoleto e para sozinho.
+      window._kitEpoca = (window._kitEpoca || 0) + 1;
       window._kitPendente = null;
-      window._kitOcupado = false;
       var m = document.getElementById('defMsg');
       if (m) m.innerHTML = '';
     }
@@ -1025,6 +1029,7 @@
       if (!pend) { if (msg) msg.innerHTML = '<span style="color:#c62828;">recomece a busca do produto.</span>'; return; }
       if (window._kitOcupado) return;      // toque duplo gravava duas vezes
       window._kitOcupado = true;
+      var minhaEpoca = window._kitEpoca || 0;   // v4.72
       var botoes = document.querySelectorAll('#defMsg button');
       for (var b = 0; b < botoes.length; b++) { botoes[b].disabled = true; botoes[b].style.opacity = '.55'; }
       // v4.71 (review do Codex) - o botao PRINCIPAL de salvar tambem trava:
@@ -1038,6 +1043,8 @@
       for (var i = 0; i < alvos.length; i++) {
         var c = alvos[i];
         if (!c) continue;
+        // v4.72 - o operador trocou de produto/fechou o modal? o laco para aqui
+        if ((window._kitEpoca || 0) !== minhaEpoca) break;
         var qtd = qtdBase * (c.quantidade || 1);
         if (msg) msg.innerHTML = '<span style="color:#555;">lançando ' + qtd + '× ' + escDef(c.sku) + '…</span>';
         try {
@@ -1054,6 +1061,8 @@
       }
       window._kitOcupado = false;
       if (btnSalvar) { btnSalvar.disabled = false; btnSalvar.style.opacity = ''; }
+      // v4.72 - laco obsoleto nao escreve na tela nova nem fecha o modal dela
+      if ((window._kitEpoca || 0) !== minhaEpoca) return;
       if (lancados && !falharam.length && msg) {
         window._kitPendente = null;
         msg.innerHTML = '<span style="color:#2e7d32;">\u2705 ' + lancados + ' peça(s) lançada(s) no produto simples!'
