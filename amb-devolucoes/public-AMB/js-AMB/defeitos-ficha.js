@@ -48,7 +48,7 @@
     if (!v) return;
     if (v.tipo === 'busca') abrirBuscaDefeitos(v.arg, true);
     else if (v.tipo === 'ficha') abrirFichaDefeito(v.arg, true);
-    else if (v.tipo === 'fila') abrirFilaPedidos(true);
+    else if (v.tipo === 'fila') abrirFilaPedidos(true, v.arg === true);   // b190 - volta pra ABA em que ele estava
   };
 
   // b117 - aviso escrito NA TELA, no lugar de pop-up
@@ -821,7 +821,9 @@
   };
 
   // ── 4) FILA DE PEDIDOS ─────────────────────────────────────────────
-  function linhaPedido(p, comAcoes) {
+  // b190 - `daAbaArquivadas` vem de QUEM renderizou, nao do estado
+  // global: com duas requisicoes em voo, o global ja era o do clique novo.
+  function linhaPedido(p, comAcoes, daAbaArquivadas) {
     var cor = p.tipo === 'descarte' ? '#9E1A1A' : '#116B4E';
     var selo = p.tipo === 'descarte'
       ? '<span style="background:#FBEAE8;color:#8C1D18;border-radius:6px;padding:2px 8px;font-size:11.5px;">DESCARTE</span>'
@@ -904,20 +906,76 @@
     if (comAcoes && p.status === 'autorizado' && !(p.tipo === 'recuperado' && p.estoque_produto_id)) {
       h += '<button onclick="decidirPedido(' + p.id + ',\'concluir\')" style="width:100%;margin-top:4px;border:1px solid #ddd;background:#fff;border-radius:8px;padding:9px;cursor:pointer;">Marcar Como Feito</button>';
     }
+    // b189 - "tirar da frente" / "voltar pra fila" (so admin, so na fila)
+    if (comAcoes && euSouAdmin) {
+      h += daAbaArquivadas
+        ? '<button onclick="arquivarPedido(' + p.id + ',false,true)" style="width:100%;margin-top:6px;border:1px solid #cfc7ea;'
+          + 'background:#f4f1fb;color:#3C3489;border-radius:8px;padding:9px;cursor:pointer;font-weight:700;">'
+          + '↩️ Voltar pra fila</button>'
+        : '<button onclick="arquivarPedido(' + p.id + ',true,false)" style="width:100%;margin-top:6px;border:1px solid #ddd;'
+          + 'background:#fff;color:#555;border-radius:8px;padding:9px;cursor:pointer;">'
+          + '🗂️ Tirar da frente (já tratei)</button>';
+    }
     return h + '</div></div>';
   }
 
-  window.abrirFilaPedidos = async function (voltando) {
-    registrar('fila', null, voltando);
+  // b189 (pedido do Diego) - a fila ganhou DUAS ABAS: o que ainda esta na
+  // frente dele e o que ele ja tratou. "Tirar da frente" nao apaga nem muda
+  // status - so arquiva, e a outra aba devolve pra fila quando ele quiser.
+  window.abrirFilaPedidos = async function (voltando, verArquivadas) {
+    var arq = !!verArquivadas;
+    window._filaArquivadas = arq;
+    // b190 (review do Codex) - a aba vai na pilha de navegacao: abrir
+    // uma peca a partir de "Ja tratadas" e voltar caia sempre em "Na fila".
+    registrar('fila', arq, voltando);
+    // b190 - resposta ATRASADA nao pinta a tela: trocar de aba antes de
+    // a anterior chegar desenhava a lista velha com botoes da aba errada.
+    var meuToken = (window._filaToken = (window._filaToken || 0) + 1);
     abrir(topo('📥 Solicitações do Galpão') + '<div style="padding:16px;color:#888;">carregando...</div>');
-    var d = await api('/api/defeitos/pedidos');
+    var d = await api('/api/defeitos/pedidos' + (arq ? '?arquivados=1' : ''));
+    if (meuToken !== window._filaToken) return;      // b190 - chegou tarde, ignora
     var lista = (d && d.pedidos) || [];
+    var aba = function (rotulo, ativo, alvo) {
+      return '<button type="button" onclick="abrirFilaPedidos(false,' + (alvo ? 'true' : 'false') + ')" '
+        + 'style="border:none;border-radius:8px;padding:9px 14px;font-weight:700;font-size:13px;cursor:pointer;margin-right:7px;'
+        + (ativo ? 'background:#3C3489;color:#fff;' : 'background:#eee;color:#555;') + '">' + rotulo + '</button>';
+    };
+    var vazio = arq
+      ? 'nada tratado ainda — o que você tirar da frente aparece aqui.'
+      : 'nenhuma solicitação na fila. 🎉';
     var html = topo('📥 Solicitações do Galpão')
       + '<div style="padding:14px;">'
-      + (lista.length ? lista.map(function (p) { return linhaPedido(p, true); }).join('')
-                      : '<div style="color:#888;font-size:13px;">nenhum pedido por enquanto.</div>')
+      + '<div id="filaAviso"></div>'
+      + '<div style="margin-bottom:11px;">'
+        + aba('⏳ Na fila', !arq, false)
+        + aba('✅ Já tratadas', arq, true)
+      + '</div>'
+      + (lista.length ? lista.map(function (p) { return linhaPedido(p, true, arq); }).join('')
+                      : '<div style="color:#888;font-size:13px;">' + vazio + '</div>')
       + '</div>';
     abrir(html);
+  };
+
+  // b189 - tira da frente (ou devolve pra fila). SEM POPUP: o aviso de erro
+  // aparece numa faixa dentro do proprio card, e a lista se recarrega.
+  window.arquivarPedido = async function (id, arquivar, daAba) {
+    var aviso = document.getElementById('filaAviso');
+    try {
+      var r = await api('/api/defeitos/pedido/' + id + '/arquivar', {
+        method: 'POST', body: JSON.stringify({ arquivar: !!arquivar }),
+      });
+      if (r && r.ok) { abrirFilaPedidos(false, !!daAba); return; }   // b190
+      if (aviso) {
+        aviso.innerHTML = '<div style="background:#fff8e1;border:1px solid #ffe082;border-radius:8px;'
+          + 'padding:9px 11px;font-size:12.5px;color:#7a5c00;margin-bottom:10px;">⚠ '
+          + esc((r && r.erro) || 'não consegui') + '</div>';
+      }
+    } catch (e) {
+      if (aviso) {
+        aviso.innerHTML = '<div style="background:#fdecea;border:1px solid #f5c6c3;border-radius:8px;'
+          + 'padding:9px 11px;font-size:12.5px;color:#8C1D18;margin-bottom:10px;">Erro de conexão.</div>';
+      }
+    }
   };
 
   window.decidirPedido = async function (id, acao) {
