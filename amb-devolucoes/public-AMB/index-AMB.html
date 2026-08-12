@@ -936,7 +936,12 @@
     }
 
     function selecionarProdutoDefeito(p, i) {
-      limparKitPendente();   // b181 - estado do kit anterior nunca sobrevive
+      limparKitPendente();
+      // b184 (review do Codex) - a quantidade volta a 1 em TODA escolha; quem
+      // precisa de outro valor (peca de kit com 2×) reescreve logo depois.
+      // Antes, escolher uma peca 2× e depois um produto comum lancava 2 un.
+      var qtdReset = document.getElementById('defQtd');
+      if (qtdReset) qtdReset.value = 1;   // b181 - estado do kit anterior nunca sobrevive
       _defProdutoEscolhido = p;
       var boxImg = document.getElementById('defImg');
       if (boxImg) {

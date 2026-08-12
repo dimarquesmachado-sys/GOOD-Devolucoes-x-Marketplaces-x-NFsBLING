@@ -3223,14 +3223,18 @@ function extrairComponentes(det) {
 // Devolve TAMBEM o que nao resolveu: entregar so as pecas resolvidas como
 // se fossem a composicao inteira faria o estoquista lancar em metade do
 // kit sem saber (falha do Bling, kit grande, ou o prazo estourando).
-async function resolverComponentesKit(comps) {
+async function resolverComponentesKit(comps, limiteExterno) {
   const brutos = Array.isArray(comps) ? comps : [];
   const lista = brutos.filter(Boolean);
   // v4.68 (review do Codex) - entrada NULA na estrutura tambem e uma peca
   // que o operador nao vai ver: some do array mas entra em `faltando`,
   // senao a composicao seria dada como completa (e cacheada por 6h).
   const nulos = brutos.length - lista.length;
-  const limite = Date.now() + COMPONENTES_PRAZO_MS;
+  // v4.69 (review do Codex) - quando o chamador ja abriu um prazo (a busca
+  // da estrutura do kit), ele e REAPROVEITADO: antes a estrutura gastava 8s
+  // e a resolucao das pecas abria outros 8s, entao um unico kit podia
+  // segurar a busca por ~16s (e a busca visita ate 3 kits).
+  const limite = limiteExterno || (Date.now() + COMPONENTES_PRAZO_MS);
   const alvos = lista.slice(0, COMPONENTES_MAX);
   const truncados = Math.max(0, lista.length - alvos.length);
   const out = [];
@@ -3379,9 +3383,13 @@ async function tirarKits(lista, diag) {
   // levam a COMPOSICAO junto: o estoquista escolhe a peca no proprio card,
   // sem popup e sem precisar preencher e salvar antes.
   let kitsResolvidos = 0;
+  // v4.69 - teto de tempo do laco INTEIRO, alem do prazo de cada kit: no
+  // pior caso a busca nao fica presa somando os prazos dos 3 kits.
+  const prazoLaco = Date.now() + COMPONENTES_PRAZO_MS * 2;
   for (const item of saida) {
     if (!item.ehKit || !item.id) continue;
     if (kitsResolvidos >= 3) break;      // kit e excecao numa busca de estoquista
+    if (Date.now() >= prazoLaco) break;  // v4.69 - tempo do laco esgotado
     const doCache = compsCacheGet(item.id);
     if (doCache) {
       item.componentes = doCache.itens;
@@ -3389,19 +3397,21 @@ async function tirarKits(lista, diag) {
       kitsResolvidos++;
       continue;
     }
+    // v4.69 - UM prazo unico para este kit: estrutura + resolucao das pecas
+    const prazoKit = Math.min(Date.now() + COMPONENTES_PRAZO_MS, prazoLaco);
     let cru = item._compsCru;
     if (!cru || !cru.length) {
       try {
         await esperarVezDetalhe();                      // v4.67 - ritmo global
         // v4.68 (review do Codex) - o prazo vale TAMBEM pra esta consulta:
         // ela e pre-requisito da composicao e travava a busca inteira.
-        const rK = await comPrazo(chamarBling(`https://api.bling.com.br/Api/v3/produtos/${item.id}`), COMPONENTES_PRAZO_MS);
+        const rK = await comPrazo(chamarBling(`https://api.bling.com.br/Api/v3/produtos/${item.id}`), prazoKit - Date.now());
         const dK = (rK && rK.ok && rK.data && rK.data.data) || null;
         cru = extrairComponentes(dK);
       } catch (e) { cru = null; }
     }
     if (cru && cru.length) {
-      const rC = await resolverComponentesKit(cru);
+      const rC = await resolverComponentesKit(cru, prazoKit);
       item.componentes = rC.itens;
       item.componentes_faltando = rC.faltando;
       // v4.67 (review do Codex) - SO A COMPOSICAO COMPLETA vira cache de 6h.

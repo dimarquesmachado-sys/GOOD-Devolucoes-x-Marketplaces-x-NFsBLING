@@ -182,13 +182,15 @@ function montar(router, deps) {
   // so as pecas resolvidas como se fossem a composicao inteira faria o
   // estoquista lancar em metade do kit sem saber (falha do Bling num
   // componente, kit com mais de 12 pecas, ou o prazo estourando).
-  async function resolverComponentes(comps) {
+  async function resolverComponentes(comps, limiteExterno) {
     const brutos = Array.isArray(comps) ? comps : [];
     const lista = brutos.filter(Boolean);   // b181 - entrada nula nao derruba a trava
     // b183 (review do Codex no PR da GOOD) - ...mas CONTA como peca que
     // faltou, senao a composicao passaria por completa
     const nulos = brutos.length - lista.length;
-    const limite = Date.now() + COMPONENTES_PRAZO_MS;
+    // b184 (review do Codex no PR da GOOD) - prazo REAPROVEITADO quando o
+    // chamador ja abriu um (estrutura + pecas somavam ~16s por kit)
+    const limite = limiteExterno || (Date.now() + COMPONENTES_PRAZO_MS);
     const alvos = lista.slice(0, COMPONENTES_MAX);
     const truncados = Math.max(0, lista.length - alvos.length);
     const out = [];
@@ -464,9 +466,11 @@ function montar(router, deps) {
       // que vao pra tela levam a COMPOSICAO junto, pra o estoquista escolher
       // a peca ali mesmo: sem popup e sem precisar preencher e salvar antes.
       let kitsResolvidos = 0;
+      const prazoLaco = Date.now() + COMPONENTES_PRAZO_MS * 2;   // b184
       for (const item of finais) {
         if (item._fmt !== 'E' || !item.id) continue;
         if (kitsResolvidos >= 3) break;          // kit e excecao na busca; teto barato
+        if (Date.now() >= prazoLaco) break;      // b184 - tempo do laco esgotado
         const doCache = compsCacheGet(item.id);
         if (doCache) {
           item.componentes = doCache.itens;
@@ -474,17 +478,18 @@ function montar(router, deps) {
           kitsResolvidos++;
           continue;
         }
+        const prazoKit = Math.min(Date.now() + COMPONENTES_PRAZO_MS, prazoLaco);   // b184
         let cru = item._compsCru;
         if (!cru) {
           try {
             await esperarVezDetalhe();
-            const rK = await comPrazo(bling.chamarBling('/produtos/' + item.id), COMPONENTES_PRAZO_MS);   // b183
+            const rK = await comPrazo(bling.chamarBling('/produtos/' + item.id), prazoKit - Date.now());   // b183/b184
             const dK = (rK && rK.ok && rK.data && rK.data.data) || null;
             cru = extrairComponentes(dK);
           } catch (e) { cru = null; }
         }
         if (cru && cru.length) {
-          const rC = await resolverComponentes(cru);
+          const rC = await resolverComponentes(cru, prazoKit);
           item.componentes = rC.itens;
           item.componentes_faltando = rC.faltando;
           // b183 - so a composicao COMPLETA vira cache de 6h (parcial presa
