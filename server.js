@@ -3250,10 +3250,13 @@ async function resolverComponentesKit(comps, limiteExterno) {
       else if (Date.now() >= limite) { naoResolvidos++; continue; }
       else {
         try {
-          await esperarVezDetalhe();                    // v4.67 - ritmo global
+          // v4.71 - a vaga na fila ja nasce dentro do prazo do kit
+          if (!(await esperarVezDetalhe(limite - Date.now()))) { naoResolvidos++; continue; }
           const restante = limite - Date.now();
           if (restante <= 0) { naoResolvidos++; continue; }
-          const r = await comPrazo(chamarBling(`https://api.bling.com.br/Api/v3/produtos/${id}`), restante);
+          const r = await comPrazo(
+            chamarBling(`https://api.bling.com.br/Api/v3/produtos/${id}`, { timeout: restante }),
+            restante);
           const d = (r && r.ok && r.data && r.data.data) || null;
           if (d) {
             sku = String(d.codigo || d.sku || '').trim();
@@ -3276,12 +3279,18 @@ async function resolverComponentesKit(comps, limiteExterno) {
 // dobro do ritmo na API do Bling. Agora o intervalo e global, como na AMB.
 const DETALHE_INTERVALO_MS = 350;
 let DETALHE_PROXIMO = 0;
-async function esperarVezDetalhe() {
+// v4.71 (review do Codex) - a ESPERA NA FILA tambem conta no prazo: com
+// concorrencia, a vaga podia sair depois do prazo do kit e cada peca
+// gastava a espera inteira antes de desistir. Passando `prazoMs`, a vaga
+// nem e reservada quando ja nasceria tarde (e a fila nao anda a toa).
+async function esperarVezDetalhe(prazoMs) {
   const agora = Date.now();
   const alvo = Math.max(agora, DETALHE_PROXIMO);
-  DETALHE_PROXIMO = alvo + DETALHE_INTERVALO_MS;
   const espera = alvo - agora;
+  if (prazoMs !== undefined && espera > Math.max(0, prazoMs)) return false;
+  DETALHE_PROXIMO = alvo + DETALHE_INTERVALO_MS;
   if (espera > 0) await new Promise(r => setTimeout(r, espera));
+  return true;
 }
 // v4.67 (review do Codex) - o prazo tambem vale pra requisicao JA EM VOO:
 // o chamarBling nao tem timeout proprio, entao uma consulta travada
@@ -3370,6 +3379,15 @@ async function tirarKits(lista, diag) {
 
     // v4.62 - o kit apurado no detalhe tambem fica NA LISTA, marcado
     // (antes era descartado; agora a explosao da gravacao precisa dele)
+    // v4.71 (review do Codex) - veredito SIMPLES limpa marca de kit antiga:
+    // o item pode chegar marcado (metadado da listagem, cache de outra
+    // rodada) e sem isso seguiria com o rotulo 📦 e o card travado.
+    if (fmt && fmt !== 'E' && item.ehKit) {
+      item.ehKit = false;
+      item.componentes = undefined;
+      item.componentes_faltando = undefined;
+      item.nome = String(item.nome || '').replace('📦 KIT · ', '');
+    }
     if (fmt === 'E') {
       item.ehKit = true;
       if (String(item.nome || '').indexOf('📦 KIT · ') !== 0) item.nome = '📦 KIT · ' + (item.nome || '');
@@ -3411,7 +3429,10 @@ async function tirarKits(lista, diag) {
         if (restanteKit <= 0) throw new Error('prazo do kit esgotado na fila');
         // v4.68 - o prazo vale TAMBEM pra esta consulta: ela e pre-requisito
         // da composicao e travava a busca inteira.
-        const rK = await comPrazo(chamarBling(`https://api.bling.com.br/Api/v3/produtos/${item.id}`), restanteKit);
+        // v4.71 - timeout REAL no axios (o race so ignorava a resposta)
+        const rK = await comPrazo(
+          chamarBling(`https://api.bling.com.br/Api/v3/produtos/${item.id}`, { timeout: restanteKit }),
+          restanteKit);
         const dK = (rK && rK.ok && rK.data && rK.data.data) || null;
         cru = extrairComponentes(dK);
       } catch (e) { cru = null; }

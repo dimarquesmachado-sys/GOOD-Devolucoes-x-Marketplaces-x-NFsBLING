@@ -1027,6 +1027,10 @@
       window._kitOcupado = true;
       var botoes = document.querySelectorAll('#defMsg button');
       for (var b = 0; b < botoes.length; b++) { botoes[b].disabled = true; botoes[b].style.opacity = '.55'; }
+      // v4.71 (review do Codex) - o botao PRINCIPAL de salvar tambem trava:
+      // clicar nele durante os lancamentos tentaria gravar o KIT de novo
+      var btnSalvar = document.getElementById('defBtnSalvar');
+      if (btnSalvar) { btnSalvar.disabled = true; btnSalvar.style.opacity = '.5'; }
       var lista = pend.d.componentes_det || [];
       var alvos = indice < 0 ? lista : [lista[indice]];
       var qtdBase = parseInt(pend.payload.qtd, 10) || 1;
@@ -1049,13 +1053,21 @@
         } catch (e) { erro = 'Erro de conexão no ' + c.sku + '.'; falharam.push(c); }
       }
       window._kitOcupado = false;
+      if (btnSalvar) { btnSalvar.disabled = false; btnSalvar.style.opacity = ''; }
       if (lancados && !falharam.length && msg) {
         window._kitPendente = null;
         msg.innerHTML = '<span style="color:#2e7d32;">\u2705 ' + lancados + ' peça(s) lançada(s) no produto simples!'
           + ' Abra 🔧 Defeitos pra ver e imprimir etiquetas.</span>';
         setTimeout(function () { fecharModalDefeito(); }, 2200);
       } else if (falharam.length && msg) {
-        pend.d = Object.assign({}, pend.d, { componentes_det: falharam, composicao_completa: true });
+        // v4.71 (review do Codex) - PRESERVA o estado de composicao incompleta:
+        // forcar `true` escondia o aviso de peca nao resolvida e ainda
+        // liberava o "lancar em TODAS" com a composicao pela metade
+        pend.d = Object.assign({}, pend.d, {
+          componentes_det: falharam,
+          composicao_completa: pend.d.composicao_completa !== false,
+          componentes_faltando: pend.d.componentes_faltando || 0,
+        });
         explodirKitDefeito(pend.d, pend.payload, msg);
         msg.innerHTML = '<div style="background:#fdecea;border:1px solid #f5c6c3;border-radius:8px;padding:8px 10px;'
           + 'font-size:12.5px;color:#8C1D18;margin-bottom:8px;">'

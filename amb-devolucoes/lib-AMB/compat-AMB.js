@@ -115,12 +115,15 @@ async function comPrazo(promessa, ms) {
 }
 const DETALHE_INTERVALO_MS = 350;
 let DETALHE_PROXIMO = 0;
-async function esperarVezDetalhe() {
+// b186 (review do Codex no PR da GOOD) - a espera na FILA conta no prazo
+async function esperarVezDetalhe(prazoMs) {
   const agora = Date.now();
   const alvo = Math.max(agora, DETALHE_PROXIMO);
-  DETALHE_PROXIMO = alvo + DETALHE_INTERVALO_MS;
   const espera = alvo - agora;
+  if (prazoMs !== undefined && espera > Math.max(0, prazoMs)) return false;
+  DETALHE_PROXIMO = alvo + DETALHE_INTERVALO_MS;
   if (espera > 0) await new Promise(r => setTimeout(r, espera));
+  return true;
 }
 
 /**
@@ -206,10 +209,11 @@ function montar(router, deps) {
         else if (Date.now() >= limite) { naoResolvidos++; continue; }   // b181 - prazo estourou
         else {
           try {
-            await esperarVezDetalhe();
+            if (!(await esperarVezDetalhe(limite - Date.now()))) { naoResolvidos++; continue; }
             const restante = limite - Date.now();
             if (restante <= 0) { naoResolvidos++; continue; }
-            const r = await comPrazo(bling.chamarBling('/produtos/' + id), restante);   // b183
+            // b186 - timeout REAL no axios, nao so o race
+            const r = await comPrazo(bling.chamarBling('/produtos/' + id, { timeout: restante }), restante);
             const d = (r && r.ok && r.data && r.data.data) || null;
             if (d) {
               sku = String(d.codigo || d.sku || '').trim();
