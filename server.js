@@ -3153,6 +3153,7 @@ function enriquecerEansEmBackground() {
     console.log(`[PRODUTOS] buscando EAN de ${fila.length} produtos (background)...`);
     for (const p of fila) {
       try {
+        await esperarVezDetalhe();                        // v4.67 - ritmo global
         const r = await chamarBling(`https://api.bling.com.br/Api/v3/produtos/${p.id}`);
         const det = (r && r.ok && ((r.data && r.data.data) || r.data)) || null;
         const eans = possiveisGtins(det);
@@ -3240,15 +3241,17 @@ async function resolverComponentesKit(comps) {
       else if (Date.now() >= limite) { naoResolvidos++; continue; }
       else {
         try {
-          const r = await chamarBling(`https://api.bling.com.br/Api/v3/produtos/${id}`);
-          const d = (r.ok && r.data && r.data.data) || null;
+          await esperarVezDetalhe();                    // v4.67 - ritmo global
+          const restante = limite - Date.now();
+          if (restante <= 0) { naoResolvidos++; continue; }
+          const r = await comPrazo(chamarBling(`https://api.bling.com.br/Api/v3/produtos/${id}`), restante);
+          const d = (r && r.ok && r.data && r.data.data) || null;
           if (d) {
             sku = String(d.codigo || d.sku || '').trim();
             nome = nome || String(d.nome || d.descricao || '').trim();
             skuCacheSet(id, sku, nome);
           }
-          await new Promise(r2 => setTimeout(r2, 350));
-        } catch (e) { /* conta como nao resolvido abaixo */ }
+        } catch (e) { /* prazo ou falha: conta como nao resolvido abaixo */ }
       }
     }
     const q = Number(c && (c.quantidade || c.qtd)) || 1;
@@ -3256,6 +3259,32 @@ async function resolverComponentesKit(comps) {
     else naoResolvidos++;
   }
   return { itens: out, faltando: naoResolvidos + truncados };
+}
+
+// v4.67 (review do Codex) - CADENCIA COMPARTILHADA pelo processo. A pausa
+// fixa dentro de cada laco so espacava as chamadas DAQUELE laco: duas
+// buscas simultaneas (ou a busca + o enriquecimento por EAN) somavam o
+// dobro do ritmo na API do Bling. Agora o intervalo e global, como na AMB.
+const DETALHE_INTERVALO_MS = 350;
+let DETALHE_PROXIMO = 0;
+async function esperarVezDetalhe() {
+  const agora = Date.now();
+  const alvo = Math.max(agora, DETALHE_PROXIMO);
+  DETALHE_PROXIMO = alvo + DETALHE_INTERVALO_MS;
+  const espera = alvo - agora;
+  if (espera > 0) await new Promise(r => setTimeout(r, espera));
+}
+// v4.67 (review do Codex) - o prazo tambem vale pra requisicao JA EM VOO:
+// o chamarBling nao tem timeout proprio, entao uma consulta travada
+// seguraria o POST inteiro muito alem dos 8s prometidos.
+async function comPrazo(promessa, ms) {
+  let t;
+  try {
+    return await Promise.race([
+      promessa,
+      new Promise((_, rej) => { t = setTimeout(() => rej(new Error('prazo da consulta esgotado')), Math.max(500, ms)); }),
+    ]);
+  } finally { clearTimeout(t); }
 }
 
 const FORMATO_CACHE = new Map();
@@ -3294,6 +3323,7 @@ async function tirarKits(lista, diag) {
       // lista. Agora nada que venha depois consegue mexer no veredito.
       // ═══════════════════════════════════════════════════════════════
       try {
+        await esperarVezDetalhe();                      // v4.67 - ritmo global
         const rD = await chamarBling(`https://api.bling.com.br/Api/v3/produtos/${id}`);
         det = (rD.ok && rD.data && rD.data.data) || null;
         if (det) {
@@ -3315,7 +3345,6 @@ async function tirarKits(lista, diag) {
       } catch (e) {
         if (diag) diag.push({ sku: item.sku, id, erro: String(e.message || e) });
       }
-      await new Promise(r => setTimeout(r, 120));
     }
 
     // a foto vem do mesmo detalhe, mas em bloco separado: se falhar aqui,
@@ -3358,17 +3387,21 @@ async function tirarKits(lista, diag) {
     let cru = item._compsCru;
     if (!cru || !cru.length) {
       try {
+        await esperarVezDetalhe();                      // v4.67 - ritmo global
         const rK = await chamarBling(`https://api.bling.com.br/Api/v3/produtos/${item.id}`);
         const dK = (rK.ok && rK.data && rK.data.data) || null;
         cru = extrairComponentes(dK);
-        await new Promise(r => setTimeout(r, 350));
       } catch (e) { cru = null; }
     }
     if (cru && cru.length) {
       const rC = await resolverComponentesKit(cru);
       item.componentes = rC.itens;
       item.componentes_faltando = rC.faltando;
-      COMPS_POR_KIT.set(item.id, { itens: rC.itens, faltando: rC.faltando, ts: Date.now() });
+      // v4.67 (review do Codex) - SO A COMPOSICAO COMPLETA vira cache de 6h.
+      // Guardar a parcial fazia a proxima busca cair no cache e nunca mais
+      // tentar as pecas que faltaram — o "tente de novo em instantes" da
+      // tela viraria mentira por 6 horas.
+      if (rC.faltando === 0) COMPS_POR_KIT.set(item.id, { itens: rC.itens, faltando: 0, ts: Date.now() });
     }
     kitsResolvidos++;
   }

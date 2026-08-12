@@ -206,7 +206,7 @@
         <div class="topo-txt">
           <h1>AMBTotal Devoluções</h1>
           <p>Identificar venda &middot; NF-e &middot; Triagem
-            <span class="topo-versao">&middot; v3.68 &middot; <span id="serverVersion">checando...</span></span>
+            <span class="topo-versao">&middot; v3.69 &middot; <span id="serverVersion">checando...</span></span>
           </p>
         </div>
         <!-- b92 - os 2 do estoque de defeitos subiram pra MESMA faixa:
@@ -849,7 +849,11 @@
           // b182 (pedido do Diego) - KIT ja vem DESTRINCHADO no proprio card:
           // as pecas aparecem na lista e ele clica direto na que quer. O kit
           // em si deixa de ser clicavel (nao existe na prateleira).
-          var ehKitCard = !!(p.ehKit && p.componentes && p.componentes.length);
+          var ehKitCard = !!p.ehKit;   // b183 (review do Codex no PR da GOOD) -
+          // kit CONHECIDO nunca e selecionavel, mesmo sem composicao resolvida
+          // (4o kit da busca, ou todas as consultas falhando): antes o card
+          // voltava a ser clicavel e dava pra lancar defeito NO KIT.
+          var comps = (p.componentes && p.componentes.length) ? p.componentes : null;
           h += '<div id="defRes' + i + '"' + (ehKitCard ? '' : ' onclick="escolherProdutoDefeito(' + i + ')"') + ' data-i="' + i + '" style="border:1px solid ' + (ehKitCard ? '#e4dcf1' : '#ddd') + ';border-radius:10px;padding:10px;margin-bottom:7px;' + (ehKitCard ? 'background:#faf7ff;' : 'cursor:pointer;background:#fff;') + 'display:flex;gap:14px;align-items:center;">'
             + (p.imagem
                 ? '<img src="' + escDef(p.imagem) + '" onclick="event.stopPropagation();abrirZoomProduto(this.src)" onerror="this.style.display=\'none\'" class="foto-produto-lista" style="cursor:zoom-in;">'
@@ -861,8 +865,11 @@
             + (ehKitCard
                 ? '<div style="margin-top:9px;">'
                     + '<div style="font-size:12.5px;color:#561A9E;font-weight:700;margin-bottom:5px;">'
-                      + 'Este kit é montado com estas peças — clique na que está com defeito:</div>'
-                    + p.componentes.map(function (c, j) {
+                      + (comps
+                          ? 'Este kit é montado com estas peças — clique na que está com defeito:'
+                          : 'É um KIT — não dá pra lançar defeito nele. Não consegui listar as peças agora;'
+                            + ' tente de novo em instantes ou busque direto pelo SKU da peça.') + '</div>'
+                    + (comps || []).map(function (c, j) {
                         return '<div style="display:flex;align-items:center;gap:9px;padding:6px 0;border-top:1px solid #efe8f7;">'
                           + '<div style="flex:1;min-width:0;">'
                             + '<div style="font-size:13.5px;font-weight:600;color:#241a35;">' + escDef(c.nome || c.sku) + '</div>'
