@@ -824,7 +824,34 @@
   // v4.74 - `daAbaArquivadas` vem de QUEM renderizou, nao do estado
   // global: com duas requisicoes em voo, o global ja era o do clique novo.
   function linhaPedido(p, comAcoes, daAbaArquivadas) {
-    var cor = p.tipo === 'descarte' ? '#9E1A1A' : '#116B4E';
+    // v4.75 (pedido do Diego) - a COR do card conta a historia do estoque:
+    //   VERDE  = recuperada que JA entrou no estoque do Bling
+    //   AMBAR  = recuperada que ainda NAO teve lancamento (o que sobra pra fazer)
+    //   VERMELHO = descarte (nao envolve entrada de estoque)
+    // v4.76 (review do Codex) - lancamento AUTOMATICO e MANUAL contam:
+    // quando a entrada automatica falha, a propria tela manda lancar a mao
+    // no Bling e concluir; sem isso o card ficaria ambar pra sempre,
+    // aparecendo como trabalho que ainda falta.
+    // v4.77 (review do Codex) - NAO INVENTAR LANCAMENTO. O "Marcar Como
+    // Feito" so troca o status: nao prova entrada no Bling. E solicitacao
+    // RECUSADA nao e trabalho pendente. Ficaram 4 estados honestos:
+    //   VERDE   estoque_produto_id -> entrada confirmada no Bling
+    //   AMBAR   ainda esperando lancamento (pendente/autorizado)
+    //   CINZA   fechada sem confirmacao (concluida a mao) ou recusada
+    //   VERMELHO descarte
+    var estoqueAuto = p.tipo === 'recuperado' && !!p.estoque_produto_id;
+    var fechadaSemProva = p.tipo === 'recuperado' && !p.estoque_produto_id
+      && (p.status === 'concluido' || p.status === 'recusado');
+    var faltaLancar = p.tipo === 'recuperado' && !p.estoque_produto_id && !fechadaSemProva;
+    var jaNoEstoque = estoqueAuto;
+    var cor = p.tipo === 'descarte' ? '#9E1A1A'
+      : estoqueAuto ? '#0F6E56'
+      : fechadaSemProva ? '#6B6B6B'
+      : '#B26A00';
+    var fundoTopo = p.tipo === 'descarte' ? '#FDF7F7'
+      : estoqueAuto ? '#F3FBF7'
+      : fechadaSemProva ? '#F6F6F6'
+      : '#FFFBF0';
     var selo = p.tipo === 'descarte'
       ? '<span style="background:#FBEAE8;color:#8C1D18;border-radius:6px;padding:2px 8px;font-size:11.5px;">DESCARTE</span>'
       : '<span style="background:#E1F5EE;color:#0F6E56;border-radius:6px;padding:2px 8px;font-size:11.5px;">RECUPERADA</span>';
@@ -838,29 +865,64 @@
     // b131 - o NUMERO DA PECA em faixa azul no topo do pedido. Sem isso a
     // fila virava uma lista de SKUs iguais e nao dava pra saber de qual
     // luminaria era cada pedido.
-    var h = '<div style="border:1px solid #eee;border-left:4px solid ' + cor + ';border-radius:9px;overflow:hidden;margin-bottom:8px;">'
+    // v4.75 - CONTORNO INTEIRO na cor (antes so a lateral esquerda era
+    // colorida e a parte de baixo ficava aberta, sem fechar o card)
+    var h = '<div style="border:2px solid ' + cor + ';border-radius:10px;overflow:hidden;margin-bottom:8px;">'
       + (p.defeito_id
           ? '<div onclick="abrirFichaDefeito(\'' + esc(p.defeito_id) + '\')" '
             + 'style="background:#3C3489;color:#fff;padding:8px 12px;font-size:15px;font-weight:800;'
             + 'letter-spacing:.4px;cursor:pointer;">PEÇA #' + esc(p.defeito_id)
             + '<span style="float:right;font-weight:400;font-size:12px;opacity:.85;">abrir ficha →</span></div>'
           : '')
-      + '<div style="padding:11px;">'
+      + '<div style="padding:11px;background:' + fundoTopo + ';">'
       + '<div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap;margin-bottom:5px;">' + selo
       + '<b style="font-size:13.5px;">' + esc(p.sku || '-') + '</b>'
       + '<span style="color:#888;font-size:11.5px;">' + esc(p.quem_pediu || '-') + ' · ' + dataBr(p.criado_em) + '</span>'
-      + '<span style="margin-left:auto;font-size:12px;">' + estado + '</span></div>'
+      + '<span style="margin-left:auto;font-size:12px;">' + estado + '</span>'
+      // v4.75 - botaozinho de canto: so avisa que ele ja tratou (ou
+      // devolve pra fila). Titulo no hover explica, sem ocupar espaco.
+      + ((comAcoes && euSouAdmin)
+          ? (daAbaArquivadas
+              ? '<button type="button" title="Devolver esta solicitação para a fila" onclick="arquivarPedido(' + p.id + ',false,true)" '
+                + 'style="border:1px solid #cfc7ea;background:#f4f1fb;color:#3C3489;border-radius:7px;'
+                + 'padding:4px 9px;font-size:12px;font-weight:700;cursor:pointer;line-height:1.4;">↩️</button>'
+              : '<button type="button" title="Já tratei — tirar da frente" onclick="arquivarPedido(' + p.id + ',true,false)" '
+                + 'style="border:1px solid #ddd;background:#fff;color:#666;border-radius:7px;'
+                + 'padding:4px 9px;font-size:12px;cursor:pointer;line-height:1.4;">🗂️</button>')
+          : '')
+      + '</div>'
       + (p.titulo
           ? '<div style="font-size:14px;font-weight:600;margin:2px 0 6px;">' + esc(p.titulo) + '</div>'
           : '')
       + (p.localizacao ? '<div style="font-size:12px;color:#777;margin-bottom:5px;">📍 ' + esc(p.localizacao) + '</div>' : '')
-      + (p.estoque_qtd
+      // v4.76 (review do Codex) - o selo NAO depende mais de `estoque_qtd`
+      // (que so e gravado quando o pedido leva sku): quem nao distingue as
+      // cores precisa LER que houve lancamento. Sem quantidade, mostra sem ela.
+      + ((p.estoque_qtd || estoqueAuto)
           ? '<div style="background:#e9f7ef;border:1.5px solid #0F6E56;border-radius:9px;padding:8px 12px;margin:4px 0 7px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">'
-            + '<b style="color:#0F6E56;font-size:14px;letter-spacing:.3px;">📦 LANÇADO EM ESTOQUE · ' + esc(p.estoque_qtd) + ' un.</b>'
+            + '<b style="color:#0F6E56;font-size:14px;letter-spacing:.3px;">'
+            + ('📦 LANÇADO EM ESTOQUE' + (p.estoque_qtd ? ' · ' + esc(p.estoque_qtd) + ' un.' : ''))
+            + '</b>'
             + (p.estoque_produto_id
                 ? '<a href="https://www.bling.com.br/estoque.php?buscaid=' + esc(p.estoque_produto_id)
                   + '" target="_blank" style="color:#561A9E;font-weight:600;font-size:12.5px;">conferir no Bling ↗</a>'
                 : '')
+            + '</div>'
+          : '')
+      // v4.76 - o AMBAR tambem se explica por escrito
+      // v4.77 - o AMBAR so aparece quando a entrada AINDA E ESPERADA
+      + ((faltaLancar && !p.estoque_qtd)
+          ? '<div style="background:#FFF8E7;border:1.5px solid #B26A00;border-radius:9px;padding:7px 11px;margin:4px 0 7px;'
+            + 'font-size:12.5px;color:#8a5200;font-weight:600;">⏳ AINDA SEM LANÇAMENTO NO ESTOQUE</div>'
+          : '')
+      // v4.77 - fechada SEM registro de entrada: diz exatamente isso, sem
+      // afirmar que houve lancamento (o "Marcar Como Feito" nao prova nada)
+      + ((fechadaSemProva && !p.estoque_qtd)
+          ? '<div style="background:#F1F1F1;border:1.5px solid #9A9A9A;border-radius:9px;padding:7px 11px;margin:4px 0 7px;'
+            + 'font-size:12.5px;color:#555;font-weight:600;">'
+            + (p.status === 'recusado'
+                ? '🚫 RECUSADA — nenhuma entrada de estoque prevista'
+                : '✔️ FECHADA sem registro de entrada automática — confira no Bling se precisa lançar')
             + '</div>'
           : '')
       + (p.observacao ? '<div style="font-size:12.5px;color:#555;margin-bottom:6px;">' + esc(p.observacao) + '</div>' : '')
@@ -905,16 +967,8 @@
     if (comAcoes && p.status === 'autorizado' && !(p.tipo === 'recuperado' && p.estoque_produto_id)) {
       h += '<button onclick="decidirPedido(' + p.id + ',\'concluir\')" style="width:100%;margin-top:4px;border:1px solid #ddd;background:#fff;border-radius:8px;padding:9px;cursor:pointer;">Marcar Como Feito</button>';
     }
-    // v4.73 - "tirar da frente" / "voltar pra fila" (so admin, so na fila)
-    if (comAcoes && euSouAdmin) {
-      h += daAbaArquivadas
-        ? '<button onclick="arquivarPedido(' + p.id + ',false,true)" style="width:100%;margin-top:6px;border:1px solid #cfc7ea;'
-          + 'background:#f4f1fb;color:#3C3489;border-radius:8px;padding:9px;cursor:pointer;font-weight:700;">'
-          + '↩️ Voltar pra fila</button>'
-        : '<button onclick="arquivarPedido(' + p.id + ',true,false)" style="width:100%;margin-top:6px;border:1px solid #ddd;'
-          + 'background:#fff;color:#555;border-radius:8px;padding:9px;cursor:pointer;">'
-          + '🗂️ Tirar da frente (já tratei)</button>';
-    }
+    // v4.75 - o botao saiu daqui: virou um botao PEQUENO no canto do
+    // cabecalho do card (a faixa de largura total ocupava meia tela)
     return h + '</div></div>';
   }
 
