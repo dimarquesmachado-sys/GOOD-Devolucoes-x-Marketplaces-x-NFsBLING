@@ -3239,6 +3239,9 @@ async function resolverComponentesKit(comps, limiteExterno) {
   const truncados = Math.max(0, lista.length - alvos.length);
   const out = [];
   let naoResolvidos = nulos;
+  // v4.79 - MOTIVO de cada peca que nao entrou (prazo? erro? sem codigo?):
+  // sem isso o aviso "nao consegui listar N peca(s)" nao da pra consertar
+  const motivos = { nulos: nulos, prazo: 0, fila: 0, erro: 0, sem_sku: 0, truncados: 0, tentou_de_novo: 0 };
   for (const c of alvos) {
     const p = (c && c.produto) || {};
     const id = p.id || c.idProduto || c.produtoId || null;
@@ -3247,30 +3250,47 @@ async function resolverComponentesKit(comps, limiteExterno) {
     if (!sku && id) {
       const emCache = skuCacheGet(id);
       if (emCache) { sku = emCache.sku; nome = nome || emCache.nome; }
-      else if (Date.now() >= limite) { naoResolvidos++; continue; }
+      else if (Date.now() >= limite) { naoResolvidos++; motivos.prazo++; continue; }
       else {
         try {
           // v4.71 - a vaga na fila ja nasce dentro do prazo do kit
-          if (!(await esperarVezDetalhe(limite - Date.now()))) { naoResolvidos++; continue; }
+          if (!(await esperarVezDetalhe(limite - Date.now()))) { naoResolvidos++; motivos.fila++; continue; }
           const restante = limite - Date.now();
-          if (restante <= 0) { naoResolvidos++; continue; }
-          const r = await comPrazo(
-            chamarBling(`https://api.bling.com.br/Api/v3/produtos/${id}`, { timeout: restante, semRetentativa: true }),
-            restante);
-          const d = (r && r.ok && r.data && r.data.data) || null;
+          if (restante <= 0) { naoResolvidos++; motivos.prazo++; continue; }
+          // v4.79 - UMA SEGUNDA CHANCE dentro do prazo: o `semRetentativa`
+          // (que evita requisicao orfa) fazia qualquer tropeco do Bling — um
+          // 429 no meio da rajada da propria busca — virar "peca faltando"
+          // na tela, mesmo com prazo de sobra. Foi o caso do kit que veio
+          // com uma peca listada e a outra nao.
+          let d = null;
+          for (let tentativa = 0; tentativa < 2; tentativa++) {
+            const sobra = limite - Date.now();
+            if (sobra <= 300) break;
+            const rr = await comPrazo(
+              chamarBling(`https://api.bling.com.br/Api/v3/produtos/${id}`, { timeout: sobra, semRetentativa: true }),
+              sobra);
+            d = (rr && rr.ok && rr.data && rr.data.data) || null;
+            if (d) break;
+            motivos.tentou_de_novo++;
+            if (limite - Date.now() <= 900) break;
+            await new Promise(r2 => setTimeout(r2, 600));
+          }
           if (d) {
             sku = String(d.codigo || d.sku || '').trim();
             nome = nome || String(d.nome || d.descricao || '').trim();
             skuCacheSet(id, sku, nome);
           }
-        } catch (e) { /* prazo ou falha: conta como nao resolvido abaixo */ }
+        } catch (e) { motivos.erro++; /* prazo ou falha: conta como nao resolvido abaixo */ }
       }
     }
     const q = Number(c && (c.quantidade || c.qtd)) || 1;
     if (sku) out.push({ sku, quantidade: q, nome });
-    else naoResolvidos++;
+    else { naoResolvidos++; if (!motivos.erro && !motivos.prazo && !motivos.fila) motivos.sem_sku++; }
   }
-  return { itens: out, faltando: naoResolvidos + truncados };
+  motivos.truncados = truncados;
+  const faltando = naoResolvidos + truncados;
+  if (faltando) console.log('[KIT] composicao incompleta: ' + faltando + ' peca(s) fora — ' + JSON.stringify(motivos));
+  return { itens: out, faltando, motivos };
 }
 
 // v4.67 (review do Codex) - CADENCIA COMPARTILHADA pelo processo. A pausa
@@ -3456,6 +3476,7 @@ async function tirarKits(lista, diag) {
       const rC = await resolverComponentesKit(cru, prazoKit);
       item.componentes = rC.itens;
       item.componentes_faltando = rC.faltando;
+      item.componentes_motivo = rC.motivos;   // v4.79 - diagnostico na resposta
       // v4.67 (review do Codex) - SO A COMPOSICAO COMPLETA vira cache de 6h.
       // Guardar a parcial fazia a proxima busca cair no cache e nunca mais
       // tentar as pecas que faltaram — o "tente de novo em instantes" da

@@ -90,7 +90,8 @@ function compsCacheGet(id) {
   return reg;
 }
 const COMPONENTES_MAX = 12;
-const COMPONENTES_PRAZO_MS = 8000;
+const COMPONENTES_PRAZO_MS = 8000;      // no POST (o operador espera)
+const PRAZO_KIT_BUSCA_MS = 14000;       // b195 - na busca da tela, mais folga
 function extrairComponentes(det) {
   if (!det) return [];
   const lugares = [
@@ -198,6 +199,10 @@ function montar(router, deps) {
     const truncados = Math.max(0, lista.length - alvos.length);
     const out = [];
     let naoResolvidos = nulos;
+    // b195 - guardar o MOTIVO de cada peca que nao entrou: sem isso, o
+    // aviso "nao consegui listar N peca(s)" nao diz se foi prazo, erro do
+    // Bling ou componente sem codigo — e nao da pra consertar o que se ve.
+    const motivos = { nulos: nulos, prazo: 0, fila: 0, erro: 0, sem_sku: 0, truncados: 0, tentou_de_novo: 0 };
     for (const c of alvos) {
       const p = (c && c.produto) || {};
       const id = p.id || c.idProduto || c.produtoId || null;
@@ -206,28 +211,49 @@ function montar(router, deps) {
       if (!sku && id) {
         const emCache = skuCacheGet(id);
         if (emCache) { sku = emCache.sku; nome = nome || emCache.nome; }
-        else if (Date.now() >= limite) { naoResolvidos++; continue; }   // b181 - prazo estourou
+        else if (Date.now() >= limite) { naoResolvidos++; motivos.prazo++; continue; }   // b181/b195
         else {
           try {
-            if (!(await esperarVezDetalhe(limite - Date.now()))) { naoResolvidos++; continue; }
+            if (!(await esperarVezDetalhe(limite - Date.now()))) { naoResolvidos++; motivos.fila++; continue; }
             const restante = limite - Date.now();
-            if (restante <= 0) { naoResolvidos++; continue; }
+            if (restante <= 0) { naoResolvidos++; motivos.prazo++; continue; }
             // b186 - timeout REAL no axios, nao so o race
-            const r = await comPrazo(bling.chamarBling('/produtos/' + id, { timeout: restante, semRetentativa: true }), restante);
-            const d = (r && r.ok && r.data && r.data.data) || null;
+            // b195 - UMA SEGUNDA CHANCE dentro do prazo. O `semRetentativa`
+            // (que existe pra o POST nao deixar requisicao orfa) fazia
+            // QUALQUER tropeco do Bling — um 429 no meio da rajada da
+            // propria busca, um timeout curto — virar "peca faltando" na
+            // tela, mesmo com prazo de sobra. Foi o caso do kit que veio com
+            // 1 peca listada e a outra nao. Agora: pausa curta e tenta mais
+            // uma vez, se ainda couber no prazo.
+            let d = null;
+            for (let tentativa = 0; tentativa < 2; tentativa++) {
+              const sobra = limite - Date.now();
+              if (sobra <= 300) break;
+              const rr = await comPrazo(bling.chamarBling('/produtos/' + id, { timeout: sobra, semRetentativa: true }), sobra);
+              d = (rr && rr.ok && rr.data && rr.data.data) || null;
+              if (d) break;
+              motivos.tentou_de_novo++;
+              if (limite - Date.now() <= 900) break;
+              await new Promise(r2 => setTimeout(r2, 600));
+            }
             if (d) {
               sku = String(d.codigo || d.sku || '').trim();
               nome = nome || String(d.nome || d.descricao || '').trim();
               skuCacheSet(id, sku, nome);
             }
-          } catch (e) { /* conta como nao resolvido logo abaixo */ }
+          } catch (e) { motivos.erro++; /* conta como nao resolvido logo abaixo */ }
         }
       }
       const q = Number(c && (c.quantidade || c.qtd)) || 1;
       if (sku) out.push({ sku, quantidade: q, nome });
-      else naoResolvidos++;
+      else { naoResolvidos++; if (!motivos.erro && !motivos.prazo && !motivos.fila) motivos.sem_sku++; }
     }
-    return { itens: out, faltando: naoResolvidos + truncados };
+    motivos.truncados = truncados;
+    const faltando = naoResolvidos + truncados;
+    if (faltando) {
+      console.log('[KIT] composicao incompleta: ' + faltando + ' peca(s) fora — ' + JSON.stringify(motivos));
+    }
+    return { itens: out, faltando, motivos };
   }
 
   // ─────────────────────────────────────────────────────────────────────
@@ -453,24 +479,19 @@ function montar(router, deps) {
         filtrados.push(item);
       }
       const finais = filtrados.slice(0, 20);
-      // 2a passada: foto — so nos que VAO PRA TELA, e pulando quem ja teve
-      // o detalhe baixado agora ha pouco (b177: ja sabemos que nao tem foto)
-      for (const item of finais) {
-        if (!item.id || item.imagem || jaBaixado.has(item.id)) continue;
-        if (IMG_CACHE.has(item.id)) { item.imagem = IMG_CACHE.get(item.id); continue; }
-        if (buscados >= 12) break;
-        try { await buscarDetalhe(item); } catch (e) { /* sem foto e ok */ }
-        buscados++;
-      }
-      // b178 (review do Codex) - a passada da foto tambem APURA formato: um
-      // item que entrou sem veredito pode se revelar 'V' (ou kit) ali. Sem
-      // este segundo filtro, o pai de variacao recem-descoberto seguiria na
-      // lista — o filtro de cima ja tinha passado por ele.
+      // b195 (bug real do Diego: kit veio com 1 peca listada e a outra
+      // faltando) - a COMPOSICAO passou pra ANTES DAS FOTOS. A fila global
+      // de 350ms por consulta ja chegava congestionada na fase do kit: o
+      // prazo se gastava ESPERANDO VAGA e a 2a peca ficava sem resolver.
+      // Foto e enfeite; a composicao e o que ele precisa pra clicar.
       // b182 (pedido do Diego: "no proprio card ja destrinchar") - os kits
       // que vao pra tela levam a COMPOSICAO junto, pra o estoquista escolher
       // a peca ali mesmo: sem popup e sem precisar preencher e salvar antes.
       let kitsResolvidos = 0;
-      const prazoLaco = Date.now() + COMPONENTES_PRAZO_MS * 2;   // b184
+      // b195 - na BUSCA o prazo e mais folgado que no POST: aqui ninguem
+      // esta esperando pra gravar, e cortar cedo demais foi o que deixou o
+      // kit com peca faltando. No POST /adicionar segue COMPONENTES_PRAZO_MS.
+      const prazoLaco = Date.now() + PRAZO_KIT_BUSCA_MS * 2;
       for (const item of finais) {
         if (item._fmt !== 'E' || !item.id) continue;
         if (kitsResolvidos >= 3) break;          // kit e excecao na busca; teto barato
@@ -482,7 +503,7 @@ function montar(router, deps) {
           kitsResolvidos++;
           continue;
         }
-        const prazoKit = Math.min(Date.now() + COMPONENTES_PRAZO_MS, prazoLaco);   // b184
+        const prazoKit = Math.min(Date.now() + PRAZO_KIT_BUSCA_MS, prazoLaco);   // b184/b195
         let cru = item._compsCru;
         if (!cru) {
           try {
@@ -505,12 +526,27 @@ function montar(router, deps) {
           const rC = await resolverComponentes(cru, prazoKit);
           item.componentes = rC.itens;
           item.componentes_faltando = rC.faltando;
+          item.componentes_motivo = rC.motivos;   // b195 - diagnostico na resposta
           // b183 - so a composicao COMPLETA vira cache de 6h (parcial presa
           // no cache faria o "tente de novo em instantes" virar mentira)
           if (rC.faltando === 0) COMPS_POR_KIT.set(item.id, { itens: rC.itens, faltando: 0, ts: Date.now() });
         }
         kitsResolvidos++;
       }
+
+      // 2a passada: foto — so nos que VAO PRA TELA, e pulando quem ja teve
+      // o detalhe baixado agora ha pouco (b177: ja sabemos que nao tem foto)
+      for (const item of finais) {
+        if (!item.id || item.imagem || jaBaixado.has(item.id)) continue;
+        if (IMG_CACHE.has(item.id)) { item.imagem = IMG_CACHE.get(item.id); continue; }
+        if (buscados >= 12) break;
+        try { await buscarDetalhe(item); } catch (e) { /* sem foto e ok */ }
+        buscados++;
+      }
+      // b178 (review do Codex) - a passada da foto tambem APURA formato: um
+      // item que entrou sem veredito pode se revelar 'V' (ou kit) ali. Sem
+      // este segundo filtro, o pai de variacao recem-descoberto seguiria na
+      // lista — o filtro de cima ja tinha passado por ele.
       const entregues = [];
       for (const item of finais) {
         if (item._fmt === 'V') continue;
