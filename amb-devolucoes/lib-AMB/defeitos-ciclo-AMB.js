@@ -722,7 +722,12 @@ module.exports = function registrarCicloDefeitos(router, deps) {
       if (st) q = q.eq('status', st);
       const r = await q;
       if (r.error) throw new Error(r.error.message);
-      const lista = r.data || [];
+      // b189 - a fila principal mostra so o que NAO foi arquivado; a aba
+      // "ja tratadas" pede ?arquivados=1. O filtro e em JS de proposito:
+      // se a coluna ainda nao existir no banco, `arquivado_em` vem
+      // undefined e tudo continua aparecendo como antes (nada quebra).
+      const verArquivados = String(req.query.arquivados || '') === '1';
+      const lista = (r.data || []).filter(p => (verArquivados ? !!p.arquivado_em : !p.arquivado_em));
 
       // b132 - junta o TITULO e o LOCAL da peca em cada pedido. A fila
       // mostrava so o SKU, e com varias luminarias iguais isso nao
@@ -833,6 +838,43 @@ module.exports = function registrarCicloDefeitos(router, deps) {
   //   acao: 'autorizar' | 'recusar' | 'concluir'
   // So ADMIN decide. 'concluir' e o estoquista dizendo que executou (jogou
   // fora / guardou a boa) - por isso aceita login comum nessa acao.
+  // ─────────────────────────────────────────────────────────────────────
+  // b189 - ARQUIVAR SOLICITACAO ("tirar da frente").
+  // Pedido do Diego: depois de tratar, ele quer a solicitacao FORA da fila
+  // principal, do mesmo jeito que faz com os pedidos triados — mas sem
+  // perder nada: a aba "Ja tratadas" mostra as arquivadas e devolve
+  // qualquer uma pra fila. Nao apaga, nao muda status: so tira da frente.
+  // Colunas (SQL a parte): arquivado_em timestamptz, arquivado_por text.
+  // Tolerante: sem as colunas, responde o erro claro em vez de estourar.
+  // ─────────────────────────────────────────────────────────────────────
+  router.post('/api/defeitos/pedido/:id/arquivar', auth.requerLogin, async (req, res) => {
+    const s = auth.validarSessao(auth.tokenDaRequisicao(req), 'admin');
+    if (!s) return res.status(403).json({ ok: false, erro: 'so o admin arquiva solicitacoes' });
+    const dbc = cli();
+    if (!dbc) return erroSemBanco(res);
+    const arquivar = corpo(req).arquivar !== false;   // padrao: tirar da frente
+    try {
+      const campos = arquivar
+        ? { arquivado_em: new Date().toISOString(), arquivado_por: req.usuario }
+        : { arquivado_em: null, arquivado_por: null };
+      const r = await dbc.from(T_PED).update(campos).eq('id', req.params.id);
+      if (r.error) {
+        const msg = String(r.error.message || '');
+        if (/arquivado_em|arquivado_por|column/i.test(msg)) {
+          return res.status(400).json({
+            ok: false,
+            erro: 'falta rodar o SQL das colunas arquivado_em/arquivado_por nesta tabela',
+            sql_faltando: true,
+          });
+        }
+        throw new Error(msg);
+      }
+      res.json({ ok: true, arquivado: arquivar });
+    } catch (e) {
+      res.status(500).json({ ok: false, erro: String(e.message || e) });
+    }
+  });
+
   // ─────────────────────────────────────────────────────────────────────
   router.post('/api/defeitos/pedido/:id/decidir', auth.requerLogin, async (req, res) => {
     const dbc = cli();
