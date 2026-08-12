@@ -3274,9 +3274,16 @@ async function resolverComponentesKit(comps, limiteExterno) {
             const rr = await comPrazo(
               chamarBling(`https://api.bling.com.br/Api/v3/produtos/${id}`, { timeout: sobra, semRetentativa: true }),
               sobra);
-            d = (rr && rr.ok && rr.data && rr.data.data) || null;
-            if (d) { falhouNoBling = false; break; }
-            falhouNoBling = true;   // v4.80 - resposta !ok NAO lanca excecao
+          d = (rr && rr.ok && rr.data && rr.data.data) || null;
+          if (d) { falhouNoBling = false; break; }
+          falhouNoBling = true;   // resposta !ok NAO lanca excecao
+          // v4.81 (review do Codex) - so re-tenta o que PODE dar certo sem
+          // mudar nada: 429/5xx/rede. Em 401 o semRetentativa impede a
+          // renovacao do token (a 2a tentativa usaria o mesmo token morto) e
+          // 404 e deterministico — re-tentar so gastava prazo do kit.
+          const st = (rr && rr.status) || 0;
+          if (st === 401 || st === 403 || st === 404) break;
+
             motivos.tentou_de_novo++;
             if (limite - Date.now() <= 900) break;
             await new Promise(r2 => setTimeout(r2, 600));
@@ -3287,7 +3294,13 @@ async function resolverComponentesKit(comps, limiteExterno) {
             nome = nome || String(d.nome || d.descricao || '').trim();
             skuCacheSet(id, sku, nome);
           }
-        } catch (e) { motivos.erro++; /* prazo ou falha: conta como nao resolvido abaixo */ }
+        } catch (e) {
+          // b197/v4.81 (review do Codex) - a falha LANCADA (prazo do comPrazo)
+          // tambem marca ESTE componente: sem a flag ele era contado duas
+          // vezes (erro + sem_sku) e o diagnostico ficava mentiroso.
+          motivos.erro++;
+          falhouComponente = true;
+        }
       }
     }
     const q = Number(c && (c.quantidade || c.qtd)) || 1;
@@ -3482,6 +3495,10 @@ async function tirarKits(lista, diag) {
         const rK = await comPrazo(
           chamarBling(`https://api.bling.com.br/Api/v3/produtos/${item.id}`, { timeout: restanteKit, semRetentativa: true }),
           restanteKit);
+        // v4.81 (review do Codex) - resposta {ok:false} (429, rede, timeout)
+        // NAO lanca: sem isto o log dizia "Bling devolveu sem componentes"
+        // quando na verdade a CONSULTA falhou — diagnostico errado.
+        if (!rK || !rK.ok) estruturaFalhou = true;
         const dK = (rK && rK.ok && rK.data && rK.data.data) || null;
         cru = extrairComponentes(dK);
       } catch (e) { cru = null; estruturaFalhou = true; }   // v4.80

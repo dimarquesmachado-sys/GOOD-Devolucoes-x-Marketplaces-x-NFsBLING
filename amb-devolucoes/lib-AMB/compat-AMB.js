@@ -238,7 +238,13 @@ function montar(router, deps) {
               const rr = await comPrazo(bling.chamarBling('/produtos/' + id, { timeout: sobra, semRetentativa: true }), sobra);
               d = (rr && rr.ok && rr.data && rr.data.data) || null;
               if (d) { falhouNoBling = false; break; }
-              falhouNoBling = true;   // b196 - resposta !ok NAO lanca excecao
+              falhouNoBling = true;   // resposta !ok NAO lanca excecao
+              // b197 (review do Codex) - so re-tenta o que PODE dar certo sem
+              // mudar nada: 429/5xx/rede. Em 401 o semRetentativa impede a
+              // renovacao do token (a 2a tentativa usaria o mesmo token morto) e
+              // 404 e deterministico — re-tentar so gastava prazo do kit.
+              const st = (rr && rr.status) || 0;
+              if (st === 401 || st === 403 || st === 404) break;
               motivos.tentou_de_novo++;
               if (limite - Date.now() <= 900) break;
               await new Promise(r2 => setTimeout(r2, 600));
@@ -249,7 +255,13 @@ function montar(router, deps) {
               nome = nome || String(d.nome || d.descricao || '').trim();
               skuCacheSet(id, sku, nome);
             }
-          } catch (e) { motivos.erro++; /* conta como nao resolvido logo abaixo */ }
+          } catch (e) {
+            // b197/v4.81 (review do Codex) - a falha LANCADA (prazo do comPrazo)
+            // tambem marca ESTE componente: sem a flag ele era contado duas
+            // vezes (erro + sem_sku) e o diagnostico ficava mentiroso.
+            motivos.erro++;
+            falhouComponente = true;
+          }
         }
       }
       const q = Number(c && (c.quantidade || c.qtd)) || 1;
@@ -499,6 +511,11 @@ function montar(router, deps) {
       // fotos (cache de formato dizia 'S' porque o produto virou kit agora).
       // Sem a segunda passagem, esse kit chegava na tela como card travado,
       // sem peca nenhuma pra clicar.
+      // b197 (review do Codex) - o teto de 3 kits e o prazo do laco sao do
+      // PEDIDO, nao de cada passagem: com contador novo na 2a chamada uma
+      // busca podia resolver 6 kits e gastar dois orcamentos inteiros.
+      let kitsResolvidosPedido = 0;
+      const prazoLacoPedido = Date.now() + PRAZO_KIT_BUSCA_MS * 2;
       const resolverComposicaoDosKits = async (itens) => {
         // b195 (bug real do Diego: kit veio com 1 peca listada e a outra
         // faltando) - a COMPOSICAO passou pra ANTES DAS FOTOS. A fila global
@@ -508,20 +525,20 @@ function montar(router, deps) {
         // b182 (pedido do Diego: "no proprio card ja destrinchar") - os kits
         // que vao pra tela levam a COMPOSICAO junto, pra o estoquista escolher
         // a peca ali mesmo: sem popup e sem precisar preencher e salvar antes.
-        let kitsResolvidos = 0;
+        // b197 - compartilhados entre as duas passagens (ver acima)
         // b195 - na BUSCA o prazo e mais folgado que no POST: aqui ninguem
         // esta esperando pra gravar, e cortar cedo demais foi o que deixou o
         // kit com peca faltando. No POST /adicionar segue COMPONENTES_PRAZO_MS.
-        const prazoLaco = Date.now() + PRAZO_KIT_BUSCA_MS * 2;
+        const prazoLaco = prazoLacoPedido;
         for (const item of itens) {
           if (item._fmt !== 'E' || !item.id) continue;
-          if (kitsResolvidos >= 3) break;          // kit e excecao na busca; teto barato
+          if (kitsResolvidosPedido >= 3) break;          // kit e excecao na busca; teto barato
           if (Date.now() >= prazoLaco) break;      // b184 - tempo do laco esgotado
           const doCache = compsCacheGet(item.id);
           if (doCache) {
             item.componentes = doCache.itens;
             item.componentes_faltando = doCache.faltando;
-            kitsResolvidos++;
+            kitsResolvidosPedido++;
             continue;
           }
           const prazoKit = Math.min(Date.now() + PRAZO_KIT_BUSCA_MS, prazoLaco);   // b184/b195
@@ -540,6 +557,22 @@ function montar(router, deps) {
               const rK = await comPrazo(
                 bling.chamarBling('/produtos/' + item.id, { timeout: restanteKit, semRetentativa: true }),
                 restanteKit);
+              // b197 (review do Codex) - este detalhe ja veio: aproveita a IMAGEM e
+              // marca o id como baixado, senao a passada de fotos pedia o MESMO
+              // produto de novo (uma requisicao a toa por kit, justo na hora em
+              // que a gente esta tentando aliviar a fila).
+              try {
+                const detK = (rK && rK.ok && rK.data && rK.data.data) || null;
+                if (detK) {
+                  jaBaixado.add(item.id);
+                  const urlK = primeiraImagem(detK);
+                  if (urlK) { IMG_CACHE.set(item.id, urlK); if (!item.imagem) item.imagem = urlK; }
+                }
+              } catch (e) { /* imagem e opcional */ }
+              // b197 (review do Codex) - resposta {ok:false} (429, rede, timeout)
+              // NAO lanca: sem isto o log dizia "Bling devolveu sem componentes"
+              // quando na verdade a CONSULTA falhou — diagnostico errado.
+              if (!rK || !rK.ok) estruturaFalhou = true;
               const dK = (rK && rK.ok && rK.data && rK.data.data) || null;
               cru = extrairComponentes(dK);
             } catch (e) { cru = null; estruturaFalhou = true; }   // b196
@@ -554,7 +587,7 @@ function montar(router, deps) {
         item.componentes_motivo = { estrutura_falhou: estruturaFalhou ? 1 : 0, estrutura_vazia: estruturaFalhou ? 0 : 1 };
         console.log('[KIT] nao consegui a estrutura do kit ' + item.id + ' — '
           + (estruturaFalhou ? 'consulta falhou/prazo' : 'Bling devolveu sem componentes'));
-        kitsResolvidos++;
+        kitsResolvidosPedido++;
         continue;
       }
       if (cru && cru.length) {
@@ -566,7 +599,7 @@ function montar(router, deps) {
             // no cache faria o "tente de novo em instantes" virar mentira)
             if (rC.faltando === 0) COMPS_POR_KIT.set(item.id, { itens: rC.itens, faltando: 0, ts: Date.now() });
           }
-          kitsResolvidos++;
+          kitsResolvidosPedido++;
         }
 
       };
