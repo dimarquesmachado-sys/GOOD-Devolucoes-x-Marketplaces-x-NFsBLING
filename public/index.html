@@ -778,7 +778,10 @@
         window._defLista = lista;
         // v4.51 - RESULTADO UNICO ja abre escolhido: mostrar lista de um item
         // so pra ele clicar e passo a mais sem ganho
-        if (lista.length === 1 && !(lista[0].ehKit && lista[0].componentes && lista[0].componentes.length)) {
+        // v4.68 (review do Codex) - kit NUNCA auto-seleciona, nem sem
+        // composicao resolvida (antes esta condicao ainda exigia
+        // componentes.length e o kit sozinho na busca era escolhido)
+        if (lista.length === 1 && !lista[0].ehKit) {
           box.innerHTML = '';
           escolherProdutoDefeito(0);
           var campo = document.getElementById('defProblema');
@@ -840,8 +843,10 @@
       var c = kit && kit.componentes && kit.componentes[j];
       if (!c) return;
       selecionarProdutoDefeito({ sku: c.sku, nome: c.nome || c.sku, ean: '', imagem: c.imagem || kit.imagem || null }, i);
+      // v4.68 (review do Codex) - a quantidade e SEMPRE reescrita: antes,
+      // escolher uma peca de 2× e depois outra de 1× deixava o campo em 2
       var campoQtd = document.getElementById('defQtd');
-      if (campoQtd && (c.quantidade || 1) > 1) campoQtd.value = c.quantidade;
+      if (campoQtd) campoQtd.value = c.quantidade || 1;
       var campo = document.getElementById('defProblema');
       if (campo) campo.focus();
     }

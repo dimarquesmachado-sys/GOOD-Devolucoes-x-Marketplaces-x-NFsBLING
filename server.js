@@ -3224,12 +3224,17 @@ function extrairComponentes(det) {
 // se fossem a composicao inteira faria o estoquista lancar em metade do
 // kit sem saber (falha do Bling, kit grande, ou o prazo estourando).
 async function resolverComponentesKit(comps) {
-  const lista = Array.isArray(comps) ? comps.filter(Boolean) : [];
+  const brutos = Array.isArray(comps) ? comps : [];
+  const lista = brutos.filter(Boolean);
+  // v4.68 (review do Codex) - entrada NULA na estrutura tambem e uma peca
+  // que o operador nao vai ver: some do array mas entra em `faltando`,
+  // senao a composicao seria dada como completa (e cacheada por 6h).
+  const nulos = brutos.length - lista.length;
   const limite = Date.now() + COMPONENTES_PRAZO_MS;
   const alvos = lista.slice(0, COMPONENTES_MAX);
   const truncados = Math.max(0, lista.length - alvos.length);
   const out = [];
-  let naoResolvidos = 0;
+  let naoResolvidos = nulos;
   for (const c of alvos) {
     const p = (c && c.produto) || {};
     const id = p.id || c.idProduto || c.produtoId || null;
@@ -3388,8 +3393,10 @@ async function tirarKits(lista, diag) {
     if (!cru || !cru.length) {
       try {
         await esperarVezDetalhe();                      // v4.67 - ritmo global
-        const rK = await chamarBling(`https://api.bling.com.br/Api/v3/produtos/${item.id}`);
-        const dK = (rK.ok && rK.data && rK.data.data) || null;
+        // v4.68 (review do Codex) - o prazo vale TAMBEM pra esta consulta:
+        // ela e pre-requisito da composicao e travava a busca inteira.
+        const rK = await comPrazo(chamarBling(`https://api.bling.com.br/Api/v3/produtos/${item.id}`), COMPONENTES_PRAZO_MS);
+        const dK = (rK && rK.ok && rK.data && rK.data.data) || null;
         cru = extrairComponentes(dK);
       } catch (e) { cru = null; }
     }

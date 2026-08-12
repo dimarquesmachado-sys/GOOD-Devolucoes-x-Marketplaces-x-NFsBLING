@@ -101,6 +101,18 @@ function extrairComponentes(det) {
   for (const l of lugares) if (Array.isArray(l) && l.length) return l;
   return [];
 }
+// b183 (review do Codex) - prazo que vale pra requisicao JA EM VOO: o
+// chamarBling nao tem timeout proprio, entao uma consulta travada seguraria
+// a busca/o POST muito alem do prazo prometido.
+async function comPrazo(promessa, ms) {
+  let t;
+  try {
+    return await Promise.race([
+      promessa,
+      new Promise((_, rej) => { t = setTimeout(() => rej(new Error('prazo da consulta esgotado')), Math.max(500, ms)); }),
+    ]);
+  } finally { clearTimeout(t); }
+}
 const DETALHE_INTERVALO_MS = 350;
 let DETALHE_PROXIMO = 0;
 async function esperarVezDetalhe() {
@@ -171,12 +183,16 @@ function montar(router, deps) {
   // estoquista lancar em metade do kit sem saber (falha do Bling num
   // componente, kit com mais de 12 pecas, ou o prazo estourando).
   async function resolverComponentes(comps) {
-    const lista = Array.isArray(comps) ? comps.filter(Boolean) : [];   // b181 - entrada nula nao derruba a trava
+    const brutos = Array.isArray(comps) ? comps : [];
+    const lista = brutos.filter(Boolean);   // b181 - entrada nula nao derruba a trava
+    // b183 (review do Codex no PR da GOOD) - ...mas CONTA como peca que
+    // faltou, senao a composicao passaria por completa
+    const nulos = brutos.length - lista.length;
     const limite = Date.now() + COMPONENTES_PRAZO_MS;
     const alvos = lista.slice(0, COMPONENTES_MAX);
     const truncados = Math.max(0, lista.length - alvos.length);
     const out = [];
-    let naoResolvidos = 0;
+    let naoResolvidos = nulos;
     for (const c of alvos) {
       const p = (c && c.produto) || {};
       const id = p.id || c.idProduto || c.produtoId || null;
@@ -189,8 +205,10 @@ function montar(router, deps) {
         else {
           try {
             await esperarVezDetalhe();
-            const r = await bling.chamarBling('/produtos/' + id);
-            const d = (r.ok && r.data && r.data.data) || null;
+            const restante = limite - Date.now();
+            if (restante <= 0) { naoResolvidos++; continue; }
+            const r = await comPrazo(bling.chamarBling('/produtos/' + id), restante);   // b183
+            const d = (r && r.ok && r.data && r.data.data) || null;
             if (d) {
               sku = String(d.codigo || d.sku || '').trim();
               nome = nome || String(d.nome || d.descricao || '').trim();
@@ -460,8 +478,8 @@ function montar(router, deps) {
         if (!cru) {
           try {
             await esperarVezDetalhe();
-            const rK = await bling.chamarBling('/produtos/' + item.id);
-            const dK = (rK.ok && rK.data && rK.data.data) || null;
+            const rK = await comPrazo(bling.chamarBling('/produtos/' + item.id), COMPONENTES_PRAZO_MS);   // b183
+            const dK = (rK && rK.ok && rK.data && rK.data.data) || null;
             cru = extrairComponentes(dK);
           } catch (e) { cru = null; }
         }
@@ -469,7 +487,9 @@ function montar(router, deps) {
           const rC = await resolverComponentes(cru);
           item.componentes = rC.itens;
           item.componentes_faltando = rC.faltando;
-          COMPS_POR_KIT.set(item.id, { itens: rC.itens, faltando: rC.faltando, ts: Date.now() });
+          // b183 - so a composicao COMPLETA vira cache de 6h (parcial presa
+          // no cache faria o "tente de novo em instantes" virar mentira)
+          if (rC.faltando === 0) COMPS_POR_KIT.set(item.id, { itens: rC.itens, faltando: 0, ts: Date.now() });
         }
         kitsResolvidos++;
       }

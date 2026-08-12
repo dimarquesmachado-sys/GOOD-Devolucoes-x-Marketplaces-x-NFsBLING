@@ -206,7 +206,7 @@
         <div class="topo-txt">
           <h1>AMBTotal Devoluções</h1>
           <p>Identificar venda &middot; NF-e &middot; Triagem
-            <span class="topo-versao">&middot; v3.69 &middot; <span id="serverVersion">checando...</span></span>
+            <span class="topo-versao">&middot; v3.70 &middot; <span id="serverVersion">checando...</span></span>
           </p>
         </div>
         <!-- b92 - os 2 do estoque de defeitos subiram pra MESMA faixa:
@@ -895,7 +895,10 @@
         // b105 - RESULTADO UNICO ja abre escolhido. Mostrar uma lista de um
         // item so pra ele clicar e passo a mais sem ganho: o quadro ja
         // aparece pronto pra preencher o defeito e a localizacao.
-        if (lista.length === 1 && !(lista[0].ehKit && lista[0].componentes && lista[0].componentes.length)) {
+        // b183 (review do Codex) - kit NUNCA auto-seleciona, nem sem
+        // composicao resolvida (antes esta condicao ainda exigia
+        // componentes.length e o kit sozinho na busca era escolhido)
+        if (lista.length === 1 && !lista[0].ehKit) {
           box.innerHTML = '';
           escolherProdutoDefeito(0);
           var campo = document.getElementById('defProblema');
@@ -924,8 +927,10 @@
         sku: c.sku, nome: c.nome || c.sku, ean: '',
         imagem: c.imagem || kit.imagem || null,
       }, i);
+      // b183 (review do Codex) - a quantidade e SEMPRE reescrita: antes,
+      // escolher uma peca de 2× e depois outra de 1× deixava o campo em 2
       var campoQtd = document.getElementById('defQtd');
-      if (campoQtd && (c.quantidade || 1) > 1) campoQtd.value = c.quantidade;
+      if (campoQtd) campoQtd.value = c.quantidade || 1;
       var campo = document.getElementById('defProblema');
       if (campo) campo.focus();
     }
