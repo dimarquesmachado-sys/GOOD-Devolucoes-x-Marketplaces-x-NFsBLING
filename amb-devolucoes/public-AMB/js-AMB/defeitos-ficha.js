@@ -832,11 +832,26 @@
     // quando a entrada automatica falha, a propria tela manda lancar a mao
     // no Bling e concluir; sem isso o card ficaria ambar pra sempre,
     // aparecendo como trabalho que ainda falta.
+    // b193 (review do Codex) - NAO INVENTAR LANCAMENTO. O "Marcar Como
+    // Feito" so troca o status: nao prova entrada no Bling. E solicitacao
+    // RECUSADA nao e trabalho pendente. Ficaram 4 estados honestos:
+    //   VERDE   estoque_produto_id -> entrada confirmada no Bling
+    //   AMBAR   ainda esperando lancamento (pendente/autorizado)
+    //   CINZA   fechada sem confirmacao (concluida a mao) ou recusada
+    //   VERMELHO descarte
     var estoqueAuto = p.tipo === 'recuperado' && !!p.estoque_produto_id;
-    var estoqueManual = p.tipo === 'recuperado' && !p.estoque_produto_id && p.status === 'concluido';
-    var jaNoEstoque = estoqueAuto || estoqueManual;
-    var cor = p.tipo === 'descarte' ? '#9E1A1A' : (jaNoEstoque ? '#0F6E56' : '#B26A00');
-    var fundoTopo = p.tipo === 'descarte' ? '#FDF7F7' : (jaNoEstoque ? '#F3FBF7' : '#FFFBF0');
+    var fechadaSemProva = p.tipo === 'recuperado' && !p.estoque_produto_id
+      && (p.status === 'concluido' || p.status === 'recusado');
+    var faltaLancar = p.tipo === 'recuperado' && !p.estoque_produto_id && !fechadaSemProva;
+    var jaNoEstoque = estoqueAuto;
+    var cor = p.tipo === 'descarte' ? '#9E1A1A'
+      : estoqueAuto ? '#0F6E56'
+      : fechadaSemProva ? '#6B6B6B'
+      : '#B26A00';
+    var fundoTopo = p.tipo === 'descarte' ? '#FDF7F7'
+      : estoqueAuto ? '#F3FBF7'
+      : fechadaSemProva ? '#F6F6F6'
+      : '#FFFBF0';
     var selo = p.tipo === 'descarte'
       ? '<span style="background:#FBEAE8;color:#8C1D18;border-radius:6px;padding:2px 8px;font-size:11.5px;">DESCARTE</span>'
       : '<span style="background:#E1F5EE;color:#0F6E56;border-radius:6px;padding:2px 8px;font-size:11.5px;">RECUPERADA</span>';
@@ -883,12 +898,10 @@
       // b192 (review do Codex) - o selo NAO depende mais de `estoque_qtd`
       // (que so e gravado quando o pedido leva sku): quem nao distingue as
       // cores precisa LER que houve lancamento. Sem quantidade, mostra sem ela.
-      + ((p.estoque_qtd || jaNoEstoque)
+      + ((p.estoque_qtd || estoqueAuto)
           ? '<div style="background:#e9f7ef;border:1.5px solid #0F6E56;border-radius:9px;padding:8px 12px;margin:4px 0 7px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">'
             + '<b style="color:#0F6E56;font-size:14px;letter-spacing:.3px;">'
-            + (estoqueManual && !p.estoque_qtd
-                ? '✅ CONCLUÍDA — lançamento feito à mão no Bling'
-                : '📦 LANÇADO EM ESTOQUE' + (p.estoque_qtd ? ' · ' + esc(p.estoque_qtd) + ' un.' : ''))
+            + ('📦 LANÇADO EM ESTOQUE' + (p.estoque_qtd ? ' · ' + esc(p.estoque_qtd) + ' un.' : ''))
             + '</b>'
             + (p.estoque_produto_id
                 ? '<a href="https://www.bling.com.br/estoque.php?buscaid=' + esc(p.estoque_produto_id)
@@ -897,9 +910,20 @@
             + '</div>'
           : '')
       // b192 - o AMBAR tambem se explica por escrito
-      + ((p.tipo === 'recuperado' && !jaNoEstoque && !p.estoque_qtd)
+      // b193 - o AMBAR so aparece quando a entrada AINDA E ESPERADA
+      + ((faltaLancar && !p.estoque_qtd)
           ? '<div style="background:#FFF8E7;border:1.5px solid #B26A00;border-radius:9px;padding:7px 11px;margin:4px 0 7px;'
             + 'font-size:12.5px;color:#8a5200;font-weight:600;">⏳ AINDA SEM LANÇAMENTO NO ESTOQUE</div>'
+          : '')
+      // b193 - fechada SEM registro de entrada: diz exatamente isso, sem
+      // afirmar que houve lancamento (o "Marcar Como Feito" nao prova nada)
+      + ((fechadaSemProva && !p.estoque_qtd)
+          ? '<div style="background:#F1F1F1;border:1.5px solid #9A9A9A;border-radius:9px;padding:7px 11px;margin:4px 0 7px;'
+            + 'font-size:12.5px;color:#555;font-weight:600;">'
+            + (p.status === 'recusado'
+                ? '🚫 RECUSADA — nenhuma entrada de estoque prevista'
+                : '✔️ FECHADA sem registro de entrada automática — confira no Bling se precisa lançar')
+            + '</div>'
           : '')
       + (p.observacao ? '<div style="font-size:12.5px;color:#555;margin-bottom:6px;">' + esc(p.observacao) + '</div>' : '')
       // b161 - a entrada automatica falhou? botao de relancar (so faz
