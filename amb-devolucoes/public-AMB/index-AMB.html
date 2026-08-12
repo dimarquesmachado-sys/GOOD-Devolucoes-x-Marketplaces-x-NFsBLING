@@ -206,7 +206,7 @@
         <div class="topo-txt">
           <h1>AMBTotal Devoluções</h1>
           <p>Identificar venda &middot; NF-e &middot; Triagem
-            <span class="topo-versao">&middot; v3.72 &middot; <span id="serverVersion">checando...</span></span>
+            <span class="topo-versao">&middot; v3.73 &middot; <span id="serverVersion">checando...</span></span>
           </p>
         </div>
         <!-- b92 - os 2 do estoque de defeitos subiram pra MESMA faixa:
@@ -1086,8 +1086,12 @@
     // outro produto e clicar nos botoes do kit ANTERIOR, lancando o defeito
     // nos SKUs errados com a descricao e o local antigos.
     function limparKitPendente() {
+      // b187 (review do Codex) - trocar de produto/fechar o modal NAO pode
+      // zerar a guarda de um laco AINDA RODANDO: o laco velho continuava
+      // gravando e a tela nova ja aceitava outro salvamento. Agora a "epoca"
+      // muda, o laco velho se descobre obsoleto e para sozinho.
+      window._kitEpoca = (window._kitEpoca || 0) + 1;
       window._kitPendente = null;
-      window._kitOcupado = false;
       var m = document.getElementById('defMsg');
       if (m) m.innerHTML = '';
     }
