@@ -57,7 +57,7 @@
     .links-defeitos a:hover { background: rgba(0,0,0,.18); }
     @media (max-width: 600px) { .links-defeitos { justify-content: center; } }
 
-    /* v4.60 - COLINHA "o que bipar em cada etiqueta": link no cabecalho
+    /* v4.66 - COLINHA "o que bipar em cada etiqueta": link no cabecalho
        que abre um modal (mesma feature da AMB b157; textos identicos). */
     .cola-mkt { margin:10px 0 2px; font-weight:800; font-size:12.5px; display:flex; align-items:center; gap:6px; }
     .cola-chip { width:10px; height:10px; border-radius:3px; display:inline-block; flex:0 0 auto; }
@@ -128,7 +128,7 @@
         <input type="text" id="codigo"
           placeholder="Bipe, cole ou digite o codigo"
           autocomplete="off" inputmode="text" autocapitalize="characters" />
-          <!-- v4.60 - era inputmode="text": no celular abria o teclado
+          <!-- v4.66 - era inputmode="text": no celular abria o teclado
                numerico e nao dava pra digitar NOME do remetente, que a busca
                aceita ("betania", "RENATONEVES"). -->
         <button id="btnBuscar" onclick="buscar()">Buscar</button>
@@ -190,7 +190,7 @@
   </div>
 
   <!-- v3.96 - MODAL: lancar produto com defeito (busca por nome/SKU/EAN) -->
-  <!-- v4.60 - a COLINHA em modal: abre pelo "❓ O que bipar" do cabecalho. -->
+  <!-- v4.66 - a COLINHA em modal: abre pelo "❓ O que bipar" do cabecalho. -->
   <div id="modalColaBipe" class="modal-bg" onclick="if(event.target===this)fecharColaBipe()">
     <div class="modal" style="max-width:520px;width:94%;padding:0;overflow:hidden;">
       <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid #eee;background:#fff9d6;">
@@ -233,7 +233,7 @@
           <div style="flex:1; min-width:0;">
         <div style="font-size:14px;"><b>Produto:</b> <span id="defNome">-</span></div>
         <div style="font-size:12px; color:#666; margin-top:3px;">SKU <code id="defSku">-</code> <span id="defEan"></span></div>
-        <!-- v4.60 - os campos ficam AO LADO da foto, nao abaixo dela. Com a
+        <!-- v4.66 - os campos ficam AO LADO da foto, nao abaixo dela. Com a
              foto de 260px, empilhado o quadro passava da tela e obrigava a
              rolar (mesma correcao que a AMB ja tinha). -->
         <div style="display:flex; gap:10px; margin-top:10px;">
@@ -676,6 +676,7 @@
     }
 
     function abrirModalDefeito() {
+      limparKitPendente();   // v4.66
       _defProdutoEscolhido = null;
       document.getElementById('defBusca').value = '';
       document.getElementById('defResultados').innerHTML = '';
@@ -694,6 +695,7 @@
     }
 
     function fecharModalDefeito() {
+      limparKitPendente();   // v4.66
       document.getElementById('modalDefeito').classList.remove('show');
     }
 
@@ -704,6 +706,7 @@
     }
 
     async function buscarProdutoDefeito() {
+      limparKitPendente();   // v4.66
       var q = document.getElementById('defBusca').value.trim();
       var box = document.getElementById('defResultados');
       if (q.length < 2) { box.innerHTML = '<p style="font-size:13px;color:#c62828;">Digite pelo menos 2 letras.</p>'; return; }
@@ -727,7 +730,15 @@
         var h = '';
         for (var i = 0; i < lista.length; i++) {
           var p = lista[i];
-          h += '<div onclick="escolherProdutoDefeito(' + i + ')" data-i="' + i + '" style="border:1px solid #ddd;border-radius:8px;padding:9px 11px;margin-bottom:5px;cursor:pointer;background:#fff;display:flex;gap:10px;align-items:center;">'
+          // v4.66 (porte da AMB b182) - KIT ja vem DESTRINCHADO no card:
+          // as pecas aparecem aqui e o estoquista clica na que quer. O kit
+          // em si deixa de ser clicavel (nao existe na prateleira).
+          var ehKitCard = !!p.ehKit;   // v4.67 (review do Codex) - kit CONHECIDO
+          // nunca e selecionavel, mesmo sem composicao resolvida (4o kit da
+          // busca, ou todas as consultas falhando): antes o card voltava a ser
+          // clicavel e dava pra lancar defeito NO KIT.
+          var comps = (p.componentes && p.componentes.length) ? p.componentes : null;
+          h += '<div' + (ehKitCard ? '' : ' onclick="escolherProdutoDefeito(' + i + ')"') + ' data-i="' + i + '" style="border:1px solid ' + (ehKitCard ? '#e4dcf1' : '#ddd') + ';border-radius:8px;padding:9px 11px;margin-bottom:5px;' + (ehKitCard ? 'background:#faf7ff;' : 'cursor:pointer;background:#fff;') + 'display:flex;gap:10px;align-items:center;">'
             + (p.imagem
                 ? '<img src="' + escDef(p.imagem) + '" onclick="event.stopPropagation();abrirZoomProduto(this.src)" onerror="this.style.display=\'none\'" class="foto-produto-lista" style="cursor:zoom-in;">'
                 : '<div id="defimg-' + i + '" class="foto-produto-lista vazia">📦</div>')
@@ -736,15 +747,41 @@
             + '<div style="font-size:12px;color:#666;margin-top:4px;">SKU <code>' + escDef(p.sku) + '</code>'
             + (p.ean ? ' &middot; EAN ' + escDef(p.ean) : '') + '</div>'
             // v4.51 - ninguem sabia que era pra CLICAR na linha
-            + '<button type="button" class="btn-escolher" onclick="event.stopPropagation();escolherProdutoDefeito(' + i + ')" '
-            + 'style="margin-top:12px;background:#116B4E;color:#fff;border:none;border-radius:9px;padding:11px 20px;font-weight:700;font-size:14px;cursor:pointer;">'
-            + '&#10003; É Este Produto</button>'
+            + (ehKitCard
+                ? '<div style="margin-top:9px;">'
+                    + '<div style="font-size:12.5px;color:#561A9E;font-weight:700;margin-bottom:5px;">'
+                      + (comps
+                          ? 'Este kit é montado com estas peças — clique na que está com defeito:'
+                          : 'É um KIT — não dá pra lançar defeito nele. Não consegui listar as peças agora;'
+                            + ' tente de novo em instantes ou busque direto pelo SKU da peça.') + '</div>'
+                    + (comps || []).map(function (c, j) {
+                        return '<div style="display:flex;align-items:center;gap:9px;padding:6px 0;border-top:1px solid #efe8f7;">'
+                          + '<div style="flex:1;min-width:0;">'
+                            + '<div style="font-size:13.5px;font-weight:600;color:#241a35;">' + escDef(c.nome || c.sku) + '</div>'
+                            + '<div style="font-size:11.5px;color:#71659a;">SKU <code>' + escDef(c.sku) + '</code>'
+                              + (c.quantidade > 1 ? ' &middot; ' + c.quantidade + '× no kit' : '') + '</div>'
+                          + '</div>'
+                          + '<button type="button" onclick="event.stopPropagation();escolherComponenteKit(' + i + ',' + j + ')" '
+                          + 'style="background:#116B4E;color:#fff;border:none;border-radius:9px;padding:10px 16px;font-weight:700;font-size:13.5px;cursor:pointer;white-space:nowrap;">'
+                          + '&#10003; É Esta Peça</button></div>';
+                      }).join('')
+                    + (p.componentes_faltando
+                        ? '<div style="margin-top:7px;font-size:11.5px;color:#7a5c00;background:#fff8e1;border:1px solid #ffe082;border-radius:7px;padding:6px 8px;">'
+                          + '⚠ Não consegui listar ' + p.componentes_faltando + ' peça(s) deste kit agora.</div>'
+                        : '')
+                  + '</div>'
+                : '<button type="button" class="btn-escolher" onclick="event.stopPropagation();escolherProdutoDefeito(' + i + ')" '
+                  + 'style="margin-top:12px;background:#116B4E;color:#fff;border:none;border-radius:9px;padding:11px 20px;font-weight:700;font-size:14px;cursor:pointer;">'
+                  + '&#10003; É Este Produto</button>')
             + '</div></div>';
         }
         window._defLista = lista;
         // v4.51 - RESULTADO UNICO ja abre escolhido: mostrar lista de um item
         // so pra ele clicar e passo a mais sem ganho
-        if (lista.length === 1) {
+        // v4.68 (review do Codex) - kit NUNCA auto-seleciona, nem sem
+        // composicao resolvida (antes esta condicao ainda exigia
+        // componentes.length e o kit sozinho na busca era escolhido)
+        if (lista.length === 1 && !lista[0].ehKit) {
           box.innerHTML = '';
           escolherProdutoDefeito(0);
           var campo = document.getElementById('defProblema');
@@ -786,14 +823,50 @@
       }
     }
 
+    // v4.66 - o kit pendente e o aviso morrem a cada abertura/busca/escolha
+    function limparKitPendente() {
+      // v4.72 (review do Codex) - trocar de produto/fechar o modal NAO pode
+      // zerar a guarda de um laco AINDA RODANDO: o laco velho continuava
+      // gravando e a tela nova ja aceitava outro salvamento. Agora a "epoca"
+      // muda, o laco velho se descobre obsoleto e para sozinho.
+      window._kitEpoca = (window._kitEpoca || 0) + 1;
+      window._kitPendente = null;
+      var m = document.getElementById('defMsg');
+      if (m) m.innerHTML = '';
+    }
+
     function escolherProdutoDefeito(i) {
       var p = (window._defLista || [])[i];
       if (!p) return;
+      selecionarProdutoDefeito(p, i);
+    }
+
+    // v4.66 - clicou na PECA de um kit: segue com o produto SIMPLES dela
+    function escolherComponenteKit(i, j) {
+      var kit = (window._defLista || [])[i];
+      var c = kit && kit.componentes && kit.componentes[j];
+      if (!c) return;
+      selecionarProdutoDefeito({ sku: c.sku, nome: c.nome || c.sku, ean: '', imagem: c.imagem || kit.imagem || null }, i);
+      // v4.68 (review do Codex) - a quantidade e SEMPRE reescrita: antes,
+      // escolher uma peca de 2× e depois outra de 1× deixava o campo em 2
+      var campoQtd = document.getElementById('defQtd');
+      if (campoQtd) campoQtd.value = c.quantidade || 1;
+      var campo = document.getElementById('defProblema');
+      if (campo) campo.focus();
+    }
+
+    function selecionarProdutoDefeito(p, i) {
+      limparKitPendente();
+      // v4.69 (review do Codex) - a quantidade volta a 1 em TODA escolha; quem
+      // precisa de outro valor (peca de kit com 2×) reescreve logo depois.
+      // Antes, escolher uma peca 2× e depois um produto comum lancava 2 un.
+      var qtdReset = document.getElementById('defQtd');
+      if (qtdReset) qtdReset.value = 1;
       _defProdutoEscolhido = p;
       var boxImg = document.getElementById('defImg');
       if (boxImg) {
         boxImg.innerHTML = p.imagem
-          // v4.60 - a foto do produto ESCOLHIDO usa a classe grande (260px),
+          // v4.66 - a foto do produto ESCOLHIDO usa a classe grande (260px),
           // igual na AMB. Aqui ela ficou com o tamanho antigo de 70px porque
           // o CSS foi portado mas este trecho, nao.
           ? '<img src="' + escDef(p.imagem) + '" onclick="abrirZoomProduto(this.src)" onerror="this.style.display=\'none\'" class="foto-produto-escolhido" style="cursor:zoom-in;">'
@@ -907,38 +980,111 @@
       }
     }
   
-    // v4.62 - a explosao do kit: confirma componente a componente e lanca
-    // cada um como defeito proprio (mesma descricao, local e fotos).
-    async function explodirKitDefeito(d, payload, msg) {
-      var lancados = 0;
-      for (var i = 0; i < d.componentes_det.length; i++) {
-        var comp = d.componentes_det[i];
-        var qtd = (parseInt(payload.qtd, 10) || 1) * (comp.quantidade || 1);
-        var ok = confirm(
-          (d.kit_sku || 'Este produto') + ' é um KIT — no estoque quem existe é o produto simples.\n\n'
-          + 'Lançar o defeito como ' + qtd + '× ' + comp.sku + '?'
-          + (d.componentes_det.length > 1 ? '\n\n(componente ' + (i + 1) + ' de ' + d.componentes_det.length + ')' : ''));
-        if (!ok) continue;
-        msg.innerHTML = '<span style="color:#555;">lançando ' + qtd + '× ' + comp.sku + '…</span>';
+    // v4.66 (porte da AMB b180/b181) - A COMPOSICAO APARECE NA TELA,
+    // clicavel. A fila de confirm() saiu: o Diego nao via o que o kit tinha.
+    function explodirKitDefeito(d, payload, msg) {
+      var lista = d.componentes_det || [];
+      if (!lista.length) {
+        msg.innerHTML = '<span style="color:#c62828;">' + escDef(d.erro || 'kit sem composicao') + '</span>';
+        return;
+      }
+      window._kitPendente = { d: d, payload: payload };
+      window._kitOcupado = false;
+      var completa = d.composicao_completa !== false;
+      var faltando = Number(d.componentes_faltando) || 0;
+      var qtdBase = parseInt(payload.qtd, 10) || 1;
+      var linhas = lista.map(function (c, i) {
+        var qtd = qtdBase * (c.quantidade || 1);
+        return '<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-top:1px solid #f0e6ef;">'
+          + '<div style="flex:1;min-width:0;">'
+            + '<div style="font-weight:700;font-size:13px;color:#241a35;">' + qtd + '× <code>' + escDef(c.sku) + '</code></div>'
+            + (c.nome ? '<div style="font-size:11.5px;color:#71659a;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + escDef(c.nome) + '</div>' : '')
+          + '</div>'
+          + '<button type="button" onclick="lancarComponenteKit(' + i + ')" '
+            + 'style="background:#561A9E;color:#fff;border:none;border-radius:8px;padding:9px 13px;font-weight:700;cursor:pointer;white-space:nowrap;">'
+            + '💾 Lançar aqui</button></div>';
+      }).join('');
+      msg.innerHTML = '<div style="background:#faf7ff;border:1px solid #e4dcf1;border-radius:10px;padding:11px 12px;text-align:left;">'
+        + '<div style="font-size:13px;color:#241a35;margin-bottom:4px;">'
+          + '📦 <b>' + escDef(d.kit_sku || '') + ' é um KIT.</b> No estoque quem existe é o produto simples —'
+          + ' escolha em qual peça lançar o defeito:</div>'
+        + linhas
+        + (!completa
+            ? '<div style="margin-top:9px;background:#fff8e1;border:1px solid #ffe082;border-radius:8px;padding:8px 10px;font-size:12px;color:#7a5c00;">'
+              + '⚠ Não consegui resolver ' + faltando + ' peça(s) deste kit agora. Lance nas peças acima e'
+              + ' tente de novo em instantes para as demais (ou lance pelo SKU direto).</div>'
+            : '')
+        + (lista.length > 1 && completa
+            ? '<div style="margin-top:9px;text-align:right;"><button type="button" onclick="lancarComponenteKit(-1)" '
+              + 'style="background:#0F6E56;color:#fff;border:none;border-radius:8px;padding:9px 14px;font-weight:700;cursor:pointer;">'
+              + '⚡ Lançar em TODAS as peças</button></div>'
+            : '')
+        + '</div>';
+    }
+
+    // v4.66 - lanca em UM componente (indice) ou em TODOS (-1)
+    async function lancarComponenteKit(indice) {
+      var pend = window._kitPendente;
+      var msg = document.getElementById('defMsg');
+      if (!pend) { if (msg) msg.innerHTML = '<span style="color:#c62828;">recomece a busca do produto.</span>'; return; }
+      if (window._kitOcupado) return;      // toque duplo gravava duas vezes
+      window._kitOcupado = true;
+      var minhaEpoca = window._kitEpoca || 0;   // v4.72
+      var botoes = document.querySelectorAll('#defMsg button');
+      for (var b = 0; b < botoes.length; b++) { botoes[b].disabled = true; botoes[b].style.opacity = '.55'; }
+      // v4.71 (review do Codex) - o botao PRINCIPAL de salvar tambem trava:
+      // clicar nele durante os lancamentos tentaria gravar o KIT de novo
+      var btnSalvar = document.getElementById('defBtnSalvar');
+      if (btnSalvar) { btnSalvar.disabled = true; btnSalvar.style.opacity = '.5'; }
+      var lista = pend.d.componentes_det || [];
+      var alvos = indice < 0 ? lista : [lista[indice]];
+      var qtdBase = parseInt(pend.payload.qtd, 10) || 1;
+      var lancados = 0, erro = '', falharam = [];
+      for (var i = 0; i < alvos.length; i++) {
+        var c = alvos[i];
+        if (!c) continue;
+        // v4.72 - o operador trocou de produto/fechou o modal? o laco para aqui
+        if ((window._kitEpoca || 0) !== minhaEpoca) break;
+        var qtd = qtdBase * (c.quantidade || 1);
+        if (msg) msg.innerHTML = '<span style="color:#555;">lançando ' + qtd + '× ' + escDef(c.sku) + '…</span>';
         try {
-          var r2 = await fetch('/api/defeitos/adicionar', {
+          var r = await fetch('/api/defeitos/adicionar', {
             method: 'POST', credentials: 'same-origin',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ sku: comp.sku, defeito: payload.defeito,
-              localizacao: payload.localizacao, qtd: qtd, fotos: payload.fotos })
+            body: JSON.stringify({ sku: c.sku, defeito: pend.payload.defeito, descricao: pend.payload.defeito,
+              localizacao: pend.payload.localizacao, qtd: qtd, fotos: pend.payload.fotos })
           });
-          var d2 = await r2.json();
+          var d2 = await r.json();
           if (d2 && d2.ok) lancados++;
-          else msg.innerHTML = '<span style="color:#c62828;">' + escDef((d2 && d2.erro) || 'erro no ' + comp.sku) + '</span>';
-        } catch (e) {
-          msg.innerHTML = '<span style="color:#c62828;">Erro de conexão no ' + comp.sku + '.</span>';
-        }
+          else { erro = (d2 && d2.erro) || ('erro no ' + c.sku); falharam.push(c); }
+        } catch (e) { erro = 'Erro de conexão no ' + c.sku + '.'; falharam.push(c); }
       }
-      if (lancados) {
-        msg.innerHTML = '<span style="color:#2e7d32;">\u2705 ' + lancados + ' peça(s) lançada(s) no produto simples! Abra 🔧 Defeitos pra ver e imprimir etiquetas.</span>';
+      window._kitOcupado = false;
+      if (btnSalvar) { btnSalvar.disabled = false; btnSalvar.style.opacity = ''; }
+      // v4.72 - laco obsoleto nao escreve na tela nova nem fecha o modal dela
+      if ((window._kitEpoca || 0) !== minhaEpoca) return;
+      if (lancados && !falharam.length && msg) {
+        window._kitPendente = null;
+        msg.innerHTML = '<span style="color:#2e7d32;">\u2705 ' + lancados + ' peça(s) lançada(s) no produto simples!'
+          + ' Abra 🔧 Defeitos pra ver e imprimir etiquetas.</span>';
         setTimeout(function () { fecharModalDefeito(); }, 2200);
-      } else if (!msg.innerHTML || msg.innerHTML.indexOf('c62828') === -1) {
-        msg.innerHTML = '<span style="color:#555;">Nada lançado.</span>';
+      } else if (falharam.length && msg) {
+        // v4.71 (review do Codex) - PRESERVA o estado de composicao incompleta:
+        // forcar `true` escondia o aviso de peca nao resolvida e ainda
+        // liberava o "lancar em TODAS" com a composicao pela metade
+        pend.d = Object.assign({}, pend.d, {
+          componentes_det: falharam,
+          composicao_completa: pend.d.composicao_completa !== false,
+          componentes_faltando: pend.d.componentes_faltando || 0,
+        });
+        explodirKitDefeito(pend.d, pend.payload, msg);
+        msg.innerHTML = '<div style="background:#fdecea;border:1px solid #f5c6c3;border-radius:8px;padding:8px 10px;'
+          + 'font-size:12.5px;color:#8C1D18;margin-bottom:8px;">'
+          + (lancados ? '\u2705 ' + lancados + ' peça(s) lançada(s). ' : '')
+          + '❌ Falhou em ' + falharam.length + ': ' + escDef(erro || '') + '<br>Tente de novo só nas peças abaixo.'
+          + '</div>' + msg.innerHTML;
+      } else if (msg) {
+        msg.innerHTML = '<span style="color:#c62828;">' + escDef(erro || 'nada lançado') + '</span>';
       }
     }
 </script>
@@ -1048,7 +1194,7 @@
     })();
   </script>
   <script>
-    // v4.60 - colinha em modal
+    // v4.66 - colinha em modal
     function abrirColaBipe() {
       var m = document.getElementById('modalColaBipe');
       if (m) m.classList.add('show');

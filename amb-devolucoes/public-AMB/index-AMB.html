@@ -206,7 +206,7 @@
         <div class="topo-txt">
           <h1>AMBTotal Devoluções</h1>
           <p>Identificar venda &middot; NF-e &middot; Triagem
-            <span class="topo-versao">&middot; v3.68 &middot; <span id="serverVersion">checando...</span></span>
+            <span class="topo-versao">&middot; v3.73 &middot; <span id="serverVersion">checando...</span></span>
           </p>
         </div>
         <!-- b92 - os 2 do estoque de defeitos subiram pra MESMA faixa:
@@ -849,7 +849,11 @@
           // b182 (pedido do Diego) - KIT ja vem DESTRINCHADO no proprio card:
           // as pecas aparecem na lista e ele clica direto na que quer. O kit
           // em si deixa de ser clicavel (nao existe na prateleira).
-          var ehKitCard = !!(p.ehKit && p.componentes && p.componentes.length);
+          var ehKitCard = !!p.ehKit;   // b183 (review do Codex no PR da GOOD) -
+          // kit CONHECIDO nunca e selecionavel, mesmo sem composicao resolvida
+          // (4o kit da busca, ou todas as consultas falhando): antes o card
+          // voltava a ser clicavel e dava pra lancar defeito NO KIT.
+          var comps = (p.componentes && p.componentes.length) ? p.componentes : null;
           h += '<div id="defRes' + i + '"' + (ehKitCard ? '' : ' onclick="escolherProdutoDefeito(' + i + ')"') + ' data-i="' + i + '" style="border:1px solid ' + (ehKitCard ? '#e4dcf1' : '#ddd') + ';border-radius:10px;padding:10px;margin-bottom:7px;' + (ehKitCard ? 'background:#faf7ff;' : 'cursor:pointer;background:#fff;') + 'display:flex;gap:14px;align-items:center;">'
             + (p.imagem
                 ? '<img src="' + escDef(p.imagem) + '" onclick="event.stopPropagation();abrirZoomProduto(this.src)" onerror="this.style.display=\'none\'" class="foto-produto-lista" style="cursor:zoom-in;">'
@@ -861,8 +865,11 @@
             + (ehKitCard
                 ? '<div style="margin-top:9px;">'
                     + '<div style="font-size:12.5px;color:#561A9E;font-weight:700;margin-bottom:5px;">'
-                      + 'Este kit é montado com estas peças — clique na que está com defeito:</div>'
-                    + p.componentes.map(function (c, j) {
+                      + (comps
+                          ? 'Este kit é montado com estas peças — clique na que está com defeito:'
+                          : 'É um KIT — não dá pra lançar defeito nele. Não consegui listar as peças agora;'
+                            + ' tente de novo em instantes ou busque direto pelo SKU da peça.') + '</div>'
+                    + (comps || []).map(function (c, j) {
                         return '<div style="display:flex;align-items:center;gap:9px;padding:6px 0;border-top:1px solid #efe8f7;">'
                           + '<div style="flex:1;min-width:0;">'
                             + '<div style="font-size:13.5px;font-weight:600;color:#241a35;">' + escDef(c.nome || c.sku) + '</div>'
@@ -888,7 +895,10 @@
         // b105 - RESULTADO UNICO ja abre escolhido. Mostrar uma lista de um
         // item so pra ele clicar e passo a mais sem ganho: o quadro ja
         // aparece pronto pra preencher o defeito e a localizacao.
-        if (lista.length === 1 && !(lista[0].ehKit && lista[0].componentes && lista[0].componentes.length)) {
+        // b183 (review do Codex) - kit NUNCA auto-seleciona, nem sem
+        // composicao resolvida (antes esta condicao ainda exigia
+        // componentes.length e o kit sozinho na busca era escolhido)
+        if (lista.length === 1 && !lista[0].ehKit) {
           box.innerHTML = '';
           escolherProdutoDefeito(0);
           var campo = document.getElementById('defProblema');
@@ -917,14 +927,21 @@
         sku: c.sku, nome: c.nome || c.sku, ean: '',
         imagem: c.imagem || kit.imagem || null,
       }, i);
+      // b183 (review do Codex) - a quantidade e SEMPRE reescrita: antes,
+      // escolher uma peca de 2× e depois outra de 1× deixava o campo em 2
       var campoQtd = document.getElementById('defQtd');
-      if (campoQtd && (c.quantidade || 1) > 1) campoQtd.value = c.quantidade;
+      if (campoQtd) campoQtd.value = c.quantidade || 1;
       var campo = document.getElementById('defProblema');
       if (campo) campo.focus();
     }
 
     function selecionarProdutoDefeito(p, i) {
-      limparKitPendente();   // b181 - estado do kit anterior nunca sobrevive
+      limparKitPendente();
+      // b184 (review do Codex) - a quantidade volta a 1 em TODA escolha; quem
+      // precisa de outro valor (peca de kit com 2×) reescreve logo depois.
+      // Antes, escolher uma peca 2× e depois um produto comum lancava 2 un.
+      var qtdReset = document.getElementById('defQtd');
+      if (qtdReset) qtdReset.value = 1;   // b181 - estado do kit anterior nunca sobrevive
       _defProdutoEscolhido = p;
       var boxImg = document.getElementById('defImg');
       if (boxImg) {
@@ -1069,8 +1086,12 @@
     // outro produto e clicar nos botoes do kit ANTERIOR, lancando o defeito
     // nos SKUs errados com a descricao e o local antigos.
     function limparKitPendente() {
+      // b187 (review do Codex) - trocar de produto/fechar o modal NAO pode
+      // zerar a guarda de um laco AINDA RODANDO: o laco velho continuava
+      // gravando e a tela nova ja aceitava outro salvamento. Agora a "epoca"
+      // muda, o laco velho se descobre obsoleto e para sozinho.
+      window._kitEpoca = (window._kitEpoca || 0) + 1;
       window._kitPendente = null;
-      window._kitOcupado = false;
       var m = document.getElementById('defMsg');
       if (m) m.innerHTML = '';
     }
@@ -1130,8 +1151,13 @@
       // mesma peca duas vezes (o registro nao tem chave de idempotencia)
       if (window._kitOcupado) return;
       window._kitOcupado = true;
+      var minhaEpoca = window._kitEpoca || 0;   // b187
       var botoes = document.querySelectorAll('#defMsg button');
       for (var b = 0; b < botoes.length; b++) { botoes[b].disabled = true; botoes[b].style.opacity = '.55'; }
+      // b186 (review do Codex) - o botao PRINCIPAL de salvar tambem trava:
+      // clicar nele durante os lancamentos tentaria gravar o KIT de novo
+      var btnSalvar = document.getElementById('defBtnSalvar');
+      if (btnSalvar) { btnSalvar.disabled = true; btnSalvar.style.opacity = '.5'; }
       var lista = pend.d.componentes_det || [];
       var alvos = indice < 0 ? lista : [lista[indice]];
       var qtdBase = parseInt(pend.payload.qtd, 10) || 1;
@@ -1139,6 +1165,8 @@
       for (var i = 0; i < alvos.length; i++) {
         var c = alvos[i];
         if (!c) continue;
+        // b187 - o operador trocou de produto/fechou o modal? o laco para aqui
+        if ((window._kitEpoca || 0) !== minhaEpoca) break;
         var qtd = qtdBase * (c.quantidade || 1);
         if (msg) msg.innerHTML = '<span style="color:#555;">lançando ' + qtd + '× ' + escDef(c.sku) + '…</span>';
         try {
@@ -1154,6 +1182,9 @@
         } catch (e) { erro = 'Erro de conexão no ' + c.sku + '.'; falharam.push(c); }
       }
       window._kitOcupado = false;
+      if (btnSalvar) { btnSalvar.disabled = false; btnSalvar.style.opacity = ''; }
+      // b187 - laco obsoleto nao escreve na tela nova nem fecha o modal dela
+      if ((window._kitEpoca || 0) !== minhaEpoca) return;
       // b181 (review do Codex) - SUCESSO PARCIAL nao pode fechar o modal com
       // o joinha verde: o que falhou some da frente e o operador so descobre
       // depois (ou repete o que ja gravou). As que falharam ficam na tela.
@@ -1163,7 +1194,14 @@
           + ' Abra 🔧 Defeitos pra ver e imprimir etiquetas.</span>';
         setTimeout(function () { fecharModalDefeito(); }, 2200);
       } else if (falharam.length && msg) {
-        pend.d = Object.assign({}, pend.d, { componentes_det: falharam, composicao_completa: true });
+        // b186 (review do Codex) - PRESERVA o estado de composicao incompleta:
+        // forcar `true` escondia o aviso de peca nao resolvida e ainda
+        // liberava o "lancar em TODAS" com a composicao pela metade
+        pend.d = Object.assign({}, pend.d, {
+          componentes_det: falharam,
+          composicao_completa: pend.d.composicao_completa !== false,
+          componentes_faltando: pend.d.componentes_faltando || 0,
+        });
         explodirKitDefeito(pend.d, pend.payload, msg);
         msg.innerHTML = '<div style="background:#fdecea;border:1px solid #f5c6c3;border-radius:8px;padding:8px 10px;'
           + 'font-size:12.5px;color:#8C1D18;margin-bottom:8px;">'

@@ -129,6 +129,14 @@ async function chamarBling(caminho, opcoes = {}) {
   } catch (erro) {
     const status = erro.response && erro.response.status;
 
+    // b187 (review do Codex no PR da GOOD) - quem tem PRAZO proprio pede
+    // `semRetentativa`: sem isso o 401/429 dorme 1,5s e dispara OUTRA
+    // requisicao depois que o chamador ja desistiu (trabalho orfao, fora
+    // da cadencia global).
+    if (opcoes.semRetentativa) {
+      return { ok: false, status, error: (erro.response && erro.response.data) || erro.message };
+    }
+
     if (status === 401) {
       if (await renovarToken()) {
         try {

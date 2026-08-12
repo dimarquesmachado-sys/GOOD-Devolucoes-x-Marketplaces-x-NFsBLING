@@ -101,14 +101,29 @@ function extrairComponentes(det) {
   for (const l of lugares) if (Array.isArray(l) && l.length) return l;
   return [];
 }
+// b183 (review do Codex) - prazo que vale pra requisicao JA EM VOO: o
+// chamarBling nao tem timeout proprio, entao uma consulta travada seguraria
+// a busca/o POST muito alem do prazo prometido.
+async function comPrazo(promessa, ms) {
+  let t;
+  try {
+    return await Promise.race([
+      promessa,
+      new Promise((_, rej) => { t = setTimeout(() => rej(new Error('prazo da consulta esgotado')), Math.max(500, ms)); }),
+    ]);
+  } finally { clearTimeout(t); }
+}
 const DETALHE_INTERVALO_MS = 350;
 let DETALHE_PROXIMO = 0;
-async function esperarVezDetalhe() {
+// b186 (review do Codex no PR da GOOD) - a espera na FILA conta no prazo
+async function esperarVezDetalhe(prazoMs) {
   const agora = Date.now();
   const alvo = Math.max(agora, DETALHE_PROXIMO);
-  DETALHE_PROXIMO = alvo + DETALHE_INTERVALO_MS;
   const espera = alvo - agora;
+  if (prazoMs !== undefined && espera > Math.max(0, prazoMs)) return false;
+  DETALHE_PROXIMO = alvo + DETALHE_INTERVALO_MS;
   if (espera > 0) await new Promise(r => setTimeout(r, espera));
+  return true;
 }
 
 /**
@@ -170,13 +185,19 @@ function montar(router, deps) {
   // so as pecas resolvidas como se fossem a composicao inteira faria o
   // estoquista lancar em metade do kit sem saber (falha do Bling num
   // componente, kit com mais de 12 pecas, ou o prazo estourando).
-  async function resolverComponentes(comps) {
-    const lista = Array.isArray(comps) ? comps.filter(Boolean) : [];   // b181 - entrada nula nao derruba a trava
-    const limite = Date.now() + COMPONENTES_PRAZO_MS;
+  async function resolverComponentes(comps, limiteExterno) {
+    const brutos = Array.isArray(comps) ? comps : [];
+    const lista = brutos.filter(Boolean);   // b181 - entrada nula nao derruba a trava
+    // b183 (review do Codex no PR da GOOD) - ...mas CONTA como peca que
+    // faltou, senao a composicao passaria por completa
+    const nulos = brutos.length - lista.length;
+    // b184 (review do Codex no PR da GOOD) - prazo REAPROVEITADO quando o
+    // chamador ja abriu um (estrutura + pecas somavam ~16s por kit)
+    const limite = limiteExterno || (Date.now() + COMPONENTES_PRAZO_MS);
     const alvos = lista.slice(0, COMPONENTES_MAX);
     const truncados = Math.max(0, lista.length - alvos.length);
     const out = [];
-    let naoResolvidos = 0;
+    let naoResolvidos = nulos;
     for (const c of alvos) {
       const p = (c && c.produto) || {};
       const id = p.id || c.idProduto || c.produtoId || null;
@@ -188,9 +209,12 @@ function montar(router, deps) {
         else if (Date.now() >= limite) { naoResolvidos++; continue; }   // b181 - prazo estourou
         else {
           try {
-            await esperarVezDetalhe();
-            const r = await bling.chamarBling('/produtos/' + id);
-            const d = (r.ok && r.data && r.data.data) || null;
+            if (!(await esperarVezDetalhe(limite - Date.now()))) { naoResolvidos++; continue; }
+            const restante = limite - Date.now();
+            if (restante <= 0) { naoResolvidos++; continue; }
+            // b186 - timeout REAL no axios, nao so o race
+            const r = await comPrazo(bling.chamarBling('/produtos/' + id, { timeout: restante, semRetentativa: true }), restante);
+            const d = (r && r.ok && r.data && r.data.data) || null;
             if (d) {
               sku = String(d.codigo || d.sku || '').trim();
               nome = nome || String(d.nome || d.descricao || '').trim();
@@ -446,9 +470,11 @@ function montar(router, deps) {
       // que vao pra tela levam a COMPOSICAO junto, pra o estoquista escolher
       // a peca ali mesmo: sem popup e sem precisar preencher e salvar antes.
       let kitsResolvidos = 0;
+      const prazoLaco = Date.now() + COMPONENTES_PRAZO_MS * 2;   // b184
       for (const item of finais) {
         if (item._fmt !== 'E' || !item.id) continue;
         if (kitsResolvidos >= 3) break;          // kit e excecao na busca; teto barato
+        if (Date.now() >= prazoLaco) break;      // b184 - tempo do laco esgotado
         const doCache = compsCacheGet(item.id);
         if (doCache) {
           item.componentes = doCache.itens;
@@ -456,20 +482,32 @@ function montar(router, deps) {
           kitsResolvidos++;
           continue;
         }
+        const prazoKit = Math.min(Date.now() + COMPONENTES_PRAZO_MS, prazoLaco);   // b184
         let cru = item._compsCru;
         if (!cru) {
           try {
-            await esperarVezDetalhe();
-            const rK = await bling.chamarBling('/produtos/' + item.id);
-            const dK = (rK.ok && rK.data && rK.data.data) || null;
+            // b187 - a vaga NEM E RESERVADA se nascer depois do prazo
+            if (!(await esperarVezDetalhe(prazoKit - Date.now()))) throw new Error('fila alem do prazo do kit');
+            // b185 (review do Codex) - a espera na FILA tambem conta no prazo
+            const restanteKit = prazoKit - Date.now();
+            if (restanteKit <= 0) throw new Error('prazo do kit esgotado na fila');
+            // b187 - timeout real + sem retentativa orfa (o 429/401 do
+            // chamarBling dormia 1,5s e disparava outra requisicao depois
+            // que este laco ja tinha desistido)
+            const rK = await comPrazo(
+              bling.chamarBling('/produtos/' + item.id, { timeout: restanteKit, semRetentativa: true }),
+              restanteKit);
+            const dK = (rK && rK.ok && rK.data && rK.data.data) || null;
             cru = extrairComponentes(dK);
           } catch (e) { cru = null; }
         }
         if (cru && cru.length) {
-          const rC = await resolverComponentes(cru);
+          const rC = await resolverComponentes(cru, prazoKit);
           item.componentes = rC.itens;
           item.componentes_faltando = rC.faltando;
-          COMPS_POR_KIT.set(item.id, { itens: rC.itens, faltando: rC.faltando, ts: Date.now() });
+          // b183 - so a composicao COMPLETA vira cache de 6h (parcial presa
+          // no cache faria o "tente de novo em instantes" virar mentira)
+          if (rC.faltando === 0) COMPS_POR_KIT.set(item.id, { itens: rC.itens, faltando: 0, ts: Date.now() });
         }
         kitsResolvidos++;
       }

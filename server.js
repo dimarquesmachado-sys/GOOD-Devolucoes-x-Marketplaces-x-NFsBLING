@@ -3153,6 +3153,7 @@ function enriquecerEansEmBackground() {
     console.log(`[PRODUTOS] buscando EAN de ${fila.length} produtos (background)...`);
     for (const p of fila) {
       try {
+        await esperarVezDetalhe();                        // v4.67 - ritmo global
         const r = await chamarBling(`https://api.bling.com.br/Api/v3/produtos/${p.id}`);
         const det = (r && r.ok && ((r.data && r.data.data) || r.data)) || null;
         const eans = possiveisGtins(det);
@@ -3185,7 +3186,140 @@ function enriquecerEansEmBackground() {
 // v4.53 - cache do FORMATO de cada produto. A listagem do Bling nem sempre
 // diz se e kit; o detalhe diz. Como o mesmo produto reaparece em varias
 // buscas, guardamos o resultado (o formato de um produto quase nunca muda).
-const FORMATO_CACHE = new Map();
+// v4.66 (porte da AMB b180-b182) - COMPONENTES DO KIT.
+// O Bling entrega a estrutura do kit com o produto SO PELO ID (sem
+// `codigo`), entao o mapeamento que exigia c.produto.codigo saia VAZIO:
+// a mensagem nao citava a composicao e a tela nao tinha o que oferecer.
+const SKU_POR_ID = new Map();          // idProduto -> { sku, nome, ts }
+const COMPS_POR_KIT = new Map();       // idKit -> { itens, faltando, ts }
+const KIT_TTL_MS = 6 * 60 * 60 * 1000;
+const COMPONENTES_MAX = 12;
+const COMPONENTES_PRAZO_MS = 8000;
+function skuCacheGet(id) {
+  const reg = id ? SKU_POR_ID.get(id) : null;
+  if (!reg) return null;
+  if (Date.now() - reg.ts > KIT_TTL_MS) { SKU_POR_ID.delete(id); return null; }
+  return reg;
+}
+function skuCacheSet(id, sku, nome) {
+  if (id && sku) SKU_POR_ID.set(id, { sku, nome: nome || '', ts: Date.now() });
+}
+function compsCacheGet(id) {
+  const reg = id ? COMPS_POR_KIT.get(id) : null;
+  if (!reg) return null;
+  if (Date.now() - reg.ts > KIT_TTL_MS) { COMPS_POR_KIT.delete(id); return null; }
+  return reg;
+}
+function extrairComponentes(det) {
+  if (!det) return [];
+  const lugares = [
+    det.estrutura && det.estrutura.componentes,
+    det.componentes,
+    det.estrutura && det.estrutura.itens,
+  ];
+  for (const l of lugares) if (Array.isArray(l) && l.length) return l;
+  return [];
+}
+// Devolve TAMBEM o que nao resolveu: entregar so as pecas resolvidas como
+// se fossem a composicao inteira faria o estoquista lancar em metade do
+// kit sem saber (falha do Bling, kit grande, ou o prazo estourando).
+async function resolverComponentesKit(comps, limiteExterno) {
+  const brutos = Array.isArray(comps) ? comps : [];
+  const lista = brutos.filter(Boolean);
+  // v4.68 (review do Codex) - entrada NULA na estrutura tambem e uma peca
+  // que o operador nao vai ver: some do array mas entra em `faltando`,
+  // senao a composicao seria dada como completa (e cacheada por 6h).
+  const nulos = brutos.length - lista.length;
+  // v4.69 (review do Codex) - quando o chamador ja abriu um prazo (a busca
+  // da estrutura do kit), ele e REAPROVEITADO: antes a estrutura gastava 8s
+  // e a resolucao das pecas abria outros 8s, entao um unico kit podia
+  // segurar a busca por ~16s (e a busca visita ate 3 kits).
+  const limite = limiteExterno || (Date.now() + COMPONENTES_PRAZO_MS);
+  const alvos = lista.slice(0, COMPONENTES_MAX);
+  const truncados = Math.max(0, lista.length - alvos.length);
+  const out = [];
+  let naoResolvidos = nulos;
+  for (const c of alvos) {
+    const p = (c && c.produto) || {};
+    const id = p.id || c.idProduto || c.produtoId || null;
+    let sku = String(p.codigo || p.sku || '').trim();
+    let nome = String(p.nome || p.descricao || '').trim();
+    if (!sku && id) {
+      const emCache = skuCacheGet(id);
+      if (emCache) { sku = emCache.sku; nome = nome || emCache.nome; }
+      else if (Date.now() >= limite) { naoResolvidos++; continue; }
+      else {
+        try {
+          // v4.71 - a vaga na fila ja nasce dentro do prazo do kit
+          if (!(await esperarVezDetalhe(limite - Date.now()))) { naoResolvidos++; continue; }
+          const restante = limite - Date.now();
+          if (restante <= 0) { naoResolvidos++; continue; }
+          const r = await comPrazo(
+            chamarBling(`https://api.bling.com.br/Api/v3/produtos/${id}`, { timeout: restante, semRetentativa: true }),
+            restante);
+          const d = (r && r.ok && r.data && r.data.data) || null;
+          if (d) {
+            sku = String(d.codigo || d.sku || '').trim();
+            nome = nome || String(d.nome || d.descricao || '').trim();
+            skuCacheSet(id, sku, nome);
+          }
+        } catch (e) { /* prazo ou falha: conta como nao resolvido abaixo */ }
+      }
+    }
+    const q = Number(c && (c.quantidade || c.qtd)) || 1;
+    if (sku) out.push({ sku, quantidade: q, nome });
+    else naoResolvidos++;
+  }
+  return { itens: out, faltando: naoResolvidos + truncados };
+}
+
+// v4.67 (review do Codex) - CADENCIA COMPARTILHADA pelo processo. A pausa
+// fixa dentro de cada laco so espacava as chamadas DAQUELE laco: duas
+// buscas simultaneas (ou a busca + o enriquecimento por EAN) somavam o
+// dobro do ritmo na API do Bling. Agora o intervalo e global, como na AMB.
+const DETALHE_INTERVALO_MS = 350;
+let DETALHE_PROXIMO = 0;
+// v4.71 (review do Codex) - a ESPERA NA FILA tambem conta no prazo: com
+// concorrencia, a vaga podia sair depois do prazo do kit e cada peca
+// gastava a espera inteira antes de desistir. Passando `prazoMs`, a vaga
+// nem e reservada quando ja nasceria tarde (e a fila nao anda a toa).
+async function esperarVezDetalhe(prazoMs) {
+  const agora = Date.now();
+  const alvo = Math.max(agora, DETALHE_PROXIMO);
+  const espera = alvo - agora;
+  if (prazoMs !== undefined && espera > Math.max(0, prazoMs)) return false;
+  DETALHE_PROXIMO = alvo + DETALHE_INTERVALO_MS;
+  if (espera > 0) await new Promise(r => setTimeout(r, espera));
+  return true;
+}
+// v4.67 (review do Codex) - o prazo tambem vale pra requisicao JA EM VOO:
+// o chamarBling nao tem timeout proprio, entao uma consulta travada
+// seguraria o POST inteiro muito alem dos 8s prometidos.
+async function comPrazo(promessa, ms) {
+  let t;
+  try {
+    return await Promise.race([
+      promessa,
+      new Promise((_, rej) => { t = setTimeout(() => rej(new Error('prazo da consulta esgotado')), Math.max(500, ms)); }),
+    ]);
+  } finally { clearTimeout(t); }
+}
+
+// v4.72 (review do Codex) - o veredito de formato da GOOD nunca expirava:
+// um 'E' antigo deixava o produto marcado como kit PARA SEMPRE e, com o
+// card do kit nao-clicavel, o item ficava impossivel de escolher mesmo
+// depois de virar simples no Bling. TTL igual ao da AMB.
+const FORMATO_CACHE = new Map();          // id -> { fmt, ts }
+const FORMATO_TTL_MS = 6 * 60 * 60 * 1000;
+function formatoCacheGet(id) {
+  const reg = id ? FORMATO_CACHE.get(id) : null;
+  if (!reg) return undefined;
+  if (Date.now() - reg.ts > FORMATO_TTL_MS) { FORMATO_CACHE.delete(id); return undefined; }
+  return reg.fmt;
+}
+function formatoCacheSet(id, fmt) {
+  if (id && fmt) FORMATO_CACHE.set(id, { fmt, ts: Date.now() });
+}
 
 /**
  * Tira da lista o que o estoquista nao pode lancar: KIT e COMPOSICAO.
@@ -3202,12 +3336,12 @@ async function tirarKits(lista, diag) {
 
     // v4.55 - a LISTAGEM as vezes ja denuncia o kit; se denunciar, nem
     // precisa consultar o detalhe
-    let fmt = FORMATO_CACHE.get(id);
+    let fmt = formatoCacheGet(id);
     if (fmt === undefined) {
       const fmtLista = String(item.formato || '').toUpperCase();
       const compLista = (item.estrutura && Array.isArray(item.estrutura.componentes))
         ? item.estrutura.componentes.length : 0;
-      if (fmtLista === 'E' || compLista > 0) { fmt = 'E'; FORMATO_CACHE.set(id, 'E'); }
+      if (fmtLista === 'E' || compLista > 0) { fmt = 'E'; formatoCacheSet(id, 'E'); }
     }
 
     let det = null;
@@ -3221,13 +3355,14 @@ async function tirarKits(lista, diag) {
       // lista. Agora nada que venha depois consegue mexer no veredito.
       // ═══════════════════════════════════════════════════════════════
       try {
+        await esperarVezDetalhe();                      // v4.67 - ritmo global
         const rD = await chamarBling(`https://api.bling.com.br/Api/v3/produtos/${id}`);
         det = (rD.ok && rD.data && rD.data.data) || null;
         if (det) {
           const comp = (det.estrutura && Array.isArray(det.estrutura.componentes))
             ? det.estrutura.componentes.length : 0;
           fmt = comp > 0 ? 'E' : String(det.formato || 'S').toUpperCase();
-          FORMATO_CACHE.set(id, fmt);      // so cacheia o que foi APURADO
+          formatoCacheSet(id, fmt);      // so cacheia o que foi APURADO
         }
         if (diag) {
           diag.push({
@@ -3242,7 +3377,6 @@ async function tirarKits(lista, diag) {
       } catch (e) {
         if (diag) diag.push({ sku: item.sku, id, erro: String(e.message || e) });
       }
-      await new Promise(r => setTimeout(r, 120));
     }
 
     // a foto vem do mesmo detalhe, mas em bloco separado: se falhar aqui,
@@ -3259,12 +3393,78 @@ async function tirarKits(lista, diag) {
 
     // v4.62 - o kit apurado no detalhe tambem fica NA LISTA, marcado
     // (antes era descartado; agora a explosao da gravacao precisa dele)
+    // v4.71 (review do Codex) - veredito SIMPLES limpa marca de kit antiga:
+    // o item pode chegar marcado (metadado da listagem, cache de outra
+    // rodada) e sem isso seguiria com o rotulo 📦 e o card travado.
+    if (fmt && fmt !== 'E' && item.ehKit) {
+      item.ehKit = false;
+      item.componentes = undefined;
+      item.componentes_faltando = undefined;
+      item.nome = String(item.nome || '').replace('📦 KIT · ', '');
+    }
     if (fmt === 'E') {
       item.ehKit = true;
       if (String(item.nome || '').indexOf('📦 KIT · ') !== 0) item.nome = '📦 KIT · ' + (item.nome || '');
+      // v4.66 - guarda a estrutura crua deste detalhe (se veio), pra a
+      // composicao ser resolvida sem pedir o produto de novo
+      if (det) item._compsCru = extrairComponentes(det);
     }
     saida.push(item);
   }
+  // v4.66 (pedido do Diego, portado da AMB) - os kits que vao pra tela
+  // levam a COMPOSICAO junto: o estoquista escolhe a peca no proprio card,
+  // sem popup e sem precisar preencher e salvar antes.
+  let kitsResolvidos = 0;
+  // v4.69 - teto de tempo do laco INTEIRO, alem do prazo de cada kit: no
+  // pior caso a busca nao fica presa somando os prazos dos 3 kits.
+  const prazoLaco = Date.now() + COMPONENTES_PRAZO_MS * 2;
+  for (const item of saida) {
+    if (!item.ehKit || !item.id) continue;
+    if (kitsResolvidos >= 3) break;      // kit e excecao numa busca de estoquista
+    if (Date.now() >= prazoLaco) break;  // v4.69 - tempo do laco esgotado
+    const doCache = compsCacheGet(item.id);
+    if (doCache) {
+      item.componentes = doCache.itens;
+      item.componentes_faltando = doCache.faltando;
+      kitsResolvidos++;
+      continue;
+    }
+    // v4.69 - UM prazo unico para este kit: estrutura + resolucao das pecas
+    const prazoKit = Math.min(Date.now() + COMPONENTES_PRAZO_MS, prazoLaco);
+    let cru = item._compsCru;
+    if (!cru || !cru.length) {
+      try {
+        // v4.72 - a vaga na fila NEM E RESERVADA se nascer depois do prazo
+        if (!(await esperarVezDetalhe(prazoKit - Date.now()))) throw new Error('fila alem do prazo do kit');
+        // v4.70 (review do Codex) - a ESPERA NA FILA conta no prazo: com
+        // buscas concorrentes, o agendador podia segurar mais que o prazo
+        // do kit e o `Math.max(500, ...)` do comPrazo ressuscitava meio
+        // segundo extra. Passado o prazo, a consulta nem comeca.
+        const restanteKit = prazoKit - Date.now();
+        if (restanteKit <= 0) throw new Error('prazo do kit esgotado na fila');
+        // v4.68 - o prazo vale TAMBEM pra esta consulta: ela e pre-requisito
+        // da composicao e travava a busca inteira.
+        // v4.71 - timeout REAL no axios (o race so ignorava a resposta)
+        const rK = await comPrazo(
+          chamarBling(`https://api.bling.com.br/Api/v3/produtos/${item.id}`, { timeout: restanteKit, semRetentativa: true }),
+          restanteKit);
+        const dK = (rK && rK.ok && rK.data && rK.data.data) || null;
+        cru = extrairComponentes(dK);
+      } catch (e) { cru = null; }
+    }
+    if (cru && cru.length) {
+      const rC = await resolverComponentesKit(cru, prazoKit);
+      item.componentes = rC.itens;
+      item.componentes_faltando = rC.faltando;
+      // v4.67 (review do Codex) - SO A COMPOSICAO COMPLETA vira cache de 6h.
+      // Guardar a parcial fazia a proxima busca cair no cache e nunca mais
+      // tentar as pecas que faltaram — o "tente de novo em instantes" da
+      // tela viraria mentira por 6 horas.
+      if (rC.faltando === 0) COMPS_POR_KIT.set(item.id, { itens: rC.itens, faltando: 0, ts: Date.now() });
+    }
+    kitsResolvidos++;
+  }
+  for (const item of saida) delete item._compsCru;
   return saida;
 }
 
@@ -4169,23 +4369,14 @@ app.post('/api/defeitos/adicionar', requerEstoquista, async (req, res) => {
     try {
       const rDet = await chamarBling(`https://api.bling.com.br/Api/v3/produtos/${prod.id}`);
       const det = (rDet.ok && rDet.data && rDet.data.data) || null;
-      const comps = (det && det.estrutura && Array.isArray(det.estrutura.componentes))
-        ? det.estrutura.componentes : [];
+      const comps = extrairComponentes(det);   // v4.66 - tolerante ao formato
       const ehKit = comps.length > 0 || String((det && det.formato) || '').toUpperCase() === 'E';
       if (ehKit) {
         // se der, ja diz QUAL produto simples ele deve usar no lugar
-        const sugestoes = comps.map(c => {
-          const p2 = c && c.produto;
-          const cod = (p2 && (p2.codigo || p2.sku)) || '';
-          const q = c && (c.quantidade || c.qtd);
-          return cod ? (q ? `${q}x ${cod}` : cod) : null;
-        }).filter(Boolean);
-        // v4.62 - componentes ESTRUTURADOS pra tela oferecer a explosao
-        const componentesDet = comps.map(c => {
-          const p2 = c && c.produto;
-          const cod = (p2 && (p2.codigo || p2.sku)) || '';
-          return cod ? { sku: cod, quantidade: Number(c.quantidade || c.qtd) || 1 } : null;
-        }).filter(Boolean);
+        // v4.66 - componentes resolvendo id -> SKU (o Bling manda so o id)
+        const resolucao = await resolverComponentesKit(comps);
+        const componentesDet = resolucao.itens;
+        const sugestoes = componentesDet.map(c => `${c.quantidade}x ${c.sku}`);
         return res.status(400).json({
           ok: false,
           erro: `"${prod.codigo || sku}" e um KIT, nao um produto simples.`
@@ -4196,6 +4387,9 @@ app.post('/api/defeitos/adicionar', requerEstoquista, async (req, res) => {
           componentes: sugestoes,
           kit_sku: prod.codigo || sku,
           componentes_det: componentesDet,
+          // v4.66 - a tela precisa saber que a composicao veio INCOMPLETA
+          composicao_completa: resolucao.faltando === 0,
+          componentes_faltando: resolucao.faltando,
         });
       }
     } catch (e) { /* se o Bling nao responder, segue - nao trava o galpao */ }
