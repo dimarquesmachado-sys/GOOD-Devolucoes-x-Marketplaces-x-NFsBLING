@@ -231,7 +231,7 @@ function renderizar(data, ok) {
       + '<div style="font-size:' + (lido ? '16px' : '21px') + ';font-weight:' + (lido ? '600' : '800') + ';'
       + 'line-height:1.35;margin:10px 0;white-space:pre-wrap;color:' + (lido ? '#444' : '#7f1d1d') + ';'
       + (lido ? '' : 'background:#fff;border:2px solid #f0b4ae;border-radius:9px;padding:11px 13px;')
-      + '">' + escapeHtml(rc.texto) + '</div>'
+      + '" id="recado-texto-' + rc.id + '">' + escapeHtml(rc.texto) + '</div>'
       + (lido
           ? '<div style="font-size:12px;color:#666;">✅ ciente por ' + escapeHtml(rc.ciente_por || '-') + ' em ' + (rc.ciente_em ? String(rc.ciente_em).slice(0, 10).split('-').reverse().join('/') : '-') + '</div>'
           : '<button onclick="recadoCiente(' + rc.id + ', this)" style="background:#2e7d32;color:#fff;border:none;border-radius:8px;padding:10px 18px;font-size:14px;font-weight:800;cursor:pointer;">✓ OK, ciente</button>')
@@ -637,9 +637,11 @@ async function verificarTriagemExistente(shipmentId, idAlternativo) {
 function renderizarBotoesTriagem() {
   const cont = document.getElementById('triagemConteudo');
   if (!cont) return;
-// b223 - leva a tela ate o primeiro recado pendente e pisca a borda, pra
-// nao sobrar duvida de onde clicar.
-function irProRecado() {
+// b223/b224 (review do Codex) - PRECISA ser global: o `onclick` inline e
+// avaliado no escopo da window, e a funcao estava presa dentro de
+// renderizarBotoesTriagem — clicar dava ReferenceError e o atalho, que
+// existe justamente pro celular, nunca rolava a tela.
+window.irProRecado = function () {
   const id = (window._recadosPendentes || [])[0];
   const el = id ? document.getElementById('recado-' + id) : document.querySelector('[id^="recado-"]');
   if (!el) return;
@@ -649,7 +651,11 @@ function irProRecado() {
     el.style.boxShadow = (n % 2 === 0) ? '0 0 0 6px rgba(198,40,40,.35)' : 'none';
     if (++n > 5) { clearInterval(piscar); el.style.boxShadow = 'none'; }
   }, 220);
-}
+  // b224 - guarda o handle: se a busca re-renderizar o card no meio, o
+  // intervalo antigo ficava mexendo num elemento que ja saiu da tela.
+  if (window._piscaRecado) clearInterval(window._piscaRecado);
+  window._piscaRecado = piscar;
+};
 
   // v3.33 - TRAVA: recado sem ciencia bloqueia a triagem. O estoquista tem
   // que ler e clicar "OK, ciente" antes de incluir no estoque/reportar.
@@ -832,6 +838,18 @@ async function recadoCiente(id, btn) {
     if (!d.ok) { btn.disabled = false; btn.textContent = '✓ OK, ciente'; alert('Falhou: ' + (d.erro || '')); return; }
     window._recadosPendentes = (window._recadosPendentes || []).filter(x => x !== id);
     if ((window._recadosPendentes || []).length === 0) renderizarBotoesTriagem(); // libera a triagem
+    // b224 (review do Codex) - o texto tambem sai do estado "grita": sem
+    // isto ele continuava 21px/800 vermelho depois do "OK, ciente", e so
+    // voltava ao normal na proxima busca.
+    const txt = document.getElementById('recado-texto-' + id);
+    if (txt) {
+      txt.style.fontSize = '16px';
+      txt.style.fontWeight = '600';
+      txt.style.color = '#444';
+      txt.style.background = 'none';
+      txt.style.border = 'none';
+      txt.style.padding = '0';
+    }
     const box = document.getElementById('recado-' + id);
     if (box) {
       box.style.borderColor = '#9e9e9e';
