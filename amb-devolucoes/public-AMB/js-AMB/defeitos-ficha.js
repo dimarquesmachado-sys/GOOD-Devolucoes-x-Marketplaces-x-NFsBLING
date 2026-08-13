@@ -99,34 +99,69 @@
 
   // b166 - excluir o registro inteiro (so admin; motivo obrigatorio)
   // b168 - desfaz a exclusao (so admin)
+  // b206 - restaurar tambem sem popup: e reversivel, entao age direto e
+  // avisa dentro da propria ficha.
   window.restaurarRegistro = async function (id) {
-    if (!confirm('Restaurar este registro? Ele volta pra aba de origem.')) return;
+    var cx = document.getElementById('edExcluir');
+    if (cx) cx.innerHTML = '<div style="font-size:12.5px;color:#555;margin-top:8px;">restaurando…</div>';
     try {
       var r = await api('/api/defeitos/' + encodeURIComponent(id) + '/restaurar', { method: 'POST', body: '{}' });
       if (r && r.ok) {
-        alert('↩️ Registro restaurado!');
         if (typeof abrirFichaDefeito === 'function') abrirFichaDefeito(id);
-      } else {
-        alert('Nao consegui restaurar: ' + ((r && r.erro) || 'erro desconhecido'));
+      } else if (cx) {
+        cx.innerHTML = '<div style="background:#FBEAE8;border:1px solid #8C1D18;border-radius:8px;padding:8px 11px;'
+          + 'font-size:12.5px;color:#8C1D18;margin-top:8px;">' + esc((r && r.erro) || 'não consegui restaurar') + '</div>';
       }
-    } catch (e) { alert('Erro de conexao: ' + e.message); }
+    } catch (e) {
+      if (cx) cx.innerHTML = '<div style="font-size:12.5px;color:#8C1D18;margin-top:8px;">erro de conexão: ' + esc(e.message) + '</div>';
+    }
   };
 
-  window.excluirRegistro = async function (id) {
-    var motivo = prompt('EXCLUIR este registro do estoque de defeitos?\n\nEle some das listas (o historico fica guardado).\n\nMotivo da exclusao (obrigatorio):');
-    if (motivo === null) return;
-    motivo = String(motivo || '').trim();
-    if (motivo.length < 5) { alert('Escreva o motivo (minimo 5 letras).'); return; }
+  // b206 (pedido do Diego: "abriu um pop up bem zuadinho") - o excluir
+  // deixou de usar prompt/alert do navegador: abre um bloco DENTRO da ficha,
+  // com o campo do motivo, e o resultado aparece ali mesmo.
+  window.excluirRegistro = function (id) {
+    var cx = document.getElementById('edExcluir');
+    if (!cx) return;
+    cx.innerHTML = '<div style="background:#FBEAE8;border:1.5px solid #8C1D18;border-radius:10px;padding:11px 12px;margin-top:8px;text-align:left;">'
+      + '<div style="font-size:13px;color:#8C1D18;font-weight:700;margin-bottom:3px;">🚫 Excluir este registro</div>'
+      + '<div style="font-size:12px;color:#7a3b34;margin-bottom:8px;">Ele sai das listas e passa a ficar na aba <b>🚫 Excluídos</b>, de onde dá pra restaurar. Nada é apagado.</div>'
+      + '<input id="mtvExcluir" placeholder="por que está excluindo? (mínimo 5 letras)" '
+      + 'style="width:100%;box-sizing:border-box;height:36px;font-size:13px;padding:0 10px;border:1.5px solid #8C1D18;border-radius:8px;outline:none;margin-bottom:8px;">'
+      + '<div style="display:flex;gap:7px;justify-content:flex-end;">'
+      + '<button type="button" onclick="document.getElementById(\'edExcluir\').innerHTML=\'\'" '
+      + 'style="border:1px solid #ccc;background:#fff;color:#555;border-radius:8px;padding:8px 14px;cursor:pointer;">Cancelar</button>'
+      + '<button type="button" onclick="confirmarExclusao(\'' + esc(id) + '\')" '
+      + 'style="border:none;background:#8C1D18;color:#fff;border-radius:8px;padding:8px 16px;font-weight:700;cursor:pointer;">Excluir</button>'
+      + '</div><div id="msgExcluir" style="font-size:12px;margin-top:7px;"></div></div>';
+    var campo = document.getElementById('mtvExcluir');
+    if (campo) campo.focus();
+  };
+
+  window.confirmarExclusao = async function (id) {
+    var campo = document.getElementById('mtvExcluir');
+    var msg = document.getElementById('msgExcluir');
+    var motivo = String((campo && campo.value) || '').trim();
+    if (motivo.length < 5) {
+      if (msg) msg.innerHTML = '<span style="color:#8C1D18;">escreva o motivo (mínimo 5 letras).</span>';
+      if (campo) campo.focus();
+      return;
+    }
+    if (msg) msg.innerHTML = '<span style="color:#555;">excluindo…</span>';
     try {
       var r = await api('/api/defeitos/' + encodeURIComponent(id) + '/excluir',
         { method: 'POST', body: JSON.stringify({ motivo: motivo }) });
       if (r && r.ok) {
-        alert('🚫 Registro excluido. Ele sai das listas; a ficha continua consultavel pelo historico.');
+        // b206 - abre JA na aba dos excluidos: ele reclamou que excluiu e
+        // "nao achei uma abinha dos excluidos" — agora a tela leva ate ela.
+        abaAtual = 'excluido';
         if (typeof abrirBuscaDefeitos === 'function') abrirBuscaDefeitos();
-      } else {
-        alert('Nao consegui excluir: ' + ((r && r.erro) || 'erro desconhecido'));
+      } else if (msg) {
+        msg.innerHTML = '<span style="color:#8C1D18;">' + esc((r && r.erro) || 'não consegui excluir') + '</span>';
       }
-    } catch (e) { alert('Erro de conexao: ' + e.message); }
+    } catch (e) {
+      if (msg) msg.innerHTML = '<span style="color:#8C1D18;">erro de conexão: ' + esc(e.message) + '</span>';
+    }
   };
 
   async function api(caminho, opcoes) {
@@ -321,6 +356,8 @@
     var it = fichaAberta.item, com = fichaAberta.comentarios || [];
     return '<div style="border-left:2px solid #eee;padding-left:12px;margin-bottom:10px;">'
       + '<div style="margin-bottom:9px;"><div style="font-size:13.5px;' + (it.laudo ? 'color:#8C1D18;font-weight:600;' : 'color:#999;font-style:italic;') + '">'
+      + '<span style="display:inline-block;min-width:20px;text-align:center;border-radius:6px;font-size:11.5px;'
+      + 'font-weight:800;margin-right:6px;padding:1px 5px;background:#EEEDFE;color:#3C3489;">1</span>'
       + esc(capitalizar(it.laudo) || 'Sem descrição do defeito')
       + ' <a href="#" onclick="event.preventDefault();editarLaudo()" '
       + 'style="font-size:11.5px;color:#561A9E;text-decoration:none;">✏️ Corrigir</a>'
@@ -334,8 +371,19 @@
       + '</div>'
       + '<div id="edLaudo"></div>'
       + '<div style="font-size:11.5px;color:#888;">' + esc(it.quem || '-') + ' · ' + dataBr(it.criado_em) + ' · entrada</div></div>'
-      + com.map(function (c) {
-          return '<div style="margin-bottom:9px;"><div style="font-size:13.5px;">' + esc(capitalizar(c.texto))
+      + com.map(function (c, iC) {
+          // b206 (pedido do Diego) - cada anotacao ganha o NUMERO na frente,
+          // em ordem de acontecimento: 1 e a entrada, 2 em diante sao as
+          // anotacoes. A ULTIMA (mais recente) vem com o numero cheio e o
+          // selo "mais recente", pra bater o olho e saber onde parou.
+          var num = iC + 2;
+          var ultima = iC === com.length - 1;
+          var selo = '<span style="display:inline-block;min-width:20px;text-align:center;'
+            + 'border-radius:6px;font-size:11.5px;font-weight:800;margin-right:6px;padding:1px 5px;'
+            + (ultima ? 'background:#561A9E;color:#fff;' : 'background:#EEEDFE;color:#3C3489;') + '">'
+            + num + '</span>';
+          return '<div style="margin-bottom:9px;"><div style="font-size:13.5px;">' + selo + esc(capitalizar(c.texto))
+            + (ultima ? ' <span style="font-size:10.5px;color:#561A9E;background:#EEEDFE;border-radius:5px;padding:1px 6px;">mais recente</span>' : '')
             + ' <a href="#" onclick="event.preventDefault();editarComentario(\'' + esc(c.id) + '\')" '
             + 'style="font-size:11.5px;color:#561A9E;text-decoration:none;">✏️</a>'
             + ' <a href="#" onclick="event.preventDefault();excluirComentario(\'' + esc(c.id) + '\')" '
@@ -515,7 +563,8 @@
       + (euSouAdmin
           ? '<div style="margin-top:10px;text-align:right;">'
             + '<a href="#" onclick="event.preventDefault();excluirRegistro(\'' + esc(it.id) + '\')" '
-            + 'style="font-size:12px;color:#8C1D18;">🚫 Excluir este registro (admin)</a></div>'
+            + 'style="font-size:12px;color:#8C1D18;">🚫 Excluir este registro (admin)</a>'
+            + '<div id="edExcluir"></div></div>'
           : '')
       + '<div style="display:none;">'
       + '</div>'
