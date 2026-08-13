@@ -275,7 +275,14 @@ module.exports = function criarNfPessoa({ chamarBling, sleep }) {
       const r = await chamarBling(url);
       if (!r.ok) return null;
       // so as NFs do dia pedido (a janela traz vizinhos por causa da margem)
-      return (r.data?.data || []).filter(nf => String(nf.dataEmissao || '').slice(0, 10) === dia);
+      // b240 (review do Codex) - guarda o tamanho CRU da pagina: o filtro por
+      // dia derruba registros dos vizinhos, e decidir "acabou" por
+      // `lista.length < 100` parava a paginacao com paginas cruas cheias
+      // ainda por ler — a nota podia estar la, e virava 404 falso.
+      const cru = r.data?.data || [];
+      const filtrada = cru.filter(nf => String(nf.dataEmissao || '').slice(0, 10) === dia);
+      filtrada._cheia = cru.length === 100;
+      return filtrada;
     }
 
     // Sonda: menor/maior numero da serie-alvo na pagina 1 do dia
@@ -326,7 +333,7 @@ module.exports = function criarNfPessoa({ chamarBling, sleep }) {
           if (lista === null || lista.length === 0) break;
           const m = lista.find(bateNumero);
           if (m) { console.log(`[resolverIdNFPorChave] ${alvoStr}: achou por bissecao (${dia})`); return String(m.id); }
-          if (lista.length < 100) break;
+          if (!lista._cheia) break;   // b240 - pelo tamanho CRU da pagina
         }
         if (dd === 0 && !cache[f(diaAlvo)]?.cheia) break; // dia nao lotado: vizinhos desnecessarios
       }
@@ -344,6 +351,8 @@ module.exports = function criarNfPessoa({ chamarBling, sleep }) {
       if (lista.length === 0) break;
       const m = lista.find(bateNumero);
       if (m) { console.log(`[resolverIdNFPorChave] ${alvoStr}: achou no plano B (pg${pg})`); return String(m.id); }
+      // b240 - aqui a lista e CRUA (varredura do mes, sem filtro por dia):
+      // o proprio tamanho ja e o tamanho cru.
       if (lista.length < 100) break;
     }
     return null;
