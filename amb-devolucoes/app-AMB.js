@@ -1437,6 +1437,7 @@ const mlBuscas = criarMlBuscas(ml.chamarML);
 registrarCicloDefeitos(router, { auth, db, bling, cfg });
 
 registrarIdentificar(router, {
+  db,   // b213 - pro recado do estoquista aparecer na triagem
   supabase: db.conectar(),   // ev2 - registro do checkout offline
   requerLogin: auth.requerLogin,
   sleep: dorme,

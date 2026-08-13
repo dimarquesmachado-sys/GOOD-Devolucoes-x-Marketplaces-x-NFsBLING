@@ -767,12 +767,29 @@
 
     async function carregarRecados() {
       try {
-        const r = await fetch('/api/admin/recados');
+        // b213 (review do Codex) - o endpoint devolve SO os ativos quando
+        // nao se pede o contrario; sem a segunda chamada o "histórico" que
+        // eu prometi no botao nunca teria numero nenhum.
+        const [r, rRes] = await Promise.all([
+          fetch('/api/admin/recados'),
+          fetch('/api/admin/recados?resolvidos=1'),
+        ]);
         const d = await r.json();
         const lista = document.getElementById('listaRecados');
         if (!d.ok) { lista.innerHTML = '<span style="color:#c62828;font-size:13px;">' + escapeHtml(d.erro || 'erro') + '</span>'; return; }
-        const rs = d.recados || [];
-        if (rs.length === 0) { lista.innerHTML = '<span style="color:#888;font-size:13px;">Nenhum recado ativo.</span>'; return; }
+        let resolvidosSrv = [];
+        try { const dRes = await rRes.json(); if (dRes && dRes.ok) resolvidosSrv = dRes.recados || []; } catch (e) {}
+        const rs = (d.recados || []).concat(resolvidosSrv);
+        // b213 (review do Codex) - lista vazia TAMBEM zera o contador e o
+        // rotulo do botao: antes o "(3)" ficava congelado depois de remover
+        // o ultimo recado, dando a entender que ainda havia aviso pendente.
+        if (rs.length === 0) {
+          document.getElementById('countRecados').textContent = '0';
+          var btnVazio = document.getElementById('btnVerRecados');
+          if (btnVazio) btnVazio.textContent = (lista.style.display === 'none' ? '📋 Ver recados criados (0)' : '🙈 Esconder recados (0)');
+          lista.innerHTML = '<span style="color:#888;font-size:13px;">Nenhum recado ativo.</span>';
+          return;
+        }
         // (a separacao ativos/resolvidos e feita abaixo)
         let h = '';
         // v4.45 - tres estados: ATIVO (aparece na triagem), resolvido (devolucao

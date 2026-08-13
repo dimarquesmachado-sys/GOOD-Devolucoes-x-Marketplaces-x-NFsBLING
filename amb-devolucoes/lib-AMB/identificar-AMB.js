@@ -26,7 +26,42 @@ module.exports = function registrarIdentificar(app, deps) {
     shopee, magalu, nfNomes, // b71 - a rota usa os modulos inteiros
     mlReturns,               // b142 - indice claims->returns do ML (faltava)
     supabase,                // ev2 - pro registro do checkout offline
+    db,                      // b213 - pra buscar o RECADO desta devolucao
   } = deps;
+
+  // ═══════════════════════════════════════════════════════════════════
+  // b213 (bug que o Diego viu: criou recado e "o estoquista nunca soube")
+  // Esta e a rota que a TELA DO GALPAO usa (/api/devolucao/identificar).
+  // Ela nunca devolveu `recados` — e o front le exatamente `data.recados`.
+  // Ou seja, o aviso NUNCA aparecia aqui, com qualquer identificador.
+  // Agora, antes de responder, procuramos o recado por TODOS os numeros
+  // que essa mesma devolucao atende (o recado pode ter sido preso a
+  // qualquer um deles: venda, pack, rastreio, NF, chave).
+  // ═══════════════════════════════════════════════════════════════════
+  async function comRecados(resultado, codigoBipado) {
+    try {
+      if (!db || typeof db.recadoDeQualquer !== 'function') return resultado;
+      const o = resultado || {};
+      const ids = [
+        codigoBipado,
+        o.order && (o.order.id || o.order.order_id),
+        o.pack && (o.pack.id || o.pack.pack_id),
+        o.shipment && (o.shipment.id || o.shipment.tracking_number),
+        o.claim && o.claim.id,
+        o.return && o.return.id,
+        o.nf && (o.nf.numero || o.nf.chaveAcesso),
+        o.devolucao && o.devolucao.order_id,
+        o.devolucao && o.devolucao.tracking,
+        o.devolucao_shopee && o.devolucao_shopee.pedido,
+        o.devolucao_shopee && o.devolucao_shopee.tracking,
+      ];
+      const r = await db.recadoDeQualquer(ids);
+      resultado.recados = (r && r.ok && r.recado) ? [r.recado] : [];
+    } catch (e) {
+      resultado.recados = [];   // recado e ajuda, nunca trava o bipe
+    }
+    return resultado;
+  }
 
   // ev2 - eventos do CHECKOUT OFFLINE que casam com o codigo bipado
   async function buscarEventosCheckout(codigo) {
@@ -235,13 +270,13 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
       resultado.avisos.push({ tipo: 'correios_ml', mensagem: `Devolucao ML via CORREIOS (${trk}) - claim ${devML.claim_id}${devML.status_devolucao ? ' (' + devML.status_devolucao + ')' : ''}` });
       if (!shipment) {
         resultado.erro = `Rastreio ${trk} achou a devolucao ML (claim ${devML.claim_id}, pedido ${devML.order_id}) mas falhou ao carregar o pedido. Tente digitar o pedido, ou identifique pela NF.`;
-        return res.status(404).json(resultado);
+        return res.status(404).json(await comRecados(resultado, req.params.codigo));
       }
     } else {
       // Sem match: orientacao clara (nao vaga pela cascata - 9 digitos
       // limpos cairiam na bissecao de NF e perderiam tempo a toa).
       resultado.erro = `Rastreio CORREIOS ${trk} nao encontrado nas devolucoes ML recentes${devML && devML.claim_id ? ` (claim ${devML.claim_id} sem pedido vinculado)` : ''}. Pode ser devolucao de OUTRO marketplace orientada pelos Correios (Shopee, TikTok...) - confira o REMETENTE na etiqueta, ou bipe a chave da DANFE se a nota vier na caixa.`;
-      return res.status(404).json(resultado);
+      return res.status(404).json(await comRecados(resultado, req.params.codigo));
     }
   }
 
@@ -330,7 +365,7 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
       resultado.erro = `QR do ML lido (shipment ${codigoLimpo}) mas a API não achou esse envio. Na MESMA etiqueta: (1) bipe o CÓDIGO DE BARRAS grande, ou (2) digite o Pack ID impresso (2000...). Se for devolução FULL (endereçada ao CD do ML), use a chave da DANFE ou ➕ Lançar por NF.`;
     }
     resultado.qr_ml_sem_shipment = true;
-    return res.status(404).json(resultado);
+    return res.status(404).json(await comRecados(resultado, req.params.codigo));
   }
 
   // ===== CHAVE NF-e (v3.34): bipou a chave de 44 digitos da DANFE =====
@@ -353,7 +388,7 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
         // DACE/DC-e do transporte (modelo 99) e afins: nao e a NF do produto
         resultado.erro = `Isso e uma chave de documento de TRANSPORTE (modelo ${modelo}), nao a NF do produto. Bipe a chave da DANFE do produto ou o codigo de rastreio.`;
         resultado.tentativas.push({ tipo: 'chave_danfe', codigo: codigoLimpo, ok: false, status: 422 });
-        return res.status(404).json(resultado);
+        return res.status(404).json(await comRecados(resultado, req.params.codigo));
       }
       numeroDaChave = String(parseInt(codigoLimpo.substr(25, 9), 10));
       serieDaChave = String(parseInt(codigoLimpo.substr(22, 3), 10));
@@ -398,7 +433,7 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
         resultado.ambiguidade_nf = { numero: numeroDaChave, opcoes };
         resultado.erro = `Existem ${opcoes.length} NFs com o numero ${numeroDaChave}, em series diferentes. Escolha a que bate com o pacote (ou bipe a chave da DANFE).`;
         console.log(`[BUSCA] NUMERO NF ${numeroDaChave}: AMBIGUO em ${opcoes.length} series`);
-        return res.status(409).json(resultado);
+        return res.status(409).json(await comRecados(resultado, req.params.codigo));
       }
       idNF = achadas.length === 1 ? achadas[0].id : null;
       if (achadas.length === 1) serieDaChave = achadas[0].serie;
@@ -413,13 +448,13 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
       resultado.erro = ehChaveNFe
         ? `Chave lida, mas a NF ${numeroDaChave} (serie ${serieDaChave}) nao foi localizada no Bling.`
         : `NF ${numeroDaChave} nao localizada no Bling (procurei em todas as series, ultimos 18 meses). Confira o numero, ou bipe a chave da DANFE.`;
-      return res.status(404).json(resultado);
+      return res.status(404).json(await comRecados(resultado, req.params.codigo));
     }
     const rFullNF = await buscarNFePorId(idNF);
     const nfCh = (rFullNF.ok && rFullNF.data?.data) ? rFullNF.data.data : null;
     if (!nfCh) {
       resultado.erro = `NF ${numeroDaChave} achada (id ${idNF}) mas falhou ao carregar do Bling.`;
-      return res.status(404).json(resultado);
+      return res.status(404).json(await comRecados(resultado, req.params.codigo));
     }
     const itensCh = Array.isArray(nfCh.itens) ? nfCh.itens.map(it => ({
       titulo: it.descricao || null,
@@ -465,7 +500,7 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
         : `NF ${nfCh.numero} (serie ${nfCh.serie}) localizada pelo numero digitado`,
     });
     console.log(`[BUSCA] OK (${ehChaveNFe ? 'CHAVE' : 'NUMERO'}) | NF=${nfCh.numero} pedido=${nfCh.numeroPedidoLoja || '-'}`);
-    return res.json(resultado);
+    return res.json(await comRecados(resultado, req.params.codigo));
   }
 
   // ===== MAGALU: protocolo da etiqueta, reverse_code ou pedido =====
@@ -611,7 +646,7 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
         mensagem: `Devolucao MAGALU - protocolo ${devMag.protocolo}${devMag.status ? ' (' + devMag.status + ')' : ''}${nfMag ? ' - NF ' + nfMag.numero : ' - NF nao localizada no Bling'}`,
       });
       console.log(`[BUSCA] OK (MAGALU) | protocolo=${devMag.protocolo} pedido=${devMag.pedido} NF=${nfMag ? nfMag.numero : '-'}`);
-      res.json(resultado);
+      res.json(await comRecados(resultado, req.params.codigo));
       return true;
     }
     return false;
@@ -666,7 +701,7 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
           if (rN.candidatos.length > 0) {
             resultado.candidatos_nome = rN.candidatos;
             resultado.erro = `Achei ${rN.candidatos.length} NF(s) recente(s) com esse nome. Confere com a CAIXA e escolhe abaixo:`;
-            return res.status(300).json(resultado); // 300 Multiple Choices
+            return res.status(300).json(await comRecados(resultado, req.params.codigo)); // 300 Multiple Choices
           }
         } catch (e) { resultado.tentativas.push({ tipo: 'nf_por_nome', codigo: alvoNome, ok: false, status: 500, erro: e.message }); }
       }
@@ -679,7 +714,7 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
       resultado.erro = (pareceSPX
         ? 'Etiqueta Shopee (SPX) nao casou com as devolucoes. Se ela diz "SPX INSUCESSO": o QR/barras so contem o rastreio (a Shopee nao indexa esse codigo) — DIGITE o "Pedido" impresso na etiqueta (ex: 260623TX31XFMT) que o sistema busca o pedido cancelado. Devolucao normal: tente o "Pedido" ou a chave da DANFE.'
         : 'Codigo nao encontrado em shipments/packs do ML nem nas devolucoes Shopee.') + diag + nota403;
-      return res.status(404).json(resultado);
+      return res.status(404).json(await comRecados(resultado, req.params.codigo));
     }
 
     console.log(`[BUSCA] SHOPEE: return_sn=${devShopee.return_sn} order_sn=${devShopee.order_sn} tracking=${devShopee.tracking_number}`);
@@ -831,7 +866,7 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
     resultado.shopee = devShopee;
     resultado.nf = nfData;
     console.log(`[BUSCA] OK (SHOPEE) | NF=${nfData ? nfData.numero : 'nao'}`);
-    return res.json(resultado);
+    return res.json(await comRecados(resultado, req.params.codigo));
   }
 
   // ML: ORDER (3 caminhos)
@@ -1129,7 +1164,7 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
   resultado.nf = nfData;
 
   console.log(`[BUSCA] OK | Order=${!!order} | NF=${nfData ? 'sim' : 'nao'}`);
-  return res.json(resultado);
+  return res.json(await comRecados(resultado, req.params.codigo));
 });
 
 // ============================================================
