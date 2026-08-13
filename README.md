@@ -158,3 +158,72 @@ Quando tiver usado um pouco e quiser melhorar:
 - Cálculo de prejuízo em parciais (qtd recebida × custo Bling)
 
 **Frase-gatilho:** *"Bora ajustar v3.17 devolucao parcial. Testei, falta X."*
+
+---
+
+# 📌 REGRAS DO CATÁLOGO (Bling × marketplaces) — anotado em 13/08/2026
+
+Registro pedido pelo Diego depois de caçarmos uma foto que não aparecia.
+São fatos do catálogo real da AMBTotal; valem para qualquer código futuro
+que precise achar um produto.
+
+## 1. O SKU identifica o produto — mas ele PODE SER RENOMEADO
+
+Regra do Diego: *"não existem 2 SKUs iguais"* — correto, e por isso o SKU
+é o caminho de busca. Só que o código do produto **muda no cadastro** ao
+longo do tempo, e a venda antiga continua carregando o SKU **da época**.
+
+Caso real (luminária FL-1011 preta, venda ML 2000017882877038, 11/08/2026):
+
+| onde | código |
+|---|---|
+| item da venda / NF 6335 | `FL-1011-PRETO` |
+| cadastro do Bling hoje | `3933398010054` |
+
+Consequência medida na rota da foto:
+
+- `/amb/api/produto/imagem/FL-1011-PRETO` → `imagem: null`,
+  *"nao achei nenhum produto com o codigo FL-1011-PRETO no Bling"*
+- `/amb/api/produto/imagem/3933398010054` → **foto encontrada**, `via: lista_codigo`
+
+**Não é bug de código nem cadastro errado**: é a defasagem natural entre o
+que a venda registrou e o que o cadastro é hoje. Toda devolução anterior a
+um rename perde qualquer busca por SKU.
+
+## 2. O ID do produto no Bling NÃO muda com o rename
+
+O item da NF traz o `produto.id` — o vínculo que o próprio Bling gravou na
+emissão da nota. É o único identificador estável entre a venda e o cadastro.
+Por isso a rota da foto aceita `?produtoId=` e, quando ele vem, vai direto
+ao produto sem passar por SKU.
+
+**Regra para código novo:** quando precisar do produto de uma devolução,
+prefira o `produto.id` do item da NF; o SKU é a segunda via, não a primeira.
+
+## 3. EAN NÃO identifica produto neste catálogo
+
+Explicação do Diego: peças de reposição de manuseio interno (que não são
+vendidas) herdam o EAN do produto-pai — e há produtos com EAN vazio, mas
+nunca com SKU vazio.
+
+Medido no mesmo caso: o EAN `7898978766010` da luminária está cadastrado
+também em `Kit2Roscas`, `TravaCentralBranca` e `TravaCentralPreta`. Usar
+EAN para achar produto traz **a peça errada**, que no galpão vira conferência
+errada. O caminho por EAN foi **removido** da rota da foto (b230).
+
+## 4. Os filtros do Bling não são confiáveis sozinhos
+
+Comportamento observado (v3):
+
+- `?codigo=<sku>` às vezes **volta vazio** para um produto que existe, e às
+  vezes **ignora o filtro** devolvendo a página padrão de produtos. Nunca
+  aceitar o primeiro item de uma lista sem conferir o `codigo` — foi assim
+  que a foto de um acessório apareceu no lugar da luminária (b227).
+- `?pesquisa=<termo>` também não filtra direito: buscando `FL-1011-PRETO`
+  voltaram `GVSC`, `PP3D`, `PSM` — sem relação com o termo. Serve só como
+  varredura ampla, sempre com casamento exato de `codigo` depois.
+- `?numero=` da NF exige o número **zero-padded em 6 dígitos**: `2447`
+  devolve 0 resultados, `002447` devolve as notas (b216).
+
+**Regra para código novo:** todo resultado do Bling é candidato, nunca
+resposta. Confira o campo que identifica antes de usar.

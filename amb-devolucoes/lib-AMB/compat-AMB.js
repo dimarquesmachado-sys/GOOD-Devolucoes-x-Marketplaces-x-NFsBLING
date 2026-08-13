@@ -658,6 +658,26 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
   // extrai a imagem. Cache por chave: bipar o mesmo produto de novo nao
   // consulta o Bling.
   // ─────────────────────────────────────────────────────────────────────
+  // ═══════════════════════════════════════════════════════════════════
+  // FOTO DO PRODUTO — leia antes de mexer (anotado em 13/08/2026)
+  //
+  // 1) O SKU da VENDA pode nao existir mais no cadastro. Caso real: a venda
+  //    de 11/08 traz `FL-1011-PRETO`; o produto foi renomeado e hoje se
+  //    chama `3933398010054`. Buscar pelo SKU da venda devolve vazio, e
+  //    isso NAO e bug — e defasagem entre a venda e o cadastro de hoje.
+  // 2) O `produto.id` do ITEM DA NF nao muda com rename: e o vinculo que o
+  //    Bling gravou na emissao. Por isso `?produtoId=` vem PRIMEIRO aqui.
+  // 3) EAN NAO identifica produto neste catalogo: pecas de reposicao de
+  //    manuseio interno herdam o EAN do produto-pai (o EAN desta luminaria
+  //    esta tambem em Kit2Roscas, TravaCentralBranca e TravaCentralPreta).
+  //    O caminho por EAN foi REMOVIDO de proposito — nao reintroduzir.
+  // 4) Filtro do Bling nao e confiavel: `?codigo=` ora volta vazio, ora
+  //    ignora o filtro e devolve a pagina padrao; `?pesquisa=` devolve
+  //    itens sem relacao com o termo. Todo resultado e CANDIDATO: confira
+  //    o `codigo` antes de usar. Foto errada no galpao = conferencia errada.
+  //
+  // Detalhes e medicoes: README.md, "REGRAS DO CATALOGO (Bling x marketplaces)".
+  // ═══════════════════════════════════════════════════════════════════
   router.get('/api/produto/imagem/:chave', auth.requerLogin, async (req, res) => {
     const chave = String(req.params.chave || '').trim();
     if (!chave) return res.status(400).json({ ok: false, erro: 'informe o sku ou o id' });
