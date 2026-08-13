@@ -411,7 +411,17 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
       serieDaChave = String(parseInt(codigoLimpo.substr(22, 3), 10));
       tipoTentativa = 'chave_danfe';
       console.log(`[BUSCA] CHAVE DANFE: serie=${serieDaChave} numero=${numeroDaChave}`);
-      try { idNF = await resolverIdNFPorChave(numeroDaChave, codigoLimpo); } catch (e) { idNF = null; }
+      // b219 - "nao consegui cravar" != "essa NF nao existe": se o Bling
+      // recusou parte da consulta, a tela precisa dizer isso em vez de
+      // afirmar que a nota nao esta la.
+      let recusaChave = false;
+      try { idNF = await resolverIdNFPorChave(numeroDaChave, codigoLimpo); }
+      catch (e) { idNF = null; recusaChave = !!(e && (e.blingRecusou || e.ambiguoSemChave)); if (recusaChave) resultado.erro_consulta = e.message; }
+      if (!idNF && recusaChave) {
+        resultado.tentativas.push({ tipo: 'chave_danfe', codigo: String(codigoOriginal || '').trim(), ok: false, status: 503, erro: resultado.erro_consulta });
+        resultado.erro = resultado.erro_consulta;
+        return res.status(503).json(await comRecados(resultado, req.params.codigo));
+      }
     } else {
       // Numero da NF digitado. MULTI-SERIE: a casa emite em varias series
       // (1=normal, 2=ML FULL, outras p/ Magalu/Amazon FULL) e o MESMO numero
