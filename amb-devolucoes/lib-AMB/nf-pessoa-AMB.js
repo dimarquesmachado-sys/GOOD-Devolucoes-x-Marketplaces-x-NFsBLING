@@ -327,12 +327,17 @@ module.exports = function criarNfPessoa({ chamarBling, sleep }) {
     // serie 1), pegar o primeiro que "bate por numero" e chute. Regra: se
     // alguem casar pela CHAVE inteira, e esse; se nao, so aceito quando ha
     // UM candidato — dois ou mais viram "nao cravei" e a busca segue.
+    const semChaveGuardados = [];   // b238 - candidatos por numero, sem chave
     const escolher = (lista) => {
       const porChave = (lista || []).filter(nf => bateChave(nf) === true);
       if (porChave.length === 1) return porChave[0];
       if (porChave.length > 1) return porChave[0];   // mesma chave: sao a mesma nota
+      // b238 (review do Codex) - candidato SEM chave nao pode ser devolvido
+      // pagina a pagina: uma pagina anterior com um registro sem chave era
+      // aceita antes de a pagina seguinte, com a chave EXATA, ser lida.
+      // Agora ele fica guardado e so vale no fim, se ninguem casar por chave.
       const porNumero = (lista || []).filter(nf => bateChave(nf) === null && bateNumero(nf));
-      if (porNumero.length === 1) return porNumero[0];
+      if (porNumero.length === 1) { semChaveGuardados.push(porNumero[0]); return null; }
       if (porNumero.length > 1) {
         console.log(`[resolverIdNFPorChave] ${alvoStr}: ${porNumero.length} candidatos sem chave — nao escolho no chute`);
         ambiguoSemChave = true;
@@ -422,6 +427,13 @@ module.exports = function criarNfPessoa({ chamarBling, sleep }) {
       if (m) { console.log(`[resolverIdNFPorChave] ${alvoStr}: achou no plano B (pg${pg})`); return String(m.id); }
       if (lista.length < 100) break;
     }
+    // b238 - varreu tudo e ninguem casou pela chave: agora sim vale o
+    // candidato sem chave, e so se houver exatamente UM no total.
+    if (!falhaNaVarredura && !ambiguoSemChave && semChaveGuardados.length === 1) {
+      console.log(`[resolverIdNFPorChave] ${alvoStr}: unico candidato sem chave apos varrer tudo`);
+      return String(semChaveGuardados[0].id);
+    }
+    if (semChaveGuardados.length > 1) ambiguoSemChave = true;
     if (falhaNaVarredura || ambiguoSemChave) {
       // b219 - "nao consegui cravar" != "nao existe": quem chama precisa
       // saber a diferenca pra nao afirmar na tela que a NF nao existe.

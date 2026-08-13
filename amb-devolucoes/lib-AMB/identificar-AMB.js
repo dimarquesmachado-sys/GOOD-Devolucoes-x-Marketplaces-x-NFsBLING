@@ -477,6 +477,12 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
         resultado.erro = `Existem ${opcoes.length} NFs com o numero ${numeroDaChave}, em series diferentes. Escolha a que bate com o pacote (ou bipe a chave da DANFE).`;
         console.log(`[BUSCA] NUMERO NF ${numeroDaChave}: AMBIGUO em ${opcoes.length} series`);
         if (faltouDetalhe) {
+          // b238 (review do Codex) - erro meu: eu ja tinha atribuido as
+          // opcoes ao resultado, e o front renderiza `ambiguidade_nf.opcoes`
+          // mesmo em resposta de erro — o operador escolheria da lista pela
+          // metade assim mesmo. Limpa antes de responder.
+          if (resultado.ambiguidade_nf) resultado.ambiguidade_nf.opcoes = [];
+          resultado.ambiguidade_nf = null;
           // b237 - nao mostrar escolha pela metade
           resultado.erro = `Achei ${achadas.length} notas com o numero ${numeroDaChave}, mas o Bling recusou os dados de uma delas agora. Tente de novo em instantes — nao quero te fazer escolher sem ver todas.`;
           resultado.tentativas.push({ tipo: 'numero_nf', codigo: String(codigoOriginal || '').trim(), ok: false, status: 503, erro: 'detalhe de uma duplicata indisponivel' });
