@@ -332,6 +332,10 @@
       }).join('');
       buscarFotosDefeitos(itens);
     } catch (e) {
+      // b210 (review do Codex) - o token tambem vale aqui: uma requisicao
+      // ANTIGA que falha depois da nova ja ter pintado trocava a lista por
+      // "erro ao buscar", como se a busca boa tivesse quebrado.
+      if (meuToken !== window._buscaDefToken) return;
       el.innerHTML = '<div style="color:#c62828;font-size:13px;">erro ao buscar</div>';
     }
   };
@@ -638,6 +642,12 @@
     caixaEdicao('edRetirada', '', async function (txt, aviso) {
       if (txt.length < 2) { aviso('escreva o que foi retirado'); return; }
       var alvo = document.getElementById('destinoPeca');
+      // b210 (review do Codex) - guarda a ficha ALVO antes do await: se o
+      // operador pular pra outra ficha enquanto grava, o global `fichaAberta`
+      // ja e a nova — a peca retirada era anexada nela e a comparacao virava
+      // "ela mesma", recarregando o card errado.
+      var idAlvo = id;
+      var fichaAlvo = fichaAberta;
       var r = await api('/api/defeitos/' + encodeURIComponent(id) + '/peca-retirada', {
         method: 'POST',
         body: JSON.stringify({
@@ -646,10 +656,11 @@
         }),
       });
       if (!r.ok) { aviso(r.erro || 'não consegui registrar'); return; }
-      if (r.registro) (fichaAberta.pecas_retiradas = fichaAberta.pecas_retiradas || []).push(r.registro);
-      pintaPecas();
+      if (r.registro && fichaAlvo) (fichaAlvo.pecas_retiradas = fichaAlvo.pecas_retiradas || []).push(r.registro);
+      if (fichaAindaAberta(idAlvo)) pintaPecas();
       // b208 - a retirada de peca tambem grava comentario de auditoria: recarrega
-      if (fichaAindaAberta(fichaAberta.item.id) && typeof abrirFichaDefeito === 'function') { abrirFichaDefeito(fichaAberta.item.id, true); return; }
+      if (!fichaAindaAberta(idAlvo)) return;   // b210 - o operador saiu; nao mexe na tela nova
+      if (typeof abrirFichaDefeito === 'function') { abrirFichaDefeito(idAlvo, true); return; }
       pintaHistorico();
       pintaEstado();
     });
