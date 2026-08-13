@@ -90,7 +90,8 @@ function compsCacheGet(id) {
   return reg;
 }
 const COMPONENTES_MAX = 12;
-const COMPONENTES_PRAZO_MS = 8000;
+const COMPONENTES_PRAZO_MS = 8000;      // no POST (o operador espera)
+const PRAZO_KIT_BUSCA_MS = 14000;       // b195 - na busca da tela, mais folga
 function extrairComponentes(det) {
   if (!det) return [];
   const lugares = [
@@ -198,36 +199,87 @@ function montar(router, deps) {
     const truncados = Math.max(0, lista.length - alvos.length);
     const out = [];
     let naoResolvidos = nulos;
+    // b195 - guardar o MOTIVO de cada peca que nao entrou: sem isso, o
+    // aviso "nao consegui listar N peca(s)" nao diz se foi prazo, erro do
+    // Bling ou componente sem codigo — e nao da pra consertar o que se ve.
+    const motivos = { nulos: nulos, prazo: 0, fila: 0, erro: 0, sem_sku: 0, truncados: 0, tentou_de_novo: 0 };
     for (const c of alvos) {
       const p = (c && c.produto) || {};
       const id = p.id || c.idProduto || c.produtoId || null;
       let sku = String(p.codigo || p.sku || '').trim();
+      let falhouComponente = false;   // b196/v4.80 - motivo DESTE componente
       let nome = String(p.nome || p.descricao || '').trim();
       if (!sku && id) {
         const emCache = skuCacheGet(id);
         if (emCache) { sku = emCache.sku; nome = nome || emCache.nome; }
-        else if (Date.now() >= limite) { naoResolvidos++; continue; }   // b181 - prazo estourou
+        else if (Date.now() >= limite) { naoResolvidos++; motivos.prazo++; falhouComponente = true; continue; }   // b181/b195
         else {
           try {
-            if (!(await esperarVezDetalhe(limite - Date.now()))) { naoResolvidos++; continue; }
+            if (!(await esperarVezDetalhe(limite - Date.now()))) { naoResolvidos++; motivos.fila++; falhouComponente = true; continue; }
             const restante = limite - Date.now();
-            if (restante <= 0) { naoResolvidos++; continue; }
+            if (restante <= 0) { naoResolvidos++; motivos.prazo++; falhouComponente = true; continue; }
             // b186 - timeout REAL no axios, nao so o race
-            const r = await comPrazo(bling.chamarBling('/produtos/' + id, { timeout: restante, semRetentativa: true }), restante);
-            const d = (r && r.ok && r.data && r.data.data) || null;
+            // b195 - UMA SEGUNDA CHANCE dentro do prazo. O `semRetentativa`
+            // (que existe pra o POST nao deixar requisicao orfa) fazia
+            // QUALQUER tropeco do Bling — um 429 no meio da rajada da
+            // propria busca, um timeout curto — virar "peca faltando" na
+            // tela, mesmo com prazo de sobra. Foi o caso do kit que veio com
+            // 1 peca listada e a outra nao. Agora: pausa curta e tenta mais
+            // uma vez, se ainda couber no prazo.
+            let d = null;
+            let falhouNoBling = false;
+            for (let tentativa = 0; tentativa < 2; tentativa++) {
+              // b196 (review do Codex) - CADA tentativa reserva sua vaga na
+              // fila global: a 2a ia direto ao Bling depois do sleep fixo e
+              // podia recriar a rajada de 429 que ela deveria remediar.
+              if (tentativa > 0 && !(await esperarVezDetalhe(limite - Date.now()))) { motivos.fila++; break; }
+              const sobra = limite - Date.now();
+              if (sobra <= 300) { motivos.prazo++; break; }
+              const rr = await comPrazo(bling.chamarBling('/produtos/' + id, { timeout: sobra, semRetentativa: true }), sobra);
+              d = (rr && rr.ok && rr.data && rr.data.data) || null;
+              if (d) { falhouNoBling = false; break; }
+              falhouNoBling = true;   // resposta !ok NAO lanca excecao
+              // b197 (review do Codex) - so re-tenta o que PODE dar certo sem
+              // mudar nada: 429/5xx/rede. Em 401 o semRetentativa impede a
+              // renovacao do token (a 2a tentativa usaria o mesmo token morto) e
+              // 404 e deterministico — re-tentar so gastava prazo do kit.
+              const st = (rr && rr.status) || 0;
+              if (st === 401 || st === 403 || st === 404) break;
+              motivos.tentou_de_novo++;
+              if (limite - Date.now() <= 900) break;
+              await new Promise(r2 => setTimeout(r2, 600));
+            }
+            if (falhouNoBling) { motivos.erro++; falhouComponente = true; }   // b196 - erro do Bling, nao "sem codigo"
             if (d) {
               sku = String(d.codigo || d.sku || '').trim();
               nome = nome || String(d.nome || d.descricao || '').trim();
               skuCacheSet(id, sku, nome);
             }
-          } catch (e) { /* conta como nao resolvido logo abaixo */ }
+          } catch (e) {
+            // b197/v4.81 (review do Codex) - a falha LANCADA (prazo do comPrazo)
+            // tambem marca ESTE componente: sem a flag ele era contado duas
+            // vezes (erro + sem_sku) e o diagnostico ficava mentiroso.
+            motivos.erro++;
+            falhouComponente = true;
+          }
         }
       }
       const q = Number(c && (c.quantidade || c.qtd)) || 1;
       if (sku) out.push({ sku, quantidade: q, nome });
-      else naoResolvidos++;
+      else {
+        naoResolvidos++;
+        // b196/v4.80 (review do Codex) - a classificacao e DESTE componente:
+        // antes eu olhava contadores agregados, entao o erro de um componente
+        // anterior impedia o proximo de ser contado como "sem codigo".
+        if (!falhouComponente) motivos.sem_sku++;
+      }
     }
-    return { itens: out, faltando: naoResolvidos + truncados };
+    motivos.truncados = truncados;
+    const faltando = naoResolvidos + truncados;
+    if (faltando) {
+      console.log('[KIT] composicao incompleta: ' + faltando + ' peca(s) fora — ' + JSON.stringify(motivos));
+    }
+    return { itens: out, faltando, motivos };
   }
 
   // ─────────────────────────────────────────────────────────────────────
@@ -453,6 +505,105 @@ function montar(router, deps) {
         filtrados.push(item);
       }
       const finais = filtrados.slice(0, 20);
+      // b196 (review do Codex) - a resolucao de composicao virou FUNCAO
+      // porque agora ela roda DUAS vezes: antes das fotos (caso comum) e
+      // DEPOIS delas, para o kit que so se revelou 'E' durante a passada de
+      // fotos (cache de formato dizia 'S' porque o produto virou kit agora).
+      // Sem a segunda passagem, esse kit chegava na tela como card travado,
+      // sem peca nenhuma pra clicar.
+      // b197 (review do Codex) - o teto de 3 kits e o prazo do laco sao do
+      // PEDIDO, nao de cada passagem: com contador novo na 2a chamada uma
+      // busca podia resolver 6 kits e gastar dois orcamentos inteiros.
+      let kitsResolvidosPedido = 0;
+      const prazoLacoPedido = Date.now() + PRAZO_KIT_BUSCA_MS * 2;
+      const resolverComposicaoDosKits = async (itens) => {
+        // b195 (bug real do Diego: kit veio com 1 peca listada e a outra
+        // faltando) - a COMPOSICAO passou pra ANTES DAS FOTOS. A fila global
+        // de 350ms por consulta ja chegava congestionada na fase do kit: o
+        // prazo se gastava ESPERANDO VAGA e a 2a peca ficava sem resolver.
+        // Foto e enfeite; a composicao e o que ele precisa pra clicar.
+        // b182 (pedido do Diego: "no proprio card ja destrinchar") - os kits
+        // que vao pra tela levam a COMPOSICAO junto, pra o estoquista escolher
+        // a peca ali mesmo: sem popup e sem precisar preencher e salvar antes.
+        // b197 - compartilhados entre as duas passagens (ver acima)
+        // b195 - na BUSCA o prazo e mais folgado que no POST: aqui ninguem
+        // esta esperando pra gravar, e cortar cedo demais foi o que deixou o
+        // kit com peca faltando. No POST /adicionar segue COMPONENTES_PRAZO_MS.
+        const prazoLaco = prazoLacoPedido;
+        for (const item of itens) {
+          if (item._fmt !== 'E' || !item.id) continue;
+          if (kitsResolvidosPedido >= 3) break;          // kit e excecao na busca; teto barato
+          if (Date.now() >= prazoLaco) break;      // b184 - tempo do laco esgotado
+          const doCache = compsCacheGet(item.id);
+          if (doCache) {
+            item.componentes = doCache.itens;
+            item.componentes_faltando = doCache.faltando;
+            kitsResolvidosPedido++;
+            continue;
+          }
+          const prazoKit = Math.min(Date.now() + PRAZO_KIT_BUSCA_MS, prazoLaco);   // b184/b195
+          let estruturaFalhou = false;   // b196
+          let cru = item._compsCru;
+          if (!cru) {
+            try {
+              // b187 - a vaga NEM E RESERVADA se nascer depois do prazo
+              if (!(await esperarVezDetalhe(prazoKit - Date.now()))) throw new Error('fila alem do prazo do kit');
+              // b185 (review do Codex) - a espera na FILA tambem conta no prazo
+              const restanteKit = prazoKit - Date.now();
+              if (restanteKit <= 0) throw new Error('prazo do kit esgotado na fila');
+              // b187 - timeout real + sem retentativa orfa (o 429/401 do
+              // chamarBling dormia 1,5s e disparava outra requisicao depois
+              // que este laco ja tinha desistido)
+              const rK = await comPrazo(
+                bling.chamarBling('/produtos/' + item.id, { timeout: restanteKit, semRetentativa: true }),
+                restanteKit);
+              // b197 (review do Codex) - este detalhe ja veio: aproveita a IMAGEM e
+              // marca o id como baixado, senao a passada de fotos pedia o MESMO
+              // produto de novo (uma requisicao a toa por kit, justo na hora em
+              // que a gente esta tentando aliviar a fila).
+              try {
+                const detK = (rK && rK.ok && rK.data && rK.data.data) || null;
+                if (detK) {
+                  jaBaixado.add(item.id);
+                  const urlK = primeiraImagem(detK);
+                  if (urlK) { IMG_CACHE.set(item.id, urlK); if (!item.imagem) item.imagem = urlK; }
+                }
+              } catch (e) { /* imagem e opcional */ }
+              // b197 (review do Codex) - resposta {ok:false} (429, rede, timeout)
+              // NAO lanca: sem isto o log dizia "Bling devolveu sem componentes"
+              // quando na verdade a CONSULTA falhou — diagnostico errado.
+              if (!rK || !rK.ok) estruturaFalhou = true;
+              const dK = (rK && rK.ok && rK.data && rK.data.data) || null;
+              cru = extrairComponentes(dK);
+            } catch (e) { cru = null; estruturaFalhou = true; }   // b196
+          }
+          if (!cru || !cru.length) {
+        // b196 (review do Codex) - a falha ao buscar a ESTRUTURA do kit
+        // ficava MUDA: sem componentes, sem motivo, sem log — justamente uma
+        // das causas plausiveis do kit que apareceu sem peca. Agora ela se
+        // declara igual as outras, e a tela mostra o aviso.
+        item.componentes = [];
+        item.componentes_faltando = 1;
+        item.componentes_motivo = { estrutura_falhou: estruturaFalhou ? 1 : 0, estrutura_vazia: estruturaFalhou ? 0 : 1 };
+        console.log('[KIT] nao consegui a estrutura do kit ' + item.id + ' — '
+          + (estruturaFalhou ? 'consulta falhou/prazo' : 'Bling devolveu sem componentes'));
+        kitsResolvidosPedido++;
+        continue;
+      }
+      if (cru && cru.length) {
+            const rC = await resolverComponentes(cru, prazoKit);
+            item.componentes = rC.itens;
+            item.componentes_faltando = rC.faltando;
+            item.componentes_motivo = rC.motivos;   // b195 - diagnostico na resposta
+            // b183 - so a composicao COMPLETA vira cache de 6h (parcial presa
+            // no cache faria o "tente de novo em instantes" virar mentira)
+            if (rC.faltando === 0) COMPS_POR_KIT.set(item.id, { itens: rC.itens, faltando: 0, ts: Date.now() });
+          }
+          kitsResolvidosPedido++;
+        }
+
+      };
+      await resolverComposicaoDosKits(finais);
       // 2a passada: foto — so nos que VAO PRA TELA, e pulando quem ja teve
       // o detalhe baixado agora ha pouco (b177: ja sabemos que nao tem foto)
       for (const item of finais) {
@@ -462,55 +613,15 @@ function montar(router, deps) {
         try { await buscarDetalhe(item); } catch (e) { /* sem foto e ok */ }
         buscados++;
       }
+      // b196 - kits que so se revelaram na passada de fotos entram agora
+      // b198 (review do Codex) - `!i.componentes` nao pegava quem ficou com
+      // lista VAZIA (estrutura que falhou na 1a passagem): esse kit perdia a
+      // segunda chance e ia pra tela como card travado.
+      await resolverComposicaoDosKits(finais.filter(i => i._fmt === 'E' && !(i.componentes && i.componentes.length)));
       // b178 (review do Codex) - a passada da foto tambem APURA formato: um
       // item que entrou sem veredito pode se revelar 'V' (ou kit) ali. Sem
       // este segundo filtro, o pai de variacao recem-descoberto seguiria na
       // lista — o filtro de cima ja tinha passado por ele.
-      // b182 (pedido do Diego: "no proprio card ja destrinchar") - os kits
-      // que vao pra tela levam a COMPOSICAO junto, pra o estoquista escolher
-      // a peca ali mesmo: sem popup e sem precisar preencher e salvar antes.
-      let kitsResolvidos = 0;
-      const prazoLaco = Date.now() + COMPONENTES_PRAZO_MS * 2;   // b184
-      for (const item of finais) {
-        if (item._fmt !== 'E' || !item.id) continue;
-        if (kitsResolvidos >= 3) break;          // kit e excecao na busca; teto barato
-        if (Date.now() >= prazoLaco) break;      // b184 - tempo do laco esgotado
-        const doCache = compsCacheGet(item.id);
-        if (doCache) {
-          item.componentes = doCache.itens;
-          item.componentes_faltando = doCache.faltando;
-          kitsResolvidos++;
-          continue;
-        }
-        const prazoKit = Math.min(Date.now() + COMPONENTES_PRAZO_MS, prazoLaco);   // b184
-        let cru = item._compsCru;
-        if (!cru) {
-          try {
-            // b187 - a vaga NEM E RESERVADA se nascer depois do prazo
-            if (!(await esperarVezDetalhe(prazoKit - Date.now()))) throw new Error('fila alem do prazo do kit');
-            // b185 (review do Codex) - a espera na FILA tambem conta no prazo
-            const restanteKit = prazoKit - Date.now();
-            if (restanteKit <= 0) throw new Error('prazo do kit esgotado na fila');
-            // b187 - timeout real + sem retentativa orfa (o 429/401 do
-            // chamarBling dormia 1,5s e disparava outra requisicao depois
-            // que este laco ja tinha desistido)
-            const rK = await comPrazo(
-              bling.chamarBling('/produtos/' + item.id, { timeout: restanteKit, semRetentativa: true }),
-              restanteKit);
-            const dK = (rK && rK.ok && rK.data && rK.data.data) || null;
-            cru = extrairComponentes(dK);
-          } catch (e) { cru = null; }
-        }
-        if (cru && cru.length) {
-          const rC = await resolverComponentes(cru, prazoKit);
-          item.componentes = rC.itens;
-          item.componentes_faltando = rC.faltando;
-          // b183 - so a composicao COMPLETA vira cache de 6h (parcial presa
-          // no cache faria o "tente de novo em instantes" virar mentira)
-          if (rC.faltando === 0) COMPS_POR_KIT.set(item.id, { itens: rC.itens, faltando: 0, ts: Date.now() });
-        }
-        kitsResolvidos++;
-      }
       const entregues = [];
       for (const item of finais) {
         if (item._fmt === 'V') continue;

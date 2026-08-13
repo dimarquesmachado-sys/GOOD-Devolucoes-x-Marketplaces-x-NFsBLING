@@ -3239,38 +3239,86 @@ async function resolverComponentesKit(comps, limiteExterno) {
   const truncados = Math.max(0, lista.length - alvos.length);
   const out = [];
   let naoResolvidos = nulos;
+  // v4.79 - MOTIVO de cada peca que nao entrou (prazo? erro? sem codigo?):
+  // sem isso o aviso "nao consegui listar N peca(s)" nao da pra consertar
+  const motivos = { nulos: nulos, prazo: 0, fila: 0, erro: 0, sem_sku: 0, truncados: 0, tentou_de_novo: 0 };
   for (const c of alvos) {
     const p = (c && c.produto) || {};
     const id = p.id || c.idProduto || c.produtoId || null;
     let sku = String(p.codigo || p.sku || '').trim();
+    let falhouComponente = false;   // b196/v4.80 - motivo DESTE componente
     let nome = String(p.nome || p.descricao || '').trim();
     if (!sku && id) {
       const emCache = skuCacheGet(id);
       if (emCache) { sku = emCache.sku; nome = nome || emCache.nome; }
-      else if (Date.now() >= limite) { naoResolvidos++; continue; }
+      else if (Date.now() >= limite) { naoResolvidos++; motivos.prazo++; falhouComponente = true; continue; }
       else {
         try {
           // v4.71 - a vaga na fila ja nasce dentro do prazo do kit
-          if (!(await esperarVezDetalhe(limite - Date.now()))) { naoResolvidos++; continue; }
+          if (!(await esperarVezDetalhe(limite - Date.now()))) { naoResolvidos++; motivos.fila++; falhouComponente = true; continue; }
           const restante = limite - Date.now();
-          if (restante <= 0) { naoResolvidos++; continue; }
-          const r = await comPrazo(
-            chamarBling(`https://api.bling.com.br/Api/v3/produtos/${id}`, { timeout: restante, semRetentativa: true }),
-            restante);
-          const d = (r && r.ok && r.data && r.data.data) || null;
+          if (restante <= 0) { naoResolvidos++; motivos.prazo++; falhouComponente = true; continue; }
+          // v4.79 - UMA SEGUNDA CHANCE dentro do prazo: o `semRetentativa`
+          // (que evita requisicao orfa) fazia qualquer tropeco do Bling — um
+          // 429 no meio da rajada da propria busca — virar "peca faltando"
+          // na tela, mesmo com prazo de sobra. Foi o caso do kit que veio
+          // com uma peca listada e a outra nao.
+          let d = null;
+          let falhouNoBling = false;
+          for (let tentativa = 0; tentativa < 2; tentativa++) {
+            // v4.80 (review do Codex) - CADA tentativa reserva sua vaga na
+            // fila global (a 2a ia direto ao Bling depois do sleep fixo)
+            if (tentativa > 0 && !(await esperarVezDetalhe(limite - Date.now()))) { motivos.fila++; break; }
+            const sobra = limite - Date.now();
+            if (sobra <= 300) { motivos.prazo++; break; }
+            const rr = await comPrazo(
+              chamarBling(`https://api.bling.com.br/Api/v3/produtos/${id}`, { timeout: sobra, semRetentativa: true }),
+              sobra);
+          d = (rr && rr.ok && rr.data && rr.data.data) || null;
+          if (d) { falhouNoBling = false; break; }
+          falhouNoBling = true;   // resposta !ok NAO lanca excecao
+          // v4.81 (review do Codex) - so re-tenta o que PODE dar certo sem
+          // mudar nada: 429/5xx/rede. Em 401 o semRetentativa impede a
+          // renovacao do token (a 2a tentativa usaria o mesmo token morto) e
+          // 404 e deterministico — re-tentar so gastava prazo do kit.
+          const st = (rr && rr.status) || 0;
+          if (st === 401 || st === 403 || st === 404) break;
+
+            motivos.tentou_de_novo++;
+            if (limite - Date.now() <= 900) break;
+            // v4.82 (review do Codex) - so espera se AINDA VAI tentar: depois
+            // da ultima tentativa os 600ms eram prazo do kit jogado fora.
+            if (tentativa === 0) await new Promise(r2 => setTimeout(r2, 600));
+          }
+          if (falhouNoBling) { motivos.erro++; falhouComponente = true; }   // v4.80 - erro do Bling, nao "sem codigo"
           if (d) {
             sku = String(d.codigo || d.sku || '').trim();
             nome = nome || String(d.nome || d.descricao || '').trim();
             skuCacheSet(id, sku, nome);
           }
-        } catch (e) { /* prazo ou falha: conta como nao resolvido abaixo */ }
+        } catch (e) {
+          // b197/v4.81 (review do Codex) - a falha LANCADA (prazo do comPrazo)
+          // tambem marca ESTE componente: sem a flag ele era contado duas
+          // vezes (erro + sem_sku) e o diagnostico ficava mentiroso.
+          motivos.erro++;
+          falhouComponente = true;
+        }
       }
     }
     const q = Number(c && (c.quantidade || c.qtd)) || 1;
     if (sku) out.push({ sku, quantidade: q, nome });
-    else naoResolvidos++;
+    else {
+        naoResolvidos++;
+        // b196/v4.80 (review do Codex) - a classificacao e DESTE componente:
+        // antes eu olhava contadores agregados, entao o erro de um componente
+        // anterior impedia o proximo de ser contado como "sem codigo".
+        if (!falhouComponente) motivos.sem_sku++;
+      }
   }
-  return { itens: out, faltando: naoResolvidos + truncados };
+  motivos.truncados = truncados;
+  const faltando = naoResolvidos + truncados;
+  if (faltando) console.log('[KIT] composicao incompleta: ' + faltando + ' peca(s) fora — ' + JSON.stringify(motivos));
+  return { itens: out, faltando, motivos };
 }
 
 // v4.67 (review do Codex) - CADENCIA COMPARTILHADA pelo processo. A pausa
@@ -3431,6 +3479,7 @@ async function tirarKits(lista, diag) {
     }
     // v4.69 - UM prazo unico para este kit: estrutura + resolucao das pecas
     const prazoKit = Math.min(Date.now() + COMPONENTES_PRAZO_MS, prazoLaco);
+    let estruturaFalhou = false;   // v4.80
     let cru = item._compsCru;
     if (!cru || !cru.length) {
       try {
@@ -3448,14 +3497,32 @@ async function tirarKits(lista, diag) {
         const rK = await comPrazo(
           chamarBling(`https://api.bling.com.br/Api/v3/produtos/${item.id}`, { timeout: restanteKit, semRetentativa: true }),
           restanteKit);
+        // v4.81 (review do Codex) - resposta {ok:false} (429, rede, timeout)
+        // NAO lanca: sem isto o log dizia "Bling devolveu sem componentes"
+        // quando na verdade a CONSULTA falhou — diagnostico errado.
+        if (!rK || !rK.ok) estruturaFalhou = true;
         const dK = (rK && rK.ok && rK.data && rK.data.data) || null;
         cru = extrairComponentes(dK);
-      } catch (e) { cru = null; }
+      } catch (e) { cru = null; estruturaFalhou = true; }   // v4.80
+    }
+    if (!cru || !cru.length) {
+      // v4.80 (review do Codex) - a falha ao buscar a ESTRUTURA do kit
+      // ficava MUDA: sem componentes, sem motivo, sem log — justamente uma
+      // das causas plausiveis do kit que apareceu sem peca. Agora ela se
+      // declara igual as outras, e a tela mostra o aviso.
+      item.componentes = [];
+      item.componentes_faltando = 1;
+      item.componentes_motivo = { estrutura_falhou: estruturaFalhou ? 1 : 0, estrutura_vazia: estruturaFalhou ? 0 : 1 };
+      console.log('[KIT] nao consegui a estrutura do kit ' + item.id + ' — '
+        + (estruturaFalhou ? 'consulta falhou/prazo' : 'Bling devolveu sem componentes'));
+      kitsResolvidos++;
+      continue;
     }
     if (cru && cru.length) {
       const rC = await resolverComponentesKit(cru, prazoKit);
       item.componentes = rC.itens;
       item.componentes_faltando = rC.faltando;
+      item.componentes_motivo = rC.motivos;   // v4.79 - diagnostico na resposta
       // v4.67 (review do Codex) - SO A COMPOSICAO COMPLETA vira cache de 6h.
       // Guardar a parcial fazia a proxima busca cair no cache e nunca mais
       // tentar as pecas que faltaram — o "tente de novo em instantes" da
