@@ -206,7 +206,7 @@
         <div class="topo-txt">
           <h1>AMBTotal Devoluções</h1>
           <p>Identificar venda &middot; NF-e &middot; Triagem
-            <span class="topo-versao">&middot; v3.73 &middot; <span id="serverVersion">checando...</span></span>
+            <span class="topo-versao">&middot; v3.74 &middot; <span id="serverVersion">checando...</span></span>
           </p>
         </div>
         <!-- b92 - os 2 do estoque de defeitos subiram pra MESMA faixa:
@@ -854,7 +854,7 @@
           // (4o kit da busca, ou todas as consultas falhando): antes o card
           // voltava a ser clicavel e dava pra lancar defeito NO KIT.
           var comps = (p.componentes && p.componentes.length) ? p.componentes : null;
-          h += '<div id="defRes' + i + '"' + (ehKitCard ? '' : ' onclick="escolherProdutoDefeito(' + i + ')"') + ' data-i="' + i + '" style="border:1px solid ' + (ehKitCard ? '#e4dcf1' : '#ddd') + ';border-radius:10px;padding:10px;margin-bottom:7px;' + (ehKitCard ? 'background:#faf7ff;' : 'cursor:pointer;background:#fff;') + 'display:flex;gap:14px;align-items:center;">'
+          h += '<div id="defRes' + i + '"' + (ehKitCard ? '' : ' onclick="escolherProdutoDefeito(' + i + ')"') + ' data-i="' + i + '"' + (ehKitCard ? ' data-kit="1"' : '') + ' style="border:1px solid ' + (ehKitCard ? '#e4dcf1' : '#ddd') + ';border-radius:10px;padding:10px;margin-bottom:7px;' + (ehKitCard ? 'background:#faf7ff;' : 'cursor:pointer;background:#fff;') + 'display:flex;gap:14px;align-items:center;">'
             + (p.imagem
                 ? '<img src="' + escDef(p.imagem) + '" onclick="event.stopPropagation();abrirZoomProduto(this.src)" onerror="this.style.display=\'none\'" class="foto-produto-lista" style="cursor:zoom-in;">'
                 : '<div class="foto-produto-lista vazia">📦</div>')
@@ -870,7 +870,7 @@
                           : 'É um KIT — não dá pra lançar defeito nele. Não consegui listar as peças agora;'
                             + ' tente de novo em instantes ou busque direto pelo SKU da peça.') + '</div>'
                     + (comps || []).map(function (c, j) {
-                        return '<div style="display:flex;align-items:center;gap:9px;padding:6px 0;border-top:1px solid #efe8f7;">'
+                        return '<div data-comp="' + i + '-' + j + '" style="display:flex;align-items:center;gap:9px;padding:6px 8px;border-top:1px solid #efe8f7;border-radius:8px;border-left:3px solid transparent;">'
                           + '<div style="flex:1;min-width:0;">'
                             + '<div style="font-size:13.5px;font-weight:600;color:#241a35;">' + escDef(c.nome || c.sku) + '</div>'
                             + '<div style="font-size:11.5px;color:#71659a;">SKU <code>' + escDef(c.sku) + '</code>'
@@ -923,10 +923,13 @@
       var kit = (window._defLista || [])[i];
       var c = kit && kit.componentes && kit.componentes[j];
       if (!c) return;
+      // b199 (pedido do Diego) - passa QUAL peca foi escolhida: sem isso
+      // o destaque caia no card do KIT inteiro, como se o kit tivesse sido
+      // selecionado, e ele nao via qual lampada estava indo pro lancamento.
       selecionarProdutoDefeito({
         sku: c.sku, nome: c.nome || c.sku, ean: '',
-        imagem: c.imagem || kit.imagem || null,
-      }, i);
+        imagem: c.imagem || null,
+      }, i, i + '-' + j);
       // b183 (review do Codex) - a quantidade e SEMPRE reescrita: antes,
       // escolher uma peca de 2× e depois outra de 1× deixava o campo em 2
       var campoQtd = document.getElementById('defQtd');
@@ -935,7 +938,7 @@
       if (campo) campo.focus();
     }
 
-    function selecionarProdutoDefeito(p, i) {
+    function selecionarProdutoDefeito(p, i, pecaDoKit) {
       limparKitPendente();
       // b184 (review do Codex) - a quantidade volta a 1 em TODA escolha; quem
       // precisa de outro valor (peca de kit com 2×) reescreve logo depois.
@@ -960,9 +963,23 @@
       if (res) {
         var linhas = res.querySelectorAll('[data-i]');
         for (var k = 0; k < linhas.length; k++) {
-          var sel = String(linhas[k].getAttribute('data-i')) === String(i);
+          // b199 - o card do KIT nunca fica "selecionado": quem se escolhe e a
+          // PECA. Ele mantem sempre o visual proprio de kit.
+          if (linhas[k].getAttribute('data-kit') === '1') {
+            linhas[k].style.border = '1px solid #e4dcf1';
+            linhas[k].style.background = '#faf7ff';
+            continue;
+          }
+          var sel = !pecaDoKit && String(linhas[k].getAttribute('data-i')) === String(i);
           linhas[k].style.border = sel ? '2px solid #116B4E' : '1px solid #ddd';
           linhas[k].style.background = sel ? '#f2fbf7' : '#fff';
+        }
+        // b199 - destaque DENTRO do kit: so a peca clicada acende
+        var pecas = res.querySelectorAll('[data-comp]');
+        for (var c2 = 0; c2 < pecas.length; c2++) {
+          var selP = !!pecaDoKit && pecas[c2].getAttribute('data-comp') === String(pecaDoKit);
+          pecas[c2].style.borderLeft = selP ? '3px solid #116B4E' : '3px solid transparent';
+          pecas[c2].style.background = selP ? '#eaf7f1' : 'transparent';
         }
       }
       var b = document.getElementById('defBtnSalvar');

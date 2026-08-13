@@ -846,7 +846,7 @@
       var kit = (window._defLista || [])[i];
       var c = kit && kit.componentes && kit.componentes[j];
       if (!c) return;
-      selecionarProdutoDefeito({ sku: c.sku, nome: c.nome || c.sku, ean: '', imagem: c.imagem || kit.imagem || null }, i);
+      selecionarProdutoDefeito({ sku: c.sku, nome: c.nome || c.sku, ean: '', imagem: c.imagem || null }, i);
       // v4.68 (review do Codex) - a quantidade e SEMPRE reescrita: antes,
       // escolher uma peca de 2× e depois outra de 1× deixava o campo em 2
       var campoQtd = document.getElementById('defQtd');
