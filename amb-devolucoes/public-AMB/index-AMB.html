@@ -10,6 +10,11 @@
   <!-- AMB Devol. b59 - tela portada da GOOD (modulos identicos + adaptador),
        com o CSS e o app de celular (PWA) da AMB de volta -->
   <link rel="stylesheet" href="styles.css?v=b59">
+  <!-- b201 (pedido do Diego: "o + ta cinza, difícil de ver") - o emoji ➕ e
+       desenhado pelo navegador em cinza/rosa claro e sumia. Virou um "+"
+       tipografico, com peso 900 e a cor CERTA PRA CADA FUNDO: lilas vivo
+       (#C9AEFF) no cabecalho roxo escuro e roxo forte da AMBTotal (#561A9E)
+       nos fundos brancos. Roxo escuro no cabecalho teria sumido de vez. -->
   <style>
     /* os 2 links do estoque de defeitos: a DIREITA no computador, igual
        o cracha do usuario (que e absolute, top/right). No celular o
@@ -206,7 +211,7 @@
         <div class="topo-txt">
           <h1>AMBTotal Devoluções</h1>
           <p>Identificar venda &middot; NF-e &middot; Triagem
-            <span class="topo-versao">&middot; v3.74 &middot; <span id="serverVersion">checando...</span></span>
+            <span class="topo-versao">&middot; v3.75 &middot; <span id="serverVersion">checando...</span></span>
           </p>
         </div>
         <!-- b92 - os 2 do estoque de defeitos subiram pra MESMA faixa:
@@ -214,7 +219,7 @@
              e centraliza. -->
         <div class="links-defeitos">
           <a href="#" id="linkDefeitos" title="Estoque de pecas com defeito: buscar por SKU, abrir a ficha (fotos, historico, comentarios) e imprimir etiqueta" onclick="event.preventDefault();abrirBuscaDefeitos()">🔧 Defeitos<span id="avisoDefeitos"></span></a>
-          <a href="#" title="Cadastra uma peca com defeito no estoque: busca o SKU, descreve o defeito, anexa fotos e gera a etiqueta" onclick="event.preventDefault();abrirModalDefeito()">➕ Lançar Defeito</a>
+          <a href="#" title="Cadastra uma peca com defeito no estoque: busca o SKU, descreve o defeito, anexa fotos e gera a etiqueta" onclick="event.preventDefault();abrirModalDefeito()"><span style="color:#C9AEFF;font-weight:900;font-size:1.15em;line-height:0;">+</span> Lançar Defeito</a>
           <!-- b173 - link DIRETO pras solicitacoes do galpao (antes so dava
                pra chegar la abrindo o card de Defeitos) -->
           <a href="#" id="linkSolicitacoes" title="Solicitacoes do galpao esperando decisao: liberar peca recuperada ou autorizar descarte (nao confundir com pedido de venda)" onclick="event.preventDefault();abrirFilaPedidos()">📥 Solicitações</a>
@@ -295,7 +300,7 @@
         <div style="font-size:11px;color:#8a8a8a;letter-spacing:.4px;margin-bottom:7px;">ESTOQUE DE DEFEITOS</div>
         <div style="display:flex;gap:7px;">
           <button type="button" class="btn-apoio" onclick="abrirBuscaDefeitos()">🔧 defeitos</button>
-          <button type="button" class="btn-apoio" onclick="abrirModalDefeito()">➕ lançar</button>
+          <button type="button" class="btn-apoio" onclick="abrirModalDefeito()"><span style="color:#561A9E;font-weight:900;font-size:1.15em;line-height:0;">+</span> lançar</button>
         </div>
       </div>
       <p class="hint dica-formatos" onclick="this.classList.toggle('aberta')" title="toque para ver todos os formatos">
@@ -322,7 +327,7 @@
   <!-- v3.96 - MODAL: lancar produto com defeito (busca por nome/SKU/EAN) -->
   <div class="modal-bg" id="modalDefeito">
     <div class="modal modal-defeito" style="max-width: 940px;">
-      <h3>➕ Lançar produto com defeito</h3>
+      <h3><span style="color:#561A9E;font-weight:900;font-size:1.15em;line-height:0;">+</span> Lançar produto com defeito</h3>
       <p style="font-size:13px; color:#666; margin-bottom:10px;">Busca por <b>parte do nome</b>, SKU ou EAN e escolhe o produto certo na lista.</p>
 
       <div style="display:flex; gap:8px;">
