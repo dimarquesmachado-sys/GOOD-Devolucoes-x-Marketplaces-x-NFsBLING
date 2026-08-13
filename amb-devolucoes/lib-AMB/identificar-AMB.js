@@ -480,6 +480,9 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
       quantidade: it.quantidade || null,
       valor: it.valor || null,
       unidade: it.unidade || null,
+      // b238 - id do produto no Bling: o SKU da venda pode ter sido
+      // renomeado no cadastro; o id nao muda (README, Regras do catalogo)
+      produto_id: (it.produto && (it.produto.id || it.produto.produtoId)) || it.produtoId || null,
     })) : [];
     resultado.nf = {
       fonte: 'bling',
@@ -757,6 +760,9 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
         quantidade: it.quantidade || null,
         valor: it.valor || null,
         unidade: it.unidade || null,
+        // b238 - id do produto no Bling: o SKU da venda pode ter sido
+        // renomeado no cadastro; o id nao muda (README, Regras do catalogo)
+        produto_id: (it.produto && (it.produto.id || it.produto.produtoId)) || it.produtoId || null,
       })) : [];
       nfData = {
         fonte: 'bling',
@@ -819,6 +825,9 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
             itens: Array.isArray(nf.itens) ? nf.itens.map(it => ({
               titulo: it.descricao || null, sku: it.codigo || null, ean: it.gtin || null,
               quantidade: it.quantidade || null, valor: it.valor || null, unidade: it.unidade || null,
+              // b238 - id do produto no Bling: o SKU da venda pode ter sido
+              // renomeado no cadastro; o id nao muda (README, Regras do catalogo)
+              produto_id: (it.produto && (it.produto.id || it.produto.produtoId)) || it.produtoId || null,
             })) : [],
           };
           nomeCliente = (nf.contato && nf.contato.nome) ? nf.contato.nome : nomeCliente;
@@ -1059,6 +1068,9 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
                 quantidade: it.quantidade || null,
                 valor: it.valor || null,
                 unidade: it.unidade || null,
+                // b238 - id do produto no Bling: o SKU da venda pode ter sido
+                // renomeado no cadastro; o id nao muda (README, Regras do catalogo)
+                produto_id: (it.produto && (it.produto.id || it.produto.produtoId)) || it.produtoId || null,
               })) : [];
               nfData.itens = itensBling;
               nfData.idBling = nfBling.id;
@@ -1109,6 +1121,9 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
           quantidade: it.quantidade || null,
           valor: it.valor || null,
           unidade: it.unidade || null,
+          // b238 - id do produto no Bling: o SKU da venda pode ter sido
+          // renomeado no cadastro; o id nao muda (README, Regras do catalogo)
+          produto_id: (it.produto && (it.produto.id || it.produto.produtoId)) || it.produtoId || null,
         })) : [];
 
         nfData = {

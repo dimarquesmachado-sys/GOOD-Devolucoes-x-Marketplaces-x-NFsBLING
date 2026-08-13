@@ -19,6 +19,11 @@ module.exports = function criarNfPessoa({ chamarBling, sleep }) {
       sku: it.codigo || null,
       quantidade: it.quantidade || null,
       valor: it.valor || null,
+      // b238 - o ID do produto no Bling, vinculo gravado na emissao da nota.
+      // O SKU da venda pode ter sido RENOMEADO no cadastro (caso real:
+      // FL-1011-PRETO virou 3933398010054), e ai nenhuma busca por codigo
+      // acha o produto; o id nao muda. Ver README, "Regras do catalogo".
+      produto_id: (it.produto && (it.produto.id || it.produto.produtoId)) || it.produtoId || null,
     })) : null;
   }
 
