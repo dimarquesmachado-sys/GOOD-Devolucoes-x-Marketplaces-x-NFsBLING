@@ -682,7 +682,6 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
       // FL-1011-PRETO e o cadastro pode estar FL1011PRETO / fl 1011 preto.
       const mesmoSku = (cod) => String(cod || '').replace(/[^a-z0-9]/gi, '').toUpperCase()
         === chave.replace(/[^a-z0-9]/gi, '').toUpperCase();
-      let eanApontaPara = null;   // b228 - de quem e o EAN, quando nao e do SKU
       let nomeCandidatos = null;  // b228 - o que a busca por nome trouxe
 
       const rL = await bling.chamarBling(`/produtos?codigo=${encodeURIComponent(chave)}&limite=3`);
@@ -716,26 +715,11 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
       // Agora ha mais dois caminhos antes de desistir: o EAN que a propria
       // tela ja conhece, e a busca por nome.
 
-      const ean = String(req.query.ean || '').replace(/\D/g, '');
-      if (!id && ean.length >= 12) {
-        // b226 (o Diego viu foto de OUTRO produto no card) - eu aceitava
-        // QUALQUER item que o gtin devolvesse. EAN repetido/errado no
-        // cadastro, ou o Bling ignorando o filtro, trazia outro produto e a
-        // foto dele ia pra tela como se fosse a da devolucao. Agora o
-        // codigo tem que BATER com o SKU pedido; senao, nao serve.
-        const rE2 = await bling.chamarBling(`/produtos?gtin=${encodeURIComponent(ean)}&limite=5`);
-        const cands = (rE2.ok && rE2.data && rE2.data.data) || [];
-        const p2 = cands.find(p => mesmoSku(p.codigo)) || null;
-        if (p2) { url = url || primeiraImagem(p2); id = p2.id || null; via = 'ean_da_tela'; }
-        else if (cands.length) {
-          via = 'ean_descartado_sku_diferente';
-          // b228 - DIZER EM QUAL produto o EAN caiu. Sem isso o Diego sabe
-          // que ha divergencia, mas nao onde consertar no Bling.
-          eanApontaPara = cands.slice(0, 3).map(p => ({
-            id: p.id || null, codigo: p.codigo || null, nome: p.nome || null,
-          }));
-        }
-      }
+      // b230 (regra dele: "pega exatamente pelo SKU q nao vai ter erro
+      // nunca. nao existem 2 SKUs iguais") - o caminho pelo EAN SAIU. O EAN
+      // desta luminaria esta cadastrado tambem nos ACESSORIOS dela (roscas,
+      // travas), entao ele nao identifica produto — o SKU sim. Menos
+      // caminho, menos chance de mostrar a peca errada pro estoquista.
       if (!id) {
         // b229 (caso real do Diego): com limite=5 a busca por nome trouxe SO
         // acessorios — Kit2Roscas, TravaCentralBranca, TravaCentralPreta,
@@ -745,7 +729,7 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
         const rP = await bling.chamarBling(`/produtos?pesquisa=${encodeURIComponent(chave)}&limite=100`);
         const lista = (rP.ok && rP.data && rP.data.data) || [];
         const alvo = lista.find(p => mesmoSku(p.codigo)) || null;
-        if (alvo) { url = url || primeiraImagem(alvo); id = alvo.id || null; via = 'pesquisa_nome'; }
+        if (alvo) { url = url || primeiraImagem(alvo); id = alvo.id || null; via = 'busca_ampla_sku_exato'; }
         // b228 - se a busca por nome trouxe produtos mas nenhum com este
         // codigo, mostrar os codigos que vieram: e assim que se descobre que
         // o SKU do anuncio nao e o codigo do Bling (ex: FL-1011-PRETO x FL1011P)
@@ -764,13 +748,10 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
       // SKU nao encontrado.
       res.json({
         ok: true, chave, imagem: url, via,
-        ean_aponta_para: eanApontaPara,     // b228
         codigos_parecidos: nomeCandidatos,  // b228
         motivo: url ? null
           : (id ? 'produto encontrado, mas sem foto no cadastro'
-            : (via === 'ean_descartado_sku_diferente'
-                ? 'o EAN desta venda esta cadastrado em OUTRO produto no Bling — nao usei a foto dele'
-                : 'nao achei esse SKU no Bling (nem por codigo, nem por EAN, nem por nome)')),
+            : 'nao achei nenhum produto com o codigo ' + chave + ' no Bling'),
       });
     } catch (e) {
       res.status(500).json({ ok: false, erro: String(e.message || e) });
