@@ -416,7 +416,18 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
       tipoTentativa = 'numero_nf';
       console.log(`[BUSCA] NUMERO NF: numero=${numeroDaChave} serie=${serieDaChave || '(todas)'}`);
       let achadas = [];
-      try { achadas = await buscarNFsPorNumero(numeroDaChave, serieDaChave); } catch (e) { achadas = []; }
+      // b216 - o Bling RECUSAR a consulta nao e o mesmo que a NF nao existir.
+      // Antes tudo caia no mesmo `achadas = []` e a tela afirmava "NF nao
+      // localizada (procurei em todas as series, ultimos 18 meses)" — foi o
+      // que o Diego viu com a NF 2447, que existe.
+      let blingRecusou = false;
+      try { achadas = await buscarNFsPorNumero(numeroDaChave, serieDaChave); }
+      catch (e) { achadas = []; blingRecusou = !!(e && e.blingRecusou); }
+      if (blingRecusou) {
+        resultado.tentativas.push({ tipo: 'numero_nf', codigo: String(codigoOriginal || '').trim(), ok: false, status: 503, erro: 'Bling recusou a consulta' });
+        resultado.erro = `Nao consegui consultar a NF ${numeroDaChave} agora: o Bling recusou a consulta (limite ou instabilidade). Tente de novo em instantes — NAO quer dizer que a nota nao existe.`;
+        return res.status(503).json(await comRecados(resultado, req.params.codigo));
+      }
 
       if (achadas.length > 1) {
         // AMBIGUIDADE: mesma numeracao em series diferentes. Carrega o basico

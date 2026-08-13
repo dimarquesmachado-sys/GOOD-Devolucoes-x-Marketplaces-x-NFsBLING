@@ -120,17 +120,25 @@ module.exports = function criarNfPessoa({ chamarBling, sleep }) {
     // O ?numero= E aplicado pelo Bling (retorna 0, nao 100), mas o numero la
     // vem ZERO-PADDED ("075053"). Entao tentamos as duas formas: crua e com
     // zeros a esquerda (5..9 digitos). Se casar, acabou em 1 chamada.
+    // b216 (raio-x com dado real da NF 2447): o Bling guarda o numero
+    // ZERO-PADDED em 6 digitos ("002447") e o filtro dele e exato —
+    // ?numero=2447 devolveu 0 e ?numero=002447 devolveu as 2 notas. Testar
+    // a forma crua PRIMEIRO gastava uma chamada a toa em todo bipe e, se a
+    // segunda tropeçasse (limite/erro), a busca desistia e a tela dizia
+    // "NF nao localizada" — foi o que aconteceu com ele.
     const variantesNum = [...new Set([
-      String(alvoInt),
       String(alvoInt).padStart(6, '0'),
+      String(alvoInt),
       String(alvoInt).padStart(7, '0'),
       String(alvoInt).padStart(9, '0'),
     ])];
+    let falhouFiltro = false;   // b216 - o Bling RECUSOU (429/rede)?
     for (const vn of variantesNum) {
       try {
         await sleep(250);
         const url = `https://api.bling.com.br/Api/v3/nfe?limite=100&pagina=1&tipo=1&numero=${encodeURIComponent(vn)}`;
         const r = await chamarBling(url);
+        if (!r.ok) falhouFiltro = true;   // b216 - recusa != "nao existe"
         const lista = (r.ok && r.data?.data) ? r.data.data : [];
         const hits = lista.filter(nf => numOf(nf) === alvoInt && (!serieFixa || serOf(nf) === serieFixa));
         log('filtro-numero', { formato: vn, ok: r.ok, status: r.status || null, qtd: lista.length, hits: hits.length });
@@ -138,7 +146,7 @@ module.exports = function criarNfPessoa({ chamarBling, sleep }) {
           console.log(`[buscarNFsPorNumero] ${alvoStr}: ${hits.length} NF(s) via filtro ?numero=${vn}`);
           return hits.map(nf => ({ id: String(nf.id), serie: serOf(nf), numero: String(nf.numero) }));
         }
-      } catch (e) { log('filtro-numero', { formato: vn, ERRO: e.message || String(e) }); }
+      } catch (e) { log('filtro-numero', { formato: vn, ERRO: e.message || String(e) }); falhouFiltro = true; }
     }
 
     // ---- 2) ANCORA: dias recentes revelam as SERIES e seus maximos atuais ----
@@ -161,7 +169,17 @@ module.exports = function criarNfPessoa({ chamarBling, sleep }) {
     }
     log('ancora', { series_achadas: Object.keys(topo).join(',') || 'NENHUMA', topo: Object.fromEntries(Object.entries(topo).map(([k, v]) => [k, { dia: f(v.t), max: v.max }])) });
     const seriesAlvo = serieFixa ? [serieFixa] : Object.keys(topo);
-    if (seriesAlvo.length === 0) { log('fim', { motivo: 'ancora nao achou serie nenhuma' }); return []; }
+    if (seriesAlvo.length === 0) {
+      log('fim', { motivo: 'ancora nao achou serie nenhuma' });
+      // b216 - se o filtro direto foi RECUSADO, a ancora tambem nao vale:
+      // sair com [] aqui faria a tela afirmar que a NF nao existe.
+      if (falhouFiltro) {
+        const err = new Error('o Bling recusou a consulta desta NF agora — tente de novo em instantes');
+        err.blingRecusou = true;
+        throw err;
+      }
+      return [];
+    }
 
     // ---- 3) BISSECAO POR SERIE (so nas series onde o numero e plausivel) ----
     const achadas = [];
@@ -230,6 +248,15 @@ module.exports = function criarNfPessoa({ chamarBling, sleep }) {
           achadas.push(achou);
         }
       }
+    }
+    if (achadas.length === 0 && falhouFiltro) {
+      // b216 - diferenciar "nao existe" de "o Bling recusou agora". Sem isso
+      // a tela dizia "NF nao localizada (procurei em todas as series)" —
+      // uma afirmacao que o sistema NAO podia fazer.
+      console.log(`[buscarNFsPorNumero] ${alvoStr}: o Bling recusou a consulta (nao da pra afirmar que a NF nao existe)`);
+      const err = new Error('o Bling recusou a consulta desta NF agora — tente de novo em instantes');
+      err.blingRecusou = true;
+      throw err;
     }
     if (achadas.length === 0) console.log(`[buscarNFsPorNumero] ${alvoStr}: nao achou em nenhuma serie`);
     return achadas;
