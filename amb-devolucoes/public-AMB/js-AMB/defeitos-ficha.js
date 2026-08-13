@@ -328,6 +328,14 @@
               ? '<div style="font-size:12.5px;color:#8C1D18;background:#FBEAE8;border-radius:7px;padding:5px 9px;margin-top:6px;">🔧 ' + esc(capitalizar(laudo)) + '</div>'
               : '<div style="font-size:12px;color:#999;margin-top:6px;font-style:italic;">Sem descrição do defeito — abra a ficha e escreva no histórico</div>')
           + (it.tem_fotos ? '<div style="font-size:11.5px;color:#777;margin-top:4px;">📷 ' + it.tem_fotos + ' foto(s)</div>' : '')
+          // b211 (pedido do Diego: "a pessoa tem q ter bola de cristal pra saber
+          // q pode clicar. tudo q puder clicar, faz um botão") - o card inteiro
+          // ja abria a ficha, mas nada dizia isso. Agora tem BOTAO explicito;
+          // o clique no card continua funcionando pra quem ja conhece.
+          + '<div style="margin-top:8px;">'
+          + '<button type="button" onclick="event.stopPropagation();abrirFichaDefeito(\'' + esc(it.id) + '\')" '
+          + 'style="background:#561A9E;color:#fff;border:none;border-radius:8px;padding:8px 15px;'
+          + 'font-size:13px;font-weight:700;cursor:pointer;">📂 Abrir dados da peça</button></div>'
           + '</div></div>';
       }).join('');
       buscarFotosDefeitos(itens);
@@ -977,10 +985,13 @@
     // colorida e a parte de baixo ficava aberta, sem fechar o card)
     var h = '<div style="border:2px solid ' + cor + ';border-radius:10px;overflow:hidden;margin-bottom:8px;">'
       + (p.defeito_id
-          ? '<div onclick="abrirFichaDefeito(\'' + esc(p.defeito_id) + '\')" '
-            + 'style="background:#3C3489;color:#fff;padding:8px 12px;font-size:15px;font-weight:800;'
-            + 'letter-spacing:.4px;cursor:pointer;">PEÇA #' + esc(p.defeito_id)
-            + '<span style="float:right;font-weight:400;font-size:12px;opacity:.85;">abrir ficha →</span></div>'
+          // b211 - o banner ja abria a ficha, mas parecia so um titulo. Agora
+          // o "abrir ficha" e um BOTAO de verdade, com cara de clicavel.
+          ? '<div style="background:#3C3489;color:#fff;padding:8px 12px;font-size:15px;font-weight:800;'
+            + 'letter-spacing:.4px;display:flex;align-items:center;gap:10px;">PEÇA #' + esc(p.defeito_id)
+            + '<button type="button" onclick="abrirFichaDefeito(\'' + esc(p.defeito_id) + '\')" '
+            + 'style="margin-left:auto;background:#fff;color:#3C3489;border:none;border-radius:7px;'
+            + 'padding:5px 12px;font-size:12.5px;font-weight:800;cursor:pointer;">📂 Abrir dados</button></div>'
           : '')
       + '<div style="padding:11px;background:' + fundoTopo + ';">'
       + '<div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap;margin-bottom:5px;">' + selo
