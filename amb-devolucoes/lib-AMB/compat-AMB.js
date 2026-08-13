@@ -74,8 +74,8 @@ function skuCacheGet(id) {
   if (Date.now() - reg.ts > SKU_TTL_MS) { SKU_POR_ID.delete(id); return null; }
   return reg;
 }
-function skuCacheSet(id, sku, nome) {
-  if (id && sku) SKU_POR_ID.set(id, { sku, nome: nome || '', ts: Date.now() });
+function skuCacheSet(id, sku, nome, imagem) {
+  if (id && sku) SKU_POR_ID.set(id, { sku, nome: nome || '', imagem: imagem || null, ts: Date.now() });
 }
 // b181 - teto de componentes e PRAZO total da resolucao. Sem prazo, um kit
 // de 12 pecas com o Bling lento (30s por chamada) segurava o POST por
@@ -207,11 +207,12 @@ function montar(router, deps) {
       const p = (c && c.produto) || {};
       const id = p.id || c.idProduto || c.produtoId || null;
       let sku = String(p.codigo || p.sku || '').trim();
-      let falhouComponente = false;   // b196/v4.80 - motivo DESTE componente
+      let falhouComponente = false;
+let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
       let nome = String(p.nome || p.descricao || '').trim();
       if (!sku && id) {
         const emCache = skuCacheGet(id);
-        if (emCache) { sku = emCache.sku; nome = nome || emCache.nome; }
+        if (emCache) { sku = emCache.sku; nome = nome || emCache.nome; imagem = emCache.imagem || null; }
         else if (Date.now() >= limite) { naoResolvidos++; motivos.prazo++; falhouComponente = true; continue; }   // b181/b195
         else {
           try {
@@ -253,7 +254,11 @@ function montar(router, deps) {
             if (d) {
               sku = String(d.codigo || d.sku || '').trim();
               nome = nome || String(d.nome || d.descricao || '').trim();
-              skuCacheSet(id, sku, nome);
+              // b200 (pedido do Diego) - a PECA leva a propria foto: sem ela
+              // o front caia na imagem do KIT e parecia que ele tinha
+              // selecionado o kit inteiro em vez da lampada.
+              imagem = primeiraImagem(d) || null;
+              skuCacheSet(id, sku, nome, imagem);
             }
           } catch (e) {
             // b197/v4.81 (review do Codex) - a falha LANCADA (prazo do comPrazo)
@@ -265,7 +270,7 @@ function montar(router, deps) {
         }
       }
       const q = Number(c && (c.quantidade || c.qtd)) || 1;
-      if (sku) out.push({ sku, quantidade: q, nome });
+      if (sku) out.push({ sku, quantidade: q, nome, imagem: imagem || null });
       else {
         naoResolvidos++;
         // b196/v4.80 (review do Codex) - a classificacao e DESTE componente:
