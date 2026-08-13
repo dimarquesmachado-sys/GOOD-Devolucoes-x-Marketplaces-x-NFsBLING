@@ -223,13 +223,15 @@ function renderizar(data, ok) {
   for (const rc of (data.recados || [])) {
     const lido = !!rc.ciente_em;
     html += '<div id="recado-' + rc.id + '" style="border:3px solid ' + (lido ? '#9e9e9e' : '#c62828') + ';background:' + (lido ? '#fafafa' : '#fff3e0') + ';border-radius:10px;padding:12px;margin-bottom:12px;">'
-      + '<div style="font-size:15px;font-weight:800;color:' + (lido ? '#616161' : '#c62828') + ';">📣 RECADO SOBRE ESSA DEVOLUÇÃO</div>'
+      // b226 (pedido do Diego) - cores invertidas: o TITULO fica no vinho
+      // (#7f1d1d) e o texto do recado no vermelho mais claro (#c62828).
+      + '<div style="font-size:15px;font-weight:800;color:' + (lido ? '#616161' : '#7f1d1d') + ';">📣 RECADO SOBRE ESSA DEVOLUÇÃO</div>'
       // b223 (pedido do Diego) - o texto do recado E a instrucao: ele estava
       // do mesmo tamanho do resto da tela e passava batido. Agora vem
       // grande, em negrito e com fundo proprio, pra o estoquista ler antes
       // de encostar na caixa.
       + '<div style="font-size:' + (lido ? '16px' : '21px') + ';font-weight:' + (lido ? '600' : '800') + ';'
-      + 'line-height:1.35;margin:10px 0;white-space:pre-wrap;color:' + (lido ? '#444' : '#7f1d1d') + ';'
+      + 'line-height:1.35;margin:10px 0;white-space:pre-wrap;color:' + (lido ? '#444' : '#c62828') + ';'
       + (lido ? '' : 'background:#fff;border:2px solid #f0b4ae;border-radius:9px;padding:11px 13px;')
       + '" id="recado-texto-' + rc.id + '">' + escapeHtml(rc.texto) + '</div>'
       + (lido

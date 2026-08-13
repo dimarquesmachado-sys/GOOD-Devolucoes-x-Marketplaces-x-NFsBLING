@@ -702,9 +702,16 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
       let via = porCodigo ? 'lista_codigo' : null;
       const ean = String(req.query.ean || '').replace(/\D/g, '');
       if (!id && ean.length >= 12) {
-        const rE2 = await bling.chamarBling(`/produtos?gtin=${encodeURIComponent(ean)}&limite=1`);
-        const p2 = (rE2.ok && rE2.data && rE2.data.data && rE2.data.data[0]) || null;
+        // b226 (o Diego viu foto de OUTRO produto no card) - eu aceitava
+        // QUALQUER item que o gtin devolvesse. EAN repetido/errado no
+        // cadastro, ou o Bling ignorando o filtro, trazia outro produto e a
+        // foto dele ia pra tela como se fosse a da devolucao. Agora o
+        // codigo tem que BATER com o SKU pedido; senao, nao serve.
+        const rE2 = await bling.chamarBling(`/produtos?gtin=${encodeURIComponent(ean)}&limite=5`);
+        const cands = (rE2.ok && rE2.data && rE2.data.data) || [];
+        const p2 = cands.find(p => String(p.codigo || '').trim().toUpperCase() === chave.toUpperCase()) || null;
         if (p2) { url = url || primeiraImagem(p2); id = p2.id || null; via = 'ean_da_tela'; }
+        else if (cands.length) via = 'ean_descartado_sku_diferente';
       }
       if (!id) {
         const rP = await bling.chamarBling(`/produtos?pesquisa=${encodeURIComponent(chave)}&limite=5`);
@@ -725,7 +732,11 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
       // SKU nao encontrado.
       res.json({
         ok: true, chave, imagem: url, via,
-        motivo: url ? null : (id ? 'produto encontrado, mas sem foto no cadastro' : 'nao achei esse SKU no Bling (nem por codigo, nem por EAN, nem por nome)'),
+        motivo: url ? null
+          : (id ? 'produto encontrado, mas sem foto no cadastro'
+            : (via === 'ean_descartado_sku_diferente'
+                ? 'o EAN desta venda esta cadastrado em OUTRO produto no Bling — nao usei a foto dele'
+                : 'nao achei esse SKU no Bling (nem por codigo, nem por EAN, nem por nome)')),
       });
     } catch (e) {
       res.status(500).json({ ok: false, erro: String(e.message || e) });
