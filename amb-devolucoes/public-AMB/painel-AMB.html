@@ -280,7 +280,11 @@
           <button onclick="salvarRecado()" style="background:#c62828;color:#fff;border:none;border-radius:8px;padding:10px 18px;font-weight:700;cursor:pointer;">📣 Criar recado</button>
         </div>
         <div id="recadoMsg" style="font-size:13px;margin-top:6px;"></div>
-        <div id="listaRecados" style="margin-top:12px;"></div>
+        <!-- b212 (pedido do Diego: "nao precisa ficar mostrando todas dezenas
+             de recados listados. faz eu clicar num botao") - a lista nasce
+             FECHADA; o botao diz quantos ha e abre quando ele quiser. -->
+        <button type="button" id="btnVerRecados" onclick="alternarListaRecados()" style="margin-top:10px;background:#fff;color:#c62828;border:1.5px solid #c62828;border-radius:8px;padding:8px 14px;font-weight:700;font-size:13px;cursor:pointer;">📋 Ver recados criados</button>
+        <div id="listaRecados" style="margin-top:12px;display:none;"></div>
       </div>
 
       <!-- v4.48 - NFs de devolucao do Bling: cruzar com o a espreita -->
@@ -746,14 +750,46 @@
       bmsg.innerHTML = '<b style="color:#2e7d32;">✅ ' + ok + ' baixadas</b>' + (erro ? ' · <span style="color:#c62828;">' + erro + ' com erro</span>' : '') + '. Recarregue o à espreita.';
     }
 
+    // b212 (pedido do Diego) - abre/fecha a lista. Ela nasce fechada: ele
+    // nao quer "dezenas de recados listados" ocupando o painel toda vez.
+    function alternarListaRecados() {
+      var lista = document.getElementById('listaRecados');
+      if (!lista) return;
+      var abrindo = lista.style.display === 'none';
+      lista.style.display = abrindo ? '' : 'none';
+      if (abrindo) carregarRecados();
+      else {
+        var btnR = document.getElementById('btnVerRecados');
+        var n = document.getElementById('countRecados');
+        if (btnR) btnR.textContent = '📋 Ver recados criados (' + ((n && n.textContent) || 0) + ')';
+      }
+    }
+
     async function carregarRecados() {
       try {
-        const r = await fetch('/api/admin/recados');
+        // b213 (review do Codex) - o endpoint devolve SO os ativos quando
+        // nao se pede o contrario; sem a segunda chamada o "histórico" que
+        // eu prometi no botao nunca teria numero nenhum.
+        const [r, rRes] = await Promise.all([
+          fetch('/api/admin/recados'),
+          fetch('/api/admin/recados?resolvidos=1'),
+        ]);
         const d = await r.json();
         const lista = document.getElementById('listaRecados');
         if (!d.ok) { lista.innerHTML = '<span style="color:#c62828;font-size:13px;">' + escapeHtml(d.erro || 'erro') + '</span>'; return; }
-        const rs = d.recados || [];
-        if (rs.length === 0) { lista.innerHTML = '<span style="color:#888;font-size:13px;">Nenhum recado ativo.</span>'; return; }
+        let resolvidosSrv = [];
+        try { const dRes = await rRes.json(); if (dRes && dRes.ok) resolvidosSrv = dRes.recados || []; } catch (e) {}
+        const rs = (d.recados || []).concat(resolvidosSrv);
+        // b213 (review do Codex) - lista vazia TAMBEM zera o contador e o
+        // rotulo do botao: antes o "(3)" ficava congelado depois de remover
+        // o ultimo recado, dando a entender que ainda havia aviso pendente.
+        if (rs.length === 0) {
+          document.getElementById('countRecados').textContent = '0';
+          var btnVazio = document.getElementById('btnVerRecados');
+          if (btnVazio) btnVazio.textContent = (lista.style.display === 'none' ? '📋 Ver recados criados (0)' : '🙈 Esconder recados (0)');
+          lista.innerHTML = '<span style="color:#888;font-size:13px;">Nenhum recado ativo.</span>';
+          return;
+        }
         // (a separacao ativos/resolvidos e feita abaixo)
         let h = '';
         // v4.45 - tres estados: ATIVO (aparece na triagem), resolvido (devolucao
@@ -762,6 +798,13 @@
         var ativos = rs.filter(function (x) { return !x.resolvido; });
         var resolvidos = rs.filter(function (x) { return x.resolvido; });
         document.getElementById('countRecados').textContent = ativos.length;
+        // b212 - o botao diz quantos ha; a lista so aparece se ele abrir
+        var btnR = document.getElementById('btnVerRecados');
+        if (btnR) {
+          var aberta = document.getElementById('listaRecados').style.display !== 'none';
+          btnR.textContent = (aberta ? '🙈 Esconder recados' : '📋 Ver recados criados')
+            + ' (' + ativos.length + (resolvidos.length ? ' ativos · ' + resolvidos.length + ' no histórico' : '') + ')';
+        }
         for (const rc of ativos) {
           const lido = !!rc.ciente_em;
           h += '<div style="border:1px solid ' + (lido ? '#c8e6c9' : '#ffcdd2') + ';background:' + (lido ? '#f1f8e9' : '#fff5f5') + ';border-radius:8px;padding:10px;margin-bottom:6px;">'
@@ -779,7 +822,11 @@
               + '<b>' + escapeHtml(rc.chave) + '</b> · <span style="font-size:13px;">' + escapeHtml(rc.texto) + '</span>'
               + '<br><span style="font-size:12px;color:#2e7d32;font-weight:700;">✅ devolução já triada / NF emitida — saiu da triagem</span>'
               + '<span style="font-size:12px;color:#666;"> · criado por ' + escapeHtml(rc.criado_por || '-') + '</span> '
-              + '<button onclick="removerRecado(' + rc.id + ')" style="background:#bbb;color:#fff;border:none;border-radius:8px;padding:3px 9px;font-size:11px;cursor:pointer;margin-left:8px;">✖ remover</button>'
+              // b215 (review do Codex) - o "remover" do historico NAO removia:
+              // o endpoint so marca `resolvido = true`, e a linha ja estava
+              // resolvida — ela sumia da tela e voltava no proximo carregamento.
+              // Enquanto nao houver exclusao de verdade, o botao sai daqui.
+              + '<span style="font-size:11px;color:#999;margin-left:8px;">fica no histórico</span>'
               + '</div>';
           }
           h += '</details></div>';

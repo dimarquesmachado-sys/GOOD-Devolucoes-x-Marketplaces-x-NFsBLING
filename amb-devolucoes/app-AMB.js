@@ -838,9 +838,24 @@ router.get('/api/triagem/identificar', auth.requerLogin, async (req, res) => {
     orderId: (achado && achado.order_id) || null,
     tracking: (achado && achado.tracking) || codigo,
   };
+  // b212 - TODOS os numeros que essa mesma devolucao atende: o recado pode
+  // ter sido preso a qualquer um deles (ele criou pelo numero da venda e
+  // bipou pelo pack id — eram chaves diferentes e o aviso nunca chegou).
+  const idsDoRecado = [
+    codigo,
+    achado && achado.order_id,
+    achado && achado.pack_id,
+    achado && achado.tracking,
+    achado && achado.shipment_id,
+    achado && achado.nf_numero,
+    achado && achado.chave,
+    devShopee && devShopee.order_sn,
+    devShopee && devShopee.return_sn,
+    devShopee && devShopee.tracking_number,
+  ];
   const [dup, rec] = await Promise.all([
     db.jaTriado(chaves),
-    db.recadoDe(chaves.orderId || chaves.tracking),
+    db.recadoDeQualquer(idsDoRecado),
   ]);
 
   // Origem da venda descoberta sozinha, sem o estoquista escolher.
@@ -1422,6 +1437,7 @@ const mlBuscas = criarMlBuscas(ml.chamarML);
 registrarCicloDefeitos(router, { auth, db, bling, cfg });
 
 registrarIdentificar(router, {
+  db,   // b213 - pro recado do estoquista aparecer na triagem
   supabase: db.conectar(),   // ev2 - registro do checkout offline
   requerLogin: auth.requerLogin,
   sleep: dorme,
@@ -1482,6 +1498,7 @@ registrarRotasAdminNF(router, {
   buscarNFBlindada: ajudantes.buscarNFBlindada,
   resolverIdNFPorChave: nfp.resolverIdNFPorChave,
   mapItensNF: nfp.mapItensNF,
+  buscarNFsPorNumero: nfp.buscarNFsPorNumero,   // b212 - raio-x da busca por numero
 });
 
 router.use((req, res) => {
