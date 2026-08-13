@@ -691,14 +691,42 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
       }
 
       if (!id && /^\d{6,}$/.test(chave)) id = chave;   // ai sim: e um id
+
+      // b225 (o Diego mediu: FL-1011-PRETO devolvia imagem null, e "todo
+      // produto anunciado tem foto no Bling") - o erro era meu: quando o
+      // ?codigo= volta VAZIO (o Bling as vezes ignora o filtro — mesmo
+      // padrao da b98), `id` ficava null, SKU com letras nunca vira id, e a
+      // rota desistia SEM NUNCA ABRIR O DETALHE, que e onde a imagem mora.
+      // Agora ha mais dois caminhos antes de desistir: o EAN que a propria
+      // tela ja conhece, e a busca por nome.
+      let via = porCodigo ? 'lista_codigo' : null;
+      const ean = String(req.query.ean || '').replace(/\D/g, '');
+      if (!id && ean.length >= 12) {
+        const rE2 = await bling.chamarBling(`/produtos?gtin=${encodeURIComponent(ean)}&limite=1`);
+        const p2 = (rE2.ok && rE2.data && rE2.data.data && rE2.data.data[0]) || null;
+        if (p2) { url = url || primeiraImagem(p2); id = p2.id || null; via = 'ean_da_tela'; }
+      }
+      if (!id) {
+        const rP = await bling.chamarBling(`/produtos?pesquisa=${encodeURIComponent(chave)}&limite=5`);
+        const lista = (rP.ok && rP.data && rP.data.data) || [];
+        const alvo = lista.find(p => String(p.codigo || '').trim().toUpperCase() === chave.toUpperCase()) || null;
+        if (alvo) { url = url || primeiraImagem(alvo); id = alvo.id || null; via = 'pesquisa_nome'; }
+      }
       if (!url && id) {
         const rD = await bling.chamarBling(`/produtos/${id}`);
         url = primeiraImagem((rD.ok && rD.data && rD.data.data) || null);
+        if (url) via = (via || '') + '+detalhe';
       }
       // so cacheia SUCESSO — nunca fixa uma falha (licao do produtoDetalhe
       // do checkout: um 429 passageiro deixaria o produto sem foto pra sempre)
       if (url) IMG_CACHE.set(chave, url);
-      res.json({ ok: true, chave, imagem: url });
+      // b225 - dizer POR ONDE achou (ou por que nao achou), como a GOOD ja
+      // fazia: "imagem: null" sozinho nao distinguia produto sem foto de
+      // SKU nao encontrado.
+      res.json({
+        ok: true, chave, imagem: url, via,
+        motivo: url ? null : (id ? 'produto encontrado, mas sem foto no cadastro' : 'nao achei esse SKU no Bling (nem por codigo, nem por EAN, nem por nome)'),
+      });
     } catch (e) {
       res.status(500).json({ ok: false, erro: String(e.message || e) });
     }

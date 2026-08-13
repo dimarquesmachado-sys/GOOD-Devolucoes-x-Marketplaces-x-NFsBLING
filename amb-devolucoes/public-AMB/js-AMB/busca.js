@@ -568,8 +568,13 @@ async function buscarFotosItens(itens) {
     const alvo = document.getElementById('fotoitem-' + i);
     if (!alvo) continue;
     try {
-      const r = await fetch('/api/produto/imagem/' + encodeURIComponent(chave), { credentials: 'same-origin' });
+      // b225 - manda tambem o EAN que a tela ja mostra: quando o SKU do
+      // anuncio nao casa com o codigo do Bling, e por ele que a foto vem.
+      const ean = (it && it.ean && it.ean !== '-') ? String(it.ean).replace(/\D/g, '') : '';
+      const r = await fetch('/api/produto/imagem/' + encodeURIComponent(chave)
+        + (ean ? '?ean=' + encodeURIComponent(ean) : ''), { credentials: 'same-origin' });
       const d = await r.json();
+      if (d && d.ok && !d.imagem && d.motivo) console.info('[FOTO]', chave, '→', d.motivo);
       if (d && d.ok && d.imagem) {
         alvo.outerHTML = '<img class="dvi-f" src="' + escapeHtml(d.imagem) + '" alt=""'
           + ' onclick="abrirZoomProduto(this.src)" onerror="this.style.display=\'none\'"'
