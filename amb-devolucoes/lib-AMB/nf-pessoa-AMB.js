@@ -120,9 +120,13 @@ module.exports = function criarNfPessoa({ chamarBling, sleep }) {
     // O ?numero= E aplicado pelo Bling (retorna 0, nao 100), mas o numero la
     // vem ZERO-PADDED ("075053"). Entao tentamos as duas formas: crua e com
     // zeros a esquerda (5..9 digitos). Se casar, acabou em 1 chamada.
+    // b237 (raio-x com dado real da NF 2447): o Bling guarda o numero
+    // ZERO-PADDED em 6 digitos e o filtro dele e exato — ?numero=2447
+    // devolveu 0 e ?numero=002447 devolveu as 2 notas. Tentar a forma crua
+    // primeiro gastava uma chamada a toa em todo bipe.
     const variantesNum = [...new Set([
-      String(alvoInt),
       String(alvoInt).padStart(6, '0'),
+      String(alvoInt),
       String(alvoInt).padStart(7, '0'),
       String(alvoInt).padStart(9, '0'),
     ])];
@@ -157,7 +161,12 @@ module.exports = function criarNfPessoa({ chamarBling, sleep }) {
       }
       // series raras (FULL) aparecem pouco: so para de sondar quando ja viu
       // pelo menos uma serie E ja olhou uma janela decente
-      if (Object.keys(topo).length > 0 && back >= 30) break;
+      // b239 (review do Codex) - com SERIE PEDIDA (ex: 2447/2), parar porque
+      // "alguma serie apareceu" e cedo demais: se a serie 2 nao emitiu nada
+      // nos dias sondados, ela fica sem ancora, e pulada logo abaixo — 404
+      // falso numa nota que existe. Com serieFixa, so para quando ELA aparece.
+      if (serieFixa) { if (topo[serieFixa]) break; }
+      else if (Object.keys(topo).length > 0 && back >= 30) break;
     }
     log('ancora', { series_achadas: Object.keys(topo).join(',') || 'NENHUMA', topo: Object.fromEntries(Object.entries(topo).map(([k, v]) => [k, { dia: f(v.t), max: v.max }])) });
     const seriesAlvo = serieFixa ? [serieFixa] : Object.keys(topo);
@@ -308,7 +317,10 @@ module.exports = function criarNfPessoa({ chamarBling, sleep }) {
     if (diaAlvo != null) {
       for (const dd of [0, 1, -1]) {
         const dia = f(diaAlvo + dd * DIA_MS);
-        for (let pg = 1; pg <= 4; pg++) {
+        // b239 - pagina enquanto vier CHEIA: parar sempre na 4a pagina fazia
+        // um dia com mais de 400 notas esconder a procurada (a lista vem em
+        // ordem decrescente) e a rota reportava "nao existe".
+        for (let pg = 1; pg <= 25; pg++) {
           await sleep(350);
           const lista = await pagDia(dia, pg);
           if (lista === null || lista.length === 0) break;
