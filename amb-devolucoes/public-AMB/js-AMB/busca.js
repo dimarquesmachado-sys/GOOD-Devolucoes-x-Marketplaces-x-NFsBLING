@@ -145,6 +145,10 @@ function renderizar(data, ok) {
       titulo: it.titulo || '-',
       sku: it.sku || itensML[i]?.item?.seller_sku || '-',
       ean: it.ean || '-',
+      // b235 (review do Codex) - o id do produto tem que SOBREVIVER a
+      // remontagem do item aqui; sem isso o `?produtoId=` nunca era enviado
+      // e a parte 1 nao servia pra nada.
+      produto_id: (it.produto_id || it.produtoId || (it.produto && it.produto.id)) || null,
       quantidade: Number(it.quantidade) || itensML[i]?.quantity || 1,
       valor: it.valor || itensML[i]?.unit_price,
       mlb: itensML[i]?.item?.id || null,
@@ -565,16 +569,23 @@ async function buscarFotosItens(itens) {
   if (!Array.isArray(itens) || !itens.length) return;
   for (let i = 0; i < itens.length && i < 4; i++) {
     const it = itens[i];
-    const chave = (it && (it.sku || it.id)) || null;
-    if (!chave || chave === '-') continue;
+    // b235 - item com vinculo mas SEM codigo: o id vira a chave, senao a
+    // busca era descartada aqui mesmo, com o identificador confiavel em mao.
+    const pidItem = (it && (it.produto_id || it.produtoId)) ? String(it.produto_id || it.produtoId).replace(/\D/g, '') : '';
+    const chave = (it && (it.sku || it.id)) || (pidItem || null);
+    if (!chave || chave === '-') {
+      if (!pidItem) continue;
+    }
     const alvo = document.getElementById('fotoitem-' + i);
     if (!alvo) continue;
     try {
       // b225 - manda tambem o EAN que a tela ja mostra: quando o SKU do
       // anuncio nao casa com o codigo do Bling, e por ele que a foto vem.
-      const ean = (it && it.ean && it.ean !== '-') ? String(it.ean).replace(/\D/g, '') : '';
-      const r = await fetch('/api/produto/imagem/' + encodeURIComponent(chave)
-        + (ean ? '?ean=' + encodeURIComponent(ean) : ''), { credentials: 'same-origin' });
+      // b233 - o id do produto vindo do item da NF e o caminho que nao erra:
+      // e o vinculo que o Bling gravou na emissao. Vai na frente do SKU.
+      const pid = pidItem;
+      const r = await fetch('/api/produto/imagem/' + encodeURIComponent(chave || pidItem)
+        + (pid ? '?produtoId=' + encodeURIComponent(pid) : ''), { credentials: 'same-origin' });
       const d = await r.json();
       if (d && d.ok && !d.imagem && d.motivo) console.info('[FOTO]', chave, '→', d.motivo);
       if (d && d.ok && d.imagem) {
