@@ -355,6 +355,7 @@ module.exports = function registrarCicloDefeitos(router, deps) {
     try {
       let linhas = await buscar(q);
       let viaEan = null;
+      let termoContagem = q;   // b209
 
       // ═══════════════════════════════════════════════════════════════
       // b127 - EM QUE PRATELEIRA CADA PECA ESTA: ainda com defeito,
@@ -393,12 +394,21 @@ module.exports = function registrarCicloDefeitos(router, deps) {
           if (prod && prod.codigo) {
             viaEan = { ean: q, sku: prod.codigo, nome: prod.nome || null };
             linhas = await buscar(String(prod.codigo).toLowerCase());
+            // b209 (review do Codex) - o caminho do EAN trocava a lista
+            // SEM reaplicar a aba escolhida: com as abas finalmente visiveis,
+            // a aba "Recuperados" podia mostrar peca com defeito. E a
+            // contagem continuava sendo calculada pelo EAN (que nao acha
+            // nada), deixando (0) em todas.
+            if (estado !== 'todos') linhas = linhas.filter(x => situacaoDe(x) === estado);
+            termoContagem = String(prod.codigo).toLowerCase();
           }
         } catch (e) { /* segue sem o de-para */ }
       }
 
       // contagem de cada aba, pra tela mostrar quantas tem em cada uma
-      const todas = await buscar(q);
+      // b209 - conta pelo termo que REALMENTE achou (o SKU, quando
+      // veio de EAN), senao as abas mostram (0) mesmo com itens na tela
+      const todas = await buscar(termoContagem);
       const contagem = { defeito: 0, recuperado: 0, descartado: 0 };
       for (const x of todas) contagem[situacaoDe(x)] = (contagem[situacaoDe(x)] || 0) + 1;
 

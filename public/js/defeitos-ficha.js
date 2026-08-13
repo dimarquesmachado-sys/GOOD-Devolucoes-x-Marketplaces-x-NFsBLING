@@ -39,6 +39,13 @@
   var atual = null;
   var pilha = [];
 
+  // v4.88 (review do Codex) - a ficha so se recarrega se ELA ainda for a
+  // tela aberta: se a requisicao demora e o operador fecha o card ou volta,
+  // o refresh reabria a ficha antiga por cima do que ele estava fazendo.
+  function fichaAindaAberta(id) {
+    return !!(atual && atual.tipo === 'ficha' && String(atual.arg) === String(id));
+  }
+
   function registrar(tipo, arg, voltando) {
     if (voltando) { atual = { tipo: tipo, arg: arg }; return; }
     if (atual) pilha.push(atual);
@@ -267,10 +274,17 @@
     var el = document.getElementById('defLista');
     if (!el) return;
     var q = (document.getElementById('defBusca') || {}).value || '';
+    // v4.88 (review do Codex) - com as abas visiveis da pra trocar de aba
+    // antes da resposta anterior chegar; sem o token, a resposta LENTA da
+    // aba antiga repintava por cima (aba Excluídos acesa mostrando peças
+    // com defeito).
+    var meuToken = (window._buscaDefToken = (window._buscaDefToken || 0) + 1);
+    var minhaAba = abaAtual;
     el.innerHTML = '<div style="color:#888;font-size:13px;">procurando...</div>';
     try {
       var d = await api('/api/defeitos/lista?q=' + encodeURIComponent(q.trim())
-        + '&estado=' + encodeURIComponent(abaAtual));
+        + '&estado=' + encodeURIComponent(minhaAba));
+      if (meuToken !== window._buscaDefToken) return;   // v4.88 - chegou tarde
       var itens = d.itens || [];
       pintarAbas(d.contagem || {});
       if (!d.ok || !itens.length) {
@@ -631,7 +645,7 @@
       if (r.registro) (fichaAberta.pecas_retiradas = fichaAberta.pecas_retiradas || []).push(r.registro);
       pintaPecas();
       // v4.87 - a retirada de peca tambem grava comentario de auditoria: recarrega
-      if (typeof abrirFichaDefeito === 'function') { abrirFichaDefeito(fichaAberta.item.id, true); return; }
+      if (fichaAindaAberta(fichaAberta.item.id) && typeof abrirFichaDefeito === 'function') { abrirFichaDefeito(fichaAberta.item.id, true); return; }
       pintaHistorico();
       pintaEstado();
     });
@@ -725,7 +739,7 @@
       // auditoria ("Corrigiu…") no servidor; repintar com o array velho
       // deixava a numeracao e o selo "mais recente" apontando pra linha
       // errada. Recarrega (sem empilhar navegacao).
-      if (typeof abrirFichaDefeito === 'function') { abrirFichaDefeito(id, true); return; }
+      if (fichaAindaAberta(id) && typeof abrirFichaDefeito === 'function') { abrirFichaDefeito(id, true); return; }
       pintaHistorico();
     });
   };
@@ -797,7 +811,7 @@
     // recente" apontarem pra anotacao errada ate reabrir a ficha.
     // v4.87 - `voltando: true` pra a recarga NAO empilhar: sem isso, cada
     // anotacao apagada criava um passo fantasma no Voltar.
-    if (typeof abrirFichaDefeito === 'function') { abrirFichaDefeito(id, true); return; }
+    if (fichaAindaAberta(id) && typeof abrirFichaDefeito === 'function') { abrirFichaDefeito(id, true); return; }
     fichaAberta.comentarios = (fichaAberta.comentarios || [])
       .filter(function (c) { return String(c.id) !== String(cid); });
     pintaHistorico();
