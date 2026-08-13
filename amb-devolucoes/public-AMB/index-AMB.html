@@ -10,11 +10,13 @@
   <!-- AMB Devol. b59 - tela portada da GOOD (modulos identicos + adaptador),
        com o CSS e o app de celular (PWA) da AMB de volta -->
   <link rel="stylesheet" href="styles.css?v=b59">
-  <!-- b201 (pedido do Diego: "o + ta cinza, difícil de ver") - o emoji ➕ e
-       desenhado pelo navegador em cinza/rosa claro e sumia. Virou um "+"
-       tipografico, com peso 900 e a cor CERTA PRA CADA FUNDO: lilas vivo
-       (#C9AEFF) no cabecalho roxo escuro e roxo forte da AMBTotal (#561A9E)
-       nos fundos brancos. Roxo escuro no cabecalho teria sumido de vez. -->
+  <!-- b201/b202 (pedido do Diego: "o + ta cinza, dificil de ver") - o emoji
+       ➕ e desenhado pelo navegador na paleta dele (cinza/rosa claro), nao
+       obedece `color` e sumia. Virou um "+" tipografico com peso 900:
+         · fundos BRANCOS  -> roxo da AMBTotal #561A9E (10,3:1)
+         · cabecalho roxo  -> SELO branco com o roxo dentro (10,3:1)
+       Testei lilas no cabecalho primeiro; a review mostrou que nenhum tom
+       alcanca 4,5:1 sobre o gradiente #561A9E -> #7B3FC4, por isso o selo. -->
   <style>
     /* os 2 links do estoque de defeitos: a DIREITA no computador, igual
        o cracha do usuario (que e absolute, top/right). No celular o
@@ -211,7 +213,7 @@
         <div class="topo-txt">
           <h1>AMBTotal Devoluções</h1>
           <p>Identificar venda &middot; NF-e &middot; Triagem
-            <span class="topo-versao">&middot; v3.75 &middot; <span id="serverVersion">checando...</span></span>
+            <span class="topo-versao">&middot; v3.76 &middot; <span id="serverVersion">checando...</span></span>
           </p>
         </div>
         <!-- b92 - os 2 do estoque de defeitos subiram pra MESMA faixa:
@@ -219,7 +221,7 @@
              e centraliza. -->
         <div class="links-defeitos">
           <a href="#" id="linkDefeitos" title="Estoque de pecas com defeito: buscar por SKU, abrir a ficha (fotos, historico, comentarios) e imprimir etiqueta" onclick="event.preventDefault();abrirBuscaDefeitos()">🔧 Defeitos<span id="avisoDefeitos"></span></a>
-          <a href="#" title="Cadastra uma peca com defeito no estoque: busca o SKU, descreve o defeito, anexa fotos e gera a etiqueta" onclick="event.preventDefault();abrirModalDefeito()"><span style="color:#C9AEFF;font-weight:900;font-size:1.15em;line-height:0;">+</span> Lançar Defeito</a>
+          <a href="#" title="Cadastra uma peca com defeito no estoque: busca o SKU, descreve o defeito, anexa fotos e gera a etiqueta" onclick="event.preventDefault();abrirModalDefeito()"><span style="display:inline-block;background:#fff;color:#561A9E;font-weight:900;border-radius:5px;padding:0 5px;margin-right:2px;line-height:1.35;">+</span> Lançar Defeito</a>
           <!-- b173 - link DIRETO pras solicitacoes do galpao (antes so dava
                pra chegar la abrindo o card de Defeitos) -->
           <a href="#" id="linkSolicitacoes" title="Solicitacoes do galpao esperando decisao: liberar peca recuperada ou autorizar descarte (nao confundir com pedido de venda)" onclick="event.preventDefault();abrirFilaPedidos()">📥 Solicitações</a>
