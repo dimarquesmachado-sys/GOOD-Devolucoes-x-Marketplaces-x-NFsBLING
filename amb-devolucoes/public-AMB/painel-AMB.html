@@ -750,6 +750,50 @@
       bmsg.innerHTML = '<b style="color:#2e7d32;">✅ ' + ok + ' baixadas</b>' + (erro ? ' · <span style="color:#c62828;">' + erro + ' com erro</span>' : '') + '. Recarregue o à espreita.';
     }
 
+    // b219 - edicao INLINE do recado (sem popup): abre um bloco com os dois
+    // campos preenchidos; salvar recarrega a lista, cancelar so fecha.
+    window.editarRecado = function (id) {
+      var cx = document.getElementById('edRecado' + id);
+      if (!cx) return;
+      if (cx.innerHTML) { cx.innerHTML = ''; return; }
+      var atual = (window._recadosCarregados || []).filter(function (x) { return String(x.id) === String(id); })[0] || {};
+      cx.innerHTML = '<div style="background:#fff;border:1.5px solid #3C3489;border-radius:9px;padding:10px;margin-top:8px;">'
+        + '<input id="edRecId' + id + '" value="' + escapeHtml(atual.identificador || atual.chave || '') + '" '
+        + 'placeholder="Pedido, NF, chave ou rastreio" style="width:100%;box-sizing:border-box;padding:8px;border:1px solid #ccc;border-radius:7px;font-size:13px;margin-bottom:6px;">'
+        + '<textarea id="edRecTxt' + id + '" rows="3" placeholder="o recado pro estoquista" '
+        + 'style="width:100%;box-sizing:border-box;padding:8px;border:1px solid #ccc;border-radius:7px;font-size:13px;">'
+        + escapeHtml(atual.texto || '') + '</textarea>'
+        + '<div style="display:flex;gap:7px;justify-content:flex-end;margin-top:7px;">'
+        + '<button onclick="document.getElementById(\'edRecado' + id + '\').innerHTML=\'\'" '
+        + 'style="border:1px solid #ccc;background:#fff;color:#555;border-radius:8px;padding:7px 13px;cursor:pointer;">Cancelar</button>'
+        + '<button onclick="salvarEdicaoRecado(' + id + ')" style="border:none;background:#3C3489;color:#fff;'
+        + 'border-radius:8px;padding:7px 15px;font-weight:700;cursor:pointer;">Salvar</button></div>'
+        + '<div id="edRecMsg' + id + '" style="font-size:12px;margin-top:6px;"></div></div>';
+    };
+
+    window.salvarEdicaoRecado = async function (id) {
+      var msg = document.getElementById('edRecMsg' + id);
+      var ident = (document.getElementById('edRecId' + id) || {}).value || '';
+      var texto = (document.getElementById('edRecTxt' + id) || {}).value || '';
+      if (!String(ident).trim() || !String(texto).trim()) {
+        if (msg) msg.innerHTML = '<span style="color:#c62828;">preencha o identificador e o texto.</span>';
+        return;
+      }
+      if (msg) msg.innerHTML = '<span style="color:#555;">salvando…</span>';
+      try {
+        const r = await fetch('/api/admin/recado/' + id, {
+          method: 'PUT', credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ identificador: ident, texto: texto }),
+        });
+        const d = await r.json();
+        if (d && d.ok) { carregarRecados(); return; }
+        if (msg) msg.innerHTML = '<span style="color:#c62828;">' + escapeHtml((d && d.erro) || 'não consegui salvar') + '</span>';
+      } catch (e) {
+        if (msg) msg.innerHTML = '<span style="color:#c62828;">erro de conexão.</span>';
+      }
+    };
+
     // b212 (pedido do Diego) - abre/fecha a lista. Ela nasce fechada: ele
     // nao quer "dezenas de recados listados" ocupando o painel toda vez.
     function alternarListaRecados() {
@@ -780,6 +824,7 @@
         let resolvidosSrv = [];
         try { const dRes = await rRes.json(); if (dRes && dRes.ok) resolvidosSrv = dRes.recados || []; } catch (e) {}
         const rs = (d.recados || []).concat(resolvidosSrv);
+        window._recadosCarregados = rs;   // b219 - a edicao le o texto atual daqui
         // b213 (review do Codex) - lista vazia TAMBEM zera o contador e o
         // rotulo do botao: antes o "(3)" ficava congelado depois de remover
         // o ultimo recado, dando a entender que ainda havia aviso pendente.
@@ -815,6 +860,11 @@
             // - o identificador volta a aparecer (acima) E ganha o caminho de
             // um clique pra abrir a venda inteira na tela de busca: produto,
             // cliente, NF, link do marketplace, tudo que a triagem ja mostra.
+            // b219 (pedido do Diego) - editar sem sair da tela: abre os campos
+            // ali mesmo, com o texto e o identificador atuais preenchidos.
+            + '<button onclick="editarRecado(' + rc.id + ')" style="background:#3C3489;color:#fff;border:none;'
+            + 'border-radius:8px;padding:4px 10px;font-size:12px;cursor:pointer;margin-left:8px;">✏️ Editar</button>'
+            + '<div id="edRecado' + rc.id + '"></div>'
             + '<a href="/amb/?bipe=' + encodeURIComponent(rc.identificador || rc.chave || '') + '" target="_blank" '
             + 'style="background:#3C3489;color:#fff;border-radius:8px;padding:5px 11px;font-size:12px;font-weight:700;'
             + 'text-decoration:none;margin-left:8px;display:inline-block;">🔎 Abrir a venda</a>'
