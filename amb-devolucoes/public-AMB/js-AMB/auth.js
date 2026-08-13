@@ -62,6 +62,16 @@ async function fazerLogin(e) {
     if (d.ok) {
       // Tanto admin quanto estoquista vao pra mesma tela
       await checarSessao();
+      // b220 (review do Codex) - o link "🔎 Abrir a venda" do recado abre
+      // /amb/?bipe=<id>; se a sessao tinha expirado, a busca disparou antes
+      // do login e levou 401. Agora, ao entrar, ela e refeita sozinha.
+      if (window._bipePendente) {
+        var alvo = window._bipePendente;
+        window._bipePendente = null;
+        var campo = document.getElementById('codigo');
+        if (campo) campo.value = alvo;
+        if (typeof buscar === 'function') setTimeout(buscar, 80);
+      }
     } else {
       erroEl.textContent = d.erro || 'Erro ao logar';
       erroEl.classList.add('show');

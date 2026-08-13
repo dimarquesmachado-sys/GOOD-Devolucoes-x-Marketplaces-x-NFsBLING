@@ -883,6 +883,11 @@
               // o endpoint so marca `resolvido = true`, e a linha ja estava
               // resolvida — ela sumia da tela e voltava no proximo carregamento.
               // Enquanto nao houver exclusao de verdade, o botao sai daqui.
+              // b220 (review do Codex) - o historico existe pra consulta, entao
+              // ele tambem precisa do caminho de um clique pra venda.
+              + '<a href="/amb/?bipe=' + encodeURIComponent(rc.identificador || rc.chave || '') + '" target="_blank" '
+              + 'style="background:#3C3489;color:#fff;border-radius:8px;padding:4px 10px;font-size:11.5px;font-weight:700;'
+              + 'text-decoration:none;margin-left:8px;display:inline-block;">🔎 Abrir a venda</a>'
               + '<span style="font-size:11px;color:#999;margin-left:8px;">fica no histórico</span>'
               + '</div>';
           }
