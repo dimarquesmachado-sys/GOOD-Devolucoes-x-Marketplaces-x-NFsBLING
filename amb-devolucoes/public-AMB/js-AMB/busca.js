@@ -572,9 +572,11 @@ async function buscarFotosItens(itens) {
     try {
       // b225 - manda tambem o EAN que a tela ja mostra: quando o SKU do
       // anuncio nao casa com o codigo do Bling, e por ele que a foto vem.
-      const ean = (it && it.ean && it.ean !== '-') ? String(it.ean).replace(/\D/g, '') : '';
+      // b233 - o id do produto vindo do item da NF e o caminho que nao erra:
+      // e o vinculo que o Bling gravou na emissao. Vai na frente do SKU.
+      const pid = (it && (it.produto_id || it.produtoId)) ? String(it.produto_id || it.produtoId).replace(/\D/g, '') : '';
       const r = await fetch('/api/produto/imagem/' + encodeURIComponent(chave)
-        + (ean ? '?ean=' + encodeURIComponent(ean) : ''), { credentials: 'same-origin' });
+        + (pid ? '?produtoId=' + encodeURIComponent(pid) : ''), { credentials: 'same-origin' });
       const d = await r.json();
       if (d && d.ok && !d.imagem && d.motivo) console.info('[FOTO]', chave, '→', d.motivo);
       if (d && d.ok && d.imagem) {

@@ -677,6 +677,12 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
       // ═══════════════════════════════════════════════════════════════
       let id = null;
       let url = null;
+      // b233 - ID do produto vindo do ITEM DA NF: e o vinculo que o proprio
+      // Bling gravou ao emitir a nota. Nao depende de SKU nem de EAN, entao
+      // vem PRIMEIRO. Resolve o caso em que o codigo do anuncio nao existe
+      // no cadastro.
+      const idDaNota = String(req.query.produtoId || '').replace(/\D/g, '');
+      if (idDaNota) { id = idDaNota; }
       let via = null;   // b227 - por onde a foto veio (ou por que nao veio)
       // b229/b231 (review do Codex) - a comparacao tolera SO hifen, espaco e
       // caixa. A versao anterior apagava qualquer caractere nao alfanumerico
@@ -705,7 +711,7 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
       };
       let nomeCandidatos = null;  // b228 - o que a busca por nome trouxe
 
-      const rL = await bling.chamarBling(`/produtos?codigo=${encodeURIComponent(chave)}&limite=3`);
+      const rL = id ? { ok: false } : await bling.chamarBling(`/produtos?codigo=${encodeURIComponent(chave)}&limite=3`);   // b233 - com o id da nota, nem consulta
       // b227 (review do Codex — e a causa mais provavel da foto errada que o
       // Diego viu): o `|| lista[0]` era um FALLBACK CEGO. Quando o Bling
       // ignora o filtro ?codigo= e devolve a pagina padrao, esse primeiro
@@ -756,6 +762,7 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
         else if (lista.length) nomeCandidatos = lista.slice(0, 8).map(p => p.codigo || p.nome || null);
       }
       if (!url && id) {
+        if (idDaNota && id === idDaNota) via = 'id_do_item_da_nf';   // b233
         const rD = await bling.chamarBling(`/produtos/${id}`);
         url = primeiraImagem((rD.ok && rD.data && rD.data.data) || null);
         if (url) via = (via || '') + '+detalhe';
