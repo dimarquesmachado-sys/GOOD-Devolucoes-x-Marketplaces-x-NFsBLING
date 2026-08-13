@@ -805,7 +805,12 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
       }
       // so cacheia SUCESSO — nunca fixa uma falha (licao do produtoDetalhe
       // do checkout: um 429 passageiro deixaria o produto sem foto pra sempre)
-      if (url) IMG_CACHE.set(chaveCache, url);   // b235
+      // b236 (review do Codex) - guardar sob a chave do ID so quando a foto
+      // VEIO do ID. Se o id nao resolveu e a imagem veio pelo SKU, cachear
+      // em `id:<rejeitado>` faria uma NF posterior com esse id legitimo
+      // receber, direto do cache, a foto de outro produto — exatamente o
+      // caso que o fallback existe pra evitar.
+      if (url) IMG_CACHE.set(via === 'id_do_item_da_nf' ? chaveCache : chave, url);
       // b225 - dizer POR ONDE achou (ou por que nao achou), como a GOOD ja
       // fazia: "imagem: null" sozinho nao distinguia produto sem foto de
       // SKU nao encontrado.
