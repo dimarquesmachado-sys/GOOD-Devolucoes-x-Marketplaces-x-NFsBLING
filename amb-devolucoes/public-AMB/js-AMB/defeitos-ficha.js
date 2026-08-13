@@ -102,6 +102,10 @@
   // b206 - restaurar tambem sem popup: e reversivel, entao age direto e
   // avisa dentro da propria ficha.
   window.restaurarRegistro = async function (id) {
+    // b208 (review do Codex) - mesma trava do excluir: sem o confirm, dois
+    // cliques disparavam dois restauros e gravavam historico duplicado.
+    if (window._restaurandoDefeito) return;
+    window._restaurandoDefeito = true;
     var cx = document.getElementById('edExcluir');
     if (cx) cx.innerHTML = '<div style="font-size:12.5px;color:#555;margin-top:8px;">restaurando…</div>';
     try {
@@ -114,6 +118,8 @@
       }
     } catch (e) {
       if (cx) cx.innerHTML = '<div style="font-size:12.5px;color:#8C1D18;margin-top:8px;">erro de conexão: ' + esc(e.message) + '</div>';
+    } finally {
+      window._restaurandoDefeito = false;
     }
   };
 
@@ -242,7 +248,13 @@
       + '<input id="defBusca" placeholder="SKU, EAN, localização, produto ou o número da peça (ex: peça 4)"'
       + ' style="flex:1;height:42px;font-size:14px;padding:0 12px;border:1px solid #ddd;border-radius:9px;">'
       + '<button onclick="buscarDefeitos()" style="background:#561A9E;color:#fff;border:none;border-radius:9px;padding:0 18px;font-weight:700;cursor:pointer;">Buscar</button>'
-      + '</div><div id="defLista"><div style="color:#888;font-size:13px;">Digite e busque, ou veja os últimos abaixo.</div></div></div>');
+      + '</div>'
+      // b208 (review do Codex) - AS ABAS NUNCA APARECIAM: `pintarAbas` procura
+      // por #defAbas e o elemento nao existia em lugar nenhum do HTML. Era
+      // isso que o Diego via como "não achei a abinha dos excluídos" — nao
+      // era a aba errada, era a barra inteira faltando.
+      + '<div id="defAbas" style="display:flex;gap:7px;flex-wrap:wrap;margin-bottom:12px;"></div>'
+      + '<div id="defLista"><div style="color:#888;font-size:13px;">Digite e busque, ou veja os últimos abaixo.</div></div></div>');
     var i = document.getElementById('defBusca');
     if (i) {
       i.value = termo || '';
@@ -622,6 +634,8 @@
       if (!r.ok) { aviso(r.erro || 'não consegui registrar'); return; }
       if (r.registro) (fichaAberta.pecas_retiradas = fichaAberta.pecas_retiradas || []).push(r.registro);
       pintaPecas();
+      // b208 - a retirada de peca tambem grava comentario de auditoria: recarrega
+      if (typeof abrirFichaDefeito === 'function') { abrirFichaDefeito(fichaAberta.item.id, true); return; }
       pintaHistorico();
       pintaEstado();
     });
@@ -711,6 +725,11 @@
       if (!r.ok) { aviso(r.erro || 'não consegui salvar'); return; }
       fichaAberta.item.laudo = txt || null;
       if (r.registro) fichaAberta.item.laudo = r.registro.problema_descricao || null;
+      // b208 (review do Codex) - corrigir o laudo INSERE um comentario de
+      // auditoria ("Corrigiu…") no servidor; repintar com o array velho
+      // deixava a numeracao e o selo "mais recente" apontando pra linha
+      // errada. Recarrega (sem empilhar navegacao).
+      if (typeof abrirFichaDefeito === 'function') { abrirFichaDefeito(id, true); return; }
       pintaHistorico();
     });
   };
@@ -780,7 +799,9 @@
     // b207 (review do Codex) - RECARREGA do servidor: apagar gera um RASTRO
     // novo, e so tirar a linha da memoria fazia a numeracao e o selo "mais
     // recente" apontarem pra anotacao errada ate reabrir a ficha.
-    if (typeof abrirFichaDefeito === 'function') { abrirFichaDefeito(id); return; }
+    // b208 - `voltando: true` pra a recarga NAO empilhar: sem isso, cada
+    // anotacao apagada criava um passo fantasma no Voltar.
+    if (typeof abrirFichaDefeito === 'function') { abrirFichaDefeito(id, true); return; }
     fichaAberta.comentarios = (fichaAberta.comentarios || [])
       .filter(function (c) { return String(c.id) !== String(cid); });
     pintaHistorico();
