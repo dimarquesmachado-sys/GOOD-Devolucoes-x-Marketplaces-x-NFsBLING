@@ -51,6 +51,9 @@ module.exports = function criarNfPessoa({ chamarBling, sleep }) {
     const serieFixa = (serieExplicita != null && String(serieExplicita).trim() !== '')
       ? String(parseInt(serieExplicita, 10)) : null;
 
+    // b216/b217 - o Bling RECUSOU (429/rede)? vale pro filtro direto E pra
+    // varredura por dias: sem isso, uma recusa vira "a NF nao existe".
+    let falhouFiltro = false;
     const DIA_MS = 864e5;
     const f = (t) => new Date(t).toISOString().slice(0, 10);
     const numOf = (nf) => parseInt(String(nf.numero || '').replace(/^0+/, ''), 10);
@@ -99,7 +102,11 @@ module.exports = function criarNfPessoa({ chamarBling, sleep }) {
       if (cache[dia]) return cache[dia];
       await sleep(350);
       const lista = await nfsDoDia(dia);
-      if (lista === null) { log('sonda-dia', { dia, ERRO: 'chamada ao Bling falhou' }); return (cache[dia] = { erro: true, porSerie: {} }); }
+      if (lista === null) {
+        log('sonda-dia', { dia, ERRO: 'chamada ao Bling falhou' });
+        falhouFiltro = true;   // b217 - a varredura tambem nao vira "nao existe"
+        return (cache[dia] = { erro: true, porSerie: {} });
+      }
       const porSerie = {};
       for (const nf of lista) {
         const s = serOf(nf);
@@ -132,7 +139,6 @@ module.exports = function criarNfPessoa({ chamarBling, sleep }) {
       String(alvoInt).padStart(7, '0'),
       String(alvoInt).padStart(9, '0'),
     ])];
-    let falhouFiltro = false;   // b216 - o Bling RECUSOU (429/rede)?
     for (const vn of variantesNum) {
       try {
         await sleep(250);
@@ -278,7 +284,19 @@ module.exports = function criarNfPessoa({ chamarBling, sleep }) {
     const t1 = Date.UTC(ano, mes, 0) + 5 * DIA_MS; // +5d de folga
 
     const bateSerie = (nf) => nf.serie == null || String(parseInt(nf.serie, 10)) === serieChave;
-    const bateNumero = (nf) => String(nf.numero || '').replace(/^0+/, '') === alvoStr && bateSerie(nf);
+    // b217 (review do Codex) - quando o Bling ja devolve a chaveAcesso, ela
+    // MANDA: existem NFs com o mesmo numero E a mesma serie (o caso 2447 da
+    // AMB tem duas). Casando so por numero+serie, escolher a 2a opcao na
+    // tela de ambiguidade podia carregar silenciosamente a 1a nota.
+    const bateChave = (nf) => {
+      const c = String(nf.chaveAcesso || nf.chave || '').replace(/\D/g, '');
+      return c.length === 44 ? c === chave : null;   // null = o Bling nao mandou a chave
+    };
+    const bateNumero = (nf) => {
+      const porChave = bateChave(nf);
+      if (porChave !== null) return porChave;
+      return String(nf.numero || '').replace(/^0+/, '') === alvoStr && bateSerie(nf);
+    };
 
     // v3.55 - MESMO BUG da busca por numero: o filtro de data do Bling anexa a
     // hora atual, entao inicial==final devolve VAZIO. Todas as sondas de dia

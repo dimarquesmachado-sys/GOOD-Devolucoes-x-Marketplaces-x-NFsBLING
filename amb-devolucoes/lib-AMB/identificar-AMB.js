@@ -18,6 +18,12 @@ module.exports = function registrarIdentificar(app, deps) {
     requerLogin, sleep,
     chamarML, chamarBling, chamarMagalu,
     buscarNFnoML, buscarNFePorId, buscarNFBlindada, buscarNFnoBlingPorNumero,
+    // b217 (review do Codex — A CAUSA RAIZ do 404 da NF 2447): esta rota
+    // CHAMA buscarNFsPorNumero, mas nunca a recebeu nas deps. O identificador
+    // era `undefined`, a chamada lancava ReferenceError, o catch engolia e a
+    // tela dizia "NF nao localizada". O raio-x achava porque usa a funcao
+    // direto do modulo — por isso os dois caminhos discordavam.
+    buscarNFsPorNumero,
     mapItensNF, resolverIdNFPorChave,
     buscarClaimsPorShipment, buscarClaimDetalhada, buscarReturnPorClaim,
     buscarOrderViaShipmentReturn, buscarOrdersPorComprador,

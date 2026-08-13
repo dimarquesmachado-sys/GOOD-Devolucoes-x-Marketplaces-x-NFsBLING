@@ -1437,6 +1437,7 @@ const mlBuscas = criarMlBuscas(ml.chamarML);
 registrarCicloDefeitos(router, { auth, db, bling, cfg });
 
 registrarIdentificar(router, {
+  buscarNFsPorNumero: nfp.buscarNFsPorNumero,   // b217 - faltava (404 da NF 2447)
   db,   // b213 - pro recado do estoquista aparecer na triagem
   supabase: db.conectar(),   // ev2 - registro do checkout offline
   requerLogin: auth.requerLogin,
