@@ -681,8 +681,14 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
   router.get('/api/produto/imagem/:chave', auth.requerLogin, async (req, res) => {
     const chave = String(req.params.chave || '').trim();
     if (!chave) return res.status(400).json({ ok: false, erro: 'informe o sku ou o id' });
-    if (IMG_CACHE.has(chave)) {
-      return res.json({ ok: true, chave, imagem: IMG_CACHE.get(chave), cache: true });
+    // b235 (review do Codex) - com o id da NF, o CACHE tambem e por id.
+    // Indexar so pelo SKU fazia a segunda devolucao com o mesmo codigo
+    // devolver a foto do PRIMEIRO produto sem sequer olhar o id — anulando
+    // a garantia de nao mostrar produto errado.
+    const idNota = String(req.query.produtoId || '').replace(/\D/g, '');
+    const chaveCache = idNota ? ('id:' + idNota) : chave;
+    if (IMG_CACHE.has(chaveCache)) {
+      return res.json({ ok: true, chave, imagem: IMG_CACHE.get(chaveCache), cache: true });
     }
     try {
       // mesmo caminho do checkout offline: lista por codigo (que ja pode
@@ -701,8 +707,8 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
       // Bling gravou ao emitir a nota. Nao depende de SKU nem de EAN, entao
       // vem PRIMEIRO. Resolve o caso em que o codigo do anuncio nao existe
       // no cadastro.
-      const idDaNota = String(req.query.produtoId || '').replace(/\D/g, '');
-      if (idDaNota) { id = idDaNota; }
+      const idDaNota = idNota;
+      if (idDaNota) { id = idDaNota; }   // b233
       let via = null;   // b227 - por onde a foto veio (ou por que nao veio)
       // b229/b231 (review do Codex) - a comparacao tolera SO hifen, espaco e
       // caixa. A versao anterior apagava qualquer caractere nao alfanumerico
@@ -731,7 +737,18 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
       };
       let nomeCandidatos = null;  // b228 - o que a busca por nome trouxe
 
-      const rL = id ? { ok: false } : await bling.chamarBling(`/produtos?codigo=${encodeURIComponent(chave)}&limite=3`);   // b233 - com o id da nota, nem consulta
+      // b235 (review do Codex) - o id da NF vem primeiro, mas NAO pode ser
+      // beco sem saida: id apagado/errado, ou /produtos/:id falhando, deixava
+      // `id` preenchido e pulava as duas vias por SKU — ficaria sem foto ate
+      // quem funciona hoje. Entao: tenta o id ANTES e, se nao render foto,
+      // zera e segue o caminho normal.
+      if (idDaNota) {
+        const rId = await bling.chamarBling(`/produtos/${idDaNota}`);
+        url = primeiraImagem((rId.ok && rId.data && rId.data.data) || null);
+        if (url) via = 'id_do_item_da_nf';
+        else id = null;   // nao resolveu: volta pro SKU
+      }
+      const rL = url ? { ok: false } : await bling.chamarBling(`/produtos?codigo=${encodeURIComponent(chave)}&limite=3`);
       // b227 (review do Codex — e a causa mais provavel da foto errada que o
       // Diego viu): o `|| lista[0]` era um FALLBACK CEGO. Quando o Bling
       // ignora o filtro ?codigo= e devolve a pagina padrao, esse primeiro
@@ -782,14 +799,13 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
         else if (lista.length) nomeCandidatos = lista.slice(0, 8).map(p => p.codigo || p.nome || null);
       }
       if (!url && id) {
-        if (idDaNota && id === idDaNota) via = 'id_do_item_da_nf';   // b233
         const rD = await bling.chamarBling(`/produtos/${id}`);
         url = primeiraImagem((rD.ok && rD.data && rD.data.data) || null);
         if (url) via = (via || '') + '+detalhe';
       }
       // so cacheia SUCESSO — nunca fixa uma falha (licao do produtoDetalhe
       // do checkout: um 429 passageiro deixaria o produto sem foto pra sempre)
-      if (url) IMG_CACHE.set(chave, url);
+      if (url) IMG_CACHE.set(chaveCache, url);   // b235
       // b225 - dizer POR ONDE achou (ou por que nao achou), como a GOOD ja
       // fazia: "imagem: null" sozinho nao distinguia produto sem foto de
       // SKU nao encontrado.
