@@ -539,6 +539,18 @@ module.exports = function registrarCicloDefeitos(router, deps) {
     const texto = String(corpo(req).texto || '').trim();
     if (texto.length < 2) return res.status(400).json({ ok: false, erro: 'escreva o comentario' });
     try {
+      // b207 (review do Codex) - o rastro tambem nao pode ser EDITADO.
+      // Proteger so o DELETE por um prefixo MUTAVEL era furado: bastava
+      // editar o rastro pra tirar o marcador e entao apaga-lo, e a boneca
+      // russa voltava. Agora as duas portas usam o mesmo criterio.
+      const atual = await dbc.from(T_COM).select('*').eq('id', req.params.cid).limit(1);
+      const linha = (atual.data || [])[0] || null;
+      if (linha && String(linha.texto || '').trim().indexOf('(apagou uma anotacao') === 0) {
+        return res.status(400).json({
+          ok: false,
+          erro: 'este é o registro de que alguém apagou uma anotação — ele não pode ser editado nem apagado',
+        });
+      }
       const r = await dbc.from(T_COM)
         .update({ texto: texto + '  (editado por ' + req.usuario + ')' })
         .eq('id', req.params.cid).select().limit(1);

@@ -148,6 +148,13 @@
       if (campo) campo.focus();
       return;
     }
+    // v4.86 (review do Codex) - duplo clique disparava DUAS exclusoes: as duas
+    // liam o registro antes de virar 'defeito_excluido' e gravavam historico
+    // duplicado. Agora a segunda chamada nao passa daqui.
+    if (window._excluindoDefeito) return;
+    window._excluindoDefeito = true;
+    var btns = document.querySelectorAll('#edExcluir button');
+    for (var b = 0; b < btns.length; b++) { btns[b].disabled = true; btns[b].style.opacity = '.55'; }
     if (msg) msg.innerHTML = '<span style="color:#555;">excluindo…</span>';
     try {
       var r = await api('/api/defeitos/' + encodeURIComponent(id) + '/excluir',
@@ -160,6 +167,10 @@
       }
     } catch (e) {
       if (msg) msg.innerHTML = '<span style="color:#8C1D18;">erro de conexão: ' + esc(e.message) + '</span>';
+    } finally {
+      window._excluindoDefeito = false;   // v4.86 - libera pra tentar de novo
+      var bts = document.querySelectorAll('#edExcluir button');
+      for (var k = 0; k < bts.length; k++) { bts[k].disabled = false; bts[k].style.opacity = ''; }
     }
   };
 
@@ -355,9 +366,13 @@
     var it = fichaAberta.item, com = fichaAberta.comentarios || [];
     return '<div style="border-left:2px solid #eee;padding-left:12px;margin-bottom:10px;">'
       + '<div style="margin-bottom:9px;"><div style="font-size:13.5px;' + (it.laudo ? 'color:#8C1D18;font-weight:600;' : 'color:#999;font-style:italic;') + '">'
+      // v4.86 (review do Codex) - com zero anotacoes, a ENTRADA e a linha mais
+      // recente: ganha o numero cheio e o selo, como qualquer outra ultima.
       + '<span style="display:inline-block;min-width:20px;text-align:center;border-radius:6px;font-size:11.5px;'
-      + 'font-weight:800;margin-right:6px;padding:1px 5px;background:#EEEDFE;color:#3C3489;">1</span>'
+      + 'font-weight:800;margin-right:6px;padding:1px 5px;'
+      + (com.length === 0 ? 'background:#561A9E;color:#fff;' : 'background:#EEEDFE;color:#3C3489;') + '">1</span>'
       + esc(capitalizar(it.laudo) || 'Sem descrição do defeito')
+      + (com.length === 0 ? ' <span style="font-size:10.5px;color:#561A9E;background:#EEEDFE;border-radius:5px;padding:1px 6px;">mais recente</span>' : '')
       + ' <a href="#" onclick="event.preventDefault();editarLaudo()" '
       + 'style="font-size:11.5px;color:#561A9E;text-decoration:none;">✏️ Corrigir</a>'
       // b119 - a descricao do defeito tambem ganha o 🗑️. Ela so tinha o
@@ -531,7 +546,12 @@
         // v4.63 - o admin pode DESFAZER a exclusao
         + (it.situacao === 'excluido' && euSouAdmin
             ? '<div style="margin-top:8px;"><button type="button" onclick="restaurarRegistro(\'' + esc(it.id) + '\')"'
-              + ' style="background:#561A9E;color:#fff;border:none;border-radius:8px;padding:9px 14px;font-weight:700;cursor:pointer;">↩️ Restaurar registro (admin)</button></div>'
+              + ' style="background:#561A9E;color:#fff;border:none;border-radius:8px;padding:9px 14px;font-weight:700;cursor:pointer;">↩️ Restaurar registro (admin)</button>'
+              // v4.86 (review do Codex) - o aviso do restaurar precisa de um
+              // lugar pra aparecer: neste ramo (registro ja fechado) o
+              // #edExcluir nao existia, entao erro de rede ficava MUDO e o
+              // botao parecia morto.
+              + '<div id="edExcluir"></div></div>'
             : '')
         + '<div style="font-size:14px;margin-top:5px;color:#333;">'
         + (recup
@@ -753,6 +773,10 @@
     var id = fichaAberta.item.id;
     var r = await api('/api/defeitos/comentario/' + encodeURIComponent(cid), { method: 'DELETE' });
     if (!r.ok) { avisoEm('msgCom', r.erro || 'não consegui apagar'); return; }
+    // v4.86 (review do Codex) - RECARREGA do servidor: apagar gera um RASTRO
+    // novo, e so tirar a linha da memoria fazia a numeracao e o selo "mais
+    // recente" apontarem pra anotacao errada ate reabrir a ficha.
+    if (typeof abrirFichaDefeito === 'function') { abrirFichaDefeito(id); return; }
     fichaAberta.comentarios = (fichaAberta.comentarios || [])
       .filter(function (c) { return String(c.id) !== String(cid); });
     pintaHistorico();
