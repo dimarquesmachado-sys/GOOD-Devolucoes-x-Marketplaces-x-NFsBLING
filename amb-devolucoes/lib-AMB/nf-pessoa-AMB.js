@@ -161,7 +161,12 @@ module.exports = function criarNfPessoa({ chamarBling, sleep }) {
       }
       // series raras (FULL) aparecem pouco: so para de sondar quando ja viu
       // pelo menos uma serie E ja olhou uma janela decente
-      if (Object.keys(topo).length > 0 && back >= 30) break;
+      // b239 (review do Codex) - com SERIE PEDIDA (ex: 2447/2), parar porque
+      // "alguma serie apareceu" e cedo demais: se a serie 2 nao emitiu nada
+      // nos dias sondados, ela fica sem ancora, e pulada logo abaixo — 404
+      // falso numa nota que existe. Com serieFixa, so para quando ELA aparece.
+      if (serieFixa) { if (topo[serieFixa]) break; }
+      else if (Object.keys(topo).length > 0 && back >= 30) break;
     }
     log('ancora', { series_achadas: Object.keys(topo).join(',') || 'NENHUMA', topo: Object.fromEntries(Object.entries(topo).map(([k, v]) => [k, { dia: f(v.t), max: v.max }])) });
     const seriesAlvo = serieFixa ? [serieFixa] : Object.keys(topo);
@@ -312,7 +317,10 @@ module.exports = function criarNfPessoa({ chamarBling, sleep }) {
     if (diaAlvo != null) {
       for (const dd of [0, 1, -1]) {
         const dia = f(diaAlvo + dd * DIA_MS);
-        for (let pg = 1; pg <= 4; pg++) {
+        // b239 - pagina enquanto vier CHEIA: parar sempre na 4a pagina fazia
+        // um dia com mais de 400 notas esconder a procurada (a lista vem em
+        // ordem decrescente) e a rota reportava "nao existe".
+        for (let pg = 1; pg <= 25; pg++) {
           await sleep(350);
           const lista = await pagDia(dia, pg);
           if (lista === null || lista.length === 0) break;
