@@ -257,7 +257,7 @@
         </label>
         <button onclick="carregar()">🔄 Recarregar</button>
         <button id="btnVarreduraNF" onclick="varrerNFsFaltantes()" style="background:#561A9E; color:#fff;" title="Busca e vincula a NF de TODOS os registros sem NF, um por vez (respeita o limite do Bling)">🔎 Buscar NFs faltantes</button>
-        <button id="btnLancarNF" onclick="lancarPorNF()" style="background:#37474f; color:#fff;" title="Cria cards em Aprovadas a partir do número da NF de venda (série 1) — pra devoluções que não passaram pela bipagem">➕ Lançar por NF</button>
+        <button id="btnLancarNF" onclick="lancarPorNF()" style="background:#37474f; color:#fff;" title="Cria cards em Aprovadas a partir do número da NF de venda (série 1) — pra devoluções que não passaram pela bipagem"><span style="color:#FFD54F;font-weight:900;font-size:19px;line-height:1;vertical-align:-1px;margin-right:1px;">+</span> Lançar por NF</button>
         <button id="btnCarregarItens" onclick="carregarItensAntigos()" style="background:#2e7d32; color:#fff;" title="Retrofit: busca no Bling e grava os itens/quantidades dos cards ANTIGOS, pra caixinha verde já vir aberta">🧾 Carregar itens (antigos)</button>
         <span class="resultado-info" id="resultadoInfo"></span>
       </div>
@@ -836,8 +836,27 @@
         const lista = document.getElementById('listaEspreita');
         // v3.80.3 - indice frio (logo apos deploy) NAO some mais: avisa e re-tenta
         if (!d.ok || !d.quente) {
+          // b204 - o aviso passa a DIZER O MOTIVO por fonte. Antes ficava
+          // "aquecendo" pra sempre sem explicar qual indice estava frio,
+          // desligado ou com erro — e o Diego so via a tela vazia.
           document.getElementById('countEspreita').textContent = '…';
-          lista.innerHTML = '<p style="color:#888;font-size:13px;">⏳ Aquecendo os índices (normal por ~3 min após um deploy)… atualiza sozinho.</p>';
+          var f = (d && d.fontes) || {};
+          var linhaFonte = function (nome, o) {
+            o = o || {};
+            var estado = o.quente ? '<span style="color:#0F6E56;">pronta</span>'
+              : o.desligada ? '<span style="color:#8C1D18;">desligada' + (o.falta ? ' — falta ' + escapeHtml(String(o.falta)) : '') + '</span>'
+              : o.construindo ? '<span style="color:#8a5200;">montando o índice…</span>'
+              : o.erro ? '<span style="color:#8C1D18;">erro: ' + escapeHtml(String(o.erro)) + '</span>'
+              : '<span style="color:#8a5200;">índice frio</span>';
+            return '<div style="padding:2px 0;"><b>' + nome + ':</b> ' + estado + '</div>';
+          };
+          lista.innerHTML = '<div style="background:#FFFBF0;border:1px solid #ffe082;border-radius:9px;padding:10px 12px;font-size:12.5px;color:#7a5c00;">'
+            + '<div style="margin-bottom:6px;">⏳ Ainda não dá pra montar a lista — atualiza sozinho a cada 45s.</div>'
+            + linhaFonte('Mercado Livre', f.ml)
+            + linhaFonte('Shopee', f.shopee)
+            + linhaFonte('Magalu', f.magalu)
+            + linhaFonte('Índice de nomes', f.nomes)
+            + '</div>';
           sec.style.display = '';
           setTimeout(carregarEspreita, 45000);
           return;
