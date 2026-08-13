@@ -51,9 +51,6 @@ module.exports = function criarNfPessoa({ chamarBling, sleep }) {
     const serieFixa = (serieExplicita != null && String(serieExplicita).trim() !== '')
       ? String(parseInt(serieExplicita, 10)) : null;
 
-    // b216/b217 - o Bling RECUSOU (429/rede)? vale pro filtro direto E pra
-    // varredura por dias: sem isso, uma recusa vira "a NF nao existe".
-    let falhouFiltro = false;
     const DIA_MS = 864e5;
     const f = (t) => new Date(t).toISOString().slice(0, 10);
     const numOf = (nf) => parseInt(String(nf.numero || '').replace(/^0+/, ''), 10);
@@ -102,11 +99,7 @@ module.exports = function criarNfPessoa({ chamarBling, sleep }) {
       if (cache[dia]) return cache[dia];
       await sleep(350);
       const lista = await nfsDoDia(dia);
-      if (lista === null) {
-        log('sonda-dia', { dia, ERRO: 'chamada ao Bling falhou' });
-        falhouFiltro = true;   // b217 - a varredura tambem nao vira "nao existe"
-        return (cache[dia] = { erro: true, porSerie: {} });
-      }
+      if (lista === null) { log('sonda-dia', { dia, ERRO: 'chamada ao Bling falhou' }); return (cache[dia] = { erro: true, porSerie: {} }); }
       const porSerie = {};
       for (const nf of lista) {
         const s = serOf(nf);
@@ -127,12 +120,10 @@ module.exports = function criarNfPessoa({ chamarBling, sleep }) {
     // O ?numero= E aplicado pelo Bling (retorna 0, nao 100), mas o numero la
     // vem ZERO-PADDED ("075053"). Entao tentamos as duas formas: crua e com
     // zeros a esquerda (5..9 digitos). Se casar, acabou em 1 chamada.
-    // b216 (raio-x com dado real da NF 2447): o Bling guarda o numero
-    // ZERO-PADDED em 6 digitos ("002447") e o filtro dele e exato —
-    // ?numero=2447 devolveu 0 e ?numero=002447 devolveu as 2 notas. Testar
-    // a forma crua PRIMEIRO gastava uma chamada a toa em todo bipe e, se a
-    // segunda tropeçasse (limite/erro), a busca desistia e a tela dizia
-    // "NF nao localizada" — foi o que aconteceu com ele.
+    // b237 (raio-x com dado real da NF 2447): o Bling guarda o numero
+    // ZERO-PADDED em 6 digitos e o filtro dele e exato — ?numero=2447
+    // devolveu 0 e ?numero=002447 devolveu as 2 notas. Tentar a forma crua
+    // primeiro gastava uma chamada a toa em todo bipe.
     const variantesNum = [...new Set([
       String(alvoInt).padStart(6, '0'),
       String(alvoInt),
@@ -144,25 +135,14 @@ module.exports = function criarNfPessoa({ chamarBling, sleep }) {
         await sleep(250);
         const url = `https://api.bling.com.br/Api/v3/nfe?limite=100&pagina=1&tipo=1&numero=${encodeURIComponent(vn)}`;
         const r = await chamarBling(url);
-        if (!r.ok) falhouFiltro = true;   // b216 - recusa != "nao existe"
         const lista = (r.ok && r.data?.data) ? r.data.data : [];
         const hits = lista.filter(nf => numOf(nf) === alvoInt && (!serieFixa || serOf(nf) === serieFixa));
         log('filtro-numero', { formato: vn, ok: r.ok, status: r.status || null, qtd: lista.length, hits: hits.length });
         if (hits.length > 0) {
           console.log(`[buscarNFsPorNumero] ${alvoStr}: ${hits.length} NF(s) via filtro ?numero=${vn}`);
-          if (falhouFiltro) {
-            // b237 (review do Codex) - achou, mas ALGUMA variante foi
-            // recusada: nao da pra afirmar que a lista esta completa; a
-            // duplicata pode estar na consulta que falhou e a rota
-            // carregaria uma nota sozinha, sem oferecer a escolha.
-            const errP = new Error('achei nota(s), mas uma das consultas ao Bling falhou — pode haver outra com este numero. Tente de novo em instantes.');
-            errP.blingRecusou = true;
-            errP.parciais = hits;
-            throw errP;
-          }
           return hits.map(nf => ({ id: String(nf.id), serie: serOf(nf), numero: String(nf.numero) }));
         }
-      } catch (e) { log('filtro-numero', { formato: vn, ERRO: e.message || String(e) }); falhouFiltro = true; }
+      } catch (e) { log('filtro-numero', { formato: vn, ERRO: e.message || String(e) }); }
     }
 
     // ---- 2) ANCORA: dias recentes revelam as SERIES e seus maximos atuais ----
@@ -185,17 +165,7 @@ module.exports = function criarNfPessoa({ chamarBling, sleep }) {
     }
     log('ancora', { series_achadas: Object.keys(topo).join(',') || 'NENHUMA', topo: Object.fromEntries(Object.entries(topo).map(([k, v]) => [k, { dia: f(v.t), max: v.max }])) });
     const seriesAlvo = serieFixa ? [serieFixa] : Object.keys(topo);
-    if (seriesAlvo.length === 0) {
-      log('fim', { motivo: 'ancora nao achou serie nenhuma' });
-      // b216 - se o filtro direto foi RECUSADO, a ancora tambem nao vale:
-      // sair com [] aqui faria a tela afirmar que a NF nao existe.
-      if (falhouFiltro) {
-        const err = new Error('o Bling recusou a consulta desta NF agora — tente de novo em instantes');
-        err.blingRecusou = true;
-        throw err;
-      }
-      return [];
-    }
+    if (seriesAlvo.length === 0) { log('fim', { motivo: 'ancora nao achou serie nenhuma' }); return []; }
 
     // ---- 3) BISSECAO POR SERIE (so nas series onde o numero e plausivel) ----
     const achadas = [];
@@ -265,31 +235,11 @@ module.exports = function criarNfPessoa({ chamarBling, sleep }) {
         }
       }
     }
-    // b237 - resultado PARCIAL com alguma consulta recusada nao pode ser
-    // entregue como completo: a rota pularia a tela de ambiguidade e
-    // carregaria uma NF sozinha, sendo que a duplicata pode estar
-    // justamente na serie que falhou.
-    if (achadas.length > 0 && falhouFiltro) {
-      const errP = new Error('consegui achar NF(s), mas uma das consultas ao Bling falhou — pode haver outra nota com este numero. Tente de novo em instantes.');
-      errP.blingRecusou = true;
-      errP.parciais = achadas;
-      throw errP;
-    }
-    if (achadas.length === 0 && falhouFiltro) {
-      // b216 - diferenciar "nao existe" de "o Bling recusou agora". Sem isso
-      // a tela dizia "NF nao localizada (procurei em todas as series)" —
-      // uma afirmacao que o sistema NAO podia fazer.
-      console.log(`[buscarNFsPorNumero] ${alvoStr}: o Bling recusou a consulta (nao da pra afirmar que a NF nao existe)`);
-      const err = new Error('o Bling recusou a consulta desta NF agora — tente de novo em instantes');
-      err.blingRecusou = true;
-      throw err;
-    }
     if (achadas.length === 0) console.log(`[buscarNFsPorNumero] ${alvoStr}: nao achou em nenhuma serie`);
     return achadas;
   }
 
   async function resolverIdNFPorChave(numero, chaveBruta) {
-    let falhaNaVarredura = false;   // b219 - o Bling recusou alguma pagina?
     const chave = String(chaveBruta || '').replace(/\D/g, '');
     const alvoStr = String(numero || '').replace(/^0+/, '');
     const alvoInt = parseInt(alvoStr, 10);
@@ -304,46 +254,8 @@ module.exports = function criarNfPessoa({ chamarBling, sleep }) {
     const t0 = Date.UTC(ano, mes - 1, 1);
     const t1 = Date.UTC(ano, mes, 0) + 5 * DIA_MS; // +5d de folga
 
-    let ambiguoSemChave = false;   // b219
     const bateSerie = (nf) => nf.serie == null || String(parseInt(nf.serie, 10)) === serieChave;
-    // b217 (review do Codex) - quando o Bling ja devolve a chaveAcesso, ela
-    // MANDA: existem NFs com o mesmo numero E a mesma serie (o caso 2447 da
-    // AMB tem duas). Casando so por numero+serie, escolher a 2a opcao na
-    // tela de ambiguidade podia carregar silenciosamente a 1a nota.
-    const bateChave = (nf) => {
-      const c = String(nf.chaveAcesso || nf.chave || '').replace(/\D/g, '');
-      return c.length === 44 ? c === chave : null;   // null = o Bling nao mandou a chave
-    };
-    // b237 (review do Codex) - ATENCAO a quem for usar `bateNumero` solto:
-    // com duplicatas ele casa um registro SEM `chaveAcesso` antes do que
-    // tem a chave certa. Use sempre `escolher()` abaixo, que so aceita o
-    // casamento por numero quando NENHUM candidato traz chave.
-    const bateNumero = (nf) => {
-      const porChave = bateChave(nf);
-      if (porChave !== null) return porChave;
-      return String(nf.numero || '').replace(/^0+/, '') === alvoStr && bateSerie(nf);
-    };
-    // b219 (review do Codex) - com DUPLICATAS (a AMB tem duas NFs 002447 na
-    // serie 1), pegar o primeiro que "bate por numero" e chute. Regra: se
-    // alguem casar pela CHAVE inteira, e esse; se nao, so aceito quando ha
-    // UM candidato — dois ou mais viram "nao cravei" e a busca segue.
-    const semChaveGuardados = [];   // b238 - candidatos por numero, sem chave
-    const escolher = (lista) => {
-      const porChave = (lista || []).filter(nf => bateChave(nf) === true);
-      if (porChave.length === 1) return porChave[0];
-      if (porChave.length > 1) return porChave[0];   // mesma chave: sao a mesma nota
-      // b238 (review do Codex) - candidato SEM chave nao pode ser devolvido
-      // pagina a pagina: uma pagina anterior com um registro sem chave era
-      // aceita antes de a pagina seguinte, com a chave EXATA, ser lida.
-      // Agora ele fica guardado e so vale no fim, se ninguem casar por chave.
-      const porNumero = (lista || []).filter(nf => bateChave(nf) === null && bateNumero(nf));
-      if (porNumero.length === 1) { semChaveGuardados.push(porNumero[0]); return null; }
-      if (porNumero.length > 1) {
-        console.log(`[resolverIdNFPorChave] ${alvoStr}: ${porNumero.length} candidatos sem chave — nao escolho no chute`);
-        ambiguoSemChave = true;
-      }
-      return null;
-    };
+    const bateNumero = (nf) => String(nf.numero || '').replace(/^0+/, '') === alvoStr && bateSerie(nf);
 
     // v3.55 - MESMO BUG da busca por numero: o filtro de data do Bling anexa a
     // hora atual, entao inicial==final devolve VAZIO. Todas as sondas de dia
@@ -368,7 +280,7 @@ module.exports = function criarNfPessoa({ chamarBling, sleep }) {
       if (cache[dia]) return cache[dia];
       await sleep(350);
       const lista = await pagDia(dia, 1);
-      if (lista === null) { falhaNaVarredura = true; return (cache[dia] = { erro: true }); }   // b219
+      if (lista === null) return (cache[dia] = { erro: true });
       const nums = lista.filter(bateSerie)
         .map(nf => parseInt(String(nf.numero || '').replace(/^0+/, ''), 10))
         .filter(n => !isNaN(n));
@@ -403,9 +315,8 @@ module.exports = function criarNfPessoa({ chamarBling, sleep }) {
         for (let pg = 1; pg <= 4; pg++) {
           await sleep(350);
           const lista = await pagDia(dia, pg);
-          if (lista === null) { falhaNaVarredura = true; break; }   // b219 - recusa != dia vazio
-          if (lista.length === 0) break;
-          const m = escolher(lista);   // b219
+          if (lista === null || lista.length === 0) break;
+          const m = lista.find(bateNumero);
           if (m) { console.log(`[resolverIdNFPorChave] ${alvoStr}: achou por bissecao (${dia})`); return String(m.id); }
           if (lista.length < 100) break;
         }
@@ -420,29 +331,12 @@ module.exports = function criarNfPessoa({ chamarBling, sleep }) {
       await sleep(350);
       const url = `https://api.bling.com.br/Api/v3/nfe?limite=100&pagina=${pg}&tipo=1&dataEmissaoInicial=${ini}&dataEmissaoFinal=${fim}`;
       const r = await chamarBling(url);
-      if (!r.ok) { falhaNaVarredura = true; break; }   // b237 - recusa != fim da lista
+      if (!r.ok) break;
       const lista = r.data?.data || [];
       if (lista.length === 0) break;
-      const m = escolher(lista);   // b219
+      const m = lista.find(bateNumero);
       if (m) { console.log(`[resolverIdNFPorChave] ${alvoStr}: achou no plano B (pg${pg})`); return String(m.id); }
       if (lista.length < 100) break;
-    }
-    // b238 - varreu tudo e ninguem casou pela chave: agora sim vale o
-    // candidato sem chave, e so se houver exatamente UM no total.
-    if (!falhaNaVarredura && !ambiguoSemChave && semChaveGuardados.length === 1) {
-      console.log(`[resolverIdNFPorChave] ${alvoStr}: unico candidato sem chave apos varrer tudo`);
-      return String(semChaveGuardados[0].id);
-    }
-    if (semChaveGuardados.length > 1) ambiguoSemChave = true;
-    if (falhaNaVarredura || ambiguoSemChave) {
-      // b219 - "nao consegui cravar" != "nao existe": quem chama precisa
-      // saber a diferenca pra nao afirmar na tela que a NF nao existe.
-      const err = new Error(ambiguoSemChave
-        ? 'ha mais de uma NF com esse numero e o Bling nao devolveu a chave — bipe a chave da DANFE'
-        : 'o Bling recusou parte da consulta desta NF agora — tente de novo em instantes');
-      err.blingRecusou = !ambiguoSemChave;
-      err.ambiguoSemChave = ambiguoSemChave;
-      throw err;
     }
     return null;
   }

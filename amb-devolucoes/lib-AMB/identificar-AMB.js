@@ -18,11 +18,11 @@ module.exports = function registrarIdentificar(app, deps) {
     requerLogin, sleep,
     chamarML, chamarBling, chamarMagalu,
     buscarNFnoML, buscarNFePorId, buscarNFBlindada, buscarNFnoBlingPorNumero,
-    // b217 (review do Codex — A CAUSA RAIZ do 404 da NF 2447): esta rota
-    // CHAMA buscarNFsPorNumero, mas nunca a recebeu nas deps. O identificador
-    // era `undefined`, a chamada lancava ReferenceError, o catch engolia e a
-    // tela dizia "NF nao localizada". O raio-x achava porque usa a funcao
-    // direto do modulo — por isso os dois caminhos discordavam.
+    // b237 — A CAUSA RAIZ do "NF 2447 nao localizada": esta rota CHAMA
+    // buscarNFsPorNumero, mas nunca a recebeu nas deps. O identificador era
+    // `undefined`, a chamada lancava ReferenceError, o catch engolia e a
+    // tela afirmava que a nota nao existia. O raio-x achava porque usa a
+    // funcao direto do modulo — por isso os dois caminhos discordavam.
     buscarNFsPorNumero,
     mapItensNF, resolverIdNFPorChave,
     buscarClaimsPorShipment, buscarClaimDetalhada, buscarReturnPorClaim,
@@ -411,17 +411,7 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
       serieDaChave = String(parseInt(codigoLimpo.substr(22, 3), 10));
       tipoTentativa = 'chave_danfe';
       console.log(`[BUSCA] CHAVE DANFE: serie=${serieDaChave} numero=${numeroDaChave}`);
-      // b219 - "nao consegui cravar" != "essa NF nao existe": se o Bling
-      // recusou parte da consulta, a tela precisa dizer isso em vez de
-      // afirmar que a nota nao esta la.
-      let recusaChave = false;
-      try { idNF = await resolverIdNFPorChave(numeroDaChave, codigoLimpo); }
-      catch (e) { idNF = null; recusaChave = !!(e && (e.blingRecusou || e.ambiguoSemChave)); if (recusaChave) resultado.erro_consulta = e.message; }
-      if (!idNF && recusaChave) {
-        resultado.tentativas.push({ tipo: 'chave_danfe', codigo: String(codigoOriginal || '').trim(), ok: false, status: 503, erro: resultado.erro_consulta });
-        resultado.erro = resultado.erro_consulta;
-        return res.status(503).json(await comRecados(resultado, req.params.codigo));
-      }
+      try { idNF = await resolverIdNFPorChave(numeroDaChave, codigoLimpo); } catch (e) { idNF = null; }
     } else {
       // Numero da NF digitado. MULTI-SERIE: a casa emite em varias series
       // (1=normal, 2=ML FULL, outras p/ Magalu/Amazon FULL) e o MESMO numero
@@ -432,32 +422,16 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
       tipoTentativa = 'numero_nf';
       console.log(`[BUSCA] NUMERO NF: numero=${numeroDaChave} serie=${serieDaChave || '(todas)'}`);
       let achadas = [];
-      // b216 - o Bling RECUSAR a consulta nao e o mesmo que a NF nao existir.
-      // Antes tudo caia no mesmo `achadas = []` e a tela afirmava "NF nao
-      // localizada (procurei em todas as series, ultimos 18 meses)" — foi o
-      // que o Diego viu com a NF 2447, que existe.
-      let blingRecusou = false;
-      try { achadas = await buscarNFsPorNumero(numeroDaChave, serieDaChave); }
-      catch (e) { achadas = []; blingRecusou = !!(e && e.blingRecusou); }
-      if (blingRecusou) {
-        resultado.tentativas.push({ tipo: 'numero_nf', codigo: String(codigoOriginal || '').trim(), ok: false, status: 503, erro: 'Bling recusou a consulta' });
-        resultado.erro = `Nao consegui consultar a NF ${numeroDaChave} agora: o Bling recusou a consulta (limite ou instabilidade). Tente de novo em instantes — NAO quer dizer que a nota nao existe.`;
-        return res.status(503).json(await comRecados(resultado, req.params.codigo));
-      }
+      try { achadas = await buscarNFsPorNumero(numeroDaChave, serieDaChave); } catch (e) { achadas = []; }
 
       if (achadas.length > 1) {
         // AMBIGUIDADE: mesma numeracao em series diferentes. Carrega o basico
         // de cada uma (data, valor, produto) pro estoquista bater com a caixa.
-        // b237 (review do Codex) - se o Bling recusar o detalhe de UMA das
-        // duplicatas, a lista de opcoes sai incompleta e a tela apresenta a
-        // outra como se fosse a unica — o operador escolheria a nota errada
-        // achando que nao havia alternativa. Melhor recusar a escolha.
         const opcoes = [];
-        let faltouDetalhe = false;
         for (const a of achadas) {
           const rr = await buscarNFePorId(a.id);
           const n = (rr.ok && rr.data?.data) ? rr.data.data : null;
-          if (!n) { faltouDetalhe = true; continue; }
+          if (!n) continue;
           const it0 = Array.isArray(n.itens) && n.itens.length ? n.itens[0] : null;
           opcoes.push({
             idBling: String(n.id),
@@ -476,18 +450,6 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
         resultado.ambiguidade_nf = { numero: numeroDaChave, opcoes };
         resultado.erro = `Existem ${opcoes.length} NFs com o numero ${numeroDaChave}, em series diferentes. Escolha a que bate com o pacote (ou bipe a chave da DANFE).`;
         console.log(`[BUSCA] NUMERO NF ${numeroDaChave}: AMBIGUO em ${opcoes.length} series`);
-        if (faltouDetalhe) {
-          // b238 (review do Codex) - erro meu: eu ja tinha atribuido as
-          // opcoes ao resultado, e o front renderiza `ambiguidade_nf.opcoes`
-          // mesmo em resposta de erro — o operador escolheria da lista pela
-          // metade assim mesmo. Limpa antes de responder.
-          if (resultado.ambiguidade_nf) resultado.ambiguidade_nf.opcoes = [];
-          resultado.ambiguidade_nf = null;
-          // b237 - nao mostrar escolha pela metade
-          resultado.erro = `Achei ${achadas.length} notas com o numero ${numeroDaChave}, mas o Bling recusou os dados de uma delas agora. Tente de novo em instantes — nao quero te fazer escolher sem ver todas.`;
-          resultado.tentativas.push({ tipo: 'numero_nf', codigo: String(codigoOriginal || '').trim(), ok: false, status: 503, erro: 'detalhe de uma duplicata indisponivel' });
-          return res.status(503).json(await comRecados(resultado, req.params.codigo));
-        }
         return res.status(409).json(await comRecados(resultado, req.params.codigo));
       }
       idNF = achadas.length === 1 ? achadas[0].id : null;
