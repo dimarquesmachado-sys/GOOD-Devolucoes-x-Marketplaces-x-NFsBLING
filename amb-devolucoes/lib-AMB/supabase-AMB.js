@@ -161,9 +161,13 @@ async function recadoDeQualquer(identificadores) {
       .in('identificador', Array.from(new Set(lista)))
       .eq('resolvido', false)
       .order('criado_em', { ascending: false })
-      .limit(1);
+      // b214 (review do Codex) - TODOS os recados ativos, nao so o mais novo:
+      // com dois avisos na mesma devolucao, o estoquista dava ciencia em um
+      // e a triagem DESTRAVAVA — o outro nunca era lido.
+      .limit(20);
     if (r.error) return { ok: false, erro: r.error.message };
-    return { ok: true, recado: (r.data || [])[0] || null };
+    const recados = r.data || [];
+    return { ok: true, recados, recado: recados[0] || null };
   } catch (e) {
     return { ok: false, erro: e.message };
   }

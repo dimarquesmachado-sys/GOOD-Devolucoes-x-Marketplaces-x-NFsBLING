@@ -49,14 +49,22 @@ module.exports = function registrarIdentificar(app, deps) {
         o.shipment && (o.shipment.id || o.shipment.tracking_number),
         o.claim && o.claim.id,
         o.return && o.return.id,
-        o.nf && (o.nf.numero || o.nf.chaveAcesso),
+        // b214 (review do Codex) - numero E chave: com `||` o recado preso a
+        // chave de 44 digitos nunca casava quando o galpao bipava outra coisa
+        o.nf && o.nf.numero,
+        o.nf && o.nf.chaveAcesso,
+        o.nf && o.nf.chave,
         o.devolucao && o.devolucao.order_id,
         o.devolucao && o.devolucao.tracking,
         o.devolucao_shopee && o.devolucao_shopee.pedido,
         o.devolucao_shopee && o.devolucao_shopee.tracking,
       ];
       const r = await db.recadoDeQualquer(ids);
-      resultado.recados = (r && r.ok && r.recado) ? [r.recado] : [];
+      // b214 - a lista INTEIRA: o front trava a triagem enquanto houver
+      // recado sem ciencia, entao esconder os demais destravaria cedo.
+      resultado.recados = (r && r.ok)
+        ? (Array.isArray(r.recados) ? r.recados : (r.recado ? [r.recado] : []))
+        : [];
     } catch (e) {
       resultado.recados = [];   // recado e ajuda, nunca trava o bipe
     }
