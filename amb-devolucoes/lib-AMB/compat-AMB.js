@@ -678,6 +678,10 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
       let id = null;
       let url = null;
       let via = null;   // b227 - por onde a foto veio (ou por que nao veio)
+      // b229 - comparar SKU ignorando hifen, espaco e caixa: o anuncio usa
+      // FL-1011-PRETO e o cadastro pode estar FL1011PRETO / fl 1011 preto.
+      const mesmoSku = (cod) => String(cod || '').replace(/[^a-z0-9]/gi, '').toUpperCase()
+        === chave.replace(/[^a-z0-9]/gi, '').toUpperCase();
       let eanApontaPara = null;   // b228 - de quem e o EAN, quando nao e do SKU
       let nomeCandidatos = null;  // b228 - o que a busca por nome trouxe
 
@@ -690,7 +694,7 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
       // na b98 (busca) e na b160 (entrada de estoque): fallback frouxo
       // devolve com confianca o produto errado.
       const porCodigo = ((rL.ok && rL.data && rL.data.data) || [])
-        .find(p => String(p.codigo || '').trim().toUpperCase() === chave.toUpperCase()) || null;
+        .find(p => mesmoSku(p.codigo)) || null;
       if (porCodigo) { url = primeiraImagem(porCodigo); id = porCodigo.id || null; via = 'lista_codigo'; }
 
       if (!id && /^\d{12,14}$/.test(chave)) {
@@ -721,7 +725,7 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
         // codigo tem que BATER com o SKU pedido; senao, nao serve.
         const rE2 = await bling.chamarBling(`/produtos?gtin=${encodeURIComponent(ean)}&limite=5`);
         const cands = (rE2.ok && rE2.data && rE2.data.data) || [];
-        const p2 = cands.find(p => String(p.codigo || '').trim().toUpperCase() === chave.toUpperCase()) || null;
+        const p2 = cands.find(p => mesmoSku(p.codigo)) || null;
         if (p2) { url = url || primeiraImagem(p2); id = p2.id || null; via = 'ean_da_tela'; }
         else if (cands.length) {
           via = 'ean_descartado_sku_diferente';
@@ -733,14 +737,19 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
         }
       }
       if (!id) {
-        const rP = await bling.chamarBling(`/produtos?pesquisa=${encodeURIComponent(chave)}&limite=5`);
+        // b229 (caso real do Diego): com limite=5 a busca por nome trouxe SO
+        // acessorios — Kit2Roscas, TravaCentralBranca, TravaCentralPreta,
+        // CUPULA-MENOR, 9W3KE27... — porque todos citam "Luminária FL-1011"
+        // no titulo e vieram na frente. O produto principal ficava de fora
+        // da lista e a foto nunca era achada. Com 100, ele cabe.
+        const rP = await bling.chamarBling(`/produtos?pesquisa=${encodeURIComponent(chave)}&limite=100`);
         const lista = (rP.ok && rP.data && rP.data.data) || [];
-        const alvo = lista.find(p => String(p.codigo || '').trim().toUpperCase() === chave.toUpperCase()) || null;
+        const alvo = lista.find(p => mesmoSku(p.codigo)) || null;
         if (alvo) { url = url || primeiraImagem(alvo); id = alvo.id || null; via = 'pesquisa_nome'; }
         // b228 - se a busca por nome trouxe produtos mas nenhum com este
         // codigo, mostrar os codigos que vieram: e assim que se descobre que
         // o SKU do anuncio nao e o codigo do Bling (ex: FL-1011-PRETO x FL1011P)
-        else if (lista.length) nomeCandidatos = lista.slice(0, 5).map(p => p.codigo || p.nome || null);
+        else if (lista.length) nomeCandidatos = lista.slice(0, 8).map(p => p.codigo || p.nome || null);
       }
       if (!url && id) {
         const rD = await bling.chamarBling(`/produtos/${id}`);
