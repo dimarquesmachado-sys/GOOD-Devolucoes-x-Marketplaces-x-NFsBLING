@@ -23,6 +23,7 @@ module.exports = function registrarRotasAdminNF(app, deps) {
     buscarNFePorId, buscarNFBlindada,
     resolverIdNFPorChave, mapItensNF,
     tabelaDevolucoes,
+    buscarNFsPorNumero,   // b212 - usada pelo raio-x da busca por numero
   } = deps;
 
   // ═══════════════════════════════════════════════════════════════════
@@ -637,6 +638,30 @@ app.post('/api/admin/vincular-devolucao-existente/:id', requerAdmin, async (req,
 
 // ============================================================
 // v3.19.2 - RAIO-X do resgate de NF (dry-run, abre no navegador)
+// b212 - RAIO-X DA BUSCA POR NUMERO DE NF. O Diego buscou a NF 2447 e a
+// tela respondeu "nao localizada", mas a MESMA nota aparece quando ele
+// busca pelo pack id do ML. A funcao ja aceita um `trace`; esta rota
+// simplesmente expoe esse passo a passo, pra a causa aparecer em vez de
+// eu adivinhar (filtro ?numero= nao honrado? serie? janela de datas?).
+// GET /api/debug/nf-numero/:numero?k=ADMIN_KEY[&serie=1]
+app.get('/api/debug/nf-numero/:numero', async (req, res) => {
+  if (!adminOk(req)) return res.status(403).json({ ok: false, erro: 'so admin' });
+  const trace = [];
+  try {
+    if (typeof buscarNFsPorNumero !== 'function') {
+      return res.status(500).json({ ok: false, erro: 'buscarNFsPorNumero nao foi injetada nas deps' });
+    }
+    const achadas = await buscarNFsPorNumero(
+      req.params.numero,
+      req.query.serie || null,
+      { trace, mesesAtras: Number(req.query.meses) || 18 },
+    );
+    res.json({ ok: true, numero: req.params.numero, achadas, passos: trace });
+  } catch (e) {
+    res.status(500).json({ ok: false, erro: String(e.message || e), passos: trace });
+  }
+});
+
 // GET /api/debug/resgate-nf/:orderId
 // Roda o MESMO fluxo do resgate mas NAO grava nada - mostra cada
 // passo (ML invoice, pack, blindada com trace) pra diagnostico.

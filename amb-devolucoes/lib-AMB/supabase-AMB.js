@@ -145,6 +145,30 @@ async function listarRecentes(limite = 30) {
   }
 }
 
+// b212 (bug real: ele criou o recado pelo numero da venda e, ao bipar a
+// mesma devolucao, o estoquista NAO recebeu o aviso) - a mesma venda tem
+// VARIOS numeros (order id, pack id, rastreio, NF, chave) e o recado era
+// procurado por UM SO. Agora procura por todos de uma vez.
+async function recadoDeQualquer(identificadores) {
+  const db = conectar();
+  const lista = (Array.isArray(identificadores) ? identificadores : [identificadores])
+    .map(x => String(x == null ? '' : x).trim())
+    .filter(Boolean);
+  if (!db || !lista.length) return { ok: true, recado: null };
+  try {
+    const r = await db.from(T.recados)
+      .select('*')
+      .in('identificador', Array.from(new Set(lista)))
+      .eq('resolvido', false)
+      .order('criado_em', { ascending: false })
+      .limit(1);
+    if (r.error) return { ok: false, erro: r.error.message };
+    return { ok: true, recado: (r.data || [])[0] || null };
+  } catch (e) {
+    return { ok: false, erro: e.message };
+  }
+}
+
 /** Recado preso a um identificador (pedido, NF, chave ou rastreio). */
 async function recadoDe(identificador) {
   const db = conectar();
@@ -394,7 +418,7 @@ async function atualizarTriagem(id, campos) {
 
 module.exports = {
   conectar, testeDeVida,
-  jaTriado, registrarTriagem, listarRecentes, recadoDe,
+  jaTriado, registrarTriagem, listarRecentes, recadoDe, recadoDeQualquer,   // b212
   listarFila, atualizarTriagem, obterTriagem,
   criarRecado, listarRecados, marcarCiente, resolverRecado,
   listarDefeitos, registrarPecaRetirada, defeitosDoSku,
