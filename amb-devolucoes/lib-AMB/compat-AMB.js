@@ -614,7 +614,10 @@ function montar(router, deps) {
         buscados++;
       }
       // b196 - kits que so se revelaram na passada de fotos entram agora
-      await resolverComposicaoDosKits(finais.filter(i => i._fmt === 'E' && !i.componentes));
+      // b198 (review do Codex) - `!i.componentes` nao pegava quem ficou com
+      // lista VAZIA (estrutura que falhou na 1a passagem): esse kit perdia a
+      // segunda chance e ia pra tela como card travado.
+      await resolverComposicaoDosKits(finais.filter(i => i._fmt === 'E' && !(i.componentes && i.componentes.length)));
       // b178 (review do Codex) - a passada da foto tambem APURA formato: um
       // item que entrou sem veredito pode se revelar 'V' (ou kit) ali. Sem
       // este segundo filtro, o pai de variacao recem-descoberto seguiria na

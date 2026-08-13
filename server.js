@@ -3286,7 +3286,9 @@ async function resolverComponentesKit(comps, limiteExterno) {
 
             motivos.tentou_de_novo++;
             if (limite - Date.now() <= 900) break;
-            await new Promise(r2 => setTimeout(r2, 600));
+            // v4.82 (review do Codex) - so espera se AINDA VAI tentar: depois
+            // da ultima tentativa os 600ms eram prazo do kit jogado fora.
+            if (tentativa === 0) await new Promise(r2 => setTimeout(r2, 600));
           }
           if (falhouNoBling) { motivos.erro++; falhouComponente = true; }   // v4.80 - erro do Bling, nao "sem codigo"
           if (d) {
