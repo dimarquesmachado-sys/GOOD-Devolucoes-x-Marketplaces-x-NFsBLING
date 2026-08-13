@@ -150,6 +150,16 @@ module.exports = function criarNfPessoa({ chamarBling, sleep }) {
         log('filtro-numero', { formato: vn, ok: r.ok, status: r.status || null, qtd: lista.length, hits: hits.length });
         if (hits.length > 0) {
           console.log(`[buscarNFsPorNumero] ${alvoStr}: ${hits.length} NF(s) via filtro ?numero=${vn}`);
+          if (falhouFiltro) {
+            // b237 (review do Codex) - achou, mas ALGUMA variante foi
+            // recusada: nao da pra afirmar que a lista esta completa; a
+            // duplicata pode estar na consulta que falhou e a rota
+            // carregaria uma nota sozinha, sem oferecer a escolha.
+            const errP = new Error('achei nota(s), mas uma das consultas ao Bling falhou — pode haver outra com este numero. Tente de novo em instantes.');
+            errP.blingRecusou = true;
+            errP.parciais = hits;
+            throw errP;
+          }
           return hits.map(nf => ({ id: String(nf.id), serie: serOf(nf), numero: String(nf.numero) }));
         }
       } catch (e) { log('filtro-numero', { formato: vn, ERRO: e.message || String(e) }); falhouFiltro = true; }
@@ -255,6 +265,16 @@ module.exports = function criarNfPessoa({ chamarBling, sleep }) {
         }
       }
     }
+    // b237 - resultado PARCIAL com alguma consulta recusada nao pode ser
+    // entregue como completo: a rota pularia a tela de ambiguidade e
+    // carregaria uma NF sozinha, sendo que a duplicata pode estar
+    // justamente na serie que falhou.
+    if (achadas.length > 0 && falhouFiltro) {
+      const errP = new Error('consegui achar NF(s), mas uma das consultas ao Bling falhou — pode haver outra nota com este numero. Tente de novo em instantes.');
+      errP.blingRecusou = true;
+      errP.parciais = achadas;
+      throw errP;
+    }
     if (achadas.length === 0 && falhouFiltro) {
       // b216 - diferenciar "nao existe" de "o Bling recusou agora". Sem isso
       // a tela dizia "NF nao localizada (procurei em todas as series)" —
@@ -294,6 +314,10 @@ module.exports = function criarNfPessoa({ chamarBling, sleep }) {
       const c = String(nf.chaveAcesso || nf.chave || '').replace(/\D/g, '');
       return c.length === 44 ? c === chave : null;   // null = o Bling nao mandou a chave
     };
+    // b237 (review do Codex) - ATENCAO a quem for usar `bateNumero` solto:
+    // com duplicatas ele casa um registro SEM `chaveAcesso` antes do que
+    // tem a chave certa. Use sempre `escolher()` abaixo, que so aceita o
+    // casamento por numero quando NENHUM candidato traz chave.
     const bateNumero = (nf) => {
       const porChave = bateChave(nf);
       if (porChave !== null) return porChave;
@@ -391,7 +415,7 @@ module.exports = function criarNfPessoa({ chamarBling, sleep }) {
       await sleep(350);
       const url = `https://api.bling.com.br/Api/v3/nfe?limite=100&pagina=${pg}&tipo=1&dataEmissaoInicial=${ini}&dataEmissaoFinal=${fim}`;
       const r = await chamarBling(url);
-      if (!r.ok) break;
+      if (!r.ok) { falhaNaVarredura = true; break; }   // b237 - recusa != fim da lista
       const lista = r.data?.data || [];
       if (lista.length === 0) break;
       const m = escolher(lista);   // b219

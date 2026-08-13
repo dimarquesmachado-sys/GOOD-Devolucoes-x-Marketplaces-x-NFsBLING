@@ -448,11 +448,16 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
       if (achadas.length > 1) {
         // AMBIGUIDADE: mesma numeracao em series diferentes. Carrega o basico
         // de cada uma (data, valor, produto) pro estoquista bater com a caixa.
+        // b237 (review do Codex) - se o Bling recusar o detalhe de UMA das
+        // duplicatas, a lista de opcoes sai incompleta e a tela apresenta a
+        // outra como se fosse a unica — o operador escolheria a nota errada
+        // achando que nao havia alternativa. Melhor recusar a escolha.
         const opcoes = [];
+        let faltouDetalhe = false;
         for (const a of achadas) {
           const rr = await buscarNFePorId(a.id);
           const n = (rr.ok && rr.data?.data) ? rr.data.data : null;
-          if (!n) continue;
+          if (!n) { faltouDetalhe = true; continue; }
           const it0 = Array.isArray(n.itens) && n.itens.length ? n.itens[0] : null;
           opcoes.push({
             idBling: String(n.id),
@@ -471,6 +476,12 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
         resultado.ambiguidade_nf = { numero: numeroDaChave, opcoes };
         resultado.erro = `Existem ${opcoes.length} NFs com o numero ${numeroDaChave}, em series diferentes. Escolha a que bate com o pacote (ou bipe a chave da DANFE).`;
         console.log(`[BUSCA] NUMERO NF ${numeroDaChave}: AMBIGUO em ${opcoes.length} series`);
+        if (faltouDetalhe) {
+          // b237 - nao mostrar escolha pela metade
+          resultado.erro = `Achei ${achadas.length} notas com o numero ${numeroDaChave}, mas o Bling recusou os dados de uma delas agora. Tente de novo em instantes — nao quero te fazer escolher sem ver todas.`;
+          resultado.tentativas.push({ tipo: 'numero_nf', codigo: String(codigoOriginal || '').trim(), ok: false, status: 503, erro: 'detalhe de uma duplicata indisponivel' });
+          return res.status(503).json(await comRecados(resultado, req.params.codigo));
+        }
         return res.status(409).json(await comRecados(resultado, req.params.codigo));
       }
       idNF = achadas.length === 1 ? achadas[0].id : null;
