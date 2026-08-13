@@ -689,10 +689,17 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
       // exato primeiro; a forma sem hifen so vale quando ha UM unico
       // candidato — empate normalizado e ambiguidade, e ambiguidade nao
       // escolhe foto.
-      const acharSku = (lista) => {
+      // b232 (review do Codex) - o casamento por FORMATACAO fica pro FIM.
+      // Na primeira consulta, se o Bling ignora o ?codigo= e a pagina padrao
+      // traz um equivalente ("FL1011PRETO" quando se pediu "FL-1011-PRETO"),
+      // aceita-lo ali travava `id` e impedia a busca ampla de achar o SKU
+      // REALMENTE exato. Exato primeiro em todo lugar; formatado so na
+      // ultima via, e so quando ha um unico candidato.
+      const acharSku = (lista, aceitarFormatado) => {
         const arr = Array.isArray(lista) ? lista : [];
         const exato = arr.find(p => String(p.codigo || '').trim().toUpperCase() === alvoExato);
         if (exato) return exato;
+        if (!aceitarFormatado) return null;
         const equivalentes = arr.filter(p => soFormato(p.codigo) === alvoFormatado);
         return equivalentes.length === 1 ? equivalentes[0] : null;
       };
@@ -706,7 +713,7 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
       // ainda ia pro IMG_CACHE sob o SKU pedido. Mesmo padrao que ja mordeu
       // na b98 (busca) e na b160 (entrada de estoque): fallback frouxo
       // devolve com confianca o produto errado.
-      const porCodigo = acharSku((rL.ok && rL.data && rL.data.data) || []);
+      const porCodigo = acharSku((rL.ok && rL.data && rL.data.data) || [], false);   // b232 - so exato aqui
       if (porCodigo) { url = primeiraImagem(porCodigo); id = porCodigo.id || null; via = 'lista_codigo'; }
 
       if (!id && /^\d{12,14}$/.test(chave)) {
@@ -741,7 +748,7 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
         // da lista e a foto nunca era achada. Com 100, ele cabe.
         const rP = await bling.chamarBling(`/produtos?pesquisa=${encodeURIComponent(chave)}&limite=100`);
         const lista = (rP.ok && rP.data && rP.data.data) || [];
-        const alvo = acharSku(lista);
+        const alvo = acharSku(lista, true);   // b232 - ultima via: exato, e formatado se for unico
         if (alvo) { url = url || primeiraImagem(alvo); id = alvo.id || null; via = 'busca_ampla_sku_exato'; }
         // b228 - se a busca por nome trouxe produtos mas nenhum com este
         // codigo, mostrar os codigos que vieram: e assim que se descobre que
