@@ -678,7 +678,31 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
       let id = null;
       let url = null;
       let via = null;   // b227 - por onde a foto veio (ou por que nao veio)
-      let eanApontaPara = null;   // b228 - de quem e o EAN, quando nao e do SKU
+      // b229/b231 (review do Codex) - a comparacao tolera SO hifen, espaco e
+      // caixa. A versao anterior apagava qualquer caractere nao alfanumerico
+      // (`/`, `.`, `_`, acentos), entao `AB/CD` casaria com `ABCD`: dois SKUs
+      // legitimamente distintos virariam o mesmo produto — e a foto errada
+      // ficaria fixa no cache sob a chave pedida.
+      const soFormato = (x) => String(x || '').trim().toUpperCase().replace(/[-\s]+/g, '');
+      const alvoExato = String(chave).trim().toUpperCase();
+      const alvoFormatado = soFormato(chave);
+      // exato primeiro; a forma sem hifen so vale quando ha UM unico
+      // candidato — empate normalizado e ambiguidade, e ambiguidade nao
+      // escolhe foto.
+      // b232 (review do Codex) - o casamento por FORMATACAO fica pro FIM.
+      // Na primeira consulta, se o Bling ignora o ?codigo= e a pagina padrao
+      // traz um equivalente ("FL1011PRETO" quando se pediu "FL-1011-PRETO"),
+      // aceita-lo ali travava `id` e impedia a busca ampla de achar o SKU
+      // REALMENTE exato. Exato primeiro em todo lugar; formatado so na
+      // ultima via, e so quando ha um unico candidato.
+      const acharSku = (lista, aceitarFormatado) => {
+        const arr = Array.isArray(lista) ? lista : [];
+        const exato = arr.find(p => String(p.codigo || '').trim().toUpperCase() === alvoExato);
+        if (exato) return exato;
+        if (!aceitarFormatado) return null;
+        const equivalentes = arr.filter(p => soFormato(p.codigo) === alvoFormatado);
+        return equivalentes.length === 1 ? equivalentes[0] : null;
+      };
       let nomeCandidatos = null;  // b228 - o que a busca por nome trouxe
 
       const rL = await bling.chamarBling(`/produtos?codigo=${encodeURIComponent(chave)}&limite=3`);
@@ -689,8 +713,7 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
       // ainda ia pro IMG_CACHE sob o SKU pedido. Mesmo padrao que ja mordeu
       // na b98 (busca) e na b160 (entrada de estoque): fallback frouxo
       // devolve com confianca o produto errado.
-      const porCodigo = ((rL.ok && rL.data && rL.data.data) || [])
-        .find(p => String(p.codigo || '').trim().toUpperCase() === chave.toUpperCase()) || null;
+      const porCodigo = acharSku((rL.ok && rL.data && rL.data.data) || [], false);   // b232 - so exato aqui
       if (porCodigo) { url = primeiraImagem(porCodigo); id = porCodigo.id || null; via = 'lista_codigo'; }
 
       if (!id && /^\d{12,14}$/.test(chave)) {
@@ -712,35 +735,25 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
       // Agora ha mais dois caminhos antes de desistir: o EAN que a propria
       // tela ja conhece, e a busca por nome.
 
-      const ean = String(req.query.ean || '').replace(/\D/g, '');
-      if (!id && ean.length >= 12) {
-        // b226 (o Diego viu foto de OUTRO produto no card) - eu aceitava
-        // QUALQUER item que o gtin devolvesse. EAN repetido/errado no
-        // cadastro, ou o Bling ignorando o filtro, trazia outro produto e a
-        // foto dele ia pra tela como se fosse a da devolucao. Agora o
-        // codigo tem que BATER com o SKU pedido; senao, nao serve.
-        const rE2 = await bling.chamarBling(`/produtos?gtin=${encodeURIComponent(ean)}&limite=5`);
-        const cands = (rE2.ok && rE2.data && rE2.data.data) || [];
-        const p2 = cands.find(p => String(p.codigo || '').trim().toUpperCase() === chave.toUpperCase()) || null;
-        if (p2) { url = url || primeiraImagem(p2); id = p2.id || null; via = 'ean_da_tela'; }
-        else if (cands.length) {
-          via = 'ean_descartado_sku_diferente';
-          // b228 - DIZER EM QUAL produto o EAN caiu. Sem isso o Diego sabe
-          // que ha divergencia, mas nao onde consertar no Bling.
-          eanApontaPara = cands.slice(0, 3).map(p => ({
-            id: p.id || null, codigo: p.codigo || null, nome: p.nome || null,
-          }));
-        }
-      }
+      // b230 (regra dele: "pega exatamente pelo SKU q nao vai ter erro
+      // nunca. nao existem 2 SKUs iguais") - o caminho pelo EAN SAIU. O EAN
+      // desta luminaria esta cadastrado tambem nos ACESSORIOS dela (roscas,
+      // travas), entao ele nao identifica produto — o SKU sim. Menos
+      // caminho, menos chance de mostrar a peca errada pro estoquista.
       if (!id) {
-        const rP = await bling.chamarBling(`/produtos?pesquisa=${encodeURIComponent(chave)}&limite=5`);
+        // b229 (caso real do Diego): com limite=5 a busca por nome trouxe SO
+        // acessorios — Kit2Roscas, TravaCentralBranca, TravaCentralPreta,
+        // CUPULA-MENOR, 9W3KE27... — porque todos citam "Luminária FL-1011"
+        // no titulo e vieram na frente. O produto principal ficava de fora
+        // da lista e a foto nunca era achada. Com 100, ele cabe.
+        const rP = await bling.chamarBling(`/produtos?pesquisa=${encodeURIComponent(chave)}&limite=100`);
         const lista = (rP.ok && rP.data && rP.data.data) || [];
-        const alvo = lista.find(p => String(p.codigo || '').trim().toUpperCase() === chave.toUpperCase()) || null;
-        if (alvo) { url = url || primeiraImagem(alvo); id = alvo.id || null; via = 'pesquisa_nome'; }
+        const alvo = acharSku(lista, true);   // b232 - ultima via: exato, e formatado se for unico
+        if (alvo) { url = url || primeiraImagem(alvo); id = alvo.id || null; via = 'busca_ampla_sku_exato'; }
         // b228 - se a busca por nome trouxe produtos mas nenhum com este
         // codigo, mostrar os codigos que vieram: e assim que se descobre que
         // o SKU do anuncio nao e o codigo do Bling (ex: FL-1011-PRETO x FL1011P)
-        else if (lista.length) nomeCandidatos = lista.slice(0, 5).map(p => p.codigo || p.nome || null);
+        else if (lista.length) nomeCandidatos = lista.slice(0, 8).map(p => p.codigo || p.nome || null);
       }
       if (!url && id) {
         const rD = await bling.chamarBling(`/produtos/${id}`);
@@ -755,13 +768,10 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
       // SKU nao encontrado.
       res.json({
         ok: true, chave, imagem: url, via,
-        ean_aponta_para: eanApontaPara,     // b228
         codigos_parecidos: nomeCandidatos,  // b228
         motivo: url ? null
           : (id ? 'produto encontrado, mas sem foto no cadastro'
-            : (via === 'ean_descartado_sku_diferente'
-                ? 'o EAN desta venda esta cadastrado em OUTRO produto no Bling — nao usei a foto dele'
-                : 'nao achei esse SKU no Bling (nem por codigo, nem por EAN, nem por nome)')),
+            : 'nao achei nenhum produto com o codigo ' + chave + ' no Bling'),
       });
     } catch (e) {
       res.status(500).json({ ok: false, erro: String(e.message || e) });
