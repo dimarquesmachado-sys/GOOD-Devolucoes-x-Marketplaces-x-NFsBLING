@@ -593,7 +593,7 @@
     function recadoDaChave(pedido, tracking) {
       var alvos = [String(pedido || ''), String(tracking || '')].filter(Boolean);
       return (window._recadosCache || []).find(function (rc) {
-        return alvos.indexOf(String(rc.chave)) !== -1;
+        return alvos.indexOf(String(rc.identificador || rc.chave || '')) !== -1;   // b218
       }) || null;
     }
 
@@ -750,6 +750,58 @@
       bmsg.innerHTML = '<b style="color:#2e7d32;">✅ ' + ok + ' baixadas</b>' + (erro ? ' · <span style="color:#c62828;">' + erro + ' com erro</span>' : '') + '. Recarregue o à espreita.';
     }
 
+    // b219 - edicao INLINE do recado (sem popup): abre um bloco com os dois
+    // campos preenchidos; salvar recarrega a lista, cancelar so fecha.
+    window.editarRecado = function (id) {
+      var cx = document.getElementById('edRecado' + id);
+      if (!cx) return;
+      if (cx.innerHTML) { cx.innerHTML = ''; return; }
+      var atual = (window._recadosCarregados || []).filter(function (x) { return String(x.id) === String(id); })[0] || {};
+      cx.innerHTML = '<div style="background:#fff;border:1.5px solid #3C3489;border-radius:9px;padding:10px;margin-top:8px;">'
+        + '<input id="edRecId' + id + '" value="' + escapeHtml(atual.identificador || atual.chave || '') + '" '
+        + 'placeholder="Pedido, NF, chave ou rastreio" style="width:100%;box-sizing:border-box;padding:8px;border:1px solid #ccc;border-radius:7px;font-size:13px;margin-bottom:6px;">'
+        + '<textarea id="edRecTxt' + id + '" rows="3" placeholder="o recado pro estoquista" '
+        + 'style="width:100%;box-sizing:border-box;padding:8px;border:1px solid #ccc;border-radius:7px;font-size:13px;">'
+        + escapeHtml(atual.texto || '') + '</textarea>'
+        + '<div style="display:flex;gap:7px;justify-content:flex-end;margin-top:7px;">'
+        + '<button onclick="document.getElementById(\'edRecado' + id + '\').innerHTML=\'\'" '
+        + 'style="border:1px solid #ccc;background:#fff;color:#555;border-radius:8px;padding:7px 13px;cursor:pointer;">Cancelar</button>'
+        + '<button onclick="salvarEdicaoRecado(' + id + ')" style="border:none;background:#3C3489;color:#fff;'
+        + 'border-radius:8px;padding:7px 15px;font-weight:700;cursor:pointer;">Salvar</button></div>'
+        + '<div id="edRecMsg' + id + '" style="font-size:12px;margin-top:6px;"></div></div>';
+    };
+
+    window.salvarEdicaoRecado = async function (id) {
+      var msg = document.getElementById('edRecMsg' + id);
+      var ident = (document.getElementById('edRecId' + id) || {}).value || '';
+      var texto = (document.getElementById('edRecTxt' + id) || {}).value || '';
+      if (!String(ident).trim() || !String(texto).trim()) {
+        if (msg) msg.innerHTML = '<span style="color:#c62828;">preencha o identificador e o texto.</span>';
+        return;
+      }
+      if (msg) msg.innerHTML = '<span style="color:#555;">salvando…</span>';
+      try {
+        const r = await fetch('/api/admin/recado/' + id, {
+          method: 'PUT', credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ identificador: ident, texto: texto }),
+        });
+        const d = await r.json();
+        if (d && d.ok) {
+          // b222 (review do Codex) - o cache que o AVISO do estoquista usa
+          // (recadoDaChave/alertarEstoquista) so era refeito no ciclo do
+          // espreita, ate 4 min depois. Se o identificador mudou, a venda
+          // antiga continuava "com recado" e a nova sem — atualiza junto.
+          if (typeof atualizarCacheRecados === 'function') { try { await atualizarCacheRecados(); } catch (e) {} }
+          carregarRecados();
+          return;
+        }
+        if (msg) msg.innerHTML = '<span style="color:#c62828;">' + escapeHtml((d && d.erro) || 'não consegui salvar') + '</span>';
+      } catch (e) {
+        if (msg) msg.innerHTML = '<span style="color:#c62828;">erro de conexão.</span>';
+      }
+    };
+
     // b212 (pedido do Diego) - abre/fecha a lista. Ela nasce fechada: ele
     // nao quer "dezenas de recados listados" ocupando o painel toda vez.
     function alternarListaRecados() {
@@ -780,6 +832,7 @@
         let resolvidosSrv = [];
         try { const dRes = await rRes.json(); if (dRes && dRes.ok) resolvidosSrv = dRes.recados || []; } catch (e) {}
         const rs = (d.recados || []).concat(resolvidosSrv);
+        window._recadosCarregados = rs;   // b219 - a edicao le o texto atual daqui
         // b213 (review do Codex) - lista vazia TAMBEM zera o contador e o
         // rotulo do botao: antes o "(3)" ficava congelado depois de remover
         // o ultimo recado, dando a entender que ainda havia aviso pendente.
@@ -808,9 +861,21 @@
         for (const rc of ativos) {
           const lido = !!rc.ciente_em;
           h += '<div style="border:1px solid ' + (lido ? '#c8e6c9' : '#ffcdd2') + ';background:' + (lido ? '#f1f8e9' : '#fff5f5') + ';border-radius:8px;padding:10px;margin-bottom:6px;">'
-            + '<b>' + escapeHtml(rc.chave) + '</b> · <span style="font-size:13px;">' + escapeHtml(rc.texto) + '</span>'
+            + '<b>' + escapeHtml(rc.identificador || rc.chave || '(sem identificador)') + '</b> · <span style="font-size:13px;">' + escapeHtml(rc.texto) + '</span>'
             + '<br><span style="font-size:12px;color:#666;">' + (lido ? '✅ ciente por ' + escapeHtml(rc.ciente_por || '-') : '⏳ ainda não lido pelo galpão')
             + ' · criado por ' + escapeHtml(rc.criado_por || '-') + '</span> '
+            // b218 (pedido do Diego: "não tenho nem como saber qual venda é")
+            // - o identificador volta a aparecer (acima) E ganha o caminho de
+            // um clique pra abrir a venda inteira na tela de busca: produto,
+            // cliente, NF, link do marketplace, tudo que a triagem ja mostra.
+            // b219 (pedido do Diego) - editar sem sair da tela: abre os campos
+            // ali mesmo, com o texto e o identificador atuais preenchidos.
+            + '<button onclick="editarRecado(' + rc.id + ')" style="background:#3C3489;color:#fff;border:none;'
+            + 'border-radius:8px;padding:4px 10px;font-size:12px;cursor:pointer;margin-left:8px;">✏️ Editar</button>'
+            + '<div id="edRecado' + rc.id + '"></div>'
+            + '<a href="/amb/?bipe=' + encodeURIComponent(rc.identificador || rc.chave || '') + '" target="_blank" '
+            + 'style="background:#3C3489;color:#fff;border-radius:8px;padding:5px 11px;font-size:12px;font-weight:700;'
+            + 'text-decoration:none;margin-left:8px;display:inline-block;">🔎 Abrir a venda</a>'
             + '<button onclick="removerRecado(' + rc.id + ')" style="background:#999;color:#fff;border:none;border-radius:8px;padding:4px 10px;font-size:12px;cursor:pointer;margin-left:8px;">✖ remover</button>'
             + '</div>';
         }
@@ -819,13 +884,18 @@
           h += '<div style="margin-top:10px;"><details><summary style="cursor:pointer;font-size:13px;color:#666;font-weight:700;">✅ Já resolvidos / triados (' + resolvidos.length + ') — ficam agarrados ao pedido pra consulta</summary>';
           for (const rc of resolvidos) {
             h += '<div style="border:1px solid #ddd;background:#fafafa;border-radius:8px;padding:9px;margin:6px 0;opacity:0.75;">'
-              + '<b>' + escapeHtml(rc.chave) + '</b> · <span style="font-size:13px;">' + escapeHtml(rc.texto) + '</span>'
+              + '<b>' + escapeHtml(rc.identificador || rc.chave || '(sem identificador)') + '</b> · <span style="font-size:13px;">' + escapeHtml(rc.texto) + '</span>'
               + '<br><span style="font-size:12px;color:#2e7d32;font-weight:700;">✅ devolução já triada / NF emitida — saiu da triagem</span>'
               + '<span style="font-size:12px;color:#666;"> · criado por ' + escapeHtml(rc.criado_por || '-') + '</span> '
               // b215 (review do Codex) - o "remover" do historico NAO removia:
               // o endpoint so marca `resolvido = true`, e a linha ja estava
               // resolvida — ela sumia da tela e voltava no proximo carregamento.
               // Enquanto nao houver exclusao de verdade, o botao sai daqui.
+              // b220 (review do Codex) - o historico existe pra consulta, entao
+              // ele tambem precisa do caminho de um clique pra venda.
+              + '<a href="/amb/?bipe=' + encodeURIComponent(rc.identificador || rc.chave || '') + '" target="_blank" '
+              + 'style="background:#3C3489;color:#fff;border-radius:8px;padding:4px 10px;font-size:11.5px;font-weight:700;'
+              + 'text-decoration:none;margin-left:8px;display:inline-block;">🔎 Abrir a venda</a>'
               + '<span style="font-size:11px;color:#999;margin-left:8px;">fica no histórico</span>'
               + '</div>';
           }

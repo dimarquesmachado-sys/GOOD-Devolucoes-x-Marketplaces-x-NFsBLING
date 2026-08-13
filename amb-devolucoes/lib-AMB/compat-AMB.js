@@ -1110,6 +1110,19 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
     res.json(await db.listarRecados({ resolvidos: req.query.resolvidos === '1' }));
   });
 
+  // b219 - EDITAR um recado (texto e/ou identificador). Só admin: o aviso
+  // trava a triagem, entao quem muda o texto muda a instrucao do galpao.
+  router.put('/api/admin/recado/:id', auth.requerLogin, async (req, res) => {
+    const s = auth.validarSessao(auth.tokenDaRequisicao(req), 'admin');
+    if (!s) return res.status(403).json({ ok: false, erro: 'so o admin edita recados' });
+    const b = corpo(req);
+    const r = await db.editarRecado(req.params.id, {
+      identificador: b.identificador || b.chave || null,
+      texto: b.texto || null,
+    });
+    res.status(r.ok ? 200 : 400).json(r);
+  });
+
   router.post('/api/admin/recado', auth.requerLogin, async (req, res) => {
     const b = corpo(req);
     const identificador = b.identificador || b.chave || b.pedido || b.tracking || null;

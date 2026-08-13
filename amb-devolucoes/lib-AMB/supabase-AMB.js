@@ -229,6 +229,25 @@ async function listarRecados({ resolvidos = false, limite = 100 } = {}) {
   } catch (e) { return { ok: false, erro: e.message }; }
 }
 
+// b219 (pedido do Diego: "tem q dar opcao de eu editar o recado se eu
+// quiser tb. caso eu queira adicionar mais dados") - edita o texto e/ou o
+// identificador. Nao mexe em ciencia nem em resolvido: quem ja leu, leu.
+async function editarRecado(id, { identificador, texto } = {}) {
+  const dbc = conectar();
+  if (!dbc) return { ok: false, erro: erroInicial };
+  const campos = {};
+  if (identificador != null && String(identificador).trim()) campos.identificador = String(identificador).trim();
+  if (texto != null && String(texto).trim()) campos.texto = String(texto).trim();
+  if (!Object.keys(campos).length) return { ok: false, erro: 'nada pra alterar' };
+  try {
+    const r = await dbc.from(T.recados).update(campos).eq('id', id).select().limit(1);
+    if (r.error) return { ok: false, erro: r.error.message };
+    const linha = (r.data || [])[0] || null;
+    if (!linha) return { ok: false, erro: 'recado nao encontrado' };
+    return { ok: true, recado: linha };
+  } catch (e) { return { ok: false, erro: e.message }; }
+}
+
 async function marcarCiente(id, quem) {
   const dbc = conectar();
   if (!dbc) return { ok: false, erro: erroInicial };
@@ -424,6 +443,7 @@ async function atualizarTriagem(id, campos) {
 module.exports = {
   conectar, testeDeVida,
   jaTriado, registrarTriagem, listarRecentes, recadoDe, recadoDeQualquer,   // b212
+  editarRecado,   // b219
   listarFila, atualizarTriagem, obterTriagem,
   criarRecado, listarRecados, marcarCiente, resolverRecado,
   listarDefeitos, registrarPecaRetirada, defeitosDoSku,
