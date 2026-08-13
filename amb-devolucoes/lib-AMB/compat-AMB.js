@@ -678,10 +678,24 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
       let id = null;
       let url = null;
       let via = null;   // b227 - por onde a foto veio (ou por que nao veio)
-      // b229 - comparar SKU ignorando hifen, espaco e caixa: o anuncio usa
-      // FL-1011-PRETO e o cadastro pode estar FL1011PRETO / fl 1011 preto.
-      const mesmoSku = (cod) => String(cod || '').replace(/[^a-z0-9]/gi, '').toUpperCase()
-        === chave.replace(/[^a-z0-9]/gi, '').toUpperCase();
+      // b229/b231 (review do Codex) - a comparacao tolera SO hifen, espaco e
+      // caixa. A versao anterior apagava qualquer caractere nao alfanumerico
+      // (`/`, `.`, `_`, acentos), entao `AB/CD` casaria com `ABCD`: dois SKUs
+      // legitimamente distintos virariam o mesmo produto — e a foto errada
+      // ficaria fixa no cache sob a chave pedida.
+      const soFormato = (x) => String(x || '').trim().toUpperCase().replace(/[-\s]+/g, '');
+      const alvoExato = String(chave).trim().toUpperCase();
+      const alvoFormatado = soFormato(chave);
+      // exato primeiro; a forma sem hifen so vale quando ha UM unico
+      // candidato — empate normalizado e ambiguidade, e ambiguidade nao
+      // escolhe foto.
+      const acharSku = (lista) => {
+        const arr = Array.isArray(lista) ? lista : [];
+        const exato = arr.find(p => String(p.codigo || '').trim().toUpperCase() === alvoExato);
+        if (exato) return exato;
+        const equivalentes = arr.filter(p => soFormato(p.codigo) === alvoFormatado);
+        return equivalentes.length === 1 ? equivalentes[0] : null;
+      };
       let nomeCandidatos = null;  // b228 - o que a busca por nome trouxe
 
       const rL = await bling.chamarBling(`/produtos?codigo=${encodeURIComponent(chave)}&limite=3`);
@@ -692,8 +706,7 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
       // ainda ia pro IMG_CACHE sob o SKU pedido. Mesmo padrao que ja mordeu
       // na b98 (busca) e na b160 (entrada de estoque): fallback frouxo
       // devolve com confianca o produto errado.
-      const porCodigo = ((rL.ok && rL.data && rL.data.data) || [])
-        .find(p => mesmoSku(p.codigo)) || null;
+      const porCodigo = acharSku((rL.ok && rL.data && rL.data.data) || []);
       if (porCodigo) { url = primeiraImagem(porCodigo); id = porCodigo.id || null; via = 'lista_codigo'; }
 
       if (!id && /^\d{12,14}$/.test(chave)) {
@@ -728,7 +741,7 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
         // da lista e a foto nunca era achada. Com 100, ele cabe.
         const rP = await bling.chamarBling(`/produtos?pesquisa=${encodeURIComponent(chave)}&limite=100`);
         const lista = (rP.ok && rP.data && rP.data.data) || [];
-        const alvo = lista.find(p => mesmoSku(p.codigo)) || null;
+        const alvo = acharSku(lista);
         if (alvo) { url = url || primeiraImagem(alvo); id = alvo.id || null; via = 'busca_ampla_sku_exato'; }
         // b228 - se a busca por nome trouxe produtos mas nenhum com este
         // codigo, mostrar os codigos que vieram: e assim que se descobre que
