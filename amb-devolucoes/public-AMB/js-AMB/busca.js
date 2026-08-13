@@ -224,7 +224,14 @@ function renderizar(data, ok) {
     const lido = !!rc.ciente_em;
     html += '<div id="recado-' + rc.id + '" style="border:3px solid ' + (lido ? '#9e9e9e' : '#c62828') + ';background:' + (lido ? '#fafafa' : '#fff3e0') + ';border-radius:10px;padding:12px;margin-bottom:12px;">'
       + '<div style="font-size:15px;font-weight:800;color:' + (lido ? '#616161' : '#c62828') + ';">📣 RECADO SOBRE ESSA DEVOLUÇÃO</div>'
-      + '<div style="font-size:15px;margin:6px 0;white-space:pre-wrap;">' + escapeHtml(rc.texto) + '</div>'
+      // b223 (pedido do Diego) - o texto do recado E a instrucao: ele estava
+      // do mesmo tamanho do resto da tela e passava batido. Agora vem
+      // grande, em negrito e com fundo proprio, pra o estoquista ler antes
+      // de encostar na caixa.
+      + '<div style="font-size:' + (lido ? '16px' : '21px') + ';font-weight:' + (lido ? '600' : '800') + ';'
+      + 'line-height:1.35;margin:10px 0;white-space:pre-wrap;color:' + (lido ? '#444' : '#7f1d1d') + ';'
+      + (lido ? '' : 'background:#fff;border:2px solid #f0b4ae;border-radius:9px;padding:11px 13px;')
+      + '">' + escapeHtml(rc.texto) + '</div>'
       + (lido
           ? '<div style="font-size:12px;color:#666;">✅ ciente por ' + escapeHtml(rc.ciente_por || '-') + ' em ' + (rc.ciente_em ? String(rc.ciente_em).slice(0, 10).split('-').reverse().join('/') : '-') + '</div>'
           : '<button onclick="recadoCiente(' + rc.id + ', this)" style="background:#2e7d32;color:#fff;border:none;border-radius:8px;padding:10px 18px;font-size:14px;font-weight:800;cursor:pointer;">✓ OK, ciente</button>')
@@ -630,12 +637,35 @@ async function verificarTriagemExistente(shipmentId, idAlternativo) {
 function renderizarBotoesTriagem() {
   const cont = document.getElementById('triagemConteudo');
   if (!cont) return;
+// b223 - leva a tela ate o primeiro recado pendente e pisca a borda, pra
+// nao sobrar duvida de onde clicar.
+function irProRecado() {
+  const id = (window._recadosPendentes || [])[0];
+  const el = id ? document.getElementById('recado-' + id) : document.querySelector('[id^="recado-"]');
+  if (!el) return;
+  el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  let n = 0;
+  const piscar = setInterval(() => {
+    el.style.boxShadow = (n % 2 === 0) ? '0 0 0 6px rgba(198,40,40,.35)' : 'none';
+    if (++n > 5) { clearInterval(piscar); el.style.boxShadow = 'none'; }
+  }, 220);
+}
+
   // v3.33 - TRAVA: recado sem ciencia bloqueia a triagem. O estoquista tem
   // que ler e clicar "OK, ciente" antes de incluir no estoque/reportar.
   if ((window._recadosPendentes || []).length > 0) {
     cont.innerHTML = '<div style="border:3px solid #c62828;background:#fff3e0;border-radius:10px;padding:16px;text-align:center;">'
-      + '<div style="font-size:16px;font-weight:800;color:#c62828;">🔒 Triagem bloqueada</div>'
-      + '<div style="font-size:14px;margin-top:6px;">Leia o <b>RECADO</b> no topo da tela e clique em <b>"✓ OK, ciente"</b> para liberar os botões.</div>'
+      + '<div style="font-size:19px;font-weight:800;color:#c62828;">🔒 Triagem bloqueada</div>'
+      // b223 - o caminho pra destravar tem que saltar: fonte maior, o botao
+      // desenhado do mesmo jeito que ele vai ver la em cima, e um atalho que
+      // rola a tela ate o recado (em celular ele fica fora da area visivel).
+      + '<div style="font-size:16px;margin-top:8px;line-height:1.5;">Leia o <b>RECADO</b> no topo da tela e clique em</div>'
+      + '<div style="display:inline-block;background:#2e7d32;color:#fff;border-radius:8px;padding:9px 18px;'
+      + 'font-size:16px;font-weight:800;margin:9px 0 4px;">✓ OK, ciente</div>'
+      + '<div style="font-size:16px;">para liberar os botões.</div>'
+      + '<button type="button" onclick="irProRecado()" style="margin-top:11px;background:#c62828;color:#fff;'
+      + 'border:none;border-radius:9px;padding:11px 20px;font-size:15px;font-weight:800;cursor:pointer;">'
+      + '⬆️ Ir para o recado</button>'
       + '</div>';
     return;
   }
