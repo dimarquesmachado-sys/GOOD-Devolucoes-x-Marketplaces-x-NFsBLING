@@ -677,17 +677,27 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
       // ═══════════════════════════════════════════════════════════════
       let id = null;
       let url = null;
+      let via = null;   // b227 - por onde a foto veio (ou por que nao veio)
 
       const rL = await bling.chamarBling(`/produtos?codigo=${encodeURIComponent(chave)}&limite=3`);
+      // b227 (review do Codex — e a causa mais provavel da foto errada que o
+      // Diego viu): o `|| lista[0]` era um FALLBACK CEGO. Quando o Bling
+      // ignora o filtro ?codigo= e devolve a pagina padrao, esse primeiro
+      // item — um produto qualquer — virava o "achado", com id e foto, e
+      // ainda ia pro IMG_CACHE sob o SKU pedido. Mesmo padrao que ja mordeu
+      // na b98 (busca) e na b160 (entrada de estoque): fallback frouxo
+      // devolve com confianca o produto errado.
       const porCodigo = ((rL.ok && rL.data && rL.data.data) || [])
-        .find(p => String(p.codigo || '').trim().toUpperCase() === chave.toUpperCase())
-        || ((rL.ok && rL.data && rL.data.data) || [])[0] || null;
-      if (porCodigo) { url = primeiraImagem(porCodigo); id = porCodigo.id || null; }
+        .find(p => String(p.codigo || '').trim().toUpperCase() === chave.toUpperCase()) || null;
+      if (porCodigo) { url = primeiraImagem(porCodigo); id = porCodigo.id || null; via = 'lista_codigo'; }
 
       if (!id && /^\d{12,14}$/.test(chave)) {
+        // b227 - aqui a CHAVE PEDIDA e o proprio EAN, entao o produto que o
+        // gtin devolve E o produto pedido: nao ha o que validar contra.
+        // (Diferente do ?ean= da tela, que e um dado auxiliar.)
         const rE = await bling.chamarBling(`/produtos?gtin=${encodeURIComponent(chave)}&limite=1`);
         const porEan = (rE.ok && rE.data && rE.data.data && rE.data.data[0]) || null;
-        if (porEan) { url = url || primeiraImagem(porEan); id = porEan.id || null; }
+        if (porEan) { url = url || primeiraImagem(porEan); id = porEan.id || null; via = 'gtin_da_chave'; }
       }
 
       if (!id && /^\d{6,}$/.test(chave)) id = chave;   // ai sim: e um id
@@ -699,12 +709,19 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
       // rota desistia SEM NUNCA ABRIR O DETALHE, que e onde a imagem mora.
       // Agora ha mais dois caminhos antes de desistir: o EAN que a propria
       // tela ja conhece, e a busca por nome.
-      let via = porCodigo ? 'lista_codigo' : null;
+
       const ean = String(req.query.ean || '').replace(/\D/g, '');
       if (!id && ean.length >= 12) {
-        const rE2 = await bling.chamarBling(`/produtos?gtin=${encodeURIComponent(ean)}&limite=1`);
-        const p2 = (rE2.ok && rE2.data && rE2.data.data && rE2.data.data[0]) || null;
+        // b226 (o Diego viu foto de OUTRO produto no card) - eu aceitava
+        // QUALQUER item que o gtin devolvesse. EAN repetido/errado no
+        // cadastro, ou o Bling ignorando o filtro, trazia outro produto e a
+        // foto dele ia pra tela como se fosse a da devolucao. Agora o
+        // codigo tem que BATER com o SKU pedido; senao, nao serve.
+        const rE2 = await bling.chamarBling(`/produtos?gtin=${encodeURIComponent(ean)}&limite=5`);
+        const cands = (rE2.ok && rE2.data && rE2.data.data) || [];
+        const p2 = cands.find(p => String(p.codigo || '').trim().toUpperCase() === chave.toUpperCase()) || null;
         if (p2) { url = url || primeiraImagem(p2); id = p2.id || null; via = 'ean_da_tela'; }
+        else if (cands.length) via = 'ean_descartado_sku_diferente';
       }
       if (!id) {
         const rP = await bling.chamarBling(`/produtos?pesquisa=${encodeURIComponent(chave)}&limite=5`);
@@ -725,7 +742,11 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
       // SKU nao encontrado.
       res.json({
         ok: true, chave, imagem: url, via,
-        motivo: url ? null : (id ? 'produto encontrado, mas sem foto no cadastro' : 'nao achei esse SKU no Bling (nem por codigo, nem por EAN, nem por nome)'),
+        motivo: url ? null
+          : (id ? 'produto encontrado, mas sem foto no cadastro'
+            : (via === 'ean_descartado_sku_diferente'
+                ? 'o EAN desta venda esta cadastrado em OUTRO produto no Bling — nao usei a foto dele'
+                : 'nao achei esse SKU no Bling (nem por codigo, nem por EAN, nem por nome)')),
       });
     } catch (e) {
       res.status(500).json({ ok: false, erro: String(e.message || e) });
