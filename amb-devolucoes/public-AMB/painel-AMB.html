@@ -840,13 +840,18 @@
           // "aquecendo" pra sempre sem explicar qual indice estava frio,
           // desligado ou com erro — e o Diego so via a tela vazia.
           document.getElementById('countEspreita').textContent = '…';
+          // b205 (review do Codex) - o painel exige apenas LOGIN, entao o
+          // texto cru do erro (proxy Shopee, API, indice) nao vai pra tela:
+          // o estoquista ve "indisponivel agora" e o detalhe fica no console
+          // pro Diego. Sem isso, qualquer conta logada leria a mensagem crua.
           var f = (d && d.fontes) || {};
+          try { console.info('[ESPREITA] fontes:', JSON.parse(JSON.stringify(f))); } catch (e) {}
           var linhaFonte = function (nome, o) {
             o = o || {};
             var estado = o.quente ? '<span style="color:#0F6E56;">pronta</span>'
               : o.desligada ? '<span style="color:#8C1D18;">desligada' + (o.falta ? ' — falta ' + escapeHtml(String(o.falta)) : '') + '</span>'
               : o.construindo ? '<span style="color:#8a5200;">montando o índice…</span>'
-              : o.erro ? '<span style="color:#8C1D18;">erro: ' + escapeHtml(String(o.erro)) + '</span>'
+              : o.erro ? '<span style="color:#8C1D18;">indisponível agora</span>'
               : '<span style="color:#8a5200;">índice frio</span>';
             return '<div style="padding:2px 0;"><b>' + nome + ':</b> ' + estado + '</div>';
           };

@@ -1198,12 +1198,6 @@ router.get('/api/espreita', auth.requerLogin, async (req, res) => {
 
   res.json({
     ok: true,
-    // b204 (bug real: "a espreita nao mostra nada") - o painel so monta a
-    // lista quando `d.quente` vem VERDADEIRO, e esta resposta nunca mandava
-    // esse campo — so `fontes.*.quente`. Resultado: a tela ficava eternamente
-    // em "Aquecendo os índices", re-tentando a cada 45s. O painel da GOOD
-    // funciona porque a rota dela devolve `quente` no topo (server.js:4980).
-    quente: !!(baseML.quente || baseShopee.quente || baseMagalu.quente),
     versao: VERSAO,
     fontes: {
       ml: { quente: baseML.quente, construindo: !!stML.construindo,
