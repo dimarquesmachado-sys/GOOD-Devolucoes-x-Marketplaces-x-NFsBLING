@@ -678,6 +678,8 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
       let id = null;
       let url = null;
       let via = null;   // b227 - por onde a foto veio (ou por que nao veio)
+      let eanApontaPara = null;   // b228 - de quem e o EAN, quando nao e do SKU
+      let nomeCandidatos = null;  // b228 - o que a busca por nome trouxe
 
       const rL = await bling.chamarBling(`/produtos?codigo=${encodeURIComponent(chave)}&limite=3`);
       // b227 (review do Codex — e a causa mais provavel da foto errada que o
@@ -721,13 +723,24 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
         const cands = (rE2.ok && rE2.data && rE2.data.data) || [];
         const p2 = cands.find(p => String(p.codigo || '').trim().toUpperCase() === chave.toUpperCase()) || null;
         if (p2) { url = url || primeiraImagem(p2); id = p2.id || null; via = 'ean_da_tela'; }
-        else if (cands.length) via = 'ean_descartado_sku_diferente';
+        else if (cands.length) {
+          via = 'ean_descartado_sku_diferente';
+          // b228 - DIZER EM QUAL produto o EAN caiu. Sem isso o Diego sabe
+          // que ha divergencia, mas nao onde consertar no Bling.
+          eanApontaPara = cands.slice(0, 3).map(p => ({
+            id: p.id || null, codigo: p.codigo || null, nome: p.nome || null,
+          }));
+        }
       }
       if (!id) {
         const rP = await bling.chamarBling(`/produtos?pesquisa=${encodeURIComponent(chave)}&limite=5`);
         const lista = (rP.ok && rP.data && rP.data.data) || [];
         const alvo = lista.find(p => String(p.codigo || '').trim().toUpperCase() === chave.toUpperCase()) || null;
         if (alvo) { url = url || primeiraImagem(alvo); id = alvo.id || null; via = 'pesquisa_nome'; }
+        // b228 - se a busca por nome trouxe produtos mas nenhum com este
+        // codigo, mostrar os codigos que vieram: e assim que se descobre que
+        // o SKU do anuncio nao e o codigo do Bling (ex: FL-1011-PRETO x FL1011P)
+        else if (lista.length) nomeCandidatos = lista.slice(0, 5).map(p => p.codigo || p.nome || null);
       }
       if (!url && id) {
         const rD = await bling.chamarBling(`/produtos/${id}`);
@@ -742,6 +755,8 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
       // SKU nao encontrado.
       res.json({
         ok: true, chave, imagem: url, via,
+        ean_aponta_para: eanApontaPara,     // b228
+        codigos_parecidos: nomeCandidatos,  // b228
         motivo: url ? null
           : (id ? 'produto encontrado, mas sem foto no cadastro'
             : (via === 'ean_descartado_sku_diferente'
