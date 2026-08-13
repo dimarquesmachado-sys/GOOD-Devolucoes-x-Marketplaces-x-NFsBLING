@@ -1252,6 +1252,22 @@
   function visivel(el) {
     return !!(el && el.offsetParent !== null && el.getBoundingClientRect().height > 4);
   }
+  // b218 (pedido do Diego) - abrir a tela ja buscando: o painel manda
+  // /amb/?bipe=<identificador> no botao "🔎 Abrir a venda" do recado, e a
+  // triagem abre com a venda inteira na tela (produto, NF, marketplace).
+  document.addEventListener('DOMContentLoaded', function () {
+    try {
+      var alvo = new URLSearchParams(location.search).get('bipe');
+      if (alvo) {
+        var campo = document.getElementById('codigo');
+        if (campo) {
+          campo.value = alvo;
+          setTimeout(function () { if (typeof buscar === 'function') buscar(); }, 60);
+        }
+      }
+    } catch (e) { /* sem parametro, tela normal */ }
+  });
+
   document.addEventListener('DOMContentLoaded', function () {
     ['loading', 'resultado'].forEach(function (id) {
       var el = document.getElementById(id);
