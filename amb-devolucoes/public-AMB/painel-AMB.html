@@ -822,7 +822,11 @@
               + '<b>' + escapeHtml(rc.chave) + '</b> · <span style="font-size:13px;">' + escapeHtml(rc.texto) + '</span>'
               + '<br><span style="font-size:12px;color:#2e7d32;font-weight:700;">✅ devolução já triada / NF emitida — saiu da triagem</span>'
               + '<span style="font-size:12px;color:#666;"> · criado por ' + escapeHtml(rc.criado_por || '-') + '</span> '
-              + '<button onclick="removerRecado(' + rc.id + ')" style="background:#bbb;color:#fff;border:none;border-radius:8px;padding:3px 9px;font-size:11px;cursor:pointer;margin-left:8px;">✖ remover</button>'
+              // b215 (review do Codex) - o "remover" do historico NAO removia:
+              // o endpoint so marca `resolvido = true`, e a linha ja estava
+              // resolvida — ela sumia da tela e voltava no proximo carregamento.
+              // Enquanto nao houver exclusao de verdade, o botao sai daqui.
+              + '<span style="font-size:11px;color:#999;margin-left:8px;">fica no histórico</span>'
               + '</div>';
           }
           h += '</details></div>';

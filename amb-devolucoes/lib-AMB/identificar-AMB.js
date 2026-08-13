@@ -46,7 +46,10 @@ module.exports = function registrarIdentificar(app, deps) {
         codigoBipado,
         o.order && (o.order.id || o.order.order_id),
         o.pack && (o.pack.id || o.pack.pack_id),
-        o.shipment && (o.shipment.id || o.shipment.tracking_number),
+        // b215 (review do Codex) - os DOIS: com `||`, recado preso ao rastreio
+        // sumia quando o galpao bipava o pedido/pack
+        o.shipment && o.shipment.id,
+        o.shipment && o.shipment.tracking_number,
         o.claim && o.claim.id,
         o.return && o.return.id,
         // b214 (review do Codex) - numero E chave: com `||` o recado preso a

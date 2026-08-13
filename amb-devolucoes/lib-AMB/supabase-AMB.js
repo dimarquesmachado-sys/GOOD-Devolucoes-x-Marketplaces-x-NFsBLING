@@ -161,10 +161,11 @@ async function recadoDeQualquer(identificadores) {
       .in('identificador', Array.from(new Set(lista)))
       .eq('resolvido', false)
       .order('criado_em', { ascending: false })
-      // b214 (review do Codex) - TODOS os recados ativos, nao so o mais novo:
-      // com dois avisos na mesma devolucao, o estoquista dava ciencia em um
-      // e a triagem DESTRAVAVA — o outro nunca era lido.
-      .limit(20);
+      // b214/b215 (review do Codex) - TODOS os recados ativos, sem teto: com
+      // dois avisos na mesma devolucao o estoquista dava ciencia em um e a
+      // triagem DESTRAVAVA. E um teto (era 20) esconderia os mais antigos
+      // pra sempre, ja que eles continuam `resolvido = false`.
+      ;
     if (r.error) return { ok: false, erro: r.error.message };
     const recados = r.data || [];
     return { ok: true, recados, recado: recados[0] || null };
