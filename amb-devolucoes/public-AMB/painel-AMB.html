@@ -787,7 +787,15 @@
           body: JSON.stringify({ identificador: ident, texto: texto }),
         });
         const d = await r.json();
-        if (d && d.ok) { carregarRecados(); return; }
+        if (d && d.ok) {
+          // b222 (review do Codex) - o cache que o AVISO do estoquista usa
+          // (recadoDaChave/alertarEstoquista) so era refeito no ciclo do
+          // espreita, ate 4 min depois. Se o identificador mudou, a venda
+          // antiga continuava "com recado" e a nova sem — atualiza junto.
+          if (typeof atualizarCacheRecados === 'function') { try { await atualizarCacheRecados(); } catch (e) {} }
+          carregarRecados();
+          return;
+        }
         if (msg) msg.innerHTML = '<span style="color:#c62828;">' + escapeHtml((d && d.erro) || 'não consegui salvar') + '</span>';
       } catch (e) {
         if (msg) msg.innerHTML = '<span style="color:#c62828;">erro de conexão.</span>';
