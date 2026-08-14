@@ -1500,6 +1500,7 @@ registrarRotasAdminNF(router, {
   resolverIdNFPorChave: nfp.resolverIdNFPorChave,
   mapItensNF: nfp.mapItensNF,
   buscarNFsPorNumero: nfp.buscarNFsPorNumero,   // b212 - raio-x da busca por numero
+  buscarNfDevolucaoBling: nfp.acharNfDevolucaoBling,   // b255
 });
 
 router.use((req, res) => {

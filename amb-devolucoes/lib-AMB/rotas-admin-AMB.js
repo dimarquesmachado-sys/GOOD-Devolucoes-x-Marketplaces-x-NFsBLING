@@ -24,6 +24,7 @@ module.exports = function registrarRotasAdminNF(app, deps) {
     resolverIdNFPorChave, mapItensNF,
     tabelaDevolucoes,
     buscarNFsPorNumero,   // b212 - usada pelo raio-x da busca por numero
+    buscarNfDevolucaoBling,   // b255
   } = deps;
 
   // ═══════════════════════════════════════════════════════════════════
@@ -908,6 +909,25 @@ app.get('/api/debug/nf-entrada/:idNF', async (req, res) => {
   } catch (e) {
     res.status(500).json({ ok: false, erro: String(e.message || e) });
   }
+});
+
+// b255 - EXISTE NF DE DEVOLUCAO NO BLING PRA ESTA VOLTA?
+// A API do ML nao entrega essa nota; o Bling sim (ela e importada la).
+// Casamento por natureza de devolucao + cliente + SKU, dentro da janela que
+// comeca na emissao da NF de venda.
+// GET /api/debug/nf-devolucao?k=&cliente=&sku=&desde=AAAA-MM-DD
+app.get('/api/debug/nf-devolucao', async (req, res) => {
+  if (!adminOk(req)) return res.status(403).json({ ok: false, erro: 'so admin' });
+  if (typeof buscarNfDevolucaoBling !== 'function') {
+    return res.status(500).json({ ok: false, erro: 'busca nao injetada nas deps' });
+  }
+  const r = await buscarNfDevolucaoBling({
+    cliente: req.query.cliente || null,
+    sku: req.query.sku || null,
+    desde: req.query.desde || null,
+    ate: req.query.ate || null,
+  });
+  res.json(r);
 });
 
 // GET /api/debug/resgate-nf/:orderId
