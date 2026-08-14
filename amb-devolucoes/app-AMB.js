@@ -1273,15 +1273,28 @@ router.post('/api/defeitos/lancar', auth.requerLogin, async (req, res) => {
   if (!sku || !localizacao) {
     return res.status(400).json({ ok: false, erro: 'informe ao menos sku e localizacao' });
   }
+// b258 (regra dele: "é esse o SKU que vai comandar") - o de-para vale
+  // TAMBEM na hora de GRAVAR. Sem isto, a peca entrava no estoque de
+  // defeitos com o codigo aposentado do anuncio Full: o alerta de
+  // canibalizacao nao casaria com as unidades do codigo atual, e a NF
+  // de devolucao sairia com um SKU que nao existe mais no cadastro.
+  let skuUsar = String(sku);
+  let skuOriginal = null;
+  if (db && typeof db.resolverSku === 'function') {
+    try {
+      const dp = await db.resolverSku(skuUsar);
+      if (dp && dp.trocado && dp.sku) { skuOriginal = skuUsar; skuUsar = dp.sku; }
+    } catch (e) { /* de-para e ajuda, nunca trava o registro */ }
+  }
   // Valida o SKU no Bling antes de gravar: evita defeito fantasma
   // por causa de um codigo digitado errado.
-  const prod = await bling.buscarProdutoPorSku(String(sku));
+  const prod = await bling.buscarProdutoPorSku(skuUsar);
   const exato = prod.ok ? prod.exato : null;
 
   const r = await db.registrarTriagem({
     tipo: 'defeito_estoque',
     status: 'concluido',
-    produto_sku: exato ? exato.codigo : sku,
+    produto_sku: exato ? exato.codigo : skuUsar,   // b258 - SKU atual manda
     produto_titulo: exato ? exato.nome : null,
     problema_descricao: descricao || null,
     localizacao,
