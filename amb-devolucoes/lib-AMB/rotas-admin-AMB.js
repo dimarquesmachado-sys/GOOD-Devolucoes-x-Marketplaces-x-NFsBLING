@@ -863,6 +863,53 @@ app.get('/api/debug/nf-ml/:orderId', async (req, res) => {
   });
 });
 
+// b254 - RAIO-X DA NOTA DE ENTRADA (devolucao) NO BLING.
+//
+// A API do ML nao expoe a NF de devolucao (as 6 variantes da sonda deram
+// 404/405/400 e o `?document_type=return` e ignorado). Mas ela ENTRA no
+// Bling — e o Diego mostrou a tela de notas de ENTRADA trazendo um bloco
+// "Chave de acesso | Numero | Serie" com a chave da NF de VENDA (5161).
+// Se isso for o campo de NOTAS REFERENCIADAS, o casamento e EXATO: a
+// devolucao aponta pra venda, sem depender de nome nem de data.
+// Esta rota mostra os campos crus da nota de entrada pra confirmar.
+// GET /api/debug/nf-entrada/:idNF?k=ADMIN_KEY
+app.get('/api/debug/nf-entrada/:idNF', async (req, res) => {
+  if (!adminOk(req)) return res.status(403).json({ ok: false, erro: 'so admin' });
+  try {
+    const r = await chamarBling(`/nfe/${encodeURIComponent(req.params.idNF)}`);
+    const nf = (r.ok && r.data && r.data.data) || null;
+    if (!nf) return res.status(404).json({ ok: false, erro: 'nao achei essa NF', status: r.status || null });
+    // procura qualquer campo que pareca "nota referenciada", sem depender do
+    // nome exato (o Bling varia entre versoes)
+    const refs = {};
+    for (const [k, v] of Object.entries(nf)) {
+      if (!/refer|vincul|origem|documento/i.test(k)) continue;
+      refs[k] = typeof v === 'object' ? JSON.parse(JSON.stringify(v)) : v;
+    }
+    res.json({
+      ok: true,
+      campos_do_topo: Object.keys(nf),
+      resumo: {
+        id: nf.id, tipo: nf.tipo, numero: nf.numero, serie: nf.serie,
+        situacao: nf.situacao, dataEmissao: nf.dataEmissao,
+        chaveAcesso: nf.chaveAcesso || null,
+        naturezaOperacao: nf.naturezaOperacao || null,
+        contato_nome: nf.contato && nf.contato.nome ? nf.contato.nome : null,
+        numeroPedidoLoja: nf.numeroPedidoLoja || null,
+      },
+      campos_de_referencia: Object.keys(refs).length ? refs : null,
+      // as observacoes costumam citar a nota de origem por extenso
+      observacoes: String(nf.observacoes || nf.informacoesAdicionais || '').slice(0, 800) || null,
+      itens: Array.isArray(nf.itens) ? nf.itens.map(it => ({
+        codigo: it.codigo || null, descricao: (it.descricao || '').slice(0, 80),
+        quantidade: it.quantidade || null, gtin: it.gtin || null,
+      })) : null,
+    });
+  } catch (e) {
+    res.status(500).json({ ok: false, erro: String(e.message || e) });
+  }
+});
+
 // GET /api/debug/resgate-nf/:orderId
 // Roda o MESMO fluxo do resgate mas NAO grava nada - mostra cada
 // passo (ML invoice, pack, blindada com trace) pra diagnostico.
