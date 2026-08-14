@@ -1870,11 +1870,14 @@
 
     function abrirModalGerarDevolucao(devolucaoId, idNFOriginalBling, nfNumero, produtoTitulo, chaveNF, cliente, skuItem, dataVenda, statusTriagem) {
       chaveNF = chaveNF || '';
-      // b257 (pedido do Diego) - o deposito vem PRE-SELECIONADO pelo que a
-      // triagem constatou: produto com problema vai pra DEFEITOS, o resto
-      // pro Geral. Continua trocavel — e sugestao, nao trava.
-      var ehProblema = /problema|defeito|avariad|quebrad|ruim/i.test(String(statusTriagem || ''));
-      var depSugerido = ehProblema ? '14888947655' : '4956031259';
+      // b260 (correcao do proprio Diego) - QUEM DECIDE E O ADMIN, nao a
+      // triagem: "as vezes pro estoquista e problema, mas o ADMIN quem
+      // escolhe". Entao o padrao e SEMPRE **DEFEITOS**, e a lista fica
+      // aberta pra ele trocar.
+      // E o nome: "DEFEITOS API" e deposito da GOOD; na AMB chama so
+      // "DEFEITOS". Por isso parei de cravar id — o depMonta acha o
+      // deposito pelo NOME na lista viva de /api/depositos, que ja e o que
+      // o resto do painel faz.
       const conteudo = document.getElementById('modalGerarConteudo');
       conteudo.innerHTML = `
         <h3 style="font-size:18px; margin-bottom:12px;">🧾 Gerar NF Devolução</h3>
@@ -1888,13 +1891,9 @@
         <div style="background:#ede7f6; border:1px solid #b39ddb; padding:12px; border-radius:8px; font-size:13px; margin-bottom:16px; display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
           <strong>📦 Depósito do estoque:</strong>
           <select id="depModal" style="padding:6px 10px; border-radius:6px; border:1px solid #b39ddb; font-size:13px;">
-            <option value="14888947655"${ehProblema ? ' selected' : ''}>DEFEITOS API</option>
-            <option value="4956031259"${ehProblema ? '' : ' selected'}>Geral</option>
             <option value="">📦 carregando depósitos...</option>
           </select>
-          <span style="font-size:12px; color:#5e35b1;">${ehProblema
-            ? '⚠️ a triagem marcou PROBLEMA — sugeri DEFEITOS API'
-            : '(produto com defeito? use DEFEITOS API)'}</span>
+          <span style="font-size:12px; color:#5e35b1;">padrão: DEFEITOS — troque se o produto estiver bom</span>
         </div>
         <div style="background:#fff8e1; border:1px solid #ffe082; padding:12px; border-radius:8px; font-size:12.5px; color:#795548; margin-bottom:18px;">
           🧪 <strong>Criar rascunho</strong>: cria a NF no Bling mas NÃO emite — você <strong>edita o que precisar</strong> lá no Bling e emite por lá.<br>
@@ -1913,6 +1912,29 @@
         </div>
       `;
       document.getElementById('modalGerarDevolucao').style.display = 'flex';
+
+      // b260 - preenche com a lista VIVA de depositos e ja marca o DEFEITOS
+      // (achado pelo nome, nao por id cravado). Se a lista nao vier, o
+      // seletor avisa em vez de mentir com uma opcao fixa.
+      (async function () {
+        var sel = document.getElementById('depModal');
+        if (!sel) return;
+        try {
+          var r = await fetch('/api/depositos', { credentials: 'same-origin' }).then(function (x) { return x.json(); });
+          if (!r.ok || !r.depositos) throw new Error(r.erro || 'sem lista');
+          // b260 - esconde os depositos de FULL (Magalu Full, Shopee Full):
+          // devolucao que chega na matriz nunca entra num full do marketplace,
+          // e ter essas opcoes na lista so convida ao erro.
+          var deps = r.depositos.filter(function (d) { return !/full/i.test(String(d.descricao || '')); });
+          var alvo = (deps.find(function (d) { return /^defeitos?$/i.test(String(d.descricao || '').trim()); })
+                   || deps.find(function (d) { return /defeito/i.test(d.descricao || ''); }) || {}).id || null;
+          sel.innerHTML = deps.map(function (d) {
+            return '<option value="' + escapeHtml(d.id) + '"' + (d.id === alvo ? ' selected' : '') + '>📦 ' + escapeHtml(d.descricao) + '</option>';
+          }).join('') || '<option value="">(sem depósitos)</option>';
+        } catch (e) {
+          sel.innerHTML = '<option value="">depósitos indisponíveis — recarregue a página</option>';
+        }
+      })();
 
       // b256 - a checagem roda DEPOIS de abrir (nao trava a tela): se achar
       // a nota, os botoes de gerar somem e fica so o incluir estoque.
