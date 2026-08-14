@@ -84,7 +84,14 @@ module.exports = function criarNfPessoa({ chamarBling, sleep }) {
     // NFs de UM dia especifico (pagina a janela ate cobrir o dia inteiro)
     async function nfsDoDia(dia) {
       const out = [];
-      for (let pg = 1; pg <= 4; pg++) {
+      // b261 (apontamento do Codex, guardado desde o PR #17) - o teto de 4
+      // paginas parava mesmo com a 4a CHEIA: em dia movimentado a NF
+      // procurada podia estar na 5a e o dia era dado como coberto. Agora
+      // pagina enquanto vier cheia, com teto de 12 (1.200 notas num dia ja
+      // e muito acima do normal deles) — e quando para CHEIA, marca
+      // `_truncado` pra ninguem afirmar que o dia foi todo olhado.
+      const TETO_PAGINAS = 12;
+      for (let pg = 1; pg <= TETO_PAGINAS; pg++) {
         const lista = await pagDia(dia, pg);
         if (lista === null) return null;
         if (lista.length === 0) break;
@@ -92,12 +99,18 @@ module.exports = function criarNfPessoa({ chamarBling, sleep }) {
           if (String(nf.dataEmissao || '').slice(0, 10) === dia) out.push(nf);
         }
         if (!lista._cheia) break;
+        if (pg === TETO_PAGINAS) {
+          out._truncado = true;
+          log('pagina-dia', { dia, ERRO: 'teto de ' + TETO_PAGINAS + ' paginas com a ultima CHEIA — dia nao coberto por inteiro' });
+          break;
+        }
         await sleep(300);
       }
       return out;
     }
 
     // Probe de um dia: min/max POR SERIE (uma chamada serve todas as series)
+    const diasIncompletos = [];   // b261 - dias que ficaram sem cobertura total
     const cache = {};
     async function sondaDia(t) {
       const dia = f(t);
@@ -105,6 +118,8 @@ module.exports = function criarNfPessoa({ chamarBling, sleep }) {
       await sleep(350);
       const lista = await nfsDoDia(dia);
       if (lista === null) { log('sonda-dia', { dia, ERRO: 'chamada ao Bling falhou' }); return (cache[dia] = { erro: true, porSerie: {} }); }
+      // b261 - dia truncado nao pode virar "olhei tudo e nao tem"
+      if (lista._truncado) diasIncompletos.push(dia);
       const porSerie = {};
       for (const nf of lista) {
         const s = serOf(nf);
@@ -244,6 +259,14 @@ module.exports = function criarNfPessoa({ chamarBling, sleep }) {
           achadas.push(achou);
         }
       }
+    }
+    if (achadas.length === 0 && diasIncompletos.length) {
+      // b261 - "nao achei" so vale se a varredura cobriu o terreno. Com dia
+      // truncado (teto de paginas atingido com a ultima cheia), a resposta
+      // honesta e "nao consegui olhar tudo" — mesma distincao que ja custou
+      // caro nesta busca.
+      log('fim', { motivo: 'dias sem cobertura total', dias: diasIncompletos.slice(0, 5) });
+      console.log(`[buscarNFsPorNumero] ${alvoStr}: varredura INCOMPLETA em ${diasIncompletos.length} dia(s) - nao da pra afirmar que a NF nao existe`);
     }
     if (achadas.length === 0) console.log(`[buscarNFsPorNumero] ${alvoStr}: nao achou em nenhuma serie`);
     return achadas;
