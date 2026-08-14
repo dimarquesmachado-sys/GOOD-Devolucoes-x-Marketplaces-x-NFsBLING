@@ -732,9 +732,13 @@ app.get('/api/debug/nf-ml/:orderId', async (req, res) => {
   // vez de truncar o payload. E nada de dado do comprador: `billing_info`
   // traz CPF, nome, telefone e endereco, e diagnostico e feito pra ser
   // copiado e colado por ai.
-  const CAMPOS_NF = ['type', 'document_type', 'number', 'invoice_number', 'serie', 'series',
-    'key', 'access_key', 'authorization_key', 'status', 'state', 'date', 'date_created',
-    'invoice_date', 'total_amount', 'kind', 'operation_type'];
+  // b249 (review do Codex) - inclui os nomes que o /invoice_data usa de fato
+  // (invoice_id, invoice_key, cfop, invoice_type...), senao o resumo daquele
+  // endpoint cairia no ramo generico e perderia justamente o que interessa.
+  const CAMPOS_NF = ['type', 'document_type', 'invoice_type', 'kind', 'operation_type', 'cfop',
+    'number', 'invoice_number', 'invoice_id', 'id', 'serie', 'series', 'invoice_series',
+    'key', 'access_key', 'authorization_key', 'invoice_key', 'nfe_key',
+    'status', 'state', 'date', 'date_created', 'invoice_date', 'creation_date', 'total_amount'];
   const resumirDoc = (d) => {
     if (!d || typeof d !== 'object') return null;
     const out = {};
@@ -746,22 +750,36 @@ app.get('/api/debug/nf-ml/:orderId', async (req, res) => {
     if (Array.isArray(d)) return d;
     for (const k of ['results', 'invoices', 'documents', 'fiscal_documents', 'data', 'billing_info']) {
       if (Array.isArray(d[k])) return d[k];
+      if (d[k] && typeof d[k] === 'object') return [d[k]];
     }
-    return [d];
+    // b249 - so tratar o objeto do topo como documento se ele PARECER um:
+    // devolver qualquer resposta como "documento" faria a sonda relatar
+    // documentos onde nao ha nenhum.
+    const pareceNF = CAMPOS_NF.some(k => d[k] !== undefined && d[k] !== null);
+    return pareceNF ? [d] : [];
   };
 
+  // b249 - teto de tempo: 6 chamadas sequenciais ao ML sem limite podiam
+  // segurar a requisicao ate o timeout do Render. Passou de 25s, encerra e
+  // devolve o que ja apurou, dizendo que faltou.
+  const LIMITE_MS = Date.now() + 25000;
   const passos = [];
   for (const caminho of alvos) {
+    if (Date.now() > LIMITE_MS) { passos.push({ caminho, pulado: 'prazo da sonda estourou' }); continue; }
     try {
       const r = await chamarML(caminho);
       const d = r.data;
-      const docs = r.ok ? acharDocs(d).slice(0, 10).map(resumirDoc).filter(Boolean) : [];
+      // b249 - resumir TODOS (o resumo ja e pequeno); cortar em 10 podia
+      // deixar a NF de devolucao de fora quando ha muitos documentos
+      const achados = r.ok ? acharDocs(d) : [];
+      const docs = achados.map(resumirDoc).filter(Boolean);
       passos.push({
         caminho,
         status: r.status || (r.ok ? 200 : null),
         ok: !!r.ok,
         campos: d && typeof d === 'object' && !Array.isArray(d) ? Object.keys(d).slice(0, 25) : null,
         qtd_documentos: r.ok ? docs.length : null,
+        qtd_bruta: r.ok ? achados.length : null,   // b249 - confere se algum resumo caiu
         documentos: r.ok ? docs : null,
         // b248 - o corpo do ERRO distingue "endpoint nao existe" de "existe,
         // mas falta permissao/parametro" — mas so a mensagem, sem dado nenhum
