@@ -696,6 +696,7 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
     // cadastro for corrigido, e economiza a rodada inteira no resto.
     const agora = Date.now();
     const semFoto = IMG_SEM_FOTO.get(chaveCache);
+    if (semFoto && (agora - semFoto) >= 10 * 60 * 1000) IMG_SEM_FOTO.delete(chaveCache);   // b240
     if (semFoto && (agora - semFoto) < 10 * 60 * 1000) {
       return res.json({ ok: true, chave, imagem: null, cache: true, motivo: 'sem foto (lembrado por 10 min)' });
     }
@@ -722,6 +723,7 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
       const idDaNota = idNota;
       if (idDaNota) { id = idDaNota; }   // b233
       let via = null;   // b227 - por onde a foto veio (ou por que nao veio)
+      let blingRespondeu = false;   // b240 - alguma consulta voltou ok?
       // b229/b231 (review do Codex) - a comparacao tolera SO hifen, espaco e
       // caixa. A versao anterior apagava qualquer caractere nao alfanumerico
       // (`/`, `.`, `_`, acentos), entao `AB/CD` casaria com `ABCD`: dois SKUs
@@ -756,11 +758,13 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
       // zera e segue o caminho normal.
       if (idDaNota) {
         const rId = await bling.chamarBling(`/produtos/${idDaNota}`);
+        if (rId.ok) blingRespondeu = true;   // b240
         url = primeiraImagem((rId.ok && rId.data && rId.data.data) || null);
         if (url) via = 'id_do_item_da_nf';
         else id = null;   // nao resolveu: volta pro SKU
       }
       const rL = url ? { ok: false } : await bling.chamarBling(`/produtos?codigo=${encodeURIComponent(chave)}&limite=3`);
+      if (rL.ok) blingRespondeu = true;   // b240
       // b227 (review do Codex — e a causa mais provavel da foto errada que o
       // Diego viu): o `|| lista[0]` era um FALLBACK CEGO. Quando o Bling
       // ignora o filtro ?codigo= e devolve a pagina padrao, esse primeiro
@@ -798,13 +802,18 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
       // b239 - com o id da NF em maos, a busca ampla nao tem o que fazer:
       // ela existe pra achar o produto pelo SKU. Pular economiza a consulta
       // mais cara da rota (limite=100) em todo item que ja tem vinculo.
-      if (!id && !idDaNota) {
+      // b240 (review do Codex) - condicao pelo `id` ATUAL, nao pelo
+      // `idDaNota` original: quando o id nao resolve, o bloco acima o zera
+      // justamente pra cair no SKU — checar o original reintroduzia o beco
+      // sem saida que o fallback existe pra evitar.
+      if (!id) {
         // b229 (caso real do Diego): com limite=5 a busca por nome trouxe SO
         // acessorios — Kit2Roscas, TravaCentralBranca, TravaCentralPreta,
         // CUPULA-MENOR, 9W3KE27... — porque todos citam "Luminária FL-1011"
         // no titulo e vieram na frente. O produto principal ficava de fora
         // da lista e a foto nunca era achada. Com 100, ele cabe.
         const rP = await bling.chamarBling(`/produtos?pesquisa=${encodeURIComponent(chave)}&limite=100`);
+        if (rP.ok) blingRespondeu = true;   // b240
         const lista = (rP.ok && rP.data && rP.data.data) || [];
         const alvo = acharSku(lista, true);   // b232 - ultima via: exato, e formatado se for unico
         if (alvo) { url = url || primeiraImagem(alvo); id = alvo.id || null; via = 'busca_ampla_sku_exato'; }
@@ -826,7 +835,18 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
       // receber, direto do cache, a foto de outro produto — exatamente o
       // caso que o fallback existe pra evitar.
       if (url) IMG_CACHE.set(via === 'id_do_item_da_nf' ? chaveCache : chave, url);
-      else IMG_SEM_FOTO.set(chaveCache, Date.now());   // b239
+      // b240 (review do Codex) - so lembrar ausencia quando o Bling
+      // RESPONDEU. Se tudo falhou (429/timeout/rede), `url` tambem e null,
+      // e gravar aqui esconderia a foto por 10 min mesmo com o Bling
+      // recuperado no segundo seguinte — a mesma confusao "nao achei" x
+      // "nao consegui olhar" que ja custou caro na busca de NF.
+      else if (blingRespondeu) {
+        if (IMG_SEM_FOTO.size > 500) {   // b240 - nao crescer sem fim
+          const corte = Date.now() - 10 * 60 * 1000;
+          for (const [k, t] of IMG_SEM_FOTO) if (t < corte) IMG_SEM_FOTO.delete(k);
+        }
+        IMG_SEM_FOTO.set(chaveCache, Date.now());
+      }
       // b225 - dizer POR ONDE achou (ou por que nao achou), como a GOOD ja
       // fazia: "imagem: null" sozinho nao distinguia produto sem foto de
       // SKU nao encontrado.
