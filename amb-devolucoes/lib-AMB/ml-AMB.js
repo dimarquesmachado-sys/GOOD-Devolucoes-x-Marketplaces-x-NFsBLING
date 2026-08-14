@@ -188,11 +188,51 @@ async function testeDeVida() {
   return { ok: true, conta: eu.apelido, user_id: eu.user_id, site: eu.site };
 }
 
+// ═══════════════════════════════════════════════════════════════════
+// b264 - RENOVACAO PREVENTIVA (pedido do Diego, 14/08)
+//
+// O access token do ML dura 6h e ja se renova sozinho no primeiro 401. O
+// risco nao esta ai: o REFRESH token vale 6 MESES e e de uso unico — cada
+// renovacao gera outro. Se o modulo da AMB (que tem menos movimento que a
+// GOOD) passar esse tempo sem NENHUMA chamada, o refresh vence e so volta
+// reautorizando na mao pelo /amb/conectar, no navegador certo.
+//
+// Entao renovamos de tempos em tempos mesmo sem uso: o refresh fica sempre
+// fresco e o relogio dos 6 meses nunca chega perto do fim. Falha aqui nao
+// quebra nada — o 401 continua sendo a rede de seguranca.
+// ═══════════════════════════════════════════════════════════════════
+let ultimaPreventiva = 0;
+
+async function renovacaoPreventiva({ forcar = false } = {}) {
+  const DIAS = Number(process.env.AMB_ML_RENOVAR_DIAS || 7);
+  const intervalo = DIAS * 24 * 60 * 60 * 1000;
+  if (!forcar && ultimaPreventiva && (Date.now() - ultimaPreventiva) < intervalo) {
+    return { ok: true, pulou: true, proxima_em_dias: Math.max(0, Math.round((intervalo - (Date.now() - ultimaPreventiva)) / 86400000)) };
+  }
+  if (!REFRESH_TOKEN) return { ok: false, erro: 'sem refresh token - autorize pelo /amb/conectar' };
+  const okRenovou = await renovarToken();
+  if (okRenovou) ultimaPreventiva = Date.now();
+  return { ok: okRenovou, renovado: okRenovou, dias: DIAS };
+}
+
+/** Liga o timer. Uma renovacao no boot (apos 2 min, pra nao brigar com o
+ *  aquecimento dos indices) e depois a cada AMB_ML_RENOVAR_DIAS. */
+function ligarRenovacaoPreventiva() {
+  const DIAS = Number(process.env.AMB_ML_RENOVAR_DIAS || 7);
+  const intervalo = DIAS * 24 * 60 * 60 * 1000;
+  setTimeout(() => {
+    renovacaoPreventiva({ forcar: true }).catch(() => {});
+    setInterval(() => { renovacaoPreventiva({ forcar: true }).catch(() => {}); }, intervalo);
+  }, 2 * 60 * 1000).unref?.();
+  console.log(`[AMB/ML] renovacao preventiva ligada: a cada ${DIAS} dia(s)`);
+}
+
 module.exports = {
   chamarML,
   urlAutorizacao,
   trocarCodePorToken,
   renovarToken,
+  renovacaoPreventiva, ligarRenovacaoPreventiva,   // b264
   quemSouEu,
   testeDeVida,
   userId: () => USER_ID,
