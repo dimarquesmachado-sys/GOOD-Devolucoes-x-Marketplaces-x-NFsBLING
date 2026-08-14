@@ -1425,7 +1425,7 @@
               ${ehSerie2(d) && !d.nf_devolucao_id_bling
                 ? `<a class="btn" style="background:#00695c;color:#fff;" href="https://www.mercadolivre.com.br/emissor/vendas/${d.order_id || ''}/faturas" target="_blank" title="Venda FULL (s\u00e9rie 2): a NF de devolu\u00e7\u00e3o \u00e9 emitida pelo PR\u00d3PRIO Mercado Livre. N\u00c3O gere outra no Bling (duplicidade fiscal). Clique pra ver/baixar a NF no emissor do ML.">🏬 FULL</a><button class="btn" style="background:#00838f;" onclick="fullVincular('${d.id}', this)" title="Procura no Bling a NF de ENTRADA s\u00e9rie 2 que o ML emitiu pra esta devolu\u00e7\u00e3o e vincula ao card">🔗 Achar devolu\u00e7\u00e3o no Bling</button>`
                 : !d.nf_devolucao_id_bling && (d.nf_id_bling || d.nf_numero)
-                ? `<button class="btn" style="background:#1565c0;" onclick="abrirModalGerarDevolucao('${d.id}', '${d.nf_id_bling || ''}', '${escapeHtml(d.nf_numero || '')}', '${escapeHtml(d.produto_titulo || '')}', '${String(d.nf_chave || '').replace(/[^0-9]/g, '')}', '${escapeHtml(d.cliente || d.cliente_ml || '')}', '${escapeHtml(d.produto_sku || '')}', '${String(d.nf_data || d.criado_em || '').slice(0,10)}')" title="Abre as op\u00e7\u00f5es: criar RASCUNHO (salvar sem emitir, pra editar no Bling) ou gerar + emitir direto">🧾 Gerar NF (rascunho ou emitir)</button>`
+                ? `<button class="btn" style="background:#1565c0;" onclick="abrirModalGerarDevolucao('${d.id}', '${d.nf_id_bling || ''}', '${escapeHtml(d.nf_numero || '')}', '${escapeHtml(d.produto_titulo || '')}', '${String(d.nf_chave || '').replace(/[^0-9]/g, '')}', '${escapeHtml(d.cliente || d.cliente_ml || '')}', '${escapeHtml(d.produto_sku || '')}', '${String(d.nf_data || d.criado_em || '').slice(0,10)}', '${escapeHtml(d.status || d.tipo || '')}')" title="Abre as op\u00e7\u00f5es: criar RASCUNHO (salvar sem emitir, pra editar no Bling) ou gerar + emitir direto">🧾 Gerar NF (rascunho ou emitir)</button>`
                 : d.nf_devolucao_id_bling
                   ? `<a class="btn btn-verde" href="https://www.bling.com.br/notas.entrada.php#edit/${d.nf_devolucao_id_bling}" target="_blank" title="NF de devolu\u00e7\u00e3o j\u00e1 gerada">📝 Devolu\u00e7\u00e3o: ${d.nf_devolucao_numero || 'ver'}</a>${ehSerie2(d) ? `<button class="btn" style="background:#4527a0;" onclick="fullLancarEstoque('${d.id}', this)" title="Lan\u00e7a o ESTOQUE de entrada desta devolu\u00e7\u00e3o no dep\u00f3sito GERAL (API oficial). S\u00f3 clique se ainda N\u00c3O lan\u00e7ou e o produto est\u00e1 ok pra revenda.">📦 Lan\u00e7ar estoque (Geral)</button>` : ''}`
                   : ''
@@ -1486,7 +1486,7 @@
               ${ehSerie2(d) && !d.nf_devolucao_id_bling
                 ? `<a class="btn" style="background:#00695c;color:#fff;" href="https://www.mercadolivre.com.br/emissor/vendas/${d.order_id || ''}/faturas" target="_blank" title="Venda FULL (s\u00e9rie 2): a NF de devolu\u00e7\u00e3o \u00e9 emitida pelo PR\u00d3PRIO Mercado Livre. N\u00c3O gere outra no Bling (duplicidade fiscal). Clique pra ver/baixar a NF no emissor do ML.">🏬 FULL</a><button class="btn" style="background:#00838f;" onclick="fullVincular('${d.id}', this)" title="Procura no Bling a NF de ENTRADA s\u00e9rie 2 que o ML emitiu pra esta devolu\u00e7\u00e3o e vincula ao card">🔗 Achar devolu\u00e7\u00e3o no Bling</button>`
                 : !d.nf_devolucao_id_bling && (d.nf_id_bling || d.nf_numero)
-                ? `<button class="btn" style="background:#1565c0;" onclick="abrirModalGerarDevolucao('${d.id}', '${d.nf_id_bling || ''}', '${escapeHtml(d.nf_numero || '')}', '${escapeHtml(d.produto_titulo || '')}', '${String(d.nf_chave || '').replace(/[^0-9]/g, '')}', '${escapeHtml(d.cliente || d.cliente_ml || '')}', '${escapeHtml(d.produto_sku || '')}', '${String(d.nf_data || d.criado_em || '').slice(0,10)}')" title="Abre as op\u00e7\u00f5es: criar RASCUNHO (salvar sem emitir, pra editar no Bling) ou gerar + emitir direto">🧾 Gerar NF (rascunho ou emitir)</button>`
+                ? `<button class="btn" style="background:#1565c0;" onclick="abrirModalGerarDevolucao('${d.id}', '${d.nf_id_bling || ''}', '${escapeHtml(d.nf_numero || '')}', '${escapeHtml(d.produto_titulo || '')}', '${String(d.nf_chave || '').replace(/[^0-9]/g, '')}', '${escapeHtml(d.cliente || d.cliente_ml || '')}', '${escapeHtml(d.produto_sku || '')}', '${String(d.nf_data || d.criado_em || '').slice(0,10)}', '${escapeHtml(d.status || d.tipo || '')}')" title="Abre as op\u00e7\u00f5es: criar RASCUNHO (salvar sem emitir, pra editar no Bling) ou gerar + emitir direto">🧾 Gerar NF (rascunho ou emitir)</button>`
                 : d.nf_devolucao_id_bling
                   ? `<a class="btn btn-verde" href="https://www.bling.com.br/notas.entrada.php#edit/${d.nf_devolucao_id_bling}" target="_blank" title="NF de devolu\u00e7\u00e3o j\u00e1 gerada. Produto com problema: NF importada do ML n\u00e3o lan\u00e7a estoque (n\u00e3o fa\u00e7a nada); NF emitida aqui lan\u00e7ou estoque (cancele o lan\u00e7amento no Bling).">📝 Devolu\u00e7\u00e3o: ${d.nf_devolucao_numero || 'ver'}</a>`
                   : ''
@@ -1748,8 +1748,13 @@
       } catch (e) { return null; }   // duvida nao esconde o botao
     }
 
-    function abrirModalGerarDevolucao(devolucaoId, idNFOriginalBling, nfNumero, produtoTitulo, chaveNF, cliente, skuItem, dataVenda) {
+    function abrirModalGerarDevolucao(devolucaoId, idNFOriginalBling, nfNumero, produtoTitulo, chaveNF, cliente, skuItem, dataVenda, statusTriagem) {
       chaveNF = chaveNF || '';
+      // b257 (pedido do Diego) - o deposito vem PRE-SELECIONADO pelo que a
+      // triagem constatou: produto com problema vai pra DEFEITOS, o resto
+      // pro Geral. Continua trocavel — e sugestao, nao trava.
+      var ehProblema = /problema|defeito|avariad|quebrad|ruim/i.test(String(statusTriagem || ''));
+      var depSugerido = ehProblema ? '14888947655' : '4956031259';
       const conteudo = document.getElementById('modalGerarConteudo');
       conteudo.innerHTML = `
         <h3 style="font-size:18px; margin-bottom:12px;">🧾 Gerar NF Devolução</h3>
@@ -1763,10 +1768,13 @@
         <div style="background:#ede7f6; border:1px solid #b39ddb; padding:12px; border-radius:8px; font-size:13px; margin-bottom:16px; display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
           <strong>📦 Depósito do estoque:</strong>
           <select id="depModal" style="padding:6px 10px; border-radius:6px; border:1px solid #b39ddb; font-size:13px;">
-            <option value="4956031259" selected>Geral</option>
+            <option value="14888947655"${ehProblema ? ' selected' : ''}>DEFEITOS API</option>
+            <option value="4956031259"${ehProblema ? '' : ' selected'}>Geral</option>
             <option value="">📦 carregando depósitos...</option>
           </select>
-          <span style="font-size:12px; color:#5e35b1;">(produto com defeito? use DEFEITOS API)</span>
+          <span style="font-size:12px; color:#5e35b1;">${ehProblema
+            ? '⚠️ a triagem marcou PROBLEMA — sugeri DEFEITOS API'
+            : '(produto com defeito? use DEFEITOS API)'}</span>
         </div>
         <div style="background:#fff8e1; border:1px solid #ffe082; padding:12px; border-radius:8px; font-size:12.5px; color:#795548; margin-bottom:18px;">
           🧪 <strong>Criar rascunho</strong>: cria a NF no Bling mas NÃO emite — você <strong>edita o que precisar</strong> lá no Bling e emite por lá.<br>
@@ -1806,6 +1814,14 @@
           + (nf.cliente ? '<br>Cliente: ' + escapeHtml(nf.cliente) : '')
           + '<br><span style="font-size:12.5px;color:#5a7a5e;">Emitida pelo Full do Mercado Livre ou lançada por outro admin. '
           + 'Gerar outra criaria <b>duas notas</b> para a mesma volta — por isso o botão saiu.</span>'
+          // b257 - a nota existir NAO significa que a peca chegou aqui: no
+          // Full, o ML pode revisar no CD dele e RECOLOCAR A VENDA la (a NF
+          // de devolucao e emitida do mesmo jeito, e no Bling ela e so
+          // espelho, sem vinculo de estoque com a matriz).
+          + '<div style="margin-top:9px;background:#FFF8E1;border:1px solid #ffe082;border-radius:8px;'
+          + 'padding:9px 11px;font-size:12.5px;color:#7a5c00;"><b>⚠️ Só lance o estoque se a unidade estiver aqui.</b>'
+          + ' No Full, o Mercado Livre às vezes revisa no CD dele e recoloca o produto à venda por lá —'
+          + ' a nota é emitida do mesmo jeito, mas a peça nunca chega na matriz.</div>'
           + (nf.id ? '<br><a href="https://www.bling.com.br/notas.entrada.php#edit/' + encodeURIComponent(nf.id) + '" target="_blank" '
               + 'style="display:inline-block;margin-top:8px;background:#2e7d32;color:#fff;text-decoration:none;'
               + 'border-radius:8px;padding:7px 13px;font-size:12.5px;font-weight:700;">🔗 Abrir a NF no Bling</a>' : '')
