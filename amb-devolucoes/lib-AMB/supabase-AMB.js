@@ -258,12 +258,34 @@ async function corrigirSkusAntigos({ aplicar = false } = {}) {
 
     let trocados = 0;
     const falhas = [];
+    let semColunaOrigem = false;
     for (const reg of registros) {
-      const u = await db.from(T.devolucoes).update({ produto_sku: reg.para }).eq('id', reg.id);
+      // b262 - GUARDA O CÓDIGO ANTERIOR. A correcao reescreve um registro ja
+      // gravado e, ate aqui, era irreversivel pela tela: o codigo antigo
+      // sumia. Agora ele fica em `produto_sku_origem` — da pra auditar e
+      // desfazer. Tolerante: se a coluna ainda nao existir no banco, grava
+      // so o SKU (o conserto principal nao pode depender do ALTER TABLE).
+      let u = semColunaOrigem
+        ? await db.from(T.devolucoes).update({ produto_sku: reg.para }).eq('id', reg.id)
+        : await db.from(T.devolucoes)
+            .update({ produto_sku: reg.para, produto_sku_origem: reg.de })
+            .eq('id', reg.id);
+      if (u.error && !semColunaOrigem && /produto_sku_origem/i.test(u.error.message || '')) {
+        semColunaOrigem = true;
+        u = await db.from(T.devolucoes).update({ produto_sku: reg.para }).eq('id', reg.id);
+      }
       if (u.error) falhas.push({ id: reg.id, erro: u.error.message });
       else trocados++;
     }
-    return { ok: true, previa: false, total: registros.length, trocados, falhas: falhas.slice(0, 10) };
+    return {
+      ok: true, previa: false, total: registros.length, trocados,
+      falhas: falhas.slice(0, 10),
+      // b262 - avisa se o codigo antigo NAO pode ser guardado
+      origem_guardada: !semColunaOrigem,
+      aviso: semColunaOrigem
+        ? 'a coluna produto_sku_origem nao existe: corrigi os registros, mas o codigo anterior nao ficou guardado'
+        : null,
+    };
   } catch (e) { return { ok: false, erro: e.message }; }
 }
 
