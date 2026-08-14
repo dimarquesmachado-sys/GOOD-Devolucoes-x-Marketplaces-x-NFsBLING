@@ -1347,6 +1347,20 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
     res.status(r.ok ? 200 : 400).json(r);
   });
 
+  // b259 - previa (GET) e aplicacao (POST) da correcao retroativa. So admin:
+  // reescreve o SKU de registros ja gravados.
+  router.get('/api/admin/sku-depara/retroativo', auth.requerLogin, async (req, res) => {
+    const s = auth.validarSessao(auth.tokenDaRequisicao(req), 'admin');
+    if (!s) return res.status(403).json({ ok: false, erro: 'so admin' });
+    res.json(await db.corrigirSkusAntigos({ aplicar: false }));
+  });
+
+  router.post('/api/admin/sku-depara/retroativo', auth.requerLogin, async (req, res) => {
+    const s = auth.validarSessao(auth.tokenDaRequisicao(req), 'admin');
+    if (!s) return res.status(403).json({ ok: false, erro: 'so admin' });
+    res.json(await db.corrigirSkusAntigos({ aplicar: true }));
+  });
+
   router.delete('/api/admin/sku-depara/:sku', auth.requerLogin, async (req, res) => {
     const s = auth.validarSessao(auth.tokenDaRequisicao(req), 'admin');
     if (!s) return res.status(403).json({ ok: false, erro: 'so o admin remove' });

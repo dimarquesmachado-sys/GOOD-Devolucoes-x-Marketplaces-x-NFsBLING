@@ -225,6 +225,48 @@ async function salvarDepara({ sku_antigo, sku_atual, produto_id, quem }) {
   } catch (e) { return { ok: false, erro: e.message }; }
 }
 
+// b259 - CORRECAO RETROATIVA: registros gravados ANTES do de-para existir
+// ficaram com o codigo aposentado. Sem isto, o historico do produto segue
+// partido em dois SKUs e o alerta de canibalizacao nao junta as unidades.
+// `aplicar: false` = so a PREVIA (nao escreve nada). Mexer em registro
+// gravado sem mostrar o que muda e pedir problema.
+async function corrigirSkusAntigos({ aplicar = false } = {}) {
+  const db = conectar();
+  if (!db) return { ok: false, erro: erroInicial };
+  const dp = await listarDepara();
+  if (!dp.ok) return { ok: false, erro: dp.erro || 'nao consegui ler o de-para' };
+  const ligacoes = (dp.lista || []).filter(x => x && x.sku_antigo && x.sku_atual);
+  if (!ligacoes.length) return { ok: true, ligacoes: 0, registros: [], total: 0 };
+
+  const antigos = ligacoes.map(x => String(x.sku_antigo));
+  try {
+    const r = await db.from(T.devolucoes)
+      .select('id, produto_sku, produto_titulo, criado_em, tipo, status')
+      .in('produto_sku', antigos)
+      .limit(500);
+    if (r.error) return { ok: false, erro: r.error.message };
+    const alvo = r.data || [];
+    const paraQual = {};
+    for (const l of ligacoes) paraQual[String(l.sku_antigo).toUpperCase()] = l.sku_atual;
+    const registros = alvo.map(x => ({
+      id: x.id, de: x.produto_sku,
+      para: paraQual[String(x.produto_sku || '').toUpperCase()] || null,
+      titulo: x.produto_titulo || null, criado_em: x.criado_em || null,
+    })).filter(x => x.para);
+
+    if (!aplicar) return { ok: true, previa: true, total: registros.length, registros: registros.slice(0, 50), ligacoes: ligacoes.length };
+
+    let trocados = 0;
+    const falhas = [];
+    for (const reg of registros) {
+      const u = await db.from(T.devolucoes).update({ produto_sku: reg.para }).eq('id', reg.id);
+      if (u.error) falhas.push({ id: reg.id, erro: u.error.message });
+      else trocados++;
+    }
+    return { ok: true, previa: false, total: registros.length, trocados, falhas: falhas.slice(0, 10) };
+  } catch (e) { return { ok: false, erro: e.message }; }
+}
+
 async function listarDepara() {
   const db = conectar();
   if (!db) return { ok: false, erro: erroInicial, lista: [] };
@@ -516,6 +558,7 @@ module.exports = {
   conectar, testeDeVida,
   jaTriado, registrarTriagem, listarRecentes, recadoDe, recadoDeQualquer,   // b212
   resolverSku, salvarDepara, listarDepara, apagarDepara,   // b245 - de-para de SKU
+  corrigirSkusAntigos,   // b259
   editarRecado,   // b219
   listarFila, atualizarTriagem, obterTriagem,
   criarRecado, listarRecados, marcarCiente, resolverRecado,

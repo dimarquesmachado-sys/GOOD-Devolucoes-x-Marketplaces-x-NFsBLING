@@ -792,7 +792,56 @@
         + '</div><div id="dpMsg" style="font-size:12.5px;margin-top:7px;"></div>'
         + (linhas ? '<div style="margin-top:11px;">' + linhas + '</div>'
                   : '<div style="margin-top:11px;font-size:12.5px;color:#888;">Nenhuma ligação cadastrada ainda.</div>')
+        // b259 - registros gravados ANTES da ligacao ficaram com o codigo
+        // aposentado; aqui ele ve QUANTOS sao e decide corrigir.
+        + (lista.length ? '<div style="margin-top:12px;padding-top:10px;border-top:1px dashed #d6cff0;">'
+            + '<button onclick="previaRetroativa()" style="background:#fff;color:#3C3489;border:1px solid #b9aee0;'
+            + 'border-radius:8px;padding:7px 13px;font-size:12.5px;font-weight:700;cursor:pointer;">'
+            + '🕓 Registros antigos com o código velho</button>'
+            + '<div id="dpRetro" style="margin-top:9px;"></div></div>' : '')
         + '</div>';
+    }
+
+    // b259 - PREVIA primeiro: mostra quantos registros mudariam e quais,
+    // antes de reescrever qualquer coisa.
+    async function previaRetroativa() {
+      var cx = document.getElementById('dpRetro');
+      if (!cx) return;
+      cx.innerHTML = '<span style="font-size:12.5px;color:#888;">conferindo…</span>';
+      try {
+        var r = await fetch('/api/admin/sku-depara/retroativo', { credentials: 'same-origin' });
+        var d = await r.json();
+        if (!d || !d.ok) { cx.innerHTML = '<span style="font-size:12.5px;color:#c62828;">' + escapeHtml((d && d.erro) || 'não consegui conferir') + '</span>'; return; }
+        if (!d.total) { cx.innerHTML = '<span style="font-size:12.5px;color:#2e7d32;">✅ Nenhum registro antigo com código velho.</span>'; return; }
+        var amostra = (d.registros || []).slice(0, 8).map(function (x) {
+          return '<div style="font-size:12px;color:#555;padding:2px 0;">#' + escapeHtml(String(x.id)) + ' · '
+            + escapeHtml(x.de) + ' → <b>' + escapeHtml(x.para) + '</b></div>';
+        }).join('');
+        cx.innerHTML = '<div style="background:#FFF8E1;border:1px solid #ffe082;border-radius:8px;padding:10px 12px;">'
+          + '<div style="font-size:13px;color:#7a5c00;font-weight:700;margin-bottom:6px;">'
+          + d.total + ' registro(s) ainda com o código antigo</div>' + amostra
+          + (d.total > 8 ? '<div style="font-size:11.5px;color:#8a7a4a;margin-top:4px;">…e mais ' + (d.total - 8) + '</div>' : '')
+          + '<button onclick="aplicarRetroativa()" style="margin-top:9px;background:#3C3489;color:#fff;border:none;'
+          + 'border-radius:8px;padding:8px 15px;font-size:12.5px;font-weight:700;cursor:pointer;">Corrigir os ' + d.total + '</button>'
+          + '</div>';
+      } catch (e) { cx.innerHTML = '<span style="font-size:12.5px;color:#c62828;">erro de conexão.</span>'; }
+    }
+
+    async function aplicarRetroativa() {
+      var cx = document.getElementById('dpRetro');
+      if (!cx || window._retroRodando) return;
+      window._retroRodando = true;
+      cx.innerHTML = '<span style="font-size:12.5px;color:#555;">corrigindo…</span>';
+      try {
+        var r = await fetch('/api/admin/sku-depara/retroativo', { method: 'POST', credentials: 'same-origin' });
+        var d = await r.json();
+        cx.innerHTML = (d && d.ok)
+          ? '<span style="font-size:12.5px;color:#2e7d32;">✅ ' + (d.trocados || 0) + ' registro(s) corrigido(s)'
+            + ((d.falhas && d.falhas.length) ? ' · ' + d.falhas.length + ' falharam' : '') + '</span>'
+          : '<span style="font-size:12.5px;color:#c62828;">' + escapeHtml((d && d.erro) || 'não consegui corrigir') + '</span>';
+      } catch (e) {
+        cx.innerHTML = '<span style="font-size:12.5px;color:#c62828;">erro de conexão.</span>';
+      } finally { window._retroRodando = false; }
     }
 
     async function salvarDepara() {
