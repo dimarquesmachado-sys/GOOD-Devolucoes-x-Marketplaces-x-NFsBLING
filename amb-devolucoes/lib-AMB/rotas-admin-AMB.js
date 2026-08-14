@@ -744,10 +744,38 @@ app.get('/api/debug/nf-ml/:orderId', async (req, res) => {
     'number', 'invoice_number', 'invoice_id', 'id', 'serie', 'series', 'invoice_series',
     'key', 'access_key', 'authorization_key', 'invoice_key', 'nfe_key',
     'status', 'state', 'date', 'date_created', 'invoice_date', 'creation_date', 'total_amount'];
+  // b252 - o endpoint certo apareceu: /users/{uid}/invoices/orders/{oid}
+  // responde 200 com a nota (invoice_number, invoice_series, status). Falta
+  // saber se e a de VENDA ou a de DEVOLUCAO — e a distincao que decide se o
+  // app pode parar de oferecer "gerar NF". Os campos que provavelmente
+  // carregam isso (`attributes`, `fiscal_data`, `transaction_status`) nao
+  // estavam no resumo. Entram agora, SEM `issuer`/`recipient`/`payments`,
+  // que trazem CPF, nome e endereco.
+  const SENSIVEIS = new Set(['issuer', 'recipient', 'payments', 'buyer', 'seller',
+    'custom_issuer_address', 'billing_info', 'shipping', 'receiver_address']);
+  const soEscalares = (o, prof) => {
+    if (!o || typeof o !== 'object' || prof > 2) return null;
+    const r = {};
+    for (const [k, v] of Object.entries(o)) {
+      if (SENSIVEIS.has(k)) continue;
+      if (v == null) continue;
+      if (typeof v === 'object') { const dentro = soEscalares(v, prof + 1); if (dentro) r[k] = dentro; }
+      else if (String(v).length <= 60) r[k] = v;
+    }
+    return Object.keys(r).length ? r : null;
+  };
   const resumirDoc = (d) => {
     if (!d || typeof d !== 'object') return null;
     const out = {};
     for (const k of CAMPOS_NF) if (d[k] !== undefined && d[k] !== null) out[k] = d[k];
+    // b252 - os blocos que podem dizer o TIPO da nota, ja peneirados
+    for (const k of ['attributes', 'fiscal_data', 'transaction_status', 'items_quantity', 'pack_id', 'amount']) {
+      if (d[k] === undefined || d[k] === null) continue;
+      out[k] = (typeof d[k] === 'object') ? soEscalares(d[k], 0) : d[k];
+    }
+    if (Array.isArray(d.items) && d.items.length) {
+      out.itens = d.items.slice(0, 5).map(it => soEscalares(it, 1));
+    }
     return Object.keys(out).length ? out : { campos: Object.keys(d).slice(0, 20) };
   };
   const acharDocs = (d) => {
