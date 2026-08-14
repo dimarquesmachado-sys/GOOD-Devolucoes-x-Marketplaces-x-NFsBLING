@@ -82,6 +82,10 @@ const supabase = {
     espreitaNotas:  'espreita_notas_amb',
     recados:        'recados_amb',
     pecasRetiradas: 'pecas_retiradas_amb',
+    // b245 - de-para de SKU: anuncio Full do ML nao deixa trocar o SKU
+    // (tem vendas), e o produto foi renomeado no Bling. Esta tabela e a
+    // memoria que o Bling nao guarda: SKU da venda -> produto atual.
+    skuDepara:      'sku_depara_amb',
   },
 };
 

@@ -174,6 +174,78 @@ async function recadoDeQualquer(identificadores) {
   }
 }
 
+// ═══════════════════════════════════════════════════════════════════
+// b245 - DE-PARA DE SKU (pedido do Diego, 14/08)
+//
+// O anuncio Full do ML nao deixa trocar o SKU depois que tem vendas, e o
+// produto foi RENOMEADO no Bling: a venda carrega `FL-1011-PRETO`, o
+// cadastro hoje e `3933398010054`. O Bling nao guarda esse historico (a NF
+// so tem texto, sem id do produto — conferido no raio-x), entao a memoria
+// fica aqui: quando o sistema esbarrar no SKU antigo, ele passa a valer
+// como o atual — inclusive pra NF de devolucao, onde o SKU que comanda e
+// o NOVO.
+// ═══════════════════════════════════════════════════════════════════
+const DEPARA_CACHE = new Map();   // sku_antigo -> { sku_atual, produto_id, ts }
+
+async function resolverSku(skuBruto) {
+  const sku = String(skuBruto || '').trim();
+  if (!sku) return { sku, trocado: false };
+  const emCache = DEPARA_CACHE.get(sku.toUpperCase());
+  if (emCache && (Date.now() - emCache.ts) < 30 * 60 * 1000) {
+    return { sku: emCache.sku_atual || sku, produto_id: emCache.produto_id || null, trocado: !!emCache.sku_atual, cache: true };
+  }
+  const db = conectar();
+  if (!db) return { sku, trocado: false };
+  try {
+    const r = await db.from(T.skuDepara).select('*').eq('sku_antigo', sku).limit(1);
+    if (r.error) return { sku, trocado: false, erro: r.error.message };
+    const linha = (r.data || [])[0] || null;
+    if (!linha) { DEPARA_CACHE.set(sku.toUpperCase(), { sku_atual: null, produto_id: null, ts: Date.now() }); return { sku, trocado: false }; }
+    DEPARA_CACHE.set(sku.toUpperCase(), { sku_atual: linha.sku_atual, produto_id: linha.produto_id, ts: Date.now() });
+    return { sku: linha.sku_atual || sku, produto_id: linha.produto_id || null, trocado: !!linha.sku_atual, de: sku };
+  } catch (e) { return { sku, trocado: false, erro: e.message }; }
+}
+
+async function salvarDepara({ sku_antigo, sku_atual, produto_id, quem }) {
+  const db = conectar();
+  if (!db) return { ok: false, erro: erroInicial };
+  const antigo = String(sku_antigo || '').trim();
+  const atual = String(sku_atual || '').trim();
+  if (!antigo || !atual) return { ok: false, erro: 'informe o SKU antigo e o atual' };
+  if (antigo.toUpperCase() === atual.toUpperCase()) return { ok: false, erro: 'os dois SKUs sao iguais' };
+  try {
+    const r = await db.from(T.skuDepara).upsert({
+      sku_antigo: antigo, sku_atual: atual,
+      produto_id: produto_id || null,
+      criado_por: quem || null, criado_em: new Date().toISOString(),
+    }, { onConflict: 'sku_antigo' }).select().limit(1);
+    if (r.error) return { ok: false, erro: r.error.message };
+    DEPARA_CACHE.delete(antigo.toUpperCase());
+    return { ok: true, linha: (r.data || [])[0] || null };
+  } catch (e) { return { ok: false, erro: e.message }; }
+}
+
+async function listarDepara() {
+  const db = conectar();
+  if (!db) return { ok: false, erro: erroInicial, lista: [] };
+  try {
+    const r = await db.from(T.skuDepara).select('*').order('criado_em', { ascending: false }).limit(200);
+    if (r.error) return { ok: false, erro: r.error.message, lista: [] };
+    return { ok: true, lista: r.data || [] };
+  } catch (e) { return { ok: false, erro: e.message, lista: [] }; }
+}
+
+async function apagarDepara(skuAntigo) {
+  const db = conectar();
+  if (!db) return { ok: false, erro: erroInicial };
+  try {
+    const r = await db.from(T.skuDepara).delete().eq('sku_antigo', String(skuAntigo || '').trim());
+    if (r.error) return { ok: false, erro: r.error.message };
+    DEPARA_CACHE.delete(String(skuAntigo || '').trim().toUpperCase());
+    return { ok: true };
+  } catch (e) { return { ok: false, erro: e.message }; }
+}
+
 /** Recado preso a um identificador (pedido, NF, chave ou rastreio). */
 async function recadoDe(identificador) {
   const db = conectar();
@@ -443,6 +515,7 @@ async function atualizarTriagem(id, campos) {
 module.exports = {
   conectar, testeDeVida,
   jaTriado, registrarTriagem, listarRecentes, recadoDe, recadoDeQualquer,   // b212
+  resolverSku, salvarDepara, listarDepara, apagarDepara,   // b245 - de-para de SKU
   editarRecado,   // b219
   listarFila, atualizarTriagem, obterTriagem,
   criarRecado, listarRecados, marcarCiente, resolverRecado,

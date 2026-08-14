@@ -689,7 +689,18 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
     // nao pode ser cacheada pelo navegador.
     res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
     res.set('Pragma', 'no-cache');
-    const chave = String(req.params.chave || '').trim();
+    let chave = String(req.params.chave || '').trim();
+    // b245 - DE-PARA: o SKU da venda pode ter sido aposentado (anuncio Full
+    // do ML nao deixa trocar o codigo depois de ter vendas, e o produto foi
+    // renomeado no Bling). Se houver ligacao cadastrada, ela vale a partir
+    // daqui — a busca inteira passa a ser pelo SKU ATUAL.
+    let deparaDe = null;
+    if (db && typeof db.resolverSku === 'function') {
+      try {
+        const dp = await db.resolverSku(chave);
+        if (dp && dp.trocado && dp.sku) { deparaDe = chave; chave = dp.sku; }
+      } catch (e) { /* de-para e ajuda, nunca trava a foto */ }
+    }
     if (!chave) return res.status(400).json({ ok: false, erro: 'informe o sku ou o id' });
     // b235 (review do Codex) - com o id da NF, o CACHE tambem e por id.
     // Indexar so pelo SKU fazia a segunda devolucao com o mesmo codigo
@@ -882,6 +893,7 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
       // SKU nao encontrado.
       res.json({
         ok: true, chave, imagem: url, via,
+        depara_de: deparaDe,   // b245 - avisa que o SKU pedido foi trocado
         codigos_parecidos: nomeCandidatos,  // b228
         motivo: url ? null
           : (id ? 'produto encontrado, mas sem foto no cadastro'
@@ -1294,6 +1306,30 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
   });
 
   /** Recados: mesma coisa, so o nome muda (singular na GOOD). */
+  // ═══ b245 - DE-PARA DE SKU (so admin cadastra; qualquer login consulta) ═══
+  router.get('/api/admin/sku-depara', auth.requerLogin, async (req, res) => {
+    res.json(await db.listarDepara());
+  });
+
+  router.post('/api/admin/sku-depara', auth.requerLogin, async (req, res) => {
+    const s = auth.validarSessao(auth.tokenDaRequisicao(req), 'admin');
+    if (!s) return res.status(403).json({ ok: false, erro: 'so o admin liga SKUs' });
+    const b = corpo(req);
+    const r = await db.salvarDepara({
+      sku_antigo: b.sku_antigo || b.antigo,
+      sku_atual: b.sku_atual || b.atual,
+      produto_id: b.produto_id || null,
+      quem: s.usuario || null,
+    });
+    res.status(r.ok ? 200 : 400).json(r);
+  });
+
+  router.delete('/api/admin/sku-depara/:sku', auth.requerLogin, async (req, res) => {
+    const s = auth.validarSessao(auth.tokenDaRequisicao(req), 'admin');
+    if (!s) return res.status(403).json({ ok: false, erro: 'so o admin remove' });
+    res.json(await db.apagarDepara(req.params.sku));
+  });
+
   router.get('/api/admin/recados', auth.requerLogin, async (req, res) => {
     res.json(await db.listarRecados({ resolvidos: req.query.resolvidos === '1' }));
   });
