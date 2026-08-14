@@ -721,13 +721,22 @@ app.get('/api/debug/nf-ml/:orderId', async (req, res) => {
     if (!uid) erroUid = { status: me.status || null, motivo: 'nao consegui o id do vendedor' };
   } catch (e) { erroUid = { motivo: String(e.message || e).slice(0, 200) }; }
 
+  // b253 - o dado do Diego fechou a primeira metade: a tela do ML mostra
+  // DUAS notas na venda 2000017624047456 ("Nota de devolucao no 5364" e
+  // "NF-e de venda no 5161"), e /users/{uid}/invoices/orders/{oid} devolveu
+  // SO A 5161. Ou seja, aquele caminho entrega apenas a nota de VENDA.
+  // Estes candidatos procuram a de DEVOLUCAO — e o `?bruto=1` mostra a
+  // resposta inteira (sem os blocos com dado pessoal) quando for preciso
+  // enxergar um campo que o resumo nao previu.
   const alvos = [
-    `/orders/${oid}/billing_info`,
-    `/orders/${oid}/fiscal_documents`,
     uid ? `/users/${uid}/invoices/orders/${oid}` : null,
-    pack ? `/packs/${pack}/fiscal_documents` : null,
+    uid ? `/users/${uid}/invoices/orders/${oid}?document_type=return` : null,
+    uid ? `/users/${uid}/invoices/orders/${oid}/returns` : null,
+    uid ? `/users/${uid}/invoices/returns/orders/${oid}` : null,
+    uid ? `/users/${uid}/invoices?order_id=${oid}` : null,
+    pack ? (uid ? `/users/${uid}/invoices/packs/${pack}` : null) : null,
+    `/orders/${oid}/returns`,
     ship ? `/shipments/${ship}/invoice_data?siteId=MLB` : null,
-    ship ? `/shipments/${ship}/billing_info` : null,
   ].filter(Boolean);
 
   // b248 (review do Codex) - a sonda existe pra responder UMA pergunta:
@@ -813,6 +822,10 @@ app.get('/api/debug/nf-ml/:orderId', async (req, res) => {
       // b249 - resumir TODOS (o resumo ja e pequeno); cortar em 10 podia
       // deixar a NF de devolucao de fora quando ha muitos documentos
       const achados = r.ok ? acharDocs(d) : [];
+      // b253 - com ?bruto=1, a resposta inteira peneirada (sem issuer,
+      // recipient, payments): serve pra achar o campo que marca "devolucao"
+      // quando o resumo nao o previu.
+      const bruto = (String(req.query.bruto || '') === '1' && r.ok) ? soEscalares(d, 0) : null;
       const docs = achados.map(resumirDoc).filter(Boolean);
       passos.push({
         caminho,
@@ -821,6 +834,7 @@ app.get('/api/debug/nf-ml/:orderId', async (req, res) => {
         campos: d && typeof d === 'object' && !Array.isArray(d) ? Object.keys(d).slice(0, 25) : null,
         qtd_documentos: r.ok ? docs.length : null,
         qtd_bruta: r.ok ? achados.length : null,   // b249 - confere se algum resumo caiu
+        bruto,   // b253 - so quando ?bruto=1
         documentos: r.ok ? docs : null,
         // b248 - o corpo do ERRO distingue "endpoint nao existe" de "existe,
         // mas falta permissao/parametro" — mas so a mensagem, sem dado nenhum
