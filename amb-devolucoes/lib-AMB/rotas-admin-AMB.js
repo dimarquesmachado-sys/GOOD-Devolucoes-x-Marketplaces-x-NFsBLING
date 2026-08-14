@@ -693,6 +693,60 @@ app.get('/api/debug/itens-nf/:idNF', async (req, res) => {
   }
 });
 
+// b247 - SONDA: EXISTE NF DE DEVOLUCAO NO ML? (pedido do Diego, 14/08)
+//
+// Regra de negocio: devolucao Full do ML (serie 2) JA TEM a NF de devolucao
+// emitida pelo proprio ML — o app nao deve gerar outra, senao ficam DUAS
+// notas para a mesma volta. Mas o Full pode falhar e nao gerar; entao antes
+// de decidir e preciso CONSTATAR (principio que ele prega: nao inferir pelo
+// status, constatar pelo dado).
+//
+// Hoje ele confere a mao em vendedores.mercadolivre.com.br/emissor/vendas/
+// {order_id}/faturas. Esta sonda testa os endpoints candidatos da API e
+// mostra qual responde e o que traz — em vez de eu adivinhar o caminho.
+// GET /api/debug/nf-ml/:orderId?k=ADMIN_KEY[&pack=PACK_ID][&shipment=SHIP_ID]
+app.get('/api/debug/nf-ml/:orderId', async (req, res) => {
+  if (!adminOk(req)) return res.status(403).json({ ok: false, erro: 'so admin' });
+  const oid = String(req.params.orderId || '').replace(/\D/g, '');
+  const pack = String(req.query.pack || '').replace(/\D/g, '');
+  const ship = String(req.query.shipment || '').replace(/\D/g, '');
+  let uid = '';
+  try {
+    const me = await chamarML('/users/me');
+    uid = String((me.ok && me.data && me.data.id) || '');
+  } catch (e) { /* segue sem uid */ }
+
+  const alvos = [
+    `/orders/${oid}/billing_info`,
+    `/orders/${oid}/fiscal_documents`,
+    uid ? `/users/${uid}/invoices/orders/${oid}` : null,
+    pack ? `/packs/${pack}/fiscal_documents` : null,
+    ship ? `/shipments/${ship}/invoice_data?siteId=MLB` : null,
+    ship ? `/shipments/${ship}/billing_info` : null,
+  ].filter(Boolean);
+
+  const passos = [];
+  for (const caminho of alvos) {
+    try {
+      const r = await chamarML(caminho);
+      const d = r.data;
+      passos.push({
+        caminho,
+        status: r.status || (r.ok ? 200 : null),
+        ok: !!r.ok,
+        // so a FORMA do retorno: chaves do topo e um pedaco pequeno, pra
+        // enxergar onde a NF de devolucao aparece sem despejar a resposta
+        campos: d && typeof d === 'object' ? Object.keys(d).slice(0, 25) : null,
+        amostra: d ? JSON.stringify(d).slice(0, 600) : null,
+      });
+    } catch (e) {
+      passos.push({ caminho, erro: String(e.message || e) });
+    }
+    await sleep(250);
+  }
+  res.json({ ok: true, order_id: oid, user_id: uid || null, passos });
+});
+
 // GET /api/debug/resgate-nf/:orderId
 // Roda o MESMO fluxo do resgate mas NAO grava nada - mostra cada
 // passo (ML invoice, pack, blindada com trace) pra diagnostico.
