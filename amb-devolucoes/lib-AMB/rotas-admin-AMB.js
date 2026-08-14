@@ -662,6 +662,37 @@ app.get('/api/debug/nf-numero/:numero', async (req, res) => {
   }
 });
 
+// b243 - RAIO-X DOS ITENS DA NF. A foto deveria vir pelo `produto.id` do
+// item (vinculo estavel, imune a rename do SKU), mas a chamada da tela sai
+// SEM `?produtoId=` — ou seja, o campo nao esta chegando. Em vez de adivinhar
+// o nome do campo, esta rota mostra as CHAVES cruas que o Bling devolve em
+// cada item, e o que ha dentro de `produto` quando existe.
+// GET /api/debug/itens-nf/:idNF?k=ADMIN_KEY
+app.get('/api/debug/itens-nf/:idNF', async (req, res) => {
+  if (!adminOk(req)) return res.status(403).json({ ok: false, erro: 'so admin' });
+  try {
+    const r = await chamarBling(`/nfe/${encodeURIComponent(req.params.idNF)}`);
+    const nf = (r.ok && r.data && r.data.data) || null;
+    if (!nf) return res.status(404).json({ ok: false, erro: 'NF nao encontrada', status: r.status || null });
+    const itens = Array.isArray(nf.itens) ? nf.itens : [];
+    res.json({
+      ok: true,
+      nf: { id: nf.id, numero: nf.numero, serie: nf.serie },
+      qtd_itens: itens.length,
+      itens: itens.map(it => ({
+        campos_do_item: Object.keys(it),
+        codigo: it.codigo || null,
+        descricao: it.descricao || null,
+        tem_produto: !!it.produto,
+        produto: it.produto ? { campos: Object.keys(it.produto), id: it.produto.id || null } : null,
+        produtoId_solto: it.produtoId || null,
+      })),
+    });
+  } catch (e) {
+    res.status(500).json({ ok: false, erro: String(e.message || e) });
+  }
+});
+
 // GET /api/debug/resgate-nf/:orderId
 // Roda o MESMO fluxo do resgate mas NAO grava nada - mostra cada
 // passo (ML invoice, pack, blindada com trace) pra diagnostico.
