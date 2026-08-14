@@ -1175,7 +1175,19 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
     if (!sku || !localizacao) {
       return res.status(400).json({ ok: false, erro: 'informe ao menos sku e localizacao' });
     }
-    const prod = await bling.buscarProdutoPorSku(String(sku));
+    // b258 (regra dele: "é esse o SKU que vai comandar") - o de-para vale
+    // TAMBEM ao GRAVAR: sem isto a peca entra no estoque de defeitos com o
+    // codigo aposentado do anuncio Full, o alerta de canibalizacao nao casa
+    // com as unidades do codigo atual e a NF de devolucao sai com um SKU que
+    // nao existe mais no cadastro.
+    let skuUsar = String(sku);
+    if (db && typeof db.resolverSku === 'function') {
+      try {
+        const dp = await db.resolverSku(skuUsar);
+        if (dp && dp.trocado && dp.sku) skuUsar = dp.sku;
+      } catch (e) { /* de-para e ajuda, nunca trava o registro */ }
+    }
+    const prod = await bling.buscarProdutoPorSku(skuUsar);
     const exato = prod.ok ? prod.exato : null;
 
     // b137 - MESMA TRAVA DE KIT DA GOOD. O filtro da busca e conveniencia;
@@ -1232,7 +1244,7 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
     const fotos = Array.isArray(b.fotos) ? b.fotos.filter(Boolean) : [];
     let r = await db.registrarTriagem({
       tipo: 'defeito_estoque', status: 'concluido',
-      produto_sku: exato ? exato.codigo : sku,
+      produto_sku: exato ? exato.codigo : skuUsar,   // b258 - SKU atual manda
       produto_titulo: exato ? exato.nome : null,
       problema_descricao: descricao || null,
       localizacao, defeito_qtd: Number(quantidade || 1),

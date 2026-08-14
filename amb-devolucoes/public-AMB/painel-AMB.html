@@ -283,6 +283,15 @@
         <!-- b212 (pedido do Diego: "nao precisa ficar mostrando todas dezenas
              de recados listados. faz eu clicar num botao") - a lista nasce
              FECHADA; o botao diz quantos ha e abre quando ele quiser. -->
+        <!-- b258 (pedido do Diego) - cadastrar de-para SEM SQL. O anuncio Full
+             do ML nao deixa trocar o SKU depois que tem vendas; quando o produto
+             e renomeado no Bling, a venda antiga fica orfa. Aqui ele liga os dois
+             em dois campos, e o app passa a tratar o antigo como o atual. -->
+        <div style="margin-top:14px;padding-top:12px;border-top:1px dashed #ddd;">
+          <button type="button" onclick="alternarDepara()" id="btnDepara"
+            style="background:#fff;color:#3C3489;border:1.5px solid #3C3489;border-radius:8px;padding:8px 14px;font-weight:700;font-size:13px;cursor:pointer;">🔗 SKUs renomeados (de-para)</button>
+          <div id="caixaDepara" style="display:none;margin-top:10px;"></div>
+        </div>
         <button type="button" id="btnVerRecados" onclick="alternarListaRecados()" style="margin-top:10px;background:#fff;color:#c62828;border:1.5px solid #c62828;border-radius:8px;padding:8px 14px;font-weight:700;font-size:13px;cursor:pointer;">📋 Ver recados criados</button>
         <div id="listaRecados" style="margin-top:12px;display:none;"></div>
       </div>
@@ -748,6 +757,68 @@
         await new Promise(function (res) { setTimeout(res, 100); });
       }
       bmsg.innerHTML = '<b style="color:#2e7d32;">✅ ' + ok + ' baixadas</b>' + (erro ? ' · <span style="color:#c62828;">' + erro + ' com erro</span>' : '') + '. Recarregue o à espreita.';
+    }
+
+    // b258 - de-para de SKU pela tela: lista o que existe e cadastra novo.
+    async function alternarDepara() {
+      var cx = document.getElementById('caixaDepara');
+      if (!cx) return;
+      if (cx.style.display !== 'none') { cx.style.display = 'none'; return; }
+      cx.style.display = '';
+      cx.innerHTML = '<div style="font-size:13px;color:#888;">carregando…</div>';
+      var lista = [];
+      try {
+        var r = await fetch('/api/admin/sku-depara', { credentials: 'same-origin' });
+        var d = await r.json();
+        if (d && d.ok) lista = d.lista || [];
+      } catch (e) {}
+      var linhas = lista.map(function (x) {
+        return '<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-top:1px solid #eee;font-size:13px;">'
+          + '<code style="background:#f3f0fa;border-radius:5px;padding:2px 6px;">' + escapeHtml(x.sku_antigo) + '</code>'
+          + '<span style="color:#888;">vira</span>'
+          + '<code style="background:#e8f5e9;border-radius:5px;padding:2px 6px;">' + escapeHtml(x.sku_atual) + '</code>'
+          + '<button onclick="apagarDepara(\'' + escapeHtml(x.sku_antigo) + '\')" '
+          + 'style="margin-left:auto;background:#fff;color:#8C1D18;border:1px solid #e0b4b0;border-radius:7px;'
+          + 'padding:3px 9px;font-size:11.5px;cursor:pointer;">remover</button></div>';
+      }).join('');
+      cx.innerHTML = '<div style="background:#f7f5fc;border:1px solid #d6cff0;border-radius:9px;padding:12px;">'
+        + '<div style="font-size:12.5px;color:#4a3f6b;margin-bottom:9px;">O anúncio Full do ML não deixa trocar o SKU depois que tem vendas. '
+        + 'Quando o produto é renomeado no Bling, ligue o código antigo ao atual aqui — o app passa a tratar os dois como o mesmo produto.</div>'
+        + '<div style="display:flex;gap:7px;flex-wrap:wrap;align-items:center;">'
+        + '<input id="dpAntigo" placeholder="SKU antigo (o da venda)" style="flex:1;min-width:170px;height:34px;padding:0 9px;border:1px solid #b9aee0;border-radius:7px;font-size:13px;">'
+        + '<span style="color:#888;">→</span>'
+        + '<input id="dpAtual" placeholder="SKU atual (o do Bling)" style="flex:1;min-width:170px;height:34px;padding:0 9px;border:1px solid #b9aee0;border-radius:7px;font-size:13px;">'
+        + '<button onclick="salvarDepara()" style="background:#3C3489;color:#fff;border:none;border-radius:8px;padding:9px 16px;font-weight:700;font-size:13px;cursor:pointer;">Ligar</button>'
+        + '</div><div id="dpMsg" style="font-size:12.5px;margin-top:7px;"></div>'
+        + (linhas ? '<div style="margin-top:11px;">' + linhas + '</div>'
+                  : '<div style="margin-top:11px;font-size:12.5px;color:#888;">Nenhuma ligação cadastrada ainda.</div>')
+        + '</div>';
+    }
+
+    async function salvarDepara() {
+      var msg = document.getElementById('dpMsg');
+      var a = (document.getElementById('dpAntigo') || {}).value || '';
+      var b = (document.getElementById('dpAtual') || {}).value || '';
+      if (!a.trim() || !b.trim()) { if (msg) msg.innerHTML = '<span style="color:#c62828;">preencha os dois códigos.</span>'; return; }
+      if (msg) msg.innerHTML = '<span style="color:#555;">salvando…</span>';
+      try {
+        var r = await fetch('/api/admin/sku-depara', {
+          method: 'POST', credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sku_antigo: a.trim(), sku_atual: b.trim() }),
+        });
+        var d = await r.json();
+        if (d && d.ok) { document.getElementById('caixaDepara').style.display = 'none'; alternarDepara(); return; }
+        if (msg) msg.innerHTML = '<span style="color:#c62828;">' + escapeHtml((d && d.erro) || 'não consegui salvar') + '</span>';
+      } catch (e) { if (msg) msg.innerHTML = '<span style="color:#c62828;">erro de conexão.</span>'; }
+    }
+
+    async function apagarDepara(sku) {
+      try {
+        await fetch('/api/admin/sku-depara/' + encodeURIComponent(sku), { method: 'DELETE', credentials: 'same-origin' });
+      } catch (e) {}
+      document.getElementById('caixaDepara').style.display = 'none';
+      alternarDepara();
     }
 
     // b219 - edicao INLINE do recado (sem popup): abre um bloco com os dois
