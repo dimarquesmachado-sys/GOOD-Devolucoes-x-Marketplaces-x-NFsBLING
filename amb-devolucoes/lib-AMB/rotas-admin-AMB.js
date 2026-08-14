@@ -725,19 +725,51 @@ app.get('/api/debug/nf-ml/:orderId', async (req, res) => {
     ship ? `/shipments/${ship}/billing_info` : null,
   ].filter(Boolean);
 
+  // b248 (review do Codex) - a sonda existe pra responder UMA pergunta:
+  // "ha NF de devolucao?". Cortar o JSON em 600 caracteres podia mostrar so
+  // a nota de VENDA e sugerir que nao ha devolucao — exatamente o erro que
+  // a rota deveria evitar. Entao: resumir CADA documento (poucos campos), em
+  // vez de truncar o payload. E nada de dado do comprador: `billing_info`
+  // traz CPF, nome, telefone e endereco, e diagnostico e feito pra ser
+  // copiado e colado por ai.
+  const CAMPOS_NF = ['type', 'document_type', 'number', 'invoice_number', 'serie', 'series',
+    'key', 'access_key', 'authorization_key', 'status', 'state', 'date', 'date_created',
+    'invoice_date', 'total_amount', 'kind', 'operation_type'];
+  const resumirDoc = (d) => {
+    if (!d || typeof d !== 'object') return null;
+    const out = {};
+    for (const k of CAMPOS_NF) if (d[k] !== undefined && d[k] !== null) out[k] = d[k];
+    return Object.keys(out).length ? out : { campos: Object.keys(d).slice(0, 20) };
+  };
+  const acharDocs = (d) => {
+    if (!d || typeof d !== 'object') return [];
+    if (Array.isArray(d)) return d;
+    for (const k of ['results', 'invoices', 'documents', 'fiscal_documents', 'data', 'billing_info']) {
+      if (Array.isArray(d[k])) return d[k];
+    }
+    return [d];
+  };
+
   const passos = [];
   for (const caminho of alvos) {
     try {
       const r = await chamarML(caminho);
       const d = r.data;
+      const docs = r.ok ? acharDocs(d).slice(0, 10).map(resumirDoc).filter(Boolean) : [];
       passos.push({
         caminho,
         status: r.status || (r.ok ? 200 : null),
         ok: !!r.ok,
-        // so a FORMA do retorno: chaves do topo e um pedaco pequeno, pra
-        // enxergar onde a NF de devolucao aparece sem despejar a resposta
-        campos: d && typeof d === 'object' ? Object.keys(d).slice(0, 25) : null,
-        amostra: d ? JSON.stringify(d).slice(0, 600) : null,
+        campos: d && typeof d === 'object' && !Array.isArray(d) ? Object.keys(d).slice(0, 25) : null,
+        qtd_documentos: r.ok ? docs.length : null,
+        documentos: r.ok ? docs : null,
+        // b248 - o corpo do ERRO distingue "endpoint nao existe" de "existe,
+        // mas falta permissao/parametro" — mas so a mensagem, sem dado nenhum
+        erro_ml: !r.ok && r.error ? {
+          message: (r.error.message || r.error.error || null),
+          status: r.error.status || null,
+          cause: Array.isArray(r.error.cause) ? r.error.cause.slice(0, 3) : null,
+        } : null,
       });
     } catch (e) {
       passos.push({ caminho, erro: String(e.message || e) });
