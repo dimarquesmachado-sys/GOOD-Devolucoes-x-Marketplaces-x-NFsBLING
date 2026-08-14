@@ -293,8 +293,19 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
   // defeito": o estoquista digita nome, SKU ou EAN e escolhe na lista.
   // ─────────────────────────────────────────────────────────────────────
   router.get('/api/produtos/buscar', auth.requerLogin, async (req, res) => {
-    const q = String(req.query.q || '').trim();
+    let q = String(req.query.q || '').trim();
     if (q.length < 2) return res.json({ ok: true, produtos: [] });
+    // b246 (pedido do Diego: "aceitar na bipagem o SKU do de-para tambem") -
+    // o estoquista bipa/digita o codigo que esta na ETIQUETA, que pode ser o
+    // SKU aposentado do anuncio Full. Sem isto, a busca do Lancar Defeito
+    // nao acha nada e ele acha que o produto sumiu do cadastro.
+    let deparaDe = null;
+    if (db && typeof db.resolverSku === 'function') {
+      try {
+        const dp = await db.resolverSku(q);
+        if (dp && dp.trocado && dp.sku) { deparaDe = q; q = dp.sku; }
+      } catch (e) { /* de-para e ajuda, nunca trava a busca */ }
+    }
 
     const alvo = norm(q);
     const vistos = new Set();
@@ -646,7 +657,7 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
         delete item._fmt; delete item.nomeBase; delete item._compsCru;
         entregues.push(item);
       }
-      res.json({ ok: true, produtos: entregues, termo: q });
+      res.json({ ok: true, produtos: entregues, termo: q , depara_de: deparaDe });
     } catch (e) {
       res.status(500).json({ ok: false, erro: String(e.message || e) });
     }

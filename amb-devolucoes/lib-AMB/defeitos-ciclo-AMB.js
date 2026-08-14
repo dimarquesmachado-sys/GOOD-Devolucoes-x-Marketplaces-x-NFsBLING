@@ -322,7 +322,16 @@ module.exports = function registrarCicloDefeitos(router, deps) {
   router.get('/api/defeitos/lista', auth.requerLogin, async (req, res) => {
     const dbc = cli();
     if (!dbc) return erroSemBanco(res);
-    const q = String(req.query.q || '').trim();
+    let q = String(req.query.q || '').trim();
+    // b246 - o mesmo de-para vale aqui: procurar pelo SKU da etiqueta
+    // (aposentado) tem que achar as pecas registradas com o codigo atual.
+    let deparaDe = null;
+    if (db && typeof db.resolverSku === 'function') {
+      try {
+        const dp = await db.resolverSku(q);
+        if (dp && dp.trocado && dp.sku) { deparaDe = q; q = dp.sku; }
+      } catch (e) { /* segue com o termo digitado */ }
+    }
 
     async function buscar(termo) {
       let sel = dbc.from(db.tabelas.devolucoes)
