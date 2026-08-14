@@ -1401,6 +1401,15 @@ router.get('/ml/teste', admin, async (req, res) => {
   res.json({ ok: true, versao: VERSAO, resultado: await ml.testeDeVida() });
 });
 
+// b264 - liga a renovacao preventiva do token do ML: o refresh vale 6 meses
+// e, se o modulo ficar parado esse tempo, so volta reautorizando a mao.
+try { if (typeof ml.ligarRenovacaoPreventiva === 'function') ml.ligarRenovacaoPreventiva(); } catch (e) { /* nao pode travar o boot */ }
+
+// b264 - conferir/forcar na hora, sem esperar o timer
+router.get('/ml/token/preventiva', admin, async (req, res) => {
+  res.json({ ok: true, versao: VERSAO, resultado: await ml.renovacaoPreventiva({ forcar: req.query.forcar === '1' }) });
+});
+
 router.get('/ml/eu', admin, async (req, res) => {
   res.json(await ml.quemSouEu());
 });
