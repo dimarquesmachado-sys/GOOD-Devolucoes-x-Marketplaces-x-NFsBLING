@@ -693,6 +693,134 @@ app.get('/api/debug/itens-nf/:idNF', async (req, res) => {
   }
 });
 
+// b247 - SONDA: EXISTE NF DE DEVOLUCAO NO ML? (pedido do Diego, 14/08)
+//
+// Regra de negocio: devolucao Full do ML (serie 2) JA TEM a NF de devolucao
+// emitida pelo proprio ML — o app nao deve gerar outra, senao ficam DUAS
+// notas para a mesma volta. Mas o Full pode falhar e nao gerar; entao antes
+// de decidir e preciso CONSTATAR (principio que ele prega: nao inferir pelo
+// status, constatar pelo dado).
+//
+// Hoje ele confere a mao em vendedores.mercadolivre.com.br/emissor/vendas/
+// {order_id}/faturas. Esta sonda testa os endpoints candidatos da API e
+// mostra qual responde e o que traz — em vez de eu adivinhar o caminho.
+// GET /api/debug/nf-ml/:orderId?k=ADMIN_KEY[&pack=PACK_ID][&shipment=SHIP_ID]
+app.get('/api/debug/nf-ml/:orderId', async (req, res) => {
+  if (!adminOk(req)) return res.status(403).json({ ok: false, erro: 'so admin' });
+  const oid = String(req.params.orderId || '').replace(/\D/g, '');
+  const pack = String(req.query.pack || '').replace(/\D/g, '');
+  const ship = String(req.query.shipment || '').replace(/\D/g, '');
+  // b250 (review do Codex) - se o /users/me falhar, o caminho que depende do
+  // id do vendedor some da lista SEM AVISO, e o retorno pareceria dizer que
+  // aquele endpoint nao serve. Agora a falha e reportada.
+  let uid = '';
+  let erroUid = null;
+  try {
+    const me = await chamarML('/users/me');
+    uid = String((me.ok && me.data && me.data.id) || '');
+    if (!uid) erroUid = { status: me.status || null, motivo: 'nao consegui o id do vendedor' };
+  } catch (e) { erroUid = { motivo: String(e.message || e).slice(0, 200) }; }
+
+  const alvos = [
+    `/orders/${oid}/billing_info`,
+    `/orders/${oid}/fiscal_documents`,
+    uid ? `/users/${uid}/invoices/orders/${oid}` : null,
+    pack ? `/packs/${pack}/fiscal_documents` : null,
+    ship ? `/shipments/${ship}/invoice_data?siteId=MLB` : null,
+    ship ? `/shipments/${ship}/billing_info` : null,
+  ].filter(Boolean);
+
+  // b248 (review do Codex) - a sonda existe pra responder UMA pergunta:
+  // "ha NF de devolucao?". Cortar o JSON em 600 caracteres podia mostrar so
+  // a nota de VENDA e sugerir que nao ha devolucao — exatamente o erro que
+  // a rota deveria evitar. Entao: resumir CADA documento (poucos campos), em
+  // vez de truncar o payload. E nada de dado do comprador: `billing_info`
+  // traz CPF, nome, telefone e endereco, e diagnostico e feito pra ser
+  // copiado e colado por ai.
+  // b249 (review do Codex) - inclui os nomes que o /invoice_data usa de fato
+  // (invoice_id, invoice_key, cfop, invoice_type...), senao o resumo daquele
+  // endpoint cairia no ramo generico e perderia justamente o que interessa.
+  const CAMPOS_NF = ['type', 'document_type', 'invoice_type', 'kind', 'operation_type', 'cfop',
+    'number', 'invoice_number', 'invoice_id', 'id', 'serie', 'series', 'invoice_series',
+    'key', 'access_key', 'authorization_key', 'invoice_key', 'nfe_key',
+    'status', 'state', 'date', 'date_created', 'invoice_date', 'creation_date', 'total_amount'];
+  const resumirDoc = (d) => {
+    if (!d || typeof d !== 'object') return null;
+    const out = {};
+    for (const k of CAMPOS_NF) if (d[k] !== undefined && d[k] !== null) out[k] = d[k];
+    return Object.keys(out).length ? out : { campos: Object.keys(d).slice(0, 20) };
+  };
+  const acharDocs = (d) => {
+    if (!d || typeof d !== 'object') return [];
+    if (Array.isArray(d)) return d;
+    for (const k of ['results', 'invoices', 'documents', 'fiscal_documents', 'data', 'billing_info']) {
+      if (Array.isArray(d[k])) return d[k];
+      if (d[k] && typeof d[k] === 'object') return [d[k]];
+    }
+    // b249 - so tratar o objeto do topo como documento se ele PARECER um:
+    // devolver qualquer resposta como "documento" faria a sonda relatar
+    // documentos onde nao ha nenhum.
+    const pareceNF = CAMPOS_NF.some(k => d[k] !== undefined && d[k] !== null);
+    return pareceNF ? [d] : [];
+  };
+
+  // b249 - teto de tempo: 6 chamadas sequenciais ao ML sem limite podiam
+  // segurar a requisicao ate o timeout do Render. Passou de 25s, encerra e
+  // devolve o que ja apurou, dizendo que faltou.
+  const LIMITE_MS = Date.now() + 25000;
+  const passos = [];
+  for (const caminho of alvos) {
+    if (Date.now() > LIMITE_MS) { passos.push({ caminho, pulado: 'prazo da sonda estourou' }); continue; }
+    try {
+      // b251 (review do Codex) - o teto de 25s so era checado ANTES de cada
+      // chamada: uma unica requisicao lenta ao ML podia furar o prazo inteiro
+      // e a rota morrer no timeout do Render sem devolver nada. Agora a
+      // propria chamada corre contra o prazo que resta.
+      const restante = Math.max(1000, LIMITE_MS - Date.now());
+      const r = await Promise.race([
+        chamarML(caminho),
+        new Promise(ok => setTimeout(() => ok({ ok: false, status: null, error: 'prazo da sonda estourou nesta chamada' }), restante)),
+      ]);
+      const d = r.data;
+      // b249 - resumir TODOS (o resumo ja e pequeno); cortar em 10 podia
+      // deixar a NF de devolucao de fora quando ha muitos documentos
+      const achados = r.ok ? acharDocs(d) : [];
+      const docs = achados.map(resumirDoc).filter(Boolean);
+      passos.push({
+        caminho,
+        status: r.status || (r.ok ? 200 : null),
+        ok: !!r.ok,
+        campos: d && typeof d === 'object' && !Array.isArray(d) ? Object.keys(d).slice(0, 25) : null,
+        qtd_documentos: r.ok ? docs.length : null,
+        qtd_bruta: r.ok ? achados.length : null,   // b249 - confere se algum resumo caiu
+        documentos: r.ok ? docs : null,
+        // b248 - o corpo do ERRO distingue "endpoint nao existe" de "existe,
+        // mas falta permissao/parametro" — mas so a mensagem, sem dado nenhum
+        // b250 (review do Codex) - o erro do ML nem sempre e objeto: quando
+        // vem string, ler `.message` dava null e a sonda perdia a unica pista
+        // que distingue "endpoint nao existe" de "falta permissao".
+        erro_ml: !r.ok && r.error ? (
+          typeof r.error === 'string'
+            ? { message: r.error.slice(0, 300) }
+            : {
+                message: (r.error.message || r.error.error || null),
+                status: r.error.status || null,
+                cause: Array.isArray(r.error.cause) ? r.error.cause.slice(0, 3) : null,
+              }
+        ) : null,
+      });
+    } catch (e) {
+      passos.push({ caminho, erro: String(e.message || e) });
+    }
+    await sleep(250);
+  }
+  res.json({
+    ok: true, order_id: oid, user_id: uid || null,
+    erro_user_id: erroUid,   // b250 - por que o caminho por vendedor nao foi tentado
+    passos,
+  });
+});
+
 // GET /api/debug/resgate-nf/:orderId
 // Roda o MESMO fluxo do resgate mas NAO grava nada - mostra cada
 // passo (ML invoice, pack, blindada com trace) pra diagnostico.
