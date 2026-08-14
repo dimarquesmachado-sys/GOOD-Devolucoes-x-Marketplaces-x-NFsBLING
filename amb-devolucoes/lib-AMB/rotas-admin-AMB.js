@@ -772,7 +772,15 @@ app.get('/api/debug/nf-ml/:orderId', async (req, res) => {
   for (const caminho of alvos) {
     if (Date.now() > LIMITE_MS) { passos.push({ caminho, pulado: 'prazo da sonda estourou' }); continue; }
     try {
-      const r = await chamarML(caminho);
+      // b251 (review do Codex) - o teto de 25s so era checado ANTES de cada
+      // chamada: uma unica requisicao lenta ao ML podia furar o prazo inteiro
+      // e a rota morrer no timeout do Render sem devolver nada. Agora a
+      // propria chamada corre contra o prazo que resta.
+      const restante = Math.max(1000, LIMITE_MS - Date.now());
+      const r = await Promise.race([
+        chamarML(caminho),
+        new Promise(ok => setTimeout(() => ok({ ok: false, status: null, error: 'prazo da sonda estourou nesta chamada' }), restante)),
+      ]);
       const d = r.data;
       // b249 - resumir TODOS (o resumo ja e pequeno); cortar em 10 podia
       // deixar a NF de devolucao de fora quando ha muitos documentos
