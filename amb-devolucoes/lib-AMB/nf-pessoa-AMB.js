@@ -434,7 +434,79 @@ module.exports = function criarNfPessoa({ chamarBling, sleep }) {
     }
   }
 
+  // ═══════════════════════════════════════════════════════════════════
+  // b255 - A NF DE DEVOLUCAO DO FULL, ACHADA NO BLING
+  //
+  // A API do ML nao entrega essa nota (6 caminhos sondados: 404/405/400, e o
+  // ?document_type=return e ignorado). Mas ela ENTRA no Bling, e o raio-x da
+  // b254 mostrou a assinatura dela, na venda 2000017624047456:
+  //   tipo 0 (ENTRADA) · numero 005364 · serie 2
+  //   naturezaOperacao.id 15110882041  -> "devolucao de venda PF" da AMB
+  //   contato.nome "Marcelo Rossani Zorzi" · itens[].codigo = SKU da venda
+  // O vinculo com a NF de venda NAO vem pela API (`campos_de_referencia` e
+  // `observacoes` vieram nulos) — existe so na tela. Entao casamos pelo que
+  // ha: natureza de devolucao + CLIENTE + SKU + janela a partir da venda.
+  // Devolve `certeza: 'alta'` quando cliente E sku batem; 'media' com um so.
+  // ═══════════════════════════════════════════════════════════════════
+  async function acharNfDevolucaoBling({ cliente, sku, desde, ate, naturezaId } = {}) {
+    const nome = String(cliente || '').trim().toUpperCase();
+    const cod = String(sku || '').trim().toUpperCase();
+    if (!nome && !cod) return { ok: false, motivo: 'sem cliente nem sku pra procurar' };
+
+    const natureza = String(naturezaId || process.env.AMB_NATUREZA_DEVOLUCAO || '15110882041');
+    const ini = (desde || '').slice(0, 10);
+    const fim = (ate || new Date().toISOString()).slice(0, 10);
+    if (!ini) return { ok: false, motivo: 'sem data da venda pra abrir a janela' };
+
+    const achadas = [];
+    let falhou = false;
+    for (let pg = 1; pg <= 4; pg++) {
+      // tipo=0 -> ENTRADA. A janela comeca na emissao da venda: a devolucao
+      // e sempre posterior.
+      const r = await chamarBling(`/nfe?limite=100&pagina=${pg}&tipo=0`
+        + `&dataEmissaoInicial=${ini}&dataEmissaoFinal=${fim}`);
+      if (!r.ok) { falhou = true; break; }
+      const lista = (r.data && r.data.data) || [];
+      for (const nf of lista) {
+        const natOk = !natureza || String(nf.naturezaOperacao?.id || nf.naturezaOperacao || '') === natureza;
+        if (!natOk) continue;
+        const nomeNf = String(nf.contato?.nome || '').trim().toUpperCase();
+        const bateCliente = !!nome && !!nomeNf && (nomeNf === nome || nomeNf.includes(nome) || nome.includes(nomeNf));
+        if (nome && !bateCliente) continue;
+        achadas.push({
+          id: nf.id, numero: nf.numero, serie: nf.serie,
+          dataEmissao: nf.dataEmissao, chaveAcesso: nf.chaveAcesso || null,
+          cliente: nf.contato?.nome || null, valorNota: nf.valorNota || null,
+          bate_cliente: bateCliente,
+        });
+      }
+      if (lista.length < 100) break;
+      await sleep(300);
+    }
+    if (!achadas.length) {
+      // b255 - falha do Bling nao vira "nao existe": a diferenca ja custou
+      // caro na busca por numero de NF.
+      return falhou
+        ? { ok: false, motivo: 'o Bling recusou a consulta — nao da pra afirmar que nao existe' }
+        : { ok: true, achou: false };
+    }
+    // com SKU em maos, confirma pelo item (uma consulta por candidata, teto 5)
+    if (cod) {
+      for (const cand of achadas.slice(0, 5)) {
+        const rD = await chamarBling(`/nfe/${cand.id}`);
+        const det = (rD.ok && rD.data && rD.data.data) || null;
+        const temSku = Array.isArray(det?.itens)
+          && det.itens.some(it => String(it.codigo || '').trim().toUpperCase() === cod);
+        if (temSku) return { ok: true, achou: true, nf: cand, certeza: cand.bate_cliente ? 'alta' : 'media', via: 'natureza+cliente+sku' };
+        await sleep(300);
+      }
+    }
+    return { ok: true, achou: true, nf: achadas[0], certeza: 'media', via: 'natureza+cliente', outras: achadas.length - 1 };
+  }
+
   return {
+    acharNfDevolucaoBling,   // b255
+
     mapItensNF,
     resolverIdNFPorChave,
     buscarNFsPorNumero,
