@@ -38,7 +38,8 @@ const emailAMB = require('./email-AMB');
  * Por isso: busca profunda no objeto do detalhe e cache por id, pra a
  * segunda busca do mesmo produto ser instantanea.
  */
-const IMG_CACHE = new Map();          // idProduto -> url|null
+const IMG_CACHE = new Map();
+const IMG_SEM_FOTO = new Map();   // b239 - lembra o "nao achei" por 10 min          // idProduto -> url|null
 // b174 - veredito de FORMATO por produto: 'S' simples · 'E' kit/composicao
 // · 'V' pai de variacao. So guarda o que foi APURADO (listagem conclusiva
 // ou detalhe), nunca um palpite — assim um erro do Bling nao vira verdade.
@@ -687,6 +688,17 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
     // a garantia de nao mostrar produto errado.
     const idNota = String(req.query.produtoId || '').replace(/\D/g, '');
     const chaveCache = idNota ? ('id:' + idNota) : chave;
+    // b239 (o estoquista relatou a tela mais lenta) - so o SUCESSO era
+    // lembrado. Item cujo SKU nao existe mais no cadastro (renomeado)
+    // repetia AS DUAS consultas ao Bling — a segunda com limite=100 — em
+    // TODA busca, e o galpao bipa o mesmo pedido varias vezes. Agora o
+    // "nao achei" tambem e lembrado, por 10 min: erra por pouco tempo se o
+    // cadastro for corrigido, e economiza a rodada inteira no resto.
+    const agora = Date.now();
+    const semFoto = IMG_SEM_FOTO.get(chaveCache);
+    if (semFoto && (agora - semFoto) < 10 * 60 * 1000) {
+      return res.json({ ok: true, chave, imagem: null, cache: true, motivo: 'sem foto (lembrado por 10 min)' });
+    }
     if (IMG_CACHE.has(chaveCache)) {
       return res.json({ ok: true, chave, imagem: IMG_CACHE.get(chaveCache), cache: true });
     }
@@ -783,7 +795,10 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
       // desta luminaria esta cadastrado tambem nos ACESSORIOS dela (roscas,
       // travas), entao ele nao identifica produto — o SKU sim. Menos
       // caminho, menos chance de mostrar a peca errada pro estoquista.
-      if (!id) {
+      // b239 - com o id da NF em maos, a busca ampla nao tem o que fazer:
+      // ela existe pra achar o produto pelo SKU. Pular economiza a consulta
+      // mais cara da rota (limite=100) em todo item que ja tem vinculo.
+      if (!id && !idDaNota) {
         // b229 (caso real do Diego): com limite=5 a busca por nome trouxe SO
         // acessorios — Kit2Roscas, TravaCentralBranca, TravaCentralPreta,
         // CUPULA-MENOR, 9W3KE27... — porque todos citam "Luminária FL-1011"
@@ -811,6 +826,7 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
       // receber, direto do cache, a foto de outro produto — exatamente o
       // caso que o fallback existe pra evitar.
       if (url) IMG_CACHE.set(via === 'id_do_item_da_nf' ? chaveCache : chave, url);
+      else IMG_SEM_FOTO.set(chaveCache, Date.now());   // b239
       // b225 - dizer POR ONDE achou (ou por que nao achou), como a GOOD ja
       // fazia: "imagem: null" sozinho nao distinguia produto sem foto de
       // SKU nao encontrado.
