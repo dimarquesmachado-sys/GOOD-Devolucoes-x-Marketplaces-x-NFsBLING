@@ -911,6 +911,23 @@ app.get('/api/debug/nf-entrada/:idNF', async (req, res) => {
   }
 });
 
+// b256 - o PAINEL pergunta antes de oferecer "gerar NF": ja existe nota de
+// devolucao pra esta volta? Cobre os DOIS casos que o Diego citou: a NF que
+// o Full do ML emite sozinho e a entrada que outro admin ja lancou. Achou ->
+// a tela mostra a nota e esconde o gerar, deixando so incluir estoque.
+app.get('/api/admin/nf-devolucao', requerAdmin, async (req, res) => {
+  if (typeof buscarNfDevolucaoBling !== 'function') {
+    return res.status(500).json({ ok: false, erro: 'busca nao injetada nas deps' });
+  }
+  const r = await buscarNfDevolucaoBling({
+    cliente: req.query.cliente || null,
+    sku: req.query.sku || null,
+    desde: req.query.desde || null,
+    ate: req.query.ate || null,
+  });
+  res.json(r);
+});
+
 // b255 - EXISTE NF DE DEVOLUCAO NO BLING PRA ESTA VOLTA?
 // A API do ML nao entrega essa nota; o Bling sim (ela e importada la).
 // Casamento por natureza de devolucao + cliente + SKU, dentro da janela que
