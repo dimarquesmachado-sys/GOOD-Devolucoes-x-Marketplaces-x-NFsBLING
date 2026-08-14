@@ -198,6 +198,11 @@ async function acharDevolucao(codigo) {
     const cancelado = await consultarPedidoCancelado(codigo);
     if (cancelado) return { hit: cancelado, qtd: (lista || []).length, usouRefresh, viaPedidoCancelado: true };
   }
+  // b263 - os campos novos da Shopee (validos a partir de 17/08/2026) viajam
+  // junto do hit: `is_partial_quantity_return` (volta so parte da quantidade)
+  // e `is_refund_amount_adjusted` (reembolso menor que o maximo). Enquanto a
+  // Shopee nao os enviar, ficam `undefined` e o card nao mostra nada — nao
+  // inventamos aviso a partir de dado ausente.
   return { hit, qtd: (lista || []).length, usouRefresh };
 }
 
