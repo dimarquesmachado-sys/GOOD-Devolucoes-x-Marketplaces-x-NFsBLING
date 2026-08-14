@@ -285,6 +285,28 @@ function renderizar(data, ok) {
   })();
   html += '</div>';
 
+  // b263 (aviso da Shopee de 17/08/2026) - as APIs de devolucao passaram a
+  // dizer quando volta SO PARTE da quantidade (`is_partial_quantity_return`)
+  // e quando o reembolso foi menor que o maximo (`is_refund_amount_adjusted`).
+  // Isso muda o trabalho do galpao: hoje o estoquista so descobre que voltou
+  // 1 de 3 abrindo a caixa. O aviso vem ANTES, no topo do card.
+  (function () {
+    var sh = data.shopee || null;
+    if (!sh) return;
+    var parcial = sh.is_partial_quantity_return === true;
+    var ajustado = sh.is_refund_amount_adjusted === true;
+    if (!parcial && !ajustado) return;
+    html += '<div style="background:#FFF3E0;border:2px solid #E65100;border-radius:9px;'
+      + 'padding:11px 13px;margin:10px 0;">'
+      + (parcial ? '<div style="font-size:16px;font-weight:800;color:#E65100;">📦 Devolução PARCIAL — não volta tudo</div>'
+          + '<div style="font-size:13.5px;color:#7a4a10;margin-top:3px;">O comprador está devolvendo apenas parte das unidades. '
+          + 'Confira a quantidade na caixa antes de lançar o estoque.</div>' : '')
+      + (ajustado ? '<div style="font-size:' + (parcial ? '13px' : '15px') + ';font-weight:' + (parcial ? '600' : '800')
+          + ';color:#E65100;margin-top:' + (parcial ? '7px' : '0') + ';">💰 Reembolso menor que o valor máximo</div>'
+          + '<div style="font-size:13px;color:#7a4a10;">A Shopee devolveu ao comprador menos que o total do pedido.</div>' : '')
+      + '</div>';
+  })();
+
   // b80 - a barra amarela gigante saiu: a quantidade agora vive
   // dentro do card do produto, em cima do titulo (sem repetir).
 
