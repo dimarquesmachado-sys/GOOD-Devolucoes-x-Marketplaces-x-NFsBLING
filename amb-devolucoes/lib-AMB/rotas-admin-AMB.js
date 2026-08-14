@@ -710,11 +710,16 @@ app.get('/api/debug/nf-ml/:orderId', async (req, res) => {
   const oid = String(req.params.orderId || '').replace(/\D/g, '');
   const pack = String(req.query.pack || '').replace(/\D/g, '');
   const ship = String(req.query.shipment || '').replace(/\D/g, '');
+  // b250 (review do Codex) - se o /users/me falhar, o caminho que depende do
+  // id do vendedor some da lista SEM AVISO, e o retorno pareceria dizer que
+  // aquele endpoint nao serve. Agora a falha e reportada.
   let uid = '';
+  let erroUid = null;
   try {
     const me = await chamarML('/users/me');
     uid = String((me.ok && me.data && me.data.id) || '');
-  } catch (e) { /* segue sem uid */ }
+    if (!uid) erroUid = { status: me.status || null, motivo: 'nao consegui o id do vendedor' };
+  } catch (e) { erroUid = { motivo: String(e.message || e).slice(0, 200) }; }
 
   const alvos = [
     `/orders/${oid}/billing_info`,
@@ -783,18 +788,29 @@ app.get('/api/debug/nf-ml/:orderId', async (req, res) => {
         documentos: r.ok ? docs : null,
         // b248 - o corpo do ERRO distingue "endpoint nao existe" de "existe,
         // mas falta permissao/parametro" — mas so a mensagem, sem dado nenhum
-        erro_ml: !r.ok && r.error ? {
-          message: (r.error.message || r.error.error || null),
-          status: r.error.status || null,
-          cause: Array.isArray(r.error.cause) ? r.error.cause.slice(0, 3) : null,
-        } : null,
+        // b250 (review do Codex) - o erro do ML nem sempre e objeto: quando
+        // vem string, ler `.message` dava null e a sonda perdia a unica pista
+        // que distingue "endpoint nao existe" de "falta permissao".
+        erro_ml: !r.ok && r.error ? (
+          typeof r.error === 'string'
+            ? { message: r.error.slice(0, 300) }
+            : {
+                message: (r.error.message || r.error.error || null),
+                status: r.error.status || null,
+                cause: Array.isArray(r.error.cause) ? r.error.cause.slice(0, 3) : null,
+              }
+        ) : null,
       });
     } catch (e) {
       passos.push({ caminho, erro: String(e.message || e) });
     }
     await sleep(250);
   }
-  res.json({ ok: true, order_id: oid, user_id: uid || null, passos });
+  res.json({
+    ok: true, order_id: oid, user_id: uid || null,
+    erro_user_id: erroUid,   // b250 - por que o caminho por vendedor nao foi tentado
+    passos,
+  });
 });
 
 // GET /api/debug/resgate-nf/:orderId
