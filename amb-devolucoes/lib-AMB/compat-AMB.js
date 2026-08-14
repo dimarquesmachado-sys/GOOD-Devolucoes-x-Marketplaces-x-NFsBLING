@@ -724,6 +724,7 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
       if (idDaNota) { id = idDaNota; }   // b233
       let via = null;   // b227 - por onde a foto veio (ou por que nao veio)
       let blingRespondeu = false;   // b240 - alguma consulta voltou ok?
+      let algumaFalhou = false;     // b241 - alguma consulta NAO voltou ok?
       // b229/b231 (review do Codex) - a comparacao tolera SO hifen, espaco e
       // caixa. A versao anterior apagava qualquer caractere nao alfanumerico
       // (`/`, `.`, `_`, acentos), entao `AB/CD` casaria com `ABCD`: dois SKUs
@@ -758,13 +759,21 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
       // zera e segue o caminho normal.
       if (idDaNota) {
         const rId = await bling.chamarBling(`/produtos/${idDaNota}`);
-        if (rId.ok) blingRespondeu = true;   // b240
-        url = primeiraImagem((rId.ok && rId.data && rId.data.data) || null);
+        const prodDoId = (rId.ok && rId.data && rId.data.data) || null;
+        if (rId.ok) blingRespondeu = true; else algumaFalhou = true;   // b241
+        url = primeiraImagem(prodDoId);
         if (url) via = 'id_do_item_da_nf';
-        else id = null;   // nao resolveu: volta pro SKU
+        // b241 (review do Codex) - produto VALIDO que so nao tem foto NAO e a
+        // mesma coisa que id que nao resolveu. Zerar `id` nos dois casos fazia
+        // a busca por SKU procurar o codigo HISTORICO da venda e, se esse
+        // codigo hoje pertencer a outro produto, mostrar a foto errada —
+        // justamente tendo o vinculo estavel da NF em maos.
+        else if (prodDoId) { via = 'id_do_item_da_nf_sem_foto'; }
+        else { id = null; }   // nao resolveu mesmo: volta pro SKU
       }
-      const rL = url ? { ok: false } : await bling.chamarBling(`/produtos?codigo=${encodeURIComponent(chave)}&limite=3`);
-      if (rL.ok) blingRespondeu = true;   // b240
+      const encerrouNoId = via === 'id_do_item_da_nf_sem_foto';   // b241
+      const rL = (url || encerrouNoId) ? { ok: false } : await bling.chamarBling(`/produtos?codigo=${encodeURIComponent(chave)}&limite=3`);
+      if (rL.ok) blingRespondeu = true; else algumaFalhou = true;   // b241
       // b227 (review do Codex — e a causa mais provavel da foto errada que o
       // Diego viu): o `|| lista[0]` era um FALLBACK CEGO. Quando o Bling
       // ignora o filtro ?codigo= e devolve a pagina padrao, esse primeiro
@@ -806,14 +815,14 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
       // `idDaNota` original: quando o id nao resolve, o bloco acima o zera
       // justamente pra cair no SKU — checar o original reintroduzia o beco
       // sem saida que o fallback existe pra evitar.
-      if (!id) {
+      if (!id && !encerrouNoId) {
         // b229 (caso real do Diego): com limite=5 a busca por nome trouxe SO
         // acessorios — Kit2Roscas, TravaCentralBranca, TravaCentralPreta,
         // CUPULA-MENOR, 9W3KE27... — porque todos citam "Luminária FL-1011"
         // no titulo e vieram na frente. O produto principal ficava de fora
         // da lista e a foto nunca era achada. Com 100, ele cabe.
         const rP = await bling.chamarBling(`/produtos?pesquisa=${encodeURIComponent(chave)}&limite=100`);
-        if (rP.ok) blingRespondeu = true;   // b240
+        if (rP.ok) blingRespondeu = true; else algumaFalhou = true;   // b241
         const lista = (rP.ok && rP.data && rP.data.data) || [];
         const alvo = acharSku(lista, true);   // b232 - ultima via: exato, e formatado se for unico
         if (alvo) { url = url || primeiraImagem(alvo); id = alvo.id || null; via = 'busca_ampla_sku_exato'; }
@@ -840,7 +849,11 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
       // e gravar aqui esconderia a foto por 10 min mesmo com o Bling
       // recuperado no segundo seguinte — a mesma confusao "nao achei" x
       // "nao consegui olhar" que ja custou caro na busca de NF.
-      else if (blingRespondeu) {
+      // b241 (review do Codex) - so lembrar ausencia quando a busca foi
+      // CONCLUSIVA: se o ?codigo= respondeu vazio (o Bling ignora o filtro as
+      // vezes) e a busca ampla tomou 429, a resposta e "nao sei", nao "nao
+      // tem" — esconder a foto 10 min ai e afirmar o que nao se apurou.
+      else if (blingRespondeu && !algumaFalhou) {
         if (IMG_SEM_FOTO.size > 500) {   // b240 - nao crescer sem fim
           const corte = Date.now() - 10 * 60 * 1000;
           for (const [k, t] of IMG_SEM_FOTO) if (t < corte) IMG_SEM_FOTO.delete(k);
