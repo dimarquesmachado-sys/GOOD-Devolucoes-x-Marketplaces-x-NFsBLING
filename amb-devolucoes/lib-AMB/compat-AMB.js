@@ -680,6 +680,15 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
   // Detalhes e medicoes: README.md, "REGRAS DO CATALOGO (Bling x marketplaces)".
   // ═══════════════════════════════════════════════════════════════════
   router.get('/api/produto/imagem/:chave', auth.requerLogin, async (req, res) => {
+    // b244 (achado no Network do Diego: `304` + `If-None-Match`, 104 bytes)
+    // - o Express poe ETag em toda resposta JSON, e o navegador guardava o
+    // `{"imagem":null}` de ontem. Depois de cada correcao no servidor, a tela
+    // seguia mostrando o 📦 antigo REVALIDADO do cache do proprio browser —
+    // eu conferindo o servidor certo e ele vendo a resposta velha. Aqui a
+    // resposta e um estado que muda (cadastro, foto nova, id resolvido):
+    // nao pode ser cacheada pelo navegador.
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
+    res.set('Pragma', 'no-cache');
     const chave = String(req.params.chave || '').trim();
     if (!chave) return res.status(400).json({ ok: false, erro: 'informe o sku ou o id' });
     // b235 (review do Codex) - com o id da NF, o CACHE tambem e por id.
