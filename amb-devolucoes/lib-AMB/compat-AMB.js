@@ -773,7 +773,12 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
       }
       const encerrouNoId = via === 'id_do_item_da_nf_sem_foto';   // b241
       const rL = (url || encerrouNoId) ? { ok: false } : await bling.chamarBling(`/produtos?codigo=${encodeURIComponent(chave)}&limite=3`);
-      if (rL.ok) blingRespondeu = true; else algumaFalhou = true;   // b241
+      // b242 (review do Codex) - `rL` vem forjado `{ok:false}` quando a
+      // consulta e PULADA (ja achei a foto, ou encerrei no id). Pulada nao e
+      // falha: contar como falha impedia o cache de ausencia em caminhos que
+      // foram, sim, conclusivos.
+      if (rL.ok) blingRespondeu = true;
+      else if (!url && !encerrouNoId) algumaFalhou = true;
       // b227 (review do Codex — e a causa mais provavel da foto errada que o
       // Diego viu): o `|| lista[0]` era um FALLBACK CEGO. Quando o Bling
       // ignora o filtro ?codigo= e devolve a pagina padrao, esse primeiro
@@ -833,6 +838,9 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
       }
       if (!url && id) {
         const rD = await bling.chamarBling(`/produtos/${id}`);
+        // b242 - o detalhe e a consulta que DECIDE se ha foto: se ele falhar,
+        // a busca nao foi conclusiva e a ausencia nao pode ser lembrada.
+        if (rD.ok) blingRespondeu = true; else algumaFalhou = true;
         url = primeiraImagem((rD.ok && rD.data && rD.data.data) || null);
         if (url) via = (via || '') + '+detalhe';
       }
