@@ -243,8 +243,47 @@ async function lancarEstoqueNf(idNfDevolucao, idDeposito) {
   return { ok: true };
 }
 
+// ═══════════════════════════════════════════════════════════════════
+// b265 - RENOVACAO PREVENTIVA (mesmo padrao da b264 do ML)
+//
+// O access token se renova sozinho quando expira, mas o REFRESH tem
+// validade propria e e de uso unico. Se o modulo da AMB ficar parado tempo
+// demais, o refresh vence e so volta reautorizando A MAO — no caso do
+// Magalu, refazendo todo o consentimento no navegador certo, que em agosto
+// deu um trabalho enorme (client OAuth, redirect no idm, 2FA).
+// Entao renovamos de tempos em tempos mesmo sem uso.
+// Falha aqui NAO quebra nada: o caminho normal (expirou -> renova) segue.
+// ═══════════════════════════════════════════════════════════════════
+let ultimaPreventivaBli = 0;
+
+async function renovacaoPreventiva({ forcar = false } = {}) {
+  const DIAS = Number(process.env.AMB_BLING_RENOVAR_DIAS || 7);
+  const intervalo = DIAS * 24 * 60 * 60 * 1000;
+  if (!forcar && ultimaPreventivaBli && (Date.now() - ultimaPreventivaBli) < intervalo) {
+    return { ok: true, pulou: true, proxima_em_dias: Math.max(0, Math.round((intervalo - (Date.now() - ultimaPreventivaBli)) / 86400000)) };
+  }
+  if (!REFRESH_TOKEN) return { ok: false, erro: 'sem refresh token - autorize pelo /amb/conectar' };
+  let okRenovou = false;
+  try { okRenovou = !!(await renovarToken()); } catch (e) { okRenovou = false; }
+  if (okRenovou) ultimaPreventivaBli = Date.now();
+  return { ok: okRenovou, renovado: okRenovou, dias: DIAS };
+}
+
+function ligarRenovacaoPreventiva() {
+  const DIAS = Number(process.env.AMB_BLING_RENOVAR_DIAS || 7);
+  const intervalo = DIAS * 24 * 60 * 60 * 1000;
+  const t = setTimeout(() => {
+    renovacaoPreventiva({ forcar: true }).catch(() => {});
+    const i = setInterval(() => { renovacaoPreventiva({ forcar: true }).catch(() => {}); }, intervalo);
+    if (i.unref) i.unref();
+  }, 3 * 60 * 1000);
+  if (t.unref) t.unref();
+  console.log('[AMB/Bling] renovacao preventiva ligada: a cada ' + DIAS + ' dia(s)');
+}
+
 module.exports = {
   chamarBling,
+  renovacaoPreventiva, ligarRenovacaoPreventiva,   // b265
   renovarToken,
   trocarCodePorToken,
   urlAutorizacao,
