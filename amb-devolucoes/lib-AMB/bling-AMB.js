@@ -35,7 +35,21 @@ function basicAuth() {
 // AUTH
 // ============================================================
 
+// b267 (review do Codex) - UMA renovacao por vez NESTA integracao. Serializar
+// as escritas no Render nao resolve isto: o batimento da preventiva e um 401
+// normal podem chamar a renovacao ao mesmo tempo, com o MESMO refresh de uso
+// unico — a segunda chamada falha e, pior, pode gravar por cima. Agora quem
+// chega depois espera o resultado da que ja esta rodando.
+let renovacaoEmVooBling = null;
+
 async function renovarToken() {
+  if (renovacaoEmVooBling) return renovacaoEmVooBling;      // b267 - pega carona
+  renovacaoEmVooBling = (async () => { try { return await renovarTokenInterno(); } finally { renovacaoEmVooBling = null; } })();
+  return renovacaoEmVooBling;
+}
+
+async function renovarTokenInterno() {
+
   if (!cfg.bling.clientId || !cfg.bling.clientSecret) {
     console.error('[AMB/Bling] AMB_BLING_CLIENT_ID ou AMB_BLING_CLIENT_SECRET ausente');
     return false;
@@ -59,10 +73,12 @@ async function renovarToken() {
     );
     ACCESS_TOKEN = r.data.access_token;
     if (r.data.refresh_token) REFRESH_TOKEN = r.data.refresh_token;
-    await atualizarTokensNoRender([
+    // b266 (review do Codex) - renovacao so vale com o refresh NOVO guardado
+    ultimaPersistenciaBling = !!(await atualizarTokensNoRender([
       { key: cfg.bling.chaveAccess,  value: ACCESS_TOKEN },
       { key: cfg.bling.chaveRefresh, value: REFRESH_TOKEN },
-    ]);
+    ]));
+    if (!ultimaPersistenciaBling) console.error('[AMB/Bling] renovou mas NAO persistiu no Render — refresh gravado esta consumido');
     console.log('[AMB/Bling] Token renovado');
     return true;
   } catch (erro) {
@@ -243,8 +259,65 @@ async function lancarEstoqueNf(idNfDevolucao, idDeposito) {
   return { ok: true };
 }
 
+// ═══════════════════════════════════════════════════════════════════
+// b265 - RENOVACAO PREVENTIVA (mesmo padrao da b264 do ML)
+//
+// O access token se renova sozinho quando expira, mas o REFRESH tem
+// validade propria e e de uso unico. Se o modulo da AMB ficar parado tempo
+// demais, o refresh vence e so volta reautorizando A MAO — no caso do
+// Magalu, refazendo todo o consentimento no navegador certo, que em agosto
+// deu um trabalho enorme (client OAuth, redirect no idm, 2FA).
+// Entao renovamos de tempos em tempos mesmo sem uso.
+// Falha aqui NAO quebra nada: o caminho normal (expirou -> renova) segue.
+// ═══════════════════════════════════════════════════════════════════
+let ultimaPreventivaBli = 0;
+let ultimaPersistenciaBling = false;   // b266
+
+async function renovacaoPreventiva({ forcar = false } = {}) {
+  // b267 (review do Codex) - valor invalido (texto, 0, negativo, Infinity)
+  // fazia o intervalo virar NaN/0 e o batimento de 1h renovar TODA HORA um
+  // refresh de uso unico; Infinity travava a preventiva pra sempre. Agora
+  // qualquer coisa fora de 1..180 cai no padrao de 7 dias.
+  const diasEnv = Number(process.env.AMB_BLING_RENOVAR_DIAS);
+  const DIAS = (Number.isFinite(diasEnv) && diasEnv >= 1 && diasEnv <= 180) ? diasEnv : 7;
+  const intervalo = DIAS * 24 * 60 * 60 * 1000;
+  if (!forcar && ultimaPreventivaBli && (Date.now() - ultimaPreventivaBli) < intervalo) {
+    return { ok: true, pulou: true, proxima_em_dias: Math.max(0, Math.round((intervalo - (Date.now() - ultimaPreventivaBli)) / 86400000)) };
+  }
+  if (!REFRESH_TOKEN) return { ok: false, erro: 'sem refresh token - autorize pelo /amb/conectar' };
+  ultimaPersistenciaBling = false;
+  let okRenovou = false;
+  try { okRenovou = !!(await renovarToken()); } catch (e) { okRenovou = false; }
+  // b266 - ciclo so conta como cumprido se persistiu
+  if (okRenovou && ultimaPersistenciaBling) ultimaPreventivaBli = Date.now();
+  return { ok: okRenovou && ultimaPersistenciaBling, renovado: okRenovou, persistiu: ultimaPersistenciaBling, dias: DIAS };
+}
+
+function ligarRenovacaoPreventiva() {
+  // b266 (review do Codex) - TRES correcoes aqui:
+  // 1) NADA de setInterval com dias: 30 dias = 2.592.000.000 ms, acima do
+  //    limite de 32 bits do Node, que troca por 1 ms — viraria um loop de
+  //    renovacoes consumindo o refresh de uso unico. Agora e um HEARTBEAT
+  //    de 1h que so age quando o intervalo realmente venceu.
+  // 2) o primeiro disparo e ESCALONADO por integracao (ML 2min, Magalu
+  //    9min, Bling 15min): renovar tudo no mesmo instante disputava a
+  //    escrita das env vars do Render.
+  // 3) o Magalu sai de perto do preAquecer() (3min): os dois usariam o
+  //    MESMO refresh de uso unico e um deles perderia — com o indice
+  //    nascendo vazio.
+  const UMA_HORA = 60 * 60 * 1000;
+  const primeiro = setTimeout(() => {
+    renovacaoPreventiva({ forcar: true }).catch(() => {});
+    const bat = setInterval(() => { renovacaoPreventiva().catch(() => {}); }, UMA_HORA);
+    if (bat.unref) bat.unref();
+  }, 15 * 60 * 1000);
+  if (primeiro.unref) primeiro.unref();
+  console.log('[AMB/Bling] renovacao preventiva ligada: a cada ' + Number(process.env.AMB_BLING_RENOVAR_DIAS || 7) + ' dia(s)');
+}
+
 module.exports = {
   chamarBling,
+  renovacaoPreventiva, ligarRenovacaoPreventiva,   // b265
   renovarToken,
   trocarCodePorToken,
   urlAutorizacao,

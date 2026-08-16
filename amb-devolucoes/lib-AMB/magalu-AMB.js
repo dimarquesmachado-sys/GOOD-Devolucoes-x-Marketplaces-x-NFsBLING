@@ -123,7 +123,21 @@ async function trocarCodePorToken(code, redirectUri) {
   return { ok: true, persistiu, expira_em_s: r.data.expires_in || null };
 }
 
+// b267 (review do Codex) - UMA renovacao por vez NESTA integracao. Serializar
+// as escritas no Render nao resolve isto: o batimento da preventiva e um 401
+// normal podem chamar a renovacao ao mesmo tempo, com o MESMO refresh de uso
+// unico — a segunda chamada falha e, pior, pode gravar por cima. Agora quem
+// chega depois espera o resultado da que ja esta rodando.
+let renovacaoEmVooMagalu = null;
+
 async function renovar() {
+  if (renovacaoEmVooMagalu) return renovacaoEmVooMagalu;      // b267 - pega carona
+  renovacaoEmVooMagalu = (async () => { try { return await renovarInterno(); } finally { renovacaoEmVooMagalu = null; } })();
+  return renovacaoEmVooMagalu;
+}
+
+async function renovarInterno() {
+
   if (!REFRESH) throw new Error('sem refresh token do Magalu da AMB - refaca o consentimento');
   const corpo = new URLSearchParams({
     grant_type: 'refresh_token', refresh_token: REFRESH,
@@ -134,10 +148,15 @@ async function renovar() {
   });
   ACCESS = r.data.access_token || '';
   if (r.data.refresh_token) REFRESH = r.data.refresh_token;
-  await tokens.atualizarTokensNoRender([   // b150: nome/formato certos
+  // b266 (review do Codex) - a renovacao so vale se o refresh NOVO ficou
+  // guardado: se o Magalu aceitou e o Render falhou, a env mantem o refresh
+  // JA CONSUMIDO e o proximo restart cai sem token — justo o caso que da
+  // mais trabalho pra recuperar (consentimento inteiro no navegador certo).
+  ultimaPersistenciaMagalu = !!(await tokens.atualizarTokensNoRender([   // b150: nome/formato certos
     { key: 'AMB_MAGALU_ACCESS_TOKEN',  value: ACCESS },
     { key: 'AMB_MAGALU_REFRESH_TOKEN', value: REFRESH },
-  ]);
+  ]));
+  if (!ultimaPersistenciaMagalu) console.error('[AMB/Magalu] renovou mas NAO persistiu no Render — refresh gravado esta consumido');
   return ACCESS;
 }
 
@@ -460,8 +479,66 @@ function appEmUso() {
   return { proprio: APP_PROPRIO, client_id_final: CLIENT_ID ? CLIENT_ID.slice(0, 6) + '...' : null };
 }
 
+// ═══════════════════════════════════════════════════════════════════
+// b265 - RENOVACAO PREVENTIVA (mesmo padrao da b264 do ML)
+//
+// O access token se renova sozinho quando expira, mas o REFRESH tem
+// validade propria e e de uso unico. Se o modulo da AMB ficar parado tempo
+// demais, o refresh vence e so volta reautorizando A MAO — no caso do
+// Magalu, refazendo todo o consentimento no navegador certo, que em agosto
+// deu um trabalho enorme (client OAuth, redirect no idm, 2FA).
+// Entao renovamos de tempos em tempos mesmo sem uso.
+// Falha aqui NAO quebra nada: o caminho normal (expirou -> renova) segue.
+// ═══════════════════════════════════════════════════════════════════
+let ultimaPreventivaMag = 0;
+let ultimaPersistenciaMagalu = false;   // b266
+
+async function renovacaoPreventiva({ forcar = false } = {}) {
+  // b267 (review do Codex) - valor invalido (texto, 0, negativo, Infinity)
+  // fazia o intervalo virar NaN/0 e o batimento de 1h renovar TODA HORA um
+  // refresh de uso unico; Infinity travava a preventiva pra sempre. Agora
+  // qualquer coisa fora de 1..180 cai no padrao de 7 dias.
+  const diasEnv = Number(process.env.AMB_MAGALU_RENOVAR_DIAS);
+  const DIAS = (Number.isFinite(diasEnv) && diasEnv >= 1 && diasEnv <= 180) ? diasEnv : 7;
+  const intervalo = DIAS * 24 * 60 * 60 * 1000;
+  if (!forcar && ultimaPreventivaMag && (Date.now() - ultimaPreventivaMag) < intervalo) {
+    return { ok: true, pulou: true, proxima_em_dias: Math.max(0, Math.round((intervalo - (Date.now() - ultimaPreventivaMag)) / 86400000)) };
+  }
+  if (!REFRESH) return { ok: false, erro: 'sem refresh token - autorize pelo /amb/conectar' };
+  ultimaPersistenciaMagalu = false;
+  let okRenovou = false;
+  try { okRenovou = !!(await renovar()); } catch (e) { okRenovou = false; }
+  // b266 - ciclo so conta como cumprido se persistiu; senao tenta no proximo
+  // batimento, em vez de dormir uma semana com token morto na env
+  if (okRenovou && ultimaPersistenciaMagalu) ultimaPreventivaMag = Date.now();
+  return { ok: okRenovou && ultimaPersistenciaMagalu, renovado: okRenovou, persistiu: ultimaPersistenciaMagalu, dias: DIAS };
+}
+
+function ligarRenovacaoPreventiva() {
+  // b266 (review do Codex) - TRES correcoes aqui:
+  // 1) NADA de setInterval com dias: 30 dias = 2.592.000.000 ms, acima do
+  //    limite de 32 bits do Node, que troca por 1 ms — viraria um loop de
+  //    renovacoes consumindo o refresh de uso unico. Agora e um HEARTBEAT
+  //    de 1h que so age quando o intervalo realmente venceu.
+  // 2) o primeiro disparo e ESCALONADO por integracao (ML 2min, Magalu
+  //    9min, Bling 15min): renovar tudo no mesmo instante disputava a
+  //    escrita das env vars do Render.
+  // 3) o Magalu sai de perto do preAquecer() (3min): os dois usariam o
+  //    MESMO refresh de uso unico e um deles perderia — com o indice
+  //    nascendo vazio.
+  const UMA_HORA = 60 * 60 * 1000;
+  const primeiro = setTimeout(() => {
+    renovacaoPreventiva({ forcar: true }).catch(() => {});
+    const bat = setInterval(() => { renovacaoPreventiva().catch(() => {}); }, UMA_HORA);
+    if (bat.unref) bat.unref();
+  }, 9 * 60 * 1000);
+  if (primeiro.unref) primeiro.unref();
+  console.log('[AMB/Magalu] renovacao preventiva ligada: a cada ' + Number(process.env.AMB_MAGALU_RENOVAR_DIAS || 7) + ' dia(s)');
+}
+
 module.exports = {
   appEmUso,
+  renovacaoPreventiva, ligarRenovacaoPreventiva,   // b265
   cfg,                       // b152 - interface que a identificar espera
   acharDevolucao,            // b152 - bipe: protocolo | reverse_code | pedido
   listarTickets, remessasReversasDoTicket, construirIndiceDevolucoes,

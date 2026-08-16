@@ -56,7 +56,22 @@ async function listarTodasAsVars() {
  * @param {Array<{key:string,value:string}>} updates
  * @returns {Promise<boolean>}
  */
+// b268 (review do Codex) - DELEGA pro helper da GOOD. Os dois arquivos
+// gravavam as MESMAS env-vars do MESMO servico, cada um com sua fila: rodando
+// juntos, o segundo PUT restaurava o refresh ja consumido pelo primeiro.
+// Agora ha uma fila so — a de la — e este modulo mantem a interface que os
+// modulos da AMB ja usam.
+const filaUnica = (() => {
+  try { return require('../../lib/render-tokens').atualizarTokensNoRender; }
+  catch (e) { return null; }   // se o caminho mudar, cai no proprio escritor
+})();
+
 async function atualizarTokensNoRender(updates) {
+  if (filaUnica) return filaUnica(updates);
+  return escreverNoRender(updates);
+}
+
+async function escreverNoRender(updates) {
   if (!cfg.render.apiKey || !cfg.render.serviceId) {
     console.log('[AMB/Render] RENDER_API_KEY ou RENDER_SERVICE_ID ausente - token nao persistido');
     return false;

@@ -1405,9 +1405,38 @@ router.get('/ml/teste', admin, async (req, res) => {
 // e, se o modulo ficar parado esse tempo, so volta reautorizando a mao.
 try { if (typeof ml.ligarRenovacaoPreventiva === 'function') ml.ligarRenovacaoPreventiva(); } catch (e) { /* nao pode travar o boot */ }
 
+// b265 - o mesmo pros outros dois tokens da AMB. O do MAGALU e o mais
+// caro de perder: reautorizar exige refazer o consentimento no navegador
+// certo (foi o trabalhao de agosto com o client OAuth e a redirect).
+try { if (typeof magalu.ligarRenovacaoPreventiva === 'function') magalu.ligarRenovacaoPreventiva(); } catch (e) { /* nao pode travar o boot */ }
+try { if (typeof bling.ligarRenovacaoPreventiva === 'function') bling.ligarRenovacaoPreventiva(); } catch (e) { /* nao pode travar o boot */ }
+
 // b264 - conferir/forcar na hora, sem esperar o timer
 router.get('/ml/token/preventiva', admin, async (req, res) => {
   res.json({ ok: true, versao: VERSAO, resultado: await ml.renovacaoPreventiva({ forcar: req.query.forcar === '1' }) });
+});
+
+// b265 - conferir/forcar os tres num lugar so
+router.get('/tokens/preventiva', admin, async (req, res) => {
+  const forcar = req.query.forcar === '1';
+  // b268 (review do Codex) - as tres correm em serie e cada uma pode esperar
+  // a fila do Render: sem prazo, a requisicao ficava pendurada ate o timeout
+  // do Render e voltava vazia. Cada uma tem 20s; o que estourar volta dito.
+  const comPrazo = (p, ms) => Promise.race([
+    p, new Promise((ok) => setTimeout(() => ok({ ok: false, erro: 'prazo de ' + (ms / 1000) + 's estourou — pode ter renovado assim mesmo; confira depois' }), ms)),
+  ]);
+  const chamar = async (mod) => {
+    try {
+      if (typeof mod.renovacaoPreventiva !== 'function') return { ok: false, erro: 'modulo sem renovacao preventiva' };
+      return await comPrazo(mod.renovacaoPreventiva({ forcar }), 20000);
+    } catch (e) { return { ok: false, erro: String(e.message || e) }; }
+  };
+  res.json({
+    ok: true, versao: VERSAO,
+    ml: await chamar(ml),
+    magalu: await chamar(magalu),
+    bling: await chamar(bling),
+  });
 });
 
 router.get('/ml/eu', admin, async (req, res) => {
