@@ -1419,9 +1419,17 @@ router.get('/ml/token/preventiva', admin, async (req, res) => {
 // b265 - conferir/forcar os tres num lugar so
 router.get('/tokens/preventiva', admin, async (req, res) => {
   const forcar = req.query.forcar === '1';
+  // b268 (review do Codex) - as tres correm em serie e cada uma pode esperar
+  // a fila do Render: sem prazo, a requisicao ficava pendurada ate o timeout
+  // do Render e voltava vazia. Cada uma tem 20s; o que estourar volta dito.
+  const comPrazo = (p, ms) => Promise.race([
+    p, new Promise((ok) => setTimeout(() => ok({ ok: false, erro: 'prazo de ' + (ms / 1000) + 's estourou — pode ter renovado assim mesmo; confira depois' }), ms)),
+  ]);
   const chamar = async (mod) => {
-    try { return (typeof mod.renovacaoPreventiva === 'function') ? await mod.renovacaoPreventiva({ forcar }) : { ok: false, erro: 'modulo sem renovacao preventiva' }; }
-    catch (e) { return { ok: false, erro: String(e.message || e) }; }
+    try {
+      if (typeof mod.renovacaoPreventiva !== 'function') return { ok: false, erro: 'modulo sem renovacao preventiva' };
+      return await comPrazo(mod.renovacaoPreventiva({ forcar }), 20000);
+    } catch (e) { return { ok: false, erro: String(e.message || e) }; }
   };
   res.json({
     ok: true, versao: VERSAO,
