@@ -56,7 +56,21 @@ async function listarTodasAsVars() {
  * @param {Array<{key:string,value:string}>} updates
  * @returns {Promise<boolean>}
  */
+// b266 (review do Codex) - FILA. Esta funcao faz GET de TODAS as env vars e
+// PUT do conjunto inteiro. Duas renovacoes simultaneas (ML, Magalu, Bling)
+// liam o mesmo conjunto e a segunda escrita RESTAURAVA o refresh antigo — ja
+// consumido — da outra integracao. No proximo restart, aquele token estaria
+// morto e so voltaria reautorizando a mao. Agora as escritas acontecem uma
+// de cada vez, e cada uma le o estado depois da anterior.
+let filaRender = Promise.resolve();
+
 async function atualizarTokensNoRender(updates) {
+  const minhaVez = filaRender.then(() => escreverNoRender(updates), () => escreverNoRender(updates));
+  filaRender = minhaVez.catch(() => {});
+  return minhaVez;
+}
+
+async function escreverNoRender(updates) {
   if (!cfg.render.apiKey || !cfg.render.serviceId) {
     console.log('[AMB/Render] RENDER_API_KEY ou RENDER_SERVICE_ID ausente - token nao persistido');
     return false;

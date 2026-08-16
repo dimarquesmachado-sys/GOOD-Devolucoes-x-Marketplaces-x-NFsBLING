@@ -134,10 +134,15 @@ async function renovar() {
   });
   ACCESS = r.data.access_token || '';
   if (r.data.refresh_token) REFRESH = r.data.refresh_token;
-  await tokens.atualizarTokensNoRender([   // b150: nome/formato certos
+  // b266 (review do Codex) - a renovacao so vale se o refresh NOVO ficou
+  // guardado: se o Magalu aceitou e o Render falhou, a env mantem o refresh
+  // JA CONSUMIDO e o proximo restart cai sem token — justo o caso que da
+  // mais trabalho pra recuperar (consentimento inteiro no navegador certo).
+  ultimaPersistenciaMagalu = !!(await tokens.atualizarTokensNoRender([   // b150: nome/formato certos
     { key: 'AMB_MAGALU_ACCESS_TOKEN',  value: ACCESS },
     { key: 'AMB_MAGALU_REFRESH_TOKEN', value: REFRESH },
-  ]);
+  ]));
+  if (!ultimaPersistenciaMagalu) console.error('[AMB/Magalu] renovou mas NAO persistiu no Render — refresh gravado esta consumido');
   return ACCESS;
 }
 
@@ -472,6 +477,7 @@ function appEmUso() {
 // Falha aqui NAO quebra nada: o caminho normal (expirou -> renova) segue.
 // ═══════════════════════════════════════════════════════════════════
 let ultimaPreventivaMag = 0;
+let ultimaPersistenciaMagalu = false;   // b266
 
 async function renovacaoPreventiva({ forcar = false } = {}) {
   const DIAS = Number(process.env.AMB_MAGALU_RENOVAR_DIAS || 7);
@@ -480,22 +486,35 @@ async function renovacaoPreventiva({ forcar = false } = {}) {
     return { ok: true, pulou: true, proxima_em_dias: Math.max(0, Math.round((intervalo - (Date.now() - ultimaPreventivaMag)) / 86400000)) };
   }
   if (!REFRESH) return { ok: false, erro: 'sem refresh token - autorize pelo /amb/conectar' };
+  ultimaPersistenciaMagalu = false;
   let okRenovou = false;
   try { okRenovou = !!(await renovar()); } catch (e) { okRenovou = false; }
-  if (okRenovou) ultimaPreventivaMag = Date.now();
-  return { ok: okRenovou, renovado: okRenovou, dias: DIAS };
+  // b266 - ciclo so conta como cumprido se persistiu; senao tenta no proximo
+  // batimento, em vez de dormir uma semana com token morto na env
+  if (okRenovou && ultimaPersistenciaMagalu) ultimaPreventivaMag = Date.now();
+  return { ok: okRenovou && ultimaPersistenciaMagalu, renovado: okRenovou, persistiu: ultimaPersistenciaMagalu, dias: DIAS };
 }
 
 function ligarRenovacaoPreventiva() {
-  const DIAS = Number(process.env.AMB_MAGALU_RENOVAR_DIAS || 7);
-  const intervalo = DIAS * 24 * 60 * 60 * 1000;
-  const t = setTimeout(() => {
+  // b266 (review do Codex) - TRES correcoes aqui:
+  // 1) NADA de setInterval com dias: 30 dias = 2.592.000.000 ms, acima do
+  //    limite de 32 bits do Node, que troca por 1 ms — viraria um loop de
+  //    renovacoes consumindo o refresh de uso unico. Agora e um HEARTBEAT
+  //    de 1h que so age quando o intervalo realmente venceu.
+  // 2) o primeiro disparo e ESCALONADO por integracao (ML 2min, Magalu
+  //    9min, Bling 15min): renovar tudo no mesmo instante disputava a
+  //    escrita das env vars do Render.
+  // 3) o Magalu sai de perto do preAquecer() (3min): os dois usariam o
+  //    MESMO refresh de uso unico e um deles perderia — com o indice
+  //    nascendo vazio.
+  const UMA_HORA = 60 * 60 * 1000;
+  const primeiro = setTimeout(() => {
     renovacaoPreventiva({ forcar: true }).catch(() => {});
-    const i = setInterval(() => { renovacaoPreventiva({ forcar: true }).catch(() => {}); }, intervalo);
-    if (i.unref) i.unref();
-  }, 3 * 60 * 1000);
-  if (t.unref) t.unref();
-  console.log('[AMB/Magalu] renovacao preventiva ligada: a cada ' + DIAS + ' dia(s)');
+    const bat = setInterval(() => { renovacaoPreventiva().catch(() => {}); }, UMA_HORA);
+    if (bat.unref) bat.unref();
+  }, 9 * 60 * 1000);
+  if (primeiro.unref) primeiro.unref();
+  console.log('[AMB/Magalu] renovacao preventiva ligada: a cada ' + Number(process.env.AMB_MAGALU_RENOVAR_DIAS || 7) + ' dia(s)');
 }
 
 module.exports = {

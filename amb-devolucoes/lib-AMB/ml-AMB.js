@@ -103,7 +103,12 @@ async function renovarToken() {
       { key: cfg.ml.chaveRefresh, value: REFRESH_TOKEN },
     ];
     if (USER_ID) gravar.push({ key: cfg.ml.chaveUserId, value: USER_ID });
-    await atualizarTokensNoRender(gravar);
+    // b266 (review do Codex) - a renovacao so vale se o refresh NOVO ficou
+    // guardado. Se o marketplace aceitou mas o Render falhou, a env ainda
+    // tem o refresh JA CONSUMIDO: no proximo restart o token estaria morto.
+    const persistiu = await atualizarTokensNoRender(gravar);
+    if (!persistiu) console.error('[AMB/ML] renovou no marketplace mas NAO persistiu no Render — o refresh gravado esta consumido');
+    ultimaPersistencia = !!persistiu;
 
     console.log('[AMB/ML] Token renovado');
     return true;
@@ -202,6 +207,7 @@ async function testeDeVida() {
 // quebra nada — o 401 continua sendo a rede de seguranca.
 // ═══════════════════════════════════════════════════════════════════
 let ultimaPreventiva = 0;
+let ultimaPersistencia = false;   // b266 - a ultima renovacao chegou a ser gravada?
 
 async function renovacaoPreventiva({ forcar = false } = {}) {
   const DIAS = Number(process.env.AMB_ML_RENOVAR_DIAS || 7);
@@ -210,21 +216,36 @@ async function renovacaoPreventiva({ forcar = false } = {}) {
     return { ok: true, pulou: true, proxima_em_dias: Math.max(0, Math.round((intervalo - (Date.now() - ultimaPreventiva)) / 86400000)) };
   }
   if (!REFRESH_TOKEN) return { ok: false, erro: 'sem refresh token - autorize pelo /amb/conectar' };
+  ultimaPersistencia = false;
   const okRenovou = await renovarToken();
-  if (okRenovou) ultimaPreventiva = Date.now();
-  return { ok: okRenovou, renovado: okRenovou, dias: DIAS };
+  // b266 - so marca o ciclo como cumprido se persistiu; senao tenta de novo
+  // no proximo batimento, em vez de dormir mais uma semana com token morto.
+  if (okRenovou && ultimaPersistencia) ultimaPreventiva = Date.now();
+  return { ok: okRenovou && ultimaPersistencia, renovado: okRenovou, persistiu: ultimaPersistencia, dias: DIAS };
 }
 
 /** Liga o timer. Uma renovacao no boot (apos 2 min, pra nao brigar com o
  *  aquecimento dos indices) e depois a cada AMB_ML_RENOVAR_DIAS. */
 function ligarRenovacaoPreventiva() {
-  const DIAS = Number(process.env.AMB_ML_RENOVAR_DIAS || 7);
-  const intervalo = DIAS * 24 * 60 * 60 * 1000;
-  setTimeout(() => {
+  // b266 (review do Codex) - TRES correcoes aqui:
+  // 1) NADA de setInterval com dias: 30 dias = 2.592.000.000 ms, acima do
+  //    limite de 32 bits do Node, que troca por 1 ms — viraria um loop de
+  //    renovacoes consumindo o refresh de uso unico. Agora e um HEARTBEAT
+  //    de 1h que so age quando o intervalo realmente venceu.
+  // 2) o primeiro disparo e ESCALONADO por integracao (ML 2min, Magalu
+  //    9min, Bling 15min): renovar tudo no mesmo instante disputava a
+  //    escrita das env vars do Render.
+  // 3) o Magalu sai de perto do preAquecer() (3min): os dois usariam o
+  //    MESMO refresh de uso unico e um deles perderia — com o indice
+  //    nascendo vazio.
+  const UMA_HORA = 60 * 60 * 1000;
+  const primeiro = setTimeout(() => {
     renovacaoPreventiva({ forcar: true }).catch(() => {});
-    setInterval(() => { renovacaoPreventiva({ forcar: true }).catch(() => {}); }, intervalo);
-  }, 2 * 60 * 1000).unref?.();
-  console.log(`[AMB/ML] renovacao preventiva ligada: a cada ${DIAS} dia(s)`);
+    const bat = setInterval(() => { renovacaoPreventiva().catch(() => {}); }, UMA_HORA);
+    if (bat.unref) bat.unref();
+  }, 2 * 60 * 1000);
+  if (primeiro.unref) primeiro.unref();
+  console.log('[AMB/ML] renovacao preventiva ligada: a cada ' + Number(process.env.AMB_ML_RENOVAR_DIAS || 7) + ' dia(s)');
 }
 
 module.exports = {
