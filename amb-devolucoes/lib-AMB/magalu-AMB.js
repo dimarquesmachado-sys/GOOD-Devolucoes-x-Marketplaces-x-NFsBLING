@@ -123,7 +123,21 @@ async function trocarCodePorToken(code, redirectUri) {
   return { ok: true, persistiu, expira_em_s: r.data.expires_in || null };
 }
 
+// b267 (review do Codex) - UMA renovacao por vez NESTA integracao. Serializar
+// as escritas no Render nao resolve isto: o batimento da preventiva e um 401
+// normal podem chamar a renovacao ao mesmo tempo, com o MESMO refresh de uso
+// unico — a segunda chamada falha e, pior, pode gravar por cima. Agora quem
+// chega depois espera o resultado da que ja esta rodando.
+let renovacaoEmVooMagalu = null;
+
 async function renovar() {
+  if (renovacaoEmVooMagalu) return renovacaoEmVooMagalu;      // b267 - pega carona
+  renovacaoEmVooMagalu = (async () => { try { return await renovarInterno(); } finally { renovacaoEmVooMagalu = null; } })();
+  return renovacaoEmVooMagalu;
+}
+
+async function renovarInterno() {
+
   if (!REFRESH) throw new Error('sem refresh token do Magalu da AMB - refaca o consentimento');
   const corpo = new URLSearchParams({
     grant_type: 'refresh_token', refresh_token: REFRESH,
@@ -480,7 +494,12 @@ let ultimaPreventivaMag = 0;
 let ultimaPersistenciaMagalu = false;   // b266
 
 async function renovacaoPreventiva({ forcar = false } = {}) {
-  const DIAS = Number(process.env.AMB_MAGALU_RENOVAR_DIAS || 7);
+  // b267 (review do Codex) - valor invalido (texto, 0, negativo, Infinity)
+  // fazia o intervalo virar NaN/0 e o batimento de 1h renovar TODA HORA um
+  // refresh de uso unico; Infinity travava a preventiva pra sempre. Agora
+  // qualquer coisa fora de 1..180 cai no padrao de 7 dias.
+  const diasEnv = Number(process.env.AMB_MAGALU_RENOVAR_DIAS);
+  const DIAS = (Number.isFinite(diasEnv) && diasEnv >= 1 && diasEnv <= 180) ? diasEnv : 7;
   const intervalo = DIAS * 24 * 60 * 60 * 1000;
   if (!forcar && ultimaPreventivaMag && (Date.now() - ultimaPreventivaMag) < intervalo) {
     return { ok: true, pulou: true, proxima_em_dias: Math.max(0, Math.round((intervalo - (Date.now() - ultimaPreventivaMag)) / 86400000)) };

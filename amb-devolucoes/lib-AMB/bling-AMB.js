@@ -35,7 +35,21 @@ function basicAuth() {
 // AUTH
 // ============================================================
 
+// b267 (review do Codex) - UMA renovacao por vez NESTA integracao. Serializar
+// as escritas no Render nao resolve isto: o batimento da preventiva e um 401
+// normal podem chamar a renovacao ao mesmo tempo, com o MESMO refresh de uso
+// unico — a segunda chamada falha e, pior, pode gravar por cima. Agora quem
+// chega depois espera o resultado da que ja esta rodando.
+let renovacaoEmVooBling = null;
+
 async function renovarToken() {
+  if (renovacaoEmVooBling) return renovacaoEmVooBling;      // b267 - pega carona
+  renovacaoEmVooBling = (async () => { try { return await renovarTokenInterno(); } finally { renovacaoEmVooBling = null; } })();
+  return renovacaoEmVooBling;
+}
+
+async function renovarTokenInterno() {
+
   if (!cfg.bling.clientId || !cfg.bling.clientSecret) {
     console.error('[AMB/Bling] AMB_BLING_CLIENT_ID ou AMB_BLING_CLIENT_SECRET ausente');
     return false;
@@ -260,7 +274,12 @@ let ultimaPreventivaBli = 0;
 let ultimaPersistenciaBling = false;   // b266
 
 async function renovacaoPreventiva({ forcar = false } = {}) {
-  const DIAS = Number(process.env.AMB_BLING_RENOVAR_DIAS || 7);
+  // b267 (review do Codex) - valor invalido (texto, 0, negativo, Infinity)
+  // fazia o intervalo virar NaN/0 e o batimento de 1h renovar TODA HORA um
+  // refresh de uso unico; Infinity travava a preventiva pra sempre. Agora
+  // qualquer coisa fora de 1..180 cai no padrao de 7 dias.
+  const diasEnv = Number(process.env.AMB_BLING_RENOVAR_DIAS);
+  const DIAS = (Number.isFinite(diasEnv) && diasEnv >= 1 && diasEnv <= 180) ? diasEnv : 7;
   const intervalo = DIAS * 24 * 60 * 60 * 1000;
   if (!forcar && ultimaPreventivaBli && (Date.now() - ultimaPreventivaBli) < intervalo) {
     return { ok: true, pulou: true, proxima_em_dias: Math.max(0, Math.round((intervalo - (Date.now() - ultimaPreventivaBli)) / 86400000)) };

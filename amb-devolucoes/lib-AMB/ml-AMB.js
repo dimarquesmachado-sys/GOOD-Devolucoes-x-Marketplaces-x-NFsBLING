@@ -74,7 +74,21 @@ async function trocarCodePorToken(code, redirectUri) {
   return { user_id: USER_ID, expira_em_s: r.data.expires_in, escopo: r.data.scope || null, persistiu };
 }
 
+// b267 (review do Codex) - UMA renovacao por vez NESTA integracao. Serializar
+// as escritas no Render nao resolve isto: o batimento da preventiva e um 401
+// normal podem chamar a renovacao ao mesmo tempo, com o MESMO refresh de uso
+// unico — a segunda chamada falha e, pior, pode gravar por cima. Agora quem
+// chega depois espera o resultado da que ja esta rodando.
+let renovacaoEmVooML = null;
+
 async function renovarToken() {
+  if (renovacaoEmVooML) return renovacaoEmVooML;      // b267 - pega carona
+  renovacaoEmVooML = (async () => { try { return await renovarTokenInterno(); } finally { renovacaoEmVooML = null; } })();
+  return renovacaoEmVooML;
+}
+
+async function renovarTokenInterno() {
+
   if (!REFRESH_TOKEN) {
     console.error('[AMB/ML] Sem refresh token - autorize pelo /amb/conectar');
     return false;
@@ -210,7 +224,12 @@ let ultimaPreventiva = 0;
 let ultimaPersistencia = false;   // b266 - a ultima renovacao chegou a ser gravada?
 
 async function renovacaoPreventiva({ forcar = false } = {}) {
-  const DIAS = Number(process.env.AMB_ML_RENOVAR_DIAS || 7);
+  // b267 (review do Codex) - valor invalido (texto, 0, negativo, Infinity)
+  // fazia o intervalo virar NaN/0 e o batimento de 1h renovar TODA HORA um
+  // refresh de uso unico; Infinity travava a preventiva pra sempre. Agora
+  // qualquer coisa fora de 1..180 cai no padrao de 7 dias.
+  const diasEnv = Number(process.env.AMB_ML_RENOVAR_DIAS);
+  const DIAS = (Number.isFinite(diasEnv) && diasEnv >= 1 && diasEnv <= 180) ? diasEnv : 7;
   const intervalo = DIAS * 24 * 60 * 60 * 1000;
   if (!forcar && ultimaPreventiva && (Date.now() - ultimaPreventiva) < intervalo) {
     return { ok: true, pulou: true, proxima_em_dias: Math.max(0, Math.round((intervalo - (Date.now() - ultimaPreventiva)) / 86400000)) };
