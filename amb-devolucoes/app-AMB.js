@@ -1401,42 +1401,43 @@ router.get('/ml/teste', admin, async (req, res) => {
   res.json({ ok: true, versao: VERSAO, resultado: await ml.testeDeVida() });
 });
 
-// b264 - liga a renovacao preventiva do token do ML: o refresh vale 6 meses
-// e, se o modulo ficar parado esse tempo, so volta reautorizando a mao.
-try { if (typeof ml.ligarRenovacaoPreventiva === 'function') ml.ligarRenovacaoPreventiva(); } catch (e) { /* nao pode travar o boot */ }
-
-// b265 - o mesmo pros outros dois tokens da AMB. O do MAGALU e o mais
-// caro de perder: reautorizar exige refazer o consentimento no navegador
-// certo (foi o trabalhao de agosto com o client OAuth e a redirect).
-try { if (typeof magalu.ligarRenovacaoPreventiva === 'function') magalu.ligarRenovacaoPreventiva(); } catch (e) { /* nao pode travar o boot */ }
-try { if (typeof bling.ligarRenovacaoPreventiva === 'function') bling.ligarRenovacaoPreventiva(); } catch (e) { /* nao pode travar o boot */ }
+// b271 - liga as preventivas das SEIS integracoes (AMB e GOOD), escalonadas
+// pra nao disputarem a escrita das env vars nem o aquecimento dos indices.
+// Empresa nova entra so registrando na lib — este bloco nao muda.
+// b271 - liga as preventivas de TODAS as integracoes registradas, de todas
+// as empresas, escalonando o primeiro disparo (pra nao disputarem a escrita
+// das env vars nem o aquecimento dos indices). Empresa ou integracao nova
+// entra so registrando na lib — este bloco NAO muda.
+// b272 - o REGISTRO ja se agenda sozinho (lib/token-preventiva). Aqui so
+// carregamos os modulos da GOOD, que se registram ao serem exigidos, e
+// deixamos uma varredura de seguranca pra qualquer registro que tenha vindo
+// com autoLigar:false.
+(function carregarPreventivas() {
+  try { require('../lib/ml'); } catch (e) { /* ausente = segue */ }
+  try { require('../lib/bling'); } catch (e) { /* ausente = segue */ }
+  try {
+    const { ligarPendentes, listar } = require('../lib/token-preventiva');
+    const n = ligarPendentes({ inicioMinutos: 2, passoMinutos: 6 });
+    console.log(`[tokens] ${listar().length} integracao(oes) registrada(s)` + (n ? ` · ${n} agendada(s) pela varredura` : ''));
+  } catch (e) { /* renovacao nunca pode impedir o modulo de subir */ }
+})();
 
 // b264 - conferir/forcar na hora, sem esperar o timer
 router.get('/ml/token/preventiva', admin, async (req, res) => {
   res.json({ ok: true, versao: VERSAO, resultado: await ml.renovacaoPreventiva({ forcar: req.query.forcar === '1' }) });
 });
 
-// b265 - conferir/forcar os tres num lugar so
+// b271 - relatorio de TODAS as integracoes registradas, de TODAS as empresas
+// (a lib e quem sabe quem existe). Empresa nova aparece aqui sozinha, sem
+// mexer nesta rota.
 router.get('/tokens/preventiva', admin, async (req, res) => {
-  const forcar = req.query.forcar === '1';
-  // b268 (review do Codex) - as tres correm em serie e cada uma pode esperar
-  // a fila do Render: sem prazo, a requisicao ficava pendurada ate o timeout
-  // do Render e voltava vazia. Cada uma tem 20s; o que estourar volta dito.
-  const comPrazo = (p, ms) => Promise.race([
-    p, new Promise((ok) => setTimeout(() => ok({ ok: false, erro: 'prazo de ' + (ms / 1000) + 's estourou — pode ter renovado assim mesmo; confira depois' }), ms)),
-  ]);
-  const chamar = async (mod) => {
-    try {
-      if (typeof mod.renovacaoPreventiva !== 'function') return { ok: false, erro: 'modulo sem renovacao preventiva' };
-      return await comPrazo(mod.renovacaoPreventiva({ forcar }), 20000);
-    } catch (e) { return { ok: false, erro: String(e.message || e) }; }
-  };
-  res.json({
-    ok: true, versao: VERSAO,
-    ml: await chamar(ml),
-    magalu: await chamar(magalu),
-    bling: await chamar(bling),
-  });
+  const { relatorio, listar } = require('../lib/token-preventiva');
+  // b272 (review do Codex) - RENOVAR PRIMEIRO, listar DEPOIS. Em objeto
+  // literal o `listar()` era avaliado ANTES do `await`, então com ?forcar=1 a
+  // resposta trazia a data ANTIGA em `registradas` ao lado do "renovado
+  // agora" em `empresas` — dois carimbos contraditórios no mesmo JSON.
+  const empresas = await relatorio({ forcar: req.query.forcar === '1' });
+  res.json({ ok: true, versao: VERSAO, registradas: listar(), empresas });
 });
 
 router.get('/ml/eu', admin, async (req, res) => {

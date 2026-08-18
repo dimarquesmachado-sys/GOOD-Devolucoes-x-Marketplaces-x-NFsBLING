@@ -18,6 +18,13 @@
 const axios = require('axios');
 const cfg = require('../config-AMB');
 const { atualizarTokensNoRender } = require('./render-tokens-AMB');
+const { registrarPreventiva } = require('../../lib/token-preventiva');   // b271
+// b272 (review do Codex) - ESTA DECLARACAO VOLTOU. Meu refactor da b271
+// apagou o bloco antigo levando junto o `let ultimaPersistencia`, mas a
+// funcao de renovar continua ATRIBUINDO a ela. Em modulo strict, isso
+// lanca ReferenceError bem depois do marketplace ja ter rotacionado o
+// refresh: o token novo nao seria gravado e a integracao morreria.
+let ultimaPersistencia = false;
 
 let ACCESS_TOKEN  = cfg.ml.accessToken;
 let REFRESH_TOKEN = cfg.ml.refreshToken;
@@ -121,7 +128,7 @@ async function renovarTokenInterno() {
     // Sem ele, `ultimaPreventiva` so vivia em memoria: todo restart zerava o
     // ciclo e um dia de varios deploys disparava varias renovacoes seguidas
     // de um refresh de USO UNICO. Agora o intervalo sobrevive ao restart.
-    gravar.push({ key: 'AMB_ML_RENOVADO_EM', value: String(Date.now()) });
+    if (PREVENTIVA.parEnvCarimbo()) gravar.push(PREVENTIVA.parEnvCarimbo());   // b271
     // b266 (review do Codex) - a renovacao so vale se o refresh NOVO ficou
     // guardado. Se o marketplace aceitou mas o Render falhou, a env ainda
     // tem o refresh JA CONSUMIDO: no proximo restart o token estaria morto.
@@ -132,7 +139,7 @@ async function renovarTokenInterno() {
     // intervalo, nao so a preventiva. Uma renovacao normal (por 401) gravava
     // carimbo novo enquanto o contador em memoria seguia no antigo — e o
     // batimento renovava de novo pouco depois, gastando refresh a toa.
-    if (ultimaPersistencia) ultimaPreventiva = Date.now();
+    if (ultimaPersistencia) PREVENTIVA.marcarRenovado();   // b271
 
     console.log('[AMB/ML] Token renovado');
     return true;
@@ -217,76 +224,21 @@ async function testeDeVida() {
   return { ok: true, conta: eu.apelido, user_id: eu.user_id, site: eu.site };
 }
 
-// ═══════════════════════════════════════════════════════════════════
-// b264 - RENOVACAO PREVENTIVA (pedido do Diego, 14/08)
-//
-// O access token do ML dura 6h e ja se renova sozinho no primeiro 401. O
-// risco nao esta ai: o REFRESH token vale 6 MESES e e de uso unico — cada
-// renovacao gera outro. Se o modulo da AMB (que tem menos movimento que a
-// GOOD) passar esse tempo sem NENHUMA chamada, o refresh vence e so volta
-// reautorizando na mao pelo /amb/conectar, no navegador certo.
-//
-// Entao renovamos de tempos em tempos mesmo sem uso: o refresh fica sempre
-// fresco e o relogio dos 6 meses nunca chega perto do fim. Falha aqui nao
-// quebra nada — o 401 continua sendo a rede de seguranca.
-// ═══════════════════════════════════════════════════════════════════
-// b270 (review do Codex) - carimbo VALIDADO: `Number(...) || 0` aceitava
-// `Infinity` ou data no futuro, e ai `Date.now() - carimbo` fica negativo,
-// o intervalo nunca vence e a renovacao NUNCA MAIS acontece. So aceito
-// numero finito, positivo e nao futuro.
-let ultimaPreventiva = (() => {
-  const t = Number(process.env.AMB_ML_RENOVADO_EM);
-  return (Number.isFinite(t) && t > 0 && t <= Date.now()) ? t : 0;
-})();   // b269 - sobrevive a restart
-let ultimaPersistencia = false;   // b266 - a ultima renovacao chegou a ser gravada?
-
-async function renovacaoPreventiva({ forcar = false } = {}) {
-  // b267 (review do Codex) - valor invalido (texto, 0, negativo, Infinity)
-  // fazia o intervalo virar NaN/0 e o batimento de 1h renovar TODA HORA um
-  // refresh de uso unico; Infinity travava a preventiva pra sempre. Agora
-  // qualquer coisa fora de 1..180 cai no padrao de 7 dias.
-  const diasEnv = Number(process.env.AMB_ML_RENOVAR_DIAS);
-  const DIAS = (Number.isFinite(diasEnv) && diasEnv >= 1 && diasEnv <= 180) ? diasEnv : 7;
-  const intervalo = DIAS * 24 * 60 * 60 * 1000;
-  if (!forcar && ultimaPreventiva && (Date.now() - ultimaPreventiva) < intervalo) {
-    return { ok: true, pulou: true, proxima_em_dias: Math.max(0, Math.round((intervalo - (Date.now() - ultimaPreventiva)) / 86400000)) };
-  }
-  if (!REFRESH_TOKEN) return { ok: false, erro: 'sem refresh token - autorize pelo /amb/conectar' };
-  ultimaPersistencia = false;
-  const okRenovou = await renovarToken();
-  // b266 - so marca o ciclo como cumprido se persistiu; senao tenta de novo
-  // no proximo batimento, em vez de dormir mais uma semana com token morto.
-  if (okRenovou && ultimaPersistencia) ultimaPreventiva = Date.now();
-  return { ok: okRenovou && ultimaPersistencia, renovado: okRenovou, persistiu: ultimaPersistencia, dias: DIAS };
-}
-
-/** Liga o timer. Uma renovacao no boot (apos 2 min, pra nao brigar com o
- *  aquecimento dos indices) e depois a cada AMB_ML_RENOVAR_DIAS. */
-function ligarRenovacaoPreventiva() {
-  // b266 (review do Codex) - TRES correcoes aqui:
-  // 1) NADA de setInterval com dias: 30 dias = 2.592.000.000 ms, acima do
-  //    limite de 32 bits do Node, que troca por 1 ms — viraria um loop de
-  //    renovacoes consumindo o refresh de uso unico. Agora e um HEARTBEAT
-  //    de 1h que so age quando o intervalo realmente venceu.
-  // 2) o primeiro disparo e ESCALONADO por integracao (ML 2min, Magalu
-  //    9min, Bling 15min): renovar tudo no mesmo instante disputava a
-  //    escrita das env vars do Render.
-  // 3) o Magalu sai de perto do preAquecer() (3min): os dois usariam o
-  //    MESMO refresh de uso unico e um deles perderia — com o indice
-  //    nascendo vazio.
-  const UMA_HORA = 60 * 60 * 1000;
-  const primeiro = setTimeout(() => {
-    // b270 (review do Codex) - SEM `forcar` aqui. Forcando, o primeiro timer
-    // ignorava o carimbo restaurado e renovava em todo restart — anulando
-    // justamente o que a b269 veio corrigir. Quem precisa forcar e a rota
-    // manual (?forcar=1), nao o boot.
-    renovacaoPreventiva().catch(() => {});
-    const bat = setInterval(() => { renovacaoPreventiva().catch(() => {}); }, UMA_HORA);
-    if (bat.unref) bat.unref();
-  }, 2 * 60 * 1000);
-  if (primeiro.unref) primeiro.unref();
-  console.log('[AMB/ML] renovacao preventiva ligada: a cada ' + Number(process.env.AMB_ML_RENOVAR_DIAS || 7) + ' dia(s)');
-}
+// b271 - RENOVACAO PREVENTIVA pela LIB UNICA (lib/token-preventiva.js).
+// Antes cada modulo tinha sua copia deste mecanismo — e cada correcao da
+// review precisava ser repetida em tres arquivos. Agora a peca e uma so, com
+// a EMPRESA como parametro: integracao nova (ou empresa nova) = um registro
+// como este, zero logica duplicada.
+const PREVENTIVA = registrarPreventiva({
+  empresa: 'ambtotal', integracao: 'ml',
+  temRefresh: () => !!REFRESH_TOKEN,
+  renovar: () => renovarToken(),
+  persistiu: () => ultimaPersistencia,
+  carimboEnv: 'AMB_ML_RENOVADO_EM',
+  diasEnv: 'AMB_ML_RENOVAR_DIAS',
+});
+const renovacaoPreventiva = (op) => PREVENTIVA.preventiva(op);
+const ligarRenovacaoPreventiva = (op) => PREVENTIVA.ligar(op);
 
 module.exports = {
   chamarML,
