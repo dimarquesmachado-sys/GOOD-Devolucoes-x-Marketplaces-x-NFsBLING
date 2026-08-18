@@ -998,6 +998,51 @@ app.get('/api/debug/nf-devolucao', async (req, res) => {
   res.json(r);
 });
 
+// b282 (regra dele: "se tem alguma forma de API pegar isso, otimo. senao vai
+// na unha manual mesmo") - os DOIS ids fiscais que sobraram no painel
+// (idEmpresaControl e idNaturezaOperacao) foram capturados na TELA do Bling
+// com o F12, nao pela API. Antes de decidir como tirar do codigo, precisamos
+// saber o que a API v3 entrega: esta sonda mostra as naturezas de operacao e
+// os campos crus de um deposito (o comentario do painel diz que o
+// idEmpresaControl saiu de `depositos[].idEmpresa` do endpoint interno).
+// GET /api/debug/ids-fiscais?k=ADMIN_KEY
+app.get('/api/debug/ids-fiscais', async (req, res) => {
+  if (!adminOk(req)) return res.status(403).json({ ok: false, erro: 'so admin' });
+  const out = {};
+  const tentar = async (caminho) => {
+    try {
+      const r = await chamarBling(caminho);
+      const d = (r.data && r.data.data) || null;
+      return {
+        status: r.status || (r.ok ? 200 : null),
+        ok: !!r.ok,
+        qtd: Array.isArray(d) ? d.length : (d ? 1 : 0),
+        // so o que interessa: id, descricao e os campos que possam trazer empresa
+        amostra: Array.isArray(d)
+          ? d.slice(0, 12).map((x) => ({
+              id: x.id, descricao: x.descricao || x.nome || null,
+              padrao: x.padrao != null ? x.padrao : undefined,
+              tipo: x.tipo != null ? x.tipo : undefined,
+              idEmpresa: x.idEmpresa || (x.empresa && x.empresa.id) || undefined,
+            }))
+          : (d ? { campos: Object.keys(d).slice(0, 25) } : null),
+        erro_ml: !r.ok ? String((r.error && (r.error.message || r.error.error)) || r.error || '').slice(0, 200) : null,
+      };
+    } catch (e) { return { erro: String(e.message || e).slice(0, 160) }; }
+  };
+  out['/naturezas-operacoes'] = await tentar('/naturezas-operacoes?limite=100');
+  await sleep(350);
+  out['/depositos (campos crus)'] = await tentar('/depositos?limite=3');
+  await sleep(350);
+  out['/empresas'] = await tentar('/empresas');
+  res.json({
+    ok: true,
+    procurando: 'idEmpresaControl e idNaturezaOperacao ("Devolucao de Mercadoria - Entrada") desta empresa',
+    hoje_no_codigo: { idEmpresaControl: '14901993834', idNaturezaOperacao: '15110128838' },
+    resultado: out,
+  });
+});
+
 // GET /api/debug/resgate-nf/:orderId
 // Roda o MESMO fluxo do resgate mas NAO grava nada - mostra cada
 // passo (ML invoice, pack, blindada com trace) pra diagnostico.
