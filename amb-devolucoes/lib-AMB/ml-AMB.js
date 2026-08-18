@@ -117,12 +117,22 @@ async function renovarTokenInterno() {
       { key: cfg.ml.chaveRefresh, value: REFRESH_TOKEN },
     ];
     if (USER_ID) gravar.push({ key: cfg.ml.chaveUserId, value: USER_ID });
+    // b269 - CARIMBO DA RENOVACAO, no MESMO write (zero escrita a mais).
+    // Sem ele, `ultimaPreventiva` so vivia em memoria: todo restart zerava o
+    // ciclo e um dia de varios deploys disparava varias renovacoes seguidas
+    // de um refresh de USO UNICO. Agora o intervalo sobrevive ao restart.
+    gravar.push({ key: 'AMB_ML_RENOVADO_EM', value: String(Date.now()) });
     // b266 (review do Codex) - a renovacao so vale se o refresh NOVO ficou
     // guardado. Se o marketplace aceitou mas o Render falhou, a env ainda
     // tem o refresh JA CONSUMIDO: no proximo restart o token estaria morto.
     const persistiu = await atualizarTokensNoRender(gravar);
     if (!persistiu) console.error('[AMB/ML] renovou no marketplace mas NAO persistiu no Render — o refresh gravado esta consumido');
     ultimaPersistencia = !!persistiu;
+    // b270 (review do Codex) - QUALQUER renovacao que persistiu conta pro
+    // intervalo, nao so a preventiva. Uma renovacao normal (por 401) gravava
+    // carimbo novo enquanto o contador em memoria seguia no antigo — e o
+    // batimento renovava de novo pouco depois, gastando refresh a toa.
+    if (ultimaPersistencia) ultimaPreventiva = Date.now();
 
     console.log('[AMB/ML] Token renovado');
     return true;
@@ -220,7 +230,14 @@ async function testeDeVida() {
 // fresco e o relogio dos 6 meses nunca chega perto do fim. Falha aqui nao
 // quebra nada — o 401 continua sendo a rede de seguranca.
 // ═══════════════════════════════════════════════════════════════════
-let ultimaPreventiva = 0;
+// b270 (review do Codex) - carimbo VALIDADO: `Number(...) || 0` aceitava
+// `Infinity` ou data no futuro, e ai `Date.now() - carimbo` fica negativo,
+// o intervalo nunca vence e a renovacao NUNCA MAIS acontece. So aceito
+// numero finito, positivo e nao futuro.
+let ultimaPreventiva = (() => {
+  const t = Number(process.env.AMB_ML_RENOVADO_EM);
+  return (Number.isFinite(t) && t > 0 && t <= Date.now()) ? t : 0;
+})();   // b269 - sobrevive a restart
 let ultimaPersistencia = false;   // b266 - a ultima renovacao chegou a ser gravada?
 
 async function renovacaoPreventiva({ forcar = false } = {}) {
@@ -259,7 +276,11 @@ function ligarRenovacaoPreventiva() {
   //    nascendo vazio.
   const UMA_HORA = 60 * 60 * 1000;
   const primeiro = setTimeout(() => {
-    renovacaoPreventiva({ forcar: true }).catch(() => {});
+    // b270 (review do Codex) - SEM `forcar` aqui. Forcando, o primeiro timer
+    // ignorava o carimbo restaurado e renovava em todo restart — anulando
+    // justamente o que a b269 veio corrigir. Quem precisa forcar e a rota
+    // manual (?forcar=1), nao o boot.
+    renovacaoPreventiva().catch(() => {});
     const bat = setInterval(() => { renovacaoPreventiva().catch(() => {}); }, UMA_HORA);
     if (bat.unref) bat.unref();
   }, 2 * 60 * 1000);

@@ -155,8 +155,16 @@ async function renovarInterno() {
   ultimaPersistenciaMagalu = !!(await tokens.atualizarTokensNoRender([   // b150: nome/formato certos
     { key: 'AMB_MAGALU_ACCESS_TOKEN',  value: ACCESS },
     { key: 'AMB_MAGALU_REFRESH_TOKEN', value: REFRESH },
+    // b269 - carimbo no MESMO write: o intervalo passa a sobreviver ao
+    // restart, em vez de zerar a cada deploy e renovar de novo sem precisar
+    { key: 'AMB_MAGALU_RENOVADO_EM', value: String(Date.now()) },
   ]));
   if (!ultimaPersistenciaMagalu) console.error('[AMB/Magalu] renovou mas NAO persistiu no Render — refresh gravado esta consumido');
+  // b270 (review do Codex) - QUALQUER renovacao que persistiu conta pro
+  // intervalo, nao so a preventiva. Uma renovacao normal (por 401) gravava
+  // carimbo novo enquanto o contador em memoria seguia no antigo — e o
+  // batimento renovava de novo pouco depois, gastando refresh a toa.
+  if (ultimaPersistenciaMagalu) ultimaPreventivaMag = Date.now();
   return ACCESS;
 }
 
@@ -490,7 +498,14 @@ function appEmUso() {
 // Entao renovamos de tempos em tempos mesmo sem uso.
 // Falha aqui NAO quebra nada: o caminho normal (expirou -> renova) segue.
 // ═══════════════════════════════════════════════════════════════════
-let ultimaPreventivaMag = 0;
+// b270 (review do Codex) - carimbo VALIDADO: `Number(...) || 0` aceitava
+// `Infinity` ou data no futuro, e ai `Date.now() - carimbo` fica negativo,
+// o intervalo nunca vence e a renovacao NUNCA MAIS acontece. So aceito
+// numero finito, positivo e nao futuro.
+let ultimaPreventivaMag = (() => {
+  const t = Number(process.env.AMB_MAGALU_RENOVADO_EM);
+  return (Number.isFinite(t) && t > 0 && t <= Date.now()) ? t : 0;
+})();   // b269
 let ultimaPersistenciaMagalu = false;   // b266
 
 async function renovacaoPreventiva({ forcar = false } = {}) {
@@ -528,7 +543,11 @@ function ligarRenovacaoPreventiva() {
   //    nascendo vazio.
   const UMA_HORA = 60 * 60 * 1000;
   const primeiro = setTimeout(() => {
-    renovacaoPreventiva({ forcar: true }).catch(() => {});
+    // b270 (review do Codex) - SEM `forcar` aqui. Forcando, o primeiro timer
+    // ignorava o carimbo restaurado e renovava em todo restart — anulando
+    // justamente o que a b269 veio corrigir. Quem precisa forcar e a rota
+    // manual (?forcar=1), nao o boot.
+    renovacaoPreventiva().catch(() => {});
     const bat = setInterval(() => { renovacaoPreventiva().catch(() => {}); }, UMA_HORA);
     if (bat.unref) bat.unref();
   }, 9 * 60 * 1000);
