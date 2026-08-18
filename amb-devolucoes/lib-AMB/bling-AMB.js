@@ -21,6 +21,7 @@
 const axios = require('axios');
 const cfg = require('../config-AMB');
 const { atualizarTokensNoRender } = require('./render-tokens-AMB');
+const { registrarPreventiva } = require('../../lib/token-preventiva');   // b271
 
 let ACCESS_TOKEN  = cfg.bling.accessToken;
 let REFRESH_TOKEN = cfg.bling.refreshToken;
@@ -77,15 +78,14 @@ async function renovarTokenInterno() {
     ultimaPersistenciaBling = !!(await atualizarTokensNoRender([
       { key: cfg.bling.chaveAccess,  value: ACCESS_TOKEN },
       { key: cfg.bling.chaveRefresh, value: REFRESH_TOKEN },
-      // b269 - carimbo no MESMO write: intervalo sobrevive ao restart
-      { key: 'AMB_BLING_RENOVADO_EM', value: String(Date.now()) },
+      ...(PREVENTIVA.parEnvCarimbo() ? [PREVENTIVA.parEnvCarimbo()] : []),   // b271
     ]));
     if (!ultimaPersistenciaBling) console.error('[AMB/Bling] renovou mas NAO persistiu no Render — refresh gravado esta consumido');
     // b270 (review do Codex) - QUALQUER renovacao que persistiu conta pro
     // intervalo, nao so a preventiva. Uma renovacao normal (por 401) gravava
     // carimbo novo enquanto o contador em memoria seguia no antigo — e o
     // batimento renovava de novo pouco depois, gastando refresh a toa.
-    if (ultimaPersistenciaBling) ultimaPreventivaBli = Date.now();
+    if (ultimaPersistenciaBling) PREVENTIVA.marcarRenovado();   // b271
     console.log('[AMB/Bling] Token renovado');
     return true;
   } catch (erro) {
@@ -266,72 +266,21 @@ async function lancarEstoqueNf(idNfDevolucao, idDeposito) {
   return { ok: true };
 }
 
-// ═══════════════════════════════════════════════════════════════════
-// b265 - RENOVACAO PREVENTIVA (mesmo padrao da b264 do ML)
-//
-// O access token se renova sozinho quando expira, mas o REFRESH tem
-// validade propria e e de uso unico. Se o modulo da AMB ficar parado tempo
-// demais, o refresh vence e so volta reautorizando A MAO — no caso do
-// Magalu, refazendo todo o consentimento no navegador certo, que em agosto
-// deu um trabalho enorme (client OAuth, redirect no idm, 2FA).
-// Entao renovamos de tempos em tempos mesmo sem uso.
-// Falha aqui NAO quebra nada: o caminho normal (expirou -> renova) segue.
-// ═══════════════════════════════════════════════════════════════════
-// b270 (review do Codex) - carimbo VALIDADO: `Number(...) || 0` aceitava
-// `Infinity` ou data no futuro, e ai `Date.now() - carimbo` fica negativo,
-// o intervalo nunca vence e a renovacao NUNCA MAIS acontece. So aceito
-// numero finito, positivo e nao futuro.
-let ultimaPreventivaBli = (() => {
-  const t = Number(process.env.AMB_BLING_RENOVADO_EM);
-  return (Number.isFinite(t) && t > 0 && t <= Date.now()) ? t : 0;
-})();   // b269
-let ultimaPersistenciaBling = false;   // b266
-
-async function renovacaoPreventiva({ forcar = false } = {}) {
-  // b267 (review do Codex) - valor invalido (texto, 0, negativo, Infinity)
-  // fazia o intervalo virar NaN/0 e o batimento de 1h renovar TODA HORA um
-  // refresh de uso unico; Infinity travava a preventiva pra sempre. Agora
-  // qualquer coisa fora de 1..180 cai no padrao de 7 dias.
-  const diasEnv = Number(process.env.AMB_BLING_RENOVAR_DIAS);
-  const DIAS = (Number.isFinite(diasEnv) && diasEnv >= 1 && diasEnv <= 180) ? diasEnv : 7;
-  const intervalo = DIAS * 24 * 60 * 60 * 1000;
-  if (!forcar && ultimaPreventivaBli && (Date.now() - ultimaPreventivaBli) < intervalo) {
-    return { ok: true, pulou: true, proxima_em_dias: Math.max(0, Math.round((intervalo - (Date.now() - ultimaPreventivaBli)) / 86400000)) };
-  }
-  if (!REFRESH_TOKEN) return { ok: false, erro: 'sem refresh token - autorize pelo /amb/conectar' };
-  ultimaPersistenciaBling = false;
-  let okRenovou = false;
-  try { okRenovou = !!(await renovarToken()); } catch (e) { okRenovou = false; }
-  // b266 - ciclo so conta como cumprido se persistiu
-  if (okRenovou && ultimaPersistenciaBling) ultimaPreventivaBli = Date.now();
-  return { ok: okRenovou && ultimaPersistenciaBling, renovado: okRenovou, persistiu: ultimaPersistenciaBling, dias: DIAS };
-}
-
-function ligarRenovacaoPreventiva() {
-  // b266 (review do Codex) - TRES correcoes aqui:
-  // 1) NADA de setInterval com dias: 30 dias = 2.592.000.000 ms, acima do
-  //    limite de 32 bits do Node, que troca por 1 ms — viraria um loop de
-  //    renovacoes consumindo o refresh de uso unico. Agora e um HEARTBEAT
-  //    de 1h que so age quando o intervalo realmente venceu.
-  // 2) o primeiro disparo e ESCALONADO por integracao (ML 2min, Magalu
-  //    9min, Bling 15min): renovar tudo no mesmo instante disputava a
-  //    escrita das env vars do Render.
-  // 3) o Magalu sai de perto do preAquecer() (3min): os dois usariam o
-  //    MESMO refresh de uso unico e um deles perderia — com o indice
-  //    nascendo vazio.
-  const UMA_HORA = 60 * 60 * 1000;
-  const primeiro = setTimeout(() => {
-    // b270 (review do Codex) - SEM `forcar` aqui. Forcando, o primeiro timer
-    // ignorava o carimbo restaurado e renovava em todo restart — anulando
-    // justamente o que a b269 veio corrigir. Quem precisa forcar e a rota
-    // manual (?forcar=1), nao o boot.
-    renovacaoPreventiva().catch(() => {});
-    const bat = setInterval(() => { renovacaoPreventiva().catch(() => {}); }, UMA_HORA);
-    if (bat.unref) bat.unref();
-  }, 15 * 60 * 1000);
-  if (primeiro.unref) primeiro.unref();
-  console.log('[AMB/Bling] renovacao preventiva ligada: a cada ' + Number(process.env.AMB_BLING_RENOVAR_DIAS || 7) + ' dia(s)');
-}
+// b271 - RENOVACAO PREVENTIVA pela LIB UNICA (lib/token-preventiva.js).
+// Antes cada modulo tinha sua copia deste mecanismo — e cada correcao da
+// review precisava ser repetida em tres arquivos. Agora a peca e uma so, com
+// a EMPRESA como parametro: integracao nova (ou empresa nova) = um registro
+// como este, zero logica duplicada.
+const PREVENTIVA = registrarPreventiva({
+  empresa: 'ambtotal', integracao: 'bling',
+  temRefresh: () => !!REFRESH_TOKEN,
+  renovar: () => renovarToken(),
+  persistiu: () => ultimaPersistenciaBling,
+  carimboEnv: 'AMB_BLING_RENOVADO_EM',
+  diasEnv: 'AMB_BLING_RENOVAR_DIAS',
+});
+const renovacaoPreventiva = (op) => PREVENTIVA.preventiva(op);
+const ligarRenovacaoPreventiva = (op) => PREVENTIVA.ligar(op);
 
 module.exports = {
   chamarBling,
