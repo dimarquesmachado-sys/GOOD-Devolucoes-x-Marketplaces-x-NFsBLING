@@ -2663,9 +2663,20 @@
   try {
     const r = await fetch('/api/depositos', { credentials: 'same-origin' }).then(x => x.json());
     if (!r.ok || !r.depositos) throw new Error(r.erro || 'sem lista');
-    const deps = r.depositos.filter(d => !/full?fill?ment|^full\b/i.test(d.descricao || ''));
-    const idDefeitos = (deps.find(d => /defeito/i.test(d.descricao)) || {}).id || null;
+    // b278 (review do Codex) - o regex antigo (`^full\b`) NAO pegava "Magalu
+    // Full" nem "Shopee Full", entao eles apareciam no seletor. Mesmo filtro
+    // do painel principal.
+    const deps = r.depositos.filter(d => !/full/i.test(String(d.descricao || '')));
+    const idDefeitos = (deps.find(d => /^defeitos?$/i.test(String(d.descricao || '').trim()))
+      || deps.find(d => /defeito/i.test(d.descricao)) || {}).id || null;
     const idGeral = (deps.find(d => d.padrao) || deps.find(d => /geral/i.test(d.descricao)) || deps[0] || {}).id || null;
+    // b278 (review do Codex) - FALHA MINHA no PR anterior: criei o
+    // DEPOSITOS_AMB e nunca o preenchi AQUI. Como o modal recem-adicionado le
+    // justamente essa lista, ele mostraria "depositos indisponiveis" SEMPRE,
+    // e `depositoNome` devolveria o id cru em vez do nome.
+    DEPOSITOS_AMB.lista = deps;
+    DEPOSITOS_AMB.geral = idGeral;
+    DEPOSITOS_AMB.defeitos = idDefeitos;
     const montar = (padrao) => deps.map(d =>
       '<option value="' + escapeHtml(d.id) + '"' + (d.id === padrao ? ' selected' : '') +
       '>📦 ' + escapeHtml(d.descricao) + '</option>').join('') || '<option value="">(sem depósitos)</option>';

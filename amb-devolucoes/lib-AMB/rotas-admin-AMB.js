@@ -450,9 +450,15 @@ app.post('/api/admin/full-lancar-estoque/:id', requerAdmin, async (req, res) => 
       } catch (e) { listaDeps = []; }
     }
     if (listaDeps.length) {
-      const valido = listaDeps.some((d) => String(d.id) === pedidoDep);
-      const geral = (listaDeps.find((d) => d.padrao)
-        || listaDeps.find((d) => /geral/i.test(String(d.descricao || ''))) || {}).id || null;
+      // b278 (review do Codex) - o painel esconde os depositos de FULL, mas o
+      // SERVIDOR aceitava qualquer id que existisse no Bling: uma pagina
+      // antiga ou requisicao adulterada lancaria devolucao dentro de um
+      // fulfillment de marketplace. A regra de negocio vale aqui tambem.
+      const ehFull = (d) => /full/i.test(String(d.descricao || ''));
+      const utilizaveis = listaDeps.filter((d) => !ehFull(d));
+      const valido = utilizaveis.some((d) => String(d.id) === pedidoDep);
+      const geral = (utilizaveis.find((d) => d.padrao)
+        || utilizaveis.find((d) => /geral/i.test(String(d.descricao || ''))) || {}).id || null;
       deposito = valido ? pedidoDep : geral;
     }
     if (!deposito) {
