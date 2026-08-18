@@ -81,6 +81,11 @@ async function renovarTokenInterno() {
       { key: 'AMB_BLING_RENOVADO_EM', value: String(Date.now()) },
     ]));
     if (!ultimaPersistenciaBling) console.error('[AMB/Bling] renovou mas NAO persistiu no Render — refresh gravado esta consumido');
+    // b270 (review do Codex) - QUALQUER renovacao que persistiu conta pro
+    // intervalo, nao so a preventiva. Uma renovacao normal (por 401) gravava
+    // carimbo novo enquanto o contador em memoria seguia no antigo — e o
+    // batimento renovava de novo pouco depois, gastando refresh a toa.
+    if (ultimaPersistenciaBling) ultimaPreventivaBli = Date.now();
     console.log('[AMB/Bling] Token renovado');
     return true;
   } catch (erro) {
@@ -272,7 +277,14 @@ async function lancarEstoqueNf(idNfDevolucao, idDeposito) {
 // Entao renovamos de tempos em tempos mesmo sem uso.
 // Falha aqui NAO quebra nada: o caminho normal (expirou -> renova) segue.
 // ═══════════════════════════════════════════════════════════════════
-let ultimaPreventivaBli = Number(process.env.AMB_BLING_RENOVADO_EM || 0) || 0;   // b269
+// b270 (review do Codex) - carimbo VALIDADO: `Number(...) || 0` aceitava
+// `Infinity` ou data no futuro, e ai `Date.now() - carimbo` fica negativo,
+// o intervalo nunca vence e a renovacao NUNCA MAIS acontece. So aceito
+// numero finito, positivo e nao futuro.
+let ultimaPreventivaBli = (() => {
+  const t = Number(process.env.AMB_BLING_RENOVADO_EM);
+  return (Number.isFinite(t) && t > 0 && t <= Date.now()) ? t : 0;
+})();   // b269
 let ultimaPersistenciaBling = false;   // b266
 
 async function renovacaoPreventiva({ forcar = false } = {}) {
@@ -309,7 +321,11 @@ function ligarRenovacaoPreventiva() {
   //    nascendo vazio.
   const UMA_HORA = 60 * 60 * 1000;
   const primeiro = setTimeout(() => {
-    renovacaoPreventiva({ forcar: true }).catch(() => {});
+    // b270 (review do Codex) - SEM `forcar` aqui. Forcando, o primeiro timer
+    // ignorava o carimbo restaurado e renovava em todo restart — anulando
+    // justamente o que a b269 veio corrigir. Quem precisa forcar e a rota
+    // manual (?forcar=1), nao o boot.
+    renovacaoPreventiva().catch(() => {});
     const bat = setInterval(() => { renovacaoPreventiva().catch(() => {}); }, UMA_HORA);
     if (bat.unref) bat.unref();
   }, 15 * 60 * 1000);
