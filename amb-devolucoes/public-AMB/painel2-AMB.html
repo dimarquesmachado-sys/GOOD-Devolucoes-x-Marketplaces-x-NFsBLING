@@ -1894,6 +1894,14 @@
     // no depósito escolhido no seletor da seção Aprovadas (padrão: Geral)
     async function fullLancarEstoque(id, btn) {
       const idDeposito = depositoDaSecao('aprovadas');
+      // b280 (review do Codex) - MESMA trava do fluxo individual, que eu tinha
+      // esquecido aqui: em lote, `idDeposito` vazio manda a Bridge reusar o
+      // depósito da NF ORIGINAL — e numa esteira isso sai errado de uma vez em
+      // TODOS os cards, sem ninguém perceber card a card.
+      if (!idDeposito) {
+        alert('Ainda não carreguei os depósitos desta empresa.\n\nRecarregue a página antes de rodar a esteira — sem depósito escolhido as notas sairiam no depósito da NF original.');
+        return;
+      }
       const depNome = depositoNome(idDeposito);
       if (!confirm(
         `📦 Lançar ESTOQUE de entrada desta devolução no depósito ${depNome}?\n\n` +
@@ -2021,6 +2029,14 @@
 
       // v3.28: deposito escolhido no seletor da secao (padrao: Geral)
       const idDeposito = depositoDaSecao(secao);
+      // b280 (review do Codex) - MESMA trava do fluxo individual, que eu tinha
+      // esquecido aqui: em lote, `idDeposito` vazio manda a Bridge reusar o
+      // depósito da NF ORIGINAL — e numa esteira isso sai errado de uma vez em
+      // TODOS os cards, sem ninguém perceber card a card.
+      if (!idDeposito) {
+        alert('Ainda não carreguei os depósitos desta empresa.\n\nRecarregue a página antes de rodar a esteira — sem depósito escolhido as notas sairiam no depósito da NF original.');
+        return;
+      }
       const depNome = depositoNome(idDeposito);
       // b279 (review do Codex) - a regra é "foi pra DEFEITOS?", não "é
       // diferente do Geral". Se a empresa tiver um terceiro depósito não-Full
