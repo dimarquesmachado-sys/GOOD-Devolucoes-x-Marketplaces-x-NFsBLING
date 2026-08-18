@@ -22,6 +22,12 @@ const axios = require('axios');
 const cfg = require('../config-AMB');
 const { atualizarTokensNoRender } = require('./render-tokens-AMB');
 const { registrarPreventiva } = require('../../lib/token-preventiva');   // b271
+// b272 (review do Codex) - ESTA DECLARACAO VOLTOU. Meu refactor da b271
+// apagou o bloco antigo levando junto o `let ultimaPersistenciaBling`, mas a
+// funcao de renovar continua ATRIBUINDO a ela. Em modulo strict, isso
+// lanca ReferenceError bem depois do marketplace ja ter rotacionado o
+// refresh: o token novo nao seria gravado e a integracao morreria.
+let ultimaPersistenciaBling = false;
 
 let ACCESS_TOKEN  = cfg.bling.accessToken;
 let REFRESH_TOKEN = cfg.bling.refreshToken;

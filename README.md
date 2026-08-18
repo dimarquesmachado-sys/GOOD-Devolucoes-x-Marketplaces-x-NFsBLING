@@ -277,10 +277,20 @@ if (PREVENTIVA.parEnvCarimbo()) gravar.push(PREVENTIVA.parEnvCarimbo());
 if (persistiu) PREVENTIVA.marcarRenovado();
 ```
 
-**Só isso.** Não precisa mexer em rota nem no boot: a varredura
-(`ligarPendentes`) agenda o que estiver registrado — inclusive módulos criados
-por fábrica, que se registram depois (há uma segunda varredura 1 min após o
-boot). O relatório passa a mostrar a empresa nova sozinho.
+**Só isso.** Não precisa mexer em rota nem no boot: **o próprio registro se
+agenda** (`autoLigar`, ligado por padrão), escalonando o primeiro disparo. Vale
+até para módulos criados por **fábrica**, que se registram bem depois do boot.
+O relatório passa a mostrar a empresa nova sozinho.
+
+Se o módulo já tem uma função de renovar chamada pelo caminho normal (o `401`),
+envolva-a para os dois caminhos dividirem o mesmo lock:
+
+```js
+renovarToken = PREVENTIVA.guardarRenovacao(renovarToken);
+```
+
+Sem isso, o batimento e um `401` podem mandar o **mesmo refresh de uso único**
+ao mesmo tempo — e um dos dois falha.
 
 ## Conferir / forçar
 

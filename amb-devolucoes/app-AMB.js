@@ -1408,24 +1408,18 @@ router.get('/ml/teste', admin, async (req, res) => {
 // as empresas, escalonando o primeiro disparo (pra nao disputarem a escrita
 // das env vars nem o aquecimento dos indices). Empresa ou integracao nova
 // entra so registrando na lib — este bloco NAO muda.
-(function ligarPreventivas() {
-  const { ligarPendentes } = require('../lib/token-preventiva');
+// b272 - o REGISTRO ja se agenda sozinho (lib/token-preventiva). Aqui so
+// carregamos os modulos da GOOD, que se registram ao serem exigidos, e
+// deixamos uma varredura de seguranca pra qualquer registro que tenha vindo
+// com autoLigar:false.
+(function carregarPreventivas() {
+  try { require('../lib/ml'); } catch (e) { /* ausente = segue */ }
+  try { require('../lib/bling'); } catch (e) { /* ausente = segue */ }
   try {
-    // carrega os modulos da GOOD, que se registram ao serem exigidos
-    try { require('../lib/ml'); } catch (e) { /* ausente = segue */ }
-    try { require('../lib/bling'); } catch (e) { /* ausente = segue */ }
+    const { ligarPendentes, listar } = require('../lib/token-preventiva');
     const n = ligarPendentes({ inicioMinutos: 2, passoMinutos: 6 });
-    console.log(`[tokens] ${n} renovacao(oes) preventiva(s) agendada(s)`);
+    console.log(`[tokens] ${listar().length} integracao(oes) registrada(s)` + (n ? ` · ${n} agendada(s) pela varredura` : ''));
   } catch (e) { /* renovacao nunca pode impedir o modulo de subir */ }
-  // segunda varredura: modulos criados por FABRICA (o magalu da GOOD, por
-  // exemplo) so se registram depois que o server monta as rotas
-  const tardio = setTimeout(() => {
-    try {
-      const n = ligarPendentes({ inicioMinutos: 2, passoMinutos: 6 });
-      if (n) console.log(`[tokens] +${n} preventiva(s) agendada(s) (registro tardio)`);
-    } catch (e) { /* silencioso */ }
-  }, 60 * 1000);
-  if (tardio.unref) tardio.unref();
 })();
 
 // b264 - conferir/forcar na hora, sem esperar o timer
@@ -1438,11 +1432,12 @@ router.get('/ml/token/preventiva', admin, async (req, res) => {
 // mexer nesta rota.
 router.get('/tokens/preventiva', admin, async (req, res) => {
   const { relatorio, listar } = require('../lib/token-preventiva');
-  res.json({
-    ok: true, versao: VERSAO,
-    registradas: listar(),
-    empresas: await relatorio({ forcar: req.query.forcar === '1' }),
-  });
+  // b272 (review do Codex) - RENOVAR PRIMEIRO, listar DEPOIS. Em objeto
+  // literal o `listar()` era avaliado ANTES do `await`, então com ?forcar=1 a
+  // resposta trazia a data ANTIGA em `registradas` ao lado do "renovado
+  // agora" em `empresas` — dois carimbos contraditórios no mesmo JSON.
+  const empresas = await relatorio({ forcar: req.query.forcar === '1' });
+  res.json({ ok: true, versao: VERSAO, registradas: listar(), empresas });
 });
 
 router.get('/ml/eu', admin, async (req, res) => {

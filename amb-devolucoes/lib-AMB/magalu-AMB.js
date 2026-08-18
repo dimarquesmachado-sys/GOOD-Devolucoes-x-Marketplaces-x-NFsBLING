@@ -26,6 +26,12 @@
 const axios = require('axios');
 const tokens = require('./render-tokens-AMB');
 const { registrarPreventiva } = require('../../lib/token-preventiva');   // b271
+// b272 (review do Codex) - ESTA DECLARACAO VOLTOU. Meu refactor da b271
+// apagou o bloco antigo levando junto o `let ultimaPersistenciaMagalu`, mas a
+// funcao de renovar continua ATRIBUINDO a ela. Em modulo strict, isso
+// lanca ReferenceError bem depois do marketplace ja ter rotacionado o
+// refresh: o token novo nao seria gravado e a integracao morreria.
+let ultimaPersistenciaMagalu = false;
 
 const ID_BASE = 'https://id.magalu.com';
 const BFF = 'https://seller-devolution-bff.mglu.io';
