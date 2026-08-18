@@ -454,14 +454,18 @@ app.post('/api/admin/full-lancar-estoque/:id', requerAdmin, async (req, res) => 
       const geral = (listaDeps.find((d) => d.padrao)
         || listaDeps.find((d) => /geral/i.test(String(d.descricao || ''))) || {}).id || null;
       deposito = valido ? pedidoDep : geral;
-    } else if (pedidoDep) {
-      // sem lista (Bling fora), respeita a escolha do painel em vez de chutar
-      deposito = pedidoDep;
     }
     if (!deposito) {
-      // b276 - NUNCA lancar em deposito adivinhado: sem lista e sem escolha,
-      // recusar e melhor do que jogar estoque no lugar errado
-      return res.status(503).json({ ok: false, erro: 'nao consegui a lista de depositos desta empresa e nenhum foi escolhido no painel — tente de novo em instantes' });
+      // b277 (review do Codex) - SEM LISTA, NAO LANCA. Eu deixava passar o
+      // id que o painel mandasse quando o GET de depositos falhava, mas o
+      // GET falhar nao significa que o POST vai falhar: uma pagina antiga
+      // (ou requisicao adulterada) poderia lancar num deposito que o painel
+      // esconde de proposito — um Full, por exemplo. Esta rota MEXE EM
+      // ESTOQUE; sem conseguir validar, recusar e a resposta certa.
+      const motivo = listaDeps.length
+        ? 'o deposito escolhido nao existe nesta empresa e nao achei o Geral dela'
+        : 'nao consegui a lista de depositos desta empresa agora — sem ela nao lanço estoque';
+      return res.status(503).json({ ok: false, erro: motivo + ' — tente de novo em instantes' });
     }
 
     const url = `https://api.bling.com.br/Api/v3/nfe/${reg.nf_devolucao_id_bling}/lancar-estoque/${deposito}`;

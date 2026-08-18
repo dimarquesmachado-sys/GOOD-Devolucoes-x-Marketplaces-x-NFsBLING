@@ -1589,9 +1589,8 @@
           <strong>📦 Depósito do estoque:</strong>
           <select id="depModal" style="padding:6px 10px; border-radius:6px; border:1px solid #b39ddb; font-size:13px;">
             <option value="">📦 carregando depósitos...</option>
-            <option value="">📦 carregando depósitos...</option>
           </select>
-          <span style="font-size:12px; color:#5e35b1;">(produto com defeito? use DEFEITOS API)</span>
+          <span style="font-size:12px; color:#5e35b1;">padrão: DEFEITOS — troque se o produto estiver bom</span>
         </div>
         <div style="background:#fff8e1; border:1px solid #ffe082; padding:12px; border-radius:8px; font-size:12.5px; color:#795548; margin-bottom:18px;">
           🧪 <strong>Criar rascunho</strong>: cria a NF no Bling mas NÃO emite — você <strong>edita o que precisar</strong> lá no Bling e emite por lá.<br>
@@ -1610,6 +1609,23 @@
         </div>
       `;
       document.getElementById('modalGerarDevolucao').style.display = 'flex';
+
+      // b277 (review do Codex) - o `depModal` nasce junto com o HTML do modal,
+      // DEPOIS de `carregarDepositosAMB()` ter terminado — e ninguem o
+      // preenchia. Ficava com valor vazio, o painel mandava `idDeposito: ''`
+      // e a Bridge caia no deposito da NF original: nao dava pra escolher
+      // DEFEITOS. Agora ele e montado na hora, da lista ja em memoria.
+      (function preencherDepModal() {
+        var sel = document.getElementById('depModal');
+        if (!sel) return;
+        var deps = DEPOSITOS_AMB.lista || [];
+        if (!deps.length) { sel.innerHTML = '<option value="">depósitos indisponíveis — recarregue a página</option>'; return; }
+        var alvo = DEPOSITOS_AMB.defeitos || DEPOSITOS_AMB.geral || (deps[0] || {}).id;
+        sel.innerHTML = deps.map(function (d) {
+          return '<option value="' + escapeHtml(d.id) + '"' + (String(d.id) === String(alvo) ? ' selected' : '')
+            + '>📦 ' + escapeHtml(d.descricao) + '</option>';
+        }).join('');
+      })();
     }
 
     // v3.28.1: ao fechar, se uma NF foi gerada, atualiza SO o card dela
