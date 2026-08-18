@@ -2022,7 +2022,12 @@
       // v3.28: deposito escolhido no seletor da secao (padrao: Geral)
       const idDeposito = depositoDaSecao(secao);
       const depNome = depositoNome(idDeposito);
-      const depGeral = idDeposito === (DEPOSITOS_AMB.geral || '');
+      // b279 (review do Codex) - a regra é "foi pra DEFEITOS?", não "é
+      // diferente do Geral". Se a empresa tiver um terceiro depósito não-Full
+      // (uma loja, uma reserva vendável), escolhê-lo na esteira de Problemas
+      // fechava o card como se a peça tivesse ido pro defeito.
+      const depDefeitos = !!DEPOSITOS_AMB.defeitos && idDeposito === DEPOSITOS_AMB.defeitos;
+      const depGeral = !depDefeitos;
 
       const estimMin = Math.ceil(fila.length * 30 / 60);
       if (!confirm(
@@ -2312,6 +2317,13 @@
       // v3.28: le o deposito ANTES de trocar o conteudo do modal pelo spinner
       const depModalEl = document.getElementById('depModal');
       const idDeposito = (depModalEl && depModalEl.value) ? depModalEl.value : (DEPOSITOS_AMB.geral || '');
+      // b279 (review do Codex) - sem depósito resolvido, NÃO emite. Mandar
+      // `idDeposito: ''` faz a Bridge reusar o depósito da NF ORIGINAL, que
+      // é justamente o que a gente quer poder escolher aqui.
+      if (!idDeposito) {
+        alert('Ainda não carreguei os depósitos desta empresa.\n\nRecarregue a página e tente de novo — sem depósito escolhido a nota sairia no depósito da NF original.');
+        return;
+      }
       const conteudo = document.getElementById('modalGerarConteudo');
       const acao = emitir ? 'Gerando + emitindo NF' : 'Criando rascunho';
 
