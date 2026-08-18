@@ -117,6 +117,11 @@ async function renovarTokenInterno() {
       { key: cfg.ml.chaveRefresh, value: REFRESH_TOKEN },
     ];
     if (USER_ID) gravar.push({ key: cfg.ml.chaveUserId, value: USER_ID });
+    // b269 - CARIMBO DA RENOVACAO, no MESMO write (zero escrita a mais).
+    // Sem ele, `ultimaPreventiva` so vivia em memoria: todo restart zerava o
+    // ciclo e um dia de varios deploys disparava varias renovacoes seguidas
+    // de um refresh de USO UNICO. Agora o intervalo sobrevive ao restart.
+    gravar.push({ key: 'AMB_ML_RENOVADO_EM', value: String(Date.now()) });
     // b266 (review do Codex) - a renovacao so vale se o refresh NOVO ficou
     // guardado. Se o marketplace aceitou mas o Render falhou, a env ainda
     // tem o refresh JA CONSUMIDO: no proximo restart o token estaria morto.
@@ -220,7 +225,7 @@ async function testeDeVida() {
 // fresco e o relogio dos 6 meses nunca chega perto do fim. Falha aqui nao
 // quebra nada — o 401 continua sendo a rede de seguranca.
 // ═══════════════════════════════════════════════════════════════════
-let ultimaPreventiva = 0;
+let ultimaPreventiva = Number(process.env.AMB_ML_RENOVADO_EM || 0) || 0;   // b269 - sobrevive a restart
 let ultimaPersistencia = false;   // b266 - a ultima renovacao chegou a ser gravada?
 
 async function renovacaoPreventiva({ forcar = false } = {}) {

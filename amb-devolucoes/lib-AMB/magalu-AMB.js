@@ -155,6 +155,9 @@ async function renovarInterno() {
   ultimaPersistenciaMagalu = !!(await tokens.atualizarTokensNoRender([   // b150: nome/formato certos
     { key: 'AMB_MAGALU_ACCESS_TOKEN',  value: ACCESS },
     { key: 'AMB_MAGALU_REFRESH_TOKEN', value: REFRESH },
+    // b269 - carimbo no MESMO write: o intervalo passa a sobreviver ao
+    // restart, em vez de zerar a cada deploy e renovar de novo sem precisar
+    { key: 'AMB_MAGALU_RENOVADO_EM', value: String(Date.now()) },
   ]));
   if (!ultimaPersistenciaMagalu) console.error('[AMB/Magalu] renovou mas NAO persistiu no Render — refresh gravado esta consumido');
   return ACCESS;
@@ -490,7 +493,7 @@ function appEmUso() {
 // Entao renovamos de tempos em tempos mesmo sem uso.
 // Falha aqui NAO quebra nada: o caminho normal (expirou -> renova) segue.
 // ═══════════════════════════════════════════════════════════════════
-let ultimaPreventivaMag = 0;
+let ultimaPreventivaMag = Number(process.env.AMB_MAGALU_RENOVADO_EM || 0) || 0;   // b269
 let ultimaPersistenciaMagalu = false;   // b266
 
 async function renovacaoPreventiva({ forcar = false } = {}) {

@@ -77,6 +77,8 @@ async function renovarTokenInterno() {
     ultimaPersistenciaBling = !!(await atualizarTokensNoRender([
       { key: cfg.bling.chaveAccess,  value: ACCESS_TOKEN },
       { key: cfg.bling.chaveRefresh, value: REFRESH_TOKEN },
+      // b269 - carimbo no MESMO write: intervalo sobrevive ao restart
+      { key: 'AMB_BLING_RENOVADO_EM', value: String(Date.now()) },
     ]));
     if (!ultimaPersistenciaBling) console.error('[AMB/Bling] renovou mas NAO persistiu no Render — refresh gravado esta consumido');
     console.log('[AMB/Bling] Token renovado');
@@ -270,7 +272,7 @@ async function lancarEstoqueNf(idNfDevolucao, idDeposito) {
 // Entao renovamos de tempos em tempos mesmo sem uso.
 // Falha aqui NAO quebra nada: o caminho normal (expirou -> renova) segue.
 // ═══════════════════════════════════════════════════════════════════
-let ultimaPreventivaBli = 0;
+let ultimaPreventivaBli = Number(process.env.AMB_BLING_RENOVADO_EM || 0) || 0;   // b269
 let ultimaPersistenciaBling = false;   // b266
 
 async function renovacaoPreventiva({ forcar = false } = {}) {
