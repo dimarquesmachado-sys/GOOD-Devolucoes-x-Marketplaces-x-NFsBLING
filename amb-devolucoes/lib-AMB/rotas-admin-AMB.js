@@ -459,7 +459,21 @@ app.post('/api/admin/full-lancar-estoque/:id', requerAdmin, async (req, res) => 
       const valido = utilizaveis.some((d) => String(d.id) === pedidoDep);
       const geral = (utilizaveis.find((d) => d.padrao)
         || utilizaveis.find((d) => /geral/i.test(String(d.descricao || ''))) || {}).id || null;
-      deposito = valido ? pedidoDep : geral;
+      // b281 - se o admin ESCOLHEU um deposito e ele nao serve (nao existe
+      // nesta empresa, ou e um Full), cair no Geral em silencio lanca a peca
+      // num lugar que ninguem pediu — e o card fecha como se tivesse dado
+      // certo. Recusa com o motivo escrito; o Geral so vale quando NADA foi
+      // escolhido.
+      if (pedidoDep && !valido) {
+        const ehFullPedido = listaDeps.some((d) => String(d.id) === pedidoDep && ehFull(d));
+        return res.status(400).json({
+          ok: false,
+          erro: ehFullPedido
+            ? 'esse é um depósito de FULL do marketplace — devolução que chega na matriz não entra nele'
+            : 'o depósito escolhido não existe nesta empresa — recarregue a página e escolha de novo',
+        });
+      }
+      deposito = pedidoDep || geral;
     }
     if (!deposito) {
       // b277 (review do Codex) - SEM LISTA, NAO LANCA. Eu deixava passar o
