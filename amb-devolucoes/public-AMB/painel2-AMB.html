@@ -286,7 +286,7 @@
           <span class="badge-count" id="countAprovadas">0</span>
           <span style="margin-left:12px; display:inline-flex; gap:8px; align-items:center; font-size:13px; font-weight:normal;">
             <label style="display:inline-flex;align-items:center;gap:4px;cursor:pointer;" title="Marca/desmarca todos os cards elegíveis desta seção"><input type="checkbox" onchange="toggleTodasEsteira('aprovadas', this.checked)"> todas</label>
-            <select id="depAprovadas" style="padding:5px 8px;border-radius:6px;border:1px solid #90caf9;font-size:12px;" title="Depósito onde a emissão lança o estoque (padrão: Geral)"><option value="4956031259" selected>📦 Geral</option><option value="">📦 carregando depósitos...</option></select>
+            <select id="depAprovadas" style="padding:5px 8px;border-radius:6px;border:1px solid #90caf9;font-size:12px;" title="Depósito onde a emissão lança o estoque (padrão: Geral)"><option value="">📦 carregando depósitos...</option></select>
             <button class="btn" id="btnEsteiraAprovadas" onclick="rodarEsteira('aprovadas')" style="background:#1565c0;color:#fff;" title="Gera + EMITE a NF de devolução dos cards selecionados, um por vez">🏭 Emitir selecionadas (0)</button>
             <button class="btn" id="btnConcluirAprovadas" onclick="concluirSelecionadas('aprovadas')" style="background:#2e7d32;color:#fff;" title="Marca como concluído todos os cards selecionados">✅ Concluir selecionadas (0)</button>
           </span>
@@ -300,7 +300,7 @@
           <span class="badge-count problema" id="countProblemas">0</span>
           <span style="margin-left:12px; display:inline-flex; gap:8px; align-items:center; font-size:13px; font-weight:normal;">
             <label style="display:inline-flex;align-items:center;gap:4px;cursor:pointer;" title="Marca/desmarca todos os cards elegíveis desta seção"><input type="checkbox" onchange="toggleTodasEsteira('problemas', this.checked)"> todas</label>
-            <select id="depProblemas" style="padding:5px 8px;border-radius:6px;border:1px solid #ffcc80;font-size:12px;" title="Depósito onde a emissão lança o estoque (padrão: Geral)"><option value="4956031259" selected>📦 Geral</option><option value="">📦 carregando depósitos...</option></select>
+            <select id="depProblemas" style="padding:5px 8px;border-radius:6px;border:1px solid #ffcc80;font-size:12px;" title="Depósito onde a emissão lança o estoque (padrão: Geral)"><option value="">📦 carregando depósitos...</option></select>
             <button class="btn" id="btnEsteiraProblemas" onclick="rodarEsteira('problemas')" style="background:#e65100;color:#fff;" title="Gera + EMITE a NF de devolução dos cards selecionados, um por vez">🏭 Emitir selecionadas (0)</button>
             <button class="btn" id="btnConcluirProblemas" onclick="concluirSelecionadas('problemas')" style="background:#2e7d32;color:#fff;" title="Marca como concluído todos os cards selecionados">✅ Concluir selecionadas (0)</button>
           </span>
@@ -1588,10 +1588,9 @@
         <div style="background:#ede7f6; border:1px solid #b39ddb; padding:12px; border-radius:8px; font-size:13px; margin-bottom:16px; display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
           <strong>📦 Depósito do estoque:</strong>
           <select id="depModal" style="padding:6px 10px; border-radius:6px; border:1px solid #b39ddb; font-size:13px;">
-            <option value="4956031259" selected>Geral</option>
             <option value="">📦 carregando depósitos...</option>
           </select>
-          <span style="font-size:12px; color:#5e35b1;">(produto com defeito? use DEFEITOS API)</span>
+          <span style="font-size:12px; color:#5e35b1;">padrão: DEFEITOS — troque se o produto estiver bom</span>
         </div>
         <div style="background:#fff8e1; border:1px solid #ffe082; padding:12px; border-radius:8px; font-size:12.5px; color:#795548; margin-bottom:18px;">
           🧪 <strong>Criar rascunho</strong>: cria a NF no Bling mas NÃO emite — você <strong>edita o que precisar</strong> lá no Bling e emite por lá.<br>
@@ -1610,6 +1609,23 @@
         </div>
       `;
       document.getElementById('modalGerarDevolucao').style.display = 'flex';
+
+      // b277 (review do Codex) - o `depModal` nasce junto com o HTML do modal,
+      // DEPOIS de `carregarDepositosAMB()` ter terminado — e ninguem o
+      // preenchia. Ficava com valor vazio, o painel mandava `idDeposito: ''`
+      // e a Bridge caia no deposito da NF original: nao dava pra escolher
+      // DEFEITOS. Agora ele e montado na hora, da lista ja em memoria.
+      (function preencherDepModal() {
+        var sel = document.getElementById('depModal');
+        if (!sel) return;
+        var deps = DEPOSITOS_AMB.lista || [];
+        if (!deps.length) { sel.innerHTML = '<option value="">depósitos indisponíveis — recarregue a página</option>'; return; }
+        var alvo = DEPOSITOS_AMB.defeitos || DEPOSITOS_AMB.geral || (deps[0] || {}).id;
+        sel.innerHTML = deps.map(function (d) {
+          return '<option value="' + escapeHtml(d.id) + '"' + (String(d.id) === String(alvo) ? ' selected' : '')
+            + '>📦 ' + escapeHtml(d.descricao) + '</option>';
+        }).join('');
+      })();
     }
 
     // v3.28.1: ao fechar, se uma NF foi gerada, atualiza SO o card dela
@@ -1757,14 +1773,16 @@
     }
 
     // v3.28 - Depósitos do Bling (espelho do popup Gerar Devolução)
-    const DEPOSITO_GERAL_ID = '4956031259';
+    // b276 - ids DA GOOD dentro de um painel da AMB (ver b275 no painel
+    // principal). Nome e padrão saem da lista viva desta empresa.
+    const DEPOSITOS_AMB = { lista: [], geral: null, defeitos: null };
     function depositoNome(id) {
-      const mapa = { '4956031259': 'Geral', '14888947655': 'DEFEITOS API', '14888156920': 'DEFEITOS', '9596855161': 'B2W FULL' };
-      return mapa[String(id)] || String(id);
+      const achado = DEPOSITOS_AMB.lista.find((d) => String(d.id) === String(id));
+      return achado ? achado.descricao : String(id);
     }
     function depositoDaSecao(secao) {
       const sel = document.getElementById(secao === 'aprovadas' ? 'depAprovadas' : 'depProblemas');
-      return (sel && sel.value) ? sel.value : DEPOSITO_GERAL_ID;
+      return (sel && sel.value) ? sel.value : (DEPOSITOS_AMB.geral || '');
     }
 
     // v3.29 - Expansor: mostra TODOS os itens e quantidades da NF do card
@@ -1876,6 +1894,14 @@
     // no depósito escolhido no seletor da seção Aprovadas (padrão: Geral)
     async function fullLancarEstoque(id, btn) {
       const idDeposito = depositoDaSecao('aprovadas');
+      // b280 (review do Codex) - MESMA trava do fluxo individual, que eu tinha
+      // esquecido aqui: em lote, `idDeposito` vazio manda a Bridge reusar o
+      // depósito da NF ORIGINAL — e numa esteira isso sai errado de uma vez em
+      // TODOS os cards, sem ninguém perceber card a card.
+      if (!idDeposito) {
+        alert('Ainda não carreguei os depósitos desta empresa.\n\nRecarregue a página antes de rodar a esteira — sem depósito escolhido as notas sairiam no depósito da NF original.');
+        return;
+      }
       const depNome = depositoNome(idDeposito);
       if (!confirm(
         `📦 Lançar ESTOQUE de entrada desta devolução no depósito ${depNome}?\n\n` +
@@ -1938,7 +1964,7 @@
         idLoja: dId.idLoja ? String(dId.idLoja) : null,
         emitir: true,
         devolucaoId: String(devolucaoId),
-        idDeposito: String(idDeposito || DEPOSITO_GERAL_ID),
+        idDeposito: String(idDeposito || (DEPOSITOS_AMB.geral || '')),
       });
       if (!result || !result.idNotaDevolucao) {
         throw new Error('Bling não retornou ID da devolução: ' + JSON.stringify(result || {}).slice(0, 150));
@@ -2003,8 +2029,21 @@
 
       // v3.28: deposito escolhido no seletor da secao (padrao: Geral)
       const idDeposito = depositoDaSecao(secao);
+      // b280 (review do Codex) - MESMA trava do fluxo individual, que eu tinha
+      // esquecido aqui: em lote, `idDeposito` vazio manda a Bridge reusar o
+      // depósito da NF ORIGINAL — e numa esteira isso sai errado de uma vez em
+      // TODOS os cards, sem ninguém perceber card a card.
+      if (!idDeposito) {
+        alert('Ainda não carreguei os depósitos desta empresa.\n\nRecarregue a página antes de rodar a esteira — sem depósito escolhido as notas sairiam no depósito da NF original.');
+        return;
+      }
       const depNome = depositoNome(idDeposito);
-      const depGeral = idDeposito === DEPOSITO_GERAL_ID;
+      // b279 (review do Codex) - a regra é "foi pra DEFEITOS?", não "é
+      // diferente do Geral". Se a empresa tiver um terceiro depósito não-Full
+      // (uma loja, uma reserva vendável), escolhê-lo na esteira de Problemas
+      // fechava o card como se a peça tivesse ido pro defeito.
+      const depDefeitos = !!DEPOSITOS_AMB.defeitos && idDeposito === DEPOSITOS_AMB.defeitos;
+      const depGeral = !depDefeitos;
 
       const estimMin = Math.ceil(fila.length * 30 / 60);
       if (!confirm(
@@ -2293,7 +2332,14 @@
       if (!idsFiscaisOk()) return;   // trava: ids da AMB ausentes
       // v3.28: le o deposito ANTES de trocar o conteudo do modal pelo spinner
       const depModalEl = document.getElementById('depModal');
-      const idDeposito = (depModalEl && depModalEl.value) ? depModalEl.value : DEPOSITO_GERAL_ID;
+      const idDeposito = (depModalEl && depModalEl.value) ? depModalEl.value : (DEPOSITOS_AMB.geral || '');
+      // b279 (review do Codex) - sem depósito resolvido, NÃO emite. Mandar
+      // `idDeposito: ''` faz a Bridge reusar o depósito da NF ORIGINAL, que
+      // é justamente o que a gente quer poder escolher aqui.
+      if (!idDeposito) {
+        alert('Ainda não carreguei os depósitos desta empresa.\n\nRecarregue a página e tente de novo — sem depósito escolhido a nota sairia no depósito da NF original.');
+        return;
+      }
       const conteudo = document.getElementById('modalGerarConteudo');
       const acao = emitir ? 'Gerando + emitindo NF' : 'Criando rascunho';
 
@@ -2645,9 +2691,20 @@
   try {
     const r = await fetch('/api/depositos', { credentials: 'same-origin' }).then(x => x.json());
     if (!r.ok || !r.depositos) throw new Error(r.erro || 'sem lista');
-    const deps = r.depositos.filter(d => !/full?fill?ment|^full\b/i.test(d.descricao || ''));
-    const idDefeitos = (deps.find(d => /defeito/i.test(d.descricao)) || {}).id || null;
+    // b278 (review do Codex) - o regex antigo (`^full\b`) NAO pegava "Magalu
+    // Full" nem "Shopee Full", entao eles apareciam no seletor. Mesmo filtro
+    // do painel principal.
+    const deps = r.depositos.filter(d => !/full/i.test(String(d.descricao || '')));
+    const idDefeitos = (deps.find(d => /^defeitos?$/i.test(String(d.descricao || '').trim()))
+      || deps.find(d => /defeito/i.test(d.descricao)) || {}).id || null;
     const idGeral = (deps.find(d => d.padrao) || deps.find(d => /geral/i.test(d.descricao)) || deps[0] || {}).id || null;
+    // b278 (review do Codex) - FALHA MINHA no PR anterior: criei o
+    // DEPOSITOS_AMB e nunca o preenchi AQUI. Como o modal recem-adicionado le
+    // justamente essa lista, ele mostraria "depositos indisponiveis" SEMPRE,
+    // e `depositoNome` devolveria o id cru em vez do nome.
+    DEPOSITOS_AMB.lista = deps;
+    DEPOSITOS_AMB.geral = idGeral;
+    DEPOSITOS_AMB.defeitos = idDefeitos;
     const montar = (padrao) => deps.map(d =>
       '<option value="' + escapeHtml(d.id) + '"' + (d.id === padrao ? ' selected' : '') +
       '>📦 ' + escapeHtml(d.descricao) + '</option>').join('') || '<option value="">(sem depósitos)</option>';
