@@ -286,7 +286,7 @@
           <span class="badge-count" id="countAprovadas">0</span>
           <span style="margin-left:12px; display:inline-flex; gap:8px; align-items:center; font-size:13px; font-weight:normal;">
             <label style="display:inline-flex;align-items:center;gap:4px;cursor:pointer;" title="Marca/desmarca todos os cards elegíveis desta seção"><input type="checkbox" onchange="toggleTodasEsteira('aprovadas', this.checked)"> todas</label>
-            <select id="depAprovadas" style="padding:5px 8px;border-radius:6px;border:1px solid #90caf9;font-size:12px;" title="Depósito onde a emissão lança o estoque (padrão: Geral)"><option value="4956031259" selected>📦 Geral</option><option value="">📦 carregando depósitos...</option></select>
+            <select id="depAprovadas" style="padding:5px 8px;border-radius:6px;border:1px solid #90caf9;font-size:12px;" title="Depósito onde a emissão lança o estoque (padrão: Geral)"><option value="">📦 carregando depósitos...</option></select>
             <button class="btn" id="btnEsteiraAprovadas" onclick="rodarEsteira('aprovadas')" style="background:#1565c0;color:#fff;" title="Gera + EMITE a NF de devolução dos cards selecionados, um por vez">🏭 Emitir selecionadas (0)</button>
             <button class="btn" id="btnConcluirAprovadas" onclick="concluirSelecionadas('aprovadas')" style="background:#2e7d32;color:#fff;" title="Marca como concluído todos os cards selecionados">✅ Concluir selecionadas (0)</button>
           </span>
@@ -300,7 +300,7 @@
           <span class="badge-count problema" id="countProblemas">0</span>
           <span style="margin-left:12px; display:inline-flex; gap:8px; align-items:center; font-size:13px; font-weight:normal;">
             <label style="display:inline-flex;align-items:center;gap:4px;cursor:pointer;" title="Marca/desmarca todos os cards elegíveis desta seção"><input type="checkbox" onchange="toggleTodasEsteira('problemas', this.checked)"> todas</label>
-            <select id="depProblemas" style="padding:5px 8px;border-radius:6px;border:1px solid #ffcc80;font-size:12px;" title="Depósito onde a emissão lança o estoque (padrão: Geral)"><option value="4956031259" selected>📦 Geral</option><option value="">📦 carregando depósitos...</option></select>
+            <select id="depProblemas" style="padding:5px 8px;border-radius:6px;border:1px solid #ffcc80;font-size:12px;" title="Depósito onde a emissão lança o estoque (padrão: Geral)"><option value="">📦 carregando depósitos...</option></select>
             <button class="btn" id="btnEsteiraProblemas" onclick="rodarEsteira('problemas')" style="background:#e65100;color:#fff;" title="Gera + EMITE a NF de devolução dos cards selecionados, um por vez">🏭 Emitir selecionadas (0)</button>
             <button class="btn" id="btnConcluirProblemas" onclick="concluirSelecionadas('problemas')" style="background:#2e7d32;color:#fff;" title="Marca como concluído todos os cards selecionados">✅ Concluir selecionadas (0)</button>
           </span>
@@ -1588,7 +1588,7 @@
         <div style="background:#ede7f6; border:1px solid #b39ddb; padding:12px; border-radius:8px; font-size:13px; margin-bottom:16px; display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
           <strong>📦 Depósito do estoque:</strong>
           <select id="depModal" style="padding:6px 10px; border-radius:6px; border:1px solid #b39ddb; font-size:13px;">
-            <option value="4956031259" selected>Geral</option>
+            <option value="">📦 carregando depósitos...</option>
             <option value="">📦 carregando depósitos...</option>
           </select>
           <span style="font-size:12px; color:#5e35b1;">(produto com defeito? use DEFEITOS API)</span>
@@ -1757,14 +1757,16 @@
     }
 
     // v3.28 - Depósitos do Bling (espelho do popup Gerar Devolução)
-    const DEPOSITO_GERAL_ID = '4956031259';
+    // b276 - ids DA GOOD dentro de um painel da AMB (ver b275 no painel
+    // principal). Nome e padrão saem da lista viva desta empresa.
+    const DEPOSITOS_AMB = { lista: [], geral: null, defeitos: null };
     function depositoNome(id) {
-      const mapa = { '4956031259': 'Geral', '14888947655': 'DEFEITOS API', '14888156920': 'DEFEITOS', '9596855161': 'B2W FULL' };
-      return mapa[String(id)] || String(id);
+      const achado = DEPOSITOS_AMB.lista.find((d) => String(d.id) === String(id));
+      return achado ? achado.descricao : String(id);
     }
     function depositoDaSecao(secao) {
       const sel = document.getElementById(secao === 'aprovadas' ? 'depAprovadas' : 'depProblemas');
-      return (sel && sel.value) ? sel.value : DEPOSITO_GERAL_ID;
+      return (sel && sel.value) ? sel.value : (DEPOSITOS_AMB.geral || '');
     }
 
     // v3.29 - Expansor: mostra TODOS os itens e quantidades da NF do card
@@ -1938,7 +1940,7 @@
         idLoja: dId.idLoja ? String(dId.idLoja) : null,
         emitir: true,
         devolucaoId: String(devolucaoId),
-        idDeposito: String(idDeposito || DEPOSITO_GERAL_ID),
+        idDeposito: String(idDeposito || (DEPOSITOS_AMB.geral || '')),
       });
       if (!result || !result.idNotaDevolucao) {
         throw new Error('Bling não retornou ID da devolução: ' + JSON.stringify(result || {}).slice(0, 150));
@@ -2004,7 +2006,7 @@
       // v3.28: deposito escolhido no seletor da secao (padrao: Geral)
       const idDeposito = depositoDaSecao(secao);
       const depNome = depositoNome(idDeposito);
-      const depGeral = idDeposito === DEPOSITO_GERAL_ID;
+      const depGeral = idDeposito === (DEPOSITOS_AMB.geral || '');
 
       const estimMin = Math.ceil(fila.length * 30 / 60);
       if (!confirm(
@@ -2293,7 +2295,7 @@
       if (!idsFiscaisOk()) return;   // trava: ids da AMB ausentes
       // v3.28: le o deposito ANTES de trocar o conteudo do modal pelo spinner
       const depModalEl = document.getElementById('depModal');
-      const idDeposito = (depModalEl && depModalEl.value) ? depModalEl.value : DEPOSITO_GERAL_ID;
+      const idDeposito = (depModalEl && depModalEl.value) ? depModalEl.value : (DEPOSITOS_AMB.geral || '');
       const conteudo = document.getElementById('modalGerarConteudo');
       const acao = emitir ? 'Gerando + emitindo NF' : 'Criando rascunho';
 

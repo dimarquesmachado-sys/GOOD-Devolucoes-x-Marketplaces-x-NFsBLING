@@ -1553,6 +1553,7 @@ registrarRotasAdminNF(router, {
   mapItensNF: nfp.mapItensNF,
   buscarNFsPorNumero: nfp.buscarNFsPorNumero,   // b212 - raio-x da busca por numero
   buscarNfDevolucaoBling: nfp.acharNfDevolucaoBling,   // b255
+  listarDepositos: bling.listarDepositos,   // b276
 });
 
 router.use((req, res) => {

@@ -25,6 +25,7 @@ module.exports = function registrarRotasAdminNF(app, deps) {
     tabelaDevolucoes,
     buscarNFsPorNumero,   // b212 - usada pelo raio-x da busca por numero
     buscarNfDevolucaoBling,   // b255
+    listarDepositos,   // b276 - lista VIVA de depositos desta empresa
   } = deps;
 
   // ═══════════════════════════════════════════════════════════════════
@@ -223,7 +224,10 @@ app.get('/api/admin/nf-itens/:idBling', requerAdmin, async (req, res) => {
 // (2) full-lancar-estoque: lança o estoque de entrada da devolução
 //     vinculada, via API OFICIAL, no depósito GERAL (caso "voltou
 //     pra matriz e está ok pra revenda").
-const DEPOSITO_GERAL_GOOD = '4956031259';
+// b276 (regra dele, 18/08: "id depositos sao diferentes... precisa sempre
+// pegar isso") - ESTE ID ERA DA GOOD, dentro de uma rota da AMB. Sumiu:
+// o deposito agora e validado contra a lista VIVA desta empresa
+// (GET /depositos do Bling autenticado com as credenciais dela).
 
 // ═══════════════════════════════════════════════════════════════════
 // b143 - SONDA: mostra a NF de entrada CRUA, como o Bling devolve.
@@ -432,10 +436,33 @@ app.post('/api/admin/full-lancar-estoque/:id', requerAdmin, async (req, res) => 
       return res.status(400).json({ ok: false, erro: 'Card sem devolucao vinculada - use o 🔗 Achar devolucao primeiro' });
     }
 
-    // v3.28: deposito escolhido no painel (whitelist), padrao Geral
-    const DEPOSITOS_VALIDOS = new Set(['4956031259', '14888156920', '14888947655', '9596855161']);
+    // b276 - a whitelist antiga era de depositos DA GOOD: na AMB, qualquer
+    // escolha do painel era rejeitada e caia no "padrao" — que tambem era da
+    // GOOD. Ou seja, o lancamento ia pra um deposito INEXISTENTE nesta
+    // empresa. Agora a lista vem do proprio Bling desta empresa.
     const pedidoDep = String(req.body?.idDeposito || '').trim();
-    const deposito = DEPOSITOS_VALIDOS.has(pedidoDep) ? pedidoDep : DEPOSITO_GERAL_GOOD;
+    let deposito = null;
+    let listaDeps = [];
+    if (typeof listarDepositos === 'function') {
+      try {
+        const r = await listarDepositos(false);
+        listaDeps = (r && r.depositos) || [];
+      } catch (e) { listaDeps = []; }
+    }
+    if (listaDeps.length) {
+      const valido = listaDeps.some((d) => String(d.id) === pedidoDep);
+      const geral = (listaDeps.find((d) => d.padrao)
+        || listaDeps.find((d) => /geral/i.test(String(d.descricao || ''))) || {}).id || null;
+      deposito = valido ? pedidoDep : geral;
+    } else if (pedidoDep) {
+      // sem lista (Bling fora), respeita a escolha do painel em vez de chutar
+      deposito = pedidoDep;
+    }
+    if (!deposito) {
+      // b276 - NUNCA lancar em deposito adivinhado: sem lista e sem escolha,
+      // recusar e melhor do que jogar estoque no lugar errado
+      return res.status(503).json({ ok: false, erro: 'nao consegui a lista de depositos desta empresa e nenhum foi escolhido no painel — tente de novo em instantes' });
+    }
 
     const url = `https://api.bling.com.br/Api/v3/nfe/${reg.nf_devolucao_id_bling}/lancar-estoque/${deposito}`;
     const r = await chamarBling(url, { method: 'POST', data: {} });
