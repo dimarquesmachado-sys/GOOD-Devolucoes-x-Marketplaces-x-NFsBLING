@@ -1009,7 +1009,16 @@ app.get('/api/admin/nf-devolucao', requerAdmin, async (req, res) => {
         });
       }
     }
-  } catch (e) { /* conferencia extra: falhar aqui nao muda a resposta */ }
+  } catch (e) {
+    // b310 (review do Codex) - se a consulta LANCAR (rede caida, cliente
+    // quebrado), cair fora do try devolvia a resposta original como se o
+    // vinculo tivesse sido conferido. Mesma regra do erro no objeto: nao
+    // conseguir olhar e INDETERMINADO.
+    return res.json({
+      ok: false,
+      motivo: 'nao consegui conferir no banco se esta nota ja esta vinculada a outra devolucao — confira no Bling antes de gerar',
+    });
+  }
 
   res.json(r);
 });

@@ -487,7 +487,13 @@ module.exports = function criarNfPessoa({ chamarBling, sleep }) {
     // tem (o marketplace costuma abreviar), aceito como o mesmo.
     const meioA = pa.slice(1, -1), meioB = pb.slice(1, -1);
     if (!meioA.length || !meioB.length) return true;
-    return meioA.some(m => meioB.includes(m)) || meioB.some(m => meioA.includes(m));
+    // b310 (review do Codex) - o `some` bastava UM componente coincidir, entao
+    // "JOAO CARLOS EDUARDO SILVA" x "JOAO CARLOS PEDRO SILVA" passava. O lado
+    // MENOR precisa estar inteiro dentro do maior: assim abreviacao continua
+    // valendo (um lado sem o nome do meio), mas divergencia real reprova.
+    const menor = meioA.length <= meioB.length ? meioA : meioB;
+    const maior = meioA.length <= meioB.length ? meioB : meioA;
+    return menor.every(m => maior.includes(m));
   }
 
   // Devolve `certeza: 'alta'` quando cliente E sku batem; 'media' com um so.
