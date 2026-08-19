@@ -314,9 +314,14 @@
                 // todas as fotos passam por `srcFoto()`; sem isso a miniatura
                 // vinha quebrada so aqui.
                 var uf = (typeof window.srcFoto === 'function') ? window.srcFoto(f.url || f) : (f.url || f);
-                return '<img src="' + esc(uf) + '" style="width:74px;height:74px;object-fit:cover;'
+                // b292 (review do Codex) - a URL NAO entra como literal no
+                // onclick: `esc()` vira `&#39;` no HTML, o navegador decodifica
+                // ANTES de compilar o handler, e uma URL com apostrofo quebraria
+                // (ou executaria) o codigo. Vai no data-attr e o handler le dali.
+                return '<img src="' + esc(uf) + '" data-full="' + esc(f.url || f) + '" '
+                  + 'style="width:74px;height:74px;object-fit:cover;'
                   + 'border-radius:8px;border:1px solid #e4dcf1;cursor:zoom-in;" '
-                  + 'onclick="event.stopPropagation();verFotoDefeito(\'' + esc(f.url || f) + '\')">';
+                  + 'onclick="event.stopPropagation();verFotoDefeito(this.getAttribute(\'data-full\'))">';
               }).join('') + '</div>'
           : '')
       + linha('Situação', esc(it.situacao || 'com defeito'))
@@ -388,6 +393,13 @@
     // parametro daquela funcao nunca dava um destino utilizavel e o botao
     // Voltar continuava sumido — a correcao da b289 nao chegava a valer.
     ultimoTermoBusca = q;
+    // b292 (review do Codex) - a ENTRADA da pilha tambem precisa acompanhar.
+    // Voltando pra busca "q1" e buscando "q2", a entrada empilhada seguia com
+    // "q1" e o Voltar restaurava o resultado ERRADO.
+    if (atual && atual.tipo === 'busca') atual.arg = q;
+    for (var iP = pilha.length - 1; iP >= 0; iP--) {
+      if (pilha[iP].tipo === 'busca') { pilha[iP].arg = q; break; }
+    }
     // b209 (review do Codex) - com as abas visiveis da pra trocar de aba
     // antes da resposta anterior chegar; sem o token, a resposta LENTA da
     // aba antiga repintava por cima (aba Excluídos acesa mostrando peças
