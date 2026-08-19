@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>AMBTotal - Painel de Devoluções</title>
-  <!-- AMB Devol. b307 - painel portado da GOOD. O adaptador poe /amb nas chamadas -->
+  <!-- AMB Devol. b308 - painel portado da GOOD. O adaptador poe /amb nas chamadas -->
   <script src="js-AMB/base-amb.js?v=b63"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -1898,14 +1898,24 @@
         if (cliente) p.set('cliente', cliente);
         if (sku) p.set('sku', sku);
         if (desde) p.set('desde', String(desde).slice(0, 10));
+        if (window._devolucaoIdAtual) p.set('devolucaoId', String(window._devolucaoIdAtual));   // b308
         const r = await fetch('/api/admin/nf-devolucao?' + p.toString(), { credentials: 'same-origin' });
         const d = await r.json();
         if (d && d.ok && d.achou) { d.eh_full = ehFull; return d; }
+        // b308 (review do Codex) - quando a checagem fica INDETERMINADA (o
+        // Bling recusou ler uma candidata, ou ha mais de uma nota possivel),
+        // eu devolvia null e o modal abria com os botoes ativos e NENHUM
+        // aviso. Continua sem esconder botao — duvida nunca tira a chance de
+        // emitir (regra da b256) — mas agora avisa, pra ele conferir antes.
+        if (d && (d.ok === false || d.motivo)) {
+          return { indeterminado: true, motivo: d.motivo || 'nao consegui confirmar se ja existe NF de entrada', candidatos: d.candidatos || [] };
+        }
         return null;
       } catch (e) { return null; }   // duvida nao esconde o botao
     }
 
     function abrirModalGerarDevolucao(devolucaoId, idNFOriginalBling, nfNumero, produtoTitulo, chaveNF, cliente, skuItem, dataVenda, statusTriagem, serieNFOriginal) {
+      window._devolucaoIdAtual = devolucaoId;   // b308 - pra rota conferir vinculo
       chaveNF = chaveNF || '';
       // b287 (pedido dele, 19/08) - o padrao do deposito segue a FILA de onde
       // o card veio, que e onde a informacao ja esta:
@@ -1984,6 +1994,25 @@
       // b256 - a checagem roda DEPOIS de abrir (nao trava a tela): se achar
       // a nota, os botoes de gerar somem e fica so o incluir estoque.
       checarNfDevolucaoJaEmitida(cliente, skuItem, dataVenda, serieNFOriginal).then(function (achado) {
+        if (achado && achado.indeterminado) {
+          // b308 - aviso AMARELO, botoes seguem ativos
+          var bx = document.getElementById('modalGerarConteudo');
+          if (!bx) return;
+          var av = document.createElement('div');
+          av.style.cssText = 'background:#fff8e1;border:2px solid #ffb300;border-radius:10px;padding:12px 14px;margin-bottom:14px;font-size:13.5px;color:#5d4037;';
+          av.innerHTML = '<strong>⚠️ Não consegui confirmar se já existe NF de entrada.</strong><br>'
+            + escapeHtml(String(achado.motivo || ''))
+            + (achado.candidatos && achado.candidatos.length
+                ? '<br><span style="font-size:12.5px;">Notas parecidas na janela: '
+                  + achado.candidatos.map(function (c) {
+                      return escapeHtml('NF ' + (c.numero || '?') + (c.serie ? '/' + c.serie : '') + (c.cliente ? ' · ' + c.cliente : ''));
+                    }).join(' · ')
+                  + '</span>'
+                : '')
+            + '<br><span style="font-size:12.5px;">Os botões seguem liberados — <strong>confira no Bling antes de gerar</strong>, pra não sair nota em dobro.</span>';
+          bx.insertBefore(av, bx.firstChild);
+          return;
+        }
         if (!achado || !achado.nf) return;
         var nf = achado.nf;
         var bloco = document.getElementById('modalGerarConteudo');
@@ -2155,6 +2184,12 @@
     // marketplace, ou seja, de fora.
     function jsArg(v) {
       return String(v == null ? '' : v)
+        // b308 (review do Codex) - o & vai PRIMEIRO. Sem isso, um nome que ja
+        // contenha `&apos;` (texto vindo do marketplace) e decodificado pelo
+        // navegador DEPOIS deste escape e vira apostrofo de verdade dentro do
+        // onclick — ou seja, codigo executavel. Escapando o & antes, a
+        // entidade deixa de existir.
+        .replace(/&/g, '&amp;')
         .replace(/\\/g, '\\\\')
         .replace(/'/g, "\\'")
         .replace(/"/g, '&quot;')

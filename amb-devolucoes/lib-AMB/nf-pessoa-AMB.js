@@ -580,6 +580,13 @@ module.exports = function criarNfPessoa({ chamarBling, sleep }) {
     // e o card errado perderia o botao de gerar. O Bling nao expoe o vinculo
     // com a venda (b255), entao aqui nao da pra desempatar sozinho — e
     // ambiguidade nao escolhe.
+    // b308 (review do Codex) - PAGINA QUE FALHOU pode conter a nota certa. Se
+    // uma pagina anterior trouxe candidatas irrelevantes e outra falhou,
+    // `falhou` fica true com `achadas` cheio e eu escapava da unica saida de
+    // erro. Sem uma confirmada em maos, isso NAO pode virar "nao existe".
+    if (falhou && !confirmadas.length) {
+      return { ok: false, motivo: 'o Bling recusou parte da busca — pode haver nota de entrada numa pagina que nao consegui ler' };
+    }
     if (confirmadas.length === 1) {
       return { ok: true, achou: true, nf: confirmadas[0], certeza: 'alta', via: 'natureza+cliente+sku' };
     }

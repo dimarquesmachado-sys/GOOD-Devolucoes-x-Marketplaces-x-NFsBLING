@@ -976,6 +976,30 @@ app.get('/api/admin/nf-devolucao', requerAdmin, async (req, res) => {
     desde: req.query.desde || null,
     ate: req.query.ate || null,
   });
+  // b308 (review do Codex) - O CASO DAS DUAS COMPRAS. Se o cliente comprou o
+  // mesmo SKU duas vezes e devolveu SO uma, a nota existente satisfaz
+  // "cliente + sku" nos DOIS cards e o card errado perderia os botoes. O
+  // Bling nao diz a qual venda a nota pertence — mas NOS sabemos: se ela ja
+  // esta vinculada a OUTRA devolucao aqui no banco, nao e a desta volta.
+  try {
+    if (r && r.ok && r.achou && r.nf && r.nf.id && supabase) {
+      const idDesta = String(req.query.devolucaoId || '').trim();
+      const { data: usos } = await supabase
+        .from(TAB)
+        .select('id')
+        .eq('nf_devolucao_id_bling', String(r.nf.id))
+        .limit(5);
+      const outros = (usos || []).filter(u => String(u.id) !== idDesta);
+      if (outros.length) {
+        return res.json({
+          ok: true, achou: false,
+          motivo: 'essa nota de entrada JA esta vinculada a outra devolucao aqui no sistema — nao e a desta volta',
+          candidatos: [{ id: r.nf.id, numero: r.nf.numero, serie: r.nf.serie, data: r.nf.dataEmissao || null, cliente: r.nf.cliente }],
+        });
+      }
+    }
+  } catch (e) { /* conferencia extra: falhar aqui nao muda a resposta */ }
+
   res.json(r);
 });
 
