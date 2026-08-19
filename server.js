@@ -1410,30 +1410,7 @@ app.post('/api/admin/renovar-token-bling', async (req, res) => {
 // ============================================================
 // DEBUG
 // ============================================================
-app.get('/api/debug/shipment/:id', async (req, res) => {
-  if (!adminOk(req)) return res.status(404).send('Not found'); // protegido: exige ?k=ADMIN_KEY
-  const r = await chamarML(`https://api.mercadolibre.com/shipments/${req.params.id}`, { 'x-format-new': 'true' });
-  res.status(r.ok ? 200 : r.status || 500).json(r);
-});
-
-app.get('/api/debug/order/:id', async (req, res) => {
-  if (!adminOk(req)) return res.status(404).send('Not found'); // protegido: exige ?k=ADMIN_KEY
-  const r = await chamarML(`https://api.mercadolibre.com/orders/${req.params.id}`);
-  res.status(r.ok ? 200 : r.status || 500).json(r);
-});
-
-app.get('/api/debug/ml-invoice/:shipmentId', async (req, res) => {
-  if (!adminOk(req)) return res.status(404).send('Not found'); // protegido: exige ?k=ADMIN_KEY
-  const r = await buscarNFnoML(req.params.shipmentId);
-  res.status(r.ok ? 200 : r.status || 500).json(r);
-});
-
-app.get('/api/debug/bling-busca/:numeroLoja', async (req, res) => {
-  if (!adminOk(req)) return res.status(404).send('Not found'); // protegido: exige ?k=ADMIN_KEY
-  const dataRef = req.query.data || null;
-  const r = await buscarPedidoBlingPorNumeroLoja(req.params.numeroLoja, dataRef, { maxPaginas: 50 });
-  res.json(r);
-});
+// b299 - as rotas de diagnostico deste ponto foram pra lib/rotas-debug.js (fatia 2)
 
 // NOVO v3.14.4: rota pra buscar EAN do produto pelo SKU
 // Usado quando a NF nao foi achada automaticamente e o frontend precisa do EAN pra bipagem
@@ -1481,94 +1458,7 @@ app.get('/api/produto/ean-por-sku/:sku', requerLogin, async (req, res) => {
   });
 });
 
-app.get('/api/debug/bling-pedido/:id', async (req, res) => {
-  if (!adminOk(req)) return res.status(404).send('Not found'); // protegido: exige ?k=ADMIN_KEY
-  const r = await buscarPedidoBlingPorId(req.params.id);
-  res.status(r.ok ? 200 : r.status || 500).json(r);
-});
-
-app.get('/api/debug/bling-nfe-cru/:idNFe', async (req, res) => {
-  if (!adminOk(req)) return res.status(404).send('Not found'); // protegido: exige ?k=ADMIN_KEY
-  const r = await buscarNFePorId(req.params.idNFe);
-  res.status(r.ok ? 200 : r.status || 500).json(r);
-});
-
-// v3.4: ver primeira pagina de NFs (pra debug)
-app.get('/api/debug/bling-nfe-primeira-pagina', async (req, res) => {
-  if (!adminOk(req)) return res.status(404).send('Not found'); // protegido: exige ?k=ADMIN_KEY
-  const limite = req.query.limite || 20;
-  const r = await chamarBling(`https://api.bling.com.br/Api/v3/nfe?limite=${limite}&pagina=1&tipo=1`);
-  if (r.ok && r.data?.data) {
-    const resumo = r.data.data.map(nf => ({
-      id: nf.id,
-      numero: nf.numero,
-      serie: nf.serie,
-      numeroPedidoLoja: nf.numeroPedidoLoja,
-      dataEmissao: nf.dataEmissao,
-      situacao: nf.situacao,
-      valorNota: nf.valorNota,
-      contato: nf.contato?.nome,
-    }));
-    return res.json({ ok: true, total_na_pagina: r.data.data.length, primeiros: resumo });
-  }
-  res.status(r.ok ? 200 : r.status || 500).json(r);
-});
-
-// v3.4: busca NF por order_id ML (manual, pra debug)
-app.get('/api/debug/bling-busca-nf/:orderId', async (req, res) => {
-  if (!adminOk(req)) return res.status(404).send('Not found'); // protegido: exige ?k=ADMIN_KEY
-  const dataRef = req.query.data || null;
-  const r = await buscarNFnoBlingPorOrderId(req.params.orderId, dataRef, { maxPaginas: 50 });
-  res.json(r);
-});
-
-// v3.19 DEBUG: testa se obter-dados-devolucao funciona na API oficial
-// (api.bling.com.br + Bearer). Decide se dá pra o BACKEND buscar os dados
-// da devolucao (com os IDs reais dos itens) em vez da extensao.
-app.get('/api/debug/dados-devolucao-numero/:numero', async (req, res) => {
-  if (!adminOk(req)) return res.status(404).send('Not found'); // protegido: exige ?k=ADMIN_KEY
-  const numero = String(req.params.numero || '').trim();
-  try {
-    const rBusca = await buscarNFnoBlingPorNumero(numero, null, { maxPaginas: 50 });
-    if (!rBusca.ok || !rBusca.match) {
-      return res.json({ ok: false, etapa: 'buscar-numero', achou_nf: false });
-    }
-    const idNF = rBusca.match.id;
-
-    // Descobre o idLoja pela API v3 (a NF individual traz "loja").
-    // Esse e o valor que vai no ULTIMO segmento do obter-dados-devolucao.
-    const rNFind = await buscarNFePorId(idNF);
-    const lojaId = rNFind.ok ? (rNFind.data?.data?.loja?.id ?? null) : null;
-
-    // Testa o obter-dados-devolucao via API oficial (Bearer) COM o idLoja real.
-    // Esperado: 403 - esse endpoint e INTERNO (so cookie/sessao no www), nao e
-    // exposto a apps de API. Serve so pra confirmar (a extensao e quem chama de verdade).
-    const seg = lojaId != null ? String(lojaId) : '0';
-    const url = `https://api.bling.com.br/Api/v3/nfe/${idNF}/obter-dados-devolucao/${seg}`;
-    const r = await chamarBling(url);
-    return res.json({
-      ok: r.ok,
-      status: r.status,
-      idNF: String(idNF),
-      idLoja_apiV3: lojaId != null ? String(lojaId) : null,
-      url_testada: url,
-      tem_data: !!r.data?.data,
-      tem_itens: !!(r.data?.data?.itens),
-      qtd_itens: r.data?.data?.itens ? Object.keys(r.data.data.itens).length : 0,
-      ids_itens: r.data?.data?.itens ? Object.keys(r.data.data.itens) : [],
-      dadosNota_id: r.data?.data?.dadosNota?.id || null,
-      idDeposito: r.data?.data?.dadosNota?.idDeposito || null,
-      devolucaoExistente: r.data?.data?.devolucaoExistente,
-      error: r.error || null,
-    });
-  } catch (e) {
-    return res.json({ ok: false, erro: e.message });
-  }
-});
-
-// ============================================================
-// CALLBACKS OAuth
-// ============================================================
+// b299 - idem (fatia 2)
 app.get('/callback', (req, res) => {
   res.send(`<h2>Callback ML recebido</h2><p>code: ${req.query.code || '(nenhum)'}</p>`);
 });
@@ -5067,6 +4957,11 @@ const registrarRotasDebug = require('./lib/rotas-debug');
 registrarRotasDebug(app, {
   requerAdmin, espreita, shopee, magalu, mlReturns,
   chamarBling, chamarML, sleep,
+  // b299 (fatia 2)
+  adminOk, buscarNFnoML, buscarPedidoBlingPorNumeroLoja,
+  buscarPedidoBlingPorId, buscarNFePorId,
+  buscarNFnoBlingPorOrderId, buscarNFnoBlingPorNumero,   // b300
+  buscarNFsPorNumero,   // b300 - faltava desde a fatia 1
 });
 
 // v3.45 - rotas de impressao (QZ + fila) movidas p/ lib/rotas-impressao.js
