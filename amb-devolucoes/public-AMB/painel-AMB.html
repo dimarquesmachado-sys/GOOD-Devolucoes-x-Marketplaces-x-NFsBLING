@@ -1882,10 +1882,14 @@
 
     function abrirModalGerarDevolucao(devolucaoId, idNFOriginalBling, nfNumero, produtoTitulo, chaveNF, cliente, skuItem, dataVenda, statusTriagem) {
       chaveNF = chaveNF || '';
-      // b260 (correcao do proprio Diego) - QUEM DECIDE E O ADMIN, nao a
-      // triagem: "as vezes pro estoquista e problema, mas o ADMIN quem
-      // escolhe". Entao o padrao e SEMPRE **DEFEITOS**, e a lista fica
-      // aberta pra ele trocar.
+      // b287 (pedido dele, 19/08) - o padrao do deposito segue a FILA de onde
+      // o card veio, que e onde a informacao ja esta:
+      //   ✅ Aprovadas   -> GERAL    (produto bom, volta a vender)
+      //   ⚠️ Problemas   -> DEFEITOS
+      //   🔄 Divergentes -> GERAL    (envio errado; o produto esta bom)
+      // Continua so como PADRAO: a lista fica aberta e quem decide e o admin
+      // (a correcao da b260 segue valendo).
+      var ehProblema = /problema|defeito|avariad|quebrad|ruim/i.test(String(statusTriagem || ''));
       // E o nome: "DEFEITOS API" e deposito da GOOD; na AMB chama so
       // "DEFEITOS". Por isso parei de cravar id — o depMonta acha o
       // deposito pelo NOME na lista viva de /api/depositos, que ja e o que
@@ -1938,8 +1942,12 @@
           // devolucao que chega na matriz nunca entra num full do marketplace,
           // e ter essas opcoes na lista so convida ao erro.
           var deps = r.depositos.filter(function (d) { return !/full/i.test(String(d.descricao || '')); });
-          var alvo = (deps.find(function (d) { return /^defeitos?$/i.test(String(d.descricao || '').trim()); })
+          // b287 - Problemas abre em DEFEITOS; Aprovadas e Divergentes, no GERAL
+          var idDefeitos = (deps.find(function (d) { return /^defeitos?$/i.test(String(d.descricao || '').trim()); })
                    || deps.find(function (d) { return /defeito/i.test(d.descricao || ''); }) || {}).id || null;
+          var idGeral = (deps.find(function (d) { return d.padrao; })
+                   || deps.find(function (d) { return /geral/i.test(d.descricao || ''); }) || deps[0] || {}).id || null;
+          var alvo = ehProblema ? (idDefeitos || idGeral) : (idGeral || idDefeitos);
           sel.innerHTML = deps.map(function (d) {
             return '<option value="' + escapeHtml(d.id) + '"' + (d.id === alvo ? ' selected' : '') + '>📦 ' + escapeHtml(d.descricao) + '</option>';
           }).join('') || '<option value="">(sem depósitos)</option>';
