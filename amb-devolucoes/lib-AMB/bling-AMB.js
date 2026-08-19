@@ -282,7 +282,13 @@ async function naturezaDevolucaoEntrada() {
   if (forcado) return { ok: true, id: forcado, via: 'env' };
   const r = await listarNaturezas(false);
   if (!r.ok) return { ok: false, erro: r.erro || 'nao consegui listar as naturezas' };
-  const norm = (x) => String(x || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  // b296 (review do Codex) - normaliza tambem o ESPACO. Sem isso, uma
+  // duplicata que difere so por espaco (extra no meio, sobrando na ponta)
+  // NAO casava como igual: `exatas` ficava com uma linha so e o retorno
+  // antecipado escolhia a canonica, driblando justamente a regra de
+  // "ambiguidade nao escolhe" que este trecho existe pra garantir.
+  const norm = (x) => String(x || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase().replace(/\s+/g, ' ').trim();
   // b285 (review do Codex) - a mesma regra do aproximado vale AQUI: se o
   // catalogo tiver duas naturezas com o MESMO nome (duplicata ou variacao
   // com espaco/acento que normaliza igual), `.find()` pegaria a primeira e
