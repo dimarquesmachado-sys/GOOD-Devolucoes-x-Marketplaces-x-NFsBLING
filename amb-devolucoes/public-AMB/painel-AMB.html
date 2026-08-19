@@ -283,15 +283,6 @@
         <!-- b212 (pedido do Diego: "nao precisa ficar mostrando todas dezenas
              de recados listados. faz eu clicar num botao") - a lista nasce
              FECHADA; o botao diz quantos ha e abre quando ele quiser. -->
-        <!-- b258 (pedido do Diego) - cadastrar de-para SEM SQL. O anuncio Full
-             do ML nao deixa trocar o SKU depois que tem vendas; quando o produto
-             e renomeado no Bling, a venda antiga fica orfa. Aqui ele liga os dois
-             em dois campos, e o app passa a tratar o antigo como o atual. -->
-        <div style="margin-top:14px;padding-top:12px;border-top:1px dashed #ddd;">
-          <button type="button" onclick="alternarDepara()" id="btnDepara"
-            style="background:#fff;color:#3C3489;border:1.5px solid #3C3489;border-radius:8px;padding:8px 14px;font-weight:700;font-size:13px;cursor:pointer;">🔗 SKUs renomeados (de-para)</button>
-          <div id="caixaDepara" style="display:none;margin-top:10px;"></div>
-        </div>
         <button type="button" id="btnVerRecados" onclick="alternarListaRecados()" style="margin-top:10px;background:#fff;color:#c62828;border:1.5px solid #c62828;border-radius:8px;padding:8px 14px;font-weight:700;font-size:13px;cursor:pointer;">📋 Ver recados criados</button>
         <div id="listaRecados" style="margin-top:12px;display:none;"></div>
       </div>
@@ -349,6 +340,20 @@
           <span class="badge-count" id="countEspreita" style="background:#561A9E;">0</span>
         </h2>
         <div id="listaEspreita"></div>
+      </div>
+
+      <!-- b288 (pedido dele, 19/08: "esse botao do SKU renomeado poderia ficar
+           no fim de tudo, pois praticamente sera usado em 0,001% dos casos") -
+           saiu de dentro do card de RECADOS, onde nada tinha a ver, e virou uma
+           faixa discreta no fim da pagina. Cadastrar de-para SEM SQL: o anuncio
+           Full do ML nao deixa trocar o SKU depois que tem vendas, entao quando
+           o produto e renomeado no Bling a venda antiga fica orfa, e aqui os
+           dois codigos sao ligados. -->
+      <div style="grid-column: 1 / -1; margin-top:18px; padding-top:14px; border-top:1px dashed #ddd; opacity:.85;">
+        <button type="button" onclick="alternarDepara()" id="btnDepara"
+          style="background:#fff;color:#777;border:1px solid #ccc;border-radius:8px;padding:7px 13px;font-weight:600;font-size:12.5px;cursor:pointer;"
+          title="Só quando um produto for renomeado no Bling e a venda antiga ficar com o SKU velho">🔗 SKUs renomeados (de-para)</button>
+        <div id="caixaDepara" style="display:none;margin-top:10px;"></div>
       </div>
 
 
