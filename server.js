@@ -4991,6 +4991,29 @@ async function montarEspreita() {
 }
 
 // v4.51 - a rota: serve o cache instantaneo se recente; senao monta e cacheia.
+// b294 - IDS FISCAIS DESTA EMPRESA, pro Bridge parar de te-los cravados.
+// Espelha /amb/api/ids-fiscais (b283): natureza achada pelo NOME na API do
+// Bling desta empresa, id da empresa por env. Aceita ?empresa= pra o Bridge
+// perguntar explicitamente por quem esta emitindo — e ai nada e adivinhado.
+// A extensao chama com `credentials: include`, entao a sessao do navegador
+// vale aqui do mesmo jeito que nas outras rotas do painel.
+app.get('/api/ids-fiscais', requerLogin, async (req, res) => {
+  const alvo = String(req.query.empresa || 'good').toLowerCase();
+  if (alvo === 'good') {
+    return res.json({ ok: true, empresa: 'good', ...(await blingClient.idsFiscais()) });
+  }
+  if (alvo === 'amb' || alvo === 'ambtotal') {
+    // a AMB tem o proprio modulo (credenciais e catalogo dela)
+    try {
+      const blingAmb = require('./amb-devolucoes/lib-AMB/bling-AMB');
+      return res.json({ ok: true, empresa: 'ambtotal', ...(await blingAmb.idsFiscais()) });
+    } catch (e) {
+      return res.status(503).json({ ok: false, erro: 'modulo da AMB indisponivel: ' + String(e.message || e) });
+    }
+  }
+  return res.status(400).json({ ok: false, erro: 'empresa desconhecida: ' + alvo, aceitas: ['good', 'amb'] });
+});
+
 app.get('/api/admin/espreita', requerAdmin, async (req, res) => {
   const agora = Date.now();
   const forcar = req.query.fresh === '1';
