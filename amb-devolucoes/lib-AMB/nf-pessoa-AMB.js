@@ -565,6 +565,14 @@ module.exports = function criarNfPessoa({ chamarBling, sleep }) {
     // ja vale na busca por numero (b255).
     let falhouDetalhe = false;
     const confirmadas = [];   // b307 - cliente E sku batendo
+    // b311 (review do Codex, apontamento em aberto) - ORDENAR NAO BASTA.
+    // Se houver MAIS de 5 candidatas com o cliente batendo, a nota certa pode
+    // ser a sexta e nunca seria inspecionada — e o `achou: false` resultante
+    // LIBERA a emissao, criando a segunda nota da mesma volta. Entao o teto
+    // deixa de ser silencioso: quem bate o cliente e passou do corte fica
+    // registrado, e o desfecho vira INDETERMINADO (nao "nao achei").
+    const clientesQueBatem = achadas.filter(c => c.bate_cliente).length;
+    const cortadasComCliente = Math.max(0, clientesQueBatem - 5);
     if (cod) {
       for (const cand of achadas.slice(0, 5)) {
         const rD = await chamarBling(`/nfe/${cand.id}`);
@@ -607,6 +615,15 @@ module.exports = function criarNfPessoa({ chamarBling, sleep }) {
     }
     if (falhouDetalhe) {
       return { ok: false, motivo: 'o Bling recusou a leitura de uma das notas candidatas — nao da pra afirmar se ja existe' };
+    }
+    // b311 - candidatas COM O CLIENTE CERTO ficaram de fora do teto de 5.
+    // A nota da volta pode ser justamente uma delas, entao o desfecho honesto
+    // e "nao sei" (ok:false), nunca "nao achei" — que liberaria a emissao.
+    if (cortadasComCliente > 0) {
+      return {
+        ok: false,
+        motivo: 'ha ' + (cortadasComCliente + 5) + ' notas de entrada deste cliente na janela e eu so consigo abrir 5 — a nota desta volta pode estar entre as que nao li. Confira no Bling antes de gerar',
+      };
     }
     if (quaseCerto.length) {
       // b304 - havia nota com o MESMO SKU, mas de outro cliente: e outra venda

@@ -1008,6 +1008,36 @@ app.get('/api/admin/nf-devolucao', requerAdmin, async (req, res) => {
           candidatos: [{ id: r.nf.id, numero: r.nf.numero, serie: r.nf.serie, data: r.nf.dataEmissao || null, cliente: r.nf.cliente }],
         });
       }
+      // b311 (review do Codex, apontamento em aberto) - VINCULO VAZIO NAO E
+      // PROVA. A nota pode ser orfa (importada, ou sobrou de um registro que
+      // falhou) e ainda assim pertencer a OUTRA venda. Ela so desambigua
+      // quando ha uma unica compra deste cliente+SKU na janela: com duas
+      // compras e uma volta so, a mesma nota serve aos dois cards e o card
+      // errado perderia os botoes. Entao, havendo mais de uma devolucao
+      // NOSSA do mesmo cliente+SKU, o desfecho e INDETERMINADO.
+      const cliBusca = String(req.query.cliente || '').trim();
+      const skuBusca = String(req.query.sku || '').trim();
+      if (cliBusca && skuBusca) {
+        const { data: irmas, error: erroIrmas } = await supabase
+          .from(TAB)
+          .select('id')
+          .ilike('buyer_nome', cliBusca)
+          .eq('produto_sku', skuBusca)
+          .limit(5);
+        if (erroIrmas) {
+          return res.json({
+            ok: false,
+            motivo: 'nao consegui conferir no banco se ha mais de uma compra deste cliente com este SKU — confira no Bling antes de gerar',
+          });
+        }
+        const outrasCompras = (irmas || []).filter(u => String(u.id) !== idDesta);
+        if (outrasCompras.length) {
+          return res.json({
+            ok: false,
+            motivo: 'este cliente tem mais de uma devolucao deste mesmo SKU aqui, e a nota achada nao esta vinculada a nenhuma — nao da pra dizer a qual volta ela pertence. Confira no Bling antes de gerar',
+          });
+        }
+      }
     }
   } catch (e) {
     // b310 (review do Codex) - se a consulta LANCAR (rede caida, cliente
