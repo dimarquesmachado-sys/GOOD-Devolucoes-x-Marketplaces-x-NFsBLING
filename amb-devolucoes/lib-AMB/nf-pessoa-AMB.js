@@ -601,8 +601,24 @@ module.exports = function criarNfPessoa({ chamarBling, sleep }) {
     if (falhou && !confirmadas.length) {
       return { ok: false, motivo: 'o Bling recusou parte da busca — pode haver nota de entrada numa pagina que nao consegui ler' };
     }
-    if (confirmadas.length === 1) {
+    // b312 (review do Codex) - UMA confirmacao so vale se eu li a janela
+    // INTEIRA. Se uma pagina falhou, uma candidata nao abriu, ou notas do
+    // mesmo cliente ficaram fora do teto de 5, pode haver OUTRA nota com
+    // cliente+sku batendo — e ai a que achei talvez seja a da outra venda.
+    // Confirmar mesmo assim faria o painel esconder o botao do card errado.
+    const leituraIncompleta = falhou || falhouDetalhe || cortadasComCliente > 0;
+    if (confirmadas.length === 1 && !leituraIncompleta) {
       return { ok: true, achou: true, nf: confirmadas[0], certeza: 'alta', via: 'natureza+cliente+sku' };
+    }
+    if (confirmadas.length === 1) {
+      return {
+        ok: false,
+        motivo: 'achei uma nota de entrada deste cliente com este SKU, mas nao consegui ler a janela inteira — pode haver outra. Confira no Bling antes de gerar',
+        candidatos: [{
+          id: confirmadas[0].id, numero: confirmadas[0].numero, serie: confirmadas[0].serie,
+          data: confirmadas[0].dataEmissao || null, cliente: confirmadas[0].cliente,
+        }],
+      };
     }
     if (confirmadas.length > 1) {
       return {
