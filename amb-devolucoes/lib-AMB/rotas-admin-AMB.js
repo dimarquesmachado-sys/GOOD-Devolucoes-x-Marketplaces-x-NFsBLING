@@ -984,11 +984,22 @@ app.get('/api/admin/nf-devolucao', requerAdmin, async (req, res) => {
   try {
     if (r && r.ok && r.achou && r.nf && r.nf.id && supabase) {
       const idDesta = String(req.query.devolucaoId || '').trim();
-      const { data: usos } = await supabase
+      const { data: usos, error: erroUsos } = await supabase
         .from(TAB)
         .select('id')
         .eq('nf_devolucao_id_bling', String(r.nf.id))
         .limit(5);
+      // b309 (review do Codex) - o cliente do Supabase resolve com
+      // { data: null, error } em vez de lancar, entao o try/catch NAO pegava:
+      // uma falha passageira de banco viraria "nao ha vinculo" e a checagem
+      // que existe justo pra desambiguar diria o contrario do que devia.
+      // Erro aqui = INDETERMINADO, nao "esta livre".
+      if (erroUsos) {
+        return res.json({
+          ok: false,
+          motivo: 'nao consegui conferir no banco se esta nota ja esta vinculada a outra devolucao — confira no Bling antes de gerar',
+        });
+      }
       const outros = (usos || []).filter(u => String(u.id) !== idDesta);
       if (outros.length) {
         return res.json({
