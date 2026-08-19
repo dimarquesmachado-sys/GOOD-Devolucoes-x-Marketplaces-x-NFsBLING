@@ -48,12 +48,67 @@ const BLING_API_REVISION = '3.1.0';
 // (mesmo que o painel desista de esperar, nada se perde)
 const API_SISTEMA = 'https://good-devolucoes-x-marketplaces-x-nfsbling.onrender.com';
 
-// IDs FIXOS DA GOOD IMPORT (confirmados por captura real do Bling)
-// ATENCAO: sao especificos da GOOD. Girassol/AMB teriam outros.
-const GOOD = {
+// v1.5.0 (b297) - IDS FISCAIS VEM DO SERVIDOR, POR EMPRESA.
+//
+// Antes eram estes dois numeros cravados, com o aviso "sao especificos da
+// GOOD. Girassol/AMB teriam outros" — ou seja, a extensao so servia a GOOD.
+// Agora ela PERGUNTA ao sistema quais sao os ids da empresa daquela
+// devolucao. Nao adivinhamos empresa por aba aberta nem por chute: quem
+// dispara diz qual e, e o servidor responde com os ids DELA.
+//
+// Cada empresa responde na propria area, porque a sessao de cada uma vive
+// num caminho diferente (a da AMB nao chega na raiz).
+const ENDERECO_IDS = {
+  good: '/api/ids-fiscais?empresa=good',
+  ambtotal: '/amb/api/ids-fiscais',
+};
+
+// Ultimo recurso SO PRA GOOD: se o servidor nao responder, a GOOD continua
+// funcionando como sempre funcionou. Para as demais empresas nao ha padrao —
+// emitir com id de outra empresa seria pior do que nao emitir.
+const GOOD_PADRAO = {
   idNaturezaOperacao: '5776118802',  // "Devolucao de Mercadoria - Entrada"
   idEmpresaControl: '4956030980',
 };
+
+const cacheIds = {};   // empresa -> { quando, fixos }
+
+async function idsFiscaisDaEmpresa(empresa) {
+  const alvo = String(empresa || 'good').trim().toLowerCase();
+  const chave = (alvo === 'amb' || alvo === 'ambtotal') ? 'ambtotal' : alvo;
+  const caminho = ENDERECO_IDS[chave];
+  if (!caminho) throw new Error('empresa desconhecida na extensao: ' + alvo);
+
+  // cache curto: varias devolucoes seguidas nao repetem a consulta
+  const c = cacheIds[chave];
+  if (c && (Date.now() - c.quando) < 10 * 60 * 1000) return c.fixos;
+
+  let dados = null;
+  try {
+    const r = await fetch(API_SISTEMA + caminho, { credentials: 'include' });
+    dados = await r.json();
+  } catch (e) { dados = null; }
+
+  if (dados && dados.ok && dados.idNaturezaOperacao && dados.idEmpresaControl) {
+    const fixos = {
+      idNaturezaOperacao: String(dados.idNaturezaOperacao),
+      idEmpresaControl: String(dados.idEmpresaControl),
+    };
+    cacheIds[chave] = { quando: Date.now(), fixos };
+    return fixos;
+  }
+
+  if (chave === 'good') {
+    console.warn('[Bridge] servidor nao devolveu os ids da GOOD; usando o padrao conhecido');
+    return GOOD_PADRAO;
+  }
+  // sem padrao pra outras empresas: recusa em vez de emitir com id errado
+  throw new Error(
+    'Nao consegui os IDs fiscais da empresa "' + chave + '"'
+    + (dados && dados.erro ? (': ' + dados.erro) : '')
+    + '. Sem eles a nota sairia na empresa ou natureza erradas — nao emiti nada.'
+  );
+}
 
 const esperar = (ms) => new Promise(r => setTimeout(r, ms));
 
@@ -161,6 +216,9 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 // ============================================================
 async function gerarDevolucao(payload, painelTab) {
   const { idNFOriginal, idLoja, emitir, idDeposito } = payload || {};
+  // b297 - de qual empresa e esta devolucao? Quem dispara diz; na falta,
+  // 'good' (que era o unico comportamento existente ate aqui).
+  const empresa = String((payload && payload.empresa) || 'good').trim().toLowerCase();
 
   if (!idNFOriginal) throw new Error('idNFOriginal obrigatorio');
 
@@ -168,6 +226,11 @@ async function gerarDevolucao(payload, painelTab) {
   let execId = null;
 
   const trabalho = (async () => {
+    // b297 - PRIMEIRO os ids da empresa: falhando aqui, nada e emitido
+    etapa = 'buscando os IDs fiscais da empresa (' + empresa + ')';
+    console.log('[Bridge] etapa:', etapa);
+    const fixosDaEmpresa = await idsFiscaisDaEmpresa(empresa);
+
     etapa = 'procurando aba do Bling';
     console.log('[Bridge] etapa:', etapa);
     const tab = await acharAbaBling();
@@ -212,7 +275,7 @@ async function gerarDevolucao(payload, painelTab) {
             : '0',
           emitir: !!emitir,
           idDepositoEscolhido: (idDeposito != null && String(idDeposito).trim() !== '') ? String(idDeposito).trim() : null,
-          fixos: GOOD,
+          fixos: fixosDaEmpresa,   // b297 - vieram do servidor, da empresa certa
           apiRevision: BLING_API_REVISION,
           espelho: espelho,
         }],
