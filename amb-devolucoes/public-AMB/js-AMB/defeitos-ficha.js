@@ -36,6 +36,14 @@
   // e a seta desfaz passo a passo.
   var atual = null;
   var pilha = [];
+  // b289 (relato dele: "quando eu entro dentro do defeito de 1 produto tipo
+  // 📍 DEFEITOS PEÇA #2, eu nao consigo voltar, so tem opcao de fechar") -
+  // a seta só aparecia com pilha cheia, e quem chega na ficha por um LINK
+  // DIRETO (o "→ foi para a PEÇA #4", o botão da triagem, a fila de
+  // solicitações) tinha a pilha vazia e ficava sem saída a não ser fechar
+  // tudo. Guardando o último termo buscado, sempre há pra onde voltar.
+  var ultimoTermoBusca = null;
+  var naRaizBusca = false;   // b291 - estou na busca (raiz) agora?
 
   // b209 (review do Codex) - a ficha so se recarrega se ELA ainda for a
   // tela aberta: se a requisicao demora e o operador fecha o card ou volta,
@@ -52,8 +60,17 @@
 
   window.voltarDefeitos = function () {
     var v = pilha.pop();
-    if (!v) return;
-    if (v.tipo === 'busca') abrirBuscaDefeitos(v.arg, true);
+    // b289 - sem histórico, volta pra busca que originou a visita (ou pra
+    // busca vazia): melhor do que a seta não fazer nada
+    if (!v) {
+      if (ultimoTermoBusca !== null) { abrirBuscaDefeitos(ultimoTermoBusca, true); return; }
+      return;
+    }
+    // b291 (review do Codex) - a entrada 'busca' da pilha foi registrada com
+    // `arg` UNDEFINED (todo mundo chama `abrirBuscaDefeitos()` sem termo),
+    // entao voltar por ela reabria a busca VAZIA e perdia o que ele digitou.
+    // O termo real e o capturado na propria busca.
+    if (v.tipo === 'busca') abrirBuscaDefeitos((v.arg === undefined || v.arg === null) ? ultimoTermoBusca : v.arg, true);
     else if (v.tipo === 'ficha') abrirFichaDefeito(v.arg, true);
     else if (v.tipo === 'fila') abrirFilaPedidos(true, v.arg === true);   // b190 - volta pra ABA em que ele estava
   };
@@ -233,9 +250,12 @@
   function topo(titulo, extra) {
     return '<div style="position:sticky;top:0;background:#561A9E;color:#fff;padding:12px 16px;'
       + 'display:flex;align-items:center;gap:10px;z-index:2;">'
-      + (pilha.length
+      // b289 - a seta aparece quando há histórico OU quando dá pra voltar
+      // pra uma busca; e agora diz "Voltar" por extenso, porque só a flecha
+      // não é óbvia pra quem está no galpão
+      + ((pilha.length || (!naRaizBusca && ultimoTermoBusca !== null))
           ? '<button onclick="voltarDefeitos()" title="voltar" style="background:rgba(255,255,255,.2);color:#fff;'
-            + 'border:none;border-radius:8px;padding:6px 12px;cursor:pointer;font-size:15px;">&larr;</button>'
+            + 'border:none;border-radius:8px;padding:6px 12px;cursor:pointer;font-size:14px;font-weight:700;">&larr; Voltar</button>'
           : '')
       + '<b style="font-size:16px;flex:1;">' + titulo + '</b>'
       + (extra || '')
@@ -243,9 +263,97 @@
       + 'border:none;border-radius:8px;padding:6px 12px;cursor:pointer;">✕ Fechar</button></div>';
   }
 
+  // b289 - DETALHE INLINE. Abre embaixo do card, sem trocar a vista nem
+  // piscar a tela. Mostra o essencial pra decidir (foto, defeito, histórico
+  // e as peças tiradas); as AÇÕES continuam na ficha completa, que é onde
+  // elas sempre estiveram — e o botão pra ela fica aqui dentro.
+  // b290 (review do Codex) - visualizador que funciona nas DUAS telas
+  window.verFotoDefeito = function (url) {
+    if (typeof window.abrirZoomProduto === 'function') return window.abrirZoomProduto(url);
+    if (typeof window.abrirFoto === 'function') return window.abrirFoto(url);
+    window.open(url, '_blank', 'noopener');
+  };
+
+  // b290 (review do Codex) - um TOKEN por abertura: fechar e reabrir rapido
+  // disparava duas buscas pro mesmo lugar, e a PRIMEIRA (mais lenta, as vezes
+  // um erro) repintava por cima do resultado bom da segunda.
+  var tokenDetalhe = {};
+
+  window.alternarDetalheDefeito = async function (id) {
+    var cx = document.getElementById('detdef-' + id);
+    if (!cx) return;
+    if (cx.style.display !== 'none') { cx.style.display = 'none'; cx.innerHTML = ''; tokenDetalhe[id] = (tokenDetalhe[id] || 0) + 1; return; }
+    var meu = tokenDetalhe[id] = (tokenDetalhe[id] || 0) + 1;
+    cx.style.display = '';
+    cx.innerHTML = '<div style="border:1px solid #e4dcf1;border-top:none;border-radius:0 0 9px 9px;'
+      + 'padding:10px 12px;font-size:12.5px;color:#888;">carregando…</div>';
+    var d;
+    try { d = await api('/api/defeitos/ficha/' + encodeURIComponent(id)); }
+    catch (e) { d = { ok: false, erro: 'falha de conexao' }; }
+    if (meu !== tokenDetalhe[id]) return;                        // b290 - chegou tarde
+    if (!cx.parentNode || cx.style.display === 'none') return;   // fechou enquanto carregava
+    if (!d || !d.ok) {
+      cx.innerHTML = '<div style="border:1px solid #e4dcf1;border-top:none;border-radius:0 0 9px 9px;'
+        + 'padding:10px 12px;font-size:12.5px;color:#8C1D18;">' + esc((d && d.erro) || 'não consegui abrir') + '</div>';
+      return;
+    }
+    var it = d.item || {}, fotos = d.fotos || [], com = d.comentarios || [], pec = d.pecas_retiradas || [];
+    var linha = function (t, v) {
+      return '<div style="font-size:12.5px;margin-top:3px;"><span style="color:#777;">' + t + ':</span> ' + v + '</div>';
+    };
+    cx.innerHTML = '<div style="border:1px solid #e4dcf1;border-top:none;border-radius:0 0 9px 9px;'
+      + 'background:#faf9fd;padding:12px;">'
+      + (fotos.length
+          ? '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:9px;">'
+            + fotos.slice(0, 6).map(function (f) {
+                // b290 (review do Codex) - `abrirZoomProduto` so existe no index;
+                // no painel ha `abrirFoto`. Sem cobrir os dois, o clique
+                // mostrava cursor de zoom e nao fazia nada. Ultimo recurso:
+                // abrir a imagem numa aba.
+                // b291 (review do Codex) - no painel o bucket pode ser PRIVADO e
+                // todas as fotos passam por `srcFoto()`; sem isso a miniatura
+                // vinha quebrada so aqui.
+                var uf = (typeof window.srcFoto === 'function') ? window.srcFoto(f.url || f) : (f.url || f);
+                return '<img src="' + esc(uf) + '" style="width:74px;height:74px;object-fit:cover;'
+                  + 'border-radius:8px;border:1px solid #e4dcf1;cursor:zoom-in;" '
+                  + 'onclick="event.stopPropagation();verFotoDefeito(\'' + esc(f.url || f) + '\')">';
+              }).join('') + '</div>'
+          : '')
+      + linha('Situação', esc(it.situacao || 'com defeito'))
+      + linha('Quantidade', esc(it.quantidade || 1) + ' peça(s)')
+      + (it.criado_em ? linha('Registrado em', esc(String(it.criado_em).slice(0, 10).split('-').reverse().join('/'))) : '')
+      // b290 (review do Codex) - o servidor manda `item.quem` (defeitos-ciclo-AMB);
+      // `funcionario` nunca existiu, entao a linha jamais aparecia
+      + (it.quem ? linha('Por', esc(it.quem)) : '')
+      + (com.length
+          ? '<div style="margin-top:9px;font-size:12px;font-weight:800;color:#3a3a44;">HISTÓRICO (' + com.length + ')</div>'
+            + com.slice(-3).map(function (c) {
+                return '<div style="font-size:12.5px;color:#444;border-left:2px solid #d6cff0;padding-left:8px;margin-top:5px;">'
+                  + esc(capitalizar(String(c.texto || ''))) + '</div>';
+              }).join('')
+            + (com.length > 3 ? '<div style="font-size:11.5px;color:#888;margin-top:4px;">…e mais ' + (com.length - 3) + ' na ficha</div>' : '')
+          : '')
+      + (pec.length ? '<div style="margin-top:9px;font-size:12.5px;color:#555;">🔩 ' + pec.length + ' peça(s) já retirada(s) desta</div>' : '')
+      + '<div style="margin-top:11px;display:flex;gap:7px;flex-wrap:wrap;">'
+      + '<button type="button" onclick="event.stopPropagation();abrirFichaDefeito(\'' + esc(id) + '\')" '
+      + 'style="background:#561A9E;color:#fff;border:none;border-radius:8px;padding:8px 14px;font-size:12.5px;'
+      + 'font-weight:700;cursor:pointer;">📂 Abrir ficha completa (ações)</button>'
+      + '<button type="button" onclick="event.stopPropagation();alternarDetalheDefeito(\'' + esc(id) + '\')" '
+      + 'style="background:#fff;color:#777;border:1px solid #ccc;border-radius:8px;padding:8px 14px;'
+      + 'font-size:12.5px;cursor:pointer;">fechar detalhe</button>'
+      + '</div></div>';
+  };
+
   // ── 1) BUSCA ───────────────────────────────────────────────────────
   window.abrirBuscaDefeitos = function (termo, voltando) {
     registrar('busca', termo, voltando);
+    // b290 - quem tem o termo e a busca em si (ver buscarDefeitos); aqui so
+    // registramos que a busca e um destino valido
+    if (termo !== undefined && termo !== null) ultimoTermoBusca = termo;
+    // b291 (review do Codex) - a BUSCA e a raiz da navegacao: estando nela com
+    // a pilha vazia, o Voltar nao teria destino (reabriria ela mesma). Marca a
+    // vista atual pra o cabecalho esconder o botao nesse caso.
+    naRaizBusca = true;
     // b128 - abriu, entao ele ja viu: o aviso do botao zera
     if (typeof window.marcarDefeitosVistos === 'function') window.marcarDefeitosVistos();
     abrir(topo('🔧 Estoque de Defeitos',
@@ -275,6 +383,11 @@
     var el = document.getElementById('defLista');
     if (!el) return;
     var q = (document.getElementById('defBusca') || {}).value || '';
+    // b290 (review do Codex) - o termo REAL mora aqui. Todos os pontos do
+    // repo chamam `abrirBuscaDefeitos()` SEM argumento, entao guardar o
+    // parametro daquela funcao nunca dava um destino utilizavel e o botao
+    // Voltar continuava sumido — a correcao da b289 nao chegava a valer.
+    ultimoTermoBusca = q;
     // b209 (review do Codex) - com as abas visiveis da pra trocar de aba
     // antes da resposta anterior chegar; sem o token, a resposta LENTA da
     // aba antiga repintava por cima (aba Excluídos acesa mostrando peças
@@ -309,9 +422,16 @@
           : (it.situacao === 'descartado'
               ? '<span style="background:#eee;color:#555;border-radius:5px;padding:2px 8px;font-size:11.5px;font-weight:700;">DESCARTADA</span>'
               : '');
-        return '<div onclick="abrirFichaDefeito(\'' + esc(it.id) + '\')" '
+        // b289 (pedido dele, 19/08: "para ver os detalhes, eu clico, muda a
+        // paginacao. tenta fazer de abrir embaixo, sem trocar a pagina do
+        // card... melhor ainda, se puder so abrir expandir ao inves de piscar
+        // o card e abrir numa telinha nova") - o clique no CARD agora EXPANDE
+        // os detalhes logo abaixo, mantendo a lista na frente; quem quer a
+        // tela cheia (com as acoes) usa o botao "📂 Abrir dados da peça".
+        return '<div style="margin-bottom:7px;">'
+          + '<div onclick="alternarDetalheDefeito(\'' + esc(it.id) + '\')" '
           + 'style="border:1px solid #eee;border-left:4px solid #9E1A1A;border-radius:9px;padding:10px 12px;'
-          + 'margin-bottom:7px;cursor:pointer;display:flex;gap:12px;align-items:flex-start;">'
+          + 'cursor:pointer;display:flex;gap:12px;align-items:flex-start;">'
           + '<div id="fotodef-' + i + '" data-sku="' + esc(sku) + '" '
           + 'style="width:84px;height:84px;flex:0 0 auto;border-radius:9px;background:#f2f2f7;'
           + 'border:1px solid #e4dcf1;display:flex;align-items:center;justify-content:center;font-size:26px;color:#bbb;">📦</div>'
@@ -335,8 +455,15 @@
           + '<div style="margin-top:8px;">'
           + '<button type="button" onclick="event.stopPropagation();abrirFichaDefeito(\'' + esc(it.id) + '\')" '
           + 'style="background:#561A9E;color:#fff;border:none;border-radius:8px;padding:8px 15px;'
-          + 'font-size:13px;font-weight:700;cursor:pointer;">📂 Abrir dados da peça</button></div>'
-          + '</div></div>';
+          + 'font-size:13px;font-weight:700;cursor:pointer;">📂 Abrir dados da peça</button>'
+          // b289 - o segundo botao deixa claro que o card abre aqui mesmo
+          + '<button type="button" onclick="event.stopPropagation();alternarDetalheDefeito(\'' + esc(it.id) + '\')" '
+          + 'style="margin-left:7px;background:#fff;color:#561A9E;border:1.5px solid #561A9E;border-radius:8px;'
+          + 'padding:8px 13px;font-size:13px;font-weight:700;cursor:pointer;">👁 Ver aqui</button></div>'
+          + '</div></div>'
+          // b289 - onde o detalhe abre, logo abaixo do card e dentro da lista
+          + '<div id="detdef-' + esc(it.id) + '" style="display:none;"></div>'
+          + '</div>';
       }).join('');
       buscarFotosDefeitos(itens);
     } catch (e) {
@@ -513,6 +640,7 @@
 
   window.abrirFichaDefeito = async function (id, voltando) {
     registrar('ficha', id, voltando);
+    naRaizBusca = false;   // b291
     abrir(topo('carregando ficha...') + '<div style="padding:16px;color:#888;">um instante</div>');
     var d;
     try { d = await api('/api/defeitos/ficha/' + encodeURIComponent(id)); }
