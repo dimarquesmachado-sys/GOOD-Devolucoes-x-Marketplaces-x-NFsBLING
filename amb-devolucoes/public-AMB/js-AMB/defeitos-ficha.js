@@ -43,6 +43,7 @@
   // solicitações) tinha a pilha vazia e ficava sem saída a não ser fechar
   // tudo. Guardando o último termo buscado, sempre há pra onde voltar.
   var ultimoTermoBusca = null;
+  var naRaizBusca = false;   // b291 - estou na busca (raiz) agora?
 
   // b209 (review do Codex) - a ficha so se recarrega se ELA ainda for a
   // tela aberta: se a requisicao demora e o operador fecha o card ou volta,
@@ -65,7 +66,11 @@
       if (ultimoTermoBusca !== null) { abrirBuscaDefeitos(ultimoTermoBusca, true); return; }
       return;
     }
-    if (v.tipo === 'busca') abrirBuscaDefeitos(v.arg, true);
+    // b291 (review do Codex) - a entrada 'busca' da pilha foi registrada com
+    // `arg` UNDEFINED (todo mundo chama `abrirBuscaDefeitos()` sem termo),
+    // entao voltar por ela reabria a busca VAZIA e perdia o que ele digitou.
+    // O termo real e o capturado na propria busca.
+    if (v.tipo === 'busca') abrirBuscaDefeitos((v.arg === undefined || v.arg === null) ? ultimoTermoBusca : v.arg, true);
     else if (v.tipo === 'ficha') abrirFichaDefeito(v.arg, true);
     else if (v.tipo === 'fila') abrirFilaPedidos(true, v.arg === true);   // b190 - volta pra ABA em que ele estava
   };
@@ -248,7 +253,7 @@
       // b289 - a seta aparece quando há histórico OU quando dá pra voltar
       // pra uma busca; e agora diz "Voltar" por extenso, porque só a flecha
       // não é óbvia pra quem está no galpão
-      + ((pilha.length || ultimoTermoBusca !== null)
+      + ((pilha.length || (!naRaizBusca && ultimoTermoBusca !== null))
           ? '<button onclick="voltarDefeitos()" title="voltar" style="background:rgba(255,255,255,.2);color:#fff;'
             + 'border:none;border-radius:8px;padding:6px 12px;cursor:pointer;font-size:14px;font-weight:700;">&larr; Voltar</button>'
           : '')
@@ -305,7 +310,11 @@
                 // no painel ha `abrirFoto`. Sem cobrir os dois, o clique
                 // mostrava cursor de zoom e nao fazia nada. Ultimo recurso:
                 // abrir a imagem numa aba.
-                return '<img src="' + esc(f.url || f) + '" style="width:74px;height:74px;object-fit:cover;'
+                // b291 (review do Codex) - no painel o bucket pode ser PRIVADO e
+                // todas as fotos passam por `srcFoto()`; sem isso a miniatura
+                // vinha quebrada so aqui.
+                var uf = (typeof window.srcFoto === 'function') ? window.srcFoto(f.url || f) : (f.url || f);
+                return '<img src="' + esc(uf) + '" style="width:74px;height:74px;object-fit:cover;'
                   + 'border-radius:8px;border:1px solid #e4dcf1;cursor:zoom-in;" '
                   + 'onclick="event.stopPropagation();verFotoDefeito(\'' + esc(f.url || f) + '\')">';
               }).join('') + '</div>'
@@ -341,7 +350,10 @@
     // b290 - quem tem o termo e a busca em si (ver buscarDefeitos); aqui so
     // registramos que a busca e um destino valido
     if (termo !== undefined && termo !== null) ultimoTermoBusca = termo;
-    else if (ultimoTermoBusca === null) ultimoTermoBusca = '';
+    // b291 (review do Codex) - a BUSCA e a raiz da navegacao: estando nela com
+    // a pilha vazia, o Voltar nao teria destino (reabriria ela mesma). Marca a
+    // vista atual pra o cabecalho esconder o botao nesse caso.
+    naRaizBusca = true;
     // b128 - abriu, entao ele ja viu: o aviso do botao zera
     if (typeof window.marcarDefeitosVistos === 'function') window.marcarDefeitosVistos();
     abrir(topo('🔧 Estoque de Defeitos',
@@ -628,6 +640,7 @@
 
   window.abrirFichaDefeito = async function (id, voltando) {
     registrar('ficha', id, voltando);
+    naRaizBusca = false;   // b291
     abrir(topo('carregando ficha...') + '<div style="padding:16px;color:#888;">um instante</div>');
     var d;
     try { d = await api('/api/defeitos/ficha/' + encodeURIComponent(id)); }
