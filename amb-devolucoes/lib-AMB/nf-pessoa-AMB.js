@@ -510,6 +510,7 @@ module.exports = function criarNfPessoa({ chamarBling, sleep }) {
 
     const achadas = [];
     let falhou = false;
+    let truncou = false;   // b315 - a janela tinha mais paginas que o teto
     for (let pg = 1; pg <= 4; pg++) {
       // tipo=0 -> ENTRADA. A janela comeca na emissao da venda: a devolucao
       // e sempre posterior.
@@ -541,15 +542,22 @@ module.exports = function criarNfPessoa({ chamarBling, sleep }) {
           bate_cliente: bateCliente,
         });
       }
+      // b315 (review do Codex) - o teto de 4 paginas ficava SILENCIOSO. Se a
+      // quarta pagina vinha cheia, havia pagina 5 e eu tratava a varredura
+      // como completa: a nota da volta (ou uma segunda candidata do mesmo
+      // cliente) podia estar la. Pagina cheia no fim do teto = TRUNCADO, e
+      // truncado se resolve como incerteza, igual a falha de rede.
       if (lista.length < 100) break;
+      if (pg === 4) { truncou = true; break; }
       await sleep(300);
     }
     if (!achadas.length) {
       // b255 - falha do Bling nao vira "nao existe": a diferenca ja custou
       // caro na busca por numero de NF.
-      return falhou
-        ? { ok: false, motivo: 'o Bling recusou a consulta — nao da pra afirmar que nao existe' }
-        : { ok: true, achou: false };
+      // b315 - "nenhuma candidata" so e definitivo se eu li a janela toda
+      if (falhou) return { ok: false, motivo: 'o Bling recusou a consulta — nao da pra afirmar que nao existe' };
+      if (truncou) return { ok: false, motivo: 'a janela tem mais notas do que eu consigo varrer e nenhuma das que li serve — pode haver outra fora do trecho lido' };
+      return { ok: true, achou: false };
     }
     // b306 (review do Codex) - ORDENAR ANTES DE CORTAR. Como a b305 parou de
     // descartar quem tem cliente diferente, uma janela com 5 notas de outros
@@ -610,7 +618,7 @@ module.exports = function criarNfPessoa({ chamarBling, sleep }) {
     // mesmo cliente ficaram fora do teto de 5, pode haver OUTRA nota com
     // cliente+sku batendo — e ai a que achei talvez seja a da outra venda.
     // Confirmar mesmo assim faria o painel esconder o botao do card errado.
-    const leituraIncompleta = falhou || falhouDetalhe || cortadasComCliente > 0;
+    const leituraIncompleta = falhou || truncou || falhouDetalhe || cortadasComCliente > 0;   // b315
     if (confirmadas.length === 1 && !leituraIncompleta) {
       return { ok: true, achou: true, nf: confirmadas[0], certeza: 'alta', via: 'natureza+cliente+sku' };
     }
@@ -644,6 +652,12 @@ module.exports = function criarNfPessoa({ chamarBling, sleep }) {
     // b311 - candidatas COM O CLIENTE CERTO ficaram de fora do teto de 5.
     // A nota da volta pode ser justamente uma delas, entao o desfecho honesto
     // e "nao sei" (ok:false), nunca "nao achei" — que liberaria a emissao.
+    if (truncou) {
+      return {
+        ok: false,
+        motivo: 'a janela tem mais notas de entrada do que eu consigo varrer — a nota desta volta pode estar fora do trecho que li. Confira no Bling antes de gerar',
+      };
+    }
     if (cortadasComCliente > 0) {
       return {
         ok: false,

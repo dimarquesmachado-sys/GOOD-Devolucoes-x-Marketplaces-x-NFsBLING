@@ -1038,7 +1038,13 @@ app.get('/api/admin/nf-devolucao', requerAdmin, async (req, res) => {
         const { data: irmasBrutas, error: erroIrmas } = await supabase
           .from(TAB)
           .select('id, buyer_nome, produto_sku')
-          .ilike('produto_sku', skuBusca)
+          // b315 (review do Codex) - o filtro do banco casa o SKU EXATO (so
+          // ignora caixa), mas eu comparo normalizado depois. Um registro
+          // gravado com espaco sobrando (" ABC ") era excluido AQUI e nunca
+          // chegava na normalizacao — e as duas compras deixavam de se
+          // enxergar. `%SKU%` traz esses casos; a comparacao normalizada
+          // logo abaixo descarta o que so parecia.
+          .ilike('produto_sku', '%' + skuBusca + '%')
           .limit(TETO_IRMAS);
         if (!erroIrmas && (irmasBrutas || []).length >= TETO_IRMAS) {
           return res.json({
