@@ -4991,6 +4991,45 @@ async function montarEspreita() {
 }
 
 // v4.51 - a rota: serve o cache instantaneo se recente; senao monta e cacheia.
+// b295 (review do Codex) - IDS FISCAIS **DESTA** EMPRESA.
+//
+// A primeira versao aceitava `?empresa=amb` e roteava pro modulo da AMB aqui
+// da raiz. Isso NAO funciona: a AMB autentica com o cookie `sessao_amb`, que
+// vive em `Path=/amb` — o navegador simplesmente nao manda esse cookie pra
+// uma rota na raiz, e `credentials: 'include'` nao muda restricao de path.
+// Quem estivesse logado so na AMB levava 401 sempre. E a AMB **ja tem** a
+// propria rota (`/amb/api/ids-fiscais`, b283), com a sessao certa.
+//
+// Entao: cada empresa responde na PROPRIA area, com a PROPRIA sessao. O
+// Bridge escolhe o endereco conforme a empresa da devolucao — continua sendo
+// escolha explicita, que era o ponto.
+//
+// E `empresa` e OBRIGATORIA: sem ela, 400. Assumir "good" por omissao
+// transformaria um parametro faltando em **emissao na empresa errada**.
+app.get('/api/ids-fiscais', requerLogin, async (req, res) => {
+  const alvo = String(req.query.empresa || '').trim().toLowerCase();
+  if (!alvo) {
+    return res.status(400).json({
+      ok: false,
+      erro: 'informe a empresa: /api/ids-fiscais?empresa=good',
+      aceitas_aqui: ['good'],
+      outras_empresas: { ambtotal: '/amb/api/ids-fiscais' },
+    });
+  }
+  if (alvo === 'good') {
+    return res.json({ ok: true, empresa: 'good', ...(await blingClient.idsFiscais()) });
+  }
+  if (alvo === 'amb' || alvo === 'ambtotal') {
+    // nao atendemos a AMB daqui: a sessao dela nao chega nesta rota
+    return res.status(400).json({
+      ok: false,
+      erro: 'a AMB responde na propria area, com a sessao dela',
+      use: '/amb/api/ids-fiscais',
+    });
+  }
+  return res.status(400).json({ ok: false, erro: 'empresa desconhecida: ' + alvo, aceitas_aqui: ['good'] });
+});
+
 app.get('/api/admin/espreita', requerAdmin, async (req, res) => {
   const agora = Date.now();
   const forcar = req.query.fresh === '1';
