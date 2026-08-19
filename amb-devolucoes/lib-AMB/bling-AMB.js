@@ -242,6 +242,70 @@ async function testeDeVida() {
 
 let _depCache = { ts: 0, lista: [] };
 
+// ═══════════════════════════════════════════════════════════════════
+// b283 - IDS FISCAIS DA EMPRESA (regra dele: "se tem alguma forma de API
+// pegar isso, otimo. senao vai na unha manual mesmo").
+//
+// A sonda da b282 respondeu, rodando no Bling da AMB:
+//   GET /naturezas-operacoes  -> 200, 22 itens, e la esta
+//                                "Devolucao de Mercadoria - Entrada" (15110128838)
+//   GET /depositos            -> 200, mas SEM o campo idEmpresa
+//   GET /empresas             -> 404, nao existe na v3
+//
+// Entao: a NATUREZA vem da API, achada pelo NOME (como fazemos com o
+// deposito DEFEITOS). O ID DA EMPRESA nao tem API — fica em env POR
+// EMPRESA (AMB_ID_EMPRESA_CONTROL), com o valor de hoje como padrao. Sai do
+// meio do codigo e passa a ser trocavel sem deploy, que era o ponto.
+// ═══════════════════════════════════════════════════════════════════
+let _natCache = { ts: 0, lista: [] };
+
+async function listarNaturezas(forcar) {
+  if (!forcar && _natCache.ts && (Date.now() - _natCache.ts) < 30 * 60 * 1000) {
+    return { ok: true, naturezas: _natCache.lista, cache: true };
+  }
+  const r = await chamarBling('/naturezas-operacoes?limite=100&pagina=1');
+  if (!r.ok) return { ok: false, status: r.status, erro: 'Bling nao devolveu as naturezas de operacao' };
+  const lista = ((r.data && r.data.data) || []).map(n => ({
+    id: String(n.id),
+    descricao: n.descricao || ('natureza ' + n.id),
+    padrao: n.padrao != null ? n.padrao : null,
+  }));
+  _natCache = { ts: Date.now(), lista };
+  return { ok: true, naturezas: lista };
+}
+
+/** Acha a natureza de DEVOLUCAO DE ENTRADA desta empresa. Ordem: env de
+ *  override -> nome exato -> nome aproximado. Sem achar, devolve null: quem
+ *  chama recusa, em vez de emitir nota com natureza adivinhada. */
+async function naturezaDevolucaoEntrada() {
+  const forcado = String(process.env.AMB_ID_NATUREZA_DEVOLUCAO_ENTRADA || '').trim();
+  if (forcado) return { ok: true, id: forcado, via: 'env' };
+  const r = await listarNaturezas(false);
+  if (!r.ok) return { ok: false, erro: r.erro || 'nao consegui listar as naturezas' };
+  const norm = (x) => String(x || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  const exata = r.naturezas.find(n => norm(n.descricao) === 'devolucao de mercadoria - entrada');
+  if (exata) return { ok: true, id: exata.id, descricao: exata.descricao, via: 'api_nome_exato' };
+  // reserva: qualquer "devolucao ... entrada", sem pegar "devolucao de compra"
+  const perto = r.naturezas.find(n => /devolu/.test(norm(n.descricao)) && /entrada/.test(norm(n.descricao)) && !/compra/.test(norm(n.descricao)));
+  if (perto) return { ok: true, id: perto.id, descricao: perto.descricao, via: 'api_nome_aproximado' };
+  return { ok: false, erro: 'nenhuma natureza de "devolucao ... entrada" encontrada nesta empresa' };
+}
+
+/** Os dois ids que o painel precisa pra emitir a NF de devolucao. */
+async function idsFiscais() {
+  const empresa = String(process.env.AMB_ID_EMPRESA_CONTROL || '14901993834').trim();
+  const nat = await naturezaDevolucaoEntrada();
+  return {
+    ok: !!(empresa && nat.ok),
+    idEmpresaControl: empresa || null,
+    empresa_via: process.env.AMB_ID_EMPRESA_CONTROL ? 'env' : 'padrao_do_codigo',
+    idNaturezaOperacao: nat.ok ? nat.id : null,
+    natureza_via: nat.via || null,
+    natureza_descricao: nat.descricao || null,
+    erro: nat.ok ? null : nat.erro,
+  };
+}
+
 async function listarDepositos(forcar) {
   if (!forcar && _depCache.ts && (Date.now() - _depCache.ts) < 10 * 60 * 1000) {
     return { ok: true, depositos: _depCache.lista, cache: true };
@@ -301,4 +365,5 @@ module.exports = {
   temToken: () => !!ACCESS_TOKEN,
   temCredenciais: () => !!(cfg.bling.clientId && cfg.bling.clientSecret),
   listarDepositos, lancarEstoqueNf,
+  listarNaturezas, naturezaDevolucaoEntrada, idsFiscais,   // b283
 };

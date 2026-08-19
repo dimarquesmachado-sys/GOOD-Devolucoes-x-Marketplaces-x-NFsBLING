@@ -998,6 +998,13 @@ router.get('/api/triagem/fila', auth.requerLogin, async (req, res) => {
 });
 
 // ── DEPOSITOS (a lista viva do Bling da AMB) ─────────────────
+// b283 - os ids fiscais desta empresa, pro painel parar de te-los cravados.
+// A natureza vem da API (achada pelo nome); o id da empresa nao tem API na
+// v3 do Bling (GET /empresas da 404), entao vem de env por empresa.
+router.get('/api/ids-fiscais', auth.requerLogin, async (req, res) => {
+  res.json({ ok: true, ...(await bling.idsFiscais()) });
+});
+
 router.get('/api/depositos', auth.requerLogin, async (req, res) => {
   res.json({ ok: true, ...(await bling.listarDepositos(req.query.refresh === '1')) });
 });
