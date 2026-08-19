@@ -1221,6 +1221,17 @@ router.get('/api/espreita', auth.requerLogin, async (req, res) => {
   res.json({
     ok: true,
     versao: VERSAO,
+    // b293 (teste dele, 19/08: "espreita nao trouxe resultado (...) Mercado
+    // Livre: pronta · Shopee: pronta · Magalu: pronta · Índice de nomes:
+    // pronta") - ESTE CAMPO NUNCA FOI PORTADO DA GOOD. O painel testa
+    // `if (!d.ok || !d.quente)` e cai no aviso "ainda nao da pra montar a
+    // lista"; sem `quente` no topo, `undefined` e sempre falso, entao a tela
+    // ficava presa no aviso **mesmo com as quatro fontes prontas e a lista
+    // pronta logo abaixo, no mesmo JSON**. Na GOOD a linha existe desde
+    // sempre (server.js: `quente: magaluR.quente || mlR.quente || shopeeR.quente`).
+    // Basta UMA fonte quente pra ter o que mostrar; as outras aparecem
+    // quando aquecerem, e o bloco de fontes segue dizendo o estado de cada uma.
+    quente: !!(baseML.quente || baseShopee.quente || baseMagalu.quente),
     fontes: {
       ml: { quente: baseML.quente, construindo: !!stML.construindo,
             erro: erroML || stML.erro || null, total_claims: stML.total_claims || 0 },
