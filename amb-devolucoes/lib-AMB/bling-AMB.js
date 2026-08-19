@@ -285,9 +285,25 @@ async function naturezaDevolucaoEntrada() {
   const norm = (x) => String(x || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
   const exata = r.naturezas.find(n => norm(n.descricao) === 'devolucao de mercadoria - entrada');
   if (exata) return { ok: true, id: exata.id, descricao: exata.descricao, via: 'api_nome_exato' };
-  // reserva: qualquer "devolucao ... entrada", sem pegar "devolucao de compra"
-  const perto = r.naturezas.find(n => /devolu/.test(norm(n.descricao)) && /entrada/.test(norm(n.descricao)) && !/compra/.test(norm(n.descricao)));
-  if (perto) return { ok: true, id: perto.id, descricao: perto.descricao, via: 'api_nome_aproximado' };
+  // b284 (review do Codex) - AMBIGUIDADE NAO ESCOLHE. Com `.find()`, se o
+  // catalogo tivesse duas naturezas parecidas ("Devolucao de venda -
+  // entrada", "Devolucao de remessa - entrada"), eu pegaria a que a API
+  // devolvesse primeiro e diria `ok: true` — a nota sairia com natureza
+  // fiscal errada e o `natureza_via` so serviria pra auditar o estrago
+  // depois. Mesmo criterio que ja usamos no de-para de SKU: um unico
+  // candidato serve; mais de um, recusa e pede a env.
+  const candidatos = r.naturezas.filter(n =>
+    /devolu/.test(norm(n.descricao)) && /entrada/.test(norm(n.descricao)) && !/compra/.test(norm(n.descricao)));
+  if (candidatos.length === 1) {
+    return { ok: true, id: candidatos[0].id, descricao: candidatos[0].descricao, via: 'api_nome_aproximado' };
+  }
+  if (candidatos.length > 1) {
+    return {
+      ok: false,
+      erro: 'mais de uma natureza de "devolucao ... entrada" nesta empresa — defina AMB_ID_NATUREZA_DEVOLUCAO_ENTRADA pra escolher',
+      candidatos: candidatos.slice(0, 5).map(n => ({ id: n.id, descricao: n.descricao })),
+    };
+  }
   return { ok: false, erro: 'nenhuma natureza de "devolucao ... entrada" encontrada nesta empresa' };
 }
 
