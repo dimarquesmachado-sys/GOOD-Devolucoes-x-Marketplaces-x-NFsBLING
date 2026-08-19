@@ -495,7 +495,11 @@ module.exports = function criarNfPessoa({ chamarBling, sleep }) {
         if (!natOk) continue;
         const nomeNf = String(nf.contato?.nome || '').trim().toUpperCase();
         const bateCliente = !!nome && !!nomeNf && (nomeNf === nome || nomeNf.includes(nome) || nome.includes(nomeNf));
-        if (nome && !bateCliente) continue;
+        // b305 (review do Codex) - NAO descartar aqui. Este `continue` rodava
+        // ANTES da checagem de SKU que a b304 criou, entao o caso "mesmo SKU,
+        // outro cliente" nunca chegava a ser detectado e a funcao saia sem
+        // motivo nem candidatos. Guardamos todas as notas da natureza e a
+        // decisao (que exige cliente E sku) acontece depois, num lugar so.
         achadas.push({
           id: nf.id, numero: nf.numero, serie: nf.serie,
           dataEmissao: nf.dataEmissao, chaveAcesso: nf.chaveAcesso || null,
@@ -536,7 +540,11 @@ module.exports = function criarNfPessoa({ chamarBling, sleep }) {
       return {
         ok: true, achou: false,
         motivo: 'achei nota(s) de entrada com este SKU, mas de OUTRO cliente — e outra venda, nao esta devolucao',
-        candidatos: quaseCerto.slice(0, 5).map(n => ({ id: n.id, numero: n.numero, serie: n.serie, data: n.data, cliente: n.cliente })),
+        candidatos: quaseCerto.slice(0, 5).map(n => ({
+          id: n.id, numero: n.numero, serie: n.serie,
+          data: n.dataEmissao || null,   // b305
+          cliente: n.cliente,
+        })),
       };
     }
     // b304 (achado dele, 19/08) - AQUI ESTAVA O ERRO. Quando o SKU nao batia
@@ -556,7 +564,8 @@ module.exports = function criarNfPessoa({ chamarBling, sleep }) {
         ? 'achei nota(s) de entrada na janela, mas NENHUMA tem o SKU desta devolucao — nao da pra dizer que e a mesma volta'
         : 'achei nota(s) de entrada na janela, mas sem o SKU nao da pra confirmar qual e',
       candidatos: achadas.slice(0, 5).map(n => ({
-        id: n.id, numero: n.numero, serie: n.serie, data: n.data,
+        id: n.id, numero: n.numero, serie: n.serie,
+        data: n.dataEmissao || null,   // b305 - o campo guardado e dataEmissao
         cliente: n.cliente, bate_cliente: !!n.bate_cliente,
       })),
     };
