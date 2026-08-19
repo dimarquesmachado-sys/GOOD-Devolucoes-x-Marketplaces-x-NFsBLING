@@ -1907,7 +1907,13 @@
         // eu devolvia null e o modal abria com os botoes ativos e NENHUM
         // aviso. Continua sem esconder botao — duvida nunca tira a chance de
         // emitir (regra da b256) — mas agora avisa, pra ele conferir antes.
-        if (d && (d.ok === false || d.motivo)) {
+        // b313 (review do Codex) - TER MOTIVO NAO E O MESMO QUE ESTAR NA
+        // DUVIDA. O servidor tambem escreve motivo quando DESCARTOU com
+        // certeza (nota de outro cliente, nota ja vinculada a outra
+        // devolucao) — e ali ele respondeu `ok: true`. Tratar isso como
+        // incerteza faria o modal pedir conferencia no Bling justamente
+        // quando o servidor ja tinha resolvido. Incerto e so `ok: false`.
+        if (d && d.ok === false) {
           return { indeterminado: true, motivo: d.motivo || 'nao consegui confirmar se ja existe NF de entrada', candidatos: d.candidatos || [] };
         }
         return null;

@@ -1018,12 +1018,33 @@ app.get('/api/admin/nf-devolucao', requerAdmin, async (req, res) => {
       const cliBusca = String(req.query.cliente || '').trim();
       const skuBusca = String(req.query.sku || '').trim();
       if (cliBusca && skuBusca) {
-        const { data: irmas, error: erroIrmas } = await supabase
+        // b313 (review do Codex) - a conferencia de "irmas" tem que usar a
+        // MESMA regra de igualdade do casamento la no Bling. Com nome exato e
+        // SKU sensivel a caixa, dois cards do mesmo cliente gravados como
+        // "MONICA RODRIGUES" e "MONICA MARIA RODRIGUES" (ou SKU com caixa
+        // diferente) nao se enxergariam, e a mesma nota solta seria aceita
+        // nos DOIS — exatamente o que esta trava existe pra impedir. Entao
+        // trago os candidatos por SKU normalizado e comparo o nome aqui,
+        // com a mesma funcao de partes estaveis usada no matcher.
+        const normTxt = (x) => String(x || '').toLowerCase().normalize('NFD')
+          .replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim();
+        const skuNorm = normTxt(skuBusca).toUpperCase();
+        const { data: irmasBrutas, error: erroIrmas } = await supabase
           .from(TAB)
-          .select('id')
-          .ilike('buyer_nome', cliBusca)
-          .eq('produto_sku', skuBusca)
-          .limit(5);
+          .select('id, buyer_nome, produto_sku')
+          .limit(400);
+        const irmas = (irmasBrutas || []).filter((u) => {
+          if (normTxt(u.produto_sku).toUpperCase() !== skuNorm) return false;
+          const a1 = normTxt(u.buyer_nome).split(' ').filter(Boolean);
+          const b1 = normTxt(cliBusca).split(' ').filter(Boolean);
+          if (!a1.length || !b1.length) return false;
+          // mesmo criterio do matcher: primeiro e ultimo nome iguais, e o
+          // lado menor do meio contido INTEIRO no maior
+          if (a1[0] !== b1[0] || a1[a1.length - 1] !== b1[b1.length - 1]) return false;
+          const m1 = a1.slice(1, -1), m2 = b1.slice(1, -1);
+          const [menor, maior] = m1.length <= m2.length ? [m1, m2] : [m2, m1];
+          return menor.every((t) => maior.includes(t));
+        });
         if (erroIrmas) {
           return res.json({
             ok: false,

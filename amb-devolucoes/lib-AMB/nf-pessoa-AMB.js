@@ -576,7 +576,11 @@ module.exports = function criarNfPessoa({ chamarBling, sleep }) {
     if (cod) {
       for (const cand of achadas.slice(0, 5)) {
         const rD = await chamarBling(`/nfe/${cand.id}`);
-        if (!rD.ok) { falhouDetalhe = true; await sleep(300); continue; }   // b307
+        // b313 (review do Codex) - so a falha de uma candidata QUE BATE O
+        // CLIENTE atrapalha. Se a nota que nao abriu e de outro cliente, ela
+        // nunca poderia confirmar nada (exijo cliente E sku), entao marcar
+        // leitura incompleta por causa dela derrubaria uma confirmacao boa.
+        if (!rD.ok) { if (cand.bate_cliente) falhouDetalhe = true; await sleep(300); continue; }
         const det = (rD.data && rD.data.data) || null;
         const temSku = Array.isArray(det?.itens)
           && det.itens.some(it => String(it.codigo || '').trim().toUpperCase() === cod);
