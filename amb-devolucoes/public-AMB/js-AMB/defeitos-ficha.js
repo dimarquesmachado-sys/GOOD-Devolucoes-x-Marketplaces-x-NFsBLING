@@ -262,16 +262,30 @@
   // piscar a tela. Mostra o essencial pra decidir (foto, defeito, histórico
   // e as peças tiradas); as AÇÕES continuam na ficha completa, que é onde
   // elas sempre estiveram — e o botão pra ela fica aqui dentro.
+  // b290 (review do Codex) - visualizador que funciona nas DUAS telas
+  window.verFotoDefeito = function (url) {
+    if (typeof window.abrirZoomProduto === 'function') return window.abrirZoomProduto(url);
+    if (typeof window.abrirFoto === 'function') return window.abrirFoto(url);
+    window.open(url, '_blank', 'noopener');
+  };
+
+  // b290 (review do Codex) - um TOKEN por abertura: fechar e reabrir rapido
+  // disparava duas buscas pro mesmo lugar, e a PRIMEIRA (mais lenta, as vezes
+  // um erro) repintava por cima do resultado bom da segunda.
+  var tokenDetalhe = {};
+
   window.alternarDetalheDefeito = async function (id) {
     var cx = document.getElementById('detdef-' + id);
     if (!cx) return;
-    if (cx.style.display !== 'none') { cx.style.display = 'none'; cx.innerHTML = ''; return; }
+    if (cx.style.display !== 'none') { cx.style.display = 'none'; cx.innerHTML = ''; tokenDetalhe[id] = (tokenDetalhe[id] || 0) + 1; return; }
+    var meu = tokenDetalhe[id] = (tokenDetalhe[id] || 0) + 1;
     cx.style.display = '';
     cx.innerHTML = '<div style="border:1px solid #e4dcf1;border-top:none;border-radius:0 0 9px 9px;'
       + 'padding:10px 12px;font-size:12.5px;color:#888;">carregando…</div>';
     var d;
     try { d = await api('/api/defeitos/ficha/' + encodeURIComponent(id)); }
     catch (e) { d = { ok: false, erro: 'falha de conexao' }; }
+    if (meu !== tokenDetalhe[id]) return;                        // b290 - chegou tarde
     if (!cx.parentNode || cx.style.display === 'none') return;   // fechou enquanto carregava
     if (!d || !d.ok) {
       cx.innerHTML = '<div style="border:1px solid #e4dcf1;border-top:none;border-radius:0 0 9px 9px;'
@@ -287,15 +301,21 @@
       + (fotos.length
           ? '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:9px;">'
             + fotos.slice(0, 6).map(function (f) {
+                // b290 (review do Codex) - `abrirZoomProduto` so existe no index;
+                // no painel ha `abrirFoto`. Sem cobrir os dois, o clique
+                // mostrava cursor de zoom e nao fazia nada. Ultimo recurso:
+                // abrir a imagem numa aba.
                 return '<img src="' + esc(f.url || f) + '" style="width:74px;height:74px;object-fit:cover;'
                   + 'border-radius:8px;border:1px solid #e4dcf1;cursor:zoom-in;" '
-                  + 'onclick="event.stopPropagation();window.abrirZoomProduto&&window.abrirZoomProduto(\'' + esc(f.url || f) + '\')">';
+                  + 'onclick="event.stopPropagation();verFotoDefeito(\'' + esc(f.url || f) + '\')">';
               }).join('') + '</div>'
           : '')
       + linha('Situação', esc(it.situacao || 'com defeito'))
       + linha('Quantidade', esc(it.quantidade || 1) + ' peça(s)')
       + (it.criado_em ? linha('Registrado em', esc(String(it.criado_em).slice(0, 10).split('-').reverse().join('/'))) : '')
-      + (it.funcionario ? linha('Por', esc(it.funcionario)) : '')
+      // b290 (review do Codex) - o servidor manda `item.quem` (defeitos-ciclo-AMB);
+      // `funcionario` nunca existiu, entao a linha jamais aparecia
+      + (it.quem ? linha('Por', esc(it.quem)) : '')
       + (com.length
           ? '<div style="margin-top:9px;font-size:12px;font-weight:800;color:#3a3a44;">HISTÓRICO (' + com.length + ')</div>'
             + com.slice(-3).map(function (c) {
@@ -318,7 +338,10 @@
   // ── 1) BUSCA ───────────────────────────────────────────────────────
   window.abrirBuscaDefeitos = function (termo, voltando) {
     registrar('busca', termo, voltando);
-    ultimoTermoBusca = (termo === undefined ? null : termo);   // b289 - saída garantida
+    // b290 - quem tem o termo e a busca em si (ver buscarDefeitos); aqui so
+    // registramos que a busca e um destino valido
+    if (termo !== undefined && termo !== null) ultimoTermoBusca = termo;
+    else if (ultimoTermoBusca === null) ultimoTermoBusca = '';
     // b128 - abriu, entao ele ja viu: o aviso do botao zera
     if (typeof window.marcarDefeitosVistos === 'function') window.marcarDefeitosVistos();
     abrir(topo('🔧 Estoque de Defeitos',
@@ -348,6 +371,11 @@
     var el = document.getElementById('defLista');
     if (!el) return;
     var q = (document.getElementById('defBusca') || {}).value || '';
+    // b290 (review do Codex) - o termo REAL mora aqui. Todos os pontos do
+    // repo chamam `abrirBuscaDefeitos()` SEM argumento, entao guardar o
+    // parametro daquela funcao nunca dava um destino utilizavel e o botao
+    // Voltar continuava sumido — a correcao da b289 nao chegava a valer.
+    ultimoTermoBusca = q;
     // b209 (review do Codex) - com as abas visiveis da pra trocar de aba
     // antes da resposta anterior chegar; sem o token, a resposta LENTA da
     // aba antiga repintava por cima (aba Excluídos acesa mostrando peças
