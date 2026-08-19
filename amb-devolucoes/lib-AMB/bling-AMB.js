@@ -283,8 +283,21 @@ async function naturezaDevolucaoEntrada() {
   const r = await listarNaturezas(false);
   if (!r.ok) return { ok: false, erro: r.erro || 'nao consegui listar as naturezas' };
   const norm = (x) => String(x || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
-  const exata = r.naturezas.find(n => norm(n.descricao) === 'devolucao de mercadoria - entrada');
-  if (exata) return { ok: true, id: exata.id, descricao: exata.descricao, via: 'api_nome_exato' };
+  // b285 (review do Codex) - a mesma regra do aproximado vale AQUI: se o
+  // catalogo tiver duas naturezas com o MESMO nome (duplicata ou variacao
+  // com espaco/acento que normaliza igual), `.find()` pegaria a primeira e
+  // diria `ok: true`. Coerencia: um unico casamento serve, mais de um recusa.
+  const exatas = r.naturezas.filter(n => norm(n.descricao) === 'devolucao de mercadoria - entrada');
+  if (exatas.length === 1) {
+    return { ok: true, id: exatas[0].id, descricao: exatas[0].descricao, via: 'api_nome_exato' };
+  }
+  if (exatas.length > 1) {
+    return {
+      ok: false,
+      erro: 'ha mais de uma natureza com o nome "Devolucao de Mercadoria - Entrada" nesta empresa — defina AMB_ID_NATUREZA_DEVOLUCAO_ENTRADA pra escolher',
+      candidatos: exatas.slice(0, 5).map(n => ({ id: n.id, descricao: n.descricao })),
+    };
+  }
   // b284 (review do Codex) - AMBIGUIDADE NAO ESCOLHE. Com `.find()`, se o
   // catalogo tivesse duas naturezas parecidas ("Devolucao de venda -
   // entrada", "Devolucao de remessa - entrada"), eu pegaria a que a API
