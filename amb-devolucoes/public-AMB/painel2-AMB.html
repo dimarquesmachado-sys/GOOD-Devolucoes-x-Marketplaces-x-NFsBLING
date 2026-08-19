@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>AMBTotal - Painel de Devoluções</title>
-  <!-- AMB Devol. b63 - painel portado da GOOD. O adaptador poe /amb nas chamadas -->
+  <!-- AMB Devol. b286 - painel portado da GOOD. O adaptador poe /amb nas chamadas -->
   <script src="js-AMB/base-amb.js?v=b63"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -1554,22 +1554,34 @@
     // Preencha com os da AMBTotal antes de usar o Gerar NF. Como achar:
     // no Bling da AMB, gere uma devolucao de entrada com o F12 aberto na
     // aba Rede e olhe o payload da requisicao — os dois ids estao la.
-    const GOOD_BLING = {
-      // Capturados no Bling da AMBTOTAL em 02/08 (nao sao os da GOOD):
-      //  - idEmpresaControl veio de depositos[].idEmpresa na resposta do
-      //    notas.fiscais.server.php?f=obterConfiguracoesDevolucao
-      //  - a natureza e a "Devolucao de Mercadoria - Entrada" (padrao
-      //    "devolucao (entrada)"), confirmada em DOIS lugares: a URL
-      //    operacao.fiscal.php?buscaid=15110128838 e o campo
-      //    idNaturezaPadraoDevolucao da mesma resposta.
-      idEmpresaControl: '14901993834',
-      idNaturezaOperacao: '15110128838',
-    };
+    // b286 - IDS FISCAIS VÊM DO SERVIDOR (regra dele: "precisa sempre pegar
+    // isso" por empresa). Antes estavam CRAVADOS aqui: eram os da AMB, mas
+    // qualquer outra empresa que abrisse este painel emitiria a nota na
+    // empresa errada. Agora chegam de /api/ids-fiscais — a natureza achada
+    // pelo NOME na API do Bling daquela empresa, o id da empresa por env.
+    const GOOD_BLING = { idEmpresaControl: null, idNaturezaOperacao: null, carregado: false, erro: null };
+
+    (async function carregarIdsFiscais() {
+      try {
+        const r = await fetch('/amb/api/ids-fiscais', { credentials: 'same-origin' }).then((x) => x.json());
+        if (r && r.ok) {
+          GOOD_BLING.idEmpresaControl = r.idEmpresaControl;
+          GOOD_BLING.idNaturezaOperacao = r.idNaturezaOperacao;
+          GOOD_BLING.carregado = true;
+        } else {
+          GOOD_BLING.erro = (r && r.erro) || 'nao consegui resolver os ids fiscais desta empresa';
+        }
+      } catch (e) { GOOD_BLING.erro = 'erro de conexao ao buscar os ids fiscais'; }
+    })();
     function idsFiscaisOk() {
+      // b286 - a mesma trava, agora sobre o que veio do servidor. Sem os dois
+      // ids resolvidos NAO se emite: a nota sairia na empresa ou na natureza
+      // fiscal erradas, e isso e erro que so aparece na contabilidade.
       if (GOOD_BLING.idEmpresaControl && GOOD_BLING.idNaturezaOperacao) return true;
-      alert('Faltam os IDs fiscais da AMBTotal no painel (empresa e natureza de '
-        + 'operacao). Sem eles a nota sairia na empresa errada. Passe os dois '
-        + 'ids pro Claude preencher — o resto do painel funciona normalmente.');
+      alert(GOOD_BLING.erro
+        ? ('Não consegui resolver os IDs fiscais desta empresa:\n\n' + GOOD_BLING.erro
+           + '\n\nSem eles a nota sairia na empresa ou natureza erradas.')
+        : 'Ainda estou carregando os IDs fiscais desta empresa.\n\nEspere um instante e tente de novo — sem eles a nota sairia errada.');
       return false;
     }
 
