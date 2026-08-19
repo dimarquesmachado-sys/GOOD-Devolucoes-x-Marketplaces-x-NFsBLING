@@ -514,17 +514,52 @@ module.exports = function criarNfPessoa({ chamarBling, sleep }) {
         : { ok: true, achou: false };
     }
     // com SKU em maos, confirma pelo item (uma consulta por candidata, teto 5)
+    const quaseCerto = [];   // b304 - sku bate mas cliente nao: nao serve pra afirmar
     if (cod) {
       for (const cand of achadas.slice(0, 5)) {
         const rD = await chamarBling(`/nfe/${cand.id}`);
         const det = (rD.ok && rD.data && rD.data.data) || null;
         const temSku = Array.isArray(det?.itens)
           && det.itens.some(it => String(it.codigo || '').trim().toUpperCase() === cod);
-        if (temSku) return { ok: true, achou: true, nf: cand, certeza: cand.bate_cliente ? 'alta' : 'media', via: 'natureza+cliente+sku' };
+        // b304 - so afirma com os DOIS batendo (cliente E sku). SKU igual com
+        // cliente diferente e outra venda do mesmo produto — comum aqui, onde
+        // o mesmo item vende muitas vezes.
+        if (temSku && cand.bate_cliente) {
+          return { ok: true, achou: true, nf: cand, certeza: 'alta', via: 'natureza+cliente+sku' };
+        }
+        if (temSku) quaseCerto.push(cand);
         await sleep(300);
       }
     }
-    return { ok: true, achou: true, nf: achadas[0], certeza: 'media', via: 'natureza+cliente', outras: achadas.length - 1 };
+    if (quaseCerto.length) {
+      // b304 - havia nota com o MESMO SKU, mas de outro cliente: e outra venda
+      return {
+        ok: true, achou: false,
+        motivo: 'achei nota(s) de entrada com este SKU, mas de OUTRO cliente — e outra venda, nao esta devolucao',
+        candidatos: quaseCerto.slice(0, 5).map(n => ({ id: n.id, numero: n.numero, serie: n.serie, data: n.data, cliente: n.cliente })),
+      };
+    }
+    // b304 (achado dele, 19/08) - AQUI ESTAVA O ERRO. Quando o SKU nao batia
+    // em NENHUMA candidata, eu devolvia `achadas[0]` — a PRIMEIRA nota de
+    // entrada qualquer da janela — e chamava de "certeza media". Foi assim
+    // que a devolucao da Barbara (NF 001500, serie 1, lampada E14) exibiu a
+    // NF 006962 da INEZ, serie 2, de outro produto: nada batia, so a
+    // natureza. E o painel escondia o botao de gerar por causa disso.
+    //
+    // Regra da casa (ja valia no de-para de SKU, no deposito e na natureza
+    // fiscal): AMBIGUIDADE NAO ESCOLHE. Sem cliente E sku confirmados, nao
+    // afirmo que achei — devolvo os candidatos pra quem decide olhar.
+    return {
+      ok: true,
+      achou: false,
+      motivo: cod
+        ? 'achei nota(s) de entrada na janela, mas NENHUMA tem o SKU desta devolucao — nao da pra dizer que e a mesma volta'
+        : 'achei nota(s) de entrada na janela, mas sem o SKU nao da pra confirmar qual e',
+      candidatos: achadas.slice(0, 5).map(n => ({
+        id: n.id, numero: n.numero, serie: n.serie, data: n.data,
+        cliente: n.cliente, bate_cliente: !!n.bate_cliente,
+      })),
+    };
   }
 
   return {
