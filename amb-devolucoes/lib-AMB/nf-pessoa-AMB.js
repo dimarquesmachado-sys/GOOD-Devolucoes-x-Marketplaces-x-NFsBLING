@@ -625,8 +625,13 @@ module.exports = function criarNfPessoa({ chamarBling, sleep }) {
       };
     }
     if (confirmadas.length > 1) {
+      // b314 (review do Codex) - eu escrevia "confira antes de gerar" e
+      // mandava ok:true. Depois da b313 o painel so avisa em ok:false, entao
+      // este aviso era JOGADO FORA: os botoes ficavam ativos e sem alerta,
+      // que e o caso de duplicata mais provavel de todos (duas notas do mesmo
+      // cliente e SKU). Duvida real e ok:false.
       return {
-        ok: true, achou: false,
+        ok: false,
         motivo: 'ha MAIS DE UMA nota de entrada deste cliente com este SKU na janela — o Bling nao diz a qual venda cada uma pertence, entao confira no Bling antes de gerar',
         candidatos: confirmadas.slice(0, 5).map(n => ({
           id: n.id, numero: n.numero, serie: n.serie, data: n.dataEmissao || null, cliente: n.cliente,

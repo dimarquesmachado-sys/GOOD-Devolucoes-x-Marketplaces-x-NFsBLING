@@ -1029,10 +1029,23 @@ app.get('/api/admin/nf-devolucao', requerAdmin, async (req, res) => {
         const normTxt = (x) => String(x || '').toLowerCase().normalize('NFD')
           .replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim();
         const skuNorm = normTxt(skuBusca).toUpperCase();
+        // b314 (review do Codex) - varrer "as 400 primeiras" nao serve: com a
+        // tabela maior que isso, a outra compra pode ficar de fora e o painel
+        // esconderia o botao do card errado. Filtro no BANCO pelo que da
+        // (SKU exato e o caso comum; o normalizado entra na conferencia
+        // abaixo) e, se ainda assim eu bater no teto, trato como truncado.
+        const TETO_IRMAS = 500;
         const { data: irmasBrutas, error: erroIrmas } = await supabase
           .from(TAB)
           .select('id, buyer_nome, produto_sku')
-          .limit(400);
+          .ilike('produto_sku', skuBusca)
+          .limit(TETO_IRMAS);
+        if (!erroIrmas && (irmasBrutas || []).length >= TETO_IRMAS) {
+          return res.json({
+            ok: false,
+            motivo: 'ha registros demais deste SKU pra eu conferir se este cliente tem outra compra igual — confira no Bling antes de gerar',
+          });
+        }
         const irmas = (irmasBrutas || []).filter((u) => {
           if (normTxt(u.produto_sku).toUpperCase() !== skuNorm) return false;
           const a1 = normTxt(u.buyer_nome).split(' ').filter(Boolean);
