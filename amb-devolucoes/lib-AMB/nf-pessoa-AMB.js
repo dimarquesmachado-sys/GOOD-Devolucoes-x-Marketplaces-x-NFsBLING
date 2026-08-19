@@ -480,7 +480,14 @@ module.exports = function criarNfPessoa({ chamarBling, sleep }) {
     const pa = partes(a), pb = partes(b);
     if (!pa.length || !pb.length) return false;
     if (pa.join(' ') === pb.join(' ')) return true;
-    return pa[0] === pb[0] && pa[pa.length - 1] === pb[pb.length - 1];
+    if (pa[0] !== pb[0] || pa[pa.length - 1] !== pb[pb.length - 1]) return false;
+    // b307 (review do Codex) - primeiro e ultimo iguais NAO bastam:
+    // "JOAO CARLOS SILVA" x "JOAO PEDRO SILVA" sao pessoas diferentes. Se os
+    // DOIS tem nome(s) do meio, eles precisam ser compativeis; se um lado nao
+    // tem (o marketplace costuma abreviar), aceito como o mesmo.
+    const meioA = pa.slice(1, -1), meioB = pb.slice(1, -1);
+    if (!meioA.length || !meioB.length) return true;
+    return meioA.some(m => meioB.includes(m)) || meioB.some(m => meioA.includes(m));
   }
 
   // Devolve `certeza: 'alta'` quando cliente E sku batem; 'media' com um so.
@@ -546,21 +553,47 @@ module.exports = function criarNfPessoa({ chamarBling, sleep }) {
 
     // com SKU em maos, confirma pelo item (uma consulta por candidata, teto 5)
     const quaseCerto = [];   // b304 - sku bate mas cliente nao: nao serve pra afirmar
+    // b307 (review do Codex) - timeout/recusa do Bling ao abrir a candidata
+    // NAO pode virar "nao existe": se a nota falha justamente na certa, o
+    // painel ofereceria gerar a SEGUNDA nota da mesma volta. Mesma regra que
+    // ja vale na busca por numero (b255).
+    let falhouDetalhe = false;
+    const confirmadas = [];   // b307 - cliente E sku batendo
     if (cod) {
       for (const cand of achadas.slice(0, 5)) {
         const rD = await chamarBling(`/nfe/${cand.id}`);
-        const det = (rD.ok && rD.data && rD.data.data) || null;
+        if (!rD.ok) { falhouDetalhe = true; await sleep(300); continue; }   // b307
+        const det = (rD.data && rD.data.data) || null;
         const temSku = Array.isArray(det?.itens)
           && det.itens.some(it => String(it.codigo || '').trim().toUpperCase() === cod);
         // b304 - so afirma com os DOIS batendo (cliente E sku). SKU igual com
         // cliente diferente e outra venda do mesmo produto — comum aqui, onde
         // o mesmo item vende muitas vezes.
-        if (temSku && cand.bate_cliente) {
-          return { ok: true, achou: true, nf: cand, certeza: 'alta', via: 'natureza+cliente+sku' };
-        }
+        if (temSku && cand.bate_cliente) { confirmadas.push(cand); await sleep(300); continue; }
         if (temSku) quaseCerto.push(cand);
         await sleep(300);
       }
+    }
+    // b307 (review do Codex) - UMA confirmada e resposta; DUAS e ambiguidade.
+    // O mesmo cliente pode ter comprado o mesmo SKU em dois pedidos na janela
+    // e devolvido so um: a nota existente satisfaz a condicao nos DOIS cards,
+    // e o card errado perderia o botao de gerar. O Bling nao expoe o vinculo
+    // com a venda (b255), entao aqui nao da pra desempatar sozinho — e
+    // ambiguidade nao escolhe.
+    if (confirmadas.length === 1) {
+      return { ok: true, achou: true, nf: confirmadas[0], certeza: 'alta', via: 'natureza+cliente+sku' };
+    }
+    if (confirmadas.length > 1) {
+      return {
+        ok: true, achou: false,
+        motivo: 'ha MAIS DE UMA nota de entrada deste cliente com este SKU na janela — o Bling nao diz a qual venda cada uma pertence, entao confira no Bling antes de gerar',
+        candidatos: confirmadas.slice(0, 5).map(n => ({
+          id: n.id, numero: n.numero, serie: n.serie, data: n.dataEmissao || null, cliente: n.cliente,
+        })),
+      };
+    }
+    if (falhouDetalhe) {
+      return { ok: false, motivo: 'o Bling recusou a leitura de uma das notas candidatas — nao da pra afirmar se ja existe' };
     }
     if (quaseCerto.length) {
       // b304 - havia nota com o MESMO SKU, mas de outro cliente: e outra venda

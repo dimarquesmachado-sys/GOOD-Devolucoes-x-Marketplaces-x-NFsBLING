@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>AMBTotal - Painel de Devoluções</title>
-  <!-- AMB Devol. b305 - painel portado da GOOD. O adaptador poe /amb nas chamadas -->
+  <!-- AMB Devol. b307 - painel portado da GOOD. O adaptador poe /amb nas chamadas -->
   <script src="js-AMB/base-amb.js?v=b63"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -1550,7 +1550,7 @@
               ${ehSerie2(d) && !d.nf_devolucao_id_bling
                 ? `<a class="btn" style="background:#00695c;color:#fff;" href="https://www.mercadolivre.com.br/emissor/vendas/${d.order_id || ''}/faturas" target="_blank" title="Venda FULL (s\u00e9rie 2): a NF de devolu\u00e7\u00e3o \u00e9 emitida pelo PR\u00d3PRIO Mercado Livre. N\u00c3O gere outra no Bling (duplicidade fiscal). Clique pra ver/baixar a NF no emissor do ML.">🏬 FULL</a><button class="btn" style="background:#00838f;" onclick="fullVincular('${d.id}', this)" title="Procura no Bling a NF de ENTRADA s\u00e9rie 2 que o ML emitiu pra esta devolu\u00e7\u00e3o e vincula ao card">🔗 Achar devolu\u00e7\u00e3o no Bling</button>`
                 : !d.nf_devolucao_id_bling && (d.nf_id_bling || d.nf_numero)
-                ? `<button class="btn" style="background:#1565c0;" onclick="abrirModalGerarDevolucao('${d.id}', '${d.nf_id_bling || ''}', '${escapeHtml(d.nf_numero || '')}', '${escapeHtml(d.produto_titulo || '')}', '${String(d.nf_chave || '').replace(/[^0-9]/g, '')}', '${escapeHtml(d.buyer_nome || d.cliente || d.cliente_ml || '')}', '${escapeHtml(d.produto_sku || '')}', '${String(d.nf_data || d.criado_em || '').slice(0,10)}', '${escapeHtml(d.status || d.tipo || '')}', '${ehSerie2(d) ? '2' : (String(d.nf_serie || '').trim() || '')}')" title="Abre as op\u00e7\u00f5es: criar RASCUNHO (salvar sem emitir, pra editar no Bling) ou gerar + emitir direto">🧾 Gerar NF (rascunho ou emitir)</button>`
+                ? `<button class="btn" style="background:#1565c0;" onclick="abrirModalGerarDevolucao('${d.id}', '${d.nf_id_bling || ''}', '${escapeHtml(d.nf_numero || '')}', '${escapeHtml(d.produto_titulo || '')}', '${String(d.nf_chave || '').replace(/[^0-9]/g, '')}', '${jsArg(d.buyer_nome || d.cliente || d.cliente_ml || '')}', '${escapeHtml(d.produto_sku || '')}', '${String(d.nf_data || d.criado_em || '').slice(0,10)}', '${escapeHtml(d.status || d.tipo || '')}', '${ehSerie2(d) ? '2' : (String(d.nf_serie || '').trim() || '')}')" title="Abre as op\u00e7\u00f5es: criar RASCUNHO (salvar sem emitir, pra editar no Bling) ou gerar + emitir direto">🧾 Gerar NF (rascunho ou emitir)</button>`
                 : d.nf_devolucao_id_bling
                   ? `<a class="btn btn-verde" href="https://www.bling.com.br/notas.entrada.php#edit/${d.nf_devolucao_id_bling}" target="_blank" title="NF de devolu\u00e7\u00e3o j\u00e1 gerada">📝 Devolu\u00e7\u00e3o: ${d.nf_devolucao_numero || 'ver'}</a>${ehSerie2(d) ? `<button class="btn" style="background:#4527a0;" onclick="fullLancarEstoque('${d.id}', this)" title="Lan\u00e7a o ESTOQUE de entrada desta devolu\u00e7\u00e3o no dep\u00f3sito GERAL (API oficial). S\u00f3 clique se ainda N\u00c3O lan\u00e7ou e o produto est\u00e1 ok pra revenda.">📦 Lan\u00e7ar estoque (Geral)</button>` : ''}`
                   : ''
@@ -1611,7 +1611,7 @@
               ${ehSerie2(d) && !d.nf_devolucao_id_bling
                 ? `<a class="btn" style="background:#00695c;color:#fff;" href="https://www.mercadolivre.com.br/emissor/vendas/${d.order_id || ''}/faturas" target="_blank" title="Venda FULL (s\u00e9rie 2): a NF de devolu\u00e7\u00e3o \u00e9 emitida pelo PR\u00d3PRIO Mercado Livre. N\u00c3O gere outra no Bling (duplicidade fiscal). Clique pra ver/baixar a NF no emissor do ML.">🏬 FULL</a><button class="btn" style="background:#00838f;" onclick="fullVincular('${d.id}', this)" title="Procura no Bling a NF de ENTRADA s\u00e9rie 2 que o ML emitiu pra esta devolu\u00e7\u00e3o e vincula ao card">🔗 Achar devolu\u00e7\u00e3o no Bling</button>`
                 : !d.nf_devolucao_id_bling && (d.nf_id_bling || d.nf_numero)
-                ? `<button class="btn" style="background:#1565c0;" onclick="abrirModalGerarDevolucao('${d.id}', '${d.nf_id_bling || ''}', '${escapeHtml(d.nf_numero || '')}', '${escapeHtml(d.produto_titulo || '')}', '${String(d.nf_chave || '').replace(/[^0-9]/g, '')}', '${escapeHtml(d.buyer_nome || d.cliente || d.cliente_ml || '')}', '${escapeHtml(d.produto_sku || '')}', '${String(d.nf_data || d.criado_em || '').slice(0,10)}', '${escapeHtml(d.status || d.tipo || '')}', '${ehSerie2(d) ? '2' : (String(d.nf_serie || '').trim() || '')}')" title="Abre as op\u00e7\u00f5es: criar RASCUNHO (salvar sem emitir, pra editar no Bling) ou gerar + emitir direto">🧾 Gerar NF (rascunho ou emitir)</button>`
+                ? `<button class="btn" style="background:#1565c0;" onclick="abrirModalGerarDevolucao('${d.id}', '${d.nf_id_bling || ''}', '${escapeHtml(d.nf_numero || '')}', '${escapeHtml(d.produto_titulo || '')}', '${String(d.nf_chave || '').replace(/[^0-9]/g, '')}', '${jsArg(d.buyer_nome || d.cliente || d.cliente_ml || '')}', '${escapeHtml(d.produto_sku || '')}', '${String(d.nf_data || d.criado_em || '').slice(0,10)}', '${escapeHtml(d.status || d.tipo || '')}', '${ehSerie2(d) ? '2' : (String(d.nf_serie || '').trim() || '')}')" title="Abre as op\u00e7\u00f5es: criar RASCUNHO (salvar sem emitir, pra editar no Bling) ou gerar + emitir direto">🧾 Gerar NF (rascunho ou emitir)</button>`
                 : d.nf_devolucao_id_bling
                   ? `<a class="btn btn-verde" href="https://www.bling.com.br/notas.entrada.php#edit/${d.nf_devolucao_id_bling}" target="_blank" title="NF de devolu\u00e7\u00e3o j\u00e1 gerada. Produto com problema: NF importada do ML n\u00e3o lan\u00e7a estoque (n\u00e3o fa\u00e7a nada); NF emitida aqui lan\u00e7ou estoque (cancele o lan\u00e7amento no Bling).">📝 Devolu\u00e7\u00e3o: ${d.nf_devolucao_numero || 'ver'}</a>`
                   : ''
@@ -1879,8 +1879,16 @@
       // procurar, e procurar so cria chance de casar com a nota de OUTRA
       // venda — foi o que aconteceu: a devolucao da Barbara (NF 001500,
       // serie 1) exibiu a NF 006962 da INEZ, serie 2, de outro produto.
+      // b307 (review do Codex) - a b304 cortou a consulta fora da serie 2,
+      // seguindo a regra dele ("serie 1 e direto da matriz, nao tem nem q
+      // falar de FULL"). Mas esta checagem tem DOIS motivos, e eu so tinha
+      // olhado um: alem da nota do Full, ela pega a entrada que OUTRO ADMIN
+      // ja lancou — e isso acontece em serie 1 igual. Cortar criava a chance
+      // de DUAS notas pra mesma volta, que e justamente o que ela evita.
+      // Entao volta a consultar sempre; o que muda e o TEXTO: fora da serie 2
+      // o aviso nao menciona Full nem CD do ML (ver montagem do bloco).
       var s = String(serieNFOriginal == null ? '' : serieNFOriginal).trim();
-      if (s && s !== '2') return null;
+      var ehFull = (s === '2');
       if (!cliente && !sku) return null;
       // b304 - sem SKU nao da pra confirmar nada; nao consultar e melhor do
       // que exibir um palpite
@@ -1892,7 +1900,8 @@
         if (desde) p.set('desde', String(desde).slice(0, 10));
         const r = await fetch('/api/admin/nf-devolucao?' + p.toString(), { credentials: 'same-origin' });
         const d = await r.json();
-        return (d && d.ok && d.achou) ? d : null;
+        if (d && d.ok && d.achou) { d.eh_full = ehFull; return d; }
+        return null;
       } catch (e) { return null; }   // duvida nao esconde o botao
     }
 
@@ -1990,7 +1999,10 @@
           + (nf.serie ? ' · série ' + escapeHtml(String(nf.serie)) : '')
           + (nf.dataEmissao ? ' · ' + escapeHtml(String(nf.dataEmissao).slice(0, 10).split('-').reverse().join('/')) : '')
           + (nf.cliente ? '<br>Cliente: ' + escapeHtml(nf.cliente) : '')
-          + '<br><span style="font-size:12.5px;color:#5a7a5e;">Emitida pelo Full do Mercado Livre ou lançada por outro admin. '
+          + '<br><span style="font-size:12.5px;color:#5a7a5e;">'
+          + (achado.eh_full
+              ? 'Emitida pelo Full do Mercado Livre ou lançada por outro admin. '
+              : 'Lançada por outro admin — esta venda é da série 1, faturada direto da matriz, então não passa pelo Full. ')
           + 'Gerar outra criaria <b>duas notas</b> para a mesma volta — por isso o botão saiu.</span>'
           // b257 - a nota existir NAO significa que a peca chegou aqui: no
           // Full, o ML pode revisar no CD dele e RECOLOCAR A VENDA la (a NF
@@ -2135,6 +2147,21 @@
     // v3.24 - FULL (série 2): a NF de devolução é emitida pelo PRÓPRIO ML.
     // Gerar outra no Bling seria DUPLICIDADE FISCAL. Detecta pela série
     // gravada OU pela chave de acesso (posições 23-25 = série "002").
+    // b307 (review do Codex) - MESMA armadilha da URL da foto (b292): texto
+    // que vai DENTRO de um argumento de onclick nao pode ser escapado como
+    // HTML. O navegador decodifica &#39; antes de compilar o handler, entao
+    // um nome com apostrofo — D'AVILA, D'ALESSANDRO — fecharia a string e o
+    // botao "Gerar NF" simplesmente nao faria nada. E o nome vem do
+    // marketplace, ou seja, de fora.
+    function jsArg(v) {
+      return String(v == null ? '' : v)
+        .replace(/\\/g, '\\\\')
+        .replace(/'/g, "\\'")
+        .replace(/"/g, '&quot;')
+        .replace(/</g, '\\x3C')
+        .replace(/\r?\n/g, ' ');
+    }
+
     function ehSerie2(d) {
       if (String(d.nf_serie || '').trim() === '2') return true;
       const ch = String(d.nf_chave || '').replace(/\D/g, '');
