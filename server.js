@@ -4960,6 +4960,8 @@ registrarRotasDebug(app, {
   // b299 (fatia 2)
   adminOk, buscarNFnoML, buscarPedidoBlingPorNumeroLoja,
   buscarPedidoBlingPorId, buscarNFePorId,
+  buscarNFnoBlingPorOrderId, buscarNFnoBlingPorNumero,   // b300
+  buscarNFsPorNumero,   // b300 - faltava desde a fatia 1
 });
 
 // v3.45 - rotas de impressao (QZ + fila) movidas p/ lib/rotas-impressao.js
