@@ -469,6 +469,20 @@ module.exports = function criarNfPessoa({ chamarBling, sleep }) {
   // O vinculo com a NF de venda NAO vem pela API (`campos_de_referencia` e
   // `observacoes` vieram nulos) — existe so na tela. Entao casamos pelo que
   // ha: natureza de devolucao + CLIENTE + SKU + janela a partir da venda.
+  // b306 - dois nomes sao "a mesma pessoa" quando o PRIMEIRO nome e o ULTIMO
+  // sobrenome coincidem (sem acento, sem caixa). Nome do meio, abreviacao e
+  // acentuacao divergem entre o marketplace e o cadastro fiscal.
+  function nomesBatem(a, b) {
+    const partes = (x) => String(x || '')
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .toUpperCase().replace(/[^A-Z\s]/g, ' ')
+      .split(/\s+/).filter(p => p.length > 1);   // fora "DE", "DA", iniciais
+    const pa = partes(a), pb = partes(b);
+    if (!pa.length || !pb.length) return false;
+    if (pa.join(' ') === pb.join(' ')) return true;
+    return pa[0] === pb[0] && pa[pa.length - 1] === pb[pb.length - 1];
+  }
+
   // Devolve `certeza: 'alta'` quando cliente E sku batem; 'media' com um so.
   // ═══════════════════════════════════════════════════════════════════
   async function acharNfDevolucaoBling({ cliente, sku, desde, ate, naturezaId } = {}) {
@@ -494,7 +508,14 @@ module.exports = function criarNfPessoa({ chamarBling, sleep }) {
         const natOk = !natureza || String(nf.naturezaOperacao?.id || nf.naturezaOperacao || '') === natureza;
         if (!natOk) continue;
         const nomeNf = String(nf.contato?.nome || '').trim().toUpperCase();
-        const bateCliente = !!nome && !!nomeNf && (nomeNf === nome || nomeNf.includes(nome) || nome.includes(nomeNf));
+        // b306 (review do Codex) - comparar por PARTES do nome. O nome do
+        // comprador no marketplace e o do contato fiscal divergem por nome do
+        // meio, abreviacao ou acento — "MONICA RODRIGUES" nao esta contido em
+        // "MONICA MARIA RODRIGUES" nem o contrario, e a inclusao literal
+        // rejeitava nota legitima. Regra: primeiro nome igual E ultimo
+        // sobrenome igual, ambos sem acento. Continua exigente o bastante pra
+        // nao casar clientes diferentes (o que causou o erro do print).
+        const bateCliente = nomesBatem(nome, nomeNf);
         // b305 (review do Codex) - NAO descartar aqui. Este `continue` rodava
         // ANTES da checagem de SKU que a b304 criou, entao o caso "mesmo SKU,
         // outro cliente" nunca chegava a ser detectado e a funcao saia sem
@@ -517,6 +538,12 @@ module.exports = function criarNfPessoa({ chamarBling, sleep }) {
         ? { ok: false, motivo: 'o Bling recusou a consulta — nao da pra afirmar que nao existe' }
         : { ok: true, achou: false };
     }
+    // b306 (review do Codex) - ORDENAR ANTES DE CORTAR. Como a b305 parou de
+    // descartar quem tem cliente diferente, uma janela com 5 notas de outros
+    // clientes antes da certa consumiria as 5 consultas de detalhe e a nota
+    // CORRETA nunca seria inspecionada. Quem bate o cliente vai na frente.
+    achadas.sort((x, y) => (y.bate_cliente ? 1 : 0) - (x.bate_cliente ? 1 : 0));
+
     // com SKU em maos, confirma pelo item (uma consulta por candidata, teto 5)
     const quaseCerto = [];   // b304 - sku bate mas cliente nao: nao serve pra afirmar
     if (cod) {
