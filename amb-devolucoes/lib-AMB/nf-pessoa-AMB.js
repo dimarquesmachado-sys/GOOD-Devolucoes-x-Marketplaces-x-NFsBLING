@@ -483,7 +483,14 @@ module.exports = function criarNfPessoa({ chamarBling, sleep }) {
       // meios diferentes (["DE"] x []) e viravam pessoas diferentes — e sao a
       // mesma, com o marketplace so abreviando. Agora as particulas saem de
       // verdade, antes da comparacao.
-      .filter(p => p.length > 1 && !['DE', 'DA', 'DO', 'DAS', 'DOS', 'E'].includes(p));
+      // b321 (review do Codex) - fora tambem os SUFIXOS que so um dos lados
+      // costuma trazer: razao social ("ACME" x "ACME LTDA") e geracional
+      // ("JOAO SILVA" x "JOAO SILVA JUNIOR"). Sem isso o ULTIMO token diferia
+      // e eu classificava como outra pessoa — deixando a emissao liberada com
+      // a nota certa ja existindo.
+      .filter(p => p.length > 1
+        && !['DE', 'DA', 'DO', 'DAS', 'DOS', 'E'].includes(p)
+        && !['LTDA', 'ME', 'EPP', 'EIRELI', 'SA', 'MEI', 'JUNIOR', 'JR', 'FILHO', 'NETO', 'SOBRINHO', 'JUNIOR'].includes(p));
     const pa = partes(a), pb = partes(b);
     if (!pa.length || !pb.length) return false;
     if (pa.join(' ') === pb.join(' ')) return true;

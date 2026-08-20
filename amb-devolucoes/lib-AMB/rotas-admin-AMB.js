@@ -1076,8 +1076,16 @@ app.get('/api/admin/nf-devolucao', requerAdmin, async (req, res) => {
         const dataDaNota = String((r.nf && r.nf.dataEmissao) || '').slice(0, 10);
         const antesDaNota = (u) => {
           if (!dataDaNota) return true;   // sem data da nota, nao descarto ninguem
-          const dt = String(u.nf_data_emissao || u.criado_em || '').slice(0, 10);
-          return !dt || dt <= dataDaNota;
+          // b321 (review do Codex) - `criado_em` e quando a DEVOLUCAO foi
+          // registrada na triagem, nao quando a venda aconteceu. Se a nota do
+          // marketplace saiu antes de o galpao bipar, esse fallback fazia a
+          // irma parecer comprada DEPOIS da nota e eu a descartava — e a
+          // mesma nota solta seria aceita pra outra compra do cliente,
+          // escondendo os botoes do card certo. Sem a data da VENDA, o caso
+          // continua ambiguo: mantenho a irma.
+          const dt = String(u.nf_data_emissao || '').slice(0, 10);
+          if (!dt) return true;
+          return dt <= dataDaNota;
         };
         const irmas = (irmasBrutas || []).filter((u) => antesDaNota(u) && (
           normSku(u.produto_sku) === skuNorm && comparaNome(u.buyer_nome, cliBusca)
