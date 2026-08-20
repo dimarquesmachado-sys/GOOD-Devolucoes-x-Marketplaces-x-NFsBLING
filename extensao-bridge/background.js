@@ -422,6 +422,17 @@ function fluxoDevolucaoNaPagina(p) {
 
       const end = contato.endereco || {};
 
+      // b325 - normaliza telefone brasileiro pro formato que o Bling aceita.
+      // Tira DDI 55, mantem so digitos, e devolve (XX) XXXX-XXXX ou
+      // (XX) XXXXX-XXXX. Fora disso -> vazio.
+      function telefoneBR(v) {
+        let d = String(v == null ? '' : v).replace(/\D/g, '');
+        if (d.length > 11 && d.startsWith('55')) d = d.slice(2);   // DDI
+        if (d.length === 11) return '(' + d.slice(0,2) + ') ' + d.slice(2,7) + '-' + d.slice(7);
+        if (d.length === 10) return '(' + d.slice(0,2) + ') ' + d.slice(2,6) + '-' + d.slice(6);
+        return '';   // sem DDD ou lixo: melhor vazio que invalido
+      }
+
       const contatoXml = '<xjxobj>' +
         entry('nome',           leaf(contato.nome)) +
         entry('id',             leaf(contato.id)) +
@@ -441,8 +452,17 @@ function fluxoDevolucaoNaPagina(p) {
         entry('bairro',         leaf(end.bairro || '')) +
         entry('complemento',    leaf(end.complemento || '')) +
         entry('email',          leaf(contato.email || '')) +
-        entry('fone',           leaf(contato.telefone || '')) +
-        entry('celular',        leaf(contato.celular || '')) +
+        // b325 - TELEFONE SANEADO. O Bling recusou uma devolucao da GOOD com
+        // "E necessario preencher corretamente o campo Telefone" DUAS vezes
+        // (fone e celular): o valor do cadastro ia cru, e formato que ele nao
+        // aceita (com DDI, sem DDD, com lixo) trava a emissao inteira.
+        //
+        // NAO invento numero: telefone falso entraria no cadastro do cliente
+        // no Bling e viraria dado errado permanente. O que faco e limpar e
+        // formatar o que EXISTE; se nao der pra formar um telefone valido,
+        // mando VAZIO — o campo nao e obrigatorio na NF-e, e vazio e honesto.
+        entry('fone',           leaf(telefoneBR(contato.telefone))) +
+        entry('celular',        leaf(telefoneBR(contato.celular))) +
         entry('dataNascimento', leaf(contato.dataNascimento || '')) +
       '</xjxobj>';
 
