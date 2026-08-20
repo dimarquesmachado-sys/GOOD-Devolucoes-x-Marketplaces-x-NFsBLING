@@ -1,6 +1,44 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
+<script>
+/* ═══════════════════════════════════════════════════════════════════
+   b329 - PREFIXO /amb AUTOMATICO EM TODA CHAMADA DESTA PASTA.
+
+   O problema (achado em 20/08, depois de corrigir DUAS vezes caso a caso):
+   as telas da AMB sao servidas em /amb/... mas chamam `fetch('/api/...')`,
+   caminho ABSOLUTO — que cai na RAIZ, ou seja, no modulo DA GOOD.
+
+   Provado com sessao so da AMB:
+     /api/admin/devolucoes      -> 401
+     /amb/api/admin/devolucoes  -> 200
+
+   Sao 56 chamadas assim em 4 arquivos. Corrigir uma a uma foi exatamente
+   o que me trouxe ate aqui: arrumei o indice de NF, depois o payload do
+   Bridge, e sempre sobrava outra. Entao a correcao passa a ser ESTRUTURAL:
+   este bloco embrulha o fetch e poe o prefixo /amb em qualquer caminho
+   que comece com /api/, uma vez, pra todas — inclusive as que alguem
+   escrever amanha sem lembrar do prefixo.
+
+   Nao mexe em: URL absoluta (http...), caminho que ja comeca com /amb,
+   e nada fora de /api/.
+   ═══════════════════════════════════════════════════════════════════ */
+(function () {
+  const fetchOriginal = window.fetch.bind(window);
+  window.fetch = function (entrada, opcoes) {
+    try {
+      if (typeof entrada === 'string' && entrada.startsWith('/api/')) {
+        entrada = '/amb' + entrada;
+      } else if (entrada && typeof entrada === 'object' && typeof entrada.url === 'string'
+                 && entrada.url.startsWith('/api/')) {
+        entrada = new Request('/amb' + entrada.url, entrada);
+      }
+    } catch (e) { /* na duvida, deixa passar como estava */ }
+    return fetchOriginal(entrada, opcoes);
+  };
+})();
+</script>
+
   <meta charset="UTF-8">
   <!-- b59: viewport SEM zoom — o estoquista bipa no celular e o pinch
        atrapalhava; era assim no index anterior da AMB -->
