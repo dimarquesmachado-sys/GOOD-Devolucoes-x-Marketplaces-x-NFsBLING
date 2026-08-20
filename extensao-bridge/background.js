@@ -74,6 +74,12 @@ const GOOD_PADRAO = {
 const cacheIds = {};   // empresa -> { quando, fixos }
 
 async function idsFiscaisDaEmpresa(empresa) {
+  // b324 - o padrao 'good' na AUSENCIA de empresa foi o que deixou a AMB
+  // emitir com os ids da GOOD: uma chamada do painel da AMB veio sem o campo
+  // e caiu aqui em silencio. O padrao continua (a GOOD sempre chamou sem
+  // empresa e nao vou quebrar isso), mas agora fica REGISTRADO no console —
+  // se aparecer "assumindo good por omissao" numa aba da AMB, e este bug.
+  if (!empresa) console.warn('[Bridge] chamada SEM empresa — assumindo good por omissao');
   const alvo = String(empresa || 'good').trim().toLowerCase();
   const chave = (alvo === 'amb' || alvo === 'ambtotal') ? 'ambtotal' : alvo;
   const caminho = ENDERECO_IDS[chave];

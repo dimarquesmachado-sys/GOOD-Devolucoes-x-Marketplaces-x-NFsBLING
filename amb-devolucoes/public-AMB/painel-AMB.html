@@ -2994,7 +2994,7 @@
         // Verifica se a extensao Bridge esta instalada/atualizada
         if (!await verificarBridgeInstalada()) {
           throw new Error(
-            'Extensão "GOOD Devoluções Bridge" não detectada. ' +
+            'Extensão de devoluções não detectada (no Firefox da AMB ela se chama "AMBTotal Devoluções Bridge"). ' +
             'Instale/atualize a extensão e recarregue a página (Ctrl+Shift+R).'
           );
         }
@@ -3123,7 +3123,7 @@
           </div>
           <div style="font-size:13px; color:#555; margin-bottom:16px;">
             <strong>Possíveis causas:</strong><br>
-            • Extensão "GOOD Devoluções Bridge" não está instalada<br>
+            • A extensão de devoluções não está instalada ou está desativada<br>
             • Você não está logado no Bling em outra aba<br>
             • A NF original já tem todas devoluções emitidas<br>
             • Bling mudou o endpoint interno (raro)<br><br>
@@ -3220,7 +3220,10 @@
     }
 
     // ============================================================
-    // v3.15.0 - Comunicacao com a Extensao "GOOD Devolucoes Bridge"
+    // v3.15.0 - Comunicacao com a Extensao "Devolucoes Bridge"
+    // b323 - o nome tinha "GOOD" e confundia nas telas da AMB: e a MESMA
+    // extensao pras duas empresas (nasceu na GOOD e nunca foi renomeada).
+    // No Firefox ela se instala como "AMBTotal Devolucoes Bridge".
     // ============================================================
     // A extensao instalada no navegador escuta postMessage e faz
     // chamadas ao Bling com privilegios (sem CORS).
@@ -3258,6 +3261,22 @@
 
     // Manda pedido pra Bridge criar a devolucao no Bling
     function chamarBlingViaBridge(payload) {
+      // b324 - A EMPRESA ENTRA AQUI, no ÚNICO ponto por onde tudo passa.
+      //
+      // O erro em produção (19/08): a mensagem do Bling veio com
+      //   "IDs usados -> empresa: 4956030980 (servidor)" — os ids da GOOD,
+      // numa devolução da AMB. Motivo: este painel tem DUAS chamadas ao
+      // Bridge (o fluxo do modal e o da esteira) e a b303 marcou só UMA com
+      // `empresa: 'ambtotal'`. A outra chegava sem empresa, a extensão
+      // assumia 'good' — comportamento histórico dela — e pedia os ids da
+      // GOOD ao servidor. O Bling então recusa: a nota não é dessa conta e o
+      // CFOP da natureza não existe lá.
+      //
+      // Marcar cada chamada é frágil: qualquer caminho novo nasce errado e
+      // ninguém percebe até sair nota errada. Como este arquivo é o painel
+      // DA AMB, toda chamada daqui é da AMB — então carimbo no lugar por
+      // onde todas passam, sem depender de memória.
+      payload = Object.assign({}, payload || {}, { empresa: 'ambtotal' });
       return new Promise((resolve, reject) => {
         const requisicaoId = 'req_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
         let timeout;
