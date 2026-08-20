@@ -1051,12 +1051,12 @@ app.get('/api/admin/nf-devolucao', requerAdmin, async (req, res) => {
           .is('nf_devolucao_id_bling', null)
           .ilike('produto_sku', '%' + String(skuBusca).replace(/[\\%_]/g, (m) => '\\' + m) + '%')
           .limit(TETO_IRMAS);
-        if (!erroIrmas && (irmasBrutas || []).length >= TETO_IRMAS) {
-          return res.json({
-            ok: false,
-            motivo: 'ha registros demais deste SKU pra eu conferir se este cliente tem outra compra igual — confira no Bling antes de gerar',
-          });
-        }
+        // b320 (review do Codex) - o teto NAO pode ser avaliado sobre o
+        // resultado do `%SKU%`: um SKU curto ("12") enche as 500 linhas com
+        // ABC12, 1200 e afins, e eu declarava indeterminado sem existir UMA
+        // irma de verdade — soltando a emissao num caso unico. O teto so faz
+        // sentido depois da comparacao EXATA normalizada, entao a checagem
+        // dele foi movida pra baixo do filtro.
         const comparaNome = (typeof nomesBatemNf === 'function')
           ? nomesBatemNf
           : (x, y) => normSku(x) === normSku(y);   // sem o oficial, exige igualdade
@@ -1083,6 +1083,14 @@ app.get('/api/admin/nf-devolucao', requerAdmin, async (req, res) => {
           normSku(u.produto_sku) === skuNorm && comparaNome(u.buyer_nome, cliBusca)
         ));
 
+        // b320 - agora sim: bati no teto E sobrou irma exata? entao a lista
+        // pode estar truncada COM irmas de verdade, e ai e indeterminado.
+        if (!erroIrmas && (irmasBrutas || []).length >= TETO_IRMAS && irmas.length) {
+          return res.json({
+            ok: false,
+            motivo: 'ha registros demais deste SKU pra eu conferir se este cliente tem outra compra igual — confira no Bling antes de gerar',
+          });
+        }
         if (erroIrmas) {
           return res.json({
             ok: false,

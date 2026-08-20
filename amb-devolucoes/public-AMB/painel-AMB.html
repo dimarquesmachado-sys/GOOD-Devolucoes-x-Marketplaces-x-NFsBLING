@@ -1917,7 +1917,7 @@
         if (window._devolucaoIdAtual) p.set('devolucaoId', String(window._devolucaoIdAtual));   // b308
         const r = await fetch('/api/admin/nf-devolucao?' + p.toString(), { credentials: 'same-origin' });
         const d = await r.json();
-        if (d && d.ok && d.achou) { d.eh_full = ehFull; return d; }
+        if (d && d.ok && d.achou) { d.eh_full = ehFull; d.serie_conhecida = !!s; return d; }   // b320
         // b308 (review do Codex) - quando a checagem fica INDETERMINADA (o
         // Bling recusou ler uma candidata, ou ha mais de uma nota possivel),
         // eu devolvia null e o modal abria com os botoes ativos e NENHUM
@@ -2051,9 +2051,17 @@
           + (nf.dataEmissao ? ' · ' + escapeHtml(String(nf.dataEmissao).slice(0, 10).split('-').reverse().join('/')) : '')
           + (nf.cliente ? '<br>Cliente: ' + escapeHtml(nf.cliente) : '')
           + '<br><span style="font-size:12.5px;color:#5a7a5e;">'
+          // b320 (review do Codex) - TRES estados, nao dois. `eh_full` falso
+          // significava "e serie 1, matriz" — mas tambem cai aqui o registro
+          // com serie DESCONHECIDA (so tem nf_numero, sem serie e sem chave
+          // valida), que o painel aceita e mostra o botao de gerar. Afirmar
+          // "faturada direto da matriz" nesse caso pode levar o galpao a
+          // lancar estoque de uma peca que ficou no CD do marketplace.
           + (achado.eh_full
-              ? 'Emitida pelo Full do Mercado Livre ou lançada por outro admin. '
-              : 'Lançada por outro admin — esta venda é da série 1, faturada direto da matriz, então não passa pelo Full. ')
+              ? 'Emitida pelo Full do marketplace ou lançada por outro admin. '
+              : (achado.serie_conhecida
+                  ? 'Lançada por outro admin — esta venda é da série 1, faturada direto da matriz, então não passa pelo Full. '
+                  : '<b>Não consegui identificar a série desta venda</b> (o registro não tem a série nem a chave da NF), então não dá pra dizer se ela passou pelo Full. '))
           + 'Gerar outra criaria <b>duas notas</b> para a mesma volta — por isso o botão saiu.</span>'
           // b257 - a nota existir NAO significa que a peca chegou aqui: no
           // Full, o ML pode revisar no CD dele e RECOLOCAR A VENDA la (a NF
