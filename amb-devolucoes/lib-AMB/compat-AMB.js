@@ -1408,6 +1408,39 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
     res.redirect(307, '/amb/api/espreita/nota');
   });
 
+  // ═══════════════════════════════════════════════════════════════
+  // b331 - PASSO 1 DA PARIDADE: os MESMOS recursos tinham NOME diferente
+  // nas duas empresas. Isso nao e falta de funcao — e bagunça, e a 3a
+  // empresa herdaria: cada tela nova teria que saber qual dos dois nomes
+  // usar naquele modulo.
+  //
+  // O padrao ja existia aqui em cima pra espreita (redirect 307, que
+  // preserva metodo e corpo). Completo os que faltavam, sempre APONTANDO
+  // pro nome que a AMB ja usa — nada e removido, entao nenhuma tela atual
+  // quebra, e as duas grafias respondem.
+  //
+  // O nome da GOOD vira o "nome oficial" nos dois lados: e o que as telas
+  // portadas da GOOD vao chamar sem edicao.
+  // ═══════════════════════════════════════════════════════════════
+
+  /** GOOD chama /api/admin/produtos/buscar; aqui e /api/produtos/buscar */
+  router.get('/api/admin/produtos/buscar', auth.requerLogin, (req, res) => {
+    const qs = req.originalUrl.includes('?') ? req.originalUrl.slice(req.originalUrl.indexOf('?')) : '';
+    res.redirect(307, '/amb/api/produtos/buscar' + qs);
+  });
+
+  /** GOOD chama /api/etiqueta/fila/proximo; aqui e /api/etiqueta/proxima */
+  router.get('/api/etiqueta/fila/proximo', auth.requerLogin, (req, res) => {
+    const qs = req.originalUrl.includes('?') ? req.originalUrl.slice(req.originalUrl.indexOf('?')) : '';
+    res.redirect(307, '/amb/api/etiqueta/proxima' + qs);
+  });
+
+  /** GOOD chama /api/admin/nfs-devolucao (plural); aqui e /api/admin/nf-devolucao */
+  router.get('/api/admin/nfs-devolucao', auth.requerLogin, (req, res) => {
+    const qs = req.originalUrl.includes('?') ? req.originalUrl.slice(req.originalUrl.indexOf('?')) : '';
+    res.redirect(307, '/amb/api/admin/nf-devolucao' + qs);
+  });
+
   return router;
 }
 
