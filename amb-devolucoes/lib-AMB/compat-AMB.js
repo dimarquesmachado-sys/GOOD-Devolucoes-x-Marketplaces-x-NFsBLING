@@ -1409,37 +1409,31 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
   });
 
   // ═══════════════════════════════════════════════════════════════
-  // b331 - PASSO 1 DA PARIDADE: os MESMOS recursos tinham NOME diferente
-  // nas duas empresas. Isso nao e falta de funcao — e bagunça, e a 3a
-  // empresa herdaria: cada tela nova teria que saber qual dos dois nomes
-  // usar naquele modulo.
+  // b332 - APELIDO DE NOME NAO SERVE AQUI, e a review provou os 3 casos.
   //
-  // O padrao ja existia aqui em cima pra espreita (redirect 307, que
-  // preserva metodo e corpo). Completo os que faltavam, sempre APONTANDO
-  // pro nome que a AMB ja usa — nada e removido, entao nenhuma tela atual
-  // quebra, e as duas grafias respondem.
+  // Na b331 eu criei apelidos achando que era o MESMO recurso com nome
+  // diferente. Nao era: os nomes parecidos escondem CONTRATOS diferentes,
+  // e o apelido faria o chamador da GOOD receber uma resposta que ele nao
+  // sabe ler — pior que erro, porque parece sucesso:
   //
-  // O nome da GOOD vira o "nome oficial" nos dois lados: e o que as telas
-  // portadas da GOOD vao chamar sem edicao.
+  //   produtos/buscar        GOOD devolve { resultados } · AMB { produtos }
+  //                          -> toda busca pareceria VAZIA
+  //   etiqueta/fila/proximo  GOOD e long-poll { job, restam } | { vazio }
+  //                          AMB REMOVE o item e devolve { etiqueta, restam }
+  //                          -> cada etiqueta seria CONSUMIDA sem imprimir
+  //   nfs-devolucao          GOOD LISTA notas ({ total, notas })
+  //                          AMB busca UMA por cliente+sku ({ achou, nf })
+  //                          -> recursos diferentes com nome parecido
+  //
+  // O terceiro eu ja tinha estranhado no PR e escrito que "e o que menos me
+  // convence" — mas subi mesmo assim. Devia ter conferido o contrato antes,
+  // nao depois.
+  //
+  // Entao: NADA de apelido por redirect. Paridade de verdade nesses casos e
+  // implementar o recurso que falta, com o contrato certo — o que entra nos
+  // passos 2 e 3 do plano, um PR por recurso. O unico apelido que fica e o
+  // da espreita, que ja existia e onde o contrato E o mesmo.
   // ═══════════════════════════════════════════════════════════════
-
-  /** GOOD chama /api/admin/produtos/buscar; aqui e /api/produtos/buscar */
-  router.get('/api/admin/produtos/buscar', auth.requerLogin, (req, res) => {
-    const qs = req.originalUrl.includes('?') ? req.originalUrl.slice(req.originalUrl.indexOf('?')) : '';
-    res.redirect(307, '/amb/api/produtos/buscar' + qs);
-  });
-
-  /** GOOD chama /api/etiqueta/fila/proximo; aqui e /api/etiqueta/proxima */
-  router.get('/api/etiqueta/fila/proximo', auth.requerLogin, (req, res) => {
-    const qs = req.originalUrl.includes('?') ? req.originalUrl.slice(req.originalUrl.indexOf('?')) : '';
-    res.redirect(307, '/amb/api/etiqueta/proxima' + qs);
-  });
-
-  /** GOOD chama /api/admin/nfs-devolucao (plural); aqui e /api/admin/nf-devolucao */
-  router.get('/api/admin/nfs-devolucao', auth.requerLogin, (req, res) => {
-    const qs = req.originalUrl.includes('?') ? req.originalUrl.slice(req.originalUrl.indexOf('?')) : '';
-    res.redirect(307, '/amb/api/admin/nf-devolucao' + qs);
-  });
 
   return router;
 }
