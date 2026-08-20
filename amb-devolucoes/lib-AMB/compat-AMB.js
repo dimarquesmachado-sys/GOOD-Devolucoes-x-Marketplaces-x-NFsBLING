@@ -1408,6 +1408,33 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
     res.redirect(307, '/amb/api/espreita/nota');
   });
 
+  // ═══════════════════════════════════════════════════════════════
+  // b332 - APELIDO DE NOME NAO SERVE AQUI, e a review provou os 3 casos.
+  //
+  // Na b331 eu criei apelidos achando que era o MESMO recurso com nome
+  // diferente. Nao era: os nomes parecidos escondem CONTRATOS diferentes,
+  // e o apelido faria o chamador da GOOD receber uma resposta que ele nao
+  // sabe ler — pior que erro, porque parece sucesso:
+  //
+  //   produtos/buscar        GOOD devolve { resultados } · AMB { produtos }
+  //                          -> toda busca pareceria VAZIA
+  //   etiqueta/fila/proximo  GOOD e long-poll { job, restam } | { vazio }
+  //                          AMB REMOVE o item e devolve { etiqueta, restam }
+  //                          -> cada etiqueta seria CONSUMIDA sem imprimir
+  //   nfs-devolucao          GOOD LISTA notas ({ total, notas })
+  //                          AMB busca UMA por cliente+sku ({ achou, nf })
+  //                          -> recursos diferentes com nome parecido
+  //
+  // O terceiro eu ja tinha estranhado no PR e escrito que "e o que menos me
+  // convence" — mas subi mesmo assim. Devia ter conferido o contrato antes,
+  // nao depois.
+  //
+  // Entao: NADA de apelido por redirect. Paridade de verdade nesses casos e
+  // implementar o recurso que falta, com o contrato certo — o que entra nos
+  // passos 2 e 3 do plano, um PR por recurso. O unico apelido que fica e o
+  // da espreita, que ja existia e onde o contrato E o mesmo.
+  // ═══════════════════════════════════════════════════════════════
+
   return router;
 }
 
