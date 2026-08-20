@@ -1038,7 +1038,13 @@ app.get('/api/admin/nf-devolucao', requerAdmin, async (req, res) => {
         const TETO_IRMAS = 500;
         const { data: irmasBrutas, error: erroIrmas } = await supabase
           .from(TAB)
-          .select('id, buyer_nome, produto_sku')
+          // b317 (review do Codex) - a irma so cria duvida se ela mesma
+          // AINDA nao tem nota. Compra antiga ja resolvida (com
+          // nf_devolucao_id_bling preenchido) nao disputa esta nota, e usa-la
+          // pra declarar ambiguidade fazia o contrario do que deve: soltava a
+          // emissao num caso que era unico, arriscando a duplicata.
+          .select('id, buyer_nome, produto_sku, nf_devolucao_id_bling, nf_data, criado_em')
+          .is('nf_devolucao_id_bling', null)
           .ilike('produto_sku', '%' + skuBusca + '%')
           .limit(TETO_IRMAS);
         if (!erroIrmas && (irmasBrutas || []).length >= TETO_IRMAS) {
@@ -1050,7 +1056,15 @@ app.get('/api/admin/nf-devolucao', requerAdmin, async (req, res) => {
         const comparaNome = (typeof nomesBatemNf === 'function')
           ? nomesBatemNf
           : (x, y) => normSku(x) === normSku(y);   // sem o oficial, exige igualdade
-        const irmas = (irmasBrutas || []).filter((u) => (
+        // b317 - e so conta a irma que cai DENTRO da mesma janela de busca;
+        // fora dela, a nota achada no Bling nem poderia pertencer a ela.
+        const desdeBusca = String(req.query.desde || '').slice(0, 10);
+        const dentroDaJanela = (u) => {
+          if (!desdeBusca) return true;
+          const dt = String(u.nf_data || u.criado_em || '').slice(0, 10);
+          return !dt || dt >= desdeBusca;
+        };
+        const irmas = (irmasBrutas || []).filter((u) => dentroDaJanela(u) && (
           normSku(u.produto_sku) === skuNorm && comparaNome(u.buyer_nome, cliBusca)
         ));
 
