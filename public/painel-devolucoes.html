@@ -1179,7 +1179,12 @@
       // indice ja fica em window._indiceNFDev, que o botao de cruzamento usa.
       if (aprovadas.length && !window._indiceNFDev && !window._indiceNFDevCarregando) {
         window._indiceNFDevCarregando = true;
-        fetch('/api/admin/indice-nf-devolucao?paginas=3')
+        // b327 - 3 -> 6 paginas, a pedido dele. Custa mais consulta ao Bling
+        // (cada nota da pagina e detalhada pra achar o pedido), MAS o indice
+        // fica 15 min em cache NO SERVIDOR: as 6 paginas sao varridas uma vez
+        // a cada 15 min, nao a cada abertura do painel. Com isso a cobertura
+        // dobra e o custo por uso continua praticamente o mesmo.
+        fetch('/api/admin/indice-nf-devolucao?paginas=6')
           .then(function (r) { return r.json(); })
           .then(function (d) {
             if (d && d.ok && d.pedidos) {
