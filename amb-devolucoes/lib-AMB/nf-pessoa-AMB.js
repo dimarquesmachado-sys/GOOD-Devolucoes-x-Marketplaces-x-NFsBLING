@@ -469,6 +469,47 @@ module.exports = function criarNfPessoa({ chamarBling, sleep }) {
   // O vinculo com a NF de venda NAO vem pela API (`campos_de_referencia` e
   // `observacoes` vieram nulos) — existe so na tela. Entao casamos pelo que
   // ha: natureza de devolucao + CLIENTE + SKU + janela a partir da venda.
+  // b306 - dois nomes sao "a mesma pessoa" quando o PRIMEIRO nome e o ULTIMO
+  // sobrenome coincidem (sem acento, sem caixa). Nome do meio, abreviacao e
+  // acentuacao divergem entre o marketplace e o cadastro fiscal.
+  function nomesBatem(a, b) {
+    const partes = (x) => String(x || '')
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .toUpperCase().replace(/[^A-Z\s]/g, ' ')
+      .split(/\s+/)
+      // b318 (review do Codex) - o comentario dizia "fora DE, DA" mas o
+      // filtro so tirava tokens de UMA letra: "DE", "DA", "DO", "DOS" tem
+      // duas ou mais e passavam. Ai "MARIA DE SOUZA" x "MARIA SOUZA" tinham
+      // meios diferentes (["DE"] x []) e viravam pessoas diferentes — e sao a
+      // mesma, com o marketplace so abreviando. Agora as particulas saem de
+      // verdade, antes da comparacao.
+      // b321 (review do Codex) - fora tambem os SUFIXOS que so um dos lados
+      // costuma trazer: razao social ("ACME" x "ACME LTDA") e geracional
+      // ("JOAO SILVA" x "JOAO SILVA JUNIOR"). Sem isso o ULTIMO token diferia
+      // e eu classificava como outra pessoa — deixando a emissao liberada com
+      // a nota certa ja existindo.
+      .filter(p => p.length > 1
+        && !['DE', 'DA', 'DO', 'DAS', 'DOS', 'E'].includes(p)
+        && !['LTDA', 'ME', 'EPP', 'EIRELI', 'SA', 'MEI', 'JUNIOR', 'JR', 'FILHO', 'NETO', 'SOBRINHO', 'JUNIOR'].includes(p));
+    const pa = partes(a), pb = partes(b);
+    if (!pa.length || !pb.length) return false;
+    if (pa.join(' ') === pb.join(' ')) return true;
+    if (pa[0] !== pb[0] || pa[pa.length - 1] !== pb[pb.length - 1]) return false;
+    // b307 (review do Codex) - primeiro e ultimo iguais NAO bastam:
+    // "JOAO CARLOS SILVA" x "JOAO PEDRO SILVA" sao pessoas diferentes. Se os
+    // DOIS tem nome(s) do meio, eles precisam ser compativeis; se um lado nao
+    // tem (o marketplace costuma abreviar), aceito como o mesmo.
+    const meioA = pa.slice(1, -1), meioB = pb.slice(1, -1);
+    if (!meioA.length || !meioB.length) return true;
+    // b310 (review do Codex) - o `some` bastava UM componente coincidir, entao
+    // "JOAO CARLOS EDUARDO SILVA" x "JOAO CARLOS PEDRO SILVA" passava. O lado
+    // MENOR precisa estar inteiro dentro do maior: assim abreviacao continua
+    // valendo (um lado sem o nome do meio), mas divergencia real reprova.
+    const menor = meioA.length <= meioB.length ? meioA : meioB;
+    const maior = meioA.length <= meioB.length ? meioB : meioA;
+    return menor.every(m => maior.includes(m));
+  }
+
   // Devolve `certeza: 'alta'` quando cliente E sku batem; 'media' com um so.
   // ═══════════════════════════════════════════════════════════════════
   async function acharNfDevolucaoBling({ cliente, sku, desde, ate, naturezaId } = {}) {
@@ -483,6 +524,7 @@ module.exports = function criarNfPessoa({ chamarBling, sleep }) {
 
     const achadas = [];
     let falhou = false;
+    let truncou = false;   // b315 - a janela tinha mais paginas que o teto
     for (let pg = 1; pg <= 4; pg++) {
       // tipo=0 -> ENTRADA. A janela comeca na emissao da venda: a devolucao
       // e sempre posterior.
@@ -494,8 +536,19 @@ module.exports = function criarNfPessoa({ chamarBling, sleep }) {
         const natOk = !natureza || String(nf.naturezaOperacao?.id || nf.naturezaOperacao || '') === natureza;
         if (!natOk) continue;
         const nomeNf = String(nf.contato?.nome || '').trim().toUpperCase();
-        const bateCliente = !!nome && !!nomeNf && (nomeNf === nome || nomeNf.includes(nome) || nome.includes(nomeNf));
-        if (nome && !bateCliente) continue;
+        // b306 (review do Codex) - comparar por PARTES do nome. O nome do
+        // comprador no marketplace e o do contato fiscal divergem por nome do
+        // meio, abreviacao ou acento — "MONICA RODRIGUES" nao esta contido em
+        // "MONICA MARIA RODRIGUES" nem o contrario, e a inclusao literal
+        // rejeitava nota legitima. Regra: primeiro nome igual E ultimo
+        // sobrenome igual, ambos sem acento. Continua exigente o bastante pra
+        // nao casar clientes diferentes (o que causou o erro do print).
+        const bateCliente = nomesBatem(nome, nomeNf);
+        // b305 (review do Codex) - NAO descartar aqui. Este `continue` rodava
+        // ANTES da checagem de SKU que a b304 criou, entao o caso "mesmo SKU,
+        // outro cliente" nunca chegava a ser detectado e a funcao saia sem
+        // motivo nem candidatos. Guardamos todas as notas da natureza e a
+        // decisao (que exige cliente E sku) acontece depois, num lugar so.
         achadas.push({
           id: nf.id, numero: nf.numero, serie: nf.serie,
           dataEmissao: nf.dataEmissao, chaveAcesso: nf.chaveAcesso || null,
@@ -503,31 +556,174 @@ module.exports = function criarNfPessoa({ chamarBling, sleep }) {
           bate_cliente: bateCliente,
         });
       }
+      // b315 (review do Codex) - o teto de 4 paginas ficava SILENCIOSO. Se a
+      // quarta pagina vinha cheia, havia pagina 5 e eu tratava a varredura
+      // como completa: a nota da volta (ou uma segunda candidata do mesmo
+      // cliente) podia estar la. Pagina cheia no fim do teto = TRUNCADO, e
+      // truncado se resolve como incerteza, igual a falha de rede.
       if (lista.length < 100) break;
+      if (pg === 4) { truncou = true; break; }
       await sleep(300);
     }
     if (!achadas.length) {
       // b255 - falha do Bling nao vira "nao existe": a diferenca ja custou
       // caro na busca por numero de NF.
-      return falhou
-        ? { ok: false, motivo: 'o Bling recusou a consulta — nao da pra afirmar que nao existe' }
-        : { ok: true, achou: false };
+      // b315 - "nenhuma candidata" so e definitivo se eu li a janela toda
+      if (falhou) return { ok: false, motivo: 'o Bling recusou a consulta — nao da pra afirmar que nao existe' };
+      if (truncou) return { ok: false, motivo: 'a janela tem mais notas do que eu consigo varrer e nenhuma das que li serve — pode haver outra fora do trecho lido' };
+      return { ok: true, achou: false };
     }
+    // b306 (review do Codex) - ORDENAR ANTES DE CORTAR. Como a b305 parou de
+    // descartar quem tem cliente diferente, uma janela com 5 notas de outros
+    // clientes antes da certa consumiria as 5 consultas de detalhe e a nota
+    // CORRETA nunca seria inspecionada. Quem bate o cliente vai na frente.
+    achadas.sort((x, y) => (y.bate_cliente ? 1 : 0) - (x.bate_cliente ? 1 : 0));
+
     // com SKU em maos, confirma pelo item (uma consulta por candidata, teto 5)
+    const quaseCerto = [];   // b304 - sku bate mas cliente nao: nao serve pra afirmar
+    // b307 (review do Codex) - timeout/recusa do Bling ao abrir a candidata
+    // NAO pode virar "nao existe": se a nota falha justamente na certa, o
+    // painel ofereceria gerar a SEGUNDA nota da mesma volta. Mesma regra que
+    // ja vale na busca por numero (b255).
+    let falhouDetalhe = false;
+    const confirmadas = [];   // b307 - cliente E sku batendo
+    // b311 (review do Codex, apontamento em aberto) - ORDENAR NAO BASTA.
+    // Se houver MAIS de 5 candidatas com o cliente batendo, a nota certa pode
+    // ser a sexta e nunca seria inspecionada — e o `achou: false` resultante
+    // LIBERA a emissao, criando a segunda nota da mesma volta. Entao o teto
+    // deixa de ser silencioso: quem bate o cliente e passou do corte fica
+    // registrado, e o desfecho vira INDETERMINADO (nao "nao achei").
+    const clientesQueBatem = achadas.filter(c => c.bate_cliente).length;
+    const cortadasComCliente = Math.max(0, clientesQueBatem - 5);
     if (cod) {
       for (const cand of achadas.slice(0, 5)) {
         const rD = await chamarBling(`/nfe/${cand.id}`);
-        const det = (rD.ok && rD.data && rD.data.data) || null;
+        // b313 (review do Codex) - so a falha de uma candidata QUE BATE O
+        // CLIENTE atrapalha. Se a nota que nao abriu e de outro cliente, ela
+        // nunca poderia confirmar nada (exijo cliente E sku), entao marcar
+        // leitura incompleta por causa dela derrubaria uma confirmacao boa.
+        if (!rD.ok) { if (cand.bate_cliente) falhouDetalhe = true; await sleep(300); continue; }
+        const det = (rD.data && rD.data.data) || null;
         const temSku = Array.isArray(det?.itens)
           && det.itens.some(it => String(it.codigo || '').trim().toUpperCase() === cod);
-        if (temSku) return { ok: true, achou: true, nf: cand, certeza: cand.bate_cliente ? 'alta' : 'media', via: 'natureza+cliente+sku' };
+        // b304 - so afirma com os DOIS batendo (cliente E sku). SKU igual com
+        // cliente diferente e outra venda do mesmo produto — comum aqui, onde
+        // o mesmo item vende muitas vezes.
+        if (temSku && cand.bate_cliente) { confirmadas.push(cand); await sleep(300); continue; }
+        if (temSku) quaseCerto.push(cand);
         await sleep(300);
       }
     }
-    return { ok: true, achou: true, nf: achadas[0], certeza: 'media', via: 'natureza+cliente', outras: achadas.length - 1 };
+    // b307 (review do Codex) - UMA confirmada e resposta; DUAS e ambiguidade.
+    // O mesmo cliente pode ter comprado o mesmo SKU em dois pedidos na janela
+    // e devolvido so um: a nota existente satisfaz a condicao nos DOIS cards,
+    // e o card errado perderia o botao de gerar. O Bling nao expoe o vinculo
+    // com a venda (b255), entao aqui nao da pra desempatar sozinho — e
+    // ambiguidade nao escolhe.
+    // b308 (review do Codex) - PAGINA QUE FALHOU pode conter a nota certa. Se
+    // uma pagina anterior trouxe candidatas irrelevantes e outra falhou,
+    // `falhou` fica true com `achadas` cheio e eu escapava da unica saida de
+    // erro. Sem uma confirmada em maos, isso NAO pode virar "nao existe".
+    if (falhou && !confirmadas.length) {
+      return { ok: false, motivo: 'o Bling recusou parte da busca — pode haver nota de entrada numa pagina que nao consegui ler' };
+    }
+    // b312 (review do Codex) - UMA confirmacao so vale se eu li a janela
+    // INTEIRA. Se uma pagina falhou, uma candidata nao abriu, ou notas do
+    // mesmo cliente ficaram fora do teto de 5, pode haver OUTRA nota com
+    // cliente+sku batendo — e ai a que achei talvez seja a da outra venda.
+    // Confirmar mesmo assim faria o painel esconder o botao do card errado.
+    const leituraIncompleta = falhou || truncou || falhouDetalhe || cortadasComCliente > 0;   // b315
+    if (confirmadas.length === 1 && !leituraIncompleta) {
+      return { ok: true, achou: true, nf: confirmadas[0], certeza: 'alta', via: 'natureza+cliente+sku' };
+    }
+    if (confirmadas.length === 1) {
+      return {
+        ok: false,
+        motivo: 'achei uma nota de entrada deste cliente com este SKU, mas nao consegui ler a janela inteira — pode haver outra. Confira no Bling antes de gerar',
+        candidatos: [{
+          id: confirmadas[0].id, numero: confirmadas[0].numero, serie: confirmadas[0].serie,
+          data: confirmadas[0].dataEmissao || null, cliente: confirmadas[0].cliente,
+        }],
+      };
+    }
+    if (confirmadas.length > 1) {
+      // b314 (review do Codex) - eu escrevia "confira antes de gerar" e
+      // mandava ok:true. Depois da b313 o painel so avisa em ok:false, entao
+      // este aviso era JOGADO FORA: os botoes ficavam ativos e sem alerta,
+      // que e o caso de duplicata mais provavel de todos (duas notas do mesmo
+      // cliente e SKU). Duvida real e ok:false.
+      return {
+        ok: false,
+        motivo: 'ha MAIS DE UMA nota de entrada deste cliente com este SKU na janela — o Bling nao diz a qual venda cada uma pertence, entao confira no Bling antes de gerar',
+        candidatos: confirmadas.slice(0, 5).map(n => ({
+          id: n.id, numero: n.numero, serie: n.serie, data: n.dataEmissao || null, cliente: n.cliente,
+        })),
+      };
+    }
+    if (falhouDetalhe) {
+      return { ok: false, motivo: 'o Bling recusou a leitura de uma das notas candidatas — nao da pra afirmar se ja existe' };
+    }
+    // b311 - candidatas COM O CLIENTE CERTO ficaram de fora do teto de 5.
+    // A nota da volta pode ser justamente uma delas, entao o desfecho honesto
+    // e "nao sei" (ok:false), nunca "nao achei" — que liberaria a emissao.
+    if (truncou) {
+      return {
+        ok: false,
+        motivo: 'a janela tem mais notas de entrada do que eu consigo varrer — a nota desta volta pode estar fora do trecho que li. Confira no Bling antes de gerar',
+      };
+    }
+    if (cortadasComCliente > 0) {
+      return {
+        ok: false,
+        motivo: 'ha ' + (cortadasComCliente + 5) + ' notas de entrada deste cliente na janela e eu so consigo abrir 5 — a nota desta volta pode estar entre as que nao li. Confira no Bling antes de gerar',
+      };
+    }
+    if (quaseCerto.length) {
+      // b304 - havia nota com o MESMO SKU, mas de outro cliente: e outra venda
+      return {
+        ok: true, achou: false,
+        motivo: 'achei nota(s) de entrada com este SKU, mas de OUTRO cliente — e outra venda, nao esta devolucao',
+        candidatos: quaseCerto.slice(0, 5).map(n => ({
+          id: n.id, numero: n.numero, serie: n.serie,
+          data: n.dataEmissao || null,   // b305
+          cliente: n.cliente,
+        })),
+      };
+    }
+    // b304 (achado dele, 19/08) - AQUI ESTAVA O ERRO. Quando o SKU nao batia
+    // em NENHUMA candidata, eu devolvia `achadas[0]` — a PRIMEIRA nota de
+    // entrada qualquer da janela — e chamava de "certeza media". Foi assim
+    // que a devolucao da Barbara (NF 001500, serie 1, lampada E14) exibiu a
+    // NF 006962 da INEZ, serie 2, de outro produto: nada batia, so a
+    // natureza. E o painel escondia o botao de gerar por causa disso.
+    //
+    // Regra da casa (ja valia no de-para de SKU, no deposito e na natureza
+    // fiscal): AMBIGUIDADE NAO ESCOLHE. Sem cliente E sku confirmados, nao
+    // afirmo que achei — devolvo os candidatos pra quem decide olhar.
+    return {
+      ok: true,
+      achou: false,
+      motivo: cod
+        ? 'achei nota(s) de entrada na janela, mas NENHUMA tem o SKU desta devolucao — nao da pra dizer que e a mesma volta'
+        : 'achei nota(s) de entrada na janela, mas sem o SKU nao da pra confirmar qual e',
+      candidatos: achadas.slice(0, 5).map(n => ({
+        id: n.id, numero: n.numero, serie: n.serie,
+        data: n.dataEmissao || null,   // b305 - o campo guardado e dataEmissao
+        cliente: n.cliente, bate_cliente: !!n.bate_cliente,
+      })),
+    };
   }
 
+  // b316 (review do Codex) - EXPOR o comparador de nomes. A rota que confere
+  // "compras irmas" tinha uma copia parecida mas nao igual (minha `normTxt`
+  // mantinha pontuacao e particulas de uma letra, esta aqui troca pontuacao
+  // por espaco e descarta tokens de 1 letra). Com "MARIA D'AVILA" e
+  // "MARIA D AVILA" a nota casava no Bling mas os dois cards nao se
+  // enxergavam — e a nota solta seria aceita nos dois. Uma regra so, num
+  // lugar so.
+
   return {
+    nomesBatem,   // b316 - reaproveitado pela conferencia de compras irmas
     acharNfDevolucaoBling,   // b255
 
     mapItensNF,

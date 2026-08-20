@@ -25,6 +25,7 @@ module.exports = function registrarRotasAdminNF(app, deps) {
     tabelaDevolucoes,
     buscarNFsPorNumero,   // b212 - usada pelo raio-x da busca por numero
     buscarNfDevolucaoBling,   // b255
+    nomesBatemNf,   // b316
     listarDepositos,   // b276 - lista VIVA de depositos desta empresa
   } = deps;
 
@@ -976,6 +977,154 @@ app.get('/api/admin/nf-devolucao', requerAdmin, async (req, res) => {
     desde: req.query.desde || null,
     ate: req.query.ate || null,
   });
+  // b308 (review do Codex) - O CASO DAS DUAS COMPRAS. Se o cliente comprou o
+  // mesmo SKU duas vezes e devolveu SO uma, a nota existente satisfaz
+  // "cliente + sku" nos DOIS cards e o card errado perderia os botoes. O
+  // Bling nao diz a qual venda a nota pertence — mas NOS sabemos: se ela ja
+  // esta vinculada a OUTRA devolucao aqui no banco, nao e a desta volta.
+  try {
+    if (r && r.ok && r.achou && r.nf && r.nf.id && supabase) {
+      const idDesta = String(req.query.devolucaoId || '').trim();
+      const { data: usos, error: erroUsos } = await supabase
+        .from(TAB)
+        .select('id')
+        .eq('nf_devolucao_id_bling', String(r.nf.id))
+        .limit(5);
+      // b309 (review do Codex) - o cliente do Supabase resolve com
+      // { data: null, error } em vez de lancar, entao o try/catch NAO pegava:
+      // uma falha passageira de banco viraria "nao ha vinculo" e a checagem
+      // que existe justo pra desambiguar diria o contrario do que devia.
+      // Erro aqui = INDETERMINADO, nao "esta livre".
+      if (erroUsos) {
+        return res.json({
+          ok: false,
+          motivo: 'nao consegui conferir no banco se esta nota ja esta vinculada a outra devolucao — confira no Bling antes de gerar',
+        });
+      }
+      const outros = (usos || []).filter(u => String(u.id) !== idDesta);
+      if (outros.length) {
+        return res.json({
+          ok: true, achou: false,
+          motivo: 'essa nota de entrada JA esta vinculada a outra devolucao aqui no sistema — nao e a desta volta',
+          candidatos: [{ id: r.nf.id, numero: r.nf.numero, serie: r.nf.serie, data: r.nf.dataEmissao || null, cliente: r.nf.cliente }],
+        });
+      }
+      // b311 (review do Codex, apontamento em aberto) - VINCULO VAZIO NAO E
+      // PROVA. A nota pode ser orfa (importada, ou sobrou de um registro que
+      // falhou) e ainda assim pertencer a OUTRA venda. Ela so desambigua
+      // quando ha uma unica compra deste cliente+SKU na janela: com duas
+      // compras e uma volta so, a mesma nota serve aos dois cards e o card
+      // errado perderia os botoes. Entao, havendo mais de uma devolucao
+      // NOSSA do mesmo cliente+SKU, o desfecho e INDETERMINADO.
+      const cliBusca = String(req.query.cliente || '').trim();
+      const skuBusca = String(req.query.sku || '').trim();
+      if (cliBusca && skuBusca) {
+        // b313 (review do Codex) - a conferencia de "irmas" tem que usar a
+        // MESMA regra de igualdade do casamento la no Bling. Com nome exato e
+        // SKU sensivel a caixa, dois cards do mesmo cliente gravados como
+        // "MONICA RODRIGUES" e "MONICA MARIA RODRIGUES" (ou SKU com caixa
+        // diferente) nao se enxergariam, e a mesma nota solta seria aceita
+        // nos DOIS — exatamente o que esta trava existe pra impedir. Entao
+        // trago os candidatos por SKU normalizado e comparo o nome aqui,
+        // com a mesma funcao de partes estaveis usada no matcher.
+        // b316 (review do Codex) - usar o MESMO comparador do casamento, nao
+        // uma copia parecida. A minha versao mantinha pontuacao e particulas
+        // de uma letra; a oficial troca pontuacao por espaco e descarta
+        // tokens de 1 letra. Com "MARIA D'AVILA" e "MARIA D AVILA" a nota
+        // casava no Bling e os dois cards NAO se enxergavam aqui.
+        const normSku = (x) => String(x || '').toLowerCase().normalize('NFD')
+          .replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim().toUpperCase();
+        const skuNorm = normSku(skuBusca);
+        const TETO_IRMAS = 500;
+        const { data: irmasBrutas, error: erroIrmas } = await supabase
+          .from(TAB)
+          // b317 (review do Codex) - a irma so cria duvida se ela mesma
+          // AINDA nao tem nota. Compra antiga ja resolvida (com
+          // nf_devolucao_id_bling preenchido) nao disputa esta nota, e usa-la
+          // pra declarar ambiguidade fazia o contrario do que deve: soltava a
+          // emissao num caso que era unico, arriscando a duplicata.
+          // b318 (review do Codex) - (a) a coluna e `nf_data_emissao`; `nf_data`
+          // NAO existe na tabela e eu teria lido undefined em todo registro.
+          // (b) `%` e `_` sao CURINGA no ilike: um SKU com underline casaria
+          // com qualquer caractere ali e traria irma que nao e irma.
+          .select('id, buyer_nome, produto_sku, nf_devolucao_id_bling, nf_data_emissao, criado_em')
+          .is('nf_devolucao_id_bling', null)
+          .ilike('produto_sku', '%' + String(skuBusca).replace(/[\\%_]/g, (m) => '\\' + m) + '%')
+          .limit(TETO_IRMAS);
+        // b320 (review do Codex) - o teto NAO pode ser avaliado sobre o
+        // resultado do `%SKU%`: um SKU curto ("12") enche as 500 linhas com
+        // ABC12, 1200 e afins, e eu declarava indeterminado sem existir UMA
+        // irma de verdade — soltando a emissao num caso unico. O teto so faz
+        // sentido depois da comparacao EXATA normalizada, entao a checagem
+        // dele foi movida pra baixo do filtro.
+        const comparaNome = (typeof nomesBatemNf === 'function')
+          ? nomesBatemNf
+          : (x, y) => normSku(x) === normSku(y);   // sem o oficial, exige igualdade
+        // b318 (review do Codex) - VOLTEI ATRAS no filtro por janela da b317.
+        // Uma compra ANTIGA pode gerar nota de devolucao tardia, que cai
+        // dentro da janela desta busca — cortar por data devolvia justamente
+        // a ambiguidade real pra debaixo do tapete. O que continua valendo e
+        // o filtro por nota JA vinculada (essa sim nao disputa nada).
+        // b319 (review do Codex) - a irma so disputa esta nota se a venda dela
+        // aconteceu ANTES da nota existir. Compra feita DEPOIS da nota nao
+        // pode te-la gerado, e conta-la deixava o caso "indeterminado" sem
+        // motivo — soltando a emissao e arriscando a duplicata.
+        //
+        // Isto NAO e o filtro por janela que revertemos na b318: la eu cortava
+        // compra ANTIGA (que pode gerar devolucao tardia, e por isso disputa
+        // mesmo); aqui corto so o que veio DEPOIS da nota, que e impossivel.
+        const dataDaNota = String((r.nf && r.nf.dataEmissao) || '').slice(0, 10);
+        const antesDaNota = (u) => {
+          if (!dataDaNota) return true;   // sem data da nota, nao descarto ninguem
+          // b321 (review do Codex) - `criado_em` e quando a DEVOLUCAO foi
+          // registrada na triagem, nao quando a venda aconteceu. Se a nota do
+          // marketplace saiu antes de o galpao bipar, esse fallback fazia a
+          // irma parecer comprada DEPOIS da nota e eu a descartava — e a
+          // mesma nota solta seria aceita pra outra compra do cliente,
+          // escondendo os botoes do card certo. Sem a data da VENDA, o caso
+          // continua ambiguo: mantenho a irma.
+          const dt = String(u.nf_data_emissao || '').slice(0, 10);
+          if (!dt) return true;
+          return dt <= dataDaNota;
+        };
+        const irmas = (irmasBrutas || []).filter((u) => antesDaNota(u) && (
+          normSku(u.produto_sku) === skuNorm && comparaNome(u.buyer_nome, cliBusca)
+        ));
+
+        // b320 - agora sim: bati no teto E sobrou irma exata? entao a lista
+        // pode estar truncada COM irmas de verdade, e ai e indeterminado.
+        if (!erroIrmas && (irmasBrutas || []).length >= TETO_IRMAS && irmas.length) {
+          return res.json({
+            ok: false,
+            motivo: 'ha registros demais deste SKU pra eu conferir se este cliente tem outra compra igual — confira no Bling antes de gerar',
+          });
+        }
+        if (erroIrmas) {
+          return res.json({
+            ok: false,
+            motivo: 'nao consegui conferir no banco se ha mais de uma compra deste cliente com este SKU — confira no Bling antes de gerar',
+          });
+        }
+        const outrasCompras = (irmas || []).filter(u => String(u.id) !== idDesta);
+        if (outrasCompras.length) {
+          return res.json({
+            ok: false,
+            motivo: 'este cliente tem mais de uma devolucao deste mesmo SKU aqui, e a nota achada nao esta vinculada a nenhuma — nao da pra dizer a qual volta ela pertence. Confira no Bling antes de gerar',
+          });
+        }
+      }
+    }
+  } catch (e) {
+    // b310 (review do Codex) - se a consulta LANCAR (rede caida, cliente
+    // quebrado), cair fora do try devolvia a resposta original como se o
+    // vinculo tivesse sido conferido. Mesma regra do erro no objeto: nao
+    // conseguir olhar e INDETERMINADO.
+    return res.json({
+      ok: false,
+      motivo: 'nao consegui conferir no banco se esta nota ja esta vinculada a outra devolucao — confira no Bling antes de gerar',
+    });
+  }
+
   res.json(r);
 });
 
