@@ -63,6 +63,7 @@ const mlReturns = require('./lib-AMB/ml-returns-AMB');
 const nfNomes = require('./lib-AMB/nf-nomes-AMB');
 const tokens = require('./lib-AMB/render-tokens-AMB');
 const auth = require('./lib-AMB/auth-AMB');
+const tiktokPonte = require('../lib/tiktok-ponte'); // b334 - ponte TikTok via Mover-Pedidos (peca unica, empresa como parametro)
 const db = require('./lib-AMB/supabase-AMB');
 const mkt = require('./lib-AMB/marketplace-AMB');
 const shopee = require('./lib-AMB/shopee-AMB');
@@ -1101,6 +1102,21 @@ router.get('/debug/espreita', admin, async (req, res) => {
     indice_nomes: nfNomes.statusIndice(),
     primeiro_item_cru: um,
     entregues_amostra: (base.entregues || []).slice(0, 2) });
+});
+
+// ── b334 — SONDA TikTok (frente devolucoes TikTok) ───────────
+// Igual a da GOOD (lib/rotas-debug.js): puxa via ponte o que o
+// Mover-Pedidos guarda das devolucoes TikTok. ?coletar=1&dias=60
+// coleta antes; ?limite=N. Publico: /amb/api/debug/tiktok-devolucoes
+// A empresa vai carimbada aqui porque este arquivo E o modulo da
+// AMB (regra do b324: ponto unico, nunca por chamada).
+router.get('/api/debug/tiktok-devolucoes', admin, async (req, res) => {
+  try {
+    const r = await tiktokPonte.sondaDevolucoes('ambtotal', req.query);
+    res.status(r.ok ? 200 : 502).json(r);
+  } catch (e) {
+    res.status(500).json({ ok: false, erro: String(e.message || e).slice(0, 200) });
+  }
 });
 
 // ── A ESPREITA (o que esta vindo pro galpao) ─────────────────
