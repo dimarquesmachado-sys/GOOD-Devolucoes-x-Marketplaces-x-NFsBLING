@@ -574,6 +574,45 @@ function fluxoDevolucaoNaPagina(p) {
       return { ok: false, erro: 'Esta NF ja possui devolucao efetuada no Bling. Nada foi criado (protecao anti-duplicata).' };
     }
 
+    // ═══════════════════════════════════════════════════════════════
+    // b322 - IDS FISCAIS SAEM DA PROPRIA CONTA LOGADA, quando ela informa.
+    //
+    // O erro real na AMB (19/08): o Bling recusou o salvar com
+    //   "Essa nota fiscal parece nao pertencer a essa conta"
+    //   + "O CFOP () do item ... nao e um CFOP valido"
+    // Os dois juntos sao a assinatura de idEmpresaControl/natureza de OUTRA
+    // conta: o Bling nao acha a empresa, nao resolve o CFOP da natureza e
+    // reclama das duas coisas.
+    //
+    // A origem: o `idEmpresaControl` da AMB era um numero que ficou como
+    // "padrao do codigo" sem nunca ter sido confirmado NA CONTA DELA — a
+    // sonda da b282 mostrou que `/empresas` da 404 na API v3, entao nao havia
+    // como validar por la. Era um chute herdado.
+    //
+    // Mas o proprio `obter-dados-devolucao` responde DENTRO da conta logada.
+    // Se ele traz esses ids, eles sao a verdade — melhor que env, melhor que
+    // padrao, e funciona pra qualquer empresa nova sem configurar nada.
+    const idEmpresaDaConta = String(
+      dados.idEmpresaControl || dados.idEmpresa ||
+      (dados.dadosNota && (dados.dadosNota.idEmpresaControl || dados.dadosNota.idEmpresa)) || ''
+    ).trim();
+    const idNaturezaDaConta = String(
+      dados.idNaturezaOperacao ||
+      (dados.dadosNota && dados.dadosNota.idNaturezaOperacao) || ''
+    ).trim();
+    if (idEmpresaDaConta) {
+      console.log('[Bridge/pagina] idEmpresaControl veio da conta logada:', idEmpresaDaConta);
+      p.fixos = Object.assign({}, p.fixos, { idEmpresaControl: idEmpresaDaConta });
+    }
+    if (idNaturezaDaConta) {
+      console.log('[Bridge/pagina] idNaturezaOperacao veio da conta logada:', idNaturezaDaConta);
+      p.fixos = Object.assign({}, p.fixos, { idNaturezaOperacao: idNaturezaDaConta });
+    }
+    p.__origemIds = {
+      empresa: idEmpresaDaConta ? 'conta_logada' : 'servidor',
+      natureza: idNaturezaDaConta ? 'conta_logada' : 'servidor',
+    };
+
     const itens = dados.itens || {};
     if (Object.keys(itens).length === 0) {
       return { ok: false, erro: 'A NF nao retornou itens pra devolucao.' };
@@ -614,7 +653,15 @@ function fluxoDevolucaoNaPagina(p) {
 
     if (!salvo.idNotaDevolucao) {
       if (salvo && salvo.errors && salvo.errors.length) {
-        return { ok: false, erro: 'Bling recusou o salvar: ' + JSON.stringify(salvo.errors).slice(0, 300) };
+        // b322 - dizer QUAIS ids foram usados e DE ONDE vieram. Sem isso, o
+        // "nao pertence a essa conta" e um beco sem saida: a tela nao mostra o
+        // numero que o Bling recusou, e ninguem sabe se veio da conta, do
+        // servidor ou de um padrao velho.
+        const usados = ' | IDs usados -> empresa: ' + String((p.fixos && p.fixos.idEmpresaControl) || '(vazio)')
+          + ' (' + ((p.__origemIds && p.__origemIds.empresa) || '?') + ')'
+          + ', natureza: ' + String((p.fixos && p.fixos.idNaturezaOperacao) || '(vazio)')
+          + ' (' + ((p.__origemIds && p.__origemIds.natureza) || '?') + ')';
+        return { ok: false, erro: 'Bling recusou o salvar: ' + JSON.stringify(salvo.errors).slice(0, 300) + usados };
       }
       return { ok: false, erro: 'Bling nao retornou idNotaDevolucao: ' + JSON.stringify(salvo).slice(0, 300) };
     }

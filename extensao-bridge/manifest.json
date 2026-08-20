@@ -1,35 +1,32 @@
 {
   "manifest_version": 3,
   "name": "GOOD Devoluções Bridge",
-  "version": "1.5.0",
+  "version": "1.6.0",
   "description": "Permite que o painel admin do GOOD Devoluções crie e emita NFs de devolução no Bling sem CORS.",
-
   "permissions": [
     "cookies",
     "scripting",
     "webRequest",
     "storage"
   ],
-
   "host_permissions": [
     "https://*.bling.com.br/*",
     "https://good-devolucoes-x-marketplaces-x-nfsbling.onrender.com/*"
   ],
-
   "background": {
     "service_worker": "background.js"
   },
-
   "content_scripts": [
     {
       "matches": [
         "https://good-devolucoes-x-marketplaces-x-nfsbling.onrender.com/*"
       ],
-      "js": ["content.js"],
+      "js": [
+        "content.js"
+      ],
       "run_at": "document_start"
     }
   ],
-
   "action": {
     "default_title": "GOOD Devoluções Bridge"
   }
