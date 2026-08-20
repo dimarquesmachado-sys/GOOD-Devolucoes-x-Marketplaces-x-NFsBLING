@@ -1065,7 +1065,21 @@ app.get('/api/admin/nf-devolucao', requerAdmin, async (req, res) => {
         // dentro da janela desta busca — cortar por data devolvia justamente
         // a ambiguidade real pra debaixo do tapete. O que continua valendo e
         // o filtro por nota JA vinculada (essa sim nao disputa nada).
-        const irmas = (irmasBrutas || []).filter((u) => (
+        // b319 (review do Codex) - a irma so disputa esta nota se a venda dela
+        // aconteceu ANTES da nota existir. Compra feita DEPOIS da nota nao
+        // pode te-la gerado, e conta-la deixava o caso "indeterminado" sem
+        // motivo — soltando a emissao e arriscando a duplicata.
+        //
+        // Isto NAO e o filtro por janela que revertemos na b318: la eu cortava
+        // compra ANTIGA (que pode gerar devolucao tardia, e por isso disputa
+        // mesmo); aqui corto so o que veio DEPOIS da nota, que e impossivel.
+        const dataDaNota = String((r.nf && r.nf.dataEmissao) || '').slice(0, 10);
+        const antesDaNota = (u) => {
+          if (!dataDaNota) return true;   // sem data da nota, nao descarto ninguem
+          const dt = String(u.nf_data_emissao || u.criado_em || '').slice(0, 10);
+          return !dt || dt <= dataDaNota;
+        };
+        const irmas = (irmasBrutas || []).filter((u) => antesDaNota(u) && (
           normSku(u.produto_sku) === skuNorm && comparaNome(u.buyer_nome, cliBusca)
         ));
 
