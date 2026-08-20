@@ -1229,6 +1229,27 @@
       catch { return iso; }
     }
 
+    // b333 - o card mostrava a CHAVE DA NF-e no campo "Shipment".
+    //
+    // Ele viu: `Shipment: 35260632461988000182550010000742941897383459` —
+    // 44 digitos, que e chave de acesso da NF-e (a DANFE), nao codigo de
+    // envio. Rastreio de marketplace nunca tem 44 digitos.
+    //
+    // A gravacao guardou a chave nesse campo em algum caminho de origem, e
+    // isso e outra conversa (nao mexo em dado gravado por aqui). O que da
+    // pra corrigir sem risco e a EXIBICAO: se o valor tem cara de chave,
+    // rotular como chave — mostrar "Shipment" e informacao errada na tela
+    // pra quem esta conferindo pacote no galpao.
+    function rotuloShipment(v) {
+      const s = String(v || '').trim();
+      if (!s) return '';
+      const so = s.replace(/\D/g, '');
+      if (so.length === 44) {
+        return ' · <strong>Chave NF-e:</strong> <code>' + escapeHtml(so) + '</code>';
+      }
+      return ' · <strong>Shipment:</strong> <code>' + escapeHtml(s) + '</code>';
+    }
+
     function itemHtmlAprovado(d) {
       const concluido = d.status === 'concluido';
       // b326 - AVISA NO CARD que essa venda JA TEM NF de devolucao no Bling.
@@ -1311,7 +1332,7 @@
             <strong>Cliente:</strong> ${escapeHtml(d.buyer_nome || '-')}<br>
             ${linkPedido(d)}
             ${d.pack_id ? ` · <strong>Pack:</strong> <code>${d.pack_id}</code>` : ''}
-            ${d.shipment_id ? ` · <strong>Shipment:</strong> <code>${d.shipment_id}</code>` : ''}
+            ${rotuloShipment(d.shipment_id)}
           </div>
           ${blocoFotos}${blocoConserto}
           ${concluido ? '' : `
@@ -1366,7 +1387,7 @@
             <strong>Cliente:</strong> ${escapeHtml(d.buyer_nome || '-')}<br>
             ${linkPedido(d)}
             ${d.pack_id ? ` · <strong>Pack:</strong> <code>${d.pack_id}</code>` : ''}
-            ${d.shipment_id ? ` · <strong>Shipment:</strong> <code>${d.shipment_id}</code>` : ''}
+            ${rotuloShipment(d.shipment_id)}
           </div>
           ${desc ? `<div class="descricao-problema">💬 ${escapeHtml(desc)}</div>` : ''}
           ${fotos.length ? `
@@ -1450,7 +1471,7 @@
             <strong>Cliente:</strong> ${escapeHtml(d.buyer_nome || '-')}<br>
             ${linkPedido(d)}
             ${d.pack_id ? ` · <strong>Pack:</strong> <code>${d.pack_id}</code>` : ''}
-            ${d.shipment_id ? ` · <strong>Shipment:</strong> <code>${d.shipment_id}</code>` : ''}
+            ${rotuloShipment(d.shipment_id)}
           </div>
 
           ${desc ? `<div class="descricao-problema" style="border-color:#ce93d8;background:#fff;color:#4a148c;">💬 ${escapeHtml(desc)}</div>` : ''}
