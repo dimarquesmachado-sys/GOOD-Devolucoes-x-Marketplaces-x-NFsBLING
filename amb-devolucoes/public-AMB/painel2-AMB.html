@@ -2398,7 +2398,7 @@
         // Verifica se a extensao Bridge esta instalada/atualizada
         if (!await verificarBridgeInstalada()) {
           throw new Error(
-            'Extensão "GOOD Devoluções Bridge" não detectada. ' +
+            'Extensão de devoluções não detectada (no Firefox da AMB ela se chama "AMBTotal Devoluções Bridge"). ' +
             'Instale/atualize a extensão e recarregue a página (Ctrl+Shift+R).'
           );
         }
@@ -2527,7 +2527,7 @@
           </div>
           <div style="font-size:13px; color:#555; margin-bottom:16px;">
             <strong>Possíveis causas:</strong><br>
-            • Extensão "GOOD Devoluções Bridge" não está instalada<br>
+            • A extensão de devoluções não está instalada ou está desativada<br>
             • Você não está logado no Bling em outra aba<br>
             • A NF original já tem todas devoluções emitidas<br>
             • Bling mudou o endpoint interno (raro)<br><br>
@@ -2624,7 +2624,10 @@
     }
 
     // ============================================================
-    // v3.15.0 - Comunicacao com a Extensao "GOOD Devolucoes Bridge"
+    // v3.15.0 - Comunicacao com a Extensao "Devolucoes Bridge"
+    // b323 - o nome tinha "GOOD" e confundia nas telas da AMB: e a MESMA
+    // extensao pras duas empresas (nasceu na GOOD e nunca foi renomeada).
+    // No Firefox ela se instala como "AMBTotal Devolucoes Bridge".
     // ============================================================
     // A extensao instalada no navegador escuta postMessage e faz
     // chamadas ao Bling com privilegios (sem CORS).
