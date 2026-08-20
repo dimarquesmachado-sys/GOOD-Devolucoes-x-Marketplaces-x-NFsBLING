@@ -700,7 +700,16 @@ module.exports = function criarNfPessoa({ chamarBling, sleep }) {
     };
   }
 
+  // b316 (review do Codex) - EXPOR o comparador de nomes. A rota que confere
+  // "compras irmas" tinha uma copia parecida mas nao igual (minha `normTxt`
+  // mantinha pontuacao e particulas de uma letra, esta aqui troca pontuacao
+  // por espaco e descarta tokens de 1 letra). Com "MARIA D'AVILA" e
+  // "MARIA D AVILA" a nota casava no Bling mas os dois cards nao se
+  // enxergavam — e a nota solta seria aceita nos dois. Uma regra so, num
+  // lugar so.
+
   return {
+    nomesBatem,   // b316 - reaproveitado pela conferencia de compras irmas
     acharNfDevolucaoBling,   // b255
 
     mapItensNF,

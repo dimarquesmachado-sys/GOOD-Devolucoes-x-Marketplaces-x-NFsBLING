@@ -25,6 +25,7 @@ module.exports = function registrarRotasAdminNF(app, deps) {
     tabelaDevolucoes,
     buscarNFsPorNumero,   // b212 - usada pelo raio-x da busca por numero
     buscarNfDevolucaoBling,   // b255
+    nomesBatemNf,   // b316
     listarDepositos,   // b276 - lista VIVA de depositos desta empresa
   } = deps;
 
@@ -1026,24 +1027,18 @@ app.get('/api/admin/nf-devolucao', requerAdmin, async (req, res) => {
         // nos DOIS — exatamente o que esta trava existe pra impedir. Entao
         // trago os candidatos por SKU normalizado e comparo o nome aqui,
         // com a mesma funcao de partes estaveis usada no matcher.
-        const normTxt = (x) => String(x || '').toLowerCase().normalize('NFD')
-          .replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim();
-        const skuNorm = normTxt(skuBusca).toUpperCase();
-        // b314 (review do Codex) - varrer "as 400 primeiras" nao serve: com a
-        // tabela maior que isso, a outra compra pode ficar de fora e o painel
-        // esconderia o botao do card errado. Filtro no BANCO pelo que da
-        // (SKU exato e o caso comum; o normalizado entra na conferencia
-        // abaixo) e, se ainda assim eu bater no teto, trato como truncado.
+        // b316 (review do Codex) - usar o MESMO comparador do casamento, nao
+        // uma copia parecida. A minha versao mantinha pontuacao e particulas
+        // de uma letra; a oficial troca pontuacao por espaco e descarta
+        // tokens de 1 letra. Com "MARIA D'AVILA" e "MARIA D AVILA" a nota
+        // casava no Bling e os dois cards NAO se enxergavam aqui.
+        const normSku = (x) => String(x || '').toLowerCase().normalize('NFD')
+          .replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim().toUpperCase();
+        const skuNorm = normSku(skuBusca);
         const TETO_IRMAS = 500;
         const { data: irmasBrutas, error: erroIrmas } = await supabase
           .from(TAB)
           .select('id, buyer_nome, produto_sku')
-          // b315 (review do Codex) - o filtro do banco casa o SKU EXATO (so
-          // ignora caixa), mas eu comparo normalizado depois. Um registro
-          // gravado com espaco sobrando (" ABC ") era excluido AQUI e nunca
-          // chegava na normalizacao — e as duas compras deixavam de se
-          // enxergar. `%SKU%` traz esses casos; a comparacao normalizada
-          // logo abaixo descarta o que so parecia.
           .ilike('produto_sku', '%' + skuBusca + '%')
           .limit(TETO_IRMAS);
         if (!erroIrmas && (irmasBrutas || []).length >= TETO_IRMAS) {
@@ -1052,18 +1047,13 @@ app.get('/api/admin/nf-devolucao', requerAdmin, async (req, res) => {
             motivo: 'ha registros demais deste SKU pra eu conferir se este cliente tem outra compra igual — confira no Bling antes de gerar',
           });
         }
-        const irmas = (irmasBrutas || []).filter((u) => {
-          if (normTxt(u.produto_sku).toUpperCase() !== skuNorm) return false;
-          const a1 = normTxt(u.buyer_nome).split(' ').filter(Boolean);
-          const b1 = normTxt(cliBusca).split(' ').filter(Boolean);
-          if (!a1.length || !b1.length) return false;
-          // mesmo criterio do matcher: primeiro e ultimo nome iguais, e o
-          // lado menor do meio contido INTEIRO no maior
-          if (a1[0] !== b1[0] || a1[a1.length - 1] !== b1[b1.length - 1]) return false;
-          const m1 = a1.slice(1, -1), m2 = b1.slice(1, -1);
-          const [menor, maior] = m1.length <= m2.length ? [m1, m2] : [m2, m1];
-          return menor.every((t) => maior.includes(t));
-        });
+        const comparaNome = (typeof nomesBatemNf === 'function')
+          ? nomesBatemNf
+          : (x, y) => normSku(x) === normSku(y);   // sem o oficial, exige igualdade
+        const irmas = (irmasBrutas || []).filter((u) => (
+          normSku(u.produto_sku) === skuNorm && comparaNome(u.buyer_nome, cliBusca)
+        ));
+
         if (erroIrmas) {
           return res.json({
             ok: false,

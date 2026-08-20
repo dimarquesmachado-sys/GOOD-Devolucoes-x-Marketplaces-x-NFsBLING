@@ -1571,6 +1571,7 @@ registrarRotasAdminNF(router, {
   mapItensNF: nfp.mapItensNF,
   buscarNFsPorNumero: nfp.buscarNFsPorNumero,   // b212 - raio-x da busca por numero
   buscarNfDevolucaoBling: nfp.acharNfDevolucaoBling,   // b255
+  nomesBatemNf: nfp.nomesBatem,   // b316 - MESMO comparador do casamento
   listarDepositos: bling.listarDepositos,   // b276
 });
 

@@ -1888,7 +1888,15 @@
       // Entao volta a consultar sempre; o que muda e o TEXTO: fora da serie 2
       // o aviso nao menciona Full nem CD do ML (ver montagem do bloco).
       var s = String(serieNFOriginal == null ? '' : serieNFOriginal).trim();
-      var ehFull = (s === '2');
+      // b316 (review do Codex) - a AMB tem MAIS de uma serie de Full, e eu
+      // testava so a 2. Pelo mapa do nf-nomes-AMB: 1 = matriz · 2 = ML Full ·
+      // 3 = Magalu Full venda · 4 = Magalu Full devolucao · 5 = Shopee Full.
+      // Chamar uma venda serie 3 ou 5 de "faturada direto da matriz" e pior
+      // que um texto errado: o mesmo modal inclui estoque, e a peca do Full
+      // muitas vezes NAO volta pra matriz. O aviso de "so lance se a unidade
+      // estiver aqui" tem que aparecer em todas elas.
+      var SERIES_FULL = ['2', '3', '4', '5'];
+      var ehFull = SERIES_FULL.indexOf(s) !== -1;
       if (!cliente && !sku) return null;
       // b304 - sem SKU nao da pra confirmar nada; nao consultar e melhor do
       // que exibir um palpite
