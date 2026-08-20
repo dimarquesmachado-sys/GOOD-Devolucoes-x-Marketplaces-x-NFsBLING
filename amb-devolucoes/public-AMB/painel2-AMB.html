@@ -665,7 +665,7 @@
       lista.innerHTML = '';
       try {
         // 1) monta o indice de pedidos com NF de devolucao
-        var r = await fetch('/api/admin/indice-nf-devolucao?paginas=5');
+        var r = await fetch('/amb/api/admin/indice-nf-devolucao?paginas=6');   // b328 - rota DA AMB (antes chamava a da GOOD)
         var d = await r.json();
         if (!d.ok) { msg.innerHTML = '<span style="color:#c62828;">' + escapeHtml(d.erro || 'erro') + '</span>'; return; }
         window._indiceNFDev = d.pedidos || {};
@@ -1161,6 +1161,23 @@
         ? aprovadas.map(itemHtmlAprovado).join('')
         : '<div class="vazio">Nenhuma devolucao aprovada pendente. 🎉</div>';
 
+      // b328 - carrega o indice DA AMB em segundo plano e redesenha a fila
+      if (aprovadas.length && !window._indiceNFDev && !window._indiceNFDevCarregando) {
+        window._indiceNFDevCarregando = true;
+        fetch('/amb/api/admin/indice-nf-devolucao?paginas=6')
+          .then(function (r) { return r.json(); })
+          .then(function (d) {
+            if (d && d.ok && d.pedidos) {
+              window._indiceNFDev = d.pedidos;
+              const alvo = document.getElementById('listaAprovadas');
+              if (alvo && aprovadas.length) alvo.innerHTML = aprovadas.map(itemHtmlAprovado).join('');
+            }
+          })
+          .catch(function () { /* sem indice, a fila segue como sempre foi */ })
+          .finally(function () { window._indiceNFDevCarregando = false; });
+      }
+
+
       document.getElementById('listaProblemas').innerHTML = problemas.length
         ? problemas.map(itemHtmlProblema).join('')
         : '<div class="vazio">Nenhum problema reportado. 🎉</div>';
@@ -1194,6 +1211,20 @@
 
     function itemHtmlAprovado(d) {
       const concluido = d.status === 'concluido';
+      // b328 - AVISA NO CARD que a venda JA TEM NF de devolucao no Bling
+      // DA AMB (mesma coisa que a b326 fez na GOOD). O indice agora e o da
+      // propria empresa: ate a b328 os paineis da AMB liam o indice da GOOD.
+      const _pedCard = String(d.order_id || d.pedido || '').replace(/\s/g, '');
+      const _nfDev = (_pedCard && window._indiceNFDev) ? window._indiceNFDev[_pedCard] : null;
+      const avisoJaTemNF = _nfDev
+        ? '<div style="background:#e8f5e9;border:1px solid #a5d6a7;border-radius:8px;padding:8px 10px;margin:6px 0;font-size:13px;">'
+          + '✅ <b>Esta venda já tem NF de devolução no Bling</b>'
+          + (_nfDev.numero ? ' — nº ' + escapeHtml(String(_nfDev.numero)) : '')
+          + (_nfDev.id ? ' · <a href="https://www.bling.com.br/notas.entrada.php#edit/' + encodeURIComponent(_nfDev.id) + '" target="_blank">🔗 abrir no Bling</a>' : '')
+          + '<br><span style="font-size:12px;color:#5a7a5e;">Não precisa gerar de novo — se já resolveu, marque como concluído.</span>'
+          + '</div>'
+        : '';
+
       const desc = (d.problema_descricao || '').replace(/^Aprovado por\s+/, '');
 
       // v3.17.0 - detecta se eh devolucao parcial (tem fotos + descricao comeca com [DEVOLUCAO PARCIAL)
@@ -1245,6 +1276,7 @@
             </div>
             ${concluido ? '<span style="background:#999;color:white;padding:3px 8px;border-radius:10px;font-size:10px;font-weight:700;">CONCLUIDO</span>' : ''}
           </div>
+          ${avisoJaTemNF}
           <div class="item-detalhes">
             <strong>${escapeHtml(d.produto_sku || '-')}</strong> ·
             <strong>${d.produto_qtd || '-'} un</strong> ·

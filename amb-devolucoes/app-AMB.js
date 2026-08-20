@@ -1575,6 +1575,79 @@ registrarRotasAdminNF(router, {
   listarDepositos: bling.listarDepositos,   // b276
 });
 
+
+// ═══════════════════════════════════════════════════════════════════
+// b328 - INDICE DE NFs DE DEVOLUCAO **DA AMB**.
+//
+// Achado ao portar o aviso do card (b326/b327): os dois paineis da AMB ja
+// chamavam `/api/admin/indice-nf-devolucao` — que e a rota **DA GOOD**, na
+// raiz. Ou seja, o botao de cruzamento na AMB vinha lendo as notas de
+// entrada da GOOD e cruzando com pedidos da AMB: nunca casaria nada, e se
+// casasse por coincidencia de numero de pedido seria pior ainda.
+//
+// Mesmo erro de familia que a b324 (a AMB usando dado da GOOD), agora numa
+// rota de leitura. Cada empresa consulta o PROPRIO Bling.
+// ═══════════════════════════════════════════════════════════════════
+const NF_DEV_TTL_AMB = 15 * 60 * 1000;
+const NF_DEV_INDICE_AMB = new Map();   // pedido -> { nf, data, contato }
+let NF_DEV_INDICE_TS_AMB = 0;
+let NF_DEV_CARREGANDO_AMB = null;
+
+async function montarIndiceNFDevolucaoAMB(maxPaginas) {
+  if ((Date.now() - NF_DEV_INDICE_TS_AMB) < NF_DEV_TTL_AMB && NF_DEV_INDICE_AMB.size) return;
+  if (NF_DEV_CARREGANDO_AMB) return NF_DEV_CARREGANDO_AMB;
+  NF_DEV_CARREGANDO_AMB = (async () => {
+    const novo = new Map();
+    try {
+      const paginas = Math.min(maxPaginas || 5, 15);
+      // 1) lista as notas de entrada (so id + numero, rapido)
+      const ids = [];
+      for (let p = 1; p <= paginas; p++) {
+        const r = await bling.chamarBling(`/nfe?tipo=1&pagina=${p}&limite=100`);
+        const lista = (r.ok && r.data?.data) || [];
+        if (!lista.length) break;
+        for (const n of lista) ids.push({ id: n.id, numero: n.numero, dataEmissao: n.dataEmissao, contato: n.contato?.nome || null });
+        if (lista.length < 100) break;
+      }
+      // 2) detalha cada nota pra pegar o numeroPedidoLoja (em lotes, com pausa)
+      for (const it of ids) {
+        try {
+          const rD = await bling.chamarBling(`/nfe/${it.id}`);
+          const d = rD.ok ? (rD.data?.data || {}) : {};
+          const pedido = String(d.numeroPedidoLoja || '').replace(/\s/g, '');
+          if (pedido) {
+            novo.set(pedido, {
+              nf: it.numero, data: (it.dataEmissao || '').slice(0, 10),
+              contato: it.contato,
+              sku: (Array.isArray(d.itens) && d.itens[0]) ? d.itens[0].codigo : null,
+              chave: d.chaveAcesso || null,
+            });
+          }
+        } catch (e) { /* pula essa nota */ }
+        await new Promise(r => setTimeout(r, 120));
+      }
+      NF_DEV_INDICE_AMB.clear();
+      for (const [k, v] of novo) NF_DEV_INDICE_AMB.set(k, v);
+      NF_DEV_INDICE_TS_AMB = Date.now();
+    } catch (e) { /* mantem o indice anterior */ }
+    finally { NF_DEV_CARREGANDO_AMB = null; }
+  })();
+  return NF_DEV_CARREGANDO_AMB;
+}
+
+// rota: dispara/consulta o indice. O front chama e depois cruza com o a espreita.
+
+// b328 - rota da AMB, espelhando a da GOOD. O painel da AMB passa a chamar
+// ESTA, e nao mais a da raiz (que le o Bling da GOOD).
+router.get('/api/admin/indice-nf-devolucao', auth.requerLogin, async (req, res) => {
+  try {
+    await montarIndiceNFDevolucaoAMB(Number(req.query.paginas || 5));
+    const mapa = {};
+    for (const [ped, info] of NF_DEV_INDICE_AMB) mapa[ped] = info;
+    return res.json({ ok: true, total: NF_DEV_INDICE_AMB.size, atualizado_em: NF_DEV_INDICE_TS_AMB, pedidos: mapa });
+  } catch (e) { return res.status(500).json({ ok: false, erro: e.message }); }
+});
+
 router.use((req, res) => {
   res.status(404).json({
     ok: false,
