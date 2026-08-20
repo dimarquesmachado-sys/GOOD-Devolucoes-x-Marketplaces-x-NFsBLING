@@ -1895,8 +1895,16 @@
       // que um texto errado: o mesmo modal inclui estoque, e a peca do Full
       // muitas vezes NAO volta pra matriz. O aviso de "so lance se a unidade
       // estiver aqui" tem que aparecer em todas elas.
-      var SERIES_FULL = ['2', '3', '4', '5'];
-      var ehFull = SERIES_FULL.indexOf(s) !== -1;
+      // b318 (regra dele, 19/08) - "cada empresa vai ter uma serie diferente.
+      // e é isso, se tiver mais depois, deixa fluir."
+      //
+      // Entao PARA de listar quais series sao Full. A unica constante entre
+      // as empresas e a regra dele la de cima: **serie 1 e faturamento direto
+      // da matriz, sempre**. Qualquer outra serie e canal de marketplace.
+      // Assim, serie nova (empresa nova, canal novo) ja nasce tratada certo,
+      // sem ninguem lembrar de vir aqui editar uma lista — que era o que ia
+      // acontecer, e o aviso sumiria justo na serie recem-criada.
+      var ehFull = !!s && s !== '1';
       if (!cliente && !sku) return null;
       // b304 - sem SKU nao da pra confirmar nada; nao consultar e melhor do
       // que exibir um palpite

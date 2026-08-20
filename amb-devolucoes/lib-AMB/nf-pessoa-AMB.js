@@ -476,7 +476,14 @@ module.exports = function criarNfPessoa({ chamarBling, sleep }) {
     const partes = (x) => String(x || '')
       .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
       .toUpperCase().replace(/[^A-Z\s]/g, ' ')
-      .split(/\s+/).filter(p => p.length > 1);   // fora "DE", "DA", iniciais
+      .split(/\s+/)
+      // b318 (review do Codex) - o comentario dizia "fora DE, DA" mas o
+      // filtro so tirava tokens de UMA letra: "DE", "DA", "DO", "DOS" tem
+      // duas ou mais e passavam. Ai "MARIA DE SOUZA" x "MARIA SOUZA" tinham
+      // meios diferentes (["DE"] x []) e viravam pessoas diferentes — e sao a
+      // mesma, com o marketplace so abreviando. Agora as particulas saem de
+      // verdade, antes da comparacao.
+      .filter(p => p.length > 1 && !['DE', 'DA', 'DO', 'DAS', 'DOS', 'E'].includes(p));
     const pa = partes(a), pb = partes(b);
     if (!pa.length || !pb.length) return false;
     if (pa.join(' ') === pb.join(' ')) return true;

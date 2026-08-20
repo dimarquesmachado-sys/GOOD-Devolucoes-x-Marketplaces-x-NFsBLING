@@ -1043,9 +1043,13 @@ app.get('/api/admin/nf-devolucao', requerAdmin, async (req, res) => {
           // nf_devolucao_id_bling preenchido) nao disputa esta nota, e usa-la
           // pra declarar ambiguidade fazia o contrario do que deve: soltava a
           // emissao num caso que era unico, arriscando a duplicata.
-          .select('id, buyer_nome, produto_sku, nf_devolucao_id_bling, nf_data, criado_em')
+          // b318 (review do Codex) - (a) a coluna e `nf_data_emissao`; `nf_data`
+          // NAO existe na tabela e eu teria lido undefined em todo registro.
+          // (b) `%` e `_` sao CURINGA no ilike: um SKU com underline casaria
+          // com qualquer caractere ali e traria irma que nao e irma.
+          .select('id, buyer_nome, produto_sku, nf_devolucao_id_bling, nf_data_emissao, criado_em')
           .is('nf_devolucao_id_bling', null)
-          .ilike('produto_sku', '%' + skuBusca + '%')
+          .ilike('produto_sku', '%' + String(skuBusca).replace(/[\\%_]/g, (m) => '\\' + m) + '%')
           .limit(TETO_IRMAS);
         if (!erroIrmas && (irmasBrutas || []).length >= TETO_IRMAS) {
           return res.json({
@@ -1056,15 +1060,12 @@ app.get('/api/admin/nf-devolucao', requerAdmin, async (req, res) => {
         const comparaNome = (typeof nomesBatemNf === 'function')
           ? nomesBatemNf
           : (x, y) => normSku(x) === normSku(y);   // sem o oficial, exige igualdade
-        // b317 - e so conta a irma que cai DENTRO da mesma janela de busca;
-        // fora dela, a nota achada no Bling nem poderia pertencer a ela.
-        const desdeBusca = String(req.query.desde || '').slice(0, 10);
-        const dentroDaJanela = (u) => {
-          if (!desdeBusca) return true;
-          const dt = String(u.nf_data || u.criado_em || '').slice(0, 10);
-          return !dt || dt >= desdeBusca;
-        };
-        const irmas = (irmasBrutas || []).filter((u) => dentroDaJanela(u) && (
+        // b318 (review do Codex) - VOLTEI ATRAS no filtro por janela da b317.
+        // Uma compra ANTIGA pode gerar nota de devolucao tardia, que cai
+        // dentro da janela desta busca — cortar por data devolvia justamente
+        // a ambiguidade real pra debaixo do tapete. O que continua valendo e
+        // o filtro por nota JA vinculada (essa sim nao disputa nada).
+        const irmas = (irmasBrutas || []).filter((u) => (
           normSku(u.produto_sku) === skuNorm && comparaNome(u.buyer_nome, cliBusca)
         ));
 
