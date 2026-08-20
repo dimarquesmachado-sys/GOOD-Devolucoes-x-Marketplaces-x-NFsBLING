@@ -1043,6 +1043,23 @@
       const msg = document.getElementById('alertaMsg');
       if (sel.length === 0) { msg.innerHTML = '<span style="color:#c62828;">Marque pelo menos um.</span>'; return; }
       if (!confirm('Mandar ' + sel.length + ' devolução(ões) pra fila "Aprovadas - aguardando NF"?\n\nElas vão aparecer lá com todos os itens da venda, pra você escolher o depósito e emitir.')) return;
+      // b330 - ESTA FUNCAO NAO EXISTE NA AMB, e e melhor dizer isso do que
+      // deixar dar 404 mudo. A rota `/api/admin/espreita/lancar-nf` so existe
+      // no modulo da GOOD e GRAVA NA TABELA DA GOOD.
+      //
+      // Antes da b329 a chamada ia sem prefixo, ou seja, batia na raiz: dava
+      // 401 (sessao da GOOD faltando) ou — com a GOOD logada no mesmo
+      // navegador — criaria registros de pedidos DA AMB dentro da GOOD. Ou
+      // seja: nunca funcionou aqui, e o jeito de "funcionar" era pior.
+      //
+      // Portar a rota pra AMB e trabalho proprio (consulta o ML e grava
+      // triagem); ate la, aviso claro em vez de erro silencioso.
+      msg.innerHTML = '<span style="color:#c62828;">Esta ação ainda não existe na AMBTotal — só na GOOD. '
+        + 'Por enquanto, lance a devolução pela triagem (bipe) ou pelo card. '
+        + 'Avise o Diego se precisar dela aqui.</span>';
+      return;
+
+      /* eslint-disable no-unreachable */
       msg.innerHTML = '<span style="color:#666;">enviando...</span>';
       try {
         const r = await fetch('/api/admin/espreita/lancar-nf', {
