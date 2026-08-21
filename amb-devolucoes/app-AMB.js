@@ -1452,34 +1452,49 @@ router.get('/nf/entrada/naturezas', admin, async (req, res) => {
       if (lista.length < 100) break;
     }
     // nome da natureza: so pra quem nao veio com descricao na listagem
+    let falhaDetalhe = 0;
     for (const [id, at] of porNatureza) {
       if (at.descricao || id === 'sem_natureza') continue;
       try {
         const rD = await bling.chamarBling(`/nfe/${at.exemplo_id}`);
+        // b336 r2 (Codex #79): chamarBling devolve {ok:false} em vez de lancar.
+        // Sem contar isso, uma natureza cuja descricao diria "devolucao" ficava
+        // com descricao null, aparecia como rejeitada e a rota ainda assim
+        // mandava calibrar — conselho errado com cara de leitura completa.
         if (rD.ok) at.descricao = rD.data?.data?.naturezaOperacao?.descricao || null;
-      } catch (e) { /* sem nome, o id ja resolve */ }
+        else { falhaDetalhe++; at.descricao_indisponivel = true; }
+      } catch (e) { falhaDetalhe++; at.descricao_indisponivel = true; }
       await new Promise(r => setTimeout(r, 120));
     }
 
     const naturezas = [...porNatureza.entries()].map(([id, at]) => ({
       id,
       descricao: at.descricao,
+      descricao_indisponivel: !!at.descricao_indisponivel,
       qtd: at.qtd,
       exemplo_nf: at.exemplo_nf,
       exemplo_contato: at.exemplo_contato,
       // a MESMA regra do indice: id na env OU descricao com "devolu"
       entra_no_aviso: (id !== 'sem_natureza' && idsDevolucao.indexOf(id) >= 0) || /devolu/i.test(String(at.descricao || '')),
+      // b336 r2 (Codex #79): valor pronto POR NATUREZA. Nunca uma env com
+      // TODAS as rejeitadas juntas — isso metia compra de fornecedor,
+      // transferencia e conserto no aviso de uma vez. Quem decide se aquela
+      // natureza e devolucao de cliente e o Diego, uma a uma.
+      se_for_devolucao_de_cliente_use: (id === 'sem_natureza' || (idsDevolucao.indexOf(id) >= 0))
+        ? null
+        : idsDevolucao.concat([id]).join(','),
     })).sort((a, b) => b.qtd - a.qtd);
 
-    const faltando = naturezas.filter(n => !n.entra_no_aviso).map(n => n.id);
+    const incompleto = falhaLista || falhaDetalhe > 0;
     res.json({ ok: true, versao: VERSAO, tipo_lido: tipo, paginas_pedidas: paginas,
-      lista_incompleta: falhaLista,
+      leitura_incompleta: incompleto,
+      falha_na_listagem: falhaLista, descricoes_que_falharam: falhaDetalhe,
       notas_lidas: lidas, canceladas_ou_denegadas: descartadas,
       env_atual: idsDevolucao,
       naturezas,
-      o_que_fazer: faltando.length
-        ? 'se alguma natureza com entra_no_aviso=false for devolucao de cliente, ponha o id dela em AMB_NATUREZAS_DEVOLUCAO_IDS (separado por virgula) no Render: ' + idsDevolucao.concat(faltando).join(',')
-        : 'nada a fazer: toda natureza encontrada ja entra no aviso' });
+      o_que_fazer: incompleto
+        ? 'LEITURA INCOMPLETA (o Bling falhou em parte das consultas) — nao calibre com este resultado, rode de novo daqui a pouco'
+        : 'olhe as naturezas com entra_no_aviso=false: se ALGUMA delas for devolucao de cliente (o exemplo_contato ajuda a reconhecer), cole o campo se_for_devolucao_de_cliente_use dela em AMB_NATUREZAS_DEVOLUCAO_IDS no Render. Uma de cada vez — nao junte todas' });
   } catch (e) {
     res.status(500).json({ ok: false, erro: String(e.message || e) });
   }
