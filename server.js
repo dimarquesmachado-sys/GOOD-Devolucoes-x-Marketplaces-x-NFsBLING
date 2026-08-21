@@ -3865,43 +3865,114 @@ const ESP_CACHE_TTL = 3 * 60 * 1000;   // 3 min: abaixo disso, serve o cache na 
 let NF_DEV_INDICE_TS = 0;
 let NF_DEV_CARREGANDO = null;
 const NF_DEV_TTL = 15 * 60 * 1000;
+// b339 - estados novos do indice (ver comentario do montarIndiceNFDevolucao)
+let NF_DEV_SEM_PEDIDO = [];      // notas de devolucao SEM numero de pedido
+let NF_DEV_IGNORADAS = {};       // natureza -> quantas ficaram de fora
+let NF_DEV_CACHE_OK = false;     // o build terminou (vazio de verdade tambem vale)
 
+/** b339 - INDICE DAS NOTAS DE DEVOLUCAO (GOOD). Fatia 2a de 2 (backend).
+ *
+ *  Ate a b338 este indice lia `tipo=1` CRAVADO. A sonda da b338 mediu nesta
+ *  conta e o resultado foi o mesmo da AMB: **tipo=1 e "Venda de mercadorias -
+ *  Saida"** (200 de 200 notas) e **tipo=0 sao as ENTRADAS** — "Devolucao de
+ *  Mercadoria - Entrada" (173), "Compra de Mercadorias - Entrada" (22, Amazon)
+ *  e "Devolucao de mercadorias" (5). Ou seja: o indice vinha comparando NOTA DE
+ *  VENDA com pedido de devolucao e nunca casou nada — o aviso "ja tem NF" nunca
+ *  funcionou na GOOD, e 178 notas de devolucao ficavam invisiveis.
+ *
+ *  Duas envs (as duas com padrao medido, entao o comportamento nao depende de
+ *  configurar nada):
+ *   - GOOD_NF_ENTRADA_TIPO         (padrao '0')
+ *   - GOOD_NATUREZAS_DEVOLUCAO_IDS (padrao '5776118802,15110882187')
+ *  Tipo=0 traz TAMBEM compra de fornecedor: sem o filtro de natureza, uma
+ *  entrada da Amazon com numero de pedido diria "ja tem NF de devolucao" pra
+ *  uma venda que ainda precisa da nota. O que fica de fora e contado em
+ *  `naturezas_ignoradas`, que a rota expoe — e por ali que se descobre uma
+ *  natureza legitima faltando na env.
+ */
 async function montarIndiceNFDevolucao(maxPaginas) {
-  if ((Date.now() - NF_DEV_INDICE_TS) < NF_DEV_TTL && NF_DEV_INDICE.size) return;
+  // b339 - o guard usava NF_DEV_INDICE.size: se as notas recentes fossem todas
+  // sem pedido, o mapa ficava vazio e CADA request remontava tudo, ignorando o
+  // TTL. A flag diz "o build terminou", independente do formato do resultado.
+  if ((Date.now() - NF_DEV_INDICE_TS) < NF_DEV_TTL && NF_DEV_CACHE_OK) return;
   if (NF_DEV_CARREGANDO) return NF_DEV_CARREGANDO;
   NF_DEV_CARREGANDO = (async () => {
     const novo = new Map();
+    const semPedido = [];
+    const ignoradas = {};
     try {
       const paginas = Math.min(maxPaginas || 5, 15);
+      const tipoEntrada = String(process.env.GOOD_NF_ENTRADA_TIPO || '0');
+      const idsDevolucao = String(process.env.GOOD_NATUREZAS_DEVOLUCAO_IDS || '5776118802,15110882187')
+        .split(',').map((x) => x.trim()).filter(Boolean);
+      const DESCARTAVEL = new Set([2, 9]);   // cancelada e denegada nao valem como "ja tem nota"
+      let falhaLista = false, falhasDetalhe = 0;
+
       // 1) lista as notas de entrada (so id + numero, rapido)
       const ids = [];
       for (let p = 1; p <= paginas; p++) {
-        const r = await chamarBling(`https://api.bling.com.br/Api/v3/nfe?tipo=1&pagina=${p}&limite=100`);
-        const lista = (r.ok && r.data?.data) || [];
+        const r = await chamarBling(`https://api.bling.com.br/Api/v3/nfe?tipo=${tipoEntrada}&pagina=${p}&limite=100`);
+        // chamarBling devolve {ok:false} em vez de lancar: sem esta checagem uma
+        // queda do Bling virava "lista vazia" e o build seguia como se tivesse
+        // dado certo, apagando o indice bom por 15 minutos.
+        if (!r.ok) { falhaLista = true; break; }
+        const lista = r.data?.data || [];
         if (!lista.length) break;
-        for (const n of lista) ids.push({ id: n.id, numero: n.numero, dataEmissao: n.dataEmissao, contato: n.contato?.nome || null });
+        for (const n of lista) {
+          if (DESCARTAVEL.has(Number(n.situacao))) continue;
+          ids.push({ id: n.id, numero: n.numero, serie: n.serie != null ? n.serie : null,
+            dataEmissao: n.dataEmissao, contato: n.contato?.nome || null,
+            situacao: n.situacao, natureza: n.naturezaOperacao || null });
+        }
         if (lista.length < 100) break;
       }
+      // queda logo na listagem: mantem o indice anterior e nao marca cache bom,
+      // pra proxima chamada tentar de novo em vez de servir vazio por 15 min.
+      if (falhaLista && !ids.length) return;
+
       // 2) detalha cada nota pra pegar o numeroPedidoLoja (em lotes, com pausa)
       for (const it of ids) {
         try {
           const rD = await chamarBling(`https://api.bling.com.br/Api/v3/nfe/${it.id}`);
-          const d = rD.ok ? (rD.data?.data || {}) : {};
+          if (!rD.ok) { falhasDetalhe++; await new Promise(r => setTimeout(r, 120)); continue; }
+          const d = rD.data?.data || {};
+          if (DESCARTAVEL.has(Number(d.situacao != null ? d.situacao : it.situacao))) {
+            await new Promise(r => setTimeout(r, 120)); continue;
+          }
+          const nat = d.naturezaOperacao || it.natureza || null;
+          const natId = String((nat && nat.id) || '');
+          const ehDevolucao = (natId && idsDevolucao.indexOf(natId) >= 0)
+            || /devolu/i.test(String((nat && nat.descricao) || ''));
           const pedido = String(d.numeroPedidoLoja || '').replace(/\s/g, '');
-          if (pedido) {
-            novo.set(pedido, {
-              nf: it.numero, data: (it.dataEmissao || '').slice(0, 10),
+          if (!ehDevolucao) {
+            ignoradas[natId || 'sem_natureza'] = (ignoradas[natId || 'sem_natureza'] || 0) + 1;
+          } else {
+            const base = {
+              nf: it.numero, id: String(it.id),
+              serie: it.serie != null ? it.serie : (d.serie != null ? d.serie : null),
+              data: (it.dataEmissao || '').slice(0, 10),
               contato: it.contato,
               sku: (Array.isArray(d.itens) && d.itens[0]) ? d.itens[0].codigo : null,
+              skus: (Array.isArray(d.itens) ? d.itens : []).map(i => String((i && i.codigo) || '').trim()).filter(Boolean),
               chave: d.chaveAcesso || null,
-            });
+              natureza: nat ? { id: nat.id != null ? nat.id : null, descricao: nat.descricao || null } : null,
+            };
+            // forma antiga preservada (nf, data, contato, sku, chave) + campos novos
+            if (pedido) novo.set(pedido, base);
+            else semPedido.push(base);   // fica pronto pro casamento da fatia 2b
           }
-        } catch (e) { /* pula essa nota */ }
+        } catch (e) { falhasDetalhe++; }
         await new Promise(r => setTimeout(r, 120));
       }
       NF_DEV_INDICE.clear();
       for (const [k, v] of novo) NF_DEV_INDICE.set(k, v);
-      NF_DEV_INDICE_TS = Date.now();
+      NF_DEV_SEM_PEDIDO = semPedido;
+      NF_DEV_IGNORADAS = ignoradas;
+      NF_DEV_CACHE_OK = true;
+      // build incompleto vale, mas com validade curta: nem serve resultado
+      // furado por 15 min, nem remonta centenas de notas a cada request.
+      const parcial = falhaLista || falhasDetalhe > 0;
+      NF_DEV_INDICE_TS = parcial ? (Date.now() - NF_DEV_TTL + 2 * 60 * 1000) : Date.now();
     } catch (e) { /* mantem o indice anterior */ }
     finally { NF_DEV_CARREGANDO = null; }
   })();
@@ -3914,7 +3985,13 @@ app.get('/api/admin/indice-nf-devolucao', requerAdmin, async (req, res) => {
     await montarIndiceNFDevolucao(Number(req.query.paginas || 5));
     const mapa = {};
     for (const [ped, info] of NF_DEV_INDICE) mapa[ped] = info;
-    return res.json({ ok: true, total: NF_DEV_INDICE.size, atualizado_em: NF_DEV_INDICE_TS, pedidos: mapa });
+    return res.json({ ok: true, total: NF_DEV_INDICE.size, atualizado_em: NF_DEV_INDICE_TS,
+      tipo_usado: String(process.env.GOOD_NF_ENTRADA_TIPO || '0'),   // b339
+      pedidos: mapa,
+      sem_pedido: NF_DEV_SEM_PEDIDO,                 // b339 - o painel usa na fatia 2b
+      naturezas_ignoradas: NF_DEV_IGNORADAS,         // b339 - calibragem da env
+      cache_ok: NF_DEV_CACHE_OK,
+      idade_ms: Math.max(0, Date.now() - NF_DEV_INDICE_TS) });
   } catch (e) { return res.status(500).json({ ok: false, erro: e.message }); }
 });
 
