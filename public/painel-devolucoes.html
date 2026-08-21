@@ -398,6 +398,19 @@
           if (!document.hidden) carregarEspreita();
         }, 4 * 60 * 1000);
       }
+      // b340 r2 (Codex #83): o frescor do indice de NFs so era testado dentro do
+      // renderizar(), que so roda se alguem mexe na tela. Painel aberto e parado
+      // no galpao ficava com o retrato da primeira carga: uma NF emitida depois
+      // nunca aparecia e o operador podia gerar nota duplicada. Este relogio
+      // revalida sozinho quando o TTL vence.
+      if (!window._nfDevAuto) {
+        window._nfDevAuto = setInterval(function () {
+          if (document.hidden) return;
+          if (window._indiceNFDevCarregando) return;
+          if (_nfDevIndiceFresco()) return;
+          try { renderizar(); } catch (e) { /* tenta de novo no proximo ciclo */ }
+        }, 60 * 1000);
+      }
       carregarRecados();
     }
 
@@ -674,7 +687,11 @@
       lista.innerHTML = '';
       try {
         // 1) monta o indice de pedidos com NF de devolucao
-        var r = await fetch('/api/admin/indice-nf-devolucao?paginas=5');
+        // b340 r2 (Codex #83): 5 -> 6 paginas. Este loader agora marca o indice
+        // como valido; com 5 paginas ele satisfazia o guard do carregador de
+        // fundo (que pede 6) e o servidor ainda guardava o build menor por 15
+        // min — notas da 6a pagina nunca virariam aviso. Mesma cobertura nos dois.
+        var r = await fetch('/api/admin/indice-nf-devolucao?paginas=6');
         var d = await r.json();
         if (!d.ok) { msg.innerHTML = '<span style="color:#c62828;">' + escapeHtml(d.erro || 'erro') + '</span>'; return; }
         window._indiceNFDev = d.pedidos || {};
@@ -1177,7 +1194,20 @@
       // nota que serviria a MAIS DE UM card aberto. Tem que ser a lista INTEIRA,
       // nao a filtrada pela busca/data da tela — senao o filtro esconde um dos
       // dois cards em disputa e o aviso ambiguo aparece no que sobrou.
-      window._cardsParaNfDev = (dados && Array.isArray(dados.aprovadas)) ? dados.aprovadas : aprovadas;
+      // b340 r2 (Codex #83): problemas e divergentes tambem geram/ligam NF de
+      // devolucao, entao uma nota que pertence a um deles pareceria exclusiva
+      // do card aprovado. A disputa considera TODAS as secoes nao concluidas.
+      const _todosCards = []
+        .concat(Array.isArray(dados.aprovadas) ? dados.aprovadas : [])
+        .concat(Array.isArray(dados.problemas) ? dados.problemas : [])
+        .concat(Array.isArray(dados.divergentes) ? dados.divergentes : []);
+      window._cardsParaNfDev = _todosCards.filter(function (c) { return c && c.status !== 'concluido'; });
+      // b340 r2: /api/admin/devolucoes devolve no maximo 1000 registros de
+      // TODOS os tipos. No teto, ha cards abertos fora da lista e a unicidade
+      // deixa de ser verificavel — o casamento cliente+SKU se desliga sozinho.
+      window._nfDevFilaTruncada = (_todosCards.length >= 1000);
+      window._nfDevAvisos = null;   // recomputa uma vez por render
+      _nfDevPrepararAvisos();
 
       document.getElementById('listaAprovadas').innerHTML = aprovadas.length
         ? aprovadas.map(itemHtmlAprovado).join('')
@@ -1210,9 +1240,12 @@
               // A idade vem do servidor pra respeitar o TTL curto de build parcial.
               window._indiceNFDevOk = (d.cache_ok === true);
               window._indiceNFDevTs = Date.now() - (Number(d.idade_ms) || 0);
-              // redesenha so a fila de aprovadas, com os avisos agora disponiveis
-              const alvo = document.getElementById('listaAprovadas');
-              if (alvo && aprovadas.length) alvo.innerHTML = aprovadas.map(itemHtmlAprovado).join('');
+              // b340 r2 (Codex #83): redesenhar com `aprovadas` reescrevia a tela
+              // com o array capturado quando o fetch comecou — se o operador
+              // mexeu no filtro nesse meio tempo, os cards visiveis passavam a
+              // discordar dos controles. renderizar() refaz com os filtros
+              // atuais (e nao redispara este fetch: a flag ja esta marcada).
+              try { renderizar(); } catch (e) { /* fila redesenha no proximo ciclo */ }
             }
           })
           .catch(function () { /* sem indice, a fila segue como sempre foi */ })
@@ -1261,7 +1294,11 @@
         .normalize('NFD').replace(/[\u0300-\u036f]/g, '')  // acentos saem
         .replace(/[^a-z0-9 ]/g, ' ')
         .split(/\s+/)
-        .filter(function (t) { return t && ['de', 'da', 'do', 'das', 'dos', 'e'].indexOf(t) < 0; });
+        .filter(function (t) { return t && ['de', 'da', 'do', 'das', 'dos', 'e'].indexOf(t) < 0; })
+        // b340 r2 (Codex #83): palavras DISTINTAS. Sem isso "Joao Joao" contava
+        // duas em comum com "Joao Silva" e passava no minimo de 2, casando a
+        // venda errada.
+        .filter(function (t, i, arr) { return arr.indexOf(t) === i; });
     }
     // Data de referencia do card. A coluna e `nf_data_emissao` (data da NF de
     // VENDA); quando nao existe sobra `criado_em`, que e a hora da TRIAGEM no
@@ -1310,23 +1347,44 @@
     // So avisa quando o casamento e INEQUIVOCO nos dois sentidos: card com duas
     // notas candidatas nao sabe qual e a dele, e nota que serve a dois cards
     // abertos nao pode dizer "ja resolvido" para os dois.
-    function _achaNfDevPorClienteSku(d) {
-      const cands = _nfDevCandidatas(d);
-      if (cands.length !== 1) return null;
-      const nota = cands[0];
+    // b340 r2 (Codex #83): UMA passada por render, guardada num mapa. Antes cada
+    // card refazia o rescan da fila inteira (visiveis x fila x notas): com ~1000
+    // cards e centenas de notas, o redesenho travava a aba.
+    function _nfDevPrepararAvisos() {
+      const mapa = {};
       const fila = window._cardsParaNfDev || [];
-      var quantosCards = 0;
+      // b340 r2: se a fila veio no teto do endpoint (1000 registros), existem
+      // cards abertos que NAO estamos vendo — nao da pra afirmar unicidade.
+      // Na duvida, nao avisa (o casamento por PEDIDO segue valendo).
+      if (window._nfDevFilaTruncada) { window._nfDevAvisos = mapa; return; }
+      const porCard = [];
+      const contaNota = {};
       for (var i = 0; i < fila.length; i++) {
-        const outro = fila[i];
-        const ped = String(outro.order_id || outro.pedido || '').replace(/\s/g, '');
-        if (ped && window._indiceNFDev && window._indiceNFDev[ped]) continue;   // esse ja casou por pedido
-        const c = _nfDevCandidatas(outro);
-        for (var j = 0; j < c.length; j++) {
-          if (String(c[j].id) === String(nota.id)) { quantosCards++; break; }
+        const c = fila[i];
+        if (c && c.status === 'concluido') continue;   // b340 r2: concluido nao disputa
+        const ped = String(c.order_id || c.pedido || '').replace(/\s/g, '');
+        if (ped && window._indiceNFDev && window._indiceNFDev[ped]) continue;   // ja casou por pedido
+        const cands = _nfDevCandidatas(c);
+        if (!cands.length) continue;
+        porCard.push({ card: c, cands: cands });
+        for (var j = 0; j < cands.length; j++) {
+          const k = String(cands[j].id);
+          contaNota[k] = (contaNota[k] || 0) + 1;
         }
-        if (quantosCards > 1) return null;
       }
-      return nota;
+      for (var x = 0; x < porCard.length; x++) {
+        const item = porCard[x];
+        if (item.cands.length !== 1) continue;               // card com 2 notas: ambiguo
+        const nota = item.cands[0];
+        if (contaNota[String(nota.id)] > 1) continue;        // nota servindo 2 cards: ambiguo
+        if (item.card && item.card.id != null) mapa[String(item.card.id)] = nota;
+      }
+      window._nfDevAvisos = mapa;
+    }
+    function _achaNfDevPorClienteSku(d) {
+      if (!window._nfDevAvisos) _nfDevPrepararAvisos();
+      if (!d || d.id == null) return null;
+      return window._nfDevAvisos[String(d.id)] || null;
     }
 
     function moeda(v) {
