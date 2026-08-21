@@ -699,6 +699,7 @@
         var d = await r.json();
         if (!d.ok) { msg.innerHTML = '<span style="color:#c62828;">' + escapeHtml(d.erro || 'erro') + '</span>'; return; }
         window._indiceNFDev = d.pedidos || {};
+        window._indiceNFDevSemPedido = d.sem_pedido || [];   // b335 - notas do Full (sem pedido)
         var totalIndice = d.total || 0;
 
         // 2) pega o a espreita atual pra cruzar
@@ -1467,6 +1468,7 @@
           .then(function (d) {
             if (d && d.ok && d.pedidos) {
               window._indiceNFDev = d.pedidos;
+              window._indiceNFDevSemPedido = d.sem_pedido || [];   // b335 - notas do Full (sem pedido)
               const alvo = document.getElementById('listaAprovadas');
               if (alvo && aprovadas.length) alvo.innerHTML = aprovadas.map(itemHtmlAprovado).join('');
             }
@@ -1499,6 +1501,44 @@
       if (s == null) return '';
       return String(s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
     }
+
+    // b335 - casamento cliente+SKU pras notas do Full (sem pedido). Regras:
+    // SKU tem que bater EXATO (apos normalizar) E o nome tem que bater com
+    // pelo menos 2 palavras em comum, com um lado inteiro contido no outro
+    // (o marketplace abrevia e cola apelidos entre parenteses — eles saem
+    // antes). Particulas (de/da/do/das/dos/e) tambem saem. Na duvida (uma
+    // palavra so, nota sem SKU), NAO casa — aviso errado e pior que nenhum.
+    function _nfDevTokens(nome) {
+      return String(nome || '')
+        .replace(/\([^)]*\)/g, ' ')
+        .toLowerCase()
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-z0-9 ]/g, ' ')
+        .split(/\s+/)
+        .filter(function (t) { return t && ['de', 'da', 'do', 'das', 'dos', 'e'].indexOf(t) < 0; });
+    }
+    function _achaNfDevPorClienteSku(nomeCard, skuCard) {
+      const lista = window._indiceNFDevSemPedido;
+      if (!Array.isArray(lista) || !lista.length) return null;
+      const sku = String(skuCard || '').trim().toUpperCase();
+      const meus = _nfDevTokens(nomeCard);
+      if (!sku || meus.length < 2) return null;
+      for (var i = 0; i < lista.length; i++) {
+        const n = lista[i];
+        const skus = (n.skus || []).map(function (s) { return String(s || '').trim().toUpperCase(); });
+        if (skus.indexOf(sku) < 0) continue;
+        const dela = _nfDevTokens(n.contato);
+        if (dela.length < 2) continue;
+        const menor = meus.length <= dela.length ? meus : dela;
+        const maior = meus.length <= dela.length ? dela : meus;
+        var todos = true, comuns = 0;
+        for (var j = 0; j < menor.length; j++) {
+          if (maior.indexOf(menor[j]) >= 0) comuns++; else todos = false;
+        }
+        if (todos && comuns >= 2) return n;
+      }
+      return null;
+    }
     function moeda(v) {
       if (v == null) return '-';
       return 'R$ ' + Number(v).toFixed(2).replace('.', ',');
@@ -1515,12 +1555,27 @@
       // DA AMB (mesma coisa que a b326 fez na GOOD). O indice agora e o da
       // propria empresa: ate a b328 os paineis da AMB liam o indice da GOOD.
       const _pedCard = String(d.order_id || d.pedido || '').replace(/\s/g, '');
-      const _nfDev = (_pedCard && window._indiceNFDev) ? window._indiceNFDev[_pedCard] : null;
+      let _nfDev = (_pedCard && window._indiceNFDev) ? window._indiceNFDev[_pedCard] : null;
+      // b335 - FALLBACK pro Full: a NF-e de devolucao importada vem SEM o numero
+      // do pedido (o Bling nao preenche o vinculo), entao o pedido nunca casa.
+      // Casa pelo que a nota TEM: cliente + SKU — os dois precisam bater.
+      let _nfDevVia = 'pedido';
+      if (!_nfDev) {
+        const _achada = _achaNfDevPorClienteSku(d.buyer_nome, d.produto_sku);
+        if (_achada) { _nfDev = _achada; _nfDevVia = 'cliente+sku'; }
+      }
+      // b335 - campos consertados: o indice manda `nf` e (agora) `id` — o aviso
+      // usava `numero`, que nao existia, e saia sem o nº e sem o link.
       const avisoJaTemNF = _nfDev
         ? '<div style="background:#e8f5e9;border:1px solid #a5d6a7;border-radius:8px;padding:8px 10px;margin:6px 0;font-size:13px;">'
           + '✅ <b>Esta venda já tem NF de devolução no Bling</b>'
-          + (_nfDev.numero ? ' — nº ' + escapeHtml(String(_nfDev.numero)) : '')
+          + (_nfDev.nf ? ' — nº ' + escapeHtml(String(_nfDev.nf)) : '')
           + (_nfDev.id ? ' · <a href="https://www.bling.com.br/notas.entrada.php#edit/' + encodeURIComponent(_nfDev.id) + '" target="_blank">🔗 abrir no Bling</a>' : '')
+          + (_nfDevVia === 'cliente+sku'
+              ? '<br><span style="font-size:12px;color:#5a7a5e;">Casada por <b>cliente + SKU</b> (nota sem nº de pedido — padrão do Full'
+                + (_nfDev.serie != null && _nfDev.serie !== '' ? ', série ' + escapeHtml(String(_nfDev.serie)) : '')
+                + '). Confira o nome antes de concluir.</span>'
+              : '')
           + '<br><span style="font-size:12px;color:#5a7a5e;">Não precisa gerar de novo — se já resolveu, marque como concluído.</span>'
           + '</div>'
         : '';

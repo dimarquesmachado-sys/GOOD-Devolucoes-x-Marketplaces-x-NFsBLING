@@ -81,7 +81,7 @@ const criarMlBuscas = require('./lib-AMB/ml-buscas-AMB');
 const registrarIdentificar = require('./lib-AMB/identificar-AMB');
 const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 
-const VERSAO = 'AMB Devolucoes b155';
+const VERSAO = 'AMB Devolucoes b156';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -1606,6 +1606,7 @@ registrarRotasAdminNF(router, {
 // ═══════════════════════════════════════════════════════════════════
 const NF_DEV_TTL_AMB = 15 * 60 * 1000;
 const NF_DEV_INDICE_AMB = new Map();   // pedido -> { nf, data, contato }
+let NF_DEV_SEM_PEDIDO_AMB = [];        // b335 - notas SEM pedido (caso Full): o painel casa por cliente+SKU
 let NF_DEV_INDICE_TS_AMB = 0;
 let NF_DEV_CARREGANDO_AMB = null;
 
@@ -1614,15 +1615,22 @@ async function montarIndiceNFDevolucaoAMB(maxPaginas) {
   if (NF_DEV_CARREGANDO_AMB) return NF_DEV_CARREGANDO_AMB;
   NF_DEV_CARREGANDO_AMB = (async () => {
     const novo = new Map();
+    const semPedido = [];
     try {
       const paginas = Math.min(maxPaginas || 5, 15);
+      // b335 - o TIPO vem da MESMA env do indice da espreita (AMB_NF_ENTRADA_TIPO,
+      // padrao '0'). A sonda /amb/nf/entrada/sonda de 20/08 provou nesta conta:
+      // tipo=0 lista as ENTRADAS (devolucoes, inclusive as da MAGALU LOG do Full)
+      // e tipo=1 lista as VENDAS — ate a b334 este indice usava tipo=1 cravado,
+      // ou seja, indexava VENDA achando que era devolucao (o aviso nunca casava).
+      const tipoEntrada = String(process.env.AMB_NF_ENTRADA_TIPO || '0');
       // 1) lista as notas de entrada (so id + numero, rapido)
       const ids = [];
       for (let p = 1; p <= paginas; p++) {
-        const r = await bling.chamarBling(`/nfe?tipo=1&pagina=${p}&limite=100`);
+        const r = await bling.chamarBling(`/nfe?tipo=${tipoEntrada}&pagina=${p}&limite=100`);
         const lista = (r.ok && r.data?.data) || [];
         if (!lista.length) break;
-        for (const n of lista) ids.push({ id: n.id, numero: n.numero, dataEmissao: n.dataEmissao, contato: n.contato?.nome || null });
+        for (const n of lista) ids.push({ id: n.id, numero: n.numero, serie: n.serie != null ? n.serie : null, dataEmissao: n.dataEmissao, contato: n.contato?.nome || null });
         if (lista.length < 100) break;
       }
       // 2) detalha cada nota pra pegar o numeroPedidoLoja (em lotes, com pausa)
@@ -1631,19 +1639,34 @@ async function montarIndiceNFDevolucaoAMB(maxPaginas) {
           const rD = await bling.chamarBling(`/nfe/${it.id}`);
           const d = rD.ok ? (rD.data?.data || {}) : {};
           const pedido = String(d.numeroPedidoLoja || '').replace(/\s/g, '');
+          // b335 - a base carrega TUDO que o aviso precisa: id (link pro Bling),
+          // serie, os SKUs de todos os itens e a natureza — de graca, o detalhe
+          // ja estava na mao (era jogado fora quando o pedido vinha vazio).
+          const nat = d.naturezaOperacao || null;
+          const base = {
+            nf: it.numero, id: String(it.id),
+            serie: it.serie != null ? it.serie : (d.serie != null ? d.serie : null),
+            data: (it.dataEmissao || '').slice(0, 10),
+            contato: it.contato,
+            sku: (Array.isArray(d.itens) && d.itens[0]) ? d.itens[0].codigo : null,
+            skus: (Array.isArray(d.itens) ? d.itens : []).map(i => String((i && i.codigo) || '').trim()).filter(Boolean),
+            chave: d.chaveAcesso || null,
+            natureza: nat ? { id: nat.id != null ? nat.id : null, descricao: nat.descricao || null } : null,
+          };
           if (pedido) {
-            novo.set(pedido, {
-              nf: it.numero, data: (it.dataEmissao || '').slice(0, 10),
-              contato: it.contato,
-              sku: (Array.isArray(d.itens) && d.itens[0]) ? d.itens[0].codigo : null,
-              chave: d.chaveAcesso || null,
-            });
+            novo.set(pedido, base);
+          } else {
+            // b335 - nota SEM pedido (caso Full: o Bling importa a NF-e sem o
+            // vinculo — campos de referencia vem nulos desde julho). E daqui
+            // que o painel casa por cliente+SKU.
+            semPedido.push(base);
           }
         } catch (e) { /* pula essa nota */ }
         await new Promise(r => setTimeout(r, 120));
       }
       NF_DEV_INDICE_AMB.clear();
       for (const [k, v] of novo) NF_DEV_INDICE_AMB.set(k, v);
+      NF_DEV_SEM_PEDIDO_AMB = semPedido;   // b335
       NF_DEV_INDICE_TS_AMB = Date.now();
     } catch (e) { /* mantem o indice anterior */ }
     finally { NF_DEV_CARREGANDO_AMB = null; }
@@ -1660,7 +1683,10 @@ router.get('/api/admin/indice-nf-devolucao', auth.requerLogin, async (req, res) 
     await montarIndiceNFDevolucaoAMB(Number(req.query.paginas || 5));
     const mapa = {};
     for (const [ped, info] of NF_DEV_INDICE_AMB) mapa[ped] = info;
-    return res.json({ ok: true, total: NF_DEV_INDICE_AMB.size, atualizado_em: NF_DEV_INDICE_TS_AMB, pedidos: mapa });
+    return res.json({ ok: true, total: NF_DEV_INDICE_AMB.size, atualizado_em: NF_DEV_INDICE_TS_AMB,
+      tipo_usado: String(process.env.AMB_NF_ENTRADA_TIPO || '0'),   // b335
+      pedidos: mapa,
+      sem_pedido: NF_DEV_SEM_PEDIDO_AMB });   // b335 - notas sem vinculo (Full): o painel casa por cliente+SKU
   } catch (e) { return res.status(500).json({ ok: false, erro: e.message }); }
 });
 
