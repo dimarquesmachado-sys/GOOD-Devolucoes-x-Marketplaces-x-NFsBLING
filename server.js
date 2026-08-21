@@ -1407,6 +1407,234 @@ app.post('/api/admin/renovar-token-bling', async (req, res) => {
   res.json({ ok, timestamp: new Date().toISOString() });
 });
 
+// ═══════════════════════════════════════════════════════════════════
+// b338 - SONDAS DE LEITURA das notas de ENTRADA (GOOD). Fatia 1 de 2.
+//
+// Na AMB (b335) descobrimos que o indice do aviso "ja tem NF de devolucao"
+// usava `tipo=1` CRAVADO — e a sonda provou, naquela conta, que tipo=1 lista
+// VENDAS e tipo=0 lista ENTRADAS. Ou seja: o indice indexava venda achando
+// que era devolucao e o aviso nunca casava nada.
+//
+// O `montarIndiceNFDevolucao` daqui tem o MESMO tipo=1 cravado, mas a GOOD e
+// outro CNPJ e outra conta no Bling: o numero do tipo pode nao ser igual.
+// Estas duas rotas so LEEM, pra medir antes de mexer — nenhuma altera o
+// indice, o painel ou emissao. O conserto vem na fatia 2, depois de ver o
+// resultado real.
+// ═══════════════════════════════════════════════════════════════════
+
+// Quais tipos existem e o que cada um lista (amostra pequena, resposta rapida).
+app.get('/api/nf/entrada/sonda', async (req, res) => {
+  if (!adminOk(req)) return res.status(404).send('Not found'); // protegido: exige ?k=ADMIN_KEY
+  try {
+    const tipos = {};
+    const erros = {};
+    let falhouAlgum = false;
+    for (const t of [0, 1, 2, 3]) {
+      const r = await chamarBling(`https://api.bling.com.br/Api/v3/nfe?tipo=${t}&pagina=1&limite=6`);
+      const lista = (r.ok && r.data?.data) || [];
+      // b338 r2 (Codex #81): {ok:false} (429 esgotado, auth, timeout, rede)
+      // virava "amostra vazia" e o operador podia concluir que aquele tipo nao
+      // existe — escolhendo o tipo errado pro conserto do indice. Falha em
+      // QUALQUER tipo marca a sonda inteira como incompleta.
+      if (!r.ok) { falhouAlgum = true; erros['tipo_' + t] = r.erro || ('status ' + (r.status || 'sem resposta')); }
+      tipos['tipo_' + t] = {
+        http: r.status || null,
+        leitura_ok: !!r.ok,
+        qtd_na_pagina: lista.length,
+        amostra: lista.slice(0, 5).map((n) => ({
+          numero: n.numero,
+          natureza: n.naturezaOperacao || null,
+          contato: n.contato?.nome || null,
+          data: n.dataEmissao || null,
+        })),
+      };
+    }
+    return res.json({ ok: true, empresa: 'GOOD',
+      procure: 'o tipo cujas amostras tenham CLIENTE devolvendo (entradas); o outro sera o de VENDAS',
+      atencao: 'o indice do aviso hoje usa tipo=1 cravado — se aqui tipo=1 for VENDA, o aviso nunca casou nada nesta conta',
+      leitura_incompleta: falhouAlgum,
+      erros_por_tipo: falhouAlgum ? erros : null,
+      o_que_fazer: falhouAlgum
+        ? 'UM OU MAIS TIPOS NAO FORAM LIDOS (ver erros_por_tipo) — tipo sem amostra aqui pode ser falha, nao ausencia; rode de novo antes de concluir qual e o de entrada'
+        : 'compare as amostras e mande o resultado pro Claude',
+      tipos });
+  } catch (e) { return res.status(500).json({ ok: false, erro: e.message }); }
+});
+
+// Inventario das naturezas das notas de entrada, com NOME vindo do catalogo.
+// (Na AMB o Bling nao manda `naturezaOperacao.descricao` nem na listagem nem
+//  no detalhe; o nome so existe em /naturezas-operacoes — b337.)
+const NF_NAT_CACHE_GOOD = new Map();   // idDaNota -> { id, descricao, em }
+const NF_NAT_CACHE_GOOD_MAX = 3000;
+const NF_NAT_CACHE_GOOD_TTL = 6 * 60 * 60 * 1000;   // rascunho ainda pode trocar de natureza
+function guardarNaturezaGood(idNota, natId, natDesc) {
+  if (!natId) return;                                 // nao resolvida: nao vira cache
+  NF_NAT_CACHE_GOOD.set(String(idNota), { id: natId, descricao: natDesc, em: Date.now() });
+  while (NF_NAT_CACHE_GOOD.size > NF_NAT_CACHE_GOOD_MAX) {
+    NF_NAT_CACHE_GOOD.delete(NF_NAT_CACHE_GOOD.keys().next().value);
+  }
+}
+// b338 r2 (Codex #81): nota que o Bling devolveu SEM natureza nao entra no
+// cache (o valor nao esta resolvido), mas gastava uma vaga do orcamento a cada
+// rodada — 40 rascunhos assim travavam pra sempre as notas seguintes, apesar de
+// a resposta prometer que "cada rodada avanca". O marcador diz "esta ja foi
+// tentada agora ha pouco": ela nao gasta vaga de novo, e volta a ser tentada
+// quando o marcador vence.
+const NF_NAT_TENTADA_GOOD = new Map();   // idDaNota -> ts
+const NF_NAT_TENTADA_TTL = 30 * 60 * 1000;
+function tentadaRecenteGood(idNota) {
+  const ts = NF_NAT_TENTADA_GOOD.get(String(idNota));
+  if (!ts) return false;
+  if ((Date.now() - ts) > NF_NAT_TENTADA_TTL) { NF_NAT_TENTADA_GOOD.delete(String(idNota)); return false; }
+  return true;
+}
+function marcarTentadaGood(idNota) {
+  NF_NAT_TENTADA_GOOD.set(String(idNota), Date.now());
+  while (NF_NAT_TENTADA_GOOD.size > NF_NAT_CACHE_GOOD_MAX) {
+    NF_NAT_TENTADA_GOOD.delete(NF_NAT_TENTADA_GOOD.keys().next().value);
+  }
+}
+
+function naturezaDoCacheGood(idNota) {
+  const at = NF_NAT_CACHE_GOOD.get(String(idNota));
+  if (!at) return null;
+  if ((Date.now() - at.em) > NF_NAT_CACHE_GOOD_TTL) { NF_NAT_CACHE_GOOD.delete(String(idNota)); return null; }
+  return at;
+}
+
+app.get('/api/nf/entrada/naturezas', async (req, res) => {
+  if (!adminOk(req)) return res.status(404).send('Not found'); // protegido: exige ?k=ADMIN_KEY
+  try {
+    const tipo = String(req.query.tipo != null ? req.query.tipo : '0');
+    // b338 r2 (Codex #81): ?paginas=0, negativo ou texto virava laco que nao
+    // roda nenhuma vez, e a rota devolvia inventario VAZIO com cara de completo
+    // — e e desse inventario que sai a calibragem de producao.
+    const paginasBrutas = Math.floor(Number(req.query.paginas));
+    const paginas = Math.min(Number.isFinite(paginasBrutas) && paginasBrutas >= 1 ? paginasBrutas : 6, 15);
+    const DESCARTAVEL = new Set([2, 9]);                // cancelada e denegada nao contam
+    const porNatureza = new Map();
+    let falhaLista = false, falhaDetalhe = 0, lidas = 0, descartadas = 0;
+    const semNatureza = [];
+
+    for (let p = 1; p <= paginas; p++) {
+      const r = await chamarBling(`https://api.bling.com.br/Api/v3/nfe?tipo=${tipo}&pagina=${p}&limite=100`);
+      if (!r.ok) { falhaLista = true; break; }         // chamarBling devolve {ok:false}, nao lanca
+      const lista = r.data?.data || [];
+      if (!lista.length) break;
+      for (const n of lista) {
+        if (DESCARTAVEL.has(Number(n.situacao))) { descartadas++; continue; }
+        lidas++;
+        const nat = n.naturezaOperacao || null;
+        const id = nat && nat.id != null ? String(nat.id) : null;
+        if (!id) { semNatureza.push({ id: n.id, numero: n.numero, contato: n.contato?.nome || null }); continue; }
+        const at = porNatureza.get(id) || { qtd: 0, exemplo_nf: n.numero, exemplo_contato: n.contato?.nome || null, descricao_nota: (nat && nat.descricao) || null };
+        at.qtd++;
+        if (!at.descricao_nota && nat && nat.descricao) at.descricao_nota = nat.descricao;
+        porNatureza.set(id, at);
+      }
+      if (lista.length < 100) break;
+    }
+
+    // notas cuja natureza so aparece no detalhe: orcamento por rodada, e o que
+    // ja foi resolvido fica guardado — rodadas seguintes SOMAM (licao da b336).
+    const TETO = 40;
+    let orcamento = TETO, naoLidas = 0, doCache = 0, semClassificacao = 0;
+    for (const nota of semNatureza) {
+      let natId = null, natDesc = null;
+      const emCache = naturezaDoCacheGood(nota.id);
+      if (emCache) { natId = emCache.id; natDesc = emCache.descricao; doCache++; }
+      else if (tentadaRecenteGood(nota.id)) {
+        // ja tentada ha pouco e voltou sem natureza: nao gasta vaga (r2)
+      } else if (orcamento > 0) {
+        orcamento--;
+        const rD = await chamarBling(`https://api.bling.com.br/Api/v3/nfe/${nota.id}`);
+        if (rD.ok) {
+          const nat = rD.data?.data?.naturezaOperacao || null;
+          natId = nat && nat.id != null ? String(nat.id) : null;
+          natDesc = (nat && nat.descricao) || null;
+          if (natId) guardarNaturezaGood(nota.id, natId, natDesc);
+          else marcarTentadaGood(nota.id);   // lida, mas segue sem classificacao
+        } else falhaDetalhe++;
+        await new Promise((r) => setTimeout(r, 120));
+      } else { naoLidas++; continue; }
+      if (!natId) semClassificacao++;
+      const chave = natId || 'sem_natureza';
+      const at = porNatureza.get(chave) || { qtd: 0, exemplo_nf: nota.numero, exemplo_contato: nota.contato, descricao_nota: natDesc };
+      at.qtd++;
+      if (!at.descricao_nota && natDesc) at.descricao_nota = natDesc;
+      porNatureza.set(chave, at);
+    }
+
+    // nome de exibicao: catalogo do Bling
+    let catalogoOk = false, catalogoErro = null, semNome = 0;
+    try {
+      const rCat = await blingClient.listarNaturezas(false);
+      if (rCat.ok) {
+        catalogoOk = true;
+        const porId = new Map((rCat.naturezas || []).map((n) => [String(n.id), n.descricao]));
+        for (const [id, at] of porNatureza) {
+          if (id === 'sem_natureza') continue;
+          const bruto = porId.get(String(id));
+          // a lib troca descricao vazia pelo rotulo sintetico "natureza <id>",
+          // que nao identifica nada — trata-se como ausencia (b337 r4)
+          const nome = (bruto && bruto !== ('natureza ' + id)) ? bruto : null;
+          if (nome) { at.descricao = nome; at.descricao_via = 'catalogo'; }
+          else if (at.descricao_nota) { at.descricao = at.descricao_nota; at.descricao_via = 'nota'; }
+          else { at.descricao_indisponivel = true; semNome++; }
+        }
+      } else catalogoErro = rCat.erro || ('status ' + rCat.status);
+    } catch (e) { catalogoErro = String(e.message || e); }
+    if (!catalogoOk) {
+      for (const [id, at] of porNatureza) {
+        if (id === 'sem_natureza') continue;
+        if (!at.descricao && at.descricao_nota) { at.descricao = at.descricao_nota; at.descricao_via = 'nota'; }
+        if (!at.descricao) at.descricao_indisponivel = true;
+      }
+    }
+
+    const naturezas = [...porNatureza.entries()].map(([id, at]) => ({
+      id,
+      descricao: at.descricao || null,
+      descricao_via: at.descricao_via || null,
+      descricao_da_nota: at.descricao_nota || null,
+      descricao_indisponivel: !!at.descricao_indisponivel,
+      qtd: at.qtd,
+      exemplo_nf: at.exemplo_nf,
+      exemplo_contato: at.exemplo_contato,
+      parece_devolucao_pelo_nome: /devolu/i.test(String(at.descricao || '')),
+    })).sort((a, b) => b.qtd - a.qtd);
+
+    // b338 r2 (Codex #81): nota lida com sucesso mas que segue SEM natureza cai
+    // no grupo `sem_natureza`, que o passe do catalogo pula — falhaDetalhe,
+    // naoLidas e semNome ficavam zerados e o resultado se declarava completo
+    // com notas nao identificadas dentro.
+    const grupoSemNatureza = porNatureza.get('sem_natureza');
+    const naoClassificadas = grupoSemNatureza ? grupoSemNatureza.qtd : 0;
+    const incompleto = falhaLista || falhaDetalhe > 0 || naoLidas > 0 || !catalogoOk || semNome > 0 || naoClassificadas > 0;
+    return res.json({ ok: true, empresa: 'GOOD', tipo_lido: tipo, paginas_pedidas: paginas,
+      leitura_incompleta: incompleto,
+      falha_na_listagem: falhaLista, descricoes_que_falharam: falhaDetalhe,
+      catalogo_de_naturezas_ok: catalogoOk, catalogo_erro: catalogoErro,
+      naturezas_sem_nome_no_catalogo: semNome,
+      notas_sem_natureza_nenhuma: naoClassificadas, tentadas_sem_sucesso: semClassificacao,
+      sem_natureza_total: semNatureza.length, sem_natureza_ja_resolvidas: doCache, sem_natureza_nao_lidas: naoLidas,
+      notas_lidas: lidas, canceladas_ou_denegadas: descartadas,
+      naturezas,
+      o_que_fazer: !catalogoOk
+        ? 'SEM O CATALOGO (o Bling nao respondeu /naturezas-operacoes) — as naturezas ficam sem nome; rode de novo daqui a pouco'
+        : (falhaLista || falhaDetalhe > 0)
+        ? 'LEITURA INCOMPLETA — o Bling falhou em parte das consultas; rode de novo daqui a pouco'
+        : naoLidas > 0
+        ? `FALTA LER ${naoLidas} nota(s) (nao e erro do Bling): abra ESTA MESMA URL de novo — cada rodada avanca e SOMA com as anteriores.`
+          + (naoClassificadas > 0 ? ` E ATENCAO: ${naoClassificadas} nota(s) ja lidas seguem SEM natureza nenhuma — NAO calibre com este resultado.` : '')
+        : semNome > 0
+        ? `${semNome} natureza(s) em uso NAO tem nome (nem no catalogo, nem na nota) — NAO calibre com este resultado: nao da pra saber o que elas representam`
+        : naoClassificadas > 0
+        ? `${naoClassificadas} nota(s) foram lidas mas continuam SEM natureza nenhuma — NAO calibre ainda; me mande o resultado assim mesmo que eu analiso`
+        : 'ESTA ROTA SO MEDE. Mande o resultado pro Claude: com o tipo certo e a lista de naturezas em maos, a fatia 2 conserta o indice do aviso e cria a env de calibragem da GOOD' });
+  } catch (e) { return res.status(500).json({ ok: false, erro: e.message }); }
+});
+
 // ============================================================
 // DEBUG
 // ============================================================
