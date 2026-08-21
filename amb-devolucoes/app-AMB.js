@@ -1641,20 +1641,43 @@ async function montarIndiceNFDevolucaoAMB(maxPaginas) {
       const idsDevolucao = String(process.env.AMB_NATUREZAS_DEVOLUCAO_IDS || process.env.AMB_NATUREZA_DEVOLUCAO || '15110882041')
         .split(',').map(s => s.trim()).filter(Boolean);
       const ignoradas = {};
+      // b335 r3 (Codex #78): NF CANCELADA (2) e DENEGADA (9) nao valem como
+      // "ja tem nota" — o admin-helpers-AMB ja trata as duas como descartaveis
+      // (nfeViva). Se entrassem, o operador leria "nao precisa gerar de novo"
+      // e o cliente ficaria sem a nota valida.
+      const NFE_DESCARTAVEL = new Set([2, 9]);
+      const nfeViva = (n) => !NFE_DESCARTAVEL.has(Number(n && n.situacao));
+      let falhaLista = false;
+      let falhasDetalhe = 0;
       // 1) lista as notas de entrada (so id + numero, rapido)
       const ids = [];
       for (let p = 1; p <= paginas; p++) {
         const r = await bling.chamarBling(`/nfe?tipo=${tipoEntrada}&pagina=${p}&limite=100`);
-        const lista = (r.ok && r.data?.data) || [];
+        // b335 r3 (Codex #78): o chamarBling NAO joga excecao — devolve
+        // {ok:false}. Sem esta checagem uma queda do Bling virava "lista vazia"
+        // e o build seguia como se tivesse dado certo.
+        if (!r.ok) { falhaLista = true; break; }
+        const lista = r.data?.data || [];
         if (!lista.length) break;
-        for (const n of lista) ids.push({ id: n.id, numero: n.numero, serie: n.serie != null ? n.serie : null, dataEmissao: n.dataEmissao, contato: n.contato?.nome || null });
+        for (const n of lista) {
+          if (!nfeViva(n)) continue;   // b335 r3 - cancelada/denegada nem detalha
+          ids.push({ id: n.id, numero: n.numero, serie: n.serie != null ? n.serie : null, dataEmissao: n.dataEmissao, contato: n.contato?.nome || null, situacao: n.situacao });
+        }
         if (lista.length < 100) break;
       }
+      // b335 r3 - queda na listagem: mantem o indice anterior e NAO marca cache
+      // valido, pra proxima chamada tentar de novo em vez de servir vazio por 15min.
+      if (falhaLista && !ids.length) return;
       // 2) detalha cada nota pra pegar o numeroPedidoLoja (em lotes, com pausa)
       for (const it of ids) {
         try {
           const rD = await bling.chamarBling(`/nfe/${it.id}`);
-          const d = rD.ok ? (rD.data?.data || {}) : {};
+          // b335 r3 (Codex #78): detalhe que falhou nao pode virar nota "sem
+          // pedido" — sem o numeroPedidoLoja ela cairia no casamento por
+          // cliente+SKU sem nunca ter sido lida. Pula e conta a falha.
+          if (!rD.ok) { falhasDetalhe++; await new Promise(r => setTimeout(r, 120)); continue; }
+          const d = rD.data?.data || {};
+          if (!nfeViva({ situacao: d.situacao != null ? d.situacao : it.situacao })) { await new Promise(r => setTimeout(r, 120)); continue; }
           const pedido = String(d.numeroPedidoLoja || '').replace(/\s/g, '');
           // b335 - a base carrega TUDO que o aviso precisa: id (link pro Bling),
           // serie, os SKUs de todos os itens e a natureza — de graca, o detalhe
@@ -1690,8 +1713,12 @@ async function montarIndiceNFDevolucaoAMB(maxPaginas) {
       for (const [k, v] of novo) NF_DEV_INDICE_AMB.set(k, v);
       NF_DEV_SEM_PEDIDO_AMB = semPedido;   // b335
       NF_DEV_IGNORADAS_AMB = ignoradas;    // b335 r2
-      NF_DEV_CACHE_OK_AMB = true;          // b335 r2
-      NF_DEV_INDICE_TS_AMB = Date.now();
+      NF_DEV_CACHE_OK_AMB = true;          // b335 r2 - build terminou (vazio de verdade tambem vale)
+      // b335 r3 (Codex #78): build INCOMPLETO (Bling caiu no meio) vale, mas
+      // com validade curta — 2 min em vez de 15. Nem serve resultado furado
+      // por 15 minutos, nem remonta 600 notas a cada request.
+      const parcial = falhaLista || falhasDetalhe > 0;
+      NF_DEV_INDICE_TS_AMB = parcial ? (Date.now() - NF_DEV_TTL_AMB + 2 * 60 * 1000) : Date.now();
     } catch (e) { /* mantem o indice anterior */ }
     finally { NF_DEV_CARREGANDO_AMB = null; }
   })();
@@ -1711,7 +1738,8 @@ router.get('/api/admin/indice-nf-devolucao', auth.requerLogin, async (req, res) 
       tipo_usado: String(process.env.AMB_NF_ENTRADA_TIPO || '0'),   // b335
       pedidos: mapa,
       sem_pedido: NF_DEV_SEM_PEDIDO_AMB,   // b335 - notas sem vinculo (Full): o painel casa por cliente+SKU
-      naturezas_ignoradas: NF_DEV_IGNORADAS_AMB });   // b335 r2 - entradas fora do casamento, contadas por natureza
+      naturezas_ignoradas: NF_DEV_IGNORADAS_AMB,   // b335 r2 - entradas fora do casamento, contadas por natureza
+      cache_ok: NF_DEV_CACHE_OK_AMB });   // b335 r3 - false = o Bling falhou e nao ha indice confiavel ainda
   } catch (e) { return res.status(500).json({ ok: false, erro: e.message }); }
 });
 
