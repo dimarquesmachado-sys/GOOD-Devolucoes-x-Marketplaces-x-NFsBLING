@@ -81,7 +81,7 @@ const criarMlBuscas = require('./lib-AMB/ml-buscas-AMB');
 const registrarIdentificar = require('./lib-AMB/identificar-AMB');
 const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 
-const VERSAO = 'AMB Devolucoes b156';
+const VERSAO = 'AMB Devolucoes b157';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -1420,6 +1420,180 @@ router.get('/nf/entrada/sonda', admin, async (req, res) => {
     tipos: await nfEntrada.sondarTipos() });
 });
 
+/** b336 - Calibragem do aviso "ja tem NF de devolucao": QUAIS naturezas
+ *  aparecem nas notas de ENTRADA e quais delas o aviso aceita hoje.
+ *  Diferente de /api/admin/indice-nf-devolucao (que abre nota por nota e leva
+ *  minutos), esta so LISTA — responde em segundos e nao precisa de login.
+ *  A descricao da natureza nao vem na listagem do Bling, entao detalhamos UMA
+ *  nota por natureza (punhado de chamadas) so pra dar nome ao id. */
+/** b336 r5 - o que ja foi descoberto sobre a natureza de uma nota fica aqui,
+ *  pra que rodadas seguintes da calibragem SOMEM em vez de recomecar. Teto
+ *  simples: passou do limite, esquece as mais antigas (Map guarda a ordem de
+ *  insercao).
+ *  b336 r6 (Codex #79): eu tinha escrito "natureza de nota emitida nao muda" e
+ *  dispensado validade — mas esta rota so descarta cancelada/denegada, entao
+ *  RASCUNHO entra, e nele a natureza ainda pode ser preenchida ou trocada no
+ *  Bling depois. Duas defesas: valor nao resolvido (null) nao e guardado, e o
+ *  que fica guardado vence em 6h, revalidando sozinho. */
+const NF_NAT_CACHE_AMB = new Map();   // idDaNota -> { id, descricao, em }
+const NF_NAT_CACHE_MAX = 3000;
+const NF_NAT_CACHE_TTL = 6 * 60 * 60 * 1000;
+function guardarNaturezaAMB(idNota, natId, natDesc) {
+  if (!natId) return;   // b336 r6 - nao resolvida: nao vira cache
+  NF_NAT_CACHE_AMB.set(String(idNota), { id: natId, descricao: natDesc, em: Date.now() });
+  while (NF_NAT_CACHE_AMB.size > NF_NAT_CACHE_MAX) {
+    NF_NAT_CACHE_AMB.delete(NF_NAT_CACHE_AMB.keys().next().value);
+  }
+}
+function naturezaDoCacheAMB(idNota) {
+  const at = NF_NAT_CACHE_AMB.get(String(idNota));
+  if (!at) return null;
+  if ((Date.now() - at.em) > NF_NAT_CACHE_TTL) { NF_NAT_CACHE_AMB.delete(String(idNota)); return null; }
+  return at;
+}
+
+router.get('/nf/entrada/naturezas', admin, async (req, res) => {
+  try {
+    const tipo = String(req.query.tipo != null ? req.query.tipo : (process.env.AMB_NF_ENTRADA_TIPO || '0'));
+    // b336 r3 (Codex #79): o padrao e 6 paginas porque e ASSIM que o painel
+    // monta o indice de verdade (painel-AMB.html chama ?paginas=6). Calibrar
+    // com 3 podia esconder uma natureza que so aparece nas paginas 4-6 e
+    // ainda assim dizer que a leitura foi completa.
+    const paginas = Math.min(Math.max(Number(req.query.paginas) || 6, 1), 10);
+    const idsDevolucao = String(process.env.AMB_NATUREZAS_DEVOLUCAO_IDS || process.env.AMB_NATUREZA_DEVOLUCAO || '15110882041')
+      .split(',').map(s => s.trim()).filter(Boolean);
+    const NFE_DESCARTAVEL = new Set([2, 9]);
+
+    const porNatureza = new Map();   // id -> { qtd, exemplo_nf, exemplo_id, exemplo_contato, descricao }
+    let lidas = 0, descartadas = 0, falhaLista = false;
+    for (let p = 1; p <= paginas; p++) {
+      const r = await bling.chamarBling(`/nfe?tipo=${tipo}&pagina=${p}&limite=100`);
+      if (!r.ok) { falhaLista = true; break; }
+      const lista = r.data?.data || [];
+      if (!lista.length) break;
+      for (const n of lista) {
+        if (NFE_DESCARTAVEL.has(Number(n.situacao))) { descartadas++; continue; }
+        lidas++;
+        const id = String(n.naturezaOperacao?.id != null ? n.naturezaOperacao.id : 'sem_natureza');
+        const at = porNatureza.get(id) || { qtd: 0, exemplo_nf: n.numero, exemplo_id: n.id, exemplo_contato: n.contato?.nome || null, descricao: n.naturezaOperacao?.descricao || null, ids_sem_natureza: [] };
+        at.qtd++;
+        // b336 r3 (Codex #79): a listagem as vezes vem SEM naturezaOperacao,
+        // mas o indice de verdade tira a natureza do DETALHE — ou seja, essas
+        // notas podem ser devolucao e entrar no aviso. Guardamos os ids pra
+        // abrir uma por uma no passe seguinte, em vez de despachar todas como
+        // "sem_natureza" e declarar a leitura completa.
+        if (id === 'sem_natureza') at.ids_sem_natureza.push({ id: n.id, numero: n.numero, contato: n.contato?.nome || null });
+        porNatureza.set(id, at);
+      }
+      if (lista.length < 100) break;
+    }
+    // b336 r3 (Codex #79): resolve as notas que vieram SEM natureza na
+    // listagem, abrindo uma a uma (teto pra nao virar a rota lenta que esta
+    // veio substituir; o que passar do teto deixa a leitura incompleta).
+    const TETO_SEM_NATUREZA = 40;
+    // b336 r4/r5 (Codex #79): a listagem as vezes vem sem naturezaOperacao e
+    // so o detalhe revela. Duas armadilhas ja pegas aqui:
+    //  r4 - sem avanco, toda chamada reabria as MESMAS 40 e a leitura nunca
+    //       fechava, com a rota mandando "tente de novo" como se fosse falha
+    //       do Bling;
+    //  r5 - com cursor (?pular=N) ela avancava mas RECOMECAVA a contagem: a
+    //       ultima fatia se declarava completa mostrando so as notas dela, e
+    //       uma natureza que aparecesse numa fatia anterior sumia do resultado.
+    // Solucao: o que ja foi resolvido fica GUARDADO (NF_NAT_CACHE_AMB). Cada
+    // rodada gasta seu orcamento abrindo notas NOVAS e soma as antigas de
+    // graca, entao o resultado so cresce e a ultima rodada tem tudo. Basta
+    // repetir a MESMA URL ate sem_natureza_nao_lidas chegar a zero.
+    let falhaDetalhe = 0, semNaturezaNaoLidas = 0, semNaturezaTotal = 0, resolvidasDoCache = 0;
+    const pendentes = porNatureza.get('sem_natureza');
+    if (pendentes) {
+      const fila = pendentes.ids_sem_natureza || [];
+      semNaturezaTotal = fila.length;
+      porNatureza.delete('sem_natureza');
+      let orcamento = TETO_SEM_NATUREZA;
+      for (const nota of fila) {
+        let natId = null, natDesc = null, falhou = false;
+        const emCache = naturezaDoCacheAMB(nota.id);
+        if (emCache) {
+          natId = emCache.id; natDesc = emCache.descricao; resolvidasDoCache++;
+        } else if (orcamento > 0) {
+          orcamento--;
+          try {
+            const rD = await bling.chamarBling(`/nfe/${nota.id}`);
+            if (rD.ok) {
+              const nat = rD.data?.data?.naturezaOperacao || null;
+              natId = nat && nat.id != null ? String(nat.id) : null;
+              natDesc = (nat && nat.descricao) || null;
+              guardarNaturezaAMB(nota.id, natId, natDesc);
+            } else falhou = true;
+          } catch (e) { falhou = true; }
+          if (falhou) falhaDetalhe++;
+          await new Promise(r => setTimeout(r, 120));
+        } else {
+          semNaturezaNaoLidas++;   // fica pra proxima rodada
+          continue;
+        }
+        const chave = natId || 'sem_natureza';
+        const at = porNatureza.get(chave) || { qtd: 0, exemplo_nf: nota.numero, exemplo_id: nota.id, exemplo_contato: nota.contato, descricao: natDesc, ids_sem_natureza: [] };
+        at.qtd++;
+        if (!at.descricao && natDesc) at.descricao = natDesc;
+        if (chave === 'sem_natureza') at.descricao_indisponivel = true;
+        porNatureza.set(chave, at);
+      }
+    }
+
+    // nome da natureza: so pra quem nao veio com descricao na listagem
+    for (const [id, at] of porNatureza) {
+      if (at.descricao || id === 'sem_natureza') continue;
+      try {
+        const rD = await bling.chamarBling(`/nfe/${at.exemplo_id}`);
+        // b336 r2 (Codex #79): chamarBling devolve {ok:false} em vez de lancar.
+        // Sem contar isso, uma natureza cuja descricao diria "devolucao" ficava
+        // com descricao null, aparecia como rejeitada e a rota ainda assim
+        // mandava calibrar — conselho errado com cara de leitura completa.
+        if (rD.ok) at.descricao = rD.data?.data?.naturezaOperacao?.descricao || null;
+        else { falhaDetalhe++; at.descricao_indisponivel = true; }
+      } catch (e) { falhaDetalhe++; at.descricao_indisponivel = true; }
+      await new Promise(r => setTimeout(r, 120));
+    }
+
+    const naturezas = [...porNatureza.entries()].map(([id, at]) => ({
+      id,
+      descricao: at.descricao,
+      descricao_indisponivel: !!at.descricao_indisponivel,
+      qtd: at.qtd,
+      exemplo_nf: at.exemplo_nf,
+      exemplo_contato: at.exemplo_contato,
+      // a MESMA regra do indice: id na env OU descricao com "devolu"
+      entra_no_aviso: (id !== 'sem_natureza' && idsDevolucao.indexOf(id) >= 0) || /devolu/i.test(String(at.descricao || '')),
+      // b336 r2 (Codex #79): valor pronto POR NATUREZA. Nunca uma env com
+      // TODAS as rejeitadas juntas — isso metia compra de fornecedor,
+      // transferencia e conserto no aviso de uma vez. Quem decide se aquela
+      // natureza e devolucao de cliente e o Diego, uma a uma.
+      se_for_devolucao_de_cliente_use: (id === 'sem_natureza' || (idsDevolucao.indexOf(id) >= 0))
+        ? null
+        : idsDevolucao.concat([id]).join(','),
+    })).sort((a, b) => b.qtd - a.qtd);
+
+    const incompleto = falhaLista || falhaDetalhe > 0 || semNaturezaNaoLidas > 0;
+    res.json({ ok: true, versao: VERSAO, tipo_lido: tipo, paginas_pedidas: paginas,
+      leitura_incompleta: incompleto,
+      falha_na_listagem: falhaLista, descricoes_que_falharam: falhaDetalhe,
+      sem_natureza_total: semNaturezaTotal,
+      sem_natureza_ja_resolvidas: resolvidasDoCache,
+      sem_natureza_nao_lidas: semNaturezaNaoLidas,
+      notas_lidas: lidas, canceladas_ou_denegadas: descartadas,
+      env_atual: idsDevolucao,
+      naturezas,
+      o_que_fazer: (falhaLista || falhaDetalhe > 0)
+        ? 'LEITURA INCOMPLETA — o Bling falhou em parte das consultas; nao calibre com este resultado, rode de novo daqui a pouco'
+        : (semNaturezaNaoLidas > 0
+          ? `FALTA LER ${semNaturezaNaoLidas} nota(s) (nao e erro do Bling): abra ESTA MESMA URL de novo — cada rodada avanca e SOMA com as anteriores. Calibre so quando sem_natureza_nao_lidas chegar a 0`
+          : 'olhe as naturezas com entra_no_aviso=false: se ALGUMA delas for devolucao de cliente (o exemplo_contato ajuda a reconhecer), cole o campo se_for_devolucao_de_cliente_use dela em AMB_NATUREZAS_DEVOLUCAO_IDS no Render. Uma de cada vez — nao junte todas') });
+  } catch (e) {
+    res.status(500).json({ ok: false, erro: String(e.message || e) });
+  }
+});
+
 // ── Testes ───────────────────────────────────────────────────
 router.get('/bling/teste', admin, async (req, res) => {
   res.json({ ok: true, versao: VERSAO, resultado: await bling.testeDeVida() });
@@ -1763,7 +1937,7 @@ router.use((req, res) => {
       '/amb/api/auth/login', '/amb/api/auth/me', '/amb/api/triagem/identificar', '/amb/api/triagem/registrar',
       '/amb/auth/diag', '/amb/db/teste', '/amb/api/nf/itens', '/amb/api/triagem/recentes',
       '/amb/painel', '/amb/api/espreita', '/amb/api/recados', '/amb/api/defeitos',
-      '/amb/shopee/teste', '/amb/magalu/status', '/amb/nf/entrada/sonda', '/amb/api/etiqueta/fila',
+      '/amb/shopee/teste', '/amb/magalu/status', '/amb/nf/entrada/sonda', '/amb/nf/entrada/naturezas', '/amb/api/etiqueta/fila',
       '/amb/ml/teste', '/amb/ml/eu', '/amb/bling/teste', '/amb/bling/produto',
     ],
   });
