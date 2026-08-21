@@ -81,7 +81,7 @@ const criarMlBuscas = require('./lib-AMB/ml-buscas-AMB');
 const registrarIdentificar = require('./lib-AMB/identificar-AMB');
 const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 
-const VERSAO = 'AMB Devolucoes b155';
+const VERSAO = 'AMB Devolucoes b156';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -1606,45 +1606,122 @@ registrarRotasAdminNF(router, {
 // ═══════════════════════════════════════════════════════════════════
 const NF_DEV_TTL_AMB = 15 * 60 * 1000;
 const NF_DEV_INDICE_AMB = new Map();   // pedido -> { nf, data, contato }
+let NF_DEV_SEM_PEDIDO_AMB = [];        // b335 - notas SEM pedido (caso Full): o painel casa por cliente+SKU
+let NF_DEV_IGNORADAS_AMB = {};         // b335 r2 - naturezas que ficaram FORA do casamento (id -> contagem)
+let NF_DEV_CACHE_OK_AMB = false;       // b335 r2 - build valido, mesmo que os dois lados venham vazios
 let NF_DEV_INDICE_TS_AMB = 0;
 let NF_DEV_CARREGANDO_AMB = null;
 
 async function montarIndiceNFDevolucaoAMB(maxPaginas) {
-  if ((Date.now() - NF_DEV_INDICE_TS_AMB) < NF_DEV_TTL_AMB && NF_DEV_INDICE_AMB.size) return;
+  // b335 r2 (Codex #78): o guard usava NF_DEV_INDICE_AMB.size — se as entradas
+  // recentes fossem TODAS do Full (sem pedido), o mapa ficava vazio e CADA
+  // request reconstruia os ~600 detalhes de novo, com 120ms de pausa cada,
+  // ignorando o TTL. A flag diz "o build terminou", independente do formato.
+  if ((Date.now() - NF_DEV_INDICE_TS_AMB) < NF_DEV_TTL_AMB && NF_DEV_CACHE_OK_AMB) return;
   if (NF_DEV_CARREGANDO_AMB) return NF_DEV_CARREGANDO_AMB;
   NF_DEV_CARREGANDO_AMB = (async () => {
     const novo = new Map();
+    const semPedido = [];
     try {
       const paginas = Math.min(maxPaginas || 5, 15);
+      // b335 - o TIPO vem da MESMA env do indice da espreita (AMB_NF_ENTRADA_TIPO,
+      // padrao '0'). A sonda /amb/nf/entrada/sonda de 20/08 provou nesta conta:
+      // tipo=0 lista as ENTRADAS (devolucoes, inclusive as da MAGALU LOG do Full)
+      // e tipo=1 lista as VENDAS — ate a b334 este indice usava tipo=1 cravado,
+      // ou seja, indexava VENDA achando que era devolucao (o aviso nunca casava).
+      const tipoEntrada = String(process.env.AMB_NF_ENTRADA_TIPO || '0');
+      // b335 r2 (Codex #78): tipo=0 traz TODAS as entradas — compra de
+      // fornecedor, transferencia, conserto... Pro casamento cliente+SKU so
+      // entram notas cuja natureza seja RECONHECIVEL como devolucao: id na
+      // lista da env AMB_NATUREZAS_DEVOLUCAO_IDS (padrao: a mesma
+      // AMB_NATUREZA_DEVOLUCAO da busca acharNfDevolucaoBling) OU descricao
+      // contendo "devolu". O que ficar de fora e contado por natureza em
+      // `naturezas_ignoradas` — e por ali que se descobre um id novo (ex.: o
+      // das notas da MAGALU LOG do Full, se a descricao nao vier) pra por na env.
+      const idsDevolucao = String(process.env.AMB_NATUREZAS_DEVOLUCAO_IDS || process.env.AMB_NATUREZA_DEVOLUCAO || '15110882041')
+        .split(',').map(s => s.trim()).filter(Boolean);
+      const ignoradas = {};
+      // b335 r3 (Codex #78): NF CANCELADA (2) e DENEGADA (9) nao valem como
+      // "ja tem nota" — o admin-helpers-AMB ja trata as duas como descartaveis
+      // (nfeViva). Se entrassem, o operador leria "nao precisa gerar de novo"
+      // e o cliente ficaria sem a nota valida.
+      const NFE_DESCARTAVEL = new Set([2, 9]);
+      const nfeViva = (n) => !NFE_DESCARTAVEL.has(Number(n && n.situacao));
+      let falhaLista = false;
+      let falhasDetalhe = 0;
       // 1) lista as notas de entrada (so id + numero, rapido)
       const ids = [];
       for (let p = 1; p <= paginas; p++) {
-        const r = await bling.chamarBling(`/nfe?tipo=1&pagina=${p}&limite=100`);
-        const lista = (r.ok && r.data?.data) || [];
+        const r = await bling.chamarBling(`/nfe?tipo=${tipoEntrada}&pagina=${p}&limite=100`);
+        // b335 r3 (Codex #78): o chamarBling NAO joga excecao — devolve
+        // {ok:false}. Sem esta checagem uma queda do Bling virava "lista vazia"
+        // e o build seguia como se tivesse dado certo.
+        if (!r.ok) { falhaLista = true; break; }
+        const lista = r.data?.data || [];
         if (!lista.length) break;
-        for (const n of lista) ids.push({ id: n.id, numero: n.numero, dataEmissao: n.dataEmissao, contato: n.contato?.nome || null });
+        for (const n of lista) {
+          if (!nfeViva(n)) continue;   // b335 r3 - cancelada/denegada nem detalha
+          ids.push({ id: n.id, numero: n.numero, serie: n.serie != null ? n.serie : null, dataEmissao: n.dataEmissao, contato: n.contato?.nome || null, situacao: n.situacao });
+        }
         if (lista.length < 100) break;
       }
+      // b335 r3 - queda na listagem: mantem o indice anterior e NAO marca cache
+      // valido, pra proxima chamada tentar de novo em vez de servir vazio por 15min.
+      if (falhaLista && !ids.length) return;
       // 2) detalha cada nota pra pegar o numeroPedidoLoja (em lotes, com pausa)
       for (const it of ids) {
         try {
           const rD = await bling.chamarBling(`/nfe/${it.id}`);
-          const d = rD.ok ? (rD.data?.data || {}) : {};
+          // b335 r3 (Codex #78): detalhe que falhou nao pode virar nota "sem
+          // pedido" — sem o numeroPedidoLoja ela cairia no casamento por
+          // cliente+SKU sem nunca ter sido lida. Pula e conta a falha.
+          if (!rD.ok) { falhasDetalhe++; await new Promise(r => setTimeout(r, 120)); continue; }
+          const d = rD.data?.data || {};
+          if (!nfeViva({ situacao: d.situacao != null ? d.situacao : it.situacao })) { await new Promise(r => setTimeout(r, 120)); continue; }
           const pedido = String(d.numeroPedidoLoja || '').replace(/\s/g, '');
-          if (pedido) {
-            novo.set(pedido, {
-              nf: it.numero, data: (it.dataEmissao || '').slice(0, 10),
-              contato: it.contato,
-              sku: (Array.isArray(d.itens) && d.itens[0]) ? d.itens[0].codigo : null,
-              chave: d.chaveAcesso || null,
-            });
+          // b335 - a base carrega TUDO que o aviso precisa: id (link pro Bling),
+          // serie, os SKUs de todos os itens e a natureza — de graca, o detalhe
+          // ja estava na mao (era jogado fora quando o pedido vinha vazio).
+          const nat = d.naturezaOperacao || null;
+          const base = {
+            nf: it.numero, id: String(it.id),
+            serie: it.serie != null ? it.serie : (d.serie != null ? d.serie : null),
+            data: (it.dataEmissao || '').slice(0, 10),
+            contato: it.contato,
+            sku: (Array.isArray(d.itens) && d.itens[0]) ? d.itens[0].codigo : null,
+            skus: (Array.isArray(d.itens) ? d.itens : []).map(i => String((i && i.codigo) || '').trim()).filter(Boolean),
+            chave: d.chaveAcesso || null,
+            natureza: nat ? { id: nat.id != null ? nat.id : null, descricao: nat.descricao || null } : null,
+          };
+          // b335 r4 (Codex #78): o filtro de natureza vale pros DOIS ramos. Ter
+          // numeroPedidoLoja nao prova que a nota e devolucao — tipo=0 traz
+          // entrada comum tambem, e uma delas com pedido preenchido disparava o
+          // "nao precisa gerar de novo" sem passar por filtro nenhum.
+          const natId = String((nat && nat.id) || '');
+          const ehDevolucao = (natId && idsDevolucao.indexOf(natId) >= 0) || /devolu/i.test(String((nat && nat.descricao) || ''));
+          if (!ehDevolucao) {
+            ignoradas[natId || 'sem_natureza'] = (ignoradas[natId || 'sem_natureza'] || 0) + 1;
+          } else if (pedido) {
+            novo.set(pedido, base);
+          } else {
+            // b335 - nota SEM pedido (caso Full: o Bling importa a NF-e sem o
+            // vinculo — campos de referencia vem nulos desde julho). E daqui
+            // que o painel casa por cliente+SKU.
+            semPedido.push(base);
           }
         } catch (e) { /* pula essa nota */ }
         await new Promise(r => setTimeout(r, 120));
       }
       NF_DEV_INDICE_AMB.clear();
       for (const [k, v] of novo) NF_DEV_INDICE_AMB.set(k, v);
-      NF_DEV_INDICE_TS_AMB = Date.now();
+      NF_DEV_SEM_PEDIDO_AMB = semPedido;   // b335
+      NF_DEV_IGNORADAS_AMB = ignoradas;    // b335 r2
+      NF_DEV_CACHE_OK_AMB = true;          // b335 r2 - build terminou (vazio de verdade tambem vale)
+      // b335 r3 (Codex #78): build INCOMPLETO (Bling caiu no meio) vale, mas
+      // com validade curta — 2 min em vez de 15. Nem serve resultado furado
+      // por 15 minutos, nem remonta 600 notas a cada request.
+      const parcial = falhaLista || falhasDetalhe > 0;
+      NF_DEV_INDICE_TS_AMB = parcial ? (Date.now() - NF_DEV_TTL_AMB + 2 * 60 * 1000) : Date.now();
     } catch (e) { /* mantem o indice anterior */ }
     finally { NF_DEV_CARREGANDO_AMB = null; }
   })();
@@ -1660,7 +1737,16 @@ router.get('/api/admin/indice-nf-devolucao', auth.requerLogin, async (req, res) 
     await montarIndiceNFDevolucaoAMB(Number(req.query.paginas || 5));
     const mapa = {};
     for (const [ped, info] of NF_DEV_INDICE_AMB) mapa[ped] = info;
-    return res.json({ ok: true, total: NF_DEV_INDICE_AMB.size, atualizado_em: NF_DEV_INDICE_TS_AMB, pedidos: mapa });
+    return res.json({ ok: true, total: NF_DEV_INDICE_AMB.size, atualizado_em: NF_DEV_INDICE_TS_AMB,
+      tipo_usado: String(process.env.AMB_NF_ENTRADA_TIPO || '0'),   // b335
+      pedidos: mapa,
+      sem_pedido: NF_DEV_SEM_PEDIDO_AMB,   // b335 - notas sem vinculo (Full): o painel casa por cliente+SKU
+      naturezas_ignoradas: NF_DEV_IGNORADAS_AMB,   // b335 r2 - entradas fora do casamento, contadas por natureza
+      cache_ok: NF_DEV_CACHE_OK_AMB,   // b335 r3 - false = o Bling falhou e nao ha indice confiavel ainda
+      // b335 r4 (Codex #78): idade medida no relogio do SERVIDOR. O painel
+      // calcula a validade a partir dela (e nao de Date.now() na chegada),
+      // senao o TTL curto de um build parcial virava 15 min no navegador.
+      idade_ms: Math.max(0, Date.now() - NF_DEV_INDICE_TS_AMB) });
   } catch (e) { return res.status(500).json({ ok: false, erro: e.message }); }
 });
 
