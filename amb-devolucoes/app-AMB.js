@@ -1556,6 +1556,12 @@ router.get('/nf/entrada/naturezas', admin, async (req, res) => {
         const porId = new Map((rCat.naturezas || []).map(n => [String(n.id), n.descricao]));
         for (const [id, at] of porNatureza) {
           if (id === 'sem_natureza') continue;
+          // b337 r2 (Codex #80): guardar a descricao que veio da NOTA ANTES de
+          // enriquecer. O indice le a descricao da nota; se o catalogo cobrisse
+          // por cima, uma nota cujo proprio texto diz "devolucao" apareceria
+          // como excluida e a rota mandaria o Diego por na env um id que ja
+          // estava valendo.
+          if (at.descricao && !at.descricao_nota) at.descricao_nota = at.descricao;
           const nome = porId.get(String(id));
           if (nome) { at.descricao = nome; at.descricao_via = 'catalogo'; }
           else if (!at.descricao) { at.descricao_indisponivel = true; semNomeNoCatalogo++; }
@@ -1577,12 +1583,14 @@ router.get('/nf/entrada/naturezas', admin, async (req, res) => {
       exemplo_nf: at.exemplo_nf,
       exemplo_contato: at.exemplo_contato,
       descricao_via: at.descricao_via || (at.descricao ? 'nota' : null),
+      descricao_da_nota: at.descricao_nota || (at.descricao_via === 'catalogo' ? null : (at.descricao || null)),
       // b337 - `entra_no_aviso` continua sendo o que o INDICE faz hoje, e o
       // indice le a descricao da NOTA (que vem vazia nesta conta) — nao a do
       // catalogo. Marcar true so porque o catalogo diz "devolucao" prometeria
       // um aviso que nao acontece. O nome do catalogo serve pra DECIDIR; quem
       // liga de fato e o id na env.
-      entra_no_aviso: (id !== 'sem_natureza' && idsDevolucao.indexOf(id) >= 0) || /devolu/i.test(String(at.descricao_via === 'nota' ? at.descricao : '')),
+      entra_no_aviso: (id !== 'sem_natureza' && idsDevolucao.indexOf(id) >= 0)
+        || /devolu/i.test(String(at.descricao_nota || (at.descricao_via === 'catalogo' ? '' : (at.descricao || '')))),
       parece_devolucao_pelo_nome: /devolu/i.test(String(at.descricao || '')),
       // b336 r2 (Codex #79): valor pronto POR NATUREZA. Nunca uma env com
       // TODAS as rejeitadas juntas — isso metia compra de fornecedor,
@@ -1594,7 +1602,10 @@ router.get('/nf/entrada/naturezas', admin, async (req, res) => {
     })).sort((a, b) => b.qtd - a.qtd);
 
     // b337 - sem catalogo nao ha nome nenhum: isso e leitura incompleta.
-    const incompleto = falhaLista || falhaDetalhe > 0 || semNaturezaNaoLidas > 0 || !catalogoOk;
+    // b337 r2 (Codex #80): id que nao esta no catalogo tambem suspende — o
+    // operador nao consegue identificar aquela natureza, que e exatamente a
+    // situacao que esta rota existe pra evitar.
+    const incompleto = falhaLista || falhaDetalhe > 0 || semNaturezaNaoLidas > 0 || !catalogoOk || semNomeNoCatalogo > 0;
     res.json({ ok: true, versao: VERSAO, tipo_lido: tipo, paginas_pedidas: paginas,
       leitura_incompleta: incompleto,
       falha_na_listagem: falhaLista, descricoes_que_falharam: falhaDetalhe,
@@ -1608,6 +1619,8 @@ router.get('/nf/entrada/naturezas', admin, async (req, res) => {
       naturezas,
       o_que_fazer: !catalogoOk
         ? 'SEM O CATALOGO DE NATUREZAS (o Bling nao respondeu /naturezas-operacoes) — as naturezas ficam sem nome e nao da pra decidir; rode de novo daqui a pouco'
+        : semNomeNoCatalogo > 0
+        ? `${semNomeNoCatalogo} natureza(s) usada(s) nas notas NAO estao no catalogo (descricao_indisponivel=true) — sem nome nao da pra decidir se e devolucao de cliente. Nao calibre; avise que o catalogo precisa ser lido alem da 1a pagina`
         : (falhaLista || falhaDetalhe > 0)
         ? 'LEITURA INCOMPLETA — o Bling falhou em parte das consultas; nao calibre com este resultado, rode de novo daqui a pouco'
         : (semNaturezaNaoLidas > 0
