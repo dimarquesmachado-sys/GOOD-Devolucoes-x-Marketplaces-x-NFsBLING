@@ -1357,6 +1357,16 @@
       // cards abertos que NAO estamos vendo — nao da pra afirmar unicidade.
       // Na duvida, nao avisa (o casamento por PEDIDO segue valendo).
       if (window._nfDevFilaTruncada) { window._nfDevAvisos = mapa; return; }
+      // b340 r3 (Codex #83): nota JA VINCULADA a algum card (inclusive concluido)
+      // sai do fallback. Pular o card concluido nao bastava: a nota dele
+      // continuava no indice e podia virar candidata unica de um card aberto do
+      // mesmo cliente+SKU, dizendo "ja tem NF" pra uma venda que ainda precisa.
+      const reservadas = {};
+      for (var r0 = 0; r0 < fila.length; r0++) {
+        const cr = fila[r0];
+        const idNota = cr && (cr.nf_devolucao_id_bling || cr.nf_devolucao_id);
+        if (idNota) reservadas[String(idNota)] = true;
+      }
       const porCard = [];
       const contaNota = {};
       for (var i = 0; i < fila.length; i++) {
@@ -1364,7 +1374,7 @@
         if (c && c.status === 'concluido') continue;   // b340 r2: concluido nao disputa
         const ped = String(c.order_id || c.pedido || '').replace(/\s/g, '');
         if (ped && window._indiceNFDev && window._indiceNFDev[ped]) continue;   // ja casou por pedido
-        const cands = _nfDevCandidatas(c);
+        const cands = _nfDevCandidatas(c).filter(function (n) { return !reservadas[String(n.id)]; });   // b340 r3
         if (!cands.length) continue;
         porCard.push({ card: c, cands: cands });
         for (var j = 0; j < cands.length; j++) {
@@ -1385,6 +1395,37 @@
       if (!window._nfDevAvisos) _nfDevPrepararAvisos();
       if (!d || d.id == null) return null;
       return window._nfDevAvisos[String(d.id)] || null;
+    }
+    /** b340 r3 (Codex #83): o aviso virou funcao porque PROBLEMA e DIVERGENTE
+     *  tambem tem botao de gerar NF — mostrar so nas aprovadas deixava o
+     *  operador emitir nota duplicada por aquelas secoes, mesmo com o
+     *  casamento ja tendo encontrado a nota. */
+    function _nfDevAvisoHtml(d) {
+      if (!d) return '';
+      const _pedCard = String(d.order_id || d.pedido || '').replace(/\s/g, '');
+      let _nfDev = (_pedCard && window._indiceNFDev) ? window._indiceNFDev[_pedCard] : null;
+      // b340 - FALLBACK: na GOOD nenhuma nota de devolucao tem numero de pedido
+      // (medido na b339: total 0, ~200 notas sem vinculo), entao o casamento por
+      // pedido nunca acha nada. Casa pelo que a nota TEM: cliente + SKU.
+      let _nfDevVia = 'pedido';
+      if (!_nfDev) {
+        const _achada = _achaNfDevPorClienteSku(d);
+        if (_achada) { _nfDev = _achada; _nfDevVia = 'cliente+sku'; }
+      }
+      if (!_nfDev) return '';
+      // b340 - campos consertados: o indice manda `nf` e `id` — o aviso usava
+      // `numero`, que nao existe, e saia sem o nº e sem o link.
+      return '<div style="background:#e8f5e9;border:1px solid #a5d6a7;border-radius:8px;padding:8px 10px;margin:6px 0;font-size:13px;">'
+        + '✅ <b>Esta venda já tem NF de devolução no Bling</b>'
+        + (_nfDev.nf ? ' — nº ' + escapeHtml(String(_nfDev.nf)) : '')
+        + (_nfDev.id ? ' · <a href="https://www.bling.com.br/notas.entrada.php#edit/' + encodeURIComponent(_nfDev.id) + '" target="_blank">🔗 abrir no Bling</a>' : '')
+        + (_nfDevVia === 'cliente+sku'
+            ? '<br><span style="font-size:12px;color:#5a7a5e;">Casada por <b>cliente + SKU</b> (nota sem nº de pedido — é o padrão aqui'
+              + (_nfDev.serie != null && _nfDev.serie !== '' ? ', série ' + escapeHtml(String(_nfDev.serie)) : '')
+              + '). Confira o nome antes de concluir.</span>'
+            : '')
+        + '<br><span style="font-size:12px;color:#5a7a5e;">Não precisa gerar de novo — se já resolveu, marque como concluído.</span>'
+        + '</div>';
     }
 
     function moeda(v) {
@@ -1430,31 +1471,7 @@
       // O indice `/api/admin/indice-nf-devolucao` ja mapeia pedido -> NF de
       // devolucao, e o painel ja o carregava — mas so pra um botao separado,
       // nunca pra esta fila. Agora a fila consulta o mesmo indice.
-      const _pedCard = String(d.order_id || d.pedido || '').replace(/\s/g, '');
-      let _nfDev = (_pedCard && window._indiceNFDev) ? window._indiceNFDev[_pedCard] : null;
-      // b340 - FALLBACK: na GOOD nenhuma nota de devolucao tem numero de pedido
-      // (medido na b339: total 0, ~200 notas sem vinculo), entao o casamento por
-      // pedido nunca acha nada. Casa pelo que a nota TEM: cliente + SKU.
-      let _nfDevVia = 'pedido';
-      if (!_nfDev) {
-        const _achada = _achaNfDevPorClienteSku(d);
-        if (_achada) { _nfDev = _achada; _nfDevVia = 'cliente+sku'; }
-      }
-      // b340 - campos consertados: o indice manda `nf` e `id` — o aviso usava
-      // `numero`, que nao existe, e saia sem o nº e sem o link.
-      const avisoJaTemNF = _nfDev
-        ? '<div style="background:#e8f5e9;border:1px solid #a5d6a7;border-radius:8px;padding:8px 10px;margin:6px 0;font-size:13px;">'
-          + '✅ <b>Esta venda já tem NF de devolução no Bling</b>'
-          + (_nfDev.nf ? ' — nº ' + escapeHtml(String(_nfDev.nf)) : '')
-          + (_nfDev.id ? ' · <a href="https://www.bling.com.br/notas.entrada.php#edit/' + encodeURIComponent(_nfDev.id) + '" target="_blank">🔗 abrir no Bling</a>' : '')
-          + (_nfDevVia === 'cliente+sku'
-              ? '<br><span style="font-size:12px;color:#5a7a5e;">Casada por <b>cliente + SKU</b> (nota sem nº de pedido — é o padrão aqui'
-                + (_nfDev.serie != null && _nfDev.serie !== '' ? ', série ' + escapeHtml(String(_nfDev.serie)) : '')
-                + '). Confira o nome antes de concluir.</span>'
-              : '')
-          + '<br><span style="font-size:12px;color:#5a7a5e;">Não precisa gerar de novo — se já resolveu, marque como concluído.</span>'
-          + '</div>'
-        : '';
+      const avisoJaTemNF = _nfDevAvisoHtml(d);
       const desc = (d.problema_descricao || '').replace(/^Aprovado por\s+/, '');
 
       // v3.17.0 - detecta se eh devolucao parcial (tem fotos + descricao comeca com [DEVOLUCAO PARCIAL)
@@ -1553,6 +1570,8 @@
       const badgeRebipe = (d.problema_descricao || '').includes('[RE-BIPE]')
         ? '<span style="background:#c62828;color:white;padding:3px 8px;border-radius:10px;font-size:10px;font-weight:700;margin-left:6px;">🔁 RE-BIPE</span>'
         : '';
+      // b340 r3 (Codex #83): esta secao tambem gera NF — precisa do mesmo aviso
+      const avisoJaTemNF = _nfDevAvisoHtml(d);
       return `
         <div class="item problema ${concluido ? 'concluido' : ''}" id="card-${d.id}">
           <div class="item-header">
@@ -1562,6 +1581,7 @@
             </div>
             ${concluido ? '<span style="background:#999;color:white;padding:3px 8px;border-radius:10px;font-size:10px;font-weight:700;">RESOLVIDO</span>' : ''}
           </div>
+          ${avisoJaTemNF}
           <div class="item-detalhes">
             <strong>${escapeHtml(d.produto_sku || '-')}</strong> ·
             <strong>${d.produto_qtd || '-'} un</strong> ·
@@ -1621,6 +1641,8 @@
         voltouTxt = m[2];
       }
 
+      // b340 r3 (Codex #83): esta secao tambem gera NF — precisa do mesmo aviso
+      const avisoJaTemNF = _nfDevAvisoHtml(d);
       return `
         <div class="item ${concluido ? 'concluido' : ''}" id="card-${d.id}" style="border-left-color:#7b1fa2; background:#f3e5f5;">
           <div class="item-header">
@@ -1630,6 +1652,7 @@
             </div>
             ${concluido ? '<span style="background:#999;color:white;padding:3px 8px;border-radius:10px;font-size:10px;font-weight:700;">RESOLVIDO</span>' : ''}
           </div>
+          ${avisoJaTemNF}
 
           <!-- Comparativo esperado vs voltou -->
           <div style="background:#fff;border:1px solid #ce93d8;border-radius:8px;padding:10px;margin:10px 0;font-size:12px;">
