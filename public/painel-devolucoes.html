@@ -398,6 +398,19 @@
           if (!document.hidden) carregarEspreita();
         }, 4 * 60 * 1000);
       }
+      // b340 r2 (Codex #83): o frescor do indice de NFs so era testado dentro do
+      // renderizar(), que so roda se alguem mexe na tela. Painel aberto e parado
+      // no galpao ficava com o retrato da primeira carga: uma NF emitida depois
+      // nunca aparecia e o operador podia gerar nota duplicada. Este relogio
+      // revalida sozinho quando o TTL vence.
+      if (!window._nfDevAuto) {
+        window._nfDevAuto = setInterval(function () {
+          if (document.hidden) return;
+          if (window._indiceNFDevCarregando) return;
+          if (_nfDevIndiceFresco()) return;
+          try { renderizar(); } catch (e) { /* tenta de novo no proximo ciclo */ }
+        }, 60 * 1000);
+      }
       carregarRecados();
     }
 
@@ -674,10 +687,18 @@
       lista.innerHTML = '';
       try {
         // 1) monta o indice de pedidos com NF de devolucao
-        var r = await fetch('/api/admin/indice-nf-devolucao?paginas=5');
+        // b340 r2 (Codex #83): 5 -> 6 paginas. Este loader agora marca o indice
+        // como valido; com 5 paginas ele satisfazia o guard do carregador de
+        // fundo (que pede 6) e o servidor ainda guardava o build menor por 15
+        // min — notas da 6a pagina nunca virariam aviso. Mesma cobertura nos dois.
+        var r = await fetch('/api/admin/indice-nf-devolucao?paginas=6');
         var d = await r.json();
         if (!d.ok) { msg.innerHTML = '<span style="color:#c62828;">' + escapeHtml(d.erro || 'erro') + '</span>'; return; }
         window._indiceNFDev = d.pedidos || {};
+        window._indiceNFDevSemPedido = d.sem_pedido || [];   // b340
+        window._indiceNFDevOk = (d.cache_ok === true);       // b340
+        window._indiceNFDevTs = Date.now() - (Number(d.idade_ms) || 0);
+        try { renderizar(); } catch (e) { /* a fila redesenha no proximo ciclo */ }
         var totalIndice = d.total || 0;
 
         // 2) pega o a espreita atual pra cruzar
@@ -1169,6 +1190,25 @@
         info.textContent = `${totalGeral} registros (ultimos 30 dias)`;
       }
 
+      // b340 - a fila fica ao alcance do casamento: e com ela que se detecta a
+      // nota que serviria a MAIS DE UM card aberto. Tem que ser a lista INTEIRA,
+      // nao a filtrada pela busca/data da tela — senao o filtro esconde um dos
+      // dois cards em disputa e o aviso ambiguo aparece no que sobrou.
+      // b340 r2 (Codex #83): problemas e divergentes tambem geram/ligam NF de
+      // devolucao, entao uma nota que pertence a um deles pareceria exclusiva
+      // do card aprovado. A disputa considera TODAS as secoes nao concluidas.
+      const _todosCards = []
+        .concat(Array.isArray(dados.aprovadas) ? dados.aprovadas : [])
+        .concat(Array.isArray(dados.problemas) ? dados.problemas : [])
+        .concat(Array.isArray(dados.divergentes) ? dados.divergentes : []);
+      window._cardsParaNfDev = _todosCards.filter(function (c) { return c && c.status !== 'concluido'; });
+      // b340 r2: /api/admin/devolucoes devolve no maximo 1000 registros de
+      // TODOS os tipos. No teto, ha cards abertos fora da lista e a unicidade
+      // deixa de ser verificavel — o casamento cliente+SKU se desliga sozinho.
+      window._nfDevFilaTruncada = (_todosCards.length >= 1000);
+      window._nfDevAvisos = null;   // recomputa uma vez por render
+      _nfDevPrepararAvisos();
+
       document.getElementById('listaAprovadas').innerHTML = aprovadas.length
         ? aprovadas.map(itemHtmlAprovado).join('')
         : '<div class="vazio">Nenhuma devolucao aprovada pendente. 🎉</div>';
@@ -1177,7 +1217,20 @@
       // a fila quando chegar. Nao trava a tela: a consulta ao Bling leva alguns
       // segundos, e a fila tem que aparecer na hora. Uma vez por sessao — o
       // indice ja fica em window._indiceNFDev, que o botao de cruzamento usa.
-      if (aprovadas.length && !window._indiceNFDev && !window._indiceNFDevCarregando) {
+      // b340 - o guard era !window._indiceNFDev, mas a aba de NFs inicializa
+      // window._indiceNFDev = {} no load e {} e truthy: este carregador NUNCA
+      // rodou desde a b326 (o aviso so aparecia depois de abrir aquela aba).
+      // A flag diz "carregou de verdade" e EXPIRA em 15 min, senao o painel
+      // aberto o dia todo no galpao congela o retrato.
+      // b340 r4 (Codex #83): o gatilho olhava so `aprovadas`. Desde o r3 as
+      // secoes de PROBLEMA e DIVERGENTE tambem mostram o aviso e tambem tem
+      // botao de gerar NF — com filtro que deixe aprovadas vazia, o indice
+      // nunca era carregado e o aviso sumia justamente onde a nota duplicada
+      // seria emitida. Conta card acionavel (nao concluido) de qualquer secao.
+      const _temCardQueGeraNF = [aprovadas, problemas, divergentes]
+        .filter(function (l) { return Array.isArray(l); })
+        .some(function (l) { return l.some(function (c) { return c && c.status !== 'concluido'; }); });
+      if (_temCardQueGeraNF && !_nfDevIndiceFresco() && !window._indiceNFDevCarregando) {
         window._indiceNFDevCarregando = true;
         // b327 - 3 -> 6 paginas, a pedido dele. Custa mais consulta ao Bling
         // (cada nota da pagina e detalhada pra achar o pedido), MAS o indice
@@ -1189,9 +1242,18 @@
           .then(function (d) {
             if (d && d.ok && d.pedidos) {
               window._indiceNFDev = d.pedidos;
-              // redesenha so a fila de aprovadas, com os avisos agora disponiveis
-              const alvo = document.getElementById('listaAprovadas');
-              if (alvo && aprovadas.length) alvo.innerHTML = aprovadas.map(itemHtmlAprovado).join('');
+              window._indiceNFDevSemPedido = d.sem_pedido || [];   // b340 - insumo do casamento cliente+SKU
+              // b340 - so vale como retrato se o servidor confirmar (cache_ok);
+              // build que falhou volta ok:true com pedidos:{} e enganaria o guard.
+              // A idade vem do servidor pra respeitar o TTL curto de build parcial.
+              window._indiceNFDevOk = (d.cache_ok === true);
+              window._indiceNFDevTs = Date.now() - (Number(d.idade_ms) || 0);
+              // b340 r2 (Codex #83): redesenhar com `aprovadas` reescrevia a tela
+              // com o array capturado quando o fetch comecou — se o operador
+              // mexeu no filtro nesse meio tempo, os cards visiveis passavam a
+              // discordar dos controles. renderizar() refaz com os filtros
+              // atuais (e nao redispara este fetch: a flag ja esta marcada).
+              try { renderizar(); } catch (e) { /* fila redesenha no proximo ciclo */ }
             }
           })
           .catch(function () { /* sem indice, a fila segue como sempre foi */ })
@@ -1219,6 +1281,161 @@
       if (s == null) return '';
       return String(s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
     }
+    // ═══════════════════════════════════════════════════════════════
+    // b340 - CASAMENTO CLIENTE+SKU (fatia 2b). Portado do painel da AMB
+    // (b335), onde este desenho ja passou por 3 rodadas de review.
+    //
+    // Por que existe: a medicao da b339 mostrou que NENHUMA nota de devolucao
+    // da GOOD tem numeroPedidoLoja preenchido (total: 0 no indice, ~200 notas
+    // em sem_pedido). Casar por pedido nunca ia funcionar aqui. O que a nota
+    // TEM e o cliente e os SKUs — e na GOOD o contato e o comprador de
+    // verdade, com apelido de marketplace entre parenteses.
+    // ═══════════════════════════════════════════════════════════════
+    var _NF_DEV_TTL_MS = 15 * 60 * 1000;
+    function _nfDevIndiceFresco() {
+      return !!window._indiceNFDevOk && (Date.now() - (window._indiceNFDevTs || 0)) < _NF_DEV_TTL_MS;
+    }
+    function _nfDevTokens(nome) {
+      return String(nome || '')
+        .replace(/\([^)]*\)/g, ' ')                       // apelido do marketplace sai
+        .toLowerCase()
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '')  // acentos saem
+        .replace(/[^a-z0-9 ]/g, ' ')
+        .split(/\s+/)
+        .filter(function (t) { return t && ['de', 'da', 'do', 'das', 'dos', 'e'].indexOf(t) < 0; })
+        // b340 r2 (Codex #83): palavras DISTINTAS. Sem isso "Joao Joao" contava
+        // duas em comum com "Joao Silva" e passava no minimo de 2, casando a
+        // venda errada.
+        .filter(function (t, i, arr) { return arr.indexOf(t) === i; });
+    }
+    // Data de referencia do card. A coluna e `nf_data_emissao` (data da NF de
+    // VENDA); quando nao existe sobra `criado_em`, que e a hora da TRIAGEM no
+    // galpao — e a nota de devolucao pode ser anterior a ela, entao o piso
+    // precisa de folga larga.
+    function _nfDevDiasAntes(iso, dias) {
+      var dt = new Date(iso + 'T12:00:00Z');
+      dt.setUTCDate(dt.getUTCDate() - dias);
+      return dt.toISOString().slice(0, 10);
+    }
+    function _nfDevPisoDoCard(d) {
+      const venda = String(d.nf_data_emissao || '').slice(0, 10);
+      if (/^\d{4}-\d{2}-\d{2}$/.test(venda)) return _nfDevDiasAntes(venda, 1);
+      const triagem = String(d.criado_em || d.created_at || '').slice(0, 10);
+      if (/^\d{4}-\d{2}-\d{2}$/.test(triagem)) return _nfDevDiasAntes(triagem, 60);
+      return null;   // sem data nenhuma, nao casa
+    }
+    // Todas as notas sem-pedido que servem a este card (sem decidir ainda).
+    function _nfDevCandidatas(d) {
+      const lista = window._indiceNFDevSemPedido;
+      if (!Array.isArray(lista) || !lista.length) return [];
+      const sku = String(d.produto_sku || '').trim().toUpperCase();
+      const meus = _nfDevTokens(d.buyer_nome);
+      if (!sku || meus.length < 2) return [];
+      const piso = _nfDevPisoDoCard(d);
+      if (!piso) return [];
+      const achadas = [];
+      for (var i = 0; i < lista.length; i++) {
+        const n = lista[i];
+        const dataNota = String(n.data || '').slice(0, 10);
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(dataNota) || dataNota < piso) continue;
+        const skus = (n.skus || []).map(function (x) { return String(x || '').trim().toUpperCase(); });
+        if (skus.indexOf(sku) < 0) continue;
+        const dela = _nfDevTokens(n.contato);
+        if (dela.length < 2) continue;
+        const menor = meus.length <= dela.length ? meus : dela;
+        const maior = meus.length <= dela.length ? dela : meus;
+        var todos = true, comuns = 0;
+        for (var j = 0; j < menor.length; j++) {
+          if (maior.indexOf(menor[j]) >= 0) comuns++; else todos = false;
+        }
+        if (todos && comuns >= 2) achadas.push(n);
+      }
+      return achadas;
+    }
+    // So avisa quando o casamento e INEQUIVOCO nos dois sentidos: card com duas
+    // notas candidatas nao sabe qual e a dele, e nota que serve a dois cards
+    // abertos nao pode dizer "ja resolvido" para os dois.
+    // b340 r2 (Codex #83): UMA passada por render, guardada num mapa. Antes cada
+    // card refazia o rescan da fila inteira (visiveis x fila x notas): com ~1000
+    // cards e centenas de notas, o redesenho travava a aba.
+    function _nfDevPrepararAvisos() {
+      const mapa = {};
+      const fila = window._cardsParaNfDev || [];
+      // b340 r2: se a fila veio no teto do endpoint (1000 registros), existem
+      // cards abertos que NAO estamos vendo — nao da pra afirmar unicidade.
+      // Na duvida, nao avisa (o casamento por PEDIDO segue valendo).
+      if (window._nfDevFilaTruncada) { window._nfDevAvisos = mapa; return; }
+      // b340 r3 (Codex #83): nota JA VINCULADA a algum card (inclusive concluido)
+      // sai do fallback. Pular o card concluido nao bastava: a nota dele
+      // continuava no indice e podia virar candidata unica de um card aberto do
+      // mesmo cliente+SKU, dizendo "ja tem NF" pra uma venda que ainda precisa.
+      const reservadas = {};
+      for (var r0 = 0; r0 < fila.length; r0++) {
+        const cr = fila[r0];
+        const idNota = cr && (cr.nf_devolucao_id_bling || cr.nf_devolucao_id);
+        if (idNota) reservadas[String(idNota)] = true;
+      }
+      const porCard = [];
+      const contaNota = {};
+      for (var i = 0; i < fila.length; i++) {
+        const c = fila[i];
+        if (c && c.status === 'concluido') continue;   // b340 r2: concluido nao disputa
+        const ped = String(c.order_id || c.pedido || '').replace(/\s/g, '');
+        if (ped && window._indiceNFDev && window._indiceNFDev[ped]) continue;   // ja casou por pedido
+        const cands = _nfDevCandidatas(c).filter(function (n) { return !reservadas[String(n.id)]; });   // b340 r3
+        if (!cands.length) continue;
+        porCard.push({ card: c, cands: cands });
+        for (var j = 0; j < cands.length; j++) {
+          const k = String(cands[j].id);
+          contaNota[k] = (contaNota[k] || 0) + 1;
+        }
+      }
+      for (var x = 0; x < porCard.length; x++) {
+        const item = porCard[x];
+        if (item.cands.length !== 1) continue;               // card com 2 notas: ambiguo
+        const nota = item.cands[0];
+        if (contaNota[String(nota.id)] > 1) continue;        // nota servindo 2 cards: ambiguo
+        if (item.card && item.card.id != null) mapa[String(item.card.id)] = nota;
+      }
+      window._nfDevAvisos = mapa;
+    }
+    function _achaNfDevPorClienteSku(d) {
+      if (!window._nfDevAvisos) _nfDevPrepararAvisos();
+      if (!d || d.id == null) return null;
+      return window._nfDevAvisos[String(d.id)] || null;
+    }
+    /** b340 r3 (Codex #83): o aviso virou funcao porque PROBLEMA e DIVERGENTE
+     *  tambem tem botao de gerar NF — mostrar so nas aprovadas deixava o
+     *  operador emitir nota duplicada por aquelas secoes, mesmo com o
+     *  casamento ja tendo encontrado a nota. */
+    function _nfDevAvisoHtml(d) {
+      if (!d) return '';
+      const _pedCard = String(d.order_id || d.pedido || '').replace(/\s/g, '');
+      let _nfDev = (_pedCard && window._indiceNFDev) ? window._indiceNFDev[_pedCard] : null;
+      // b340 - FALLBACK: na GOOD nenhuma nota de devolucao tem numero de pedido
+      // (medido na b339: total 0, ~200 notas sem vinculo), entao o casamento por
+      // pedido nunca acha nada. Casa pelo que a nota TEM: cliente + SKU.
+      let _nfDevVia = 'pedido';
+      if (!_nfDev) {
+        const _achada = _achaNfDevPorClienteSku(d);
+        if (_achada) { _nfDev = _achada; _nfDevVia = 'cliente+sku'; }
+      }
+      if (!_nfDev) return '';
+      // b340 - campos consertados: o indice manda `nf` e `id` — o aviso usava
+      // `numero`, que nao existe, e saia sem o nº e sem o link.
+      return '<div style="background:#e8f5e9;border:1px solid #a5d6a7;border-radius:8px;padding:8px 10px;margin:6px 0;font-size:13px;">'
+        + '✅ <b>Esta venda já tem NF de devolução no Bling</b>'
+        + (_nfDev.nf ? ' — nº ' + escapeHtml(String(_nfDev.nf)) : '')
+        + (_nfDev.id ? ' · <a href="https://www.bling.com.br/notas.entrada.php#edit/' + encodeURIComponent(_nfDev.id) + '" target="_blank">🔗 abrir no Bling</a>' : '')
+        + (_nfDevVia === 'cliente+sku'
+            ? '<br><span style="font-size:12px;color:#5a7a5e;">Casada por <b>cliente + SKU</b> (nota sem nº de pedido — é o padrão aqui'
+              + (_nfDev.serie != null && _nfDev.serie !== '' ? ', série ' + escapeHtml(String(_nfDev.serie)) : '')
+              + '). Confira o nome antes de concluir.</span>'
+            : '')
+        + '<br><span style="font-size:12px;color:#5a7a5e;">Não precisa gerar de novo — se já resolveu, marque como concluído.</span>'
+        + '</div>';
+    }
+
     function moeda(v) {
       if (v == null) return '-';
       return 'R$ ' + Number(v).toFixed(2).replace('.', ',');
@@ -1262,16 +1479,7 @@
       // O indice `/api/admin/indice-nf-devolucao` ja mapeia pedido -> NF de
       // devolucao, e o painel ja o carregava — mas so pra um botao separado,
       // nunca pra esta fila. Agora a fila consulta o mesmo indice.
-      const _pedCard = String(d.order_id || d.pedido || '').replace(/\s/g, '');
-      const _nfDev = (_pedCard && window._indiceNFDev) ? window._indiceNFDev[_pedCard] : null;
-      const avisoJaTemNF = _nfDev
-        ? '<div style="background:#e8f5e9;border:1px solid #a5d6a7;border-radius:8px;padding:8px 10px;margin:6px 0;font-size:13px;">'
-          + '✅ <b>Esta venda já tem NF de devolução no Bling</b>'
-          + (_nfDev.numero ? ' — nº ' + escapeHtml(String(_nfDev.numero)) : '')
-          + (_nfDev.id ? ' · <a href="https://www.bling.com.br/notas.entrada.php#edit/' + encodeURIComponent(_nfDev.id) + '" target="_blank">🔗 abrir no Bling</a>' : '')
-          + '<br><span style="font-size:12px;color:#5a7a5e;">Não precisa gerar de novo — se já resolveu, marque como concluído.</span>'
-          + '</div>'
-        : '';
+      const avisoJaTemNF = _nfDevAvisoHtml(d);
       const desc = (d.problema_descricao || '').replace(/^Aprovado por\s+/, '');
 
       // v3.17.0 - detecta se eh devolucao parcial (tem fotos + descricao comeca com [DEVOLUCAO PARCIAL)
@@ -1370,6 +1578,8 @@
       const badgeRebipe = (d.problema_descricao || '').includes('[RE-BIPE]')
         ? '<span style="background:#c62828;color:white;padding:3px 8px;border-radius:10px;font-size:10px;font-weight:700;margin-left:6px;">🔁 RE-BIPE</span>'
         : '';
+      // b340 r3 (Codex #83): esta secao tambem gera NF — precisa do mesmo aviso
+      const avisoJaTemNF = _nfDevAvisoHtml(d);
       return `
         <div class="item problema ${concluido ? 'concluido' : ''}" id="card-${d.id}">
           <div class="item-header">
@@ -1379,6 +1589,7 @@
             </div>
             ${concluido ? '<span style="background:#999;color:white;padding:3px 8px;border-radius:10px;font-size:10px;font-weight:700;">RESOLVIDO</span>' : ''}
           </div>
+          ${avisoJaTemNF}
           <div class="item-detalhes">
             <strong>${escapeHtml(d.produto_sku || '-')}</strong> ·
             <strong>${d.produto_qtd || '-'} un</strong> ·
@@ -1438,6 +1649,8 @@
         voltouTxt = m[2];
       }
 
+      // b340 r3 (Codex #83): esta secao tambem gera NF — precisa do mesmo aviso
+      const avisoJaTemNF = _nfDevAvisoHtml(d);
       return `
         <div class="item ${concluido ? 'concluido' : ''}" id="card-${d.id}" style="border-left-color:#7b1fa2; background:#f3e5f5;">
           <div class="item-header">
@@ -1447,6 +1660,7 @@
             </div>
             ${concluido ? '<span style="background:#999;color:white;padding:3px 8px;border-radius:10px;font-size:10px;font-weight:700;">RESOLVIDO</span>' : ''}
           </div>
+          ${avisoJaTemNF}
 
           <!-- Comparativo esperado vs voltou -->
           <div style="background:#fff;border:1px solid #ce93d8;border-radius:8px;padding:10px;margin:10px 0;font-size:12px;">
