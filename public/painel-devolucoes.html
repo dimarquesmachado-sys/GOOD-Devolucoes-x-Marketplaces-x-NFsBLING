@@ -1222,7 +1222,15 @@
       // rodou desde a b326 (o aviso so aparecia depois de abrir aquela aba).
       // A flag diz "carregou de verdade" e EXPIRA em 15 min, senao o painel
       // aberto o dia todo no galpao congela o retrato.
-      if (aprovadas.length && !_nfDevIndiceFresco() && !window._indiceNFDevCarregando) {
+      // b340 r4 (Codex #83): o gatilho olhava so `aprovadas`. Desde o r3 as
+      // secoes de PROBLEMA e DIVERGENTE tambem mostram o aviso e tambem tem
+      // botao de gerar NF — com filtro que deixe aprovadas vazia, o indice
+      // nunca era carregado e o aviso sumia justamente onde a nota duplicada
+      // seria emitida. Conta card acionavel (nao concluido) de qualquer secao.
+      const _temCardQueGeraNF = [aprovadas, problemas, divergentes]
+        .filter(function (l) { return Array.isArray(l); })
+        .some(function (l) { return l.some(function (c) { return c && c.status !== 'concluido'; }); });
+      if (_temCardQueGeraNF && !_nfDevIndiceFresco() && !window._indiceNFDevCarregando) {
         window._indiceNFDevCarregando = true;
         // b327 - 3 -> 6 paginas, a pedido dele. Custa mais consulta ao Bling
         // (cada nota da pagina e detalhada pra achar o pedido), MAS o indice
