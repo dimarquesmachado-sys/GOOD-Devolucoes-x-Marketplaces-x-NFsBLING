@@ -1693,18 +1693,21 @@ async function montarIndiceNFDevolucaoAMB(maxPaginas) {
             chave: d.chaveAcesso || null,
             natureza: nat ? { id: nat.id != null ? nat.id : null, descricao: nat.descricao || null } : null,
           };
-          if (pedido) {
+          // b335 r4 (Codex #78): o filtro de natureza vale pros DOIS ramos. Ter
+          // numeroPedidoLoja nao prova que a nota e devolucao — tipo=0 traz
+          // entrada comum tambem, e uma delas com pedido preenchido disparava o
+          // "nao precisa gerar de novo" sem passar por filtro nenhum.
+          const natId = String((nat && nat.id) || '');
+          const ehDevolucao = (natId && idsDevolucao.indexOf(natId) >= 0) || /devolu/i.test(String((nat && nat.descricao) || ''));
+          if (!ehDevolucao) {
+            ignoradas[natId || 'sem_natureza'] = (ignoradas[natId || 'sem_natureza'] || 0) + 1;
+          } else if (pedido) {
             novo.set(pedido, base);
           } else {
             // b335 - nota SEM pedido (caso Full: o Bling importa a NF-e sem o
             // vinculo — campos de referencia vem nulos desde julho). E daqui
-            // que o painel casa por cliente+SKU — mas so nota de DEVOLUCAO
-            // reconhecivel entra (r2); entrada comum com mesmo contato+SKU
-            // viraria aviso FALSO mandando NAO gerar a nota devida.
-            const natId = String((nat && nat.id) || '');
-            const ehDevolucao = (natId && idsDevolucao.indexOf(natId) >= 0) || /devolu/i.test(String((nat && nat.descricao) || ''));
-            if (ehDevolucao) semPedido.push(base);
-            else ignoradas[natId || 'sem_natureza'] = (ignoradas[natId || 'sem_natureza'] || 0) + 1;
+            // que o painel casa por cliente+SKU.
+            semPedido.push(base);
           }
         } catch (e) { /* pula essa nota */ }
         await new Promise(r => setTimeout(r, 120));
@@ -1739,7 +1742,11 @@ router.get('/api/admin/indice-nf-devolucao', auth.requerLogin, async (req, res) 
       pedidos: mapa,
       sem_pedido: NF_DEV_SEM_PEDIDO_AMB,   // b335 - notas sem vinculo (Full): o painel casa por cliente+SKU
       naturezas_ignoradas: NF_DEV_IGNORADAS_AMB,   // b335 r2 - entradas fora do casamento, contadas por natureza
-      cache_ok: NF_DEV_CACHE_OK_AMB });   // b335 r3 - false = o Bling falhou e nao ha indice confiavel ainda
+      cache_ok: NF_DEV_CACHE_OK_AMB,   // b335 r3 - false = o Bling falhou e nao ha indice confiavel ainda
+      // b335 r4 (Codex #78): idade medida no relogio do SERVIDOR. O painel
+      // calcula a validade a partir dela (e nao de Date.now() na chegada),
+      // senao o TTL curto de um build parcial virava 15 min no navegador.
+      idade_ms: Math.max(0, Date.now() - NF_DEV_INDICE_TS_AMB) });
   } catch (e) { return res.status(500).json({ ok: false, erro: e.message }); }
 });
 

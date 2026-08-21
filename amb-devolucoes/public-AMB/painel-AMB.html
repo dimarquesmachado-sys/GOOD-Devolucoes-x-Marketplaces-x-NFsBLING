@@ -700,8 +700,12 @@
         if (!d.ok) { msg.innerHTML = '<span style="color:#c62828;">' + escapeHtml(d.erro || 'erro') + '</span>'; return; }
         window._indiceNFDev = d.pedidos || {};
         window._indiceNFDevSemPedido = d.sem_pedido || [];   // b335 - notas do Full (sem pedido)
-        window._indiceNFDevOk = true;   // b335 r2 - vale tambem pro aviso da fila
-        window._indiceNFDevTs = Date.now();   // b335 r3 - marca o retrato pro TTL
+        // b335 r4 (Codex #78): so vale como retrato se o servidor confirmar
+        // (cache_ok). Build que falhou volta ok:true com pedidos:{} — e {} e
+        // truthy, entao o painel marcava fresco por 15 min e abafava o retry.
+        // A idade vem do servidor pra respeitar o TTL curto do build parcial.
+        window._indiceNFDevOk = (d.cache_ok === true);   // b335 r2/r4
+        window._indiceNFDevTs = Date.now() - (Number(d.idade_ms) || 0);   // b335 r3/r4
         try { renderizar(); } catch (e) { /* fila redesenha no proximo ciclo */ }
         var totalIndice = d.total || 0;
 
@@ -1459,9 +1463,12 @@
         info.textContent = `${totalGeral} registros (ultimos 30 dias)`;
       }
 
-      // b335 r3 - a fila visivel fica ao alcance do casamento cliente+SKU: e
-      // com ela que se detecta a nota que serviria a MAIS DE UM card aberto.
-      window._cardsParaNfDev = aprovadas;
+      // b335 r3 - a fila fica ao alcance do casamento cliente+SKU: e com ela
+      // que se detecta a nota que serviria a MAIS DE UM card aberto.
+      // b335 r4 (Codex #78): tem que ser a fila INTEIRA, nao a filtrada pela
+      // busca/data da tela — se o filtro esconde um dos dois cards em disputa,
+      // o outro pareceria unico e o aviso ambiguo apareceria assim mesmo.
+      window._cardsParaNfDev = (dados && Array.isArray(dados.aprovadas)) ? dados.aprovadas : aprovadas;
 
       document.getElementById('listaAprovadas').innerHTML = aprovadas.length
         ? aprovadas.map(itemHtmlAprovado).join('')
@@ -1484,8 +1491,8 @@
             if (d && d.ok && d.pedidos) {
               window._indiceNFDev = d.pedidos;
               window._indiceNFDevSemPedido = d.sem_pedido || [];   // b335 - notas do Full (sem pedido)
-              window._indiceNFDevOk = true;   // b335 r2
-              window._indiceNFDevTs = Date.now();   // b335 r3
+              window._indiceNFDevOk = (d.cache_ok === true);   // b335 r2/r4 - ver comentario do outro carregador
+              window._indiceNFDevTs = Date.now() - (Number(d.idade_ms) || 0);   // b335 r3/r4
               const alvo = document.getElementById('listaAprovadas');
               if (alvo && aprovadas.length) alvo.innerHTML = aprovadas.map(itemHtmlAprovado).join('');
             }
