@@ -3901,7 +3901,12 @@ async function montarIndiceNFDevolucao(maxPaginas) {
     const semPedido = [];
     const ignoradas = {};
     try {
-      const paginas = Math.min(maxPaginas || 5, 15);
+      // b339 r2 (Codex #82): fracao <1 ou negativo sobrevivia ao `|| 5` (sao
+      // truthy), o laco nao rodava nenhuma vez e o resultado VAZIO substituia o
+      // indice bom — com a flag nova, cacheado por 15 min: o painel passaria a
+      // dizer que nenhuma devolucao tem nota.
+      const pedidas = Math.floor(Number(maxPaginas));
+      const paginas = Math.min(Number.isFinite(pedidas) && pedidas >= 1 ? pedidas : 5, 15);
       const tipoEntrada = String(process.env.GOOD_NF_ENTRADA_TIPO || '0');
       const idsDevolucao = String(process.env.GOOD_NATUREZAS_DEVOLUCAO_IDS || '5776118802,15110882187')
         .split(',').map((x) => x.trim()).filter(Boolean);
@@ -3939,7 +3944,14 @@ async function montarIndiceNFDevolucao(maxPaginas) {
           if (DESCARTAVEL.has(Number(d.situacao != null ? d.situacao : it.situacao))) {
             await new Promise(r => setTimeout(r, 120)); continue;
           }
-          const nat = d.naturezaOperacao || it.natureza || null;
+          // b339 r2 (Codex #82): o Bling as vezes manda naturezaOperacao como
+          // TEXTO em vez de objeto — a rota /api/admin/nfs-devolucao logo abaixo
+          // ja trata esse formato. Sem normalizar, id e descricao vinham
+          // undefined e ate "Devolucao de Mercadoria - Entrada" era ignorada.
+          const natBruta = d.naturezaOperacao || it.natureza || null;
+          const nat = (typeof natBruta === 'string')
+            ? { id: null, descricao: natBruta }
+            : natBruta;
           const natId = String((nat && nat.id) || '');
           const ehDevolucao = (natId && idsDevolucao.indexOf(natId) >= 0)
             || /devolu/i.test(String((nat && nat.descricao) || ''));
