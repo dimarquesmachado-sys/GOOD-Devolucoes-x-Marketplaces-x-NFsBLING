@@ -81,7 +81,7 @@ const criarMlBuscas = require('./lib-AMB/ml-buscas-AMB');
 const registrarIdentificar = require('./lib-AMB/identificar-AMB');
 const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 
-const VERSAO = 'AMB Devolucoes b156';
+const VERSAO = 'AMB Devolucoes b157';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -1420,6 +1420,71 @@ router.get('/nf/entrada/sonda', admin, async (req, res) => {
     tipos: await nfEntrada.sondarTipos() });
 });
 
+/** b336 - Calibragem do aviso "ja tem NF de devolucao": QUAIS naturezas
+ *  aparecem nas notas de ENTRADA e quais delas o aviso aceita hoje.
+ *  Diferente de /api/admin/indice-nf-devolucao (que abre nota por nota e leva
+ *  minutos), esta so LISTA — responde em segundos e nao precisa de login.
+ *  A descricao da natureza nao vem na listagem do Bling, entao detalhamos UMA
+ *  nota por natureza (punhado de chamadas) so pra dar nome ao id. */
+router.get('/nf/entrada/naturezas', admin, async (req, res) => {
+  try {
+    const tipo = String(req.query.tipo != null ? req.query.tipo : (process.env.AMB_NF_ENTRADA_TIPO || '0'));
+    const paginas = Math.min(Math.max(Number(req.query.paginas) || 3, 1), 10);
+    const idsDevolucao = String(process.env.AMB_NATUREZAS_DEVOLUCAO_IDS || process.env.AMB_NATUREZA_DEVOLUCAO || '15110882041')
+      .split(',').map(s => s.trim()).filter(Boolean);
+    const NFE_DESCARTAVEL = new Set([2, 9]);
+
+    const porNatureza = new Map();   // id -> { qtd, exemplo_nf, exemplo_id, exemplo_contato, descricao }
+    let lidas = 0, descartadas = 0, falhaLista = false;
+    for (let p = 1; p <= paginas; p++) {
+      const r = await bling.chamarBling(`/nfe?tipo=${tipo}&pagina=${p}&limite=100`);
+      if (!r.ok) { falhaLista = true; break; }
+      const lista = r.data?.data || [];
+      if (!lista.length) break;
+      for (const n of lista) {
+        if (NFE_DESCARTAVEL.has(Number(n.situacao))) { descartadas++; continue; }
+        lidas++;
+        const id = String(n.naturezaOperacao?.id != null ? n.naturezaOperacao.id : 'sem_natureza');
+        const at = porNatureza.get(id) || { qtd: 0, exemplo_nf: n.numero, exemplo_id: n.id, exemplo_contato: n.contato?.nome || null, descricao: n.naturezaOperacao?.descricao || null };
+        at.qtd++;
+        porNatureza.set(id, at);
+      }
+      if (lista.length < 100) break;
+    }
+    // nome da natureza: so pra quem nao veio com descricao na listagem
+    for (const [id, at] of porNatureza) {
+      if (at.descricao || id === 'sem_natureza') continue;
+      try {
+        const rD = await bling.chamarBling(`/nfe/${at.exemplo_id}`);
+        if (rD.ok) at.descricao = rD.data?.data?.naturezaOperacao?.descricao || null;
+      } catch (e) { /* sem nome, o id ja resolve */ }
+      await new Promise(r => setTimeout(r, 120));
+    }
+
+    const naturezas = [...porNatureza.entries()].map(([id, at]) => ({
+      id,
+      descricao: at.descricao,
+      qtd: at.qtd,
+      exemplo_nf: at.exemplo_nf,
+      exemplo_contato: at.exemplo_contato,
+      // a MESMA regra do indice: id na env OU descricao com "devolu"
+      entra_no_aviso: (id !== 'sem_natureza' && idsDevolucao.indexOf(id) >= 0) || /devolu/i.test(String(at.descricao || '')),
+    })).sort((a, b) => b.qtd - a.qtd);
+
+    const faltando = naturezas.filter(n => !n.entra_no_aviso).map(n => n.id);
+    res.json({ ok: true, versao: VERSAO, tipo_lido: tipo, paginas_pedidas: paginas,
+      lista_incompleta: falhaLista,
+      notas_lidas: lidas, canceladas_ou_denegadas: descartadas,
+      env_atual: idsDevolucao,
+      naturezas,
+      o_que_fazer: faltando.length
+        ? 'se alguma natureza com entra_no_aviso=false for devolucao de cliente, ponha o id dela em AMB_NATUREZAS_DEVOLUCAO_IDS (separado por virgula) no Render: ' + idsDevolucao.concat(faltando).join(',')
+        : 'nada a fazer: toda natureza encontrada ja entra no aviso' });
+  } catch (e) {
+    res.status(500).json({ ok: false, erro: String(e.message || e) });
+  }
+});
+
 // ── Testes ───────────────────────────────────────────────────
 router.get('/bling/teste', admin, async (req, res) => {
   res.json({ ok: true, versao: VERSAO, resultado: await bling.testeDeVida() });
@@ -1763,7 +1828,7 @@ router.use((req, res) => {
       '/amb/api/auth/login', '/amb/api/auth/me', '/amb/api/triagem/identificar', '/amb/api/triagem/registrar',
       '/amb/auth/diag', '/amb/db/teste', '/amb/api/nf/itens', '/amb/api/triagem/recentes',
       '/amb/painel', '/amb/api/espreita', '/amb/api/recados', '/amb/api/defeitos',
-      '/amb/shopee/teste', '/amb/magalu/status', '/amb/nf/entrada/sonda', '/amb/api/etiqueta/fila',
+      '/amb/shopee/teste', '/amb/magalu/status', '/amb/nf/entrada/sonda', '/amb/nf/entrada/naturezas', '/amb/api/etiqueta/fila',
       '/amb/ml/teste', '/amb/ml/eu', '/amb/bling/teste', '/amb/bling/produto',
     ],
   });
