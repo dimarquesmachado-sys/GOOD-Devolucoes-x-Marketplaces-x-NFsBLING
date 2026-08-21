@@ -1429,14 +1429,27 @@ router.get('/nf/entrada/sonda', admin, async (req, res) => {
 /** b336 r5 - o que ja foi descoberto sobre a natureza de uma nota fica aqui,
  *  pra que rodadas seguintes da calibragem SOMEM em vez de recomecar. Teto
  *  simples: passou do limite, esquece as mais antigas (Map guarda a ordem de
- *  insercao). Sem TTL de proposito — a natureza de uma nota emitida nao muda. */
-const NF_NAT_CACHE_AMB = new Map();   // idDaNota -> { id, descricao }
+ *  insercao).
+ *  b336 r6 (Codex #79): eu tinha escrito "natureza de nota emitida nao muda" e
+ *  dispensado validade — mas esta rota so descarta cancelada/denegada, entao
+ *  RASCUNHO entra, e nele a natureza ainda pode ser preenchida ou trocada no
+ *  Bling depois. Duas defesas: valor nao resolvido (null) nao e guardado, e o
+ *  que fica guardado vence em 6h, revalidando sozinho. */
+const NF_NAT_CACHE_AMB = new Map();   // idDaNota -> { id, descricao, em }
 const NF_NAT_CACHE_MAX = 3000;
+const NF_NAT_CACHE_TTL = 6 * 60 * 60 * 1000;
 function guardarNaturezaAMB(idNota, natId, natDesc) {
-  NF_NAT_CACHE_AMB.set(String(idNota), { id: natId, descricao: natDesc });
+  if (!natId) return;   // b336 r6 - nao resolvida: nao vira cache
+  NF_NAT_CACHE_AMB.set(String(idNota), { id: natId, descricao: natDesc, em: Date.now() });
   while (NF_NAT_CACHE_AMB.size > NF_NAT_CACHE_MAX) {
     NF_NAT_CACHE_AMB.delete(NF_NAT_CACHE_AMB.keys().next().value);
   }
+}
+function naturezaDoCacheAMB(idNota) {
+  const at = NF_NAT_CACHE_AMB.get(String(idNota));
+  if (!at) return null;
+  if ((Date.now() - at.em) > NF_NAT_CACHE_TTL) { NF_NAT_CACHE_AMB.delete(String(idNota)); return null; }
+  return at;
 }
 
 router.get('/nf/entrada/naturezas', admin, async (req, res) => {
@@ -1499,7 +1512,7 @@ router.get('/nf/entrada/naturezas', admin, async (req, res) => {
       let orcamento = TETO_SEM_NATUREZA;
       for (const nota of fila) {
         let natId = null, natDesc = null, falhou = false;
-        const emCache = NF_NAT_CACHE_AMB.get(String(nota.id));
+        const emCache = naturezaDoCacheAMB(nota.id);
         if (emCache) {
           natId = emCache.id; natDesc = emCache.descricao; resolvidasDoCache++;
         } else if (orcamento > 0) {
