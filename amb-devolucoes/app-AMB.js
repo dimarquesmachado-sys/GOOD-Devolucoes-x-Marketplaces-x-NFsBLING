@@ -1465,13 +1465,20 @@ router.get('/nf/entrada/naturezas', admin, async (req, res) => {
     // listagem, abrindo uma a uma (teto pra nao virar a rota lenta que esta
     // veio substituir; o que passar do teto deixa a leitura incompleta).
     const TETO_SEM_NATUREZA = 40;
-    let falhaDetalhe = 0, semNaturezaNaoLidas = 0;
+    // b336 r4 (Codex #79): sem cursor, toda chamada reabria as MESMAS 40
+    // primeiras — as demais nunca eram lidas e a leitura ficava incompleta
+    // pra sempre, com a rota mandando "tente de novo mais tarde" como se
+    // fosse falha passageira do Bling. Agora a fatia anda: ?pular=N.
+    const pular = Math.max(0, Number(req.query.pular) || 0);
+    let falhaDetalhe = 0, semNaturezaNaoLidas = 0, semNaturezaTotal = 0;
     const pendentes = porNatureza.get('sem_natureza');
     if (pendentes) {
       const fila = pendentes.ids_sem_natureza || [];
-      semNaturezaNaoLidas = Math.max(0, fila.length - TETO_SEM_NATUREZA);
+      semNaturezaTotal = fila.length;
+      const fatia = fila.slice(pular, pular + TETO_SEM_NATUREZA);
+      semNaturezaNaoLidas = Math.max(0, fila.length - (pular + fatia.length));
       porNatureza.delete('sem_natureza');
-      for (const nota of fila.slice(0, TETO_SEM_NATUREZA)) {
+      for (const nota of fatia) {
         let natId = null, natDesc = null, falhou = false;
         try {
           const rD = await bling.chamarBling(`/nfe/${nota.id}`);
@@ -1526,16 +1533,25 @@ router.get('/nf/entrada/naturezas', admin, async (req, res) => {
     })).sort((a, b) => b.qtd - a.qtd);
 
     const incompleto = falhaLista || falhaDetalhe > 0 || semNaturezaNaoLidas > 0;
+    // b336 r4 (Codex #79): a URL da proxima fatia, montada com os MESMOS
+    // parametros desta chamada. Sem ela o operador nao tinha como avancar.
+    const proximaFatia = semNaturezaNaoLidas > 0
+      ? `/amb/nf/entrada/naturezas?tipo=${encodeURIComponent(tipo)}&paginas=${paginas}&pular=${pular + TETO_SEM_NATUREZA}&k=SUA_ADMIN_KEY`
+      : null;
     res.json({ ok: true, versao: VERSAO, tipo_lido: tipo, paginas_pedidas: paginas,
       leitura_incompleta: incompleto,
       falha_na_listagem: falhaLista, descricoes_que_falharam: falhaDetalhe,
+      sem_natureza_total: semNaturezaTotal, sem_natureza_pulei: pular,
       sem_natureza_nao_lidas: semNaturezaNaoLidas,
+      proxima_fatia: proximaFatia,
       notas_lidas: lidas, canceladas_ou_denegadas: descartadas,
       env_atual: idsDevolucao,
       naturezas,
-      o_que_fazer: incompleto
-        ? 'LEITURA INCOMPLETA (o Bling falhou em parte das consultas) — nao calibre com este resultado, rode de novo daqui a pouco'
-        : 'olhe as naturezas com entra_no_aviso=false: se ALGUMA delas for devolucao de cliente (o exemplo_contato ajuda a reconhecer), cole o campo se_for_devolucao_de_cliente_use dela em AMB_NATUREZAS_DEVOLUCAO_IDS no Render. Uma de cada vez — nao junte todas' });
+      o_que_fazer: (falhaLista || falhaDetalhe > 0)
+        ? 'LEITURA INCOMPLETA — o Bling falhou em parte das consultas; nao calibre com este resultado, rode de novo daqui a pouco'
+        : (semNaturezaNaoLidas > 0
+          ? 'FALTA LER O RESTO (nao e erro do Bling): abra a URL de proxima_fatia pra continuar de onde parou. Calibre so quando sem_natureza_nao_lidas chegar a 0'
+          : 'olhe as naturezas com entra_no_aviso=false: se ALGUMA delas for devolucao de cliente (o exemplo_contato ajuda a reconhecer), cole o campo se_for_devolucao_de_cliente_use dela em AMB_NATUREZAS_DEVOLUCAO_IDS no Render. Uma de cada vez — nao junte todas') });
   } catch (e) {
     res.status(500).json({ ok: false, erro: String(e.message || e) });
   }
