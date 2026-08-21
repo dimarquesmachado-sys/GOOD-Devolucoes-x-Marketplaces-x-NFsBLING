@@ -1426,6 +1426,19 @@ router.get('/nf/entrada/sonda', admin, async (req, res) => {
  *  minutos), esta so LISTA — responde em segundos e nao precisa de login.
  *  A descricao da natureza nao vem na listagem do Bling, entao detalhamos UMA
  *  nota por natureza (punhado de chamadas) so pra dar nome ao id. */
+/** b336 r5 - o que ja foi descoberto sobre a natureza de uma nota fica aqui,
+ *  pra que rodadas seguintes da calibragem SOMEM em vez de recomecar. Teto
+ *  simples: passou do limite, esquece as mais antigas (Map guarda a ordem de
+ *  insercao). Sem TTL de proposito — a natureza de uma nota emitida nao muda. */
+const NF_NAT_CACHE_AMB = new Map();   // idDaNota -> { id, descricao }
+const NF_NAT_CACHE_MAX = 3000;
+function guardarNaturezaAMB(idNota, natId, natDesc) {
+  NF_NAT_CACHE_AMB.set(String(idNota), { id: natId, descricao: natDesc });
+  while (NF_NAT_CACHE_AMB.size > NF_NAT_CACHE_MAX) {
+    NF_NAT_CACHE_AMB.delete(NF_NAT_CACHE_AMB.keys().next().value);
+  }
+}
+
 router.get('/nf/entrada/naturezas', admin, async (req, res) => {
   try {
     const tipo = String(req.query.tipo != null ? req.query.tipo : (process.env.AMB_NF_ENTRADA_TIPO || '0'));
@@ -1465,37 +1478,53 @@ router.get('/nf/entrada/naturezas', admin, async (req, res) => {
     // listagem, abrindo uma a uma (teto pra nao virar a rota lenta que esta
     // veio substituir; o que passar do teto deixa a leitura incompleta).
     const TETO_SEM_NATUREZA = 40;
-    // b336 r4 (Codex #79): sem cursor, toda chamada reabria as MESMAS 40
-    // primeiras — as demais nunca eram lidas e a leitura ficava incompleta
-    // pra sempre, com a rota mandando "tente de novo mais tarde" como se
-    // fosse falha passageira do Bling. Agora a fatia anda: ?pular=N.
-    const pular = Math.max(0, Number(req.query.pular) || 0);
-    let falhaDetalhe = 0, semNaturezaNaoLidas = 0, semNaturezaTotal = 0;
+    // b336 r4/r5 (Codex #79): a listagem as vezes vem sem naturezaOperacao e
+    // so o detalhe revela. Duas armadilhas ja pegas aqui:
+    //  r4 - sem avanco, toda chamada reabria as MESMAS 40 e a leitura nunca
+    //       fechava, com a rota mandando "tente de novo" como se fosse falha
+    //       do Bling;
+    //  r5 - com cursor (?pular=N) ela avancava mas RECOMECAVA a contagem: a
+    //       ultima fatia se declarava completa mostrando so as notas dela, e
+    //       uma natureza que aparecesse numa fatia anterior sumia do resultado.
+    // Solucao: o que ja foi resolvido fica GUARDADO (NF_NAT_CACHE_AMB). Cada
+    // rodada gasta seu orcamento abrindo notas NOVAS e soma as antigas de
+    // graca, entao o resultado so cresce e a ultima rodada tem tudo. Basta
+    // repetir a MESMA URL ate sem_natureza_nao_lidas chegar a zero.
+    let falhaDetalhe = 0, semNaturezaNaoLidas = 0, semNaturezaTotal = 0, resolvidasDoCache = 0;
     const pendentes = porNatureza.get('sem_natureza');
     if (pendentes) {
       const fila = pendentes.ids_sem_natureza || [];
       semNaturezaTotal = fila.length;
-      const fatia = fila.slice(pular, pular + TETO_SEM_NATUREZA);
-      semNaturezaNaoLidas = Math.max(0, fila.length - (pular + fatia.length));
       porNatureza.delete('sem_natureza');
-      for (const nota of fatia) {
+      let orcamento = TETO_SEM_NATUREZA;
+      for (const nota of fila) {
         let natId = null, natDesc = null, falhou = false;
-        try {
-          const rD = await bling.chamarBling(`/nfe/${nota.id}`);
-          if (rD.ok) {
-            const nat = rD.data?.data?.naturezaOperacao || null;
-            natId = nat && nat.id != null ? String(nat.id) : null;
-            natDesc = (nat && nat.descricao) || null;
-          } else falhou = true;
-        } catch (e) { falhou = true; }
-        if (falhou) falhaDetalhe++;
+        const emCache = NF_NAT_CACHE_AMB.get(String(nota.id));
+        if (emCache) {
+          natId = emCache.id; natDesc = emCache.descricao; resolvidasDoCache++;
+        } else if (orcamento > 0) {
+          orcamento--;
+          try {
+            const rD = await bling.chamarBling(`/nfe/${nota.id}`);
+            if (rD.ok) {
+              const nat = rD.data?.data?.naturezaOperacao || null;
+              natId = nat && nat.id != null ? String(nat.id) : null;
+              natDesc = (nat && nat.descricao) || null;
+              guardarNaturezaAMB(nota.id, natId, natDesc);
+            } else falhou = true;
+          } catch (e) { falhou = true; }
+          if (falhou) falhaDetalhe++;
+          await new Promise(r => setTimeout(r, 120));
+        } else {
+          semNaturezaNaoLidas++;   // fica pra proxima rodada
+          continue;
+        }
         const chave = natId || 'sem_natureza';
         const at = porNatureza.get(chave) || { qtd: 0, exemplo_nf: nota.numero, exemplo_id: nota.id, exemplo_contato: nota.contato, descricao: natDesc, ids_sem_natureza: [] };
         at.qtd++;
         if (!at.descricao && natDesc) at.descricao = natDesc;
         if (chave === 'sem_natureza') at.descricao_indisponivel = true;
         porNatureza.set(chave, at);
-        await new Promise(r => setTimeout(r, 120));
       }
     }
 
@@ -1533,24 +1562,19 @@ router.get('/nf/entrada/naturezas', admin, async (req, res) => {
     })).sort((a, b) => b.qtd - a.qtd);
 
     const incompleto = falhaLista || falhaDetalhe > 0 || semNaturezaNaoLidas > 0;
-    // b336 r4 (Codex #79): a URL da proxima fatia, montada com os MESMOS
-    // parametros desta chamada. Sem ela o operador nao tinha como avancar.
-    const proximaFatia = semNaturezaNaoLidas > 0
-      ? `/amb/nf/entrada/naturezas?tipo=${encodeURIComponent(tipo)}&paginas=${paginas}&pular=${pular + TETO_SEM_NATUREZA}&k=SUA_ADMIN_KEY`
-      : null;
     res.json({ ok: true, versao: VERSAO, tipo_lido: tipo, paginas_pedidas: paginas,
       leitura_incompleta: incompleto,
       falha_na_listagem: falhaLista, descricoes_que_falharam: falhaDetalhe,
-      sem_natureza_total: semNaturezaTotal, sem_natureza_pulei: pular,
+      sem_natureza_total: semNaturezaTotal,
+      sem_natureza_ja_resolvidas: resolvidasDoCache,
       sem_natureza_nao_lidas: semNaturezaNaoLidas,
-      proxima_fatia: proximaFatia,
       notas_lidas: lidas, canceladas_ou_denegadas: descartadas,
       env_atual: idsDevolucao,
       naturezas,
       o_que_fazer: (falhaLista || falhaDetalhe > 0)
         ? 'LEITURA INCOMPLETA — o Bling falhou em parte das consultas; nao calibre com este resultado, rode de novo daqui a pouco'
         : (semNaturezaNaoLidas > 0
-          ? 'FALTA LER O RESTO (nao e erro do Bling): abra a URL de proxima_fatia pra continuar de onde parou. Calibre so quando sem_natureza_nao_lidas chegar a 0'
+          ? `FALTA LER ${semNaturezaNaoLidas} nota(s) (nao e erro do Bling): abra ESTA MESMA URL de novo — cada rodada avanca e SOMA com as anteriores. Calibre so quando sem_natureza_nao_lidas chegar a 0`
           : 'olhe as naturezas com entra_no_aviso=false: se ALGUMA delas for devolucao de cliente (o exemplo_contato ajuda a reconhecer), cole o campo se_for_devolucao_de_cliente_use dela em AMB_NATUREZAS_DEVOLUCAO_IDS no Render. Uma de cada vez — nao junte todas') });
   } catch (e) {
     res.status(500).json({ ok: false, erro: String(e.message || e) });
