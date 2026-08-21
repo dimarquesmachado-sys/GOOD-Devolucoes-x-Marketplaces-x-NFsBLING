@@ -1575,9 +1575,19 @@ router.get('/nf/entrada/naturezas', admin, async (req, res) => {
           if (id === 'sem_natureza') continue;
           // b337 r2/r3 (Codex #80): a descricao da NOTA ja foi guardada no
           // passe acima — o catalogo so preenche o nome de exibicao.
-          const nome = porId.get(String(id));
+          // b337 r4 (Codex #80): quando a natureza vem sem descricao, a lib
+          // devolve o rotulo sintetico "natureza <id>" — que NAO identifica
+          // nada. Aceita-lo como nome valido liberava a calibragem com o
+          // operador sem saber o que aquilo e.
+          const bruto = porId.get(String(id));
+          const nome = (bruto && bruto !== ('natureza ' + id)) ? bruto : null;
           if (nome) { at.descricao = nome; at.descricao_via = 'catalogo'; }
-          else if (!at.descricao) { at.descricao_indisponivel = true; semNomeNoCatalogo++; }
+          else if (at.descricao_nota) {
+            // b337 r4 (Codex #80): faltou no catalogo mas a NOTA tem nome —
+            // isso identifica a natureza, entao serve de exibicao e NAO e
+            // motivo pra suspender a calibragem.
+            at.descricao = at.descricao_nota; at.descricao_via = 'nota';
+          } else { at.descricao_indisponivel = true; semNomeNoCatalogo++; }
         }
       } else catalogoErro = rCat.erro || ('status ' + rCat.status);
     } catch (e) { catalogoErro = String(e.message || e); }
@@ -1585,7 +1595,12 @@ router.get('/nf/entrada/naturezas', admin, async (req, res) => {
     // seria repetir o erro da b336 r2 (conselho de calibragem com cara de
     // resultado bom).
     if (!catalogoOk) {
-      for (const [id, at] of porNatureza) { if (id !== 'sem_natureza' && !at.descricao) at.descricao_indisponivel = true; }
+      for (const [id, at] of porNatureza) {
+        if (id === 'sem_natureza') continue;
+        // b337 r4 - sem catalogo, o nome da nota ainda identifica a natureza
+        if (!at.descricao && at.descricao_nota) { at.descricao = at.descricao_nota; at.descricao_via = 'nota'; }
+        if (!at.descricao) at.descricao_indisponivel = true;
+      }
     }
 
     const naturezas = [...porNatureza.entries()].map(([id, at]) => ({
