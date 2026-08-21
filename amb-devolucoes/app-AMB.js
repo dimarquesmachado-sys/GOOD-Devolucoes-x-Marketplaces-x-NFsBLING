@@ -1429,7 +1429,11 @@ router.get('/nf/entrada/sonda', admin, async (req, res) => {
 router.get('/nf/entrada/naturezas', admin, async (req, res) => {
   try {
     const tipo = String(req.query.tipo != null ? req.query.tipo : (process.env.AMB_NF_ENTRADA_TIPO || '0'));
-    const paginas = Math.min(Math.max(Number(req.query.paginas) || 3, 1), 10);
+    // b336 r3 (Codex #79): o padrao e 6 paginas porque e ASSIM que o painel
+    // monta o indice de verdade (painel-AMB.html chama ?paginas=6). Calibrar
+    // com 3 podia esconder uma natureza que so aparece nas paginas 4-6 e
+    // ainda assim dizer que a leitura foi completa.
+    const paginas = Math.min(Math.max(Number(req.query.paginas) || 6, 1), 10);
     const idsDevolucao = String(process.env.AMB_NATUREZAS_DEVOLUCAO_IDS || process.env.AMB_NATUREZA_DEVOLUCAO || '15110882041')
       .split(',').map(s => s.trim()).filter(Boolean);
     const NFE_DESCARTAVEL = new Set([2, 9]);
@@ -1445,14 +1449,50 @@ router.get('/nf/entrada/naturezas', admin, async (req, res) => {
         if (NFE_DESCARTAVEL.has(Number(n.situacao))) { descartadas++; continue; }
         lidas++;
         const id = String(n.naturezaOperacao?.id != null ? n.naturezaOperacao.id : 'sem_natureza');
-        const at = porNatureza.get(id) || { qtd: 0, exemplo_nf: n.numero, exemplo_id: n.id, exemplo_contato: n.contato?.nome || null, descricao: n.naturezaOperacao?.descricao || null };
+        const at = porNatureza.get(id) || { qtd: 0, exemplo_nf: n.numero, exemplo_id: n.id, exemplo_contato: n.contato?.nome || null, descricao: n.naturezaOperacao?.descricao || null, ids_sem_natureza: [] };
         at.qtd++;
+        // b336 r3 (Codex #79): a listagem as vezes vem SEM naturezaOperacao,
+        // mas o indice de verdade tira a natureza do DETALHE — ou seja, essas
+        // notas podem ser devolucao e entrar no aviso. Guardamos os ids pra
+        // abrir uma por uma no passe seguinte, em vez de despachar todas como
+        // "sem_natureza" e declarar a leitura completa.
+        if (id === 'sem_natureza') at.ids_sem_natureza.push({ id: n.id, numero: n.numero, contato: n.contato?.nome || null });
         porNatureza.set(id, at);
       }
       if (lista.length < 100) break;
     }
+    // b336 r3 (Codex #79): resolve as notas que vieram SEM natureza na
+    // listagem, abrindo uma a uma (teto pra nao virar a rota lenta que esta
+    // veio substituir; o que passar do teto deixa a leitura incompleta).
+    const TETO_SEM_NATUREZA = 40;
+    let falhaDetalhe = 0, semNaturezaNaoLidas = 0;
+    const pendentes = porNatureza.get('sem_natureza');
+    if (pendentes) {
+      const fila = pendentes.ids_sem_natureza || [];
+      semNaturezaNaoLidas = Math.max(0, fila.length - TETO_SEM_NATUREZA);
+      porNatureza.delete('sem_natureza');
+      for (const nota of fila.slice(0, TETO_SEM_NATUREZA)) {
+        let natId = null, natDesc = null, falhou = false;
+        try {
+          const rD = await bling.chamarBling(`/nfe/${nota.id}`);
+          if (rD.ok) {
+            const nat = rD.data?.data?.naturezaOperacao || null;
+            natId = nat && nat.id != null ? String(nat.id) : null;
+            natDesc = (nat && nat.descricao) || null;
+          } else falhou = true;
+        } catch (e) { falhou = true; }
+        if (falhou) falhaDetalhe++;
+        const chave = natId || 'sem_natureza';
+        const at = porNatureza.get(chave) || { qtd: 0, exemplo_nf: nota.numero, exemplo_id: nota.id, exemplo_contato: nota.contato, descricao: natDesc, ids_sem_natureza: [] };
+        at.qtd++;
+        if (!at.descricao && natDesc) at.descricao = natDesc;
+        if (chave === 'sem_natureza') at.descricao_indisponivel = true;
+        porNatureza.set(chave, at);
+        await new Promise(r => setTimeout(r, 120));
+      }
+    }
+
     // nome da natureza: so pra quem nao veio com descricao na listagem
-    let falhaDetalhe = 0;
     for (const [id, at] of porNatureza) {
       if (at.descricao || id === 'sem_natureza') continue;
       try {
@@ -1485,10 +1525,11 @@ router.get('/nf/entrada/naturezas', admin, async (req, res) => {
         : idsDevolucao.concat([id]).join(','),
     })).sort((a, b) => b.qtd - a.qtd);
 
-    const incompleto = falhaLista || falhaDetalhe > 0;
+    const incompleto = falhaLista || falhaDetalhe > 0 || semNaturezaNaoLidas > 0;
     res.json({ ok: true, versao: VERSAO, tipo_lido: tipo, paginas_pedidas: paginas,
       leitura_incompleta: incompleto,
       falha_na_listagem: falhaLista, descricoes_que_falharam: falhaDetalhe,
+      sem_natureza_nao_lidas: semNaturezaNaoLidas,
       notas_lidas: lidas, canceladas_ou_denegadas: descartadas,
       env_atual: idsDevolucao,
       naturezas,
