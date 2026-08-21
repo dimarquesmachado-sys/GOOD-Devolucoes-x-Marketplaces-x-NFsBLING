@@ -1607,11 +1607,17 @@ registrarRotasAdminNF(router, {
 const NF_DEV_TTL_AMB = 15 * 60 * 1000;
 const NF_DEV_INDICE_AMB = new Map();   // pedido -> { nf, data, contato }
 let NF_DEV_SEM_PEDIDO_AMB = [];        // b335 - notas SEM pedido (caso Full): o painel casa por cliente+SKU
+let NF_DEV_IGNORADAS_AMB = {};         // b335 r2 - naturezas que ficaram FORA do casamento (id -> contagem)
+let NF_DEV_CACHE_OK_AMB = false;       // b335 r2 - build valido, mesmo que os dois lados venham vazios
 let NF_DEV_INDICE_TS_AMB = 0;
 let NF_DEV_CARREGANDO_AMB = null;
 
 async function montarIndiceNFDevolucaoAMB(maxPaginas) {
-  if ((Date.now() - NF_DEV_INDICE_TS_AMB) < NF_DEV_TTL_AMB && NF_DEV_INDICE_AMB.size) return;
+  // b335 r2 (Codex #78): o guard usava NF_DEV_INDICE_AMB.size — se as entradas
+  // recentes fossem TODAS do Full (sem pedido), o mapa ficava vazio e CADA
+  // request reconstruia os ~600 detalhes de novo, com 120ms de pausa cada,
+  // ignorando o TTL. A flag diz "o build terminou", independente do formato.
+  if ((Date.now() - NF_DEV_INDICE_TS_AMB) < NF_DEV_TTL_AMB && NF_DEV_CACHE_OK_AMB) return;
   if (NF_DEV_CARREGANDO_AMB) return NF_DEV_CARREGANDO_AMB;
   NF_DEV_CARREGANDO_AMB = (async () => {
     const novo = new Map();
@@ -1624,6 +1630,17 @@ async function montarIndiceNFDevolucaoAMB(maxPaginas) {
       // e tipo=1 lista as VENDAS — ate a b334 este indice usava tipo=1 cravado,
       // ou seja, indexava VENDA achando que era devolucao (o aviso nunca casava).
       const tipoEntrada = String(process.env.AMB_NF_ENTRADA_TIPO || '0');
+      // b335 r2 (Codex #78): tipo=0 traz TODAS as entradas — compra de
+      // fornecedor, transferencia, conserto... Pro casamento cliente+SKU so
+      // entram notas cuja natureza seja RECONHECIVEL como devolucao: id na
+      // lista da env AMB_NATUREZAS_DEVOLUCAO_IDS (padrao: a mesma
+      // AMB_NATUREZA_DEVOLUCAO da busca acharNfDevolucaoBling) OU descricao
+      // contendo "devolu". O que ficar de fora e contado por natureza em
+      // `naturezas_ignoradas` — e por ali que se descobre um id novo (ex.: o
+      // das notas da MAGALU LOG do Full, se a descricao nao vier) pra por na env.
+      const idsDevolucao = String(process.env.AMB_NATUREZAS_DEVOLUCAO_IDS || process.env.AMB_NATUREZA_DEVOLUCAO || '15110882041')
+        .split(',').map(s => s.trim()).filter(Boolean);
+      const ignoradas = {};
       // 1) lista as notas de entrada (so id + numero, rapido)
       const ids = [];
       for (let p = 1; p <= paginas; p++) {
@@ -1658,8 +1675,13 @@ async function montarIndiceNFDevolucaoAMB(maxPaginas) {
           } else {
             // b335 - nota SEM pedido (caso Full: o Bling importa a NF-e sem o
             // vinculo — campos de referencia vem nulos desde julho). E daqui
-            // que o painel casa por cliente+SKU.
-            semPedido.push(base);
+            // que o painel casa por cliente+SKU — mas so nota de DEVOLUCAO
+            // reconhecivel entra (r2); entrada comum com mesmo contato+SKU
+            // viraria aviso FALSO mandando NAO gerar a nota devida.
+            const natId = String((nat && nat.id) || '');
+            const ehDevolucao = (natId && idsDevolucao.indexOf(natId) >= 0) || /devolu/i.test(String((nat && nat.descricao) || ''));
+            if (ehDevolucao) semPedido.push(base);
+            else ignoradas[natId || 'sem_natureza'] = (ignoradas[natId || 'sem_natureza'] || 0) + 1;
           }
         } catch (e) { /* pula essa nota */ }
         await new Promise(r => setTimeout(r, 120));
@@ -1667,6 +1689,8 @@ async function montarIndiceNFDevolucaoAMB(maxPaginas) {
       NF_DEV_INDICE_AMB.clear();
       for (const [k, v] of novo) NF_DEV_INDICE_AMB.set(k, v);
       NF_DEV_SEM_PEDIDO_AMB = semPedido;   // b335
+      NF_DEV_IGNORADAS_AMB = ignoradas;    // b335 r2
+      NF_DEV_CACHE_OK_AMB = true;          // b335 r2
       NF_DEV_INDICE_TS_AMB = Date.now();
     } catch (e) { /* mantem o indice anterior */ }
     finally { NF_DEV_CARREGANDO_AMB = null; }
@@ -1686,7 +1710,8 @@ router.get('/api/admin/indice-nf-devolucao', auth.requerLogin, async (req, res) 
     return res.json({ ok: true, total: NF_DEV_INDICE_AMB.size, atualizado_em: NF_DEV_INDICE_TS_AMB,
       tipo_usado: String(process.env.AMB_NF_ENTRADA_TIPO || '0'),   // b335
       pedidos: mapa,
-      sem_pedido: NF_DEV_SEM_PEDIDO_AMB });   // b335 - notas sem vinculo (Full): o painel casa por cliente+SKU
+      sem_pedido: NF_DEV_SEM_PEDIDO_AMB,   // b335 - notas sem vinculo (Full): o painel casa por cliente+SKU
+      naturezas_ignoradas: NF_DEV_IGNORADAS_AMB });   // b335 r2 - entradas fora do casamento, contadas por natureza
   } catch (e) { return res.status(500).json({ ok: false, erro: e.message }); }
 });
 
