@@ -1820,6 +1820,13 @@ registrarRotasAdminNF(router, {
   chamarBling: bling.chamarBling,
   chamarML: ml.chamarML,
   buscarNFnoML: ajudantes.buscarNFnoML,
+  // b159 - dep que FALTAVA. rotas-admin-AMB (copia do modulo da GOOD) usa
+  // buscarNFnoBlingPorNumero em 2 rotas, mas ela nunca foi injetada AQUI:
+  // na GOOD ela e global no server.js. Resultado: /api/admin/resolver-id-nf
+  // e a busca por numero respondiam 500 "buscarNFnoBlingPorNumero is not
+  // defined" toda vez que a NF precisava ser achada pelo NUMERO (card sem
+  // o id do Bling). O registrarIdentificar logo acima ja passava certo.
+  buscarNFnoBlingPorNumero: ajudantes.buscarNFnoBlingPorNumero,
   buscarNFePorId: nfePorIdCru,   // b73 - formato cru, como a GOOD espera
   buscarNFBlindada: ajudantes.buscarNFBlindada,
   resolverIdNFPorChave: nfp.resolverIdNFPorChave,
