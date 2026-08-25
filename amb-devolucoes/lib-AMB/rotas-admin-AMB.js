@@ -24,6 +24,7 @@ module.exports = function registrarRotasAdminNF(app, deps) {
     resolverIdNFPorChave, mapItensNF,
     tabelaDevolucoes,
     buscarNFsPorNumero,   // b212 - usada pelo raio-x da busca por numero
+    buscarNFnoBlingPorNumero,   // b159 - achar a NF pelo NUMERO (resolver-id-nf)
     buscarNfDevolucaoBling,   // b255
     nomesBatemNf,   // b316
     listarDepositos,   // b276 - lista VIVA de depositos desta empresa
