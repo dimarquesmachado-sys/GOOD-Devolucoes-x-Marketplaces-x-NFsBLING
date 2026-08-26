@@ -176,9 +176,15 @@ app.use(cookieParser());
 // Este freio vem ANTES do static de proposito. Nao cobre /admin.html
 // (que e so um redirect de compatibilidade) nem /defeitos.html, publico
 // por decisao da v3.91 — quem protege ali e a API.
+// seg2.1 (apontamento do Codex no PR #85): comparar req.path CRU deixava
+// passar /%70ainel-devolucoes.html — o static decodifica, o req.path nao.
+// A comparacao agora decodifica antes, na lib compartilhada com a AMB.
+const { ehCaminhoProtegido } = require('./lib/caminho-pedido');
 function exigirAdminNoHtmlAdministrativo(req, res, next) {
-  const ehPaginaAdmin = req.path === '/painel-devolucoes.html'
-    || req.path.startsWith('/admin/');
+  const ehPaginaAdmin = ehCaminhoProtegido(req.path, {
+    exatos: ['/painel-devolucoes.html'],
+    prefixos: ['/admin/'],
+  });
   if (ehPaginaAdmin) return requerAdmin(req, res, next);
   return next();
 }
@@ -221,7 +227,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.52.0 (seg2 - HTML do painel/admin passa por requerAdmin antes do static)',
+    version: '4.52.1 (seg2.1 - decodifica o caminho antes de decidir se e pagina protegida)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),

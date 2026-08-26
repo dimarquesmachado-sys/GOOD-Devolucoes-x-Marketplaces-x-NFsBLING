@@ -81,7 +81,7 @@ const criarMlBuscas = require('./lib-AMB/ml-buscas-AMB');
 const registrarIdentificar = require('./lib-AMB/identificar-AMB');
 const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 
-const VERSAO = 'AMB Devolucoes b160';
+const VERSAO = 'AMB Devolucoes b161';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -621,8 +621,12 @@ router.get('/painel', auth.requerLogin, (req, res) => {
 //
 // index-AMB.html continua publico (e a tela de login) e defeitos-AMB.html
 // tambem, pelo mesmo criterio da GOOD: quem protege ali e a API.
+// seg2.1 - mesma correcao da GOOD: decodificar antes de comparar (peca unica).
+const { ehCaminhoProtegido: ehProtegidoAMB } = require('../lib/caminho-pedido');
 function exigirLoginNoPainelHtml(req, res, next) {
-  const ehPainel = req.path === '/painel-AMB.html' || req.path === '/painel2-AMB.html';
+  const ehPainel = ehProtegidoAMB(req.path, {
+    exatos: ['/painel-AMB.html', '/painel2-AMB.html'],
+  });
   if (ehPainel) return auth.requerLogin(req, res, next);
   return next();
 }
