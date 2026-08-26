@@ -161,6 +161,29 @@ const upload = multer({
 app.use(express.json({ limit: '12mb' }));
 app.use('/amb', require('./amb-devolucoes/app-AMB'));
 app.use(cookieParser());
+// ── seg2 - O HTML DO PAINEL PRECISA PASSAR PELO LOGIN ────────────────
+// Achado da auditoria de 26/08, conferido no codigo: as rotas protegidas
+// existem (app.get('/painel-devolucoes.html', requerAdmin, ...) e
+// app.get('/admin/relatorios.html', requerAdmin, ...)), mas o
+// express.static abaixo vem MUITO antes delas e entrega o arquivo direto
+// de public/, encerrando a requisicao. Ou seja: as rotas com requerAdmin
+// nunca eram alcancadas para o HTML.
+//
+// As APIs seguiam fechadas, entao nao havia dado de cliente exposto — o
+// que vazava era a tela: nomes de campos, endpoints chamados e a logica
+// do painel, que e mapa pronto pra quem quiser tentar o resto.
+//
+// Este freio vem ANTES do static de proposito. Nao cobre /admin.html
+// (que e so um redirect de compatibilidade) nem /defeitos.html, publico
+// por decisao da v3.91 — quem protege ali e a API.
+function exigirAdminNoHtmlAdministrativo(req, res, next) {
+  const ehPaginaAdmin = req.path === '/painel-devolucoes.html'
+    || req.path.startsWith('/admin/');
+  if (ehPaginaAdmin) return requerAdmin(req, res, next);
+  return next();
+}
+app.use(exigirAdminNoHtmlAdministrativo);
+
 app.use(express.static(path.join(__dirname, 'public'), {
   // v3.64 - HTML sempre revalida (celular segurava js velho em cache; agora
   // o HTML fresco traz os ?v= novos e os scripts recarregam sozinhos).
@@ -198,7 +221,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.51.1 (cache so quando as 3 fontes estao quentes - corrige Magalu sumindo)',
+    version: '4.52.0 (seg2 - HTML do painel/admin passa por requerAdmin antes do static)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
