@@ -81,7 +81,7 @@ const criarMlBuscas = require('./lib-AMB/ml-buscas-AMB');
 const registrarIdentificar = require('./lib-AMB/identificar-AMB');
 const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 
-const VERSAO = 'AMB Devolucoes b159';
+const VERSAO = 'AMB Devolucoes b162';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -612,6 +612,25 @@ router.get('/painel', auth.requerLogin, (req, res) => {
   res.set('Cache-Control', 'no-cache, must-revalidate');   // b19: tela nunca presa
   res.sendFile(path.join(__dirname, 'public-AMB', 'painel-AMB.html'));
 });
+
+// ── seg2 - MESMO FURO NA AMB, POR OUTRO CAMINHO ──────────────────────
+// Aqui a rota /amb/painel ja passa por auth.requerLogin (logo acima), mas
+// o express.static abaixo serve a pasta public-AMB INTEIRA — entao
+// /amb/painel-AMB.html (e /amb/painel2-AMB.html) entregavam a mesma tela
+// sem login nenhum, driblando a rota protegida.
+//
+// index-AMB.html continua publico (e a tela de login) e defeitos-AMB.html
+// tambem, pelo mesmo criterio da GOOD: quem protege ali e a API.
+// seg2.1 - mesma correcao da GOOD: decodificar antes de comparar (peca unica).
+const { ehCaminhoProtegido: ehProtegidoAMB } = require('../lib/caminho-pedido');
+function exigirLoginNoPainelHtml(req, res, next) {
+  const ehPainel = ehProtegidoAMB(req.path, {
+    exatos: ['/painel-AMB.html', '/painel2-AMB.html'],
+  });
+  if (ehPainel) return auth.requerLogin(req, res, next);
+  return next();
+}
+router.use(exigirLoginNoPainelHtml);
 
 router.use(express.static(path.join(__dirname, 'public-AMB'), {
   // b19 - HTML sempre revalida (mesma licao da v3.64 da GOOD: o
