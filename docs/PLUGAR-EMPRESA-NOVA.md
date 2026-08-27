@@ -96,12 +96,27 @@ idêntico ao de hoje.
 
 Preencher a ficha da Girassol (hoje comentada no registro) e montar. Sem pasta nova.
 
-**Antes disso, precisa levantar no Bling da Girassol** — mesma varredura que fizemos na
-AMB em 25/08:
-- `idEmpresaControl` (id da empresa no Bling)
-- depósito Geral e a lista de depósitos válidos (o select da tela de NF de entrada)
-- natureza de devolução de entrada e as naturezas que contam como devolução
-  (catálogo `/naturezas-operacoes`)
+**A ficha se levanta sozinha.** `descobrirFicha('girassol', chamarBlingDaGirassol)`
+pergunta pro Bling dela e devolve depósito Geral, natureza de devolução, situações e
+lojas. Não é para caçar id no DevTools.
+
+O que a API **resolve** (medido pela sonda de ids fiscais em 18/08, rodando no Bling da
+AMB — não é suposição):
+
+| Endpoint | O que dá |
+|---|---|
+| `GET /naturezas-operacoes` | 200, 22 itens. Acha a natureza por nome |
+| `GET /depositos` | os depósitos da empresa logada |
+| `GET /situacoes` | as situações de pedido |
+| `GET /lojas` | os canais de marketplace |
+
+O que a API **não resolve**: `GET /empresas` dá **404, não existe**. O
+`idEmpresaControl` é o único campo que precisa de env — e a descoberta avisa isso
+explicitamente em vez de deixar passar.
+
+**Por que as situações importam:** elas mudam por empresa. AGUARDANDO é `353459` na
+GOOD, `7259` na Girassol e `745122` na AMB. Cravar qualquer uma no código quebra as
+outras duas.
 
 ### Fase 5 — O painel
 

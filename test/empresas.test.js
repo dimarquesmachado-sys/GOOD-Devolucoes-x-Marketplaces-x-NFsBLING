@@ -63,5 +63,79 @@ ok(rel.envsFaltando.every((n) => n.startsWith('AMB_')),
    'as envs cobradas da AMB vem com o prefixo certo (util pra colar no Render)');
 
 console.log('');
-console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
-process.exit(falhas ? 1 : 0);
+console.log(falhas === 0 ? '--- registro: ok' : '--- registro: ' + falhas + ' FALHA(S)');
+
+// ── 7. descobrirFicha: a ficha se levanta sozinha pelo Bling ─────────
+const { descobrirFicha } = require('../lib/empresas');
+
+// Dublê do Bling da GIRASSOL, com os dados no formato real da v3.
+// As situacoes usam os ids MEDIDOS da Girassol (AGUARDANDO 7259,
+// DESPACHADOS 743515) — diferentes da GOOD e da AMB, que é justamente
+// o motivo de nunca cravar id no codigo.
+function blingGirassolFalso(respostas) {
+  return async (metodo, caminho) => {
+    if (respostas[caminho] === 'ERRO') throw new Error('Bling fora do ar');
+    return { data: { data: respostas[caminho] || [] } };
+  };
+}
+
+const BASE = {
+  '/depositos': [
+    { id: 111, descricao: 'Geral' },
+    { id: 222, descricao: 'DEFEITOS' },
+    { id: 333, descricao: 'Shopee (Fulfillment)' },
+  ],
+  '/naturezas-operacoes': [
+    { id: 900, descricao: 'Devolução de COMPRA - Entrada' },   // a pegadinha
+    { id: 901, descricao: 'Devolução de Mercadoria - Entrada' },
+    { id: 902, descricao: 'Venda de Mercadoria' },
+  ],
+  '/situacoes': [{ id: 7259, nome: 'AGUARDANDO' }, { id: 743515, nome: 'DESPACHADOS' }],
+  '/lojas': [{ id: 203146903, descricao: 'Mercado Livre' }],
+};
+
+(async () => {
+  let f2 = 0;
+  const ok2 = (c, o) => { if (!c) f2++; console.log((c ? 'ok  ' : 'FALHA ') + o); };
+
+  // registra a Girassol so pra este teste (a ficha real esta comentada)
+  EMPRESAS.girassol = {
+    chave: 'girassol', nome: 'Magazine Girassol', prefixoEnv: 'GIRA_',
+    prefixoRota: '/girassol', tabelaDevolucoes: 'devolucoes_girassol', fiscal: {},
+  };
+
+  process.env.GIRA_ID_EMPRESA_CONTROL = '999';
+  let r = await descobrirFicha('girassol', blingGirassolFalso(BASE));
+  ok2(r.descoberto.depositoGeral && r.descoberto.depositoGeral.id === '111', 'achou o deposito Geral sozinho');
+  ok2(r.descoberto.naturezaDevolucao && r.descoberto.naturezaDevolucao.id === '901',
+      'achou a natureza certa e NAO caiu na "devolucao de COMPRA"');
+  ok2(r.descoberto.totalSituacoes === 2 && r.descoberto.totalLojas === 1, 'trouxe situacoes e lojas');
+  ok2(r.pronta === true, 'ficha completa = pronta');
+
+  // ambiguidade NAO escolhe
+  const doisGerais = JSON.parse(JSON.stringify(BASE));
+  doisGerais['/depositos'].push({ id: 444, descricao: 'geral' });
+  r = await descobrirFicha('girassol', blingGirassolFalso(doisGerais));
+  ok2(r.descoberto.depositoGeral === null, 'DOIS depositos "Geral": recusa em vez de chutar');
+  ok2(r.problemas.some((p) => p.includes('GIRA_DEPOSITO_GERAL')), '  e diz qual env resolve, com o prefixo certo');
+
+  const duasNat = JSON.parse(JSON.stringify(BASE));
+  duasNat['/naturezas-operacoes'].push({ id: 903, descricao: 'Devolucao  de   Mercadoria - Entrada' });
+  r = await descobrirFicha('girassol', blingGirassolFalso(duasNat));
+  ok2(r.descoberto.naturezaDevolucao === null, 'DUAS naturezas iguais (so espaco muda): recusa');
+
+  // sem o id manual, avisa que nao tem API pra isso
+  delete process.env.GIRA_ID_EMPRESA_CONTROL;
+  r = await descobrirFicha('girassol', blingGirassolFalso(BASE));
+  ok2(r.pronta === false, 'sem idEmpresaControl a ficha NAO fica pronta');
+  ok2(r.problemas.some((p) => p.includes('404')), '  e explica que GET /empresas da 404 (nao tem API)');
+
+  // Bling fora do ar nao derruba: reporta
+  r = await descobrirFicha('girassol', blingGirassolFalso({ ...BASE, '/depositos': 'ERRO' }));
+  ok2(r.problemas.some((p) => p.includes('depositos')), 'Bling fora do ar vira problema reportado, nao exception');
+
+  delete EMPRESAS.girassol;
+  console.log('');
+  console.log(f2 === 0 ? '=== DESCOBERTA: TODOS OS CASOS PASSARAM' : '=== DESCOBERTA: ' + f2 + ' FALHA(S)');
+  process.exit((falhas + f2) ? 1 : 0);
+})();
