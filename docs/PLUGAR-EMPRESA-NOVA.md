@@ -38,14 +38,22 @@ Com 3 empresas isso triplica. Com 4, quadruplica.
 
 ---
 
-## A pegadinha dos prefixos (medida, não suposta)
+## A pegadinha dos prefixos — são DOIS, não um
 
-- A **GOOD** nasceu primeiro e ficou **sem prefixo**: `BLING_CLIENT_ID`.
-- A **AMB** veio depois e usa prefixo: `AMB_BLING_CLIENT_ID`.
+Eu tinha escrito aqui que "a GOOD não tem prefixo". Estava errado, e o Codex pegou no
+PR #86. O certo:
 
-Sem prefixo só cabe **uma** empresa no ambiente. Toda empresa nova precisa de prefixo
-próprio (`GIRA_`, etc.) — e é por isso que o registro existe: para a leitura de env
-passar por **um lugar só**.
+| | credenciais | ids fiscais |
+|---|---|---|
+| **GOOD** | sem prefixo (`BLING_CLIENT_ID`) | **`GOOD_`** (`GOOD_DEPOSITO_GERAL`) |
+| **AMB** | `AMB_` | `AMB_` |
+
+Por que importa: com um prefixo só, migrar a produção para o registro leria
+`DEPOSITO_GERAL` — que ninguém configurou — jogaria fora o valor real e cairia no
+padrão. Ou seja, poderia mirar em **depósito, natureza ou empresa errada** sem avisar.
+
+Sem prefixo só cabe **uma** empresa no ambiente. Toda empresa nova precisa dos dois
+prefixos próprios (`GIRA_`).
 
 ---
 
@@ -135,3 +143,32 @@ divergentes. Servir o mesmo HTML parametrizado pela empresa. Deixado por último
 3. **Teste versionado junto**, não no ambiente de quem escreveu. O primeiro teste do
    repo (`test/caminho-pedido.test.js`) só existe porque um bypass passou batido.
 4. **A operação não pode parar.** Se uma fase ameaçar o galpão, ela espera.
+
+
+---
+
+## O que a revisão do PR #86 corrigiu (vale para as próximas fases)
+
+O Codex achou **11 problemas** no registro. Os que mais importam, porque são o tipo de
+erro que se repete:
+
+1. **Prefixo duplo** (acima) — eu tinha simplificado o esquema da GOOD e a simplificação
+   quebraria a migração.
+2. **Mudança de comportamento escondida** — eu tinha posto duas naturezas no padrão da
+   AMB onde a produção tem uma só (`15110882041`). Isso passaria a classificar como
+   devolução de cliente notas que hoje não são — dentro de um PR que promete não mudar
+   nada. Se essa natureza tiver que entrar, entra sozinha e testada.
+3. **Assinatura errada do cliente Bling** — eu chamava `chamarBling('GET', caminho)`, mas
+   o repo usa `chamarBling(caminho, opcoes)`. A descoberta não acharia nada, em silêncio.
+4. **Falha que não levanta exceção** — os clientes deste repo **resolvem** `{ok:false}` em
+   vez de lançar. Só `try/catch` não vê: quatro chamadas falhando ainda dariam
+   `pronta: true`.
+5. **Remédio que não curava** — quando havia ambiguidade, a saída mandava definir uma env
+   que nenhuma execução seguinte lia.
+6. **Teste frouxo** — `arquivo.includes('4956031259')` continuava verde mesmo se o
+   fallback mudasse, porque o id velho segue em comentários e em outras listas. Agora o
+   teste **extrai a atribuição** de produção e compara.
+
+A regra que sai daqui: **num PR que promete "não muda comportamento", qualquer valor
+padrão diferente do de produção é uma mudança de comportamento** — mesmo que pareça
+melhoria.
