@@ -227,7 +227,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.54.0 (seg4 - na GOOD problema e TIPO, nao status; a busca de defeitos vinha vazia)',
+    version: '4.54.1 (seg4.1 - problema so entra concluido; terminais nas abas; restauracao preserva origem)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),

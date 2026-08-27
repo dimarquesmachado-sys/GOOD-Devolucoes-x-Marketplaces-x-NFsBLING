@@ -57,13 +57,32 @@ const AMB_COMPAT = fs.readFileSync(path.join(__dirname, '..', 'amb-devolucoes', 
 ok(/tipo:\s*'problema'/.test(SERVER), 'a GOOD grava tipo:"problema" (server.js)');
 ok(/status:\s*'problema'/.test(AMB_COMPAT), 'a AMB grava status:"problema" (compat-AMB.js) — esquemas diferentes');
 
-const filtro = (GOOD.match(/\.or\('tipo\.eq[^)]*\)/) || [''])[0];
-ok(filtro.includes('tipo.eq.problema'),
-   'o filtro da busca inclui tipo.eq.problema (era so status, por isso vinha vazio)');
-ok(filtro.includes('status.eq.problema'),
-   '  e mantem status.eq.problema, pra registro antigo no molde da AMB');
+const filtro = (GOOD.match(/\.or\('[^']*'\)/) || [''])[0];
+ok(filtro.includes('and(tipo.eq.problema,status.eq.concluido)'),
+   'problema entra SO com status=concluido (a regra fiscal da v3.98)');
+ok(!/(^|[,(])tipo\.eq\.problema(?!,status)/.test(filtro),
+   '  nunca tipo.eq.problema solto — liberaria devolucao ainda pendente');
+ok(!filtro.includes('status.eq.problema'),
+   '  e NAO aceita status.eq.problema (molde da AMB driblaria a trava fiscal)');
+ok(filtro.includes('tipo.eq.recuperado') && filtro.includes('tipo.eq.descartado'),
+   'recuperado e descartado entram (ao autorizar, o modulo troca o tipo da linha)');
 ok(filtro.includes('tipo.eq.defeito_estoque'), '  e segue pegando defeito_estoque');
 ok(filtro.includes('tipo.eq.defeito_excluido'), '  e defeito_excluido (a aba Excluidos precisa)');
+
+// a regra fiscal existe mesmo no server, nao foi invencao minha
+ok(/x\.tipo === 'problema' && x\.status !== 'concluido'/.test(SERVER),
+   'o server conta problema+nao-concluido como aguardandoNF (a regra que o filtro respeita)');
+ok(/x\.tipo === 'defeito_estoque' \|\| x\.status === 'concluido'/.test(SERVER),
+   '  e libera so defeito_estoque ou concluido');
+
+// ── 6. restaurar excluido nao pode apagar a origem fiscal ────────────
+const restaura = GOOD.slice(GOOD.indexOf('const veioDeDevolucao'), GOOD.indexOf('const camposR'));
+ok(restaura.includes('nf_numero') && restaura.includes('nf_chave'),
+   'a restauracao olha vestigio de NF pra saber se veio de devolucao');
+ok(restaura.includes("? 'problema'"), '  com NF, volta como problema (nao vira defeito_estoque)');
+ok(restaura.includes("'defeito_estoque'"), '  sem NF, volta como defeito_estoque');
+ok(/select\('id, tipo, tipo_anterior, status, nf_numero/.test(GOOD),
+   '  e o select traz os campos de NF (senao a checagem seria sempre falsa)');
 
 // o resto do server ja filtrava assim — o modulo e que estava fora do padrao
 ok(/\.in\('tipo',\s*\['problema',\s*'defeito_estoque'\]\)/.test(SERVER),
