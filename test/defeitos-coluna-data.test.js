@@ -107,7 +107,9 @@ ok(clas.includes("|| 'defeito'"), '  e o resto cai em "defeito" (a aba Com Defei
 // defeito ativo antigo sumia da aba "Com Defeito".
 const iniC = GOOD.indexOf('const ATIVOS =');
 const fimC = GOOD.indexOf('async function buscar(termo, estado, porPedido)');
-const condicoesDoEstado = new Function(GOOD.slice(iniC, fimC) + '; return condicoesDoEstado;')();
+const trechoCond = GOOD.slice(iniC, fimC);
+const condicoesDoEstado = new Function(trechoCond + '; return condicoesDoEstado;')();
+const idsForaDoEstado = new Function(trechoCond + '; return idsForaDoEstado;')();
 {
   const porPedido = { '10': 'recuperado', '11': 'descartado', '12': 'recuperado' };
   const c = (e, pp = porPedido) => condicoesDoEstado(e, pp);
@@ -137,6 +139,23 @@ ok(c('todos').includes('defeito_excluido')&&c('todos').includes('recuperado'), '
 }
 
 // e a consulta usa mesmo a condicao (nao ficou hardcoded)
+// seg4.3: os terminais por PEDIDO saem da consulta ANTES do limite
+{
+  const pp = { '10': 'recuperado', '11': 'descartado' };
+  ok(idsForaDoEstado('defeito', pp).length === 2,
+     'na aba Com Defeito, os ja resolvidos por pedido sao EXCLUIDOS da consulta');
+  ok(idsForaDoEstado('recuperado', pp).length === 0,
+     '  nas abas terminais nao se exclui nada (eles sao o alvo)');
+  const muitos = {}; for (let i = 0; i < 200; i++) muitos[i] = 'recuperado';
+  ok(idsForaDoEstado('defeito', muitos).length === 0,
+     '  com 200 ids, nao monta URL gigante (cai no pos-filtro JS)');
+  ok(idsForaDoEstado('defeito', {}).length === 0, '  sem historico, nada a excluir');
+}
+ok(/if \(fora\.length\) sel = sel\.not\('id', 'in'/.test(GOOD),
+   '  e a consulta aplica isso com .not(id,in) — AND com o .or()');
+ok(GOOD.indexOf("if (fora.length)") < GOOD.indexOf('.limit(300);'),
+   '  ANTES do .limit(300) (era o ponto do apontamento)');
+
 ok(/\.or\(cond\)/.test(GOOD), 'a consulta usa a condicao da aba');
 ok(/buscar\(q, estado, porPedido\)/.test(GOOD), 'a busca recebe a aba e o historico por pedido');
 ok(/buscar\(termoContagem, 'todos', porPedido\)/.test(GOOD),
