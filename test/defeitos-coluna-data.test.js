@@ -44,6 +44,37 @@ ok(js.includes('.criado_em'), 'o painel realmente le .criado_em (por isso o nome
 const AMB = fs.readFileSync(path.join(__dirname, '..', 'amb-devolucoes', 'lib-AMB', 'defeitos-ciclo-AMB.js'), 'utf8');
 ok(/\.select\([^)]*criado_em[^)]*\)/.test(AMB), 'a AMB segue com criado_em (a tabela dela e assim)');
 
+
+
+// ── 5. seg4: "problema" na GOOD e TIPO, nao STATUS ───────────────────
+// Depois de consertar a coluna de data, a busca rodava mas voltava
+// SEMPRE vazia — inclusive com 9 problemas reportados na tela. Motivo:
+// o filtro (tambem portado da AMB) procurava status='problema', mas a
+// GOOD grava tipo:'problema' com status:'pendente' (server.js:2403-04).
+const SERVER = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
+const AMB_COMPAT = fs.readFileSync(path.join(__dirname, '..', 'amb-devolucoes', 'lib-AMB', 'compat-AMB.js'), 'utf8');
+
+ok(/tipo:\s*'problema'/.test(SERVER), 'a GOOD grava tipo:"problema" (server.js)');
+ok(/status:\s*'problema'/.test(AMB_COMPAT), 'a AMB grava status:"problema" (compat-AMB.js) — esquemas diferentes');
+
+const filtro = (GOOD.match(/\.or\('tipo\.eq[^)]*\)/) || [''])[0];
+ok(filtro.includes('tipo.eq.problema'),
+   'o filtro da busca inclui tipo.eq.problema (era so status, por isso vinha vazio)');
+ok(filtro.includes('status.eq.problema'),
+   '  e mantem status.eq.problema, pra registro antigo no molde da AMB');
+ok(filtro.includes('tipo.eq.defeito_estoque'), '  e segue pegando defeito_estoque');
+ok(filtro.includes('tipo.eq.defeito_excluido'), '  e defeito_excluido (a aba Excluidos precisa)');
+
+// o resto do server ja filtrava assim — o modulo e que estava fora do padrao
+ok(/\.in\('tipo',\s*\['problema',\s*'defeito_estoque'\]\)/.test(SERVER),
+   'o resto do server ja usava .in("tipo", ["problema","defeito_estoque"])');
+
+// a classificacao em abas e por TIPO, entao os novos caem na aba certa
+const clas = GOOD.slice(GOOD.indexOf('const situacaoDe'), GOOD.indexOf('const estado ='));
+ok(clas.includes("x.tipo === 'defeito_excluido'"), 'a aba Excluidos separa por tipo');
+ok(clas.includes("x.tipo === 'recuperado'"), 'Recuperados/Descartados por tipo');
+ok(clas.includes("|| 'defeito'"), '  e o resto cai em "defeito" (a aba Com Defeito)');
+
 console.log('');
 console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
 process.exit(falhas ? 1 : 0);
