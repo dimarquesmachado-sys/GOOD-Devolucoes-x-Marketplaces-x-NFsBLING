@@ -19,7 +19,9 @@ function classificar(codigoOriginal) {
   const codigoLimpo = String(codigoOriginal).replace(/[^0-9]/g, '');
   const ehChaveNFe = codigoLimpo.length === 44;
   const mNumSerie = String(codigoOriginal || '').trim().match(/^(\d{4,9})\s*[\/\-]\s*(\d{1,3})$/);
-  const temLetraNoOriginal = /[A-Za-z]/.test(String(codigoOriginal || '').trim());
+  const semPrefixoNF = String(codigoOriginal || '').trim()
+    .replace(/^(?:nf-?e?|nota(?:\s*fiscal)?)\s*[:.\-#]?\s*/i, '');
+  const temLetraNoOriginal = /[A-Za-z]/.test(semPrefixoNF);
   const ehNumeroNF = !ehChaveNFe && (mNumSerie || (/^\d{4,9}$/.test(codigoLimpo) && !temLetraNoOriginal));
   return ehChaveNFe ? 'chave_danfe' : (ehNumeroNF ? 'numero_nf' : 'segue_cascata');
 }
@@ -43,14 +45,28 @@ ok(classificar(' 75053 ') === 'numero_nf', '  com espaco em volta tambem');
 ok(classificar('35260864289091000100550010000032331386489869') === 'chave_danfe',
    'chave da DANFE (44 digitos) continua chave');
 
+// ── seg5.1: prefixo textual de NF continua funcionando ───────────────
+// Uso normal de quem digita. Com a regra crua "tem letra => nao e NF",
+// esses passariam a vagar pela cascata e voltar "nao encontrado", tornando
+// NF valida impossivel de buscar (apontamento do Codex).
+ok(classificar('NF 75053') === 'numero_nf', '"NF 75053" continua NF');
+ok(classificar('NF: 002605') === 'numero_nf', '"NF: 002605" tambem');
+ok(classificar('NFe 75053') === 'numero_nf', '"NFe 75053" tambem');
+ok(classificar('nf-e 75053') === 'numero_nf', '"nf-e 75053" tambem');
+ok(classificar('Nota Fiscal 75053') === 'numero_nf', '"Nota Fiscal 75053" tambem');
+ok(classificar('NOTA 75053') === 'numero_nf', '"NOTA 75053" tambem');
+// e o prefixo nao pode virar porta dos fundos pro codigo Shopee
+ok(classificar('NF 250807PBTHEWQG') === 'segue_cascata',
+   '  mas "NF 250807PBTHEWQG" NAO vira NF (sobra letra depois do prefixo)');
+
 // ── outros marketplaces nao podem ser engolidos pela rota de NF ──────
 ok(classificar('AD123456789BR') === 'segue_cascata', 'Correios reverso segue');
 ok(classificar('2000017772797838') === 'segue_cascata', 'pedido ML (16 digitos) segue');
 ok(classificar('47416667668') === 'segue_cascata', 'shipment ML (11 digitos) segue');
 
 // ── o conserto esta MESMO no server (nao so neste teste) ─────────────
-ok(/const temLetraNoOriginal = \/\[A-Za-z\]\/\.test/.test(SERVER),
-   'o server calcula temLetraNoOriginal');
+ok(/const semPrefixoNF = String\(codigoOriginal/.test(SERVER),
+   'o server tira o prefixo textual de NF antes de checar letras');
 ok(/ehNumeroNF = !ehChaveNFe && \(mNumSerie \|\| \(\/\^\\d\{4,9\}\$\/\.test\(codigoLimpo\) && !temLetraNoOriginal\)\)/.test(SERVER),
    '  e usa isso na decisao de numero_nf');
 

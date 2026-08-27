@@ -227,7 +227,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.55.0 (seg5 - Pedido da etiqueta Shopee virava numero de NF e morria antes da cascata)',
+    version: '4.55.1 (seg5.1 - prefixo textual NF/NFe/Nota continua buscando por numero)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -664,7 +664,18 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
   //
   // Numero de NF nao tem letra. Se o que foi digitado/bipado tem letra, a
   // cascata segue para os marketplaces em vez de morrer aqui.
-  const temLetraNoOriginal = /[A-Za-z]/.test(String(codigoOriginal || '').trim());
+  // seg5.1 (Codex): "tem letra => nao e NF" era grosseiro demais. Quem
+  // digita costuma escrever "NF 75053", "NF: 002605", "NFe 75053" — e a
+  // normalizacao antiga reduzia isso aos digitos de proposito. Com a regra
+  // crua, esses passariam a vagar pela cascata e voltar "codigo nao
+  // encontrado", tornando NF valida impossivel de buscar.
+  //
+  // Entao: tira um prefixo textual de NF, se houver, e SO depois checa se
+  // sobrou letra. "NF 75053" -> "75053" (sem letra) = NF.
+  // "250807PBTHEWQG" -> nao tem prefixo, sobra letra = nao e NF.
+  const semPrefixoNF = String(codigoOriginal || '').trim()
+    .replace(/^(?:nf-?e?|nota(?:\s*fiscal)?)\s*[:.\-#]?\s*/i, '');
+  const temLetraNoOriginal = /[A-Za-z]/.test(semPrefixoNF);
   const ehNumeroNF = !ehChaveNFe && (mNumSerie || (/^\d{4,9}$/.test(codigoLimpo) && !temLetraNoOriginal));
 
   if (!shipment && !pack && (ehChaveNFe || ehNumeroNF)) {
