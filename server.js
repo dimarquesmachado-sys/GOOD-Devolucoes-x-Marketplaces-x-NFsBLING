@@ -227,7 +227,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.53.0 (seg3 - busca de defeitos usava criado_em; a tabela da GOOD e created_at)',
+    version: '4.55.0 (seg5 - Pedido da etiqueta Shopee virava numero de NF e morria antes da cascata)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -647,7 +647,25 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
   // escolher a serie (default: serie 1, o padrao da casa).
   const ehChaveNFe = codigoLimpo.length === 44;
   const mNumSerie = String(codigoOriginal || '').trim().match(/^(\d{4,9})\s*[\/\-]\s*(\d{1,3})$/);
-  const ehNumeroNF = !ehChaveNFe && (mNumSerie || /^\d{4,9}$/.test(codigoLimpo));
+
+  // seg5 - O "Pedido" DA ETIQUETA SHOPEE NAO E NUMERO DE NF.
+  //
+  // `codigoLimpo` nasce de codigoOriginal.replace(/[^0-9]/g,'') la em cima,
+  // ou seja, SEM as letras. O order_sn da Shopee tem a forma
+  // AAMMDD + alfanumerico (ex: 250807PBTHEWQG, impresso como "Pedido" na
+  // etiqueta SPX Devolucao): ele perdia as letras, virava "250807" — seis
+  // digitos — e casava com a regra de numero de NF (4-9 digitos).
+  //
+  // Consequencia medida em 27/08 com etiqueta real: a busca respondia
+  // "NF 250807 nao localizada no Bling" e RETORNAVA ali, sem nunca chegar
+  // no bloco da Shopee. Pior: e exatamente o codigo que a nossa propria
+  // mensagem de erro manda o estoquista digitar quando a etiqueta SPX nao
+  // casa pelo rastreio — o caminho de saida estava fechado.
+  //
+  // Numero de NF nao tem letra. Se o que foi digitado/bipado tem letra, a
+  // cascata segue para os marketplaces em vez de morrer aqui.
+  const temLetraNoOriginal = /[A-Za-z]/.test(String(codigoOriginal || '').trim());
+  const ehNumeroNF = !ehChaveNFe && (mNumSerie || (/^\d{4,9}$/.test(codigoLimpo) && !temLetraNoOriginal));
 
   if (!shipment && !pack && (ehChaveNFe || ehNumeroNF)) {
     let numeroDaChave, serieDaChave, idNF = null, tipoTentativa;
