@@ -24,6 +24,20 @@
    consumidor tardio, fila de retry). Registrado tambem como
    comentario fixo no PR #237 do Mover-Pedidos.
 
+   3) O CODIGO ESTAVEL do erro (Toolbox v2.1.0, PR #239). A resposta
+      de falha vem { ok:false, codigo, erro, idNotaDevolucao, numero },
+      e o `codigo` chega tambem pela via do postMessage. Valores:
+        JA_EXISTE        -> nota ja resolvida: PULA, nao conta falha
+        TIMEOUT          -> indeterminado: PARA o lote, confira no Bling
+                            (o consumidor tardio pode registrar em 15min)
+        RASCUNHO_CRIADO  -> a NF EXISTE, so a emissao falhou: NAO
+                            re-emitir; id/numero vem em campos proprios
+        FALHA            -> conta pro limite de 2 seguidas
+      Este script classifica pelo `codigo` PRIMEIRO e so cai no texto
+      da mensagem se ele nao vier (Bridge antiga, ainda instalada ate a
+      migracao dos navegadores). Se mudarem os VALORES desses codigos,
+      avisem — o texto sozinho ja nao basta.
+
    Foi versionado aqui justamente porque, enquanto vivia solto
    num arquivo baixado, ninguem que mexesse na extensao tinha
    como descobrir que esta dependencia existia — nao aparecia em
@@ -138,14 +152,24 @@
         const d = ev.data || {};
         if (d.tipo !== 'GOOD_BRIDGE_RESPOSTA' || d.requisicaoId !== requisicaoId) return;
         window.removeEventListener('message', h); clearTimeout(timer);
-        if (d.ok) resolve(d.resultado);
-        else reject(new Error(d.erro || 'erro desconhecido na Bridge'));
+        if (d.ok) return resolve(d.resultado);
+        // rev4: a Toolbox v2.1.0 manda CODIGO estavel junto do erro
+        // (GOOD_BRIDGE_RESPOSTA carrega codigo/idNotaDevolucao/numero).
+        // Sem isto o reject jogava tudo fora menos o texto, e o codigo
+        // chegaria aqui e morreria antes de ser usado.
+        const err = new Error(d.erro || 'erro desconhecido na Bridge');
+        err.codigo = d.codigo || null;                    // JA_EXISTE | TIMEOUT | RASCUNHO_CRIADO | FALHA
+        err.idNotaDevolucao = d.idNotaDevolucao || null;  // vem no RASCUNHO_CRIADO
+        err.numero = d.numero || null;
+        reject(err);
       }
       window.addEventListener('message', h);
       window.postMessage({ tipo: 'GOOD_BRIDGE_CRIAR_DEVOLUCAO', requisicaoId, payload }, '*');
       timer = setTimeout(() => {
         window.removeEventListener('message', h);
-        reject(new Error('timeout 110s — a NF PODE ter sido criada; confira no Bling antes de repetir'));
+        const err = new Error('timeout 110s — a NF PODE ter sido criada; confira no Bling antes de repetir');
+        err.codigo = 'TIMEOUT';   // timeout NOSSO (o da Bridge vem carimbado por ela)
+        reject(err);
       }, TIMEOUT_BRIDGE);
     });
   }
@@ -364,11 +388,33 @@
         } catch (e) {
           const msg = String(e && e.message || e);
 
+          // rev4: a Toolbox v2.1.0 manda CODIGO estavel. Classifica por ele
+          // PRIMEIRO; o regex no texto fica so de reserva, pra Bridge antiga
+          // (o Diego pode ainda nao ter migrado os navegadores).
+          const cod = e && e.codigo ? String(e.codigo).toUpperCase() : null;
+
+          // RASCUNHO_CRIADO: a NF de devolucao EXISTE, so a emissao falhou.
+          // Caso novo — antes caia em "falha" e o operador podia tentar de
+          // novo; a anti-duplicata segurava, mas o id do rascunho se perdia
+          // e ninguem sabia que tinha nota pendente no Bling.
+          if (cod === 'RASCUNHO_CRIADO') {
+            const idR = e.idNotaDevolucao || '';
+            estado.resultados.push({ nf_venda: p.numero, ok: false, rascunho: true,
+              nf_devolucao: e.numero || '', id: idR, emitida: false,
+              erro: 'rascunho criado, emissao falhou — NAO re-emitir' });
+            p.tratadaAMao = true;   // sai da fila: resolve esta no Bling
+            console.log('%c   RASCUNHO CRIADO mas NAO emitido — resolva no Bling, nao rode de novo:', 'color:#b26a00;font-weight:bold');
+            if (idR) console.log('   https://www.bling.com.br/notas.entrada.php#edit/' + idR);
+            falhasSeguidas = 0;
+            await new Promise((r) => setTimeout(r, 800));
+            continue;
+          }
+
           // rev2: a protecao anti-duplicata da extensao ("esta NF ja possui
           // devolucao") NAO e falha — e nota JA RESOLVIDA, inclusive a que
           // voce emitiu a mao pelo rascunho. Contava como falha e, com duas
           // dessas seguidas, derrubava um lote que estava indo bem.
-          if (/ja possui devolucao|anti-duplicata/i.test(msg)) {
+          if (cod === 'JA_EXISTE' || (!cod && /ja possui devolucao|anti-duplicata/i.test(msg))) {
             estado.resultados.push({ nf_venda: p.numero, ok: false, pulada: true, nf_devolucao: '', id: '', emitida: false, erro: 'ja tinha devolucao (pulada)' });
             console.log('   PULADA — ja tinha devolucao no Bling');
             falhasSeguidas = 0;
@@ -381,7 +427,7 @@
           // assim mesmo. Seguir pra proxima em 2,5s sobrepoe operacoes
           // fiscais e um retry pode bater numa nota que ja saiu. Aqui o
           // lote PARA e a decisao volta pra pessoa.
-          if (/timeout|tempo esgotado|nao respondeu/i.test(msg)) {
+          if (cod === 'TIMEOUT' || (!cod && /timeout|tempo esgotado|nao respondeu/i.test(msg))) {
             estado.resultados.push({ nf_venda: p.numero, ok: false, indeterminado: true, nf_devolucao: '', id: '', emitida: false, erro: msg });
             console.log('%c   TIMEOUT — resultado INDETERMINADO nesta NF.', 'color:#c00;font-weight:bold');
             console.log('%c   PAREI o lote. Confira NO BLING se a devolucao da NF ' + p.numero + ' saiu antes de rodar de novo.', 'color:#c00;font-weight:bold');
