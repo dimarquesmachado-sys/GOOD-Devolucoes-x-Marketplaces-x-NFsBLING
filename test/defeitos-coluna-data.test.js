@@ -19,7 +19,7 @@ const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o
 // aparece num COMENTARIO antes do codigo, e o indexOf pegava o comentario,
 // deixando o trecho vazio e os dois casos abaixo falhando a toa.
 const iniL = GOOD.indexOf("let sel = dbc.from(T_DEV)");
-const trechoLista = GOOD.slice(iniL, GOOD.indexOf(".limit(300);", iniL) + 12);
+const trechoLista = GOOD.slice(iniL, GOOD.indexOf(".limit(limiteDaConsulta", iniL) + 22);
 ok(trechoLista.includes("created_at"), 'o select da lista pede created_at');
 ok(!/\.select\([^)]*\bcriado_em\b/.test(trechoLista),
    'o select da lista NAO pede criado_em (era o que quebrava)');
@@ -153,13 +153,31 @@ ok(c('todos').includes('defeito_excluido')&&c('todos').includes('recuperado'), '
 }
 ok(/if \(fora\.length\) sel = sel\.not\('id', 'in'/.test(GOOD),
    '  e a consulta aplica isso com .not(id,in) — AND com o .or()');
-ok(GOOD.indexOf("if (fora.length)") < GOOD.indexOf('.limit(300);'),
-   '  ANTES do .limit(300) (era o ponto do apontamento)');
+ok(GOOD.indexOf("if (fora.length)") < GOOD.indexOf('.limit(limiteDaConsulta'),
+   '  ANTES do limite (era o ponto do apontamento)');
 
 ok(/\.or\(cond\)/.test(GOOD), 'a consulta usa a condicao da aba');
 ok(/buscar\(q, estado, porPedido\)/.test(GOOD), 'a busca recebe a aba e o historico por pedido');
-ok(/buscar\(termoContagem, 'todos', porPedido\)/.test(GOOD),
-   '  e a CONTAGEM das abas pede "todos" (senao cada aba contaria so a si mesma)');
+// seg4.4: a contagem tambem nao pode passar pelo limite compartilhado
+ok(/for \(const aba of \['defeito', 'recuperado', 'descartado'\]\)/.test(GOOD),
+   'a contagem consulta ABA POR ABA (com o total acima de 300, o numero da aba ficava MENOR que a lista exibida)');
+ok(/buscar\(termoContagem, aba, porPedido\)/.test(GOOD), '  cada aba com o seu proprio limite');
+
+// e quando os ids terminais nao cabem na URL, o limite compensa
+// a fatia comeca no ATIVOS pra levar junto o MAX_IDS_NA_URL que a funcao usa
+const limiteDaConsulta = new Function(
+  GOOD.slice(GOOD.indexOf('const ATIVOS ='), GOOD.indexOf('async function buscar(termo, estado, porPedido)'))
+  + '; return limiteDaConsulta;')();
+{
+  const poucos = {}; for (let i = 0; i < 10; i++) poucos[i] = 'recuperado';
+  const muitos = {}; for (let i = 0; i < 500; i++) muitos[i] = 'recuperado';
+  ok(limiteDaConsulta('defeito', poucos) === 300, 'com poucos ids o limite segue 300 (a exclusao entra na consulta)');
+  ok(limiteDaConsulta('defeito', muitos) === 800,
+     '  com 500 ids fora do alcance da URL, o limite CRESCE (300+500) pra sobrarem 300 uteis');
+  const absurdo = {}; for (let i = 0; i < 5000; i++) absurdo[i] = 'recuperado';
+  ok(limiteDaConsulta('defeito', absurdo) === 1000, '  com teto de 1000, pra nao pedir a tabela inteira');
+  ok(limiteDaConsulta('recuperado', muitos) === 300, '  nas abas terminais o limite nao muda');
+}
 ok(GOOD.indexOf('const porPedido') < GOOD.indexOf('let linhas = await buscar'),
    'porPedido e resolvido ANTES da busca (era depois; por isso nao dava pra filtrar no banco)');
 
