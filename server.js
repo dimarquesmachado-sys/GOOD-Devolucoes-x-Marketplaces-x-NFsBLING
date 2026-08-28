@@ -227,7 +227,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.54.4 (seg4.4 - limite compensa ids nao excluidos; contagem por aba)',
+    version: '4.56.0 (seg4 - busca de defeitos por tipo/aba; seg5 - Pedido Shopee nao vira NF)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -647,7 +647,47 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
   // escolher a serie (default: serie 1, o padrao da casa).
   const ehChaveNFe = codigoLimpo.length === 44;
   const mNumSerie = String(codigoOriginal || '').trim().match(/^(\d{4,9})\s*[\/\-]\s*(\d{1,3})$/);
-  const ehNumeroNF = !ehChaveNFe && (mNumSerie || /^\d{4,9}$/.test(codigoLimpo));
+
+  // seg5 - O "Pedido" DA ETIQUETA SHOPEE NAO E NUMERO DE NF.
+  //
+  // `codigoLimpo` nasce de codigoOriginal.replace(/[^0-9]/g,'') la em cima,
+  // ou seja, SEM as letras. O order_sn da Shopee tem a forma
+  // AAMMDD + alfanumerico (ex: 250807PBTHEWQG, impresso como "Pedido" na
+  // etiqueta SPX Devolucao): ele perdia as letras, virava "250807" — seis
+  // digitos — e casava com a regra de numero de NF (4-9 digitos).
+  //
+  // Consequencia medida em 27/08 com etiqueta real: a busca respondia
+  // "NF 250807 nao localizada no Bling" e RETORNAVA ali, sem nunca chegar
+  // no bloco da Shopee. Pior: e exatamente o codigo que a nossa propria
+  // mensagem de erro manda o estoquista digitar quando a etiqueta SPX nao
+  // casa pelo rastreio — o caminho de saida estava fechado.
+  //
+  // Numero de NF nao tem letra. Se o que foi digitado/bipado tem letra, a
+  // cascata segue para os marketplaces em vez de morrer aqui.
+  // seg5.1 (Codex): "tem letra => nao e NF" era grosseiro demais. Quem
+  // digita costuma escrever "NF 75053", "NF: 002605", "NFe 75053" — e a
+  // normalizacao antiga reduzia isso aos digitos de proposito. Com a regra
+  // crua, esses passariam a vagar pela cascata e voltar "codigo nao
+  // encontrado", tornando NF valida impossivel de buscar.
+  //
+  // Entao: tira um prefixo textual de NF, se houver, e SO depois checa se
+  // sobrou letra. "NF 75053" -> "75053" (sem letra) = NF.
+  // "250807PBTHEWQG" -> nao tem prefixo, sobra letra = nao e NF.
+  // seg5.2 (Codex): so tirar PREFIXO nao bastava. Aparecem tambem
+  // "75053 NFe" (rotulo no fim), "N 75053" e "Nota Fiscal n 75053" — o
+  // marcador de numero. Todos normalizavam pros digitos antes e
+  // funcionavam; com a regra anterior virariam NF impossivel de buscar.
+  //
+  // Agora os ROTULOS caem em qualquer posicao (com \b, entao "nf" no meio
+  // de um codigo tipo 250807PBNFEWQG NAO e tocado) e a checagem de letra e
+  // no que sobrou.
+  const semRotulosNF = String(codigoOriginal || '').trim()
+    .replace(/\b([A-Za-z])\s*\.\s*(?=[A-Za-z]\b)/g, '$1')             // "N.F." -> "NF" (abreviacao pontuada)
+    .replace(/[\u00ba\u00b0]/g, ' ')                                   // º e ° viram espaco
+    .replace(/\b(?:nf-?e?|nota|fiscal|n[uu\u00fa]mero|num|n)\b/gi, ' ')  // rotulos, em qualquer posicao
+    .replace(/[\s:.#\-]+/g, '');                                        // pontuacao de separacao
+  const temLetraNoOriginal = /[A-Za-z]/.test(semRotulosNF);
+  const ehNumeroNF = !ehChaveNFe && (mNumSerie || (/^\d{4,9}$/.test(codigoLimpo) && !temLetraNoOriginal));
 
   if (!shipment && !pack && (ehChaveNFe || ehNumeroNF)) {
     let numeroDaChave, serieDaChave, idNF = null, tipoTentativa;
