@@ -201,7 +201,11 @@
         }
         try {
           const { idBling, idLoja } = await resolverId(it);
-          prontos.push({ numero: it.numero, idBling, idLoja: idLoja || '(sem loja)' });
+          // rev2 (Codex): resolvido por NUMERO. A rota devolve a primeira NF
+          // com aquele numero e NAO filtra por serie — a data so limita ate
+          // onde ela pagina. Se o numero se repete em outra serie, isto aqui
+          // pode ser a venda ERRADA, e a devolucao sairia contra ela.
+          prontos.push({ numero: it.numero, idBling, idLoja: idLoja || '(sem loja)', porNumero: true });
         } catch (e) {
           ruins.push({ numero: it.numero, motivo: e.message });
         }
@@ -211,6 +215,15 @@
 
       estado.prontos = prontos;
       estado.ruins = ruins;
+
+      const porNumero = prontos.filter((p) => p.porNumero);
+      if (porNumero.length) {
+        console.warn('⚠️ ' + porNumero.length + ' NF(s) foram achadas pelo NUMERO, nao por id: ' +
+          porNumero.map((p) => p.numero).join(', '));
+        console.warn('   O numero se repete entre SERIES e a busca devolve a primeira que casa.');
+        console.warn('   Confira cada uma no Bling (cliente e valor) antes de emitir.');
+        console.warn('   Pra emitir mesmo assim: devol.emitir({ jaConfirmei:true, conferiSerie:true })');
+      }
 
       console.log('PRONTAS PRA GERAR (' + prontos.length + '):');
       console.table(prontos);
@@ -240,8 +253,15 @@
           emitir: false,
           idDeposito: depositoEscolhido() || '',
         });
+        // rev2: esta NF sai da fila do emitir(). O rascunho e pra VOCE abrir
+        // no Bling, editar e emitir A MAO — se ela continuasse na fila, o
+        // emitir() tentaria criar outra devolucao da MESMA venda e levaria a
+        // recusa da protecao anti-duplicata, que aqui contava como falha.
+        alvo.tratadaAMao = true;
+        alvo.idRascunho = r.idNotaDevolucao;
         console.log('✅ RASCUNHO criado: NF ' + (r.numero || '?') + ' (id ' + r.idNotaDevolucao + ')');
-        console.log('   Abra no Bling e confira ITENS, VALOR e NATUREZA antes de emitir o lote:');
+        console.log('   👉 Esta NF saiu da fila do emitir() — voce emite ESTA no Bling, a mao.');
+        console.log('   Abra no Bling, edite e valide:');
         console.log('   https://www.bling.com.br/notas.entrada.php#edit/' + r.idNotaDevolucao);
         console.log('');
         console.log('Se estiver certo, PASSO 3:');
@@ -258,9 +278,32 @@
       if (!estado.prontos || !estado.prontos.length) return console.log('Rode devol.conferir() antes.');
       if (estado.rodando) return console.log('Ja tem um lote rodando.');
 
-      const fila = opt.somente
+      const base = opt.somente
         ? estado.prontos.filter((p) => String(opt.somente).includes(p.numero))
         : estado.prontos;
+
+      // rev2: quem virou rascunho voce resolve no Bling, a mao. Fica fora
+      // da fila por padrao (opt.incluirRascunhos:true forca a inclusao).
+      const aMao = base.filter((p) => p.tratadaAMao);
+      const fila = opt.incluirRascunhos ? base.slice() : base.filter((p) => !p.tratadaAMao);
+      if (aMao.length && !opt.incluirRascunhos) {
+        console.log('PULANDO ' + aMao.length + ' NF(s) que viraram rascunho (voce emite no Bling): ' +
+          aMao.map((p) => p.numero).join(', '));
+      }
+      if (!fila.length) return console.log('Nada a emitir — todas ja foram tratadas a mao.');
+
+      // rev2 (Codex): emitir contra NF achada so pelo numero e risco de
+      // devolver a venda errada. Exige um "eu conferi" explicito.
+      const duvidosas = fila.filter((p) => p.porNumero);
+      if (duvidosas.length && !opt.conferiSerie) {
+        console.log('%cPAREI: ' + duvidosas.length + ' NF(s) desta fila foram achadas pelo NUMERO (serie nao conferida):',
+          'color:#c00;font-weight:bold');
+        console.log('   ' + duvidosas.map((p) => p.numero).join(', '));
+        console.log('   Abra cada uma no Bling e confira cliente e valor. Se estiver certo:');
+        console.log('   devol.emitir({ jaConfirmei:true, conferiSerie:true })');
+        console.log('   (a fila com id do Bling embutido nao passa por aqui — ali o id ja e exato)');
+        return;
+      }
 
       if (!opt.jaConfirmei) {
         console.log('VOCE VAI EMITIR ' + fila.length + ' NF(s) DE DEVOLUCAO. ISSO VAI PRA SEFAZ E NAO TEM VOLTA.');
@@ -291,8 +334,34 @@
           console.log(ok ? '   OK — NF de devolucao ' + (r.numero || '?') : '   sem id de volta');
           falhasSeguidas = ok ? 0 : falhasSeguidas + 1;
         } catch (e) {
-          estado.resultados.push({ nf_venda: p.numero, ok: false, nf_devolucao: '', id: '', emitida: false, erro: e.message });
-          console.log('   FALHOU — ' + e.message);
+          const msg = String(e && e.message || e);
+
+          // rev2: a protecao anti-duplicata da extensao ("esta NF ja possui
+          // devolucao") NAO e falha — e nota JA RESOLVIDA, inclusive a que
+          // voce emitiu a mao pelo rascunho. Contava como falha e, com duas
+          // dessas seguidas, derrubava um lote que estava indo bem.
+          if (/ja possui devolucao|anti-duplicata/i.test(msg)) {
+            estado.resultados.push({ nf_venda: p.numero, ok: false, pulada: true, nf_devolucao: '', id: '', emitida: false, erro: 'ja tinha devolucao (pulada)' });
+            console.log('   PULADA — ja tinha devolucao no Bling');
+            falhasSeguidas = 0;
+            await new Promise((r) => setTimeout(r, 800));
+            continue;
+          }
+
+          // rev2 (Codex): o timeout da Bridge (90s) e INDETERMINADO — a
+          // operacao no Bling pode terminar depois e criar/emitir a nota
+          // assim mesmo. Seguir pra proxima em 2,5s sobrepoe operacoes
+          // fiscais e um retry pode bater numa nota que ja saiu. Aqui o
+          // lote PARA e a decisao volta pra pessoa.
+          if (/timeout|tempo esgotado|nao respondeu/i.test(msg)) {
+            estado.resultados.push({ nf_venda: p.numero, ok: false, indeterminado: true, nf_devolucao: '', id: '', emitida: false, erro: msg });
+            console.log('%c   TIMEOUT — resultado INDETERMINADO nesta NF.', 'color:#c00;font-weight:bold');
+            console.log('%c   PAREI o lote. Confira NO BLING se a devolucao da NF ' + p.numero + ' saiu antes de rodar de novo.', 'color:#c00;font-weight:bold');
+            break;
+          }
+
+          estado.resultados.push({ nf_venda: p.numero, ok: false, nf_devolucao: '', id: '', emitida: false, erro: msg });
+          console.log('   FALHOU — ' + msg);
           falhasSeguidas++;
         }
 

@@ -78,18 +78,37 @@
         porNumero.get(k).push(n);
         faltam.delete(k);
       }
-      console.log('   pagina ' + p + ': ' + lista.length + ' nota(s)' + (faltam.size ? ' — faltam ' + faltam.size : ' — achei todas'));
-      if (!faltam.size) break;               // achou tudo, para de gastar chamada
+      console.log('   pagina ' + p + ': ' + lista.length + ' nota(s)' + (faltam.size ? ' — faltam ' + faltam.size : ' — achei todas (sigo ate o fim pra checar serie repetida)'));
+      // rev2 (Codex): NAO parar quando "achou todas". O numero da NF se
+      // repete entre SERIES, a listagem nao vem ordenada, e a entrada aqui
+      // e so o numero. Parar cedo faria o mesmo numero em outra serie, numa
+      // pagina adiante, passar por UNICO — e o cancelamento e irreversivel.
+      // So o fim real da listagem encerra a varredura.
       if (lista.length < 100) break;         // acabou a lista
       await dorme(300);
     }
     return { porNumero, paginas, lidas, faltam };
   }
 
-  const estado = { conferidas: [], problemas: [], periodo: null };
+  const estado = { conferidas: [], problemas: [], periodo: null, rodando: false };
 
   async function conferir(numerosTxt, opcoes) {
     const op = opcoes || {};
+
+    // rev2 (Codex): a PRIMEIRA coisa de toda conferencia e apagar o lote
+    // anterior. Antes, se a segunda conferencia falhasse na leitura, o
+    // `estado.conferidas` da primeira continuava de pe — e um cancelar()
+    // seguinte oferecia pra cancelar, irreversivelmente, as notas ERRADAS,
+    // com a tela dizendo que a leitura tinha falhado.
+    estado.conferidas = [];
+    estado.problemas = [];
+    estado.periodo = null;
+
+    if (estado.rodando) {
+      console.log('%cTem um cancelamento RODANDO agora. Espere terminar antes de conferir outro lote.', 'color:#c00;font-weight:bold');
+      return;
+    }
+
     const numeros = parseNumeros(numerosTxt);
     if (!numeros.length) { console.log('%cNenhum numero valido reconhecido.', 'color:#c00'); return; }
 
@@ -141,6 +160,27 @@
     console.log("   lote.cancelar('SUA JUSTIFICATIVA COM 15+ CARACTERES')");
   }
 
+  // Desfaz os escapes de um literal JavaScript ('\'' -> "'", '\\' -> '\',
+  // '\n' -> quebra de linha, '\uXXXX' -> caractere). Feito na mao, sem
+  // JSON.parse nem eval: o texto vem do Bling e nao pode virar codigo.
+  function desescaparLiteralJS(txt) {
+    return String(txt).replace(/\\(u[0-9a-fA-F]{4}|x[0-9a-fA-F]{2}|.)/g, (todo, dep) => {
+      const c = dep[0];
+      if (c === 'u' || c === 'x') {
+        const cod = parseInt(dep.slice(1), 16);
+        return Number.isFinite(cod) ? String.fromCharCode(cod) : todo;
+      }
+      if (c === 'n') return '\n';
+      if (c === 'r') return '\r';
+      if (c === 't') return '\t';
+      if (c === 'b') return '\b';
+      if (c === 'f') return '\f';
+      if (c === 'v') return '\v';
+      if (c === '0') return '\0';
+      return c;   // \' \" \\ \/ e qualquer outro: fica o proprio caractere
+    });
+  }
+
   async function cancelarUma(item, justificativa) {
     // 1) pede o envelope assinado
     const env = await xajax('getEnvelopeCancelamento', [item.idNota, justificativa]);
@@ -152,7 +192,12 @@
     if (!m || m[1].indexOf('<evento') !== 0) {
       return { ok: false, erro: 'nao veio o XML assinado', bruto: env.slice(0, 300) };
     }
-    const xmlB64 = btoa(unescape(encodeURIComponent(m[1])));
+    // rev2 (Codex): m[1] e o conteudo de um literal JavaScript, entao vem
+    // ESCAPADO. Uma justificativa com apostrofo chega como \' e, se a gente
+    // codificasse assim, o XML mudaria DEPOIS de assinado — e a SEFAZ
+    // recusaria um cancelamento que era valido.
+    const xmlAssinado = desescaparLiteralJS(m[1]);
+    const xmlB64 = btoa(unescape(encodeURIComponent(xmlAssinado)));
 
     // 2) manda cancelar
     const txt = await xajax('cancelarNFe', [item.idNota, xmlB64]);
@@ -185,9 +230,22 @@
       return;
     }
 
+    // rev2 (Codex): CONGELA a lista aqui, no momento em que o operador
+    // confirmou. O lote leva minutos e, enquanto ele roda, um
+    // lote.conferir(...) novo trocaria o estado.conferidas por baixo — e o
+    // laco passaria a cancelar notas de um lote que NINGUEM confirmou.
+    // A partir daqui so existe esta copia; e a trava impede o segundo lote.
+    if (estado.rodando) {
+      console.log('%cJa tem um cancelamento rodando. Espere terminar.', 'color:#c00;font-weight:bold');
+      return;
+    }
+    estado.rodando = true;
+    const fila = estado.conferidas.slice();
+
     const resultados = []; let falhasSeguidas = 0;
-    for (let i = 0; i < estado.conferidas.length; i++) {
-      const it = estado.conferidas[i];
+    try {
+    for (let i = 0; i < fila.length; i++) {
+      const it = fila[i];
       console.log('(' + (i + 1) + '/' + total + ') NF ' + it.numero + ' — ' + it.cliente + ' ...');
       let r;
       try { r = await cancelarUma(it, just); }
@@ -209,7 +267,11 @@
     console.table(resultados);
     const bons = resultados.filter(r => r.ok).length;
     console.log('Canceladas: ' + bons + ' | Falhas: ' + (resultados.length - bons) + ' | Nao tentadas: ' + (total - resultados.length));
-    estado.conferidas = estado.conferidas.filter(it => !resultados.find(r => r.numero === it.numero && r.ok));
+    // tira do lote so as que DERAM CERTO; as que falharam ficam pra retentar
+    estado.conferidas = fila.filter(it => !resultados.find(r => r.numero === it.numero && r.ok));
+    } finally {
+      estado.rodando = false;   // libera mesmo se algo estourar no meio
+    }
   }
 
   window.lote = { conferir, cancelar, estado };
