@@ -52,6 +52,24 @@ parava sozinho no meio.
 Hoje, "esta NF já possui devolução" aparece como **PULADA** e não derruba
 o lote.
 
+## Códigos de erro da Bridge (Toolbox v2.1.0)
+
+Desde o PR #239 do Mover-Pedidos, a extensão devolve um **código estável**
+junto do erro, e não só texto:
+
+| código | o que o script faz |
+|---|---|
+| `JA_EXISTE` | pula a nota, **não** conta como falha |
+| `TIMEOUT` | **para** o lote — indeterminado, confira no Bling |
+| `RASCUNHO_CRIADO` | a NF existe, só a emissão falhou: **não re-emitir**; o id vem junto |
+| `FALHA` | conta para o limite de 2 falhas seguidas |
+
+O script classifica **pelo código primeiro** e só cai no texto da mensagem
+quando ele não vem — o que acontece na Bridge antiga, ainda instalada até a
+migração dos navegadores. Assim os dois mundos funcionam.
+
+Se os **valores** desses códigos mudarem, avise: o texto sozinho já não basta.
+
 ## Travas que existem por um motivo
 
 - **Timeout para o lote.** O timeout da extensão é *indeterminado*: a
