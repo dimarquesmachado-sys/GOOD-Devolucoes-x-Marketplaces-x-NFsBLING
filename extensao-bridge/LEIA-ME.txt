@@ -1,9 +1,48 @@
-GOOD Devoluções Bridge - v1.4.1 (backup)
+=========================================================
+  PASTA CONGELADA - NAO EVOLUIR ESTA COPIA
+=========================================================
+
+A extensao Devolucoes Bridge foi ABSORVIDA pela Toolbox unica.
+
+  CASA CANONICA (onde mexer daqui em diante):
+  repo   Mover-Pedidos-Aguardando-x-Atendido
+  pasta  good-toolbox-extensao/
+  arquivos  ct-devolucoes.js  e  bg-devolucoes.js
+
+Comparacao feita em 28/08 (conversa do Checkout): esta pasta e a
+Toolbox partem da MESMA base v1.7.0 (anti-duplicata devolucaoExistente
++ b322-b325), e a Toolbox esta NA FRENTE. As ~103 linhas de diferenca
+sao os consertos das reviews #236/#237:
+
+  - registro da AMB indo pela area /amb (antes caia na raiz da GOOD e
+    falhava calado)
+  - rascunho da NF preservado e registrado em TODO caminho de falha,
+    com o id viajando na mensagem de erro (mata a nota em duplicidade)
+  - resultado tardio pos-timeout com retry persistido no storage
+  - resposta nao-2xx tratada como falha
+
+Nada a portar de la pra ca. Se algum fix for necessario, faca na
+Toolbox -- nunca aqui, e nunca nas duas em paralelo.
+
+Esta copia fica so como referencia historica do que rodou ate 28/08.
+
+---------------------------------------------------------
+O QUE ESTE REPO CONTINUA DONO
+---------------------------------------------------------
+O SERVIDOR (server.js, lib/, painel). O protocolo de mensagens com a
+extensao NAO mudou na Toolbox -- GOOD_BRIDGE_PING / PONG /
+CRIAR_DEVOLUCAO / RESPOSTA / INSTALADA, no mesmo dominio do painel --
+entao o painel e os scripts de lote seguem funcionando sem alteracao.
+
+---------------------------------------------------------
+INSTRUCOES ANTIGAS (so pra quem ainda roda esta copia)
+---------------------------------------------------------
 Como reinstalar no Edge:
 1. Baixe manifest.json, content.js e background.js numa pasta do PC
 2. Edge -> edge://extensions -> ligue "Modo de desenvolvedor"
-3. Botão "Carregar sem compactação" -> escolha a pasta
+3. Botao "Carregar sem compactacao" -> escolha a pasta
 4. Use com uma aba do www.bling.com.br aberta e logada
-Crachá da API: x-api-revision 3.1.0
-(se o Bling mudar a versão: 3 pontinhos -> Gerar devolução -> Cancelar,
-e clicar de novo no painel - a extensão copia o crachá novo sozinha)
+
+Cracha da API: x-api-revision 3.1.0
+(se o Bling mudar a versao: 3 pontinhos -> Gerar devolucao -> Cancelar,
+e clicar de novo no painel - a extensao copia o cracha novo sozinha)
