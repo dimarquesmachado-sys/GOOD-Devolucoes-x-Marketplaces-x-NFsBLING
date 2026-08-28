@@ -397,7 +397,17 @@
           // Caso novo — antes caia em "falha" e o operador podia tentar de
           // novo; a anti-duplicata segurava, mas o id do rascunho se perdia
           // e ninguem sabia que tinha nota pendente no Bling.
-          if (cod === 'RASCUNHO_CRIADO') {
+          // rev4.1 (Codex): na Bridge ANTIGA — o caso de compatibilidade que
+          // este PR sustenta — a falha de emissao vem COM idNotaDevolucao e
+          // SEM codigo. Sem tratar isso, caia em falha comum: o operador nao
+          // via o link do rascunho, a nota voltava pro faltantes(), e na
+          // rodada seguinte a anti-duplicata dizia JA_EXISTE — que o script
+          // conta como RESOLVIDA. Fim: rascunho nunca emitido, dado como
+          // pronto. Entao id de rascunho presente (ou a mensagem antiga)
+          // vale como RASCUNHO_CRIADO mesmo sem codigo.
+          const temIdRascunho = !!(e && e.idNotaDevolucao);
+          const falaEmRascunho = /rascunho (criad|salv)|nota criada.*nao emitid|criada mas nao emitid/i.test(msg);
+          if (cod === 'RASCUNHO_CRIADO' || (!cod && (temIdRascunho || falaEmRascunho))) {
             const idR = e.idNotaDevolucao || '';
             estado.resultados.push({ nf_venda: p.numero, ok: false, rascunho: true,
               nf_devolucao: e.numero || '', id: idR, emitida: false,
