@@ -20,6 +20,7 @@ function classificar(codigoOriginal) {
   const ehChaveNFe = codigoLimpo.length === 44;
   const mNumSerie = String(codigoOriginal || '').trim().match(/^(\d{4,9})\s*[\/\-]\s*(\d{1,3})$/);
   const semRotulosNF = String(codigoOriginal || '').trim()
+    .replace(/\b([A-Za-z])\s*\.\s*(?=[A-Za-z]\b)/g, '$1')
     .replace(/[\u00ba\u00b0]/g, ' ')
     .replace(/\b(?:nf-?e?|nota|fiscal|n[uu\u00fa]mero|num|n)\b/gi, ' ')
     .replace(/[\s:.#\-]+/g, '');
@@ -63,6 +64,12 @@ ok(classificar('N\u00ba 75053') === 'numero_nf', '"N\u00ba 75053" (marcador de n
 ok(classificar('N\u00b0 75053') === 'numero_nf', '  e com o simbolo de grau');
 ok(classificar('Nota Fiscal n\u00ba 75053') === 'numero_nf', '"Nota Fiscal n\u00ba 75053" tambem');
 ok(classificar('numero 75053') === 'numero_nf', '"numero 75053" tambem');
+// seg5.3: a abreviacao pontuada, que e como muita gente escreve
+ok(classificar('N.F. 75053') === 'numero_nf', '"N.F. 75053" (abreviacao pontuada) tambem');
+ok(classificar('N.F 75053') === 'numero_nf', '  e "N.F 75053"');
+ok(classificar('N. F. 75053') === 'numero_nf', '  e "N. F. 75053" com espaco');
+ok(classificar('N.F. 250807PBTHEWQG') === 'segue_cascata',
+   '  mas "N.F. 250807PBTHEWQG" segue pra cascata (sobra letra)');
 
 // e o rotulo nao pode virar porta dos fundos pro codigo Shopee
 ok(classificar('NF 250807PBTHEWQG') === 'segue_cascata',

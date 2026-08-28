@@ -227,7 +227,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.55.2 (seg5.2 - rotulos de NF em qualquer posicao, inclusive n<0xc2><0xba> e no fim)',
+    version: '4.55.3 (seg5.3 - abreviacao pontuada N.F. tambem e numero de NF)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -682,6 +682,7 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
   // de um codigo tipo 250807PBNFEWQG NAO e tocado) e a checagem de letra e
   // no que sobrou.
   const semRotulosNF = String(codigoOriginal || '').trim()
+    .replace(/\b([A-Za-z])\s*\.\s*(?=[A-Za-z]\b)/g, '$1')             // "N.F." -> "NF" (abreviacao pontuada)
     .replace(/[\u00ba\u00b0]/g, ' ')                                   // º e ° viram espaco
     .replace(/\b(?:nf-?e?|nota|fiscal|n[uu\u00fa]mero|num|n)\b/gi, ' ')  // rotulos, em qualquer posicao
     .replace(/[\s:.#\-]+/g, '');                                        // pontuacao de separacao
