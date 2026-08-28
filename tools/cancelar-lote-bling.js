@@ -86,8 +86,14 @@
       // So o fim real da listagem encerra a varredura.
       if (lista.length < 100) break;         // acabou a lista
       await dorme(300);
+      if (p === teto) {
+        // rev3 (Codex): bateu no teto SEM ver o fim da listagem. Nao da pra
+        // afirmar que um numero e unico -- a serie repetida pode estar nas
+        // paginas que nao lemos. Volta marcado como truncado.
+        return { porNumero, paginas, lidas, faltam, truncado: true };
+      }
     }
-    return { porNumero, paginas, lidas, faltam };
+    return { porNumero, paginas, lidas, faltam, truncado: false };
   }
 
   const estado = { conferidas: [], problemas: [], periodo: null, rodando: false };
@@ -121,6 +127,12 @@
     const col = await coletar(de, ate, numeros, op.paginas);
     if (col.erro) {
       console.log('%cNAO CONSEGUI LER A LISTAGEM do Bling: ' + col.erro + '. Nada foi cancelado.', 'color:#c00;font-weight:bold');
+      return;
+    }
+    if (col.truncado) {
+      console.log('%cPAREI: a varredura bateu no teto de ' + (op.paginas || 60) + ' paginas SEM chegar ao fim do periodo.', 'color:#c00;font-weight:bold');
+      console.log('   Sem ler tudo eu nao posso garantir que cada numero e unico (o mesmo numero existe em outra SERIE),');
+      console.log('   e cancelar a nota errada nao tem volta. Estreite o periodo (de/ate) ou aumente { paginas: N }.');
       return;
     }
     const porNumero = col.porNumero;
@@ -188,7 +200,13 @@
     //   callbackJaAssinadoCancelamento(id, '<evento>...</evento>', '', false)
     // A primeira versao exigia ")" logo depois do XML e nunca casava, o que
     // fazia toda nota "falhar" ANTES de qualquer envio a SEFAZ.
-    const m = env.match(/callbackJaAssinadoCancelamento\(\s*\d+\s*,\s*'([\s\S]*?)'\s*,/);
+    // rev3 (Codex): o literal tem que ser lido PULANDO os escapes. Com
+    // ([\s\S]*?)' a justificativa "Produto 'X', com defeito" fazia o \'
+    // seguido de virgula parecer o fim da string: o XML era CORTADO no meio,
+    // ainda comecava com <evento (passava na checagem) e ia truncado pro
+    // cancelarNFe. Agora: qualquer coisa que nao seja ' ou \, ou um par
+    // escapado \x, ate a aspa de verdade.
+    const m = env.match(/callbackJaAssinadoCancelamento\(\s*\d+\s*,\s*'((?:[^'\\]|\\[\s\S])*)'\s*,/);
     if (!m || m[1].indexOf('<evento') !== 0) {
       return { ok: false, erro: 'nao veio o XML assinado', bruto: env.slice(0, 300) };
     }
@@ -201,7 +219,14 @@
 
     // 2) manda cancelar
     const txt = await xajax('cancelarNFe', [item.idNota, xmlB64]);
-    let r = null; try { r = JSON.parse(txt); } catch (e) { return { ok: false, erro: 'resposta ilegivel', bruto: txt.slice(0, 300) }; }
+    // rev3 (Codex): depois que o POST saiu, resposta ilegivel NAO e falha
+    // simples — e INDETERMINADO. A SEFAZ pode ter cancelado e o que se
+    // perdeu foi so a resposta (pagina de erro do proxy, corpo truncado).
+    // Tratar como falha comum deixava a nota elegivel pra retry, ou seja,
+    // um SEGUNDO pedido fiscal sem saber o desfecho do primeiro.
+    let r = null;
+    try { r = JSON.parse(txt); }
+    catch (e) { return { ok: false, indeterminado: true, erro: 'resposta ilegivel — o cancelamento PODE ter sido feito; confira no Bling', bruto: txt.slice(0, 300) }; }
     const motivo = (String(r.xml || '').match(/<xMotivo>([^<]*)<\/xMotivo>/) || [])[1] || '';
     const cStat = (String(r.xml || '').match(/<cStat>([^<]*)<\/cStat>/) || [])[1] || '';
     // MEDIDO em 25/08: `erros` NEM SEMPRE e array — pode vir objeto ou texto.
@@ -253,6 +278,12 @@
 
       resultados.push(Object.assign({ numero: it.numero, cliente: it.cliente }, r));
       if (r.ok) { falhasSeguidas = 0; console.log('   OK — ' + (r.cStat ? r.cStat + ' ' : '') + r.motivo); }
+      else if (r.indeterminado) {
+        // rev3: nao insiste nem segue. A pessoa concilia no Bling primeiro.
+        console.log('%c   INDETERMINADO — ' + (r.erro || '?'), 'color:#c00;font-weight:bold');
+        console.log('%c   PAREI. Confira NO BLING se a NF ' + it.numero + ' foi cancelada antes de rodar de novo.', 'color:#c00;font-weight:bold');
+        break;
+      }
       else {
         falhasSeguidas++;
         console.log('%c   FALHOU — ' + (r.erro || r.erros || r.motivo || '?'), 'color:#c00');

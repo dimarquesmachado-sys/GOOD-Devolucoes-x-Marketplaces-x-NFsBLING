@@ -181,6 +181,14 @@
     estado,
 
     async conferir(listaOpcional) {
+      // rev3 (Codex): conferir() no meio de um emitir() (que leva minutos)
+      // trocava estado.itens e APAGAVA os resultados ja registrados. O lote
+      // seguia pela fila local dele, mas a tabela final saia incompleta e o
+      // faltantes() passava a comparar contra um lote que nunca rodou.
+      if (estado.rodando) {
+        console.log('%cTem uma operacao rodando (rascunho ou emissao). Espere terminar antes de conferir outra lista.', 'color:#c00;font-weight:bold');
+        return;
+      }
       estado.itens = lerFila(listaOpcional || FILA);
       estado.resultados = [];
       const comId = estado.itens.filter((x) => x.idBling).length;
@@ -238,14 +246,32 @@
     },
 
     // Gera UM rascunho (a primeira da fila, ou a que voce indicar pelo numero)
-    async rascunho(numeroEspecifico) {
+    async rascunho(numeroEspecifico, opt) {
       if (!estado.prontos || !estado.prontos.length) return console.log('Rode devol.conferir() antes.');
       const alvo = numeroEspecifico
         ? estado.prontos.find((p) => p.numero === String(numeroEspecifico).trim())
         : estado.prontos[0];
       if (!alvo) return console.log('Nao achei ' + numeroEspecifico + ' entre as prontas.');
 
+      // rev3 (Codex): o rascunho tambem e operacao fiscal na MESMA aba do
+      // Bling. Sem trava, dava pra chamar duas vezes (ou junto com o
+      // emitir()) e os dois fluxos passarem pela checagem anti-duplicata
+      // antes de qualquer um salvar — criando devolucao em dobro.
+      if (estado.rodando) {
+        return console.log('%cJa tem uma operacao rodando (rascunho ou emissao). Espere terminar.', 'color:#c00;font-weight:bold');
+      }
+
+      // rev3: e o mesmo cuidado do emitir() — NF achada so pelo numero pode
+      // ser de outra SERIE, e o rascunho ja cria a devolucao contra a venda.
+      if (alvo.porNumero && !(opt && opt.conferiSerie)) {
+        console.log('%cPAREI: a NF ' + alvo.numero + ' foi achada pelo NUMERO (serie nao conferida).', 'color:#c00;font-weight:bold');
+        console.log('   Abra no Bling, confira cliente e valor, e entao:');
+        console.log("   devol.rascunho('" + alvo.numero + "', { conferiSerie:true })");
+        return;
+      }
+
       console.log('Criando RASCUNHO da devolucao da NF ' + alvo.numero + ' (nao transmite pra SEFAZ)...');
+      estado.rodando = true;
       try {
         const r = await enviarParaBridge({
           idNFOriginal: alvo.idBling,
@@ -270,6 +296,8 @@
       } catch (e) {
         console.log('❌ FALHOU — ' + e.message);
         throw e;
+      } finally {
+        estado.rodando = false;   // libera mesmo se estourar
       }
     },
 
@@ -383,8 +411,16 @@
 
     // devolve a lista (numero|data) do que ainda nao saiu, pra rodar de novo
     faltantes() {
-      const feitas = new Set(estado.resultados.filter((x) => x.ok).map((x) => x.nf_venda));
-      const resto = (estado.itens || []).filter((i) => !feitas.has(i.numero));
+      // rev3 (Codex): "pulada" (ja tinha devolucao no Bling) NAO e falta —
+      // e nota RESOLVIDA, inclusive a que voce emitiu a mao pelo rascunho.
+      // Contando so ok:true, elas voltavam pra fila a cada rodada, e cada
+      // pulada no meio ainda zerava o contador de falhas seguidas,
+      // enfraquecendo a parada de seguranca.
+      const resolvidas = new Set(
+        estado.resultados.filter((x) => x.ok || x.pulada).map((x) => x.nf_venda)
+      );
+      const aMao = new Set((estado.prontos || []).filter((p) => p.tratadaAMao).map((p) => p.numero));
+      const resto = (estado.itens || []).filter((i) => !resolvidas.has(i.numero) && !aMao.has(i.numero));
       const txt = resto.map((i) => i.numero + (i.idBling ? '|' + i.idBling : (i.data ? '|' + i.data : ''))).join(',');
       console.log('Faltam ' + resto.length + ':');
       console.log(txt);
