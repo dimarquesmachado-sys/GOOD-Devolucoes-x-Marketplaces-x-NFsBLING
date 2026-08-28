@@ -227,7 +227,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.55.1 (seg5.1 - prefixo textual NF/NFe/Nota continua buscando por numero)',
+    version: '4.55.2 (seg5.2 - rotulos de NF em qualquer posicao, inclusive n<0xc2><0xba> e no fim)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -673,9 +673,19 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
   // Entao: tira um prefixo textual de NF, se houver, e SO depois checa se
   // sobrou letra. "NF 75053" -> "75053" (sem letra) = NF.
   // "250807PBTHEWQG" -> nao tem prefixo, sobra letra = nao e NF.
-  const semPrefixoNF = String(codigoOriginal || '').trim()
-    .replace(/^(?:nf-?e?|nota(?:\s*fiscal)?)\s*[:.\-#]?\s*/i, '');
-  const temLetraNoOriginal = /[A-Za-z]/.test(semPrefixoNF);
+  // seg5.2 (Codex): so tirar PREFIXO nao bastava. Aparecem tambem
+  // "75053 NFe" (rotulo no fim), "N 75053" e "Nota Fiscal n 75053" — o
+  // marcador de numero. Todos normalizavam pros digitos antes e
+  // funcionavam; com a regra anterior virariam NF impossivel de buscar.
+  //
+  // Agora os ROTULOS caem em qualquer posicao (com \b, entao "nf" no meio
+  // de um codigo tipo 250807PBNFEWQG NAO e tocado) e a checagem de letra e
+  // no que sobrou.
+  const semRotulosNF = String(codigoOriginal || '').trim()
+    .replace(/[\u00ba\u00b0]/g, ' ')                                   // º e ° viram espaco
+    .replace(/\b(?:nf-?e?|nota|fiscal|n[uu\u00fa]mero|num|n)\b/gi, ' ')  // rotulos, em qualquer posicao
+    .replace(/[\s:.#\-]+/g, '');                                        // pontuacao de separacao
+  const temLetraNoOriginal = /[A-Za-z]/.test(semRotulosNF);
   const ehNumeroNF = !ehChaveNFe && (mNumSerie || (/^\d{4,9}$/.test(codigoLimpo) && !temLetraNoOriginal));
 
   if (!shipment && !pack && (ehChaveNFe || ehNumeroNF)) {

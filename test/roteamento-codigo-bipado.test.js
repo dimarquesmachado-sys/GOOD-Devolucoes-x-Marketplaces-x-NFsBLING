@@ -19,9 +19,11 @@ function classificar(codigoOriginal) {
   const codigoLimpo = String(codigoOriginal).replace(/[^0-9]/g, '');
   const ehChaveNFe = codigoLimpo.length === 44;
   const mNumSerie = String(codigoOriginal || '').trim().match(/^(\d{4,9})\s*[\/\-]\s*(\d{1,3})$/);
-  const semPrefixoNF = String(codigoOriginal || '').trim()
-    .replace(/^(?:nf-?e?|nota(?:\s*fiscal)?)\s*[:.\-#]?\s*/i, '');
-  const temLetraNoOriginal = /[A-Za-z]/.test(semPrefixoNF);
+  const semRotulosNF = String(codigoOriginal || '').trim()
+    .replace(/[\u00ba\u00b0]/g, ' ')
+    .replace(/\b(?:nf-?e?|nota|fiscal|n[uu\u00fa]mero|num|n)\b/gi, ' ')
+    .replace(/[\s:.#\-]+/g, '');
+  const temLetraNoOriginal = /[A-Za-z]/.test(semRotulosNF);
   const ehNumeroNF = !ehChaveNFe && (mNumSerie || (/^\d{4,9}$/.test(codigoLimpo) && !temLetraNoOriginal));
   return ehChaveNFe ? 'chave_danfe' : (ehNumeroNF ? 'numero_nf' : 'segue_cascata');
 }
@@ -55,9 +57,18 @@ ok(classificar('NFe 75053') === 'numero_nf', '"NFe 75053" tambem');
 ok(classificar('nf-e 75053') === 'numero_nf', '"nf-e 75053" tambem');
 ok(classificar('Nota Fiscal 75053') === 'numero_nf', '"Nota Fiscal 75053" tambem');
 ok(classificar('NOTA 75053') === 'numero_nf', '"NOTA 75053" tambem');
-// e o prefixo nao pode virar porta dos fundos pro codigo Shopee
+// seg5.2: o rotulo aparece tambem no FIM e como marcador de numero
+ok(classificar('75053 NFe') === 'numero_nf', '"75053 NFe" (rotulo no fim) tambem');
+ok(classificar('N\u00ba 75053') === 'numero_nf', '"N\u00ba 75053" (marcador de numero) tambem');
+ok(classificar('N\u00b0 75053') === 'numero_nf', '  e com o simbolo de grau');
+ok(classificar('Nota Fiscal n\u00ba 75053') === 'numero_nf', '"Nota Fiscal n\u00ba 75053" tambem');
+ok(classificar('numero 75053') === 'numero_nf', '"numero 75053" tambem');
+
+// e o rotulo nao pode virar porta dos fundos pro codigo Shopee
 ok(classificar('NF 250807PBTHEWQG') === 'segue_cascata',
-   '  mas "NF 250807PBTHEWQG" NAO vira NF (sobra letra depois do prefixo)');
+   '  mas "NF 250807PBTHEWQG" NAO vira NF (sobra letra depois do rotulo)');
+ok(classificar('250807PBNFEWQG') === 'segue_cascata',
+   '  e "NFE" NO MEIO de um order_sn nao e tocado (rotulo so como palavra inteira)');
 
 // ── outros marketplaces nao podem ser engolidos pela rota de NF ──────
 ok(classificar('AD123456789BR') === 'segue_cascata', 'Correios reverso segue');
@@ -65,8 +76,8 @@ ok(classificar('2000017772797838') === 'segue_cascata', 'pedido ML (16 digitos) 
 ok(classificar('47416667668') === 'segue_cascata', 'shipment ML (11 digitos) segue');
 
 // ── o conserto esta MESMO no server (nao so neste teste) ─────────────
-ok(/const semPrefixoNF = String\(codigoOriginal/.test(SERVER),
-   'o server tira o prefixo textual de NF antes de checar letras');
+ok(/const semRotulosNF = String\(codigoOriginal/.test(SERVER),
+   'o server tira os rotulos de NF antes de checar letras');
 ok(/ehNumeroNF = !ehChaveNFe && \(mNumSerie \|\| \(\/\^\\d\{4,9\}\$\/\.test\(codigoLimpo\) && !temLetraNoOriginal\)\)/.test(SERVER),
    '  e usa isso na decisao de numero_nf');
 
