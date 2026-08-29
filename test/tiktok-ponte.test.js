@@ -44,6 +44,21 @@ ok(/out\.ok = false;[\s\S]{0,400}a ULTIMA COLETA falhou/.test(PONTE),
 ok(/nao porque nao ha devolucoes/.test(PONTE),
    '  com mensagem que separa "nao ha devolucoes" de "a coleta quebrou"');
 
+// ── b343.1: coleta ENFILEIRADA nao vira "ok" com dado velho ──────────
+ok(/out\.coleta_enfileirada && String\(q\.esperar \|\| ''\) !== '1'/.test(PONTE),
+   'coleta aceita em background sem ?esperar=1 e sinalizada, nao reportada como completa');
+ok(/coleta_pendente = true/.test(PONTE), '  marcando coleta_pendente');
+ok(/a lista abaixo e do estado ANTERIOR/.test(PONTE),
+   '  e dizendo em texto que o dado e de antes (era a mesma falha silenciosa, por outro caminho)');
+ok(/use &esperar=1 pra bloquear ate terminar/.test(PONTE),
+   '  com a saida pra quem quiser o dado fresco');
+
+// ── b343.1: tolerar falta de `loja` SO no 202 ────────────────────────
+ok(/if \(c\.http !== 202\) \{[\s\S]{0,300}SEM identificar a loja/.test(PONTE),
+   '200 sem `loja` volta a ser ERRO (pode ter coletado a loja padrao em silencio)');
+ok(/out\.aviso_coleta = 'coleta aceita em background \(202\)/.test(PONTE),
+   '  e so o 202 ganha o beneficio da duvida');
+
 // ── a simulação ──────────────────────────────────────────────────────
 {
   // reproduz a decisao final da ponte
@@ -63,6 +78,27 @@ ok(/nao porque nao ha devolucoes/.test(PONTE),
      'lista CHEIA mas coleta falhou tambem e erro — o dado pode estar velho');
   ok(veredito({ devolucoes: [] }) === 'ok',
      'sem o campo (versao antiga de la), nao inventa erro');
+
+  // b343.1: a decisao com coleta enfileirada
+  function vereditoComColeta(corpo, enfileirada, esperar) {
+    if (enfileirada && esperar !== '1') return 'pendente';
+    return veredito(corpo);
+  }
+  ok(vereditoComColeta({ devolucoes: [], ultima_coleta: { status: 'ok' } }, true, undefined) === 'pendente',
+     'coleta recem-enfileirada: resposta diz PENDENTE, nao "ok, zero devolucoes"');
+  ok(vereditoComColeta({ devolucoes: [], ultima_coleta: { status: 'ok' } }, true, '1') === 'ok',
+     '  mas com &esperar=1 a coleta ja terminou, entao vale o veredito normal');
+  ok(vereditoComColeta({ devolucoes: [{ id: 1 }], ultima_coleta: { status: 'ok' } }, false, undefined) === 'ok',
+     '  e leitura sem coleta segue normal');
+
+  // a tolerancia da loja, por status
+  function lojaOk(http, temLoja) {
+    if (temLoja) return 'ok';
+    return http === 202 ? 'aviso' : 'erro';
+  }
+  ok(lojaOk(202, false) === 'aviso', '202 sem loja: aviso (aceitei o pedido, nao terminei)');
+  ok(lojaOk(200, false) === 'erro', '200 sem loja: ERRO (pode ter coletado a loja padrao)');
+  ok(lojaOk(200, true) === 'ok', '200 com loja: normal');
 }
 
 console.log('');
