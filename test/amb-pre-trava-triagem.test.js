@@ -211,6 +211,20 @@ srv.listen(0, '127.0.0.1', async () => {
   ok(correios.indexOf('AD123456789BR') !== -1,
      'etiqueta dos Correios: o rastreio vem de data.ml_return.tracking (nao de shipment.tracking)');
 
+  // b166.4: so o numero da NF ja dispara a verificacao (antes o idPrincipal
+  // ficava null e ela nem era chamada)
+  function principal(data) {
+    const shipment = data.shipment || {};
+    const nf = data.nf || {};
+    return shipment.id || nf.chaveAcesso || nf.chave || (data.magalu && data.magalu.protocolo) || nf.numero || null;
+  }
+  ok(principal({ shipment: {}, nf: { numero: '001906' } }) === '001906',
+     'so com o numero da NF, a verificacao E chamada (idPrincipal deixou de ser null)');
+  ok(principal({ shipment: { id: '475' }, nf: { numero: '001906' } }) === '475',
+     '  mas o shipment continua na frente, quando existe');
+  ok(principal({ shipment: {}, nf: { chaveAcesso: '3'.repeat(44), numero: '001906' } }) === '3'.repeat(44),
+     '  e a chave tambem vem antes do numero');
+
   const BUSCA_GOOD = fs.readFileSync(path.join(RAIZ, 'public', 'js', 'busca.js'), 'utf8');
   const regraCanal = /!shipment\.id && \(data\.magalu \|\| String\(data\.metodo/;
   ok(regraCanal.test(BUSCA_AMB), '  e e isso que o front da AMB faz (gate por CANAL, nao por campo vazio)');

@@ -569,7 +569,14 @@ function renderizar(data, ok) {
   // v3.28 - a MESMA devolucao pode ter sido triada por outro identificador
   // (ex: Diego triou pela chave da NF; o QR chega com o protocolo). Passamos
   // os DOIS pro status, que busca por OR - reconhece por qualquer porta.
-  const idPrincipal = shipment.id || nf?.chaveAcesso || nf?.chave || data.magalu?.protocolo || null;
+  // b166.4 (Codex): o NUMERO DA NF entra na cascata do principal. Buscando
+  // pelo numero, a nota pode voltar SEM chaveAcesso — e ai, sem shipment e
+  // sem protocolo Magalu, o idPrincipal ficava null e a verificacao nem era
+  // chamada. Resultado: registro gravado por nf_numero passava sem banner,
+  // que e justamente o que este PR veio impedir. Fica por ultimo pra nao
+  // roubar a vez de identificador mais especifico.
+  const idPrincipal = shipment.id || nf?.chaveAcesso || nf?.chave
+    || data.magalu?.protocolo || nf?.numero || null;
   // b166.1 (Codex): TODAS as portas pelas quais aquele pacote pode ter sido
   // gravado antes. Antes ia so o protocolo Magalu como alternativo, entao
   // registro salvo pelo numero da NF ou pelo rastreio dos Correios passava
