@@ -228,7 +228,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.63.2 (coleta enfileirada nao vira ok com dado velho)',
+    version: '4.63.4 (ponte TikTok: coleta enfileirada nao vira ok com dado velho)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
