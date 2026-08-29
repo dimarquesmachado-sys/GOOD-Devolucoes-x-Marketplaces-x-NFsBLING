@@ -1511,6 +1511,34 @@
         ? '<span style="background:#c62828;color:white;padding:3px 8px;border-radius:10px;font-size:10px;font-weight:700;margin-left:6px;">🔁 RE-BIPE</span>'
         : '';
 
+      // v4.67 - VARIAS CAIXAS DO MESMO PEDIDO
+      //
+      // Nao confundir com `ehParcial` acima, que e o estoquista marcando que
+      // veio menos coisa DENTRO da caixa. Aqui e o pedido inteiro voltando em
+      // caixas SEPARADAS, porque o TikTok abre uma devolucao por item da nota.
+      //
+      // Pedido do dono: "deixa o card tipo 1o Devolucao triada / AGUARDADO 2a
+      // devolucao" — e so emitir a NF quando todas chegarem.
+      const multi = d.parcial || null;
+      const badgeMulti = multi
+        ? '<span style="background:' + (multi.completo ? '#2e7d32' : '#e65100') + ';color:white;'
+          + 'padding:3px 8px;border-radius:10px;font-size:10px;font-weight:700;margin-left:6px;">'
+          + (multi.completo ? '✅ ' : '⏳ ')
+          + 'CAIXA ' + (multi.esta || '?') + '/' + (multi.esperadas || multi.vieram)
+          + '</span>'
+        : '';
+      const avisoMulti = !multi ? ''
+        : (multi.completo
+          ? '<div style="margin:8px 0;padding:10px;border-radius:8px;background:#e8f5e9;'
+            + 'border:2px solid #2e7d32;color:#1b5e20;font-weight:700;">'
+            + '✅ TODAS AS CAIXAS CHEGARAM — ' + escapeHtml(multi.rotulo || '') + '</div>'
+          : '<div style="margin:8px 0;padding:10px;border-radius:8px;background:#fff3e0;'
+            + 'border:2px solid #ef6c00;color:#e65100;font-weight:700;">'
+            + '⏳ AGUARDANDO OUTRA CAIXA — ' + escapeHtml(multi.rotulo || '')
+            + '<div style="font-weight:400;margin-top:4px;font-size:13px;">'
+            + 'Este pedido volta em mais de uma entrega. <b>Espere todas</b> antes de emitir a NF de devolução.'
+            + '</div></div>');
+
       // v3.99 - CONSERTADO pelo estoquista: voltou quebrado mas foi salvo com
       // peca de outra unidade. Emite a NF INCLUINDO em estoque (e da pra
       // contestar o marketplace por fora).
@@ -1543,7 +1571,7 @@
         <div class="item ${concluido ? 'concluido' : ''}${d.nf_devolucao_id_bling ? ' nf-emitida' : ''}" id="card-${d.id}" ${ehParcial ? 'style="border-left-color:#f57c00;background:#fff8e7;"' : ''}>
           <div class="item-header">
             <div>
-              <div class="item-titulo">${escapeHtml(d.produto_titulo || '-')}${badgeParcial}${badgeRebipe}${badgeConsertado}</div>
+              <div class="item-titulo">${escapeHtml(d.produto_titulo || '-')}${badgeParcial}${badgeMulti}${badgeRebipe}${badgeConsertado}</div>
               <div class="item-data">por ${escapeHtml(desc)} · ${dataFmt(d.created_at)}</div>
             </div>
             ${concluido ? '<span style="background:#999;color:white;padding:3px 8px;border-radius:10px;font-size:10px;font-weight:700;">CONCLUIDO</span>' : ''}
@@ -1559,7 +1587,7 @@
             ${d.pack_id ? ` · <strong>Pack:</strong> <code>${d.pack_id}</code>` : ''}
             ${rotuloShipment(d.shipment_id)}
           </div>
-          ${blocoFotos}${blocoConserto}
+          ${avisoMulti}${blocoFotos}${blocoConserto}
           ${concluido ? '' : `
             <div class="item-acoes">
               ${d.nf_link_danfe ? `<a class="btn btn-cinza" href="${d.nf_link_danfe}" target="_blank">📄 Ver DANFE</a>` : ''}
