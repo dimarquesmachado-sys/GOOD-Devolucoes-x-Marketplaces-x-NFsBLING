@@ -227,7 +227,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.56.0 (seg4 - busca de defeitos por tipo/aba; seg5 - Pedido Shopee nao vira NF)',
+    version: '4.57.0 (leitor de etiqueta le QR no computador e conhece a Magalu)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
