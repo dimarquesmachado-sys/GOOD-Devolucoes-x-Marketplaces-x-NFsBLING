@@ -228,7 +228,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.64.1 (camera espera o QR; EAN na frente; QR generico cede)',
+    version: '4.64.2 (EAN so no modo produto; URL do QR preservada; id do ML extraido)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),

@@ -96,12 +96,24 @@ ok(/if \(qrGenerico && barras\) \{/.test(SCANNER),
 ok(/c\.format === 'ean_13' \|\| c\.format === 'ean_8'/.test(SCANNER),
    'no modo produto, EAN vem antes de code_128/itf/pdf417 (o detector pede todos)');
 
+// ── v3.34.3: URL com identificador extraido NAO e "generico" ────────
+ok(/const extraiuAlgo = lido && String\(lido\.valor \|\| ''\) !== String\(raw \|\| ''\)/.test(SCANNER),
+   'QR que teve identificador EXTRAIDO nao e tratado como texto solto');
+ok(/&& !extraiuAlgo/.test(SCANNER), '  entao nao cede a vez pro codigo de barras');
+
+// ── v3.34.3: JSON do ML tem o id extraido antes da busca ────────────
+ok(/const mIdML = String\(lido\.valor\)\.match/.test(SCANNER),
+   'JSON do Mercado Livre tem o `id` extraido antes de ir pra busca');
+ok(/jaResolvido = !mIdML &&/.test(SCANNER),
+   '  e so o payload do MAGALU pula a limpeza (o dela e o unico que a limpeza destroi)');
+
 // ── a escolha, simulada ──────────────────────────────────────────────
 {
   function escolher(codes, modo) {
     const qr = codes.find((c) => c.format === 'qr_code');
     const ean = codes.find((c) => c.format === 'ean_13' || c.format === 'ean_8');
-    const barras = ean || codes.find((c) => c.format !== 'qr_code');
+    const naoQr = codes.find((c) => c.format !== 'qr_code');
+    const barras = (modo === 'bipagem') ? (ean || naoQr) : naoQr;
     const esc = (modo === 'bipagem') ? (barras || qr || codes[0]) : (qr || barras || codes[0]);
     return esc.rawValue;
   }
@@ -137,6 +149,16 @@ ok(/c\.format === 'ean_13' \|\| c\.format === 'ean_8'/.test(SCANNER),
   ];
   ok(escolher(embalagem, 'bipagem') === '7898978766010',
      'embalagem com code_128 e EAN: escolhe o EAN, nao o primeiro nao-QR');
+
+  // v3.34.3: mas em modo ETIQUETA a prioridade do EAN nao vale
+  const correiosComProduto = [
+    { format: 'code_128', rawValue: 'AD123456789BR' },   // o codigo da devolucao
+    { format: 'ean_13', rawValue: '7898978766010' },     // o EAN do produto, visivel no pacote
+  ];
+  ok(escolher(correiosComProduto, 'etiqueta') === 'AD123456789BR',
+     'etiqueta dos Correios com o EAN do produto a vista: escolhe o codigo da DEVOLUCAO');
+  ok(escolher(correiosComProduto, 'bipagem') === '7898978766010',
+     '  e o mesmo quadro, bipando produto, escolhe o EAN');
 }
 
 // ── as duas empresas usam o MESMO scanner ────────────────────────────

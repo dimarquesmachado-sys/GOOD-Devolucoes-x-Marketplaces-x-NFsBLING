@@ -116,10 +116,15 @@ function scannerLoop() {
       // alem do EAN. Se a embalagem mostrar um desses ANTES do ean_13, o
       // "primeiro nao-QR" pegava o valor errado, era recusado, e no quadro
       // seguinte pegava o mesmo de novo — o EAN ao lado ficava inalcancavel.
+      // v3.34.3 (Codex): a prioridade do EAN vale SO no modo produto. Em
+      // modo etiqueta, se a camera pegar o EAN do produto junto com o
+      // codigo da etiqueta dos Correios (Code 128), preferir o EAN mandaria
+      // o codigo do PRODUTO em vez do identificador da devolucao.
       const ean = codes.find(c => c.format === 'ean_13' || c.format === 'ean_8');
-      const barras = ean || codes.find(c => c.format !== 'qr_code');
+      const naoQr = codes.find(c => c.format !== 'qr_code');
+      const barras = (scannerModo === 'bipagem') ? (ean || naoQr) : naoQr;
       const escolhido = (scannerModo === 'bipagem')
-        ? (barras || qr || codes[0])     // EAN do produto: EAN na frente
+        ? (barras || qr || codes[0])     // produto: EAN na frente
         : (qr || barras || codes[0]);    // etiqueta: QR na frente
       let raw = String(escolhido.rawValue || '').trim();
 
@@ -157,7 +162,14 @@ function scannerLoop() {
           // qualquer texto. Numa etiqueta com QR desses ao lado do codigo de
           // barras, o texto ganhava — e se tivesse 9 a 44 caracteres, ia pra
           // busca como se fosse identificador.
+          // v3.34.3 (Codex): "codigo do QR" e o tipo tanto do texto solto
+          // quanto da URL de onde a gente EXTRAIU um identificador. So o
+          // primeiro e generico: se o valor devolvido difere do texto lido,
+          // o interpretador achou algo ali dentro e isso vale mais que o
+          // codigo de barras ao lado.
+          const extraiuAlgo = lido && String(lido.valor || '') !== String(raw || '');
           const qrGenerico = lido && lido.tipo === 'codigo do QR'
+            && !extraiuAlgo
             && !/^\{/.test(String(lido.valor || ''));
           if (qrGenerico && barras) {
             raw = String(barras.rawValue || raw).trim();
@@ -173,7 +185,21 @@ function scannerLoop() {
             // consertar.
             //
             // Quando o interpretador ja resolveu, vai DIRETO pra busca.
-            jaResolvido = /^\{/.test(String(lido.valor)) || lido.tipo === 'pedido Magalu (do QR)';
+            // v3.34.3 (Codex): JSON do MERCADO LIVRE ({"id":"474...","t":"lm"})
+            // nao pode ir cru pra busca. A rota principal ate sabe ler, mas
+            // o campo da tela fica com o JSON inteiro e o resto do fluxo
+            // (historico, re-busca) trabalha com aquilo. O
+            // processarBipagemEtiqueta ja extraia o `id`; aqui a gente faz o
+            // mesmo antes de desviar.
+            const mIdML = String(lido.valor).match(/["']?id["']?\s*[:=]\s*["']?(\d{8,20})/i);
+            if (mIdML) raw = mIdML[1];
+
+            // so o payload do MAGALU precisa pular a limpeza (o dela e o
+            // unico que a limpeza destroi)
+            // so pelo TIPO: repetir o nome do campo do Magalu aqui seria
+            // duplicar o conhecimento que mora no interpretador — e
+            // duplicacao foi a origem de metade dos bugs de hoje.
+            jaResolvido = !mIdML && lido.tipo === 'pedido Magalu (do QR)';
           } else if (barras && qr) {
             // QR que nao soubemos ler: o de barras e a resposta desta etiqueta
             raw = String(barras.rawValue || raw).trim();
