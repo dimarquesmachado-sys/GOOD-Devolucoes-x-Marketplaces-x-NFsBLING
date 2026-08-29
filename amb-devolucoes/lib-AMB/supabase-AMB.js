@@ -117,7 +117,13 @@ async function triagensDe(identificadores) {
     const seguro = id.replace(/["',()]/g, '');
     if (!seguro) continue;
     filtros.push(`shipment_id.eq.${seguro}`);
-    filtros.push(`order_id.eq.${seguro}`);          // Magalu nao tem shipment
+    filtros.push(`order_id.eq.${seguro}`);
+    // b167 - o PACK amarra IDA e VOLTA da mesma venda. Medido em 29/08 com
+    // as duas etiquetas na mao: a da nossa postagem (envio 47501559178) e a
+    // que o ML deu pro cliente devolver (47528658744) tem shipments
+    // DIFERENTES e o MESMO pack 2000013967364577. Sem procurar por ele, o
+    // segundo bipe parecia uma devolucao nova.
+    filtros.push(`pack_id.eq.${seguro}`);
     // b166 (Codex): tracking e nf_numero TAMBEM identificam. A rota
     // /api/triagem/registrar aceita e grava os dois, e o jaTriado que ja
     // existia aqui procurava por eles. Sem estas duas linhas, um pacote
@@ -132,7 +138,7 @@ async function triagensDe(identificadores) {
 
   try {
     const r = await db.from(T.devolucoes)
-      .select('id, criado_em, tipo, status, problema_descricao, nf_numero, produto_qtd, funcionario, shipment_id, order_id')
+      .select('id, criado_em, tipo, status, problema_descricao, nf_numero, produto_qtd, funcionario, shipment_id, order_id, pack_id, nf_chave')
       .or(filtros.join(','))
       .order('criado_em', { ascending: false });
     if (r.error) return { ok: false, erro: r.error.message };

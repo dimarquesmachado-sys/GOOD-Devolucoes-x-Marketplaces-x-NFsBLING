@@ -53,6 +53,34 @@ SELECT indexname FROM pg_indexes
 
 3. **O olho do admin** na emissão da NF, que é onde a decisão é tomada.
 
+## O balizador é a NF (e o pack), não o envio
+
+Descoberto em 29/08 com as duas etiquetas físicas na mão:
+
+| | ida (nossa postagem) | volta (o ML deu ao cliente) |
+|---|---|---|
+| envio | `47501559178` | `47528658744` |
+| **pack** | `2000013967364577` | **o mesmo** |
+| pedido | `2000017367190752` | o mesmo |
+| NF | `002070` | a mesma |
+
+**O envio muda entre ida e volta.** Por isso, quem só olha `shipment_id`
+vê duas devoluções onde existe uma — e foi exatamente assim que o mesmo
+pacote foi triado duas vezes.
+
+Nas palavras do dono:
+
+> "o balizador tem que ser a NF origem de tudo, pq nunca terão 2 NFs
+> iguais pra uma venda"
+
+Então a verificação procura por **todos** os identificadores estáveis:
+`nf_numero`, `nf_chave`, `pack_id`, `order_id` — além de `shipment_id` e
+`tracking`, que ajudam quando existem.
+
+⚠️ **Armadilha que já nos pegou:** o `pack_id` era **gravado mas não
+procurado**. Mandar o identificador não adianta se a consulta não olha
+para aquela coluna.
+
 ## Onde isso vive no código
 
 - pré-trava (front): `verificarTriagemExistente` / `renderizarTriagemDuplicata`

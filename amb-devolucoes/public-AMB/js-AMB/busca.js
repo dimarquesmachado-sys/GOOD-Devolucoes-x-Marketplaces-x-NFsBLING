@@ -594,19 +594,19 @@ function renderizar(data, ok) {
     // exatamente o caso que o filtro novo veio cobrir.
     data.ml_return?.tracking, data.return?.tracking,
     shipment.tracking, data.tracking,
-    // b166.3 (Codex): o PEDIDO so entra em canal que REALMENTE nao tem
-    // shipment — hoje, o Magalu.
+    // b167 - O PEDIDO VOLTA A ENTRAR SEMPRE.
     //
-    // Por que nao basta "shipment.id vazio": quando se bipa a chave da
-    // DANFE, o identificar devolve shipment.id nulo DE PROPOSITO e preenche
-    // order.id com o numeroPedidoLoja, mesmo sendo Mercado Livre. Com a
-    // regra anterior o pedido ia junto nesse caso, e um pedido com dois
-    // envios legitimos (2000017367190752 tem dois, nos dados reais da AMB)
-    // casaria com a triagem do irmao — o falso positivo que a regra queria
-    // impedir, entrando por outra porta.
-    (!shipment.id && (data.magalu || String(data.metodo || '').toLowerCase().includes('magalu')))
-      ? data.order?.id
-      : null,
+    // Eu tinha tirado o pedido achando que evitava falso positivo: os dados
+    // mostravam o pedido 2000017367190752 com DOIS shipments, e eu li isso
+    // como "dois envios legitimos". Com as duas etiquetas na mao (29/08), a
+    // premissa caiu: uma e a NOSSA POSTAGEM (envio 47501559178) e a outra e
+    // a que o ML deu pro cliente DEVOLVER (47528658744). Mesma venda, ida e
+    // volta — e por isso deu pra triar duas vezes.
+    //
+    // O identificador estavel de uma venda nao e o envio, que muda; e a NF
+    // (uma por venda, em qualquer marketplace) e o PACK, que e o mesmo nas
+    // duas etiquetas. O pedido idem. Entao vai tudo.
+    data.order?.id,
   ];
   window._magaluProtocolo = data.magalu?.protocolo || null; // p/ triagem gravar
   if (idPrincipal) {

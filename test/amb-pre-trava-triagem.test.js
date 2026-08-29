@@ -70,7 +70,7 @@ const Module = require('module');
 const originalLoad = Module._load;
 
 const LINHAS = [
-  { id: 15, shipment_id: '47501559178', order_id: '2000017367190752', tracking: null, nf_numero: '002070', nf_chave: null, criado_em: '2026-08-29T08:21:14Z', tipo: 'devolucao', status: 'concluido', funcionario: 'Diego', problema_descricao: null },
+  { id: 15, shipment_id: '47501559178', order_id: '2000017367190752', pack_id: '2000013967364577', tracking: null, nf_numero: '002070', nf_chave: null, criado_em: '2026-08-29T08:21:14Z', tipo: 'devolucao', status: 'concluido', funcionario: 'Diego', problema_descricao: null },
   { id: 11, shipment_id: null, order_id: '1550970116332325', tracking: null, nf_numero: '001906', nf_chave: null, criado_em: '2026-08-29T07:19:07Z', tipo: 'devolucao', status: 'aprovado', funcionario: 'Lucas', problema_descricao: null },
   { id: 9,  shipment_id: null, order_id: null, tracking: 'AD123456789BR', nf_numero: '001800', nf_chave: null, criado_em: '2026-08-01T10:00:00Z', tipo: 'devolucao', status: 'aprovado', funcionario: 'Ygor', problema_descricao: null },
 ];
@@ -185,27 +185,34 @@ srv.listen(0, '127.0.0.1', async () => {
       data.ml_return && data.ml_return.tracking,
       data.return && data.return.tracking,
       shipment.tracking, data.tracking,
-      (!shipment.id && (data.magalu || String(data.metodo || '').toLowerCase().includes('magalu')))
-        ? (data.order && data.order.id) : null,
+      data.order && data.order.id,
     ].filter(Boolean);
   }
 
-  const comShipment = portas({ shipment: { id: '47501559178' }, order: { id: '2000017367190752' } });
-  ok(comShipment.indexOf('2000017367190752') === -1,
-     'havendo shipment, o PEDIDO nao e mandado — o pedido 2000017367190752 tem DOIS envios legitimos');
-  ok(comShipment.indexOf('47501559178') !== -1, '  o shipment vai, como sempre');
+  // b167 - AS DUAS ETIQUETAS DA MESMA VENDA (fotos de 29/08)
+  //
+  //   ida   (nossa postagem): envio 47501559178, pack 2000013967364577
+  //   volta (ML deu ao cliente): envio 47528658744, pack 2000013967364577
+  //
+  // Shipment DIFERENTE, pack IGUAL. Eu tinha lido isso como "dois envios
+  // legitimos do mesmo pedido" e cheguei a TIRAR o pedido da verificacao —
+  // premissa errada, e foi por ela que deu pra triar duas vezes.
+  const ida   = portas({ shipment: { id: '47501559178' }, pack: { id: '2000013967364577' }, order: { id: '2000017367190752' }, nf: { numero: '002070' } });
+  const volta = portas({ shipment: { id: '47528658744' }, pack: { id: '2000013967364577' }, order: { id: '2000017367190752' }, nf: { numero: '002070' } });
 
-  const magalu = portas({ shipment: {}, order: { id: '1550970116332325' }, magalu: { protocolo: '2608120X9' } });
-  ok(magalu.indexOf('1550970116332325') !== -1,
-     'no MAGALU o pedido E a unica porta — e vai');
+  ok(ida.indexOf('2000013967364577') !== -1 && volta.indexOf('2000013967364577') !== -1,
+     'as duas etiquetas mandam o MESMO pack — e o que amarra ida e volta');
+  ok(ida.indexOf('002070') !== -1 && volta.indexOf('002070') !== -1,
+     '  e a MESMA NF: uma venda tem uma NF so, em qualquer marketplace');
+  ok(ida.indexOf('2000017367190752') !== -1 && volta.indexOf('2000017367190752') !== -1,
+     '  e o pedido volta a ir sempre (tirar era consequencia da premissa errada)');
+  ok(ida.indexOf('47501559178') !== -1 && volta.indexOf('47528658744') !== -1,
+     '  o envio e o unico que MUDA entre as duas — por isso nao serve de balizador sozinho');
 
-  // b166.3: bipar a chave da DANFE zera o shipment DE PROPOSITO, mesmo em
-  // venda do ML. Se a regra fosse "shipment vazio", o pedido iria junto e o
-  // falso positivo voltava por outra porta.
-  const danfe = portas({ shipment: {}, order: { id: '2000017367190752' }, metodo: 'chave_danfe', nf: { numero: '002070' } });
-  ok(danfe.indexOf('2000017367190752') === -1,
-     'bipando a DANFE de venda do ML, o pedido NAO vai (shipment vem nulo de proposito)');
-  ok(danfe.indexOf('002070') !== -1, '  mas o numero da NF vai, que e a porta certa ali');
+  // e a busca precisa procurar pelo pack, senao mandar nao adianta
+  ok(/pack_id\.eq\./.test(DB_AMB), 'a busca da AMB procura por pack_id (gravava e nao procurava)');
+  const SERVER_GOOD = fs.readFileSync(path.join(RAIZ, 'server.js'), 'utf8');
+  ok(/pack_id\.eq\./.test(SERVER_GOOD), '  e a da GOOD tambem');
 
   const correios = portas({ shipment: {}, ml_return: { tracking: 'AD123456789BR' } });
   ok(correios.indexOf('AD123456789BR') !== -1,
@@ -226,9 +233,11 @@ srv.listen(0, '127.0.0.1', async () => {
      '  e a chave tambem vem antes do numero');
 
   const BUSCA_GOOD = fs.readFileSync(path.join(RAIZ, 'public', 'js', 'busca.js'), 'utf8');
-  const regraCanal = /!shipment\.id && \(data\.magalu \|\| String\(data\.metodo/;
-  ok(regraCanal.test(BUSCA_AMB), '  e e isso que o front da AMB faz (gate por CANAL, nao por campo vazio)');
-  ok(regraCanal.test(BUSCA_GOOD), '  e o da GOOD tambem');
+  // b167: o pedido volta a ir sempre, nas duas empresas
+  ok(/data\.order\?\.id,/.test(BUSCA_AMB), '  o front da AMB manda o pedido sem gate');
+  ok(/data\.order\?\.id,/.test(BUSCA_GOOD), '  e o da GOOD tambem');
+  ok(!/shipment\.id \? null : data\.order/.test(BUSCA_AMB),
+     '  e a exclusao antiga saiu (era baseada na premissa errada dos "dois envios legitimos")');
   ok(/ml_return\?\.tracking/.test(BUSCA_AMB) && /ml_return\?\.tracking/.test(BUSCA_GOOD),
      '  as duas mandam o rastreio da remessa reversa');
 }

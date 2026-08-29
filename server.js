@@ -227,7 +227,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.61.4 (numero da NF sozinho ja dispara a pre-trava)',
+    version: '4.62.0 (ida e volta da mesma venda: pack e NF sao o balizador)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -2148,6 +2148,8 @@ app.get('/api/triagem/status/:shipmentId', requerEstoquista, async (req, res) =>
     // registro gravado so pelo pedido, pelo numero da NF ou pelo rastreio
     // dos Correios passava batido — dava pra triar de novo sem aviso.
     ors.push(`order_id.eq.${seguro}`);
+    // b167 - o PACK amarra IDA e VOLTA da mesma venda (ver comentario da AMB)
+    ors.push(`pack_id.eq.${seguro}`);
     ors.push(`nf_numero.eq.${seguro}`);
     if (/^\d{44}$/.test(seguro)) ors.push(`nf_chave.eq.${seguro}`);
   }
