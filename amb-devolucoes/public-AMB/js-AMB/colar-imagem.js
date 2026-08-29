@@ -220,8 +220,15 @@
       // dobrar dava 8000x8000 = 256 MB so no ImageData, o que trava ou estoura
       // a aba justamente em quem tirou foto boa. Acima do teto, nao amplia.
       var TETO = 4000;
-      for (var escala of [1, 2]) {
-        if (escala === 2 && Math.max(img.width, img.height) * 2 > TETO) break;
+      var maior = Math.max(img.width, img.height);
+      if (!maior) return null;
+      // v5.3 (Codex): o teto anterior so impedia AMPLIAR — uma foto de 48 MP
+      // (8064x6048) ainda criava o canvas no tamanho original: ~195 MB so de
+      // ImageData, e a aba morria antes de chegar no OCR. Agora imagem grande
+      // e REDUZIDA ate o teto; a pequena e que ganha o passe de 2x.
+      var base = maior > TETO ? (TETO / maior) : 1;
+      var passes = base < 1 ? [base] : [1, 2];
+      for (var escala of passes) {
         var c = document.createElement('canvas');
         c.width = Math.round(img.width * escala);
         c.height = Math.round(img.height * escala);
@@ -404,9 +411,18 @@
 
     // 2) v5 - QR no canvas: e o que faz o computador enxergar o QR.
     //    Roda ANTES do OCR porque o QR e exato — o OCR chuta digito.
-    if (!codigo) {
+    //
+    // v5.3 (Codex): roda tambem quando o leitor nativo achou SO o codigo de
+    // barras. Na etiqueta Magalu o de barras e grande e o QR e pequeno: o
+    // detector as vezes ve so o primeiro, e ai iamos buscar o RASTREIO — que
+    // e exatamente o que nao acha devolucao. O jsQR costuma recuperar o QR
+    // que o nativo perdeu; se nao recuperar, o de barras continua de reserva.
+    var achouQrNativo = !!(nativo && nativo.preferido && !nativo.reserva)
+      || (!!codigo && codigo !== reservaBarras);
+    if (!codigo || !achouQrNativo) {
       status('procurando o QR code da etiqueta...');
-      codigo = await lerQrNoCanvas(img);
+      var doCanvas = await lerQrNoCanvas(img);
+      if (doCanvas) codigo = doCanvas;
     }
 
     if (codigo) {

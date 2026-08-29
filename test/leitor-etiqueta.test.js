@@ -122,6 +122,42 @@ DESTINATARIO NOME DE TESTE REMETENTE AMBTOTAL`;
   ok(/colar-imagem\.js\?v=4570/.test(HTML_GOOD), '  e o da GOOD tambem');
 }
 
+// ── v5.3: o TETO do canvas precisa REDUZIR, nao so deixar de ampliar
+{
+  // reproduz a decisao de escala do arquivo
+  function passes(w, h) {
+    var TETO = 4000, maior = Math.max(w, h);
+    var base = maior > TETO ? (TETO / maior) : 1;
+    return base < 1 ? [base] : [1, 2];
+  }
+  const foto48mp = passes(8064, 6048);
+  ok(foto48mp.length === 1 && foto48mp[0] < 1,
+     'foto de 48 MP e REDUZIDA (antes criava canvas de ~195 MB e matava a aba)');
+  ok(Math.round(8064 * foto48mp[0]) <= 4000, '  ate caber no teto de 4000px');
+  const printPequeno = passes(900, 600);
+  ok(printPequeno.join(',') === '1,2', 'print pequeno continua ganhando o passe de 2x');
+  ok(SRC.indexOf('var passes = base < 1 ? [base] : [1, 2];') !== -1, '  e e isso que o arquivo faz');
+}
+
+// ── v5.3: nativo que achou SO barras nao pode pular o jsQR
+{
+  ok(SRC.indexOf('achouQrNativo') !== -1,
+     'quando o nativo acha so o codigo de barras, o jsQR ainda roda');
+  ok(SRC.indexOf('if (!codigo || !achouQrNativo)') !== -1,
+     '  (na Magalu o de barras e grande e o QR e pequeno: o nativo as vezes ve so o primeiro)');
+}
+
+// ── v5.3: os eventos do checkout precisam entender o QR da Magalu
+{
+  const SERVER = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
+  const i = SERVER.indexOf('async function buscarEventosCheckout');
+  const trecho = SERVER.slice(i, i + 1200);
+  ok(/external_grouper_code/.test(trecho),
+     'buscarEventosCheckout extrai o pedido de dentro do QR Magalu');
+  ok(trecho.indexOf('external_grouper_code') < trecho.indexOf('A-Za-z0-9_-]{5,60}'),
+     '  ANTES do teste de formato (o JSON tem pontuacao e passa de 60 chars: era rejeitado)');
+}
+
 // ── v5.3: preferir o QR nao pode DESCARTAR um codigo de barras valido
 {
   ok(SRC.indexOf('reserva: barras ?') !== -1,
