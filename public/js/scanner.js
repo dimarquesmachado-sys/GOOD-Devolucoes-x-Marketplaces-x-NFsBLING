@@ -92,7 +92,33 @@ function scannerLoop() {
   }
   scannerDetector.detect(video).then(codes => {
     if (codes.length > 0) {
-      const raw = String(codes[0].rawValue).trim();
+      // v3.34 - ESCOLHE o codigo, nao pega o primeiro que aparecer.
+      //
+      // Ate 29/08 era codes[0]. Numa etiqueta Magalu o codigo de barras e
+      // grande e o QR e pequeno: com sorte de enquadramento, o estoquista
+      // bipava o RASTREIO — que e justamente o que NAO acha devolucao (esta
+      // escrito no "O que bipar" do proprio painel). Virava loteria.
+      //
+      // O QR vem na frente porque e onde mora o identificador util (na
+      // Magalu, o pedido); o de barras fica de reserva, pra etiqueta que so
+      // tem ele.
+      const qr = codes.find(c => c.format === 'qr_code');
+      const barras = codes.find(c => c.format !== 'qr_code');
+      const escolhido = qr || barras || codes[0];
+      let raw = String(escolhido.rawValue || '').trim();
+
+      // v3.34 - o QR da Magalu e um JSON, e o do ML tambem. Quem sabe ler
+      // isso e o interpretarCodigoLido, do leitor de imagem — a MESMA
+      // funcao, nao uma copia (duplicar foi o que gerou metade dos bugs de
+      // hoje). Se ele nao reconhecer o formato, usa o que veio, e o
+      // servidor decide.
+      try {
+        if (typeof window.interpretarCodigoLido === 'function') {
+          const lido = window.interpretarCodigoLido(raw);
+          if (lido && lido.valor) raw = String(lido.valor).trim();
+          else if (barras && qr && !lido) raw = String(barras.rawValue || raw).trim();
+        }
+      } catch (e) { /* na duvida, segue com o codigo cru */ }
       // Evita ler 2x o mesmo em <4s
       if (raw !== scannerLastCode || Date.now() - scannerLastCodeAt > 4000) {
         scannerLastCode = raw;
