@@ -313,8 +313,47 @@ function renderizar(data, ok) {
     html += linha('Motivo', tk.motivo);   // o texto do cliente ja apareceu acima
     html += linha('Valor do reembolso', tk.valor != null ? ('R$ ' + Number(tk.valor).toFixed(2)) : null);
 
-    // os itens que DEVERIAM estar na caixa — e o que o estoquista confere
-    if (tk.itens && tk.itens.length) {
+    // ── PACOTE PARCIAL (v4.66) ──────────────────────────────────────
+    //
+    // O TikTok abre UMA solicitacao por item da nota, cada uma com seu
+    // rastreio — ou seja, VARIAS CAIXAS do mesmo pedido. Sem este aviso o
+    // estoquista abre a primeira, ve metade dos itens da nota e marca
+    // DIVERGENCIA, quando na verdade esta tudo certo e a outra vem depois.
+    //
+    // Pedido dele: "se ele souber que é 1 pacote de 2, e q é parcial,
+    // orientando pra ele triar só 5 unidades dessa vez, aí perfeito".
+    if (tk.pacotes && tk.pacotes.length > 1) {
+      const qual = tk.pacotes.findIndex((p) => p.esta) + 1;
+      html += '<div style="border:3px solid #ef6c00;background:#fff3e0;border-radius:10px;'
+        + 'padding:12px;margin:10px 0">'
+        + '<div style="font-weight:800;color:#e65100;font-size:16px;margin-bottom:6px">'
+        + '📦 ENTREGA PARCIAL — pacote ' + (qual || '?') + ' de ' + tk.pacotes.length + '</div>'
+        + '<div style="color:#e65100;margin-bottom:8px">Este pedido volta em '
+        + tk.pacotes.length + ' caixas separadas. <b>Confira só o que vem NESTA</b> — '
+        + 'o resto chega em outra entrega, não marque divergência.</div>';
+
+      tk.pacotes.forEach((p, i) => {
+        const dest = p.esta;
+        html += '<div style="margin:6px 0;padding:8px;border-radius:6px;'
+          + 'background:' + (dest ? '#fff' : '#fafafa') + ';'
+          + 'border:' + (dest ? '2px solid #ef6c00' : '1px solid #ddd') + '">'
+          + '<b>' + (dest ? '👉 ESTA CAIXA' : 'Caixa ' + (i + 1)) + '</b>'
+          + (p.rastreio ? ' · <code>' + escapeHtml(String(p.rastreio)) + '</code>' : '')
+          + (p.status ? ' · ' + escapeHtml(String(p.status)) : '');
+        if (p.itens && p.itens.length) {
+          html += '<ul style="margin:4px 0 0 18px">';
+          p.itens.forEach((it) => {
+            html += '<li>' + (it.qtd != null ? escapeHtml(String(it.qtd)) + '× ' : '')
+              + (it.sku ? '<code>' + escapeHtml(String(it.sku)) + '</code> ' : '')
+              + escapeHtml(String(it.nome || '')) + '</li>';
+          });
+          html += '</ul>';
+        }
+        html += '</div>';
+      });
+      html += '</div>';
+    } else if (tk.itens && tk.itens.length) {
+      // caixa unica: a lista simples de sempre
       html += '<div style="margin-top:8px"><b>Itens que deveriam vir nesta devolução:</b><ul style="margin:4px 0 0 18px">';
       tk.itens.forEach((it) => {
         html += '<li>' + (it.qtd != null ? escapeHtml(String(it.qtd)) + '× ' : '')

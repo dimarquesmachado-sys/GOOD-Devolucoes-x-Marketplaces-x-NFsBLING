@@ -254,6 +254,19 @@ const AGUARDANDO_ENVIO = {
     { id: 'B', order_id: '585110624384091852', tipo: 'RETURN_AND_REFUND',
       status: 'RETURN_OR_REFUND_REQUEST_COMPLETE', valor: 57.40, criado_em: 1785099445 },
   ];
+  // b180.3: os itens de CADA caixa, nos dois caminhos de busca
+  const porRastreio = tk.acharNaLista(
+    POR_ITEM.map((d, i) => ({ ...d, return_tracking_number: 'AP' + i + 'BR',
+      return_line_items: [{ seller_sku: 'KIT' + i, quantity: 1, product_name: 'Lixas ' + i }] })),
+    'AP0BR', 'girassol');
+  ok(porRastreio && porRastreio.pacotes && porRastreio.pacotes.length === 2,
+     'bipando o RASTREIO de uma caixa, o resultado traz as DUAS (o estoquista precisa saber que ha outra)');
+  ok(porRastreio.pacotes.filter((p) => p.esta).length === 1,
+     '  marcando qual delas foi bipada');
+  ok(porRastreio.pacotes[0].itens.length === 1 && porRastreio.pacotes[1].itens.length === 1,
+     '  com os itens de CADA uma separados (nao a nota inteira)');
+  ok(porRastreio.irmas === 2, '  e o total de caixas');
+
   const pi = tk.acharNaLista(POR_ITEM, '585110624384091852', 'girassol');
   ok(pi && pi.irmas === 2, 'duas solicitacoes ATIVAS sem elos: reconhecidas como irmas');
   ok(pi.valor_total_pedido === 114.8,
@@ -342,6 +355,12 @@ const AGUARDANDO_ENVIO = {
        '  avisa quando a caixa pode ter mais de um pedido');
     ok(/Itens que deveriam vir nesta devolução/.test(src),
        '  lista os itens, que e o que o estoquista confere contra a caixa');
+    // b180.3: entrega parcial — o aviso que impede a divergencia falsa
+    ok(/ENTREGA PARCIAL — pacote/.test(src),
+       '  avisa "pacote N de M" quando o pedido volta em varias caixas');
+    ok(/não marque divergência/.test(src),
+       '  dizendo explicitamente pra nao marcar divergencia');
+    ok(/ESTA CAIXA/.test(src), '  e destaca qual caixa esta na bancada');
     // o recado do cliente: "o TikTok dando de graca, sem trabalho manual"
     ok(/O QUE O CLIENTE DISSE/.test(src),
        '  mostra o RECADO do cliente em destaque (vem em 99 de 99)');
