@@ -80,6 +80,7 @@ const devCapturadas = require('./lib/devolucoes-capturadas');   // v4.63
 const tiktokPonte = require('./lib/tiktok-ponte');              // v4.66
 const tiktokDev = require('./lib/tiktok-devolucoes');           // v4.66
 const devParcial = require('./lib/devolucao-parcial');          // v4.67
+const tiktokRevelia = require('./lib/tiktok-revelia');          // v4.68
 
 // ── Chave p/ rotas de diagnóstico/admin/setup (acessadas com ?k=CHAVE na URL) ──
 // Sem a env ADMIN_KEY configurada no Render, essas rotas ficam DESLIGADAS (404).
@@ -231,7 +232,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.67.0 (admin sabe quando falta caixa: nao emitir a NF antes)',
+    version: '4.68.0 (alerta de revelia: quem vai ser perdido por falta de resposta)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -5021,6 +5022,7 @@ registrarRotasDebug(app, {
   ESP_ENTREGA, IDX_PROD, EAN_POR_SKU, EAN_PROGRESSO,   // b302 - estado compartilhado
   devCapturadas,                                       // v4.63 - captura
   capturaEstado: () => CAPTURA_ESTADO,                 //   e o estado do ultimo ciclo
+  tiktokRevelia,                                       // v4.68 - janela de revelia
   get ESP_ENTREGA_RODANDO() { return ESP_ENTREGA_RODANDO; },   // b302 - flag viva, por getter
   get EAN_RODANDO() { return EAN_RODANDO; },
 });
