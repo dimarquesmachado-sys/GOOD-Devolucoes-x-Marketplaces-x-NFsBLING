@@ -102,9 +102,15 @@ function scannerLoop() {
       // O QR vem na frente porque e onde mora o identificador util (na
       // Magalu, o pedido); o de barras fica de reserva, pra etiqueta que so
       // tem ele.
+      // v3.34.1 (Codex): a preferencia por QR vale pra ETIQUETA. No modo
+      // 'bipagem' a tela espera o EAN DO PRODUTO — e embalagem costuma ter
+      // o EAN em codigo de barras e algum QR de propaganda ao lado. Preferir
+      // o QR ali ignoraria o EAN valido e mandaria numero errado pra busca.
       const qr = codes.find(c => c.format === 'qr_code');
       const barras = codes.find(c => c.format !== 'qr_code');
-      const escolhido = qr || barras || codes[0];
+      const escolhido = (scannerModo === 'bipagem')
+        ? (barras || qr || codes[0])     // EAN do produto: codigo de barras na frente
+        : (qr || barras || codes[0]);    // etiqueta: QR na frente
       let raw = String(escolhido.rawValue || '').trim();
 
       // v3.34 - o QR da Magalu e um JSON, e o do ML tambem. Quem sabe ler
@@ -112,11 +118,27 @@ function scannerLoop() {
       // funcao, nao uma copia (duplicar foi o que gerou metade dos bugs de
       // hoje). Se ele nao reconhecer o formato, usa o que veio, e o
       // servidor decide.
+      let jaResolvido = false;
       try {
-        if (typeof window.interpretarCodigoLido === 'function') {
+        if (scannerModo !== 'bipagem' && typeof window.interpretarCodigoLido === 'function') {
           const lido = window.interpretarCodigoLido(raw);
-          if (lido && lido.valor) raw = String(lido.valor).trim();
-          else if (barras && qr && !lido) raw = String(barras.rawValue || raw).trim();
+          if (lido && lido.valor) {
+            raw = String(lido.valor).trim();
+            // v3.34.1 (Codex): o payload do MAGALU nao pode passar pela
+            // limpeza generica do processarBipagemEtiqueta. Aquela funcao so
+            // sabe extrair JSON do ML (procura `id`); o JSON do Magalu
+            // sobrevive inteiro, vira uma string alfanumerica de 61
+            // caracteres e e RECUSADA pelo limite de 44 antes de chegar na
+            // busca. Ou seja: sem isto, o caminho da camera nao acharia
+            // devolucao Magalu nenhuma — justamente o que este PR veio
+            // consertar.
+            //
+            // Quando o interpretador ja resolveu, vai DIRETO pra busca.
+            jaResolvido = /^\{/.test(String(lido.valor)) || lido.tipo === 'pedido Magalu (do QR)';
+          } else if (barras && qr) {
+            // QR que nao soubemos ler: o de barras e a resposta desta etiqueta
+            raw = String(barras.rawValue || raw).trim();
+          }
         }
       } catch (e) { /* na duvida, segue com o codigo cru */ }
       // Evita ler 2x o mesmo em <4s
@@ -126,6 +148,24 @@ function scannerLoop() {
         scannerPaused = true;
         if (scannerModo === 'bipagem') {
           processarLeituraBipagem(raw);
+        } else if (jaResolvido) {
+          // ja veio pronto do interpretador: NAO passa pela limpeza, que
+          // destruiria o payload do Magalu (ver comentario acima).
+          // Mesmo encerramento do processarBipagemEtiqueta: preenche o campo,
+          // fecha a camera, tira o foco (senao abre o teclado no celular) e
+          // dispara a busca.
+          const campo = document.getElementById('codigo');
+          if (campo) campo.value = raw;
+          const st = document.getElementById('scannerStatus');
+          if (st) {
+            st.style.background = 'rgba(46,125,50,0.95)';
+            st.textContent = '✅ Etiqueta lida — buscando...';
+          }
+          setTimeout(() => {
+            fecharCameraScanner();
+            if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+            if (typeof buscar === 'function') buscar();
+          }, 800);
         } else {
           processarBipagemEtiqueta(raw);
         }
