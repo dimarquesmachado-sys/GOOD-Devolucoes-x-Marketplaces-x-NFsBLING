@@ -255,10 +255,21 @@
       var j = null;
       try { j = JSON.parse(txt); } catch (e) { j = null; }
       if (j && j.external_grouper_code) {
+        // v5.2 (Codex): manda o JSON CRU, nao so o numero. O servidor
+        // reconhece external_grouper_code/tag_code/logistical_flow e liga o
+        // modo "magalu-first" (server.js ~424): vai direto ao Magalu. Com o
+        // numero pelado ele perde essa pista — 1550970116332325 nao casa com
+        // o /^20\d{14}$/ — e tenta pack e order do Mercado Livre ANTES,
+        // colecionando 404 a toa. O `valor` fica so pra exibicao.
         return {
-          valor: String(j.external_grouper_code).trim(),
+          valor: txt,
+          mostrar: String(j.external_grouper_code).trim(),
           tipo: 'pedido Magalu (do QR)',
-          extra: { uuid_pacote: j.external_code || null, rastreio: j.tag_code || null },
+          extra: {
+            pedido: String(j.external_grouper_code).trim(),
+            uuid_pacote: j.external_code || null,
+            rastreio: j.tag_code || null,
+          },
         };
       }
       // v5.1 (Codex): o QR do MERCADO LIVRE tambem e JSON — {"id":"47416667668","t":"l"}.
@@ -383,7 +394,23 @@
       var lido = interpretarQr(codigo);
       if (lido) {
         if (lido.extra && lido.extra.rastreio) {
-          status('QR lido — usando o PEDIDO (o rastreio ' + lido.extra.rastreio + ' nao acha devolucao)');
+          status('QR lido — usando o PEDIDO ' + (lido.mostrar || lido.valor)
+            + ' (o rastreio ' + lido.extra.rastreio + ' nao acha devolucao)');
+        }
+        // v5.2 (Codex): o UUID do pacote morria aqui — so o `valor` seguia
+        // adiante. Ele e o que falta pro link que abre o pedido no painel do
+        // Magalu, entao fica guardado onde outra tela possa pegar, em vez de
+        // ter que decodificar o QR de novo.
+        if (lido.extra && lido.extra.uuid_pacote) {
+          try {
+            window.ULTIMO_QR_MAGALU = {
+              pedido: lido.extra.pedido || null,
+              uuid_pacote: lido.extra.uuid_pacote,
+              rastreio: lido.extra.rastreio || null,
+              lido_em: new Date().toISOString(),
+            };
+            document.dispatchEvent(new CustomEvent('qr-magalu-lido', { detail: window.ULTIMO_QR_MAGALU }));
+          } catch (e) {}
         }
         usar(lido.valor);
         return;

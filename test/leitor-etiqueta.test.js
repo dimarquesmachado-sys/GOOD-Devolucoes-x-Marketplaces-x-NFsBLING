@@ -36,9 +36,17 @@ const QR_REAL = '{"external_grouper_code":"1500000000000001","external_code":"00
 {
   const r = api.interpretarQr(QR_REAL);
   ok(!!r, 'o QR real da Magalu e interpretado');
-  ok(r && r.valor === '1500000000000001',
-     '  e devolve o campo do PEDIDO (o mesmo que funciona digitado a mao)');
-  ok(r && r.valor !== '100000000-01', '  e NAO o tag_code (rastreio, que nao acha devolucao)');
+  // v5.2: manda o JSON CRU — o servidor usa isso pra ir direto ao Magalu
+  ok(r && r.valor === QR_REAL,
+     '  e manda o JSON CRU pro servidor (que assim liga o modo magalu-first)');
+  ok(r && r.mostrar === '1500000000000001', '  guardando o pedido pra exibir na tela');
+  ok(r && r.extra && r.extra.pedido === '1500000000000001', '  e tambem em extra.pedido');
+  // o servidor reconhece pelos NOMES dos campos: confere que eles vao junto
+  ok(/external_grouper_code|tag_code|logistical_flow/i.test(String(r && r.valor)),
+     '  os campos que o server.js procura (~424) viajam na busca');
+  ok(!/^20\d{14}$/.test('1500000000000001'),
+     '  (e por isso importa: o numero pelado NAO casa a pista de Magalu do server)');
+  ok(r && r.mostrar !== '100000000-01', '  e o que se mostra NAO e o tag_code (rastreio)');
   ok(r && r.extra && r.extra.uuid_pacote === '00000000-0000-4000-8000-000000000001',
      '  e guarda o UUID do pacote (era o que faltava pro link do Magalu)');
 }
@@ -98,6 +106,7 @@ DESTINATARIO NOME DE TESTE REMETENTE AMBTOTAL`;
   ok(AMB.indexOf('external_grouper_code') !== -1, '  e conhece o QR da Magalu');
   ok(AMB.indexOf('ETIQUETAS') !== -1, '  e reconhece a etiqueta antes de escolher o campo');
   ok(AMB === SRC, '  e os dois arquivos estao IGUAIS (nada ficou so de um lado)');
+  ok(AMB.indexOf('ULTIMO_QR_MAGALU') !== -1, '  e o UUID do pacote e propagado tambem na AMB');
 
   const HTML_AMB = fs.readFileSync(path.join(__dirname, '..', 'amb-devolucoes', 'public-AMB', 'index-AMB.html'), 'utf8');
   const HTML_GOOD = fs.readFileSync(path.join(__dirname, '..', 'public', 'index.html'), 'utf8');
@@ -106,6 +115,15 @@ DESTINATARIO NOME DE TESTE REMETENTE AMBTOTAL`;
   // sem furar o cache, o navegador serve o arquivo velho e o conserto "nao chega"
   ok(/colar-imagem\.js\?v=b330/.test(HTML_AMB), '  cache-buster da AMB atualizado');
   ok(/colar-imagem\.js\?v=4570/.test(HTML_GOOD), '  e o da GOOD tambem');
+}
+
+// ── v5.2: o UUID do pacote nao pode morrer no parser ────────────────
+{
+  ok(SRC.indexOf('window.ULTIMO_QR_MAGALU') !== -1,
+     'o UUID do pacote fica guardado onde outra tela possa pegar');
+  ok(SRC.indexOf("dispatchEvent(new CustomEvent('qr-magalu-lido'") !== -1,
+     '  e avisa por evento, pra quem for montar o link do Magalu nao decodificar de novo');
+  ok(SRC.indexOf('uuid_pacote: lido.extra.uuid_pacote') !== -1, '  com o UUID dentro');
 }
 
 // ── 7. QR de outros formatos ────────────────────────────────────────
