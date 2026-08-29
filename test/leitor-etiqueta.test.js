@@ -36,9 +36,14 @@ const QR_REAL = '{"external_grouper_code":"1500000000000001","external_code":"00
 {
   const r = api.interpretarQr(QR_REAL);
   ok(!!r, 'o QR real da Magalu e interpretado');
-  // v5.2: manda o JSON CRU — o servidor usa isso pra ir direto ao Magalu
-  ok(r && r.valor === QR_REAL,
-     '  e manda o JSON CRU pro servidor (que assim liga o modo magalu-first)');
+  // v5.3: manda o MINIMO que liga o modo magalu-first — sem dado do cliente
+  ok(r && /external_grouper_code/.test(r.valor),
+     '  manda o campo que o servidor procura (liga o modo magalu-first)');
+  ok(r && !/receiver_zipcode|24875525|00000000"/.test(r.valor),
+     '  mas NAO o CEP do cliente — isso iria pra querystring e pro log do servidor');
+  ok(r && !/service_name|logistical_flow_operation/.test(r.valor),
+     '  nem os outros campos da etiqueta que nao servem pra busca');
+  ok(r && r.valor.length < 120, '  payload enxuto (o QR inteiro tem 300+ caracteres)');
   ok(r && r.mostrar === '1500000000000001', '  guardando o pedido pra exibir na tela');
   ok(r && r.extra && r.extra.pedido === '1500000000000001', '  e tambem em extra.pedido');
   // o servidor reconhece pelos NOMES dos campos: confere que eles vao junto
@@ -115,6 +120,16 @@ DESTINATARIO NOME DE TESTE REMETENTE AMBTOTAL`;
   // sem furar o cache, o navegador serve o arquivo velho e o conserto "nao chega"
   ok(/colar-imagem\.js\?v=b330/.test(HTML_AMB), '  cache-buster da AMB atualizado');
   ok(/colar-imagem\.js\?v=4570/.test(HTML_GOOD), '  e o da GOOD tambem');
+}
+
+// ── v5.3: preferir o QR nao pode DESCARTAR um codigo de barras valido
+{
+  ok(SRC.indexOf('reserva: barras ?') !== -1,
+     'o leitor nativo devolve tambem o codigo de BARRAS, nao so o QR preferido');
+  ok(SRC.indexOf('if (reservaBarras) {') !== -1,
+     '  e o fluxo usa esse de barras quando o QR nao rende nada util');
+  ok(SRC.indexOf('usar(reservaBarras)') < SRC.indexOf('oferecer(candidatos('),
+     '  ANTES de cair no OCR (etiqueta nao-Magalu com QR de propaganda seguia quebrada)');
 }
 
 // ── v5.2: o UUID do pacote nao pode morrer no parser ────────────────

@@ -186,7 +186,16 @@
         // QR (que tem o pedido). Pegar o primeiro da lista era sorte. O QR
         // vem na frente sempre.
         var qr = codes.find(function (c) { return c.format === 'qr_code'; });
-        return String((qr || codes[0]).rawValue || '').trim();
+        var barras = codes.find(function (c) { return c.format !== 'qr_code'; });
+        // v5.3 (Codex): preferir o QR nao pode DESCARTAR um codigo de barras
+        // valido. Em etiqueta nao-Magalu com um QR qualquer (rastreio,
+        // propaganda), ficar so com o QR fazia o de barras — que e o codigo
+        // certo ali — nunca ser tentado. Devolve os dois; quem chama usa o
+        // de barras se o QR nao render nada util.
+        return {
+          preferido: String((qr || codes[0]).rawValue || '').trim(),
+          reserva: barras ? String(barras.rawValue || '').trim() : null,
+        };
       }
     } catch (e) {}
     return null;
@@ -255,14 +264,22 @@
       var j = null;
       try { j = JSON.parse(txt); } catch (e) { j = null; }
       if (j && j.external_grouper_code) {
-        // v5.2 (Codex): manda o JSON CRU, nao so o numero. O servidor
-        // reconhece external_grouper_code/tag_code/logistical_flow e liga o
-        // modo "magalu-first" (server.js ~424): vai direto ao Magalu. Com o
-        // numero pelado ele perde essa pista — 1550970116332325 nao casa com
-        // o /^20\d{14}$/ — e tenta pack e order do Mercado Livre ANTES,
-        // colecionando 404 a toa. O `valor` fica so pra exibicao.
+        // v5.3 (Codex): o servidor precisa RECONHECER que veio da Magalu —
+        // ele procura external_grouper_code/tag_code/logistical_flow e liga o
+        // modo "magalu-first" (server.js ~424), indo direto ao Magalu; com o
+        // numero pelado a busca bate no Mercado Livre antes e coleciona 404.
+        //
+        // Mas mandar o QR INTEIRO leva junto dado do cliente — o
+        // receiver_zipcode, e o que a Magalu resolver acrescentar amanha. E
+        // isso vai pra querystring do GET e pro log do servidor, que registra
+        // o codigo recebido. Entao vai o MINIMO que liga o modo magalu-first:
+        // o pedido e o discriminador. CEP e afins ficam de fora.
+        var minimo = JSON.stringify({
+          external_grouper_code: String(j.external_grouper_code).trim(),
+          logistical_flow_start: 'DROP_OFF',
+        });
         return {
-          valor: txt,
+          valor: minimo,
           mostrar: String(j.external_grouper_code).trim(),
           tipo: 'pedido Magalu (do QR)',
           extra: {
@@ -381,7 +398,9 @@
     await new Promise(function (r) { img.onload = r; img.onerror = r; img.src = dataUrl; });
 
     // 1) leitor nativo (so Android)
-    var codigo = await lerCodigo(img);
+    var nativo = await lerCodigo(img);
+    var codigo = nativo && nativo.preferido ? nativo.preferido : null;
+    var reservaBarras = nativo && nativo.reserva ? nativo.reserva : null;
 
     // 2) v5 - QR no canvas: e o que faz o computador enxergar o QR.
     //    Roda ANTES do OCR porque o QR e exato — o OCR chuta digito.
@@ -413,6 +432,13 @@
           } catch (e) {}
         }
         usar(lido.valor);
+        return;
+      }
+      // v5.3: o QR nao rendeu nada util. Se o leitor nativo tambem achou um
+      // codigo de BARRAS, ele e a resposta desta etiqueta — usa antes do OCR.
+      if (reservaBarras) {
+        status('o QR nao serviu — usando o codigo de barras da etiqueta');
+        usar(reservaBarras);
         return;
       }
       // QR ilegivel pra nos: nao joga o conteudo cru na busca, tenta o texto
