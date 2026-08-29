@@ -89,6 +89,61 @@ async function jaTriado({ orderId, tracking, nfNumero }) {
   }
 }
 
+/**
+ * b165 - TRIAGENS JA FEITAS de um identificador (a "pre-trava" do bipe).
+ *
+ * A GOOD tem /api/triagem/status ha tempos; a AMB nunca teve, mas o front
+ * dela — copiado da GOOD — CHAMA essa rota. A chamada dava 404, caia no
+ * catch do JavaScript e a tela mostrava os botoes de triagem como se o
+ * pacote fosse novo. Falha silenciosa: em 29/08 o mesmo pacote foi triado
+ * duas vezes na AMB sem nenhum aviso.
+ *
+ * A tabela da AMB usa outro vocabulario: `criado_em` (nao `created_at`) e
+ * `tipo` sempre 'devolucao', com o desfecho no `status`. O front espera o
+ * jeito da GOOD, entao a traducao acontece AQUI, num lugar so.
+ */
+async function triagensDe(identificadores) {
+  const db = conectar();
+  if (!db) return { ok: false, erro: erroInicial };
+
+  const ids = (Array.isArray(identificadores) ? identificadores : [identificadores])
+    .map((x) => String(x || '').trim())
+    .filter(Boolean);
+  if (!ids.length) return { ok: true, registros: [] };
+
+  const filtros = [];
+  for (const id of ids) {
+    // o mesmo saneamento da GOOD: PostgREST separa por virgula e usa aspas
+    const seguro = id.replace(/["',()]/g, '');
+    if (!seguro) continue;
+    filtros.push(`shipment_id.eq.${seguro}`);
+    filtros.push(`order_id.eq.${seguro}`);          // Magalu nao tem shipment
+    if (/^\d{44}$/.test(seguro)) filtros.push(`nf_chave.eq.${seguro}`);
+  }
+  if (!filtros.length) return { ok: true, registros: [] };
+
+  try {
+    const r = await db.from(T.devolucoes)
+      .select('id, criado_em, tipo, status, problema_descricao, nf_numero, produto_qtd, funcionario, shipment_id, order_id')
+      .or(filtros.join(','))
+      .order('criado_em', { ascending: false });
+    if (r.error) return { ok: false, erro: r.error.message };
+
+    // traduz pro vocabulario que o front (vindo da GOOD) entende
+    const registros = (r.data || []).map((x) => ({
+      ...x,
+      created_at: x.criado_em,
+      // na AMB o `tipo` e sempre 'devolucao' e o desfecho mora no status;
+      // na GOOD o tipo E o desfecho. Aqui a gente entrega como a GOOD.
+      tipo: x.tipo && x.tipo !== 'devolucao' ? x.tipo : (x.status || 'aprovado'),
+      status_original: x.status,
+    }));
+    return { ok: true, registros };
+  } catch (e) {
+    return { ok: false, erro: e.message };
+  }
+}
+
 /** Grava uma triagem. Devolve o registro criado. */
 async function registrarTriagem(dados) {
   const db = conectar();
@@ -577,6 +632,7 @@ async function atualizarTriagem(id, campos) {
 }
 
 module.exports = {
+  triagensDe,
   conectar, testeDeVida,
   jaTriado, registrarTriagem, listarRecentes, recadoDe, recadoDeQualquer,   // b212
   resolverSku, salvarDepara, listarDepara, apagarDepara,   // b245 - de-para de SKU
