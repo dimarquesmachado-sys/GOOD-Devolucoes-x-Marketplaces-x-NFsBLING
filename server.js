@@ -79,6 +79,7 @@ const espreita = require('./lib/magalu-espreita')({ chamarMagalu: magalu.chamarM
 const devCapturadas = require('./lib/devolucoes-capturadas');   // v4.63
 const tiktokPonte = require('./lib/tiktok-ponte');              // v4.66
 const tiktokDev = require('./lib/tiktok-devolucoes');           // v4.66
+const devParcial = require('./lib/devolucao-parcial');          // v4.67
 
 // ── Chave p/ rotas de diagnóstico/admin/setup (acessadas com ?k=CHAVE na URL) ──
 // Sem a env ADMIN_KEY configurada no Render, essas rotas ficam DESLIGADAS (404).
@@ -230,7 +231,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.66.4 (entrega parcial: pacote N de M na triagem)',
+    version: '4.67.0 (admin sabe quando falta caixa: nao emitir a NF antes)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -2845,17 +2846,43 @@ app.get('/api/admin/devolucoes', requerAdmin, async (req, res) => {
       return res.status(500).json({ ok: false, erro: error.message });
     }
 
+    // v4.67 - ENTREGA PARCIAL: o mesmo pedido pode voltar em VARIAS caixas
+    //
+    // O TikTok abre uma solicitacao de devolucao por ITEM da nota, cada uma
+    // com seu rastreio. Sem este cruzamento, o admin ve a 1a triagem e emite
+    // a NF achando que acabou — e a 2a caixa chega depois, sem lugar.
+    //
+    // Pedido do dono: "deixa o card tipo 1o Devolucao triada / AGUARDADO 2a
+    // devolucao" e "as 2 sendo devolvidas e triadas, mudar a condicao do
+    // card, e saberei q posso emitir a NF".
+    //
+    // Falha aqui NAO pode derrubar a listagem: sem o cruzamento a tela
+    // volta a ser a de antes, que ja funcionava.
+    let comParcial = data;
+    try {
+      const pedidos = [...new Set(data.map(d => d.order_id).filter(Boolean))];
+      if (pedidos.length && supabase) {
+        const { data: cap } = await supabase
+          .from('devolucoes_capturadas')
+          .select('pedido, tipo_tiktok, status')
+          .in('pedido', pedidos.slice(0, 300));
+        comParcial = devParcial.anotar(data, devParcial.esperadoDeCapturadas(cap || []));
+      }
+    } catch (e) {
+      console.warn('[ADMIN] cruzamento de entrega parcial falhou:', e.message || e);
+    }
+
     // Separa por tipo
-    const aprovadas = data.filter(d => d.tipo === 'aprovado');
-    const problemas = data.filter(d => d.tipo === 'problema');
-    const divergentes = data.filter(d => d.tipo === 'divergente'); // v3.18.0
+    const aprovadas = comParcial.filter(d => d.tipo === 'aprovado');
+    const problemas = comParcial.filter(d => d.tipo === 'problema');
+    const divergentes = comParcial.filter(d => d.tipo === 'divergente'); // v3.18.0
 
     return res.json({
       ok: true,
       aprovadas,
       problemas,
       divergentes, // v3.18.0
-      total: data.length,
+      total: comParcial.length,
     });
   } catch (err) {
     return res.status(500).json({ ok: false, erro: err.message });
