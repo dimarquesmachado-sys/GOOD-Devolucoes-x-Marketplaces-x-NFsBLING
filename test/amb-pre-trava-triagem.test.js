@@ -185,7 +185,8 @@ srv.listen(0, '127.0.0.1', async () => {
       data.ml_return && data.ml_return.tracking,
       data.return && data.return.tracking,
       shipment.tracking, data.tracking,
-      shipment.id ? null : (data.order && data.order.id),
+      (!shipment.id && (data.magalu || String(data.metodo || '').toLowerCase().includes('magalu')))
+        ? (data.order && data.order.id) : null,
     ].filter(Boolean);
   }
 
@@ -194,17 +195,26 @@ srv.listen(0, '127.0.0.1', async () => {
      'havendo shipment, o PEDIDO nao e mandado — o pedido 2000017367190752 tem DOIS envios legitimos');
   ok(comShipment.indexOf('47501559178') !== -1, '  o shipment vai, como sempre');
 
-  const semShipment = portas({ shipment: {}, order: { id: '1550970116332325' } });
-  ok(semShipment.indexOf('1550970116332325') !== -1,
-     'sem shipment (Magalu), o pedido E a unica porta — e vai');
+  const magalu = portas({ shipment: {}, order: { id: '1550970116332325' }, magalu: { protocolo: '2608120X9' } });
+  ok(magalu.indexOf('1550970116332325') !== -1,
+     'no MAGALU o pedido E a unica porta — e vai');
+
+  // b166.3: bipar a chave da DANFE zera o shipment DE PROPOSITO, mesmo em
+  // venda do ML. Se a regra fosse "shipment vazio", o pedido iria junto e o
+  // falso positivo voltava por outra porta.
+  const danfe = portas({ shipment: {}, order: { id: '2000017367190752' }, metodo: 'chave_danfe', nf: { numero: '002070' } });
+  ok(danfe.indexOf('2000017367190752') === -1,
+     'bipando a DANFE de venda do ML, o pedido NAO vai (shipment vem nulo de proposito)');
+  ok(danfe.indexOf('002070') !== -1, '  mas o numero da NF vai, que e a porta certa ali');
 
   const correios = portas({ shipment: {}, ml_return: { tracking: 'AD123456789BR' } });
   ok(correios.indexOf('AD123456789BR') !== -1,
      'etiqueta dos Correios: o rastreio vem de data.ml_return.tracking (nao de shipment.tracking)');
 
   const BUSCA_GOOD = fs.readFileSync(path.join(RAIZ, 'public', 'js', 'busca.js'), 'utf8');
-  ok(/shipment\.id \? null : data\.order\?\.id/.test(BUSCA_AMB), '  e e isso que o front da AMB faz');
-  ok(/shipment\.id \? null : data\.order\?\.id/.test(BUSCA_GOOD), '  e o da GOOD tambem');
+  const regraCanal = /!shipment\.id && \(data\.magalu \|\| String\(data\.metodo/;
+  ok(regraCanal.test(BUSCA_AMB), '  e e isso que o front da AMB faz (gate por CANAL, nao por campo vazio)');
+  ok(regraCanal.test(BUSCA_GOOD), '  e o da GOOD tambem');
   ok(/ml_return\?\.tracking/.test(BUSCA_AMB) && /ml_return\?\.tracking/.test(BUSCA_GOOD),
      '  as duas mandam o rastreio da remessa reversa');
 }

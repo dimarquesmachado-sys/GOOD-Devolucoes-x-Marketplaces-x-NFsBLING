@@ -526,13 +526,19 @@ function renderizar(data, ok) {
     // exatamente o caso que o filtro novo veio cobrir.
     data.ml_return?.tracking, data.return?.tracking,
     shipment.tracking, data.tracking,
-    // b166.2 (Codex): o PEDIDO so entra quando NAO ha shipment. Um pedido
-    // pode ter dois envios legitimos — nos dados reais da AMB o pedido
-    // 2000017367190752 tem dois — e mandar o order_id faria o segundo
-    // pacote casar com a triagem do primeiro, cuspindo banner vermelho numa
-    // devolucao que nunca foi triada. Sem shipment (Magalu), o pedido E a
-    // unica porta, e ai entra.
-    shipment.id ? null : data.order?.id,
+    // b166.3 (Codex): o PEDIDO so entra em canal que REALMENTE nao tem
+    // shipment — hoje, o Magalu.
+    //
+    // Por que nao basta "shipment.id vazio": quando se bipa a chave da
+    // DANFE, o identificar devolve shipment.id nulo DE PROPOSITO e preenche
+    // order.id com o numeroPedidoLoja, mesmo sendo Mercado Livre. Com a
+    // regra anterior o pedido ia junto nesse caso, e um pedido com dois
+    // envios legitimos (2000017367190752 tem dois, nos dados reais da AMB)
+    // casaria com a triagem do irmao — o falso positivo que a regra queria
+    // impedir, entrando por outra porta.
+    (!shipment.id && (data.magalu || String(data.metodo || '').toLowerCase().includes('magalu')))
+      ? data.order?.id
+      : null,
   ];
   window._magaluProtocolo = data.magalu?.protocolo || null; // p/ triagem gravar
   if (idPrincipal) {
