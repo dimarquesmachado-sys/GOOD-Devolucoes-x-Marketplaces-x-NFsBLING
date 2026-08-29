@@ -30,6 +30,7 @@ module.exports = function registrarIdentificar(app, deps) {
     classificarMotivoDevolucao,
     acharDevolucao, buscarPorNome,
     shopee, magalu, nfNomes, // b71 - a rota usa os modulos inteiros
+    tiktokPonte, tiktokDev,  // b180 - TikTok na cascata (paridade com a GOOD)
     mlReturns,               // b142 - indice claims->returns do ML (faltava)
     supabase,                // ev2 - pro registro do checkout offline
     db,                      // b213 - pra buscar o RECADO desta devolucao
@@ -738,6 +739,50 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
           }
         } catch (e) { resultado.tentativas.push({ tipo: 'nf_por_nome', codigo: alvoNome, ok: false, status: 500, erro: e.message }); }
       }
+      // ===== TIKTOK (b180, Codex): a AMB tem o proprio identificador =====
+      //
+      // A tela da AMB ja mostrava o card do TikTok, mas esta rota nunca
+      // consultava — o card ficaria sempre vazio. E a divergencia GOOD/AMB
+      // de novo: o server.js da GOOD ganhou a cascata e este arquivo nao.
+      //
+      // Mesma posicao da GOOD: depois da Shopee, antes do ultimo recurso.
+      try {
+        const rTk = await tiktokDev.procurar(tiktokPonte, 'amb', codigoOriginal, { limite: 200 });
+        resultado.tentativas.push({
+          tipo: 'tiktok_devolucao', codigo: codigoOriginal,
+          ok: !!(rTk && rTk.achado), status: (rTk && rTk.achado) ? 200 : (rTk && rTk.ok ? 404 : 502),
+          erro: rTk && rTk.erro ? String(rTk.erro).slice(0, 160) : undefined,
+          coleta_pendente: rTk && rTk.coleta_pendente ? true : undefined,
+        });
+        if (rTk && rTk.achado) {
+          const d = rTk.achado;
+          resultado.encontrado = true;
+          resultado.metodo = 'tiktok_devolucao';
+          resultado.eh_devolucao = true;
+          resultado.marketplace = 'tiktok';
+          resultado.tiktok = d;
+          resultado.order = { id: d.pedido || null };
+          resultado.shipment = { id: d.rastreio || null };
+          if (d.vai_chegar === false) {
+            (resultado.avisos = resultado.avisos || []).push({
+              tipo: 'tiktok_sem_retorno',
+              mensagem: 'TikTok: e REEMBOLSO, sem devolucao fisica ('
+                + (d.motivo_texto || d.motivo || 'motivo nao informado')
+                + '). Nenhum pacote vai chegar por esta solicitacao.',
+            });
+          } else if (d.vai_chegar === null) {
+            (resultado.avisos = resultado.avisos || []).push({
+              tipo: 'tiktok_indefinido',
+              mensagem: 'TikTok: solicitacao ainda EM ABERTO — pode virar devolucao com retorno ou so reembolso.',
+            });
+          }
+          console.log(`[BUSCA/AMB] TIKTOK: id=${d.id} pedido=${d.pedido} vai_chegar=${d.vai_chegar}`);
+          return res.json(await comRecados(resultado, req.params.codigo));
+        }
+      } catch (e) {
+        resultado.tentativas.push({ tipo: 'tiktok_devolucao', codigo: codigoOriginal, ok: false, status: 500, erro: String(e.message || e).slice(0, 160) });
+      }
+
       const pareceSPX = /^BR[A-Z0-9]{8,}$/i.test(String(codigoOriginal).trim());
       const houve403 = resultado.tentativas.some(t => t.status === 403);
       const diag = infoShopee

@@ -207,6 +207,85 @@ const AGUARDANDO_ENVIO = {
      'a tentativa carrega se a coleta estava pendente ("nao achei" != "nao existe")');
 }
 
+// ── b180: varias solicitacoes no MESMO pedido ───────────────────────
+// O cliente abre, cancela, abre de novo. O pedido 585234469423907917 da
+// Girassol teve TRES em sequencia. Casar por pedido e pegar "a primeira da
+// lista" e sorte: podia entregar a cancelada em vez da que vale.
+{
+  const CADEIA = [
+    { id: 'R1', order_id: '585234469423907917', tipo: 'REFUND',
+      status: 'RETURN_OR_REFUND_REQUEST_CANCEL', criado_em: 1785528153, atualizado_em: 1785537221,
+      next_return_id: 'R2' },
+    { id: 'R2', order_id: '585234469423907917', tipo: 'RETURN_AND_REFUND',
+      status: 'RETURN_OR_REFUND_REQUEST_CANCEL', criado_em: 1785537262, atualizado_em: 1785541297,
+      pre_return_id: 'R1', next_return_id: 'R3' },
+    { id: 'R3', order_id: '585234469423907917', tipo: 'REFUND',
+      status: 'RETURN_OR_REFUND_REQUEST_COMPLETE', criado_em: 1785541366, atualizado_em: 1785770957,
+      pre_return_id: 'R2' },
+  ];
+
+  const achado = tk.acharNaLista(CADEIA, '585234469423907917', 'girassol');
+  ok(achado && achado.id === 'R3',
+     'com 3 solicitacoes no mesmo pedido, escolhe a que NAO foi cancelada');
+  ok(achado.varias_no_pedido === 3, '  e diz quantas existem');
+  ok(/3 solicitacoes/.test(achado.aviso || ''), '  com aviso explicando');
+
+  // o id especifico continua mandando: quem bipa R1 quer R1
+  const direto = tk.acharNaLista(CADEIA, 'R1', 'girassol');
+  ok(direto && direto.id === 'R1',
+     'identificador ESPECIFICO casa direto, sem desempate (so existe um)');
+  ok(!direto.varias_no_pedido, '  e sem o aviso, porque nao houve escolha');
+
+  // todas canceladas: mostra a mais recente, em vez de nao achar nada
+  const todasCanc = CADEIA.slice(0, 2);
+  const rc = tk.acharNaLista(todasCanc, '585234469423907917', 'girassol');
+  ok(rc && rc.id === 'R2',
+     'se TODAS estao canceladas, mostra a mais recente (melhor que nao achar)');
+
+  // e o caso simples nao muda
+  const uma = tk.acharNaLista([CADEIA[2]], '585234469423907917', 'girassol');
+  ok(uma && uma.id === 'R3' && !uma.varias_no_pedido,
+     'pedido com uma solicitacao so: sem aviso, como antes');
+}
+
+// ── b180: nada que vem do TikTok entra cru no HTML ──────────────────
+// O texto e escrito pelo CLIENTE. Se ele mandar HTML na reclamacao,
+// executaria dentro do painel do admin.
+{
+  const fs = require('fs');
+  const path = require('path');
+  const RAIZ = path.join(__dirname, '..');
+  [['GOOD', 'public/js/busca.js'], ['AMB', 'amb-devolucoes/public-AMB/js-AMB/busca.js']].forEach(([nome, rel]) => {
+    const src = fs.readFileSync(path.join(RAIZ, rel), 'utf8');
+    const i = src.indexOf('if (data.tiktok) {');
+    const bloco = src.slice(i, src.indexOf("html += '</div>';", i) + 40);
+    ok(!/\+ tk\.motivo_texto \+/.test(bloco),
+       nome + ': o recado do cliente NAO entra cru no HTML');
+    ok(/escapeHtml\(String\(tk\.motivo_texto\)\)/.test(bloco),
+       '  passa por escapeHtml');
+    ok(/escapeHtml\(String\(val\)\)/.test(bloco),
+       '  e os campos tecnicos tambem (transportadora e armazem vem de fora)');
+    ok(/escapeHtml\(String\(it\.nome/.test(bloco) && /escapeHtml\(String\(it\.sku/.test(bloco),
+       '  e os itens, SKU e nome');
+  });
+}
+
+// ── b180: a AMB tambem CONSULTA o TikTok ────────────────────────────
+// A tela dela ja mostrava o card, mas a rota nunca consultava — ficaria
+// sempre vazio. E a divergencia GOOD/AMB de novo.
+{
+  const fs = require('fs');
+  const path = require('path');
+  const IDENT = fs.readFileSync(path.join(__dirname, '..', 'amb-devolucoes', 'lib-AMB', 'identificar-AMB.js'), 'utf8');
+  ok(/tiktokDev\.procurar\(tiktokPonte, 'amb', codigoOriginal/.test(IDENT),
+     'a rota da AMB consulta o TikTok');
+  ok(/tiktokPonte, tiktokDev,/.test(IDENT), '  com as deps recebidas por parametro');
+  const APP = fs.readFileSync(path.join(__dirname, '..', 'amb-devolucoes', 'app-AMB.js'), 'utf8');
+  ok(/tiktokPonte: require\('\.\.\/lib\/tiktok-ponte'\)/.test(APP), '  e passadas no registro');
+  ok(/tipo: 'tiktok_sem_retorno'/.test(IDENT),
+     '  e o aviso de "nao vem pacote" existe na AMB tambem');
+}
+
 // ── o card mostra isso na tela? NAS DUAS EMPRESAS ───────────────────
 {
   const fs = require('fs');

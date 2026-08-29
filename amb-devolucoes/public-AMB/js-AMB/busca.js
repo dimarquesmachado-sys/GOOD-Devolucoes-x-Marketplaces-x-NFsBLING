@@ -280,7 +280,7 @@ function renderizar(data, ok) {
       html += '<div style="padding:8px;border-radius:6px;background:#ffebee;border:2px solid #c62828;'
         + 'color:#b71c1c;font-weight:700;margin-bottom:8px">'
         + '🚫 SEM DEVOLUÇÃO FÍSICA — nenhum pacote vai chegar por esta solicitação'
-        + (tk.motivo_texto ? '<div style="font-weight:400;margin-top:4px">Motivo: ' + tk.motivo_texto + '</div>' : '')
+        + (tk.motivo_texto ? '<div style="font-weight:400;margin-top:4px">Motivo: ' + escapeHtml(String(tk.motivo_texto)) + '</div>' : '')
         + '</div>';
     } else if (tk.vai_chegar === null) {
       html += '<div style="padding:8px;border-radius:6px;background:#fff8e1;border:2px solid #f9a825;'
@@ -310,12 +310,16 @@ function renderizar(data, ok) {
       html += '<div style="border:3px solid #1565c0;background:#e3f2fd;border-radius:10px;'
         + 'padding:12px;margin-bottom:10px">'
         + '<div style="font-weight:800;color:#0d47a1;margin-bottom:4px">💬 O QUE O CLIENTE DISSE</div>'
-        + '<div style="font-size:15px;color:#0d47a1">' + tk.motivo_texto + '</div>'
+        + '<div style="font-size:15px;color:#0d47a1">' + escapeHtml(String(tk.motivo_texto)) + '</div>'
         + '</div>';
     }
 
+    // b180 (Codex): TUDO que vem do TikTok passa por escapeHtml. O texto e
+    // escrito pelo CLIENTE — se ele mandar HTML na reclamacao, executaria
+    // aqui dentro do painel do admin. Vale pros campos tecnicos tambem:
+    // nome de transportadora e endereco de armazem vem de fora.
     const linha = (rot, val) => val
-      ? '<div style="margin:3px 0"><b>' + rot + ':</b> ' + val + '</div>' : '';
+      ? '<div style="margin:3px 0"><b>' + rot + ':</b> ' + escapeHtml(String(val)) + '</div>' : '';
     html += linha('Transportadora', tk.transportadora);
     html += linha('Rastreio da devolução', tk.rastreio);
     html += linha('Como o cliente devolveu', tk.metodo_devolucao);
@@ -327,9 +331,9 @@ function renderizar(data, ok) {
     if (tk.itens && tk.itens.length) {
       html += '<div style="margin-top:8px"><b>Itens que deveriam vir nesta devolução:</b><ul style="margin:4px 0 0 18px">';
       tk.itens.forEach((it) => {
-        html += '<li>' + (it.qtd != null ? it.qtd + '× ' : '')
-          + (it.sku ? '<code>' + it.sku + '</code> ' : '')
-          + (it.nome || '') + '</li>';
+        html += '<li>' + (it.qtd != null ? escapeHtml(String(it.qtd)) + '× ' : '')
+          + (it.sku ? '<code>' + escapeHtml(String(it.sku)) + '</code> ' : '')
+          + escapeHtml(String(it.nome || '')) + '</li>';
       });
       html += '</ul></div>';
     }
