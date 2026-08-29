@@ -101,11 +101,14 @@ ok(/out\.aviso_coleta = 'coleta aceita em background \(202\)/.test(PONTE),
   // b343.2: coleta de OUTRA chamada, ainda rodando — o caso que o dono viu
   function vereditoCompleto(corpo, enfileirada) {
     const ult = corpo.ultima_coleta;
-    const rodando = ult && ['rodando','em_andamento','pendente','running','pending']
-      .indexOf(String(ult.estado || '').toLowerCase()) !== -1;
+    const ehRodando = (v) => ['rodando','em_andamento','pendente','running','pending']
+      .indexOf(String(v || '').toLowerCase()) !== -1;
+    const rodando = ult && (ehRodando(ult.estado) || ehRodando(ult.status));
     if (enfileirada || rodando) return 'pendente';
     return veredito(corpo);
   }
+  ok(vereditoCompleto({ devolucoes: [], ultima_coleta: { status: 'running' } }, false) === 'pendente',
+     'rodando pelo campo STATUS tambem conta (sustentamos os dois nomes na falha; tinha que ser igual aqui)');
   ok(vereditoCompleto({ devolucoes: [], ultima_coleta: { estado: 'rodando' } }, false) === 'pendente',
      'coleta de outra chamada AINDA RODANDO: pendente (era o "ok:true" que ele viu na tela)');
   ok(vereditoCompleto({ devolucoes: [], ultima_coleta: { estado: 'falhou', erro: 'x' } }, false) === 'erro',
