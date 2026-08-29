@@ -54,49 +54,48 @@ Para conferir que pegou, tente triar duas vezes o mesmo pacote: a segunda
 deve dizer "esta devolução já foi triada antes", como sempre disse — só
 que agora sem depender de temporização.
 
-## A AMB tem tabela PRÓPRIA — e precisa do seu próprio índice
+## ⛔ A AMB NÃO leva índice único — decisão do dono (29/08)
 
-Descoberto em 29/08: a AMB não usa a tabela `devolucoes`, e sim
-**`devolucoes_amb`** (mesmo projeto Supabase, sufixo `_amb`). O índice
-criado na tabela da GOOD **não protege a AMB**.
+A AMB tem tabela própria (**`devolucoes_amb`**, mesmo projeto Supabase,
+sufixo `_amb`), então o índice acima **não a alcança**. Mas ela **não deve
+receber um equivalente**.
 
-E o identificador lá é diferente em um ponto importante: **devolução
-Magalu não tem `shipment_id`** — fica nulo, e o que identifica é o
-`order_id`. Um índice só por `shipment_id` deixaria essas de fora.
+Motivo, nas palavras do dono:
 
-Por isso são **dois** índices parciais, um para cada caso:
+> "esse pedido cai depois pro ADMIN, e lá se eu gerar NF e for duplicada,
+> eu vou saber e decido o que faço, se falo com o funcionário, ou se só
+> marco como concluído"
+
+Ou seja: na AMB o filtro real acontece **na emissão da NF**, não na
+triagem. O botão "🔄 Triar mesmo assim" existe de propósito — o estoquista
+vê o banner vermelho, confirma, e o segundo registro é criado para o admin
+decidir depois.
+
+Um índice único quebraria isso: o banco recusaria a segunda linha e o
+botão passaria a mentir, travando o estoquista no meio do turno.
+
+**O que protege a AMB, então:**
+
+1. **A pré-trava do bipe** (b165) — avisa antes, em vermelho, e exige
+   confirmação. Cobre `shipment_id`, `order_id`, `tracking`, `nf_numero`
+   e a chave da DANFE.
+2. **A gravação rápida** (v4.59) — sem as consultas ao Bling no caminho, a
+   janela de duplo clique caiu de ~20s para milissegundos.
+3. **O olho do admin** na hora de gerar a NF.
+
+Se um dia a decisão mudar, os comandos ficam aqui, prontos — mas leia o
+parágrafo acima antes de rodar:
 
 ```sql
--- 1) confira duplicatas primeiro (as duas consultas)
-SELECT shipment_id, COUNT(*) FROM devolucoes_amb
- WHERE shipment_id IS NOT NULL AND shipment_id <> ''
- GROUP BY shipment_id HAVING COUNT(*) > 1;
-
-SELECT order_id, COUNT(*) FROM devolucoes_amb
- WHERE (shipment_id IS NULL OR shipment_id = '')
-   AND order_id IS NOT NULL AND order_id <> ''
- GROUP BY order_id HAVING COUNT(*) > 1;
-
--- 2) trava por shipment (ML, Shopee)
-CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS
-  devolucoes_amb_shipment_unico
-  ON devolucoes_amb (shipment_id)
-  WHERE shipment_id IS NOT NULL AND shipment_id <> '';
-
--- 3) trava por pedido, SÓ para quem não tem shipment (Magalu)
---    O "só para quem não tem" importa: sem isso, dois shipments
---    legítimos do mesmo pedido colidiriam entre si.
-CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS
-  devolucoes_amb_pedido_sem_shipment_unico
-  ON devolucoes_amb (order_id)
-  WHERE (shipment_id IS NULL OR shipment_id = '')
-    AND order_id IS NOT NULL AND order_id <> '';
+-- NÃO RODAR sem rever a decisão acima.
+-- CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS
+--   devolucoes_amb_shipment_unico ON devolucoes_amb (shipment_id)
+--   WHERE shipment_id IS NOT NULL AND shipment_id <> '';
 ```
 
-⚠️ **Por que o índice 3 é parcial:** nos dados reais da AMB existe um
-pedido (`2000017367190752`) com **dois shipments diferentes**. São duas
-remessas do mesmo pedido, e são legítimas. Travar por pedido sem a
-condição impediria isso.
+⚠️ E se rodar, saiba: existe um pedido real (`2000017367190752`) com
+**dois shipments legítimos**, então travar por `order_id` sem condição
+impediria um caso válido.
 
 ## Se precisar desfazer
 

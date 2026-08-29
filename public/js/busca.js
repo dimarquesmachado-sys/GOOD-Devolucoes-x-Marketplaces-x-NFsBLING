@@ -674,25 +674,47 @@ function renderizarTriagemDuplicata(reg) {
   else if (m2) triadoPor = m2[1];
   else if (m3) triadoPor = m3[1];
 
+  // b166 - VERMELHO e com ACENTO (pedido do dono, 29/08). Era laranja e sem
+  // acento; num galpao corrido, laranja passa por "aviso" e nao por "pare".
   cont.innerHTML = `
-    <div style="background:#fff3e0;border:2px solid #ff9800;border-radius:10px;padding:14px;text-align:center;">
-      <div style="font-size:32px;margin-bottom:6px;">⚠️</div>
-      <div style="font-size:15px;font-weight:700;color:#e65100;margin-bottom:4px;">
-        Esta devolucao JA FOI TRIADA
+    <div style="background:#ffebee;border:3px solid #c62828;border-radius:10px;padding:16px;text-align:center;">
+      <div style="font-size:36px;margin-bottom:6px;">⛔</div>
+      <div style="font-size:17px;font-weight:800;color:#b71c1c;margin-bottom:6px;">
+        ESTA DEVOLUÇÃO JÁ FOI TRIADA
       </div>
-      <div style="font-size:13px;color:#5d4037;line-height:1.6;">
+      <div style="font-size:13.5px;color:#4e342e;line-height:1.6;">
         <strong>${escapeHtml(tipoLabel)}</strong><br>
         Por <strong>${escapeHtml(triadoPor)}</strong> em <strong>${escapeHtml(data)}</strong><br>
         ${statusLabel}
       </div>
-      <div style="margin-top:12px;padding-top:12px;border-top:1px solid #ffcc80;font-size:12px;color:#5d4037;">
+      <div style="margin-top:12px;padding-top:12px;border-top:1px solid #ef9a9a;font-size:12.5px;color:#4e342e;">
         ${reg.status === 'concluido'
-          ? 'Ja foi resolvida. Nao precisa fazer nada.'
-          : 'Diego ja foi avisado. Aguarde retorno.'}
+          ? 'Já foi resolvida. <strong>Não precisa fazer nada.</strong>'
+          : 'O Diego já foi avisado. <strong>Aguarde retorno.</strong>'}
       </div>
-      <button class="btn-action cinza" style="margin-top:12px;font-size:11px;padding:6px 12px;"
-        onclick="if(confirm('Tem certeza que quer triar de novo? Isso vai criar um SEGUNDO registro.')) forcarReTriagem()">
-        🔄 Triar mesmo assim (so se foi engano)
+
+      <!-- b166 - o aviso de re-triagem virou BANNER, nao popup. O confirm()
+           some com um Enter distraido; o banner fica na tela e obriga a ler
+           antes de achar o botao. -->
+      <div id="avisoReTriagem" style="display:none;margin-top:14px;background:#b71c1c;color:#fff;border-radius:8px;padding:12px 14px;text-align:left;">
+        <div style="font-size:14px;font-weight:800;margin-bottom:4px;">⛔ ATENÇÃO — vai criar um SEGUNDO registro</div>
+        <div style="font-size:12.5px;line-height:1.55;">
+          Este pacote já foi triado. Triar de novo <strong>não corrige</strong> a triagem anterior:
+          cria outra, e o Diego vai ver as duas na hora de emitir a NF.<br>
+          <strong>Só continue se a primeira foi engano.</strong>
+        </div>
+        <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;">
+          <button class="btn-action" style="background:#fff;color:#b71c1c;font-weight:800;font-size:12px;padding:8px 14px;"
+            onclick="forcarReTriagem()">Sim, triar mesmo assim</button>
+          <button class="btn-action" style="background:rgba(255,255,255,0.18);color:#fff;font-size:12px;padding:8px 14px;"
+            onclick="document.getElementById('avisoReTriagem').style.display='none';document.getElementById('btnAbrirReTriagem').style.display='';">
+            Cancelar</button>
+        </div>
+      </div>
+
+      <button id="btnAbrirReTriagem" class="btn-action cinza" style="margin-top:12px;font-size:11px;padding:6px 12px;"
+        onclick="this.style.display='none';document.getElementById('avisoReTriagem').style.display='block';">
+        🔄 Triar mesmo assim (só se foi engano)
       </button>
     </div>
   `;
