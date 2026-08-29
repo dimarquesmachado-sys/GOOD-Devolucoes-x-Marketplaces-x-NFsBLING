@@ -83,6 +83,20 @@
     .item.problema { border-left-color: #c62828; background: #fff5f5; }
     .item.concluido { opacity: 0.6; border-left-color: #999; background: #f0f0f0; }
 
+    /* v4.60 - NF de devolucao JA EMITIDA: os QUATRO lados verdes.
+       Pedido do dono (29/08): com a barra so na lateral, dava trabalho
+       varrer a lista e ver quais ja tinham nota. Igual a GOOD. */
+    .item.nf-emitida {
+      border: 2px solid #2e7d32;
+      border-left: 5px solid #2e7d32;
+      background: #f4fbf5;
+    }
+    .item.nf-emitida.concluido {
+      border-color: #999;
+      border-left-color: #999;
+      background: #f0f0f0;
+    }
+
     .item-header {
       display: flex; justify-content: space-between; align-items: flex-start;
       margin-bottom: 8px;
@@ -1701,7 +1715,7 @@
       ` : '';
 
       return `
-        <div class="item ${concluido ? 'concluido' : ''}" id="card-${d.id}" ${ehParcial ? 'style="border-left-color:#f57c00;background:#fff8e7;"' : ''}>
+        <div class="item ${concluido ? 'concluido' : ''}${d.nf_devolucao_id_bling ? ' nf-emitida' : ''}" id="card-${d.id}" ${ehParcial ? 'style="border-left-color:#f57c00;background:#fff8e7;"' : ''}>
           <div class="item-header">
             <div>
               <div class="item-titulo">${escapeHtml(d.produto_titulo || '-')}${badgeParcial}${badgeRebipe}${badgeConsertado}</div>
@@ -1825,7 +1839,7 @@
       }
 
       return `
-        <div class="item ${concluido ? 'concluido' : ''}" id="card-${d.id}" style="border-left-color:#7b1fa2; background:#f3e5f5;">
+        <div class="item ${concluido ? 'concluido' : ''}" id="card-${d.id}" style="${d.nf_devolucao_id_bling ? 'border:2px solid #2e7d32;' : ''}border-left:5px solid #7b1fa2; background:#f3e5f5;">
           <div class="item-header">
             <div>
               <div class="item-titulo">${escapeHtml(d.produto_titulo || '-')} <span style="background:#7b1fa2;color:white;padding:3px 8px;border-radius:10px;font-size:10px;font-weight:700;margin-left:6px;">🔄 DIVERGENTE</span>${badgeRebipe}</div>

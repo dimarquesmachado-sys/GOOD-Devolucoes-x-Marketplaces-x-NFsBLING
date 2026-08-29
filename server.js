@@ -227,7 +227,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.59.0 (triagem salva na hora: Bling sai do caminho; duplicata morre no banco)',
+    version: '4.60.0 (card com NF de devolucao emitida fica verde nos 4 lados)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
