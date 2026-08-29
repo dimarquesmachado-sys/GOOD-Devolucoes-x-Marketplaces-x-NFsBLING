@@ -228,7 +228,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.63.0 (captura e GUARDA as devolucoes dos marketplaces)',
+    version: '4.63.1 (ponte do TikTok no contrato novo; coleta que falha nao vira lista vazia)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
