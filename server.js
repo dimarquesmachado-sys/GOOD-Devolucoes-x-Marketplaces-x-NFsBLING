@@ -227,7 +227,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.56.0 (seg4 - busca de defeitos por tipo/aba; seg5 - Pedido Shopee nao vira NF)',
+    version: '4.57.4 (teto real do canvas; jsQR mesmo com barras; eventos leem QR Magalu)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -376,7 +376,18 @@ async function buscarRecados(body) {
 async function buscarEventosCheckout(empresa, codigo) {
   try {
     if (!supabase) return [];
-    const q = String(codigo || '').trim();
+    let q = String(codigo || '').trim();
+    // v5.3 (Codex): o QR da Magalu chega como JSON — o proprio bipe pela
+    // camera ja fazia isso. Com pontuacao e mais de 60 caracteres ele nao
+    // passava no formato aceito abaixo, e o card nunca recebia os eventos do
+    // checkout, mesmo havendo um gravado sob aquele pedido. Aqui a gente tira
+    // o pedido de dentro, do mesmo jeito que a busca principal faz (~424).
+    if (q.charAt(0) === '{' && /external_grouper_code/i.test(q)) {
+      try {
+        const j = JSON.parse(q);
+        q = String(j.external_grouper_code || '').trim();
+      } catch (e) { /* JSON quebrado: cai no teste abaixo e sai */ }
+    }
     if (!/^[A-Za-z0-9_-]{5,60}$/.test(q)) return [];
     const { data } = await supabase.from('eventos_checkout')
       .select('tipo, codigo, quem, criado_em, extra')
