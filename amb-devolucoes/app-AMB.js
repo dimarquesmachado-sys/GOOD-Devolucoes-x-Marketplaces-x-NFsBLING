@@ -81,7 +81,7 @@ const criarMlBuscas = require('./lib-AMB/ml-buscas-AMB');
 const registrarIdentificar = require('./lib-AMB/identificar-AMB');
 const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 
-const VERSAO = 'AMB Devolucoes b166';
+const VERSAO = 'AMB Devolucoes b167';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -1036,9 +1036,17 @@ router.get('/api/triagem/status/:identificador', auth.requerLogin, async (req, r
   const ident = String(req.params.identificador || '').trim();
   if (!ident) return res.status(400).json({ ok: false, erro: 'identificador obrigatorio' });
 
+  // b166.1 - aceita VARIOS ?tambem=, porque o mesmo pacote pode ter sido
+  // gravado por portas diferentes (shipment num bipe, numero da NF noutro,
+  // rastreio dos Correios num terceiro). Express entrega repetidos como
+  // array; um valor so vem como string.
+  const brutos = req.query.tambem;
+  const lista = Array.isArray(brutos) ? brutos : (brutos ? [brutos] : []);
   const ids = [ident];
-  const tambem = String(req.query.tambem || '').trim();
-  if (tambem && tambem !== ident) ids.push(tambem);
+  for (const t of lista) {
+    const v = String(t || '').trim();
+    if (v && !ids.includes(v)) ids.push(v);
+  }
 
   const r = await db.triagensDe(ids);
   if (!r.ok) return res.status(500).json({ ok: false, erro: r.erro });

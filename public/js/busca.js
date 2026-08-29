@@ -509,7 +509,18 @@ function renderizar(data, ok) {
   // (ex: Diego triou pela chave da NF; o QR chega com o protocolo). Passamos
   // os DOIS pro status, que busca por OR - reconhece por qualquer porta.
   const idPrincipal = shipment.id || nf?.chaveAcesso || nf?.chave || data.magalu?.protocolo || null;
-  const idAlternativo = (data.magalu?.protocolo && data.magalu.protocolo !== idPrincipal) ? data.magalu.protocolo : null;
+  // b166.1 (Codex): TODAS as portas pelas quais aquele pacote pode ter sido
+  // gravado antes. Antes ia so o protocolo Magalu como alternativo, entao
+  // registro salvo pelo numero da NF ou pelo rastreio dos Correios passava
+  // batido e dava pra triar de novo sem aviso.
+  const idAlternativo = [
+    data.magalu?.protocolo,
+    shipment.id,
+    nf?.chaveAcesso, nf?.chave,
+    nf?.numero,                       // o numero da NF, sem os 44 digitos
+    data.order?.id, data.pack?.id,    // pedido e pacote do marketplace
+    shipment.tracking, data.tracking, // rastreio (Correios, Shopee)
+  ];
   window._magaluProtocolo = data.magalu?.protocolo || null; // p/ triagem gravar
   if (idPrincipal) {
     verificarTriagemExistente(idPrincipal, idAlternativo);
@@ -583,7 +594,19 @@ async function verificarTriagemExistente(shipmentId, idAlternativo) {
   if (!cont) return;
 
   try {
-    const extra = idAlternativo ? ('?tambem=' + encodeURIComponent(idAlternativo)) : '';
+    // b166.1 (Codex): manda TODOS os identificadores que existirem, nao so
+    // dois. A consulta do servidor procura por shipment, pedido, tracking,
+    // numero da NF e chave — mas so acha o que a gente MANDA. Um registro
+    // gravado so pelo numero da NF nao era achado, porque o front mandava a
+    // chave de 44 digitos; o filtro nf_numero.eq.<chave> nunca casava.
+    const extras = (Array.isArray(idAlternativo) ? idAlternativo : [idAlternativo])
+      .map((x) => String(x == null ? '' : x).trim())
+      .filter((x) => x && x !== String(shipmentId));
+    const vistos = {};
+    const unicos = extras.filter((x) => (vistos[x] ? false : (vistos[x] = true)));
+    const extra = unicos.length
+      ? '?' + unicos.map((x) => 'tambem=' + encodeURIComponent(x)).join('&')
+      : '';
     const r = await fetch('/api/triagem/status/' + encodeURIComponent(shipmentId) + extra);
     const d = await r.json();
     if (!d.ok) {

@@ -227,7 +227,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.61.0 (aviso de ja triada em vermelho e com banner, nas duas empresas)',
+    version: '4.61.1 (pre-trava busca por todas as portas: pedido, NF, rastreio)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -2130,13 +2130,25 @@ app.get('/api/triagem/status/:shipmentId', requerEstoquista, async (req, res) =>
   // v3.64 - a MESMA devolucao pode ter sido gravada por identificadores
   // diferentes (chave da NF num bipe, protocolo Magalu noutro). A checagem
   // aceita um segundo id via ?tambem= e busca por OR nas duas colunas.
+  // b166.1 - aceita VARIOS ?tambem= (o front agora manda todas as portas:
+  // shipment, pedido, chave, numero da NF, rastreio). Express entrega
+  // repetidos como array; um valor so vem como string.
+  const brutos = req.query.tambem;
+  const lista = Array.isArray(brutos) ? brutos : (brutos ? [brutos] : []);
   const ids = [ident];
-  const tambem = String(req.query.tambem || '').trim();
-  if (tambem && tambem !== ident) ids.push(tambem);
+  for (const t of lista) {
+    const v = String(t || '').trim();
+    if (v && !ids.includes(v)) ids.push(v);
+  }
   const ors = [];
   for (const idv of ids) {
     const seguro = idv.replace(/[",()]/g, '');
     ors.push(`shipment_id.eq.${seguro}`);
+    // b166.1 - as mesmas portas da AMB. O front manda todas agora, e um
+    // registro gravado so pelo pedido, pelo numero da NF ou pelo rastreio
+    // dos Correios passava batido — dava pra triar de novo sem aviso.
+    ors.push(`order_id.eq.${seguro}`);
+    ors.push(`nf_numero.eq.${seguro}`);
     if (/^\d{44}$/.test(seguro)) ors.push(`nf_chave.eq.${seguro}`);
   }
   try {

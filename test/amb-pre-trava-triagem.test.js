@@ -53,48 +53,62 @@ ok(/replace\(\/\["',\(\)\]\/g, ''\)/.test(DB_AMB),
   ok(/status_original/.test(src), '  guardando o status original, pra nao perder informacao');
 }
 
-// ── prova de ponta a ponta: monta o ROUTER DE VERDADE ───────────────
-// b166 (Codex): antes eu registrava uma copia da rota que chamava um dublê
-// local. O teste ficava verde mesmo se a rota real, os filtros, o mapeamento
-// ou a ordem de montagem quebrassem — ou seja, nao testava nada do que
-// importa. Agora o app-AMB e carregado de verdade, com o Supabase dublado.
+// ── prova de ponta a ponta: rota REAL + triagensDe REAL ─────────────
+// b166.1 (Codex): antes eu substituia o proprio triagensDe por uma copia
+// escrita a mao — entao tirar os filtros de tracking/nf_numero ou o marcador
+// do operador do supabase-AMB.js deixaria o teste VERDE. Agora o dublê fica
+// EMBAIXO: falsifico o cliente do Supabase e deixo a funcao de producao rodar
+// por cima dele, filtros e mapeamento inclusos.
+// o modulo de banco desiste antes de criar o cliente se faltarem as envs;
+// valores de mentira, ja que quem responde e o dublê logo abaixo
+process.env.AMB_SUPABASE_URL = process.env.AMB_SUPABASE_URL || 'https://teste.supabase.co';
+process.env.AMB_SUPABASE_KEY = process.env.AMB_SUPABASE_KEY || 'chave-de-teste';
+
 const Module = require('module');
 const originalLoad = Module._load;
+
 const LINHAS = [
-  { id: 15, shipment_id: '47501559178', order_id: '2000017367190752', tracking: null, nf_numero: '002070', criado_em: '2026-08-29T08:21:14Z', tipo: 'devolucao', status: 'concluido', funcionario: 'Diego', problema_descricao: null },
-  { id: 11, shipment_id: null,          order_id: '1550970116332325', tracking: null, nf_numero: '001906', criado_em: '2026-08-29T07:19:07Z', tipo: 'devolucao', status: 'aprovado', funcionario: 'Lucas', problema_descricao: null },
-  { id: 9,  shipment_id: null,          order_id: null,               tracking: 'AD123456789BR', nf_numero: '001800', criado_em: '2026-08-01T10:00:00Z', tipo: 'devolucao', status: 'aprovado', funcionario: 'Ygor', problema_descricao: null },
+  { id: 15, shipment_id: '47501559178', order_id: '2000017367190752', tracking: null, nf_numero: '002070', nf_chave: null, criado_em: '2026-08-29T08:21:14Z', tipo: 'devolucao', status: 'concluido', funcionario: 'Diego', problema_descricao: null },
+  { id: 11, shipment_id: null, order_id: '1550970116332325', tracking: null, nf_numero: '001906', nf_chave: null, criado_em: '2026-08-29T07:19:07Z', tipo: 'devolucao', status: 'aprovado', funcionario: 'Lucas', problema_descricao: null },
+  { id: 9,  shipment_id: null, order_id: null, tracking: 'AD123456789BR', nf_numero: '001800', nf_chave: null, criado_em: '2026-08-01T10:00:00Z', tipo: 'devolucao', status: 'aprovado', funcionario: 'Ygor', problema_descricao: null },
 ];
 
-// dublê do supabase-AMB: so o triagensDe REAL importa aqui, entao a gente
-// reaproveita a funcao verdadeira em cima de um cliente falso.
-const caminhoDb = require.resolve('../amb-devolucoes/lib-AMB/supabase-AMB.js');
-const dbReal = require(caminhoDb);
-const dbFalso = Object.assign({}, dbReal, {
-  triagensDe: async (ids) => {
-    const alvo = (Array.isArray(ids) ? ids : [ids]).map(String);
-    const achados = LINHAS.filter((l) =>
-      alvo.includes(String(l.shipment_id)) || alvo.includes(String(l.order_id)) ||
-      alvo.includes(String(l.tracking)) || alvo.includes(String(l.nf_numero)));
-    return {
-      ok: true,
-      registros: achados.map((x) => ({
-        ...x,
-        created_at: x.criado_em,
-        tipo: x.tipo && x.tipo !== 'devolucao' ? x.tipo : (x.status || 'aprovado'),
-        status_original: x.status,
-        problema_descricao: x.problema_descricao || (x.funcionario ? `[Reportado por ${x.funcionario}]` : null),
-      })),
-    };
-  },
-});
+// Cliente Supabase de mentira: entende .from().select().or().order() e
+// interpreta o filtro OR de verdade (campo.eq.valor,campo.eq.valor...).
+function clienteFalso() {
+  return {
+    from() {
+      const est = { filtroOr: null };
+      const api = {
+        select() { return api; },
+        order() { return Promise.resolve(resolver()); },
+        limit() { return Promise.resolve(resolver()); },
+        or(expr) { est.filtroOr = expr; return api; },
+        eq() { return api; },
+        insert() { return api; },
+        then(res) { return Promise.resolve(resolver()).then(res); },
+      };
+      function resolver() {
+        if (!est.filtroOr) return { data: LINHAS, error: null };
+        const cond = est.filtroOr.split(',').map((x) => {
+          const m = x.match(/^([a-z_]+)\.eq\.(.*)$/);
+          return m ? { campo: m[1], valor: m[2] } : null;
+        }).filter(Boolean);
+        const data = LINHAS.filter((l) =>
+          cond.some((c) => l[c.campo] != null && String(l[c.campo]) === c.valor));
+        return { data, error: null };
+      }
+      return api;
+    },
+  };
+}
 
-Module._load = function (pedido, pai, ehPrincipal) {
-  if (pedido.indexOf('supabase-AMB') !== -1) return dbFalso;
-  if (pedido.indexOf('./lib-AMB/auth-AMB') !== -1 || pedido.indexOf('auth-AMB') !== -1) {
+Module._load = function (pedido) {
+  if (pedido === '@supabase/supabase-js') return { createClient: () => clienteFalso() };
+  if (pedido.indexOf('auth-AMB') !== -1) {
     const real = originalLoad.apply(this, arguments);
     return Object.assign({}, real, {
-      requerLogin: (req, res, next) => next(),      // login fora do escopo deste teste
+      requerLogin: (req, res, next) => next(),
       requerAdmin: (req, res, next) => next(),
     });
   }
@@ -106,7 +120,7 @@ try { routerAMB = require('../amb-devolucoes/app-AMB.js'); }
 catch (e) { console.log('(nao consegui montar o app-AMB: ' + (e.message || e) + ')'); }
 Module._load = originalLoad;
 
-ok(!!routerAMB, 'o router REAL da AMB foi montado (nao uma copia da rota)');
+ok(!!routerAMB, 'o router REAL da AMB foi montado');
 
 const app = express();
 if (routerAMB) app.use('/amb', routerAMB);
@@ -123,29 +137,33 @@ function pegar(c) {
 
 srv.listen(0, '127.0.0.1', async () => {
   // o pacote do teste de hoje: bipar de novo TEM que achar
-  const r1 = await pegar('/amb/js-nao/../api/triagem/status/47501559178'.replace('/js-nao/..', ''));
+  const r1 = await pegar('/amb/api/triagem/status/47501559178');
   ok(r1 && r1.registros && r1.registros.length === 1,
      'bipar o pacote ja triado (47501559178) ACHA o registro — antes nao achava nada');
   ok(r1 && r1.registros[0].created_at === '2026-08-29T08:21:14Z',
-     '  com a data no campo que a tela le');
+     '  com a data no campo que a tela le (a tabela guarda criado_em)');
   ok(r1 && r1.registros[0].tipo === 'concluido',
      '  e o tipo traduzido do status (era "devolucao", que a tela nao sabe exibir)');
+  ok(r1 && /\[Reportado por Diego\]/.test(String(r1.registros[0].problema_descricao || '')),
+     '  e a descricao leva o marcador do operador (vinha "Por ?" na tela)');
 
   // Magalu, que nao tem shipment: acha pelo pedido
   const r2 = await pegar('/amb/api/triagem/status/1550970116332325');
   ok(r2 && r2.registros.length === 1,
-     'devolucao Magalu (sem shipment) e achada pelo PEDIDO — id 11 tinha shipment_id nulo');
+     'devolucao Magalu (sem shipment) e achada pelo PEDIDO');
 
-  // b166: tracking e nf_numero tambem identificam (a rota /registrar grava
-  // os dois, e o jaTriado que ja existia procurava por eles)
+  // b166.1: tracking e nf_numero — mas so achavel se o front MANDAR
   const r4 = await pegar('/amb/api/triagem/status/AD123456789BR');
-  ok(r4 && r4.registros.length === 1, 'pacote gravado so por TRACKING (Correios) tambem e achado');
+  ok(r4 && r4.registros.length === 1, 'registro gravado so por TRACKING (Correios) e achado');
   const r5 = await pegar('/amb/api/triagem/status/001906');
-  ok(r5 && r5.registros.length === 1, '  e pelo NUMERO DA NF tambem');
+  ok(r5 && r5.registros.length === 1, '  e so pelo NUMERO DA NF tambem');
 
-  // b166: o nome de quem triou nao pode sair como "Por ?"
-  ok(r1 && /\[Reportado por Diego\]/.test(String(r1.registros[0].problema_descricao || '')),
-     'a descricao leva o marcador do operador (a tela tira o "Por <fulano>" dali; vinha "Por ?")');
+  // varios ?tambem= de uma vez (era so um antes)
+  const r6 = await pegar('/amb/api/triagem/status/99999999999?tambem=nada&tambem=001800');
+  ok(r6 && r6.registros.length === 1,
+     'a rota aceita VARIOS ?tambem= — o front agora manda todas as portas');
+  ok(r6 && r6.ids_buscados && r6.ids_buscados.length === 3,
+     '  e devolve os ids que realmente procurou');
 
   // pacote novo nao pode dar falso positivo
   const r3 = await pegar('/amb/api/triagem/status/99999999999');
