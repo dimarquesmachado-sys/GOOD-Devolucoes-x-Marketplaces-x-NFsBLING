@@ -227,7 +227,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.57.4 (teto real do canvas; jsQR mesmo com barras; eventos leem QR Magalu)',
+    version: '4.58.0 (front unificado: AMB serve os 9 modulos identicos da GOOD)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
