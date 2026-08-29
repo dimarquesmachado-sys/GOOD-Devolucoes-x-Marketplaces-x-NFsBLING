@@ -227,7 +227,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.62.0 (ida e volta da mesma venda: pack e NF sao o balizador)',
+    version: '4.62.1 (sonda do TikTok aceita ?k=ADMIN_KEY, nao so cookie da GOOD)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
