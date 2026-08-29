@@ -118,15 +118,22 @@ async function confirmarAprovar() {
     const order = ultimaBusca.order || {};
     const nf = ultimaBusca.nf || {};
     if (order.id && nf.numero && !nf.idBling) {
+      // v4.59 - TETO DE 4s. Esta busca no Bling e conveniencia (deixa o
+      // "Abrir NF no Bling" pronto no card); o servidor refaz o mesmo
+      // trabalho em segundo plano depois de gravar. Antes ela nao tinha
+      // limite: somada as duas consultas do servidor, era o "Salvando..."
+      // que travava a bancada. Passou de 4s, salva assim mesmo.
       btn.innerHTML = '<span class="spinner-mini"></span>Localizando NF no Bling...';
       try {
         const params = new URLSearchParams();
         if (order.date_created) params.set('data', order.date_created);
         params.set('numeroNF', nf.numero);
         const url = `/api/nf/buscar-links-bling/${encodeURIComponent(order.id)}?${params.toString()}`;
-        const r = await fetch(url);
-        const d = await r.json();
-        if (d.ok && d.nf) {
+        const d = await Promise.race([
+          fetch(url).then((r) => r.json()),
+          new Promise((resolve) => setTimeout(() => resolve(null), 4000)),
+        ]);
+        if (d && d.ok && d.nf) {
           ultimaBusca.nf = { ...nf, ...d.nf };
         }
       } catch (e) {
@@ -611,9 +618,14 @@ async function encerrarDivergente() {
         if (order.date_created) params.set('data', order.date_created);
         params.set('numeroNF', nf.numero);
         const url = `/api/nf/buscar-links-bling/${encodeURIComponent(order.id)}?${params.toString()}`;
-        const r = await fetch(url);
-        const d = await r.json();
-        if (d.ok && d.nf) {
+        // v4.59 - teto de 4s, igual ao fluxo de aprovar: esta busca e
+        // conveniencia (deixa o botao "Abrir NF no Bling" pronto no card) e
+        // nao pode segurar o registro. O servidor refaz em segundo plano.
+        const d = await Promise.race([
+          fetch(url).then((r) => r.json()),
+          new Promise((resolve) => setTimeout(() => resolve(null), 4000)),
+        ]);
+        if (d && d.ok && d.nf) {
           ultimaBusca.nf = { ...nf, ...d.nf };
         }
       } catch (e) {}
@@ -744,9 +756,14 @@ async function encerrarParcial() {
         if (order.date_created) params.set('data', order.date_created);
         params.set('numeroNF', nf.numero);
         const url = `/api/nf/buscar-links-bling/${encodeURIComponent(order.id)}?${params.toString()}`;
-        const r = await fetch(url);
-        const d = await r.json();
-        if (d.ok && d.nf) {
+        // v4.59 - teto de 4s, igual ao fluxo de aprovar: esta busca e
+        // conveniencia (deixa o botao "Abrir NF no Bling" pronto no card) e
+        // nao pode segurar o registro. O servidor refaz em segundo plano.
+        const d = await Promise.race([
+          fetch(url).then((r) => r.json()),
+          new Promise((resolve) => setTimeout(() => resolve(null), 4000)),
+        ]);
+        if (d && d.ok && d.nf) {
           ultimaBusca.nf = { ...nf, ...d.nf };
         }
       } catch (e) {

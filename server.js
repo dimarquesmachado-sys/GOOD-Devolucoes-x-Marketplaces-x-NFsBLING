@@ -227,7 +227,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.58.0 (front unificado: AMB serve os 9 modulos identicos da GOOD)',
+    version: '4.59.0 (triagem salva na hora: Bling sai do caminho; duplicata morre no banco)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -2156,6 +2156,63 @@ app.get('/api/triagem/status/:shipmentId', requerEstoquista, async (req, res) =>
 });
 
 // Caminho APROVAR (INCLUIR ESTOQUE)
+// v4.59 - ENRIQUECIMENTO EM SEGUNDO PLANO
+//
+// Faz, DEPOIS de responder ao estoquista, o que antes travava o salvamento:
+// descobre o numero do pedido no Bling e os itens da NF, e completa o
+// registro. Se falhar, o registro continua valido -- os dois campos sao de
+// conveniencia, nao de operacao (o proprio codigo antigo ja salvava sem eles
+// quando estourava o tempo).
+//
+// Roda uma vez por registro, sem fila e sem retry: se nao vier agora, vem na
+// proxima vez que alguem abrir o card ou pelo botao de gerar NF, que resolvem
+// pelo mesmo caminho.
+// Dispara o enriquecimento SEM segurar a resposta. O catch existe pra que
+// uma falha aqui nunca vire promessa sem dono e derrube o processo.
+function agendarEnriquecimento(registroId, dados) {
+  setImmediate(() => {
+    enriquecerTriagem(registroId, dados).catch((e) =>
+      console.warn('[TRIAGEM] enriquecimento em background falhou:', e.message || e));
+  });
+}
+
+async function enriquecerTriagem(registroId, dados) {
+  if (!supabase || !registroId) return;
+  const patch = {};
+
+  try {
+    if (dados.order_id) {
+      const r = await Promise.race([
+        buscarPedidoBlingPorNumeroLoja(String(dados.order_id), dados.nf_data_emissao || null, { maxPaginas: 12 }),
+        new Promise((resolve) => setTimeout(() => resolve({ ok: false, timeout: true }), 25000)),
+      ]);
+      if (r?.ok && r.match?.numero) patch.pedido_bling_numero = String(r.match.numero);
+    }
+  } catch (e) { /* cosmetico: segue */ }
+
+  try {
+    let idBling = dados.nf_id_bling || null;
+    if (!idBling && dados.nf_chave && dados.nf_numero) {
+      try { idBling = await resolverIdNFPorChave(dados.nf_numero, dados.nf_chave); } catch (e) { idBling = null; }
+    }
+    if (idBling) {
+      patch.nf_id_bling = String(idBling);
+      const rIt = await buscarNFePorId(String(idBling));
+      const itens = (rIt.ok && rIt.data?.data) ? mapItensNF(rIt.data.data) : null;
+      if (itens) patch.nf_itens = itens;
+    }
+  } catch (e) { /* idem */ }
+
+  if (!Object.keys(patch).length) return;
+  try {
+    const { error } = await supabase.from('devolucoes').update(patch).eq('id', registroId);
+    if (error) console.warn('[TRIAGEM] enriquecimento nao gravou:', error.message);
+    else console.log(`[TRIAGEM] enriquecido ${registroId}: ${Object.keys(patch).join(', ')}`);
+  } catch (e) {
+    console.warn('[TRIAGEM] enriquecimento falhou:', e.message || e);
+  }
+}
+
 app.post('/api/triagem/aprovar', requerEstoquista, async (req, res) => {
   {
     const pend = await recadoPendente(req.body?.dados || req.body);
@@ -2206,36 +2263,27 @@ app.post('/api/triagem/aprovar', requerEstoquista, async (req, res) => {
   }
 
   try {
-    // v3.15.2 - Antes de gravar, busca numero do pedido Bling pelo order_id
-    // v3.37 - teto de 20s: passou disso, salva SEM o numero (campo cosmetico)
-    // e responde - nunca mais "salvando infinito" pro estoquista.
-    let pedidoBlingNumero = null;
-    if (dados.order_id) {
-      const dataRef = dados.nf_data_emissao || null;
-      const r = await Promise.race([
-        buscarPedidoBlingPorNumeroLoja(String(dados.order_id), dataRef, { maxPaginas: 12 }),
-        new Promise(resolve => setTimeout(() => resolve({ ok: false, timeout: true }), 20000)),
-      ]);
-      if (r?.timeout) console.warn(`[TRIAGEM] busca do pedido ${dados.order_id} estourou 20s - seguindo sem`);
-      if (r?.ok && r.match?.numero) {
-        pedidoBlingNumero = String(r.match.numero);
-      }
-    }
-
-    // v3.30: guarda os itens da NF pro card das Aprovadas ja abrir com
-    // produtos e quantidades (1 busca no Bling na hora da aprovacao).
-    // v3.31: se nao veio o id Bling mas ha chave, descobre pela janela.
-    let nfItens = null;
-    let idBlingAprovar = dados.nf_id_bling || null;
-    if (!idBlingAprovar && dados.nf_chave && dados.nf_numero) {
-      try { idBlingAprovar = await resolverIdNFPorChave(dados.nf_numero, dados.nf_chave); } catch (e) { idBlingAprovar = null; }
-    }
-    if (idBlingAprovar) {
-      try {
-        const rIt = await buscarNFePorId(String(idBlingAprovar));
-        nfItens = (rIt.ok && rIt.data?.data) ? mapItensNF(rIt.data.data) : null;
-      } catch (e) { nfItens = null; }
-    }
+    // v4.59 - GRAVA PRIMEIRO, ENRIQUECE DEPOIS.
+    //
+    // Ate aqui a rota fazia DUAS consultas ao Bling ANTES de gravar: o
+    // numero do pedido (varrendo ate 12 paginas, teto de 20s) e os itens da
+    // NF. O estoquista ficava olhando "Salvando..." o tempo todo -- e o
+    // proprio codigo ja admitia que o numero do pedido e cosmetico, porque
+    // no timeout salvava sem ele.
+    //
+    // Pior que a espera: ela abria uma janela de CORRIDA. A checagem de
+    // duplicata roda ANTES, e a gravacao SO DEPOIS das consultas; nesses
+    // segundos, uma segunda requisicao (recarregar a pagina, rede do celular
+    // reenviando) passava pela checagem tambem, porque a primeira ainda nao
+    // tinha gravado. Foi o que gerou a triagem em dobro de 29/08 -- dois
+    // registros com o MESMO shipment, com 2 minutos de diferenca.
+    //
+    // Agora o insert acontece de imediato e o resto chega depois, em
+    // segundo plano. Nenhuma triagem depende mais de o Bling estar rapido
+    // (ou no ar) pra ser salva.
+    const idBlingAprovar = dados.nf_id_bling || null;
+    const pedidoBlingNumero = null;   // preenchido pelo enriquecimento
+    const nfItens = null;             // idem
 
     // v3.17.0 - monta descricao do registro
     let descricaoRegistro;
@@ -2282,6 +2330,15 @@ app.post('/api/triagem/aprovar', requerEstoquista, async (req, res) => {
       .single();
 
     if (error) {
+      // v4.59 - 23505 = violacao de unicidade. Com o indice unico em
+      // shipment_id (docs/INDICE-UNICO-TRIAGEM.md), a corrida que escapa da
+      // checagem la em cima morre AQUI -- no banco, o unico lugar onde duas
+      // requisicoes simultaneas nao conseguem se enganar. O estoquista ve a
+      // mensagem de sempre, nao um erro cru.
+      if (error.code === '23505') {
+        console.warn(`[TRIAGEM] duplicata barrada pelo banco: shipment=${dados.shipment_id}`);
+        return res.status(409).json({ ok: false, erro: 'duplicata', mensagem: 'Esta devolucao ja foi triada antes' });
+      }
       console.error('[TRIAGEM] Erro Supabase:', error);
       return res.status(500).json({ ok: false, erro: error.message });
     }
@@ -2319,6 +2376,7 @@ app.post('/api/triagem/aprovar', requerEstoquista, async (req, res) => {
 
     const flagLog = ehParcial ? '[PARCIAL]' : (dados.bipagem_forcada ? '[FORCADO]' : '');
     console.log(`[TRIAGEM] APROVADO por ${req.usuario}: shipment=${dados.shipment_id} NF=${dados.nf_numero} ${flagLog}`);
+    agendarEnriquecimento(data.id, dados);
     // v3.17.0 - NAO dispara email pra parcial (Diego pediu)
     return res.json({ ok: true, id: data.id, registro: data, eh_parcial: ehParcial });
   } catch (err) {
@@ -2417,17 +2475,11 @@ app.post('/api/triagem/problema', requerEstoquista, async (req, res) => {
   }
 
   try {
-    // v3.15.2 - Antes de gravar, busca numero do pedido Bling pelo order_id
-    let pedidoBlingNumero = null;
-    if (dados.order_id) {
-      // Usa data da NF como referencia pra otimizar busca paginada
-      const dataRef = dados.nf_data_emissao || null;
-      const r = await buscarPedidoBlingPorNumeroLoja(String(dados.order_id), dataRef, { maxPaginas: 50 });
-      if (r?.ok && r.match?.numero) {
-        pedidoBlingNumero = String(r.match.numero);
-        console.log(`[TRIAGEM] Pedido Bling achado: ${pedidoBlingNumero} (order_id ML=${dados.order_id})`);
-      }
-    }
+    // v4.59 - grava primeiro, enriquece depois (igual ao /aprovar). Aqui era
+    // ainda pior: 50 paginas e SEM teto de tempo, entao o "Salvando..." podia
+    // ficar preso indefinidamente. E essa espera era tambem a janela em que
+    // uma segunda requisicao passava pela checagem de duplicata.
+    const pedidoBlingNumero = null;   // preenchido pelo enriquecimento
 
     const { data, error } = await supabase
       .from('devolucoes')
@@ -2463,6 +2515,15 @@ app.post('/api/triagem/problema', requerEstoquista, async (req, res) => {
       .single();
 
     if (error) {
+      // v4.59 - 23505 = violacao de unicidade. Com o indice unico em
+      // shipment_id (docs/INDICE-UNICO-TRIAGEM.md), a corrida que escapa da
+      // checagem la em cima morre AQUI -- no banco, o unico lugar onde duas
+      // requisicoes simultaneas nao conseguem se enganar. O estoquista ve a
+      // mensagem de sempre, nao um erro cru.
+      if (error.code === '23505') {
+        console.warn(`[TRIAGEM] duplicata barrada pelo banco: shipment=${dados.shipment_id}`);
+        return res.status(409).json({ ok: false, erro: 'duplicata', mensagem: 'Esta devolucao ja foi triada antes' });
+      }
       console.error('[TRIAGEM] Erro Supabase:', error);
       return res.status(500).json({ ok: false, erro: error.message });
     }
@@ -2478,6 +2539,7 @@ app.post('/api/triagem/problema', requerEstoquista, async (req, res) => {
       console.warn('[EMAIL] Mailer nao configurado, pulando envio');
     }
 
+    agendarEnriquecimento(data.id, dados);   // v4.59 - depois de responder
     return res.json({ ok: true, id: data.id, registro: data });
   } catch (err) {
     console.error('[TRIAGEM] Erro:', err);
@@ -2539,15 +2601,10 @@ app.post('/api/triagem/divergente', requerEstoquista, async (req, res) => {
   }
 
   try {
-    // Busca pedido Bling
-    let pedidoBlingNumero = null;
-    if (dados.order_id) {
-      const dataRef = dados.nf_data_emissao || null;
-      const r = await buscarPedidoBlingPorNumeroLoja(String(dados.order_id), dataRef, { maxPaginas: 50 });
-      if (r?.ok && r.match?.numero) {
-        pedidoBlingNumero = String(r.match.numero);
-      }
-    }
+    // v4.59 - grava primeiro, enriquece depois (igual as outras duas rotas
+    // de triagem): 50 paginas sem teto travavam o "Salvando..." e abriam a
+    // janela de duplicata.
+    const pedidoBlingNumero = null;   // preenchido pelo enriquecimento
 
     const obs = (dados.observacao || '').trim();
     const skuEsperado = dados.produto_sku_esperado || '?';
@@ -2588,12 +2645,17 @@ app.post('/api/triagem/divergente', requerEstoquista, async (req, res) => {
       .single();
 
     if (error) {
+      if (error.code === '23505') {   // v4.59 - idem: duplicata barrada pelo banco
+        console.warn(`[TRIAGEM] duplicata barrada pelo banco: shipment=${dados.shipment_id}`);
+        return res.status(409).json({ ok: false, erro: 'duplicata', mensagem: 'Esta devolucao ja foi triada antes' });
+      }
       console.error('[TRIAGEM] Erro Supabase divergente:', error);
       return res.status(500).json({ ok: false, erro: error.message });
     }
 
     console.log(`[TRIAGEM] DIVERGENTE por ${req.usuario}: shipment=${dados.shipment_id} esperado=${skuEsperado} voltou=${skuVoltou} fotos=${fotos.length}`);
     // v3.18.0 - NAO dispara email (Diego pediu)
+    agendarEnriquecimento(data.id, dados);   // v4.59 - depois de responder
     return res.json({ ok: true, id: data.id, registro: data });
   } catch (err) {
     console.error('[TRIAGEM] Erro divergente:', err);
