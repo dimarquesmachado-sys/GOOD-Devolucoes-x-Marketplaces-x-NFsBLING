@@ -279,6 +279,22 @@ const AGUARDANDO_ENVIO = {
   const IDENT = fs.readFileSync(path.join(__dirname, '..', 'amb-devolucoes', 'lib-AMB', 'identificar-AMB.js'), 'utf8');
   ok(/tiktokDev\.procurar\(tiktokPonte, 'amb', codigoOriginal/.test(IDENT),
      'a rota da AMB consulta o TikTok');
+
+  // b180.1: a chave 'amb' precisa existir no mapa da ponte, senao a
+  // integracao falha ANTES de chamar a rede — calada, com 404 normal
+  const ponte = require('../lib/tiktok-ponte');
+  ok(ponte.lojaDaEmpresa('amb') === 'amb',
+     "a ponte reconhece 'amb' (o resto do projeto usa essa forma)");
+  ok(ponte.lojaDaEmpresa('ambtotal') === 'amb', "  e 'ambtotal' tambem, que era a unica antes");
+  ok(ponte.lojaDaEmpresa('good') === 'good' && ponte.lojaDaEmpresa('girassol') === 'girassol',
+     '  e as outras duas empresas');
+  ok(ponte.lojaDaEmpresa('inexistente') === null, '  empresa desconhecida continua null');
+
+  // b180.1: e a ordem importa — nome varre ate 8.000 NFs do Bling
+  const iTk = IDENT.indexOf('tiktokDev.procurar');
+  const iNome = IDENT.indexOf('ULTIMO RECURSO: o texto tem cara de NOME');
+  ok(iTk !== -1 && iNome !== -1 && iTk < iNome,
+     'o TikTok e consultado ANTES da busca por nome (que varre ate 8.000 NFs com indice frio)');
   ok(/tiktokPonte, tiktokDev,/.test(IDENT), '  com as deps recebidas por parametro');
   const APP = fs.readFileSync(path.join(__dirname, '..', 'amb-devolucoes', 'app-AMB.js'), 'utf8');
   ok(/tiktokPonte: require\('\.\.\/lib\/tiktok-ponte'\)/.test(APP), '  e passadas no registro');

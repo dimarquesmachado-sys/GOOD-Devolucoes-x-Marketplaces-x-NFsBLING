@@ -723,29 +723,18 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
       resultado.tentativas.push({ tipo: 'shopee_return', v: '3.34.3', codigo: codigoOriginal, ok: false, status: 0, erro: 'SHOPEE_PROXY_URL/SHOPEE_PROXY_KEY ausentes no Render deste servico' });
     }
     if (!devShopee) {
-      // v3.71 - ULTIMO RECURSO: o texto tem cara de NOME? (>=5 letras apos
-      // colapsar). Casos: remetente da etiqueta Correios digitado/colado
-      // ("RENATONEVES", "Renato Neves"). Devolve CANDIDATOS - o estoquista
-      // confere com a caixa e escolhe (nada de casamento automatico).
-      const alvoNome = nfNomes.colapsar(codigoOriginal);
-      if (alvoNome.length >= 5 && !/^\d+$/.test(String(codigoOriginal).trim())) {
-        try {
-          const rN = await nfNomes.buscarPorNome(codigoOriginal);
-          resultado.tentativas.push({ tipo: 'nf_por_nome', codigo: alvoNome, ok: rN.candidatos.length > 0, status: rN.candidatos.length ? 200 : 404, qtd: rN.candidatos.length });
-          if (rN.candidatos.length > 0) {
-            resultado.candidatos_nome = rN.candidatos;
-            resultado.erro = `Achei ${rN.candidatos.length} NF(s) recente(s) com esse nome. Confere com a CAIXA e escolhe abaixo:`;
-            return res.status(300).json(await comRecados(resultado, req.params.codigo)); // 300 Multiple Choices
-          }
-        } catch (e) { resultado.tentativas.push({ tipo: 'nf_por_nome', codigo: alvoNome, ok: false, status: 500, erro: e.message }); }
-      }
       // ===== TIKTOK (b180, Codex): a AMB tem o proprio identificador =====
       //
       // A tela da AMB ja mostrava o card do TikTok, mas esta rota nunca
       // consultava — o card ficaria sempre vazio. E a divergencia GOOD/AMB
       // de novo: o server.js da GOOD ganhou a cascata e este arquivo nao.
       //
-      // Mesma posicao da GOOD: depois da Shopee, antes do ultimo recurso.
+      // Mesma posicao da GOOD: depois da Shopee, ANTES do ultimo recurso
+      // por nome. b180.1 (Codex): eu tinha posto DEPOIS, contrariando o
+      // proprio comentario — e um rastreio do TikTok com 5+ letras cairia
+      // primeiro na busca por nome, que varre ate 8.000 NFs do Bling com
+      // indice frio, podendo devolver 300 num casamento coincidente sem
+      // nunca consultar o TikTok.
       try {
         const rTk = await tiktokDev.procurar(tiktokPonte, 'amb', codigoOriginal, { limite: 200 });
         resultado.tentativas.push({
@@ -783,6 +772,22 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
         resultado.tentativas.push({ tipo: 'tiktok_devolucao', codigo: codigoOriginal, ok: false, status: 500, erro: String(e.message || e).slice(0, 160) });
       }
 
+      // v3.71 - ULTIMO RECURSO: o texto tem cara de NOME? (>=5 letras apos
+      // colapsar). Casos: remetente da etiqueta Correios digitado/colado
+      // ("RENATONEVES", "Renato Neves"). Devolve CANDIDATOS - o estoquista
+      // confere com a caixa e escolhe (nada de casamento automatico).
+      const alvoNome = nfNomes.colapsar(codigoOriginal);
+      if (alvoNome.length >= 5 && !/^\d+$/.test(String(codigoOriginal).trim())) {
+        try {
+          const rN = await nfNomes.buscarPorNome(codigoOriginal);
+          resultado.tentativas.push({ tipo: 'nf_por_nome', codigo: alvoNome, ok: rN.candidatos.length > 0, status: rN.candidatos.length ? 200 : 404, qtd: rN.candidatos.length });
+          if (rN.candidatos.length > 0) {
+            resultado.candidatos_nome = rN.candidatos;
+            resultado.erro = `Achei ${rN.candidatos.length} NF(s) recente(s) com esse nome. Confere com a CAIXA e escolhe abaixo:`;
+            return res.status(300).json(await comRecados(resultado, req.params.codigo)); // 300 Multiple Choices
+          }
+        } catch (e) { resultado.tentativas.push({ tipo: 'nf_por_nome', codigo: alvoNome, ok: false, status: 500, erro: e.message }); }
+      }
       const pareceSPX = /^BR[A-Z0-9]{8,}$/i.test(String(codigoOriginal).trim());
       const houve403 = resultado.tentativas.some(t => t.status === 403);
       const diag = infoShopee
