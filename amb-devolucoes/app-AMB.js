@@ -81,7 +81,7 @@ const criarMlBuscas = require('./lib-AMB/ml-buscas-AMB');
 const registrarIdentificar = require('./lib-AMB/identificar-AMB');
 const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 
-const VERSAO = 'AMB Devolucoes b172';
+const VERSAO = 'AMB Devolucoes b181';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -1844,6 +1844,11 @@ const mlBuscas = criarMlBuscas(ml.chamarML);
 registrarCicloDefeitos(router, { auth, db, bling, cfg });
 
 registrarIdentificar(router, {
+  // b180 - TikTok na cascata da AMB (paridade com a GOOD). Passar por
+  // parametro, nao pelo escopo: usar o escopo ja derrubou o boot 2x neste
+  // projeto (b300 e b302 no lado da GOOD).
+  tiktokPonte: require('../lib/tiktok-ponte'),
+  tiktokDev: require('../lib/tiktok-devolucoes'),
   buscarNFsPorNumero: nfp.buscarNFsPorNumero,   // b237 - faltava (NF nao localizada)
   db,   // b213 - pro recado do estoquista aparecer na triagem
   supabase: db.conectar(),   // ev2 - registro do checkout offline

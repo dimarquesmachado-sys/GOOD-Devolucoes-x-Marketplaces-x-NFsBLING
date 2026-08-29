@@ -1,0 +1,388 @@
+// Roda com: node test/tiktok-devolucoes.test.js
+//
+// Reconhecimento de devolucao do TikTok no bipe, e a distincao que o dono
+// levantou em 29/08:
+//
+//   "o devoluções precisa identificar então que o pedido é ou não um pacote
+//    em retorno. pode ser q o tiktok equipe tenha só estornado o valor,
+//    compensado a loja, e daí a devolução nunca vai existir"
+//
+// Medido nas 99 devolucoes reais da Girassol: cerca de METADE e reembolso
+// puro. O caso conferido no painel foi o pedido 585654590105159643 —
+// entregue e assinado em 24/08, cliente abriu "pacote nao recebido" no dia
+// seguinte, TikTok reembolsou R$ 29,90 e COMPENSOU a loja. Pacote nenhum
+// vai chegar.
+
+const tk = require('../lib/tiktok-devolucoes');
+
+let falhas = 0;
+const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o); };
+
+// ── dados REAIS, copiados da coleta da Girassol ──────────────────────
+const COM_RETORNO = {
+  id: '4041987387092076103', order_id: '585498846084564551',
+  tipo: 'RETURN_AND_REFUND', status: 'RETURN_OR_REFUND_REQUEST_COMPLETE',
+  motivo_texto: "Item doesn't match description", valor: 29.9,
+  return_tracking_number: 'TT123456789BR',
+  criado_em: 1786985629, atualizado_em: 1787763463,
+};
+const SO_REEMBOLSO = {   // o caso conferido no painel
+  id: '4042074755696855003', order_id: '585654590105159643',
+  tipo: 'REFUND', status: 'RETURN_OR_REFUND_REQUEST_COMPLETE',
+  motivo_texto: "Package wasn't received", valor: 29.9,
+  criado_em: 1787636992, atualizado_em: 1787709728,
+};
+const EM_ABERTO = {
+  id: '4042106320854681196', order_id: '585729047986079340',
+  tipo: 'REFUND', status: 'RETURN_OR_REFUND_REQUEST_PENDING',
+  motivo_texto: 'Package received but missing item', valor: 29.9,
+  criado_em: 1787872849,
+};
+const AGUARDANDO_ENVIO = {
+  id: '4042124431075673800', order_id: '585677127324436168',
+  tipo: 'RETURN_AND_REFUND', status: 'AWAITING_BUYER_SHIP',
+  motivo_texto: "Item doesn't match description", valor: 29.9,
+  criado_em: 1788004640,
+};
+
+// ── vai chegar pacote? ───────────────────────────────────────────────
+{
+  ok(tk.vaiChegarPacote(COM_RETORNO) === true,
+     'RETURN_AND_REFUND: vai chegar pacote');
+  ok(tk.vaiChegarPacote(SO_REEMBOLSO) === false,
+     'REFUND: nao vai chegar nada (o caso do pedido 5856545901... conferido no painel)');
+  ok(tk.vaiChegarPacote({ tipo: 'COISA_NOVA' }) === null,
+     'tipo desconhecido: nao chuta');
+
+  const n1 = tk.normalizar(COM_RETORNO, 'girassol');
+  ok(n1.vai_chegar === true, '  e o normalizado carrega vai_chegar=true');
+  const n2 = tk.normalizar(SO_REEMBOLSO, 'girassol');
+  ok(n2.vai_chegar === false, '  e false no reembolso puro');
+
+  // em aberto: o desfecho ainda pode mudar
+  const n3 = tk.normalizar(EM_ABERTO, 'girassol');
+  ok(n3.vai_chegar === null,
+     'solicitacao EM ABERTO marcada como indefinida (REFUND agora pode virar devolucao depois)');
+  ok(n3.em_aberto === true, '  e sinalizada como em aberto');
+
+  const n4 = tk.normalizar(AGUARDANDO_ENVIO, 'girassol');
+  ok(n4.vai_chegar === true,
+     'AWAITING_BUYER_SHIP com RETURN_AND_REFUND: vai chegar (o comprador ainda vai postar)');
+}
+
+// ── por onde o bipe casa ─────────────────────────────────────────────
+{
+  const chaves = tk.chavesDe(COM_RETORNO);
+  ok(chaves.indexOf('TT123456789BR') !== -1, 'casa pelo RASTREIO (o que a etiqueta traz)');
+  ok(chaves.indexOf('585498846084564551') !== -1, '  e pelo pedido');
+  ok(chaves.indexOf('4041987387092076103') !== -1, '  e pelo id da devolucao');
+
+  const semRastreio = tk.chavesDe(SO_REEMBOLSO);
+  ok(semRastreio.indexOf('585654590105159643') !== -1,
+     'reembolso puro nao tem rastreio, mas casa pelo pedido');
+  ok(semRastreio.length === 2, '  com as duas chaves que existem, sem entradas vazias');
+}
+
+// ── achar na lista ───────────────────────────────────────────────────
+{
+  const lista = [COM_RETORNO, SO_REEMBOLSO, EM_ABERTO];
+
+  const porRastreio = tk.acharNaLista(lista, 'TT123456789BR', 'girassol');
+  ok(porRastreio && porRastreio.id === '4041987387092076103', 'acha pelo rastreio bipado');
+  ok(porRastreio.vai_chegar === true, '  e ja diz que o pacote vem');
+
+  const porPedido = tk.acharNaLista(lista, '585654590105159643', 'girassol');
+  ok(porPedido && porPedido.vai_chegar === false,
+     'acha pelo pedido, e avisa que NAO vem pacote (era o ponto do dono)');
+
+  // etiqueta impressa costuma trazer separador que o codigo nao tem
+  ok(tk.acharNaLista(lista, 'TT-123456789-BR', 'girassol') !== null,
+     'casa mesmo com separadores na etiqueta (compara so letras e numeros)');
+  ok(tk.acharNaLista(lista, 'tt123456789br', 'girassol') !== null, '  e sem diferenciar maiusculas');
+
+  ok(tk.acharNaLista(lista, '99999999', 'girassol') === null, 'codigo desconhecido: null');
+  ok(tk.acharNaLista(lista, '', 'girassol') === null, 'codigo vazio: null');
+  ok(tk.acharNaLista(null, 'x', 'girassol') === null, 'lista ausente: null');
+}
+
+// ── datas: o TikTok manda em SEGUNDOS ────────────────────────────────
+{
+  const n = tk.normalizar(COM_RETORNO, 'girassol');
+  ok(n.criado_em === new Date(1786985629 * 1000).toISOString(),
+     'criado_em convertido de segundos pra data (o TikTok nao usa milissegundos)');
+  ok(n.criado_em.indexOf('2026') === 0, '  e cai em 2026, nao em 1970');
+}
+
+// ── "nao achei" com coleta pendente NAO e "nao existe" ───────────────
+{
+  const fs = require('fs');
+  const path = require('path');
+  const SRC = fs.readFileSync(path.join(__dirname, '..', 'lib', 'tiktok-devolucoes.js'), 'utf8');
+  ok(/coleta_pendente: !!r\.coleta_pendente/.test(SRC),
+     'o resultado repassa se a coleta esta pendente');
+  ok(/aviso: r\.aviso \|\| null/.test(SRC),
+     '  e o aviso da ponte, pra "nao achei" nao virar "nao existe"');
+  ok(/if \(!r \|\| !r\.ok\)/.test(SRC),
+     '  e ponte com erro nao vira lista vazia silenciosa');
+}
+
+// ── v2: o retrato do transporte e dos itens ─────────────────────────
+// O dono conferiu a tela do TikTok: "aparentemente o melhor sistema de
+// identificacao entre todos marketplaces". Quase tudo dela ja vinha na
+// coleta e nao era usado.
+{
+  const COMPLETA = {
+    id: '4041987387092076103', order_id: '585431796724107092',
+    tipo: 'RETURN_AND_REFUND', status: 'RETURN_OR_REFUND_REQUEST_COMPLETE',
+    return_tracking_number: 'AP334873368BR',
+    return_provider_name: 'Correios',
+    return_method: 'RETURN_BY_MAIL',
+    shipment_type: 'PLATFORM',
+    handover_method: 'DROP_OFF',
+    return_warehouse_address: 'Magazine Girassol, Taboao da Serra',
+    return_line_items: [
+      { seller_sku: 'KP16', product_name: 'Kit 11 Pecas 3 Pol', quantity: 1 },
+      { seller_sku: 'BL22', product_name: 'Boina La', quantity: 2 },
+    ],
+    is_combined_return: false,
+    pre_return_id: null, next_return_id: null,
+    valor: 64.9, criado_em: 1786985629,
+  };
+
+  const n = tk.normalizar(COMPLETA, 'girassol');
+  ok(n.transportadora === 'Correios', 'traz a TRANSPORTADORA (45 de 99 tem)');
+  ok(n.rastreio === 'AP334873368BR', '  e o rastreio dos Correios');
+  ok(n.metodo_devolucao === 'RETURN_BY_MAIL', '  e como o cliente devolveu');
+  ok(n.armazem_destino === 'Magazine Girassol, Taboao da Serra',
+     '  e pra qual armazem o pacote foi mandado');
+
+  ok(n.itens.length === 2, 'traz os ITENS que deveriam estar na caixa (99 de 99 tem)');
+  ok(n.itens[0].sku === 'KP16' && n.itens[0].qtd === 1, '  com SKU e quantidade');
+  ok(n.itens[1].qtd === 2, '  e a quantidade certa quando ha mais de um');
+
+  // devolucao combinada: mais de um pedido na mesma caixa
+  const comb = tk.normalizar({ ...COMPLETA, is_combined_return: true, combined_return_id: 'C99' }, 'girassol');
+  ok(comb.combinada === true && comb.combinada_id === 'C99',
+     'devolucao COMBINADA sinalizada (o estoquista abriria esperando 1 pedido e acharia 2)');
+  ok(n.combinada === false, '  e a normal nao');
+
+  // encadeada: o cliente abre, cancela, abre de novo
+  const enc = tk.normalizar({ ...COMPLETA, pre_return_id: 'R1', next_return_id: 'R3' }, 'girassol');
+  ok(enc.anterior_id === 'R1' && enc.proxima_id === 'R3',
+     'os elos da cadeia sao guardados (um pedido da Girassol teve TRES em sequencia)');
+
+  // sem os campos, nao inventa
+  const magra = tk.normalizar({ id: 'x', order_id: 'y', tipo: 'REFUND' }, 'girassol');
+  ok(magra.itens.length === 0 && magra.transportadora === null,
+     'devolucao sem esses campos nao ganha valor inventado');
+  ok(magra.combinada === false, '  e combinada default e false, nao null');
+}
+
+// ── esta ligado na cascata do bipe? ─────────────────────────────────
+{
+  const fs = require('fs');
+  const path = require('path');
+  const SERVER = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
+
+  ok(/tiktokDev\.procurar\(tiktokPonte, 'good', codigoOriginal/.test(SERVER),
+     'a busca consulta o TikTok quando nada antes resolveu');
+  ok(/tipo: 'tiktok_devolucao'/.test(SERVER),
+     '  e registra a tentativa, como os outros marketplaces');
+
+  // a ordem importa: TikTok e o que tem menos etiqueta bipavel
+  const iShopee = SERVER.indexOf("tipo: 'shopee_return'");
+  const iTikTok = SERVER.indexOf("tipo: 'tiktok_devolucao'");
+  const iNome = SERVER.indexOf('ULTIMO RECURSO: o texto tem cara de NOME');
+  ok(iShopee < iTikTok, 'o TikTok e tentado DEPOIS da Shopee (so 30 de 99 tem rastreio)');
+  ok(iTikTok < iNome, '  e ANTES do ultimo recurso por nome');
+
+  // o aviso que o dono pediu
+  ok(/tipo: 'tiktok_sem_retorno'/.test(SERVER),
+     'reembolso puro gera AVISO na tela: nenhum pacote vai chegar');
+  ok(/e REEMBOLSO, sem devolucao fisica/.test(SERVER),
+     '  com o texto dizendo isso em portugues claro');
+  ok(/tipo: 'tiktok_indefinido'/.test(SERVER),
+     'e solicitacao em aberto avisa que o desfecho ainda pode mudar');
+  ok(/coleta_pendente: rTk && rTk\.coleta_pendente/.test(SERVER),
+     'a tentativa carrega se a coleta estava pendente ("nao achei" != "nao existe")');
+}
+
+// ── b180: varias solicitacoes no MESMO pedido ───────────────────────
+// O cliente abre, cancela, abre de novo. O pedido 585234469423907917 da
+// Girassol teve TRES em sequencia. Casar por pedido e pegar "a primeira da
+// lista" e sorte: podia entregar a cancelada em vez da que vale.
+{
+  const CADEIA = [
+    { id: 'R1', order_id: '585234469423907917', tipo: 'REFUND',
+      status: 'RETURN_OR_REFUND_REQUEST_CANCEL', criado_em: 1785528153, atualizado_em: 1785537221,
+      next_return_id: 'R2' },
+    { id: 'R2', order_id: '585234469423907917', tipo: 'RETURN_AND_REFUND',
+      status: 'RETURN_OR_REFUND_REQUEST_CANCEL', criado_em: 1785537262, atualizado_em: 1785541297,
+      pre_return_id: 'R1', next_return_id: 'R3' },
+    { id: 'R3', order_id: '585234469423907917', tipo: 'REFUND',
+      status: 'RETURN_OR_REFUND_REQUEST_COMPLETE', criado_em: 1785541366, atualizado_em: 1785770957,
+      pre_return_id: 'R2' },
+  ];
+
+  const achado = tk.acharNaLista(CADEIA, '585234469423907917', 'girassol');
+  ok(achado && achado.id === 'R3',
+     'com 3 solicitacoes no mesmo pedido, escolhe a que NAO foi cancelada');
+  ok(achado.varias_no_pedido === 3, '  e diz quantas existem');
+  ok(/3 solicitacoes/.test(achado.aviso || ''), '  com aviso explicando');
+
+  // o id especifico continua mandando: quem bipa R1 quer R1
+  const direto = tk.acharNaLista(CADEIA, 'R1', 'girassol');
+  ok(direto && direto.id === 'R1',
+     'identificador ESPECIFICO casa direto, sem desempate (so existe um)');
+  ok(!direto.varias_no_pedido, '  e sem o aviso, porque nao houve escolha');
+
+  // todas canceladas: mostra a mais recente, em vez de nao achar nada
+  const todasCanc = CADEIA.slice(0, 2);
+  const rc = tk.acharNaLista(todasCanc, '585234469423907917', 'girassol');
+  ok(rc && rc.id === 'R2',
+     'se TODAS estao canceladas, mostra a mais recente (melhor que nao achar)');
+
+  // ── b180.2: UMA POR ITEM e diferente de CADEIA ────────────────────
+  // O dono conferiu no Bling o pedido 585110624384091852: nota com DUAS
+  // linhas de R$ 59,90 e desconto de R$ 5,00 = R$ 114,80. E ha DOIS
+  // reembolsos de R$ 57,40, ambos CONCLUIDOS e sem elos. Somados dao
+  // exatamente o total. Nao e o cliente reabrindo — e o TikTok abrindo
+  // uma solicitacao por item. As DUAS valem.
+  const POR_ITEM = [
+    { id: 'A', order_id: '585110624384091852', tipo: 'RETURN_AND_REFUND',
+      status: 'RETURN_OR_REFUND_REQUEST_COMPLETE', valor: 57.40, criado_em: 1785099240 },
+    { id: 'B', order_id: '585110624384091852', tipo: 'RETURN_AND_REFUND',
+      status: 'RETURN_OR_REFUND_REQUEST_COMPLETE', valor: 57.40, criado_em: 1785099445 },
+  ];
+  // b180.3: os itens de CADA caixa, nos dois caminhos de busca
+  const porRastreio = tk.acharNaLista(
+    POR_ITEM.map((d, i) => ({ ...d, return_tracking_number: 'AP' + i + 'BR',
+      return_line_items: [{ seller_sku: 'KIT' + i, quantity: 1, product_name: 'Lixas ' + i }] })),
+    'AP0BR', 'girassol');
+  ok(porRastreio && porRastreio.pacotes && porRastreio.pacotes.length === 2,
+     'bipando o RASTREIO de uma caixa, o resultado traz as DUAS (o estoquista precisa saber que ha outra)');
+  ok(porRastreio.pacotes.filter((p) => p.esta).length === 1,
+     '  marcando qual delas foi bipada');
+  ok(porRastreio.pacotes[0].itens.length === 1 && porRastreio.pacotes[1].itens.length === 1,
+     '  com os itens de CADA uma separados (nao a nota inteira)');
+  ok(porRastreio.irmas === 2, '  e o total de caixas');
+
+  const pi = tk.acharNaLista(POR_ITEM, '585110624384091852', 'girassol');
+  ok(pi && pi.irmas === 2, 'duas solicitacoes ATIVAS sem elos: reconhecidas como irmas');
+  ok(pi.valor_total_pedido === 114.8,
+     '  e o valor SOMADO bate com o total do pedido no Bling (R$ 114,80)');
+  ok(/nao e duplicata/.test(pi.aviso || ''),
+     '  com aviso dizendo que as duas valem — descartar uma esconderia metade do prejuizo');
+  ok(!/em sequencia/.test(pi.aviso || ''), '  e sem o texto de cadeia, que seria errado aqui');
+
+  // a cadeia continua se comportando como cadeia
+  ok(!achado.irmas, 'cadeia com canceladas NAO soma (so a ultima vale)');
+  ok(/em sequencia/.test(achado.aviso || ''), '  e o aviso diz "em sequencia"');
+
+  // e o caso simples nao muda
+  const uma = tk.acharNaLista([CADEIA[2]], '585234469423907917', 'girassol');
+  ok(uma && uma.id === 'R3' && !uma.varias_no_pedido,
+     'pedido com uma solicitacao so: sem aviso, como antes');
+}
+
+// ── b180: nada que vem do TikTok entra cru no HTML ──────────────────
+// O texto e escrito pelo CLIENTE. Se ele mandar HTML na reclamacao,
+// executaria dentro do painel do admin.
+{
+  const fs = require('fs');
+  const path = require('path');
+  const RAIZ = path.join(__dirname, '..');
+  [['GOOD', 'public/js/busca.js'], ['AMB', 'amb-devolucoes/public-AMB/js-AMB/busca.js']].forEach(([nome, rel]) => {
+    const src = fs.readFileSync(path.join(RAIZ, rel), 'utf8');
+    const i = src.indexOf('if (data.tiktok) {');
+    const bloco = src.slice(i, src.indexOf("html += '</div>';", i) + 40);
+    ok(!/\+ tk\.motivo_texto \+/.test(bloco),
+       nome + ': o recado do cliente NAO entra cru no HTML');
+    ok(/escapeHtml\(String\(tk\.motivo_texto\)\)/.test(bloco),
+       '  passa por escapeHtml');
+    ok(/escapeHtml\(String\(val\)\)/.test(bloco),
+       '  e os campos tecnicos tambem (transportadora e armazem vem de fora)');
+    ok(/escapeHtml\(String\(it\.nome/.test(bloco) && /escapeHtml\(String\(it\.sku/.test(bloco),
+       '  e os itens, SKU e nome');
+  });
+}
+
+// ── b180: a AMB tambem CONSULTA o TikTok ────────────────────────────
+// A tela dela ja mostrava o card, mas a rota nunca consultava — ficaria
+// sempre vazio. E a divergencia GOOD/AMB de novo.
+{
+  const fs = require('fs');
+  const path = require('path');
+  const IDENT = fs.readFileSync(path.join(__dirname, '..', 'amb-devolucoes', 'lib-AMB', 'identificar-AMB.js'), 'utf8');
+  ok(/tiktokDev\.procurar\(tiktokPonte, 'amb', codigoOriginal/.test(IDENT),
+     'a rota da AMB consulta o TikTok');
+
+  // b180.1: a chave 'amb' precisa existir no mapa da ponte, senao a
+  // integracao falha ANTES de chamar a rede — calada, com 404 normal
+  const ponte = require('../lib/tiktok-ponte');
+  ok(ponte.lojaDaEmpresa('amb') === 'amb',
+     "a ponte reconhece 'amb' (o resto do projeto usa essa forma)");
+  ok(ponte.lojaDaEmpresa('ambtotal') === 'amb', "  e 'ambtotal' tambem, que era a unica antes");
+  ok(ponte.lojaDaEmpresa('good') === 'good' && ponte.lojaDaEmpresa('girassol') === 'girassol',
+     '  e as outras duas empresas');
+  ok(ponte.lojaDaEmpresa('inexistente') === null, '  empresa desconhecida continua null');
+
+  // b180.1: e a ordem importa — nome varre ate 8.000 NFs do Bling
+  const iTk = IDENT.indexOf('tiktokDev.procurar');
+  const iNome = IDENT.indexOf('ULTIMO RECURSO: o texto tem cara de NOME');
+  ok(iTk !== -1 && iNome !== -1 && iTk < iNome,
+     'o TikTok e consultado ANTES da busca por nome (que varre ate 8.000 NFs com indice frio)');
+  ok(/tiktokPonte, tiktokDev,/.test(IDENT), '  com as deps recebidas por parametro');
+  const APP = fs.readFileSync(path.join(__dirname, '..', 'amb-devolucoes', 'app-AMB.js'), 'utf8');
+  ok(/tiktokPonte: require\('\.\.\/lib\/tiktok-ponte'\)/.test(APP), '  e passadas no registro');
+  ok(/tipo: 'tiktok_sem_retorno'/.test(IDENT),
+     '  e o aviso de "nao vem pacote" existe na AMB tambem');
+}
+
+// ── o card mostra isso na tela? NAS DUAS EMPRESAS ───────────────────
+{
+  const fs = require('fs');
+  const path = require('path');
+  const RAIZ = path.join(__dirname, '..');
+  const GOOD = fs.readFileSync(path.join(RAIZ, 'public', 'js', 'busca.js'), 'utf8');
+  const AMB = fs.readFileSync(path.join(RAIZ, 'amb-devolucoes', 'public-AMB', 'js-AMB', 'busca.js'), 'utf8');
+
+  [['GOOD', GOOD], ['AMB', AMB]].forEach(([nome, src]) => {
+    ok(/if \(data\.tiktok\) \{/.test(src), nome + ': a tela tem bloco do TikTok');
+    ok(/SEM DEVOLUÇÃO FÍSICA/.test(src),
+       '  avisa em vermelho quando NAO vem pacote (metade das devolucoes do TikTok)');
+    ok(/DEVOLUÇÃO COMBINADA/.test(src),
+       '  avisa quando a caixa pode ter mais de um pedido');
+    ok(/Itens que deveriam vir nesta devolução/.test(src),
+       '  lista os itens, que e o que o estoquista confere contra a caixa');
+    // b180.3: entrega parcial — o aviso que impede a divergencia falsa
+    ok(/ENTREGA PARCIAL — pacote/.test(src),
+       '  avisa "pacote N de M" quando o pedido volta em varias caixas');
+    ok(/não marque divergência/.test(src),
+       '  dizendo explicitamente pra nao marcar divergencia');
+    ok(/ESTA CAIXA/.test(src), '  e destaca qual caixa esta na bancada');
+    // o recado do cliente: "o TikTok dando de graca, sem trabalho manual"
+    ok(/O QUE O CLIENTE DISSE/.test(src),
+       '  mostra o RECADO do cliente em destaque (vem em 99 de 99)');
+    ok(/border:3px solid #1565c0/.test(src),
+       '  no mesmo estilo do recado do admin, pra ser lido do mesmo jeito');
+    ok(/Transportadora/.test(src) && /Armazém de destino/.test(src),
+       '  e mostra transportadora e armazem');
+    ok(/data\.tiktok \|\| String\(data\.metodo \|\| ''\)\.includes\('tiktok'\)/.test(src),
+       '  e o rotulo do marketplace reconhece o TikTok (era "Mercado Livre" por padrao)');
+  });
+
+  // a ordem importa: aviso, depois recado, depois detalhes
+  const iAviso = GOOD.indexOf('SEM DEVOLUÇÃO FÍSICA');
+  const iRecado = GOOD.indexOf('O QUE O CLIENTE DISSE');
+  const iDetalhe = GOOD.indexOf("linha('Transportadora'");
+  ok(iAviso < iDetalhe,
+     'o aviso de "nao vem pacote" aparece ANTES dos detalhes — e o que importa primeiro');
+  ok(iRecado < iDetalhe, '  e o recado do cliente vem antes da ficha tecnica');
+  ok(!/linha\('Motivo', tk\.motivo_texto/.test(GOOD),
+     '  e o texto do cliente nao se repete na lista de campos');
+}
+
+console.log('');
+console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
+process.exit(falhas ? 1 : 0);

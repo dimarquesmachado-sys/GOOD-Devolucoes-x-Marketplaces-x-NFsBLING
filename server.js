@@ -77,6 +77,8 @@ const nfNomes = require('./lib/nf-nomes')({ chamarBling });
 // v3.76 - devolucoes ESPERADAS do portal Magalu Entregas (indice 'a espreita')
 const espreita = require('./lib/magalu-espreita')({ chamarMagalu: magalu.chamarMagalu });
 const devCapturadas = require('./lib/devolucoes-capturadas');   // v4.63
+const tiktokPonte = require('./lib/tiktok-ponte');              // v4.66
+const tiktokDev = require('./lib/tiktok-devolucoes');           // v4.66
 
 // ── Chave p/ rotas de diagnóstico/admin/setup (acessadas com ?k=CHAVE na URL) ──
 // Sem a env ADMIN_KEY configurada no Render, essas rotas ficam DESLIGADAS (404).
@@ -228,7 +230,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.65.0 (ponte TikTok: coleta rodando/falha nao viram lista vazia)',
+    version: '4.66.4 (entrega parcial: pacote N de M na triagem)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -991,6 +993,62 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
       // v3.34.3: mesmo desligada, a tentativa aparece e se explica
       resultado.tentativas.push({ tipo: 'shopee_return', v: '3.34.3', codigo: codigoOriginal, ok: false, status: 0, erro: 'SHOPEE_PROXY_URL/SHOPEE_PROXY_KEY ausentes no Render deste servico' });
     }
+    // ===== TIKTOK (v4.66): depois da Shopee, antes da busca por nome =====
+    //
+    // Fica aqui porque o TikTok e o marketplace com MENOS etiquetas
+    // bipaveis: das 99 devolucoes da Girassol, so 30 tem rastreio (o resto
+    // e reembolso puro, que nunca vira pacote). Tentar antes dos outros
+    // gastaria uma chamada de rede na maioria dos bipes pra nada.
+    if (!devShopee) {
+      try {
+        const rTk = await tiktokDev.procurar(tiktokPonte, 'good', codigoOriginal, { limite: 200 });
+        resultado.tentativas.push({
+          tipo: 'tiktok_devolucao', codigo: codigoOriginal,
+          ok: !!(rTk && rTk.achado), status: (rTk && rTk.achado) ? 200 : (rTk && rTk.ok ? 404 : 502),
+          erro: rTk && rTk.erro ? String(rTk.erro).slice(0, 160) : undefined,
+          // se a coleta la esta rodando ou falhou, "nao achei" NAO quer
+          // dizer "nao existe" — e o que a ponte aprendeu a distinguir
+          coleta_pendente: rTk && rTk.coleta_pendente ? true : undefined,
+        });
+
+        if (rTk && rTk.achado) {
+          const d = rTk.achado;
+          resultado.encontrado = true;
+          resultado.metodo = 'tiktok_devolucao';
+          resultado.eh_devolucao = true;
+          resultado.marketplace = 'tiktok';
+          resultado.tiktok = d;
+          resultado.order = { id: d.pedido || null };
+          resultado.shipment = { id: d.rastreio || null };
+
+          // O AVISO QUE O DONO PEDIU: dizer se o pacote vem ou nao.
+          //
+          // Metade das "devolucoes" do TikTok e reembolso puro: o cliente
+          // reclama, o TikTok aceita e compensa a loja, e nunca existe
+          // retorno fisico. Sem este aviso, o estoquista ficaria esperando
+          // um pacote que nao vai chegar.
+          if (d.vai_chegar === false) {
+            resultado.avisos.push({
+              tipo: 'tiktok_sem_retorno',
+              mensagem: 'TikTok: e REEMBOLSO, sem devolucao fisica ('
+                + (d.motivo_texto || d.motivo || 'motivo nao informado')
+                + '). Nenhum pacote vai chegar por esta solicitacao.',
+            });
+          } else if (d.vai_chegar === null) {
+            resultado.avisos.push({
+              tipo: 'tiktok_indefinido',
+              mensagem: 'TikTok: solicitacao ainda EM ABERTO — pode virar devolucao com retorno ou so reembolso.',
+            });
+          }
+
+          console.log(`[BUSCA] TIKTOK: id=${d.id} pedido=${d.pedido} vai_chegar=${d.vai_chegar}`);
+          return res.json(resultado);
+        }
+      } catch (e) {
+        resultado.tentativas.push({ tipo: 'tiktok_devolucao', codigo: codigoOriginal, ok: false, status: 500, erro: String(e.message || e).slice(0, 160) });
+      }
+    }
+
     if (!devShopee) {
       // v3.71 - ULTIMO RECURSO: o texto tem cara de NOME? (>=5 letras apos
       // colapsar). Casos: remetente da etiqueta Correios digitado/colado

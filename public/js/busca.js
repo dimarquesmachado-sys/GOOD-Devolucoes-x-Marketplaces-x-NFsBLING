@@ -239,6 +239,7 @@ function renderizar(data, ok) {
   html += `<span class="badge badge-info">Metodo: ${data.metodo || '-'}</span>`;
   // v3.28 - rotulo do marketplace conforme o metodo (era fixo "ML")
   const nomeMkt = data.magalu ? 'Magalu'
+    : (data.tiktok || String(data.metodo || '').includes('tiktok')) ? 'TikTok'
     : (data.shopee || String(data.metodo || '').includes('shopee')) ? 'Shopee'
     : (String(data.metodo || '').includes('nf') || String(data.metodo || '').includes('chave')) ? (data.magalu ? 'Magalu' : 'Nota Fiscal')
     : 'Mercado Livre';
@@ -246,6 +247,129 @@ function renderizar(data, ok) {
   if (nf) {
     html += '<span class="badge badge-nfe">🧾 NF-e</span>';
     html += `<span class="badge badge-fonte-ml">via ${nomeMkt}</span>`;
+  }
+
+  // ── TIKTOK (v4.66): o retrato que o painel deles ja mostrava ────────
+  //
+  // O dono conferiu a tela do TikTok e apontou que e a mais completa
+  // entre os marketplaces — rastreio, transportadora, trajeto, armazem.
+  // Quase tudo ja vinha na coleta e nao aparecia aqui.
+  //
+  // O aviso de "NAO vem pacote" vem PRIMEIRO e em vermelho: metade das
+  // devolucoes do TikTok e reembolso puro, e o estoquista precisa saber
+  // disso antes de qualquer outra coisa.
+  if (data.tiktok) {
+    const tk = data.tiktok;
+    html += '<div style="margin-top:10px;padding:10px;border-radius:8px;background:#f7f7f9;border:1px solid #ddd">';
+
+    if (tk.vai_chegar === false) {
+      html += '<div style="padding:8px;border-radius:6px;background:#ffebee;border:2px solid #c62828;'
+        + 'color:#b71c1c;font-weight:700;margin-bottom:8px">'
+        + '🚫 SEM DEVOLUÇÃO FÍSICA — nenhum pacote vai chegar por esta solicitação'
+        + (tk.motivo_texto ? '<div style="font-weight:400;margin-top:4px">Motivo: ' + escapeHtml(String(tk.motivo_texto)) + '</div>' : '')
+        + '</div>';
+    } else if (tk.vai_chegar === null) {
+      html += '<div style="padding:8px;border-radius:6px;background:#fff8e1;border:2px solid #f9a825;'
+        + 'color:#e65100;font-weight:600;margin-bottom:8px">'
+        + '⏳ Solicitação ainda EM ABERTO — pode virar devolução com retorno ou só reembolso</div>';
+    }
+
+    if (tk.combinada) {
+      html += '<div style="padding:8px;border-radius:6px;background:#e8eaf6;border:2px solid #3949ab;'
+        + 'color:#1a237e;font-weight:700;margin-bottom:8px">'
+        + '📦📦 DEVOLUÇÃO COMBINADA — esta caixa pode ter MAIS DE UM PEDIDO</div>';
+    }
+
+    // ── O RECADO DO CLIENTE (v4.66) ────────────────────────────────
+    //
+    // Ideia do dono: "é tipo o recado anotação que eu faço no ADMIN pra
+    // outros pedidos de outros marketplaces, só q o TIKTOK dando de
+    // graça, sem trabalho manual pra mim".
+    //
+    // O TikTok pede pro cliente escrever o que houve, e esse texto vem na
+    // coleta (return_reason_text, 99 de 99). "Produto muito pequeno,
+    // diferente do que foi mostrado" diz ao estoquista o que procurar na
+    // caixa — muito mais util que o motivo generico.
+    //
+    // Estilo igual ao recado do admin, pra ser lido do mesmo jeito.
+    if (tk.motivo_texto) {
+      html += '<div style="border:3px solid #1565c0;background:#e3f2fd;border-radius:10px;'
+        + 'padding:12px;margin-bottom:10px">'
+        + '<div style="font-weight:800;color:#0d47a1;margin-bottom:4px">💬 O QUE O CLIENTE DISSE</div>'
+        + '<div style="font-size:15px;color:#0d47a1">' + escapeHtml(String(tk.motivo_texto)) + '</div>'
+        + '</div>';
+    }
+
+    // b180 (Codex): TUDO que vem do TikTok passa por escapeHtml. O texto e
+    // escrito pelo CLIENTE — se ele mandar HTML na reclamacao, executaria
+    // aqui dentro do painel do admin. Vale pros campos tecnicos tambem:
+    // nome de transportadora e endereco de armazem vem de fora.
+    const linha = (rot, val) => val
+      ? '<div style="margin:3px 0"><b>' + rot + ':</b> ' + escapeHtml(String(val)) + '</div>' : '';
+    html += linha('Transportadora', tk.transportadora);
+    html += linha('Rastreio da devolução', tk.rastreio);
+    html += linha('Como o cliente devolveu', tk.metodo_devolucao);
+    html += linha('Armazém de destino', tk.armazem_destino);
+    html += linha('Motivo', tk.motivo);   // o texto do cliente ja apareceu acima
+    html += linha('Valor do reembolso', tk.valor != null ? ('R$ ' + Number(tk.valor).toFixed(2)) : null);
+
+    // ── PACOTE PARCIAL (v4.66) ──────────────────────────────────────
+    //
+    // O TikTok abre UMA solicitacao por item da nota, cada uma com seu
+    // rastreio — ou seja, VARIAS CAIXAS do mesmo pedido. Sem este aviso o
+    // estoquista abre a primeira, ve metade dos itens da nota e marca
+    // DIVERGENCIA, quando na verdade esta tudo certo e a outra vem depois.
+    //
+    // Pedido dele: "se ele souber que é 1 pacote de 2, e q é parcial,
+    // orientando pra ele triar só 5 unidades dessa vez, aí perfeito".
+    if (tk.pacotes && tk.pacotes.length > 1) {
+      const qual = tk.pacotes.findIndex((p) => p.esta) + 1;
+      html += '<div style="border:3px solid #ef6c00;background:#fff3e0;border-radius:10px;'
+        + 'padding:12px;margin:10px 0">'
+        + '<div style="font-weight:800;color:#e65100;font-size:16px;margin-bottom:6px">'
+        + '📦 ENTREGA PARCIAL — pacote ' + (qual || '?') + ' de ' + tk.pacotes.length + '</div>'
+        + '<div style="color:#e65100;margin-bottom:8px">Este pedido volta em '
+        + tk.pacotes.length + ' caixas separadas. <b>Confira só o que vem NESTA</b> — '
+        + 'o resto chega em outra entrega, não marque divergência.</div>';
+
+      tk.pacotes.forEach((p, i) => {
+        const dest = p.esta;
+        html += '<div style="margin:6px 0;padding:8px;border-radius:6px;'
+          + 'background:' + (dest ? '#fff' : '#fafafa') + ';'
+          + 'border:' + (dest ? '2px solid #ef6c00' : '1px solid #ddd') + '">'
+          + '<b>' + (dest ? '👉 ESTA CAIXA' : 'Caixa ' + (i + 1)) + '</b>'
+          + (p.rastreio ? ' · <code>' + escapeHtml(String(p.rastreio)) + '</code>' : '')
+          + (p.status ? ' · ' + escapeHtml(String(p.status)) : '');
+        if (p.itens && p.itens.length) {
+          html += '<ul style="margin:4px 0 0 18px">';
+          p.itens.forEach((it) => {
+            html += '<li>' + (it.qtd != null ? escapeHtml(String(it.qtd)) + '× ' : '')
+              + (it.sku ? '<code>' + escapeHtml(String(it.sku)) + '</code> ' : '')
+              + escapeHtml(String(it.nome || '')) + '</li>';
+          });
+          html += '</ul>';
+        }
+        html += '</div>';
+      });
+      html += '</div>';
+    } else if (tk.itens && tk.itens.length) {
+      // caixa unica: a lista simples de sempre
+      html += '<div style="margin-top:8px"><b>Itens que deveriam vir nesta devolução:</b><ul style="margin:4px 0 0 18px">';
+      tk.itens.forEach((it) => {
+        html += '<li>' + (it.qtd != null ? escapeHtml(String(it.qtd)) + '× ' : '')
+          + (it.sku ? '<code>' + escapeHtml(String(it.sku)) + '</code> ' : '')
+          + escapeHtml(String(it.nome || '')) + '</li>';
+      });
+      html += '</ul></div>';
+    }
+
+    // devolucao encadeada: o cliente abriu, cancelou, abriu de novo
+    if (tk.anterior_id || tk.proxima_id) {
+      html += '<div style="margin-top:6px;font-size:13px;color:#666">'
+        + '🔗 Faz parte de uma sequência de solicitações do mesmo pedido</div>';
+    }
+
+    html += '</div>';
   }
 
   // v4.33 - a barra amarela gigante saiu: a quantidade agora vive
