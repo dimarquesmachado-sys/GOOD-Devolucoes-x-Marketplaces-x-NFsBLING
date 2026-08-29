@@ -262,6 +262,16 @@
    *
    * Devolve { valor, tipo, extra } ou null se nao souber ler.
    */
+  // v6 - EXPOSTA: o scanner da CAMERA usa a mesma regra.
+  //
+  // Ate 29/08 a camera pegava codes[0] — o primeiro codigo que entrasse no
+  // quadro. Numa etiqueta Magalu, o codigo de barras e grande e o QR e
+  // pequeno: dava pra bipar o RASTREIO, que e justamente o que nao acha
+  // devolucao. Duplicar a logica aqui criaria duas copias pra divergir
+  // (a licao do dia), entao a funcao vira publica e os dois leitores
+  // chamam a MESMA.
+  window.interpretarCodigoLido = function (bruto) { return interpretarQr(bruto); };
+
   function interpretarQr(bruto) {
     var txt = String(bruto || '').trim();
     if (!txt) return null;

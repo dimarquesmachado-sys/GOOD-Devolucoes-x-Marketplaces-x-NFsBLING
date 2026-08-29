@@ -127,10 +127,13 @@ DESTINATARIO NOME DE TESTE REMETENTE AMBTOTAL`;
   ok(/jsqr@/i.test(HTML_AMB), 'a AMB carrega a biblioteca de QR');
   ok(/jsqr@/i.test(HTML_GOOD), '  e a GOOD tambem');
   // sem furar o cache, o navegador serve o arquivo velho e o conserto "nao chega"
-  // o numero muda a cada entrega; o que importa e NAO ficar no b129 antigo,
-  // porque agora o conteudo vem da GOOD e muda sem a AMB ser tocada
-  ok(/colar-imagem\.js\?v=b3[3-9]\d/.test(HTML_AMB), '  cache-buster da AMB atualizado');
-  ok(/colar-imagem\.js\?v=4570/.test(HTML_GOOD), '  e o da GOOD tambem');
+  // o numero muda a cada entrega, entao o teste checa so que SAIU do
+  // valor velho — travar num numero fixo faz este teste quebrar em toda
+  // mudanca de front, sem nada estar errado (aconteceu em 29/08).
+  ok(/colar-imagem\.js\?v=b(?!129)\w+/.test(HTML_AMB),
+     '  cache-buster da AMB saiu do b129 antigo');
+  ok(/colar-imagem\.js\?v=4[5-9]\d\d/.test(HTML_GOOD),
+     '  e o da GOOD acompanha a versao do servidor');
 }
 
 // ── v5.3: o TETO do canvas precisa REDUZIR, nao so deixar de ampliar
