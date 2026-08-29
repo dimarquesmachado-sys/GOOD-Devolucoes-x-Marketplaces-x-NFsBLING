@@ -228,7 +228,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.64.1 (camera: preferencia por modo; payload Magalu nao passa pela limpeza)',
+    version: '4.64.0 (camera escolhe o codigo por modo; barra de navegacao)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),

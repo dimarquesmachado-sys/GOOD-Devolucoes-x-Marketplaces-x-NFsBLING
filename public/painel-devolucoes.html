@@ -2928,5 +2928,16 @@
     setTimeout(verPendentes, 60000);
   })();
 </script>
+
+  <!-- Barra de navegacao entre os paineis (Fragil, Respostas, checkouts,
+       Ponto, Devolucoes GOOD e AMB). A peca e UNICA e mora no
+       Mover-Pedidos, servida com no-cache: melhorou la, melhorou aqui.
+       Combinado com a conversa do Checkout em 29/08.
+
+       `defer` de proposito: a barra e enfeite de navegacao, nao pode
+       atrasar a tela do admin. E se o outro servico estiver fora do ar ou
+       lento, a pagina segue igual — o script nao tem dependencia nenhuma
+       com o resto daqui. -->
+  <script defer src="https://mover-pedidos-aguardando-x-atendido.onrender.com/comum/nav.js"></script>
 </body>
 </html>
