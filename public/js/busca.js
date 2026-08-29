@@ -280,13 +280,33 @@ function renderizar(data, ok) {
         + '📦📦 DEVOLUÇÃO COMBINADA — esta caixa pode ter MAIS DE UM PEDIDO</div>';
     }
 
+    // ── O RECADO DO CLIENTE (v4.66) ────────────────────────────────
+    //
+    // Ideia do dono: "é tipo o recado anotação que eu faço no ADMIN pra
+    // outros pedidos de outros marketplaces, só q o TIKTOK dando de
+    // graça, sem trabalho manual pra mim".
+    //
+    // O TikTok pede pro cliente escrever o que houve, e esse texto vem na
+    // coleta (return_reason_text, 99 de 99). "Produto muito pequeno,
+    // diferente do que foi mostrado" diz ao estoquista o que procurar na
+    // caixa — muito mais util que o motivo generico.
+    //
+    // Estilo igual ao recado do admin, pra ser lido do mesmo jeito.
+    if (tk.motivo_texto) {
+      html += '<div style="border:3px solid #1565c0;background:#e3f2fd;border-radius:10px;'
+        + 'padding:12px;margin-bottom:10px">'
+        + '<div style="font-weight:800;color:#0d47a1;margin-bottom:4px">💬 O QUE O CLIENTE DISSE</div>'
+        + '<div style="font-size:15px;color:#0d47a1">' + tk.motivo_texto + '</div>'
+        + '</div>';
+    }
+
     const linha = (rot, val) => val
       ? '<div style="margin:3px 0"><b>' + rot + ':</b> ' + val + '</div>' : '';
     html += linha('Transportadora', tk.transportadora);
     html += linha('Rastreio da devolução', tk.rastreio);
     html += linha('Como o cliente devolveu', tk.metodo_devolucao);
     html += linha('Armazém de destino', tk.armazem_destino);
-    html += linha('Motivo', tk.motivo_texto || tk.motivo);
+    html += linha('Motivo', tk.motivo);   // o texto do cliente ja apareceu acima
     html += linha('Valor do reembolso', tk.valor != null ? ('R$ ' + Number(tk.valor).toFixed(2)) : null);
 
     // os itens que DEVERIAM estar na caixa — e o que o estoquista confere

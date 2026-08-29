@@ -223,17 +223,26 @@ const AGUARDANDO_ENVIO = {
        '  avisa quando a caixa pode ter mais de um pedido');
     ok(/Itens que deveriam vir nesta devolução/.test(src),
        '  lista os itens, que e o que o estoquista confere contra a caixa');
+    // o recado do cliente: "o TikTok dando de graca, sem trabalho manual"
+    ok(/O QUE O CLIENTE DISSE/.test(src),
+       '  mostra o RECADO do cliente em destaque (vem em 99 de 99)');
+    ok(/border:3px solid #1565c0/.test(src),
+       '  no mesmo estilo do recado do admin, pra ser lido do mesmo jeito');
     ok(/Transportadora/.test(src) && /Armazém de destino/.test(src),
        '  e mostra transportadora e armazem');
     ok(/data\.tiktok \|\| String\(data\.metodo \|\| ''\)\.includes\('tiktok'\)/.test(src),
        '  e o rotulo do marketplace reconhece o TikTok (era "Mercado Livre" por padrao)');
   });
 
-  // a ordem importa: o aviso de "nao vem" antes dos detalhes
+  // a ordem importa: aviso, depois recado, depois detalhes
   const iAviso = GOOD.indexOf('SEM DEVOLUÇÃO FÍSICA');
+  const iRecado = GOOD.indexOf('O QUE O CLIENTE DISSE');
   const iDetalhe = GOOD.indexOf("linha('Transportadora'");
   ok(iAviso < iDetalhe,
      'o aviso de "nao vem pacote" aparece ANTES dos detalhes — e o que importa primeiro');
+  ok(iRecado < iDetalhe, '  e o recado do cliente vem antes da ficha tecnica');
+  ok(!/linha\('Motivo', tk\.motivo_texto/.test(GOOD),
+     '  e o texto do cliente nao se repete na lista de campos');
 }
 
 console.log('');
