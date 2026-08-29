@@ -142,6 +142,48 @@ const diasAtras = (n) => Math.floor(new Date(HOJE.getTime() - n * 864e5).getTime
   ok(rev.separar(null, HOJE).total_perdidas === 0, 'corpo nulo tambem nao');
 }
 
+// ── b182: o formato REAL, medido em producao ────────────────────────
+// A rota deles NAO devolve os eventos crus — devolve a conta pronta. Eu
+// procurava eventos e a resposta vinha ZERADA com 50 revelias reais.
+{
+  const REAL = {
+    ok: true, loja: 'girassol', total_com_eventos: 99,
+    perdidas_por_revelia: 50,
+    valor_das_devolucoes_com_revelia: 2715.41,
+    aguardando_analise: [],
+  };
+  const r = rev.separar(REAL, HOJE);
+  ok(r.total_perdidas === 50,
+     'aproveita a contagem que o outro servico ja fez (50 revelias na Girassol)');
+  ok(r.valor_perdido === 2715.41, '  e o valor somado (R$ 2.715,41)');
+  ok(r.valor_e_da_tela === true,
+     '  marcando que e valor de TELA, nao prejuizo (o extrato debita mais)');
+  ok(r.total_com_eventos === 99, '  e quantas foram analisadas');
+
+  // se eu conseguir ver MAIS que eles, o meu numero vale — nunca menos
+  const comEventos = rev.separar({
+    perdidas_por_revelia: 1,
+    valor_das_devolucoes_com_revelia: 10,
+    devolucoes: [
+      { id: 'X', refund_amount: 50, eventos: [
+        { evento: 'BUYER_SHIPPED', data: diasAtras(13) },
+        { evento: 'SELLER_REJECT_RECEIVE_DELIVERED_TIMEOUT', data: diasAtras(6) } ] },
+      { id: 'Y', refund_amount: 30, eventos: [
+        { evento: 'BUYER_SHIPPED', data: diasAtras(13) },
+        { evento: 'SELLER_REJECT_RECEIVE_DELIVERED_TIMEOUT', data: diasAtras(6) } ] },
+    ],
+  }, HOJE);
+  ok(comEventos.total_perdidas === 2,
+     'se eu enxergo MAIS que eles nos eventos, vale o maior (nunca esconder problema)');
+
+  // sem a conta pronta, o caminho antigo continua valendo
+  const soEventos = rev.separar({ devolucoes: [
+    { id: 'Z', refund_amount: 20, eventos: [{ evento: 'BUYER_SHIPPED', data: diasAtras(5) }] },
+  ] }, HOJE);
+  ok(soEventos.total_em_risco === 1 && soEventos.valor_e_da_tela === undefined,
+     'e sem a conta pronta, calculo pelos eventos como antes');
+}
+
 // ── esta ligado? ────────────────────────────────────────────────────
 {
   const fs = require('fs');
