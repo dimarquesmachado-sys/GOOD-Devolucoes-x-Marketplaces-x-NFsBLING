@@ -55,22 +55,34 @@ ROTAS.forEach((r) => {
   ok(/\.catch\(/.test(ag), '  e tem catch (promessa sem dono derruba o processo)');
 }
 
-// ── a duplicata agora morre no banco, nao so na checagem ─────────────
+// ── a duplicata AVISA, mas nao trava (decisao do dono, 29/08) ───────
 {
+  // O tratamento do 23505 fica: e barato, e se algum dia um indice voltar
+  // (ou ja existir num banco antigo), o estoquista ve a mensagem de sempre
+  // em vez de um erro cru do Postgres.
   ROTAS.forEach((r) => {
     ok(/error\.code === '23505'/.test(rota(r)),
-       '/api/triagem/' + r + ' trata a recusa de unicidade do banco (23505)');
+       '/api/triagem/' + r + ' ainda traduz a recusa de unicidade, se houver');
   });
   ok(/erro: 'duplicata'/.test(rota('aprovar')),
-     '  e responde com o MESMO codigo da checagem antiga (a tela ja sabe tratar)');
-  ok(fs.existsSync(path.join(RAIZ, 'docs', 'INDICE-UNICO-TRIAGEM.md')),
-     'o SQL do indice unico esta documentado (falta rodar no Supabase)');
-  const doc = fs.readFileSync(path.join(RAIZ, 'docs', 'INDICE-UNICO-TRIAGEM.md'), 'utf8');
-  ok(/CREATE UNIQUE INDEX/.test(doc), '  com o CREATE UNIQUE INDEX');
-  ok(/WHERE shipment_id IS NOT NULL/.test(doc),
-     '  e o WHERE que deixa de fora quem nao tem shipment_id (senao colidiriam entre si)');
-  ok(/SELECT shipment_id, COUNT/.test(doc),
-     '  e a consulta pra achar duplicata ANTES de criar o indice');
+     '  com o MESMO codigo da checagem antiga (a tela ja sabe tratar)');
+
+  // Mas a regra e AVISAR, nao impedir: o filtro real e o admin na emissao.
+  const doc = fs.readFileSync(path.join(RAIZ, 'docs', 'TRIAGEM-DUPLICADA.md'), 'utf8');
+  ok(/n[aã]o (impede|h[aá] trava)/i.test(doc),
+     'a regra documentada e AVISAR, nao impedir');
+  ok(/DROP INDEX CONCURRENTLY IF EXISTS devolucoes_shipment_id_unico/.test(doc),
+     '  com o comando pra derrubar o indice que chegou a ser criado na GOOD');
+  ok(doc.indexOf('Triar\nmesmo assim') !== -1 || doc.indexOf('Triar mesmo assim') !== -1 || /re-triagem/.test(doc),
+     '  e o motivo: o indice quebra o botao de re-triagem, que existe de proposito');
+  ok(/GOOD, AMB e qualquer empresa/i.test(doc),
+     '  valendo pra TODAS as empresas, nao so uma');
+
+  const velho = fs.readFileSync(path.join(RAIZ, 'docs', 'INDICE-UNICO-TRIAGEM.md'), 'utf8');
+  ok(/DESCONTINUADO/.test(velho), 'o doc antigo do indice esta marcado como descontinuado');
+  ok(/TRIAGEM-DUPLICADA\.md/.test(velho), '  e aponta pro que vale agora');
+  ok(!/^CREATE UNIQUE INDEX/m.test(velho),
+     '  sem comando ativo de criar indice (era o que estava la)');
 }
 
 // ── o front tambem nao segura o botao esperando o Bling ──────────────

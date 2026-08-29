@@ -227,7 +227,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.60.0 (card com NF de devolucao emitida fica verde nos 4 lados)',
+    version: '4.62.0 (ida e volta da mesma venda: pack e NF sao o balizador)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -2130,19 +2130,35 @@ app.get('/api/triagem/status/:shipmentId', requerEstoquista, async (req, res) =>
   // v3.64 - a MESMA devolucao pode ter sido gravada por identificadores
   // diferentes (chave da NF num bipe, protocolo Magalu noutro). A checagem
   // aceita um segundo id via ?tambem= e busca por OR nas duas colunas.
+  // b166.1 - aceita VARIOS ?tambem= (o front agora manda todas as portas:
+  // shipment, pedido, chave, numero da NF, rastreio). Express entrega
+  // repetidos como array; um valor so vem como string.
+  const brutos = req.query.tambem;
+  const lista = Array.isArray(brutos) ? brutos : (brutos ? [brutos] : []);
   const ids = [ident];
-  const tambem = String(req.query.tambem || '').trim();
-  if (tambem && tambem !== ident) ids.push(tambem);
+  for (const t of lista) {
+    const v = String(t || '').trim();
+    if (v && !ids.includes(v)) ids.push(v);
+  }
   const ors = [];
   for (const idv of ids) {
     const seguro = idv.replace(/[",()]/g, '');
     ors.push(`shipment_id.eq.${seguro}`);
+    // b166.1 - as mesmas portas da AMB. O front manda todas agora, e um
+    // registro gravado so pelo pedido, pelo numero da NF ou pelo rastreio
+    // dos Correios passava batido — dava pra triar de novo sem aviso.
+    ors.push(`order_id.eq.${seguro}`);
+    // b167 - o PACK amarra IDA e VOLTA da mesma venda (ver comentario da AMB)
+    ors.push(`pack_id.eq.${seguro}`);
+    ors.push(`nf_numero.eq.${seguro}`);
     if (/^\d{44}$/.test(seguro)) ors.push(`nf_chave.eq.${seguro}`);
   }
   try {
     const { data, error } = await supabase
       .from('devolucoes')
-      .select('id, created_at, tipo, status, problema_descricao, problema_fotos, data_concluido, nf_numero, produto_qtd')
+      // b166.2 - funcionario entra no select: a tela usa esse campo pra dizer
+      // QUEM triou. Sem ele, mostrava 'Por ?' mesmo com o nome no banco.
+      .select('id, created_at, tipo, status, problema_descricao, problema_fotos, data_concluido, nf_numero, produto_qtd, funcionario')
       .or(ors.join(','))
       .order('created_at', { ascending: false });
 

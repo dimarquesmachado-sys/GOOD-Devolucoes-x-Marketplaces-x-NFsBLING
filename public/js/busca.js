@@ -508,8 +508,45 @@ function renderizar(data, ok) {
   // v3.28 - a MESMA devolucao pode ter sido triada por outro identificador
   // (ex: Diego triou pela chave da NF; o QR chega com o protocolo). Passamos
   // os DOIS pro status, que busca por OR - reconhece por qualquer porta.
-  const idPrincipal = shipment.id || nf?.chaveAcesso || nf?.chave || data.magalu?.protocolo || null;
-  const idAlternativo = (data.magalu?.protocolo && data.magalu.protocolo !== idPrincipal) ? data.magalu.protocolo : null;
+  // b166.4 (Codex): o NUMERO DA NF entra na cascata do principal. Buscando
+  // pelo numero, a nota pode voltar SEM chaveAcesso — e ai, sem shipment e
+  // sem protocolo Magalu, o idPrincipal ficava null e a verificacao nem era
+  // chamada. Resultado: registro gravado por nf_numero passava sem banner,
+  // que e justamente o que este PR veio impedir. Fica por ultimo pra nao
+  // roubar a vez de identificador mais especifico.
+  const idPrincipal = shipment.id || nf?.chaveAcesso || nf?.chave
+    || data.magalu?.protocolo || nf?.numero || null;
+  // b166.1 (Codex): TODAS as portas pelas quais aquele pacote pode ter sido
+  // gravado antes. Antes ia so o protocolo Magalu como alternativo, entao
+  // registro salvo pelo numero da NF ou pelo rastreio dos Correios passava
+  // batido e dava pra triar de novo sem aviso.
+  const idAlternativo = [
+    data.magalu?.protocolo,
+    shipment.id,
+    nf?.chaveAcesso, nf?.chave,
+    nf?.numero,                       // o numero da NF, sem os 44 digitos
+    data.pack?.id,
+    // b166.2 (Codex): o RASTREIO da remessa reversa. Numa etiqueta dos
+    // Correios (AD/AP...BR) o backend guarda o codigo bipado em
+    // data.ml_return.tracking — nao em shipment.tracking. Sem esta linha, o
+    // registro gravado so pelo tracking continuava sem ser achado, que era
+    // exatamente o caso que o filtro novo veio cobrir.
+    data.ml_return?.tracking, data.return?.tracking,
+    shipment.tracking, data.tracking,
+    // b167 - O PEDIDO VOLTA A ENTRAR SEMPRE.
+    //
+    // Eu tinha tirado o pedido achando que evitava falso positivo: os dados
+    // mostravam o pedido 2000017367190752 com DOIS shipments, e eu li isso
+    // como "dois envios legitimos". Com as duas etiquetas na mao (29/08), a
+    // premissa caiu: uma e a NOSSA POSTAGEM (envio 47501559178) e a outra e
+    // a que o ML deu pro cliente DEVOLVER (47528658744). Mesma venda, ida e
+    // volta — e por isso deu pra triar duas vezes.
+    //
+    // O identificador estavel de uma venda nao e o envio, que muda; e a NF
+    // (uma por venda, em qualquer marketplace) e o PACK, que e o mesmo nas
+    // duas etiquetas. O pedido idem. Entao vai tudo.
+    data.order?.id,
+  ];
   window._magaluProtocolo = data.magalu?.protocolo || null; // p/ triagem gravar
   if (idPrincipal) {
     verificarTriagemExistente(idPrincipal, idAlternativo);
@@ -583,7 +620,19 @@ async function verificarTriagemExistente(shipmentId, idAlternativo) {
   if (!cont) return;
 
   try {
-    const extra = idAlternativo ? ('?tambem=' + encodeURIComponent(idAlternativo)) : '';
+    // b166.1 (Codex): manda TODOS os identificadores que existirem, nao so
+    // dois. A consulta do servidor procura por shipment, pedido, tracking,
+    // numero da NF e chave — mas so acha o que a gente MANDA. Um registro
+    // gravado so pelo numero da NF nao era achado, porque o front mandava a
+    // chave de 44 digitos; o filtro nf_numero.eq.<chave> nunca casava.
+    const extras = (Array.isArray(idAlternativo) ? idAlternativo : [idAlternativo])
+      .map((x) => String(x == null ? '' : x).trim())
+      .filter((x) => x && x !== String(shipmentId));
+    const vistos = {};
+    const unicos = extras.filter((x) => (vistos[x] ? false : (vistos[x] = true)));
+    const extra = unicos.length
+      ? '?' + unicos.map((x) => 'tambem=' + encodeURIComponent(x)).join('&')
+      : '';
     const r = await fetch('/api/triagem/status/' + encodeURIComponent(shipmentId) + extra);
     const d = await r.json();
     if (!d.ok) {
@@ -664,35 +713,70 @@ function renderizarTriagemDuplicata(reg) {
     dateStyle: 'short', timeStyle: 'short',
   });
 
-  // Extrair quem triou da descricao
-  let triadoPor = '?';
-  const desc = reg.problema_descricao || '';
-  const m1 = desc.match(/Aprovado por\s+(\w+)/i);
-  const m2 = desc.match(/\[Reportado por\s+(\w+)\]/i);
-  const m3 = desc.match(/\[DIVERGENTE por\s+(\w+)\]/i);
-  if (m1) triadoPor = m1[1];
-  else if (m2) triadoPor = m2[1];
-  else if (m3) triadoPor = m3[1];
+  // b166.2 (Codex): o nome vem do CAMPO, nao mais so da descricao.
+  //
+  // A extracao por texto usava \w+, que nao aceita espaco nem acento: um
+  // "Joao Silva" ou "Joao" com til viravam "Por ?" mesmo com o nome
+  // gravado. E em triagem aprovada comum a descricao vem vazia, entao nao
+  // havia texto nenhum de onde extrair.
+  //
+  // A coluna `funcionario` sempre teve o nome. A leitura da descricao fica
+  // de reserva, pros registros antigos que so tem o texto.
+  let triadoPor = String(reg.funcionario || '').trim();
+  if (!triadoPor) {
+    const desc = reg.problema_descricao || '';
+    // [^\]] e o que muda: pega o nome inteiro ate o fecha-colchete,
+    // espacos e acentos inclusos
+    const m1 = desc.match(/Aprovado por\s+([^\[\]\n]+?)\s*(?:\[|$)/i);
+    const m2 = desc.match(/\[Reportado por\s+([^\]]+)\]/i);
+    const m3 = desc.match(/\[DIVERGENTE por\s+([^\]]+)\]/i);
+    if (m2) triadoPor = m2[1].trim();
+    else if (m3) triadoPor = m3[1].trim();
+    else if (m1) triadoPor = m1[1].trim();
+  }
+  if (!triadoPor) triadoPor = '?';
 
+  // b166 - VERMELHO e com ACENTO (pedido do dono, 29/08). Era laranja e sem
+  // acento; num galpao corrido, laranja passa por "aviso" e nao por "pare".
   cont.innerHTML = `
-    <div style="background:#fff3e0;border:2px solid #ff9800;border-radius:10px;padding:14px;text-align:center;">
-      <div style="font-size:32px;margin-bottom:6px;">⚠️</div>
-      <div style="font-size:15px;font-weight:700;color:#e65100;margin-bottom:4px;">
-        Esta devolucao JA FOI TRIADA
+    <div style="background:#ffebee;border:3px solid #c62828;border-radius:10px;padding:16px;text-align:center;">
+      <div style="font-size:36px;margin-bottom:6px;">⛔</div>
+      <div style="font-size:17px;font-weight:800;color:#b71c1c;margin-bottom:6px;">
+        ESTA DEVOLUÇÃO JÁ FOI TRIADA
       </div>
-      <div style="font-size:13px;color:#5d4037;line-height:1.6;">
+      <div style="font-size:13.5px;color:#4e342e;line-height:1.6;">
         <strong>${escapeHtml(tipoLabel)}</strong><br>
         Por <strong>${escapeHtml(triadoPor)}</strong> em <strong>${escapeHtml(data)}</strong><br>
         ${statusLabel}
       </div>
-      <div style="margin-top:12px;padding-top:12px;border-top:1px solid #ffcc80;font-size:12px;color:#5d4037;">
+      <div style="margin-top:12px;padding-top:12px;border-top:1px solid #ef9a9a;font-size:12.5px;color:#4e342e;">
         ${reg.status === 'concluido'
-          ? 'Ja foi resolvida. Nao precisa fazer nada.'
-          : 'Diego ja foi avisado. Aguarde retorno.'}
+          ? 'Já foi resolvida. <strong>Não precisa fazer nada.</strong>'
+          : 'O Diego já foi avisado. <strong>Aguarde retorno.</strong>'}
       </div>
-      <button class="btn-action cinza" style="margin-top:12px;font-size:11px;padding:6px 12px;"
-        onclick="if(confirm('Tem certeza que quer triar de novo? Isso vai criar um SEGUNDO registro.')) forcarReTriagem()">
-        🔄 Triar mesmo assim (so se foi engano)
+
+      <!-- b166 - o aviso de re-triagem virou BANNER, nao popup. O confirm()
+           some com um Enter distraido; o banner fica na tela e obriga a ler
+           antes de achar o botao. -->
+      <div id="avisoReTriagem" style="display:none;margin-top:14px;background:#b71c1c;color:#fff;border-radius:8px;padding:12px 14px;text-align:left;">
+        <div style="font-size:14px;font-weight:800;margin-bottom:4px;">⛔ ATENÇÃO — vai criar um SEGUNDO registro</div>
+        <div style="font-size:12.5px;line-height:1.55;">
+          Este pacote já foi triado. Triar de novo <strong>não corrige</strong> a triagem anterior:
+          cria outra, e o Diego vai ver as duas na hora de emitir a NF.<br>
+          <strong>Só continue se a primeira foi engano.</strong>
+        </div>
+        <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;">
+          <button class="btn-action" style="background:#fff;color:#b71c1c;font-weight:800;font-size:12px;padding:8px 14px;"
+            onclick="forcarReTriagem()">Sim, triar mesmo assim</button>
+          <button class="btn-action" style="background:rgba(255,255,255,0.18);color:#fff;font-size:12px;padding:8px 14px;"
+            onclick="document.getElementById('avisoReTriagem').style.display='none';document.getElementById('btnAbrirReTriagem').style.display='';">
+            Cancelar</button>
+        </div>
+      </div>
+
+      <button id="btnAbrirReTriagem" class="btn-action cinza" style="margin-top:12px;font-size:11px;padding:6px 12px;"
+        onclick="this.style.display='none';document.getElementById('avisoReTriagem').style.display='block';">
+        🔄 Triar mesmo assim (só se foi engano)
       </button>
     </div>
   `;

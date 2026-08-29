@@ -117,14 +117,28 @@ async function triagensDe(identificadores) {
     const seguro = id.replace(/["',()]/g, '');
     if (!seguro) continue;
     filtros.push(`shipment_id.eq.${seguro}`);
-    filtros.push(`order_id.eq.${seguro}`);          // Magalu nao tem shipment
+    filtros.push(`order_id.eq.${seguro}`);
+    // b167 - o PACK amarra IDA e VOLTA da mesma venda. Medido em 29/08 com
+    // as duas etiquetas na mao: a da nossa postagem (envio 47501559178) e a
+    // que o ML deu pro cliente devolver (47528658744) tem shipments
+    // DIFERENTES e o MESMO pack 2000013967364577. Sem procurar por ele, o
+    // segundo bipe parecia uma devolucao nova.
+    filtros.push(`pack_id.eq.${seguro}`);
+    // b166 (Codex): tracking e nf_numero TAMBEM identificam. A rota
+    // /api/triagem/registrar aceita e grava os dois, e o jaTriado que ja
+    // existia aqui procurava por eles. Sem estas duas linhas, um pacote
+    // gravado so por tracking (Correios) ou so pelo numero da NF passava
+    // batido e podia ser triado de novo — que e justamente o que esta
+    // rota veio impedir.
+    filtros.push(`tracking.eq.${seguro}`);
+    filtros.push(`nf_numero.eq.${seguro}`);
     if (/^\d{44}$/.test(seguro)) filtros.push(`nf_chave.eq.${seguro}`);
   }
   if (!filtros.length) return { ok: true, registros: [] };
 
   try {
     const r = await db.from(T.devolucoes)
-      .select('id, criado_em, tipo, status, problema_descricao, nf_numero, produto_qtd, funcionario, shipment_id, order_id')
+      .select('id, criado_em, tipo, status, problema_descricao, nf_numero, produto_qtd, funcionario, shipment_id, order_id, pack_id, nf_chave')
       .or(filtros.join(','))
       .order('criado_em', { ascending: false });
     if (r.error) return { ok: false, erro: r.error.message };
@@ -137,6 +151,11 @@ async function triagensDe(identificadores) {
       // na GOOD o tipo E o desfecho. Aqui a gente entrega como a GOOD.
       tipo: x.tipo && x.tipo !== 'devolucao' ? x.tipo : (x.status || 'aprovado'),
       status_original: x.status,
+      // b166.2 (Codex): a tela agora le o campo `funcionario` direto (vem no
+      // select acima), entao nao precisa mais inventar marcador dentro da
+      // descricao — o que so funcionava pra nome de uma palavra sem acento.
+      // A descricao volta a ser o que e: a descricao.
+      problema_descricao: x.problema_descricao,
     }));
     return { ok: true, registros };
   } catch (e) {
