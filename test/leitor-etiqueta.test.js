@@ -28,36 +28,40 @@ const bloco =
 const api = new Function(bloco + '; return { candidatos, interpretarQr, reconhecerEtiqueta };')();
 
 // ── 1. O QR REAL da etiqueta Magalu da AMB (29/08) ───────────────────
-const QR_REAL = '{"external_grouper_code":"1550970116332325","external_code":"db1d4527-1e61-462e-af25-e5c71e11756f","tag_code":"197008400-01","logistical_flow_start":"DROP_OFF","logistical_flow_operation":"DIRECT","service_name":"CONVENTIONAL","receiver_zipcode":"24875525"}';
+// Formato REAL do QR da etiqueta Magalu (campos e estrutura conferidos na
+// etiqueta da AMB em 29/08), mas com valores SINTETICOS: pedido, UUID, tag e
+// CEP trocados. O que importa aqui e a FORMA — nome, endereco e CEP de
+// cliente nao entram no repositorio (apontamento do Codex).
+const QR_REAL = '{"external_grouper_code":"1500000000000001","external_code":"00000000-0000-4000-8000-000000000001","tag_code":"100000000-01","logistical_flow_start":"DROP_OFF","logistical_flow_operation":"DIRECT","service_name":"CONVENTIONAL","receiver_zipcode":"00000000"}';
 {
   const r = api.interpretarQr(QR_REAL);
   ok(!!r, 'o QR real da Magalu e interpretado');
-  ok(r && r.valor === '1550970116332325',
-     '  e devolve o PEDIDO — o mesmo numero que funcionou digitado a mao');
-  ok(r && r.valor !== '197008400-01', '  e NAO o tag_code (rastreio, que nao acha devolucao)');
-  ok(r && r.extra && r.extra.uuid_pacote === 'db1d4527-1e61-462e-af25-e5c71e11756f',
+  ok(r && r.valor === '1500000000000001',
+     '  e devolve o campo do PEDIDO (o mesmo que funciona digitado a mao)');
+  ok(r && r.valor !== '100000000-01', '  e NAO o tag_code (rastreio, que nao acha devolucao)');
+  ok(r && r.extra && r.extra.uuid_pacote === '00000000-0000-4000-8000-000000000001',
      '  e guarda o UUID do pacote (era o que faltava pro link do Magalu)');
 }
 
 // ── 2. o texto da etiqueta, quando o QR falha (foto torta, borrada) ──
 const TEXTO_MAGALU = `MAGALU ENTREGAS AGENCIA MAGALU LEVES MLRD MALHA-DIRETA
-197008400-01 HRIO 03 RBT 248
-PEDIDO: 1550970116332325 NOTA FISCAL: 1906 DATA ESTIMADA: 16/07/2026
-DESTINATARIO MONICA ILYRIA VON ABEL REMETENTE AMBTOTAL`;
+100000000-01 HRIO 03 RBT 248
+PEDIDO: 1500000000000001 NOTA FISCAL: 1906 DATA ESTIMADA: 16/07/2026
+DESTINATARIO NOME DE TESTE REMETENTE AMBTOTAL`;
 {
   const et = api.reconhecerEtiqueta(TEXTO_MAGALU.replace(/\s+/g, ' '));
   ok(et && et.nome === 'Magalu', 'a etiqueta e reconhecida como Magalu pelo texto');
   const c = api.candidatos(TEXTO_MAGALU);
   ok(c.length > 0, '  e rende candidatos (antes rendia ZERO — nao havia padrao Magalu)');
-  ok(c[0].valor === '1550970116332325', '  o PRIMEIRO oferecido e o pedido');
-  ok(!c.find((x) => x.valor === '197008400-01'),
+  ok(c[0].valor === '1500000000000001', '  o PRIMEIRO oferecido e o pedido');
+  ok(!c.find((x) => x.valor === '100000000-01'),
      '  e o rastreio nao aparece nem como opcao (a etiqueta o proibe)');
   ok(!!c.find((x) => x.valor === '1906'), '  a NF continua disponivel como alternativa');
 }
 
 // ── 3. protocolo de devolucao ganha do pedido, quando existe ─────────
 {
-  const c = api.candidatos('AGENCIA MAGALU PROTOCOLO: 2026062600477033 PEDIDO: 1550970116332325');
+  const c = api.candidatos('AGENCIA MAGALU PROTOCOLO: 2026062600477033 PEDIDO: 1500000000000001');
   ok(c[0].valor === '2026062600477033',
      'havendo PROTOCOLO da devolucao, ele vem primeiro (e o caminho preferido)');
 }
@@ -77,7 +81,34 @@ DESTINATARIO MONICA ILYRIA VON ABEL REMETENTE AMBTOTAL`;
   ok(cor[0].valor === 'AD123456789BR', 'Correios reverso segue reconhecido');
 }
 
-// ── 5. QR de outros formatos ────────────────────────────────────────
+// ── 5. v5.1: o QR do MERCADO LIVRE tambem e JSON — nao pode ser jogado fora
+{
+  const qrML = '{"id":"47416667668","t":"l"}';
+  const r = api.interpretarQr(qrML);
+  ok(r !== null, 'QR do ML (JSON) NAO e descartado — o servidor sabe ler esse formato');
+  ok(r && r.valor === qrML, '  e vai INTEIRO pro servidor, que extrai o id como sempre fez');
+  ok(!!String(r && r.valor).match(/["']?[ii]d["']?\s*[:=]\s*["']?(\d{8,20})/i),
+     '  (confere: o padrao do server.js casa com o que estamos mandando)');
+}
+
+// ── 6. o mesmo leitor precisa existir na AMB — foi la que o caso aconteceu
+{
+  const AMB = fs.readFileSync(path.join(__dirname, '..', 'amb-devolucoes', 'public-AMB', 'js-AMB', 'colar-imagem.js'), 'utf8');
+  ok(AMB.indexOf('lerQrNoCanvas') !== -1, 'AMB tem o leitor de QR (o caso relatado era da AMB)');
+  ok(AMB.indexOf('external_grouper_code') !== -1, '  e conhece o QR da Magalu');
+  ok(AMB.indexOf('ETIQUETAS') !== -1, '  e reconhece a etiqueta antes de escolher o campo');
+  ok(AMB === SRC, '  e os dois arquivos estao IGUAIS (nada ficou so de um lado)');
+
+  const HTML_AMB = fs.readFileSync(path.join(__dirname, '..', 'amb-devolucoes', 'public-AMB', 'index-AMB.html'), 'utf8');
+  const HTML_GOOD = fs.readFileSync(path.join(__dirname, '..', 'public', 'index.html'), 'utf8');
+  ok(/jsqr@/i.test(HTML_AMB), 'a AMB carrega a biblioteca de QR');
+  ok(/jsqr@/i.test(HTML_GOOD), '  e a GOOD tambem');
+  // sem furar o cache, o navegador serve o arquivo velho e o conserto "nao chega"
+  ok(/colar-imagem\.js\?v=b330/.test(HTML_AMB), '  cache-buster da AMB atualizado');
+  ok(/colar-imagem\.js\?v=4570/.test(HTML_GOOD), '  e o da GOOD tambem');
+}
+
+// ── 7. QR de outros formatos ────────────────────────────────────────
 {
   ok(api.interpretarQr('260807PBTHEWQG').valor === '260807PBTHEWQG', 'QR simples: usa o proprio conteudo');
   ok(api.interpretarQr('https://shopee.com.br/x/260807PBTHEWQG').valor === '260807PBTHEWQG',

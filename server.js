@@ -227,7 +227,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.57.0 (leitor de etiqueta le QR no computador e conhece a Magalu)',
+    version: '4.57.1 (leitor de etiqueta: QR no PC + Magalu, nas duas empresas)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),

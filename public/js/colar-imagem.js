@@ -180,7 +180,14 @@
         formats: ['code_128', 'code_39', 'ean_13', 'ean_8', 'itf', 'qr_code', 'pdf417'],
       });
       var codes = await det.detect(img);
-      if (codes && codes.length) return String(codes[0].rawValue || '').trim();
+      if (codes && codes.length) {
+        // v5.1 (Codex): no Android o detector acha os DOIS codigos da etiqueta
+        // Magalu — o de barras grande (rastreio, que NAO acha devolucao) e o
+        // QR (que tem o pedido). Pegar o primeiro da lista era sorte. O QR
+        // vem na frente sempre.
+        var qr = codes.find(function (c) { return c.format === 'qr_code'; });
+        return String((qr || codes[0]).rawValue || '').trim();
+      }
     } catch (e) {}
     return null;
   }
@@ -200,7 +207,12 @@
   async function lerQrNoCanvas(img) {
     if (typeof jsQR === 'undefined') return null;
     try {
+      // v5.1 (Codex): TETO no canvas. Foto de celular moderno chega a 4000px;
+      // dobrar dava 8000x8000 = 256 MB so no ImageData, o que trava ou estoura
+      // a aba justamente em quem tirou foto boa. Acima do teto, nao amplia.
+      var TETO = 4000;
       for (var escala of [1, 2]) {
+        if (escala === 2 && Math.max(img.width, img.height) * 2 > TETO) break;
         var c = document.createElement('canvas');
         c.width = Math.round(img.width * escala);
         c.height = Math.round(img.height * escala);
@@ -248,6 +260,14 @@
           tipo: 'pedido Magalu (do QR)',
           extra: { uuid_pacote: j.external_code || null, rastreio: j.tag_code || null },
         };
+      }
+      // v5.1 (Codex): o QR do MERCADO LIVRE tambem e JSON — {"id":"47416667668","t":"l"}.
+      // O servidor JA sabe ler esse formato (server.js ~447, mQrML). Devolver
+      // null aqui jogaria fora um QR que hoje FUNCIONA: o ML ia parar de ser
+      // lido por imagem. Entao o JSON do ML segue INTEIRO pro servidor, que
+      // extrai o id como sempre fez.
+      if (j && (j.id || j.t)) {
+        return { valor: txt, tipo: 'QR do Mercado Livre', bruto: true };
       }
       return null;   // JSON que nao conheco: nao chuta
     }
