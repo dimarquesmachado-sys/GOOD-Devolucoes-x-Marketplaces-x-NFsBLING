@@ -126,6 +126,58 @@ const AGUARDANDO_ENVIO = {
      '  e ponte com erro nao vira lista vazia silenciosa');
 }
 
+// ── v2: o retrato do transporte e dos itens ─────────────────────────
+// O dono conferiu a tela do TikTok: "aparentemente o melhor sistema de
+// identificacao entre todos marketplaces". Quase tudo dela ja vinha na
+// coleta e nao era usado.
+{
+  const COMPLETA = {
+    id: '4041987387092076103', order_id: '585431796724107092',
+    tipo: 'RETURN_AND_REFUND', status: 'RETURN_OR_REFUND_REQUEST_COMPLETE',
+    return_tracking_number: 'AP334873368BR',
+    return_provider_name: 'Correios',
+    return_method: 'RETURN_BY_MAIL',
+    shipment_type: 'PLATFORM',
+    handover_method: 'DROP_OFF',
+    return_warehouse_address: 'Magazine Girassol, Taboao da Serra',
+    return_line_items: [
+      { seller_sku: 'KP16', product_name: 'Kit 11 Pecas 3 Pol', quantity: 1 },
+      { seller_sku: 'BL22', product_name: 'Boina La', quantity: 2 },
+    ],
+    is_combined_return: false,
+    pre_return_id: null, next_return_id: null,
+    valor: 64.9, criado_em: 1786985629,
+  };
+
+  const n = tk.normalizar(COMPLETA, 'girassol');
+  ok(n.transportadora === 'Correios', 'traz a TRANSPORTADORA (45 de 99 tem)');
+  ok(n.rastreio === 'AP334873368BR', '  e o rastreio dos Correios');
+  ok(n.metodo_devolucao === 'RETURN_BY_MAIL', '  e como o cliente devolveu');
+  ok(n.armazem_destino === 'Magazine Girassol, Taboao da Serra',
+     '  e pra qual armazem o pacote foi mandado');
+
+  ok(n.itens.length === 2, 'traz os ITENS que deveriam estar na caixa (99 de 99 tem)');
+  ok(n.itens[0].sku === 'KP16' && n.itens[0].qtd === 1, '  com SKU e quantidade');
+  ok(n.itens[1].qtd === 2, '  e a quantidade certa quando ha mais de um');
+
+  // devolucao combinada: mais de um pedido na mesma caixa
+  const comb = tk.normalizar({ ...COMPLETA, is_combined_return: true, combined_return_id: 'C99' }, 'girassol');
+  ok(comb.combinada === true && comb.combinada_id === 'C99',
+     'devolucao COMBINADA sinalizada (o estoquista abriria esperando 1 pedido e acharia 2)');
+  ok(n.combinada === false, '  e a normal nao');
+
+  // encadeada: o cliente abre, cancela, abre de novo
+  const enc = tk.normalizar({ ...COMPLETA, pre_return_id: 'R1', next_return_id: 'R3' }, 'girassol');
+  ok(enc.anterior_id === 'R1' && enc.proxima_id === 'R3',
+     'os elos da cadeia sao guardados (um pedido da Girassol teve TRES em sequencia)');
+
+  // sem os campos, nao inventa
+  const magra = tk.normalizar({ id: 'x', order_id: 'y', tipo: 'REFUND' }, 'girassol');
+  ok(magra.itens.length === 0 && magra.transportadora === null,
+     'devolucao sem esses campos nao ganha valor inventado');
+  ok(magra.combinada === false, '  e combinada default e false, nao null');
+}
+
 // ── esta ligado na cascata do bipe? ─────────────────────────────────
 {
   const fs = require('fs');
@@ -153,6 +205,35 @@ const AGUARDANDO_ENVIO = {
      'e solicitacao em aberto avisa que o desfecho ainda pode mudar');
   ok(/coleta_pendente: rTk && rTk\.coleta_pendente/.test(SERVER),
      'a tentativa carrega se a coleta estava pendente ("nao achei" != "nao existe")');
+}
+
+// ── o card mostra isso na tela? NAS DUAS EMPRESAS ───────────────────
+{
+  const fs = require('fs');
+  const path = require('path');
+  const RAIZ = path.join(__dirname, '..');
+  const GOOD = fs.readFileSync(path.join(RAIZ, 'public', 'js', 'busca.js'), 'utf8');
+  const AMB = fs.readFileSync(path.join(RAIZ, 'amb-devolucoes', 'public-AMB', 'js-AMB', 'busca.js'), 'utf8');
+
+  [['GOOD', GOOD], ['AMB', AMB]].forEach(([nome, src]) => {
+    ok(/if \(data\.tiktok\) \{/.test(src), nome + ': a tela tem bloco do TikTok');
+    ok(/SEM DEVOLUÇÃO FÍSICA/.test(src),
+       '  avisa em vermelho quando NAO vem pacote (metade das devolucoes do TikTok)');
+    ok(/DEVOLUÇÃO COMBINADA/.test(src),
+       '  avisa quando a caixa pode ter mais de um pedido');
+    ok(/Itens que deveriam vir nesta devolução/.test(src),
+       '  lista os itens, que e o que o estoquista confere contra a caixa');
+    ok(/Transportadora/.test(src) && /Armazém de destino/.test(src),
+       '  e mostra transportadora e armazem');
+    ok(/data\.tiktok \|\| String\(data\.metodo \|\| ''\)\.includes\('tiktok'\)/.test(src),
+       '  e o rotulo do marketplace reconhece o TikTok (era "Mercado Livre" por padrao)');
+  });
+
+  // a ordem importa: o aviso de "nao vem" antes dos detalhes
+  const iAviso = GOOD.indexOf('SEM DEVOLUÇÃO FÍSICA');
+  const iDetalhe = GOOD.indexOf("linha('Transportadora'");
+  ok(iAviso < iDetalhe,
+     'o aviso de "nao vem pacote" aparece ANTES dos detalhes — e o que importa primeiro');
 }
 
 console.log('');

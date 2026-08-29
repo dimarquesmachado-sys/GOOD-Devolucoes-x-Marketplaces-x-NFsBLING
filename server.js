@@ -230,7 +230,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.66.0 (TikTok na busca: reconhece e diz se o pacote vem ou nao)',
+    version: '4.66.0 (TikTok na busca: reconhece, diz se o pacote vem, e mostra o retrato)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),

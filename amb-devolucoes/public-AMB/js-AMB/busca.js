@@ -253,6 +253,7 @@ function renderizar(data, ok) {
   html += `<span class="badge badge-info">Metodo: ${data.metodo || '-'}</span>`;
   // v3.28 - rotulo do marketplace conforme o metodo (era fixo "ML")
   const nomeMkt = data.magalu ? 'Magalu'
+    : (data.tiktok || String(data.metodo || '').includes('tiktok')) ? 'TikTok'
     : (data.shopee || String(data.metodo || '').includes('shopee')) ? 'Shopee'
     : (String(data.metodo || '').includes('nf') || String(data.metodo || '').includes('chave')) ? (data.magalu ? 'Magalu' : 'Nota Fiscal')
     : 'Mercado Livre';
@@ -260,6 +261,66 @@ function renderizar(data, ok) {
   if (nf) {
     html += '<span class="badge badge-nfe">🧾 NF-e</span>';
     html += `<span class="badge badge-fonte-ml">via ${nomeMkt}</span>`;
+  }
+
+  // ── TIKTOK (v4.66): o retrato que o painel deles ja mostrava ────────
+  //
+  // O dono conferiu a tela do TikTok e apontou que e a mais completa
+  // entre os marketplaces — rastreio, transportadora, trajeto, armazem.
+  // Quase tudo ja vinha na coleta e nao aparecia aqui.
+  //
+  // O aviso de "NAO vem pacote" vem PRIMEIRO e em vermelho: metade das
+  // devolucoes do TikTok e reembolso puro, e o estoquista precisa saber
+  // disso antes de qualquer outra coisa.
+  if (data.tiktok) {
+    const tk = data.tiktok;
+    html += '<div style="margin-top:10px;padding:10px;border-radius:8px;background:#f7f7f9;border:1px solid #ddd">';
+
+    if (tk.vai_chegar === false) {
+      html += '<div style="padding:8px;border-radius:6px;background:#ffebee;border:2px solid #c62828;'
+        + 'color:#b71c1c;font-weight:700;margin-bottom:8px">'
+        + '🚫 SEM DEVOLUÇÃO FÍSICA — nenhum pacote vai chegar por esta solicitação'
+        + (tk.motivo_texto ? '<div style="font-weight:400;margin-top:4px">Motivo: ' + tk.motivo_texto + '</div>' : '')
+        + '</div>';
+    } else if (tk.vai_chegar === null) {
+      html += '<div style="padding:8px;border-radius:6px;background:#fff8e1;border:2px solid #f9a825;'
+        + 'color:#e65100;font-weight:600;margin-bottom:8px">'
+        + '⏳ Solicitação ainda EM ABERTO — pode virar devolução com retorno ou só reembolso</div>';
+    }
+
+    if (tk.combinada) {
+      html += '<div style="padding:8px;border-radius:6px;background:#e8eaf6;border:2px solid #3949ab;'
+        + 'color:#1a237e;font-weight:700;margin-bottom:8px">'
+        + '📦📦 DEVOLUÇÃO COMBINADA — esta caixa pode ter MAIS DE UM PEDIDO</div>';
+    }
+
+    const linha = (rot, val) => val
+      ? '<div style="margin:3px 0"><b>' + rot + ':</b> ' + val + '</div>' : '';
+    html += linha('Transportadora', tk.transportadora);
+    html += linha('Rastreio da devolução', tk.rastreio);
+    html += linha('Como o cliente devolveu', tk.metodo_devolucao);
+    html += linha('Armazém de destino', tk.armazem_destino);
+    html += linha('Motivo', tk.motivo_texto || tk.motivo);
+    html += linha('Valor do reembolso', tk.valor != null ? ('R$ ' + Number(tk.valor).toFixed(2)) : null);
+
+    // os itens que DEVERIAM estar na caixa — e o que o estoquista confere
+    if (tk.itens && tk.itens.length) {
+      html += '<div style="margin-top:8px"><b>Itens que deveriam vir nesta devolução:</b><ul style="margin:4px 0 0 18px">';
+      tk.itens.forEach((it) => {
+        html += '<li>' + (it.qtd != null ? it.qtd + '× ' : '')
+          + (it.sku ? '<code>' + it.sku + '</code> ' : '')
+          + (it.nome || '') + '</li>';
+      });
+      html += '</ul></div>';
+    }
+
+    // devolucao encadeada: o cliente abriu, cancelou, abriu de novo
+    if (tk.anterior_id || tk.proxima_id) {
+      html += '<div style="margin-top:6px;font-size:13px;color:#666">'
+        + '🔗 Faz parte de uma sequência de solicitações do mesmo pedido</div>';
+    }
+
+    html += '</div>';
   }
 
   // b75 - BOTAO PRA ABRIR O PEDIDO NO MARKETPLACE.
