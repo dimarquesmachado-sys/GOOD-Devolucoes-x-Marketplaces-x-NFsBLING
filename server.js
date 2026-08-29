@@ -228,7 +228,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.64.4 (etiqueta prefere o codigo da etiqueta, nao o EAN do produto)',
+    version: '4.65.0 (ponte TikTok: coleta rodando/falha nao viram lista vazia)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
