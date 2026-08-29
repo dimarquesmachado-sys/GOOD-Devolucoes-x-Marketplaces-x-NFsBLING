@@ -167,10 +167,23 @@ function scannerLoop() {
           // primeiro e generico: se o valor devolvido difere do texto lido,
           // o interpretador achou algo ali dentro e isso vale mais que o
           // codigo de barras ao lado.
-          const extraiuAlgo = lido && String(lido.valor || '') !== String(raw || '');
+          // v3.34.4 (Codex): "nao transformou o texto" nao quer dizer
+          // "nao reconheceu". O QR simples da Shopee (pedido no formato
+          // 6 digitos + alfanumerico) sai igual ao que entrou, e eu
+          // classificava como generico — cedendo a vez pro codigo de barras
+          // ao lado, que na Shopee e o rastreio.
+          //
+          // Entao: alem de "transformou", vale tambem o valor TER CARA de
+          // identificador de marketplace.
+          const v = String(lido && lido.valor || '');
+          const extraiuAlgo = lido && v !== String(raw || '');
+          const pareceIdentificador = /^\d{6}[A-Z0-9]{6,10}$/i.test(v)   // pedido Shopee
+            || /^BR[A-Z0-9]{9,}$/i.test(v)                              // rastreio SPX
+            || /^[A-Z]{2}\d{9}[A-Z]{2}$/i.test(v)                       // Correios
+            || /^\d{11,20}$/.test(v);                                   // ids do ML/Magalu
           const qrGenerico = lido && lido.tipo === 'codigo do QR'
-            && !extraiuAlgo
-            && !/^\{/.test(String(lido.valor || ''));
+            && !extraiuAlgo && !pareceIdentificador
+            && !/^\{/.test(v);
           if (qrGenerico && barras) {
             raw = String(barras.rawValue || raw).trim();
           } else if (lido && lido.valor) {

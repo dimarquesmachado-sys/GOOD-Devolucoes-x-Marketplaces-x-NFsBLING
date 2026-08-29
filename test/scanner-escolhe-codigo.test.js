@@ -97,7 +97,7 @@ ok(/c\.format === 'ean_13' \|\| c\.format === 'ean_8'/.test(SCANNER),
    'no modo produto, EAN vem antes de code_128/itf/pdf417 (o detector pede todos)');
 
 // ── v3.34.3: URL com identificador extraido NAO e "generico" ────────
-ok(/const extraiuAlgo = lido && String\(lido\.valor \|\| ''\) !== String\(raw \|\| ''\)/.test(SCANNER),
+ok(/const extraiuAlgo = lido && v !== String\(raw \|\| ''\)/.test(SCANNER),
    'QR que teve identificador EXTRAIDO nao e tratado como texto solto');
 ok(/&& !extraiuAlgo/.test(SCANNER), '  entao nao cede a vez pro codigo de barras');
 
@@ -177,6 +177,31 @@ ok(/jaResolvido = !mIdML &&/.test(SCANNER),
      'o scanner e carregado ANTES do colar-imagem — de proposito o teste registra isso');
   ok(/typeof window\.interpretarCodigoLido === 'function'/.test(SCANNER),
      '  e por isso a funcao e consultada na HORA DE BIPAR, nao no carregamento (senao nao existiria ainda)');
+}
+
+// ── v3.34.4: QR reconhecido nao cede a vez, mesmo sem transformar ────
+// O QR simples da Shopee (pedido: 6 digitos + alfanumerico) sai igual ao
+// que entrou. Classificar como "generico" fazia ele ceder pro codigo de
+// barras ao lado — que na Shopee e o rastreio, justamente o que nao acha.
+ok(/const pareceIdentificador =/.test(SCANNER),
+   'QR cujo valor TEM CARA de identificador nao e generico');
+ok(/\^\\d\{6\}\[A-Z0-9\]\{6,10\}\$/.test(SCANNER), '  pedido Shopee reconhecido');
+ok(/\^BR\[A-Z0-9\]\{9,\}\$/.test(SCANNER), '  rastreio SPX tambem');
+ok(/!extraiuAlgo && !pareceIdentificador/.test(SCANNER),
+   '  e so cede quando NAO transformou E NAO parece identificador');
+
+// ── v3.34.4: a AMB entende o QR Magalu nos eventos do checkout ───────
+{
+  const IDENT_AMB = fs.readFileSync(path.join(RAIZ, 'amb-devolucoes', 'lib-AMB', 'identificar-AMB.js'), 'utf8');
+  const i = IDENT_AMB.indexOf('async function buscarEventosCheckout');
+  const trecho = IDENT_AMB.slice(i, i + 1200);
+  ok(/external_grouper_code/.test(trecho),
+     'a AMB extrai o pedido de dentro do QR Magalu antes de consultar os eventos');
+  ok(trecho.indexOf('external_grouper_code') < trecho.indexOf('A-Za-z0-9_-]{5,60}'),
+     '  ANTES do teste de formato (o JSON tem pontuacao e passa de 60: era rejeitado)');
+  const SERVER_GOOD = fs.readFileSync(path.join(RAIZ, 'server.js'), 'utf8');
+  ok(/external_grouper_code/.test(SERVER_GOOD.slice(SERVER_GOOD.indexOf('async function buscarEventosCheckout'), SERVER_GOOD.indexOf('async function buscarEventosCheckout') + 1200)),
+     '  e a GOOD ja tinha (v4.57.4) — agora as duas empresas iguais');
 }
 
 console.log('');
