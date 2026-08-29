@@ -36,18 +36,25 @@ const diasAtras = (n) => Math.floor(new Date(HOJE.getTime() - n * 864e5).getTime
     { evento: 'BUYER_SHIPPED', data: diasAtras(2) },
   ], HOJE);
   ok(postou2.dias_desde_postagem === 2, 'postou ha 2 dias: conta a partir do BUYER_SHIPPED');
-  ok(postou2.risco === 'ok', '  ainda tranquilo');
-  ok(postou2.dias_ate_revelia === 4, '  com 4 dias ate o prazo observado');
+  ok(postou2.risco === 'atencao', '  ja em atencao (o prazo mais curto observado e 4 dias)');
+  ok(postou2.dias_ate_revelia === 2, '  com 2 dias ate o pior caso');
 }
 
 // ── o escalonamento ──────────────────────────────────────────────────
 {
+  // b182.2: recalibrado com 19 casos reais — o prazo mais curto foi de
+  // 4 DIAS, entao o aviso precisa vir antes disso
   const d = (n) => rev.avaliar([{ evento: 'BUYER_SHIPPED', data: diasAtras(n) }], HOJE);
-  ok(d(3).risco === 'ok', '3 dias: ok');
-  ok(d(4).risco === 'atencao', '4 dias: ATENCAO (2 dias de folga antes do prazo)');
-  ok(d(5).risco === 'urgente', '5 dias: URGENTE (ultimo dia util pra agir)');
+  ok(d(1).risco === 'ok', '1 dia: ok');
+  ok(d(2).risco === 'atencao', '2 dias: ATENCAO (2 dias de folga sobre o pior caso)');
+  ok(d(3).risco === 'urgente', '3 dias: URGENTE');
+  ok(d(4).risco === 'urgente', '4 dias: o prazo mais curto ja observado — tem que estar urgente HA DIAS');
   ok(d(8).risco === 'urgente', '8 dias: continua urgente');
-  ok(d(6).dias_ate_revelia === 0, '  e o contador nao vira negativo');
+  ok(d(4).dias_ate_revelia === 0, '  e o contador nao vira negativo');
+
+  // a calibragem antiga (aviso no 4o) deixaria o pior caso sem folga
+  ok(rev.AVISO_A_PARTIR_DE < 4,
+     'o aviso vem ANTES do prazo mais curto observado (4 dias) — errar pra mais custa olhar um caso a toa; pra menos custa o produto');
 }
 
 // ── caso fechado sai da janela ───────────────────────────────────────
@@ -139,7 +146,7 @@ const diasAtras = (n) => Math.floor(new Date(HOJE.getTime() - n * 864e5).getTime
   const r = rev.separar(corpo, HOJE);
 
   ok(r.total_em_risco === 2, 'separa quem esta em risco: A (5d) e B (4d)');
-  ok(r.urgentes === 1, '  com 1 urgente');
+  ok(r.urgentes === 2, '  ambos urgentes na calibragem nova (4 e 5 dias, com o pior caso em 4)');
   ok(r.valor_em_risco === 87.30, '  e o valor somado: 57,40 + 29,90 = 87,30');
   ok(r.em_risco[0].id === 'A', '  o mais antigo primeiro (menos tempo pra agir)');
 
