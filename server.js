@@ -228,7 +228,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.63.0 (captura e GUARDA as devolucoes dos marketplaces)',
+    version: '4.63.3 (barra de navegacao entre os paineis, nos 3)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
