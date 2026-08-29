@@ -79,6 +79,26 @@ const diasAtras = (n) => Math.floor(new Date(HOJE.getTime() - n * 864e5).getTime
   ok(perdido.risco === null, '  entao nao aparece como "em risco" (ja era)');
 }
 
+// ── b182.1: so o timeout DO VENDEDOR e revelia nossa ─────────────────
+// Timeout do COMPRADOR (nao postou no prazo) e o oposto: ali quem perdeu
+// foi ele e a devolucao cai a nosso favor. Contar como revelia inflaria o
+// prejuizo e mandaria o dono olhar caso que nao existe.
+{
+  ok(rev.ehTimeoutDoVendedor('SELLER_REJECT_RECEIVE_DELIVERED_TIMEOUT') === true,
+     'o evento real da revelia e reconhecido');
+  ok(rev.ehTimeoutDoVendedor('BUYER_SHIP_TIMEOUT') === false,
+     'timeout do COMPRADOR nao e revelia nossa');
+  ok(rev.ehTimeoutDoVendedor('RETURN_TIMEOUT') === false,
+     '  e timeout generico tambem nao (na duvida, nao acusa)');
+
+  const doComprador = rev.avaliar([
+    { evento: 'ORDER_RETURN', data: diasAtras(20) },
+    { evento: 'BUYER_SHIP_TIMEOUT', data: diasAtras(10) },
+  ], HOJE);
+  ok(doComprador.perdido_por_revelia === false,
+     'linha do tempo com timeout do comprador NAO vira revelia');
+}
+
 // ── postagem repetida reinicia o relogio ─────────────────────────────
 {
   const repostou = rev.avaliar([
@@ -204,6 +224,12 @@ const diasAtras = (n) => Math.floor(new Date(HOJE.getTime() - n * 864e5).getTime
   ok(/\/tiktok\/devolucoes-eventos/.test(PONTE), '  na rota que eles criaram');
   ok(/eventos responderam a loja/.test(PONTE),
      '  mantendo a invariante da loja (nunca aceitar dado de loja que nao pedi)');
+  // b182.1: a invariante e "so aceitar loja VERIFICADA", nao "recusar so o
+  // que divergir" — resposta SEM loja pode ter vindo da padrao em silencio
+  ok(/eventos responderam SEM identificar a loja/.test(PONTE),
+     '  e resposta SEM o campo loja tambem e recusada');
+  ok(/os eventos responderam ok:false/.test(PONTE),
+     '  e falha de APLICACAO (HTTP 200 com ok:false) nao vira "zero revelias" silencioso');
 }
 
 console.log('');
