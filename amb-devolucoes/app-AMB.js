@@ -81,7 +81,7 @@ const criarMlBuscas = require('./lib-AMB/ml-buscas-AMB');
 const registrarIdentificar = require('./lib-AMB/identificar-AMB');
 const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 
-const VERSAO = 'AMB Devolucoes b164';
+const VERSAO = 'AMB Devolucoes b165';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -1022,6 +1022,29 @@ router.get('/api/nf/itens', auth.requerLogin, async (req, res) => {
 });
 
 /** Ultimas triagens. */
+// b165 - PRE-TRAVA DO BIPE: "este pacote ja foi triado".
+//
+// O front da AMB ja chamava esta rota (foi copiado da GOOD) — mas ela NAO
+// existia aqui. Dava 404, o catch do JavaScript engolia, e a tela mostrava
+// os botoes como se o pacote fosse novo. Em 29/08 o mesmo pacote foi triado
+// duas vezes na AMB sem aviso nenhum.
+//
+// Mesmo contrato da GOOD: { ok, registros: [...] }, aceitando um segundo
+// identificador em ?tambem= (a mesma devolucao pode ter sido gravada pelo
+// shipment num bipe e pela chave da NF noutro).
+router.get('/api/triagem/status/:identificador', auth.requerLogin, async (req, res) => {
+  const ident = String(req.params.identificador || '').trim();
+  if (!ident) return res.status(400).json({ ok: false, erro: 'identificador obrigatorio' });
+
+  const ids = [ident];
+  const tambem = String(req.query.tambem || '').trim();
+  if (tambem && tambem !== ident) ids.push(tambem);
+
+  const r = await db.triagensDe(ids);
+  if (!r.ok) return res.status(500).json({ ok: false, erro: r.erro });
+  return res.json({ ok: true, registros: r.registros, ids_buscados: ids });
+});
+
 router.get('/api/triagem/recentes', auth.requerLogin, async (req, res) => {
   res.json(await db.listarRecentes(req.query.limite));
 });
