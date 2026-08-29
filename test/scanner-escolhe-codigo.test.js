@@ -112,8 +112,10 @@ ok(/jaResolvido = !mIdML &&/.test(SCANNER),
   function escolher(codes, modo) {
     const qr = codes.find((c) => c.format === 'qr_code');
     const ean = codes.find((c) => c.format === 'ean_13' || c.format === 'ean_8');
+    const daEtiqueta = codes.find((c) =>
+      c.format !== 'qr_code' && c.format !== 'ean_13' && c.format !== 'ean_8');
     const naoQr = codes.find((c) => c.format !== 'qr_code');
-    const barras = (modo === 'bipagem') ? (ean || naoQr) : naoQr;
+    const barras = (modo === 'bipagem') ? (ean || naoQr) : (daEtiqueta || naoQr);
     const esc = (modo === 'bipagem') ? (barras || qr || codes[0]) : (qr || barras || codes[0]);
     return esc.rawValue;
   }
@@ -157,6 +159,15 @@ ok(/jaResolvido = !mIdML &&/.test(SCANNER),
   ];
   ok(escolher(correiosComProduto, 'etiqueta') === 'AD123456789BR',
      'etiqueta dos Correios com o EAN do produto a vista: escolhe o codigo da DEVOLUCAO');
+  // v3.34.5: e mesmo quando o EAN aparece PRIMEIRO na lista
+  const eanAntes = [
+    { format: 'ean_13', rawValue: '7898978766010' },     // o produto entrou antes
+    { format: 'code_128', rawValue: 'AD123456789BR' },   // o codigo da devolucao
+  ];
+  ok(escolher(eanAntes, 'etiqueta') === 'AD123456789BR',
+     '  independente da ORDEM em que a camera os viu');
+  ok(escolher(eanAntes, 'bipagem') === '7898978766010',
+     '  e no modo produto, o EAN continua vencendo');
   ok(escolher(correiosComProduto, 'bipagem') === '7898978766010',
      '  e o mesmo quadro, bipando produto, escolhe o EAN');
 }

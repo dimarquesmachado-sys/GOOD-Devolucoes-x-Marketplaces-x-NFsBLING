@@ -121,8 +121,17 @@ function scannerLoop() {
       // codigo da etiqueta dos Correios (Code 128), preferir o EAN mandaria
       // o codigo do PRODUTO em vez do identificador da devolucao.
       const ean = codes.find(c => c.format === 'ean_13' || c.format === 'ean_8');
+      // v3.34.5 (Codex): em modo ETIQUETA, o codigo da etiqueta vem antes do
+      // EAN do produto. `naoQr` era so "o primeiro que nao e QR" — se o
+      // pacote mostrasse o EAN antes do Code 128 dos Correios, o scanner
+      // buscava o PRODUTO em vez da devolucao. Aqui a ordem e explicita:
+      // formatos de etiqueta primeiro, EAN por ultimo.
+      const daEtiqueta = codes.find(c =>
+        c.format !== 'qr_code' && c.format !== 'ean_13' && c.format !== 'ean_8');
       const naoQr = codes.find(c => c.format !== 'qr_code');
-      const barras = (scannerModo === 'bipagem') ? (ean || naoQr) : naoQr;
+      const barras = (scannerModo === 'bipagem')
+        ? (ean || naoQr)              // produto: EAN na frente
+        : (daEtiqueta || naoQr);      // etiqueta: Code128/ITF/PDF417 na frente
       const escolhido = (scannerModo === 'bipagem')
         ? (barras || qr || codes[0])     // produto: EAN na frente
         : (qr || barras || codes[0]);    // etiqueta: QR na frente
