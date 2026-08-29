@@ -84,7 +84,20 @@ module.exports = function registrarIdentificar(app, deps) {
   async function buscarEventosCheckout(codigo) {
     try {
       if (!supabase) return [];
-      const q = String(codigo || '').trim();
+      let q = String(codigo || '').trim();
+      // b176 (Codex): o QR da Magalu chega como JSON — pelo bipe da camera
+      // e pela imagem colada. Com pontuacao e mais de 60 caracteres ele nao
+      // passa no formato aceito abaixo, e o card nunca recebia o evento do
+      // checkout mesmo havendo um gravado sob aquele pedido.
+      //
+      // A GOOD ganhou este mesmo tratamento hoje (v4.57.4); a AMB tinha
+      // ficado pra tras — a divergencia de sempre.
+      if (q.charAt(0) === '{' && /external_grouper_code/i.test(q)) {
+        try {
+          const j = JSON.parse(q);
+          q = String(j.external_grouper_code || '').trim();
+        } catch (e) { /* JSON quebrado: cai no teste abaixo e sai */ }
+      }
       if (!/^[A-Za-z0-9_-]{5,60}$/.test(q)) return [];
       const { data } = await supabase.from('eventos_checkout')
         .select('tipo, codigo, quem, criado_em, extra')

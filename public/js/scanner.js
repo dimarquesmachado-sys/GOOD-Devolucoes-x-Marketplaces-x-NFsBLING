@@ -12,9 +12,14 @@ let scannerScanning = false;
 let scannerPaused = false;
 let scannerLastCode = '';
 let scannerLastCodeAt = 0;
+// v3.34.2 - quantos quadros ja passaram vendo SO codigo de barras numa
+// etiqueta. Serve pra dar chance ao QR (pequeno) aparecer antes de aceitar
+// o rastreio (grande). Zera a cada leitura nova e ao abrir a camera.
+let scannerEsperasSemQr = 0;
 let scannerModo = 'etiqueta'; // 'etiqueta' ou 'bipagem'
 
 async function abrirCameraScanner(modo = 'etiqueta') {
+  scannerEsperasSemQr = 0;   // v3.34.2 - comeca a contagem do zero
   scannerModo = modo;
 
   // Verifica se navegador suporta BarcodeDetector
@@ -92,7 +97,137 @@ function scannerLoop() {
   }
   scannerDetector.detect(video).then(codes => {
     if (codes.length > 0) {
-      const raw = String(codes[0].rawValue).trim();
+      // v3.34 - ESCOLHE o codigo, nao pega o primeiro que aparecer.
+      //
+      // Ate 29/08 era codes[0]. Numa etiqueta Magalu o codigo de barras e
+      // grande e o QR e pequeno: com sorte de enquadramento, o estoquista
+      // bipava o RASTREIO — que e justamente o que NAO acha devolucao (esta
+      // escrito no "O que bipar" do proprio painel). Virava loteria.
+      //
+      // O QR vem na frente porque e onde mora o identificador util (na
+      // Magalu, o pedido); o de barras fica de reserva, pra etiqueta que so
+      // tem ele.
+      // v3.34.1 (Codex): a preferencia por QR vale pra ETIQUETA. No modo
+      // 'bipagem' a tela espera o EAN DO PRODUTO — e embalagem costuma ter
+      // o EAN em codigo de barras e algum QR de propaganda ao lado. Preferir
+      // o QR ali ignoraria o EAN valido e mandaria numero errado pra busca.
+      const qr = codes.find(c => c.format === 'qr_code');
+      // v3.34.2 (Codex): o detector pede code_128, code_39, itf e pdf417
+      // alem do EAN. Se a embalagem mostrar um desses ANTES do ean_13, o
+      // "primeiro nao-QR" pegava o valor errado, era recusado, e no quadro
+      // seguinte pegava o mesmo de novo — o EAN ao lado ficava inalcancavel.
+      // v3.34.3 (Codex): a prioridade do EAN vale SO no modo produto. Em
+      // modo etiqueta, se a camera pegar o EAN do produto junto com o
+      // codigo da etiqueta dos Correios (Code 128), preferir o EAN mandaria
+      // o codigo do PRODUTO em vez do identificador da devolucao.
+      const ean = codes.find(c => c.format === 'ean_13' || c.format === 'ean_8');
+      // v3.34.5 (Codex): em modo ETIQUETA, o codigo da etiqueta vem antes do
+      // EAN do produto. `naoQr` era so "o primeiro que nao e QR" — se o
+      // pacote mostrasse o EAN antes do Code 128 dos Correios, o scanner
+      // buscava o PRODUTO em vez da devolucao. Aqui a ordem e explicita:
+      // formatos de etiqueta primeiro, EAN por ultimo.
+      const daEtiqueta = codes.find(c =>
+        c.format !== 'qr_code' && c.format !== 'ean_13' && c.format !== 'ean_8');
+      const naoQr = codes.find(c => c.format !== 'qr_code');
+      const barras = (scannerModo === 'bipagem')
+        ? (ean || naoQr)              // produto: EAN na frente
+        : (daEtiqueta || naoQr);      // etiqueta: Code128/ITF/PDF417 na frente
+      const escolhido = (scannerModo === 'bipagem')
+        ? (barras || qr || codes[0])     // produto: EAN na frente
+        : (qr || barras || codes[0]);    // etiqueta: QR na frente
+      let raw = String(escolhido.rawValue || '').trim();
+
+      // v3.34 - o QR da Magalu e um JSON, e o do ML tambem. Quem sabe ler
+      // isso e o interpretarCodigoLido, do leitor de imagem — a MESMA
+      // funcao, nao uma copia (duplicar foi o que gerou metade dos bugs de
+      // hoje). Se ele nao reconhecer o formato, usa o que veio, e o
+      // servidor decide.
+      // v3.34.2 (Codex): NUMA ETIQUETA, ESPERA O QR APARECER.
+      //
+      // O QR da Magalu e pequeno e o codigo de barras e grande: eles nem
+      // sempre entram no mesmo detect(). Sem isto, o primeiro quadro que
+      // pega so o de barras aceitava o RASTREIO e ja disparava a busca —
+      // o scanner nunca olhava o quadro seguinte, onde o QR apareceria.
+      // Ou seja, o bug que este PR veio consertar continuaria acontecendo,
+      // so que por timing.
+      //
+      // Entao: em modo etiqueta, se veio SO codigo de barras, deixa
+      // algumas frames pro QR aparecer antes de aceitar. Passado isso, o
+      // de barras vale — etiqueta que so tem ele nao pode travar o
+      // estoquista.
+      if (scannerModo !== 'bipagem' && !qr && barras) {
+        scannerEsperasSemQr = (scannerEsperasSemQr || 0) + 1;
+        if (scannerEsperasSemQr < 12) return;   // ~12 quadros, menos de 1s
+      } else {
+        scannerEsperasSemQr = 0;
+      }
+
+      let jaResolvido = false;
+      try {
+        if (scannerModo !== 'bipagem' && typeof window.interpretarCodigoLido === 'function') {
+          const lido = window.interpretarCodigoLido(raw);
+          // v3.34.2 (Codex): QR de texto SOLTO (propaganda, wifi, link) sempre
+          // "resolvia", porque o interpretador devolve o proprio conteudo pra
+          // qualquer texto. Numa etiqueta com QR desses ao lado do codigo de
+          // barras, o texto ganhava — e se tivesse 9 a 44 caracteres, ia pra
+          // busca como se fosse identificador.
+          // v3.34.3 (Codex): "codigo do QR" e o tipo tanto do texto solto
+          // quanto da URL de onde a gente EXTRAIU um identificador. So o
+          // primeiro e generico: se o valor devolvido difere do texto lido,
+          // o interpretador achou algo ali dentro e isso vale mais que o
+          // codigo de barras ao lado.
+          // v3.34.4 (Codex): "nao transformou o texto" nao quer dizer
+          // "nao reconheceu". O QR simples da Shopee (pedido no formato
+          // 6 digitos + alfanumerico) sai igual ao que entrou, e eu
+          // classificava como generico — cedendo a vez pro codigo de barras
+          // ao lado, que na Shopee e o rastreio.
+          //
+          // Entao: alem de "transformou", vale tambem o valor TER CARA de
+          // identificador de marketplace.
+          const v = String(lido && lido.valor || '');
+          const extraiuAlgo = lido && v !== String(raw || '');
+          const pareceIdentificador = /^\d{6}[A-Z0-9]{6,10}$/i.test(v)   // pedido Shopee
+            || /^BR[A-Z0-9]{9,}$/i.test(v)                              // rastreio SPX
+            || /^[A-Z]{2}\d{9}[A-Z]{2}$/i.test(v)                       // Correios
+            || /^\d{11,20}$/.test(v);                                   // ids do ML/Magalu
+          const qrGenerico = lido && lido.tipo === 'codigo do QR'
+            && !extraiuAlgo && !pareceIdentificador
+            && !/^\{/.test(v);
+          if (qrGenerico && barras) {
+            raw = String(barras.rawValue || raw).trim();
+          } else if (lido && lido.valor) {
+            raw = String(lido.valor).trim();
+            // v3.34.1 (Codex): o payload do MAGALU nao pode passar pela
+            // limpeza generica do processarBipagemEtiqueta. Aquela funcao so
+            // sabe extrair JSON do ML (procura `id`); o JSON do Magalu
+            // sobrevive inteiro, vira uma string alfanumerica de 61
+            // caracteres e e RECUSADA pelo limite de 44 antes de chegar na
+            // busca. Ou seja: sem isto, o caminho da camera nao acharia
+            // devolucao Magalu nenhuma — justamente o que este PR veio
+            // consertar.
+            //
+            // Quando o interpretador ja resolveu, vai DIRETO pra busca.
+            // v3.34.3 (Codex): JSON do MERCADO LIVRE ({"id":"474...","t":"lm"})
+            // nao pode ir cru pra busca. A rota principal ate sabe ler, mas
+            // o campo da tela fica com o JSON inteiro e o resto do fluxo
+            // (historico, re-busca) trabalha com aquilo. O
+            // processarBipagemEtiqueta ja extraia o `id`; aqui a gente faz o
+            // mesmo antes de desviar.
+            const mIdML = String(lido.valor).match(/["']?id["']?\s*[:=]\s*["']?(\d{8,20})/i);
+            if (mIdML) raw = mIdML[1];
+
+            // so o payload do MAGALU precisa pular a limpeza (o dela e o
+            // unico que a limpeza destroi)
+            // so pelo TIPO: repetir o nome do campo do Magalu aqui seria
+            // duplicar o conhecimento que mora no interpretador — e
+            // duplicacao foi a origem de metade dos bugs de hoje.
+            jaResolvido = !mIdML && lido.tipo === 'pedido Magalu (do QR)';
+          } else if (barras && qr) {
+            // QR que nao soubemos ler: o de barras e a resposta desta etiqueta
+            raw = String(barras.rawValue || raw).trim();
+          }
+        }
+      } catch (e) { /* na duvida, segue com o codigo cru */ }
       // Evita ler 2x o mesmo em <4s
       if (raw !== scannerLastCode || Date.now() - scannerLastCodeAt > 4000) {
         scannerLastCode = raw;
@@ -100,6 +235,24 @@ function scannerLoop() {
         scannerPaused = true;
         if (scannerModo === 'bipagem') {
           processarLeituraBipagem(raw);
+        } else if (jaResolvido) {
+          // ja veio pronto do interpretador: NAO passa pela limpeza, que
+          // destruiria o payload do Magalu (ver comentario acima).
+          // Mesmo encerramento do processarBipagemEtiqueta: preenche o campo,
+          // fecha a camera, tira o foco (senao abre o teclado no celular) e
+          // dispara a busca.
+          const campo = document.getElementById('codigo');
+          if (campo) campo.value = raw;
+          const st = document.getElementById('scannerStatus');
+          if (st) {
+            st.style.background = 'rgba(46,125,50,0.95)';
+            st.textContent = '✅ Etiqueta lida — buscando...';
+          }
+          setTimeout(() => {
+            fecharCameraScanner();
+            if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+            if (typeof buscar === 'function') buscar();
+          }, 800);
         } else {
           processarBipagemEtiqueta(raw);
         }
