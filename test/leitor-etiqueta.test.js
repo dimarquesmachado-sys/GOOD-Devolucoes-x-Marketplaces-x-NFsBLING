@@ -104,21 +104,32 @@ DESTINATARIO NOME DE TESTE REMETENTE AMBTOTAL`;
      '  (confere: o padrao do server.js casa com o que estamos mandando)');
 }
 
-// ── 6. o mesmo leitor precisa existir na AMB — foi la que o caso aconteceu
+// ── 6. o mesmo leitor precisa CHEGAR na AMB — foi la que o caso aconteceu
 {
-  const AMB = fs.readFileSync(path.join(__dirname, '..', 'amb-devolucoes', 'public-AMB', 'js-AMB', 'colar-imagem.js'), 'utf8');
-  ok(AMB.indexOf('lerQrNoCanvas') !== -1, 'AMB tem o leitor de QR (o caso relatado era da AMB)');
-  ok(AMB.indexOf('external_grouper_code') !== -1, '  e conhece o QR da Magalu');
-  ok(AMB.indexOf('ETIQUETAS') !== -1, '  e reconhece a etiqueta antes de escolher o campo');
-  ok(AMB === SRC, '  e os dois arquivos estao IGUAIS (nada ficou so de um lado)');
-  ok(AMB.indexOf('ULTIMO_QR_MAGALU') !== -1, '  e o UUID do pacote e propagado tambem na AMB');
+  // Desde a unificacao (29/08) a AMB nao tem copia deste arquivo: ela serve
+  // o da GOOD. Entao a checagem aqui e que ele NAO voltou a ser copiado —
+  // uma copia nova e o comeco da proxima divergencia — e que a rota da AMB
+  // continua listando este modulo como compartilhado.
+  const COPIA_AMB = path.join(__dirname, '..', 'amb-devolucoes', 'public-AMB', 'js-AMB', 'colar-imagem.js');
+  ok(!fs.existsSync(COPIA_AMB),
+     'a AMB NAO tem copia local do leitor (serve o da GOOD; foi a copia que causou o caso de 29/08)');
+
+  const APP_AMB = fs.readFileSync(path.join(__dirname, '..', 'amb-devolucoes', 'app-AMB.js'), 'utf8');
+  ok(/JS_COMPARTILHADOS[\s\S]{0,200}colar-imagem\.js/.test(APP_AMB),
+     '  e o app-AMB serve colar-imagem.js a partir da pasta da GOOD');
+  ok(SRC.indexOf('lerQrNoCanvas') !== -1, '  (o arquivo unico tem o leitor de QR)');
+  ok(SRC.indexOf('external_grouper_code') !== -1, '  conhece o QR da Magalu');
+  ok(SRC.indexOf('ETIQUETAS') !== -1, '  e reconhece a etiqueta antes de escolher o campo');
+  ok(SRC.indexOf('ULTIMO_QR_MAGALU') !== -1, '  e propaga o UUID do pacote');
 
   const HTML_AMB = fs.readFileSync(path.join(__dirname, '..', 'amb-devolucoes', 'public-AMB', 'index-AMB.html'), 'utf8');
   const HTML_GOOD = fs.readFileSync(path.join(__dirname, '..', 'public', 'index.html'), 'utf8');
   ok(/jsqr@/i.test(HTML_AMB), 'a AMB carrega a biblioteca de QR');
   ok(/jsqr@/i.test(HTML_GOOD), '  e a GOOD tambem');
   // sem furar o cache, o navegador serve o arquivo velho e o conserto "nao chega"
-  ok(/colar-imagem\.js\?v=b330/.test(HTML_AMB), '  cache-buster da AMB atualizado');
+  // o numero muda a cada entrega; o que importa e NAO ficar no b129 antigo,
+  // porque agora o conteudo vem da GOOD e muda sem a AMB ser tocada
+  ok(/colar-imagem\.js\?v=b3[3-9]\d/.test(HTML_AMB), '  cache-buster da AMB atualizado');
   ok(/colar-imagem\.js\?v=4570/.test(HTML_GOOD), '  e o da GOOD tambem');
 }
 

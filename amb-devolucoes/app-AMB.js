@@ -81,7 +81,7 @@ const criarMlBuscas = require('./lib-AMB/ml-buscas-AMB');
 const registrarIdentificar = require('./lib-AMB/identificar-AMB');
 const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 
-const VERSAO = 'AMB Devolucoes b162';
+const VERSAO = 'AMB Devolucoes b163';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -632,19 +632,51 @@ function exigirLoginNoPainelHtml(req, res, next) {
 }
 router.use(exigirLoginNoPainelHtml);
 
+// ═══════════════════════════════════════════════════════════════════
+//  MODULOS COMPARTILHADOS COM A GOOD  (unificacao, 29/08)
+//  ---------------------------------------------------------------
+//  O base-amb.js sempre disse a intencao: "os modulos desta pasta sao
+//  os arquivos da GOOD, SEM UMA LINHA ALTERADA" — ele so poe o prefixo
+//  /amb em tempo de execucao. A copia era o MECANISMO de atualizacao,
+//  e dependia de alguem lembrar de copiar.
+//
+//  Ninguem lembrou. Em 29/08 o leitor de etiqueta foi consertado so na
+//  GOOD e a AMB — onde o problema tinha sido relatado — ficou pra tras.
+//  Antes disso, a mesma coisa com o filtro de defeitos e a coluna de
+//  data. O padrao se repete porque depende de memoria humana.
+//
+//  Agora os arquivos IDENTICOS sao servidos da pasta da GOOD. Some a
+//  copia, some a chance de divergirem. Os que ainda diferem de verdade
+//  (auth, busca, defeitos-ficha) continuam vindo de public-AMB, que e
+//  montada logo abaixo e tem prioridade pra qualquer nome repetido.
+//
+//  Nada muda no HTML: ele continua pedindo js-AMB/<arquivo>.
+// ═══════════════════════════════════════════════════════════════════
+const JS_COMPARTILHADOS = [
+  'app.js', 'bipagem.js', 'camera.js', 'colar-imagem.js',
+  'etiqueta.js', 'helpers.js', 'ocr.js', 'scanner.js', 'triagem.js',
+];
+
+router.use('/js-AMB', (req, res, next) => {
+  const nome = String(req.path || '').replace(/^\//, '');
+  if (JS_COMPARTILHADOS.indexOf(nome) === -1) return next();   // vai pro static da AMB
+  res.sendFile(path.join(__dirname, '..', 'public', 'js', nome), (err) => {
+    if (err) next();   // sumiu da GOOD? cai pra copia local, se houver
+  });
+});
+
 router.use(express.static(path.join(__dirname, 'public-AMB'), {
   // b19 - HTML sempre revalida (mesma licao da v3.64 da GOOD: o
   // navegador segurava a tela velha e o Diego via "tela b17" com
   // "servidor b18"). Imagens continuam com cache normal.
+  //
+  // 29/08 - havia DUAS chaves setHeaders neste objeto. Em JavaScript a
+  // segunda apaga a primeira sem avisar, entao quem editasse a de cima
+  // nao mudava nada. Ficou uma so.
   setHeaders: (res, caminho) => {
     if (String(caminho).endsWith('.html')) {
       res.setHeader('Cache-Control', 'no-cache, must-revalidate');
     }
-  },
-  setHeaders: (res, caminho) => {
-    // HTML sempre revalida: o celular do estoquista segurava
-    // versao velha em cache e ficava sem as correcoes.
-    if (caminho.endsWith('.html')) res.setHeader('Cache-Control', 'no-cache');
   },
 }));
 
