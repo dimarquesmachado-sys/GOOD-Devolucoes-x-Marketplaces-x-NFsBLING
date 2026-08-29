@@ -12,9 +12,14 @@ let scannerScanning = false;
 let scannerPaused = false;
 let scannerLastCode = '';
 let scannerLastCodeAt = 0;
+// v3.34.2 - quantos quadros ja passaram vendo SO codigo de barras numa
+// etiqueta. Serve pra dar chance ao QR (pequeno) aparecer antes de aceitar
+// o rastreio (grande). Zera a cada leitura nova e ao abrir a camera.
+let scannerEsperasSemQr = 0;
 let scannerModo = 'etiqueta'; // 'etiqueta' ou 'bipagem'
 
 async function abrirCameraScanner(modo = 'etiqueta') {
+  scannerEsperasSemQr = 0;   // v3.34.2 - comeca a contagem do zero
   scannerModo = modo;
 
   // Verifica se navegador suporta BarcodeDetector
@@ -107,9 +112,14 @@ function scannerLoop() {
       // o EAN em codigo de barras e algum QR de propaganda ao lado. Preferir
       // o QR ali ignoraria o EAN valido e mandaria numero errado pra busca.
       const qr = codes.find(c => c.format === 'qr_code');
-      const barras = codes.find(c => c.format !== 'qr_code');
+      // v3.34.2 (Codex): o detector pede code_128, code_39, itf e pdf417
+      // alem do EAN. Se a embalagem mostrar um desses ANTES do ean_13, o
+      // "primeiro nao-QR" pegava o valor errado, era recusado, e no quadro
+      // seguinte pegava o mesmo de novo — o EAN ao lado ficava inalcancavel.
+      const ean = codes.find(c => c.format === 'ean_13' || c.format === 'ean_8');
+      const barras = ean || codes.find(c => c.format !== 'qr_code');
       const escolhido = (scannerModo === 'bipagem')
-        ? (barras || qr || codes[0])     // EAN do produto: codigo de barras na frente
+        ? (barras || qr || codes[0])     // EAN do produto: EAN na frente
         : (qr || barras || codes[0]);    // etiqueta: QR na frente
       let raw = String(escolhido.rawValue || '').trim();
 
@@ -118,11 +128,40 @@ function scannerLoop() {
       // funcao, nao uma copia (duplicar foi o que gerou metade dos bugs de
       // hoje). Se ele nao reconhecer o formato, usa o que veio, e o
       // servidor decide.
+      // v3.34.2 (Codex): NUMA ETIQUETA, ESPERA O QR APARECER.
+      //
+      // O QR da Magalu e pequeno e o codigo de barras e grande: eles nem
+      // sempre entram no mesmo detect(). Sem isto, o primeiro quadro que
+      // pega so o de barras aceitava o RASTREIO e ja disparava a busca —
+      // o scanner nunca olhava o quadro seguinte, onde o QR apareceria.
+      // Ou seja, o bug que este PR veio consertar continuaria acontecendo,
+      // so que por timing.
+      //
+      // Entao: em modo etiqueta, se veio SO codigo de barras, deixa
+      // algumas frames pro QR aparecer antes de aceitar. Passado isso, o
+      // de barras vale — etiqueta que so tem ele nao pode travar o
+      // estoquista.
+      if (scannerModo !== 'bipagem' && !qr && barras) {
+        scannerEsperasSemQr = (scannerEsperasSemQr || 0) + 1;
+        if (scannerEsperasSemQr < 12) return;   // ~12 quadros, menos de 1s
+      } else {
+        scannerEsperasSemQr = 0;
+      }
+
       let jaResolvido = false;
       try {
         if (scannerModo !== 'bipagem' && typeof window.interpretarCodigoLido === 'function') {
           const lido = window.interpretarCodigoLido(raw);
-          if (lido && lido.valor) {
+          // v3.34.2 (Codex): QR de texto SOLTO (propaganda, wifi, link) sempre
+          // "resolvia", porque o interpretador devolve o proprio conteudo pra
+          // qualquer texto. Numa etiqueta com QR desses ao lado do codigo de
+          // barras, o texto ganhava — e se tivesse 9 a 44 caracteres, ia pra
+          // busca como se fosse identificador.
+          const qrGenerico = lido && lido.tipo === 'codigo do QR'
+            && !/^\{/.test(String(lido.valor || ''));
+          if (qrGenerico && barras) {
+            raw = String(barras.rawValue || raw).trim();
+          } else if (lido && lido.valor) {
             raw = String(lido.valor).trim();
             // v3.34.1 (Codex): o payload do MAGALU nao pode passar pela
             // limpeza generica do processarBipagemEtiqueta. Aquela funcao so

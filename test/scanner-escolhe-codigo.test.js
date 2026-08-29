@@ -66,11 +66,42 @@ ok(/fecharCameraScanner\(\);[\s\S]{0,200}if \(typeof buscar === 'function'\) bus
      '  e tirando o foco, senao abre o teclado no celular (licao da v3.14.8)');
 }
 
+// ── v3.34.2: espera o QR aparecer antes de aceitar so o de barras ────
+// O QR da Magalu e pequeno e o codigo de barras e grande: eles nem sempre
+// entram no mesmo detect(). Sem esperar, o primeiro quadro que pegasse so
+// o de barras aceitava o RASTREIO e ja disparava a busca — o bug que este
+// PR veio consertar, voltando por timing.
+ok(/let scannerEsperasSemQr = 0;/.test(SCANNER), 'ha contador de quadros sem QR');
+ok(/if \(scannerModo !== 'bipagem' && !qr && barras\) \{/.test(SCANNER),
+   '  em modo ETIQUETA com so codigo de barras, espera');
+ok(/if \(scannerEsperasSemQr < 12\) return;/.test(SCANNER),
+   '  ~12 quadros (menos de 1s) — depois disso o de barras vale');
+ok(/scannerEsperasSemQr = 0;\s*\n\s*\}/.test(SCANNER), '  e zera quando o QR aparece');
+{
+  const i = SCANNER.indexOf('async function abrirCameraScanner');
+  ok(/scannerEsperasSemQr = 0;/.test(SCANNER.slice(i, i + 200)),
+     '  e ao abrir a camera, pra nao herdar a contagem da leitura anterior');
+}
+
+// ── v3.34.2: QR de texto solto nao ganha do codigo de barras ─────────
+// O interpretador devolve o proprio conteudo pra QUALQUER texto, entao um
+// QR de propaganda/wifi/link sempre "resolvia" e ganhava — e se tivesse 9
+// a 44 caracteres, ia pra busca como se fosse identificador.
+ok(/const qrGenerico = lido && lido\.tipo === 'codigo do QR'/.test(SCANNER),
+   'QR generico (texto solto) e reconhecido como tal');
+ok(/if \(qrGenerico && barras\) \{/.test(SCANNER),
+   '  e cede a vez pro codigo de barras quando ele existe');
+
+// ── v3.34.2: EAN na frente dos outros codigos de barras ──────────────
+ok(/c\.format === 'ean_13' \|\| c\.format === 'ean_8'/.test(SCANNER),
+   'no modo produto, EAN vem antes de code_128/itf/pdf417 (o detector pede todos)');
+
 // ── a escolha, simulada ──────────────────────────────────────────────
 {
   function escolher(codes, modo) {
     const qr = codes.find((c) => c.format === 'qr_code');
-    const barras = codes.find((c) => c.format !== 'qr_code');
+    const ean = codes.find((c) => c.format === 'ean_13' || c.format === 'ean_8');
+    const barras = ean || codes.find((c) => c.format !== 'qr_code');
     const esc = (modo === 'bipagem') ? (barras || qr || codes[0]) : (qr || barras || codes[0]);
     return esc.rawValue;
   }
@@ -98,6 +129,14 @@ ok(/fecharCameraScanner\(\);[\s\S]{0,200}if \(typeof buscar === 'function'\) bus
      'bipando o EAN do produto: escolhe o CODIGO DE BARRAS, ignorando o QR de propaganda');
   ok(escolher(produto, 'etiqueta').indexOf('propaganda') !== -1,
      '  (o mesmo quadro no modo etiqueta escolheria o QR — por isso o modo importa)');
+
+  // v3.34.2: embalagem com outro codigo de barras alem do EAN
+  const embalagem = [
+    { format: 'code_128', rawValue: 'LOTE-ABC-99' },      // aparece primeiro
+    { format: 'ean_13', rawValue: '7898978766010' },
+  ];
+  ok(escolher(embalagem, 'bipagem') === '7898978766010',
+     'embalagem com code_128 e EAN: escolhe o EAN, nao o primeiro nao-QR');
 }
 
 // ── as duas empresas usam o MESMO scanner ────────────────────────────
