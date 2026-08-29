@@ -230,7 +230,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.66.2 (ponte reconhece amb; TikTok antes da busca por nome)',
+    version: '4.66.3 (TikTok abre uma solicitacao por ITEM: as irmas somam)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),

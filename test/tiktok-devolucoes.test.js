@@ -242,6 +242,30 @@ const AGUARDANDO_ENVIO = {
   ok(rc && rc.id === 'R2',
      'se TODAS estao canceladas, mostra a mais recente (melhor que nao achar)');
 
+  // ── b180.2: UMA POR ITEM e diferente de CADEIA ────────────────────
+  // O dono conferiu no Bling o pedido 585110624384091852: nota com DUAS
+  // linhas de R$ 59,90 e desconto de R$ 5,00 = R$ 114,80. E ha DOIS
+  // reembolsos de R$ 57,40, ambos CONCLUIDOS e sem elos. Somados dao
+  // exatamente o total. Nao e o cliente reabrindo — e o TikTok abrindo
+  // uma solicitacao por item. As DUAS valem.
+  const POR_ITEM = [
+    { id: 'A', order_id: '585110624384091852', tipo: 'RETURN_AND_REFUND',
+      status: 'RETURN_OR_REFUND_REQUEST_COMPLETE', valor: 57.40, criado_em: 1785099240 },
+    { id: 'B', order_id: '585110624384091852', tipo: 'RETURN_AND_REFUND',
+      status: 'RETURN_OR_REFUND_REQUEST_COMPLETE', valor: 57.40, criado_em: 1785099445 },
+  ];
+  const pi = tk.acharNaLista(POR_ITEM, '585110624384091852', 'girassol');
+  ok(pi && pi.irmas === 2, 'duas solicitacoes ATIVAS sem elos: reconhecidas como irmas');
+  ok(pi.valor_total_pedido === 114.8,
+     '  e o valor SOMADO bate com o total do pedido no Bling (R$ 114,80)');
+  ok(/nao e duplicata/.test(pi.aviso || ''),
+     '  com aviso dizendo que as duas valem — descartar uma esconderia metade do prejuizo');
+  ok(!/em sequencia/.test(pi.aviso || ''), '  e sem o texto de cadeia, que seria errado aqui');
+
+  // a cadeia continua se comportando como cadeia
+  ok(!achado.irmas, 'cadeia com canceladas NAO soma (so a ultima vale)');
+  ok(/em sequencia/.test(achado.aviso || ''), '  e o aviso diz "em sequencia"');
+
   // e o caso simples nao muda
   const uma = tk.acharNaLista([CADEIA[2]], '585234469423907917', 'girassol');
   ok(uma && uma.id === 'R3' && !uma.varias_no_pedido,
