@@ -227,7 +227,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.61.1 (pre-trava busca por todas as portas: pedido, NF, rastreio)',
+    version: '4.61.2 (pedido so sem shipment; nome do operador vem do campo)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -2154,7 +2154,9 @@ app.get('/api/triagem/status/:shipmentId', requerEstoquista, async (req, res) =>
   try {
     const { data, error } = await supabase
       .from('devolucoes')
-      .select('id, created_at, tipo, status, problema_descricao, problema_fotos, data_concluido, nf_numero, produto_qtd')
+      // b166.2 - funcionario entra no select: a tela usa esse campo pra dizer
+      // QUEM triou. Sem ele, mostrava 'Por ?' mesmo com o nome no banco.
+      .select('id, created_at, tipo, status, problema_descricao, problema_fotos, data_concluido, nf_numero, produto_qtd, funcionario')
       .or(ors.join(','))
       .order('created_at', { ascending: false });
 

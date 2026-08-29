@@ -579,8 +579,21 @@ function renderizar(data, ok) {
     shipment.id,
     nf?.chaveAcesso, nf?.chave,
     nf?.numero,                       // o numero da NF, sem os 44 digitos
-    data.order?.id, data.pack?.id,    // pedido e pacote do marketplace
-    shipment.tracking, data.tracking, // rastreio (Correios, Shopee)
+    data.pack?.id,
+    // b166.2 (Codex): o RASTREIO da remessa reversa. Numa etiqueta dos
+    // Correios (AD/AP...BR) o backend guarda o codigo bipado em
+    // data.ml_return.tracking — nao em shipment.tracking. Sem esta linha, o
+    // registro gravado so pelo tracking continuava sem ser achado, que era
+    // exatamente o caso que o filtro novo veio cobrir.
+    data.ml_return?.tracking, data.return?.tracking,
+    shipment.tracking, data.tracking,
+    // b166.2 (Codex): o PEDIDO so entra quando NAO ha shipment. Um pedido
+    // pode ter dois envios legitimos — nos dados reais da AMB o pedido
+    // 2000017367190752 tem dois — e mandar o order_id faria o segundo
+    // pacote casar com a triagem do primeiro, cuspindo banner vermelho numa
+    // devolucao que nunca foi triada. Sem shipment (Magalu), o pedido E a
+    // unica porta, e ai entra.
+    shipment.id ? null : data.order?.id,
   ];
   window._magaluProtocolo = data.magalu?.protocolo || null; // p/ triagem gravar
   if (idPrincipal) {
@@ -789,15 +802,28 @@ function renderizarTriagemDuplicata(reg) {
     dateStyle: 'short', timeStyle: 'short',
   });
 
-  // Extrair quem triou da descricao
-  let triadoPor = '?';
-  const desc = reg.problema_descricao || '';
-  const m1 = desc.match(/Aprovado por\s+(\w+)/i);
-  const m2 = desc.match(/\[Reportado por\s+(\w+)\]/i);
-  const m3 = desc.match(/\[DIVERGENTE por\s+(\w+)\]/i);
-  if (m1) triadoPor = m1[1];
-  else if (m2) triadoPor = m2[1];
-  else if (m3) triadoPor = m3[1];
+  // b166.2 (Codex): o nome vem do CAMPO, nao mais so da descricao.
+  //
+  // A extracao por texto usava \w+, que nao aceita espaco nem acento: um
+  // "Joao Silva" ou "Joao" com til viravam "Por ?" mesmo com o nome
+  // gravado. E em triagem aprovada comum a descricao vem vazia, entao nao
+  // havia texto nenhum de onde extrair.
+  //
+  // A coluna `funcionario` sempre teve o nome. A leitura da descricao fica
+  // de reserva, pros registros antigos que so tem o texto.
+  let triadoPor = String(reg.funcionario || '').trim();
+  if (!triadoPor) {
+    const desc = reg.problema_descricao || '';
+    // [^\]] e o que muda: pega o nome inteiro ate o fecha-colchete,
+    // espacos e acentos inclusos
+    const m1 = desc.match(/Aprovado por\s+([^\[\]\n]+?)\s*(?:\[|$)/i);
+    const m2 = desc.match(/\[Reportado por\s+([^\]]+)\]/i);
+    const m3 = desc.match(/\[DIVERGENTE por\s+([^\]]+)\]/i);
+    if (m2) triadoPor = m2[1].trim();
+    else if (m3) triadoPor = m3[1].trim();
+    else if (m1) triadoPor = m1[1].trim();
+  }
+  if (!triadoPor) triadoPor = '?';
 
   // b166 - VERMELHO e com ACENTO (pedido do dono, 29/08). Era laranja e sem
   // acento; num galpao corrido, laranja passa por "aviso" e nao por "pare".

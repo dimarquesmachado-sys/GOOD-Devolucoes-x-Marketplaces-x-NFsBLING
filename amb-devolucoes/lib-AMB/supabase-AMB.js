@@ -145,12 +145,11 @@ async function triagensDe(identificadores) {
       // na GOOD o tipo E o desfecho. Aqui a gente entrega como a GOOD.
       tipo: x.tipo && x.tipo !== 'devolucao' ? x.tipo : (x.status || 'aprovado'),
       status_original: x.status,
-      // b166 (Codex): a tela tira o "Por <fulano>" de dentro da DESCRICAO,
-      // procurando um marcador. Em triagem aprovada comum a descricao vem
-      // vazia, entao aparecia "Por ?" mesmo com o nome gravado na coluna
-      // `funcionario`. Aqui a descricao ganha o marcador quando falta.
-      problema_descricao: x.problema_descricao
-        || (x.funcionario ? `[Reportado por ${x.funcionario}]` : null),
+      // b166.2 (Codex): a tela agora le o campo `funcionario` direto (vem no
+      // select acima), entao nao precisa mais inventar marcador dentro da
+      // descricao — o que so funcionava pra nome de uma palavra sem acento.
+      // A descricao volta a ser o que e: a descricao.
+      problema_descricao: x.problema_descricao,
     }));
     return { ok: true, registros };
   } catch (e) {

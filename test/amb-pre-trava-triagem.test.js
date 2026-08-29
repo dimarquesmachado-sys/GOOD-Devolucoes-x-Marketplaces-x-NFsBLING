@@ -46,6 +46,8 @@ ok(/replace\(\/\["',\(\)\]\/g, ''\)/.test(DB_AMB),
 {
   const i = DB_AMB.indexOf('async function triagensDe');
   const src = DB_AMB.slice(i, DB_AMB.indexOf('/** Grava uma triagem', i));
+  ok(/funcionario/.test(DB_AMB.slice(DB_AMB.indexOf('async function triagensDe'), DB_AMB.indexOf('/** Grava uma triagem'))),
+     '  e o select traz o funcionario, que a tela le direto');
   ok(/created_at: x\.criado_em/.test(src),
      'traduz criado_em -> created_at (o front espera o nome da GOOD)');
   ok(/x\.tipo !== 'devolucao'/.test(src),
@@ -144,8 +146,8 @@ srv.listen(0, '127.0.0.1', async () => {
      '  com a data no campo que a tela le (a tabela guarda criado_em)');
   ok(r1 && r1.registros[0].tipo === 'concluido',
      '  e o tipo traduzido do status (era "devolucao", que a tela nao sabe exibir)');
-  ok(r1 && /\[Reportado por Diego\]/.test(String(r1.registros[0].problema_descricao || '')),
-     '  e a descricao leva o marcador do operador (vinha "Por ?" na tela)');
+  ok(r1 && r1.registros[0].funcionario === 'Diego',
+     '  e o nome de quem triou vem no CAMPO (a tela usava regex \\w+ na descricao: quebrava com espaco e acento)');
 
   // Magalu, que nao tem shipment: acha pelo pedido
   const r2 = await pegar('/amb/api/triagem/status/1550970116332325');
@@ -169,7 +171,45 @@ srv.listen(0, '127.0.0.1', async () => {
   const r3 = await pegar('/amb/api/triagem/status/99999999999');
   ok(r3 && r3.registros.length === 0, 'pacote novo continua liberando a triagem');
 
-  console.log('');
+  // ── b166.2: o PEDIDO so entra quando nao ha shipment ────────────────
+{
+  // reproduz a montagem do front (busca.js)
+  function portas(data) {
+    const shipment = data.shipment || {};
+    const nf = data.nf || {};
+    return [
+      data.magalu && data.magalu.protocolo,
+      shipment.id,
+      nf.chaveAcesso, nf.chave, nf.numero,
+      data.pack && data.pack.id,
+      data.ml_return && data.ml_return.tracking,
+      data.return && data.return.tracking,
+      shipment.tracking, data.tracking,
+      shipment.id ? null : (data.order && data.order.id),
+    ].filter(Boolean);
+  }
+
+  const comShipment = portas({ shipment: { id: '47501559178' }, order: { id: '2000017367190752' } });
+  ok(comShipment.indexOf('2000017367190752') === -1,
+     'havendo shipment, o PEDIDO nao e mandado — o pedido 2000017367190752 tem DOIS envios legitimos');
+  ok(comShipment.indexOf('47501559178') !== -1, '  o shipment vai, como sempre');
+
+  const semShipment = portas({ shipment: {}, order: { id: '1550970116332325' } });
+  ok(semShipment.indexOf('1550970116332325') !== -1,
+     'sem shipment (Magalu), o pedido E a unica porta — e vai');
+
+  const correios = portas({ shipment: {}, ml_return: { tracking: 'AD123456789BR' } });
+  ok(correios.indexOf('AD123456789BR') !== -1,
+     'etiqueta dos Correios: o rastreio vem de data.ml_return.tracking (nao de shipment.tracking)');
+
+  const BUSCA_GOOD = fs.readFileSync(path.join(RAIZ, 'public', 'js', 'busca.js'), 'utf8');
+  ok(/shipment\.id \? null : data\.order\?\.id/.test(BUSCA_AMB), '  e e isso que o front da AMB faz');
+  ok(/shipment\.id \? null : data\.order\?\.id/.test(BUSCA_GOOD), '  e o da GOOD tambem');
+  ok(/ml_return\?\.tracking/.test(BUSCA_AMB) && /ml_return\?\.tracking/.test(BUSCA_GOOD),
+     '  as duas mandam o rastreio da remessa reversa');
+}
+
+console.log('');
   console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
   srv.close();
   process.exit(falhas ? 1 : 0);
