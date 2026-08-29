@@ -76,6 +76,7 @@ const nfNomes = require('./lib/nf-nomes')({ chamarBling });
 
 // v3.76 - devolucoes ESPERADAS do portal Magalu Entregas (indice 'a espreita')
 const espreita = require('./lib/magalu-espreita')({ chamarMagalu: magalu.chamarMagalu });
+const devCapturadas = require('./lib/devolucoes-capturadas');   // v4.63
 
 // ── Chave p/ rotas de diagnóstico/admin/setup (acessadas com ?k=CHAVE na URL) ──
 // Sem a env ADMIN_KEY configurada no Render, essas rotas ficam DESLIGADAS (404).
@@ -227,7 +228,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.62.1 (sonda do TikTok aceita ?k=ADMIN_KEY, nao so cookie da GOOD)',
+    version: '4.63.0 (captura e GUARDA as devolucoes dos marketplaces)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -4933,6 +4934,8 @@ registrarRotasDebug(app, {
   requerEstoquista,   // b302 - middleware
   mlClient, nfNomes,   // b302
   ESP_ENTREGA, IDX_PROD, EAN_POR_SKU, EAN_PROGRESSO,   // b302 - estado compartilhado
+  devCapturadas,                                       // v4.63 - captura
+  capturaEstado: () => CAPTURA_ESTADO,                 //   e o estado do ultimo ciclo
   get ESP_ENTREGA_RODANDO() { return ESP_ENTREGA_RODANDO; },   // b302 - flag viva, por getter
   get EAN_RODANDO() { return EAN_RODANDO; },
 });
@@ -5028,12 +5031,71 @@ setInterval(() => { if (magalu.cfg.autorizado) espreita.preAquecer(); }, 25 * 60
 function preAquecerEspreita() {
   if (ESP_MONTANDO) return;
   ESP_MONTANDO = montarEspreita()
-    .then(r => { guardarCacheEspreita(r); })
+    .then(r => {
+      guardarCacheEspreita(r);
+      capturarDevolucoes(r);   // v4.63 - de quebra, GUARDA (ver abaixo)
+    })
     .catch(() => {})
     .finally(() => { ESP_MONTANDO = null; });
 }
 setTimeout(preAquecerEspreita, 90 * 1000);
 setInterval(preAquecerEspreita, 3 * 60 * 1000);
+
+// ============================================================
+// v4.63 - CAPTURA DAS DEVOLUCOES  (ideia do dono, 29/08)
+//
+//   "tinha q ter um cron a meia noite pra pegar esses dados
+//    previamente, ate pq a devolucao sempre demora mais q 1 dia
+//    pra chegar ate nos"
+//
+// Nao criei cron novo: o "a espreita" JA varre ML, Shopee e Magalu a
+// cada 3 minutos. O que faltava nao era buscar, era GUARDAR — ele
+// remontava tudo do zero e vivia so em memoria, entao reiniciou,
+// perdeu. Aqui a gente pega a lista que ele acabou de montar e grava.
+//
+// Gravar de 3 em 3 minutos seria desperdicio (o upsert repetiria as
+// mesmas linhas), entao a captura tem seu proprio ritmo: uma vez a cada
+// CAPTURA_INTERVALO_MS, e uma logo no primeiro ciclo depois do boot —
+// assim uma reinicializacao no meio da madrugada nao pula o dia.
+// ============================================================
+const CAPTURA_INTERVALO_MS = 60 * 60 * 1000;   // de hora em hora
+let CAPTURA_ULTIMA = 0;
+let CAPTURA_RODANDO = false;
+let CAPTURA_ESTADO = { ultima: null, gravadas: 0, erro: null };
+
+function capturarDevolucoes(resultadoEspreita) {
+  if (!supabase || CAPTURA_RODANDO) return;
+  if (Date.now() - CAPTURA_ULTIMA < CAPTURA_INTERVALO_MS) return;
+
+  const lista = (resultadoEspreita && resultadoEspreita.itens) || [];
+  if (!lista.length) return;
+
+  CAPTURA_RODANDO = true;
+  CAPTURA_ULTIMA = Date.now();
+
+  const linhas = lista
+    .map((d) => devCapturadas.traduzir(d, 'good'))
+    .filter(Boolean);
+
+  devCapturadas.guardar(supabase, linhas)
+    .then((r) => {
+      CAPTURA_ESTADO = {
+        ultima: new Date().toISOString(),
+        gravadas: r.gravadas || 0,
+        // sem chave nao ha upsert possivel; conto pra saber se estou
+        // perdendo devolucao por falta de identificador
+        sem_chave: lista.length - linhas.length,
+        erro: r.ok ? null : (r.erros || ['falha desconhecida']).join(' | '),
+      };
+      if (r.ok) console.log(`[CAPTURA] ${r.gravadas} devolucoes guardadas`);
+      else console.warn('[CAPTURA] falhou:', CAPTURA_ESTADO.erro);
+    })
+    .catch((e) => {
+      CAPTURA_ESTADO = { ultima: new Date().toISOString(), gravadas: 0, erro: e.message || String(e) };
+      console.warn('[CAPTURA] erro:', CAPTURA_ESTADO.erro);
+    })
+    .finally(() => { CAPTURA_RODANDO = false; });
+}
 
 // ============================================================
 // ev1 - EVENTOS DO CHECKOUT (o Mover-Pedidos avisa; fica pesquisavel).
