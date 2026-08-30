@@ -161,7 +161,9 @@ const PAINEL = fs.readFileSync(path.join(RAIZ, 'public', 'painel-devolucoes.html
     // carregarEspreita, que legitimamente chama o modal de gerar
     const fimDef = PAINEL.indexOf('async function carregarEspreita', iDef);
     const fnSR = PAINEL.slice(iDef, fimDef > iDef ? fimDef : iDef + 8000);
-    ok(!/abrirModalGerarDevolucao/.test(fnSR),
+    // procura a CHAMADA, nao a mencao: o comentario que explica a remocao
+    // cita o nome da funcao, e a busca crua acusava ele mesmo
+    ok(!/onclick="abrirModalGerarDevolucao\(/.test(fnSR) && !/abrirModalGerarDevolucao\('/.test(fnSR),
        'o card NAO chama o modal de gerar: o id dele e de outra tabela (triagem, nao captura)');
     ok(/Abrir NF no Bling/.test(fnSR),
        '  leva pra NOTA no Bling, que e de onde ele agiria de qualquer forma');
