@@ -232,7 +232,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.82.1 (id vem da chave e nao muda; chave validada)',
+    version: '4.82.2 (os DOIS formatos antigos de id sao reconhecidos)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -5068,12 +5068,13 @@ app.post('/api/admin/sem-retorno/registrar', requerAdmin, async (req, res) => {
     if (erroBusca) return res.status(500).json({ ok: false, erro: erroBusca.message });
 
     // b194.1: procura o id atual E o legado, pelo mesmo motivo do filtro
-    const chaveLegado = String(d.chave_caso_legado || '').trim();
+    const legados = [d.chave_caso_legado, d.chave_caso_legado2]
+      .map((x) => String(x || '').trim()).filter(Boolean);
     const existente = chaveCaso
       ? (doPedido || []).find((r) => {
         const desc = String(r.problema_descricao || '');
         return desc.includes('[caso:' + chaveCaso + ']')
-          || (chaveLegado && desc.includes('[caso:' + chaveLegado + ']'));
+          || legados.some((l) => desc.includes('[caso:' + l + ']'));
       })
       : (doPedido || [])[0];
 
@@ -5353,6 +5354,10 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
         // risco de o dono emitir uma segunda NF.
         if (casosRegistrados.has(String(m.id))) return false;
         if (m.id_legado && casosRegistrados.has(String(m.id_legado))) return false;
+        // b194.2 (Codex): havia DOIS formatos antigos de id, e cobrir so um
+        // deixaria o outro orfao — que e o problema que este campo veio
+        // resolver.
+        if (m.id_legado2 && casosRegistrados.has(String(m.id_legado2))) return false;
         return !triadosSemMarcador.has(String(m.pedido));       // triagem de bipe
       }))
       .map((d) => {
@@ -5480,7 +5485,8 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
           // DEFEITO" nunca aparecia justamente onde importa: a mercadoria
           // que ficou com o cliente.
           entrada_estoque: d.entrada_estoque,
-          id_legado: d.id_legado || undefined,   // b194.1 - casar registro antigo
+          id_legado: d.id_legado || undefined,     // b194.1 - casar registro antigo
+          id_legado2: d.id_legado2 || undefined,   // b194.2 - o outro formato antigo
           prejuizo_integral: d.prejuizo_integral || undefined,
           // b190.5 (Codex): o marcador de rateio tem que CHEGAR na tela.
           // Eu calculava em magalu-cancelados.js e nao repassava — o dono

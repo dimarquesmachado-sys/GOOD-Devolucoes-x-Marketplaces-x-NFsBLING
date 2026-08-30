@@ -415,6 +415,15 @@ const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o
      'o id vem da CHAVE, que nao muda quando eu corrijo o numero');
   ok(comChave.id_legado === 'P1#637',
      '  e o id ANTIGO vai junto, pra casar registros feitos antes da correcao');
+  // b194.2: havia DOIS formatos antigos — com numero, e so com chave
+  ok(comChave.id_legado2 === 'P1#35887584',
+     '  incluindo o OUTRO formato antigo (final da chave), que ficaria orfao');
+  const soChave = mc.normalizar({
+    classe: 'estornado_apos_envio', order_code: 'P1',
+    notas: [{ chave: '35260732461988000182550010000764661835887584' }],
+  }, 'good');
+  ok(soChave.id_legado === 'P1#35887584',
+     '  e nota que so tinha chave casa pelo formato dela');
 
   // a chave so vale se PARECE uma NF-e
   ok(mc.numeroDaChave('3'.repeat(44)) === null,
