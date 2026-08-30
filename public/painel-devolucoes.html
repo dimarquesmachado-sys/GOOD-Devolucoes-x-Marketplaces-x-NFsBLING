@@ -343,6 +343,25 @@
         <div id="listaDivergentes"></div>
       </div>
 
+      <!-- v4.69 - VENDAS ESTORNADAS SEM RETORNO (pedido do dono: ACIMA do a espreita)
+           O marketplace reembolsou e o produto NUNCA volta, mas a NF de venda
+           continua gerando imposto. Ate 20 dias da pra cancelar a nota; depois,
+           NF de devolucao. Deposito de DEFEITO, porque a mercadoria nao chegou. -->
+      <div class="secao" id="secaoSemRetorno" style="display:none; grid-column: 1 / -1;">
+        <h2>
+          🧾 Estornadas sem retorno — recuperar o imposto
+          <span class="badge-count" id="countSemRetorno" style="background:#ef6c00;">0</span>
+        </h2>
+        <div style="font-size:13px;color:#666;margin-bottom:10px;">
+          Vendas que o marketplace reembolsou <b>sem devolução física</b> — o produto ficou com o
+          cliente, mas a nota de venda continua gerando imposto.
+          <b>Até 20 dias dá para cancelar a NF</b>; passado o prazo, o caminho é a NF de devolução.
+          Ao lançar, use o depósito de <b>DEFEITO</b>: a mercadoria nunca chegou, então não pode
+          entrar no estoque vendável.
+        </div>
+        <div id="listaSemRetorno"></div>
+      </div>
+
       <!-- v3.79.1 - A ESPREITA no FIM, largura total (monitoramento, nao fila) -->
       <div class="secao" id="secaoEspreita" style="display:none; grid-column: 1 / -1;">
         <h2>
@@ -408,6 +427,7 @@
         document.getElementById('secoes').style.display = '';
       }
       carregarEspreita(); // v3.76 - nao bloqueia o principal
+      carregarSemRetorno(); // v4.69 - idem: falha aqui nao pode derrubar a fila
       // v3.99 - atualiza sozinho a cada 4 min: o que ja foi bipado ou mandado
       // pra fila de NF sai da lista sem precisar recarregar a pagina na mao.
       if (!window._espAuto) {
@@ -862,6 +882,61 @@
     function espreitaOrdenar() { window._espOrdem = (window._espOrdem === 'antigas') ? 'novas' : 'antigas'; if (window._espDados) renderEspreita(window._espDados); }
 
     // v3.77 - A ESPREITA UNIFICADA: Magalu + ML + Shopee (devolucoes a caminho)
+    // v4.69 - VENDAS ESTORNADAS SEM RETORNO
+    //
+    // Ideia do dono: "se a venda foi cancelada, a gente pode cancelar a nota
+    // fiscal e isentar ao menos o imposto da venda. se não der pra cancelar,
+    // a gente gera a nota fiscal de devolução q dá na mesma".
+    //
+    // A ordem da lista tem intencao: quem ainda da pra CANCELAR vem primeiro,
+    // porque e a unica parte com prazo correndo. Depois, os maiores valores.
+    async function carregarSemRetorno() {
+      try {
+        const r = await fetch('/api/admin/sem-retorno');
+        const d = await r.json();
+        if (!d || !d.ok || !Array.isArray(d.itens) || !d.itens.length) return;
+
+        document.getElementById('secaoSemRetorno').style.display = '';
+        document.getElementById('countSemRetorno').textContent = d.total;
+
+        const cabecalho = d.podem_cancelar > 0
+          ? '<div style="margin-bottom:10px;padding:10px;border-radius:8px;background:#fff3e0;'
+            + 'border:2px solid #ef6c00;color:#e65100;font-weight:700;">'
+            + '⏳ ' + d.podem_cancelar + ' com a NF ainda no prazo de cancelamento — essas primeiro, '
+            + 'porque o relógio está correndo</div>'
+          : '';
+
+        const linhas = d.itens.map(function (x) {
+          const podeCancelar = x.acao === 'cancelar_nf';
+          const tarja = podeCancelar
+            ? '<span style="background:#ef6c00;color:#fff;padding:3px 8px;border-radius:10px;'
+              + 'font-size:10px;font-weight:700;">CANCELAR NF · ' + x.prazo_cancelamento + 'd restantes</span>'
+            : '<span style="background:#546e7a;color:#fff;padding:3px 8px;border-radius:10px;'
+              + 'font-size:10px;font-weight:700;">NF DE DEVOLUÇÃO</span>';
+
+          return '<div class="item" style="border-left-color:' + (podeCancelar ? '#ef6c00' : '#546e7a') + ';">'
+            + '<div class="item-header"><div class="item-titulo">'
+            + escapeHtml(x.produto || '-') + ' ' + tarja + '</div></div>'
+            + '<div style="font-size:13px;color:#555;margin-top:6px;">'
+            + (x.nf_numero ? '<b>NF ' + escapeHtml(String(x.nf_numero)) + '</b> · ' : '')
+            + 'pedido <code>' + escapeHtml(String(x.pedido || '-')) + '</code>'
+            + (x.sku ? ' · SKU <code>' + escapeHtml(String(x.sku)) + '</code>' : '')
+            + (x.valor != null ? ' · R$ ' + Number(x.valor).toFixed(2) : '')
+            + (x.dias_desde != null ? ' · há ' + x.dias_desde + ' dias' : '')
+            + '</div>'
+            + (x.motivo ? '<div style="font-size:13px;color:#777;margin-top:4px;">'
+                + '💬 ' + escapeHtml(String(x.motivo)) + '</div>' : '')
+            + (x.cliente ? '<div style="font-size:12px;color:#999;margin-top:2px;">'
+                + escapeHtml(String(x.cliente)) + '</div>' : '')
+            + '</div>';
+        }).join('');
+
+        document.getElementById('listaSemRetorno').innerHTML = cabecalho + linhas;
+      } catch (e) {
+        // silencioso de proposito: e um bloco informativo, nao a fila
+      }
+    }
+
     async function carregarEspreita() {
       atualizarCacheRecados();
       try {

@@ -232,7 +232,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.68.4 (revelia: preserva a lista do servico; erro antes da loja)',
+    version: '4.69.0 (painel de vendas estornadas sem retorno: recuperar o imposto)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -4971,6 +4971,124 @@ app.get('/api/ids-fiscais', requerLogin, async (req, res) => {
     });
   }
   return res.status(400).json({ ok: false, erro: 'empresa desconhecida: ' + alvo, aceitas_aqui: ['good'] });
+});
+
+// ============================================================
+// v4.69 - VENDAS ESTORNADAS SEM RETORNO
+// ------------------------------------------------------------
+// Lista as vendas que o marketplace reembolsou SEM devolucao fisica —
+// o produto nunca volta, mas a NF de venda continua emitida, gerando
+// imposto sobre uma receita que nao existiu.
+//
+// Ideia do dono (29/08):
+//
+//   "se a venda foi cancelada, a gente pode cancelar a nota fiscal e
+//    isentar ao menos o imposto da venda. se não der pra cancelar, a
+//    gente gera a nota fiscal de devolução q dá na mesma"
+//
+// TAMANHO DO PROBLEMA: no TikTok da Girassol, o filtro "Apenas
+// reembolso" mostrava 62 casos contra 103 com devolucao. Metade das
+// solicitacoes nunca vira pacote.
+//
+// O PRAZO decide o que fazer (medido na madrugada de 25-28/08):
+//   ate 20 dias  -> da pra CANCELAR a NF (cStat 135 ate 24h, 155 depois)
+//   passou disso -> so NF de devolucao (501 intempestivo, sem contorno)
+//
+// O DEPOSITO E O DE DEFEITO, nao o geral — pedido dele: "não integrarão
+// o estoque normal, pois nunca recebemos d volta". O objetivo aqui e
+// so fiscal.
+//
+// ⚠️ NAO EMITE NADA. So lista e ordena; quem decide e emite e ele, no
+// fluxo de sempre.
+// ============================================================
+app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
+  try {
+    if (!supabase) return res.status(503).json({ ok: false, erro: 'Supabase nao configurado' });
+
+    const dias = Math.min(365, Math.max(1, parseInt(req.query.dias, 10) || 180));
+    const desde = new Date(Date.now() - dias * 864e5).toISOString();
+
+    // So o que NUNCA vira pacote: reembolso puro, ja concluido.
+    // Cancelada fica de fora — ali nao houve estorno.
+    const { data, error } = await supabase
+      .from('devolucoes_capturadas')
+      .select('*')
+      .gte('capturado_em', desde)
+      .order('criado_no_mkt', { ascending: false })
+      .limit(500);
+
+    if (error) return res.status(500).json({ ok: false, erro: error.message });
+
+    const semRetorno = (data || []).filter((d) => {
+      const tipo = String(d.tipo_tiktok || d.cru?.tipo || '').toUpperCase();
+      const st = String(d.status || '').toUpperCase();
+      return tipo === 'REFUND' && st.indexOf('CANCEL') === -1;
+    });
+
+    // ja tem NF de devolucao? entao ja foi resolvida
+    const pedidos = [...new Set(semRetorno.map((d) => d.pedido).filter(Boolean))];
+    let jaResolvidos = new Set();
+    if (pedidos.length) {
+      const { data: tri } = await supabase
+        .from('devolucoes')
+        .select('order_id, nf_devolucao_id_bling')
+        .in('order_id', pedidos.slice(0, 300))
+        .not('nf_devolucao_id_bling', 'is', null);
+      jaResolvidos = new Set((tri || []).map((t) => t.order_id));
+    }
+
+    const AGORA = Date.now();
+    const itens = semRetorno
+      .filter((d) => !jaResolvidos.has(d.pedido))
+      .map((d) => {
+        // o relogio da SEFAZ conta da EMISSAO da nota. Sem a data da nota,
+        // uso a criacao da devolucao como piso — e sempre POSTERIOR a venda,
+        // entao o prazo real e MENOR que o calculado. Erra pro lado seguro.
+        const base = d.criado_no_mkt ? new Date(d.criado_no_mkt).getTime() : null;
+        const diasDesde = base ? Math.floor((AGORA - base) / 864e5) : null;
+        const podeCancelar = diasDesde != null && diasDesde <= 20;
+
+        return {
+          id: d.id,
+          marketplace: d.marketplace,
+          pedido: d.pedido,
+          nf_numero: d.nf_numero,
+          nf_chave: d.nf_chave,
+          cliente: d.cliente_nome,
+          produto: d.produto_titulo,
+          sku: d.produto_sku,
+          qtd: d.produto_qtd,
+          valor: d.valor_refund,
+          motivo: d.motivo_texto || d.motivo,
+          criado_em: d.criado_no_mkt,
+          dias_desde: diasDesde,
+          // o que fazer: cancelar (se no prazo) ou NF de devolucao
+          acao: podeCancelar ? 'cancelar_nf' : 'nf_devolucao',
+          prazo_cancelamento: podeCancelar ? Math.max(0, 20 - diasDesde) : 0,
+        };
+      });
+
+    // quem ainda da pra cancelar vem primeiro, e dentro disso o mais
+    // urgente — e a unica parte com prazo correndo
+    itens.sort((a, b) => {
+      if (a.acao !== b.acao) return a.acao === 'cancelar_nf' ? -1 : 1;
+      if (a.acao === 'cancelar_nf') return a.prazo_cancelamento - b.prazo_cancelamento;
+      return (b.valor || 0) - (a.valor || 0);   // nos outros, o maior valor primeiro
+    });
+
+    return res.json({
+      ok: true,
+      total: itens.length,
+      valor_total: Number(itens.reduce((t, x) => t + (Number(x.valor) || 0), 0).toFixed(2)),
+      podem_cancelar: itens.filter((x) => x.acao === 'cancelar_nf').length,
+      itens,
+      leia: 'Vendas reembolsadas SEM devolucao fisica: o produto nao volta, mas a NF de venda '
+        + 'continua gerando imposto. Ate 20 dias da pra CANCELAR a nota; depois, NF de devolucao. '
+        + 'O deposito e o de DEFEITO — nao entra no estoque vendavel, porque a mercadoria nunca chegou.',
+    });
+  } catch (e) {
+    return res.status(500).json({ ok: false, erro: String(e.message || e).slice(0, 200) });
+  }
 });
 
 app.get('/api/admin/espreita', requerAdmin, async (req, res) => {
