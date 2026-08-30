@@ -232,7 +232,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.69.2 (sem-retorno: empresa fixa, janela do reembolso, granularidade)',
+    version: '4.69.3 (captura lia campo inexistente e nao pegava TikTok)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -5393,7 +5393,12 @@ function capturarDevolucoes(resultadoEspreita) {
   if (!supabase || CAPTURA_RODANDO) return;
   if (Date.now() - CAPTURA_ULTIMA < CAPTURA_INTERVALO_MS) return;
 
-  const lista = (resultadoEspreita && resultadoEspreita.itens) || [];
+  // b184.2 (Codex): o campo e `em_transito`, nao `itens`.
+  //
+  // montarEspreita() devolve { em_transito, atrasadas_30d, nunca_bipadas, ... }
+  // e eu lia `.itens`, que nao existe — entao a captura gravava ZERO desde
+  // que subiu, calada. E o painel de estornadas consultaria uma tabela vazia.
+  const lista = (resultadoEspreita && (resultadoEspreita.em_transito || resultadoEspreita.itens)) || [];
   if (!lista.length) return;
 
   CAPTURA_RODANDO = true;
@@ -5403,7 +5408,21 @@ function capturarDevolucoes(resultadoEspreita) {
     .map((d) => devCapturadas.traduzir(d, 'good'))
     .filter(Boolean);
 
-  devCapturadas.guardar(supabase, linhas)
+  // b184.2 (Codex): o espreita cobre Magalu, ML e Shopee — o TikTok NAO
+  // passa por ele (vem pela ponte com o Mover-Pedidos). Sem isto, a tabela
+  // nunca teria devolucao do TikTok, e o painel de estornadas sem retorno
+  // — que existe justamente pros reembolsos puros do TikTok — ficaria
+  // eternamente vazio.
+  const comTikTok = tiktokPonte.sondaDevolucoes('good', { limite: 200 })
+    .then((r) => {
+      if (!r || !r.ok || !r.cru || !Array.isArray(r.cru.devolucoes)) return [];
+      return r.cru.devolucoes
+        .map((d) => devCapturadas.traduzir(tiktokDev.normalizar(d, 'good'), 'good'))
+        .filter(Boolean);
+    })
+    .catch(() => []);   // falha aqui nao pode derrubar a captura dos outros
+
+  comTikTok.then((extras) => devCapturadas.guardar(supabase, linhas.concat(extras)))
     .then((r) => {
       CAPTURA_ESTADO = {
         ultima: new Date().toISOString(),

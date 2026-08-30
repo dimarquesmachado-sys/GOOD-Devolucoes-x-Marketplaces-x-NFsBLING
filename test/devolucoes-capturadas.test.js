@@ -47,6 +47,14 @@ const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o
   ok(ml.empresa === 'good' && ml.marketplace === 'ml', '  empresa e marketplace em minusculas');
   ok(!!ml.cru, '  e o CRU vai junto (pra nao perder campo que ainda nao mapeamos)');
 
+  // b184.2: o tipo do TikTok vira COLUNA — e por ele que o painel de
+  // estornadas separa reembolso puro de devolucao com retorno
+  const tk = cap.traduzir({ marketplace: 'tiktok', pedido: '585514776487560610',
+    tipo_tiktok: 'REFUND', status: 'RETURN_OR_REFUND_REQUEST_COMPLETE', valor: 36 }, 'good');
+  ok(tk.tipo_tiktok === 'REFUND', 'o tipo do TikTok vira COLUNA, nao so campo dentro do cru');
+  ok(cap.traduzir({ marketplace: 'ml', pedido: '1', tipo: 'devolucao' }, 'good').tipo_tiktok === 'devolucao',
+     '  e o campo `tipo` generico dos outros marketplaces tambem cai ali');
+
   // dias em transito viram data — pra dar pra filtrar por periodo depois
   const dias = (Date.now() - new Date(ml.criado_no_mkt).getTime()) / 864e5;
   ok(Math.abs(dias - 10) < 0.1, '  "10 dias em transito" vira data de criacao');
@@ -107,6 +115,13 @@ const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o
     const SERVER = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
     ok(/capturarDevolucoes\(r\);/.test(SERVER),
        'a captura roda junto do espreita (que ja varre os 3 marketplaces — nao criei cron novo)');
+    // b184.2: o campo certo, e o TikTok junto
+    ok(/resultadoEspreita\.em_transito/.test(SERVER),
+       '  lendo `em_transito`, que e o que montarEspreita devolve (eu lia `.itens`, que nao existe → gravava ZERO)');
+    ok(/tiktokPonte\.sondaDevolucoes\('good'/.test(SERVER),
+       '  e puxando o TikTok tambem, que NAO passa pelo espreita (vem pela ponte)');
+    ok(/falha aqui nao pode derrubar a captura dos outros/.test(SERVER),
+       '  com falha do TikTok isolada dos outros 3 marketplaces');
     ok(/CAPTURA_INTERVALO_MS = 60 \* 60 \* 1000/.test(SERVER),
        '  mas com ritmo proprio: de hora em hora, nao a cada 3 min como ele');
     ok(/if \(!supabase \|\| CAPTURA_RODANDO\) return;/.test(SERVER),
