@@ -232,7 +232,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.69.6 (descarte sempre pela solicitacao, nunca pelo pedido)',
+    version: '4.70.4 (forcar: erro de gravacao vira falha, trava reconferida)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -5262,6 +5262,54 @@ registrarRotasDebug(app, {
   devCapturadas,                                       // v4.63 - captura
   capturaEstado: () => CAPTURA_ESTADO,                 //   e o estado do ultimo ciclo
   tiktokRevelia,                                       // v4.68 - janela de revelia
+  // v4.70 - a rota de diagnostico precisa MONTAR o espreita antes de
+  // capturar: o cache do painel nao serve, porque a captura recebe o
+  // resultado da montagem, nao a lista que a tela mostra.
+  forcarCaptura: async () => {
+    // b185 (Codex): dizer NA CARA quando nao rodou, e por que.
+    //
+    // A funcao sai calada em tres casos (sem Supabase, ja rodando,
+    // intervalo) — devolver undefined faria a rota responder "ok" sem ter
+    // capturado nada, que e o oposto do motivo dela existir.
+    if (!supabase) return { rodou: false, motivo: 'Supabase nao configurado' };
+    if (CAPTURA_RODANDO) return { rodou: false, motivo: 'ja ha uma captura em andamento' };
+
+    // b185.2 (Codex, 2a rodada no mesmo ponto): DESISTI de reaproveitar a
+    // montagem em voo.
+    //
+    // A ideia era economizar uma varredura dos marketplaces. Mas quem
+    // iniciou aquela montagem tambem chama a captura com o resultado, entao
+    // eu precisava esperar o ciclo DELE terminar pra saber o que gravou — e
+    // toda tentativa de sincronizar isso (esperar a trava, com teto) tinha
+    // um furo: a trava pode nem ter sido pega ainda quando eu olho, ou o
+    // teto estoura e eu respondo com estado de outro ciclo.
+    //
+    // Duas rodadas de revisao no mesmo ponto sao sinal claro: a otimizacao
+    // nao vale a complexidade. Uma varredura a mais custa alguns segundos
+    // numa rota de diagnostico que o dono chama de vez em quando; responder
+    // resultado errado custa ele nao saber se funcionou, que e justamente o
+    // problema que esta rota veio resolver.
+    //
+    // Se as duas correrem juntas, a minha cai na trava e volta com o motivo
+    // — que e uma resposta honesta, nao um numero inventado.
+    const r = await montarEspreita();
+
+    // b185.3 (Codex): reconferir a trava DEPOIS da montagem.
+    //
+    // Montar leva segundos. Se o ciclo automatico (ou outro forcar) pegou a
+    // trava nesse meio-tempo, capturarDevolucoes sai calada e eu devolveria
+    // `gravacao: null` como se tivesse rodado. Melhor dizer que nao rodou,
+    // com o motivo — o dono chama de novo em seguida.
+    if (CAPTURA_RODANDO) {
+      return { rodou: false, motivo: 'outra captura comecou enquanto eu montava o espreita' };
+    }
+
+    const gravou = await capturarDevolucoes(r, true);
+    if (!gravou) {
+      return { rodou: false, motivo: 'a captura nao chegou a gravar (trava ou intervalo)' };
+    }
+    return { rodou: true, gravacao: gravou };
+  },
   get ESP_ENTREGA_RODANDO() { return ESP_ENTREGA_RODANDO; },   // b302 - flag viva, por getter
   get EAN_RODANDO() { return EAN_RODANDO; },
 });
@@ -5389,9 +5437,13 @@ let CAPTURA_ULTIMA = 0;
 let CAPTURA_RODANDO = false;
 let CAPTURA_ESTADO = { ultima: null, gravadas: 0, erro: null };
 
-function capturarDevolucoes(resultadoEspreita) {
-  if (!supabase || CAPTURA_RODANDO) return;
-  if (Date.now() - CAPTURA_ULTIMA < CAPTURA_INTERVALO_MS) return;
+function capturarDevolucoes(resultadoEspreita, forcar) {
+  // v4.70 - `forcar` pula o intervalo de 1h, pra rota de diagnostico e pra
+  // primeira carga. A trava de concorrencia NAO e pulada: duas capturas
+  // juntas duplicariam o trabalho e brigariam pelo mesmo upsert.
+  if (!supabase) { CAPTURA_ESTADO = { ...CAPTURA_ESTADO, erro: 'Supabase nao configurado' }; return; }
+  if (CAPTURA_RODANDO) return;
+  if (!forcar && Date.now() - CAPTURA_ULTIMA < CAPTURA_INTERVALO_MS) return;
 
   // b184.2 (Codex): o campo e `em_transito`, nao `itens`.
   //
@@ -5440,7 +5492,10 @@ function capturarDevolucoes(resultadoEspreita) {
     })
     .catch((e) => { erroTikTok = e.message || String(e); return []; });
 
-  comTikTok.then((extras) => devCapturadas.guardar(supabase, linhas.concat(extras)))
+  // b185 (Codex): a cadeia inteira e devolvida, pra quem forcou poder
+  // ESPERAR o fim e ver o que foi gravado. Antes eu devolvia a promessa mas
+  // ela resolvia depois do .finally, entao a rota respondia com null.
+  return comTikTok.then((extras) => devCapturadas.guardar(supabase, linhas.concat(extras)))
     .then((r) => {
       CAPTURA_ESTADO = {
         ultima: new Date().toISOString(),
@@ -5453,10 +5508,12 @@ function capturarDevolucoes(resultadoEspreita) {
       };
       if (r.ok) console.log(`[CAPTURA] ${r.gravadas} devolucoes guardadas`);
       else console.warn('[CAPTURA] falhou:', CAPTURA_ESTADO.erro);
+      return CAPTURA_ESTADO;   // b185 - quem forcou espera este resultado
     })
     .catch((e) => {
       CAPTURA_ESTADO = { ultima: new Date().toISOString(), gravadas: 0, erro: e.message || String(e) };
       console.warn('[CAPTURA] erro:', CAPTURA_ESTADO.erro);
+      return CAPTURA_ESTADO;
     })
     .finally(() => { CAPTURA_RODANDO = false; });
 }

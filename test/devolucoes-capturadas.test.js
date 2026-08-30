@@ -165,12 +165,67 @@ const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o
        '  e a captura NAO sai quando os outros 3 vem vazios (o TikTok nao passa por eles)');
     ok(/CAPTURA_INTERVALO_MS = 60 \* 60 \* 1000/.test(SERVER),
        '  mas com ritmo proprio: de hora em hora, nao a cada 3 min como ele');
-    ok(/if \(!supabase \|\| CAPTURA_RODANDO\) return;/.test(SERVER),
+    ok(/if \(CAPTURA_RODANDO\) return;/.test(SERVER),
        '  e com trava, pra duas capturas nao rodarem juntas');
     ok(/devCapturadas,/.test(SERVER) && /capturaEstado: \(\) => CAPTURA_ESTADO/.test(SERVER),
        '  as deps sao PASSADAS pro rotas-debug (usar o escopo do server ja derrubou o boot 2x)');
 
+    // v4.70: forcar a captura sem esperar o ciclo
+    ok(/function capturarDevolucoes\(resultadoEspreita, forcar\)/.test(SERVER),
+       'a captura aceita `forcar`, pra primeira carga e pra depurar');
+    ok(/if \(!forcar && Date\.now\(\) - CAPTURA_ULTIMA/.test(SERVER),
+       '  pulando o intervalo de 1h');
+    ok(/if \(CAPTURA_RODANDO\) return;/.test(SERVER),
+       '  mas NUNCA a trava de concorrencia: duas juntas brigariam pelo mesmo upsert');
+    ok(/erro: 'Supabase nao configurado'/.test(SERVER),
+       '  e sem Supabase o motivo vai pro estado, em vez de sair calado');
+    ok(/const r = await montarEspreita\(\);/.test(SERVER),
+       'o forcar MONTA o espreita antes — o cache do painel nao serve aqui');
+
     const DEBUG = fs.readFileSync(path.join(__dirname, '..', 'lib', 'rotas-debug.js'), 'utf8');
+    ok(/api\/debug\/capturar-agora/.test(DEBUG), 'ha rota pra forcar');
+
+    // b185: PULOU != RODOU SEM GRAVAR
+    ok(/if \(r && r\.rodou === false\)/.test(DEBUG),
+       'a rota distingue PULOU de rodou-sem-gravar');
+    ok(/status\(409\)/.test(DEBUG),
+       '  respondendo 409 quando nem chegou a tentar (era o que confundia)');
+    ok(/motivo: r\.motivo/.test(DEBUG), '  com o motivo do pulo');
+    ok(/gravacao: \(r && r\.gravacao\) \|\| null/.test(DEBUG),
+       '  e o resultado REAL da gravacao quando rodou');
+
+    // b185: o texto que eu tinha escrito estava errado
+    ok(/o upsert conta as regravadas tambem/.test(DEBUG),
+       'e o texto explica certo: `gravadas` sao linhas ENVIADAS, nao novidades');
+    ok(!/regravar o mesmo nao conta/.test(DEBUG),
+       '  (o texto anterior dizia o contrario, e orientava errado)');
+
+    ok(/return CAPTURA_ESTADO;   \/\/ b185/.test(SERVER),
+       'a cadeia da captura devolve o estado ate o fim, pra quem forcou poder esperar');
+    ok(/if \(!supabase\) return \{ rodou: false/.test(SERVER),
+       'e o forcar diz o motivo quando nao roda, em vez de sair calado');
+    // b185.2: DESISTI de reaproveitar a montagem em voo. Duas rodadas de
+    // revisao no mesmo ponto mostraram que sincronizar com o ciclo alheio
+    // sempre tinha um furo — e responder resultado errado custa mais que
+    // uma varredura extra numa rota de diagnostico.
+    ok(!/reaproveitou: true/.test(SERVER),
+       'nao reaproveita a montagem em voo: sincronizar com o ciclo alheio dava resultado errado');
+    ok(!/i < 40 && CAPTURA_RODANDO/.test(SERVER),
+       '  sem espera por trava com teto, que era a fonte dos furos');
+    ok(/ja ha uma captura em andamento/.test(SERVER),
+       '  se as duas correrem juntas, a minha volta com o MOTIVO — resposta honesta');
+
+    // b185.3: a trava e reconferida DEPOIS da montagem (que leva segundos)
+    ok(/outra captura comecou enquanto eu montava/.test(SERVER),
+       'a trava e reconferida depois da montagem: o ciclo pode ter pego nesse meio-tempo');
+    ok(/a captura nao chegou a gravar \(trava ou intervalo\)/.test(SERVER),
+       '  e gravacao nula vira "nao rodou", nao "rodou sem resultado"');
+
+    // b185.3: gravacao com erro nao e sucesso
+    ok(/const falhou = r && r\.gravacao && r\.gravacao\.erro;/.test(DEBUG),
+       'a rota trata gravacao com ERRO como falha');
+    ok(/status\(500\)[\s\S]{0,120}erro: r\.gravacao\.erro/.test(DEBUG),
+       '  respondendo 500 com o motivo, em vez de esconder o erro dentro de "ok"');
     ok(/devCapturadas, capturaEstado,/.test(DEBUG), '  e recebidas la');
     ok(/api\/debug\/capturadas/.test(DEBUG), 'ha rota pra acompanhar a captura');
 
