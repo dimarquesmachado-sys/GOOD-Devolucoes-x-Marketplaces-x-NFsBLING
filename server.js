@@ -232,7 +232,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.81.3 (o marcador e lido de verdade; esteira nao emite os do card)',
+    version: '4.81.4 (campos do estoque chegam; sintetico nao conta como caixa)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -5463,6 +5463,13 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
           // pra mercadoria que ja voltou pelo fluxo normal.
           classe: d.classe || undefined,
           tem_devolucao_registrada: d.tem_devolucao_registrada || undefined,
+          // b193.2 (Codex): `entrada_estoque` e `prejuizo_integral` sao LIDOS
+          // no card (a dica de deposito e a tarja vermelha) mas eu nunca os
+          // repassava — chegavam undefined, entao o aviso de "escolha
+          // DEFEITO" nunca aparecia justamente onde importa: a mercadoria
+          // que ficou com o cliente.
+          entrada_estoque: d.entrada_estoque,
+          prejuizo_integral: d.prejuizo_integral || undefined,
           // b190.5 (Codex): o marcador de rateio tem que CHEGAR na tela.
           // Eu calculava em magalu-cancelados.js e nao repassava — o dono
           // veria R$ 250 achando que e o valor daquela nota, quando e o do

@@ -181,6 +181,31 @@ const PAINEL = fs.readFileSync(path.join(RAIZ, 'public', 'painel-devolucoes.html
   ok(ocorr >= 2, 'o marcador esta nas DUAS secoes com esteira (achei ' + ocorr + ')');
 }
 
+// ── b193.2: dois campos que nao chegavam, e uma contagem errada ─────
+{
+  const iR2 = SERVER.indexOf("'/api/admin/sem-retorno'");
+  const rota2 = SERVER.slice(iR2, iR2 + 22000);   // a rota cresceu bastante
+  ok(/entrada_estoque: d\.entrada_estoque/.test(rota2),
+     '`entrada_estoque` CHEGA no card (era lido e nunca repassado)');
+  ok(/prejuizo_integral: d\.prejuizo_integral/.test(rota2),
+     '  e `prejuizo_integral` tambem — a tarja vermelha dependia dele');
+
+  // o registro sintetico nao pode contar como caixa recebida
+  const PARCIAL = fs.readFileSync(path.join(RAIZ, 'lib', 'devolucao-parcial.js'), 'utf8');
+  ok(/includes\('\[ESTORNADA SEM RETORNO\]'\)\) continue;/.test(PARCIAL),
+     'registro do card NAO conta como caixa recebida na contagem de parciais');
+  ok(/apareceria como COMPLETO, e o dono emitiria a nota/.test(PARCIAL),
+     '  senao um pedido de 2 caixas com 1 triada pareceria completo');
+
+  const dp = require('../lib/devolucao-parcial');
+  const g = dp.agrupar([
+    { id: 1, order_id: 'P1', created_at: '2026-08-01', problema_descricao: 'bipagem OK' },
+    { id: 2, order_id: 'P1', created_at: '2026-08-02', problema_descricao: '[ESTORNADA SEM RETORNO] [caso:X]' },
+  ], { P1: 2 });
+  ok(g[0] && g[0].vieram === 1 && g[0].completo === false,
+     '  conferido: 1 triagem real + 1 registro do card = ainda aguardando a 2a caixa');
+}
+
 console.log('');
 console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
 process.exit(falhas ? 1 : 0);
