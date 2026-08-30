@@ -39,7 +39,7 @@ const PAINEL = fs.readFileSync(path.join(RAIZ, 'public', 'painel-devolucoes.html
   ok(/Math\.min\(730/.test(rota), '  com teto de 2 anos');
   ok(/nf_id_bling: d\.nf_id_bling \|\| null/.test(rota),
      'e a rota devolve o id da NF no Bling, que o modal precisa');
-  ok(/buscarNFnoBlingPorNumero\(item\.nf_numero\)/.test(rota),
+  ok(/buscarNFnoBlingPorNumero\(item\.nf_numero, null, \{ maxPaginas: 8 \}\)/.test(rota),
      '  buscando no Bling quando a captura nao tem (senao o dono cacaria a nota a mao)');
   ok(/segue sem o link; o numero da NF esta no card/.test(rota),
      '  e falha na busca nao derruba a lista');
@@ -91,6 +91,19 @@ const PAINEL = fs.readFileSync(path.join(RAIZ, 'public', 'painel-devolucoes.html
      '  preferindo NAO sugerir cancelamento a sugerir um que voltaria 501');
 
   // b188.1: a CHAVE manda sobre o numero
+  // b188.3: a funcao devolve { ok, match }, nao a nota direto
+  ok(/nf\.ok && nf\.match\) \? nf\.match : null/.test(rota),
+     'le o `match` do resultado — eu lia `nf.id`, que nunca existe, e o link nunca apareceria');
+  ok(/Promise\.race\(/.test(rota),
+     'e o teto de tempo vai DENTRO da chamada: ela pagina com 400ms entre paginas e uma busca so ja passa de 8s');
+  ok(/maxPaginas: 8/.test(rota), '  com menos paginas, porque aqui e so pra achar o link');
+
+  // b188.3: uma saida pros que ficaram fora do corte
+  ok(/req\.query\.ate/.test(rota),
+     'ha ?ate=AAAA-MM-DD pra alcancar o que o limite cortou');
+  ok(/consulta\.lte\('criado_no_mkt', ate\)/.test(rota),
+     '  empurrando a janela pra tras, sem precisar paginar');
+
   ok(/chaveEsperada && chaveAchada && chaveEsperada !== chaveAchada/.test(rota),
      'a chave da NF-e manda: o NUMERO se repete entre series e traria a nota errada');
   ok(/Date\.now\(\) - INICIO_BUSCA > 8000/.test(rota),

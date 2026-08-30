@@ -5012,6 +5012,16 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
     const dias = Math.min(730, Math.max(1, parseInt(req.query.dias, 10) || 365));
     const desde = new Date(Date.now() - dias * 864e5).toISOString();
 
+    // b188.3 (Codex): ?ate=AAAA-MM-DD alcanca o que ficou fora do corte.
+    //
+    // A ordem e do mais recente pro mais antigo, entao o corte come a cauda.
+    // Com `ate`, o dono empurra a janela pra tras e ve os anteriores — sem
+    // eu precisar paginar, que complicaria a rota por pouco ganho.
+    const ateParam = String(req.query.ate || '').trim();
+    const ate = /^\d{4}-\d{2}-\d{2}$/.test(ateParam)
+      ? new Date(ateParam + 'T23:59:59Z').toISOString()
+      : null;
+
     // b184 (Codex): FILTRAR NO BANCO, nao depois.
     //
     //   1. `empresa` — a tabela e COMPARTILHADA (uma linha por empresa,
@@ -5031,7 +5041,7 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
     const empresa = 'good';
     const LIMITE = 500;
 
-    const { data, error } = await supabase
+    let consulta = supabase
       .from('devolucoes_capturadas')
       .select('*')
       .eq('empresa', empresa)
@@ -5047,6 +5057,10 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
       .in('status', ['RETURN_OR_REFUND_REQUEST_COMPLETE', 'REFUND_SUCCESS', 'COMPLETE', 'SUCCESS'])
       .order('criado_no_mkt', { ascending: false })
       .limit(LIMITE);
+
+    if (ate) consulta = consulta.lte('criado_no_mkt', ate);
+
+    const { data, error } = await consulta;
 
     if (error) return res.status(500).json({ ok: false, erro: error.message });
 
@@ -5227,8 +5241,20 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
     for (const item of PARA_BUSCAR) {
       if (Date.now() - INICIO_BUSCA > 8000) break;   // o painel nao pode travar
       try {
-        const nf = await buscarNFnoBlingPorNumero(item.nf_numero);
-        const achada = (nf && nf.id) ? nf : ((nf && nf.data && nf.data[0]) || null);
+        // b188.3 (Codex): a funcao devolve { ok, match }, NAO a nota direto.
+        //
+        // Eu lia `nf.id` de um objeto que nunca tem `id` — o link do card
+        // nunca apareceria. Conferido em lib/bling.js: os tres retornos sao
+        // { ok, match, ... }.
+        //
+        // E o teto de tempo vai DENTRO da chamada: ela pagina ate 50 paginas
+        // com 400ms entre elas, entao UMA busca pode passar dos 8s sozinha —
+        // conferir o relogio so no comeco do laco nao segura nada.
+        const nf = await Promise.race([
+          buscarNFnoBlingPorNumero(item.nf_numero, null, { maxPaginas: 8 }),
+          new Promise((ok) => setTimeout(() => ok({ ok: false, timeout: true }), 6000)),
+        ]);
+        const achada = (nf && nf.ok && nf.match) ? nf.match : null;
         if (!achada || !achada.id) continue;
 
         // se eu tenho a chave, ela MANDA: numero repete entre series, chave nao
@@ -5279,7 +5305,8 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
       cortou_em: cortou ? LIMITE : undefined,
       aviso_corte: cortou
         ? 'A janela de ' + dias + ' dias trouxe o maximo de ' + LIMITE + ' registros: pode haver '
-          + 'casos mais antigos fora desta lista. Estreite com ?dias= pra ver o resto.'
+          + 'casos mais antigos fora desta lista. Use ?ate=AAAA-MM-DD pra ver os anteriores '
+          + '(ou ?dias= menor pra estreitar).'
         : undefined,
       // b184 (Codex): quem CANCELA a nota nao gera NF de devolucao, entao a
       // checagem por nf_devolucao_id_bling nunca o tira da lista — ele
