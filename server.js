@@ -232,7 +232,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.75.5 (quem ja voltou nao cancela a NF: houve circulacao)',
+    version: '4.75.6 (rateio visivel na tela; deposito condicional)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -5297,6 +5297,12 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
           // pra mercadoria que ja voltou pelo fluxo normal.
           classe: d.classe || undefined,
           tem_devolucao_registrada: d.tem_devolucao_registrada || undefined,
+          // b190.5 (Codex): o marcador de rateio tem que CHEGAR na tela.
+          // Eu calculava em magalu-cancelados.js e nao repassava — o dono
+          // veria R$ 250 achando que e o valor daquela nota, quando e o do
+          // pedido dividido pelas notas.
+          valor_rateado: d.valor_rateado || undefined,
+          valor_pedido: d.valor_pedido || undefined,
         };
       });
 

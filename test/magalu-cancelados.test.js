@@ -178,6 +178,24 @@ const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o
      'e marca os casos em que o produto voltou, pra ele nao emitir NF duplicada');
 }
 
+// ── b190.5: o rateio tem que APARECER, e o deposito depende do caso ──
+{
+  const fs = require('fs');
+  const path = require('path');
+  const SERVER = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
+  const PAINEL = fs.readFileSync(path.join(__dirname, '..', 'public', 'painel-devolucoes.html'), 'utf8');
+
+  ok(/valor_rateado: d\.valor_rateado \|\| undefined/.test(SERVER),
+     'o marcador de rateio CHEGA na tela (era calculado e nao repassado)');
+  ok(/~aprox/.test(PAINEL),
+     '  e a tela marca o valor como aproximado, pra nao passar por exato');
+
+  ok(/Os cards marcados com <b>↩️ TEVE DEVOLUÇÃO<\/b> são o contrário/.test(PAINEL),
+     'o texto do deposito e CONDICIONAL: DEFEITO so pra quem nao voltou');
+  ok(/o produto voltou, então segue o depósito de sempre/.test(PAINEL),
+     '  porque mercadoria que voltou entra no estoque normal');
+}
+
 // ── b190.3: quem JA VOLTOU nao cancela a nota ───────────────────────
 // Se o produto retornou, houve circulacao de mercadoria — ida e volta. O
 // caminho ali e a NF de DEVOLUCAO, que documenta a entrada. Cancelar

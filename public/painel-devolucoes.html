@@ -356,8 +356,9 @@
           Vendas que o marketplace reembolsou <b>sem devolução física</b> — o produto ficou com o
           cliente, mas a nota de venda continua gerando imposto.
           <b>Até 20 dias dá para cancelar a NF</b>; passado o prazo, o caminho é a NF de devolução.
-          Ao lançar, use o depósito de <b>DEFEITO</b>: a mercadoria nunca chegou, então não pode
-          entrar no estoque vendável.
+          Quando a mercadoria <b>não voltou</b>, lance no depósito de <b>DEFEITO</b> — ela não pode
+          entrar no estoque vendável. Os cards marcados com <b>↩️ TEVE DEVOLUÇÃO</b> são o contrário:
+          o produto voltou, então segue o depósito de sempre.
         </div>
         <div id="listaSemRetorno"></div>
       </div>
@@ -1039,7 +1040,15 @@
             + 'pedido <code>' + escapeHtml(String(x.pedido || '-')) + '</code>'
             + (x.sku ? ' · SKU <code>' + escapeHtml(String(x.sku)) + '</code>' : '')
             + (x.qtd ? ' · ' + escapeHtml(String(x.qtd)) + ' un' : '')
-            + (x.valor != null ? ' · R$ ' + Number(x.valor).toFixed(2) : '')
+            + (x.valor != null
+                ? ' · R$ ' + Number(x.valor).toFixed(2)
+                  // b190.5 - valor rateado nao pode passar por exato
+                  + (x.valor_rateado
+                      ? ' <span style="color:#e65100;font-weight:700;" title="Este pedido tem '
+                        + 'mais de uma nota. O valor mostrado é o do pedido dividido pelas notas, '
+                        + 'não o valor exato desta.">~aprox</span>'
+                      : '')
+                : '')
             + (x.dias_desde != null ? ' · há ' + x.dias_desde + ' dias' : '')
             + '</div>'
             + (x.motivo ? '<div style="font-size:13px;color:#777;margin-top:4px;">'
