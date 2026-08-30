@@ -232,7 +232,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.69.4 (captura do TikTok: chave por solicitacao, data preservada)',
+    version: '4.69.5 (captura do TikTok preserva rastreio, NF e itens)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
