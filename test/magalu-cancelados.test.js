@@ -344,6 +344,18 @@ const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o
      'e nota com numero e SEM chave nao fica de fora da fila a toa');
   ok(/Date\.now\(\) - INICIO_BUSCA > 8000/.test(AMB),
      '  com o mesmo teto de tempo entre itens, pro painel nao travar');
+
+  // b192.2: o prazo e o QUE SOBRA, e ha COTA pro Magalu
+  ok(/Math\.max\(500, 8000 - \(Date\.now\(\) - INICIO_BUSCA\)\)/.test(SERVER),
+     'o prazo da busca por chave e o que SOBRA do orcamento, nao 5s fixos');
+  ok(/Math\.max\(500, 8000 - \(Date\.now\(\) - INICIO_BUSCA\)\)/.test(AMB),
+     '  nos dois servidores (senao duas buscas somariam 10s num teto de 8)');
+
+  ok(/x\.marketplace === 'magalu'\)\.slice\(0, 15\)/.test(SERVER),
+     'ha COTA pro Magalu na fila de busca');
+  ok(/x\.marketplace === 'magalu'\)\.slice\(0, 15\)/.test(AMB), '  nos dois');
+  ok(/sao os casos de maior valor/.test(SERVER),
+     '  porque numa fila cheia de TikTok ele nao entraria — e vale mais');
 }
 
 // ── b192.1: o id por nota usa o numero DERIVADO ─────────────────────

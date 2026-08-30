@@ -232,7 +232,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.80.1 (prazo na busca por chave; id usa o numero derivado)',
+    version: '4.80.2 (prazo compartilhado e cota do Magalu na busca)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -5362,7 +5362,16 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
     // b192 - teto de 25: com o Magalu junto a fila cresceu (10 casos so
     // dele na GOOD). O teto de TEMPO abaixo continua sendo a trava real —
     // ele para quando o painel comeca a demorar, seja qual for a contagem.
-    const PARA_BUSCAR = itens.filter((x) => x.nf_numero && !x.nf_id_bling).slice(0, 25);
+    // b192.2 (Codex): RESERVAR VAGA PRO MAGALU.
+    //
+    // A lista vem ordenada por acao e valor, e o TikTok tende a ficar na
+    // frente. Cortando os 25 primeiros, numa fila cheia de TikTok o Magalu
+    // nao entraria — e sao os casos de maior valor (R$ 12.704 contra R$ 1
+    // caso do TikTok na GOOD). Divido a cota entre os dois.
+    const semVinculo = itens.filter((x) => x.nf_numero && !x.nf_id_bling);
+    const doMagalu = semVinculo.filter((x) => x.marketplace === 'magalu').slice(0, 15);
+    const dosOutros = semVinculo.filter((x) => x.marketplace !== 'magalu').slice(0, 10);
+    const PARA_BUSCAR = doMagalu.concat(dosOutros);
     for (const item of PARA_BUSCAR) {
       if (Date.now() - INICIO_BUSCA > 8000) break;   // o painel nao pode travar
       try {
@@ -5379,9 +5388,14 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
             // itens, entao uma unica busca lenta travaria o painel.
             // Corrida com um prazo proprio: perder o vinculo de um card e
             // melhor que segurar a tela toda.
+            // b192.2 (Codex): o prazo e o QUE SOBRA do orcamento total, nao
+            // 5s fixos. Com 5s fixos, a busca por chave podia consumir quase
+            // tudo e a busca por numero logo abaixo comecaria ja no
+            // estouro — duas buscas somando 10s num teto de 8.
+            const sobra = Math.max(500, 8000 - (Date.now() - INICIO_BUSCA));
             const idPorChave = await Promise.race([
               resolverIdNFPorChave(item.nf_numero, item.nf_chave),
-              new Promise((ok) => setTimeout(() => ok(null), 5000)),
+              new Promise((ok) => setTimeout(() => ok(null), Math.min(5000, sobra))),
             ]);
             if (idPorChave) { item.nf_id_bling = String(idPorChave); continue; }
           } catch (e) { /* cai na busca por numero abaixo */ }

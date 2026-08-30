@@ -2212,16 +2212,22 @@ router.get('/api/admin/sem-retorno', auth.requerLogin, async (req, res) => {
     const INICIO_BUSCA = Date.now();
     // b192.1 (Codex): entram os que tem CHAVE **ou** so numero — nota com
     // numero e sem chave existe, e ficaria sem link a toa.
-    for (const item of itens.filter((x) => (x.nf_chave || x.nf_numero) && !x.nf_id_bling).slice(0, 25)) {
+    // b192.2 (Codex): cota por marketplace, senao numa fila cheia de TikTok
+    // o Magalu nao entraria — e sao os casos de maior valor.
+    const semVinculoAMB = itens.filter((x) => x.nf_chave && !x.nf_id_bling);
+    const filaAMB = semVinculoAMB.filter((x) => x.marketplace === 'magalu').slice(0, 15)
+      .concat(semVinculoAMB.filter((x) => x.marketplace !== 'magalu').slice(0, 10));
+
+    for (const item of filaAMB) {
       if (Date.now() - INICIO_BUSCA > 8000) break;   // o painel nao pode travar
-      if (!item.nf_chave) continue;   // sem chave nao da pra resolver por aqui
       try {
         // a busca PAGINA no Bling e pode passar dos 8s sozinha; o teto do
-        // laco so e conferido entre itens. Prazo proprio: perder o vinculo
-        // de um card e melhor que segurar a tela toda.
+        // laco so e conferido entre itens. O prazo e o QUE SOBRA do
+        // orcamento: perder o vinculo de um card e melhor que travar a tela.
+        const sobra = Math.max(500, 8000 - (Date.now() - INICIO_BUSCA));
         const id = await Promise.race([
           nfp.resolverIdNFPorChave(item.nf_numero, item.nf_chave),
-          new Promise((ok) => setTimeout(() => ok(null), 5000)),
+          new Promise((ok) => setTimeout(() => ok(null), Math.min(5000, sobra))),
         ]);
         if (id) item.nf_id_bling = String(id);
       } catch (e) { /* segue sem o link; o numero da NF esta no card */ }
