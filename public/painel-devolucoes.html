@@ -894,6 +894,90 @@
     //
     // A ordem da lista tem intencao: quem ainda da pra CANCELAR vem primeiro,
     // porque e a unica parte com prazo correndo. Depois, os maiores valores.
+    // v4.81 - registra o caso e abre o modal de NF de devolucao.
+    //
+    // [stated] "se tá ali, pode até criar gerar automático esse registro.
+    // pq no fim, o q vai interessar mm é a emissão da NF e pra qual
+    // depósito eu vou direcionar"
+    //
+    // Sobre o DEPOSITO: nao travo nada, e a escolha e dele no modal. O
+    // caso `nf_sem_saida` (produto que nunca saiu do CD) vai em GERAL
+    // mesmo — a NF de venda ja deu baixa no estoque, entao a entrada
+    // CORRIGE a diferenca em vez de duplicar. Correcao dele, e estava
+    // certo: "é só gerar devolução normal, e depósito Geral. Simples."
+    let _gerandoEstornada = false;
+
+    async function gerarDoCardEstornadas(dadosJson) {
+      let d;
+      try { d = JSON.parse(dadosJson); } catch (e) { toast('dados do card ilegíveis', 'err'); return; }
+
+      // b193 (Codex): clique duplo dispara duas vezes antes de a primeira
+      // responder — a checagem "ja existe" e feita no servidor e as duas
+      // passariam, criando dois registros da mesma devolucao.
+      if (_gerandoEstornada) return;
+      _gerandoEstornada = true;
+
+      // b193 (Codex): CONFIRMAR antes de registrar. Clicar sem querer criava
+      // um registro na fila de "aguardando NF" que so some manualmente — e
+      // o dono nao pediu nada ainda.
+      if (!confirm('Registrar este caso e abrir o rascunho da NF de devolução?\n\n'
+        + 'Pedido ' + (d.pedido || '?') + (d.nf_numero ? ' · NF ' + d.nf_numero : '')
+        + '\n\nEle passa a aparecer na fila "Aprovadas - aguardando NF".')) {
+        _gerandoEstornada = false;
+        return;
+      }
+
+      try {
+        const r = await fetch('/api/admin/sem-retorno/registrar', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(d),
+        });
+        const j = await r.json();
+        if (!j || !j.ok) {
+          toast('não consegui registrar: ' + ((j && j.erro) || 'erro'), 'err');
+          return;
+        }
+
+        // ⚠️ ja emitida antes: aviso em vez de deixar emitir de novo. Duas
+        // notas de devolucao da mesma venda e problema fiscal, nao so
+        // retrabalho.
+        if (j.nf_ja_emitida) {
+          toast('Este pedido JÁ tem NF de devolução emitida — confira antes de gerar outra.', 'err');
+          return;
+        }
+        if (j.ja_existia) {
+          toast('Este caso já estava registrado; abrindo as opções.', 'ok');
+        }
+
+        // dai em diante e o fluxo de sempre
+        // v4.81.1 - SO RASCUNHO daqui. A Bridge monta a devolucao com os
+        // itens da nota original INTEIRA, e aqui o caso pode ser um item de
+        // varios. Emitir direto transmitiria todos pra SEFAZ.
+        abrirModalGerarDevolucao(
+          String(j.id),
+          String(d.nf_id_bling || ''),
+          String(d.nf_numero || ''),
+          String(d.produto || ''),
+          String(d.nf_chave || '').replace(/[^0-9]/g, ''),
+          true
+        );
+
+        // ⚠️ mercadoria que NAO voltou: entrada no estoque geral criaria
+        // saldo que nao existe fisicamente. O dono ja decidiu isto em 29/08
+        // ("não integrarão o estoque normal, pois nunca recebemos d volta"),
+        // e o lugar dela e o deposito de DEFEITO.
+        if (d.entrada_estoque === false) {
+          toast('Este produto NÃO voltou — escolha o depósito de DEFEITO no modal, '
+            + 'senão entra saldo que não existe no galpão.', 'err');
+        }
+      } catch (e) {
+        toast('falha ao registrar: ' + (e.message || e), 'err');
+      } finally {
+        _gerandoEstornada = false;
+      }
+    }
+
     async function carregarSemRetorno() {
       try {
         const r = await fetch('/api/admin/sem-retorno');
@@ -1042,6 +1126,40 @@
           //
           // Por ora, o card leva pra NOTA no Bling — que e o que ele precisa
           // pra agir, e o mesmo lugar de onde partiria de qualquer forma.
+          // v4.81 - GERAR A NF DAQUI.
+          //
+          // O caso nao tem triagem (ninguem bipou), e a extensao Bridge
+          // precisa de uma pra gravar o resultado. Entao registro na hora e
+          // caio no MESMO modal das "Aprovadas" — com lote, deposito e
+          // esteira, tudo que ja existe. Nao duplico fluxo de emissao.
+          // v4.81.1 (Codex): o botao NAO aparece quando a acao e CANCELAR.
+          //
+          // O card diz "CANCELAR NF · Nd restantes" e priorizou o caso por
+          // isso. Oferecer ali a emissao de devolucao — que e irreversivel —
+          // contradiz a propria orientacao, e o dono perderia o prazo de
+          // cancelamento sem perceber.
+          //
+          // E os dados vao num data-attribute, nao num handler inline: se o
+          // titulo do produto tiver uma entidade HTML (&quot;), o parser a
+          // decodifica DEPOIS do meu escape e a aspa reaparece solta dentro
+          // do onclick.
+          const podeGerar = x.nf_id_bling && x.acao !== 'cancelar_nf';
+          const botaoGerar = podeGerar
+            ? '<button class="btn btn-gerar-estornada" '
+              + 'style="background:#1565c0;margin-top:8px;margin-right:6px;" '
+              + 'data-caso="' + escapeHtml(JSON.stringify({
+                  pedido: x.pedido, produto: x.produto, sku: x.sku, qtd: x.qtd,
+                  nf_numero: x.nf_numero, nf_chave: x.nf_chave, nf_id_bling: x.nf_id_bling,
+                  marketplace: x.marketplace, classe: x.classe,
+                  chave_caso: x.id, entrada_estoque: x.entrada_estoque,
+                })) + '" '
+              + 'title="Registra este caso e abre o rascunho da NF de devolução.">'
+              + '🧾 Gerar NF de devolução</button>'
+            : (x.acao === 'cancelar_nf'
+              ? '<div style="margin-top:8px;font-size:12px;color:#e65100;">'
+                + '⏳ Ainda dá para <b>cancelar a NF</b> — a devolução só depois do prazo</div>'
+              : '');
+
           const linkNF = x.nf_id_bling
             ? '<a class="btn" style="background:#1565c0;margin-top:8px;display:inline-block;" '
               + 'href="https://www.bling.com.br/notas.fiscais.php#edit/' + encodeURIComponent(x.nf_id_bling) + '" '
@@ -1079,11 +1197,19 @@
             + (x.cliente ? '<div style="font-size:12px;color:#999;margin-top:2px;">'
                 + escapeHtml(String(x.cliente)) + '</div>' : '')
             + dicaEstoque
-            + linkNF
+            + botaoGerar + linkNF
             + '</div>';
         }).join('');
 
         document.getElementById('listaSemRetorno').innerHTML = avisoCorte + cabecalho + linhas;
+
+        // v4.81.1 - listener em vez de onclick inline: o navegador ja
+        // decodificou o data-attribute, entao o JSON chega limpo mesmo com
+        // entidade HTML no titulo do produto (&quot; virava aspa solta
+        // dentro do onclick e quebrava o handler).
+        document.querySelectorAll('.btn-gerar-estornada').forEach((b) => {
+          b.addEventListener('click', () => gerarDoCardEstornadas(b.dataset.caso));
+        });
       } catch (e) {
         // silencioso de proposito: e um bloco informativo, nao a fila
       }
@@ -1824,11 +1950,11 @@
                 ? `<a class="btn btn-verde" href="https://www.bling.com.br/notas.fiscais.php#edit/${d.nf_id_bling}" target="_blank" title="Abre a NF. Pra gerar devolu\u00e7\u00e3o automaticamente, use o bot\u00e3o ao lado.">🔗 Abrir NF no Bling</a>`
                 : `<a class="btn" href="https://www.bling.com.br/notas.fiscais.php#list" target="_blank" onclick="copiarNF('${escapeHtml(d.nf_numero || '')}')">🔗 Abrir lista Bling (copia NF)</a>`
               }
-              <label style="display:inline-flex;align-items:center;gap:5px;font-size:12px;background:#e3f2fd;border:1px solid #90caf9;padding:5px 9px;border-radius:6px;cursor:pointer;" title="Seleciona pra ações em lote (emitir NF / concluir)"><input type="checkbox" class="chk-esteira" data-secao="aprovadas" data-id="${d.id}" data-nfid="${d.nf_id_bling || ''}" data-nfnum="${escapeHtml(String(d.nf_numero || ''))}" data-chave="${String(d.nf_chave || '').replace(/[^0-9]/g, '')}" data-full="${ehSerie2(d) ? '1' : '0'}" onchange="atualizarContadorEsteira('aprovadas')"> selecionar</label>
+              <label style="display:inline-flex;align-items:center;gap:5px;font-size:12px;background:#e3f2fd;border:1px solid #90caf9;padding:5px 9px;border-radius:6px;cursor:pointer;" title="Seleciona pra ações em lote (emitir NF / concluir)"><input type="checkbox" class="chk-esteira" data-secao="aprovadas" data-id="${d.id}" data-nfid="${d.nf_id_bling || ''}" data-nfnum="${escapeHtml(String(d.nf_numero || ''))}" data-chave="${String(d.nf_chave || '').replace(/[^0-9]/g, '')}" data-full="${ehSerie2(d) ? '1' : '0'}" data-sorascunho="${(d.problema_descricao || '').includes('[SO RASCUNHO]') ? '1' : '0'}" onchange="atualizarContadorEsteira('aprovadas')"> selecionar</label>
               ${ehSerie2(d) && !d.nf_devolucao_id_bling
                 ? `<a class="btn" style="background:#00695c;color:#fff;" href="https://www.mercadolivre.com.br/emissor/vendas/${d.order_id || ''}/faturas" target="_blank" title="Venda FULL (s\u00e9rie 2): a NF de devolu\u00e7\u00e3o \u00e9 emitida pelo PR\u00d3PRIO Mercado Livre. N\u00c3O gere outra no Bling (duplicidade fiscal). Clique pra ver/baixar a NF no emissor do ML.">🏬 FULL</a><button class="btn" style="background:#00838f;" onclick="fullVincular('${d.id}', this)" title="Procura no Bling a NF de ENTRADA s\u00e9rie 2 que o ML emitiu pra esta devolu\u00e7\u00e3o e vincula ao card">🔗 Achar devolu\u00e7\u00e3o no Bling</button>`
                 : !d.nf_devolucao_id_bling && (d.nf_id_bling || d.nf_numero)
-                ? `<button class="btn" style="background:#1565c0;" onclick="abrirModalGerarDevolucao('${d.id}', '${d.nf_id_bling || ''}', '${escapeHtml(d.nf_numero || '')}', '${escapeHtml(d.produto_titulo || '')}', '${String(d.nf_chave || '').replace(/[^0-9]/g, '')}')" title="Abre as op\u00e7\u00f5es: criar RASCUNHO (salvar sem emitir, pra editar no Bling) ou gerar + emitir direto">🧾 Gerar NF (rascunho ou emitir)</button>`
+                ? `<button class="btn" style="background:#1565c0;" onclick="abrirModalGerarDevolucao('${d.id}', '${d.nf_id_bling || ''}', '${escapeHtml(d.nf_numero || '')}', '${escapeHtml(d.produto_titulo || '')}', '${String(d.nf_chave || '').replace(/[^0-9]/g, '')}', ${(d.problema_descricao || '').includes('[SO RASCUNHO]')})" title="Abre as op\u00e7\u00f5es: criar RASCUNHO (salvar sem emitir, pra editar no Bling) ou gerar + emitir direto">🧾 Gerar NF (rascunho ou emitir)</button>`
                 : d.nf_devolucao_id_bling
                   ? `<a class="btn btn-verde" href="https://www.bling.com.br/notas.entrada.php#edit/${d.nf_devolucao_id_bling}" target="_blank" title="NF de devolu\u00e7\u00e3o j\u00e1 gerada">📝 Devolu\u00e7\u00e3o: ${d.nf_devolucao_numero || 'ver'}</a>${ehSerie2(d) ? `<button class="btn" style="background:#4527a0;" onclick="fullLancarEstoque('${d.id}', this)" title="Lan\u00e7a o ESTOQUE de entrada desta devolu\u00e7\u00e3o no dep\u00f3sito GERAL (API oficial). S\u00f3 clique se ainda N\u00c3O lan\u00e7ou e o produto est\u00e1 ok pra revenda.">📦 Lan\u00e7ar estoque (Geral)</button>` : ''}`
                   : ''
@@ -1890,11 +2016,11 @@
           ${concluido ? '' : `
             <div class="item-acoes">
               ${d.nf_link_danfe ? `<a class="btn btn-cinza" href="${d.nf_link_danfe}" target="_blank">📄 DANFE</a>` : ''}
-              <label style="display:inline-flex;align-items:center;gap:5px;font-size:12px;background:#fff3e0;border:1px solid #ffcc80;padding:5px 9px;border-radius:6px;cursor:pointer;" title="Seleciona pra ações em lote (emitir NF / concluir)"><input type="checkbox" class="chk-esteira" data-secao="problemas" data-id="${d.id}" data-nfid="${d.nf_id_bling || ''}" data-nfnum="${escapeHtml(String(d.nf_numero || ''))}" data-chave="${String(d.nf_chave || '').replace(/[^0-9]/g, '')}" data-full="${ehSerie2(d) ? '1' : '0'}" onchange="atualizarContadorEsteira('problemas')"> selecionar</label>
+              <label style="display:inline-flex;align-items:center;gap:5px;font-size:12px;background:#fff3e0;border:1px solid #ffcc80;padding:5px 9px;border-radius:6px;cursor:pointer;" title="Seleciona pra ações em lote (emitir NF / concluir)"><input type="checkbox" class="chk-esteira" data-secao="problemas" data-id="${d.id}" data-nfid="${d.nf_id_bling || ''}" data-nfnum="${escapeHtml(String(d.nf_numero || ''))}" data-chave="${String(d.nf_chave || '').replace(/[^0-9]/g, '')}" data-full="${ehSerie2(d) ? '1' : '0'}" data-sorascunho="${(d.problema_descricao || '').includes('[SO RASCUNHO]') ? '1' : '0'}" onchange="atualizarContadorEsteira('problemas')"> selecionar</label>
               ${ehSerie2(d) && !d.nf_devolucao_id_bling
                 ? `<a class="btn" style="background:#00695c;color:#fff;" href="https://www.mercadolivre.com.br/emissor/vendas/${d.order_id || ''}/faturas" target="_blank" title="Venda FULL (s\u00e9rie 2): a NF de devolu\u00e7\u00e3o \u00e9 emitida pelo PR\u00d3PRIO Mercado Livre. N\u00c3O gere outra no Bling (duplicidade fiscal). Clique pra ver/baixar a NF no emissor do ML.">🏬 FULL</a><button class="btn" style="background:#00838f;" onclick="fullVincular('${d.id}', this)" title="Procura no Bling a NF de ENTRADA s\u00e9rie 2 que o ML emitiu pra esta devolu\u00e7\u00e3o e vincula ao card">🔗 Achar devolu\u00e7\u00e3o no Bling</button>`
                 : !d.nf_devolucao_id_bling && (d.nf_id_bling || d.nf_numero)
-                ? `<button class="btn" style="background:#1565c0;" onclick="abrirModalGerarDevolucao('${d.id}', '${d.nf_id_bling || ''}', '${escapeHtml(d.nf_numero || '')}', '${escapeHtml(d.produto_titulo || '')}', '${String(d.nf_chave || '').replace(/[^0-9]/g, '')}')" title="Abre as op\u00e7\u00f5es: criar RASCUNHO (salvar sem emitir, pra editar no Bling) ou gerar + emitir direto">🧾 Gerar NF (rascunho ou emitir)</button>`
+                ? `<button class="btn" style="background:#1565c0;" onclick="abrirModalGerarDevolucao('${d.id}', '${d.nf_id_bling || ''}', '${escapeHtml(d.nf_numero || '')}', '${escapeHtml(d.produto_titulo || '')}', '${String(d.nf_chave || '').replace(/[^0-9]/g, '')}', ${(d.problema_descricao || '').includes('[SO RASCUNHO]')})" title="Abre as op\u00e7\u00f5es: criar RASCUNHO (salvar sem emitir, pra editar no Bling) ou gerar + emitir direto">🧾 Gerar NF (rascunho ou emitir)</button>`
                 : d.nf_devolucao_id_bling
                   ? `<a class="btn btn-verde" href="https://www.bling.com.br/notas.entrada.php#edit/${d.nf_devolucao_id_bling}" target="_blank" title="NF de devolu\u00e7\u00e3o j\u00e1 gerada. Produto com problema: NF importada do ML n\u00e3o lan\u00e7a estoque (n\u00e3o fa\u00e7a nada); NF emitida aqui lan\u00e7ou estoque (cancele o lan\u00e7amento no Bling).">📝 Devolu\u00e7\u00e3o: ${d.nf_devolucao_numero || 'ver'}</a>`
                   : ''
@@ -2038,6 +2164,21 @@
     }
 
     async function concluir(id) {
+      // b193.4 (Codex): a TERCEIRA porta pro mesmo problema. Bloqueei a
+      // emissao em lote, depois o concluir em lote — e o concluir de UM
+      // card continuava livre.
+      //
+      // "Concluido" esconde o caso, e o rascunho ainda precisa ser editado
+      // e validado no Bling. Aqui nao bloqueio: pergunto, porque pode ser
+      // que ele ja tenha validado por la e queira fechar mesmo.
+      {
+        const card = document.getElementById('card-' + id);
+        const chk = card && card.querySelector('.chk-esteira');
+        if (chk && chk.dataset.sorascunho === '1') {
+          if (!confirm('Este caso veio do card de estornadas e só gerou RASCUNHO.\n\n'
+            + 'Já validou a NF no Bling? Concluir aqui esconde o caso da fila.')) return;
+        }
+      }
       if (!confirm('Marcar como concluido?')) return;
       try {
         const r = await fetch('/api/admin/concluir/' + id, { method: 'PUT' });
@@ -2126,7 +2267,18 @@
       idNaturezaOperacao: '5776118802',  // "Devolucao de Mercadoria - Entrada"
     };
 
-    function abrirModalGerarDevolucao(devolucaoId, idNFOriginalBling, nfNumero, produtoTitulo, chaveNF) {
+    // v4.81.1 (Codex) - `soRascunho` esconde o "Gerar + Emitir".
+    //
+    // A Bridge monta a nota de devolucao com os itens da nota ORIGINAL
+    // INTEIRA — nao ha como restringir aos itens reembolsados. Nos cards do
+    // "estornadas", onde o caso pode ser UM item de uma nota com varios,
+    // emitir direto transmitiria a devolucao de TODOS pra SEFAZ. E
+    // irreversivel.
+    //
+    // O rascunho e seguro e e o que o dono ja faz: "qdo eu gero rascunho, é
+    // pra eu entrar no bling e editar aquela NF. depois eu vou no bling,
+    // edito e manualmente valido a NF".
+    function abrirModalGerarDevolucao(devolucaoId, idNFOriginalBling, nfNumero, produtoTitulo, chaveNF, soRascunho) {
       chaveNF = chaveNF || '';
       const conteudo = document.getElementById('modalGerarConteudo');
       conteudo.innerHTML = `
@@ -2158,10 +2310,18 @@
             onclick="confirmarGerarDevolucao('${devolucaoId}', '${idNFOriginalBling}', '${nfNumero}', false, '${chaveNF}')">
             🧪 Criar rascunho
           </button>
+          ${soRascunho ? `
+          <div style="font-size:13px;color:#e65100;background:#fff3e0;border:2px solid #ef6c00;
+                      border-radius:8px;padding:10px;max-width:340px;">
+            <b>⚠️ Só rascunho para este caso.</b><br>
+            A nota de devolução sai com <b>todos os itens da nota original</b>, e aqui pode ser
+            que só parte tenha sido reembolsada. Abra o rascunho no Bling, ajuste as linhas e
+            valide por lá.
+          </div>` : `
           <button class="btn btn-verde" id="btnGerarEmitir"
             onclick="confirmarGerarDevolucao('${devolucaoId}', '${idNFOriginalBling}', '${nfNumero}', true, '${chaveNF}')">
             🧾 Gerar + Emitir NF
-          </button>
+          </button>`}
         </div>
       `;
       document.getElementById('modalGerarDevolucao').style.display = 'flex';
@@ -2512,8 +2672,13 @@
       }
       // Só entram na esteira os que têm NF pra devolver; o resto é pulado.
       // FULL (série 2) NUNCA entra: a devolução é emitida pelo próprio ML.
+      // b193.1 (Codex): caso vindo do card de estornadas NAO entra na
+      // esteira. Ela manda `emitir: true` sempre, e a devolucao sairia com
+      // os itens da nota INTEIRA — o que este fluxo veio evitar. Ele gera o
+      // rascunho um por um e ajusta no Bling.
       const fila = marcados
-        .filter(c => (c.dataset.nfid || c.dataset.nfnum) && c.dataset.full !== '1')
+        .filter(c => (c.dataset.nfid || c.dataset.nfnum) && c.dataset.full !== '1'
+          && c.dataset.sorascunho !== '1')
         .map(c => ({
           id: c.dataset.id,
           nfid: c.dataset.nfid || '',
@@ -2665,7 +2830,19 @@
       }
       if (concluindoLote) return;
 
-      const marcados = [...document.querySelectorAll(`.chk-esteira[data-secao="${secao}"]:checked`)];
+      // b193.3 (Codex): caso do card de estornadas nao entra no CONCLUIR em
+      // lote. Concluido ali significa "resolvido", mas o rascunho ainda
+      // precisa ser editado e validado no Bling — marcar como concluido
+      // esconderia o caso ANTES de a nota existir de verdade.
+      //
+      // Eu tinha bloqueado so a emissao em lote; o concluir passava reto.
+      const marcadosTodos = [...document.querySelectorAll(`.chk-esteira[data-secao="${secao}"]:checked`)];
+      const marcados = marcadosTodos.filter((c) => c.dataset.sorascunho !== '1');
+      const puladosRascunho = marcadosTodos.length - marcados.length;
+      if (puladosRascunho > 0) {
+        toast(puladosRascunho + ' caso(s) do card de estornadas foram pulados: '
+          + 'conclua depois de validar a NF no Bling.', 'err');
+      }
       if (marcados.length === 0) {
         toast('Nenhum card selecionado. Marque os checkboxes "selecionar" (ou "todas") primeiro.', 'err');
         return;

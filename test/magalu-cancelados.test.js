@@ -142,8 +142,8 @@ const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o
   // voltou fisicamente, o Lucas triou, e ele ja esta em "Aprovadas aguardando
   // NF" com botao de gerar. Aparecer aqui tambem seriam DUAS portas pra mesma
   // nota, e duas devolucoes emitidas sem ninguem perceber.
-  ok(/!triadosMagalu\.has\(String\(m\.pedido\)\)/.test(SERVER),
-     'pedido do Magalu JA TRIADO sai da lista: ele ja esta no fluxo normal');
+  ok(/!triadosSemMarcador\.has\(String\(m\.pedido\)\)/.test(SERVER),
+     'pedido do Magalu JA TRIADO (por bipe) sai da lista: ja esta no fluxo normal');
 
   // b190.2: tentei casar PEDIDO+SKU pra nao derrubar o outro item de uma
   // nota multi-produto, e a revisao mostrou que o DADO nao suporta:

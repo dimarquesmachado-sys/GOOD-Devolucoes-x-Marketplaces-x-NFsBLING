@@ -133,10 +133,22 @@ const PAINEL = fs.readFileSync(path.join(RAIZ, 'public', 'painel-devolucoes.html
   ok(/\(b\.valor \|\| 0\) - \(a\.valor \|\| 0\)/.test(rota),
      '  nas outras, o maior valor primeiro');
 
-  ok(/NAO EMITE NADA/.test(SERVER.slice(Math.max(0, i - 2000), i)),
-     'o comentario deixa claro que a rota so LISTA — quem emite e ele');
-  ok(/deposito e o de DEFEITO/i.test(SERVER.slice(Math.max(0, i - 2000), i)),
-     '  e que o deposito e o de DEFEITO, porque a mercadoria nunca chegou');
+  // v4.81: a rota de LISTAR continua so listando — quem emite e a rota
+  // /registrar + o modal de sempre, nao ela
+  ok(!/blingClient\.emitir|emitirNFe/.test(rota),
+     'a rota de listar NAO emite nada: quem emite e o fluxo de sempre');
+
+  // ⚠️ O DEPOSITO MUDOU DE REGRA (correcao do dono, 30/08).
+  //
+  // Eu tinha escrito "sempre DEFEITO, a mercadoria nunca chegou". Errado
+  // pros casos em que ela nunca SAIU: a NF de venda ja deu baixa no
+  // estoque, entao a entrada CORRIGE a diferenca em vez de duplicar — e o
+  // produto esta novo, no CD. [stated] "nos casos q o produto nunca foi
+  // postado, é só gerar devolução normal, e depósito Geral. Simples."
+  ok(/depósito de <b>DEFEITO<\/b>/.test(PAINEL),
+     'a tela ainda orienta DEFEITO pra mercadoria que nao voltou ao CD');
+  ok(/o produto voltou, então segue o depósito de sempre/.test(PAINEL),
+     '  e o deposito de sempre pra quem voltou — a escolha final e dele no modal');
 }
 
 // ── o painel ─────────────────────────────────────────────────────────

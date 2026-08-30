@@ -232,7 +232,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.80.2 (prazo compartilhado e cota do Magalu na busca)',
+    version: '4.81.6 (concluir individual tambem pergunta)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -5013,6 +5013,114 @@ app.get('/api/ids-fiscais', requerLogin, async (req, res) => {
 // ⚠️ NAO EMITE NADA. So lista e ordena; quem decide e emite e ele, no
 // fluxo de sempre.
 // ============================================================
+// ============================================================
+// v4.81 - REGISTRAR UM CASO DO CARD PRA PODER EMITIR A NF
+// ------------------------------------------------------------
+// [stated] "se tá ali, pode até criar gerar automático esse registro.
+// pq no fim, o q vai interessar mm é a emissão da NF e pra qual
+// depósito eu vou direcionar"
+//
+// POR QUE PRECISA DISTO: quem emite a NF de devolucao e a extensao
+// Bridge, e ela grava o resultado usando o id de uma TRIAGEM. Os casos
+// do card de estornadas nao tem triagem — ninguem bipou nada, o produto
+// nem sempre voltou.
+//
+// Entao, quando o dono manda emitir, crio o registro na hora. Faz
+// sentido: o caso VIRA uma devolucao de verdade no momento em que ele
+// decide emitir a nota. E dai em diante e o fluxo de sempre — lote,
+// deposito, esteira, concluido.
+//
+// ⚠️ SOBRE O ESTOQUE, e vale registrar porque eu estava errado:
+// pensei que dar entrada num caso `nf_sem_saida` (produto que nunca
+// saiu do CD) duplicaria o inventario. Nao duplica. A NF DE VENDA JA
+// DEU BAIXA no estoque quando foi emitida — o sistema acha que o
+// produto saiu, mas ele esta la. A devolucao com entrada CORRIGE essa
+// diferenca. [stated] Correcao dele: "nos casos q o produto nunca foi
+// postado, é só gerar devolução normal, e depósito Geral. Simples."
+// ============================================================
+app.post('/api/admin/sem-retorno/registrar', requerAdmin, async (req, res) => {
+  try {
+    if (!supabase) return res.status(503).json({ ok: false, erro: 'Supabase nao configurado' });
+
+    const d = req.body || {};
+    const pedido = String(d.pedido || '').trim();
+    if (!pedido) return res.status(400).json({ ok: false, erro: 'sem pedido, nao da pra registrar' });
+
+    // JA EXISTE? devolvo o id em vez de criar outro. Sem isto, clicar
+    // duas vezes criaria dois registros da mesma devolucao — e duas
+    // portas pra emitir a mesma nota.
+    // v4.81.1 (Codex): a chave e a SOLICITACAO, nao o pedido.
+    //
+    // O TikTok abre uma solicitacao por ITEM, e o Magalu pode ter varias
+    // notas por pedido. Procurando so por `order_id`, a segunda solicitacao
+    // do mesmo pedido reaproveitaria o registro da primeira — e se aquela
+    // ja tem NF, esta seria BLOQUEADA com "ja emitida", quando na verdade
+    // e outro caso, ainda pendente.
+    //
+    // O marcador `[caso:X]` na descricao identifica a solicitacao. Casos
+    // antigos (sem marcador) continuam casando por pedido, que e o que da
+    // pra fazer com o dado que existe.
+    const chaveCaso = String(d.chave_caso || '').trim();
+    const { data: doPedido, error: erroBusca } = await supabase
+      .from('devolucoes')
+      .select('id, nf_devolucao_id_bling, problema_descricao')
+      .eq('order_id', pedido);
+    if (erroBusca) return res.status(500).json({ ok: false, erro: erroBusca.message });
+
+    const existente = chaveCaso
+      ? (doPedido || []).find((r) => String(r.problema_descricao || '').includes('[caso:' + chaveCaso + ']'))
+      : (doPedido || [])[0];
+
+    if (existente) {
+      return res.json({
+        ok: true,
+        id: existente.id,
+        ja_existia: true,
+        nf_ja_emitida: !!existente.nf_devolucao_id_bling,
+      });
+    }
+
+    const { data, error } = await supabase
+      .from('devolucoes')
+      .insert({
+        // b193.1 (Codex): entra na fila normal, MAS marcado.
+        //
+        // Na fila, o card ganha o botao "rascunho ou emitir" e o checkbox da
+        // esteira — e a esteira manda `emitir: true` SEMPRE. Isso contorna a
+        // protecao de so-rascunho que este PR criou, e transmitiria pra
+        // SEFAZ a devolucao da nota INTEIRA.
+        //
+        // O marcador `[SO RASCUNHO]` na descricao e lido pela esteira e pelo
+        // card (abaixo), que passam a oferecer so o rascunho.
+        tipo: 'aprovado',           // entra na fila normal de "aguardando NF"
+        status: 'pendente',
+        order_id: pedido,
+        produto_titulo: d.produto || null,
+        produto_sku: d.sku || null,
+        produto_qtd: d.qtd || null,
+        nf_numero: d.nf_numero || null,
+        nf_chave: d.nf_chave || null,
+        nf_id_bling: d.nf_id_bling || null,
+        funcionario: 'Sistema (card estornadas)',
+        // ⚠️ o RASTRO de onde veio: quem olhar este registro depois precisa
+        // saber que NAO houve bipagem — o produto pode nem ter voltado.
+        problema_descricao: '[ESTORNADA SEM RETORNO] [SO RASCUNHO]'
+          + (chaveCaso ? ' [caso:' + chaveCaso + ']' : '')
+          + ' Registrado a partir do card de estornadas'
+          + (d.marketplace ? ' · ' + String(d.marketplace) : '')
+          + (d.classe ? ' · ' + String(d.classe) : '')
+          + ' · NAO houve bipagem: a mercadoria pode nao ter voltado fisicamente.',
+      })
+      .select('id')
+      .single();
+
+    if (error) return res.status(500).json({ ok: false, erro: error.message });
+    return res.json({ ok: true, id: data.id, ja_existia: false });
+  } catch (e) {
+    return res.status(500).json({ ok: false, erro: String(e.message || e).slice(0, 200) });
+  }
+});
+
 app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
   try {
     if (!supabase) return res.status(503).json({ ok: false, erro: 'Supabase nao configurado' });
@@ -5164,12 +5272,17 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
     // rastreio) e nao serve pro Magalu. Mas o PEDIDO serve: se ha triagem
     // daquele pedido, ele ja esta no fluxo normal.
     const pedidosMagalu = magaluItens.map((m) => m.pedido).filter(Boolean);
-    const triadosMagalu = new Set();
+    const triadosSemMarcador = new Set();   // triagem de BIPE: derruba o pedido
+    const casosRegistrados = new Set();     // registro do CARD: derruba so o caso
     if (pedidosMagalu.length) {
       for (let i = 0; i < pedidosMagalu.length; i += 200) {
         const { data: tri, error: erroTri } = await supabase
           .from('devolucoes')
-          .select('order_id')
+          // b193.1 (Codex): `problema_descricao` E LIDO logo abaixo pra achar
+          // o marcador `[caso:X]`. Sem ele no select, o campo vinha undefined
+          // e TODO registro parecia triagem de bipe — o conserto dos irmaos
+          // nao funcionava, e voltavam a sumir todos.
+          .select('order_id, problema_descricao')
           .in('order_id', pedidosMagalu.slice(i, i + 200));
         if (erroTri) {
           // mesma regra do descarte do TikTok: falhar e melhor que listar
@@ -5201,16 +5314,36 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
         // ⏳ DIVIDA REGISTRADA: a triagem deveria gravar o item que
         // realmente voltou. Enquanto nao gravar, nenhum consumidor desse
         // dado pode confiar no SKU de nota multi-item.
-        for (const t of (tri || [])) triadosMagalu.add(String(t.order_id));
+        // b193: separo o que veio do CARD (tem `[caso:X]`) do que veio do
+      // BIPE. O primeiro derruba so aquele caso; o segundo, o pedido todo.
+      for (const t of (tri || [])) {
+        const desc = String(t.problema_descricao || '');
+        const m = desc.match(/\[caso:([^\]]+)\]/);
+        if (m) casosRegistrados.add(m[1]);
+        else triadosSemMarcador.add(String(t.order_id));
+      }
       }
     }
 
+    // b193 (Codex): registrar UM caso do Magalu nao pode sumir com os IRMAOS.
+    //
+    // O descarte era por pedido. Assim que o dono clicasse em gerar num
+    // pedido com varias notas, TODAS sumiam da lista — inclusive as que
+    // ainda nao tem NF de devolucao. Ele nao teria como voltar nelas.
+    //
+    // Agora o registro criado pelo card carrega `[caso:X]`, entao dou
+    // preferencia a essa chave. Triagem SEM marcador (a de bipe normal)
+    // continua derrubando o pedido todo: ali o produto voltou de verdade e
+    // o caso ja esta no fluxo.
     const itens = semRetorno
       .filter((d) => {
         const chaveDela = String(d.chave_marketplace || d.id || '');
         return !resolvidosFinos.has(chaveDela);
       })
-      .concat(magaluItens.filter((m) => !triadosMagalu.has(String(m.pedido))))
+      .concat(magaluItens.filter((m) => {
+        if (casosRegistrados.has(String(m.id))) return false;   // este caso ja foi
+        return !triadosSemMarcador.has(String(m.pedido));       // triagem de bipe
+      }))
       .map((d) => {
         // b184 (Codex): O RELOGIO CONTA DA EMISSAO DA NOTA, nao da devolucao.
         //
@@ -5330,6 +5463,13 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
           // pra mercadoria que ja voltou pelo fluxo normal.
           classe: d.classe || undefined,
           tem_devolucao_registrada: d.tem_devolucao_registrada || undefined,
+          // b193.2 (Codex): `entrada_estoque` e `prejuizo_integral` sao LIDOS
+          // no card (a dica de deposito e a tarja vermelha) mas eu nunca os
+          // repassava — chegavam undefined, entao o aviso de "escolha
+          // DEFEITO" nunca aparecia justamente onde importa: a mercadoria
+          // que ficou com o cliente.
+          entrada_estoque: d.entrada_estoque,
+          prejuizo_integral: d.prejuizo_integral || undefined,
           // b190.5 (Codex): o marcador de rateio tem que CHEGAR na tela.
           // Eu calculava em magalu-cancelados.js e nao repassava — o dono
           // veria R$ 250 achando que e o valor daquela nota, quando e o do
