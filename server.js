@@ -232,7 +232,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.71.1 (sem-retorno: a tabela da GOOD nao tem coluna tracking)',
+    version: '4.72.0 (estornadas: tag do marketplace, botao de gerar NF, 365 dias)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -5005,7 +5005,11 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
   try {
     if (!supabase) return res.status(503).json({ ok: false, erro: 'Supabase nao configurado' });
 
-    const dias = Math.min(365, Math.max(1, parseInt(req.query.dias, 10) || 180));
+    // b188 - a janela vai ate 365 dias, e o padrao subiu pra 365 tambem:
+    // o dono perguntou "puxa desde o comeco do ano?". Puxa — e faz sentido,
+    // porque NF de devolucao nao tem prazo (so o CANCELAMENTO tem 20 dias).
+    // Caso antigo continua rendendo imposto de volta.
+    const dias = Math.min(730, Math.max(1, parseInt(req.query.dias, 10) || 365));
     const desde = new Date(Date.now() - dias * 864e5).toISOString();
 
     // b184 (Codex): FILTRAR NO BANCO, nao depois.
@@ -5165,6 +5169,10 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
         return {
           id: d.id,
           marketplace: d.marketplace,
+          // b188 - o card precisa disto pra abrir o modal de gerar NF, o
+          // mesmo do bloco "Aprovadas". Sem o id do Bling o modal nao sabe
+          // de qual nota gerar a devolucao.
+          nf_id_bling: d.nf_id_bling || null,
           pedido: d.pedido,
           nf_numero: d.nf_numero,
           nf_chave: d.nf_chave,
@@ -5184,6 +5192,27 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
           prazo_base: baseOrigem,
         };
       });
+
+    // b188 - COMPLETAR O ID DA NF NO BLING.
+    //
+    // A captura guarda o numero e a chave, mas o modal de gerar devolucao
+    // precisa do id interno do Bling. Sem ele, o botao abriria sem saber de
+    // qual nota gerar — e o dono teria que caçar a nota a mao, que e
+    // exatamente o trabalho que este painel veio evitar.
+    //
+    // Busco so pros que tem numero, em serie e com teto: sao poucos itens
+    // (a GOOD tinha 1) e uma falha aqui nao pode derrubar a lista — o card
+    // aparece sem o botao, com o numero da NF pra ele achar no Bling.
+    const PARA_BUSCAR = itens.filter((x) => x.nf_numero && !x.nf_id_bling).slice(0, 30);
+    for (const item of PARA_BUSCAR) {
+      try {
+        const nf = await buscarNFnoBlingPorNumero(item.nf_numero);
+        if (nf && nf.id) {
+          item.nf_id_bling = String(nf.id);
+          if (!item.nf_chave && nf.chaveAcesso) item.nf_chave = nf.chaveAcesso;
+        }
+      } catch (e) { /* segue sem o botao; o numero da NF esta no card */ }
+    }
 
     // quem ainda da pra cancelar vem primeiro, e dentro disso o mais
     // urgente — e a unica parte com prazo correndo

@@ -33,6 +33,18 @@ const PAINEL = fs.readFileSync(path.join(RAIZ, 'public', 'painel-devolucoes.html
   const i = SERVER.indexOf("'/api/admin/sem-retorno'");
   const rota = SERVER.slice(i, SERVER.indexOf("app.get('/api/admin/espreita'", i));
 
+  // b188: a janela padrao subiu pra 365 dias
+  ok(/parseInt\(req\.query\.dias, 10\) \|\| 365/.test(rota),
+     'a janela padrao e de 365 dias — NF de devolucao nao tem prazo, so o cancelamento tem');
+  ok(/Math\.min\(730/.test(rota), '  com teto de 2 anos');
+  ok(/nf_id_bling: d\.nf_id_bling \|\| null/.test(rota),
+     'e a rota devolve o id da NF no Bling, que o modal precisa');
+  ok(/buscarNFnoBlingPorNumero\(item\.nf_numero\)/.test(rota),
+     '  buscando no Bling quando a captura nao tem (senao o dono cacaria a nota a mao)');
+  ok(/\.slice\(0, 30\)/.test(rota), '  com teto de 30 buscas, pra nao travar a lista');
+  ok(/segue sem o botao; o numero da NF esta no card/.test(rota),
+     '  e falha na busca nao derruba a lista');
+
   // b184.1: a EMPRESA e fixa, nao vem da URL
   ok(/const empresa = 'good';/.test(rota),
      'a empresa e FIXA — ?empresa=amb deixaria o admin da GOOD ver os dados da AMB');
@@ -121,6 +133,20 @@ const PAINEL = fs.readFileSync(path.join(RAIZ, 'public', 'painel-devolucoes.html
      '  e ESCONDE quando o ultimo caso e resolvido (antes a lista velha ficava)');
   ok(/prazo_base === 'devolucao' \? ' ⚠️'/.test(PAINEL),
      'e marca com ⚠️ quando o prazo e aproximado, pra ele conferir antes de tentar cancelar');
+
+  // b188: a TAG do marketplace, igual aos outros cards
+  ok(/const CORES_MKT = \{ tiktok:/.test(PAINEL),
+     'o card mostra a TAG do marketplace (ele nao sabia de onde vinha o caso)');
+  ok(/NOMES_MKT\[mkt\] \|\| x\.marketplace/.test(PAINEL),
+     '  com o nome legivel, e caindo no cru se aparecer marketplace novo');
+
+  // b188: o MESMO botao do bloco "Aprovadas"
+  ok(/onclick="abrirModalGerarDevolucao\(/.test(PAINEL.slice(PAINEL.indexOf('carregarSemRetorno'))),
+     'e o botao de gerar NF, reaproveitando a funcao do bloco "Aprovadas"');
+  ok(/Lembre do depósito de DEFEITO/.test(PAINEL),
+     '  lembrando do deposito de DEFEITO no titulo do botao');
+  ok(/não encontrada no Bling — gere manualmente/.test(PAINEL),
+     '  e sem o id da NF o botao NAO aparece: melhor o numero pra ele achar do que um modal cego');
   // b184.1: falha != fila vazia
   ok(/Não consegui carregar esta lista/.test(PAINEL),
      'FALHA da rota mostra erro, nao a tela de "nada pendente"');
@@ -135,7 +161,7 @@ const PAINEL = fs.readFileSync(path.join(RAIZ, 'public', 'painel-devolucoes.html
 
   // seguranca: o texto vem do cliente e do marketplace
   const iFn = PAINEL.indexOf('async function carregarSemRetorno');
-  const fn = PAINEL.slice(iFn, iFn + 5000);   // a funcao cresceu no b184
+  const fn = PAINEL.slice(iFn, iFn + 9000);   // cresceu de novo no b188 (tag + botao)
   ok(/escapeHtml\(x\.produto/.test(fn) && /escapeHtml\(String\(x\.motivo\)\)/.test(fn),
      'tudo que vem de fora passa por escapeHtml (o motivo e escrito pelo cliente)');
   ok(/escapeHtml\(String\(x\.pedido/.test(fn) && /escapeHtml\(String\(x\.sku/.test(fn),

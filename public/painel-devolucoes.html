@@ -952,13 +952,51 @@
             : '<span style="background:#546e7a;color:#fff;padding:3px 8px;border-radius:10px;'
               + 'font-size:10px;font-weight:700;">NF DE DEVOLUÇÃO</span>';
 
+          // b188 - TAG DO MARKETPLACE, igual aos outros cards do painel.
+          // Sem ela o dono nao sabe de onde veio o caso, e com ML e Shopee
+          // entrando na lista isso fica pior.
+          const CORES_MKT = { tiktok: '#000', shopee: '#ee4d2d', magalu: '#0086ff', ml: '#ffe600' };
+          const mkt = String(x.marketplace || '').toLowerCase();
+          const NOMES_MKT = { tiktok: 'TikTok', shopee: 'Shopee', magalu: 'Magalu', ml: 'Mercado Livre' };
+          const tagMkt = mkt
+            ? '<span style="background:' + (CORES_MKT[mkt] || '#607d8b') + ';'
+              + 'color:' + (mkt === 'ml' ? '#333' : '#fff') + ';padding:3px 8px;border-radius:10px;'
+              + 'font-size:10px;font-weight:700;margin-right:6px;">'
+              + escapeHtml(NOMES_MKT[mkt] || x.marketplace) + '</span>'
+            : '';
+
+          // b188 - o MESMO botao do bloco "Aprovadas": abre o modal com
+          // rascunho, emitir direto e escolha de deposito. Reaproveito a
+          // funcao existente em vez de escrever outra — duplicar fluxo de
+          // emissao fiscal seria pedir divergencia.
+          //
+          // Sem o id da NF no Bling o botao nao aparece: melhor mostrar o
+          // numero pra ele achar a nota do que abrir um modal que nao sabe
+          // de qual nota gerar.
+          const botaoNF = x.nf_id_bling
+            ? '<button class="btn" style="background:#1565c0;margin-top:8px;" '
+              + 'onclick="abrirModalGerarDevolucao(\'' + escapeHtml(String(x.id)) + '\', \''
+              + escapeHtml(String(x.nf_id_bling)) + '\', \''
+              + escapeHtml(String(x.nf_numero || '')) + '\', \''
+              + escapeHtml(String(x.produto || '').replace(/'/g, '')) + '\', \''
+              + String(x.nf_chave || '').replace(/[^0-9]/g, '') + '\')" '
+              + 'title="Abre as opções: rascunho pra editar no Bling, ou gerar + emitir direto. '
+              + 'Lembre do depósito de DEFEITO — a mercadoria nunca chegou.">'
+              + '🧾 Gerar NF de devolução</button>'
+            : '<div style="margin-top:8px;font-size:12px;color:#999;">'
+              + (x.nf_numero
+                  ? 'NF ' + escapeHtml(String(x.nf_numero)) + ' não encontrada no Bling — gere manualmente'
+                  : 'sem NF vinculada; procure o pedido no Bling')
+              + '</div>';
+
           return '<div class="item" style="border-left-color:' + (podeCancelar ? '#ef6c00' : '#546e7a') + ';">'
             + '<div class="item-header"><div class="item-titulo">'
-            + escapeHtml(x.produto || '-') + ' ' + tarja + '</div></div>'
+            + tagMkt + escapeHtml(x.produto || '-') + ' ' + tarja + '</div></div>'
             + '<div style="font-size:13px;color:#555;margin-top:6px;">'
             + (x.nf_numero ? '<b>NF ' + escapeHtml(String(x.nf_numero)) + '</b> · ' : '')
             + 'pedido <code>' + escapeHtml(String(x.pedido || '-')) + '</code>'
             + (x.sku ? ' · SKU <code>' + escapeHtml(String(x.sku)) + '</code>' : '')
+            + (x.qtd ? ' · ' + escapeHtml(String(x.qtd)) + ' un' : '')
             + (x.valor != null ? ' · R$ ' + Number(x.valor).toFixed(2) : '')
             + (x.dias_desde != null ? ' · há ' + x.dias_desde + ' dias' : '')
             + '</div>'
@@ -966,6 +1004,7 @@
                 + '💬 ' + escapeHtml(String(x.motivo)) + '</div>' : '')
             + (x.cliente ? '<div style="font-size:12px;color:#999;margin-top:2px;">'
                 + escapeHtml(String(x.cliente)) + '</div>' : '')
+            + botaoNF
             + '</div>';
         }).join('');
 
