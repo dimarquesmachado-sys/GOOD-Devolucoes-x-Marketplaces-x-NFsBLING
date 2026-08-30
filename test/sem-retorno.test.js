@@ -51,7 +51,7 @@ const PAINEL = fs.readFileSync(path.join(RAIZ, 'public', 'painel-devolucoes.html
   ok(/\.eq\('empresa', empresa\)/.test(rota), '  mas o filtro no banco continua');
   ok(/\.eq\('tipo_tiktok', 'REFUND'\)/.test(rota),
      'e filtra REEMBOLSO PURO no BANCO, antes do limite de 500');
-  ok(rota.indexOf(".eq('tipo_tiktok'") < rota.indexOf('.limit(500)'),
+  ok(rota.indexOf(".eq('tipo_tiktok'") < rota.indexOf('.limit(LIMITE)'),
      '  (senao, numa janela com +500 capturadas, os reembolsos ficariam de fora)');
   ok(/st\.indexOf\('CANCEL'\) === -1/.test(rota),
      'descarta as canceladas: ali nao houve estorno (rede de seguranca, alem do filtro no banco)');
@@ -60,7 +60,7 @@ const PAINEL = fs.readFileSync(path.join(RAIZ, 'public', 'painel-devolucoes.html
      'a janela ?dias conta do REEMBOLSO, nao da captura (que regrava tudo de hora em hora)');
   ok(/\.in\('status', \[/.test(rota),
      'e o status filtra NO BANCO — filtrar depois do limite tinha o mesmo defeito de antes');
-  ok(rota.indexOf(".in('status'") < rota.indexOf('.limit(500)'),
+  ok(rota.indexOf(".in('status'") < rota.indexOf('.limit(LIMITE)'),
      '  (antes do limite, senao numa janela cheia de pendentes as concluidas ficavam de fora)');
 
   // b184.1: pedido com VARIAS solicitacoes
@@ -100,6 +100,13 @@ const PAINEL = fs.readFileSync(path.join(RAIZ, 'public', 'painel-devolucoes.html
      'a acao e RECALCULADA quando a chave so aparece na busca');
   ok(/item\.acao = dias <= 20 \? 'cancelar_nf' : 'nf_devolucao';/.test(rota),
      '  senao um caso ja intempestivo ficaria marcado como CANCELAR NF');
+
+  // b188.2: janela cheia = pode haver caso fora da lista
+  ok(/const cortou = \(data \|\| \[\]\)\.length >= LIMITE;/.test(rota),
+     'a rota detecta quando a janela encheu');
+  ok(/aviso_corte: cortou/.test(rota),
+     '  e avisa, em vez de calar — os cortados sao os mais ANTIGOS, que so tem NF de devolucao como saida');
+  ok(/aviso_corte/.test(PAINEL), '  com o aviso aparecendo na tela');
 
   ok(/aviso_cancelados/.test(rota),
      'a resposta avisa que casos resolvidos por CANCELAMENTO reaparecem (nao geram NF de devolucao)');

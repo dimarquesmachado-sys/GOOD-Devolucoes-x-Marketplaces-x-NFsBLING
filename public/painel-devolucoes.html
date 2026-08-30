@@ -930,6 +930,13 @@
         document.getElementById('secaoSemRetorno').style.display = '';
         document.getElementById('countSemRetorno').textContent = d.total;
 
+        // b188.2: se a lista veio cortada, dizer — senao ele acha que viu tudo
+        const avisoCorte = d.aviso_corte
+          ? '<div style="margin-bottom:10px;padding:10px;border-radius:8px;background:#fffde7;'
+            + 'border:2px solid #f9a825;color:#f57f17;font-size:13px;">⚠️ '
+            + escapeHtml(String(d.aviso_corte)) + '</div>'
+          : '';
+
         const cabecalho = d.podem_cancelar > 0
           ? '<div style="margin-bottom:10px;padding:10px;border-radius:8px;background:#fff3e0;'
             + 'border:2px solid #ef6c00;color:#e65100;font-weight:700;">'
@@ -1020,7 +1027,7 @@
             + '</div>';
         }).join('');
 
-        document.getElementById('listaSemRetorno').innerHTML = cabecalho + linhas;
+        document.getElementById('listaSemRetorno').innerHTML = avisoCorte + cabecalho + linhas;
       } catch (e) {
         // silencioso de proposito: e um bloco informativo, nao a fila
       }

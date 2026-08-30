@@ -5029,6 +5029,7 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
     // que o resto do projeto mantem (server separado, tabela separada,
     // login separado). Este servidor E o da GOOD; a AMB tem o dela.
     const empresa = 'good';
+    const LIMITE = 500;
 
     const { data, error } = await supabase
       .from('devolucoes_capturadas')
@@ -5045,9 +5046,18 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
       // pendentes, as concluidas ficavam de fora.
       .in('status', ['RETURN_OR_REFUND_REQUEST_COMPLETE', 'REFUND_SUCCESS', 'COMPLETE', 'SUCCESS'])
       .order('criado_no_mkt', { ascending: false })
-      .limit(500);
+      .limit(LIMITE);
 
     if (error) return res.status(500).json({ ok: false, erro: error.message });
+
+    // b188.2 (Codex): AVISAR quando a janela encheu.
+    //
+    // Com 365 dias o volume cresce, e um corte silencioso em 500 esconderia
+    // os casos mais antigos — justamente os que ja passaram do prazo de
+    // cancelamento e so tem a NF de devolucao como saida. Paginar de
+    // verdade complicaria a rota; dizer que cortou resolve: o dono estreita
+    // a janela com ?dias= e ve o resto.
+    const cortou = (data || []).length >= LIMITE;
 
     // rede de seguranca: o `in` acima ja filtrou, mas se o marketplace
     // criar um status novo com CANCEL no nome, ele nao passa aqui.
@@ -5265,6 +5275,12 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
       valor_total: Number(itens.reduce((t, x) => t + (Number(x.valor) || 0), 0).toFixed(2)),
       podem_cancelar: itens.filter((x) => x.acao === 'cancelar_nf').length,
       itens,
+      // b188.2: a lista pode estar cortada — dizer, em vez de calar
+      cortou_em: cortou ? LIMITE : undefined,
+      aviso_corte: cortou
+        ? 'A janela de ' + dias + ' dias trouxe o maximo de ' + LIMITE + ' registros: pode haver '
+          + 'casos mais antigos fora desta lista. Estreite com ?dias= pra ver o resto.'
+        : undefined,
       // b184 (Codex): quem CANCELA a nota nao gera NF de devolucao, entao a
       // checagem por nf_devolucao_id_bling nunca o tira da lista — ele
       // reapareceria pra sempre. Falta um jeito de marcar "resolvido por
