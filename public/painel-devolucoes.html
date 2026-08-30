@@ -1782,7 +1782,9 @@
           ${avisoJaTemNF}
           <div class="item-detalhes">
             <strong>${escapeHtml(d.produto_sku || '-')}</strong> ·
-            <strong>${d.produto_qtd || '-'} un</strong> ·
+            <strong>${d.produto_qtd || '-'} un</strong> ·${(Array.isArray(d.itens_devolvidos) && d.itens_devolvidos.length > 1)
+              ? ` <span style="background:#00695c;color:#fff;padding:2px 7px;border-radius:9px;font-size:10px;font-weight:700;" title="${escapeHtml(d.itens_devolvidos.map(i => (i.qtd || 0) + '× ' + (i.sku || '?')).join(' · '))}">📦 ${d.itens_devolvidos.length} SKUs</span> ·`
+              : ''}
             ${moeda(d.produto_valor_unit)}${renderItensCard(d)}<br>
             <strong>NF:</strong> ${escapeHtml(d.nf_numero || '-')} ·
             <strong>Cliente:</strong> ${escapeHtml(d.buyer_nome || '-')}<br>
@@ -1840,7 +1842,9 @@
           ${avisoJaTemNF}
           <div class="item-detalhes">
             <strong>${escapeHtml(d.produto_sku || '-')}</strong> ·
-            <strong>${d.produto_qtd || '-'} un</strong> ·
+            <strong>${d.produto_qtd || '-'} un</strong> ·${(Array.isArray(d.itens_devolvidos) && d.itens_devolvidos.length > 1)
+              ? ` <span style="background:#00695c;color:#fff;padding:2px 7px;border-radius:9px;font-size:10px;font-weight:700;" title="${escapeHtml(d.itens_devolvidos.map(i => (i.qtd || 0) + '× ' + (i.sku || '?')).join(' · '))}">📦 ${d.itens_devolvidos.length} SKUs</span> ·`
+              : ''}
             ${moeda(d.produto_valor_unit)}${d.nf_id_bling ? ` · <a href="#" onclick="return verItensNF('${d.nf_id_bling}', this)" style="color:#1565c0;font-size:12px;text-decoration:none;font-weight:600;" title="Mostra todos os itens e quantidades desta NF">▼ itens da NF</a><span class="itens-nf-box" style="display:none;"></span>` : ''}<br>
             <strong>NF:</strong> ${escapeHtml(d.nf_numero || '-')} ·
             <strong>Cliente:</strong> ${escapeHtml(d.buyer_nome || '-')}<br>
@@ -1927,7 +1931,9 @@
 
           <div class="item-detalhes">
             <strong>${escapeHtml(d.produto_sku || '-')}</strong> ·
-            <strong>${d.produto_qtd || '-'} un</strong> ·
+            <strong>${d.produto_qtd || '-'} un</strong> ·${(Array.isArray(d.itens_devolvidos) && d.itens_devolvidos.length > 1)
+              ? ` <span style="background:#00695c;color:#fff;padding:2px 7px;border-radius:9px;font-size:10px;font-weight:700;" title="${escapeHtml(d.itens_devolvidos.map(i => (i.qtd || 0) + '× ' + (i.sku || '?')).join(' · '))}">📦 ${d.itens_devolvidos.length} SKUs</span> ·`
+              : ''}
             ${moeda(d.produto_valor_unit)}${d.nf_id_bling ? ` · <a href="#" onclick="return verItensNF('${d.nf_id_bling}', this)" style="color:#1565c0;font-size:12px;text-decoration:none;font-weight:600;" title="Mostra todos os itens e quantidades desta NF">▼ itens da NF</a><span class="itens-nf-box" style="display:none;"></span>` : ''}<br>
             <strong>NF original:</strong> ${escapeHtml(d.nf_numero || '-')} ·
             <strong>Cliente:</strong> ${escapeHtml(d.buyer_nome || '-')}<br>

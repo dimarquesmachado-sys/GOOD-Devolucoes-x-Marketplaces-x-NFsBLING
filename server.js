@@ -232,7 +232,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.76.0 (cancelamento so com prova de que nao saiu)',
+    version: '4.77.0 (triagem grava o item que REALMENTE voltou)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -2387,6 +2387,10 @@ app.post('/api/triagem/aprovar', requerEstoquista, async (req, res) => {
         produto_mlb: dados.produto_mlb || null,
         produto_sku: dados.produto_sku || null,
         produto_qtd: dados.produto_qtd || null,
+        // v4.77 - a lista do que REALMENTE voltou, quando a bipagem
+        // registrou. O produto_sku sozinho descreve a NOTA em caso
+        // multi-item, nao a devolucao.
+        itens_devolvidos: dados.itens_devolvidos || null,
         produto_valor_unit: dados.produto_valor_unit || null,
         nf_numero: dados.nf_numero || null,
         nf_serie: dados.nf_serie || null,
@@ -2572,6 +2576,10 @@ app.post('/api/triagem/problema', requerEstoquista, async (req, res) => {
         produto_mlb: dados.produto_mlb || null,
         produto_sku: dados.produto_sku || null,
         produto_qtd: dados.produto_qtd || null,
+        // v4.77 - a lista do que REALMENTE voltou, quando a bipagem
+        // registrou. O produto_sku sozinho descreve a NOTA em caso
+        // multi-item, nao a devolucao.
+        itens_devolvidos: dados.itens_devolvidos || null,
         produto_valor_unit: dados.produto_valor_unit || null,
         nf_numero: dados.nf_numero || null,
         nf_serie: dados.nf_serie || null,
@@ -3109,6 +3117,10 @@ app.post('/api/triagem/consertado', requerEstoquista, async (req, res) => {
         produto_mlb: dados.produto_mlb || null,
         produto_sku: dados.produto_sku || null,
         produto_qtd: dados.produto_qtd || null,
+        // v4.77 - a lista do que REALMENTE voltou, quando a bipagem
+        // registrou. O produto_sku sozinho descreve a NOTA em caso
+        // multi-item, nao a devolucao.
+        itens_devolvidos: dados.itens_devolvidos || null,
         produto_valor_unit: dados.produto_valor_unit || null,
         nf_numero: dados.nf_numero || null,
         nf_serie: dados.nf_serie || null,

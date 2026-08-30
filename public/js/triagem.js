@@ -193,13 +193,48 @@ function montarPayloadTriagem() {
     ? `${buyer.first_name} ${buyer.last_name || ''}`.trim()
     : null;
 
-  // Prioriza dados do Bling (titulo limpo, EAN), fallback ML
-  const itemBling = (Array.isArray(nf.itens) && nf.itens.length > 0) ? nf.itens[0] : null;
+  // v4.77 - O ITEM QUE REALMENTE VOLTOU, nao o primeiro da nota.
+  //
+  // Ate aqui eu gravava SEMPRE `nf.itens[0].sku` e a quantidade SOMADA de
+  // todos os itens. Numa nota com varios produtos isso descreve o pedido,
+  // nao a devolucao.
+  //
+  // Caso real que revelou (GOOD, NF 076466, cliente Antonio): dois SKUs na
+  // mesma nota — KJDDE-693-8 e KJDDE-693-6, 2 unidades cada. Ficava gravado
+  // "KJDDE-693-8, qtd 4", seja qual for o item que o Lucas triou.
+  //
+  // Isso contamina QUALQUER consumidor do dado: o card de estornadas nao
+  // consegue casar por item, e qualquer conta de devolucao por produto sai
+  // errada.
+  //
+  // O CONSERTO NAO E ADIVINHAR: o estoquista JA BIPA cada item, e
+  // `bipagemEstado.itensEsperados[].bipados` guarda o que ele conferiu de
+  // cada um. Uso isso.
+  const esperados = Array.isArray(bipagemEstado?.itensEsperados) ? bipagemEstado.itensEsperados : [];
+  const bipadosDeVerdade = esperados.filter((i) => (Number(i.bipados) || 0) > 0);
+
+  // um item bipado: e ele, com a quantidade que ele contou
+  // varios: o primeiro bipado manda no rotulo, e a qtd soma so os bipados
+  // nenhum (bipagem pulada/forcada): cai no comportamento antigo, que e o
+  //   que da pra afirmar sem o dado
+  const itemBipado = bipadosDeVerdade.length > 0 ? bipadosDeVerdade[0] : null;
+  const itemBling = itemBipado
+    || ((Array.isArray(nf.itens) && nf.itens.length > 0) ? nf.itens[0] : null);
+
   const tituloProduto = itemBling?.titulo || itemOrder?.item?.title || null;
   const skuProduto = itemBling?.sku || itemOrder?.item?.seller_sku || null;
-  const qtdTotal = (Array.isArray(nf.itens) && nf.itens.length > 0)
-    ? nf.itens.reduce((s, i) => s + (Number(i.quantidade) || 0), 0)
-    : (itemOrder?.quantity || null);
+
+  const qtdTotal = bipadosDeVerdade.length > 0
+    ? bipadosDeVerdade.reduce((s, i) => s + (Number(i.bipados) || 0), 0)
+    : ((Array.isArray(nf.itens) && nf.itens.length > 0)
+      ? nf.itens.reduce((s, i) => s + (Number(i.quantidade) || 0), 0)
+      : (itemOrder?.quantity || null));
+
+  // quando a nota tem varios itens e nem todos voltaram, registro a lista
+  // completa do que foi bipado — pro admin ver sem depender do rotulo
+  const itensDevolvidos = bipadosDeVerdade.length > 0
+    ? bipadosDeVerdade.map((i) => ({ sku: i.sku || null, titulo: i.titulo || null, qtd: Number(i.bipados) || 0 }))
+    : null;
 
   return {
     shipment_id: shipment.id,
@@ -213,6 +248,10 @@ function montarPayloadTriagem() {
     produto_mlb: itemOrder?.item?.id,
     produto_sku: skuProduto,
     produto_qtd: qtdTotal,
+    // v4.77 - a lista do que REALMENTE voltou, quando a bipagem registrou.
+    // O `produto_sku` continua sendo o rotulo principal (a tela usa), mas
+    // agora quem precisa de precisao tem onde olhar.
+    itens_devolvidos: itensDevolvidos,
     produto_valor_unit: itemOrder?.unit_price,
     nf_numero: nf.numero,
     nf_serie: nf.serie,
