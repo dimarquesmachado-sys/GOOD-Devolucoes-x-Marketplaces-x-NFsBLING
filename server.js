@@ -232,7 +232,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.74.0 (Magalu no mesmo card das estornadas, junto do TikTok)',
+    version: '4.74.1 (Magalu ja triado sai da lista: evita NF duplicada)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -5140,12 +5140,44 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
     // Aquele descarte compara com as triagens da tabela `devolucoes`, que e
     // do fluxo de bipe — os cancelados do Magalu nao passam por ali, entao
     // filtrar por aquele conjunto so os removeria por engano.
+    // b189.1 - O MAGALU TAMBEM PRECISA DO DESCARTE, so que por PEDIDO.
+    //
+    // Caso real que o dono trouxe: o pedido 1554870118013124 (Antonio, NF
+    // 076466) voltou fisicamente, o Lucas triou esta semana, e ele ja
+    // aparece em "Aprovadas aguardando NF" com o botao de gerar. Se
+    // aparecesse aqui tambem, seriam DUAS portas pra mesma nota — e duas
+    // devolucoes emitidas sem ninguem perceber.
+    //
+    // O descarte fino acima compara chaves do TikTok (id da solicitacao ou
+    // rastreio) e nao serve pro Magalu. Mas o PEDIDO serve: se ha triagem
+    // daquele pedido, ele ja esta no fluxo normal.
+    const pedidosMagalu = magaluItens.map((m) => m.pedido).filter(Boolean);
+    const triadosMagalu = new Set();
+    if (pedidosMagalu.length) {
+      for (let i = 0; i < pedidosMagalu.length; i += 200) {
+        const { data: tri, error: erroTri } = await supabase
+          .from('devolucoes')
+          .select('order_id')
+          .in('order_id', pedidosMagalu.slice(i, i + 200));
+        if (erroTri) {
+          // mesma regra do descarte do TikTok: falhar e melhor que listar
+          // caso ja resolvido, que faria emitir NF duplicada
+          return res.status(500).json({
+            ok: false,
+            erro: 'nao consegui conferir quais pedidos do Magalu ja foram triados: '
+              + erroTri.message + ' — listar sem essa checagem mostraria casos ja no fluxo normal',
+          });
+        }
+        for (const t of (tri || [])) triadosMagalu.add(String(t.order_id));
+      }
+    }
+
     const itens = semRetorno
       .filter((d) => {
         const chaveDela = String(d.chave_marketplace || d.id || '');
         return !resolvidosFinos.has(chaveDela);
       })
-      .concat(magaluItens)
+      .concat(magaluItens.filter((m) => !triadosMagalu.has(String(m.pedido))))
       .map((d) => {
         // b184 (Codex): O RELOGIO CONTA DA EMISSAO DA NOTA, nao da devolucao.
         //

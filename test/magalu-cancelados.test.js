@@ -95,7 +95,18 @@ const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o
   ok(/if \(r\.corpo\.ok === false\)/.test(SRC),
      '  e trata ok:false, que ja nos mordeu antes');
 
-  ok(/\.concat\(magaluItens\)/.test(SERVER), 'o Magalu entra na MESMA lista do TikTok');
+  ok(/\.concat\(magaluItens\.filter/.test(SERVER), 'o Magalu entra na MESMA lista do TikTok');
+
+  // b189.1: caso real do dono — pedido 1554870118013124 (Antonio, NF 076466)
+  // voltou fisicamente, o Lucas triou, e ele ja esta em "Aprovadas aguardando
+  // NF" com botao de gerar. Aparecer aqui tambem seriam DUAS portas pra mesma
+  // nota, e duas devolucoes emitidas sem ninguem perceber.
+  ok(/triadosMagalu\.has\(String\(m\.pedido\)\)/.test(SERVER),
+     'pedido do Magalu JA TRIADO sai da lista: ele ja esta no fluxo normal');
+  ok(/nao consegui conferir quais pedidos do Magalu ja foram triados/.test(SERVER),
+     '  e falha nessa checagem e ERRO, nao lista incompleta (duas portas = NF duplicada)');
+  ok(/i \+= 200/.test(SERVER.slice(SERVER.indexOf('pedidosMagalu'))),
+     '  conferindo em fatias, sem teto que deixe pedido de fora');
   ok(/aquele descarte compara com as triagens/i.test(SERVER),
      '  depois do descarte por triagem, que nao se aplica a ele');
   ok(/magalu_erro: magaluErro \|\| undefined/.test(SERVER),
