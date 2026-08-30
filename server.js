@@ -232,7 +232,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.71.1 (sem-retorno: a tabela da GOOD nao tem coluna tracking)',
+    version: '4.73.0 (rota de remessas reversas por pedido, pro cruzamento do Magalu)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
