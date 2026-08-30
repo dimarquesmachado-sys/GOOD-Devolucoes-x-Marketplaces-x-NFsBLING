@@ -232,7 +232,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.82.4 (a busca do Magalu tinha sumido da rota da GOOD)',
+    version: '4.82.5 (o valor do Magalu chega; janela respeita ?de e ?ate)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -5290,9 +5290,14 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
     let magaluItens = [];
     let magaluErro = null;
     try {
+      // b195.1 (Codex): respeitar ?de= e ?ate= quando vierem. O TikTok ja
+      // respeitava; o Magalu ignorava e sempre terminava hoje — entao pedir
+      // uma fatia antiga trazia o Magalu do periodo errado.
+      const atePedido = String(req.query.ate || '').trim();
+      const dePedido = String(req.query.de || '').trim();
       const rm = await magaluCancelados.buscar(empresa, {
-        de: new Date(AGORA - dias * 864e5).toISOString().slice(0, 10),
-        ate: new Date().toISOString().slice(0, 10),
+        de: dePedido || new Date(AGORA - dias * 864e5).toISOString().slice(0, 10),
+        ate: atePedido || new Date().toISOString().slice(0, 10),
       });
       if (rm.ok) magaluItens = rm.itens;
       else magaluErro = rm.erro;
@@ -5485,7 +5490,11 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
           produto: d.produto_titulo,
           sku: d.produto_sku,
           qtd: d.produto_qtd,
-          valor: d.valor_refund,
+          // b195.1 (Codex): o TikTok manda `valor_refund`, o Magalu manda
+          // `valor`. Lendo so o primeiro, TODO card do Magalu vinha com
+          // valor nulo — foi o que o dono viu no JSON da AMB ("valor: null"
+          // nos 10) e o `valor_total` ficava zero, inutil pra priorizar.
+          valor: d.valor_refund != null ? d.valor_refund : d.valor,
           motivo: d.motivo_texto || d.motivo,
           criado_em: d.criado_no_mkt,
           dias_desde: diasDesde,

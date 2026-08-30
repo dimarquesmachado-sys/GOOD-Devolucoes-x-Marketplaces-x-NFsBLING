@@ -477,6 +477,16 @@ const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o
 
   ok(/let magaluItens = \[\];/.test(rota3),
      'a lista do Magalu e DECLARADA (o painel quebrava com "magaluItens is not defined")');
+
+  // b195.1: o TikTok manda `valor_refund`, o Magalu manda `valor`
+  ok(/valor: d\.valor_refund != null \? d\.valor_refund : d\.valor/.test(rota3),
+     'o valor do Magalu chega: lendo so `valor_refund`, todo card dele vinha nulo');
+  ok(/valor_total` ficava zero|inutil pra priorizar/.test(rota3),
+     '  e o total ficava zero, inutil pra priorizar');
+
+  // b195.1: ?de= e ?ate= valem pros DOIS marketplaces
+  ok(/de: dePedido \|\|/.test(rota3) && /ate: atePedido \|\|/.test(rota3),
+     'a janela ?de=/?ate= vale pro Magalu tambem (o TikTok ja respeitava)');
   ok(/magaluCancelados\.buscar\(empresa/.test(rota3),
      '  e populada pela busca — o bloco todo tinha sumido, sobraram so os comentarios');
   ok(rota3.indexOf('let magaluItens') < rota3.indexOf('magaluItens.map'),
