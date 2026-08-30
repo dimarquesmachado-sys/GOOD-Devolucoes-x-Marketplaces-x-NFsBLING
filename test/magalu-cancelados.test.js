@@ -44,7 +44,7 @@ const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o
     classe: 'pago_cancelado_com_nf',
     order_code: '1535770109894199',
     order_id: 'uuid-abc',
-    notas: [{ chave: '3'.repeat(44), numero: '002070', em: '2026-08-25T10:00:00Z' }],
+    notas: [{ chave: '35260732461988000182550010000764661835887584', numero: '002070', em: '2026-08-25T10:00:00Z' }],
     valor: 189.10, cliente: 'Fulano', produto: 'Lixa', sku: 'KIT65', qtd: 2,
     data_evento: '2026-08-28T10:00:00Z',
     motivo: 'cancelado pelo cliente',
@@ -52,7 +52,9 @@ const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o
 
   ok(m.marketplace === 'magalu', 'o item se identifica como magalu (a tag do card usa isso)');
   ok(m.pedido === '1535770109894199', 'traz o codigo do pedido');
-  ok(m.nf_numero === '002070' && m.nf_chave.length === 44, 'a NF vem completa');
+  // b194: a chave manda, entao o numero sai DELA — nao do campo da API
+  ok(m.nf_numero === '76466' && m.nf_chave.length === 44,
+     'a NF vem completa, com o numero saindo da CHAVE');
   ok(m.nf_emitida_em === '2026-08-25T10:00:00Z',
      'e a DATA DE EMISSAO — melhor que a chave, que so da o mes');
   ok(m.criado_em === '2026-08-28T10:00:00Z',
@@ -74,7 +76,8 @@ const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o
     ],
   }, 'good');
   ok(duas.length === 2, 'pedido com 2 notas vira 2 linhas — o dono age nota a nota');
-  ok(duas[0].nf_numero === '001' && duas[1].nf_numero === '002', '  cada uma com sua NF');
+  // b194: chaves diferentes -> numeros diferentes, vindos delas
+  ok(duas[0].nf_numero !== duas[1].nf_numero, '  cada uma com sua NF');
   ok(duas[0].id !== duas[1].id,
      '  e com ids DISTINTOS, senao a segunda sobrescreveria a primeira em qualquer mapa');
   ok(duas[0].nf_emitida_em === '2026-08-01' && duas[1].nf_emitida_em === '2026-08-05',
@@ -317,8 +320,16 @@ const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o
     classe: 'estornado_apos_envio', order_code: 'X',
     notas: [{ numero: '99999', chave: '35260732461988000182550010000764661835887584' }],
   }, 'good');
-  ok(comNumero.nf_numero === '99999',
-     'mas quando a API MANDA o numero, ele manda — nao sobrescrevo');
+  // b194: INVERTIDO. O dono viu "NF 637", "NF 822" no painel — as notas
+  // dele estao na casa dos setenta mil. A Magalu manda um numero PROPRIO
+  // dela, que nao e o da NF-e, e todas ficavam "nao localizada no Bling".
+  ok(comNumero.nf_numero === '76466',
+     'a CHAVE manda sobre o `numero` da API: ela e o documento fiscal, nao mente');
+
+  const soNumero = mc.normalizar({
+    classe: 'estornado_apos_envio', order_code: 'X', notas: [{ numero: '999' }],
+  }, 'good');
+  ok(soNumero.nf_numero === '999', '  e sem chave, uso o numero da API (e o que tem)');
 }
 
 // ── e a NF e resolvida PELA CHAVE nos dois servidores ───────────────
@@ -375,19 +386,78 @@ const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o
   ok(duas.length === 2, 'duas notas viram duas linhas');
   ok(duas[0].id !== duas[1].id,
      'e os ids NAO colidem, mesmo sem numero vindo da API');
-  ok(duas[0].id === 'P1#76466' && duas[1].id === 'P1#2070',
-     '  usando o numero derivado da chave');
+  ok(duas[0].id !== duas[1].id && /#\d{10}$/.test(duas[0].id),
+     '  usando o final da chave, que e estavel');
 
-  const semNada = mc.normalizarTodas({
+  // chave imprestavel: o numero nao sai dela, mas o id ainda distingue
+  const semNumero2 = mc.normalizarTodas({
     classe: 'estornado_apos_envio', order_code: 'P2',
-    notas: [{ chave: 'X'.repeat(44) }, { chave: 'Y'.repeat(44) }],
+    notas: [{ chave: '1'.repeat(44) }, { chave: '2'.repeat(44) }],
   }, 'good');
-  if (semNada.length === 2) {
-    ok(semNada[0].id !== semNada[1].id,
-       'chave invalida: cai no final dela como ultimo recurso, e ainda distingue');
+  if (semNumero2.length === 2) {
+    ok(semNumero2[0].id !== semNumero2[1].id,
+       'chave imprestavel: o id ainda distingue pelo final dela');
   } else {
-    ok(true, 'chave invalida nao gera linha (tambem aceitavel)');
+    ok(true, 'chave imprestavel nao gera linha (tambem aceitavel)');
   }
+}
+
+// ── b194.1: o id nao pode mudar, e a chave precisa ser plausivel ────
+{
+  const comChave = mc.normalizar({
+    classe: 'estornado_apos_envio', order_code: 'P1',
+    notas: [{ numero: '637', chave: '35260732461988000182550010000764661835887584' }],
+  }, 'good');
+
+  // corrigir o NUMERO nao pode mudar o ID: os casos ja registrados tem o
+  // id antigo gravado em `[caso:X]` e ficariam orfaos
+  ok(/#\d{10}$/.test(comChave.id),
+     'o id vem da CHAVE, que nao muda quando eu corrijo o numero');
+  ok(comChave.id_legado === 'P1#637',
+     '  e o id ANTIGO vai junto, pra casar registros feitos antes da correcao');
+  // b194.2: havia DOIS formatos antigos — com numero, e so com chave
+  ok(comChave.id_legado2 === 'P1#35887584',
+     '  incluindo o OUTRO formato antigo (final da chave), que ficaria orfao');
+  const soChave = mc.normalizar({
+    classe: 'estornado_apos_envio', order_code: 'P1',
+    notas: [{ chave: '35260732461988000182550010000764661835887584' }],
+  }, 'good');
+  ok(soChave.id_legado === 'P1#35887584',
+     '  e nota que so tinha chave casa pelo formato dela');
+
+  // a chave so vale se PARECE uma NF-e
+  ok(mc.numeroDaChave('3'.repeat(44)) === null,
+     'chave de lixo NAO vira numero inventado (agora ela tem precedencia)');
+  ok(mc.numeroDaChave('35269932461988000182550010000764661835887584') === null,
+     '  mes invalido tambem nao');
+  ok(mc.numeroDaChave('35260732461988000182990010000764661835887584') === null,
+     '  nem modelo que nao e NF-e/NFC-e');
+  ok(mc.numeroDaChave('35260732461988000182550010000764661835887584') === '76466',
+     'e a chave REAL continua funcionando');
+
+  const soLixo = mc.normalizar({
+    classe: 'estornado_apos_envio', order_code: 'P2',
+    notas: [{ numero: '999', chave: '3'.repeat(44) }],
+  }, 'good');
+  ok(soLixo.nf_numero === '999',
+     'com chave imprestavel, o numero USAVEL da API nao e descartado');
+}
+
+// ── b194.1: o texto muda por classe ─────────────────────────────────
+{
+  const fs2 = require('fs');
+  const path2 = require('path');
+  const PAINEL2 = fs2.readFileSync(path2.join(__dirname, '..', 'public', 'painel-devolucoes.html'), 'utf8');
+  ok(/x\.tem_devolucao_registrada\s*\n?\s*\? '📦 Devolução <b>COM entrada/.test(PAINEL2),
+     'o texto so diz "o marketplace registrou" quando ELE registrou mesmo');
+  ok(/não foi entregue ao cliente, '/.test(PAINEL2),
+     '  e no `saiu_e_nao_entregou` diz o que se sabe: nao entregou, DEVE ter voltado');
+
+  const SERVER2 = fs2.readFileSync(path2.join(__dirname, '..', 'server.js'), 'utf8');
+  ok(/m\.id_legado && casosRegistrados\.has\(String\(m\.id_legado\)\)/.test(SERVER2),
+     'e o servidor reconhece o id ANTIGO: registro velho nao vira orfao');
+  ok(/risco de o dono emitir uma segunda NF/.test(SERVER2),
+     '  com o motivo — orfao voltaria como pendente');
 }
 
 console.log('');
