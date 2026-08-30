@@ -179,13 +179,33 @@ const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o
        '  mas NUNCA a trava de concorrencia: duas juntas brigariam pelo mesmo upsert');
     ok(/erro: 'Supabase nao configurado'/.test(SERVER),
        '  e sem Supabase o motivo vai pro estado, em vez de sair calado');
-    ok(/const r = await montarEspreita\(\);/.test(SERVER),
+    ok(/await ESP_MONTANDO : await montarEspreita\(\)/.test(SERVER),
        'o forcar MONTA o espreita antes — o cache do painel nao serve aqui');
 
     const DEBUG = fs.readFileSync(path.join(__dirname, '..', 'lib', 'rotas-debug.js'), 'utf8');
     ok(/api\/debug\/capturar-agora/.test(DEBUG), 'ha rota pra forcar');
-    ok(/resultado: r \|\| null/.test(DEBUG),
-       '  que responde com o RESULTADO da gravacao, nao so "disparei"');
+
+    // b185: PULOU != RODOU SEM GRAVAR
+    ok(/if \(r && r\.rodou === false\)/.test(DEBUG),
+       'a rota distingue PULOU de rodou-sem-gravar');
+    ok(/status\(409\)/.test(DEBUG),
+       '  respondendo 409 quando nem chegou a tentar (era o que confundia)');
+    ok(/motivo: r\.motivo/.test(DEBUG), '  com o motivo do pulo');
+    ok(/gravacao: \(r && r\.gravacao\) \|\| null/.test(DEBUG),
+       '  e o resultado REAL da gravacao quando rodou');
+
+    // b185: o texto que eu tinha escrito estava errado
+    ok(/o upsert conta as regravadas tambem/.test(DEBUG),
+       'e o texto explica certo: `gravadas` sao linhas ENVIADAS, nao novidades');
+    ok(!/regravar o mesmo nao conta/.test(DEBUG),
+       '  (o texto anterior dizia o contrario, e orientava errado)');
+
+    ok(/return CAPTURA_ESTADO;   \/\/ b185/.test(SERVER),
+       'a cadeia da captura devolve o estado ate o fim, pra quem forcou poder esperar');
+    ok(/if \(!supabase\) return \{ rodou: false/.test(SERVER),
+       'e o forcar diz o motivo quando nao roda, em vez de sair calado');
+    ok(/ESP_MONTANDO \? await ESP_MONTANDO/.test(SERVER),
+       '  reaproveitando a montagem em voo, pra nao varrer os marketplaces duas vezes');
     ok(/devCapturadas, capturaEstado,/.test(DEBUG), '  e recebidas la');
     ok(/api\/debug\/capturadas/.test(DEBUG), 'ha rota pra acompanhar a captura');
 

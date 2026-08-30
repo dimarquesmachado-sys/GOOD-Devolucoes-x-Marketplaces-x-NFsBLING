@@ -232,7 +232,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.70.0 (rota pra forcar a captura sem esperar o ciclo)',
+    version: '4.70.1 (forcar captura: resultado real, e pulou != rodou)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -5266,8 +5266,20 @@ registrarRotasDebug(app, {
   // capturar: o cache do painel nao serve, porque a captura recebe o
   // resultado da montagem, nao a lista que a tela mostra.
   forcarCaptura: async () => {
-    const r = await montarEspreita();
-    return capturarDevolucoes(r, true);
+    // b185 (Codex): dizer NA CARA quando nao rodou, e por que.
+    //
+    // A funcao sai calada em tres casos (sem Supabase, ja rodando,
+    // intervalo) — devolver undefined faria a rota responder "ok" sem ter
+    // capturado nada, que e o oposto do motivo dela existir.
+    if (!supabase) return { rodou: false, motivo: 'Supabase nao configurado' };
+    if (CAPTURA_RODANDO) return { rodou: false, motivo: 'ja ha uma captura em andamento' };
+
+    // reaproveita a montagem em voo, se houver: o preAquecerEspreita roda a
+    // cada 3 min e montar duas vezes junto seria trabalho dobrado nos
+    // marketplaces
+    const r = ESP_MONTANDO ? await ESP_MONTANDO : await montarEspreita();
+    const gravou = await capturarDevolucoes(r, true);
+    return { rodou: true, gravacao: gravou || null };
   },
   get ESP_ENTREGA_RODANDO() { return ESP_ENTREGA_RODANDO; },   // b302 - flag viva, por getter
   get EAN_RODANDO() { return EAN_RODANDO; },
@@ -5451,6 +5463,9 @@ function capturarDevolucoes(resultadoEspreita, forcar) {
     })
     .catch((e) => { erroTikTok = e.message || String(e); return []; });
 
+  // b185 (Codex): a cadeia inteira e devolvida, pra quem forcou poder
+  // ESPERAR o fim e ver o que foi gravado. Antes eu devolvia a promessa mas
+  // ela resolvia depois do .finally, entao a rota respondia com null.
   return comTikTok.then((extras) => devCapturadas.guardar(supabase, linhas.concat(extras)))
     .then((r) => {
       CAPTURA_ESTADO = {
@@ -5464,10 +5479,12 @@ function capturarDevolucoes(resultadoEspreita, forcar) {
       };
       if (r.ok) console.log(`[CAPTURA] ${r.gravadas} devolucoes guardadas`);
       else console.warn('[CAPTURA] falhou:', CAPTURA_ESTADO.erro);
+      return CAPTURA_ESTADO;   // b185 - quem forcou espera este resultado
     })
     .catch((e) => {
       CAPTURA_ESTADO = { ultima: new Date().toISOString(), gravadas: 0, erro: e.message || String(e) };
       console.warn('[CAPTURA] erro:', CAPTURA_ESTADO.erro);
+      return CAPTURA_ESTADO;
     })
     .finally(() => { CAPTURA_RODANDO = false; });
 }
