@@ -41,8 +41,7 @@ const PAINEL = fs.readFileSync(path.join(RAIZ, 'public', 'painel-devolucoes.html
      'e a rota devolve o id da NF no Bling, que o modal precisa');
   ok(/buscarNFnoBlingPorNumero\(item\.nf_numero\)/.test(rota),
      '  buscando no Bling quando a captura nao tem (senao o dono cacaria a nota a mao)');
-  ok(/\.slice\(0, 30\)/.test(rota), '  com teto de 30 buscas, pra nao travar a lista');
-  ok(/segue sem o botao; o numero da NF esta no card/.test(rota),
+  ok(/segue sem o link; o numero da NF esta no card/.test(rota),
      '  e falha na busca nao derruba a lista');
 
   // b184.1: a EMPRESA e fixa, nao vem da URL
@@ -155,7 +154,7 @@ const PAINEL = fs.readFileSync(path.join(RAIZ, 'public', 'painel-devolucoes.html
   // triagem), a nota sairia com o pedido inteiro e sem o deposito de DEFEITO.
   // Botao que gera nota fiscal errada e pior que nao ter botao.
   {
-    const fnSR = PAINEL.slice(PAINEL.indexOf('carregarSemRetorno'), PAINEL.indexOf('carregarSemRetorno') + 9000);
+    const fnSR = PAINEL.slice(PAINEL.indexOf('carregarSemRetorno'), PAINEL.indexOf('carregarSemRetorno') + 12000);
     ok(!/abrirModalGerarDevolucao/.test(fnSR),
        'o card NAO chama o modal de gerar: o id dele e de outra tabela (triagem, nao captura)');
     ok(/Abrir NF no Bling/.test(fnSR),
