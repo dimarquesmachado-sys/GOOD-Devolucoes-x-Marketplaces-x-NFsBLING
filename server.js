@@ -232,7 +232,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.75.2 (descarte do Magalu por pedido: o SKU da triagem nao e confiavel)',
+    version: '4.75.3 (uma linha por NOTA; mensagem mais recente; sem colisao de chave)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),

@@ -82,6 +82,12 @@ ok(/linhas\.push\(\{ code, erro:/.test(DEBUG),
      'o codigo e indexado TAMBEM so com digitos');
   ok(/acharDevolucao\(\) LIMPA o codigo/.test(MAGALU),
      '  porque a busca limpa antes de procurar — senao o caso continuaria escapando');
+  // b190.3: dois codigos podem colidir quando reduzidos a digitos
+  ok(/&& !IDX\.mapa\['R:' \+ soNum\]/.test(MAGALU),
+     '  e a chave so-digitos nao SOBRESCREVE: DA597697016BR e XY597697016ZW colidiriam');
+  // b190.3: a mensagem mais recente, pelo mesmo motivo da remessa
+  ok(/const porData = msgs\.slice\(\)\.sort/.test(MAGALU),
+     'entre as mensagens, a MAIS RECENTE manda — o SAC escreve o objeto da coleta que falhou antes da que valeu');
   ok(/if \(!rc\) \{[\s\S]{0,200}mensagensDoTicket/.test(MAGALU),
      '  consultada SO quando o /returns nao deu codigo (uma chamada a mais, so onde precisa)');
 

@@ -61,6 +61,31 @@ const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o
   ok(m.motivo_texto === 'cancelado pelo cliente', 'e o motivo, que o card mostra');
 }
 
+// ── b190.3: pedido com VARIAS notas ─────────────────────────────────
+// Envio parcial ou reemissao geram mais de uma NF no mesmo pedido. Eu
+// ficava so com a primeira, e as outras sumiam da lista — cada uma com seu
+// proprio imposto a recuperar.
+{
+  const duas = mc.normalizarTodas({
+    classe: 'pago_cancelado_com_nf', order_code: 'P1',
+    notas: [
+      { chave: '1'.repeat(44), numero: '001', em: '2026-08-01' },
+      { chave: '2'.repeat(44), numero: '002', em: '2026-08-05' },
+    ],
+  }, 'good');
+  ok(duas.length === 2, 'pedido com 2 notas vira 2 linhas — o dono age nota a nota');
+  ok(duas[0].nf_numero === '001' && duas[1].nf_numero === '002', '  cada uma com sua NF');
+  ok(duas[0].id !== duas[1].id,
+     '  e com ids DISTINTOS, senao a segunda sobrescreveria a primeira em qualquer mapa');
+  ok(duas[0].nf_emitida_em === '2026-08-01' && duas[1].nf_emitida_em === '2026-08-05',
+     '  e cada uma com sua data de emissao, que decide o prazo de cancelamento');
+
+  ok(mc.normalizarTodas({ classe: 'nao_pago', order_code: 'X', notas: [{ numero: '9' }] }, 'good').length === 0,
+     'classe sem NF continua fora, mesmo com notas na linha');
+  ok(mc.normalizarTodas({ classe: 'pago_cancelado_com_nf', order_code: 'Y', notas: [] }, 'good').length === 0,
+     'e linha sem nota valida nao gera item');
+}
+
 // ── a classe que TEVE devolucao ──────────────────────────────────────
 {
   const voltou = mc.normalizar({
