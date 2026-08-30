@@ -70,6 +70,20 @@ const fn = BLING.slice(i, i + 9000);   // a funcao cresceu com os consertos
      '  com teto POR fatia: senao uma densa consumiria tudo');
   ok(/fatiaAtual\+\+/.test(fn), '  e o laco avanca pra fatia anterior');
 
+  // b197.5: PAGINA e CHAMADA sao contadores diferentes
+  ok(/for \(let chamadas = 0; chamadas < MAX_PAGINAS; chamadas\+\+\)/.test(fn),
+     'o teto global conta CHAMADAS, nao paginas');
+  ok(/pagina = 1;              \/\/ b197\.5/.test(fn),
+     '  e a pagina REINICIA a cada fatia');
+  ok(/a fatia nova comecava na pagina 4, 7, 10/.test(fn),
+     '  senao a fatia nova comecava na pagina 4, 7, 10 — pulando as mais recentes dela');
+
+  // b197.5: fatia vazia nao encerra
+  ok(/if \(lista\.length === 0\) \{[\s\S]{0,200}fatiaAtual\+\+/.test(fn),
+     'fatia VAZIA avanca pra proxima em vez de encerrar a busca');
+  ok(/nao diz nada sobre as[\s\S]{0,40}fatias anteriores/.test(fn),
+     '  porque um mes fraco nao diz nada sobre os anteriores');
+
   ok(/maxPaginas: 12, paginasPorFatia: 2, delayMs: 450/.test(SERVER),
      '12 paginas em 6 fatias = 120 dias de alcance (com 6 chegava a 40)');
   ok(/setTimeout\(\(\) => ok\(null\), 14000\)/.test(SERVER),

@@ -232,7 +232,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.87.0 (varredura em fatias: a janela cabe nas paginas lidas)',
+    version: '4.87.1 (pagina reinicia por fatia; fatia vazia nao encerra)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
