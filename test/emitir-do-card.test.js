@@ -170,6 +170,12 @@ const PAINEL = fs.readFileSync(path.join(RAIZ, 'public', 'painel-devolucoes.html
      'o registro do card entra MARCADO como so-rascunho');
   ok(/c\.dataset\.sorascunho !== '1'/.test(PAINEL),
      'e a ESTEIRA pula esses casos: ela emite direto, e sairia a nota inteira');
+  // b193.3: o CONCLUIR em lote tambem — concluido esconde o caso, e o
+  // rascunho ainda precisa ser validado no Bling
+  ok(/c\.dataset\.sorascunho !== '1'\)/.test(PAINEL.slice(PAINEL.indexOf('async function concluirSelecionadas'))),
+     'e o CONCLUIR em lote tambem os pula');
+  ok(/conclua depois de validar a NF no Bling/.test(PAINEL),
+     '  avisando quantos foram pulados e por que');
   ok(/data-sorascunho="/.test(PAINEL), '  com o marcador no checkbox');
   // a chamada tem parenteses internos, entao conto as ocorrencias em vez
   // de tentar casar a linha inteira

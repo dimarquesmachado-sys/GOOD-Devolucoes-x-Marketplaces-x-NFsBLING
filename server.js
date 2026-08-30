@@ -232,7 +232,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.81.4 (campos do estoque chegam; sintetico nao conta como caixa)',
+    version: '4.81.5 (concluir em lote tambem pula os casos do card)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),

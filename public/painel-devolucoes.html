@@ -2815,7 +2815,19 @@
       }
       if (concluindoLote) return;
 
-      const marcados = [...document.querySelectorAll(`.chk-esteira[data-secao="${secao}"]:checked`)];
+      // b193.3 (Codex): caso do card de estornadas nao entra no CONCLUIR em
+      // lote. Concluido ali significa "resolvido", mas o rascunho ainda
+      // precisa ser editado e validado no Bling — marcar como concluido
+      // esconderia o caso ANTES de a nota existir de verdade.
+      //
+      // Eu tinha bloqueado so a emissao em lote; o concluir passava reto.
+      const marcadosTodos = [...document.querySelectorAll(`.chk-esteira[data-secao="${secao}"]:checked`)];
+      const marcados = marcadosTodos.filter((c) => c.dataset.sorascunho !== '1');
+      const puladosRascunho = marcadosTodos.length - marcados.length;
+      if (puladosRascunho > 0) {
+        toast(puladosRascunho + ' caso(s) do card de estornadas foram pulados: '
+          + 'conclua depois de validar a NF no Bling.', 'err');
+      }
       if (marcados.length === 0) {
         toast('Nenhum card selecionado. Marque os checkboxes "selecionar" (ou "todas") primeiro.', 'err');
         return;
