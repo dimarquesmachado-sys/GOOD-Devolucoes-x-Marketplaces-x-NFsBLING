@@ -232,7 +232,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.73.0 (rota de remessas reversas do Magalu, pro cruzamento)',
+    version: '4.76.0 (cancelamento so com prova de que nao saiu)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -5135,11 +5135,70 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
     // A contagem sempre seria enganosa, porque so enxerga o que passou pelo
     // filtro. Entao abandonei a heuristica: comparo a chave DAQUELA
     // solicitacao com as ja resolvidas, e pronto.
+    // b189 - o MAGALU entra DEPOIS do descarte por solicitacao resolvida.
+    //
+    // Aquele descarte compara com as triagens da tabela `devolucoes`, que e
+    // do fluxo de bipe — os cancelados do Magalu nao passam por ali, entao
+    // filtrar por aquele conjunto so os removeria por engano.
+    // b189.1 - O MAGALU TAMBEM PRECISA DO DESCARTE, so que por PEDIDO.
+    //
+    // Caso real que o dono trouxe: o pedido 1554870118013124 (Antonio, NF
+    // 076466) voltou fisicamente, o Lucas triou esta semana, e ele ja
+    // aparece em "Aprovadas aguardando NF" com o botao de gerar. Se
+    // aparecesse aqui tambem, seriam DUAS portas pra mesma nota — e duas
+    // devolucoes emitidas sem ninguem perceber.
+    //
+    // O descarte fino acima compara chaves do TikTok (id da solicitacao ou
+    // rastreio) e nao serve pro Magalu. Mas o PEDIDO serve: se ha triagem
+    // daquele pedido, ele ja esta no fluxo normal.
+    const pedidosMagalu = magaluItens.map((m) => m.pedido).filter(Boolean);
+    const triadosMagalu = new Set();
+    if (pedidosMagalu.length) {
+      for (let i = 0; i < pedidosMagalu.length; i += 200) {
+        const { data: tri, error: erroTri } = await supabase
+          .from('devolucoes')
+          .select('order_id')
+          .in('order_id', pedidosMagalu.slice(i, i + 200));
+        if (erroTri) {
+          // mesma regra do descarte do TikTok: falhar e melhor que listar
+          // caso ja resolvido, que faria emitir NF duplicada
+          return res.status(500).json({
+            ok: false,
+            erro: 'nao consegui conferir quais pedidos do Magalu ja foram triados: '
+              + erroTri.message + ' — listar sem essa checagem mostraria casos ja no fluxo normal',
+          });
+        }
+        // b190.2 (Codex): VOLTEI PRO DESCARTE POR PEDIDO — e o SKU nao serve.
+        //
+        // Eu tinha passado a casar PEDIDO+SKU pra nao derrubar o outro item
+        // de uma nota com varios produtos. A revisao mostrou que o dado nao
+        // suporta isso: `public/js/triagem.js` grava SEMPRE `nf.itens[0].sku`
+        // e a quantidade SOMADA de todos os itens.
+        //
+        // Ou seja, na nota do Antonio (076466, dois SKUs) a triagem gravou
+        // KJDDE-693-8 com qtd 4, independentemente do que o Lucas triou. Meu
+        // casamento por SKU compararia com um valor que nao descreve o item
+        // devolvido — e deixaria na lista um item JA resolvido, ou tiraria o
+        // errado.
+        //
+        // Com dado errado, o descarte mais LARGO e o mais seguro: se ha
+        // qualquer triagem daquele pedido, ele ja esta no fluxo normal e o
+        // dono resolve tudo por la. Perde-se granularidade; nao se perde a
+        // garantia de nao emitir NF duplicada, que e o que importa aqui.
+        //
+        // ⏳ DIVIDA REGISTRADA: a triagem deveria gravar o item que
+        // realmente voltou. Enquanto nao gravar, nenhum consumidor desse
+        // dado pode confiar no SKU de nota multi-item.
+        for (const t of (tri || [])) triadosMagalu.add(String(t.order_id));
+      }
+    }
+
     const itens = semRetorno
       .filter((d) => {
         const chaveDela = String(d.chave_marketplace || d.id || '');
         return !resolvidosFinos.has(chaveDela);
       })
+      .concat(magaluItens.filter((m) => !triadosMagalu.has(String(m.pedido))))
       .map((d) => {
         // b184 (Codex): O RELOGIO CONTA DA EMISSAO DA NOTA, nao da devolucao.
         //
@@ -5157,8 +5216,17 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
         // haver, nunca mais.
         let base = null;
         let baseOrigem = null;
+
+        // b189 - o MAGALU traz a DATA EXATA de emissao (`nf_emitida_em`), e
+        // ela e melhor que a chave: a chave so da o mes, e eu assumo dia 1
+        // pra errar pro lado seguro. Com a data real, o prazo e o real.
+        if (d.nf_emitida_em) {
+          const t = new Date(d.nf_emitida_em).getTime();
+          if (Number.isFinite(t)) { base = t; baseOrigem = 'data_emissao'; }
+        }
+
         const chave = String(d.nf_chave || '').replace(/\D/g, '');
-        if (chave.length === 44) {
+        if (base == null && chave.length === 44) {
           const aa = parseInt(chave.slice(2, 4), 10);
           const mm = parseInt(chave.slice(4, 6), 10);
           if (aa >= 0 && mm >= 1 && mm <= 12) {
@@ -5188,7 +5256,37 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
         // b184.1: quando a base e o mes da chave, o dia real pode ser ate 30
         // dias depois. Pra NUNCA sugerir cancelamento intempestivo, exijo que
         // o pior caso (dia 1) ainda esteja no prazo.
-        const podeCancelar = diasDesde != null && diasDesde <= 20;
+        //
+        // b190.3 (Codex): E QUEM JA VOLTOU NAO CANCELA.
+        //
+        // Se o produto retornou (classe `estornado_apos_envio` do Magalu, ou
+        // devolucao registrada), cancelar a nota de venda seria errado: houve
+        // circulacao de mercadoria, ida e volta. O caminho ali e a NF de
+        // DEVOLUCAO, que documenta a entrada. Cancelar apagaria uma operacao
+        // que existiu de verdade.
+        const jaVoltou = !!d.tem_devolucao_registrada;
+
+        // b190.6 (Codex): CANCELAMENTO EXIGE PROVA DE QUE NAO SAIU.
+        //
+        // Eu escrevi no proprio modulo que "sem returns[] nao prova que o
+        // produto nao saiu" — e depois sugeri cancelar mesmo assim. Se a
+        // mercadoria circulou e o cliente ficou com ela, cancelar a nota de
+        // venda e erro fiscal: apaga uma saida que existiu.
+        //
+        // Do lado do Magalu eu NAO tenho essa prova: a API de pedidos nao
+        // diz se despachamos. Quem diz e a etiqueta do checkout, que mora no
+        // outro servidor (a conversa do Checkout esta ligando essa ponta).
+        //
+        // Entao, ate ter a prova, o Magalu nunca ganha "cancelar NF" — vai
+        // como NF de devolucao, que e valida nos dois casos. Errar pra
+        // devolucao custa um passo a mais; errar pra cancelamento custa uma
+        // nota cancelada indevidamente.
+        //
+        // O TikTok continua podendo: ali o reembolso PURO (tipo REFUND) e a
+        // propria prova de que nao houve retorno fisico.
+        const semProvaDeEnvio = d.marketplace === 'magalu';
+        const podeCancelar = !jaVoltou && !semProvaDeEnvio
+          && diasDesde != null && diasDesde <= 20;
 
         return {
           id: d.id,
@@ -5214,6 +5312,18 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
           // de onde veio a data usada no relogio — a tela avisa quando e
           // aproximacao, pra ele conferir antes de tentar cancelar
           prazo_base: baseOrigem,
+          // b189 - o Magalu tem uma classe (`estornado_apos_envio`) em que a
+          // devolucao EXISTE: o produto voltou. Nao e "sem retorno", e o
+          // card precisa dizer isso — senao ele emitiria NF de devolucao
+          // pra mercadoria que ja voltou pelo fluxo normal.
+          classe: d.classe || undefined,
+          tem_devolucao_registrada: d.tem_devolucao_registrada || undefined,
+          // b190.5 (Codex): o marcador de rateio tem que CHEGAR na tela.
+          // Eu calculava em magalu-cancelados.js e nao repassava — o dono
+          // veria R$ 250 achando que e o valor daquela nota, quando e o do
+          // pedido dividido pelas notas.
+          valor_rateado: d.valor_rateado || undefined,
+          valor_pedido: d.valor_pedido || undefined,
         };
       });
 
@@ -5275,15 +5385,21 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
     // ja intempestivo ficaria marcado como "CANCELAR NF".
     for (const item of itens) {
       const chave = String(item.nf_chave || '').replace(/\D/g, '');
-      if (chave.length !== 44 || item.prazo_base === 'chave_nfe') continue;
+      // data exata manda sobre a chave (que so da o mes)
+      if (chave.length !== 44 || item.prazo_base === 'chave_nfe'
+          || item.prazo_base === 'data_emissao') continue;
       const aa = parseInt(chave.slice(2, 4), 10);
       const mm = parseInt(chave.slice(4, 6), 10);
       if (!(aa >= 0 && mm >= 1 && mm <= 12)) continue;
       const dias = Math.floor((AGORA - Date.UTC(2000 + aa, mm - 1, 1)) / 864e5);
       item.dias_desde = dias;
       item.prazo_base = 'chave_nfe';
-      item.acao = dias <= 20 ? 'cancelar_nf' : 'nf_devolucao';
-      item.prazo_cancelamento = dias <= 20 ? Math.max(0, 20 - dias) : 0;
+      // b190.3: o recalculo respeita a mesma regra — quem voltou nao cancela
+      const podeAqui = !item.tem_devolucao_registrada
+        && item.marketplace !== 'magalu'   // b190.6: sem prova de envio
+        && dias <= 20;
+      item.acao = podeAqui ? 'cancelar_nf' : 'nf_devolucao';
+      item.prazo_cancelamento = podeAqui ? Math.max(0, 20 - dias) : 0;
     }
 
     // quem ainda da pra cancelar vem primeiro, e dentro disso o mais
@@ -5300,6 +5416,14 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
       total: itens.length,
       valor_total: Number(itens.reduce((t, x) => t + (Number(x.valor) || 0), 0).toFixed(2)),
       podem_cancelar: itens.filter((x) => x.acao === 'cancelar_nf').length,
+      // b189 - se o Magalu nao veio, o dono TEM que saber: a lista parece
+      // completa e nao esta. Silencio aqui esconde R$ 12 mil em casos.
+      magalu_erro: magaluErro || undefined,
+      por_marketplace: itens.reduce((acc, x) => {
+        const m = x.marketplace || 'outro';
+        acc[m] = (acc[m] || 0) + 1;
+        return acc;
+      }, {}),
       itens,
       // b188.2: a lista pode estar cortada — dizer, em vez de calar
       cortou_em: cortou ? LIMITE : undefined,

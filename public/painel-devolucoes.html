@@ -356,8 +356,9 @@
           Vendas que o marketplace reembolsou <b>sem devolução física</b> — o produto ficou com o
           cliente, mas a nota de venda continua gerando imposto.
           <b>Até 20 dias dá para cancelar a NF</b>; passado o prazo, o caminho é a NF de devolução.
-          Ao lançar, use o depósito de <b>DEFEITO</b>: a mercadoria nunca chegou, então não pode
-          entrar no estoque vendável.
+          Quando a mercadoria <b>não voltou</b>, lance no depósito de <b>DEFEITO</b> — ela não pode
+          entrar no estoque vendável. Os cards marcados com <b>↩️ TEVE DEVOLUÇÃO</b> são o contrário:
+          o produto voltou, então segue o depósito de sempre.
         </div>
         <div id="listaSemRetorno"></div>
       </div>
@@ -937,6 +938,16 @@
             + escapeHtml(String(d.aviso_corte)) + '</div>'
           : '';
 
+        // b189 - se o Magalu falhou, a lista PARECE completa e nao esta.
+        // Silencio aqui esconderia os R$ 12 mil que a outra conversa mediu.
+        const avisoMagalu = d.magalu_erro
+          ? '<div style="margin-bottom:10px;padding:10px;border-radius:8px;background:#ffebee;'
+            + 'border:2px solid #c62828;color:#b71c1c;font-weight:700;">'
+            + '⚠️ Os casos do Magalu NÃO entraram nesta lista: ' + escapeHtml(String(d.magalu_erro))
+            + '<div style="font-weight:400;margin-top:4px;font-size:13px;">'
+            + 'O que aparece abaixo está incompleto.</div></div>'
+          : '';
+
         const cabecalho = d.podem_cancelar > 0
           ? '<div style="margin-bottom:10px;padding:10px;border-radius:8px;background:#fff3e0;'
             + 'border:2px solid #ef6c00;color:#e65100;font-weight:700;">'
@@ -950,6 +961,19 @@
           // mostrado e MAIOR que o real — a nota e anterior. Avisa, pra ele
           // conferir antes de tentar cancelar e levar um 501.
           const aprox = x.prazo_base === 'devolucao' ? ' ⚠️' : '';
+          // b189 - o Magalu tem casos em que a devolucao EXISTE (classe
+          // `estornado_apos_envio`): o produto voltou pelo fluxo normal.
+          // Emitir NF de devolucao ali seria duplicar. Aviso em vez de
+          // esconder, porque a NF pode nao ter sido emitida ainda.
+          const jaVoltou = !!x.tem_devolucao_registrada;
+          const tarjaVoltou = jaVoltou
+            ? '<span style="background:#00695c;color:#fff;padding:3px 8px;border-radius:10px;'
+              + 'font-size:10px;font-weight:700;margin-left:6px;" '
+              + 'title="Este pedido TEM devolução registrada no marketplace — o produto voltou. '
+              + 'Confira se a NF de devolução já saiu pelo fluxo normal antes de emitir outra.">'
+              + '↩️ TEVE DEVOLUÇÃO</span>'
+            : '';
+
           const tarja = podeCancelar
             ? '<span style="background:#ef6c00;color:#fff;padding:3px 8px;border-radius:10px;'
               + 'font-size:10px;font-weight:700;" title="'
@@ -1010,13 +1034,21 @@
 
           return '<div class="item" style="border-left-color:' + (podeCancelar ? '#ef6c00' : '#546e7a') + ';">'
             + '<div class="item-header"><div class="item-titulo">'
-            + tagMkt + escapeHtml(x.produto || '-') + ' ' + tarja + '</div></div>'
+            + tagMkt + escapeHtml(x.produto || '-') + ' ' + tarja + tarjaVoltou + '</div></div>'
             + '<div style="font-size:13px;color:#555;margin-top:6px;">'
             + (x.nf_numero ? '<b>NF ' + escapeHtml(String(x.nf_numero)) + '</b> · ' : '')
             + 'pedido <code>' + escapeHtml(String(x.pedido || '-')) + '</code>'
             + (x.sku ? ' · SKU <code>' + escapeHtml(String(x.sku)) + '</code>' : '')
             + (x.qtd ? ' · ' + escapeHtml(String(x.qtd)) + ' un' : '')
-            + (x.valor != null ? ' · R$ ' + Number(x.valor).toFixed(2) : '')
+            + (x.valor != null
+                ? ' · R$ ' + Number(x.valor).toFixed(2)
+                  // b190.5 - valor rateado nao pode passar por exato
+                  + (x.valor_rateado
+                      ? ' <span style="color:#e65100;font-weight:700;" title="Este pedido tem '
+                        + 'mais de uma nota. O valor mostrado é o do pedido dividido pelas notas, '
+                        + 'não o valor exato desta.">~aprox</span>'
+                      : '')
+                : '')
             + (x.dias_desde != null ? ' · há ' + x.dias_desde + ' dias' : '')
             + '</div>'
             + (x.motivo ? '<div style="font-size:13px;color:#777;margin-top:4px;">'

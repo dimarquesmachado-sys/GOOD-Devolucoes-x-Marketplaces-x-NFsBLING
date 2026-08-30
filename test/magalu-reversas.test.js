@@ -29,7 +29,7 @@ ok(/if \(adminOk\(req\)\) return next\(\);/.test(DEBUG.slice(DEBUG.indexOf('reve
    'aceitando ?k=ADMIN_KEY, que e como o outro servidor vai chamar');
 
 // ── tem_reversa exige PACOTE, nao ticket ─────────────────────────────
-ok(/tem_reversa: !!\(dev && dev\.reverse_code\)/.test(DEBUG),
+ok(/tem_reversa: !!\(dev && dev\.reverse_code &&/.test(DEBUG),
    'tem_reversa exige reverse_code: ticket aberto NAO e pacote voltando');
 ok(/tem_ticket: !!dev/.test(DEBUG),
    '  e `tem_ticket` diz se o cliente ao menos abriu protocolo');
@@ -51,6 +51,68 @@ ok(/status\(400\)/.test(DEBUG), 'e sem pedidos responde 400 explicando o formato
 // ── falha em UM pedido nao derruba os outros ─────────────────────────
 ok(/linhas\.push\(\{ code, erro:/.test(DEBUG),
    'falha num pedido vira erro NAQUELA linha, sem derrubar a consulta toda');
+
+// ── b190: o caso que ESCAPOU, e as duas causas ──────────────────────
+//
+// GOOD, pedido 1540670112009168 (lustre R$ 1.299,90): a Magalu agendou
+// coleta nos Correios, objeto DA597697016BR. A cliente reclamou que ninguem
+// foi buscar, a coleta foi REAGENDADA, e so aconteceu dias depois —
+// coletado 05/08, entregue no galpao 06/08. Nossa consulta dizia
+// tem_reversa:false, e o pacote ficou tres semanas sem ninguem esperando.
+{
+  const MAGALU = fs.readFileSync(path.join(__dirname, '..', 'lib', 'magalu.js'), 'utf8');
+
+  ok(/CAMPOS_CODIGO = \['reverse_code'/.test(MAGALU),
+     'o codigo e procurado em VARIOS campos, nao so `reverse_code`');
+  ok(/ordenadas = res\.slice\(\)\.sort/.test(MAGALU),
+     'e entre VARIAS remessas pego a mais recente — com reagendamento, a ultima e a que valeu');
+
+  // a segunda fonte: o texto do SAC
+  ok(/async function mensagensDoTicket/.test(MAGALU),
+     'ha segunda fonte: as mensagens do protocolo');
+
+  // b190.1: o codigo da MAIS RECENTE e o que vale
+  ok(/const rcMaisRecente = ordenadas\.length \? codigoDe\(ordenadas\[0\]\)/.test(MAGALU),
+     'o codigo vem da remessa MAIS RECENTE — a reagendada, que aconteceu');
+  ok(/dev\.codigo_possivelmente_obsoleto = true/.test(MAGALU),
+     '  e o codigo de tentativa ANTERIOR e ultimo recurso, marcado como suspeito');
+  // b190.6: e esse marcador tem que CHEGAR na resposta
+  ok(/tem_reversa: !!\(dev && dev\.reverse_code && !dev\.codigo_possivelmente_obsoleto\)/.test(DEBUG),
+     'codigo de tentativa que FALHOU nao conta como reversa viva');
+  ok(/codigo_obsoleto: \(dev && dev\.codigo_possivelmente_obsoleto\)/.test(DEBUG),
+     '  mas vai na resposta, pra consulta');
+  ok(/NAO conta como reversa viva/.test(DEBUG),
+     '  com a explicacao — senao eles concluiriam que o produto voltou');
+
+  // b190.1: o indice precisa casar com a busca, que limpa o codigo
+  ok(/const soNum = String\(rc\)\.replace\(\/\\D\/g, ''\);/.test(MAGALU),
+     'o codigo e indexado TAMBEM so com digitos');
+  ok(/acharDevolucao\(\) LIMPA o codigo/.test(MAGALU),
+     '  porque a busca limpa antes de procurar — senao o caso continuaria escapando');
+  // b190.3: dois codigos podem colidir quando reduzidos a digitos
+  ok(/&& !IDX\.mapa\['R:' \+ soNum\]/.test(MAGALU),
+     '  e a chave so-digitos nao SOBRESCREVE: DA597697016BR e XY597697016ZW colidiriam');
+  // b190.3: a mensagem mais recente, pelo mesmo motivo da remessa
+  ok(/const porData = msgs\.slice\(\)\.sort/.test(MAGALU),
+     'entre as mensagens, a MAIS RECENTE manda — o SAC escreve o objeto da coleta que falhou antes da que valeu');
+  ok(/if \(!rc\) \{[\s\S]{0,200}mensagensDoTicket/.test(MAGALU),
+     '  consultada SO quando o /returns nao deu codigo (uma chamada a mais, so onde precisa)');
+
+  // o garimpo no texto livre
+  const fn = new Function('return ' + MAGALU.match(/function codigoNoTexto[\s\S]*?\n  \}/)[0])();
+  ok(fn('O número da coleta a ser realizado é 4667981503 - Nº do objeto: DA597697016BR') === 'DA597697016BR',
+     'acha o objeto no texto do SAC (o caso real)');
+  ok(fn('Prezado, segue AP268276786BR para devolucao') === 'AP268276786BR',
+     '  e em outros formatos de mensagem');
+  ok(fn('coleta 466.798.1503 sem objeto') === null,
+     'NAO confunde o numero da coleta com o do objeto');
+  ok(fn('objeto BR266361368249N') === null,
+     '  nem pega codigo que nao siga o formato dos Correios (2 letras + 9 digitos + 2 letras)');
+  ok(fn('') === null && fn(null) === null, '  e texto vazio nao quebra');
+  // b190.4: o SAC nem sempre escreve em maiuscula
+  ok(fn('objeto: da597697016br') === 'DA597697016BR',
+     'aceita o codigo em minuscula e devolve em MAIUSCULA (como o resto indexa)');
+}
 
 // ── a resposta em si ─────────────────────────────────────────────────
 {
