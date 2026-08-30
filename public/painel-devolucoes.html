@@ -937,6 +937,16 @@
             + escapeHtml(String(d.aviso_corte)) + '</div>'
           : '';
 
+        // b189 - se o Magalu falhou, a lista PARECE completa e nao esta.
+        // Silencio aqui esconderia os R$ 12 mil que a outra conversa mediu.
+        const avisoMagalu = d.magalu_erro
+          ? '<div style="margin-bottom:10px;padding:10px;border-radius:8px;background:#ffebee;'
+            + 'border:2px solid #c62828;color:#b71c1c;font-weight:700;">'
+            + '⚠️ Os casos do Magalu NÃO entraram nesta lista: ' + escapeHtml(String(d.magalu_erro))
+            + '<div style="font-weight:400;margin-top:4px;font-size:13px;">'
+            + 'O que aparece abaixo está incompleto.</div></div>'
+          : '';
+
         const cabecalho = d.podem_cancelar > 0
           ? '<div style="margin-bottom:10px;padding:10px;border-radius:8px;background:#fff3e0;'
             + 'border:2px solid #ef6c00;color:#e65100;font-weight:700;">'
@@ -950,6 +960,19 @@
           // mostrado e MAIOR que o real — a nota e anterior. Avisa, pra ele
           // conferir antes de tentar cancelar e levar um 501.
           const aprox = x.prazo_base === 'devolucao' ? ' ⚠️' : '';
+          // b189 - o Magalu tem casos em que a devolucao EXISTE (classe
+          // `estornado_apos_envio`): o produto voltou pelo fluxo normal.
+          // Emitir NF de devolucao ali seria duplicar. Aviso em vez de
+          // esconder, porque a NF pode nao ter sido emitida ainda.
+          const jaVoltou = !!x.tem_devolucao_registrada;
+          const tarjaVoltou = jaVoltou
+            ? '<span style="background:#00695c;color:#fff;padding:3px 8px;border-radius:10px;'
+              + 'font-size:10px;font-weight:700;margin-left:6px;" '
+              + 'title="Este pedido TEM devolução registrada no marketplace — o produto voltou. '
+              + 'Confira se a NF de devolução já saiu pelo fluxo normal antes de emitir outra.">'
+              + '↩️ TEVE DEVOLUÇÃO</span>'
+            : '';
+
           const tarja = podeCancelar
             ? '<span style="background:#ef6c00;color:#fff;padding:3px 8px;border-radius:10px;'
               + 'font-size:10px;font-weight:700;" title="'
@@ -1010,7 +1033,7 @@
 
           return '<div class="item" style="border-left-color:' + (podeCancelar ? '#ef6c00' : '#546e7a') + ';">'
             + '<div class="item-header"><div class="item-titulo">'
-            + tagMkt + escapeHtml(x.produto || '-') + ' ' + tarja + '</div></div>'
+            + tagMkt + escapeHtml(x.produto || '-') + ' ' + tarja + tarjaVoltou + '</div></div>'
             + '<div style="font-size:13px;color:#555;margin-top:6px;">'
             + (x.nf_numero ? '<b>NF ' + escapeHtml(String(x.nf_numero)) + '</b> · ' : '')
             + 'pedido <code>' + escapeHtml(String(x.pedido || '-')) + '</code>'

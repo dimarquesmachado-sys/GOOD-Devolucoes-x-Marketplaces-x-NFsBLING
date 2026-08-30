@@ -232,7 +232,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.73.0 (rota de remessas reversas do Magalu, pro cruzamento)',
+    version: '4.74.0 (Magalu no mesmo card das estornadas, junto do TikTok)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -5135,11 +5135,17 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
     // A contagem sempre seria enganosa, porque so enxerga o que passou pelo
     // filtro. Entao abandonei a heuristica: comparo a chave DAQUELA
     // solicitacao com as ja resolvidas, e pronto.
+    // b189 - o MAGALU entra DEPOIS do descarte por solicitacao resolvida.
+    //
+    // Aquele descarte compara com as triagens da tabela `devolucoes`, que e
+    // do fluxo de bipe — os cancelados do Magalu nao passam por ali, entao
+    // filtrar por aquele conjunto so os removeria por engano.
     const itens = semRetorno
       .filter((d) => {
         const chaveDela = String(d.chave_marketplace || d.id || '');
         return !resolvidosFinos.has(chaveDela);
       })
+      .concat(magaluItens)
       .map((d) => {
         // b184 (Codex): O RELOGIO CONTA DA EMISSAO DA NOTA, nao da devolucao.
         //
@@ -5157,8 +5163,17 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
         // haver, nunca mais.
         let base = null;
         let baseOrigem = null;
+
+        // b189 - o MAGALU traz a DATA EXATA de emissao (`nf_emitida_em`), e
+        // ela e melhor que a chave: a chave so da o mes, e eu assumo dia 1
+        // pra errar pro lado seguro. Com a data real, o prazo e o real.
+        if (d.nf_emitida_em) {
+          const t = new Date(d.nf_emitida_em).getTime();
+          if (Number.isFinite(t)) { base = t; baseOrigem = 'data_emissao'; }
+        }
+
         const chave = String(d.nf_chave || '').replace(/\D/g, '');
-        if (chave.length === 44) {
+        if (base == null && chave.length === 44) {
           const aa = parseInt(chave.slice(2, 4), 10);
           const mm = parseInt(chave.slice(4, 6), 10);
           if (aa >= 0 && mm >= 1 && mm <= 12) {
@@ -5214,6 +5229,12 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
           // de onde veio a data usada no relogio — a tela avisa quando e
           // aproximacao, pra ele conferir antes de tentar cancelar
           prazo_base: baseOrigem,
+          // b189 - o Magalu tem uma classe (`estornado_apos_envio`) em que a
+          // devolucao EXISTE: o produto voltou. Nao e "sem retorno", e o
+          // card precisa dizer isso — senao ele emitiria NF de devolucao
+          // pra mercadoria que ja voltou pelo fluxo normal.
+          classe: d.classe || undefined,
+          tem_devolucao_registrada: d.tem_devolucao_registrada || undefined,
         };
       });
 
@@ -5275,7 +5296,9 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
     // ja intempestivo ficaria marcado como "CANCELAR NF".
     for (const item of itens) {
       const chave = String(item.nf_chave || '').replace(/\D/g, '');
-      if (chave.length !== 44 || item.prazo_base === 'chave_nfe') continue;
+      // data exata manda sobre a chave (que so da o mes)
+      if (chave.length !== 44 || item.prazo_base === 'chave_nfe'
+          || item.prazo_base === 'data_emissao') continue;
       const aa = parseInt(chave.slice(2, 4), 10);
       const mm = parseInt(chave.slice(4, 6), 10);
       if (!(aa >= 0 && mm >= 1 && mm <= 12)) continue;
@@ -5300,6 +5323,14 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
       total: itens.length,
       valor_total: Number(itens.reduce((t, x) => t + (Number(x.valor) || 0), 0).toFixed(2)),
       podem_cancelar: itens.filter((x) => x.acao === 'cancelar_nf').length,
+      // b189 - se o Magalu nao veio, o dono TEM que saber: a lista parece
+      // completa e nao esta. Silencio aqui esconde R$ 12 mil em casos.
+      magalu_erro: magaluErro || undefined,
+      por_marketplace: itens.reduce((acc, x) => {
+        const m = x.marketplace || 'outro';
+        acc[m] = (acc[m] || 0) + 1;
+        return acc;
+      }, {}),
       itens,
       // b188.2: a lista pode estar cortada — dizer, em vez de calar
       cortou_em: cortou ? LIMITE : undefined,

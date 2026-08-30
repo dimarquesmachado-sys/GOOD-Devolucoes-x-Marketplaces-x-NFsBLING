@@ -109,7 +109,7 @@ const PAINEL = fs.readFileSync(path.join(RAIZ, 'public', 'painel-devolucoes.html
   ok(/Date\.now\(\) - INICIO_BUSCA > 8000/.test(rota),
      'e as buscas no Bling tem teto de tempo, pra nao travar o painel');
   ok(/\.slice\(0, 15\)/.test(rota), '  e teto de quantidade');
-  ok(/item\.prazo_base === 'chave_nfe'\) continue;/.test(rota),
+  ok(/item\.prazo_base === 'chave_nfe'[\s\S]{0,80}continue;/.test(rota),
      'a acao e RECALCULADA quando a chave so aparece na busca');
   ok(/item\.acao = dias <= 20 \? 'cancelar_nf' : 'nf_devolucao';/.test(rota),
      '  senao um caso ja intempestivo ficaria marcado como CANCELAR NF');
@@ -207,7 +207,10 @@ const PAINEL = fs.readFileSync(path.join(RAIZ, 'public', 'painel-devolucoes.html
 
   // seguranca: o texto vem do cliente e do marketplace
   const iFn = PAINEL.indexOf('async function carregarSemRetorno');
-  const fn = PAINEL.slice(iFn, iFn + 9000);   // cresceu de novo no b188 (tag + botao)
+  // ate a proxima funcao, sem numero magico: a janela fixa ja falhou duas
+  // vezes conforme o card cresceu (b188 tag+botao, b189 Magalu)
+  const fFn = PAINEL.indexOf('async function carregarEspreita', iFn);
+  const fn = PAINEL.slice(iFn, fFn > iFn ? fFn : iFn + 12000);
   ok(/escapeHtml\(x\.produto/.test(fn) && /escapeHtml\(String\(x\.motivo\)\)/.test(fn),
      'tudo que vem de fora passa por escapeHtml (o motivo e escrito pelo cliente)');
   ok(/escapeHtml\(String\(x\.pedido/.test(fn) && /escapeHtml\(String\(x\.sku/.test(fn),
