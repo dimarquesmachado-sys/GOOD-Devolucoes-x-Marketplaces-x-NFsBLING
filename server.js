@@ -232,7 +232,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.74.1 (Magalu ja triado sai da lista: evita NF duplicada)',
+    version: '4.75.0 (remessa reversa: varios campos, mais recente, e o texto do SAC)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
