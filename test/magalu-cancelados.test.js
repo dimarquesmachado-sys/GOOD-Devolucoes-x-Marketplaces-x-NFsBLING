@@ -416,14 +416,21 @@ const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o
   ok(comChave.id_legado === 'P1#637',
      '  e o id ANTIGO vai junto, pra casar registros feitos antes da correcao');
   // b194.2: havia DOIS formatos antigos — com numero, e so com chave
-  ok(comChave.id_legado2 === 'P1#35887584',
-     '  incluindo o OUTRO formato antigo (final da chave), que ficaria orfao');
+  ok(comChave.id_legado === 'P1#637',
+     '  cobrindo o formato com o numero da API');
   const soChave = mc.normalizar({
     classe: 'estornado_apos_envio', order_code: 'P1',
     notas: [{ chave: '35260732461988000182550010000764661835887584' }],
   }, 'good');
-  ok(soChave.id_legado === 'P1#35887584',
-     '  e nota que so tinha chave casa pelo formato dela');
+  // b194.3 (Codex): a formula ANTIGA era `pedido#numeroDaNota`, e
+  // `numeroDaNota` ja saia da chave quando nao havia numero na API. Entao o
+  // registro velho tem `P1#76466`, nao `P1#35887584`.
+  ok(soChave.id_legado === 'P1#76466',
+     '  nota so com chave casa pelo nNF, que era o que a formula antiga usava');
+  ok(soChave.id_legado2 === 'P1#35887584',
+     '  com o final da chave como reserva');
+  ok(comChave.id_legado2 === 'P1#76466',
+     'e a nota com numero da API tambem oferece o nNF, cobrindo os dois formatos');
 
   // a chave so vale se PARECE uma NF-e
   ok(mc.numeroDaChave('3'.repeat(44)) === null,
