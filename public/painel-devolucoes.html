@@ -965,28 +965,40 @@
               + escapeHtml(NOMES_MKT[mkt] || x.marketplace) + '</span>'
             : '';
 
-          // b188 - o MESMO botao do bloco "Aprovadas": abre o modal com
-          // rascunho, emitir direto e escolha de deposito. Reaproveito a
-          // funcao existente em vez de escrever outra — duplicar fluxo de
-          // emissao fiscal seria pedir divergencia.
+          // b188.1 (Codex): O BOTAO DE GERAR NF SAIU DAQUI.
           //
-          // Sem o id da NF no Bling o botao nao aparece: melhor mostrar o
-          // numero pra ele achar a nota do que abrir um modal que nao sabe
-          // de qual nota gerar.
-          const botaoNF = x.nf_id_bling
-            ? '<button class="btn" style="background:#1565c0;margin-top:8px;" '
-              + 'onclick="abrirModalGerarDevolucao(\'' + escapeHtml(String(x.id)) + '\', \''
-              + escapeHtml(String(x.nf_id_bling)) + '\', \''
-              + escapeHtml(String(x.nf_numero || '')) + '\', \''
-              + escapeHtml(String(x.produto || '').replace(/'/g, '')) + '\', \''
-              + String(x.nf_chave || '').replace(/[^0-9]/g, '') + '\')" '
-              + 'title="Abre as opções: rascunho pra editar no Bling, ou gerar + emitir direto. '
-              + 'Lembre do depósito de DEFEITO — a mercadoria nunca chegou.">'
-              + '🧾 Gerar NF de devolução</button>'
+          // Eu tinha reaproveitado abrirModalGerarDevolucao() achando que
+          // bastava passar os mesmos parametros. Nao basta: o `devolucaoId`
+          // dele e o id de uma TRIAGEM (tabela `devolucoes`), e eu passava o
+          // id de um registro CAPTURADO (tabela `devolucoes_capturadas`).
+          // Sao tabelas diferentes — o modal procuraria um registro que nao
+          // existe.
+          //
+          // E a revisao apontou mais tres problemas que so apareceriam na
+          // hora de emitir, que e o pior momento possivel:
+          //   - a nota sairia com o pedido INTEIRO, nao so os itens
+          //     reembolsados (venda de 3 produtos, 1 reembolsado → devolvia 3)
+          //   - o deposito nao vinha pre-definido como DEFEITO, que e a
+          //     exigencia do dono pra isso nao entrar no estoque vendavel
+          //   - casos ainda CANCELAVEIS ganhariam botao de devolucao, quando
+          //     o certo ali e cancelar a nota
+          //
+          // Botao que gera nota fiscal errada e pior que nao ter botao. O
+          // caminho de emissao vira PR proprio, feito com calma.
+          //
+          // Por ora, o card leva pra NOTA no Bling — que e o que ele precisa
+          // pra agir, e o mesmo lugar de onde partiria de qualquer forma.
+          const linkNF = x.nf_id_bling
+            ? '<a class="btn" style="background:#1565c0;margin-top:8px;display:inline-block;" '
+              + 'href="https://www.bling.com.br/notas.fiscais.php#edit/' + encodeURIComponent(x.nf_id_bling) + '" '
+              + 'target="_blank" rel="noopener" '
+              + 'title="Abre a nota de venda no Bling. Lembre do depósito de DEFEITO: '
+              + 'a mercadoria nunca chegou, então não pode entrar no estoque vendável.">'
+              + '🔗 Abrir NF no Bling</a>'
             : '<div style="margin-top:8px;font-size:12px;color:#999;">'
               + (x.nf_numero
-                  ? 'NF ' + escapeHtml(String(x.nf_numero)) + ' não encontrada no Bling — gere manualmente'
-                  : 'sem NF vinculada; procure o pedido no Bling')
+                  ? 'NF ' + escapeHtml(String(x.nf_numero)) + ' não localizada no Bling'
+                  : 'sem NF vinculada a este pedido')
               + '</div>';
 
           return '<div class="item" style="border-left-color:' + (podeCancelar ? '#ef6c00' : '#546e7a') + ';">'
@@ -1004,7 +1016,7 @@
                 + '💬 ' + escapeHtml(String(x.motivo)) + '</div>' : '')
             + (x.cliente ? '<div style="font-size:12px;color:#999;margin-top:2px;">'
                 + escapeHtml(String(x.cliente)) + '</div>' : '')
-            + botaoNF
+            + linkNF
             + '</div>';
         }).join('');
 

@@ -232,7 +232,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.72.0 (estornadas: tag do marketplace, botao de gerar NF, 365 dias)',
+    version: '4.72.1 (estornadas: tag e 365d; o botao de gerar NF saiu)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -5203,15 +5203,51 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
     // Busco so pros que tem numero, em serie e com teto: sao poucos itens
     // (a GOOD tinha 1) e uma falha aqui nao pode derrubar a lista — o card
     // aparece sem o botao, com o numero da NF pra ele achar no Bling.
-    const PARA_BUSCAR = itens.filter((x) => x.nf_numero && !x.nf_id_bling).slice(0, 30);
+    // b188.1 (Codex): CASAR PELA CHAVE quando ela existe.
+    //
+    // O numero da NF se repete entre SERIES (a serie 1 e a serie 2 podem ter
+    // uma nota 002070 cada). Casar so pelo numero pode trazer a nota errada
+    // — e mandar o dono pra nota de outra venda.
+    //
+    // Tambem limitei a 15 e adicionei teto de tempo: com a janela de 365
+    // dias a fila pode crescer, e 30 buscas em serie no Bling seguram a
+    // resposta do painel. Quem ficar sem o id aparece com o numero da NF.
+    const INICIO_BUSCA = Date.now();
+    const PARA_BUSCAR = itens.filter((x) => x.nf_numero && !x.nf_id_bling).slice(0, 15);
     for (const item of PARA_BUSCAR) {
+      if (Date.now() - INICIO_BUSCA > 8000) break;   // o painel nao pode travar
       try {
         const nf = await buscarNFnoBlingPorNumero(item.nf_numero);
-        if (nf && nf.id) {
-          item.nf_id_bling = String(nf.id);
-          if (!item.nf_chave && nf.chaveAcesso) item.nf_chave = nf.chaveAcesso;
-        }
-      } catch (e) { /* segue sem o botao; o numero da NF esta no card */ }
+        const achada = (nf && nf.id) ? nf : ((nf && nf.data && nf.data[0]) || null);
+        if (!achada || !achada.id) continue;
+
+        // se eu tenho a chave, ela MANDA: numero repete entre series, chave nao
+        const chaveEsperada = String(item.nf_chave || '').replace(/\D/g, '');
+        const chaveAchada = String(achada.chaveAcesso || '').replace(/\D/g, '');
+        if (chaveEsperada && chaveAchada && chaveEsperada !== chaveAchada) continue;
+
+        item.nf_id_bling = String(achada.id);
+        if (!item.nf_chave && achada.chaveAcesso) item.nf_chave = achada.chaveAcesso;
+      } catch (e) { /* segue sem o link; o numero da NF esta no card */ }
+    }
+
+    // b188.1 (Codex): RECALCULAR a acao depois de enriquecer.
+    //
+    // O prazo e calculado da chave da NF-e. Se a chave so apareceu agora
+    // (veio do Bling na busca acima), o item foi classificado com a data da
+    // devolucao — que da MAIS prazo do que existe. Sem recalcular, um caso
+    // ja intempestivo ficaria marcado como "CANCELAR NF".
+    for (const item of itens) {
+      const chave = String(item.nf_chave || '').replace(/\D/g, '');
+      if (chave.length !== 44 || item.prazo_base === 'chave_nfe') continue;
+      const aa = parseInt(chave.slice(2, 4), 10);
+      const mm = parseInt(chave.slice(4, 6), 10);
+      if (!(aa >= 0 && mm >= 1 && mm <= 12)) continue;
+      const dias = Math.floor((AGORA - Date.UTC(2000 + aa, mm - 1, 1)) / 864e5);
+      item.dias_desde = dias;
+      item.prazo_base = 'chave_nfe';
+      item.acao = dias <= 20 ? 'cancelar_nf' : 'nf_devolucao';
+      item.prazo_cancelamento = dias <= 20 ? Math.max(0, 20 - dias) : 0;
     }
 
     // quem ainda da pra cancelar vem primeiro, e dentro disso o mais

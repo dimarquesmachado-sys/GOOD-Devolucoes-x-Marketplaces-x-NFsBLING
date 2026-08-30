@@ -91,6 +91,17 @@ const PAINEL = fs.readFileSync(path.join(RAIZ, 'public', 'painel-devolucoes.html
   ok(/nunca sugiro cancelar algo ja intempestivo/.test(rota),
      '  preferindo NAO sugerir cancelamento a sugerir um que voltaria 501');
 
+  // b188.1: a CHAVE manda sobre o numero
+  ok(/chaveEsperada && chaveAchada && chaveEsperada !== chaveAchada/.test(rota),
+     'a chave da NF-e manda: o NUMERO se repete entre series e traria a nota errada');
+  ok(/Date\.now\(\) - INICIO_BUSCA > 8000/.test(rota),
+     'e as buscas no Bling tem teto de tempo, pra nao travar o painel');
+  ok(/\.slice\(0, 15\)/.test(rota), '  e teto de quantidade');
+  ok(/item\.prazo_base === 'chave_nfe'\) continue;/.test(rota),
+     'a acao e RECALCULADA quando a chave so aparece na busca');
+  ok(/item\.acao = dias <= 20 \? 'cancelar_nf' : 'nf_devolucao';/.test(rota),
+     '  senao um caso ja intempestivo ficaria marcado como CANCELAR NF');
+
   ok(/aviso_cancelados/.test(rota),
      'a resposta avisa que casos resolvidos por CANCELAMENTO reaparecem (nao geram NF de devolucao)');
 
@@ -140,13 +151,21 @@ const PAINEL = fs.readFileSync(path.join(RAIZ, 'public', 'painel-devolucoes.html
   ok(/NOMES_MKT\[mkt\] \|\| x\.marketplace/.test(PAINEL),
      '  com o nome legivel, e caindo no cru se aparecer marketplace novo');
 
-  // b188: o MESMO botao do bloco "Aprovadas"
-  ok(/onclick="abrirModalGerarDevolucao\(/.test(PAINEL.slice(PAINEL.indexOf('carregarSemRetorno'))),
-     'e o botao de gerar NF, reaproveitando a funcao do bloco "Aprovadas"');
-  ok(/Lembre do depósito de DEFEITO/.test(PAINEL),
-     '  lembrando do deposito de DEFEITO no titulo do botao');
-  ok(/não encontrada no Bling — gere manualmente/.test(PAINEL),
-     '  e sem o id da NF o botao NAO aparece: melhor o numero pra ele achar do que um modal cego');
+  // b188.1: o botao de GERAR saiu — ele passaria o id errado (capturada x
+  // triagem), a nota sairia com o pedido inteiro e sem o deposito de DEFEITO.
+  // Botao que gera nota fiscal errada e pior que nao ter botao.
+  {
+    const fnSR = PAINEL.slice(PAINEL.indexOf('carregarSemRetorno'), PAINEL.indexOf('carregarSemRetorno') + 9000);
+    ok(!/abrirModalGerarDevolucao/.test(fnSR),
+       'o card NAO chama o modal de gerar: o id dele e de outra tabela (triagem, nao captura)');
+    ok(/Abrir NF no Bling/.test(fnSR),
+       '  leva pra NOTA no Bling, que e de onde ele agiria de qualquer forma');
+    ok(/Lembre do depósito de DEFEITO/.test(fnSR),
+       '  lembrando do deposito de DEFEITO ali mesmo');
+    ok(/não localizada no Bling/.test(fnSR),
+       '  e sem o id, mostra o numero da NF em vez de um link cego');
+  }
+
   // b184.1: falha != fila vazia
   ok(/Não consegui carregar esta lista/.test(PAINEL),
      'FALHA da rota mostra erro, nao a tela de "nada pendente"');
