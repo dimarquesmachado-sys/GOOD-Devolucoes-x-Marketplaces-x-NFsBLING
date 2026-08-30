@@ -1071,8 +1071,14 @@
                 // esta no galpao. O caso do lustre de R$ 1.299 provou: a
                 // Magalu deu por entregue em 06/08 e ninguem sabia dele ate
                 // 30/08. Digo o que sei, e mando conferir.
-                + '📦 Devolução <b>COM entrada</b> — o marketplace registrou o retorno; '
-                + 'confirme que o pacote está no galpão</div>'
+                // b194.1 (Codex): `saiu_e_nao_entregou` NAO tem registro de
+                // devolucao — ali so se sabe que despachamos e nao entregou.
+                // Dizer "o marketplace registrou o retorno" seria falso.
+                + (x.tem_devolucao_registrada
+                  ? '📦 Devolução <b>COM entrada</b> — o marketplace registrou o retorno; '
+                    + 'confirme que o pacote está no galpão</div>'
+                  : '📦 Devolução <b>COM entrada</b> — não foi entregue ao cliente, '
+                    + 'então <b>deve</b> ter voltado; confirme no recebimento</div>')
               : (x.classe
                 ? '<div style="font-size:12px;color:#e65100;margin-top:4px;">'
                   + '❓ <b>Confira se houve devolução física</b> antes de dar baixa</div>'
@@ -1157,7 +1163,8 @@
                   pedido: x.pedido, produto: x.produto, sku: x.sku, qtd: x.qtd,
                   nf_numero: x.nf_numero, nf_chave: x.nf_chave, nf_id_bling: x.nf_id_bling,
                   marketplace: x.marketplace, classe: x.classe,
-                  chave_caso: x.id, entrada_estoque: x.entrada_estoque,
+                  chave_caso: x.id, chave_caso_legado: x.id_legado,
+                  entrada_estoque: x.entrada_estoque,
                 })) + '" '
               + 'title="Registra este caso e abre o rascunho da NF de devolução.">'
               + '🧾 Gerar NF de devolução</button>'
