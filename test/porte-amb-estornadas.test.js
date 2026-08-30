@@ -48,8 +48,10 @@ const SERVER = fs.readFileSync(path.join(RAIZ, 'server.js'), 'utf8');
 
   ok(/const jaVoltou = !!d\.tem_devolucao_registrada;/.test(rotaAmb),
      'quem ja voltou nao cancela — houve circulacao de mercadoria');
-  ok(/const semProva = d\.marketplace === 'magalu';/.test(rotaAmb),
-     'e o Magalu nunca cancela: nao ha prova de que a mercadoria nao saiu');
+  // b195.4: o Magalu cancela SO em `nf_sem_saida` — a classe e a prova de
+  // que o pedido nunca foi despachado. Nas outras, houve circulacao.
+  ok(/d\.marketplace === 'magalu' && d\.classe !== 'nf_sem_saida'/.test(rotaAmb),
+     'e o Magalu so cancela onde ha prova de que a mercadoria nao saiu');
   ok(/diasDesde <= 20/.test(rotaAmb), 'o prazo da SEFAZ e o mesmo: 20 dias');
   ok(/baseOrigem = 'data_emissao'/.test(rotaAmb) && /baseOrigem = 'chave_nfe'/.test(rotaAmb),
      'e a hierarquia da data tambem: exata > mes da chave > devolucao');

@@ -210,11 +210,13 @@ const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o
 
   ok(/const jaVoltou = !!d\.tem_devolucao_registrada;/.test(SERVER),
      'o calculo da acao olha se o produto ja voltou');
-  ok(/const podeCancelar = !jaVoltou && !semProvaDeEnvio/.test(SERVER),
+  ok(/const podeCancelar = dataConfiavel && !jaVoltou/.test(SERVER),
      '  e quem voltou NAO ganha "cancelar NF", mesmo dentro do prazo');
   // b190.6: e o MAGALU nunca ganha, porque nao ha prova de que nao saiu
-  ok(/const semProvaDeEnvio = d\.marketplace === 'magalu';/.test(SERVER),
-     '  o Magalu nunca sugere cancelamento: a API nao diz se despachamos');
+  // b195.3: o Magalu so cancela em `nf_sem_saida` — a classe E a prova de
+  // que nunca foi despachado. Nas outras, o produto saiu e houve circulacao.
+  ok(/const semProvaDeEnvio = d\.marketplace === 'magalu'/.test(SERVER),
+     '  o Magalu so sugere cancelamento onde ha prova de que nao saiu');
   ok(/errar pra cancelamento custa uma[\s\S]{0,60}nota cancelada indevidamente/.test(SERVER),
      '  com a assimetria escrita: devolucao custa um passo, cancelamento custa uma nota');
   ok(/item\.marketplace !== 'magalu'/.test(SERVER),
@@ -239,8 +241,12 @@ const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o
   const um = (classe) => mc.normalizar({ ...base, classe }, 'good');
 
   // cada classe implica um tratamento FISCAL diferente
-  ok(um('nf_sem_saida').entrada_estoque === false,
-     'nf_sem_saida: devolucao SEM entrada — dar entrada duplicaria o inventario');
+  // ⚠️ b195.2: era `false`, e estava ERRADO. Correcao DELE:
+  // "nos casos q o produto nunca foi postado, é só gerar devolução normal,
+  // e depósito Geral. Simples." A NF de venda ja deu baixa no estoque, entao
+  // a entrada CORRIGE a diferenca em vez de duplicar.
+  ok(um('nf_sem_saida').entrada_estoque === true,
+     'nf_sem_saida: devolucao COM entrada — corrige a baixa que a NF de venda ja deu');
   ok(um('nf_sem_saida').classe_permite_cancelar === true,
      '  e e a unica que permite cancelar a NF: o produto nunca saiu');
 
@@ -465,6 +471,106 @@ const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o
      'e o servidor reconhece o id ANTIGO: registro velho nao vira orfao');
   ok(/risco de o dono emitir uma segunda NF/.test(SERVER2),
      '  com o motivo — orfao voltaria como pendente');
+}
+
+// ── b195: a busca do Magalu nao pode sumir da rota ──────────────────
+{
+  const fs3 = require('fs');
+  const path3 = require('path');
+  const SERVER3 = fs3.readFileSync(path3.join(__dirname, '..', 'server.js'), 'utf8');
+  const PAINEL3 = fs3.readFileSync(path3.join(__dirname, '..', 'public', 'painel-devolucoes.html'), 'utf8');
+  const LIB2 = fs3.readFileSync(path3.join(__dirname, '..', 'lib', 'magalu-cancelados.js'), 'utf8');
+  const i3 = SERVER3.indexOf("'/api/admin/sem-retorno'");
+  const rota3 = SERVER3.slice(i3, i3 + 36000);   // a rota cresceu de novo (b195.6)
+
+  ok(/let magaluItens = \[\];/.test(rota3),
+     'a lista do Magalu e DECLARADA (o painel quebrava com "magaluItens is not defined")');
+
+  // b195.1: o TikTok manda `valor_refund`, o Magalu manda `valor`
+  ok(/valor: d\.valor_refund != null \? d\.valor_refund : d\.valor/.test(rota3),
+     'o valor do Magalu chega: lendo so `valor_refund`, todo card dele vinha nulo');
+  ok(/valor_total` ficava zero|inutil pra priorizar/.test(rota3),
+     '  e o total ficava zero, inutil pra priorizar');
+
+  // b195.1: ?de= e ?ate= valem pros DOIS marketplaces
+  ok(/const fimJanela = atePedido \|\|/.test(rota3),
+     'a janela ?de=/?ate= vale pro Magalu tambem (o TikTok ja respeitava)');
+  ok(/new Date\(fimJanela \+ 'T12:00:00Z'\)/.test(rota3),
+     '  e o inicio ancora no CORTE pedido: com ?ate= antigo, as janelas nem se cruzavam');
+
+  // b195.2: os dois pontos FISCAIS
+  ok(/!x\.prejuizo_integral/.test(PAINEL3),
+     '`entregue_apos_estorno` NAO ganha o botao de gerar NF');
+  ok(/O caminho é <b>contestar com o marketplace<\/b>/.test(PAINEL3),
+     '  a mercadoria nao voltou: emitir devolucao registraria entrada que nao houve');
+
+  // b195.3: o `nf_sem_saida` PODE cancelar — ele E a prova de que nao saiu
+  ok(/d\.classe !== 'nf_sem_saida'/.test(rota3),
+     '`nf_sem_saida` do Magalu pode CANCELAR: a classe existe porque nunca foi despachado');
+  ok(/contradiz a classificacao/.test(rota3),
+     '  bloquear ali contradizia a propria classificacao e queimava o prazo de 20 dias');
+  ok(/item\.classe === 'nf_sem_saida'/.test(rota3),
+     '  e o recalculo segue a mesma regra');
+  ok(/parcial: magaluErro \? true : undefined/.test(rota3),
+     'e a resposta se declara PARCIAL quando o Magalu falha');
+  ok(/dataOuNull/.test(rota3),
+     'o `?de=` vale pros dois marketplaces (so o Magalu respeitava)');
+  // b195.4: data mal digitada nao pode derrubar a rota
+  ok(/\^\\d\{4\}-\\d\{2\}-\\d\{2\}\$/.test(rota3),
+     '  e a data e VALIDADA antes de usar: `?de=ontem` faria toISOString LANCAR');
+  ok(/const fimBase = ateValido/.test(rota3),
+     '  com a janela do TikTok ancorada no ?ate=, como ja era no Magalu');
+  // b195.5: data que NORMALIZA pra outro dia tambem e recusada
+  ok(/t\.toISOString\(\)\.slice\(0, 10\) === txt/.test(rota3),
+     '  e `2026-02-31` e recusada: o Date normaliza pra 03/03 em silencio');
+  ok(/baseOrigem = 'evento_magalu'/.test(rota3),
+     'o `cancelado_em` do Magalu e reserva pro prazo, antes da data da captura');
+  // b195.6: MAS cancelar exige data CONFIAVEL — evento nao e emissao
+  ok(/const dataConfiavel = baseOrigem === 'data_emissao' \|\| baseOrigem === 'chave_nfe'/.test(rota3),
+     'e CANCELAR exige data confiavel da nota: evento nao diz quando ela saiu');
+  ok(/ofereceria cancelar uma nota vencida/.test(rota3),
+     '  senao uma venda de maio cancelada ontem daria "3 dias" e voltaria 501');
+  ok(/\.lt\('criado_no_mkt'/.test(rota3),
+     'e o `?ate=` corta o TikTok em cima tambem, pras duas listas baterem');
+  ok(/dando prazo de cancelamento que nao existe/.test(rota3),
+     '  senao um caso sem chave usaria uma data de hoje');
+
+  // b195.4: a AMB tem a MESMA regra do nf_sem_saida
+  const AMB2 = fs3.readFileSync(path3.join(__dirname, '..', 'amb-devolucoes', 'app-AMB.js'), 'utf8');
+  ok(/d\.marketplace === 'magalu' && d\.classe !== 'nf_sem_saida'/.test(AMB2),
+     'a AMB tem a MESMA regra de cancelamento — consertar so a GOOD deixaria ela pra tras');
+  ok(/divida do front aparecendo/.test(AMB2),
+     '  com a divida registrada: a regra vive nos dois servidores, nao numa peca so');
+
+  // b195.4: o texto do deposito no nf_sem_saida
+  ok(/x\.classe === 'nf_sem_saida'/.test(PAINEL3),
+     'o card diz GERAL no `nf_sem_saida`, nao o texto generico');
+  ok(/a entrada corrige a baixa que a NF de venda deu/.test(PAINEL3),
+     '  explicando por que: o produto nunca saiu do CD');
+  // b195.5: enquanto da pra cancelar, a dica de estoque confunde
+  ok(/x\.acao === 'cancelar_nf'\s*\n?\s*\? ''/.test(PAINEL3),
+     'a dica de estoque SOME enquanto da pra cancelar — ali a devolucao e o plano B');
+
+  ok(mc.ACAO_POR_CLASSE.nf_sem_saida.entrada_estoque === true,
+     '`nf_sem_saida` vai COM entrada — correcao DELE, e eu tinha deixado o valor antigo');
+  ok(/a NF DE VENDA JA DEU BAIXA/.test(LIB2),
+     '  com o motivo: a entrada corrige a baixa da NF de venda, nao duplica');
+  ok(/magaluCancelados\.buscar\(empresa/.test(rota3),
+     '  e populada pela busca — o bloco todo tinha sumido, sobraram so os comentarios');
+  ok(rota3.indexOf('let magaluItens') < rota3.indexOf('magaluItens.map'),
+     '  antes do primeiro uso');
+  ok(rota3.indexOf('const AGORA') < rota3.indexOf('let magaluItens'),
+     '  e depois de AGORA, que a busca usa');
+
+  // ⚠️ e o diagnostico anterior estava ERRADO
+  const LIB = fs3.readFileSync(path3.join(__dirname, '..', 'lib', 'magalu-cancelados.js'), 'utf8');
+
+  ok(/CORRECAO DO DIAGNOSTICO ANTERIOR/.test(LIB),
+     'o comentario registra que "a Magalu manda numero proprio" estava ERRADO');
+  ok(mc.numeroDaChave('35260564289091000100550010000006371757802116') === '637',
+     'os numeros BATEM com a chave: 637 e o nNF mesmo (nota da AMB, serie 001)');
+  ok(mc.numeroDaChave('35260764289091000100550030000003771441283894') === '377',
+     '  e 377 tambem (serie 003)');
 }
 
 console.log('');

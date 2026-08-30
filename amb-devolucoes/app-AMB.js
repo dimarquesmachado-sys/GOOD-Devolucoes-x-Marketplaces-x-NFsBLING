@@ -82,7 +82,7 @@ const criarMlBuscas = require('./lib-AMB/ml-buscas-AMB');
 const registrarIdentificar = require('./lib-AMB/identificar-AMB');
 const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 
-const VERSAO = 'AMB Devolucoes b193';
+const VERSAO = 'AMB Devolucoes b197';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -2165,6 +2165,14 @@ router.get('/api/admin/sem-retorno', auth.requerLogin, async (req, res) => {
             baseOrigem = 'chave_nfe';
           }
         }
+        // b195.5 (Codex): o Magalu traz `cancelado_em`, que e MUITO mais
+        // perto da emissao que a data da captura. Sem isto, um caso do
+        // Magalu sem chave caia em `criado_no_mkt` — que pode ser de hoje,
+        // dando prazo de cancelamento que nao existe.
+        if (base == null && d.cancelado_em) {
+          const t = new Date(d.cancelado_em).getTime();
+          if (Number.isFinite(t)) { base = t; baseOrigem = 'evento_magalu'; }
+        }
         if (base == null && d.criado_no_mkt) {
           base = new Date(d.criado_no_mkt).getTime();
           baseOrigem = 'devolucao';   // da MAIS prazo que o real
@@ -2178,8 +2186,26 @@ router.get('/api/admin/sem-retorno', auth.requerLogin, async (req, res) => {
         // quem ja voltou nao cancela (houve circulacao), e o Magalu nunca
         // cancela (nao temos prova de que a mercadoria nao saiu)
         const jaVoltou = !!d.tem_devolucao_registrada;
-        const semProva = d.marketplace === 'magalu';
-        const podeCancelar = !jaVoltou && !semProva && diasDesde != null && diasDesde <= 20;
+        // b195.4 (Codex): a MESMA regra da GOOD. O `nf_sem_saida` E a prova
+        // de que o pedido nunca foi despachado, entao ali cancelar e o
+        // certo — bloquear faria o dono perder o prazo de 20 dias.
+        //
+        // Isto e a divida do front aparecendo: a regra vive nos dois
+        // servidores em vez de numa peca so, entao consertar num lado
+        // deixa o outro para tras. Foi o que aconteceu aqui.
+        const semProva = d.marketplace === 'magalu' && d.classe !== 'nf_sem_saida';
+        // b195.6 (Codex): CANCELAR exige data CONFIAVEL da nota.
+        //
+        // `cancelado_em` e `criado_no_mkt` sao datas do EVENTO, nao da
+        // emissao. Uma venda de maio cancelada ontem daria "3 dias" e eu
+        // ofereceria cancelar uma nota vencida ha meses — o dono tentaria e
+        // levaria 501 intempestivo.
+        //
+        // So a data de emissao (Magalu) e o mes da chave (NF-e) dizem quando
+        // a nota saiu. Sem uma das duas, o caminho e a devolucao, que vale
+        // em qualquer prazo.
+        const dataConfiavel = baseOrigem === 'data_emissao' || baseOrigem === 'chave_nfe';
+        const podeCancelar = dataConfiavel && !jaVoltou && !semProva && diasDesde != null && diasDesde <= 20;
 
         return {
           id: d.id,

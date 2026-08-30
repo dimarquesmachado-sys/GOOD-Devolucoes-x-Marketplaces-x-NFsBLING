@@ -232,7 +232,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.82.3 (o legado da nota so-chave sai do nNF, nao do final)',
+    version: '4.83.0 (cancelar exige data confiavel da nota)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -5137,7 +5137,32 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
     // porque NF de devolucao nao tem prazo (so o CANCELAMENTO tem 20 dias).
     // Caso antigo continua rendendo imposto de volta.
     const dias = Math.min(730, Math.max(1, parseInt(req.query.dias, 10) || 365));
-    const desde = new Date(Date.now() - dias * 864e5).toISOString();
+    // b195.3 (Codex): `?de=` vale pros DOIS marketplaces. So o Magalu
+    // respeitava, entao pedir uma fatia trazia TikTok do periodo inteiro.
+    // b195.4 (Codex): validar a data ANTES de usar. `?de=ontem` viraria
+    // "Invalid Date" e `.toISOString()` LANCA — a rota inteira responderia
+    // 500 por causa de um parametro mal digitado.
+    //
+    // E a janela ancora no `?ate=` quando ele vem: senao, pedir uma fatia
+    // antiga sem `?de=` abriria HOJE menos `dias`, e as pontas podiam nem
+    // se cruzar. Mesma correcao que ja fiz no Magalu.
+    const dePedidoRaw = String(req.query.de || '').trim();
+    const atePedidoRaw = String(req.query.ate || '').trim();
+    const dataOuNull = (txt) => {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(txt)) return null;
+      const t = new Date(txt + 'T00:00:00Z');
+      if (!Number.isFinite(t.getTime())) return null;
+      // b195.5 (Codex): `2026-02-31` NAO e invalido pro Date — ele normaliza
+      // pra 03/03 em silencio, e a janela vira outra sem ninguem saber.
+      // Confiro que a data VOLTA igual ao que foi pedido.
+      return t.toISOString().slice(0, 10) === txt ? t : null;
+    };
+    const deValido = dataOuNull(dePedidoRaw);
+    const ateValido = dataOuNull(atePedidoRaw);
+    const fimBase = ateValido ? ateValido.getTime() : Date.now();
+    const desde = deValido
+      ? deValido.toISOString()
+      : new Date(fimBase - dias * 864e5).toISOString();
 
     // b188.3 (Codex): ?ate=AAAA-MM-DD alcanca o que ficou fora do corte.
     //
@@ -5178,6 +5203,12 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
       // entao ?dias=7 trazia 6 meses de historico. Filtro por criado_no_mkt,
       // que e quando a devolucao nasceu no marketplace.
       .gte('criado_no_mkt', desde)
+      // b195.6 (Codex): o `?ate=` tambem CORTA em cima. Sem isto, pedir uma
+      // fatia antiga trazia o TikTok ate hoje — a janela do Magalu terminava
+      // na data pedida e a do TikTok nao, e as duas listas nao batiam.
+      .lt('criado_no_mkt', ateValido
+        ? new Date(ateValido.getTime() + 864e5).toISOString()
+        : new Date(Date.now() + 864e5).toISOString())
       // b184.1: e o STATUS tambem no banco. Filtrar "concluida" em JS depois
       // do limite tinha o mesmo defeito de antes: numa janela cheia de
       // pendentes, as concluidas ficavam de fora.
@@ -5278,6 +5309,38 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
     // O descarte fino acima compara chaves do TikTok (id da solicitacao ou
     // rastreio) e nao serve pro Magalu. Mas o PEDIDO serve: se ha triagem
     // daquele pedido, ele ja esta no fluxo normal.
+
+    // b195 - A BUSCA DO MAGALU TINHA SUMIDO.
+    //
+    // O painel da GOOD respondia "magaluItens is not defined": em alguma
+    // edicao anterior o bloco que POPULA a lista foi perdido e sobraram so
+    // os comentarios. A rota inteira quebrava, e o dono via o card vermelho.
+    //
+    // Falha aqui nao pode derrubar a lista: o TikTok continua aparecendo,
+    // com o aviso do que faltou.
+    let magaluItens = [];
+    let magaluErro = null;
+    try {
+      // b195.1 (Codex): respeitar ?de= e ?ate= quando vierem. O TikTok ja
+      // respeitava; o Magalu ignorava e sempre terminava hoje — entao pedir
+      // uma fatia antiga trazia o Magalu do periodo errado.
+      // b195.4: reaproveita as datas ja VALIDADAS acima
+      const atePedido = ateValido ? atePedidoRaw : '';
+      const dePedido = deValido ? dePedidoRaw : '';
+      // b195.2 (Codex): com `?ate=` antigo e sem `?de=`, a janela abria HOJE
+      // menos `dias` e fechava numa data passada — podia nem se cruzar.
+      // Ancoro o inicio no PROPRIO corte pedido.
+      const fimJanela = atePedido || new Date().toISOString().slice(0, 10);
+      const inicioJanela = dePedido
+        || new Date(new Date(fimJanela + 'T12:00:00Z').getTime() - dias * 864e5)
+          .toISOString().slice(0, 10);
+      const rm = await magaluCancelados.buscar(empresa, { de: inicioJanela, ate: fimJanela });
+      if (rm.ok) magaluItens = rm.itens;
+      else magaluErro = rm.erro;
+    } catch (e) {
+      magaluErro = String(e.message || e).slice(0, 150);
+    }
+
     const pedidosMagalu = magaluItens.map((m) => m.pedido).filter(Boolean);
     const triadosSemMarcador = new Set();   // triagem de BIPE: derruba o pedido
     const casosRegistrados = new Set();     // registro do CARD: derruba so o caso
@@ -5407,6 +5470,14 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
             baseOrigem = 'chave_nfe';
           }
         }
+        // b195.5 (Codex): o Magalu traz `cancelado_em`, que e MUITO mais
+        // perto da emissao que a data da captura. Sem isto, um caso do
+        // Magalu sem chave caia em `criado_no_mkt` — que pode ser de hoje,
+        // dando prazo de cancelamento que nao existe.
+        if (base == null && d.cancelado_em) {
+          const t = new Date(d.cancelado_em).getTime();
+          if (Number.isFinite(t)) { base = t; baseOrigem = 'evento_magalu'; }
+        }
         if (base == null && d.criado_no_mkt) {
           base = new Date(d.criado_no_mkt).getTime();
           baseOrigem = 'devolucao';   // aproximacao: da MAIS prazo que o real
@@ -5445,8 +5516,30 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
         //
         // O TikTok continua podendo: ali o reembolso PURO (tipo REFUND) e a
         // propria prova de que nao houve retorno fisico.
-        const semProvaDeEnvio = d.marketplace === 'magalu';
-        const podeCancelar = !jaVoltou && !semProvaDeEnvio
+        // b195.3 (Codex): o `nf_sem_saida` E a prova de que nao saiu.
+        //
+        // Eu bloqueava TODO Magalu de cancelar por falta de prova de envio.
+        // Mas essa classe existe justamente porque a Magalu diz que o pedido
+        // NUNCA foi despachado (sem `shipped_at`) — e a propria lib a marca
+        // como `pode_cancelar`. Bloquear ali contradiz a classificacao e faz
+        // o dono perder o prazo de 20 dias num caso onde cancelar e o certo.
+        //
+        // As outras classes do Magalu continuam sem cancelar: nelas o
+        // produto saiu, houve circulacao, e a nota nao pode ser apagada.
+        const semProvaDeEnvio = d.marketplace === 'magalu'
+          && d.classe !== 'nf_sem_saida';
+        // b195.6 (Codex): CANCELAR exige data CONFIAVEL da nota.
+        //
+        // `cancelado_em` e `criado_no_mkt` sao datas do EVENTO, nao da
+        // emissao. Uma venda de maio cancelada ontem daria "3 dias" e eu
+        // ofereceria cancelar uma nota vencida ha meses — o dono tentaria e
+        // levaria 501 intempestivo.
+        //
+        // So a data de emissao (Magalu) e o mes da chave (NF-e) dizem quando
+        // a nota saiu. Sem uma das duas, o caminho e a devolucao, que vale
+        // em qualquer prazo.
+        const dataConfiavel = baseOrigem === 'data_emissao' || baseOrigem === 'chave_nfe';
+        const podeCancelar = dataConfiavel && !jaVoltou && !semProvaDeEnvio
           && diasDesde != null && diasDesde <= 20;
 
         return {
@@ -5463,7 +5556,11 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
           produto: d.produto_titulo,
           sku: d.produto_sku,
           qtd: d.produto_qtd,
-          valor: d.valor_refund,
+          // b195.1 (Codex): o TikTok manda `valor_refund`, o Magalu manda
+          // `valor`. Lendo so o primeiro, TODO card do Magalu vinha com
+          // valor nulo — foi o que o dono viu no JSON da AMB ("valor: null"
+          // nos 10) e o `valor_total` ficava zero, inutil pra priorizar.
+          valor: d.valor_refund != null ? d.valor_refund : d.valor,
           motivo: d.motivo_texto || d.motivo,
           criado_em: d.criado_no_mkt,
           dias_desde: diasDesde,
@@ -5604,7 +5701,9 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
       item.prazo_base = 'chave_nfe';
       // b190.3: o recalculo respeita a mesma regra — quem voltou nao cancela
       const podeAqui = !item.tem_devolucao_registrada
-        && item.marketplace !== 'magalu'   // b190.6: sem prova de envio
+        // b195.3: Magalu so cancela em `nf_sem_saida`, onde ha prova de
+        // que o pedido nunca foi despachado
+        && (item.marketplace !== 'magalu' || item.classe === 'nf_sem_saida')
         && dias <= 20;
       item.acao = podeAqui ? 'cancelar_nf' : 'nf_devolucao';
       item.prazo_cancelamento = podeAqui ? Math.max(0, 20 - dias) : 0;
@@ -5627,6 +5726,9 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
       // b189 - se o Magalu nao veio, o dono TEM que saber: a lista parece
       // completa e nao esta. Silencio aqui esconde R$ 12 mil em casos.
       magalu_erro: magaluErro || undefined,
+      // b195.3 (Codex): quando o Magalu falha, a lista que sobra e PARCIAL
+      // e nao ha como saber disso olhando os itens. O aviso e o unico sinal.
+      parcial: magaluErro ? true : undefined,
       por_marketplace: itens.reduce((acc, x) => {
         const m = x.marketplace || 'outro';
         acc[m] = (acc[m] || 0) + 1;
