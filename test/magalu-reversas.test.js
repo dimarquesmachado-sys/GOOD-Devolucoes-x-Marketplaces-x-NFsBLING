@@ -29,7 +29,7 @@ ok(/if \(adminOk\(req\)\) return next\(\);/.test(DEBUG.slice(DEBUG.indexOf('reve
    'aceitando ?k=ADMIN_KEY, que e como o outro servidor vai chamar');
 
 // ── tem_reversa exige PACOTE, nao ticket ─────────────────────────────
-ok(/tem_reversa: !!\(dev && dev\.reverse_code\)/.test(DEBUG),
+ok(/tem_reversa: !!\(dev && dev\.reverse_code &&/.test(DEBUG),
    'tem_reversa exige reverse_code: ticket aberto NAO e pacote voltando');
 ok(/tem_ticket: !!dev/.test(DEBUG),
    '  e `tem_ticket` diz se o cliente ao menos abriu protocolo');
@@ -76,6 +76,13 @@ ok(/linhas\.push\(\{ code, erro:/.test(DEBUG),
      'o codigo vem da remessa MAIS RECENTE — a reagendada, que aconteceu');
   ok(/dev\.codigo_possivelmente_obsoleto = true/.test(MAGALU),
      '  e o codigo de tentativa ANTERIOR e ultimo recurso, marcado como suspeito');
+  // b190.6: e esse marcador tem que CHEGAR na resposta
+  ok(/tem_reversa: !!\(dev && dev\.reverse_code && !dev\.codigo_possivelmente_obsoleto\)/.test(DEBUG),
+     'codigo de tentativa que FALHOU nao conta como reversa viva');
+  ok(/codigo_obsoleto: \(dev && dev\.codigo_possivelmente_obsoleto\)/.test(DEBUG),
+     '  mas vai na resposta, pra consulta');
+  ok(/NAO conta como reversa viva/.test(DEBUG),
+     '  com a explicacao — senao eles concluiriam que o produto voltou');
 
   // b190.1: o indice precisa casar com a busca, que limpa o codigo
   ok(/const soNum = String\(rc\)\.replace\(\/\\D\/g, ''\);/.test(MAGALU),

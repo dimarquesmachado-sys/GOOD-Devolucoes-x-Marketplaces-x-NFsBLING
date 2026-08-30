@@ -232,7 +232,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.75.6 (rateio visivel na tela; deposito condicional)',
+    version: '4.76.0 (cancelamento so com prova de que nao saiu)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -5265,7 +5265,28 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
         // DEVOLUCAO, que documenta a entrada. Cancelar apagaria uma operacao
         // que existiu de verdade.
         const jaVoltou = !!d.tem_devolucao_registrada;
-        const podeCancelar = !jaVoltou && diasDesde != null && diasDesde <= 20;
+
+        // b190.6 (Codex): CANCELAMENTO EXIGE PROVA DE QUE NAO SAIU.
+        //
+        // Eu escrevi no proprio modulo que "sem returns[] nao prova que o
+        // produto nao saiu" — e depois sugeri cancelar mesmo assim. Se a
+        // mercadoria circulou e o cliente ficou com ela, cancelar a nota de
+        // venda e erro fiscal: apaga uma saida que existiu.
+        //
+        // Do lado do Magalu eu NAO tenho essa prova: a API de pedidos nao
+        // diz se despachamos. Quem diz e a etiqueta do checkout, que mora no
+        // outro servidor (a conversa do Checkout esta ligando essa ponta).
+        //
+        // Entao, ate ter a prova, o Magalu nunca ganha "cancelar NF" — vai
+        // como NF de devolucao, que e valida nos dois casos. Errar pra
+        // devolucao custa um passo a mais; errar pra cancelamento custa uma
+        // nota cancelada indevidamente.
+        //
+        // O TikTok continua podendo: ali o reembolso PURO (tipo REFUND) e a
+        // propria prova de que nao houve retorno fisico.
+        const semProvaDeEnvio = d.marketplace === 'magalu';
+        const podeCancelar = !jaVoltou && !semProvaDeEnvio
+          && diasDesde != null && diasDesde <= 20;
 
         return {
           id: d.id,
@@ -5374,7 +5395,9 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
       item.dias_desde = dias;
       item.prazo_base = 'chave_nfe';
       // b190.3: o recalculo respeita a mesma regra — quem voltou nao cancela
-      const podeAqui = !item.tem_devolucao_registrada && dias <= 20;
+      const podeAqui = !item.tem_devolucao_registrada
+        && item.marketplace !== 'magalu'   // b190.6: sem prova de envio
+        && dias <= 20;
       item.acao = podeAqui ? 'cancelar_nf' : 'nf_devolucao';
       item.prazo_cancelamento = podeAqui ? Math.max(0, 20 - dias) : 0;
     }

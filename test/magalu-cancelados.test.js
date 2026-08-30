@@ -207,9 +207,14 @@ const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o
 
   ok(/const jaVoltou = !!d\.tem_devolucao_registrada;/.test(SERVER),
      'o calculo da acao olha se o produto ja voltou');
-  ok(/const podeCancelar = !jaVoltou && diasDesde != null/.test(SERVER),
+  ok(/const podeCancelar = !jaVoltou && !semProvaDeEnvio/.test(SERVER),
      '  e quem voltou NAO ganha "cancelar NF", mesmo dentro do prazo');
-  ok(/const podeAqui = !item\.tem_devolucao_registrada && dias <= 20;/.test(SERVER),
+  // b190.6: e o MAGALU nunca ganha, porque nao ha prova de que nao saiu
+  ok(/const semProvaDeEnvio = d\.marketplace === 'magalu';/.test(SERVER),
+     '  o Magalu nunca sugere cancelamento: a API nao diz se despachamos');
+  ok(/errar pra cancelamento custa uma[\s\S]{0,60}nota cancelada indevidamente/.test(SERVER),
+     '  com a assimetria escrita: devolucao custa um passo, cancelamento custa uma nota');
+  ok(/item\.marketplace !== 'magalu'/.test(SERVER),
      '  o recalculo (depois da busca no Bling) respeita a mesma regra');
   ok(/cancelar a nota de venda seria errado: houve[\s\S]{0,40}circulacao de mercadoria/.test(SERVER),
      '  com o porque escrito: cancelar apagaria uma operacao que existiu');
