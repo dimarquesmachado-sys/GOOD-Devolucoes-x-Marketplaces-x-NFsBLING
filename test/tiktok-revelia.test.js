@@ -211,6 +211,75 @@ const diasAtras = (n) => Math.floor(new Date(HOJE.getTime() - n * 864e5).getTime
      'e sem a conta pronta, calculo pelos eventos como antes');
 }
 
+// ── b183: a lista `aguardando_analise` NAO pode ser descartada ──────
+// Ela e a selecao que o proprio servico ja fez de quem esta no relogio.
+// Como o formato real nao traz eventos crus, eu nao consigo calcular os
+// dias — mas descartar seria jogar fora exatamente quem o alerta existe
+// pra mostrar.
+{
+  const comLista = rev.separar({
+    ok: true, loja: 'girassol',
+    perdidas_por_revelia: 50, valor_das_devolucoes_com_revelia: 2715.41,
+    aguardando_analise: [
+      { return_id: 'A', order_id: '111', refund_amount: 57.40 },
+      { return_id: 'B', order_id: '222', refund_amount: 29.90 },
+    ],
+  }, HOJE);
+  ok(comLista.total_em_risco === 2,
+     'quem esta na lista deles entra em risco, mesmo sem eventos pra calcular os dias');
+  ok(comLista.valor_em_risco === 87.30, '  com o valor somado');
+  ok(comLista.em_risco[0].origem === 'lista_do_servico',
+     '  marcado como vindo pronto, nao calculado por mim');
+  ok(/sem eventos pra calcular os dias/.test(comLista.em_risco[0].nota || ''),
+     '  com nota explicando a limitacao');
+  ok(comLista.total_perdidas === 50, '  e a contagem de perdidas continua vindo deles');
+
+  // se vierem eventos, o calculo manda
+  const comEventos = rev.separar({
+    aguardando_analise: [
+      { return_id: 'C', refund_amount: 10, records: [{ event: 'BUYER_SHIPPED', create_time: diasAtras(3) }] },
+    ],
+  }, HOJE);
+  ok(comEventos.em_risco[0].risco === 'urgente' && !comEventos.em_risco[0].origem,
+     'com eventos, o calculo manda e o risco e o real (urgente aos 3 dias)');
+
+  // e quem ja esta fechado nao entra, mesmo vindo da lista
+  const fechadoNaLista = rev.separar({
+    aguardando_analise: [
+      { return_id: 'D', refund_amount: 10, records: [
+        { event: 'BUYER_SHIPPED', create_time: diasAtras(9) },
+        { event: 'REFUND_SUCCESS', create_time: diasAtras(1) } ] },
+    ],
+  }, HOJE);
+  ok(fechadoNaLista.total_em_risco === 0, 'caso ja resolvido nao entra, mesmo vindo da lista');
+}
+
+// ── b183: erro de aplicacao vem ANTES da checagem de loja ───────────
+{
+  const fs = require('fs');
+  const path = require('path');
+  const PONTE = fs.readFileSync(path.join(__dirname, '..', 'lib', 'tiktok-ponte.js'), 'utf8');
+  const i = PONTE.indexOf('async function eventosDevolucoes');
+  const trecho = PONTE.slice(i, i + 2500);
+  const iErro = trecho.indexOf('r.corpo.ok === false');
+  const iLoja = trecho.indexOf('!r.corpo.loja');
+  ok(iErro !== -1 && iLoja !== -1 && iErro < iLoja,
+     'o erro de APLICACAO e reportado antes da checagem de loja');
+  ok(/resposta de erro costuma nao trazer o campo/.test(trecho),
+     '  porque resposta de erro nao costuma trazer a loja — a mensagem apontaria pro lugar errado');
+}
+
+// ── b183: o link do impacto aponta pro servico CERTO ────────────────
+{
+  const fs = require('fs');
+  const path = require('path');
+  const DEBUG = fs.readFileSync(path.join(__dirname, '..', 'lib', 'rotas-debug.js'), 'utf8');
+  ok(/MOVER_PEDIDOS_URL/.test(DEBUG.slice(DEBUG.indexOf('aviso_valor'), DEBUG.indexOf('aviso_valor') + 700)),
+     'a dica aponta pro host do Mover-Pedidos, onde a rota realmente mora');
+  ok(/k=SUA_ADMIN_KEY/.test(DEBUG),
+     '  com a URL inteira e a chave, que e a regra da casa');
+}
+
 // ── esta ligado? ────────────────────────────────────────────────────
 {
   const fs = require('fs');
