@@ -894,6 +894,57 @@
     //
     // A ordem da lista tem intencao: quem ainda da pra CANCELAR vem primeiro,
     // porque e a unica parte com prazo correndo. Depois, os maiores valores.
+    // v4.81 - registra o caso e abre o modal de NF de devolucao.
+    //
+    // [stated] "se tá ali, pode até criar gerar automático esse registro.
+    // pq no fim, o q vai interessar mm é a emissão da NF e pra qual
+    // depósito eu vou direcionar"
+    //
+    // Sobre o DEPOSITO: nao travo nada, e a escolha e dele no modal. O
+    // caso `nf_sem_saida` (produto que nunca saiu do CD) vai em GERAL
+    // mesmo — a NF de venda ja deu baixa no estoque, entao a entrada
+    // CORRIGE a diferenca em vez de duplicar. Correcao dele, e estava
+    // certo: "é só gerar devolução normal, e depósito Geral. Simples."
+    async function gerarDoCardEstornadas(dadosJson) {
+      let d;
+      try { d = JSON.parse(dadosJson); } catch (e) { toast('dados do card ilegíveis', 'err'); return; }
+
+      try {
+        const r = await fetch('/api/admin/sem-retorno/registrar', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(d),
+        });
+        const j = await r.json();
+        if (!j || !j.ok) {
+          toast('não consegui registrar: ' + ((j && j.erro) || 'erro'), 'err');
+          return;
+        }
+
+        // ⚠️ ja emitida antes: aviso em vez de deixar emitir de novo. Duas
+        // notas de devolucao da mesma venda e problema fiscal, nao so
+        // retrabalho.
+        if (j.nf_ja_emitida) {
+          toast('Este pedido JÁ tem NF de devolução emitida — confira antes de gerar outra.', 'err');
+          return;
+        }
+        if (j.ja_existia) {
+          toast('Este caso já estava registrado; abrindo as opções.', 'ok');
+        }
+
+        // dai em diante e o fluxo de sempre
+        abrirModalGerarDevolucao(
+          String(j.id),
+          String(d.nf_id_bling || ''),
+          String(d.nf_numero || ''),
+          String(d.produto || ''),
+          String(d.nf_chave || '').replace(/[^0-9]/g, '')
+        );
+      } catch (e) {
+        toast('falha ao registrar: ' + (e.message || e), 'err');
+      }
+    }
+
     async function carregarSemRetorno() {
       try {
         const r = await fetch('/api/admin/sem-retorno');
@@ -1042,6 +1093,23 @@
           //
           // Por ora, o card leva pra NOTA no Bling — que e o que ele precisa
           // pra agir, e o mesmo lugar de onde partiria de qualquer forma.
+          // v4.81 - GERAR A NF DAQUI.
+          //
+          // O caso nao tem triagem (ninguem bipou), e a extensao Bridge
+          // precisa de uma pra gravar o resultado. Entao registro na hora e
+          // caio no MESMO modal das "Aprovadas" — com lote, deposito e
+          // esteira, tudo que ja existe. Nao duplico fluxo de emissao.
+          const botaoGerar = x.nf_id_bling
+            ? '<button class="btn" style="background:#1565c0;margin-top:8px;margin-right:6px;" '
+              + 'onclick=\'gerarDoCardEstornadas(' + JSON.stringify(JSON.stringify({
+                  pedido: x.pedido, produto: x.produto, sku: x.sku, qtd: x.qtd,
+                  nf_numero: x.nf_numero, nf_chave: x.nf_chave, nf_id_bling: x.nf_id_bling,
+                  marketplace: x.marketplace, classe: x.classe,
+                })).replace(/'/g, '&#39;') + ')\' '
+              + 'title="Registra este caso e abre as opções de NF de devolução (rascunho, emitir, depósito).">'
+              + '🧾 Gerar NF de devolução</button>'
+            : '';
+
           const linkNF = x.nf_id_bling
             ? '<a class="btn" style="background:#1565c0;margin-top:8px;display:inline-block;" '
               + 'href="https://www.bling.com.br/notas.fiscais.php#edit/' + encodeURIComponent(x.nf_id_bling) + '" '
@@ -1079,7 +1147,7 @@
             + (x.cliente ? '<div style="font-size:12px;color:#999;margin-top:2px;">'
                 + escapeHtml(String(x.cliente)) + '</div>' : '')
             + dicaEstoque
-            + linkNF
+            + botaoGerar + linkNF
             + '</div>';
         }).join('');
 

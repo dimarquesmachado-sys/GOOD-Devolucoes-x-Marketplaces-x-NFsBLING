@@ -232,7 +232,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.80.2 (prazo compartilhado e cota do Magalu na busca)',
+    version: '4.81.0 (emitir a NF direto do card de estornadas)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -5013,6 +5013,87 @@ app.get('/api/ids-fiscais', requerLogin, async (req, res) => {
 // ⚠️ NAO EMITE NADA. So lista e ordena; quem decide e emite e ele, no
 // fluxo de sempre.
 // ============================================================
+// ============================================================
+// v4.81 - REGISTRAR UM CASO DO CARD PRA PODER EMITIR A NF
+// ------------------------------------------------------------
+// [stated] "se tá ali, pode até criar gerar automático esse registro.
+// pq no fim, o q vai interessar mm é a emissão da NF e pra qual
+// depósito eu vou direcionar"
+//
+// POR QUE PRECISA DISTO: quem emite a NF de devolucao e a extensao
+// Bridge, e ela grava o resultado usando o id de uma TRIAGEM. Os casos
+// do card de estornadas nao tem triagem — ninguem bipou nada, o produto
+// nem sempre voltou.
+//
+// Entao, quando o dono manda emitir, crio o registro na hora. Faz
+// sentido: o caso VIRA uma devolucao de verdade no momento em que ele
+// decide emitir a nota. E dai em diante e o fluxo de sempre — lote,
+// deposito, esteira, concluido.
+//
+// ⚠️ SOBRE O ESTOQUE, e vale registrar porque eu estava errado:
+// pensei que dar entrada num caso `nf_sem_saida` (produto que nunca
+// saiu do CD) duplicaria o inventario. Nao duplica. A NF DE VENDA JA
+// DEU BAIXA no estoque quando foi emitida — o sistema acha que o
+// produto saiu, mas ele esta la. A devolucao com entrada CORRIGE essa
+// diferenca. [stated] Correcao dele: "nos casos q o produto nunca foi
+// postado, é só gerar devolução normal, e depósito Geral. Simples."
+// ============================================================
+app.post('/api/admin/sem-retorno/registrar', requerAdmin, async (req, res) => {
+  try {
+    if (!supabase) return res.status(503).json({ ok: false, erro: 'Supabase nao configurado' });
+
+    const d = req.body || {};
+    const pedido = String(d.pedido || '').trim();
+    if (!pedido) return res.status(400).json({ ok: false, erro: 'sem pedido, nao da pra registrar' });
+
+    // JA EXISTE? devolvo o id em vez de criar outro. Sem isto, clicar
+    // duas vezes criaria dois registros da mesma devolucao — e duas
+    // portas pra emitir a mesma nota.
+    const { data: existentes, error: erroBusca } = await supabase
+      .from('devolucoes')
+      .select('id, nf_devolucao_id_bling')
+      .eq('order_id', pedido)
+      .limit(1);
+    if (erroBusca) return res.status(500).json({ ok: false, erro: erroBusca.message });
+    if (existentes && existentes.length) {
+      return res.json({
+        ok: true,
+        id: existentes[0].id,
+        ja_existia: true,
+        nf_ja_emitida: !!existentes[0].nf_devolucao_id_bling,
+      });
+    }
+
+    const { data, error } = await supabase
+      .from('devolucoes')
+      .insert({
+        tipo: 'aprovado',           // entra na fila normal de "aguardando NF"
+        status: 'pendente',
+        order_id: pedido,
+        produto_titulo: d.produto || null,
+        produto_sku: d.sku || null,
+        produto_qtd: d.qtd || null,
+        nf_numero: d.nf_numero || null,
+        nf_chave: d.nf_chave || null,
+        nf_id_bling: d.nf_id_bling || null,
+        funcionario: 'Sistema (card estornadas)',
+        // ⚠️ o RASTRO de onde veio: quem olhar este registro depois precisa
+        // saber que NAO houve bipagem — o produto pode nem ter voltado.
+        problema_descricao: '[ESTORNADA SEM RETORNO] Registrado a partir do card de estornadas'
+          + (d.marketplace ? ' · ' + String(d.marketplace) : '')
+          + (d.classe ? ' · ' + String(d.classe) : '')
+          + ' · NAO houve bipagem: a mercadoria pode nao ter voltado fisicamente.',
+      })
+      .select('id')
+      .single();
+
+    if (error) return res.status(500).json({ ok: false, erro: error.message });
+    return res.json({ ok: true, id: data.id, ja_existia: false });
+  } catch (e) {
+    return res.status(500).json({ ok: false, erro: String(e.message || e).slice(0, 200) });
+  }
+});
+
 app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
   try {
     if (!supabase) return res.status(503).json({ ok: false, erro: 'Supabase nao configurado' });
