@@ -63,7 +63,8 @@ const mlReturns = require('./lib-AMB/ml-returns-AMB');
 const nfNomes = require('./lib-AMB/nf-nomes-AMB');
 const tokens = require('./lib-AMB/render-tokens-AMB');
 const auth = require('./lib-AMB/auth-AMB');
-const tiktokPonte = require('../lib/tiktok-ponte'); // b334 - ponte TikTok via Mover-Pedidos (peca unica, empresa como parametro)
+const tiktokPonte = require('../lib/tiktok-ponte');
+const magaluCancelados = require('../lib/magalu-cancelados');  // b191 - peca UNICA, empresa por parametro // b334 - ponte TikTok via Mover-Pedidos (peca unica, empresa como parametro)
 const db = require('./lib-AMB/supabase-AMB');
 const mkt = require('./lib-AMB/marketplace-AMB');
 const shopee = require('./lib-AMB/shopee-AMB');
@@ -81,7 +82,7 @@ const criarMlBuscas = require('./lib-AMB/ml-buscas-AMB');
 const registrarIdentificar = require('./lib-AMB/identificar-AMB');
 const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 
-const VERSAO = 'AMB Devolucoes b181';
+const VERSAO = 'AMB Devolucoes b191';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -2065,6 +2066,169 @@ async function montarIndiceNFDevolucaoAMB(maxPaginas) {
 
 // b328 - rota da AMB, espelhando a da GOOD. O painel da AMB passa a chamar
 // ESTA, e nao mais a da raiz (que le o Bling da GOOD).
+// ============================================================
+// b191 - VENDAS ESTORNADAS SEM RETORNO (porte da GOOD)
+// ------------------------------------------------------------
+// Mesma frente que subiu na GOOD hoje: vendas que o marketplace
+// reembolsou sem devolucao fisica. A NF de venda continua emitida,
+// gerando imposto sobre receita que nao existiu.
+//
+// [stated] Pedido dele: "tinha q ser lib, pra nao precisar portar né.
+// pra sempre 1 ajuste pegar todas empresas."
+//
+// E e o que acontece aqui: TODA a logica vive em ../lib/ e recebe a
+// empresa por parametro. Este bloco e so FIACAO — passa 'amb' onde a
+// GOOD passa 'good'. Ajuste na lib pega as duas.
+//
+// A empresa e FIXA de proposito (nao vem da querystring): este servidor
+// E o da AMB, e aceitar ?empresa=good deixaria o admin de uma ver os
+// dados da outra.
+// ============================================================
+router.get('/api/admin/sem-retorno', auth.requerLogin, async (req, res) => {
+  try {
+    const sb = db.cliente();
+    if (!sb) return res.status(503).json({ ok: false, erro: 'Supabase nao configurado' });
+
+    const EMPRESA = 'amb';
+    const dias = Math.min(730, Math.max(1, parseInt(req.query.dias, 10) || 365));
+    const desde = new Date(Date.now() - dias * 864e5).toISOString();
+    const AGORA = Date.now();
+
+    // 1) o que a captura guardou (TikTok: reembolso puro concluido)
+    const { data: cap, error: erroCap } = await sb
+      .from('devolucoes_capturadas')
+      .select('*')
+      .eq('empresa', EMPRESA)
+      .eq('tipo_tiktok', 'REFUND')
+      .gte('criado_no_mkt', desde)
+      .in('status', ['RETURN_OR_REFUND_REQUEST_COMPLETE', 'REFUND_SUCCESS', 'COMPLETE', 'SUCCESS'])
+      .order('criado_no_mkt', { ascending: false })
+      .limit(500);
+    if (erroCap) return res.status(500).json({ ok: false, erro: erroCap.message });
+
+    const semRetorno = (cap || []).filter((d) =>
+      String(d.status || '').toUpperCase().indexOf('CANCEL') === -1);
+
+    // 2) o Magalu, pela ponte com o Mover-Pedidos
+    let magaluItens = [];
+    let magaluErro = null;
+    try {
+      const rm = await magaluCancelados.buscar(EMPRESA, {
+        de: new Date(AGORA - dias * 864e5).toISOString().slice(0, 10),
+        ate: new Date().toISOString().slice(0, 10),
+      });
+      if (rm.ok) magaluItens = rm.itens;
+      else magaluErro = rm.erro;
+    } catch (e) {
+      magaluErro = String(e.message || e).slice(0, 150);
+    }
+
+    // 3) quem JA foi triado sai: senao seriam duas portas pra mesma nota,
+    //    e duas devolucoes emitidas sem ninguem perceber
+    const pedidos = [...new Set(
+      semRetorno.map((d) => d.pedido).concat(magaluItens.map((m) => m.pedido)).filter(Boolean)
+    )];
+    const jaTriados = new Set();
+    for (let i = 0; i < pedidos.length; i += 200) {
+      const { data: tri, error: erroTri } = await sb
+        .from(db.tabelas.devolucoes)
+        .select('order_id')
+        .in('order_id', pedidos.slice(i, i + 200));
+      if (erroTri) {
+        return res.status(500).json({
+          ok: false,
+          erro: 'nao consegui conferir quais ja foram triados: ' + erroTri.message
+            + ' — listar sem essa checagem mostraria casos ja resolvidos',
+        });
+      }
+      for (const t of (tri || [])) jaTriados.add(String(t.order_id));
+    }
+
+    const itens = semRetorno.concat(magaluItens)
+      .filter((d) => !jaTriados.has(String(d.pedido)))
+      .map((d) => {
+        // o relogio conta da EMISSAO da nota. Data exata (Magalu) manda
+        // sobre o mes da chave (TikTok), que manda sobre a devolucao.
+        let base = null;
+        let baseOrigem = null;
+        if (d.nf_emitida_em) {
+          const t = new Date(d.nf_emitida_em).getTime();
+          if (Number.isFinite(t)) { base = t; baseOrigem = 'data_emissao'; }
+        }
+        const chave = String(d.nf_chave || '').replace(/\D/g, '');
+        if (base == null && chave.length === 44) {
+          const aa = parseInt(chave.slice(2, 4), 10);
+          const mm = parseInt(chave.slice(4, 6), 10);
+          if (aa >= 0 && mm >= 1 && mm <= 12) {
+            base = Date.UTC(2000 + aa, mm - 1, 1);   // dia 1: leitura conservadora
+            baseOrigem = 'chave_nfe';
+          }
+        }
+        if (base == null && d.criado_no_mkt) {
+          base = new Date(d.criado_no_mkt).getTime();
+          baseOrigem = 'devolucao';   // da MAIS prazo que o real
+        }
+        if (base == null && d.criado_em) {
+          base = new Date(d.criado_em).getTime();
+          baseOrigem = 'devolucao';
+        }
+
+        const diasDesde = base ? Math.floor((AGORA - base) / 864e5) : null;
+        // quem ja voltou nao cancela (houve circulacao), e o Magalu nunca
+        // cancela (nao temos prova de que a mercadoria nao saiu)
+        const jaVoltou = !!d.tem_devolucao_registrada;
+        const semProva = d.marketplace === 'magalu';
+        const podeCancelar = !jaVoltou && !semProva && diasDesde != null && diasDesde <= 20;
+
+        return {
+          id: d.id,
+          marketplace: d.marketplace,
+          pedido: d.pedido,
+          nf_numero: d.nf_numero,
+          nf_chave: d.nf_chave,
+          cliente: d.cliente_nome,
+          produto: d.produto_titulo,
+          sku: d.produto_sku,
+          qtd: d.produto_qtd,
+          valor: d.valor_refund != null ? d.valor_refund : d.valor,
+          valor_rateado: d.valor_rateado || undefined,
+          motivo: d.motivo_texto || d.motivo,
+          dias_desde: diasDesde,
+          prazo_base: baseOrigem,
+          acao: podeCancelar ? 'cancelar_nf' : 'nf_devolucao',
+          prazo_cancelamento: podeCancelar ? Math.max(0, 20 - diasDesde) : 0,
+          classe: d.classe || undefined,
+          tem_devolucao_registrada: d.tem_devolucao_registrada || undefined,
+          entrada_estoque: d.entrada_estoque,
+          prejuizo_integral: d.prejuizo_integral || undefined,
+        };
+      });
+
+    itens.sort((a, b) => {
+      if (a.acao !== b.acao) return a.acao === 'cancelar_nf' ? -1 : 1;
+      if (a.acao === 'cancelar_nf') return a.prazo_cancelamento - b.prazo_cancelamento;
+      return (b.valor || 0) - (a.valor || 0);
+    });
+
+    return res.json({
+      ok: true,
+      empresa: EMPRESA,
+      total: itens.length,
+      valor_total: Number(itens.reduce((t, x) => t + (Number(x.valor) || 0), 0).toFixed(2)),
+      podem_cancelar: itens.filter((x) => x.acao === 'cancelar_nf').length,
+      magalu_erro: magaluErro || undefined,
+      por_marketplace: itens.reduce((acc, x) => {
+        const m = x.marketplace || 'outro';
+        acc[m] = (acc[m] || 0) + 1;
+        return acc;
+      }, {}),
+      itens,
+    });
+  } catch (e) {
+    return res.status(500).json({ ok: false, erro: String(e.message || e).slice(0, 200) });
+  }
+});
+
 router.get('/api/admin/indice-nf-devolucao', auth.requerLogin, async (req, res) => {
   try {
     await montarIndiceNFDevolucaoAMB(Number(req.query.paginas || 5));
