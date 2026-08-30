@@ -179,7 +179,7 @@ const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o
        '  mas NUNCA a trava de concorrencia: duas juntas brigariam pelo mesmo upsert');
     ok(/erro: 'Supabase nao configurado'/.test(SERVER),
        '  e sem Supabase o motivo vai pro estado, em vez de sair calado');
-    ok(/await ESP_MONTANDO : await montarEspreita\(\)/.test(SERVER),
+    ok(/const r = await montarEspreita\(\);/.test(SERVER),
        'o forcar MONTA o espreita antes — o cache do painel nao serve aqui');
 
     const DEBUG = fs.readFileSync(path.join(__dirname, '..', 'lib', 'rotas-debug.js'), 'utf8');
@@ -204,8 +204,12 @@ const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o
        'a cadeia da captura devolve o estado ate o fim, pra quem forcou poder esperar');
     ok(/if \(!supabase\) return \{ rodou: false/.test(SERVER),
        'e o forcar diz o motivo quando nao roda, em vez de sair calado');
-    ok(/ESP_MONTANDO \? await ESP_MONTANDO/.test(SERVER),
+    ok(/if \(ESP_MONTANDO\) \{/.test(SERVER),
        '  reaproveitando a montagem em voo, pra nao varrer os marketplaces duas vezes');
+    ok(/reaproveitou: true/.test(SERVER),
+       '  e dizendo que reaproveitou, com o resultado do ciclo que ja estava rodando');
+    ok(/i < 40 && CAPTURA_RODANDO/.test(SERVER),
+       '  esperando a trava soltar (com teto) — senao responderia com gravacao nula');
     ok(/devCapturadas, capturaEstado,/.test(DEBUG), '  e recebidas la');
     ok(/api\/debug\/capturadas/.test(DEBUG), 'ha rota pra acompanhar a captura');
 

@@ -232,7 +232,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.70.1 (forcar captura: resultado real, e pulou != rodou)',
+    version: '4.70.2 (forcar: reaproveitar montagem devolve o resultado certo)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -5274,10 +5274,26 @@ registrarRotasDebug(app, {
     if (!supabase) return { rodou: false, motivo: 'Supabase nao configurado' };
     if (CAPTURA_RODANDO) return { rodou: false, motivo: 'ja ha uma captura em andamento' };
 
-    // reaproveita a montagem em voo, se houver: o preAquecerEspreita roda a
-    // cada 3 min e montar duas vezes junto seria trabalho dobrado nos
-    // marketplaces
-    const r = ESP_MONTANDO ? await ESP_MONTANDO : await montarEspreita();
+    // b185.1 (Codex): reaproveitar a montagem em voo economiza uma varredura
+    // dos marketplaces — mas quem a iniciou (o preAquecerEspreita) tambem
+    // chama capturarDevolucoes com o resultado. As duas chamadas correm
+    // juntas, a segunda cai na trava e volta sem gravar, e eu responderia
+    // "rodou" com gravacao nula.
+    //
+    // Entao: se ha montagem em voo, espero ELA e o ciclo dela terminar, e
+    // devolvo o que a captura daquele ciclo gravou — e o mesmo trabalho,
+    // feito uma vez so.
+    if (ESP_MONTANDO) {
+      await ESP_MONTANDO;
+      // o preAquecerEspreita ja chamou a captura com esse resultado; espero
+      // ela soltar a trava pra ler o estado final
+      for (let i = 0; i < 40 && CAPTURA_RODANDO; i++) {
+        await new Promise((ok) => setTimeout(ok, 250));
+      }
+      return { rodou: true, reaproveitou: true, gravacao: CAPTURA_ESTADO };
+    }
+
+    const r = await montarEspreita();
     const gravou = await capturarDevolucoes(r, true);
     return { rodou: true, gravacao: gravou || null };
   },
