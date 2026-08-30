@@ -232,7 +232,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.70.2 (forcar: reaproveitar montagem devolve o resultado certo)',
+    version: '4.70.3 (forcar captura: sem reaproveitar montagem em voo)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -5274,25 +5274,24 @@ registrarRotasDebug(app, {
     if (!supabase) return { rodou: false, motivo: 'Supabase nao configurado' };
     if (CAPTURA_RODANDO) return { rodou: false, motivo: 'ja ha uma captura em andamento' };
 
-    // b185.1 (Codex): reaproveitar a montagem em voo economiza uma varredura
-    // dos marketplaces — mas quem a iniciou (o preAquecerEspreita) tambem
-    // chama capturarDevolucoes com o resultado. As duas chamadas correm
-    // juntas, a segunda cai na trava e volta sem gravar, e eu responderia
-    // "rodou" com gravacao nula.
+    // b185.2 (Codex, 2a rodada no mesmo ponto): DESISTI de reaproveitar a
+    // montagem em voo.
     //
-    // Entao: se ha montagem em voo, espero ELA e o ciclo dela terminar, e
-    // devolvo o que a captura daquele ciclo gravou — e o mesmo trabalho,
-    // feito uma vez so.
-    if (ESP_MONTANDO) {
-      await ESP_MONTANDO;
-      // o preAquecerEspreita ja chamou a captura com esse resultado; espero
-      // ela soltar a trava pra ler o estado final
-      for (let i = 0; i < 40 && CAPTURA_RODANDO; i++) {
-        await new Promise((ok) => setTimeout(ok, 250));
-      }
-      return { rodou: true, reaproveitou: true, gravacao: CAPTURA_ESTADO };
-    }
-
+    // A ideia era economizar uma varredura dos marketplaces. Mas quem
+    // iniciou aquela montagem tambem chama a captura com o resultado, entao
+    // eu precisava esperar o ciclo DELE terminar pra saber o que gravou — e
+    // toda tentativa de sincronizar isso (esperar a trava, com teto) tinha
+    // um furo: a trava pode nem ter sido pega ainda quando eu olho, ou o
+    // teto estoura e eu respondo com estado de outro ciclo.
+    //
+    // Duas rodadas de revisao no mesmo ponto sao sinal claro: a otimizacao
+    // nao vale a complexidade. Uma varredura a mais custa alguns segundos
+    // numa rota de diagnostico que o dono chama de vez em quando; responder
+    // resultado errado custa ele nao saber se funcionou, que e justamente o
+    // problema que esta rota veio resolver.
+    //
+    // Se as duas correrem juntas, a minha cai na trava e volta com o motivo
+    // — que e uma resposta honesta, nao um numero inventado.
     const r = await montarEspreita();
     const gravou = await capturarDevolucoes(r, true);
     return { rodou: true, gravacao: gravou || null };

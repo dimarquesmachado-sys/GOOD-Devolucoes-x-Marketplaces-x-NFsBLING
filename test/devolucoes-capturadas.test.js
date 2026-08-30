@@ -204,12 +204,16 @@ const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o
        'a cadeia da captura devolve o estado ate o fim, pra quem forcou poder esperar');
     ok(/if \(!supabase\) return \{ rodou: false/.test(SERVER),
        'e o forcar diz o motivo quando nao roda, em vez de sair calado');
-    ok(/if \(ESP_MONTANDO\) \{/.test(SERVER),
-       '  reaproveitando a montagem em voo, pra nao varrer os marketplaces duas vezes');
-    ok(/reaproveitou: true/.test(SERVER),
-       '  e dizendo que reaproveitou, com o resultado do ciclo que ja estava rodando');
-    ok(/i < 40 && CAPTURA_RODANDO/.test(SERVER),
-       '  esperando a trava soltar (com teto) — senao responderia com gravacao nula');
+    // b185.2: DESISTI de reaproveitar a montagem em voo. Duas rodadas de
+    // revisao no mesmo ponto mostraram que sincronizar com o ciclo alheio
+    // sempre tinha um furo — e responder resultado errado custa mais que
+    // uma varredura extra numa rota de diagnostico.
+    ok(!/reaproveitou: true/.test(SERVER),
+       'nao reaproveita a montagem em voo: sincronizar com o ciclo alheio dava resultado errado');
+    ok(!/i < 40 && CAPTURA_RODANDO/.test(SERVER),
+       '  sem espera por trava com teto, que era a fonte dos furos');
+    ok(/ja ha uma captura em andamento/.test(SERVER),
+       '  se as duas correrem juntas, a minha volta com o MOTIVO — resposta honesta');
     ok(/devCapturadas, capturaEstado,/.test(DEBUG), '  e recebidas la');
     ok(/api\/debug\/capturadas/.test(DEBUG), 'ha rota pra acompanhar a captura');
 
