@@ -154,7 +154,10 @@ const PAINEL = fs.readFileSync(path.join(RAIZ, 'public', 'painel-devolucoes.html
   // triagem), a nota sairia com o pedido inteiro e sem o deposito de DEFEITO.
   // Botao que gera nota fiscal errada e pior que nao ter botao.
   {
-    const fnSR = PAINEL.slice(PAINEL.indexOf('carregarSemRetorno'), PAINEL.indexOf('carregarSemRetorno') + 12000);
+    // a DEFINICAO da funcao, nao a primeira mencao (que e a chamada, 36 mil
+    // caracteres antes) — foi o que fez tres verificacoes falharem a toa
+    const iDef = PAINEL.indexOf('async function carregarSemRetorno');
+    const fnSR = PAINEL.slice(iDef, iDef + 12000);
     ok(!/abrirModalGerarDevolucao/.test(fnSR),
        'o card NAO chama o modal de gerar: o id dele e de outra tabela (triagem, nao captura)');
     ok(/Abrir NF no Bling/.test(fnSR),
