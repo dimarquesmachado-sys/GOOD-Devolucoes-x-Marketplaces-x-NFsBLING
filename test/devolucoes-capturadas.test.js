@@ -170,7 +170,22 @@ const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o
     ok(/devCapturadas,/.test(SERVER) && /capturaEstado: \(\) => CAPTURA_ESTADO/.test(SERVER),
        '  as deps sao PASSADAS pro rotas-debug (usar o escopo do server ja derrubou o boot 2x)');
 
+    // v4.70: forcar a captura sem esperar o ciclo
+    ok(/function capturarDevolucoes\(resultadoEspreita, forcar\)/.test(SERVER),
+       'a captura aceita `forcar`, pra primeira carga e pra depurar');
+    ok(/if \(!forcar && Date\.now\(\) - CAPTURA_ULTIMA/.test(SERVER),
+       '  pulando o intervalo de 1h');
+    ok(/if \(CAPTURA_RODANDO\) return;/.test(SERVER),
+       '  mas NUNCA a trava de concorrencia: duas juntas brigariam pelo mesmo upsert');
+    ok(/erro: 'Supabase nao configurado'/.test(SERVER),
+       '  e sem Supabase o motivo vai pro estado, em vez de sair calado');
+    ok(/const r = await montarEspreita\(\);/.test(SERVER),
+       'o forcar MONTA o espreita antes — o cache do painel nao serve aqui');
+
     const DEBUG = fs.readFileSync(path.join(__dirname, '..', 'lib', 'rotas-debug.js'), 'utf8');
+    ok(/api\/debug\/capturar-agora/.test(DEBUG), 'ha rota pra forcar');
+    ok(/resultado: r \|\| null/.test(DEBUG),
+       '  que responde com o RESULTADO da gravacao, nao so "disparei"');
     ok(/devCapturadas, capturaEstado,/.test(DEBUG), '  e recebidas la');
     ok(/api\/debug\/capturadas/.test(DEBUG), 'ha rota pra acompanhar a captura');
 

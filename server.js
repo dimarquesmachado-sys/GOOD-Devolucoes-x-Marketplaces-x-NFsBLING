@@ -232,7 +232,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.69.6 (descarte sempre pela solicitacao, nunca pelo pedido)',
+    version: '4.70.0 (rota pra forcar a captura sem esperar o ciclo)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -5262,6 +5262,13 @@ registrarRotasDebug(app, {
   devCapturadas,                                       // v4.63 - captura
   capturaEstado: () => CAPTURA_ESTADO,                 //   e o estado do ultimo ciclo
   tiktokRevelia,                                       // v4.68 - janela de revelia
+  // v4.70 - a rota de diagnostico precisa MONTAR o espreita antes de
+  // capturar: o cache do painel nao serve, porque a captura recebe o
+  // resultado da montagem, nao a lista que a tela mostra.
+  forcarCaptura: async () => {
+    const r = await montarEspreita();
+    return capturarDevolucoes(r, true);
+  },
   get ESP_ENTREGA_RODANDO() { return ESP_ENTREGA_RODANDO; },   // b302 - flag viva, por getter
   get EAN_RODANDO() { return EAN_RODANDO; },
 });
@@ -5389,9 +5396,13 @@ let CAPTURA_ULTIMA = 0;
 let CAPTURA_RODANDO = false;
 let CAPTURA_ESTADO = { ultima: null, gravadas: 0, erro: null };
 
-function capturarDevolucoes(resultadoEspreita) {
-  if (!supabase || CAPTURA_RODANDO) return;
-  if (Date.now() - CAPTURA_ULTIMA < CAPTURA_INTERVALO_MS) return;
+function capturarDevolucoes(resultadoEspreita, forcar) {
+  // v4.70 - `forcar` pula o intervalo de 1h, pra rota de diagnostico e pra
+  // primeira carga. A trava de concorrencia NAO e pulada: duas capturas
+  // juntas duplicariam o trabalho e brigariam pelo mesmo upsert.
+  if (!supabase) { CAPTURA_ESTADO = { ...CAPTURA_ESTADO, erro: 'Supabase nao configurado' }; return; }
+  if (CAPTURA_RODANDO) return;
+  if (!forcar && Date.now() - CAPTURA_ULTIMA < CAPTURA_INTERVALO_MS) return;
 
   // b184.2 (Codex): o campo e `em_transito`, nao `itens`.
   //
@@ -5440,7 +5451,7 @@ function capturarDevolucoes(resultadoEspreita) {
     })
     .catch((e) => { erroTikTok = e.message || String(e); return []; });
 
-  comTikTok.then((extras) => devCapturadas.guardar(supabase, linhas.concat(extras)))
+  return comTikTok.then((extras) => devCapturadas.guardar(supabase, linhas.concat(extras)))
     .then((r) => {
       CAPTURA_ESTADO = {
         ultima: new Date().toISOString(),
