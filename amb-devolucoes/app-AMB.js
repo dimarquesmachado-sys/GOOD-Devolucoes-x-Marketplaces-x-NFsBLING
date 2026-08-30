@@ -82,7 +82,7 @@ const criarMlBuscas = require('./lib-AMB/ml-buscas-AMB');
 const registrarIdentificar = require('./lib-AMB/identificar-AMB');
 const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 
-const VERSAO = 'AMB Devolucoes b198';
+const VERSAO = 'AMB Devolucoes b199';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -2266,8 +2266,11 @@ router.get('/api/admin/sem-retorno', auth.requerLogin, async (req, res) => {
       if (Date.now() - INICIO_BUSCA > 12000) break;
       try {
         const r = await Promise.race([
-          ajudantes.buscarNFnoBlingPorOrderId(item.pedido, item.criado_em || null, { maxPaginas: 12 }),
-          new Promise((ok) => setTimeout(() => ok(null), 6000)),
+          ajudantes.buscarNFnoBlingPorOrderId(item.pedido, item.criado_em || null, { maxPaginas: 6 }),
+          // b197.1 (Codex): 6 paginas cabem no prazo. Com 700ms entre
+          // paginas, 12 nao caberiam em 6s — as ultimas nunca chegariam a
+          // responder, e eu esperaria a toa.
+          new Promise((ok) => setTimeout(() => ok(null), 8000)),
         ]);
         const achada = (r && r.match) || (r && r.ok && r.nf) || null;
         if (achada && achada.id) {

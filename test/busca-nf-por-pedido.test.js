@@ -26,15 +26,26 @@ const fn = BLING.slice(i, i + 5000);
      'a consulta FILTRA por data em vez de paginar de hoje pra tras');
   ok(/400 notas cobriram 9 DIAS/.test(fn),
      '  com a medicao registrada: 400 notas cobriam 9 dias, e a venda era de abril');
-  ok(/60 \* 24 \* 60 \* 60 \* 1000/.test(fn),
-     '  e a janela vai ate 60 dias DEPOIS da venda (a NF pode sair atrasada)');
+  // b197.1: a janela olha pra TRAS, nao pra frente
+  ok(/const DIAS_ANTES = opcoes\.diasAntes \|\| 180;/.test(fn),
+     '  e a janela vai 180 dias ANTES do evento');
+  ok(/a venda sempre precede a devolucao/.test(fn),
+     '  porque a data que recebo e a da DEVOLUCAO, e a venda veio antes');
+  ok(/o Bling devolve do MAIS RECENTE primeiro/i.test(fn),
+     '  e terminando depois do evento, a nota ficaria no FIM da lista');
 
-  // a janela calculada pro caso real
-  const ref = new Date('2026-04-19');
-  const ini = new Date(ref.getTime() - 5 * 864e5).toISOString().slice(0, 10);
-  const fim = new Date(ref.getTime() + 60 * 864e5).toISOString().slice(0, 10);
-  ok(ini === '2026-04-14' && fim === '2026-06-18',
-     'pro caso de 19/04, a janela vai de 14/04 a 18/06 — cobre a venda');
+  const ref = Date.parse('2026-04-19');
+  const ini = new Date(ref - 180 * 864e5).toISOString().slice(0, 10);
+  const fim = new Date(ref + 2 * 864e5).toISOString().slice(0, 10);
+  ok(ini === '2025-10-21' && fim === '2026-04-21',
+     'pro caso de 19/04, a janela vai de 21/10 a 21/04 — cobre vendas antigas');
+
+  // e o prazo do chamador tem que caber nas paginas pedidas
+  const SERVER = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
+  ok(/maxPaginas: 6/.test(SERVER),
+     'o chamador pede 6 paginas: com 700ms entre elas, 12 nao caberiam no prazo');
+  ok(/setTimeout\(\(\) => ok\(null\), 8000\)/.test(SERVER),
+     '  e o prazo subiu pra 8s, coerente com o ritmo mais lento');
 }
 
 // ── o limite de requisicoes nao e desistencia ────────────────────────

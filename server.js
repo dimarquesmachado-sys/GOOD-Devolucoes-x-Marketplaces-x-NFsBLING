@@ -232,7 +232,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.86.0 (a busca por pedido filtra por data e aguenta o limite)',
+    version: '4.86.1 (a janela olha pra TRAS: a venda precede a devolucao)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -5701,8 +5701,11 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
       if (Date.now() - INICIO_BUSCA > 12000) break;   // teto proprio, mais folgado
       try {
         const r = await Promise.race([
-          buscarNFnoBlingPorOrderId(item.pedido, item.criado_em || null, { maxPaginas: 12 }),
-          new Promise((ok) => setTimeout(() => ok(null), 6000)),
+          buscarNFnoBlingPorOrderId(item.pedido, item.criado_em || null, { maxPaginas: 6 }),
+          // b197.1 (Codex): 6 paginas cabem no prazo. Com 700ms entre
+          // paginas, 12 nao caberiam em 6s — as ultimas nunca chegariam a
+          // responder, e eu esperaria a toa.
+          new Promise((ok) => setTimeout(() => ok(null), 8000)),
         ]);
         const achada = (r && r.match) || (r && r.ok && r.nf) || null;
         if (achada && achada.id) {
