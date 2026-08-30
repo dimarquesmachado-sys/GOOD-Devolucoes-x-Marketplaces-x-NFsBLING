@@ -82,7 +82,7 @@ const criarMlBuscas = require('./lib-AMB/ml-buscas-AMB');
 const registrarIdentificar = require('./lib-AMB/identificar-AMB');
 const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 
-const VERSAO = 'AMB Devolucoes b191';
+const VERSAO = 'AMB Devolucoes b193';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -2147,6 +2147,7 @@ router.get('/api/admin/sem-retorno', auth.requerLogin, async (req, res) => {
     const itens = semRetorno.concat(magaluItens)
       .filter((d) => !jaTriados.has(String(d.pedido)))
       .map((d) => {
+        // (o vinculo da NF no Bling e feito depois, em bloco)
         // o relogio conta da EMISSAO da nota. Data exata (Magalu) manda
         // sobre o mes da chave (TikTok), que manda sobre a devolucao.
         let base = null;
@@ -2186,6 +2187,7 @@ router.get('/api/admin/sem-retorno', auth.requerLogin, async (req, res) => {
           pedido: d.pedido,
           nf_numero: d.nf_numero,
           nf_chave: d.nf_chave,
+          nf_id_bling: d.nf_id_bling || null,   // b192 - preenchido logo abaixo
           cliente: d.cliente_nome,
           produto: d.produto_titulo,
           sku: d.produto_sku,
@@ -2203,6 +2205,33 @@ router.get('/api/admin/sem-retorno', auth.requerLogin, async (req, res) => {
           prejuizo_integral: d.prejuizo_integral || undefined,
         };
       });
+
+    // b192 - VINCULAR A NF NO BLING, senao o card fica so com o aviso
+    // "sem NF vinculada" — sem link e sem serventia. A chave manda: ela
+    // carrega a competencia e a serie, e e o que o Magalu entrega.
+    const INICIO_BUSCA = Date.now();
+    // b192.1 (Codex): entram os que tem CHAVE **ou** so numero — nota com
+    // numero e sem chave existe, e ficaria sem link a toa.
+    // b192.2 (Codex): cota por marketplace, senao numa fila cheia de TikTok
+    // o Magalu nao entraria — e sao os casos de maior valor.
+    const semVinculoAMB = itens.filter((x) => x.nf_chave && !x.nf_id_bling);
+    const filaAMB = semVinculoAMB.filter((x) => x.marketplace === 'magalu').slice(0, 15)
+      .concat(semVinculoAMB.filter((x) => x.marketplace !== 'magalu').slice(0, 10));
+
+    for (const item of filaAMB) {
+      if (Date.now() - INICIO_BUSCA > 8000) break;   // o painel nao pode travar
+      try {
+        // a busca PAGINA no Bling e pode passar dos 8s sozinha; o teto do
+        // laco so e conferido entre itens. O prazo e o QUE SOBRA do
+        // orcamento: perder o vinculo de um card e melhor que travar a tela.
+        const sobra = Math.max(500, 8000 - (Date.now() - INICIO_BUSCA));
+        const id = await Promise.race([
+          nfp.resolverIdNFPorChave(item.nf_numero, item.nf_chave),
+          new Promise((ok) => setTimeout(() => ok(null), Math.min(5000, sobra))),
+        ]);
+        if (id) item.nf_id_bling = String(id);
+      } catch (e) { /* segue sem o link; o numero da NF esta no card */ }
+    }
 
     itens.sort((a, b) => {
       if (a.acao !== b.acao) return a.acao === 'cancelar_nf' ? -1 : 1;

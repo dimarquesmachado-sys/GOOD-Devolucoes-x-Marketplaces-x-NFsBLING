@@ -348,6 +348,25 @@
       </div>
 
       <!-- v3.79.1 - A ESPREITA no FIM, largura total (monitoramento, nao fila) -->
+<!-- b191 - VENDAS ESTORNADAS SEM RETORNO (porte da GOOD, mesmo lugar)
+           A logica toda vive em ../lib/ e recebe a empresa por parametro:
+           este bloco e so a tela. Ajuste na lib pega as duas empresas. -->
+      <div class="secao" id="secaoSemRetorno" style="display:none; grid-column: 1 / -1;">
+        <h2>
+          🧾 Estornadas sem retorno — recuperar o imposto
+          <span class="badge-count" id="countSemRetorno" style="background:#ef6c00;">0</span>
+        </h2>
+        <div style="font-size:13px;color:#666;margin-bottom:10px;">
+          Vendas que o marketplace reembolsou <b>sem devolução física</b> — o produto ficou com o
+          cliente, mas a nota de venda continua gerando imposto.
+          <b>Até 20 dias dá para cancelar a NF</b>; passado o prazo, o caminho é a NF de devolução.
+          Quando a mercadoria <b>não voltou</b>, lance no depósito de <b>DEFEITO</b> — ela não pode
+          entrar no estoque vendável. Os cards marcados com <b>↩️ TEVE DEVOLUÇÃO</b> são o contrário:
+          o produto voltou, então segue o depósito de sempre.
+        </div>
+        <div id="listaSemRetorno"></div>
+      </div>
+
       <div class="secao" id="secaoEspreita" style="display:none; grid-column: 1 / -1;">
         <h2>
           📮 À espreita — devoluções a caminho (Magalu · ML · Shopee)
@@ -426,11 +445,15 @@
         document.getElementById('secoes').style.display = '';
       }
       carregarEspreita(); // v3.76 - nao bloqueia o principal
+      carregarSemRetorno(); // b192.3 - idem: falha aqui nao derruba a fila
       // v3.99 - atualiza sozinho a cada 4 min: o que ja foi bipado ou mandado
       // pra fila de NF sai da lista sem precisar recarregar a pagina na mao.
       if (!window._espAuto) {
         window._espAuto = setInterval(function () {
-          if (!document.hidden) carregarEspreita();
+          if (!document.hidden) {
+            carregarEspreita();
+            carregarSemRetorno();   // b192.3 - o painel fica aberto o dia todo
+          }
         }, 4 * 60 * 1000);
       }
       carregarRecados();
@@ -1108,6 +1131,201 @@
     function espreitaOrdenar() { window._espOrdem = (window._espOrdem === 'antigas') ? 'novas' : 'antigas'; if (window._espDados) renderEspreita(window._espDados); }
 
     // v3.77 - A ESPREITA UNIFICADA: Magalu + ML + Shopee (devolucoes a caminho)
+async function carregarSemRetorno() {
+      try {
+        const r = await fetch('/api/admin/sem-retorno');
+        const d = await r.json();
+
+        // b184 (Codex): ESCONDER quando esvazia. Antes eu so saia da funcao,
+        // entao a lista velha ficava na tela depois de o dono resolver o
+        // ultimo caso — parecendo que ainda havia trabalho.
+        // b184.1 (Codex): FALHA e FILA VAZIA sao coisas diferentes.
+        //
+        // Eu escondia a secao nos dois casos — entao, se a rota quebrasse, o
+        // dono veria a mesma tela de "nada pendente" e concluiria que nao ha
+        // imposto a recuperar. E o silencio que a gente passou o dia matando.
+        if (!d || !d.ok) {
+          document.getElementById('secaoSemRetorno').style.display = '';
+          document.getElementById('countSemRetorno').textContent = '!';
+          document.getElementById('listaSemRetorno').innerHTML =
+            '<div style="padding:12px;border-radius:8px;background:#ffebee;border:2px solid #c62828;'
+            + 'color:#b71c1c;font-weight:700;">⚠️ Não consegui carregar esta lista'
+            + ((d && d.erro) ? '<div style="font-weight:400;margin-top:4px;font-size:13px;">'
+                + escapeHtml(String(d.erro)) + '</div>' : '')
+            + '<div style="font-weight:400;margin-top:4px;font-size:13px;">'
+            + 'Isto <b>não</b> quer dizer que não há casos — quer dizer que não deu para conferir.'
+            + '</div></div>';
+          return;
+        }
+
+        if (!Array.isArray(d.itens) || !d.itens.length) {
+          document.getElementById('secaoSemRetorno').style.display = 'none';
+          document.getElementById('listaSemRetorno').innerHTML = '';
+          document.getElementById('countSemRetorno').textContent = '0';
+          return;
+        }
+
+        document.getElementById('secaoSemRetorno').style.display = '';
+        document.getElementById('countSemRetorno').textContent = d.total;
+
+        // b188.2: se a lista veio cortada, dizer — senao ele acha que viu tudo
+        const avisoCorte = d.aviso_corte
+          ? '<div style="margin-bottom:10px;padding:10px;border-radius:8px;background:#fffde7;'
+            + 'border:2px solid #f9a825;color:#f57f17;font-size:13px;">⚠️ '
+            + escapeHtml(String(d.aviso_corte)) + '</div>'
+          : '';
+
+        // b189 - se o Magalu falhou, a lista PARECE completa e nao esta.
+        // Silencio aqui esconderia os R$ 12 mil que a outra conversa mediu.
+        const avisoMagalu = d.magalu_erro
+          ? '<div style="margin-bottom:10px;padding:10px;border-radius:8px;background:#ffebee;'
+            + 'border:2px solid #c62828;color:#b71c1c;font-weight:700;">'
+            + '⚠️ Os casos do Magalu NÃO entraram nesta lista: ' + escapeHtml(String(d.magalu_erro))
+            + '<div style="font-weight:400;margin-top:4px;font-size:13px;">'
+            + 'O que aparece abaixo está incompleto.</div></div>'
+          : '';
+
+        const cabecalho = d.podem_cancelar > 0
+          ? '<div style="margin-bottom:10px;padding:10px;border-radius:8px;background:#fff3e0;'
+            + 'border:2px solid #ef6c00;color:#e65100;font-weight:700;">'
+            + '⏳ ' + d.podem_cancelar + ' com a NF ainda no prazo de cancelamento — essas primeiro, '
+            + 'porque o relógio está correndo</div>'
+          : '';
+
+        const linhas = d.itens.map(function (x) {
+          const podeCancelar = x.acao === 'cancelar_nf';
+          // b184: quando a data veio da DEVOLUCAO (sem chave da NF), o prazo
+          // mostrado e MAIOR que o real — a nota e anterior. Avisa, pra ele
+          // conferir antes de tentar cancelar e levar um 501.
+          const aprox = x.prazo_base === 'devolucao' ? ' ⚠️' : '';
+          // b189 - o Magalu tem casos em que a devolucao EXISTE (classe
+          // `estornado_apos_envio`): o produto voltou pelo fluxo normal.
+          // Emitir NF de devolucao ali seria duplicar. Aviso em vez de
+          // esconder, porque a NF pode nao ter sido emitida ainda.
+          // v4.78 - o PIOR caso: entregue DEPOIS do estorno autorizado. O
+          // cliente ficou com a mercadoria E com o dinheiro. Nao ha imposto a
+          // recuperar aqui — ha prejuizo a contestar com o marketplace.
+          const tarjaPrejuizo = x.prejuizo_integral
+            ? '<span style="background:#b71c1c;color:#fff;padding:3px 8px;border-radius:10px;'
+              + 'font-size:10px;font-weight:700;margin-left:6px;" '
+              + 'title="Entregue DEPOIS do estorno: o cliente ficou com o produto e com o dinheiro. '
+              + 'Vale contestar com o marketplace.">💸 PREJUÍZO INTEGRAL</span>'
+            : '';
+
+          // e o que a classe diz sobre a ENTRADA de estoque — errar aqui
+          // duplica ou some com inventario
+          const dicaEstoque = x.entrada_estoque === false
+            ? '<div style="font-size:12px;color:#00695c;margin-top:4px;">'
+              + '📦 Devolução <b>SEM entrada de estoque</b> — a mercadoria não voltou ao CD</div>'
+            : (x.entrada_estoque === true
+              ? '<div style="font-size:12px;color:#00695c;margin-top:4px;">'
+                + '📦 Devolução <b>COM entrada</b> — o produto voltou (confira no recebimento)</div>'
+              : (x.classe
+                ? '<div style="font-size:12px;color:#e65100;margin-top:4px;">'
+                  + '❓ <b>Confira se houve devolução física</b> antes de dar baixa</div>'
+                : ''));
+
+          const jaVoltou = !!x.tem_devolucao_registrada;
+          const tarjaVoltou = jaVoltou
+            ? '<span style="background:#00695c;color:#fff;padding:3px 8px;border-radius:10px;'
+              + 'font-size:10px;font-weight:700;margin-left:6px;" '
+              + 'title="Este pedido TEM devolução registrada no marketplace — o produto voltou. '
+              + 'Confira se a NF de devolução já saiu pelo fluxo normal antes de emitir outra.">'
+              + '↩️ TEVE DEVOLUÇÃO</span>'
+            : '';
+
+          const tarja = podeCancelar
+            ? '<span style="background:#ef6c00;color:#fff;padding:3px 8px;border-radius:10px;'
+              + 'font-size:10px;font-weight:700;" title="'
+              + (aprox ? 'prazo APROXIMADO: contado da devolucao, nao da nota — o real e menor'
+                       : 'contado do mes da nota, pela chave da NF-e')
+              + '">CANCELAR NF · ' + x.prazo_cancelamento + 'd restantes' + aprox + '</span>'
+            : '<span style="background:#546e7a;color:#fff;padding:3px 8px;border-radius:10px;'
+              + 'font-size:10px;font-weight:700;">NF DE DEVOLUÇÃO</span>';
+
+          // b188 - TAG DO MARKETPLACE, igual aos outros cards do painel.
+          // Sem ela o dono nao sabe de onde veio o caso, e com ML e Shopee
+          // entrando na lista isso fica pior.
+          const CORES_MKT = { tiktok: '#000', shopee: '#ee4d2d', magalu: '#0086ff', ml: '#ffe600' };
+          const mkt = String(x.marketplace || '').toLowerCase();
+          const NOMES_MKT = { tiktok: 'TikTok', shopee: 'Shopee', magalu: 'Magalu', ml: 'Mercado Livre' };
+          const tagMkt = mkt
+            ? '<span style="background:' + (CORES_MKT[mkt] || '#607d8b') + ';'
+              + 'color:' + (mkt === 'ml' ? '#333' : '#fff') + ';padding:3px 8px;border-radius:10px;'
+              + 'font-size:10px;font-weight:700;margin-right:6px;">'
+              + escapeHtml(NOMES_MKT[mkt] || x.marketplace) + '</span>'
+            : '';
+
+          // b188.1 (Codex): O BOTAO DE GERAR NF SAIU DAQUI.
+          //
+          // Eu tinha reaproveitado abrirModalGerarDevolucao() achando que
+          // bastava passar os mesmos parametros. Nao basta: o `devolucaoId`
+          // dele e o id de uma TRIAGEM (tabela `devolucoes`), e eu passava o
+          // id de um registro CAPTURADO (tabela `devolucoes_capturadas`).
+          // Sao tabelas diferentes — o modal procuraria um registro que nao
+          // existe.
+          //
+          // E a revisao apontou mais tres problemas que so apareceriam na
+          // hora de emitir, que e o pior momento possivel:
+          //   - a nota sairia com o pedido INTEIRO, nao so os itens
+          //     reembolsados (venda de 3 produtos, 1 reembolsado → devolvia 3)
+          //   - o deposito nao vinha pre-definido como DEFEITO, que e a
+          //     exigencia do dono pra isso nao entrar no estoque vendavel
+          //   - casos ainda CANCELAVEIS ganhariam botao de devolucao, quando
+          //     o certo ali e cancelar a nota
+          //
+          // Botao que gera nota fiscal errada e pior que nao ter botao. O
+          // caminho de emissao vira PR proprio, feito com calma.
+          //
+          // Por ora, o card leva pra NOTA no Bling — que e o que ele precisa
+          // pra agir, e o mesmo lugar de onde partiria de qualquer forma.
+          const linkNF = x.nf_id_bling
+            ? '<a class="btn" style="background:#1565c0;margin-top:8px;display:inline-block;" '
+              + 'href="https://www.bling.com.br/notas.fiscais.php#edit/' + encodeURIComponent(x.nf_id_bling) + '" '
+              + 'target="_blank" rel="noopener" '
+              + 'title="Abre a nota de venda no Bling. Lembre do depósito de DEFEITO: '
+              + 'a mercadoria nunca chegou, então não pode entrar no estoque vendável.">'
+              + '🔗 Abrir NF no Bling</a>'
+            : '<div style="margin-top:8px;font-size:12px;color:#999;">'
+              + (x.nf_numero
+                  ? 'NF ' + escapeHtml(String(x.nf_numero)) + ' não localizada no Bling'
+                  : 'sem NF vinculada a este pedido')
+              + '</div>';
+
+          return '<div class="item" style="border-left-color:' + (podeCancelar ? '#ef6c00' : '#546e7a') + ';">'
+            + '<div class="item-header"><div class="item-titulo">'
+            + tagMkt + escapeHtml(x.produto || '-') + ' ' + tarja + tarjaVoltou + tarjaPrejuizo + '</div></div>'
+            + '<div style="font-size:13px;color:#555;margin-top:6px;">'
+            + (x.nf_numero ? '<b>NF ' + escapeHtml(String(x.nf_numero)) + '</b> · ' : '')
+            + 'pedido <code>' + escapeHtml(String(x.pedido || '-')) + '</code>'
+            + (x.sku ? ' · SKU <code>' + escapeHtml(String(x.sku)) + '</code>' : '')
+            + (x.qtd ? ' · ' + escapeHtml(String(x.qtd)) + ' un' : '')
+            + (x.valor != null
+                ? ' · R$ ' + Number(x.valor).toFixed(2)
+                  // b190.5 - valor rateado nao pode passar por exato
+                  + (x.valor_rateado
+                      ? ' <span style="color:#e65100;font-weight:700;" title="Este pedido tem '
+                        + 'mais de uma nota. O valor mostrado é o do pedido dividido pelas notas, '
+                        + 'não o valor exato desta.">~aprox</span>'
+                      : '')
+                : '')
+            + (x.dias_desde != null ? ' · há ' + x.dias_desde + ' dias' : '')
+            + '</div>'
+            + (x.motivo ? '<div style="font-size:13px;color:#777;margin-top:4px;">'
+                + '💬 ' + escapeHtml(String(x.motivo)) + '</div>' : '')
+            + (x.cliente ? '<div style="font-size:12px;color:#999;margin-top:2px;">'
+                + escapeHtml(String(x.cliente)) + '</div>' : '')
+            + dicaEstoque
+            + linkNF
+            + '</div>';
+        }).join('');
+
+        document.getElementById('listaSemRetorno').innerHTML = avisoCorte + cabecalho + linhas;
+      } catch (e) {
+        // silencioso de proposito: e um bloco informativo, nao a fila
+      }
+    }
+
     async function carregarEspreita() {
       atualizarCacheRecados();
       try {

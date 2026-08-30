@@ -232,7 +232,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.79.0 (estornadas sem retorno na AMB: so fiacao, a lib e a mesma)',
+    version: '4.80.2 (prazo compartilhado e cota do Magalu na busca)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -5359,10 +5359,48 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
     // dias a fila pode crescer, e 30 buscas em serie no Bling seguram a
     // resposta do painel. Quem ficar sem o id aparece com o numero da NF.
     const INICIO_BUSCA = Date.now();
-    const PARA_BUSCAR = itens.filter((x) => x.nf_numero && !x.nf_id_bling).slice(0, 15);
+    // b192 - teto de 25: com o Magalu junto a fila cresceu (10 casos so
+    // dele na GOOD). O teto de TEMPO abaixo continua sendo a trava real —
+    // ele para quando o painel comeca a demorar, seja qual for a contagem.
+    // b192.2 (Codex): RESERVAR VAGA PRO MAGALU.
+    //
+    // A lista vem ordenada por acao e valor, e o TikTok tende a ficar na
+    // frente. Cortando os 25 primeiros, numa fila cheia de TikTok o Magalu
+    // nao entraria — e sao os casos de maior valor (R$ 12.704 contra R$ 1
+    // caso do TikTok na GOOD). Divido a cota entre os dois.
+    const semVinculo = itens.filter((x) => x.nf_numero && !x.nf_id_bling);
+    const doMagalu = semVinculo.filter((x) => x.marketplace === 'magalu').slice(0, 15);
+    const dosOutros = semVinculo.filter((x) => x.marketplace !== 'magalu').slice(0, 10);
+    const PARA_BUSCAR = doMagalu.concat(dosOutros);
     for (const item of PARA_BUSCAR) {
       if (Date.now() - INICIO_BUSCA > 8000) break;   // o painel nao pode travar
       try {
+        // b192 - PELA CHAVE primeiro, quando ela existe.
+        //
+        // `resolverIdNFPorChave` usa a competencia e a serie que moram na
+        // propria chave — mais preciso que o numero, que se repete entre
+        // series. E e o que o Magalu me da: ele entrega a CHAVE, nem sempre
+        // o numero (por isso todos os cards dele apareciam "sem NF").
+        if (item.nf_chave) {
+          try {
+            // b192.1 (Codex): a busca por chave PAGINA no Bling e pode
+            // passar dos 8s sozinha — o teto do laco so e conferido ENTRE
+            // itens, entao uma unica busca lenta travaria o painel.
+            // Corrida com um prazo proprio: perder o vinculo de um card e
+            // melhor que segurar a tela toda.
+            // b192.2 (Codex): o prazo e o QUE SOBRA do orcamento total, nao
+            // 5s fixos. Com 5s fixos, a busca por chave podia consumir quase
+            // tudo e a busca por numero logo abaixo comecaria ja no
+            // estouro — duas buscas somando 10s num teto de 8.
+            const sobra = Math.max(500, 8000 - (Date.now() - INICIO_BUSCA));
+            const idPorChave = await Promise.race([
+              resolverIdNFPorChave(item.nf_numero, item.nf_chave),
+              new Promise((ok) => setTimeout(() => ok(null), Math.min(5000, sobra))),
+            ]);
+            if (idPorChave) { item.nf_id_bling = String(idPorChave); continue; }
+          } catch (e) { /* cai na busca por numero abaixo */ }
+        }
+
         // b188.3 (Codex): a funcao devolve { ok, match }, NAO a nota direto.
         //
         // Eu lia `nf.id` de um objeto que nunca tem `id` — o link do card

@@ -291,6 +291,105 @@ const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o
      '  e quando nao da pra saber, manda conferir em vez de chutar');
 }
 
+// ── b192: o NUMERO da NF mora dentro da chave ───────────────────────
+//
+// O dono abriu o painel e viu os 10 cards do Magalu com "sem NF vinculada
+// a este pedido" — sem link, sem botao, sem serventia. A causa: a API do
+// Magalu entrega a CHAVE, nem sempre o numero, e sem numero eu nao acho a
+// nota no Bling.
+{
+  // conferido com chaves REAIS que apareceram no painel dele
+  ok(mc.numeroDaChave('35260764289091000100550010000020701083179280') === '2070',
+     'extrai o numero da chave (NF 002070 da GOOD)');
+  ok(mc.numeroDaChave('35260732461988000182550010000764661835887584') === '76466',
+     '  e da NF 076466, a do Antonio');
+  ok(mc.numeroDaChave('123') === null, 'chave curta nao vira numero inventado');
+  ok(mc.numeroDaChave(null) === null, '  nem nula');
+
+  const semNumero = mc.normalizar({
+    classe: 'estornado_apos_envio', order_code: 'X',
+    notas: [{ chave: '35260732461988000182550010000764661835887584', em: '2026-08-25' }],
+  }, 'good');
+  ok(semNumero.nf_numero === '76466',
+     'a API mandando so a chave, o numero sai dela — e o card ganha link');
+
+  const comNumero = mc.normalizar({
+    classe: 'estornado_apos_envio', order_code: 'X',
+    notas: [{ numero: '99999', chave: '35260732461988000182550010000764661835887584' }],
+  }, 'good');
+  ok(comNumero.nf_numero === '99999',
+     'mas quando a API MANDA o numero, ele manda — nao sobrescrevo');
+}
+
+// ── e a NF e resolvida PELA CHAVE nos dois servidores ───────────────
+{
+  const fs = require('fs');
+  const path = require('path');
+  const SERVER = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
+  const AMB = fs.readFileSync(path.join(__dirname, '..', 'amb-devolucoes', 'app-AMB.js'), 'utf8');
+
+  ok(/resolverIdNFPorChave\(item\.nf_numero, item\.nf_chave\)/.test(SERVER),
+     'a GOOD resolve a NF pela CHAVE (competencia + serie moram nela)');
+  ok(/nfp\.resolverIdNFPorChave\(item\.nf_numero, item\.nf_chave\)/.test(AMB),
+     'e a AMB tambem — mesma funcao, de lib/nf-pessoa');
+
+  // b192.1: a busca PAGINA e pode estourar o tempo sozinha
+  ok(/Promise\.race\(\[[\s\S]{0,120}resolverIdNFPorChave/.test(SERVER),
+     'a busca por chave corre contra um prazo proprio (ela pagina no Bling)');
+  ok(/Promise\.race\(\[[\s\S]{0,120}resolverIdNFPorChave/.test(AMB),
+     '  nos dois servidores');
+  ok(/perder o vinculo[\s\S]{0,60}melhor que segurar a tela/.test(SERVER),
+     '  com a escolha explicada: um card sem link e melhor que a tela travada');
+  // b192.2: a fila da AMB exige CHAVE porque `resolverIdNFPorChave` nao
+  // funciona sem ela — incluir nota so com numero seria enfileirar algo que
+  // nunca resolveria, gastando vaga da cota. A GOOD tem o caminho por
+  // numero como reserva; a AMB nao, e nao vou duplicar aquele caminho aqui
+  // so pra igualar.
+  ok(/semVinculoAMB = itens\.filter\(\(x\) => x\.nf_chave && !x\.nf_id_bling\)/.test(AMB),
+     'a fila da AMB exige chave: sem ela a resolucao nao funciona, e a vaga se perderia');
+  ok(/Date\.now\(\) - INICIO_BUSCA > 8000/.test(AMB),
+     '  com o mesmo teto de tempo entre itens, pro painel nao travar');
+
+  // b192.2: o prazo e o QUE SOBRA, e ha COTA pro Magalu
+  ok(/Math\.max\(500, 8000 - \(Date\.now\(\) - INICIO_BUSCA\)\)/.test(SERVER),
+     'o prazo da busca por chave e o que SOBRA do orcamento, nao 5s fixos');
+  ok(/Math\.max\(500, 8000 - \(Date\.now\(\) - INICIO_BUSCA\)\)/.test(AMB),
+     '  nos dois servidores (senao duas buscas somariam 10s num teto de 8)');
+
+  ok(/x\.marketplace === 'magalu'\)\.slice\(0, 15\)/.test(SERVER),
+     'ha COTA pro Magalu na fila de busca');
+  ok(/x\.marketplace === 'magalu'\)\.slice\(0, 15\)/.test(AMB), '  nos dois');
+  ok(/sao os casos de maior valor/.test(SERVER),
+     '  porque numa fila cheia de TikTok ele nao entraria — e vale mais');
+}
+
+// ── b192.1: o id por nota usa o numero DERIVADO ─────────────────────
+{
+  // sem `numero` na API — o caso comum do Magalu — o sufixo sumia e as
+  // duas notas do mesmo pedido voltavam a colidir
+  const duas = mc.normalizarTodas({
+    classe: 'estornado_apos_envio', order_code: 'P1',
+    notas: [{ chave: '35260732461988000182550010000764661835887584' },
+            { chave: '35260764289091000100550010000020701083179280' }],
+  }, 'good');
+  ok(duas.length === 2, 'duas notas viram duas linhas');
+  ok(duas[0].id !== duas[1].id,
+     'e os ids NAO colidem, mesmo sem numero vindo da API');
+  ok(duas[0].id === 'P1#76466' && duas[1].id === 'P1#2070',
+     '  usando o numero derivado da chave');
+
+  const semNada = mc.normalizarTodas({
+    classe: 'estornado_apos_envio', order_code: 'P2',
+    notas: [{ chave: 'X'.repeat(44) }, { chave: 'Y'.repeat(44) }],
+  }, 'good');
+  if (semNada.length === 2) {
+    ok(semNada[0].id !== semNada[1].id,
+       'chave invalida: cai no final dela como ultimo recurso, e ainda distingue');
+  } else {
+    ok(true, 'chave invalida nao gera linha (tambem aceitavel)');
+  }
+}
+
 console.log('');
 console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
 process.exit(falhas ? 1 : 0);

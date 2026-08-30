@@ -15,7 +15,11 @@ const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o
 
 const RAIZ = path.join(__dirname, '..');
 const AMB = fs.readFileSync(path.join(RAIZ, 'amb-devolucoes', 'app-AMB.js'), 'utf8');
-const PAINEL_AMB = fs.readFileSync(path.join(RAIZ, 'amb-devolucoes', 'public-AMB', 'painel2-AMB.html'), 'utf8');
+// b192.3 (Codex): o painel SERVIDO por /amb/painel e o painel-AMB.html.
+// Eu tinha portado so pro painel2, que so e alcancavel pelo endereco
+// direto — na pratica o card nao apareceria pra ele.
+const PAINEL_AMB = fs.readFileSync(path.join(RAIZ, 'amb-devolucoes', 'public-AMB', 'painel-AMB.html'), 'utf8');
+const PAINEL_AMB2 = fs.readFileSync(path.join(RAIZ, 'amb-devolucoes', 'public-AMB', 'painel2-AMB.html'), 'utf8');
 const PAINEL_GOOD = fs.readFileSync(path.join(RAIZ, 'public', 'painel-devolucoes.html'), 'utf8');
 const SERVER = fs.readFileSync(path.join(RAIZ, 'server.js'), 'utf8');
 
@@ -60,13 +64,18 @@ const SERVER = fs.readFileSync(path.join(RAIZ, 'server.js'), 'utf8');
 {
   ok(/id="secaoSemRetorno"/.test(PAINEL_AMB), 'a AMB tem a secao');
   ok(/async function carregarSemRetorno/.test(PAINEL_AMB), '  e a funcao que carrega');
-  ok(/carregarSemRetorno\(\); \/\/ b191/.test(PAINEL_AMB), '  chamada no carregamento');
-  ok(/carregarSemRetorno\(\);   \/\/ b191/.test(PAINEL_AMB), '  e no timer');
+  ok(/carregarSemRetorno\(\); \/\/ b19/.test(PAINEL_AMB), '  chamada no carregamento');
+  ok(/carregarSemRetorno\(\);   \/\/ b19/.test(PAINEL_AMB), '  e no timer');
 
   // ACIMA do espreita, como ele pediu na GOOD
   const iSR = PAINEL_AMB.indexOf('id="secaoSemRetorno"');
   const iESP = PAINEL_AMB.indexOf('id="secaoEspreita"');
   ok(iSR !== -1 && iESP !== -1 && iSR < iESP, '  no mesmo lugar da GOOD: acima do "a espreita"');
+
+  // b192.3: e nos DOIS paineis da AMB — o servido por /amb/painel e o
+  // painel-AMB.html; o painel2 so e alcancavel pelo endereco direto
+  ok(/id="secaoSemRetorno"/.test(PAINEL_AMB2) && /carregarSemRetorno/.test(PAINEL_AMB2),
+     'o card existe TAMBEM no painel2 (quem usa o endereco direto)');
 
   // os avisos que importam existem nos DOIS
   for (const [nome, txt] of [['prejuizo integral', 'PREJUÍZO INTEGRAL'],
