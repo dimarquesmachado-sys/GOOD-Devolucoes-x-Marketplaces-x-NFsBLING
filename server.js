@@ -232,7 +232,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.68.4 (revelia: preserva a lista do servico; erro antes da loja)',
+    version: '4.69.6 (descarte sempre pela solicitacao, nunca pelo pedido)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -4973,6 +4973,245 @@ app.get('/api/ids-fiscais', requerLogin, async (req, res) => {
   return res.status(400).json({ ok: false, erro: 'empresa desconhecida: ' + alvo, aceitas_aqui: ['good'] });
 });
 
+// ============================================================
+// v4.69 - VENDAS ESTORNADAS SEM RETORNO
+// ------------------------------------------------------------
+// Lista as vendas que o marketplace reembolsou SEM devolucao fisica —
+// o produto nunca volta, mas a NF de venda continua emitida, gerando
+// imposto sobre uma receita que nao existiu.
+//
+// Ideia do dono (29/08):
+//
+//   "se a venda foi cancelada, a gente pode cancelar a nota fiscal e
+//    isentar ao menos o imposto da venda. se não der pra cancelar, a
+//    gente gera a nota fiscal de devolução q dá na mesma"
+//
+// TAMANHO DO PROBLEMA: no TikTok da Girassol, o filtro "Apenas
+// reembolso" mostrava 62 casos contra 103 com devolucao. Metade das
+// solicitacoes nunca vira pacote.
+//
+// O PRAZO decide o que fazer (medido na madrugada de 25-28/08):
+//   ate 20 dias  -> da pra CANCELAR a NF (cStat 135 ate 24h, 155 depois)
+//   passou disso -> so NF de devolucao (501 intempestivo, sem contorno)
+//
+// O DEPOSITO E O DE DEFEITO, nao o geral — pedido dele: "não integrarão
+// o estoque normal, pois nunca recebemos d volta". O objetivo aqui e
+// so fiscal.
+//
+// ⚠️ NAO EMITE NADA. So lista e ordena; quem decide e emite e ele, no
+// fluxo de sempre.
+// ============================================================
+app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
+  try {
+    if (!supabase) return res.status(503).json({ ok: false, erro: 'Supabase nao configurado' });
+
+    const dias = Math.min(365, Math.max(1, parseInt(req.query.dias, 10) || 180));
+    const desde = new Date(Date.now() - dias * 864e5).toISOString();
+
+    // b184 (Codex): FILTRAR NO BANCO, nao depois.
+    //
+    //   1. `empresa` — a tabela e COMPARTILHADA (uma linha por empresa,
+    //      foi decisao de desenho). Sem este filtro, o painel da GOOD
+    //      mostraria devolucoes da AMB e da Girassol.
+    //   2. `tipo_tiktok` e `status` — eu filtrava em JS DEPOIS do limite
+    //      de 500. Numa janela com mais de 500 capturadas, os reembolsos
+    //      podiam ficar todos de fora e a lista vinha vazia sem motivo.
+    //
+    // O limite agora se aplica ao que interessa, nao ao bolo inteiro.
+    // b184.1 (Codex): a empresa e FIXA, nao vem da querystring.
+    //
+    // Eu aceitava ?empresa=amb e o admin da GOOD via os dados da AMB so
+    // trocando a URL — vazamento entre empresas, e o oposto do isolamento
+    // que o resto do projeto mantem (server separado, tabela separada,
+    // login separado). Este servidor E o da GOOD; a AMB tem o dela.
+    const empresa = 'good';
+
+    const { data, error } = await supabase
+      .from('devolucoes_capturadas')
+      .select('*')
+      .eq('empresa', empresa)
+      .eq('tipo_tiktok', 'REFUND')
+      // b184.1 (Codex): a JANELA e do REEMBOLSO, nao da captura. `capturado_em`
+      // e quando NOS gravamos — a captura roda de hora em hora e regrava tudo,
+      // entao ?dias=7 trazia 6 meses de historico. Filtro por criado_no_mkt,
+      // que e quando a devolucao nasceu no marketplace.
+      .gte('criado_no_mkt', desde)
+      // b184.1: e o STATUS tambem no banco. Filtrar "concluida" em JS depois
+      // do limite tinha o mesmo defeito de antes: numa janela cheia de
+      // pendentes, as concluidas ficavam de fora.
+      .in('status', ['RETURN_OR_REFUND_REQUEST_COMPLETE', 'REFUND_SUCCESS', 'COMPLETE', 'SUCCESS'])
+      .order('criado_no_mkt', { ascending: false })
+      .limit(500);
+
+    if (error) return res.status(500).json({ ok: false, erro: error.message });
+
+    // rede de seguranca: o `in` acima ja filtrou, mas se o marketplace
+    // criar um status novo com CANCEL no nome, ele nao passa aqui.
+    // Solicitacao PENDENTE pode virar devolucao com retorno ou ser recusada
+    // — emitir NF nela seria devolver o que talvez nem tenha sido reembolsado.
+    const semRetorno = (data || []).filter((d) => {
+      const st = String(d.status || '').toUpperCase();
+      return st.indexOf('CANCEL') === -1;
+    });
+
+    // ja tem NF de devolucao? entao ja foi resolvida
+    const pedidos = [...new Set(semRetorno.map((d) => d.pedido).filter(Boolean))];
+    // b184 (Codex): esta consulta NAO pode falhar em silencio, nem ficar
+    // pela metade. Se ela falhar e eu seguir, o painel mostra casos JA
+    // RESOLVIDOS e o dono emite NF em duplicidade — pior que nao mostrar
+    // nada. E o teto de 300 deixava de fora os pedidos seguintes, que
+    // apareceriam como pendentes sem ser.
+    // b184.5: so o conjunto FINO sobrevive — o descarte por pedido saiu,
+    // porque escondia caso novo por causa de NF de solicitacao antiga.
+    const resolvidosFinos = new Set();
+    for (let i = 0; i < pedidos.length; i += 200) {
+      const fatia = pedidos.slice(i, i + 200);
+      const { data: tri, error: erroTri } = await supabase
+        .from('devolucoes')
+        .select('order_id, shipment_id, tracking, nf_devolucao_id_bling')
+        .in('order_id', fatia)
+        .not('nf_devolucao_id_bling', 'is', null);
+      if (erroTri) {
+        return res.status(500).json({
+          ok: false,
+          erro: 'nao consegui conferir quais ja tem NF de devolucao: ' + erroTri.message
+            + ' — listar sem essa checagem mostraria casos ja resolvidos',
+        });
+      }
+      // b184.1 (Codex): guardo os identificadores mais finos, porque
+      // um PEDIDO pode ter varias solicitacoes (o TikTok abre uma por item).
+      // Resolver a do item A nao resolve a do item B — descartar pelo pedido
+      // esconderia a segunda, que continua devendo NF.
+      // b184.5: a chave da captura pode ser o id da solicitacao OU o
+      // rastreio, dependendo do que existia. A triagem guarda shipment_id e
+      // tracking — junto os dois, pra casar com qualquer das formas.
+      for (const t of (tri || [])) {
+        if (t.shipment_id) resolvidosFinos.add(String(t.shipment_id));
+        if (t.tracking) resolvidosFinos.add(String(t.tracking));
+      }
+    }
+
+    const AGORA = Date.now();
+    // b184.5 (Codex): o descarte e SEMPRE pela solicitacao, nunca pelo pedido.
+    //
+    // Eu contava as irmas DEPOIS dos filtros (data, tipo, status, limite de
+    // 500). Se uma solicitacao antiga do mesmo pedido ja foi resolvida e a
+    // nova nao, sobra UMA na contagem — e a heuristica "pedido com uma so"
+    // a descartava por causa da NF da outra. O caso fiscal novo sumia.
+    //
+    // A contagem sempre seria enganosa, porque so enxerga o que passou pelo
+    // filtro. Entao abandonei a heuristica: comparo a chave DAQUELA
+    // solicitacao com as ja resolvidas, e pronto.
+    const itens = semRetorno
+      .filter((d) => {
+        const chaveDela = String(d.chave_marketplace || d.id || '');
+        return !resolvidosFinos.has(chaveDela);
+      })
+      .map((d) => {
+        // b184 (Codex): O RELOGIO CONTA DA EMISSAO DA NOTA, nao da devolucao.
+        //
+        // A devolucao nasce dias (as vezes semanas) depois da venda. Contar
+        // dali dava MAIS prazo do que existe: um caso com nota de 25 dias
+        // atras e devolucao de 3 apareceria como "cancelavel", e o
+        // cancelamento seria recusado com 501 na cara do dono.
+        //
+        // A CHAVE DA NF-e carrega a competencia nas posicoes 2-5 (AAMM), e
+        // a captura ja guarda a chave. Uso o mes da chave como base, com a
+        // devolucao de reserva quando nao ha chave.
+        //
+        // Ainda e aproximacao — a chave da o MES, nao o dia. Assumo o dia 1,
+        // que e a leitura mais CONSERVADORA: mostra menos prazo do que pode
+        // haver, nunca mais.
+        let base = null;
+        let baseOrigem = null;
+        const chave = String(d.nf_chave || '').replace(/\D/g, '');
+        if (chave.length === 44) {
+          const aa = parseInt(chave.slice(2, 4), 10);
+          const mm = parseInt(chave.slice(4, 6), 10);
+          if (aa >= 0 && mm >= 1 && mm <= 12) {
+            // b184.1 (Codex): a chave da o MES, nao o dia. Uma nota emitida
+            // dia 28 apareceria com 27 dias a mais de idade do que tem.
+            //
+            // Buscar a data exata no Bling seria uma chamada por item — o
+            // painel ficaria lento pra ganhar precisao num campo que ele
+            // confere antes de agir de qualquer forma.
+            //
+            // Entao: uso o dia 1 (a nota tem NO MAXIMO essa idade), mas so
+            // ofereco CANCELAR quando ate o ULTIMO dia do mes ainda estaria
+            // no prazo. Assim nunca sugiro cancelar algo ja intempestivo;
+            // no maximo deixo de sugerir num caso que ainda daria — e ai o
+            // dono decide olhando o Bling.
+            base = Date.UTC(2000 + aa, mm - 1, 1);
+            baseOrigem = 'chave_nfe';
+          }
+        }
+        if (base == null && d.criado_no_mkt) {
+          base = new Date(d.criado_no_mkt).getTime();
+          baseOrigem = 'devolucao';   // aproximacao: da MAIS prazo que o real
+        }
+
+        const diasDesde = base ? Math.floor((AGORA - base) / 864e5) : null;
+
+        // b184.1: quando a base e o mes da chave, o dia real pode ser ate 30
+        // dias depois. Pra NUNCA sugerir cancelamento intempestivo, exijo que
+        // o pior caso (dia 1) ainda esteja no prazo.
+        const podeCancelar = diasDesde != null && diasDesde <= 20;
+
+        return {
+          id: d.id,
+          marketplace: d.marketplace,
+          pedido: d.pedido,
+          nf_numero: d.nf_numero,
+          nf_chave: d.nf_chave,
+          cliente: d.cliente_nome,
+          produto: d.produto_titulo,
+          sku: d.produto_sku,
+          qtd: d.produto_qtd,
+          valor: d.valor_refund,
+          motivo: d.motivo_texto || d.motivo,
+          criado_em: d.criado_no_mkt,
+          dias_desde: diasDesde,
+          // o que fazer: cancelar (se no prazo) ou NF de devolucao
+          acao: podeCancelar ? 'cancelar_nf' : 'nf_devolucao',
+          prazo_cancelamento: podeCancelar ? Math.max(0, 20 - diasDesde) : 0,
+          // de onde veio a data usada no relogio — a tela avisa quando e
+          // aproximacao, pra ele conferir antes de tentar cancelar
+          prazo_base: baseOrigem,
+        };
+      });
+
+    // quem ainda da pra cancelar vem primeiro, e dentro disso o mais
+    // urgente — e a unica parte com prazo correndo
+    itens.sort((a, b) => {
+      if (a.acao !== b.acao) return a.acao === 'cancelar_nf' ? -1 : 1;
+      if (a.acao === 'cancelar_nf') return a.prazo_cancelamento - b.prazo_cancelamento;
+      return (b.valor || 0) - (a.valor || 0);   // nos outros, o maior valor primeiro
+    });
+
+    return res.json({
+      ok: true,
+      empresa,
+      total: itens.length,
+      valor_total: Number(itens.reduce((t, x) => t + (Number(x.valor) || 0), 0).toFixed(2)),
+      podem_cancelar: itens.filter((x) => x.acao === 'cancelar_nf').length,
+      itens,
+      // b184 (Codex): quem CANCELA a nota nao gera NF de devolucao, entao a
+      // checagem por nf_devolucao_id_bling nunca o tira da lista — ele
+      // reapareceria pra sempre. Falta um jeito de marcar "resolvido por
+      // cancelamento"; ate la, o aviso deixa isso explicito na resposta em
+      // vez de o dono descobrir sozinho vendo o caso voltar.
+      aviso_cancelados: 'Casos resolvidos por CANCELAMENTO da NF de venda ainda '
+        + 'reaparecem aqui: a lista so sabe descartar quem ganhou NF de devolucao. '
+        + 'Vale conferir no Bling antes de agir num item marcado como cancelavel.',
+      leia: 'Vendas reembolsadas SEM devolucao fisica: o produto nao volta, mas a NF de venda '
+        + 'continua gerando imposto. Ate 20 dias da pra CANCELAR a nota; depois, NF de devolucao. '
+        + 'O deposito e o de DEFEITO — nao entra no estoque vendavel, porque a mercadoria nunca chegou.',
+    });
+  } catch (e) {
+    return res.status(500).json({ ok: false, erro: String(e.message || e).slice(0, 200) });
+  }
+});
+
 app.get('/api/admin/espreita', requerAdmin, async (req, res) => {
   const agora = Date.now();
   const forcar = req.query.fresh === '1';
@@ -5154,8 +5393,19 @@ function capturarDevolucoes(resultadoEspreita) {
   if (!supabase || CAPTURA_RODANDO) return;
   if (Date.now() - CAPTURA_ULTIMA < CAPTURA_INTERVALO_MS) return;
 
-  const lista = (resultadoEspreita && resultadoEspreita.itens) || [];
-  if (!lista.length) return;
+  // b184.2 (Codex): o campo e `em_transito`, nao `itens`.
+  //
+  // montarEspreita() devolve { em_transito, atrasadas_30d, nunca_bipadas, ... }
+  // e eu lia `.itens`, que nao existe — entao a captura gravava ZERO desde
+  // que subiu, calada. E o painel de estornadas consultaria uma tabela vazia.
+  const lista = (resultadoEspreita && (resultadoEspreita.em_transito || resultadoEspreita.itens)) || [];
+
+  // b184.3 (Codex): NAO sair quando os outros 3 vierem vazios.
+  //
+  // O TikTok nao passa pelo espreita — vem pela ponte. Se Magalu, ML e
+  // Shopee nao tiverem nada em transito (um dia calmo, ou uma falha la),
+  // eu saia aqui e o TikTok nunca era capturado. E justamente o TikTok que
+  // alimenta o painel de estornadas sem retorno.
 
   CAPTURA_RODANDO = true;
   CAPTURA_ULTIMA = Date.now();
@@ -5164,7 +5414,33 @@ function capturarDevolucoes(resultadoEspreita) {
     .map((d) => devCapturadas.traduzir(d, 'good'))
     .filter(Boolean);
 
-  devCapturadas.guardar(supabase, linhas)
+  // b184.2 (Codex): o espreita cobre Magalu, ML e Shopee — o TikTok NAO
+  // passa por ele (vem pela ponte com o Mover-Pedidos). Sem isto, a tabela
+  // nunca teria devolucao do TikTok, e o painel de estornadas sem retorno
+  // — que existe justamente pros reembolsos puros do TikTok — ficaria
+  // eternamente vazio.
+  // b184.3 (Codex): falha da ponte NAO pode virar "zero devolucoes do
+  // TikTok" em silencio — e o mesmo erro que custou uma noite com a
+  // Shopee. Ela nao derruba a captura dos outros 3, mas fica registrada
+  // no estado, que a rota de acompanhamento mostra.
+  let erroTikTok = null;
+  const comTikTok = tiktokPonte.sondaDevolucoes('good', { limite: 200 })
+    .then((r) => {
+      if (!r || !r.ok) {
+        erroTikTok = (r && r.erro) || 'ponte indisponivel';
+        return [];
+      }
+      if (!r.cru || !Array.isArray(r.cru.devolucoes)) {
+        erroTikTok = 'a ponte respondeu sem a lista de devolucoes';
+        return [];
+      }
+      return r.cru.devolucoes
+        .map((d) => devCapturadas.traduzir(tiktokDev.normalizar(d, 'good'), 'good'))
+        .filter(Boolean);
+    })
+    .catch((e) => { erroTikTok = e.message || String(e); return []; });
+
+  comTikTok.then((extras) => devCapturadas.guardar(supabase, linhas.concat(extras)))
     .then((r) => {
       CAPTURA_ESTADO = {
         ultima: new Date().toISOString(),
@@ -5172,6 +5448,7 @@ function capturarDevolucoes(resultadoEspreita) {
         // sem chave nao ha upsert possivel; conto pra saber se estou
         // perdendo devolucao por falta de identificador
         sem_chave: lista.length - linhas.length,
+        tiktok_erro: erroTikTok || undefined,
         erro: r.ok ? null : (r.erros || ['falha desconhecida']).join(' | '),
       };
       if (r.ok) console.log(`[CAPTURA] ${r.gravadas} devolucoes guardadas`);

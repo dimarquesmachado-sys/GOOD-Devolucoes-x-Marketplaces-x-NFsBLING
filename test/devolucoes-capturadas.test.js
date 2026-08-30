@@ -47,6 +47,53 @@ const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o
   ok(ml.empresa === 'good' && ml.marketplace === 'ml', '  empresa e marketplace em minusculas');
   ok(!!ml.cru, '  e o CRU vai junto (pra nao perder campo que ainda nao mapeamos)');
 
+  // b184.2: o tipo do TikTok vira COLUNA — e por ele que o painel de
+  // estornadas separa reembolso puro de devolucao com retorno
+  const tk = cap.traduzir({ marketplace: 'tiktok', pedido: '585514776487560610',
+    tipo_tiktok: 'REFUND', status: 'RETURN_OR_REFUND_REQUEST_COMPLETE', valor: 36 }, 'good');
+  ok(tk.tipo_tiktok === 'REFUND', 'o tipo do TikTok vira COLUNA, nao so campo dentro do cru');
+
+  // b184.3: a CHAVE e a DATA do TikTok, no caminho real (normalizar -> traduzir)
+  const tkDev = require('../lib/tiktok-devolucoes');
+  const irmaA = cap.traduzir(tkDev.normalizar({ id: 'A', order_id: '585110624384091852',
+    tipo: 'REFUND', status: 'RETURN_OR_REFUND_REQUEST_COMPLETE', valor: 57.4, criado_em: 1785099240 }, 'good'), 'good');
+  const irmaB = cap.traduzir(tkDev.normalizar({ id: 'B', order_id: '585110624384091852',
+    tipo: 'REFUND', status: 'RETURN_OR_REFUND_REQUEST_COMPLETE', valor: 57.4, criado_em: 1785099445 }, 'good'), 'good');
+  ok(irmaA.chave_marketplace !== irmaB.chave_marketplace,
+     'duas solicitacoes do MESMO pedido tem chaves diferentes (senao o upsert sobrescreveria uma)');
+  ok(irmaA.chave_marketplace === 'A', '  usando o id da solicitacao, nao o pedido');
+  ok(irmaA.criado_no_mkt && irmaA.criado_no_mkt.indexOf('2026') === 0,
+     'a data do TikTok SOBREVIVE (vinha como criado_em e eu so olhava dias_em_transito)');
+  ok(irmaA.atualizado_no_mkt === null || typeof irmaA.atualizado_no_mkt === 'string',
+     '  e a de atualizacao tambem, quando existe');
+
+  // b184.4: o TikTok usa OUTROS NOMES pros mesmos campos. Sem aceitar os
+  // dois, a etiqueta ia sem rastreio (bipar nao acharia), sem NF (o prazo
+  // caia na devolucao e podia sugerir cancelar nota intempestiva) e sem
+  // produto (o painel mostrava "-", sem SKU pra emitir a NF).
+  const completo = cap.traduzir(tkDev.normalizar({
+    id: 'R1', order_id: '585', tipo: 'RETURN_AND_REFUND',
+    status: 'RETURN_OR_REFUND_REQUEST_COMPLETE',
+    return_tracking_number: 'AP334873368BR',
+    nf_numero: '002070', nf_chave: '3'.repeat(44),
+    return_line_items: [
+      { seller_sku: 'KIT65', quantity: 1, product_name: 'Lixas 60-80' },
+      { seller_sku: 'KIT9', quantity: 2, product_name: 'Lixas 100' },
+    ],
+    valor: 114.8, criado_em: 1785099240,
+  }, 'good'), 'good');
+
+  ok(completo.rastreio === 'AP334873368BR',
+     'o RASTREIO do TikTok atravessa (senao bipar a etiqueta nao acharia o registro)');
+  ok(completo.nf_numero === '002070' && completo.nf_chave.length === 44,
+     'a NF atravessa — e a chave e o que permite calcular o prazo pela data da NOTA');
+  ok(completo.produto_sku === 'KIT65, KIT9',
+     'os itens sao achatados: o TikTok traz lista, o espreita traz escalar');
+  ok(completo.produto_qtd === 3, '  somando as quantidades (a solicitacao pode cobrir varios itens)');
+  ok(/Lixas 60-80 \+ Lixas 100/.test(completo.produto_titulo || ''), '  e juntando os nomes');
+  ok(cap.traduzir({ marketplace: 'ml', pedido: '1', tipo: 'devolucao' }, 'good').tipo_tiktok === 'devolucao',
+     '  e o campo `tipo` generico dos outros marketplaces tambem cai ali');
+
   // dias em transito viram data — pra dar pra filtrar por periodo depois
   const dias = (Date.now() - new Date(ml.criado_no_mkt).getTime()) / 864e5;
   ok(Math.abs(dias - 10) < 0.1, '  "10 dias em transito" vira data de criacao');
@@ -107,6 +154,15 @@ const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o
     const SERVER = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
     ok(/capturarDevolucoes\(r\);/.test(SERVER),
        'a captura roda junto do espreita (que ja varre os 3 marketplaces — nao criei cron novo)');
+    // b184.2: o campo certo, e o TikTok junto
+    ok(/resultadoEspreita\.em_transito/.test(SERVER),
+       '  lendo `em_transito`, que e o que montarEspreita devolve (eu lia `.itens`, que nao existe → gravava ZERO)');
+    ok(/tiktokPonte\.sondaDevolucoes\('good'/.test(SERVER),
+       '  e puxando o TikTok tambem, que NAO passa pelo espreita (vem pela ponte)');
+    ok(/tiktok_erro: erroTikTok/.test(SERVER),
+       '  com a falha do TikTok REGISTRADA no estado, nao virando zero silencioso');
+    ok(!/const lista[\s\S]{0,200}if \(!lista\.length\) return;/.test(SERVER),
+       '  e a captura NAO sai quando os outros 3 vem vazios (o TikTok nao passa por eles)');
     ok(/CAPTURA_INTERVALO_MS = 60 \* 60 \* 1000/.test(SERVER),
        '  mas com ritmo proprio: de hora em hora, nao a cada 3 min como ele');
     ok(/if \(!supabase \|\| CAPTURA_RODANDO\) return;/.test(SERVER),

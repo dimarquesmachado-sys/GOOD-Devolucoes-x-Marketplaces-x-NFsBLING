@@ -60,6 +60,7 @@ CREATE TABLE IF NOT EXISTS devolucoes_capturadas (
   produto_titulo   text,
   produto_qtd      integer,
   status           text,                   -- como o marketplace chama
+  tipo_tiktok      text,                   -- REFUND | RETURN_AND_REFUND (só TikTok)
   motivo           text,
   motivo_texto     text,                   -- o que o cliente escreveu
   valor_refund     numeric(12,2),
@@ -89,7 +90,27 @@ CREATE INDEX IF NOT EXISTS devcap_nf       ON devolucoes_capturadas (nf_numero) 
 -- pra listar o recente por empresa
 CREATE INDEX IF NOT EXISTS devcap_recentes
   ON devolucoes_capturadas (empresa, criado_no_mkt DESC);
+
+-- o painel de estornadas sem retorno filtra por empresa + tipo + data
+CREATE INDEX IF NOT EXISTS devcap_sem_retorno
+  ON devolucoes_capturadas (empresa, tipo_tiktok, criado_no_mkt DESC)
+  WHERE tipo_tiktok IS NOT NULL;
 ```
+
+## ⚠️ Se a tabela JÁ existe (criada antes de 30/08)
+
+A coluna `tipo_tiktok` e o índice acima vieram depois. Rode:
+
+```sql
+ALTER TABLE devolucoes_capturadas ADD COLUMN IF NOT EXISTS tipo_tiktok text;
+
+CREATE INDEX IF NOT EXISTS devcap_sem_retorno
+  ON devolucoes_capturadas (empresa, tipo_tiktok, criado_no_mkt DESC)
+  WHERE tipo_tiktok IS NOT NULL;
+```
+
+Sem a coluna, o painel de **estornadas sem retorno** fica vazio — é por ela
+que ele separa reembolso puro de devolução com retorno.
 
 ### Por que uma tabela só, e não uma por empresa
 
