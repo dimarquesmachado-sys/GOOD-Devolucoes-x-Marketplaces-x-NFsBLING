@@ -18,7 +18,7 @@ const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o
 
 const BLING = fs.readFileSync(path.join(__dirname, '..', 'lib', 'bling.js'), 'utf8');
 const i = BLING.indexOf('async function buscarNFnoBlingPorOrderId');
-const fn = BLING.slice(i, i + 5000);
+const fn = BLING.slice(i, i + 9000);   // a funcao cresceu com os consertos
 
 // ── a janela agora comeca na data certa ──────────────────────────────
 {
