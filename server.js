@@ -232,7 +232,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.82.6 (prejuizo integral nao gera NF; nf_sem_saida COM entrada)',
+    version: '4.82.7 (nf_sem_saida do Magalu volta a poder cancelar)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -5137,7 +5137,11 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
     // porque NF de devolucao nao tem prazo (so o CANCELAMENTO tem 20 dias).
     // Caso antigo continua rendendo imposto de volta.
     const dias = Math.min(730, Math.max(1, parseInt(req.query.dias, 10) || 365));
-    const desde = new Date(Date.now() - dias * 864e5).toISOString();
+    // b195.3 (Codex): `?de=` vale pros DOIS marketplaces. So o Magalu
+    // respeitava, entao pedir uma fatia trazia TikTok do periodo inteiro.
+    const desde = String(req.query.de || '').trim()
+      ? new Date(String(req.query.de).trim() + 'T00:00:00Z').toISOString()
+      : new Date(Date.now() - dias * 864e5).toISOString();
 
     // b188.3 (Codex): ?ate=AAAA-MM-DD alcanca o que ficou fora do corte.
     //
@@ -5476,7 +5480,18 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
         //
         // O TikTok continua podendo: ali o reembolso PURO (tipo REFUND) e a
         // propria prova de que nao houve retorno fisico.
-        const semProvaDeEnvio = d.marketplace === 'magalu';
+        // b195.3 (Codex): o `nf_sem_saida` E a prova de que nao saiu.
+        //
+        // Eu bloqueava TODO Magalu de cancelar por falta de prova de envio.
+        // Mas essa classe existe justamente porque a Magalu diz que o pedido
+        // NUNCA foi despachado (sem `shipped_at`) — e a propria lib a marca
+        // como `pode_cancelar`. Bloquear ali contradiz a classificacao e faz
+        // o dono perder o prazo de 20 dias num caso onde cancelar e o certo.
+        //
+        // As outras classes do Magalu continuam sem cancelar: nelas o
+        // produto saiu, houve circulacao, e a nota nao pode ser apagada.
+        const semProvaDeEnvio = d.marketplace === 'magalu'
+          && d.classe !== 'nf_sem_saida';
         const podeCancelar = !jaVoltou && !semProvaDeEnvio
           && diasDesde != null && diasDesde <= 20;
 
@@ -5639,7 +5654,9 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
       item.prazo_base = 'chave_nfe';
       // b190.3: o recalculo respeita a mesma regra — quem voltou nao cancela
       const podeAqui = !item.tem_devolucao_registrada
-        && item.marketplace !== 'magalu'   // b190.6: sem prova de envio
+        // b195.3: Magalu so cancela em `nf_sem_saida`, onde ha prova de
+        // que o pedido nunca foi despachado
+        && (item.marketplace !== 'magalu' || item.classe === 'nf_sem_saida')
         && dias <= 20;
       item.acao = podeAqui ? 'cancelar_nf' : 'nf_devolucao';
       item.prazo_cancelamento = podeAqui ? Math.max(0, 20 - dias) : 0;
@@ -5662,6 +5679,9 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
       // b189 - se o Magalu nao veio, o dono TEM que saber: a lista parece
       // completa e nao esta. Silencio aqui esconde R$ 12 mil em casos.
       magalu_erro: magaluErro || undefined,
+      // b195.3 (Codex): quando o Magalu falha, a lista que sobra e PARCIAL
+      // e nao ha como saber disso olhando os itens. O aviso e o unico sinal.
+      parcial: magaluErro ? true : undefined,
       por_marketplace: itens.reduce((acc, x) => {
         const m = x.marketplace || 'outro';
         acc[m] = (acc[m] || 0) + 1;

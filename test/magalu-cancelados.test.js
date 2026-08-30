@@ -213,8 +213,10 @@ const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o
   ok(/const podeCancelar = !jaVoltou && !semProvaDeEnvio/.test(SERVER),
      '  e quem voltou NAO ganha "cancelar NF", mesmo dentro do prazo');
   // b190.6: e o MAGALU nunca ganha, porque nao ha prova de que nao saiu
-  ok(/const semProvaDeEnvio = d\.marketplace === 'magalu';/.test(SERVER),
-     '  o Magalu nunca sugere cancelamento: a API nao diz se despachamos');
+  // b195.3: o Magalu so cancela em `nf_sem_saida` — a classe E a prova de
+  // que nunca foi despachado. Nas outras, o produto saiu e houve circulacao.
+  ok(/const semProvaDeEnvio = d\.marketplace === 'magalu'/.test(SERVER),
+     '  o Magalu so sugere cancelamento onde ha prova de que nao saiu');
   ok(/errar pra cancelamento custa uma[\s\S]{0,60}nota cancelada indevidamente/.test(SERVER),
      '  com a assimetria escrita: devolucao custa um passo, cancelamento custa uma nota');
   ok(/item\.marketplace !== 'magalu'/.test(SERVER),
@@ -479,7 +481,7 @@ const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o
   const PAINEL3 = fs3.readFileSync(path3.join(__dirname, '..', 'public', 'painel-devolucoes.html'), 'utf8');
   const LIB2 = fs3.readFileSync(path3.join(__dirname, '..', 'lib', 'magalu-cancelados.js'), 'utf8');
   const i3 = SERVER3.indexOf("'/api/admin/sem-retorno'");
-  const rota3 = SERVER3.slice(i3, i3 + 22000);
+  const rota3 = SERVER3.slice(i3, i3 + 32000);   // a rota cresceu de novo
 
   ok(/let magaluItens = \[\];/.test(rota3),
      'a lista do Magalu e DECLARADA (o painel quebrava com "magaluItens is not defined")');
@@ -501,6 +503,18 @@ const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o
      '`entregue_apos_estorno` NAO ganha o botao de gerar NF');
   ok(/O caminho é <b>contestar com o marketplace<\/b>/.test(PAINEL3),
      '  a mercadoria nao voltou: emitir devolucao registraria entrada que nao houve');
+
+  // b195.3: o `nf_sem_saida` PODE cancelar — ele E a prova de que nao saiu
+  ok(/d\.classe !== 'nf_sem_saida'/.test(rota3),
+     '`nf_sem_saida` do Magalu pode CANCELAR: a classe existe porque nunca foi despachado');
+  ok(/contradiz a classificacao/.test(rota3),
+     '  bloquear ali contradizia a propria classificacao e queimava o prazo de 20 dias');
+  ok(/item\.classe === 'nf_sem_saida'/.test(rota3),
+     '  e o recalculo segue a mesma regra');
+  ok(/parcial: magaluErro \? true : undefined/.test(rota3),
+     'e a resposta se declara PARCIAL quando o Magalu falha');
+  ok(/req\.query\.de[\s\S]{0,120}T00:00:00Z/.test(rota3),
+     'o `?de=` vale pros dois marketplaces (so o Magalu respeitava)');
 
   ok(mc.ACAO_POR_CLASSE.nf_sem_saida.entrada_estoque === true,
      '`nf_sem_saida` vai COM entrada — correcao DELE, e eu tinha deixado o valor antigo');
