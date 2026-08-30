@@ -122,6 +122,33 @@ const PAINEL = fs.readFileSync(path.join(RAIZ, 'public', 'painel-devolucoes.html
      '  e avisa, em vez de calar — os cortados sao os mais ANTIGOS, que so tem NF de devolucao como saida');
   ok(/aviso_corte/.test(PAINEL), '  com o aviso aparecendo na tela');
 
+  // b196: achar a NF pelo PEDIDO quando nao ha numero nem chave ─────
+//
+// Caso real do dono: pedido 583529996785714778 (TikTok, R$ 189,10)
+// aparecia "sem NF vinculada", mas a nota EXISTE no Bling — ele abriu e
+// mostrou. A captura veio sem numero e sem chave porque a API do TikTok
+// nao mandou (devolucao de abril, `return_line_items` vazio, sem buyer,
+// sem sku). Mas o PEDIDO estava la.
+{
+  ok(/const semNota = itens\.filter\(\(x\) => !x\.nf_numero && !x\.nf_chave/.test(rota),
+     'ha busca pelo PEDIDO pros casos sem numero e sem chave');
+  ok(/buscarNFnoBlingPorOrderId\(item\.pedido/.test(rota),
+     '  usando a funcao que ja existia pra isso');
+  ok(/\.slice\(0, 10\)/.test(rota),
+     '  com teto baixo: cada uma custa uma varredura no Bling');
+  ok(/Date\.now\(\) - INICIO_BUSCA > 12000/.test(rota),
+     '  e teto de tempo proprio, mais folgado que o das outras');
+  ok(/nf_achada_por = 'pedido'/.test(rota),
+     'marcando de onde veio: o casamento por pedido e menos exato que por chave');
+
+  ok(/achada pelo pedido/.test(PAINEL),
+     'e a tela AVISA, pra ele conferir que e a nota certa antes de emitir');
+
+  const AMB = fs.readFileSync(path.join(RAIZ, 'amb-devolucoes', 'app-AMB.js'), 'utf8');
+  ok(/buscarNFnoBlingPorOrderId\(item\.pedido/.test(AMB),
+     'e a AMB tem a mesma busca — sem isso ela ficaria pra tras de novo');
+}
+
   ok(/aviso_cancelados/.test(rota),
      'a resposta avisa que casos resolvidos por CANCELAMENTO reaparecem (nao geram NF de devolucao)');
 

@@ -232,7 +232,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.83.0 (cancelar exige data confiavel da nota)',
+    version: '4.84.0 (acha a NF pelo PEDIDO quando a captura nao trouxe)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -5626,6 +5626,20 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
     const semVinculo = itens.filter((x) => x.nf_numero && !x.nf_id_bling);
     const doMagalu = semVinculo.filter((x) => x.marketplace === 'magalu').slice(0, 15);
     const dosOutros = semVinculo.filter((x) => x.marketplace !== 'magalu').slice(0, 10);
+    // b196 - BUSCAR PELO PEDIDO quando nao ha numero nem chave.
+    //
+    // Caso real que o dono trouxe: o pedido 583529996785714778 (TikTok,
+    // R$ 189,10) aparecia como "sem NF vinculada", mas a nota EXISTE no
+    // Bling — ele abriu e mostrou. A captura veio sem numero e sem chave
+    // porque a API do TikTok nao mandou (`return_line_items` vazio, sem
+    // buyer, sem sku — devolucao de abril, o TikTok ja nao guarda detalhe).
+    //
+    // Mas o PEDIDO eu tenho, e `buscarNFnoBlingPorOrderId` acha por ele.
+    // Sem isto, o card mostra um caso acionavel que ninguem consegue
+    // acionar.
+    const semNota = itens.filter((x) => !x.nf_numero && !x.nf_chave && !x.nf_id_bling && x.pedido)
+      .slice(0, 10);   // custa uma varredura por item; teto baixo de proposito
+
     const PARA_BUSCAR = doMagalu.concat(dosOutros);
     for (const item of PARA_BUSCAR) {
       if (Date.now() - INICIO_BUSCA > 8000) break;   // o painel nao pode travar
@@ -5680,6 +5694,24 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
         item.nf_id_bling = String(achada.id);
         if (!item.nf_chave && achada.chaveAcesso) item.nf_chave = achada.chaveAcesso;
       } catch (e) { /* segue sem o link; o numero da NF esta no card */ }
+    }
+
+    // b196 - a busca pelo PEDIDO, pros que ficaram sem nota nenhuma
+    for (const item of semNota) {
+      if (Date.now() - INICIO_BUSCA > 12000) break;   // teto proprio, mais folgado
+      try {
+        const r = await Promise.race([
+          buscarNFnoBlingPorOrderId(item.pedido, item.criado_em || null, { maxPaginas: 12 }),
+          new Promise((ok) => setTimeout(() => ok(null), 6000)),
+        ]);
+        const achada = (r && r.match) || (r && r.ok && r.nf) || null;
+        if (achada && achada.id) {
+          item.nf_id_bling = String(achada.id);
+          if (!item.nf_numero && achada.numero) item.nf_numero = String(achada.numero);
+          if (!item.nf_chave && achada.chaveAcesso) item.nf_chave = achada.chaveAcesso;
+          item.nf_achada_por = 'pedido';   // pra tela dizer de onde veio
+        }
+      } catch (e) { /* segue sem a nota; o card continua so informativo */ }
     }
 
     // b188.1 (Codex): RECALCULAR a acao depois de enriquecer.
