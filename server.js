@@ -232,7 +232,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.75.0 (remessa reversa: varios campos, mais recente, e o texto do SAC)',
+    version: '4.75.1 (reversa: indice com digitos, mais recente manda, triagem por item)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -5157,7 +5157,7 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
       for (let i = 0; i < pedidosMagalu.length; i += 200) {
         const { data: tri, error: erroTri } = await supabase
           .from('devolucoes')
-          .select('order_id')
+          .select('order_id, produto_sku')
           .in('order_id', pedidosMagalu.slice(i, i + 200));
         if (erroTri) {
           // mesma regra do descarte do TikTok: falhar e melhor que listar
@@ -5168,7 +5168,18 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
               + erroTri.message + ' — listar sem essa checagem mostraria casos ja no fluxo normal',
           });
         }
-        for (const t of (tri || [])) triadosMagalu.add(String(t.order_id));
+        // b190.1 (Codex): guardar PEDIDO+SKU, nao so o pedido.
+        //
+        // Nota com varios produtos e so um item devolvido: descartar pelo
+        // PEDIDO removeria o outro item, que continua sem devolucao e sem
+        // resolucao fiscal. Foi o caso do Antonio (NF 076466) que mostrou
+        // isso: dois SKUs na mesma nota.
+        for (const t of (tri || [])) {
+          triadosMagalu.add(String(t.order_id) + '|' + String(t.produto_sku || ''));
+          // sem SKU na triagem, o pedido inteiro conta — e o que da pra
+          // afirmar com o dado que existe
+          if (!t.produto_sku) triadosMagalu.add(String(t.order_id) + '|*');
+        }
       }
     }
 
@@ -5177,7 +5188,13 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
         const chaveDela = String(d.chave_marketplace || d.id || '');
         return !resolvidosFinos.has(chaveDela);
       })
-      .concat(magaluItens.filter((m) => !triadosMagalu.has(String(m.pedido))))
+      .concat(magaluItens.filter((m) => {
+        const ped = String(m.pedido);
+        // triagem sem SKU derruba o pedido todo (nao da pra ser mais fino)
+        if (triadosMagalu.has(ped + '|*')) return false;
+        // com SKU, so o ITEM triado sai — o outro item da mesma nota fica
+        return !triadosMagalu.has(ped + '|' + String(m.produto_sku || ''));
+      }))
       .map((d) => {
         // b184 (Codex): O RELOGIO CONTA DA EMISSAO DA NOTA, nao da devolucao.
         //

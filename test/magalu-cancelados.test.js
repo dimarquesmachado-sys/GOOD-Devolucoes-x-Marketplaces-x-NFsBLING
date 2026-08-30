@@ -101,8 +101,14 @@ const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o
   // voltou fisicamente, o Lucas triou, e ele ja esta em "Aprovadas aguardando
   // NF" com botao de gerar. Aparecer aqui tambem seriam DUAS portas pra mesma
   // nota, e duas devolucoes emitidas sem ninguem perceber.
-  ok(/triadosMagalu\.has\(String\(m\.pedido\)\)/.test(SERVER),
-     'pedido do Magalu JA TRIADO sai da lista: ele ja esta no fluxo normal');
+  ok(/triadosMagalu\.has\(ped \+ '\|' \+ String\(m\.produto_sku/.test(SERVER),
+     'item do Magalu JA TRIADO sai da lista: ele ja esta no fluxo normal');
+  // b190.1: por ITEM, nao por pedido — a NF 076466 do Antonio tinha DOIS
+  // SKUs; descartar pelo pedido removeria o item que ainda nao voltou
+  ok(/triadosMagalu\.add\(String\(t\.order_id\) \+ '\|' \+ String\(t\.produto_sku/.test(SERVER),
+     '  casando PEDIDO+SKU: nota com varios produtos e so um devolvido');
+  ok(/if \(triadosMagalu\.has\(ped \+ '\|\*'\)\) return false;/.test(SERVER),
+     '  e triagem SEM sku derruba o pedido todo (nao da pra ser mais fino)');
   ok(/nao consegui conferir quais pedidos do Magalu ja foram triados/.test(SERVER),
      '  e falha nessa checagem e ERRO, nao lista incompleta (duas portas = NF duplicada)');
   ok(/i \+= 200/.test(SERVER.slice(SERVER.indexOf('pedidosMagalu'))),

@@ -70,6 +70,18 @@ ok(/linhas\.push\(\{ code, erro:/.test(DEBUG),
   // a segunda fonte: o texto do SAC
   ok(/async function mensagensDoTicket/.test(MAGALU),
      'ha segunda fonte: as mensagens do protocolo');
+
+  // b190.1: o codigo da MAIS RECENTE e o que vale
+  ok(/const rcMaisRecente = ordenadas\.length \? codigoDe\(ordenadas\[0\]\)/.test(MAGALU),
+     'o codigo vem da remessa MAIS RECENTE — a reagendada, que aconteceu');
+  ok(/dev\.codigo_possivelmente_obsoleto = true/.test(MAGALU),
+     '  e o codigo de tentativa ANTERIOR e ultimo recurso, marcado como suspeito');
+
+  // b190.1: o indice precisa casar com a busca, que limpa o codigo
+  ok(/const soNum = String\(rc\)\.replace\(\/\\D\/g, ''\);/.test(MAGALU),
+     'o codigo e indexado TAMBEM so com digitos');
+  ok(/acharDevolucao\(\) LIMPA o codigo/.test(MAGALU),
+     '  porque a busca limpa antes de procurar — senao o caso continuaria escapando');
   ok(/if \(!rc\) \{[\s\S]{0,200}mensagensDoTicket/.test(MAGALU),
      '  consultada SO quando o /returns nao deu codigo (uma chamada a mais, so onde precisa)');
 
