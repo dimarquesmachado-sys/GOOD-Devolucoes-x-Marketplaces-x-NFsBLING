@@ -232,7 +232,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.70.4 (forcar: erro de gravacao vira falha, trava reconferida)',
+    version: '4.71.0 (falha do TikTok aparece; descarte nao vira vazio)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -5265,7 +5265,7 @@ registrarRotasDebug(app, {
   // v4.70 - a rota de diagnostico precisa MONTAR o espreita antes de
   // capturar: o cache do painel nao serve, porque a captura recebe o
   // resultado da montagem, nao a lista que a tela mostra.
-  forcarCaptura: async () => {
+  forcarCaptura: async (limiteTikTok) => {
     // b185 (Codex): dizer NA CARA quando nao rodou, e por que.
     //
     // A funcao sai calada em tres casos (sem Supabase, ja rodando,
@@ -5304,7 +5304,7 @@ registrarRotasDebug(app, {
       return { rodou: false, motivo: 'outra captura comecou enquanto eu montava o espreita' };
     }
 
-    const gravou = await capturarDevolucoes(r, true);
+    const gravou = await capturarDevolucoes(r, true, limiteTikTok);
     if (!gravou) {
       return { rodou: false, motivo: 'a captura nao chegou a gravar (trava ou intervalo)' };
     }
@@ -5437,7 +5437,12 @@ let CAPTURA_ULTIMA = 0;
 let CAPTURA_RODANDO = false;
 let CAPTURA_ESTADO = { ultima: null, gravadas: 0, erro: null };
 
-function capturarDevolucoes(resultadoEspreita, forcar) {
+// b186 - quantas devolucoes do TikTok puxar por ciclo. 200 cobre o
+// corrente com folga; o forcar pode pedir mais pra carga historica.
+const LIMITE_TIKTOK_PADRAO = 200;
+
+function capturarDevolucoes(resultadoEspreita, forcar, limiteTikTok) {
+  const LIMITE_TIKTOK = Math.min(1000, Math.max(1, parseInt(limiteTikTok, 10) || LIMITE_TIKTOK_PADRAO));
   // v4.70 - `forcar` pula o intervalo de 1h, pra rota de diagnostico e pra
   // primeira carga. A trava de concorrencia NAO e pulada: duas capturas
   // juntas duplicariam o trabalho e brigariam pelo mesmo upsert.
@@ -5476,7 +5481,11 @@ function capturarDevolucoes(resultadoEspreita, forcar) {
   // Shopee. Ela nao derruba a captura dos outros 3, mas fica registrada
   // no estado, que a rota de acompanhamento mostra.
   let erroTikTok = null;
-  const comTikTok = tiktokPonte.sondaDevolucoes('good', { limite: 200 })
+  // b186: 200 por ciclo cobre o corrente com folga (a Girassol tem 99 em 6
+  // meses). Pra carga historica, o `limite` sobe pela rota de forcar — mas
+  // sem paginacao de verdade: a rota do outro servico devolve o que tem
+  // guardado, entao um limite alto ja traz tudo numa chamada.
+  const comTikTok = tiktokPonte.sondaDevolucoes('good', { limite: LIMITE_TIKTOK })
     .then((r) => {
       if (!r || !r.ok) {
         erroTikTok = (r && r.erro) || 'ponte indisponivel';
