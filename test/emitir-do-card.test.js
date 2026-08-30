@@ -176,6 +176,12 @@ const PAINEL = fs.readFileSync(path.join(RAIZ, 'public', 'painel-devolucoes.html
      'e o CONCLUIR em lote tambem os pula');
   ok(/conclua depois de validar a NF no Bling/.test(PAINEL),
      '  avisando quantos foram pulados e por que');
+  // b193.4: e o concluir de UM card tambem — foi a terceira porta pro
+  // mesmo problema (emitir em lote, concluir em lote, concluir individual)
+  ok(/Já validou a NF no Bling\?/.test(PAINEL),
+     'e o concluir INDIVIDUAL pergunta antes de esconder o caso');
+  ok(/chk\.dataset\.sorascunho === '1'/.test(PAINEL.slice(PAINEL.indexOf('async function concluir('))),
+     '  lendo o marcador do proprio card');
   ok(/data-sorascunho="/.test(PAINEL), '  com o marcador no checkbox');
   // a chamada tem parenteses internos, entao conto as ocorrencias em vez
   // de tentar casar a linha inteira

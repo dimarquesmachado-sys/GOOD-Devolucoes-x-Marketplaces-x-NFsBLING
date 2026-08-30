@@ -2164,6 +2164,21 @@
     }
 
     async function concluir(id) {
+      // b193.4 (Codex): a TERCEIRA porta pro mesmo problema. Bloqueei a
+      // emissao em lote, depois o concluir em lote — e o concluir de UM
+      // card continuava livre.
+      //
+      // "Concluido" esconde o caso, e o rascunho ainda precisa ser editado
+      // e validado no Bling. Aqui nao bloqueio: pergunto, porque pode ser
+      // que ele ja tenha validado por la e queira fechar mesmo.
+      {
+        const card = document.getElementById('card-' + id);
+        const chk = card && card.querySelector('.chk-esteira');
+        if (chk && chk.dataset.sorascunho === '1') {
+          if (!confirm('Este caso veio do card de estornadas e só gerou RASCUNHO.\n\n'
+            + 'Já validou a NF no Bling? Concluir aqui esconde o caso da fila.')) return;
+        }
+      }
       if (!confirm('Marcar como concluido?')) return;
       try {
         const r = await fetch('/api/admin/concluir/' + id, { method: 'PUT' });
