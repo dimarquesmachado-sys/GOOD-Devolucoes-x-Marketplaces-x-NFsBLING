@@ -157,7 +157,10 @@ const PAINEL = fs.readFileSync(path.join(RAIZ, 'public', 'painel-devolucoes.html
     // a DEFINICAO da funcao, nao a primeira mencao (que e a chamada, 36 mil
     // caracteres antes) — foi o que fez tres verificacoes falharem a toa
     const iDef = PAINEL.indexOf('async function carregarSemRetorno');
-    const fnSR = PAINEL.slice(iDef, iDef + 12000);
+    // e ATE o fim dela: 12 mil caracteres passavam da funcao e alcancavam o
+    // carregarEspreita, que legitimamente chama o modal de gerar
+    const fimDef = PAINEL.indexOf('async function carregarEspreita', iDef);
+    const fnSR = PAINEL.slice(iDef, fimDef > iDef ? fimDef : iDef + 8000);
     ok(!/abrirModalGerarDevolucao/.test(fnSR),
        'o card NAO chama o modal de gerar: o id dele e de outra tabela (triagem, nao captura)');
     ok(/Abrir NF no Bling/.test(fnSR),
