@@ -82,7 +82,7 @@ const criarMlBuscas = require('./lib-AMB/ml-buscas-AMB');
 const registrarIdentificar = require('./lib-AMB/identificar-AMB');
 const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 
-const VERSAO = 'AMB Devolucoes b193';
+const VERSAO = 'AMB Devolucoes b195';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -2178,7 +2178,14 @@ router.get('/api/admin/sem-retorno', auth.requerLogin, async (req, res) => {
         // quem ja voltou nao cancela (houve circulacao), e o Magalu nunca
         // cancela (nao temos prova de que a mercadoria nao saiu)
         const jaVoltou = !!d.tem_devolucao_registrada;
-        const semProva = d.marketplace === 'magalu';
+        // b195.4 (Codex): a MESMA regra da GOOD. O `nf_sem_saida` E a prova
+        // de que o pedido nunca foi despachado, entao ali cancelar e o
+        // certo — bloquear faria o dono perder o prazo de 20 dias.
+        //
+        // Isto e a divida do front aparecendo: a regra vive nos dois
+        // servidores em vez de numa peca so, entao consertar num lado
+        // deixa o outro para tras. Foi o que aconteceu aqui.
+        const semProva = d.marketplace === 'magalu' && d.classe !== 'nf_sem_saida';
         const podeCancelar = !jaVoltou && !semProva && diasDesde != null && diasDesde <= 20;
 
         return {

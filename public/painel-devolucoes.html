@@ -1061,7 +1061,15 @@
 
           // e o que a classe diz sobre a ENTRADA de estoque — errar aqui
           // duplica ou some com inventario
-          const dicaEstoque = x.entrada_estoque === false
+          // b195.4 (Codex): o `nf_sem_saida` vai COM entrada e no deposito
+          // GERAL — a mercadoria esta no CD, novinha, e a entrada corrige a
+          // baixa que a NF de venda ja deu. Antes ele caia no texto generico
+          // de "COM entrada, confirme no galpao", que nao diz o principal.
+          const dicaEstoque = x.classe === 'nf_sem_saida'
+            ? '<div style="font-size:12px;color:#00695c;margin-top:4px;">'
+              + '📦 Devolução <b>COM entrada</b>, depósito <b>GERAL</b> — o produto nunca saiu do CD; '
+              + 'a entrada corrige a baixa que a NF de venda deu</div>'
+            : x.entrada_estoque === false
             ? '<div style="font-size:12px;color:#00695c;margin-top:4px;">'
               + '📦 Devolução <b>SEM entrada de estoque</b> — a mercadoria não voltou ao CD</div>'
             : (x.entrada_estoque === true

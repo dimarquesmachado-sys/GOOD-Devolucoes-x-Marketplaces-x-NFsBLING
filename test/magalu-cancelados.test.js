@@ -513,8 +513,26 @@ const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o
      '  e o recalculo segue a mesma regra');
   ok(/parcial: magaluErro \? true : undefined/.test(rota3),
      'e a resposta se declara PARCIAL quando o Magalu falha');
-  ok(/req\.query\.de[\s\S]{0,120}T00:00:00Z/.test(rota3),
+  ok(/dataOuNull/.test(rota3),
      'o `?de=` vale pros dois marketplaces (so o Magalu respeitava)');
+  // b195.4: data mal digitada nao pode derrubar a rota
+  ok(/\^\\d\{4\}-\\d\{2\}-\\d\{2\}\$/.test(rota3),
+     '  e a data e VALIDADA antes de usar: `?de=ontem` faria toISOString LANCAR');
+  ok(/const fimBase = ateValido/.test(rota3),
+     '  com a janela do TikTok ancorada no ?ate=, como ja era no Magalu');
+
+  // b195.4: a AMB tem a MESMA regra do nf_sem_saida
+  const AMB2 = fs3.readFileSync(path3.join(__dirname, '..', 'amb-devolucoes', 'app-AMB.js'), 'utf8');
+  ok(/d\.marketplace === 'magalu' && d\.classe !== 'nf_sem_saida'/.test(AMB2),
+     'a AMB tem a MESMA regra de cancelamento — consertar so a GOOD deixaria ela pra tras');
+  ok(/divida do front aparecendo/.test(AMB2),
+     '  com a divida registrada: a regra vive nos dois servidores, nao numa peca so');
+
+  // b195.4: o texto do deposito no nf_sem_saida
+  ok(/x\.classe === 'nf_sem_saida'/.test(PAINEL3),
+     'o card diz GERAL no `nf_sem_saida`, nao o texto generico');
+  ok(/a entrada corrige a baixa que a NF de venda deu/.test(PAINEL3),
+     '  explicando por que: o produto nunca saiu do CD');
 
   ok(mc.ACAO_POR_CLASSE.nf_sem_saida.entrada_estoque === true,
      '`nf_sem_saida` vai COM entrada — correcao DELE, e eu tinha deixado o valor antigo');

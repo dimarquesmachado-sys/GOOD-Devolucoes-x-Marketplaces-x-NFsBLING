@@ -196,7 +196,7 @@ const PAINEL = fs.readFileSync(path.join(RAIZ, 'public', 'painel-devolucoes.html
 // ── b193.2: dois campos que nao chegavam, e uma contagem errada ─────
 {
   const iR2 = SERVER.indexOf("'/api/admin/sem-retorno'");
-  const rota2 = SERVER.slice(iR2, iR2 + 22000);   // a rota cresceu bastante
+  const rota2 = SERVER.slice(iR2, iR2 + 32000);   // a rota cresceu de novo (b195)
   ok(/entrada_estoque: d\.entrada_estoque/.test(rota2),
      '`entrada_estoque` CHEGA no card (era lido e nunca repassado)');
   ok(/prejuizo_integral: d\.prejuizo_integral/.test(rota2),

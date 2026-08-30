@@ -232,7 +232,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.82.7 (nf_sem_saida do Magalu volta a poder cancelar)',
+    version: '4.82.8 (a AMB ganha a mesma regra; datas validadas)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -5139,9 +5139,26 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
     const dias = Math.min(730, Math.max(1, parseInt(req.query.dias, 10) || 365));
     // b195.3 (Codex): `?de=` vale pros DOIS marketplaces. So o Magalu
     // respeitava, entao pedir uma fatia trazia TikTok do periodo inteiro.
-    const desde = String(req.query.de || '').trim()
-      ? new Date(String(req.query.de).trim() + 'T00:00:00Z').toISOString()
-      : new Date(Date.now() - dias * 864e5).toISOString();
+    // b195.4 (Codex): validar a data ANTES de usar. `?de=ontem` viraria
+    // "Invalid Date" e `.toISOString()` LANCA — a rota inteira responderia
+    // 500 por causa de um parametro mal digitado.
+    //
+    // E a janela ancora no `?ate=` quando ele vem: senao, pedir uma fatia
+    // antiga sem `?de=` abriria HOJE menos `dias`, e as pontas podiam nem
+    // se cruzar. Mesma correcao que ja fiz no Magalu.
+    const dePedidoRaw = String(req.query.de || '').trim();
+    const atePedidoRaw = String(req.query.ate || '').trim();
+    const dataOuNull = (txt) => {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(txt)) return null;
+      const t = new Date(txt + 'T00:00:00Z');
+      return Number.isFinite(t.getTime()) ? t : null;
+    };
+    const deValido = dataOuNull(dePedidoRaw);
+    const ateValido = dataOuNull(atePedidoRaw);
+    const fimBase = ateValido ? ateValido.getTime() : Date.now();
+    const desde = deValido
+      ? deValido.toISOString()
+      : new Date(fimBase - dias * 864e5).toISOString();
 
     // b188.3 (Codex): ?ate=AAAA-MM-DD alcanca o que ficou fora do corte.
     //
@@ -5297,8 +5314,9 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
       // b195.1 (Codex): respeitar ?de= e ?ate= quando vierem. O TikTok ja
       // respeitava; o Magalu ignorava e sempre terminava hoje — entao pedir
       // uma fatia antiga trazia o Magalu do periodo errado.
-      const atePedido = String(req.query.ate || '').trim();
-      const dePedido = String(req.query.de || '').trim();
+      // b195.4: reaproveita as datas ja VALIDADAS acima
+      const atePedido = ateValido ? atePedidoRaw : '';
+      const dePedido = deValido ? dePedidoRaw : '';
       // b195.2 (Codex): com `?ate=` antigo e sem `?de=`, a janela abria HOJE
       // menos `dias` e fechava numa data passada — podia nem se cruzar.
       // Ancoro o inicio no PROPRIO corte pedido.
