@@ -340,8 +340,13 @@ const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o
      '  nos dois servidores');
   ok(/perder o vinculo[\s\S]{0,60}melhor que segurar a tela/.test(SERVER),
      '  com a escolha explicada: um card sem link e melhor que a tela travada');
-  ok(/x\.nf_chave \|\| x\.nf_numero/.test(AMB),
-     'e nota com numero e SEM chave nao fica de fora da fila a toa');
+  // b192.2: a fila da AMB exige CHAVE porque `resolverIdNFPorChave` nao
+  // funciona sem ela — incluir nota so com numero seria enfileirar algo que
+  // nunca resolveria, gastando vaga da cota. A GOOD tem o caminho por
+  // numero como reserva; a AMB nao, e nao vou duplicar aquele caminho aqui
+  // so pra igualar.
+  ok(/semVinculoAMB = itens\.filter\(\(x\) => x\.nf_chave && !x\.nf_id_bling\)/.test(AMB),
+     'a fila da AMB exige chave: sem ela a resolucao nao funciona, e a vaga se perderia');
   ok(/Date\.now\(\) - INICIO_BUSCA > 8000/.test(AMB),
      '  com o mesmo teto de tempo entre itens, pro painel nao travar');
 
