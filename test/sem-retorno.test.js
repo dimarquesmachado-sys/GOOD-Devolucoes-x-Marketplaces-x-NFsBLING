@@ -108,7 +108,7 @@ const PAINEL = fs.readFileSync(path.join(RAIZ, 'public', 'painel-devolucoes.html
      'a chave da NF-e manda: o NUMERO se repete entre series e traria a nota errada');
   ok(/Date\.now\(\) - INICIO_BUSCA > 8000/.test(rota),
      'e as buscas no Bling tem teto de tempo, pra nao travar o painel');
-  ok(/\.slice\(0, 15\)/.test(rota), '  e teto de quantidade');
+  ok(/\.slice\(0, 25\)/.test(rota), '  e teto de quantidade (25: o Magalu engrossou a fila)');
   ok(/item\.prazo_base === 'chave_nfe'[\s\S]{0,80}continue;/.test(rota),
      'a acao e RECALCULADA quando a chave so aparece na busca');
   ok(/item\.acao = podeAqui \? 'cancelar_nf' : 'nf_devolucao';/.test(rota),

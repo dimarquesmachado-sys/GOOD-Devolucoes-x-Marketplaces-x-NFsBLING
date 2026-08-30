@@ -291,6 +291,51 @@ const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o
      '  e quando nao da pra saber, manda conferir em vez de chutar');
 }
 
+// ── b192: o NUMERO da NF mora dentro da chave ───────────────────────
+//
+// O dono abriu o painel e viu os 10 cards do Magalu com "sem NF vinculada
+// a este pedido" — sem link, sem botao, sem serventia. A causa: a API do
+// Magalu entrega a CHAVE, nem sempre o numero, e sem numero eu nao acho a
+// nota no Bling.
+{
+  // conferido com chaves REAIS que apareceram no painel dele
+  ok(mc.numeroDaChave('35260764289091000100550010000020701083179280') === '2070',
+     'extrai o numero da chave (NF 002070 da GOOD)');
+  ok(mc.numeroDaChave('35260732461988000182550010000764661835887584') === '76466',
+     '  e da NF 076466, a do Antonio');
+  ok(mc.numeroDaChave('123') === null, 'chave curta nao vira numero inventado');
+  ok(mc.numeroDaChave(null) === null, '  nem nula');
+
+  const semNumero = mc.normalizar({
+    classe: 'estornado_apos_envio', order_code: 'X',
+    notas: [{ chave: '35260732461988000182550010000764661835887584', em: '2026-08-25' }],
+  }, 'good');
+  ok(semNumero.nf_numero === '76466',
+     'a API mandando so a chave, o numero sai dela — e o card ganha link');
+
+  const comNumero = mc.normalizar({
+    classe: 'estornado_apos_envio', order_code: 'X',
+    notas: [{ numero: '99999', chave: '35260732461988000182550010000764661835887584' }],
+  }, 'good');
+  ok(comNumero.nf_numero === '99999',
+     'mas quando a API MANDA o numero, ele manda — nao sobrescrevo');
+}
+
+// ── e a NF e resolvida PELA CHAVE nos dois servidores ───────────────
+{
+  const fs = require('fs');
+  const path = require('path');
+  const SERVER = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
+  const AMB = fs.readFileSync(path.join(__dirname, '..', 'amb-devolucoes', 'app-AMB.js'), 'utf8');
+
+  ok(/resolverIdNFPorChave\(item\.nf_numero, item\.nf_chave\)/.test(SERVER),
+     'a GOOD resolve a NF pela CHAVE (competencia + serie moram nela)');
+  ok(/nfp\.resolverIdNFPorChave\(item\.nf_numero, item\.nf_chave\)/.test(AMB),
+     'e a AMB tambem — mesma funcao, de lib/nf-pessoa');
+  ok(/Date\.now\(\) - INICIO_BUSCA > 8000/.test(AMB),
+     '  com o mesmo teto de tempo, pro painel nao travar');
+}
+
 console.log('');
 console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
 process.exit(falhas ? 1 : 0);

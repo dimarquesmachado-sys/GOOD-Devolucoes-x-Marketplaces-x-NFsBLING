@@ -232,7 +232,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.79.0 (estornadas sem retorno na AMB: so fiacao, a lib e a mesma)',
+    version: '4.80.0 (o numero da NF sai da chave: os cards do Magalu ganham link)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -5359,10 +5359,26 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
     // dias a fila pode crescer, e 30 buscas em serie no Bling seguram a
     // resposta do painel. Quem ficar sem o id aparece com o numero da NF.
     const INICIO_BUSCA = Date.now();
-    const PARA_BUSCAR = itens.filter((x) => x.nf_numero && !x.nf_id_bling).slice(0, 15);
+    // b192 - teto de 25: com o Magalu junto a fila cresceu (10 casos so
+    // dele na GOOD). O teto de TEMPO abaixo continua sendo a trava real —
+    // ele para quando o painel comeca a demorar, seja qual for a contagem.
+    const PARA_BUSCAR = itens.filter((x) => x.nf_numero && !x.nf_id_bling).slice(0, 25);
     for (const item of PARA_BUSCAR) {
       if (Date.now() - INICIO_BUSCA > 8000) break;   // o painel nao pode travar
       try {
+        // b192 - PELA CHAVE primeiro, quando ela existe.
+        //
+        // `resolverIdNFPorChave` usa a competencia e a serie que moram na
+        // propria chave — mais preciso que o numero, que se repete entre
+        // series. E e o que o Magalu me da: ele entrega a CHAVE, nem sempre
+        // o numero (por isso todos os cards dele apareciam "sem NF").
+        if (item.nf_chave) {
+          try {
+            const idPorChave = await resolverIdNFPorChave(item.nf_numero, item.nf_chave);
+            if (idPorChave) { item.nf_id_bling = String(idPorChave); continue; }
+          } catch (e) { /* cai na busca por numero abaixo */ }
+        }
+
         // b188.3 (Codex): a funcao devolve { ok, match }, NAO a nota direto.
         //
         // Eu lia `nf.id` de um objeto que nunca tem `id` — o link do card
