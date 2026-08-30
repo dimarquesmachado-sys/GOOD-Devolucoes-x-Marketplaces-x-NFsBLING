@@ -31,7 +31,7 @@ const PAINEL = fs.readFileSync(path.join(RAIZ, 'public', 'painel-devolucoes.html
      'e confere se JA existe antes de criar');
   ok(/ja_existia: true/.test(rota),
      '  devolvendo o id do existente: clicar duas vezes nao cria dois registros');
-  ok(/nf_ja_emitida: !!existentes\[0\]\.nf_devolucao_id_bling/.test(rota),
+  ok(/nf_ja_emitida: !!existente\.nf_devolucao_id_bling/.test(rota),
      '  e avisando quando a NF ja saiu');
 
   ok(/\[ESTORNADA SEM RETORNO\]/.test(rota),
@@ -65,7 +65,7 @@ const PAINEL = fs.readFileSync(path.join(RAIZ, 'public', 'painel-devolucoes.html
   ok(/dados do card ilegíveis/.test(fn), 'JSON quebrado nao vira excecao solta');
 
   ok(/🧾 Gerar NF de devolução<\/button>/.test(PAINEL), 'e o botao aparece no card');
-  ok(/x\.nf_id_bling\s*\?[\s\S]{0,200}gerarDoCardEstornadas/.test(PAINEL),
+  ok(/const podeGerar = x\.nf_id_bling &&/.test(PAINEL),
      '  so quando a NF foi localizada no Bling — sem ela o modal nao saberia de qual gerar');
 }
 
@@ -82,6 +82,50 @@ const PAINEL = fs.readFileSync(path.join(RAIZ, 'public', 'painel-devolucoes.html
   const comAspas = montar({ produto: 'Globo 15" Branco' });
   ok(JSON.parse(JSON.parse(comAspas)).produto === 'Globo 15" Branco',
      'e com aspas duplas tambem');
+}
+
+// ── v4.81.1: os cinco furos que a revisao pegou ─────────────────────
+{
+  // 1. a Bridge monta a devolucao com a nota INTEIRA — nao da pra
+  //    restringir aos itens reembolsados. Emitir direto daqui
+  //    transmitiria TODOS pra SEFAZ, e e irreversivel.
+  ok(/function abrirModalGerarDevolucao\([^)]*soRascunho\)/.test(PAINEL),
+     'o modal aceita "so rascunho"');
+  ok(/\$\{soRascunho \?/.test(PAINEL),
+     '  e esconde o "Gerar \+ Emitir" quando pedido');
+  ok(/todos os itens da nota original/.test(PAINEL),
+     '  explicando por que: a nota sai com a original inteira');
+  const iFn = PAINEL.indexOf('async function gerarDoCardEstornadas');
+  const fn = PAINEL.slice(iFn, iFn + 3500);
+  ok(/String\(d\.nf_chave \|\| ''\)\.replace\(\/\[\^0-9\]\/g, ''\),\s*\n\s*true\n/.test(fn),
+     'e o card SEMPRE pede so rascunho — que e o que o dono ja faz (edita no Bling)');
+
+  // 2. card que ainda da pra CANCELAR nao pode oferecer devolucao
+  ok(/x\.nf_id_bling && x\.acao !== 'cancelar_nf'/.test(PAINEL),
+     'o botao some quando a acao e CANCELAR NF');
+  ok(/a devolução só depois do prazo/.test(PAINEL),
+     '  e a tela diz por que, pra ele nao perder o prazo de cancelamento');
+
+  // 3. mercadoria que NAO voltou nao pode entrar no estoque geral
+  ok(/d\.entrada_estoque === false/.test(fn),
+     'avisa quando o produto NAO voltou');
+  ok(/senão entra saldo que não existe no galpão/.test(fn),
+     '  porque entrada ali criaria saldo inexistente (o de DEFEITO e o lugar)');
+
+  // 4. a chave e a SOLICITACAO, nao o pedido
+  const iR = SERVER.indexOf("'/api/admin/sem-retorno/registrar'");
+  const rota = SERVER.slice(iR, iR + 4500);
+  ok(/\[caso:' \+ chaveCaso \+ '\]/.test(rota),
+     'o registro guarda a chave da SOLICITACAO');
+  ok(/const existente = chaveCaso/.test(rota),
+     '  e a busca casa por ela: a 2a solicitacao do mesmo pedido nao e bloqueada pela NF da 1a');
+
+  // 5. o JSON vai em data-attribute, nao em handler inline
+  ok(/data-caso="' \+ escapeHtml\(JSON\.stringify/.test(PAINEL),
+     'os dados vao num data-attribute, escapados');
+  ok(/b\.dataset\.caso/.test(PAINEL), '  e um listener le dali');
+  ok(!/onclick=\\'gerarDoCardEstornadas/.test(PAINEL),
+     '  sem handler inline: entidade HTML no titulo virava aspa solta e quebrava o onclick');
 }
 
 console.log('');

@@ -232,7 +232,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.81.0 (emitir a NF direto do card de estornadas)',
+    version: '4.81.1 (do card sai so RASCUNHO; cancelavel nao oferece devolucao)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -5049,18 +5049,34 @@ app.post('/api/admin/sem-retorno/registrar', requerAdmin, async (req, res) => {
     // JA EXISTE? devolvo o id em vez de criar outro. Sem isto, clicar
     // duas vezes criaria dois registros da mesma devolucao — e duas
     // portas pra emitir a mesma nota.
-    const { data: existentes, error: erroBusca } = await supabase
+    // v4.81.1 (Codex): a chave e a SOLICITACAO, nao o pedido.
+    //
+    // O TikTok abre uma solicitacao por ITEM, e o Magalu pode ter varias
+    // notas por pedido. Procurando so por `order_id`, a segunda solicitacao
+    // do mesmo pedido reaproveitaria o registro da primeira — e se aquela
+    // ja tem NF, esta seria BLOQUEADA com "ja emitida", quando na verdade
+    // e outro caso, ainda pendente.
+    //
+    // O marcador `[caso:X]` na descricao identifica a solicitacao. Casos
+    // antigos (sem marcador) continuam casando por pedido, que e o que da
+    // pra fazer com o dado que existe.
+    const chaveCaso = String(d.chave_caso || '').trim();
+    const { data: doPedido, error: erroBusca } = await supabase
       .from('devolucoes')
-      .select('id, nf_devolucao_id_bling')
-      .eq('order_id', pedido)
-      .limit(1);
+      .select('id, nf_devolucao_id_bling, problema_descricao')
+      .eq('order_id', pedido);
     if (erroBusca) return res.status(500).json({ ok: false, erro: erroBusca.message });
-    if (existentes && existentes.length) {
+
+    const existente = chaveCaso
+      ? (doPedido || []).find((r) => String(r.problema_descricao || '').includes('[caso:' + chaveCaso + ']'))
+      : (doPedido || [])[0];
+
+    if (existente) {
       return res.json({
         ok: true,
-        id: existentes[0].id,
+        id: existente.id,
         ja_existia: true,
-        nf_ja_emitida: !!existentes[0].nf_devolucao_id_bling,
+        nf_ja_emitida: !!existente.nf_devolucao_id_bling,
       });
     }
 
@@ -5079,7 +5095,9 @@ app.post('/api/admin/sem-retorno/registrar', requerAdmin, async (req, res) => {
         funcionario: 'Sistema (card estornadas)',
         // ⚠️ o RASTRO de onde veio: quem olhar este registro depois precisa
         // saber que NAO houve bipagem — o produto pode nem ter voltado.
-        problema_descricao: '[ESTORNADA SEM RETORNO] Registrado a partir do card de estornadas'
+        problema_descricao: '[ESTORNADA SEM RETORNO]'
+          + (chaveCaso ? ' [caso:' + chaveCaso + ']' : '')
+          + ' Registrado a partir do card de estornadas'
           + (d.marketplace ? ' · ' + String(d.marketplace) : '')
           + (d.classe ? ' · ' + String(d.classe) : '')
           + ' · NAO houve bipagem: a mercadoria pode nao ter voltado fisicamente.',

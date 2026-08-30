@@ -933,13 +933,26 @@
         }
 
         // dai em diante e o fluxo de sempre
+        // v4.81.1 - SO RASCUNHO daqui. A Bridge monta a devolucao com os
+        // itens da nota original INTEIRA, e aqui o caso pode ser um item de
+        // varios. Emitir direto transmitiria todos pra SEFAZ.
         abrirModalGerarDevolucao(
           String(j.id),
           String(d.nf_id_bling || ''),
           String(d.nf_numero || ''),
           String(d.produto || ''),
-          String(d.nf_chave || '').replace(/[^0-9]/g, '')
+          String(d.nf_chave || '').replace(/[^0-9]/g, ''),
+          true
         );
+
+        // ⚠️ mercadoria que NAO voltou: entrada no estoque geral criaria
+        // saldo que nao existe fisicamente. O dono ja decidiu isto em 29/08
+        // ("não integrarão o estoque normal, pois nunca recebemos d volta"),
+        // e o lugar dela e o deposito de DEFEITO.
+        if (d.entrada_estoque === false) {
+          toast('Este produto NÃO voltou — escolha o depósito de DEFEITO no modal, '
+            + 'senão entra saldo que não existe no galpão.', 'err');
+        }
       } catch (e) {
         toast('falha ao registrar: ' + (e.message || e), 'err');
       }
@@ -1099,16 +1112,33 @@
           // precisa de uma pra gravar o resultado. Entao registro na hora e
           // caio no MESMO modal das "Aprovadas" — com lote, deposito e
           // esteira, tudo que ja existe. Nao duplico fluxo de emissao.
-          const botaoGerar = x.nf_id_bling
-            ? '<button class="btn" style="background:#1565c0;margin-top:8px;margin-right:6px;" '
-              + 'onclick=\'gerarDoCardEstornadas(' + JSON.stringify(JSON.stringify({
+          // v4.81.1 (Codex): o botao NAO aparece quando a acao e CANCELAR.
+          //
+          // O card diz "CANCELAR NF · Nd restantes" e priorizou o caso por
+          // isso. Oferecer ali a emissao de devolucao — que e irreversivel —
+          // contradiz a propria orientacao, e o dono perderia o prazo de
+          // cancelamento sem perceber.
+          //
+          // E os dados vao num data-attribute, nao num handler inline: se o
+          // titulo do produto tiver uma entidade HTML (&quot;), o parser a
+          // decodifica DEPOIS do meu escape e a aspa reaparece solta dentro
+          // do onclick.
+          const podeGerar = x.nf_id_bling && x.acao !== 'cancelar_nf';
+          const botaoGerar = podeGerar
+            ? '<button class="btn btn-gerar-estornada" '
+              + 'style="background:#1565c0;margin-top:8px;margin-right:6px;" '
+              + 'data-caso="' + escapeHtml(JSON.stringify({
                   pedido: x.pedido, produto: x.produto, sku: x.sku, qtd: x.qtd,
                   nf_numero: x.nf_numero, nf_chave: x.nf_chave, nf_id_bling: x.nf_id_bling,
                   marketplace: x.marketplace, classe: x.classe,
-                })).replace(/'/g, '&#39;') + ')\' '
-              + 'title="Registra este caso e abre as opções de NF de devolução (rascunho, emitir, depósito).">'
+                  chave_caso: x.id, entrada_estoque: x.entrada_estoque,
+                })) + '" '
+              + 'title="Registra este caso e abre o rascunho da NF de devolução.">'
               + '🧾 Gerar NF de devolução</button>'
-            : '';
+            : (x.acao === 'cancelar_nf'
+              ? '<div style="margin-top:8px;font-size:12px;color:#e65100;">'
+                + '⏳ Ainda dá para <b>cancelar a NF</b> — a devolução só depois do prazo</div>'
+              : '');
 
           const linkNF = x.nf_id_bling
             ? '<a class="btn" style="background:#1565c0;margin-top:8px;display:inline-block;" '
@@ -1152,6 +1182,14 @@
         }).join('');
 
         document.getElementById('listaSemRetorno').innerHTML = avisoCorte + cabecalho + linhas;
+
+        // v4.81.1 - listener em vez de onclick inline: o navegador ja
+        // decodificou o data-attribute, entao o JSON chega limpo mesmo com
+        // entidade HTML no titulo do produto (&quot; virava aspa solta
+        // dentro do onclick e quebrava o handler).
+        document.querySelectorAll('.btn-gerar-estornada').forEach((b) => {
+          b.addEventListener('click', () => gerarDoCardEstornadas(b.dataset.caso));
+        });
       } catch (e) {
         // silencioso de proposito: e um bloco informativo, nao a fila
       }
@@ -2194,7 +2232,18 @@
       idNaturezaOperacao: '5776118802',  // "Devolucao de Mercadoria - Entrada"
     };
 
-    function abrirModalGerarDevolucao(devolucaoId, idNFOriginalBling, nfNumero, produtoTitulo, chaveNF) {
+    // v4.81.1 (Codex) - `soRascunho` esconde o "Gerar + Emitir".
+    //
+    // A Bridge monta a nota de devolucao com os itens da nota ORIGINAL
+    // INTEIRA — nao ha como restringir aos itens reembolsados. Nos cards do
+    // "estornadas", onde o caso pode ser UM item de uma nota com varios,
+    // emitir direto transmitiria a devolucao de TODOS pra SEFAZ. E
+    // irreversivel.
+    //
+    // O rascunho e seguro e e o que o dono ja faz: "qdo eu gero rascunho, é
+    // pra eu entrar no bling e editar aquela NF. depois eu vou no bling,
+    // edito e manualmente valido a NF".
+    function abrirModalGerarDevolucao(devolucaoId, idNFOriginalBling, nfNumero, produtoTitulo, chaveNF, soRascunho) {
       chaveNF = chaveNF || '';
       const conteudo = document.getElementById('modalGerarConteudo');
       conteudo.innerHTML = `
@@ -2226,10 +2275,18 @@
             onclick="confirmarGerarDevolucao('${devolucaoId}', '${idNFOriginalBling}', '${nfNumero}', false, '${chaveNF}')">
             🧪 Criar rascunho
           </button>
+          ${soRascunho ? `
+          <div style="font-size:13px;color:#e65100;background:#fff3e0;border:2px solid #ef6c00;
+                      border-radius:8px;padding:10px;max-width:340px;">
+            <b>⚠️ Só rascunho para este caso.</b><br>
+            A nota de devolução sai com <b>todos os itens da nota original</b>, e aqui pode ser
+            que só parte tenha sido reembolsada. Abra o rascunho no Bling, ajuste as linhas e
+            valide por lá.
+          </div>` : `
           <button class="btn btn-verde" id="btnGerarEmitir"
             onclick="confirmarGerarDevolucao('${devolucaoId}', '${idNFOriginalBling}', '${nfNumero}', true, '${chaveNF}')">
             🧾 Gerar + Emitir NF
-          </button>
+          </button>`}
         </div>
       `;
       document.getElementById('modalGerarDevolucao').style.display = 'flex';
