@@ -232,7 +232,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.70.3 (forcar captura: sem reaproveitar montagem em voo)',
+    version: '4.70.4 (forcar: erro de gravacao vira falha, trava reconferida)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -5293,8 +5293,22 @@ registrarRotasDebug(app, {
     // Se as duas correrem juntas, a minha cai na trava e volta com o motivo
     // — que e uma resposta honesta, nao um numero inventado.
     const r = await montarEspreita();
+
+    // b185.3 (Codex): reconferir a trava DEPOIS da montagem.
+    //
+    // Montar leva segundos. Se o ciclo automatico (ou outro forcar) pegou a
+    // trava nesse meio-tempo, capturarDevolucoes sai calada e eu devolveria
+    // `gravacao: null` como se tivesse rodado. Melhor dizer que nao rodou,
+    // com o motivo — o dono chama de novo em seguida.
+    if (CAPTURA_RODANDO) {
+      return { rodou: false, motivo: 'outra captura comecou enquanto eu montava o espreita' };
+    }
+
     const gravou = await capturarDevolucoes(r, true);
-    return { rodou: true, gravacao: gravou || null };
+    if (!gravou) {
+      return { rodou: false, motivo: 'a captura nao chegou a gravar (trava ou intervalo)' };
+    }
+    return { rodou: true, gravacao: gravou };
   },
   get ESP_ENTREGA_RODANDO() { return ESP_ENTREGA_RODANDO; },   // b302 - flag viva, por getter
   get EAN_RODANDO() { return EAN_RODANDO; },

@@ -214,6 +214,18 @@ const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o
        '  sem espera por trava com teto, que era a fonte dos furos');
     ok(/ja ha uma captura em andamento/.test(SERVER),
        '  se as duas correrem juntas, a minha volta com o MOTIVO — resposta honesta');
+
+    // b185.3: a trava e reconferida DEPOIS da montagem (que leva segundos)
+    ok(/outra captura comecou enquanto eu montava/.test(SERVER),
+       'a trava e reconferida depois da montagem: o ciclo pode ter pego nesse meio-tempo');
+    ok(/a captura nao chegou a gravar \(trava ou intervalo\)/.test(SERVER),
+       '  e gravacao nula vira "nao rodou", nao "rodou sem resultado"');
+
+    // b185.3: gravacao com erro nao e sucesso
+    ok(/const falhou = r && r\.gravacao && r\.gravacao\.erro;/.test(DEBUG),
+       'a rota trata gravacao com ERRO como falha');
+    ok(/status\(500\)[\s\S]{0,120}erro: r\.gravacao\.erro/.test(DEBUG),
+       '  respondendo 500 com o motivo, em vez de esconder o erro dentro de "ok"');
     ok(/devCapturadas, capturaEstado,/.test(DEBUG), '  e recebidas la');
     ok(/api\/debug\/capturadas/.test(DEBUG), 'ha rota pra acompanhar a captura');
 
