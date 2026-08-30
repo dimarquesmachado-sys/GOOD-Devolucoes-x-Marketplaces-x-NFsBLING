@@ -232,7 +232,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.82.5 (o valor do Magalu chega; janela respeita ?de e ?ate)',
+    version: '4.82.6 (prejuizo integral nao gera NF; nf_sem_saida COM entrada)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -5295,10 +5295,14 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
       // uma fatia antiga trazia o Magalu do periodo errado.
       const atePedido = String(req.query.ate || '').trim();
       const dePedido = String(req.query.de || '').trim();
-      const rm = await magaluCancelados.buscar(empresa, {
-        de: dePedido || new Date(AGORA - dias * 864e5).toISOString().slice(0, 10),
-        ate: atePedido || new Date().toISOString().slice(0, 10),
-      });
+      // b195.2 (Codex): com `?ate=` antigo e sem `?de=`, a janela abria HOJE
+      // menos `dias` e fechava numa data passada — podia nem se cruzar.
+      // Ancoro o inicio no PROPRIO corte pedido.
+      const fimJanela = atePedido || new Date().toISOString().slice(0, 10);
+      const inicioJanela = dePedido
+        || new Date(new Date(fimJanela + 'T12:00:00Z').getTime() - dias * 864e5)
+          .toISOString().slice(0, 10);
+      const rm = await magaluCancelados.buscar(empresa, { de: inicioJanela, ate: fimJanela });
       if (rm.ok) magaluItens = rm.itens;
       else magaluErro = rm.erro;
     } catch (e) {

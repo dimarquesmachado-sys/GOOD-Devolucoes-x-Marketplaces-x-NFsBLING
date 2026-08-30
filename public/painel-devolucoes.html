@@ -1155,7 +1155,13 @@
           // titulo do produto tiver uma entidade HTML (&quot;), o parser a
           // decodifica DEPOIS do meu escape e a aspa reaparece solta dentro
           // do onclick.
-          const podeGerar = x.nf_id_bling && x.acao !== 'cancelar_nf';
+          // b195.2 (Codex): `entregue_apos_estorno` NAO ganha o botao.
+          //
+          // Ali o cliente recebeu o produto DEPOIS do estorno — ficou com a
+          // mercadoria E com o dinheiro. Nao houve devolucao: emitir NF de
+          // devolucao registraria uma entrada de mercadoria que nunca
+          // aconteceu. O caminho e CONTESTAR com o marketplace.
+          const podeGerar = x.nf_id_bling && x.acao !== 'cancelar_nf' && !x.prejuizo_integral;
           const botaoGerar = podeGerar
             ? '<button class="btn btn-gerar-estornada" '
               + 'style="background:#1565c0;margin-top:8px;margin-right:6px;" '
@@ -1169,10 +1175,14 @@
                 })) + '" '
               + 'title="Registra este caso e abre o rascunho da NF de devolução.">'
               + '🧾 Gerar NF de devolução</button>'
-            : (x.acao === 'cancelar_nf'
-              ? '<div style="margin-top:8px;font-size:12px;color:#e65100;">'
-                + '⏳ Ainda dá para <b>cancelar a NF</b> — a devolução só depois do prazo</div>'
-              : '');
+            : (x.prejuizo_integral
+              ? '<div style="margin-top:8px;font-size:12px;color:#b71c1c;">'
+                + '💸 Não emita devolução: a mercadoria <b>não voltou</b> — o cliente ficou com ela '
+                + 'e com o dinheiro. O caminho é <b>contestar com o marketplace</b>.</div>'
+              : (x.acao === 'cancelar_nf'
+                ? '<div style="margin-top:8px;font-size:12px;color:#e65100;">'
+                  + '⏳ Ainda dá para <b>cancelar a NF</b> — a devolução só depois do prazo</div>'
+                : ''));
 
           const linkNF = x.nf_id_bling
             ? '<a class="btn" style="background:#1565c0;margin-top:8px;display:inline-block;" '

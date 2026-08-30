@@ -239,8 +239,12 @@ const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o
   const um = (classe) => mc.normalizar({ ...base, classe }, 'good');
 
   // cada classe implica um tratamento FISCAL diferente
-  ok(um('nf_sem_saida').entrada_estoque === false,
-     'nf_sem_saida: devolucao SEM entrada — dar entrada duplicaria o inventario');
+  // ⚠️ b195.2: era `false`, e estava ERRADO. Correcao DELE:
+  // "nos casos q o produto nunca foi postado, é só gerar devolução normal,
+  // e depósito Geral. Simples." A NF de venda ja deu baixa no estoque, entao
+  // a entrada CORRIGE a diferenca em vez de duplicar.
+  ok(um('nf_sem_saida').entrada_estoque === true,
+     'nf_sem_saida: devolucao COM entrada — corrige a baixa que a NF de venda ja deu');
   ok(um('nf_sem_saida').classe_permite_cancelar === true,
      '  e e a unica que permite cancelar a NF: o produto nunca saiu');
 
@@ -472,6 +476,8 @@ const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o
   const fs3 = require('fs');
   const path3 = require('path');
   const SERVER3 = fs3.readFileSync(path3.join(__dirname, '..', 'server.js'), 'utf8');
+  const PAINEL3 = fs3.readFileSync(path3.join(__dirname, '..', 'public', 'painel-devolucoes.html'), 'utf8');
+  const LIB2 = fs3.readFileSync(path3.join(__dirname, '..', 'lib', 'magalu-cancelados.js'), 'utf8');
   const i3 = SERVER3.indexOf("'/api/admin/sem-retorno'");
   const rota3 = SERVER3.slice(i3, i3 + 22000);
 
@@ -485,8 +491,21 @@ const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o
      '  e o total ficava zero, inutil pra priorizar');
 
   // b195.1: ?de= e ?ate= valem pros DOIS marketplaces
-  ok(/de: dePedido \|\|/.test(rota3) && /ate: atePedido \|\|/.test(rota3),
+  ok(/const fimJanela = atePedido \|\|/.test(rota3),
      'a janela ?de=/?ate= vale pro Magalu tambem (o TikTok ja respeitava)');
+  ok(/new Date\(fimJanela \+ 'T12:00:00Z'\)/.test(rota3),
+     '  e o inicio ancora no CORTE pedido: com ?ate= antigo, as janelas nem se cruzavam');
+
+  // b195.2: os dois pontos FISCAIS
+  ok(/!x\.prejuizo_integral/.test(PAINEL3),
+     '`entregue_apos_estorno` NAO ganha o botao de gerar NF');
+  ok(/O caminho é <b>contestar com o marketplace<\/b>/.test(PAINEL3),
+     '  a mercadoria nao voltou: emitir devolucao registraria entrada que nao houve');
+
+  ok(mc.ACAO_POR_CLASSE.nf_sem_saida.entrada_estoque === true,
+     '`nf_sem_saida` vai COM entrada — correcao DELE, e eu tinha deixado o valor antigo');
+  ok(/a NF DE VENDA JA DEU BAIXA/.test(LIB2),
+     '  com o motivo: a entrada corrige a baixa da NF de venda, nao duplica');
   ok(/magaluCancelados\.buscar\(empresa/.test(rota3),
      '  e populada pela busca — o bloco todo tinha sumido, sobraram so os comentarios');
   ok(rota3.indexOf('let magaluItens') < rota3.indexOf('magaluItens.map'),
@@ -496,6 +515,7 @@ const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o
 
   // ⚠️ e o diagnostico anterior estava ERRADO
   const LIB = fs3.readFileSync(path3.join(__dirname, '..', 'lib', 'magalu-cancelados.js'), 'utf8');
+
   ok(/CORRECAO DO DIAGNOSTICO ANTERIOR/.test(LIB),
      'o comentario registra que "a Magalu manda numero proprio" estava ERRADO');
   ok(mc.numeroDaChave('35260564289091000100550010000006371757802116') === '637',
