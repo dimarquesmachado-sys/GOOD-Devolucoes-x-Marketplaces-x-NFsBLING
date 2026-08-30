@@ -226,6 +226,71 @@ const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o
   ok(decidir(false, 90) === 'nf_devolucao', 'antigo: NF de devolucao, como antes');
 }
 
+// ── v4.78: as CLASSES NOVAS, que dizem o que fazer ──────────────────
+//
+// A conversa do Checkout fechou a classificacao automatica. Sao 5 classes
+// decididas por deliveries[].shipping — shipped_at, delivered_at (que nem
+// existe quando nao houve entrega) e cancelled_at.
+{
+  const base = { order_code: 'X', notas: [{ chave: '3'.repeat(44), numero: '1', em: '2026-08-25' }] };
+  const um = (classe) => mc.normalizar({ ...base, classe }, 'good');
+
+  // cada classe implica um tratamento FISCAL diferente
+  ok(um('nf_sem_saida').entrada_estoque === false,
+     'nf_sem_saida: devolucao SEM entrada — dar entrada duplicaria o inventario');
+  ok(um('nf_sem_saida').classe_permite_cancelar === true,
+     '  e e a unica que permite cancelar a NF: o produto nunca saiu');
+
+  ok(um('saiu_e_nao_entregou').entrada_estoque === true,
+     'saiu_e_nao_entregou: COM entrada — o produto deve ter voltado');
+  ok(um('estornado_apos_envio').entrada_estoque === true,
+     'estornado_apos_envio: COM entrada, fluxo normal');
+
+  ok(um('entregue_e_cancelado').entrada_estoque === null,
+     'entregue_e_cancelado: NAO SEI — precisa conferir se houve devolucao fisica');
+  ok(um('entregue_e_cancelado').classe_permite_cancelar === false,
+     '  e nao cancela: a mercadoria foi entregue, houve circulacao');
+
+  ok(um('entregue_apos_estorno').prejuizo_integral === true,
+     'entregue_apos_estorno: PREJUIZO INTEGRAL — cliente ficou com produto E dinheiro');
+  ok(um('entregue_apos_estorno').entrada_estoque === false,
+     '  sem entrada: o produto ficou com o cliente');
+
+  // as que nao geram trabalho
+  ok(um('nao_pago') === null, 'nao_pago nao entra: nunca virou faturamento');
+  ok(um('pago_cancelado_sem_nf') === null, 'pago_cancelado_sem_nf nao entra: sem NF sem imposto');
+  ok(um('pedido_teste') === null, 'pedido_teste nao entra: a AMB tem um de homologacao');
+
+  // classe DESCONHECIDA entra: eles podem criar outra
+  ok(um('classe_que_nao_existe') !== null,
+     'classe desconhecida ENTRA — sumir em silencio seria pior que mostrar a mais');
+
+  // as datas que decidiram a classificacao chegam
+  const comDatas = mc.normalizar({ ...base, classe: 'entregue_apos_estorno',
+    enviado_em: '2026-07-10', entregue_em: '2026-07-14', cancelado_em: '2026-07-13',
+    acao_sugerida: 'contestar' }, 'good');
+  ok(comDatas.entregue_em === '2026-07-14' && comDatas.cancelado_em === '2026-07-13',
+     'as datas da classificacao chegam (entregue DEPOIS do cancelamento = o caso real)');
+  ok(comDatas.acao_sugerida === 'contestar',
+     'e a acao que ELES sugerem vem junto — melhor que a minha deducao');
+}
+
+// ── o card mostra o que a classe implica ────────────────────────────
+{
+  const fs = require('fs');
+  const path = require('path');
+  const PAINEL = fs.readFileSync(path.join(__dirname, '..', 'public', 'painel-devolucoes.html'), 'utf8');
+
+  ok(/💸 PREJUÍZO INTEGRAL/.test(PAINEL),
+     'o card marca o prejuizo integral em vermelho');
+  ok(/Vale contestar com o marketplace/.test(PAINEL),
+     '  dizendo o que fazer: contestar, nao emitir nota');
+  ok(/SEM entrada de estoque<\/b> — a mercadoria não voltou/.test(PAINEL),
+     'e diz quando a devolucao vai SEM entrada de estoque');
+  ok(/Confira se houve devolução física<\/b> antes de dar baixa/.test(PAINEL),
+     '  e quando nao da pra saber, manda conferir em vez de chutar');
+}
+
 console.log('');
 console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
 process.exit(falhas ? 1 : 0);

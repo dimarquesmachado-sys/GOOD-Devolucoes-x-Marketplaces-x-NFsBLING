@@ -965,6 +965,29 @@
           // `estornado_apos_envio`): o produto voltou pelo fluxo normal.
           // Emitir NF de devolucao ali seria duplicar. Aviso em vez de
           // esconder, porque a NF pode nao ter sido emitida ainda.
+          // v4.78 - o PIOR caso: entregue DEPOIS do estorno autorizado. O
+          // cliente ficou com a mercadoria E com o dinheiro. Nao ha imposto a
+          // recuperar aqui — ha prejuizo a contestar com o marketplace.
+          const tarjaPrejuizo = x.prejuizo_integral
+            ? '<span style="background:#b71c1c;color:#fff;padding:3px 8px;border-radius:10px;'
+              + 'font-size:10px;font-weight:700;margin-left:6px;" '
+              + 'title="Entregue DEPOIS do estorno: o cliente ficou com o produto e com o dinheiro. '
+              + 'Vale contestar com o marketplace.">💸 PREJUÍZO INTEGRAL</span>'
+            : '';
+
+          // e o que a classe diz sobre a ENTRADA de estoque — errar aqui
+          // duplica ou some com inventario
+          const dicaEstoque = x.entrada_estoque === false
+            ? '<div style="font-size:12px;color:#00695c;margin-top:4px;">'
+              + '📦 Devolução <b>SEM entrada de estoque</b> — a mercadoria não voltou ao CD</div>'
+            : (x.entrada_estoque === true
+              ? '<div style="font-size:12px;color:#00695c;margin-top:4px;">'
+                + '📦 Devolução <b>COM entrada</b> — o produto voltou (confira no recebimento)</div>'
+              : (x.classe
+                ? '<div style="font-size:12px;color:#e65100;margin-top:4px;">'
+                  + '❓ <b>Confira se houve devolução física</b> antes de dar baixa</div>'
+                : ''));
+
           const jaVoltou = !!x.tem_devolucao_registrada;
           const tarjaVoltou = jaVoltou
             ? '<span style="background:#00695c;color:#fff;padding:3px 8px;border-radius:10px;'
@@ -1034,7 +1057,7 @@
 
           return '<div class="item" style="border-left-color:' + (podeCancelar ? '#ef6c00' : '#546e7a') + ';">'
             + '<div class="item-header"><div class="item-titulo">'
-            + tagMkt + escapeHtml(x.produto || '-') + ' ' + tarja + tarjaVoltou + '</div></div>'
+            + tagMkt + escapeHtml(x.produto || '-') + ' ' + tarja + tarjaVoltou + tarjaPrejuizo + '</div></div>'
             + '<div style="font-size:13px;color:#555;margin-top:6px;">'
             + (x.nf_numero ? '<b>NF ' + escapeHtml(String(x.nf_numero)) + '</b> · ' : '')
             + 'pedido <code>' + escapeHtml(String(x.pedido || '-')) + '</code>'
@@ -1055,6 +1078,7 @@
                 + '💬 ' + escapeHtml(String(x.motivo)) + '</div>' : '')
             + (x.cliente ? '<div style="font-size:12px;color:#999;margin-top:2px;">'
                 + escapeHtml(String(x.cliente)) + '</div>' : '')
+            + dicaEstoque
             + linkNF
             + '</div>';
         }).join('');
