@@ -36,9 +36,22 @@ const fn = BLING.slice(i, i + 5000);
 
   const ref = Date.parse('2026-04-19');
   const ini = new Date(ref - 180 * 864e5).toISOString().slice(0, 10);
-  const fim = new Date(ref + 2 * 864e5).toISOString().slice(0, 10);
-  ok(ini === '2025-10-21' && fim === '2026-04-21',
-     'pro caso de 19/04, a janela vai de 21/10 a 21/04 — cobre vendas antigas');
+  const fim = new Date(ref + 30 * 864e5).toISOString().slice(0, 10);
+  ok(ini === '2025-10-21' && fim === '2026-05-19',
+     'pro caso de 19/04, a janela vai de 21/10 a 19/05 — cobre venda antiga E nota emitida depois');
+  ok(/30 \* 864e5/.test(fn),
+     '  os 30 dias pra frente cobrem NF que sai depois da data de referencia');
+
+  // b197.2: a AMB precisa passar a data — ela nao monta `criado_em`
+  const AMB = fs.readFileSync(path.join(__dirname, '..', 'amb-devolucoes', 'app-AMB.js'), 'utf8');
+  ok(/item\.nf_emitida_em \|\| item\.cancelado_em \|\| item\.criado_no_mkt/.test(AMB),
+     'a AMB passa a data pela mesma cascata do prazo (ela nao monta `criado_em`)');
+  ok(/a busca virava varredura CEGA/.test(AMB),
+     '  senao ia null e a janela por data nao servia de nada');
+
+  // e o retry nao empilha
+  ok(/UMA tentativa extra por pagina, e so/.test(fn),
+     'o retry do limite acontece UMA vez: insistir piora o proprio limite');
 
   // e o prazo do chamador tem que caber nas paginas pedidas
   const SERVER = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');

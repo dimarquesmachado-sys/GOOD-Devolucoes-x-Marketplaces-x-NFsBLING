@@ -82,7 +82,7 @@ const criarMlBuscas = require('./lib-AMB/ml-buscas-AMB');
 const registrarIdentificar = require('./lib-AMB/identificar-AMB');
 const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 
-const VERSAO = 'AMB Devolucoes b199';
+const VERSAO = 'AMB Devolucoes b200';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -2266,7 +2266,15 @@ router.get('/api/admin/sem-retorno', auth.requerLogin, async (req, res) => {
       if (Date.now() - INICIO_BUSCA > 12000) break;
       try {
         const r = await Promise.race([
-          ajudantes.buscarNFnoBlingPorOrderId(item.pedido, item.criado_em || null, { maxPaginas: 6 }),
+          // b197.2 (Codex): a AMB nao monta `criado_em` no item — eu passava
+          // null e a busca virava varredura CEGA, do mais recente pra tras,
+          // exatamente o que a janela por data veio evitar.
+          //
+          // Uso a mesma cascata do prazo: emissao > evento > captura.
+          ajudantes.buscarNFnoBlingPorOrderId(
+            item.pedido,
+            item.nf_emitida_em || item.cancelado_em || item.criado_no_mkt || item.criado_em || null,
+            { maxPaginas: 6 }),
           // b197.1 (Codex): 6 paginas cabem no prazo. Com 700ms entre
           // paginas, 12 nao caberiam em 6s — as ultimas nunca chegariam a
           // responder, e eu esperaria a toa.
