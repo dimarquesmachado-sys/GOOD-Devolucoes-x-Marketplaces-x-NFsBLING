@@ -210,7 +210,7 @@ const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o
 
   ok(/const jaVoltou = !!d\.tem_devolucao_registrada;/.test(SERVER),
      'o calculo da acao olha se o produto ja voltou');
-  ok(/const podeCancelar = !jaVoltou && !semProvaDeEnvio/.test(SERVER),
+  ok(/const podeCancelar = dataConfiavel && !jaVoltou/.test(SERVER),
      '  e quem voltou NAO ganha "cancelar NF", mesmo dentro do prazo');
   // b190.6: e o MAGALU nunca ganha, porque nao ha prova de que nao saiu
   // b195.3: o Magalu so cancela em `nf_sem_saida` — a classe E a prova de
@@ -481,7 +481,7 @@ const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o
   const PAINEL3 = fs3.readFileSync(path3.join(__dirname, '..', 'public', 'painel-devolucoes.html'), 'utf8');
   const LIB2 = fs3.readFileSync(path3.join(__dirname, '..', 'lib', 'magalu-cancelados.js'), 'utf8');
   const i3 = SERVER3.indexOf("'/api/admin/sem-retorno'");
-  const rota3 = SERVER3.slice(i3, i3 + 32000);   // a rota cresceu de novo
+  const rota3 = SERVER3.slice(i3, i3 + 36000);   // a rota cresceu de novo (b195.6)
 
   ok(/let magaluItens = \[\];/.test(rota3),
      'a lista do Magalu e DECLARADA (o painel quebrava com "magaluItens is not defined")');
@@ -525,6 +525,13 @@ const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o
      '  e `2026-02-31` e recusada: o Date normaliza pra 03/03 em silencio');
   ok(/baseOrigem = 'evento_magalu'/.test(rota3),
      'o `cancelado_em` do Magalu e reserva pro prazo, antes da data da captura');
+  // b195.6: MAS cancelar exige data CONFIAVEL — evento nao e emissao
+  ok(/const dataConfiavel = baseOrigem === 'data_emissao' \|\| baseOrigem === 'chave_nfe'/.test(rota3),
+     'e CANCELAR exige data confiavel da nota: evento nao diz quando ela saiu');
+  ok(/ofereceria cancelar uma nota vencida/.test(rota3),
+     '  senao uma venda de maio cancelada ontem daria "3 dias" e voltaria 501');
+  ok(/\.lt\('criado_no_mkt'/.test(rota3),
+     'e o `?ate=` corta o TikTok em cima tambem, pras duas listas baterem');
   ok(/dando prazo de cancelamento que nao existe/.test(rota3),
      '  senao um caso sem chave usaria uma data de hoje');
 

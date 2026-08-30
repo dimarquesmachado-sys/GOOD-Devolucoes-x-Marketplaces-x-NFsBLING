@@ -232,7 +232,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.82.9 (data normalizada recusada; dica some no cancelavel)',
+    version: '4.83.0 (cancelar exige data confiavel da nota)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -5203,6 +5203,12 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
       // entao ?dias=7 trazia 6 meses de historico. Filtro por criado_no_mkt,
       // que e quando a devolucao nasceu no marketplace.
       .gte('criado_no_mkt', desde)
+      // b195.6 (Codex): o `?ate=` tambem CORTA em cima. Sem isto, pedir uma
+      // fatia antiga trazia o TikTok ate hoje — a janela do Magalu terminava
+      // na data pedida e a do TikTok nao, e as duas listas nao batiam.
+      .lt('criado_no_mkt', ateValido
+        ? new Date(ateValido.getTime() + 864e5).toISOString()
+        : new Date(Date.now() + 864e5).toISOString())
       // b184.1: e o STATUS tambem no banco. Filtrar "concluida" em JS depois
       // do limite tinha o mesmo defeito de antes: numa janela cheia de
       // pendentes, as concluidas ficavam de fora.
@@ -5522,7 +5528,18 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
         // produto saiu, houve circulacao, e a nota nao pode ser apagada.
         const semProvaDeEnvio = d.marketplace === 'magalu'
           && d.classe !== 'nf_sem_saida';
-        const podeCancelar = !jaVoltou && !semProvaDeEnvio
+        // b195.6 (Codex): CANCELAR exige data CONFIAVEL da nota.
+        //
+        // `cancelado_em` e `criado_no_mkt` sao datas do EVENTO, nao da
+        // emissao. Uma venda de maio cancelada ontem daria "3 dias" e eu
+        // ofereceria cancelar uma nota vencida ha meses — o dono tentaria e
+        // levaria 501 intempestivo.
+        //
+        // So a data de emissao (Magalu) e o mes da chave (NF-e) dizem quando
+        // a nota saiu. Sem uma das duas, o caminho e a devolucao, que vale
+        // em qualquer prazo.
+        const dataConfiavel = baseOrigem === 'data_emissao' || baseOrigem === 'chave_nfe';
+        const podeCancelar = dataConfiavel && !jaVoltou && !semProvaDeEnvio
           && diasDesde != null && diasDesde <= 20;
 
         return {

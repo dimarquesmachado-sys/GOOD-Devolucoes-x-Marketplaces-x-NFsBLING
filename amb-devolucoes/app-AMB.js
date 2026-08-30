@@ -82,7 +82,7 @@ const criarMlBuscas = require('./lib-AMB/ml-buscas-AMB');
 const registrarIdentificar = require('./lib-AMB/identificar-AMB');
 const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 
-const VERSAO = 'AMB Devolucoes b196';
+const VERSAO = 'AMB Devolucoes b197';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -2194,7 +2194,18 @@ router.get('/api/admin/sem-retorno', auth.requerLogin, async (req, res) => {
         // servidores em vez de numa peca so, entao consertar num lado
         // deixa o outro para tras. Foi o que aconteceu aqui.
         const semProva = d.marketplace === 'magalu' && d.classe !== 'nf_sem_saida';
-        const podeCancelar = !jaVoltou && !semProva && diasDesde != null && diasDesde <= 20;
+        // b195.6 (Codex): CANCELAR exige data CONFIAVEL da nota.
+        //
+        // `cancelado_em` e `criado_no_mkt` sao datas do EVENTO, nao da
+        // emissao. Uma venda de maio cancelada ontem daria "3 dias" e eu
+        // ofereceria cancelar uma nota vencida ha meses — o dono tentaria e
+        // levaria 501 intempestivo.
+        //
+        // So a data de emissao (Magalu) e o mes da chave (NF-e) dizem quando
+        // a nota saiu. Sem uma das duas, o caminho e a devolucao, que vale
+        // em qualquer prazo.
+        const dataConfiavel = baseOrigem === 'data_emissao' || baseOrigem === 'chave_nfe';
+        const podeCancelar = dataConfiavel && !jaVoltou && !semProva && diasDesde != null && diasDesde <= 20;
 
         return {
           id: d.id,
