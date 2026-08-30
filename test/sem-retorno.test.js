@@ -113,6 +113,8 @@ const PAINEL = fs.readFileSync(path.join(RAIZ, 'public', 'painel-devolucoes.html
 
   ok(/async function carregarSemRetorno/.test(PAINEL), 'ha funcao que carrega');
   ok(/carregarSemRetorno\(\); \/\/ v4\.69/.test(PAINEL), '  chamada junto do carregamento');
+  ok(/carregarSemRetorno\(\);   \/\/ b184\.3/.test(PAINEL),
+     '  e no timer tambem — o painel fica aberto o dia todo');
   ok(/catch \(e\) \{[\s\S]{0,120}nao a fila/.test(PAINEL),
      '  e falha nela NAO derruba a fila principal (bloco informativo)');
 

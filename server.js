@@ -232,7 +232,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.69.3 (captura lia campo inexistente e nao pegava TikTok)',
+    version: '4.69.4 (captura do TikTok: chave por solicitacao, data preservada)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -5399,7 +5399,13 @@ function capturarDevolucoes(resultadoEspreita) {
   // e eu lia `.itens`, que nao existe — entao a captura gravava ZERO desde
   // que subiu, calada. E o painel de estornadas consultaria uma tabela vazia.
   const lista = (resultadoEspreita && (resultadoEspreita.em_transito || resultadoEspreita.itens)) || [];
-  if (!lista.length) return;
+
+  // b184.3 (Codex): NAO sair quando os outros 3 vierem vazios.
+  //
+  // O TikTok nao passa pelo espreita — vem pela ponte. Se Magalu, ML e
+  // Shopee nao tiverem nada em transito (um dia calmo, ou uma falha la),
+  // eu saia aqui e o TikTok nunca era capturado. E justamente o TikTok que
+  // alimenta o painel de estornadas sem retorno.
 
   CAPTURA_RODANDO = true;
   CAPTURA_ULTIMA = Date.now();
@@ -5413,14 +5419,26 @@ function capturarDevolucoes(resultadoEspreita) {
   // nunca teria devolucao do TikTok, e o painel de estornadas sem retorno
   // — que existe justamente pros reembolsos puros do TikTok — ficaria
   // eternamente vazio.
+  // b184.3 (Codex): falha da ponte NAO pode virar "zero devolucoes do
+  // TikTok" em silencio — e o mesmo erro que custou uma noite com a
+  // Shopee. Ela nao derruba a captura dos outros 3, mas fica registrada
+  // no estado, que a rota de acompanhamento mostra.
+  let erroTikTok = null;
   const comTikTok = tiktokPonte.sondaDevolucoes('good', { limite: 200 })
     .then((r) => {
-      if (!r || !r.ok || !r.cru || !Array.isArray(r.cru.devolucoes)) return [];
+      if (!r || !r.ok) {
+        erroTikTok = (r && r.erro) || 'ponte indisponivel';
+        return [];
+      }
+      if (!r.cru || !Array.isArray(r.cru.devolucoes)) {
+        erroTikTok = 'a ponte respondeu sem a lista de devolucoes';
+        return [];
+      }
       return r.cru.devolucoes
         .map((d) => devCapturadas.traduzir(tiktokDev.normalizar(d, 'good'), 'good'))
         .filter(Boolean);
     })
-    .catch(() => []);   // falha aqui nao pode derrubar a captura dos outros
+    .catch((e) => { erroTikTok = e.message || String(e); return []; });
 
   comTikTok.then((extras) => devCapturadas.guardar(supabase, linhas.concat(extras)))
     .then((r) => {
@@ -5430,6 +5448,7 @@ function capturarDevolucoes(resultadoEspreita) {
         // sem chave nao ha upsert possivel; conto pra saber se estou
         // perdendo devolucao por falta de identificador
         sem_chave: lista.length - linhas.length,
+        tiktok_erro: erroTikTok || undefined,
         erro: r.ok ? null : (r.erros || ['falha desconhecida']).join(' | '),
       };
       if (r.ok) console.log(`[CAPTURA] ${r.gravadas} devolucoes guardadas`);

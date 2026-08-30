@@ -52,6 +52,20 @@ const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o
   const tk = cap.traduzir({ marketplace: 'tiktok', pedido: '585514776487560610',
     tipo_tiktok: 'REFUND', status: 'RETURN_OR_REFUND_REQUEST_COMPLETE', valor: 36 }, 'good');
   ok(tk.tipo_tiktok === 'REFUND', 'o tipo do TikTok vira COLUNA, nao so campo dentro do cru');
+
+  // b184.3: a CHAVE e a DATA do TikTok, no caminho real (normalizar -> traduzir)
+  const tkDev = require('../lib/tiktok-devolucoes');
+  const irmaA = cap.traduzir(tkDev.normalizar({ id: 'A', order_id: '585110624384091852',
+    tipo: 'REFUND', status: 'RETURN_OR_REFUND_REQUEST_COMPLETE', valor: 57.4, criado_em: 1785099240 }, 'good'), 'good');
+  const irmaB = cap.traduzir(tkDev.normalizar({ id: 'B', order_id: '585110624384091852',
+    tipo: 'REFUND', status: 'RETURN_OR_REFUND_REQUEST_COMPLETE', valor: 57.4, criado_em: 1785099445 }, 'good'), 'good');
+  ok(irmaA.chave_marketplace !== irmaB.chave_marketplace,
+     'duas solicitacoes do MESMO pedido tem chaves diferentes (senao o upsert sobrescreveria uma)');
+  ok(irmaA.chave_marketplace === 'A', '  usando o id da solicitacao, nao o pedido');
+  ok(irmaA.criado_no_mkt && irmaA.criado_no_mkt.indexOf('2026') === 0,
+     'a data do TikTok SOBREVIVE (vinha como criado_em e eu so olhava dias_em_transito)');
+  ok(irmaA.atualizado_no_mkt === null || typeof irmaA.atualizado_no_mkt === 'string',
+     '  e a de atualizacao tambem, quando existe');
   ok(cap.traduzir({ marketplace: 'ml', pedido: '1', tipo: 'devolucao' }, 'good').tipo_tiktok === 'devolucao',
      '  e o campo `tipo` generico dos outros marketplaces tambem cai ali');
 
@@ -120,8 +134,10 @@ const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o
        '  lendo `em_transito`, que e o que montarEspreita devolve (eu lia `.itens`, que nao existe → gravava ZERO)');
     ok(/tiktokPonte\.sondaDevolucoes\('good'/.test(SERVER),
        '  e puxando o TikTok tambem, que NAO passa pelo espreita (vem pela ponte)');
-    ok(/falha aqui nao pode derrubar a captura dos outros/.test(SERVER),
-       '  com falha do TikTok isolada dos outros 3 marketplaces');
+    ok(/tiktok_erro: erroTikTok/.test(SERVER),
+       '  com a falha do TikTok REGISTRADA no estado, nao virando zero silencioso');
+    ok(!/const lista[\s\S]{0,200}if \(!lista\.length\) return;/.test(SERVER),
+       '  e a captura NAO sai quando os outros 3 vem vazios (o TikTok nao passa por eles)');
     ok(/CAPTURA_INTERVALO_MS = 60 \* 60 \* 1000/.test(SERVER),
        '  mas com ritmo proprio: de hora em hora, nao a cada 3 min como ele');
     ok(/if \(!supabase \|\| CAPTURA_RODANDO\) return;/.test(SERVER),

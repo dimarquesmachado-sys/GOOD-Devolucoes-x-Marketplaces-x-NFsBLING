@@ -432,7 +432,10 @@
       // pra fila de NF sai da lista sem precisar recarregar a pagina na mao.
       if (!window._espAuto) {
         window._espAuto = setInterval(function () {
-          if (!document.hidden) carregarEspreita();
+          if (!document.hidden) {
+            carregarEspreita();
+            carregarSemRetorno();   // b184.3 - o painel fica aberto o dia todo
+          }
         }, 4 * 60 * 1000);
       }
       // b340 r2 (Codex #83): o frescor do indice de NFs so era testado dentro do
