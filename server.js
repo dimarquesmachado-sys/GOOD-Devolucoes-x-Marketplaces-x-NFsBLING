@@ -232,7 +232,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.80.0 (o numero da NF sai da chave: os cards do Magalu ganham link)',
+    version: '4.80.1 (prazo na busca por chave; id usa o numero derivado)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -5374,7 +5374,15 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
         // o numero (por isso todos os cards dele apareciam "sem NF").
         if (item.nf_chave) {
           try {
-            const idPorChave = await resolverIdNFPorChave(item.nf_numero, item.nf_chave);
+            // b192.1 (Codex): a busca por chave PAGINA no Bling e pode
+            // passar dos 8s sozinha — o teto do laco so e conferido ENTRE
+            // itens, entao uma unica busca lenta travaria o painel.
+            // Corrida com um prazo proprio: perder o vinculo de um card e
+            // melhor que segurar a tela toda.
+            const idPorChave = await Promise.race([
+              resolverIdNFPorChave(item.nf_numero, item.nf_chave),
+              new Promise((ok) => setTimeout(() => ok(null), 5000)),
+            ]);
             if (idPorChave) { item.nf_id_bling = String(idPorChave); continue; }
           } catch (e) { /* cai na busca por numero abaixo */ }
         }

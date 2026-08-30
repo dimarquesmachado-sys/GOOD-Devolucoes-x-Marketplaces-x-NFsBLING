@@ -2210,10 +2210,19 @@ router.get('/api/admin/sem-retorno', auth.requerLogin, async (req, res) => {
     // "sem NF vinculada" — sem link e sem serventia. A chave manda: ela
     // carrega a competencia e a serie, e e o que o Magalu entrega.
     const INICIO_BUSCA = Date.now();
-    for (const item of itens.filter((x) => x.nf_chave && !x.nf_id_bling).slice(0, 25)) {
+    // b192.1 (Codex): entram os que tem CHAVE **ou** so numero — nota com
+    // numero e sem chave existe, e ficaria sem link a toa.
+    for (const item of itens.filter((x) => (x.nf_chave || x.nf_numero) && !x.nf_id_bling).slice(0, 25)) {
       if (Date.now() - INICIO_BUSCA > 8000) break;   // o painel nao pode travar
+      if (!item.nf_chave) continue;   // sem chave nao da pra resolver por aqui
       try {
-        const id = await nfp.resolverIdNFPorChave(item.nf_numero, item.nf_chave);
+        // a busca PAGINA no Bling e pode passar dos 8s sozinha; o teto do
+        // laco so e conferido entre itens. Prazo proprio: perder o vinculo
+        // de um card e melhor que segurar a tela toda.
+        const id = await Promise.race([
+          nfp.resolverIdNFPorChave(item.nf_numero, item.nf_chave),
+          new Promise((ok) => setTimeout(() => ok(null), 5000)),
+        ]);
         if (id) item.nf_id_bling = String(id);
       } catch (e) { /* segue sem o link; o numero da NF esta no card */ }
     }
