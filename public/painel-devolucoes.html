@@ -905,9 +905,27 @@
     // mesmo — a NF de venda ja deu baixa no estoque, entao a entrada
     // CORRIGE a diferenca em vez de duplicar. Correcao dele, e estava
     // certo: "é só gerar devolução normal, e depósito Geral. Simples."
+    let _gerandoEstornada = false;
+
     async function gerarDoCardEstornadas(dadosJson) {
       let d;
       try { d = JSON.parse(dadosJson); } catch (e) { toast('dados do card ilegíveis', 'err'); return; }
+
+      // b193 (Codex): clique duplo dispara duas vezes antes de a primeira
+      // responder — a checagem "ja existe" e feita no servidor e as duas
+      // passariam, criando dois registros da mesma devolucao.
+      if (_gerandoEstornada) return;
+      _gerandoEstornada = true;
+
+      // b193 (Codex): CONFIRMAR antes de registrar. Clicar sem querer criava
+      // um registro na fila de "aguardando NF" que so some manualmente — e
+      // o dono nao pediu nada ainda.
+      if (!confirm('Registrar este caso e abrir o rascunho da NF de devolução?\n\n'
+        + 'Pedido ' + (d.pedido || '?') + (d.nf_numero ? ' · NF ' + d.nf_numero : '')
+        + '\n\nEle passa a aparecer na fila "Aprovadas - aguardando NF".')) {
+        _gerandoEstornada = false;
+        return;
+      }
 
       try {
         const r = await fetch('/api/admin/sem-retorno/registrar', {
@@ -955,6 +973,8 @@
         }
       } catch (e) {
         toast('falha ao registrar: ' + (e.message || e), 'err');
+      } finally {
+        _gerandoEstornada = false;
       }
     }
 

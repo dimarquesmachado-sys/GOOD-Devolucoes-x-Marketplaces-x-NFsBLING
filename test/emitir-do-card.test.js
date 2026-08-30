@@ -128,6 +128,31 @@ const PAINEL = fs.readFileSync(path.join(RAIZ, 'public', 'painel-devolucoes.html
      '  sem handler inline: entidade HTML no titulo virava aspa solta e quebrava o onclick');
 }
 
+// ── b193: as tres consequencias que a revisao pegou ─────────────────
+{
+  const iFn2 = PAINEL.indexOf('async function gerarDoCardEstornadas');
+  const fn2 = PAINEL.slice(iFn2, iFn2 + 4000);
+
+  // 1. registrar UM caso nao pode sumir com os IRMAOS
+  ok(/casosRegistrados\.add\(m\[1\]\)/.test(SERVER),
+     'o registro do CARD marca so aquele caso (`[caso:X]`)');
+  ok(/triadosSemMarcador\.add\(String\(t\.order_id\)\)/.test(SERVER),
+     '  e a triagem de BIPE derruba o pedido todo — ali o produto voltou de verdade');
+  ok(/casosRegistrados\.has\(String\(m\.id\)\)/.test(SERVER),
+     'entao registrar uma nota nao some com as IRMAS do mesmo pedido');
+
+  // 2. clique duplo
+  ok(/if \(_gerandoEstornada\) return;/.test(fn2),
+     'clique duplo nao cria dois registros (a checagem do servidor nao pega a corrida)');
+  ok(/_gerandoEstornada = false;/.test(fn2), '  e a trava solta no fim');
+
+  // 3. confirmar antes de criar
+  ok(/confirm\('Registrar este caso/.test(fn2),
+     'pede confirmacao antes de registrar');
+  ok(/fila "Aprovadas - aguardando NF"/.test(fn2),
+     '  dizendo onde o caso vai parar — clicar sem querer criava registro invisivel');
+}
+
 console.log('');
 console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
 process.exit(falhas ? 1 : 0);

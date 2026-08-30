@@ -232,7 +232,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.81.1 (do card sai so RASCUNHO; cancelavel nao oferece devolucao)',
+    version: '4.81.2 (registrar um caso nao some com as notas irmas)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -5263,7 +5263,8 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
     // rastreio) e nao serve pro Magalu. Mas o PEDIDO serve: se ha triagem
     // daquele pedido, ele ja esta no fluxo normal.
     const pedidosMagalu = magaluItens.map((m) => m.pedido).filter(Boolean);
-    const triadosMagalu = new Set();
+    const triadosSemMarcador = new Set();   // triagem de BIPE: derruba o pedido
+    const casosRegistrados = new Set();     // registro do CARD: derruba so o caso
     if (pedidosMagalu.length) {
       for (let i = 0; i < pedidosMagalu.length; i += 200) {
         const { data: tri, error: erroTri } = await supabase
@@ -5300,16 +5301,36 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
         // ⏳ DIVIDA REGISTRADA: a triagem deveria gravar o item que
         // realmente voltou. Enquanto nao gravar, nenhum consumidor desse
         // dado pode confiar no SKU de nota multi-item.
-        for (const t of (tri || [])) triadosMagalu.add(String(t.order_id));
+        // b193: separo o que veio do CARD (tem `[caso:X]`) do que veio do
+      // BIPE. O primeiro derruba so aquele caso; o segundo, o pedido todo.
+      for (const t of (tri || [])) {
+        const desc = String(t.problema_descricao || '');
+        const m = desc.match(/\[caso:([^\]]+)\]/);
+        if (m) casosRegistrados.add(m[1]);
+        else triadosSemMarcador.add(String(t.order_id));
+      }
       }
     }
 
+    // b193 (Codex): registrar UM caso do Magalu nao pode sumir com os IRMAOS.
+    //
+    // O descarte era por pedido. Assim que o dono clicasse em gerar num
+    // pedido com varias notas, TODAS sumiam da lista — inclusive as que
+    // ainda nao tem NF de devolucao. Ele nao teria como voltar nelas.
+    //
+    // Agora o registro criado pelo card carrega `[caso:X]`, entao dou
+    // preferencia a essa chave. Triagem SEM marcador (a de bipe normal)
+    // continua derrubando o pedido todo: ali o produto voltou de verdade e
+    // o caso ja esta no fluxo.
     const itens = semRetorno
       .filter((d) => {
         const chaveDela = String(d.chave_marketplace || d.id || '');
         return !resolvidosFinos.has(chaveDela);
       })
-      .concat(magaluItens.filter((m) => !triadosMagalu.has(String(m.pedido))))
+      .concat(magaluItens.filter((m) => {
+        if (casosRegistrados.has(String(m.id))) return false;   // este caso ja foi
+        return !triadosSemMarcador.has(String(m.pedido));       // triagem de bipe
+      }))
       .map((d) => {
         // b184 (Codex): O RELOGIO CONTA DA EMISSAO DA NOTA, nao da devolucao.
         //
