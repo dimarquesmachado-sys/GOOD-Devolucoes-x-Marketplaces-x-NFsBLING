@@ -171,7 +171,7 @@ const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o
        '  as deps sao PASSADAS pro rotas-debug (usar o escopo do server ja derrubou o boot 2x)');
 
     // v4.70: forcar a captura sem esperar o ciclo
-    ok(/function capturarDevolucoes\(resultadoEspreita, forcar\)/.test(SERVER),
+    ok(/function capturarDevolucoes\(resultadoEspreita, forcar, limiteTikTok\)/.test(SERVER),
        'a captura aceita `forcar`, pra primeira carga e pra depurar');
     ok(/if \(!forcar && Date\.now\(\) - CAPTURA_ULTIMA/.test(SERVER),
        '  pulando o intervalo de 1h');
@@ -222,10 +222,33 @@ const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o
        '  e gravacao nula vira "nao rodou", nao "rodou sem resultado"');
 
     // b185.3: gravacao com erro nao e sucesso
-    ok(/const falhou = r && r\.gravacao && r\.gravacao\.erro;/.test(DEBUG),
+    ok(/const falhou = g && \(g\.erro \|\| g\.tiktok_erro\);/.test(DEBUG),
        'a rota trata gravacao com ERRO como falha');
-    ok(/status\(500\)[\s\S]{0,120}erro: r\.gravacao\.erro/.test(DEBUG),
-       '  respondendo 500 com o motivo, em vez de esconder o erro dentro de "ok"');
+    ok(/erro: g\.erro \|\| \('TikTok nao veio: '/.test(DEBUG),
+       '  respondendo com o motivo, em vez de esconder o erro dentro de "ok"');
+
+    // b186: a falha do TIKTOK tambem conta
+    ok(/const falhou = g && \(g\.erro \|\| g\.tiktok_erro\);/.test(DEBUG),
+       'a falha do TikTok tambem vira erro na rota');
+    ok(/status\(g\.erro \? 500 : 207\)/.test(DEBUG),
+       '  com 207 quando so o TikTok caiu (os outros 3 gravaram) — nao e tudo quebrado');
+    ok(/parcial: !g\.erro/.test(DEBUG), '  marcando que foi parcial');
+    ok(/os outros marketplaces gravaram normalmente/.test(DEBUG),
+       '  e dizendo o que sobreviveu');
+
+    // b186: zero gravadas COM descartes nao e "vazio"
+    ok(/if \(g && !g\.gravadas && g\.sem_chave\)/.test(DEBUG),
+       'zero gravadas COM registros descartados vira erro');
+    ok(/nao e o mesmo que nao haver nada em transito/.test(DEBUG),
+       '  dizendo a diferenca: havia itens, mas sem identificador');
+
+    // b186: limite do TikTok configuravel pra carga historica
+    ok(/const LIMITE_TIKTOK = Math\.min\(1000/.test(SERVER),
+       'o limite do TikTok e configuravel, com teto');
+    ok(/LIMITE_TIKTOK_PADRAO = 200/.test(SERVER),
+       '  com padrao de 200, que cobre o corrente (a Girassol tem 99 em 6 meses)');
+    ok(/forcarCaptura\(req\.query\.tiktok\)/.test(DEBUG),
+       '  e a rota aceita ?tiktok=N pra carga historica');
     ok(/devCapturadas, capturaEstado,/.test(DEBUG), '  e recebidas la');
     ok(/api\/debug\/capturadas/.test(DEBUG), 'ha rota pra acompanhar a captura');
 
