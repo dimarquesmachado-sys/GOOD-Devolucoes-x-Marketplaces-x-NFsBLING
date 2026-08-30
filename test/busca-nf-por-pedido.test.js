@@ -61,10 +61,19 @@ const fn = BLING.slice(i, i + 9000);   // a funcao cresceu com os consertos
 
   // e o prazo do chamador tem que caber nas paginas pedidas
   const SERVER = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
-  ok(/maxPaginas: 6/.test(SERVER),
-     'o chamador pede 6 paginas: com 700ms entre elas, 12 nao caberiam no prazo');
-  ok(/setTimeout\(\(\) => ok\(null\), 8000\)/.test(SERVER),
-     '  e o prazo subiu pra 8s, coerente com o ritmo mais lento');
+  // b197.4: a janela tem que CABER nas paginas lidas
+  ok(/const DIAS_FATIA = opcoes\.diasFatia \|\| 20;/.test(fn),
+     'a varredura vai em FATIAS de 20 dias, indo pra tras');
+  ok(/6 paginas sao 600 notas, ou ~14 DIAS/.test(fn),
+     '  porque 6 paginas cobrem ~14 dias na densidade real (400 notas em 9 dias)');
+  ok(/paginasNaFatia >= PAGINAS_POR_FATIA/.test(fn),
+     '  com teto POR fatia: senao uma densa consumiria tudo');
+  ok(/fatiaAtual\+\+/.test(fn), '  e o laco avanca pra fatia anterior');
+
+  ok(/maxPaginas: 12, paginasPorFatia: 2, delayMs: 450/.test(SERVER),
+     '12 paginas em 6 fatias = 120 dias de alcance (com 6 chegava a 40)');
+  ok(/setTimeout\(\(\) => ok\(null\), 14000\)/.test(SERVER),
+     '  e cabe no prazo: ~9,8s medidos contra 14s');
 }
 
 // ── o limite de requisicoes nao e desistencia ────────────────────────

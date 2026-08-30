@@ -232,7 +232,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.86.3 (o corte de 5 dias nao atrapalha mais a janela)',
+    version: '4.87.0 (varredura em fatias: a janela cabe nas paginas lidas)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -5706,11 +5706,18 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
           buscarNFnoBlingPorOrderId(
             item.pedido,
             item.nf_emitida_em || item.criado_em || null,
-            { maxPaginas: 6 }),
+            { maxPaginas: 12, paginasPorFatia: 2, delayMs: 450 }),
+          // b197.4: o alcance tem que caber no PRAZO.
+          //   12 paginas x 450ms + latencia = ~9,8s, dentro dos 14s
+          //   2 paginas por fatia = 6 fatias de 20 dias = 120 dias
+          // Com os 6 anteriores chegava a 40 dias — nao alcancava a venda
+          // antiga. Fatia de 20 dias tem ~880 notas na densidade da GOOD, e
+          // 2 paginas leem 200: pego as mais recentes de cada fatia, que e
+          // onde a nota costuma estar.
           // b197.1 (Codex): 6 paginas cabem no prazo. Com 700ms entre
           // paginas, 12 nao caberiam em 6s — as ultimas nunca chegariam a
           // responder, e eu esperaria a toa.
-          new Promise((ok) => setTimeout(() => ok(null), 8000)),
+          new Promise((ok) => setTimeout(() => ok(null), 14000)),
         ]);
         const achada = (r && r.match) || (r && r.ok && r.nf) || null;
         if (achada && achada.id) {
