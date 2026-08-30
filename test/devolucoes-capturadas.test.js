@@ -165,7 +165,7 @@ const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o
        '  e a captura NAO sai quando os outros 3 vem vazios (o TikTok nao passa por eles)');
     ok(/CAPTURA_INTERVALO_MS = 60 \* 60 \* 1000/.test(SERVER),
        '  mas com ritmo proprio: de hora em hora, nao a cada 3 min como ele');
-    ok(/if \(!supabase \|\| CAPTURA_RODANDO\) return;/.test(SERVER),
+    ok(/if \(CAPTURA_RODANDO\) return;/.test(SERVER),
        '  e com trava, pra duas capturas nao rodarem juntas');
     ok(/devCapturadas,/.test(SERVER) && /capturaEstado: \(\) => CAPTURA_ESTADO/.test(SERVER),
        '  as deps sao PASSADAS pro rotas-debug (usar o escopo do server ja derrubou o boot 2x)');
