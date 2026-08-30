@@ -55,10 +55,6 @@ const PAINEL = fs.readFileSync(path.join(RAIZ, 'public', 'painel-devolucoes.html
   // b184.1: pedido com VARIAS solicitacoes
   ok(/resolvidosFinos/.test(rota),
      'guarda os identificadores finos: o TikTok abre uma solicitacao por ITEM');
-  ok(/if \(irmas <= 1\) return !jaResolvidos\.has/.test(rota),
-     '  pedido com UMA solicitacao: descarte por pedido vale');
-  ok(/senao a segunda[\s\S]{0,80}sumiria/.test(rota),
-     '  com VARIAS: nao descarta pelo pedido, senao a 2a sumiria por causa da NF da 1a');
   ok(/nf_devolucao_id_bling/.test(rota),
      'quem JA tem NF de devolucao sai da lista');
   ok(/i \+= 200/.test(rota),

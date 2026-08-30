@@ -232,7 +232,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.69.5 (captura do TikTok preserva rastreio, NF e itens)',
+    version: '4.69.6 (descarte sempre pela solicitacao, nunca pelo pedido)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -5061,13 +5061,14 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
     // RESOLVIDOS e o dono emite NF em duplicidade — pior que nao mostrar
     // nada. E o teto de 300 deixava de fora os pedidos seguintes, que
     // apareceriam como pendentes sem ser.
-    let jaResolvidos = new Set();
+    // b184.5: so o conjunto FINO sobrevive — o descarte por pedido saiu,
+    // porque escondia caso novo por causa de NF de solicitacao antiga.
     const resolvidosFinos = new Set();
     for (let i = 0; i < pedidos.length; i += 200) {
       const fatia = pedidos.slice(i, i + 200);
       const { data: tri, error: erroTri } = await supabase
         .from('devolucoes')
-        .select('order_id, shipment_id, nf_devolucao_id_bling')
+        .select('order_id, shipment_id, tracking, nf_devolucao_id_bling')
         .in('order_id', fatia)
         .not('nf_devolucao_id_bling', 'is', null);
       if (erroTri) {
@@ -5077,35 +5078,34 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
             + ' — listar sem essa checagem mostraria casos ja resolvidos',
         });
       }
-      for (const t of (tri || [])) jaResolvidos.add(t.order_id);
-      // b184.1 (Codex): guardo tambem os identificadores mais finos, porque
+      // b184.1 (Codex): guardo os identificadores mais finos, porque
       // um PEDIDO pode ter varias solicitacoes (o TikTok abre uma por item).
       // Resolver a do item A nao resolve a do item B — descartar pelo pedido
       // esconderia a segunda, que continua devendo NF.
+      // b184.5: a chave da captura pode ser o id da solicitacao OU o
+      // rastreio, dependendo do que existia. A triagem guarda shipment_id e
+      // tracking — junto os dois, pra casar com qualquer das formas.
       for (const t of (tri || [])) {
         if (t.shipment_id) resolvidosFinos.add(String(t.shipment_id));
+        if (t.tracking) resolvidosFinos.add(String(t.tracking));
       }
     }
 
     const AGORA = Date.now();
-    // b184.1: quantas solicitacoes ATIVAS este pedido tem? Se so uma, o
-    // descarte por pedido e seguro. Se mais de uma (uma por item), so
-    // descarto quando a chave DAQUELA solicitacao ja foi resolvida.
-    const porPedido = {};
-    for (const d of semRetorno) {
-      if (d.pedido) porPedido[d.pedido] = (porPedido[d.pedido] || 0) + 1;
-    }
-
+    // b184.5 (Codex): o descarte e SEMPRE pela solicitacao, nunca pelo pedido.
+    //
+    // Eu contava as irmas DEPOIS dos filtros (data, tipo, status, limite de
+    // 500). Se uma solicitacao antiga do mesmo pedido ja foi resolvida e a
+    // nova nao, sobra UMA na contagem — e a heuristica "pedido com uma so"
+    // a descartava por causa da NF da outra. O caso fiscal novo sumia.
+    //
+    // A contagem sempre seria enganosa, porque so enxerga o que passou pelo
+    // filtro. Entao abandonei a heuristica: comparo a chave DAQUELA
+    // solicitacao com as ja resolvidas, e pronto.
     const itens = semRetorno
       .filter((d) => {
         const chaveDela = String(d.chave_marketplace || d.id || '');
-        if (resolvidosFinos.has(chaveDela)) return false;   // essa mesma, resolvida
-        const irmas = porPedido[d.pedido] || 1;
-        // pedido com UMA solicitacao: o descarte por pedido vale
-        if (irmas <= 1) return !jaResolvidos.has(d.pedido);
-        // pedido com VARIAS: nao descarto pelo pedido, senao a segunda
-        // solicitacao sumiria por causa da NF da primeira
-        return true;
+        return !resolvidosFinos.has(chaveDela);
       })
       .map((d) => {
         // b184 (Codex): O RELOGIO CONTA DA EMISSAO DA NOTA, nao da devolucao.
