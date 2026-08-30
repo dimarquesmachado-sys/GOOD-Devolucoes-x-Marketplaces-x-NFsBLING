@@ -232,7 +232,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.86.2 (a AMB passa a data; janela cobre NF emitida depois)',
+    version: '4.86.3 (o corte de 5 dias nao atrapalha mais a janela)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),

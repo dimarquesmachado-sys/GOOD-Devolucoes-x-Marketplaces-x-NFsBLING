@@ -53,6 +53,12 @@ const fn = BLING.slice(i, i + 5000);
   ok(/UMA tentativa extra por pagina, e so/.test(fn),
      'o retry do limite acontece UMA vez: insistir piora o proprio limite');
 
+  // b197.3: o corte de 5 dias era da varredura antiga e atrapalhava
+  ok(/if \(!filtroData && dataLimite/.test(fn),
+     'o corte de 5 dias so vale SEM filtro de data');
+  ok(/este break interrompia depois de 5 dias/.test(fn),
+     '  senao a consulta abria a janela certa e desistia antes de chegar na nota');
+
   // e o prazo do chamador tem que caber nas paginas pedidas
   const SERVER = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
   ok(/maxPaginas: 6/.test(SERVER),
