@@ -80,6 +80,22 @@ const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o
   ok(duas[0].nf_emitida_em === '2026-08-01' && duas[1].nf_emitida_em === '2026-08-05',
      '  e cada uma com sua data de emissao, que decide o prazo de cancelamento');
 
+  // b190.4: com varias notas, repetir o valor do PEDIDO infla a soma
+  const comValor = mc.normalizarTodas({
+    classe: 'pago_cancelado_com_nf', order_code: 'P', valor: 500,
+    notas: [{ chave: '1'.repeat(44), numero: '1' }, { chave: '2'.repeat(44), numero: '2' }],
+  }, 'good');
+  ok(comValor.reduce((t, x) => t + x.valor, 0) === 500,
+     'o valor do pedido e RATEADO entre as notas — repetir inteiro dobraria a soma');
+  ok(comValor[0].valor_rateado === true, '  marcado como rateado, pra ninguem tratar como exato');
+
+  const notaComValor = mc.normalizarTodas({
+    classe: 'pago_cancelado_com_nf', order_code: 'Q', valor: 500,
+    notas: [{ chave: '1'.repeat(44), numero: '1', valor: 300 }],
+  }, 'good');
+  ok(notaComValor[0].valor === 300 && !notaComValor[0].valor_rateado,
+     'e quando a NOTA traz o valor, ele manda (sem rateio)');
+
   ok(mc.normalizarTodas({ classe: 'nao_pago', order_code: 'X', notas: [{ numero: '9' }] }, 'good').length === 0,
      'classe sem NF continua fora, mesmo com notas na linha');
   ok(mc.normalizarTodas({ classe: 'pago_cancelado_com_nf', order_code: 'Y', notas: [] }, 'good').length === 0,

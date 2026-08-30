@@ -102,6 +102,9 @@ ok(/linhas\.push\(\{ code, erro:/.test(DEBUG),
   ok(fn('objeto BR266361368249N') === null,
      '  nem pega codigo que nao siga o formato dos Correios (2 letras + 9 digitos + 2 letras)');
   ok(fn('') === null && fn(null) === null, '  e texto vazio nao quebra');
+  // b190.4: o SAC nem sempre escreve em maiuscula
+  ok(fn('objeto: da597697016br') === 'DA597697016BR',
+     'aceita o codigo em minuscula e devolve em MAIUSCULA (como o resto indexa)');
 }
 
 // ── a resposta em si ─────────────────────────────────────────────────
