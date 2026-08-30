@@ -232,7 +232,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.82.8 (a AMB ganha a mesma regra; datas validadas)',
+    version: '4.82.9 (data normalizada recusada; dica some no cancelavel)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -5151,7 +5151,11 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
     const dataOuNull = (txt) => {
       if (!/^\d{4}-\d{2}-\d{2}$/.test(txt)) return null;
       const t = new Date(txt + 'T00:00:00Z');
-      return Number.isFinite(t.getTime()) ? t : null;
+      if (!Number.isFinite(t.getTime())) return null;
+      // b195.5 (Codex): `2026-02-31` NAO e invalido pro Date — ele normaliza
+      // pra 03/03 em silencio, e a janela vira outra sem ninguem saber.
+      // Confiro que a data VOLTA igual ao que foi pedido.
+      return t.toISOString().slice(0, 10) === txt ? t : null;
     };
     const deValido = dataOuNull(dePedidoRaw);
     const ateValido = dataOuNull(atePedidoRaw);
@@ -5459,6 +5463,14 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
             base = Date.UTC(2000 + aa, mm - 1, 1);
             baseOrigem = 'chave_nfe';
           }
+        }
+        // b195.5 (Codex): o Magalu traz `cancelado_em`, que e MUITO mais
+        // perto da emissao que a data da captura. Sem isto, um caso do
+        // Magalu sem chave caia em `criado_no_mkt` — que pode ser de hoje,
+        // dando prazo de cancelamento que nao existe.
+        if (base == null && d.cancelado_em) {
+          const t = new Date(d.cancelado_em).getTime();
+          if (Number.isFinite(t)) { base = t; baseOrigem = 'evento_magalu'; }
         }
         if (base == null && d.criado_no_mkt) {
           base = new Date(d.criado_no_mkt).getTime();

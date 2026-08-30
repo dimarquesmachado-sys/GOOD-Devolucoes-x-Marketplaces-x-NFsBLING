@@ -520,6 +520,13 @@ const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o
      '  e a data e VALIDADA antes de usar: `?de=ontem` faria toISOString LANCAR');
   ok(/const fimBase = ateValido/.test(rota3),
      '  com a janela do TikTok ancorada no ?ate=, como ja era no Magalu');
+  // b195.5: data que NORMALIZA pra outro dia tambem e recusada
+  ok(/t\.toISOString\(\)\.slice\(0, 10\) === txt/.test(rota3),
+     '  e `2026-02-31` e recusada: o Date normaliza pra 03/03 em silencio');
+  ok(/baseOrigem = 'evento_magalu'/.test(rota3),
+     'o `cancelado_em` do Magalu e reserva pro prazo, antes da data da captura');
+  ok(/dando prazo de cancelamento que nao existe/.test(rota3),
+     '  senao um caso sem chave usaria uma data de hoje');
 
   // b195.4: a AMB tem a MESMA regra do nf_sem_saida
   const AMB2 = fs3.readFileSync(path3.join(__dirname, '..', 'amb-devolucoes', 'app-AMB.js'), 'utf8');
@@ -533,6 +540,9 @@ const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o
      'o card diz GERAL no `nf_sem_saida`, nao o texto generico');
   ok(/a entrada corrige a baixa que a NF de venda deu/.test(PAINEL3),
      '  explicando por que: o produto nunca saiu do CD');
+  // b195.5: enquanto da pra cancelar, a dica de estoque confunde
+  ok(/x\.acao === 'cancelar_nf'\s*\n?\s*\? ''/.test(PAINEL3),
+     'a dica de estoque SOME enquanto da pra cancelar — ali a devolucao e o plano B');
 
   ok(mc.ACAO_POR_CLASSE.nf_sem_saida.entrada_estoque === true,
      '`nf_sem_saida` vai COM entrada — correcao DELE, e eu tinha deixado o valor antigo');

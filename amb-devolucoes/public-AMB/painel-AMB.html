@@ -1218,7 +1218,13 @@ async function carregarSemRetorno() {
           // GERAL — a mercadoria esta no CD, novinha, e a entrada corrige a
           // baixa que a NF de venda ja deu. Antes ele caia no texto generico
           // de "COM entrada, confirme no galpao", que nao diz o principal.
-          const dicaEstoque = x.classe === 'nf_sem_saida'
+          // b195.5 (Codex): enquanto DA PRA CANCELAR, a orientacao de estoque
+          // confunde — ela descreve a NF de devolucao, que ali e o plano B.
+          // O card ja diz "CANCELAR NF · Nd restantes"; falar de deposito ao
+          // lado sugere que ele deveria emitir a devolucao agora.
+          const dicaEstoque = x.acao === 'cancelar_nf'
+            ? ''
+            : x.classe === 'nf_sem_saida'
             ? '<div style="font-size:12px;color:#00695c;margin-top:4px;">'
               + '📦 Devolução <b>COM entrada</b>, depósito <b>GERAL</b> — o produto nunca saiu do CD; '
               + 'a entrada corrige a baixa que a NF de venda deu</div>'

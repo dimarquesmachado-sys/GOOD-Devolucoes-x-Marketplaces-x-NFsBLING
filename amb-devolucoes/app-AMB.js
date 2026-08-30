@@ -82,7 +82,7 @@ const criarMlBuscas = require('./lib-AMB/ml-buscas-AMB');
 const registrarIdentificar = require('./lib-AMB/identificar-AMB');
 const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 
-const VERSAO = 'AMB Devolucoes b195';
+const VERSAO = 'AMB Devolucoes b196';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -2164,6 +2164,14 @@ router.get('/api/admin/sem-retorno', auth.requerLogin, async (req, res) => {
             base = Date.UTC(2000 + aa, mm - 1, 1);   // dia 1: leitura conservadora
             baseOrigem = 'chave_nfe';
           }
+        }
+        // b195.5 (Codex): o Magalu traz `cancelado_em`, que e MUITO mais
+        // perto da emissao que a data da captura. Sem isto, um caso do
+        // Magalu sem chave caia em `criado_no_mkt` — que pode ser de hoje,
+        // dando prazo de cancelamento que nao existe.
+        if (base == null && d.cancelado_em) {
+          const t = new Date(d.cancelado_em).getTime();
+          if (Number.isFinite(t)) { base = t; baseOrigem = 'evento_magalu'; }
         }
         if (base == null && d.criado_no_mkt) {
           base = new Date(d.criado_no_mkt).getTime();
