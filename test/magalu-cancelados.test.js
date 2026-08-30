@@ -467,6 +467,33 @@ const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o
      '  com o motivo — orfao voltaria como pendente');
 }
 
+// ── b195: a busca do Magalu nao pode sumir da rota ──────────────────
+{
+  const fs3 = require('fs');
+  const path3 = require('path');
+  const SERVER3 = fs3.readFileSync(path3.join(__dirname, '..', 'server.js'), 'utf8');
+  const i3 = SERVER3.indexOf("'/api/admin/sem-retorno'");
+  const rota3 = SERVER3.slice(i3, i3 + 22000);
+
+  ok(/let magaluItens = \[\];/.test(rota3),
+     'a lista do Magalu e DECLARADA (o painel quebrava com "magaluItens is not defined")');
+  ok(/magaluCancelados\.buscar\(empresa/.test(rota3),
+     '  e populada pela busca — o bloco todo tinha sumido, sobraram so os comentarios');
+  ok(rota3.indexOf('let magaluItens') < rota3.indexOf('magaluItens.map'),
+     '  antes do primeiro uso');
+  ok(rota3.indexOf('const AGORA') < rota3.indexOf('let magaluItens'),
+     '  e depois de AGORA, que a busca usa');
+
+  // ⚠️ e o diagnostico anterior estava ERRADO
+  const LIB = fs3.readFileSync(path3.join(__dirname, '..', 'lib', 'magalu-cancelados.js'), 'utf8');
+  ok(/CORRECAO DO DIAGNOSTICO ANTERIOR/.test(LIB),
+     'o comentario registra que "a Magalu manda numero proprio" estava ERRADO');
+  ok(mc.numeroDaChave('35260564289091000100550010000006371757802116') === '637',
+     'os numeros BATEM com a chave: 637 e o nNF mesmo (nota da AMB, serie 001)');
+  ok(mc.numeroDaChave('35260764289091000100550030000003771441283894') === '377',
+     '  e 377 tambem (serie 003)');
+}
+
 console.log('');
 console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
 process.exit(falhas ? 1 : 0);

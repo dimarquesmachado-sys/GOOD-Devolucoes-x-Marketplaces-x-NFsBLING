@@ -232,7 +232,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.82.3 (o legado da nota so-chave sai do nNF, nao do final)',
+    version: '4.82.4 (a busca do Magalu tinha sumido da rota da GOOD)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -5278,6 +5278,28 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
     // O descarte fino acima compara chaves do TikTok (id da solicitacao ou
     // rastreio) e nao serve pro Magalu. Mas o PEDIDO serve: se ha triagem
     // daquele pedido, ele ja esta no fluxo normal.
+
+    // b195 - A BUSCA DO MAGALU TINHA SUMIDO.
+    //
+    // O painel da GOOD respondia "magaluItens is not defined": em alguma
+    // edicao anterior o bloco que POPULA a lista foi perdido e sobraram so
+    // os comentarios. A rota inteira quebrava, e o dono via o card vermelho.
+    //
+    // Falha aqui nao pode derrubar a lista: o TikTok continua aparecendo,
+    // com o aviso do que faltou.
+    let magaluItens = [];
+    let magaluErro = null;
+    try {
+      const rm = await magaluCancelados.buscar(empresa, {
+        de: new Date(AGORA - dias * 864e5).toISOString().slice(0, 10),
+        ate: new Date().toISOString().slice(0, 10),
+      });
+      if (rm.ok) magaluItens = rm.itens;
+      else magaluErro = rm.erro;
+    } catch (e) {
+      magaluErro = String(e.message || e).slice(0, 150);
+    }
+
     const pedidosMagalu = magaluItens.map((m) => m.pedido).filter(Boolean);
     const triadosSemMarcador = new Set();   // triagem de BIPE: derruba o pedido
     const casosRegistrados = new Set();     // registro do CARD: derruba so o caso
