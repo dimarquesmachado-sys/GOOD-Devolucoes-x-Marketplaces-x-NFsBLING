@@ -153,6 +153,34 @@ const PAINEL = fs.readFileSync(path.join(RAIZ, 'public', 'painel-devolucoes.html
      '  dizendo onde o caso vai parar — clicar sem querer criava registro invisivel');
 }
 
+// ── b193.1: os dois P1 que quase passaram ───────────────────────────
+{
+  // 1. eu lia um campo que NAO buscava — o conserto dos irmaos nao
+  //    funcionava, e eles voltavam a sumir todos
+  const iSel = SERVER.indexOf('pedidosMagalu.slice(i, i + 200)');
+  const trecho = SERVER.slice(Math.max(0, iSel - 800), iSel);
+  ok(/\.select\('order_id, problema_descricao'\)/.test(trecho),
+     'a consulta busca `problema_descricao`, que e lido logo depois');
+  ok(/o campo vinha undefined/.test(SERVER),
+     '  com o motivo registrado: sem ele TODO registro parecia triagem de bipe');
+
+  // 2. na fila normal, a esteira manda `emitir: true` SEMPRE — e isso
+  //    contornaria a protecao de so-rascunho deste PR
+  ok(/\[SO RASCUNHO\]/.test(SERVER),
+     'o registro do card entra MARCADO como so-rascunho');
+  ok(/c\.dataset\.sorascunho !== '1'/.test(PAINEL),
+     'e a ESTEIRA pula esses casos: ela emite direto, e sairia a nota inteira');
+  ok(/data-sorascunho="/.test(PAINEL), '  com o marcador no checkbox');
+  // a chamada tem parenteses internos, entao conto as ocorrencias em vez
+  // de tentar casar a linha inteira
+  const botoesMarcados = (PAINEL.match(/replace\(\/\[\^0-9\]\/g, ''\)\}', \$\{\(d\.problema_descricao/g) || []).length;
+  ok(botoesMarcados >= 2,
+     '  e o botao da fila normal tambem so oferece rascunho nesses (achei ' + botoesMarcados + ')');
+
+  const ocorr = (PAINEL.match(/data-sorascunho="/g) || []).length;
+  ok(ocorr >= 2, 'o marcador esta nas DUAS secoes com esteira (achei ' + ocorr + ')');
+}
+
 console.log('');
 console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
 process.exit(falhas ? 1 : 0);

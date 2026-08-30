@@ -232,7 +232,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.81.2 (registrar um caso nao some com as notas irmas)',
+    version: '4.81.3 (o marcador e lido de verdade; esteira nao emite os do card)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -5083,6 +5083,15 @@ app.post('/api/admin/sem-retorno/registrar', requerAdmin, async (req, res) => {
     const { data, error } = await supabase
       .from('devolucoes')
       .insert({
+        // b193.1 (Codex): entra na fila normal, MAS marcado.
+        //
+        // Na fila, o card ganha o botao "rascunho ou emitir" e o checkbox da
+        // esteira — e a esteira manda `emitir: true` SEMPRE. Isso contorna a
+        // protecao de so-rascunho que este PR criou, e transmitiria pra
+        // SEFAZ a devolucao da nota INTEIRA.
+        //
+        // O marcador `[SO RASCUNHO]` na descricao e lido pela esteira e pelo
+        // card (abaixo), que passam a oferecer so o rascunho.
         tipo: 'aprovado',           // entra na fila normal de "aguardando NF"
         status: 'pendente',
         order_id: pedido,
@@ -5095,7 +5104,7 @@ app.post('/api/admin/sem-retorno/registrar', requerAdmin, async (req, res) => {
         funcionario: 'Sistema (card estornadas)',
         // ⚠️ o RASTRO de onde veio: quem olhar este registro depois precisa
         // saber que NAO houve bipagem — o produto pode nem ter voltado.
-        problema_descricao: '[ESTORNADA SEM RETORNO]'
+        problema_descricao: '[ESTORNADA SEM RETORNO] [SO RASCUNHO]'
           + (chaveCaso ? ' [caso:' + chaveCaso + ']' : '')
           + ' Registrado a partir do card de estornadas'
           + (d.marketplace ? ' · ' + String(d.marketplace) : '')
@@ -5269,7 +5278,11 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
       for (let i = 0; i < pedidosMagalu.length; i += 200) {
         const { data: tri, error: erroTri } = await supabase
           .from('devolucoes')
-          .select('order_id')
+          // b193.1 (Codex): `problema_descricao` E LIDO logo abaixo pra achar
+          // o marcador `[caso:X]`. Sem ele no select, o campo vinha undefined
+          // e TODO registro parecia triagem de bipe — o conserto dos irmaos
+          // nao funcionava, e voltavam a sumir todos.
+          .select('order_id, problema_descricao')
           .in('order_id', pedidosMagalu.slice(i, i + 200));
         if (erroTri) {
           // mesma regra do descarte do TikTok: falhar e melhor que listar
