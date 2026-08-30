@@ -232,7 +232,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.71.0 (falha do TikTok aparece; descarte nao vira vazio)',
+    version: '4.71.1 (sem-retorno: a tabela da GOOD nao tem coluna tracking)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -5068,7 +5068,13 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
       const fatia = pedidos.slice(i, i + 200);
       const { data: tri, error: erroTri } = await supabase
         .from('devolucoes')
-        .select('order_id, shipment_id, tracking, nf_devolucao_id_bling')
+        // b187: a tabela da GOOD nao tem `tracking` — quem tem e a
+        // `devolucoes_amb`. Eu adicionei o campo pensando na AMB e derrubei
+        // a consulta aqui: "column devolucoes.tracking does not exist".
+        //
+        // O aviso do painel funcionou como devia (disse o motivo em vez de
+        // mostrar lista errada), mas o certo e nao quebrar.
+        .select('order_id, shipment_id, nf_devolucao_id_bling')
         .in('order_id', fatia)
         .not('nf_devolucao_id_bling', 'is', null);
       if (erroTri) {
@@ -5083,11 +5089,10 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
       // Resolver a do item A nao resolve a do item B — descartar pelo pedido
       // esconderia a segunda, que continua devendo NF.
       // b184.5: a chave da captura pode ser o id da solicitacao OU o
-      // rastreio, dependendo do que existia. A triagem guarda shipment_id e
-      // tracking — junto os dois, pra casar com qualquer das formas.
+      // rastreio. Aqui so tenho `shipment_id` — na GOOD e onde o rastreio
+      // acaba caindo, porque a coluna `tracking` so existe na tabela da AMB.
       for (const t of (tri || [])) {
         if (t.shipment_id) resolvidosFinos.add(String(t.shipment_id));
-        if (t.tracking) resolvidosFinos.add(String(t.tracking));
       }
     }
 
