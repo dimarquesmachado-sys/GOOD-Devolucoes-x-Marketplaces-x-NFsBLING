@@ -232,7 +232,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.75.1 (reversa: indice com digitos, mais recente manda, triagem por item)',
+    version: '4.75.2 (descarte do Magalu por pedido: o SKU da triagem nao e confiavel)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -5157,7 +5157,7 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
       for (let i = 0; i < pedidosMagalu.length; i += 200) {
         const { data: tri, error: erroTri } = await supabase
           .from('devolucoes')
-          .select('order_id, produto_sku')
+          .select('order_id')
           .in('order_id', pedidosMagalu.slice(i, i + 200));
         if (erroTri) {
           // mesma regra do descarte do TikTok: falhar e melhor que listar
@@ -5168,18 +5168,28 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
               + erroTri.message + ' — listar sem essa checagem mostraria casos ja no fluxo normal',
           });
         }
-        // b190.1 (Codex): guardar PEDIDO+SKU, nao so o pedido.
+        // b190.2 (Codex): VOLTEI PRO DESCARTE POR PEDIDO — e o SKU nao serve.
         //
-        // Nota com varios produtos e so um item devolvido: descartar pelo
-        // PEDIDO removeria o outro item, que continua sem devolucao e sem
-        // resolucao fiscal. Foi o caso do Antonio (NF 076466) que mostrou
-        // isso: dois SKUs na mesma nota.
-        for (const t of (tri || [])) {
-          triadosMagalu.add(String(t.order_id) + '|' + String(t.produto_sku || ''));
-          // sem SKU na triagem, o pedido inteiro conta — e o que da pra
-          // afirmar com o dado que existe
-          if (!t.produto_sku) triadosMagalu.add(String(t.order_id) + '|*');
-        }
+        // Eu tinha passado a casar PEDIDO+SKU pra nao derrubar o outro item
+        // de uma nota com varios produtos. A revisao mostrou que o dado nao
+        // suporta isso: `public/js/triagem.js` grava SEMPRE `nf.itens[0].sku`
+        // e a quantidade SOMADA de todos os itens.
+        //
+        // Ou seja, na nota do Antonio (076466, dois SKUs) a triagem gravou
+        // KJDDE-693-8 com qtd 4, independentemente do que o Lucas triou. Meu
+        // casamento por SKU compararia com um valor que nao descreve o item
+        // devolvido — e deixaria na lista um item JA resolvido, ou tiraria o
+        // errado.
+        //
+        // Com dado errado, o descarte mais LARGO e o mais seguro: se ha
+        // qualquer triagem daquele pedido, ele ja esta no fluxo normal e o
+        // dono resolve tudo por la. Perde-se granularidade; nao se perde a
+        // garantia de nao emitir NF duplicada, que e o que importa aqui.
+        //
+        // ⏳ DIVIDA REGISTRADA: a triagem deveria gravar o item que
+        // realmente voltou. Enquanto nao gravar, nenhum consumidor desse
+        // dado pode confiar no SKU de nota multi-item.
+        for (const t of (tri || [])) triadosMagalu.add(String(t.order_id));
       }
     }
 
@@ -5188,13 +5198,7 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
         const chaveDela = String(d.chave_marketplace || d.id || '');
         return !resolvidosFinos.has(chaveDela);
       })
-      .concat(magaluItens.filter((m) => {
-        const ped = String(m.pedido);
-        // triagem sem SKU derruba o pedido todo (nao da pra ser mais fino)
-        if (triadosMagalu.has(ped + '|*')) return false;
-        // com SKU, so o ITEM triado sai — o outro item da mesma nota fica
-        return !triadosMagalu.has(ped + '|' + String(m.produto_sku || ''));
-      }))
+      .concat(magaluItens.filter((m) => !triadosMagalu.has(String(m.pedido))))
       .map((d) => {
         // b184 (Codex): O RELOGIO CONTA DA EMISSAO DA NOTA, nao da devolucao.
         //

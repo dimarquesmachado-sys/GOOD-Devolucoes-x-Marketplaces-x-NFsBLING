@@ -101,14 +101,21 @@ const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o
   // voltou fisicamente, o Lucas triou, e ele ja esta em "Aprovadas aguardando
   // NF" com botao de gerar. Aparecer aqui tambem seriam DUAS portas pra mesma
   // nota, e duas devolucoes emitidas sem ninguem perceber.
-  ok(/triadosMagalu\.has\(ped \+ '\|' \+ String\(m\.produto_sku/.test(SERVER),
-     'item do Magalu JA TRIADO sai da lista: ele ja esta no fluxo normal');
-  // b190.1: por ITEM, nao por pedido — a NF 076466 do Antonio tinha DOIS
-  // SKUs; descartar pelo pedido removeria o item que ainda nao voltou
-  ok(/triadosMagalu\.add\(String\(t\.order_id\) \+ '\|' \+ String\(t\.produto_sku/.test(SERVER),
-     '  casando PEDIDO+SKU: nota com varios produtos e so um devolvido');
-  ok(/if \(triadosMagalu\.has\(ped \+ '\|\*'\)\) return false;/.test(SERVER),
-     '  e triagem SEM sku derruba o pedido todo (nao da pra ser mais fino)');
+  ok(/!triadosMagalu\.has\(String\(m\.pedido\)\)/.test(SERVER),
+     'pedido do Magalu JA TRIADO sai da lista: ele ja esta no fluxo normal');
+
+  // b190.2: tentei casar PEDIDO+SKU pra nao derrubar o outro item de uma
+  // nota multi-produto, e a revisao mostrou que o DADO nao suporta:
+  // triagem.js grava sempre nf.itens[0].sku e a qtd SOMADA. Na nota 076466
+  // do Antonio (dois SKUs) ficou gravado KJDDE-693-8 com qtd 4, seja qual
+  // for o item que o Lucas triou.
+  ok(!/produto_sku/.test(SERVER.slice(SERVER.indexOf('pedidosMagalu'), SERVER.indexOf('pedidosMagalu') + 2500)),
+     'e NAO casa por SKU: a triagem grava sempre o primeiro item da nota');
+  ok(/DIVIDA REGISTRADA: a triagem deveria gravar o item/.test(SERVER),
+     '  com a divida registrada no codigo, pra quem consumir esse dado depois');
+  ok(/o descarte mais LARGO e o mais seguro/.test(SERVER),
+     '  e a escolha explicada: com dado errado, largo demais perde granularidade; '
+     + 'estreito demais emite NF duplicada');
   ok(/nao consegui conferir quais pedidos do Magalu ja foram triados/.test(SERVER),
      '  e falha nessa checagem e ERRO, nao lista incompleta (duas portas = NF duplicada)');
   ok(/i \+= 200/.test(SERVER.slice(SERVER.indexOf('pedidosMagalu'))),
