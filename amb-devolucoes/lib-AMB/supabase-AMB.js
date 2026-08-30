@@ -663,4 +663,8 @@ module.exports = {
   notaEspreita, notasEspreita,
   ligado: () => !!conectar(),
   tabelas: T,
+  // b191 - expõe o cliente pra rotas que consultam direto (o card de
+  // estornadas sem retorno). As funcoes acima continuam sendo o caminho
+  // preferido; isto e pra consulta pontual que nao merece funcao propria.
+  cliente: () => conectar(),
 };
