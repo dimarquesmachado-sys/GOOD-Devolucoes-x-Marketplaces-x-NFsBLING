@@ -232,7 +232,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.69.1 (sem-retorno: filtra por empresa, prazo pela chave da NF-e)',
+    version: '4.69.2 (sem-retorno: empresa fixa, janela do reembolso, granularidade)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -5018,26 +5018,40 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
     //      podiam ficar todos de fora e a lista vinha vazia sem motivo.
     //
     // O limite agora se aplica ao que interessa, nao ao bolo inteiro.
-    const empresa = String(req.query.empresa || 'good').toLowerCase();
+    // b184.1 (Codex): a empresa e FIXA, nao vem da querystring.
+    //
+    // Eu aceitava ?empresa=amb e o admin da GOOD via os dados da AMB so
+    // trocando a URL — vazamento entre empresas, e o oposto do isolamento
+    // que o resto do projeto mantem (server separado, tabela separada,
+    // login separado). Este servidor E o da GOOD; a AMB tem o dela.
+    const empresa = 'good';
 
     const { data, error } = await supabase
       .from('devolucoes_capturadas')
       .select('*')
       .eq('empresa', empresa)
       .eq('tipo_tiktok', 'REFUND')
-      .gte('capturado_em', desde)
+      // b184.1 (Codex): a JANELA e do REEMBOLSO, nao da captura. `capturado_em`
+      // e quando NOS gravamos — a captura roda de hora em hora e regrava tudo,
+      // entao ?dias=7 trazia 6 meses de historico. Filtro por criado_no_mkt,
+      // que e quando a devolucao nasceu no marketplace.
+      .gte('criado_no_mkt', desde)
+      // b184.1: e o STATUS tambem no banco. Filtrar "concluida" em JS depois
+      // do limite tinha o mesmo defeito de antes: numa janela cheia de
+      // pendentes, as concluidas ficavam de fora.
+      .in('status', ['RETURN_OR_REFUND_REQUEST_COMPLETE', 'REFUND_SUCCESS', 'COMPLETE', 'SUCCESS'])
       .order('criado_no_mkt', { ascending: false })
       .limit(500);
 
     if (error) return res.status(500).json({ ok: false, erro: error.message });
 
+    // rede de seguranca: o `in` acima ja filtrou, mas se o marketplace
+    // criar um status novo com CANCEL no nome, ele nao passa aqui.
+    // Solicitacao PENDENTE pode virar devolucao com retorno ou ser recusada
+    // — emitir NF nela seria devolver o que talvez nem tenha sido reembolsado.
     const semRetorno = (data || []).filter((d) => {
       const st = String(d.status || '').toUpperCase();
-      // b184 (Codex): EXIGIR CONCLUIDA. Solicitacao ainda PENDENTE pode
-      // virar devolucao com retorno, ou ser recusada — emitir NF nela
-      // seria devolver o que talvez nem tenha sido reembolsado.
-      if (st.indexOf('CANCEL') !== -1) return false;
-      return st.indexOf('COMPLETE') !== -1 || st.indexOf('SUCCESS') !== -1;
+      return st.indexOf('CANCEL') === -1;
     });
 
     // ja tem NF de devolucao? entao ja foi resolvida
@@ -5048,11 +5062,12 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
     // nada. E o teto de 300 deixava de fora os pedidos seguintes, que
     // apareceriam como pendentes sem ser.
     let jaResolvidos = new Set();
+    const resolvidosFinos = new Set();
     for (let i = 0; i < pedidos.length; i += 200) {
       const fatia = pedidos.slice(i, i + 200);
       const { data: tri, error: erroTri } = await supabase
         .from('devolucoes')
-        .select('order_id, nf_devolucao_id_bling')
+        .select('order_id, shipment_id, nf_devolucao_id_bling')
         .in('order_id', fatia)
         .not('nf_devolucao_id_bling', 'is', null);
       if (erroTri) {
@@ -5063,11 +5078,35 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
         });
       }
       for (const t of (tri || [])) jaResolvidos.add(t.order_id);
+      // b184.1 (Codex): guardo tambem os identificadores mais finos, porque
+      // um PEDIDO pode ter varias solicitacoes (o TikTok abre uma por item).
+      // Resolver a do item A nao resolve a do item B — descartar pelo pedido
+      // esconderia a segunda, que continua devendo NF.
+      for (const t of (tri || [])) {
+        if (t.shipment_id) resolvidosFinos.add(String(t.shipment_id));
+      }
     }
 
     const AGORA = Date.now();
+    // b184.1: quantas solicitacoes ATIVAS este pedido tem? Se so uma, o
+    // descarte por pedido e seguro. Se mais de uma (uma por item), so
+    // descarto quando a chave DAQUELA solicitacao ja foi resolvida.
+    const porPedido = {};
+    for (const d of semRetorno) {
+      if (d.pedido) porPedido[d.pedido] = (porPedido[d.pedido] || 0) + 1;
+    }
+
     const itens = semRetorno
-      .filter((d) => !jaResolvidos.has(d.pedido))
+      .filter((d) => {
+        const chaveDela = String(d.chave_marketplace || d.id || '');
+        if (resolvidosFinos.has(chaveDela)) return false;   // essa mesma, resolvida
+        const irmas = porPedido[d.pedido] || 1;
+        // pedido com UMA solicitacao: o descarte por pedido vale
+        if (irmas <= 1) return !jaResolvidos.has(d.pedido);
+        // pedido com VARIAS: nao descarto pelo pedido, senao a segunda
+        // solicitacao sumiria por causa da NF da primeira
+        return true;
+      })
       .map((d) => {
         // b184 (Codex): O RELOGIO CONTA DA EMISSAO DA NOTA, nao da devolucao.
         //
@@ -5090,6 +5129,18 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
           const aa = parseInt(chave.slice(2, 4), 10);
           const mm = parseInt(chave.slice(4, 6), 10);
           if (aa >= 0 && mm >= 1 && mm <= 12) {
+            // b184.1 (Codex): a chave da o MES, nao o dia. Uma nota emitida
+            // dia 28 apareceria com 27 dias a mais de idade do que tem.
+            //
+            // Buscar a data exata no Bling seria uma chamada por item — o
+            // painel ficaria lento pra ganhar precisao num campo que ele
+            // confere antes de agir de qualquer forma.
+            //
+            // Entao: uso o dia 1 (a nota tem NO MAXIMO essa idade), mas so
+            // ofereco CANCELAR quando ate o ULTIMO dia do mes ainda estaria
+            // no prazo. Assim nunca sugiro cancelar algo ja intempestivo;
+            // no maximo deixo de sugerir num caso que ainda daria — e ai o
+            // dono decide olhando o Bling.
             base = Date.UTC(2000 + aa, mm - 1, 1);
             baseOrigem = 'chave_nfe';
           }
@@ -5100,6 +5151,10 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
         }
 
         const diasDesde = base ? Math.floor((AGORA - base) / 864e5) : null;
+
+        // b184.1: quando a base e o mes da chave, o dia real pode ser ate 30
+        // dias depois. Pra NUNCA sugerir cancelamento intempestivo, exijo que
+        // o pior caso (dia 1) ainda esteja no prazo.
         const podeCancelar = diasDesde != null && diasDesde <= 20;
 
         return {

@@ -33,17 +33,32 @@ const PAINEL = fs.readFileSync(path.join(RAIZ, 'public', 'painel-devolucoes.html
   const i = SERVER.indexOf("'/api/admin/sem-retorno'");
   const rota = SERVER.slice(i, SERVER.indexOf("app.get('/api/admin/espreita'", i));
 
-  // b184: FILTRAR NO BANCO, nao depois do limite
-  ok(/\.eq\('empresa', empresa\)/.test(rota),
-     'filtra por EMPRESA — a tabela e compartilhada; sem isso a GOOD veria AMB e Girassol');
+  // b184.1: a EMPRESA e fixa, nao vem da URL
+  ok(/const empresa = 'good';/.test(rota),
+     'a empresa e FIXA — ?empresa=amb deixaria o admin da GOOD ver os dados da AMB');
+  ok(!/req\.query\.empresa/.test(rota), '  e o parametro da querystring nao existe mais');
+  ok(/\.eq\('empresa', empresa\)/.test(rota), '  mas o filtro no banco continua');
   ok(/\.eq\('tipo_tiktok', 'REFUND'\)/.test(rota),
      'e filtra REEMBOLSO PURO no BANCO, antes do limite de 500');
   ok(rota.indexOf(".eq('tipo_tiktok'") < rota.indexOf('.limit(500)'),
      '  (senao, numa janela com +500 capturadas, os reembolsos ficariam de fora)');
-  ok(/st\.indexOf\('CANCEL'\) !== -1\) return false/.test(rota),
-     'descarta as canceladas: ali nao houve estorno');
-  ok(/COMPLETE.*SUCCESS/.test(rota),
-     'e EXIGE concluida — pendente pode virar devolucao com retorno ou ser recusada');
+  ok(/st\.indexOf\('CANCEL'\) === -1/.test(rota),
+     'descarta as canceladas: ali nao houve estorno (rede de seguranca, alem do filtro no banco)');
+  // b184.1: a JANELA e do reembolso, e o STATUS filtra no banco
+  ok(/\.gte\('criado_no_mkt', desde\)/.test(rota),
+     'a janela ?dias conta do REEMBOLSO, nao da captura (que regrava tudo de hora em hora)');
+  ok(/\.in\('status', \[/.test(rota),
+     'e o status filtra NO BANCO — filtrar depois do limite tinha o mesmo defeito de antes');
+  ok(rota.indexOf(".in('status'") < rota.indexOf('.limit(500)'),
+     '  (antes do limite, senao numa janela cheia de pendentes as concluidas ficavam de fora)');
+
+  // b184.1: pedido com VARIAS solicitacoes
+  ok(/resolvidosFinos/.test(rota),
+     'guarda os identificadores finos: o TikTok abre uma solicitacao por ITEM');
+  ok(/if \(irmas <= 1\) return !jaResolvidos\.has/.test(rota),
+     '  pedido com UMA solicitacao: descarte por pedido vale');
+  ok(/senao a segunda[\s\S]{0,80}sumiria/.test(rota),
+     '  com VARIAS: nao descarta pelo pedido, senao a 2a sumiria por causa da NF da 1a');
   ok(/nf_devolucao_id_bling/.test(rota),
      'quem JA tem NF de devolucao sai da lista');
   ok(/i \+= 200/.test(rota),
@@ -63,8 +78,10 @@ const PAINEL = fs.readFileSync(path.join(RAIZ, 'public', 'painel-devolucoes.html
   ok(/baseOrigem = 'devolucao'/.test(rota) && /da MAIS prazo que o real/.test(rota),
      '  e quando nao ha chave, usa a devolucao e registra que e aproximacao otimista');
   ok(/prazo_base: baseOrigem/.test(rota), '  devolvendo a origem, pra tela poder avisar');
-  ok(/Assumo o dia 1/.test(SERVER.slice(Math.max(0, i - 500), i + 4000)),
+  ok(/uso o dia 1 \(a nota tem NO MAXIMO essa idade\)/.test(rota),
      '  e assume dia 1 do mes: a leitura mais conservadora');
+  ok(/nunca sugiro cancelar algo ja intempestivo/.test(rota),
+     '  preferindo NAO sugerir cancelamento a sugerir um que voltaria 501');
 
   ok(/aviso_cancelados/.test(rota),
      'a resposta avisa que casos resolvidos por CANCELAMENTO reaparecem (nao geram NF de devolucao)');
@@ -106,6 +123,11 @@ const PAINEL = fs.readFileSync(path.join(RAIZ, 'public', 'painel-devolucoes.html
      '  e ESCONDE quando o ultimo caso e resolvido (antes a lista velha ficava)');
   ok(/prazo_base === 'devolucao' \? ' ⚠️'/.test(PAINEL),
      'e marca com ⚠️ quando o prazo e aproximado, pra ele conferir antes de tentar cancelar');
+  // b184.1: falha != fila vazia
+  ok(/Não consegui carregar esta lista/.test(PAINEL),
+     'FALHA da rota mostra erro, nao a tela de "nada pendente"');
+  ok(/não<\/b> quer dizer que não há casos/.test(PAINEL),
+     '  dizendo explicitamente que nao e o mesmo que fila vazia');
   ok(/CANCELAR NF · '/.test(PAINEL), 'cada item diz se e CANCELAR');
   ok(/NF DE DEVOLUÇÃO/.test(PAINEL), '  ou NF de devolucao');
   ok(/prazo de cancelamento — essas primeiro/.test(PAINEL),

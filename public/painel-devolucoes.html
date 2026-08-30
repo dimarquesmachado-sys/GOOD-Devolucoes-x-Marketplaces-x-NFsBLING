@@ -898,7 +898,26 @@
         // b184 (Codex): ESCONDER quando esvazia. Antes eu so saia da funcao,
         // entao a lista velha ficava na tela depois de o dono resolver o
         // ultimo caso — parecendo que ainda havia trabalho.
-        if (!d || !d.ok || !Array.isArray(d.itens) || !d.itens.length) {
+        // b184.1 (Codex): FALHA e FILA VAZIA sao coisas diferentes.
+        //
+        // Eu escondia a secao nos dois casos — entao, se a rota quebrasse, o
+        // dono veria a mesma tela de "nada pendente" e concluiria que nao ha
+        // imposto a recuperar. E o silencio que a gente passou o dia matando.
+        if (!d || !d.ok) {
+          document.getElementById('secaoSemRetorno').style.display = '';
+          document.getElementById('countSemRetorno').textContent = '!';
+          document.getElementById('listaSemRetorno').innerHTML =
+            '<div style="padding:12px;border-radius:8px;background:#ffebee;border:2px solid #c62828;'
+            + 'color:#b71c1c;font-weight:700;">⚠️ Não consegui carregar esta lista'
+            + ((d && d.erro) ? '<div style="font-weight:400;margin-top:4px;font-size:13px;">'
+                + escapeHtml(String(d.erro)) + '</div>' : '')
+            + '<div style="font-weight:400;margin-top:4px;font-size:13px;">'
+            + 'Isto <b>não</b> quer dizer que não há casos — quer dizer que não deu para conferir.'
+            + '</div></div>';
+          return;
+        }
+
+        if (!Array.isArray(d.itens) || !d.itens.length) {
           document.getElementById('secaoSemRetorno').style.display = 'none';
           document.getElementById('listaSemRetorno').innerHTML = '';
           document.getElementById('countSemRetorno').textContent = '0';
