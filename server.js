@@ -232,7 +232,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.81.6 (concluir individual tambem pergunta)',
+    version: '4.82.0 (o numero da NF sai da CHAVE: a Magalu manda o dela)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),

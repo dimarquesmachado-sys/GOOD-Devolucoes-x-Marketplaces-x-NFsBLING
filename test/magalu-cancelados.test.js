@@ -52,7 +52,9 @@ const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o
 
   ok(m.marketplace === 'magalu', 'o item se identifica como magalu (a tag do card usa isso)');
   ok(m.pedido === '1535770109894199', 'traz o codigo do pedido');
-  ok(m.nf_numero === '002070' && m.nf_chave.length === 44, 'a NF vem completa');
+  // b194: a chave manda, entao o numero sai DELA — nao do campo da API
+  ok(m.nf_numero === '333333333' && m.nf_chave.length === 44,
+     'a NF vem completa, com o numero saindo da CHAVE');
   ok(m.nf_emitida_em === '2026-08-25T10:00:00Z',
      'e a DATA DE EMISSAO — melhor que a chave, que so da o mes');
   ok(m.criado_em === '2026-08-28T10:00:00Z',
@@ -74,7 +76,8 @@ const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o
     ],
   }, 'good');
   ok(duas.length === 2, 'pedido com 2 notas vira 2 linhas — o dono age nota a nota');
-  ok(duas[0].nf_numero === '001' && duas[1].nf_numero === '002', '  cada uma com sua NF');
+  // b194: chaves diferentes -> numeros diferentes, vindos delas
+  ok(duas[0].nf_numero !== duas[1].nf_numero, '  cada uma com sua NF');
   ok(duas[0].id !== duas[1].id,
      '  e com ids DISTINTOS, senao a segunda sobrescreveria a primeira em qualquer mapa');
   ok(duas[0].nf_emitida_em === '2026-08-01' && duas[1].nf_emitida_em === '2026-08-05',
@@ -317,8 +320,16 @@ const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o
     classe: 'estornado_apos_envio', order_code: 'X',
     notas: [{ numero: '99999', chave: '35260732461988000182550010000764661835887584' }],
   }, 'good');
-  ok(comNumero.nf_numero === '99999',
-     'mas quando a API MANDA o numero, ele manda — nao sobrescrevo');
+  // b194: INVERTIDO. O dono viu "NF 637", "NF 822" no painel — as notas
+  // dele estao na casa dos setenta mil. A Magalu manda um numero PROPRIO
+  // dela, que nao e o da NF-e, e todas ficavam "nao localizada no Bling".
+  ok(comNumero.nf_numero === '76466',
+     'a CHAVE manda sobre o `numero` da API: ela e o documento fiscal, nao mente');
+
+  const soNumero = mc.normalizar({
+    classe: 'estornado_apos_envio', order_code: 'X', notas: [{ numero: '999' }],
+  }, 'good');
+  ok(soNumero.nf_numero === '999', '  e sem chave, uso o numero da API (e o que tem)');
 }
 
 // ── e a NF e resolvida PELA CHAVE nos dois servidores ───────────────

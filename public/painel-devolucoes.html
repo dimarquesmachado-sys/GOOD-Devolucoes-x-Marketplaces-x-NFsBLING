@@ -1066,7 +1066,13 @@
               + '📦 Devolução <b>SEM entrada de estoque</b> — a mercadoria não voltou ao CD</div>'
             : (x.entrada_estoque === true
               ? '<div style="font-size:12px;color:#00695c;margin-top:4px;">'
-                + '📦 Devolução <b>COM entrada</b> — o produto voltou (confira no recebimento)</div>'
+                // b194 - "o produto voltou" prometia demais. O que sabemos e
+                // que o MARKETPLACE registrou a devolucao — nao que o pacote
+                // esta no galpao. O caso do lustre de R$ 1.299 provou: a
+                // Magalu deu por entregue em 06/08 e ninguem sabia dele ate
+                // 30/08. Digo o que sei, e mando conferir.
+                + '📦 Devolução <b>COM entrada</b> — o marketplace registrou o retorno; '
+                + 'confirme que o pacote está no galpão</div>'
               : (x.classe
                 ? '<div style="font-size:12px;color:#e65100;margin-top:4px;">'
                   + '❓ <b>Confira se houve devolução física</b> antes de dar baixa</div>'
