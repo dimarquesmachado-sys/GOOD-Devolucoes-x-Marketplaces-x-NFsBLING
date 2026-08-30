@@ -232,7 +232,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.73.0 (rota de remessas reversas por pedido, pro cruzamento do Magalu)',
+    version: '4.73.0 (rota de remessas reversas do Magalu, pro cruzamento)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -5005,8 +5005,22 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
   try {
     if (!supabase) return res.status(503).json({ ok: false, erro: 'Supabase nao configurado' });
 
-    const dias = Math.min(365, Math.max(1, parseInt(req.query.dias, 10) || 180));
+    // b188 - a janela vai ate 365 dias, e o padrao subiu pra 365 tambem:
+    // o dono perguntou "puxa desde o comeco do ano?". Puxa — e faz sentido,
+    // porque NF de devolucao nao tem prazo (so o CANCELAMENTO tem 20 dias).
+    // Caso antigo continua rendendo imposto de volta.
+    const dias = Math.min(730, Math.max(1, parseInt(req.query.dias, 10) || 365));
     const desde = new Date(Date.now() - dias * 864e5).toISOString();
+
+    // b188.3 (Codex): ?ate=AAAA-MM-DD alcanca o que ficou fora do corte.
+    //
+    // A ordem e do mais recente pro mais antigo, entao o corte come a cauda.
+    // Com `ate`, o dono empurra a janela pra tras e ve os anteriores — sem
+    // eu precisar paginar, que complicaria a rota por pouco ganho.
+    const ateParam = String(req.query.ate || '').trim();
+    const ate = /^\d{4}-\d{2}-\d{2}$/.test(ateParam)
+      ? new Date(ateParam + 'T23:59:59Z').toISOString()
+      : null;
 
     // b184 (Codex): FILTRAR NO BANCO, nao depois.
     //
@@ -5025,8 +5039,9 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
     // que o resto do projeto mantem (server separado, tabela separada,
     // login separado). Este servidor E o da GOOD; a AMB tem o dela.
     const empresa = 'good';
+    const LIMITE = 500;
 
-    const { data, error } = await supabase
+    let consulta = supabase
       .from('devolucoes_capturadas')
       .select('*')
       .eq('empresa', empresa)
@@ -5041,9 +5056,22 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
       // pendentes, as concluidas ficavam de fora.
       .in('status', ['RETURN_OR_REFUND_REQUEST_COMPLETE', 'REFUND_SUCCESS', 'COMPLETE', 'SUCCESS'])
       .order('criado_no_mkt', { ascending: false })
-      .limit(500);
+      .limit(LIMITE);
+
+    if (ate) consulta = consulta.lte('criado_no_mkt', ate);
+
+    const { data, error } = await consulta;
 
     if (error) return res.status(500).json({ ok: false, erro: error.message });
+
+    // b188.2 (Codex): AVISAR quando a janela encheu.
+    //
+    // Com 365 dias o volume cresce, e um corte silencioso em 500 esconderia
+    // os casos mais antigos — justamente os que ja passaram do prazo de
+    // cancelamento e so tem a NF de devolucao como saida. Paginar de
+    // verdade complicaria a rota; dizer que cortou resolve: o dono estreita
+    // a janela com ?dias= e ve o resto.
+    const cortou = (data || []).length >= LIMITE;
 
     // rede de seguranca: o `in` acima ja filtrou, mas se o marketplace
     // criar um status novo com CANCEL no nome, ele nao passa aqui.
@@ -5165,6 +5193,10 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
         return {
           id: d.id,
           marketplace: d.marketplace,
+          // b188 - o card precisa disto pra abrir o modal de gerar NF, o
+          // mesmo do bloco "Aprovadas". Sem o id do Bling o modal nao sabe
+          // de qual nota gerar a devolucao.
+          nf_id_bling: d.nf_id_bling || null,
           pedido: d.pedido,
           nf_numero: d.nf_numero,
           nf_chave: d.nf_chave,
@@ -5185,6 +5217,75 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
         };
       });
 
+    // b188 - COMPLETAR O ID DA NF NO BLING.
+    //
+    // A captura guarda o numero e a chave, mas o modal de gerar devolucao
+    // precisa do id interno do Bling. Sem ele, o botao abriria sem saber de
+    // qual nota gerar — e o dono teria que caçar a nota a mao, que e
+    // exatamente o trabalho que este painel veio evitar.
+    //
+    // Busco so pros que tem numero, em serie e com teto: sao poucos itens
+    // (a GOOD tinha 1) e uma falha aqui nao pode derrubar a lista — o card
+    // aparece sem o botao, com o numero da NF pra ele achar no Bling.
+    // b188.1 (Codex): CASAR PELA CHAVE quando ela existe.
+    //
+    // O numero da NF se repete entre SERIES (a serie 1 e a serie 2 podem ter
+    // uma nota 002070 cada). Casar so pelo numero pode trazer a nota errada
+    // — e mandar o dono pra nota de outra venda.
+    //
+    // Tambem limitei a 15 e adicionei teto de tempo: com a janela de 365
+    // dias a fila pode crescer, e 30 buscas em serie no Bling seguram a
+    // resposta do painel. Quem ficar sem o id aparece com o numero da NF.
+    const INICIO_BUSCA = Date.now();
+    const PARA_BUSCAR = itens.filter((x) => x.nf_numero && !x.nf_id_bling).slice(0, 15);
+    for (const item of PARA_BUSCAR) {
+      if (Date.now() - INICIO_BUSCA > 8000) break;   // o painel nao pode travar
+      try {
+        // b188.3 (Codex): a funcao devolve { ok, match }, NAO a nota direto.
+        //
+        // Eu lia `nf.id` de um objeto que nunca tem `id` — o link do card
+        // nunca apareceria. Conferido em lib/bling.js: os tres retornos sao
+        // { ok, match, ... }.
+        //
+        // E o teto de tempo vai DENTRO da chamada: ela pagina ate 50 paginas
+        // com 400ms entre elas, entao UMA busca pode passar dos 8s sozinha —
+        // conferir o relogio so no comeco do laco nao segura nada.
+        const nf = await Promise.race([
+          buscarNFnoBlingPorNumero(item.nf_numero, null, { maxPaginas: 8 }),
+          new Promise((ok) => setTimeout(() => ok({ ok: false, timeout: true }), 6000)),
+        ]);
+        const achada = (nf && nf.ok && nf.match) ? nf.match : null;
+        if (!achada || !achada.id) continue;
+
+        // se eu tenho a chave, ela MANDA: numero repete entre series, chave nao
+        const chaveEsperada = String(item.nf_chave || '').replace(/\D/g, '');
+        const chaveAchada = String(achada.chaveAcesso || '').replace(/\D/g, '');
+        if (chaveEsperada && chaveAchada && chaveEsperada !== chaveAchada) continue;
+
+        item.nf_id_bling = String(achada.id);
+        if (!item.nf_chave && achada.chaveAcesso) item.nf_chave = achada.chaveAcesso;
+      } catch (e) { /* segue sem o link; o numero da NF esta no card */ }
+    }
+
+    // b188.1 (Codex): RECALCULAR a acao depois de enriquecer.
+    //
+    // O prazo e calculado da chave da NF-e. Se a chave so apareceu agora
+    // (veio do Bling na busca acima), o item foi classificado com a data da
+    // devolucao — que da MAIS prazo do que existe. Sem recalcular, um caso
+    // ja intempestivo ficaria marcado como "CANCELAR NF".
+    for (const item of itens) {
+      const chave = String(item.nf_chave || '').replace(/\D/g, '');
+      if (chave.length !== 44 || item.prazo_base === 'chave_nfe') continue;
+      const aa = parseInt(chave.slice(2, 4), 10);
+      const mm = parseInt(chave.slice(4, 6), 10);
+      if (!(aa >= 0 && mm >= 1 && mm <= 12)) continue;
+      const dias = Math.floor((AGORA - Date.UTC(2000 + aa, mm - 1, 1)) / 864e5);
+      item.dias_desde = dias;
+      item.prazo_base = 'chave_nfe';
+      item.acao = dias <= 20 ? 'cancelar_nf' : 'nf_devolucao';
+      item.prazo_cancelamento = dias <= 20 ? Math.max(0, 20 - dias) : 0;
+    }
+
     // quem ainda da pra cancelar vem primeiro, e dentro disso o mais
     // urgente — e a unica parte com prazo correndo
     itens.sort((a, b) => {
@@ -5200,6 +5301,13 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
       valor_total: Number(itens.reduce((t, x) => t + (Number(x.valor) || 0), 0).toFixed(2)),
       podem_cancelar: itens.filter((x) => x.acao === 'cancelar_nf').length,
       itens,
+      // b188.2: a lista pode estar cortada — dizer, em vez de calar
+      cortou_em: cortou ? LIMITE : undefined,
+      aviso_corte: cortou
+        ? 'A janela de ' + dias + ' dias trouxe o maximo de ' + LIMITE + ' registros: pode haver '
+          + 'casos mais antigos fora desta lista. Use ?ate=AAAA-MM-DD pra ver os anteriores '
+          + '(ou ?dias= menor pra estreitar).'
+        : undefined,
       // b184 (Codex): quem CANCELA a nota nao gera NF de devolucao, entao a
       // checagem por nf_devolucao_id_bling nunca o tira da lista — ele
       // reapareceria pra sempre. Falta um jeito de marcar "resolvido por
