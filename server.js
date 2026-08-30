@@ -232,7 +232,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.75.4 (valor rateado entre notas; codigo em qualquer caixa)',
+    version: '4.75.5 (quem ja voltou nao cancela a NF: houve circulacao)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -5256,7 +5256,16 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
         // b184.1: quando a base e o mes da chave, o dia real pode ser ate 30
         // dias depois. Pra NUNCA sugerir cancelamento intempestivo, exijo que
         // o pior caso (dia 1) ainda esteja no prazo.
-        const podeCancelar = diasDesde != null && diasDesde <= 20;
+        //
+        // b190.3 (Codex): E QUEM JA VOLTOU NAO CANCELA.
+        //
+        // Se o produto retornou (classe `estornado_apos_envio` do Magalu, ou
+        // devolucao registrada), cancelar a nota de venda seria errado: houve
+        // circulacao de mercadoria, ida e volta. O caminho ali e a NF de
+        // DEVOLUCAO, que documenta a entrada. Cancelar apagaria uma operacao
+        // que existiu de verdade.
+        const jaVoltou = !!d.tem_devolucao_registrada;
+        const podeCancelar = !jaVoltou && diasDesde != null && diasDesde <= 20;
 
         return {
           id: d.id,
@@ -5358,8 +5367,10 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
       const dias = Math.floor((AGORA - Date.UTC(2000 + aa, mm - 1, 1)) / 864e5);
       item.dias_desde = dias;
       item.prazo_base = 'chave_nfe';
-      item.acao = dias <= 20 ? 'cancelar_nf' : 'nf_devolucao';
-      item.prazo_cancelamento = dias <= 20 ? Math.max(0, 20 - dias) : 0;
+      // b190.3: o recalculo respeita a mesma regra — quem voltou nao cancela
+      const podeAqui = !item.tem_devolucao_registrada && dias <= 20;
+      item.acao = podeAqui ? 'cancelar_nf' : 'nf_devolucao';
+      item.prazo_cancelamento = podeAqui ? Math.max(0, 20 - dias) : 0;
     }
 
     // quem ainda da pra cancelar vem primeiro, e dentro disso o mais

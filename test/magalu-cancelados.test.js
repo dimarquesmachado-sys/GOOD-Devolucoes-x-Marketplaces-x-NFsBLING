@@ -178,6 +178,31 @@ const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o
      'e marca os casos em que o produto voltou, pra ele nao emitir NF duplicada');
 }
 
+// ── b190.3: quem JA VOLTOU nao cancela a nota ───────────────────────
+// Se o produto retornou, houve circulacao de mercadoria — ida e volta. O
+// caminho ali e a NF de DEVOLUCAO, que documenta a entrada. Cancelar
+// apagaria uma operacao que aconteceu de verdade.
+{
+  const fs = require('fs');
+  const path = require('path');
+  const SERVER = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
+
+  ok(/const jaVoltou = !!d\.tem_devolucao_registrada;/.test(SERVER),
+     'o calculo da acao olha se o produto ja voltou');
+  ok(/const podeCancelar = !jaVoltou && diasDesde != null/.test(SERVER),
+     '  e quem voltou NAO ganha "cancelar NF", mesmo dentro do prazo');
+  ok(/const podeAqui = !item\.tem_devolucao_registrada && dias <= 20;/.test(SERVER),
+     '  o recalculo (depois da busca no Bling) respeita a mesma regra');
+  ok(/cancelar a nota de venda seria errado: houve[\s\S]{0,40}circulacao de mercadoria/.test(SERVER),
+     '  com o porque escrito: cancelar apagaria uma operacao que existiu');
+
+  // a decisao, nos tres cenarios
+  const decidir = (jaVoltou, dias) => (!jaVoltou && dias != null && dias <= 20) ? 'cancelar_nf' : 'nf_devolucao';
+  ok(decidir(false, 5) === 'cancelar_nf', 'recente e NAO voltou: cancelar a NF');
+  ok(decidir(true, 5) === 'nf_devolucao', 'recente MAS voltou: NF de devolucao (era o furo)');
+  ok(decidir(false, 90) === 'nf_devolucao', 'antigo: NF de devolucao, como antes');
+}
+
 console.log('');
 console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
 process.exit(falhas ? 1 : 0);

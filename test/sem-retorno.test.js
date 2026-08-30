@@ -111,7 +111,7 @@ const PAINEL = fs.readFileSync(path.join(RAIZ, 'public', 'painel-devolucoes.html
   ok(/\.slice\(0, 15\)/.test(rota), '  e teto de quantidade');
   ok(/item\.prazo_base === 'chave_nfe'[\s\S]{0,80}continue;/.test(rota),
      'a acao e RECALCULADA quando a chave so aparece na busca');
-  ok(/item\.acao = dias <= 20 \? 'cancelar_nf' : 'nf_devolucao';/.test(rota),
+  ok(/item\.acao = podeAqui \? 'cancelar_nf' : 'nf_devolucao';/.test(rota),
      '  senao um caso ja intempestivo ficaria marcado como CANCELAR NF');
 
   // b188.2: janela cheia = pode haver caso fora da lista
