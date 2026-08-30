@@ -1047,7 +1047,18 @@ async function carregarSemRetorno() {
             + '<div class="item-header"><div class="item-titulo">'
             + tagMkt + escapeHtml(x.produto || '-') + ' ' + tarja + tarjaVoltou + tarjaPrejuizo + '</div></div>'
             + '<div style="font-size:13px;color:#555;margin-top:6px;">'
-            + (x.nf_numero ? '<b>NF ' + escapeHtml(String(x.nf_numero)) + '</b> · ' : '')
+            + (x.nf_numero
+                ? '<b>NF ' + escapeHtml(String(x.nf_numero)) + '</b>'
+                  // b196 - a captura nao trouxe a nota; achei pelo PEDIDO.
+                  // Vale dizer, porque o casamento por pedido e menos exato
+                  // que por chave — ele confere antes de emitir.
+                  + (x.nf_achada_por === 'pedido'
+                    ? ' <span style="color:#e65100;font-size:11px;" title="A captura não trouxe a NF; '
+                      + 'localizei pelo número do pedido. Confira que é a nota certa antes de emitir.">'
+                      + '(achada pelo pedido)</span>'
+                    : '')
+                  + ' · '
+                : '')
             + 'pedido <code>' + escapeHtml(String(x.pedido || '-')) + '</code>'
             + (x.sku ? ' · SKU <code>' + escapeHtml(String(x.sku)) + '</code>' : '')
             + (x.qtd ? ' · ' + escapeHtml(String(x.qtd)) + ' un' : '')

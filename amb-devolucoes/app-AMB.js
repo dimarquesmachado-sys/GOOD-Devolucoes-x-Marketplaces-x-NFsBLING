@@ -82,7 +82,7 @@ const criarMlBuscas = require('./lib-AMB/ml-buscas-AMB');
 const registrarIdentificar = require('./lib-AMB/identificar-AMB');
 const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 
-const VERSAO = 'AMB Devolucoes b197';
+const VERSAO = 'AMB Devolucoes b198';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -2257,6 +2257,26 @@ router.get('/api/admin/sem-retorno', auth.requerLogin, async (req, res) => {
         ]);
         if (id) item.nf_id_bling = String(id);
       } catch (e) { /* segue sem o link; o numero da NF esta no card */ }
+    }
+
+    // b196 - a mesma busca PELO PEDIDO da GOOD. Caso real: pedido do
+    // TikTok sem numero e sem chave na captura (a API nao mandou), mas a
+    // nota EXISTE no Bling. Sem isto o card fica so informativo.
+    for (const item of itens.filter((x) => !x.nf_numero && !x.nf_chave && !x.nf_id_bling && x.pedido).slice(0, 10)) {
+      if (Date.now() - INICIO_BUSCA > 12000) break;
+      try {
+        const r = await Promise.race([
+          ajudantes.buscarNFnoBlingPorOrderId(item.pedido, item.criado_em || null, { maxPaginas: 12 }),
+          new Promise((ok) => setTimeout(() => ok(null), 6000)),
+        ]);
+        const achada = (r && r.match) || (r && r.ok && r.nf) || null;
+        if (achada && achada.id) {
+          item.nf_id_bling = String(achada.id);
+          if (!item.nf_numero && achada.numero) item.nf_numero = String(achada.numero);
+          if (!item.nf_chave && achada.chaveAcesso) item.nf_chave = achada.chaveAcesso;
+          item.nf_achada_por = 'pedido';
+        }
+      } catch (e) { /* segue sem a nota */ }
     }
 
     itens.sort((a, b) => {
