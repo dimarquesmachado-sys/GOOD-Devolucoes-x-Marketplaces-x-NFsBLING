@@ -33,19 +33,41 @@ const PAINEL = fs.readFileSync(path.join(RAIZ, 'public', 'painel-devolucoes.html
   const i = SERVER.indexOf("'/api/admin/sem-retorno'");
   const rota = SERVER.slice(i, SERVER.indexOf("app.get('/api/admin/espreita'", i));
 
-  ok(/tipo === 'REFUND'/.test(rota),
-     'so lista REEMBOLSO PURO — o que tem retorno fisico vai pro a espreita');
-  ok(/st\.indexOf\('CANCEL'\) === -1/.test(rota),
-     '  e descarta as canceladas: ali nao houve estorno');
+  // b184: FILTRAR NO BANCO, nao depois do limite
+  ok(/\.eq\('empresa', empresa\)/.test(rota),
+     'filtra por EMPRESA — a tabela e compartilhada; sem isso a GOOD veria AMB e Girassol');
+  ok(/\.eq\('tipo_tiktok', 'REFUND'\)/.test(rota),
+     'e filtra REEMBOLSO PURO no BANCO, antes do limite de 500');
+  ok(rota.indexOf(".eq('tipo_tiktok'") < rota.indexOf('.limit(500)'),
+     '  (senao, numa janela com +500 capturadas, os reembolsos ficariam de fora)');
+  ok(/st\.indexOf\('CANCEL'\) !== -1\) return false/.test(rota),
+     'descarta as canceladas: ali nao houve estorno');
+  ok(/COMPLETE.*SUCCESS/.test(rota),
+     'e EXIGE concluida — pendente pode virar devolucao com retorno ou ser recusada');
   ok(/nf_devolucao_id_bling/.test(rota),
-     'e quem JA tem NF de devolucao sai da lista (ja foi resolvido)');
+     'quem JA tem NF de devolucao sai da lista');
+  ok(/i \+= 200/.test(rota),
+     '  conferindo TODOS os pedidos em fatias (o teto de 300 deixava os seguintes de fora)');
+  ok(/nao consegui conferir quais ja tem NF/.test(rota),
+     '  e falha nessa consulta e ERRO, nao lista incompleta: mostrar caso resolvido faria emitir NF duplicada');
 
-  // o prazo da SEFAZ
+  // o prazo da SEFAZ, contado da NOTA
   ok(/diasDesde <= 20/.test(rota), 'usa o prazo de 20 dias da SEFAZ pra decidir a acao');
   ok(/acao: podeCancelar \? 'cancelar_nf' : 'nf_devolucao'/.test(rota),
      '  dizendo em cada item se e CANCELAR ou NF DE DEVOLUCAO');
-  ok(/e sempre POSTERIOR a venda/.test(rota),
-     '  e o comentario registra que a base usada erra pro lado SEGURO (prazo real e menor)');
+  // b184: a devolucao nasce DEPOIS da venda — contar dali dava mais prazo
+  // do que existe, e o cancelamento voltaria 501 na cara do dono
+  ok(/chave\.slice\(2, 4\)/.test(rota) && /chave\.slice\(4, 6\)/.test(rota),
+     'o prazo conta da EMISSAO da nota, lida da chave da NF-e (posicoes 2-5, AAMM)');
+  ok(/baseOrigem = 'chave_nfe'/.test(rota), '  marcando que a data veio da chave');
+  ok(/baseOrigem = 'devolucao'/.test(rota) && /da MAIS prazo que o real/.test(rota),
+     '  e quando nao ha chave, usa a devolucao e registra que e aproximacao otimista');
+  ok(/prazo_base: baseOrigem/.test(rota), '  devolvendo a origem, pra tela poder avisar');
+  ok(/Assumo o dia 1/.test(SERVER.slice(Math.max(0, i - 500), i + 4000)),
+     '  e assume dia 1 do mes: a leitura mais conservadora');
+
+  ok(/aviso_cancelados/.test(rota),
+     'a resposta avisa que casos resolvidos por CANCELAMENTO reaparecem (nao geram NF de devolucao)');
 
   // a ordenacao tem intencao
   ok(/a\.acao === 'cancelar_nf' \? -1 : 1/.test(rota),
@@ -79,6 +101,11 @@ const PAINEL = fs.readFileSync(path.join(RAIZ, 'public', 'painel-devolucoes.html
 
   ok(/style\.display = ''/.test(PAINEL.slice(PAINEL.indexOf('carregarSemRetorno'))),
      'a secao so aparece quando ha algo (nao polui o painel vazio)');
+  // b184: e ESCONDE quando esvazia — antes a lista velha ficava na tela
+  ok(/style\.display = 'none';[\s\S]{0,200}innerHTML = '';/.test(PAINEL),
+     '  e ESCONDE quando o ultimo caso e resolvido (antes a lista velha ficava)');
+  ok(/prazo_base === 'devolucao' \? ' ⚠️'/.test(PAINEL),
+     'e marca com ⚠️ quando o prazo e aproximado, pra ele conferir antes de tentar cancelar');
   ok(/CANCELAR NF · '/.test(PAINEL), 'cada item diz se e CANCELAR');
   ok(/NF DE DEVOLUÇÃO/.test(PAINEL), '  ou NF de devolucao');
   ok(/prazo de cancelamento — essas primeiro/.test(PAINEL),
@@ -88,7 +115,7 @@ const PAINEL = fs.readFileSync(path.join(RAIZ, 'public', 'painel-devolucoes.html
 
   // seguranca: o texto vem do cliente e do marketplace
   const iFn = PAINEL.indexOf('async function carregarSemRetorno');
-  const fn = PAINEL.slice(iFn, iFn + 3000);
+  const fn = PAINEL.slice(iFn, iFn + 5000);   // a funcao cresceu no b184
   ok(/escapeHtml\(x\.produto/.test(fn) && /escapeHtml\(String\(x\.motivo\)\)/.test(fn),
      'tudo que vem de fora passa por escapeHtml (o motivo e escrito pelo cliente)');
   ok(/escapeHtml\(String\(x\.pedido/.test(fn) && /escapeHtml\(String\(x\.sku/.test(fn),

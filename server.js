@@ -232,7 +232,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.69.0 (painel de vendas estornadas sem retorno: recuperar o imposto)',
+    version: '4.69.1 (sem-retorno: filtra por empresa, prazo pela chave da NF-e)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -5008,11 +5008,23 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
     const dias = Math.min(365, Math.max(1, parseInt(req.query.dias, 10) || 180));
     const desde = new Date(Date.now() - dias * 864e5).toISOString();
 
-    // So o que NUNCA vira pacote: reembolso puro, ja concluido.
-    // Cancelada fica de fora — ali nao houve estorno.
+    // b184 (Codex): FILTRAR NO BANCO, nao depois.
+    //
+    //   1. `empresa` — a tabela e COMPARTILHADA (uma linha por empresa,
+    //      foi decisao de desenho). Sem este filtro, o painel da GOOD
+    //      mostraria devolucoes da AMB e da Girassol.
+    //   2. `tipo_tiktok` e `status` — eu filtrava em JS DEPOIS do limite
+    //      de 500. Numa janela com mais de 500 capturadas, os reembolsos
+    //      podiam ficar todos de fora e a lista vinha vazia sem motivo.
+    //
+    // O limite agora se aplica ao que interessa, nao ao bolo inteiro.
+    const empresa = String(req.query.empresa || 'good').toLowerCase();
+
     const { data, error } = await supabase
       .from('devolucoes_capturadas')
       .select('*')
+      .eq('empresa', empresa)
+      .eq('tipo_tiktok', 'REFUND')
       .gte('capturado_em', desde)
       .order('criado_no_mkt', { ascending: false })
       .limit(500);
@@ -5020,31 +5032,73 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
     if (error) return res.status(500).json({ ok: false, erro: error.message });
 
     const semRetorno = (data || []).filter((d) => {
-      const tipo = String(d.tipo_tiktok || d.cru?.tipo || '').toUpperCase();
       const st = String(d.status || '').toUpperCase();
-      return tipo === 'REFUND' && st.indexOf('CANCEL') === -1;
+      // b184 (Codex): EXIGIR CONCLUIDA. Solicitacao ainda PENDENTE pode
+      // virar devolucao com retorno, ou ser recusada — emitir NF nela
+      // seria devolver o que talvez nem tenha sido reembolsado.
+      if (st.indexOf('CANCEL') !== -1) return false;
+      return st.indexOf('COMPLETE') !== -1 || st.indexOf('SUCCESS') !== -1;
     });
 
     // ja tem NF de devolucao? entao ja foi resolvida
     const pedidos = [...new Set(semRetorno.map((d) => d.pedido).filter(Boolean))];
+    // b184 (Codex): esta consulta NAO pode falhar em silencio, nem ficar
+    // pela metade. Se ela falhar e eu seguir, o painel mostra casos JA
+    // RESOLVIDOS e o dono emite NF em duplicidade — pior que nao mostrar
+    // nada. E o teto de 300 deixava de fora os pedidos seguintes, que
+    // apareceriam como pendentes sem ser.
     let jaResolvidos = new Set();
-    if (pedidos.length) {
-      const { data: tri } = await supabase
+    for (let i = 0; i < pedidos.length; i += 200) {
+      const fatia = pedidos.slice(i, i + 200);
+      const { data: tri, error: erroTri } = await supabase
         .from('devolucoes')
         .select('order_id, nf_devolucao_id_bling')
-        .in('order_id', pedidos.slice(0, 300))
+        .in('order_id', fatia)
         .not('nf_devolucao_id_bling', 'is', null);
-      jaResolvidos = new Set((tri || []).map((t) => t.order_id));
+      if (erroTri) {
+        return res.status(500).json({
+          ok: false,
+          erro: 'nao consegui conferir quais ja tem NF de devolucao: ' + erroTri.message
+            + ' — listar sem essa checagem mostraria casos ja resolvidos',
+        });
+      }
+      for (const t of (tri || [])) jaResolvidos.add(t.order_id);
     }
 
     const AGORA = Date.now();
     const itens = semRetorno
       .filter((d) => !jaResolvidos.has(d.pedido))
       .map((d) => {
-        // o relogio da SEFAZ conta da EMISSAO da nota. Sem a data da nota,
-        // uso a criacao da devolucao como piso — e sempre POSTERIOR a venda,
-        // entao o prazo real e MENOR que o calculado. Erra pro lado seguro.
-        const base = d.criado_no_mkt ? new Date(d.criado_no_mkt).getTime() : null;
+        // b184 (Codex): O RELOGIO CONTA DA EMISSAO DA NOTA, nao da devolucao.
+        //
+        // A devolucao nasce dias (as vezes semanas) depois da venda. Contar
+        // dali dava MAIS prazo do que existe: um caso com nota de 25 dias
+        // atras e devolucao de 3 apareceria como "cancelavel", e o
+        // cancelamento seria recusado com 501 na cara do dono.
+        //
+        // A CHAVE DA NF-e carrega a competencia nas posicoes 2-5 (AAMM), e
+        // a captura ja guarda a chave. Uso o mes da chave como base, com a
+        // devolucao de reserva quando nao ha chave.
+        //
+        // Ainda e aproximacao — a chave da o MES, nao o dia. Assumo o dia 1,
+        // que e a leitura mais CONSERVADORA: mostra menos prazo do que pode
+        // haver, nunca mais.
+        let base = null;
+        let baseOrigem = null;
+        const chave = String(d.nf_chave || '').replace(/\D/g, '');
+        if (chave.length === 44) {
+          const aa = parseInt(chave.slice(2, 4), 10);
+          const mm = parseInt(chave.slice(4, 6), 10);
+          if (aa >= 0 && mm >= 1 && mm <= 12) {
+            base = Date.UTC(2000 + aa, mm - 1, 1);
+            baseOrigem = 'chave_nfe';
+          }
+        }
+        if (base == null && d.criado_no_mkt) {
+          base = new Date(d.criado_no_mkt).getTime();
+          baseOrigem = 'devolucao';   // aproximacao: da MAIS prazo que o real
+        }
+
         const diasDesde = base ? Math.floor((AGORA - base) / 864e5) : null;
         const podeCancelar = diasDesde != null && diasDesde <= 20;
 
@@ -5065,6 +5119,9 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
           // o que fazer: cancelar (se no prazo) ou NF de devolucao
           acao: podeCancelar ? 'cancelar_nf' : 'nf_devolucao',
           prazo_cancelamento: podeCancelar ? Math.max(0, 20 - diasDesde) : 0,
+          // de onde veio a data usada no relogio — a tela avisa quando e
+          // aproximacao, pra ele conferir antes de tentar cancelar
+          prazo_base: baseOrigem,
         };
       });
 
@@ -5078,10 +5135,19 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
 
     return res.json({
       ok: true,
+      empresa,
       total: itens.length,
       valor_total: Number(itens.reduce((t, x) => t + (Number(x.valor) || 0), 0).toFixed(2)),
       podem_cancelar: itens.filter((x) => x.acao === 'cancelar_nf').length,
       itens,
+      // b184 (Codex): quem CANCELA a nota nao gera NF de devolucao, entao a
+      // checagem por nf_devolucao_id_bling nunca o tira da lista — ele
+      // reapareceria pra sempre. Falta um jeito de marcar "resolvido por
+      // cancelamento"; ate la, o aviso deixa isso explicito na resposta em
+      // vez de o dono descobrir sozinho vendo o caso voltar.
+      aviso_cancelados: 'Casos resolvidos por CANCELAMENTO da NF de venda ainda '
+        + 'reaparecem aqui: a lista so sabe descartar quem ganhou NF de devolucao. '
+        + 'Vale conferir no Bling antes de agir num item marcado como cancelavel.',
       leia: 'Vendas reembolsadas SEM devolucao fisica: o produto nao volta, mas a NF de venda '
         + 'continua gerando imposto. Ate 20 dias da pra CANCELAR a nota; depois, NF de devolucao. '
         + 'O deposito e o de DEFEITO — nao entra no estoque vendavel, porque a mercadoria nunca chegou.',

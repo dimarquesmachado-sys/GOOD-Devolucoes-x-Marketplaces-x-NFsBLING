@@ -894,7 +894,16 @@
       try {
         const r = await fetch('/api/admin/sem-retorno');
         const d = await r.json();
-        if (!d || !d.ok || !Array.isArray(d.itens) || !d.itens.length) return;
+
+        // b184 (Codex): ESCONDER quando esvazia. Antes eu so saia da funcao,
+        // entao a lista velha ficava na tela depois de o dono resolver o
+        // ultimo caso — parecendo que ainda havia trabalho.
+        if (!d || !d.ok || !Array.isArray(d.itens) || !d.itens.length) {
+          document.getElementById('secaoSemRetorno').style.display = 'none';
+          document.getElementById('listaSemRetorno').innerHTML = '';
+          document.getElementById('countSemRetorno').textContent = '0';
+          return;
+        }
 
         document.getElementById('secaoSemRetorno').style.display = '';
         document.getElementById('countSemRetorno').textContent = d.total;
@@ -908,9 +917,16 @@
 
         const linhas = d.itens.map(function (x) {
           const podeCancelar = x.acao === 'cancelar_nf';
+          // b184: quando a data veio da DEVOLUCAO (sem chave da NF), o prazo
+          // mostrado e MAIOR que o real — a nota e anterior. Avisa, pra ele
+          // conferir antes de tentar cancelar e levar um 501.
+          const aprox = x.prazo_base === 'devolucao' ? ' ⚠️' : '';
           const tarja = podeCancelar
             ? '<span style="background:#ef6c00;color:#fff;padding:3px 8px;border-radius:10px;'
-              + 'font-size:10px;font-weight:700;">CANCELAR NF · ' + x.prazo_cancelamento + 'd restantes</span>'
+              + 'font-size:10px;font-weight:700;" title="'
+              + (aprox ? 'prazo APROXIMADO: contado da devolucao, nao da nota — o real e menor'
+                       : 'contado do mes da nota, pela chave da NF-e')
+              + '">CANCELAR NF · ' + x.prazo_cancelamento + 'd restantes' + aprox + '</span>'
             : '<span style="background:#546e7a;color:#fff;padding:3px 8px;border-radius:10px;'
               + 'font-size:10px;font-weight:700;">NF DE DEVOLUÇÃO</span>';
 
