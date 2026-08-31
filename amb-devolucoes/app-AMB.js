@@ -82,7 +82,7 @@ const criarMlBuscas = require('./lib-AMB/ml-buscas-AMB');
 const registrarIdentificar = require('./lib-AMB/identificar-AMB');
 const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 
-const VERSAO = 'AMB Devolucoes b204';
+const VERSAO = 'AMB Devolucoes b205';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -2114,7 +2114,11 @@ router.get('/api/debug/achar-nf', (req, res, next) => {
     const r = await ajudantes.buscarNFBlindada({
       orderId: pedido,
       dataReferencia: data,
-      maxPaginas: parseInt(req.query.paginas, 10) || 12,
+      // b203.2 (Codex): a blindada le `maxPaginasJanela` e `maxPaginasFundo`
+      // — `maxPaginas` ela IGNORA. Eu passava o nome errado e o ?paginas=
+      // nao tinha efeito nenhum.
+      maxPaginasJanela: parseInt(req.query.paginas, 10) || 12,
+      maxPaginasFundo: parseInt(req.query.paginas, 10) || 12,
     });
 
     return res.json({
@@ -2135,9 +2139,14 @@ router.get('/api/debug/achar-nf', (req, res, next) => {
       // o `trace` dela conta o que cada FASE tentou — e o diagnostico
       trace: (r && r.trace) || undefined,
       tentado: (r && r.tentado) || undefined,
-      leia: '`via: filtro_direto` = achou numa chamada. Se `achou:false` com poucas notas '
-        + 'vistas, o filtro por numeroLoja nao devolveu nada — o pedido esta em outro campo '
-        + 'no Bling. Abra a NF la e compare.',
+      // b203.2 (Codex): os `via` REAIS da blindada sao `nfe-numeroLoja`
+      // (fase 0, uma chamada), `nfe-janela-orderId` e `nfe-fundo-orderId`.
+      // Eu documentei `filtro_direto`, que e o nome que uso na GOOD — o
+      // dono leria a resposta procurando um valor que nunca aparece.
+      leia: '`via: nfe-numeroLoja` = achou numa chamada so (o melhor caso). '
+        + '`nfe-janela-orderId` ou `nfe-fundo-orderId` = precisou varrer. '
+        + 'Se `achou:false`, veja `tentado` e `trace`: eles contam o que cada fase fez. '
+        + 'Filtro por numeroLoja sem resultado = o pedido esta em outro campo no Bling.',
     });
   } catch (e) {
     res.status(500).json({ ok: false, erro: String(e.message || e).slice(0, 300) });
@@ -2283,6 +2292,11 @@ router.get('/api/admin/sem-retorno', auth.requerLogin, async (req, res) => {
           motivo: d.motivo_texto || d.motivo,
           dias_desde: diasDesde,
           prazo_base: baseOrigem,
+          // b203.2 (Codex): as datas de ORIGEM vao no item — a busca por
+          // pedido as usa pra montar a janela, e sem elas ia sempre null.
+          nf_emitida_em: d.nf_emitida_em || undefined,
+          cancelado_em: d.cancelado_em || undefined,
+          criado_no_mkt: d.criado_no_mkt || undefined,
           acao: podeCancelar ? 'cancelar_nf' : 'nf_devolucao',
           prazo_cancelamento: podeCancelar ? Math.max(0, 20 - diasDesde) : 0,
           classe: d.classe || undefined,
@@ -2336,6 +2350,9 @@ router.get('/api/admin/sem-retorno', auth.requerLogin, async (req, res) => {
           // dela seguia dizendo "sem NF vinculada".
           ajudantes.buscarNFBlindada({
             orderId: item.pedido,
+            // b203.2 (Codex): estes campos NAO existiam no item mapeado —
+            // ia sempre null, e a blindada so roda as fases de janela com
+            // data valida. Agora o map os inclui (abaixo).
             dataReferencia: item.nf_emitida_em || item.cancelado_em || item.criado_no_mkt || null,
             maxPaginas: 12,
           }),
@@ -2355,11 +2372,18 @@ router.get('/api/admin/sem-retorno', auth.requerLogin, async (req, res) => {
           new Promise((ok) => setTimeout(() => ok(null),
             Math.max(2000, Math.min(14000, 26000 - (Date.now() - INICIO_BUSCA))))),
         ]);
+        // b203.2 (Codex): a blindada pode achar o ID e FALHAR ao buscar o
+        // detalhe — ela devolve { ok:true, idNF, nf:null }. Aceitando so
+        // `nf`, eu descartava um id que ela ja tinha, e o card ficava "sem
+        // NF" mesmo com a nota localizada.
         const achada = (r && r.match) || (r && r.ok && r.nf) || null;
-        if (achada && achada.id) {
-          item.nf_id_bling = String(achada.id);
-          if (!item.nf_numero && achada.numero) item.nf_numero = String(achada.numero);
-          if (!item.nf_chave && achada.chaveAcesso) item.nf_chave = achada.chaveAcesso;
+        const idAchado = (achada && achada.id) || (r && r.ok && r.idNF) || null;
+        if (idAchado) {
+          item.nf_id_bling = String(idAchado);
+          if (achada) {
+            if (!item.nf_numero && achada.numero) item.nf_numero = String(achada.numero);
+            if (!item.nf_chave && achada.chaveAcesso) item.nf_chave = achada.chaveAcesso;
+          }
           item.nf_achada_por = 'pedido';
         }
       } catch (e) { /* segue sem a nota */ }
