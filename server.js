@@ -232,7 +232,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.87.1 (pagina reinicia por fatia; fatia vazia nao encerra)',
+    version: '4.88.0 (filtro direto do Bling: uma chamada em vez de varrer)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -5717,7 +5717,11 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
           // b197.1 (Codex): 6 paginas cabem no prazo. Com 700ms entre
           // paginas, 12 nao caberiam em 6s — as ultimas nunca chegariam a
           // responder, e eu esperaria a toa.
-          new Promise((ok) => setTimeout(() => ok(null), 14000)),
+          // b197.6 (Codex): o prazo e o que SOBRA do orcamento da rota, nao 14s
+          // fixos. Se as buscas por chave/numero ja gastaram quase tudo, um
+          // item lento aqui estouraria o teto e a resposta demoraria.
+          new Promise((ok) => setTimeout(() => ok(null),
+            Math.max(2000, Math.min(14000, 26000 - (Date.now() - INICIO_BUSCA))))),
         ]);
         const achada = (r && r.match) || (r && r.ok && r.nf) || null;
         if (achada && achada.id) {

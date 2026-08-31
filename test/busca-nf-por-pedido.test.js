@@ -18,7 +18,7 @@ const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o
 
 const BLING = fs.readFileSync(path.join(__dirname, '..', 'lib', 'bling.js'), 'utf8');
 const i = BLING.indexOf('async function buscarNFnoBlingPorOrderId');
-const fn = BLING.slice(i, i + 9000);   // a funcao cresceu com os consertos
+const fn = BLING.slice(i, i + 13000);  // cresceu de novo (filtro direto)
 
 // ── a janela agora comeca na data certa ──────────────────────────────
 {
@@ -86,8 +86,17 @@ const fn = BLING.slice(i, i + 9000);   // a funcao cresceu com os consertos
 
   ok(/maxPaginas: 12, paginasPorFatia: 2, delayMs: 450/.test(SERVER),
      '12 paginas em 6 fatias = 120 dias de alcance (com 6 chegava a 40)');
-  ok(/setTimeout\(\(\) => ok\(null\), 14000\)/.test(SERVER),
-     '  e cabe no prazo: ~9,8s medidos contra 14s');
+  ok(/26000 - \(Date\.now\(\) - INICIO_BUSCA\)/.test(SERVER),
+     '  e o prazo desconta o tempo ja gasto pelas buscas anteriores');
+
+  // b197.6: o FILTRO DIRETO resolve sem varrer
+  ok(/numeroLoja=' \+ encodeURIComponent\(orderIdStr\)/.test(fn),
+     'o Bling filtra por numeroLoja: UMA chamada, sem paginar');
+  ok(/via: 'filtro_direto'/.test(fn), '  marcando de onde veio o resultado');
+  ok(/A varredura vira so o plano B/.test(fn),
+     '  e a varredura em fatias fica como plano B');
+  ok(/Escolher entre "cobre perto" e "olha longe" e escolher errado/.test(fn),
+     '  porque a varredura nunca fechava a conta: 2 paginas cobrem 4,5 dias de uma fatia de 20');
 }
 
 // ── o limite de requisicoes nao e desistencia ────────────────────────

@@ -82,7 +82,7 @@ const criarMlBuscas = require('./lib-AMB/ml-buscas-AMB');
 const registrarIdentificar = require('./lib-AMB/identificar-AMB');
 const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 
-const VERSAO = 'AMB Devolucoes b201';
+const VERSAO = 'AMB Devolucoes b202';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -2285,7 +2285,11 @@ router.get('/api/admin/sem-retorno', auth.requerLogin, async (req, res) => {
           // b197.1 (Codex): 6 paginas cabem no prazo. Com 700ms entre
           // paginas, 12 nao caberiam em 6s — as ultimas nunca chegariam a
           // responder, e eu esperaria a toa.
-          new Promise((ok) => setTimeout(() => ok(null), 14000)),
+          // b197.6 (Codex): o prazo e o que SOBRA do orcamento da rota, nao 14s
+          // fixos. Se as buscas por chave/numero ja gastaram quase tudo, um
+          // item lento aqui estouraria o teto e a resposta demoraria.
+          new Promise((ok) => setTimeout(() => ok(null),
+            Math.max(2000, Math.min(14000, 26000 - (Date.now() - INICIO_BUSCA))))),
         ]);
         const achada = (r && r.match) || (r && r.ok && r.nf) || null;
         if (achada && achada.id) {
