@@ -79,6 +79,7 @@ const espreita = require('./lib/magalu-espreita')({ chamarMagalu: magalu.chamarM
 const devCapturadas = require('./lib/devolucoes-capturadas');   // v4.63
 const tiktokPonte = require('./lib/tiktok-ponte');              // v4.66
 const tiktokDev = require('./lib/tiktok-devolucoes');           // v4.66
+const marcadores = require('./lib/marcadores-estornada');   // b200 - peca unica dos marcadores
 const devParcial = require('./lib/devolucao-parcial');          // v4.67
 const tiktokRevelia = require('./lib/tiktok-revelia');          // v4.68
 
@@ -232,7 +233,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.89.0 (o pedido mora em Numero loja virtual, nao no campo que eu exigia)',
+    version: '4.91.2 (o deposito sugerido chega no seletor da GOOD)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -2886,10 +2887,15 @@ app.get('/api/admin/devolucoes', requerAdmin, async (req, res) => {
     const problemas = comParcial.filter(d => d.tipo === 'problema');
     const divergentes = comParcial.filter(d => d.tipo === 'divergente'); // v3.18.0
 
-    return res.json({
+    // b200 - DECODIFICAR os marcadores no servidor.
+    //
+    // Os paineis liam a `problema_descricao` com regex, cada um por conta
+    // propria — e eu esqueci de um leitor TRES vezes seguidas. Agora a peca
+    // unica decodifica aqui, e a tela le campos normais.
+    res.json({
       ok: true,
-      aprovadas,
-      problemas,
+      aprovadas: marcadores.enriquecer(aprovadas),
+      problemas: marcadores.enriquecer(problemas),
       divergentes, // v3.18.0
       total: comParcial.length,
     });
@@ -5109,19 +5115,61 @@ app.post('/api/admin/sem-retorno/registrar', requerAdmin, async (req, res) => {
         nf_chave: d.nf_chave || null,
         nf_id_bling: d.nf_id_bling || null,
         funcionario: 'Sistema (card estornadas)',
+        // b199.6 (Codex): GRAVAR o que a fila vai precisar depois.
+        //
+        // O lote manda o caso pra "Aprovadas", e o rascunho e gerado LA —
+        // por um card que so tem o que esta no banco. Sem estes campos:
+        //   - a trava de NF duplicada nao roda (precisa de cliente e data)
+        //   - o deposito cai em GERAL (o marcador de defeito se perde)
+        // Consertei o caminho direto e esqueci que o lote passa pela fila.
+        // b199.7 (Codex): SO colunas que a tabela de triagens tem.
+        //
+        // Eu tinha posto `cliente_nome` e `nf_emitida_em`, que so existem em
+        // `devolucoes_capturadas` — o PostgREST rejeitaria a LINHA INTEIRA,
+        // e o registro falharia todo, nao so em parte.
+        //
+        // `buyer_nome` existe (o insert da triagem usa). A DATA nao tem
+        // coluna aqui, entao vai na descricao, de onde o card pode ler.
+        buyer_nome: d.cliente || null,
         // ⚠️ o RASTRO de onde veio: quem olhar este registro depois precisa
         // saber que NAO houve bipagem — o produto pode nem ter voltado.
-        problema_descricao: '[ESTORNADA SEM RETORNO] [SO RASCUNHO]'
-          + (chaveCaso ? ' [caso:' + chaveCaso + ']' : '')
-          + ' Registrado a partir do card de estornadas'
-          + (d.marketplace ? ' · ' + String(d.marketplace) : '')
-          + (d.classe ? ' · ' + String(d.classe) : '')
-          + ' · NAO houve bipagem: a mercadoria pode nao ter voltado fisicamente.',
+        // `[DEFEITO]` na descricao: as filas leem `d.status || d.tipo` pra
+        // decidir o deposito, e a palavra "defeito" ali faz `ehProblema`
+        // casar. E o unico canal que atravessa sem coluna nova.
+        problema_descricao: marcadores.montarDescricao({ ...d, chave_caso: chaveCaso }),
       })
       .select('id')
       .single();
 
     if (error) return res.status(500).json({ ok: false, erro: error.message });
+
+    // b199.4 (Codex): o cliente aqui chama-se `supabase`, nao `sb`.
+    // Copiei o bloco da AMB sem trocar o nome — dava ReferenceError, que o
+    // catch abaixo ENGOLIA. A limpeza nunca rodava e ninguem saberia.
+    //
+    // CORRIDA entre duas abas. Nao ha indice unico pro
+    // marcador, entao dois cliques simultaneos passam os dois pelo select
+    // acima e criam DOIS registros da mesma devolucao — duas portas pra
+    // emitir a mesma nota.
+    //
+    // Releio depois de inserir: se apareceu outro com o mesmo `[caso:X]` e
+    // ele e mais antigo, apago o meu e devolvo o dele.
+    if (chaveCaso) {
+      try {
+        const { data: dobrados } = await supabase
+          .from('devolucoes')
+          .select('id, problema_descricao')
+          .eq('order_id', pedido);
+        const mesmos = (dobrados || [])
+          .filter((r) => String(r.problema_descricao || '').includes('[caso:' + chaveCaso + ']'))
+          .sort((a, b) => Number(a.id) - Number(b.id));
+        if (mesmos.length > 1 && String(mesmos[0].id) !== String(data.id)) {
+          await supabase.from('devolucoes').delete().eq('id', data.id);
+          return res.json({ ok: true, id: mesmos[0].id, ja_existia: true, corrida_resolvida: true });
+        }
+      } catch (e) { /* na duvida fica o que inseri; o front nao duplica sozinho */ }
+    }
+
     return res.json({ ok: true, id: data.id, ja_existia: false });
   } catch (e) {
     return res.status(500).json({ ok: false, erro: String(e.message || e).slice(0, 200) });
@@ -5408,6 +5456,13 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
     const itens = semRetorno
       .filter((d) => {
         const chaveDela = String(d.chave_marketplace || d.id || '');
+        // b199.7 (Codex): o registro do CARD tambem tira o caso da lista.
+        //
+        // `resolvidosFinos` so pega quem JA tem NF de devolucao emitida —
+        // um caso do TikTok registrado pelo lote continuava aparecendo, e o
+        // dono registraria de novo achando que nao funcionou.
+        if (casosRegistrados.has(chaveDela)) return false;
+        if (casosRegistrados.has(String(d.pedido || ''))) return false;
         return !resolvidosFinos.has(chaveDela);
       })
       .concat(magaluItens.filter((m) => {
@@ -5570,6 +5625,11 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
           // de onde veio a data usada no relogio — a tela avisa quando e
           // aproximacao, pra ele conferir antes de tentar cancelar
           prazo_base: baseOrigem,
+          // b199.5 (Codex): as datas de ORIGEM vao no item — o payload do
+          // card as leva pro modal, e sem elas a trava de NF duplicada nao
+          // consegue procurar a nota.
+          nf_emitida_em: d.nf_emitida_em || undefined,
+          criado_no_mkt: d.criado_no_mkt || undefined,
           // b189 - o Magalu tem uma classe (`estornado_apos_envio`) em que a
           // devolucao EXISTE: o produto voltou. Nao e "sem retorno", e o
           // card precisa dizer isso — senao ele emitiria NF de devolucao

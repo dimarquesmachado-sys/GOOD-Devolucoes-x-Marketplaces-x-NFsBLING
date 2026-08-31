@@ -23,7 +23,7 @@ const PAINEL = fs.readFileSync(path.join(RAIZ, 'public', 'painel-devolucoes.html
 {
   const i = SERVER.indexOf("'/api/admin/sem-retorno/registrar'");
   ok(i !== -1, 'ha rota que registra o caso pra poder emitir');
-  const rota = SERVER.slice(i, i + 4000);
+  const rota = SERVER.slice(i, i + 7000);   // a rota cresceu com os campos novos
 
   ok(/tipo: 'aprovado'/.test(rota),
      'o registro entra como APROVADO — cai na fila normal de "aguardando NF"');
@@ -34,9 +34,12 @@ const PAINEL = fs.readFileSync(path.join(RAIZ, 'public', 'painel-devolucoes.html
   ok(/nf_ja_emitida: !!existente\.nf_devolucao_id_bling/.test(rota),
      '  e avisando quando a NF ja saiu');
 
-  ok(/\[ESTORNADA SEM RETORNO\]/.test(rota),
-     'o registro carrega o RASTRO de onde veio');
-  ok(/NAO houve bipagem: a mercadoria pode nao ter voltado/.test(rota),
+  // b200: a descricao e MONTADA pela peca unica
+  ok(/marcadores\.montarDescricao/.test(rota),
+     'o registro carrega o RASTRO de onde veio (montado pela peca)');
+  // (o texto quebrou em varias linhas com os marcadores novos)
+  const PECA = fs.readFileSync(path.join(RAIZ, 'lib', 'marcadores-estornada.js'), 'utf8');
+  ok(/NAO houve bipagem/.test(PECA),
      '  dizendo que nao houve bipagem — quem olhar depois precisa saber');
 
   ok(/sem pedido, nao da pra registrar/.test(rota), 'e sem pedido, recusa');
@@ -89,7 +92,7 @@ const PAINEL = fs.readFileSync(path.join(RAIZ, 'public', 'painel-devolucoes.html
   // 1. a Bridge monta a devolucao com a nota INTEIRA — nao da pra
   //    restringir aos itens reembolsados. Emitir direto daqui
   //    transmitiria TODOS pra SEFAZ, e e irreversivel.
-  ok(/function abrirModalGerarDevolucao\([^)]*soRascunho\)/.test(PAINEL),
+  ok(/function abrirModalGerarDevolucao\([^)]*soRascunho[^)]*\)/.test(PAINEL),
      'o modal aceita "so rascunho"');
   ok(/\$\{soRascunho \?/.test(PAINEL),
      '  e esconde o "Gerar \+ Emitir" quando pedido');
@@ -97,8 +100,10 @@ const PAINEL = fs.readFileSync(path.join(RAIZ, 'public', 'painel-devolucoes.html
      '  explicando por que: a nota sai com a original inteira');
   const iFn = PAINEL.indexOf('async function gerarDoCardEstornadas');
   const fn = PAINEL.slice(iFn, iFn + 3500);
-  ok(/String\(d\.nf_chave \|\| ''\)\.replace\(\/\[\^0-9\]\/g, ''\),\s*\n\s*true\n/.test(fn),
+  ok(/replace\(\/\[\^0-9\]\/g, ''\),\s*\n\s*true,/.test(fn),
      'e o card SEMPRE pede so rascunho — que e o que o dono ja faz (edita no Bling)');
+  ok(/d\.entrada_estoque === true \? '' : 'defeito'\s*\n\s*\)/.test(fn),
+     '  passando tambem o deposito sugerido, pro seletor abrir no certo');
 
   // 2. card que ainda da pra CANCELAR nao pode oferecer devolucao
   ok(/x\.nf_id_bling && x\.acao !== 'cancelar_nf'/.test(PAINEL),
@@ -146,11 +151,13 @@ const PAINEL = fs.readFileSync(path.join(RAIZ, 'public', 'painel-devolucoes.html
      'clique duplo nao cria dois registros (a checagem do servidor nao pega a corrida)');
   ok(/_gerandoEstornada = false;/.test(fn2), '  e a trava solta no fim');
 
-  // 3. confirmar antes de criar
-  ok(/confirm\('Registrar este caso/.test(fn2),
-     'pede confirmacao antes de registrar');
-  ok(/fila "Aprovadas - aguardando NF"/.test(fn2),
-     '  dizendo onde o caso vai parar — clicar sem querer criava registro invisivel');
+  // 3. b199: o popup SAIU a pedido do dono ("não faz pop up assim não").
+  //    O que protege agora: o servidor nao cria duplicata, a fila tem
+  //    lixeira, e o toast conta o que aconteceu.
+  ok(!/confirm\('Registrar este caso/.test(fn2),
+     'sem popup de confirmacao — o dono pediu pra tirar');
+  ok(/o registro e reversivel/.test(PAINEL),
+     '  com o motivo registrado: o registro e reversivel pela lixeira da fila');
 }
 
 // ── b193.1: os dois P1 que quase passaram ───────────────────────────
@@ -185,9 +192,9 @@ const PAINEL = fs.readFileSync(path.join(RAIZ, 'public', 'painel-devolucoes.html
   ok(/data-sorascunho="/.test(PAINEL), '  com o marcador no checkbox');
   // a chamada tem parenteses internos, entao conto as ocorrencias em vez
   // de tentar casar a linha inteira
-  const botoesMarcados = (PAINEL.match(/replace\(\/\[\^0-9\]\/g, ''\)\}', \$\{\(d\.problema_descricao/g) || []).length;
-  ok(botoesMarcados >= 2,
-     '  e o botao da fila normal tambem so oferece rascunho nesses (achei ' + botoesMarcados + ')');
+  const botoesMarcados = (PAINEL.match(/\$\{!!d\.so_rascunho\}/g) || []).length;
+  ok(botoesMarcados >= 1,
+     '  e o botao da fila le `d.so_rascunho`, sem regex (achei ' + botoesMarcados + ')');
 
   const ocorr = (PAINEL.match(/data-sorascunho="/g) || []).length;
   ok(ocorr >= 2, 'o marcador esta nas DUAS secoes com esteira (achei ' + ocorr + ')');
@@ -216,6 +223,127 @@ const PAINEL = fs.readFileSync(path.join(RAIZ, 'public', 'painel-devolucoes.html
   ], { P1: 2 });
   ok(g[0] && g[0].vieram === 1 && g[0].completo === false,
      '  conferido: 1 triagem real + 1 registro do card = ainda aguardando a 2a caixa');
+}
+
+// ── b199: sem popup, e com selecao multipla ─────────────────────────
+//
+// [stated] "não faz pop up assim não. e tem como selecionar todas? mais
+// de uma?"
+{
+  const PAINEIS = [
+    ['GOOD', PAINEL],
+    ['AMB (servido)', fs.readFileSync(path.join(RAIZ, 'amb-devolucoes', 'public-AMB', 'painel-AMB.html'), 'utf8')],
+    ['AMB (direto)', fs.readFileSync(path.join(RAIZ, 'amb-devolucoes', 'public-AMB', 'painel2-AMB.html'), 'utf8')],
+  ];
+
+  for (const [nome, html] of PAINEIS) {
+    ok(!/confirm\('Registrar este caso/.test(html),
+       nome + ': sem o popup de confirmacao');
+    ok(/chk-estornada/.test(html), nome + ': tem checkbox pra selecionar');
+    ok(/chkTodasEstornadas/.test(html), nome + ': tem "marcar todas"');
+    ok(/async function gerarLoteEstornadas/.test(html), nome + ': tem a funcao do lote');
+    ok(/checkbox \+ botaoGerar \+ linkNF/.test(html), nome + ': o card renderiza os dois');
+  }
+
+  // b199.1: o botao NAO promete o que nao faz
+  ok(/Mandar selecionadas pra fila de NF/.test(PAINEL),
+     'o botao diz MANDAR PRA FILA — ele nao gera rascunho, so registra');
+  ok(/O lote NÃO gera nota nenhuma — só organiza a fila/.test(PAINEL),
+     '  e a barra explica: a geracao passa pela Bridge, um a um');
+
+  // a rota que o lote chama existe nas DUAS empresas
+  const AMB_APP = fs.readFileSync(path.join(RAIZ, 'amb-devolucoes', 'app-AMB.js'), 'utf8');
+  ok(/router\.post\('\/api\/admin\/sem-retorno\/registrar'/.test(AMB_APP),
+     'a AMB tem a rota de registrar — sem ela todo clique dava 404');
+
+  // b199.2: os tres P1 da rodada
+  ok(/status: 'aprovado',/.test(AMB_APP),
+     'o registro entra com status APROVADO — a AMB filtra a fila por essa coluna');
+  ok(/a AMB filtra a fila pela coluna `status`/.test(AMB_APP),
+     '  com o motivo: com "pendente" ele nunca apareceria em "Aprovadas"');
+  ok(/sem-retorno\/registrar', auth\.requerAdmin/.test(AMB_APP),
+     'e exige ADMIN, nao qualquer login — o painel da AMB e aberto a estoquista');
+  ok(/casosRegistrados\.has\(String\(d\.id\)\)/.test(AMB_APP),
+     'registrar UM caso nao some com os IRMAOS do mesmo pedido');
+
+  // b199.3: os parametros que cada modal da AMB usa de verdade
+  const P_AMB = fs.readFileSync(path.join(RAIZ, 'amb-devolucoes', 'public-AMB', 'painel-AMB.html'), 'utf8');
+  const P_AMB2 = fs.readFileSync(path.join(RAIZ, 'amb-devolucoes', 'public-AMB', 'painel2-AMB.html'), 'utf8');
+  ok(/String\(d\.cliente \|\| ''\),\s*\n\s*String\(d\.sku \|\| ''\)/.test(P_AMB),
+     'o painel servido passa cliente e sku — sem eles a trava de NF duplicada nao roda');
+  // b199.5: o padrao e DEFEITO — Geral so com entrada EXPLICITA
+  ok(/\(d\.entrada_estoque === true \? '' : 'defeito'\)/.test(P_AMB),
+     'o deposito padrao e DEFEITO: so vai pra Geral quando SABEMOS que voltou');
+  ok(/\(d\.entrada_estoque === true \? '' : 'defeito'\)/.test(P_AMB2),
+     '  nos dois paineis da AMB');
+  ok(/Reembolso do TikTok nem popula esse campo/.test(P_AMB2),
+     '  com o motivo: reembolso do TikTok nao popula o campo, e cairia em Geral');
+
+  // e o payload leva o que a trava precisa
+  for (const [nome, html] of [['GOOD', PAINEL], ['AMB (servido)', P_AMB], ['AMB (direto)', P_AMB2]]) {
+    ok(/cliente: x\.cliente, nf_emitida_em: x\.nf_emitida_em/.test(html),
+       nome + ': o payload leva cliente e data (a trava de NF duplicada precisa)');
+  }
+  ok(/nf_emitida_em: d\.nf_emitida_em \|\| undefined/.test(SERVER),
+     'e a rota da GOOD devolve essas datas no item');
+
+  // b199.6: o registro GRAVA o que a fila vai precisar
+  for (const [nome, src] of [['GOOD', SERVER], ['AMB', AMB_APP]]) {
+    // b199.7: as colunas sao as da TABELA DE TRIAGENS, nao as da capturada.
+    // `cliente_nome` e `nf_emitida_em` nao existem la, e o PostgREST
+    // rejeitaria a linha inteira.
+    ok(/buyer_nome: d\.cliente \|\| null/.test(src),
+       nome + ': o insert grava o cliente em `buyer_nome`, a coluna que existe');
+    ok(/marcadores\.montarDescricao\(\{ \.\.\.d, chave_caso: chaveCaso \}\)/.test(src),
+       nome + ': a descricao vem da peca unica — data e deposito inclusos');
+  }
+  ok(/o lote passa pela fila/.test(AMB_APP),
+     '  com o motivo: consertei o caminho direto e esqueci o do lote');
+
+  // o painel2 avisa que nao checa duplicata
+  ok(/esta tela não checa sozinha/.test(P_AMB2),
+     'o painel2 avisa que nao tem a trava de NF duplicada (ela vive no painel-AMB)');
+
+  // b199.3: duas abas nao criam dois registros
+  ok(/corrida_resolvida: true/.test(AMB_APP),
+     'a corrida entre abas e resolvida: sobra o registro mais antigo');
+  // b199.4: e na GOOD tambem — la o cliente chama-se `supabase`
+  const iReg = SERVER.indexOf("'/api/admin/sem-retorno/registrar'");
+  const regGood = SERVER.slice(iReg, iReg + 7000);   // a rota cresceu
+  ok(/corrida_resolvida: true/.test(regGood), '  na GOOD tambem');
+  ok(!/await sb\b/.test(regGood),
+     '  usando o cliente CERTO dela: copiei o bloco da AMB e o `sb` dava ReferenceError');
+  ok(/catch abaixo ENGOLIA/.test(regGood),
+     '  e o catch engolia o erro, entao a limpeza nunca rodaria em silencio');
+  ok(/duas portas pra\s*\n?\s*\/\/ emitir a mesma nota/.test(AMB_APP),
+     '  com o motivo: dois registros = duas portas pra emitir a mesma nota');
+
+  // o rotulo nao volta a prometer rascunho
+  for (const [nome, html] of [
+    ['GOOD', PAINEL],
+    ['AMB (servido)', fs.readFileSync(path.join(RAIZ, 'amb-devolucoes', 'public-AMB', 'painel-AMB.html'), 'utf8')],
+    ['AMB (direto)', fs.readFileSync(path.join(RAIZ, 'amb-devolucoes', 'public-AMB', 'painel2-AMB.html'), 'utf8')],
+  ]) {
+    ok(!/Gerar rascunhos das selecionadas/.test(html),
+       nome + ': o rotulo nao promete rascunho em lugar nenhum');
+    ok(/dataset\.sorascunho !== '1'/.test(html),
+       nome + ': a esteira pula os casos do card');
+  }
+
+  // e o modal da AMB nao recebe o parametro errado
+  for (const [nome, html] of [
+    ['AMB (servido)', fs.readFileSync(path.join(RAIZ, 'amb-devolucoes', 'public-AMB', 'painel-AMB.html'), 'utf8')],
+    ['AMB (direto)', fs.readFileSync(path.join(RAIZ, 'amb-devolucoes', 'public-AMB', 'painel2-AMB.html'), 'utf8')],
+  ]) {
+    ok(/confira as linhas no Bling/i.test(html),
+       nome + ': avisa por toast em vez de passar `true` na posicao errada');
+    ok(/querySelectorAll\('\.btn-gerar-estornada'\)/.test(html),
+       nome + ': o botao e LIGADO depois de montar o HTML');
+  }
+  ok(/if \(j\.nf_ja_emitida\) \{ jaTinham\+\+; continue; \}/.test(PAINEL),
+     'quem JA tem NF fica de fora do lote — segunda nota da mesma venda e problema fiscal');
+  ok(/if \(_loteEstornadas\) return;/.test(PAINEL),
+     'e o lote nao dispara duas vezes');
 }
 
 console.log('');

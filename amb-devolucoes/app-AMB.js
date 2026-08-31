@@ -64,6 +64,7 @@ const nfNomes = require('./lib-AMB/nf-nomes-AMB');
 const tokens = require('./lib-AMB/render-tokens-AMB');
 const auth = require('./lib-AMB/auth-AMB');
 const tiktokPonte = require('../lib/tiktok-ponte');
+const marcadores = require('../lib/marcadores-estornada');   // b200 - peca unica dos marcadores
 const magaluCancelados = require('../lib/magalu-cancelados');  // b191 - peca UNICA, empresa por parametro // b334 - ponte TikTok via Mover-Pedidos (peca unica, empresa como parametro)
 const db = require('./lib-AMB/supabase-AMB');
 const mkt = require('./lib-AMB/marketplace-AMB');
@@ -82,7 +83,7 @@ const criarMlBuscas = require('./lib-AMB/ml-buscas-AMB');
 const registrarIdentificar = require('./lib-AMB/identificar-AMB');
 const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 
-const VERSAO = 'AMB Devolucoes b210';
+const VERSAO = 'AMB Devolucoes b219';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -1067,6 +1068,12 @@ router.get('/db/teste', admin, async (req, res) => {
 router.get('/api/triagem/fila', auth.requerLogin, async (req, res) => {
   const status = req.query.status === 'problema' ? 'problema' : 'aprovado';
   const r = await db.listarFila({ status });
+  // b200.1 (Codex): o campo e `registros` — `listarFila` devolve
+  // { ok, total, registros }. Eu enriquecia `itens` e `data`, que nao
+  // existem, entao a decodificacao nao chegava em NADA na AMB.
+  //
+  // Conferido na fonte antes de escrever desta vez.
+  if (r && Array.isArray(r.registros)) r.registros = marcadores.enriquecer(r.registros);
   if (!r.ok) return res.json(r);
   // junta o link da NF DA VENDA no Bling (id vem do indice de nomes)
   const registros = (r.registros || []).map(x => {
@@ -2091,6 +2098,122 @@ async function montarIndiceNFDevolucaoAMB(maxPaginas) {
 // foi exatamente o diagnostico que resolveu o caso do TikTok na GOOD.
 //
 // GET /amb/api/debug/achar-nf?pedido=1535470109716311&data=2026-05-10&k=ADMIN_KEY
+// b199.1 (Codex) - REGISTRAR o caso, que so existia na GOOD.
+//
+// Os paineis da AMB chamam POST /amb/api/admin/sem-retorno/registrar desde
+// que ganharam o botao — e a rota nao existia aqui. Todo clique dava 404.
+//
+// Mesma logica da GOOD, com a tabela e a empresa da AMB.
+router.post('/api/admin/sem-retorno/registrar', auth.requerAdmin, async (req, res) => {
+  try {
+    const sb = db.cliente();
+    if (!sb) return res.status(503).json({ ok: false, erro: 'Supabase nao configurado' });
+
+    const d = req.body || {};
+    const pedido = String(d.pedido || '').trim();
+    if (!pedido) return res.status(400).json({ ok: false, erro: 'sem pedido, nao da pra registrar' });
+
+    // JA EXISTE? devolve o id em vez de criar outro — clicar duas vezes
+    // criaria duas portas pra emitir a mesma nota.
+    const chaveCaso = String(d.chave_caso || '').trim();
+    const legados = [d.chave_caso_legado, d.chave_caso_legado2]
+      .map((x) => String(x || '').trim()).filter(Boolean);
+
+    const { data: doPedido, error: erroBusca } = await sb
+      .from(db.tabelas.devolucoes)
+      .select('id, nf_devolucao_id_bling, problema_descricao')
+      .eq('order_id', pedido);
+    if (erroBusca) return res.status(500).json({ ok: false, erro: erroBusca.message });
+
+    const existente = chaveCaso
+      ? (doPedido || []).find((r) => {
+        const desc = String(r.problema_descricao || '');
+        return desc.includes('[caso:' + chaveCaso + ']')
+          || legados.some((l) => desc.includes('[caso:' + l + ']'));
+      })
+      : (doPedido || [])[0];
+
+    if (existente) {
+      return res.json({
+        ok: true,
+        id: existente.id,
+        ja_existia: true,
+        nf_ja_emitida: !!existente.nf_devolucao_id_bling,
+      });
+    }
+
+    const { data, error } = await sb
+      .from(db.tabelas.devolucoes)
+      .insert({
+        // b199.2 (Codex): a AMB filtra a fila pela coluna `status`, nao por
+        // `tipo` — com 'pendente' o registro nunca apareceria em
+        // "Aprovadas", que e justamente o que o botao promete.
+        tipo: 'aprovado',
+        status: 'aprovado',
+        order_id: pedido,
+        produto_titulo: d.produto || null,
+        produto_sku: d.sku || null,
+        produto_qtd: d.qtd || null,
+        nf_numero: d.nf_numero || null,
+        nf_chave: d.nf_chave || null,
+        nf_id_bling: d.nf_id_bling || null,
+        funcionario: 'Sistema (card estornadas)',
+        // b199.6 (Codex): GRAVAR o que a fila vai precisar depois.
+        //
+        // O lote manda o caso pra "Aprovadas", e o rascunho e gerado LA —
+        // por um card que so tem o que esta no banco. Sem estes campos:
+        //   - a trava de NF duplicada nao roda (precisa de cliente e data)
+        //   - o deposito cai em GERAL (o marcador de defeito se perde)
+        // Consertei o caminho direto e esqueci que o lote passa pela fila.
+        // b199.7 (Codex): SO colunas que a tabela de triagens tem.
+        //
+        // Eu tinha posto `cliente_nome` e `nf_emitida_em`, que so existem em
+        // `devolucoes_capturadas` — o PostgREST rejeitaria a LINHA INTEIRA,
+        // e o registro falharia todo, nao so em parte.
+        //
+        // `buyer_nome` existe (o insert da triagem usa). A DATA nao tem
+        // coluna aqui, entao vai na descricao, de onde o card pode ler.
+        buyer_nome: d.cliente || null,
+        // o RASTRO: quem olhar depois precisa saber que NAO houve bipagem
+        // `[DEFEITO]` na descricao: as filas leem `d.status || d.tipo` pra
+        // decidir o deposito, e a palavra "defeito" ali faz `ehProblema`
+        // casar. E o unico canal que atravessa sem coluna nova.
+        problema_descricao: marcadores.montarDescricao({ ...d, chave_caso: chaveCaso }),
+      })
+      .select('id')
+      .single();
+
+    if (error) return res.status(500).json({ ok: false, erro: error.message });
+
+    // b199.3 (Codex): CORRIDA entre duas abas. Nao ha indice unico pro
+    // marcador, entao dois cliques simultaneos passam os dois pelo select
+    // acima e criam DOIS registros da mesma devolucao — duas portas pra
+    // emitir a mesma nota.
+    //
+    // Releio depois de inserir: se apareceu outro com o mesmo `[caso:X]` e
+    // ele e mais antigo, apago o meu e devolvo o dele.
+    if (chaveCaso) {
+      try {
+        const { data: dobrados } = await sb
+          .from(db.tabelas.devolucoes)
+          .select('id, problema_descricao')
+          .eq('order_id', pedido);
+        const mesmos = (dobrados || [])
+          .filter((r) => String(r.problema_descricao || '').includes('[caso:' + chaveCaso + ']'))
+          .sort((a, b) => Number(a.id) - Number(b.id));
+        if (mesmos.length > 1 && String(mesmos[0].id) !== String(data.id)) {
+          await sb.from(db.tabelas.devolucoes).delete().eq('id', data.id);
+          return res.json({ ok: true, id: mesmos[0].id, ja_existia: true, corrida_resolvida: true });
+        }
+      } catch (e) { /* na duvida fica o que inseri; o front nao duplica sozinho */ }
+    }
+
+    return res.json({ ok: true, id: data.id, ja_existia: false });
+  } catch (e) {
+    return res.status(500).json({ ok: false, erro: String(e.message || e).slice(0, 200) });
+  }
+});
+
 router.get('/api/debug/achar-nf', (req, res, next) => {
   // b203.1 (Codex): aceitar ?k=ADMIN_KEY, que e o que a doc da rota diz —
   // e exigir ADMIN, nao qualquer login. Com `requerLogin` puro, a chave era
@@ -2201,11 +2324,16 @@ router.get('/api/admin/sem-retorno', auth.requerLogin, async (req, res) => {
     const pedidos = [...new Set(
       semRetorno.map((d) => d.pedido).concat(magaluItens.map((m) => m.pedido)).filter(Boolean)
     )];
+    // b199.2 (Codex): separar o registro do CARD (tem `[caso:X]`) da triagem
+    // de BIPE. O primeiro derruba so aquele caso; o segundo, o pedido todo —
+    // ali o produto voltou de verdade. Sem isso, registrar UM caso sumia com
+    // os irmaos do mesmo pedido, e o dono nao teria como voltar neles.
     const jaTriados = new Set();
+    const casosRegistrados = new Set();
     for (let i = 0; i < pedidos.length; i += 200) {
       const { data: tri, error: erroTri } = await sb
         .from(db.tabelas.devolucoes)
-        .select('order_id')
+        .select('order_id, problema_descricao')
         .in('order_id', pedidos.slice(i, i + 200));
       if (erroTri) {
         return res.status(500).json({
@@ -2214,11 +2342,24 @@ router.get('/api/admin/sem-retorno', auth.requerLogin, async (req, res) => {
             + ' — listar sem essa checagem mostraria casos ja resolvidos',
         });
       }
-      for (const t of (tri || [])) jaTriados.add(String(t.order_id));
+      for (const t of (tri || [])) {
+        const m = String(t.problema_descricao || '').match(/\[caso:([^\]]+)\]/);
+        if (m) casosRegistrados.add(m[1]);
+        else jaTriados.add(String(t.order_id));
+      }
     }
 
     const itens = semRetorno.concat(magaluItens)
-      .filter((d) => !jaTriados.has(String(d.pedido)))
+      .filter((d) => {
+        if (casosRegistrados.has(String(d.id))) return false;
+        if (d.id_legado && casosRegistrados.has(String(d.id_legado))) return false;
+        if (d.id_legado2 && casosRegistrados.has(String(d.id_legado2))) return false;
+        // b199.7 (Codex): o TikTok e identificado pela chave da solicitacao,
+        // nao pelo `id` — sem isto um caso registrado pelo lote continuava
+        // aparecendo, e o dono registraria de novo achando que falhou.
+        if (d.chave_marketplace && casosRegistrados.has(String(d.chave_marketplace))) return false;
+        return !jaTriados.has(String(d.pedido));
+      })
       .map((d) => {
         // (o vinculo da NF no Bling e feito depois, em bloco)
         // o relogio conta da EMISSAO da nota. Data exata (Magalu) manda

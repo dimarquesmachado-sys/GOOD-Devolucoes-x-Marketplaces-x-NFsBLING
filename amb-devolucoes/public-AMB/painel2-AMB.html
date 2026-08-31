@@ -346,6 +346,20 @@
           entrar no estoque vendável. Os cards marcados com <b>↩️ TEVE DEVOLUÇÃO</b> são o contrário:
           o produto voltou, então segue o depósito de sempre.
         </div>
+        <div id="barraLoteEstornadas" style="display:none;margin-bottom:10px;padding:10px;
+             background:#e3f2fd;border:1px solid #1565c0;border-radius:8px;">
+          <label style="font-size:13px;cursor:pointer;margin-right:12px;">
+            <input type="checkbox" id="chkTodasEstornadas"> <b>marcar todas</b>
+          </label>
+          <button class="btn" id="btnLoteEstornadas" style="background:#1565c0;"
+                  onclick="gerarLoteEstornadas()">
+            📋 Mandar selecionadas pra fila de NF (<span id="contaEstornadas">0</span>)
+          </button>
+          <div style="font-size:12px;color:#555;margin-top:6px;">
+            Elas passam pra fila <b>"Aprovadas - aguardando NF"</b>, onde cada uma tem o botão
+            de gerar o rascunho no Bling. O lote NÃO gera nota nenhuma — só organiza a fila.
+          </div>
+        </div>
         <div id="listaSemRetorno"></div>
       </div>
 
@@ -868,6 +882,157 @@
     function espreitaOrdenar() { window._espOrdem = (window._espOrdem === 'antigas') ? 'novas' : 'antigas'; if (window._espDados) renderEspreita(window._espDados); }
 
     // v3.77 - A ESPREITA UNIFICADA: Magalu + ML + Shopee (devolucoes a caminho)
+let _gerandoEstornada = false;
+let _loteEstornadas = false;
+
+// b199 - GERAR VARIAS. [stated] "tem como selecionar todas? mais de uma?"
+//
+// Cada uma vira um RASCUNHO separado no Bling. Nao emito nada aqui: a
+// Bridge monta a nota com os itens da NF original inteira, e o dono
+// ajusta as linhas e o deposito la antes de validar.
+//
+// Por isso o lote e seguro, ao contrario da esteira — que manda
+// `emitir: true` e por isso continua bloqueada pra estes casos.
+async function gerarLoteEstornadas() {
+  if (_loteEstornadas) return;
+  const marcados = [...document.querySelectorAll('.chk-estornada:checked')];
+  if (!marcados.length) { toast('marque pelo menos uma', 'err'); return; }
+
+  _loteEstornadas = true;
+  const btn = document.getElementById('btnLoteEstornadas');
+  if (btn) btn.disabled = true;
+
+  let feitos = 0, jaTinham = 0, falhas = 0;
+  const idsGerados = [];
+
+  try {
+    for (const chk of marcados) {
+      let d;
+      try { d = JSON.parse(chk.dataset.caso); } catch (e) { falhas++; continue; }
+
+      if (btn) btn.textContent = '⏳ registrando ' + (feitos + jaTinham + falhas + 1)
+        + '/' + marcados.length + '...';
+
+      try {
+        const r = await fetch('/api/admin/sem-retorno/registrar', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(d),
+        });
+        const j = await r.json();
+        if (!j || !j.ok) { falhas++; continue; }
+        // ja tem NF: nao entra no lote, senao emitiria a segunda
+        if (j.nf_ja_emitida) { jaTinham++; continue; }
+        if (j.ja_existia) jaTinham++; else feitos++;
+        idsGerados.push({ id: j.id, nf: d.nf_numero, pedido: d.pedido });
+      } catch (e) { falhas++; }
+    }
+  } finally {
+    _loteEstornadas = false;
+    // b199.2 (Codex): restaurar o rotulo CERTO. O finally reescrevia com o
+    // texto antigo, entao do 2o uso em diante o botao voltava a prometer
+    // rascunho — que ele nao gera.
+    if (btn) { btn.disabled = false; btn.innerHTML = '📋 Mandar selecionadas pra fila de NF '
+      + '(<span id="contaEstornadas">0</span>)'; }
+  }
+
+  const partes = [];
+  if (feitos) partes.push(feitos + ' registrada(s)');
+  if (jaTinham) partes.push(jaTinham + ' já estava(m) na fila');
+  if (falhas) partes.push(falhas + ' falhou(ram)');
+  toast(partes.join(' · ') + ' — agora gere o rascunho de cada uma na fila "Aprovadas"',
+    falhas ? 'err' : 'ok');
+
+  await carregarSemRetorno();
+  if (typeof carregar === 'function') carregar();
+}
+
+async function gerarDoCardEstornadas(dadosJson) {
+  let d;
+  try { d = JSON.parse(dadosJson); } catch (e) { toast('dados do card ilegíveis', 'err'); return; }
+
+  // b193 (Codex): clique duplo dispara duas vezes antes de a primeira
+  // responder — a checagem "ja existe" e feita no servidor e as duas
+  // passariam, criando dois registros da mesma devolucao.
+  if (_gerandoEstornada) return;
+  _gerandoEstornada = true;
+
+  // b199 - SEM POPUP. [stated] "não faz pop up assim não."
+  //
+  // O confirm() nativo entrou por um apontamento do Codex (clicar sem
+  // querer criava registro). Mas o registro e reversivel — a fila tem
+  // lixeira — e o dono nao quer o popup no caminho. O aviso vai no
+  // `title` do botao, e o toast conta o que aconteceu depois.
+
+  try {
+    const r = await fetch('/api/admin/sem-retorno/registrar', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(d),
+    });
+    const j = await r.json();
+    if (!j || !j.ok) {
+      toast('não consegui registrar: ' + ((j && j.erro) || 'erro'), 'err');
+      return;
+    }
+
+    // ⚠️ ja emitida antes: aviso em vez de deixar emitir de novo. Duas
+    // notas de devolucao da mesma venda e problema fiscal, nao so
+    // retrabalho.
+    if (j.nf_ja_emitida) {
+      toast('Este pedido JÁ tem NF de devolução emitida — confira antes de gerar outra.', 'err');
+      return;
+    }
+    if (j.ja_existia) {
+      toast('Este caso já estava registrado; abrindo as opções.', 'ok');
+    }
+
+    // dai em diante e o fluxo de sempre
+    // b199.1 (Codex): NAO passo `true` na 6a posicao — nesta AMB ela e
+    // outro parametro (`cliente` num painel, `statusTriagem` no outro), e o
+    // modal daqui nem tem modo so-rascunho. Passar assim preencheria o
+    // campo errado em silencio.
+    //
+    // O aviso vai por toast: a Bridge monta a nota com os itens da NF
+    // original INTEIRA, entao ele confere no Bling antes de validar.
+    // b199.6 (Codex): este painel NAO tem a trava de NF duplicada — ela vive
+    // no painel-AMB. Como aqui nao da pra checar, o aviso e explicito: uma
+    // segunda nota de devolucao da mesma venda e problema fiscal, nao
+    // retrabalho, e so o Bling vai reclamar (tarde).
+    //
+    // Quem quiser a checagem automatica deve usar /amb/painel.
+    toast('Gere o RASCUNHO e confira as linhas no Bling. ⚠️ Confira TAMBÉM se já '
+      + 'existe NF de devolução deste pedido — esta tela não checa sozinha.', 'err');
+    // a 6a posicao DESTE modal e `statusTriagem`, que decide o deposito.
+    //
+    // b199.5 (Codex): padrao DEFEITO; Geral so com `entrada_estoque === true`
+    // EXPLICITO. Reembolso do TikTok nem popula esse campo, e classe
+    // ambigua do Magalu vem null — cairiam em Geral sem a mercadoria ter
+    // voltado.
+    abrirModalGerarDevolucao(
+      String(j.id),
+      String(d.nf_id_bling || ''),
+      String(d.nf_numero || ''),
+      String(d.produto || ''),
+      String(d.nf_chave || '').replace(/[^0-9]/g, ''),
+      (d.entrada_estoque === true ? '' : 'defeito')
+    );
+
+    // ⚠️ mercadoria que NAO voltou: entrada no estoque geral criaria
+    // saldo que nao existe fisicamente. O dono ja decidiu isto em 29/08
+    // ("não integrarão o estoque normal, pois nunca recebemos d volta"),
+    // e o lugar dela e o deposito de DEFEITO.
+    if (d.entrada_estoque === false) {
+      toast('Este produto NÃO voltou — escolha o depósito de DEFEITO no modal, '
+        + 'senão entra saldo que não existe no galpão.', 'err');
+    }
+  } catch (e) {
+    toast('falha ao registrar: ' + (e.message || e), 'err');
+  } finally {
+    _gerandoEstornada = false;
+  }
+}
+
 async function carregarSemRetorno() {
       try {
         const r = await fetch('/api/admin/sem-retorno');
@@ -1030,6 +1195,52 @@ async function carregarSemRetorno() {
           //
           // Por ora, o card leva pra NOTA no Bling — que e o que ele precisa
           // pra agir, e o mesmo lugar de onde partiria de qualquer forma.
+          const podeGerar = x.nf_id_bling && x.acao !== 'cancelar_nf' && !x.prejuizo_integral;
+          // b199 - checkbox pra selecionar varios. [stated] "tem como
+          // selecionar todas? mais de uma?"
+          const checkbox = podeGerar
+            ? '<label style="display:inline-flex;align-items:center;gap:5px;margin-right:8px;'
+              + 'font-size:12px;color:#555;cursor:pointer;">'
+              + '<input type="checkbox" class="chk-estornada" '
+              + 'data-caso="' + escapeHtml(JSON.stringify({
+                  pedido: x.pedido, produto: x.produto, sku: x.sku, qtd: x.qtd,
+                  nf_numero: x.nf_numero, nf_chave: x.nf_chave, nf_id_bling: x.nf_id_bling,
+                  marketplace: x.marketplace, classe: x.classe,
+                  chave_caso: x.id, chave_caso_legado: x.id_legado,
+                  // b199.5 (Codex): cliente e data vao no payload — sem eles a
+                  // trava de NF duplicada volta na hora, mesmo com os
+                  // parametros do modal preenchidos.
+                  cliente: x.cliente, nf_emitida_em: x.nf_emitida_em,
+                  criado_no_mkt: x.criado_no_mkt,
+                  chave_caso_legado2: x.id_legado2, entrada_estoque: x.entrada_estoque,
+                })) + '"> selecionar</label>'
+            : '';
+          const botaoGerar = podeGerar
+            ? '<button class="btn btn-gerar-estornada" '
+              + 'style="background:#1565c0;margin-top:8px;margin-right:6px;" '
+              + 'data-caso="' + escapeHtml(JSON.stringify({
+                  pedido: x.pedido, produto: x.produto, sku: x.sku, qtd: x.qtd,
+                  nf_numero: x.nf_numero, nf_chave: x.nf_chave, nf_id_bling: x.nf_id_bling,
+                  marketplace: x.marketplace, classe: x.classe,
+                  chave_caso: x.id, chave_caso_legado: x.id_legado,
+                  // b199.5 (Codex): cliente e data vao no payload — sem eles a
+                  // trava de NF duplicada volta na hora, mesmo com os
+                  // parametros do modal preenchidos.
+                  cliente: x.cliente, nf_emitida_em: x.nf_emitida_em,
+                  criado_no_mkt: x.criado_no_mkt,
+                  chave_caso_legado2: x.id_legado2,
+                  entrada_estoque: x.entrada_estoque,
+                })) + '" '
+              + 'title="Registra este caso e abre o rascunho da NF de devolução.">'
+              + '🧾 Gerar NF de devolução</button>'
+            : (x.prejuizo_integral
+              ? '<div style="margin-top:8px;font-size:12px;color:#b71c1c;">'
+                + '💸 Não emita devolução: a mercadoria <b>não voltou</b> — o cliente ficou com ela '
+                + 'e com o dinheiro. O caminho é <b>contestar com o marketplace</b>.</div>'
+              : (x.acao === 'cancelar_nf'
+                ? '<div style="margin-top:8px;font-size:12px;color:#e65100;">'
+                  + '⏳ Ainda dá para <b>cancelar a NF</b> — a devolução só depois do prazo</div>'
+                : ''));
           const linkNF = x.nf_id_bling
             ? '<a class="btn" style="background:#1565c0;margin-top:8px;display:inline-block;" '
               + 'href="https://www.bling.com.br/notas.fiscais.php#edit/' + encodeURIComponent(x.nf_id_bling) + '" '
@@ -1078,11 +1289,36 @@ async function carregarSemRetorno() {
             + (x.cliente ? '<div style="font-size:12px;color:#999;margin-top:2px;">'
                 + escapeHtml(String(x.cliente)) + '</div>' : '')
             + dicaEstoque
-            + linkNF
+            + checkbox + botaoGerar + linkNF
             + '</div>';
         }).join('');
 
         document.getElementById('listaSemRetorno').innerHTML = avisoCorte + cabecalho + linhas;
+
+        // b199.1 (Codex): os controles precisam ser LIGADOS depois de montar
+        // o HTML. Sem isto o botao e os checkboxes ficavam inertes na AMB —
+        // o card parecia funcionar e nao fazia nada.
+        document.querySelectorAll('.btn-gerar-estornada').forEach((b) => {
+          b.addEventListener('click', () => gerarDoCardEstornadas(b.dataset.caso));
+        });
+
+        const chks = [...document.querySelectorAll('.chk-estornada')];
+        const barra = document.getElementById('barraLoteEstornadas');
+        if (barra) barra.style.display = chks.length ? '' : 'none';
+
+        const atualizarConta = () => {
+          const n = document.querySelectorAll('.chk-estornada:checked').length;
+          const el = document.getElementById('contaEstornadas');
+          if (el) el.textContent = String(n);
+          const t = document.getElementById('chkTodasEstornadas');
+          if (t) t.checked = n > 0 && n === chks.length;
+        };
+        chks.forEach((c) => c.addEventListener('change', atualizarConta));
+        const todas = document.getElementById('chkTodasEstornadas');
+        if (todas) {
+          todas.onchange = () => { chks.forEach((c) => { c.checked = todas.checked; }); atualizarConta(); };
+        }
+        atualizarConta();
       } catch (e) {
         // silencioso de proposito: e um bloco informativo, nao a fila
       }
@@ -1568,11 +1804,11 @@ async function carregarSemRetorno() {
                 ? `<a class="btn btn-verde" href="https://www.bling.com.br/notas.fiscais.php#edit/${d.nf_id_bling}" target="_blank" title="Abre a NF. Pra gerar devolu\u00e7\u00e3o automaticamente, use o bot\u00e3o ao lado.">🔗 Abrir NF no Bling</a>${linkPedidoMkt(d)}`
                 : `<a class="btn" href="https://www.bling.com.br/notas.fiscais.php#list" target="_blank" onclick="copiarNF('${escapeHtml(d.nf_numero || '')}')">🔗 Abrir lista Bling (copia NF)</a>`
               }
-              <label style="display:inline-flex;align-items:center;gap:5px;font-size:12px;background:#e3f2fd;border:1px solid #90caf9;padding:5px 9px;border-radius:6px;cursor:pointer;" title="Seleciona pra ações em lote (emitir NF / concluir)"><input type="checkbox" class="chk-esteira" data-secao="aprovadas" data-id="${d.id}" data-nfid="${d.nf_id_bling || ''}" data-nfnum="${escapeHtml(String(d.nf_numero || ''))}" data-chave="${String(d.nf_chave || '').replace(/[^0-9]/g, '')}" data-full="${ehSerie2(d) ? '1' : '0'}" onchange="atualizarContadorEsteira('aprovadas')"> selecionar</label>
+              <label style="display:inline-flex;align-items:center;gap:5px;font-size:12px;background:#e3f2fd;border:1px solid #90caf9;padding:5px 9px;border-radius:6px;cursor:pointer;" title="Seleciona pra ações em lote (emitir NF / concluir)"><input type="checkbox" class="chk-esteira" data-sorascunho="${d.so_rascunho ? '1' : '0'}" data-secao="aprovadas" data-id="${d.id}" data-nfid="${d.nf_id_bling || ''}" data-nfnum="${escapeHtml(String(d.nf_numero || ''))}" data-chave="${String(d.nf_chave || '').replace(/[^0-9]/g, '')}" data-full="${ehSerie2(d) ? '1' : '0'}" onchange="atualizarContadorEsteira('aprovadas')"> selecionar</label>
               ${ehSerie2(d) && !d.nf_devolucao_id_bling
                 ? `<a class="btn" style="background:#00695c;color:#fff;" href="https://www.mercadolivre.com.br/emissor/vendas/${d.order_id || ''}/faturas" target="_blank" title="Venda FULL (s\u00e9rie 2): a NF de devolu\u00e7\u00e3o \u00e9 emitida pelo PR\u00d3PRIO Mercado Livre. N\u00c3O gere outra no Bling (duplicidade fiscal). Clique pra ver/baixar a NF no emissor do ML.">🏬 FULL</a><button class="btn" style="background:#00838f;" onclick="fullVincular('${d.id}', this)" title="Procura no Bling a NF de ENTRADA s\u00e9rie 2 que o ML emitiu pra esta devolu\u00e7\u00e3o e vincula ao card">🔗 Achar devolu\u00e7\u00e3o no Bling</button>`
                 : !d.nf_devolucao_id_bling && (d.nf_id_bling || d.nf_numero)
-                ? `<button class="btn" style="background:#1565c0;" onclick="abrirModalGerarDevolucao('${d.id}', '${d.nf_id_bling || ''}', '${escapeHtml(d.nf_numero || '')}', '${escapeHtml(d.produto_titulo || '')}', '${String(d.nf_chave || '').replace(/[^0-9]/g, '')}', '${escapeHtml(d.status || d.tipo || '')}')" title="Abre as op\u00e7\u00f5es: criar RASCUNHO (salvar sem emitir, pra editar no Bling) ou gerar + emitir direto">🧾 Gerar NF (rascunho ou emitir)</button>`
+                ? `<button class="btn" style="background:#1565c0;" onclick="abrirModalGerarDevolucao('${d.id}', '${d.nf_id_bling || ''}', '${escapeHtml(d.nf_numero || '')}', '${escapeHtml(d.produto_titulo || '')}', '${String(d.nf_chave || '').replace(/[^0-9]/g, '')}', '${escapeHtml((d.dep_sugerido || d.status || d.tipo) || '')}')" title="Abre as op\u00e7\u00f5es: criar RASCUNHO (salvar sem emitir, pra editar no Bling) ou gerar + emitir direto">🧾 Gerar NF (rascunho ou emitir)</button>`
                 : d.nf_devolucao_id_bling
                   ? `<a class="btn btn-verde" href="https://www.bling.com.br/notas.entrada.php#edit/${d.nf_devolucao_id_bling}" target="_blank" title="NF de devolu\u00e7\u00e3o j\u00e1 gerada">📝 Devolu\u00e7\u00e3o: ${d.nf_devolucao_numero || 'ver'}</a>${ehSerie2(d) ? `<button class="btn" style="background:#4527a0;" onclick="fullLancarEstoque('${d.id}', this)" title="Lan\u00e7a o ESTOQUE de entrada desta devolu\u00e7\u00e3o no dep\u00f3sito GERAL (API oficial). S\u00f3 clique se ainda N\u00c3O lan\u00e7ou e o produto est\u00e1 ok pra revenda.">📦 Lan\u00e7ar estoque (Geral)</button>` : ''}`
                   : ''
@@ -1629,7 +1865,7 @@ async function carregarSemRetorno() {
           ${concluido ? '' : `
             <div class="item-acoes">
               ${d.nf_link_danfe ? `<a class="btn btn-cinza" href="${d.nf_link_danfe}" target="_blank">📄 DANFE</a>` : ''}
-              <label style="display:inline-flex;align-items:center;gap:5px;font-size:12px;background:#fff3e0;border:1px solid #ffcc80;padding:5px 9px;border-radius:6px;cursor:pointer;" title="Seleciona pra ações em lote (emitir NF / concluir)"><input type="checkbox" class="chk-esteira" data-secao="problemas" data-id="${d.id}" data-nfid="${d.nf_id_bling || ''}" data-nfnum="${escapeHtml(String(d.nf_numero || ''))}" data-chave="${String(d.nf_chave || '').replace(/[^0-9]/g, '')}" data-full="${ehSerie2(d) ? '1' : '0'}" onchange="atualizarContadorEsteira('problemas')"> selecionar</label>
+              <label style="display:inline-flex;align-items:center;gap:5px;font-size:12px;background:#fff3e0;border:1px solid #ffcc80;padding:5px 9px;border-radius:6px;cursor:pointer;" title="Seleciona pra ações em lote (emitir NF / concluir)"><input type="checkbox" class="chk-esteira" data-sorascunho="${d.so_rascunho ? '1' : '0'}" data-secao="problemas" data-id="${d.id}" data-nfid="${d.nf_id_bling || ''}" data-nfnum="${escapeHtml(String(d.nf_numero || ''))}" data-chave="${String(d.nf_chave || '').replace(/[^0-9]/g, '')}" data-full="${ehSerie2(d) ? '1' : '0'}" onchange="atualizarContadorEsteira('problemas')"> selecionar</label>
               ${ehSerie2(d) && !d.nf_devolucao_id_bling
                 ? `<a class="btn" style="background:#00695c;color:#fff;" href="https://www.mercadolivre.com.br/emissor/vendas/${d.order_id || ''}/faturas" target="_blank" title="Venda FULL (s\u00e9rie 2): a NF de devolu\u00e7\u00e3o \u00e9 emitida pelo PR\u00d3PRIO Mercado Livre. N\u00c3O gere outra no Bling (duplicidade fiscal). Clique pra ver/baixar a NF no emissor do ML.">🏬 FULL</a><button class="btn" style="background:#00838f;" onclick="fullVincular('${d.id}', this)" title="Procura no Bling a NF de ENTRADA s\u00e9rie 2 que o ML emitiu pra esta devolu\u00e7\u00e3o e vincula ao card">🔗 Achar devolu\u00e7\u00e3o no Bling</button>`
                 : !d.nf_devolucao_id_bling && (d.nf_id_bling || d.nf_numero)
@@ -2337,7 +2573,11 @@ async function carregarSemRetorno() {
       // Só entram na esteira os que têm NF pra devolver; o resto é pulado.
       // FULL (série 2) NUNCA entra: a devolução é emitida pelo próprio ML.
       const fila = marcados
-        .filter(c => (c.dataset.nfid || c.dataset.nfnum) && c.dataset.full !== '1')
+        .filter(c => (c.dataset.nfid || c.dataset.nfnum) && c.dataset.full !== '1'
+          // b199.2 (Codex): caso vindo do card de estornadas NAO entra na
+          // esteira. Ela manda `emitir: true`, e a devolucao sairia com os
+          // itens da nota INTEIRA — o que este fluxo veio evitar.
+          && c.dataset.sorascunho !== '1')
         .map(c => ({
           id: c.dataset.id,
           nfid: c.dataset.nfid || '',
