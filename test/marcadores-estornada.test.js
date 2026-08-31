@@ -93,6 +93,33 @@ const RAIZ = path.join(__dirname, '..');
      'e as duas MONTAM pela mesma peca — marcador novo mexe num arquivo so');
 }
 
+// ── b200.2: o deposito sugerido CHEGA no seletor ────────────────────
+//
+// A peca expunha `dep_sugerido` e a GOOD nao usava: o seletor tinha Geral
+// fixo em `selected`, entao um caso cuja mercadoria NAO voltou sairia com
+// entrada no estoque vendavel.
+{
+  const GOOD_HTML = fs.readFileSync(path.join(RAIZ, 'public', 'painel-devolucoes.html'), 'utf8');
+  ok(/chaveNF, soRascunho, depSugerido/.test(GOOD_HTML),
+     'o modal da GOOD aceita o deposito sugerido');
+  ok(/if \(depSugerido === 'defeito'\)/.test(GOOD_HTML),
+     '  e pre-seleciona DEFEITOS API quando a mercadoria nao voltou');
+  ok(/Nao TRAVO: ele troca se quiser/.test(GOOD_HTML),
+     '  sem travar: e o dono quem decide, eu so mudo o padrao');
+  ok(/d\.dep_sugerido \|\| ''/.test(GOOD_HTML),
+     'e a fila passa o campo decodificado pela peca');
+
+  // a AMB ja resolvia pelo `ehProblema` — os dois paineis
+  for (const [nome, rel] of [
+    ['AMB (servido)', 'amb-devolucoes/public-AMB/painel-AMB.html'],
+    ['AMB (direto)', 'amb-devolucoes/public-AMB/painel2-AMB.html'],
+  ]) {
+    const html = fs.readFileSync(path.join(RAIZ, rel), 'utf8');
+    ok(/ehProblema\s*\n?\s*\?\s*\(?\s*(idDefeitos|DEPOSITOS_AMB\.defeitos)/.test(html),
+       nome + ': escolhe o deposito pelo statusTriagem que recebe');
+  }
+}
+
 console.log('');
 console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
 process.exit(falhas ? 1 : 0);

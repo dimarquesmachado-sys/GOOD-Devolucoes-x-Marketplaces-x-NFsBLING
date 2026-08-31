@@ -92,7 +92,7 @@ const PAINEL = fs.readFileSync(path.join(RAIZ, 'public', 'painel-devolucoes.html
   // 1. a Bridge monta a devolucao com a nota INTEIRA — nao da pra
   //    restringir aos itens reembolsados. Emitir direto daqui
   //    transmitiria TODOS pra SEFAZ, e e irreversivel.
-  ok(/function abrirModalGerarDevolucao\([^)]*soRascunho\)/.test(PAINEL),
+  ok(/function abrirModalGerarDevolucao\([^)]*soRascunho[^)]*\)/.test(PAINEL),
      'o modal aceita "so rascunho"');
   ok(/\$\{soRascunho \?/.test(PAINEL),
      '  e esconde o "Gerar \+ Emitir" quando pedido');
@@ -100,8 +100,10 @@ const PAINEL = fs.readFileSync(path.join(RAIZ, 'public', 'painel-devolucoes.html
      '  explicando por que: a nota sai com a original inteira');
   const iFn = PAINEL.indexOf('async function gerarDoCardEstornadas');
   const fn = PAINEL.slice(iFn, iFn + 3500);
-  ok(/String\(d\.nf_chave \|\| ''\)\.replace\(\/\[\^0-9\]\/g, ''\),\s*\n\s*true\n/.test(fn),
+  ok(/replace\(\/\[\^0-9\]\/g, ''\),\s*\n\s*true,/.test(fn),
      'e o card SEMPRE pede so rascunho — que e o que o dono ja faz (edita no Bling)');
+  ok(/d\.entrada_estoque === true \? '' : 'defeito'\s*\n\s*\)/.test(fn),
+     '  passando tambem o deposito sugerido, pro seletor abrir no certo');
 
   // 2. card que ainda da pra CANCELAR nao pode oferecer devolucao
   ok(/x\.nf_id_bling && x\.acao !== 'cancelar_nf'/.test(PAINEL),
