@@ -1192,7 +1192,10 @@ async function gerarLoteEstornadas() {
     }
   } finally {
     _loteEstornadas = false;
-    if (btn) { btn.disabled = false; btn.innerHTML = '🧾 Gerar rascunhos das selecionadas '
+    // b199.2 (Codex): restaurar o rotulo CERTO. O finally reescrevia com o
+    // texto antigo, entao do 2o uso em diante o botao voltava a prometer
+    // rascunho — que ele nao gera.
+    if (btn) { btn.disabled = false; btn.innerHTML = '📋 Mandar selecionadas pra fila de NF '
       + '(<span id="contaEstornadas">0</span>)'; }
   }
 
@@ -3297,7 +3300,11 @@ async function carregarSemRetorno() {
       // Só entram na esteira os que têm NF pra devolver; o resto é pulado.
       // FULL (série 2) NUNCA entra: a devolução é emitida pelo próprio ML.
       const fila = marcados
-        .filter(c => (c.dataset.nfid || c.dataset.nfnum) && c.dataset.full !== '1')
+        .filter(c => (c.dataset.nfid || c.dataset.nfnum) && c.dataset.full !== '1'
+          // b199.2 (Codex): caso vindo do card de estornadas NAO entra na
+          // esteira. Ela manda `emitir: true`, e a devolucao sairia com os
+          // itens da nota INTEIRA — o que este fluxo veio evitar.
+          && c.dataset.sorascunho !== '1')
         .map(c => ({
           id: c.dataset.id,
           nfid: c.dataset.nfid || '',

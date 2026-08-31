@@ -82,7 +82,7 @@ const criarMlBuscas = require('./lib-AMB/ml-buscas-AMB');
 const registrarIdentificar = require('./lib-AMB/identificar-AMB');
 const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 
-const VERSAO = 'AMB Devolucoes b212';
+const VERSAO = 'AMB Devolucoes b213';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -2097,7 +2097,7 @@ async function montarIndiceNFDevolucaoAMB(maxPaginas) {
 // que ganharam o botao — e a rota nao existia aqui. Todo clique dava 404.
 //
 // Mesma logica da GOOD, com a tabela e a empresa da AMB.
-router.post('/api/admin/sem-retorno/registrar', auth.requerLogin, async (req, res) => {
+router.post('/api/admin/sem-retorno/registrar', auth.requerAdmin, async (req, res) => {
   try {
     const sb = db.cliente();
     if (!sb) return res.status(503).json({ ok: false, erro: 'Supabase nao configurado' });
@@ -2138,8 +2138,11 @@ router.post('/api/admin/sem-retorno/registrar', auth.requerLogin, async (req, re
     const { data, error } = await sb
       .from(db.tabelas.devolucoes)
       .insert({
-        tipo: 'aprovado',           // entra na fila normal de "aguardando NF"
-        status: 'pendente',
+        // b199.2 (Codex): a AMB filtra a fila pela coluna `status`, nao por
+        // `tipo` — com 'pendente' o registro nunca apareceria em
+        // "Aprovadas", que e justamente o que o botao promete.
+        tipo: 'aprovado',
+        status: 'aprovado',
         order_id: pedido,
         produto_titulo: d.produto || null,
         produto_sku: d.sku || null,
@@ -2276,11 +2279,16 @@ router.get('/api/admin/sem-retorno', auth.requerLogin, async (req, res) => {
     const pedidos = [...new Set(
       semRetorno.map((d) => d.pedido).concat(magaluItens.map((m) => m.pedido)).filter(Boolean)
     )];
+    // b199.2 (Codex): separar o registro do CARD (tem `[caso:X]`) da triagem
+    // de BIPE. O primeiro derruba so aquele caso; o segundo, o pedido todo —
+    // ali o produto voltou de verdade. Sem isso, registrar UM caso sumia com
+    // os irmaos do mesmo pedido, e o dono nao teria como voltar neles.
     const jaTriados = new Set();
+    const casosRegistrados = new Set();
     for (let i = 0; i < pedidos.length; i += 200) {
       const { data: tri, error: erroTri } = await sb
         .from(db.tabelas.devolucoes)
-        .select('order_id')
+        .select('order_id, problema_descricao')
         .in('order_id', pedidos.slice(i, i + 200));
       if (erroTri) {
         return res.status(500).json({
@@ -2289,11 +2297,20 @@ router.get('/api/admin/sem-retorno', auth.requerLogin, async (req, res) => {
             + ' — listar sem essa checagem mostraria casos ja resolvidos',
         });
       }
-      for (const t of (tri || [])) jaTriados.add(String(t.order_id));
+      for (const t of (tri || [])) {
+        const m = String(t.problema_descricao || '').match(/\[caso:([^\]]+)\]/);
+        if (m) casosRegistrados.add(m[1]);
+        else jaTriados.add(String(t.order_id));
+      }
     }
 
     const itens = semRetorno.concat(magaluItens)
-      .filter((d) => !jaTriados.has(String(d.pedido)))
+      .filter((d) => {
+        if (casosRegistrados.has(String(d.id))) return false;
+        if (d.id_legado && casosRegistrados.has(String(d.id_legado))) return false;
+        if (d.id_legado2 && casosRegistrados.has(String(d.id_legado2))) return false;
+        return !jaTriados.has(String(d.pedido));
+      })
       .map((d) => {
         // (o vinculo da NF no Bling e feito depois, em bloco)
         // o relogio conta da EMISSAO da nota. Data exata (Magalu) manda

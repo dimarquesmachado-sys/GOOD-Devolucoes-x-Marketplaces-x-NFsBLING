@@ -251,6 +251,28 @@ const PAINEL = fs.readFileSync(path.join(RAIZ, 'public', 'painel-devolucoes.html
   ok(/router\.post\('\/api\/admin\/sem-retorno\/registrar'/.test(AMB_APP),
      'a AMB tem a rota de registrar — sem ela todo clique dava 404');
 
+  // b199.2: os tres P1 da rodada
+  ok(/status: 'aprovado',/.test(AMB_APP),
+     'o registro entra com status APROVADO — a AMB filtra a fila por essa coluna');
+  ok(/a AMB filtra a fila pela coluna `status`/.test(AMB_APP),
+     '  com o motivo: com "pendente" ele nunca apareceria em "Aprovadas"');
+  ok(/sem-retorno\/registrar', auth\.requerAdmin/.test(AMB_APP),
+     'e exige ADMIN, nao qualquer login — o painel da AMB e aberto a estoquista');
+  ok(/casosRegistrados\.has\(String\(d\.id\)\)/.test(AMB_APP),
+     'registrar UM caso nao some com os IRMAOS do mesmo pedido');
+
+  // o rotulo nao volta a prometer rascunho
+  for (const [nome, html] of [
+    ['GOOD', PAINEL],
+    ['AMB (servido)', fs.readFileSync(path.join(RAIZ, 'amb-devolucoes', 'public-AMB', 'painel-AMB.html'), 'utf8')],
+    ['AMB (direto)', fs.readFileSync(path.join(RAIZ, 'amb-devolucoes', 'public-AMB', 'painel2-AMB.html'), 'utf8')],
+  ]) {
+    ok(!/Gerar rascunhos das selecionadas/.test(html),
+       nome + ': o rotulo nao promete rascunho em lugar nenhum');
+    ok(/dataset\.sorascunho !== '1'/.test(html),
+       nome + ': a esteira pula os casos do card');
+  }
+
   // e o modal da AMB nao recebe o parametro errado
   for (const [nome, html] of [
     ['AMB (servido)', fs.readFileSync(path.join(RAIZ, 'amb-devolucoes', 'public-AMB', 'painel-AMB.html'), 'utf8')],
