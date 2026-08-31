@@ -995,8 +995,14 @@ async function gerarDoCardEstornadas(dadosJson) {
     //
     // O aviso vai por toast: a Bridge monta a nota com os itens da NF
     // original INTEIRA, entao ele confere no Bling antes de validar.
-    toast('Gere o RASCUNHO e confira as linhas no Bling — a nota sai com '
-      + 'todos os itens da original.', 'ok');
+    // b199.6 (Codex): este painel NAO tem a trava de NF duplicada — ela vive
+    // no painel-AMB. Como aqui nao da pra checar, o aviso e explicito: uma
+    // segunda nota de devolucao da mesma venda e problema fiscal, nao
+    // retrabalho, e so o Bling vai reclamar (tarde).
+    //
+    // Quem quiser a checagem automatica deve usar /amb/painel.
+    toast('Gere o RASCUNHO e confira as linhas no Bling. ⚠️ Confira TAMBÉM se já '
+      + 'existe NF de devolução deste pedido — esta tela não checa sozinha.', 'err');
     // a 6a posicao DESTE modal e `statusTriagem`, que decide o deposito.
     //
     // b199.5 (Codex): padrao DEFEITO; Geral so com `entrada_estoque === true`

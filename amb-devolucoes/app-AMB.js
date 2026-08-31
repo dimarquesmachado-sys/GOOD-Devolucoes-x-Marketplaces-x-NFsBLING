@@ -82,7 +82,7 @@ const criarMlBuscas = require('./lib-AMB/ml-buscas-AMB');
 const registrarIdentificar = require('./lib-AMB/identificar-AMB');
 const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 
-const VERSAO = 'AMB Devolucoes b215';
+const VERSAO = 'AMB Devolucoes b216';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -2151,8 +2151,21 @@ router.post('/api/admin/sem-retorno/registrar', auth.requerAdmin, async (req, re
         nf_chave: d.nf_chave || null,
         nf_id_bling: d.nf_id_bling || null,
         funcionario: 'Sistema (card estornadas)',
+        // b199.6 (Codex): GRAVAR o que a fila vai precisar depois.
+        //
+        // O lote manda o caso pra "Aprovadas", e o rascunho e gerado LA —
+        // por um card que so tem o que esta no banco. Sem estes campos:
+        //   - a trava de NF duplicada nao roda (precisa de cliente e data)
+        //   - o deposito cai em GERAL (o marcador de defeito se perde)
+        // Consertei o caminho direto e esqueci que o lote passa pela fila.
+        cliente_nome: d.cliente || null,
+        nf_emitida_em: d.nf_emitida_em || d.criado_no_mkt || null,
         // o RASTRO: quem olhar depois precisa saber que NAO houve bipagem
+        // `[DEFEITO]` na descricao: as filas leem `d.status || d.tipo` pra
+        // decidir o deposito, e a palavra "defeito" ali faz `ehProblema`
+        // casar. E o unico canal que atravessa sem coluna nova.
         problema_descricao: '[ESTORNADA SEM RETORNO] [SO RASCUNHO]'
+          + (d.entrada_estoque === true ? '' : ' [DEFEITO]')
           + (chaveCaso ? ' [caso:' + chaveCaso + ']' : '')
           + ' Registrado a partir do card de estornadas'
           + (d.marketplace ? ' · ' + String(d.marketplace) : '')

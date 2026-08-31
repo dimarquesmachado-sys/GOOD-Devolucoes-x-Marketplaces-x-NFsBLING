@@ -232,7 +232,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.90.4 (deposito padrao DEFEITO; payload leva cliente e data)',
+    version: '4.90.5 (o registro grava o que a FILA vai precisar)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -5109,9 +5109,22 @@ app.post('/api/admin/sem-retorno/registrar', requerAdmin, async (req, res) => {
         nf_chave: d.nf_chave || null,
         nf_id_bling: d.nf_id_bling || null,
         funcionario: 'Sistema (card estornadas)',
+        // b199.6 (Codex): GRAVAR o que a fila vai precisar depois.
+        //
+        // O lote manda o caso pra "Aprovadas", e o rascunho e gerado LA —
+        // por um card que so tem o que esta no banco. Sem estes campos:
+        //   - a trava de NF duplicada nao roda (precisa de cliente e data)
+        //   - o deposito cai em GERAL (o marcador de defeito se perde)
+        // Consertei o caminho direto e esqueci que o lote passa pela fila.
+        cliente_nome: d.cliente || null,
+        nf_emitida_em: d.nf_emitida_em || d.criado_no_mkt || null,
         // ⚠️ o RASTRO de onde veio: quem olhar este registro depois precisa
         // saber que NAO houve bipagem — o produto pode nem ter voltado.
+        // `[DEFEITO]` na descricao: as filas leem `d.status || d.tipo` pra
+        // decidir o deposito, e a palavra "defeito" ali faz `ehProblema`
+        // casar. E o unico canal que atravessa sem coluna nova.
         problema_descricao: '[ESTORNADA SEM RETORNO] [SO RASCUNHO]'
+          + (d.entrada_estoque === true ? '' : ' [DEFEITO]')
           + (chaveCaso ? ' [caso:' + chaveCaso + ']' : '')
           + ' Registrado a partir do card de estornadas'
           + (d.marketplace ? ' · ' + String(d.marketplace) : '')

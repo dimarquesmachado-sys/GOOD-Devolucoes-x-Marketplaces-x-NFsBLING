@@ -23,7 +23,7 @@ const PAINEL = fs.readFileSync(path.join(RAIZ, 'public', 'painel-devolucoes.html
 {
   const i = SERVER.indexOf("'/api/admin/sem-retorno/registrar'");
   ok(i !== -1, 'ha rota que registra o caso pra poder emitir');
-  const rota = SERVER.slice(i, i + 4000);
+  const rota = SERVER.slice(i, i + 7000);   // a rota cresceu com os campos novos
 
   ok(/tipo: 'aprovado'/.test(rota),
      'o registro entra como APROVADO — cai na fila normal de "aguardando NF"');
@@ -36,7 +36,8 @@ const PAINEL = fs.readFileSync(path.join(RAIZ, 'public', 'painel-devolucoes.html
 
   ok(/\[ESTORNADA SEM RETORNO\]/.test(rota),
      'o registro carrega o RASTRO de onde veio');
-  ok(/NAO houve bipagem: a mercadoria pode nao ter voltado/.test(rota),
+  // (o texto quebrou em varias linhas com os marcadores novos)
+  ok(/NAO houve bipagem/.test(rota),
      '  dizendo que nao houve bipagem — quem olhar depois precisa saber');
 
   ok(/sem pedido, nao da pra registrar/.test(rota), 'e sem pedido, recusa');
@@ -282,6 +283,22 @@ const PAINEL = fs.readFileSync(path.join(RAIZ, 'public', 'painel-devolucoes.html
   ok(/nf_emitida_em: d\.nf_emitida_em \|\| undefined/.test(SERVER),
      'e a rota da GOOD devolve essas datas no item');
 
+  // b199.6: o registro GRAVA o que a fila vai precisar
+  for (const [nome, src] of [['GOOD', SERVER], ['AMB', AMB_APP]]) {
+    ok(/cliente_nome: d\.cliente \|\| null/.test(src),
+       nome + ': o insert grava o cliente — o rascunho sai da FILA, nao do card');
+    ok(/nf_emitida_em: d\.nf_emitida_em \|\| d\.criado_no_mkt \|\| null/.test(src),
+       nome + ': e a data, que a trava de duplicata precisa');
+    ok(/d\.entrada_estoque === true \? '' : ' \[DEFEITO\]'/.test(src),
+       nome + ': e o marcador [DEFEITO] na descricao, que a fila le pro deposito');
+  }
+  ok(/o lote passa pela fila/.test(AMB_APP),
+     '  com o motivo: consertei o caminho direto e esqueci o do lote');
+
+  // o painel2 avisa que nao checa duplicata
+  ok(/esta tela não checa sozinha/.test(P_AMB2),
+     'o painel2 avisa que nao tem a trava de NF duplicada (ela vive no painel-AMB)');
+
   // b199.3: duas abas nao criam dois registros
   ok(/corrida_resolvida: true/.test(AMB_APP),
      'a corrida entre abas e resolvida: sobra o registro mais antigo');
@@ -313,7 +330,7 @@ const PAINEL = fs.readFileSync(path.join(RAIZ, 'public', 'painel-devolucoes.html
     ['AMB (servido)', fs.readFileSync(path.join(RAIZ, 'amb-devolucoes', 'public-AMB', 'painel-AMB.html'), 'utf8')],
     ['AMB (direto)', fs.readFileSync(path.join(RAIZ, 'amb-devolucoes', 'public-AMB', 'painel2-AMB.html'), 'utf8')],
   ]) {
-    ok(/todos os itens da original/.test(html),
+    ok(/confira as linhas no Bling/i.test(html),
        nome + ': avisa por toast em vez de passar `true` na posicao errada');
     ok(/querySelectorAll\('\.btn-gerar-estornada'\)/.test(html),
        nome + ': o botao e LIGADO depois de montar o HTML');
