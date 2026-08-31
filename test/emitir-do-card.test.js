@@ -261,6 +261,22 @@ const PAINEL = fs.readFileSync(path.join(RAIZ, 'public', 'painel-devolucoes.html
   ok(/casosRegistrados\.has\(String\(d\.id\)\)/.test(AMB_APP),
      'registrar UM caso nao some com os IRMAOS do mesmo pedido');
 
+  // b199.3: os parametros que cada modal da AMB usa de verdade
+  const P_AMB = fs.readFileSync(path.join(RAIZ, 'amb-devolucoes', 'public-AMB', 'painel-AMB.html'), 'utf8');
+  const P_AMB2 = fs.readFileSync(path.join(RAIZ, 'amb-devolucoes', 'public-AMB', 'painel2-AMB.html'), 'utf8');
+  ok(/String\(d\.cliente \|\| ''\),\s*\n\s*String\(d\.sku \|\| ''\)/.test(P_AMB),
+     'o painel servido passa cliente e sku — sem eles a trava de NF duplicada nao roda');
+  ok(/d\.entrada_estoque === false \? 'defeito' : ''/.test(P_AMB),
+     'e manda "defeito" quando a mercadoria nao voltou — senao o deposito cai em GERAL');
+  ok(/d\.entrada_estoque === false \? 'defeito' : ''/.test(P_AMB2),
+     '  no painel de endereco direto tambem (a 6a posicao dele e o statusTriagem)');
+
+  // b199.3: duas abas nao criam dois registros
+  ok(/corrida_resolvida: true/.test(AMB_APP),
+     'a corrida entre abas e resolvida: sobra o registro mais antigo');
+  ok(/duas portas pra\s*\n?\s*\/\/ emitir a mesma nota/.test(AMB_APP),
+     '  com o motivo: dois registros = duas portas pra emitir a mesma nota');
+
   // o rotulo nao volta a prometer rascunho
   for (const [nome, html] of [
     ['GOOD', PAINEL],

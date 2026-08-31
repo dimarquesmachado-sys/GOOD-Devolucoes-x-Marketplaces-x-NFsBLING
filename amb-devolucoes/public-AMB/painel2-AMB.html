@@ -997,12 +997,17 @@ async function gerarDoCardEstornadas(dadosJson) {
     // original INTEIRA, entao ele confere no Bling antes de validar.
     toast('Gere o RASCUNHO e confira as linhas no Bling — a nota sai com '
       + 'todos os itens da original.', 'ok');
+    // b199.3 (Codex): a 6a posicao DESTE modal e `statusTriagem`, que decide
+    // o deposito. Sem ela, `ehProblema` e falso e o seletor cai em GERAL —
+    // e pros casos em que a mercadoria NAO voltou isso criaria saldo
+    // inexistente no galpao.
     abrirModalGerarDevolucao(
       String(j.id),
       String(d.nf_id_bling || ''),
       String(d.nf_numero || ''),
       String(d.produto || ''),
-      String(d.nf_chave || '').replace(/[^0-9]/g, '')
+      String(d.nf_chave || '').replace(/[^0-9]/g, ''),
+      d.entrada_estoque === false ? 'defeito' : ''
     );
 
     // ⚠️ mercadoria que NAO voltou: entrada no estoque geral criaria

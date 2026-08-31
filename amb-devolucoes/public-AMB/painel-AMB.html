@@ -1260,12 +1260,27 @@ async function gerarDoCardEstornadas(dadosJson) {
     // original INTEIRA, entao ele confere no Bling antes de validar.
     toast('Gere o RASCUNHO e confira as linhas no Bling — a nota sai com '
       + 'todos os itens da original.', 'ok');
+    // b199.3 (Codex): PREENCHER os parametros que este modal usa.
+    //
+    // Ao parar de passar `true` na 6a posicao, deixei `cliente` e `skuItem`
+    // vazios — e `checarNfDevolucaoJaEmitida` volta na hora sem eles, ou
+    // seja, a trava contra NF duplicada nao roda.
+    //
+    // E o `statusTriagem` decide o DEPOSITO: sem ele, `ehProblema` e sempre
+    // falso e o seletor cai em GERAL. Pros casos em que a mercadoria NAO
+    // voltou, isso criaria saldo que nao existe no galpao — mando 'defeito'
+    // quando o card diz que nao houve entrada.
     abrirModalGerarDevolucao(
       String(j.id),
       String(d.nf_id_bling || ''),
       String(d.nf_numero || ''),
       String(d.produto || ''),
-      String(d.nf_chave || '').replace(/[^0-9]/g, '')
+      String(d.nf_chave || '').replace(/[^0-9]/g, ''),
+      String(d.cliente || ''),
+      String(d.sku || ''),
+      String(d.nf_emitida_em || d.criado_no_mkt || ''),
+      d.entrada_estoque === false ? 'defeito' : '',
+      ''
     );
 
     // ⚠️ mercadoria que NAO voltou: entrada no estoque geral criaria

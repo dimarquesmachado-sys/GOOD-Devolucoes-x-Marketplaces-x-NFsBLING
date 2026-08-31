@@ -232,7 +232,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.90.1 (o botao do lote nao promete o que nao faz)',
+    version: '4.90.2 (deposito certo na AMB, e duas abas nao duplicam)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -5122,6 +5122,30 @@ app.post('/api/admin/sem-retorno/registrar', requerAdmin, async (req, res) => {
       .single();
 
     if (error) return res.status(500).json({ ok: false, erro: error.message });
+
+    // b199.3 (Codex): CORRIDA entre duas abas. Nao ha indice unico pro
+    // marcador, entao dois cliques simultaneos passam os dois pelo select
+    // acima e criam DOIS registros da mesma devolucao — duas portas pra
+    // emitir a mesma nota.
+    //
+    // Releio depois de inserir: se apareceu outro com o mesmo `[caso:X]` e
+    // ele e mais antigo, apago o meu e devolvo o dele.
+    if (chaveCaso) {
+      try {
+        const { data: dobrados } = await sb
+          .from('devolucoes')
+          .select('id, problema_descricao')
+          .eq('order_id', pedido);
+        const mesmos = (dobrados || [])
+          .filter((r) => String(r.problema_descricao || '').includes('[caso:' + chaveCaso + ']'))
+          .sort((a, b) => Number(a.id) - Number(b.id));
+        if (mesmos.length > 1 && String(mesmos[0].id) !== String(data.id)) {
+          await sb.from('devolucoes').delete().eq('id', data.id);
+          return res.json({ ok: true, id: mesmos[0].id, ja_existia: true, corrida_resolvida: true });
+        }
+      } catch (e) { /* na duvida fica o que inseri; o front nao duplica sozinho */ }
+    }
+
     return res.json({ ok: true, id: data.id, ja_existia: false });
   } catch (e) {
     return res.status(500).json({ ok: false, erro: String(e.message || e).slice(0, 200) });
