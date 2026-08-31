@@ -1279,7 +1279,7 @@ async function gerarDoCardEstornadas(dadosJson) {
       String(d.cliente || ''),
       String(d.sku || ''),
       String(d.nf_emitida_em || d.criado_no_mkt || ''),
-      d.entrada_estoque === false ? 'defeito' : '',
+      (d.entrada_estoque === true ? '' : 'defeito'),
       ''
     );
 
@@ -1472,6 +1472,11 @@ async function carregarSemRetorno() {
                   nf_numero: x.nf_numero, nf_chave: x.nf_chave, nf_id_bling: x.nf_id_bling,
                   marketplace: x.marketplace, classe: x.classe,
                   chave_caso: x.id, chave_caso_legado: x.id_legado,
+                  // b199.5 (Codex): cliente e data vao no payload — sem eles a
+                  // trava de NF duplicada volta na hora, mesmo com os
+                  // parametros do modal preenchidos.
+                  cliente: x.cliente, nf_emitida_em: x.nf_emitida_em,
+                  criado_no_mkt: x.criado_no_mkt,
                   chave_caso_legado2: x.id_legado2, entrada_estoque: x.entrada_estoque,
                 })) + '"> selecionar</label>'
             : '';
@@ -1483,6 +1488,11 @@ async function carregarSemRetorno() {
                   nf_numero: x.nf_numero, nf_chave: x.nf_chave, nf_id_bling: x.nf_id_bling,
                   marketplace: x.marketplace, classe: x.classe,
                   chave_caso: x.id, chave_caso_legado: x.id_legado,
+                  // b199.5 (Codex): cliente e data vao no payload — sem eles a
+                  // trava de NF duplicada volta na hora, mesmo com os
+                  // parametros do modal preenchidos.
+                  cliente: x.cliente, nf_emitida_em: x.nf_emitida_em,
+                  criado_no_mkt: x.criado_no_mkt,
                   chave_caso_legado2: x.id_legado2,
                   entrada_estoque: x.entrada_estoque,
                 })) + '" '

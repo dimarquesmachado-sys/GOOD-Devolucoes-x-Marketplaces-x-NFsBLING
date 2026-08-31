@@ -266,10 +266,21 @@ const PAINEL = fs.readFileSync(path.join(RAIZ, 'public', 'painel-devolucoes.html
   const P_AMB2 = fs.readFileSync(path.join(RAIZ, 'amb-devolucoes', 'public-AMB', 'painel2-AMB.html'), 'utf8');
   ok(/String\(d\.cliente \|\| ''\),\s*\n\s*String\(d\.sku \|\| ''\)/.test(P_AMB),
      'o painel servido passa cliente e sku — sem eles a trava de NF duplicada nao roda');
-  ok(/d\.entrada_estoque === false \? 'defeito' : ''/.test(P_AMB),
-     'e manda "defeito" quando a mercadoria nao voltou — senao o deposito cai em GERAL');
-  ok(/d\.entrada_estoque === false \? 'defeito' : ''/.test(P_AMB2),
-     '  no painel de endereco direto tambem (a 6a posicao dele e o statusTriagem)');
+  // b199.5: o padrao e DEFEITO — Geral so com entrada EXPLICITA
+  ok(/\(d\.entrada_estoque === true \? '' : 'defeito'\)/.test(P_AMB),
+     'o deposito padrao e DEFEITO: so vai pra Geral quando SABEMOS que voltou');
+  ok(/\(d\.entrada_estoque === true \? '' : 'defeito'\)/.test(P_AMB2),
+     '  nos dois paineis da AMB');
+  ok(/Reembolso do TikTok nem popula esse campo/.test(P_AMB2),
+     '  com o motivo: reembolso do TikTok nao popula o campo, e cairia em Geral');
+
+  // e o payload leva o que a trava precisa
+  for (const [nome, html] of [['GOOD', PAINEL], ['AMB (servido)', P_AMB], ['AMB (direto)', P_AMB2]]) {
+    ok(/cliente: x\.cliente, nf_emitida_em: x\.nf_emitida_em/.test(html),
+       nome + ': o payload leva cliente e data (a trava de NF duplicada precisa)');
+  }
+  ok(/nf_emitida_em: d\.nf_emitida_em \|\| undefined/.test(SERVER),
+     'e a rota da GOOD devolve essas datas no item');
 
   // b199.3: duas abas nao criam dois registros
   ok(/corrida_resolvida: true/.test(AMB_APP),

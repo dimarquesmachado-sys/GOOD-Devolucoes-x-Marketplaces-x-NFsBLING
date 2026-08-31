@@ -232,7 +232,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.90.3 (o cliente do banco certo na GOOD)',
+    version: '4.90.4 (deposito padrao DEFEITO; payload leva cliente e data)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -5598,6 +5598,11 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
           // de onde veio a data usada no relogio — a tela avisa quando e
           // aproximacao, pra ele conferir antes de tentar cancelar
           prazo_base: baseOrigem,
+          // b199.5 (Codex): as datas de ORIGEM vao no item — o payload do
+          // card as leva pro modal, e sem elas a trava de NF duplicada nao
+          // consegue procurar a nota.
+          nf_emitida_em: d.nf_emitida_em || undefined,
+          criado_no_mkt: d.criado_no_mkt || undefined,
           // b189 - o Magalu tem uma classe (`estornado_apos_envio`) em que a
           // devolucao EXISTE: o produto voltou. Nao e "sem retorno", e o
           // card precisa dizer isso — senao ele emitiria NF de devolucao

@@ -997,17 +997,19 @@ async function gerarDoCardEstornadas(dadosJson) {
     // original INTEIRA, entao ele confere no Bling antes de validar.
     toast('Gere o RASCUNHO e confira as linhas no Bling — a nota sai com '
       + 'todos os itens da original.', 'ok');
-    // b199.3 (Codex): a 6a posicao DESTE modal e `statusTriagem`, que decide
-    // o deposito. Sem ela, `ehProblema` e falso e o seletor cai em GERAL —
-    // e pros casos em que a mercadoria NAO voltou isso criaria saldo
-    // inexistente no galpao.
+    // a 6a posicao DESTE modal e `statusTriagem`, que decide o deposito.
+    //
+    // b199.5 (Codex): padrao DEFEITO; Geral so com `entrada_estoque === true`
+    // EXPLICITO. Reembolso do TikTok nem popula esse campo, e classe
+    // ambigua do Magalu vem null — cairiam em Geral sem a mercadoria ter
+    // voltado.
     abrirModalGerarDevolucao(
       String(j.id),
       String(d.nf_id_bling || ''),
       String(d.nf_numero || ''),
       String(d.produto || ''),
       String(d.nf_chave || '').replace(/[^0-9]/g, ''),
-      d.entrada_estoque === false ? 'defeito' : ''
+      (d.entrada_estoque === true ? '' : 'defeito')
     );
 
     // ⚠️ mercadoria que NAO voltou: entrada no estoque geral criaria
@@ -1199,6 +1201,11 @@ async function carregarSemRetorno() {
                   nf_numero: x.nf_numero, nf_chave: x.nf_chave, nf_id_bling: x.nf_id_bling,
                   marketplace: x.marketplace, classe: x.classe,
                   chave_caso: x.id, chave_caso_legado: x.id_legado,
+                  // b199.5 (Codex): cliente e data vao no payload — sem eles a
+                  // trava de NF duplicada volta na hora, mesmo com os
+                  // parametros do modal preenchidos.
+                  cliente: x.cliente, nf_emitida_em: x.nf_emitida_em,
+                  criado_no_mkt: x.criado_no_mkt,
                   chave_caso_legado2: x.id_legado2, entrada_estoque: x.entrada_estoque,
                 })) + '"> selecionar</label>'
             : '';
@@ -1210,6 +1217,11 @@ async function carregarSemRetorno() {
                   nf_numero: x.nf_numero, nf_chave: x.nf_chave, nf_id_bling: x.nf_id_bling,
                   marketplace: x.marketplace, classe: x.classe,
                   chave_caso: x.id, chave_caso_legado: x.id_legado,
+                  // b199.5 (Codex): cliente e data vao no payload — sem eles a
+                  // trava de NF duplicada volta na hora, mesmo com os
+                  // parametros do modal preenchidos.
+                  cliente: x.cliente, nf_emitida_em: x.nf_emitida_em,
+                  criado_no_mkt: x.criado_no_mkt,
                   chave_caso_legado2: x.id_legado2,
                   entrada_estoque: x.entrada_estoque,
                 })) + '" '
