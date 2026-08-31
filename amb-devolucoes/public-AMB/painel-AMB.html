@@ -371,11 +371,11 @@
           </label>
           <button class="btn" id="btnLoteEstornadas" style="background:#1565c0;"
                   onclick="gerarLoteEstornadas()">
-            🧾 Gerar rascunhos das selecionadas (<span id="contaEstornadas">0</span>)
+            📋 Mandar selecionadas pra fila de NF (<span id="contaEstornadas">0</span>)
           </button>
           <div style="font-size:12px;color:#555;margin-top:6px;">
-            Cada uma vira um <b>rascunho</b> separado no Bling — abra lá para conferir as linhas,
-            escolher o depósito e validar. Nada é transmitido para a SEFAZ por aqui.
+            Elas passam pra fila <b>"Aprovadas - aguardando NF"</b>, onde cada uma tem o botão
+            de gerar o rascunho no Bling. O lote NÃO gera nota nenhuma — só organiza a fila.
           </div>
         </div>
         <div id="listaSemRetorno"></div>
@@ -1200,7 +1200,7 @@ async function gerarLoteEstornadas() {
   if (feitos) partes.push(feitos + ' registrada(s)');
   if (jaTinham) partes.push(jaTinham + ' já estava(m) na fila');
   if (falhas) partes.push(falhas + ' falhou(ram)');
-  toast(partes.join(' · ') + ' — os rascunhos saem pela fila "Aprovadas"',
+  toast(partes.join(' · ') + ' — agora gere o rascunho de cada uma na fila "Aprovadas"',
     falhas ? 'err' : 'ok');
 
   await carregarSemRetorno();
@@ -1248,16 +1248,21 @@ async function gerarDoCardEstornadas(dadosJson) {
     }
 
     // dai em diante e o fluxo de sempre
-    // v4.81.1 - SO RASCUNHO daqui. A Bridge monta a devolucao com os
-    // itens da nota original INTEIRA, e aqui o caso pode ser um item de
-    // varios. Emitir direto transmitiria todos pra SEFAZ.
+    // b199.1 (Codex): NAO passo `true` na 6a posicao — nesta AMB ela e
+    // outro parametro (`cliente` num painel, `statusTriagem` no outro), e o
+    // modal daqui nem tem modo so-rascunho. Passar assim preencheria o
+    // campo errado em silencio.
+    //
+    // O aviso vai por toast: a Bridge monta a nota com os itens da NF
+    // original INTEIRA, entao ele confere no Bling antes de validar.
+    toast('Gere o RASCUNHO e confira as linhas no Bling — a nota sai com '
+      + 'todos os itens da original.', 'ok');
     abrirModalGerarDevolucao(
       String(j.id),
       String(d.nf_id_bling || ''),
       String(d.nf_numero || ''),
       String(d.produto || ''),
-      String(d.nf_chave || '').replace(/[^0-9]/g, ''),
-      true
+      String(d.nf_chave || '').replace(/[^0-9]/g, '')
     );
 
     // ⚠️ mercadoria que NAO voltou: entrada no estoque geral criaria
@@ -1526,6 +1531,31 @@ async function carregarSemRetorno() {
         }).join('');
 
         document.getElementById('listaSemRetorno').innerHTML = avisoCorte + cabecalho + linhas;
+
+        // b199.1 (Codex): os controles precisam ser LIGADOS depois de montar
+        // o HTML. Sem isto o botao e os checkboxes ficavam inertes na AMB —
+        // o card parecia funcionar e nao fazia nada.
+        document.querySelectorAll('.btn-gerar-estornada').forEach((b) => {
+          b.addEventListener('click', () => gerarDoCardEstornadas(b.dataset.caso));
+        });
+
+        const chks = [...document.querySelectorAll('.chk-estornada')];
+        const barra = document.getElementById('barraLoteEstornadas');
+        if (barra) barra.style.display = chks.length ? '' : 'none';
+
+        const atualizarConta = () => {
+          const n = document.querySelectorAll('.chk-estornada:checked').length;
+          const el = document.getElementById('contaEstornadas');
+          if (el) el.textContent = String(n);
+          const t = document.getElementById('chkTodasEstornadas');
+          if (t) t.checked = n > 0 && n === chks.length;
+        };
+        chks.forEach((c) => c.addEventListener('change', atualizarConta));
+        const todas = document.getElementById('chkTodasEstornadas');
+        if (todas) {
+          todas.onchange = () => { chks.forEach((c) => { c.checked = todas.checked; }); atualizarConta(); };
+        }
+        atualizarConta();
       } catch (e) {
         // silencioso de proposito: e um bloco informativo, nao a fila
       }

@@ -82,7 +82,7 @@ const criarMlBuscas = require('./lib-AMB/ml-buscas-AMB');
 const registrarIdentificar = require('./lib-AMB/identificar-AMB');
 const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 
-const VERSAO = 'AMB Devolucoes b211';
+const VERSAO = 'AMB Devolucoes b212';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -2091,6 +2091,81 @@ async function montarIndiceNFDevolucaoAMB(maxPaginas) {
 // foi exatamente o diagnostico que resolveu o caso do TikTok na GOOD.
 //
 // GET /amb/api/debug/achar-nf?pedido=1535470109716311&data=2026-05-10&k=ADMIN_KEY
+// b199.1 (Codex) - REGISTRAR o caso, que so existia na GOOD.
+//
+// Os paineis da AMB chamam POST /amb/api/admin/sem-retorno/registrar desde
+// que ganharam o botao — e a rota nao existia aqui. Todo clique dava 404.
+//
+// Mesma logica da GOOD, com a tabela e a empresa da AMB.
+router.post('/api/admin/sem-retorno/registrar', auth.requerLogin, async (req, res) => {
+  try {
+    const sb = db.cliente();
+    if (!sb) return res.status(503).json({ ok: false, erro: 'Supabase nao configurado' });
+
+    const d = req.body || {};
+    const pedido = String(d.pedido || '').trim();
+    if (!pedido) return res.status(400).json({ ok: false, erro: 'sem pedido, nao da pra registrar' });
+
+    // JA EXISTE? devolve o id em vez de criar outro — clicar duas vezes
+    // criaria duas portas pra emitir a mesma nota.
+    const chaveCaso = String(d.chave_caso || '').trim();
+    const legados = [d.chave_caso_legado, d.chave_caso_legado2]
+      .map((x) => String(x || '').trim()).filter(Boolean);
+
+    const { data: doPedido, error: erroBusca } = await sb
+      .from(db.tabelas.devolucoes)
+      .select('id, nf_devolucao_id_bling, problema_descricao')
+      .eq('order_id', pedido);
+    if (erroBusca) return res.status(500).json({ ok: false, erro: erroBusca.message });
+
+    const existente = chaveCaso
+      ? (doPedido || []).find((r) => {
+        const desc = String(r.problema_descricao || '');
+        return desc.includes('[caso:' + chaveCaso + ']')
+          || legados.some((l) => desc.includes('[caso:' + l + ']'));
+      })
+      : (doPedido || [])[0];
+
+    if (existente) {
+      return res.json({
+        ok: true,
+        id: existente.id,
+        ja_existia: true,
+        nf_ja_emitida: !!existente.nf_devolucao_id_bling,
+      });
+    }
+
+    const { data, error } = await sb
+      .from(db.tabelas.devolucoes)
+      .insert({
+        tipo: 'aprovado',           // entra na fila normal de "aguardando NF"
+        status: 'pendente',
+        order_id: pedido,
+        produto_titulo: d.produto || null,
+        produto_sku: d.sku || null,
+        produto_qtd: d.qtd || null,
+        nf_numero: d.nf_numero || null,
+        nf_chave: d.nf_chave || null,
+        nf_id_bling: d.nf_id_bling || null,
+        funcionario: 'Sistema (card estornadas)',
+        // o RASTRO: quem olhar depois precisa saber que NAO houve bipagem
+        problema_descricao: '[ESTORNADA SEM RETORNO] [SO RASCUNHO]'
+          + (chaveCaso ? ' [caso:' + chaveCaso + ']' : '')
+          + ' Registrado a partir do card de estornadas'
+          + (d.marketplace ? ' · ' + String(d.marketplace) : '')
+          + (d.classe ? ' · ' + String(d.classe) : '')
+          + ' · NAO houve bipagem: a mercadoria pode nao ter voltado fisicamente.',
+      })
+      .select('id')
+      .single();
+
+    if (error) return res.status(500).json({ ok: false, erro: error.message });
+    return res.json({ ok: true, id: data.id, ja_existia: false });
+  } catch (e) {
+    return res.status(500).json({ ok: false, erro: String(e.message || e).slice(0, 200) });
+  }
+});
+
 router.get('/api/debug/achar-nf', (req, res, next) => {
   // b203.1 (Codex): aceitar ?k=ADMIN_KEY, que e o que a doc da rota diz —
   // e exigir ADMIN, nao qualquer login. Com `requerLogin` puro, a chave era

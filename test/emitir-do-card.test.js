@@ -240,9 +240,27 @@ const PAINEL = fs.readFileSync(path.join(RAIZ, 'public', 'painel-devolucoes.html
     ok(/checkbox \+ botaoGerar \+ linkNF/.test(html), nome + ': o card renderiza os dois');
   }
 
-  // o lote gera RASCUNHO, nunca emite
-  ok(/Nada é transmitido para a SEFAZ por aqui/.test(PAINEL),
-     'a barra diz que nada e transmitido: cada caso vira um rascunho');
+  // b199.1: o botao NAO promete o que nao faz
+  ok(/Mandar selecionadas pra fila de NF/.test(PAINEL),
+     'o botao diz MANDAR PRA FILA — ele nao gera rascunho, so registra');
+  ok(/O lote NÃO gera nota nenhuma — só organiza a fila/.test(PAINEL),
+     '  e a barra explica: a geracao passa pela Bridge, um a um');
+
+  // a rota que o lote chama existe nas DUAS empresas
+  const AMB_APP = fs.readFileSync(path.join(RAIZ, 'amb-devolucoes', 'app-AMB.js'), 'utf8');
+  ok(/router\.post\('\/api\/admin\/sem-retorno\/registrar'/.test(AMB_APP),
+     'a AMB tem a rota de registrar — sem ela todo clique dava 404');
+
+  // e o modal da AMB nao recebe o parametro errado
+  for (const [nome, html] of [
+    ['AMB (servido)', fs.readFileSync(path.join(RAIZ, 'amb-devolucoes', 'public-AMB', 'painel-AMB.html'), 'utf8')],
+    ['AMB (direto)', fs.readFileSync(path.join(RAIZ, 'amb-devolucoes', 'public-AMB', 'painel2-AMB.html'), 'utf8')],
+  ]) {
+    ok(/todos os itens da original/.test(html),
+       nome + ': avisa por toast em vez de passar `true` na posicao errada');
+    ok(/querySelectorAll\('\.btn-gerar-estornada'\)/.test(html),
+       nome + ': o botao e LIGADO depois de montar o HTML');
+  }
   ok(/if \(j\.nf_ja_emitida\) \{ jaTinham\+\+; continue; \}/.test(PAINEL),
      'quem JA tem NF fica de fora do lote — segunda nota da mesma venda e problema fiscal');
   ok(/if \(_loteEstornadas\) return;/.test(PAINEL),

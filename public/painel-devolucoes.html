@@ -367,11 +367,11 @@
           </label>
           <button class="btn" id="btnLoteEstornadas" style="background:#1565c0;"
                   onclick="gerarLoteEstornadas()">
-            🧾 Gerar rascunhos das selecionadas (<span id="contaEstornadas">0</span>)
+            📋 Mandar selecionadas pra fila de NF (<span id="contaEstornadas">0</span>)
           </button>
           <div style="font-size:12px;color:#555;margin-top:6px;">
-            Cada uma vira um <b>rascunho</b> separado no Bling — abra lá para conferir as linhas,
-            escolher o depósito e validar. Nada é transmitido para a SEFAZ por aqui.
+            Elas passam pra fila <b>"Aprovadas - aguardando NF"</b>, onde cada uma tem o botão
+            de gerar o rascunho no Bling. O lote NÃO gera nota nenhuma — só organiza a fila.
           </div>
         </div>
         <div id="listaSemRetorno"></div>
@@ -922,7 +922,13 @@
     let _gerandoEstornada = false;
     let _loteEstornadas = false;
 
-    // b199 - GERAR VARIAS. [stated] "tem como selecionar todas? mais de uma?"
+    // b199.1 (Codex): o botao PROMETIA rascunho e nao gerava nenhum — so
+    // registrava na fila. A geracao passa pela extensao Bridge, que precisa
+    // do modal aberto UM a UM (ela injeta no Bling pelo navegador).
+    //
+    // Entao o lote faz o que consegue fazer: manda pra fila. O nome diz
+    // isso agora. [stated] "tem como selecionar todas? mais de uma?" — sim,
+    // pra selecionar e organizar; o rascunho sai um por um na fila.
     //
     // Cada uma vira um RASCUNHO separado no Bling. Nao emito nada aqui: a
     // Bridge monta a nota com os itens da NF original inteira, e o dono
@@ -966,7 +972,7 @@
         }
       } finally {
         _loteEstornadas = false;
-        if (btn) { btn.disabled = false; btn.innerHTML = '🧾 Gerar rascunhos das selecionadas '
+        if (btn) { btn.disabled = false; btn.innerHTML = '📋 Mandar selecionadas pra fila de NF '
           + '(<span id="contaEstornadas">0</span>)'; }
       }
 
@@ -974,7 +980,7 @@
       if (feitos) partes.push(feitos + ' registrada(s)');
       if (jaTinham) partes.push(jaTinham + ' já estava(m) na fila');
       if (falhas) partes.push(falhas + ' falhou(ram)');
-      toast(partes.join(' · ') + ' — os rascunhos saem pela fila "Aprovadas"',
+      toast(partes.join(' · ') + ' — agora gere o rascunho de cada uma na fila "Aprovadas"',
         falhas ? 'err' : 'ok');
 
       await carregarSemRetorno();
