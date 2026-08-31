@@ -232,7 +232,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.90.5 (o registro grava o que a FILA vai precisar)',
+    version: '4.90.6 (colunas que existem, e a fila le os marcadores)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -5116,8 +5116,15 @@ app.post('/api/admin/sem-retorno/registrar', requerAdmin, async (req, res) => {
         //   - a trava de NF duplicada nao roda (precisa de cliente e data)
         //   - o deposito cai em GERAL (o marcador de defeito se perde)
         // Consertei o caminho direto e esqueci que o lote passa pela fila.
-        cliente_nome: d.cliente || null,
-        nf_emitida_em: d.nf_emitida_em || d.criado_no_mkt || null,
+        // b199.7 (Codex): SO colunas que a tabela de triagens tem.
+        //
+        // Eu tinha posto `cliente_nome` e `nf_emitida_em`, que so existem em
+        // `devolucoes_capturadas` — o PostgREST rejeitaria a LINHA INTEIRA,
+        // e o registro falharia todo, nao so em parte.
+        //
+        // `buyer_nome` existe (o insert da triagem usa). A DATA nao tem
+        // coluna aqui, entao vai na descricao, de onde o card pode ler.
+        buyer_nome: d.cliente || null,
         // ⚠️ o RASTRO de onde veio: quem olhar este registro depois precisa
         // saber que NAO houve bipagem — o produto pode nem ter voltado.
         // `[DEFEITO]` na descricao: as filas leem `d.status || d.tipo` pra
@@ -5125,6 +5132,8 @@ app.post('/api/admin/sem-retorno/registrar', requerAdmin, async (req, res) => {
         // casar. E o unico canal que atravessa sem coluna nova.
         problema_descricao: '[ESTORNADA SEM RETORNO] [SO RASCUNHO]'
           + (d.entrada_estoque === true ? '' : ' [DEFEITO]')
+          + (d.nf_emitida_em || d.criado_no_mkt
+            ? ' [data:' + String(d.nf_emitida_em || d.criado_no_mkt).slice(0, 10) + ']' : '')
           + (chaveCaso ? ' [caso:' + chaveCaso + ']' : '')
           + ' Registrado a partir do card de estornadas'
           + (d.marketplace ? ' · ' + String(d.marketplace) : '')
@@ -5449,6 +5458,13 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
     const itens = semRetorno
       .filter((d) => {
         const chaveDela = String(d.chave_marketplace || d.id || '');
+        // b199.7 (Codex): o registro do CARD tambem tira o caso da lista.
+        //
+        // `resolvidosFinos` so pega quem JA tem NF de devolucao emitida —
+        // um caso do TikTok registrado pelo lote continuava aparecendo, e o
+        // dono registraria de novo achando que nao funcionou.
+        if (casosRegistrados.has(chaveDela)) return false;
+        if (casosRegistrados.has(String(d.pedido || ''))) return false;
         return !resolvidosFinos.has(chaveDela);
       })
       .concat(magaluItens.filter((m) => {

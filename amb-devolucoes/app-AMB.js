@@ -82,7 +82,7 @@ const criarMlBuscas = require('./lib-AMB/ml-buscas-AMB');
 const registrarIdentificar = require('./lib-AMB/identificar-AMB');
 const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 
-const VERSAO = 'AMB Devolucoes b216';
+const VERSAO = 'AMB Devolucoes b217';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -2158,14 +2158,23 @@ router.post('/api/admin/sem-retorno/registrar', auth.requerAdmin, async (req, re
         //   - a trava de NF duplicada nao roda (precisa de cliente e data)
         //   - o deposito cai em GERAL (o marcador de defeito se perde)
         // Consertei o caminho direto e esqueci que o lote passa pela fila.
-        cliente_nome: d.cliente || null,
-        nf_emitida_em: d.nf_emitida_em || d.criado_no_mkt || null,
+        // b199.7 (Codex): SO colunas que a tabela de triagens tem.
+        //
+        // Eu tinha posto `cliente_nome` e `nf_emitida_em`, que so existem em
+        // `devolucoes_capturadas` — o PostgREST rejeitaria a LINHA INTEIRA,
+        // e o registro falharia todo, nao so em parte.
+        //
+        // `buyer_nome` existe (o insert da triagem usa). A DATA nao tem
+        // coluna aqui, entao vai na descricao, de onde o card pode ler.
+        buyer_nome: d.cliente || null,
         // o RASTRO: quem olhar depois precisa saber que NAO houve bipagem
         // `[DEFEITO]` na descricao: as filas leem `d.status || d.tipo` pra
         // decidir o deposito, e a palavra "defeito" ali faz `ehProblema`
         // casar. E o unico canal que atravessa sem coluna nova.
         problema_descricao: '[ESTORNADA SEM RETORNO] [SO RASCUNHO]'
           + (d.entrada_estoque === true ? '' : ' [DEFEITO]')
+          + (d.nf_emitida_em || d.criado_no_mkt
+            ? ' [data:' + String(d.nf_emitida_em || d.criado_no_mkt).slice(0, 10) + ']' : '')
           + (chaveCaso ? ' [caso:' + chaveCaso + ']' : '')
           + ' Registrado a partir do card de estornadas'
           + (d.marketplace ? ' · ' + String(d.marketplace) : '')
@@ -2346,6 +2355,10 @@ router.get('/api/admin/sem-retorno', auth.requerLogin, async (req, res) => {
         if (casosRegistrados.has(String(d.id))) return false;
         if (d.id_legado && casosRegistrados.has(String(d.id_legado))) return false;
         if (d.id_legado2 && casosRegistrados.has(String(d.id_legado2))) return false;
+        // b199.7 (Codex): o TikTok e identificado pela chave da solicitacao,
+        // nao pelo `id` — sem isto um caso registrado pelo lote continuava
+        // aparecendo, e o dono registraria de novo achando que falhou.
+        if (d.chave_marketplace && casosRegistrados.has(String(d.chave_marketplace))) return false;
         return !jaTriados.has(String(d.pedido));
       })
       .map((d) => {

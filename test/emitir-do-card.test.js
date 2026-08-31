@@ -285,10 +285,19 @@ const PAINEL = fs.readFileSync(path.join(RAIZ, 'public', 'painel-devolucoes.html
 
   // b199.6: o registro GRAVA o que a fila vai precisar
   for (const [nome, src] of [['GOOD', SERVER], ['AMB', AMB_APP]]) {
-    ok(/cliente_nome: d\.cliente \|\| null/.test(src),
-       nome + ': o insert grava o cliente — o rascunho sai da FILA, nao do card');
-    ok(/nf_emitida_em: d\.nf_emitida_em \|\| d\.criado_no_mkt \|\| null/.test(src),
-       nome + ': e a data, que a trava de duplicata precisa');
+    // b199.7: as colunas sao as da TABELA DE TRIAGENS, nao as da capturada.
+    // `cliente_nome` e `nf_emitida_em` nao existem la, e o PostgREST
+    // rejeitaria a linha inteira.
+    ok(/buyer_nome: d\.cliente \|\| null/.test(src),
+       nome + ': o insert grava o cliente em `buyer_nome`, a coluna que existe');
+    ok(/\[data:' \+ String\(d\.nf_emitida_em/.test(src),
+       nome + ': e a data vai na descricao — nao ha coluna pra ela na triagem');
+    // o INSERT em si nao pode ter essas colunas (o comentario acima cita
+    // elas de proposito, explicando o erro)
+    const iIns = src.indexOf('.insert({', src.indexOf("'/api/admin/sem-retorno/registrar'"));
+    const corpoInsert = src.slice(iIns, src.indexOf('.select(', iIns));
+    ok(!/cliente_nome:|nf_emitida_em:/.test(corpoInsert),
+       nome + ': o insert NAO usa colunas de `devolucoes_capturadas`');
     ok(/d\.entrada_estoque === true \? '' : ' \[DEFEITO\]'/.test(src),
        nome + ': e o marcador [DEFEITO] na descricao, que a fila le pro deposito');
   }
