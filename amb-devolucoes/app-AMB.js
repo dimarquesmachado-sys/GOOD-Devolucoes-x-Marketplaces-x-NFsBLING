@@ -84,7 +84,7 @@ const criarMlBuscas = require('./lib-AMB/ml-buscas-AMB');
 const registrarIdentificar = require('./lib-AMB/identificar-AMB');
 const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 
-const VERSAO = 'AMB Devolucoes b224';
+const VERSAO = 'AMB Devolucoes b225';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -2468,61 +2468,14 @@ router.get('/api/admin/sem-retorno', auth.requerLogin, async (req, res) => {
     // hora.
     vinculoCache.aplicar(itens, 'amb');
 
-    const semVinculoAMB = itens.filter((x) => x.nf_chave && !x.nf_id_bling);
-    const filaAMB = semVinculoAMB.filter((x) => x.marketplace === 'magalu').slice(0, 15)
-      .concat(semVinculoAMB.filter((x) => x.marketplace !== 'magalu').slice(0, 10));
-
-    for (const item of filaAMB) {
-      // b204.1: a identidade de ANTES do enriquecimento — o refresh
-      // seguinte le a linha crua e procura por ela.
-      const idCache = vinculoCache.chaveDe(item, 'amb');
-      if (Date.now() - INICIO_BUSCA > 8000) break;   // o painel nao pode travar
-      try {
-        // a busca PAGINA no Bling e pode passar dos 8s sozinha; o teto do
-        // laco so e conferido entre itens. O prazo e o QUE SOBRA do
-        // orcamento: perder o vinculo de um card e melhor que travar a tela.
-        const sobra = Math.max(500, 8000 - (Date.now() - INICIO_BUSCA));
-        const id = await Promise.race([
-          nfp.resolverIdNFPorChave(item.nf_numero, item.nf_chave),
-          // b203.6 (Codex): SEM flag aqui. Ao remover a declaracao orfa deste
-          // laco eu deixei a ATRIBUICAO — ela escreveria numa variavel que
-          // nao existe mais, dentro de um setTimeout, onde o try nao pega:
-          // o processo podia cair.
-          //
-          // Este laco chama `resolverIdNFPorChave`, que nao aceita sinal de
-          // parada. Sem alguem pra avisar, a flag aqui nao teria uso.
-          new Promise((ok) => setTimeout(() => ok(null), Math.min(5000, sobra))),
-        ]);
-        // b204.2 (Codex): GUARDAR aqui tambem. Eu calculava o `idCache`
-        // nesta fase e nao usava — entao a busca por chave, que e a mais
-        // CARA (pagina o Bling), era refeita a cada refresh.
-        if (id) {
-          item.nf_id_bling = String(id);
-          item.nf_achada_por = item.nf_achada_por || 'chave';
-          vinculoCache.guardar(item, item.nf_id_bling, 'chave',
-            { chave: item.nf_chave, numero: item.nf_numero }, 'amb', idCache);
-        }
-      } catch (e) { /* segue sem o link; o numero da NF esta no card */ }
-    }
-
-    // b196 - a mesma busca PELO PEDIDO da GOOD. Caso real: pedido do
-    // TikTok sem numero e sem chave na captura (a API nao mandou), mas a
-    // nota EXISTE no Bling. Sem isto o card fica so informativo.
-    // ============================================================
-    // BUSCA A NF PELO PEDIDO — pros casos sem numero e sem chave
-    // ------------------------------------------------------------
-    // Caso real: pedido do TikTok que aparecia "sem NF vinculada", mas a
-    // nota EXISTE no Bling (o dono abriu e mostrou). A captura veio sem
-    // numero e sem chave porque a API do marketplace nao mandou.
+    // b204.3 (Codex): a fase do NUMERO vem PRIMEIRO, como na GOOD.
     //
-    // Uso a `buscarNFBlindada` da AMB — `buscarNFnoBlingPorOrderId` NAO
-    // existe neste modulo, e eu chamei ela por engano do #124 ate o #129,
-    // entao esta busca NUNCA funcionou aqui.
+    // A fase da CHAVE pagina o Bling e podia consumir os 8s inteiros — ate
+    // quando nao achava nada. A do numero, que vinha depois com corte em
+    // 6s, saia na hora sem fazer UMA chamada sequer.
     //
-    // A blindada le `maxPaginasJanela`/`maxPaginasFundo` (nao `maxPaginas`),
-    // devolve { ok, via, nf, idNF, trace } (nao { match }), e aceita
-    // `parar()` pra desistir quando o chamador desiste.
-    // ============================================================
+    // O direto por numero custa 1 chamada e resolve a maioria; a chave fica
+    // pro que sobrar, que e onde ela e insubstituivel.
     // b203 - PELA NOTA primeiro, aqui tambem. [stated] "vc tinha q tá
     // pegando nota fiscal. nf sim sempre terá." O pedido pode nao existir
     // (XML do Full importado nao cria pedido no Bling); a nota existe.
@@ -2576,6 +2529,43 @@ router.get('/api/admin/sem-retorno', auth.requerLogin, async (req, res) => {
           vinculoCache.guardar(item, item.nf_id_bling, 'numero', { chave: item.nf_chave, numero: item.nf_numero }, 'amb', idCache);
         }
       } catch (e) { /* segue pros caminhos abaixo */ }
+    }
+
+    const semVinculoAMB = itens.filter((x) => x.nf_chave && !x.nf_id_bling);
+    const filaAMB = semVinculoAMB.filter((x) => x.marketplace === 'magalu').slice(0, 15)
+      .concat(semVinculoAMB.filter((x) => x.marketplace !== 'magalu').slice(0, 10));
+
+    for (const item of filaAMB) {
+      // b204.1: a identidade de ANTES do enriquecimento — o refresh
+      // seguinte le a linha crua e procura por ela.
+      const idCache = vinculoCache.chaveDe(item, 'amb');
+      if (Date.now() - INICIO_BUSCA > 8000) break;   // o painel nao pode travar
+      try {
+        // a busca PAGINA no Bling e pode passar dos 8s sozinha; o teto do
+        // laco so e conferido entre itens. O prazo e o QUE SOBRA do
+        // orcamento: perder o vinculo de um card e melhor que travar a tela.
+        const sobra = Math.max(500, 8000 - (Date.now() - INICIO_BUSCA));
+        const id = await Promise.race([
+          nfp.resolverIdNFPorChave(item.nf_numero, item.nf_chave),
+          // b203.6 (Codex): SEM flag aqui. Ao remover a declaracao orfa deste
+          // laco eu deixei a ATRIBUICAO — ela escreveria numa variavel que
+          // nao existe mais, dentro de um setTimeout, onde o try nao pega:
+          // o processo podia cair.
+          //
+          // Este laco chama `resolverIdNFPorChave`, que nao aceita sinal de
+          // parada. Sem alguem pra avisar, a flag aqui nao teria uso.
+          new Promise((ok) => setTimeout(() => ok(null), Math.min(5000, sobra))),
+        ]);
+        // b204.2 (Codex): GUARDAR aqui tambem. Eu calculava o `idCache`
+        // nesta fase e nao usava — entao a busca por chave, que e a mais
+        // CARA (pagina o Bling), era refeita a cada refresh.
+        if (id) {
+          item.nf_id_bling = String(id);
+          item.nf_achada_por = item.nf_achada_por || 'chave';
+          vinculoCache.guardar(item, item.nf_id_bling, 'chave',
+            { chave: item.nf_chave, numero: item.nf_numero }, 'amb', idCache);
+        }
+      } catch (e) { /* segue sem o link; o numero da NF esta no card */ }
     }
 
     for (const item of itens.filter((x) => !x.nf_numero && !x.nf_chave && !x.nf_id_bling && x.pedido).slice(0, 10)) {

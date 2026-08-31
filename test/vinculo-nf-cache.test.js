@@ -104,7 +104,7 @@ const RAIZ = path.join(__dirname, '..');
   for (const [nome, rel] of [['GOOD', 'server.js'], ['AMB', 'amb-devolucoes/app-AMB.js']]) {
     const src = fs.readFileSync(path.join(RAIZ, rel), 'utf8');
     const i = src.indexOf("'/api/admin/sem-retorno'");
-    const rota = src.slice(i, i + 40000);
+    const rota = src.slice(i, i + 44000);   // a rota cresceu (b204.3)
     const iCache = rota.indexOf('vinculoCache.aplicar');
     const iFila = Math.min(
       ...['const comNumero =', 'const semVinculoAMB =']
@@ -118,14 +118,30 @@ const RAIZ = path.join(__dirname, '..');
        nome + ': o cache roda antes de TODAS as ' + posFilas.length + ' filas');
 
     // e TODA fase que acha guarda — inclusive a da chave, que e a mais cara
-    const fases = (rota.match(/const idCache = /g) || []).length;
-    const guardas = (rota.match(/vinculoCache\.guardar/g) || []).length;
-    ok(fases > 0 && fases === guardas,
-       nome + ': as ' + fases + ' fases guardam o que acham (a da chave PAGINA o Bling)');
+    // b204.3: TODA atribuicao de vinculo tem que guardar — inclusive a
+    // varredura de reserva, que e a mais cara de todas (8 paginas)
+    const semGuarda = [...rota.matchAll(/item\.nf_id_bling = String\([^)]*\)/g)]
+      .filter((m) => !rota.slice(m.index, m.index + 400).includes('vinculoCache.guardar'));
+    ok(semGuarda.length === 0,
+       nome + ': TODA fase que acha guarda no cache (achei ' + semGuarda.length + ' sem)');
+
+    // e a fase do NUMERO (barata) roda antes da CHAVE (que pagina)
+    const iNum = rota.search(/for \(const item of (comNumero|itens\.filter\(\(x\) => !x\.nf_id_bling && x\.nf_numero)/);
+    const iChave = rota.search(/for \(const item of (PARA_BUSCAR|filaAMB)\)/);
+    ok(iNum > 0 && iChave > 0 && iNum < iChave,
+       nome + ': a fase do NUMERO roda antes da CHAVE — 1 chamada contra paginacao');
     ok(rota.split('vinculoCache.aplicar').length === 2,
        nome + ': uma aplicacao so — nao duas em pontos diferentes');
     ok(/const idCache = vinculoCache\.chaveDe\(item, /.test(rota),
        nome + ': e guarda com a identidade de antes do enriquecimento');
+  }
+
+  // e a helper respeita o ritmo internamente (ate 3 requests por item)
+  for (const [nome, rel] of [['GOOD', 'lib/bling.js'],
+                             ['AMB', 'amb-devolucoes/lib-AMB/admin-helpers-AMB.js']]) {
+    const src = fs.readFileSync(path.join(RAIZ, rel), 'utf8');
+    ok(/if \(feitas > 0\) await sleep\(350\)/.test(src),
+       nome + ': a helper pausa entre as proprias chamadas (padded, limpo, varredura)');
   }
 }
 

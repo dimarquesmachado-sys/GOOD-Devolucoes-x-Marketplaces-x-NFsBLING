@@ -247,7 +247,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.95.2 (o cache antes de TODAS as filas, e toda fase guarda)',
+    version: '4.95.3 (ritmo dentro da helper; toda fase guarda; numero antes da chave)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -5858,6 +5858,9 @@ for (const item of semNota) {
           item.nf_id_bling = String(achada.id);
           if (!item.nf_numero && achada.numero) item.nf_numero = String(achada.numero);
           if (!item.nf_chave && achada.chaveAcesso) item.nf_chave = achada.chaveAcesso;
+          // b204.3 (Codex): guardar tambem nesta fase
+          vinculoCache.guardar(item, item.nf_id_bling, 'pedido',
+            { chave: item.nf_chave, numero: item.nf_numero }, empresa, idCache);
           item.nf_achada_por = 'pedido';
           vinculoCache.guardar(item, item.nf_id_bling, 'pedido', { chave: item.nf_chave, numero: item.nf_numero }, empresa, idCache);   // pra tela dizer de onde veio
         }
@@ -5923,8 +5926,12 @@ for (const item of semNota) {
         const chaveAchada = String(achada.chaveAcesso || '').replace(/\D/g, '');
         if (chaveEsperada && chaveAchada && chaveEsperada !== chaveAchada) continue;
 
-        item.nf_id_bling = String(achada.id);
+item.nf_id_bling = String(achada.id);
         if (!item.nf_chave && achada.chaveAcesso) item.nf_chave = achada.chaveAcesso;
+        // b204.3 (Codex): a varredura de RESERVA e a mais cara de todas (8
+        // paginas) e era refeita a cada refresh. Agora guarda.
+        vinculoCache.guardar(item, item.nf_id_bling, 'numero_varredura',
+          { chave: item.nf_chave, numero: item.nf_numero }, empresa, idCache);
       } catch (e) { /* segue sem o link; o numero da NF esta no card */ }
     }
 
