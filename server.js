@@ -246,7 +246,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.94.0 (busca pela NOTA, nao pelo pedido: a nota sempre existe)',
+    version: '4.94.1 (confere a chave; a AMB ganha o filtro direto)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -5742,8 +5742,14 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
     const comNumero = itens.filter((x) => !x.nf_id_bling && x.nf_numero).slice(0, 25);
     const semNota = itens.filter((x) => !x.nf_id_bling && !x.nf_numero && x.pedido).slice(0, 25);
 
+    let buscadas = 0;
     for (const item of comNumero) {
       if (Date.now() - INICIO_BUSCA > 10000) break;
+      // b203.1 (Codex): RITMO. O Bling limita a 3 req/s, e sao ate 25 itens
+      // seguidos aqui. Sem pausa, os primeiros levam 429 e o retry de 1,5s
+      // de cada um come o orcamento inteiro — os ultimos nem sao tentados.
+      if (buscadas > 0) await new Promise((ok) => setTimeout(ok, 350));
+      buscadas++;
       try {
         const r = await Promise.race([
           buscarNFnoBlingPorNumero(item.nf_numero, item.nf_emitida_em || item.criado_em || null,
@@ -5751,7 +5757,17 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
           new Promise((ok) => setTimeout(() => ok(null), 4000)),
         ]);
         const achada = (r && r.match) || null;
-        if (achada && achada.id) {
+        // b203.1 (Codex): CONFERIR A CHAVE quando eu tenho as duas.
+        //
+        // Numero de NF se repete entre SERIES. A busca devolve a mais
+        // recente, e sem comparar a chave eu aceitaria a nota de outra serie
+        // — e o dono geraria a devolucao contra a venda errada.
+        //
+        // So aceito de olhos fechados quando nao ha chave pra comparar.
+        const chaveItem = String(item.nf_chave || '').replace(/\D/g, '');
+        const chaveAchada = String(achada && achada.chaveAcesso || '').replace(/\D/g, '');
+        const chaveBate = !chaveItem || !chaveAchada || chaveItem === chaveAchada;
+        if (achada && achada.id && chaveBate) {
           item.nf_id_bling = String(achada.id);
           if (!item.nf_chave && achada.chaveAcesso) item.nf_chave = achada.chaveAcesso;
           item.nf_achada_por = (r && r.via === 'filtro_direto_numero') ? 'numero' : 'numero_varredura';

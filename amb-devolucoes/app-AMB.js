@@ -83,7 +83,7 @@ const criarMlBuscas = require('./lib-AMB/ml-buscas-AMB');
 const registrarIdentificar = require('./lib-AMB/identificar-AMB');
 const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 
-const VERSAO = 'AMB Devolucoes b220';
+const VERSAO = 'AMB Devolucoes b221';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -2506,8 +2506,14 @@ router.get('/api/admin/sem-retorno', auth.requerLogin, async (req, res) => {
     // b203 - PELA NOTA primeiro, aqui tambem. [stated] "vc tinha q tá
     // pegando nota fiscal. nf sim sempre terá." O pedido pode nao existir
     // (XML do Full importado nao cria pedido no Bling); a nota existe.
+    let buscadas = 0;
     for (const item of itens.filter((x) => !x.nf_id_bling && x.nf_numero).slice(0, 25)) {
       if (Date.now() - INICIO_BUSCA > 10000) break;
+      // b203.1 (Codex): RITMO. O Bling limita a 3 req/s, e sao ate 25 itens
+      // seguidos aqui. Sem pausa, os primeiros levam 429 e o retry de 1,5s
+      // de cada um come o orcamento inteiro — os ultimos nem sao tentados.
+      if (buscadas > 0) await new Promise((ok) => setTimeout(ok, 350));
+      buscadas++;
       try {
         const r = await Promise.race([
           ajudantes.buscarNFnoBlingPorNumero(item.nf_numero,
@@ -2515,7 +2521,17 @@ router.get('/api/admin/sem-retorno', auth.requerLogin, async (req, res) => {
           new Promise((ok) => setTimeout(() => ok(null), 4000)),
         ]);
         const achada = (r && r.match) || null;
-        if (achada && achada.id) {
+        // b203.1 (Codex): CONFERIR A CHAVE quando eu tenho as duas.
+        //
+        // Numero de NF se repete entre SERIES. A busca devolve a mais
+        // recente, e sem comparar a chave eu aceitaria a nota de outra serie
+        // — e o dono geraria a devolucao contra a venda errada.
+        //
+        // So aceito de olhos fechados quando nao ha chave pra comparar.
+        const chaveItem = String(item.nf_chave || '').replace(/\D/g, '');
+        const chaveAchada = String(achada && achada.chaveAcesso || '').replace(/\D/g, '');
+        const chaveBate = !chaveItem || !chaveAchada || chaveItem === chaveAchada;
+        if (achada && achada.id && chaveBate) {
           item.nf_id_bling = String(achada.id);
           if (!item.nf_chave && achada.chaveAcesso) item.nf_chave = achada.chaveAcesso;
           item.nf_achada_por = 'numero';

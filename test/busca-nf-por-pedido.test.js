@@ -164,6 +164,26 @@ const fn = BLING.slice(i, i + 13000);  // cresceu de novo (filtro direto)
   const AMB2 = fs.readFileSync(path.join(__dirname, '..', 'amb-devolucoes', 'app-AMB.js'), 'utf8');
   ok(/buscarNFnoBlingPorNumero\(item\.nf_numero/.test(AMB2),
      'e a AMB busca pela nota tambem — sem isso ela ficaria pra tras de novo');
+
+  // b203.1: numero se REPETE entre series — conferir a chave
+  ok(/const chaveBate = !chaveItem \|\| !chaveAchada \|\| chaveItem === chaveAchada/.test(rota2),
+     'a chave e conferida antes de aceitar: numero se repete entre SERIES');
+  ok(/geraria a devolucao contra a venda errada/.test(rota2),
+     '  senao o dono geraria a devolucao contra a venda errada');
+  ok(/const chaveBate/.test(AMB2), '  na AMB tambem');
+
+  // e a AMB ganhou o filtro direto na helper dela
+  const HELP = fs.readFileSync(path.join(__dirname, '..', 'amb-devolucoes', 'lib-AMB', 'admin-helpers-AMB.js'), 'utf8');
+  ok(/'&numero=' \+ encodeURIComponent\(alvo\)/.test(HELP),
+     'a helper da AMB tem o filtro direto por numero (so paginava antes)');
+  ok(/!\[2, 9\]\.includes\(Number\(nf && nf\.situacao\)\)/.test(HELP),
+     '  com a checagem de nota morta LOCAL — `nfeDescartavel` e da GOOD');
+
+  // ritmo: 3 req/s do Bling
+  ok(/if \(buscadas > 0\) await new Promise/.test(rota2),
+     'ha pausa entre as buscas diretas: o Bling limita a 3 req/s');
+  ok(/os ultimos nem sao tentados/.test(rota2),
+     '  senao o retry de cada 429 comeria o orcamento inteiro');
 }
 
 console.log('');
