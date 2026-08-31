@@ -66,8 +66,13 @@ const fn = BLING.slice(i, i + 13000);  // cresceu de novo (filtro direto)
      'a varredura vai em FATIAS de 20 dias, indo pra tras');
   ok(/6 paginas sao 600 notas, ou ~14 DIAS/.test(fn),
      '  porque 6 paginas cobrem ~14 dias na densidade real (400 notas em 9 dias)');
-  ok(/paginasNaFatia >= PAGINAS_POR_FATIA/.test(fn),
+  ok(/usaFatias && paginasNaFatia >= PAGINAS_POR_FATIA/.test(fn),
      '  com teto POR fatia: senao uma densa consumiria tudo');
+  // b197.8: mas o teto por fatia so vale QUANDO ha fatias
+  ok(/o teto POR FATIA so vale QUANDO ha fatias/.test(fn),
+     'sem `dataReferencia` a varredura e linear e usa o orcamento inteiro');
+  ok(/encerrava na 2a pagina, ignorando as 12/.test(fn),
+     '  antes ela parava na 2a pagina, ignorando o que o chamador pediu');
   ok(/fatiaAtual\+\+/.test(fn), '  e o laco avanca pra fatia anterior');
 
   // b197.5: PAGINA e CHAMADA sao contadores diferentes
