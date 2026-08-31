@@ -18,11 +18,12 @@ const RAIZ = path.join(__dirname, '..');
 
 // ── a chave do cache prefere o identificador mais forte ─────────────
 {
-  ok(c.chaveDe({ nf_chave: '3'.repeat(44), nf_numero: '1', pedido: 'X' }).startsWith('chave:'),
+  // b204.1: a chave leva o NAMESPACE da empresa (contas Bling diferentes)
+  ok(c.chaveDe({ nf_chave: '3'.repeat(44), nf_numero: '1', pedido: 'X' }, 'good') === 'good|chave:' + '3'.repeat(44),
      'com chave de 44 digitos, ela e a chave do cache (a mais forte)');
-  ok(c.chaveDe({ nf_numero: '065999' }) === 'num:65999',
+  ok(c.chaveDe({ nf_numero: '065999' }, 'good') === 'good|num:65999',
      'sem chave, o numero — normalizado sem zeros a esquerda');
-  ok(c.chaveDe({ pedido: 'P1' }) === 'ped:P1', 'e o pedido como ultimo recurso');
+  ok(c.chaveDe({ pedido: 'P1' }, 'amb') === 'amb|ped:P1', 'e o pedido como ultimo recurso');
   ok(c.chaveDe({}) === null, 'sem nada identificavel, nao guarda');
 }
 
@@ -68,11 +69,53 @@ const RAIZ = path.join(__dirname, '..');
     const src = fs.readFileSync(path.join(RAIZ, rel), 'utf8');
     ok(/chaveItem\s*\n?\s*\?\s*\(chaveAchada === chaveItem\)/.test(src),
        nome + ': exige que a chave BATA quando o item tem uma');
-    ok(/vinculoCache\.aplicar\(itens\)/.test(src),
-       nome + ': aplica o cache antes de gastar orcamento');
+    ok(/vinculoCache\.aplicar\(itens, /.test(src),
+       nome + ': aplica o cache (com a empresa) antes de gastar orcamento');
     ok(/vinculoCache\.guardar/.test(src), nome + ': e guarda o que acha');
     ok(/INICIO_BUSCA > 6000/.test(src),
        nome + ': a fase do numero para aos 6s, reservando tempo pra fase da CHAVE');
+  }
+}
+
+// ── b204.1: as quatro consequencias que a revisao pegou ─────────────
+{
+  // 1. NAMESPACE: os dois servidores partilham o processo, mas autenticam
+  //    em CONTAS BLING diferentes
+  c._CACHE.clear();
+  c.guardar({ nf_numero: '65999' }, 'DA-GOOD', 'numero', {}, 'good');
+  ok(c.ler({ nf_numero: '65999' }, 'amb') === null,
+     'a AMB NAO recebe o vinculo guardado pela GOOD — contas Bling diferentes');
+  ok(c.ler({ nf_numero: '65999' }, 'good').id === 'DA-GOOD',
+     '  e a GOOD recebe o seu');
+
+  // 2. IDENTIDADE ESTAVEL: guardar com a chave de ANTES do enriquecimento
+  c._CACHE.clear();
+  const item = { pedido: 'P9' };
+  const idAntes = c.chaveDe(item, 'good');
+  item.nf_chave = '3'.repeat(44);          // a busca enriqueceu depois
+  item.nf_numero = '99999';
+  c.guardar(item, 'ACHADO', 'pedido', {}, 'good', idAntes);
+  ok(c.ler({ pedido: 'P9' }, 'good') !== null,
+     'o refresh seguinte acha pelo identificador CRU (so o pedido)');
+  ok(c.ler({ pedido: 'P9' }, 'good').id === 'ACHADO',
+     '  senao o cache guardaria por `chave:` e nunca mais seria encontrado');
+
+  // 3. e 4. o cache roda ANTES de montar as filas
+  for (const [nome, rel] of [['GOOD', 'server.js'], ['AMB', 'amb-devolucoes/app-AMB.js']]) {
+    const src = fs.readFileSync(path.join(RAIZ, rel), 'utf8');
+    const i = src.indexOf("'/api/admin/sem-retorno'");
+    const rota = src.slice(i, i + 40000);
+    const iCache = rota.indexOf('vinculoCache.aplicar');
+    const iFila = Math.min(
+      ...['const comNumero =', 'const semVinculoAMB =']
+        .map((t) => rota.indexOf(t)).filter((n) => n > 0)
+    );
+    ok(iCache > 0 && iCache < iFila,
+       nome + ': o cache roda ANTES de montar as filas');
+    ok(rota.split('vinculoCache.aplicar').length === 2,
+       nome + ': uma aplicacao so — nao duas em pontos diferentes');
+    ok(/const idCache = vinculoCache\.chaveDe\(item, /.test(rota),
+       nome + ': e guarda com a identidade de antes do enriquecimento');
   }
 }
 

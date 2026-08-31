@@ -155,11 +155,13 @@ const fn = BLING.slice(i, i + 13000);  // cresceu de novo (filtro direto)
 
   const SERVER2 = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
   const i2 = SERVER2.indexOf("'/api/admin/sem-retorno'");
-  const rota2 = SERVER2.slice(i2, i2 + 36000);
+  const rota2 = SERVER2.slice(i2, i2 + 42000);   // a rota cresceu (b204.1)
   ok(rota2.indexOf('for (const item of comNumero)') < rota2.indexOf('for (const item of semNota)'),
      'a busca por NUMERO roda antes da por pedido');
-  ok(rota2.indexOf('for (const item of semNota)') < rota2.indexOf('for (const item of PARA_BUSCAR)'),
-     '  e a por pedido antes da por chave, que pagina');
+  // b204.1: a fase da CHAVE agora vem por ultimo de proposito — ela e a
+  // EXATA, e resolve o que o numero deixou ambiguo
+  ok(rota2.indexOf('for (const item of PARA_BUSCAR)') > rota2.indexOf('for (const item of comNumero)'),
+     '  e a por chave por ultimo: exata, resolve o que o numero deixou ambiguo');
 
   const AMB2 = fs.readFileSync(path.join(__dirname, '..', 'amb-devolucoes', 'app-AMB.js'), 'utf8');
   ok(/buscarNFnoBlingPorNumero\(item\.nf_numero/.test(AMB2),

@@ -247,7 +247,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.95.0 (o vinculo achado fica guardado: o orcamento deixa de ser gargalo)',
+    version: '4.95.1 (cache por empresa, antes das filas, com identidade estavel)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -5740,22 +5740,23 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
     //   1. filtro direto por NUMERO (uma chamada; a nota sempre existe)
     //   2. filtro direto por PEDIDO (pros que vieram sem numero, tipo o TikTok)
     //   3. busca por chave, paginando (plano B)
+// b204.1 (Codex): o cache roda ANTES de montar as filas.
+    //
+    // Eu aplicava depois, entao os casos ja resolvidos continuavam nas
+    // listas e consumiam as 25 vagas — os que faltavam nunca entravam, e o
+    // painel ficava preso nos mesmos primeiros pra sempre.
+    vinculoCache.aplicar(itens, empresa);
+
     const comNumero = itens.filter((x) => !x.nf_id_bling && x.nf_numero).slice(0, 25);
     const semNota = itens.filter((x) => !x.nf_id_bling && !x.nf_numero && x.pedido).slice(0, 25);
 
-    // b204 - APLICAR O QUE JA FOI ACHADO antes de gastar orcamento.
-    //
-    // A NF de um pedido de janeiro nao muda, mas eu re-buscava TODOS a cada
-    // carregamento — contra ~10s e o limite de 3 req/s do Bling. Com 26
-    // casos nunca dava tempo, e o painel refazia o trabalho a cada 4 min,
-    // sempre incompleto.
-    //
-    // Agora o que ja foi achado volta do cache na hora, e o orcamento vai
-    // so pros que faltam. Em dois ou tres refreshes, todos vinculados.
-    vinculoCache.aplicar(itens);
+
 
     let buscadas = 0;
     for (const item of comNumero) {
+      // b204.1: a identidade de ANTES do enriquecimento — o refresh
+      // seguinte le a linha crua e procura por ela.
+      const idCache = vinculoCache.chaveDe(item, empresa);
       // b204 - a fase do NUMERO para aos 6s, nao aos 10.
       //
       // Com 24 itens, so as pausas somavam 8s e a fase da CHAVE — que e a
@@ -5802,7 +5803,7 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
           item.nf_id_bling = String(achada.id);
           if (!item.nf_chave && achada.chaveAcesso) item.nf_chave = achada.chaveAcesso;
           item.nf_achada_por = (r && r.via === 'filtro_direto_numero') ? 'numero' : 'numero_varredura';
-          vinculoCache.guardar(item, item.nf_id_bling, 'numero', { chave: item.nf_chave, numero: item.nf_numero });
+          vinculoCache.guardar(item, item.nf_id_bling, 'numero', { chave: item.nf_chave, numero: item.nf_numero }, empresa, idCache);
         }
       } catch (e) { /* cai nos caminhos abaixo */ }
     }
@@ -5819,6 +5820,9 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
     // roda primeiro, pra TODOS que tem pedido. O que ele nao achar cai na
     // busca por chave, que agora e o plano B de verdade.
 for (const item of semNota) {
+      // b204.1: a identidade de ANTES do enriquecimento — o refresh
+      // seguinte le a linha crua e procura por ela.
+      const idCache = vinculoCache.chaveDe(item, empresa);
       if (Date.now() - INICIO_BUSCA > 12000) break;   // teto proprio, mais folgado
       try {
         const r = await Promise.race([
@@ -5850,13 +5854,16 @@ for (const item of semNota) {
           if (!item.nf_numero && achada.numero) item.nf_numero = String(achada.numero);
           if (!item.nf_chave && achada.chaveAcesso) item.nf_chave = achada.chaveAcesso;
           item.nf_achada_por = 'pedido';
-          vinculoCache.guardar(item, item.nf_id_bling, 'pedido', { chave: item.nf_chave, numero: item.nf_numero });   // pra tela dizer de onde veio
+          vinculoCache.guardar(item, item.nf_id_bling, 'pedido', { chave: item.nf_chave, numero: item.nf_numero }, empresa, idCache);   // pra tela dizer de onde veio
         }
       } catch (e) { /* segue sem a nota; o card continua so informativo */ }
     }
 
     // a busca por CHAVE, pro que o filtro direto nao resolveu
     for (const item of PARA_BUSCAR) {
+      // b204.1: a identidade de ANTES do enriquecimento — o refresh
+      // seguinte le a linha crua e procura por ela.
+      const idCache = vinculoCache.chaveDe(item, empresa);
       if (Date.now() - INICIO_BUSCA > 8000) break;   // o painel nao pode travar
       try {
         // b192 - PELA CHAVE primeiro, quando ela existe.
@@ -5884,7 +5891,7 @@ for (const item of semNota) {
             if (idPorChave) {
               item.nf_id_bling = String(idPorChave);
               item.nf_achada_por = 'chave';
-              vinculoCache.guardar(item, item.nf_id_bling, 'chave', { chave: item.nf_chave, numero: item.nf_numero });
+              vinculoCache.guardar(item, item.nf_id_bling, 'chave', { chave: item.nf_chave, numero: item.nf_numero }, empresa, idCache);
               continue;
             }
           } catch (e) { /* cai na busca por numero abaixo */ }
