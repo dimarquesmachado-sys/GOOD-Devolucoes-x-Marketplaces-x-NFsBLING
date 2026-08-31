@@ -83,7 +83,7 @@ const criarMlBuscas = require('./lib-AMB/ml-buscas-AMB');
 const registrarIdentificar = require('./lib-AMB/identificar-AMB');
 const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 
-const VERSAO = 'AMB Devolucoes b219';
+const VERSAO = 'AMB Devolucoes b220';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -2503,6 +2503,26 @@ router.get('/api/admin/sem-retorno', auth.requerLogin, async (req, res) => {
     // devolve { ok, via, nf, idNF, trace } (nao { match }), e aceita
     // `parar()` pra desistir quando o chamador desiste.
     // ============================================================
+    // b203 - PELA NOTA primeiro, aqui tambem. [stated] "vc tinha q tá
+    // pegando nota fiscal. nf sim sempre terá." O pedido pode nao existir
+    // (XML do Full importado nao cria pedido no Bling); a nota existe.
+    for (const item of itens.filter((x) => !x.nf_id_bling && x.nf_numero).slice(0, 25)) {
+      if (Date.now() - INICIO_BUSCA > 10000) break;
+      try {
+        const r = await Promise.race([
+          ajudantes.buscarNFnoBlingPorNumero(item.nf_numero,
+            item.nf_emitida_em || item.criado_no_mkt || null, { maxPaginas: 2 }),
+          new Promise((ok) => setTimeout(() => ok(null), 4000)),
+        ]);
+        const achada = (r && r.match) || null;
+        if (achada && achada.id) {
+          item.nf_id_bling = String(achada.id);
+          if (!item.nf_chave && achada.chaveAcesso) item.nf_chave = achada.chaveAcesso;
+          item.nf_achada_por = 'numero';
+        }
+      } catch (e) { /* segue pros caminhos abaixo */ }
+    }
+
     for (const item of itens.filter((x) => !x.nf_numero && !x.nf_chave && !x.nf_id_bling && x.pedido).slice(0, 10)) {
       if (Date.now() - INICIO_BUSCA > 12000) break;
 

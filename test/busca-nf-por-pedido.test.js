@@ -133,6 +133,39 @@ const fn = BLING.slice(i, i + 13000);  // cresceu de novo (filtro direto)
      'e quando nem a segunda tentativa passa, a resposta DIZ que foi limite');
 }
 
+// ── b203: pela NOTA primeiro; o pedido e reserva ────────────────────
+//
+// [stated] "pq vc fica indo atrás de pedido. pode ser q algum pedido esteja
+// com erro, não tenha, por ter sido importado XML do full. vc tinha q tá
+// pegando nota fiscal. nf sim sempre terá."
+//
+// Isso explica por que o TikTok funcionou e o Magalu nao: o TikTok veio SEM
+// numero (fui pelo pedido, e havia pedido); os 25 do Magalu tem numero e
+// chave — a ponta firme, que eu ignorava.
+{
+  const iNum = BLING.indexOf('async function buscarNFnoBlingPorNumero');
+  const fnNum = BLING.slice(iNum, iNum + 4000);
+  ok(/'&numero=' \+ encodeURIComponent\(alvo\)/.test(fnNum),
+     'ha filtro direto por NUMERO da nota — uma chamada, sem paginar');
+  ok(/via: 'filtro_direto_numero'/.test(fnNum), '  marcando de onde veio');
+  ok(/\[numeroNFStr, numeroNFLimpo\]/.test(fnNum),
+     '  tentando com e sem zeros a esquerda (065999 e 65999)');
+  ok(/nf sim sempre terá/.test(fnNum),
+     '  com o motivo dele registrado: a nota sempre existe, o pedido nao');
+
+  const SERVER2 = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
+  const i2 = SERVER2.indexOf("'/api/admin/sem-retorno'");
+  const rota2 = SERVER2.slice(i2, i2 + 36000);
+  ok(rota2.indexOf('for (const item of comNumero)') < rota2.indexOf('for (const item of semNota)'),
+     'a busca por NUMERO roda antes da por pedido');
+  ok(rota2.indexOf('for (const item of semNota)') < rota2.indexOf('for (const item of PARA_BUSCAR)'),
+     '  e a por pedido antes da por chave, que pagina');
+
+  const AMB2 = fs.readFileSync(path.join(__dirname, '..', 'amb-devolucoes', 'app-AMB.js'), 'utf8');
+  ok(/buscarNFnoBlingPorNumero\(item\.nf_numero/.test(AMB2),
+     'e a AMB busca pela nota tambem — sem isso ela ficaria pra tras de novo');
+}
+
 console.log('');
 console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
 process.exit(falhas ? 1 : 0);

@@ -246,7 +246,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.93.0 (o filtro direto roda primeiro: os 25 do Magalu ganham NF)',
+    version: '4.94.0 (busca pela NOTA, nao pelo pedido: a nota sempre existe)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -5725,7 +5725,39 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
     //
     // Agora TODO caso sem vinculo tenta o direto primeiro. A busca por
     // chave (lenta) fica pra quem o direto nao achar.
-    const semNota = itens.filter((x) => !x.nf_id_bling && x.pedido).slice(0, 25);
+    // b203 - PELA NOTA primeiro; o pedido e reserva.
+    //
+    // [stated] "pq vc fica indo atrás de pedido. pode ser q algum pedido
+    // esteja com erro, não tenha, por ter sido importado XML do full. vc
+    // tinha q tá pegando nota fiscal. nf sim sempre terá."
+    //
+    // Ele esta certo, e isso explica por que o TikTok funcionou e o Magalu
+    // nao: o TikTok veio SEM numero (fui pelo pedido, e havia pedido), e os
+    // 25 do Magalu tem numero e chave — a ponta firme, que eu ignorava.
+    //
+    // Ordem agora:
+    //   1. filtro direto por NUMERO (uma chamada; a nota sempre existe)
+    //   2. filtro direto por PEDIDO (pros que vieram sem numero, tipo o TikTok)
+    //   3. busca por chave, paginando (plano B)
+    const comNumero = itens.filter((x) => !x.nf_id_bling && x.nf_numero).slice(0, 25);
+    const semNota = itens.filter((x) => !x.nf_id_bling && !x.nf_numero && x.pedido).slice(0, 25);
+
+    for (const item of comNumero) {
+      if (Date.now() - INICIO_BUSCA > 10000) break;
+      try {
+        const r = await Promise.race([
+          buscarNFnoBlingPorNumero(item.nf_numero, item.nf_emitida_em || item.criado_em || null,
+            { maxPaginas: 2 }),   // o filtro direto resolve; paginar e so a reserva
+          new Promise((ok) => setTimeout(() => ok(null), 4000)),
+        ]);
+        const achada = (r && r.match) || null;
+        if (achada && achada.id) {
+          item.nf_id_bling = String(achada.id);
+          if (!item.nf_chave && achada.chaveAcesso) item.nf_chave = achada.chaveAcesso;
+          item.nf_achada_por = (r && r.via === 'filtro_direto_numero') ? 'numero' : 'numero_varredura';
+        }
+      } catch (e) { /* cai nos caminhos abaixo */ }
+    }
 
     const PARA_BUSCAR = doMagalu.concat(dosOutros);
     // b202 - O RAPIDO PRIMEIRO.
