@@ -246,7 +246,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.92.0 (o Magalu NUNCA foi importado na GOOD)',
+    version: '4.93.0 (o filtro direto roda primeiro: os 25 do Magalu ganham NF)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -5696,6 +5696,8 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
     // frente. Cortando os 25 primeiros, numa fila cheia de TikTok o Magalu
     // nao entraria — e sao os casos de maior valor (R$ 12.704 contra R$ 1
     // caso do TikTok na GOOD). Divido a cota entre os dois.
+    // b202: a busca por CHAVE roda DEPOIS da direta, e so pra quem sobrou.
+    // Ela pagina, entao e o plano B — nao a porta de entrada.
     const semVinculo = itens.filter((x) => x.nf_numero && !x.nf_id_bling);
     const doMagalu = semVinculo.filter((x) => x.marketplace === 'magalu').slice(0, 15);
     const dosOutros = semVinculo.filter((x) => x.marketplace !== 'magalu').slice(0, 10);
@@ -5710,10 +5712,69 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
     // Mas o PEDIDO eu tenho, e `buscarNFnoBlingPorOrderId` acha por ele.
     // Sem isto, o card mostra um caso acionavel que ninguem consegue
     // acionar.
-    const semNota = itens.filter((x) => !x.nf_numero && !x.nf_chave && !x.nf_id_bling && x.pedido)
-      .slice(0, 10);   // custa uma varredura por item; teto baixo de proposito
+    // b202 - O FILTRO DIRETO PRIMEIRO, pra QUEM TIVER PEDIDO.
+    //
+    // O dono mandou o JSON: 25 casos do Magalu, todos com chave e todos com
+    // `nf_id_bling: null`. A conta explica — eles caiam na busca por CHAVE,
+    // que PAGINA no Bling, e o teto de 8s nao dava pros 15 da cota.
+    //
+    // Mas o filtro direto por `numeroLoja` resolve em UMA chamada, e esses
+    // casos tem pedido. Eu so nao usava porque a fila exigia "sem numero E
+    // sem chave" — uma condicao que fazia sentido antes de o filtro direto
+    // existir, e que ficou pra tras quando ele chegou.
+    //
+    // Agora TODO caso sem vinculo tenta o direto primeiro. A busca por
+    // chave (lenta) fica pra quem o direto nao achar.
+    const semNota = itens.filter((x) => !x.nf_id_bling && x.pedido).slice(0, 25);
 
     const PARA_BUSCAR = doMagalu.concat(dosOutros);
+    // b202 - O RAPIDO PRIMEIRO.
+    //
+    // O dono mandou o JSON: 25 casos do Magalu, todos com chave e todos com
+    // `nf_id_bling: null`. A ordem explicava — o laco LENTO (que pagina o
+    // Bling procurando pela chave) rodava antes e gastava os 8s do
+    // orcamento, entao o filtro direto nem chegava a ser tentado.
+    //
+    // Invertido: o filtro direto por `numeroLoja` resolve em UMA chamada e
+    // roda primeiro, pra TODOS que tem pedido. O que ele nao achar cai na
+    // busca por chave, que agora e o plano B de verdade.
+for (const item of semNota) {
+      if (Date.now() - INICIO_BUSCA > 12000) break;   // teto proprio, mais folgado
+      try {
+        const r = await Promise.race([
+          // b197.2: a data da EMISSAO, quando existe, e melhor que a do
+          // evento — a janela fica centrada na nota, nao na devolucao.
+          buscarNFnoBlingPorOrderId(
+            item.pedido,
+            item.nf_emitida_em || item.criado_em || null,
+            { maxPaginas: 12, paginasPorFatia: 2, delayMs: 450 }),
+          // b197.4: o alcance tem que caber no PRAZO.
+          //   12 paginas x 450ms + latencia = ~9,8s, dentro dos 14s
+          //   2 paginas por fatia = 6 fatias de 20 dias = 120 dias
+          // Com os 6 anteriores chegava a 40 dias — nao alcancava a venda
+          // antiga. Fatia de 20 dias tem ~880 notas na densidade da GOOD, e
+          // 2 paginas leem 200: pego as mais recentes de cada fatia, que e
+          // onde a nota costuma estar.
+          // b197.1 (Codex): 6 paginas cabem no prazo. Com 700ms entre
+          // paginas, 12 nao caberiam em 6s — as ultimas nunca chegariam a
+          // responder, e eu esperaria a toa.
+          // b197.6 (Codex): o prazo e o que SOBRA do orcamento da rota, nao 14s
+          // fixos. Se as buscas por chave/numero ja gastaram quase tudo, um
+          // item lento aqui estouraria o teto e a resposta demoraria.
+          new Promise((ok) => setTimeout(() => ok(null),
+            Math.max(2000, Math.min(14000, 26000 - (Date.now() - INICIO_BUSCA))))),
+        ]);
+        const achada = (r && r.match) || (r && r.ok && r.nf) || null;
+        if (achada && achada.id) {
+          item.nf_id_bling = String(achada.id);
+          if (!item.nf_numero && achada.numero) item.nf_numero = String(achada.numero);
+          if (!item.nf_chave && achada.chaveAcesso) item.nf_chave = achada.chaveAcesso;
+          item.nf_achada_por = 'pedido';   // pra tela dizer de onde veio
+        }
+      } catch (e) { /* segue sem a nota; o card continua so informativo */ }
+    }
+
+    // a busca por CHAVE, pro que o filtro direto nao resolveu
     for (const item of PARA_BUSCAR) {
       if (Date.now() - INICIO_BUSCA > 8000) break;   // o painel nao pode travar
       try {
@@ -5767,43 +5828,6 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
         item.nf_id_bling = String(achada.id);
         if (!item.nf_chave && achada.chaveAcesso) item.nf_chave = achada.chaveAcesso;
       } catch (e) { /* segue sem o link; o numero da NF esta no card */ }
-    }
-
-    // b196 - a busca pelo PEDIDO, pros que ficaram sem nota nenhuma
-    for (const item of semNota) {
-      if (Date.now() - INICIO_BUSCA > 12000) break;   // teto proprio, mais folgado
-      try {
-        const r = await Promise.race([
-          // b197.2: a data da EMISSAO, quando existe, e melhor que a do
-          // evento — a janela fica centrada na nota, nao na devolucao.
-          buscarNFnoBlingPorOrderId(
-            item.pedido,
-            item.nf_emitida_em || item.criado_em || null,
-            { maxPaginas: 12, paginasPorFatia: 2, delayMs: 450 }),
-          // b197.4: o alcance tem que caber no PRAZO.
-          //   12 paginas x 450ms + latencia = ~9,8s, dentro dos 14s
-          //   2 paginas por fatia = 6 fatias de 20 dias = 120 dias
-          // Com os 6 anteriores chegava a 40 dias — nao alcancava a venda
-          // antiga. Fatia de 20 dias tem ~880 notas na densidade da GOOD, e
-          // 2 paginas leem 200: pego as mais recentes de cada fatia, que e
-          // onde a nota costuma estar.
-          // b197.1 (Codex): 6 paginas cabem no prazo. Com 700ms entre
-          // paginas, 12 nao caberiam em 6s — as ultimas nunca chegariam a
-          // responder, e eu esperaria a toa.
-          // b197.6 (Codex): o prazo e o que SOBRA do orcamento da rota, nao 14s
-          // fixos. Se as buscas por chave/numero ja gastaram quase tudo, um
-          // item lento aqui estouraria o teto e a resposta demoraria.
-          new Promise((ok) => setTimeout(() => ok(null),
-            Math.max(2000, Math.min(14000, 26000 - (Date.now() - INICIO_BUSCA))))),
-        ]);
-        const achada = (r && r.match) || (r && r.ok && r.nf) || null;
-        if (achada && achada.id) {
-          item.nf_id_bling = String(achada.id);
-          if (!item.nf_numero && achada.numero) item.nf_numero = String(achada.numero);
-          if (!item.nf_chave && achada.chaveAcesso) item.nf_chave = achada.chaveAcesso;
-          item.nf_achada_por = 'pedido';   // pra tela dizer de onde veio
-        }
-      } catch (e) { /* segue sem a nota; o card continua so informativo */ }
     }
 
     // b188.1 (Codex): RECALCULAR a acao depois de enriquecer.

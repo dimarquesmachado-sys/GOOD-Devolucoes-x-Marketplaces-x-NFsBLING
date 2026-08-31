@@ -130,8 +130,13 @@ const PAINEL = fs.readFileSync(path.join(RAIZ, 'public', 'painel-devolucoes.html
 // nao mandou (devolucao de abril, `return_line_items` vazio, sem buyer,
 // sem sku). Mas o PEDIDO estava la.
 {
-  ok(/const semNota = itens\.filter\(\(x\) => !x\.nf_numero && !x\.nf_chave/.test(rota),
-     'ha busca pelo PEDIDO pros casos sem numero e sem chave');
+  // b202: o filtro DIRETO vale pra todos, e roda PRIMEIRO
+  ok(/const semNota = itens\.filter\(\(x\) => !x\.nf_id_bling && x\.pedido\)/.test(rota),
+     'a busca pelo PEDIDO vale pra TODO caso sem vinculo, nao so pros sem chave');
+  ok(rota.indexOf('for (const item of semNota)') < rota.indexOf('for (const item of PARA_BUSCAR)'),
+     '  e roda ANTES da busca por chave: o direto resolve em 1 chamada, a outra pagina');
+  ok(/O RAPIDO PRIMEIRO/.test(rota),
+     '  com o motivo: o lento gastava os 8s e o direto nem era tentado');
   ok(/buscarNFnoBlingPorOrderId\([\s\S]{0,80}item\.pedido/.test(rota),
      '  usando a funcao que ja existia pra isso');
   ok(/\.slice\(0, 10\)/.test(rota),
