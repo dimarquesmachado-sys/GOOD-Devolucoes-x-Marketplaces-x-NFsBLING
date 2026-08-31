@@ -46,8 +46,8 @@ const fn = BLING.slice(i, i + 13000);  // cresceu de novo (filtro direto)
   const AMB = fs.readFileSync(path.join(__dirname, '..', 'amb-devolucoes', 'app-AMB.js'), 'utf8');
   ok(/item\.nf_emitida_em \|\| item\.cancelado_em \|\| item\.criado_no_mkt/.test(AMB),
      'a AMB passa a data pela mesma cascata do prazo (ela nao monta `criado_em`)');
-  ok(/a busca virava varredura CEGA/.test(AMB),
-     '  senao ia null e a janela por data nao servia de nada');
+  ok(/sem elas a blindada pula as fases/.test(AMB),
+     '  senao ia null e a blindada pularia as fases de janela');
 
   // e o retry nao empilha
   ok(/UMA tentativa extra por pagina, e so/.test(fn),

@@ -82,7 +82,7 @@ const criarMlBuscas = require('./lib-AMB/ml-buscas-AMB');
 const registrarIdentificar = require('./lib-AMB/identificar-AMB');
 const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 
-const VERSAO = 'AMB Devolucoes b208';
+const VERSAO = 'AMB Devolucoes b209';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -2331,7 +2331,14 @@ router.get('/api/admin/sem-retorno', auth.requerLogin, async (req, res) => {
         const sobra = Math.max(500, 8000 - (Date.now() - INICIO_BUSCA));
         const id = await Promise.race([
           nfp.resolverIdNFPorChave(item.nf_numero, item.nf_chave),
-          new Promise((ok) => setTimeout(() => { desistiu = true; ok(null); }, Math.min(5000, sobra))),
+          // b203.6 (Codex): SEM flag aqui. Ao remover a declaracao orfa deste
+          // laco eu deixei a ATRIBUICAO — ela escreveria numa variavel que
+          // nao existe mais, dentro de um setTimeout, onde o try nao pega:
+          // o processo podia cair.
+          //
+          // Este laco chama `resolverIdNFPorChave`, que nao aceita sinal de
+          // parada. Sem alguem pra avisar, a flag aqui nao teria uso.
+          new Promise((ok) => setTimeout(() => ok(null), Math.min(5000, sobra))),
         ]);
         if (id) item.nf_id_bling = String(id);
       } catch (e) { /* segue sem o link; o numero da NF esta no card */ }
@@ -2340,53 +2347,49 @@ router.get('/api/admin/sem-retorno', auth.requerLogin, async (req, res) => {
     // b196 - a mesma busca PELO PEDIDO da GOOD. Caso real: pedido do
     // TikTok sem numero e sem chave na captura (a API nao mandou), mas a
     // nota EXISTE no Bling. Sem isto o card fica so informativo.
+    // ============================================================
+    // BUSCA A NF PELO PEDIDO — pros casos sem numero e sem chave
+    // ------------------------------------------------------------
+    // Caso real: pedido do TikTok que aparecia "sem NF vinculada", mas a
+    // nota EXISTE no Bling (o dono abriu e mostrou). A captura veio sem
+    // numero e sem chave porque a API do marketplace nao mandou.
+    //
+    // Uso a `buscarNFBlindada` da AMB — `buscarNFnoBlingPorOrderId` NAO
+    // existe neste modulo, e eu chamei ela por engano do #124 ate o #129,
+    // entao esta busca NUNCA funcionou aqui.
+    //
+    // A blindada le `maxPaginasJanela`/`maxPaginasFundo` (nao `maxPaginas`),
+    // devolve { ok, via, nf, idNF, trace } (nao { match }), e aceita
+    // `parar()` pra desistir quando o chamador desiste.
+    // ============================================================
     for (const item of itens.filter((x) => !x.nf_numero && !x.nf_chave && !x.nf_id_bling && x.pedido).slice(0, 10)) {
       if (Date.now() - INICIO_BUSCA > 12000) break;
-      // b203.5 (Codex): a flag e DESTE laco. Eu declarei no laco anterior
-      // (o da busca por chave) e usei aqui — `desistiu` chegava undefined,
-      // e `parar()` estouraria ReferenceError na PRIMEIRA pagina, derrubando
-      // a busca inteira. Pior que o problema que o sinal veio resolver.
+
+      // a flag e DESTE laco: declaracao, atribuicao e uso no mesmo bloco.
+      // Ja errei isso duas vezes — declarei num laco e usei noutro, depois
+      // removi a declaracao e deixei a atribuicao orfa (que em strict mode
+      // derruba o processo, porque acontece dentro do setTimeout).
       let desistiu = false;
+
       try {
+        // o prazo e o que SOBRA do orcamento da rota, nao um valor fixo
+        const prazo = Math.max(2000, Math.min(14000, 26000 - (Date.now() - INICIO_BUSCA)));
         const r = await Promise.race([
-          // b197.2 (Codex): a AMB nao monta `criado_em` no item — eu passava
-          // null e a busca virava varredura CEGA, do mais recente pra tras,
-          // exatamente o que a janela por data veio evitar.
-          //
-          // Uso a mesma cascata do prazo: emissao > evento > captura.
-// b203.1 (Codex): a mesma funcao inexistente era chamada AQUI desde o
-          // #124 — entao a busca por pedido da AMB nunca funcionou, e o card
-          // dela seguia dizendo "sem NF vinculada".
           ajudantes.buscarNFBlindada({
             parar: () => desistiu,
             orderId: item.pedido,
-            // b203.2 (Codex): estes campos NAO existiam no item mapeado —
-            // ia sempre null, e a blindada so roda as fases de janela com
-            // data valida. Agora o map os inclui (abaixo).
+            // as datas vem do map acima; sem elas a blindada pula as fases
+            // de janela e so tenta o filtro direto
             dataReferencia: item.nf_emitida_em || item.cancelado_em || item.criado_no_mkt || null,
-            maxPaginas: 12,
+            maxPaginasJanela: 6,
+            maxPaginasFundo: 6,
           }),
-          // b197.4: o alcance tem que caber no PRAZO.
-          //   12 paginas x 450ms + latencia = ~9,8s, dentro dos 14s
-          //   2 paginas por fatia = 6 fatias de 20 dias = 120 dias
-          // Com os 6 anteriores chegava a 40 dias — nao alcancava a venda
-          // antiga. Fatia de 20 dias tem ~880 notas na densidade da GOOD, e
-          // 2 paginas leem 200: pego as mais recentes de cada fatia, que e
-          // onde a nota costuma estar.
-          // b197.1 (Codex): 6 paginas cabem no prazo. Com 700ms entre
-          // paginas, 12 nao caberiam em 6s — as ultimas nunca chegariam a
-          // responder, e eu esperaria a toa.
-          // b197.6 (Codex): o prazo e o que SOBRA do orcamento da rota, nao 14s
-          // fixos. Se as buscas por chave/numero ja gastaram quase tudo, um
-          // item lento aqui estouraria o teto e a resposta demoraria.
-          new Promise((ok) => setTimeout(() => ok(null),
-            Math.max(2000, Math.min(14000, 26000 - (Date.now() - INICIO_BUSCA))))),
+          new Promise((ok) => setTimeout(() => { desistiu = true; ok(null); }, prazo)),
         ]);
-        // b203.2 (Codex): a blindada pode achar o ID e FALHAR ao buscar o
-        // detalhe — ela devolve { ok:true, idNF, nf:null }. Aceitando so
-        // `nf`, eu descartava um id que ela ja tinha, e o card ficava "sem
-        // NF" mesmo com a nota localizada.
-        const achada = (r && r.match) || (r && r.ok && r.nf) || null;
+
+        // ela pode achar o ID e falhar ao buscar o detalhe: { ok:true,
+        // idNF, nf:null }. O id sozinho ja serve pro link e pra emissao.
+        const achada = (r && r.ok && r.nf) || null;
         const idAchado = (achada && achada.id) || (r && r.ok && r.idNF) || null;
         if (idAchado) {
           item.nf_id_bling = String(idAchado);
@@ -2396,7 +2399,7 @@ router.get('/api/admin/sem-retorno', auth.requerLogin, async (req, res) => {
           }
           item.nf_achada_por = 'pedido';
         }
-      } catch (e) { /* segue sem a nota */ }
+      } catch (e) { /* segue sem a nota; o card continua so informativo */ }
     }
 
     itens.sort((a, b) => {
