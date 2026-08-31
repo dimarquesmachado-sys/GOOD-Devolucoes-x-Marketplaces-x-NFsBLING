@@ -166,7 +166,8 @@ const fn = BLING.slice(i, i + 13000);  // cresceu de novo (filtro direto)
      'e a AMB busca pela nota tambem — sem isso ela ficaria pra tras de novo');
 
   // b203.1: numero se REPETE entre series — conferir a chave
-  ok(/const chaveBate = !chaveItem \|\| !chaveAchada \|\| chaveItem === chaveAchada/.test(rota2),
+  // b203.2: chave AUSENTE nao vale como confirmacao (era `|| !chaveAchada`)
+  ok(/chaveItem\s*\n?\s*\? \(chaveAchada === chaveItem\)/.test(rota2),
      'a chave e conferida antes de aceitar: numero se repete entre SERIES');
   ok(/geraria a devolucao contra a venda errada/.test(rota2),
      '  senao o dono geraria a devolucao contra a venda errada');

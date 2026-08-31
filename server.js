@@ -79,6 +79,7 @@ const espreita = require('./lib/magalu-espreita')({ chamarMagalu: magalu.chamarM
 const devCapturadas = require('./lib/devolucoes-capturadas');   // v4.63
 const tiktokPonte = require('./lib/tiktok-ponte');              // v4.66
 const tiktokDev = require('./lib/tiktok-devolucoes');           // v4.66
+const vinculoCache = require('./lib/vinculo-nf-cache');   // b204 - vinculo NF ja achado
 const marcadores = require('./lib/marcadores-estornada');   // b200 - peca unica dos marcadores
 // b201 - `magaluCancelados` NUNCA foi importado nesta empresa.
 //
@@ -246,7 +247,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.94.1 (confere a chave; a AMB ganha o filtro direto)',
+    version: '4.95.0 (o vinculo achado fica guardado: o orcamento deixa de ser gargalo)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -5742,9 +5743,27 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
     const comNumero = itens.filter((x) => !x.nf_id_bling && x.nf_numero).slice(0, 25);
     const semNota = itens.filter((x) => !x.nf_id_bling && !x.nf_numero && x.pedido).slice(0, 25);
 
+    // b204 - APLICAR O QUE JA FOI ACHADO antes de gastar orcamento.
+    //
+    // A NF de um pedido de janeiro nao muda, mas eu re-buscava TODOS a cada
+    // carregamento — contra ~10s e o limite de 3 req/s do Bling. Com 26
+    // casos nunca dava tempo, e o painel refazia o trabalho a cada 4 min,
+    // sempre incompleto.
+    //
+    // Agora o que ja foi achado volta do cache na hora, e o orcamento vai
+    // so pros que faltam. Em dois ou tres refreshes, todos vinculados.
+    vinculoCache.aplicar(itens);
+
     let buscadas = 0;
     for (const item of comNumero) {
-      if (Date.now() - INICIO_BUSCA > 10000) break;
+      // b204 - a fase do NUMERO para aos 6s, nao aos 10.
+      //
+      // Com 24 itens, so as pausas somavam 8s e a fase da CHAVE — que e a
+      // EXATA — nunca chegava a rodar. Reservo os ultimos segundos pra ela:
+      // e ela quem resolve quando o numero devolve nota de outra serie.
+      //
+      // O que nao couber vincula no proximo refresh, pelo cache.
+      if (Date.now() - INICIO_BUSCA > 6000) break;
       // b203.1 (Codex): RITMO. O Bling limita a 3 req/s, e sao ate 25 itens
       // seguidos aqui. Sem pausa, os primeiros levam 429 e o retry de 1,5s
       // de cada um come o orcamento inteiro — os ultimos nem sao tentados.
@@ -5764,13 +5783,26 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
         // — e o dono geraria a devolucao contra a venda errada.
         //
         // So aceito de olhos fechados quando nao ha chave pra comparar.
+        // b203.2 (Codex): chave AUSENTE nao e chave que bate.
+        //
+        // A listagem do /nfe pode voltar SEM `chaveAcesso` — esta
+        // documentado no proprio repo (b166.4, public/js/busca.js). Minha
+        // condicao tratava isso como "conferiu", e eu aceitava a nota mais
+        // recente com aquele numero, que pode ser de OUTRA SERIE.
+        //
+        // Agora: se eu TENHO a chave do item, ela precisa BATER de verdade.
+        // Sem chave na resposta, o vinculo nao e confirmado — o caso fica
+        // pra fase da chave, que e exata.
         const chaveItem = String(item.nf_chave || '').replace(/\D/g, '');
         const chaveAchada = String(achada && achada.chaveAcesso || '').replace(/\D/g, '');
-        const chaveBate = !chaveItem || !chaveAchada || chaveItem === chaveAchada;
+        const chaveBate = chaveItem
+          ? (chaveAchada === chaveItem)          // tenho chave: tem que bater
+          : true;                                 // sem chave: o numero e o que ha
         if (achada && achada.id && chaveBate) {
           item.nf_id_bling = String(achada.id);
           if (!item.nf_chave && achada.chaveAcesso) item.nf_chave = achada.chaveAcesso;
           item.nf_achada_por = (r && r.via === 'filtro_direto_numero') ? 'numero' : 'numero_varredura';
+          vinculoCache.guardar(item, item.nf_id_bling, 'numero', { chave: item.nf_chave, numero: item.nf_numero });
         }
       } catch (e) { /* cai nos caminhos abaixo */ }
     }
@@ -5817,7 +5849,8 @@ for (const item of semNota) {
           item.nf_id_bling = String(achada.id);
           if (!item.nf_numero && achada.numero) item.nf_numero = String(achada.numero);
           if (!item.nf_chave && achada.chaveAcesso) item.nf_chave = achada.chaveAcesso;
-          item.nf_achada_por = 'pedido';   // pra tela dizer de onde veio
+          item.nf_achada_por = 'pedido';
+          vinculoCache.guardar(item, item.nf_id_bling, 'pedido', { chave: item.nf_chave, numero: item.nf_numero });   // pra tela dizer de onde veio
         }
       } catch (e) { /* segue sem a nota; o card continua so informativo */ }
     }
@@ -5848,7 +5881,12 @@ for (const item of semNota) {
               resolverIdNFPorChave(item.nf_numero, item.nf_chave),
               new Promise((ok) => setTimeout(() => ok(null), Math.min(5000, sobra))),
             ]);
-            if (idPorChave) { item.nf_id_bling = String(idPorChave); continue; }
+            if (idPorChave) {
+              item.nf_id_bling = String(idPorChave);
+              item.nf_achada_por = 'chave';
+              vinculoCache.guardar(item, item.nf_id_bling, 'chave', { chave: item.nf_chave, numero: item.nf_numero });
+              continue;
+            }
           } catch (e) { /* cai na busca por numero abaixo */ }
         }
 

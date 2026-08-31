@@ -64,6 +64,7 @@ const nfNomes = require('./lib-AMB/nf-nomes-AMB');
 const tokens = require('./lib-AMB/render-tokens-AMB');
 const auth = require('./lib-AMB/auth-AMB');
 const tiktokPonte = require('../lib/tiktok-ponte');
+const vinculoCache = require('../lib/vinculo-nf-cache');   // b204 - vinculo NF ja achado
 const marcadores = require('../lib/marcadores-estornada');   // b200 - peca unica dos marcadores
 const magaluCancelados = require('../lib/magalu-cancelados');  // b191 - peca UNICA, empresa por parametro // b334 - ponte TikTok via Mover-Pedidos (peca unica, empresa como parametro)
 const db = require('./lib-AMB/supabase-AMB');
@@ -83,7 +84,7 @@ const criarMlBuscas = require('./lib-AMB/ml-buscas-AMB');
 const registrarIdentificar = require('./lib-AMB/identificar-AMB');
 const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 
-const VERSAO = 'AMB Devolucoes b221';
+const VERSAO = 'AMB Devolucoes b222';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -2506,9 +2507,21 @@ router.get('/api/admin/sem-retorno', auth.requerLogin, async (req, res) => {
     // b203 - PELA NOTA primeiro, aqui tambem. [stated] "vc tinha q tá
     // pegando nota fiscal. nf sim sempre terá." O pedido pode nao existir
     // (XML do Full importado nao cria pedido no Bling); a nota existe.
+    // b204 - APLICAR O QUE JA FOI ACHADO antes de gastar orcamento.
+    //
+    // A NF de um pedido de janeiro nao muda, mas eu re-buscava TODOS a cada
+    // carregamento — contra ~10s e o limite de 3 req/s do Bling. Com 26
+    // casos nunca dava tempo, e o painel refazia o trabalho a cada 4 min,
+    // sempre incompleto.
+    //
+    // Agora o que ja foi achado volta do cache na hora, e o orcamento vai
+    // so pros que faltam. Em dois ou tres refreshes, todos vinculados.
+    vinculoCache.aplicar(itens);
+
     let buscadas = 0;
     for (const item of itens.filter((x) => !x.nf_id_bling && x.nf_numero).slice(0, 25)) {
-      if (Date.now() - INICIO_BUSCA > 10000) break;
+      // b204: reserva os ultimos segundos pra fase da CHAVE, que e exata
+      if (Date.now() - INICIO_BUSCA > 6000) break;
       // b203.1 (Codex): RITMO. O Bling limita a 3 req/s, e sao ate 25 itens
       // seguidos aqui. Sem pausa, os primeiros levam 429 e o retry de 1,5s
       // de cada um come o orcamento inteiro — os ultimos nem sao tentados.
@@ -2528,13 +2541,26 @@ router.get('/api/admin/sem-retorno', auth.requerLogin, async (req, res) => {
         // — e o dono geraria a devolucao contra a venda errada.
         //
         // So aceito de olhos fechados quando nao ha chave pra comparar.
+        // b203.2 (Codex): chave AUSENTE nao e chave que bate.
+        //
+        // A listagem do /nfe pode voltar SEM `chaveAcesso` — esta
+        // documentado no proprio repo (b166.4, public/js/busca.js). Minha
+        // condicao tratava isso como "conferiu", e eu aceitava a nota mais
+        // recente com aquele numero, que pode ser de OUTRA SERIE.
+        //
+        // Agora: se eu TENHO a chave do item, ela precisa BATER de verdade.
+        // Sem chave na resposta, o vinculo nao e confirmado — o caso fica
+        // pra fase da chave, que e exata.
         const chaveItem = String(item.nf_chave || '').replace(/\D/g, '');
         const chaveAchada = String(achada && achada.chaveAcesso || '').replace(/\D/g, '');
-        const chaveBate = !chaveItem || !chaveAchada || chaveItem === chaveAchada;
+        const chaveBate = chaveItem
+          ? (chaveAchada === chaveItem)          // tenho chave: tem que bater
+          : true;                                 // sem chave: o numero e o que ha
         if (achada && achada.id && chaveBate) {
           item.nf_id_bling = String(achada.id);
           if (!item.nf_chave && achada.chaveAcesso) item.nf_chave = achada.chaveAcesso;
           item.nf_achada_por = 'numero';
+          vinculoCache.guardar(item, item.nf_id_bling, 'numero', { chave: item.nf_chave, numero: item.nf_numero });
         }
       } catch (e) { /* segue pros caminhos abaixo */ }
     }
@@ -2575,6 +2601,7 @@ router.get('/api/admin/sem-retorno', auth.requerLogin, async (req, res) => {
             if (!item.nf_chave && achada.chaveAcesso) item.nf_chave = achada.chaveAcesso;
           }
           item.nf_achada_por = 'pedido';
+          vinculoCache.guardar(item, item.nf_id_bling, 'pedido', { chave: item.nf_chave, numero: item.nf_numero });
         }
       } catch (e) { /* segue sem a nota; o card continua so informativo */ }
     }
