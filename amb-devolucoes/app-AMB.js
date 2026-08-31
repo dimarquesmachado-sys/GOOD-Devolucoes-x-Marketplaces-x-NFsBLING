@@ -82,7 +82,7 @@ const criarMlBuscas = require('./lib-AMB/ml-buscas-AMB');
 const registrarIdentificar = require('./lib-AMB/identificar-AMB');
 const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 
-const VERSAO = 'AMB Devolucoes b202';
+const VERSAO = 'AMB Devolucoes b203';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -2084,6 +2084,53 @@ async function montarIndiceNFDevolucaoAMB(maxPaginas) {
 // E o da AMB, e aceitar ?empresa=good deixaria o admin de uma ver os
 // dados da outra.
 // ============================================================
+// b203 - a rota de DIAGNOSTICO da busca de NF, que so existia na GOOD.
+//
+// O dono tentou usar na AMB e levou "rota nao existe neste modulo". Sem
+// ela, pra descobrir por que uma NF nao e achada aqui eu so chutaria — e
+// foi exatamente o diagnostico que resolveu o caso do TikTok na GOOD.
+//
+// GET /amb/api/debug/achar-nf?pedido=1535470109716311&data=2026-05-10&k=ADMIN_KEY
+router.get('/api/debug/achar-nf', auth.requerLogin, async (req, res) => {
+  try {
+    const pedido = String(req.query.pedido || '').trim();
+    if (!pedido) return res.status(400).json({ ok: false, erro: 'passe ?pedido=' });
+    const data = String(req.query.data || '').trim() || null;
+
+    const r = await ajudantes.buscarNFnoBlingPorOrderId(pedido, data, {
+      maxPaginas: parseInt(req.query.paginas, 10) || 12,
+      paginasPorFatia: 2,
+    });
+
+    return res.json({
+      ok: true,
+      empresa: 'amb',
+      pedido,
+      data_referencia: data,
+      achou: !!(r && r.match),
+      via: (r && r.via) || (r && r.match ? 'varredura' : null),
+      nf: (r && r.match) ? {
+        id: r.match.id, numero: r.match.numero,
+        numeroPedidoLoja: r.match.numeroPedidoLoja,
+        numeroLoja: r.match.numeroLoja,
+        data: r.match.dataEmissao || r.match.data,
+        chave: r.match.chaveAcesso,
+      } : null,
+      varredura: {
+        notas_vistas: (r && r.totalScanned) || 0,
+        primeira_data: (r && r.primeiraDataVista) || null,
+        ultima_data: (r && r.ultimaDataVista) || null,
+      },
+      erro: (r && !r.ok) ? (r.error || ('HTTP ' + r.status)) : undefined,
+      leia: '`via: filtro_direto` = achou numa chamada. Se `achou:false` com poucas notas '
+        + 'vistas, o filtro por numeroLoja nao devolveu nada — o pedido esta em outro campo '
+        + 'no Bling. Abra a NF la e compare.',
+    });
+  } catch (e) {
+    res.status(500).json({ ok: false, erro: String(e.message || e).slice(0, 300) });
+  }
+});
+
 router.get('/api/admin/sem-retorno', auth.requerLogin, async (req, res) => {
   try {
     const sb = db.cliente();
