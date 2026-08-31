@@ -145,8 +145,12 @@ const PAINEL = fs.readFileSync(path.join(RAIZ, 'public', 'painel-devolucoes.html
      'e a tela AVISA, pra ele conferir que e a nota certa antes de emitir');
 
   const AMB = fs.readFileSync(path.join(RAIZ, 'amb-devolucoes', 'app-AMB.js'), 'utf8');
-  ok(/buscarNFnoBlingPorOrderId\([\s\S]{0,120}item\.pedido/.test(AMB),
-     'e a AMB tem a mesma busca — sem isso ela ficaria pra tras de novo');
+  // b203.1: a AMB usa a BLINDADA —  nao existe
+  // nos ajudantes dela (o proprio arquivo avisa isso desde o b172)
+  ok(/buscarNFBlindada\(\{[\s\S]{0,120}orderId: item\.pedido/.test(AMB),
+     'e a AMB busca pela BLINDADA, que existe la e faz o filtro direto na fase 0');
+  ok(!/ajudantes\.buscarNFnoBlingPorOrderId/.test(AMB),
+     '  e nao chama mais a funcao inexistente — a busca dela NUNCA funcionou');
 }
 
   ok(/aviso_cancelados/.test(rota),
