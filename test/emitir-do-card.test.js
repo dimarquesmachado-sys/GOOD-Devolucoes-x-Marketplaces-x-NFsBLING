@@ -34,10 +34,12 @@ const PAINEL = fs.readFileSync(path.join(RAIZ, 'public', 'painel-devolucoes.html
   ok(/nf_ja_emitida: !!existente\.nf_devolucao_id_bling/.test(rota),
      '  e avisando quando a NF ja saiu');
 
-  ok(/\[ESTORNADA SEM RETORNO\]/.test(rota),
-     'o registro carrega o RASTRO de onde veio');
+  // b200: a descricao e MONTADA pela peca unica
+  ok(/marcadores\.montarDescricao/.test(rota),
+     'o registro carrega o RASTRO de onde veio (montado pela peca)');
   // (o texto quebrou em varias linhas com os marcadores novos)
-  ok(/NAO houve bipagem/.test(rota),
+  const PECA = fs.readFileSync(path.join(RAIZ, 'lib', 'marcadores-estornada.js'), 'utf8');
+  ok(/NAO houve bipagem/.test(PECA),
      '  dizendo que nao houve bipagem — quem olhar depois precisa saber');
 
   ok(/sem pedido, nao da pra registrar/.test(rota), 'e sem pedido, recusa');
@@ -188,9 +190,9 @@ const PAINEL = fs.readFileSync(path.join(RAIZ, 'public', 'painel-devolucoes.html
   ok(/data-sorascunho="/.test(PAINEL), '  com o marcador no checkbox');
   // a chamada tem parenteses internos, entao conto as ocorrencias em vez
   // de tentar casar a linha inteira
-  const botoesMarcados = (PAINEL.match(/replace\(\/\[\^0-9\]\/g, ''\)\}', \$\{\(d\.problema_descricao/g) || []).length;
-  ok(botoesMarcados >= 2,
-     '  e o botao da fila normal tambem so oferece rascunho nesses (achei ' + botoesMarcados + ')');
+  const botoesMarcados = (PAINEL.match(/\$\{!!d\.so_rascunho\}/g) || []).length;
+  ok(botoesMarcados >= 1,
+     '  e o botao da fila le `d.so_rascunho`, sem regex (achei ' + botoesMarcados + ')');
 
   const ocorr = (PAINEL.match(/data-sorascunho="/g) || []).length;
   ok(ocorr >= 2, 'o marcador esta nas DUAS secoes com esteira (achei ' + ocorr + ')');
@@ -290,16 +292,8 @@ const PAINEL = fs.readFileSync(path.join(RAIZ, 'public', 'painel-devolucoes.html
     // rejeitaria a linha inteira.
     ok(/buyer_nome: d\.cliente \|\| null/.test(src),
        nome + ': o insert grava o cliente em `buyer_nome`, a coluna que existe');
-    ok(/\[data:' \+ String\(d\.nf_emitida_em/.test(src),
-       nome + ': e a data vai na descricao — nao ha coluna pra ela na triagem');
-    // o INSERT em si nao pode ter essas colunas (o comentario acima cita
-    // elas de proposito, explicando o erro)
-    const iIns = src.indexOf('.insert({', src.indexOf("'/api/admin/sem-retorno/registrar'"));
-    const corpoInsert = src.slice(iIns, src.indexOf('.select(', iIns));
-    ok(!/cliente_nome:|nf_emitida_em:/.test(corpoInsert),
-       nome + ': o insert NAO usa colunas de `devolucoes_capturadas`');
-    ok(/d\.entrada_estoque === true \? '' : ' \[DEFEITO\]'/.test(src),
-       nome + ': e o marcador [DEFEITO] na descricao, que a fila le pro deposito');
+    ok(/marcadores\.montarDescricao\(\{ \.\.\.d, chave_caso: chaveCaso \}\)/.test(src),
+       nome + ': a descricao vem da peca unica — data e deposito inclusos');
   }
   ok(/o lote passa pela fila/.test(AMB_APP),
      '  com o motivo: consertei o caminho direto e esqueci o do lote');

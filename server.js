@@ -79,6 +79,7 @@ const espreita = require('./lib/magalu-espreita')({ chamarMagalu: magalu.chamarM
 const devCapturadas = require('./lib/devolucoes-capturadas');   // v4.63
 const tiktokPonte = require('./lib/tiktok-ponte');              // v4.66
 const tiktokDev = require('./lib/tiktok-devolucoes');           // v4.66
+const marcadores = require('./lib/marcadores-estornada');   // b200 - peca unica dos marcadores
 const devParcial = require('./lib/devolucao-parcial');          // v4.67
 const tiktokRevelia = require('./lib/tiktok-revelia');          // v4.68
 
@@ -232,7 +233,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.90.6 (colunas que existem, e a fila le os marcadores)',
+    version: '4.91.0 (marcadores viram peca unica: quem monta e quem le juntos)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -2886,10 +2887,15 @@ app.get('/api/admin/devolucoes', requerAdmin, async (req, res) => {
     const problemas = comParcial.filter(d => d.tipo === 'problema');
     const divergentes = comParcial.filter(d => d.tipo === 'divergente'); // v3.18.0
 
-    return res.json({
+    return // b200 - DECODIFICAR os marcadores no servidor.
+    //
+    // Os paineis liam a `problema_descricao` com regex, cada um por conta
+    // propria — e eu esqueci de um leitor TRES vezes seguidas. Agora a peca
+    // unica decodifica aqui, e a tela le campos normais.
+    res.json({
       ok: true,
-      aprovadas,
-      problemas,
+      aprovadas: marcadores.enriquecer(aprovadas),
+      problemas: marcadores.enriquecer(problemas),
       divergentes, // v3.18.0
       total: comParcial.length,
     });
@@ -5130,15 +5136,7 @@ app.post('/api/admin/sem-retorno/registrar', requerAdmin, async (req, res) => {
         // `[DEFEITO]` na descricao: as filas leem `d.status || d.tipo` pra
         // decidir o deposito, e a palavra "defeito" ali faz `ehProblema`
         // casar. E o unico canal que atravessa sem coluna nova.
-        problema_descricao: '[ESTORNADA SEM RETORNO] [SO RASCUNHO]'
-          + (d.entrada_estoque === true ? '' : ' [DEFEITO]')
-          + (d.nf_emitida_em || d.criado_no_mkt
-            ? ' [data:' + String(d.nf_emitida_em || d.criado_no_mkt).slice(0, 10) + ']' : '')
-          + (chaveCaso ? ' [caso:' + chaveCaso + ']' : '')
-          + ' Registrado a partir do card de estornadas'
-          + (d.marketplace ? ' · ' + String(d.marketplace) : '')
-          + (d.classe ? ' · ' + String(d.classe) : '')
-          + ' · NAO houve bipagem: a mercadoria pode nao ter voltado fisicamente.',
+        problema_descricao: marcadores.montarDescricao({ ...d, chave_caso: chaveCaso }),
       })
       .select('id')
       .single();

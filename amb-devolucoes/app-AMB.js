@@ -64,6 +64,7 @@ const nfNomes = require('./lib-AMB/nf-nomes-AMB');
 const tokens = require('./lib-AMB/render-tokens-AMB');
 const auth = require('./lib-AMB/auth-AMB');
 const tiktokPonte = require('../lib/tiktok-ponte');
+const marcadores = require('../lib/marcadores-estornada');   // b200 - peca unica dos marcadores
 const magaluCancelados = require('../lib/magalu-cancelados');  // b191 - peca UNICA, empresa por parametro // b334 - ponte TikTok via Mover-Pedidos (peca unica, empresa como parametro)
 const db = require('./lib-AMB/supabase-AMB');
 const mkt = require('./lib-AMB/marketplace-AMB');
@@ -82,7 +83,7 @@ const criarMlBuscas = require('./lib-AMB/ml-buscas-AMB');
 const registrarIdentificar = require('./lib-AMB/identificar-AMB');
 const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 
-const VERSAO = 'AMB Devolucoes b217';
+const VERSAO = 'AMB Devolucoes b218';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -1067,6 +1068,10 @@ router.get('/db/teste', admin, async (req, res) => {
 router.get('/api/triagem/fila', auth.requerLogin, async (req, res) => {
   const status = req.query.status === 'problema' ? 'problema' : 'aprovado';
   const r = await db.listarFila({ status });
+  // b200 - mesma decodificacao da GOOD: a tela le `dep_sugerido` e
+  // `so_rascunho` em vez de esmiuçar a descricao com regex.
+  if (r && Array.isArray(r.itens)) r.itens = marcadores.enriquecer(r.itens);
+  if (r && Array.isArray(r.data)) r.data = marcadores.enriquecer(r.data);
   if (!r.ok) return res.json(r);
   // junta o link da NF DA VENDA no Bling (id vem do indice de nomes)
   const registros = (r.registros || []).map(x => {
@@ -2171,15 +2176,7 @@ router.post('/api/admin/sem-retorno/registrar', auth.requerAdmin, async (req, re
         // `[DEFEITO]` na descricao: as filas leem `d.status || d.tipo` pra
         // decidir o deposito, e a palavra "defeito" ali faz `ehProblema`
         // casar. E o unico canal que atravessa sem coluna nova.
-        problema_descricao: '[ESTORNADA SEM RETORNO] [SO RASCUNHO]'
-          + (d.entrada_estoque === true ? '' : ' [DEFEITO]')
-          + (d.nf_emitida_em || d.criado_no_mkt
-            ? ' [data:' + String(d.nf_emitida_em || d.criado_no_mkt).slice(0, 10) + ']' : '')
-          + (chaveCaso ? ' [caso:' + chaveCaso + ']' : '')
-          + ' Registrado a partir do card de estornadas'
-          + (d.marketplace ? ' · ' + String(d.marketplace) : '')
-          + (d.classe ? ' · ' + String(d.classe) : '')
-          + ' · NAO houve bipagem: a mercadoria pode nao ter voltado fisicamente.',
+        problema_descricao: marcadores.montarDescricao({ ...d, chave_caso: chaveCaso }),
       })
       .select('id')
       .single();
