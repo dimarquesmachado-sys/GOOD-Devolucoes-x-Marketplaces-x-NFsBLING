@@ -80,6 +80,19 @@ const devCapturadas = require('./lib/devolucoes-capturadas');   // v4.63
 const tiktokPonte = require('./lib/tiktok-ponte');              // v4.66
 const tiktokDev = require('./lib/tiktok-devolucoes');           // v4.66
 const marcadores = require('./lib/marcadores-estornada');   // b200 - peca unica dos marcadores
+// b201 - `magaluCancelados` NUNCA foi importado nesta empresa.
+//
+// A rota chamava a variavel desde o #123, e o try/catch em volta
+// transformava o ReferenceError em `magalu_erro` — que a tela mostrava
+// como "falha do Magalu". Ou seja: o Magalu nunca apareceu no card da GOOD,
+// e o erro parecia da ponte deles.
+//
+// O dono viu porque a mensagem finalmente chegou na tela:
+//   "magalu_erro": "magaluCancelados is not defined"
+//
+// PIOR: o mesmo catch derrubava a busca da NF logo abaixo, entao o botao
+// "Gerar NF de devolucao" sumia junto — foi o sintoma que ele relatou.
+const magaluCancelados = require('./lib/magalu-cancelados');
 const devParcial = require('./lib/devolucao-parcial');          // v4.67
 const tiktokRevelia = require('./lib/tiktok-revelia');          // v4.68
 
@@ -233,7 +246,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.91.2 (o deposito sugerido chega no seletor da GOOD)',
+    version: '4.92.0 (o Magalu NUNCA foi importado na GOOD)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
