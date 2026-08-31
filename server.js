@@ -232,7 +232,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.84.0 (acha a NF pelo PEDIDO quando a captura nao trouxe)',
+    version: '4.88.2 (o teto por fatia so vale quando ha fatias)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -5701,8 +5701,27 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
       if (Date.now() - INICIO_BUSCA > 12000) break;   // teto proprio, mais folgado
       try {
         const r = await Promise.race([
-          buscarNFnoBlingPorOrderId(item.pedido, item.criado_em || null, { maxPaginas: 12 }),
-          new Promise((ok) => setTimeout(() => ok(null), 6000)),
+          // b197.2: a data da EMISSAO, quando existe, e melhor que a do
+          // evento — a janela fica centrada na nota, nao na devolucao.
+          buscarNFnoBlingPorOrderId(
+            item.pedido,
+            item.nf_emitida_em || item.criado_em || null,
+            { maxPaginas: 12, paginasPorFatia: 2, delayMs: 450 }),
+          // b197.4: o alcance tem que caber no PRAZO.
+          //   12 paginas x 450ms + latencia = ~9,8s, dentro dos 14s
+          //   2 paginas por fatia = 6 fatias de 20 dias = 120 dias
+          // Com os 6 anteriores chegava a 40 dias — nao alcancava a venda
+          // antiga. Fatia de 20 dias tem ~880 notas na densidade da GOOD, e
+          // 2 paginas leem 200: pego as mais recentes de cada fatia, que e
+          // onde a nota costuma estar.
+          // b197.1 (Codex): 6 paginas cabem no prazo. Com 700ms entre
+          // paginas, 12 nao caberiam em 6s — as ultimas nunca chegariam a
+          // responder, e eu esperaria a toa.
+          // b197.6 (Codex): o prazo e o que SOBRA do orcamento da rota, nao 14s
+          // fixos. Se as buscas por chave/numero ja gastaram quase tudo, um
+          // item lento aqui estouraria o teto e a resposta demoraria.
+          new Promise((ok) => setTimeout(() => ok(null),
+            Math.max(2000, Math.min(14000, 26000 - (Date.now() - INICIO_BUSCA))))),
         ]);
         const achada = (r && r.match) || (r && r.ok && r.nf) || null;
         if (achada && achada.id) {

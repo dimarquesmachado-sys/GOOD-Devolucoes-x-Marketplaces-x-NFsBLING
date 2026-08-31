@@ -82,7 +82,7 @@ const criarMlBuscas = require('./lib-AMB/ml-buscas-AMB');
 const registrarIdentificar = require('./lib-AMB/identificar-AMB');
 const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 
-const VERSAO = 'AMB Devolucoes b198';
+const VERSAO = 'AMB Devolucoes b202';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -2266,8 +2266,30 @@ router.get('/api/admin/sem-retorno', auth.requerLogin, async (req, res) => {
       if (Date.now() - INICIO_BUSCA > 12000) break;
       try {
         const r = await Promise.race([
-          ajudantes.buscarNFnoBlingPorOrderId(item.pedido, item.criado_em || null, { maxPaginas: 12 }),
-          new Promise((ok) => setTimeout(() => ok(null), 6000)),
+          // b197.2 (Codex): a AMB nao monta `criado_em` no item — eu passava
+          // null e a busca virava varredura CEGA, do mais recente pra tras,
+          // exatamente o que a janela por data veio evitar.
+          //
+          // Uso a mesma cascata do prazo: emissao > evento > captura.
+          ajudantes.buscarNFnoBlingPorOrderId(
+            item.pedido,
+            item.nf_emitida_em || item.cancelado_em || item.criado_no_mkt || item.criado_em || null,
+            { maxPaginas: 12, paginasPorFatia: 2, delayMs: 450 }),
+          // b197.4: o alcance tem que caber no PRAZO.
+          //   12 paginas x 450ms + latencia = ~9,8s, dentro dos 14s
+          //   2 paginas por fatia = 6 fatias de 20 dias = 120 dias
+          // Com os 6 anteriores chegava a 40 dias — nao alcancava a venda
+          // antiga. Fatia de 20 dias tem ~880 notas na densidade da GOOD, e
+          // 2 paginas leem 200: pego as mais recentes de cada fatia, que e
+          // onde a nota costuma estar.
+          // b197.1 (Codex): 6 paginas cabem no prazo. Com 700ms entre
+          // paginas, 12 nao caberiam em 6s — as ultimas nunca chegariam a
+          // responder, e eu esperaria a toa.
+          // b197.6 (Codex): o prazo e o que SOBRA do orcamento da rota, nao 14s
+          // fixos. Se as buscas por chave/numero ja gastaram quase tudo, um
+          // item lento aqui estouraria o teto e a resposta demoraria.
+          new Promise((ok) => setTimeout(() => ok(null),
+            Math.max(2000, Math.min(14000, 26000 - (Date.now() - INICIO_BUSCA))))),
         ]);
         const achada = (r && r.match) || (r && r.ok && r.nf) || null;
         if (achada && achada.id) {

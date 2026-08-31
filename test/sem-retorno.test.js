@@ -132,7 +132,7 @@ const PAINEL = fs.readFileSync(path.join(RAIZ, 'public', 'painel-devolucoes.html
 {
   ok(/const semNota = itens\.filter\(\(x\) => !x\.nf_numero && !x\.nf_chave/.test(rota),
      'ha busca pelo PEDIDO pros casos sem numero e sem chave');
-  ok(/buscarNFnoBlingPorOrderId\(item\.pedido/.test(rota),
+  ok(/buscarNFnoBlingPorOrderId\([\s\S]{0,80}item\.pedido/.test(rota),
      '  usando a funcao que ja existia pra isso');
   ok(/\.slice\(0, 10\)/.test(rota),
      '  com teto baixo: cada uma custa uma varredura no Bling');
@@ -145,7 +145,7 @@ const PAINEL = fs.readFileSync(path.join(RAIZ, 'public', 'painel-devolucoes.html
      'e a tela AVISA, pra ele conferir que e a nota certa antes de emitir');
 
   const AMB = fs.readFileSync(path.join(RAIZ, 'amb-devolucoes', 'app-AMB.js'), 'utf8');
-  ok(/buscarNFnoBlingPorOrderId\(item\.pedido/.test(AMB),
+  ok(/buscarNFnoBlingPorOrderId\([\s\S]{0,120}item\.pedido/.test(AMB),
      'e a AMB tem a mesma busca — sem isso ela ficaria pra tras de novo');
 }
 
