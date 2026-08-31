@@ -232,7 +232,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.88.0 (filtro direto do Bling: uma chamada em vez de varrer)',
+    version: '4.88.1 (o filtro direto ordena por data antes de escolher)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),

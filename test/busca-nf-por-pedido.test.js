@@ -93,6 +93,13 @@ const fn = BLING.slice(i, i + 13000);  // cresceu de novo (filtro direto)
   ok(/numeroLoja=' \+ encodeURIComponent\(orderIdStr\)/.test(fn),
      'o Bling filtra por numeroLoja: UMA chamada, sem paginar');
   ok(/via: 'filtro_direto'/.test(fn), '  marcando de onde veio o resultado');
+  // b197.7: ordenar antes de escolher — a ordem do Bling nao e garantida
+  ok(/\.sort\(\(a, b\) => String\(b\.dataEmissao/.test(fn),
+     'o caminho direto ORDENA por dataEmissao antes de escolher');
+  ok(/geraria a[\s\S]{0,30}devolucao contra a nota errada/.test(fn),
+     '  senao um pedido com 2 notas vivas podia devolver a ANTIGA');
+  ok(/vivas_no_pedido/.test(fn),
+     '  e a resposta diz quando havia mais de uma');
   ok(/A varredura vira so o plano B/.test(fn),
      '  e a varredura em fatias fica como plano B');
   ok(/Escolher entre "cobre perto" e "olha longe" e escolher errado/.test(fn),
