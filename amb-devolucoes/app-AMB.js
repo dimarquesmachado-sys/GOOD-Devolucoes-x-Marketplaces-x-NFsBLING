@@ -84,7 +84,7 @@ const criarMlBuscas = require('./lib-AMB/ml-buscas-AMB');
 const registrarIdentificar = require('./lib-AMB/identificar-AMB');
 const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 
-const VERSAO = 'AMB Devolucoes b223';
+const VERSAO = 'AMB Devolucoes b224';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -2493,7 +2493,15 @@ router.get('/api/admin/sem-retorno', auth.requerLogin, async (req, res) => {
           // parada. Sem alguem pra avisar, a flag aqui nao teria uso.
           new Promise((ok) => setTimeout(() => ok(null), Math.min(5000, sobra))),
         ]);
-        if (id) item.nf_id_bling = String(id);
+        // b204.2 (Codex): GUARDAR aqui tambem. Eu calculava o `idCache`
+        // nesta fase e nao usava — entao a busca por chave, que e a mais
+        // CARA (pagina o Bling), era refeita a cada refresh.
+        if (id) {
+          item.nf_id_bling = String(id);
+          item.nf_achada_por = item.nf_achada_por || 'chave';
+          vinculoCache.guardar(item, item.nf_id_bling, 'chave',
+            { chave: item.nf_chave, numero: item.nf_numero }, 'amb', idCache);
+        }
       } catch (e) { /* segue sem o link; o numero da NF esta no card */ }
     }
 

@@ -110,8 +110,18 @@ const RAIZ = path.join(__dirname, '..');
       ...['const comNumero =', 'const semVinculoAMB =']
         .map((t) => rota.indexOf(t)).filter((n) => n > 0)
     );
-    ok(iCache > 0 && iCache < iFila,
-       nome + ': o cache roda ANTES de montar as filas');
+    // b204.2: antes de TODAS as filas, nao so da primeira que eu olhei
+    const posFilas = ['const semVinculo =', 'const doMagalu =', 'const dosOutros =',
+                      'const comNumero =', 'const semNota =', 'const semVinculoAMB =']
+      .map((t) => rota.indexOf(t)).filter((n) => n > 0);
+    ok(iCache > 0 && posFilas.every((pos) => iCache < pos),
+       nome + ': o cache roda antes de TODAS as ' + posFilas.length + ' filas');
+
+    // e TODA fase que acha guarda — inclusive a da chave, que e a mais cara
+    const fases = (rota.match(/const idCache = /g) || []).length;
+    const guardas = (rota.match(/vinculoCache\.guardar/g) || []).length;
+    ok(fases > 0 && fases === guardas,
+       nome + ': as ' + fases + ' fases guardam o que acham (a da chave PAGINA o Bling)');
     ok(rota.split('vinculoCache.aplicar').length === 2,
        nome + ': uma aplicacao so — nao duas em pontos diferentes');
     ok(/const idCache = vinculoCache\.chaveDe\(item, /.test(rota),

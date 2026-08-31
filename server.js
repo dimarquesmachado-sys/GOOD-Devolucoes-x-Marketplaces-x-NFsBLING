@@ -247,7 +247,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.95.1 (cache por empresa, antes das filas, com identidade estavel)',
+    version: '4.95.2 (o cache antes de TODAS as filas, e toda fase guarda)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -5699,6 +5699,16 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
     // caso do TikTok na GOOD). Divido a cota entre os dois.
     // b202: a busca por CHAVE roda DEPOIS da direta, e so pra quem sobrou.
     // Ela pagina, entao e o plano B — nao a porta de entrada.
+    // b204.2 (Codex): o cache roda antes de TODAS as filas.
+    //
+    // Eu tinha movido pra antes de `comNumero`, mas `semVinculo`, `doMagalu`
+    // e `dosOutros` sao montadas ANTES disso — entao os casos ja resolvidos
+    // seguiam nelas, consumiam as vagas e eram re-buscados a cada refresh.
+    //
+    // Conferi a ordem inteira desta vez, nao so a fila que o apontamento
+    // citou: as tres filas nascem aqui, entao o cache vem antes delas.
+    vinculoCache.aplicar(itens, empresa);
+
     const semVinculo = itens.filter((x) => x.nf_numero && !x.nf_id_bling);
     const doMagalu = semVinculo.filter((x) => x.marketplace === 'magalu').slice(0, 15);
     const dosOutros = semVinculo.filter((x) => x.marketplace !== 'magalu').slice(0, 10);
@@ -5740,12 +5750,7 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
     //   1. filtro direto por NUMERO (uma chamada; a nota sempre existe)
     //   2. filtro direto por PEDIDO (pros que vieram sem numero, tipo o TikTok)
     //   3. busca por chave, paginando (plano B)
-// b204.1 (Codex): o cache roda ANTES de montar as filas.
-    //
-    // Eu aplicava depois, entao os casos ja resolvidos continuavam nas
-    // listas e consumiam as 25 vagas — os que faltavam nunca entravam, e o
-    // painel ficava preso nos mesmos primeiros pra sempre.
-    vinculoCache.aplicar(itens, empresa);
+
 
     const comNumero = itens.filter((x) => !x.nf_id_bling && x.nf_numero).slice(0, 25);
     const semNota = itens.filter((x) => !x.nf_id_bling && !x.nf_numero && x.pedido).slice(0, 25);
