@@ -274,6 +274,14 @@ const PAINEL = fs.readFileSync(path.join(RAIZ, 'public', 'painel-devolucoes.html
   // b199.3: duas abas nao criam dois registros
   ok(/corrida_resolvida: true/.test(AMB_APP),
      'a corrida entre abas e resolvida: sobra o registro mais antigo');
+  // b199.4: e na GOOD tambem — la o cliente chama-se `supabase`
+  const iReg = SERVER.indexOf("'/api/admin/sem-retorno/registrar'");
+  const regGood = SERVER.slice(iReg, iReg + 7000);   // a rota cresceu
+  ok(/corrida_resolvida: true/.test(regGood), '  na GOOD tambem');
+  ok(!/await sb\b/.test(regGood),
+     '  usando o cliente CERTO dela: copiei o bloco da AMB e o `sb` dava ReferenceError');
+  ok(/catch abaixo ENGOLIA/.test(regGood),
+     '  e o catch engolia o erro, entao a limpeza nunca rodaria em silencio');
   ok(/duas portas pra\s*\n?\s*\/\/ emitir a mesma nota/.test(AMB_APP),
      '  com o motivo: dois registros = duas portas pra emitir a mesma nota');
 
