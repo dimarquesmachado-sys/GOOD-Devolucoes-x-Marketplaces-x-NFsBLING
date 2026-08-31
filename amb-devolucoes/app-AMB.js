@@ -82,7 +82,7 @@ const criarMlBuscas = require('./lib-AMB/ml-buscas-AMB');
 const registrarIdentificar = require('./lib-AMB/identificar-AMB');
 const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 
-const VERSAO = 'AMB Devolucoes b207';
+const VERSAO = 'AMB Devolucoes b208';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -2324,10 +2324,6 @@ router.get('/api/admin/sem-retorno', auth.requerLogin, async (req, res) => {
 
     for (const item of filaAMB) {
       if (Date.now() - INICIO_BUSCA > 8000) break;   // o painel nao pode travar
-      // b203.4 (Codex): o timeout so devolvia null e a busca seguia varrendo
-      // o Bling em segundo plano, gastando o limite que o proximo item vai
-      // precisar. Agora ele avisa a busca pra parar.
-      let desistiu = false;
       try {
         // a busca PAGINA no Bling e pode passar dos 8s sozinha; o teto do
         // laco so e conferido entre itens. O prazo e o QUE SOBRA do
@@ -2346,6 +2342,11 @@ router.get('/api/admin/sem-retorno', auth.requerLogin, async (req, res) => {
     // nota EXISTE no Bling. Sem isto o card fica so informativo.
     for (const item of itens.filter((x) => !x.nf_numero && !x.nf_chave && !x.nf_id_bling && x.pedido).slice(0, 10)) {
       if (Date.now() - INICIO_BUSCA > 12000) break;
+      // b203.5 (Codex): a flag e DESTE laco. Eu declarei no laco anterior
+      // (o da busca por chave) e usei aqui — `desistiu` chegava undefined,
+      // e `parar()` estouraria ReferenceError na PRIMEIRA pagina, derrubando
+      // a busca inteira. Pior que o problema que o sinal veio resolver.
+      let desistiu = false;
       try {
         const r = await Promise.race([
           // b197.2 (Codex): a AMB nao monta `criado_em` no item — eu passava
