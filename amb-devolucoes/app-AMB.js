@@ -82,7 +82,7 @@ const criarMlBuscas = require('./lib-AMB/ml-buscas-AMB');
 const registrarIdentificar = require('./lib-AMB/identificar-AMB');
 const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 
-const VERSAO = 'AMB Devolucoes b206';
+const VERSAO = 'AMB Devolucoes b207';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -2324,6 +2324,10 @@ router.get('/api/admin/sem-retorno', auth.requerLogin, async (req, res) => {
 
     for (const item of filaAMB) {
       if (Date.now() - INICIO_BUSCA > 8000) break;   // o painel nao pode travar
+      // b203.4 (Codex): o timeout so devolvia null e a busca seguia varrendo
+      // o Bling em segundo plano, gastando o limite que o proximo item vai
+      // precisar. Agora ele avisa a busca pra parar.
+      let desistiu = false;
       try {
         // a busca PAGINA no Bling e pode passar dos 8s sozinha; o teto do
         // laco so e conferido entre itens. O prazo e o QUE SOBRA do
@@ -2331,7 +2335,7 @@ router.get('/api/admin/sem-retorno', auth.requerLogin, async (req, res) => {
         const sobra = Math.max(500, 8000 - (Date.now() - INICIO_BUSCA));
         const id = await Promise.race([
           nfp.resolverIdNFPorChave(item.nf_numero, item.nf_chave),
-          new Promise((ok) => setTimeout(() => ok(null), Math.min(5000, sobra))),
+          new Promise((ok) => setTimeout(() => { desistiu = true; ok(null); }, Math.min(5000, sobra))),
         ]);
         if (id) item.nf_id_bling = String(id);
       } catch (e) { /* segue sem o link; o numero da NF esta no card */ }
@@ -2353,6 +2357,7 @@ router.get('/api/admin/sem-retorno', auth.requerLogin, async (req, res) => {
           // #124 — entao a busca por pedido da AMB nunca funcionou, e o card
           // dela seguia dizendo "sem NF vinculada".
           ajudantes.buscarNFBlindada({
+            parar: () => desistiu,
             orderId: item.pedido,
             // b203.2 (Codex): estes campos NAO existiam no item mapeado —
             // ia sempre null, e a blindada so roda as fases de janela com

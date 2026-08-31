@@ -15,6 +15,15 @@ async function buscarNFnoML(shipmentId) {
 }
 
 async function buscarNFBlindada(opts = {}) {
+  // b203.4 (Codex): SINAL DE PARADA.
+  //
+  // Quem chama corre contra um prazo (`Promise.race`), mas o timeout so
+  // devolve null — eu continuava varrendo paginas do Bling em segundo
+  // plano, gastando o limite de 3 req/s que o proximo item vai precisar.
+  //
+  // `opts.parar()` e conferido entre as fases e entre as paginas: quando o
+  // chamador desiste, eu desisto junto.
+  const parar = typeof opts.parar === 'function' ? opts.parar : () => false;
   // Aceita orderId (string) e/ou orderIds (array) - em vendas de CARRINHO
   // o Bling pode registrar o numeroLoja como o PACK, nao a order.
   const brutos = [];
@@ -79,6 +88,7 @@ async function buscarNFBlindada(opts = {}) {
   // ---- FASE 0: filtro DIRETO numeroLoja no /nfe (1 chamada por id!) ----
   // Descoberta na doc oficial: /nfe aceita ?numeroLoja= - dispensa varredura.
   for (let i = 0; i < orderIds.length; i++) {
+    if (parar()) { tentado.push('abortado: o chamador desistiu'); break; }
     if (i > 0) await sleep(DELAY_MS);
     const oid = orderIds[i];
     const url = `https://api.bling.com.br/Api/v3/nfe?limite=100&pagina=1&tipo=1&numeroLoja=${encodeURIComponent(oid)}`;
@@ -105,6 +115,7 @@ async function buscarNFBlindada(opts = {}) {
   if (ini && fim) {
     console.log(`[Bling/blindada] /nfe janela ${ini}..${fim} ids=${orderIds.join(',') || '-'} numero=${numeroNF || '-'}${serieNF ? '/s' + serieNF : ''}`);
     for (let pg = 1; pg <= MAXP_JANELA; pg++) {
+      if (parar()) { tentado.push('abortado: o chamador desistiu'); break; }
       if (pg > 1) await sleep(DELAY_MS);
       const url = `https://api.bling.com.br/Api/v3/nfe?limite=${LIMITE}&pagina=${pg}&tipo=1&dataEmissaoInicial=${ini}&dataEmissaoFinal=${fim}`;
       const r = await chamarBling(url);
@@ -126,6 +137,7 @@ async function buscarNFBlindada(opts = {}) {
   // ---- FASE 2: /pedidos/vendas com janela -> NF vinculada ----
   if (orderIds.length > 0 && ini && fim) {
     for (let pg = 1; pg <= MAXP_JANELA; pg++) {
+      if (parar()) { tentado.push('abortado: o chamador desistiu'); break; }
       await sleep(DELAY_MS);
       const url = `https://api.bling.com.br/Api/v3/pedidos/vendas?limite=${LIMITE}&pagina=${pg}&dataInicial=${ini}&dataFinal=${fim}`;
       const r = await chamarBling(url);
@@ -161,6 +173,7 @@ async function buscarNFBlindada(opts = {}) {
   async function varreduraFundo(oid, maxPaginas) {
     let totalScanned = 0, primeiraDataVista = null, ultimaDataVista = null;
     for (let pg = 1; pg <= maxPaginas; pg++) {
+      if (parar()) { tentado.push('abortado: o chamador desistiu'); break; }
       if (pg > 1) await sleep(DELAY_MS);
       const r = await chamarBling(`https://api.bling.com.br/Api/v3/nfe?limite=100&pagina=${pg}&tipo=1`);
       if (!r.ok) return { ok: false, totalScanned, primeiraDataVista, ultimaDataVista };
