@@ -146,11 +146,13 @@ const PAINEL = fs.readFileSync(path.join(RAIZ, 'public', 'painel-devolucoes.html
      'clique duplo nao cria dois registros (a checagem do servidor nao pega a corrida)');
   ok(/_gerandoEstornada = false;/.test(fn2), '  e a trava solta no fim');
 
-  // 3. confirmar antes de criar
-  ok(/confirm\('Registrar este caso/.test(fn2),
-     'pede confirmacao antes de registrar');
-  ok(/fila "Aprovadas - aguardando NF"/.test(fn2),
-     '  dizendo onde o caso vai parar — clicar sem querer criava registro invisivel');
+  // 3. b199: o popup SAIU a pedido do dono ("não faz pop up assim não").
+  //    O que protege agora: o servidor nao cria duplicata, a fila tem
+  //    lixeira, e o toast conta o que aconteceu.
+  ok(!/confirm\('Registrar este caso/.test(fn2),
+     'sem popup de confirmacao — o dono pediu pra tirar');
+  ok(/o registro e reversivel/.test(PAINEL),
+     '  com o motivo registrado: o registro e reversivel pela lixeira da fila');
 }
 
 // ── b193.1: os dois P1 que quase passaram ───────────────────────────
@@ -216,6 +218,35 @@ const PAINEL = fs.readFileSync(path.join(RAIZ, 'public', 'painel-devolucoes.html
   ], { P1: 2 });
   ok(g[0] && g[0].vieram === 1 && g[0].completo === false,
      '  conferido: 1 triagem real + 1 registro do card = ainda aguardando a 2a caixa');
+}
+
+// ── b199: sem popup, e com selecao multipla ─────────────────────────
+//
+// [stated] "não faz pop up assim não. e tem como selecionar todas? mais
+// de uma?"
+{
+  const PAINEIS = [
+    ['GOOD', PAINEL],
+    ['AMB (servido)', fs.readFileSync(path.join(RAIZ, 'amb-devolucoes', 'public-AMB', 'painel-AMB.html'), 'utf8')],
+    ['AMB (direto)', fs.readFileSync(path.join(RAIZ, 'amb-devolucoes', 'public-AMB', 'painel2-AMB.html'), 'utf8')],
+  ];
+
+  for (const [nome, html] of PAINEIS) {
+    ok(!/confirm\('Registrar este caso/.test(html),
+       nome + ': sem o popup de confirmacao');
+    ok(/chk-estornada/.test(html), nome + ': tem checkbox pra selecionar');
+    ok(/chkTodasEstornadas/.test(html), nome + ': tem "marcar todas"');
+    ok(/async function gerarLoteEstornadas/.test(html), nome + ': tem a funcao do lote');
+    ok(/checkbox \+ botaoGerar \+ linkNF/.test(html), nome + ': o card renderiza os dois');
+  }
+
+  // o lote gera RASCUNHO, nunca emite
+  ok(/Nada é transmitido para a SEFAZ por aqui/.test(PAINEL),
+     'a barra diz que nada e transmitido: cada caso vira um rascunho');
+  ok(/if \(j\.nf_ja_emitida\) \{ jaTinham\+\+; continue; \}/.test(PAINEL),
+     'quem JA tem NF fica de fora do lote — segunda nota da mesma venda e problema fiscal');
+  ok(/if \(_loteEstornadas\) return;/.test(PAINEL),
+     'e o lote nao dispara duas vezes');
 }
 
 console.log('');

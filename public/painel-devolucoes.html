@@ -360,6 +360,20 @@
           entrar no estoque vendável. Os cards marcados com <b>↩️ TEVE DEVOLUÇÃO</b> são o contrário:
           o produto voltou, então segue o depósito de sempre.
         </div>
+        <div id="barraLoteEstornadas" style="display:none;margin-bottom:10px;padding:10px;
+             background:#e3f2fd;border:1px solid #1565c0;border-radius:8px;">
+          <label style="font-size:13px;cursor:pointer;margin-right:12px;">
+            <input type="checkbox" id="chkTodasEstornadas"> <b>marcar todas</b>
+          </label>
+          <button class="btn" id="btnLoteEstornadas" style="background:#1565c0;"
+                  onclick="gerarLoteEstornadas()">
+            🧾 Gerar rascunhos das selecionadas (<span id="contaEstornadas">0</span>)
+          </button>
+          <div style="font-size:12px;color:#555;margin-top:6px;">
+            Cada uma vira um <b>rascunho</b> separado no Bling — abra lá para conferir as linhas,
+            escolher o depósito e validar. Nada é transmitido para a SEFAZ por aqui.
+          </div>
+        </div>
         <div id="listaSemRetorno"></div>
       </div>
 
@@ -906,6 +920,66 @@
     // CORRIGE a diferenca em vez de duplicar. Correcao dele, e estava
     // certo: "é só gerar devolução normal, e depósito Geral. Simples."
     let _gerandoEstornada = false;
+    let _loteEstornadas = false;
+
+    // b199 - GERAR VARIAS. [stated] "tem como selecionar todas? mais de uma?"
+    //
+    // Cada uma vira um RASCUNHO separado no Bling. Nao emito nada aqui: a
+    // Bridge monta a nota com os itens da NF original inteira, e o dono
+    // ajusta as linhas e o deposito la antes de validar.
+    //
+    // Por isso o lote e seguro, ao contrario da esteira — que manda
+    // `emitir: true` e por isso continua bloqueada pra estes casos.
+    async function gerarLoteEstornadas() {
+      if (_loteEstornadas) return;
+      const marcados = [...document.querySelectorAll('.chk-estornada:checked')];
+      if (!marcados.length) { toast('marque pelo menos uma', 'err'); return; }
+
+      _loteEstornadas = true;
+      const btn = document.getElementById('btnLoteEstornadas');
+      if (btn) btn.disabled = true;
+
+      let feitos = 0, jaTinham = 0, falhas = 0;
+      const idsGerados = [];
+
+      try {
+        for (const chk of marcados) {
+          let d;
+          try { d = JSON.parse(chk.dataset.caso); } catch (e) { falhas++; continue; }
+
+          if (btn) btn.textContent = '⏳ registrando ' + (feitos + jaTinham + falhas + 1)
+            + '/' + marcados.length + '...';
+
+          try {
+            const r = await fetch('/api/admin/sem-retorno/registrar', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(d),
+            });
+            const j = await r.json();
+            if (!j || !j.ok) { falhas++; continue; }
+            // ja tem NF: nao entra no lote, senao emitiria a segunda
+            if (j.nf_ja_emitida) { jaTinham++; continue; }
+            if (j.ja_existia) jaTinham++; else feitos++;
+            idsGerados.push({ id: j.id, nf: d.nf_numero, pedido: d.pedido });
+          } catch (e) { falhas++; }
+        }
+      } finally {
+        _loteEstornadas = false;
+        if (btn) { btn.disabled = false; btn.innerHTML = '🧾 Gerar rascunhos das selecionadas '
+          + '(<span id="contaEstornadas">0</span>)'; }
+      }
+
+      const partes = [];
+      if (feitos) partes.push(feitos + ' registrada(s)');
+      if (jaTinham) partes.push(jaTinham + ' já estava(m) na fila');
+      if (falhas) partes.push(falhas + ' falhou(ram)');
+      toast(partes.join(' · ') + ' — os rascunhos saem pela fila "Aprovadas"',
+        falhas ? 'err' : 'ok');
+
+      await carregarSemRetorno();
+      if (typeof carregar === 'function') carregar();
+    }
 
     async function gerarDoCardEstornadas(dadosJson) {
       let d;
@@ -917,15 +991,12 @@
       if (_gerandoEstornada) return;
       _gerandoEstornada = true;
 
-      // b193 (Codex): CONFIRMAR antes de registrar. Clicar sem querer criava
-      // um registro na fila de "aguardando NF" que so some manualmente — e
-      // o dono nao pediu nada ainda.
-      if (!confirm('Registrar este caso e abrir o rascunho da NF de devolução?\n\n'
-        + 'Pedido ' + (d.pedido || '?') + (d.nf_numero ? ' · NF ' + d.nf_numero : '')
-        + '\n\nEle passa a aparecer na fila "Aprovadas - aguardando NF".')) {
-        _gerandoEstornada = false;
-        return;
-      }
+      // b199 - SEM POPUP. [stated] "não faz pop up assim não."
+      //
+      // O confirm() nativo entrou por um apontamento do Codex (clicar sem
+      // querer criava registro). Mas o registro e reversivel — a fila tem
+      // lixeira — e o dono nao quer o popup no caminho. O aviso vai no
+      // `title` do botao, e o toast conta o que aconteceu depois.
 
       try {
         const r = await fetch('/api/admin/sem-retorno/registrar', {
@@ -1176,6 +1247,20 @@
           // devolucao registraria uma entrada de mercadoria que nunca
           // aconteceu. O caminho e CONTESTAR com o marketplace.
           const podeGerar = x.nf_id_bling && x.acao !== 'cancelar_nf' && !x.prejuizo_integral;
+          // b199 - checkbox pra selecionar varios. [stated] "tem como
+          // selecionar todas? mais de uma?"
+          const checkbox = podeGerar
+            ? '<label style="display:inline-flex;align-items:center;gap:5px;margin-right:8px;'
+              + 'font-size:12px;color:#555;cursor:pointer;">'
+              + '<input type="checkbox" class="chk-estornada" '
+              + 'data-caso="' + escapeHtml(JSON.stringify({
+                  pedido: x.pedido, produto: x.produto, sku: x.sku, qtd: x.qtd,
+                  nf_numero: x.nf_numero, nf_chave: x.nf_chave, nf_id_bling: x.nf_id_bling,
+                  marketplace: x.marketplace, classe: x.classe,
+                  chave_caso: x.id, chave_caso_legado: x.id_legado,
+                  chave_caso_legado2: x.id_legado2, entrada_estoque: x.entrada_estoque,
+                })) + '"> selecionar</label>'
+            : '';
           const botaoGerar = podeGerar
             ? '<button class="btn btn-gerar-estornada" '
               + 'style="background:#1565c0;margin-top:8px;margin-right:6px;" '
@@ -1246,7 +1331,7 @@
             + (x.cliente ? '<div style="font-size:12px;color:#999;margin-top:2px;">'
                 + escapeHtml(String(x.cliente)) + '</div>' : '')
             + dicaEstoque
-            + botaoGerar + linkNF
+            + checkbox + botaoGerar + linkNF
             + '</div>';
         }).join('');
 
@@ -1259,6 +1344,29 @@
         document.querySelectorAll('.btn-gerar-estornada').forEach((b) => {
           b.addEventListener('click', () => gerarDoCardEstornadas(b.dataset.caso));
         });
+
+        // b199 - a barra de lote so aparece quando ha o que selecionar
+        const chks = [...document.querySelectorAll('.chk-estornada')];
+        const barra = document.getElementById('barraLoteEstornadas');
+        if (barra) barra.style.display = chks.length ? '' : 'none';
+
+        const atualizarConta = () => {
+          const n = document.querySelectorAll('.chk-estornada:checked').length;
+          const el = document.getElementById('contaEstornadas');
+          if (el) el.textContent = String(n);
+          const todas = document.getElementById('chkTodasEstornadas');
+          if (todas) todas.checked = n > 0 && n === chks.length;
+        };
+        chks.forEach((c) => c.addEventListener('change', atualizarConta));
+
+        const todas = document.getElementById('chkTodasEstornadas');
+        if (todas) {
+          todas.onchange = () => {
+            chks.forEach((c) => { c.checked = todas.checked; });
+            atualizarConta();
+          };
+        }
+        atualizarConta();
       } catch (e) {
         // silencioso de proposito: e um bloco informativo, nao a fila
       }

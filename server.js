@@ -232,7 +232,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.89.0 (o pedido mora em Numero loja virtual, nao no campo que eu exigia)',
+    version: '4.90.0 (sem popup, e da pra selecionar varias)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
