@@ -233,7 +233,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.91.0 (marcadores viram peca unica: quem monta e quem le juntos)',
+    version: '4.91.1 (a fila responde de novo, e a AMB enriquece o campo certo)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -2887,7 +2887,7 @@ app.get('/api/admin/devolucoes', requerAdmin, async (req, res) => {
     const problemas = comParcial.filter(d => d.tipo === 'problema');
     const divergentes = comParcial.filter(d => d.tipo === 'divergente'); // v3.18.0
 
-    return // b200 - DECODIFICAR os marcadores no servidor.
+    // b200 - DECODIFICAR os marcadores no servidor.
     //
     // Os paineis liam a `problema_descricao` com regex, cada um por conta
     // propria — e eu esqueci de um leitor TRES vezes seguidas. Agora a peca

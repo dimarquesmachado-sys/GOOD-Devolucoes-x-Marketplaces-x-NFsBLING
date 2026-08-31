@@ -78,7 +78,17 @@ const RAIZ = path.join(__dirname, '..');
   const SERVER = fs.readFileSync(path.join(RAIZ, 'server.js'), 'utf8');
   const AMB = fs.readFileSync(path.join(RAIZ, 'amb-devolucoes', 'app-AMB.js'), 'utf8');
   ok(/marcadores\.enriquecer\(aprovadas\)/.test(SERVER), 'a GOOD enriquece a fila');
-  ok(/marcadores\.enriquecer\(r\.itens\)/.test(AMB), 'e a AMB tambem');
+  // b200.1: o campo da AMB e `registros` — conferido em `listarFila`
+  ok(/marcadores\.enriquecer\(r\.registros\)/.test(AMB),
+     'e a AMB enriquece `registros`, que e o que `listarFila` devolve');
+  ok(!/enriquecer\(r\.itens\)|enriquecer\(r\.data\)/.test(AMB),
+     '  nao `itens` nem `data`, que nao existem — a decodificacao nao chegaria em nada');
+
+  // e o handler da GOOD RESPONDE (um `return` solto matava a rota)
+  const iFila = SERVER.indexOf("app.get('/api/admin/devolucoes'");
+  const fila = SERVER.slice(iFila, iFila + 7000);
+  ok(!/return\s*\n\s*\/\//.test(fila),
+     'sem `return` solto antes do res.json — ele encerrava a rota e o painel travava');
   ok(/marcadores\.montarDescricao/.test(SERVER) && /marcadores\.montarDescricao/.test(AMB),
      'e as duas MONTAM pela mesma peca — marcador novo mexe num arquivo so');
 }

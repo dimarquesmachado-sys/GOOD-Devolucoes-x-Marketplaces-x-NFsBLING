@@ -83,7 +83,7 @@ const criarMlBuscas = require('./lib-AMB/ml-buscas-AMB');
 const registrarIdentificar = require('./lib-AMB/identificar-AMB');
 const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 
-const VERSAO = 'AMB Devolucoes b218';
+const VERSAO = 'AMB Devolucoes b219';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -1068,10 +1068,12 @@ router.get('/db/teste', admin, async (req, res) => {
 router.get('/api/triagem/fila', auth.requerLogin, async (req, res) => {
   const status = req.query.status === 'problema' ? 'problema' : 'aprovado';
   const r = await db.listarFila({ status });
-  // b200 - mesma decodificacao da GOOD: a tela le `dep_sugerido` e
-  // `so_rascunho` em vez de esmiuçar a descricao com regex.
-  if (r && Array.isArray(r.itens)) r.itens = marcadores.enriquecer(r.itens);
-  if (r && Array.isArray(r.data)) r.data = marcadores.enriquecer(r.data);
+  // b200.1 (Codex): o campo e `registros` — `listarFila` devolve
+  // { ok, total, registros }. Eu enriquecia `itens` e `data`, que nao
+  // existem, entao a decodificacao nao chegava em NADA na AMB.
+  //
+  // Conferido na fonte antes de escrever desta vez.
+  if (r && Array.isArray(r.registros)) r.registros = marcadores.enriquecer(r.registros);
   if (!r.ok) return res.json(r);
   // junta o link da NF DA VENDA no Bling (id vem do indice de nomes)
   const registros = (r.registros || []).map(x => {
