@@ -136,7 +136,14 @@ async function buscarNFBlindada(opts = {}) {
       const m = lista.find(p => orderIds.includes(String(p.numeroLoja || '').trim()));
       if (m) {
         await sleep(DELAY_MS);
-        const rPed = await buscarPedidoBlingPorId(m.id);
+        // b203.3 (Codex): `buscarPedidoBlingPorId` NAO EXISTE neste modulo —
+        // nem definida nem injetada. E o SEGUNDO bug latente desta familia
+        // (o primeiro, no b172, era o buscarNFnoBlingPorOrderId).
+        //
+        // Se as fases 0 e 1 falhassem e esta achasse o pedido, estourava
+        // ReferenceError e derrubava a busca inteira. Chamo o Bling direto,
+        // que e o que a funcao faria.
+        const rPed = await chamarBling(`https://api.bling.com.br/Api/v3/pedidos/vendas/${m.id}`);
         const idNF = rPed.ok ? rPed.data?.data?.notaFiscal?.id : null;
         if (idNF) return completar(idNF, 'pedido-janela');
         tentado.push(`pedidos-janela: pedido ${m.id} achado mas SEM NF vinculada`);

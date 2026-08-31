@@ -82,7 +82,7 @@ const criarMlBuscas = require('./lib-AMB/ml-buscas-AMB');
 const registrarIdentificar = require('./lib-AMB/identificar-AMB');
 const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 
-const VERSAO = 'AMB Devolucoes b205';
+const VERSAO = 'AMB Devolucoes b206';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -2129,6 +2129,10 @@ router.get('/api/debug/achar-nf', (req, res, next) => {
       // a blindada devolve { ok, via, nf, idNF, trace } — nao { match }
       achou: !!(r && r.ok && (r.nf || r.idNF)),
       via: (r && r.via) || null,
+      // b203.3 (Codex): mostrar o ID mesmo sem o detalhe. Corrigi isso no
+      // CARD e esqueci aqui — se a blindada acha o id e falha no detalhe,
+      // o diagnostico dizia `nf: null` e parecia que nao tinha achado.
+      id_achado: (r && (r.idNF || (r.nf && r.nf.id))) || undefined,
       nf: (r && r.nf) ? {
         id: r.nf.id || r.idNF, numero: r.nf.numero,
         numeroPedidoLoja: r.nf.numeroPedidoLoja,
