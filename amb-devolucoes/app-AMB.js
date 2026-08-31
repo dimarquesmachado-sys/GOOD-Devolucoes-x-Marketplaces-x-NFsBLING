@@ -82,7 +82,7 @@ const criarMlBuscas = require('./lib-AMB/ml-buscas-AMB');
 const registrarIdentificar = require('./lib-AMB/identificar-AMB');
 const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 
-const VERSAO = 'AMB Devolucoes b209';
+const VERSAO = 'AMB Devolucoes b210';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -2400,6 +2400,36 @@ router.get('/api/admin/sem-retorno', auth.requerLogin, async (req, res) => {
           item.nf_achada_por = 'pedido';
         }
       } catch (e) { /* segue sem a nota; o card continua so informativo */ }
+    }
+
+    // b203.7 (Codex): RECALCULAR a acao depois de enriquecer.
+    //
+    // A GOOD ja fazia isso desde o b188.1; a AMB nao — mais uma vez ela
+    // ficou pra tras.
+    //
+    // O prazo sai da chave da NF-e. Se a chave so apareceu AGORA (veio do
+    // Bling na busca acima), o item foi classificado com a data da
+    // devolucao, que nao autoriza cancelamento. Sem recalcular, um caso
+    // ainda cancelavel apareceria como "NF DE DEVOLUCAO" e o dono perderia
+    // o prazo de 20 dias.
+    for (const item of itens) {
+      const chave = String(item.nf_chave || '').replace(/\D/g, '');
+      // data exata manda sobre a chave, que so da o mes
+      if (chave.length !== 44 || item.prazo_base === 'chave_nfe'
+          || item.prazo_base === 'data_emissao') continue;
+      const aa = parseInt(chave.slice(2, 4), 10);
+      const mm = parseInt(chave.slice(4, 6), 10);
+      if (!(aa >= 0 && mm >= 1 && mm <= 12)) continue;
+      const dias = Math.floor((AGORA - Date.UTC(2000 + aa, mm - 1, 1)) / 864e5);
+      item.dias_desde = dias;
+      item.prazo_base = 'chave_nfe';
+      // as mesmas regras da classificacao original: quem voltou nao cancela,
+      // e o Magalu so cancela em `nf_sem_saida`
+      const podeAqui = !item.tem_devolucao_registrada
+        && (item.marketplace !== 'magalu' || item.classe === 'nf_sem_saida')
+        && dias <= 20;
+      item.acao = podeAqui ? 'cancelar_nf' : 'nf_devolucao';
+      item.prazo_cancelamento = podeAqui ? Math.max(0, 20 - dias) : 0;
     }
 
     itens.sort((a, b) => {

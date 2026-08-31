@@ -155,6 +155,11 @@ async function buscarNFBlindada(opts = {}) {
         // Se as fases 0 e 1 falhassem e esta achasse o pedido, estourava
         // ReferenceError e derrubava a busca inteira. Chamo o Bling direto,
         // que e o que a funcao faria.
+        // b203.7 (Codex): reconferir DEPOIS do sleep acima. O prazo pode ter
+        // estourado durante ele — sem isto eu faria mais duas chamadas ao
+        // Bling (o pedido, e o detalhe da NF dentro de `completar`) depois
+        // de a resposta ja ter sido enviada, gastando o limite do proximo.
+        if (parar()) { tentado.push('abortado: o chamador desistiu'); break; }
         const rPed = await chamarBling(`https://api.bling.com.br/Api/v3/pedidos/vendas/${m.id}`);
         const idNF = rPed.ok ? rPed.data?.data?.notaFiscal?.id : null;
         if (idNF) return completar(idNF, 'pedido-janela');
