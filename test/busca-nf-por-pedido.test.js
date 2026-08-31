@@ -36,11 +36,11 @@ const fn = BLING.slice(i, i + 13000);  // cresceu de novo (filtro direto)
 
   const ref = Date.parse('2026-04-19');
   const ini = new Date(ref - 180 * 864e5).toISOString().slice(0, 10);
-  const fim = new Date(ref + 30 * 864e5).toISOString().slice(0, 10);
-  ok(ini === '2025-10-21' && fim === '2026-05-19',
-     'pro caso de 19/04, a janela vai de 21/10 a 19/05 — cobre venda antiga E nota emitida depois');
-  ok(/30 \* 864e5/.test(fn),
-     '  os 30 dias pra frente cobrem NF que sai depois da data de referencia');
+  const fim = new Date(ref + 60 * 864e5).toISOString().slice(0, 10);
+  ok(ini === '2025-10-21' && fim === '2026-06-18',
+     'pro caso de 19/04, a janela vai de 21/10 a 18/06 — cobre venda antiga E nota emitida depois');
+  ok(/60 \* 864e5/.test(fn),
+     '  os 60 dias pra frente cobrem NF que sai bem depois (14/05 pra devolucao de 19/04)');
 
   // b197.2: a AMB precisa passar a data — ela nao monta `criado_em`
   const AMB = fs.readFileSync(path.join(__dirname, '..', 'amb-devolucoes', 'app-AMB.js'), 'utf8');
@@ -98,6 +98,14 @@ const fn = BLING.slice(i, i + 13000);  // cresceu de novo (filtro direto)
   ok(/numeroLoja=' \+ encodeURIComponent\(orderIdStr\)/.test(fn),
      'o Bling filtra por numeroLoja: UMA chamada, sem paginar');
   ok(/via: 'filtro_direto'/.test(fn), '  marcando de onde veio o resultado');
+
+  // b198: o pedido mora em VARIOS campos — o dono mostrou a NF no Bling
+  ok(/\[nf\.numeroPedidoLoja, nf\.numeroLoja, nf\.numeroPedido\]/.test(fn),
+     'o pedido e procurado em varios campos: no caso real ele estava em "Numero loja virtual"');
+  ok(/o Bling ja filtrou por numeroLoja/.test(fn),
+     '  e sem nenhum bater, uso o que o filtro devolveu — ele nao traz nota de outro pedido');
+  ok(/refT \+ 60 \* 864e5/.test(fn),
+     'e a janela vai 60 dias pra frente: a devolucao era de 19/04 e a NF de 14/05');
   // b197.7: ordenar antes de escolher — a ordem do Bling nao e garantida
   ok(/\.sort\(\(a, b\) => String\(b\.dataEmissao/.test(fn),
      'o caminho direto ORDENA por dataEmissao antes de escolher');
