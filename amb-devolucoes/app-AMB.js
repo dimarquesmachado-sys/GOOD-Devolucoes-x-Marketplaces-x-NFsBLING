@@ -82,7 +82,7 @@ const criarMlBuscas = require('./lib-AMB/ml-buscas-AMB');
 const registrarIdentificar = require('./lib-AMB/identificar-AMB');
 const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 
-const VERSAO = 'AMB Devolucoes b203';
+const VERSAO = 'AMB Devolucoes b204';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -2091,15 +2091,30 @@ async function montarIndiceNFDevolucaoAMB(maxPaginas) {
 // foi exatamente o diagnostico que resolveu o caso do TikTok na GOOD.
 //
 // GET /amb/api/debug/achar-nf?pedido=1535470109716311&data=2026-05-10&k=ADMIN_KEY
-router.get('/api/debug/achar-nf', auth.requerLogin, async (req, res) => {
+router.get('/api/debug/achar-nf', (req, res, next) => {
+  // b203.1 (Codex): aceitar ?k=ADMIN_KEY, que e o que a doc da rota diz —
+  // e exigir ADMIN, nao qualquer login. Com `requerLogin` puro, a chave era
+  // ignorada e um estoquista logado veria dado de nota fiscal.
+  const chave = String(req.query.k || '').trim();
+  if (chave && process.env.ADMIN_KEY && chave === process.env.ADMIN_KEY) return next();
+  return auth.requerAdmin ? auth.requerAdmin(req, res, next) : auth.requerLogin(req, res, next);
+}, async (req, res) => {
   try {
     const pedido = String(req.query.pedido || '').trim();
     if (!pedido) return res.status(400).json({ ok: false, erro: 'passe ?pedido=' });
     const data = String(req.query.data || '').trim() || null;
 
-    const r = await ajudantes.buscarNFnoBlingPorOrderId(pedido, data, {
+    // b203.1 (Codex): `buscarNFnoBlingPorOrderId` NAO EXISTE nos ajudantes
+    // da AMB — ha ate um comentario no proprio arquivo avisando ("bug
+    // latente morto", b172). Eu chamei mesmo assim, aqui e no #124.
+    //
+    // A AMB tem a `buscarNFBlindada`, que ja faz o filtro direto por
+    // numeroLoja na FASE 0 dela — o mesmo caminho que resolveu o caso do
+    // TikTok na GOOD.
+    const r = await ajudantes.buscarNFBlindada({
+      orderId: pedido,
+      dataReferencia: data,
       maxPaginas: parseInt(req.query.paginas, 10) || 12,
-      paginasPorFatia: 2,
     });
 
     return res.json({
@@ -2107,21 +2122,19 @@ router.get('/api/debug/achar-nf', auth.requerLogin, async (req, res) => {
       empresa: 'amb',
       pedido,
       data_referencia: data,
-      achou: !!(r && r.match),
-      via: (r && r.via) || (r && r.match ? 'varredura' : null),
-      nf: (r && r.match) ? {
-        id: r.match.id, numero: r.match.numero,
-        numeroPedidoLoja: r.match.numeroPedidoLoja,
-        numeroLoja: r.match.numeroLoja,
-        data: r.match.dataEmissao || r.match.data,
-        chave: r.match.chaveAcesso,
+      // a blindada devolve { ok, via, nf, idNF, trace } — nao { match }
+      achou: !!(r && r.ok && (r.nf || r.idNF)),
+      via: (r && r.via) || null,
+      nf: (r && r.nf) ? {
+        id: r.nf.id || r.idNF, numero: r.nf.numero,
+        numeroPedidoLoja: r.nf.numeroPedidoLoja,
+        numeroLoja: r.nf.numeroLoja,
+        data: r.nf.dataEmissao || r.nf.data,
+        chave: r.nf.chaveAcesso,
       } : null,
-      varredura: {
-        notas_vistas: (r && r.totalScanned) || 0,
-        primeira_data: (r && r.primeiraDataVista) || null,
-        ultima_data: (r && r.ultimaDataVista) || null,
-      },
-      erro: (r && !r.ok) ? (r.error || ('HTTP ' + r.status)) : undefined,
+      // o `trace` dela conta o que cada FASE tentou — e o diagnostico
+      trace: (r && r.trace) || undefined,
+      tentado: (r && r.tentado) || undefined,
       leia: '`via: filtro_direto` = achou numa chamada. Se `achou:false` com poucas notas '
         + 'vistas, o filtro por numeroLoja nao devolveu nada — o pedido esta em outro campo '
         + 'no Bling. Abra a NF la e compare.',
@@ -2318,10 +2331,14 @@ router.get('/api/admin/sem-retorno', auth.requerLogin, async (req, res) => {
           // exatamente o que a janela por data veio evitar.
           //
           // Uso a mesma cascata do prazo: emissao > evento > captura.
-          ajudantes.buscarNFnoBlingPorOrderId(
-            item.pedido,
-            item.nf_emitida_em || item.cancelado_em || item.criado_no_mkt || item.criado_em || null,
-            { maxPaginas: 12, paginasPorFatia: 2, delayMs: 450 }),
+// b203.1 (Codex): a mesma funcao inexistente era chamada AQUI desde o
+          // #124 — entao a busca por pedido da AMB nunca funcionou, e o card
+          // dela seguia dizendo "sem NF vinculada".
+          ajudantes.buscarNFBlindada({
+            orderId: item.pedido,
+            dataReferencia: item.nf_emitida_em || item.cancelado_em || item.criado_no_mkt || null,
+            maxPaginas: 12,
+          }),
           // b197.4: o alcance tem que caber no PRAZO.
           //   12 paginas x 450ms + latencia = ~9,8s, dentro dos 14s
           //   2 paginas por fatia = 6 fatias de 20 dias = 120 dias
