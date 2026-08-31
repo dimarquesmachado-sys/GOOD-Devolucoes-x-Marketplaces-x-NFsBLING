@@ -82,7 +82,7 @@ const criarMlBuscas = require('./lib-AMB/ml-buscas-AMB');
 const registrarIdentificar = require('./lib-AMB/identificar-AMB');
 const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 
-const VERSAO = 'AMB Devolucoes b202';
+const VERSAO = 'AMB Devolucoes b210';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -2084,6 +2084,79 @@ async function montarIndiceNFDevolucaoAMB(maxPaginas) {
 // E o da AMB, e aceitar ?empresa=good deixaria o admin de uma ver os
 // dados da outra.
 // ============================================================
+// b203 - a rota de DIAGNOSTICO da busca de NF, que so existia na GOOD.
+//
+// O dono tentou usar na AMB e levou "rota nao existe neste modulo". Sem
+// ela, pra descobrir por que uma NF nao e achada aqui eu so chutaria — e
+// foi exatamente o diagnostico que resolveu o caso do TikTok na GOOD.
+//
+// GET /amb/api/debug/achar-nf?pedido=1535470109716311&data=2026-05-10&k=ADMIN_KEY
+router.get('/api/debug/achar-nf', (req, res, next) => {
+  // b203.1 (Codex): aceitar ?k=ADMIN_KEY, que e o que a doc da rota diz —
+  // e exigir ADMIN, nao qualquer login. Com `requerLogin` puro, a chave era
+  // ignorada e um estoquista logado veria dado de nota fiscal.
+  const chave = String(req.query.k || '').trim();
+  if (chave && process.env.ADMIN_KEY && chave === process.env.ADMIN_KEY) return next();
+  return auth.requerAdmin ? auth.requerAdmin(req, res, next) : auth.requerLogin(req, res, next);
+}, async (req, res) => {
+  try {
+    const pedido = String(req.query.pedido || '').trim();
+    if (!pedido) return res.status(400).json({ ok: false, erro: 'passe ?pedido=' });
+    const data = String(req.query.data || '').trim() || null;
+
+    // b203.1 (Codex): `buscarNFnoBlingPorOrderId` NAO EXISTE nos ajudantes
+    // da AMB — ha ate um comentario no proprio arquivo avisando ("bug
+    // latente morto", b172). Eu chamei mesmo assim, aqui e no #124.
+    //
+    // A AMB tem a `buscarNFBlindada`, que ja faz o filtro direto por
+    // numeroLoja na FASE 0 dela — o mesmo caminho que resolveu o caso do
+    // TikTok na GOOD.
+    const r = await ajudantes.buscarNFBlindada({
+      orderId: pedido,
+      dataReferencia: data,
+      // b203.2 (Codex): a blindada le `maxPaginasJanela` e `maxPaginasFundo`
+      // — `maxPaginas` ela IGNORA. Eu passava o nome errado e o ?paginas=
+      // nao tinha efeito nenhum.
+      maxPaginasJanela: parseInt(req.query.paginas, 10) || 12,
+      maxPaginasFundo: parseInt(req.query.paginas, 10) || 12,
+    });
+
+    return res.json({
+      ok: true,
+      empresa: 'amb',
+      pedido,
+      data_referencia: data,
+      // a blindada devolve { ok, via, nf, idNF, trace } — nao { match }
+      achou: !!(r && r.ok && (r.nf || r.idNF)),
+      via: (r && r.via) || null,
+      // b203.3 (Codex): mostrar o ID mesmo sem o detalhe. Corrigi isso no
+      // CARD e esqueci aqui — se a blindada acha o id e falha no detalhe,
+      // o diagnostico dizia `nf: null` e parecia que nao tinha achado.
+      id_achado: (r && (r.idNF || (r.nf && r.nf.id))) || undefined,
+      nf: (r && r.nf) ? {
+        id: r.nf.id || r.idNF, numero: r.nf.numero,
+        numeroPedidoLoja: r.nf.numeroPedidoLoja,
+        numeroLoja: r.nf.numeroLoja,
+        data: r.nf.dataEmissao || r.nf.data,
+        chave: r.nf.chaveAcesso,
+      } : null,
+      // o `trace` dela conta o que cada FASE tentou — e o diagnostico
+      trace: (r && r.trace) || undefined,
+      tentado: (r && r.tentado) || undefined,
+      // b203.2 (Codex): os `via` REAIS da blindada sao `nfe-numeroLoja`
+      // (fase 0, uma chamada), `nfe-janela-orderId` e `nfe-fundo-orderId`.
+      // Eu documentei `filtro_direto`, que e o nome que uso na GOOD — o
+      // dono leria a resposta procurando um valor que nunca aparece.
+      leia: '`via: nfe-numeroLoja` = achou numa chamada so (o melhor caso). '
+        + '`nfe-janela-orderId` ou `nfe-fundo-orderId` = precisou varrer. '
+        + 'Se `achou:false`, veja `tentado` e `trace`: eles contam o que cada fase fez. '
+        + 'Filtro por numeroLoja sem resultado = o pedido esta em outro campo no Bling.',
+    });
+  } catch (e) {
+    res.status(500).json({ ok: false, erro: String(e.message || e).slice(0, 300) });
+  }
+});
+
 router.get('/api/admin/sem-retorno', auth.requerLogin, async (req, res) => {
   try {
     const sb = db.cliente();
@@ -2223,6 +2296,11 @@ router.get('/api/admin/sem-retorno', auth.requerLogin, async (req, res) => {
           motivo: d.motivo_texto || d.motivo,
           dias_desde: diasDesde,
           prazo_base: baseOrigem,
+          // b203.2 (Codex): as datas de ORIGEM vao no item — a busca por
+          // pedido as usa pra montar a janela, e sem elas ia sempre null.
+          nf_emitida_em: d.nf_emitida_em || undefined,
+          cancelado_em: d.cancelado_em || undefined,
+          criado_no_mkt: d.criado_no_mkt || undefined,
           acao: podeCancelar ? 'cancelar_nf' : 'nf_devolucao',
           prazo_cancelamento: podeCancelar ? Math.max(0, 20 - diasDesde) : 0,
           classe: d.classe || undefined,
@@ -2253,6 +2331,13 @@ router.get('/api/admin/sem-retorno', auth.requerLogin, async (req, res) => {
         const sobra = Math.max(500, 8000 - (Date.now() - INICIO_BUSCA));
         const id = await Promise.race([
           nfp.resolverIdNFPorChave(item.nf_numero, item.nf_chave),
+          // b203.6 (Codex): SEM flag aqui. Ao remover a declaracao orfa deste
+          // laco eu deixei a ATRIBUICAO — ela escreveria numa variavel que
+          // nao existe mais, dentro de um setTimeout, onde o try nao pega:
+          // o processo podia cair.
+          //
+          // Este laco chama `resolverIdNFPorChave`, que nao aceita sinal de
+          // parada. Sem alguem pra avisar, a flag aqui nao teria uso.
           new Promise((ok) => setTimeout(() => ok(null), Math.min(5000, sobra))),
         ]);
         if (id) item.nf_id_bling = String(id);
@@ -2262,43 +2347,89 @@ router.get('/api/admin/sem-retorno', auth.requerLogin, async (req, res) => {
     // b196 - a mesma busca PELO PEDIDO da GOOD. Caso real: pedido do
     // TikTok sem numero e sem chave na captura (a API nao mandou), mas a
     // nota EXISTE no Bling. Sem isto o card fica so informativo.
+    // ============================================================
+    // BUSCA A NF PELO PEDIDO — pros casos sem numero e sem chave
+    // ------------------------------------------------------------
+    // Caso real: pedido do TikTok que aparecia "sem NF vinculada", mas a
+    // nota EXISTE no Bling (o dono abriu e mostrou). A captura veio sem
+    // numero e sem chave porque a API do marketplace nao mandou.
+    //
+    // Uso a `buscarNFBlindada` da AMB — `buscarNFnoBlingPorOrderId` NAO
+    // existe neste modulo, e eu chamei ela por engano do #124 ate o #129,
+    // entao esta busca NUNCA funcionou aqui.
+    //
+    // A blindada le `maxPaginasJanela`/`maxPaginasFundo` (nao `maxPaginas`),
+    // devolve { ok, via, nf, idNF, trace } (nao { match }), e aceita
+    // `parar()` pra desistir quando o chamador desiste.
+    // ============================================================
     for (const item of itens.filter((x) => !x.nf_numero && !x.nf_chave && !x.nf_id_bling && x.pedido).slice(0, 10)) {
       if (Date.now() - INICIO_BUSCA > 12000) break;
+
+      // a flag e DESTE laco: declaracao, atribuicao e uso no mesmo bloco.
+      // Ja errei isso duas vezes — declarei num laco e usei noutro, depois
+      // removi a declaracao e deixei a atribuicao orfa (que em strict mode
+      // derruba o processo, porque acontece dentro do setTimeout).
+      let desistiu = false;
+
       try {
+        // o prazo e o que SOBRA do orcamento da rota, nao um valor fixo
+        const prazo = Math.max(2000, Math.min(14000, 26000 - (Date.now() - INICIO_BUSCA)));
         const r = await Promise.race([
-          // b197.2 (Codex): a AMB nao monta `criado_em` no item — eu passava
-          // null e a busca virava varredura CEGA, do mais recente pra tras,
-          // exatamente o que a janela por data veio evitar.
-          //
-          // Uso a mesma cascata do prazo: emissao > evento > captura.
-          ajudantes.buscarNFnoBlingPorOrderId(
-            item.pedido,
-            item.nf_emitida_em || item.cancelado_em || item.criado_no_mkt || item.criado_em || null,
-            { maxPaginas: 12, paginasPorFatia: 2, delayMs: 450 }),
-          // b197.4: o alcance tem que caber no PRAZO.
-          //   12 paginas x 450ms + latencia = ~9,8s, dentro dos 14s
-          //   2 paginas por fatia = 6 fatias de 20 dias = 120 dias
-          // Com os 6 anteriores chegava a 40 dias — nao alcancava a venda
-          // antiga. Fatia de 20 dias tem ~880 notas na densidade da GOOD, e
-          // 2 paginas leem 200: pego as mais recentes de cada fatia, que e
-          // onde a nota costuma estar.
-          // b197.1 (Codex): 6 paginas cabem no prazo. Com 700ms entre
-          // paginas, 12 nao caberiam em 6s — as ultimas nunca chegariam a
-          // responder, e eu esperaria a toa.
-          // b197.6 (Codex): o prazo e o que SOBRA do orcamento da rota, nao 14s
-          // fixos. Se as buscas por chave/numero ja gastaram quase tudo, um
-          // item lento aqui estouraria o teto e a resposta demoraria.
-          new Promise((ok) => setTimeout(() => ok(null),
-            Math.max(2000, Math.min(14000, 26000 - (Date.now() - INICIO_BUSCA))))),
+          ajudantes.buscarNFBlindada({
+            parar: () => desistiu,
+            orderId: item.pedido,
+            // as datas vem do map acima; sem elas a blindada pula as fases
+            // de janela e so tenta o filtro direto
+            dataReferencia: item.nf_emitida_em || item.cancelado_em || item.criado_no_mkt || null,
+            maxPaginasJanela: 6,
+            maxPaginasFundo: 6,
+          }),
+          new Promise((ok) => setTimeout(() => { desistiu = true; ok(null); }, prazo)),
         ]);
-        const achada = (r && r.match) || (r && r.ok && r.nf) || null;
-        if (achada && achada.id) {
-          item.nf_id_bling = String(achada.id);
-          if (!item.nf_numero && achada.numero) item.nf_numero = String(achada.numero);
-          if (!item.nf_chave && achada.chaveAcesso) item.nf_chave = achada.chaveAcesso;
+
+        // ela pode achar o ID e falhar ao buscar o detalhe: { ok:true,
+        // idNF, nf:null }. O id sozinho ja serve pro link e pra emissao.
+        const achada = (r && r.ok && r.nf) || null;
+        const idAchado = (achada && achada.id) || (r && r.ok && r.idNF) || null;
+        if (idAchado) {
+          item.nf_id_bling = String(idAchado);
+          if (achada) {
+            if (!item.nf_numero && achada.numero) item.nf_numero = String(achada.numero);
+            if (!item.nf_chave && achada.chaveAcesso) item.nf_chave = achada.chaveAcesso;
+          }
           item.nf_achada_por = 'pedido';
         }
-      } catch (e) { /* segue sem a nota */ }
+      } catch (e) { /* segue sem a nota; o card continua so informativo */ }
+    }
+
+    // b203.7 (Codex): RECALCULAR a acao depois de enriquecer.
+    //
+    // A GOOD ja fazia isso desde o b188.1; a AMB nao — mais uma vez ela
+    // ficou pra tras.
+    //
+    // O prazo sai da chave da NF-e. Se a chave so apareceu AGORA (veio do
+    // Bling na busca acima), o item foi classificado com a data da
+    // devolucao, que nao autoriza cancelamento. Sem recalcular, um caso
+    // ainda cancelavel apareceria como "NF DE DEVOLUCAO" e o dono perderia
+    // o prazo de 20 dias.
+    for (const item of itens) {
+      const chave = String(item.nf_chave || '').replace(/\D/g, '');
+      // data exata manda sobre a chave, que so da o mes
+      if (chave.length !== 44 || item.prazo_base === 'chave_nfe'
+          || item.prazo_base === 'data_emissao') continue;
+      const aa = parseInt(chave.slice(2, 4), 10);
+      const mm = parseInt(chave.slice(4, 6), 10);
+      if (!(aa >= 0 && mm >= 1 && mm <= 12)) continue;
+      const dias = Math.floor((AGORA - Date.UTC(2000 + aa, mm - 1, 1)) / 864e5);
+      item.dias_desde = dias;
+      item.prazo_base = 'chave_nfe';
+      // as mesmas regras da classificacao original: quem voltou nao cancela,
+      // e o Magalu so cancela em `nf_sem_saida`
+      const podeAqui = !item.tem_devolucao_registrada
+        && (item.marketplace !== 'magalu' || item.classe === 'nf_sem_saida')
+        && dias <= 20;
+      item.acao = podeAqui ? 'cancelar_nf' : 'nf_devolucao';
+      item.prazo_cancelamento = podeAqui ? Math.max(0, 20 - dias) : 0;
     }
 
     itens.sort((a, b) => {
