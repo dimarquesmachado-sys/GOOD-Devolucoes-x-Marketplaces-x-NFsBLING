@@ -287,8 +287,22 @@ async function buscarNFnoBlingPorNumero(numeroNF, dataReferencia, opcoes = {}) {
       if (!alvo) continue;
       if (feitas > 0) await sleep(350);
       feitas++;
+      // b207 - A SERIE VEM NA CHAVE, entao filtro por ela tambem.
+      //
+      // O dono achou o caso: NF 637 serie 001 (a dele, de maio) e NF 637
+      // serie 003 (de agosto) sao notas DIFERENTES com o mesmo numero. A
+      // busca so por numero devolvia a mais recente — a errada — e minha
+      // checagem de chave recusava, deixando o caso sem vinculo.
+      //
+      // Com a serie no filtro, a busca ja vem certa. E se a nota da serie
+      // certa nao existir, o resultado vazio DIZ isso, em vez de trazer a
+      // outra e ser recusada depois.
+      const serieDaChave = String(opcoes.chave || '').replace(/\D/g, '').length === 44
+        ? String(String(opcoes.chave).replace(/\D/g, '').slice(22, 25)).replace(/^0+/, '')
+        : null;
       const urlDireta = 'https://api.bling.com.br/Api/v3/nfe?limite=20&pagina=1&tipo=1'
-        + '&numero=' + encodeURIComponent(alvo);
+        + '&numero=' + encodeURIComponent(alvo)
+        + (serieDaChave ? '&serie=' + encodeURIComponent(serieDaChave) : '');
       const rd = await chamarBling(urlDireta);
       const lista = (rd.ok && rd.data?.data) ? rd.data.data : [];
       const batem = lista.filter((nf) => {

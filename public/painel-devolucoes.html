@@ -1315,7 +1315,9 @@
               + '🔗 Abrir NF no Bling</a>'
             : '<div style="margin-top:8px;font-size:12px;color:#999;">'
               + (x.nf_numero
-                  ? 'NF ' + escapeHtml(String(x.nf_numero)) + ' não localizada no Bling'
+                  ? (x.nf_motivo_sem_vinculo
+                ? 'NF ' + escapeHtml(String(x.nf_numero)) + ': ' + escapeHtml(x.nf_motivo_sem_vinculo)
+                : 'NF ' + escapeHtml(String(x.nf_numero)) + ' não localizada no Bling')
                   : 'sem NF vinculada a este pedido')
               + '</div>';
 

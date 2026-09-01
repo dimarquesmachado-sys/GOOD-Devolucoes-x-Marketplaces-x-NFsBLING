@@ -104,7 +104,7 @@ const RAIZ = path.join(__dirname, '..');
   for (const [nome, rel] of [['GOOD', 'server.js'], ['AMB', 'amb-devolucoes/app-AMB.js']]) {
     const src = fs.readFileSync(path.join(RAIZ, rel), 'utf8');
     const i = src.indexOf("'/api/admin/sem-retorno'");
-    const rota = src.slice(i, i + 44000);   // a rota cresceu (b204.3)
+    const rota = src.slice(i, i + 48000);   // a rota cresceu (b207)   // a rota cresceu (b204.3)
     const iCache = rota.indexOf('vinculoCache.aplicar');
     const iFila = Math.min(
       ...['const comNumero =', 'const semVinculoAMB =']
@@ -224,10 +224,10 @@ const RAIZ = path.join(__dirname, '..');
                              ['AMB', 'amb-devolucoes/lib-AMB/admin-helpers-AMB.js']]) {
     const src = fs.readFileSync(path.join(RAIZ, rel), 'utf8');
     const i = src.indexOf('async function buscarNFnoBlingPorNumero');
-    const fn = src.slice(i, i + 6000);
+    const fn = src.slice(i, i + 9000);   // a funcao cresceu (b207)
     ok(/const candidatas = lista\.filter/.test(fn),
        nome + ': a varredura separa as candidatas...');
-    ok(/candidatas\s*\n?\s*\.filter\(nf =>/.test(fn),
+    ok(/const match = candidatas[\s\S]{0,80}\.filter\(nf =>/.test(fn),
        nome + '  ...e descarta as mortas antes de escolher');
     ok(/o caminho de\s*\n?\s*\/\/ reserva devolvia justamente a nota que o principal/.test(fn),
        nome + ': com o motivo — o filtro direto recusava e a varredura aceitava');

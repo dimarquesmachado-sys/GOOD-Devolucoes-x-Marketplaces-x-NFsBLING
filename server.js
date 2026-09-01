@@ -248,7 +248,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.98.0 (o diagnostico testa o caminho que o card usa)',
+    version: '4.99.0 (a busca filtra pela SERIE da chave)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -5782,7 +5782,7 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
       try {
         const r = await Promise.race([
           buscarNFnoBlingPorNumero(item.nf_numero, item.nf_emitida_em || item.criado_em || null,
-            { maxPaginas: 2 }),   // o filtro direto resolve; paginar e so a reserva
+            { maxPaginas: 2, chave: item.nf_chave }),   // o filtro direto resolve; paginar e so a reserva
           new Promise((ok) => setTimeout(() => ok(null), 4000)),
         ]);
         const achada = (r && r.match) || null;
@@ -5813,6 +5813,15 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
           if (!item.nf_chave && achada.chaveAcesso) item.nf_chave = achada.chaveAcesso;
           item.nf_achada_por = (r && r.via === 'filtro_direto_numero') ? 'numero' : 'numero_varredura';
           vinculoCache.guardar(item, item.nf_id_bling, 'numero', { chave: item.nf_chave, numero: item.nf_numero }, empresa, idCache);
+        } else if (r && r.ok !== false && item.nf_chave) {
+          // b207 - DIZER por que nao achou. A busca ja filtra pela serie da
+          // chave, entao "nao achou" aqui significa: nao ha nota viva com
+          // esse numero NESTA serie. Pode ter sido cancelada, ou nunca ter
+          // sido emitida no Bling.
+          const ch = String(item.nf_chave).replace(/\D/g, '');
+          item.nf_motivo_sem_vinculo = 'nao ha NF viva com o numero '
+            + String(item.nf_numero) + ' na serie ' + ch.slice(22, 25)
+            + ' — pode ter sido cancelada, ou nao existir no Bling';
         }
         // b204.6 (Codex): so adio quando o Bling RESPONDEU e nao achou.
             // Erro (429/500) ou prazo estourado devolvem `r` nulo — isso e

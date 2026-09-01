@@ -85,7 +85,7 @@ const criarMlBuscas = require('./lib-AMB/ml-buscas-AMB');
 const registrarIdentificar = require('./lib-AMB/identificar-AMB');
 const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 
-const VERSAO = 'AMB Devolucoes b232';
+const VERSAO = 'AMB Devolucoes b233';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -2521,7 +2521,7 @@ router.get('/api/admin/sem-retorno', auth.requerLogin, async (req, res) => {
       try {
         const r = await Promise.race([
           ajudantes.buscarNFnoBlingPorNumero(item.nf_numero,
-            item.nf_emitida_em || item.criado_no_mkt || null, { maxPaginas: 2 }),
+            item.nf_emitida_em || item.criado_no_mkt || null, { maxPaginas: 2, chave: item.nf_chave }),
           new Promise((ok) => setTimeout(() => ok(null), 4000)),
         ]);
         const achada = (r && r.match) || null;
@@ -2551,6 +2551,20 @@ router.get('/api/admin/sem-retorno', auth.requerLogin, async (req, res) => {
           item.nf_id_bling = String(achada.id);
           if (!item.nf_chave && achada.chaveAcesso) item.nf_chave = achada.chaveAcesso;
           item.nf_achada_por = 'numero';
+          // b207: esta fase perdeu a guarda quando reordenei os lacos —
+          // sem ela, a busca era refeita a cada refresh.
+          vinculoCache.guardar(item, item.nf_id_bling, 'numero',
+            { chave: item.nf_chave, numero: item.nf_numero }, 'amb', idCache);
+          item.nf_achada_por = 'numero';
+        } else if (r && r.ok !== false && item.nf_chave) {
+          // b207 - DIZER por que nao achou. A busca ja filtra pela serie da
+          // chave, entao "nao achou" aqui significa: nao ha nota viva com
+          // esse numero NESTA serie. Pode ter sido cancelada, ou nunca ter
+          // sido emitida no Bling.
+          const ch = String(item.nf_chave).replace(/\D/g, '');
+          item.nf_motivo_sem_vinculo = 'nao ha NF viva com o numero '
+            + String(item.nf_numero) + ' na serie ' + ch.slice(22, 25)
+            + ' — pode ter sido cancelada, ou nao existir no Bling';
           vinculoCache.guardar(item, item.nf_id_bling, 'numero', { chave: item.nf_chave, numero: item.nf_numero }, 'amb', idCache);
         }
         // b204.6 (Codex): so adio quando o Bling RESPONDEU e nao achou.
