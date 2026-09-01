@@ -146,8 +146,10 @@ const PAINEL = fs.readFileSync(path.join(RAIZ, 'public', 'painel-devolucoes.html
      '  usando a funcao que ja existia pra isso');
   ok(/\.slice\(0, 10\)/.test(rota),
      '  com teto baixo: cada uma custa uma varredura no Bling');
-  ok(/Date\.now\(\) - INICIO_BUSCA > 12000/.test(rota),
-     '  e teto de tempo proprio, mais folgado que o das outras');
+  // b204.5: o teto era 12s e comia o da fase seguinte (a da CHAVE, que
+  // pagina). Agora as tres fases cabem no mesmo orcamento.
+  ok(/Date\.now\(\) - INICIO_BUSCA > 8000/.test(rota),
+     '  com teto que deixa sobrar tempo pra fase da chave');
   ok(/nf_achada_por = 'pedido'/.test(rota),
      'marcando de onde veio: o casamento por pedido e menos exato que por chave');
 

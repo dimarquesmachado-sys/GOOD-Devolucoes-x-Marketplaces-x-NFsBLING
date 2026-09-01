@@ -247,7 +247,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.96.0 (rodizio: quem falha nao trava a fila pra sempre)',
+    version: '4.96.1 (as tres fases cabem no orcamento, e toda falha e marcada)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -5829,7 +5829,10 @@ for (const item of semNota) {
       // b204.1: a identidade de ANTES do enriquecimento — o refresh
       // seguinte le a linha crua e procura por ela.
       const idCache = vinculoCache.chaveDe(item, empresa);
-      if (Date.now() - INICIO_BUSCA > 12000) break;   // teto proprio, mais folgado
+      // b204.5 (Codex): corte em 8s, nao 12. Esta fase ficava entre a do
+      // NUMERO e a da CHAVE e podia comer 14s — depois disso a da chave,
+      // com corte em 8s, saia na hora sem tentar nada.
+      if (Date.now() - INICIO_BUSCA > 8000) break;
       try {
         const r = await Promise.race([
           // b197.2: a data da EMISSAO, quando existe, e melhor que a do
@@ -5865,6 +5868,7 @@ for (const item of semNota) {
           item.nf_achada_por = 'pedido';
           vinculoCache.guardar(item, item.nf_id_bling, 'pedido', { chave: item.nf_chave, numero: item.nf_numero }, empresa, idCache);   // pra tela dizer de onde veio
         }
+        if (!item.nf_id_bling) vinculoCache.marcarFalha(item, empresa);
       } catch (e) { /* segue sem a nota; o card continua so informativo */ }
     }
 

@@ -185,8 +185,13 @@ const RAIZ = path.join(__dirname, '..');
        nome + ': a fase da chave pula quem o numero ja vinculou');
     ok(/vinculoCache\.fila\(itens, /.test(src),
        nome + ': as filas usam o rodizio, nao um corte fixo');
-    ok(/vinculoCache\.marcarFalha/.test(src),
-       nome + ': e marca a falha, pra dar a vez a outro na proxima');
+    // b204.5: TODA fase que pode falhar marca — senao o item volta pra
+    // fila na proxima e ocupa a vaga de novo
+    const marcas = (src.match(/vinculoCache\.marcarFalha/g) || []).length;
+    ok(marcas >= 2,
+       nome + ': as fases marcam a falha, pra dar a vez a outro (achei ' + marcas + ')');
+    ok(/INICIO_BUSCA > 8000/.test(src),
+       nome + ': a fase do PEDIDO corta em 8s — comia 14 e a da CHAVE nao rodava');
   }
 
   for (const [nome, rel] of [['GOOD', 'lib/bling.js'],

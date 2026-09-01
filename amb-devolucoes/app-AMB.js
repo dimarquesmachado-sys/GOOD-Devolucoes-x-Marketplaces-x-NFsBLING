@@ -84,7 +84,7 @@ const criarMlBuscas = require('./lib-AMB/ml-buscas-AMB');
 const registrarIdentificar = require('./lib-AMB/identificar-AMB');
 const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 
-const VERSAO = 'AMB Devolucoes b226';
+const VERSAO = 'AMB Devolucoes b227';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -2578,7 +2578,10 @@ router.get('/api/admin/sem-retorno', auth.requerLogin, async (req, res) => {
       // b204.1: a identidade de ANTES do enriquecimento — o refresh
       // seguinte le a linha crua e procura por ela.
       const idCache = vinculoCache.chaveDe(item, 'amb');
-      if (Date.now() - INICIO_BUSCA > 12000) break;
+      // b204.5 (Codex): corte em 8s, nao 12. Esta fase ficava entre a do
+      // NUMERO e a da CHAVE e podia comer 14s — depois disso a da chave,
+      // com corte em 8s, saia na hora sem tentar nada.
+      if (Date.now() - INICIO_BUSCA > 8000) break;
 
       // a flag e DESTE laco: declaracao, atribuicao e uso no mesmo bloco.
       // Ja errei isso duas vezes — declarei num laco e usei noutro, depois
@@ -2615,6 +2618,7 @@ router.get('/api/admin/sem-retorno', auth.requerLogin, async (req, res) => {
           item.nf_achada_por = 'pedido';
           vinculoCache.guardar(item, item.nf_id_bling, 'pedido', { chave: item.nf_chave, numero: item.nf_numero }, 'amb', idCache);
         }
+        if (!item.nf_id_bling) vinculoCache.marcarFalha(item, 'amb');
       } catch (e) { /* segue sem a nota; o card continua so informativo */ }
     }
 
