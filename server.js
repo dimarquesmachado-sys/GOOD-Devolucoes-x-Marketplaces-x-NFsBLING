@@ -249,7 +249,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '5.2.1 (loja como objeto; varredura devolve candidatas; serie em toda fase)',
+    version: '5.2.2 (acumula candidatas entre paginas; aprende sem chave)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -5832,7 +5832,13 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
           // [stated] "cada marketplace com operação fullfilment vai ter 1
           // série específica" — entao o sistema aprende os numeros sozinho,
           // em vez de eu ficar pedindo.
-          confrontar.aprender(empresa, confrontar.serieDaChave(escolhida.chaveAcesso), escolhida);
+          // b210.2 (Codex): a listagem pode vir SEM chave, e ai a serie
+          // vinha null e o mapa nunca aprendia. A candidata costuma trazer
+          // `serie` direto — uso ela como reserva.
+          confrontar.aprender(empresa,
+            confrontar.serieDaChave(escolhida.chaveAcesso)
+              || (escolhida.serie != null ? String(escolhida.serie) : null),
+            escolhida);
           const serieDela = confrontar.serieDaChave(item.nf_chave);
           if (serieDela) {
             item.nf_serie = serieDela;

@@ -86,7 +86,7 @@ const criarMlBuscas = require('./lib-AMB/ml-buscas-AMB');
 const registrarIdentificar = require('./lib-AMB/identificar-AMB');
 const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 
-const VERSAO = 'AMB Devolucoes b237';
+const VERSAO = 'AMB Devolucoes b238';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -2571,7 +2571,13 @@ router.get('/api/admin/sem-retorno', auth.requerLogin, async (req, res) => {
           // [stated] "cada marketplace com operação fullfilment vai ter 1
           // série específica" — entao o sistema aprende os numeros sozinho,
           // em vez de eu ficar pedindo.
-          confrontar.aprender('amb', confrontar.serieDaChave(escolhida.chaveAcesso), escolhida);
+          // b210.2 (Codex): a listagem pode vir SEM chave, e ai a serie
+          // vinha null e o mapa nunca aprendia. A candidata costuma trazer
+          // `serie` direto — uso ela como reserva.
+          confrontar.aprender('amb',
+            confrontar.serieDaChave(escolhida.chaveAcesso)
+              || (escolhida.serie != null ? String(escolhida.serie) : null),
+            escolhida);
           const serieDela = confrontar.serieDaChave(item.nf_chave);
           if (serieDela) {
             item.nf_serie = serieDela;

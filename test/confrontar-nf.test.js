@@ -219,6 +219,34 @@ const CHAVE_S3 = '35260864289091000100550030000006371448079669';   // serie 003,
   }
 }
 
+// ── b210.2: acumular entre paginas, e aprender sem chave ────────────
+{
+  for (const [nome, rel] of [['GOOD', 'lib/bling.js'],
+                             ['AMB', 'amb-devolucoes/lib-AMB/admin-helpers-AMB.js']]) {
+    const src = fs.readFileSync(path.join(RAIZ, rel), 'utf8');
+    const i = src.indexOf('async function buscarNFnoBlingPorNumero');
+    const fn = src.slice(i, i + 9000);
+    ok(/const acumuladas = \[\];/.test(fn),
+       nome + ': junta as candidatas de TODAS as paginas');
+    ok(/candidatas: todas/.test(fn),
+       nome + '  e entrega a lista completa no fim');
+    ok(/retornar\s*\n?\s*\/\/ na primeira que casa expunha uma candidata so/.test(fn),
+       nome + ': com o motivo — parar na 1a pagina escondia as outras');
+  }
+
+  // o mapa aprende mesmo quando a listagem omite a chave
+  C._APRENDIDO.clear();
+  C.aprender('good', '5', { loja: 'Amazon FBA' });
+  ok(C.mapaAprendido().length === 1,
+     'aprende pela `serie` da nota quando nao ha chave pra extrair');
+
+  for (const [nome, rel] of [['GOOD', 'server.js'], ['AMB', 'amb-devolucoes/app-AMB.js']]) {
+    const src = fs.readFileSync(path.join(RAIZ, rel), 'utf8');
+    ok(/escolhida\.serie != null \? String\(escolhida\.serie\) : null/.test(src),
+       nome + ': usa a serie da candidata como reserva');
+  }
+}
+
 console.log('');
 console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
 process.exit(falhas ? 1 : 0);

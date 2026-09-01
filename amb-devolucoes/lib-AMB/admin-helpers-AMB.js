@@ -191,7 +191,12 @@ async function buscarNFBlindada(opts = {}) {
       if (m) return { ok: true, match: m, totalScanned, primeiraDataVista, ultimaDataVista };
       if (lista.length < 100) break;
     }
-    return { ok: true, match: null, totalScanned, primeiraDataVista, ultimaDataVista };
+    // b210.2: no fim, entrego tudo que juntei — a escada decide, e se houver
+  // mais de uma o dono escolhe.
+  const todas = acumuladas.sort((a, b) =>
+    String(b.dataEmissao || '').localeCompare(String(a.dataEmissao || '')));
+  return { ok: true, match: todas[0] || null, candidatas: todas,
+    totalScanned, primeiraDataVista, ultimaDataVista };
   }
   for (const oid of orderIds) {
     const r = await varreduraFundo(oid, opts.maxPaginasFundo || 15);
@@ -357,6 +362,7 @@ async function buscarNFnoBlingPorNumero(numeroNF, dataReferencia, opcoes = {}) {
   let primeiraDataVista = null;
   let ultimaDataVista = null;
 
+  const acumuladas = [];   // b210.2: candidatas de TODAS as paginas
   for (let pagina = 1; pagina <= MAX_PAGINAS; pagina++) {
     if (pagina > 1) await sleep(DELAY_MS);
     const url = `https://api.bling.com.br/Api/v3/nfe?limite=${LIMITE_PAGINA}&pagina=${pagina}&tipo=1`;
@@ -398,9 +404,17 @@ async function buscarNFnoBlingPorNumero(numeroNF, dataReferencia, opcoes = {}) {
     const vivasVarredura = candidatas
       .filter(nf => ![2, 9].includes(Number(nf && nf.situacao)))
       .sort((a, b) => String(b.dataEmissao || '').localeCompare(String(a.dataEmissao || '')));
+    // b210.2 (Codex): ACUMULAR entre as paginas, nao parar na primeira.
+    //
+    // Notas com o mesmo numero podem estar em paginas diferentes, e retornar
+    // na primeira que casa expunha uma candidata so — o chamador entao
+    // vinculava por eliminacao sem saber que havia outra. Junto o que
+    // aparecer e decido no fim.
+    acumuladas.push(...vivasVarredura);
+
     const match = vivasVarredura[0];
 
-    if (match) {
+    if (match && pagina >= MAX_PAGINAS) {
       console.log(`[Bling] NF ENCONTRADA pag ${pagina}: numero=${match.numero} id=${match.id}`);
       return { ok: true, match, candidatas: vivasVarredura, pagina, totalScanned, primeiraDataVista, ultimaDataVista };
     }
@@ -413,7 +427,12 @@ async function buscarNFnoBlingPorNumero(numeroNF, dataReferencia, opcoes = {}) {
     if (lista.length < LIMITE_PAGINA) break;
   }
 
-  return { ok: true, match: null, totalScanned, primeiraDataVista, ultimaDataVista };
+  // b210.2: no fim, entrego tudo que juntei — a escada decide, e se houver
+  // mais de uma o dono escolhe.
+  const todas = acumuladas.sort((a, b) =>
+    String(b.dataEmissao || '').localeCompare(String(a.dataEmissao || '')));
+  return { ok: true, match: todas[0] || null, candidatas: todas,
+    totalScanned, primeiraDataVista, ultimaDataVista };
 }
 
 return { buscarNFnoML, buscarNFBlindada, classificarMotivoDevolucao, buscarNFnoBlingPorNumero };
