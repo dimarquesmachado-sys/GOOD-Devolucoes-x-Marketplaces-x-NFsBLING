@@ -126,7 +126,7 @@ const RAIZ = path.join(__dirname, '..');
        nome + ': TODA fase que acha guarda no cache (achei ' + semGuarda.length + ' sem)');
 
     // e a fase do NUMERO (barata) roda antes da CHAVE (que pagina)
-    const iNum = rota.search(/for \(const item of (comNumero|itens\.filter\(\(x\) => !x\.nf_id_bling && x\.nf_numero)/);
+    const iNum = rota.search(/for \(const item of (comNumero|vinculoCache\.fila\(itens, '?\w+'?, 25)/);
     const iChave = rota.search(/for \(const item of (PARA_BUSCAR|filaAMB)\)/);
     ok(iNum > 0 && iChave > 0 && iNum < iChave,
        nome + ': a fase do NUMERO roda antes da CHAVE — 1 chamada contra paginacao');
@@ -142,6 +142,58 @@ const RAIZ = path.join(__dirname, '..');
     const src = fs.readFileSync(path.join(RAIZ, rel), 'utf8');
     ok(/if \(feitas > 0\) await sleep\(350\)/.test(src),
        nome + ': a helper pausa entre as proprias chamadas (padded, limpo, varredura)');
+  }
+}
+
+// ── b204.4: rodizio — quem falha nao trava a fila ───────────────────
+//
+// Sem isto, um caso que falha SEMPRE (nota cancelada, serie divergente)
+// ocupa uma das 25 vagas em todo refresh, e os casos depois da posicao 25
+// nunca sao tentados. O painel fica preso nos mesmos primeiros pra sempre.
+{
+  c._CACHE.clear();
+  const itens = [...Array(30)].map((_, i) => ({ nf_numero: String(1000 + i) }));
+
+  const r1 = c.fila(itens, 'good', 25, (x) => x.nf_numero);
+  ok(r1.length === 25, 'primeira rodada: tenta os 25 primeiros');
+
+  r1.forEach((x) => c.marcarFalha(x, 'good'));
+  const r2 = c.fila(itens, 'good', 25, (x) => x.nf_numero);
+  ok(r2.length === 5, 'os 25 que falharam saem da frente');
+  ok(r2[0].nf_numero === '1025',
+     '  e os que nunca foram tentados passam — sem isto ficariam pra sempre atras');
+
+  ok(c.esperando({ nf_numero: '1000' }, 'good') === true,
+     'quem falhou esta so ESPERANDO, nao descartado');
+  ok(c.esperando({ nf_numero: '1000' }, 'amb') === false,
+     '  e a espera tambem e por empresa');
+
+  // resolvido nao volta pra fila
+  c.guardar({ nf_numero: '1025' }, 'ID', 'numero', {}, 'good');
+  const r3 = c.fila(itens.map((x) => ({ ...x })), 'good', 25, (x) => x.nf_numero);
+  const aplicados = itens.map((x) => ({ ...x }));
+  c.aplicar(aplicados, 'good');
+  ok(aplicados.find((x) => x.nf_numero === '1025').nf_id_bling === 'ID',
+     'e o que ja resolveu volta do cache, sem ocupar vaga');
+}
+
+// ── b204.4: a fase da CHAVE nao repete o que o numero resolveu ──────
+{
+  for (const [nome, rel] of [['GOOD', 'server.js'], ['AMB', 'amb-devolucoes/app-AMB.js']]) {
+    const src = fs.readFileSync(path.join(RAIZ, rel), 'utf8');
+    ok(/PULAR quem ja foi resolvido[\s\S]{0,400}if \(item\.nf_id_bling\) continue;/.test(src),
+       nome + ': a fase da chave pula quem o numero ja vinculou');
+    ok(/vinculoCache\.fila\(itens, /.test(src),
+       nome + ': as filas usam o rodizio, nao um corte fixo');
+    ok(/vinculoCache\.marcarFalha/.test(src),
+       nome + ': e marca a falha, pra dar a vez a outro na proxima');
+  }
+
+  for (const [nome, rel] of [['GOOD', 'lib/bling.js'],
+                             ['AMB', 'amb-devolucoes/lib-AMB/admin-helpers-AMB.js']]) {
+    const src = fs.readFileSync(path.join(RAIZ, rel), 'utf8');
+    ok(/pausa ANTES de entrar na varredura/.test(src),
+       nome + ': pausa antes da varredura — eram 4 requests numa janela de 1s');
   }
 }
 

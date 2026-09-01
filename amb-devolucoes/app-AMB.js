@@ -84,7 +84,7 @@ const criarMlBuscas = require('./lib-AMB/ml-buscas-AMB');
 const registrarIdentificar = require('./lib-AMB/identificar-AMB');
 const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 
-const VERSAO = 'AMB Devolucoes b225';
+const VERSAO = 'AMB Devolucoes b226';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -2482,7 +2482,7 @@ router.get('/api/admin/sem-retorno', auth.requerLogin, async (req, res) => {
 
 
     let buscadas = 0;
-    for (const item of itens.filter((x) => !x.nf_id_bling && x.nf_numero).slice(0, 25)) {
+    for (const item of vinculoCache.fila(itens, 'amb', 25, (x) => x.nf_numero)) {
       // b204.1: a identidade de ANTES do enriquecimento — o refresh
       // seguinte le a linha crua e procura por ela.
       const idCache = vinculoCache.chaveDe(item, 'amb');
@@ -2528,6 +2528,7 @@ router.get('/api/admin/sem-retorno', auth.requerLogin, async (req, res) => {
           item.nf_achada_por = 'numero';
           vinculoCache.guardar(item, item.nf_id_bling, 'numero', { chave: item.nf_chave, numero: item.nf_numero }, 'amb', idCache);
         }
+        if (!item.nf_id_bling) vinculoCache.marcarFalha(item, 'amb');
       } catch (e) { /* segue pros caminhos abaixo */ }
     }
 
@@ -2536,6 +2537,11 @@ router.get('/api/admin/sem-retorno', auth.requerLogin, async (req, res) => {
       .concat(semVinculoAMB.filter((x) => x.marketplace !== 'magalu').slice(0, 10));
 
     for (const item of filaAMB) {
+      // b204.4 (Codex): PULAR quem ja foi resolvido. A lista foi montada
+      // ANTES da fase do numero, entao pode conter itens que ela ja
+      // vinculou — e `resolverIdNFPorChave` PAGINA, gastando o orcamento
+      // dos que realmente precisam.
+      if (item.nf_id_bling) continue;
       // b204.1: a identidade de ANTES do enriquecimento — o refresh
       // seguinte le a linha crua e procura por ela.
       const idCache = vinculoCache.chaveDe(item, 'amb');
@@ -2568,7 +2574,7 @@ router.get('/api/admin/sem-retorno', auth.requerLogin, async (req, res) => {
       } catch (e) { /* segue sem o link; o numero da NF esta no card */ }
     }
 
-    for (const item of itens.filter((x) => !x.nf_numero && !x.nf_chave && !x.nf_id_bling && x.pedido).slice(0, 10)) {
+    for (const item of vinculoCache.fila(itens, 'amb', 10, (x) => !x.nf_numero && !x.nf_chave && x.pedido)) {
       // b204.1: a identidade de ANTES do enriquecimento — o refresh
       // seguinte le a linha crua e procura por ela.
       const idCache = vinculoCache.chaveDe(item, 'amb');

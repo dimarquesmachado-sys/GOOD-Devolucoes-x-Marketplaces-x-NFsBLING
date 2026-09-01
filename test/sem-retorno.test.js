@@ -133,9 +133,10 @@ const PAINEL = fs.readFileSync(path.join(RAIZ, 'public', 'painel-devolucoes.html
   // b202: o filtro DIRETO vale pra todos, e roda PRIMEIRO
   // b203 (correcao DELE): pela NOTA primeiro. O pedido pode nao existir —
   // XML do Full importado nao cria pedido no Bling — e a nota sempre existe.
-  ok(/const comNumero = itens\.filter\(\(x\) => !x\.nf_id_bling && x\.nf_numero\)/.test(rota),
+  // b204.4: as filas passaram a usar o rodizio do cache
+  ok(/const comNumero = vinculoCache\.fila\(itens, empresa, 25, \(x\) => x\.nf_numero\)/.test(rota),
      'quem tem NUMERO de nota e buscado pela NOTA, que e a ponta firme');
-  ok(/const semNota = itens\.filter\(\(x\) => !x\.nf_id_bling && !x\.nf_numero && x\.pedido\)/.test(rota),
+  ok(/const semNota = vinculoCache\.fila\(itens, empresa, 25, \(x\) => !x\.nf_numero && x\.pedido\)/.test(rota),
      '  e a busca pelo PEDIDO fica pros que vieram SEM numero (o caso do TikTok)');
   ok(rota.indexOf('for (const item of semNota)') < rota.indexOf('for (const item of PARA_BUSCAR)'),
      '  e roda ANTES da busca por chave: o direto resolve em 1 chamada, a outra pagina');

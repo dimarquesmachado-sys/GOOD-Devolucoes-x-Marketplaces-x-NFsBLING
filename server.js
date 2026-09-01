@@ -247,7 +247,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.95.3 (ritmo dentro da helper; toda fase guarda; numero antes da chave)',
+    version: '4.96.0 (rodizio: quem falha nao trava a fila pra sempre)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -5752,8 +5752,8 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
     //   3. busca por chave, paginando (plano B)
 
 
-    const comNumero = itens.filter((x) => !x.nf_id_bling && x.nf_numero).slice(0, 25);
-    const semNota = itens.filter((x) => !x.nf_id_bling && !x.nf_numero && x.pedido).slice(0, 25);
+    const comNumero = vinculoCache.fila(itens, empresa, 25, (x) => x.nf_numero);
+    const semNota = vinculoCache.fila(itens, empresa, 25, (x) => !x.nf_numero && x.pedido);
 
 
 
@@ -5810,6 +5810,7 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
           item.nf_achada_por = (r && r.via === 'filtro_direto_numero') ? 'numero' : 'numero_varredura';
           vinculoCache.guardar(item, item.nf_id_bling, 'numero', { chave: item.nf_chave, numero: item.nf_numero }, empresa, idCache);
         }
+        if (!item.nf_id_bling) vinculoCache.marcarFalha(item, empresa);
       } catch (e) { /* cai nos caminhos abaixo */ }
     }
 
@@ -5869,6 +5870,11 @@ for (const item of semNota) {
 
     // a busca por CHAVE, pro que o filtro direto nao resolveu
     for (const item of PARA_BUSCAR) {
+      // b204.4 (Codex): PULAR quem ja foi resolvido. A lista foi montada
+      // ANTES da fase do numero, entao pode conter itens que ela ja
+      // vinculou — e `resolverIdNFPorChave` PAGINA, gastando o orcamento
+      // dos que realmente precisam.
+      if (item.nf_id_bling) continue;
       // b204.1: a identidade de ANTES do enriquecimento — o refresh
       // seguinte le a linha crua e procura por ela.
       const idCache = vinculoCache.chaveDe(item, empresa);
