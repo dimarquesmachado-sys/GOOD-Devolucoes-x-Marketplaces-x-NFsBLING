@@ -1344,10 +1344,16 @@ async function carregarSemRetorno() {
 
         // b189 - se o Magalu falhou, a lista PARECE completa e nao esta.
         // Silencio aqui esconderia os R$ 12 mil que a outra conversa mediu.
+        // b205 - BUG NOSSO tem cara diferente de falha do marketplace.
+        //
+        // O Magalu ficou dias sem aparecer aqui porque um ReferenceError
+        // virava "magalu_erro" e a tela dizia "falha do Magalu". O dono
+        // esperava passar; nunca ia passar.
+        const ehBugNosso = /ERRO NO NOSSO CODIGO/.test(String(d.magalu_erro || ''));
         const avisoMagalu = d.magalu_erro
           ? '<div style="margin-bottom:10px;padding:10px;border-radius:8px;background:#ffebee;'
             + 'border:2px solid #c62828;color:#b71c1c;font-weight:700;">'
-            + '⚠️ Os casos do Magalu NÃO entraram nesta lista: ' + escapeHtml(String(d.magalu_erro))
+            + (ehBugNosso ? '🐛 BUG NO SISTEMA — recarregar não resolve: ' : '⚠️ Os casos do Magalu NÃO entraram nesta lista: ') + escapeHtml(String(d.magalu_erro))
             + '<div style="font-weight:400;margin-top:4px;font-size:13px;">'
             + 'O que aparece abaixo está incompleto.</div></div>'
           : '';

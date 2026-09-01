@@ -79,6 +79,7 @@ const espreita = require('./lib/magalu-espreita')({ chamarMagalu: magalu.chamarM
 const devCapturadas = require('./lib/devolucoes-capturadas');   // v4.63
 const tiktokPonte = require('./lib/tiktok-ponte');              // v4.66
 const tiktokDev = require('./lib/tiktok-devolucoes');           // v4.66
+const erroCodigo = require('./lib/erro-de-codigo');   // b205 - bug meu nao e falha do marketplace
 const vinculoCache = require('./lib/vinculo-nf-cache');   // b204 - vinculo NF ja achado
 const marcadores = require('./lib/marcadores-estornada');   // b200 - peca unica dos marcadores
 // b201 - `magaluCancelados` NUNCA foi importado nesta empresa.
@@ -247,7 +248,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.96.4 (o pedido confere a chave; o numero nao identifica sozinho)',
+    version: '4.97.0 (bug no codigo aparece como bug, nao como falha do marketplace)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -5400,7 +5401,12 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
       if (rm.ok) magaluItens = rm.itens;
       else magaluErro = rm.erro;
     } catch (e) {
-      magaluErro = String(e.message || e).slice(0, 150);
+      // b205 - o erro na tela DIZ se e bug nosso.
+      //
+      // Foi assim que o Magalu ficou 3 dias sem aparecer na GOOD: um
+      // ReferenceError virava "magalu_erro" e parecia falha da ponte deles.
+      erroCodigo.registrar(e, 'magalu-cancelados');
+      magaluErro = erroCodigo.paraTela(e, 'magalu');
     }
 
     const pedidosMagalu = magaluItens.map((m) => m.pedido).filter(Boolean);
@@ -6048,7 +6054,10 @@ item.nf_id_bling = String(achada.id);
         + 'O deposito e o de DEFEITO — nao entra no estoque vendavel, porque a mercadoria nunca chegou.',
     });
   } catch (e) {
-    return res.status(500).json({ ok: false, erro: String(e.message || e).slice(0, 200) });
+    // b205: se o erro for BUG nosso, a resposta DIZ isso — nao adianta o
+    // dono esperar nem recarregar.
+    erroCodigo.registrar(e, 'sem-retorno');
+    return res.status(500).json({ ok: false, erro: erroCodigo.paraTela(e, 'sem-retorno') });
   }
 });
 
