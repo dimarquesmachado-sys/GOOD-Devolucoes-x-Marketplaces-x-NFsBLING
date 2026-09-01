@@ -191,12 +191,10 @@ async function buscarNFBlindada(opts = {}) {
       if (m) return { ok: true, match: m, totalScanned, primeiraDataVista, ultimaDataVista };
       if (lista.length < 100) break;
     }
-    // b210.2: no fim, entrego tudo que juntei — a escada decide, e se houver
-  // mais de uma o dono escolhe.
-  const todas = acumuladas.sort((a, b) =>
-    String(b.dataEmissao || '').localeCompare(String(a.dataEmissao || '')));
-  return { ok: true, match: todas[0] || null, candidatas: todas,
-    totalScanned, primeiraDataVista, ultimaDataVista };
+    // b210.3 (Codex): esta e a varreduraFundo, que NAO tem `acumuladas` —
+    // meu retorno acumulado entrou aqui por engano e daria ReferenceError,
+    // derrubando a identificacao inteira da AMB quando as fases 0-2 falham.
+    return { ok: true, match: null, totalScanned, primeiraDataVista, ultimaDataVista };
   }
   for (const oid of orderIds) {
     const r = await varreduraFundo(oid, opts.maxPaginasFundo || 15);
@@ -416,7 +414,16 @@ async function buscarNFnoBlingPorNumero(numeroNF, dataReferencia, opcoes = {}) {
 
     if (match && pagina >= MAX_PAGINAS) {
       console.log(`[Bling] NF ENCONTRADA pag ${pagina}: numero=${match.numero} id=${match.id}`);
-      return { ok: true, match, candidatas: vivasVarredura, pagina, totalScanned, primeiraDataVista, ultimaDataVista };
+      // b210.3 (Codex): entrego o ACUMULADO, nao so a pagina atual.
+      //
+      // No limite de paginas eu devolvia `vivasVarredura` — as candidatas
+      // desta pagina — e jogava fora as que achei nas anteriores. O
+      // chamador entao via uma so e vinculava por eliminacao, que e
+      // exatamente o que este PR veio impedir.
+      const todasAteAqui = acumuladas.sort((a, b) =>
+        String(b.dataEmissao || '').localeCompare(String(a.dataEmissao || '')));
+      return { ok: true, match: todasAteAqui[0] || match, candidatas: todasAteAqui,
+        pagina, totalScanned, primeiraDataVista, ultimaDataVista };
     }
 
     if (dataLimite && lista[lista.length - 1]?.dataEmissao) {

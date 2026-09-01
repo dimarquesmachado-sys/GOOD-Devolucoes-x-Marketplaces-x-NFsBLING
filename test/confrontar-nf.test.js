@@ -203,7 +203,8 @@ const CHAVE_S3 = '35260864289091000100550030000006371448079669';   // serie 003,
     const src = fs.readFileSync(path.join(RAIZ, rel), 'utf8');
     ok(/const vivasVarredura = candidatas/.test(src),
        nome + ': a varredura guarda todas as vivas');
-    ok(/candidatas: vivasVarredura/.test(src),
+    // b210.3: virou  — o acumulado de todas as paginas
+    ok(/candidatas: todasAteAqui/.test(src),
        nome + '  e devolve a lista — senao a escada recebia 1 item so');
   }
 
@@ -232,6 +233,31 @@ const CHAVE_S3 = '35260864289091000100550030000006371448079669';   // serie 003,
        nome + '  e entrega a lista completa no fim');
     ok(/retornar\s*\n?\s*\/\/ na primeira que casa expunha uma candidata so/.test(fn),
        nome + ': com o motivo — parar na 1a pagina escondia as outras');
+  }
+
+  // b210.3: no limite de paginas, entrega o ACUMULADO (nao so a ultima)
+  for (const [nome, rel] of [['GOOD', 'lib/bling.js'],
+                             ['AMB', 'amb-devolucoes/lib-AMB/admin-helpers-AMB.js']]) {
+    const src = fs.readFileSync(path.join(RAIZ, rel), 'utf8');
+    const i = src.indexOf('async function buscarNFnoBlingPorNumero');
+    const fn = src.slice(i, i + 9000);
+    ok(/candidatas: todasAteAqui/.test(fn),
+       nome + ': no limite de paginas entrega o acumulado, nao so a ultima');
+    ok(!/candidatas: vivasVarredura,/.test(fn),
+       nome + '  sem jogar fora as candidatas das paginas anteriores');
+  }
+
+  // b210.3: a varreduraFundo da AMB NAO tem acumulador — meu retorno
+  // acumulado entrou nela por engano e daria ReferenceError
+  {
+    const src = fs.readFileSync(path.join(RAIZ, 'amb-devolucoes', 'lib-AMB', 'admin-helpers-AMB.js'), 'utf8');
+    const i = src.indexOf('async function varreduraFundo');
+    const j = src.indexOf('async function buscarNFnoBlingPorNumero');
+    const fundo = src.slice(i, j);
+    ok(!/const todas = acumuladas/.test(fundo),
+       'a varreduraFundo NAO usa `acumuladas` — daria ReferenceError');
+    ok(/return \{ ok: true, match: null, totalScanned/.test(fundo),
+       '  ela devolve um miss limpo, como antes');
   }
 
   // o mapa aprende mesmo quando a listagem omite a chave
