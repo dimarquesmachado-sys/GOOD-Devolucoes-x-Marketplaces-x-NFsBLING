@@ -249,7 +249,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '5.2.3 (entrega o acumulado no limite; varreduraFundo restaurada)',
+    version: '5.2.4 (o acumulado sobrevive ao erro; serie da candidata no aviso)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -5839,7 +5839,12 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
             confrontar.serieDaChave(escolhida.chaveAcesso)
               || (escolhida.serie != null ? String(escolhida.serie) : null),
             escolhida);
-          const serieDela = confrontar.serieDaChave(item.nf_chave);
+          // b210.4 (Codex): a serie vem da CANDIDATA quando nao ha chave —
+          // o mesmo fallback que o `aprender` acima ja usa. Sem isso, o
+          // aviso de Full sumia justamente nas notas em que o Bling omite
+          // `chaveAcesso`, que sao comuns.
+          const serieDela = confrontar.serieDaChave(item.nf_chave)
+            || (escolhida && escolhida.serie != null ? String(escolhida.serie) : null);
           if (serieDela) {
             item.nf_serie = serieDela;
             item.nf_canal = confrontar.canalDaSerie(serieDela, empresa);

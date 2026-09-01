@@ -260,6 +260,25 @@ const CHAVE_S3 = '35260864289091000100550030000006371448079669';   // serie 003,
        '  ela devolve um miss limpo, como antes');
   }
 
+  // b210.4: NENHUM caminho de erro descarta o acumulado
+  for (const [nome, rel] of [['GOOD', 'lib/bling.js'],
+                             ['AMB', 'amb-devolucoes/lib-AMB/admin-helpers-AMB.js']]) {
+    const src = fs.readFileSync(path.join(RAIZ, rel), 'utf8');
+    const i = src.indexOf('async function buscarNFnoBlingPorNumero');
+    const fn = src.slice(i, i + 9800);
+    const semAcumulado = [...fn.matchAll(/return \{ ok: false[^;]{0,220}/g)]
+      .filter((m) => !m[0].includes('candidatas'));
+    ok(semAcumulado.length === 0,
+       nome + ': erro no meio da varredura NAO joga fora o que ja achei');
+  }
+
+  // b210.4: o aviso de Full usa a serie da candidata quando falta a chave
+  for (const [nome, rel] of [['GOOD', 'server.js'], ['AMB', 'amb-devolucoes/app-AMB.js']]) {
+    const src = fs.readFileSync(path.join(RAIZ, rel), 'utf8');
+    ok(/const serieDela = confrontar\.serieDaChave\(item\.nf_chave\)\s*\n?\s*\|\| \(escolhida/.test(src),
+       nome + ': o aviso de Full usa a serie da candidata quando falta a chave');
+  }
+
   // o mapa aprende mesmo quando a listagem omite a chave
   C._APRENDIDO.clear();
   C.aprender('good', '5', { loja: 'Amazon FBA' });

@@ -367,7 +367,11 @@ async function buscarNFnoBlingPorNumero(numeroNF, dataReferencia, opcoes = {}) {
     const r = await chamarBling(url);
 
     if (!r.ok) {
-      return { ok: false, status: r.status, error: r.error, totalScanned, primeiraDataVista, ultimaDataVista };
+      return { ok: false,
+          // b210.4 (Codex): erro no MEIO da varredura nao pode apagar o que
+          // ja achei. Entrego as candidatas juntadas ate aqui, e o `ok:false`
+          // avisa que a busca ficou incompleta.
+          candidatas: acumuladas.slice(), status: r.status, error: r.error, totalScanned, primeiraDataVista, ultimaDataVista };
     }
 
     const lista = r.data?.data || [];

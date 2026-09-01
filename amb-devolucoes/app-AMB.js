@@ -86,7 +86,7 @@ const criarMlBuscas = require('./lib-AMB/ml-buscas-AMB');
 const registrarIdentificar = require('./lib-AMB/identificar-AMB');
 const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 
-const VERSAO = 'AMB Devolucoes b239';
+const VERSAO = 'AMB Devolucoes b240';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -2578,7 +2578,12 @@ router.get('/api/admin/sem-retorno', auth.requerLogin, async (req, res) => {
             confrontar.serieDaChave(escolhida.chaveAcesso)
               || (escolhida.serie != null ? String(escolhida.serie) : null),
             escolhida);
-          const serieDela = confrontar.serieDaChave(item.nf_chave);
+          // b210.4 (Codex): a serie vem da CANDIDATA quando nao ha chave —
+          // o mesmo fallback que o `aprender` acima ja usa. Sem isso, o
+          // aviso de Full sumia justamente nas notas em que o Bling omite
+          // `chaveAcesso`, que sao comuns.
+          const serieDela = confrontar.serieDaChave(item.nf_chave)
+            || (escolhida && escolhida.serie != null ? String(escolhida.serie) : null);
           if (serieDela) {
             item.nf_serie = serieDela;
             item.nf_canal = confrontar.canalDaSerie(serieDela, 'amb');
