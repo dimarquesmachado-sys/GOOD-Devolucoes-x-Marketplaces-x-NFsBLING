@@ -84,7 +84,7 @@ const criarMlBuscas = require('./lib-AMB/ml-buscas-AMB');
 const registrarIdentificar = require('./lib-AMB/identificar-AMB');
 const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 
-const VERSAO = 'AMB Devolucoes b228';
+const VERSAO = 'AMB Devolucoes b229';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -2482,7 +2482,7 @@ router.get('/api/admin/sem-retorno', auth.requerLogin, async (req, res) => {
 
 
     let buscadas = 0;
-    for (const item of vinculoCache.fila(itens, 'amb', 25, (x) => x.nf_numero)) {
+    for (const item of vinculoCache.fila(itens, 'amb', 25, (x) => x.nf_numero, 'numero')) {
       // b204.1: a identidade de ANTES do enriquecimento — o refresh
       // seguinte le a linha crua e procura por ela.
       const idCache = vinculoCache.chaveDe(item, 'amb');
@@ -2533,7 +2533,7 @@ router.get('/api/admin/sem-retorno', auth.requerLogin, async (req, res) => {
             // ausencia de resposta, nao "nao existe". Adiar por 20 min uma
             // instabilidade de segundos deixaria o dono sem o botao a toa.
             if (!item.nf_id_bling && r && r.ok !== false) {
-              vinculoCache.marcarFalha(item, 'amb');
+              vinculoCache.marcarFalha(item, 'amb', 'numero');
             }
       } catch (e) { /* segue pros caminhos abaixo */ }
     }
@@ -2580,7 +2580,7 @@ router.get('/api/admin/sem-retorno', auth.requerLogin, async (req, res) => {
       } catch (e) { /* segue sem o link; o numero da NF esta no card */ }
     }
 
-    for (const item of vinculoCache.fila(itens, 'amb', 10, (x) => x.pedido)) {
+    for (const item of vinculoCache.fila(itens, 'amb', 10, (x) => x.pedido, 'pedido')) {
       const idCache = vinculoCache.chaveDe(item, 'amb');
       // b204.5 (Codex): corte em 8s, nao 12. Esta fase ficava entre a do
       // NUMERO e a da CHAVE e podia comer 14s — depois disso a da chave,
@@ -2627,7 +2627,7 @@ router.get('/api/admin/sem-retorno', auth.requerLogin, async (req, res) => {
             // ausencia de resposta, nao "nao existe". Adiar por 20 min uma
             // instabilidade de segundos deixaria o dono sem o botao a toa.
             if (!item.nf_id_bling && r && r.ok !== false) {
-              vinculoCache.marcarFalha(item, 'amb');
+              vinculoCache.marcarFalha(item, 'amb', 'pedido');
             }
       } catch (e) { /* segue sem a nota; o card continua so informativo */ }
     }

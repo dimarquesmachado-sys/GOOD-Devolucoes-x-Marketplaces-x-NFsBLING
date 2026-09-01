@@ -134,12 +134,12 @@ const PAINEL = fs.readFileSync(path.join(RAIZ, 'public', 'painel-devolucoes.html
   // b203 (correcao DELE): pela NOTA primeiro. O pedido pode nao existir —
   // XML do Full importado nao cria pedido no Bling — e a nota sempre existe.
   // b204.4: as filas passaram a usar o rodizio do cache
-  ok(/const comNumero = vinculoCache\.fila\(itens, empresa, 25, \(x\) => x\.nf_numero\)/.test(rota),
+  ok(/const comNumero = vinculoCache\.fila\(itens, empresa, 25, \(x\) => x\.nf_numero, 'numero'\)/.test(rota),
      'quem tem NUMERO de nota e buscado pela NOTA, que e a ponta firme');
   // b204.6 (Codex): o pedido vale pra TODO caso com pedido, nao so pros
   // sem numero — o numero capturado pode estar errado ou velho, e ai o
   // pedido e a unica saida. `fila` ja tira quem resolveu.
-  ok(/const semNota = vinculoCache\.fila\(itens, empresa, 25, \(x\) => x\.pedido\)/.test(rota),
+  ok(/const semNota = vinculoCache\.fila\(itens, empresa, 25, \(x\) => x\.pedido, 'pedido'\)/.test(rota),
      '  e a busca pelo PEDIDO serve de reserva pra quem o numero nao resolveu');
   ok(rota.indexOf('for (const item of semNota)') < rota.indexOf('for (const item of PARA_BUSCAR)'),
      '  e roda ANTES da busca por chave: o direto resolve em 1 chamada, a outra pagina');

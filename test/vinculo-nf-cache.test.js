@@ -202,6 +202,48 @@ const RAIZ = path.join(__dirname, '..');
   }
 }
 
+// ── b204.7: a marca de falha e POR FASE ─────────────────────────────
+//
+// Sem isso, um numero velho que nunca acha bloqueava tambem a busca por
+// PEDIDO do mesmo item — e o pedido era justamente a saida que restava.
+{
+  c._CACHE.clear();
+  const item = { nf_numero: '999', pedido: 'P1' };
+  c.marcarFalha(item, 'good', 'numero');
+  ok(c.esperando(item, 'good', 'numero') === true, 'a fase do numero fica esperando');
+  ok(c.esperando(item, 'good', 'pedido') === false,
+     '  mas a do PEDIDO segue livre — falhar num caminho nao fecha o outro');
+
+  const naFila = c.fila([item], 'good', 25, null, 'pedido');
+  ok(naFila.length === 1, 'e o item ainda entra na fila do pedido');
+}
+
+// ── b204.7: a varredura tambem descarta nota MORTA ──────────────────
+{
+  for (const [nome, rel] of [['GOOD', 'lib/bling.js'],
+                             ['AMB', 'amb-devolucoes/lib-AMB/admin-helpers-AMB.js']]) {
+    const src = fs.readFileSync(path.join(RAIZ, rel), 'utf8');
+    const i = src.indexOf('async function buscarNFnoBlingPorNumero');
+    const fn = src.slice(i, i + 6000);
+    ok(/const candidatas = lista\.filter/.test(fn),
+       nome + ': a varredura separa as candidatas...');
+    ok(/candidatas\s*\n?\s*\.filter\(nf =>/.test(fn),
+       nome + '  ...e descarta as mortas antes de escolher');
+    ok(/o caminho de\s*\n?\s*\/\/ reserva devolvia justamente a nota que o principal/.test(fn),
+       nome + ': com o motivo — o filtro direto recusava e a varredura aceitava');
+  }
+
+  // simulacao do caso real
+  const lista = [
+    { id: 1, numero: '065999', situacao: 2, dataEmissao: '2026-01-19' },   // cancelada
+    { id: 2, numero: '065999', situacao: 5, dataEmissao: '2026-01-20' },   // viva
+  ];
+  const cand = lista.filter((nf) => String(nf.numero).replace(/^0+/, '') === '65999');
+  const viva = cand.filter((nf) => ![2, 9].includes(Number(nf.situacao)))
+    .sort((a, b) => String(b.dataEmissao).localeCompare(String(a.dataEmissao)))[0];
+  ok(viva && viva.id === 2, 'duas notas com o mesmo numero: escolhe a VIVA, nao a cancelada');
+}
+
 console.log('');
 console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
 process.exit(falhas ? 1 : 0);

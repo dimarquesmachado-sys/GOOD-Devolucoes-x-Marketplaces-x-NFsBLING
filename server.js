@@ -247,7 +247,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.96.2 (falha do Bling nao vira espera; sem grafia repetida)',
+    version: '4.96.3 (a varredura descarta nota morta; falha e por fase)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -5752,8 +5752,7 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
     //   3. busca por chave, paginando (plano B)
 
 
-    const comNumero = vinculoCache.fila(itens, empresa, 25, (x) => x.nf_numero);
-    const semNota = vinculoCache.fila(itens, empresa, 25, (x) => x.pedido);
+    const comNumero = vinculoCache.fila(itens, empresa, 25, (x) => x.nf_numero, 'numero');
 
 
     let buscadas = 0;
@@ -5814,7 +5813,7 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
             // ausencia de resposta, nao "nao existe". Adiar por 20 min uma
             // instabilidade de segundos deixaria o dono sem o botao a toa.
             if (!item.nf_id_bling && r && r.ok !== false) {
-              vinculoCache.marcarFalha(item, empresa);
+              vinculoCache.marcarFalha(item, empresa, 'numero');
             }
       } catch (e) { /* cai nos caminhos abaixo */ }
     }
@@ -5830,6 +5829,12 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
     // Invertido: o filtro direto por `numeroLoja` resolve em UMA chamada e
     // roda primeiro, pra TODOS que tem pedido. O que ele nao achar cai na
     // busca por chave, que agora e o plano B de verdade.
+    // b204.7 (Codex): a fila do PEDIDO e montada AGORA, depois da fase do
+    // numero — antes ela era uma foto tirada cedo demais, e os casos que o
+    // numero acabara de resolver eram buscados de novo, gastando o
+    // orcamento que a fase da chave ia precisar.
+    const semNota = vinculoCache.fila(itens, empresa, 25, (x) => x.pedido, 'pedido');
+
 for (const item of semNota) {
       // b204.1: a identidade de ANTES do enriquecimento — o refresh
       // seguinte le a linha crua e procura por ela.
@@ -5878,7 +5883,7 @@ for (const item of semNota) {
             // ausencia de resposta, nao "nao existe". Adiar por 20 min uma
             // instabilidade de segundos deixaria o dono sem o botao a toa.
             if (!item.nf_id_bling && r && r.ok !== false) {
-              vinculoCache.marcarFalha(item, empresa);
+              vinculoCache.marcarFalha(item, empresa, 'pedido');
             }
       } catch (e) { /* segue sem a nota; o card continua so informativo */ }
     }

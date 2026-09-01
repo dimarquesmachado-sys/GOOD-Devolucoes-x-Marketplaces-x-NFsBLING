@@ -351,13 +351,24 @@ async function buscarNFnoBlingPorNumero(numeroNF, dataReferencia, opcoes = {}) {
     totalScanned += lista.length;
 
     // Match por numero - tenta varias formas
-    const match = lista.find(nf => {
+    // b204.7 (Codex): a varredura tambem descarta nota MORTA.
+    //
+    // O filtro direto acima ja recusava cancelada/denegada, mas aqui o
+    // `find` aceitava qualquer uma com o numero — entao o caminho de
+    // reserva devolvia justamente a nota que o principal tinha recusado, e
+    // o dono geraria a devolucao contra uma nota que nao existe mais.
+    //
+    // Entre as vivas, a mais recente (o Bling nao garante a ordem).
+    const candidatas = lista.filter(nf => {
       const numeroBling = String(nf.numero || '').trim();
       const numeroBlingLimpo = numeroBling.replace(/^0+/, '');
       return numeroBling === numeroNFStr ||
              numeroBlingLimpo === numeroNFLimpo ||
              numeroBling === String(numeroNF);
     });
+    const match = candidatas
+      .filter(nf => ![2, 9].includes(Number(nf && nf.situacao)))
+      .sort((a, b) => String(b.dataEmissao || '').localeCompare(String(a.dataEmissao || '')))[0];
 
     if (match) {
       console.log(`[Bling] NF ENCONTRADA pag ${pagina}: numero=${match.numero} id=${match.id}`);
