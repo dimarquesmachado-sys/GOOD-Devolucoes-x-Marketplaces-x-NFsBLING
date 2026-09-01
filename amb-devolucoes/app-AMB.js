@@ -64,6 +64,7 @@ const nfNomes = require('./lib-AMB/nf-nomes-AMB');
 const tokens = require('./lib-AMB/render-tokens-AMB');
 const auth = require('./lib-AMB/auth-AMB');
 const tiktokPonte = require('../lib/tiktok-ponte');
+const erroCodigo = require('../lib/erro-de-codigo');   // b205 - bug meu nao e falha do marketplace
 const vinculoCache = require('../lib/vinculo-nf-cache');   // b204 - vinculo NF ja achado
 const marcadores = require('../lib/marcadores-estornada');   // b200 - peca unica dos marcadores
 const magaluCancelados = require('../lib/magalu-cancelados');  // b191 - peca UNICA, empresa por parametro // b334 - ponte TikTok via Mover-Pedidos (peca unica, empresa como parametro)
@@ -84,7 +85,7 @@ const criarMlBuscas = require('./lib-AMB/ml-buscas-AMB');
 const registrarIdentificar = require('./lib-AMB/identificar-AMB');
 const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 
-const VERSAO = 'AMB Devolucoes b230';
+const VERSAO = 'AMB Devolucoes b231';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -2317,7 +2318,12 @@ router.get('/api/admin/sem-retorno', auth.requerLogin, async (req, res) => {
       if (rm.ok) magaluItens = rm.itens;
       else magaluErro = rm.erro;
     } catch (e) {
-      magaluErro = String(e.message || e).slice(0, 150);
+      // b205 - o erro na tela DIZ se e bug nosso.
+      //
+      // Foi assim que o Magalu ficou 3 dias sem aparecer na GOOD: um
+      // ReferenceError virava "magalu_erro" e parecia falha da ponte deles.
+      erroCodigo.registrar(e, 'magalu-cancelados');
+      magaluErro = erroCodigo.paraTela(e, 'magalu');
     }
 
     // 3) quem JA foi triado sai: senao seriam duas portas pra mesma nota,
@@ -2696,7 +2702,10 @@ router.get('/api/admin/sem-retorno', auth.requerLogin, async (req, res) => {
       itens,
     });
   } catch (e) {
-    return res.status(500).json({ ok: false, erro: String(e.message || e).slice(0, 200) });
+    // b205: se o erro for BUG nosso, a resposta diz isso — nao adianta o
+    // dono esperar nem recarregar.
+    erroCodigo.registrar(e, 'sem-retorno');
+    return res.status(500).json({ ok: false, erro: erroCodigo.paraTela(e, 'sem-retorno') });
   }
 });
 
