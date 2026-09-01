@@ -85,7 +85,7 @@ const criarMlBuscas = require('./lib-AMB/ml-buscas-AMB');
 const registrarIdentificar = require('./lib-AMB/identificar-AMB');
 const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 
-const VERSAO = 'AMB Devolucoes b231';
+const VERSAO = 'AMB Devolucoes b232';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -2236,15 +2236,33 @@ router.get('/api/debug/achar-nf', (req, res, next) => {
     // A AMB tem a `buscarNFBlindada`, que ja faz o filtro direto por
     // numeroLoja na FASE 0 dela — o mesmo caminho que resolveu o caso do
     // TikTok na GOOD.
-    const r = await ajudantes.buscarNFBlindada({
-      orderId: pedido,
-      dataReferencia: data,
-      // b203.2 (Codex): a blindada le `maxPaginasJanela` e `maxPaginasFundo`
-      // — `maxPaginas` ela IGNORA. Eu passava o nome errado e o ?paginas=
-      // nao tinha efeito nenhum.
-      maxPaginasJanela: parseInt(req.query.paginas, 10) || 12,
-      maxPaginasFundo: parseInt(req.query.paginas, 10) || 12,
-    });
+    // b206 - testa os caminhos na ORDEM do card: numero primeiro.
+    //
+    // O diagnostico so usava a blindada (que vai por pedido), enquanto o
+    // card busca primeiro pelo NUMERO. Testar caminho diferente do real
+    // engana quem le a resposta.
+    const numeroNF = String(req.query.nf || '').trim();
+    const tentativas = [];
+    let r = null;
+
+    if (numeroNF) {
+      const rn = await ajudantes.buscarNFnoBlingPorNumero(numeroNF, data, { maxPaginas: 2 });
+      tentativas.push({ via: 'numero', achou: !!(rn && rn.match),
+        detalhe: (rn && rn.via) || null });
+      if (rn && rn.match) r = { ok: true, via: (rn.via || 'numero'), nf: rn.match, idNF: rn.match.id };
+    }
+
+    if (!r) {
+      const rb = await ajudantes.buscarNFBlindada({
+        orderId: pedido,
+        dataReferencia: data,
+        maxPaginasJanela: parseInt(req.query.paginas, 10) || 12,
+        maxPaginasFundo: parseInt(req.query.paginas, 10) || 12,
+      });
+      tentativas.push({ via: 'pedido', achou: !!(rb && rb.ok && (rb.nf || rb.idNF)),
+        detalhe: (rb && rb.via) || null });
+      r = rb;
+    }
 
     return res.json({
       ok: true,
@@ -2266,6 +2284,7 @@ router.get('/api/debug/achar-nf', (req, res, next) => {
         chave: r.nf.chaveAcesso,
       } : null,
       // o `trace` dela conta o que cada FASE tentou — e o diagnostico
+      tentativas,   // b206: o que cada caminho fez
       trace: (r && r.trace) || undefined,
       tentado: (r && r.tentado) || undefined,
       // b203.2 (Codex): os `via` REAIS da blindada sao `nfe-numeroLoja`
