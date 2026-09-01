@@ -86,7 +86,7 @@ const criarMlBuscas = require('./lib-AMB/ml-buscas-AMB');
 const registrarIdentificar = require('./lib-AMB/identificar-AMB');
 const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 
-const VERSAO = 'AMB Devolucoes b235';
+const VERSAO = 'AMB Devolucoes b236';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -2567,6 +2567,11 @@ router.get('/api/admin/sem-retorno', auth.requerLogin, async (req, res) => {
           // b209: a SERIE diz se a nota e nossa ou do fulfillment. Nota do
           // Full foi emitida pelo MARKETPLACE — a devolucao contra ela nao e
           // a mesma coisa, e o dono precisa ver isso antes de gerar.
+          // b210: cada nota que passa ENSINA o mapa serie->marketplace.
+          // [stated] "cada marketplace com operação fullfilment vai ter 1
+          // série específica" — entao o sistema aprende os numeros sozinho,
+          // em vez de eu ficar pedindo.
+          confrontar.aprender('amb', confrontar.serieDaChave(escolhida.chaveAcesso), escolhida);
           const serieDela = confrontar.serieDaChave(item.nf_chave);
           if (serieDela) {
             item.nf_serie = serieDela;

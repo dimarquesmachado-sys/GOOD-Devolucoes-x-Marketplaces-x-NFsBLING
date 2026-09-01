@@ -140,6 +140,53 @@ const CHAVE_S3 = '35260864289091000100550030000006371448079669';   // serie 003,
   }
 }
 
+// ── b210: o mapa se APRENDE observando as notas ─────────────────────
+//
+// [stated] "vendas normais da matriz tudo série 1. daí cada marketplace com
+// operação fullfilment vai ter 1 série específica"
+//
+// A regra e firme e toda nota traz serie e origem juntas — entao nao
+// preciso que ele lembre dos numeros de cada Full.
+{
+  C._APRENDIDO.clear();
+  ok(C.canalDaSerie('005', 'good') === 'full-desconhecido',
+     'serie nunca vista e Full, mas sem saber de qual marketplace');
+
+  for (let i = 0; i < 3; i++) C.aprender('good', '005', { loja: 'Amazon FBA' });
+  ok(C.canalDaSerie('005', 'good') === 'amazon-full',
+     'depois de ver 3 notas, o sistema sabe que a serie 5 e da Amazon');
+
+  const mapa = C.mapaAprendido();
+  ok(mapa.length === 1 && mapa[0].serie === '005' && mapa[0].vistas === 3,
+     'e o mapa conta quantas vezes viu, pro dono conferir');
+
+  // origem conflitante: NAO escolho sozinho
+  C.aprender('good', '005', { loja: 'MagaluOpenApi' });
+  ok(C.canalDaSerie('005', 'good') === 'full-desconhecido',
+     'com duas origens na mesma serie, volto a "nao sei" — nao chuto');
+  ok(C.mapaAprendido()[0].duvidoso === true,
+     '  e marco como duvidoso, com as duas origens listadas');
+
+  // a serie 1 nunca entra: e a matriz
+  C._APRENDIDO.clear();
+  C.aprender('good', '001', { loja: 'TikTok' });
+  ok(C.mapaAprendido().length === 0,
+     'serie 1 nao entra no mapa — e a emissao da matriz, nao de Full');
+}
+
+// ── e o aprendizado esta ligado ─────────────────────────────────────
+{
+  for (const [nome, rel] of [['GOOD', 'server.js'], ['AMB', 'amb-devolucoes/app-AMB.js']]) {
+    const src = fs.readFileSync(path.join(RAIZ, rel), 'utf8');
+    ok(/confrontar\.aprender\(/.test(src),
+       nome + ': cada nota vinculada ensina o mapa');
+  }
+  const debug = fs.readFileSync(path.join(RAIZ, 'lib', 'rotas-debug.js'), 'utf8');
+  ok(/'\/api\/debug\/series'/.test(debug),
+     'e ha rota pra ele conferir o que o sistema aprendeu');
+  ok(/duvidoso/.test(debug), '  com as series duvidosas destacadas');
+}
+
 console.log('');
 console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
 process.exit(falhas ? 1 : 0);
