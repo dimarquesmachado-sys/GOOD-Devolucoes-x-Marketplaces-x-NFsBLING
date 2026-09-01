@@ -249,7 +249,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '5.2.4 (o acumulado sobrevive ao erro; serie da candidata no aviso)',
+    version: '5.2.5 (acumulador so na funcao dele; busca truncada nao decide)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -5812,8 +5812,24 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
         // chave > serie > marketplace > cliente. Se nada decide e sobra mais
         // de uma viavel, guardo as candidatas pro card mostrar — chutar aqui
         // e gerar devolucao contra a venda errada.
+        // b210.5 (Codex): lista INCOMPLETA nao decide sozinha.
+        //
+        // Quando a varredura erra no meio, ela agora devolve o que juntou —
+        // mas com `ok:false`. Escolher a partir dessa lista aceitaria uma
+        // candidata unica que so e unica porque a busca parou: a outra podia
+        // estar na pagina que falhou. Fica pro proximo refresh.
+        const buscaCompleta = !!(r && r.ok !== false);
         const veredito = confrontar.escolher(item,
           (r && r.candidatas) || (achada ? [achada] : []));
+        if (!buscaCompleta && !veredito.escolhida) {
+          vinculoCache.marcarFalha(item, empresa, 'numero');
+          continue;
+        }
+        if (!buscaCompleta && veredito.fraca) {
+          // unica candidata de uma busca truncada: fraca demais pra vincular
+          vinculoCache.marcarFalha(item, empresa, 'numero');
+          continue;
+        }
         if (veredito.candidatas && veredito.candidatas.length > 1) {
           item.nf_candidatas = veredito.candidatas;
           vinculoCache.marcarFalha(item, empresa, 'numero');

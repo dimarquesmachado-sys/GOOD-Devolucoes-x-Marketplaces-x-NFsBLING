@@ -191,9 +191,10 @@ async function buscarNFBlindada(opts = {}) {
       if (m) return { ok: true, match: m, totalScanned, primeiraDataVista, ultimaDataVista };
       if (lista.length < 100) break;
     }
-    // b210.3 (Codex): esta e a varreduraFundo, que NAO tem `acumuladas` —
-    // meu retorno acumulado entrou aqui por engano e daria ReferenceError,
-    // derrubando a identificacao inteira da AMB quando as fases 0-2 falham.
+    // b210.3 (Codex): esta e a varreduraFundo. Meu retorno acumulado entrou
+    // aqui por engano e daria ReferenceError, derrubando a identificacao
+    // inteira da AMB quando as fases 0-2 falham. Ela nao tem acumulador —
+    // e o teste de escopo agora vigia isso, inclusive nos comentarios.
     return { ok: true, match: null, totalScanned, primeiraDataVista, ultimaDataVista };
   }
   for (const oid of orderIds) {

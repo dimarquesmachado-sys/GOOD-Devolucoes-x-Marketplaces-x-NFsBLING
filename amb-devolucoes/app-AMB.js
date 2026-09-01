@@ -86,7 +86,7 @@ const criarMlBuscas = require('./lib-AMB/ml-buscas-AMB');
 const registrarIdentificar = require('./lib-AMB/identificar-AMB');
 const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 
-const VERSAO = 'AMB Devolucoes b240';
+const VERSAO = 'AMB Devolucoes b241';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -2551,8 +2551,24 @@ router.get('/api/admin/sem-retorno', auth.requerLogin, async (req, res) => {
         // chave > serie > marketplace > cliente. Se nada decide e sobra mais
         // de uma viavel, guardo as candidatas pro card mostrar — chutar aqui
         // e gerar devolucao contra a venda errada.
+        // b210.5 (Codex): lista INCOMPLETA nao decide sozinha.
+        //
+        // Quando a varredura erra no meio, ela agora devolve o que juntou —
+        // mas com `ok:false`. Escolher a partir dessa lista aceitaria uma
+        // candidata unica que so e unica porque a busca parou: a outra podia
+        // estar na pagina que falhou. Fica pro proximo refresh.
+        const buscaCompleta = !!(r && r.ok !== false);
         const veredito = confrontar.escolher(item,
           (r && r.candidatas) || (achada ? [achada] : []));
+        if (!buscaCompleta && !veredito.escolhida) {
+          vinculoCache.marcarFalha(item, 'amb', 'numero');
+          continue;
+        }
+        if (!buscaCompleta && veredito.fraca) {
+          // unica candidata de uma busca truncada: fraca demais pra vincular
+          vinculoCache.marcarFalha(item, 'amb', 'numero');
+          continue;
+        }
         if (veredito.candidatas && veredito.candidatas.length > 1) {
           item.nf_candidatas = veredito.candidatas;
           vinculoCache.marcarFalha(item, 'amb', 'numero');
