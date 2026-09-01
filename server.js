@@ -80,6 +80,7 @@ const devCapturadas = require('./lib/devolucoes-capturadas');   // v4.63
 const tiktokPonte = require('./lib/tiktok-ponte');              // v4.66
 const tiktokDev = require('./lib/tiktok-devolucoes');           // v4.66
 const erroCodigo = require('./lib/erro-de-codigo');   // b205 - bug meu nao e falha do marketplace
+const confrontar = require('./lib/confrontar-nf');   // b208 - escada de desempate da NF
 const vinculoCache = require('./lib/vinculo-nf-cache');   // b204 - vinculo NF ja achado
 const marcadores = require('./lib/marcadores-estornada');   // b200 - peca unica dos marcadores
 // b201 - `magaluCancelados` NUNCA foi importado nesta empresa.
@@ -248,7 +249,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.99.0 (a busca filtra pela SERIE da chave)',
+    version: '5.0.0 (escada de desempate: chave > serie > marketplace > cliente)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -5803,14 +5804,27 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
         // Agora: se eu TENHO a chave do item, ela precisa BATER de verdade.
         // Sem chave na resposta, o vinculo nao e confirmado — o caso fica
         // pra fase da chave, que e exata.
-        const chaveItem = String(item.nf_chave || '').replace(/\D/g, '');
-        const chaveAchada = String(achada && achada.chaveAcesso || '').replace(/\D/g, '');
-        const chaveBate = chaveItem
-          ? (chaveAchada === chaveItem)          // tenho chave: tem que bater
-          : true;                                 // sem chave: o numero e o que ha
-        if (achada && achada.id && chaveBate) {
-          item.nf_id_bling = String(achada.id);
-          if (!item.nf_chave && achada.chaveAcesso) item.nf_chave = achada.chaveAcesso;
+        // b208 - ESCADA de desempate, no lugar da comparacao solta.
+        //
+        // [stated] "tipo uma 2a verificação o nome do cliente? ... ou checar
+        // ainda, de qual marketplace tá vindo a venda"
+        //
+        // chave > serie > marketplace > cliente. Se nada decide e sobra mais
+        // de uma viavel, guardo as candidatas pro card mostrar — chutar aqui
+        // e gerar devolucao contra a venda errada.
+        const veredito = confrontar.escolher(item,
+          (r && r.candidatas) || (achada ? [achada] : []));
+        if (veredito.candidatas && veredito.candidatas.length > 1) {
+          item.nf_candidatas = veredito.candidatas;
+          vinculoCache.marcarFalha(item, empresa, 'numero');
+          continue;   // o dono escolhe; nao chuto
+        }
+        const escolhida = veredito.escolhida || null;
+        const chaveBate = !!escolhida;
+        if (escolhida && escolhida.id) {
+          item.nf_id_bling = String(escolhida.id);
+          if (!item.nf_chave && escolhida.chaveAcesso) item.nf_chave = escolhida.chaveAcesso;
+          if (veredito.fraca) item.nf_vinculo_fraco = true;   // b208: unica viavel, sem 2 sinais
           item.nf_achada_por = (r && r.via === 'filtro_direto_numero') ? 'numero' : 'numero_varredura';
           vinculoCache.guardar(item, item.nf_id_bling, 'numero', { chave: item.nf_chave, numero: item.nf_numero }, empresa, idCache);
         } else if (r && r.ok !== false && item.nf_chave) {

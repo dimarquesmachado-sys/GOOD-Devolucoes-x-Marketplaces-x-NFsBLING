@@ -1201,7 +1201,9 @@ async function carregarSemRetorno() {
           //
           // Por ora, o card leva pra NOTA no Bling — que e o que ele precisa
           // pra agir, e o mesmo lugar de onde partiria de qualquer forma.
-          const podeGerar = x.nf_id_bling && x.acao !== 'cancelar_nf' && !x.prejuizo_integral;
+          const temCandidatas = !!(x.nf_candidatas && x.nf_candidatas.length > 1);
+          const podeGerar = (x.nf_id_bling || temCandidatas)
+            && x.acao !== 'cancelar_nf' && !x.prejuizo_integral;
           // b199 - checkbox pra selecionar varios. [stated] "tem como
           // selecionar todas? mais de uma?"
           const checkbox = podeGerar
@@ -1247,6 +1249,44 @@ async function carregarSemRetorno() {
                 ? '<div style="margin-top:8px;font-size:12px;color:#e65100;">'
                   + '⏳ Ainda dá para <b>cancelar a NF</b> — a devolução só depois do prazo</div>'
                 : ''));
+          // b208 - CANDIDATAS pro dono escolher.
+          //
+          // [stated] "deixa as NFs iguais q eu seleciono."
+          //
+          // Quando chave, serie, marketplace e cliente nao desempatam,
+          // mostro as notas que sobraram com o que cada uma tem. Escolher
+          // errado aqui e gerar devolucao contra outra venda, entao a
+          // decisao e dele — mas com a informacao na mao.
+          const listaCandidatas = (x.nf_candidatas && x.nf_candidatas.length > 1)
+            ? '<div style="margin-top:8px;padding:10px;background:#fff8e1;border:2px solid #f9a825;'
+              + 'border-radius:8px;">'
+              + '<div style="font-size:12px;font-weight:700;color:#e65100;margin-bottom:6px;">'
+              + '🔀 ' + x.nf_candidatas.length + ' notas com este número — qual é a desta venda?</div>'
+              + x.nf_candidatas.map((c) =>
+                  '<label style="display:block;font-size:12px;margin:4px 0;cursor:pointer;">'
+                  + '<input type="radio" name="cand-' + escapeHtml(String(x.id)) + '" '
+                  + 'class="chk-candidata" data-item="' + escapeHtml(String(x.id)) + '" '
+                  + 'data-nfid="' + escapeHtml(String(c.id)) + '"> '
+                  + '<b>NF ' + escapeHtml(String(c.numero || '?')) + '</b>'
+                  + (c.serie ? ' · série ' + escapeHtml(String(c.serie)) : '')
+                  + (c.data ? ' · ' + escapeHtml(String(c.data).slice(0, 10)) : '')
+                  + (c.cliente ? ' · ' + escapeHtml(String(c.cliente)) : '')
+                  + (c.marketplace ? ' · ' + escapeHtml(String(c.marketplace)) : '')
+                  + (c.bate && c.bate.length
+                    ? ' <span style="color:#2e7d32;">(bate: ' + escapeHtml(c.bate.join(', ')) + ')</span>'
+                    : '')
+                  + '</label>').join('')
+              + '<div style="font-size:11px;color:#666;margin-top:6px;">'
+              + 'Confira no Bling antes de escolher — a devolução sai contra a nota selecionada.</div>'
+              + '</div>'
+            : '';
+
+          // vinculo FRACO: achou uma so, mas sem dois sinais concordando
+          const avisoFraco = x.nf_vinculo_fraco
+            ? '<div style="font-size:11px;color:#e65100;margin-top:4px;">'
+              + '⚠️ Vínculo por eliminação — confira que é a nota certa antes de emitir</div>'
+            : '';
+
           const linkNF = x.nf_id_bling
             ? '<a class="btn" style="background:#1565c0;margin-top:8px;display:inline-block;" '
               + 'href="https://www.bling.com.br/notas.fiscais.php#edit/' + encodeURIComponent(x.nf_id_bling) + '" '
@@ -1297,6 +1337,7 @@ async function carregarSemRetorno() {
             + (x.cliente ? '<div style="font-size:12px;color:#999;margin-top:2px;">'
                 + escapeHtml(String(x.cliente)) + '</div>' : '')
             + dicaEstoque
+            + avisoFraco + listaCandidatas
             + checkbox + botaoGerar + linkNF
             + '</div>';
         }).join('');
@@ -1307,7 +1348,18 @@ async function carregarSemRetorno() {
         // o HTML. Sem isto o botao e os checkboxes ficavam inertes na AMB —
         // o card parecia funcionar e nao fazia nada.
         document.querySelectorAll('.btn-gerar-estornada').forEach((b) => {
-          b.addEventListener('click', () => gerarDoCardEstornadas(b.dataset.caso));
+          b.addEventListener('click', () => {
+            // b208: se ha candidatas, a escolhida manda
+            const caso = JSON.parse(b.dataset.caso || '{}');
+            const marcada = document.querySelector(
+              '.chk-candidata[data-item="' + caso.chave_caso + '"]:checked');
+            if (marcada) caso.nf_id_bling = marcada.dataset.nfid;
+            if (!caso.nf_id_bling) {
+              toast('escolha qual NF é a desta venda antes de gerar', 'err');
+              return;
+            }
+            gerarDoCardEstornadas(JSON.stringify(caso));
+          });
         });
 
         const chks = [...document.querySelectorAll('.chk-estornada')];

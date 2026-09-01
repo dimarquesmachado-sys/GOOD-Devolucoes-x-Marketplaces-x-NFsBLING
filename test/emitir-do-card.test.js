@@ -68,8 +68,8 @@ const PAINEL = fs.readFileSync(path.join(RAIZ, 'public', 'painel-devolucoes.html
   ok(/dados do card ilegíveis/.test(fn), 'JSON quebrado nao vira excecao solta');
 
   ok(/🧾 Gerar NF de devolução<\/button>/.test(PAINEL), 'e o botao aparece no card');
-  ok(/const podeGerar = x\.nf_id_bling &&/.test(PAINEL),
-     '  so quando a NF foi localizada no Bling — sem ela o modal nao saberia de qual gerar');
+  ok(/const podeGerar = \(x\.nf_id_bling \|\| temCandidatas\)/.test(PAINEL),
+     '  quando a NF foi localizada OU ha candidatas pra escolher');
 }
 
 // ── o JSON no atributo aguenta texto real ────────────────────────────
@@ -106,7 +106,7 @@ const PAINEL = fs.readFileSync(path.join(RAIZ, 'public', 'painel-devolucoes.html
      '  passando tambem o deposito sugerido, pro seletor abrir no certo');
 
   // 2. card que ainda da pra CANCELAR nao pode oferecer devolucao
-  ok(/x\.nf_id_bling && x\.acao !== 'cancelar_nf'/.test(PAINEL),
+  ok(/&& x\.acao !== 'cancelar_nf' && !x\.prejuizo_integral/.test(PAINEL),
      'o botao some quando a acao e CANCELAR NF');
   ok(/a devolução só depois do prazo/.test(PAINEL),
      '  e a tela diz por que, pra ele nao perder o prazo de cancelamento');

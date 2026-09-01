@@ -317,7 +317,12 @@ async function buscarNFnoBlingPorNumero(numeroNF, dataReferencia, opcoes = {}) {
         .sort((a, b) => String(b.dataEmissao || '').localeCompare(String(a.dataEmissao || '')));
       if (vivas.length) {
         console.log(`[Bling] NF ${alvo} achada pelo FILTRO DIRETO (id=${vivas[0].id})`);
-        return { ok: true, match: vivas[0], via: 'filtro_direto_numero',
+        // b208 - devolve TODAS as vivas, nao so a primeira.
+        //
+        // Quem chama precisa das candidatas pra confrontar (serie,
+        // marketplace, cliente) — e, se nada desempatar, mostrar a lista
+        // pro dono escolher. [stated] "deixa as NFs iguais q eu seleciono."
+        return { ok: true, match: vivas[0], candidatas: vivas, via: 'filtro_direto_numero',
           totalScanned: lista.length, primeiraDataVista: null, ultimaDataVista: null };
       }
       // b204.8 (Codex): NAO desisto aqui.
