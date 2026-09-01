@@ -86,7 +86,7 @@ const criarMlBuscas = require('./lib-AMB/ml-buscas-AMB');
 const registrarIdentificar = require('./lib-AMB/identificar-AMB');
 const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 
-const VERSAO = 'AMB Devolucoes b234';
+const VERSAO = 'AMB Devolucoes b235';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -2564,6 +2564,15 @@ router.get('/api/admin/sem-retorno', auth.requerLogin, async (req, res) => {
           item.nf_id_bling = String(escolhida.id);
           if (!item.nf_chave && escolhida.chaveAcesso) item.nf_chave = escolhida.chaveAcesso;
           if (veredito.fraca) item.nf_vinculo_fraco = true;   // b208: unica viavel, sem 2 sinais
+          // b209: a SERIE diz se a nota e nossa ou do fulfillment. Nota do
+          // Full foi emitida pelo MARKETPLACE — a devolucao contra ela nao e
+          // a mesma coisa, e o dono precisa ver isso antes de gerar.
+          const serieDela = confrontar.serieDaChave(item.nf_chave);
+          if (serieDela) {
+            item.nf_serie = serieDela;
+            item.nf_canal = confrontar.canalDaSerie(serieDela, 'amb');
+            item.nf_do_full = confrontar.ehDoFull(serieDela, 'amb');
+          }
           item.nf_achada_por = 'numero';
           // b207: esta fase perdeu a guarda quando reordenei os lacos —
           // sem ela, a busca era refeita a cada refresh.

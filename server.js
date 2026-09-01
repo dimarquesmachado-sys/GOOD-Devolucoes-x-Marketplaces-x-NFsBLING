@@ -249,7 +249,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '5.0.0 (escada de desempate: chave > serie > marketplace > cliente)',
+    version: '5.1.0 (a serie diz se a nota e nossa ou do Full)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -5825,6 +5825,15 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
           item.nf_id_bling = String(escolhida.id);
           if (!item.nf_chave && escolhida.chaveAcesso) item.nf_chave = escolhida.chaveAcesso;
           if (veredito.fraca) item.nf_vinculo_fraco = true;   // b208: unica viavel, sem 2 sinais
+          // b209: a SERIE diz se a nota e nossa ou do fulfillment. Nota do
+          // Full foi emitida pelo MARKETPLACE — a devolucao contra ela nao e
+          // a mesma coisa, e o dono precisa ver isso antes de gerar.
+          const serieDela = confrontar.serieDaChave(item.nf_chave);
+          if (serieDela) {
+            item.nf_serie = serieDela;
+            item.nf_canal = confrontar.canalDaSerie(serieDela, empresa);
+            item.nf_do_full = confrontar.ehDoFull(serieDela, empresa);
+          }
           item.nf_achada_por = (r && r.via === 'filtro_direto_numero') ? 'numero' : 'numero_varredura';
           vinculoCache.guardar(item, item.nf_id_bling, 'numero', { chave: item.nf_chave, numero: item.nf_numero }, empresa, idCache);
         } else if (r && r.ok !== false && item.nf_chave) {

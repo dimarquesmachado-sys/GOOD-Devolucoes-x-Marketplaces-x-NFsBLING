@@ -1282,6 +1282,17 @@ async function carregarSemRetorno() {
             : '';
 
           // vinculo FRACO: achou uma so, mas sem dois sinais concordando
+          // b209 - nota do FULL foi emitida pelo MARKETPLACE, nao por nos.
+          // [stated] "na good vai ter série 2 pra MercadoLivre Full. tb tem
+          // amazon FULL, e Magalu FULL em outras series"
+          const avisoFull = x.nf_do_full
+            ? '<div style="font-size:12px;color:#4527a0;background:#ede7f6;padding:6px 8px;'
+              + 'border-radius:6px;margin-top:4px;">'
+              + '🏭 Série ' + escapeHtml(String(x.nf_serie)) + ' — nota emitida pelo '
+              + '<b>marketplace no Full</b>, não por nós. Confira o tratamento fiscal antes '
+              + 'de gerar a devolução.</div>'
+            : '';
+
           const avisoFraco = x.nf_vinculo_fraco
             ? '<div style="font-size:11px;color:#e65100;margin-top:4px;">'
               + '⚠️ Vínculo por eliminação — confira que é a nota certa antes de emitir</div>'
@@ -1337,7 +1348,7 @@ async function carregarSemRetorno() {
             + (x.cliente ? '<div style="font-size:12px;color:#999;margin-top:2px;">'
                 + escapeHtml(String(x.cliente)) + '</div>' : '')
             + dicaEstoque
-            + avisoFraco + listaCandidatas
+            + avisoFull + avisoFraco + listaCandidatas
             + checkbox + botaoGerar + linkNF
             + '</div>';
         }).join('');

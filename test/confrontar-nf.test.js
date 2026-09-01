@@ -99,6 +99,47 @@ const CHAVE_S3 = '35260864289091000100550030000006371448079669';   // serie 003,
   }
 }
 
+// ── b209: a SERIE diz se a nota e nossa ou do FULL ──────────────────
+//
+// [stated] "na good vai ter série 2 pra MercadoLivre Full. tb tem amazon
+// FULL, e Magalu FULL em outras series"
+{
+  ok(C.canalDaSerie('001', 'good') === 'propria', 'serie 1 = emissao nossa');
+  ok(C.canalDaSerie('002', 'good') === 'mercadolivre-full',
+     'serie 2 na GOOD = ML Full, como ele informou');
+  ok(C.canalDaSerie('003', 'amb') === 'full',
+     'serie 3 na AMB = Full (as notas de jul-ago/26 sao dela)');
+  ok(C.canalDaSerie('007', 'amb') === 'full-desconhecido',
+     'serie que ainda nao mapeei ainda e reconhecida como Full');
+  ok(C.canalDaSerie('abc', 'good') === null, 'lixo nao vira canal');
+
+  ok(C.ehDoFull('002', 'good') === true, 'e o Full e sinalizado');
+  ok(C.ehDoFull('001', 'good') === false, '  a nossa nao');
+
+  // o caso real: mesma NF 637 em duas series
+  ok(C.serieDaChave('35260564289091000100550010000006371757802116') === '001'
+     && C.serieDaChave('35260864289091000100550030000006371448079669') === '003',
+     'a NF 637 existe nas duas series — a numeracao reinicia por serie');
+}
+
+// ── e a tela avisa quando a nota e do Full ──────────────────────────
+{
+  for (const [nome, rel] of [['GOOD', 'server.js'], ['AMB', 'amb-devolucoes/app-AMB.js']]) {
+    const src = fs.readFileSync(path.join(RAIZ, rel), 'utf8');
+    ok(/item\.nf_do_full = confrontar\.ehDoFull/.test(src),
+       nome + ': a rota marca quando a nota e do Full');
+  }
+  for (const [nome, rel] of [
+    ['GOOD', 'public/painel-devolucoes.html'],
+    ['AMB (servido)', 'amb-devolucoes/public-AMB/painel-AMB.html'],
+    ['AMB (direto)', 'amb-devolucoes/public-AMB/painel2-AMB.html'],
+  ]) {
+    const html = fs.readFileSync(path.join(RAIZ, rel), 'utf8');
+    ok(/emitida pelo /.test(html) && /marketplace no Full/.test(html),
+       nome + ': o card avisa que quem emitiu foi o marketplace');
+  }
+}
+
 console.log('');
 console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
 process.exit(falhas ? 1 : 0);

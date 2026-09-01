@@ -133,7 +133,7 @@ const RAIZ = path.join(__dirname, '..');
     // b204.3: TODA atribuicao de vinculo tem que guardar — inclusive a
     // varredura de reserva, que e a mais cara de todas (8 paginas)
     const semGuarda = [...rota.matchAll(/item\.nf_id_bling = String\([^)]*\)/g)]
-      .filter((m) => !rota.slice(m.index, m.index + 700).includes('vinculoCache.guardar'));
+      .filter((m) => !rota.slice(m.index, m.index + 1200).includes('vinculoCache.guardar'));
     ok(semGuarda.length === 0,
        nome + ': TODA fase que acha guarda no cache (achei ' + semGuarda.length + ' sem)');
 
