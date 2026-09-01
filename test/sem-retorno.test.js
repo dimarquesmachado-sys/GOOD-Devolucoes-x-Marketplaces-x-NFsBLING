@@ -131,8 +131,16 @@ const PAINEL = fs.readFileSync(path.join(RAIZ, 'public', 'painel-devolucoes.html
 // sem sku). Mas o PEDIDO estava la.
 {
   // b202: o filtro DIRETO vale pra todos, e roda PRIMEIRO
-  ok(/const semNota = itens\.filter\(\(x\) => !x\.nf_id_bling && x\.pedido\)/.test(rota),
-     'a busca pelo PEDIDO vale pra TODO caso sem vinculo, nao so pros sem chave');
+  // b203 (correcao DELE): pela NOTA primeiro. O pedido pode nao existir —
+  // XML do Full importado nao cria pedido no Bling — e a nota sempre existe.
+  // b204.4: as filas passaram a usar o rodizio do cache
+  ok(/const comNumero = vinculoCache\.fila\(itens, empresa, 25, \(x\) => x\.nf_numero, 'numero'\)/.test(rota),
+     'quem tem NUMERO de nota e buscado pela NOTA, que e a ponta firme');
+  // b204.6 (Codex): o pedido vale pra TODO caso com pedido, nao so pros
+  // sem numero — o numero capturado pode estar errado ou velho, e ai o
+  // pedido e a unica saida. `fila` ja tira quem resolveu.
+  ok(/const semNota = vinculoCache\.fila\(itens, empresa, 25, \(x\) => x\.pedido, 'pedido'\)/.test(rota),
+     '  e a busca pelo PEDIDO serve de reserva pra quem o numero nao resolveu');
   ok(rota.indexOf('for (const item of semNota)') < rota.indexOf('for (const item of PARA_BUSCAR)'),
      '  e roda ANTES da busca por chave: o direto resolve em 1 chamada, a outra pagina');
   ok(/O RAPIDO PRIMEIRO/.test(rota),
@@ -141,8 +149,10 @@ const PAINEL = fs.readFileSync(path.join(RAIZ, 'public', 'painel-devolucoes.html
      '  usando a funcao que ja existia pra isso');
   ok(/\.slice\(0, 10\)/.test(rota),
      '  com teto baixo: cada uma custa uma varredura no Bling');
-  ok(/Date\.now\(\) - INICIO_BUSCA > 12000/.test(rota),
-     '  e teto de tempo proprio, mais folgado que o das outras');
+  // b204.5: o teto era 12s e comia o da fase seguinte (a da CHAVE, que
+  // pagina). Agora as tres fases cabem no mesmo orcamento.
+  ok(/Date\.now\(\) - INICIO_BUSCA > 8000/.test(rota),
+     '  com teto que deixa sobrar tempo pra fase da chave');
   ok(/nf_achada_por = 'pedido'/.test(rota),
      'marcando de onde veio: o casamento por pedido e menos exato que por chave');
 

@@ -261,6 +261,64 @@ function classificarMotivoDevolucao(order, shipment) {
 async function buscarNFnoBlingPorNumero(numeroNF, dataReferencia, opcoes = {}) {
   const numeroNFStr = String(numeroNF).trim().padStart(6, '0'); // 71932 -> 071932
   const numeroNFLimpo = String(numeroNF).trim().replace(/^0+/, ''); // remove zeros a esquerda
+
+  // b203.1 (Codex) - FILTRO DIRETO POR NUMERO, antes de paginar.
+  //
+  // [stated] "pq vc fica indo atrás de pedido. pode ser q algum pedido esteja
+  // com erro, não tenha, por ter sido importado XML do full. vc tinha q tá
+  // pegando nota fiscal. nf sim sempre terá."
+  //
+  // Ele esta certo: o PEDIDO pode nao existir (XML do Full importado nao
+  // cria pedido no Bling), mas a NOTA sempre existe — e nesses casos eu ja
+  // tenho o numero e a chave. Eu procurava pela ponta fragil tendo a firme.
+  //
+  // O /nfe aceita `numero` como filtro: UMA chamada, sem paginar.
+  try {
+    // b204.3 (Codex): RITMO DENTRO da helper tambem.
+    //
+    // Uma chamada dela pode disparar 3 requests: numero com padding, sem
+    // padding, e a pagina 1 da varredura. A pausa de 350ms entre ITENS nao
+    // cobre isso — os 3 saem juntos e estouram os 3 req/s do Bling.
+    let feitas = 0;
+    // b204.6 (Codex): sem repetir a MESMA grafia. Numero com 6+ digitos e
+    // sem zeros a esquerda tem `numeroNFStr === numeroNFLimpo` — eu fazia a
+    // mesma chamada duas vezes, gastando 350ms e um request por item.
+    for (const alvo of [...new Set([numeroNFStr, numeroNFLimpo])]) {
+      if (!alvo) continue;
+      if (feitas > 0) await sleep(350);
+      feitas++;
+      const urlDireta = 'https://api.bling.com.br/Api/v3/nfe?limite=20&pagina=1&tipo=1'
+        + '&numero=' + encodeURIComponent(alvo);
+      const rd = await chamarBling(urlDireta);
+      const lista = (rd.ok && rd.data?.data) ? rd.data.data : [];
+      const batem = lista.filter((nf) => {
+        const n = String(nf.numero || '').replace(/^0+/, '');
+        return n === numeroNFLimpo;
+      });
+      // b203.1: `nfeDescartavel` e da GOOD; aqui a regra vive dentro de
+      // outra funcao (NFE_DESCARTAVEL = [2, 9]) e nao alcanca este escopo.
+      // Confiro a situacao direto — quase caí no mesmo bug de funcao
+      // fantasma que este repo ja teve tres vezes.
+      const vivas = batem.filter((nf) => ![2, 9].includes(Number(nf && nf.situacao)))
+        .sort((a, b) => String(b.dataEmissao || '').localeCompare(String(a.dataEmissao || '')));
+      if (vivas.length) {
+        console.log(`[Bling] NF ${alvo} achada pelo FILTRO DIRETO (id=${vivas[0].id})`);
+        return { ok: true, match: vivas[0], via: 'filtro_direto_numero',
+          totalScanned: lista.length, primeiraDataVista: null, ultimaDataVista: null };
+      }
+      // b204.8 (Codex): NAO desisto aqui.
+      //
+      // Se cheguei ate aqui, `vivas` esta vazio — ou o numero nao casou, ou
+      // casou so com nota MORTA. Nos dois casos a grafia alternativa ainda
+      // pode achar a viva, e sao no maximo 2 tentativas (deduplicadas), com
+      // pausa entre elas. Parar aqui era desistir cedo demais.
+    }
+  } catch (e) { /* segue pra varredura */ }
+
+  // b204.4 (Codex): pausa ANTES de entrar na varredura tambem. Sem ela, a
+  // pagina 1 saia colada na 2a tentativa direta — 4 requests numa janela de
+  // 1s, com os 3 req/s do Bling ja no limite.
+  await sleep(350);
   const MAX_PAGINAS = opcoes.maxPaginas || 50;
   const LIMITE_PAGINA = 100;
   const DELAY_MS = 400;
@@ -298,13 +356,24 @@ async function buscarNFnoBlingPorNumero(numeroNF, dataReferencia, opcoes = {}) {
     totalScanned += lista.length;
 
     // Match por numero - tenta varias formas
-    const match = lista.find(nf => {
+    // b204.7 (Codex): a varredura tambem descarta nota MORTA.
+    //
+    // O filtro direto acima ja recusava cancelada/denegada, mas aqui o
+    // `find` aceitava qualquer uma com o numero — entao o caminho de
+    // reserva devolvia justamente a nota que o principal tinha recusado, e
+    // o dono geraria a devolucao contra uma nota que nao existe mais.
+    //
+    // Entre as vivas, a mais recente (o Bling nao garante a ordem).
+    const candidatas = lista.filter(nf => {
       const numeroBling = String(nf.numero || '').trim();
       const numeroBlingLimpo = numeroBling.replace(/^0+/, '');
       return numeroBling === numeroNFStr ||
              numeroBlingLimpo === numeroNFLimpo ||
              numeroBling === String(numeroNF);
     });
+    const match = candidatas
+      .filter(nf => ![2, 9].includes(Number(nf && nf.situacao)))
+      .sort((a, b) => String(b.dataEmissao || '').localeCompare(String(a.dataEmissao || '')))[0];
 
     if (match) {
       console.log(`[Bling] NF ENCONTRADA pag ${pagina}: numero=${match.numero} id=${match.id}`);

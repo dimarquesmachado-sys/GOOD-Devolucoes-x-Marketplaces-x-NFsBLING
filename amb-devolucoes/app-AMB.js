@@ -64,6 +64,7 @@ const nfNomes = require('./lib-AMB/nf-nomes-AMB');
 const tokens = require('./lib-AMB/render-tokens-AMB');
 const auth = require('./lib-AMB/auth-AMB');
 const tiktokPonte = require('../lib/tiktok-ponte');
+const vinculoCache = require('../lib/vinculo-nf-cache');   // b204 - vinculo NF ja achado
 const marcadores = require('../lib/marcadores-estornada');   // b200 - peca unica dos marcadores
 const magaluCancelados = require('../lib/magalu-cancelados');  // b191 - peca UNICA, empresa por parametro // b334 - ponte TikTok via Mover-Pedidos (peca unica, empresa como parametro)
 const db = require('./lib-AMB/supabase-AMB');
@@ -83,7 +84,7 @@ const criarMlBuscas = require('./lib-AMB/ml-buscas-AMB');
 const registrarIdentificar = require('./lib-AMB/identificar-AMB');
 const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 
-const VERSAO = 'AMB Devolucoes b219';
+const VERSAO = 'AMB Devolucoes b230';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -2459,11 +2460,97 @@ router.get('/api/admin/sem-retorno', auth.requerLogin, async (req, res) => {
     // numero e sem chave existe, e ficaria sem link a toa.
     // b192.2 (Codex): cota por marketplace, senao numa fila cheia de TikTok
     // o Magalu nao entraria — e sao os casos de maior valor.
+// b204.1 (Codex): o cache roda ANTES de qualquer fila.
+    //
+    // Eu aplicava depois da fase da CHAVE, entao os casos ja resolvidos
+    // eram re-buscados a cada refresh — gastando os 8s dela — e a fase do
+    // NUMERO, que vem depois, ja encontrava o orcamento vencido e saia na
+    // hora.
+    vinculoCache.aplicar(itens, 'amb');
+
+    // b204.3 (Codex): a fase do NUMERO vem PRIMEIRO, como na GOOD.
+    //
+    // A fase da CHAVE pagina o Bling e podia consumir os 8s inteiros — ate
+    // quando nao achava nada. A do numero, que vinha depois com corte em
+    // 6s, saia na hora sem fazer UMA chamada sequer.
+    //
+    // O direto por numero custa 1 chamada e resolve a maioria; a chave fica
+    // pro que sobrar, que e onde ela e insubstituivel.
+    // b203 - PELA NOTA primeiro, aqui tambem. [stated] "vc tinha q tá
+    // pegando nota fiscal. nf sim sempre terá." O pedido pode nao existir
+    // (XML do Full importado nao cria pedido no Bling); a nota existe.
+
+
+    let buscadas = 0;
+    for (const item of vinculoCache.fila(itens, 'amb', 25, (x) => x.nf_numero, 'numero')) {
+      // b204.1: a identidade de ANTES do enriquecimento — o refresh
+      // seguinte le a linha crua e procura por ela.
+      const idCache = vinculoCache.chaveDe(item, 'amb');
+      // b204: reserva os ultimos segundos pra fase da CHAVE, que e exata
+      if (Date.now() - INICIO_BUSCA > 6000) break;
+      // b203.1 (Codex): RITMO. O Bling limita a 3 req/s, e sao ate 25 itens
+      // seguidos aqui. Sem pausa, os primeiros levam 429 e o retry de 1,5s
+      // de cada um come o orcamento inteiro — os ultimos nem sao tentados.
+      if (buscadas > 0) await new Promise((ok) => setTimeout(ok, 350));
+      buscadas++;
+      try {
+        const r = await Promise.race([
+          ajudantes.buscarNFnoBlingPorNumero(item.nf_numero,
+            item.nf_emitida_em || item.criado_no_mkt || null, { maxPaginas: 2 }),
+          new Promise((ok) => setTimeout(() => ok(null), 4000)),
+        ]);
+        const achada = (r && r.match) || null;
+        // b203.1 (Codex): CONFERIR A CHAVE quando eu tenho as duas.
+        //
+        // Numero de NF se repete entre SERIES. A busca devolve a mais
+        // recente, e sem comparar a chave eu aceitaria a nota de outra serie
+        // — e o dono geraria a devolucao contra a venda errada.
+        //
+        // So aceito de olhos fechados quando nao ha chave pra comparar.
+        // b203.2 (Codex): chave AUSENTE nao e chave que bate.
+        //
+        // A listagem do /nfe pode voltar SEM `chaveAcesso` — esta
+        // documentado no proprio repo (b166.4, public/js/busca.js). Minha
+        // condicao tratava isso como "conferiu", e eu aceitava a nota mais
+        // recente com aquele numero, que pode ser de OUTRA SERIE.
+        //
+        // Agora: se eu TENHO a chave do item, ela precisa BATER de verdade.
+        // Sem chave na resposta, o vinculo nao e confirmado — o caso fica
+        // pra fase da chave, que e exata.
+        const chaveItem = String(item.nf_chave || '').replace(/\D/g, '');
+        const chaveAchada = String(achada && achada.chaveAcesso || '').replace(/\D/g, '');
+        const chaveBate = chaveItem
+          ? (chaveAchada === chaveItem)          // tenho chave: tem que bater
+          : true;                                 // sem chave: o numero e o que ha
+        if (achada && achada.id && chaveBate) {
+          item.nf_id_bling = String(achada.id);
+          if (!item.nf_chave && achada.chaveAcesso) item.nf_chave = achada.chaveAcesso;
+          item.nf_achada_por = 'numero';
+          vinculoCache.guardar(item, item.nf_id_bling, 'numero', { chave: item.nf_chave, numero: item.nf_numero }, 'amb', idCache);
+        }
+        // b204.6 (Codex): so adio quando o Bling RESPONDEU e nao achou.
+            // Erro (429/500) ou prazo estourado devolvem `r` nulo — isso e
+            // ausencia de resposta, nao "nao existe". Adiar por 20 min uma
+            // instabilidade de segundos deixaria o dono sem o botao a toa.
+            if (!item.nf_id_bling && r && r.ok !== false) {
+              vinculoCache.marcarFalha(item, 'amb', 'numero');
+            }
+      } catch (e) { /* segue pros caminhos abaixo */ }
+    }
+
     const semVinculoAMB = itens.filter((x) => x.nf_chave && !x.nf_id_bling);
     const filaAMB = semVinculoAMB.filter((x) => x.marketplace === 'magalu').slice(0, 15)
       .concat(semVinculoAMB.filter((x) => x.marketplace !== 'magalu').slice(0, 10));
 
     for (const item of filaAMB) {
+      // b204.4 (Codex): PULAR quem ja foi resolvido. A lista foi montada
+      // ANTES da fase do numero, entao pode conter itens que ela ja
+      // vinculou — e `resolverIdNFPorChave` PAGINA, gastando o orcamento
+      // dos que realmente precisam.
+      if (item.nf_id_bling) continue;
+      // b204.1: a identidade de ANTES do enriquecimento — o refresh
+      // seguinte le a linha crua e procura por ela.
+      const idCache = vinculoCache.chaveDe(item, 'amb');
       if (Date.now() - INICIO_BUSCA > 8000) break;   // o painel nao pode travar
       try {
         // a busca PAGINA no Bling e pode passar dos 8s sozinha; o teto do
@@ -2481,30 +2568,24 @@ router.get('/api/admin/sem-retorno', auth.requerLogin, async (req, res) => {
           // parada. Sem alguem pra avisar, a flag aqui nao teria uso.
           new Promise((ok) => setTimeout(() => ok(null), Math.min(5000, sobra))),
         ]);
-        if (id) item.nf_id_bling = String(id);
+        // b204.2 (Codex): GUARDAR aqui tambem. Eu calculava o `idCache`
+        // nesta fase e nao usava — entao a busca por chave, que e a mais
+        // CARA (pagina o Bling), era refeita a cada refresh.
+        if (id) {
+          item.nf_id_bling = String(id);
+          item.nf_achada_por = item.nf_achada_por || 'chave';
+          vinculoCache.guardar(item, item.nf_id_bling, 'chave',
+            { chave: item.nf_chave, numero: item.nf_numero }, 'amb', idCache);
+        }
       } catch (e) { /* segue sem o link; o numero da NF esta no card */ }
     }
 
-    // b196 - a mesma busca PELO PEDIDO da GOOD. Caso real: pedido do
-    // TikTok sem numero e sem chave na captura (a API nao mandou), mas a
-    // nota EXISTE no Bling. Sem isto o card fica so informativo.
-    // ============================================================
-    // BUSCA A NF PELO PEDIDO — pros casos sem numero e sem chave
-    // ------------------------------------------------------------
-    // Caso real: pedido do TikTok que aparecia "sem NF vinculada", mas a
-    // nota EXISTE no Bling (o dono abriu e mostrou). A captura veio sem
-    // numero e sem chave porque a API do marketplace nao mandou.
-    //
-    // Uso a `buscarNFBlindada` da AMB — `buscarNFnoBlingPorOrderId` NAO
-    // existe neste modulo, e eu chamei ela por engano do #124 ate o #129,
-    // entao esta busca NUNCA funcionou aqui.
-    //
-    // A blindada le `maxPaginasJanela`/`maxPaginasFundo` (nao `maxPaginas`),
-    // devolve { ok, via, nf, idNF, trace } (nao { match }), e aceita
-    // `parar()` pra desistir quando o chamador desiste.
-    // ============================================================
-    for (const item of itens.filter((x) => !x.nf_numero && !x.nf_chave && !x.nf_id_bling && x.pedido).slice(0, 10)) {
-      if (Date.now() - INICIO_BUSCA > 12000) break;
+    for (const item of vinculoCache.fila(itens, 'amb', 10, (x) => x.pedido, 'pedido')) {
+      const idCache = vinculoCache.chaveDe(item, 'amb');
+      // b204.5 (Codex): corte em 8s, nao 12. Esta fase ficava entre a do
+      // NUMERO e a da CHAVE e podia comer 14s — depois disso a da chave,
+      // com corte em 8s, saia na hora sem tentar nada.
+      if (Date.now() - INICIO_BUSCA > 8000) break;
 
       // a flag e DESTE laco: declaracao, atribuicao e uso no mesmo bloco.
       // Ja errei isso duas vezes — declarei num laco e usei noutro, depois
@@ -2530,7 +2611,20 @@ router.get('/api/admin/sem-retorno', auth.requerLogin, async (req, res) => {
 
         // ela pode achar o ID e falhar ao buscar o detalhe: { ok:true,
         // idNF, nf:null }. O id sozinho ja serve pro link e pra emissao.
+        // b204.8 (Codex): a fase do PEDIDO tambem confere a CHAVE.
+        //
+        // Agora que ela recebe itens COM chave, aceitar a "mais recente do
+        // pedido" sem comparar pegaria outra nota do mesmo pedido — e o
+        // vinculo errado iria pro cache, ficando 12h.
         const achada = (r && r.ok && r.nf) || null;
+        {
+          const ci = String(item.nf_chave || '').replace(/\D/g, '');
+          const ca = String(achada && achada.chaveAcesso || '').replace(/\D/g, '');
+          if (ci && ca !== ci) {
+            vinculoCache.marcarFalha(item, 'amb', 'pedido');
+            continue;   // a fase da CHAVE resolve; ela e exata
+          }
+        }
         const idAchado = (achada && achada.id) || (r && r.ok && r.idNF) || null;
         if (idAchado) {
           item.nf_id_bling = String(idAchado);
@@ -2539,7 +2633,15 @@ router.get('/api/admin/sem-retorno', auth.requerLogin, async (req, res) => {
             if (!item.nf_chave && achada.chaveAcesso) item.nf_chave = achada.chaveAcesso;
           }
           item.nf_achada_por = 'pedido';
+          vinculoCache.guardar(item, item.nf_id_bling, 'pedido', { chave: item.nf_chave, numero: item.nf_numero }, 'amb', idCache);
         }
+        // b204.6 (Codex): so adio quando o Bling RESPONDEU e nao achou.
+            // Erro (429/500) ou prazo estourado devolvem `r` nulo — isso e
+            // ausencia de resposta, nao "nao existe". Adiar por 20 min uma
+            // instabilidade de segundos deixaria o dono sem o botao a toa.
+            if (!item.nf_id_bling && r && r.ok !== false) {
+              vinculoCache.marcarFalha(item, 'amb', 'pedido');
+            }
       } catch (e) { /* segue sem a nota; o card continua so informativo */ }
     }
 

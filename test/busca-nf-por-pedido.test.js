@@ -133,6 +133,62 @@ const fn = BLING.slice(i, i + 13000);  // cresceu de novo (filtro direto)
      'e quando nem a segunda tentativa passa, a resposta DIZ que foi limite');
 }
 
+// ── b203: pela NOTA primeiro; o pedido e reserva ────────────────────
+//
+// [stated] "pq vc fica indo atrás de pedido. pode ser q algum pedido esteja
+// com erro, não tenha, por ter sido importado XML do full. vc tinha q tá
+// pegando nota fiscal. nf sim sempre terá."
+//
+// Isso explica por que o TikTok funcionou e o Magalu nao: o TikTok veio SEM
+// numero (fui pelo pedido, e havia pedido); os 25 do Magalu tem numero e
+// chave — a ponta firme, que eu ignorava.
+{
+  const iNum = BLING.indexOf('async function buscarNFnoBlingPorNumero');
+  const fnNum = BLING.slice(iNum, iNum + 4000);
+  ok(/'&numero=' \+ encodeURIComponent\(alvo\)/.test(fnNum),
+     'ha filtro direto por NUMERO da nota — uma chamada, sem paginar');
+  ok(/via: 'filtro_direto_numero'/.test(fnNum), '  marcando de onde veio');
+  ok(/\[numeroNFStr, numeroNFLimpo\]/.test(fnNum),
+     '  tentando com e sem zeros a esquerda (065999 e 65999)');
+  ok(/nf sim sempre terá/.test(fnNum),
+     '  com o motivo dele registrado: a nota sempre existe, o pedido nao');
+
+  const SERVER2 = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
+  const i2 = SERVER2.indexOf("'/api/admin/sem-retorno'");
+  const rota2 = SERVER2.slice(i2, i2 + 42000);   // a rota cresceu (b204.1)
+  ok(rota2.indexOf('for (const item of comNumero)') < rota2.indexOf('for (const item of semNota)'),
+     'a busca por NUMERO roda antes da por pedido');
+  // b204.1: a fase da CHAVE agora vem por ultimo de proposito — ela e a
+  // EXATA, e resolve o que o numero deixou ambiguo
+  ok(rota2.indexOf('for (const item of PARA_BUSCAR)') > rota2.indexOf('for (const item of comNumero)'),
+     '  e a por chave por ultimo: exata, resolve o que o numero deixou ambiguo');
+
+  const AMB2 = fs.readFileSync(path.join(__dirname, '..', 'amb-devolucoes', 'app-AMB.js'), 'utf8');
+  ok(/buscarNFnoBlingPorNumero\(item\.nf_numero/.test(AMB2),
+     'e a AMB busca pela nota tambem — sem isso ela ficaria pra tras de novo');
+
+  // b203.1: numero se REPETE entre series — conferir a chave
+  // b203.2: chave AUSENTE nao vale como confirmacao (era `|| !chaveAchada`)
+  ok(/chaveItem\s*\n?\s*\? \(chaveAchada === chaveItem\)/.test(rota2),
+     'a chave e conferida antes de aceitar: numero se repete entre SERIES');
+  ok(/geraria a devolucao contra a venda errada/.test(rota2),
+     '  senao o dono geraria a devolucao contra a venda errada');
+  ok(/const chaveBate/.test(AMB2), '  na AMB tambem');
+
+  // e a AMB ganhou o filtro direto na helper dela
+  const HELP = fs.readFileSync(path.join(__dirname, '..', 'amb-devolucoes', 'lib-AMB', 'admin-helpers-AMB.js'), 'utf8');
+  ok(/'&numero=' \+ encodeURIComponent\(alvo\)/.test(HELP),
+     'a helper da AMB tem o filtro direto por numero (so paginava antes)');
+  ok(/!\[2, 9\]\.includes\(Number\(nf && nf\.situacao\)\)/.test(HELP),
+     '  com a checagem de nota morta LOCAL — `nfeDescartavel` e da GOOD');
+
+  // ritmo: 3 req/s do Bling
+  ok(/if \(buscadas > 0\) await new Promise/.test(rota2),
+     'ha pausa entre as buscas diretas: o Bling limita a 3 req/s');
+  ok(/os ultimos nem sao tentados/.test(rota2),
+     '  senao o retry de cada 429 comeria o orcamento inteiro');
+}
+
 console.log('');
 console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
 process.exit(falhas ? 1 : 0);
