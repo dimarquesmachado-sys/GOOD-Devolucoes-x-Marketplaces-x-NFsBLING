@@ -306,7 +306,12 @@ async function buscarNFnoBlingPorNumero(numeroNF, dataReferencia, opcoes = {}) {
         return { ok: true, match: vivas[0], via: 'filtro_direto_numero',
           totalScanned: lista.length, primeiraDataVista: null, ultimaDataVista: null };
       }
-      if (lista.length) break;   // respondeu e nao bateu: paginar nao ajuda
+      // b204.8 (Codex): NAO desisto aqui.
+      //
+      // Se cheguei ate aqui, `vivas` esta vazio — ou o numero nao casou, ou
+      // casou so com nota MORTA. Nos dois casos a grafia alternativa ainda
+      // pode achar a viva, e sao no maximo 2 tentativas (deduplicadas), com
+      // pausa entre elas. Parar aqui era desistir cedo demais.
     }
   } catch (e) { /* segue pra varredura */ }
 

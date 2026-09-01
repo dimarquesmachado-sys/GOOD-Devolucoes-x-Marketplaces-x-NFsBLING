@@ -244,6 +244,40 @@ const RAIZ = path.join(__dirname, '..');
   ok(viva && viva.id === 2, 'duas notas com o mesmo numero: escolhe a VIVA, nao a cancelada');
 }
 
+// ── b204.8: numero se repete DENTRO da mesma conta ──────────────────
+{
+  c._CACHE.clear();
+  const a = { nf_numero: '65999', pedido: 'P1' };
+  const b = { nf_numero: '65999', pedido: 'P2' };
+  c.guardar(a, 'NOTA-A', 'numero', {}, 'good');
+  ok(c.ler(b, 'good') === null,
+     'dois casos com o MESMO numero e pedidos diferentes nao compartilham vinculo');
+  ok(c.ler(a, 'good').id === 'NOTA-A', '  e cada um mantem o seu');
+  ok(c.chaveDe(a, 'good').includes('@P1'),
+     '  porque o pedido entra na chave quando nao ha chave de 44 digitos');
+}
+
+// ── b204.8: a fase do PEDIDO confere a chave ────────────────────────
+{
+  for (const [nome, rel] of [['GOOD', 'server.js'], ['AMB', 'amb-devolucoes/app-AMB.js']]) {
+    const src = fs.readFileSync(path.join(RAIZ, rel), 'utf8');
+    ok(/a fase do PEDIDO tambem confere a CHAVE/.test(src),
+       nome + ': a fase do pedido confere a chave antes de aceitar');
+    ok(/if \(ci && ca !== ci\) \{[\s\S]{0,200}continue;/.test(src),
+       nome + '  e recusa quando diverge — o vinculo errado iria pro cache por 12h');
+  }
+
+  // e a helper tenta as duas grafias mesmo achando so nota morta
+  for (const [nome, rel] of [['GOOD', 'lib/bling.js'],
+                             ['AMB', 'amb-devolucoes/lib-AMB/admin-helpers-AMB.js']]) {
+    const src = fs.readFileSync(path.join(RAIZ, rel), 'utf8');
+    const i = src.indexOf('async function buscarNFnoBlingPorNumero');
+    const fn = src.slice(i, i + 4000);
+    ok(/NAO desisto aqui/.test(fn),
+       nome + ': tenta a outra grafia mesmo quando so achou nota morta');
+  }
+}
+
 console.log('');
 console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
 process.exit(falhas ? 1 : 0);

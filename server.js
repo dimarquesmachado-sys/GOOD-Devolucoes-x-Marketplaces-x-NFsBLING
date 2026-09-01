@@ -247,7 +247,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.96.3 (a varredura descarta nota morta; falha e por fase)',
+    version: '4.96.4 (o pedido confere a chave; o numero nao identifica sozinho)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -5867,7 +5867,21 @@ for (const item of semNota) {
           new Promise((ok) => setTimeout(() => ok(null),
             Math.max(2000, Math.min(14000, 26000 - (Date.now() - INICIO_BUSCA))))),
         ]);
+        // b204.8 (Codex): a fase do PEDIDO tambem confere a CHAVE.
+        //
+        // Agora que ela recebe itens COM chave (viraram reserva de quem o
+        // numero nao resolveu), aceitar a "mais recente do pedido" sem
+        // comparar aceitaria outra nota do mesmo pedido — e o vinculo
+        // errado ainda iria pro cache, ficando 12h.
         const achada = (r && r.match) || (r && r.ok && r.nf) || null;
+        {
+          const ci = String(item.nf_chave || '').replace(/\D/g, '');
+          const ca = String(achada && achada.chaveAcesso || '').replace(/\D/g, '');
+          if (ci && ca !== ci) {
+            vinculoCache.marcarFalha(item, empresa, 'pedido');
+            continue;   // chave nao bate: a fase da CHAVE resolve, ela e exata
+          }
+        }
         if (achada && achada.id) {
           item.nf_id_bling = String(achada.id);
           if (!item.nf_numero && achada.numero) item.nf_numero = String(achada.numero);

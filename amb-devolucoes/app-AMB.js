@@ -84,7 +84,7 @@ const criarMlBuscas = require('./lib-AMB/ml-buscas-AMB');
 const registrarIdentificar = require('./lib-AMB/identificar-AMB');
 const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 
-const VERSAO = 'AMB Devolucoes b229';
+const VERSAO = 'AMB Devolucoes b230';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -2611,7 +2611,20 @@ router.get('/api/admin/sem-retorno', auth.requerLogin, async (req, res) => {
 
         // ela pode achar o ID e falhar ao buscar o detalhe: { ok:true,
         // idNF, nf:null }. O id sozinho ja serve pro link e pra emissao.
+        // b204.8 (Codex): a fase do PEDIDO tambem confere a CHAVE.
+        //
+        // Agora que ela recebe itens COM chave, aceitar a "mais recente do
+        // pedido" sem comparar pegaria outra nota do mesmo pedido — e o
+        // vinculo errado iria pro cache, ficando 12h.
         const achada = (r && r.ok && r.nf) || null;
+        {
+          const ci = String(item.nf_chave || '').replace(/\D/g, '');
+          const ca = String(achada && achada.chaveAcesso || '').replace(/\D/g, '');
+          if (ci && ca !== ci) {
+            vinculoCache.marcarFalha(item, 'amb', 'pedido');
+            continue;   // a fase da CHAVE resolve; ela e exata
+          }
+        }
         const idAchado = (achada && achada.id) || (r && r.ok && r.idNF) || null;
         if (idAchado) {
           item.nf_id_bling = String(idAchado);
