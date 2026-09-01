@@ -248,7 +248,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.97.0 (bug no codigo aparece como bug, nao como falha do marketplace)',
+    version: '4.98.0 (o diagnostico testa o caminho que o card usa)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
