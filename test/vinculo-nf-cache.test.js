@@ -239,7 +239,8 @@ const RAIZ = path.join(__dirname, '..');
     const fn = src.slice(i, i + 9000);   // a funcao cresceu (b207)
     ok(/const candidatas = lista\.filter/.test(fn),
        nome + ': a varredura separa as candidatas...');
-    ok(/const match = candidatas[\s\S]{0,80}\.filter\(nf =>/.test(fn),
+    // b210.1: virou `vivasVarredura`, pra devolver TODAS as vivas
+    ok(/const vivasVarredura = candidatas[\s\S]{0,80}\.filter\(nf =>/.test(fn),
        nome + '  ...e descarta as mortas antes de escolher');
     ok(/o caminho de\s*\n?\s*\/\/ reserva devolvia justamente a nota que o principal/.test(fn),
        nome + ': com o motivo — o filtro direto recusava e a varredura aceitava');

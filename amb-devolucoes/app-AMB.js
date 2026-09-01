@@ -86,7 +86,7 @@ const criarMlBuscas = require('./lib-AMB/ml-buscas-AMB');
 const registrarIdentificar = require('./lib-AMB/identificar-AMB');
 const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 
-const VERSAO = 'AMB Devolucoes b236';
+const VERSAO = 'AMB Devolucoes b237';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -2590,9 +2590,13 @@ router.get('/api/admin/sem-retorno', auth.requerLogin, async (req, res) => {
           // esse numero NESTA serie. Pode ter sido cancelada, ou nunca ter
           // sido emitida no Bling.
           const ch = String(item.nf_chave).replace(/\D/g, '');
-          item.nf_motivo_sem_vinculo = 'nao ha NF viva com o numero '
+          // b210.1 (Codex): a busca NAO e exaustiva (o filtro direto pode
+          // falhar em silencio e a varredura le poucas paginas), entao nao
+          // afirmo que a nota nao existe — digo que nao achei.
+          item.nf_motivo_sem_vinculo = 'nao achei NF viva com o numero '
             + String(item.nf_numero) + ' na serie ' + ch.slice(22, 25)
-            + ' — pode ter sido cancelada, ou nao existir no Bling';
+            + ' — pode estar cancelada, fora do alcance da busca, ou nao existir '
+            + 'no Bling. Confira por la antes de concluir';
           vinculoCache.guardar(item, item.nf_id_bling, 'numero', { chave: item.nf_chave, numero: item.nf_numero }, 'amb', idCache);
         }
         // b204.6 (Codex): so adio quando o Bling RESPONDEU e nao achou.
@@ -2710,6 +2714,19 @@ router.get('/api/admin/sem-retorno', auth.requerLogin, async (req, res) => {
               vinculoCache.marcarFalha(item, 'amb', 'pedido');
             }
       } catch (e) { /* segue sem a nota; o card continua so informativo */ }
+    }
+
+    // b210.1 (Codex): a SERIE e marcada pra TODOS que ganharam vinculo,
+    // nao so pelos que a fase do numero resolveu. Item vinculado pelo
+    // pedido ou pela chave tambem precisa do aviso de Full — ele muda o
+    // tratamento fiscal.
+    for (const item of itens) {
+      if (!item.nf_id_bling || item.nf_serie) continue;
+      const serie = confrontar.serieDaChave(item.nf_chave);
+      if (!serie) continue;
+      item.nf_serie = serie;
+      item.nf_canal = confrontar.canalDaSerie(serie, 'amb');
+      item.nf_do_full = confrontar.ehDoFull(serie, 'amb');
     }
 
     // b203.7 (Codex): RECALCULAR a acao depois de enriquecer.

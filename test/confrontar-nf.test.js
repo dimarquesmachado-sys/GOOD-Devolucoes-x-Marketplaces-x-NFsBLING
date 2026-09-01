@@ -187,6 +187,38 @@ const CHAVE_S3 = '35260864289091000100550030000006371448079669';   // serie 003,
   ok(/duvidoso/.test(debug), '  com as series duvidosas destacadas');
 }
 
+// ── b210.1: os cinco da rodada ──────────────────────────────────────
+{
+  // `loja` no Bling e OBJETO com id — normalizar viraria "objectobject"
+  ok(C.marketplaceDaNF({ loja: { id: 1, nome: 'TikTok' } }) === 'tiktok',
+     'le o nome de dentro do objeto `loja`');
+  ok(C.marketplaceDaNF({ loja: { id: 203764162 } }) === 'loja203764162',
+     '  e sem nome, guarda o id em vez de virar lixo');
+  ok(C.marketplaceDaNF({ loja: 'MagaluOpenApi' }) === 'magalu',
+     '  texto direto continua funcionando');
+
+  // a varredura devolve TODAS as vivas, senao a escada nunca oferece escolha
+  for (const [nome, rel] of [['GOOD', 'lib/bling.js'],
+                             ['AMB', 'amb-devolucoes/lib-AMB/admin-helpers-AMB.js']]) {
+    const src = fs.readFileSync(path.join(RAIZ, rel), 'utf8');
+    ok(/const vivasVarredura = candidatas/.test(src),
+       nome + ': a varredura guarda todas as vivas');
+    ok(/candidatas: vivasVarredura/.test(src),
+       nome + '  e devolve a lista — senao a escada recebia 1 item so');
+  }
+
+  // a serie e marcada em TODA fase que vincula
+  for (const [nome, rel] of [['GOOD', 'server.js'], ['AMB', 'amb-devolucoes/app-AMB.js']]) {
+    const src = fs.readFileSync(path.join(RAIZ, rel), 'utf8');
+    ok(/a SERIE e marcada pra TODOS que ganharam vinculo/.test(src),
+       nome + ': a serie e marcada em toda fase, nao so na do numero');
+    ok(/nao achei NF viva com o numero/.test(src),
+       nome + ': e o motivo diz "nao achei", nao "nao existe"');
+    ok(/fora do alcance da busca/.test(src),
+       nome + '  porque a busca nao e exaustiva');
+  }
+}
+
 console.log('');
 console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
 process.exit(falhas ? 1 : 0);

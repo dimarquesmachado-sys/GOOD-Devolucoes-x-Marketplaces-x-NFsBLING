@@ -18,7 +18,7 @@ const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o
 
 const BLING = fs.readFileSync(path.join(__dirname, '..', 'lib', 'bling.js'), 'utf8');
 const i = BLING.indexOf('async function buscarNFnoBlingPorOrderId');
-const fn = BLING.slice(i, i + 52000);  // cresceu de novo (filtro direto)
+const fn = BLING.slice(i, i + 14000);   // b210.1: so esta funcao (~12,7k), nao o modulo inteiro
 
 // ── a janela agora comeca na data certa ──────────────────────────────
 {

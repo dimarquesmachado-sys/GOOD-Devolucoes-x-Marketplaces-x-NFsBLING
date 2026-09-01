@@ -67,7 +67,8 @@ const RAIZ = path.join(__dirname, '..');
     const src = fs.readFileSync(path.join(RAIZ, rel), 'utf8');
     ok(/nf_motivo_sem_vinculo/.test(src),
        nome + ': o item carrega o MOTIVO de nao ter vinculo');
-    ok(/pode ter sido cancelada, ou nao existir no Bling/.test(src),
+    // b210.1: o texto ficou mais honesto — "nao achei", nao "nao existe"
+    ok(/pode estar cancelada, fora do alcance da busca/.test(src),
        nome + '  explicando a hipotese, em vez de so "nao localizada"');
   }
 
