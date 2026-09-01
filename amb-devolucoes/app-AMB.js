@@ -84,7 +84,7 @@ const criarMlBuscas = require('./lib-AMB/ml-buscas-AMB');
 const registrarIdentificar = require('./lib-AMB/identificar-AMB');
 const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 
-const VERSAO = 'AMB Devolucoes b227';
+const VERSAO = 'AMB Devolucoes b228';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -2528,7 +2528,13 @@ router.get('/api/admin/sem-retorno', auth.requerLogin, async (req, res) => {
           item.nf_achada_por = 'numero';
           vinculoCache.guardar(item, item.nf_id_bling, 'numero', { chave: item.nf_chave, numero: item.nf_numero }, 'amb', idCache);
         }
-        if (!item.nf_id_bling) vinculoCache.marcarFalha(item, 'amb');
+        // b204.6 (Codex): so adio quando o Bling RESPONDEU e nao achou.
+            // Erro (429/500) ou prazo estourado devolvem `r` nulo — isso e
+            // ausencia de resposta, nao "nao existe". Adiar por 20 min uma
+            // instabilidade de segundos deixaria o dono sem o botao a toa.
+            if (!item.nf_id_bling && r && r.ok !== false) {
+              vinculoCache.marcarFalha(item, 'amb');
+            }
       } catch (e) { /* segue pros caminhos abaixo */ }
     }
 
@@ -2574,9 +2580,7 @@ router.get('/api/admin/sem-retorno', auth.requerLogin, async (req, res) => {
       } catch (e) { /* segue sem o link; o numero da NF esta no card */ }
     }
 
-    for (const item of vinculoCache.fila(itens, 'amb', 10, (x) => !x.nf_numero && !x.nf_chave && x.pedido)) {
-      // b204.1: a identidade de ANTES do enriquecimento — o refresh
-      // seguinte le a linha crua e procura por ela.
+    for (const item of vinculoCache.fila(itens, 'amb', 10, (x) => x.pedido)) {
       const idCache = vinculoCache.chaveDe(item, 'amb');
       // b204.5 (Codex): corte em 8s, nao 12. Esta fase ficava entre a do
       // NUMERO e a da CHAVE e podia comer 14s — depois disso a da chave,
@@ -2618,7 +2622,13 @@ router.get('/api/admin/sem-retorno', auth.requerLogin, async (req, res) => {
           item.nf_achada_por = 'pedido';
           vinculoCache.guardar(item, item.nf_id_bling, 'pedido', { chave: item.nf_chave, numero: item.nf_numero }, 'amb', idCache);
         }
-        if (!item.nf_id_bling) vinculoCache.marcarFalha(item, 'amb');
+        // b204.6 (Codex): so adio quando o Bling RESPONDEU e nao achou.
+            // Erro (429/500) ou prazo estourado devolvem `r` nulo — isso e
+            // ausencia de resposta, nao "nao existe". Adiar por 20 min uma
+            // instabilidade de segundos deixaria o dono sem o botao a toa.
+            if (!item.nf_id_bling && r && r.ok !== false) {
+              vinculoCache.marcarFalha(item, 'amb');
+            }
       } catch (e) { /* segue sem a nota; o card continua so informativo */ }
     }
 

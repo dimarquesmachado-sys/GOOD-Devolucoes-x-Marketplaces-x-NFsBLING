@@ -247,7 +247,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.96.1 (as tres fases cabem no orcamento, e toda falha e marcada)',
+    version: '4.96.2 (falha do Bling nao vira espera; sem grafia repetida)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -5753,8 +5753,7 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
 
 
     const comNumero = vinculoCache.fila(itens, empresa, 25, (x) => x.nf_numero);
-    const semNota = vinculoCache.fila(itens, empresa, 25, (x) => !x.nf_numero && x.pedido);
-
+    const semNota = vinculoCache.fila(itens, empresa, 25, (x) => x.pedido);
 
 
     let buscadas = 0;
@@ -5810,7 +5809,13 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
           item.nf_achada_por = (r && r.via === 'filtro_direto_numero') ? 'numero' : 'numero_varredura';
           vinculoCache.guardar(item, item.nf_id_bling, 'numero', { chave: item.nf_chave, numero: item.nf_numero }, empresa, idCache);
         }
-        if (!item.nf_id_bling) vinculoCache.marcarFalha(item, empresa);
+        // b204.6 (Codex): so adio quando o Bling RESPONDEU e nao achou.
+            // Erro (429/500) ou prazo estourado devolvem `r` nulo — isso e
+            // ausencia de resposta, nao "nao existe". Adiar por 20 min uma
+            // instabilidade de segundos deixaria o dono sem o botao a toa.
+            if (!item.nf_id_bling && r && r.ok !== false) {
+              vinculoCache.marcarFalha(item, empresa);
+            }
       } catch (e) { /* cai nos caminhos abaixo */ }
     }
 
@@ -5868,7 +5873,13 @@ for (const item of semNota) {
           item.nf_achada_por = 'pedido';
           vinculoCache.guardar(item, item.nf_id_bling, 'pedido', { chave: item.nf_chave, numero: item.nf_numero }, empresa, idCache);   // pra tela dizer de onde veio
         }
-        if (!item.nf_id_bling) vinculoCache.marcarFalha(item, empresa);
+        // b204.6 (Codex): so adio quando o Bling RESPONDEU e nao achou.
+            // Erro (429/500) ou prazo estourado devolvem `r` nulo — isso e
+            // ausencia de resposta, nao "nao existe". Adiar por 20 min uma
+            // instabilidade de segundos deixaria o dono sem o botao a toa.
+            if (!item.nf_id_bling && r && r.ok !== false) {
+              vinculoCache.marcarFalha(item, empresa);
+            }
       } catch (e) { /* segue sem a nota; o card continua so informativo */ }
     }
 
