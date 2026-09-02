@@ -249,7 +249,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '5.4.5 (excecao na sonda conta como falha passageira)',
+    version: '5.4.6 (429 nao e recusa; varias linhas ja provam que ignorou)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
