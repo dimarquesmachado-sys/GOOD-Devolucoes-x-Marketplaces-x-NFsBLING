@@ -99,6 +99,10 @@ const { vereditoDaSonda: veredito, sondaFalhouPorAcaso: passageiro } =
      'o prazo restante nao tem piso: passar do teto anunciado seria mentira');
   ok(/base_sem_filtro:/.test(SRC),
      'a resposta diz quantas notas a consulta SEM filtro devolve');
+  ok(/veredito: 'erro \(resposta sem lista\)'/.test(SRC),
+     '200 com corpo estranho vira ERRO, nao "vazio" — vazio seria uma conclusao');
+  ok(passageiro({ veredito: 'erro (resposta sem lista)' }) === true,
+     '  e entra como inconclusivo, nao como recusa');
   ok(/Array\.isArray\(r\.data\?\.data\)/.test(SRC),
      'e a lista so e usada se for array mesmo');
   ok(/levou_ms:/.test(SRC), 'a resposta diz quanto levou');

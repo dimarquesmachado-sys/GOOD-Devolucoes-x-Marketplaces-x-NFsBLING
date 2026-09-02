@@ -249,7 +249,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '5.6.3 (base ausente e duvida; PROVAVEL nao vira recusa)',
+    version: '5.6.4 (200 com corpo estranho e erro, nao vazio)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
