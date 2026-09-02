@@ -249,7 +249,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '5.3.0 (serie != 1 e Full em TODO o sistema)',
+    version: '5.3.1 (a devolucao segue a serie da venda; Full sobrevive ao cache)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -6067,8 +6067,15 @@ item.nf_id_bling = String(achada.id);
     // pedido ou pela chave tambem precisa do aviso de Full — ele muda o
     // tratamento fiscal.
     for (const item of itens) {
-      if (!item.nf_id_bling || item.nf_serie) continue;
-      const serie = confrontar.serieDaChave(item.nf_chave);
+      // b216.1 (Codex): recalcular quando a SERIE veio do cache sem o resto.
+      //
+      // `aplicar()` restaura `nf_serie`, mas nao `nf_canal` nem `nf_do_full`
+      // — e o `continue` pulava justamente esses, porque a serie ja estava
+      // preenchida. Resultado: o aviso de Full sumia no refresh seguinte,
+      // que e quando o cache passa a valer.
+      if (!item.nf_id_bling) continue;
+      if (item.nf_serie && item.nf_do_full !== undefined) continue;
+      const serie = item.nf_serie || confrontar.serieDaChave(item.nf_chave);
       if (!serie) continue;
       item.nf_serie = serie;
       item.nf_canal = confrontar.canalDaSerie(serie, empresa);

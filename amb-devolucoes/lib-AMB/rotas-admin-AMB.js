@@ -379,7 +379,15 @@ app.post('/api/admin/full-vincular/:id', requerAdmin, async (req, res) => {
       // b216: idem — serie != 1 e Full
       const sNF = String(nfc.serie || '').trim().replace(/^0+/, '')
         || String(nfc.chaveAcesso || '').replace(/\D/g, '').substr(22, 3).replace(/^0+/, '');
-      const serieOk = !!sNF && sNF !== '1';
+      // b216.1 (Codex): a serie da devolucao tem que ser a MESMA da venda.
+      //
+      // Eu tinha afrouxado pra "qualquer serie != 1" — mas se a conta tem
+      // mais de uma serie de Full (ML, Amazon, Magalu), isso aceitaria a
+      // nota de entrada de OUTRO canal com valor parecido. O vinculo sairia
+      // errado, e e nota fiscal.
+      //
+      // `serieReg` e a serie do card (da venda). A entrada tem que bater.
+      const serieOk = !!sNF && sNF !== '1' && (!serieReg || sNF === serieReg);
       if (!serieOk) continue;
       const p = await pontuar(nfc);
       if (!melhor || p.pts > melhor.pts) melhor = { nf: nfc, ...p };

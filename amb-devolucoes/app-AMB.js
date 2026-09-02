@@ -86,7 +86,7 @@ const criarMlBuscas = require('./lib-AMB/ml-buscas-AMB');
 const registrarIdentificar = require('./lib-AMB/identificar-AMB');
 const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 
-const VERSAO = 'AMB Devolucoes b243';
+const VERSAO = 'AMB Devolucoes b244';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -2761,8 +2761,15 @@ router.get('/api/admin/sem-retorno', auth.requerLogin, async (req, res) => {
     // pedido ou pela chave tambem precisa do aviso de Full — ele muda o
     // tratamento fiscal.
     for (const item of itens) {
-      if (!item.nf_id_bling || item.nf_serie) continue;
-      const serie = confrontar.serieDaChave(item.nf_chave);
+      // b216.1 (Codex): recalcular quando a SERIE veio do cache sem o resto.
+      //
+      // `aplicar()` restaura `nf_serie`, mas nao `nf_canal` nem `nf_do_full`
+      // — e o `continue` pulava justamente esses, porque a serie ja estava
+      // preenchida. Resultado: o aviso de Full sumia no refresh seguinte,
+      // que e quando o cache passa a valer.
+      if (!item.nf_id_bling) continue;
+      if (item.nf_serie && item.nf_do_full !== undefined) continue;
+      const serie = item.nf_serie || confrontar.serieDaChave(item.nf_chave);
       if (!serie) continue;
       item.nf_serie = serie;
       item.nf_canal = confrontar.canalDaSerie(serie, 'amb');

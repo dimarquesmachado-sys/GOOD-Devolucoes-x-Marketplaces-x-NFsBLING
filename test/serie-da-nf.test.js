@@ -143,6 +143,40 @@ const RAIZ = path.join(__dirname, '..');
   }
 }
 
+// ── b216.1: os dois da rodada ───────────────────────────────────────
+{
+  // a serie da DEVOLUCAO tem que ser a mesma da VENDA
+  const ok2 = (sNF, serieReg) => !!sNF && sNF !== '1' && (!serieReg || sNF === serieReg);
+  ok(ok2('2', '2') === true, 'entrada da mesma serie de Full: aceita');
+  ok(ok2('5', '2') === false,
+     'entrada de OUTRO canal Full: recusa — se a conta tem varias series, meu '
+     + '"qualquer != 1" pegaria a nota errada');
+  ok(ok2('1', '2') === false, 'e a da matriz continua fora');
+  ok(ok2('3', null) === true, 'card sem serie conhecida: aceita qualquer Full');
+
+  for (const [nome, rel] of [['GOOD', 'lib/rotas-admin-nf.js'],
+                             ['AMB', 'amb-devolucoes/lib-AMB/rotas-admin-AMB.js']]) {
+    const src = fs.readFileSync(path.join(RAIZ, rel), 'utf8');
+    ok(/sNF !== '1' && \(!serieReg \|\| sNF === serieReg\)/.test(src),
+       nome + ': a serie da devolucao tem que bater com a da venda');
+  }
+
+  // o decorador recalcula quando a serie veio do CACHE sem o resto
+  const decora = (i) => !(i.nf_serie && i.nf_do_full !== undefined);
+  ok(decora({ nf_serie: '003' }) === true,
+     'serie restaurada do cache SEM canal: recalcula (o aviso de Full sumia)');
+  ok(decora({ nf_serie: '003', nf_do_full: true }) === false,
+     '  e o que ja esta completo nao e refeito');
+
+  for (const [nome, rel] of [['GOOD', 'server.js'], ['AMB', 'amb-devolucoes/app-AMB.js']]) {
+    const src = fs.readFileSync(path.join(RAIZ, rel), 'utf8');
+    ok(/if \(item\.nf_serie && item\.nf_do_full !== undefined\) continue;/.test(src),
+       nome + ': o decorador so pula quem tem serie E canal');
+    ok(/const serie = item\.nf_serie \|\| confrontar\.serieDaChave/.test(src),
+       nome + '  e aproveita a serie que veio do cache');
+  }
+}
+
 console.log('');
 console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
 process.exit(falhas ? 1 : 0);
