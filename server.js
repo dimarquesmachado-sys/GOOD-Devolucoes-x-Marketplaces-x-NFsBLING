@@ -249,7 +249,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '5.2.5 (acumulador so na funcao dele; busca truncada nao decide)',
+    version: '5.2.6 (lista incompleta se declara; a serie escolhida vai pra fila)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -5147,6 +5147,9 @@ app.post('/api/admin/sem-retorno/registrar', requerAdmin, async (req, res) => {
         // `buyer_nome` existe (o insert da triagem usa). A DATA nao tem
         // coluna aqui, entao vai na descricao, de onde o card pode ler.
         buyer_nome: d.cliente || null,
+        // b210.6 (Codex): a serie escolhida entra no vinculo da NF, pra o
+        // card da fila saber que a nota e do Full
+        nf_id_bling: d.nf_id_bling || null,
         // ⚠️ o RASTRO de onde veio: quem olhar este registro depois precisa
         // saber que NAO houve bipagem — o produto pode nem ter voltado.
         // `[DEFEITO]` na descricao: as filas leem `d.status || d.tipo` pra
@@ -5818,16 +5821,19 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
         // mas com `ok:false`. Escolher a partir dessa lista aceitaria uma
         // candidata unica que so e unica porque a busca parou: a outra podia
         // estar na pagina que falhou. Fica pro proximo refresh.
-        const buscaCompleta = !!(r && r.ok !== false);
+        // b210.6 (Codex): completa = respondeu E varreu tudo.
+        // O teto de paginas devolve `ok:true` (pro legado nao quebrar) mas
+        // com `listaCompleta:false` — a lista pode nao ter todas as notas.
+        const buscaCompleta = !!(r && r.ok !== false && r.listaCompleta !== false);
+        // e o prazo estourado (r nulo) e falha TRANSITORIA: nao adio 20min
+        const respondeu = !!r;
         const veredito = confrontar.escolher(item,
           (r && r.candidatas) || (achada ? [achada] : []));
-        if (!buscaCompleta && !veredito.escolhida) {
-          vinculoCache.marcarFalha(item, empresa, 'numero');
-          continue;
-        }
-        if (!buscaCompleta && veredito.fraca) {
-          // unica candidata de uma busca truncada: fraca demais pra vincular
-          vinculoCache.marcarFalha(item, empresa, 'numero');
+        if (!buscaCompleta && (!veredito.escolhida || veredito.fraca)) {
+          // b210.6 (Codex): so esfrio quando o Bling RESPONDEU. Prazo
+          // estourado ou erro sao transitorios — adiar 20min por causa
+          // deles contraria a propria regra que escrevi no b204.6.
+          if (respondeu && r.ok !== false) vinculoCache.marcarFalha(item, empresa, 'numero');
           continue;
         }
         if (veredito.candidatas && veredito.candidatas.length > 1) {

@@ -1325,7 +1325,8 @@
                   '<label style="display:block;font-size:12px;margin:4px 0;cursor:pointer;">'
                   + '<input type="radio" name="cand-' + escapeHtml(String(x.id)) + '" '
                   + 'class="chk-candidata" data-item="' + escapeHtml(String(x.id)) + '" '
-                  + 'data-nfid="' + escapeHtml(String(c.id)) + '"> '
+                  + 'data-nfid="' + escapeHtml(String(c.id)) + '" '
+                  + 'data-serie="' + escapeHtml(String(c.serie || '')) + '"> '
                   + '<b>NF ' + escapeHtml(String(c.numero || '?')) + '</b>'
                   + (c.serie ? ' · série ' + escapeHtml(String(c.serie)) : '')
                   + (c.data ? ' · ' + escapeHtml(String(c.data).slice(0, 10)) : '')
@@ -1424,7 +1425,13 @@
             const caso = JSON.parse(b.dataset.caso || '{}');
             const marcada = document.querySelector(
               '.chk-candidata[data-item="' + caso.chave_caso + '"]:checked');
-            if (marcada) caso.nf_id_bling = marcada.dataset.nfid;
+            if (marcada) {
+              caso.nf_id_bling = marcada.dataset.nfid;
+              // b210.6 (Codex): a SERIE da escolhida vai junto. Sem ela o
+              // registro perde o aviso de Full, e na fila "Aprovadas" o
+              // caso aparece sem o alerta de que a nota e do marketplace.
+              if (marcada.dataset.serie) caso.nf_serie = marcada.dataset.serie;
+            }
             if (!caso.nf_id_bling) {
               toast('escolha qual NF é a desta venda antes de gerar', 'err');
               return;
