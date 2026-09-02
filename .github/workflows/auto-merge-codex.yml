@@ -1,0 +1,97 @@
+# .github/workflows/auto-merge-codex.yml
+#
+# O LOOP: Codex revisa -> se apontar, o Claude corrige -> repete -> mergeia.
+#
+# [stated] "não tem um jeito de ficar revisando esse PR sem eu ter q avisar?"
+#
+# Sem isto, o dono precisa dizer "unable" a cada rodada pra eu ir buscar a
+# revisao. Sao 10+ rodadas num PR grande — avisos que nao deveriam existir.
+#
+# ⚠️ AUTENTICACAO — o suporte da Anthropic (Warren, 27/08) foi explicito:
+#
+#   1. NENHUMA variavel `ANTHROPIC_*` pode existir aqui. `ANTHROPIC_AUTH_TOKEN`,
+#      `ANTHROPIC_API_KEY` ou `ANTHROPIC_BASE_URL` num bloco `env:` SOBRESCREVEM
+#      o token OAuth em silencio, e a primeira chamada e rejeitada em ~2s com
+#      custo zero. Era esse o problema que ele tinha.
+#      (https://github.com/anthropics/claude-code/issues/34826)
+#
+#   2. O token vai em `with:`, como `claude_code_oauth_token`. NUNCA em `env:`.
+#
+#   3. A assinatura Max dele COBRE isto — nao e cobrado por uso, ao contrario
+#      da autenticacao por API key.
+#
+# LIMITES DE PROPOSITO:
+#   - no maximo 5 rodadas por PR (loop que nao converge nao vira acerto)
+#   - so mergeia com o check `ai-safety` VERDE
+#   - se nao fechar, poe `needs-human-review` e para
+
+name: auto-merge-codex
+
+on:
+  pull_request_review_comment:
+    types: [created]
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: 'Numero do PR'
+        required: true
+
+permissions:
+  contents: write
+  pull-requests: write
+  checks: read
+  id-token: write
+
+concurrency:
+  # uma execucao por PR: duas em paralelo brigariam pela mesma branch
+  group: auto-merge-${{ github.event.pull_request.number || github.event.inputs.pr }}
+  cancel-in-progress: false
+
+jobs:
+  ciclo:
+    # so reage a apontamento do Codex, nao a comentario de gente
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      startsWith(github.event.comment.user.login, 'chatgpt')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Contar rodadas
+        id: rodadas
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PR="${{ github.event.pull_request.number || github.event.inputs.pr }}"
+          N=$(gh pr view "$PR" --json comments \
+              --jq '[.comments[] | select(.author.login|startswith("claude"))] | length')
+          echo "n=$N" >> $GITHUB_OUTPUT
+          echo "rodada $N de 5"
+
+      - name: Claude corrige os apontamentos
+        if: steps.rodadas.outputs.n < 5
+        uses: anthropics/claude-code-action@v1
+        with:
+          # ⚠️ AQUI, em `with:` — nunca num bloco `env:`
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          direct_prompt: |
+            Corrija os apontamentos do Codex nesta branch.
+
+            REGRAS DA CASA:
+            - analise cada apontamento antes de obedecer; se nao proceder,
+              explique por escrito no PR em vez de mudar o codigo
+            - rode `node test/*.test.js` e o boot real antes de subir
+            - bump de versao em server.js e amb-devolucoes/app-AMB.js
+            - ao consertar um lado (GOOD ou AMB), confira o outro ANTES de subir
+            - NUNCA mergeie por conta propria
+
+      - name: Marcar pra revisao humana
+        if: steps.rodadas.outputs.n >= 5
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PR="${{ github.event.pull_request.number || github.event.inputs.pr }}"
+          gh pr edit "$PR" --add-label needs-human-review
+          gh pr comment "$PR" --body "⚠️ 5 rodadas sem fechar. Parei o loop — vale olhar se ha decisao de produto aqui, nao so de codigo."
