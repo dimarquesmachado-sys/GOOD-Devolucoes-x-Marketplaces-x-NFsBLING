@@ -82,6 +82,14 @@ jobs:
         with:
           # ⚠️ AQUI, em `with:` — nunca num bloco `env:`
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # b215: MOSTRAR o que o Claude fez.
+          #
+          # Sem isto o erro e so "result is_error:true", que nao diz nada —
+          # nem pra mim nem pro dono. Com `show_full_output`, o log traz o
+          # que ele tentou e onde parou, que e como achamos as cinco causas
+          # anteriores. Foi tambem o que o suporte da Anthropic pediu.
+          show_full_output: 'true'
+
           # b214: LIBERAR o Codex, que e bot.
           #
           # A action recusa acionamento por bot por padrao — "Workflow
@@ -98,7 +106,8 @@ jobs:
           # versao da action, e ela lista os validos no erro. Conferi contra
           # a lista que o log devolveu.
           prompt: |
-            Corrija os apontamentos do Codex nesta branch.
+            Leia os comentarios de revisao do Codex neste PR e corrija o que
+            proceder, commitando na MESMA branch do PR.
 
             REGRAS DA CASA:
             - analise cada apontamento antes de obedecer; se nao proceder,
