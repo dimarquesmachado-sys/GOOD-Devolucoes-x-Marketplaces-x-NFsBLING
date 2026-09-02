@@ -144,7 +144,7 @@ const fn = BLING.slice(i, i + 14000);   // b210.1: so esta funcao (~12,7k), nao 
 // chave — a ponta firme, que eu ignorava.
 {
   const iNum = BLING.indexOf('async function buscarNFnoBlingPorNumero');
-  const fnNum = BLING.slice(iNum, iNum + 4000);
+  const fnNum = BLING.slice(iNum, iNum + 6000);
   ok(/'&numero=' \+ encodeURIComponent\(alvo\)/.test(fnNum),
      'ha filtro direto por NUMERO da nota — uma chamada, sem paginar');
   ok(/via: 'filtro_direto_numero'/.test(fnNum), '  marcando de onde veio');
