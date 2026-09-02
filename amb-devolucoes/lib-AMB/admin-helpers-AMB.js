@@ -304,11 +304,32 @@ async function buscarNFnoBlingPorNumero(numeroNF, dataReferencia, opcoes = {}) {
       const serieDaChave = String(opcoes.chave || '').replace(/\D/g, '').length === 44
         ? String(String(opcoes.chave).replace(/\D/g, '').slice(22, 25)).replace(/^0+/, '')
         : null;
-      const urlDireta = 'https://api.bling.com.br/Api/v3/nfe?limite=20&pagina=1&tipo=1'
-        + '&numero=' + encodeURIComponent(alvo)
-        + (serieDaChave ? '&serie=' + encodeURIComponent(serieDaChave) : '');
-      const rd = await chamarBling(urlDireta);
-      const lista = (rd.ok && rd.data?.data) ? rd.data.data : [];
+      // b218: a SERIE e um refinamento, nao um requisito.
+      //
+      // O dono testou o diagnostico e a nota apareceu na hora
+      // (`filtro_direto_numero`, 1 nota vista) — mas o CARD nao achava. A
+      // diferenca: o diagnostico nao passa a chave, entao nao filtra por
+      // serie; o card passa. Ou seja, foi o `&serie=` que quebrou a busca —
+      // o Bling parece nao aceitar esse parametro no /nfe.
+      //
+      // Entao tento COM serie (mais preciso) e, se vier vazio, tento SEM.
+      // A escada de desempate confere a chave depois, entao nao perco
+      // precisao: perco so a economia de uma chamada.
+      const urls = [];
+      if (serieDaChave) {
+        urls.push('https://api.bling.com.br/Api/v3/nfe?limite=20&pagina=1&tipo=1'
+          + '&numero=' + encodeURIComponent(alvo)
+          + '&serie=' + encodeURIComponent(serieDaChave));
+      }
+      urls.push('https://api.bling.com.br/Api/v3/nfe?limite=20&pagina=1&tipo=1'
+        + '&numero=' + encodeURIComponent(alvo));
+      let lista = [];
+      for (const u of urls) {
+        const rd = await chamarBling(u);
+        lista = (rd.ok && rd.data?.data) ? rd.data.data : [];
+        if (lista.length) break;          // achou: nao preciso da 2a forma
+        if (urls.length > 1) await sleep(350);
+      }
       const batem = lista.filter((nf) => {
         const n = String(nf.numero || '').replace(/^0+/, '');
         return n === numeroNFLimpo;

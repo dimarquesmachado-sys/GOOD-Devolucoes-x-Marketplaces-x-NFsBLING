@@ -236,7 +236,7 @@ const RAIZ = path.join(__dirname, '..');
                              ['AMB', 'amb-devolucoes/lib-AMB/admin-helpers-AMB.js']]) {
     const src = fs.readFileSync(path.join(RAIZ, rel), 'utf8');
     const i = src.indexOf('async function buscarNFnoBlingPorNumero');
-    const fn = src.slice(i, i + 9000);   // a funcao cresceu (b207)
+    const fn = src.slice(i, i + 13000);   // a funcao cresceu (b207)
     ok(/const candidatas = lista\.filter/.test(fn),
        nome + ': a varredura separa as candidatas...');
     // b210.1: virou `vivasVarredura`, pra devolver TODAS as vivas
@@ -285,7 +285,7 @@ const RAIZ = path.join(__dirname, '..');
                              ['AMB', 'amb-devolucoes/lib-AMB/admin-helpers-AMB.js']]) {
     const src = fs.readFileSync(path.join(RAIZ, rel), 'utf8');
     const i = src.indexOf('async function buscarNFnoBlingPorNumero');
-    const fn = src.slice(i, i + 4000);
+    const fn = src.slice(i, i + 13000);
     ok(/NAO desisto aqui/.test(fn),
        nome + ': tenta a outra grafia mesmo quando so achou nota morta');
   }

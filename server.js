@@ -249,7 +249,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '5.3.2 (teto de paginas nao se declara varredura completa)',
+    version: '5.3.3 (a serie e refinamento: se nao achar com ela, tenta sem)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
