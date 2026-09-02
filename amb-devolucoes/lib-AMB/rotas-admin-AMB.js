@@ -279,9 +279,16 @@ app.post('/api/admin/full-vincular/:id', requerAdmin, async (req, res) => {
 
     // Confere que e FULL (serie 2 da NF de venda)
     const chaveV = String(reg.nf_chave || '').replace(/\D/g, '');
-    const ehFull = String(reg.nf_serie || '').trim() === '2' ||
-      (chaveV.length === 44 && chaveV.substr(22, 3) === '002');
-    if (!ehFull) return res.status(400).json({ ok: false, erro: 'Este card nao e FULL (serie 2) - use o Gerar NF Devolucao normal' });
+    // b216 (Codex): QUALQUER serie != 1 e Full.
+    //
+    // [stated] "cada marketplace com operação fullfilment vai ter 1 série
+    // específica". A checagem so aceitava a 2 (ML Full) e recusava a serie
+    // 3 da AMB — o dono via "este card nao e FULL" numa nota que o
+    // marketplace emitiu, e caia no fluxo errado.
+    const serieReg = String(reg.nf_serie || '').trim().replace(/^0+/, '')
+      || String(reg.nf_chave || '').replace(/\D/g, '').substr(22, 3).replace(/^0+/, '');
+    const ehFull = !!serieReg && serieReg !== '1';
+    if (!ehFull) return res.status(400).json({ ok: false, erro: 'Este card nao e FULL (serie 1 = emissao da matriz) - use o Gerar NF Devolucao normal' });
 
     const f = (dt) => dt.toISOString().slice(0, 10);
     const base = reg.nf_data_emissao ? new Date(reg.nf_data_emissao) : (reg.created_at ? new Date(reg.created_at) : new Date(Date.now() - 60 * 864e5));
@@ -369,8 +376,18 @@ app.post('/api/admin/full-vincular/:id', requerAdmin, async (req, res) => {
       const nfc = (rFull.ok && rFull.data?.data) ? rFull.data.data : null;
       if (!nfc) continue;
       const chaveD = String(nfc.chaveAcesso || '').replace(/\D/g, '');
-      const serieOk = String(nfc.serie || '').trim() === '2' ||
-        (chaveD.length === 44 && chaveD.substr(22, 3) === '002');
+      // b216: idem — serie != 1 e Full
+      const sNF = String(nfc.serie || '').trim().replace(/^0+/, '')
+        || String(nfc.chaveAcesso || '').replace(/\D/g, '').substr(22, 3).replace(/^0+/, '');
+      // b216.1 (Codex): a serie da devolucao tem que ser a MESMA da venda.
+      //
+      // Eu tinha afrouxado pra "qualquer serie != 1" — mas se a conta tem
+      // mais de uma serie de Full (ML, Amazon, Magalu), isso aceitaria a
+      // nota de entrada de OUTRO canal com valor parecido. O vinculo sairia
+      // errado, e e nota fiscal.
+      //
+      // `serieReg` e a serie do card (da venda). A entrada tem que bater.
+      const serieOk = !!sNF && sNF !== '1' && (!serieReg || sNF === serieReg);
       if (!serieOk) continue;
       const p = await pontuar(nfc);
       if (!melhor || p.pts > melhor.pts) melhor = { nf: nfc, ...p };
@@ -548,11 +565,17 @@ app.post('/api/admin/lancar-por-nf', requerAdmin, async (req, res) => {
         continue;
       }
 
-      // 3) Guarda FULL: serie 2 = devolucao emitida pelo proprio ML
-      const serie = nf.serie != null ? String(nf.serie).trim() : null;
+      // 3) Guarda FULL: QUALQUER serie != 1 e emissao do marketplace.
+      //
+      // b216 (Codex): so recusava a serie 2 (ML Full). A serie 3 da AMB
+      // passava batido, e o sistema tentaria lancar uma devolucao que o
+      // marketplace ja emite por conta propria.
+      const serie = nf.serie != null ? String(nf.serie).trim().replace(/^0+/, '') : '';
       const chave = nf.chaveAcesso ? String(nf.chaveAcesso).replace(/\D/g, '') : '';
-      if (serie === '2' || (chave.length === 44 && chave.substr(22, 3) === '002')) {
-        resultados.push({ numero: num, ok: false, motivo: 'serie 2 (FULL) - devolucao e emitida pelo ML, nao lancar aqui' });
+      const serieNF = serie || (chave.length === 44 ? chave.substr(22, 3).replace(/^0+/, '') : '');
+      if (serieNF && serieNF !== '1') {
+        resultados.push({ numero: num, ok: false,
+          motivo: 'serie ' + serieNF + ' (FULL) - a devolucao e emitida pelo marketplace, nao lancar aqui' });
         continue;
       }
 

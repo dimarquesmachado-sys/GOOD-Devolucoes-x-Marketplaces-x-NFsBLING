@@ -18,7 +18,7 @@ const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o
 
 const BLING = fs.readFileSync(path.join(__dirname, '..', 'lib', 'bling.js'), 'utf8');
 const i = BLING.indexOf('async function buscarNFnoBlingPorOrderId');
-const fn = BLING.slice(i, i + 13000);  // cresceu de novo (filtro direto)
+const fn = BLING.slice(i, i + 14000);   // b210.1: so esta funcao (~12,7k), nao o modulo inteiro
 
 // ── a janela agora comeca na data certa ──────────────────────────────
 {
@@ -155,7 +155,7 @@ const fn = BLING.slice(i, i + 13000);  // cresceu de novo (filtro direto)
 
   const SERVER2 = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
   const i2 = SERVER2.indexOf("'/api/admin/sem-retorno'");
-  const rota2 = SERVER2.slice(i2, i2 + 42000);   // a rota cresceu (b204.1)
+  const rota2 = SERVER2.slice(i2, i2 + 52000);   // a rota cresceu (b204.1)
   ok(rota2.indexOf('for (const item of comNumero)') < rota2.indexOf('for (const item of semNota)'),
      'a busca por NUMERO roda antes da por pedido');
   // b204.1: a fase da CHAVE agora vem por ultimo de proposito — ela e a
@@ -169,7 +169,8 @@ const fn = BLING.slice(i, i + 13000);  // cresceu de novo (filtro direto)
 
   // b203.1: numero se REPETE entre series — conferir a chave
   // b203.2: chave AUSENTE nao vale como confirmacao (era `|| !chaveAchada`)
-  ok(/chaveItem\s*\n?\s*\? \(chaveAchada === chaveItem\)/.test(rota2),
+  // b208: virou a ESCADA — chave > serie > marketplace > cliente
+  ok(/confrontar\.escolher\(item,/.test(rota2),
      'a chave e conferida antes de aceitar: numero se repete entre SERIES');
   ok(/geraria a devolucao contra a venda errada/.test(rota2),
      '  senao o dono geraria a devolucao contra a venda errada');

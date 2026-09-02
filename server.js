@@ -80,6 +80,7 @@ const devCapturadas = require('./lib/devolucoes-capturadas');   // v4.63
 const tiktokPonte = require('./lib/tiktok-ponte');              // v4.66
 const tiktokDev = require('./lib/tiktok-devolucoes');           // v4.66
 const erroCodigo = require('./lib/erro-de-codigo');   // b205 - bug meu nao e falha do marketplace
+const confrontar = require('./lib/confrontar-nf');   // b208 - escada de desempate da NF
 const vinculoCache = require('./lib/vinculo-nf-cache');   // b204 - vinculo NF ja achado
 const marcadores = require('./lib/marcadores-estornada');   // b200 - peca unica dos marcadores
 // b201 - `magaluCancelados` NUNCA foi importado nesta empresa.
@@ -248,7 +249,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '4.98.0 (o diagnostico testa o caminho que o card usa)',
+    version: '5.3.2 (teto de paginas nao se declara varredura completa)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -5146,6 +5147,9 @@ app.post('/api/admin/sem-retorno/registrar', requerAdmin, async (req, res) => {
         // `buyer_nome` existe (o insert da triagem usa). A DATA nao tem
         // coluna aqui, entao vai na descricao, de onde o card pode ler.
         buyer_nome: d.cliente || null,
+        // b210.6 (Codex): a serie escolhida entra no vinculo da NF, pra o
+        // card da fila saber que a nota e do Full
+        nf_id_bling: d.nf_id_bling || null,
         // ⚠️ o RASTRO de onde veio: quem olhar este registro depois precisa
         // saber que NAO houve bipagem — o produto pode nem ter voltado.
         // `[DEFEITO]` na descricao: as filas leem `d.status || d.tipo` pra
@@ -5782,7 +5786,7 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
       try {
         const r = await Promise.race([
           buscarNFnoBlingPorNumero(item.nf_numero, item.nf_emitida_em || item.criado_em || null,
-            { maxPaginas: 2 }),   // o filtro direto resolve; paginar e so a reserva
+            { maxPaginas: 2, chave: item.nf_chave }),   // o filtro direto resolve; paginar e so a reserva
           new Promise((ok) => setTimeout(() => ok(null), 4000)),
         ]);
         const achada = (r && r.match) || null;
@@ -5803,16 +5807,93 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
         // Agora: se eu TENHO a chave do item, ela precisa BATER de verdade.
         // Sem chave na resposta, o vinculo nao e confirmado — o caso fica
         // pra fase da chave, que e exata.
-        const chaveItem = String(item.nf_chave || '').replace(/\D/g, '');
-        const chaveAchada = String(achada && achada.chaveAcesso || '').replace(/\D/g, '');
-        const chaveBate = chaveItem
-          ? (chaveAchada === chaveItem)          // tenho chave: tem que bater
-          : true;                                 // sem chave: o numero e o que ha
-        if (achada && achada.id && chaveBate) {
-          item.nf_id_bling = String(achada.id);
-          if (!item.nf_chave && achada.chaveAcesso) item.nf_chave = achada.chaveAcesso;
+        // b208 - ESCADA de desempate, no lugar da comparacao solta.
+        //
+        // [stated] "tipo uma 2a verificação o nome do cliente? ... ou checar
+        // ainda, de qual marketplace tá vindo a venda"
+        //
+        // chave > serie > marketplace > cliente. Se nada decide e sobra mais
+        // de uma viavel, guardo as candidatas pro card mostrar — chutar aqui
+        // e gerar devolucao contra a venda errada.
+        // b210.5 (Codex): lista INCOMPLETA nao decide sozinha.
+        //
+        // Quando a varredura erra no meio, ela agora devolve o que juntou —
+        // mas com `ok:false`. Escolher a partir dessa lista aceitaria uma
+        // candidata unica que so e unica porque a busca parou: a outra podia
+        // estar na pagina que falhou. Fica pro proximo refresh.
+        // b210.6 (Codex): completa = respondeu E varreu tudo.
+        // O teto de paginas devolve `ok:true` (pro legado nao quebrar) mas
+        // com `listaCompleta:false` — a lista pode nao ter todas as notas.
+        const buscaCompleta = !!(r && r.ok !== false && r.listaCompleta !== false);
+        // e o prazo estourado (r nulo) e falha TRANSITORIA: nao adio 20min
+        const respondeu = !!r;
+        const veredito = confrontar.escolher(item,
+          (r && r.candidatas) || (achada ? [achada] : []));
+        // b216 (Codex): busca truncada so aceita escolha pela CHAVE.
+        //
+        // Antes eu deixava passar qualquer `escolhida` que nao fosse
+        // `fraca` — mas dois sinais fracos (marketplace + cliente) decidem
+        // sem a chave, e numa lista truncada a nota certa pode ser a que
+        // ficou na pagina nao lida. So a chave e prova suficiente aqui.
+        const decidiuPelaChave = !!(veredito.por && veredito.por.includes('chave'));
+        if (!buscaCompleta && !decidiuPelaChave) {
+          // b210.6 (Codex): so esfrio quando o Bling RESPONDEU. Prazo
+          // estourado ou erro sao transitorios — adiar 20min por causa
+          // deles contraria a propria regra que escrevi no b204.6.
+          if (respondeu && r.ok !== false) vinculoCache.marcarFalha(item, empresa, 'numero');
+          continue;
+        }
+        if (veredito.candidatas && veredito.candidatas.length > 1) {
+          item.nf_candidatas = veredito.candidatas;
+          vinculoCache.marcarFalha(item, empresa, 'numero');
+          continue;   // o dono escolhe; nao chuto
+        }
+        const escolhida = veredito.escolhida || null;
+        const chaveBate = !!escolhida;
+        if (escolhida && escolhida.id) {
+          item.nf_id_bling = String(escolhida.id);
+          if (!item.nf_chave && escolhida.chaveAcesso) item.nf_chave = escolhida.chaveAcesso;
+          if (veredito.fraca) item.nf_vinculo_fraco = true;   // b208: unica viavel, sem 2 sinais
+          // b209: a SERIE diz se a nota e nossa ou do fulfillment. Nota do
+          // Full foi emitida pelo MARKETPLACE — a devolucao contra ela nao e
+          // a mesma coisa, e o dono precisa ver isso antes de gerar.
+          // b210: cada nota que passa ENSINA o mapa serie->marketplace.
+          // [stated] "cada marketplace com operação fullfilment vai ter 1
+          // série específica" — entao o sistema aprende os numeros sozinho,
+          // em vez de eu ficar pedindo.
+          // b210.2 (Codex): a listagem pode vir SEM chave, e ai a serie
+          // vinha null e o mapa nunca aprendia. A candidata costuma trazer
+          // `serie` direto — uso ela como reserva.
+          confrontar.aprender(empresa,
+            confrontar.serieDaChave(escolhida.chaveAcesso)
+              || (escolhida.serie != null ? String(escolhida.serie) : null),
+            escolhida);
+          // b210.4 (Codex): a serie vem da CANDIDATA quando nao ha chave —
+          // o mesmo fallback que o `aprender` acima ja usa. Sem isso, o
+          // aviso de Full sumia justamente nas notas em que o Bling omite
+          // `chaveAcesso`, que sao comuns.
+          const serieDela = confrontar.serieDaChave(item.nf_chave)
+            || (escolhida && escolhida.serie != null ? String(escolhida.serie) : null);
+          if (serieDela) {
+            item.nf_serie = serieDela;
+            item.nf_canal = confrontar.canalDaSerie(serieDela, empresa);
+            item.nf_do_full = confrontar.ehDoFull(serieDela, empresa);
+          }
           item.nf_achada_por = (r && r.via === 'filtro_direto_numero') ? 'numero' : 'numero_varredura';
-          vinculoCache.guardar(item, item.nf_id_bling, 'numero', { chave: item.nf_chave, numero: item.nf_numero }, empresa, idCache);
+          vinculoCache.guardar(item, item.nf_id_bling, 'numero', { chave: item.nf_chave, numero: item.nf_numero, serie: item.nf_serie }, empresa, idCache);
+        } else if (r && r.ok !== false && item.nf_chave) {
+          // b207 - DIZER por que nao achou. A busca ja filtra pela serie da
+          // chave, entao "nao achou" aqui significa: nao ha nota viva com
+          // esse numero NESTA serie. Pode ter sido cancelada, ou nunca ter
+          // sido emitida no Bling.
+          const ch = String(item.nf_chave).replace(/\D/g, '');
+          // b210.1 (Codex): a busca NAO e exaustiva (o filtro direto pode
+          // falhar em silencio e a varredura le poucas paginas), entao nao
+          // afirmo que a nota nao existe — digo que nao achei.
+          item.nf_motivo_sem_vinculo = 'nao achei NF viva com o numero '
+            + String(item.nf_numero) + ' na serie ' + ch.slice(22, 25)
+            + ' — pode estar cancelada, fora do alcance da busca, ou nao existir '
+            + 'no Bling. Confira por la antes de concluir';
         }
         // b204.6 (Codex): so adio quando o Bling RESPONDEU e nao achou.
             // Erro (429/500) ou prazo estourado devolvem `r` nulo — isso e
@@ -5894,9 +5975,9 @@ for (const item of semNota) {
           if (!item.nf_chave && achada.chaveAcesso) item.nf_chave = achada.chaveAcesso;
           // b204.3 (Codex): guardar tambem nesta fase
           vinculoCache.guardar(item, item.nf_id_bling, 'pedido',
-            { chave: item.nf_chave, numero: item.nf_numero }, empresa, idCache);
+            { chave: item.nf_chave, numero: item.nf_numero, serie: item.nf_serie }, empresa, idCache);
           item.nf_achada_por = 'pedido';
-          vinculoCache.guardar(item, item.nf_id_bling, 'pedido', { chave: item.nf_chave, numero: item.nf_numero }, empresa, idCache);   // pra tela dizer de onde veio
+          vinculoCache.guardar(item, item.nf_id_bling, 'pedido', { chave: item.nf_chave, numero: item.nf_numero, serie: item.nf_serie }, empresa, idCache);   // pra tela dizer de onde veio
         }
         // b204.6 (Codex): so adio quando o Bling RESPONDEU e nao achou.
             // Erro (429/500) ou prazo estourado devolvem `r` nulo — isso e
@@ -5945,7 +6026,7 @@ for (const item of semNota) {
             if (idPorChave) {
               item.nf_id_bling = String(idPorChave);
               item.nf_achada_por = 'chave';
-              vinculoCache.guardar(item, item.nf_id_bling, 'chave', { chave: item.nf_chave, numero: item.nf_numero }, empresa, idCache);
+              vinculoCache.guardar(item, item.nf_id_bling, 'chave', { chave: item.nf_chave, numero: item.nf_numero, serie: item.nf_serie }, empresa, idCache);
               continue;
             }
           } catch (e) { /* cai na busca por numero abaixo */ }
@@ -5977,8 +6058,28 @@ item.nf_id_bling = String(achada.id);
         // b204.3 (Codex): a varredura de RESERVA e a mais cara de todas (8
         // paginas) e era refeita a cada refresh. Agora guarda.
         vinculoCache.guardar(item, item.nf_id_bling, 'numero_varredura',
-          { chave: item.nf_chave, numero: item.nf_numero }, empresa, idCache);
+          { chave: item.nf_chave, numero: item.nf_numero, serie: item.nf_serie }, empresa, idCache);
       } catch (e) { /* segue sem o link; o numero da NF esta no card */ }
+    }
+
+    // b210.1 (Codex): a SERIE e marcada pra TODOS que ganharam vinculo,
+    // nao so pelos que a fase do numero resolveu. Item vinculado pelo
+    // pedido ou pela chave tambem precisa do aviso de Full — ele muda o
+    // tratamento fiscal.
+    for (const item of itens) {
+      // b216.1 (Codex): recalcular quando a SERIE veio do cache sem o resto.
+      //
+      // `aplicar()` restaura `nf_serie`, mas nao `nf_canal` nem `nf_do_full`
+      // — e o `continue` pulava justamente esses, porque a serie ja estava
+      // preenchida. Resultado: o aviso de Full sumia no refresh seguinte,
+      // que e quando o cache passa a valer.
+      if (!item.nf_id_bling) continue;
+      if (item.nf_serie && item.nf_do_full !== undefined) continue;
+      const serie = item.nf_serie || confrontar.serieDaChave(item.nf_chave);
+      if (!serie) continue;
+      item.nf_serie = serie;
+      item.nf_canal = confrontar.canalDaSerie(serie, empresa);
+      item.nf_do_full = confrontar.ehDoFull(serie, empresa);
     }
 
     // b188.1 (Codex): RECALCULAR a acao depois de enriquecer.

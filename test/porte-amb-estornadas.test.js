@@ -44,7 +44,7 @@ const SERVER = fs.readFileSync(path.join(RAIZ, 'server.js'), 'utf8');
 
 // ── as regras FISCAIS sao as mesmas nos dois ─────────────────────────
 {
-  const rotaAmb = AMB.slice(AMB.indexOf("'/api/admin/sem-retorno'"), AMB.indexOf("'/api/admin/sem-retorno'") + 7000);
+  const rotaAmb = AMB.slice(AMB.indexOf("'/api/admin/sem-retorno'"), AMB.indexOf("'/api/admin/sem-retorno'") + 12000);   // a rota cresceu (b207)
 
   ok(/const jaVoltou = !!d\.tem_devolucao_registrada;/.test(rotaAmb),
      'quem ja voltou nao cancela — houve circulacao de mercadoria');

@@ -67,8 +67,10 @@ const RAIZ = path.join(__dirname, '..');
 
   for (const [nome, rel] of [['GOOD', 'server.js'], ['AMB', 'amb-devolucoes/app-AMB.js']]) {
     const src = fs.readFileSync(path.join(RAIZ, rel), 'utf8');
-    ok(/chaveItem\s*\n?\s*\?\s*\(chaveAchada === chaveItem\)/.test(src),
-       nome + ': exige que a chave BATA quando o item tem uma');
+    // b208: a comparacao solta virou a ESCADA (chave > serie > marketplace
+    //       > cliente), que tambem recusa quando a chave diverge
+    ok(/confrontar\.escolher\(item,/.test(src),
+       nome + ': usa a escada de desempate, que recusa chave divergente');
     ok(/vinculoCache\.aplicar\(itens, /.test(src),
        nome + ': aplica o cache (com a empresa) antes de gastar orcamento');
     ok(/vinculoCache\.guardar/.test(src), nome + ': e guarda o que acha');
@@ -103,8 +105,18 @@ const RAIZ = path.join(__dirname, '..');
   // 3. e 4. o cache roda ANTES de montar as filas
   for (const [nome, rel] of [['GOOD', 'server.js'], ['AMB', 'amb-devolucoes/app-AMB.js']]) {
     const src = fs.readFileSync(path.join(RAIZ, rel), 'utf8');
-    const i = src.indexOf("'/api/admin/sem-retorno'");
-    const rota = src.slice(i, i + 44000);   // a rota cresceu (b204.3)
+    // b208: a rota de LISTAR, nao a de registrar (que vem antes e tambem
+    // contem "/api/admin/sem-retorno" no caminho)
+    const i = src.search(/(app|router)\.get\('\/api\/admin\/sem-retorno'/);
+    // b208: ate o fim da ROTA, nao do arquivo — `src.slice(i)` pegava
+    // rotas seguintes e acusava atribuicoes que nem sao desta.
+    // b208: o fim da rota e a PROXIMA definicao de rota, seja qual for a
+    // forma. Minha versao anterior so olhava uma delas e o recorte vazava.
+    const proximas = ["router.get('/api/", "app.get('/api/",
+                      "router.post('/api/", "app.post('/api/"]
+      .map((t) => src.indexOf(t, i + 100)).filter((n) => n > 0);
+    const fimRota = proximas.length ? Math.min(...proximas) : src.length;
+    const rota = src.slice(i, fimRota);
     const iCache = rota.indexOf('vinculoCache.aplicar');
     const iFila = Math.min(
       ...['const comNumero =', 'const semVinculoAMB =']
@@ -121,7 +133,7 @@ const RAIZ = path.join(__dirname, '..');
     // b204.3: TODA atribuicao de vinculo tem que guardar — inclusive a
     // varredura de reserva, que e a mais cara de todas (8 paginas)
     const semGuarda = [...rota.matchAll(/item\.nf_id_bling = String\([^)]*\)/g)]
-      .filter((m) => !rota.slice(m.index, m.index + 400).includes('vinculoCache.guardar'));
+      .filter((m) => !rota.slice(m.index, m.index + 2400).includes('vinculoCache.guardar'));
     ok(semGuarda.length === 0,
        nome + ': TODA fase que acha guarda no cache (achei ' + semGuarda.length + ' sem)');
 
@@ -224,10 +236,11 @@ const RAIZ = path.join(__dirname, '..');
                              ['AMB', 'amb-devolucoes/lib-AMB/admin-helpers-AMB.js']]) {
     const src = fs.readFileSync(path.join(RAIZ, rel), 'utf8');
     const i = src.indexOf('async function buscarNFnoBlingPorNumero');
-    const fn = src.slice(i, i + 6000);
+    const fn = src.slice(i, i + 9000);   // a funcao cresceu (b207)
     ok(/const candidatas = lista\.filter/.test(fn),
        nome + ': a varredura separa as candidatas...');
-    ok(/candidatas\s*\n?\s*\.filter\(nf =>/.test(fn),
+    // b210.1: virou `vivasVarredura`, pra devolver TODAS as vivas
+    ok(/const vivasVarredura = candidatas[\s\S]{0,80}\.filter\(nf =>/.test(fn),
        nome + '  ...e descarta as mortas antes de escolher');
     ok(/o caminho de\s*\n?\s*\/\/ reserva devolvia justamente a nota que o principal/.test(fn),
        nome + ': com o motivo — o filtro direto recusava e a varredura aceitava');
