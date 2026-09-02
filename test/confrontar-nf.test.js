@@ -226,7 +226,7 @@ const CHAVE_S3 = '35260864289091000100550030000006371448079669';   // serie 003,
                              ['AMB', 'amb-devolucoes/lib-AMB/admin-helpers-AMB.js']]) {
     const src = fs.readFileSync(path.join(RAIZ, rel), 'utf8');
     const i = src.indexOf('async function buscarNFnoBlingPorNumero');
-    const fn = src.slice(i, i + 9000);
+    const fn = src.slice(i, i + 13000);
     ok(/const acumuladas = \[\];/.test(fn),
        nome + ': junta as candidatas de TODAS as paginas');
     ok(/candidatas: todas/.test(fn),
@@ -240,7 +240,7 @@ const CHAVE_S3 = '35260864289091000100550030000006371448079669';   // serie 003,
                              ['AMB', 'amb-devolucoes/lib-AMB/admin-helpers-AMB.js']]) {
     const src = fs.readFileSync(path.join(RAIZ, rel), 'utf8');
     const i = src.indexOf('async function buscarNFnoBlingPorNumero');
-    const fn = src.slice(i, i + 9000);
+    const fn = src.slice(i, i + 13000);
     ok(/candidatas: todasAteAqui/.test(fn),
        nome + ': no limite de paginas entrega o acumulado, nao so a ultima');
     ok(!/candidatas: vivasVarredura,/.test(fn),
@@ -258,6 +258,36 @@ const CHAVE_S3 = '35260864289091000100550030000006371448079669';   // serie 003,
        'a varreduraFundo NAO usa `acumuladas` — daria ReferenceError');
     ok(/return \{ ok: true, match: null, totalScanned/.test(fundo),
        '  ela devolve um miss limpo, como antes');
+  }
+
+  // b216.2: a saida final distingue "varri tudo" de "acabaram as paginas"
+  for (const [nome, rel] of [['GOOD', 'lib/bling.js'],
+                             ['AMB', 'amb-devolucoes/lib-AMB/admin-helpers-AMB.js']]) {
+    const src = fs.readFileSync(path.join(RAIZ, rel), 'utf8');
+    const i = src.indexOf('async function buscarNFnoBlingPorNumero');
+    const fn = src.slice(i, i + 12000);
+    ok(/listaCompleta: !paginasEsgotadas/.test(fn),
+       nome + ': a saida final nao se declara completa quando bateu no teto');
+    ok(/paginasEsgotadas = \(pagina === MAX_PAGINAS\)/.test(fn),
+       nome + '  marcando na ultima pagina permitida');
+    ok(!/candidatas: todas, listaCompleta: true/.test(fn),
+       nome + '  sem o `true` fixo que valia pros dois casos');
+  }
+
+  // a logica, simulada
+  {
+    const MAX = 8;
+    const sim = (paginasComDados, quebraPorFimDeDados) => {
+      let esgotadas = false;
+      for (let p = 1; p <= MAX; p++) {
+        esgotadas = (p === MAX);
+        if (quebraPorFimDeDados && p === paginasComDados) { esgotadas = false; break; }
+      }
+      return !esgotadas;
+    };
+    ok(sim(3, true) === true, 'dados acabaram na pagina 3: lista COMPLETA');
+    ok(sim(99, false) === false,
+       'bateu no teto com dados ainda vindo: INCOMPLETA (o painel nao escolhe sozinho)');
   }
 
   // b210.4: NENHUM caminho de erro descarta o acumulado
