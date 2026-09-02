@@ -2772,10 +2772,65 @@
     function linkPedido(d) {
       const id = String(d.order_id || '').trim();
       if (!id) return '<strong>Pedido:</strong> <code>-</code>';
+
+      // b220: LINK PRO MARKETPLACE EM TODO CARD.
+      //
+      // [stated] "nos aprovados OK tem link pro marketplace. Já nos produtos
+      // com problema, não tem link. Tinha q ter em todos cards o link pros
+      // marketplaces."
+      //
+      // As tres secoes ja chamavam esta funcao — o buraco era ELA, que so
+      // sabia montar link do ML. Shopee, Amazon e Magalu caiam no `<code>`
+      // sem link, e sao justamente os que aparecem nos cards de problema.
+      //
+      // Cada marketplace tem um formato de id reconhecivel:
+      const cor = (bg, fg) => 'color:' + fg + ';font-weight:700;text-decoration:none;background:'
+        + bg + ';padding:2px 8px;border-radius:4px;font-family:monospace;';
+      const link = (rot, url, txt, estilo) =>
+        '<strong>' + rot + ':</strong> <a href="' + url + '" target="_blank" style="'
+        + estilo + '">' + escapeHtml(txt) + ' 🔗</a>';
+
+      // Mercado Livre: 20 + 14 digitos
       if (/^20\d{14}$/.test(id)) {
-        return `<strong>Order ML:</strong> <a href="https://www.mercadolivre.com.br/vendas/${id}/detalhe" target="_blank" style="color:#FFE600;font-weight:700;text-decoration:none;background:#1a1a1a;padding:2px 8px;border-radius:4px;font-family:monospace;">${id} 🔗</a>`;
+        return link('Order ML', 'https://www.mercadolivre.com.br/vendas/' + id + '/detalhe',
+          id, cor('#1a1a1a', '#FFE600'));
       }
-      return `<strong>Pedido:</strong> <code>${escapeHtml(id)}</code>`;
+
+      // Amazon: 3-7-7 digitos (ex: 702-3150581-8530640)
+      if (/^\d{3}-\d{7}-\d{7}$/.test(id)) {
+        return link('Pedido Amazon',
+          'https://sellercentral.amazon.com.br/orders-v3/order/' + id,
+          id, cor('#232f3e', '#ff9900'));
+      }
+
+      // ⚠️ ORDEM IMPORTA: Magalu (16 digitos) tambem casa com a regra da
+      // Shopee. Testei com os ids reais da tela do dono e o pedido Magalu
+      // `1523670104546524` caia como Shopee — por isso o numerico vem
+      // primeiro, e a Shopee exige pelo menos uma LETRA.
+
+      // Magalu: 16 digitos, so numeros (ex: 1523670104546524)
+      if (/^\d{16}$/.test(id)) {
+        return link('Pedido Magalu',
+          'https://portal.magalu.com/pedidos?busca=' + encodeURIComponent(id),
+          id, cor('#0086ff', '#ffffff'));
+      }
+
+      // TikTok: 18-19 digitos (ex: 583529996785714778)
+      if (/^\d{18,19}$/.test(id)) {
+        return link('Pedido TikTok',
+          'https://seller.tiktokglobalshop.com/order/detail?order_no=' + encodeURIComponent(id),
+          id, cor('#000000', '#ffffff'));
+      }
+
+      // Shopee: alfanumerico com pelo menos uma LETRA (ex: 260805JEXB85ES)
+      if (/^[0-9A-Z]{10,20}$/.test(id) && /[A-Z]/.test(id)) {
+        return link('Pedido Shopee',
+          'https://seller.shopee.com.br/portal/sale/order?searchKeyword=' + encodeURIComponent(id),
+          id, cor('#ee4d2d', '#ffffff'));
+      }
+
+      // formato que ainda nao mapeei: mostra sem link, em vez de inventar URL
+      return '<strong>Pedido:</strong> <code>' + escapeHtml(id) + '</code>';
     }
 
     // v3.28 - Depósitos do Bling (espelho do popup Gerar Devolução)
