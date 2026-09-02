@@ -82,6 +82,18 @@ jobs:
         with:
           # ⚠️ AQUI, em `with:` — nunca num bloco `env:`
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # b214: LIBERAR o Codex, que e bot.
+          #
+          # A action recusa acionamento por bot por padrao — "Workflow
+          # initiated by non-human actor". E uma trava de seguranca sensata:
+          # sem ela, qualquer bot com acesso ao repo poderia mandar o Claude
+          # mexer no codigo.
+          #
+          # Libero SO o Codex, nao `*`. Ele e quem revisa, entao e quem tem
+          # motivo pra disparar o ciclo; abrir pra todos os bots seria uma
+          # porta aberta sem necessidade.
+          allowed_bots: 'chatgpt-codex-connector'
+
           # b213: o parametro e `prompt` — `direct_prompt` nao existe nesta
           # versao da action, e ela lista os validos no erro. Conferi contra
           # a lista que o log devolveu.
