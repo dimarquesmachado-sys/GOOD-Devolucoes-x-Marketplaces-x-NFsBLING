@@ -23,25 +23,13 @@ const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o
 const RAIZ = path.join(__dirname, '..');
 const SRC = fs.readFileSync(path.join(RAIZ, 'lib', 'rotas-debug.js'), 'utf8');
 
-// as mesmas regras que vivem na rota
-function veredito({ ehControle, httpOk, lista, bateu, detalheFalhou }) {
-  if (!httpOk) return 'erro';
-  if (ehControle) {
-    if (bateu) return 'FUNCIONA';
-    if (detalheFalhou) return 'erro (detalhe da NF falhou)';
-    return lista ? 'achou outras, nao a certa' : 'vazio';
-  }
-  if (lista > 1) return 'ignorou o filtro (varias)';
-  if (bateu) return 'FUNCIONA';
-  if (detalheFalhou) return 'erro (detalhe da NF falhou)';
-  return lista ? 'ignorou o filtro' : 'vazio';
-}
-function passageiro(x) {
-  if (!String(x.veredito || '').startsWith('erro') && !x.erro) return false;
-  const st = Number(x.status) || 0;
-  if (st === 429 || st === 408) return true;
-  return !(st >= 400 && st < 500);
-}
+// b220.2 (Codex): as funcoes DE PRODUCAO, nao copias.
+//
+// Meu teste anterior reimplementava a logica aqui — passaria verde mesmo
+// se a rota quebrasse, que e o oposto do que um teste serve. Agora a rota
+// exporta as duas e o teste exercita elas.
+const { vereditoDaSonda: veredito, sondaFalhouPorAcaso: passageiro } =
+  require('../lib/rotas-debug.js');
 
 // ── o veredito de cada sonda ────────────────────────────────────────
 {
@@ -64,6 +52,12 @@ function passageiro(x) {
   ok(veredito({ ehControle: true, httpOk: true, lista: 3, bateu: false })
        === 'achou outras, nao a certa',
      'controle sem a nota: nao e "ignorou o filtro" — ele nem filtra por chave');
+
+  // b220.2: uma linha so nao PROVA que filtrou
+  ok(veredito({ httpOk: true, lista: 1, bateu: true, totalDaConta: 40 }) === 'FUNCIONA',
+     'conta cheia e veio 1: o filtro funcionou mesmo');
+  ok(veredito({ httpOk: true, lista: 1, bateu: true, totalDaConta: 1 }).startsWith('PROVAVEL'),
+     'se a consulta BASE tambem devolve 1, nao da pra afirmar — vira PROVAVEL');
 }
 
 // ── o que e falha passageira ────────────────────────────────────────
@@ -87,6 +81,12 @@ function passageiro(x) {
      'sonda que nao coube no teto se declara, em vez de sumir');
   ok(/function vereditoDaSonda/.test(SRC),
      'o veredito e funcao nomeada, nao ternario de 6 niveis');
+  ok(/module\.exports\.vereditoDaSonda/.test(SRC),
+     'e exportada — este teste usa a DE PRODUCAO, nao uma copia');
+  ok(/const restante = \(\) => TETO_MS - \(Date\.now\(\) - INICIO\)/.test(SRC),
+     'o prazo restante nao tem piso: passar do teto anunciado seria mentira');
+  ok(/base_sem_filtro:/.test(SRC),
+     'a resposta diz quantas notas a consulta SEM filtro devolve');
   ok(/Array\.isArray\(r\.data\?\.data\)/.test(SRC),
      'e a lista so e usada se for array mesmo');
   ok(/levou_ms:/.test(SRC), 'a resposta diz quanto levou');
