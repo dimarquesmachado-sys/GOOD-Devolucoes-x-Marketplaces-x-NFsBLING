@@ -20,6 +20,12 @@
 #   3. A assinatura Max dele COBRE isto — nao e cobrado por uso, ao contrario
 #      da autenticacao por API key.
 #
+# ⚠️ PRE-REQUISITO: o app do Claude precisa estar instalado NESTE repo.
+#   https://github.com/apps/claude -> Configure -> marcar este repositorio.
+#   Sem isso a action falha com "Claude Code is not installed on this
+#   repository", que foi o que aconteceu na primeira tentativa. Estar
+#   instalado noutro repo (Mover-Pedidos) nao vale — e por repositorio.
+#
 # LIMITES DE PROPOSITO:
 #   - no maximo 5 rodadas por PR (loop que nao converge nao vira acerto)
 #   - so mergeia com o check `ai-safety` VERDE
@@ -76,7 +82,10 @@ jobs:
         with:
           # ⚠️ AQUI, em `with:` — nunca num bloco `env:`
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          direct_prompt: |
+          # b213: o parametro e `prompt` — `direct_prompt` nao existe nesta
+          # versao da action, e ela lista os validos no erro. Conferi contra
+          # a lista que o log devolveu.
+          prompt: |
             Corrija os apontamentos do Codex nesta branch.
 
             REGRAS DA CASA:
