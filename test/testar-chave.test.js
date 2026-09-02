@@ -90,6 +90,14 @@ function passageiro(x) {
   ok(/Array\.isArray\(r\.data\?\.data\)/.test(SRC),
      'e a lista so e usada se for array mesmo');
   ok(/levou_ms:/.test(SRC), 'a resposta diz quanto levou');
+
+  // b220.1: o teto tem que CORTAR, nao so ser consultado antes
+  ok(/Promise\.race\(\[\s*\n\s*chamarBling/.test(SRC),
+     'o teto corta a chamada em andamento (chamarBling tem timeout de 30s e retenta)');
+  ok(/Promise\.race\(\[\s*\n\s*buscarNFePorId/.test(SRC),
+     '  e a busca de detalhe tambem');
+  ok(/const valeODetalhe = f\.controle \|\| lista\.length === 1/.test(SRC),
+     'e nao busca detalhe quando o veredito ja esta dado (varias linhas = ignorou)');
 }
 
 console.log('');
