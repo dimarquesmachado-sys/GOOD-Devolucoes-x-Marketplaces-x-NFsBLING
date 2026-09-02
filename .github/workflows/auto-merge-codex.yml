@@ -1,0 +1,86 @@
+# .github/workflows/auto-merge-codex.yml
+#
+# O LOOP: Codex revisa -> se apontar, o Claude corrige -> repete -> mergeia.
+#
+# [stated] "não tem um jeito de ficar revisando esse PR sem eu ter q avisar?"
+#
+# Sem isto, o dono precisa dizer "unable" a cada rodada pra eu ir buscar a
+# revisao. Sao 10+ rodadas num PR grande — 10 avisos que nao deveriam
+# existir. Este workflow faz o ciclo rodar sozinho.
+#
+# LIMITES DE PROPOSITO:
+#   - no maximo 5 rodadas por PR (loop infinito custa dinheiro e nao
+#     converge; se em 5 nao fechou, ha decisao de gente pra tomar)
+#   - so mergeia com o check `ai-safety` VERDE
+#   - se nao fechar, poe a label `needs-human-review` e para
+
+name: auto-merge-codex
+
+on:
+  pull_request_review_comment:
+    types: [created]
+  check_suite:
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: 'Numero do PR'
+        required: true
+
+permissions:
+  contents: write
+  pull-requests: write
+  checks: read
+
+concurrency:
+  # uma execucao por PR: duas em paralelo brigariam pela mesma branch
+  group: auto-merge-${{ github.event.pull_request.number || github.event.inputs.pr }}
+  cancel-in-progress: false
+
+jobs:
+  ciclo:
+    # so reage a apontamento do Codex, nao a comentario de gente
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      startsWith(github.event.comment.user.login, 'chatgpt') ||
+      github.event_name == 'check_suite'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Contar rodadas
+        id: rodadas
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PR="${{ github.event.pull_request.number || github.event.inputs.pr }}"
+          N=$(gh pr view "$PR" --json comments \
+              --jq '[.comments[] | select(.author.login|startswith("claude"))] | length')
+          echo "n=$N" >> $GITHUB_OUTPUT
+          echo "rodada $N de 5"
+
+      - name: Chamar o Claude pros apontamentos
+        if: steps.rodadas.outputs.n < 5
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PR="${{ github.event.pull_request.number || github.event.inputs.pr }}"
+          gh pr comment "$PR" --body "@claude corrija os apontamentos do Codex nesta branch.
+
+          REGRAS DA CASA:
+          - analise cada apontamento antes de obedecer; se nao proceder, explique por escrito
+          - rode a bateria de testes e o boot real antes de subir
+          - bump de versao em server.js e app-AMB.js
+          - NUNCA mergeie por conta propria"
+
+      - name: Marcar pra revisao humana
+        if: steps.rodadas.outputs.n >= 5
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PR="${{ github.event.pull_request.number || github.event.inputs.pr }}"
+          gh pr edit "$PR" --add-label needs-human-review
+          gh pr comment "$PR" --body "⚠️ 5 rodadas sem fechar. Parei o loop — vale olhar se ha decisao de produto aqui, nao so de codigo."
