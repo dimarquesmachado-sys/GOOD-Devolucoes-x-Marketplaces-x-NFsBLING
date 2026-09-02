@@ -27,20 +27,28 @@ jobs:
         with:
           node-version: '22'
 
-      # b211: `npm ci` instala as dependencias REAIS do package.json.
+      # b212: `npm install`, sem depender do package-lock.
       #
-      # Eu tinha posto `npm install express node-fetch` — tres pacotes, quando
-      # o projeto usa seis (axios, supabase, nodemailer, multer,
-      # cookie-parser). O teste que carrega `app-AMB.js` quebrava na hora, em
-      # 12 segundos, e parecia falha do codigo quando era do ambiente.
+      # O `package-lock.json` NAO esta no repositorio (so existe na minha
+      # maquina), entao `npm ci` falha no runner com EUSAGE — e o passo
+      # seguia como se tivesse instalado. Resultado: 6 testes quebravam por
+      # falta de `axios`, e o log dizia so "FALHOU".
+      #
+      # `set -e` + `|| exit 1` pra falhar AQUI se a instalacao nao der certo,
+      # em vez de deixar o erro aparecer 6 passos adiante disfarcado de bug.
       - name: Instalar as dependencias
         run: |
-          if [ -f package-lock.json ]; then
-            npm ci --silent
-          else
-            npm install --silent
-          fi
+          set -e
+          npm install --silent || { echo "npm install FALHOU"; exit 1; }
           npm install node-fetch@^2 --no-save --silent
+          echo "instalados:"
+          node -e "
+            const p = require('./package.json');
+            for (const d of Object.keys(p.dependencies || {})) {
+              try { require.resolve(d); console.log('  ok  ' + d); }
+              catch { console.log('  FALTA ' + d); process.exitCode = 1; }
+            }
+          "
 
       - name: Sintaxe
         run: |
