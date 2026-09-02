@@ -103,6 +103,14 @@ const { vereditoDaSonda: veredito, sondaFalhouPorAcaso: passageiro } =
      '200 com corpo estranho vira ERRO, nao "vazio" — vazio seria uma conclusao');
   ok(passageiro({ veredito: 'erro (resposta sem lista)' }) === true,
      '  e entra como inconclusivo, nao como recusa');
+
+  // b220.5: a base tem que COMBINAR com a sonda (com ou sem tipo=1)
+  ok(/const base = \{\};/.test(SRC) && /\['semTipo', ''\], \['comTipo', '&tipo=1'\]/.test(SRC),
+     'ha DUAS bases: com e sem tipo=1, porque as sondas diferem nisso');
+  ok(/totalDaConta: f\.url\.includes\('tipo=1'\) \? base\.comTipo : base\.semTipo/.test(SRC),
+     '  e cada sonda compara com a base que combina com ela');
+  ok(/typeof det\.data\.data === 'object'/.test(SRC),
+     'detalhe com 200 mas sem corpo usavel conta como FALHA, nao como "ignorou"');
   ok(/Array\.isArray\(r\.data\?\.data\)/.test(SRC),
      'e a lista so e usada se for array mesmo');
   ok(/levou_ms:/.test(SRC), 'a resposta diz quanto levou');
