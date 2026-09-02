@@ -55,6 +55,16 @@ concurrency:
 
 jobs:
   ciclo:
+    # b217: NUNCA bloquear o merge.
+    #
+    # Este workflow virou check obrigatorio sem querer, e quando o token
+    # OAuth falha ele trava o PR — a automacao que veio ajudar impedindo a
+    # entrega. A funcao dele e CORRIGIR, nao aprovar: se nao rodar, o
+    # trabalho segue pelo caminho manual.
+    #
+    # `continue-on-error` faz o job terminar verde mesmo falhando. Quem
+    # decide se o codigo presta e o `ai-safety`, que roda testes e boot.
+    continue-on-error: true
     # so reage a apontamento do Codex, nao a comentario de gente
     if: >
       github.event_name == 'workflow_dispatch' ||
