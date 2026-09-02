@@ -249,7 +249,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '5.2.6 (lista incompleta se declara; a serie escolhida vai pra fila)',
+    version: '5.3.0 (serie != 1 e Full em TODO o sistema)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -5829,7 +5829,14 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
         const respondeu = !!r;
         const veredito = confrontar.escolher(item,
           (r && r.candidatas) || (achada ? [achada] : []));
-        if (!buscaCompleta && (!veredito.escolhida || veredito.fraca)) {
+        // b216 (Codex): busca truncada so aceita escolha pela CHAVE.
+        //
+        // Antes eu deixava passar qualquer `escolhida` que nao fosse
+        // `fraca` — mas dois sinais fracos (marketplace + cliente) decidem
+        // sem a chave, e numa lista truncada a nota certa pode ser a que
+        // ficou na pagina nao lida. So a chave e prova suficiente aqui.
+        const decidiuPelaChave = !!(veredito.por && veredito.por.includes('chave'));
+        if (!buscaCompleta && !decidiuPelaChave) {
           // b210.6 (Codex): so esfrio quando o Bling RESPONDEU. Prazo
           // estourado ou erro sao transitorios — adiar 20min por causa
           // deles contraria a propria regra que escrevi no b204.6.
@@ -5873,7 +5880,7 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
             item.nf_do_full = confrontar.ehDoFull(serieDela, empresa);
           }
           item.nf_achada_por = (r && r.via === 'filtro_direto_numero') ? 'numero' : 'numero_varredura';
-          vinculoCache.guardar(item, item.nf_id_bling, 'numero', { chave: item.nf_chave, numero: item.nf_numero }, empresa, idCache);
+          vinculoCache.guardar(item, item.nf_id_bling, 'numero', { chave: item.nf_chave, numero: item.nf_numero, serie: item.nf_serie }, empresa, idCache);
         } else if (r && r.ok !== false && item.nf_chave) {
           // b207 - DIZER por que nao achou. A busca ja filtra pela serie da
           // chave, entao "nao achou" aqui significa: nao ha nota viva com
@@ -5968,9 +5975,9 @@ for (const item of semNota) {
           if (!item.nf_chave && achada.chaveAcesso) item.nf_chave = achada.chaveAcesso;
           // b204.3 (Codex): guardar tambem nesta fase
           vinculoCache.guardar(item, item.nf_id_bling, 'pedido',
-            { chave: item.nf_chave, numero: item.nf_numero }, empresa, idCache);
+            { chave: item.nf_chave, numero: item.nf_numero, serie: item.nf_serie }, empresa, idCache);
           item.nf_achada_por = 'pedido';
-          vinculoCache.guardar(item, item.nf_id_bling, 'pedido', { chave: item.nf_chave, numero: item.nf_numero }, empresa, idCache);   // pra tela dizer de onde veio
+          vinculoCache.guardar(item, item.nf_id_bling, 'pedido', { chave: item.nf_chave, numero: item.nf_numero, serie: item.nf_serie }, empresa, idCache);   // pra tela dizer de onde veio
         }
         // b204.6 (Codex): so adio quando o Bling RESPONDEU e nao achou.
             // Erro (429/500) ou prazo estourado devolvem `r` nulo — isso e
@@ -6019,7 +6026,7 @@ for (const item of semNota) {
             if (idPorChave) {
               item.nf_id_bling = String(idPorChave);
               item.nf_achada_por = 'chave';
-              vinculoCache.guardar(item, item.nf_id_bling, 'chave', { chave: item.nf_chave, numero: item.nf_numero }, empresa, idCache);
+              vinculoCache.guardar(item, item.nf_id_bling, 'chave', { chave: item.nf_chave, numero: item.nf_numero, serie: item.nf_serie }, empresa, idCache);
               continue;
             }
           } catch (e) { /* cai na busca por numero abaixo */ }
@@ -6051,7 +6058,7 @@ item.nf_id_bling = String(achada.id);
         // b204.3 (Codex): a varredura de RESERVA e a mais cara de todas (8
         // paginas) e era refeita a cada refresh. Agora guarda.
         vinculoCache.guardar(item, item.nf_id_bling, 'numero_varredura',
-          { chave: item.nf_chave, numero: item.nf_numero }, empresa, idCache);
+          { chave: item.nf_chave, numero: item.nf_numero, serie: item.nf_serie }, empresa, idCache);
       } catch (e) { /* segue sem o link; o numero da NF esta no card */ }
     }
 

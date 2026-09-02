@@ -1219,6 +1219,10 @@ async function carregarSemRetorno() {
                   // trava de NF duplicada volta na hora, mesmo com os
                   // parametros do modal preenchidos.
                   cliente: x.cliente, nf_emitida_em: x.nf_emitida_em,
+                  // b216 (Codex): a SERIE vai no payload tambem. Quando o
+                  // sistema resolve sozinho (sem o dono escolher no radio),
+                  // era o unico caminho que perdia o aviso de Full.
+                  nf_serie: x.nf_serie,
                   criado_no_mkt: x.criado_no_mkt,
                   chave_caso_legado2: x.id_legado2, entrada_estoque: x.entrada_estoque,
                 })) + '"> selecionar</label>'
@@ -1235,6 +1239,10 @@ async function carregarSemRetorno() {
                   // trava de NF duplicada volta na hora, mesmo com os
                   // parametros do modal preenchidos.
                   cliente: x.cliente, nf_emitida_em: x.nf_emitida_em,
+                  // b216 (Codex): a SERIE vai no payload tambem. Quando o
+                  // sistema resolve sozinho (sem o dono escolher no radio),
+                  // era o unico caminho que perdia o aviso de Full.
+                  nf_serie: x.nf_serie,
                   criado_no_mkt: x.criado_no_mkt,
                   chave_caso_legado2: x.id_legado2,
                   entrada_estoque: x.entrada_estoque,
@@ -2393,11 +2401,25 @@ async function carregarSemRetorno() {
     // v3.24 - FULL (série 2): a NF de devolução é emitida pelo PRÓPRIO ML.
     // Gerar outra no Bling seria DUPLICIDADE FISCAL. Detecta pela série
     // gravada OU pela chave de acesso (posições 23-25 = série "002").
+    // b216 (Codex): QUALQUER serie != 1 e Full, nao so a 2.
+    //
+    // [stated] "vendas normais da matriz tudo série 1. daí cada marketplace
+    // com operação fullfilment vai ter 1 série específica"
+    //
+    // A funcao nasceu quando so existia a serie 2 (ML Full) e ficou pra
+    // tras: a serie 3 da AMB era classificada como nota COMUM, entao o
+    // painel oferecia o fluxo de geracao normal pra uma nota que o
+    // MARKETPLACE emitiu. O nome continua `ehSerie2` porque e chamado em
+    // varios pontos; o que mudou e a regra.
     function ehSerie2(d) {
-      if (String(d.nf_serie || '').trim() === '2') return true;
+      const direto = String(d.nf_serie || '').trim().replace(/^0+/, '');
+      if (direto) return direto !== '1';
       const ch = String(d.nf_chave || '').replace(/\D/g, '');
-      if (ch.length === 44 && ch.substr(22, 3) === '002') return true;
-      return false;
+      if (ch.length === 44) {
+        const s = ch.substr(22, 3).replace(/^0+/, '');
+        return s !== '1' && s !== '';
+      }
+      return false;   // sem serie conhecida, nao afirmo que e Full
     }
 
     // v3.25.1 - Link do pedido: só aponta pro ML quando o número TEM cara

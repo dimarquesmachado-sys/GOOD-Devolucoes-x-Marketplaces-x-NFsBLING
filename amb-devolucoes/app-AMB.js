@@ -86,7 +86,7 @@ const criarMlBuscas = require('./lib-AMB/ml-buscas-AMB');
 const registrarIdentificar = require('./lib-AMB/identificar-AMB');
 const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 
-const VERSAO = 'AMB Devolucoes b242';
+const VERSAO = 'AMB Devolucoes b243';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -2568,7 +2568,14 @@ router.get('/api/admin/sem-retorno', auth.requerLogin, async (req, res) => {
         const respondeu = !!r;
         const veredito = confrontar.escolher(item,
           (r && r.candidatas) || (achada ? [achada] : []));
-        if (!buscaCompleta && (!veredito.escolhida || veredito.fraca)) {
+        // b216 (Codex): busca truncada so aceita escolha pela CHAVE.
+        //
+        // Antes eu deixava passar qualquer `escolhida` que nao fosse
+        // `fraca` — mas dois sinais fracos (marketplace + cliente) decidem
+        // sem a chave, e numa lista truncada a nota certa pode ser a que
+        // ficou na pagina nao lida. So a chave e prova suficiente aqui.
+        const decidiuPelaChave = !!(veredito.por && veredito.por.includes('chave'));
+        if (!buscaCompleta && !decidiuPelaChave) {
           // b210.6 (Codex): so esfrio quando o Bling RESPONDEU. Prazo
           // estourado ou erro sao transitorios — adiar 20min por causa
           // deles contraria a propria regra que escrevi no b204.6.
@@ -2615,7 +2622,7 @@ router.get('/api/admin/sem-retorno', auth.requerLogin, async (req, res) => {
           // b207: esta fase perdeu a guarda quando reordenei os lacos —
           // sem ela, a busca era refeita a cada refresh.
           vinculoCache.guardar(item, item.nf_id_bling, 'numero',
-            { chave: item.nf_chave, numero: item.nf_numero }, 'amb', idCache);
+            { chave: item.nf_chave, numero: item.nf_numero, serie: item.nf_serie }, 'amb', idCache);
           item.nf_achada_por = 'numero';
         } else if (r && r.ok !== false && item.nf_chave) {
           // b207 - DIZER por que nao achou. A busca ja filtra pela serie da
@@ -2630,7 +2637,7 @@ router.get('/api/admin/sem-retorno', auth.requerLogin, async (req, res) => {
             + String(item.nf_numero) + ' na serie ' + ch.slice(22, 25)
             + ' — pode estar cancelada, fora do alcance da busca, ou nao existir '
             + 'no Bling. Confira por la antes de concluir';
-          vinculoCache.guardar(item, item.nf_id_bling, 'numero', { chave: item.nf_chave, numero: item.nf_numero }, 'amb', idCache);
+          vinculoCache.guardar(item, item.nf_id_bling, 'numero', { chave: item.nf_chave, numero: item.nf_numero, serie: item.nf_serie }, 'amb', idCache);
         }
         // b204.6 (Codex): so adio quando o Bling RESPONDEU e nao achou.
             // Erro (429/500) ou prazo estourado devolvem `r` nulo — isso e
@@ -2679,7 +2686,7 @@ router.get('/api/admin/sem-retorno', auth.requerLogin, async (req, res) => {
           item.nf_id_bling = String(id);
           item.nf_achada_por = item.nf_achada_por || 'chave';
           vinculoCache.guardar(item, item.nf_id_bling, 'chave',
-            { chave: item.nf_chave, numero: item.nf_numero }, 'amb', idCache);
+            { chave: item.nf_chave, numero: item.nf_numero, serie: item.nf_serie }, 'amb', idCache);
         }
       } catch (e) { /* segue sem o link; o numero da NF esta no card */ }
     }
@@ -2737,7 +2744,7 @@ router.get('/api/admin/sem-retorno', auth.requerLogin, async (req, res) => {
             if (!item.nf_chave && achada.chaveAcesso) item.nf_chave = achada.chaveAcesso;
           }
           item.nf_achada_por = 'pedido';
-          vinculoCache.guardar(item, item.nf_id_bling, 'pedido', { chave: item.nf_chave, numero: item.nf_numero }, 'amb', idCache);
+          vinculoCache.guardar(item, item.nf_id_bling, 'pedido', { chave: item.nf_chave, numero: item.nf_numero, serie: item.nf_serie }, 'amb', idCache);
         }
         // b204.6 (Codex): so adio quando o Bling RESPONDEU e nao achou.
             // Erro (429/500) ou prazo estourado devolvem `r` nulo — isso e

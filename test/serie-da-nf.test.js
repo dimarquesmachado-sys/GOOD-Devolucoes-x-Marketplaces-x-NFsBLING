@@ -82,6 +82,67 @@ const RAIZ = path.join(__dirname, '..');
   }
 }
 
+// ── b216: QUALQUER serie != 1 e Full, nao so a 2 ────────────────────
+//
+// [stated] "vendas normais da matriz tudo série 1. daí cada marketplace com
+// operação fullfilment vai ter 1 série específica"
+//
+// `ehSerie2` nasceu quando so existia a serie 2 (ML Full). A serie 3 da AMB
+// era classificada como nota COMUM — e o painel oferecia o fluxo de geracao
+// normal pra uma nota que o MARKETPLACE emitiu.
+{
+  const eh = (d) => {
+    const direto = String(d.nf_serie || '').trim().replace(/^0+/, '');
+    if (direto) return direto !== '1';
+    const ch = String(d.nf_chave || '').replace(/\D/g, '');
+    if (ch.length === 44) {
+      const s = ch.substr(22, 3).replace(/^0+/, '');
+      return s !== '1' && s !== '';
+    }
+    return false;
+  };
+  ok(eh({ nf_serie: '1' }) === false, 'serie 1 (matriz) NAO e Full');
+  ok(eh({ nf_serie: '2' }) === true, 'serie 2 (ML Full) e Full');
+  ok(eh({ nf_serie: '3' }) === true, 'serie 3 (AMB) tambem — era o buraco');
+  ok(eh({ nf_serie: '005' }) === true, 'e qualquer outra, com zeros a esquerda');
+  ok(eh({}) === false, 'sem serie conhecida, nao afirmo que e Full');
+  ok(eh({ nf_chave: '35260864289091000100550030000006371448079669' }) === true,
+     'e a serie sai da chave quando nao vem direto');
+
+  for (const [nome, rel] of [
+    ['GOOD', 'public/painel-devolucoes.html'],
+    ['AMB (servido)', 'amb-devolucoes/public-AMB/painel-AMB.html'],
+    ['AMB (direto)', 'amb-devolucoes/public-AMB/painel2-AMB.html'],
+  ]) {
+    const html = fs.readFileSync(path.join(RAIZ, rel), 'utf8');
+    ok(/QUALQUER serie != 1 e Full/.test(html),
+       nome + ': o painel trata serie != 1 como Full');
+    ok(/nf_serie: x\.nf_serie/.test(html),
+       nome + ': e a serie vai no payload (o caso resolvido AUTOMATICO perdia)');
+  }
+
+  for (const [nome, rel] of [['GOOD', 'lib/rotas-admin-nf.js'],
+                             ['AMB', 'amb-devolucoes/lib-AMB/rotas-admin-AMB.js']]) {
+    const src = fs.readFileSync(path.join(RAIZ, rel), 'utf8');
+    ok(/const ehFull = !!serieReg && serieReg !== '1'/.test(src),
+       nome + ': a rota full-vincular aceita qualquer serie de Full');
+    ok(!/=== '2' \|\|/.test(src),
+       nome + '  sem a checagem antiga que so via a serie 2');
+  }
+
+  // a serie sobrevive ao refresh, pelo cache
+  const cache = fs.readFileSync(path.join(RAIZ, 'lib', 'vinculo-nf-cache.js'), 'utf8');
+  ok(/if \(!item\.nf_serie && v\.serie\) item\.nf_serie = v\.serie/.test(cache),
+     'o cache devolve a serie no refresh seguinte');
+
+  // e busca truncada so decide pela CHAVE
+  for (const [nome, rel] of [['GOOD', 'server.js'], ['AMB', 'amb-devolucoes/app-AMB.js']]) {
+    const src = fs.readFileSync(path.join(RAIZ, rel), 'utf8');
+    ok(/const decidiuPelaChave = /.test(src) && /!buscaCompleta && !decidiuPelaChave/.test(src),
+       nome + ': lista truncada so aceita escolha pela chave, nao por 2 sinais fracos');
+  }
+}
+
 console.log('');
 console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
 process.exit(falhas ? 1 : 0);
