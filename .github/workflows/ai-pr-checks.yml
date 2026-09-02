@@ -1,0 +1,85 @@
+# .github/workflows/ai-pr-checks.yml
+#
+# O check `ai-safety` — o portao que o auto-merge exige verde.
+#
+# NAO e o `scripts/verifica.js` (que esta falhando na main por outro
+# motivo, e o dono mandou nao mexer). Este roda a bateria de testes do
+# repo e o boot real, que e o que pega os erros que realmente aparecem em
+# producao: TDZ, variavel fora de escopo, modulo nao importado.
+
+name: ai-pr-checks
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  checks: write
+
+jobs:
+  ai-safety:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # b211: `npm ci` instala as dependencias REAIS do package.json.
+      #
+      # Eu tinha posto `npm install express node-fetch` — tres pacotes, quando
+      # o projeto usa seis (axios, supabase, nodemailer, multer,
+      # cookie-parser). O teste que carrega `app-AMB.js` quebrava na hora, em
+      # 12 segundos, e parecia falha do codigo quando era do ambiente.
+      - name: Instalar as dependencias
+        run: |
+          if [ -f package-lock.json ]; then
+            npm ci --silent
+          else
+            npm install --silent
+          fi
+          npm install node-fetch@^2 --no-save --silent
+
+      - name: Sintaxe
+        run: |
+          for f in server.js amb-devolucoes/app-AMB.js lib/*.js; do
+            node --check "$f" || exit 1
+          done
+          echo "sintaxe ok"
+
+      - name: Bateria de testes
+        run: |
+          FALHOU=0
+          QUEBRARAM=""
+          for t in test/*.test.js; do
+            printf "  %-34s " "$(basename $t)"
+            if node "$t" > /tmp/o.txt 2>&1; then
+              tail -1 /tmp/o.txt
+            else
+              echo "FALHOU"
+              QUEBRARAM="$QUEBRARAM $(basename $t)"
+              # b211: as 20 ultimas linhas, nao 5 — stack de require aparece
+              # inteiro e da pra ver se e erro de codigo ou de ambiente
+              sed 's/^/        /' /tmp/o.txt | tail -20
+              FALHOU=1
+            fi
+          done
+          if [ $FALHOU -ne 0 ]; then
+            echo ""
+            echo "=== quebraram:$QUEBRARAM"
+          fi
+          exit $FALHOU
+
+      - name: Boot real
+        env:
+          ADMIN_KEY: teste
+          PORT: '0'
+        run: |
+          timeout 30 node -e "
+            try {
+              require('./server.js');
+              setTimeout(() => { console.log('BOOT OK'); process.exit(0); }, 5000);
+            } catch (e) { console.log('BOOT FALHOU:', e.message); process.exit(1); }
+          "
