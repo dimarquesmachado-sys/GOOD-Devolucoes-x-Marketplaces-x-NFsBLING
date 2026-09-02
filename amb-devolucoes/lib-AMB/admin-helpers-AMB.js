@@ -324,11 +324,17 @@ async function buscarNFnoBlingPorNumero(numeroNF, dataReferencia, opcoes = {}) {
       urls.push('https://api.bling.com.br/Api/v3/nfe?limite=20&pagina=1&tipo=1'
         + '&numero=' + encodeURIComponent(alvo));
       let lista = [];
-      for (const u of urls) {
-        const rd = await chamarBling(u);
+      for (let iu = 0; iu < urls.length; iu++) {
+        // b218.1 (Codex): pausa ENTRE as tentativas, nao depois da ultima.
+        //
+        // Meu `if (urls.length > 1)` dormia tambem apos a 2a URL — e o laco
+        // de fora ja dorme antes da grafia alternativa, e a paginacao dorme
+        // de novo. Somava 700ms de espera a toa por caso que nao acha,
+        // dentro de um orcamento de 6s.
+        if (iu > 0) await sleep(350);
+        const rd = await chamarBling(urls[iu]);
         lista = (rd.ok && rd.data?.data) ? rd.data.data : [];
         if (lista.length) break;          // achou: nao preciso da 2a forma
-        if (urls.length > 1) await sleep(350);
       }
       const batem = lista.filter((nf) => {
         const n = String(nf.numero || '').replace(/^0+/, '');
