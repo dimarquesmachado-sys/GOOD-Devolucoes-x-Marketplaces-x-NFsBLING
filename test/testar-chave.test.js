@@ -33,8 +33,10 @@ const { vereditoDaSonda: veredito, sondaFalhouPorAcaso: passageiro } =
 
 // ── o veredito de cada sonda ────────────────────────────────────────
 {
-  ok(veredito({ httpOk: true, lista: 1, bateu: true }) === 'FUNCIONA',
-     'uma linha e ela e a certa -> FUNCIONA');
+  // b220.3: agora exige saber a base — uma linha so nao prova filtro se a
+  // consulta sem filtro tambem devolvesse uma
+  ok(veredito({ httpOk: true, lista: 1, bateu: true, totalDaConta: 40 }) === 'FUNCIONA',
+     'uma linha, ela e a certa, e a base tem 40 -> FUNCIONA');
   ok(veredito({ httpOk: true, lista: 5, bateu: true }).startsWith('ignorou'),
      'a nota veio, mas com outras 4: o filtro foi ignorado (veio por acaso)');
   ok(veredito({ httpOk: true, lista: 5, bateu: false }).startsWith('ignorou'),
@@ -58,6 +60,16 @@ const { vereditoDaSonda: veredito, sondaFalhouPorAcaso: passageiro } =
      'conta cheia e veio 1: o filtro funcionou mesmo');
   ok(veredito({ httpOk: true, lista: 1, bateu: true, totalDaConta: 1 }).startsWith('PROVAVEL'),
      'se a consulta BASE tambem devolve 1, nao da pra afirmar — vira PROVAVEL');
+  ok(veredito({ httpOk: true, lista: 1, bateu: true }).startsWith('PROVAVEL'),
+     'e base AUSENTE tambem e duvida — nao sei se a base devolveria 1 tambem');
+
+  // b220.3: PROVAVEL nao e sucesso, mas tambem NAO e recusa
+  const SRC_ROTA = fs.readFileSync(path.join(RAIZ, 'lib', 'rotas-debug.js'), 'utf8');
+  ok(/const provaveis = deChave\.filter/.test(SRC_ROTA),
+     'a conclusao separa os PROVAVEL dos demais');
+  ok(/achou a nota, mas nao da pra \'\s*\n?\s*\+ \'provar que foi o filtro/.test(SRC_ROTA)
+     || /nao da pra /.test(SRC_ROTA),
+     '  e nao diz "NAO da pra filtrar" tendo uma sonda que achou a nota');
 }
 
 // ── o que e falha passageira ────────────────────────────────────────

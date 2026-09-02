@@ -249,7 +249,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '5.6.2 (o teste usa as funcoes de producao; prazo sem piso)',
+    version: '5.6.3 (base ausente e duvida; PROVAVEL nao vira recusa)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
