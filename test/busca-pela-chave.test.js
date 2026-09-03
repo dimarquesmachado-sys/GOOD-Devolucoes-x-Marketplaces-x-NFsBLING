@@ -55,7 +55,8 @@ const CH = '35260332461988000182550010000701151290080214';   // a NF 70115, real
   h = mk({ ok: true, data: { data: [{ id: 77 }] } },
          { ok: true, data: { data: { id: 77, chaveAcesso: '9'.repeat(44) } } });
   h.buscarNFPelaChave(CH).then((r) => {
-    ok(r.match === null, '  e se o detalhe mostrar OUTRA chave, recusa');
+    ok(r.match === null && r.via === 'chave-ignorada',
+       '  e se o detalhe mostrar OUTRA chave, e filtro IGNORADO — nao "nao achou" (esfriaria 20min)');
   });
 
   // chave invalida
