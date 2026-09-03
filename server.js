@@ -249,7 +249,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '5.6.5 (base pareada com a sonda; detalhe sem corpo e falha)',
+    version: '6.0.0 (busca EXATA pela chave, em 1 chamada)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -5718,6 +5718,47 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
     // Conferi a ordem inteira desta vez, nao so a fila que o apontamento
     // citou: as tres filas nascem aqui, entao o cache vem antes delas.
     vinculoCache.aplicar(itens, empresa);
+
+    // ── b221: FASE ZERO — a busca EXATA pela chave ──────────────────────
+    //
+    // [stated] "existiria alguma forma de eu relacionar o número da chave
+    // danfe, que fica dentro da NF?"
+    //
+    // Testado: `?chaveAcesso=` devolve exatamente a nota, em 1 chamada. Pra
+    // todo caso que TEM chave, isso resolve sem ambiguidade de serie, sem
+    // candidatas, sem escada. As fases seguintes viram reserva pros que nao
+    // tem chave (TikTok capturado sem detalhe).
+    {
+      let feitasChave = 0;
+      for (const item of vinculoCache.fila(itens, empresa, 25,
+          (x) => String(x.nf_chave || '').replace(/\D/g, '').length === 44, 'chave')) {
+        if (Date.now() - INICIO_BUSCA > 6000) break;
+        if (feitasChave > 0) await new Promise((ok) => setTimeout(ok, 350));
+        feitasChave++;
+        const idCache = vinculoCache.chaveDe(item, empresa);
+        try {
+          const r = await Promise.race([
+            buscarNFPelaChave(item.nf_chave),
+            new Promise((ok) => setTimeout(() => ok(null), 4000)),
+          ]);
+          if (r && r.match && r.match.id) {
+            item.nf_id_bling = String(r.match.id);
+            if (!item.nf_numero && r.match.numero) item.nf_numero = String(r.match.numero);
+            item.nf_achada_por = 'chave';
+            vinculoCache.guardar(item, item.nf_id_bling, 'chave',
+              { chave: item.nf_chave, numero: item.nf_numero, serie: item.nf_serie }, empresa, idCache);
+          } else if (r && r.ok !== false) {
+            // respondeu e nao achou: a nota com essa chave nao esta nesta conta
+            vinculoCache.marcarFalha(item, empresa, 'chave');
+            if (r.via === 'chave-nao-achou') {
+              item.nf_motivo_sem_vinculo = 'nao ha NF com esta chave nesta conta do Bling '
+                + '— confira se e da empresa certa, ou se foi cancelada';
+            }
+          }
+        } catch (e) { /* as fases seguintes tentam pelo numero */ }
+      }
+    }
+
 
     const semVinculo = itens.filter((x) => x.nf_numero && !x.nf_id_bling);
     const doMagalu = semVinculo.filter((x) => x.marketplace === 'magalu').slice(0, 15);

@@ -86,7 +86,7 @@ const criarMlBuscas = require('./lib-AMB/ml-buscas-AMB');
 const registrarIdentificar = require('./lib-AMB/identificar-AMB');
 const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 
-const VERSAO = 'AMB Devolucoes b248';
+const VERSAO = 'AMB Devolucoes b249';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -2496,6 +2496,47 @@ router.get('/api/admin/sem-retorno', auth.requerLogin, async (req, res) => {
     // NUMERO, que vem depois, ja encontrava o orcamento vencido e saia na
     // hora.
     vinculoCache.aplicar(itens, 'amb');
+
+    // ── b221: FASE ZERO — a busca EXATA pela chave ──────────────────────
+    //
+    // [stated] "existiria alguma forma de eu relacionar o número da chave
+    // danfe, que fica dentro da NF?"
+    //
+    // Testado: `?chaveAcesso=` devolve exatamente a nota, em 1 chamada. Pra
+    // todo caso que TEM chave, isso resolve sem ambiguidade de serie, sem
+    // candidatas, sem escada. As fases seguintes viram reserva pros que nao
+    // tem chave (TikTok capturado sem detalhe).
+    {
+      let feitasChave = 0;
+      for (const item of vinculoCache.fila(itens, 'amb', 25,
+          (x) => String(x.nf_chave || '').replace(/\D/g, '').length === 44, 'chave')) {
+        if (Date.now() - INICIO_BUSCA > 6000) break;
+        if (feitasChave > 0) await new Promise((ok) => setTimeout(ok, 350));
+        feitasChave++;
+        const idCache = vinculoCache.chaveDe(item, 'amb');
+        try {
+          const r = await Promise.race([
+            ajudantes.buscarNFPelaChave(item.nf_chave),
+            new Promise((ok) => setTimeout(() => ok(null), 4000)),
+          ]);
+          if (r && r.match && r.match.id) {
+            item.nf_id_bling = String(r.match.id);
+            if (!item.nf_numero && r.match.numero) item.nf_numero = String(r.match.numero);
+            item.nf_achada_por = 'chave';
+            vinculoCache.guardar(item, item.nf_id_bling, 'chave',
+              { chave: item.nf_chave, numero: item.nf_numero, serie: item.nf_serie }, 'amb', idCache);
+          } else if (r && r.ok !== false) {
+            // respondeu e nao achou: a nota com essa chave nao esta nesta conta
+            vinculoCache.marcarFalha(item, 'amb', 'chave');
+            if (r.via === 'chave-nao-achou') {
+              item.nf_motivo_sem_vinculo = 'nao ha NF com esta chave nesta conta do Bling '
+                + '— confira se e da empresa certa, ou se foi cancelada';
+            }
+          }
+        } catch (e) { /* as fases seguintes tentam pelo numero */ }
+      }
+    }
+
 
     // b204.3 (Codex): a fase do NUMERO vem PRIMEIRO, como na GOOD.
     //
