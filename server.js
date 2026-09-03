@@ -255,7 +255,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '6.3.5 (a busca por nome diz POR QUE o detalhe de cada NF nao veio)',
+    version: '6.3.6 (diagnostico numa copia, nao no indice; teto anotado)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -1144,10 +1144,17 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
             // ~3s, numa acao manual do estoquista. Vale: e o que deixa ele
             // descartar a "bola de basquete" sem abrir nada.
             const detalhes = new Map();
+            const diagnosticos = new Map();
             {
               const INICIO_DET = Date.now();
               for (const c of rN.candidatos.slice(0, 8)) {
-                if (Date.now() - INICIO_DET > 6000) break;   // teto: a busca nao pode travar
+                // b230.1 (Codex): quem NAO coube no teto tambem diz — senao, no
+                // cenario de 429/timeout (o que investigamos), os ultimos
+                // candidatos voltam sem itens E sem motivo, e parece outro bug
+                if (Date.now() - INICIO_DET > 6000) {
+                  diagnosticos.set(String(c.id), { motivo: 'nao deu tempo', teto_ms: 6000, decorrido_ms: Date.now() - INICIO_DET });
+                  continue;
+                }   // teto: a busca nao pode travar
                 if (!c.id) continue;
                 // b230 - DIZER POR QUE o detalhe nao veio. O JSON dele mostrou 8
                 // candidatos com id e NENHUM com itens — e a rota nao dizia se
@@ -1177,13 +1184,18 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
                   }
                   await new Promise((ok) => setTimeout(ok, 350));
                 } catch (e) { diag = { motivo: 'excecao', erro: String(e.message || e).slice(0, 100), ms: Date.now() - t0 }; }
-                c._detalhe = diag;
+                // b230.1 (Codex): NAO escrever no objeto do indice — ele e
+                // compartilhado entre buscas por 30 min, e a proxima veria o
+                // diagnostico desta. Guardo por id e anexo na copia de saida.
+                diagnosticos.set(String(c.id), diag);
               }
             }
             resultado.candidatos_nome = rN.candidatos.map((c) => {
               const e = porNF.get(chaveNF(c.numero, c.serie));
               const itensDet = detalhes.get(String(c.id)) || null;
-              const base = itensDet ? { ...c, itens: itensDet } : c;
+              const diag = diagnosticos.get(String(c.id)) || null;
+              // sempre uma COPIA: o `c` e do indice compartilhado
+              const base = { ...c, ...(itensDet ? { itens: itensDet } : {}), ...(diag ? { _detalhe: diag } : {}) };
               if (!e) return base;
               return {
                 ...base,
