@@ -962,9 +962,32 @@ function renderizarCandidatosNome(mensagem, candidatos) {
     const dt = c.dataEmissao ? String(c.dataEmissao).slice(0, 10).split('-').reverse().join('/') : '-';
     const vl = (c.valor != null) ? ('R$ ' + Number(c.valor).toFixed(2).replace('.', ',')) : '-';
     const alvo = c.serie && c.serie !== '1' ? (c.numero + '/' + c.serie) : c.numero;
-    html += '<button class="btn" style="text-align:left; padding:10px 12px;" onclick="document.getElementById(\'codigo\').value=\'' + alvo + '\'; buscar();">'
-      + '<b>' + escapeHtml(c.nome) + '</b><br>'
-      + '🧾 NF ' + escapeHtml(c.numero) + (c.serie ? ' (série ' + escapeHtml(c.serie) + ')' : '') + ' · ' + dt + ' · ' + vl
+    // b226 - o candidato que esta NA ESPREITA ganha estrela, borda e o
+    // produto. [stated] "se ele tem q triar um mouse, e tem 5 maristelas na
+    // relação da busca, e 1 maristela é uma bola de basquete, com certeza
+    // ele já sabe q aquele da relação não é o mouse."
+    const naEsp = !!c.na_espreita;
+    const estilo = naEsp
+      ? 'text-align:left; padding:12px 14px; border:3px solid #f9a825; background:#fff8e1; color:#333; box-shadow:0 2px 10px rgba(249,168,37,.4);'
+      : 'text-align:left; padding:10px 12px; opacity:.85;';
+    let itens = '';
+    if (naEsp && Array.isArray(c.itens) && c.itens.length) {
+      itens = '<div style="margin-top:6px; font-size:13px; color:#5d4037;">'
+        + c.itens.slice(0, 3).map((it) => '📦 <b>' + escapeHtml(String(it.qtd)) + '×</b> '
+            + escapeHtml(it.descricao || it.sku || '?')).join('<br>')
+        + (c.itens.length > 3 ? '<br>… +' + (c.itens.length - 3) : '')
+        + '</div>';
+    } else if (naEsp && c.produto) {
+      itens = '<div style="margin-top:6px; font-size:13px; color:#5d4037;">📦 ' + escapeHtml(c.produto) + '</div>';
+    }
+    html += '<button class="btn" style="' + estilo + '" onclick="document.getElementById(\'codigo\').value=\'' + alvo + '\'; buscar();">'
+      + (naEsp ? '<span style="font-size:18px;">⭐</span> ' : '')
+      + '<b>' + escapeHtml(c.nome) + '</b>'
+      + (naEsp ? ' <span style="font-size:11px; background:#f9a825; color:#333; padding:2px 8px; border-radius:10px; font-weight:700;">'
+          + 'NA ESPREITA' + (c.espreita_dias != null ? ' · entregue há ' + escapeHtml(String(c.espreita_dias)) + 'd' : '') + '</span>' : '')
+      + '<br>🧾 NF ' + escapeHtml(c.numero) + (c.serie ? ' (série ' + escapeHtml(c.serie) + ')' : '') + ' · ' + dt + ' · ' + vl
+      + (naEsp && c.tracking ? ' · 📮 ' + escapeHtml(c.tracking) : '')
+      + itens
       + '</button>';
   }
   html += '</div>';

@@ -255,7 +255,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '6.2.3 (editar no recado unico; ciente so zera se mudou; toast da AMB)',
+    version: '6.3.0 (busca por nome: estrela em quem esta na espreita, com o produto)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -1101,8 +1101,43 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
           const rN = await nfNomes.buscarPorNome(codigoOriginal);
           resultado.tentativas.push({ tipo: 'nf_por_nome', codigo: alvoNome, ok: rN.candidatos.length > 0, status: rN.candidatos.length ? 200 : 404, qtd: rN.candidatos.length });
           if (rN.candidatos.length > 0) {
-            resultado.candidatos_nome = rN.candidatos;
-            resultado.erro = `Achei ${rN.candidatos.length} NF(s) recente(s) com esse nome. Confere com a CAIXA e escolhe abaixo:`;
+            // b226 - AJUDAR O ESTOQUISTA A ESCOLHER. [stated] "quando ele
+            // pesquisar assim por nome, e vir mais de 1 resultado, meio q
+            // dizer qual está pendente de recebimento? Alguma estrelinha...
+            // e mostrar além do nome e nota fiscal, o produto e quantidade"
+            //
+            // A ESPREITA ja sabe quais devolucoes estao a caminho, com NF,
+            // produto e itens. Cruzo os candidatos com ela: quem esta la
+            // ganha a estrela e o produto — sem chamada extra ao Bling.
+            // Quem nao esta, ganha so o que o indice tem (nome, NF, data).
+            const espreita = (ESP_CACHE && Array.isArray(ESP_CACHE.itens)) ? ESP_CACHE.itens : [];
+            const porNF = new Map();
+            for (const e of espreita) {
+              const n = String(e.nf || '').replace(/^0+/, '');
+              if (n) porNF.set(n, e);
+            }
+            resultado.candidatos_nome = rN.candidatos.map((c) => {
+              const e = porNF.get(String(c.numero || '').replace(/^0+/, ''));
+              if (!e) return c;
+              return {
+                ...c,
+                na_espreita: true,
+                espreita_dias: e.dias,
+                tracking: e.tracking || null,
+                produto: e.produto || null,
+                itens: Array.isArray(e.itens) ? e.itens.map((it) => ({
+                  qtd: it.qtd || it.quantidade || 1,
+                  descricao: it.descricao || it.titulo || it.produto || '',
+                  sku: it.sku || it.codigo || '',
+                })) : [],
+              };
+            });
+            // a estrelada vem primeiro
+            resultado.candidatos_nome.sort((a, b) => (b.na_espreita ? 1 : 0) - (a.na_espreita ? 1 : 0));
+            const estrelados = resultado.candidatos_nome.filter((c) => c.na_espreita).length;
+            resultado.erro = `Achei ${rN.candidatos.length} NF(s) recente(s) com esse nome.`
+              + (estrelados ? ` ⭐ ${estrelados} está(ão) na ESPREITA — devolução a caminho.` : '')
+              + ' Confere com a CAIXA e escolhe abaixo:';
             return res.status(300).json(resultado); // 300 Multiple Choices
           }
         } catch (e) { resultado.tentativas.push({ tipo: 'nf_por_nome', codigo: alvoNome, ok: false, status: 500, erro: e.message }); }
