@@ -255,7 +255,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '6.0.6 (detalhe sem chave e erro, nao ausencia)',
+    version: '6.2.3 (editar no recado unico; ciente so zera se mudou; toast da AMB)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -352,11 +352,27 @@ async function recadoPendente(dados) {
       for (const x of variantesId(v)) ids.add(x);
     }
     if (ids.size === 0) return null;
-    const { data } = await supabase.from('recados').select('id, texto').eq('ativo', true).is('ciente_em', null).in('chave', [...ids]).limit(1);
+    // b224: TODOS os recados do pedido, nao so um. [stated] "eu Diego fiz um.
+    // A Angelica fez outro." — com `limit(1)` o estoquista via o primeiro,
+    // dava ciente, e o segundo ficava pendente sem ele saber. Agora vem a
+    // lista, e o texto na tela junta os dois com autor e hora.
+    const { data } = await supabase.from('recados')
+      .select('id, texto, criado_por, criado_em')
+      .eq('ativo', true).is('ciente_em', null).in('chave', [...ids])
+      .order('criado_em', { ascending: true }).limit(10);
     if (!data || !data[0]) return null;
     // v4.45 - se a devolucao ja foi triada/tem NF, o recado ja cumpriu o papel
     if (await devolucaoJaResolvida([...ids])) return null;
-    return data[0];
+    if (data.length === 1) return data[0];
+    // varios: a TRAVA mostra os textos juntos, com autor. A tela do bipe
+    // renderiza cada um separado (ja traz todos por outra rota), entao aqui
+    // so o que a mensagem de bloqueio precisa.
+    return {
+      id: data[0].id,
+      ids: data.map((rc) => rc.id),
+      texto: data.map((rc) => rc.texto + (rc.criado_por ? ' (' + rc.criado_por + ')' : '')).join(' | '),
+      varios: data.length,
+    };
   } catch (e) { return null; }
 }
 function normId(v) {
@@ -2316,7 +2332,7 @@ async function enriquecerTriagem(registroId, dados) {
 app.post('/api/triagem/aprovar', requerEstoquista, async (req, res) => {
   {
     const pend = await recadoPendente(req.body?.dados || req.body);
-    if (pend) return res.status(409).json({ ok: false, erro: 'RECADO PENDENTE: leia o recado e clique em "OK, ciente" antes de triar. ("' + String(pend.texto).slice(0, 120) + '")' });
+    if (pend) return res.status(409).json({ ok: false, erro: (pend.varios > 1 ? pend.varios + ' RECADOS PENDENTES' : 'RECADO PENDENTE') + ': leia e clique em "OK, ciente" em cada um antes de triar. ("' + String(pend.texto).slice(0, 160) + '")' });
   }
   if (!supabase) {
     return res.status(500).json({ ok: false, erro: 'Supabase nao configurado' });
@@ -2540,7 +2556,7 @@ app.post('/api/triagem/problema', requerEstoquista, async (req, res) => {
   }
   {
     const pend = await recadoPendente(req.body?.dados || req.body);
-    if (pend) return res.status(409).json({ ok: false, erro: 'RECADO PENDENTE: leia o recado e clique em "OK, ciente" antes de triar. ("' + String(pend.texto).slice(0, 120) + '")' });
+    if (pend) return res.status(409).json({ ok: false, erro: (pend.varios > 1 ? pend.varios + ' RECADOS PENDENTES' : 'RECADO PENDENTE') + ': leia e clique em "OK, ciente" em cada um antes de triar. ("' + String(pend.texto).slice(0, 160) + '")' });
   }
   if (!supabase) {
     return res.status(500).json({ ok: false, erro: 'Supabase nao configurado' });
@@ -2666,7 +2682,7 @@ app.post('/api/triagem/problema', requerEstoquista, async (req, res) => {
 app.post('/api/triagem/divergente', requerEstoquista, async (req, res) => {
   {
     const pend = await recadoPendente(req.body?.dados || req.body);
-    if (pend) return res.status(409).json({ ok: false, erro: 'RECADO PENDENTE: leia o recado e clique em "OK, ciente" antes de triar.' });
+    if (pend) return res.status(409).json({ ok: false, erro: (pend.varios > 1 ? pend.varios + ' RECADOS PENDENTES' : 'RECADO PENDENTE') + ': leia e clique em "OK, ciente" em cada um antes de triar.' });
   }
   if (!supabase) {
     return res.status(500).json({ ok: false, erro: 'Supabase nao configurado' });
@@ -3115,7 +3131,7 @@ app.get('/api/defeitos/por-sku', requerEstoquista, async (req, res) => {
 app.post('/api/triagem/consertado', requerEstoquista, async (req, res) => {
   {
     const pend = await recadoPendente(req.body?.dados || req.body);
-    if (pend) return res.status(409).json({ ok: false, erro: 'RECADO PENDENTE: leia o recado e clique em "OK, ciente" antes de triar.' });
+    if (pend) return res.status(409).json({ ok: false, erro: (pend.varios > 1 ? pend.varios + ' RECADOS PENDENTES' : 'RECADO PENDENTE') + ': leia e clique em "OK, ciente" em cada um antes de triar.' });
   }
   if (!supabase) return res.status(500).json({ ok: false, erro: 'Supabase nao configurado' });
   const dados = req.body || {};
@@ -4810,6 +4826,42 @@ app.get('/api/admin/recados', requerAdmin, async (req, res) => {
     return res.json({ ok: true, recados });
   } catch (e) { return res.status(500).json({ ok: false, erro: e.message }); }
 });
+// b225 - EDITAR recado. A AMB tinha desde o b219 (compat-AMB.js); a GOOD
+// nao tinha a rota, e o botao "Editar" que eu pus no painel chamava uma
+// funcao que nao existia — morria em silencio. Quinta funcao fantasma,
+// agora no front. Portada a cadeia inteira: rota, funcao, salvamento.
+app.put('/api/admin/recado/:id', requerAdmin, async (req, res) => {
+  try {
+    const b = req.body || {};
+    const campos = {};
+    // b225.1 (Codex): NORMALIZAR como a criacao faz. A busca do bipe compara
+    // por `normId` (maiusculo, so alfanumerico); gravar "ab-123" cru fazia o
+    // recado sumir da tela do estoquista — ficava so na lista do admin.
+    if (b.identificador || b.chave) {
+      const n = normId(b.identificador || b.chave);
+      if (!n) return res.status(400).json({ ok: false, erro: 'identificador invalido' });
+      campos.chave = n;
+    }
+    if (b.texto) campos.texto = String(b.texto).slice(0, 2000);
+    if (!Object.keys(campos).length) return res.status(400).json({ ok: false, erro: 'nada pra editar' });
+    // b225.2 (Codex): so zera o ciente se algo MUDOU de verdade. A tela
+    // manda os dois campos sempre; "Salvar" sem tocar em nada nao pode
+    // botar o recado de volta na frente do estoquista.
+    const { data: atual } = await supabase.from('recados').select('chave, texto').eq('id', req.params.id).limit(1);
+    const antes = (atual || [])[0] || {};
+    const mudou = (campos.chave !== undefined && campos.chave !== antes.chave)
+      || (campos.texto !== undefined && campos.texto !== antes.texto);
+    if (!mudou) return res.json({ ok: true, recado: antes, sem_mudanca: true });
+    // b225.1 (Codex): EDITOU = precisa ser lido de novo — o estoquista leu
+    // OUTRA instrucao.
+    campos.ciente_em = null;
+    campos.ciente_por = null;
+    const { data, error } = await supabase.from('recados').update(campos).eq('id', req.params.id).select().limit(1);
+    if (error) return res.status(400).json({ ok: false, erro: error.message });
+    return res.json({ ok: true, recado: (data || [])[0] || null });
+  } catch (e) { return res.status(500).json({ ok: false, erro: e.message }); }
+});
+
 app.post('/api/admin/recado/:id/remover', requerAdmin, async (req, res) => {
   try {
     const { error } = await supabase.from('recados').update({ ativo: false }).eq('id', req.params.id);
@@ -4820,9 +4872,14 @@ app.post('/api/admin/recado/:id/remover', requerAdmin, async (req, res) => {
 // ciencia do estoquista (fica registrado quem leu e quando)
 app.post('/api/recado/:id/ciente', requerLogin, async (req, res) => {
   try {
+    // b224: recado FUNDIDO manda `ids` — o ciente marca todos de uma vez.
+    // Sem isto o estoquista lia os dois, dava ciente, e um ficava pendente.
+    const ids = Array.isArray(req.body && req.body.ids) && req.body.ids.length
+      ? req.body.ids.map(Number).filter(Number.isFinite)
+      : [Number(req.params.id)];
     const { error } = await supabase.from('recados')
       .update({ ciente_por: req.usuario || null, ciente_em: new Date().toISOString() })
-      .eq('id', req.params.id);
+      .in('id', ids);
     if (error) return res.status(500).json({ ok: false, erro: error.message });
     return res.json({ ok: true, usuario: req.usuario });
   } catch (e) { return res.status(500).json({ ok: false, erro: e.message }); }
