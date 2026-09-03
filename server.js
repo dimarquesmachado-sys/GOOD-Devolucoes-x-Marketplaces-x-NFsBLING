@@ -255,7 +255,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '6.3.1 (produto em TODOS os candidatos da busca por nome)',
+    version: '6.3.2 (indice de nomes cobre os 120 dias: ritmo, 429 e background)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
