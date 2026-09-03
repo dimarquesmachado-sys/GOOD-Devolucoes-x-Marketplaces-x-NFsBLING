@@ -481,7 +481,7 @@ const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o
   const PAINEL3 = fs3.readFileSync(path3.join(__dirname, '..', 'public', 'painel-devolucoes.html'), 'utf8');
   const LIB2 = fs3.readFileSync(path3.join(__dirname, '..', 'lib', 'magalu-cancelados.js'), 'utf8');
   const i3 = SERVER3.indexOf("'/api/admin/sem-retorno'");
-  const rota3 = SERVER3.slice(i3, i3 + 52000);   // a rota cresceu (b204)
+  const rota3 = SERVER3.slice(i3, i3 + 60000);   // a rota cresceu (b204)
 
   ok(/let magaluItens = \[\];/.test(rota3),
      'a lista do Magalu e DECLARADA (o painel quebrava com "magaluItens is not defined")');

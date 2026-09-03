@@ -86,7 +86,7 @@ const criarMlBuscas = require('./lib-AMB/ml-buscas-AMB');
 const registrarIdentificar = require('./lib-AMB/identificar-AMB');
 const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 
-const VERSAO = 'AMB Devolucoes b248';
+const VERSAO = 'AMB Devolucoes b255';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -2496,6 +2496,67 @@ router.get('/api/admin/sem-retorno', auth.requerLogin, async (req, res) => {
     // NUMERO, que vem depois, ja encontrava o orcamento vencido e saia na
     // hora.
     vinculoCache.aplicar(itens, 'amb');
+
+    // ── b221: FASE ZERO — a busca EXATA pela chave ──────────────────────
+    //
+    // [stated] "existiria alguma forma de eu relacionar o número da chave
+    // danfe, que fica dentro da NF?"
+    //
+    // Testado: `?chaveAcesso=` devolve exatamente a nota, em 1 chamada. Pra
+    // todo caso que TEM chave, isso resolve sem ambiguidade de serie, sem
+    // candidatas, sem escada. As fases seguintes viram reserva pros que nao
+    // tem chave (TikTok capturado sem detalhe).
+    {
+      let feitasChave = 0;
+      for (const item of vinculoCache.fila(itens, 'amb', 25,
+          (x) => String(x.nf_chave || '').replace(/\D/g, '').length === 44, 'chave')) {
+        if (Date.now() - INICIO_BUSCA > 6000) break;
+        if (feitasChave > 0) await new Promise((ok) => setTimeout(ok, 350));
+        feitasChave++;
+        const idCache = vinculoCache.chaveDe(item, 'amb');
+        try {
+          // b221.1 (Codex): o prazo CANCELA, nao so abandona. Sem isto a
+          // chamada seguia por ate 30s em segundo plano, ainda fazia o
+          // detalhe, e disputava o limite do Bling com o proximo item.
+          const cancelar = {};
+          const r = await Promise.race([
+            ajudantes.buscarNFPelaChave(item.nf_chave, { cancelar }),
+            new Promise((ok) => setTimeout(() => { cancelar.agora = true; ok(null); }, 4000)),
+          ]);
+          if (r && r.match && r.match.id) {
+            item.nf_id_bling = String(r.match.id);
+            // b221.1 (Codex): a chave e a AUTORIDADE. O numero capturado
+            // pode estar errado (ja vimos o Magalu mandar numero proprio); o
+            // da nota achada pela chave e o certo, e e ele que vai pro
+            // registro e pra tela.
+            if (r.match.numero) item.nf_numero = String(r.match.numero);
+            item.nf_achada_por = 'chave';
+            vinculoCache.guardar(item, item.nf_id_bling, 'chave',
+              { chave: item.nf_chave, numero: item.nf_numero, serie: item.nf_serie }, 'amb', idCache);
+          } else if (r && r.ok !== false && r.via === 'chave-nao-achou') {
+            // b221.4 (Codex): respondeu VAZIO — a chave nao esta nesta conta.
+            // So este caso esfria 20 min e recebe o motivo. Na rodada
+            // anterior o motivo ficou num `if` INALCANCAVEL, dentro do ramo
+            // de falha transitoria — o Codex pegou.
+            vinculoCache.marcarFalha(item, 'amb', 'chave');
+            item.nf_motivo_sem_vinculo = 'nao ha NF com esta chave nesta conta do Bling '
+              + '— confira se e da empresa certa, ou se foi cancelada';
+          } else if (r && r.ok !== false && r.via === 'chave-nota-morta') {
+            // a nota existe mas esta cancelada/denegada: definitivo tambem
+            vinculoCache.marcarFalha(item, 'amb', 'chave');
+            item.nf_motivo_sem_vinculo = 'a NF desta chave esta cancelada ou denegada no Bling '
+              + '(situacao ' + r.situacao + ')';
+          } else {
+            // b221.4 (Codex): `chave-ignorada` (a API devolveu notas quaisquer)
+            // e falha transitoria (timeout, 429, erro) caem AQUI: nao sei nada
+            // sobre a minha nota, entao nao esfrio 20 min — adio 2 e deixo as
+            // fases seguintes tentarem.
+            vinculoCache.adiarPouco(item, 'amb', 'chave');
+          }
+        } catch (e) { /* as fases seguintes tentam pelo numero */ }
+      }
+    }
+
 
     // b204.3 (Codex): a fase do NUMERO vem PRIMEIRO, como na GOOD.
     //

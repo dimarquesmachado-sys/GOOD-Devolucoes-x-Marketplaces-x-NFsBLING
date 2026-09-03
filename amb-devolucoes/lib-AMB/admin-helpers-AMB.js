@@ -262,6 +262,105 @@ function classificarMotivoDevolucao(order, shipment) {
   };
 }
 
+// ── b221: BUSCA EXATA PELA CHAVE ────────────────────────────────────
+//
+// [stated] "existiria alguma forma de eu relacionar o número da chave
+// danfe, que fica dentro da NF? como eu pegaria isso, end point sei lá?"
+//
+// Testado com a NF 70115 da GOOD: `?chaveAcesso=` devolve exatamente a
+// nota (1 linha, chave certa, base de 5 — nao foi por acaso). A grafia
+// `chave=` NAO funciona: ignora o filtro.
+//
+// Isso torna a busca EXATA em uma chamada, sem ambiguidade de serie, sem
+// candidatas, sem escada — pra todo caso que TEM chave. O resto continua
+// como reserva, pros que nao tem (TikTok capturado sem detalhe).
+// b221.2: corre a chamada contra o sinal de cancelamento, e LIMPA o vigia
+// quando qualquer um dos dois termina — senao ele ficava tickando 35s por
+// chamada, e sao ate 25 por rodada.
+async function comCancelamento(promessa, cancelar) {
+  let vigia = null;
+  const sinal = new Promise((ok) => {
+    vigia = setInterval(() => {
+      if (cancelar && cancelar.agora) ok({ ok: false, status: 408, error: 'cancelado' });
+    }, 100);
+  });
+  try { return await Promise.race([promessa, sinal]); }
+  finally { if (vigia) clearInterval(vigia); }
+}
+
+async function buscarNFPelaChave(chave, opcoes = {}) {
+  const ch = String(chave || '').replace(/\D/g, '');
+  if (ch.length !== 44) return { ok: false, motivo: 'chave invalida', match: null };
+
+  // b221.2 (Codex): `tipo=1` = nota de SAIDA. Sem isso a chave de uma nota
+  // de ENTRADA (tipo 0) casava, e o id dela ia pro cache como se fosse a
+  // venda. O diagnostico ja tinha testado a grafia com tipo e ela leva
+  // 429 as vezes — mas 429 e passageiro, nao recusa.
+  const url = 'https://api.bling.com.br/Api/v3/nfe?limite=5&pagina=1&tipo=1&chaveAcesso=' + ch;
+  // (1) o prazo do chamador vale DENTRO da chamada, nao so entre elas
+  const r = await comCancelamento(chamarBling(url), opcoes.cancelar);
+  if (!r.ok) return { ok: false, status: r.status, error: r.error, match: null };
+
+  // (4) 200 com corpo estranho NAO e lista vazia — quinta vez desta familia
+  if (!Array.isArray(r.data?.data)) return { ok: false, status: r.status, error: 'resposta sem lista', match: null };
+  const lista = r.data.data;
+
+  // mais de uma linha = a API IGNOROU o filtro (chave e unica). Isto vem
+  // ANTES de procurar a nota na lista: se a certa estiver entre as 5 por
+  // acaso, eu a aceitaria como prova de filtro que nao houve. O teste pegou
+  // essa ordem invertida na primeira rodada.
+  if (lista.length > 1) return { ok: true, match: null, via: 'chave-ignorada', devolveu: lista.length };
+
+  // a listagem pode OMITIR `chaveAcesso` (b166.4). Como a API filtrou pela
+  // chave, se veio UMA linha ela e a nota — mas confiro no detalhe quando
+  // da, porque o vinculo e fiscal e vale a chamada extra.
+  let nf = lista.find((x) => String(x.chaveAcesso || '').replace(/\D/g, '') === ch) || null;
+  // b221.3 (Codex): UMA linha com OUTRA chave = o filtro nao funcionou.
+  // Eu deixava cair em `chave-nao-achou`, e a rota dizia "esta chave nao
+  // esta nesta conta" — mas a API devolveu uma nota qualquer, entao nao
+  // sei nada sobre a minha. E erro do filtro, nao ausencia da nota.
+  if (!nf && lista.length === 1 && lista[0].chaveAcesso
+      && String(lista[0].chaveAcesso).replace(/\D/g, '') !== ch) {
+    return { ok: true, match: null, via: 'chave-ignorada', devolveu: 1 };
+  }
+  // b221.1: o chamador pode ter desistido enquanto a lista carregava
+  if (opcoes.cancelar && opcoes.cancelar.agora) return { ok: false, error: 'cancelado', match: null };
+  if (!nf && lista.length === 1 && !lista[0].chaveAcesso && opcoes.confirmarNoDetalhe !== false) {
+    await sleep(350);
+    if (opcoes.cancelar && opcoes.cancelar.agora) return { ok: false, error: 'cancelado', match: null };
+    const det = await comCancelamento(buscarNFePorId(lista[0].id), opcoes.cancelar);
+    const nfd = (det.ok && det.data && typeof det.data.data === 'object') ? det.data.data : null;
+    // b221.1 (Codex): falha no detalhe NAO e "nao achou". Um 429 aqui
+    // virava `chave-nao-achou`, a rota dizia "esta chave nao esta nesta
+    // conta" e esfriava o item por 20 min — por uma instabilidade.
+    if (!nfd) return { ok: false, status: det.status || null, error: 'detalhe falhou', match: null };
+    // b221.5 (Codex): o detalhe mostra OUTRA chave = o filtro foi ignorado —
+    // a API devolveu uma nota qualquer. Eu deixava cair em `chave-nao-achou`
+    // e a rota esfriava 20 min por "ausencia" que nao era. Mesmo caso da
+    // rodada anterior, mas no caminho do detalhe.
+    const chaveDet = String(nfd.chaveAcesso || '').replace(/\D/g, '');
+    // b221.6 (Codex): detalhe SEM chave nenhuma e resposta inutil — nao
+    // confirmo nem nego. Cair em `chave-nao-achou` esfriaria 20 min por um
+    // corpo parcial. Terceira ponta do mesmo caso: lista, detalhe
+    // divergente, e agora detalhe vazio.
+    if (!chaveDet) return { ok: false, status: det.status || null, error: 'detalhe sem chave', match: null };
+    if (chaveDet !== ch) {
+      return { ok: true, match: null, via: 'chave-ignorada', devolveu: 1, detalhe_divergiu: true };
+    }
+    nf = nfd;
+  }
+
+  // b221.1 (Codex): cancelada (2) ou denegada (9) nao serve, nem pela
+  // chave. Os outros caminhos ja filtravam; este aceitava — e na AMB o id
+  // ia pro cache e pulava toda a reserva mais segura.
+  if (nf && [2, 9].includes(Number(nf && nf.situacao))) {
+    return { ok: true, match: null, via: 'chave-nota-morta', situacao: nf.situacao, devolveu: lista.length };
+  }
+
+  return { ok: true, match: nf, via: nf ? 'filtro_direto_chave' : 'chave-nao-achou',
+    devolveu: lista.length };
+}
+
 async function buscarNFnoBlingPorNumero(numeroNF, dataReferencia, opcoes = {}) {
   const numeroNFStr = String(numeroNF).trim().padStart(6, '0'); // 71932 -> 071932
   const numeroNFLimpo = String(numeroNF).trim().replace(/^0+/, ''); // remove zeros a esquerda
@@ -496,5 +595,6 @@ async function buscarNFnoBlingPorNumero(numeroNF, dataReferencia, opcoes = {}) {
     totalScanned, primeiraDataVista, ultimaDataVista };
 }
 
-return { buscarNFnoML, buscarNFBlindada, classificarMotivoDevolucao, buscarNFnoBlingPorNumero };
+return { buscarNFnoML, buscarNFBlindada, classificarMotivoDevolucao, buscarNFnoBlingPorNumero,
+  buscarNFPelaChave };   // b221 - busca EXATA pela chave
 };
