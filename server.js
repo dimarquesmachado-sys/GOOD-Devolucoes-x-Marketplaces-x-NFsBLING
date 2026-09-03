@@ -255,7 +255,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '6.3.3 (o cruzamento com a espreita le os campos REAIS)',
+    version: '6.3.4 (cache-bust do busca.js: o front novo nao chegava ao navegador)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
