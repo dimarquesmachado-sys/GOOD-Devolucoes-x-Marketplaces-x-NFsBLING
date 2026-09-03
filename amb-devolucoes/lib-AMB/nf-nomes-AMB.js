@@ -105,7 +105,16 @@ async function construirIndice(opts = {}) {
     // hora atual na data e o filtro de mesmo dia sempre volta zero.
     // Paginamos e cortamos pela data no nosso lado.
     for (let pg = 1; pg <= maxPaginas; pg++) {
-      const r = await bling.chamarBling(`/nfe?limite=100&pagina=${pg}&tipo=1`);
+      // b228 - RITMO e RETENTATIVA (o mesmo da GOOD, que parava na pagina 20
+      // com 429 e so indexava ~40 dias dos 120 da janela)
+      if (pg > 1) await new Promise((ok) => setTimeout(ok, 400));
+      let r = await bling.chamarBling(`/nfe?limite=100&pagina=${pg}&tipo=1`);
+      if (!r.ok && r.status === 429) {
+        for (let tent = 1; tent <= 3 && !r.ok && r.status === 429; tent++) {
+          await new Promise((ok) => setTimeout(ok, 2000 * tent));
+          r = await bling.chamarBling(`/nfe?limite=100&pagina=${pg}&tipo=1`);
+        }
+      }
       if (!r.ok) { erroBusca = `nfe pagina ${pg} HTTP ${r.status}`; break; }
 
       const lista = (r.data && r.data.data) || [];

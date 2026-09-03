@@ -1073,8 +1073,10 @@ function renderizarCandidatosNome(mensagem, candidatos) {
       ? 'text-align:left; padding:12px 14px; border:3px solid #f9a825; background:#fff8e1; color:#333; box-shadow:0 2px 10px rgba(249,168,37,.4);'
       : 'text-align:left; padding:10px 12px; opacity:.85;';
     let itens = '';
-    if (naEsp && Array.isArray(c.itens) && c.itens.length) {
-      itens = '<div style="margin-top:6px; font-size:13px; color:#5d4037;">'
+    // b227: os itens aparecem em TODOS os candidatos que os tem, nao so nos
+    // da espreita — e o que deixa o estoquista descartar sem abrir nada
+    if (Array.isArray(c.itens) && c.itens.length) {
+      itens = '<div style="margin-top:6px; font-size:13px; color:' + (naEsp ? '#5d4037' : '#333') + ';">'
         + c.itens.slice(0, 3).map((it) => '📦 <b>' + escapeHtml(String(it.qtd)) + '×</b> '
             + escapeHtml(it.descricao || it.sku || '?')).join('<br>')
         + (c.itens.length > 3 ? '<br>… +' + (c.itens.length - 3) : '')
@@ -1085,8 +1087,15 @@ function renderizarCandidatosNome(mensagem, candidatos) {
     html += '<button class="btn" style="' + estilo + '" onclick="document.getElementById(\'codigo\').value=\'' + alvo + '\'; buscar();">'
       + (naEsp ? '<span style="font-size:18px;">⭐</span> ' : '')
       + '<b>' + escapeHtml(c.nome) + '</b>'
-      + (naEsp ? ' <span style="font-size:11px; background:#f9a825; color:#333; padding:2px 8px; border-radius:10px; font-weight:700;">'
-          + 'NA ESPREITA' + (c.espreita_dias != null ? ' · entregue há ' + escapeHtml(String(c.espreita_dias)) + 'd' : '') + '</span>' : '')
+      // b229 (Codex): ENTREGUE e EM TRANSITO sao estados diferentes — antes
+      // tudo virava "entregue ha Nd", e o estoquista via como ja chegado um
+      // pacote que ainda estava no correio
+      + (naEsp ? ' <span style="font-size:11px; background:' + (c.espreita_estado === 'entregue' ? '#f9a825' : '#90caf9')
+          + '; color:#333; padding:2px 8px; border-radius:10px; font-weight:700;">'
+          + (c.espreita_estado === 'entregue'
+              ? '📬 ENTREGUE' + (c.espreita_dias != null ? ' há ' + escapeHtml(String(c.espreita_dias)) + 'd' : '')
+              : '🚚 A CAMINHO' + (c.espreita_dias != null ? ' · ' + escapeHtml(String(c.espreita_dias)) + 'd em trânsito' : ''))
+          + '</span>' : '')
       + '<br>🧾 NF ' + escapeHtml(c.numero) + (c.serie ? ' (série ' + escapeHtml(c.serie) + ')' : '') + ' · ' + dt + ' · ' + vl
       + (naEsp && c.tracking ? ' · 📮 ' + escapeHtml(c.tracking) : '')
       + itens

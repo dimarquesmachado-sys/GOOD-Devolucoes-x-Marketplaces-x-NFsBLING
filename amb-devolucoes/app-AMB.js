@@ -86,7 +86,7 @@ const criarMlBuscas = require('./lib-AMB/ml-buscas-AMB');
 const registrarIdentificar = require('./lib-AMB/identificar-AMB');
 const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 
-const VERSAO = 'AMB Devolucoes b262';
+const VERSAO = 'AMB Devolucoes b265';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -1212,6 +1212,10 @@ router.get('/api/debug/tiktok-devolucoes', admin, async (req, res) => {
   }
 });
 
+// b229 - a ultima espreita montada, pra busca por nome cruzar. Nivel do
+// modulo, declarada ANTES de quem usa (o erro de escopo de ontem, 3x).
+let ESPREITA_AMB_CACHE = null;
+
 // ── A ESPREITA (o que esta vindo pro galpao) ─────────────────
 router.get('/api/espreita', auth.requerLogin, async (req, res) => {
   // b29 - cada fonte com a propria rede de protecao: uma quebrar
@@ -1327,6 +1331,16 @@ router.get('/api/espreita', auth.requerLogin, async (req, res) => {
   if (stNomes.quente) nfNomes.dispararNfPorVenda(idsPraNF);
   if (pendentes.length) mlReturns.enriquecerLista(pendentes).catch(() => {});
 
+  // b229 (Codex): guardo o resultado pra busca por nome cruzar com a MESMA
+  // lista que a tela mostra — ML + Shopee + Magalu, enriquecida, sem os
+  // baixados e sem os que vao pro CD do ML. Reimplementar a agregacao no
+  // identificar-AMB (como eu tinha feito, lendo so o mlReturns cru) perdia
+  // dois canais e mostrava estrela em pacote ja processado.
+  ESPREITA_AMB_CACHE = {
+    em_transito: emTransito.filter((x) => !x.no_cd_ml),
+    entregues: [...enriquecer(baseML.entregues), ...enriquecer(baseShopee.entregues || [])],
+    ts: Date.now(),
+  };
   res.json({
     ok: true,
     versao: VERSAO,
@@ -1855,6 +1869,9 @@ const mlBuscas = criarMlBuscas(ml.chamarML);
 registrarCicloDefeitos(router, { auth, db, bling, cfg });
 
 registrarIdentificar(router, {
+  // b229 - a espreita ja montada, por FUNCAO (o comentario abaixo avisa:
+  // passar pelo escopo derrubou o boot 2x). O getter le o cache na hora.
+  espreitaMontada: () => ESPREITA_AMB_CACHE,
   // b180 - TikTok na cascata da AMB (paridade com a GOOD). Passar por
   // parametro, nao pelo escopo: usar o escopo ja derrubou o boot 2x neste
   // projeto (b300 e b302 no lado da GOOD).
