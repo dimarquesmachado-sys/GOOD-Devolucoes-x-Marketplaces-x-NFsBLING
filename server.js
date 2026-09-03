@@ -255,7 +255,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '6.2.0 (recado com dia/hora/autor; varios do mesmo pedido fundidos)',
+    version: '6.2.1 (editar recado na GOOD e no painel2 — a cadeia inteira)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -4826,6 +4826,23 @@ app.get('/api/admin/recados', requerAdmin, async (req, res) => {
     return res.json({ ok: true, recados });
   } catch (e) { return res.status(500).json({ ok: false, erro: e.message }); }
 });
+// b225 - EDITAR recado. A AMB tinha desde o b219 (compat-AMB.js); a GOOD
+// nao tinha a rota, e o botao "Editar" que eu pus no painel chamava uma
+// funcao que nao existia — morria em silencio. Quinta funcao fantasma,
+// agora no front. Portada a cadeia inteira: rota, funcao, salvamento.
+app.put('/api/admin/recado/:id', requerAdmin, async (req, res) => {
+  try {
+    const b = req.body || {};
+    const campos = {};
+    if (b.identificador || b.chave) campos.chave = String(b.identificador || b.chave).trim();
+    if (b.texto) campos.texto = String(b.texto).slice(0, 2000);
+    if (!Object.keys(campos).length) return res.status(400).json({ ok: false, erro: 'nada pra editar' });
+    const { data, error } = await supabase.from('recados').update(campos).eq('id', req.params.id).select().limit(1);
+    if (error) return res.status(400).json({ ok: false, erro: error.message });
+    return res.json({ ok: true, recado: (data || [])[0] || null });
+  } catch (e) { return res.status(500).json({ ok: false, erro: e.message }); }
+});
+
 app.post('/api/admin/recado/:id/remover', requerAdmin, async (req, res) => {
   try {
     const { error } = await supabase.from('recados').update({ ativo: false }).eq('id', req.params.id);
