@@ -1047,7 +1047,17 @@
         // v4.45 - tres estados: ATIVO (aparece na triagem), resolvido (devolucao
         // ja triada/com NF - saiu da triagem mas fica no historico), lido (o
         // estoquista deu ciencia). O resolvido tem prioridade visual (esmaecido).
-        var ativos = rs.filter(function (x) { return !x.resolvido; });
+        // b223: TRES grupos, nao dois. [stated] "se o estoquista já leu a
+        // mensagem, já triou o pacote, tira da frente... mas que não fique
+        // ali confrontando com os recados EM ABERTO que esses sim são os
+        // importantes."
+        //
+        // Antes so `resolvido` ia pra baixo; o "ciente por Lucas" ficava em
+        // cima, disputando atencao com o que ninguem leu ainda. Lido = ja
+        // cumpriu o papel. Sai da frente, mas continua a um clique.
+        var todosAtivos = rs.filter(function (x) { return !x.resolvido; });
+        var ativos = todosAtivos.filter(function (x) { return !x.ciente_em; });   // EM ABERTO: o que importa
+        var lidos = todosAtivos.filter(function (x) { return !!x.ciente_em; });   // ja cientes
         var resolvidos = rs.filter(function (x) { return x.resolvido; });
         document.getElementById('countRecados').textContent = ativos.length;
         // b212 - o botao diz quantos ha; a lista so aparece se ele abrir
@@ -1055,7 +1065,9 @@
         if (btnR) {
           var aberta = document.getElementById('listaRecados').style.display !== 'none';
           btnR.textContent = (aberta ? '🙈 Esconder recados' : '📋 Ver recados criados')
-            + ' (' + ativos.length + (resolvidos.length ? ' ativos · ' + resolvidos.length + ' no histórico' : '') + ')';
+            + ' (' + ativos.length + ' em aberto'
+            + (lidos.length ? ' · ' + lidos.length + ' lidos' : '')
+            + (resolvidos.length ? ' · ' + resolvidos.length + ' no histórico' : '') + ')';
         }
         for (const rc of ativos) {
           const lido = !!rc.ciente_em;
@@ -1077,6 +1089,27 @@
             + 'text-decoration:none;margin-left:8px;display:inline-block;">🔎 Abrir a venda</a>'
             + '<button onclick="removerRecado(' + rc.id + ')" style="background:#999;color:#fff;border:none;border-radius:8px;padding:4px 10px;font-size:12px;cursor:pointer;margin-left:8px;">✖ remover</button>'
             + '</div>';
+        }
+        // b223: bloco dos LIDOS — recolhido, mas separado do historico, porque
+        // ainda estao na triagem (so ja foram vistos)
+        if (lidos.length) {
+          h += '<div style="margin-top:10px;"><details><summary style="cursor:pointer;font-size:13px;color:#2e7d32;font-weight:700;">'
+            + '👀 Já lidos pelo galpão (' + lidos.length + ') — o estoquista está ciente, aguardando o pacote</summary>';
+          for (const rc of lidos) {
+            h += '<div style="border:1px solid #c8e6c9;background:#f1f8e9;border-radius:8px;padding:9px;margin:6px 0;opacity:0.85;">'
+              + '<b>' + escapeHtml(rc.identificador || rc.chave || '(sem identificador)') + '</b> · <span style="font-size:13px;">' + escapeHtml(rc.texto) + '</span>'
+              + '<br><span style="font-size:12px;color:#2e7d32;">✅ ciente por ' + escapeHtml(rc.ciente_por || '-') + '</span>'
+              + '<span style="font-size:12px;color:#666;"> · criado por ' + escapeHtml(rc.criado_por || '-') + '</span> '
+              + '<button onclick="editarRecado(' + rc.id + ')" style="background:#3C3489;color:#fff;border:none;'
+              + 'border-radius:8px;padding:4px 10px;font-size:12px;cursor:pointer;margin-left:8px;">✏️ Editar</button>'
+              + '<div id="edRecado' + rc.id + '"></div>'
+              + '<a href="' + '/amb/?bipe=' + encodeURIComponent(rc.identificador || rc.chave || '') + '" target="_blank" '
+              + 'style="background:#3C3489;color:#fff;border-radius:8px;padding:5px 11px;font-size:12px;font-weight:700;'
+              + 'text-decoration:none;margin-left:8px;display:inline-block;">🔎 Abrir a venda</a>'
+              + '<button onclick="removerRecado(' + rc.id + ')" style="background:#999;color:#fff;border:none;border-radius:8px;padding:4px 10px;font-size:12px;cursor:pointer;margin-left:8px;">✖ remover</button>'
+              + '</div>';
+          }
+          h += '</details></div>';
         }
         // bloco do historico (resolvidos): recolhido, esmaecido, so pra consulta
         if (resolvidos.length) {

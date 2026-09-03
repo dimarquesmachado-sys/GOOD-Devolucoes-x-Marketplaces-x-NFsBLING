@@ -255,7 +255,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '6.1.0 (aviso de recado criado que se ve)',
+    version: '6.1.1 (recado lido sai da frente dos em aberto)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
