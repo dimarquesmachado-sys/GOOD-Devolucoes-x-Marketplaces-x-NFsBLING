@@ -255,7 +255,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '6.3.2 (indice de nomes cobre os 120 dias: ritmo, 429 e background)',
+    version: '6.3.3 (o cruzamento com a espreita le os campos REAIS)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -1110,11 +1110,33 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
             // produto e itens. Cruzo os candidatos com ela: quem esta la
             // ganha a estrela e o produto — sem chamada extra ao Bling.
             // Quem nao esta, ganha so o que o indice tem (nome, NF, data).
-            const espreita = (ESP_CACHE && Array.isArray(ESP_CACHE.itens)) ? ESP_CACHE.itens : [];
+            // b229 (Codex): LI O PRODUTOR desta vez. `montarEspreita()` devolve
+            // `em_transito` e `nunca_bipadas` — nao `itens`. Eu tinha chutado o
+            // campo e o cruzamento NUNCA rodava na GOOD; so o teste simulado
+            // passava. Regra 4.12, violada no mesmo dia em que a reforcei.
+            //
+            // E mais tres coisas que o produtor exige:
+            //   - `nunca_bipadas` = ENTREGUE sem bipe; `em_transito` = a caminho.
+            //     Sao estados diferentes, e o card tem que dizer qual
+            //   - `baixado` = alguem ja marcou como processado. Sai.
+            //   - a chave e numero+SERIE, porque numero se repete entre series
+            //     (a NF 637 de ontem, em duas series)
+            const cacheEsp = ESP_CACHE || {};
+            const espreita = []
+              .concat((Array.isArray(cacheEsp.nunca_bipadas) ? cacheEsp.nunca_bipadas : [])
+                .map((e) => ({ ...e, _estado: 'entregue' })))
+              .concat((Array.isArray(cacheEsp.em_transito) ? cacheEsp.em_transito : [])
+                .map((e) => ({ ...e, _estado: 'em_transito' })))
+              .filter((e) => !e.baixado);
+            const chaveNF = (nf, serie) => String(nf || '').replace(/^0+/, '')
+              + '/' + (String(serie || '').replace(/^0+/, '') || '1');
             const porNF = new Map();
             for (const e of espreita) {
               const n = String(e.nf || '').replace(/^0+/, '');
-              if (n) porNF.set(n, e);
+              if (!n) continue;
+              const k = chaveNF(n, e.nf_serie || e.serie);
+              // entregue tem prioridade sobre em transito, se a mesma NF aparecer nos dois
+              if (!porNF.has(k) || e._estado === 'entregue') porNF.set(k, e);
             }
             // b227 - PRODUTO EM TODOS, nao so nos da espreita. [stated] "não
             // mostra o produto ainda". A listagem do /nfe nao traz itens; so
@@ -1145,14 +1167,15 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
               }
             }
             resultado.candidatos_nome = rN.candidatos.map((c) => {
-              const e = porNF.get(String(c.numero || '').replace(/^0+/, ''));
+              const e = porNF.get(chaveNF(c.numero, c.serie));
               const itensDet = detalhes.get(String(c.id)) || null;
               const base = itensDet ? { ...c, itens: itensDet } : c;
               if (!e) return base;
               return {
                 ...base,
                 na_espreita: true,
-                espreita_dias: e.dias,
+                espreita_estado: e._estado,
+                espreita_dias: e._estado === 'entregue' ? e.dias : e.dias_em_transito,
                 tracking: e.tracking || null,
                 produto: e.produto || null,
                 // os itens do detalhe sao mais completos que os da espreita

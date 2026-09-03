@@ -32,6 +32,7 @@ module.exports = function registrarIdentificar(app, deps) {
     shopee, magalu, nfNomes, // b71 - a rota usa os modulos inteiros
     tiktokPonte, tiktokDev,  // b180 - TikTok na cascata (paridade com a GOOD)
     mlReturns,               // b142 - indice claims->returns do ML (faltava)
+    espreitaMontada,         // b229 - getter da espreita ja agregada (ML+Shopee+Magalu, sem baixados)
     supabase,                // ev2 - pro registro do checkout offline
     db,                      // b213 - pra buscar o RECADO desta devolucao
   } = deps;
@@ -785,20 +786,30 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
             // b226 - a mesma ajuda da GOOD: quem esta NA ESPREITA ganha estrela
             // e produto. A espreita da AMB e o `resumoEspreita()` do mlReturns;
             // cada item traz nf_ml_numero, tracking e itens (titulo/sku).
+            // b229 (Codex): a MESMA espreita que a tela mostra — ML + Shopee +
+            // Magalu, enriquecida, sem baixados, sem os que vao pro CD do ML.
+            // Antes eu lia so o mlReturns cru: perdia dois canais e punha
+            // estrela em pacote ja processado.
+            //
+            // O cache e da ultima vez que /api/espreita rodou (o painel chama
+            // a cada 4 min). Se ainda nao rodou, sem estrela — melhor que
+            // reimplementar a agregacao aqui e divergir da tela.
             let espreita = [];
             try {
-              const r = mlReturns && typeof mlReturns.resumoEspreita === 'function' ? mlReturns.resumoEspreita() : null;
-              // conferido no resumoEspreita():  e  sao
-              // listas;  e so um NUMERO (as atrasadas estao
-              // dentro de em_transito). Eu tinha chutado .
-              espreita = [].concat(
-                (r && Array.isArray(r.entregues)) ? r.entregues : [],
-                (r && Array.isArray(r.em_transito)) ? r.em_transito : []);
+              const c = typeof espreitaMontada === 'function' ? espreitaMontada() : null;
+              espreita = []
+                .concat((c && Array.isArray(c.entregues)) ? c.entregues.map((e) => ({ ...e, _estado: 'entregue' })) : [])
+                .concat((c && Array.isArray(c.em_transito)) ? c.em_transito.map((e) => ({ ...e, _estado: 'em_transito' })) : []);
             } catch (e) { espreita = []; }
+            // numero+SERIE, porque numero se repete entre series
+            const chaveNF = (nf, serie) => String(nf || '').replace(/^0+/, '')
+              + '/' + (String(serie || '').replace(/^0+/, '') || '1');
             const porNF = new Map();
             for (const e of espreita) {
               const n = String(e.nf_ml_numero || e.nf || '').replace(/^0+/, '');
-              if (n) porNF.set(n, e);
+              if (!n) continue;
+              const kk = chaveNF(n, e.nf_ml_serie || e.nf_serie || e.serie);
+              if (!porNF.has(kk) || e._estado === 'entregue') porNF.set(kk, e);
             }
             // b227 - PRODUTO EM TODOS: a listagem nao traz itens, o detalhe traz.
             // Ate 8 chamadas, com teto de 6s — acao manual do estoquista.
@@ -826,14 +837,15 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
               }
             }
             resultado.candidatos_nome = rN.candidatos.map((c) => {
-              const e = porNF.get(String(c.numero || '').replace(/^0+/, ''));
+              const e = porNF.get(chaveNF(c.numero, c.serie));
               const itensDet = detalhes.get(String(c.id)) || null;
               const base = itensDet ? { ...c, itens: itensDet } : c;
               if (!e) return base;
               return {
                 ...base,
                 na_espreita: true,
-                espreita_dias: e.dias_desde != null ? e.dias_desde : e.dias_em_transito,
+                espreita_estado: e._estado,
+                espreita_dias: e._estado === 'entregue' ? (e.dias_desde != null ? e.dias_desde : e.dias) : e.dias_em_transito,
                 tracking: e.tracking || null,
                 itens: itensDet || (Array.isArray(e.itens) ? e.itens.map((it) => ({
                   qtd: it.qtd || it.quantidade || 1,

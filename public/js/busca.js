@@ -985,8 +985,15 @@ function renderizarCandidatosNome(mensagem, candidatos) {
     html += '<button class="btn" style="' + estilo + '" onclick="document.getElementById(\'codigo\').value=\'' + alvo + '\'; buscar();">'
       + (naEsp ? '<span style="font-size:18px;">⭐</span> ' : '')
       + '<b>' + escapeHtml(c.nome) + '</b>'
-      + (naEsp ? ' <span style="font-size:11px; background:#f9a825; color:#333; padding:2px 8px; border-radius:10px; font-weight:700;">'
-          + 'NA ESPREITA' + (c.espreita_dias != null ? ' · entregue há ' + escapeHtml(String(c.espreita_dias)) + 'd' : '') + '</span>' : '')
+      // b229 (Codex): ENTREGUE e EM TRANSITO sao estados diferentes — antes
+      // tudo virava "entregue ha Nd", e o estoquista via como ja chegado um
+      // pacote que ainda estava no correio
+      + (naEsp ? ' <span style="font-size:11px; background:' + (c.espreita_estado === 'entregue' ? '#f9a825' : '#90caf9')
+          + '; color:#333; padding:2px 8px; border-radius:10px; font-weight:700;">'
+          + (c.espreita_estado === 'entregue'
+              ? '📬 ENTREGUE' + (c.espreita_dias != null ? ' há ' + escapeHtml(String(c.espreita_dias)) + 'd' : '')
+              : '🚚 A CAMINHO' + (c.espreita_dias != null ? ' · ' + escapeHtml(String(c.espreita_dias)) + 'd em trânsito' : ''))
+          + '</span>' : '')
       + '<br>🧾 NF ' + escapeHtml(c.numero) + (c.serie ? ' (série ' + escapeHtml(c.serie) + ')' : '') + ' · ' + dt + ' · ' + vl
       + (naEsp && c.tracking ? ' · 📮 ' + escapeHtml(c.tracking) : '')
       + itens
