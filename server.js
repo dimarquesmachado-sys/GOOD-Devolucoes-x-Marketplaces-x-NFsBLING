@@ -255,7 +255,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '6.2.2 (editar recado: normaliza, zera o ciente; link do painel2 na AMB)',
+    version: '6.2.3 (editar no recado unico; ciente so zera se mudou; toast da AMB)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -4844,10 +4844,16 @@ app.put('/api/admin/recado/:id', requerAdmin, async (req, res) => {
     }
     if (b.texto) campos.texto = String(b.texto).slice(0, 2000);
     if (!Object.keys(campos).length) return res.status(400).json({ ok: false, erro: 'nada pra editar' });
-    // b225.1 (Codex): EDITOU = precisa ser lido de novo. Se o texto ou o
-    // alvo mudaram, o "ciente" anterior nao vale mais — o estoquista leu
-    // OUTRA instrucao. Sem isto, a nova aparecia como ja lida e a trava da
-    // triagem nao pegava.
+    // b225.2 (Codex): so zera o ciente se algo MUDOU de verdade. A tela
+    // manda os dois campos sempre; "Salvar" sem tocar em nada nao pode
+    // botar o recado de volta na frente do estoquista.
+    const { data: atual } = await supabase.from('recados').select('chave, texto').eq('id', req.params.id).limit(1);
+    const antes = (atual || [])[0] || {};
+    const mudou = (campos.chave !== undefined && campos.chave !== antes.chave)
+      || (campos.texto !== undefined && campos.texto !== antes.texto);
+    if (!mudou) return res.json({ ok: true, recado: antes, sem_mudanca: true });
+    // b225.1 (Codex): EDITOU = precisa ser lido de novo — o estoquista leu
+    // OUTRA instrucao.
     campos.ciente_em = null;
     campos.ciente_por = null;
     const { data, error } = await supabase.from('recados').update(campos).eq('id', req.params.id).select().limit(1);

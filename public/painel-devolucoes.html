@@ -962,6 +962,12 @@
             + '<b>' + escapeHtml(rc.chave) + '</b> · <span style="font-size:13px;">' + escapeHtml(rc.texto) + '</span>'
             + '<br><span style="font-size:12px;color:#666;">' + quandoRecado(rc)
             + ' · ' + (lido ? '✅ ciente por ' + escapeHtml(rc.ciente_por || '-') : '⏳ ainda não lido pelo galpão') + '</span> '
+            // b225.2 (Codex): o Editar tambem no recado UNICO — o caso normal.
+            // Eu tinha posto so no fundido e nos lidos; o unico ficava so com
+            // Remover, e a edicao que acabei de portar nao abria.
+            + '<button onclick="editarRecado(' + rc.id + ')" style="background:#3C3489;color:#fff;border:none;'
+            + 'border-radius:8px;padding:4px 10px;font-size:12px;cursor:pointer;margin-left:8px;">✏️ Editar</button>'
+            + '<div id="edRecado' + rc.id + '"></div>'
             + '<button onclick="removerRecado(' + rc.id + ')" style="background:#999;color:#fff;border:none;border-radius:8px;padding:4px 10px;font-size:12px;cursor:pointer;margin-left:8px;">✖ remover</button>'
             + '</div>';
         }

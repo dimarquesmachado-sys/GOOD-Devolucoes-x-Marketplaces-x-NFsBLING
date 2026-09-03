@@ -449,11 +449,17 @@ async function editarRecado(id, { identificador, texto } = {}) {
   if (identificador != null && String(identificador).trim()) campos.identificador = String(identificador).trim();
   if (texto != null && String(texto).trim()) campos.texto = String(texto).trim();
   if (!Object.keys(campos).length) return { ok: false, erro: 'nada pra alterar' };
-  // b225.1 (Codex): EDITOU = precisa ser lido de novo. O "ciente" anterior
-  // era de OUTRA instrucao. A GOOD ganhou a mesma regra no mesmo PR.
-  campos.ciente_em = null;
-  campos.ciente_por = null;
   try {
+    // b225.2 (Codex): so zera o ciente se algo MUDOU. "Salvar" sem tocar em
+    // nada nao pode botar o recado de volta na frente do estoquista.
+    const a = await dbc.from(T.recados).select('identificador, texto').eq('id', id).limit(1);
+    const antes = (a.data || [])[0] || {};
+    const mudou = (campos.identificador !== undefined && campos.identificador !== antes.identificador)
+      || (campos.texto !== undefined && campos.texto !== antes.texto);
+    if (!mudou) return { ok: true, recado: antes, sem_mudanca: true };
+    // b225.1 (Codex): EDITOU = precisa ser lido de novo
+    campos.ciente_em = null;
+    campos.ciente_por = null;
     const r = await dbc.from(T.recados).update(campos).eq('id', id).select().limit(1);
     if (r.error) return { ok: false, erro: r.error.message };
     const linha = (r.data || [])[0] || null;

@@ -744,10 +744,10 @@
         + 'font-size:15px;font-weight:600;margin-top:8px;display:flex;align-items:center;gap:10px;'
         + 'box-shadow:0 2px 8px rgba(46,125,50,.35);">'
         + '<span style="font-size:22px;">✅</span>'
-        + '<div>Recado criado para <b>' + escapeHtml(d.chave) + '</b>'
+        + '<div>Recado criado para <b>' + escapeHtml((d.recado && d.recado.identificador) || d.chave || chave) + '</b>'
         + '<div style="font-weight:400;font-size:13px;opacity:.9;margin-top:2px;">'
         + '"' + escapeHtml(texto) + '"</div></div></div>';
-      if (typeof toast === 'function') toast('✅ Recado criado — o estoquista vai ver ao bipar ' + d.chave, 'ok');
+      if (typeof toast === 'function') toast('✅ Recado criado — o estoquista vai ver ao bipar ' + ((d.recado && d.recado.identificador) || d.chave || chave), 'ok');
       setTimeout(() => { if (msg.innerHTML.includes('Recado criado')) msg.innerHTML = ''; }, 6000);
       document.getElementById('recadoChave').value = '';
       document.getElementById('recadoTexto').value = '';
