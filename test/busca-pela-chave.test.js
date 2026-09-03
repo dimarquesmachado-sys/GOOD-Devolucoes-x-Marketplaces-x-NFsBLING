@@ -92,6 +92,13 @@ const CH = '35260332461988000182550010000701151290080214';   // a NF 70115, real
        '200 sem lista: erro (quinta vez desta familia) — senao esfriava o item');
   });
 
+  // b221.3: UMA linha com OUTRA chave = o filtro nao funcionou
+  h = mk({ ok: true, data: { data: [{ id: 9, chaveAcesso: '9'.repeat(44) }] } });
+  h.buscarNFPelaChave(CH).then((r) => {
+    ok(r.match === null && r.via === 'chave-ignorada',
+       'uma linha com chave DIFERENTE: filtro ignorado, nao "chave-nao-achou"');
+  });
+
   // erro da API
   h = mk({ ok: false, status: 429 });
   h.buscarNFPelaChave(CH).then((r) => {
@@ -109,8 +116,18 @@ setTimeout(() => {
   ok(/async function comCancelamento/.test(GOOD),
      'o cancelamento vale DENTRO da chamada, e limpa o vigia ao terminar');
   const CACHE = fs.readFileSync(path.join(RAIZ, 'lib', 'vinculo-nf-cache.js'), 'utf8');
-  ok(/if \(v\.numero\) item\.nf_numero = v\.numero;/.test(CACHE),
-     'o cache SOBRESCREVE o numero — o capturado errado nao sobrevive ao refresh');
+  ok(/if \(v\.numero && v\.via === 'chave'\) item\.nf_numero = v\.numero;/.test(CACHE),
+     'o cache SOBRESCREVE o numero so quando veio da CHAVE — as outras fases gravam o capturado');
+
+  // b221.3: rodizio curto pra falha transitoria
+  const c = require('../lib/vinculo-nf-cache.js');
+  c._CACHE.clear();
+  const lento = { nf_chave: '5'.repeat(44) };
+  c.adiarPouco(lento, 'good', 'chave');
+  ok(c.esperando(lento, 'good', 'chave') === true,
+     'item que deu timeout sai da frente (adiarPouco)');
+  ok(/vinculoCache\.adiarPouco\(item, /.test(fs.readFileSync(path.join(RAIZ, 'server.js'), 'utf8')),
+     '  e a fase zero usa isso na falha transitoria — senao os mesmos lentos travavam a fila');
 
   for (const [nome, rel] of [['GOOD', 'server.js'], ['AMB', 'amb-devolucoes/app-AMB.js']]) {
     const src = fs.readFileSync(path.join(RAIZ, rel), 'utf8');

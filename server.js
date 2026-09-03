@@ -255,7 +255,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '6.0.2 (so nota de saida; cancelamento real; cache corrige o numero)',
+    version: '6.0.3 (numero so pela chave; chave divergente e filtro ignorado; adiar pouco)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -5764,6 +5764,11 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
           } else if (r && r.ok !== false) {
             // respondeu e nao achou: a nota com essa chave nao esta nesta conta
             vinculoCache.marcarFalha(item, empresa, 'chave');
+          } else {
+            // b221.3 (Codex): falha TRANSITORIA (timeout, 429, erro) — adia
+            // POUCO, so pra dar a vez a outro. Sem isso a fila pegava os
+            // mesmos itens lentos em todo refresh e o resto nunca era tentado.
+            vinculoCache.adiarPouco(item, empresa, 'chave');
             if (r.via === 'chave-nao-achou') {
               item.nf_motivo_sem_vinculo = 'nao ha NF com esta chave nesta conta do Bling '
                 + '— confira se e da empresa certa, ou se foi cancelada';

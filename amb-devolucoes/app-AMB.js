@@ -86,7 +86,7 @@ const criarMlBuscas = require('./lib-AMB/ml-buscas-AMB');
 const registrarIdentificar = require('./lib-AMB/identificar-AMB');
 const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 
-const VERSAO = 'AMB Devolucoes b251';
+const VERSAO = 'AMB Devolucoes b252';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -2536,6 +2536,11 @@ router.get('/api/admin/sem-retorno', auth.requerLogin, async (req, res) => {
           } else if (r && r.ok !== false) {
             // respondeu e nao achou: a nota com essa chave nao esta nesta conta
             vinculoCache.marcarFalha(item, 'amb', 'chave');
+          } else {
+            // b221.3 (Codex): falha TRANSITORIA (timeout, 429, erro) — adia
+            // POUCO, so pra dar a vez a outro. Sem isso a fila pegava os
+            // mesmos itens lentos em todo refresh e o resto nunca era tentado.
+            vinculoCache.adiarPouco(item, 'amb', 'chave');
             if (r.via === 'chave-nao-achou') {
               item.nf_motivo_sem_vinculo = 'nao ha NF com esta chave nesta conta do Bling '
                 + '— confira se e da empresa certa, ou se foi cancelada';
