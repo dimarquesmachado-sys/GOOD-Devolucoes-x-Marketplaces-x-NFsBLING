@@ -255,7 +255,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '6.1.1 (recado lido sai da frente dos em aberto)',
+    version: '6.2.0 (recado com dia/hora/autor; varios do mesmo pedido fundidos)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -352,11 +352,27 @@ async function recadoPendente(dados) {
       for (const x of variantesId(v)) ids.add(x);
     }
     if (ids.size === 0) return null;
-    const { data } = await supabase.from('recados').select('id, texto').eq('ativo', true).is('ciente_em', null).in('chave', [...ids]).limit(1);
+    // b224: TODOS os recados do pedido, nao so um. [stated] "eu Diego fiz um.
+    // A Angelica fez outro." — com `limit(1)` o estoquista via o primeiro,
+    // dava ciente, e o segundo ficava pendente sem ele saber. Agora vem a
+    // lista, e o texto na tela junta os dois com autor e hora.
+    const { data } = await supabase.from('recados')
+      .select('id, texto, criado_por, criado_em')
+      .eq('ativo', true).is('ciente_em', null).in('chave', [...ids])
+      .order('criado_em', { ascending: true }).limit(10);
     if (!data || !data[0]) return null;
     // v4.45 - se a devolucao ja foi triada/tem NF, o recado ja cumpriu o papel
     if (await devolucaoJaResolvida([...ids])) return null;
-    return data[0];
+    if (data.length === 1) return data[0];
+    // varios: a TRAVA mostra os textos juntos, com autor. A tela do bipe
+    // renderiza cada um separado (ja traz todos por outra rota), entao aqui
+    // so o que a mensagem de bloqueio precisa.
+    return {
+      id: data[0].id,
+      ids: data.map((rc) => rc.id),
+      texto: data.map((rc) => rc.texto + (rc.criado_por ? ' (' + rc.criado_por + ')' : '')).join(' | '),
+      varios: data.length,
+    };
   } catch (e) { return null; }
 }
 function normId(v) {
@@ -2316,7 +2332,7 @@ async function enriquecerTriagem(registroId, dados) {
 app.post('/api/triagem/aprovar', requerEstoquista, async (req, res) => {
   {
     const pend = await recadoPendente(req.body?.dados || req.body);
-    if (pend) return res.status(409).json({ ok: false, erro: 'RECADO PENDENTE: leia o recado e clique em "OK, ciente" antes de triar. ("' + String(pend.texto).slice(0, 120) + '")' });
+    if (pend) return res.status(409).json({ ok: false, erro: (pend.varios > 1 ? pend.varios + ' RECADOS PENDENTES' : 'RECADO PENDENTE') + ': leia e clique em "OK, ciente" em cada um antes de triar. ("' + String(pend.texto).slice(0, 160) + '")' });
   }
   if (!supabase) {
     return res.status(500).json({ ok: false, erro: 'Supabase nao configurado' });
@@ -2540,7 +2556,7 @@ app.post('/api/triagem/problema', requerEstoquista, async (req, res) => {
   }
   {
     const pend = await recadoPendente(req.body?.dados || req.body);
-    if (pend) return res.status(409).json({ ok: false, erro: 'RECADO PENDENTE: leia o recado e clique em "OK, ciente" antes de triar. ("' + String(pend.texto).slice(0, 120) + '")' });
+    if (pend) return res.status(409).json({ ok: false, erro: (pend.varios > 1 ? pend.varios + ' RECADOS PENDENTES' : 'RECADO PENDENTE') + ': leia e clique em "OK, ciente" em cada um antes de triar. ("' + String(pend.texto).slice(0, 160) + '")' });
   }
   if (!supabase) {
     return res.status(500).json({ ok: false, erro: 'Supabase nao configurado' });
@@ -2666,7 +2682,7 @@ app.post('/api/triagem/problema', requerEstoquista, async (req, res) => {
 app.post('/api/triagem/divergente', requerEstoquista, async (req, res) => {
   {
     const pend = await recadoPendente(req.body?.dados || req.body);
-    if (pend) return res.status(409).json({ ok: false, erro: 'RECADO PENDENTE: leia o recado e clique em "OK, ciente" antes de triar.' });
+    if (pend) return res.status(409).json({ ok: false, erro: (pend.varios > 1 ? pend.varios + ' RECADOS PENDENTES' : 'RECADO PENDENTE') + ': leia e clique em "OK, ciente" em cada um antes de triar.' });
   }
   if (!supabase) {
     return res.status(500).json({ ok: false, erro: 'Supabase nao configurado' });
@@ -3115,7 +3131,7 @@ app.get('/api/defeitos/por-sku', requerEstoquista, async (req, res) => {
 app.post('/api/triagem/consertado', requerEstoquista, async (req, res) => {
   {
     const pend = await recadoPendente(req.body?.dados || req.body);
-    if (pend) return res.status(409).json({ ok: false, erro: 'RECADO PENDENTE: leia o recado e clique em "OK, ciente" antes de triar.' });
+    if (pend) return res.status(409).json({ ok: false, erro: (pend.varios > 1 ? pend.varios + ' RECADOS PENDENTES' : 'RECADO PENDENTE') + ': leia e clique em "OK, ciente" em cada um antes de triar.' });
   }
   if (!supabase) return res.status(500).json({ ok: false, erro: 'Supabase nao configurado' });
   const dados = req.body || {};
@@ -4820,9 +4836,14 @@ app.post('/api/admin/recado/:id/remover', requerAdmin, async (req, res) => {
 // ciencia do estoquista (fica registrado quem leu e quando)
 app.post('/api/recado/:id/ciente', requerLogin, async (req, res) => {
   try {
+    // b224: recado FUNDIDO manda `ids` — o ciente marca todos de uma vez.
+    // Sem isto o estoquista lia os dois, dava ciente, e um ficava pendente.
+    const ids = Array.isArray(req.body && req.body.ids) && req.body.ids.length
+      ? req.body.ids.map(Number).filter(Number.isFinite)
+      : [Number(req.params.id)];
     const { error } = await supabase.from('recados')
       .update({ ciente_por: req.usuario || null, ciente_em: new Date().toISOString() })
-      .eq('id', req.params.id);
+      .in('id', ids);
     if (error) return res.status(500).json({ ok: false, erro: error.message });
     return res.json({ ok: true, usuario: req.usuario });
   } catch (e) { return res.status(500).json({ ok: false, erro: e.message }); }
