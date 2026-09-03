@@ -782,8 +782,44 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
           const rN = await nfNomes.buscarPorNome(codigoOriginal);
           resultado.tentativas.push({ tipo: 'nf_por_nome', codigo: alvoNome, ok: rN.candidatos.length > 0, status: rN.candidatos.length ? 200 : 404, qtd: rN.candidatos.length });
           if (rN.candidatos.length > 0) {
-            resultado.candidatos_nome = rN.candidatos;
-            resultado.erro = `Achei ${rN.candidatos.length} NF(s) recente(s) com esse nome. Confere com a CAIXA e escolhe abaixo:`;
+            // b226 - a mesma ajuda da GOOD: quem esta NA ESPREITA ganha estrela
+            // e produto. A espreita da AMB e o `resumoEspreita()` do mlReturns;
+            // cada item traz nf_ml_numero, tracking e itens (titulo/sku).
+            let espreita = [];
+            try {
+              const r = mlReturns && typeof mlReturns.resumoEspreita === 'function' ? mlReturns.resumoEspreita() : null;
+              // conferido no resumoEspreita():  e  sao
+              // listas;  e so um NUMERO (as atrasadas estao
+              // dentro de em_transito). Eu tinha chutado .
+              espreita = [].concat(
+                (r && Array.isArray(r.entregues)) ? r.entregues : [],
+                (r && Array.isArray(r.em_transito)) ? r.em_transito : []);
+            } catch (e) { espreita = []; }
+            const porNF = new Map();
+            for (const e of espreita) {
+              const n = String(e.nf_ml_numero || e.nf || '').replace(/^0+/, '');
+              if (n) porNF.set(n, e);
+            }
+            resultado.candidatos_nome = rN.candidatos.map((c) => {
+              const e = porNF.get(String(c.numero || '').replace(/^0+/, ''));
+              if (!e) return c;
+              return {
+                ...c,
+                na_espreita: true,
+                espreita_dias: e.dias_desde != null ? e.dias_desde : e.dias_em_transito,
+                tracking: e.tracking || null,
+                itens: Array.isArray(e.itens) ? e.itens.map((it) => ({
+                  qtd: it.qtd || it.quantidade || 1,
+                  descricao: it.titulo || it.descricao || '',
+                  sku: it.sku || '',
+                })) : [],
+              };
+            });
+            resultado.candidatos_nome.sort((a, b) => (b.na_espreita ? 1 : 0) - (a.na_espreita ? 1 : 0));
+            const estrelados = resultado.candidatos_nome.filter((c) => c.na_espreita).length;
+            resultado.erro = `Achei ${rN.candidatos.length} NF(s) recente(s) com esse nome.`
+              + (estrelados ? ` ⭐ ${estrelados} está(ão) na ESPREITA — devolução a caminho.` : '')
+              + ' Confere com a CAIXA e escolhe abaixo:';
             return res.status(300).json(await comRecados(resultado, req.params.codigo)); // 300 Multiple Choices
           }
         } catch (e) { resultado.tentativas.push({ tipo: 'nf_por_nome', codigo: alvoNome, ok: false, status: 500, erro: e.message }); }
