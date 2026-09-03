@@ -274,15 +274,36 @@ function classificarMotivoDevolucao(order, shipment) {
 // Isso torna a busca EXATA em uma chamada, sem ambiguidade de serie, sem
 // candidatas, sem escada — pra todo caso que TEM chave. O resto continua
 // como reserva, pros que nao tem (TikTok capturado sem detalhe).
+// b221.2: corre a chamada contra o sinal de cancelamento, e LIMPA o vigia
+// quando qualquer um dos dois termina — senao ele ficava tickando 35s por
+// chamada, e sao ate 25 por rodada.
+async function comCancelamento(promessa, cancelar) {
+  let vigia = null;
+  const sinal = new Promise((ok) => {
+    vigia = setInterval(() => {
+      if (cancelar && cancelar.agora) ok({ ok: false, status: 408, error: 'cancelado' });
+    }, 100);
+  });
+  try { return await Promise.race([promessa, sinal]); }
+  finally { if (vigia) clearInterval(vigia); }
+}
+
 async function buscarNFPelaChave(chave, opcoes = {}) {
   const ch = String(chave || '').replace(/\D/g, '');
   if (ch.length !== 44) return { ok: false, motivo: 'chave invalida', match: null };
 
-  const url = 'https://api.bling.com.br/Api/v3/nfe?limite=5&pagina=1&chaveAcesso=' + ch;
-  const r = await chamarBling(url);
+  // b221.2 (Codex): `tipo=1` = nota de SAIDA. Sem isso a chave de uma nota
+  // de ENTRADA (tipo 0) casava, e o id dela ia pro cache como se fosse a
+  // venda. O diagnostico ja tinha testado a grafia com tipo e ela leva
+  // 429 as vezes — mas 429 e passageiro, nao recusa.
+  const url = 'https://api.bling.com.br/Api/v3/nfe?limite=5&pagina=1&tipo=1&chaveAcesso=' + ch;
+  // (1) o prazo do chamador vale DENTRO da chamada, nao so entre elas
+  const r = await comCancelamento(chamarBling(url), opcoes.cancelar);
   if (!r.ok) return { ok: false, status: r.status, error: r.error, match: null };
 
-  const lista = Array.isArray(r.data?.data) ? r.data.data : [];
+  // (4) 200 com corpo estranho NAO e lista vazia — quinta vez desta familia
+  if (!Array.isArray(r.data?.data)) return { ok: false, status: r.status, error: 'resposta sem lista', match: null };
+  const lista = r.data.data;
 
   // mais de uma linha = a API IGNOROU o filtro (chave e unica). Isto vem
   // ANTES de procurar a nota na lista: se a certa estiver entre as 5 por
@@ -299,7 +320,7 @@ async function buscarNFPelaChave(chave, opcoes = {}) {
   if (!nf && lista.length === 1 && !lista[0].chaveAcesso && opcoes.confirmarNoDetalhe !== false) {
     await sleep(350);
     if (opcoes.cancelar && opcoes.cancelar.agora) return { ok: false, error: 'cancelado', match: null };
-    const det = await buscarNFePorId(lista[0].id);
+    const det = await comCancelamento(buscarNFePorId(lista[0].id), opcoes.cancelar);
     const nfd = (det.ok && det.data && typeof det.data.data === 'object') ? det.data.data : null;
     // b221.1 (Codex): falha no detalhe NAO e "nao achou". Um 429 aqui
     // virava `chave-nao-achou`, a rota dizia "esta chave nao esta nesta

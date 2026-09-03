@@ -255,7 +255,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '6.0.1 (a 4a funcao fantasma; nota morta e falha no detalhe pela chave)',
+    version: '6.0.2 (so nota de saida; cancelamento real; cache corrige o numero)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),

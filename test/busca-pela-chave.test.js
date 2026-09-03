@@ -85,6 +85,13 @@ const CH = '35260332461988000182550010000701151290080214';   // a NF 70115, real
        'chamador desistiu: a helper para antes do detalhe');
   });
 
+  // b221.2: 200 com corpo estranho e ERRO, nao "nao achou"
+  h = mk({ ok: true, data: { data: 'nao-e-array' } });
+  h.buscarNFPelaChave(CH).then((r) => {
+    ok(r.ok === false && r.error === 'resposta sem lista',
+       '200 sem lista: erro (quinta vez desta familia) — senao esfriava o item');
+  });
+
   // erro da API
   h = mk({ ok: false, status: 429 });
   h.buscarNFPelaChave(CH).then((r) => {
@@ -97,7 +104,13 @@ setTimeout(() => {
   const GOOD = fs.readFileSync(path.join(RAIZ, 'lib', 'bling.js'), 'utf8');
   ok(/async function buscarNFPelaChave/.test(GOOD), 'a GOOD tem a funcao');
   ok(/buscarNFPelaChave,/.test(GOOD.slice(GOOD.indexOf('module.exports'))), '  e exporta');
-  ok(/chaveAcesso=' \+ ch/.test(GOOD), '  usando `chaveAcesso=` — a grafia `chave=` ignora o filtro');
+  ok(/tipo=1&chaveAcesso=' \+ ch/.test(GOOD),
+     '  usando `tipo=1&chaveAcesso=` — so nota de SAIDA; a de entrada tem chave tambem');
+  ok(/async function comCancelamento/.test(GOOD),
+     'o cancelamento vale DENTRO da chamada, e limpa o vigia ao terminar');
+  const CACHE = fs.readFileSync(path.join(RAIZ, 'lib', 'vinculo-nf-cache.js'), 'utf8');
+  ok(/if \(v\.numero\) item\.nf_numero = v\.numero;/.test(CACHE),
+     'o cache SOBRESCREVE o numero — o capturado errado nao sobrevive ao refresh');
 
   for (const [nome, rel] of [['GOOD', 'server.js'], ['AMB', 'amb-devolucoes/app-AMB.js']]) {
     const src = fs.readFileSync(path.join(RAIZ, rel), 'utf8');
