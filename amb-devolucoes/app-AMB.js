@@ -86,7 +86,7 @@ const criarMlBuscas = require('./lib-AMB/ml-buscas-AMB');
 const registrarIdentificar = require('./lib-AMB/identificar-AMB');
 const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 
-const VERSAO = 'AMB Devolucoes b249';
+const VERSAO = 'AMB Devolucoes b250';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -2515,13 +2515,21 @@ router.get('/api/admin/sem-retorno', auth.requerLogin, async (req, res) => {
         feitasChave++;
         const idCache = vinculoCache.chaveDe(item, 'amb');
         try {
+          // b221.1 (Codex): o prazo CANCELA, nao so abandona. Sem isto a
+          // chamada seguia por ate 30s em segundo plano, ainda fazia o
+          // detalhe, e disputava o limite do Bling com o proximo item.
+          const cancelar = {};
           const r = await Promise.race([
-            ajudantes.buscarNFPelaChave(item.nf_chave),
-            new Promise((ok) => setTimeout(() => ok(null), 4000)),
+            ajudantes.buscarNFPelaChave(item.nf_chave, { cancelar }),
+            new Promise((ok) => setTimeout(() => { cancelar.agora = true; ok(null); }, 4000)),
           ]);
           if (r && r.match && r.match.id) {
             item.nf_id_bling = String(r.match.id);
-            if (!item.nf_numero && r.match.numero) item.nf_numero = String(r.match.numero);
+            // b221.1 (Codex): a chave e a AUTORIDADE. O numero capturado
+            // pode estar errado (ja vimos o Magalu mandar numero proprio); o
+            // da nota achada pela chave e o certo, e e ele que vai pro
+            // registro e pra tela.
+            if (r.match.numero) item.nf_numero = String(r.match.numero);
             item.nf_achada_por = 'chave';
             vinculoCache.guardar(item, item.nf_id_bling, 'chave',
               { chave: item.nf_chave, numero: item.nf_numero, serie: item.nf_serie }, 'amb', idCache);

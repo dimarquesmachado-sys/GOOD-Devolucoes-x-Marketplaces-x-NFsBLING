@@ -38,6 +38,27 @@ for (const [rel, nome, req] of ESPERADOS) {
   ok(temRequire, rel.split('/').pop() + ': `' + nome + '` esta importado');
 }
 
+// b221.1: a GOOD reexporta do blingClient UMA A UMA — e foi por esse padrao
+// que a QUARTA funcao fantasma passou: chamei `buscarNFPelaChave` no
+// server.js sem a linha `const buscarNFPelaChave = blingClient.buscarNFPelaChave`.
+// Este teste original so olhava `require`, entao nao pegou.
+{
+  const s = fs.readFileSync(path.join(RAIZ, 'server.js'), 'utf8');
+  const bling = require(path.join(RAIZ, 'lib', 'bling.js'));
+  const declarados = new Set(
+    [...s.matchAll(/(?:const|let|var|function)\s+(\w+)/g)].map((m) => m[1])
+  );
+  // toda funcao que o bling exporta E que o server chama, tem que estar reexportada
+  const faltam = Object.keys(bling)
+    .filter((f) => typeof bling[f] === 'function')
+    .filter((f) => new RegExp('\\b' + f + '\\(').test(s))          // e chamada
+    .filter((f) => !new RegExp('blingClient\\.' + f + '\\(').test(s)) // nao pelo objeto
+    .filter((f) => !declarados.has(f));                                  // e nao esta reexportada
+  ok(faltam.length === 0,
+     'server.js: toda funcao do blingClient que ele chama esta reexportada'
+     + (faltam.length ? ' (FALTAM: ' + faltam.join(', ') + ')' : ''));
+}
+
 // e a varredura geral: chamada de metodo tipico de modulo, sem declaracao
 for (const rel of ['server.js', 'amb-devolucoes/app-AMB.js']) {
   const s = fs.readFileSync(path.join(RAIZ, rel), 'utf8');

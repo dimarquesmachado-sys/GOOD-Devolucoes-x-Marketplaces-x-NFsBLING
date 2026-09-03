@@ -64,6 +64,27 @@ const CH = '35260332461988000182550010000701151290080214';   // a NF 70115, real
     ok(r.ok === false && r.motivo === 'chave invalida', 'chave curta nem chama a API');
   });
 
+  // b221.1: nota CANCELADA nao serve, nem pela chave
+  h = mk({ ok: true, data: { data: [{ id: 5, chaveAcesso: CH, situacao: 2 }] } });
+  h.buscarNFPelaChave(CH).then((r) => {
+    ok(r.match === null && r.via === 'chave-nota-morta',
+       'nota cancelada (situacao 2): recusa, com o motivo');
+  });
+
+  // b221.1: falha no detalhe NAO e "nao achou"
+  h = mk({ ok: true, data: { data: [{ id: 77 }] } }, { ok: false, status: 429 });
+  h.buscarNFPelaChave(CH).then((r) => {
+    ok(r.ok === false && r.error === 'detalhe falhou',
+       'detalhe com 429: erro, nao "chave-nao-achou" — senao esfriava o item por 20min');
+  });
+
+  // b221.1: cancelamento pelo chamador
+  h = mk({ ok: true, data: { data: [{ id: 77 }] } }, { ok: true, data: { data: { id: 77, chaveAcesso: CH } } });
+  h.buscarNFPelaChave(CH, { cancelar: { agora: true } }).then((r) => {
+    ok(r.ok === false && r.error === 'cancelado',
+       'chamador desistiu: a helper para antes do detalhe');
+  });
+
   // erro da API
   h = mk({ ok: false, status: 429 });
   h.buscarNFPelaChave(CH).then((r) => {
@@ -88,6 +109,15 @@ setTimeout(() => {
        nome + ': a chave e a FASE ZERO, antes da busca por numero');
     ok(/nao ha NF com esta chave nesta conta/.test(rota),
        nome + ': e quando nao acha, diz que a chave nao esta nesta conta');
+    ok(/if \(r\.match\.numero\) item\.nf_numero = String\(r\.match\.numero\)/.test(rota),
+       nome + ': o numero da nota achada SOBRESCREVE o capturado — a chave e a autoridade');
+    ok(/cancelar\.agora = true/.test(rota),
+       nome + ': o prazo CANCELA a chamada, nao so abandona');
+  }
+  {
+    const s = fs.readFileSync(path.join(RAIZ, 'server.js'), 'utf8');
+    ok(/const buscarNFPelaChave = blingClient\.buscarNFPelaChave/.test(s),
+       'GOOD: a funcao esta REEXPORTADA no server.js (a 4a fantasma passou por aqui)');
   }
 
   console.log('');
