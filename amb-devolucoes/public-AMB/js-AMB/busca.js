@@ -1073,8 +1073,10 @@ function renderizarCandidatosNome(mensagem, candidatos) {
       ? 'text-align:left; padding:12px 14px; border:3px solid #f9a825; background:#fff8e1; color:#333; box-shadow:0 2px 10px rgba(249,168,37,.4);'
       : 'text-align:left; padding:10px 12px; opacity:.85;';
     let itens = '';
-    if (naEsp && Array.isArray(c.itens) && c.itens.length) {
-      itens = '<div style="margin-top:6px; font-size:13px; color:#5d4037;">'
+    // b227: os itens aparecem em TODOS os candidatos que os tem, nao so nos
+    // da espreita — e o que deixa o estoquista descartar sem abrir nada
+    if (Array.isArray(c.itens) && c.itens.length) {
+      itens = '<div style="margin-top:6px; font-size:13px; color:' + (naEsp ? '#5d4037' : '#333') + ';">'
         + c.itens.slice(0, 3).map((it) => '📦 <b>' + escapeHtml(String(it.qtd)) + '×</b> '
             + escapeHtml(it.descricao || it.sku || '?')).join('<br>')
         + (c.itens.length > 3 ? '<br>… +' + (c.itens.length - 3) : '')

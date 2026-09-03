@@ -800,19 +800,46 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
               const n = String(e.nf_ml_numero || e.nf || '').replace(/^0+/, '');
               if (n) porNF.set(n, e);
             }
+            // b227 - PRODUTO EM TODOS: a listagem nao traz itens, o detalhe traz.
+            // Ate 8 chamadas, com teto de 6s — acao manual do estoquista.
+            const detalhes = new Map();
+            {
+              const INICIO_DET = Date.now();
+              for (const c of rN.candidatos.slice(0, 8)) {
+                if (Date.now() - INICIO_DET > 6000) break;
+                if (!c.id) continue;
+                try {
+                  const det = await Promise.race([
+                    buscarNFePorId(c.id),
+                    new Promise((ok) => setTimeout(() => ok(null), 2500)),
+                  ]);
+                  const nfd = det && det.ok && det.data && typeof det.data.data === 'object' ? det.data.data : null;
+                  if (nfd && Array.isArray(nfd.itens)) {
+                    detalhes.set(String(c.id), nfd.itens.map((it) => ({
+                      qtd: Number(it.quantidade) || 1,
+                      descricao: it.descricao || '',
+                      sku: it.codigo || '',
+                    })));
+                  }
+                  await new Promise((ok) => setTimeout(ok, 350));
+                } catch (e) { /* sem itens deste; os outros seguem */ }
+              }
+            }
             resultado.candidatos_nome = rN.candidatos.map((c) => {
               const e = porNF.get(String(c.numero || '').replace(/^0+/, ''));
-              if (!e) return c;
+              const itensDet = detalhes.get(String(c.id)) || null;
+              const base = itensDet ? { ...c, itens: itensDet } : c;
+              if (!e) return base;
               return {
-                ...c,
+                ...base,
                 na_espreita: true,
                 espreita_dias: e.dias_desde != null ? e.dias_desde : e.dias_em_transito,
                 tracking: e.tracking || null,
-                itens: Array.isArray(e.itens) ? e.itens.map((it) => ({
+                itens: itensDet || (Array.isArray(e.itens) ? e.itens.map((it) => ({
                   qtd: it.qtd || it.quantidade || 1,
                   descricao: it.titulo || it.descricao || '',
                   sku: it.sku || '',
-                })) : [],
+                })) : []),
               };
             });
             resultado.candidatos_nome.sort((a, b) => (b.na_espreita ? 1 : 0) - (a.na_espreita ? 1 : 0));
