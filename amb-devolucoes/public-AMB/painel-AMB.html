@@ -723,7 +723,22 @@
       const r = await fetch('/api/admin/recado', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ chave, texto }) });
       const d = await r.json();
       if (!d.ok) { msg.innerHTML = '<span style="color:#c62828;">❌ ' + escapeHtml(d.erro || 'erro') + '</span>'; return; }
-      msg.innerHTML = '<span style="color:#2e7d32;">✅ Recado criado para <b>' + escapeHtml(d.chave) + '</b></span>';
+      // b222: aviso que se VE. [stated] "é mto mínimo a mensagem de Recado
+      // Criado em verde que aparece... tem como ser mais visível?"
+      //
+      // Era um texto verde pequeno, sem fundo, que sumia no meio da tela.
+      // Agora e uma faixa verde com o texto do recado dentro, que some
+      // sozinha em 6s — e o toast tambem, pra quem estiver olhando outro
+      // canto da pagina.
+      msg.innerHTML = '<div style="background:#2e7d32;color:#fff;padding:12px 16px;border-radius:8px;'
+        + 'font-size:15px;font-weight:600;margin-top:8px;display:flex;align-items:center;gap:10px;'
+        + 'box-shadow:0 2px 8px rgba(46,125,50,.35);">'
+        + '<span style="font-size:22px;">✅</span>'
+        + '<div>Recado criado para <b>' + escapeHtml(d.chave) + '</b>'
+        + '<div style="font-weight:400;font-size:13px;opacity:.9;margin-top:2px;">'
+        + '"' + escapeHtml(texto) + '"</div></div></div>';
+      if (typeof toast === 'function') toast('✅ Recado criado — o estoquista vai ver ao bipar ' + d.chave, 'ok');
+      setTimeout(() => { if (msg.innerHTML.includes('Recado criado')) msg.innerHTML = ''; }, 6000);
       document.getElementById('recadoChave').value = '';
       document.getElementById('recadoTexto').value = '';
       carregarRecados();
