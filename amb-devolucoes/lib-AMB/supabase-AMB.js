@@ -449,6 +449,10 @@ async function editarRecado(id, { identificador, texto } = {}) {
   if (identificador != null && String(identificador).trim()) campos.identificador = String(identificador).trim();
   if (texto != null && String(texto).trim()) campos.texto = String(texto).trim();
   if (!Object.keys(campos).length) return { ok: false, erro: 'nada pra alterar' };
+  // b225.1 (Codex): EDITOU = precisa ser lido de novo. O "ciente" anterior
+  // era de OUTRA instrucao. A GOOD ganhou a mesma regra no mesmo PR.
+  campos.ciente_em = null;
+  campos.ciente_por = null;
   try {
     const r = await dbc.from(T.recados).update(campos).eq('id', id).select().limit(1);
     if (r.error) return { ok: false, erro: r.error.message };

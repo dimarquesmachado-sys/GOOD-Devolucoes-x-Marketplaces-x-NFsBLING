@@ -910,7 +910,7 @@
                 + '<div id="edRecado' + rc.id + '"></div>'
                 + '</div>';
             }
-            h += '<a href="/?bipe=' + encodeURIComponent(k) + '" target="_blank" '
+            h += '<a href="/amb/?bipe=' + encodeURIComponent(k) + '" target="_blank" '
               + 'style="background:#3C3489;color:#fff;border-radius:8px;padding:5px 11px;font-size:12px;font-weight:700;'
               + 'text-decoration:none;margin-top:8px;display:inline-block;">🔎 Abrir a venda</a>'
               + '</div>';
@@ -938,7 +938,7 @@
               + '<button onclick="editarRecado(' + rc.id + ')" style="background:#3C3489;color:#fff;border:none;'
               + 'border-radius:8px;padding:4px 10px;font-size:12px;cursor:pointer;margin-left:8px;">✏️ Editar</button>'
               + '<div id="edRecado' + rc.id + '"></div>'
-              + '<a href="' + '/?bipe=' + encodeURIComponent(rc.identificador || rc.chave || '') + '" target="_blank" '
+              + '<a href="' + '/amb/?bipe=' + encodeURIComponent(rc.identificador || rc.chave || '') + '" target="_blank" '
               + 'style="background:#3C3489;color:#fff;border-radius:8px;padding:5px 11px;font-size:12px;font-weight:700;'
               + 'text-decoration:none;margin-left:8px;display:inline-block;">🔎 Abrir a venda</a>'
               + '<button onclick="removerRecado(' + rc.id + ')" style="background:#999;color:#fff;border:none;border-radius:8px;padding:4px 10px;font-size:12px;cursor:pointer;margin-left:8px;">✖ remover</button>'

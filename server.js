@@ -255,7 +255,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '6.2.1 (editar recado na GOOD e no painel2 — a cadeia inteira)',
+    version: '6.2.2 (editar recado: normaliza, zera o ciente; link do painel2 na AMB)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
@@ -4834,9 +4834,22 @@ app.put('/api/admin/recado/:id', requerAdmin, async (req, res) => {
   try {
     const b = req.body || {};
     const campos = {};
-    if (b.identificador || b.chave) campos.chave = String(b.identificador || b.chave).trim();
+    // b225.1 (Codex): NORMALIZAR como a criacao faz. A busca do bipe compara
+    // por `normId` (maiusculo, so alfanumerico); gravar "ab-123" cru fazia o
+    // recado sumir da tela do estoquista — ficava so na lista do admin.
+    if (b.identificador || b.chave) {
+      const n = normId(b.identificador || b.chave);
+      if (!n) return res.status(400).json({ ok: false, erro: 'identificador invalido' });
+      campos.chave = n;
+    }
     if (b.texto) campos.texto = String(b.texto).slice(0, 2000);
     if (!Object.keys(campos).length) return res.status(400).json({ ok: false, erro: 'nada pra editar' });
+    // b225.1 (Codex): EDITOU = precisa ser lido de novo. Se o texto ou o
+    // alvo mudaram, o "ciente" anterior nao vale mais — o estoquista leu
+    // OUTRA instrucao. Sem isto, a nova aparecia como ja lida e a trava da
+    // triagem nao pegava.
+    campos.ciente_em = null;
+    campos.ciente_por = null;
     const { data, error } = await supabase.from('recados').update(campos).eq('id', req.params.id).select().limit(1);
     if (error) return res.status(400).json({ ok: false, erro: error.message });
     return res.json({ ok: true, recado: (data || [])[0] || null });
