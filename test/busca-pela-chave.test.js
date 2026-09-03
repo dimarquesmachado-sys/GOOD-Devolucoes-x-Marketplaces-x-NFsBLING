@@ -93,6 +93,13 @@ const CH = '35260332461988000182550010000701151290080214';   // a NF 70115, real
        '200 sem lista: erro (quinta vez desta familia) — senao esfriava o item');
   });
 
+  // b221.6: detalhe SEM chave nenhuma = resposta inutil, nao "nao achou"
+  h = mk({ ok: true, data: { data: [{ id: 77 }] } }, { ok: true, data: { data: { id: 77 } } });
+  h.buscarNFPelaChave(CH).then((r) => {
+    ok(r.ok === false && r.error === 'detalhe sem chave',
+       'detalhe 200 mas sem chaveAcesso: ERRO — nao confirmo nem nego (esfriaria 20min)');
+  });
+
   // b221.3: UMA linha com OUTRA chave = o filtro nao funcionou
   h = mk({ ok: true, data: { data: [{ id: 9, chaveAcesso: '9'.repeat(44) }] } });
   h.buscarNFPelaChave(CH).then((r) => {

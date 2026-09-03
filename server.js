@@ -255,7 +255,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '6.0.5 (chave divergente no detalhe tambem e filtro ignorado)',
+    version: '6.0.6 (detalhe sem chave e erro, nao ausencia)',
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),

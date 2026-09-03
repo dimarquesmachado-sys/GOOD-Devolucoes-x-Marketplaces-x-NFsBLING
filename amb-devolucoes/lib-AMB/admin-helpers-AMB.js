@@ -339,10 +339,15 @@ async function buscarNFPelaChave(chave, opcoes = {}) {
     // e a rota esfriava 20 min por "ausencia" que nao era. Mesmo caso da
     // rodada anterior, mas no caminho do detalhe.
     const chaveDet = String(nfd.chaveAcesso || '').replace(/\D/g, '');
-    if (chaveDet && chaveDet !== ch) {
+    // b221.6 (Codex): detalhe SEM chave nenhuma e resposta inutil — nao
+    // confirmo nem nego. Cair em `chave-nao-achou` esfriaria 20 min por um
+    // corpo parcial. Terceira ponta do mesmo caso: lista, detalhe
+    // divergente, e agora detalhe vazio.
+    if (!chaveDet) return { ok: false, status: det.status || null, error: 'detalhe sem chave', match: null };
+    if (chaveDet !== ch) {
       return { ok: true, match: null, via: 'chave-ignorada', devolveu: 1, detalhe_divergiu: true };
     }
-    if (chaveDet === ch) nf = nfd;
+    nf = nfd;
   }
 
   // b221.1 (Codex): cancelada (2) ou denegada (9) nao serve, nem pela
