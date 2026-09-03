@@ -86,7 +86,7 @@ const criarMlBuscas = require('./lib-AMB/ml-buscas-AMB');
 const registrarIdentificar = require('./lib-AMB/identificar-AMB');
 const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 
-const VERSAO = 'AMB Devolucoes b252';
+const VERSAO = 'AMB Devolucoes b253';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -2533,18 +2533,25 @@ router.get('/api/admin/sem-retorno', auth.requerLogin, async (req, res) => {
             item.nf_achada_por = 'chave';
             vinculoCache.guardar(item, item.nf_id_bling, 'chave',
               { chave: item.nf_chave, numero: item.nf_numero, serie: item.nf_serie }, 'amb', idCache);
-          } else if (r && r.ok !== false) {
-            // respondeu e nao achou: a nota com essa chave nao esta nesta conta
+          } else if (r && r.ok !== false && r.via === 'chave-nao-achou') {
+            // b221.4 (Codex): respondeu VAZIO — a chave nao esta nesta conta.
+            // So este caso esfria 20 min e recebe o motivo. Na rodada
+            // anterior o motivo ficou num `if` INALCANCAVEL, dentro do ramo
+            // de falha transitoria — o Codex pegou.
             vinculoCache.marcarFalha(item, 'amb', 'chave');
+            item.nf_motivo_sem_vinculo = 'nao ha NF com esta chave nesta conta do Bling '
+              + '— confira se e da empresa certa, ou se foi cancelada';
+          } else if (r && r.ok !== false && r.via === 'chave-nota-morta') {
+            // a nota existe mas esta cancelada/denegada: definitivo tambem
+            vinculoCache.marcarFalha(item, 'amb', 'chave');
+            item.nf_motivo_sem_vinculo = 'a NF desta chave esta cancelada ou denegada no Bling '
+              + '(situacao ' + r.situacao + ')';
           } else {
-            // b221.3 (Codex): falha TRANSITORIA (timeout, 429, erro) — adia
-            // POUCO, so pra dar a vez a outro. Sem isso a fila pegava os
-            // mesmos itens lentos em todo refresh e o resto nunca era tentado.
+            // b221.4 (Codex): `chave-ignorada` (a API devolveu notas quaisquer)
+            // e falha transitoria (timeout, 429, erro) caem AQUI: nao sei nada
+            // sobre a minha nota, entao nao esfrio 20 min — adio 2 e deixo as
+            // fases seguintes tentarem.
             vinculoCache.adiarPouco(item, 'amb', 'chave');
-            if (r.via === 'chave-nao-achou') {
-              item.nf_motivo_sem_vinculo = 'nao ha NF com esta chave nesta conta do Bling '
-                + '— confira se e da empresa certa, ou se foi cancelada';
-            }
           }
         } catch (e) { /* as fases seguintes tentam pelo numero */ }
       }

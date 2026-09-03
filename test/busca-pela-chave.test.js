@@ -137,8 +137,15 @@ setTimeout(() => {
     const numero = rota.search(/for \(const item of (comNumero|vinculoCache\.fila\(itens, 'amb', 25, \(x\) => x\.nf_numero)/);
     ok(zero > 0 && numero > 0 && zero < numero,
        nome + ': a chave e a FASE ZERO, antes da busca por numero');
-    ok(/nao ha NF com esta chave nesta conta/.test(rota),
-       nome + ': e quando nao acha, diz que a chave nao esta nesta conta');
+    // b221.4: cada resposta da fase zero tem seu ramo, e o motivo esta no
+    // ramo ALCANCAVEL (antes ficou dentro do de falha transitoria)
+    const z = rota.slice(rota.indexOf('FASE ZERO'), rota.indexOf('FASE ZERO') + 4500);
+    ok(/r\.via === 'chave-nao-achou'\) \{[\s\S]{0,400}marcarFalha[\s\S]{0,200}nao ha NF com esta chave/.test(z),
+       nome + ': vazio de verdade -> esfria 20min E recebe o motivo (no ramo certo)');
+    ok(/r\.via === 'chave-nota-morta'\) \{[\s\S]{0,300}marcarFalha/.test(z),
+       nome + ': nota cancelada -> esfria 20min, com a situacao no motivo');
+    ok(/\} else \{[\s\S]{0,400}adiarPouco/.test(z) && !/chave-ignorada'\) \{[\s\S]{0,200}marcarFalha/.test(z),
+       nome + ': filtro ignorado e falha transitoria -> adia 2min, NAO 20');
     ok(/if \(r\.match\.numero\) item\.nf_numero = String\(r\.match\.numero\)/.test(rota),
        nome + ': o numero da nota achada SOBRESCREVE o capturado — a chave e a autoridade');
     ok(/cancelar\.agora = true/.test(rota),
