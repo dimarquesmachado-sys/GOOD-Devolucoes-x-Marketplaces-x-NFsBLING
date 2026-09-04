@@ -37,7 +37,7 @@ async function buscar() {
   btnBuscar.disabled = true;
 
   try {
-    const resp = await fetch(`/api/devolucao/identificar/${encodeURIComponent(codigo)}`);
+    const resp = await fetch(`/api/devolucao/identificar/${encodeURIComponent(codigo)}?_=${Date.now()}`, { cache: 'no-store' } /* b232.1: o Cache-Control do servidor nao invalida o que JA esta no cache — a URL precisa ser nova. O dono viu isso: a mesma URL devolvia resposta velha, e com ?x=1 vinha a certa */);
     const data = await resp.json();
     window._ultimaRespostaBipe = data;   // ev2 - pro bloco do checkout
     ultimaBusca = data;

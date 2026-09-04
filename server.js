@@ -79,6 +79,7 @@ const mlReturns = require('./lib/ml-returns')({ chamarML });
 // etc). O nome vem COLADO na etiqueta (RENATONEVES) - o indice colapsa os
 // nomes do Bling tambem e compara colapsado com colapsado.
 const nfNomes = require('./lib/nf-nomes')({ chamarBling });
+const ritmoBling = require('./lib/ritmo-bling');
 
 // v3.76 - devolucoes ESPERADAS do portal Magalu Entregas (indice 'a espreita')
 const espreita = require('./lib/magalu-espreita')({ chamarMagalu: magalu.chamarMagalu });
@@ -268,7 +269,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '6.3.7 (o /health prova o deploy: hash do server.js + boot)',
+    version: '6.5.1 (o portao do ritmo vive dentro do chamarBling: todos passam)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -461,6 +462,12 @@ async function buscarEventosCheckout(empresa, codigo) {
 }
 
 app.use('/api/devolucao/identificar', (req, res, next) => {
+  // b232 - NUNCA CACHEAR ESTA ROTA. O dono viu a mesma URL devolver
+  // resposta VELHA (sem os itens) e, com `?x=1`, a resposta nova completa.
+  // Era cache intermediario. Numa rota de bipe isso e grave: o estoquista
+  // ve o resultado de OUTRO pacote, ou de antes da triagem.
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+  res.set('Pragma', 'no-cache');
   const enviar = res.json.bind(res);
   const codigoBipado = decodeURIComponent(String(req.path.split('/').pop() || '')).trim();
   res.json = (body) => {
@@ -1163,48 +1170,99 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
             const detalhes = new Map();
             const diagnosticos = new Map();
             {
+              // b232 - EM PARALELO. O `_detalhe` que o dono trouxe mostrou o
+              // problema: as chamadas levam 300ms OU 1900ms (alternando), e
+              // em serie os 6s acabavam no 5o candidato — 3 voltavam "nao deu
+              // tempo". Em paralelo, 8 chamadas custam o tempo da MAIS LENTA.
+              //
+              // O Bling aguenta: sao 8 GETs de detalhe, uma vez, numa acao
+              // manual. E o teto por chamada sobe pra 5s, porque 2,5s cortava
+              // as de 1,9s que estavam quase la.
               const INICIO_DET = Date.now();
-              for (const c of rN.candidatos.slice(0, 8)) {
-                // b230.1 (Codex): quem NAO coube no teto tambem diz — senao, no
-                // cenario de 429/timeout (o que investigamos), os ultimos
-                // candidatos voltam sem itens E sem motivo, e parece outro bug
-                if (Date.now() - INICIO_DET > 6000) {
-                  diagnosticos.set(String(c.id), { motivo: 'nao deu tempo', teto_ms: 6000, decorrido_ms: Date.now() - INICIO_DET });
-                  continue;
-                }   // teto: a busca nao pode travar
-                if (!c.id) continue;
-                // b230 - DIZER POR QUE o detalhe nao veio. O JSON dele mostrou 8
-                // candidatos com id e NENHUM com itens — e a rota nao dizia se
-                // foi 429, timeout ou formato. Engolir a falha me deixou cego.
+              // b232.1 (Codex): 3 POR VEZ, nao 8 de uma vez. O Bling limita a
+              // ~3 req/s — disparar 8 no mesmo tick leva 429 em todas, e o
+              // retry do `chamarBling` as reagenda juntas, repetindo o
+              // estouro. Troquei um problema por outro.
+              //
+              // Com 3 por vez e 8 candidatos: 3 ondas, ~2s cada no pior caso.
+              // Ainda muito melhor que a serie (8s) e sem brigar com a cota.
+              const fila = rN.candidatos.slice(0, 8).filter((c) => c.id);
+              const SIMULTANEAS = 3;
+              const trabalhar = async (c) => {
                 const t0 = Date.now();
-                let diag = null;
                 try {
+                  // b232.3 (Codex): ritmo GLOBAL do processo — a cota e da
+                  // CONTA, nao da requisicao. Duas buscas ao mesmo tempo, ou
+                  // uma busca junto do indice reconstruindo, estouravam igual.
+                  //
+                  // E `desistiu` avisa quem ficou pra tras: sem isso, a chamada
+                  // seguia ate 30s em segundo plano (timeout do Axios) e ainda
+                  // retentava, competindo com as ondas seguintes.
+                  // b232.4 (Codex): o ritmo agora e do `chamarBling` (todos
+                  // passam). Aqui so a desistencia: se o timeout ganhar, quem
+                  // ainda estiver na fila NAO chega a sair — `desistiu` e
+                  // checado antes de partir, entao a chamada nem acontece.
+                  const desistiu = { agora: false };
                   const det = await Promise.race([
-                    buscarNFePorId(c.id),
-                    new Promise((ok) => setTimeout(() => ok({ _timeout: true }), 2500)),
+                    (async () => {
+                      await ritmoBling.aguardarVez();
+                      if (desistiu.agora) return { _tarde: true };   // nem sai
+                      return buscarNFePorId(c.id, { semRitmo: true });
+                    })().then((r) => (desistiu.agora ? { _tarde: true } : r)),
+                    new Promise((ok) => setTimeout(() => { desistiu.agora = true; ok({ _timeout: true }); }, 5000)),
                   ]);
+                  if (det && det._tarde) return;   // ja registrei timeout
                   const ms = Date.now() - t0;
-                  if (!det || det._timeout) diag = { motivo: 'timeout', ms };
-                  else if (!det.ok) diag = { motivo: 'http', status: det.status || null, ms };
-                  else {
-                    const nfd = det.data && typeof det.data.data === 'object' ? det.data.data : null;
-                    if (!nfd) diag = { motivo: 'sem data.data', ms, chaves: det.data ? Object.keys(det.data).slice(0, 5) : [] };
-                    else if (!Array.isArray(nfd.itens)) diag = { motivo: 'itens nao e array', ms, tipo: typeof nfd.itens, chaves: Object.keys(nfd).slice(0, 12) };
-                    else {
-                      detalhes.set(String(c.id), nfd.itens.map((it) => ({
-                        qtd: Number(it.quantidade) || 1,
-                        descricao: it.descricao || '',
-                        sku: it.codigo || '',
-                      })));
-                      diag = { motivo: 'ok', ms, itens: nfd.itens.length };
-                    }
+                  if (!det || det._timeout) { diagnosticos.set(String(c.id), { motivo: 'timeout', ms }); return; }
+                  if (!det.ok) { diagnosticos.set(String(c.id), { motivo: 'http', status: det.status || null, ms }); return; }
+                  const nfd = det.data && typeof det.data.data === 'object' ? det.data.data : null;
+                  if (!nfd) { diagnosticos.set(String(c.id), { motivo: 'sem data.data', ms }); return; }
+                  if (!Array.isArray(nfd.itens)) {
+                    diagnosticos.set(String(c.id), { motivo: 'itens nao e array', ms, tipo: typeof nfd.itens });
+                    return;
                   }
-                  await new Promise((ok) => setTimeout(ok, 350));
-                } catch (e) { diag = { motivo: 'excecao', erro: String(e.message || e).slice(0, 100), ms: Date.now() - t0 }; }
-                // b230.1 (Codex): NAO escrever no objeto do indice — ele e
-                // compartilhado entre buscas por 30 min, e a proxima veria o
-                // diagnostico desta. Guardo por id e anexo na copia de saida.
-                diagnosticos.set(String(c.id), diag);
+                  detalhes.set(String(c.id), nfd.itens.map((it) => ({
+                    qtd: Number(it.quantidade) || 1,
+                    descricao: it.descricao || '',
+                    sku: it.codigo || '',
+                  })));
+                  diagnosticos.set(String(c.id), { motivo: 'ok', ms, itens: nfd.itens.length });
+                } catch (e) {
+                  diagnosticos.set(String(c.id), { motivo: 'excecao', erro: String(e.message || e).slice(0, 100), ms: Date.now() - t0 });
+                }
+              };
+              // b232.2 (Codex): a pausa conta da LARGADA da onda, nao do fim.
+              //
+              // Com 400ms fixos apos ondas rapidas (300ms), a onda seguinte
+              // partia ~700ms depois da primeira — 6 chamadas na MESMA janela
+              // de 1s. O limite do Bling e por segundo, entao o que importa e
+              // o intervalo entre INICIOS: 1s entre largadas garante <=3/s.
+              const TETO_GLOBAL = 12000;
+              for (let k = 0; k < fila.length; k += SIMULTANEAS) {
+                const restante = TETO_GLOBAL - (Date.now() - INICIO_DET);
+                if (restante <= 0) {
+                  for (const c of fila.slice(k)) {
+                    diagnosticos.set(String(c.id), { motivo: 'nao deu tempo', teto_ms: TETO_GLOBAL, decorrido_ms: Date.now() - INICIO_DET });
+                  }
+                  break;
+                }
+                const largada = Date.now();
+                // o teto vale DURANTE a onda tambem: uma onda travada nao pode
+                // levar a rota a 15s so porque a checagem ficou antes dela
+                await Promise.race([
+                  Promise.all(fila.slice(k, k + SIMULTANEAS).map(trabalhar)),
+                  new Promise((ok) => setTimeout(ok, restante)),
+                ]);
+                if (k + SIMULTANEAS < fila.length) {
+                  const jaGastou = Date.now() - largada;
+                  if (jaGastou < 1000) await new Promise((ok) => setTimeout(ok, 1000 - jaGastou));
+                }
+              }
+              // quem ficou sem resposta (onda cortada pelo teto) se declara
+              for (const c of fila) {
+                if (!detalhes.has(String(c.id)) && !diagnosticos.has(String(c.id))) {
+                  diagnosticos.set(String(c.id), { motivo: 'nao deu tempo', teto_ms: TETO_GLOBAL, decorrido_ms: Date.now() - INICIO_DET });
+                }
               }
             }
             resultado.candidatos_nome = rN.candidatos.map((c) => {
