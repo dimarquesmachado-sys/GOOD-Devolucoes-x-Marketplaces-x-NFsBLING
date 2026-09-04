@@ -269,7 +269,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '6.6.0 (produto legivel, espreita destacada, cobertura do indice na resposta)',
+    version: '6.6.1 (a retentativa do 429 tambem passa pelo portao)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
