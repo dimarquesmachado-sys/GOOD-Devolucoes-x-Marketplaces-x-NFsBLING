@@ -268,7 +268,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '6.4.0 (busca por nome: sem cache e detalhes em paralelo)',
+    version: '6.4.1 (3 detalhes por vez; front fura o cache; AMB tambem sem cache)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -1178,8 +1178,16 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
               // manual. E o teto por chamada sobe pra 5s, porque 2,5s cortava
               // as de 1,9s que estavam quase la.
               const INICIO_DET = Date.now();
-              await Promise.all(rN.candidatos.slice(0, 8).map(async (c) => {
-                if (!c.id) return;
+              // b232.1 (Codex): 3 POR VEZ, nao 8 de uma vez. O Bling limita a
+              // ~3 req/s — disparar 8 no mesmo tick leva 429 em todas, e o
+              // retry do `chamarBling` as reagenda juntas, repetindo o
+              // estouro. Troquei um problema por outro.
+              //
+              // Com 3 por vez e 8 candidatos: 3 ondas, ~2s cada no pior caso.
+              // Ainda muito melhor que a serie (8s) e sem brigar com a cota.
+              const fila = rN.candidatos.slice(0, 8).filter((c) => c.id);
+              const SIMULTANEAS = 3;
+              const trabalhar = async (c) => {
                 const t0 = Date.now();
                 try {
                   const det = await Promise.race([
@@ -1204,7 +1212,17 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
                 } catch (e) {
                   diagnosticos.set(String(c.id), { motivo: 'excecao', erro: String(e.message || e).slice(0, 100), ms: Date.now() - t0 });
                 }
-              }));
+              };
+              for (let k = 0; k < fila.length; k += SIMULTANEAS) {
+                if (Date.now() - INICIO_DET > 12000) {   // teto global generoso
+                  for (const c of fila.slice(k)) {
+                    diagnosticos.set(String(c.id), { motivo: 'nao deu tempo', teto_ms: 12000, decorrido_ms: Date.now() - INICIO_DET });
+                  }
+                  break;
+                }
+                await Promise.all(fila.slice(k, k + SIMULTANEAS).map(trabalhar));
+                if (k + SIMULTANEAS < fila.length) await new Promise((ok) => setTimeout(ok, 400));
+              }
             }
             resultado.candidatos_nome = rN.candidatos.map((c) => {
               const e = porNF.get(chaveNF(c.numero, c.serie));
