@@ -39,6 +39,11 @@ function indiceDeQuatroMeses() {
   });
 }
 
+// a data da NF mais antiga que casou com a busca
+function hitsOrdenados(r) {
+  return r.candidatos.map((c) => String(c.dataEmissao)).sort()[0];
+}
+
 (async () => {
   const nf = indiceDeQuatroMeses();
   await nf.construirIndice();
@@ -57,6 +62,12 @@ function indiceDeQuatroMeses() {
   ok(r.candidatos.some((c) => c._antigo), 'os antigos vem marcados, pro estoquista saber');
   ok(r.candidatos.filter((c) => !c._antigo).length === 8,
      'os 8 mais recentes continuam vindo primeiro, sem perder ninguem');
+
+  // b235.1: a MAIS ANTIGA nunca fica de fora (era inalcancavel: sem
+  // paginacao na tela, o que nao vem aqui o estoquista nunca ve)
+  const maisAntigaDoIndice = hitsOrdenados(r);
+  ok(r.candidatos.some((c) => String(c.dataEmissao) === maisAntigaDoIndice),
+     'a NF mais ANTIGA de todas esta entre os candidatos');
 
   // sem duplicata: o mesmo id nao pode aparecer duas vezes
   const ids = r.candidatos.map((c) => String(c.id));

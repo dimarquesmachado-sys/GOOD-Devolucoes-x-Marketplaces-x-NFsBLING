@@ -269,7 +269,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '6.7.0 (a busca por nome cobre os 120 dias de verdade)',
+    version: '6.7.1 (produto nas antigas; a mais antiga sempre entra; cobertura honesta)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -1186,7 +1186,11 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
               //
               // Com 3 por vez e 8 candidatos: 3 ondas, ~2s cada no pior caso.
               // Ainda muito melhor que a serie (8s) e sem brigar com a cota.
-              const fila = rN.candidatos.slice(0, 8).filter((c) => c.id);
+              // b235.1 (Codex): TODOS os candidatos devolvidos, nao os 8
+              // primeiros. As "mais antigas" que este PR trouxe vem DEPOIS
+              // das 8 recentes — com `slice(0,8)` elas apareciam sem produto,
+              // que e exatamente o que o PR veio resolver.
+              const fila = rN.candidatos.filter((c) => c.id);
               const SIMULTANEAS = 3;
               const trabalhar = async (c) => {
                 const t0 = Date.now();
@@ -1306,7 +1310,17 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
                 };
               }
             } catch (e) { /* diagnostico nao pode derrubar a busca */ }
-            resultado.erro = `Achei ${rN.total_encontrados || rN.candidatos.length} NF(s) com esse nome nos ultimos 120 dias`
+            // b235.1 (Codex): NAO afirmar 120 dias quando o indice esta
+            // incompleto. Se a construcao parou num 429, ele fica utilizavel
+            // mas parcial — dizer "nos ultimos 120 dias" viraria mentira, e
+            // o estoquista concluiria que a NF nao existe.
+            const idx = resultado.indice_nomes || {};
+            const cobertura = idx.erro
+              ? `(⚠️ indice INCOMPLETO — parou em: ${idx.erro}. Pode faltar NF antiga)`
+              : (idx.nf_mais_antiga
+                ? `desde ${String(idx.nf_mais_antiga).slice(0, 10).split('-').reverse().join('/')}`
+                : 'nos ultimos 120 dias');
+            resultado.erro = `Achei ${rN.total_encontrados || rN.candidatos.length} NF(s) com esse nome ${cobertura}`
               + (rN.total_encontrados > rN.candidatos.length ? ` (mostrando ${rN.candidatos.length}, das mais recentes as mais antigas)` : '') + '.'
               + (estrelados ? ` ⭐ ${estrelados} está(ão) na ESPREITA — devolução a caminho.` : '')
               + ' Confere com a CAIXA e escolhe abaixo:';
