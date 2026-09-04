@@ -34,10 +34,15 @@ for (const [nome, rel] of [['GOOD', 'lib/nf-nomes.js'],
   ok(/if \(vencido && !IDX\.ts\)/.test(good),
      '  so espera quando NAO ha indice nenhum');
   // e o mapa so troca no fim: durante a reconstrucao, a busca le o velho inteiro
+  // b233: a publicacao do indice e um bloco so — ts, cobertura e mapa
+  // juntos, sem await no meio. (A distancia em chars nao servia: as linhas
+  // de cobertura do b233 entraram entre o ts e o mapa e quebraram o teste
+  // sem que o comportamento mudasse.)
   const iC = good.indexOf('IDX.ts = Date.now();');
   const iM = good.indexOf('IDX.mapa = mapa;');
-  ok(iC > 0 && iM > 0 && Math.abs(iM - iC) < 200,
-     '  e o mapa troca de uma vez no fim — sem estado intermediario quebrado');
+  ok(iC > 0 && iM > iC, '  o mapa e publicado depois do carimbo de tempo');
+  ok(!/await/.test(good.slice(iC, iM)),
+     '  e sem await entre eles — publicacao atomica, sem estado intermediario');
 }
 
 console.log('');
