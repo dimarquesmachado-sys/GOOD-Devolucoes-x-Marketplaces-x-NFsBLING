@@ -269,7 +269,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '6.7.1 (produto nas antigas; a mais antiga sempre entra; cobertura honesta)',
+    version: '6.8.0 (espreita: descobre o pedido pelo rastreio quando ele falta)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -4909,6 +4909,29 @@ async function magaluTicketsDoPedido(pedido) {
 
 async function enriquecerItemEspreita(d) {
   const out = { cliente: null, nf: null, produto: null, sku: null, qtd: null, valor_nf: null, logistica: null, pack_id: null, itens: [], magalu_delivery_uuid: null, magalu_returns: [], magalu_tickets: [] }; // v4.22 / v4.32 / v4.36 / v4.38
+
+  // b236 - SEM PEDIDO, DESCOBRIR PELO RASTREIO.
+  //
+  // [stated] "agora sobre os à espreita. sem nome, sem link do marketplace,
+  // sem informação do produto. o q pode ser?"
+  //
+  // Os cards vazios da tela dele (Y7R2LDW..., AP218727528BR, AN979183041BR)
+  // tem RASTREIO no lugar do pedido — e todo o enriquecimento exigia
+  // `d.pedido`. Sem ele, nada era buscado e o card ficava so com o codigo.
+  //
+  // O indice de devolucoes do ML ja mapeia tracking -> order_id
+  // (`acharPorTracking`). Uso ele pra preencher o pedido que falta.
+  if (d.marketplace === 'ml' && !d.pedido && d.tracking && mlReturns
+      && typeof mlReturns.acharPorTracking === 'function') {
+    try {
+      const achado = await mlReturns.acharPorTracking(d.tracking);
+      if (achado && achado.order_id) {
+        d = { ...d, pedido: String(achado.order_id) };
+        out.pedido_descoberto = String(achado.order_id);   // pro card saber
+      }
+    } catch (e) { /* segue sem: o card fica como estava */ }
+  }
+
   try {
     if (d.marketplace === 'ml' && d.pedido) {
       const rO = await chamarML(`https://api.mercadolibre.com/orders/${d.pedido}`);
@@ -5232,7 +5255,7 @@ async function montarEspreita() {
       await garantirEnriquecimentoEspreita(baseAlerta);
       nuncaBipadas = baseAlerta.map(d => {
         const en = ESP_ENRIQ.get(d.chave_nota);
-        return { ...d, comentario: notasN[d.chave_nota]?.comentario || null, ticket: notasN[d.chave_nota]?.ticket || null, cliente: en?.cliente || null, nf: en?.nf || null, produto: en?.produto || null, sku: en?.sku || null, qtd: en?.qtd || null, valor_nf: en?.valor_nf || null, logistica: en?.logistica || null, pack_id: en?.pack_id || null, itens: en?.itens || [], magalu_delivery_uuid: en?.magalu_delivery_uuid || null, magalu_returns: en?.magalu_returns || [], magalu_tickets: en?.magalu_tickets || [] };
+        return { ...d, comentario: notasN[d.chave_nota]?.comentario || null, ticket: notasN[d.chave_nota]?.ticket || null, pedido: d.pedido || en?.pedido_descoberto || null, cliente: en?.cliente || null, nf: en?.nf || null, produto: en?.produto || null, sku: en?.sku || null, qtd: en?.qtd || null, valor_nf: en?.valor_nf || null, logistica: en?.logistica || null, pack_id: en?.pack_id || null, itens: en?.itens || [], magalu_delivery_uuid: en?.magalu_delivery_uuid || null, magalu_returns: en?.magalu_returns || [], magalu_tickets: en?.magalu_tickets || [] };
       });
     }
   } catch (e) { nuncaBipadas = []; }
