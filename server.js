@@ -269,7 +269,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '6.9.1 (paridade com VALOR, nao so campo; pack ambiguo nos dois cards)',
+    version: '7.0.0 (a busca do estoquista tem prioridade; espreita nao trava mais)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -4908,6 +4908,10 @@ async function magaluTicketsDoPedido(pedido) {
 }
 
 async function enriquecerItemEspreita(d) {
+  // b237: NAO marco `fundo` aqui — o `chamarML` recebe HEADERS no 2o
+  // parametro (lib/ml.js:60), entao `{fundo:true}` viraria um header HTTP
+  // invalido. E o portao de ritmo e do BLING, nao do ML: marcar nao teria
+  // efeito nenhum. Li o produtor antes de propagar (item 12).
   const out = { cliente: null, nf: null, produto: null, sku: null, qtd: null, valor_nf: null, logistica: null, pack_id: null, itens: [], magalu_delivery_uuid: null, magalu_returns: [], magalu_tickets: [] }; // v4.22 / v4.32 / v4.36 / v4.38
 
   // b236 - SEM PEDIDO, DESCOBRIR PELO RASTREIO.
@@ -5354,7 +5358,22 @@ async function montarEspreita() {
       // 60 cobre com folga o que ele tem (9 no alerta hoje) sem virar
       // travamento; o que passar disso e enriquecido em background e entra
       // na proxima carga.
-      await garantirEnriquecimentoEspreita(baseAlerta, 60);
+      // b237 - O TETO DE 60 TRAVOU A BUSCA. [stated] "já tá uns 2 minutos
+      // procurando, pq isso?"
+      //
+      // 60 candidatos x 3 chamadas (orders + shipments + NF) = 180 chamadas
+      // no portao de 3/s = ~60s de fila, mais 12s de pausa. E o portao e
+      // GLOBAL: a busca do estoquista entra na MESMA fila e espera tudo.
+      //
+      // Erro meu: o Codex apontou que meu teto anterior era falso e eu
+      // troquei por um numero alto sem medir contra o portao que eu mesmo
+      // tinha criado uma rodada antes.
+      //
+      // Agora 8 sincronos (~8s no pior caso) e o resto em BACKGROUND — que
+      // ja existe e alimenta a proxima carga. O painel recarrega a cada 4
+      // min; em duas passadas cobre 16, mais que os 9 que ele tem hoje.
+      await garantirEnriquecimentoEspreita(baseAlerta, 8);
+      dispararEnriquecimentoEspreita(baseAlerta);
       nuncaBipadas = baseAlerta.map(d => {
         const en = ESP_ENRIQ.get(d.chave_nota);
         return { ...d, comentario: notasN[d.chave_nota]?.comentario || null, ticket: notasN[d.chave_nota]?.ticket || null, pedido: d.pedido || en?.pedido_descoberto || null, pedidos_do_pack: en?.pedidos_do_pack || null, ship_do_pack: en?.ship_do_pack || null,   // b236.6: o envio do carrinho, pra fila de NF nao ter que descobrir de novo
