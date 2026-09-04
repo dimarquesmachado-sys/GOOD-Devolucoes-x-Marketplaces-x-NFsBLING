@@ -850,10 +850,17 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
                   // E `desistiu` avisa quem ficou pra tras: sem isso, a chamada
                   // seguia ate 30s em segundo plano (timeout do Axios) e ainda
                   // retentava, competindo com as ondas seguintes.
+                  // b232.4 (Codex): o ritmo agora e do `chamarBling` (todos
+                  // passam). Aqui so a desistencia: se o timeout ganhar, quem
+                  // ainda estiver na fila NAO chega a sair — `desistiu` e
+                  // checado antes de partir, entao a chamada nem acontece.
                   const desistiu = { agora: false };
                   const det = await Promise.race([
-                    ritmoBling.comRitmo(() => buscarNFePorId(c.id))
-                      .then((r) => (desistiu.agora ? { _tarde: true } : r)),
+                    (async () => {
+                      await ritmoBling.aguardarVez();
+                      if (desistiu.agora) return { _tarde: true };   // nem sai
+                      return buscarNFePorId(c.id, { semRitmo: true });
+                    })().then((r) => (desistiu.agora ? { _tarde: true } : r)),
                     new Promise((ok) => setTimeout(() => { desistiu.agora = true; ok({ _timeout: true }); }, 5000)),
                   ]);
                   if (det && det._tarde) return;   // ja registrei timeout
