@@ -269,7 +269,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '7.0.0 (a busca do estoquista tem prioridade; espreita nao trava mais)',
+    version: '7.0.1 (identidade de todos; indice frio e interativo)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -4907,6 +4907,35 @@ async function magaluTicketsDoPedido(pedido) {
   return MG_TICKETS.get(p) || [];
 }
 
+/**
+ * b237.1 - So a IDENTIDADE (pedido/pack), sem cliente/produto/NF.
+ *
+ * Serve pra reconsulta da triagem saber o que perguntar. E barata: usa o
+ * indice que ja esta em memoria, e so chama `/packs` quando o claim e de
+ * pack. O enriquecimento caro continua limitado.
+ */
+async function resolverIdentidadeEspreita(itens) {
+  for (const d of (itens || [])) {
+    if (d.pedido || d.marketplace !== 'ml' || !d.tracking) continue;
+    if (!mlReturns || typeof mlReturns.acharPorTracking !== 'function') continue;
+    try {
+      const achado = await mlReturns.acharPorTracking(d.tracking);
+      if (!achado) continue;
+      if (achado.order_id) { d.pedido = String(achado.order_id); continue; }
+      if (achado.resource === 'pack' && achado.resource_id) {
+        d.pack_id = String(achado.resource_id);
+        const rPk = await chamarML(`https://api.mercadolibre.com/packs/${achado.resource_id}`);
+        const ordens = (rPk.ok && Array.isArray(rPk.data?.orders)) ? rPk.data.orders : [];
+        if (ordens.length === 1) d.pedido = String(ordens[0].id);
+        else if (ordens.length > 1) {
+          d.pack_varios_pedidos = ordens.length;
+          d.pedidos_do_pack = ordens.map((o) => String(o.id)).slice(0, 10);
+        }
+      }
+    } catch (e) { /* sem identidade: o card segue como estava */ }
+  }
+}
+
 async function enriquecerItemEspreita(d) {
   // b237: NAO marco `fundo` aqui — o `chamarML` recebe HEADERS no 2o
   // parametro (lib/ml.js:60), entao `{fundo:true}` viraria um header HTTP
@@ -5372,6 +5401,15 @@ async function montarEspreita() {
       // Agora 8 sincronos (~8s no pior caso) e o resto em BACKGROUND — que
       // ja existe e alimenta a proxima carga. O painel recarrega a cada 4
       // min; em duas passadas cobre 16, mais que os 9 que ele tem hoje.
+      // b237.1 (Codex): o teto de 8 cegava a reconsulta da triagem — do 9o em
+      // diante ninguem tinha `pedido_descoberto`, e um pacote JA TRIADO
+      // (registrado pelo pedido ou pelo pack) voltava a aparecer como
+      // "ninguem bipou". Cortar custo nao pode custar acuracia.
+      //
+      // Saida: descobrir a IDENTIDADE de todos (1 chamada barata cada, so o
+      // `acharPorTracking` + `/packs` quando precisa), e limitar so o
+      // enriquecimento CARO (cliente/produto/NF, 3 chamadas por item).
+      await resolverIdentidadeEspreita(baseAlerta);
       await garantirEnriquecimentoEspreita(baseAlerta, 8);
       dispararEnriquecimentoEspreita(baseAlerta);
       nuncaBipadas = baseAlerta.map(d => {
