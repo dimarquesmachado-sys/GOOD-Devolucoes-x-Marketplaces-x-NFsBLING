@@ -269,7 +269,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '6.8.4 (coluna pack_id na triagem; toda falha do enriquecedor tenta de novo)',
+    version: '6.8.5 (4xx e resposta; irmaos do pack na triagem; envio do carrinho)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -4938,6 +4938,15 @@ async function enriquecerItemEspreita(d) {
         out.pack_id = String(achado.resource_id);
         const rPk = await chamarML(`https://api.mercadolibre.com/packs/${achado.resource_id}`);
         const ordens = (rPk.ok && Array.isArray(rPk.data?.orders)) ? rPk.data.orders : [];
+        // b236.5 (Codex): o envio da venda de CARRINHO mora no pack, nao no
+        // pedido. A AMB ja trata isso (ml-returns-AMB, b30 — caso real da
+        // MALHEIROSAUDREY). Sem o shipId nao ha invoice_data, e o card fica
+        // sem NF mesmo com o pedido descoberto.
+        if (rPk.ok && rPk.data) {
+          out.ship_do_pack = (rPk.data.shipment && rPk.data.shipment.id)
+            || (Array.isArray(rPk.data.shipments) && rPk.data.shipments[0] && rPk.data.shipments[0].id)
+            || null;
+        }
         if (ordens.length === 1) {
           // b236.3 (Codex): so quando o pack tem UM pedido. Com varios,
           // `orders[0]` e chute — o pacote devolvido pode ser de outro, e o
@@ -4947,7 +4956,8 @@ async function enriquecerItemEspreita(d) {
         } else if (ordens.length > 1) {
           out.pack_varios_pedidos = ordens.length;
           out.pedidos_do_pack = ordens.map((o) => String(o.id)).slice(0, 10);
-        } else if (!rPk.ok) {
+        } else if (!rPk.ok && (Number(rPk.status) === 429 || Number(rPk.status) === 408
+                   || Number(rPk.status) >= 500 || !rPk.status)) {
           // b236.3 (Codex): falha PASSAGEIRA nao pode virar cache definitivo.
           // `chamarML` so retenta erro de auth; um 429/500 aqui gravaria um
           // enriquecimento sem pedido que nunca mais seria refeito.
@@ -4969,7 +4979,15 @@ async function enriquecerItemEspreita(d) {
       // fica com `pedido_descoberto` mas SEM cliente/produto — e seria
       // cacheado como se estivesse pronto. O card ganharia o link e nada
       // mais, pra sempre. Marca incompleto pra tentar de novo.
-      if (!rO.ok) { out._incompleto = true; out._motivo = 'orders HTTP ' + (rO.status || '?'); }
+      if (!rO.ok) {
+        // b236.5: mesmo criterio — 4xx e resposta (pedido inexistente/sem
+        // acesso), 5xx/429/rede e passageiro
+        const st = Number(rO.status) || 0;
+        if (st === 429 || st === 408 || st >= 500 || st === 0) {
+          out._incompleto = true;
+          out._motivo = 'orders HTTP ' + (st || 'rede');
+        }
+      }
       if (rO.ok && rO.data) {
         const b = rO.data.buyer || {};
         out.cliente = [b.first_name, b.last_name].filter(Boolean).join(' ') || b.nickname || null;
@@ -4987,7 +5005,7 @@ async function enriquecerItemEspreita(d) {
         if (out.itens[0]) out.sku = out.itens[0].sku || null;
         out.valor_nf = out.itens.reduce((a, x) => a + ((x.valor_unit || 0) * (x.qtd || 1)), 0) || null;
         out.pack_id = rO.data.pack_id ? String(rO.data.pack_id) : null; // v3.86: pack_id vem na etiqueta de devolucao ML
-        const shipIda = rO.data.shipping?.id;
+        const shipIda = rO.data.shipping?.id || out.ship_do_pack || null;
         if (shipIda) {
           const rS = await chamarML(`https://api.mercadolibre.com/shipments/${shipIda}`, { 'x-format-new': 'true' });
           if (rS.ok && rS.data) out.logistica = mapLogistica(rS.data.logistic_type);
@@ -4996,7 +5014,17 @@ async function enriquecerItemEspreita(d) {
           // chamadas do enriquecedor: packs, orders e esta.
           const rN = await buscarNFnoML(shipIda);
           if (rN.ok && rN.data?.fiscal_key) out.nf = nfDaChave(rN.data.fiscal_key);
-          else if (!rN.ok) { out._incompleto = true; out._motivo = 'nf ML HTTP ' + (rN.status || '?'); }
+          else if (!rN.ok) {
+            // b236.5 (Codex): 404/4xx aqui e RESPOSTA — a venda nao tem nota
+            // no ML, e isso e comum. Marcar incompleto faria o item nunca
+            // cachear e perder ate o pedido que acabei de descobrir.
+            // So erro passageiro (5xx, 429, rede) pede nova tentativa.
+            const st = Number(rN.status) || 0;
+            if (st === 429 || st === 408 || st >= 500 || st === 0) {
+              out._incompleto = true;
+              out._motivo = 'nf ML HTTP ' + (st || 'rede');
+            }
+          }
         }
       }
     } else if (d.marketplace === 'magalu' && d.pedido) {
@@ -5051,8 +5079,12 @@ async function enriquecerItemEspreita(d) {
 }
 // v4.33 - versao que ESPERA (usada pelo alerta: sao poucos itens e a gente
 // quer os detalhes ja na primeira carga, nao daqui a um minuto).
-async function garantirEnriquecimentoEspreita(itens) {
-  const faltam = (itens || []).filter(d => d.chave_nota && !ESP_ENRIQ.has(d.chave_nota)).slice(0, 30);
+async function garantirEnriquecimentoEspreita(itens, limite = 30) {
+  // b236.5 (Codex): o teto de 30 deixava o resto SEM pedido descoberto — e
+  // ai a reconsulta da triagem nao tinha o que consultar, e o card aparecia
+  // como "ninguem bipou" mesmo ja triado. Quem chama pro ALERTA passa um
+  // limite maior; a carga geral continua em 30.
+  const faltam = (itens || []).filter(d => d.chave_nota && !ESP_ENRIQ.has(d.chave_nota)).slice(0, limite);
   for (const d of faltam) {
     try {
       const en = await enriquecerItemEspreita(d);
@@ -5309,10 +5341,12 @@ async function montarEspreita() {
         .filter(d => !notasN[d.chave_nota]?.baixado);
       // v4.33 - espera os detalhes ANTES de responder (na primeira carga vinham
       // vazios porque o enriquecimento era so disparado em background)
-      await garantirEnriquecimentoEspreita(baseAlerta);
+      // b236.5: o alerta enriquece TODOS os candidatos (nao 30), senao a
+      // reconsulta da triagem fica cega pro resto
+      await garantirEnriquecimentoEspreita(baseAlerta, Math.max(30, baseAlerta.length));
       nuncaBipadas = baseAlerta.map(d => {
         const en = ESP_ENRIQ.get(d.chave_nota);
-        return { ...d, comentario: notasN[d.chave_nota]?.comentario || null, ticket: notasN[d.chave_nota]?.ticket || null, pedido: d.pedido || en?.pedido_descoberto || null, cliente: en?.cliente || null, nf: en?.nf || null, produto: en?.produto || null, sku: en?.sku || null, qtd: en?.qtd || null, valor_nf: en?.valor_nf || null, logistica: en?.logistica || null, pack_id: en?.pack_id || null, itens: en?.itens || [], magalu_delivery_uuid: en?.magalu_delivery_uuid || null, magalu_returns: en?.magalu_returns || [], magalu_tickets: en?.magalu_tickets || [] };
+        return { ...d, comentario: notasN[d.chave_nota]?.comentario || null, ticket: notasN[d.chave_nota]?.ticket || null, pedido: d.pedido || en?.pedido_descoberto || null, pedidos_do_pack: en?.pedidos_do_pack || null, cliente: en?.cliente || null, nf: en?.nf || null, produto: en?.produto || null, sku: en?.sku || null, qtd: en?.qtd || null, valor_nf: en?.valor_nf || null, logistica: en?.logistica || null, pack_id: en?.pack_id || null, itens: en?.itens || [], magalu_delivery_uuid: en?.magalu_delivery_uuid || null, magalu_returns: en?.magalu_returns || [], magalu_tickets: en?.magalu_tickets || [] };
       });
       // b236.2 (Codex): CONSULTAR o banco com os pedidos descobertos.
       //
@@ -5324,9 +5358,13 @@ async function montarEspreita() {
       // um pack, o registro pode ter sido gravado com o pack no `order_id` ou
       // no `shipment_id` — a busca normal do repo (linha ~350) procura nos
       // dois campos. Entao reconsulto com pedidos E packs descobertos.
+      // b236.5 (Codex): num pack com VARIOS pedidos, a triagem pode estar
+      // registrada por qualquer um deles — nao so pelo que eu escolhi (ou
+      // pelo pack). Junto todos os que o enriquecimento descobriu.
       const novosIds = [...new Set([
         ...nuncaBipadas.map(d => String(d.pedido || '')),
         ...nuncaBipadas.map(d => String(d.pack_id || '')),
+        ...nuncaBipadas.flatMap(d => (d.pedidos_do_pack || []).map(String)),
       ].filter(v => v && !pedidos.includes(v) && !trks.includes(v)))];
       if (novosIds.length) {
         try {
@@ -5346,7 +5384,8 @@ async function montarEspreita() {
       }
       nuncaBipadas = nuncaBipadas.filter(d =>
         !(d.pedido && achados.has(String(d.pedido)))
-        && !(d.pack_id && achados.has(String(d.pack_id))));
+        && !(d.pack_id && achados.has(String(d.pack_id)))
+        && !((d.pedidos_do_pack || []).some(p => achados.has(String(p)))));
     }
   } catch (e) { nuncaBipadas = []; }
   return ({
