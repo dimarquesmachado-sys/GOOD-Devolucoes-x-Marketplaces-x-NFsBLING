@@ -1710,7 +1710,10 @@
             const m = MKT[e.marketplace] || { nome: e.marketplace, cor: '#616161' };
             html += '<div style="border-left:4px solid ' + m.cor + ';background:#fff;border-radius:8px;padding:8px 10px;margin-bottom:6px;">'
               + '<span style="background:' + m.cor + ';color:#fff;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;">' + m.nome + '</span> '
-              + (e.pedido ? '<input type="checkbox" class="chkAlerta" value="' + escapeHtml(String(e.pedido)) + '" style="margin-right:7px;transform:scale(1.2);"> ' : '')
+              // b236.8 (Codex): sem checkbox quando a NF de devolucao JA
+              // EXISTE — senao o dono manda pra fila uma nota ja emitida.
+              // O selo verde ja aparece, mas a caixa continuava clicavel.
+              + (e.pedido && !e.nf_devolucao ? '<input type="checkbox" class="chkAlerta" value="' + escapeHtml(String(e.pedido)) + '" style="margin-right:7px;transform:scale(1.2);"> ' : '')
               + '<b>' + escapeHtml(String(e.pedido || e.tracking || '-')) + '</b>'
               + (e.pack_id ? ' · <span style="font-size:11px;color:#555;">pack <code>' + escapeHtml(String(e.pack_id)) + '</code></span>' : '')
               + (e.pedido && e.tracking ? ' · <code style="font-size:11px;">' + escapeHtml(String(e.tracking)) + '</code>' : '')
@@ -1801,6 +1804,14 @@
             '<br><span style="font-size:12px;color:#555;">' +
             (e.dias_em_transito != null ? 'Em trânsito há <b>' + e.dias_em_transito + ' dia(s)</b>' : 'Em trânsito') +
             (e.status ? ' · ' + escapeHtml(String(e.status)) : '') +
+            // b236.8 (Codex): o pack ambiguo tambem no card EM TRANSITO — o
+            // aviso so existia no de alerta, e aqui o card ficava sem pedido
+            // e sem explicacao. Mesma frase, mesmo motivo.
+            (e.pack_varios_pedidos
+              ? ' · <span style="color:#e65100;" title="A venda tem ' + e.pack_varios_pedidos
+                + ' pedidos no mesmo pack. Nao da pra saber qual voltou sem abrir no ML.">'
+                + '📦 pack com ' + e.pack_varios_pedidos + ' pedidos — abra no ML pra ver qual voltou</span>'
+              : '') +
             (e.no_cd_ml ? ' — <b style="color:#00695c;">🏭 em revisão no CD do ML (ainda não despachado pra você)</b>' : (e.congelada ? ' — <b style="color:#616161;">🧊 status congelado na Shopee, confirmar no 🔗</b>' : (atrasada ? ' — <b style="color:#c62828;">⚠️ candidata a extravio, cobrar o marketplace</b>' : ''))) + '</span>' +
             // v4.43 - linha 1: cliente + NF + logistica juntos (NF so aqui, uma vez)
             ((e.cliente || e.nf || e.logistica || e.dinheiro) ?

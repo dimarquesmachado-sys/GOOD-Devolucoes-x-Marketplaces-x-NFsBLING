@@ -43,6 +43,29 @@ const SRC = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
   }
 }
 
+// ── b236.8: o campo tem que ter VALOR, nao so existir ───────────────
+//
+// Meu teste anterior comparava a LISTA de campos dos dois ramos e passou —
+// mas `dinheiro` no alerta era calculado de `status_money`, que o produtor
+// (`lib/ml-returns.js`) nao punha nas entregues. O campo existia e valia
+// null sempre. Paridade de fachada.
+{
+  const ML = fs.readFileSync(path.join(__dirname, '..', 'lib', 'ml-returns.js'), 'utf8');
+  const iE = ML.indexOf('entreguesLista.push({');
+  const linhaEntregues = ML.slice(iE, ML.indexOf('});', iE));
+  ok(/status_money/.test(linhaEntregues),
+     'o produtor poe `status_money` nas ENTREGUES (as de transito ja tinham)');
+
+  // e os campos que o card de alerta DERIVA precisam ter fonte
+  const iA = SRC.indexOf('nuncaBipadas = baseAlerta.map');
+  const blocoA = SRC.slice(iA, SRC.indexOf('nuncaBipadas = nuncaBipadas.filter', iA));
+  const derivaDe = [...blocoA.matchAll(/d\.(\w+) ===/g)].map((m) => m[1]);
+  for (const campo of new Set(derivaDe)) {
+    ok(new RegExp(campo).test(linhaEntregues) || ['marketplace'].includes(campo),
+       '  o alerta deriva de `' + campo + '`, e o produtor entrega');
+  }
+}
+
 // ── nenhuma saida do enriquecedor fica sem consumidor ───────────────
 {
   const i = SRC.indexOf('async function enriquecerItemEspreita');
@@ -66,8 +89,8 @@ const SRC = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
 // ── e o caso do pack ambiguo se explica na tela ─────────────────────
 {
   const html = fs.readFileSync(path.join(__dirname, '..', 'public', 'painel-devolucoes.html'), 'utf8');
-  ok(/pack_varios_pedidos/.test(html),
-     'o card explica quando NAO da pra saber qual pedido do pack voltou');
+  ok((html.match(/pack_varios_pedidos/g) || []).length >= 3,
+     'os DOIS cards (alerta e em transito) explicam o pack ambiguo');
   ok(/abra no ML pra ver qual voltou/.test(html),
      '  dizendo o que fazer, em vez de so ficar vazio');
 }

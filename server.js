@@ -269,7 +269,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '6.9.0 (paridade dos dois ramos da espreita, auditada campo a campo)',
+    version: '6.9.1 (paridade com VALOR, nao so campo; pack ambiguo nos dois cards)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -5280,6 +5280,9 @@ async function montarEspreita() {
       const pedLimpo = String(d.pedido).replace(/\s/g, '');
       if (NF_DEV_INDICE.has(pedLimpo)) d.nf_devolucao = NF_DEV_INDICE.get(pedLimpo);
     }
+    // b236.8 (Codex): o pack ambiguo tambem aqui — o teste de paridade que
+    // eu escrevi olhava a lista de campos, nao os VALORES, entao passou.
+    if (en && en.pack_varios_pedidos) d.pack_varios_pedidos = en.pack_varios_pedidos;
     if (en) { d.cliente = en.cliente; d.nf = en.nf; d.produto = en.produto; d.sku = en.sku; d.qtd = en.qtd; d.valor_nf = en.valor_nf; d.pack_id = en.pack_id; d.itens = en.itens || d.itens; d.magalu_delivery_uuid = en.magalu_delivery_uuid; d.magalu_returns = en.magalu_returns; d.magalu_tickets = en.magalu_tickets; if (en.logistica) d.logistica = en.logistica; }
     if (d.marketplace === 'ml') d.dinheiro = d.status_money === 'refunded' ? 'estornado_cliente' : (d.status_money === 'retained' ? 'retido_com_voce' : null);
   }
