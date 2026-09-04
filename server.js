@@ -269,7 +269,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '6.8.5 (4xx e resposta; irmaos do pack na triagem; envio do carrinho)',
+    version: '6.8.6 (selo de NF no alerta; teto real no enriquecimento)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -5343,10 +5343,26 @@ async function montarEspreita() {
       // vazios porque o enriquecimento era so disparado em background)
       // b236.5: o alerta enriquece TODOS os candidatos (nao 30), senao a
       // reconsulta da triagem fica cega pro resto
-      await garantirEnriquecimentoEspreita(baseAlerta, Math.max(30, baseAlerta.length));
+      // b236.6 (Codex): teto REAL. `baseAlerta.length` sem limite fazia a
+      // requisicao enriquecer todos em serie — cada um espera as chamadas do
+      // marketplace mais 200ms. Com 60 candidatos sao minutos, e o painel
+      // atualiza a cada 4 min: as requisicoes se empilham.
+      //
+      // 60 cobre com folga o que ele tem (9 no alerta hoje) sem virar
+      // travamento; o que passar disso e enriquecido em background e entra
+      // na proxima carga.
+      await garantirEnriquecimentoEspreita(baseAlerta, 60);
       nuncaBipadas = baseAlerta.map(d => {
         const en = ESP_ENRIQ.get(d.chave_nota);
-        return { ...d, comentario: notasN[d.chave_nota]?.comentario || null, ticket: notasN[d.chave_nota]?.ticket || null, pedido: d.pedido || en?.pedido_descoberto || null, pedidos_do_pack: en?.pedidos_do_pack || null, cliente: en?.cliente || null, nf: en?.nf || null, produto: en?.produto || null, sku: en?.sku || null, qtd: en?.qtd || null, valor_nf: en?.valor_nf || null, logistica: en?.logistica || null, pack_id: en?.pack_id || null, itens: en?.itens || [], magalu_delivery_uuid: en?.magalu_delivery_uuid || null, magalu_returns: en?.magalu_returns || [], magalu_tickets: en?.magalu_tickets || [] };
+        return { ...d, comentario: notasN[d.chave_nota]?.comentario || null, ticket: notasN[d.chave_nota]?.ticket || null, pedido: d.pedido || en?.pedido_descoberto || null, pedidos_do_pack: en?.pedidos_do_pack || null, ship_do_pack: en?.ship_do_pack || null,   // b236.6: o envio do carrinho, pra fila de NF nao ter que descobrir de novo
+          // b236.6 (Codex): o selo "TEM NF DE DEVOLUCAO" tambem aqui. Eu ja
+          // tinha feito isso pros EM TRANSITO e esqueci deste ramo — e e o
+          // ramo que tem checkbox pra mandar pra fila de NF. Sem o selo, o
+          // dono manda pra fila uma nota que ja existe.
+          nf_devolucao: (() => {
+            const ped = String(d.pedido || en?.pedido_descoberto || '').replace(/\s/g, '');
+            return ped && NF_DEV_INDICE.has(ped) ? NF_DEV_INDICE.get(ped) : (d.nf_devolucao || null);
+          })(), cliente: en?.cliente || null, nf: en?.nf || null, produto: en?.produto || null, sku: en?.sku || null, qtd: en?.qtd || null, valor_nf: en?.valor_nf || null, logistica: en?.logistica || null, pack_id: en?.pack_id || null, itens: en?.itens || [], magalu_delivery_uuid: en?.magalu_delivery_uuid || null, magalu_returns: en?.magalu_returns || [], magalu_tickets: en?.magalu_tickets || [] };
       });
       // b236.2 (Codex): CONSULTAR o banco com os pedidos descobertos.
       //
