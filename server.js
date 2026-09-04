@@ -269,7 +269,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '7.0.1 (identidade de todos; indice frio e interativo)',
+    version: '7.0.2 (identidade nao e sobrescrita; background vira fila; Shopee e fundo)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -4917,6 +4917,17 @@ async function magaluTicketsDoPedido(pedido) {
 async function resolverIdentidadeEspreita(itens) {
   for (const d of (itens || [])) {
     if (d.pedido || d.marketplace !== 'ml' || !d.tracking) continue;
+    // b237.2 (Codex): o cache do enriquecimento pode ja ter a identidade —
+    // usar antes de chamar `/packs` de novo. Sem isto o pack ambiguo pagava
+    // a mesma chamada em toda carga do painel (a cada 4 min).
+    const jaTem = d.chave_nota ? ESP_ENRIQ.get(d.chave_nota) : null;
+    if (jaTem && (jaTem.pedido_descoberto || jaTem.pack_id || jaTem.pack_varios_pedidos)) {
+      if (jaTem.pedido_descoberto) d.pedido = String(jaTem.pedido_descoberto);
+      if (jaTem.pack_id) d.pack_id = String(jaTem.pack_id);
+      if (jaTem.pack_varios_pedidos) d.pack_varios_pedidos = jaTem.pack_varios_pedidos;
+      if (jaTem.pedidos_do_pack) d.pedidos_do_pack = jaTem.pedidos_do_pack;
+      continue;
+    }
     if (!mlReturns || typeof mlReturns.acharPorTracking !== 'function') continue;
     try {
       const achado = await mlReturns.acharPorTracking(d.tracking);
@@ -4936,7 +4947,7 @@ async function resolverIdentidadeEspreita(itens) {
   }
 }
 
-async function enriquecerItemEspreita(d) {
+async function enriquecerItemEspreita(d, ctx = {}) {
   // b237: NAO marco `fundo` aqui — o `chamarML` recebe HEADERS no 2o
   // parametro (lib/ml.js:60), entao `{fundo:true}` viraria um header HTTP
   // invalido. E o portao de ritmo e do BLING, nao do ML: marcar nao teria
@@ -5099,7 +5110,10 @@ async function enriquecerItemEspreita(d) {
         }
       }
     } else if (d.marketplace === 'shopee' && d.pedido) {
-      const rB = await buscarNFBlindada({ orderId: d.pedido });
+      // b237.2 (Codex): a Shopee tambem passa pelo Bling — sem `fundo`, o
+      // enriquecimento agendado disputava a fila de igual pra igual com o
+      // estoquista. Meu raciocinio da rodada anterior so cobriu o ramo do ML.
+      const rB = await buscarNFBlindada({ orderId: d.pedido, fundo: !!ctx.fundo });
       if (rB && rB.ok && rB.nf) {
         out.nf = rB.nf.numero ? String(rB.nf.numero).replace(/^0+/, '') : null;
         out.cliente = rB.nf.contato?.nome || null;
@@ -5129,19 +5143,34 @@ async function garantirEnriquecimentoEspreita(itens, limite = 30) {
   }
 }
 
+// b237.2 (Codex): FILA, nao descarte. Antes, se o worker ja estava rodando
+// (disparado pelos EM TRANSITO), a chamada dos candidatos do ALERTA voltava
+// na hora — e eles nunca eram enriquecidos, porque aquele worker so tinha o
+// retrato dos em transito. Do 9o em diante o card ficava vazio pra sempre.
+const ESP_ENRIQ_PENDENTES = [];
+
 function dispararEnriquecimentoEspreita(itens) {
-  if (ESP_ENRIQ_RODANDO) return;
-  const fila = itens.filter(d => d.chave_nota && !ESP_ENRIQ.has(d.chave_nota)).slice(0, 80);
-  if (fila.length === 0) return;
+  for (const d of (itens || [])) {
+    if (d.chave_nota && !ESP_ENRIQ.has(d.chave_nota)
+        && !ESP_ENRIQ_PENDENTES.some(x => x.chave_nota === d.chave_nota)) {
+      ESP_ENRIQ_PENDENTES.push(d);
+    }
+  }
+  if (ESP_ENRIQ_RODANDO || ESP_ENRIQ_PENDENTES.length === 0) return;
   ESP_ENRIQ_RODANDO = true;
   (async () => {
-    console.log(`[ESPREITA] enriquecendo ${fila.length} item(ns) em background...`);
-    for (const d of fila) {
-      const en = await enriquecerItemEspreita(d);
+    console.log(`[ESPREITA] enriquecendo ${ESP_ENRIQ_PENDENTES.length} item(ns) em background...`);
+    let feitos = 0;
+    // consome a fila; o que chegar durante a rodada entra tambem
+    while (ESP_ENRIQ_PENDENTES.length && feitos < 200) {
+      const d = ESP_ENRIQ_PENDENTES.shift();
+      if (!d || ESP_ENRIQ.has(d.chave_nota)) continue;
+      feitos++;
+      const en = await enriquecerItemEspreita(d, { fundo: true });   // b237.2
       if (!en._incompleto) ESP_ENRIQ.set(d.chave_nota, en);   // b236.3
       await new Promise(r => setTimeout(r, 350));
     }
-    console.log('[ESPREITA] enriquecimento concluido');
+    console.log(`[ESPREITA] enriquecimento concluido (${feitos})`);
   })().catch(() => {}).finally(() => { ESP_ENRIQ_RODANDO = false; });
 }
 
@@ -5414,7 +5443,14 @@ async function montarEspreita() {
       dispararEnriquecimentoEspreita(baseAlerta);
       nuncaBipadas = baseAlerta.map(d => {
         const en = ESP_ENRIQ.get(d.chave_nota);
-        return { ...d, comentario: notasN[d.chave_nota]?.comentario || null, ticket: notasN[d.chave_nota]?.ticket || null, pedido: d.pedido || en?.pedido_descoberto || null, pedidos_do_pack: en?.pedidos_do_pack || null, ship_do_pack: en?.ship_do_pack || null,   // b236.6: o envio do carrinho, pra fila de NF nao ter que descobrir de novo
+        return { ...d, comentario: notasN[d.chave_nota]?.comentario || null, ticket: notasN[d.chave_nota]?.ticket || null, pedido: d.pedido || en?.pedido_descoberto || null,
+          // b237.2 (Codex): o que `resolverIdentidadeEspreita` ja pos em `d`
+          // vem PRIMEIRO. Eu lia so do cache — e pro 9o em diante (sem
+          // enriquecimento) o cache nao existe, entao sobrescrevia com null
+          // a identidade que eu tinha acabado de descobrir. O aviso do pack
+          // ambiguo sumia justamente nos casos que ele veio explicar.
+          pedidos_do_pack: d.pedidos_do_pack || en?.pedidos_do_pack || null,
+          ship_do_pack: en?.ship_do_pack || null,   // b236.6: o envio do carrinho, pra fila de NF nao ter que descobrir de novo
           // b236.6 (Codex): o selo "TEM NF DE DEVOLUCAO" tambem aqui. Eu ja
           // tinha feito isso pros EM TRANSITO e esqueci deste ramo — e e o
           // ramo que tem checkbox pra mandar pra fila de NF. Sem o selo, o
@@ -5433,11 +5469,11 @@ async function montarEspreita() {
           // era consumido por ninguem. E o caso em que me RECUSEI a chutar o
           // pedido (pack com varios) — sem expor isso, o card fica vazio e o
           // dono nao sabe se e bug ou decisao. Agora o card diz.
-          pack_varios_pedidos: en?.pack_varios_pedidos || null,
+          pack_varios_pedidos: d.pack_varios_pedidos || en?.pack_varios_pedidos || null,
           dinheiro: d.marketplace === 'ml'
             ? (d.status_money === 'refunded' ? 'estornado_cliente'
               : (d.status_money === 'retained' ? 'retido_com_voce' : null))
-            : (d.dinheiro || null), cliente: en?.cliente || null, nf: en?.nf || null, produto: en?.produto || null, sku: en?.sku || null, qtd: en?.qtd || null, valor_nf: en?.valor_nf || null, logistica: en?.logistica || null, pack_id: en?.pack_id || null, itens: en?.itens || [], magalu_delivery_uuid: en?.magalu_delivery_uuid || null, magalu_returns: en?.magalu_returns || [], magalu_tickets: en?.magalu_tickets || [] };
+            : (d.dinheiro || null), cliente: en?.cliente || null, nf: en?.nf || null, produto: en?.produto || null, sku: en?.sku || null, qtd: en?.qtd || null, valor_nf: en?.valor_nf || null, logistica: en?.logistica || null, pack_id: d.pack_id || en?.pack_id || null, itens: en?.itens || [], magalu_delivery_uuid: en?.magalu_delivery_uuid || null, magalu_returns: en?.magalu_returns || [], magalu_tickets: en?.magalu_tickets || [] };
       });
       // b236.2 (Codex): CONSULTAR o banco com os pedidos descobertos.
       //
