@@ -269,7 +269,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '6.5.1 (o portao do ritmo vive dentro do chamarBling: todos passam)',
+    version: '6.6.0 (produto legivel, espreita destacada, cobertura do indice na resposta)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -1290,6 +1290,22 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
             // a estrelada vem primeiro
             resultado.candidatos_nome.sort((a, b) => (b.na_espreita ? 1 : 0) - (a.na_espreita ? 1 : 0));
             const estrelados = resultado.candidatos_nome.filter((c) => c.na_espreita).length;
+            // b233 - [stated] "só tá puxando agosto e setembro. cade os 4
+            // meses q ia puxar?" — a resposta agora DIZ a cobertura, pra
+            // separar "o indice nao cobre" de "nao ha NF desse nome antes".
+            try {
+              // b233: e , nao  — conferi o produtor (item 12).
+              const est = typeof nfNomes.statusIndice === 'function' ? nfNomes.statusIndice() : null;
+              if (est) {
+                resultado.indice_nomes = {
+                  total_nfs: est.total_nfs,
+                  janela_dias: est.janela_dias,
+                  nf_mais_antiga: est.nf_mais_antiga || null,
+                  erro: est.erro || null,
+                  idade_min: est.idade_min,
+                };
+              }
+            } catch (e) { /* diagnostico nao pode derrubar a busca */ }
             resultado.erro = `Achei ${rN.candidatos.length} NF(s) recente(s) com esse nome.`
               + (estrelados ? ` ⭐ ${estrelados} está(ão) na ESPREITA — devolução a caminho.` : '')
               + ' Confere com a CAIXA e escolhe abaixo:';
