@@ -865,15 +865,38 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
                   diagnosticos.set(String(c.id), { motivo: 'excecao', erro: String(e.message || e).slice(0, 100), ms: Date.now() - t0 });
                 }
               };
+              // b232.2 (Codex): a pausa conta da LARGADA da onda, nao do fim.
+              //
+              // Com 400ms fixos apos ondas rapidas (300ms), a onda seguinte
+              // partia ~700ms depois da primeira — 6 chamadas na MESMA janela
+              // de 1s. O limite do Bling e por segundo, entao o que importa e
+              // o intervalo entre INICIOS: 1s entre largadas garante <=3/s.
+              const TETO_GLOBAL = 12000;
               for (let k = 0; k < fila.length; k += SIMULTANEAS) {
-                if (Date.now() - INICIO_DET > 12000) {   // teto global generoso
+                const restante = TETO_GLOBAL - (Date.now() - INICIO_DET);
+                if (restante <= 0) {
                   for (const c of fila.slice(k)) {
-                    diagnosticos.set(String(c.id), { motivo: 'nao deu tempo', teto_ms: 12000, decorrido_ms: Date.now() - INICIO_DET });
+                    diagnosticos.set(String(c.id), { motivo: 'nao deu tempo', teto_ms: TETO_GLOBAL, decorrido_ms: Date.now() - INICIO_DET });
                   }
                   break;
                 }
-                await Promise.all(fila.slice(k, k + SIMULTANEAS).map(trabalhar));
-                if (k + SIMULTANEAS < fila.length) await new Promise((ok) => setTimeout(ok, 400));
+                const largada = Date.now();
+                // o teto vale DURANTE a onda tambem: uma onda travada nao pode
+                // levar a rota a 15s so porque a checagem ficou antes dela
+                await Promise.race([
+                  Promise.all(fila.slice(k, k + SIMULTANEAS).map(trabalhar)),
+                  new Promise((ok) => setTimeout(ok, restante)),
+                ]);
+                if (k + SIMULTANEAS < fila.length) {
+                  const jaGastou = Date.now() - largada;
+                  if (jaGastou < 1000) await new Promise((ok) => setTimeout(ok, 1000 - jaGastou));
+                }
+              }
+              // quem ficou sem resposta (onda cortada pelo teto) se declara
+              for (const c of fila) {
+                if (!detalhes.has(String(c.id)) && !diagnosticos.has(String(c.id))) {
+                  diagnosticos.set(String(c.id), { motivo: 'nao deu tempo', teto_ms: TETO_GLOBAL, decorrido_ms: Date.now() - INICIO_DET });
+                }
               }
             }
             resultado.candidatos_nome = rN.candidatos.map((c) => {
