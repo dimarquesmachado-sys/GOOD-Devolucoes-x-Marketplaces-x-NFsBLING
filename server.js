@@ -269,7 +269,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '6.8.6 (selo de NF no alerta; teto real no enriquecimento)',
+    version: '6.9.0 (paridade dos dois ramos da espreita, auditada campo a campo)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -5362,7 +5362,22 @@ async function montarEspreita() {
           nf_devolucao: (() => {
             const ped = String(d.pedido || en?.pedido_descoberto || '').replace(/\s/g, '');
             return ped && NF_DEV_INDICE.has(ped) ? NF_DEV_INDICE.get(ped) : (d.nf_devolucao || null);
-          })(), cliente: en?.cliente || null, nf: en?.nf || null, produto: en?.produto || null, sku: en?.sku || null, qtd: en?.qtd || null, valor_nf: en?.valor_nf || null, logistica: en?.logistica || null, pack_id: en?.pack_id || null, itens: en?.itens || [], magalu_delivery_uuid: en?.magalu_delivery_uuid || null, magalu_returns: en?.magalu_returns || [], magalu_tickets: en?.magalu_tickets || [] };
+          })(),
+          // b236.7 - AUDITEI OS DOIS RAMOS campo a campo, em vez de esperar
+          // o proximo apontamento. `dinheiro` existia so nos EM TRANSITO.
+          // Ele diz se o cliente JA FOI ESTORNADO — o front usa em 7 lugares,
+          // inclusive pro aviso "ficou com o produto E com o dinheiro". Sem
+          // ele, o card do alerta escondia isso justamente de quem vai
+          // decidir emitir a NF.
+          // b236.7: a matriz de saidas mostrou que `pack_varios_pedidos` nao
+          // era consumido por ninguem. E o caso em que me RECUSEI a chutar o
+          // pedido (pack com varios) — sem expor isso, o card fica vazio e o
+          // dono nao sabe se e bug ou decisao. Agora o card diz.
+          pack_varios_pedidos: en?.pack_varios_pedidos || null,
+          dinheiro: d.marketplace === 'ml'
+            ? (d.status_money === 'refunded' ? 'estornado_cliente'
+              : (d.status_money === 'retained' ? 'retido_com_voce' : null))
+            : (d.dinheiro || null), cliente: en?.cliente || null, nf: en?.nf || null, produto: en?.produto || null, sku: en?.sku || null, qtd: en?.qtd || null, valor_nf: en?.valor_nf || null, logistica: en?.logistica || null, pack_id: en?.pack_id || null, itens: en?.itens || [], magalu_delivery_uuid: en?.magalu_delivery_uuid || null, magalu_returns: en?.magalu_returns || [], magalu_tickets: en?.magalu_tickets || [] };
       });
       // b236.2 (Codex): CONSULTAR o banco com os pedidos descobertos.
       //
