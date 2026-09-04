@@ -33,6 +33,7 @@ module.exports = function registrarIdentificar(app, deps) {
     tiktokPonte, tiktokDev,  // b180 - TikTok na cascata (paridade com a GOOD)
     mlReturns,               // b142 - indice claims->returns do ML (faltava)
     espreitaMontada,         // b229 - getter da espreita ja agregada (ML+Shopee+Magalu, sem baixados)
+    ritmoBling,              // b232.3 - portao global de ritmo do Bling (a cota e da CONTA)
     supabase,                // ev2 - pro registro do checkout offline
     db,                      // b213 - pra buscar o RECADO desta devolucao
   } = deps;
@@ -842,10 +843,20 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
               const trabalhar = async (c) => {
                 const t0 = Date.now();
                 try {
+                  // b232.3 (Codex): ritmo GLOBAL do processo — a cota e da
+                  // CONTA, nao da requisicao. Duas buscas ao mesmo tempo, ou
+                  // uma busca junto do indice reconstruindo, estouravam igual.
+                  //
+                  // E `desistiu` avisa quem ficou pra tras: sem isso, a chamada
+                  // seguia ate 30s em segundo plano (timeout do Axios) e ainda
+                  // retentava, competindo com as ondas seguintes.
+                  const desistiu = { agora: false };
                   const det = await Promise.race([
-                    buscarNFePorId(c.id),
-                    new Promise((ok) => setTimeout(() => ok({ _timeout: true }), 5000)),
+                    ritmoBling.comRitmo(() => buscarNFePorId(c.id))
+                      .then((r) => (desistiu.agora ? { _tarde: true } : r)),
+                    new Promise((ok) => setTimeout(() => { desistiu.agora = true; ok({ _timeout: true }); }, 5000)),
                   ]);
+                  if (det && det._tarde) return;   // ja registrei timeout
                   const ms = Date.now() - t0;
                   if (!det || det._timeout) { diagnosticos.set(String(c.id), { motivo: 'timeout', ms }); return; }
                   if (!det.ok) { diagnosticos.set(String(c.id), { motivo: 'http', status: det.status || null, ms }); return; }

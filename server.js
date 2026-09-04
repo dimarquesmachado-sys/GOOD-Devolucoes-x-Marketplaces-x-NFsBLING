@@ -79,6 +79,7 @@ const mlReturns = require('./lib/ml-returns')({ chamarML });
 // etc). O nome vem COLADO na etiqueta (RENATONEVES) - o indice colapsa os
 // nomes do Bling tambem e compara colapsado com colapsado.
 const nfNomes = require('./lib/nf-nomes')({ chamarBling });
+const ritmoBling = require('./lib/ritmo-bling');
 
 // v3.76 - devolucoes ESPERADAS do portal Magalu Entregas (indice 'a espreita')
 const espreita = require('./lib/magalu-espreita')({ chamarMagalu: magalu.chamarMagalu });
@@ -268,7 +269,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '6.4.2 (1s entre largadas das ondas; teto vale durante a onda)',
+    version: '6.5.0 (ritmo GLOBAL do Bling: a cota e da conta, nao da requisicao)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -1190,10 +1191,20 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
               const trabalhar = async (c) => {
                 const t0 = Date.now();
                 try {
+                  // b232.3 (Codex): ritmo GLOBAL do processo — a cota e da
+                  // CONTA, nao da requisicao. Duas buscas ao mesmo tempo, ou
+                  // uma busca junto do indice reconstruindo, estouravam igual.
+                  //
+                  // E `desistiu` avisa quem ficou pra tras: sem isso, a chamada
+                  // seguia ate 30s em segundo plano (timeout do Axios) e ainda
+                  // retentava, competindo com as ondas seguintes.
+                  const desistiu = { agora: false };
                   const det = await Promise.race([
-                    buscarNFePorId(c.id),
-                    new Promise((ok) => setTimeout(() => ok({ _timeout: true }), 5000)),
+                    ritmoBling.comRitmo(() => buscarNFePorId(c.id))
+                      .then((r) => (desistiu.agora ? { _tarde: true } : r)),
+                    new Promise((ok) => setTimeout(() => { desistiu.agora = true; ok({ _timeout: true }); }, 5000)),
                   ]);
+                  if (det && det._tarde) return;   // ja registrei timeout
                   const ms = Date.now() - t0;
                   if (!det || det._timeout) { diagnosticos.set(String(c.id), { motivo: 'timeout', ms }); return; }
                   if (!det.ok) { diagnosticos.set(String(c.id), { motivo: 'http', status: det.status || null, ms }); return; }

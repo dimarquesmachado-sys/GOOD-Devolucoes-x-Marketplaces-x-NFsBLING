@@ -86,7 +86,7 @@ const criarMlBuscas = require('./lib-AMB/ml-buscas-AMB');
 const registrarIdentificar = require('./lib-AMB/identificar-AMB');
 const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 
-const VERSAO = 'AMB Devolucoes b271';
+const VERSAO = 'AMB Devolucoes b272';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -1872,6 +1872,7 @@ registrarIdentificar(router, {
   // b229 - a espreita ja montada, por FUNCAO (o comentario abaixo avisa:
   // passar pelo escopo derrubou o boot 2x). O getter le o cache na hora.
   espreitaMontada: () => ESPREITA_AMB_CACHE,
+  ritmoBling: require('../lib/ritmo-bling'),   // b232.3 - MESMO modulo da GOOD: um portao por processo
   // b180 - TikTok na cascata da AMB (paridade com a GOOD). Passar por
   // parametro, nao pelo escopo: usar o escopo ja derrubou o boot 2x neste
   // projeto (b300 e b302 no lado da GOOD).
