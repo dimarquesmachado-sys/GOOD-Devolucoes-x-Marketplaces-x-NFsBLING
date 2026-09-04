@@ -1710,7 +1710,10 @@
             const m = MKT[e.marketplace] || { nome: e.marketplace, cor: '#616161' };
             html += '<div style="border-left:4px solid ' + m.cor + ';background:#fff;border-radius:8px;padding:8px 10px;margin-bottom:6px;">'
               + '<span style="background:' + m.cor + ';color:#fff;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;">' + m.nome + '</span> '
-              + (e.pedido ? '<input type="checkbox" class="chkAlerta" value="' + escapeHtml(String(e.pedido)) + '" style="margin-right:7px;transform:scale(1.2);"> ' : '')
+              // b236.8 (Codex): sem checkbox quando a NF de devolucao JA
+              // EXISTE — senao o dono manda pra fila uma nota ja emitida.
+              // O selo verde ja aparece, mas a caixa continuava clicavel.
+              + (e.pedido && !e.nf_devolucao ? '<input type="checkbox" class="chkAlerta" value="' + escapeHtml(String(e.pedido)) + '" style="margin-right:7px;transform:scale(1.2);"> ' : '')
               + '<b>' + escapeHtml(String(e.pedido || e.tracking || '-')) + '</b>'
               + (e.pack_id ? ' · <span style="font-size:11px;color:#555;">pack <code>' + escapeHtml(String(e.pack_id)) + '</code></span>' : '')
               + (e.pedido && e.tracking ? ' · <code style="font-size:11px;">' + escapeHtml(String(e.tracking)) + '</code>' : '')
@@ -1718,7 +1721,16 @@
               + (linkVenda(e) ? ' <a href="' + linkVenda(e) + '" target="_blank" rel="noopener" style="background:#1565c0;color:#fff;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;text-decoration:none;margin-left:6px;">🔗 abrir</a>' : '')
               + (e.marketplace === 'magalu' ? magaluProtocolosHtml(e) : '') // v4.46 - protocolos na linha do abrir (alerta)
               + '<br><span style="font-size:12px;color:#555;">Entregue há <b>' + (e.dias_desde != null ? e.dias_desde : '?') + ' dia(s)</b> · sem triagem no sistema'
-              + (e.cliente ? ' · 👤 ' + escapeHtml(e.cliente) : '') + (e.nf ? ' · 🧾 NF ' + escapeHtml(String(e.nf)) : '') + (e.logistica ? ' · <span style="background:#455a64;color:#fff;padding:1px 6px;border-radius:8px;font-size:10px;font-weight:700;">' + escapeHtml(e.logistica) + (e.nf_devolucao ? ' · <span style="background:#2e7d32;color:#fff;padding:1px 7px;border-radius:8px;font-size:10px;font-weight:800;">✅ NF DEVOLUÇÃO ' + escapeHtml(String(e.nf_devolucao.nf || '')) + '</span>' : '') + '</span>' : '') + (e.nf_devolucao ? ' · <span style="background:#2e7d32;color:#fff;padding:1px 7px;border-radius:8px;font-size:10px;font-weight:800;">✅ NF DEVOLUÇÃO ' + escapeHtml(String(e.nf_devolucao.nf || '')) + '</span>' : '') + '</span>'
+              + (e.cliente ? ' · 👤 ' + escapeHtml(e.cliente) : '')
+              // b236.7: quando a venda e um PACK com varios pedidos, o sistema
+              // NAO chuta qual deles voltou — mostrar NF/produto errados seria
+              // pior que nao mostrar. Mas o card tem que dizer isso, senao
+              // parece bug.
+              + (e.pack_varios_pedidos
+                  ? ' · <span style="color:#e65100;" title="A venda tem ' + e.pack_varios_pedidos
+                    + ' pedidos no mesmo pack. Nao da pra saber qual voltou sem abrir no ML — por isso nao mostro NF e produto, pra nao arriscar o errado.">'
+                    + '📦 pack com ' + e.pack_varios_pedidos + ' pedidos — abra no ML pra ver qual voltou</span>'
+                  : '') + (e.nf ? ' · 🧾 NF ' + escapeHtml(String(e.nf)) : '') + (e.logistica ? ' · <span style="background:#455a64;color:#fff;padding:1px 6px;border-radius:8px;font-size:10px;font-weight:700;">' + escapeHtml(e.logistica) + (e.nf_devolucao ? ' · <span style="background:#2e7d32;color:#fff;padding:1px 7px;border-radius:8px;font-size:10px;font-weight:800;">✅ NF DEVOLUÇÃO ' + escapeHtml(String(e.nf_devolucao.nf || '')) + '</span>' : '') + '</span>' : '') + (e.nf_devolucao ? ' · <span style="background:#2e7d32;color:#fff;padding:1px 7px;border-radius:8px;font-size:10px;font-weight:800;">✅ NF DEVOLUÇÃO ' + escapeHtml(String(e.nf_devolucao.nf || '')) + '</span>' : '') + '</span>'
               + ((e.itens && e.itens.length)
                   ? '<div style="font-size:12px;color:#333;margin-top:4px;background:#fff;border-radius:6px;padding:5px 8px;">'
                     + e.itens.map(function (it) {
@@ -1792,6 +1804,14 @@
             '<br><span style="font-size:12px;color:#555;">' +
             (e.dias_em_transito != null ? 'Em trânsito há <b>' + e.dias_em_transito + ' dia(s)</b>' : 'Em trânsito') +
             (e.status ? ' · ' + escapeHtml(String(e.status)) : '') +
+            // b236.8 (Codex): o pack ambiguo tambem no card EM TRANSITO — o
+            // aviso so existia no de alerta, e aqui o card ficava sem pedido
+            // e sem explicacao. Mesma frase, mesmo motivo.
+            (e.pack_varios_pedidos
+              ? ' · <span style="color:#e65100;" title="A venda tem ' + e.pack_varios_pedidos
+                + ' pedidos no mesmo pack. Nao da pra saber qual voltou sem abrir no ML.">'
+                + '📦 pack com ' + e.pack_varios_pedidos + ' pedidos — abra no ML pra ver qual voltou</span>'
+              : '') +
             (e.no_cd_ml ? ' — <b style="color:#00695c;">🏭 em revisão no CD do ML (ainda não despachado pra você)</b>' : (e.congelada ? ' — <b style="color:#616161;">🧊 status congelado na Shopee, confirmar no 🔗</b>' : (atrasada ? ' — <b style="color:#c62828;">⚠️ candidata a extravio, cobrar o marketplace</b>' : ''))) + '</span>' +
             // v4.43 - linha 1: cliente + NF + logistica juntos (NF so aqui, uma vez)
             ((e.cliente || e.nf || e.logistica || e.dinheiro) ?
