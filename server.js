@@ -269,7 +269,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '6.8.0 (espreita: descobre o pedido pelo rastreio quando ele falta)',
+    version: '6.8.1 (pack vira pedido; o descoberto vale pros em transito e refiltra a triagem)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -4925,9 +4925,26 @@ async function enriquecerItemEspreita(d) {
       && typeof mlReturns.acharPorTracking === 'function') {
     try {
       const achado = await mlReturns.acharPorTracking(d.tracking);
-      if (achado && achado.order_id) {
-        d = { ...d, pedido: String(achado.order_id) };
-        out.pedido_descoberto = String(achado.order_id);   // pro card saber
+      // b236.1 (Codex): `acharPorTracking` le o MESMO indice que preencheu o
+      // card — se o pedido falta la, falta aqui tambem. Consultar de novo nao
+      // acrescenta nada.
+      //
+      // A causa real: o indice so guarda `order_id` quando o claim e sobre
+      // ORDER. Quando e sobre PACK (venda com varios itens), `order_id` fica
+      // null — e e por isso que esses cards estao vazios. Mas o `resource_id`
+      // guarda o pack, e o ML resolve pack -> orders.
+      let pedido = achado && achado.order_id ? String(achado.order_id) : null;
+      if (!pedido && achado && achado.resource === 'pack' && achado.resource_id) {
+        const rPk = await chamarML(`https://api.mercadolibre.com/packs/${achado.resource_id}`);
+        const primeiro = rPk.ok && rPk.data?.orders?.[0]?.id;
+        if (primeiro) {
+          pedido = String(primeiro);
+          out.pack_id = String(achado.resource_id);
+        }
+      }
+      if (pedido) {
+        d = { ...d, pedido };
+        out.pedido_descoberto = pedido;   // pro card saber
       }
     } catch (e) { /* segue sem: o card fica como estava */ }
   }
@@ -5195,7 +5212,11 @@ async function montarEspreita() {
   await garantirEnriquecimentoEspreita(prioritarios);
   for (const d of unificada) {
     const en = ESP_ENRIQ.get(d.chave_nota);
-    if (en) { d.cliente = en.cliente; d.nf = en.nf; d.produto = en.produto; d.sku = en.sku; d.qtd = en.qtd; d.valor_nf = en.valor_nf; d.pack_id = en.pack_id; d.magalu_delivery_uuid = en.magalu_delivery_uuid; d.magalu_returns = en.magalu_returns; d.magalu_tickets = en.magalu_tickets; if (en.logistica) d.logistica = en.logistica; }
+    // b236.1 (Codex): o pedido descoberto tambem vale pros EM TRANSITO —
+    // antes so subia nos `nunca_bipadas`, e o front monta o link do ML a
+    // partir do `pedido`, entao esses cards seguiam sem link.
+    if (en && !d.pedido && en.pedido_descoberto) d.pedido = en.pedido_descoberto;
+    if (en) { d.cliente = en.cliente; d.nf = en.nf; d.produto = en.produto; d.sku = en.sku; d.qtd = en.qtd; d.valor_nf = en.valor_nf; d.pack_id = en.pack_id; d.itens = en.itens || d.itens; d.magalu_delivery_uuid = en.magalu_delivery_uuid; d.magalu_returns = en.magalu_returns; d.magalu_tickets = en.magalu_tickets; if (en.logistica) d.logistica = en.logistica; }
     if (d.marketplace === 'ml') d.dinheiro = d.status_money === 'refunded' ? 'estornado_cliente' : (d.status_money === 'retained' ? 'retido_com_voce' : null);
   }
   dispararEnriquecimentoEspreita(unificada);
@@ -5246,6 +5267,10 @@ async function montarEspreita() {
         const { data } = await supabase.from('espreita_notas').select('chave, baixado, comentario').in('chave', chavesN);
         for (const n of (data || [])) notasN[n.chave] = n;
       } catch (e) { /* segue sem notas */ }
+      // b236.1 (Codex): reconferir DEPOIS de descobrir o pedido. Um item que
+      // so tinha rastreio podia ja ter triagem registrada pelo PEDIDO — e o
+      // filtro, rodando antes da descoberta, nao via. Resultado: card de
+      // "ninguem bipou" para pacote ja triado.
       const baseAlerta = candidatos
         .filter(d => !achados.has(String(d.pedido || '')) && !achados.has(String(d.tracking || '')))
         .map(d => ({ ...d, chave_nota: String(d.tracking || (d.marketplace + ':' + d.pedido)) }))
@@ -5257,6 +5282,9 @@ async function montarEspreita() {
         const en = ESP_ENRIQ.get(d.chave_nota);
         return { ...d, comentario: notasN[d.chave_nota]?.comentario || null, ticket: notasN[d.chave_nota]?.ticket || null, pedido: d.pedido || en?.pedido_descoberto || null, cliente: en?.cliente || null, nf: en?.nf || null, produto: en?.produto || null, sku: en?.sku || null, qtd: en?.qtd || null, valor_nf: en?.valor_nf || null, logistica: en?.logistica || null, pack_id: en?.pack_id || null, itens: en?.itens || [], magalu_delivery_uuid: en?.magalu_delivery_uuid || null, magalu_returns: en?.magalu_returns || [], magalu_tickets: en?.magalu_tickets || [] };
       });
+      // b236.1: agora que os pedidos descobertos estao nos itens, tira os que
+      // ja tem triagem registrada por esse pedido
+      nuncaBipadas = nuncaBipadas.filter(d => !d.pedido || !achados.has(String(d.pedido)));
     }
   } catch (e) { nuncaBipadas = []; }
   return ({
