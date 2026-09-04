@@ -269,7 +269,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '6.6.1 (a retentativa do 429 tambem passa pelo portao)',
+    version: '6.7.0 (a busca por nome cobre os 120 dias de verdade)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -1306,7 +1306,8 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
                 };
               }
             } catch (e) { /* diagnostico nao pode derrubar a busca */ }
-            resultado.erro = `Achei ${rN.candidatos.length} NF(s) recente(s) com esse nome.`
+            resultado.erro = `Achei ${rN.total_encontrados || rN.candidatos.length} NF(s) com esse nome nos ultimos 120 dias`
+              + (rN.total_encontrados > rN.candidatos.length ? ` (mostrando ${rN.candidatos.length}, das mais recentes as mais antigas)` : '') + '.'
               + (estrelados ? ` ⭐ ${estrelados} está(ão) na ESPREITA — devolução a caminho.` : '')
               + ' Confere com a CAIXA e escolhe abaixo:';
             return res.status(300).json(resultado); // 300 Multiple Choices
