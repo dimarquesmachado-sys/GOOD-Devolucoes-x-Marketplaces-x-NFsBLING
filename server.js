@@ -269,7 +269,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '7.0.2 (identidade nao e sobrescrita; background vira fila; Shopee e fundo)',
+    version: '7.0.3 (o cache guarda TUDO que a identidade resolveu)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -4937,7 +4937,15 @@ async function resolverIdentidadeEspreita(itens) {
         d.pack_id = String(achado.resource_id);
         const rPk = await chamarML(`https://api.mercadolibre.com/packs/${achado.resource_id}`);
         const ordens = (rPk.ok && Array.isArray(rPk.data?.orders)) ? rPk.data.orders : [];
-        if (ordens.length === 1) d.pedido = String(ordens[0].id);
+        if (ordens.length === 1) {
+          d.pedido = String(ordens[0].id);
+          // b237.3 (Codex): guardar o pedido FILHO no item. O enriquecimento
+          // seguinte pula a descoberta (ja ha `d.pedido`), entao o cache
+          // ficava com `pack_id` e SEM `pedido_descoberto` — e na carga
+          // seguinte meu atalho de cache devolvia o pack sem o pedido, e o
+          // card voltava a ficar sem link e sem produto.
+          d.pedido_do_pack_resolvido = String(ordens[0].id);
+        }
         else if (ordens.length > 1) {
           d.pack_varios_pedidos = ordens.length;
           d.pedidos_do_pack = ordens.map((o) => String(o.id)).slice(0, 10);
@@ -4965,6 +4973,16 @@ async function enriquecerItemEspreita(d, ctx = {}) {
   //
   // O indice de devolucoes do ML ja mapeia tracking -> order_id
   // (`acharPorTracking`). Uso ele pra preencher o pedido que falta.
+  // b237.3: se a identidade ja resolveu o pedido do pack, o cache precisa
+  // saber — senao a proxima carga le um cache "completo" que nao tem pedido
+  // b237.3: TUDO que a identidade resolveu vai pro cache. A matriz dos
+  // caminhos mostrou que o pack AMBIGUO tambem nao era gravado — cada carga
+  // (4 em 4 min) reconsultava `/packs` pra chegar na mesma conclusao, e o
+  // aviso do card dependia de a consulta dar certo de novo.
+  if (d.pedido_do_pack_resolvido) out.pedido_descoberto = String(d.pedido_do_pack_resolvido);
+  if (d.pack_id) out.pack_id = String(d.pack_id);
+  if (d.pack_varios_pedidos) out.pack_varios_pedidos = d.pack_varios_pedidos;
+  if (d.pedidos_do_pack) out.pedidos_do_pack = d.pedidos_do_pack;
   if (d.marketplace === 'ml' && !d.pedido && d.tracking && mlReturns
       && typeof mlReturns.acharPorTracking === 'function') {
     try {
