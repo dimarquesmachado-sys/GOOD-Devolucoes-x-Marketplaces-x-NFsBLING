@@ -269,7 +269,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '6.8.2 (reconsultar banco e indice de NF depois de descobrir o pedido)',
+    version: '6.8.3 (pack so decide com UM pedido; falha nao vira cache; pack na triagem)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -4935,11 +4935,24 @@ async function enriquecerItemEspreita(d) {
       // guarda o pack, e o ML resolve pack -> orders.
       let pedido = achado && achado.order_id ? String(achado.order_id) : null;
       if (!pedido && achado && achado.resource === 'pack' && achado.resource_id) {
+        out.pack_id = String(achado.resource_id);
         const rPk = await chamarML(`https://api.mercadolibre.com/packs/${achado.resource_id}`);
-        const primeiro = rPk.ok && rPk.data?.orders?.[0]?.id;
-        if (primeiro) {
-          pedido = String(primeiro);
-          out.pack_id = String(achado.resource_id);
+        const ordens = (rPk.ok && Array.isArray(rPk.data?.orders)) ? rPk.data.orders : [];
+        if (ordens.length === 1) {
+          // b236.3 (Codex): so quando o pack tem UM pedido. Com varios,
+          // `orders[0]` e chute — o pacote devolvido pode ser de outro, e o
+          // card mostraria NF e produto ERRADOS pro estoquista. Numero errado
+          // e pior que numero ausente.
+          pedido = String(ordens[0].id);
+        } else if (ordens.length > 1) {
+          out.pack_varios_pedidos = ordens.length;
+          out.pedidos_do_pack = ordens.map((o) => String(o.id)).slice(0, 10);
+        } else if (!rPk.ok) {
+          // b236.3 (Codex): falha PASSAGEIRA nao pode virar cache definitivo.
+          // `chamarML` so retenta erro de auth; um 429/500 aqui gravaria um
+          // enriquecimento sem pedido que nunca mais seria refeito.
+          out._incompleto = true;
+          out._motivo = 'pack HTTP ' + (rPk.status || '?');
         }
       }
       if (pedido) {
@@ -5034,7 +5047,9 @@ async function garantirEnriquecimentoEspreita(itens) {
   for (const d of faltam) {
     try {
       const en = await enriquecerItemEspreita(d);
-      ESP_ENRIQ.set(d.chave_nota, en);
+      // b236.3 (Codex): nao cacheia o que falhou por erro passageiro — senao
+      // o card fica vazio pra sempre por causa de um 429 de um segundo
+      if (!en._incompleto) ESP_ENRIQ.set(d.chave_nota, en);
     } catch (e) { /* segue sem enriquecer este */ }
     await new Promise(r => setTimeout(r, 200));
   }
@@ -5049,7 +5064,7 @@ function dispararEnriquecimentoEspreita(itens) {
     console.log(`[ESPREITA] enriquecendo ${fila.length} item(ns) em background...`);
     for (const d of fila) {
       const en = await enriquecerItemEspreita(d);
-      ESP_ENRIQ.set(d.chave_nota, en);
+      if (!en._incompleto) ESP_ENRIQ.set(d.chave_nota, en);   // b236.3
       await new Promise(r => setTimeout(r, 350));
     }
     console.log('[ESPREITA] enriquecimento concluido');
@@ -5296,16 +5311,28 @@ async function montarEspreita() {
       // que os candidatos JA tinham — o descoberto nao estava la, entao
       // `achados.has()` sempre dava falso. Consultar antes e filtrar depois
       // nao adianta; tem que RECONSULTAR.
-      const novosPedidos = [...new Set(
-        nuncaBipadas.map(d => String(d.pedido || '')).filter(p => p && !pedidos.includes(p))
-      )];
-      if (novosPedidos.length) {
+      // b236.3 (Codex): o PACK tambem identifica a triagem. Quando a venda e
+      // um pack, o registro pode ter sido gravado com o pack no `order_id` ou
+      // no `shipment_id` — a busca normal do repo (linha ~350) procura nos
+      // dois campos. Entao reconsulto com pedidos E packs descobertos.
+      const novosIds = [...new Set([
+        ...nuncaBipadas.map(d => String(d.pedido || '')),
+        ...nuncaBipadas.map(d => String(d.pack_id || '')),
+      ].filter(v => v && !pedidos.includes(v) && !trks.includes(v)))];
+      if (novosIds.length) {
         try {
-          const { data } = await supabase.from('devolucoes').select('order_id').in('order_id', novosPedidos);
-          for (const r of (data || [])) achados.add(String(r.order_id));
+          const { data } = await supabase.from('devolucoes')
+            .select('order_id, shipment_id')
+            .or(novosIds.map(v => `order_id.eq.${v},shipment_id.eq.${v}`).join(','));
+          for (const r of (data || [])) {
+            if (r.order_id) achados.add(String(r.order_id));
+            if (r.shipment_id) achados.add(String(r.shipment_id));
+          }
         } catch (e) { /* sem isto o card so continua aparecendo, nao piora */ }
       }
-      nuncaBipadas = nuncaBipadas.filter(d => !d.pedido || !achados.has(String(d.pedido)));
+      nuncaBipadas = nuncaBipadas.filter(d =>
+        !(d.pedido && achados.has(String(d.pedido)))
+        && !(d.pack_id && achados.has(String(d.pack_id))));
     }
   } catch (e) { nuncaBipadas = []; }
   return ({
