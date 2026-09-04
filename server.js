@@ -268,7 +268,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '6.3.7 (o /health prova o deploy: hash do server.js + boot)',
+    version: '6.4.0 (busca por nome: sem cache e detalhes em paralelo)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -461,6 +461,12 @@ async function buscarEventosCheckout(empresa, codigo) {
 }
 
 app.use('/api/devolucao/identificar', (req, res, next) => {
+  // b232 - NUNCA CACHEAR ESTA ROTA. O dono viu a mesma URL devolver
+  // resposta VELHA (sem os itens) e, com `?x=1`, a resposta nova completa.
+  // Era cache intermediario. Numa rota de bipe isso e grave: o estoquista
+  // ve o resultado de OUTRO pacote, ou de antes da triagem.
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+  res.set('Pragma', 'no-cache');
   const enviar = res.json.bind(res);
   const codigoBipado = decodeURIComponent(String(req.path.split('/').pop() || '')).trim();
   res.json = (body) => {
@@ -1163,49 +1169,42 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
             const detalhes = new Map();
             const diagnosticos = new Map();
             {
+              // b232 - EM PARALELO. O `_detalhe` que o dono trouxe mostrou o
+              // problema: as chamadas levam 300ms OU 1900ms (alternando), e
+              // em serie os 6s acabavam no 5o candidato — 3 voltavam "nao deu
+              // tempo". Em paralelo, 8 chamadas custam o tempo da MAIS LENTA.
+              //
+              // O Bling aguenta: sao 8 GETs de detalhe, uma vez, numa acao
+              // manual. E o teto por chamada sobe pra 5s, porque 2,5s cortava
+              // as de 1,9s que estavam quase la.
               const INICIO_DET = Date.now();
-              for (const c of rN.candidatos.slice(0, 8)) {
-                // b230.1 (Codex): quem NAO coube no teto tambem diz — senao, no
-                // cenario de 429/timeout (o que investigamos), os ultimos
-                // candidatos voltam sem itens E sem motivo, e parece outro bug
-                if (Date.now() - INICIO_DET > 6000) {
-                  diagnosticos.set(String(c.id), { motivo: 'nao deu tempo', teto_ms: 6000, decorrido_ms: Date.now() - INICIO_DET });
-                  continue;
-                }   // teto: a busca nao pode travar
-                if (!c.id) continue;
-                // b230 - DIZER POR QUE o detalhe nao veio. O JSON dele mostrou 8
-                // candidatos com id e NENHUM com itens — e a rota nao dizia se
-                // foi 429, timeout ou formato. Engolir a falha me deixou cego.
+              await Promise.all(rN.candidatos.slice(0, 8).map(async (c) => {
+                if (!c.id) return;
                 const t0 = Date.now();
-                let diag = null;
                 try {
                   const det = await Promise.race([
                     buscarNFePorId(c.id),
-                    new Promise((ok) => setTimeout(() => ok({ _timeout: true }), 2500)),
+                    new Promise((ok) => setTimeout(() => ok({ _timeout: true }), 5000)),
                   ]);
                   const ms = Date.now() - t0;
-                  if (!det || det._timeout) diag = { motivo: 'timeout', ms };
-                  else if (!det.ok) diag = { motivo: 'http', status: det.status || null, ms };
-                  else {
-                    const nfd = det.data && typeof det.data.data === 'object' ? det.data.data : null;
-                    if (!nfd) diag = { motivo: 'sem data.data', ms, chaves: det.data ? Object.keys(det.data).slice(0, 5) : [] };
-                    else if (!Array.isArray(nfd.itens)) diag = { motivo: 'itens nao e array', ms, tipo: typeof nfd.itens, chaves: Object.keys(nfd).slice(0, 12) };
-                    else {
-                      detalhes.set(String(c.id), nfd.itens.map((it) => ({
-                        qtd: Number(it.quantidade) || 1,
-                        descricao: it.descricao || '',
-                        sku: it.codigo || '',
-                      })));
-                      diag = { motivo: 'ok', ms, itens: nfd.itens.length };
-                    }
+                  if (!det || det._timeout) { diagnosticos.set(String(c.id), { motivo: 'timeout', ms }); return; }
+                  if (!det.ok) { diagnosticos.set(String(c.id), { motivo: 'http', status: det.status || null, ms }); return; }
+                  const nfd = det.data && typeof det.data.data === 'object' ? det.data.data : null;
+                  if (!nfd) { diagnosticos.set(String(c.id), { motivo: 'sem data.data', ms }); return; }
+                  if (!Array.isArray(nfd.itens)) {
+                    diagnosticos.set(String(c.id), { motivo: 'itens nao e array', ms, tipo: typeof nfd.itens });
+                    return;
                   }
-                  await new Promise((ok) => setTimeout(ok, 350));
-                } catch (e) { diag = { motivo: 'excecao', erro: String(e.message || e).slice(0, 100), ms: Date.now() - t0 }; }
-                // b230.1 (Codex): NAO escrever no objeto do indice — ele e
-                // compartilhado entre buscas por 30 min, e a proxima veria o
-                // diagnostico desta. Guardo por id e anexo na copia de saida.
-                diagnosticos.set(String(c.id), diag);
-              }
+                  detalhes.set(String(c.id), nfd.itens.map((it) => ({
+                    qtd: Number(it.quantidade) || 1,
+                    descricao: it.descricao || '',
+                    sku: it.codigo || '',
+                  })));
+                  diagnosticos.set(String(c.id), { motivo: 'ok', ms, itens: nfd.itens.length });
+                } catch (e) {
+                  diagnosticos.set(String(c.id), { motivo: 'excecao', erro: String(e.message || e).slice(0, 100), ms: Date.now() - t0 });
+                }
+              }));
             }
             resultado.candidatos_nome = rN.candidatos.map((c) => {
               const e = porNF.get(chaveNF(c.numero, c.serie));
