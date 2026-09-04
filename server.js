@@ -269,7 +269,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '6.8.1 (pack vira pedido; o descoberto vale pros em transito e refiltra a triagem)',
+    version: '6.8.2 (reconsultar banco e indice de NF depois de descobrir o pedido)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -5215,7 +5215,15 @@ async function montarEspreita() {
     // b236.1 (Codex): o pedido descoberto tambem vale pros EM TRANSITO —
     // antes so subia nos `nunca_bipadas`, e o front monta o link do ML a
     // partir do `pedido`, entao esses cards seguiam sem link.
-    if (en && !d.pedido && en.pedido_descoberto) d.pedido = en.pedido_descoberto;
+    if (en && !d.pedido && en.pedido_descoberto) {
+      d.pedido = en.pedido_descoberto;
+      // b236.2 (Codex): reconferir o indice de NF DEPOIS de ter o pedido. O
+      // laco do NF_DEV_INDICE roda antes daqui, entao um item que so tinha
+      // rastreio nunca ganhava o selo verde "TEM NF DE DEVOLUCAO" — mesmo
+      // com a nota ja emitida. O painel so olha esse campo.
+      const pedLimpo = String(d.pedido).replace(/\s/g, '');
+      if (NF_DEV_INDICE.has(pedLimpo)) d.nf_devolucao = NF_DEV_INDICE.get(pedLimpo);
+    }
     if (en) { d.cliente = en.cliente; d.nf = en.nf; d.produto = en.produto; d.sku = en.sku; d.qtd = en.qtd; d.valor_nf = en.valor_nf; d.pack_id = en.pack_id; d.itens = en.itens || d.itens; d.magalu_delivery_uuid = en.magalu_delivery_uuid; d.magalu_returns = en.magalu_returns; d.magalu_tickets = en.magalu_tickets; if (en.logistica) d.logistica = en.logistica; }
     if (d.marketplace === 'ml') d.dinheiro = d.status_money === 'refunded' ? 'estornado_cliente' : (d.status_money === 'retained' ? 'retido_com_voce' : null);
   }
@@ -5282,8 +5290,21 @@ async function montarEspreita() {
         const en = ESP_ENRIQ.get(d.chave_nota);
         return { ...d, comentario: notasN[d.chave_nota]?.comentario || null, ticket: notasN[d.chave_nota]?.ticket || null, pedido: d.pedido || en?.pedido_descoberto || null, cliente: en?.cliente || null, nf: en?.nf || null, produto: en?.produto || null, sku: en?.sku || null, qtd: en?.qtd || null, valor_nf: en?.valor_nf || null, logistica: en?.logistica || null, pack_id: en?.pack_id || null, itens: en?.itens || [], magalu_delivery_uuid: en?.magalu_delivery_uuid || null, magalu_returns: en?.magalu_returns || [], magalu_tickets: en?.magalu_tickets || [] };
       });
-      // b236.1: agora que os pedidos descobertos estao nos itens, tira os que
-      // ja tem triagem registrada por esse pedido
+      // b236.2 (Codex): CONSULTAR o banco com os pedidos descobertos.
+      //
+      // Meu filtro anterior era inutil: `achados` foi montado com os pedidos
+      // que os candidatos JA tinham — o descoberto nao estava la, entao
+      // `achados.has()` sempre dava falso. Consultar antes e filtrar depois
+      // nao adianta; tem que RECONSULTAR.
+      const novosPedidos = [...new Set(
+        nuncaBipadas.map(d => String(d.pedido || '')).filter(p => p && !pedidos.includes(p))
+      )];
+      if (novosPedidos.length) {
+        try {
+          const { data } = await supabase.from('devolucoes').select('order_id').in('order_id', novosPedidos);
+          for (const r of (data || [])) achados.add(String(r.order_id));
+        } catch (e) { /* sem isto o card so continua aparecendo, nao piora */ }
+      }
       nuncaBipadas = nuncaBipadas.filter(d => !d.pedido || !achados.has(String(d.pedido)));
     }
   } catch (e) { nuncaBipadas = []; }
