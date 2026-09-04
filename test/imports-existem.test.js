@@ -59,6 +59,26 @@ for (const [rel, nome, req] of ESPERADOS) {
      + (faltam.length ? ' (FALTAM: ' + faltam.join(', ') + ')' : ''));
 }
 
+// b231.1: modulos NATIVOS do Node usados sem require (fs, path, crypto,
+// http, os, url). O /health do b231 usava `fs.readFileSync` sem `require('fs')`
+// — o catch engolia o ReferenceError e o hash saia 'n/d' pra sempre. O
+// grep de `fs` veio vazio e eu segui.
+{
+  for (const [nome, rel] of [['server.js', 'server.js'], ['app-AMB.js', 'amb-devolucoes/app-AMB.js']]) {
+    const src = fs.readFileSync(path.join(RAIZ, rel), 'utf8');
+    const faltam = [];
+    for (const mod of ['fs', 'path', 'crypto', 'http', 'https', 'os', 'url', 'zlib']) {
+      const usa = new RegExp('(^|[^\\w.$])' + mod + '\\.\\w+\\(', 'm').test(src);
+      const tem = new RegExp('(const|let|var)\\s+' + mod + '\\s*=\\s*require\\(', 'm').test(src)
+        || new RegExp('require\\([\'"]' + mod + '[\'"]\\)\\.\\w+', 'm').test(src);   // inline
+      if (usa && !tem) faltam.push(mod);
+    }
+    ok(faltam.length === 0,
+       nome + ': todo modulo nativo usado esta importado'
+       + (faltam.length ? ' (FALTAM: ' + faltam.join(', ') + ')' : ''));
+  }
+}
+
 // e a varredura geral: chamada de metodo tipico de modulo, sem declaracao
 for (const rel of ['server.js', 'amb-devolucoes/app-AMB.js']) {
   const s = fs.readFileSync(path.join(RAIZ, rel), 'utf8');

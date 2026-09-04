@@ -258,7 +258,10 @@ const {
 // se o hash nao bater com o da main, o deploy nao pegou.
 const BOOT_EM = new Date().toISOString();
 const HASH_SERVER = (() => {
-  try { return crypto.createHash('sha1').update(fs.readFileSync(__filename)).digest('hex').slice(0, 12); }
+  // b231.1 (Codex): `fs` nao estava importado — o catch engolia o
+  // ReferenceError e o hash saia 'n/d' sempre. O grep de `fs` tinha vindo
+  // vazio e eu segui. Quinta funcao fantasma do repo, e o proprio /health.
+  try { return crypto.createHash('sha1').update(require('fs').readFileSync(__filename)).digest('hex').slice(0, 12); }
   catch (e) { return 'n/d'; }
 })();
 app.get('/health', (req, res) => {
