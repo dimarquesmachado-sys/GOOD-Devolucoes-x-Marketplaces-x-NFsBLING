@@ -814,32 +814,58 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
             // b227 - PRODUTO EM TODOS: a listagem nao traz itens, o detalhe traz.
             // Ate 8 chamadas, com teto de 6s — acao manual do estoquista.
             const detalhes = new Map();
+            const diagnosticos = new Map();
             {
               const INICIO_DET = Date.now();
               for (const c of rN.candidatos.slice(0, 8)) {
-                if (Date.now() - INICIO_DET > 6000) break;
+                // b230.1 (Codex): quem NAO coube no teto tambem diz — senao, no
+                // cenario de 429/timeout (o que investigamos), os ultimos
+                // candidatos voltam sem itens E sem motivo, e parece outro bug
+                if (Date.now() - INICIO_DET > 6000) {
+                  diagnosticos.set(String(c.id), { motivo: 'nao deu tempo', teto_ms: 6000, decorrido_ms: Date.now() - INICIO_DET });
+                  continue;
+                }
                 if (!c.id) continue;
+                // b230 - DIZER POR QUE o detalhe nao veio. O JSON dele mostrou 8
+                // candidatos com id e NENHUM com itens — e a rota nao dizia se
+                // foi 429, timeout ou formato. Engolir a falha me deixou cego.
+                const t0 = Date.now();
+                let diag = null;
                 try {
                   const det = await Promise.race([
                     buscarNFePorId(c.id),
-                    new Promise((ok) => setTimeout(() => ok(null), 2500)),
+                    new Promise((ok) => setTimeout(() => ok({ _timeout: true }), 2500)),
                   ]);
-                  const nfd = det && det.ok && det.data && typeof det.data.data === 'object' ? det.data.data : null;
-                  if (nfd && Array.isArray(nfd.itens)) {
-                    detalhes.set(String(c.id), nfd.itens.map((it) => ({
-                      qtd: Number(it.quantidade) || 1,
-                      descricao: it.descricao || '',
-                      sku: it.codigo || '',
-                    })));
+                  const ms = Date.now() - t0;
+                  if (!det || det._timeout) diag = { motivo: 'timeout', ms };
+                  else if (!det.ok) diag = { motivo: 'http', status: det.status || null, ms };
+                  else {
+                    const nfd = det.data && typeof det.data.data === 'object' ? det.data.data : null;
+                    if (!nfd) diag = { motivo: 'sem data.data', ms, chaves: det.data ? Object.keys(det.data).slice(0, 5) : [] };
+                    else if (!Array.isArray(nfd.itens)) diag = { motivo: 'itens nao e array', ms, tipo: typeof nfd.itens, chaves: Object.keys(nfd).slice(0, 12) };
+                    else {
+                      detalhes.set(String(c.id), nfd.itens.map((it) => ({
+                        qtd: Number(it.quantidade) || 1,
+                        descricao: it.descricao || '',
+                        sku: it.codigo || '',
+                      })));
+                      diag = { motivo: 'ok', ms, itens: nfd.itens.length };
+                    }
                   }
                   await new Promise((ok) => setTimeout(ok, 350));
-                } catch (e) { /* sem itens deste; os outros seguem */ }
+                } catch (e) { diag = { motivo: 'excecao', erro: String(e.message || e).slice(0, 100), ms: Date.now() - t0 }; }
+                // b230.1 (Codex): NAO escrever no objeto do indice — ele e
+                // compartilhado entre buscas por 30 min, e a proxima veria o
+                // diagnostico desta. Guardo por id e anexo na copia de saida.
+                diagnosticos.set(String(c.id), diag);
               }
             }
             resultado.candidatos_nome = rN.candidatos.map((c) => {
               const e = porNF.get(chaveNF(c.numero, c.serie));
               const itensDet = detalhes.get(String(c.id)) || null;
-              const base = itensDet ? { ...c, itens: itensDet } : c;
+              const diag = diagnosticos.get(String(c.id)) || null;
+              // sempre uma COPIA: o `c` e do indice compartilhado
+              const base = { ...c, ...(itensDet ? { itens: itensDet } : {}), ...(diag ? { _detalhe: diag } : {}) };
               if (!e) return base;
               return {
                 ...base,
