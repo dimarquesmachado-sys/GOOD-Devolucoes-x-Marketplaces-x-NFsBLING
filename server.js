@@ -251,11 +251,25 @@ const {
 // ============================================================
 // ROTAS
 // ============================================================
+// b231 - O /health PROVA qual codigo esta rodando. A `version` e so uma
+// string: em 04/09 ela dizia 6.3.6 e a rota se comportava como codigo
+// antigo (sem `_detalhe`, que 6.3.6 tem). Localmente o mesmo codigo
+// funcionava. Agora vai o hash do proprio server.js e o instante do boot —
+// se o hash nao bater com o da main, o deploy nao pegou.
+const BOOT_EM = new Date().toISOString();
+const HASH_SERVER = (() => {
+  try { return crypto.createHash('sha1').update(fs.readFileSync(__filename)).digest('hex').slice(0, 12); }
+  catch (e) { return 'n/d'; }
+})();
 app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '6.3.6 (diagnostico numa copia, nao no indice; teto anotado)',
+    version: '6.3.7 (o /health prova o deploy: hash do server.js + boot)',
+    server_js_sha1: HASH_SERVER,
+    boot_em: BOOT_EM,
+    uptime_min: Math.round(process.uptime() / 60),
+    node: process.version,
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
