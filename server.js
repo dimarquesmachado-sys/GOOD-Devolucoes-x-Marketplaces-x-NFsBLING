@@ -269,7 +269,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '6.8.3 (pack so decide com UM pedido; falha nao vira cache; pack na triagem)',
+    version: '6.8.4 (coluna pack_id na triagem; toda falha do enriquecedor tenta de novo)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -4965,6 +4965,11 @@ async function enriquecerItemEspreita(d) {
   try {
     if (d.marketplace === 'ml' && d.pedido) {
       const rO = await chamarML(`https://api.mercadolibre.com/orders/${d.pedido}`);
+      // b236.4 (Codex): se o /orders falha por erro passageiro, o resultado
+      // fica com `pedido_descoberto` mas SEM cliente/produto — e seria
+      // cacheado como se estivesse pronto. O card ganharia o link e nada
+      // mais, pra sempre. Marca incompleto pra tentar de novo.
+      if (!rO.ok) { out._incompleto = true; out._motivo = 'orders HTTP ' + (rO.status || '?'); }
       if (rO.ok && rO.data) {
         const b = rO.data.buyer || {};
         out.cliente = [b.first_name, b.last_name].filter(Boolean).join(' ') || b.nickname || null;
@@ -4986,8 +4991,12 @@ async function enriquecerItemEspreita(d) {
         if (shipIda) {
           const rS = await chamarML(`https://api.mercadolibre.com/shipments/${shipIda}`, { 'x-format-new': 'true' });
           if (rS.ok && rS.data) out.logistica = mapLogistica(rS.data.logistic_type);
+          // b236.4: a logistica e enfeite (nao marca incompleto), mas a NF
+          // NAO — sem ela o card perde o numero da nota. Varri as TRES
+          // chamadas do enriquecedor: packs, orders e esta.
           const rN = await buscarNFnoML(shipIda);
           if (rN.ok && rN.data?.fiscal_key) out.nf = nfDaChave(rN.data.fiscal_key);
+          else if (!rN.ok) { out._incompleto = true; out._motivo = 'nf ML HTTP ' + (rN.status || '?'); }
         }
       }
     } else if (d.marketplace === 'magalu' && d.pedido) {
@@ -5321,12 +5330,17 @@ async function montarEspreita() {
       ].filter(v => v && !pedidos.includes(v) && !trks.includes(v)))];
       if (novosIds.length) {
         try {
+          // b236.4 (Codex): a coluna `pack_id` EXISTE e a triagem grava nela
+          // (server.js:2641); a busca de status ja consulta por ela
+          // (linha 2473). Eu tinha lido so a busca da linha ~350 e assumido
+          // que eram dois campos. Item 12 do checklist, de novo.
           const { data } = await supabase.from('devolucoes')
-            .select('order_id, shipment_id')
-            .or(novosIds.map(v => `order_id.eq.${v},shipment_id.eq.${v}`).join(','));
+            .select('order_id, shipment_id, pack_id')
+            .or(novosIds.map(v => `order_id.eq.${v},shipment_id.eq.${v},pack_id.eq.${v}`).join(','));
           for (const r of (data || [])) {
             if (r.order_id) achados.add(String(r.order_id));
             if (r.shipment_id) achados.add(String(r.shipment_id));
+            if (r.pack_id) achados.add(String(r.pack_id));
           }
         } catch (e) { /* sem isto o card so continua aparecendo, nao piora */ }
       }
