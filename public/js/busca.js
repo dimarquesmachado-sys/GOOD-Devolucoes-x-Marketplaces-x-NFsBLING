@@ -1003,6 +1003,9 @@ function renderizarCandidatosNome(mensagem, candidatos) {
               : '🚚 A CAMINHO' + (c.espreita_dias != null ? ' · ' + escapeHtml(String(c.espreita_dias)) + 'd em trânsito' : ''))
           + '</span>' : '')
       + '<br>🧾 NF ' + escapeHtml(c.numero) + (c.serie ? ' (série ' + escapeHtml(c.serie) + ')' : '') + ' · ' + dt + ' · ' + vl
+      // b235: os "mais antigos" vem de meses atras — o Correios reverso leva
+      // meses, entao a caixa na mao pode ser de maio
+      + (c._antigo ? ' <span style="font-size:11px; background:#616161; color:#fff; padding:2px 7px; border-radius:10px;">📅 mais antiga</span>' : '')
       + (naEsp && c.tracking ? ' · 📮 ' + escapeHtml(c.tracking) : '')
       + itens
       + '</button>';

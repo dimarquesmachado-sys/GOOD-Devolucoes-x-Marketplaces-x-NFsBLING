@@ -838,7 +838,11 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
               //
               // Com 3 por vez e 8 candidatos: 3 ondas, ~2s cada no pior caso.
               // Ainda muito melhor que a serie (8s) e sem brigar com a cota.
-              const fila = rN.candidatos.slice(0, 8).filter((c) => c.id);
+              // b235.1 (Codex): TODOS os candidatos devolvidos, nao os 8
+              // primeiros. As "mais antigas" que este PR trouxe vem DEPOIS
+              // das 8 recentes — com `slice(0,8)` elas apareciam sem produto,
+              // que e exatamente o que o PR veio resolver.
+              const fila = rN.candidatos.filter((c) => c.id);
               const SIMULTANEAS = 3;
               const trabalhar = async (c) => {
                 const t0 = Date.now();
