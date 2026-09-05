@@ -269,7 +269,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '7.0.6 (TODO pedido resolvido chega ao cache, venha de onde vier)',
+    version: '7.0.7 (teste do retry aceita o parametro novo)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),

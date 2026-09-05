@@ -125,7 +125,11 @@ const fn = BLING.slice(i, i + 14000);   // b210.1: so esta funcao (~12,7k), nao 
      'o ritmo caiu pra 700ms: o Bling limita a 3 req/s e 400ms batia no teto');
   ok(/TOO_MANY_REQUESTS/i.test(fn),
      'e o limite e RECONHECIDO em vez de tratado como falha qualquer');
-  ok(/await sleep\(1500\);[\s\S]{0,120}chamarBling\(url\)/.test(fn),
+  // b237.7 (Codex): a checagem olhava o texto EXATO `chamarBling(url)` e
+  // quebrou quando a chamada ganhou o parametro `{ fundo }` — o
+  // comportamento (esperar e repetir a MESMA pagina) nao mudou. Agora
+  // aceita argumentos extras, que e o que importa.
+  ok(/await sleep\(1500\);[\s\S]{0,160}chamarBling\(url[^)]*\)/.test(fn),
      '  esperando e tentando a MESMA pagina de novo');
   ok(/indistinguivel de a nota nao existir/.test(fn),
      '  porque desistir ali devolvia "nao achei", que engana');
