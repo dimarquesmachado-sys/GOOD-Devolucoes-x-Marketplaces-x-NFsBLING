@@ -86,6 +86,36 @@ const SRC = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
      + (orfaos.length ? ' (ORFAOS: ' + orfaos.join(', ') + ')' : ' (' + produz.length + ' conferidos)'));
 }
 
+// ── b237.6: TUDO que a identidade resolve chega ao CACHE ────────────
+//
+// Este bug apareceu TRES vezes em caminhos diferentes: o pedido resolvido
+// ficava so no item `d`, o enriquecimento pulava a propria descoberta
+// (porque `d.pedido` ja existia) e o cache saia sem `pedido_descoberto`.
+// Na carga seguinte o atalho de cache devolvia um cache "completo" sem
+// pedido, e o card voltava a ficar sem link e sem produto.
+{
+  const iR = SRC.indexOf('async function resolverIdentidadeEspreita');
+  const iE = SRC.indexOf('async function enriquecerItemEspreita');
+  const resolver = SRC.slice(iR, iE);
+
+  // cada caminho que seta `d.pedido` tem que marcar a origem
+  const setaPedido = [...resolver.matchAll(/d\.pedido = String\(([^)]+)\)/g)];
+  ok(setaPedido.length >= 2, 'ha mais de um caminho que resolve o pedido (' + setaPedido.length + ')');
+  ok(/d\.pedido_resolvido_pela_identidade = /.test(resolver),
+     '  o caminho do order_id DIRETO marca a origem');
+  ok(/d\.pedido_do_pack_resolvido = /.test(resolver),
+     '  e o caminho do PACK com 1 pedido tambem');
+
+  // e o enriquecedor grava os dois no cache
+  const enr = SRC.slice(iE, iE + 3000);
+  ok(/d\.pedido_do_pack_resolvido \|\| d\.pedido_resolvido_pela_identidade/.test(enr),
+     'o enriquecedor grava QUALQUER pedido resolvido no cache (um so ponto)');
+  for (const campo of ['pack_id', 'pack_varios_pedidos', 'pedidos_do_pack', 'ship_do_pack']) {
+    ok(new RegExp('out\\.' + campo).test(enr),
+       '  e tambem `' + campo + '`, senao a proxima carga reconsulta o ML');
+  }
+}
+
 // ── e o caso do pack ambiguo se explica na tela ─────────────────────
 {
   const html = fs.readFileSync(path.join(__dirname, '..', 'public', 'painel-devolucoes.html'), 'utf8');

@@ -269,7 +269,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '6.9.1 (paridade com VALOR, nao so campo; pack ambiguo nos dois cards)',
+    version: '7.1.0 (verifica.js: um comando so antes de todo push)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -4907,7 +4907,76 @@ async function magaluTicketsDoPedido(pedido) {
   return MG_TICKETS.get(p) || [];
 }
 
-async function enriquecerItemEspreita(d) {
+/**
+ * b237.1 - So a IDENTIDADE (pedido/pack), sem cliente/produto/NF.
+ *
+ * Serve pra reconsulta da triagem saber o que perguntar. E barata: usa o
+ * indice que ja esta em memoria, e so chama `/packs` quando o claim e de
+ * pack. O enriquecimento caro continua limitado.
+ */
+async function resolverIdentidadeEspreita(itens) {
+  for (const d of (itens || [])) {
+    if (d.pedido || d.marketplace !== 'ml' || !d.tracking) continue;
+    // b237.2 (Codex): o cache do enriquecimento pode ja ter a identidade —
+    // usar antes de chamar `/packs` de novo. Sem isto o pack ambiguo pagava
+    // a mesma chamada em toda carga do painel (a cada 4 min).
+    const jaTem = d.chave_nota ? ESP_ENRIQ.get(d.chave_nota) : null;
+    if (jaTem && (jaTem.pedido_descoberto || jaTem.pack_id || jaTem.pack_varios_pedidos)) {
+      if (jaTem.pedido_descoberto) d.pedido = String(jaTem.pedido_descoberto);
+      if (jaTem.pack_id) d.pack_id = String(jaTem.pack_id);
+      if (jaTem.pack_varios_pedidos) d.pack_varios_pedidos = jaTem.pack_varios_pedidos;
+      if (jaTem.pedidos_do_pack) d.pedidos_do_pack = jaTem.pedidos_do_pack;
+      continue;
+    }
+    if (!mlReturns || typeof mlReturns.acharPorTracking !== 'function') continue;
+    try {
+      const achado = await mlReturns.acharPorTracking(d.tracking);
+      if (!achado) continue;
+      if (achado.order_id) {
+        d.pedido = String(achado.order_id);
+        // b237.6 (Codex): TERCEIRA vez que este bug aparece num caminho
+        // diferente. Marco a origem pra QUALQUER pedido resolvido aqui,
+        // nao so o vindo do pack — o enriquecimento pula a descoberta
+        // (ja ha `d.pedido`) e o cache guardava `pack_id` sem
+        // `pedido_descoberto`. Na carga seguinte o atalho de cache
+        // devolvia o pack sem o pedido, e o card ficava sem link.
+        d.pedido_resolvido_pela_identidade = String(achado.order_id);
+        continue;
+      }
+      if (achado.resource === 'pack' && achado.resource_id) {
+        d.pack_id = String(achado.resource_id);
+        const rPk = await chamarML(`https://api.mercadolibre.com/packs/${achado.resource_id}`);
+        const ordens = (rPk.ok && Array.isArray(rPk.data?.orders)) ? rPk.data.orders : [];
+        if (ordens.length === 1) {
+          d.pedido = String(ordens[0].id);
+          // b237.3 (Codex): guardar o pedido FILHO no item. O enriquecimento
+          // seguinte pula a descoberta (ja ha `d.pedido`), entao o cache
+          // ficava com `pack_id` e SEM `pedido_descoberto` — e na carga
+          // seguinte meu atalho de cache devolvia o pack sem o pedido, e o
+          // card voltava a ficar sem link e sem produto.
+          d.pedido_do_pack_resolvido = String(ordens[0].id);
+          // b237.4 (Codex): guardar tambem o SHIPMENT do pack. A resposta do
+          // /packs ja traz, e com `d.pedido` setado o enriquecimento pula o
+          // bloco que buscaria isso — resultado: venda de carrinho sem NF,
+          // que e justamente o caso do b30 da AMB (MALHEIROSAUDREY).
+          d.ship_do_pack = (rPk.data.shipment && rPk.data.shipment.id)
+            || (Array.isArray(rPk.data.shipments) && rPk.data.shipments[0] && rPk.data.shipments[0].id)
+            || null;
+        }
+        else if (ordens.length > 1) {
+          d.pack_varios_pedidos = ordens.length;
+          d.pedidos_do_pack = ordens.map((o) => String(o.id)).slice(0, 10);
+        }
+      }
+    } catch (e) { /* sem identidade: o card segue como estava */ }
+  }
+}
+
+async function enriquecerItemEspreita(d, ctx = {}) {
+  // b237: NAO marco `fundo` aqui — o `chamarML` recebe HEADERS no 2o
+  // parametro (lib/ml.js:60), entao `{fundo:true}` viraria um header HTTP
+  // invalido. E o portao de ritmo e do BLING, nao do ML: marcar nao teria
+  // efeito nenhum. Li o produtor antes de propagar (item 12).
   const out = { cliente: null, nf: null, produto: null, sku: null, qtd: null, valor_nf: null, logistica: null, pack_id: null, itens: [], magalu_delivery_uuid: null, magalu_returns: [], magalu_tickets: [] }; // v4.22 / v4.32 / v4.36 / v4.38
 
   // b236 - SEM PEDIDO, DESCOBRIR PELO RASTREIO.
@@ -4921,6 +4990,21 @@ async function enriquecerItemEspreita(d) {
   //
   // O indice de devolucoes do ML ja mapeia tracking -> order_id
   // (`acharPorTracking`). Uso ele pra preencher o pedido que falta.
+  // b237.3: se a identidade ja resolveu o pedido do pack, o cache precisa
+  // saber — senao a proxima carga le um cache "completo" que nao tem pedido
+  // b237.3: TUDO que a identidade resolveu vai pro cache. A matriz dos
+  // caminhos mostrou que o pack AMBIGUO tambem nao era gravado — cada carga
+  // (4 em 4 min) reconsultava `/packs` pra chegar na mesma conclusao, e o
+  // aviso do card dependia de a consulta dar certo de novo.
+  // b237.6: um so ponto pra qualquer pedido que a identidade resolveu —
+  // do pack (1 pedido) ou direto do tracking. Antes eu tinha tratado so o
+  // primeiro caso, e o Codex achou o segundo.
+  const resolvidoAntes = d.pedido_do_pack_resolvido || d.pedido_resolvido_pela_identidade;
+  if (resolvidoAntes) out.pedido_descoberto = String(resolvidoAntes);
+  if (d.ship_do_pack) out.ship_do_pack = String(d.ship_do_pack);
+  if (d.pack_id) out.pack_id = String(d.pack_id);
+  if (d.pack_varios_pedidos) out.pack_varios_pedidos = d.pack_varios_pedidos;
+  if (d.pedidos_do_pack) out.pedidos_do_pack = d.pedidos_do_pack;
   if (d.marketplace === 'ml' && !d.pedido && d.tracking && mlReturns
       && typeof mlReturns.acharPorTracking === 'function') {
     try {
@@ -5005,7 +5089,7 @@ async function enriquecerItemEspreita(d) {
         if (out.itens[0]) out.sku = out.itens[0].sku || null;
         out.valor_nf = out.itens.reduce((a, x) => a + ((x.valor_unit || 0) * (x.qtd || 1)), 0) || null;
         out.pack_id = rO.data.pack_id ? String(rO.data.pack_id) : null; // v3.86: pack_id vem na etiqueta de devolucao ML
-        const shipIda = rO.data.shipping?.id || out.ship_do_pack || null;
+        const shipIda = rO.data.shipping?.id || out.ship_do_pack || d.ship_do_pack || null;
         if (shipIda) {
           const rS = await chamarML(`https://api.mercadolibre.com/shipments/${shipIda}`, { 'x-format-new': 'true' });
           if (rS.ok && rS.data) out.logistica = mapLogistica(rS.data.logistic_type);
@@ -5066,7 +5150,10 @@ async function enriquecerItemEspreita(d) {
         }
       }
     } else if (d.marketplace === 'shopee' && d.pedido) {
-      const rB = await buscarNFBlindada({ orderId: d.pedido });
+      // b237.2 (Codex): a Shopee tambem passa pelo Bling — sem `fundo`, o
+      // enriquecimento agendado disputava a fila de igual pra igual com o
+      // estoquista. Meu raciocinio da rodada anterior so cobriu o ramo do ML.
+      const rB = await buscarNFBlindada({ orderId: d.pedido, fundo: !!ctx.fundo });
       if (rB && rB.ok && rB.nf) {
         out.nf = rB.nf.numero ? String(rB.nf.numero).replace(/^0+/, '') : null;
         out.cliente = rB.nf.contato?.nome || null;
@@ -5096,19 +5183,34 @@ async function garantirEnriquecimentoEspreita(itens, limite = 30) {
   }
 }
 
+// b237.2 (Codex): FILA, nao descarte. Antes, se o worker ja estava rodando
+// (disparado pelos EM TRANSITO), a chamada dos candidatos do ALERTA voltava
+// na hora — e eles nunca eram enriquecidos, porque aquele worker so tinha o
+// retrato dos em transito. Do 9o em diante o card ficava vazio pra sempre.
+const ESP_ENRIQ_PENDENTES = [];
+
 function dispararEnriquecimentoEspreita(itens) {
-  if (ESP_ENRIQ_RODANDO) return;
-  const fila = itens.filter(d => d.chave_nota && !ESP_ENRIQ.has(d.chave_nota)).slice(0, 80);
-  if (fila.length === 0) return;
+  for (const d of (itens || [])) {
+    if (d.chave_nota && !ESP_ENRIQ.has(d.chave_nota)
+        && !ESP_ENRIQ_PENDENTES.some(x => x.chave_nota === d.chave_nota)) {
+      ESP_ENRIQ_PENDENTES.push(d);
+    }
+  }
+  if (ESP_ENRIQ_RODANDO || ESP_ENRIQ_PENDENTES.length === 0) return;
   ESP_ENRIQ_RODANDO = true;
   (async () => {
-    console.log(`[ESPREITA] enriquecendo ${fila.length} item(ns) em background...`);
-    for (const d of fila) {
-      const en = await enriquecerItemEspreita(d);
+    console.log(`[ESPREITA] enriquecendo ${ESP_ENRIQ_PENDENTES.length} item(ns) em background...`);
+    let feitos = 0;
+    // consome a fila; o que chegar durante a rodada entra tambem
+    while (ESP_ENRIQ_PENDENTES.length && feitos < 200) {
+      const d = ESP_ENRIQ_PENDENTES.shift();
+      if (!d || ESP_ENRIQ.has(d.chave_nota)) continue;
+      feitos++;
+      const en = await enriquecerItemEspreita(d, { fundo: true });   // b237.2
       if (!en._incompleto) ESP_ENRIQ.set(d.chave_nota, en);   // b236.3
       await new Promise(r => setTimeout(r, 350));
     }
-    console.log('[ESPREITA] enriquecimento concluido');
+    console.log(`[ESPREITA] enriquecimento concluido (${feitos})`);
   })().catch(() => {}).finally(() => { ESP_ENRIQ_RODANDO = false; });
 }
 
@@ -5354,10 +5456,41 @@ async function montarEspreita() {
       // 60 cobre com folga o que ele tem (9 no alerta hoje) sem virar
       // travamento; o que passar disso e enriquecido em background e entra
       // na proxima carga.
-      await garantirEnriquecimentoEspreita(baseAlerta, 60);
+      // b237 - O TETO DE 60 TRAVOU A BUSCA. [stated] "já tá uns 2 minutos
+      // procurando, pq isso?"
+      //
+      // 60 candidatos x 3 chamadas (orders + shipments + NF) = 180 chamadas
+      // no portao de 3/s = ~60s de fila, mais 12s de pausa. E o portao e
+      // GLOBAL: a busca do estoquista entra na MESMA fila e espera tudo.
+      //
+      // Erro meu: o Codex apontou que meu teto anterior era falso e eu
+      // troquei por um numero alto sem medir contra o portao que eu mesmo
+      // tinha criado uma rodada antes.
+      //
+      // Agora 8 sincronos (~8s no pior caso) e o resto em BACKGROUND — que
+      // ja existe e alimenta a proxima carga. O painel recarrega a cada 4
+      // min; em duas passadas cobre 16, mais que os 9 que ele tem hoje.
+      // b237.1 (Codex): o teto de 8 cegava a reconsulta da triagem — do 9o em
+      // diante ninguem tinha `pedido_descoberto`, e um pacote JA TRIADO
+      // (registrado pelo pedido ou pelo pack) voltava a aparecer como
+      // "ninguem bipou". Cortar custo nao pode custar acuracia.
+      //
+      // Saida: descobrir a IDENTIDADE de todos (1 chamada barata cada, so o
+      // `acharPorTracking` + `/packs` quando precisa), e limitar so o
+      // enriquecimento CARO (cliente/produto/NF, 3 chamadas por item).
+      await resolverIdentidadeEspreita(baseAlerta);
+      await garantirEnriquecimentoEspreita(baseAlerta, 8);
+      dispararEnriquecimentoEspreita(baseAlerta);
       nuncaBipadas = baseAlerta.map(d => {
         const en = ESP_ENRIQ.get(d.chave_nota);
-        return { ...d, comentario: notasN[d.chave_nota]?.comentario || null, ticket: notasN[d.chave_nota]?.ticket || null, pedido: d.pedido || en?.pedido_descoberto || null, pedidos_do_pack: en?.pedidos_do_pack || null, ship_do_pack: en?.ship_do_pack || null,   // b236.6: o envio do carrinho, pra fila de NF nao ter que descobrir de novo
+        return { ...d, comentario: notasN[d.chave_nota]?.comentario || null, ticket: notasN[d.chave_nota]?.ticket || null, pedido: d.pedido || en?.pedido_descoberto || null,
+          // b237.2 (Codex): o que `resolverIdentidadeEspreita` ja pos em `d`
+          // vem PRIMEIRO. Eu lia so do cache — e pro 9o em diante (sem
+          // enriquecimento) o cache nao existe, entao sobrescrevia com null
+          // a identidade que eu tinha acabado de descobrir. O aviso do pack
+          // ambiguo sumia justamente nos casos que ele veio explicar.
+          pedidos_do_pack: d.pedidos_do_pack || en?.pedidos_do_pack || null,
+          ship_do_pack: en?.ship_do_pack || null,   // b236.6: o envio do carrinho, pra fila de NF nao ter que descobrir de novo
           // b236.6 (Codex): o selo "TEM NF DE DEVOLUCAO" tambem aqui. Eu ja
           // tinha feito isso pros EM TRANSITO e esqueci deste ramo — e e o
           // ramo que tem checkbox pra mandar pra fila de NF. Sem o selo, o
@@ -5376,11 +5509,11 @@ async function montarEspreita() {
           // era consumido por ninguem. E o caso em que me RECUSEI a chutar o
           // pedido (pack com varios) — sem expor isso, o card fica vazio e o
           // dono nao sabe se e bug ou decisao. Agora o card diz.
-          pack_varios_pedidos: en?.pack_varios_pedidos || null,
+          pack_varios_pedidos: d.pack_varios_pedidos || en?.pack_varios_pedidos || null,
           dinheiro: d.marketplace === 'ml'
             ? (d.status_money === 'refunded' ? 'estornado_cliente'
               : (d.status_money === 'retained' ? 'retido_com_voce' : null))
-            : (d.dinheiro || null), cliente: en?.cliente || null, nf: en?.nf || null, produto: en?.produto || null, sku: en?.sku || null, qtd: en?.qtd || null, valor_nf: en?.valor_nf || null, logistica: en?.logistica || null, pack_id: en?.pack_id || null, itens: en?.itens || [], magalu_delivery_uuid: en?.magalu_delivery_uuid || null, magalu_returns: en?.magalu_returns || [], magalu_tickets: en?.magalu_tickets || [] };
+            : (d.dinheiro || null), cliente: en?.cliente || null, nf: en?.nf || null, produto: en?.produto || null, sku: en?.sku || null, qtd: en?.qtd || null, valor_nf: en?.valor_nf || null, logistica: en?.logistica || null, pack_id: d.pack_id || en?.pack_id || null, itens: en?.itens || [], magalu_delivery_uuid: en?.magalu_delivery_uuid || null, magalu_returns: en?.magalu_returns || [], magalu_tickets: en?.magalu_tickets || [] };
       });
       // b236.2 (Codex): CONSULTAR o banco com os pedidos descobertos.
       //
