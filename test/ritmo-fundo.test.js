@@ -66,6 +66,33 @@ function conferirCodigo() {
   ok(/buscarNFePorId\(idNF, \{ fundo/.test(BLING),
      '  incluindo a busca do detalhe da NF');
 
+  // b237.5: VARREDURA GERAL — toda funcao do bling.js que aceita `opcoes`
+  // e chama o Bling tem que repassar o `fundo`. Foi assim que achei
+  // `buscarNFnoBlingPorNumero` e `buscarPedidoBlingPorNumeroLoja`, que
+  // nenhum apontamento tinha citado: eu vinha consertando uma funcao por
+  // rodada, e a cadeia tem 5 niveis.
+  {
+    const linhasB = BLING.split('\n');
+    const orfas = [];
+    linhasB.forEach((linha, i) => {
+      const m = /^async function (\w+)\(.*opcoes = \{\}/.exec(linha);
+      if (!m) return;
+      let fim = linhasB.length;
+      for (let k = i + 1; k < linhasB.length; k++) {
+        if (/^(async )?function |^module\.exports/.test(linhasB[k])) { fim = k; break; }
+      }
+      for (let k = i; k < fim; k++) {
+        const l = linhasB[k];
+        if (/await (chamarBling|buscarNFePorId)\(/.test(l) && !/fundo/.test(l) && !/semRitmo/.test(l)) {
+          orfas.push(m[1] + ':' + (k + 1));
+        }
+      }
+    });
+    ok(orfas.length === 0,
+       'TODA funcao do bling.js que aceita `opcoes` repassa o `fundo`'
+       + (orfas.length ? ' (ORFAS: ' + orfas.join(', ') + ')' : ''));
+  }
+
   // o portao le a opcao
   ok(/aguardarVez\(\{ fundo: !!opcoes\.fundo \}\)/.test(BLING),
      'chamarBling entrega a opcao ao portao');

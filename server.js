@@ -269,7 +269,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '7.0.4 (o fundo desce ate o fim; pre-aquecimento e fundo; ship do pack)',
+    version: '7.0.5 (varredura geral: o fundo desce por toda a cadeia do Bling)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
