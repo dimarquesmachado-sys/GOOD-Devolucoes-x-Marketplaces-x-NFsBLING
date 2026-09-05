@@ -515,6 +515,19 @@ async function listarDefeitos({ busca } = {}) {
     if (r.error) return { ok: false, erro: r.error.message };
 
     let linhas = r.data || [];
+    // b278 - AVISAR QUANDO BATE NO TETO, em vez de sumir calado.
+    //
+    // Medi a GOOD e a AMB lado a lado: a GOOD tinha um sumico causado por
+    // itens JA RESOLVIDOS ocupando vaga dentro do limite (consertado la com
+    // `idsForaDoEstado`/`limiteDaConsulta`). A AMB NAO tem esse caso — ela
+    // filtra por tipo/status direto, sem o historico antigo que gerava o
+    // conflito. Portar aquelas funcoes pra ca seria trazer complexidade pra
+    // um problema que ela nao tem.
+    //
+    // O risco que RESTA e outro e mais simples: se passar de 400 ativos, os
+    // mais ANTIGOS somem da lista sem ninguem perceber (ordem DESC). Nao
+    // aumento o teto no escuro — aviso, e ai da pra decidir com numero.
+    const bateuNoTeto = linhas.length >= 400;
     if (busca) {
       const b = String(busca).toLowerCase();
       linhas = linhas.filter(x =>
@@ -549,7 +562,30 @@ async function listarDefeitos({ busca } = {}) {
     const lista = Object.values(grupos).sort((a, b) =>
       String(a.localizacao).localeCompare(String(b.localizacao)));
 
-    return { ok: true, total_linhas: linhas.length, aguardando_nf: aguardandoNF, grupos: lista };
+    return {
+      ok: true,
+      total_linhas: linhas.length, aguardando_nf: aguardandoNF, grupos: lista,
+      // b278 - ⚠️ A TELA DE DEFEITOS DA AMB ESTAVA MOSTRANDO LISTA VAZIA.
+      //
+      // `defeitos-AMB.html` e copia da tela da GOOD e le `itens`,
+      // `total_registros` e `total_pecas` — que o servidor da AMB NUNCA
+      // mandou (ele manda `grupos` e `total_linhas`). Resultado na tela:
+      // "undefined registro(s)" e nenhum defeito listado.
+      //
+      // Achei procurando outra coisa: fui portar um conserto da GOOD e,
+      // ao conferir o produtor antes de mexer (regra 4.12), vi que a tela
+      // lia campo que ninguem produz. E a mesma classe que o
+      // `campo-tem-produtor` pega no server.js — aqui era entre HTML e
+      // servidor, que nenhum teste cobria.
+      //
+      // Mantenho os nomes atuais (alguem pode usar) e acrescento os que a
+      // tela espera, com o MESMO significado da GOOD.
+      total_registros: linhas.length,
+      total_pecas: lista.reduce((a, g) => a + (Number(g.qtd) || 0), 0),
+      itens: lista,
+      // o teto foi atingido — pode haver defeito ANTIGO fora da lista
+      teto_atingido: bateuNoTeto || undefined, teto: bateuNoTeto ? 400 : undefined,
+    };
   } catch (e) { return { ok: false, erro: e.message }; }
 }
 
