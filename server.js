@@ -269,7 +269,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '7.0.5 (varredura geral: o fundo desce por toda a cadeia do Bling)',
+    version: '7.0.6 (TODO pedido resolvido chega ao cache, venha de onde vier)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -4932,7 +4932,17 @@ async function resolverIdentidadeEspreita(itens) {
     try {
       const achado = await mlReturns.acharPorTracking(d.tracking);
       if (!achado) continue;
-      if (achado.order_id) { d.pedido = String(achado.order_id); continue; }
+      if (achado.order_id) {
+        d.pedido = String(achado.order_id);
+        // b237.6 (Codex): TERCEIRA vez que este bug aparece num caminho
+        // diferente. Marco a origem pra QUALQUER pedido resolvido aqui,
+        // nao so o vindo do pack — o enriquecimento pula a descoberta
+        // (ja ha `d.pedido`) e o cache guardava `pack_id` sem
+        // `pedido_descoberto`. Na carga seguinte o atalho de cache
+        // devolvia o pack sem o pedido, e o card ficava sem link.
+        d.pedido_resolvido_pela_identidade = String(achado.order_id);
+        continue;
+      }
       if (achado.resource === 'pack' && achado.resource_id) {
         d.pack_id = String(achado.resource_id);
         const rPk = await chamarML(`https://api.mercadolibre.com/packs/${achado.resource_id}`);
@@ -4986,7 +4996,11 @@ async function enriquecerItemEspreita(d, ctx = {}) {
   // caminhos mostrou que o pack AMBIGUO tambem nao era gravado — cada carga
   // (4 em 4 min) reconsultava `/packs` pra chegar na mesma conclusao, e o
   // aviso do card dependia de a consulta dar certo de novo.
-  if (d.pedido_do_pack_resolvido) out.pedido_descoberto = String(d.pedido_do_pack_resolvido);
+  // b237.6: um so ponto pra qualquer pedido que a identidade resolveu —
+  // do pack (1 pedido) ou direto do tracking. Antes eu tinha tratado so o
+  // primeiro caso, e o Codex achou o segundo.
+  const resolvidoAntes = d.pedido_do_pack_resolvido || d.pedido_resolvido_pela_identidade;
+  if (resolvidoAntes) out.pedido_descoberto = String(resolvidoAntes);
   if (d.ship_do_pack) out.ship_do_pack = String(d.ship_do_pack);
   if (d.pack_id) out.pack_id = String(d.pack_id);
   if (d.pack_varios_pedidos) out.pack_varios_pedidos = d.pack_varios_pedidos;
