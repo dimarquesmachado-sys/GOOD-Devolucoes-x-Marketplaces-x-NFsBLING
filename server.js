@@ -269,7 +269,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '7.0.3 (o cache guarda TUDO que a identidade resolveu)',
+    version: '7.0.4 (o fundo desce ate o fim; pre-aquecimento e fundo; ship do pack)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -4945,6 +4945,13 @@ async function resolverIdentidadeEspreita(itens) {
           // seguinte meu atalho de cache devolvia o pack sem o pedido, e o
           // card voltava a ficar sem link e sem produto.
           d.pedido_do_pack_resolvido = String(ordens[0].id);
+          // b237.4 (Codex): guardar tambem o SHIPMENT do pack. A resposta do
+          // /packs ja traz, e com `d.pedido` setado o enriquecimento pula o
+          // bloco que buscaria isso — resultado: venda de carrinho sem NF,
+          // que e justamente o caso do b30 da AMB (MALHEIROSAUDREY).
+          d.ship_do_pack = (rPk.data.shipment && rPk.data.shipment.id)
+            || (Array.isArray(rPk.data.shipments) && rPk.data.shipments[0] && rPk.data.shipments[0].id)
+            || null;
         }
         else if (ordens.length > 1) {
           d.pack_varios_pedidos = ordens.length;
@@ -4980,6 +4987,7 @@ async function enriquecerItemEspreita(d, ctx = {}) {
   // (4 em 4 min) reconsultava `/packs` pra chegar na mesma conclusao, e o
   // aviso do card dependia de a consulta dar certo de novo.
   if (d.pedido_do_pack_resolvido) out.pedido_descoberto = String(d.pedido_do_pack_resolvido);
+  if (d.ship_do_pack) out.ship_do_pack = String(d.ship_do_pack);
   if (d.pack_id) out.pack_id = String(d.pack_id);
   if (d.pack_varios_pedidos) out.pack_varios_pedidos = d.pack_varios_pedidos;
   if (d.pedidos_do_pack) out.pedidos_do_pack = d.pedidos_do_pack;
@@ -5067,7 +5075,7 @@ async function enriquecerItemEspreita(d, ctx = {}) {
         if (out.itens[0]) out.sku = out.itens[0].sku || null;
         out.valor_nf = out.itens.reduce((a, x) => a + ((x.valor_unit || 0) * (x.qtd || 1)), 0) || null;
         out.pack_id = rO.data.pack_id ? String(rO.data.pack_id) : null; // v3.86: pack_id vem na etiqueta de devolucao ML
-        const shipIda = rO.data.shipping?.id || out.ship_do_pack || null;
+        const shipIda = rO.data.shipping?.id || out.ship_do_pack || d.ship_do_pack || null;
         if (shipIda) {
           const rS = await chamarML(`https://api.mercadolibre.com/shipments/${shipIda}`, { 'x-format-new': 'true' });
           if (rS.ok && rS.data) out.logistica = mapLogistica(rS.data.logistic_type);
