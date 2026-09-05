@@ -580,9 +580,42 @@ async function listarDefeitos({ busca } = {}) {
       //
       // Mantenho os nomes atuais (alguem pode usar) e acrescento os que a
       // tela espera, com o MESMO significado da GOOD.
-      total_registros: linhas.length,
-      total_pecas: lista.reduce((a, g) => a + (Number(g.qtd) || 0), 0),
-      itens: lista,
+      // b278.1 (Codex): `itens` no MOLDE DA TELA, nao os grupos.
+      //
+      // Meu conserto anterior igualou so os nomes de topo e entregou `lista`
+      // (agrupada: `localizacao`, `defeitos[]`, origem MAIUSCULA). A tela le
+      // `it.local`, `oc.defeito`, `oc.quando`, `oc.nf` e compara
+      // `origem === 'estoque'` minusculo — entao tudo caia em "(sem local)",
+      // sem descricao e sem data. Consertei pela metade.
+      //
+      // Agora e linha a linha, no mesmo formato da GOOD (server.js, rota
+      // /api/defeitos) — que e de onde a tela foi copiada.
+      //
+      // ⚠️ E SO O QUE JA E DEFEITO: `status === 'problema'` sem
+      // `defeito_estoque` e devolucao AGUARDANDO NF, que a propria funcao
+      // conta em `aguardando_nf`. Mostrar como defeito seria contar duas
+      // vezes a mesma peca — numero errado e pior que numero ausente.
+      total_registros: linhas.filter((x) => x.tipo === 'defeito_estoque' || x.status === 'concluido').length,
+      total_pecas: linhas
+        .filter((x) => x.tipo === 'defeito_estoque' || x.status === 'concluido')
+        .reduce((a, x) => a + (Number(x.defeito_qtd) || 1), 0),
+      itens: linhas
+        .filter((x) => x.tipo === 'defeito_estoque' || x.status === 'concluido')
+        .map((x) => ({
+          id: x.id,
+          quando: x.criado_em || null,
+          produto: x.produto_titulo || null,
+          sku: x.produto_sku || null,
+          nf: x.nf_numero || null,
+          local: x.localizacao || null,
+          qtd: x.defeito_qtd || null,
+          defeito: String(x.problema_descricao || '')
+            .replace(/^\[RE-BIPE\]\s*/, '')
+            .replace(/^\[Reportado por [^\]]+\]\s*/, '')
+            .replace(/^\[LANCADO MANUAL por [^\]]+\]\s*/, ''),
+          origem: x.tipo === 'defeito_estoque' ? 'estoque' : 'devolucao',
+          status: x.status,
+        })),
       // o teto foi atingido — pode haver defeito ANTIGO fora da lista
       teto_atingido: bateuNoTeto || undefined, teto: bateuNoTeto ? 400 : undefined,
     };

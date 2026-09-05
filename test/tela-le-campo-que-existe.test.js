@@ -38,7 +38,8 @@ const TELAS = [
     nome: 'defeitos (GOOD)',
     html: 'public/defeitos.html',
     servidor: 'server.js',
-    produtor: null,   // montado inline na rota; confere no arquivo todo
+    produtor: null,
+    rota: "app.get('/api/defeitos'",   // montada inline: o escopo e a rota
   },
 ];
 
@@ -53,9 +54,27 @@ for (const t of TELAS) {
   // o que a tela lê da resposta: `d.campo`
   const lidos = new Set([...html.matchAll(/\bd\.(\w+)/g)].map((m) => m[1]));
 
-  // o que o servidor pode mandar: qualquer `campo:` num objeto de resposta,
-  // no arquivo inteiro (evita falso positivo por não achar a função exata)
-  const mandados = new Set([...srv.matchAll(/(\w+)\s*:/g)].map((m) => m[1]));
+  // b278.1 (Codex): olhar o arquivo INTEIRO tornava o teste inutil — o
+  // server.js tem dezenas de `itens:` sem relacao, entao tirar `itens` da
+  // rota /api/defeitos passaria batido. Agora o escopo e o PRODUTOR
+  // configurado (a funcao ou a rota que monta ESTA resposta).
+  let escopo = srv;
+  if (t.produtor) {
+    const i = srv.indexOf('async function ' + t.produtor);
+    if (i >= 0) escopo = srv.slice(i, i + 9000);
+  } else if (t.rota) {
+    const i = srv.indexOf(t.rota);
+    if (i >= 0) escopo = srv.slice(i, i + 9000);
+  }
+  ok(escopo !== srv || (!t.produtor && !t.rota),
+     t.nome + ': achei o produtor da resposta (escopo delimitado)');
+  // ⚠️ o JS permite abreviar `{ itens }` em vez de `{ itens: itens }` — a
+  // GOOD faz isso, e meu detector acusou um campo que ELA MANDA. Falso
+  // positivo ensina a ignorar o vermelho; conto as duas formas.
+  const mandados = new Set([
+    ...[...escopo.matchAll(/(\w+)\s*:/g)].map((m) => m[1]),
+    ...[...escopo.matchAll(/[{,]\s*(\w+)\s*[,}]/g)].map((m) => m[1]),   // abreviado
+  ]);
 
   const fantasmas = [...lidos].filter((c) => !mandados.has(c));
   ok(fantasmas.length === 0,
@@ -67,7 +86,7 @@ for (const t of TELAS) {
 {
   const srv = fs.readFileSync(path.join(RAIZ, 'amb-devolucoes', 'lib-AMB', 'supabase-AMB.js'), 'utf8');
   const i = srv.indexOf('async function listarDefeitos');
-  const fn = srv.slice(i, i + 4000);
+  const fn = srv.slice(i, i + 9000);
   for (const campo of ['total_registros', 'total_pecas', 'itens']) {
     ok(new RegExp(campo + ':').test(fn),
        'listarDefeitos devolve `' + campo + '` (a tela da AMB depende dele)');
