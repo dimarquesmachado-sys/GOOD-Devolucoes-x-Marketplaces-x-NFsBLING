@@ -46,6 +46,12 @@ const TELAS = [
 for (const t of TELAS) {
   const pHtml = path.join(RAIZ, t.html);
   const pSrv = path.join(RAIZ, t.servidor);
+  // b278.2 (Codex): arquivo configurado que SUMIU e falha, nao `continue`.
+  // Se alguem renomear a tela ou o produtor, o `continue` pulava o caso
+  // inteiro e a suite passava verde — o contrato ficaria sem guarda sem
+  // ninguem notar.
+  ok(fs.existsSync(pHtml), t.nome + ': a tela existe (' + t.html + ')');
+  ok(fs.existsSync(pSrv), t.nome + ': o produtor existe (' + t.servidor + ')');
   if (!fs.existsSync(pHtml) || !fs.existsSync(pSrv)) continue;
 
   const html = fs.readFileSync(pHtml, 'utf8');

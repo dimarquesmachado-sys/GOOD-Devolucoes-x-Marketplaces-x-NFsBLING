@@ -508,9 +508,27 @@ async function listarDefeitos({ busca } = {}) {
   try {
     let q = dbc.from(T.devolucoes)
       .select('id, produto_sku, produto_titulo, localizacao, defeito_qtd, problema_descricao, tipo, status, funcionario, nf_numero, criado_em')
-      .or('tipo.eq.defeito_estoque,status.eq.problema')
-      .order('criado_em', { ascending: false })
-      .limit(400);
+      .or('tipo.eq.defeito_estoque,status.eq.problema');
+
+    // b278.2 (Codex): a BUSCA vai ao BANCO, nao filtra em memoria depois.
+    //
+    // Meu aviso do teto dizia "use a busca por SKU/local" — mas a busca
+    // rodava DEPOIS do `.limit(400)`, entao procurar um defeito antigo que
+    // ficou de fora nao achava nada. O conselho era inutil justamente no
+    // caso que ele veio resolver.
+    if (busca) {
+      const b = String(busca).replace(/[,()"']/g, '').trim();
+      if (b) {
+        q = q.or([
+          `produto_sku.ilike.*${b}*`,
+          `localizacao.ilike.*${b}*`,
+          `produto_titulo.ilike.*${b}*`,
+          `nf_numero.ilike.*${b}*`,
+        ].join(','));
+      }
+    }
+
+    q = q.order('criado_em', { ascending: false }).limit(400);
     const r = await q;
     if (r.error) return { ok: false, erro: r.error.message };
 
@@ -539,6 +557,21 @@ async function listarDefeitos({ busca } = {}) {
 
     // Agrupa por local + SKU, somando as quantidades — e assim que
     // o estoquista procura: "o que tem na prateleira X".
+    // b278.2: busca as pecas retiradas dos itens desta pagina (tabela
+    // propria da AMB: `pecas_retiradas_amb`). Uma consulta so, por lote.
+    const pecasPorDefeito = {};
+    try {
+      const ids = linhas.map((x) => x.id).filter(Boolean);
+      if (ids.length) {
+        const rp = await dbc.from(T.pecasRetiradas)
+          .select('defeito_id, peca, quem, criado_em, usada_em')
+          .in('defeito_id', ids);
+        for (const pc of (rp.data || [])) {
+          (pecasPorDefeito[pc.defeito_id] = pecasPorDefeito[pc.defeito_id] || []).push(pc);
+        }
+      }
+    } catch (e) { /* tabela pode nao existir ainda: segue sem o historico */ }
+
     const grupos = {};
     let aguardandoNF = 0;
     for (const x of linhas) {
@@ -602,6 +635,13 @@ async function listarDefeitos({ busca } = {}) {
       itens: linhas
         .filter((x) => x.tipo === 'defeito_estoque' || x.status === 'concluido')
         .map((x) => ({
+          // b278.2 (Codex): o historico de PECAS RETIRADAS. A tela mostra
+          // "ja retirado daqui" so a partir de `oc.pecas_retiradas` — sem
+          // isso o estoquista pega uma peca que ja saiu do item, e o aviso
+          // sumia calado. A GOOD ja anexa (server.js:3328); portado.
+          pecas_retiradas: (pecasPorDefeito[x.id] || []).map((pc) => ({
+            peca: pc.peca, quem: pc.quem, quando: pc.criado_em, usada_em: pc.usada_em,
+          })),
           id: x.id,
           quando: x.criado_em || null,
           produto: x.produto_titulo || null,
