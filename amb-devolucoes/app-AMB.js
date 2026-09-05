@@ -82,7 +82,11 @@ const compat = require('./lib-AMB/compat-AMB');
 const criarAdminHelpers = require('./lib-AMB/admin-helpers-AMB');
 const criarNfPessoa = require('./lib-AMB/nf-pessoa-AMB');
 const registrarRotasAdminNF = require('./lib-AMB/rotas-admin-AMB');
-const criarMlBuscas = require('./lib-AMB/ml-buscas-AMB');
+// b238 - UNIFICADO: era copia BYTE A BYTE da /lib. Medi os 9 modulos
+// duplicados e este era 100% identico — ganho imediato, risco zero.
+// [stated] "tá tudo em lib? se conectar mais outra empresa, ja ta tudo no
+// esquema?" — nao estava: 9 modulos em copia, a AMB importava so 2 da /lib.
+const criarMlBuscas = require('../lib/ml-buscas');
 const registrarIdentificar = require('./lib-AMB/identificar-AMB');
 const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 
