@@ -41,6 +41,46 @@ for (const [nome, rel] of PRONTOS) {
      '  e o export padrao continua sendo o objeto pronto (compatibilidade)');
 }
 
+// ── b247 (Codex, P2 no #173): a fábrica aceita a FICHA REAL ─────────
+//
+// ⚠️ O APONTAMENTO ACHOU UM BURACO QUE ESTE TESTE ESCONDIA. Eu montava à
+// mão um objeto no formato do `config-AMB` e passava pra fábrica — então o
+// teste passava, mas o caminho documentado da Fase 3 quebrava:
+//
+//   criarDb(obterEmpresa('ambtotal'))  →  TypeError: ... reading 'tabelas'
+//
+// A ficha do registro e o config são coisas DIFERENTES: o registro diz QUEM
+// é a empresa (chave, prefixo, tabelas), o config diz COM O QUE ela se
+// conecta (url, token, client_id). Faltava a ponte.
+//
+// `lib/config-da-empresa.js` é essa ponte, e agora o teste usa o caminho
+// REAL — nada de cenário fabricado por mim.
+{
+  const { configDaEmpresa } = require('../lib/config-da-empresa');
+  const db = require(path.join(RAIZ, 'amb-devolucoes/lib-AMB/supabase-AMB.js'));
+
+  for (const chave of ['ambtotal', 'good']) {
+    let inst = null; let erro = null;
+    try { inst = db.criar(configDaEmpresa(chave)); } catch (e) { erro = e; }
+    ok(!erro, 'criar(configDaEmpresa(\'' + chave + '\')) monta sem erro'
+       + (erro ? ' — ' + erro.message.slice(0, 60) : ''));
+    if (inst) {
+      ok(!!inst.tabelas && !!inst.tabelas.devolucoes,
+         '  e a instancia sabe as tabelas dela (' + (inst.tabelas || {}).devolucoes + ')');
+    }
+  }
+
+  // e o adaptador tem que devolver o MESMO que o config-AMB devolve hoje —
+  // senao a Fase 4 mudaria comportamento sem ninguem notar
+  const real = require('../amb-devolucoes/config-AMB.js');
+  const pontes = configDaEmpresa('ambtotal');
+  for (const campo of ['bling.chaveAccess', 'ml.janelaDias', 'supabase.tabelas.devolucoes']) {
+    const ler = (o) => campo.split('.').reduce((x, k) => (x || {})[k], o);
+    ok(JSON.stringify(ler(real)) === JSON.stringify(ler(pontes)),
+       '  adaptador == config-AMB em `' + campo + '` (' + JSON.stringify(ler(pontes)) + ')');
+  }
+}
+
 // ── a fábrica produz instâncias INDEPENDENTES ───────────────────────
 //
 // É o ponto todo da Fase 3: montar com outra ficha não pode contaminar a
