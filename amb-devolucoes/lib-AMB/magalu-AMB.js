@@ -24,7 +24,7 @@
 'use strict';
 
 const axios = require('axios');
-const tokens = require('./render-tokens-AMB');
+const tokens = require('../../lib/render-tokens');
 const { registrarPreventiva } = require('../../lib/token-preventiva');   // b271
 // b272 (review do Codex) - ESTA DECLARACAO VOLTOU. Meu refactor da b271
 // apagou o bloco antigo levando junto o `let ultimaPersistenciaMagalu`, mas a

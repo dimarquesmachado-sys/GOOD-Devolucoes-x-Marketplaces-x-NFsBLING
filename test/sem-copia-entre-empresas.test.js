@@ -34,7 +34,7 @@ const LIB_AMB = path.join(RAIZ, 'amb-devolucoes', 'lib-AMB');
 
 // ── o que já foi unificado NÃO pode voltar a ter cópia ───────────────
 {
-  const unificados = ['ml-buscas', 'ritmo-bling', 'nf-pessoa'];   // cresce a cada unificação
+  const unificados = ['ml-buscas', 'ritmo-bling', 'nf-pessoa', 'render-tokens'];   // cresce a cada unificação
   for (const nome of unificados) {
     const naLib = fs.existsSync(path.join(LIB, nome + '.js'));
     const copias = fs.readdirSync(LIB_AMB)
@@ -76,6 +76,42 @@ const LIB_AMB = path.join(RAIZ, 'amb-devolucoes', 'lib-AMB');
   ok(novasCopias.length === 0,
      'nenhuma copia NOVA entre GOOD e AMB'
      + (novasCopias.length ? ' (peca nova deve nascer em /lib: ' + novasCopias.join(', ') + ')' : ''));
+}
+
+// ── b241.1: UNIFICAR NAO PODE PERDER FUNCIONALIDADE ─────────────────
+//
+// Ao unificar o `render-tokens` eu adotei a versao da AMB (que tinha uma
+// trava a mais) e PERDI a fila unica, que so existia na da GOOD. Escrevi no
+// commit que "a fila continua existindo" — e nao existia. Unificacao tem
+// dois lados, e eu conferi so um.
+//
+// Estas sao as protecoes que o modulo comum PRECISA ter, cada uma vinda de
+// um lado. Se um proximo merge derrubar qualquer uma, o teste acusa.
+{
+  const rt = fs.readFileSync(path.join(RAIZ, 'lib', 'render-tokens.js'), 'utf8');
+  const protecoes = [
+    // ⚠️ procurar so o NOME nao serve: ele aparece em 3 linhas, entao
+    // apagar a declaracao deixava o teste verde (testei). A checagem e
+    // sobre o COMPORTAMENTO: declarada, encadeada e reatribuida.
+    ['fila unica declarada (GOOD)', /let filaRenderGlobal = Promise\.resolve\(\)/,
+     'sem ela, duas rotacoes simultaneas se sobrescrevem'],
+    ['  e a gravacao entra nela', /filaRenderGlobal\.then\(/,
+     'declarar sem usar nao serializa nada'],
+    ['  e a fila avanca', /filaRenderGlobal = minhaVez/,
+     'sem reatribuir, a 3a chamada nao espera a 2a'],
+    ['aborta lista minuscula (GOOD)', /length < 5/,
+     'paginacao falha nao pode virar PUT que zera o ambiente'],
+    ['aborta encolhimento (veio da AMB)', /maiorListaVista/,
+     'o piso de 5 nao protege contra lista com "quase tudo"'],
+    ['pagina o GET (os dois)', /limit=100|cursor/,
+     'sem paginar, o PUT apaga o que ficou de fora'],
+  ];
+  for (const [nome, re, porque] of protecoes) {
+    ok(re.test(rt), 'render-tokens tem: ' + nome + (re.test(rt) ? '' : ' — ' + porque));
+  }
+  // e nao pode carregar a si mesmo
+  ok(!/require\('\.\.\/\.\.\/lib\/render-tokens'\)/.test(rt),
+     '  e nao tenta se carregar por require (ponte da epoca da copia)');
 }
 
 console.log('');
