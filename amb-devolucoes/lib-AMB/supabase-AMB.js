@@ -624,7 +624,13 @@ async function listarDefeitos({ busca } = {}) {
     // b278.8 (Codex): o overfetch so COMPENSA o que sai em memoria — depois
     // de excluir, corto em 400. Sem isso, 151 resolvidos ANTIGOS inflavam o
     // limite pra 551 e a tela recebia 551 onde a GOOD mostra 400.
-    if (linhas.length > 400) linhas = linhas.slice(0, 400);
+    // b278.10 - AUDITEI A FUNCAO INTEIRA (o dono: "vários problemas graves e
+    // vc não resolve. faz só superficial"). Ela virou uma pilha de remendos
+    // meus, cada um respondendo a um apontamento, e a ORDEM ficou errada:
+    // eu cortava em 400 ANTES de aplicar a busca em memoria. Procurando um
+    // SKU antigo, o corte podia tirar justamente ele.
+    //
+    // O corte agora vem DEPOIS de tudo que filtra. Ver o bloco da busca.
     // b278 - AVISAR QUANDO BATE NO TETO, em vez de sumir calado.
     //
     // Medi a GOOD e a AMB lado a lado: a GOOD tinha um sumico causado por
@@ -640,15 +646,32 @@ async function listarDefeitos({ busca } = {}) {
     // b278.6 (Codex): o teto se mede pelo que SOBROU util. Medir o retorno
     // cru do banco dava falso NEGATIVO quando muitos resolvidos vinham
     // dentro do lote: a tela dizia "completo" faltando defeito antigo.
-    const bateuNoTeto = linhas.length >= 400 || (sobrouFora > 0 && linhas.length >= limite - sobrouFora);
+    // b278.10: o teto e medido junto do CORTE, la embaixo — medir aqui era
+    // antes da busca em memoria, e com filtro aplicado o numero muda.
+    const trouxeCheio = linhas.length >= 400 || (sobrouFora > 0 && linhas.length >= limite - sobrouFora);
     if (busca) {
-      const b = String(busca).toLowerCase();
+      // b278.10: o banco JA filtrou (ilike, linha ~57). Este filtro era uma
+      // SEGUNDA passada que podia DERRUBAR o que o banco achou certo — o
+      // `includes` cru nao ignora acento, entao "Agua" nao casava com
+      // "Água" que o ilike trouxe. Normalizo os dois lados; assim ele so
+      // acrescenta (pega acento), nunca subtrai.
+      const norm = (v) => String(v || '').normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '').toLowerCase();
+      const b = norm(busca);
       linhas = linhas.filter(x =>
-        String(x.produto_sku || '').toLowerCase().includes(b) ||
-        String(x.localizacao || '').toLowerCase().includes(b) ||
-        String(x.produto_titulo || '').toLowerCase().includes(b) ||
-        String(x.nf_numero || '').toLowerCase().includes(b));
+        norm(x.produto_sku).includes(b) ||
+        norm(x.localizacao).includes(b) ||
+        norm(x.produto_titulo).includes(b) ||
+        norm(x.nf_numero).includes(b));
     }
+
+    // b278.10: o CORTE vem por ultimo, depois de tudo que filtra. Antes ele
+    // estava antes da busca, e podia tirar o item procurado.
+    //
+    // E o AVISO so vale quando NAO ha busca: numa busca por SKU, trazer
+    // menos que o teto e o normal, e o alerta assustaria a toa.
+    const bateuNoTeto = !busca && (trouxeCheio || linhas.length > 400);
+    if (linhas.length > 400) linhas = linhas.slice(0, 400);
 
     // Agrupa por local + SKU, somando as quantidades — e assim que
     // o estoquista procura: "o que tem na prateleira X".
@@ -657,6 +680,8 @@ async function listarDefeitos({ busca } = {}) {
     // propria da AMB: `pecas_retiradas_amb`). Uma consulta so, por lote.
     const pecasPorDefeito = {};
     try {
+      // b278.10: so consulta se ha itens — antes rodava mesmo com a lista
+      // vazia (busca sem resultado), gastando ida ao banco a toa.
       const ids = linhas.map((x) => x.id).filter(Boolean);
       if (ids.length) {
         const rp = await dbc.from(T.pecasRetiradas)
