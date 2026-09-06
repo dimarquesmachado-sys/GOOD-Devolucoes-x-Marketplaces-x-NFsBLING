@@ -78,6 +78,12 @@
         }
         const itens = d.itens || [];
         resumo.innerHTML = '📦 <b>' + d.total_registros + '</b> registro(s) · <b>' + d.total_pecas + '</b> peça(s) com defeito no estoque' + (q ? ' · filtro: "' + esc(q) + '"' : '')
+          // b278.1 (Codex): o aviso do teto so existia no JSON — a tela
+          // mostrava um inventario aparentemente completo com os defeitos
+          // mais ANTIGOS faltando. De nada adianta o servidor avisar se
+          // ninguem le.
+          + (d.teto_atingido ? '<br><span style="color:#c62828;font-weight:700;">⚠️ Lista no limite de '
+              + (d.teto || 400) + ' — pode haver defeito ANTIGO fora desta tela. Use a busca por SKU/local.</span>' : '')
           + (d.aguardando_nf ? '<br><span style="color:#e65100;">⏳ <b>' + d.aguardando_nf + '</b> devolução(ões) com defeito aguardando a emissão da NF — entram aqui depois de concluídas no painel.</span>' : '');
         if (itens.length === 0) { lista.innerHTML = '<div class="vazio">Nenhum defeito com localização registrada' + (q ? ' pra "' + esc(q) + '"' : '') + '.</div>'; return; }
         // v3.96 - agrupa por LOCAL e, dentro dele, por SKU (soma as quantidades

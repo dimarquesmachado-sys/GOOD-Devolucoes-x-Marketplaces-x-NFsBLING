@@ -508,29 +508,265 @@ async function listarDefeitos({ busca } = {}) {
   try {
     let q = dbc.from(T.devolucoes)
       .select('id, produto_sku, produto_titulo, localizacao, defeito_qtd, problema_descricao, tipo, status, funcionario, nf_numero, criado_em')
-      .or('tipo.eq.defeito_estoque,status.eq.problema')
-      .order('criado_em', { ascending: false })
-      .limit(400);
+      // b278.8 (Codex): so o que JA E defeito entra na consulta.
+      //
+      // `status=problema` sem `defeito_estoque` e devolucao AGUARDANDO NF —
+      // eu tirava do `itens` DEPOIS da consulta: 400 pendentes recentes
+      // ocupavam as vagas e o defeito antigo nunca era buscado. Mesmo erro
+      // do b278.5, noutro filtro.
+      // b278.9 (Codex): `concluido` SOZINHO NAO E DEFEITO. A rota
+      // /api/admin/concluir grava so o `status`, deixando `tipo='devolucao'`
+      // — e os paineis de APROVADAS e DIVERGENTES usam essa mesma acao.
+      // Meu filtro trazia toda devolucao normal concluida como peca
+      // defeituosa na prateleira. Numero errado e pior que ausente.
+      //
+      // Defeito e: `tipo=defeito_estoque` (lancado como defeito) ou
+      // `tipo=problema` concluido (o estoquista reportou problema e a
+      // triagem fechou) — os mesmos dois que a GOOD usa em `ATIVOS`
+      // (lib/defeitos-ciclo.js:363).
+      .or('tipo.eq.defeito_estoque,and(tipo.eq.problema,status.eq.concluido)')
+      // b278.4 (Codex): o `tipo` cobre o caso NOVO (o codigo atualiza a
+      // linha de origem). O caso ANTIGO nao — ali o estado terminal vive
+      // so no PEDIDO de recuperacao/descarte, e a linha continua
+      // `defeito_estoque`. Por isso preciso das duas exclusoes: esta, e a
+      // por `defeito_id` mais abaixo (como o defeitos-ciclo-AMB ja faz
+      // com o `porPedido`).
+      .not('tipo', 'in', '(recuperado,descartado,defeito_excluido)');
+
+    // b278.2 (Codex): a BUSCA vai ao BANCO, nao filtra em memoria depois.
+    //
+    // Meu aviso do teto dizia "use a busca por SKU/local" — mas a busca
+    // rodava DEPOIS do `.limit(400)`, entao procurar um defeito antigo que
+    // ficou de fora nao achava nada. O conselho era inutil justamente no
+    // caso que ele veio resolver.
+    if (busca) {
+      // b278.3 (Codex): NAO tirar pontuacao do termo. `D'Agua` virava
+      // `DAgua` e deixava de casar com o valor guardado. O que quebra o
+      // PostgREST e a virgula (separa condicoes no `or`) e o parentese —
+      // escapo com aspas em vez de apagar.
+      const b = String(busca).trim();
+      if (b) {
+        // b278.4 (Codex): escapar os CURINGAS do ILIKE. `_` e `%` sao
+        // padroes no SQL (qualquer caractere / qualquer sequencia) e o `*`
+        // vira `%` no PostgREST. Um SKU como `KJBD_179` casaria com
+        // `KJBD-179` e dezenas de outros, enchendo as 400 vagas com
+        // parecidos MAIS NOVOS — e o exato, mais antigo, ficaria de fora.
+        //
+        // Escapo com `\` (ESCAPE padrao do LIKE). As aspas continuam,
+        // pra virgula e parentese seguirem literais.
+        // b278.7 (Codex): a ASPA tambem e conteudo. `Modelo "Pro"` virava
+        // `Modelo Pro` e deixava de casar. Dentro de um valor entre aspas o
+        // PostgREST aceita `\"` — escapo, nao apago.
+        // b278.13 (Codex): o ILIKE do Postgres NAO ignora acento. Buscando
+        // "Agua", ele descarta "Água" no BANCO — e ai meu filtro em memoria
+        // (que normaliza) nunca ve a linha. Normalizar so depois nao
+        // adianta: o corte ja aconteceu.
+        //
+        // Mando as DUAS formas do termo: como digitado e sem acento. O `or`
+        // e uniao, entao qualquer uma que case traz a linha.
+        // As duas formas do termo (como digitado e sem acento) NAO bastam:
+        // se o dono digita "Agua" e o banco tem "Água", nenhuma casa. E
+        // gerar todas as variantes acentuadas explode (155 mil pra uma
+        // palavra de 11 letras).
+        //
+        // Saida: nas vogais e no C, mando `_` — o coringa de UM caractere do
+        // ILIKE, que casa tanto `a` quanto `á`. Pega demais de proposito: o
+        // banco so precisa NAO EXCLUIR a linha certa, e o filtro em memoria
+        // (que normaliza acento) refina depois. Divisao de trabalho: o banco
+        // corta o volume, a memoria acerta o alvo.
+        // b278.14 (Codex): o coringa em TODA vogal alargava demais —
+        // `ABC123` virava `_B_123` e casava `XBC123`, enchendo as 400 vagas
+        // com lixo e empurrando o resultado certo pra fora. Troquei um
+        // problema (acento) por outro (ruido), que e o padrao que o dono
+        // vem cobrando.
+        //
+        // Agora mando as DUAS condicoes: o termo LITERAL (preciso, pega a
+        // maioria dos casos) e, so quando o termo tem vogal, a forma com
+        // coringa — mas ambas no mesmo `or`, entao o literal casa direto e
+        // o coringa serve de rede pro acento. E o filtro em memoria refina.
+        const escapa = (v) => v.replace(/([\\%_*])/g, '\\$1').replace(/"/g, '\\"');
+        const alvo = (padrao) => '"*' + padrao + '*"';
+        const literal = alvo(escapa(b));
+        const campos = ['produto_sku', 'localizacao', 'produto_titulo', 'nf_numero'];
+        const condicoes = campos.map((c) => `${c}.ilike.${literal}`);
+        // rede do acento: so nas vogais que PODEM ter acento em portugues
+        if (/[aeiouAEIOUcC]/.test(b)) {
+          const comCoringa = alvo(escapa(b).replace(/[aeiouAEIOUcC]/g, '_'));
+          for (const c of campos) condicoes.push(`${c}.ilike.${comCoringa}`);
+        }
+        q = q.or(condicoes.join(','));
+      }
+    }
+
+    // b278.4 (Codex): os RESOLVIDOS POR PEDIDO. O `defeitos-ciclo-AMB` ja
+    // faz isso (`porPedido`, linha 376): pedido autorizado ou concluido =
+    // a peca saiu do estoque de defeitos, mesmo que a linha de origem
+    // continue marcada como `defeito_estoque`. Sem isso a tela mostra como
+    // disponivel algo que ja foi recuperado ou descartado.
+    // b278.16 (Codex): NAO leio mais o historico inteiro a cada carga.
+    //
+    // Antes eu varria TODA a tabela de pedidos (paginando de 1.000 em 1.000)
+    // pra montar o conjunto de resolvidos — e isso cresce pra sempre: com o
+    // tempo a tela ficaria mais lenta a cada mes, mesmo numa busca que nao
+    // acha nada. Ler tudo pra descartar quase tudo e o desenho errado.
+    //
+    // Invertido: primeiro busco os defeitos (consulta LIMITADA), depois
+    // pergunto o estado SO DELES. Sao no maximo 400 ids, uma chamada, e o
+    // custo para de crescer com o historico.
+    //
+    // O preco: os resolvidos ocupam vaga dentro das 400. Compenso pedindo
+    // 800 e cortando depois — o dobro cobre com folga (hoje ele tem 9 no
+    // alerta) e continua sendo UMA consulta limitada.
+    const resolvidosPorPedido = new Set();
+    // b278.16: pede o DOBRO pra compensar os resolvidos que ainda ocupam
+    // vaga (eles so serao conhecidos depois desta consulta). Continua sendo
+    // uma consulta limitada — o custo nao cresce com o historico.
+    const limite = 800;
+    q = q.order('criado_em', { ascending: false }).limit(limite);
     const r = await q;
     if (r.error) return { ok: false, erro: r.error.message };
 
     let linhas = r.data || [];
-    if (busca) {
-      const b = String(busca).toLowerCase();
-      linhas = linhas.filter(x =>
-        String(x.produto_sku || '').toLowerCase().includes(b) ||
-        String(x.localizacao || '').toLowerCase().includes(b) ||
-        String(x.produto_titulo || '').toLowerCase().includes(b) ||
-        String(x.nf_numero || '').toLowerCase().includes(b));
+
+    // b278.16: agora sim, o estado SO dos que vieram (max 800 ids).
+    //
+    // ⚠️ E se esta consulta falhar, NAO devolvo inventario incompleto: o
+    // estoquista veria como disponivel peca ja recuperada ou descartada, e
+    // iria buscar na prateleira. Erro explicito e melhor que numero errado.
+    if (linhas.length) {
+      const idsPagina = linhas.map((x) => x.id).filter(Boolean);
+      const rped = await dbc.from('defeito_pedidos_amb')
+        .select('defeito_id')
+        .in('status', ['autorizado', 'concluido'])
+        .in('defeito_id', idsPagina);
+      if (rped.error) {
+        return { ok: false, erro: 'nao consegui conferir os defeitos ja resolvidos: ' + rped.error.message };
+      }
+      for (const pd of (rped.data || [])) {
+        if (pd.defeito_id) resolvidosPorPedido.add(String(pd.defeito_id));
+      }
+      linhas = linhas.filter((x) => !resolvidosPorPedido.has(String(x.id)));
     }
+    // b278.8 (Codex): o overfetch so COMPENSA o que sai em memoria — depois
+    // de excluir, corto em 400. Sem isso, 151 resolvidos ANTIGOS inflavam o
+    // limite pra 551 e a tela recebia 551 onde a GOOD mostra 400.
+    // b278.10 - AUDITEI A FUNCAO INTEIRA (o dono: "vários problemas graves e
+    // vc não resolve. faz só superficial"). Ela virou uma pilha de remendos
+    // meus, cada um respondendo a um apontamento, e a ORDEM ficou errada:
+    // eu cortava em 400 ANTES de aplicar a busca em memoria. Procurando um
+    // SKU antigo, o corte podia tirar justamente ele.
+    //
+    // O corte agora vem DEPOIS de tudo que filtra. Ver o bloco da busca.
+    // b278 - AVISAR QUANDO BATE NO TETO, em vez de sumir calado.
+    //
+    // Medi a GOOD e a AMB lado a lado: a GOOD tinha um sumico causado por
+    // itens JA RESOLVIDOS ocupando vaga dentro do limite (consertado la com
+    // `idsForaDoEstado`/`limiteDaConsulta`). A AMB NAO tem esse caso — ela
+    // filtra por tipo/status direto, sem o historico antigo que gerava o
+    // conflito. Portar aquelas funcoes pra ca seria trazer complexidade pra
+    // um problema que ela nao tem.
+    //
+    // O risco que RESTA e outro e mais simples: se passar de 400 ativos, os
+    // mais ANTIGOS somem da lista sem ninguem perceber (ordem DESC). Nao
+    // aumento o teto no escuro — aviso, e ai da pra decidir com numero.
+    // b278.6 (Codex): o teto se mede pelo que SOBROU util. Medir o retorno
+    // cru do banco dava falso NEGATIVO quando muitos resolvidos vinham
+    // dentro do lote: a tela dizia "completo" faltando defeito antigo.
+    // b278.10: o teto e medido junto do CORTE, la embaixo — medir aqui era
+    // antes da busca em memoria, e com filtro aplicado o numero muda.
+    // b278.16: `sobrouFora` sumiu junto com a leitura total do historico.
+    // O criterio agora e direto: se o banco devolveu o limite cheio, havia
+    // mais — e depois de excluir os resolvidos, se ainda sobra mais que a
+    // pagina de 400, tambem havia mais.
+    const trouxeCheio = (r.data || []).length >= limite || linhas.length > 400;
+    if (busca) {
+      // b278.10: o banco JA filtrou (ilike, linha ~57). Este filtro era uma
+      // SEGUNDA passada que podia DERRUBAR o que o banco achou certo — o
+      // `includes` cru nao ignora acento, entao "Agua" nao casava com
+      // "Água" que o ilike trouxe. Normalizo os dois lados; assim ele so
+      // acrescenta (pega acento), nunca subtrai.
+      const norm = (v) => String(v || '').normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '').toLowerCase();
+      const b = norm(busca);
+      linhas = linhas.filter(x =>
+        norm(x.produto_sku).includes(b) ||
+        norm(x.localizacao).includes(b) ||
+        norm(x.produto_titulo).includes(b) ||
+        norm(x.nf_numero).includes(b));
+    }
+
+    // b278.10: o CORTE vem por ultimo, depois de tudo que filtra. Antes ele
+    // estava antes da busca, e podia tirar o item procurado.
+    //
+    // E o AVISO so vale quando NAO ha busca: numa busca por SKU, trazer
+    // menos que o teto e o normal, e o alerta assustaria a toa.
+    // b278.11 (Codex): o aviso vale COM busca tambem. Eu suprimi por `!busca`
+    // pra nao assustar a toa — mas se a busca casa 400+ defeitos, o limite
+    // corta igual e a tela mostra os 400 primeiros como se fossem tudo. O
+    // que nao vale e alertar quando trouxe POUCO: ai o filtro e que reduziu.
+    //
+    // Criterio unico: bateu no teto = a consulta encheu. Com ou sem busca.
+    const bateuNoTeto = trouxeCheio || linhas.length > 400;
+    if (linhas.length > 400) linhas = linhas.slice(0, 400);
 
     // Agrupa por local + SKU, somando as quantidades — e assim que
     // o estoquista procura: "o que tem na prateleira X".
+
+    // b278.2: busca as pecas retiradas dos itens desta pagina (tabela
+    // propria da AMB: `pecas_retiradas_amb`). Uma consulta so, por lote.
+    const pecasPorDefeito = {};
+    try {
+      // b278.10: so consulta se ha itens — antes rodava mesmo com a lista
+      // vazia (busca sem resultado), gastando ida ao banco a toa.
+      const ids = linhas.map((x) => x.id).filter(Boolean);
+      if (ids.length) {
+        // b278.15 (Codex): PAGINA TAMBEM. 400 defeitos com varias pecas cada
+        // passam do teto de 1.000 linhas do PostgREST — e as pecas que
+        // ficassem de fora sumiam do card, que e o aviso "ja retirado daqui"
+        // que o estoquista precisa ver. Mesma regra da consulta dos pedidos:
+        // ordem fixa e pagina ate acabar.
+        const PAG_PC = 1000;
+        for (let de = 0; ; de += PAG_PC) {
+          const rp = await dbc.from(T.pecasRetiradas)
+            .select('defeito_id, peca, quem, criado_em, usada_em')
+            .in('defeito_id', ids)
+            .order('id', { ascending: true })
+            .range(de, de + PAG_PC - 1);
+          if (rp.error) break;
+          const pcs = rp.data || [];
+          for (const pc of pcs) {
+            (pecasPorDefeito[pc.defeito_id] = pecasPorDefeito[pc.defeito_id] || []).push(pc);
+          }
+          if (pcs.length < PAG_PC) break;
+        }
+      }
+    } catch (e) { /* tabela pode nao existir ainda: segue sem o historico */ }
+
     const grupos = {};
+    // b278.8: a contagem de AGUARDANDO NF vinha deste mesmo laco — tirando
+    // os pendentes da consulta, ela zerava. Agora e contagem propria
+    // (head+count, sem trazer linha).
     let aguardandoNF = 0;
+    try {
+      // b278.12 (Codex): fora os TERMINAIS aqui tambem. Quando um problema
+      // e recuperado ou descartado, o `defeitos-ciclo-AMB` muda o `tipo` mas
+      // deixa `status='problema'` — a linha continuava contando como
+      // "aguardando NF" pra sempre. Eu ja excluia esses tres na consulta
+      // principal e esqueci na contagem: mesma regra, dois lugares.
+      const rc = await dbc.from(T.devolucoes)
+        .select('id', { count: 'exact', head: true })
+        .eq('status', 'problema')
+        .not('tipo', 'in', '(defeito_estoque,recuperado,descartado,defeito_excluido)');
+      aguardandoNF = rc.count || 0;
+    } catch (e) { /* sem a contagem, a tela so nao mostra o aviso */ }
+
     for (const x of linhas) {
-      const contaComoDefeito = x.tipo === 'defeito_estoque' || x.status === 'concluido';
-      if (x.status === 'problema' && x.tipo !== 'defeito_estoque') aguardandoNF++;
+      const contaComoDefeito = x.tipo === 'defeito_estoque' || (x.tipo === 'problema' && x.status === 'concluido');
+      // b278.12: NAO somar aqui. A contagem agora vem da consulta propria
+      // (head+count) logo acima; este `++` era do codigo antigo e somaria
+      // POR CIMA dela. Achei varrendo os usos de `status='problema'`, nao
+      // por apontamento — a consulta principal ja nem traz pendente, entao
+      // hoje daria 0, mas basta um filtro mudar pra virar contagem dobrada.
       const local = x.localizacao || '(sem local)';
       const chave = local + '||' + (x.produto_sku || '?');
       if (!grupos[chave]) {
@@ -549,7 +785,70 @@ async function listarDefeitos({ busca } = {}) {
     const lista = Object.values(grupos).sort((a, b) =>
       String(a.localizacao).localeCompare(String(b.localizacao)));
 
-    return { ok: true, total_linhas: linhas.length, aguardando_nf: aguardandoNF, grupos: lista };
+    return {
+      ok: true,
+      total_linhas: linhas.length, aguardando_nf: aguardandoNF, grupos: lista,
+      // b278 - ⚠️ A TELA DE DEFEITOS DA AMB ESTAVA MOSTRANDO LISTA VAZIA.
+      //
+      // `defeitos-AMB.html` e copia da tela da GOOD e le `itens`,
+      // `total_registros` e `total_pecas` — que o servidor da AMB NUNCA
+      // mandou (ele manda `grupos` e `total_linhas`). Resultado na tela:
+      // "undefined registro(s)" e nenhum defeito listado.
+      //
+      // Achei procurando outra coisa: fui portar um conserto da GOOD e,
+      // ao conferir o produtor antes de mexer (regra 4.12), vi que a tela
+      // lia campo que ninguem produz. E a mesma classe que o
+      // `campo-tem-produtor` pega no server.js — aqui era entre HTML e
+      // servidor, que nenhum teste cobria.
+      //
+      // Mantenho os nomes atuais (alguem pode usar) e acrescento os que a
+      // tela espera, com o MESMO significado da GOOD.
+      // b278.1 (Codex): `itens` no MOLDE DA TELA, nao os grupos.
+      //
+      // Meu conserto anterior igualou so os nomes de topo e entregou `lista`
+      // (agrupada: `localizacao`, `defeitos[]`, origem MAIUSCULA). A tela le
+      // `it.local`, `oc.defeito`, `oc.quando`, `oc.nf` e compara
+      // `origem === 'estoque'` minusculo — entao tudo caia em "(sem local)",
+      // sem descricao e sem data. Consertei pela metade.
+      //
+      // Agora e linha a linha, no mesmo formato da GOOD (server.js, rota
+      // /api/defeitos) — que e de onde a tela foi copiada.
+      //
+      // ⚠️ E SO O QUE JA E DEFEITO: `status === 'problema'` sem
+      // `defeito_estoque` e devolucao AGUARDANDO NF, que a propria funcao
+      // conta em `aguardando_nf`. Mostrar como defeito seria contar duas
+      // vezes a mesma peca — numero errado e pior que numero ausente.
+      total_registros: linhas.filter((x) => x.tipo === 'defeito_estoque' || (x.tipo === 'problema' && x.status === 'concluido')).length,
+      total_pecas: linhas
+        .filter((x) => x.tipo === 'defeito_estoque' || (x.tipo === 'problema' && x.status === 'concluido'))
+        .reduce((a, x) => a + (Number(x.defeito_qtd) || 1), 0),
+      itens: linhas
+        .filter((x) => x.tipo === 'defeito_estoque' || (x.tipo === 'problema' && x.status === 'concluido'))
+        .map((x) => ({
+          // b278.2 (Codex): o historico de PECAS RETIRADAS. A tela mostra
+          // "ja retirado daqui" so a partir de `oc.pecas_retiradas` — sem
+          // isso o estoquista pega uma peca que ja saiu do item, e o aviso
+          // sumia calado. A GOOD ja anexa (server.js:3328); portado.
+          pecas_retiradas: (pecasPorDefeito[x.id] || []).map((pc) => ({
+            peca: pc.peca, quem: pc.quem, quando: pc.criado_em, usada_em: pc.usada_em,
+          })),
+          id: x.id,
+          quando: x.criado_em || null,
+          produto: x.produto_titulo || null,
+          sku: x.produto_sku || null,
+          nf: x.nf_numero || null,
+          local: x.localizacao || null,
+          qtd: x.defeito_qtd || null,
+          defeito: String(x.problema_descricao || '')
+            .replace(/^\[RE-BIPE\]\s*/, '')
+            .replace(/^\[Reportado por [^\]]+\]\s*/, '')
+            .replace(/^\[LANCADO MANUAL por [^\]]+\]\s*/, ''),
+          origem: x.tipo === 'defeito_estoque' ? 'estoque' : 'devolucao',
+          status: x.status,
+        })),
+      // o teto foi atingido — pode haver defeito ANTIGO fora da lista
+      teto_atingido: bateuNoTeto || undefined, teto: bateuNoTeto ? 400 : undefined,
+    };
   } catch (e) { return { ok: false, erro: e.message }; }
 }
 
