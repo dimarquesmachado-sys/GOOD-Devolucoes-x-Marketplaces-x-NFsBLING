@@ -557,7 +557,26 @@ async function listarDefeitos({ busca } = {}) {
         // b278.7 (Codex): a ASPA tambem e conteudo. `Modelo "Pro"` virava
         // `Modelo Pro` e deixava de casar. Dentro de um valor entre aspas o
         // PostgREST aceita `\"` — escapo, nao apago.
-        const t = '"*' + b.replace(/([\\%_*])/g, '\\$1').replace(/"/g, '\\"') + '*"';
+        // b278.13 (Codex): o ILIKE do Postgres NAO ignora acento. Buscando
+        // "Agua", ele descarta "Água" no BANCO — e ai meu filtro em memoria
+        // (que normaliza) nunca ve a linha. Normalizar so depois nao
+        // adianta: o corte ja aconteceu.
+        //
+        // Mando as DUAS formas do termo: como digitado e sem acento. O `or`
+        // e uniao, entao qualquer uma que case traz a linha.
+        // As duas formas do termo (como digitado e sem acento) NAO bastam:
+        // se o dono digita "Agua" e o banco tem "Água", nenhuma casa. E
+        // gerar todas as variantes acentuadas explode (155 mil pra uma
+        // palavra de 11 letras).
+        //
+        // Saida: nas vogais e no C, mando `_` — o coringa de UM caractere do
+        // ILIKE, que casa tanto `a` quanto `á`. Pega demais de proposito: o
+        // banco so precisa NAO EXCLUIR a linha certa, e o filtro em memoria
+        // (que normaliza acento) refina depois. Divisao de trabalho: o banco
+        // corta o volume, a memoria acerta o alvo.
+        const escapa = (v) => v.replace(/([\\%_*])/g, '\\$1').replace(/"/g, '\\"');
+        const largo = escapa(b).replace(/[aeioucAEIOUC]/g, '_');
+        const t = '"*' + largo + '*"';
         q = q.or([
           `produto_sku.ilike.${t}`,
           `localizacao.ilike.${t}`,
@@ -574,11 +593,21 @@ async function listarDefeitos({ busca } = {}) {
     // disponivel algo que ja foi recuperado ou descartado.
     const resolvidosPorPedido = new Set();
     try {
-      const rped = await dbc.from('defeito_pedidos_amb')
-        .select('defeito_id, status')
-        .in('status', ['autorizado', 'concluido']);
-      for (const pd of (rped.data || [])) {
-        if (pd.defeito_id) resolvidosPorPedido.add(String(pd.defeito_id));
+      // b278.13 (Codex): PAGINAR. O PostgREST corta a resposta em 1.000
+      // linhas por padrao — passando disso, eu recebia so a primeira pagina
+      // e os defeitos resolvidos das demais voltavam a aparecer como
+      // disponiveis. Consulta sem `range` nao e consulta completa.
+      const PAG = 1000;
+      for (let de = 0; de < 20000; de += PAG) {
+        const rped = await dbc.from('defeito_pedidos_amb')
+          .select('defeito_id, status')
+          .in('status', ['autorizado', 'concluido'])
+          .range(de, de + PAG - 1);
+        const linhasPed = rped.data || [];
+        for (const pd of linhasPed) {
+          if (pd.defeito_id) resolvidosPorPedido.add(String(pd.defeito_id));
+        }
+        if (linhasPed.length < PAG) break;   // acabou
       }
     } catch (e) { /* sem os pedidos, vale so o tipo da linha */ }
 
