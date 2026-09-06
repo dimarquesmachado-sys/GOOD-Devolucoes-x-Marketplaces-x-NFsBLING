@@ -139,6 +139,11 @@ function statusConfig() {
 
 module.exports = {
   EMPRESA, NOME_EMPRESA, PREFIXO,
+  // b246 (Fase 3): quem monta uma integracao precisa saber a chave no
+  // registro e o prefixo das env vars — sem isso os modulos voltariam a
+  // escrever 'ambtotal' e 'AMB_' no literal.
+  CHAVE_REGISTRO: FICHA.chave,
+  PREFIXO_ENV: FICHA.prefixoEnv,
   bling, ml, shopee, magalu, supabase, render,
   urlBase, redirectUri, statusConfig,
 };
