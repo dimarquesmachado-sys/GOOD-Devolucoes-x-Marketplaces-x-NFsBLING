@@ -32,6 +32,15 @@ const CFG = fs.readFileSync(path.join(RAIZ, 'amb-devolucoes', 'config-AMB.js'), 
   ok(noApp.length === 0,
      'app-AMB nao le `process.env.AMB_*` direto'
      + (noApp.length ? ' (SOBRARAM: ' + noApp.slice(0, 5).join(', ') + ')' : ''));
+
+  // b244 - FASE 1 COMPLETA: a GOOD tambem. Estes 4 sao FISCAIS (deposito,
+  // natureza, tipo da NF) — os que emitem nota errada em silencio se lidos
+  // do lugar errado.
+  const SRV = fs.readFileSync(path.join(RAIZ, 'server.js'), 'utf8');
+  const noSrv = [...SRV.matchAll(/process\.env\.GOOD_(\w+)/g)].map((m) => m[1]);
+  ok(noSrv.length === 0,
+     'server.js nao le `process.env.GOOD_*` direto'
+     + (noSrv.length ? ' (SOBRARAM: ' + noSrv.slice(0, 5).join(', ') + ')' : ''));
   ok(/require\('\.\.\/lib\/empresas'\)/.test(CFG),
      '  e importa o registro de empresas');
 }
