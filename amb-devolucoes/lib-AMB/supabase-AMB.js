@@ -617,6 +617,12 @@ async function listarDefeitos({ busca } = {}) {
         const rped = await dbc.from('defeito_pedidos_amb')
           .select('defeito_id, status')
           .in('status', ['autorizado', 'concluido'])
+          // b278.15 (Codex): ORDEM FIXA. Sem `order`, o PostgREST pode
+          // devolver as linhas em ordem diferente a cada pagina — as
+          // paginas se sobrepoem ou pulam registros, e o defeito resolvido
+          // que caiu no vao volta a aparecer como disponivel. Paginacao sem
+          // ordem nao e paginacao.
+          .order('id', { ascending: true })
           .range(de, de + PAG - 1);
         // erro no meio: paro e sigo com o que juntei — a rede em memoria
         // ainda pega o resto, e melhor lista parcial que laco infinito
@@ -737,11 +743,24 @@ async function listarDefeitos({ busca } = {}) {
       // vazia (busca sem resultado), gastando ida ao banco a toa.
       const ids = linhas.map((x) => x.id).filter(Boolean);
       if (ids.length) {
-        const rp = await dbc.from(T.pecasRetiradas)
-          .select('defeito_id, peca, quem, criado_em, usada_em')
-          .in('defeito_id', ids);
-        for (const pc of (rp.data || [])) {
-          (pecasPorDefeito[pc.defeito_id] = pecasPorDefeito[pc.defeito_id] || []).push(pc);
+        // b278.15 (Codex): PAGINA TAMBEM. 400 defeitos com varias pecas cada
+        // passam do teto de 1.000 linhas do PostgREST — e as pecas que
+        // ficassem de fora sumiam do card, que e o aviso "ja retirado daqui"
+        // que o estoquista precisa ver. Mesma regra da consulta dos pedidos:
+        // ordem fixa e pagina ate acabar.
+        const PAG_PC = 1000;
+        for (let de = 0; ; de += PAG_PC) {
+          const rp = await dbc.from(T.pecasRetiradas)
+            .select('defeito_id, peca, quem, criado_em, usada_em')
+            .in('defeito_id', ids)
+            .order('id', { ascending: true })
+            .range(de, de + PAG_PC - 1);
+          if (rp.error) break;
+          const pcs = rp.data || [];
+          for (const pc of pcs) {
+            (pecasPorDefeito[pc.defeito_id] = pecasPorDefeito[pc.defeito_id] || []).push(pc);
+          }
+          if (pcs.length < PAG_PC) break;
         }
       }
     } catch (e) { /* tabela pode nao existir ainda: segue sem o historico */ }

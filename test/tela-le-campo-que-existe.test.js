@@ -153,11 +153,49 @@ for (const t of TELAS) {
      + (fantasmas.length ? ' (NUNCA MANDADOS: ' + fantasmas.join(', ') + ')' : ' (' + lidos.size + ' conferidos)'));
 }
 
+// ── b278.15 (Codex): campo ANINHADO nao vale como campo de topo ─────
+//
+// O detector generico colhia chaves de qualquer objeto do retorno, entao a
+// tela podia ler `d.qtd` — que so existe DENTRO de um item — e o teste
+// passava. Tentei delimitar o topo contando chaves e por indentacao; as
+// duas quebraram no `.map((x) => ({...}))` do retorno.
+//
+// Em vez de um detector cada vez mais fragil, LISTO os campos de topo que a
+// tela pode ler. Sao poucos, mudam pouco, e a lista e explicita: se alguem
+// acrescentar um campo e a tela usar, o teste cobra que ele esteja aqui.
+{
+  const TOPO_AMB = ['ok', 'erro', 'total_linhas', 'aguardando_nf', 'grupos',
+                    'total_registros', 'total_pecas', 'itens', 'teto_atingido', 'teto'];
+  const srvAmb = fs.readFileSync(
+    path.join(RAIZ, 'amb-devolucoes', 'lib-AMB', 'supabase-AMB.js'), 'utf8');
+  // ⚠️ SEM NUMERO MAGICO. A janela fixa ja me traiu 3x hoje: a funcao
+  // cresce, o corte fica curto e o teste acusa campo que EXISTE. Uso o
+  // inicio da PROXIMA funcao como fim.
+  const i = srvAmb.indexOf('async function listarDefeitos');
+  const fimFn = srvAmb.indexOf('async function ', i + 10);
+  const fn = srvAmb.slice(i, fimFn > 0 ? fimFn : undefined);
+  const html = fs.readFileSync(path.join(RAIZ, 'amb-devolucoes', 'public-AMB', 'defeitos-AMB.html'), 'utf8');
+  const lidos = [...new Set([...html.matchAll(/\bd\.(\w+)/g)].map((m) => m[1]))];
+
+  const foraDaLista = lidos.filter((c) => !TOPO_AMB.includes(c));
+  ok(foraDaLista.length === 0,
+     'a tela da AMB so le campos de TOPO conhecidos'
+     + (foraDaLista.length ? ' (FORA DA LISTA: ' + foraDaLista.join(', ')
+        + ' — se e campo novo, acrescente aqui; se e de item, a tela esta errada)' : ''));
+
+  const naoProduzidos = TOPO_AMB.filter((c) => c !== 'ok' && c !== 'erro'
+    && !new RegExp('\\b' + c + ':').test(fn));
+  ok(naoProduzidos.length === 0,
+     '  e o servidor produz todos eles'
+     + (naoProduzidos.length ? ' (FALTAM: ' + naoProduzidos.join(', ') + ')' : ''));
+}
+
 // ── e o caso concreto que motivou tudo ──────────────────────────────
 {
   const srv = fs.readFileSync(path.join(RAIZ, 'amb-devolucoes', 'lib-AMB', 'supabase-AMB.js'), 'utf8');
   const i = srv.indexOf('async function listarDefeitos');
-  const fn = srv.slice(i, i + 20000);
+  const fimFn2 = srv.indexOf('async function ', i + 10);
+  const fn = srv.slice(i, fimFn2 > 0 ? fimFn2 : undefined);
   for (const campo of ['total_registros', 'total_pecas', 'itens']) {
     ok(new RegExp(campo + ':').test(fn),
        'listarDefeitos devolve `' + campo + '` (a tela da AMB depende dele)');
