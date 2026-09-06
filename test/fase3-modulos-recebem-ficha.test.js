@@ -139,6 +139,42 @@ for (const [nome, rel] of PRONTOS) {
   }
 }
 
+// ── b249, passo 4: o app monta COM A FICHA ──────────────────────────
+//
+// É o objetivo da Fase 3 inteira. Se o app-AMB volta a pegar os módulos
+// prontos (`require(...)` sem `.criar`), o config da AMB volta a ficar
+// embutido e a Girassol precisaria de pasta própria de novo.
+{
+  const app = fs.readFileSync(path.join(RAIZ, 'amb-devolucoes', 'app-AMB.js'), 'utf8');
+
+  ok(/configDaEmpresa\('ambtotal'\)/.test(app),
+     'app-AMB monta a partir da FICHA do registro');
+
+  for (const mod of ['bling-AMB', 'ml-AMB', 'ml-returns-AMB', 'nf-nomes-AMB', 'supabase-AMB']) {
+    const re = new RegExp("require\\('\\./lib-AMB/" + mod + "'\\)\\.criar\\(CFG_EMPRESA\\)");
+    ok(re.test(app), '  ' + mod + ' montado com a ficha');
+  }
+
+  // ⚠️ e nenhum deles pode voltar a ser importado pronto
+  for (const mod of ['bling-AMB', 'ml-AMB', 'supabase-AMB']) {
+    const cru = new RegExp("require\\('\\./lib-AMB/" + mod + "'\\);");
+    ok(!cru.test(app), '  e ' + mod + ' NAO e importado pronto (sem .criar)');
+  }
+}
+
+// ── e a prova final: outra empresa monta sem pasta propria ──────────
+{
+  const { configDaEmpresa } = require('../lib/config-da-empresa');
+  const mods = ['supabase-AMB', 'bling-AMB', 'ml-AMB', 'ml-returns-AMB', 'nf-nomes-AMB'];
+  let erro = null;
+  try {
+    const cfg = configDaEmpresa('good');   // outra empresa, mesma lib
+    for (const m of mods) require(path.join(RAIZ, 'amb-devolucoes/lib-AMB', m + '.js')).criar(cfg);
+  } catch (e) { erro = e; }
+  ok(!erro, 'os 5 modulos montam para OUTRA empresa, sem pasta nova'
+     + (erro ? ' — ' + erro.message.slice(0, 60) : ''));
+}
+
 console.log('');
 console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
 process.exit(falhas ? 1 : 0);

@@ -57,10 +57,22 @@ const express = require('express');
 const path = require('path');
 const crypto = require('crypto');
 const cfg = require('./config-AMB');
-const bling = require('./lib-AMB/bling-AMB');
-const ml = require('./lib-AMB/ml-AMB');
-const mlReturns = require('./lib-AMB/ml-returns-AMB');
-const nfNomes = require('./lib-AMB/nf-nomes-AMB');
+// b249 - FASE 3, passo 4: os modulos que ja sao FABRICA sao montados COM A
+// FICHA, em vez de vir prontos com o config da AMB embutido.
+//
+// ⚠️ NAO REINDENTEI AS 2.800 LINHAS DE ROTA. Envolver o arquivo inteiro
+// numa funcao seria um diff ilegivel e arriscado — e as rotas nao precisam
+// mudar: elas usam `bling`, `ml`, `db`... e o que muda e de onde ESSES
+// vem. O ponto de montagem e aqui, em 6 linhas.
+//
+// Quando a Girassol entrar (Fase 4), o unico passo aqui e trocar a chave.
+const { configDaEmpresa } = require('../lib/config-da-empresa');
+const CFG_EMPRESA = configDaEmpresa('ambtotal');
+
+const bling = require('./lib-AMB/bling-AMB').criar(CFG_EMPRESA);
+const ml = require('./lib-AMB/ml-AMB').criar(CFG_EMPRESA);
+const mlReturns = require('./lib-AMB/ml-returns-AMB').criar(CFG_EMPRESA);
+const nfNomes = require('./lib-AMB/nf-nomes-AMB').criar(CFG_EMPRESA);
 const tokens = require('../lib/render-tokens');
 const auth = require('./lib-AMB/auth-AMB');
 const tiktokPonte = require('../lib/tiktok-ponte');
@@ -69,7 +81,7 @@ const confrontar = require('../lib/confrontar-nf');   // b208 - escada de desemp
 const vinculoCache = require('../lib/vinculo-nf-cache');   // b204 - vinculo NF ja achado
 const marcadores = require('../lib/marcadores-estornada');   // b200 - peca unica dos marcadores
 const magaluCancelados = require('../lib/magalu-cancelados');  // b191 - peca UNICA, empresa por parametro // b334 - ponte TikTok via Mover-Pedidos (peca unica, empresa como parametro)
-const db = require('./lib-AMB/supabase-AMB');
+const db = require('./lib-AMB/supabase-AMB').criar(CFG_EMPRESA);
 const mkt = require('./lib-AMB/marketplace-AMB');
 const shopee = require('./lib-AMB/shopee-AMB');
 const magalu = require('./lib-AMB/magalu-AMB');
@@ -100,7 +112,7 @@ const criarMlBuscas = require('../lib/ml-buscas');
 const registrarIdentificar = require('./lib-AMB/identificar-AMB');
 const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 
-const VERSAO = 'AMB Devolucoes b299';
+const VERSAO = 'AMB Devolucoes b300';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
