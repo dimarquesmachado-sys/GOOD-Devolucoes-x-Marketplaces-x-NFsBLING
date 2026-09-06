@@ -140,10 +140,24 @@ console.log('6. escopo do PR');
       const n = Number(ex('git rev-list --count origin/main..HEAD', { cwd: RAIZ }).toString().trim());
       const arquivos = ex('git diff --name-only origin/main..HEAD', { cwd: RAIZ })
         .toString().trim().split('\n').filter(Boolean).length;
-      const aviso = n >= 5
-        ? '⚠️  ' + n + ' commits, ' + arquivos + ' arquivos — O BUG ORIGINAL JA FOI RESOLVIDO? '
-          + 'Se sim, PARE: melhoria vira PR novo (regra 4.9)'
-        : n + ' commit(s), ' + arquivos + ' arquivo(s)';
+      // [stated 04/09] Ele perguntou "pq só depois de 5 commits, e não 3?".
+      // Eu tinha chutado o 5. MEDI os 25 PRs mergeados do repo:
+      //
+      //   16 de 25 fecham em ate 3 commits (mediana 2)
+      //   e NENHUM tem exatamente 3 — eles fecham em 1-2, ou disparam
+      //   direto pra 4, 5, 7, 9, 18
+      //
+      // Ou seja: passar de 3 nao e "quase la", e o ponto onde perde o
+      // controle. O aviso desce pra 4, que e o limite que ele ja tinha
+      // escrito nas preferencias ("passou de ~4 → mergear, resto em PR de
+      // acerto"). Aos 8, o historico diz pra fechar e reabrir.
+      const aviso = n >= 8
+        ? '🛑 ' + n + ' commits, ' + arquivos + ' arquivos — FECHAR E REABRIR '
+          + '(nenhum PR do repo se recuperou depois de 8)'
+        : n >= 4
+          ? '⚠️  ' + n + ' commits, ' + arquivos + ' arquivos — O BUG ORIGINAL JA FOI RESOLVIDO? '
+            + 'Se sim, PARE: mergeia e melhoria vira PR novo (regra 4.9)'
+          : n + ' commit(s), ' + arquivos + ' arquivo(s)';
       console.log('  ' + 'tamanho da entrega'.padEnd(46) + aviso);
     }
   } catch (e) {
