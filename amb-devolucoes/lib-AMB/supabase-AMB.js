@@ -21,7 +21,22 @@
 
 'use strict';
 
-const cfg = require('../config-AMB');
+// b245 - FASE 3, passo 1: RECEBE a ficha em vez de importar o config da AMB.
+//
+// Enquanto este arquivo faz `require('../config-AMB')`, ele so serve pra
+// UMA empresa — e plugar a proxima exige copiar a pasta inteira (2.996
+// linhas so no app-AMB, 170 mencoes literais a "AMB").
+//
+// Agora exporta uma FABRICA: `criarDb(cfg)`. Quem monta passa a ficha, e o
+// mesmo modulo serve pra AMB, pra Girassol e pra quem vier.
+//
+// ⚠️ COMPATIBILIDADE: o `module.exports` continua sendo o objeto pronto da
+// AMB (`criarDb(configAMB)`), com a fabrica pendurada em `.criar`. Assim o
+// app-AMB nao muda nesta rodada — trocar os 6 modulos e o app de uma vez
+// seria o PR de 5.600 linhas que eu decidi NAO fazer.
+const configAMB = require('../config-AMB');
+
+function criarDb(cfg) {
 
 let cliente = null;
 let erroInicial = null;
@@ -959,7 +974,7 @@ async function atualizarTriagem(id, campos) {
   } catch (e) { return { ok: false, erro: e.message }; }
 }
 
-module.exports = {
+return {
   triagensDe,
   conectar, testeDeVida,
   jaTriado, registrarTriagem, listarRecentes, recadoDe, recadoDeQualquer,   // b212
@@ -976,4 +991,10 @@ module.exports = {
   // estornadas sem retorno). As funcoes acima continuam sendo o caminho
   // preferido; isto e pra consulta pontual que nao merece funcao propria.
   cliente: () => conectar(),
-};
+  };
+}
+
+// b245: o objeto pronto da AMB continua sendo o export padrao (nada muda
+// pra quem ja usa), e a fabrica fica em `.criar` pra proxima empresa.
+module.exports = criarDb(configAMB);
+module.exports.criar = criarDb;
