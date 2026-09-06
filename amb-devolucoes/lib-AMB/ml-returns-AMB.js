@@ -43,7 +43,18 @@
 
 'use strict';
 
-const cfg = require('../config-AMB');
+// b248 - FASE 3, passo 3 (ultimo antes do app): RECEBE a ficha.
+//
+// ⚠️ O ESTADO AQUI E DE CONTROLE, nao de credencial: `construindo`,
+// `ENTREGA_RODANDO`, `NFV_RODANDO`, `ULTIMA_BUSCA`. Sao travas de "ja esta
+// rodando" e caches de indice. Compartilhadas entre empresas, uma
+// BLOQUEARIA a construcao do indice da outra — a segunda veria
+// `construindo=true` e desistiria, ficando com indice vazio pra sempre.
+//
+// A fabrica move essas travas pra dentro de cada instancia.
+const configAMB = require('../config-AMB');
+
+function criarMlReturns(cfg) {
 const ml = require('./ml-AMB');
 
 // b17 - detalhes do PEDIDO (apelido do comprador + itens) num
@@ -508,8 +519,13 @@ function preAquecer(atrasoMs) {
   }, atraso).unref();
 }
 
-module.exports = {
+return {
   construirIndice, statusIndice, acharPorTracking, ultimaBuscaTracking, resumoEspreita, preAquecer,
   enriquecerLista,
   tamanho: () => Object.keys(IDX.mapa).length,
 };
+}
+
+// b248: export padrao = objeto pronto da AMB; fabrica em `.criar`.
+module.exports = criarMlReturns(configAMB);
+module.exports.criar = criarMlReturns;

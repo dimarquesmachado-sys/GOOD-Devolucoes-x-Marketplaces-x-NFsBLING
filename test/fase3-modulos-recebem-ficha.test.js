@@ -27,6 +27,12 @@ const PRONTOS = [
   // evitar. A fabrica move esse estado pra dentro de cada instancia.
   ['bling-AMB', 'amb-devolucoes/lib-AMB/bling-AMB.js'],
   ['ml-AMB', 'amb-devolucoes/lib-AMB/ml-AMB.js'],
+  // b248 — passo 3: o estado aqui e de CONTROLE (`construindo`,
+  // `ENTREGA_RODANDO`, `NFV_RODANDO`). Compartilhado, uma empresa
+  // BLOQUEARIA a construcao do indice da outra — a segunda veria a trava
+  // ligada e desistiria, ficando com indice vazio pra sempre.
+  ['ml-returns-AMB', 'amb-devolucoes/lib-AMB/ml-returns-AMB.js'],
+  ['nf-nomes-AMB', 'amb-devolucoes/lib-AMB/nf-nomes-AMB.js'],
 ];
 
 for (const [nome, rel] of PRONTOS) {
