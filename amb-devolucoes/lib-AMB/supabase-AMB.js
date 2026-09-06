@@ -572,14 +572,25 @@ async function listarDefeitos({ busca } = {}) {
     // Mesma saida da GOOD: os ids entram na consulta enquanto couberem na
     // URL; passando disso, a exclusao volta a ser em memoria e o limite
     // CRESCE pelo tanto que sera descartado, pra sobrarem 400 uteis.
-    const MAX_IDS_NA_URL = 150;
+    // b278.6 (Codex): com MUITOS resolvidos, nem o teto de 1000 basta —
+    // eles ocupam as linhas mais novas e sobram menos de 400 ativos, com o
+    // `bateuNoTeto` marcando FALSO (a contagem e feita depois da exclusao).
+    // A tela mostraria inventario "completo" faltando defeito antigo.
+    //
+    // Em vez de paginar (mais chamadas, mais cota), mando a lista em LOTES
+    // de 150 ids: `not.in` aceita varios, e assim a exclusao acontece SEMPRE
+    // no banco, sem estourar a URL. O limite volta a ser 400 puros.
+    const MAX_IDS_POR_LOTE = 150;
+    const MAX_LOTES = 8;   // ~1200 ids: alem disso a URL fica grande demais
     const idsResolvidos = [...resolvidosPorPedido];
-    if (idsResolvidos.length && idsResolvidos.length <= MAX_IDS_NA_URL) {
-      q = q.not('id', 'in', '(' + idsResolvidos.join(',') + ')');
+    const cabeNaURL = Math.min(idsResolvidos.length, MAX_IDS_POR_LOTE * MAX_LOTES);
+    for (let k = 0; k < cabeNaURL; k += MAX_IDS_POR_LOTE) {
+      q = q.not('id', 'in', '(' + idsResolvidos.slice(k, k + MAX_IDS_POR_LOTE).join(',') + ')');
     }
-    const limite = idsResolvidos.length > MAX_IDS_NA_URL
-      ? Math.min(1000, 400 + idsResolvidos.length)
-      : 400;
+    // o que nao coube sai em memoria (o filtro logo abaixo) — e ai o limite
+    // cresce pra compensar, senao os excluidos voltam a comer as 400 vagas
+    const sobrouFora = idsResolvidos.length - cabeNaURL;
+    const limite = sobrouFora > 0 ? Math.min(1000, 400 + sobrouFora) : 400;
     q = q.order('criado_em', { ascending: false }).limit(limite);
     const r = await q;
     if (r.error) return { ok: false, erro: r.error.message };
@@ -599,7 +610,10 @@ async function listarDefeitos({ busca } = {}) {
     // O risco que RESTA e outro e mais simples: se passar de 400 ativos, os
     // mais ANTIGOS somem da lista sem ninguem perceber (ordem DESC). Nao
     // aumento o teto no escuro — aviso, e ai da pra decidir com numero.
-    const bateuNoTeto = linhas.length >= 400;
+    // b278.6 (Codex): o teto se mede pelo que SOBROU util. Medir o retorno
+    // cru do banco dava falso NEGATIVO quando muitos resolvidos vinham
+    // dentro do lote: a tela dizia "completo" faltando defeito antigo.
+    const bateuNoTeto = linhas.length >= 400 || (sobrouFora > 0 && linhas.length >= limite - sobrouFora);
     if (busca) {
       const b = String(busca).toLowerCase();
       linhas = linhas.filter(x =>
