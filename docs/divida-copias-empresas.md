@@ -10,7 +10,7 @@ e `amb-devolucoes/lib-AMB/X-AMB.js` (AMB):
 |---|---:|---:|---:|---|
 | `ml-buscas` | 95 | 95 | **100%** | ✅ **unificado** (b238) |
 | `ritmo-bling` | 70 | — | — | ✅ nasceu comum (b232) |
-| `nf-pessoa` | 430 | 738 | 72% | 🎯 próximo alvo |
+| ~~`nf-pessoa`~~ | 430 | 738 | 72% | ✅ **unificado** (b240) — e consertou 3 bugs da GOOD |
 | `defeitos-ciclo` | 1186 | 1037 | 71% | 🎯 alvo — o maior ganho em linhas |
 | `render-tokens` | 97 | 123 | 46% | pequeno, dá pra unificar |
 | `magalu` | 458 | 522 | 24% | divergiu muito |
@@ -29,7 +29,7 @@ e `amb-devolucoes/lib-AMB/X-AMB.js` (AMB):
 
 1. ~~`ml-buscas`~~ — feito, era cópia byte a byte
 2. **`defeitos-ciclo`** — 71% iguais e 2.223 linhas somadas: o maior ganho
-3. **`nf-pessoa`** — 72% iguais, 1.168 linhas
+3. ~~`nf-pessoa`~~ — feito: a AMB tinha 2 funções e 3 consertos que a GOOD não tinha
 4. `render-tokens` — pequeno, mas 46% já divergiu; conferir o que é real
 5. Os de 11-24% (`bling`, `ml`, `magalu`) — só valem depois, e talvez nunca
    por inteiro: a diferença ali é de negócio, não de descuido

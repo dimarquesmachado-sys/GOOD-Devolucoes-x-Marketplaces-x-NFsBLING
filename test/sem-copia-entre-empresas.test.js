@@ -34,7 +34,7 @@ const LIB_AMB = path.join(RAIZ, 'amb-devolucoes', 'lib-AMB');
 
 // ── o que já foi unificado NÃO pode voltar a ter cópia ───────────────
 {
-  const unificados = ['ml-buscas', 'ritmo-bling'];   // cresce a cada unificação
+  const unificados = ['ml-buscas', 'ritmo-bling', 'nf-pessoa'];   // cresce a cada unificação
   for (const nome of unificados) {
     const naLib = fs.existsSync(path.join(LIB, nome + '.js'));
     const copias = fs.readdirSync(LIB_AMB)

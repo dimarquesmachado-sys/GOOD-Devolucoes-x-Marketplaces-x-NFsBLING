@@ -80,7 +80,9 @@ const nfEntrada = require('./lib-AMB/nf-entrada-AMB');
 const multer = require('multer');
 const compat = require('./lib-AMB/compat-AMB');
 const criarAdminHelpers = require('./lib-AMB/admin-helpers-AMB');
-const criarNfPessoa = require('./lib-AMB/nf-pessoa-AMB');
+// b240 - UNIFICADO com a GOOD. A versao comum e a que estava aqui (a mais
+// completa: tinha 2 funcoes e 3 consertos de bug que a GOOD nao tinha).
+const criarNfPessoa = require('../lib/nf-pessoa');
 const registrarRotasAdminNF = require('./lib-AMB/rotas-admin-AMB');
 // b238 - UNIFICADO: era copia BYTE A BYTE da /lib. Medi os 9 modulos
 // duplicados e este era 100% identico — ganho imediato, risco zero.
