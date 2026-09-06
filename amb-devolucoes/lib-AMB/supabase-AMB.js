@@ -705,16 +705,25 @@ async function listarDefeitos({ busca } = {}) {
     // (head+count, sem trazer linha).
     let aguardandoNF = 0;
     try {
+      // b278.12 (Codex): fora os TERMINAIS aqui tambem. Quando um problema
+      // e recuperado ou descartado, o `defeitos-ciclo-AMB` muda o `tipo` mas
+      // deixa `status='problema'` — a linha continuava contando como
+      // "aguardando NF" pra sempre. Eu ja excluia esses tres na consulta
+      // principal e esqueci na contagem: mesma regra, dois lugares.
       const rc = await dbc.from(T.devolucoes)
         .select('id', { count: 'exact', head: true })
         .eq('status', 'problema')
-        .neq('tipo', 'defeito_estoque');
+        .not('tipo', 'in', '(defeito_estoque,recuperado,descartado,defeito_excluido)');
       aguardandoNF = rc.count || 0;
     } catch (e) { /* sem a contagem, a tela so nao mostra o aviso */ }
 
     for (const x of linhas) {
       const contaComoDefeito = x.tipo === 'defeito_estoque' || (x.tipo === 'problema' && x.status === 'concluido');
-      if (x.status === 'problema' && x.tipo !== 'defeito_estoque') aguardandoNF++;
+      // b278.12: NAO somar aqui. A contagem agora vem da consulta propria
+      // (head+count) logo acima; este `++` era do codigo antigo e somaria
+      // POR CIMA dela. Achei varrendo os usos de `status='problema'`, nao
+      // por apontamento — a consulta principal ja nem traz pendente, entao
+      // hoje daria 0, mas basta um filtro mudar pra virar contagem dobrada.
       const local = x.localizacao || '(sem local)';
       const chave = local + '||' + (x.produto_sku || '?');
       if (!grupos[chave]) {

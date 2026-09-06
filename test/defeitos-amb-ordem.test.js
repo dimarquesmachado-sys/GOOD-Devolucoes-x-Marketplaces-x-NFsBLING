@@ -75,6 +75,22 @@ const FN = SRC.slice(i, j);
      'e exclui os estados terminais');
 }
 
+// ── b278.12: a mesma regra nos DOIS lugares ─────────────────────────
+//
+// Os estados terminais (recuperado/descartado/defeito_excluido) precisam
+// sair da consulta principal E da contagem de aguardando NF. Eu excluia so
+// na primeira — a linha recuperada seguia contando como pendente pra
+// sempre, porque o `status` continua 'problema'.
+{
+  const terminais = (FN.match(/recuperado,descartado,defeito_excluido/g) || []).length;
+  ok(terminais >= 2,
+     'os terminais sao excluidos na consulta E na contagem (achei ' + terminais + ')');
+  ok(!/aguardandoNF\+\+/.test(FN),
+     'a contagem de aguardando NF vem SO do count — sem soma por cima');
+  ok(/aguardandoNF = rc\.count/.test(FN),
+     '  e vem de consulta propria (head+count, sem trazer linha)');
+}
+
 console.log('');
 console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
 process.exit(falhas ? 1 : 0);
