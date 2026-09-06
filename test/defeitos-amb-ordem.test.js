@@ -33,12 +33,18 @@ const FN = SRC.slice(i, j);
 // ── a ordem das operações ───────────────────────────────────────────
 {
   const pos = (t) => FN.indexOf(t);
+  // b278.16: a ORDEM MUDOU DE PROPOSITO. Antes eu lia TODO o historico de
+  // pedidos pra excluir na consulta — e isso crescia pra sempre, deixando a
+  // tela mais lenta a cada mes. Agora: consulta limitada primeiro, e o
+  // estado SO dos ids que vieram (max 800, uma chamada).
+  //
+  // O teste acompanha o desenho novo — mas continua cobrando o que importa:
+  // filtrar ANTES de cortar.
   const etapas = [
-    ['resolvidos por pedido', 'resolvidosPorPedido = new Set'],
-    ['exclusão na consulta', "q.not('id', 'in'"],
-    ['limite', '.limit(limite)'],
+    ['limite da consulta', 'const limite = 800'],
     ['consulta', 'const r = await q'],
-    ['rede em memória', 'resolvidosPorPedido.has'],
+    ['estado dos ids da pagina', 'idsPagina'],
+    ['exclusão dos resolvidos', 'resolvidosPorPedido.has'],
     ['busca em memória', 'norm(x.produto_sku)'],
     ['corte em 400', 'linhas.slice(0, 400)'],
   ];
@@ -52,6 +58,14 @@ const FN = SRC.slice(i, j);
 
 // ── e o que cada etapa precisa garantir ─────────────────────────────
 {
+  // b278.16: o custo nao pode crescer com o historico
+  ok(!/for \(let de = 0; ; de \+= PAG\)/.test(FN),
+     'NAO varre o historico inteiro de pedidos a cada carga');
+  ok(/\.in\('defeito_id', idsPagina\)/.test(FN),
+     '  pergunta o estado so dos ids que a consulta trouxe');
+  ok(/return \{ ok: false, erro: 'nao consegui conferir/.test(FN),
+     'e se essa consulta falhar, NAO devolve inventario incompleto');
+
   ok(/normalize\('NFD'\)/.test(FN),
      'a busca em memoria ignora acento (senao SUBTRAI o que o banco achou)');
   // b278.11 (Codex): meu `||` aqui nao verificava NADA — mover o calculo

@@ -603,77 +603,50 @@ async function listarDefeitos({ busca } = {}) {
     // a peca saiu do estoque de defeitos, mesmo que a linha de origem
     // continue marcada como `defeito_estoque`. Sem isso a tela mostra como
     // disponivel algo que ja foi recuperado ou descartado.
+    // b278.16 (Codex): NAO leio mais o historico inteiro a cada carga.
+    //
+    // Antes eu varria TODA a tabela de pedidos (paginando de 1.000 em 1.000)
+    // pra montar o conjunto de resolvidos — e isso cresce pra sempre: com o
+    // tempo a tela ficaria mais lenta a cada mes, mesmo numa busca que nao
+    // acha nada. Ler tudo pra descartar quase tudo e o desenho errado.
+    //
+    // Invertido: primeiro busco os defeitos (consulta LIMITADA), depois
+    // pergunto o estado SO DELES. Sao no maximo 400 ids, uma chamada, e o
+    // custo para de crescer com o historico.
+    //
+    // O preco: os resolvidos ocupam vaga dentro das 400. Compenso pedindo
+    // 800 e cortando depois — o dobro cobre com folga (hoje ele tem 9 no
+    // alerta) e continua sendo UMA consulta limitada.
     const resolvidosPorPedido = new Set();
-    try {
-      // b278.13 (Codex): PAGINAR. O PostgREST corta a resposta em 1.000
-      // linhas por padrao — passando disso, eu recebia so a primeira pagina
-      // e os defeitos resolvidos das demais voltavam a aparecer como
-      // disponiveis. Consulta sem `range` nao e consulta completa.
-      // b278.14 (Codex): sem teto arbitrario. Meus 20.000 cortavam a lista
-      // em silencio se a operacao passasse disso — e "silencio" e o que
-      // estamos combatendo. Paro so quando a pagina vem incompleta (acabou).
-      const PAG = 1000;
-      for (let de = 0; ; de += PAG) {
-        const rped = await dbc.from('defeito_pedidos_amb')
-          .select('defeito_id, status')
-          .in('status', ['autorizado', 'concluido'])
-          // b278.15 (Codex): ORDEM FIXA. Sem `order`, o PostgREST pode
-          // devolver as linhas em ordem diferente a cada pagina — as
-          // paginas se sobrepoem ou pulam registros, e o defeito resolvido
-          // que caiu no vao volta a aparecer como disponivel. Paginacao sem
-          // ordem nao e paginacao.
-          .order('id', { ascending: true })
-          .range(de, de + PAG - 1);
-        // erro no meio: paro e sigo com o que juntei — a rede em memoria
-        // ainda pega o resto, e melhor lista parcial que laco infinito
-        if (rped.error) break;
-        const linhasPed = rped.data || [];
-        for (const pd of linhasPed) {
-          if (pd.defeito_id) resolvidosPorPedido.add(String(pd.defeito_id));
-        }
-        if (linhasPed.length < PAG) break;   // acabou
-      }
-    } catch (e) { /* sem os pedidos, vale so o tipo da linha */ }
-
-    // b278.5 (Codex): EXCLUIR ANTES DO LIMITE. Eu filtrava os resolvidos
-    // por pedido DEPOIS da consulta — e ai eles ocupavam vaga dentro das
-    // 400, empurrando defeito ativo antigo pra fora. E EXATAMENTE o bug que
-    // a GOOD teve (`idsForaDoEstado`, lib/defeitos-ciclo.js) e que eu disse
-    // que a AMB nao tinha. Meu conserto anterior criou ele.
-    //
-    // Mesma saida da GOOD: os ids entram na consulta enquanto couberem na
-    // URL; passando disso, a exclusao volta a ser em memoria e o limite
-    // CRESCE pelo tanto que sera descartado, pra sobrarem 400 uteis.
-    // b278.6 (Codex): com MUITOS resolvidos, nem o teto de 1000 basta —
-    // eles ocupam as linhas mais novas e sobram menos de 400 ativos, com o
-    // `bateuNoTeto` marcando FALSO (a contagem e feita depois da exclusao).
-    // A tela mostraria inventario "completo" faltando defeito antigo.
-    //
-    // Em vez de paginar (mais chamadas, mais cota), mando a lista em LOTES
-    // de 150 ids: `not.in` aceita varios, e assim a exclusao acontece SEMPRE
-    // no banco, sem estourar a URL. O limite volta a ser 400 puros.
-    // b278.7 (Codex): MEU LOOP DE LOTES NAO CRIAVA REQUISICOES. Cada
-    // `q.not(...)` so acrescenta mais um filtro na MESMA URL do GET — os
-    // 1.200 ids continuavam numa requisicao so, que era o problema que eu
-    // queria evitar. "Lote" sem requisicao separada nao e lote.
-    //
-    // Volto ao que a GOOD faz e que funciona: UMA lista de ids enquanto
-    // couber na URL; passando disso, a exclusao e em memoria e o limite
-    // cresce pra compensar. Sem invencao.
-    const MAX_IDS_NA_URL = 150;
-    const idsResolvidos = [...resolvidosPorPedido];
-    if (idsResolvidos.length && idsResolvidos.length <= MAX_IDS_NA_URL) {
-      q = q.not('id', 'in', '(' + idsResolvidos.join(',') + ')');
-    }
-    const sobrouFora = idsResolvidos.length > MAX_IDS_NA_URL ? idsResolvidos.length : 0;
-    const limite = sobrouFora > 0 ? Math.min(1000, 400 + sobrouFora) : 400;
+    // b278.16: pede o DOBRO pra compensar os resolvidos que ainda ocupam
+    // vaga (eles so serao conhecidos depois desta consulta). Continua sendo
+    // uma consulta limitada — o custo nao cresce com o historico.
+    const limite = 800;
     q = q.order('criado_em', { ascending: false }).limit(limite);
     const r = await q;
     if (r.error) return { ok: false, erro: r.error.message };
 
     let linhas = r.data || [];
-    // rede de seguranca: se os ids nao couberam na URL, corta aqui
-    linhas = linhas.filter((x) => !resolvidosPorPedido.has(String(x.id)));
+
+    // b278.16: agora sim, o estado SO dos que vieram (max 800 ids).
+    //
+    // ⚠️ E se esta consulta falhar, NAO devolvo inventario incompleto: o
+    // estoquista veria como disponivel peca ja recuperada ou descartada, e
+    // iria buscar na prateleira. Erro explicito e melhor que numero errado.
+    if (linhas.length) {
+      const idsPagina = linhas.map((x) => x.id).filter(Boolean);
+      const rped = await dbc.from('defeito_pedidos_amb')
+        .select('defeito_id')
+        .in('status', ['autorizado', 'concluido'])
+        .in('defeito_id', idsPagina);
+      if (rped.error) {
+        return { ok: false, erro: 'nao consegui conferir os defeitos ja resolvidos: ' + rped.error.message };
+      }
+      for (const pd of (rped.data || [])) {
+        if (pd.defeito_id) resolvidosPorPedido.add(String(pd.defeito_id));
+      }
+      linhas = linhas.filter((x) => !resolvidosPorPedido.has(String(x.id)));
+    }
     // b278.8 (Codex): o overfetch so COMPENSA o que sai em memoria — depois
     // de excluir, corto em 400. Sem isso, 151 resolvidos ANTIGOS inflavam o
     // limite pra 551 e a tela recebia 551 onde a GOOD mostra 400.
@@ -701,7 +674,11 @@ async function listarDefeitos({ busca } = {}) {
     // dentro do lote: a tela dizia "completo" faltando defeito antigo.
     // b278.10: o teto e medido junto do CORTE, la embaixo — medir aqui era
     // antes da busca em memoria, e com filtro aplicado o numero muda.
-    const trouxeCheio = linhas.length >= 400 || (sobrouFora > 0 && linhas.length >= limite - sobrouFora);
+    // b278.16: `sobrouFora` sumiu junto com a leitura total do historico.
+    // O criterio agora e direto: se o banco devolveu o limite cheio, havia
+    // mais — e depois de excluir os resolvidos, se ainda sobra mais que a
+    // pagina de 400, tambem havia mais.
+    const trouxeCheio = (r.data || []).length >= limite || linhas.length > 400;
     if (busca) {
       // b278.10: o banco JA filtrou (ilike, linha ~57). Este filtro era uma
       // SEGUNDA passada que podia DERRUBAR o que o banco achou certo — o
