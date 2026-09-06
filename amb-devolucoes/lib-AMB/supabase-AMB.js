@@ -514,7 +514,17 @@ async function listarDefeitos({ busca } = {}) {
       // eu tirava do `itens` DEPOIS da consulta: 400 pendentes recentes
       // ocupavam as vagas e o defeito antigo nunca era buscado. Mesmo erro
       // do b278.5, noutro filtro.
-      .or('tipo.eq.defeito_estoque,and(status.eq.concluido,tipo.neq.defeito_estoque)')
+      // b278.9 (Codex): `concluido` SOZINHO NAO E DEFEITO. A rota
+      // /api/admin/concluir grava so o `status`, deixando `tipo='devolucao'`
+      // — e os paineis de APROVADAS e DIVERGENTES usam essa mesma acao.
+      // Meu filtro trazia toda devolucao normal concluida como peca
+      // defeituosa na prateleira. Numero errado e pior que ausente.
+      //
+      // Defeito e: `tipo=defeito_estoque` (lancado como defeito) ou
+      // `tipo=problema` concluido (o estoquista reportou problema e a
+      // triagem fechou) — os mesmos dois que a GOOD usa em `ATIVOS`
+      // (lib/defeitos-ciclo.js:363).
+      .or('tipo.eq.defeito_estoque,and(tipo.eq.problema,status.eq.concluido)')
       // b278.4 (Codex): o `tipo` cobre o caso NOVO (o codigo atualiza a
       // linha de origem). O caso ANTIGO nao — ali o estado terminal vive
       // so no PEDIDO de recuperacao/descarte, e a linha continua
@@ -672,7 +682,7 @@ async function listarDefeitos({ busca } = {}) {
     } catch (e) { /* sem a contagem, a tela so nao mostra o aviso */ }
 
     for (const x of linhas) {
-      const contaComoDefeito = x.tipo === 'defeito_estoque' || x.status === 'concluido';
+      const contaComoDefeito = x.tipo === 'defeito_estoque' || (x.tipo === 'problema' && x.status === 'concluido');
       if (x.status === 'problema' && x.tipo !== 'defeito_estoque') aguardandoNF++;
       const local = x.localizacao || '(sem local)';
       const chave = local + '||' + (x.produto_sku || '?');
@@ -725,12 +735,12 @@ async function listarDefeitos({ busca } = {}) {
       // `defeito_estoque` e devolucao AGUARDANDO NF, que a propria funcao
       // conta em `aguardando_nf`. Mostrar como defeito seria contar duas
       // vezes a mesma peca — numero errado e pior que numero ausente.
-      total_registros: linhas.filter((x) => x.tipo === 'defeito_estoque' || x.status === 'concluido').length,
+      total_registros: linhas.filter((x) => x.tipo === 'defeito_estoque' || (x.tipo === 'problema' && x.status === 'concluido')).length,
       total_pecas: linhas
-        .filter((x) => x.tipo === 'defeito_estoque' || x.status === 'concluido')
+        .filter((x) => x.tipo === 'defeito_estoque' || (x.tipo === 'problema' && x.status === 'concluido'))
         .reduce((a, x) => a + (Number(x.defeito_qtd) || 1), 0),
       itens: linhas
-        .filter((x) => x.tipo === 'defeito_estoque' || x.status === 'concluido')
+        .filter((x) => x.tipo === 'defeito_estoque' || (x.tipo === 'problema' && x.status === 'concluido'))
         .map((x) => ({
           // b278.2 (Codex): o historico de PECAS RETIRADAS. A tela mostra
           // "ja retirado daqui" so a partir de `oc.pecas_retiradas` — sem

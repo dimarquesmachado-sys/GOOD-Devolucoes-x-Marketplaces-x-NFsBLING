@@ -122,9 +122,29 @@ for (const t of TELAS) {
   // ⚠️ o JS permite abreviar `{ itens }` em vez de `{ itens: itens }` — a
   // GOOD faz isso, e meu detector acusou um campo que ELA MANDA. Falso
   // positivo ensina a ignorar o vermelho; conto as duas formas.
+  // b278.9 (Codex): so a resposta de SUCESSO. Antes eu juntava os nomes de
+  // TODOS os objetos do escopo — inclusive os `{ ok: false, erro }` — entao
+  // tirar `ok: true` da resposta boa nao acusava nada, porque `ok` aparecia
+  // no retorno de erro. O teste ficava verde com o contrato quebrado.
+  //
+  // Pego o retorno que tem `ok: true`; e o que a tela consome.
+  // inclui tambem o `res.status(...).json({...})` do catch — a GOOD trata
+  // erro assim, sem `return {`, e o campo `erro` so aparece la
+  const todosRetornos = [
+    ...[...escopo.matchAll(/return\s+(?:res\.json\()?\{[\s\S]*?\}\s*\)?\s*;/g)].map((m) => m[0]),
+    ...[...escopo.matchAll(/res\.status\([^)]*\)\.json\(\{[\s\S]*?\}\)/g)].map((m) => m[0]),
+  ];
+  const sucesso = todosRetornos.filter((r) => /ok:\s*true/.test(r));
+  ok(sucesso.length > 0, t.nome + ': achei a resposta de SUCESSO (ok: true)');
+
+  // ⚠️ a tela le `d.erro` no caminho de FALHA, e isso e legitimo — ela
+  // trata os dois. Entao o contrato e: campo de dado vem do retorno de
+  // sucesso, campo de erro vem do de erro. Uno os dois, mas garanto que o
+  // de SUCESSO existe (era o furo: sem ele, `ok` vinha do erro e passava).
+  const fonte = todosRetornos.length ? todosRetornos.join('\n') : escopo;
   const mandados = new Set([
-    ...[...escopo.matchAll(/(\w+)\s*:/g)].map((m) => m[1]),
-    ...[...escopo.matchAll(/[{,]\s*(\w+)\s*[,}]/g)].map((m) => m[1]),   // abreviado
+    ...[...fonte.matchAll(/(\w+)\s*:/g)].map((m) => m[1]),
+    ...[...fonte.matchAll(/[{,]\s*(\w+)\s*[,}]/g)].map((m) => m[1]),   // abreviado
   ]);
 
   const fantasmas = [...lidos].filter((c) => !mandados.has(c));
