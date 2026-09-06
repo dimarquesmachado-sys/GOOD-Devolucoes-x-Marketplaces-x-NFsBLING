@@ -83,6 +83,14 @@ const criarAdminHelpers = require('./lib-AMB/admin-helpers-AMB');
 // b240 - UNIFICADO com a GOOD. A versao comum e a que estava aqui (a mais
 // completa: tinha 2 funcoes e 3 consertos de bug que a GOOD nao tinha).
 const criarNfPessoa = require('../lib/nf-pessoa');
+// b243 - FASE 1 (continuacao): os campos FISCAIS saem do registro.
+// O `lib/empresas.js` ja tinha a ficha da AMB com os ids reais
+// (idEmpresaControl, depositoGeral, naturezasDevolucaoIds, nfEntradaTipo) e
+// os MESMOS padroes que rodam hoje. Aqui eles eram lidos do ambiente em 9
+// pontos — cada um com sua propria cadeia de fallback escrita a mao.
+const { obterEmpresa, envDaEmpresa } = require('../lib/empresas');
+const FICHA_AMB = obterEmpresa('ambtotal');
+const envAmb = (nome, padrao) => envDaEmpresa(FICHA_AMB, nome, padrao);
 const registrarRotasAdminNF = require('./lib-AMB/rotas-admin-AMB');
 // b238 - UNIFICADO: era copia BYTE A BYTE da /lib. Medi os 9 modulos
 // duplicados e este era 100% identico — ganho imediato, risco zero.
@@ -92,7 +100,7 @@ const criarMlBuscas = require('../lib/ml-buscas');
 const registrarIdentificar = require('./lib-AMB/identificar-AMB');
 const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 
-const VERSAO = 'AMB Devolucoes b295';
+const VERSAO = 'AMB Devolucoes b296';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -223,7 +231,7 @@ router.get('/conectar', admin, (req, res) => {
           !magalu.temCredenciais() ? '<span class="erro">sem credenciais do app no servico</span>'
           : !magalu.temToken() ? '<b>falta o consentimento</b> (botao abaixo)'
           : !magalu.temTenant() ? '<span class="ok">autorizado</span> &middot; <b>falta AMB_MAGALU_TENANT_ID</b>'
-          : `<span class="ok">conectado</span> &middot; tenant ${process.env.AMB_MAGALU_TENANT_ID}`}</td></tr>
+          : `<span class="ok">conectado</span> &middot; tenant ${envAmb('MAGALU_TENANT_ID')}`}</td></tr>
         <tr><td>Shopee</td><td>${shopee.cfg.ativo
           ? `<span class="ok">ligada</span> &middot; loja ${shopee.cfg.loja}`
           : '<span class="erro">desligada</span>'}</td></tr>
@@ -1529,7 +1537,7 @@ router.get('/nf/entrada/indice/construir', admin, (req, res) => {
 router.get('/nf/entrada/sonda', admin, async (req, res) => {
   res.json({ ok: true, versao: VERSAO,
     procure: 'o tipo cuja natureza diga Devolucao de venda',
-    depois: 'grave o numero em AMB_NF_ENTRADA_TIPO no Render (padrao atual: ' + (process.env.AMB_NF_ENTRADA_TIPO || '0') + ')',
+    depois: 'grave o numero em AMB_NF_ENTRADA_TIPO no Render (padrao atual: ' + (envAmb('NF_ENTRADA_TIPO') || '0') + ')',
     tipos: await nfEntrada.sondarTipos() });
 });
 
@@ -1567,13 +1575,13 @@ function naturezaDoCacheAMB(idNota) {
 
 router.get('/nf/entrada/naturezas', admin, async (req, res) => {
   try {
-    const tipo = String(req.query.tipo != null ? req.query.tipo : (process.env.AMB_NF_ENTRADA_TIPO || '0'));
+    const tipo = String(req.query.tipo != null ? req.query.tipo : (envAmb('NF_ENTRADA_TIPO') || '0'));
     // b336 r3 (Codex #79): o padrao e 6 paginas porque e ASSIM que o painel
     // monta o indice de verdade (painel-AMB.html chama ?paginas=6). Calibrar
     // com 3 podia esconder uma natureza que so aparece nas paginas 4-6 e
     // ainda assim dizer que a leitura foi completa.
     const paginas = Math.min(Math.max(Number(req.query.paginas) || 6, 1), 10);
-    const idsDevolucao = String(process.env.AMB_NATUREZAS_DEVOLUCAO_IDS || process.env.AMB_NATUREZA_DEVOLUCAO || '15110882041')
+    const idsDevolucao = String(FICHA_AMB.fiscal.naturezasDevolucaoIds() || envAmb('NATUREZA_DEVOLUCAO') || '15110882041')
       .split(',').map(s => s.trim()).filter(Boolean);
     const NFE_DESCARTAVEL = new Set([2, 9]);
 
@@ -1997,7 +2005,7 @@ async function montarIndiceNFDevolucaoAMB(maxPaginas) {
       // tipo=0 lista as ENTRADAS (devolucoes, inclusive as da MAGALU LOG do Full)
       // e tipo=1 lista as VENDAS — ate a b334 este indice usava tipo=1 cravado,
       // ou seja, indexava VENDA achando que era devolucao (o aviso nunca casava).
-      const tipoEntrada = String(process.env.AMB_NF_ENTRADA_TIPO || '0');
+      const tipoEntrada = String(FICHA_AMB.fiscal.nfEntradaTipo() || '0');
       // b335 r2 (Codex #78): tipo=0 traz TODAS as entradas — compra de
       // fornecedor, transferencia, conserto... Pro casamento cliente+SKU so
       // entram notas cuja natureza seja RECONHECIVEL como devolucao: id na
@@ -2006,7 +2014,7 @@ async function montarIndiceNFDevolucaoAMB(maxPaginas) {
       // contendo "devolu". O que ficar de fora e contado por natureza em
       // `naturezas_ignoradas` — e por ali que se descobre um id novo (ex.: o
       // das notas da MAGALU LOG do Full, se a descricao nao vier) pra por na env.
-      const idsDevolucao = String(process.env.AMB_NATUREZAS_DEVOLUCAO_IDS || process.env.AMB_NATUREZA_DEVOLUCAO || '15110882041')
+      const idsDevolucao = String(FICHA_AMB.fiscal.naturezasDevolucaoIds() || envAmb('NATUREZA_DEVOLUCAO') || '15110882041')
         .split(',').map(s => s.trim()).filter(Boolean);
       const ignoradas = {};
       // b335 r3 (Codex #78): NF CANCELADA (2) e DENEGADA (9) nao valem como
@@ -2925,7 +2933,7 @@ router.get('/api/admin/indice-nf-devolucao', auth.requerLogin, async (req, res) 
     const mapa = {};
     for (const [ped, info] of NF_DEV_INDICE_AMB) mapa[ped] = info;
     return res.json({ ok: true, total: NF_DEV_INDICE_AMB.size, atualizado_em: NF_DEV_INDICE_TS_AMB,
-      tipo_usado: String(process.env.AMB_NF_ENTRADA_TIPO || '0'),   // b335
+      tipo_usado: String(FICHA_AMB.fiscal.nfEntradaTipo() || '0'),   // b335
       pedidos: mapa,
       sem_pedido: NF_DEV_SEM_PEDIDO_AMB,   // b335 - notas sem vinculo (Full): o painel casa por cliente+SKU
       naturezas_ignoradas: NF_DEV_IGNORADAS_AMB,   // b335 r2 - entradas fora do casamento, contadas por natureza
@@ -2961,7 +2969,7 @@ router.use((req, res) => {
 // indices dele nos primeiros segundos. Ninguem bipa caixa nos
 // 3 minutos seguintes a um deploy.
 if (ml.temToken()) {
-  mlReturns.preAquecer(Number(process.env.AMB_ML_PREAQUECER_MS || 180000));
+  mlReturns.preAquecer(Number(envAmb('ML_PREAQUECER_MS') || 180000));
 } else {
   console.log('[amb-devolucoes] ML sem token - indice de devolucoes so apos autorizar');
 }
@@ -2969,7 +2977,7 @@ if (ml.temToken()) {
 // O indice de nomes bate no Bling, nao no ML — sao cotas separadas.
 // Ainda assim vai 1 minuto depois do outro pra nao empilhar tudo.
 if (bling.temToken()) {
-  nfNomes.preAquecer(Number(process.env.AMB_NF_PREAQUECER_MS || 240000));
+  nfNomes.preAquecer(Number(envAmb('NF_PREAQUECER_MS') || 240000));
   nfEntrada.preAquecer();
 } else {
   console.log('[amb-devolucoes] Bling sem token - indices de nomes/entrada so apos autorizar');

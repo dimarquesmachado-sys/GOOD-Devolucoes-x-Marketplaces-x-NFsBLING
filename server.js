@@ -80,6 +80,12 @@ const mlReturns = require('./lib/ml-returns')({ chamarML });
 // nomes do Bling tambem e compara colapsado com colapsado.
 const nfNomes = require('./lib/nf-nomes')({ chamarBling });
 const ritmoBling = require('./lib/ritmo-bling');
+// b244 - FASE 1 (fim): a GOOD tambem le os campos FISCAIS do registro.
+// Sao os mesmos 4 valores que ja estavam la com padrao IDENTICO
+// (docs/PLUGAR-EMPRESA-NOVA.md, Fase 1). Com isto o `process.env.GOOD_*`
+// e o `AMB_*` somem do codigo: empresa nova = entrada no registro.
+const { obterEmpresa } = require('./lib/empresas');
+const FICHA_GOOD = obterEmpresa('good');
 
 // v3.76 - devolucoes ESPERADAS do portal Magalu Entregas (indice 'a espreita')
 const espreita = require('./lib/magalu-espreita')({ chamarMagalu: magalu.chamarMagalu });
@@ -4429,8 +4435,8 @@ async function montarIndiceNFDevolucao(maxPaginas) {
       // dizer que nenhuma devolucao tem nota.
       const pedidas = Math.floor(Number(maxPaginas));
       const paginas = Math.min(Number.isFinite(pedidas) && pedidas >= 1 ? pedidas : 5, 15);
-      const tipoEntrada = String(process.env.GOOD_NF_ENTRADA_TIPO || '0');
-      const idsDevolucao = String(process.env.GOOD_NATUREZAS_DEVOLUCAO_IDS || '5776118802,15110882187')
+      const tipoEntrada = String(FICHA_GOOD.fiscal.nfEntradaTipo() || '0');
+      const idsDevolucao = String(FICHA_GOOD.fiscal.naturezasDevolucaoIds() || '5776118802,15110882187')
         .split(',').map((x) => x.trim()).filter(Boolean);
       const DESCARTAVEL = new Set([2, 9]);   // cancelada e denegada nao valem como "ja tem nota"
       let falhaLista = false, falhasDetalhe = 0;
@@ -4520,7 +4526,7 @@ app.get('/api/admin/indice-nf-devolucao', requerAdmin, async (req, res) => {
     const mapa = {};
     for (const [ped, info] of NF_DEV_INDICE) mapa[ped] = info;
     return res.json({ ok: true, total: NF_DEV_INDICE.size, atualizado_em: NF_DEV_INDICE_TS,
-      tipo_usado: String(process.env.GOOD_NF_ENTRADA_TIPO || '0'),   // b339
+      tipo_usado: String(FICHA_GOOD.fiscal.nfEntradaTipo() || '0'),   // b339
       pedidos: mapa,
       sem_pedido: NF_DEV_SEM_PEDIDO,                 // b339 - o painel usa na fatia 2b
       naturezas_ignoradas: NF_DEV_IGNORADAS,         // b339 - calibragem da env
@@ -6967,7 +6973,7 @@ registrarRotasAdminNF(app, {
 const registrarCicloDefeitos = require('./lib/defeitos-ciclo');
 registrarCicloDefeitos(app, {
   supabase, requerLogin, chamarBling, adminOk,
-  DEPOSITO_GERAL: process.env.GOOD_DEPOSITO_GERAL || '4956031259',   // v4.57 - Geral da GOOD
+  DEPOSITO_GERAL: FICHA_GOOD.fiscal.depositoGeral() || '4956031259',   // v4.57 - Geral da GOOD
 });
 
 // v3.45 - rotas de impressao (QZ assinado + fila remota)

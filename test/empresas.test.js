@@ -18,12 +18,35 @@ const ok = (c, oque) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') 
 // Apontamento do Codex: `arquivo.includes('4956031259')` passava mesmo se
 // o fallback mudasse, porque o id velho continua na lista de depositos
 // validos e em comentarios. Agora o teste extrai a ATRIBUICAO.
+// b244 - FASE 1: o codigo nao le mais `process.env.GOOD_*` / `AMB_*` — le
+// do registro. Entao o padrao de producao passou a aparecer como
+// `FICHA_X.fiscal.campo() || 'valor'`.
+//
+// A GARANTIA E A MESMA e continua valendo: o literal escrito no codigo tem
+// que bater com o padrao do registro. Se divergirem, produção emitiria com
+// um deposito/natureza e o registro diria outro — em silencio.
+const ACESSOR_DO_ENV = {
+  GOOD_NF_ENTRADA_TIPO: 'nfEntradaTipo',
+  GOOD_NATUREZAS_DEVOLUCAO_IDS: 'naturezasDevolucaoIds',
+  GOOD_DEPOSITO_GERAL: 'depositoGeral',
+  GOOD_ID_EMPRESA_CONTROL: 'idEmpresaControl',
+  AMB_ID_EMPRESA_CONTROL: 'idEmpresaControl',
+  AMB_NF_ENTRADA_TIPO: 'nfEntradaTipo',
+  AMB_NATUREZAS_DEVOLUCAO_IDS: 'naturezasDevolucaoIds',
+};
+
 function padraoDeProducao(arquivo, envName) {
   const src = fs.readFileSync(path.join(__dirname, '..', arquivo), 'utf8');
-  // process.env.NOME || 'valor'   (aspas simples ou duplas)
+  // forma ANTIGA: process.env.NOME || 'valor'
   const re = new RegExp('process\\.env\\.' + envName + "\\s*\\|\\|\\s*['\"]([^'\"]+)['\"]");
   const m = src.match(re);
-  return m ? m[1] : null;
+  if (m) return m[1];
+  // forma NOVA: FICHA_X.fiscal.acessor() || 'valor'  (com ou sem outro || no meio)
+  const acessor = ACESSOR_DO_ENV[envName];
+  if (!acessor) return null;
+  const reNovo = new RegExp(acessor + "\\(\\)(?:[^'\"\\n]*\\|\\|[^'\"\\n]*)?\\s*\\|\\|\\s*['\"]([^'\"]+)['\"]");
+  const m2 = src.match(reNovo);
+  return m2 ? m2[1] : null;
 }
 
 // Compara o FALLBACK do registro com o FALLBACK de producao. Se a env
@@ -56,8 +79,14 @@ paresProducao.forEach(([arq, env, ler]) => {
 // o da AMB tem dois || encadeados; confere o ULTIMO valor literal
 (() => {
   const src = fs.readFileSync(path.join(__dirname, '..', 'amb-devolucoes', 'app-AMB.js'), 'utf8');
-  const m = src.match(/process\.env\.AMB_NATUREZAS_DEVOLUCAO_IDS\s*\|\|\s*process\.env\.AMB_NATUREZA_DEVOLUCAO\s*\|\|\s*'([^']+)'/);
-  ok(!!m, 'achei o padrao encadeado de AMB_NATUREZAS_DEVOLUCAO_IDS');
+  // b243: o app-AMB agora le do REGISTRO — o encadeado saiu de la e virou
+  // `FICHA_AMB.fiscal.naturezasDevolucaoIds() || envAmb('NATUREZA_DEVOLUCAO')
+  //  || '15110882041'`. A garantia continua a mesma: o ULTIMO literal do
+  // encadeado tem que bater com o padrao do registro. Se um dia divergirem,
+  // a AMB emitiria com UMA natureza onde produção usava outra.
+  const m = src.match(/naturezasDevolucaoIds\(\)\s*\|\|\s*envAmb\('NATUREZA_DEVOLUCAO'\)\s*\|\|\s*'([^']+)'/)
+    || src.match(/process\.env\.AMB_NATUREZAS_DEVOLUCAO_IDS\s*\|\|\s*process\.env\.AMB_NATUREZA_DEVOLUCAO\s*\|\|\s*'([^']+)'/);
+  ok(!!m, 'achei o encadeado de NATUREZAS_DEVOLUCAO (no registro ou no env)');
   const doRegistroAmb = semEnv(['AMB_NATUREZAS_DEVOLUCAO_IDS', 'AMB_NATUREZA_DEVOLUCAO'],
                                () => EMPRESAS.ambtotal.fiscal.naturezasDevolucaoIds());
   ok(m && m[1] === doRegistroAmb,
