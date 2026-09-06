@@ -56,8 +56,14 @@ paresProducao.forEach(([arq, env, ler]) => {
 // o da AMB tem dois || encadeados; confere o ULTIMO valor literal
 (() => {
   const src = fs.readFileSync(path.join(__dirname, '..', 'amb-devolucoes', 'app-AMB.js'), 'utf8');
-  const m = src.match(/process\.env\.AMB_NATUREZAS_DEVOLUCAO_IDS\s*\|\|\s*process\.env\.AMB_NATUREZA_DEVOLUCAO\s*\|\|\s*'([^']+)'/);
-  ok(!!m, 'achei o padrao encadeado de AMB_NATUREZAS_DEVOLUCAO_IDS');
+  // b243: o app-AMB agora le do REGISTRO — o encadeado saiu de la e virou
+  // `FICHA_AMB.fiscal.naturezasDevolucaoIds() || envAmb('NATUREZA_DEVOLUCAO')
+  //  || '15110882041'`. A garantia continua a mesma: o ULTIMO literal do
+  // encadeado tem que bater com o padrao do registro. Se um dia divergirem,
+  // a AMB emitiria com UMA natureza onde produção usava outra.
+  const m = src.match(/naturezasDevolucaoIds\(\)\s*\|\|\s*envAmb\('NATUREZA_DEVOLUCAO'\)\s*\|\|\s*'([^']+)'/)
+    || src.match(/process\.env\.AMB_NATUREZAS_DEVOLUCAO_IDS\s*\|\|\s*process\.env\.AMB_NATUREZA_DEVOLUCAO\s*\|\|\s*'([^']+)'/);
+  ok(!!m, 'achei o encadeado de NATUREZAS_DEVOLUCAO (no registro ou no env)');
   const doRegistroAmb = semEnv(['AMB_NATUREZAS_DEVOLUCAO_IDS', 'AMB_NATUREZA_DEVOLUCAO'],
                                () => EMPRESAS.ambtotal.fiscal.naturezasDevolucaoIds());
   ok(m && m[1] === doRegistroAmb,
