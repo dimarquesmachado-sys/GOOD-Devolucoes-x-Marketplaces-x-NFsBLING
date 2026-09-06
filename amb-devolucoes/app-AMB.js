@@ -90,7 +90,7 @@ const criarMlBuscas = require('../lib/ml-buscas');
 const registrarIdentificar = require('./lib-AMB/identificar-AMB');
 const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 
-const VERSAO = 'AMB Devolucoes b284';
+const VERSAO = 'AMB Devolucoes b285';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();

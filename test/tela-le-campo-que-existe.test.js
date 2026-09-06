@@ -100,8 +100,22 @@ for (const t of TELAS) {
     const i = srv.indexOf('async function ' + t.produtor);
     if (i >= 0) escopo = corpoDelimitado(srv, i);
   } else if (t.rota) {
+    // b278.7 (Codex): numa ROTA, o primeiro `(` e o do `app.get(`, e o
+    // parentese so fecha DEPOIS do callback inteiro — o escopo entao pegava
+    // a proxima funcao junto. Pra rota, comeco no corpo do callback: o `{`
+    // que vem logo apos a seta `=>`.
     const i = srv.indexOf(t.rota);
-    if (i >= 0) escopo = corpoDelimitado(srv, i);
+    if (i >= 0) {
+      const seta = srv.indexOf('=>', i);
+      const j = seta >= 0 ? srv.indexOf('{', seta) : -1;
+      if (j >= 0) {
+        let n = 0;
+        for (let k = j; k < srv.length; k++) {
+          if (srv[k] === '{') n++;
+          else if (srv[k] === '}') { n--; if (n === 0) { escopo = srv.slice(i, k + 1); break; } }
+        }
+      }
+    }
   }
   ok(escopo !== srv || (!t.produtor && !t.rota),
      t.nome + ': achei o produtor da resposta (escopo delimitado)');

@@ -538,7 +538,10 @@ async function listarDefeitos({ busca } = {}) {
         //
         // Escapo com `\` (ESCAPE padrao do LIKE). As aspas continuam,
         // pra virgula e parentese seguirem literais.
-        const t = '"*' + b.replace(/"/g, '').replace(/([\\%_*])/g, '\\$1') + '*"';
+        // b278.7 (Codex): a ASPA tambem e conteudo. `Modelo "Pro"` virava
+        // `Modelo Pro` e deixava de casar. Dentro de um valor entre aspas o
+        // PostgREST aceita `\"` — escapo, nao apago.
+        const t = '"*' + b.replace(/([\\%_*])/g, '\\$1').replace(/"/g, '\\"') + '*"';
         q = q.or([
           `produto_sku.ilike.${t}`,
           `localizacao.ilike.${t}`,
@@ -580,16 +583,20 @@ async function listarDefeitos({ busca } = {}) {
     // Em vez de paginar (mais chamadas, mais cota), mando a lista em LOTES
     // de 150 ids: `not.in` aceita varios, e assim a exclusao acontece SEMPRE
     // no banco, sem estourar a URL. O limite volta a ser 400 puros.
-    const MAX_IDS_POR_LOTE = 150;
-    const MAX_LOTES = 8;   // ~1200 ids: alem disso a URL fica grande demais
+    // b278.7 (Codex): MEU LOOP DE LOTES NAO CRIAVA REQUISICOES. Cada
+    // `q.not(...)` so acrescenta mais um filtro na MESMA URL do GET — os
+    // 1.200 ids continuavam numa requisicao so, que era o problema que eu
+    // queria evitar. "Lote" sem requisicao separada nao e lote.
+    //
+    // Volto ao que a GOOD faz e que funciona: UMA lista de ids enquanto
+    // couber na URL; passando disso, a exclusao e em memoria e o limite
+    // cresce pra compensar. Sem invencao.
+    const MAX_IDS_NA_URL = 150;
     const idsResolvidos = [...resolvidosPorPedido];
-    const cabeNaURL = Math.min(idsResolvidos.length, MAX_IDS_POR_LOTE * MAX_LOTES);
-    for (let k = 0; k < cabeNaURL; k += MAX_IDS_POR_LOTE) {
-      q = q.not('id', 'in', '(' + idsResolvidos.slice(k, k + MAX_IDS_POR_LOTE).join(',') + ')');
+    if (idsResolvidos.length && idsResolvidos.length <= MAX_IDS_NA_URL) {
+      q = q.not('id', 'in', '(' + idsResolvidos.join(',') + ')');
     }
-    // o que nao coube sai em memoria (o filtro logo abaixo) — e ai o limite
-    // cresce pra compensar, senao os excluidos voltam a comer as 400 vagas
-    const sobrouFora = idsResolvidos.length - cabeNaURL;
+    const sobrouFora = idsResolvidos.length > MAX_IDS_NA_URL ? idsResolvidos.length : 0;
     const limite = sobrouFora > 0 ? Math.min(1000, 400 + sobrouFora) : 400;
     q = q.order('criado_em', { ascending: false }).limit(limite);
     const r = await q;
