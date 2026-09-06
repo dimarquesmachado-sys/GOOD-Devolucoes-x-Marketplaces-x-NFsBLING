@@ -132,18 +132,44 @@ console.log('6. escopo do PR');
   try {
     // busca a main de verdade antes de comparar — sem isso o `origin/main`
     // local fica velho e o numero sai errado (medi 86 commits onde eram 2)
-    try { ex('git fetch -q origin main:refs/remotes/origin/main', { cwd: RAIZ, stdio: 'pipe' }); } catch (e) {}
+    // b239 (Codex): se o fetch falhar, NAO uso o `origin/main` velho —
+    // daria um numero que parece certo e esta errado, que e exatamente o
+    // que esta checagem veio evitar. Sem base confiavel, digo que nao sei.
+    let baseOk = true;
+    try {
+      ex('git fetch -q origin main:refs/remotes/origin/main', { cwd: RAIZ, stdio: 'pipe' });
+    } catch (e) { baseOk = false; }
     const branch = ex('git rev-parse --abbrev-ref HEAD', { cwd: RAIZ }).toString().trim();
-    if (branch === 'main' || branch === 'HEAD') {
+    if (!baseOk) {
+      console.log('  ' + 'tamanho da entrega'.padEnd(46)
+        + '⚠️  nao consegui buscar a main — sem base confiavel, nao meço');
+    } else if (branch === 'main' || branch === 'HEAD') {
       console.log('  ' + 'nao estou numa branch de PR'.padEnd(46) + '—');
     } else {
+      // b239 (Codex): `...` (tres pontos) = a partir da BASE COMUM. Com
+      // dois pontos eu comparava as duas pontas, entao arquivo mexido so na
+      // main entrava na minha conta e inflava a entrega.
       const n = Number(ex('git rev-list --count origin/main..HEAD', { cwd: RAIZ }).toString().trim());
-      const arquivos = ex('git diff --name-only origin/main..HEAD', { cwd: RAIZ })
+      const arquivos = ex('git diff --name-only origin/main...HEAD', { cwd: RAIZ })
         .toString().trim().split('\n').filter(Boolean).length;
-      const aviso = n >= 5
-        ? '⚠️  ' + n + ' commits, ' + arquivos + ' arquivos — O BUG ORIGINAL JA FOI RESOLVIDO? '
-          + 'Se sim, PARE: melhoria vira PR novo (regra 4.9)'
-        : n + ' commit(s), ' + arquivos + ' arquivo(s)';
+      // [stated 04/09] Ele perguntou "pq só depois de 5 commits, e não 3?".
+      // Eu tinha chutado o 5. MEDI os 25 PRs mergeados do repo:
+      //
+      //   16 de 25 fecham em ate 3 commits (mediana 2)
+      //   e NENHUM tem exatamente 3 — eles fecham em 1-2, ou disparam
+      //   direto pra 4, 5, 7, 9, 18
+      //
+      // Ou seja: passar de 3 nao e "quase la", e o ponto onde perde o
+      // controle. O aviso desce pra 4, que e o limite que ele ja tinha
+      // escrito nas preferencias ("passou de ~4 → mergear, resto em PR de
+      // acerto"). Aos 8, o historico diz pra fechar e reabrir.
+      const aviso = n >= 8
+        ? '🛑 ' + n + ' commits, ' + arquivos + ' arquivos — FECHAR E REABRIR '
+          + '(nenhum PR do repo se recuperou depois de 8)'
+        : n >= 4
+          ? '⚠️  ' + n + ' commits, ' + arquivos + ' arquivos — O BUG ORIGINAL JA FOI RESOLVIDO? '
+            + 'Se sim, PARE: mergeia e melhoria vira PR novo (regra 4.9)'
+          : n + ' commit(s), ' + arquivos + ' arquivo(s)';
       console.log('  ' + 'tamanho da entrega'.padEnd(46) + aviso);
     }
   } catch (e) {
