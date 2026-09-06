@@ -508,7 +508,13 @@ async function listarDefeitos({ busca } = {}) {
   try {
     let q = dbc.from(T.devolucoes)
       .select('id, produto_sku, produto_titulo, localizacao, defeito_qtd, problema_descricao, tipo, status, funcionario, nf_numero, criado_em')
-      .or('tipo.eq.defeito_estoque,status.eq.problema')
+      // b278.8 (Codex): so o que JA E defeito entra na consulta.
+      //
+      // `status=problema` sem `defeito_estoque` e devolucao AGUARDANDO NF —
+      // eu tirava do `itens` DEPOIS da consulta: 400 pendentes recentes
+      // ocupavam as vagas e o defeito antigo nunca era buscado. Mesmo erro
+      // do b278.5, noutro filtro.
+      .or('tipo.eq.defeito_estoque,and(status.eq.concluido,tipo.neq.defeito_estoque)')
       // b278.4 (Codex): o `tipo` cobre o caso NOVO (o codigo atualiza a
       // linha de origem). O caso ANTIGO nao — ali o estado terminal vive
       // so no PEDIDO de recuperacao/descarte, e a linha continua
@@ -605,6 +611,10 @@ async function listarDefeitos({ busca } = {}) {
     let linhas = r.data || [];
     // rede de seguranca: se os ids nao couberam na URL, corta aqui
     linhas = linhas.filter((x) => !resolvidosPorPedido.has(String(x.id)));
+    // b278.8 (Codex): o overfetch so COMPENSA o que sai em memoria — depois
+    // de excluir, corto em 400. Sem isso, 151 resolvidos ANTIGOS inflavam o
+    // limite pra 551 e a tela recebia 551 onde a GOOD mostra 400.
+    if (linhas.length > 400) linhas = linhas.slice(0, 400);
     // b278 - AVISAR QUANDO BATE NO TETO, em vez de sumir calado.
     //
     // Medi a GOOD e a AMB lado a lado: a GOOD tinha um sumico causado por
@@ -649,7 +659,18 @@ async function listarDefeitos({ busca } = {}) {
     } catch (e) { /* tabela pode nao existir ainda: segue sem o historico */ }
 
     const grupos = {};
+    // b278.8: a contagem de AGUARDANDO NF vinha deste mesmo laco — tirando
+    // os pendentes da consulta, ela zerava. Agora e contagem propria
+    // (head+count, sem trazer linha).
     let aguardandoNF = 0;
+    try {
+      const rc = await dbc.from(T.devolucoes)
+        .select('id', { count: 'exact', head: true })
+        .eq('status', 'problema')
+        .neq('tipo', 'defeito_estoque');
+      aguardandoNF = rc.count || 0;
+    } catch (e) { /* sem a contagem, a tela so nao mostra o aviso */ }
+
     for (const x of linhas) {
       const contaComoDefeito = x.tipo === 'defeito_estoque' || x.status === 'concluido';
       if (x.status === 'problema' && x.tipo !== 'defeito_estoque') aguardandoNF++;
