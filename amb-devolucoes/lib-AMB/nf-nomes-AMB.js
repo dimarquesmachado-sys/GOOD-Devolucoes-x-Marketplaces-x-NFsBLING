@@ -36,7 +36,18 @@
 
 'use strict';
 
-const cfg = require('../config-AMB');
+// b248 - FASE 3, passo 3 (ultimo antes do app): RECEBE a ficha.
+//
+// ⚠️ O ESTADO AQUI E DE CONTROLE, nao de credencial: `construindo`,
+// `ENTREGA_RODANDO`, `NFV_RODANDO`, `ULTIMA_BUSCA`. Sao travas de "ja esta
+// rodando" e caches de indice. Compartilhadas entre empresas, uma
+// BLOQUEARIA a construcao do indice da outra — a segunda veria
+// `construindo=true` e desistiria, ficando com indice vazio pra sempre.
+//
+// A fabrica move essas travas pra dentro de cada instancia.
+const configAMB = require('../config-AMB');
+
+function criarNfNomes(cfg) {
 const bling = require('./bling-AMB');
 
 const IDX = {
@@ -469,7 +480,12 @@ function acharPorPedido(pedido) {
   return (k && IDX.porPedido && IDX.porPedido[k]) || null;
 }
 
-module.exports = {
+return {
   construirIndice, statusIndice, buscarPorNome, acharPorPedido, acharPorNumero, acharVendaPorLoja, nfDaVenda, nfDaLoja, acharNfPorNomeIndice, dispararNfPorVenda, preAquecer,
   colapsar, primeiroUltimo,
 };
+}
+
+// b248: export padrao = objeto pronto da AMB; fabrica em `.criar`.
+module.exports = criarNfNomes(configAMB);
+module.exports.criar = criarNfNomes;
