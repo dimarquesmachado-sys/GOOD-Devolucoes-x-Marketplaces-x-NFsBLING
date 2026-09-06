@@ -509,12 +509,12 @@ async function listarDefeitos({ busca } = {}) {
     let q = dbc.from(T.devolucoes)
       .select('id, produto_sku, produto_titulo, localizacao, defeito_qtd, problema_descricao, tipo, status, funcionario, nf_numero, criado_em')
       .or('tipo.eq.defeito_estoque,status.eq.problema')
-      // b278.3 (Codex): FORA os ja resolvidos. Defeito recuperado,
-      // descartado ou excluido continuava passando como
-      // `tipo=defeito_estoque` quando a autorizacao e antiga (de antes de o
-      // codigo comecar a atualizar o `tipo` da linha de origem). A tela
-      // contava como peca DISPONIVEL — o estoquista iria buscar algo que
-      // nao existe mais. A GOOD ja trata (lib/defeitos-ciclo.js:364).
+      // b278.4 (Codex): o `tipo` cobre o caso NOVO (o codigo atualiza a
+      // linha de origem). O caso ANTIGO nao — ali o estado terminal vive
+      // so no PEDIDO de recuperacao/descarte, e a linha continua
+      // `defeito_estoque`. Por isso preciso das duas exclusoes: esta, e a
+      // por `defeito_id` mais abaixo (como o defeitos-ciclo-AMB ja faz
+      // com o `porPedido`).
       .not('tipo', 'in', '(recuperado,descartado,defeito_excluido)');
 
     // b278.2 (Codex): a BUSCA vai ao BANCO, nao filtra em memoria depois.
@@ -530,8 +530,15 @@ async function listarDefeitos({ busca } = {}) {
       // escapo com aspas em vez de apagar.
       const b = String(busca).trim();
       if (b) {
-        // termo entre aspas: preserva virgula, parentese e apostrofo
-        const t = '"*' + b.replace(/"/g, '') + '*"';
+        // b278.4 (Codex): escapar os CURINGAS do ILIKE. `_` e `%` sao
+        // padroes no SQL (qualquer caractere / qualquer sequencia) e o `*`
+        // vira `%` no PostgREST. Um SKU como `KJBD_179` casaria com
+        // `KJBD-179` e dezenas de outros, enchendo as 400 vagas com
+        // parecidos MAIS NOVOS — e o exato, mais antigo, ficaria de fora.
+        //
+        // Escapo com `\` (ESCAPE padrao do LIKE). As aspas continuam,
+        // pra virgula e parentese seguirem literais.
+        const t = '"*' + b.replace(/"/g, '').replace(/([\\%_*])/g, '\\$1') + '*"';
         q = q.or([
           `produto_sku.ilike.${t}`,
           `localizacao.ilike.${t}`,
@@ -570,6 +577,22 @@ async function listarDefeitos({ busca } = {}) {
 
     // Agrupa por local + SKU, somando as quantidades — e assim que
     // o estoquista procura: "o que tem na prateleira X".
+    // b278.4 (Codex): os RESOLVIDOS POR PEDIDO. O `defeitos-ciclo-AMB` ja
+    // faz isso (`porPedido`, linha 376): pedido autorizado ou concluido =
+    // a peca saiu do estoque de defeitos, mesmo que a linha de origem
+    // continue marcada como `defeito_estoque`. Sem isso a tela mostra como
+    // disponivel algo que ja foi recuperado ou descartado.
+    const resolvidosPorPedido = new Set();
+    try {
+      const rped = await dbc.from('defeito_pedidos_amb')
+        .select('defeito_id, status')
+        .in('status', ['autorizado', 'concluido']);
+      for (const pd of (rped.data || [])) {
+        if (pd.defeito_id) resolvidosPorPedido.add(String(pd.defeito_id));
+      }
+    } catch (e) { /* sem os pedidos, vale so o tipo da linha */ }
+    linhas = linhas.filter((x) => !resolvidosPorPedido.has(String(x.id)));
+
     // b278.2: busca as pecas retiradas dos itens desta pagina (tabela
     // propria da AMB: `pecas_retiradas_amb`). Uma consulta so, por lote.
     const pecasPorDefeito = {};
