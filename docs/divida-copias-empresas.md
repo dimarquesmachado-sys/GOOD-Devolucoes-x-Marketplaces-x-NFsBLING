@@ -41,3 +41,26 @@ e `amb-devolucoes/lib-AMB/X-AMB.js` (AMB):
 - módulo novo fora da lista de dívida conhecida acusa
 
 Ao unificar mais um, acrescentar o nome na lista `unificados` do teste.
+
+---
+
+## Medição final (04/09) — o que NÃO vale unificar
+
+Medi os 5 restantes olhando a **natureza** da divergência, não o tamanho:
+
+| módulo | por que não |
+|---|---|
+| `nf-nomes` | as 405 linhas extras da AMB são **4 funções que só ela usa** (busca por pedido, por número, por venda da loja). A GOOD não chama nenhuma. E o conserto que importava (ritmo/429, b228) a GOOD **já tem**. Unificar levaria código morto pra ela |
+| `defeitos-ciclo` | schema diferente de verdade: a GOOD usa `created_at`, a AMB `criado_em`; e a AMB grava um status que a GOOD recusa por trava fiscal |
+| `bling` · `ml` · `magalu` | divergem **nos dois sentidos** — cada lado tem funções que o outro não tem. Diferença de negócio, não descuido. Unificar viraria um módulo cheio de condicionais por empresa, pior que duas cópias honestas |
+| `ml-returns` | 15% iguais; a AMB tem enriquecimento de pedido que a GOOD faz noutro lugar. Mesmo caso |
+
+**Conclusão:** a dívida útil acabou. Sobrou ~7.900 linhas duplicadas, mas
+são duplicação **de nome**, não de código — dois módulos diferentes que
+por acaso se chamam igual.
+
+## O que fazer ao plugar a 3ª empresa
+
+1. Ela herda os 4 já comuns (`ml-buscas`, `ritmo-bling`, `nf-pessoa`, `render-tokens`) sem trabalho
+2. Para os demais, **copiar da AMB**: nas 3 unificações de hoje, a versão dela era a mais completa em 2 de 3 casos
+3. ⚠️ E a lição das unificações: **conferir os DOIS lados**. Em `render-tokens` eu adotei a versão da AMB e perdi a fila única, que só existia na da GOOD
