@@ -548,11 +548,45 @@ async function listarDefeitos({ busca } = {}) {
       }
     }
 
-    q = q.order('criado_em', { ascending: false }).limit(400);
+    // b278.4 (Codex): os RESOLVIDOS POR PEDIDO. O `defeitos-ciclo-AMB` ja
+    // faz isso (`porPedido`, linha 376): pedido autorizado ou concluido =
+    // a peca saiu do estoque de defeitos, mesmo que a linha de origem
+    // continue marcada como `defeito_estoque`. Sem isso a tela mostra como
+    // disponivel algo que ja foi recuperado ou descartado.
+    const resolvidosPorPedido = new Set();
+    try {
+      const rped = await dbc.from('defeito_pedidos_amb')
+        .select('defeito_id, status')
+        .in('status', ['autorizado', 'concluido']);
+      for (const pd of (rped.data || [])) {
+        if (pd.defeito_id) resolvidosPorPedido.add(String(pd.defeito_id));
+      }
+    } catch (e) { /* sem os pedidos, vale so o tipo da linha */ }
+
+    // b278.5 (Codex): EXCLUIR ANTES DO LIMITE. Eu filtrava os resolvidos
+    // por pedido DEPOIS da consulta — e ai eles ocupavam vaga dentro das
+    // 400, empurrando defeito ativo antigo pra fora. E EXATAMENTE o bug que
+    // a GOOD teve (`idsForaDoEstado`, lib/defeitos-ciclo.js) e que eu disse
+    // que a AMB nao tinha. Meu conserto anterior criou ele.
+    //
+    // Mesma saida da GOOD: os ids entram na consulta enquanto couberem na
+    // URL; passando disso, a exclusao volta a ser em memoria e o limite
+    // CRESCE pelo tanto que sera descartado, pra sobrarem 400 uteis.
+    const MAX_IDS_NA_URL = 150;
+    const idsResolvidos = [...resolvidosPorPedido];
+    if (idsResolvidos.length && idsResolvidos.length <= MAX_IDS_NA_URL) {
+      q = q.not('id', 'in', '(' + idsResolvidos.join(',') + ')');
+    }
+    const limite = idsResolvidos.length > MAX_IDS_NA_URL
+      ? Math.min(1000, 400 + idsResolvidos.length)
+      : 400;
+    q = q.order('criado_em', { ascending: false }).limit(limite);
     const r = await q;
     if (r.error) return { ok: false, erro: r.error.message };
 
     let linhas = r.data || [];
+    // rede de seguranca: se os ids nao couberam na URL, corta aqui
+    linhas = linhas.filter((x) => !resolvidosPorPedido.has(String(x.id)));
     // b278 - AVISAR QUANDO BATE NO TETO, em vez de sumir calado.
     //
     // Medi a GOOD e a AMB lado a lado: a GOOD tinha um sumico causado por
@@ -577,21 +611,6 @@ async function listarDefeitos({ busca } = {}) {
 
     // Agrupa por local + SKU, somando as quantidades — e assim que
     // o estoquista procura: "o que tem na prateleira X".
-    // b278.4 (Codex): os RESOLVIDOS POR PEDIDO. O `defeitos-ciclo-AMB` ja
-    // faz isso (`porPedido`, linha 376): pedido autorizado ou concluido =
-    // a peca saiu do estoque de defeitos, mesmo que a linha de origem
-    // continue marcada como `defeito_estoque`. Sem isso a tela mostra como
-    // disponivel algo que ja foi recuperado ou descartado.
-    const resolvidosPorPedido = new Set();
-    try {
-      const rped = await dbc.from('defeito_pedidos_amb')
-        .select('defeito_id, status')
-        .in('status', ['autorizado', 'concluido']);
-      for (const pd of (rped.data || [])) {
-        if (pd.defeito_id) resolvidosPorPedido.add(String(pd.defeito_id));
-      }
-    } catch (e) { /* sem os pedidos, vale so o tipo da linha */ }
-    linhas = linhas.filter((x) => !resolvidosPorPedido.has(String(x.id)));
 
     // b278.2: busca as pecas retiradas dos itens desta pagina (tabela
     // propria da AMB: `pecas_retiradas_amb`). Uma consulta so, por lote.

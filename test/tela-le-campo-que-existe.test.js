@@ -64,13 +64,44 @@ for (const t of TELAS) {
   // server.js tem dezenas de `itens:` sem relacao, entao tirar `itens` da
   // rota /api/defeitos passaria batido. Agora o escopo e o PRODUTOR
   // configurado (a funcao ou a rota que monta ESTA resposta).
+  // b278.5 (Codex): DELIMITAR de verdade, nao cortar num numero fixo.
+  //
+  // A fatia de 20.000 chars ainda pegava produtores vizinhos — o escopo da
+  // GOOD passava do fim da rota e entrava em outras. E quando a funcao
+  // cresceu, o corte fixo ficou CURTO e acusou campo que existe. Os dois
+  // erros vem da mesma causa: numero magico em vez do fim real.
+  //
+  // Agora conto chaves a partir do `{` do produtor: paro exatamente onde
+  // ele fecha.
+  function corpoDelimitado(src, ini) {
+    // ⚠️ a primeira `{` pode ser de um PARAMETRO desestruturado —
+    // `listarDefeitos({ busca } = {})`. Se eu contar dali, paro no fim do
+    // parametro e o escopo sai vazio (acusou 8 campos que existem).
+    // Comeco depois do `)` que fecha a lista de parametros.
+    const abre = src.indexOf('(', ini);
+    let prof = 0; let corpo = ini;
+    for (let k = abre; k < src.length && abre >= 0; k++) {
+      if (src[k] === '(') prof++;
+      else if (src[k] === ')') { prof--; if (prof === 0) { corpo = k; break; } }
+    }
+    let i = src.indexOf('{', corpo);
+    if (i < 0) return src.slice(ini, ini + 20000);
+    let n = 0;
+    for (let k = i; k < src.length; k++) {
+      const c = src[k];
+      if (c === '{') n++;
+      else if (c === '}') { n--; if (n === 0) return src.slice(ini, k + 1); }
+    }
+    return src.slice(ini);
+  }
+
   let escopo = srv;
   if (t.produtor) {
     const i = srv.indexOf('async function ' + t.produtor);
-    if (i >= 0) escopo = srv.slice(i, i + 20000);
+    if (i >= 0) escopo = corpoDelimitado(srv, i);
   } else if (t.rota) {
     const i = srv.indexOf(t.rota);
-    if (i >= 0) escopo = srv.slice(i, i + 20000);
+    if (i >= 0) escopo = corpoDelimitado(srv, i);
   }
   ok(escopo !== srv || (!t.produtor && !t.rota),
      t.nome + ': achei o produtor da resposta (escopo delimitado)');
