@@ -25,6 +25,13 @@ const CFG = fs.readFileSync(path.join(RAIZ, 'amb-devolucoes', 'config-AMB.js'), 
   ok(diretas.length === 0,
      'config-AMB nao le `process.env.AMB_*` direto'
      + (diretas.length ? ' (SOBRARAM: ' + diretas.slice(0, 5).join(', ') + ')' : ''));
+
+  // b243: o app-AMB tambem — eram 9 pontos, os fiscais entre eles
+  const APP = fs.readFileSync(path.join(RAIZ, 'amb-devolucoes', 'app-AMB.js'), 'utf8');
+  const noApp = [...APP.matchAll(/process\.env\.AMB_(\w+)/g)].map((m) => m[1]);
+  ok(noApp.length === 0,
+     'app-AMB nao le `process.env.AMB_*` direto'
+     + (noApp.length ? ' (SOBRARAM: ' + noApp.slice(0, 5).join(', ') + ')' : ''));
   ok(/require\('\.\.\/lib\/empresas'\)/.test(CFG),
      '  e importa o registro de empresas');
 }
