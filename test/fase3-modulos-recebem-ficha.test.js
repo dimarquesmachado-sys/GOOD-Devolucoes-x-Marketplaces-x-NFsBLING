@@ -21,6 +21,12 @@ const RAIZ = path.join(__dirname, '..');
 // os que JÁ viraram fábrica — cresce a cada passo da Fase 3
 const PRONTOS = [
   ['supabase-AMB', 'amb-devolucoes/lib-AMB/supabase-AMB.js'],
+  // b246 — passo 2: estes DOIS guardam estado mutavel (tokens, cache de
+  // depositos/naturezas, renovacao em voo). Com duas empresas no mesmo
+  // modulo, uma usaria o token da outra — pior que o bug que a Fase 3 veio
+  // evitar. A fabrica move esse estado pra dentro de cada instancia.
+  ['bling-AMB', 'amb-devolucoes/lib-AMB/bling-AMB.js'],
+  ['ml-AMB', 'amb-devolucoes/lib-AMB/ml-AMB.js'],
 ];
 
 for (const [nome, rel] of PRONTOS) {
@@ -70,6 +76,21 @@ for (const [nome, rel] of PRONTOS) {
   console.log('');
   console.log('    (Fase 3 — ainda importam o config direto: '
     + (faltam.length ? faltam.join(', ') : 'nenhum, fase completa') + ')');
+}
+
+// ── b246: a empresa NAO pode estar no literal ───────────────────────
+//
+//  fixo faria duas instancias competirem pelo MESMO
+// carimbo de renovacao de token: uma renova, a outra acha que ja renovou —
+// e o token da segunda morre no proximo restart.
+{
+  for (const arq of ['bling-AMB.js', 'ml-AMB.js']) {
+    const src = fs.readFileSync(path.join(RAIZ, 'amb-devolucoes', 'lib-AMB', arq), 'utf8');
+    ok(/empresa: cfg\.CHAVE_REGISTRO/.test(src),
+       arq + ': a empresa da renovacao sai da FICHA, nao do literal');
+    ok(/\(cfg\.PREFIXO_ENV \|\| 'AMB_'\)/.test(src),
+       '  e o prefixo das env vars tambem');
+  }
 }
 
 console.log('');

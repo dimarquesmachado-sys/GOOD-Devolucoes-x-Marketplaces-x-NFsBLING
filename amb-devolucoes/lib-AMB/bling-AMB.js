@@ -19,7 +19,18 @@
 'use strict';
 
 const axios = require('axios');
-const cfg = require('../config-AMB');
+// b246 - FASE 3, passo 2: RECEBE a ficha em vez de importar o config.
+//
+// ⚠️ AQUI TEM ESTADO MUTAVEL, diferente do supabase (passo 1): os tokens
+// (`ACCESS_TOKEN`, `REFRESH_TOKEN`), o cache de depositos/naturezas e a
+// renovacao em voo vivem em variaveis DO MODULO. Com duas empresas isso
+// seria pior que o bug original — uma usaria o token da outra.
+//
+// Envolver na fabrica move esse estado pra DENTRO de cada instancia, que
+// e exatamente o que precisa acontecer.
+const configAMB = require('../config-AMB');
+
+function criarBling(cfg) {
 const { atualizarTokensNoRender } = require('../../lib/render-tokens');
 const { registrarPreventiva } = require('../../lib/token-preventiva');   // b271
 // b272 (review do Codex) - ESTA DECLARACAO VOLTOU. Meu refactor da b271
@@ -377,17 +388,21 @@ async function lancarEstoqueNf(idNfDevolucao, idDeposito) {
 // a EMPRESA como parametro: integracao nova (ou empresa nova) = um registro
 // como este, zero logica duplicada.
 const PREVENTIVA = registrarPreventiva({
-  empresa: 'ambtotal', integracao: 'bling',
+  // b246 (Fase 3): a empresa e o prefixo saem da FICHA recebida, nao do
+  // literal. Com duas instancias, `empresa: 'ambtotal'` fixo faria as duas
+  // competirem pelo MESMO carimbo de renovacao — uma renovaria o token e a
+  // outra acharia que ja tinha renovado.
+  empresa: cfg.CHAVE_REGISTRO || 'ambtotal', integracao: 'bling',
   temRefresh: () => !!REFRESH_TOKEN,
   renovar: () => renovarToken(),
   persistiu: () => ultimaPersistenciaBling,
-  carimboEnv: 'AMB_BLING_RENOVADO_EM',
-  diasEnv: 'AMB_BLING_RENOVAR_DIAS',
+  carimboEnv: (cfg.PREFIXO_ENV || 'AMB_') + 'BLING_RENOVADO_EM',
+  diasEnv: (cfg.PREFIXO_ENV || 'AMB_') + 'BLING_RENOVAR_DIAS',
 });
 const renovacaoPreventiva = (op) => PREVENTIVA.preventiva(op);
 const ligarRenovacaoPreventiva = (op) => PREVENTIVA.ligar(op);
 
-module.exports = {
+return {
   chamarBling,
   renovacaoPreventiva, ligarRenovacaoPreventiva,   // b265
   renovarToken,
@@ -402,3 +417,9 @@ module.exports = {
   listarDepositos, lancarEstoqueNf,
   listarNaturezas, naturezaDevolucaoEntrada, idsFiscais,   // b283
 };
+}
+
+// b246: o objeto pronto da AMB continua sendo o export padrao (nada muda
+// pra quem ja usa — sao 6 pontos), e a fabrica fica em `.criar`.
+module.exports = criarBling(configAMB);
+module.exports.criar = criarBling;
