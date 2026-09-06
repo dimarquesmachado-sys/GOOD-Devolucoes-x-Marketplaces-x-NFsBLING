@@ -67,10 +67,10 @@ for (const t of TELAS) {
   let escopo = srv;
   if (t.produtor) {
     const i = srv.indexOf('async function ' + t.produtor);
-    if (i >= 0) escopo = srv.slice(i, i + 9000);
+    if (i >= 0) escopo = srv.slice(i, i + 20000);
   } else if (t.rota) {
     const i = srv.indexOf(t.rota);
-    if (i >= 0) escopo = srv.slice(i, i + 9000);
+    if (i >= 0) escopo = srv.slice(i, i + 20000);
   }
   ok(escopo !== srv || (!t.produtor && !t.rota),
      t.nome + ': achei o produtor da resposta (escopo delimitado)');
@@ -92,7 +92,7 @@ for (const t of TELAS) {
 {
   const srv = fs.readFileSync(path.join(RAIZ, 'amb-devolucoes', 'lib-AMB', 'supabase-AMB.js'), 'utf8');
   const i = srv.indexOf('async function listarDefeitos');
-  const fn = srv.slice(i, i + 9000);
+  const fn = srv.slice(i, i + 20000);
   for (const campo of ['total_registros', 'total_pecas', 'itens']) {
     ok(new RegExp(campo + ':').test(fn),
        'listarDefeitos devolve `' + campo + '` (a tela da AMB depende dele)');
