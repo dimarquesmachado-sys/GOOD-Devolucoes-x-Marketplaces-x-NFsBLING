@@ -508,7 +508,14 @@ async function listarDefeitos({ busca } = {}) {
   try {
     let q = dbc.from(T.devolucoes)
       .select('id, produto_sku, produto_titulo, localizacao, defeito_qtd, problema_descricao, tipo, status, funcionario, nf_numero, criado_em')
-      .or('tipo.eq.defeito_estoque,status.eq.problema');
+      .or('tipo.eq.defeito_estoque,status.eq.problema')
+      // b278.3 (Codex): FORA os ja resolvidos. Defeito recuperado,
+      // descartado ou excluido continuava passando como
+      // `tipo=defeito_estoque` quando a autorizacao e antiga (de antes de o
+      // codigo comecar a atualizar o `tipo` da linha de origem). A tela
+      // contava como peca DISPONIVEL — o estoquista iria buscar algo que
+      // nao existe mais. A GOOD ja trata (lib/defeitos-ciclo.js:364).
+      .not('tipo', 'in', '(recuperado,descartado,defeito_excluido)');
 
     // b278.2 (Codex): a BUSCA vai ao BANCO, nao filtra em memoria depois.
     //
@@ -517,13 +524,19 @@ async function listarDefeitos({ busca } = {}) {
     // ficou de fora nao achava nada. O conselho era inutil justamente no
     // caso que ele veio resolver.
     if (busca) {
-      const b = String(busca).replace(/[,()"']/g, '').trim();
+      // b278.3 (Codex): NAO tirar pontuacao do termo. `D'Agua` virava
+      // `DAgua` e deixava de casar com o valor guardado. O que quebra o
+      // PostgREST e a virgula (separa condicoes no `or`) e o parentese —
+      // escapo com aspas em vez de apagar.
+      const b = String(busca).trim();
       if (b) {
+        // termo entre aspas: preserva virgula, parentese e apostrofo
+        const t = '"*' + b.replace(/"/g, '') + '*"';
         q = q.or([
-          `produto_sku.ilike.*${b}*`,
-          `localizacao.ilike.*${b}*`,
-          `produto_titulo.ilike.*${b}*`,
-          `nf_numero.ilike.*${b}*`,
+          `produto_sku.ilike.${t}`,
+          `localizacao.ilike.${t}`,
+          `produto_titulo.ilike.${t}`,
+          `nf_numero.ilike.${t}`,
         ].join(','));
       }
     }
