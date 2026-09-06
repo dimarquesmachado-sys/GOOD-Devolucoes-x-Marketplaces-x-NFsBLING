@@ -118,6 +118,39 @@ passo('nenhum node_modules / .env no staging', () => {
   return null;
 });
 
+// ── 6. o escopo do PR nao inflou? ───────────────────────────────────
+//
+// [stated 04/09] Ele perguntou se um "agente pra me orientar" ajudaria. A
+// resposta honesta: orientacao eu ja tinha — a regra "nao empilhar melhoria
+// em PR aberto" estava escrita e eu empilhei 16 commits mesmo assim.
+//
+// O que funciona e virar CHECAGEM. Aqui o julgamento ("estou inflando?")
+// vira numero: quantos commits, e ha quanto tempo o PR esta aberto.
+console.log('6. escopo do PR');
+{
+  const { execSync: ex } = require('child_process');
+  try {
+    // busca a main de verdade antes de comparar — sem isso o `origin/main`
+    // local fica velho e o numero sai errado (medi 86 commits onde eram 2)
+    try { ex('git fetch -q origin main:refs/remotes/origin/main', { cwd: RAIZ, stdio: 'pipe' }); } catch (e) {}
+    const branch = ex('git rev-parse --abbrev-ref HEAD', { cwd: RAIZ }).toString().trim();
+    if (branch === 'main' || branch === 'HEAD') {
+      console.log('  ' + 'nao estou numa branch de PR'.padEnd(46) + '—');
+    } else {
+      const n = Number(ex('git rev-list --count origin/main..HEAD', { cwd: RAIZ }).toString().trim());
+      const arquivos = ex('git diff --name-only origin/main..HEAD', { cwd: RAIZ })
+        .toString().trim().split('\n').filter(Boolean).length;
+      const aviso = n >= 5
+        ? '⚠️  ' + n + ' commits, ' + arquivos + ' arquivos — O BUG ORIGINAL JA FOI RESOLVIDO? '
+          + 'Se sim, PARE: melhoria vira PR novo (regra 4.9)'
+        : n + ' commit(s), ' + arquivos + ' arquivo(s)';
+      console.log('  ' + 'tamanho da entrega'.padEnd(46) + aviso);
+    }
+  } catch (e) {
+    console.log('  ' + 'sem origin/main pra comparar'.padEnd(46) + '—');
+  }
+}
+
 console.log('');
 console.log('=== ' + (falhou ? '❌ NAO SUBIR' : '✅ PODE SUBIR')
   + ' (' + Math.round((Date.now() - t0) / 1000) + 's) ===');
