@@ -574,15 +574,27 @@ async function listarDefeitos({ busca } = {}) {
         // banco so precisa NAO EXCLUIR a linha certa, e o filtro em memoria
         // (que normaliza acento) refina depois. Divisao de trabalho: o banco
         // corta o volume, a memoria acerta o alvo.
+        // b278.14 (Codex): o coringa em TODA vogal alargava demais —
+        // `ABC123` virava `_B_123` e casava `XBC123`, enchendo as 400 vagas
+        // com lixo e empurrando o resultado certo pra fora. Troquei um
+        // problema (acento) por outro (ruido), que e o padrao que o dono
+        // vem cobrando.
+        //
+        // Agora mando as DUAS condicoes: o termo LITERAL (preciso, pega a
+        // maioria dos casos) e, so quando o termo tem vogal, a forma com
+        // coringa — mas ambas no mesmo `or`, entao o literal casa direto e
+        // o coringa serve de rede pro acento. E o filtro em memoria refina.
         const escapa = (v) => v.replace(/([\\%_*])/g, '\\$1').replace(/"/g, '\\"');
-        const largo = escapa(b).replace(/[aeioucAEIOUC]/g, '_');
-        const t = '"*' + largo + '*"';
-        q = q.or([
-          `produto_sku.ilike.${t}`,
-          `localizacao.ilike.${t}`,
-          `produto_titulo.ilike.${t}`,
-          `nf_numero.ilike.${t}`,
-        ].join(','));
+        const alvo = (padrao) => '"*' + padrao + '*"';
+        const literal = alvo(escapa(b));
+        const campos = ['produto_sku', 'localizacao', 'produto_titulo', 'nf_numero'];
+        const condicoes = campos.map((c) => `${c}.ilike.${literal}`);
+        // rede do acento: so nas vogais que PODEM ter acento em portugues
+        if (/[aeiouAEIOUcC]/.test(b)) {
+          const comCoringa = alvo(escapa(b).replace(/[aeiouAEIOUcC]/g, '_'));
+          for (const c of campos) condicoes.push(`${c}.ilike.${comCoringa}`);
+        }
+        q = q.or(condicoes.join(','));
       }
     }
 
@@ -597,12 +609,18 @@ async function listarDefeitos({ busca } = {}) {
       // linhas por padrao — passando disso, eu recebia so a primeira pagina
       // e os defeitos resolvidos das demais voltavam a aparecer como
       // disponiveis. Consulta sem `range` nao e consulta completa.
+      // b278.14 (Codex): sem teto arbitrario. Meus 20.000 cortavam a lista
+      // em silencio se a operacao passasse disso — e "silencio" e o que
+      // estamos combatendo. Paro so quando a pagina vem incompleta (acabou).
       const PAG = 1000;
-      for (let de = 0; de < 20000; de += PAG) {
+      for (let de = 0; ; de += PAG) {
         const rped = await dbc.from('defeito_pedidos_amb')
           .select('defeito_id, status')
           .in('status', ['autorizado', 'concluido'])
           .range(de, de + PAG - 1);
+        // erro no meio: paro e sigo com o que juntei — a rede em memoria
+        // ainda pega o resto, e melhor lista parcial que laco infinito
+        if (rped.error) break;
         const linhasPed = rped.data || [];
         for (const pd of linhasPed) {
           if (pd.defeito_id) resolvidosPorPedido.add(String(pd.defeito_id));
