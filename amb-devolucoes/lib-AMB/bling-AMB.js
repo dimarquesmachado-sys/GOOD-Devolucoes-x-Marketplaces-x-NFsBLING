@@ -20,7 +20,7 @@
 
 const axios = require('axios');
 const cfg = require('../config-AMB');
-const { atualizarTokensNoRender } = require('./render-tokens-AMB');
+const { atualizarTokensNoRender } = require('../../lib/render-tokens');
 const { registrarPreventiva } = require('../../lib/token-preventiva');   // b271
 // b272 (review do Codex) - ESTA DECLARACAO VOLTOU. Meu refactor da b271
 // apagou o bloco antigo levando junto o `let ultimaPersistenciaBling`, mas a
