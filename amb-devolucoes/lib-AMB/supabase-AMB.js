@@ -670,7 +670,13 @@ async function listarDefeitos({ busca } = {}) {
     //
     // E o AVISO so vale quando NAO ha busca: numa busca por SKU, trazer
     // menos que o teto e o normal, e o alerta assustaria a toa.
-    const bateuNoTeto = !busca && (trouxeCheio || linhas.length > 400);
+    // b278.11 (Codex): o aviso vale COM busca tambem. Eu suprimi por `!busca`
+    // pra nao assustar a toa — mas se a busca casa 400+ defeitos, o limite
+    // corta igual e a tela mostra os 400 primeiros como se fossem tudo. O
+    // que nao vale e alertar quando trouxe POUCO: ai o filtro e que reduziu.
+    //
+    // Criterio unico: bateu no teto = a consulta encheu. Com ou sem busca.
+    const bateuNoTeto = trouxeCheio || linhas.length > 400;
     if (linhas.length > 400) linhas = linhas.slice(0, 400);
 
     // Agrupa por local + SKU, somando as quantidades — e assim que

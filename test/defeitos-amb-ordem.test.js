@@ -54,11 +54,19 @@ const FN = SRC.slice(i, j);
 {
   ok(/normalize\('NFD'\)/.test(FN),
      'a busca em memoria ignora acento (senao SUBTRAI o que o banco achou)');
-  ok(/const bateuNoTeto = !busca &&/.test(FN),
-     'o aviso de teto so vale SEM busca (com filtro, trazer menos e normal)');
-  ok(FN.indexOf('const bateuNoTeto') < FN.indexOf('linhas.slice(0, 400)')
-     || FN.indexOf('const bateuNoTeto') > FN.indexOf('norm(x.produto_sku)'),
-     '  e e medido depois dos filtros, nao antes');
+  // b278.11 (Codex): meu `||` aqui nao verificava NADA — mover o calculo
+  // pra antes da busca satisfazia a primeira metade, mover pra depois do
+  // corte satisfazia a segunda. Disjuncao de duas condicoes que se cobrem
+  // e sempre verdadeira. Tem que ser E, com as duas fronteiras.
+  {
+    const p = (t) => FN.indexOf(t);
+    ok(p('const bateuNoTeto') > p('norm(x.produto_sku)'),
+       'o teto e medido DEPOIS da busca em memoria');
+    ok(p('const bateuNoTeto') < p('linhas.slice(0, 400)'),
+       '  e ANTES do corte (senao mede o ja cortado, sempre 400)');
+  }
+  ok(/const bateuNoTeto = trouxeCheio \|\| linhas\.length > 400;/.test(FN),
+     'o aviso vale COM busca tambem — 400 resultados filtrados tambem sao um teto');
   ok(/if \(ids\.length\) \{/.test(FN),
      'a consulta de pecas so roda se ha itens');
   ok(/tipo\.eq\.defeito_estoque,and\(tipo\.eq\.problema,status\.eq\.concluido\)/.test(FN),
