@@ -94,7 +94,10 @@ tabelas copiando a estrutura da AMB.
 Se preferir fazer pelo Supabase, é uma linha no SQL Editor:
 
 ```sql
-select * from public.provisionar_empresa('_gira');
+-- ⚠️ o sufixo SAI DA FICHA, nao e escolhido aqui. Se a ficha disser
+-- `devolucoes_girassol`, o comando e '_girassol'. Confira antes:
+--   node -e "console.log(require('./lib/empresas').obterEmpresa('girassol').tabelas)"
+select * from public.provisionar_empresa('_girassol');
 ```
 
 Idempotente: rodar duas vezes não duplica nem apaga nada.
@@ -116,8 +119,14 @@ dela.
 
 - **Usuários e login**: a AMB usa `AMB_USERS`. A Girassol vai precisar dos
   próprios — quem bipa, quem é admin.
-- **A rota**: hoje a AMB mora em `/amb`. A Girassol precisa da dela
-  (`/girassol`), e isso é uma linha no `server.js`.
+- **A rota**: ⚠️ **não é uma linha.** Eu escrevi isso antes de medir, e o
+  Codex me corrigiu. O `app-AMB.js` hoje monta UMA instância no
+  carregamento (`configDaEmpresa('ambtotal')`) e exporta o router pronto —
+  montar `/girassol` no `server.js` daria um segundo caminho para o **mesmo
+  backend da AMB**, com as tabelas da AMB. Para valer, o `app-AMB` precisa
+  virar função que recebe a empresa (o passo 4 da Fase 3 preparou os
+  módulos, mas o router em si ainda é singleton). É um PR próprio, e o
+  maior que sobrou.
 - **As telas**: `public-AMB/` tem os HTMLs da AMB. A Girassol usa os mesmos
   arquivos? Se sim, eles precisam saber de qual empresa são — hoje têm um
   bloco que prefixa `/amb` em toda chamada (b329). É a última amarra

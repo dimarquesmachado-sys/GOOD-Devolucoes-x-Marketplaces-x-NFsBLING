@@ -56,6 +56,32 @@ function ler(empresa, nome, envs, tipo) {
      'sem nenhuma das duas -> devolve o padrao (nao `undefined`)');
 }
 
+// ── ⚠️ b250.1 (P1): a GOOD nao le pelo registro ─────────────────────
+//
+// O apontamento derrubou meu passo 1: eu tinha posto o leitor de dois nomes
+// no `lib/empresas.js`, mas o `server.js` usa `lib/bling.js` e `lib/ml.js`,
+// que liam `process.env.BLING_*` DIRETO. Criar as vars novas no Render nao
+// teria efeito nenhum — e ele acharia que tinha migrado.
+{
+  const fs2 = require('fs');
+  for (const arq of ['lib/bling.js', 'lib/ml.js']) {
+    const src = fs2.readFileSync(path.join(RAIZ, arq), 'utf8');
+    const codigo = src.split('\n').filter((l) => !l.trim().startsWith('//')).join('\n');
+
+    ok(/const envGood = /.test(codigo),
+       arq + ': tem o leitor de dois nomes (GOOD_ primeiro, historico depois)');
+    const direto = [...codigo.matchAll(/process\.env\.((?:BLING|ML)_[A-Z_]+)/g)].map((m) => m[1]);
+    ok(direto.length === 0,
+       '  e NAO le nenhuma env com prefixo direto'
+       + (direto.length ? ' (SOBRARAM: ' + direto.join(', ') + ')' : ''));
+
+    // ⚠️ e a gravacao do token durante a migracao: nos DOIS nomes, senao
+    // a primeira renovacao deixa o antigo velho e nao da pra voltar atras
+    ok(/const chavesToken = /.test(codigo),
+       '  e grava o token nos dois nomes enquanto migra');
+  }
+}
+
 // ── ⚠️ a regra que derruba produção se for esquecida ────────────────
 //
 // O nome aparece em DOIS lugares: quem lê a env e quem GRAVA o token
@@ -67,8 +93,10 @@ function ler(empresa, nome, envs, tipo) {
   for (const arq of ['lib/bling.js', 'lib/ml.js']) {
     const src = fs.readFileSync(path.join(RAIZ, arq), 'utf8');
     const lidas = new Set([...src.matchAll(/process\.env\.((?:BLING|ML)_[A-Z_]+)/g)].map((m) => m[1]));
-    const gravadas = [...src.matchAll(/key:\s*'((?:BLING|ML)_[A-Z_]+)'/g)].map((m) => m[1]);
-    const orfas = gravadas.filter((g) => !lidas.has(g));
+    // agora a gravacao passa pelo `chavesToken(...)`, que devolve o nome
+    // novo E o historico — entao conto os nomes citados la
+    const gravadas = [...src.matchAll(/chavesToken\('((?:BLING|ML)_[A-Z_]+)'\)/g)].map((m) => m[1]);
+    const orfas = gravadas.filter((g) => !new RegExp("envGood\\('" + g + "'\\)").test(src));
     ok(orfas.length === 0,
        arq + ': todo token GRAVADO tem o mesmo nome do que e LIDO'
        + (orfas.length ? ' (ORFAS: ' + orfas.join(', ') + ')' : ''));
