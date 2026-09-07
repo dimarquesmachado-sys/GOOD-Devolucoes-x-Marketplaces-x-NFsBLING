@@ -52,7 +52,23 @@ const chamarML = mlClient.chamarML;
 const renovarTokenML = mlClient.renovarTokenML;
 const buscarNFnoML = mlClient.buscarNFnoML;
 
-const ML_USER_ID = process.env.ML_USER_ID;
+// b250.2 (Codex, P1+P2) - EU COBRI OS MODULOS E ESQUECI O SERVER.
+//
+// O passo anterior fez `lib/bling.js` e `lib/ml.js` aceitarem os dois
+// nomes, mas o `server.js` continuava lendo `USERS` e `ML_USER_ID` direto.
+// Quando ele apagasse as antigas: sem `USERS` NINGUEM LOGA, e sem
+// `ML_USER_ID` os envios ficam sem destinatario. Silencioso nos dois.
+//
+// ⚠️ VARRI TODAS as envs sem prefixo daqui (13), em vez de so as 2
+// citadas, e separei: 3 sao DA EMPRESA e migram; as outras 10 (EMAIL_*,
+// QZ_*, RENDER) sao do SERVICO, nao do CNPJ — nao migram.
+const envGood = (nome) => {
+  const novo = process.env['GOOD_' + nome];
+  if (novo != null && novo !== '') return novo;
+  return process.env[nome];   // historico: a GOOD nasceu sem prefixo
+};
+
+const ML_USER_ID = envGood('ML_USER_ID');
 
 // === FASE 3: Supabase + Email + Auth ===
 const SUPABASE_URL = process.env.SUPABASE_URL;
@@ -85,6 +101,7 @@ const ritmoBling = require('./lib/ritmo-bling');
 // (docs/PLUGAR-EMPRESA-NOVA.md, Fase 1). Com isto o `process.env.GOOD_*`
 // e o `AMB_*` somem do codigo: empresa nova = entrada no registro.
 const { obterEmpresa } = require('./lib/empresas');
+
 const FICHA_GOOD = obterEmpresa('good');
 
 // v3.76 - devolucoes ESPERADAS do portal Magalu Entregas (indice 'a espreita')
@@ -141,8 +158,8 @@ function parseUsers(envStr) {
   });
   return out;
 }
-const USERS = parseUsers(process.env.USERS || '');
-const ADMIN_USER = process.env.ADMIN_USER || null; // nome do usuario admin (deve estar no USERS tb)
+const USERS = parseUsers(envGood('USERS') || '');
+const ADMIN_USER = envGood('ADMIN_USER') || null; // nome do usuario admin (deve estar no USERS tb)
 
 // Sessoes em memoria (token -> {usuario, criado, tipo})
 const sessoes = new Map();
@@ -4520,6 +4537,33 @@ async function montarIndiceNFDevolucao(maxPaginas) {
 }
 
 // rota: dispara/consulta o indice. O front chama e depois cruza com o a espreita.
+// b250.3 - MIGRAR AS ENV VARS SOZINHO. [stated] "eu crio só a key, e vc faz
+// algum sisteminha que pega e já preenche o value lá dentro do render não?"
+//
+// Melhor: ele nao precisa nem criar a chave. O `atualizarTokensNoRender` faz
+// GET de todas e PUT do conjunto — var que nao existe e ACRESCENTADA. Entao
+// a rota le o valor que ja esta no processo sob o nome antigo e grava sob o
+// novo. Zero digitacao, e nenhum segredo passa por mim ou pelo chat.
+//
+// ⚠️ COMECE PELA SIMULACAO (`?simular=1`): mostra o plano sem gravar nada.
+// E ⚠️ o Render REINICIA o servico ao mudar env var — rodar fora do horario
+// do galpao (a regra da cota vale aqui tambem).
+app.get('/api/admin/migrar-envs', requerAdmin, async (req, res) => {
+  const { migrarEnvsDaGood } = require('./lib/migrar-envs');
+  // b250.4 (Codex, P2): GET nao muta sem pedido EXPLICITO. Com cookie
+  // `SameSite=Lax`, uma navegacao de outro site pra esta URL levaria o
+  // cookie junto — e gravaria credencial e reiniciaria o servico sem ele
+  // pedir. Agora o padrao e simular; gravar exige `?gravar=1`.
+  const gravar = req.query.gravar === '1' || req.query.gravar === 'true';
+  try {
+    const r = await migrarEnvsDaGood(_attRender, { simular: !gravar });
+    if (!gravar) r.como_gravar = 'confira o plano acima e repita a URL com &gravar=1';
+    return res.json(r);
+  } catch (e) {
+    return res.status(500).json({ ok: false, erro: e.message });
+  }
+});
+
 app.get('/api/admin/indice-nf-devolucao', requerAdmin, async (req, res) => {
   try {
     await montarIndiceNFDevolucao(Number(req.query.paginas || 5));
