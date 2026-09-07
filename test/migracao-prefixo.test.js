@@ -82,6 +82,34 @@ function ler(empresa, nome, envs, tipo) {
   }
 }
 
+// ── ⚠️ b250.2 (P1+P2): o SERVER tambem, nao so os modulos ───────────
+//
+// Eu tinha coberto `lib/bling.js` e `lib/ml.js` e esquecido o `server.js`,
+// que lia `USERS` e `ML_USER_ID` direto. Quando ele apagasse as antigas:
+// sem `USERS` NINGUEM LOGA, sem `ML_USER_ID` os envios ficam sem
+// destinatario. Silencioso nos dois.
+{
+  const fs3 = require('fs');
+  const src = fs3.readFileSync(path.join(RAIZ, 'server.js'), 'utf8');
+  const codigo = src.split('\n').filter((l) => !l.trim().startsWith('//')).join('\n');
+
+  ok(/const envGood = /.test(codigo), 'server.js tem o leitor de dois nomes');
+
+  for (const v of ['USERS', 'ML_USER_ID', 'ADMIN_USER']) {
+    ok(!new RegExp('process\\.env\\.' + v + '\\b').test(codigo),
+       '  `' + v + '` passa pelo leitor (nao le direto)');
+  }
+
+  // ⚠️ e a declaracao vem ANTES do primeiro uso. O `node --check` NAO pega
+  // isso — so o boot real: minha 1a versao punha o `envGood` na linha 99 e
+  // usava na 55, e o servidor morria com "Cannot access before
+  // initialization". Em producao seria o serviço inteiro fora do ar.
+  const decl = codigo.indexOf('const envGood = ');
+  const usos = [...codigo.matchAll(/envGood\('/g)].map((m) => m.index);
+  ok(usos.length > 0 && Math.min(...usos) > decl,
+     '  e a declaracao vem ANTES do 1o uso (o node --check nao pega isso)');
+}
+
 // ── ⚠️ a regra que derruba produção se for esquecida ────────────────
 //
 // O nome aparece em DOIS lugares: quem lê a env e quem GRAVA o token

@@ -52,7 +52,23 @@ const chamarML = mlClient.chamarML;
 const renovarTokenML = mlClient.renovarTokenML;
 const buscarNFnoML = mlClient.buscarNFnoML;
 
-const ML_USER_ID = process.env.ML_USER_ID;
+// b250.2 (Codex, P1+P2) - EU COBRI OS MODULOS E ESQUECI O SERVER.
+//
+// O passo anterior fez `lib/bling.js` e `lib/ml.js` aceitarem os dois
+// nomes, mas o `server.js` continuava lendo `USERS` e `ML_USER_ID` direto.
+// Quando ele apagasse as antigas: sem `USERS` NINGUEM LOGA, e sem
+// `ML_USER_ID` os envios ficam sem destinatario. Silencioso nos dois.
+//
+// ⚠️ VARRI TODAS as envs sem prefixo daqui (13), em vez de so as 2
+// citadas, e separei: 3 sao DA EMPRESA e migram; as outras 10 (EMAIL_*,
+// QZ_*, RENDER) sao do SERVICO, nao do CNPJ — nao migram.
+const envGood = (nome) => {
+  const novo = process.env['GOOD_' + nome];
+  if (novo != null && novo !== '') return novo;
+  return process.env[nome];   // historico: a GOOD nasceu sem prefixo
+};
+
+const ML_USER_ID = envGood('ML_USER_ID');
 
 // === FASE 3: Supabase + Email + Auth ===
 const SUPABASE_URL = process.env.SUPABASE_URL;
@@ -85,6 +101,7 @@ const ritmoBling = require('./lib/ritmo-bling');
 // (docs/PLUGAR-EMPRESA-NOVA.md, Fase 1). Com isto o `process.env.GOOD_*`
 // e o `AMB_*` somem do codigo: empresa nova = entrada no registro.
 const { obterEmpresa } = require('./lib/empresas');
+
 const FICHA_GOOD = obterEmpresa('good');
 
 // v3.76 - devolucoes ESPERADAS do portal Magalu Entregas (indice 'a espreita')
@@ -141,8 +158,8 @@ function parseUsers(envStr) {
   });
   return out;
 }
-const USERS = parseUsers(process.env.USERS || '');
-const ADMIN_USER = process.env.ADMIN_USER || null; // nome do usuario admin (deve estar no USERS tb)
+const USERS = parseUsers(envGood('USERS') || '');
+const ADMIN_USER = envGood('ADMIN_USER') || null; // nome do usuario admin (deve estar no USERS tb)
 
 // Sessoes em memoria (token -> {usuario, criado, tipo})
 const sessoes = new Map();
