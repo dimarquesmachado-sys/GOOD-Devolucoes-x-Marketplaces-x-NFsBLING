@@ -4537,6 +4537,27 @@ async function montarIndiceNFDevolucao(maxPaginas) {
 }
 
 // rota: dispara/consulta o indice. O front chama e depois cruza com o a espreita.
+// b250.3 - MIGRAR AS ENV VARS SOZINHO. [stated] "eu crio só a key, e vc faz
+// algum sisteminha que pega e já preenche o value lá dentro do render não?"
+//
+// Melhor: ele nao precisa nem criar a chave. O `atualizarTokensNoRender` faz
+// GET de todas e PUT do conjunto — var que nao existe e ACRESCENTADA. Entao
+// a rota le o valor que ja esta no processo sob o nome antigo e grava sob o
+// novo. Zero digitacao, e nenhum segredo passa por mim ou pelo chat.
+//
+// ⚠️ COMECE PELA SIMULACAO (`?simular=1`): mostra o plano sem gravar nada.
+// E ⚠️ o Render REINICIA o servico ao mudar env var — rodar fora do horario
+// do galpao (a regra da cota vale aqui tambem).
+app.get('/api/admin/migrar-envs', requerAdmin, async (req, res) => {
+  const { migrarEnvsDaGood } = require('./lib/migrar-envs');
+  const simular = req.query.simular === '1' || req.query.simular === 'true';
+  try {
+    return res.json(await migrarEnvsDaGood(_attRender, { simular }));
+  } catch (e) {
+    return res.status(500).json({ ok: false, erro: e.message });
+  }
+});
+
 app.get('/api/admin/indice-nf-devolucao', requerAdmin, async (req, res) => {
   try {
     await montarIndiceNFDevolucao(Number(req.query.paginas || 5));

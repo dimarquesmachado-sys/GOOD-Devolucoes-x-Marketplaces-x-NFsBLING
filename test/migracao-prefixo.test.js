@@ -131,6 +131,60 @@ function ler(empresa, nome, envs, tipo) {
   }
 }
 
-console.log('');
-console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
-process.exit(falhas ? 1 : 0);
+// ── b250.3: a copia das envs, sem ele digitar nada ──────────────────
+//
+// [stated] "eu crio só a key, e vc faz algum sisteminha que pega e já
+// preenche o value lá dentro do render não?"
+//
+// ⚠️ Isto ESCREVE CREDENCIAL no Render. As travas importam mais que a
+// funcionalidade.
+{
+  const { migrarEnvsDaGood, DE_PARA_GOOD } = require('../lib/migrar-envs');
+  const salvos = { ...process.env };
+  const limpar = () => {
+    for (const k of Object.keys(process.env)) if (!(k in salvos)) delete process.env[k];
+    Object.assign(process.env, salvos);
+  };
+
+  (async () => {
+    // ── a simulacao NAO pode gravar ──────────────────────────────────
+    process.env.BLING_CLIENT_ID = 'antigo';
+    let gravou = null;
+    const escritor = async (u) => { gravou = u; return true; };
+
+    const sim = await migrarEnvsDaGood(escritor, { simular: true });
+    ok(sim.simulacao === true && gravou === null,
+       'a simulacao mostra o plano e NAO grava nada');
+
+    // ── nao sobrescreve o que ele ja criou a mao ─────────────────────
+    process.env.GOOD_ADMIN_USER = 'feito-a-mao';
+    process.env.ADMIN_USER = 'antigo';
+    gravou = null;
+    await migrarEnvsDaGood(escritor);
+    ok(!(gravou || []).some((x) => x.key === 'GOOD_ADMIN_USER'),
+       'NAO sobrescreve a var que ele ja criou');
+
+    // ── nao inventa valor vazio ──────────────────────────────────────
+    //
+    // Gravar '' seria pior que nao gravar: o fallback do codigo testa
+    // `!== ''`, entao a var vazia MATA o caminho de volta.
+    limpar();
+    gravou = null;
+    await migrarEnvsDaGood(escritor);   // sem nenhuma env antiga
+    ok((gravou || []).length === 0, 'sem a var antiga, nao grava nada (nem vazio)');
+
+    // ── e so as vars DA EMPRESA entram ───────────────────────────────
+    for (const infra of ['EMAIL_HOST', 'QZ_CERT', 'RENDER', 'SUPABASE_URL', 'ADMIN_KEY']) {
+      ok(!DE_PARA_GOOD.includes(infra),
+         '  `' + infra + '` NAO migra (e do servico, nao do CNPJ)');
+    }
+    ok(DE_PARA_GOOD.length === 11, 'sao as 11 vars da empresa (9 + USERS + ADMIN_USER)');
+
+    limpar();
+    console.log('');
+    console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
+    process.exit(falhas ? 1 : 0);
+  })();
+}
+
+
