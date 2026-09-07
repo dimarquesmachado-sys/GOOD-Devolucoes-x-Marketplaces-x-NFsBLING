@@ -1,0 +1,114 @@
+{
+  "_leia_me": [
+    "CONTRATO DE EMPRESAS — v1 (07/09/2026)",
+    "",
+    "Nasceu da revisão do Codex em docs/REVISAO-MULTIEMPRESA-2026-09-07.md,",
+    "seção 5: 'não compartilhar imediatamente um pacote com segredos ou",
+    "configuração de deploy — primeiro, definir um contrato pequeno e",
+    "versionado'.",
+    "",
+    "É DADO, não código. Os dois repositórios (Devoluções e Mover-Pedidos)",
+    "leem este mesmo arquivo e cada um tem um teste de paridade contra ele.",
+    "Assim a divergência aparece no teste, não em produção.",
+    "",
+    "⚠️ NÃO CONTÉM SEGREDO. Nenhum token, client_id ou senha entra aqui —",
+    "só a identidade da empresa e os NOMES das variáveis. O arquivo é",
+    "versionado no git e legível por qualquer um com acesso ao repo.",
+    "",
+    "AO ACRESCENTAR UMA EMPRESA: copie um bloco, troque os valores, e rode",
+    "o teste de contrato nos DOIS repositórios antes de subir."
+  ],
+
+  "versao": 1,
+  "atualizado_em": "2026-09-07",
+
+  "empresas": {
+    "good": {
+      "id_canonico": "good",
+      "nome": "GOOD Import (GIMPO)",
+      "aliases": ["good", "gimpo"],
+      "slug_http": "",
+      "prefixo_env": "GOOD_",
+      "prefixo_env_historico": "",
+      "prefixo_fiscal": "GOOD_",
+      "sufixo_tabelas": "",
+      "dono_dos_tokens": {
+        "_nota": "qual SERVIÇO renova cada token. Dois renovando a mesma conta se sobrescrevem — foi o P1 da revisão.",
+        "bling": "devolucoes",
+        "ml": "devolucoes",
+        "magalu": "mover-pedidos"
+      },
+      "conta_marketplace": {
+        "_nota": "cada empresa tem app próprio no Bling/ML/Shopee; Magalu é UMA app para todas.",
+        "bling": "propria",
+        "ml": "propria",
+        "shopee": "propria",
+        "magalu": "compartilhada",
+        "tiktok": "nao_se_aplica"
+      }
+    },
+
+    "ambtotal": {
+      "id_canonico": "ambtotal",
+      "nome": "AMBTotal",
+      "aliases": ["ambtotal", "amb"],
+      "_nota_alias": "⚠️ o Mover-Pedidos usa 'amb'. É ALIAS DE BORDA, não outra identidade — a revisão foi explícita nisso.",
+      "slug_http": "/amb",
+      "prefixo_env": "AMB_",
+      "prefixo_env_historico": "AMB_",
+      "prefixo_fiscal": "AMB_",
+      "sufixo_tabelas": "_amb",
+      "dono_dos_tokens": {
+        "bling": "devolucoes",
+        "ml": "devolucoes",
+        "magalu": "mover-pedidos"
+      },
+      "conta_marketplace": {
+        "bling": "propria",
+        "ml": "propria",
+        "shopee": "propria",
+        "magalu": "compartilhada",
+        "tiktok": "nao_se_aplica"
+      }
+    },
+
+    "girassol": {
+      "id_canonico": "girassol",
+      "nome": "Magazine Girassol",
+      "aliases": ["girassol", "gira"],
+      "slug_http": "/girassol",
+      "prefixo_env": "GIRASSOL_",
+      "prefixo_env_historico": "",
+      "_nota_historico": "⚠️ No MOVER-PEDIDOS a Girassol nasceu SEM prefixo (foi a primeira empresa de lá). No Devoluções ela é nova e já entra no padrão. A inversão é real: aqui quem não tinha prefixo era a GOOD.",
+      "prefixo_fiscal": "GIRASSOL_",
+      "sufixo_tabelas": "_girassol",
+      "ativa_em": {
+        "_nota": "onde a empresa JÁ opera. A revisão pediu que a ficha exista implantada e seja ATIVADA por configuração — sem isso, 'zero deploy' é falso.",
+        "mover-pedidos": true,
+        "devolucoes": false
+      },
+      "dono_dos_tokens": {
+        "bling": "devolucoes",
+        "ml": "devolucoes",
+        "magalu": "mover-pedidos"
+      },
+      "conta_marketplace": {
+        "bling": "propria",
+        "ml": "propria",
+        "shopee": "propria",
+        "magalu": "compartilhada",
+        "tiktok": "nao_se_aplica"
+      }
+    }
+  },
+
+  "invariantes": {
+    "_nota": "o que o teste de paridade confere nos DOIS repos",
+    "id_canonico_unico": "nenhum id_canonico se repete",
+    "alias_nao_colide": "um alias não pode pertencer a duas empresas",
+    "sufixo_tabelas_unico": "duas empresas nunca compartilham tabela",
+    "prefixo_env_unico": "duas empresas nunca leem a mesma variável",
+    "um_dono_por_token": "cada par (empresa, integração) tem UM serviço dono",
+    "slug_http_unico": "duas empresas nunca respondem no mesmo caminho"
+  }
+}
