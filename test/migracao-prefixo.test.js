@@ -180,6 +180,48 @@ function ler(empresa, nome, envs, tipo) {
     }
     ok(DE_PARA_GOOD.length === 11, 'sao as 11 vars da empresa (9 + USERS + ADMIN_USER)');
 
+    // ── b250.4 (P1): o valor e RELIDO na hora de gravar ──────────────
+    //
+    // Se uma rotacao de token passar na frente da minha gravacao, eu
+    // gravaria o refresh VELHO por cima do novo — e refresh consumido mata
+    // a integracao no proximo restart.
+    {
+      const fsx = require('fs');
+      const src = fsx.readFileSync(path.join(RAIZ, 'lib', 'migrar-envs.js'), 'utf8');
+      ok(/value: process\.env\[p\.de\]/.test(src),
+         'o valor e RELIDO no momento da escrita, nao o do plano');
+    }
+
+    // ── b250.4 (P2): a lista do historico e INVERTIDA ────────────────
+    //
+    // Lista fechada ("aceito BLING|ML|USERS") rejeitava MAGALU_* e
+    // SHOPEE_LOJA_KEY, que a GOOD tambem tem sem prefixo — e o
+    // `configDaEmpresa('good')` devolveria Magalu vazio.
+    {
+      const reg2 = require('../lib/empresas.js');
+      const good2 = reg2.obterEmpresa('good');
+      for (const daEmpresa of ['BLING_CLIENT_ID', 'MAGALU_CLIENT_ID', 'SHOPEE_LOJA_KEY', 'USERS']) {
+        ok(good2.nomeHistorico(daEmpresa) === daEmpresa,
+           '  `' + daEmpresa + '` herda o nome historico');
+      }
+      for (const doServico of ['EMAIL_HOST', 'QZ_CERT', 'SUPABASE_URL', 'ADMIN_KEY']) {
+        ok(good2.nomeHistorico(doServico) === null,
+           '  `' + doServico + '` NAO herda (e do servico)');
+      }
+    }
+
+    // ── b250.4 (P2): GET nao muta sem pedido explicito ───────────────
+    {
+      const fsy = require('fs');
+      const srv2 = fsy.readFileSync(path.join(RAIZ, 'server.js'), 'utf8');
+      const i2 = srv2.indexOf("app.get('/api/admin/migrar-envs'");
+      const rota = srv2.slice(i2, i2 + 900);
+      ok(/req\.query\.gravar/.test(rota),
+         'a rota so grava com `?gravar=1` (o padrao e simular)');
+      ok(/simular: !gravar/.test(rota),
+         '  e sem o parametro ela SIMULA — visita acidental nao escreve credencial');
+    }
+
     limpar();
     console.log('');
     console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');

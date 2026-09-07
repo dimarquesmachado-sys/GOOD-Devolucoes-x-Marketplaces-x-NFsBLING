@@ -4550,9 +4550,15 @@ async function montarIndiceNFDevolucao(maxPaginas) {
 // do galpao (a regra da cota vale aqui tambem).
 app.get('/api/admin/migrar-envs', requerAdmin, async (req, res) => {
   const { migrarEnvsDaGood } = require('./lib/migrar-envs');
-  const simular = req.query.simular === '1' || req.query.simular === 'true';
+  // b250.4 (Codex, P2): GET nao muta sem pedido EXPLICITO. Com cookie
+  // `SameSite=Lax`, uma navegacao de outro site pra esta URL levaria o
+  // cookie junto — e gravaria credencial e reiniciaria o servico sem ele
+  // pedir. Agora o padrao e simular; gravar exige `?gravar=1`.
+  const gravar = req.query.gravar === '1' || req.query.gravar === 'true';
   try {
-    return res.json(await migrarEnvsDaGood(_attRender, { simular }));
+    const r = await migrarEnvsDaGood(_attRender, { simular: !gravar });
+    if (!gravar) r.como_gravar = 'confira o plano acima e repita a URL com &gravar=1';
+    return res.json(r);
   } catch (e) {
     return res.status(500).json({ ok: false, erro: e.message });
   }
