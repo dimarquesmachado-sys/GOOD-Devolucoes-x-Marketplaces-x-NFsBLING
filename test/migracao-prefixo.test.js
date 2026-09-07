@@ -150,7 +150,10 @@ function ler(empresa, nome, envs, tipo) {
     // ── a simulacao NAO pode gravar ──────────────────────────────────
     process.env.BLING_CLIENT_ID = 'antigo';
     let gravou = null;
-    const escritor = async (u) => { gravou = u; return true; };
+    // ⚠️ o escritor agora recebe uma FUNCAO (b250.5): a leitura tem que
+    // acontecer DENTRO da fila, senao uma rotacao de token concorrente faz
+    // a migracao gravar o refresh VELHO por cima do novo.
+    const escritor = async (u) => { gravou = (typeof u === 'function' ? u() : u); return true; };
 
     const sim = await migrarEnvsDaGood(escritor, { simular: true });
     ok(sim.simulacao === true && gravou === null,
@@ -178,7 +181,14 @@ function ler(empresa, nome, envs, tipo) {
       ok(!DE_PARA_GOOD.includes(infra),
          '  `' + infra + '` NAO migra (e do servico, nao do CNPJ)');
     }
-    ok(DE_PARA_GOOD.length === 11, 'sao as 11 vars da empresa (9 + USERS + ADMIN_USER)');
+    ok(DE_PARA_GOOD.length === 17,
+       'sao as 17 vars da empresa (Bling, ML, login, Magalu e a loja Shopee)');
+    for (const v of ['MAGALU_CLIENT_ID', 'SHOPEE_LOJA_KEY']) {
+      ok(DE_PARA_GOOD.includes(v), '  ' + v + ' migra (e da GOOD)');
+    }
+    // ⚠️ o proxy da Shopee e UM SO pras 3 empresas — nao migra
+    ok(!DE_PARA_GOOD.includes('SHOPEE_PROXY_URL'),
+       '  mas o PROXY da Shopee nao (e compartilhado)');
 
     // ── b250.4 (P1): o valor e RELIDO na hora de gravar ──────────────
     //
@@ -188,8 +198,14 @@ function ler(empresa, nome, envs, tipo) {
     {
       const fsx = require('fs');
       const src = fsx.readFileSync(path.join(RAIZ, 'lib', 'migrar-envs.js'), 'utf8');
-      ok(/value: process\.env\[p\.de\]/.test(src),
-         'o valor e RELIDO no momento da escrita, nao o do plano');
+      // ⚠️ b250.5: releitura NAO BASTA — tem que ser DENTRO da fila. Meu
+      // primeiro conserto releu, mas o `.map()` rodava ao montar o
+      // argumento, antes de enfileirar. O Codex apontou duas vezes.
+      ok(/atualizarTokensNoRender\(\(\) =>/.test(src),
+         'a migracao passa uma FUNCAO (a leitura roda dentro da fila)');
+      const fila = fsx.readFileSync(path.join(RAIZ, 'lib', 'render-tokens.js'), 'utf8');
+      ok(/typeof updates === 'function' \? updates\(\) : updates/.test(fila),
+         '  e a fila resolve a funcao quando chega a vez, nao antes');
     }
 
     // ── b250.4 (P2): a lista do historico e INVERTIDA ────────────────
