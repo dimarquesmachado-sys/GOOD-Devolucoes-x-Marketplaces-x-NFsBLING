@@ -149,10 +149,71 @@ const registro = require('../lib/empresas.js');
     ok(!!m && !!m.leitura, 'a mecanica do passo 2 esta registrada');
     ok(/TOKEN_LEITURA_KEY/.test(m.leitura.auth || ''),
        '  a rota usa chave DEDICADA, nao a ADMIN_KEY geral');
-    ok(/refresh/i.test(m.janela_de_renovacao._nota_o_que_desarma || m.janela_de_renovacao.o_que_desarma || ''),
-       '  e diz o que desarma a janela (renovar mata o refresh, nao o access)');
+    // v5: o campo virou `o_que_morre_ao_renovar` + `o_que_sobrevive` na
+    // fusao das duas versoes duplicadas
+    const j = m.janela_de_renovacao;
+    ok(/refresh/i.test(j.o_que_morre_ao_renovar || '') && /access/i.test(j.o_que_sobrevive || ''),
+       '  e diz o que desarma a janela (morre o refresh, sobrevive o access)');
     ok(/ML PRIMEIRO/.test(m.ordem_do_corte['3'] || ''),
        '  e a ordem do corte: ML primeiro (uso unico), Bling por ultimo');
+  }
+
+  // ── v5: ⚠️ NENHUMA DECISÃO EM DOIS LUGARES ───────────────────────
+  //
+  // Pedido do Mover-Pedidos: a v4 tinha `janela_de_renovacao` como irmã de
+  // `passo_2_eleicao` E dentro de `mecanica` — 7 campos numa, 4 na outra,
+  // dizendo o mesmo com palavras diferentes. E a ordem do corte com dois
+  // nomes (`ordem_de_corte` / `ordem_do_corte`).
+  //
+  // "Duas fontes da mesma decisão no mesmo arquivo é a receita da
+  // divergência interna" — e eles têm razão: uma seria atualizada e a
+  // outra não, e ninguém saberia qual vale.
+  //
+  // Esta checagem é GENÉRICA de propósito: não lista os campos que eu
+  // dupliquei, e sim procura QUALQUER chave repetida entre um nível e o
+  // seu filho. Assim ela pega a próxima duplicação, não a de ontem.
+  {
+    const chavesReais = (o) => Object.keys(o || {}).filter((k) => !k.startsWith('_'));
+    const procurar = (obj, caminho) => {
+      for (const k of chavesReais(obj)) {
+        const filho = obj[k];
+        if (!filho || typeof filho !== 'object' || Array.isArray(filho)) continue;
+        const repetidas = chavesReais(filho).filter((sub) => chavesReais(obj).includes(sub));
+        ok(repetidas.length === 0,
+           caminho + '.' + k + ': nenhuma chave repete o nivel de cima'
+           + (repetidas.length ? ' (EM DOIS LUGARES: ' + repetidas.join(', ') + ')' : ''));
+        procurar(filho, caminho + '.' + k);
+      }
+    };
+    procurar(contrato.passo_2_eleicao, 'passo_2_eleicao');
+
+    // e o nome da ordem do corte e UM SO (tinha `de` e `do`)
+    // ⚠️ procuro nas CHAVES, nao no texto: o `_leia_me` CITA o nome antigo
+    // ao explicar o que mudou, e minha 1a versao acusou isso como
+    // duplicacao. Falso positivo por ler documentacao como se fosse dado.
+    const chavesDoArquivo = [];
+    const colher = (o) => {
+      for (const [k, v2] of Object.entries(o || {})) {
+        chavesDoArquivo.push(k);
+        if (v2 && typeof v2 === 'object') colher(v2);
+      }
+    };
+    colher(contrato);
+    const variantes = [...new Set(chavesDoArquivo.filter((k) => /^ordem_d[eo]_corte$/.test(k)))];
+    ok(variantes.length <= 1,
+       'a ordem do corte tem UM nome so (' + (variantes.join(', ') || 'nenhum') + ')');
+  }
+
+  // ── v5: o estado REAL da rota, como o Mover-Pedidos construiu ─────
+  {
+    const est = contrato.passo_2_eleicao.mecanica.leitura.estado;
+    ok(!!est, 'o contrato registra o estado REAL da rota (nao so o desejado)');
+    ok(/404/.test(est.integracao_ausente || ''),
+       '  integracao ausente = 404, nunca `access: null`');
+    ok(/501/.test(est.magalu_e_tiktok || ''),
+       '  magalu/tiktok = 501 declarado (rota sem consumidor e superficie a toa)');
+    ok(/null/.test(est.expira_em || ''),
+       '  e `expira_em` vem null HONESTO — o contrato de leitura ja cobre por 401');
   }
 
   // ── v3: a eleição do passo 2, já acordada ────────────────────────
@@ -182,25 +243,28 @@ const registro = require('../lib/empresas.js');
     ok(typeof m === 'object' && !!m.leitura && !!m.leitura.como,
        'a mecanica do passo 2 esta definida');
 
-    // ⚠️ o detalhe que desarma o medo da janela: renovar mata o REFRESH,
-    // não o ACCESS. Quem só lê nunca fica sem token por uma renovação.
-    const j = el.janela_de_renovacao;
-    ok(/REFRESH/i.test(j.o_que_morre_ao_renovar || '')
-       && /ACCESS/i.test(j.o_que_sobrevive || ''),
+    // ⚠️ v5: ESTE BLOCO LIA A SEGUNDA FONTE (`el.janela_de_renovacao` e
+    // `el.ordem_de_corte`), que a v5 removeu — era exatamente a duplicacao
+    // que o Mover-Pedidos apontou. Agora le a fonte UNICA, dentro de
+    // `mecanica`.
+    //
+    // O erro so apareceu ao rodar: `node --check` passa, porque ler campo
+    // de objeto inexistente e erro de EXECUCAO.
+    const j2 = m.janela_de_renovacao;
+    ok(/REFRESH/i.test(j2.o_que_morre_ao_renovar || '')
+       && /ACCESS/i.test(j2.o_que_sobrevive || ''),
        'a janela esta explicada: morre o refresh, o access sobrevive');
-    ok(/NÃO|NAO/.test(j.ler_versao_anterior || ''),
+    ok(/desnecess/i.test(j2.ler_versao_anterior || ''),
        '  entao ler versao anterior NAO e necessario');
 
-    // ⚠️ a ordem de corte, e o aviso honesto de que a corrida segue viva
-    // durante a sobreposição
-    const o = el.ordem_de_corte;
-    ok(!!o && Object.keys(o).filter((k) => /^[0-9]/.test(k)).length >= 5,
-       'a ordem de corte tem os 5 passos');
-    ok(/ML PRIMEIRO|ML/.test(o['4'] || ''),
-       '  e o ML sai PRIMEIRO (refresh de uso unico e o urgente)');
-    const aviso = Object.entries(o).find(([k]) => k.includes('sobreposicao'));
-    ok(!!aviso && /CONTINUA ATIVA/.test(aviso[1]),
-       '  e diz que a corrida CONTINUA ATIVA na sobreposicao (nao esconde)');
+    const o = m.ordem_do_corte;
+    ok(!!o && Object.keys(o).filter((k2) => /^[0-9]/.test(k2)).length >= 3,
+       'a ordem do corte tem os passos');
+    const passoML = Object.values(o).find((v2) => /ML PRIMEIRO/i.test(String(v2)));
+    ok(!!passoML, '  e o ML sai PRIMEIRO (refresh de uso unico e o urgente)');
+    const aviso = Object.entries(o).find(([k2]) => k2.includes('adendo'));
+    ok(!!aviso && /corrida/i.test(String(aviso[1])),
+       '  com o aviso honesto: durante a sobreposicao a corrida CONTINUA ativa');
   }
 
   // ⚠️ e o risco tem que estar escrito, com prova — não como hipótese
