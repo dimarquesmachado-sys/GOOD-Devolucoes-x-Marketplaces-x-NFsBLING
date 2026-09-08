@@ -12,14 +12,14 @@
     "  v1  primeira versão (Devoluções)",
     "  v2  parecer do Mover-Pedidos: `dono_hoje`/`dono_alvo` (eu tinha",
     "      inventado o dono) e `prefixo_env_historico` por serviço",
-    "  v3  parecer do Mover-Pedidos: eixo `bling_nfe` (2º app Bling, que eu",
-    "      não sabia existir) e TikTok corrigido — `nao_se_aplica` estava",
-    "      errado para ambtotal e girassol",
+    "  v3  parecer do Mover-Pedidos: eixo `bling_nfe` (2º app Bling) e TikTok",
+    "      corrigido — `nao_se_aplica` estava errado para ambtotal e girassol",
+    "  v4  a MECÂNICA do passo 2, definida pelo Mover-Pedidos (dono eleito)",
     "",
-    "As três versões saíram de correção externa. Vale dizer: o que eu escrevo",
-    "sozinho sobre o outro serviço tem errado."
+    "As v1-v3 saíram de correção externa. Vale dizer: o que eu escrevo sozinho",
+    "sobre o outro serviço tem errado."
   ],
-  "versao": 3,
+  "versao": 4,
   "atualizado_em": "2026-09-07",
   "empresas": {
     "good": {
@@ -212,7 +212,37 @@
     },
     "por_que": "F1/F2, F3 NF→ML, o motor ML Full e o canário dependem da renovação local do Mover-Pedidos. Mover isso de lugar é a maior cirurgia possível; manter é a menor.",
     "o_que_muda_no_devolucoes": "passa a LER o token vigente em vez de renovar",
-    "mecanica": "a decidir juntos: rota interna assinada × tabela com versão",
-    "inegociavel": "no ML, dono único é obrigação — o refresh é de uso único"
+    "mecanica": {
+      "_nota": "definida pelo Mover-Pedidos em 07/09, como dono eleito. NÃO implementada ainda.",
+      "como": "rota interna no Mover-Pedidos",
+      "rota": "GET /interno/token/:empresa/:integracao",
+      "resposta": {
+        "access": "o token vigente",
+        "expira_em": "quando vence",
+        "versao": "para detectar troca"
+      },
+      "autenticacao": "chave DEDICADA `TOKEN_LEITURA_KEY` — NÃO a ADMIN_KEY geral",
+      "por_que_chave_dedicada": "escopo mínimo e revogável sem afetar o resto",
+      "por_que_nao_tabela": "criaria um TERCEIRO lugar com material sensível vivo, mais uma credencial de escrita e um problema de sincronização; a ponte servidor-a-servidor já existe testada entre os dois (a tiktok-ponte do Devoluções autentica no Mover-Pedidos há semanas)"
+    },
+    "inegociavel": "no ML, dono único é obrigação — o refresh é de uso único",
+    "janela_de_renovacao": {
+      "_nota": "⚠️ O DETALHE QUE DESARMA O MEDO — trazido pelo Mover-Pedidos.",
+      "o_que_morre_ao_renovar": "o REFRESH antigo",
+      "o_que_sobrevive": "o ACCESS antigo segue válido até expirar",
+      "consequencia": "quem só LÊ o access nunca fica sem token por causa de uma renovação",
+      "aquisicao_no_dono": "promessa única por empresa (#350 do Mover-Pedidos): a rota espera a renovação em voo com prazo curto e devolve o token novo",
+      "contrato_de_leitura": "usar o que a rota der; em 401 esporádico do marketplace, re-pedir a rota (retry curto)",
+      "ler_versao_anterior": "NÃO é necessário"
+    },
+    "ordem_de_corte": {
+      "_nota": "acordada pelos dois lados em 07/09",
+      "1": "Mover-Pedidos constrói a rota e avisa",
+      "2": "Devoluções liga a LEITURA, com a renovação local ainda ligada como rede",
+      "3": "sobreposição CURTA e COM DATA: 24-48h de confirmação",
+      "4": "Devoluções desliga o ML PRIMEIRO (refresh de uso único — é o urgente)",
+      "5": "e o Bling por último",
+      "⚠️_durante_a_sobreposicao": "a corrida do ML CONTINUA ATIVA. Não piora (já vivemos nela hoje), mas só resolve no desligamento — por isso a sobreposição tem data."
+    }
   }
 }

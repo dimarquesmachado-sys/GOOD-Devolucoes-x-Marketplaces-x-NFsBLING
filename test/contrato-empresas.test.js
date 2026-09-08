@@ -120,6 +120,45 @@ const registro = require('../lib/empresas.js');
        '  e o inegociavel do ML esta escrito');
   }
 
+  // ── v4: a mecânica do passo 2 ────────────────────────────────────
+  //
+  // Definida pelo Mover-Pedidos, como dono eleito. O teste guarda os
+  // pontos que, se esquecidos na implementação, causam dano real.
+  {
+    const el = contrato.passo_2_eleicao;
+    const m = el.mecanica;
+
+    ok(typeof m === 'object' && m.rota, 'a mecanica do passo 2 esta definida');
+
+    // ⚠️ chave DEDICADA, não a ADMIN_KEY. Se a leitura de token usar a
+    // chave geral, revogá-la derruba tudo — e quem tiver a chave geral
+    // passa a poder ler token de todas as empresas.
+    ok(/TOKEN_LEITURA_KEY/.test(m.autenticacao || ''),
+       '  com chave DEDICADA, nao a ADMIN_KEY geral');
+    ok(/NÃO a ADMIN_KEY|NAO a ADMIN_KEY/.test(m.autenticacao || ''),
+       '  e isso esta escrito explicitamente');
+
+    // ⚠️ o detalhe que desarma o medo da janela: renovar mata o REFRESH,
+    // não o ACCESS. Quem só lê nunca fica sem token por uma renovação.
+    const j = el.janela_de_renovacao;
+    ok(/REFRESH/i.test(j.o_que_morre_ao_renovar || '')
+       && /ACCESS/i.test(j.o_que_sobrevive || ''),
+       'a janela esta explicada: morre o refresh, o access sobrevive');
+    ok(/NÃO|NAO/.test(j.ler_versao_anterior || ''),
+       '  entao ler versao anterior NAO e necessario');
+
+    // ⚠️ a ordem de corte, e o aviso honesto de que a corrida segue viva
+    // durante a sobreposição
+    const o = el.ordem_de_corte;
+    ok(!!o && Object.keys(o).filter((k) => /^[0-9]/.test(k)).length >= 5,
+       'a ordem de corte tem os 5 passos');
+    ok(/ML PRIMEIRO|ML/.test(o['4'] || ''),
+       '  e o ML sai PRIMEIRO (refresh de uso unico e o urgente)');
+    const aviso = Object.entries(o).find(([k]) => k.includes('sobreposicao'));
+    ok(!!aviso && /CONTINUA ATIVA/.test(aviso[1]),
+       '  e diz que a corrida CONTINUA ATIVA na sobreposicao (nao esconde)');
+  }
+
   // ⚠️ e o risco tem que estar escrito, com prova — não como hipótese
   ok(!!contrato.risco_ativo && !!contrato.risco_ativo.refresh_ml_uso_unico,
      'o contrato declara o RISCO ATIVO do refresh de uso unico do ML');
