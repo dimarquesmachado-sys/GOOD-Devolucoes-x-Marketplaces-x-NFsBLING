@@ -147,8 +147,21 @@ const registro = require('../lib/empresas.js');
   {
     const m = contrato.passo_2_eleicao.mecanica;
     ok(!!m && !!m.leitura, 'a mecanica do passo 2 esta registrada');
-    ok(/TOKEN_LEITURA_KEY/.test(m.leitura.auth || ''),
-       '  a rota usa chave DEDICADA, nao a ADMIN_KEY geral');
+    // ── v6: a auth e SO por header ────────────────────────────────
+    //
+    // ⚠️ A rota entrega SEGREDO VIVO. Credencial em querystring fica em log
+    // de proxy, em log de acesso e em URL copiada — e este e o mesmo achado
+    // do P0 nº3 da auditoria de 26/08 (`?k=ADMIN_KEY`), so que pior: la e
+    // chave de admin, aqui e a chave que da acesso ao token de TODAS as
+    // empresas.
+    ok(/x-token-leitura/.test(m.leitura.auth || ''),
+       '  a rota autentica por HEADER dedicado');
+    ok(/BANIDA|banida/.test((m.leitura.auth_detalhe || {}).querystring || ''),
+       '  e a querystring esta BANIDA (nao e opcional)');
+
+    // ⚠️ e a concorrencia e resolvida NO DONO — o leitor pode martelar
+    ok(/uma aquisi|UMA aquisi/i.test(m.leitura.concorrencia || ''),
+       '  leituras concorrentes compartilham UMA aquisicao no dono');
     // v5: o campo virou `o_que_morre_ao_renovar` + `o_que_sobrevive` na
     // fusao das duas versoes duplicadas
     const j = m.janela_de_renovacao;
@@ -202,6 +215,25 @@ const registro = require('../lib/empresas.js');
     const variantes = [...new Set(chavesDoArquivo.filter((k) => /^ordem_d[eo]_corte$/.test(k)))];
     ok(variantes.length <= 1,
        'a ordem do corte tem UM nome so (' + (variantes.join(', ') || 'nenhum') + ')');
+  }
+
+  // ── v6: o cache do leitor, decidido pelo dono ────────────────────
+  //
+  // Quem manda no token e o dono; eu implemento. As duas regras que
+  // importam sao contra-intuitivas o bastante pra virar teste:
+  {
+    const ca = contrato.passo_2_eleicao.mecanica.cache_no_leitor;
+    ok(!!ca, 'o desenho do cache esta no contrato');
+    ok(/mem[oó]ria/i.test(ca.onde || ''), '  em memoria, por (empresa, integracao)');
+
+    // ⚠️ o TTL NAO substitui o 401: cachear 5 min e esquecer o 401 faria o
+    // token revogado sobreviver a janela inteira
+    ok(/OS DOIS invalidam/i.test(ca.invalidacao || ''),
+       '  e OS DOIS invalidam: o TTL E o 401 (um nao substitui o outro)');
+
+    // ⚠️ token vivo nao vai pra disco — reinicio tem que limpar
+    ok(/mem[oó]ria s[oó]|nunca/i.test(ca.nunca_em_disco || ''),
+       '  e NUNCA em disco (reinicio limpa)');
   }
 
   // ── v5: o estado REAL da rota, como o Mover-Pedidos construiu ─────
