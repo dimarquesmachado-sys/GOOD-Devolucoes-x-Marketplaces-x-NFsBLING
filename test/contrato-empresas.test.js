@@ -108,6 +108,53 @@ const registro = require('../lib/empresas.js');
     }
   }
 
+  // ── v4: os donos só podem citar serviços declarados ──────────────
+  //
+  // Pedido do Mover-Pedidos: eles validavam os donos contra um conjunto
+  // LOCAL. Com o campo `servicos`, a validação sai do próprio dado — e um
+  // serviço novo (ou um nome digitado errado) acusa nos dois repos.
+  {
+    ok(!!contrato.servicos && Array.isArray(contrato.servicos.lista),
+       'o contrato declara os SERVICOS que o leem');
+    const conhecidos = new Set(contrato.servicos.lista);
+
+    for (const [chave, e] of Object.entries(contrato.empresas)) {
+      for (const [integ, donos] of Object.entries(e.dono_hoje)) {
+        if (integ.startsWith('_')) continue;
+        const fora = donos.filter((d) => !conhecidos.has(d));
+        ok(fora.length === 0,
+           '  `' + chave + '/' + integ + '` so cita servico declarado'
+           + (fora.length ? ' (DESCONHECIDO: ' + fora.join(', ') + ')' : ''));
+      }
+    }
+  }
+
+  // ── v4: a prova do risco diz QUAL repo ───────────────────────────
+  //
+  // "lib/ml.js:43 deste repo" e ilegivel do outro lado — quem le nao sabe
+  // qual repo e "este". Cada prova agora nomeia o servico.
+  {
+    const prova = contrato.risco_ativo.refresh_ml_uso_unico.prova;
+    ok(prova && typeof prova === 'object' && !Array.isArray(prova),
+       'a prova do risco e por SERVICO, nao um texto so');
+    for (const s2 of contrato.servicos.lista) {
+      ok(typeof prova[s2] === 'string' && prova[s2].length > 5,
+         '  com a evidencia de `' + s2 + '`');
+    }
+  }
+
+  // ── v4: a mecânica do passo 2, decidida ──────────────────────────
+  {
+    const m = contrato.passo_2_eleicao.mecanica;
+    ok(!!m && !!m.leitura, 'a mecanica do passo 2 esta registrada');
+    ok(/TOKEN_LEITURA_KEY/.test(m.leitura.auth || ''),
+       '  a rota usa chave DEDICADA, nao a ADMIN_KEY geral');
+    ok(/refresh/i.test(m.janela_de_renovacao._nota_o_que_desarma || m.janela_de_renovacao.o_que_desarma || ''),
+       '  e diz o que desarma a janela (renovar mata o refresh, nao o access)');
+    ok(/ML PRIMEIRO/.test(m.ordem_do_corte['3'] || ''),
+       '  e a ordem do corte: ML primeiro (uso unico), Bling por ultimo');
+  }
+
   // ── v3: a eleição do passo 2, já acordada ────────────────────────
   {
     const el = contrato.passo_2_eleicao;
@@ -120,13 +167,51 @@ const registro = require('../lib/empresas.js');
        '  e o inegociavel do ML esta escrito');
   }
 
+  // ── v4: a mecânica do passo 2 ────────────────────────────────────
+  //
+  // Definida pelo Mover-Pedidos, como dono eleito. O teste guarda os
+  // pontos que, se esquecidos na implementação, causam dano real.
+  {
+    const el = contrato.passo_2_eleicao;
+    const m = el.mecanica;
+
+    // ⚠️ v4: os campos mudaram de forma (`m.rota` -> `m.leitura.como`,
+    // `m.autenticacao` -> `m.leitura.auth`). Estas checagens ficaram da
+    // versao anterior e acusavam campo que EXISTE, so com outro nome —
+    // falso positivo. A checagem equivalente esta no bloco da v4 acima.
+    ok(typeof m === 'object' && !!m.leitura && !!m.leitura.como,
+       'a mecanica do passo 2 esta definida');
+
+    // ⚠️ o detalhe que desarma o medo da janela: renovar mata o REFRESH,
+    // não o ACCESS. Quem só lê nunca fica sem token por uma renovação.
+    const j = el.janela_de_renovacao;
+    ok(/REFRESH/i.test(j.o_que_morre_ao_renovar || '')
+       && /ACCESS/i.test(j.o_que_sobrevive || ''),
+       'a janela esta explicada: morre o refresh, o access sobrevive');
+    ok(/NÃO|NAO/.test(j.ler_versao_anterior || ''),
+       '  entao ler versao anterior NAO e necessario');
+
+    // ⚠️ a ordem de corte, e o aviso honesto de que a corrida segue viva
+    // durante a sobreposição
+    const o = el.ordem_de_corte;
+    ok(!!o && Object.keys(o).filter((k) => /^[0-9]/.test(k)).length >= 5,
+       'a ordem de corte tem os 5 passos');
+    ok(/ML PRIMEIRO|ML/.test(o['4'] || ''),
+       '  e o ML sai PRIMEIRO (refresh de uso unico e o urgente)');
+    const aviso = Object.entries(o).find(([k]) => k.includes('sobreposicao'));
+    ok(!!aviso && /CONTINUA ATIVA/.test(aviso[1]),
+       '  e diz que a corrida CONTINUA ATIVA na sobreposicao (nao esconde)');
+  }
+
   // ⚠️ e o risco tem que estar escrito, com prova — não como hipótese
   ok(!!contrato.risco_ativo && !!contrato.risco_ativo.refresh_ml_uso_unico,
      'o contrato declara o RISCO ATIVO do refresh de uso unico do ML');
   {
     const r = contrato.risco_ativo.refresh_ml_uso_unico;
-    ok(typeof r.prova === 'string' && r.prova.length > 10,
-       '  com prova citada (' + String(r.prova).slice(0, 40) + '...)');
+    // v4: a prova virou objeto POR SERVICO (o pedido do Mover-Pedidos:
+    // "deste repo" e ilegivel do outro lado). Conferida no bloco da v4.
+    ok(typeof r.prova === 'object' && Object.keys(r.prova).length >= 2,
+       '  com prova citada de cada servico');
     ok(/passo 2/.test(r.resolve_em || ''),
        '  e onde se resolve');
   }
