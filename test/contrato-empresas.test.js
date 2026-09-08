@@ -74,6 +74,52 @@ const registro = require('../lib/empresas.js');
     }
   }
 
+  // ── v3: o que eu declarei sobre ESTE repo tem que ser VERDADE ─────
+  //
+  // ⚠️ As três versões do contrato saíram de correção externa: eu escrevi
+  // errado sobre o outro serviço duas vezes. A lição é não afirmar o que
+  // não medi — então o que eu afirmo sobre ESTE repo vira teste.
+  {
+    const fsv = require('fs');
+    const lerTudo = (dirs) => dirs.flatMap((d) => {
+      const p2 = path.join(RAIZ, d);
+      if (!fsv.existsSync(p2)) return [];
+      return fsv.readdirSync(p2).filter((f) => f.endsWith('.js'))
+        .map((f) => fsv.readFileSync(path.join(p2, f), 'utf8'));
+    }).join('\n');
+    const codigo = lerTudo(['lib', 'amb-devolucoes/lib-AMB'])
+      + fsv.readFileSync(path.join(RAIZ, 'server.js'), 'utf8');
+    const semComentario = codigo.split('\n').filter((l) => !l.trim().startsWith('//')).join('\n');
+
+    // afirmei: este repo NAO toca no 2o app do Bling (o de NF-e)
+    ok(!/nfTokenManager|BLING_NFE_|NFE_CLIENT_ID/.test(semComentario),
+       'este repo NAO usa credencial separada de NF-e (o `bling_nfe` e do Mover-Pedidos)');
+
+    // afirmei: este repo NAO renova token de TikTok
+    ok(!/TIKTOK_REFRESH_TOKEN|renovarTikTok|tiktok.*refresh_token/i.test(semComentario),
+       'este repo NAO renova token de TikTok (fala por ponte com o Mover-Pedidos)');
+
+    // e o contrato diz que a GOOD nao tem TikTok
+    ok(contrato.empresas.good.conta_marketplace.tiktok === 'nao_se_aplica',
+       'a GOOD e a unica sem TikTok (confirmado pelo Mover-Pedidos)');
+    for (const c2 of ['ambtotal', 'girassol']) {
+      ok(contrato.empresas[c2].conta_marketplace.tiktok === 'propria',
+         '  e `' + c2 + '` tem conta propria');
+    }
+  }
+
+  // ── v3: a eleição do passo 2, já acordada ────────────────────────
+  {
+    const el = contrato.passo_2_eleicao;
+    ok(!!el && !!el.dono_eleito, 'a eleicao do passo 2 esta registrada');
+    for (const eixo of ['bling', 'ml', 'bling_nfe', 'magalu']) {
+      ok(el.dono_eleito[eixo] === 'mover-pedidos',
+         '  `' + eixo + '` fica com o Mover-Pedidos (menor cirurgia)');
+    }
+    ok(/uso unico|uso único/.test(el.inegociavel || ''),
+       '  e o inegociavel do ML esta escrito');
+  }
+
   // ⚠️ e o risco tem que estar escrito, com prova — não como hipótese
   ok(!!contrato.risco_ativo && !!contrato.risco_ativo.refresh_ml_uso_unico,
      'o contrato declara o RISCO ATIVO do refresh de uso unico do ML');
