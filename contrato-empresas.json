@@ -1,10 +1,11 @@
 {
   "_leia_me": [
-    "CONTRATO DE EMPRESAS — v3 (07/09/2026)",
+    "CONTRATO DE EMPRESAS — v4 (08/09/2026)",
     "",
-    "Dado, não código. Os dois repositórios (Devoluções e Mover-Pedidos) leem",
-    "este mesmo arquivo, byte a byte, e cada um tem um teste de paridade — a",
-    "divergência aparece no teste, não em produção.",
+    "Dado, não código. Os dois repositórios leem este mesmo arquivo, byte a",
+    "byte. O Mover-Pedidos tem um script que baixa o contrato da main do",
+    "Devoluções e compara — divergência de um lado vira teste vermelho, não",
+    "silêncio.",
     "",
     "⚠️ NÃO CONTÉM SEGREDO. Só identidade e NOMES de variáveis.",
     "",
@@ -12,15 +13,24 @@
     "  v1  primeira versão (Devoluções)",
     "  v2  parecer do Mover-Pedidos: `dono_hoje`/`dono_alvo` (eu tinha",
     "      inventado o dono) e `prefixo_env_historico` por serviço",
-    "  v3  parecer do Mover-Pedidos: eixo `bling_nfe` (2º app Bling) e TikTok",
-    "      corrigido — `nao_se_aplica` estava errado para ambtotal e girassol",
-    "  v4  a MECÂNICA do passo 2, definida pelo Mover-Pedidos (dono eleito)",
-    "",
-    "As v1-v3 saíram de correção externa. Vale dizer: o que eu escrevo sozinho",
-    "sobre o outro serviço tem errado."
+    "  v3  parecer: eixo `bling_nfe` (2º app Bling) e TikTok corrigido",
+    "  v4  parecer: provas com REPO NOMEADO ('deste repo' é ilegível do outro",
+    "      lado) e campo `servicos`, para os testes validarem contra o dado e",
+    "      não contra um conjunto local. Mais a MECÂNICA do passo 2, decidida."
   ],
   "versao": 4,
-  "atualizado_em": "2026-09-07",
+  "atualizado_em": "2026-09-08",
+  "servicos": {
+    "_nota": "os serviços que leem este contrato. `dono_hoje`/`dono_alvo` só podem citar nomes daqui.",
+    "lista": [
+      "devolucoes",
+      "mover-pedidos"
+    ],
+    "repos": {
+      "devolucoes": "dimarquesmachado-sys/GOOD-Devolucoes-x-Marketplaces-x-NFsBLING",
+      "mover-pedidos": "dimarquesmachado-sys/Mover-Pedidos-Aguardando-x-Atendido"
+    }
+  },
   "empresas": {
     "good": {
       "id_canonico": "good",
@@ -197,8 +207,12 @@
       "o_que": "o refresh token do ML é de USO ÚNICO — renovar invalida o anterior",
       "consequencia": "dois serviços renovando a MESMA conta: um consome o refresh, o outro fica com token morto e só descobre quando o access expira",
       "afeta": "as 3 empresas, hoje",
-      "prova": "lib/ml.js:43 e :161 deste repo; #344 do Mover-Pedidos",
-      "resolve_em": "passo 2 — eleger dono único não é preferência, é obrigação"
+      "prova": {
+        "devolucoes": "lib/ml.js:43 e :161 — 'o refresh do ML vale 6 meses e e de uso unico'",
+        "mover-pedidos": "PR #344; os renovadores sao `*/mlTokenManager.js`"
+      },
+      "resolve_em": "passo 2 — eleger dono único não é preferência, é obrigação",
+      "_nota_v4": "v4: a prova era 'deste repo', que e ilegivel do outro lado — quem le nao sabe qual repo e 'este'. Agora cada prova diz o servico."
     }
   },
   "passo_2_eleicao": {
@@ -213,17 +227,26 @@
     "por_que": "F1/F2, F3 NF→ML, o motor ML Full e o canário dependem da renovação local do Mover-Pedidos. Mover isso de lugar é a maior cirurgia possível; manter é a menor.",
     "o_que_muda_no_devolucoes": "passa a LER o token vigente em vez de renovar",
     "mecanica": {
-      "_nota": "definida pelo Mover-Pedidos em 07/09, como dono eleito. NÃO implementada ainda.",
-      "como": "rota interna no Mover-Pedidos",
-      "rota": "GET /interno/token/:empresa/:integracao",
-      "resposta": {
-        "access": "o token vigente",
-        "expira_em": "quando vence",
-        "versao": "para detectar troca"
+      "_nota": "decidida em 08/09 pelos dois serviços. Ainda NÃO construída.",
+      "leitura": {
+        "como": "rota interna no Mover-Pedidos: GET /interno/token/:empresa/:integracao",
+        "devolve": "{access, expira_em, versao}",
+        "auth": "TOKEN_LEITURA_KEY — chave DEDICADA, nao a ADMIN_KEY geral",
+        "por_que_nao_tabela": "tabela criaria um 3o lugar com material sensivel + credencial de escrita + sincronizacao; a ponte servidor-a-servidor ja existe testada (lib/tiktok-ponte.js do Devolucoes)"
       },
-      "autenticacao": "chave DEDICADA `TOKEN_LEITURA_KEY` — NÃO a ADMIN_KEY geral",
-      "por_que_chave_dedicada": "escopo mínimo e revogável sem afetar o resto",
-      "por_que_nao_tabela": "criaria um TERCEIRO lugar com material sensível vivo, mais uma credencial de escrita e um problema de sincronização; a ponte servidor-a-servidor já existe testada entre os dois (a tiktok-ponte do Devoluções autentica no Mover-Pedidos há semanas)"
+      "janela_de_renovacao": {
+        "o_que_desarma": "⚠️ renovar mata o REFRESH antigo, nao o ACCESS — o access corrente segue valido ate expirar",
+        "aquisicao": "promessa unica por empresa no Mover-Pedidos; a rota espera a renovacao em voo e devolve o novo",
+        "contrato_de_leitura": "usar o que a rota der; 401 esporadico -> re-pedir (retry curto)",
+        "ler_versao_anterior": "desnecessario"
+      },
+      "ordem_do_corte": {
+        "1": "Devolucoes passa a LER, com a renovacao local ainda ligada como rede",
+        "2": "confirmar que funciona",
+        "3": "desligar a renovacao do Devolucoes: ML PRIMEIRO (uso unico), Bling POR ULTIMO",
+        "⚠️_adendo_do_mover": "durante a sobreposicao a corrida do ML CONTINUA ativa — nao piora (ja vivemos nela), mas so resolve no corte. Entao sobreposicao CURTA e com data: 24-48h"
+      },
+      "quem_constroi_primeiro": "o Mover-Pedidos constroi a rota e avisa pra ligarmos a leitura"
     },
     "inegociavel": "no ML, dono único é obrigação — o refresh é de uso único",
     "janela_de_renovacao": {
