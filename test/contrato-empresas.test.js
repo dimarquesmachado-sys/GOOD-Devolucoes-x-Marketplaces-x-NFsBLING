@@ -52,13 +52,37 @@ const registro = require('../lib/empresas.js');
     }
   }
 
-  // ⚠️ dois serviços renovando o mesmo token se sobrescrevem — foi o P1
+  // ── v2: o dono do token, separado em HOJE e ALVO ──────────────────
+  //
+  // ⚠️ O PARECER DO MOVER-PEDIDOS CORRIGIU A v1: eu tinha escrito que o
+  // Devoluções renovava Bling e ML. É falso — o Mover-Pedidos renova em
+  // produção, pelos tokenManagers dele. Se alguém "obedecesse" o contrato
+  // e desligasse a renovação de lá, metade da operação morreria.
+  //
+  // Então o contrato declara a VERDADE (`dono_hoje`) e o DESTINO
+  // (`dono_alvo`), e o teste NÃO exige dono único ainda — exige que o
+  // conflito esteja DECLARADO. Contrato que mente é pior que contrato
+  // nenhum.
   for (const [chave, e] of empresas) {
-    for (const [integ, dono] of Object.entries(e.dono_dos_tokens)) {
+    ok(!!e.dono_hoje && !!e.dono_alvo,
+       chave + ': declara `dono_hoje` (a verdade) e `dono_alvo` (o destino)');
+
+    for (const [integ, donos] of Object.entries(e.dono_hoje)) {
       if (integ.startsWith('_')) continue;
-      ok(typeof dono === 'string' && dono.length > 0,
-         '  `' + chave + '/' + integ + '` tem UM dono declarado (' + dono + ')');
+      ok(Array.isArray(donos) && donos.length > 0,
+         '  `' + chave + '/' + integ + '` diz quem renova hoje: ' + JSON.stringify(donos));
     }
+  }
+
+  // ⚠️ e o risco tem que estar escrito, com prova — não como hipótese
+  ok(!!contrato.risco_ativo && !!contrato.risco_ativo.refresh_ml_uso_unico,
+     'o contrato declara o RISCO ATIVO do refresh de uso unico do ML');
+  {
+    const r = contrato.risco_ativo.refresh_ml_uso_unico;
+    ok(typeof r.prova === 'string' && r.prova.length > 10,
+       '  com prova citada (' + String(r.prova).slice(0, 40) + '...)');
+    ok(/passo 2/.test(r.resolve_em || ''),
+       '  e onde se resolve');
   }
 }
 
@@ -81,6 +105,15 @@ const registro = require('../lib/empresas.js');
 
     ok(ficha.prefixoEnv === e.prefixo_env,
        chave + ': prefixo de env bate (' + JSON.stringify(e.prefixo_env) + ')');
+
+    // ⚠️ v2: o historico e POR SERVICO. Um campo unico nao comportava a
+    // inversao — a GOOD e '' aqui e 'GOOD_' no Mover-Pedidos; a Girassol e
+    // o oposto. O teste espelho de la quebraria por DESENHO do contrato.
+    const hist = e.prefixo_env_historico;
+    ok(hist && typeof hist === 'object',
+       '  e o historico e por SERVICO, nao um valor so');
+    ok(typeof hist.devolucoes === 'string',
+       '  com o valor deste repo declarado (' + JSON.stringify(hist.devolucoes) + ')');
     ok(ficha.prefixoFiscal === e.prefixo_fiscal,
        '  e o prefixo fiscal (' + JSON.stringify(e.prefixo_fiscal) + ')');
 
