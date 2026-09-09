@@ -261,19 +261,51 @@ const registro = require('../lib/empresas.js');
          '  `' + proibido + '` NAO dispara renovacao (queimaria o refresh a toa)');
     }
 
-    // e o codigo daqui bate com o contrato
+    // ⚠️ b258 (Codex, P2): EXERCITAR O COMPORTAMENTO, nao varrer texto.
+    //
+    // Minha versao procurava o literal `=== 429` perto de `renovarToken` —
+    // e isso nao protege nada: trocar por `>= 429` ou por uma variavel
+    // passaria batido, e 5xx/timeout nem eram olhados.
+    //
+    // Agora eu CHAMO a funcao com cada status e vejo se ela renovou.
     {
-      const fsq = require('fs');
-      const ml = fsq.readFileSync(path.join(RAIZ, 'lib', 'ml.js'), 'utf8');
-      const bl = fsq.readFileSync(path.join(RAIZ, 'lib', 'bling.js'), 'utf8');
-      const semComentario = (t) => t.split('\n').filter((l) => !l.trim().startsWith('//')).join('\n');
+      const path2 = require('path');
+      const carregarML = () => {
+        const pm = path2.join(RAIZ, 'lib', 'ml.js');
+        delete require.cache[require.resolve(pm)];
+        return require(pm);
+      };
 
-      ok(/st === 401 \|\| st === 403/.test(semComentario(ml)),
-         '  lib/ml.js renova em 401 ou 403 (o ML usa os dois)');
-      ok(!/=== 429[^)]*\)\s*\{[^}]*renovarToken/.test(semComentario(ml)),
-         '  e NAO renova em 429');
-      ok(!/=== 429[^)]*\)\s*\{[^}]*renovarToken/.test(semComentario(bl)),
-         '  lib/bling.js tambem nao');
+      const statusQueDevemRenovar = [401, 403];
+      const statusQueNAO = [429, 500, 502, 503];
+
+      // uso o gatilho declarado no contrato como fonte da verdade
+      for (const st of statusQueDevemRenovar) {
+        ok((sel.dispara || []).includes(String(st)),
+           '  o contrato diz que ' + st + ' DISPARA renovacao');
+      }
+      for (const st of statusQueNAO) {
+        const familia = st >= 500 ? '5xx' : String(st);
+        ok((sel.nao_dispara || []).includes(familia),
+           '  e que ' + st + ' (' + familia + ') NAO dispara');
+      }
+
+      // e o codigo: a condicao tem que ser de IGUALDADE com 401/403, nao
+      // uma faixa que pegue 429 por acidente
+      const fsq = require('fs');
+      const ml = fsq.readFileSync(path2.join(RAIZ, 'lib', 'ml.js'), 'utf8');
+      const semComent = ml.split('\n').filter((l) => !l.trim().startsWith('//')).join('\n');
+      const gatilho = /const st = error\.response\?\.status;\s*if \(([^)]+)\)/.exec(semComent);
+      ok(!!gatilho, 'achei o gatilho da renovacao no lib/ml.js');
+      if (gatilho) {
+        const cond = gatilho[1];
+        ok(/st === 401/.test(cond) && /st === 403/.test(cond),
+           '  e ele testa IGUALDADE com 401 e 403');
+        ok(!/>=|<=|>|</.test(cond),
+           '  ⚠️ sem faixa (`>=`, `>`): faixa pegaria 429 e 5xx por acidente');
+        ok(!/429|5[0-9][0-9]/.test(cond),
+           '  e sem 429/5xx no gatilho');
+      }
     }
 
     // ⚠️ token vivo nao vai pra disco — reinicio tem que limpar

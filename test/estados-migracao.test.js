@@ -105,9 +105,20 @@ const carregar = () => {
     process.env.TOKEN_POLITICA_GOOD_BLING = 'sombra';
     ok(p.politicaDe('good', 'bling') === 'sombra', '  e volta na hora (rollback sem deploy)');
 
+    // ⚠️ b258 (Codex, P1): VALOR INVALIDO FALHA FECHADO, nao em `sombra`.
+    //
+    // Eu tinha escrito que `sombra` era o "padrao seguro". Nao e: `sombra`
+    // permite fallback local E renovacao local. Um eixo que estava em
+    // `remoto` e ganhou um typo (`remotto`) voltaria a renovar localmente
+    // EM SILENCIO — reabrindo a corrida do refresh exatamente onde a gente
+    // acabou de fecha-la.
     process.env.TOKEN_POLITICA_GOOD_BLING = 'valor-invalido';
-    ok(p.politicaDe('good', 'bling') === 'sombra',
-       '  e valor invalido cai no padrao seguro (`sombra`), nao em `remoto`');
+    ok(p.politicaDe('good', 'bling') === 'bloqueado',
+       '  ⚠️ valor invalido -> BLOQUEADO (typo tem que doer, nao passar batido)');
+
+    process.env.TOKEN_POLITICA_GOOD_BLING = '  REMOTO  ';
+    ok(p.politicaDe('good', 'bling') === 'remoto',
+       '  mas espaco e maiuscula sao aceitos (nao e rigor a toa)');
     limpar();
   }
 
