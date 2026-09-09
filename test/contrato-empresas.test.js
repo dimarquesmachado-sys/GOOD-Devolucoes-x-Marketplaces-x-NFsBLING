@@ -295,7 +295,10 @@ const registro = require('../lib/empresas.js');
       const fsq = require('fs');
       const ml = fsq.readFileSync(path2.join(RAIZ, 'lib', 'ml.js'), 'utf8');
       const semComent = ml.split('\n').filter((l) => !l.trim().startsWith('//')).join('\n');
-      const gatilho = /const st = error\.response\?\.status;\s*if \(([^)]+)\)/.exec(semComent);
+      // b260: agora ha um bloco entre a declaracao e o `if` (a checagem
+      // dos 403 ja provados permanentes), entao busco o `if` do gatilho
+      // pelo conteudo, nao pela adjacencia.
+      const gatilho = /if \((st === 401[^)]*)\)/.exec(semComent);
       ok(!!gatilho, 'achei o gatilho da renovacao no lib/ml.js');
       if (gatilho) {
         const cond = gatilho[1];

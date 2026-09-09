@@ -367,6 +367,12 @@ app.get('/health', (req, res) => {
       leitura_de_token: tokenLeitorDiag(),
       ritmo_compartilhado: ritmoPorteiroDiag(),
       admin_key: diagnosticoAdminKey(),
+      // b260 - os 403 do ML que renovar nao resolve (achado da telemetria
+      // de 09/09: 10 retries, 10 falhas)
+      ml_403_permanente: (() => {
+        try { return require('./lib/ml').diagnostico403(); }
+        catch (e) { return { erro: e.message }; }
+      })(),
     },
     integrations: {
       ml: mlClient.hasToken(),
