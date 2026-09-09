@@ -145,6 +145,30 @@ const carregar = () => {
        '  ⚠️ com o aviso: rollback exige refresh vigente (o do ambiente pode ter sido consumido)');
   }
 
+  // ── ⚠️ retorno antecipado NAO pode pular a invalidacao ────────────
+  //
+  // Padrao que ja me pegou DUAS vezes neste mesmo arquivo: o
+  // `semRetentativa` sai antes do bloco que trata o erro — primeiro pulou
+  // o aviso do 429 ao porteiro, agora pulava a invalidacao do token.
+  //
+  // Em `remoto` isso deixaria o token morto em cache por 5 MINUTOS, e as
+  // chamadas de detalhe de produto (que sao as `semRetentativa`, em
+  // volume) levariam 401 uma atras da outra ate o TTL vencer.
+  {
+    const fs2 = require('fs');
+    const RAIZ2 = path.join(__dirname, '..');
+    const bl = fs2.readFileSync(path.join(RAIZ2, 'lib', 'bling.js'), 'utf8');
+
+    const i = bl.indexOf('if (opcoes.semRetentativa) {');
+    const j = bl.indexOf('return { ok: false', i);
+    const bloco = bl.slice(i, j);
+
+    ok(/tokenLeitor\.invalidar/.test(bloco),
+       'o caminho `semRetentativa` invalida o token ANTES de sair');
+    ok(/avisar429/.test(bloco),
+       '  e avisa o porteiro do 429 tambem (o mesmo padrao, ja corrigido antes)');
+  }
+
   await new Promise((r) => servidor.close(r));
   console.log('');
   console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
