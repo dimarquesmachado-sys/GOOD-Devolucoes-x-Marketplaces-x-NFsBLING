@@ -236,6 +236,29 @@ const carregar = () => {
        'a latencia da FALHA e medida (dono lento antecede o timeout)');
   }
 
+  // ── ⚠️ UMA FONTE POR PERGUNTA no diagnostico ─────────────────────
+  //
+  // O `pronto_pra_cortar` afirmava PRONTO olhando so a fiacao, enquanto o
+  // `pode_cortar` — vizinho no MESMO json — dizia NAO com base na
+  // evidencia. Quem lesse o primeiro cortaria um eixo inseguro.
+  {
+    const p5 = carregar();
+    const d = p5.diagnostico();
+    ok(d.pronto_pra_cortar === undefined,
+       'nenhum campo afirma "pronto" sem olhar a evidencia');
+    ok(d.ainda_local === undefined,
+       '  e nenhum repete o que `eixos` ja diz');
+
+    // e o veredito nomeia CADA causa, nao so "caiu no local"
+    const causas = ['ADMIN_TOKEN_LEITURA_KEY ausente', 'config_invalida',
+                    'nunca teve token pra este eixo'];
+    const fonte = require('fs').readFileSync(
+      path.join(__dirname, '..', 'lib', 'token-leitor.js'), 'utf8');
+    for (const c of causas) {
+      ok(fonte.includes(c), '  o veredito sabe dizer: ' + c);
+    }
+  }
+
   await new Promise((r) => servidor.close(r));
   console.log('');
   console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
