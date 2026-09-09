@@ -111,6 +111,43 @@ const carregar = () => {
        '  e a proxima leitura JA pega o token (o 502 nao foi cacheado)');
   }
 
+  // ── ⚠️ P0 (Codex): o token e RESOLVIDO A CADA TENTATIVA ───────────
+  //
+  // O achado: eu capturava o token UMA vez e o `fazer()` fechava sobre ele.
+  // No 401 eu invalidava o cache e repetia COM O MESMO TOKEN MORTO — a
+  // invalidacao nao tinha efeito na chamada atual.
+  //
+  // Depois do corte seria pior: sem a renovacao local pra salvar, o retry
+  // bateria de novo no mesmo 401.
+  {
+    p = carregar();
+    resposta = { status: 200, corpo: { access: 'VELHO', expira_em: null, versao: 1 } };
+    const t1 = await p.lerToken('good', 'bling');
+    ok(t1 === 'VELHO', 'le o token vigente');
+
+    resposta = { status: 200, corpo: { access: 'NOVO', expira_em: null, versao: 2 } };
+    const t2 = await p.lerToken('good', 'bling');
+    ok(t2 === 'VELHO', '  o cache ainda serve o antigo (correto, dentro do TTL)');
+
+    p.invalidar('good', 'bling');
+    const t3 = await p.lerToken('good', 'bling');
+    ok(t3 === 'NOVO',
+       '  ⚠️ mas APOS INVALIDAR a proxima leitura traz o NOVO — e o retry usa esta');
+  }
+
+  // ── ⚠️ P0: o corte e por EIXO, nao pelo servico ──────────────────
+  //
+  // O `/health` verde escondia que so a GOOD le do dono: a AMB usa
+  // `lib-AMB/*` e continua renovando localmente. Alguem poderia ler
+  // "ligado: true" e cortar a AMB achando que ela le do dono.
+  {
+    const d = p.diagnostico();
+    ok(Array.isArray(d.pronto_pra_cortar) && d.pronto_pra_cortar.length > 0,
+       'o diagnostico diz QUAIS eixos leem do dono');
+    ok(Array.isArray(d.ainda_local) && d.ainda_local.some((x) => x.startsWith('ambtotal')),
+       '  e que a AMB ainda renova LOCAL (nao pode ser cortada)');
+  }
+
   // ── o dono fora do ar: silêncio, porque há rede local ─────────────
   //
   // ⚠️ Derrubar a bipagem porque o outro serviço caiu seria trocar um
