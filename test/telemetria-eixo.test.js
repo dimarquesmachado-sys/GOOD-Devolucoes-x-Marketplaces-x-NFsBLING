@@ -123,6 +123,34 @@ const carregar = () => {
        + (suspeitas.length ? ' (SUSPEITO: ' + suspeitas.join(', ') + ')' : ''));
   }
 
+  // ── ⚠️ NENHUMA ANOTACAO DEPOIS DE UM `return` ────────────────────
+  //
+  // Meu script de edicao inseriu `anotarRetry` DEPOIS do `return` em dois
+  // blocos, e APAGOU o `return` em outros dois. O primeiro caso e pior: o
+  // codigo compila, o teste unitario da funcao passa, e o contador fica em
+  // ZERO pra sempre — justamente o numero que deveria provar que o retry
+  // funciona.
+  //
+  // `node --check` nao pega: linha inalcancavel e sintaxe valida.
+  {
+    const fs3 = require('fs');
+    const RAIZ3 = path.join(__dirname, '..');
+    for (const arq of ['lib/ml.js', 'lib/bling.js']) {
+      const linhas = fs3.readFileSync(path.join(RAIZ3, arq), 'utf8').split('\n');
+      let mortas = 0;
+      let semRetorno = 0;
+      linhas.forEach((l, i) => {
+        if (!/anotarRetry\(.*, true\)/.test(l)) return;
+        const anterior = (linhas[i - 1] || '').trim();
+        const seguinte = (linhas[i + 1] || '').trim();
+        if (anterior.startsWith('return ')) mortas++;          // inalcancavel
+        if (!seguinte.startsWith('return { ok: true')) semRetorno++;
+      });
+      ok(mortas === 0, arq + ': nenhuma anotacao DEPOIS de um return (seria linha morta)');
+      ok(semRetorno === 0, '  e cada uma e seguida do return de sucesso');
+    }
+  }
+
   await new Promise((r) => servidor.close(r));
   console.log('');
   console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
