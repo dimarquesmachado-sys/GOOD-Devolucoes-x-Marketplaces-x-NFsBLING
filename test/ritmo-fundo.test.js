@@ -40,8 +40,17 @@ const NOMES = fs.readFileSync(path.join(RAIZ, 'lib', 'nf-nomes.js'), 'utf8');
       ritmo.comRitmo(async () => marcas.push(Date.now()))));
     let pior = 0;
     for (const t of marcas) pior = Math.max(pior, marcas.filter((x) => x >= t && x < t + 1000).length);
-    ok(pior <= ritmo.LIMITE_POR_SEGUNDO,
-       'a prioridade NAO afrouxa a taxa (pior janela de 1s: ' + pior + ')');
+    // b253 - ⚠️ O TETO VIROU 2,5/s (a conta e dividida com o Mover-Pedidos),
+    // e janela de 1s so contem numero INTEIRO de chamadas: com 400ms entre
+    // elas, o pior caso legitimo e 3 (em t=0, 400 e 800ms).
+    //
+    // E exatamente o que a Expedicao mediu ao adotar o mesmo numero: "pior
+    // caso 3 chamadas, no teto". Comparar com 2,5 cru acusaria o
+    // comportamento CERTO.
+    const tetoDaJanela = Math.ceil(ritmo.LIMITE_POR_SEGUNDO);
+    ok(pior <= tetoDaJanela,
+       'a prioridade NAO afrouxa a taxa (pior janela de 1s: ' + pior
+       + ', teto ' + tetoDaJanela + ')');
 
     conferirCodigo();
   }, 30);
