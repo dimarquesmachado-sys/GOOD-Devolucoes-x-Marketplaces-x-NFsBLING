@@ -151,6 +151,40 @@ const carregar = () => {
     }
   }
 
+  // ── ⚠️ TODA saida anota, por CONSTRUCAO ──────────────────────────
+  //
+  // O Codex apontou a mesma classe DUAS vezes: eu anotava saida por saida
+  // e esquecia algumas. Ia continuar apontando, porque cada saida nova
+  // nasceria sem anotacao.
+  //
+  // A correcao nao foi cobrir as que faltavam — foi mover a anotacao pro
+  // PONTO UNICO de saida. Entao o teste guarda a ESTRUTURA, nao os casos:
+  // se alguem voltar a anotar espalhado, ou criar um `return` cru na
+  // funcao interna sem passar pelo embrulho, isto acusa.
+  {
+    const fs4 = require('fs');
+    const src = fs4.readFileSync(path.join(__dirname, '..', 'lib', 'token-leitor.js'), 'utf8');
+
+    const anotacoesDeEstado = (src.match(/anotar\(empresa, integracao, 'estado'/g) || []).length;
+    ok(anotacoesDeEstado === 1,
+       'a anotacao de estado acontece em UM lugar so (achei ' + anotacoesDeEstado + ')');
+
+    ok(/async function lerTokenDetalhado[\s\S]{0,900}lerTokenBruto\(empresa, integracao\)/.test(src),
+       '  e ela embrulha a funcao interna (saida nova entra coberta)');
+  }
+
+  // e, por garantia, os casos que eu tinha esquecido
+  {
+    const p2 = carregar();
+    delete process.env.ADMIN_TOKEN_LEITURA_KEY;
+    const p3 = carregar();
+    await p3.lerTokenDetalhado('good', 'ml');
+    const e = p3.diagnostico().telemetria.por_eixo['good/ml'].estados;
+    ok(e.nao_configurado === 1,
+       '`nao_configurado` aparece nos estados (era uma das 3 que escapavam)');
+    process.env.ADMIN_TOKEN_LEITURA_KEY = 'k';
+  }
+
   await new Promise((r) => servidor.close(r));
   console.log('');
   console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
