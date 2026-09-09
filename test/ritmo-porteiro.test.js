@@ -151,6 +151,39 @@ const carregar = () => {
        '  mas um prazo MAIOR estende');
   }
 
+  // ── ⚠️ P1: a PAUSA vale mesmo com o circuito ABERTO ───────────────
+  //
+  // Estava ao contrario: com o circuito aberto, `disponivel()` devolvia
+  // 'local' e a pausa nunca era olhada. Um 429 tomado durante o fallback
+  // registrava a pausa, e o retry seguinte chamava o Bling assim mesmo —
+  // martelando uma conta que ACABOU de dizer "pare".
+  {
+    p = carregar();
+    atrasoMs = 6000;
+    await p.pedirPermissao('operacao');          // abre o circuito
+    atrasoMs = 0;
+    ok(p.diagnostico().circuito_aberto === true, 'circuito aberto (pre-condicao)');
+
+    await p.avisar429(90);                        // 429 tomado no fallback
+    const r = await p.pedirPermissao('operacao');
+    ok(r.via === 'espere',
+       'com o circuito ABERTO e pausa ativa, ainda manda ESPERAR (nao "local")');
+  }
+
+  // ── ⚠️ P2: o aviso-429 recusado NAO conta como sucesso ────────────
+  //
+  // Com `validateStatus: () => true`, um 400/404/500 resolvia normalmente
+  // e eu reportava sucesso — a pausa CENTRAL não foi registrada, os outros
+  // serviços não souberam, e ninguém ficou sabendo do silêncio.
+  {
+    p = carregar();
+    resposta = { status: 500, corpo: { erro: 'falhou' } };
+    const aceitou = await p.avisar429(60);
+    ok(aceitou === false, 'aviso-429 recusado (HTTP 500) devolve false, nao sucesso');
+    ok(p.diagnostico().circuito_aberto === true,
+       '  e abre o circuito — o porteiro nao esta confiavel agora');
+  }
+
   // ── e nasce DESLIGADO sem as duas envs ────────────────────────────
   {
     delete process.env.BLING_RITMO_URL;

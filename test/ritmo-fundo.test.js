@@ -118,3 +118,29 @@ function conferirCodigo() {
   console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
   process.exit(falhas ? 1 : 0);
 }
+
+// ── b253.1 (Codex, P1): ESPAÇAMENTO, não contagem ────────────────────
+//
+// ⚠️ `liberadas.length < 2.5` deixa passar 3 chamadas NA HORA (0, 1 e 2
+// são todos < 2.5). Eu escrevi no commit "400 ms entre chamadas" e
+// entreguei RAJADA DE 3 — o fallback nunca teve o freio prometido.
+//
+// O espaçamento é o que a conta sente: 3 chamadas juntas estouram o limite
+// do Bling no instante, mesmo que a média do segundo feche.
+(async () => {
+  const ritmo = require('../lib/ritmo-bling.js');
+  const marcas = [];
+  await Promise.all(Array.from({ length: 5 }, () =>
+    ritmo.comRitmo(async () => marcas.push(Date.now()))));
+  marcas.sort((a, b) => a - b);
+
+  const intervalos = marcas.slice(1).map((t, i) => t - marcas[i]);
+  const menor = Math.min(...intervalos);
+  const esperado = Math.round(1000 / ritmo.LIMITE_POR_SEGUNDO);
+
+  const bom = menor >= esperado - 20;
+  console.log((bom ? 'ok  ' : 'FALHA ')
+    + 'as chamadas sao ESPACADAS de verdade (menor intervalo: ' + menor
+    + 'ms, esperado ~' + esperado + 'ms)');
+  if (!bom) process.exitCode = 1;
+})();
