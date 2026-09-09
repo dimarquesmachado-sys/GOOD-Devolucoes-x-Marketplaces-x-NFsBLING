@@ -132,7 +132,53 @@ const tiktokRevelia = require('./lib/tiktok-revelia');          // v4.68
 // ── Chave p/ rotas de diagnóstico/admin/setup (acessadas com ?k=CHAVE na URL) ──
 // Sem a env ADMIN_KEY configurada no Render, essas rotas ficam DESLIGADAS (404).
 const ADMIN_KEY = process.env.ADMIN_KEY || '';
-function adminOk(req) { return ADMIN_KEY && req.query.k === ADMIN_KEY; }
+// b256 (P0 nº3 da auditoria de 26/08, e o parecer de 09/09 pos em 1º) -
+// A CHAVE PASSA A ACEITAR HEADER.
+//
+// ⚠️ Credencial em querystring fica em: log de acesso do Render, log do
+// proxy, histórico do navegador, e em toda URL que ele copia pra mim ou
+// manda pro galpão. O Mover-Pedidos baniu isso na rota de token deles, e
+// tem razão.
+//
+// ⚠️ MAS NÃO POSSO SIMPLESMENTE BANIR AQUI. Ele opera por links salvos e
+// URLs que eu mesmo mandei ao longo de meses — cortar a querystring hoje
+// quebraria o acesso dele às rotinas, sem aviso.
+//
+// Então: o header passa a valer, a querystring CONTINUA valendo, e cada
+// uso dela é CONTADO. Quando o contador zerar por um período, a
+// querystria sai — e aí a chave é rotacionada, porque a antiga vazou nos
+// logs de meses.
+let usosPorQuerystring = 0;
+let ultimoUsoQuerystring = null;
+
+function chaveDaRequisicao(req) {
+  const doHeader = req.get('x-admin-key');
+  if (doHeader) return { valor: doHeader, via: 'header' };
+  if (req.query.k) {
+    usosPorQuerystring++;
+    ultimoUsoQuerystring = new Date().toISOString();
+    return { valor: String(req.query.k), via: 'querystring' };
+  }
+  return { valor: null, via: 'nenhuma' };
+}
+
+function adminOk(req) {
+  const { valor } = chaveDaRequisicao(req);
+  return !!ADMIN_KEY && valor === ADMIN_KEY;
+}
+
+/** Pro /health: quanto a querystring ainda é usada (sem expor a chave). */
+function diagnosticoAdminKey() {
+  return {
+    aceita_header: 'x-admin-key',
+    querystring_ainda_aceita: true,
+    usos_por_querystring: usosPorQuerystring,
+    ultimo_uso_querystring: ultimoUsoQuerystring,
+    _nota: 'quando `usos_por_querystring` ficar em 0 por um periodo, a '
+      + 'querystring sai e a ADMIN_KEY deve ser ROTACIONADA (a antiga '
+      + 'vazou em logs de meses)',
+  };
+}
 
 shopee.iniciarPreAquecimento();
 
@@ -320,6 +366,7 @@ app.get('/health', (req, res) => {
     coordenacao: {
       leitura_de_token: tokenLeitorDiag(),
       ritmo_compartilhado: ritmoPorteiroDiag(),
+      admin_key: diagnosticoAdminKey(),
     },
     integrations: {
       ml: mlClient.hasToken(),
