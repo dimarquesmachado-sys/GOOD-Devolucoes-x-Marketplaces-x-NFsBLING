@@ -246,6 +246,36 @@ const registro = require('../lib/empresas.js');
     ok(/403/.test(janela.contrato_de_leitura || ''),
        '  no contrato de leitura tambem');
 
+    // ── v8: ⚠️ 429 e 5xx NAO PODEM disparar renovacao ──────────────
+    //
+    // O Mover-Pedidos renovava em qualquer nao-2xx e mudou hoje: renovar
+    // por um 429 TRANSITORIO queima o refresh de uso unico a toa — o erro
+    // era passageiro e a resposta e permanente.
+    //
+    // Este teste guarda o gatilho nos DOIS lados: o contrato diz quais
+    // status disparam, e o codigo daqui tem que bater com ele.
+    const sel = contrato.passo_2_eleicao.mecanica.renovacao_seletiva;
+    ok(!!sel, 'o contrato declara a renovacao SELETIVA');
+    for (const proibido of ['429', '5xx']) {
+      ok((sel.nao_dispara || []).includes(proibido),
+         '  `' + proibido + '` NAO dispara renovacao (queimaria o refresh a toa)');
+    }
+
+    // e o codigo daqui bate com o contrato
+    {
+      const fsq = require('fs');
+      const ml = fsq.readFileSync(path.join(RAIZ, 'lib', 'ml.js'), 'utf8');
+      const bl = fsq.readFileSync(path.join(RAIZ, 'lib', 'bling.js'), 'utf8');
+      const semComentario = (t) => t.split('\n').filter((l) => !l.trim().startsWith('//')).join('\n');
+
+      ok(/st === 401 \|\| st === 403/.test(semComentario(ml)),
+         '  lib/ml.js renova em 401 ou 403 (o ML usa os dois)');
+      ok(!/=== 429[^)]*\)\s*\{[^}]*renovarToken/.test(semComentario(ml)),
+         '  e NAO renova em 429');
+      ok(!/=== 429[^)]*\)\s*\{[^}]*renovarToken/.test(semComentario(bl)),
+         '  lib/bling.js tambem nao');
+    }
+
     // ⚠️ token vivo nao vai pra disco — reinicio tem que limpar
     ok(/mem[oó]ria s[oó]|nunca/i.test(ca.nunca_em_disco || ''),
        '  e NUNCA em disco (reinicio limpa)');
