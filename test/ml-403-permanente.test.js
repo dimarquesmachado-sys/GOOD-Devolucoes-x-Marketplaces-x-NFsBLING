@@ -1,20 +1,19 @@
 // Roda com: node test/ml-403-permanente.test.js
 //
-// ⚠️ ACHADO DE PRODUÇÃO, 09/09: a telemetria do `/health` mostrou, em 113
-// minutos de operação real, **10 respostas 403 do ML e 10 retries
-// falhados**. Cem por cento. Renovar o token nunca resolveu nenhum.
+// ⚠️ ACHADO DE PRODUÇÃO (telemetria, 09/09): em 113 min de operação real,
+// 10 respostas 403 do ML e 10 retries falhados. Cada uma disparou uma
+// renovação, e cada renovação QUEIMA UM REFRESH DE USO ÚNICO.
 //
-// E o dono não viu nada na tela — os 403 vêm de rotina de fundo (o ciclo
-// de datas de entrega, que roda a cada 5 min).
+// ⚠️ E MINHA PRIMEIRA CORREÇÃO ERA ESPERTA DEMAIS E NÃO SE SUSTENTAVA:
+// eu marcava o recurso como "403 permanente" quando o retry falhava,
+// assumindo que isso provava permissão. Não prova — em política `sombra`,
+// o retry lê o token do DONO enquanto a renovação mexe no LOCAL. O token
+// nem chega a ser trocado.
 //
-// ⚠️ POR QUE ISSO CUSTA CARO: cada renovação à toa QUEIMA UM REFRESH DE
-// USO ÚNICO. Era exatamente o alerta que o Mover-Pedidos trouxe no mesmo
-// dia — e a telemetria mostrou que a gente fazia isso 10x em 2 horas.
-//
-// A tensão que o conserto respeita: em março (v3.40) um 403 ERA token
-// vencido, e renovar resolvia. Os dois são verdade — causas diferentes com
-// o mesmo código. Então não escolhi um lado: renovo UMA vez e, se o retry
-// falhar, aquele recurso para de disparar renovação.
+// A correção que ficou é mais burra e funciona: LIMITAR A TAXA. Uma
+// renovação por rota a cada 10 min, sem tentar classificar o 403.
+//   403 de token vencido -> a 1ª renovação resolve (o caso de março)
+//   403 de permissão     -> as outras 59 chamadas não renovam nada
 
 const fs = require('fs');
 const path = require('path');
@@ -26,50 +25,74 @@ const RAIZ = path.join(__dirname, '..');
 const src = fs.readFileSync(path.join(RAIZ, 'lib', 'ml.js'), 'utf8');
 const codigo = src.split('\n').filter((l) => !l.trim().startsWith('//')).join('\n');
 
-// ── a lista existe e tem teto ────────────────────────────────────────
-{
-  ok(/const ML_403_PERMANENTE = new Set\(\)/.test(codigo),
-     'existe a lista dos 403 ja provados permanentes');
-  ok(/ML_403_MAX/.test(codigo),
-     '  com teto (a memoria nao cresce sem limite)');
-  ok(/ML_403_PERMANENTE\.size < ML_403_MAX/.test(codigo),
-     '  e o teto e conferido ANTES de inserir');
-}
-
-// ── ⚠️ só entra na lista quem PROVOU que renovar não resolve ─────────
+// ── ⚠️ a chave é a ROTA, não o id ────────────────────────────────────
 //
-// A marcação acontece no catch do retry — ou seja, depois de já ter
-// renovado uma vez. Marcar antes disso quebraria o caso de março.
+// O ciclo de fundo visita até 60 `/shipments/{sid}` por rodada. Chave por
+// id daria 60 renovações para UM problema de escopo — exatamente o que
+// este conserto veio impedir.
 {
-  const iRetry = codigo.indexOf("anotarRetry('good', 'ml', false)");
-  const trechoRetry = codigo.slice(iRetry, iRetry + 500);
-  ok(/ML_403_PERMANENTE\.add/.test(trechoRetry),
-     'a marcacao acontece no catch do RETRY (ja renovou uma vez)');
-  ok(/st === 403 &&/.test(trechoRetry),
-     '  ⚠️ e SO em 403 — um 401 que falha no retry pode ser passageiro');
+  ok(/function rotaDe\(/.test(codigo), 'existe a normalizacao de rota');
+
+  // exercito de verdade, em vez de conferir texto
+  const rotaDe = (url) => {
+    try {
+      const c = new URL(String(url)).pathname;
+      return c.replace(/\/\d{6,}/g, '/{id}').replace(/\/[A-Z]{2,4}\d{6,}/g, '/{id}');
+    } catch (e) { return String(url).split('?')[0]; }
+  };
+  const a = rotaDe('https://api.mercadolibre.com/shipments/44881234567');
+  const b = rotaDe('https://api.mercadolibre.com/shipments/44889999999');
+  ok(a === b, 'dois ids diferentes viram a MESMA rota (' + a + ')');
+
+  const hist = rotaDe('https://api.mercadolibre.com/shipments/44881234567/history');
+  ok(hist !== a, '  mas /history e rota DIFERENTE (escopos podem diferir)');
 }
 
-// ── e o 403 já conhecido NÃO dispara renovação ───────────────────────
-{
-  const iGuarda = codigo.indexOf('ML_403_PERMANENTE.has');
-  ok(iGuarda > 0, 'ha uma guarda que consulta a lista');
-  const iGatilho = codigo.indexOf('if (st === 401');
-  ok(iGuarda < iGatilho,
-     '  ⚠️ e ela vem ANTES do gatilho de renovacao (senao renovaria assim mesmo)');
-
-  const trechoGuarda = codigo.slice(iGuarda - 200, iGuarda + 400);
-  ok(/permissaoNegada/.test(trechoGuarda),
-     '  e devolve o erro marcado, pra quem chamou saber que e permissao');
-}
-
-// ── ⚠️ o conserto é VISÍVEL ──────────────────────────────────────────
+// ── o limite é por janela, e o 401 NÃO passa por ele ────────────────
 //
-// Sem isso ninguém saberia se a lista tem 0 ou 50 recursos, nem quais — e
-// "parou de queimar refresh" viraria fé.
+// ⚠️ Token vencido de verdade tem que renovar sempre — e o ML usa 401 pro
+// caso limpo. Limitar o 401 quebraria a recuperação normal.
 {
-  ok(/function diagnostico403/.test(src), 'ha diagnostico da lista');
+  ok(/ML_JANELA_RENOV_MS/.test(codigo), 'ha uma janela de tempo para o limite');
+  // ⚠️ minha 1a versao olhava 120 chars ANTES do `podeRenovarPor403` e a
+  // condicao fica na MESMA linha, logo antes — a janela pegava o `catch`
+  // de cima. Acusava codigo certo. Agora leio a linha inteira.
+  const linhaGuarda = codigo.split('\n')
+    .find((l) => l.includes('podeRenovarPor403(url)') && l.includes('if ('));
+  ok(!!linhaGuarda, 'achei a guarda do 403');
+  ok(/st === 403 &&/.test(linhaGuarda || ''),
+     '⚠️ o limite vale SO pro 403 (o 401 renova sempre)');
+  ok(!/401/.test(linhaGuarda || ''),
+     '  e o 401 NAO entra nessa condicao');
+}
+
+// ── ⚠️ e o /health NÃO expõe id de pedido/envio ─────────────────────
+//
+// O `/health` é público. Os caminhos do ML carregam id de pedido, envio e
+// reclamação — expor a lista seria vazar dado de cliente.
+{
+  const mod = require('../lib/ml.js');
+  const d = mod.diagnostico403();
+  const cru = JSON.stringify(d);
+  ok(!/\d{6,}/.test(cru), 'o diagnostico NAO tem id nenhum (so contagem)');
+  ok(typeof d.rotas_com_403_recente === 'number',
+     '  mas diz QUANTAS rotas estao em janela');
+
   const srv = fs.readFileSync(path.join(RAIZ, 'server.js'), 'utf8');
-  ok(/ml_403_permanente/.test(srv), '  exposto no /health');
+  ok(/ml_403:/.test(srv), '  e o /health mostra isso');
+  ok(!/recursos_com_403_permanente/.test(srv),
+     '  ⚠️ e NAO expoe a lista de recursos (era vazamento)');
+}
+
+// ── e a recuperação acontece sozinha ────────────────────────────────
+//
+// ⚠️ Sem janela, um recurso cuja permissão FOSSE corrigida ficaria
+// bloqueado até o serviço reiniciar. A janela expira sozinha.
+{
+  ok(/Date\.now\(\) - ultima < ML_JANELA_RENOV_MS/.test(codigo),
+     'a janela EXPIRA sozinha (permissao corrigida volta a funcionar)');
+  ok(!/ML_403_PERMANENTE/.test(codigo),
+     '  e nao ha lista permanente (a versao anterior nao expirava nunca)');
 }
 
 console.log('');
