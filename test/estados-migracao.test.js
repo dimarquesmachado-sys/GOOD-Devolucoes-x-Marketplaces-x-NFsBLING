@@ -128,8 +128,15 @@ const carregar = () => {
     const RAIZ = path.join(__dirname, '..');
     for (const [arq, eixo] of [['lib/bling.js', 'good/bling'], ['lib/ml.js', 'good/ml']]) {
       const src = fs.readFileSync(path.join(RAIZ, arq), 'utf8');
-      ok(/politicaDe\('good', '(bling|ml)'\) === 'remoto'/.test(src),
-         arq + ': a renovacao local checa a politica');
+      // ⚠️ b259.2 (Codex, P2): eu casava a condicao do RETRY, nao a guarda
+      // da renovacao — o mesmo texto aparece nos dois lugares. Agora leio
+      // o corpo da funcao de renovacao e confiro la dentro.
+      const iFn = src.search(/async function renovarToken\w*Interno\(\) \{/);
+      const corpoRenov = src.slice(iFn, iFn + 1400);
+      ok(/politicaDe\('good', '(bling|ml)'\)/.test(corpoRenov),
+         arq + ': a GUARDA DA RENOVACAO checa a politica (nao so o retry)');
+      ok(/=== 'remoto' \|\| \w+ === 'bloqueado'/.test(corpoRenov),
+         '  e recusa nos DOIS estados (remoto e bloqueado)');
       ok(/renovacoesRecusadas\+\+/.test(src),
          '  e CONTA a recusa (o numero prova o corte, em vez de "ninguem reclamou")');
     }
