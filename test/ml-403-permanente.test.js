@@ -89,8 +89,35 @@ const codigo = src.split('\n').filter((l) => !l.trim().startsWith('//')).join('\
 // ⚠️ Sem janela, um recurso cuja permissão FOSSE corrigida ficaria
 // bloqueado até o serviço reiniciar. A janela expira sozinha.
 {
-  ok(/Date\.now\(\) - ultima < ML_JANELA_RENOV_MS/.test(codigo),
+  ok(/Date\.now\(\) - ultima >= ML_JANELA_RENOV_MS/.test(codigo),
      'a janela EXPIRA sozinha (permissao corrigida volta a funcionar)');
+
+  // ── ⚠️ b260.1: o relogio so anda SE O REFRESH FOI GASTO ──────────
+  //
+  // Antes, consultar e registrar eram a mesma chamada — entao a janela
+  // comecava mesmo quando a renovacao FALHAVA, ou quando a politica era
+  // `remoto` (onde nao ha renovacao local nenhuma). Eu bloqueava a rota
+  // por 10 min sem ter gasto nada.
+  ok(/function registrarRenovacaoPor403/.test(codigo),
+     'consultar e registrar sao funcoes SEPARADAS');
+  ok(/if \(renovou && st === 403\) registrarRenovacaoPor403/.test(codigo),
+     '  e o registro so acontece SE a renovacao aconteceu');
+
+  // ── ⚠️ e a guarda vem DEPOIS da invalidacao do cache ─────────────
+  //
+  // Antes ela saia da funcao antes de invalidar — entao em `remoto` o
+  // token velho do dono seguia em uso ate o TTL, e a guarda PIORAVA o
+  // problema que veio consertar.
+  {
+    const linhas = codigo.split('\n');
+    const ondeChama = (t) => linhas.findIndex((l) => l.includes(t) && !l.includes('function '));
+    const inval = ondeChama("tokenLeitor.invalidar('good', 'ml')");
+    const guarda = ondeChama('!podeRenovarPor403(url)');
+    const renov = ondeChama('const renovou = await renovarTokenML()');
+    ok(inval >= 0 && guarda > inval,
+       'a guarda vem DEPOIS da invalidacao do cache');
+    ok(renov > guarda, '  e ANTES da renovacao local (que e o que gasta refresh)');
+  }
   ok(!/ML_403_PERMANENTE/.test(codigo),
      '  e nao ha lista permanente (a versao anterior nao expirava nunca)');
 }
