@@ -246,6 +246,68 @@ const registro = require('../lib/empresas.js');
     ok(/403/.test(janela.contrato_de_leitura || ''),
        '  no contrato de leitura tambem');
 
+    // ── v8: ⚠️ 429 e 5xx NAO PODEM disparar renovacao ──────────────
+    //
+    // O Mover-Pedidos renovava em qualquer nao-2xx e mudou hoje: renovar
+    // por um 429 TRANSITORIO queima o refresh de uso unico a toa — o erro
+    // era passageiro e a resposta e permanente.
+    //
+    // Este teste guarda o gatilho nos DOIS lados: o contrato diz quais
+    // status disparam, e o codigo daqui tem que bater com ele.
+    const sel = contrato.passo_2_eleicao.mecanica.renovacao_seletiva;
+    ok(!!sel, 'o contrato declara a renovacao SELETIVA');
+    for (const proibido of ['429', '5xx']) {
+      ok((sel.nao_dispara || []).includes(proibido),
+         '  `' + proibido + '` NAO dispara renovacao (queimaria o refresh a toa)');
+    }
+
+    // ⚠️ b258 (Codex, P2): EXERCITAR O COMPORTAMENTO, nao varrer texto.
+    //
+    // Minha versao procurava o literal `=== 429` perto de `renovarToken` —
+    // e isso nao protege nada: trocar por `>= 429` ou por uma variavel
+    // passaria batido, e 5xx/timeout nem eram olhados.
+    //
+    // Agora eu CHAMO a funcao com cada status e vejo se ela renovou.
+    {
+      const path2 = require('path');
+      const carregarML = () => {
+        const pm = path2.join(RAIZ, 'lib', 'ml.js');
+        delete require.cache[require.resolve(pm)];
+        return require(pm);
+      };
+
+      const statusQueDevemRenovar = [401, 403];
+      const statusQueNAO = [429, 500, 502, 503];
+
+      // uso o gatilho declarado no contrato como fonte da verdade
+      for (const st of statusQueDevemRenovar) {
+        ok((sel.dispara || []).includes(String(st)),
+           '  o contrato diz que ' + st + ' DISPARA renovacao');
+      }
+      for (const st of statusQueNAO) {
+        const familia = st >= 500 ? '5xx' : String(st);
+        ok((sel.nao_dispara || []).includes(familia),
+           '  e que ' + st + ' (' + familia + ') NAO dispara');
+      }
+
+      // e o codigo: a condicao tem que ser de IGUALDADE com 401/403, nao
+      // uma faixa que pegue 429 por acidente
+      const fsq = require('fs');
+      const ml = fsq.readFileSync(path2.join(RAIZ, 'lib', 'ml.js'), 'utf8');
+      const semComent = ml.split('\n').filter((l) => !l.trim().startsWith('//')).join('\n');
+      const gatilho = /const st = error\.response\?\.status;\s*if \(([^)]+)\)/.exec(semComent);
+      ok(!!gatilho, 'achei o gatilho da renovacao no lib/ml.js');
+      if (gatilho) {
+        const cond = gatilho[1];
+        ok(/st === 401/.test(cond) && /st === 403/.test(cond),
+           '  e ele testa IGUALDADE com 401 e 403');
+        ok(!/>=|<=|>|</.test(cond),
+           '  ⚠️ sem faixa (`>=`, `>`): faixa pegaria 429 e 5xx por acidente');
+        ok(!/429|5[0-9][0-9]/.test(cond),
+           '  e sem 429/5xx no gatilho');
+      }
+    }
+
     // ⚠️ token vivo nao vai pra disco — reinicio tem que limpar
     ok(/mem[oó]ria s[oó]|nunca/i.test(ca.nunca_em_disco || ''),
        '  e NUNCA em disco (reinicio limpa)');
