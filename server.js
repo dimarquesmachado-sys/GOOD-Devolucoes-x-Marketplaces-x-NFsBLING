@@ -288,6 +288,17 @@ const HASH_SERVER = (() => {
   try { return crypto.createHash('sha1').update(require('fs').readFileSync(__filename)).digest('hex').slice(0, 12); }
   catch (e) { return 'n/d'; }
 })();
+// b254 - diagnostico das pecas de coordenacao, sem quebrar o /health se
+// um modulo faltar (o health tem que responder mesmo com peca fora).
+function tokenLeitorDiag() {
+  try { return require('./lib/token-leitor').diagnostico(); }
+  catch (e) { return { erro: e.message }; }
+}
+function ritmoPorteiroDiag() {
+  try { return require('./lib/ritmo-porteiro').diagnostico(); }
+  catch (e) { return { erro: e.message }; }
+}
+
 app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
@@ -297,6 +308,19 @@ app.get('/health', (req, res) => {
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
     node: process.version,
+
+    // b254 - ⚠️ EU CONSTRUI AS DUAS PECAS E NAO DEI COMO CONFERIR.
+    //
+    // O combinado com o Mover-Pedidos e "ligar e confirmar um periodo de
+    // operacao normal" antes do corte. Sem visibilidade, confirmar vira
+    // torcer — e as duas pecas falham em SILENCIO por desenho (caem no
+    // caminho local, que e o certo, mas nao avisa ninguem).
+    //
+    // Aqui da pra ver de fora, sem expor token nem chave.
+    coordenacao: {
+      leitura_de_token: tokenLeitorDiag(),
+      ritmo_compartilhado: ritmoPorteiroDiag(),
+    },
     integrations: {
       ml: mlClient.hasToken(),
       bling: blingClient.hasToken(),
