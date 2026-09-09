@@ -185,6 +185,57 @@ const carregar = () => {
     process.env.ADMIN_TOKEN_LEITURA_KEY = 'k';
   }
 
+  // ── ⚠️ o CACHE nao carimba `ultimo_sucesso` ──────────────────────
+  //
+  // Com o dono FORA e o cache quente, o /health mostraria "sucesso ha 3
+  // segundos" enquanto ninguem fala com ele ha 5 minutos. O campo mais
+  // confiavel do painel viraria o mais enganoso.
+  {
+    const p2 = carregar();
+    resposta = { status: 200, corpo: { access: 'T', expira_em: null, versao: 1 } };
+    await p2.lerTokenDetalhado('good', 'ml');
+    const antes = p2.diagnostico().telemetria.por_eixo['good/ml'].ultimo_sucesso;
+
+    await new Promise((r) => setTimeout(r, 1100));
+    await p2.lerTokenDetalhado('good', 'ml');          // vem do cache
+    const m2 = p2.diagnostico().telemetria.por_eixo['good/ml'];
+
+    ok(m2.ultimo_sucesso === antes,
+       'o cache NAO carimba `ultimo_sucesso` (so a leitura remota carimba)');
+    ok(!!m2.ultimo_do_cache,
+       '  e o cache tem carimbo PROPRIO, separado e honesto');
+  }
+
+  // ── ⚠️ `ausente` e `nao_implementado` NAO sao falha ──────────────
+  //
+  // Achei auditando a funcao inteira, nao veio de apontamento. 404 = a
+  // empresa nao tem a integracao (GOOD/tiktok e o caso real); 501 = o dono
+  // ainda nao implementou. Carimbar como falha deixaria o painel parecendo
+  // degradado PRA SEMPRE num eixo que nunca vai existir — e ai ninguem
+  // olha mais o painel.
+  {
+    const p3 = carregar();
+    resposta = { status: 404, corpo: {} };
+    await p3.lerTokenDetalhado('good', 'tiktok');
+    const m3 = p3.diagnostico().telemetria.por_eixo['good/tiktok'];
+    ok(!m3.ultima_falha,
+       '`ausente` (404) NAO marca ultima_falha — e resposta correta, nao erro');
+    ok(m3.estados.ausente === 1, '  mas aparece nos estados (nao some)');
+  }
+
+  // ── e a latencia da FALHA tambem e medida ────────────────────────
+  //
+  // Dono lento e o sintoma que antecede o timeout — medir so o sucesso
+  // esconderia justamente a degradacao.
+  {
+    const p4 = carregar();
+    resposta = { status: 502, corpo: {} };
+    await p4.lerTokenDetalhado('good', 'bling');
+    const m4 = p4.diagnostico().telemetria.por_eixo['good/bling'];
+    ok(m4.latencia_ms.ultima !== null,
+       'a latencia da FALHA e medida (dono lento antecede o timeout)');
+  }
+
   await new Promise((r) => servidor.close(r));
   console.log('');
   console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
