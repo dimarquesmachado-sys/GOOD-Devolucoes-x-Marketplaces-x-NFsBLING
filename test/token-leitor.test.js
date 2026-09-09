@@ -141,11 +141,21 @@ const carregar = () => {
   // `lib-AMB/*` e continua renovando localmente. Alguem poderia ler
   // "ligado: true" e cortar a AMB achando que ela le do dono.
   {
+    // ⚠️ b259.6: `pronto_pra_cortar` e `ainda_local` SAIRAM. O primeiro
+    // afirmava PRONTO olhando so a fiacao, enquanto o `pode_cortar` dizia
+    // NAO com base na evidencia — dois campos vizinhos com instrucoes
+    // opostas. O segundo repetia o que `eixos` ja dizia.
+    //
+    // Agora ha UMA fonte por pergunta, e o teste guarda isso.
     const d = p.diagnostico();
-    ok(Array.isArray(d.pronto_pra_cortar) && d.pronto_pra_cortar.length > 0,
-       'o diagnostico diz QUAIS eixos leem do dono');
-    ok(Array.isArray(d.ainda_local) && d.ainda_local.some((x) => x.startsWith('ambtotal')),
-       '  e que a AMB ainda renova LOCAL (nao pode ser cortada)');
+    ok(d.pronto_pra_cortar === undefined && d.ainda_local === undefined,
+       'os campos que afirmavam "pronto" sem evidencia foram REMOVIDOS');
+    ok(typeof d.eixos === 'object' && /le do dono/.test(d.eixos['good/ml'] || ''),
+       '`eixos` diz a FIACAO (quem consulta o dono)');
+    ok(/renova LOCAL/.test(d.eixos['ambtotal/ml'] || ''),
+       '  e que a AMB ainda renova local (nao pode ser cortada)');
+    ok(typeof d.pode_cortar === 'object' && 'pronto' in (d.pode_cortar['good/ml'] || {}),
+       '`pode_cortar` da o VEREDITO (com evidencia)');
   }
 
   // ── o dono fora do ar: silêncio, porque há rede local ─────────────

@@ -128,8 +128,15 @@ const carregar = () => {
     const RAIZ = path.join(__dirname, '..');
     for (const [arq, eixo] of [['lib/bling.js', 'good/bling'], ['lib/ml.js', 'good/ml']]) {
       const src = fs.readFileSync(path.join(RAIZ, arq), 'utf8');
-      ok(/politicaDe\('good', '(bling|ml)'\) === 'remoto'/.test(src),
-         arq + ': a renovacao local checa a politica');
+      // ⚠️ b259.2 (Codex, P2): eu casava a condicao do RETRY, nao a guarda
+      // da renovacao — o mesmo texto aparece nos dois lugares. Agora leio
+      // o corpo da funcao de renovacao e confiro la dentro.
+      const iFn = src.search(/async function renovarToken\w*Interno\(\) \{/);
+      const corpoRenov = src.slice(iFn, iFn + 1400);
+      ok(/politicaDe\('good', '(bling|ml)'\)/.test(corpoRenov),
+         arq + ': a GUARDA DA RENOVACAO checa a politica (nao so o retry)');
+      ok(/=== 'remoto' \|\| \w+ === 'bloqueado'/.test(corpoRenov),
+         '  e recusa nos DOIS estados (remoto e bloqueado)');
       ok(/renovacoesRecusadas\+\+/.test(src),
          '  e CONTA a recusa (o numero prova o corte, em vez de "ninguem reclamou")');
     }
@@ -143,6 +150,30 @@ const carregar = () => {
        'o /health mostra a politica EFETIVA por eixo');
     ok(/refresh SABIDAMENTE vigente/.test(d.politica._atencao_rollback || ''),
        '  ⚠️ com o aviso: rollback exige refresh vigente (o do ambiente pode ter sido consumido)');
+  }
+
+  // ── ⚠️ retorno antecipado NAO pode pular a invalidacao ────────────
+  //
+  // Padrao que ja me pegou DUAS vezes neste mesmo arquivo: o
+  // `semRetentativa` sai antes do bloco que trata o erro — primeiro pulou
+  // o aviso do 429 ao porteiro, agora pulava a invalidacao do token.
+  //
+  // Em `remoto` isso deixaria o token morto em cache por 5 MINUTOS, e as
+  // chamadas de detalhe de produto (que sao as `semRetentativa`, em
+  // volume) levariam 401 uma atras da outra ate o TTL vencer.
+  {
+    const fs2 = require('fs');
+    const RAIZ2 = path.join(__dirname, '..');
+    const bl = fs2.readFileSync(path.join(RAIZ2, 'lib', 'bling.js'), 'utf8');
+
+    const i = bl.indexOf('if (opcoes.semRetentativa) {');
+    const j = bl.indexOf('return { ok: false', i);
+    const bloco = bl.slice(i, j);
+
+    ok(/tokenLeitor\.invalidar/.test(bloco),
+       'o caminho `semRetentativa` invalida o token ANTES de sair');
+    ok(/avisar429/.test(bloco),
+       '  e avisa o porteiro do 429 tambem (o mesmo padrao, ja corrigido antes)');
   }
 
   await new Promise((r) => servidor.close(r));
