@@ -138,9 +138,21 @@ router.use(express.json({ limit: '12mb' }));
 router.use(cookieParser());
 
 // ── Trava de admin ───────────────────────────────────────────
+let usosQuerystringAMB = 0;
+
 function admin(req, res, next) {
+  // b256 - ACEITA HEADER (ver a nota longa no server.js). A querystring
+  // continua valendo durante a transicao: ele opera por links salvos, e
+  // corta-la hoje quebraria o acesso dele sem aviso.
   const chave = process.env.ADMIN_KEY;
-  if (!chave || req.query.k !== chave) {
+  const doHeader = req.get('x-admin-key');
+  const recebida = doHeader || req.query.k;
+  if (doHeader) {
+    // marca que veio pelo caminho novo
+  } else if (req.query.k) {
+    usosQuerystringAMB++;
+  }
+  if (!chave || recebida !== chave) {
     return res.status(404).json({ error: 'not found' });
   }
   next();
