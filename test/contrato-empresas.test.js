@@ -229,7 +229,22 @@ const registro = require('../lib/empresas.js');
     // ⚠️ o TTL NAO substitui o 401: cachear 5 min e esquecer o 401 faria o
     // token revogado sobreviver a janela inteira
     ok(/OS DOIS invalidam/i.test(ca.invalidacao || ''),
-       '  e OS DOIS invalidam: o TTL E o 401 (um nao substitui o outro)');
+       '  e OS DOIS invalidam: o TTL E o 401/403 (um nao substitui o outro)');
+
+    // ── v7: ⚠️ o gatilho diz 401 OU 403 ────────────────────────────
+    //
+    // O ML responde 403 com token vencido, nao so 401 — achado do
+    // Devolucoes em marco (lib/ml.js, v3.40). O Mover-Pedidos conferiu: os
+    // managers de la renovam em QUALQUER nao-2xx, entao ja cobriam por
+    // desenho. Mas o TEXTO do contrato dizia so 401, e quem implementasse
+    // ao pe da letra deixaria o token morto no cache pela janela do TTL.
+    //
+    // Contrato escrito pra ser lido literalmente tem que dizer os dois.
+    ok(/403/.test(ca.invalidacao || ''),
+       '  ⚠️ e o 403 esta no gatilho (o ML usa ele pra token vencido)');
+    const janela = contrato.passo_2_eleicao.mecanica.janela_de_renovacao;
+    ok(/403/.test(janela.contrato_de_leitura || ''),
+       '  no contrato de leitura tambem');
 
     // ⚠️ token vivo nao vai pra disco — reinicio tem que limpar
     ok(/mem[oó]ria s[oó]|nunca/i.test(ca.nunca_em_disco || ''),
