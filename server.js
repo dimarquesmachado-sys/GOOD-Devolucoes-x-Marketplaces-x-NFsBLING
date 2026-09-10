@@ -382,6 +382,30 @@ app.get('/health', (req, res) => {
       // nenhum, e e ele que decide se a busca do estoquista responde na
       // hora ou leva minutos. Sem isto, "a busca esta lenta" nao tinha como
       // ser diagnosticado sem ler codigo.
+      // b270 - ⚠️ O CACHE DA ESPREITA decide se a ESTRELA aparece na busca
+      // por nome. Sem ele preenchido, o cruzamento nao acha nada e os cards
+      // saem sem a marca — que foi o que o dono viu ("cade a estrela?").
+      //
+      // Nao estava exposto em lugar nenhum: pra saber se o cruzamento tinha
+      // materia-prima, so lendo codigo.
+      espreita: (() => {
+        try {
+          const c = ESP_CACHE || {};
+          const cont = (k) => (Array.isArray(c[k]) ? c[k].length : 0);
+          return {
+            tem_cache: !!ESP_CACHE,
+            idade_min: ESP_CACHE_TS ? Math.round((Date.now() - ESP_CACHE_TS) / 60000) : null,
+            em_transito: cont('em_transito'),
+            nunca_bipadas: cont('nunca_bipadas'),
+            // ⚠️ o cruzamento so casa quem tem NF: devolucao sem NF no
+            // cache nunca ganha estrela, por mais que esteja a caminho
+            com_nf: []
+              .concat(Array.isArray(c.em_transito) ? c.em_transito : [])
+              .concat(Array.isArray(c.nunca_bipadas) ? c.nunca_bipadas : [])
+              .filter((e) => e && e.nf).length,
+          };
+        } catch (e) { return { erro: e.message }; }
+      })(),
       indice_nomes: (() => {
         try { return nfNomes.statusIndice(); }
         catch (e) { return { erro: e.message }; }
