@@ -278,6 +278,23 @@ const registro = require('../lib/empresas.js');
     ok((inval.todas_as_integracoes || []).includes(403),
        'a INVALIDACAO inclui 403 em todas — errar custa 1 releitura, nao 1 refresh');
 
+    // ── v10: ⚠️ a EXCECAO da rota restrita, e o LIMITE dela ────────
+    //
+    // Medido em 6h reais: 30 respostas 403 e ZERO 401, todas numa rota so
+    // (`/shipments/{id}` do ML — o envio pertence ao COMPRADOR). Nenhum
+    // token resolve, e invalidar ali e releitura por nada.
+    //
+    // ⚠️ E o CONTRARIO tambem esta escrito, senao a excecao vira desculpa
+    // pra ignorar 403 legitimo: na SONDA do dono (`/users/me`), 403 SEGUE
+    // sendo vencimento. Rota sem restricao de recurso — se ela recusa, e o
+    // token.
+    ok(/rota restrita/i.test(inval._excecao_rota_restrita || ''),
+       'v10: o contrato registra que 403 de rota RESTRITA nao indica token');
+    ok(/users\/me/.test(inval._onde_o_403_AINDA_e_vencimento || ''),
+       '  ⚠️ e o LIMITE da excecao: na sonda do dono, 403 ainda e vencimento');
+    ok(/6h|ZERO 401/i.test(inval._excecao_rota_restrita || ''),
+       '  com o dado que sustenta (nao e opiniao)');
+
     // ⚠️ e o CODIGO bate com o contrato, POR INTEGRACAO. Contrato que nao e
     // conferido contra o codigo vira ficcao.
     {

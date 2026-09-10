@@ -357,7 +357,10 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '7.3.0 (busca de nome: 5 apontamentos do Codex #209, mais o repasse ate a tela)',
+      // ⚠️ a resolucao do conflito JUNTA as duas mudancas, nao escolhe uma:
+      // a 7.2.1 (403 do #208) ja esta na main, e esta branch acrescenta a
+      // busca por nome. Escolher um lado apagaria a descricao do outro.
+      version: '7.3.0 (busca por nome com teto de 12s e indice parcial; 403 conhecido nao invalida cache)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
