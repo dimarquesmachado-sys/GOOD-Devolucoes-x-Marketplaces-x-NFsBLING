@@ -46,6 +46,8 @@
 //
 // A fabrica move essas travas pra dentro de cada instancia.
 const configAMB = require('../config-AMB');
+// b263 - pra parar a varredura quando o processo esta saindo
+const drenagem = require('../../lib/drenagem');
 
 function criarNfNomes(cfg) {
 const bling = require('./bling-AMB');
@@ -95,6 +97,20 @@ function primeiroUltimo(nomeCompleto) {
 }
 
 async function construirIndice(opts = {}) {
+  // b264 - ⚠️ mesmo tratamento da GOOD: o cancelamento e encerramento
+  // normal, e o `return` impede a publicacao do indice parcial.
+  try {
+    return await construirIndiceInterno(opts);
+  } catch (e) {
+    if (drenagem.ehCancelamento(e)) {
+      console.log(`[NF-NOMES-AMB] ${e.message} — indice NAO publicado`);
+      return;
+    }
+    throw e;
+  }
+}
+
+async function construirIndiceInterno(opts = {}) {
   if (construindo) return { ...IDX, jaEmAndamento: true };
   construindo = true;
   const t0 = Date.now();
@@ -103,6 +119,18 @@ async function construirIndice(opts = {}) {
     const dias = opts.dias || Number(process.env.AMB_NF_JANELA_DIAS || 120);
     const maxPaginas = opts.maxPaginas || 80;      // teto: 80x100 = 8000 NFs
     const corte = Date.now() - dias * 864e5;
+
+    // b263.1 - ⚠️ EU USEI ESTAS DUAS SEM DECLARAR NESTE ARQUIVO. A GOOD
+    // tinha, a AMB nao — teria quebrado em producao com ReferenceError,
+    // porque `node --check` nao pega variavel inexistente e o caminho so
+    // roda DURANTE a drenagem (nenhum teste passava por ele).
+    //
+    // Achei porque escrevi um teste que confere a DECLARACAO, nao o uso.
+    //
+    // `deFundo`: so e de fundo quando ja ha indice velho pra servir —
+    // reconstrucao pedida por busca fria e do estoquista e nao se cancela.
+    const deFundo = opts.fundo !== undefined ? !!opts.fundo : !!IDX.ts;
+    let cancelado = false;
     const mapa = {};
     const mapaCurto = {};
     const porPedido = {};
@@ -116,13 +144,30 @@ async function construirIndice(opts = {}) {
     // hora atual na data e o filtro de mesmo dia sempre volta zero.
     // Paginamos e cortamos pela data no nosso lado.
     for (let pg = 1; pg <= maxPaginas; pg++) {
+      // b263 - o SEGUNDO laco deste arquivo tambem. ⚠️ Achei porque conferi a
+      // contagem depois de aplicar — a primeira tentativa pegou so um dos dois,
+      // por diferenca de indentacao.
+      if (drenagem.estaDrenando()) {
+        console.log(`[NF-NOMES-AMB] drenando — paro o indice na pagina ${pg}`);
+        break;
+      }
+      // b263 - a AMB tambem. ⚠️ Regra da casa: ao consertar um lado,
+      // conferir o outro ANTES de subir — a AMB fica pra tras de conserto
+      // feito na GOOD, e isso ja aconteceu varias vezes.
+      if (drenagem.estaDrenando()) {
+        console.log(`[NF-NOMES-AMB] drenando — paro o indice na pagina ${pg}`);
+        break;
+      }
       // b228 - RITMO e RETENTATIVA (o mesmo da GOOD, que parava na pagina 20
       // com 429 e so indexava ~40 dias dos 120 da janela)
-      if (pg > 1) await new Promise((ok) => setTimeout(ok, 400));
+      // b264: a pausa do ritmo do Bling E o ponto de cancelamento — se o
+      // processo esta saindo, ela lanca. Nao ha checagem manual pra eu
+      // esquecer, e a proxima varredura herda o comportamento.
+      if (pg > 1) await drenagem.pausar(400, deFundo, 'indice-nomes');
       let r = await bling.chamarBling(`/nfe?limite=100&pagina=${pg}&tipo=1`);
       if (!r.ok && r.status === 429) {
         for (let tent = 1; tent <= 3 && !r.ok && r.status === 429; tent++) {
-          await new Promise((ok) => setTimeout(ok, 2000 * tent));
+          await drenagem.pausar(2000 * tent, deFundo, 'indice-nomes/retry');
           r = await bling.chamarBling(`/nfe?limite=100&pagina=${pg}&tipo=1`);
         }
       }
@@ -178,6 +223,13 @@ async function construirIndice(opts = {}) {
     let vendasLidas = 0, erroVendas = null;
     try {
       for (let pg = 1; pg <= maxPaginas; pg++) {
+        // b263 - o SEGUNDO laco deste arquivo tambem. ⚠️ Achei porque conferi a
+        // contagem depois de aplicar — a primeira tentativa pegou so um dos dois,
+        // por diferenca de indentacao.
+        if (drenagem.estaDrenando()) {
+          console.log(`[NF-NOMES-AMB] drenando — paro o indice na pagina ${pg}`);
+          break;
+        }
         // b40 - 429 (rate limit do Bling) na leitura de vendas NAO derruba mais
         // o indice: espera e tenta a MESMA pagina de novo, ate 4x com backoff.
         let r = null;
@@ -222,7 +274,13 @@ async function construirIndice(opts = {}) {
     // marca como quente — o proximo bipe tenta de novo em vez de
     // confiar num indice vazio por 30 minutos.
     const falhouGeral = !!erroBusca && totalNFs === 0;
-    IDX.ts = falhouGeral ? 0 : Date.now();
+    // b263.1 (Codex, P2) - ⚠️ CANCELAMENTO CONTA COMO FALHA AQUI.
+    //
+    // A AMB ja tinha o `falhouGeral` pra nao carimbar `ts` quando a
+    // varredura nao completou — reaproveito em vez de criar outro caminho.
+    // Publicar um indice parcial com `ts` fresco faria a proxima busca
+    // servir dele em vez de reconstruir.
+    IDX.ts = (falhouGeral || cancelado) ? 0 : Date.now();
     IDX.mapa = mapa;
     IDX.porPedido = porPedido;
     IDX.porId = porId;
