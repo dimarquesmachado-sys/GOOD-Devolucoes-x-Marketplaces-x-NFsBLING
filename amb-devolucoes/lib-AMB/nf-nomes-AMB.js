@@ -468,6 +468,12 @@ async function buscarPorNome(texto, opts = {}) {
     // Paginar 63 vezes nao ajuda ninguem — melhor pedir o nome
     // completo do remetente, que e o que esta impresso na caixa.
     generica: total > 50,
+    // b301 (auditoria da b268.1, P1) - a GOOD marca o retorno de
+    // buscarPorNome() com `indiceParcial` (via `marcarParcial()`); esta
+    // funcao aqui na AMB ficou de fora do porte ("AS 5 PORTADAS PRA AMB"
+    // valeu pro statusIndice, nao pra este retorno) -- um nome cuja NF
+    // esta numa pagina ainda nao lida virava resultado vazio comum.
+    parcial_ate_pagina: IDX.parcialAte || null,
   };
 }
 

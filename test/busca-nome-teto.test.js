@@ -129,6 +129,43 @@ const codigo = lerCodigo('lib/nf-nomes.js');
   }
 }
 
+// ── ⚠️ P2 (auditoria): o `chamarBling` tambem precisa saber que virou
+// fundo, nao so o `pausar` ──────────────────────────────────────────
+//
+// A b268.1 corrigiu a CANCELABILIDADE (drenagem.pausar considera
+// `viroufundo`) mas nao a PRIORIDADE: o build orfao continuava se
+// anunciando como INTERATIVO pro portao de ritmo do Bling
+// (`chamarBling(url, { fundo: deFundo })`), furando a fila de trafego
+// real mesmo com ninguem mais esperando por ele.
+{
+  ok(/fundo: deFundo \|\| IDX\.viroufundo/.test(codigo),
+     'GOOD: chamarBling tambem reclassifica a prioridade apos o timeout');
+}
+
+// ── ⚠️ P1 (auditoria): quem CONSOME a busca (server.js / app-AMB.js)
+// tambem precisa saber que o indice esta parcial ────────────────────
+//
+// A b268.1 deixou `indiceParcial`/`parcial_ate_pagina` visiveis DENTRO
+// do modulo (statusIndice/buscarPorNome), mas as rotas que de fato
+// respondem ao estoquista (identificar da GOOD e da AMB) nunca liam
+// esses campos -- um nome cuja NF esta numa pagina ainda nao lida
+// continuava virando 404 comum, indistinguivel de 'nao existe'.
+{
+  const srv = fs.readFileSync(path.join(RAIZ, 'server.js'), 'utf8');
+  ok(/indice_incompleto: rN\.indiceParcial/.test(srv),
+     'GOOD: a rota de identificar repassa o indice_incompleto pra tentativa');
+  ok(/notaIndiceParcial/.test(srv),
+     '  e avisa o estoquista no texto do erro (nao so no JSON cru)');
+
+  const amb = fs.readFileSync(path.join(RAIZ, 'amb-devolucoes', 'app-AMB.js'), 'utf8');
+  ok(/indice_incompleto: porNome\.parcial_ate_pagina/.test(amb),
+     'AMB: a rota de identificar (triagem) repassa o indice_incompleto');
+
+  const ambLib = lerCodigo('amb-devolucoes/lib-AMB/nf-nomes-AMB.js');
+  ok(/generica: total > 50,[\s\S]{0,300}parcial_ate_pagina: IDX\.parcialAte/.test(ambLib),
+     'AMB: o buscarPorNome() tambem marca o retorno como parcial (a GOOD porta indiceParcial pro retorno; a 1a rodada do porte pra AMB parou so no statusIndice)');
+}
+
 console.log('');
 console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
 process.exit(falhas ? 1 : 0);
