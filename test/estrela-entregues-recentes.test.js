@@ -67,6 +67,81 @@ const codigo = srv.split('\n').filter((l) => !l.trim().startsWith('//')).join('\
      '  ⚠️ e o filtro `!baixado` continua — o que ja foi bipado sai');
 }
 
+// ── ⚠️ a chave do cache e atribuida ANTES de enriquecer ────────────
+//
+// `brutos` não tem `chave_nota`, e `garantirEnriquecimentoEspreita` filtra
+// justamente por ele — rejeitava TODAS as recentes, e a lista saía sem NF.
+// Sem NF não há cruzamento, e a estrela continuaria sem aparecer.
+{
+  const iMont = codigo.indexOf('entreguesRecentes = brutos');
+  const bloco = codigo.slice(iMont, iMont + 400);
+  ok(/chave_nota: String\(d\.tracking/.test(bloco),
+     '⚠️ a `chave_nota` e atribuida na montagem (senao o enriquecimento rejeita)');
+
+  // e é a MESMA expressão do alerta — se divergirem, o cache não bate
+  const nEx = (codigo.match(/String\(d\.tracking \|\| \(d\.marketplace \+ ':' \+ d\.pedido\)\)/g) || []).length;
+  ok(nEx >= 2, '  e e a MESMA expressao do alerta (achei ' + nEx + ' usos)');
+}
+
+// ── ⚠️ e o bloco roda FORA do `if` do alerta ────────────────────────
+//
+// Estava dentro de `if (candidatos.length > 0)`. Num dia sem alertas (5-90
+// dias) mas com entregas recentes, o bloco inteiro era pulado — e a estrela
+// não aparecia justamente no dia tranquilo.
+{
+  const iIf = codigo.indexOf('if (candidatos.length > 0)');
+  const iBloco = codigo.indexOf('resolverIdentidadeEspreita(entreguesRecentes)');
+  ok(iBloco > 0, 'as recentes passam pela identidade');
+
+  // ⚠️ acho onde o `if` FECHA, contando chaves a partir dele — e comparo
+  // posicoes. Minha 1a versao contava o saldo ATE o bloco, e dava 1 por
+  // causa do `{ }` que eu abro pra agrupar as recentes: acusava DENTRO
+  // quando esta fora.
+  const linhas = codigo.split('\n');
+  const lIf = linhas.findIndex((l) => l.includes('if (candidatos.length > 0)'));
+  let prof = 0;
+  let lFecha = -1;
+  for (let k = lIf; k < linhas.length; k++) {
+    prof += (linhas[k].match(/\{/g) || []).length - (linhas[k].match(/\}/g) || []).length;
+    if (prof <= 0 && k > lIf) { lFecha = k; break; }
+  }
+  const lBloco = linhas.findIndex((l) => l.includes('resolverIdentidadeEspreita(entreguesRecentes)'));
+  ok(lFecha > 0 && lBloco > lFecha,
+     '  ⚠️ e o bloco esta FORA do if do alerta (if fecha em ' + (lFecha + 1)
+     + ', bloco em ' + (lBloco + 1) + ')');
+}
+
+// ── ⚠️ e o que ja foi triado sai da lista ───────────────────────────
+{
+  const iMont = codigo.indexOf('entreguesRecentes = brutos');
+  const trecho = codigo.slice(iMont, iMont + 2500);
+  ok(/espreita_notas[\s\S]{0,300}baixado/.test(trecho),
+     'devolucao ja triada nos ultimos 5 dias e removida (le `espreita_notas`)');
+}
+
+// ── e sem teto artificial no enriquecimento ─────────────────────────
+//
+// ⚠️ Eu tinha posto 15: acima disso o resto ficava sem NF. A janela é curta
+// por natureza, e o cache já está quente do alerta.
+{
+  ok(/garantirEnriquecimentoEspreita\(entreguesRecentes, entreguesRecentes\.length\)/.test(codigo),
+     'o enriquecimento das recentes nao tem teto artificial');
+  ok(/dispararEnriquecimentoEspreita\(entreguesRecentes\)/.test(codigo),
+     '  e o que sobrar vai pro enriquecimento de fundo');
+}
+
+// ── ⚠️ e o LIMITE DA SERIE esta documentado, nao fingido ────────────
+//
+// O cruzamento casa por número+SÉRIE e o ML Full usa série 2 — mas o
+// enriquecimento NÃO produz série nenhuma. Copiar um campo inexistente
+// seria fingir que resolvi.
+{
+  ok(/LIMITE CONHECIDO, NAO RESOLVIDO AQUI/.test(srv),
+     '⚠️ o limite da serie esta ESCRITO (o Full nao ganha estrela ainda)');
+  ok(!/d\.nf_serie = en\./.test(codigo),
+     '  e nao copio campo de serie que nao existe');
+}
+
 // ── ⚠️ e as recentes passam por IDENTIDADE e ENRIQUECIMENTO ─────────
 //
 // A identidade descobre o PEDIDO pelo rastreio; o enriquecimento traz a

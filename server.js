@@ -5626,18 +5626,26 @@ let entreguesRecentes = [];
         d.dias_desde = Math.floor((Date.now() - Date.parse(real)) / 864e5);
       }
     }
-    // b274.1 (Codex, P1) - ⚠️ MONTA ANTES DO FILTRO, NAO DEPOIS.
+    // b274.2 (Codex) - ⚠️ AS RECENTES SEGUEM O MESMO CAMINHO DO ALERTA.
     //
-    // Minha 1a versao derivava a lista do `baseAlerta`, que ja vem filtrado
-    // por `dias_desde >= 5` — filtrar de novo por `< 5` NUNCA devolvia
-    // nada. A lista saia sempre vazia, o /health mostrava zero, e a estrela
-    // continuaria sem aparecer. O conserto inteiro era decorativo.
+    // Historico deste bloco, porque errei duas vezes seguidas:
+    //   1a: derivava do `baseAlerta`, que ja vem filtrado por `>= 5` dias —
+    //       filtrar de novo por `< 5` nunca devolvia nada (lista vazia)
+    //   2a: passei a sair de `brutos` (certo), mas so com `_recem_entregue`.
+    //       ⚠️ `brutos` NAO TEM `chave_nota`, e o enriquecimento filtra
+    //       justamente por ele: `garantirEnriquecimentoEspreita` rejeitava
+    //       TODAS, e a lista saia sem NF — sem NF nao ha cruzamento, e a
+    //       estrela continuaria sem aparecer.
     //
-    // `brutos` e a lista sem filtro nenhum: e daqui que as entregues
-    // RECENTES precisam sair.
+    // Agora monta a chave IGUAL ao `baseAlerta` (mesma expressao), e o
+    // filtro de `baixado` entra logo abaixo, quando as notas ja foram lidas.
     entreguesRecentes = brutos
       .filter((d) => d.dias_desde != null && d.dias_desde < 5)
-      .map((d) => ({ ...d, _recem_entregue: true }));
+      .map((d) => ({
+        ...d,
+        _recem_entregue: true,
+        chave_nota: String(d.tracking || (d.marketplace + ':' + d.pedido)),
+      }));
 
     const candidatos = brutos
       .filter(d => (d.dias_desde != null) && d.dias_desde >= 5 && d.dias_desde <= 90 && (d.pedido || d.tracking));
@@ -5713,32 +5721,7 @@ let entreguesRecentes = [];
       // Rodo DEPOIS do baseAlerta de proposito: o cache `ESP_ENRIQ` que ela
       // preenche fica quente, entao as recentes reaproveitam o que ja foi
       // descoberto em vez de sondar de novo.
-      await resolverIdentidadeEspreita(entreguesRecentes);
 
-      // ⚠️ e o ENRIQUECIMENTO, que e quem traz a NF — sem ela o cruzamento
-      // nao tem por onde casar (ele liga NF do card com NF da espreita).
-      //
-      // Teto de 15: as recentes sao poucas por natureza (5 dias de janela),
-      // e o `ESP_ENRIQ` ja esta quente do baseAlerta acima.
-      await garantirEnriquecimentoEspreita(entreguesRecentes, 15);
-
-      // ⚠️ b274.1: copio os campos com os nomes REAIS do enriquecimento.
-      //
-      // Eu tinha inventado dois campos de serie/id que o enriquecedor NAO
-      // produz — seriam `undefined` silenciosos, e o
-      // cruzamento (que casa por numero+SERIE da NF) trataria toda recente
-      // como serie 1. Regra 4.12 de novo, terceira vez hoje.
-      //
-      // Uso a MESMA lista de campos que a linha ~5593 ja copia — se um dia
-      // o enriquecimento ganhar campo novo, os dois lugares divergem, mas
-      // pelo menos hoje estao iguais.
-      for (const d of entreguesRecentes) {
-        const en = d.chave_nota ? ESP_ENRIQ.get(d.chave_nota) : null;
-        if (!en) continue;
-        d.cliente = en.cliente; d.nf = en.nf; d.produto = en.produto;
-        d.sku = en.sku; d.qtd = en.qtd; d.valor_nf = en.valor_nf;
-        d.pack_id = en.pack_id; d.itens = en.itens || d.itens;
-      }
       await garantirEnriquecimentoEspreita(baseAlerta, 8);
       dispararEnriquecimentoEspreita(baseAlerta);
       nuncaBipadas = baseAlerta.map(d => {
@@ -5814,6 +5797,69 @@ let entreguesRecentes = [];
         && !(d.pack_id && achados.has(String(d.pack_id)))
         && !((d.pedidos_do_pack || []).some(p => achados.has(String(p)))));
     }
+
+      // b274.2 (Codex, P2) - ⚠️ AS RECENTES FORA DO `if` DO ALERTA.
+      //
+      // Este bloco estava DENTRO do `if (candidatos.length > 0)`. Quando ha
+      // entregas dos ultimos 5 dias mas NENHUMA na janela de alerta (5-90
+      // dias), o `if` inteiro e pulado — e as recentes saiam CRUAS, sem
+      // pedido descoberto e sem NF. Ou seja: justamente no dia tranquilo,
+      // sem alertas, a estrela nao apareceria.
+      {
+        // ⚠️ o filtro de `baixado` (Codex, P2): devolucao ja triada nos
+        // ultimos 5 dias vinha como se ninguem tivesse mexido. O
+        // `.filter(!baixado)` do cruzamento nao pegava porque `brutos` nao
+        // traz esse campo — quem traz e a tabela `espreita_notas`.
+        try {
+          const chavesR = entreguesRecentes.map((d) => d.chave_nota).filter(Boolean);
+          if (chavesR.length) {
+            const { data } = await supabase.from('espreita_notas')
+              .select('chave, baixado').in('chave', chavesR);
+            const porChaveR = {};
+            for (const n of (data || [])) porChaveR[n.chave] = n;
+            entreguesRecentes = entreguesRecentes
+              .map((d) => ({ ...d, baixado: !!porChaveR[d.chave_nota]?.baixado }))
+              .filter((d) => !d.baixado);
+          }
+        } catch (e) { /* sem a tabela, segue sem marcar baixado */ }
+
+        await resolverIdentidadeEspreita(entreguesRecentes);
+
+        // ⚠️ SEM TETO ARTIFICIAL (Codex, P2): eu tinha posto 15, e acima de
+        // 15 entregas em 5 dias o resto ficava sem NF — e sem NF nao ha
+        // cruzamento. A janela e curta por natureza; o `ESP_ENRIQ` ja esta
+        // quente do alerta acima, entao a maioria nem sonda.
+        await garantirEnriquecimentoEspreita(entreguesRecentes, entreguesRecentes.length);
+        // e o que sobrar vai pro enriquecimento de fundo, como o alerta faz
+        dispararEnriquecimentoEspreita(entreguesRecentes);
+
+        for (const d of entreguesRecentes) {
+          const en = d.chave_nota ? ESP_ENRIQ.get(d.chave_nota) : null;
+          if (!en) continue;
+          d.cliente = en.cliente; d.nf = en.nf; d.produto = en.produto;
+          d.sku = en.sku; d.qtd = en.qtd; d.valor_nf = en.valor_nf;
+          d.pack_id = en.pack_id; d.itens = en.itens || d.itens;
+          // ⚠️ A SERIE — LIMITE CONHECIDO, NAO RESOLVIDO AQUI (Codex, P2).
+          //
+          // O cruzamento casa por numero+SERIE, e o `chaveNF` assume '1'
+          // quando a serie vem vazia. O ML Full usa SERIE 2, entao devolucao
+          // do Full nao casa e nao ganha estrela.
+          //
+          // ⚠️ MAS O ENRIQUECIMENTO NAO PRODUZ SERIE NENHUMA — conferi os
+          // campos que ele devolve: cliente, nf, produto, sku, qtd,
+          // valor_nf, pack_id, itens, logistica, magalu_*. Nao ha `serie`
+          // nem a chave de acesso (de onde ela sairia).
+          //
+          // Copiar um campo inexistente seria fingir que resolvi. O
+          // conserto de verdade e o enriquecimento passar a expor a serie —
+          // trabalho proprio, e afeta o alerta tambem.
+          //
+          // 📌 Efeito hoje: a estrela funciona pras devolucoes de serie 1
+          // (matriz), que sao a maioria; as do Full ficam de fora ate isso
+          // ser feito.
+        }
+      }
+
   } catch (e) { nuncaBipadas = []; }
   return ({
     ok: true,
