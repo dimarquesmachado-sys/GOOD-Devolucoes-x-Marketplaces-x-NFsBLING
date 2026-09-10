@@ -97,6 +97,20 @@ function primeiroUltimo(nomeCompleto) {
 }
 
 async function construirIndice(opts = {}) {
+  // b264 - ⚠️ mesmo tratamento da GOOD: o cancelamento e encerramento
+  // normal, e o `return` impede a publicacao do indice parcial.
+  try {
+    return await construirIndiceInterno(opts);
+  } catch (e) {
+    if (drenagem.ehCancelamento(e)) {
+      console.log(`[NF-NOMES-AMB] ${e.message} — indice NAO publicado`);
+      return;
+    }
+    throw e;
+  }
+}
+
+async function construirIndiceInterno(opts = {}) {
   if (construindo) return { ...IDX, jaEmAndamento: true };
   construindo = true;
   const t0 = Date.now();
@@ -146,24 +160,14 @@ async function construirIndice(opts = {}) {
       }
       // b228 - RITMO e RETENTATIVA (o mesmo da GOOD, que parava na pagina 20
       // com 429 e so indexava ~40 dias dos 120 da janela)
-      if (pg > 1) await new Promise((ok) => setTimeout(ok, 400));
-
-      // b263.1 (Codex, P1) - ⚠️ RE-CHECA DEPOIS DA ESPERA.
-      //
-      // A checagem la de cima ja passou quando o SIGTERM chega DURANTE
-      // estes 400ms (ou durante as esperas de 2/4/6s do retry). Ai o
-      // processo velho ainda dispara a chamada — que nao estava em voo
-      // quando o sinal chegou, e que gasta cota da conta.
-      //
-      // Toda espera e uma janela nova: a checagem tem que vir DEPOIS dela e
-      // ANTES da chamada, nao so no topo do laco.
-      if (deFundo && drenagem.estaDrenando()) { cancelado = true; break; }
+      // b264: a pausa do ritmo do Bling E o ponto de cancelamento — se o
+      // processo esta saindo, ela lanca. Nao ha checagem manual pra eu
+      // esquecer, e a proxima varredura herda o comportamento.
+      if (pg > 1) await drenagem.pausar(400, deFundo, 'indice-nomes');
       let r = await bling.chamarBling(`/nfe?limite=100&pagina=${pg}&tipo=1`);
       if (!r.ok && r.status === 429) {
         for (let tent = 1; tent <= 3 && !r.ok && r.status === 429; tent++) {
-          await new Promise((ok) => setTimeout(ok, 2000 * tent));
-          // b263.1: a espera do retry e outra janela — 2, 4 e 6 segundos
-          if (deFundo && drenagem.estaDrenando()) break;
+          await drenagem.pausar(2000 * tent, deFundo, 'indice-nomes/retry');
           r = await bling.chamarBling(`/nfe?limite=100&pagina=${pg}&tipo=1`);
         }
       }

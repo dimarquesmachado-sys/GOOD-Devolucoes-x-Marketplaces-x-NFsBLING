@@ -32,7 +32,9 @@ for (const [nome, rel] of [['GOOD', 'lib/nf-nomes.js'],
     }
     return src.slice(i);
   })();
-  ok(/if \(pg > 1\) await new Promise\(\(ok\) => setTimeout\(ok, 400\)\)/.test(laco),
+    // b264: a pausa virou `drenagem.pausar(400, ...)` — mesma espera, mas
+  // ela tambem e o ponto de cancelamento. O ritmo do Bling nao mudou.
+  ok(/setTimeout\(ok, 400\)/.test(laco) || /drenagem\.pausar\(400/.test(laco),
      nome + ': pausa de 400ms entre paginas — o Bling limita a 3 req/s');
   ok(/r\.status === 429/.test(laco) && /tent <= 3/.test(laco),
      nome + ': 429 e fila, nao recusa — tenta ate 3x com espera crescente');

@@ -49,64 +49,57 @@ const MODULOS = [
 
 // ── ⚠️ P2: só reconstrução DE FUNDO é cancelada ─────────────────────
 //
-// Meu break era incondicional. Se o SIGTERM chegasse enquanto o estoquista
-// esperava uma busca fria, eu abortava a varredura DELE — e publicava o
-// índice parcial, fazendo a busca voltar vazia.
+// ⚠️ b264 — MUDEI A ABORDAGEM DEPOIS DE 10 APONTAMENTOS. Eu checava
+// `estaDrenando()` a mao em 13 pontos: antes do laco, depois de cada
+// espera, antes de cada fase, antes de publicar. A cada rodada do Codex eu
+// consertava 4 e esquecia 6 — porque cancelamento cooperativo nao e uma
+// linha, e um CONTRATO.
 //
-// A drenagem deixa o processo vivo justamente para a requisição em voo
-// terminar. Cancelar a que ela pediu é o oposto.
+// Agora a ESPERA sabe cancelar (`drenagem.pausar`), e ela LANCA. As pausas
+// que ja existiam (ritmo do Bling, backoff do 429) viraram os pontos de
+// cancelamento. Quem escrever um laco novo herda sem lembrar de nada.
 {
   for (const [arq, nome] of MODULOS.filter(([a]) => a.includes('nf-nomes'))) {
     const src = ler(arq);
-    ok(/deFundo && drenagem\.estaDrenando\(\)/.test(src),
-       nome + ': so cancela reconstrucao DE FUNDO');
+    ok(/drenagem\.pausar\(/.test(src),
+       nome + ': as esperas usam `drenagem.pausar` (que cancela sozinha)');
+    ok(/drenagem\.pausar\(\s*\d+[^,]*,\s*deFundo/.test(src),
+       '  ⚠️ passando `deFundo`: requisicao EM VOO nao e cancelada');
   }
 }
 
-// ── ⚠️ P2: e índice cancelado NÃO é publicado ───────────────────────
+// ── ⚠️ e o cancelamento e tratado num LUGAR SO ──────────────────────
 //
-// Carimbar `ts` num índice parcial o faria parecer fresco — e a próxima
-// busca serviria dele em vez de reconstruir.
-{
-  const good = ler('lib/nf-nomes.js');
-  ok(/if \(cancelado\)[\s\S]{0,200}return;/.test(good),
-     'GOOD: indice cancelado nao e publicado');
-
-  const amb = ler('amb-devolucoes/lib-AMB/nf-nomes-AMB.js');
-  ok(/\(falhouGeral \|\| cancelado\)/.test(amb),
-     'AMB: idem (reaproveitando o `falhouGeral` que ja existia)');
-}
-
-// ── ⚠️ P1: re-checa DEPOIS de cada espera ───────────────────────────
-//
-// A checagem do topo já passou quando o SIGTERM chega durante a pausa de
-// 400ms ou as esperas de 2/4/6s do retry. Toda espera é uma janela nova: a
-// checagem tem que vir DEPOIS dela e ANTES da chamada.
+// O `return` no catch e o que impede a publicacao do indice parcial — sai
+// antes do `IDX.ts = Date.now()`, entao o indice velho continua valendo e o
+// processo NOVO monta um completo.
 {
   for (const [arq, nome] of MODULOS.filter(([a]) => a.includes('nf-nomes'))) {
     const src = ler(arq);
-    const iPausa = src.indexOf('setTimeout(ok, 400)');
-    ok(iPausa > 0, nome + ': achei a pausa entre paginas');
-    ok(/estaDrenando/.test(src.slice(iPausa, iPausa + 800)),
-       '  ⚠️ e re-checa DEPOIS dela (a janela da espera e nova)');
+    ok(/ehCancelamento\(e\)/.test(src),
+       nome + ': trata o cancelamento no chamador, num lugar so');
+    ok(/construirIndiceInterno/.test(src),
+       '  com a varredura isolada numa funcao interna');
   }
 }
 
-// ── e as variáveis existem em cada arquivo ──────────────────────────
+// ── ⚠️ e `pausar` cancela DEPOIS da espera, não só antes ────────────
 //
-// ⚠️ Usei `deFundo` e `cancelado` na AMB sem elas existirem lá. Teria
-// quebrado em produção com ReferenceError — `node --check` não pega
-// variável inexistente, e o caminho só roda durante drenagem.
+// Era o P1 que o Codex apontou duas vezes: a checagem do topo já passou
+// quando o sinal chega DURANTE a espera de 400ms ou de 2/4/6s.
 {
-  for (const [arq, nome] of MODULOS.filter(([a]) => a.includes('nf-nomes'))) {
-    const src = ler(arq);
-    if (/deFundo/.test(src)) {
-      ok(/const deFundo =/.test(src), nome + ': `deFundo` e DECLARADA aqui');
-    }
-    if (/\bcancelado\b/.test(src)) {
-      ok(/let cancelado =/.test(src), '  e `cancelado` tambem');
-    }
-  }
+  const d = ler('lib/drenagem.js');
+  // ⚠️ recorto ate a proxima funcao, nao 600 chars: o
+  // `pontoDeCancelamento` tem a mesma linha e entrava na conta. E a 5a vez
+  // hoje que janela fixa em teste me da numero errado.
+  const iPausar = d.indexOf('async function pausar');
+  const iProx = d.indexOf('function pontoDeCancelamento', iPausar);
+  const corpo = d.slice(iPausar, iProx > 0 ? iProx : iPausar + 600);
+  const checagens = (corpo.match(/if \(cancelavel && drenando\) throw/g) || []).length;
+  ok(checagens === 2,
+     '⚠️ `pausar` checa ANTES e DEPOIS da espera (achei ' + checagens + ')');
+  ok(/throw new Cancelado/.test(corpo),
+     '  e LANCA em vez de devolver false (return pode ser ignorado por engano)');
 }
 
 console.log('');
