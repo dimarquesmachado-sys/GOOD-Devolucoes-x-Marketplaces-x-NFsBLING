@@ -124,10 +124,28 @@ const codigo = srv.split('\n').filter((l) => !l.trim().startsWith('//')).join('\
 // ⚠️ Eu tinha posto 15: acima disso o resto ficava sem NF. A janela é curta
 // por natureza, e o cache já está quente do alerta.
 {
-  ok(/garantirEnriquecimentoEspreita\(entreguesRecentes, entreguesRecentes\.length\)/.test(codigo),
-     'o enriquecimento das recentes nao tem teto artificial');
+  // ⚠️ b274.3 (Codex, P2): eu tinha TIRADO o teto — e criei pior. Com cache
+  // frio e 5 dias movimentados, o `montarEspreita` esperava TODOS
+  // serialmente, e ele esta no caminho da TELA. Troquei "alguns sem
+  // estrela" por "a tela lenta", que e o problema que passei o dia
+  // consertando na busca por nome.
+  //
+  // O desenho certo e o do alerta: espera um punhado e joga o RESTO no
+  // enriquecimento de fundo.
+  ok(/TETO_ENRIQ_RECENTES/.test(codigo),
+     'o enriquecimento sincrono das recentes TEM teto (a tela nao espera todos)');
   ok(/dispararEnriquecimentoEspreita\(entreguesRecentes\)/.test(codigo),
-     '  e o que sobrar vai pro enriquecimento de fundo');
+     '  e o resto vai pro enriquecimento de FUNDO');
+
+  // ── ⚠️ e quem ja foi BIPADO sai da lista ──────────────────────────
+  //
+  // `espreita_notas.baixado` e a baixa MANUAL. Quem foi triado normalmente
+  // esta em `devolucoes` — e sem checar, devolucao triada ontem ganhava
+  // estrela como se ninguem tivesse mexido.
+  ok(/from\('devolucoes'\)[\s\S]{0,200}order_id/.test(codigo),
+     'o filtro checa a tabela `devolucoes` (quem foi BIPADO)');
+  ok(/triadas\.has\(String\(d\.tracking/.test(codigo),
+     '  por pedido E por tracking, como o alerta faz');
 }
 
 // ── ⚠️ e o LIMITE DA SERIE esta documentado, nao fingido ────────────

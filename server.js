@@ -5811,17 +5811,43 @@ let entreguesRecentes = [];
         // `.filter(!baixado)` do cruzamento nao pegava porque `brutos` nao
         // traz esse campo — quem traz e a tabela `espreita_notas`.
         try {
+          // ⚠️ b274.3 (Codex, P2) - DUAS FONTES, e eu so olhava uma.
+          //
+          // `espreita_notas.baixado` e a baixa MANUAL. Quem foi BIPADO
+          // normalmente esta na tabela `devolucoes` — e o alerta ja checa
+          // isso (o `achados`, no bloco acima). Sem esta parte, devolucao
+          // triada ontem seguia na lista, ganhava NF no enriquecimento, e
+          // aparecia com ESTRELA como se ninguem tivesse mexido.
+          const pedidosR = [...new Set(entreguesRecentes
+            .map((d) => String(d.pedido || '')).filter(Boolean))];
+          const trksR = [...new Set(entreguesRecentes
+            .map((d) => String(d.tracking || '')).filter(Boolean))];
+          const triadas = new Set();
+          if (pedidosR.length) {
+            const { data } = await supabase.from('devolucoes')
+              .select('order_id').in('order_id', pedidosR);
+            for (const r of (data || [])) triadas.add(String(r.order_id));
+          }
+          if (trksR.length) {
+            const { data } = await supabase.from('devolucoes')
+              .select('shipment_id').in('shipment_id', trksR);
+            for (const r of (data || [])) triadas.add(String(r.shipment_id));
+          }
+
           const chavesR = entreguesRecentes.map((d) => d.chave_nota).filter(Boolean);
+          const porChaveR = {};
           if (chavesR.length) {
             const { data } = await supabase.from('espreita_notas')
               .select('chave, baixado').in('chave', chavesR);
-            const porChaveR = {};
             for (const n of (data || [])) porChaveR[n.chave] = n;
-            entreguesRecentes = entreguesRecentes
-              .map((d) => ({ ...d, baixado: !!porChaveR[d.chave_nota]?.baixado }))
-              .filter((d) => !d.baixado);
           }
-        } catch (e) { /* sem a tabela, segue sem marcar baixado */ }
+
+          entreguesRecentes = entreguesRecentes
+            .map((d) => ({ ...d, baixado: !!porChaveR[d.chave_nota]?.baixado }))
+            .filter((d) => !d.baixado)
+            .filter((d) => !triadas.has(String(d.pedido || ''))
+                        && !triadas.has(String(d.tracking || '')));
+        } catch (e) { /* sem as tabelas, segue sem filtrar */ }
 
         await resolverIdentidadeEspreita(entreguesRecentes);
 
@@ -5829,7 +5855,20 @@ let entreguesRecentes = [];
         // 15 entregas em 5 dias o resto ficava sem NF — e sem NF nao ha
         // cruzamento. A janela e curta por natureza; o `ESP_ENRIQ` ja esta
         // quente do alerta acima, entao a maioria nem sonda.
-        await garantirEnriquecimentoEspreita(entreguesRecentes, entreguesRecentes.length);
+        // ⚠️ b274.3 (Codex, P2) - O TETO VOLTA, E AGORA COM MOTIVO ESCRITO.
+        //
+        // Na rodada anterior eu TIREI o teto de 15 porque acima disso o
+        // resto ficava sem NF. Mas criou pior: com cache FRIO e 5 dias
+        // movimentados, o `montarEspreita` espera TODOS serialmente — e ele
+        // esta no caminho da TELA. Troquei "alguns sem estrela" por "a tela
+        // inteira lenta", que e o problema que passei o dia consertando na
+        // busca por nome.
+        //
+        // 📌 O DESENHO CERTO E O DO ALERTA: espera um punhado (pra primeira
+        // carga nao vir vazia) e joga o RESTO no enriquecimento de fundo. O
+        // que nao veio agora vem no proximo refresh, e ninguem espera.
+        const TETO_ENRIQ_RECENTES = 12;
+        await garantirEnriquecimentoEspreita(entreguesRecentes, TETO_ENRIQ_RECENTES);
         // e o que sobrar vai pro enriquecimento de fundo, como o alerta faz
         dispararEnriquecimentoEspreita(entreguesRecentes);
 
