@@ -17,8 +17,21 @@ const RAIZ = path.join(__dirname, '..');
 for (const [nome, rel] of [['GOOD', 'lib/nf-nomes.js'],
                            ['AMB', 'amb-devolucoes/lib-AMB/nf-nomes-AMB.js']]) {
   const src = fs.readFileSync(path.join(RAIZ, rel), 'utf8');
+  // ⚠️ SEM JANELA FIXA. Os 1400 chars quebraram assim que entrou um bloco
+  // novo no comeco do laco (a checagem de drenagem, b263) — o trecho do
+  // 429 saiu da janela e o teste acusou codigo que EXISTE.
+  //
+  // E a 4a vez que numero magico em teste me morde hoje. Uso o fim do
+  // laco: conto chaves ate fechar.
   const i = src.indexOf('for (let pg = 1; pg <= maxPaginas; pg++) {');
-  const laco = src.slice(i, i + 1400);
+  const laco = (() => {
+    let prof = 0;
+    for (let k = src.indexOf('{', i); k < src.length; k++) {
+      if (src[k] === '{') prof++;
+      else if (src[k] === '}') { prof--; if (prof === 0) return src.slice(i, k + 1); }
+    }
+    return src.slice(i);
+  })();
   ok(/if \(pg > 1\) await new Promise\(\(ok\) => setTimeout\(ok, 400\)\)/.test(laco),
      nome + ': pausa de 400ms entre paginas — o Bling limita a 3 req/s');
   ok(/r\.status === 429/.test(laco) && /tent <= 3/.test(laco),

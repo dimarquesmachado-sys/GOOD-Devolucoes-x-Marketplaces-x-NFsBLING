@@ -46,6 +46,8 @@
 //
 // A fabrica move essas travas pra dentro de cada instancia.
 const configAMB = require('../config-AMB');
+// b263 - pra parar a varredura quando o processo esta saindo
+const drenagem = require('../../lib/drenagem');
 
 function criarNfNomes(cfg) {
 const bling = require('./bling-AMB');
@@ -116,6 +118,20 @@ async function construirIndice(opts = {}) {
     // hora atual na data e o filtro de mesmo dia sempre volta zero.
     // Paginamos e cortamos pela data no nosso lado.
     for (let pg = 1; pg <= maxPaginas; pg++) {
+      // b263 - o SEGUNDO laco deste arquivo tambem. ⚠️ Achei porque conferi a
+      // contagem depois de aplicar — a primeira tentativa pegou so um dos dois,
+      // por diferenca de indentacao.
+      if (drenagem.estaDrenando()) {
+        console.log(`[NF-NOMES-AMB] drenando — paro o indice na pagina ${pg}`);
+        break;
+      }
+      // b263 - a AMB tambem. ⚠️ Regra da casa: ao consertar um lado,
+      // conferir o outro ANTES de subir — a AMB fica pra tras de conserto
+      // feito na GOOD, e isso ja aconteceu varias vezes.
+      if (drenagem.estaDrenando()) {
+        console.log(`[NF-NOMES-AMB] drenando — paro o indice na pagina ${pg}`);
+        break;
+      }
       // b228 - RITMO e RETENTATIVA (o mesmo da GOOD, que parava na pagina 20
       // com 429 e so indexava ~40 dias dos 120 da janela)
       if (pg > 1) await new Promise((ok) => setTimeout(ok, 400));
@@ -178,6 +194,13 @@ async function construirIndice(opts = {}) {
     let vendasLidas = 0, erroVendas = null;
     try {
       for (let pg = 1; pg <= maxPaginas; pg++) {
+        // b263 - o SEGUNDO laco deste arquivo tambem. ⚠️ Achei porque conferi a
+        // contagem depois de aplicar — a primeira tentativa pegou so um dos dois,
+        // por diferenca de indentacao.
+        if (drenagem.estaDrenando()) {
+          console.log(`[NF-NOMES-AMB] drenando — paro o indice na pagina ${pg}`);
+          break;
+        }
         // b40 - 429 (rate limit do Bling) na leitura de vendas NAO derruba mais
         // o indice: espera e tenta a MESMA pagina de novo, ate 4x com backoff.
         let r = null;
