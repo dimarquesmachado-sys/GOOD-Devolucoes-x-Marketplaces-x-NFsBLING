@@ -357,7 +357,7 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '7.2.0 (ml-buscas unificado; divida de copias medida e travada)',
+    version: '7.2.1 (403 conhecido nao mais trava a invalidacao do cache; anotarRetry morto no retry remoto)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),

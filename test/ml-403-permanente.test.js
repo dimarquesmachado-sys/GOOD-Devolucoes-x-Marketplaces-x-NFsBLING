@@ -69,13 +69,18 @@ const codigo = src.split('\n').filter((l) => !l.trim().startsWith('//')).join('\
   ok(/!podeRenovarPor403\(url\)/.test(decl || ''),
      '  e ela consulta a janela por rota');
 
-  // ⚠️ b267: e a rota ja conhecida NAO invalida o cache
+  // ⚠️ b267.1 (Codex, P2): a rota ja conhecida NAO deixa de invalidar.
   //
-  // Medido em 6h: 30 invalidacoes por 403, ZERO por 401, 15 retries todos
-  // falhados. Invalidar ali e releitura por nada — o dono devolve o mesmo
-  // token, porque o problema e permissao da rota, nao vencimento.
-  ok(/\(st === 401 \|\| st === 403\) && !rota403Conhecida/.test(codigo),
-     '⚠️ 403 de rota JA conhecida nao invalida o cache (30 releituras a toa em 6h)');
+  // A 1a versao deste limite tambem pulava a invalidacao do cache pra rota
+  // ja conhecida — mas o Codex apontou que isso deixa um token cacheado
+  // (possivelmente ja rotacionado pelo dono) vivo ate o TTL de 5 min ou o
+  // fim da janela de 10 min, atrasando uma recuperacao que a proxima
+  // chamada teria resolvido na hora. Invalidar e barato (nao gasta
+  // refresh); so o REFRESH LOCAL e que fica condicional.
+  ok(/if \(st === 401 \|\| st === 403\) \{/.test(codigo),
+     'o if do 401/403 volta a cobrir TODO status, sem filtrar rota conhecida');
+  ok(!/\(st === 401 \|\| st === 403\) && !rota403Conhecida/.test(codigo),
+     '  ⚠️ e a invalidacao NAO fica mais atras de !rota403Conhecida');
 }
 
 // ── ⚠️ e o /health NÃO expõe id de pedido/envio ─────────────────────
@@ -115,24 +120,22 @@ const codigo = src.split('\n').filter((l) => !l.trim().startsWith('//')).join('\
   ok(/if \(renovou && st === 403\) registrarRenovacaoPor403/.test(codigo),
      '  e o registro so acontece SE a renovacao aconteceu');
 
-  // ── ⚠️ e a guarda vem DEPOIS da invalidacao do cache ─────────────
+  // ── ⚠️ a invalidacao e incondicional; so o REFRESH e limitado ────
   //
-  // Antes ela saia da funcao antes de invalidar — entao em `remoto` o
+  // Antes a guarda saia da funcao antes de invalidar — entao em `remoto` o
   // token velho do dono seguia em uso ate o TTL, e a guarda PIORAVA o
-  // problema que veio consertar.
+  // problema que veio consertar. b267.1 (Codex) foi mais longe: nem a rota
+  // ja conhecida pode pular a invalidacao (mesmo raciocinio, escopo maior).
   {
     const linhas = codigo.split('\n');
     const ondeChama = (t) => linhas.findIndex((l) => l.includes(t) && !l.includes('function '));
-    // ⚠️ b267: a guarda agora vem ANTES, e ISSO E O CONSERTO. Se a rota ja
-    // se provou 403-permanente, nao queremos invalidar o cache — a
-    // releitura devolveria o mesmo token (o problema e permissao da rota,
-    // nao vencimento). O que importa e a INVALIDACAO ser condicional.
-    ok(/\(st === 401 \|\| st === 403\) && !rota403Conhecida/.test(codigo),
-       'a invalidacao do cache e CONDICIONAL (pula a rota ja conhecida)');
-    // ⚠️ e a guarda continua vindo ANTES da renovacao local — e ela que
-    // gasta refresh, e o ponto de tudo isto.
+    const invalida2 = ondeChama("tokenLeitor.invalidar('good', 'ml')");
     const guarda2 = ondeChama('if (rota403Conhecida)');
     const renov2 = ondeChama('const renovou = await renovarTokenML()');
+    ok(invalida2 >= 0 && guarda2 > invalida2,
+       'a invalidacao roda ANTES da guarda (acontece sempre, mesmo em rota conhecida)');
+    // ⚠️ e a guarda continua vindo ANTES da renovacao local — e ela que
+    // gasta refresh, e o ponto de tudo isto.
     ok(guarda2 >= 0 && renov2 > guarda2,
        'a guarda vem ANTES da renovacao local (que e o que gasta refresh)');
   }
