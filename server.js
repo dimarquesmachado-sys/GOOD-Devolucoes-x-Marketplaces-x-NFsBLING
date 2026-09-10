@@ -360,7 +360,7 @@ app.get('/health', (req, res) => {
       // ⚠️ a resolucao do conflito JUNTA as duas mudancas, nao escolhe uma:
       // a 7.2.1 (403 do #208) ja esta na main, e esta branch acrescenta a
       // busca por nome. Escolher um lado apagaria a descricao do outro.
-      version: '7.3.0 (busca por nome com teto de 12s e indice parcial; 403 conhecido nao invalida cache)',
+      version: '7.4.0 (retry do pre-aquecimento agora enxerga erro HTTP resolvido; timers de retry cancelam na drenagem; estrela do ML nao espera 6min pro cache)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -7196,7 +7196,16 @@ registrarRotasImpressao(app, { requerEstoquista, crypto, sleep });
 // 📌 Os intervalos de 25 min continuam iguais — o problema e a largada.
 const ESPACO = Number(process.env.BOOT_ESPACO_MS || 120000);   // 2 min
 drenagem.daquiA(() => magalu.preAquecer(), 20 * 1000);
-drenagem.daquiA(() => mlReturns.preAquecer(), 20 * 1000 + ESPACO);
+// ⚠️ (Codex, PR #213) o indice do ML so fica pronto ~2min DEPOIS de comecar
+// (140s + ~2min de varredura = ~260s), mas o snapshot da espreita (abaixo,
+// preAquecerEspreita) roda aos 90s e 180s — os dois primeiros saem sem
+// devolucao ML nenhuma, e a proxima chance so aos 360s. Resultado: a
+// ESTRELA da busca por nome, que e o motivo desta PR inteira, demorava uns
+// 6 minutos pra aparecer apos um deploy. Passa `preAquecerEspreita` como
+// `aoSucesso`: assim que o indice do ML termina de verdade (1a tentativa
+// OU depois de um retry), o snapshot roda na hora em vez de esperar o
+// proximo tick do cron de 3min.
+drenagem.daquiA(() => mlReturns.preAquecer(1, preAquecerEspreita), 20 * 1000 + ESPACO);
 drenagem.daquiA(() => nfNomes.preAquecer(), 20 * 1000 + ESPACO * 2);
 // v4.04 - catalogo de produtos pre-aquecido (a busca do estoquista nunca espera)
 drenagem.daquiA(() => { construirIndiceProdutos().catch(() => {}); }, 20 * 1000 + ESPACO * 3);
