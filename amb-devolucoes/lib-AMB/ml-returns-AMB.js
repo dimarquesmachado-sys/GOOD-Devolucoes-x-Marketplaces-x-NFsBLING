@@ -544,20 +544,46 @@ function resumoEspreita() {
  * atraso resolve sem custo nenhum — ninguem bipa caixa nos
  * primeiros minutos depois de um deploy.
  */
+// b272 (Codex #213, P1) - ⚠️ `tentativa` NAO EXISTIA NESTE ESCOPO.
+// A funcao recebe `atrasoMs`, nao `tentativa` — a variavel usada no log e
+// no `if` abaixo era um ReferenceError esperando o primeiro 429 pra
+// estourar. Como ninguem observava essa promise (o `.catch` externo so
+// cobre `construirIndice()`), o erro virava rejeicao NAO TRATADA e podia
+// derrubar o processo Node inteiro — pior que o 429 que a retentativa
+// existia pra curar.
+//
+// b272 (Codex #213, P1, 2a parte) - mesmo problema do ml-returns.js: uma
+// falha HTTP RESOLVE (`IDX.erro`), nao rejeita — o `.catch()` sozinho
+// nunca disparava. Agora o erro dentro do resultado vira rejeicao.
+//
+// b272 (Codex #213, P2) - timer de retry (e o atraso inicial) registrados
+// na drenagem (`daquiA`), nao `setTimeout` cru — pra nao acordar o
+// deploy velho depois do SIGTERM.
+//
+// A contagem de tentativas agora vive em `tentar()`, separada de
+// `atrasoMs` (o atraso INICIAL, que so a 1a chamada usa).
 function preAquecer(atrasoMs) {
   const atraso = atrasoMs != null ? atrasoMs : 3 * 60 * 1000;
   console.log(`[AMB/ML-RETURNS] pre-aquecimento agendado para daqui a ${Math.round(atraso / 1000)}s`);
-  setTimeout(() => {
-    construirIndice().catch((e) => {
-    // b271 - ⚠️ FALHOU, TENTA DE NOVO (a AMB tambem — regra da casa).
-    // Um 429 no boot deixava o cache vazio por 25 min.
-    console.error(`[AMB/ML-RETURNS] pre-aquecimento falhou (tentativa ${tentativa}/3):`, e.message);
-    if (tentativa >= 3) return;
-    const espera = 30000 * Math.pow(2, tentativa - 1);
-    console.log(`[AMB/ML-RETURNS] tento de novo em ${espera / 1000}s`);
-    setTimeout(() => preAquecer(tentativa + 1), espera);
-  });
-  }, atraso).unref();
+
+  function tentar(tentativa) {
+    return construirIndice().then((idx) => {
+      if (idx && idx.erro) throw new Error(idx.erro);
+      return idx;
+    }).catch((e) => {
+      // b271 - ⚠️ FALHOU, TENTA DE NOVO (a AMB tambem — regra da casa).
+      // Um 429 no boot deixava o cache vazio por 25 min.
+      console.error(`[AMB/ML-RETURNS] pre-aquecimento falhou (tentativa ${tentativa}/3):`, e.message);
+      if (tentativa >= 3) return;
+      const espera = 30000 * Math.pow(2, tentativa - 1);
+      console.log(`[AMB/ML-RETURNS] tento de novo em ${espera / 1000}s`);
+      return new Promise((resolve) => {
+        drenagem.daquiA(() => resolve(tentar(tentativa + 1)), espera);
+      });
+    });
+  }
+
+  drenagem.daquiA(() => tentar(1), atraso).unref();
 }
 
 return {

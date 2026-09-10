@@ -360,7 +360,10 @@ app.get('/health', (req, res) => {
       // ⚠️ a resolucao do conflito JUNTA as duas mudancas, nao escolhe uma:
       // a 7.2.1 (403 do #208) ja esta na main, e esta branch acrescenta a
       // busca por nome. Escolher um lado apagaria a descricao do outro.
-      version: '7.3.0 (busca por nome com teto de 12s e indice parcial; 403 conhecido nao invalida cache)',
+      // b272 (Codex #213): retry de pre-aquecimento agora cobre falha HTTP
+      // (nao so rejeicao de promise), timers registrados na drenagem, e a
+      // espreita tira foto assim que o indice do ML termina no boot.
+      version: '7.3.1 (retry do pre-aquecimento cobre falha HTTP; estrela nao espera mais o tique fixo)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -7196,7 +7199,15 @@ registrarRotasImpressao(app, { requerEstoquista, crypto, sleep });
 // 📌 Os intervalos de 25 min continuam iguais — o problema e a largada.
 const ESPACO = Number(process.env.BOOT_ESPACO_MS || 120000);   // 2 min
 drenagem.daquiA(() => magalu.preAquecer(), 20 * 1000);
-drenagem.daquiA(() => mlReturns.preAquecer(), 20 * 1000 + ESPACO);
+// b272 (Codex #213, P1) - ⚠️ A ESTRELA CHEGAVA A 6 MIN DE ATRASO. Com o
+// espacamento acima o indice do ML so COMECA aos 140s e leva ~2min pra
+// montar (~260s), mas `preAquecerEspreita()` tira foto aos 90s e 180s (o
+// `intervalo` de 3min conta do REGISTRO, nao do `daquiA` de 90s) — as
+// duas fotos cedo saiam sem devolucao nenhuma do ML, e a proxima so aos
+// 360s. Agora `mlReturns.preAquecer()` (que devolve promise desde o
+// conserto acima) dispara uma foto assim que o indice termina — sucesso
+// ou desistencia — em vez de esperar o proximo tique fixo.
+drenagem.daquiA(() => mlReturns.preAquecer().then(() => preAquecerEspreita()), 20 * 1000 + ESPACO);
 drenagem.daquiA(() => nfNomes.preAquecer(), 20 * 1000 + ESPACO * 2);
 // v4.04 - catalogo de produtos pre-aquecido (a busca do estoquista nunca espera)
 drenagem.daquiA(() => { construirIndiceProdutos().catch(() => {}); }, 20 * 1000 + ESPACO * 3);
