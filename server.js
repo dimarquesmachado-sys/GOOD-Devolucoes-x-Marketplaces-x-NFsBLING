@@ -360,7 +360,7 @@ app.get('/health', (req, res) => {
       // ⚠️ a resolucao do conflito JUNTA as duas mudancas, nao escolhe uma:
       // a 7.2.1 (403 do #208) ja esta na main, e esta branch acrescenta a
       // busca por nome. Escolher um lado apagaria a descricao do outro.
-      version: '7.4.1 (revisao do Codex no #216: identidade das recentes roda antes da triagem e com teto; entregues_recentes protegida contra o "desabou" do cache)',
+      version: '7.5.0 (passe curto do indice cobre ~17 dias — eram 5; fila do Bling e construcao com teto, nao penduram mais)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
