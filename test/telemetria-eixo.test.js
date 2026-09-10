@@ -132,6 +132,13 @@ const carregar = () => {
   // funciona.
   //
   // `node --check` nao pega: linha inalcancavel e sintaxe valida.
+  //
+  // b267.2 (Codex) - ⚠️ ESTE DETECTOR TINHA UM PONTO CEGO: so olhava a linha
+  // IMEDIATAMENTE anterior. O bug real (lib/ml.js e lib/bling.js, retry em
+  // politica `remoto`) tinha um bloco de 4 linhas de comentario ENTRE o
+  // `return` morto e o `anotarRetry` inalcancavel — 'mortas' dava zero e o
+  // teste passava com o bug vivo. Agora ando pra tras pulando comentario e
+  // linha em branco ate achar o codigo de verdade.
   {
     const fs3 = require('fs');
     const RAIZ3 = path.join(__dirname, '..');
@@ -141,12 +148,14 @@ const carregar = () => {
       let semRetorno = 0;
       linhas.forEach((l, i) => {
         if (!/anotarRetry\(.*, true\)/.test(l)) return;
-        const anterior = (linhas[i - 1] || '').trim();
+        let j = i - 1;
+        while (j >= 0 && (linhas[j].trim() === '' || linhas[j].trim().startsWith('//'))) j--;
+        const anterior = (linhas[j] || '').trim();
         const seguinte = (linhas[i + 1] || '').trim();
         if (anterior.startsWith('return ')) mortas++;          // inalcancavel
         if (!seguinte.startsWith('return { ok: true')) semRetorno++;
       });
-      ok(mortas === 0, arq + ': nenhuma anotacao DEPOIS de um return (seria linha morta)');
+      ok(mortas === 0, arq + ': nenhuma anotacao DEPOIS de um return, pulando comentarios (seria linha morta)');
       ok(semRetorno === 0, '  e cada uma e seguida do return de sucesso');
     }
   }
