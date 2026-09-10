@@ -360,7 +360,7 @@ app.get('/health', (req, res) => {
       // ⚠️ a resolucao do conflito JUNTA as duas mudancas, nao escolhe uma:
       // a 7.2.1 (403 do #208) ja esta na main, e esta branch acrescenta a
       // busca por nome. Escolher um lado apagaria a descricao do outro.
-      version: '7.3.0 (busca por nome com teto de 12s e indice parcial; 403 conhecido nao invalida cache)',
+      version: '7.4.0 (retry do pre-aquecimento agora enxerga erro HTTP resolvido; timers de retry cancelam na drenagem; estrela do ML nao espera 6min pro cache)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -7214,11 +7214,23 @@ registrarRotasImpressao(app, { requerEstoquista, crypto, sleep });
 // cabe neste PR.
 const ESPACO = Number(process.env.BOOT_ESPACO_MS || 120000);   // 2 min
 drenagem.daquiA(() => magalu.preAquecer(), 20 * 1000);
-drenagem.daquiA(() => mlReturns.preAquecer(), 20 * 1000 + ESPACO * 2);
-// ⚠️ b272: SEGUNDO, nao quarto. E o que a tela MAIS usa (toda busca por
-// nome passa por ele), e leva 66-150s pra montar. Deixar em 4o dava ~7
-// minutos ate a busca funcionar — o dono buscou 'charles' logo apos o
-// deploy e o indice ainda cobria so as NFs recentes.
+// ⚠️ RESOLUCAO DO CONFLITO (b273) — os dois lados estavam certos sobre
+// coisas DIFERENTES, entao junto em vez de escolher:
+//
+//   DELE (Claude do GitHub): o snapshot da espreita rodava aos 90s e 180s,
+//   ANTES do indice do ML ficar pronto (~260s) — os dois primeiros saiam
+//   vazios e a proxima chance era so aos 360s. Passar
+//   `preAquecerEspreita` como `aoSucesso` faz o snapshot rodar NA HORA em
+//   que o indice termina. Isso resolve a ESTRELA de verdade.
+//
+//   MEU: o `nfNomes` (a BUSCA por nome) tem que vir antes do `mlReturns`,
+//   porque toda busca passa por ele. E o passe curto de 3 paginas aos 45s.
+//
+// Ordem final: magalu -> espreita -> nfNomes -> mlReturns(+aoSucesso).
+// O `aoSucesso` cobre o atraso do mlReturns ter ficado em 4o.
+drenagem.daquiA(() => nfNomes.preAquecer(), 20 * 1000 + ESPACO);
+drenagem.daquiA(() => mlReturns.preAquecer(1, preAquecerEspreita), 20 * 1000 + ESPACO * 2);
+
 // b272 - ⚠️ DOIS PASSES: um CURTO logo, e o completo depois.
 //
 // O indice cobre 120 dias (~1.900 NFs, ~19 paginas). Mas as devolucoes que

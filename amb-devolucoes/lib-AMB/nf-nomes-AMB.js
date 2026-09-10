@@ -501,18 +501,27 @@ function ordenar(lista) {
 function preAquecer(atrasoMs, tentativa = 1) {
   const atraso = atrasoMs != null ? atrasoMs : 4 * 60 * 1000;
   console.log(`[AMB/NF-NOMES] pre-aquecimento agendado para daqui a ${Math.round(atraso / 1000)}s`);
-  setTimeout(() => {
-    construirIndice().catch((e) => {
+  setTimeout(() => tentar(1), atraso).unref();
+}
+
+// ⚠️ (Codex, PR #213) mesmo bug do ml-returns-AMB.js: `preAquecer(atrasoMs)`
+// nao tem `tentativa`, e o retry referenciava uma variavel inexistente —
+// ReferenceError dentro do `.catch()`, virando rejeicao nao tratada.
+function tentar(tentativa) {
+  construirIndice().then((idx) => {
+    if (!idx) return; // cancelado pela drenagem - nem sucesso nem falha
+    if (idx.erro) throw new Error(idx.erro);
+  }).catch((e) => {
     // b271 - ⚠️ FALHOU, TENTA DE NOVO (a AMB tambem — regra da casa).
     // Um 429 no boot deixava o cache vazio por 25 min.
     console.error(`[AMB/NF-NOMES] pre-aquecimento falhou (tentativa ${tentativa}/3):`, e.message);
     if (tentativa >= 3) return;
     const espera = 30000 * Math.pow(2, tentativa - 1);
     console.log(`[AMB/NF-NOMES] tento de novo em ${espera / 1000}s`);
-    // ⚠️ atraso 0: a espera ja aconteceu no `setTimeout` daqui
-        setTimeout(() => preAquecer(0, tentativa + 1), espera);
+    // ⚠️ (Codex) setTimeout cru nao e cancelado pela drenagem — registra
+    // com daquiA pra nao acordar o processo VELHO durante um deploy.
+    drenagem.daquiA(() => tentar(tentativa + 1), espera);
   });
-  }, atraso).unref();
 }
 
 /** Cliente e NF da venda pelo numero do pedido do marketplace. */
