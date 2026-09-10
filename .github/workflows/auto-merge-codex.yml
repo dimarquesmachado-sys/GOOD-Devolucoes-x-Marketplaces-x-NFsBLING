@@ -157,10 +157,32 @@ jobs:
           # `stop_reason: end_turn`, e o passo ficou VERDE sem ter feito
           # nada. Custou US$ 0,074 pra nao fazer nada.
           #
-          # ⚠️ A CAUSA: a action NAO inclui Bash no conjunto padrao. Ela vem
-          # com operacoes de arquivo, comentarios e ferramentas do GitHub.
-          # `--allowedTools` ADICIONA a lista de permitidos — sem ele, o
-          # Bash simplesmente nao existe pro modelo.
+          # ⚠️ A CAUSA TEM DUAS METADES — e a segunda me mordeu depois:
+          #
+          # 1) a action NAO inclui Bash no conjunto padrao. Ela vem com
+          #    operacoes de arquivo (Edit/Write/Read), comentarios e
+          #    ferramentas do GitHub — mas sem shell.
+          #
+          # 2) ⚠️ `--allowedTools` **SUBSTITUI** O CONJUNTO, NAO ACRESCENTA.
+          #
+          #    Este comentario dizia "ADICIONA" e estava ERRADO — foi essa
+          #    crenca que me fez listar so os Bash e, sem perceber, TIRAR as
+          #    ferramentas de arquivo que vinham por padrao.
+          #
+          #    Medido no PR #216: o robo rodou 4min34, usou Bash 17x, leu 7
+          #    arquivos e tentou `Edit` 6x — TODAS negadas. A resposta dele
+          #    no log foi literal: "I'm blocked waiting on edit permission
+          #    for server.js. Could you grant permission…". Ele sabia o que
+          #    fazer e nao podia escrever, entao terminava `success` sem
+          #    commitar.
+          #
+          # 📌 REGRA: ao listar UMA ferramenta, listar TODAS as que o agente
+          #    precisa. Nao existe "acrescentar ao padrao".
+          #
+          # ⚠️ E O CICLO SO DISPARA com push novo ou revisao nova do Codex.
+          # Quando um conserto de permissao entra DEPOIS da ultima revisao,
+          # o PR fica parado esperando gatilho que nao vem — o #216 ficou 50
+          # min assim. Desbloqueia com commit vazio na branch.
           #
           # E ha um comportamento conhecido (claude-code#49874): UMA negacao
           # faz o modelo concluir que "Bash esta todo bloqueado" e desistir
