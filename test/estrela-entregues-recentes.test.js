@@ -90,7 +90,7 @@ const codigo = srv.split('\n').filter((l) => !l.trim().startsWith('//')).join('\
 // não aparecia justamente no dia tranquilo.
 {
   const iIf = codigo.indexOf('if (candidatos.length > 0)');
-  const iBloco = codigo.indexOf('resolverIdentidadeEspreita(entreguesRecentes)');
+  const iBloco = codigo.indexOf('resolverIdentidadeEspreita(entreguesRecentes,');
   ok(iBloco > 0, 'as recentes passam pela identidade');
 
   // ⚠️ acho onde o `if` FECHA, contando chaves a partir dele — e comparo
@@ -105,10 +105,48 @@ const codigo = srv.split('\n').filter((l) => !l.trim().startsWith('//')).join('\
     prof += (linhas[k].match(/\{/g) || []).length - (linhas[k].match(/\}/g) || []).length;
     if (prof <= 0 && k > lIf) { lFecha = k; break; }
   }
-  const lBloco = linhas.findIndex((l) => l.includes('resolverIdentidadeEspreita(entreguesRecentes)'));
+  const lBloco = linhas.findIndex((l) => l.includes('resolverIdentidadeEspreita(entreguesRecentes,'));
   ok(lFecha > 0 && lBloco > lFecha,
      '  ⚠️ e o bloco esta FORA do if do alerta (if fecha em ' + (lFecha + 1)
      + ', bloco em ' + (lBloco + 1) + ')');
+}
+
+// ── ⚠️ b307/b308 (Codex, P2): identidade ANTES da triagem, e COM TETO ──
+//
+// Ordem antiga: consultava `devolucoes` com o pedido/tracking CRU e SO
+// DEPOIS descobria a identidade — uma devolucao so-com-rastreio ja triada
+// pelo PEDIDO (descoberto so ali) nunca era vista pela consulta anterior.
+// E a identidade rodava SEM TETO: numa janela de 5 dias cheia de packs ML
+// sem `order_id`, isso travava `montarEspreita()` inteiro.
+{
+  ok(/async function resolverIdentidadeEspreita\(itens, limite\)/.test(codigo),
+     'resolverIdentidadeEspreita aceita um teto OPCIONAL');
+  ok(/resolverIdentidadeEspreita\(baseAlerta\)/.test(codigo),
+     '  o alerta continua SEM teto (poucos candidatos, sem risco)');
+  ok(/TETO_IDENT_RECENTES/.test(codigo),
+     '  as recentes passam um teto (janela de 5 dias pode ter muito pack)');
+
+  const iIdent = codigo.indexOf('resolverIdentidadeEspreita(entreguesRecentes,');
+  const iTriagem = codigo.indexOf("from('devolucoes')\n              .select('order_id').in('order_id', pedidosR)");
+  ok(iIdent > 0 && iTriagem > 0 && iIdent < iTriagem,
+     '  ⚠️ e a identidade roda ANTES da reconsulta de triagem (senao o pedido descoberto chega tarde demais)');
+
+  ok(/packsR[\s\S]{0,200}from\('devolucoes'\)[\s\S]{0,100}pack_id/.test(codigo),
+     '  a reconsulta tambem cobre o PACK (venda de carrinho pode estar gravada por ele)');
+  ok(/triadas\.has\(String\(d\.pack_id/.test(codigo),
+     '  e o filtro final exclui por pack tambem');
+}
+
+// ── ⚠️ b306 (Codex, P2): entregues_recentes protegida contra o "desabou" ──
+//
+// `guardarCacheEspreita` so contava `em_transito` pra decidir se a fonte
+// caiu — um marketplace so-com-recentes (zero em_transito) nao tinha
+// protecao nenhuma: uma busca vazia passageira apagava a estrela toda.
+{
+  const iF = codigo.indexOf('function contarPorMarketplace');
+  const bloco = codigo.slice(iF, iF + 400);
+  ok(/r\.entregues_recentes/.test(bloco),
+     'contarPorMarketplace tambem conta `entregues_recentes` (nao so em_transito)');
 }
 
 // ── ⚠️ e o que ja foi triado sai da lista ───────────────────────────
@@ -167,7 +205,7 @@ const codigo = srv.split('\n').filter((l) => !l.trim().startsWith('//')).join('\
 // de ontem chega sem os campos que o casamento usa, e a estrela continuaria
 // sem aparecer, agora por falta de DADO em vez de falta de lista.
 {
-  ok(/resolverIdentidadeEspreita\(entreguesRecentes\)/.test(codigo),
+  ok(/resolverIdentidadeEspreita\(entreguesRecentes,/.test(codigo),
      'as recentes passam pela identidade (descobre o pedido)');
   ok(/garantirEnriquecimentoEspreita\(entreguesRecentes/.test(codigo),
      '  e pelo enriquecimento (traz a NF, que e a chave do cruzamento)');

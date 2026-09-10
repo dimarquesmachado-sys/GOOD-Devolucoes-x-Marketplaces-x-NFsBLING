@@ -360,7 +360,7 @@ app.get('/health', (req, res) => {
       // ⚠️ a resolucao do conflito JUNTA as duas mudancas, nao escolhe uma:
       // a 7.2.1 (403 do #208) ja esta na main, e esta branch acrescenta a
       // busca por nome. Escolher um lado apagaria a descricao do outro.
-      version: '7.4.0 (retry do pre-aquecimento agora enxerga erro HTTP resolvido; timers de retry cancelam na drenagem; estrela do ML nao espera 6min pro cache)',
+      version: '7.4.1 (revisao do Codex no #216: identidade das recentes roda antes da triagem e com teto; entregues_recentes protegida contra o "desabou" do cache)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -4539,7 +4539,14 @@ let ESP_MONTANDO = null;        // promessa em voo (evita montar 2x ao mesmo tem
 // cacheava a Magalu VAZIA e servia por 3 min (bug: os Magalu sumiam).
 function contarPorMarketplace(r) {
   const c = { magalu: 0, ml: 0, shopee: 0 };
-  const arr = (r && r.em_transito) || [];
+  // b306 (Codex, P2): SEM `entregues_recentes` aqui, um marketplace com
+  // estrela mas ZERO em_transito nao tinha protecao nenhuma contra o
+  // "desabou" — uma busca vazia PASSAGEIRA (fonte fria) apagava a lista de
+  // recentes inteira, e a estrela sumia sem a fonte ter caido de verdade.
+  const arr = [
+    ...((r && r.em_transito) || []),
+    ...((r && r.entregues_recentes) || []),
+  ];
   for (const d of arr) { if (c[d.marketplace] != null) c[d.marketplace]++; }
   return c;
 }
@@ -5119,8 +5126,15 @@ async function magaluTicketsDoPedido(pedido) {
  * indice que ja esta em memoria, e so chama `/packs` quando o claim e de
  * pack. O enriquecimento caro continua limitado.
  */
-async function resolverIdentidadeEspreita(itens) {
-  for (const d of (itens || [])) {
+async function resolverIdentidadeEspreita(itens, limite) {
+  // b307 (Codex, P2): SEM TETO, uma janela de 5 dias movimentada com varios
+  // packs ML sem `order_id` bloqueava `montarEspreita()` inteiro — 1-2
+  // chamadas de rede por item, em serie. O mesmo problema que o teto do
+  // enriquecimento (b237) ja resolveu, agora pra esta chamada tambem.
+  // `limite` e OPCIONAL: o alerta (poucos candidatos, 5-90 dias) continua
+  // sem teto; quem passa volume maior (as recentes, 5 dias) limita.
+  const alvo = Number.isFinite(limite) ? (itens || []).slice(0, limite) : (itens || []);
+  for (const d of alvo) {
     if (d.pedido || d.marketplace !== 'ml' || !d.tracking) continue;
     // b237.2 (Codex): o cache do enriquecimento pode ja ter a identidade —
     // usar antes de chamar `/packs` de novo. Sem isto o pack ambiguo pagava
@@ -5806,6 +5820,22 @@ let entreguesRecentes = [];
       // pedido descoberto e sem NF. Ou seja: justamente no dia tranquilo,
       // sem alertas, a estrela nao apareceria.
       {
+        // b308 (Codex, P2) - IDENTIDADE ANTES DA TRIAGEM.
+        //
+        // Ordem antiga: consultava `devolucoes`/`espreita_notas` com o
+        // `pedido`/`tracking` CRU, e SO DEPOIS descobria a identidade. Uma
+        // devolucao ML que so tinha rastreio (o pedido nasce aqui) podia
+        // estar registrada em `devolucoes` pelo PEDIDO — e a consulta,
+        // feita ANTES de descobrir, nunca via isso: a devolucao ja triada
+        // continuava na lista e ganhava estrela como se ninguem tivesse
+        // mexido. O alerta ja faz essa reconsulta pos-identidade
+        // (`novosIds`, acima); esta faltava aqui.
+        //
+        // TETO junto (b307): sem ele, a mesma identidade que este conserto
+        // precisa travava `montarEspreita()` inteiro numa janela cheia.
+        const TETO_IDENT_RECENTES = 12;
+        await resolverIdentidadeEspreita(entreguesRecentes, TETO_IDENT_RECENTES);
+
         // ⚠️ o filtro de `baixado` (Codex, P2): devolucao ja triada nos
         // ultimos 5 dias vinha como se ninguem tivesse mexido. O
         // `.filter(!baixado)` do cruzamento nao pegava porque `brutos` nao
@@ -5818,10 +5848,19 @@ let entreguesRecentes = [];
           // isso (o `achados`, no bloco acima). Sem esta parte, devolucao
           // triada ontem seguia na lista, ganhava NF no enriquecimento, e
           // aparecia com ESTRELA como se ninguem tivesse mexido.
+          //
+          // b308.1 (Codex, P2): os campos lidos AQUI ja sao os RESOLVIDOS
+          // (identidade rodou acima) — pedido descoberto pelo rastreio
+          // entra na consulta como se sempre tivesse existido.
           const pedidosR = [...new Set(entreguesRecentes
             .map((d) => String(d.pedido || '')).filter(Boolean))];
           const trksR = [...new Set(entreguesRecentes
             .map((d) => String(d.tracking || '')).filter(Boolean))];
+          // b308.2 (Codex, P2): o PACK tambem identifica a triagem — mesmo
+          // motivo do alerta (b236.3/b236.4): a venda de carrinho pode
+          // estar gravada pelo pack, nao so pelo pedido descoberto dele.
+          const packsR = [...new Set(entreguesRecentes
+            .map((d) => String(d.pack_id || '')).filter(Boolean))];
           const triadas = new Set();
           if (pedidosR.length) {
             const { data } = await supabase.from('devolucoes')
@@ -5832,6 +5871,11 @@ let entreguesRecentes = [];
             const { data } = await supabase.from('devolucoes')
               .select('shipment_id').in('shipment_id', trksR);
             for (const r of (data || [])) triadas.add(String(r.shipment_id));
+          }
+          if (packsR.length) {
+            const { data } = await supabase.from('devolucoes')
+              .select('pack_id').in('pack_id', packsR);
+            for (const r of (data || [])) triadas.add(String(r.pack_id));
           }
 
           const chavesR = entreguesRecentes.map((d) => d.chave_nota).filter(Boolean);
@@ -5846,10 +5890,9 @@ let entreguesRecentes = [];
             .map((d) => ({ ...d, baixado: !!porChaveR[d.chave_nota]?.baixado }))
             .filter((d) => !d.baixado)
             .filter((d) => !triadas.has(String(d.pedido || ''))
-                        && !triadas.has(String(d.tracking || '')));
+                        && !triadas.has(String(d.tracking || ''))
+                        && !triadas.has(String(d.pack_id || '')));
         } catch (e) { /* sem as tabelas, segue sem filtrar */ }
-
-        await resolverIdentidadeEspreita(entreguesRecentes);
 
         // ⚠️ SEM TETO ARTIFICIAL (Codex, P2): eu tinha posto 15, e acima de
         // 15 entregas em 5 dias o resto ficava sem NF — e sem NF nao ha
