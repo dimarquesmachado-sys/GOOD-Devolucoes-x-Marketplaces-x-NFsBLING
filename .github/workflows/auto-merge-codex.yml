@@ -177,8 +177,8 @@ jobs:
           # producao nao precisa de shell irrestrito — a diferenca entre
           # "corrige o PR" e "faz qualquer coisa" e essa lista.
           claude_args: |
-            --allowedTools "Bash(git:*),Bash(gh:*),Bash(node:*),Bash(npm:*)"
-          # ═══════════════════════════════════════════════════════════════
+            --allowedTools "Edit,MultiEdit,Write,Read,Glob,Grep,Bash(git:*),Bash(gh:*),Bash(node:*),Bash(npm:*)"
+            # ═══════════════════════════════════════════════════════════════
 
           # b215: MOSTRAR o que o Claude fez.
           #
