@@ -84,6 +84,42 @@ const srv = fs.readFileSync(path.join(RAIZ, 'server.js'), 'utf8');
      '⚠️ a 1a espera e longa (' + (m ? m[1] : '?') + 'ms) — se foi 429, insistir piora');
 }
 
+// ── ⚠️ CADA RETRY CHAMA COM A ASSINATURA DO SEU ARQUIVO ─────────────
+//
+// Portei o retry da GOOD para a AMB SEM LER a assinatura de lá. Na GOOD o
+// parâmetro é a tentativa; na AMB é o ATRASO EM MS. Meu
+// `preAquecer(tentativa + 1)` passaria **2 milissegundos** como atraso — e
+// pior, `tentativa` nem existia naquele escopo: ReferenceError na primeira
+// falha.
+//
+// ⚠️ `node --check` não pega (variável inexistente é sintaxe válida) e
+// nenhum teste passava ali — o caminho só roda quando o pré-aquecimento
+// FALHA. É a Regra 4.12 (ler o produtor antes de escrever o consumidor),
+// violada no mesmo dia em que a apliquei em outros 4 arquivos.
+{
+  const MODULOS = [
+    'lib/nf-nomes.js', 'lib/ml-returns.js',
+    'amb-devolucoes/lib-AMB/nf-nomes-AMB.js',
+    'amb-devolucoes/lib-AMB/ml-returns-AMB.js',
+  ];
+  for (const arq of MODULOS) {
+    const src = fs.readFileSync(path.join(RAIZ, arq), 'utf8');
+    const assina = /function preAquecer\(([^)]*)\)/.exec(src);
+    const chama = /preAquecer\(([^)]*)\), espera\)/.exec(src);
+    if (!assina || !chama) continue;
+
+    const nParams = assina[1].split(',').filter((x) => x.trim()).length;
+    const nArgs = chama[1].split(',').filter((x) => x.trim()).length;
+    ok(nArgs === nParams,
+       path.basename(arq) + ': o retry chama com ' + nArgs + ' argumento(s) '
+       + 'e a funcao recebe ' + nParams + ' — batem');
+
+    // ⚠️ e a variável do retry existe no escopo da função
+    ok(/tentativa/.test(assina[1]),
+       '  e `tentativa` esta DECLARADA na assinatura (nao veio de fora)');
+  }
+}
+
 console.log('');
 console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
 process.exit(falhas ? 1 : 0);

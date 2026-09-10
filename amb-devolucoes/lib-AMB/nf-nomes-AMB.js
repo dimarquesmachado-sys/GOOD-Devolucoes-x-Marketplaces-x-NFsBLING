@@ -484,7 +484,21 @@ function ordenar(lista) {
 }
 
 /** Pre-aquecimento atrasado, pelo mesmo motivo do indice do ML. */
-function preAquecer(atrasoMs) {
+// b272 - ⚠️ CORRIGINDO UM BUG QUE EU INTRODUZI NA b271.
+//
+// Aqui o parametro e o ATRASO em ms, nao a tentativa — assinatura
+// diferente da GOOD. Meu retry chamava `preAquecer(tentativa + 1)`, o que
+// passaria **2** como atraso (2 MILISSEGUNDOS) e, pior, `tentativa` nem
+// existia neste escopo: quebraria com ReferenceError na primeira falha.
+//
+// ⚠️ `node --check` nao pega (variavel inexistente e sintaxe valida) e
+// nenhum teste passava por ali — o caminho so roda quando o
+// pre-aquecimento FALHA.
+//
+// Porte cego: copiei o retry da GOOD sem ler a assinatura de ca. E a
+// Regra 4.12 — LER O PRODUTOR ANTES DE ESCREVER O CONSUMIDOR — que eu
+// violei no mesmo dia em que a apliquei em outros 4 arquivos.
+function preAquecer(atrasoMs, tentativa = 1) {
   const atraso = atrasoMs != null ? atrasoMs : 4 * 60 * 1000;
   console.log(`[AMB/NF-NOMES] pre-aquecimento agendado para daqui a ${Math.round(atraso / 1000)}s`);
   setTimeout(() => {
@@ -495,7 +509,8 @@ function preAquecer(atrasoMs) {
     if (tentativa >= 3) return;
     const espera = 30000 * Math.pow(2, tentativa - 1);
     console.log(`[AMB/NF-NOMES] tento de novo em ${espera / 1000}s`);
-    setTimeout(() => preAquecer(tentativa + 1), espera);
+    // ⚠️ atraso 0: a espera ja aconteceu no `setTimeout` daqui
+        setTimeout(() => preAquecer(0, tentativa + 1), espera);
   });
   }, atraso).unref();
 }

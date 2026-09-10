@@ -7194,10 +7194,47 @@ registrarRotasImpressao(app, { requerEstoquista, crypto, sleep });
 // pronto DE VERDADE: hoje ele dispara tudo junto e nao termina nada.
 //
 // 📌 Os intervalos de 25 min continuam iguais — o problema e a largada.
+// ⚠️ b272 - A ORDEM SEGUE O QUE A TELA USA, nao o que existe.
+//
+// Na b271 eu espacei a largada (certo) mas mantive a ordem antiga, e o
+// `nfNomes` — que TODA busca por nome usa — ficou em 4o, so comecando aos
+// 260s. Como ele leva 66-150s pra montar, davam ~7 MINUTOS ate a busca
+// funcionar. O dono buscou logo apos o deploy e o indice cobria so as NFs
+// recentes; as do Charles (03/09 a 28/07) ainda nao tinham entrado.
+//
+// Ordem agora, por quem a tela precisa primeiro:
+//   1. magalu     (rapido, e destrava o resto)
+//   2. espreita   a ESTRELA da busca por nome
+//   3. nfNomes    a BUSCA por nome em si
+//   4. mlReturns  devolucoes do ML
+//   5. produtos   o mais pesado, e o menos urgente
+//
+// 📌 O CONSERTO DE VERDADE seria PERSISTIR o indice (ha Supabase aqui), pra
+// ele nao morrer a cada deploy. Fica anotado — e trabalho proprio, nao
+// cabe neste PR.
 const ESPACO = Number(process.env.BOOT_ESPACO_MS || 120000);   // 2 min
 drenagem.daquiA(() => magalu.preAquecer(), 20 * 1000);
-drenagem.daquiA(() => mlReturns.preAquecer(), 20 * 1000 + ESPACO);
-drenagem.daquiA(() => nfNomes.preAquecer(), 20 * 1000 + ESPACO * 2);
+drenagem.daquiA(() => mlReturns.preAquecer(), 20 * 1000 + ESPACO * 2);
+// ⚠️ b272: SEGUNDO, nao quarto. E o que a tela MAIS usa (toda busca por
+// nome passa por ele), e leva 66-150s pra montar. Deixar em 4o dava ~7
+// minutos ate a busca funcionar — o dono buscou 'charles' logo apos o
+// deploy e o indice ainda cobria so as NFs recentes.
+// b272 - ⚠️ DOIS PASSES: um CURTO logo, e o completo depois.
+//
+// O indice cobre 120 dias (~1.900 NFs, ~19 paginas). Mas as devolucoes que
+// chegam HOJE sao de vendas recentes — e 3 paginas ja cobrem uns 15 dias.
+//
+// Entao aos 45s faco um passe de 3 paginas: rapido, barato, e ja deixa a
+// busca util pro caso comum. O completo vem depois, no seu lugar da fila.
+//
+// 📌 Isto so funciona porque o indice PUBLICA O PARCIAL (b268): sem
+// aquilo, um passe curto nao serviria pra nada.
+drenagem.daquiA(() => {
+  nfNomes.preAquecer({ maxPaginas: 3 });
+  console.log('[BOOT] passe curto do indice de nomes (3 paginas, ~15 dias)');
+}, 45 * 1000);
+
+drenagem.daquiA(() => nfNomes.preAquecer(), 20 * 1000 + ESPACO);
 // v4.04 - catalogo de produtos pre-aquecido (a busca do estoquista nunca espera)
 drenagem.daquiA(() => { construirIndiceProdutos().catch(() => {}); }, 20 * 1000 + ESPACO * 3);
 // v4.20 - a busca da data REAL de entrega roda sozinha, em ciclo proprio.
