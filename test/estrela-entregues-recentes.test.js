@@ -33,8 +33,17 @@ const codigo = srv.split('\n').filter((l) => !l.trim().startsWith('//')).join('\
      'o cache EXPÕE `entregues_recentes` (o produtor existe)');
   ok(/let entreguesRecentes = \[\]/.test(codigo),
      '  declarada FORA do try (o `baseAlerta` nao alcanca o retorno)');
-  ok(/entreguesRecentes = \(baseAlerta \|\| \[\]\)/.test(codigo),
-     '  e preenchida DENTRO, onde o baseAlerta existe');
+  // ⚠️ b274.1 (Codex, P1): montava a partir do `baseAlerta`, que JA vem
+  // filtrado por `dias_desde >= 5` — filtrar de novo por `< 5` nunca
+  // devolvia nada. A lista saia SEMPRE VAZIA e o conserto era decorativo.
+  //
+  // Agora sai de `brutos`, que e a lista sem filtro nenhum.
+  ok(/entreguesRecentes = brutos/.test(codigo),
+     '  ⚠️ e montada a partir de `brutos` (ANTES do filtro de 5 dias)');
+  const iRec = codigo.indexOf('entreguesRecentes = brutos');
+  const iFiltro = codigo.indexOf('dias_desde >= 5');
+  ok(iRec > 0 && iRec < iFiltro,
+     '  e vem ANTES do filtro no arquivo (senao a lista nasce vazia)');
 }
 
 // ── ⚠️ e o piso de 5 dias não é mexido ──────────────────────────────
@@ -56,6 +65,19 @@ const codigo = srv.split('\n').filter((l) => !l.trim().startsWith('//')).join('\
      'o cruzamento da busca por nome inclui as entregues recentes');
   ok(/\.filter\(\(e\) => !e\.baixado\)/.test(bloco),
      '  ⚠️ e o filtro `!baixado` continua — o que ja foi bipado sai');
+}
+
+// ── ⚠️ e as recentes passam por IDENTIDADE e ENRIQUECIMENTO ─────────
+//
+// A identidade descobre o PEDIDO pelo rastreio; o enriquecimento traz a
+// NF — e o cruzamento casa por numero+serie da NF. Sem os dois, a entregue
+// de ontem chega sem os campos que o casamento usa, e a estrela continuaria
+// sem aparecer, agora por falta de DADO em vez de falta de lista.
+{
+  ok(/resolverIdentidadeEspreita\(entreguesRecentes\)/.test(codigo),
+     'as recentes passam pela identidade (descobre o pedido)');
+  ok(/garantirEnriquecimentoEspreita\(entreguesRecentes/.test(codigo),
+     '  e pelo enriquecimento (traz a NF, que e a chave do cruzamento)');
 }
 
 // ── e o /health mostra ──────────────────────────────────────────────

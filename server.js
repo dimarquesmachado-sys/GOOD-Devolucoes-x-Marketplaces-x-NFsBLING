@@ -5626,6 +5626,19 @@ let entreguesRecentes = [];
         d.dias_desde = Math.floor((Date.now() - Date.parse(real)) / 864e5);
       }
     }
+    // b274.1 (Codex, P1) - ⚠️ MONTA ANTES DO FILTRO, NAO DEPOIS.
+    //
+    // Minha 1a versao derivava a lista do `baseAlerta`, que ja vem filtrado
+    // por `dias_desde >= 5` — filtrar de novo por `< 5` NUNCA devolvia
+    // nada. A lista saia sempre vazia, o /health mostrava zero, e a estrela
+    // continuaria sem aparecer. O conserto inteiro era decorativo.
+    //
+    // `brutos` e a lista sem filtro nenhum: e daqui que as entregues
+    // RECENTES precisam sair.
+    entreguesRecentes = brutos
+      .filter((d) => d.dias_desde != null && d.dias_desde < 5)
+      .map((d) => ({ ...d, _recem_entregue: true }));
+
     const candidatos = brutos
       .filter(d => (d.dias_desde != null) && d.dias_desde >= 5 && d.dias_desde <= 90 && (d.pedido || d.tracking));
     if (candidatos.length > 0) {
@@ -5688,14 +5701,44 @@ let entreguesRecentes = [];
       // Saida: descobrir a IDENTIDADE de todos (1 chamada barata cada, so o
       // `acharPorTracking` + `/packs` quando precisa), e limitar so o
       // enriquecimento CARO (cliente/produto/NF, 3 chamadas por item).
-      // b274 - as entregues RECENTES (menos de 5 dias) saem numa lista
-      // propria: elas nao sao alerta, mas SAO a caixa que o estoquista tem
-      // na mao agora — e e por elas que a busca por nome casa a ESTRELA.
-      entreguesRecentes = (baseAlerta || [])
-        .filter((d) => d.dias_desde != null && d.dias_desde < 5)
-        .map((d) => ({ ...d, _recem_entregue: true }));
-
       await resolverIdentidadeEspreita(baseAlerta);
+
+      // b274.1 (Codex, P1) - ⚠️ AS RECENTES TAMBEM PASSAM PELA IDENTIDADE.
+      //
+      // Ela descobre o PEDIDO a partir do rastreio (e o pack, quando ha).
+      // Sem isso, a entregue de ontem chega ao cruzamento sem os campos que
+      // o casamento usa — e a estrela continuaria sem aparecer, agora por
+      // falta de dado em vez de falta de lista.
+      //
+      // Rodo DEPOIS do baseAlerta de proposito: o cache `ESP_ENRIQ` que ela
+      // preenche fica quente, entao as recentes reaproveitam o que ja foi
+      // descoberto em vez de sondar de novo.
+      await resolverIdentidadeEspreita(entreguesRecentes);
+
+      // ⚠️ e o ENRIQUECIMENTO, que e quem traz a NF — sem ela o cruzamento
+      // nao tem por onde casar (ele liga NF do card com NF da espreita).
+      //
+      // Teto de 15: as recentes sao poucas por natureza (5 dias de janela),
+      // e o `ESP_ENRIQ` ja esta quente do baseAlerta acima.
+      await garantirEnriquecimentoEspreita(entreguesRecentes, 15);
+
+      // ⚠️ b274.1: copio os campos com os nomes REAIS do enriquecimento.
+      //
+      // Eu tinha inventado dois campos de serie/id que o enriquecedor NAO
+      // produz — seriam `undefined` silenciosos, e o
+      // cruzamento (que casa por numero+SERIE da NF) trataria toda recente
+      // como serie 1. Regra 4.12 de novo, terceira vez hoje.
+      //
+      // Uso a MESMA lista de campos que a linha ~5593 ja copia — se um dia
+      // o enriquecimento ganhar campo novo, os dois lugares divergem, mas
+      // pelo menos hoje estao iguais.
+      for (const d of entreguesRecentes) {
+        const en = d.chave_nota ? ESP_ENRIQ.get(d.chave_nota) : null;
+        if (!en) continue;
+        d.cliente = en.cliente; d.nf = en.nf; d.produto = en.produto;
+        d.sku = en.sku; d.qtd = en.qtd; d.valor_nf = en.valor_nf;
+        d.pack_id = en.pack_id; d.itens = en.itens || d.itens;
+      }
       await garantirEnriquecimentoEspreita(baseAlerta, 8);
       dispararEnriquecimentoEspreita(baseAlerta);
       nuncaBipadas = baseAlerta.map(d => {
