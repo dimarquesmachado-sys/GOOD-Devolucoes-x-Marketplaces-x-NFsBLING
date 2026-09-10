@@ -152,8 +152,11 @@ const codigo = lerCodigo('lib/nf-nomes.js');
 // continuava virando 404 comum, indistinguivel de 'nao existe'.
 {
   const srv = fs.readFileSync(path.join(RAIZ, 'server.js'), 'utf8');
-  ok(/indice_incompleto: rN\.indiceParcial/.test(srv),
-     'GOOD: a rota de identificar repassa o indice_incompleto pra tentativa');
+  // b275: o campo agora cobre VAZIO tambem (`rN.montando`), nao so parcial
+  ok(/indice_incompleto: !!\(rN\.montando \|\| rN\.indiceParcial\)/.test(srv),
+     'GOOD: a rota repassa o indice_incompleto (vazio OU parcial)');
+  ok(/indice_nomes_vazio/.test(srv),
+     '  ⚠️ e distingue VAZIO de parcial (a espera e diferente)');
   ok(/notaIndiceParcial/.test(srv),
      '  e avisa o estoquista no texto do erro (nao so no JSON cru)');
 
