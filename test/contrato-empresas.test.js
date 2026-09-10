@@ -300,7 +300,8 @@ const registro = require('../lib/empresas.js');
          'lib/bling.js renova so em 401, como o contrato diz'
          + (gBling ? ' (achei ' + gBling[1] + ')' : ' (nao achei o gatilho)'));
 
-      const gMl = /if \((st === 401[^)]*)\)/.exec(mlSrc);
+      // b267: o `if` ganhou `&& !rota403Conhecida`; busco so a parte dos status
+      const gMl = /if \(\(?(st === 401[^)]*)\)/.exec(mlSrc);
       ok(!!gMl, 'achei o gatilho da renovacao no lib/ml.js');
       if (gMl) {
         ok(/403/.test(gMl[1]), '  e ele inclui 403, como o contrato diz');

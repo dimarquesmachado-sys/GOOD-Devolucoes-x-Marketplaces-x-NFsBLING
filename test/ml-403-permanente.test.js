@@ -57,13 +57,25 @@ const codigo = src.split('\n').filter((l) => !l.trim().startsWith('//')).join('\
   // ⚠️ minha 1a versao olhava 120 chars ANTES do `podeRenovarPor403` e a
   // condicao fica na MESMA linha, logo antes — a janela pegava o `catch`
   // de cima. Acusava codigo certo. Agora leio a linha inteira.
-  const linhaGuarda = codigo.split('\n')
-    .find((l) => l.includes('podeRenovarPor403(url)') && l.includes('if ('));
-  ok(!!linhaGuarda, 'achei a guarda do 403');
-  ok(/st === 403 &&/.test(linhaGuarda || ''),
+  // b267: a condicao virou uma variavel (`rota403Conhecida`), porque agora
+  // ela decide DUAS coisas: se renova E se invalida o cache. Confiro a
+  // declaracao dela, nao a linha do `if`.
+  const decl = codigo.split('\n').find((l) => l.includes('const rota403Conhecida'));
+  ok(!!decl, 'achei a decisao de rota-403-conhecida');
+  ok(/st === 403 &&/.test(decl || ''),
      '⚠️ o limite vale SO pro 403 (o 401 renova sempre)');
-  ok(!/401/.test(linhaGuarda || ''),
+  ok(!/401/.test(decl || ''),
      '  e o 401 NAO entra nessa condicao');
+  ok(/!podeRenovarPor403\(url\)/.test(decl || ''),
+     '  e ela consulta a janela por rota');
+
+  // ⚠️ b267: e a rota ja conhecida NAO invalida o cache
+  //
+  // Medido em 6h: 30 invalidacoes por 403, ZERO por 401, 15 retries todos
+  // falhados. Invalidar ali e releitura por nada — o dono devolve o mesmo
+  // token, porque o problema e permissao da rota, nao vencimento.
+  ok(/\(st === 401 \|\| st === 403\) && !rota403Conhecida/.test(codigo),
+     '⚠️ 403 de rota JA conhecida nao invalida o cache (30 releituras a toa em 6h)');
 }
 
 // ── ⚠️ e o /health NÃO expõe id de pedido/envio ─────────────────────
@@ -111,12 +123,18 @@ const codigo = src.split('\n').filter((l) => !l.trim().startsWith('//')).join('\
   {
     const linhas = codigo.split('\n');
     const ondeChama = (t) => linhas.findIndex((l) => l.includes(t) && !l.includes('function '));
-    const inval = ondeChama("tokenLeitor.invalidar('good', 'ml')");
-    const guarda = ondeChama('!podeRenovarPor403(url)');
-    const renov = ondeChama('const renovou = await renovarTokenML()');
-    ok(inval >= 0 && guarda > inval,
-       'a guarda vem DEPOIS da invalidacao do cache');
-    ok(renov > guarda, '  e ANTES da renovacao local (que e o que gasta refresh)');
+    // ⚠️ b267: a guarda agora vem ANTES, e ISSO E O CONSERTO. Se a rota ja
+    // se provou 403-permanente, nao queremos invalidar o cache — a
+    // releitura devolveria o mesmo token (o problema e permissao da rota,
+    // nao vencimento). O que importa e a INVALIDACAO ser condicional.
+    ok(/\(st === 401 \|\| st === 403\) && !rota403Conhecida/.test(codigo),
+       'a invalidacao do cache e CONDICIONAL (pula a rota ja conhecida)');
+    // ⚠️ e a guarda continua vindo ANTES da renovacao local — e ela que
+    // gasta refresh, e o ponto de tudo isto.
+    const guarda2 = ondeChama('if (rota403Conhecida)');
+    const renov2 = ondeChama('const renovou = await renovarTokenML()');
+    ok(guarda2 >= 0 && renov2 > guarda2,
+       'a guarda vem ANTES da renovacao local (que e o que gasta refresh)');
   }
   ok(!/ML_403_PERMANENTE/.test(codigo),
      '  e nao ha lista permanente (a versao anterior nao expirava nunca)');

@@ -386,19 +386,6 @@ app.get('/health', (req, res) => {
         try { return require('./lib/ml').diagnostico403(); }
         catch (e) { return { erro: e.message }; }
       })(),
-      // b260 - ⚠️ SO CONTAGEM. O /health e publico e os caminhos do ML
-      // carregam id de pedido, envio e reclamacao — expor a lista seria
-      // vazar dado de cliente pra quem alcancar o servico.
-      ml_403: (() => {
-        try { return require('./lib/ml').diagnostico403(); }
-        catch (e) { return { erro: e.message }; }
-      })(),
-      // b260 - os 403 do ML que renovar nao resolve (achado da telemetria
-      // de 09/09: 10 retries, 10 falhas)
-      ml_403_permanente: (() => {
-        try { return require('./lib/ml').diagnostico403(); }
-        catch (e) { return { erro: e.message }; }
-      })(),
     },
     integrations: {
       ml: mlClient.hasToken(),
