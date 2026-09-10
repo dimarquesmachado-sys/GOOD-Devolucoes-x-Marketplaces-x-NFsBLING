@@ -53,7 +53,11 @@ for (const [nome, rel] of [['GOOD', 'lib/nf-nomes.js'],
   // juntos, sem await no meio. (A distancia em chars nao servia: as linhas
   // de cobertura do b233 entraram entre o ts e o mapa e quebraram o teste
   // sem que o comportamento mudasse.)
-  const iC = good.indexOf('IDX.ts = Date.now();');
+  // b276: `IDX.ts` virou condicional (`falhouVazio ? 0 : Date.now()`) pra
+  // um build frio que falha vazio nao se anunciar como completo — o texto
+  // exato mudou, mas o invariante (carimbo antes do mapa, sem await) segue.
+  const mIC = good.match(/IDX\.ts = [^\n]*Date\.now\(\);/);
+  const iC = mIC ? good.indexOf(mIC[0]) : -1;
   const iM = good.indexOf('IDX.mapa = mapa;');
   ok(iC > 0 && iM > iC, '  o mapa e publicado depois do carimbo de tempo');
   ok(!/await/.test(good.slice(iC, iM)),
