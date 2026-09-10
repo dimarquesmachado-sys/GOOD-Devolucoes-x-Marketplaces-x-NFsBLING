@@ -544,7 +544,11 @@ function resumoEspreita() {
  * atraso resolve sem custo nenhum — ninguem bipa caixa nos
  * primeiros minutos depois de um deploy.
  */
-function preAquecer(atrasoMs) {
+// b272 - ⚠️ MESMO BUG DA b271 AQUI: o parametro e o ATRASO em ms, e meu
+// retry chamava `preAquecer(tentativa + 1)` — passaria 2ms como atraso, e
+// `tentativa` nem existia no escopo (ReferenceError na 1a falha).
+// Porte cego da assinatura da GOOD. Regra 4.12.
+function preAquecer(atrasoMs, tentativa = 1) {
   const atraso = atrasoMs != null ? atrasoMs : 3 * 60 * 1000;
   console.log(`[AMB/ML-RETURNS] pre-aquecimento agendado para daqui a ${Math.round(atraso / 1000)}s`);
   setTimeout(() => tentar(1), atraso).unref();

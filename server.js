@@ -7194,19 +7194,59 @@ registrarRotasImpressao(app, { requerEstoquista, crypto, sleep });
 // pronto DE VERDADE: hoje ele dispara tudo junto e nao termina nada.
 //
 // 📌 Os intervalos de 25 min continuam iguais — o problema e a largada.
+// ⚠️ b272 - A ORDEM SEGUE O QUE A TELA USA, nao o que existe.
+//
+// Na b271 eu espacei a largada (certo) mas mantive a ordem antiga, e o
+// `nfNomes` — que TODA busca por nome usa — ficou em 4o, so comecando aos
+// 260s. Como ele leva 66-150s pra montar, davam ~7 MINUTOS ate a busca
+// funcionar. O dono buscou logo apos o deploy e o indice cobria so as NFs
+// recentes; as do Charles (03/09 a 28/07) ainda nao tinham entrado.
+//
+// Ordem agora, por quem a tela precisa primeiro:
+//   1. magalu     (rapido, e destrava o resto)
+//   2. espreita   a ESTRELA da busca por nome
+//   3. nfNomes    a BUSCA por nome em si
+//   4. mlReturns  devolucoes do ML
+//   5. produtos   o mais pesado, e o menos urgente
+//
+// 📌 O CONSERTO DE VERDADE seria PERSISTIR o indice (ha Supabase aqui), pra
+// ele nao morrer a cada deploy. Fica anotado — e trabalho proprio, nao
+// cabe neste PR.
 const ESPACO = Number(process.env.BOOT_ESPACO_MS || 120000);   // 2 min
 drenagem.daquiA(() => magalu.preAquecer(), 20 * 1000);
-// ⚠️ (Codex, PR #213) o indice do ML so fica pronto ~2min DEPOIS de comecar
-// (140s + ~2min de varredura = ~260s), mas o snapshot da espreita (abaixo,
-// preAquecerEspreita) roda aos 90s e 180s — os dois primeiros saem sem
-// devolucao ML nenhuma, e a proxima chance so aos 360s. Resultado: a
-// ESTRELA da busca por nome, que e o motivo desta PR inteira, demorava uns
-// 6 minutos pra aparecer apos um deploy. Passa `preAquecerEspreita` como
-// `aoSucesso`: assim que o indice do ML termina de verdade (1a tentativa
-// OU depois de um retry), o snapshot roda na hora em vez de esperar o
-// proximo tick do cron de 3min.
-drenagem.daquiA(() => mlReturns.preAquecer(1, preAquecerEspreita), 20 * 1000 + ESPACO);
-drenagem.daquiA(() => nfNomes.preAquecer(), 20 * 1000 + ESPACO * 2);
+// ⚠️ RESOLUCAO DO CONFLITO (b273) — os dois lados estavam certos sobre
+// coisas DIFERENTES, entao junto em vez de escolher:
+//
+//   DELE (Claude do GitHub): o snapshot da espreita rodava aos 90s e 180s,
+//   ANTES do indice do ML ficar pronto (~260s) — os dois primeiros saiam
+//   vazios e a proxima chance era so aos 360s. Passar
+//   `preAquecerEspreita` como `aoSucesso` faz o snapshot rodar NA HORA em
+//   que o indice termina. Isso resolve a ESTRELA de verdade.
+//
+//   MEU: o `nfNomes` (a BUSCA por nome) tem que vir antes do `mlReturns`,
+//   porque toda busca passa por ele. E o passe curto de 3 paginas aos 45s.
+//
+// Ordem final: magalu -> espreita -> nfNomes -> mlReturns(+aoSucesso).
+// O `aoSucesso` cobre o atraso do mlReturns ter ficado em 4o.
+drenagem.daquiA(() => nfNomes.preAquecer(), 20 * 1000 + ESPACO);
+drenagem.daquiA(() => mlReturns.preAquecer(1, preAquecerEspreita), 20 * 1000 + ESPACO * 2);
+
+// b272 - ⚠️ DOIS PASSES: um CURTO logo, e o completo depois.
+//
+// O indice cobre 120 dias (~1.900 NFs, ~19 paginas). Mas as devolucoes que
+// chegam HOJE sao de vendas recentes — e 3 paginas ja cobrem uns 15 dias.
+//
+// Entao aos 45s faco um passe de 3 paginas: rapido, barato, e ja deixa a
+// busca util pro caso comum. O completo vem depois, no seu lugar da fila.
+//
+// 📌 Isto so funciona porque o indice PUBLICA O PARCIAL (b268): sem
+// aquilo, um passe curto nao serviria pra nada.
+drenagem.daquiA(() => {
+  nfNomes.preAquecer({ maxPaginas: 3 });
+  console.log('[BOOT] passe curto do indice de nomes (3 paginas, ~15 dias)');
+}, 45 * 1000);
+
+drenagem.daquiA(() => nfNomes.preAquecer(), 20 * 1000 + ESPACO);
 // v4.04 - catalogo de produtos pre-aquecido (a busca do estoquista nunca espera)
 drenagem.daquiA(() => { construirIndiceProdutos().catch(() => {}); }, 20 * 1000 + ESPACO * 3);
 // v4.20 - a busca da data REAL de entrega roda sozinha, em ciclo proprio.
