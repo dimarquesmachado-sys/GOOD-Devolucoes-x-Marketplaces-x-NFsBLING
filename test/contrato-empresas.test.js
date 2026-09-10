@@ -246,68 +246,66 @@ const registro = require('../lib/empresas.js');
     ok(/403/.test(janela.contrato_de_leitura || ''),
        '  no contrato de leitura tambem');
 
-    // ── v8: ⚠️ 429 e 5xx NAO PODEM disparar renovacao ──────────────
+    // ── v9: ⚠️ O GATILHO E POR INTEGRACAO ─────────────────────────
     //
-    // O Mover-Pedidos renovava em qualquer nao-2xx e mudou hoje: renovar
-    // por um 429 TRANSITORIO queima o refresh de uso unico a toa — o erro
-    // era passageiro e a resposta e permanente.
+    // A v8 tinha `dispara: [401, 403]` generico, e o texto ao lado dizia
+    // "Bling: 401. ML: 401 ou 403" — duas fontes da mesma verdade, e a
+    // ESTRUTURADA estava errada pro Bling. Quem lesse so ela renovaria o
+    // Bling em 403, a toa, queimando refresh rotativo. (Pedido do
+    // Mover-Pedidos, 10/09.)
     //
-    // Este teste guarda o gatilho nos DOIS lados: o contrato diz quais
-    // status disparam, e o codigo daqui tem que bater com ele.
+    // ⚠️ E agora separa RENOVAR de INVALIDAR CACHE: renovar e do DONO e
+    // gasta refresh (errar custa); invalidar e do LEITOR e custa uma
+    // releitura. Por isso a invalidacao pode ser mais frouxa.
     const sel = contrato.passo_2_eleicao.mecanica.renovacao_seletiva;
-    ok(!!sel, 'o contrato declara a renovacao SELETIVA');
+    const renov = sel.renovacao_pelo_dono;
+    const inval = sel.invalidacao_do_cache_do_leitor;
+
+    ok(!!renov && !!inval, 'o contrato separa RENOVACAO de INVALIDACAO');
+    ok(!sel.dispara, '  e a lista generica `dispara` SAIU');
+
+    ok(JSON.stringify(renov.bling) === '[401]',
+       '⚠️ Bling renova SO em 401 (403 dele e permissao)');
+    ok(JSON.stringify(renov.ml) === '[401,403]',
+       '⚠️ ML renova em 401 OU 403 (ele usa 403 pra token vencido)');
+    ok(JSON.stringify(renov.bling_nfe) === '[401]', '   e o bling_nfe segue o Bling');
+
     for (const proibido of ['429', '5xx']) {
-      ok((sel.nao_dispara || []).includes(proibido),
-         '  `' + proibido + '` NAO dispara renovacao (queimaria o refresh a toa)');
+      ok((renov.nunca_dispara || []).includes(proibido),
+         '  `' + proibido + '` NUNCA renova (queimaria refresh a toa)');
     }
 
-    // ⚠️ b258 (Codex, P2): EXERCITAR O COMPORTAMENTO, nao varrer texto.
-    //
-    // Minha versao procurava o literal `=== 429` perto de `renovarToken` —
-    // e isso nao protege nada: trocar por `>= 429` ou por uma variavel
-    // passaria batido, e 5xx/timeout nem eram olhados.
-    //
-    // Agora eu CHAMO a funcao com cada status e vejo se ela renovou.
+    ok((inval.todas_as_integracoes || []).includes(403),
+       'a INVALIDACAO inclui 403 em todas — errar custa 1 releitura, nao 1 refresh');
+
+    // ⚠️ e o CODIGO bate com o contrato, POR INTEGRACAO. Contrato que nao e
+    // conferido contra o codigo vira ficcao.
     {
-      const path2 = require('path');
-      const carregarML = () => {
-        const pm = path2.join(RAIZ, 'lib', 'ml.js');
-        delete require.cache[require.resolve(pm)];
-        return require(pm);
-      };
-
-      const statusQueDevemRenovar = [401, 403];
-      const statusQueNAO = [429, 500, 502, 503];
-
-      // uso o gatilho declarado no contrato como fonte da verdade
-      for (const st of statusQueDevemRenovar) {
-        ok((sel.dispara || []).includes(String(st)),
-           '  o contrato diz que ' + st + ' DISPARA renovacao');
-      }
-      for (const st of statusQueNAO) {
-        const familia = st >= 500 ? '5xx' : String(st);
-        ok((sel.nao_dispara || []).includes(familia),
-           '  e que ' + st + ' (' + familia + ') NAO dispara');
-      }
-
-      // e o codigo: a condicao tem que ser de IGUALDADE com 401/403, nao
-      // uma faixa que pegue 429 por acidente
       const fsq = require('fs');
-      const ml = fsq.readFileSync(path2.join(RAIZ, 'lib', 'ml.js'), 'utf8');
-      const semComent = ml.split('\n').filter((l) => !l.trim().startsWith('//')).join('\n');
-      // b260: agora ha um bloco entre a declaracao e o `if` (a checagem
-      // dos 403 ja provados permanentes), entao busco o `if` do gatilho
-      // pelo conteudo, nao pela adjacencia.
-      const gatilho = /if \((st === 401[^)]*)\)/.exec(semComent);
-      ok(!!gatilho, 'achei o gatilho da renovacao no lib/ml.js');
-      if (gatilho) {
-        const cond = gatilho[1];
-        ok(/st === 401/.test(cond) && /st === 403/.test(cond),
-           '  e ele testa IGUALDADE com 401 e 403');
-        ok(!/>=|<=|>|</.test(cond),
-           '  ⚠️ sem faixa (`>=`, `>`): faixa pegaria 429 e 5xx por acidente');
-        ok(!/429|5[0-9][0-9]/.test(cond),
-           '  e sem 429/5xx no gatilho');
+      const semC = (t) => t.split('\n').filter((l) => !l.trim().startsWith('//')).join('\n');
+      const bl = semC(fsq.readFileSync(path.join(RAIZ, 'lib', 'bling.js'), 'utf8'));
+      const mlSrc = semC(fsq.readFileSync(path.join(RAIZ, 'lib', 'ml.js'), 'utf8'));
+
+      // ⚠️ minha 1a versao usava janela de 500 chars ate o
+      // `renovarTokenBling` e nao alcancava — entre o `if` e a renovacao ha
+      // a invalidacao do cache, o aviso ao porteiro e o retry do dono.
+      // Sexta vez hoje que janela fixa me da resultado errado.
+      //
+      // Busco o `if` que ENVOLVE a renovacao contando chaves pra tras.
+      const iRenov = bl.indexOf('await renovarTokenBling()');
+      const antes = bl.slice(0, iRenov);
+      const ifsAcima = [...antes.matchAll(/if \(error\.response\?\.status === (\d+)\) \{/g)];
+      const gBling = ifsAcima.length ? ifsAcima[ifsAcima.length - 1] : null;
+      ok(!!gBling && gBling[1] === '401',
+         'lib/bling.js renova so em 401, como o contrato diz'
+         + (gBling ? ' (achei ' + gBling[1] + ')' : ' (nao achei o gatilho)'));
+
+      const gMl = /if \((st === 401[^)]*)\)/.exec(mlSrc);
+      ok(!!gMl, 'achei o gatilho da renovacao no lib/ml.js');
+      if (gMl) {
+        ok(/403/.test(gMl[1]), '  e ele inclui 403, como o contrato diz');
+        ok(!/>=|<=|>|</.test(gMl[1]),
+           '  ⚠️ sem faixa: faixa pegaria 429 e 5xx por acidente');
       }
     }
 
