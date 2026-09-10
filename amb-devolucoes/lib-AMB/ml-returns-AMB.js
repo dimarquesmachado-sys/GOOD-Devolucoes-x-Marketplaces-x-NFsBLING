@@ -238,6 +238,27 @@ function registrarShipments(mapa, c, dados) {
 }
 
 async function construirIndice(opts = {}) {
+  // b266 - ⚠️ O CANCELAMENTO E ENCERRAMENTO NORMAL, NAO FALHA.
+  //
+  // Mesmo desenho da GOOD nf-nomes (b264): a varredura fica na funcao
+  // interna, e o cancelamento e tratado AQUI, num lugar so. O `return`
+  // impede que o resultado parcial seja publicado.
+  //
+  // ⚠️ Eu criei `pontoDeCancelamento()` no b264 e nao usei em lugar
+  // nenhum — mesmo erro do `estaDrenando()` antes dele. Peca criada e
+  // nao ligada passa despercebida porque o teste do modulo passa.
+  try {
+    return await construirIndiceInterno(opts);
+  } catch (e) {
+    if (drenagem.ehCancelamento(e)) {
+      console.log(`[ML-RETURNS-AMB] ${e.message} — indice NAO publicado`);
+      return;
+    }
+    throw e;
+  }
+}
+
+async function construirIndiceInterno(opts = {}) {
   if (construindo) return { ...IDX, jaEmAndamento: true };
   construindo = true;
   const t0 = Date.now();
@@ -264,10 +285,7 @@ async function construirIndice(opts = {}) {
 
     for (const st of ['opened', 'closed']) {
       for (let pg = 0; pg < maxPaginas; pg++) {
-        if (drenagem.estaDrenando()) {
-          console.log(`[ML-RETURNS-AMB] drenando — paro na pagina ${pg}`);
-          break;
-        }
+        drenagem.pontoDeCancelamento(true, 'ml-returns-amb');
 
         const r = await ml.chamarML(
           `/post-purchase/v1/claims/search?status=${st}${extras}&offset=${pg * 30}&limit=30`
@@ -324,10 +342,7 @@ async function construirIndice(opts = {}) {
     for (let i = 0; i < claims.length; i += 3) {
       // b263.1: a fase 2 tambem — sem isto, uma pagina coletada vira ~30
       // chamadas depois da drenagem comecar (ate 900 no total da AMB)
-      if (drenagem.estaDrenando()) {
-        console.log(`[ML-RETURNS-AMB] drenando — paro a fase de returns em ${i}/${claims.length}`);
-        break;
-      }
+      drenagem.pontoDeCancelamento(true, 'ml-returns-amb');
 
       const lote = claims.slice(i, i + 3);
       await Promise.all(lote.map(async (c) => {
