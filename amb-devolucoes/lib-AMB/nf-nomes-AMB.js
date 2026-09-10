@@ -163,11 +163,11 @@ async function construirIndiceInterno(opts = {}) {
       // b264: a pausa do ritmo do Bling E o ponto de cancelamento — se o
       // processo esta saindo, ela lanca. Nao ha checagem manual pra eu
       // esquecer, e a proxima varredura herda o comportamento.
-      if (pg > 1) await drenagem.pausar(400, deFundo, 'indice-nomes');
+      if (pg > 1) await drenagem.pausar(400, deFundo || IDX.viroufundo, 'indice-nomes');
       let r = await bling.chamarBling(`/nfe?limite=100&pagina=${pg}&tipo=1`);
       if (!r.ok && r.status === 429) {
         for (let tent = 1; tent <= 3 && !r.ok && r.status === 429; tent++) {
-          await drenagem.pausar(2000 * tent, deFundo, 'indice-nomes/retry');
+          await drenagem.pausar(2000 * tent, deFundo || IDX.viroufundo, 'indice-nomes/retry');
           r = await bling.chamarBling(`/nfe?limite=100&pagina=${pg}&tipo=1`);
         }
       }
@@ -210,6 +210,21 @@ async function construirIndiceInterno(opts = {}) {
         }
 
         totalNFs++;
+      }
+
+      // b268 - publica o parcial a cada 10 paginas, senao o teto acima
+      // devolveria vazio. As paginas vem da mais RECENTE pra mais antiga.
+      // ⚠️ `ts` fica em 0: usavel, mas nao completo.
+      // b268.1 - ⚠️ so na PRIMEIRA montagem (senao substitui o indice
+      // completo por 3 paginas), e a partir da pagina 3 (a 10 nao chega
+      // dentro dos 12s com a latencia real do Bling).
+      const primeiraMontagem = !IDX.ts;
+      if (primeiraMontagem && (pg === 3 || pg % 10 === 0)) {
+        IDX.mapa = { ...mapa };
+        IDX.mapaCurto = { ...mapaCurto };
+        IDX.parcialAte = pg;
+        IDX.totalNFs = totalNFs;
+        console.log(`[AMB/NF-NOMES] parcial publicado: ${pg} paginas, ${totalNFs} NFs`);
       }
 
       if (parouPorData || lista.length < 100) break;
@@ -303,6 +318,10 @@ async function construirIndiceInterno(opts = {}) {
 
 function statusIndice() {
   return {
+    // b268.1 - quem chama precisa distinguir "nao achei" de "ainda nao
+    // varri essa pagina"
+    parcial_ate_pagina: IDX.parcialAte || null,
+    completo: !!IDX.ts && !IDX.parcialAte,
     com_pedido: IDX.porPedido ? Object.keys(IDX.porPedido).length : 0,
     vendas_com_loja: Object.keys(IDX.vendasPorLoja || {}).length,
     nf_por_venda_ok: [...NF_POR_VENDA.values()].filter(e => e.numero).length,
@@ -363,7 +382,35 @@ async function buscarPorNome(texto, opts = {}) {
   // atras ainda nao entrou", e devolucao que chega hoje e de
   // venda de semanas atras — nao atrapalha nada.
   if (!IDX.ts) {
-    try { await construirIndice(); } catch (e) { /* segue vazio */ }
+    // b268 - ⚠️ MESMO TETO DA GOOD. A busca fria varria ate 80 paginas
+    // (8.000 NFs) antes de responder: 66s no melhor caso, 150s no pior.
+    // O dono passou de 3 min esperando na GOOD — a AMB tinha o mesmo.
+    //
+    // Espero no maximo 12s; passou disso, respondo com o parcial e a
+    // construcao segue em segundo plano.
+    const TETO_ESPERA_MS = Number(process.env.NF_NOMES_TETO_BUSCA_MS || 12000);
+    let respondeuNoPrazo = true;
+    // b268.1 - ⚠️ REUSA a construcao em andamento: sem isto, cada busca
+    // depois do timeout comeca OUTRA varredura de 80 paginas, e o
+    // estoquista que busca de novo dobra o trafego do Bling.
+    if (!IDX.emConstrucao) {
+      IDX.emConstrucao = construirIndice()
+        .catch(() => {})
+        .finally(() => { IDX.emConstrucao = null; });
+    }
+    try {
+      await Promise.race([
+        IDX.emConstrucao,
+        new Promise((ok) => setTimeout(() => { respondeuNoPrazo = false; ok(); }, TETO_ESPERA_MS)),
+      ]);
+    } catch (e) { /* segue vazio */ }
+    if (!respondeuNoPrazo) {
+      // b268.1 - ⚠️ dai em diante e trabalho de FUNDO: ninguem mais espera,
+      // entao um SIGTERM tem que conseguir cancelar a varredura orfa.
+      IDX.viroufundo = true;
+      console.log(`[AMB/NF-NOMES] indice ainda montando apos ${TETO_ESPERA_MS}ms — `
+        + 'respondo com o parcial e sigo montando (agora cancelavel)');
+    }
   } else if ((Date.now() - IDX.ts) > 30 * 60000) {
     construirIndice().catch(e => console.error('[AMB/NF-NOMES] atualizacao em background falhou:', e.message));
   }
@@ -421,6 +468,12 @@ async function buscarPorNome(texto, opts = {}) {
     // Paginar 63 vezes nao ajuda ninguem — melhor pedir o nome
     // completo do remetente, que e o que esta impresso na caixa.
     generica: total > 50,
+    // b301 (auditoria da b268.1, P1) - a GOOD marca o retorno de
+    // buscarPorNome() com `indiceParcial` (via `marcarParcial()`); esta
+    // funcao aqui na AMB ficou de fora do porte ("AS 5 PORTADAS PRA AMB"
+    // valeu pro statusIndice, nao pra este retorno) -- um nome cuja NF
+    // esta numa pagina ainda nao lida virava resultado vazio comum.
+    parcial_ate_pagina: IDX.parcialAte || null,
   };
 }
 

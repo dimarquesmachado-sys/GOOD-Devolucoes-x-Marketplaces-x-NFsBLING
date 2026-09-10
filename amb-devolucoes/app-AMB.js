@@ -908,7 +908,10 @@ router.get('/api/triagem/identificar', auth.requerLogin, async (req, res) => {
 
   if (!achado && !devShopee) {
     const porNome = await nfNomes.buscarPorNome(codigo, { pagina: req.query.pagina });
-    tentativas.push({ via: 'nome do remetente', achou: porNome.total > 0, quantos: porNome.total });
+    // b301 (auditoria da b268.1, P1) - o indice pode estar parcial (construcao
+    // fria em andamento); sem isto, 'nao achei' e 'o indice ainda nao
+    // chegou nessa pagina' ficavam indistinguiveis pra quem consome esta API.
+    tentativas.push({ via: 'nome do remetente', achou: porNome.total > 0, quantos: porNome.total, indice_incompleto: porNome.parcial_ate_pagina != null });
     if (porNome.total > 0) {
       via = 'nome do remetente';
       candidatos = porNome.candidatos;

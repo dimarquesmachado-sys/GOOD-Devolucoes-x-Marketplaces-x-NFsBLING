@@ -357,7 +357,10 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'good-devolucoes-marketplaces-nfsbling',
-    version: '7.2.1 (403 conhecido nao mais trava a invalidacao do cache; anotarRetry morto no retry remoto)',
+      // ⚠️ a resolucao do conflito JUNTA as duas mudancas, nao escolhe uma:
+      // a 7.2.1 (403 do #208) ja esta na main, e esta branch acrescenta a
+      // busca por nome. Escolher um lado apagaria a descricao do outro.
+      version: '7.3.0 (busca por nome com teto de 12s e indice parcial; 403 conhecido nao invalida cache)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -375,6 +378,14 @@ app.get('/health', (req, res) => {
       leitura_de_token: tokenLeitorDiag(),
       ritmo_compartilhado: ritmoPorteiroDiag(),
       admin_key: diagnosticoAdminKey(),
+      // b268 - ⚠️ O ESTADO DO INDICE DE NOMES nao estava exposto em lugar
+      // nenhum, e e ele que decide se a busca do estoquista responde na
+      // hora ou leva minutos. Sem isto, "a busca esta lenta" nao tinha como
+      // ser diagnosticado sem ler codigo.
+      indice_nomes: (() => {
+        try { return nfNomes.statusIndice(); }
+        catch (e) { return { erro: e.message }; }
+      })(),
       // b262 - a drenagem: se `drenando` for true, este processo esta
       // saindo e ja parou as rotinas de fundo. Num deploy, ver isto no
       // velho enquanto o novo sobe e o comportamento CERTO.
@@ -1236,7 +1247,7 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
       if (alvoNome.length >= 5 && !/^\d+$/.test(String(codigoOriginal).trim())) {
         try {
           const rN = await nfNomes.buscarPorNome(codigoOriginal);
-          resultado.tentativas.push({ tipo: 'nf_por_nome', codigo: alvoNome, ok: rN.candidatos.length > 0, status: rN.candidatos.length ? 200 : 404, qtd: rN.candidatos.length });
+          resultado.tentativas.push({ tipo: 'nf_por_nome', codigo: alvoNome, ok: rN.candidatos.length > 0, status: rN.candidatos.length ? 200 : 404, qtd: rN.candidatos.length, indice_incompleto: rN.indiceParcial != null });
           if (rN.candidatos.length > 0) {
             // b226 - AJUDAR O ESTOQUISTA A ESCOLHER. [stated] "quando ele
             // pesquisar assim por nome, e vir mais de 1 resultado, meio q
@@ -1420,6 +1431,8 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
                   nf_mais_antiga: est.nf_mais_antiga || null,
                   erro: est.erro || null,
                   idade_min: est.idade_min,
+                  parcial_ate_pagina: est.parcial_ate_pagina || null,
+                  completo: est.completo,
                 };
               }
             } catch (e) { /* diagnostico nao pode derrubar a busca */ }
@@ -1430,6 +1443,8 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
             const idx = resultado.indice_nomes || {};
             const cobertura = idx.erro
               ? `(⚠️ indice INCOMPLETO — parou em: ${idx.erro}. Pode faltar NF antiga)`
+              : idx.completo === false
+                ? `(⚠️ indice ainda construindo — cobre so as NFs mais recentes por enquanto${idx.parcial_ate_pagina ? `, ate a pagina ${idx.parcial_ate_pagina}` : ``}. Pode faltar NF antiga)`
               : (idx.nf_mais_antiga
                 ? `desde ${String(idx.nf_mais_antiga).slice(0, 10).split('-').reverse().join('/')}`
                 : 'nos ultimos 120 dias');
@@ -1447,9 +1462,18 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
         ? ` [diag: lista com ${infoShopee.qtd} devolucoes; exemplo de tracking: ${infoShopee.exemplo || '-'}]`
         : (shopee.cfg.ativo ? '' : ' [diag: integracao Shopee SEM as variaveis no Render!]');
       const nota403 = houve403 ? ' ⚠️ O ML respondeu 403 (acesso recusado): token expirado ou devolução recém-criada ainda embargada — tente o Pack ID impresso ou aguarde algumas horas.' : '';
+      // b301 (auditoria da b268.1, P1) - a 1a versao do Codex #209 deixou
+      // o indice parcial visivel so DENTRO do modulo (statusIndice/
+      // buscarPorNome); quem de fato consome esta rota nunca lia. Um nome
+      // cuja NF esta numa pagina ainda nao lida virava 404 comum, igual a
+      // um nome que nao existe — exatamente o que o P1 queria evitar.
+      const tentativaNome = resultado.tentativas.find((t) => t.tipo === 'nf_por_nome');
+      const notaIndiceParcial = (tentativaNome && tentativaNome.indice_incompleto)
+        ? ' ⚠️ O indice de busca por nome ainda esta construindo (cobre so as NFs mais recentes por enquanto) -- tente de novo em alguns minutos se o nome nao apareceu.'
+        : '';
       resultado.erro = (pareceSPX
         ? 'Etiqueta Shopee (SPX) nao casou com as devolucoes. Se ela diz "SPX INSUCESSO": o QR/barras so contem o rastreio (a Shopee nao indexa esse codigo) — DIGITE o "Pedido" impresso na etiqueta (ex: 260623TX31XFMT) que o sistema busca o pedido cancelado. Devolucao normal: tente o "Pedido" ou a chave da DANFE.'
-        : 'Codigo nao encontrado em shipments/packs do ML nem nas devolucoes Shopee.') + diag + nota403;
+        : 'Codigo nao encontrado em shipments/packs do ML nem nas devolucoes Shopee.') + diag + nota403 + notaIndiceParcial;
       return res.status(404).json(resultado);
     }
 
