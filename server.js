@@ -7174,11 +7174,32 @@ registrarRotasImpressao(app, { requerEstoquista, crypto, sleep });
 // ============================================================
 // v3.56 - MAGALU: indice pre-aquecido (o pacote chega e o sistema JA sabe).
 // 20s apos o boot e a cada 25 min. Silencioso e a prova de falha.
+// b271 - ⚠️ O BOOT ERA UMA AVALANCHE, E ELA CAUSAVA O 429.
+//
+// MEDIDO no /health com 3 MINUTOS de vida: `ritmo_compartilhado.pausa_ativa
+// = true` — a conta `good` ja estava em pausa por 429. E `espreita.tem_cache
+// = false` e `indice_nomes.quente = false`: os dois pre-aquecimentos que a
+// tela precisa NAO montaram.
+//
+// A causa, contando os disparos: CINCO varreduras pesadas nos primeiros 70
+// SEGUNDOS — magalu (20s), mlReturns (30s), nfNomes (40s), espreita (50s) e
+// o indice de produtos (70s). Cada uma varre dezenas de paginas.
+//
+// ⚠️ E A COTA DO BLING E DA CONTA, dividida com o Mover-Pedidos. Cinco
+// varreduras simultaneas nossas + o que eles estiverem fazendo = 429
+// garantido. O porteiro entao poe todo mundo em pausa — inclusive a
+// BIPAGEM do estoquista, que nao tem nada a ver com isso.
+//
+// Espaco pra 2 minutos entre cada uma. O boot fica mais lento pra ficar
+// pronto DE VERDADE: hoje ele dispara tudo junto e nao termina nada.
+//
+// 📌 Os intervalos de 25 min continuam iguais — o problema e a largada.
+const ESPACO = Number(process.env.BOOT_ESPACO_MS || 120000);   // 2 min
 drenagem.daquiA(() => magalu.preAquecer(), 20 * 1000);
-drenagem.daquiA(() => mlReturns.preAquecer(), 30 * 1000);
-drenagem.daquiA(() => nfNomes.preAquecer(), 40 * 1000);
+drenagem.daquiA(() => mlReturns.preAquecer(), 20 * 1000 + ESPACO);
+drenagem.daquiA(() => nfNomes.preAquecer(), 20 * 1000 + ESPACO * 2);
 // v4.04 - catalogo de produtos pre-aquecido (a busca do estoquista nunca espera)
-drenagem.daquiA(() => { construirIndiceProdutos().catch(() => {}); }, 70 * 1000);
+drenagem.daquiA(() => { construirIndiceProdutos().catch(() => {}); }, 20 * 1000 + ESPACO * 3);
 // v4.20 - a busca da data REAL de entrega roda sozinha, em ciclo proprio.
 // Antes so era disparada quando alguem abria o painel - e como o indice do ML
 // zera a cada deploy e leva ~2 min pra montar, o cache nunca enchia e o alerta
@@ -7196,7 +7217,9 @@ function cicloDatasEntrega() {
 }
 drenagem.daquiA(cicloDatasEntrega, 3 * 60 * 1000);
 drenagem.intervalo(cicloDatasEntrega, 5 * 60 * 1000);
-drenagem.daquiA(() => { if (magalu.cfg.autorizado) espreita.preAquecer(); }, 50 * 1000);
+// ⚠️ a espreita e a que a TELA precisa (a estrela da busca por nome), entao
+// ela vem CEDO — logo depois do magalu, nao no fim da fila.
+drenagem.daquiA(() => { if (magalu.cfg.autorizado) espreita.preAquecer(); }, 20 * 1000 + Math.round(ESPACO / 2));
 drenagem.intervalo(() => magalu.preAquecer(), 25 * 60 * 1000);
 drenagem.intervalo(() => mlReturns.preAquecer(), 25 * 60 * 1000);
 drenagem.intervalo(() => nfNomes.preAquecer(), 25 * 60 * 1000);
