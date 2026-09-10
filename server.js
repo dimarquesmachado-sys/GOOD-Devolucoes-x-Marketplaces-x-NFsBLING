@@ -1276,7 +1276,10 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
       if (alvoNome.length >= 5 && !/^\d+$/.test(String(codigoOriginal).trim())) {
         try {
           const rN = await nfNomes.buscarPorNome(codigoOriginal);
-          resultado.tentativas.push({ tipo: 'nf_por_nome', codigo: alvoNome, ok: rN.candidatos.length > 0, status: rN.candidatos.length ? 200 : 404, qtd: rN.candidatos.length, indice_incompleto: rN.indiceParcial != null });
+          // b275: guarda se o indice esta VAZIO (nao so parcial) — a
+          // mensagem la embaixo usa pra dizer a espera certa
+          resultado.indice_nomes_vazio = !!rN.montando && !rN.indiceParcial;
+          resultado.tentativas.push({ tipo: 'nf_por_nome', codigo: alvoNome, ok: rN.candidatos.length > 0, status: rN.candidatos.length ? 200 : 404, qtd: rN.candidatos.length, indice_incompleto: !!(rN.montando || rN.indiceParcial) });
           if (rN.candidatos.length > 0) {
             // b226 - AJUDAR O ESTOQUISTA A ESCOLHER. [stated] "quando ele
             // pesquisar assim por nome, e vir mais de 1 resultado, meio q
@@ -1509,9 +1512,23 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
       // cuja NF esta numa pagina ainda nao lida virava 404 comum, igual a
       // um nome que nao existe — exatamente o que o P1 queria evitar.
       const tentativaNome = resultado.tentativas.find((t) => t.tipo === 'nf_por_nome');
-      const notaIndiceParcial = (tentativaNome && tentativaNome.indice_incompleto)
-        ? ' ⚠️ O indice de busca por nome ainda esta construindo (cobre so as NFs mais recentes por enquanto) -- tente de novo em alguns minutos se o nome nao apareceu.'
-        : '';
+      // b275 - ⚠️ A MENSAGEM DISTINGUE VAZIO DE PARCIAL, porque a espera e
+      // diferente: parcial ja acha os nomes recentes (tenta de novo em
+      // instantes); VAZIO nao acha NENHUM (a 1a montagem leva minutos apos
+      // um deploy).
+      //
+      // Antes o vazio nao mostrava aviso NENHUM — a tela dizia "Codigo nao
+      // encontrado" seco, indistinguivel de "esse nome nao existe". O pior
+      // caso recebia menos informacao que o caso ameno.
+      const tParcial = tentativaNome && tentativaNome.indice_incompleto;
+      const notaIndiceParcial = !tParcial ? '' : (
+        resultado.indice_nomes_vazio
+          ? ' ⚠️ O indice de busca por nome esta sendo MONTADO agora (o servico'
+            + ' subiu ha pouco). Nenhum nome vai aparecer ate terminar —'
+            + ' aguarde uns minutos e tente de novo.'
+          : ' ⚠️ O indice de busca por nome ainda esta construindo (cobre so as'
+            + ' NFs mais recentes por enquanto) -- tente de novo em alguns'
+            + ' minutos se o nome nao apareceu.');
       resultado.erro = (pareceSPX
         ? 'Etiqueta Shopee (SPX) nao casou com as devolucoes. Se ela diz "SPX INSUCESSO": o QR/barras so contem o rastreio (a Shopee nao indexa esse codigo) — DIGITE o "Pedido" impresso na etiqueta (ex: 260623TX31XFMT) que o sistema busca o pedido cancelado. Devolucao normal: tente o "Pedido" ou a chave da DANFE.'
         : 'Codigo nao encontrado em shipments/packs do ML nem nas devolucoes Shopee.') + diag + nota403 + notaIndiceParcial;
