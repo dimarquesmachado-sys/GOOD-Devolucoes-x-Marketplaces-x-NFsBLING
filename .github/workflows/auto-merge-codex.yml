@@ -58,10 +58,6 @@ on:
       pr:
         description: 'Numero do PR'
         required: true
-      diagnosticar_oauth:
-        description: 'Testar o mesmo OAuth direto no CLI antes da action'
-        type: boolean
-        default: false
 
 permissions:
   contents: write
@@ -125,38 +121,8 @@ jobs:
           echo "n=$N" >> $GITHUB_OUTPUT
           echo "rodada $N de 5"
 
-      # Teste de separacao pedido pelo suporte da Anthropic: no runner limpo,
-      # entrega o MESMO secret diretamente ao CLI, sem passar pela action.
-      # So existe no disparo manual e so roda quando a caixa correspondente e
-      # marcada. Assim ele nao acrescenta uma chamada a cada comentario do
-      # Codex nem muda o caminho normal do loop.
-      #
-      # Resultado:
-      #   - "ok": o token e aceito fora da action; investigar o transporte
-      #     prepare -> execute da anthropics/claude-code-action.
-      #   - 401: a propria credencial e recusada; investigar emissao/conta.
-      #
-      # Este `env:` e intencional e exclusivo do teste DIRETO DO CLI. O input
-      # da action continua em `with:` logo abaixo, como exige a integracao.
-      - name: Diagnosticar OAuth direto no Claude CLI
-        id: diagnostico_oauth
-        if: github.event_name == 'workflow_dispatch' && inputs.diagnosticar_oauth
-        continue-on-error: true
-        timeout-minutes: 3
-        env:
-          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-        run: |
-          npm install --global @anthropic-ai/claude-code@latest
-          claude --version
-          claude -p "responda somente com ok"
-
       - name: Claude corrige os apontamentos
-        # Se o diagnostico opcional falhar, nao repete o mesmo 401 mais dez
-        # vezes na action. Em execucoes normais o passo anterior e `skipped`.
-        if: >
-          steps.rodadas.outputs.n < 5 &&
-          (steps.diagnostico_oauth.outcome == 'skipped' ||
-           steps.diagnostico_oauth.outcome == 'success')
+        if: steps.rodadas.outputs.n < 5
         # b261 - ⚠️ NAO PODE DERRUBAR O CHECK.
         #
         # O OAuth deste passo falha desde agosto (401, na engenharia da
@@ -172,6 +138,48 @@ jobs:
         with:
           # ⚠️ AQUI, em `with:` — nunca num bloco `env:`
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+
+          # ═══════════════════════════════════════════════════════════════
+          # b265 - ⚠️ O BASH NAO VEM LIGADO, E ERA POR ISSO QUE ELE NAO
+          #        CORRIGIA NADA.
+          #
+          # DIAGNOSTICO (execucao #327, log com `show_full_output`): o
+          # Claude rodou 29 segundos, tentou CINCO comandos e levou negacao
+          # em TODOS:
+          #
+          #   permission_denials:
+          #     git status && git branch -a && git log --oneline -10
+          #     gh pr list --state open
+          #     gh pr view 203 --json ...        (3 tentativas)
+          #
+          # Ele queria ENTENDER o PR antes de mexer — o que e o certo — e
+          # nao conseguia nem rodar `git status`. Encerrou com
+          # `stop_reason: end_turn`, e o passo ficou VERDE sem ter feito
+          # nada. Custou US$ 0,074 pra nao fazer nada.
+          #
+          # ⚠️ A CAUSA: a action NAO inclui Bash no conjunto padrao. Ela vem
+          # com operacoes de arquivo, comentarios e ferramentas do GitHub.
+          # `--allowedTools` ADICIONA a lista de permitidos — sem ele, o
+          # Bash simplesmente nao existe pro modelo.
+          #
+          # E ha um comportamento conhecido (claude-code#49874): UMA negacao
+          # faz o modelo concluir que "Bash esta todo bloqueado" e desistir
+          # de tudo, mesmo tendo ferramentas de arquivo disponiveis.
+          #
+          # 📌 LIBERO O NECESSARIO, NAO `Bash(*)`:
+          #   git    ler estado, diff, e commitar na branch do PR
+          #   gh     ler os apontamentos do Codex (a materia-prima do ciclo)
+          #   node   rodar `verifica.js` e os testes ANTES de subir
+          #   npm    instalar dependencias (o clone nasce sem node_modules)
+          #
+          # ⚠️ O QUE NAO LIBERO, de proposito: `rm`, `curl`, `sudo` e o
+          # coringa `Bash(*)`. Um agente que roda sozinho num repo de
+          # producao nao precisa de shell irrestrito — a diferenca entre
+          # "corrige o PR" e "faz qualquer coisa" e essa lista.
+          claude_args: |
+            --allowedTools "Bash(git:*),Bash(gh:*),Bash(node:*),Bash(npm:*)"
+          # ═══════════════════════════════════════════════════════════════
+
           # b215: MOSTRAR o que o Claude fez.
           #
           # Sem isto o erro e so "result is_error:true", que nao diz nada —
@@ -199,9 +207,17 @@ jobs:
             Leia os comentarios de revisao do Codex neste PR e corrija o que
             proceder, commitando na MESMA branch do PR.
 
+            Voce TEM Bash liberado para: git, gh, node e npm. Use `gh api`
+            para ler os apontamentos INLINE — eles nao aparecem em
+            `gh pr view --json comments`, que traz so os comentarios gerais.
+
             REGRAS DA CASA:
             - analise cada apontamento antes de obedecer; se nao proceder,
               explique por escrito no PR em vez de mudar o codigo
+            - ⚠️ o primeiro apontamento de uma funcao e SINTOMA: audite a
+              funcao INTEIRA e suba UMA vez, em vez de consertar so o ponto
+              apontado e voltar pra fila (isso custou 10 apontamentos em 3
+              rodadas no #203)
             - rode `node test/*.test.js` e o boot real antes de subir
             - bump de versao em server.js e amb-devolucoes/app-AMB.js
             - ao consertar um lado (GOOD ou AMB), confira o outro ANTES de subir
