@@ -360,7 +360,7 @@ app.get('/health', (req, res) => {
       // ⚠️ a resolucao do conflito JUNTA as duas mudancas, nao escolhe uma:
       // a 7.2.1 (403 do #208) ja esta na main, e esta branch acrescenta a
       // busca por nome. Escolher um lado apagaria a descricao do outro.
-      version: '7.4.0 (retry do pre-aquecimento agora enxerga erro HTTP resolvido; timers de retry cancelam na drenagem; estrela do ML nao espera 6min pro cache)',
+      version: '7.4.1 (revisao do Codex no #216: identidade das recentes roda antes da triagem e com teto; entregues_recentes protegida contra o "desabou" do cache)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -397,9 +397,14 @@ app.get('/health', (req, res) => {
             idade_min: ESP_CACHE_TS ? Math.round((Date.now() - ESP_CACHE_TS) / 60000) : null,
             em_transito: cont('em_transito'),
             nunca_bipadas: cont('nunca_bipadas'),
+            // ⚠️ b274: entregues ha MENOS de 5 dias. Nao sao alerta, mas sao
+            // a caixa que esta chegando agora — e e por elas que a busca por
+            // nome casa a ESTRELA.
+            entregues_recentes: cont('entregues_recentes'),
             // ⚠️ o cruzamento so casa quem tem NF: devolucao sem NF no
             // cache nunca ganha estrela, por mais que esteja a caminho
             com_nf: []
+              .concat(Array.isArray(c.entregues_recentes) ? c.entregues_recentes : [])
               .concat(Array.isArray(c.em_transito) ? c.em_transito : [])
               .concat(Array.isArray(c.nunca_bipadas) ? c.nunca_bipadas : [])
               .filter((e) => e && e.nf).length,
@@ -1294,7 +1299,19 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
             //   - a chave e numero+SERIE, porque numero se repete entre series
             //     (a NF 637 de ontem, em duas series)
             const cacheEsp = ESP_CACHE || {};
+            // b274 - ⚠️ AS ENTREGUES RECENTES ENTRAM NO CRUZAMENTO.
+            //
+            // O `nunca_bipadas` ja e a lista de entregues, mas com PISO DE 5
+            // DIAS — e o piso existe por bom motivo: recem-entregue pode estar so
+            // na fila de recebimento, e alertar seria falso alarme.
+            //
+            // ⚠️ SO QUE O PISO SERVE AO ALERTA, NAO A BUSCA. A devolucao do
+            // Charles Alexandre foi entregue ONTEM: nao e alerta nenhum, mas e
+            // EXATAMENTE a caixa que o estoquista tem na mao. Sem esta lista o
+            // cruzamento nao acha e o card sai sem estrela.
             const espreita = []
+              .concat((Array.isArray(cacheEsp.entregues_recentes) ? cacheEsp.entregues_recentes : [])
+                .map((e) => ({ ...e, _estado: 'entregue' })))
               .concat((Array.isArray(cacheEsp.nunca_bipadas) ? cacheEsp.nunca_bipadas : [])
                 .map((e) => ({ ...e, _estado: 'entregue' })))
               .concat((Array.isArray(cacheEsp.em_transito) ? cacheEsp.em_transito : [])
@@ -4522,7 +4539,14 @@ let ESP_MONTANDO = null;        // promessa em voo (evita montar 2x ao mesmo tem
 // cacheava a Magalu VAZIA e servia por 3 min (bug: os Magalu sumiam).
 function contarPorMarketplace(r) {
   const c = { magalu: 0, ml: 0, shopee: 0 };
-  const arr = (r && r.em_transito) || [];
+  // b306 (Codex, P2): SEM `entregues_recentes` aqui, um marketplace com
+  // estrela mas ZERO em_transito nao tinha protecao nenhuma contra o
+  // "desabou" — uma busca vazia PASSAGEIRA (fonte fria) apagava a lista de
+  // recentes inteira, e a estrela sumia sem a fonte ter caido de verdade.
+  const arr = [
+    ...((r && r.em_transito) || []),
+    ...((r && r.entregues_recentes) || []),
+  ];
   for (const d of arr) { if (c[d.marketplace] != null) c[d.marketplace]++; }
   return c;
 }
@@ -5102,8 +5126,15 @@ async function magaluTicketsDoPedido(pedido) {
  * indice que ja esta em memoria, e so chama `/packs` quando o claim e de
  * pack. O enriquecimento caro continua limitado.
  */
-async function resolverIdentidadeEspreita(itens) {
-  for (const d of (itens || [])) {
+async function resolverIdentidadeEspreita(itens, limite) {
+  // b307 (Codex, P2): SEM TETO, uma janela de 5 dias movimentada com varios
+  // packs ML sem `order_id` bloqueava `montarEspreita()` inteiro — 1-2
+  // chamadas de rede por item, em serie. O mesmo problema que o teto do
+  // enriquecimento (b237) ja resolveu, agora pra esta chamada tambem.
+  // `limite` e OPCIONAL: o alerta (poucos candidatos, 5-90 dias) continua
+  // sem teto; quem passa volume maior (as recentes, 5 dias) limita.
+  const alvo = Number.isFinite(limite) ? (itens || []).slice(0, limite) : (itens || []);
+  for (const d of alvo) {
     if (d.pedido || d.marketplace !== 'ml' || !d.tracking) continue;
     // b237.2 (Codex): o cache do enriquecimento pode ja ter a identidade —
     // usar antes de chamar `/packs` de novo. Sem isto o pack ambiguo pagava
@@ -5583,6 +5614,11 @@ async function montarEspreita() {
   // shipment_id (tracking/chave) na tabela de triagens. Corte de 90 dias
   // pra nao inundar com o legado anterior ao sistema.
   let nuncaBipadas = [];
+// b274 - ⚠️ DECLARADA AQUI FORA, junto com a `nuncaBipadas`, porque o
+// `baseAlerta` vive dentro do `try` e nao alcanca o retorno la embaixo.
+// (Achei porque o teste `campo-tem-produtor` acusou o campo inexistente —
+// e a Regra 4.12: ler o produtor antes de escrever o consumidor.)
+let entreguesRecentes = [];
   try {
     // v3.87 - PISO de 5 dias: recem-entregue pode estar so na fila de
     // recebimento do galpao (caso real: entregue hoje 14h, alerta as 15h e
@@ -5604,6 +5640,27 @@ async function montarEspreita() {
         d.dias_desde = Math.floor((Date.now() - Date.parse(real)) / 864e5);
       }
     }
+    // b274.2 (Codex) - ⚠️ AS RECENTES SEGUEM O MESMO CAMINHO DO ALERTA.
+    //
+    // Historico deste bloco, porque errei duas vezes seguidas:
+    //   1a: derivava do `baseAlerta`, que ja vem filtrado por `>= 5` dias —
+    //       filtrar de novo por `< 5` nunca devolvia nada (lista vazia)
+    //   2a: passei a sair de `brutos` (certo), mas so com `_recem_entregue`.
+    //       ⚠️ `brutos` NAO TEM `chave_nota`, e o enriquecimento filtra
+    //       justamente por ele: `garantirEnriquecimentoEspreita` rejeitava
+    //       TODAS, e a lista saia sem NF — sem NF nao ha cruzamento, e a
+    //       estrela continuaria sem aparecer.
+    //
+    // Agora monta a chave IGUAL ao `baseAlerta` (mesma expressao), e o
+    // filtro de `baixado` entra logo abaixo, quando as notas ja foram lidas.
+    entreguesRecentes = brutos
+      .filter((d) => d.dias_desde != null && d.dias_desde < 5)
+      .map((d) => ({
+        ...d,
+        _recem_entregue: true,
+        chave_nota: String(d.tracking || (d.marketplace + ':' + d.pedido)),
+      }));
+
     const candidatos = brutos
       .filter(d => (d.dias_desde != null) && d.dias_desde >= 5 && d.dias_desde <= 90 && (d.pedido || d.tracking));
     if (candidatos.length > 0) {
@@ -5667,6 +5724,18 @@ async function montarEspreita() {
       // `acharPorTracking` + `/packs` quando precisa), e limitar so o
       // enriquecimento CARO (cliente/produto/NF, 3 chamadas por item).
       await resolverIdentidadeEspreita(baseAlerta);
+
+      // b274.1 (Codex, P1) - ⚠️ AS RECENTES TAMBEM PASSAM PELA IDENTIDADE.
+      //
+      // Ela descobre o PEDIDO a partir do rastreio (e o pack, quando ha).
+      // Sem isso, a entregue de ontem chega ao cruzamento sem os campos que
+      // o casamento usa — e a estrela continuaria sem aparecer, agora por
+      // falta de dado em vez de falta de lista.
+      //
+      // Rodo DEPOIS do baseAlerta de proposito: o cache `ESP_ENRIQ` que ela
+      // preenche fica quente, entao as recentes reaproveitam o que ja foi
+      // descoberto em vez de sondar de novo.
+
       await garantirEnriquecimentoEspreita(baseAlerta, 8);
       dispararEnriquecimentoEspreita(baseAlerta);
       nuncaBipadas = baseAlerta.map(d => {
@@ -5742,6 +5811,137 @@ async function montarEspreita() {
         && !(d.pack_id && achados.has(String(d.pack_id)))
         && !((d.pedidos_do_pack || []).some(p => achados.has(String(p)))));
     }
+
+      // b274.2 (Codex, P2) - ⚠️ AS RECENTES FORA DO `if` DO ALERTA.
+      //
+      // Este bloco estava DENTRO do `if (candidatos.length > 0)`. Quando ha
+      // entregas dos ultimos 5 dias mas NENHUMA na janela de alerta (5-90
+      // dias), o `if` inteiro e pulado — e as recentes saiam CRUAS, sem
+      // pedido descoberto e sem NF. Ou seja: justamente no dia tranquilo,
+      // sem alertas, a estrela nao apareceria.
+      {
+        // b308 (Codex, P2) - IDENTIDADE ANTES DA TRIAGEM.
+        //
+        // Ordem antiga: consultava `devolucoes`/`espreita_notas` com o
+        // `pedido`/`tracking` CRU, e SO DEPOIS descobria a identidade. Uma
+        // devolucao ML que so tinha rastreio (o pedido nasce aqui) podia
+        // estar registrada em `devolucoes` pelo PEDIDO — e a consulta,
+        // feita ANTES de descobrir, nunca via isso: a devolucao ja triada
+        // continuava na lista e ganhava estrela como se ninguem tivesse
+        // mexido. O alerta ja faz essa reconsulta pos-identidade
+        // (`novosIds`, acima); esta faltava aqui.
+        //
+        // TETO junto (b307): sem ele, a mesma identidade que este conserto
+        // precisa travava `montarEspreita()` inteiro numa janela cheia.
+        const TETO_IDENT_RECENTES = 12;
+        await resolverIdentidadeEspreita(entreguesRecentes, TETO_IDENT_RECENTES);
+
+        // ⚠️ o filtro de `baixado` (Codex, P2): devolucao ja triada nos
+        // ultimos 5 dias vinha como se ninguem tivesse mexido. O
+        // `.filter(!baixado)` do cruzamento nao pegava porque `brutos` nao
+        // traz esse campo — quem traz e a tabela `espreita_notas`.
+        try {
+          // ⚠️ b274.3 (Codex, P2) - DUAS FONTES, e eu so olhava uma.
+          //
+          // `espreita_notas.baixado` e a baixa MANUAL. Quem foi BIPADO
+          // normalmente esta na tabela `devolucoes` — e o alerta ja checa
+          // isso (o `achados`, no bloco acima). Sem esta parte, devolucao
+          // triada ontem seguia na lista, ganhava NF no enriquecimento, e
+          // aparecia com ESTRELA como se ninguem tivesse mexido.
+          //
+          // b308.1 (Codex, P2): os campos lidos AQUI ja sao os RESOLVIDOS
+          // (identidade rodou acima) — pedido descoberto pelo rastreio
+          // entra na consulta como se sempre tivesse existido.
+          const pedidosR = [...new Set(entreguesRecentes
+            .map((d) => String(d.pedido || '')).filter(Boolean))];
+          const trksR = [...new Set(entreguesRecentes
+            .map((d) => String(d.tracking || '')).filter(Boolean))];
+          // b308.2 (Codex, P2): o PACK tambem identifica a triagem — mesmo
+          // motivo do alerta (b236.3/b236.4): a venda de carrinho pode
+          // estar gravada pelo pack, nao so pelo pedido descoberto dele.
+          const packsR = [...new Set(entreguesRecentes
+            .map((d) => String(d.pack_id || '')).filter(Boolean))];
+          const triadas = new Set();
+          if (pedidosR.length) {
+            const { data } = await supabase.from('devolucoes')
+              .select('order_id').in('order_id', pedidosR);
+            for (const r of (data || [])) triadas.add(String(r.order_id));
+          }
+          if (trksR.length) {
+            const { data } = await supabase.from('devolucoes')
+              .select('shipment_id').in('shipment_id', trksR);
+            for (const r of (data || [])) triadas.add(String(r.shipment_id));
+          }
+          if (packsR.length) {
+            const { data } = await supabase.from('devolucoes')
+              .select('pack_id').in('pack_id', packsR);
+            for (const r of (data || [])) triadas.add(String(r.pack_id));
+          }
+
+          const chavesR = entreguesRecentes.map((d) => d.chave_nota).filter(Boolean);
+          const porChaveR = {};
+          if (chavesR.length) {
+            const { data } = await supabase.from('espreita_notas')
+              .select('chave, baixado').in('chave', chavesR);
+            for (const n of (data || [])) porChaveR[n.chave] = n;
+          }
+
+          entreguesRecentes = entreguesRecentes
+            .map((d) => ({ ...d, baixado: !!porChaveR[d.chave_nota]?.baixado }))
+            .filter((d) => !d.baixado)
+            .filter((d) => !triadas.has(String(d.pedido || ''))
+                        && !triadas.has(String(d.tracking || ''))
+                        && !triadas.has(String(d.pack_id || '')));
+        } catch (e) { /* sem as tabelas, segue sem filtrar */ }
+
+        // ⚠️ SEM TETO ARTIFICIAL (Codex, P2): eu tinha posto 15, e acima de
+        // 15 entregas em 5 dias o resto ficava sem NF — e sem NF nao ha
+        // cruzamento. A janela e curta por natureza; o `ESP_ENRIQ` ja esta
+        // quente do alerta acima, entao a maioria nem sonda.
+        // ⚠️ b274.3 (Codex, P2) - O TETO VOLTA, E AGORA COM MOTIVO ESCRITO.
+        //
+        // Na rodada anterior eu TIREI o teto de 15 porque acima disso o
+        // resto ficava sem NF. Mas criou pior: com cache FRIO e 5 dias
+        // movimentados, o `montarEspreita` espera TODOS serialmente — e ele
+        // esta no caminho da TELA. Troquei "alguns sem estrela" por "a tela
+        // inteira lenta", que e o problema que passei o dia consertando na
+        // busca por nome.
+        //
+        // 📌 O DESENHO CERTO E O DO ALERTA: espera um punhado (pra primeira
+        // carga nao vir vazia) e joga o RESTO no enriquecimento de fundo. O
+        // que nao veio agora vem no proximo refresh, e ninguem espera.
+        const TETO_ENRIQ_RECENTES = 12;
+        await garantirEnriquecimentoEspreita(entreguesRecentes, TETO_ENRIQ_RECENTES);
+        // e o que sobrar vai pro enriquecimento de fundo, como o alerta faz
+        dispararEnriquecimentoEspreita(entreguesRecentes);
+
+        for (const d of entreguesRecentes) {
+          const en = d.chave_nota ? ESP_ENRIQ.get(d.chave_nota) : null;
+          if (!en) continue;
+          d.cliente = en.cliente; d.nf = en.nf; d.produto = en.produto;
+          d.sku = en.sku; d.qtd = en.qtd; d.valor_nf = en.valor_nf;
+          d.pack_id = en.pack_id; d.itens = en.itens || d.itens;
+          // ⚠️ A SERIE — LIMITE CONHECIDO, NAO RESOLVIDO AQUI (Codex, P2).
+          //
+          // O cruzamento casa por numero+SERIE, e o `chaveNF` assume '1'
+          // quando a serie vem vazia. O ML Full usa SERIE 2, entao devolucao
+          // do Full nao casa e nao ganha estrela.
+          //
+          // ⚠️ MAS O ENRIQUECIMENTO NAO PRODUZ SERIE NENHUMA — conferi os
+          // campos que ele devolve: cliente, nf, produto, sku, qtd,
+          // valor_nf, pack_id, itens, logistica, magalu_*. Nao ha `serie`
+          // nem a chave de acesso (de onde ela sairia).
+          //
+          // Copiar um campo inexistente seria fingir que resolvi. O
+          // conserto de verdade e o enriquecimento passar a expor a serie —
+          // trabalho proprio, e afeta o alerta tambem.
+          //
+          // 📌 Efeito hoje: a estrela funciona pras devolucoes de serie 1
+          // (matriz), que sao a maioria; as do Full ficam de fora ate isso
+          // ser feito.
+        }
+      }
+
   } catch (e) { nuncaBipadas = []; }
   return ({
     ok: true,
@@ -5753,6 +5953,21 @@ async function montarEspreita() {
     shopee_recebidas_baixadas: recebidasShopee,
     baixadas_manuais: baixadasManuais,
     nunca_bipadas: nuncaBipadas,
+
+    // b274 - ⚠️ AS ENTREGUES RECENTES, PRA BUSCA CASAR A ESTRELA.
+    //
+    // O `nunca_bipadas` acima ja e a lista de entregues — mas com PISO DE 5
+    // DIAS, e o piso existe por um bom motivo: recem-entregue pode estar so
+    // na fila de recebimento do galpao, e alertar seria falso alarme.
+    //
+    // ⚠️ SO QUE O PISO SERVE AO ALERTA, NAO A BUSCA. A devolucao do Charles
+    // Alexandre foi entregue em 05/09 (ontem): ela nao e alerta nenhum, mas
+    // E EXATAMENTE a caixa que o estoquista tem na mao agora. Sem esta
+    // lista, o cruzamento nao acha e o card sai sem estrela.
+    //
+    // Entao: lista separada, mesma origem, SEM o piso. O alerta continua
+    // igual — nao mexo em `nuncaBipadas`.
+    entregues_recentes: entreguesRecentes,
     fontes: { magalu: magaluR.quente, ml: mlR.quente, shopee: shopeeR.quente },
     erro: magaluR.erro || shopeeR.erro || null,
   });
