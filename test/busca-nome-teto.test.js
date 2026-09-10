@@ -70,12 +70,62 @@ const codigo = lerCodigo('lib/nf-nomes.js');
   ok(/nfNomes\.statusIndice\(\)/.test(srv), '  usando o statusIndice que ja existia');
 }
 
+// ── ⚠️ P1: o parcial NAO substitui um indice completo ───────────────
+//
+// Minha 1a versao publicava sempre — e numa reconstrucao QUENTE isso
+// trocava os mapas completos de 120 dias pelas primeiras paginas, com o
+// `ts` antigo mantido. As buscas passariam a NAO ACHAR notas que hoje
+// acham: eu pioraria o caso que funciona.
+{
+  ok(/const primeiraMontagem = !IDX\.ts/.test(codigo),
+     '⚠️ o parcial so e publicado na PRIMEIRA montagem');
+  ok(/primeiraMontagem && \(pg === 3/.test(codigo),
+     '  e o 1o checkpoint e cedo (pagina 3, nao 10 — senao nao chega nos 12s)');
+}
+
+// ── ⚠️ P1: a construcao em andamento e REUSADA ──────────────────────
+//
+// Depois do timeout o `ts` fica zero de propósito, e isso fazia CADA busca
+// seguinte começar OUTRA varredura de 80 páginas. O estoquista que não acha
+// e busca de novo — comportamento natural — dobrava o tráfego do Bling.
+{
+  ok(/IDX\.emConstrucao/.test(codigo),
+     '⚠️ a construcao em andamento e guardada e REUSADA');
+  ok(/if \(!IDX\.emConstrucao\)/.test(codigo),
+     '  quem chega no meio espera a mesma, nao abre a sua');
+}
+
+// ── ⚠️ P1: quem chama sabe que o indice esta parcial ────────────────
+//
+// Sem isto, "nao achei" (definitivo) e "ainda nao varri essa pagina"
+// (temporario) chegam iguais na tela — e o estoquista desiste de uma
+// devolucao que EXISTE.
+{
+  ok(/parcial_ate_pagina/.test(codigo), 'o statusIndice expoe o parcial');
+  ok(/indiceParcial/.test(codigo), '  e a busca marca isso no retorno');
+}
+
+// ── ⚠️ P2: o build orfao vira cancelavel ────────────────────────────
+//
+// Ele nasce com `deFundo = false` (ninguem tinha indice pra servir), e isso
+// esta certo ENQUANTO o estoquista espera. Depois do timeout ninguem espera
+// mais — e sem reclassificar, um SIGTERM nao cancelaria a varredura orfa.
+{
+  ok(/IDX\.viroufundo = true/.test(codigo),
+     '⚠️ apos o timeout, o build e reclassificado como de fundo');
+  ok(/deFundo \|\| IDX\.viroufundo/.test(codigo),
+     '  e as pausas consultam isso (senao a drenagem nao cancela)');
+}
+
 // ── ⚠️ e a AMB tem o mesmo teto ─────────────────────────────────────
 {
   for (const [arq, nome] of MODULOS) {
     const c = lerCodigo(arq);
     ok(/Promise\.race\(/.test(c), nome + ': a busca fria tem teto de espera');
-    ok(/pg % 10 === 0/.test(c), '  e publica o parcial durante a varredura');
+    ok(/pg === 3 \|\| pg % 10 === 0/.test(c), '  e publica o parcial durante a varredura');
+    ok(/primeiraMontagem/.test(c), '  ⚠️ so na 1a montagem (nao substitui indice completo)');
+    ok(/IDX\.emConstrucao/.test(c), '  e reusa a construcao em andamento');
+    ok(/viroufundo/.test(c), '  e o build orfao vira cancelavel');
   }
 }
 
