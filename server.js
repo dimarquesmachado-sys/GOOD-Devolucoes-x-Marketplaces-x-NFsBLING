@@ -360,7 +360,9 @@ app.get('/health', (req, res) => {
       // ⚠️ a resolucao do conflito JUNTA as duas mudancas, nao escolhe uma:
       // a 7.2.1 (403 do #208) ja esta na main, e esta branch acrescenta a
       // busca por nome. Escolher um lado apagaria a descricao do outro.
-      version: '7.4.2 (revisao do Codex no #220: build frio da busca por nome que falha vazio nao carimba mais `ts` como completo)',
+      // ⚠️ a resolucao JUNTA as duas: a 7.5.0 (passe curto + tetos) ja esta
+      // na main, e este PR acrescenta o build frio que falha vazio.
+      version: '7.6.0 (passe curto do indice cobre ~17 dias; fila e construcao com teto; build frio que falha vazio nao carimba `ts`)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -7474,8 +7476,24 @@ drenagem.daquiA(() => mlReturns.preAquecer(1, preAquecerEspreita), 20 * 1000 + E
 // 📌 Isto so funciona porque o indice PUBLICA O PARCIAL (b268): sem
 // aquilo, um passe curto nao serviria pra nada.
 drenagem.daquiA(() => {
-  nfNomes.preAquecer({ maxPaginas: 3 });
-  console.log('[BOOT] passe curto do indice de nomes (3 paginas, ~15 dias)');
+  // b277 - ⚠️ ERA 3 PAGINAS, E EU ERREI A CONTA POR 3,5x.
+  //
+  // Escrevi "3 paginas cobrem ~15 dias" estimando ~1.900 NFs em 120 dias.
+  // O /health MEDIU: 6.844 NFs em 120 dias = ~57/dia. Entao 300 NFs cobrem
+  // 5 DIAS, nao 15.
+  //
+  // Efeito real: o dono buscou "charles" e nao achou, mesmo com o parcial
+  // publicado. As NFs dele sao de 03/09, 30/08, 18/08 — e o passe curto
+  // cobria so de ~05/09 pra ca. Todas de fora.
+  //
+  // 10 paginas = ~1.000 NFs = ~17 dias, com o numero MEDIDO. E ainda e
+  // barato: 10 x (400ms + latencia) ≈ 8s.
+  //
+  // 📌 Se o volume mudar, o numero envelhece. O certo seria calcular pela
+  // data, mas o `construirIndice` para por PAGINA — fica anotado.
+  const PAGINAS_PASSE_CURTO = Number(process.env.NF_NOMES_PASSE_CURTO || 10);
+  nfNomes.preAquecer({ maxPaginas: PAGINAS_PASSE_CURTO });
+  console.log(`[BOOT] passe curto do indice de nomes (${PAGINAS_PASSE_CURTO} paginas, ~17 dias)`);
 }, 45 * 1000);
 
 drenagem.daquiA(() => nfNomes.preAquecer(), 20 * 1000 + ESPACO);
