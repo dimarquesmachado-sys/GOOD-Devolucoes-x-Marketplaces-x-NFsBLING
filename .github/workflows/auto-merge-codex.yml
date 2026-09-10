@@ -88,6 +88,7 @@ jobs:
 
       - name: Claude corrige os apontamentos
         if: steps.rodadas.outputs.n < 5
+        continue-on-error: true
         uses: anthropics/claude-code-action@v1
         with:
           # ⚠️ AQUI, em `with:` — nunca num bloco `env:`
