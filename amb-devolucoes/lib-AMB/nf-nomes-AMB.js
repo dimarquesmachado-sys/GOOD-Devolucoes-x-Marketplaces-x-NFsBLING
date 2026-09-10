@@ -212,6 +212,17 @@ async function construirIndiceInterno(opts = {}) {
         totalNFs++;
       }
 
+      // b268 - publica o parcial a cada 10 paginas, senao o teto acima
+      // devolveria vazio. As paginas vem da mais RECENTE pra mais antiga.
+      // ⚠️ `ts` fica em 0: usavel, mas nao completo.
+      if (pg % 10 === 0) {
+        IDX.mapa = { ...mapa };
+        IDX.mapaCurto = { ...mapaCurto };
+        IDX.parcialAte = pg;
+        IDX.totalNFs = totalNFs;
+        console.log(`[AMB/NF-NOMES] parcial publicado: ${pg} paginas, ${totalNFs} NFs`);
+      }
+
       if (parouPorData || lista.length < 100) break;
       await sleep(cfg.bling.pausaMs / 2);   // respeita o rate limit do Bling
     }
@@ -363,7 +374,24 @@ async function buscarPorNome(texto, opts = {}) {
   // atras ainda nao entrou", e devolucao que chega hoje e de
   // venda de semanas atras — nao atrapalha nada.
   if (!IDX.ts) {
-    try { await construirIndice(); } catch (e) { /* segue vazio */ }
+    // b268 - ⚠️ MESMO TETO DA GOOD. A busca fria varria ate 80 paginas
+    // (8.000 NFs) antes de responder: 66s no melhor caso, 150s no pior.
+    // O dono passou de 3 min esperando na GOOD — a AMB tinha o mesmo.
+    //
+    // Espero no maximo 12s; passou disso, respondo com o parcial e a
+    // construcao segue em segundo plano.
+    const TETO_ESPERA_MS = Number(process.env.NF_NOMES_TETO_BUSCA_MS || 12000);
+    let respondeuNoPrazo = true;
+    try {
+      await Promise.race([
+        construirIndice(),
+        new Promise((ok) => setTimeout(() => { respondeuNoPrazo = false; ok(); }, TETO_ESPERA_MS)),
+      ]);
+    } catch (e) { /* segue vazio */ }
+    if (!respondeuNoPrazo) {
+      console.log(`[AMB/NF-NOMES] indice ainda montando apos ${TETO_ESPERA_MS}ms — `
+        + 'respondo com o parcial e sigo montando');
+    }
   } else if ((Date.now() - IDX.ts) > 30 * 60000) {
     construirIndice().catch(e => console.error('[AMB/NF-NOMES] atualizacao em background falhou:', e.message));
   }

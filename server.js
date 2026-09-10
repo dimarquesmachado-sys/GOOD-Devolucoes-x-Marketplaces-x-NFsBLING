@@ -375,6 +375,14 @@ app.get('/health', (req, res) => {
       leitura_de_token: tokenLeitorDiag(),
       ritmo_compartilhado: ritmoPorteiroDiag(),
       admin_key: diagnosticoAdminKey(),
+      // b268 - ⚠️ O ESTADO DO INDICE DE NOMES nao estava exposto em lugar
+      // nenhum, e e ele que decide se a busca do estoquista responde na
+      // hora ou leva minutos. Sem isto, "a busca esta lenta" nao tinha como
+      // ser diagnosticado sem ler codigo.
+      indice_nomes: (() => {
+        try { return nfNomes.statusIndice(); }
+        catch (e) { return { erro: e.message }; }
+      })(),
       // b262 - a drenagem: se `drenando` for true, este processo esta
       // saindo e ja parou as rotinas de fundo. Num deploy, ver isto no
       // velho enquanto o novo sobe e o comportamento CERTO.
