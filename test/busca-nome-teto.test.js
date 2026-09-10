@@ -79,8 +79,10 @@ const codigo = lerCodigo('lib/nf-nomes.js');
 {
   ok(/const primeiraMontagem = !IDX\.ts/.test(codigo),
      '⚠️ o parcial so e publicado na PRIMEIRA montagem');
-  ok(/primeiraMontagem && \(pg === 3/.test(codigo),
-     '  e o 1o checkpoint e cedo (pagina 3, nao 10 — senao nao chega nos 12s)');
+  // b277: publica a cada 3 paginas na 1a montagem (era so na 3 e depois de
+  // 10 em 10). Com o passe curto em 10 paginas, aquele vao era longo.
+  ok(/primeiraMontagem && \(pg % 3 === 0/.test(codigo),
+     '  e publica a cada 3 paginas na 1a montagem (checkpoint cedo e frequente)');
 }
 
 // ── ⚠️ P1: a construcao em andamento e REUSADA ──────────────────────
@@ -122,7 +124,8 @@ const codigo = lerCodigo('lib/nf-nomes.js');
   for (const [arq, nome] of MODULOS) {
     const c = lerCodigo(arq);
     ok(/Promise\.race\(/.test(c), nome + ': a busca fria tem teto de espera');
-    ok(/pg === 3 \|\| pg % 10 === 0/.test(c), '  e publica o parcial durante a varredura');
+    ok(/pg % 3 === 0 \|\| pg % 10 === 0/.test(c) || /pg === 3 \|\| pg % 10 === 0/.test(c),
+       '  e publica o parcial durante a varredura');
     ok(/primeiraMontagem/.test(c), '  ⚠️ so na 1a montagem (nao substitui indice completo)');
     ok(/IDX\.emConstrucao/.test(c), '  e reusa a construcao em andamento');
     ok(/viroufundo/.test(c), '  e o build orfao vira cancelavel');
@@ -167,6 +170,24 @@ const codigo = lerCodigo('lib/nf-nomes.js');
   const ambLib = lerCodigo('amb-devolucoes/lib-AMB/nf-nomes-AMB.js');
   ok(/generica: total > 50,[\s\S]{0,300}parcial_ate_pagina: IDX\.parcialAte/.test(ambLib),
      'AMB: o buscarPorNome() tambem marca o retorno como parcial (a GOOD porta indiceParcial pro retorno; a 1a rodada do porte pra AMB parou so no statusIndice)');
+}
+
+// ── ⚠️ e o passe curto cobre DIAS SUFICIENTES ───────────────────────
+//
+// Eu escrevi "3 paginas cobrem ~15 dias" estimando ~1.900 NFs em 120 dias.
+// O /health MEDIU 6.844 — 3,5x mais. Então 3 páginas cobriam 5 dias, e as
+// NFs que o dono buscava (03/09, 30/08, 18/08) ficavam todas de fora.
+//
+// Este teste guarda o NÚMERO, não a conta: se alguém reduzir o passe curto,
+// a cobertura encolhe junto e a busca volta a não achar nomes de 10 dias
+// atrás.
+{
+  const srv2 = fs.readFileSync(path.join(RAIZ, 'server.js'), 'utf8');
+  const m = /NF_NOMES_PASSE_CURTO \|\| (\d+)/.exec(srv2);
+  ok(!!m, 'o passe curto e ajustavel por env');
+  const pgs = m ? Number(m[1]) : 0;
+  ok(pgs >= 9,
+     '⚠️ e cobre ao menos ~15 dias (' + pgs + ' paginas; medido: ~57 NFs/dia)');
 }
 
 console.log('');
