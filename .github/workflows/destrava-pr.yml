@@ -143,6 +143,27 @@ jobs:
             done
             [ "$N" -gt 0 ] && echo "  ✅ $N conversa(s) resolvida(s)"
 
+            # ── 4b) ⚠️ RE-DISPARA O CICLO QUANDO A MAIN MUDOU ───────────
+            #
+            # Aconteceu DUAS VEZES em 10/09: o conserto do workflow entra na
+            # main DEPOIS da ultima revisao do Codex, e o PR fica pendurado
+            # esperando um gatilho que nao vem. Numa delas foram 50 MINUTOS
+            # de PR parado, e o dono teve que avisar.
+            #
+            # A causa e do desenho: o ciclo so acorda com push novo ou
+            # revisao nova. E workflow novo so vale da execucao SEGUINTE em
+            # diante — entao consertar a permissao nao re-roda nada sozinho.
+            #
+            # ⚠️ SO EM `push` NA MAIN, e so quando NAO ha apontamento novo
+            # (o `continue` la em cima ja cuidou disso). Se a main mudou, pode
+            # ser justamente um conserto que o robo precisa conhecer.
+            if [ "${{ github.event_name }}" = "push" ]; then
+              echo "  🔄 a main mudou — re-disparo o ciclo neste PR"
+              gh workflow run auto-merge-codex.yml -f pr="$PR" >/dev/null 2>&1 \
+                && echo "     ✅ ciclo re-disparado" \
+                || echo "     ⚠️ nao consegui re-disparar (segue o fluxo normal)"
+            fi
+
             # ── 5) e avisa se ficou pronto ───────────────────────────────
             #
             # ⚠️ So comenta se MUDOU alguma coisa — senao vira spam a cada
