@@ -105,6 +105,18 @@ async function construirIndice(opts = {}) {
     const dias = opts.dias || Number(process.env.AMB_NF_JANELA_DIAS || 120);
     const maxPaginas = opts.maxPaginas || 80;      // teto: 80x100 = 8000 NFs
     const corte = Date.now() - dias * 864e5;
+
+    // b263.1 - ⚠️ EU USEI ESTAS DUAS SEM DECLARAR NESTE ARQUIVO. A GOOD
+    // tinha, a AMB nao — teria quebrado em producao com ReferenceError,
+    // porque `node --check` nao pega variavel inexistente e o caminho so
+    // roda DURANTE a drenagem (nenhum teste passava por ele).
+    //
+    // Achei porque escrevi um teste que confere a DECLARACAO, nao o uso.
+    //
+    // `deFundo`: so e de fundo quando ja ha indice velho pra servir —
+    // reconstrucao pedida por busca fria e do estoquista e nao se cancela.
+    const deFundo = opts.fundo !== undefined ? !!opts.fundo : !!IDX.ts;
+    let cancelado = false;
     const mapa = {};
     const mapaCurto = {};
     const porPedido = {};
@@ -135,10 +147,23 @@ async function construirIndice(opts = {}) {
       // b228 - RITMO e RETENTATIVA (o mesmo da GOOD, que parava na pagina 20
       // com 429 e so indexava ~40 dias dos 120 da janela)
       if (pg > 1) await new Promise((ok) => setTimeout(ok, 400));
+
+      // b263.1 (Codex, P1) - ⚠️ RE-CHECA DEPOIS DA ESPERA.
+      //
+      // A checagem la de cima ja passou quando o SIGTERM chega DURANTE
+      // estes 400ms (ou durante as esperas de 2/4/6s do retry). Ai o
+      // processo velho ainda dispara a chamada — que nao estava em voo
+      // quando o sinal chegou, e que gasta cota da conta.
+      //
+      // Toda espera e uma janela nova: a checagem tem que vir DEPOIS dela e
+      // ANTES da chamada, nao so no topo do laco.
+      if (deFundo && drenagem.estaDrenando()) { cancelado = true; break; }
       let r = await bling.chamarBling(`/nfe?limite=100&pagina=${pg}&tipo=1`);
       if (!r.ok && r.status === 429) {
         for (let tent = 1; tent <= 3 && !r.ok && r.status === 429; tent++) {
           await new Promise((ok) => setTimeout(ok, 2000 * tent));
+          // b263.1: a espera do retry e outra janela — 2, 4 e 6 segundos
+          if (deFundo && drenagem.estaDrenando()) break;
           r = await bling.chamarBling(`/nfe?limite=100&pagina=${pg}&tipo=1`);
         }
       }
@@ -245,7 +270,13 @@ async function construirIndice(opts = {}) {
     // marca como quente — o proximo bipe tenta de novo em vez de
     // confiar num indice vazio por 30 minutos.
     const falhouGeral = !!erroBusca && totalNFs === 0;
-    IDX.ts = falhouGeral ? 0 : Date.now();
+    // b263.1 (Codex, P2) - ⚠️ CANCELAMENTO CONTA COMO FALHA AQUI.
+    //
+    // A AMB ja tinha o `falhouGeral` pra nao carimbar `ts` quando a
+    // varredura nao completou — reaproveito em vez de criar outro caminho.
+    // Publicar um indice parcial com `ts` fresco faria a proxima busca
+    // servir dele em vez de reconstruir.
+    IDX.ts = (falhouGeral || cancelado) ? 0 : Date.now();
     IDX.mapa = mapa;
     IDX.porPedido = porPedido;
     IDX.porId = porId;

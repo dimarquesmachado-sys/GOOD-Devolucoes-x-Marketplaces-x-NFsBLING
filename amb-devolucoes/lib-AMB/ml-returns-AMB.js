@@ -53,6 +53,12 @@
 //
 // A fabrica move essas travas pra dentro de cada instancia.
 const configAMB = require('../config-AMB');
+// b263.1 (Codex, P1) - ⚠️ A AMB TEM SCANNER PROPRIO, e eu tinha ligado a
+// drenagem so na GOOD. Sao ate 60 paginas + 900 chamadas por claim: se o
+// SIGTERM chega durante um preaquecimento da AMB, o processo velho continua
+// a varredura INTEIRA e pode renovar a credencial de uso unico junto com o
+// novo. Era a regra da casa que eu mesmo invoquei no commit e nao cumpri.
+const drenagem = require('../../lib/drenagem');
 
 function criarMlReturns(cfg) {
 const ml = require('./ml-AMB');
@@ -258,6 +264,11 @@ async function construirIndice(opts = {}) {
 
     for (const st of ['opened', 'closed']) {
       for (let pg = 0; pg < maxPaginas; pg++) {
+        if (drenagem.estaDrenando()) {
+          console.log(`[ML-RETURNS-AMB] drenando — paro na pagina ${pg}`);
+          break;
+        }
+
         const r = await ml.chamarML(
           `/post-purchase/v1/claims/search?status=${st}${extras}&offset=${pg * 30}&limit=30`
         );
@@ -311,6 +322,13 @@ async function construirIndice(opts = {}) {
 
     // Lotes de 3 com pausa: pressao baixa evita o rate limit em cascata.
     for (let i = 0; i < claims.length; i += 3) {
+      // b263.1: a fase 2 tambem — sem isto, uma pagina coletada vira ~30
+      // chamadas depois da drenagem comecar (ate 900 no total da AMB)
+      if (drenagem.estaDrenando()) {
+        console.log(`[ML-RETURNS-AMB] drenando — paro a fase de returns em ${i}/${claims.length}`);
+        break;
+      }
+
       const lote = claims.slice(i, i + 3);
       await Promise.all(lote.map(async (c) => {
         try {
