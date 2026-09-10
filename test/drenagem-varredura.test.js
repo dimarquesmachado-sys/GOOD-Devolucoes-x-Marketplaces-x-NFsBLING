@@ -26,7 +26,10 @@ const MODULOS = [
 // chamadas por claim.
 {
   for (const [arq, nome] of MODULOS) {
-    ok(/drenagem\.estaDrenando\(\)/.test(ler(arq)),
+    // b266: `estaDrenando()` (checagem crua) ou `pontoDeCancelamento()` /
+    // `pausar()` (que ja lancam). O que importa e PARAR, nao a forma.
+    const src = ler(arq);
+    ok(/drenagem\.(estaDrenando|pontoDeCancelamento|pausar)\(/.test(src),
        nome + ': para na drenagem');
   }
 }
@@ -42,7 +45,7 @@ const MODULOS = [
     const iFase2 = src.indexOf('for (let i = 0; i < claims.length; i += 3) {');
     ok(iFase2 > 0, nome + ': achei a fase de returns');
     const bloco = src.slice(iFase2, iFase2 + 700);
-    ok(/estaDrenando/.test(bloco),
+    ok(/estaDrenando|pontoDeCancelamento|pausar/.test(bloco),
        '  ⚠️ e ela TAMBEM para (o break da paginacao nao alcanca aqui)');
   }
 }
@@ -100,6 +103,25 @@ const MODULOS = [
      '⚠️ `pausar` checa ANTES e DEPOIS da espera (achei ' + checagens + ')');
   ok(/throw new Cancelado/.test(corpo),
      '  e LANCA em vez de devolver false (return pode ser ignorado por engano)');
+}
+
+// ── ⚠️ PECA CRIADA TEM QUE ESTAR LIGADA ─────────────────────────────
+//
+// Duas vezes seguidas eu criei uma peca no `drenagem.js` e nao usei em
+// lugar nenhum: primeiro o `estaDrenando()` (#201), depois o
+// `pontoDeCancelamento()` (#203). Passa despercebido porque o teste do
+// modulo passa — a funcao existe e funciona; so nao esta ligada.
+{
+  const dren = ler('lib/drenagem.js');
+  const exportadas = (/module\.exports = \{([\s\S]*?)\}/.exec(dren) || [])[1] || '';
+  const usaveis = exportadas.split(',').map((x) => x.trim())
+    .filter((x) => /^(pausar|pontoDeCancelamento|estaDrenando|intervalo|daquiA)$/.test(x));
+
+  const consumidores = MODULOS.map(([a]) => ler(a)).join('\n') + ler('server.js');
+  for (const fn of usaveis) {
+    ok(new RegExp('drenagem\\.' + fn + '\\(').test(consumidores),
+       '`' + fn + '` esta LIGADA em algum consumidor (nao so criada)');
+  }
 }
 
 console.log('');
