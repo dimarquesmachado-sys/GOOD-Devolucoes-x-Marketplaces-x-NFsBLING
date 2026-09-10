@@ -397,9 +397,14 @@ app.get('/health', (req, res) => {
             idade_min: ESP_CACHE_TS ? Math.round((Date.now() - ESP_CACHE_TS) / 60000) : null,
             em_transito: cont('em_transito'),
             nunca_bipadas: cont('nunca_bipadas'),
+            // ⚠️ b274: entregues ha MENOS de 5 dias. Nao sao alerta, mas sao
+            // a caixa que esta chegando agora — e e por elas que a busca por
+            // nome casa a ESTRELA.
+            entregues_recentes: cont('entregues_recentes'),
             // ⚠️ o cruzamento so casa quem tem NF: devolucao sem NF no
             // cache nunca ganha estrela, por mais que esteja a caminho
             com_nf: []
+              .concat(Array.isArray(c.entregues_recentes) ? c.entregues_recentes : [])
               .concat(Array.isArray(c.em_transito) ? c.em_transito : [])
               .concat(Array.isArray(c.nunca_bipadas) ? c.nunca_bipadas : [])
               .filter((e) => e && e.nf).length,
@@ -1294,7 +1299,19 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
             //   - a chave e numero+SERIE, porque numero se repete entre series
             //     (a NF 637 de ontem, em duas series)
             const cacheEsp = ESP_CACHE || {};
+            // b274 - ⚠️ AS ENTREGUES RECENTES ENTRAM NO CRUZAMENTO.
+            //
+            // O `nunca_bipadas` ja e a lista de entregues, mas com PISO DE 5
+            // DIAS — e o piso existe por bom motivo: recem-entregue pode estar so
+            // na fila de recebimento, e alertar seria falso alarme.
+            //
+            // ⚠️ SO QUE O PISO SERVE AO ALERTA, NAO A BUSCA. A devolucao do
+            // Charles Alexandre foi entregue ONTEM: nao e alerta nenhum, mas e
+            // EXATAMENTE a caixa que o estoquista tem na mao. Sem esta lista o
+            // cruzamento nao acha e o card sai sem estrela.
             const espreita = []
+              .concat((Array.isArray(cacheEsp.entregues_recentes) ? cacheEsp.entregues_recentes : [])
+                .map((e) => ({ ...e, _estado: 'entregue' })))
               .concat((Array.isArray(cacheEsp.nunca_bipadas) ? cacheEsp.nunca_bipadas : [])
                 .map((e) => ({ ...e, _estado: 'entregue' })))
               .concat((Array.isArray(cacheEsp.em_transito) ? cacheEsp.em_transito : [])
@@ -5583,6 +5600,11 @@ async function montarEspreita() {
   // shipment_id (tracking/chave) na tabela de triagens. Corte de 90 dias
   // pra nao inundar com o legado anterior ao sistema.
   let nuncaBipadas = [];
+// b274 - ⚠️ DECLARADA AQUI FORA, junto com a `nuncaBipadas`, porque o
+// `baseAlerta` vive dentro do `try` e nao alcanca o retorno la embaixo.
+// (Achei porque o teste `campo-tem-produtor` acusou o campo inexistente —
+// e a Regra 4.12: ler o produtor antes de escrever o consumidor.)
+let entreguesRecentes = [];
   try {
     // v3.87 - PISO de 5 dias: recem-entregue pode estar so na fila de
     // recebimento do galpao (caso real: entregue hoje 14h, alerta as 15h e
@@ -5666,6 +5688,13 @@ async function montarEspreita() {
       // Saida: descobrir a IDENTIDADE de todos (1 chamada barata cada, so o
       // `acharPorTracking` + `/packs` quando precisa), e limitar so o
       // enriquecimento CARO (cliente/produto/NF, 3 chamadas por item).
+      // b274 - as entregues RECENTES (menos de 5 dias) saem numa lista
+      // propria: elas nao sao alerta, mas SAO a caixa que o estoquista tem
+      // na mao agora — e e por elas que a busca por nome casa a ESTRELA.
+      entreguesRecentes = (baseAlerta || [])
+        .filter((d) => d.dias_desde != null && d.dias_desde < 5)
+        .map((d) => ({ ...d, _recem_entregue: true }));
+
       await resolverIdentidadeEspreita(baseAlerta);
       await garantirEnriquecimentoEspreita(baseAlerta, 8);
       dispararEnriquecimentoEspreita(baseAlerta);
@@ -5753,6 +5782,21 @@ async function montarEspreita() {
     shopee_recebidas_baixadas: recebidasShopee,
     baixadas_manuais: baixadasManuais,
     nunca_bipadas: nuncaBipadas,
+
+    // b274 - ⚠️ AS ENTREGUES RECENTES, PRA BUSCA CASAR A ESTRELA.
+    //
+    // O `nunca_bipadas` acima ja e a lista de entregues — mas com PISO DE 5
+    // DIAS, e o piso existe por um bom motivo: recem-entregue pode estar so
+    // na fila de recebimento do galpao, e alertar seria falso alarme.
+    //
+    // ⚠️ SO QUE O PISO SERVE AO ALERTA, NAO A BUSCA. A devolucao do Charles
+    // Alexandre foi entregue em 05/09 (ontem): ela nao e alerta nenhum, mas
+    // E EXATAMENTE a caixa que o estoquista tem na mao agora. Sem esta
+    // lista, o cruzamento nao acha e o card sai sem estrela.
+    //
+    // Entao: lista separada, mesma origem, SEM o piso. O alerta continua
+    // igual — nao mexo em `nuncaBipadas`.
+    entregues_recentes: entreguesRecentes,
     fontes: { magalu: magaluR.quente, ml: mlR.quente, shopee: shopeeR.quente },
     erro: magaluR.erro || shopeeR.erro || null,
   });
