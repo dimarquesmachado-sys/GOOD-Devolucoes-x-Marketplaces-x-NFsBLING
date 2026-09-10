@@ -109,7 +109,10 @@ function conferirCodigo() {
      '  na entrada E na retentativa do 429');
 
   // indice de nomes
-  ok(/construirIndice\(\{ fundo: true \}\)/.test(NOMES),
+  // b272: o preAquecer passou a aceitar opcoes (`{ fundo: true, ...opcoes }`)
+  // pro boot poder fazer um passe curto de 3 paginas. O que importa e o
+  // `fundo: true` continuar la, nao o formato exato do objeto.
+  ok(/construirIndice\(\{ fundo: true[,}]/.test(NOMES),
      'o pre-aquecimento do boot se declara FUNDO (ninguem espera por ele)');
   ok(/const deFundo = opts\.fundo !== undefined \? !!opts\.fundo : !!IDX\.ts/.test(NOMES),
      'e a construcao sob demanda so e fundo se ja houver indice velho pra servir');
