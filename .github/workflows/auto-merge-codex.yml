@@ -1,24 +1,32 @@
 # .github/workflows/auto-merge-codex.yml
 #
-# O LOOP: Codex revisa -> se apontar, o Claude corrige -> repete -> mergeia.
+# O LOOP: Codex revisa -> se apontar, o Claude corrige -> repete.
+# (o merge e do dono; automatizar so depois que a automacao funcionar)
 #
 # [stated] "não tem um jeito de ficar revisando esse PR sem eu ter q avisar?"
 #
 # Sem isto, o dono precisa dizer "unable" a cada rodada pra eu ir buscar a
 # revisao. Sao 10+ rodadas num PR grande — avisos que nao deveriam existir.
 #
-# ⚠️ AUTENTICACAO — o suporte da Anthropic (Warren, 27/08) foi explicito:
+# ⚠️ AUTENTICACAO — historico do chamado com a Anthropic:
 #
-#   1. NENHUMA variavel `ANTHROPIC_*` pode existir aqui. `ANTHROPIC_AUTH_TOKEN`,
-#      `ANTHROPIC_API_KEY` ou `ANTHROPIC_BASE_URL` num bloco `env:` SOBRESCREVEM
-#      o token OAuth em silencio, e a primeira chamada e rejeitada em ~2s com
-#      custo zero. Era esse o problema que ele tinha.
-#      (https://github.com/anthropics/claude-code/issues/34826)
+#   1. O suporte (Warren, 27/08) apontou que qualquer variavel `ANTHROPIC_*`
+#      num bloco `env:` SOBRESCREVE o token OAuth em silencio.
+#      ⚠️ DESCARTADO EM 08/09: ele confirmou por e-mail que NAO e a causa
+#      aqui — nenhuma variavel dessas existe neste repo, e o issue citado
+#      (claude-code#34826) e sobre o CLI, nao sobre a action.
 #
-#   2. O token vai em `with:`, como `claude_code_oauth_token`. NUNCA em `env:`.
+#   2. O token vai em `with:`, como `claude_code_oauth_token`. NUNCA em
+#      `env:`. Isto continua valendo e ja esta correto abaixo.
 #
 #   3. A assinatura Max dele COBRE isto — nao e cobrado por uso, ao contrario
 #      da autenticacao por API key.
+#
+# ⚠️ ESTADO EM 09/09: o passo do Claude falha com `401 Invalid bearer token`.
+#   O token chega e a API rejeita. O caso esta com a engenharia da Anthropic
+#   (log bruto enviado). Ate la, este workflow NAO corrige nada — quem
+#   corrige sou eu, na conversa. O `continue-on-error` abaixo existe pra
+#   isso nao bloquear a entrega.
 #
 # ⚠️ PRE-REQUISITO: o app do Claude precisa estar instalado NESTE repo.
 #   https://github.com/apps/claude -> Configure -> marcar este repositorio.
@@ -28,7 +36,16 @@
 #
 # LIMITES DE PROPOSITO:
 #   - no maximo 5 rodadas por PR (loop que nao converge nao vira acerto)
-#   - so mergeia com o check `ai-safety` VERDE
+#   - ⚠️ AINDA NAO MERGEIA. O nome e o destino, nao o estado atual: hoje
+#     este workflow so CORRIGE e etiqueta; quem mergeia e o dono.
+#
+#     O merge automatico entra DEPOIS que a automacao funcionar (decisao
+#     dele em 09/09) — automatizar o merge enquanto o Claude nem consegue
+#     rodar seria construir o ultimo andar sem o primeiro, e um merge que
+#     dispara com a correcao NAO tendo acontecido e o pior cenario.
+#
+#     Quando entrar, tem que esperar o `ai-safety` (que roda em outro
+#     arquivo) ficar VERDE — hoje este aqui nem o consulta.
 #   - se nao fechar, poe `needs-human-review` e para
 
 name: auto-merge-codex
@@ -77,17 +94,45 @@ jobs:
 
       - name: Contar rodadas
         id: rodadas
+        # b261 - CONTAR nao pode travar. Se o `gh pr view` falhar, o passo
+        # seguinte simplesmente nao roda — e isso ja e o comportamento
+        # seguro. Derrubar o check por causa da contagem seria bloquear o
+        # PR por um detalhe do proprio robo.
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           PR="${{ github.event.pull_request.number || github.event.inputs.pr }}"
-          N=$(gh pr view "$PR" --json comments \
-              --jq '[.comments[] | select(.author.login|startswith("claude"))] | length')
+          # ⚠️ conta os COMMITS do Claude, nao comentarios.
+          #
+          # O gatilho e `pull_request_review_comment` (comentario inline),
+          # mas `gh pr view --json comments` devolve os comentarios GERAIS
+          # — outro objeto. No #198 eram 1 geral contra 11 inline.
+          #
+          # E o filtro procurava autor comecando com "claude": como o
+          # Claude nunca conseguiu escrever (401), o contador SEMPRE deu
+          # zero e o limite de 5 rodadas nunca valeu.
+          #
+          # Commit e o que a rodada de fato produz — se o Claude corrigiu,
+          # ha commit; se nao corrigiu, nao ha rodada a contar.
+          N=$(gh pr view "$PR" --json commits \
+              --jq '[.commits[] | select(.authors[]?.login // "" | startswith("claude"))] | length')
+          [ -z "$N" ] && N=0
           echo "n=$N" >> $GITHUB_OUTPUT
           echo "rodada $N de 5"
 
       - name: Claude corrige os apontamentos
         if: steps.rodadas.outputs.n < 5
+        # b261 - ⚠️ NAO PODE DERRUBAR O CHECK.
+        #
+        # O OAuth deste passo falha desde agosto (401, na engenharia da
+        # Anthropic). O workflow ja era "NUNCA bloquear" — mas o PASSO
+        # falhando pintava o check `ciclo` de VERMELHO, e o GitHub mostrava
+        # isso como impedimento no PR.
+        #
+        # Resultado: TODO PR parecia travado, e o dono tinha que avisar
+        # "unable" pra eu descobrir que era infraestrutura, nao codigo.
+        # Perdemos varias rodadas em 09/09 exatamente nisso.
         continue-on-error: true
         uses: anthropics/claude-code-action@v1
         with:
@@ -130,6 +175,10 @@ jobs:
 
       - name: Marcar pra revisao humana
         if: steps.rodadas.outputs.n >= 5
+        # b261 - por ETIQUETA nao pode travar o merge. Se o `gh` falhar
+        # (rate limit, permissao, label removida a mao), o PR fica valido do
+        # mesmo jeito — a etiqueta e um aviso, nao um portao.
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
