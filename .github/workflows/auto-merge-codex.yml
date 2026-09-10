@@ -58,6 +58,10 @@ on:
       pr:
         description: 'Numero do PR'
         required: true
+      diagnosticar_oauth:
+        description: 'Testar o mesmo OAuth direto no CLI antes da action'
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -121,8 +125,38 @@ jobs:
           echo "n=$N" >> $GITHUB_OUTPUT
           echo "rodada $N de 5"
 
+      # Teste de separacao pedido pelo suporte da Anthropic: no runner limpo,
+      # entrega o MESMO secret diretamente ao CLI, sem passar pela action.
+      # So existe no disparo manual e so roda quando a caixa correspondente e
+      # marcada. Assim ele nao acrescenta uma chamada a cada comentario do
+      # Codex nem muda o caminho normal do loop.
+      #
+      # Resultado:
+      #   - "ok": o token e aceito fora da action; investigar o transporte
+      #     prepare -> execute da anthropics/claude-code-action.
+      #   - 401: a propria credencial e recusada; investigar emissao/conta.
+      #
+      # Este `env:` e intencional e exclusivo do teste DIRETO DO CLI. O input
+      # da action continua em `with:` logo abaixo, como exige a integracao.
+      - name: Diagnosticar OAuth direto no Claude CLI
+        id: diagnostico_oauth
+        if: github.event_name == 'workflow_dispatch' && inputs.diagnosticar_oauth
+        continue-on-error: true
+        timeout-minutes: 3
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+        run: |
+          npm install --global @anthropic-ai/claude-code@latest
+          claude --version
+          claude -p "responda somente com ok"
+
       - name: Claude corrige os apontamentos
-        if: steps.rodadas.outputs.n < 5
+        # Se o diagnostico opcional falhar, nao repete o mesmo 401 mais dez
+        # vezes na action. Em execucoes normais o passo anterior e `skipped`.
+        if: >
+          steps.rodadas.outputs.n < 5 &&
+          (steps.diagnostico_oauth.outcome == 'skipped' ||
+           steps.diagnostico_oauth.outcome == 'success')
         # b261 - ⚠️ NAO PODE DERRUBAR O CHECK.
         #
         # O OAuth deste passo falha desde agosto (401, na engenharia da
