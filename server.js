@@ -101,6 +101,14 @@ const ritmoBling = require('./lib/ritmo-bling');
 // (docs/PLUGAR-EMPRESA-NOVA.md, Fase 1). Com isto o `process.env.GOOD_*`
 // e o `AMB_*` somem do codigo: empresa nova = entrada no registro.
 const { obterEmpresa } = require('./lib/empresas');
+// b262 - ⚠️ DRENAGEM: o processo que vai morrer para de trabalhar.
+//
+// Num deploy o Render sobe o novo e o VELHO fica vivo por segundos ate
+// minutos — os dois com 8 rotinas de fundo, os dois podendo renovar token.
+// E o refresh do ML e de USO UNICO: um consome o do outro. E a corrida que
+// estamos matando entre servicos, acontecendo dentro do mesmo servico.
+const drenagem = require('./lib/drenagem');
+drenagem.ligar();
 
 const FICHA_GOOD = obterEmpresa('good');
 
@@ -367,6 +375,10 @@ app.get('/health', (req, res) => {
       leitura_de_token: tokenLeitorDiag(),
       ritmo_compartilhado: ritmoPorteiroDiag(),
       admin_key: diagnosticoAdminKey(),
+      // b262 - a drenagem: se `drenando` for true, este processo esta
+      // saindo e ja parou as rotinas de fundo. Num deploy, ver isto no
+      // velho enquanto o novo sobe e o comportamento CERTO.
+      drenagem: drenagem.diagnostico(),
       // b260 - ⚠️ SO CONTAGEM. O /health e publico, e os caminhos do ML
       // carregam id de pedido, envio e reclamacao — expor a lista seria
       // vazar dado de cliente pra quem alcancar o servico.
@@ -7127,11 +7139,11 @@ registrarRotasImpressao(app, { requerEstoquista, crypto, sleep });
 // ============================================================
 // v3.56 - MAGALU: indice pre-aquecido (o pacote chega e o sistema JA sabe).
 // 20s apos o boot e a cada 25 min. Silencioso e a prova de falha.
-setTimeout(() => magalu.preAquecer(), 20 * 1000);
-setTimeout(() => mlReturns.preAquecer(), 30 * 1000);
-setTimeout(() => nfNomes.preAquecer(), 40 * 1000);
+drenagem.daquiA(() => magalu.preAquecer(), 20 * 1000);
+drenagem.daquiA(() => mlReturns.preAquecer(), 30 * 1000);
+drenagem.daquiA(() => nfNomes.preAquecer(), 40 * 1000);
 // v4.04 - catalogo de produtos pre-aquecido (a busca do estoquista nunca espera)
-setTimeout(() => { construirIndiceProdutos().catch(() => {}); }, 70 * 1000);
+drenagem.daquiA(() => { construirIndiceProdutos().catch(() => {}); }, 70 * 1000);
 // v4.20 - a busca da data REAL de entrega roda sozinha, em ciclo proprio.
 // Antes so era disparada quando alguem abria o painel - e como o indice do ML
 // zera a cada deploy e leva ~2 min pra montar, o cache nunca enchia e o alerta
@@ -7147,13 +7159,13 @@ function cicloDatasEntrega() {
     }
   } catch (e) { /* tenta de novo no proximo ciclo */ }
 }
-setTimeout(cicloDatasEntrega, 3 * 60 * 1000);
-setInterval(cicloDatasEntrega, 5 * 60 * 1000);
-setTimeout(() => { if (magalu.cfg.autorizado) espreita.preAquecer(); }, 50 * 1000);
-setInterval(() => magalu.preAquecer(), 25 * 60 * 1000);
-setInterval(() => mlReturns.preAquecer(), 25 * 60 * 1000);
-setInterval(() => nfNomes.preAquecer(), 25 * 60 * 1000);
-setInterval(() => { if (magalu.cfg.autorizado) espreita.preAquecer(); }, 25 * 60 * 1000);
+drenagem.daquiA(cicloDatasEntrega, 3 * 60 * 1000);
+drenagem.intervalo(cicloDatasEntrega, 5 * 60 * 1000);
+drenagem.daquiA(() => { if (magalu.cfg.autorizado) espreita.preAquecer(); }, 50 * 1000);
+drenagem.intervalo(() => magalu.preAquecer(), 25 * 60 * 1000);
+drenagem.intervalo(() => mlReturns.preAquecer(), 25 * 60 * 1000);
+drenagem.intervalo(() => nfNomes.preAquecer(), 25 * 60 * 1000);
+drenagem.intervalo(() => { if (magalu.cfg.autorizado) espreita.preAquecer(); }, 25 * 60 * 1000);
 
 // v4.51 - pre-aquece o RESULTADO FINAL do a espreita (o painel montado), pra
 // abrir instantaneo. 90s apos o boot (depois dos componentes) e a cada 3 min.
@@ -7167,8 +7179,8 @@ function preAquecerEspreita() {
     .catch(() => {})
     .finally(() => { ESP_MONTANDO = null; });
 }
-setTimeout(preAquecerEspreita, 90 * 1000);
-setInterval(preAquecerEspreita, 3 * 60 * 1000);
+drenagem.daquiA(preAquecerEspreita, 90 * 1000);
+drenagem.intervalo(preAquecerEspreita, 3 * 60 * 1000);
 
 // ============================================================
 // v4.63 - CAPTURA DAS DEVOLUCOES  (ideia do dono, 29/08)
