@@ -298,8 +298,24 @@
         // A tela SABIA o SKU e nao oferecia nada. Quem busca um SKU sem
         // defeito quase sempre quer lancar um.
         var termoBusca = String(q || '').trim();
-        el.innerHTML = '<div style="color:#888;font-size:13px;">nada encontrado'
-          + (d.erro ? ' (' + esc(d.erro) + ')' : '') + '.</div>'
+        // b285 - ⚠️ UMA FRASE SO, E QUE NAO PARECA FALHA.
+        //
+        // [stated] "ta dizendo nao encontrado o SKU, erro ai seu d novo"
+        //
+        // A tela dizia "nada encontrado." e LOGO ABAIXO "Esse SKU ainda nao
+        // tem defeito registrado" — duas frases pro mesmo fato, e a
+        // primeira soa como BUSCA QUEBRADA. O dono leu como erro meu.
+        //
+        // Agora: com termo buscado, a frase diz o que de fato aconteceu
+        // (esse SKU nao tem defeito) em vez do generico "nada encontrado".
+        // Sem termo, ou com erro, mantem o texto neutro.
+        el.innerHTML = (d.erro
+            ? '<div style="color:#b00;font-size:13px;">⚠️ a busca falhou ('
+              + esc(d.erro) + ') — tente de novo.</div>'
+            : (String(q || '').trim()
+              ? '<div style="color:#555;font-size:14px;">Nenhum defeito registrado para '
+                + '<b>' + esc(String(q).trim()) + '</b>.</div>'
+              : '<div style="color:#888;font-size:13px;">nada encontrado.</div>'))
           + (termoBusca && !d.erro
             ? '<div style="margin-top:10px;">'
               + '<button class="btn" style="padding:10px 14px;" onclick="'
@@ -314,7 +330,7 @@
               + 'abrirModalDefeito(&#39;' + esc(termoBusca.replace(/'/g, '')) + '&#39;)">'
               + '➕ Lançar defeito para <b>' + esc(termoBusca) + '</b></button>'
               + '<div style="font-size:12px;color:#888;margin-top:6px;">'
-              + 'Esse SKU ainda não tem defeito registrado.</div></div>'
+              + 'Abre o lançamento já com esse SKU.</div></div>'
             : '');
         return;
       }

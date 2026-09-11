@@ -395,7 +395,7 @@ app.get('/health', (req, res) => {
       // busca por nome. Escolher um lado apagaria a descricao do outro.
       // ⚠️ a resolucao JUNTA as duas: a 7.5.0 (passe curto + tetos) ja esta
       // na main, e este PR acrescenta o build frio que falha vazio.
-      version: '7.9.2 (modal de defeito abre antes da limpeza; e a consulta casa-nf casa NF com padding e serie-da-chave)',
+      version: '7.9.3 (a busca de defeito sem resultado diz o que aconteceu, e falha de verdade fica visivelmente diferente)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
