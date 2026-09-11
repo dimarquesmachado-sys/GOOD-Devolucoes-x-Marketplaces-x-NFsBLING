@@ -61,6 +61,34 @@ ok(desprotegidas.length === 0,
      ? '\n      SEM GUARDA: ' + desprotegidas.join(', ')
      : ''));
 
+// ── ⚠️ E STATUS RUIM NEM SEMPRE E ERRO ──────────────────────────────
+//
+// Apontamento do Codex (#244, P1): minha guarda genérica `if (!r.ok) throw`
+// matou um caminho que existe DE PROPÓSITO — quando o Bling não identifica
+// o kit, o servidor responde **400 com `kit: true` e `componentes_det`**, e
+// é assim que a tela oferece o lançamento por componente.
+//
+// Com o throw, esse ramo virava inalcançável e o dono levava "HTTP 400" em
+// vez da escolha de componente.
+//
+// 📌 A lição: onde o status carrega DADO, leia o corpo antes de decidir.
+{
+  const mod = fs.readFileSync(path.join(JS, 'lancar-defeito.js'), 'utf8');
+  const i = mod.indexOf("'/api/defeitos/adicionar'");
+  // ⚠️ sem comentarios: o meu proprio comentario EXPLICA o erro citando
+  // `if (!r.ok) throw`, e o teste acusava o texto que documenta a correcao.
+  // Terceira vez hoje que comentario meu derruba teste meu.
+  const semC = mod.split('\n').filter((l) => !l.trim().startsWith('//')).join('\n');
+  const iC = semC.indexOf("'/api/defeitos/adicionar'");
+  const bloco = semC.slice(iC, iC + 1400);
+  ok(/var d = await r\.json\(\)\.catch/.test(bloco),
+     '⚠️ o lançamento LE o corpo antes de rejeitar (o 400 do kit e DADO)');
+  ok(!/if \(!r\.ok\) throw/.test(bloco),
+     '  e nao tem guarda generica que mataria o ramo do kit');
+  ok(/componentes_det|kit/.test(mod),
+     '  (o ramo do kit segue no codigo)');
+}
+
 console.log('');
 console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
 process.exit(falhas ? 1 : 0);

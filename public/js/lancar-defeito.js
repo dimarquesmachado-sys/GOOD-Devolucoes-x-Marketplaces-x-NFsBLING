@@ -463,8 +463,21 @@
       // b291 - ⚠️ status ANTES do .json() (varredura, Regra 4.2).
       // Sem isto, resposta que nao e JSON — sessao expirada, 502 do
       // Render — faz o `.json()` LANCAR e a tela fica pendurada.
-      if (!r.ok) throw new Error("HTTP " + r.status + " em o lançamento do defeito");
-      var d = await r.json();
+      // b291.1 (Codex, P1) - ⚠️ LE O CORPO ANTES DE REJEITAR PELO STATUS.
+      //
+      // Minha guarda generica (`if (!r.ok) throw`) matou um caminho que
+      // EXISTE DE PROPOSITO: quando o Bling nao identifica o kit na
+      // listagem, o servidor responde 400 com `kit: true` e
+      // `componentes_det` — e e assim que a tela oferece o lançamento por
+      // COMPONENTE. Com o throw, esse ramo virava inalcancavel e o dono
+      // levava "HTTP 400" em vez da escolha de componente.
+      //
+      // 📌 A LICAO: status ruim nao e sempre erro. Aqui o 400 e DADO.
+      var d = await r.json().catch(function () { return null; });
+      if (!d) {
+        throw new Error("o servidor respondeu HTTP " + r.status
+          + " e nao consegui ler a resposta. Recarregue a pagina.");
+      }
       if (!d.ok) {
         // v4.62 - kit devolvido explode em N unidades do produto simples
         if (d.kit && d.componentes_det && d.componentes_det.length) {
