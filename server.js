@@ -2072,7 +2072,16 @@ app.get('/api/espreita/casa-nf/:nf', requerLogin, (req, res) => {
   // ⚠️ E E O MESMO ERRO QUE EU ACABEI DE CONSERTAR NO INDICE DE NOMES
   // (b275): confundir "nao encontrei" com "ainda nao sei". Repeti na rota
   // de diagnostico que criei pra investigar aquele.
-  if (!ESP_CACHE || !lista.length) {
+  // b279.1 (Codex, P2) - ⚠️ CACHE VAZIO NAO E CACHE AUSENTE.
+  //
+  // Minha 1a versao tratava `lista.length === 0` como "nao sei". Mas se a
+  // espreita montou e nao ha nenhuma devolucao pendente — dia tranquilo,
+  // tudo bipado — o cache esta CERTO e vazio. Ai a resposta correta e "nao
+  // esta", nao "nao sei".
+  //
+  // ⚠️ Confundir os dois manda o dono esperar um cache que ja chegou.
+  // So o cache AUSENTE (`!ESP_CACHE`) e desconhecimento.
+  if (!ESP_CACHE) {
     return res.json({
       ok: true,
       nf: alvo,

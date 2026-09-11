@@ -80,8 +80,14 @@ const semComent = bloco.split('\n').filter((l) => !l.trim().startsWith('//')).jo
 {
   const i = srv.indexOf("app.get('/api/espreita/casa-nf/:nf'");
   const bloco2 = srv.slice(i, i + 2200);
-  ok(/if \(!ESP_CACHE \|\| !lista\.length\)/.test(bloco2),
-     '⚠️ a consulta trata o cache VAZIO antes de responder');
+  // ⚠️ b279.1 (Codex): cache VAZIO ≠ cache AUSENTE. Se a espreita montou e
+  // nao ha devolucao pendente (dia tranquilo, tudo bipado), o cache esta
+  // CERTO e vazio — e a resposta e "nao esta", nao "nao sei". Confundir os
+  // dois manda o dono esperar um cache que ja chegou.
+  ok(/if \(!ESP_CACHE\) \{/.test(bloco2),
+     '⚠️ so o cache AUSENTE vira "nao sei"');
+  ok(!/!lista\.length\)/.test(bloco2),
+     '  e cache montado e VAZIO responde normalmente (nao esta)');
   ok(/casou: null/.test(bloco2),
      '  e devolve `null` (nao sei), nao `false` (nao esta)');
   ok(/ainda nao montou/.test(bloco2),
