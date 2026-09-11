@@ -611,13 +611,16 @@
           body: JSON.stringify({ sku: c.sku, defeito: pend.payload.defeito, descricao: pend.payload.defeito,
             localizacao: pend.payload.localizacao, qtd: qtd, fotos: pend.payload.fotos })
         });
-        // b291 - ⚠️ status ANTES do .json() (varredura). Esta e a chamada
-        // que SALVA o defeito do componente do kit — se ela estourar, o
-        // dono nao sabe se gravou ou nao.
-        if (!r.ok) throw new Error("HTTP " + r.status + " ao lançar o componente");
-        var d2 = await r.json();
+        // b291.2 (revisao Codex #244, P1 - mesma causa da b291.1) - MESMA
+        // rota `/api/defeitos/adicionar` do lancamento principal, mesmo
+        // risco: um 400 aqui tambem pode vir com `erro` explicando o
+        // motivo (ex: a peca do kit tambem nao resolveu, ou sumiu do
+        // Bling entre a busca e o clique). `if (!r.ok) throw` trocava
+        // esse motivo por um "Erro de conexao" generico — o dono via a
+        // falha sem saber POR QUE. Le o corpo antes de decidir.
+        var d2 = await r.json().catch(function () { return null; });
         if (d2 && d2.ok) lancados++;
-        else { erro = (d2 && d2.erro) || ('erro no ' + c.sku); falharam.push(c); }
+        else { erro = (d2 && d2.erro) || ('HTTP ' + r.status + ' no ' + c.sku); falharam.push(c); }
       } catch (e) { erro = 'Erro de conex\u00e3o no ' + c.sku + '.'; falharam.push(c); }
     }
     window._kitOcupado = false;

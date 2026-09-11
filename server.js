@@ -395,7 +395,9 @@ app.get('/health', (req, res) => {
       // busca por nome. Escolher um lado apagaria a descricao do outro.
       // ⚠️ a resolucao JUNTA as duas: a 7.5.0 (passe curto + tetos) ja esta
       // na main, e este PR acrescenta o build frio que falha vazio.
-      version: '8.0.4 (o lancamento de defeito gravava coluna que nao existe e falhava; e a mensagem de fotos aparecia sem foto)',
+      // ⚠️ a resolucao JUNTA as duas de novo: a 8.0.4 (#245, coluna que nao
+      // existe no lancamento) ja esta na main, e este PR acrescenta a b344.
+      version: '8.0.5 (8.0.4: o lancamento de defeito gravava coluna que nao existe e falhava; e a mensagem de fotos aparecia sem foto | b344 - revisao Codex #244: lancarComponenteKit tinha a MESMA guarda cega da b291.1, no componente do kit)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
