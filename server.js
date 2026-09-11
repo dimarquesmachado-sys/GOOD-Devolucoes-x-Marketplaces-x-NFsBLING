@@ -395,7 +395,7 @@ app.get('/health', (req, res) => {
       // busca por nome. Escolher um lado apagaria a descricao do outro.
       // ⚠️ a resolucao JUNTA as duas: a 7.5.0 (passe curto + tetos) ja esta
       // na main, e este PR acrescenta o build frio que falha vazio.
-      version: '8.0.2 (o id do campo de busca do modal colidia com o da caixa de Defeitos — a busca lia o campo errado e trazia tudo)',
+      version: '8.0.3 (as 5 chamadas do modal conferem o status antes do .json() — a tela travava em Buscando pra sempre)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),

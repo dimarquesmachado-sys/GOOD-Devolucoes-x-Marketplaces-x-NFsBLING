@@ -180,8 +180,35 @@
     if (q.length < 2) { box.innerHTML = '<p style="font-size:13px;color:#c62828;">Digite pelo menos 2 letras.</p>'; return; }
     box.innerHTML = '<p style="font-size:13px;color:#888;">Buscando no Bling...</p>';
     try {
+      // b291 - ⚠️ CONFERE O STATUS ANTES DO .json().
+      //
+      // [stated 11/09] "fica travado nessa tela" — o modal abria, mostrava
+      // "Buscando no Bling..." e NUNCA saia disso.
+      //
+      // A causa: `await r.json()` rodava sem olhar o status. Se a resposta
+      // nao for JSON — sessao expirada devolvendo HTML de login, 502 do
+      // Render, proxy no meio — o `.json()` LANCA, o `catch` de fora nao
+      // repinta a caixa, e o "Buscando..." fica pra sempre.
+      //
+      // ⚠️ E E O MESMO ERRO QUE EU CONSERTEI HOJE NA BUSCA DE FOTO (b269),
+      // no arquivo ao lado. Consertei um e nao varri os outros — Regra 4.2:
+      // caminho novo = varrer quem o dispara.
       var r = await fetch(PREFIXO + '/api/produtos/buscar?q=' + encodeURIComponent(q), { credentials: 'same-origin' });
-      var d = await r.json();
+      if (!r.ok) {
+        box.innerHTML = '<p style="font-size:13px;color:#c62828;">'
+          + 'A busca falhou (HTTP ' + r.status + ').'
+          + (r.status === 401 || r.status === 403
+            ? ' Sua sessao pode ter expirado — recarregue a pagina e entre de novo.'
+            : ' Tente de novo em instantes.')
+          + '</p>';
+        return;
+      }
+      var d = await r.json().catch(function () { return null; });
+      if (!d) {
+        box.innerHTML = '<p style="font-size:13px;color:#c62828;">'
+          + 'A busca respondeu algo que nao consegui ler. Recarregue a pagina.</p>';
+        return;
+      }
       if (!d.ok) { box.innerHTML = '<p style="font-size:13px;color:#c62828;">' + escDef(d.erro || 'erro') + '</p>'; return; }
       var lista = d.produtos || [];
       if (lista.length === 0) {
@@ -390,6 +417,10 @@
       fd.append('foto', inp.files[i]);
       try {
         var r = await fetch(PREFIXO + '/api/triagem/upload-foto', { method: 'POST', credentials: 'same-origin', body: fd });
+        // b291 - ⚠️ status ANTES do .json() (varredura, Regra 4.2).
+        // Sem isto, resposta que nao e JSON — sessao expirada, 502 do
+        // Render — faz o `.json()` LANCAR e a tela fica pendurada.
+        if (!r.ok) throw new Error("HTTP " + r.status + " em o envio das fotos");
         var d = await r.json();
         if (d && d.ok && d.url) urls.push(d.url);
       } catch (e) { /* uma foto que falha nao impede o lancamento */ }
@@ -429,6 +460,10 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
+      // b291 - ⚠️ status ANTES do .json() (varredura, Regra 4.2).
+      // Sem isto, resposta que nao e JSON — sessao expirada, 502 do
+      // Render — faz o `.json()` LANCAR e a tela fica pendurada.
+      if (!r.ok) throw new Error("HTTP " + r.status + " em o lançamento do defeito");
       var d = await r.json();
       if (!d.ok) {
         // v4.62 - kit devolvido explode em N unidades do produto simples
@@ -552,6 +587,10 @@
           body: JSON.stringify({ sku: c.sku, defeito: pend.payload.defeito, descricao: pend.payload.defeito,
             localizacao: pend.payload.localizacao, qtd: qtd, fotos: pend.payload.fotos })
         });
+        // b291 - ⚠️ status ANTES do .json() (varredura). Esta e a chamada
+        // que SALVA o defeito do componente do kit — se ela estourar, o
+        // dono nao sabe se gravou ou nao.
+        if (!r.ok) throw new Error("HTTP " + r.status + " ao lançar o componente");
         var d2 = await r.json();
         if (d2 && d2.ok) lancados++;
         else { erro = (d2 && d2.erro) || ('erro no ' + c.sku); falharam.push(c); }
