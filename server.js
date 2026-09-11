@@ -362,7 +362,7 @@ app.get('/health', (req, res) => {
       // busca por nome. Escolher um lado apagaria a descricao do outro.
       // ⚠️ a resolucao JUNTA as duas: a 7.5.0 (passe curto + tetos) ja esta
       // na main, e este PR acrescenta o build frio que falha vazio.
-      version: '7.6.0 (passe curto do indice cobre ~17 dias; fila e construcao com teto; build frio que falha vazio nao carimba `ts`)',
+      version: '7.6.1 (o /health mostra as NFs que o cruzamento da estrela tem em maos)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -403,6 +403,24 @@ app.get('/health', (req, res) => {
             // a caixa que esta chegando agora — e e por elas que a busca por
             // nome casa a ESTRELA.
             entregues_recentes: cont('entregues_recentes'),
+            // b278 - ⚠️ OS NUMEROS DE NF QUE O CRUZAMENTO TEM EM MAOS.
+            //
+            // A busca por nome casa card × espreita PELA NF. Quando a
+            // estrela nao sai, a pergunta e sempre a mesma: "a NF do card
+            // esta nesta lista?" — e nao havia como responder sem ler
+            // codigo ou adivinhar.
+            //
+            // ⚠️ SO NUMERO+SERIE, nada mais: o /health e publico, e os
+            // itens da espreita carregam cliente, produto e ids de pedido.
+            // Numero de NF sozinho nao identifica ninguem.
+            nfs_no_cruzamento: []
+              .concat(Array.isArray(c.entregues_recentes) ? c.entregues_recentes : [])
+              .concat(Array.isArray(c.nunca_bipadas) ? c.nunca_bipadas : [])
+              .concat(Array.isArray(c.em_transito) ? c.em_transito : [])
+              .filter((e) => e && e.nf)
+              .map((e) => String(e.nf).replace(/^0+/, '')
+                + '/' + (String(e.nf_serie || '').replace(/^0+/, '') || '1'))
+              .slice(0, 60),
             // ⚠️ o cruzamento so casa quem tem NF: devolucao sem NF no
             // cache nunca ganha estrela, por mais que esteja a caminho
             com_nf: []
