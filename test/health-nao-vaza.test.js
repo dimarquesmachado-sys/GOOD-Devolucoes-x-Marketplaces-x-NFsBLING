@@ -98,6 +98,27 @@ const semComent = bloco.split('\n').filter((l) => !l.trim().startsWith('//')).jo
      '  com o motivo legivel pra quem chama');
 }
 
+// ── ⚠️ e "nao esta" diz QUAL dos tres motivos ───────────────────────
+//
+// A resposta dizia só "não está em nenhuma das 3 listas". Mas isso pode ser:
+//   (a) já foi BIPADA     → saiu de propósito, está CERTO
+//   (b) a série divergiu  → bug de casamento
+//   (c) nunca entrou      → bug de coleta, ou venda antiga
+//
+// (a) é o sistema funcionando. Sem distinguir, o próximo a investigar
+// "conserta" um comportamento correto — risco real depois de um dia inteiro
+// caçando esta estrela.
+{
+  const i = srv.indexOf("app.get('/api/espreita/casa-nf/:nf'");
+  const bloco3 = srv.slice(i, i + 3000);
+  ok(/ja_baixada: !casou && !!noCru/.test(bloco3),
+     '⚠️ a resposta separa "ja foi bipada" de "nao esta"');
+  ok(/const cru = \[\]/.test(bloco3),
+     '  olhando o cache CRU (antes do filtro de baixado)');
+  ok(/Comportamento CORRETO, nao e bug/.test(bloco3),
+     '  e diz por escrito que esse caso NAO e bug');
+}
+
 console.log('');
 console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
 process.exit(falhas ? 1 : 0);

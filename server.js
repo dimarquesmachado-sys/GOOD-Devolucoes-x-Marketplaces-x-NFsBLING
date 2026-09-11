@@ -395,7 +395,7 @@ app.get('/health', (req, res) => {
       // busca por nome. Escolher um lado apagaria a descricao do outro.
       // ⚠️ a resolucao JUNTA as duas: a 7.5.0 (passe curto + tetos) ja esta
       // na main, e este PR acrescenta o build frio que falha vazio.
-      version: '7.7.2 (revisao Codex #228: o passe curto do boot nao carimba mais o indice como completo, e a AMB ganhou o mesmo aviso de indice parcial na busca que acha)',
+      version: '7.7.3 (a consulta de NF diz QUAL dos 3 motivos — ja bipada, serie divergente, ou nunca entrou)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -2110,14 +2110,36 @@ app.get('/api/espreita/casa-nf/:nf', requerLogin, (req, res) => {
 
   // ⚠️ e se nao casou, digo se ao menos o NUMERO aparece — distingue
   // "essa devolucao nao esta na espreita" de "esta, mas a serie divergiu"
+  // b281 - ⚠️ "NAO ESTA" TEM TRES MOTIVOS, E SO DOIS SAO BUG.
+  //
+  //   (a) ja foi BIPADA/baixada    -> saiu de proposito, esta CERTO
+  //   (b) a serie divergiu         -> bug de casamento
+  //   (c) nunca entrou na espreita -> bug de coleta, ou venda antiga
+  //
+  // (a) e o sistema funcionando. Sem distinguir, eu ia "consertar" um
+  // comportamento correto — risco real depois de um dia inteiro cacando
+  // esta estrela.
+  //
+  // Pra ver (a) olho o cache CRU, antes do `.filter(!baixado)` que a fonte
+  // unica aplica.
+  const cru = []
+    .concat(Array.isArray(ESP_CACHE.entregues_recentes) ? ESP_CACHE.entregues_recentes : [])
+    .concat(Array.isArray(ESP_CACHE.nunca_bipadas) ? ESP_CACHE.nunca_bipadas : [])
+    .concat(Array.isArray(ESP_CACHE.em_transito) ? ESP_CACHE.em_transito : []);
+  const noCru = cru.find((e) => e && e.nf && chaveNF(e.nf, e.nf_serie) === alvo);
+
   const soNumero = !casou && [...porNF.keys()].some((k) => k.split('/')[0] === nfAlvo);
 
   return res.json({
     ok: true,
     nf: alvo,
     casou: !!casou,
+    // b281: e `ja_baixada` separa o caso em que esta TUDO CERTO
+    ja_baixada: !casou && !!noCru,
     motivo: casou ? 'esta no cruzamento — a estrela deve sair'
-      : (soNumero ? '⚠️ o NUMERO esta na espreita, mas a SERIE divergiu'
+      : (noCru ? '✅ esta na espreita mas JA FOI BIPADA/baixada — por isso nao '
+          + 'ganha estrela. Comportamento CORRETO, nao e bug.'
+        : soNumero ? '⚠️ o NUMERO esta na espreita, mas a SERIE divergiu'
         : 'esta NF nao esta em nenhuma das 3 listas do cruzamento'),
     onde: casou ? casou._estado : null,
     cache: {
