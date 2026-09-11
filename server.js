@@ -395,7 +395,7 @@ app.get('/health', (req, res) => {
       // busca por nome. Escolher um lado apagaria a descricao do outro.
       // ⚠️ a resolucao JUNTA as duas: a 7.5.0 (passe curto + tetos) ja esta
       // na main, e este PR acrescenta o build frio que falha vazio.
-      version: '7.8.2 (pacote por ENVIO; busca marca o que JA FOI TRIADO; consulta de NF diz QUAL dos 3 motivos, batendo na tabela devolucoes)',
+      version: '7.8.3 (revisao do Codex no #231: casa-nf casa NF com padding/serie-da-chave, e prioriza a tabela devolucoes sobre cache defasado)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -2175,32 +2175,63 @@ app.get('/api/espreita/casa-nf/:nf', requerLogin, async (req, res) => {
   // `espreita_notas`) nao tem coluna de NF — so `chave` (tracking/pedido).
   // Sem uma NF pra buscar por ela, esse caminho continua sem cobertura
   // aqui; o `motivo` cai em "nao esta em nenhuma das 3 listas" pra ele.
+  //
+  // ⚠️ LIMITE CONHECIDO #2 (Codex, P2, ainda aberto): uma triagem pode ser
+  // gravada com `nf_numero` E `nf_chave` nulos — a identificacao achou o
+  // pedido/envio mas nao a nota (server.js:3040-3042; o painel resgata a
+  // NF depois em `/api/admin/buscar-nf/:id`, e so ENTAO a linha ganha
+  // `nf_numero`). Ate la, `montarEspreita` ja tira essa devolucao do
+  // cruzamento casando por `order_id`/`shipment_id` (server.js:5878-5884)
+  // — mas esta rota so recebe numero+serie, sem order_id/shipment_id, e
+  // nao ha NF gravada em lugar nenhum pra bater aqui. Nao da pra
+  // correlacionar sem esses identificadores; o `motivo` cai em "nao esta
+  // em nenhuma das 3 listas" pra este caso ate o resgate rodar.
+  //
+  // b281.2 (Codex, P2) - mais 3 conserto nesta mesma consulta:
+  //   1. o numero sem zero a esquerda so batia com a variante EXATA que a
+  //      tabela guardou — uma NF gravada "078425" nunca casava com a busca
+  //      por "78425". Entra a variante com padding (mesmo padrao de
+  //      `variantesId`, server.js:613).
+  //   2. `nf_serie` pode ficar vazio numa triagem antiga (so sobrevive
+  //      dentro da `nf_chave`, 44 digitos) — sem isso, `chaveNF` caia pra
+  //      serie 1 e `?serie=3` nunca batia. Mesmo fallback que
+  //      `confrontar.serieDaChave` ja faz em server.js:7352.
+  //   3. a bipagem nao invalida o `ESP_CACHE` (TTL de ate 3min) — nesse
+  //      intervalo `casou` ainda dava true pra uma NF que ACABOU de ser
+  //      baixada, e a consulta so rodava quando `!casou`, entao nunca
+  //      chegava a olhar a tabela. Agora ela roda sempre que ha
+  //      `supabase`, e o resultado da tabela (mais novo que o cache) tem
+  //      PRIORIDADE sobre um `casou` que pode estar defasado.
   let noCru = null;
-  if (!casou && supabase) {
+  if (supabase) {
     try {
-      const candidatos = [...new Set([nfAlvo, String(req.params.nf || '')])].filter(Boolean);
+      const candidatos = [...new Set([nfAlvo, String(req.params.nf || ''), nfAlvo.padStart(6, '0')])].filter(Boolean);
       const { data } = await supabase
         .from('devolucoes')
-        .select('nf_numero, nf_serie')
+        .select('nf_numero, nf_serie, nf_chave')
         .in('nf_numero', candidatos);
-      noCru = (data || []).find((d) => chaveNF(d.nf_numero, d.nf_serie) === alvo) || null;
+      noCru = (data || []).find((d) => {
+        const serie = d.nf_serie || confrontar.serieDaChave(d.nf_chave);
+        return chaveNF(d.nf_numero, serie) === alvo;
+      }) || null;
     } catch (e) { /* sem isto, cai no motivo generico — nao trava a consulta */ }
   }
 
-  const soNumero = !casou && [...porNF.keys()].some((k) => k.split('/')[0] === nfAlvo);
+  const soNumero = !casou && !noCru && [...porNF.keys()].some((k) => k.split('/')[0] === nfAlvo);
 
   return res.json({
     ok: true,
     nf: alvo,
-    casou: !!casou,
-    // b281: e `ja_baixada` separa o caso em que esta TUDO CERTO
-    ja_baixada: !casou && !!noCru,
-    motivo: casou ? 'esta no cruzamento — a estrela deve sair'
-      : (noCru ? '✅ esta na espreita mas JA FOI BIPADA/baixada — por isso nao '
-          + 'ganha estrela. Comportamento CORRETO, nao e bug.'
-        : soNumero ? '⚠️ o NUMERO esta na espreita, mas a SERIE divergiu'
-        : 'esta NF nao esta em nenhuma das 3 listas do cruzamento'),
-    onde: casou ? casou._estado : null,
+    casou: !!casou && !noCru,
+    // b281: e `ja_baixada` separa o caso em que esta TUDO CERTO — tem
+    // prioridade mesmo quando o cache (defasado) ainda mostra `casou`.
+    ja_baixada: !!noCru,
+    motivo: noCru ? '✅ esta na espreita mas JA FOI BIPADA/baixada — por isso nao '
+        + 'ganha estrela. Comportamento CORRETO, nao e bug.'
+      : casou ? 'esta no cruzamento — a estrela deve sair'
+      : soNumero ? '⚠️ o NUMERO esta na espreita, mas a SERIE divergiu'
+      : 'esta NF nao esta em nenhuma das 3 listas do cruzamento',
+    onde: (casou && !noCru) ? casou._estado : null,
     cache: {
       tem: true,
       idade_min: ESP_CACHE_TS ? Math.round((Date.now() - ESP_CACHE_TS) / 60000) : null,
