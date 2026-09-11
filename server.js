@@ -395,7 +395,7 @@ app.get('/health', (req, res) => {
       // busca por nome. Escolher um lado apagaria a descricao do outro.
       // ⚠️ a resolucao JUNTA as duas: a 7.5.0 (passe curto + tetos) ja esta
       // na main, e este PR acrescenta o build frio que falha vazio.
-      version: '7.9.6 (revisao do Codex no #238: o CTA de lancar so nasce onde abrirModalDefeito existe)',
+      version: '7.9.7 (cache-buster do defeitos-ficha.js alinhado entre triagem e painel — o painel servia o arquivo VELHO)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
