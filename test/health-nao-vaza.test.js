@@ -67,6 +67,37 @@ const semComent = bloco.split('\n').filter((l) => !l.trim().startsWith('//')).jo
      '  ⚠️ e distingue "nao esta" de "esta, mas a serie divergiu"');
 }
 
+// ── ⚠️ e a consulta nao AFIRMA sem dado ─────────────────────────────
+//
+// Minha 1ª versão respondia `casou: false` + "esta NF não está em nenhuma
+// das 3 listas" mesmo com o cache VAZIO. O dono consultou logo após um
+// deploy e levou exatamente isso — uma afirmação categórica sobre uma lista
+// que não existia.
+//
+// ⚠️ É o MESMO erro que eu tinha acabado de consertar no índice de nomes
+// (#220): confundir "não encontrei" com "ainda não sei". Repeti na rota de
+// diagnóstico criada para investigar aquele.
+{
+  const i = srv.indexOf("app.get('/api/espreita/casa-nf/:nf'");
+  const bloco2 = srv.slice(i, i + 2200);
+  // ⚠️ b279.1 (Codex): cache VAZIO ≠ cache AUSENTE. Se a espreita montou e
+  // nao ha devolucao pendente (dia tranquilo, tudo bipado), o cache esta
+  // CERTO e vazio — e a resposta e "nao esta", nao "nao sei". Confundir os
+  // dois manda o dono esperar um cache que ja chegou.
+  ok(/if \(!ESP_CACHE\) \{/.test(bloco2),
+     '⚠️ so o cache AUSENTE vira "nao sei"');
+  ok(!/!lista\.length\)/.test(bloco2),
+     '  e cache montado e VAZIO responde normalmente (nao esta)');
+  // ⚠️ b278.2: o robo trocou meu `200 + casou: null` por **503**, e e
+  // melhor: 503 diz "servico ainda nao consegue responder" no proprio
+  // codigo HTTP, em vez de exigir que quem chama leia um campo pra
+  // descobrir que a resposta nao vale.
+  ok(/res\.status\(503\)/.test(bloco2),
+     '  e responde 503 (nao 200 com resposta vazia)');
+  ok(/casou: null|inconclusivo|ainda nao/i.test(bloco2),
+     '  com o motivo legivel pra quem chama');
+}
+
 console.log('');
 console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
 process.exit(falhas ? 1 : 0);

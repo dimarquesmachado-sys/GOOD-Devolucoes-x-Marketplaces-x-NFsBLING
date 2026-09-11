@@ -395,7 +395,7 @@ app.get('/health', (req, res) => {
       // busca por nome. Escolher um lado apagaria a descricao do outro.
       // ⚠️ a resolucao JUNTA as duas: a 7.5.0 (passe curto + tetos) ja esta
       // na main, e este PR acrescenta o build frio que falha vazio.
-      version: '7.6.3 (revisao do Codex no #225: cruzamento da espreita deduplicado numa so fonte, sem cache = inconclusivo)',
+      version: '7.7.0 (cruzamento da espreita deduplicado numa fonte unica; sem cache = inconclusivo, nao "nao esta")',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
