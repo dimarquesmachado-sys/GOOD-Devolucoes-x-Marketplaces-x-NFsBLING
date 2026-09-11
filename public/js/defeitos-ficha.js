@@ -318,20 +318,48 @@
               : '<div style="color:#888;font-size:13px;">nada encontrado.</div>'))
           + (termoBusca && !d.erro
             ? '<div style="margin-top:10px;">'
-              + '<button class="btn" style="padding:10px 14px;" onclick="'
-              // ⚠️ o nome REAL e `fecharCaixaDefeitos` — eu tinha escrito
-              // `fecharDefeitos` de cabeca, e nao existe. Regra 4.12: ler o
-              // produtor antes de escrever o consumidor.
-              + 'if (typeof fecharCaixaDefeitos === \'function\') fecharCaixaDefeitos();'
-              // ⚠️ ASPAS SIMPLES, e escapadas pro HTML. `JSON.stringify` gera
-              // aspas DUPLAS, que fecham o atributo `onclick="..."` antes da
-              // hora — o botao saia quebrado e a tela junto. Peguei testando
-              // o onclick gerado com `new Function()`, nao lendo.
-              + 'abrirModalDefeito(&#39;' + esc(termoBusca.replace(/'/g, '')) + '&#39;)">'
+              + '<button class="btn" id="btnLancarDoVazio" style="padding:10px 14px;">'
               + '➕ Lançar defeito para <b>' + esc(termoBusca) + '</b></button>'
               + '<div style="font-size:12px;color:#888;margin-top:6px;">'
               + 'Abre o lançamento já com esse SKU.</div></div>'
             : '');
+
+        // b286 - ⚠️ EVENTO LIGADO NO CODIGO, NAO `onclick` EM TEXTO.
+        //
+        // O botao anterior montava o codigo dentro de `onclick="..."`. O
+        // HTML saia certo (testei o gerado com `new Function`), mas o dono
+        // clicava, o card sumia e o modal nao abria — TRES vezes seguidas,
+        // inclusive depois de Ctrl+F5 com a mensagem nova ja na tela.
+        //
+        // Com `onclick` em texto, qualquer erro dentro da funcao vira um
+        // silencio: a caixa ja fechou e nao sobra nada na tela. Ligando
+        // aqui eu ENXERGO o erro e mostro pro dono, em vez de ele ficar
+        // olhando tela vazia e me avisar de novo.
+        //
+        // ⚠️ E ABRO O MODAL ANTES DE FECHAR A CAIXA: na ordem anterior, se
+        // o modal falhasse, a caixa ja estava fechada. Assim, se algo der
+        // errado, ele continua vendo a lista de onde veio.
+        if (termoBusca && !d.erro) {
+          const btn = document.getElementById('btnLancarDoVazio');
+          if (btn) btn.onclick = function () {
+            try {
+              if (typeof abrirModalDefeito !== 'function') {
+                throw new Error('abrirModalDefeito nao esta disponivel nesta tela');
+              }
+              abrirModalDefeito(termoBusca);
+              // so fecha DEPOIS que o modal abriu
+              if (typeof fecharCaixaDefeitos === 'function') fecharCaixaDefeitos();
+            } catch (err) {
+              // ⚠️ o erro vai pra TELA, nao so pro console: o dono estava
+              // vendo tela vazia e tendo que me avisar
+              btn.insertAdjacentHTML('afterend',
+                '<div style="margin-top:8px;color:#b00;font-size:13px;">'
+                + '⚠️ nao consegui abrir o lançamento: ' + esc(err.message)
+                + '<br>Usa o botao "➕ Lançar Defeito" no topo da tela.</div>');
+              console.error('[DEFEITOS] abrir lancamento falhou:', err);
+            }
+          };
+        }
         return;
       }
       var aviso = d.via_ean
