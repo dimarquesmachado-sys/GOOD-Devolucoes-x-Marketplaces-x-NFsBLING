@@ -67,6 +67,33 @@ const semComent = bloco.split('\n').filter((l) => !l.trim().startsWith('//')).jo
      '  ⚠️ e distingue "nao esta" de "esta, mas a serie divergiu"');
 }
 
+// ── ⚠️ e a consulta nao AFIRMA sem dado ─────────────────────────────
+//
+// Minha 1ª versão respondia `casou: false` + "esta NF não está em nenhuma
+// das 3 listas" mesmo com o cache VAZIO. O dono consultou logo após um
+// deploy e levou exatamente isso — uma afirmação categórica sobre uma lista
+// que não existia.
+//
+// ⚠️ É o MESMO erro que eu tinha acabado de consertar no índice de nomes
+// (#220): confundir "não encontrei" com "ainda não sei". Repeti na rota de
+// diagnóstico criada para investigar aquele.
+{
+  const i = srv.indexOf("app.get('/api/espreita/casa-nf/:nf'");
+  const bloco2 = srv.slice(i, i + 2200);
+  // ⚠️ b279.1 (Codex): cache VAZIO ≠ cache AUSENTE. Se a espreita montou e
+  // nao ha devolucao pendente (dia tranquilo, tudo bipado), o cache esta
+  // CERTO e vazio — e a resposta e "nao esta", nao "nao sei". Confundir os
+  // dois manda o dono esperar um cache que ja chegou.
+  ok(/if \(!ESP_CACHE\) \{/.test(bloco2),
+     '⚠️ so o cache AUSENTE vira "nao sei"');
+  ok(!/!lista\.length\)/.test(bloco2),
+     '  e cache montado e VAZIO responde normalmente (nao esta)');
+  ok(/casou: null/.test(bloco2),
+     '  e devolve `null` (nao sei), nao `false` (nao esta)');
+  ok(/ainda nao montou/.test(bloco2),
+     '  com o motivo certo pra quem le');
+}
+
 console.log('');
 console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
 process.exit(falhas ? 1 : 0);
