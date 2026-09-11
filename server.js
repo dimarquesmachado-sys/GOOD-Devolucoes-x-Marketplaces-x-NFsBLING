@@ -362,7 +362,7 @@ app.get('/health', (req, res) => {
       // busca por nome. Escolher um lado apagaria a descricao do outro.
       // ⚠️ a resolucao JUNTA as duas: a 7.5.0 (passe curto + tetos) ja esta
       // na main, e este PR acrescenta o build frio que falha vazio.
-      version: '7.6.2 (consulta "esta NF casa com a espreita?" por rota autenticada; o /health so conta)',
+      version: '7.6.3 (a consulta de NF responde "nao sei" quando o cache da espreita esta vazio, em vez de "nao esta")',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -2061,6 +2061,28 @@ app.get('/api/espreita/casa-nf/:nf', requerLogin, (req, res) => {
   const chave = (n, s) => String(n || '').replace(/^0+/, '')
     + '/' + (String(s || '').replace(/^0+/, '') || '1');
   const alvo = chave(nfAlvo, serieAlvo);
+
+  // b279 - ⚠️ SEM CACHE, A RESPOSTA E "NAO SEI", NAO "NAO ESTA".
+  //
+  // Na 1a versao desta rota eu respondia `casou: false` com o motivo "esta
+  // NF nao esta em nenhuma das 3 listas" mesmo quando o ESP_CACHE estava
+  // VAZIO. O dono consultou logo apos um deploy e levou exatamente isso —
+  // uma afirmacao categorica sobre uma lista que nao existia.
+  //
+  // ⚠️ E E O MESMO ERRO QUE EU ACABEI DE CONSERTAR NO INDICE DE NOMES
+  // (b275): confundir "nao encontrei" com "ainda nao sei". Repeti na rota
+  // de diagnostico que criei pra investigar aquele.
+  if (!ESP_CACHE || !lista.length) {
+    return res.json({
+      ok: true,
+      nf: alvo,
+      casou: null,                     // null ≠ false: NAO SEI
+      motivo: 'o cache da espreita ainda nao montou — '
+        + 'nao da pra dizer se essa NF casa. Tente de novo em alguns minutos.',
+      onde: null,
+      cache: { tem: !!ESP_CACHE, idade_min: null, com_nf: 0 },
+    });
+  }
 
   const casou = lista.find((e) => e && e.nf && chave(e.nf, e.nf_serie) === alvo);
 
