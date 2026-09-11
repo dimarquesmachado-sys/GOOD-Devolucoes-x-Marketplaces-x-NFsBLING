@@ -160,6 +160,24 @@ const codigo = lerCodigo('lib/nf-nomes.js');
      'GOOD: a rota repassa o indice_incompleto (vazio OU parcial)');
   ok(/indice_nomes_vazio/.test(srv),
      '  ⚠️ e distingue VAZIO de parcial (a espera e diferente)');
+
+  // ── ⚠️ e o aviso aparece TAMBEM quando a busca ACHA ──────────────
+  //
+  // O aviso só existia no caminho de 404. O dono buscou "charles" com o
+  // índice a meio caminho, recebeu 2 NFs — e existem 5. Sem aviso, a lista
+  // PARECE completa.
+  //
+  // ⚠️ É pior que o caso anterior: "não achei nada" ao menos faz duvidar;
+  // "achei 2" faz escolher entre os 2, ou concluir que a devolução da caixa
+  // não está no sistema. A resposta parcial se disfarça de completa.
+  {
+    const i = srv.indexOf('Confere com a CAIXA e escolhe abaixo');
+    const bloco = srv.slice(i, i + 900);
+    ok(/rN\.montando \|\| rN\.indiceParcial/.test(bloco),
+       '⚠️ a resposta de SUCESSO tambem avisa se o indice esta incompleto');
+    ok(/pode haver MAIS NFs/.test(bloco),
+       '  dizendo que pode haver mais (a lista nao e definitiva)');
+  }
   ok(/notaIndiceParcial/.test(srv),
      '  e avisa o estoquista no texto do erro (nao so no JSON cru)');
 
