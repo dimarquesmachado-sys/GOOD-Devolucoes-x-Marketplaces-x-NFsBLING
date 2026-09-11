@@ -362,7 +362,7 @@ app.get('/health', (req, res) => {
       // busca por nome. Escolher um lado apagaria a descricao do outro.
       // ⚠️ a resolucao JUNTA as duas: a 7.5.0 (passe curto + tetos) ja esta
       // na main, e este PR acrescenta o build frio que falha vazio.
-      version: '7.6.0 (passe curto do indice cobre ~17 dias; fila e construcao com teto; build frio que falha vazio nao carimba `ts`)',
+      version: '7.6.2 (consulta "esta NF casa com a espreita?" por rota autenticada; o /health so conta)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -403,6 +403,23 @@ app.get('/health', (req, res) => {
             // a caixa que esta chegando agora — e e por elas que a busca por
             // nome casa a ESTRELA.
             entregues_recentes: cont('entregues_recentes'),
+            // b278.1 (Codex, P1) - ⚠️ NUMERO DE NF NAO VAI PRO /health.
+            //
+            // Minha 1a versao listava ate 60 pares numero/serie aqui. Eu
+            // julguei inofensivo — "numero de NF sozinho nao identifica
+            // ninguem" — e ESTAVA ERRADO: o /health e publico de proposito,
+            // e numero+serie de NF viva permite consultar a nota em outros
+            // lugares. Nao e dado meu pra publicar.
+            //
+            // 📌 O QUE EU PRECISAVA ERA RESPONDER UMA PERGUNTA, nao ver a
+            // lista: "a NF do card esta no cruzamento?". Entao a resposta
+            // vai por rota AUTENTICADA (`/api/espreita/casa-nf/:nf`), e
+            // aqui fica so a contagem — que ja diz se ha materia-prima.
+            nfs_no_cruzamento_qtd: []
+              .concat(Array.isArray(c.entregues_recentes) ? c.entregues_recentes : [])
+              .concat(Array.isArray(c.nunca_bipadas) ? c.nunca_bipadas : [])
+              .concat(Array.isArray(c.em_transito) ? c.em_transito : [])
+              .filter((e) => e && e.nf).length,
             // ⚠️ o cruzamento so casa quem tem NF: devolucao sem NF no
             // cache nunca ganha estrela, por mais que esteja a caminho
             com_nf: []
@@ -2021,6 +2038,53 @@ app.post('/api/admin/renovar-token-bling', async (req, res) => {
 // ═══════════════════════════════════════════════════════════════════
 
 // Quais tipos existem e o que cada um lista (amostra pequena, resposta rapida).
+// b278.1 - ⚠️ A PERGUNTA, NAO A LISTA.
+//
+// Quando a ESTRELA nao sai num card da busca por nome, a duvida e sempre a
+// mesma: "a NF deste card esta no cruzamento?". Eu tinha posto a lista no
+// /health e o Codex apontou (P1, com razao): aquele endereco e publico, e
+// numero+serie de NF viva permite consultar a nota em outros lugares.
+//
+// Aqui e AUTENTICADO e responde UMA NF por vez: casa ou nao casa, e por
+// que. Sem despejar a lista.
+app.get('/api/espreita/casa-nf/:nf', requerLogin, (req, res) => {
+  const nfAlvo = String(req.params.nf || '').replace(/^0+/, '');
+  const serieAlvo = String(req.query.serie || '').replace(/^0+/, '') || '1';
+  if (!nfAlvo) return res.status(400).json({ ok: false, erro: 'informe o numero da NF' });
+
+  const c = ESP_CACHE || {};
+  const lista = []
+    .concat(Array.isArray(c.entregues_recentes) ? c.entregues_recentes : [])
+    .concat(Array.isArray(c.nunca_bipadas) ? c.nunca_bipadas : [])
+    .concat(Array.isArray(c.em_transito) ? c.em_transito : []);
+
+  const chave = (n, s) => String(n || '').replace(/^0+/, '')
+    + '/' + (String(s || '').replace(/^0+/, '') || '1');
+  const alvo = chave(nfAlvo, serieAlvo);
+
+  const casou = lista.find((e) => e && e.nf && chave(e.nf, e.nf_serie) === alvo);
+
+  // ⚠️ e se nao casou, digo se ao menos o NUMERO aparece — distingue
+  // "essa devolucao nao esta na espreita" de "esta, mas a serie divergiu"
+  const soNumero = !casou && lista.some((e) => e && e.nf
+    && String(e.nf).replace(/^0+/, '') === nfAlvo);
+
+  return res.json({
+    ok: true,
+    nf: alvo,
+    casou: !!casou,
+    motivo: casou ? 'esta no cruzamento — a estrela deve sair'
+      : (soNumero ? '⚠️ o NUMERO esta na espreita, mas a SERIE divergiu'
+        : 'esta NF nao esta em nenhuma das 3 listas do cruzamento'),
+    onde: casou ? (casou._recem_entregue ? 'entregues_recentes' : (casou._estado || '?')) : null,
+    cache: {
+      tem: !!ESP_CACHE,
+      idade_min: ESP_CACHE_TS ? Math.round((Date.now() - ESP_CACHE_TS) / 60000) : null,
+      com_nf: lista.filter((e) => e && e.nf).length,
+    },
+  });
+});
+
 app.get('/api/nf/entrada/sonda', async (req, res) => {
   if (!adminOk(req)) return res.status(404).send('Not found'); // protegido: exige ?k=ADMIN_KEY
   try {
