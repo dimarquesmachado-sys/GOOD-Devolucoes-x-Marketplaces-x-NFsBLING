@@ -313,6 +313,21 @@
         // proprio HTML e nao depende de nada estar na pagina".
         var lancadorDisponivel = termoBusca && !d.erro
           && typeof window.abrirModalDefeito === 'function';
+
+        // b288 - ⚠️ NO PAINEL, O BOTAO LEVA PRA TRIAGEM EM VEZ DE SUMIR.
+        //
+        // CASO REAL (11/09): o dono buscou LV-ASH-4 e o botao SUMIU. Estava
+        // certo — ele estava no `painel-devolucoes.html`, que nao tem o
+        // modal de lançamento. Mas sumir nao o ajuda: ele quer lançar o
+        // defeito, e a tela sabe o SKU.
+        //
+        // ⚠️ E EU PASSEI 5 RODADAS assumindo que ele estava na TRIAGEM, sem
+        // perguntar de qual tela. A URL estava no print desde o comeco.
+        //
+        // Aqui o botao vira LINK pra triagem, levando o SKU na querystring.
+        // Caminho mais longo que o modal, mas e um caminho — e o dono nao
+        // fica sem saida.
+        var semLancadorAqui = termoBusca && !d.erro && !lancadorDisponivel;
         // b285 - ⚠️ UMA FRASE SO, E QUE NAO PARECA FALHA.
         //
         // [stated] "ta dizendo nao encontrado o SKU, erro ai seu d novo"
@@ -337,6 +352,15 @@
               + '➕ Lançar defeito para <b>' + esc(termoBusca) + '</b></button>'
               + '<div style="font-size:12px;color:#888;margin-top:6px;">'
               + 'Abre o lançamento já com esse SKU.</div></div>'
+            : '')
+          + (semLancadorAqui
+            ? '<div style="margin-top:10px;">'
+              + '<a class="btn" style="padding:10px 14px; display:inline-block;'
+              + ' text-decoration:none;" href="/index.html?lancarDefeito='
+              + encodeURIComponent(termoBusca) + '">'
+              + '➕ Lançar defeito para <b>' + esc(termoBusca) + '</b></a>'
+              + '<div style="font-size:12px;color:#888;margin-top:6px;">'
+              + 'Abre a tela de Triagem, que é onde o lançamento acontece.</div></div>'
             : '');
 
         // b286 - ⚠️ EVENTO LIGADO NO CODIGO, NAO `onclick` EM TEXTO.
