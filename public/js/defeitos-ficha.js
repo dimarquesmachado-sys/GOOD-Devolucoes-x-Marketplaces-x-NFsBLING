@@ -288,8 +288,34 @@
       var itens = d.itens || [];
       pintarAbas(d.contagem || {});
       if (!d.ok || !itens.length) {
+        // b283 - ⚠️ "NADA ENCONTRADO" NAO PODE SER BECO SEM SAIDA.
+        //
+        // CASO REAL (11/09): o dono foi LANCAR um defeito do SKU LV-ASH-4.
+        // Buscou aqui, leu "nada encontrado" — que estava CERTO, nao ha
+        // defeito desse SKU — e o caminho morria. Ele teria que fechar,
+        // abrir "Lancar Defeito" e digitar o SKU de novo.
+        //
+        // A tela SABIA o SKU e nao oferecia nada. Quem busca um SKU sem
+        // defeito quase sempre quer lancar um.
+        var termoBusca = String(q || '').trim();
         el.innerHTML = '<div style="color:#888;font-size:13px;">nada encontrado'
-          + (d.erro ? ' (' + esc(d.erro) + ')' : '') + '.</div>';
+          + (d.erro ? ' (' + esc(d.erro) + ')' : '') + '.</div>'
+          + (termoBusca && !d.erro
+            ? '<div style="margin-top:10px;">'
+              + '<button class="btn" style="padding:10px 14px;" onclick="'
+              // ⚠️ o nome REAL e `fecharCaixaDefeitos` — eu tinha escrito
+              // `fecharDefeitos` de cabeca, e nao existe. Regra 4.12: ler o
+              // produtor antes de escrever o consumidor.
+              + 'if (typeof fecharCaixaDefeitos === \'function\') fecharCaixaDefeitos();'
+              // ⚠️ ASPAS SIMPLES, e escapadas pro HTML. `JSON.stringify` gera
+              // aspas DUPLAS, que fecham o atributo `onclick="..."` antes da
+              // hora — o botao saia quebrado e a tela junto. Peguei testando
+              // o onclick gerado com `new Function()`, nao lendo.
+              + 'abrirModalDefeito(&#39;' + esc(termoBusca.replace(/'/g, '')) + '&#39;)">'
+              + '➕ Lançar defeito para <b>' + esc(termoBusca) + '</b></button>'
+              + '<div style="font-size:12px;color:#888;margin-top:6px;">'
+              + 'Esse SKU ainda não tem defeito registrado.</div></div>'
+            : '');
         return;
       }
       var aviso = d.via_ean

@@ -94,7 +94,7 @@
     <header>
       <h1>📦 GOOD Devolucoes</h1>
       <p>Identificar venda + NF-e + Triagem</p>
-      <p style="font-size: 10px; color: #888; margin-top: 4px;">v3.37 (busca por nome cobre os 120 dias) | <span id="serverVersion">checando...</span></p>
+      <p style="font-size: 10px; color: #888; margin-top: 4px;">v3.39 (busca por nome cobre os 120 dias) | <span id="serverVersion">checando...</span></p>
       <div class="user-badge">
         👤 <span id="userNome">-</span>
         <a href="/admin.html" id="btnPainelAdmin" style="display:none;background:#ffd700;color:#1d1d1f;padding:3px 10px;border-radius:10px;font-weight:700;margin-left:6px;">👑 Painel Admin<span id="avisoPainel"></span></a>
@@ -652,7 +652,7 @@
   <script src="js/scanner.js?v=4645"></script>
   <script src="js/camera.js?v=4560"></script>
   <script src="js/bipagem.js?v=4560"></script>
-  <script src="js/busca.js?v=6902"></script>
+  <script src="js/busca.js?v=6903"></script>
   <script src="https://cdn.jsdelivr.net/npm/qz-tray@2.2.4/qz-tray.js"></script>
   <script src="js/etiqueta.js?v=4560"></script>
   <script src="js/triagem.js?v=4590"></script>
@@ -664,7 +664,7 @@
   <!-- v4.34 - colar/arrastar imagem da etiqueta na busca -->
   <script src="js/colar-imagem.js?v=4630"></script>
   <!-- v4.50 - ciclo do estoque de defeitos (ficha, pecas, pedidos) -->
-  <script src="js/defeitos-ficha.js?v=4900"></script>
+  <script src="js/defeitos-ficha.js?v=4901"></script>
 
   <!-- v3.96 - lancar produto com defeito (busca por parte do nome) -->
   <script>
@@ -677,22 +677,58 @@
       z.style.display = 'flex';
     }
 
-    function abrirModalDefeito() {
-      limparKitPendente();   // v4.66
+    // b283 - ⚠️ ACEITA UM SKU DE PARTIDA.
+    //
+    // CASO REAL (11/09): o dono foi LANCAR um defeito do SKU LV-ASH-4.
+    // Buscou no Estoque de Defeitos, leu "nada encontrado" (correto — nao
+    // ha defeito desse SKU ainda) e o caminho morria ali. Ele teria que
+    // fechar, abrir "Lancar Defeito" e digitar o SKU de novo.
+    //
+    // A tela sabia o SKU e nao oferecia nada. Agora o "nada encontrado"
+    // traz o botao, e ele chega aqui ja preenchido.
+    function abrirModalDefeito(skuInicial) {
+      // b284 - ⚠️ O MODAL ABRE PRIMEIRO, E A LIMPEZA E A PROVA DE FALHA.
+      //
+      // CASO REAL (11/09): o dono clicou "➕ Lançar defeito para LV-ASH-4",
+      // a caixa de Defeitos FECHOU e o modal NAO ABRIU — ficou numa tela
+      // vazia, sem erro visivel e sem caminho de volta.
+      //
+      // A causa: a limpeza rodava ANTES de `classList.add('show')`, e
+      // varias linhas faziam `getElementById(x).value = ''` SEM conferir se
+      // o elemento existe. Um unico id ausente lanca TypeError, a funcao
+      // morre ali — e o modal nunca abre. Como quem chamou ja tinha fechado
+      // a caixa, sobra tela vazia.
+      //
+      // ⚠️ DUAS MUDANCAS, e a ordem importa:
+      //   1. ABRIR PRIMEIRO. Se a limpeza falhar, o dono ve o modal (talvez
+      //      com sujeira do uso anterior) em vez de tela vazia. Modal sujo
+      //      da pra usar; tela vazia, nao.
+      //   2. cada acesso protegido — `const el = (id) => document...`
+      const el = (id) => document.getElementById(id);
+      const valor = (id, v) => { const n = el(id); if (n) n.value = v; };
+      const html = (id, v) => { const n = el(id); if (n) n.innerHTML = v; };
+
+      const caixa = el('modalDefeito');
+      if (caixa) caixa.classList.add('show');
+
+      try { limparKitPendente(); } catch (e) { /* v4.66 */ }
       _defProdutoEscolhido = null;
-      document.getElementById('defBusca').value = '';
-      document.getElementById('defResultados').innerHTML = '';
-      document.getElementById('defEscolhido').style.display = 'none';
-      if (document.getElementById('defImg')) document.getElementById('defImg').innerHTML = '';
-      document.getElementById('defProblema').value = '';
-      var fz = document.getElementById('defFotos'); if (fz) fz.value = '';
-      var fp = document.getElementById('defFotosPreview'); if (fp) fp.innerHTML = '';
-      document.getElementById('defLocal').value = '';
-      document.getElementById('defQtd').value = '1';
-      document.getElementById('defMsg').textContent = '';
-      var b = document.getElementById('defBtnSalvar');
-      b.disabled = true; b.style.opacity = '.5';
-      document.getElementById('modalDefeito').classList.add('show');
+      const sku = String(skuInicial || '').trim();
+      valor('defBusca', sku);
+      html('defResultados', '');
+      if (el('defEscolhido')) el('defEscolhido').style.display = 'none';
+      html('defImg', '');
+      valor('defProblema', '');
+      valor('defFotos', '');
+      html('defFotosPreview', '');
+      valor('defLocal', '');
+      valor('defQtd', '1');
+      if (el('defMsg')) el('defMsg').textContent = '';
+      const b = el('defBtnSalvar');
+      if (b) { b.disabled = true; b.style.opacity = '.5'; }
+      // ⚠️ b283: com SKU de partida, DISPARA a busca — preencher o campo e
+      // deixar o dono apertar Enter seria fazer metade do caminho.
+      if (sku) setTimeout(function () { buscarProdutoDefeito(); }, 120);
       setTimeout(function () { document.getElementById('defBusca').focus(); }, 100);
     }
 
