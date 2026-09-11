@@ -395,7 +395,7 @@ app.get('/health', (req, res) => {
       // busca por nome. Escolher um lado apagaria a descricao do outro.
       // ⚠️ a resolucao JUNTA as duas: a 7.5.0 (passe curto + tetos) ja esta
       // na main, e este PR acrescenta o build frio que falha vazio.
-      version: '7.7.3 (a consulta de NF diz QUAL dos 3 motivos — ja bipada, serie divergente, ou nunca entrou)',
+      version: '7.7.4 (revisao Codex #231, P1: ja_baixada bate direto na tabela devolucoes — o cache da espreita nunca tem baixada pra achar, o filtro ja rodou antes de gravar)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -2082,7 +2082,7 @@ app.post('/api/admin/renovar-token-bling', async (req, res) => {
 //
 // Aqui e AUTENTICADO e responde UMA NF por vez: casa ou nao casa, e por
 // que. Sem despejar a lista.
-app.get('/api/espreita/casa-nf/:nf', requerLogin, (req, res) => {
+app.get('/api/espreita/casa-nf/:nf', requerLogin, async (req, res) => {
   const nfAlvo = String(req.params.nf || '').replace(/^0+/, '');
   const serieAlvo = String(req.query.serie || '').replace(/^0+/, '') || '1';
   if (!nfAlvo) return res.status(400).json({ ok: false, erro: 'informe o numero da NF' });
@@ -2120,13 +2120,38 @@ app.get('/api/espreita/casa-nf/:nf', requerLogin, (req, res) => {
   // comportamento correto — risco real depois de um dia inteiro cacando
   // esta estrela.
   //
-  // Pra ver (a) olho o cache CRU, antes do `.filter(!baixado)` que a fonte
-  // unica aplica.
-  const cru = []
-    .concat(Array.isArray(ESP_CACHE.entregues_recentes) ? ESP_CACHE.entregues_recentes : [])
-    .concat(Array.isArray(ESP_CACHE.nunca_bipadas) ? ESP_CACHE.nunca_bipadas : [])
-    .concat(Array.isArray(ESP_CACHE.em_transito) ? ESP_CACHE.em_transito : []);
-  const noCru = cru.find((e) => e && e.nf && chaveNF(e.nf, e.nf_serie) === alvo);
+  // b281.1 (Codex, P1) - ⚠️ O CACHE NUNCA TEM BAIXADA PRA ACHAR.
+  //
+  // O plano original era olhar o `ESP_CACHE` "antes do .filter(!baixado)" —
+  // mas esse filtro roda DENTRO do `montarEspreita()`, antes do cache ser
+  // gravado: manual baixa em server.js:5717, o alerta em 5836-5839/5957-5960,
+  // as recentes em 6037-6042. O que sobra em `entregues_recentes` /
+  // `nunca_bipadas` / `em_transito` ja saiu de la sem NENHUM baixado —
+  // reler essas 3 listas so repete o mesmo `montarCruzamentoEspreita` e
+  // NUNCA acha a baixa (o proprio cenario do Charles, apos o proximo
+  // refresh do cache, voltaria a dizer "nao esta").
+  //
+  // Fonte direta: a tabela `devolucoes` grava nf_numero/nf_serie no
+  // momento da BIPAGEM — aprovado (server.js:2981), problema (3170),
+  // divergente (3302), conserto (3716) — com o numero da NF que o
+  // estoquista escaneou. Bate o alvo contra quem foi bipado de verdade,
+  // sem depender do cache (e sobrevive a um cache frio ou vencido).
+  //
+  // ⚠️ LIMITE CONHECIDO: baixa MANUAL (checkbox do dono, tabela
+  // `espreita_notas`) nao tem coluna de NF — so `chave` (tracking/pedido).
+  // Sem uma NF pra buscar por ela, esse caminho continua sem cobertura
+  // aqui; o `motivo` cai em "nao esta em nenhuma das 3 listas" pra ele.
+  let noCru = null;
+  if (!casou && supabase) {
+    try {
+      const candidatos = [...new Set([nfAlvo, String(req.params.nf || '')])].filter(Boolean);
+      const { data } = await supabase
+        .from('devolucoes')
+        .select('nf_numero, nf_serie')
+        .in('nf_numero', candidatos);
+      noCru = (data || []).find((d) => chaveNF(d.nf_numero, d.nf_serie) === alvo) || null;
+    } catch (e) { /* sem isto, cai no motivo generico — nao trava a consulta */ }
+  }
 
   const soNumero = !casou && [...porNF.keys()].some((k) => k.split('/')[0] === nfAlvo);
 

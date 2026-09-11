@@ -67,6 +67,20 @@ const semComent = bloco.split('\n').filter((l) => !l.trim().startsWith('//')).jo
      '  ⚠️ e distingue "nao esta" de "esta, mas a serie divergiu"');
 }
 
+// ⚠️ recorto ate o FIM do handler contando chaves, nao por janela fixa —
+// mesmo conserto de test/cruzamento-espreita-fonte-unica.test.js. Janela
+// fixa (2200/3000 chars) ja deu numero errado 7x em 10/09 (PR #231); um
+// comentario a mais no handler bastava pra cortar o proprio trecho que o
+// teste precisa ler, e o teste passaria vermelho sem checar nada.
+const iRota2 = srv.indexOf("app.get('/api/espreita/casa-nf/:nf'");
+let profR2 = 0;
+let fimR2 = iRota2;
+for (let k = srv.indexOf('{', iRota2); k < srv.length; k++) {
+  if (srv[k] === '{') profR2++;
+  else if (srv[k] === '}') { profR2--; if (profR2 === 0) { fimR2 = k; break; } }
+}
+const blocoRota2 = srv.slice(iRota2, fimR2);
+
 // ── ⚠️ e a consulta nao AFIRMA sem dado ─────────────────────────────
 //
 // Minha 1ª versão respondia `casou: false` + "esta NF não está em nenhuma
@@ -78,23 +92,21 @@ const semComent = bloco.split('\n').filter((l) => !l.trim().startsWith('//')).jo
 // (#220): confundir "não encontrei" com "ainda não sei". Repeti na rota de
 // diagnóstico criada para investigar aquele.
 {
-  const i = srv.indexOf("app.get('/api/espreita/casa-nf/:nf'");
-  const bloco2 = srv.slice(i, i + 2200);
   // ⚠️ b279.1 (Codex): cache VAZIO ≠ cache AUSENTE. Se a espreita montou e
   // nao ha devolucao pendente (dia tranquilo, tudo bipado), o cache esta
   // CERTO e vazio — e a resposta e "nao esta", nao "nao sei". Confundir os
   // dois manda o dono esperar um cache que ja chegou.
-  ok(/if \(!ESP_CACHE\) \{/.test(bloco2),
+  ok(/if \(!ESP_CACHE\) \{/.test(blocoRota2),
      '⚠️ so o cache AUSENTE vira "nao sei"');
-  ok(!/!lista\.length\)/.test(bloco2),
+  ok(!/!lista\.length\)/.test(blocoRota2),
      '  e cache montado e VAZIO responde normalmente (nao esta)');
   // ⚠️ b278.2: o robo trocou meu `200 + casou: null` por **503**, e e
   // melhor: 503 diz "servico ainda nao consegue responder" no proprio
   // codigo HTTP, em vez de exigir que quem chama leia um campo pra
   // descobrir que a resposta nao vale.
-  ok(/res\.status\(503\)/.test(bloco2),
+  ok(/res\.status\(503\)/.test(blocoRota2),
      '  e responde 503 (nao 200 com resposta vazia)');
-  ok(/casou: null|inconclusivo|ainda nao/i.test(bloco2),
+  ok(/casou: null|inconclusivo|ainda nao/i.test(blocoRota2),
      '  com o motivo legivel pra quem chama');
 }
 
@@ -109,13 +121,17 @@ const semComent = bloco.split('\n').filter((l) => !l.trim().startsWith('//')).jo
 // "conserta" um comportamento correto — risco real depois de um dia inteiro
 // caçando esta estrela.
 {
-  const i = srv.indexOf("app.get('/api/espreita/casa-nf/:nf'");
-  const bloco3 = srv.slice(i, i + 3000);
-  ok(/ja_baixada: !casou && !!noCru/.test(bloco3),
+  ok(/ja_baixada: !casou && !!noCru/.test(blocoRota2),
      '⚠️ a resposta separa "ja foi bipada" de "nao esta"');
-  ok(/const cru = \[\]/.test(bloco3),
-     '  olhando o cache CRU (antes do filtro de baixado)');
-  ok(/Comportamento CORRETO, nao e bug/.test(bloco3),
+  // b281.1 (Codex, P1): o "cache CRU" nunca tinha baixada pra achar — o
+  // filtro ja rodou dentro do `montarEspreita()` antes do cache ser
+  // gravado. O conserto bate direto na tabela `devolucoes` (onde a
+  // bipagem grava nf_numero/nf_serie), nao mais num concat das 3 listas.
+  ok(/from\('devolucoes'\)/.test(blocoRota2) && /nf_numero/.test(blocoRota2),
+     '  ⚠️ ja_baixada bate na fonte real da bipagem (tabela devolucoes), nao no cache ja filtrado');
+  ok(!/const cru = \[\]/.test(blocoRota2),
+     '  e nao mais no concat das 3 listas do cache (que nunca tem baixada)');
+  ok(/Comportamento CORRETO, nao e bug/.test(blocoRota2),
      '  e diz por escrito que esse caso NAO e bug');
 }
 
