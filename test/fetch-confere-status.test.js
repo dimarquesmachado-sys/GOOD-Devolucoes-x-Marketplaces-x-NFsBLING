@@ -61,11 +61,23 @@ for (const arq of ARQUIVOS) {
     totalFetch++;
     const chave = arq + ':' + (i + 1);
     if (EXCECOES.has(chave)) return;
-    // janela generosa: o .json() costuma vir logo abaixo, às vezes com
-    // comentários no meio
-    const janela = linhas.slice(i, i + 14).join(' ');
+    // ⚠️ JANELA FIXA NAO SERVE AQUI, e eu medi: numa das chamadas o
+    // tratamento por status fica 165 LINHAS abaixo do fetch. Aumentar a
+    // janela ate alcancar faria ela invadir a proxima funcao.
+    //
+    // Recorto ate o `catch` que fecha o try daquela chamada — que e o
+    // escopo onde o tratamento TEM que estar pra valer.
+    let fim = linhas.length;
+    for (let k = i; k < linhas.length; k++) {
+      if (/^\s*\} catch \(/.test(linhas[k])) { fim = k; break; }
+    }
+    const janela = linhas.slice(i, fim).join(' ');
     if (!/\.json\(\)/.test(janela)) return;          // não faz parse, ok
-    if (/if \(!r\.ok\)|if \(!resp\.ok\)|r\.ok \?/.test(janela)) return;   // confere
+    // ⚠️ dois padroes valem, e o segundo e o CERTO onde o status carrega
+    // dado (o 400 do kit): ou a guarda direta, ou `.json().catch()` seguido
+    // de tratamento por status.
+    if (/if \(!r\.ok\)|if \(!resp\.ok\)|r\.ok \?/.test(janela)) return;
+    if (/\.json\(\)\.catch\(/.test(janela) && /r\.status/.test(janela)) return;
     desprotegidas.push(chave);
   });
 }

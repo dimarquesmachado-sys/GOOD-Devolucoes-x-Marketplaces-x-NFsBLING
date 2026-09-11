@@ -286,7 +286,11 @@
       box.innerHTML = h;
       buscarFotosDefeito(lista);   // v4.31 - preenche as fotos que faltaram
     } catch (e) {
-      box.innerHTML = '<p style="font-size:13px;color:#c62828;">Erro de conexao.</p>';
+      // b293 - mesma coisa na BUSCA: "Erro de conexao" nao diz o que houve.
+      console.error("[DEFEITOS] busca de produto falhou:", e);
+      box.innerHTML = '<p style="font-size:13px;color:#c62828;">'
+        + 'A busca falhou: ' + escDef((e && e.message) || String(e))
+        + '</p>';
     }
   }
 
@@ -480,7 +484,25 @@
       // O `.json()` continua dentro do try: se a resposta nao for JSON
       // de verdade (502 do Render, sessao expirada sem corpo), ele
       // lanca e cai no catch generico la embaixo - sem tela pendurada.
-      var d = await r.json();
+      // b293 - ⚠️ LE O CORPO ANTES DE DECIDIR (esta e a chamada principal
+      // do lançamento).
+      //
+      // O 400 do kit e DADO, nao erro (o servidor devolve `componentes_det`
+      // pra tela oferecer o lançamento por componente). Entao leio o JSON
+      // primeiro; so trato como falha se nem JSON veio.
+      var d = await r.json().catch(function () { return null; });
+      if (!d) {
+        throw new Error("o servidor respondeu HTTP " + r.status
+          + " e nao consegui ler a resposta. Recarregue a pagina.");
+      }
+      // ⚠️ e sessao expirada tem ACAO PROPRIA: testei a rota sem login e
+      // ela responde 401 "Sessao invalida ou expirada". Com a mensagem
+      // generica, o dono ficava tentando de novo — quando o que resolve e
+      // entrar de novo.
+      if (r.status === 401 || r.status === 403) {
+        throw new Error("sua sessão expirou. Abra outra aba, entre de novo, "
+          + "e volte aqui — seus dados continuam preenchidos.");
+      }
       if (!d.ok) {
         // v4.62 - kit devolvido explode em N unidades do produto simples
         if (d.kit && d.componentes_det && d.componentes_det.length) {
@@ -512,7 +534,23 @@
         if (typeof abrirPopupEtiquetaDefeito === 'function') abrirPopupEtiquetaDefeito(etq, function () {});
       }, 600);
     } catch (e) {
-      msg.innerHTML = '<span style="color:#c62828;">Erro de conexao.</span>';
+      // b293 - ⚠️ "ERRO DE CONEXAO" ESCONDIA A CAUSA.
+      //
+      // [stated 11/09] o dono preencheu defeito, qtd e localizacao, clicou
+      // em lançar e leu "Erro de conexao." — que nao diz NADA. Pode ser
+      // rede, sessao expirada, coluna inexistente no banco, kit sem
+      // composicao... e cada uma tem uma acao diferente.
+      //
+      // ⚠️ E ELE PERDE O TRABALHO: nao sabe se gravou, e reescrever tudo
+      // arrisca lançar duas vezes.
+      //
+      // Mostro a causa real e mando pro console, sem sumir com o que ele
+      // digitou (o modal continua aberto, os campos preenchidos).
+      console.error("[DEFEITOS] lançamento falhou:", e);
+      msg.innerHTML = '<span style="color:#c62828;">'
+        + 'Não consegui lançar: ' + escDef((e && e.message) || String(e))
+        + '<br><small>Seus dados continuam aqui — corrija e tente de novo.'
+        + ' Se repetir, me manda esta mensagem.</small></span>';
       btn.disabled = false; btn.textContent = '\ud83d\udcbe Lancar defeito';
     }
   }
@@ -608,7 +646,16 @@
         // desta rota sempre vem com `erro` (e, se o componente resolvido
         // ainda assim for kit, com `kit`/`componentes_det`). Jogar fora
         // pelo status so trocava a causa real por "erro no {sku}" generico.
-        var d2 = await r.json();
+        // b293 - ⚠️ aqui tambem: o 400 do kit e DADO, entao leio o corpo
+        // antes; e sessao expirada tem acao propria.
+        var d2 = await r.json().catch(function () { return null; });
+        if (!d2) {
+          throw new Error("o servidor respondeu HTTP " + r.status
+            + " ao lançar o componente, e nao consegui ler a resposta.");
+        }
+        if (r.status === 401 || r.status === 403) {
+          throw new Error("sua sessão expirou — entre de novo e tente outra vez.");
+        }
         if (d2 && d2.ok) lancados++;
         else { erro = (d2 && d2.erro) || ('erro no ' + c.sku); falharam.push(c); }
       } catch (e) { erro = 'Erro de conex\u00e3o no ' + c.sku + '.'; falharam.push(c); }
