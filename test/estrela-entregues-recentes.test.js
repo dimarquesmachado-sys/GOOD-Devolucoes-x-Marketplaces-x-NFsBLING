@@ -58,13 +58,19 @@ const codigo = srv.split('\n').filter((l) => !l.trim().startsWith('//')).join('\
 }
 
 // ── e o cruzamento consome ──────────────────────────────────────────
+//
+// b278.2 - a lista+dedup saiu do meio do handler de busca por nome e virou
+// `montarCruzamentoEspreita` (fonte unica, compartilhada com /health e
+// /api/espreita/casa-nf/:nf). O ancoradouro do teste mudou, a garantia nao.
 {
-  const i = codigo.indexOf('const espreita = []');
-  const bloco = codigo.slice(i, i + 600);
-  ok(/cacheEsp\.entregues_recentes/.test(bloco),
+  const i = codigo.indexOf('function montarCruzamentoEspreita');
+  const bloco = codigo.slice(i, i + 900);
+  ok(/c\.entregues_recentes/.test(bloco),
      'o cruzamento da busca por nome inclui as entregues recentes');
   ok(/\.filter\(\(e\) => !e\.baixado\)/.test(bloco),
      '  ⚠️ e o filtro `!baixado` continua — o que ja foi bipado sai');
+  ok(/const \{ porNF, chaveNF \} = montarCruzamentoEspreita\(ESP_CACHE\)/.test(codigo),
+     '  e a busca por nome consome essa mesma funcao, nao uma copia');
 }
 
 // ── ⚠️ a chave do cache e atribuida ANTES de enriquecer ────────────

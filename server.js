@@ -353,6 +353,39 @@ function ritmoPorteiroDiag() {
   catch (e) { return { erro: e.message }; }
 }
 
+// b278.2 (Codex) - fonte UNICA do cruzamento da espreita.
+//
+// `/health`, a rota autenticada `/api/espreita/casa-nf/:nf` e o cruzamento
+// real da busca por nome tinham CADA UM sua propria copia desta logica —
+// e elas divergiam: o /health contava NF duplicada (mesma NF em duas
+// listas) mais de uma vez, e a rota de consulta nao sabia dizer o estado
+// de quem veio de `nunca_bipadas`/`em_transito` (so o cruzamento real
+// marcava `_estado` nas copias que usava). Uma unica funcao, um unico
+// Map por NF normalizada (numero+serie, sem zeros a esquerda) — os tres
+// lugares agora enxergam exatamente o mesmo cruzamento.
+function montarCruzamentoEspreita(cache) {
+  const c = cache || {};
+  const bruto = []
+    .concat((Array.isArray(c.entregues_recentes) ? c.entregues_recentes : [])
+      .map((e) => ({ ...e, _estado: 'entregue' })))
+    .concat((Array.isArray(c.nunca_bipadas) ? c.nunca_bipadas : [])
+      .map((e) => ({ ...e, _estado: 'entregue' })))
+    .concat((Array.isArray(c.em_transito) ? c.em_transito : [])
+      .map((e) => ({ ...e, _estado: 'em_transito' })))
+    .filter((e) => !e.baixado);
+  const chaveNF = (nf, serie) => String(nf || '').replace(/^0+/, '')
+    + '/' + (String(serie || '').replace(/^0+/, '') || '1');
+  const porNF = new Map();
+  for (const e of bruto) {
+    const n = String(e.nf || '').replace(/^0+/, '');
+    if (!n) continue;
+    const k = chaveNF(n, e.nf_serie || e.serie);
+    // entregue tem prioridade sobre em transito, se a mesma NF aparecer nos dois
+    if (!porNF.has(k) || e._estado === 'entregue') porNF.set(k, e);
+  }
+  return { porNF, chaveNF };
+}
+
 app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
@@ -362,7 +395,7 @@ app.get('/health', (req, res) => {
       // busca por nome. Escolher um lado apagaria a descricao do outro.
       // ⚠️ a resolucao JUNTA as duas: a 7.5.0 (passe curto + tetos) ja esta
       // na main, e este PR acrescenta o build frio que falha vazio.
-      version: '7.6.3 (a consulta de NF responde "nao sei" quando o cache da espreita esta vazio, em vez de "nao esta")',
+      version: '7.7.0 (cruzamento da espreita deduplicado numa fonte unica; sem cache = inconclusivo, nao "nao esta")',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -394,6 +427,7 @@ app.get('/health', (req, res) => {
         try {
           const c = ESP_CACHE || {};
           const cont = (k) => (Array.isArray(c[k]) ? c[k].length : 0);
+          const qtdUnica = montarCruzamentoEspreita(c).porNF.size;
           return {
             tem_cache: !!ESP_CACHE,
             idade_min: ESP_CACHE_TS ? Math.round((Date.now() - ESP_CACHE_TS) / 60000) : null,
@@ -415,18 +449,18 @@ app.get('/health', (req, res) => {
             // lista: "a NF do card esta no cruzamento?". Entao a resposta
             // vai por rota AUTENTICADA (`/api/espreita/casa-nf/:nf`), e
             // aqui fica so a contagem — que ja diz se ha materia-prima.
-            nfs_no_cruzamento_qtd: []
-              .concat(Array.isArray(c.entregues_recentes) ? c.entregues_recentes : [])
-              .concat(Array.isArray(c.nunca_bipadas) ? c.nunca_bipadas : [])
-              .concat(Array.isArray(c.em_transito) ? c.em_transito : [])
-              .filter((e) => e && e.nf).length,
+            //
+            // b278.2 (Codex, P2): a mesma NF pode aparecer em mais de uma
+            // lista (ex: `nunca_bipadas` e `em_transito`) — contar cada
+            // ocorrencia inflava o numero acima do que o cruzamento real
+            // (que deduplica por `porNF`) de fato usa. Uso o mesmo Map
+            // de `montarCruzamentoEspreita` pra contar NF UNICA, e os dois
+            // nomes (o novo e o `com_nf` que ja existia antes do P1) saem
+            // iguais de proposito: sao a mesma pergunta.
+            nfs_no_cruzamento_qtd: qtdUnica,
             // ⚠️ o cruzamento so casa quem tem NF: devolucao sem NF no
             // cache nunca ganha estrela, por mais que esteja a caminho
-            com_nf: []
-              .concat(Array.isArray(c.entregues_recentes) ? c.entregues_recentes : [])
-              .concat(Array.isArray(c.em_transito) ? c.em_transito : [])
-              .concat(Array.isArray(c.nunca_bipadas) ? c.nunca_bipadas : [])
-              .filter((e) => e && e.nf).length,
+            com_nf: qtdUnica,
           };
         } catch (e) { return { erro: e.message }; }
       })(),
@@ -1320,7 +1354,6 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
             //   - `baixado` = alguem ja marcou como processado. Sai.
             //   - a chave e numero+SERIE, porque numero se repete entre series
             //     (a NF 637 de ontem, em duas series)
-            const cacheEsp = ESP_CACHE || {};
             // b274 - ⚠️ AS ENTREGUES RECENTES ENTRAM NO CRUZAMENTO.
             //
             // O `nunca_bipadas` ja e a lista de entregues, mas com PISO DE 5
@@ -1331,24 +1364,11 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
             // Charles Alexandre foi entregue ONTEM: nao e alerta nenhum, mas e
             // EXATAMENTE a caixa que o estoquista tem na mao. Sem esta lista o
             // cruzamento nao acha e o card sai sem estrela.
-            const espreita = []
-              .concat((Array.isArray(cacheEsp.entregues_recentes) ? cacheEsp.entregues_recentes : [])
-                .map((e) => ({ ...e, _estado: 'entregue' })))
-              .concat((Array.isArray(cacheEsp.nunca_bipadas) ? cacheEsp.nunca_bipadas : [])
-                .map((e) => ({ ...e, _estado: 'entregue' })))
-              .concat((Array.isArray(cacheEsp.em_transito) ? cacheEsp.em_transito : [])
-                .map((e) => ({ ...e, _estado: 'em_transito' })))
-              .filter((e) => !e.baixado);
-            const chaveNF = (nf, serie) => String(nf || '').replace(/^0+/, '')
-              + '/' + (String(serie || '').replace(/^0+/, '') || '1');
-            const porNF = new Map();
-            for (const e of espreita) {
-              const n = String(e.nf || '').replace(/^0+/, '');
-              if (!n) continue;
-              const k = chaveNF(n, e.nf_serie || e.serie);
-              // entregue tem prioridade sobre em transito, se a mesma NF aparecer nos dois
-              if (!porNF.has(k) || e._estado === 'entregue') porNF.set(k, e);
-            }
+            //
+            // b278.2 - a construcao da lista, a normalizacao de numero+serie
+            // e a deduplicacao por NF vivem em `montarCruzamentoEspreita`
+            // (compartilhada com `/health` e `/api/espreita/casa-nf/:nf`).
+            const { porNF, chaveNF } = montarCruzamentoEspreita(ESP_CACHE);
             // b227 - PRODUTO EM TODOS, nao so nos da espreita. [stated] "não
             // mostra o produto ainda". A listagem do /nfe nao traz itens; so
             // o detalhe. Busco o detalhe de cada candidato — ate 8 chamadas,
@@ -2052,53 +2072,30 @@ app.get('/api/espreita/casa-nf/:nf', requerLogin, (req, res) => {
   const serieAlvo = String(req.query.serie || '').replace(/^0+/, '') || '1';
   if (!nfAlvo) return res.status(400).json({ ok: false, erro: 'informe o numero da NF' });
 
-  const c = ESP_CACHE || {};
-  const lista = []
-    .concat(Array.isArray(c.entregues_recentes) ? c.entregues_recentes : [])
-    .concat(Array.isArray(c.nunca_bipadas) ? c.nunca_bipadas : [])
-    .concat(Array.isArray(c.em_transito) ? c.em_transito : []);
-
-  const chave = (n, s) => String(n || '').replace(/^0+/, '')
-    + '/' + (String(s || '').replace(/^0+/, '') || '1');
-  const alvo = chave(nfAlvo, serieAlvo);
-
-  // b279 - ⚠️ SEM CACHE, A RESPOSTA E "NAO SEI", NAO "NAO ESTA".
-  //
-  // Na 1a versao desta rota eu respondia `casou: false` com o motivo "esta
-  // NF nao esta em nenhuma das 3 listas" mesmo quando o ESP_CACHE estava
-  // VAZIO. O dono consultou logo apos um deploy e levou exatamente isso —
-  // uma afirmacao categorica sobre uma lista que nao existia.
-  //
-  // ⚠️ E E O MESMO ERRO QUE EU ACABEI DE CONSERTAR NO INDICE DE NOMES
-  // (b275): confundir "nao encontrei" com "ainda nao sei". Repeti na rota
-  // de diagnostico que criei pra investigar aquele.
-  // b279.1 (Codex, P2) - ⚠️ CACHE VAZIO NAO E CACHE AUSENTE.
-  //
-  // Minha 1a versao tratava `lista.length === 0` como "nao sei". Mas se a
-  // espreita montou e nao ha nenhuma devolucao pendente — dia tranquilo,
-  // tudo bipado — o cache esta CERTO e vazio. Ai a resposta correta e "nao
-  // esta", nao "nao sei".
-  //
-  // ⚠️ Confundir os dois manda o dono esperar um cache que ja chegou.
-  // So o cache AUSENTE (`!ESP_CACHE`) e desconhecimento.
+  // b278.2 (Codex, P2): sem cache montado (90s apos boot, ou build que
+  // falhou), a resposta virava "ok:true, casou:false" — indistinguivel de
+  // "essa NF nao esta la", quando na verdade NENHUMA lista foi consultada.
+  // `cache.tem:false` ficava enterrado num campo secundario que quem chama
+  // podia ignorar. Aqui o topo do JSON ja diz que e inconclusivo.
   if (!ESP_CACHE) {
-    return res.json({
-      ok: true,
-      nf: alvo,
-      casou: null,                     // null ≠ false: NAO SEI
-      motivo: 'o cache da espreita ainda nao montou — '
-        + 'nao da pra dizer se essa NF casa. Tente de novo em alguns minutos.',
-      onde: null,
-      cache: { tem: !!ESP_CACHE, idade_min: null, com_nf: 0 },
+    return res.status(503).json({
+      ok: false,
+      erro: 'a espreita ainda nao tem cache montado — resultado inconclusivo, tente novamente em instantes',
+      cache: { tem: false, idade_min: null },
     });
   }
 
-  const casou = lista.find((e) => e && e.nf && chave(e.nf, e.nf_serie) === alvo);
+  // b278.2 - mesma fonte do cruzamento real e do /health: `_estado` vem
+  // marcado por quem monta a lista, nao lido de um campo que so existe
+  // nas copias temporarias do cruzamento (por isso `onde` sempre saia "?"
+  // pra quem vinha de `nunca_bipadas`/`em_transito`).
+  const { porNF, chaveNF } = montarCruzamentoEspreita(ESP_CACHE);
+  const alvo = chaveNF(nfAlvo, serieAlvo);
+  const casou = porNF.get(alvo);
 
   // ⚠️ e se nao casou, digo se ao menos o NUMERO aparece — distingue
   // "essa devolucao nao esta na espreita" de "esta, mas a serie divergiu"
-  const soNumero = !casou && lista.some((e) => e && e.nf
-    && String(e.nf).replace(/^0+/, '') === nfAlvo);
+  const soNumero = !casou && [...porNF.keys()].some((k) => k.split('/')[0] === nfAlvo);
 
   return res.json({
     ok: true,
@@ -2107,11 +2104,11 @@ app.get('/api/espreita/casa-nf/:nf', requerLogin, (req, res) => {
     motivo: casou ? 'esta no cruzamento — a estrela deve sair'
       : (soNumero ? '⚠️ o NUMERO esta na espreita, mas a SERIE divergiu'
         : 'esta NF nao esta em nenhuma das 3 listas do cruzamento'),
-    onde: casou ? (casou._recem_entregue ? 'entregues_recentes' : (casou._estado || '?')) : null,
+    onde: casou ? casou._estado : null,
     cache: {
-      tem: !!ESP_CACHE,
+      tem: true,
       idade_min: ESP_CACHE_TS ? Math.round((Date.now() - ESP_CACHE_TS) / 60000) : null,
-      com_nf: lista.filter((e) => e && e.nf).length,
+      com_nf: porNF.size,
     },
   });
 });

@@ -88,10 +88,14 @@ const semComent = bloco.split('\n').filter((l) => !l.trim().startsWith('//')).jo
      '⚠️ so o cache AUSENTE vira "nao sei"');
   ok(!/!lista\.length\)/.test(bloco2),
      '  e cache montado e VAZIO responde normalmente (nao esta)');
-  ok(/casou: null/.test(bloco2),
-     '  e devolve `null` (nao sei), nao `false` (nao esta)');
-  ok(/ainda nao montou/.test(bloco2),
-     '  com o motivo certo pra quem le');
+  // ⚠️ b278.2: o robo trocou meu `200 + casou: null` por **503**, e e
+  // melhor: 503 diz "servico ainda nao consegue responder" no proprio
+  // codigo HTTP, em vez de exigir que quem chama leia um campo pra
+  // descobrir que a resposta nao vale.
+  ok(/res\.status\(503\)/.test(bloco2),
+     '  e responde 503 (nao 200 com resposta vazia)');
+  ok(/casou: null|inconclusivo|ainda nao/i.test(bloco2),
+     '  com o motivo legivel pra quem chama');
 }
 
 console.log('');

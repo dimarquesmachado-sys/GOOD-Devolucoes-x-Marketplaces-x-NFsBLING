@@ -83,10 +83,15 @@ const RAIZ = path.join(__dirname, '..');
   const SRV = fs.readFileSync(path.join(RAIZ, 'server.js'), 'utf8');
   ok(/na_espreita: true/.test(SRV), 'GOOD servidor: marca o candidato que esta na espreita');
   ok(/candidatos_nome\.sort\(/.test(SRV), '  e ordena: estrelados primeiro');
-  ok(/cacheEsp\.nunca_bipadas/.test(SRV) && /cacheEsp\.em_transito/.test(SRV),
+  // b278.2 - a leitura migrou pra `montarCruzamentoEspreita` (fonte unica
+  // compartilhada com /health e /api/espreita/casa-nf/:nf), mas os campos
+  // continuam os mesmos: `nunca_bipadas` e `em_transito`, nao `itens`.
+  ok(/c\.nunca_bipadas/.test(SRV) && /c\.em_transito/.test(SRV),
      '  lendo `nunca_bipadas` e `em_transito` — os campos que montarEspreita DEVOLVE (nao `itens`)');
   ok(/\.filter\(\(e\) => !e\.baixado\)/.test(SRV), '  e sem os baixados');
   ok(/const chaveNF = \(nf, serie\)/.test(SRV), '  com chave numero+SERIE');
+  ok(/function montarCruzamentoEspreita\(cache\)/.test(SRV) && /const \{ porNF, chaveNF \} = montarCruzamentoEspreita\(ESP_CACHE\)/.test(SRV),
+     '  e o cruzamento real chama a mesma funcao (nao duplica a logica)');
 
   const AMB = fs.readFileSync(path.join(RAIZ, 'amb-devolucoes', 'lib-AMB', 'identificar-AMB.js'), 'utf8');
   ok(/na_espreita: true/.test(AMB), 'AMB servidor: marca tambem');
