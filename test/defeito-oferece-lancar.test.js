@@ -77,6 +77,34 @@ const html = fs.readFileSync(path.join(RAIZ, 'public', 'index.html'), 'utf8');
      'com SKU de partida, o modal DISPARA a busca do produto');
 }
 
+// ── ⚠️ e o modal ABRE mesmo se a limpeza falhar ─────────────────────
+//
+// CASO REAL (11/09): o dono clicou o botão novo, a caixa de Defeitos
+// FECHOU e o modal NÃO ABRIU — tela vazia, sem erro visível e sem caminho
+// de volta.
+//
+// A causa: a limpeza rodava ANTES de `classList.add('show')`, e várias
+// linhas faziam `getElementById(x).value = ''` sem conferir se o elemento
+// existe. Um id ausente lança TypeError, a função morre — e como quem
+// chamou já tinha fechado a caixa, sobra tela vazia.
+{
+  const i = html.indexOf('function abrirModalDefeito');
+  const j = html.indexOf('function fecharModalDefeito');
+  const corpo = html.slice(i, j);
+
+  // ⚠️ a ordem: abrir vem ANTES da limpeza
+  const iShow = corpo.indexOf("classList.add('show')");
+  const iLimpa = corpo.indexOf("valor('defProblema'");
+  ok(iShow > 0 && iLimpa > iShow,
+     '⚠️ o modal ABRE antes da limpeza (modal sujo da pra usar; tela vazia nao)');
+
+  // e cada acesso é protegido
+  ok(/const valor = \(id, v\) => \{ const n = el\(id\); if \(n\) n\.value = v; \}/.test(corpo),
+     '  e os acessos passam por helper que confere se o elemento existe');
+  ok(!/document\.getElementById\('def\w+'\)\.value = /.test(corpo),
+     '  ⚠️ e nao sobrou acesso direto sem protecao (era o que matava a funcao)');
+}
+
 console.log('');
 console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
 process.exit(falhas ? 1 : 0);
