@@ -395,7 +395,7 @@ app.get('/health', (req, res) => {
       // busca por nome. Escolher um lado apagaria a descricao do outro.
       // ⚠️ a resolucao JUNTA as duas: a 7.5.0 (passe curto + tetos) ja esta
       // na main, e este PR acrescenta o build frio que falha vazio.
-      version: '7.8.2 (pacote por ENVIO; busca marca o que JA FOI TRIADO; consulta de NF diz QUAL dos 3 motivos, batendo na tabela devolucoes)',
+      version: '7.9.0 (busca de defeito sem resultado oferece LANCAR pro SKU, em vez de beco sem saida)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
