@@ -29,8 +29,21 @@ const front = fs.readFileSync(path.join(RAIZ, 'public', 'js', 'busca.js'), 'utf8
 
   // ⚠️ os campos REAIS da tabela — eu tinha escrito `triado_em`/`triado_por`
   // de cabeça, e nenhum dos dois existe (Regra 4.12)
-  ok(/select\('nf_numero, created_at, funcionario, status'\)/.test(srv),
+  ok(/select\('nf_numero, nf_serie, created_at, funcionario, status, problema_descricao'\)/.test(srv),
      '  ⚠️ com os campos REAIS (`created_at`/`funcionario`, nao inventados)');
+}
+
+// ── b232.3 (Codex): numero sozinho nao basta, e sintetico nao conta ─
+{
+  ok(/jaTriadas\.set\(chaveNF\(r\.nf_numero, r\.nf_serie\), r\)/.test(srv),
+     'a marca de "ja triada" casa por NUMERO + SERIE, nao so numero');
+  ok(/jaTriadas\.get\(chaveNF\(c\.numero, c\.serie\)\)/.test(srv),
+     '  e a leitura usa a mesma chave numero+serie');
+
+  const i = srv.indexOf('const jaTriadas = new Map()');
+  const bloco = srv.slice(i, i + 1400);
+  ok(/if \(String\(r\.problema_descricao \|\| ''\)\.includes\('\[ESTORNADA SEM RETORNO\]'\)\) continue;/.test(bloco),
+     '  e registro SINTETICO do card de estornadas nao marca como triada');
 }
 
 // ── ⚠️ e a marca vale nos DOIS caminhos do card ─────────────────────

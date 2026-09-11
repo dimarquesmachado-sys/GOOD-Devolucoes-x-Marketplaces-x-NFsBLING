@@ -395,7 +395,7 @@ app.get('/health', (req, res) => {
       // busca por nome. Escolher um lado apagaria a descricao do outro.
       // ⚠️ a resolucao JUNTA as duas: a 7.5.0 (passe curto + tetos) ja esta
       // na main, e este PR acrescenta o build frio que falha vazio.
-      version: '7.8.0 (pacote contado por ENVIO, nao por registro; e a busca marca o que JA FOI TRIADO)',
+      version: '7.8.1 (revisao Codex #232: nomes reais do envio, chave numero+serie na marca de ja triada)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -1496,8 +1496,18 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
                   // ⚠️ os campos REAIS da tabela: `created_at` e `funcionario` (li o
       // select da rota de listagem, ~L2808). Eu tinha escrito `triado_em` e
       // `triado_por` de cabeca — Regra 4.12, ler o produtor antes.
-      .select('nf_numero, created_at, funcionario, status').in('nf_numero', nums);
-                for (const r of (data || [])) jaTriadas.set(String(r.nf_numero), r);
+      //
+      // b232.3 (Codex): numero SOZINHO nao basta — duas series podem repetir
+      // o mesmo numero (o proprio painel avisa isso ao operador, ver
+      // serieDaChave). E o card de estornadas grava linha SINTETICA
+      // (`[ESTORNADA SEM RETORNO]`, ver lib/devolucao-parcial.js) sem
+      // ninguem ter bipado nada — contar ela aqui avisaria contra
+      // reprocessar um pacote que ainda nem chegou.
+      .select('nf_numero, nf_serie, created_at, funcionario, status, problema_descricao').in('nf_numero', nums);
+                for (const r of (data || [])) {
+                  if (String(r.problema_descricao || '').includes('[ESTORNADA SEM RETORNO]')) continue;
+                  jaTriadas.set(chaveNF(r.nf_numero, r.nf_serie), r);
+                }
               }
             } catch (e) { /* sem a tabela, a lista sai sem a marca */ }
 
@@ -1507,7 +1517,7 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
               const diag = diagnosticos.get(String(c.id)) || null;
               // sempre uma COPIA: o `c` e do indice compartilhado
               // b282: a marca de triada vale pro card com ou sem espreita
-              const tri = jaTriadas.get(String(c.numero || ''));
+              const tri = jaTriadas.get(chaveNF(c.numero, c.serie));
               const marcaTriada = tri ? {
                 ja_triada: true,
                 triada_em: tri.created_at || null,
@@ -3471,7 +3481,10 @@ app.get('/api/admin/devolucoes', requerAdmin, async (req, res) => {
       if (pedidos.length && supabase) {
         const { data: cap } = await supabase
           .from('devolucoes_capturadas')
-          .select('pedido, tipo_tiktok, status')
+          // b232.3 (Codex): sem `shipment`/`rastreio` no select, o cruzamento
+          // nunca sabe o envio de cada registro e conta por REGISTRO em vez
+          // de por PACOTE — os dois nomes que esperadoDeCapturadas() le.
+          .select('pedido, tipo_tiktok, status, shipment, rastreio')
           .in('pedido', pedidos.slice(0, 300));
         comParcial = devParcial.anotar(data, devParcial.esperadoDeCapturadas(cap || []));
       }
