@@ -94,7 +94,7 @@
     <header>
       <h1>📦 GOOD Devolucoes</h1>
       <p>Identificar venda + NF-e + Triagem</p>
-      <p style="font-size: 10px; color: #888; margin-top: 4px;">v3.45 (busca por nome cobre os 120 dias) | <span id="serverVersion">checando...</span></p>
+      <p style="font-size: 10px; color: #888; margin-top: 4px;">v3.46 (busca por nome cobre os 120 dias) | <span id="serverVersion">checando...</span></p>
       <div class="user-badge">
         👤 <span id="userNome">-</span>
         <a href="/admin.html" id="btnPainelAdmin" style="display:none;background:#ffd700;color:#1d1d1f;padding:3px 10px;border-radius:10px;font-weight:700;margin-left:6px;">👑 Painel Admin<span id="avisoPainel"></span></a>
@@ -222,7 +222,7 @@
       <p style="font-size:13px; color:#666; margin-bottom:10px;">Busca por <b>parte do nome</b>, SKU ou EAN e escolhe o produto certo na lista.</p>
 
       <div style="display:flex; gap:8px;">
-        <input type="text" id="defBusca" placeholder="Ex: arandela 60, KJDD-E-187, 7898..." style="flex:1; padding:11px; border:1px solid #ccc; border-radius:8px; font-size:15px;" onkeydown="if(event.key==='Enter'){event.preventDefault();buscarProdutoDefeito();}">
+        <input type="text" id="lancDefBusca" placeholder="Ex: arandela 60, KJDD-E-187, 7898..." style="flex:1; padding:11px; border:1px solid #ccc; border-radius:8px; font-size:15px;" onkeydown="if(event.key==='Enter'){event.preventDefault();buscarProdutoDefeito();}">
         <button type="button" onclick="buscarProdutoDefeito()" style="background:#1565c0; color:#fff; border:none; border-radius:8px; padding:11px 18px; font-weight:700; cursor:pointer;">🔍</button>
       </div>
       <div id="defResultados" style="margin-top:10px;"></div>
@@ -667,7 +667,7 @@
   <script src="js/defeitos-ficha.js?v=4907"></script>
   <!-- b289: o modal de lançar defeito, COMPARTILHADO entre as telas.
        O prefixo das rotas e parametro — a AMB instala com '/amb'. -->
-  <script src="js/lancar-defeito.js?v=2"></script>
+  <script src="js/lancar-defeito.js?v=3"></script>
   <script>
     // Triagem (GOOD): prefixo vazio
     if (window.LancarDefeito) window.LancarDefeito.instalar({ prefixo: '' });
