@@ -945,7 +945,17 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
             const estrelados = resultado.candidatos_nome.filter((c) => c.na_espreita).length;
             resultado.erro = `Achei ${rN.candidatos.length} NF(s) recente(s) com esse nome.`
               + (estrelados ? ` ⭐ ${estrelados} está(ão) na ESPREITA — devolução a caminho.` : '')
-              + ' Confere com a CAIXA e escolhe abaixo:';
+              + ' Confere com a CAIXA e escolhe abaixo:'
+              // b280 (Codex, P1) - mesmo aviso que o #228 deu pra GOOD: o
+              // caminho de ACHOU tambem precisa avisar quando o indice esta
+              // parcial, senao a lista de candidatos se disfarca de completa
+              // (o estoquista escolhe entre os que achou e nunca sabe que
+              // faltava nota mais antiga ainda fora do indice).
+              + (rN.parcial_ate_pagina
+                ? ' ⚠️ O indice ainda esta construindo — pode haver MAIS NFs'
+                  + ' com esse nome. Se a da caixa nao esta aqui, tente de'
+                  + ' novo em alguns minutos.'
+                : '');
             return res.status(300).json(await comRecados(resultado, req.params.codigo)); // 300 Multiple Choices
           }
         } catch (e) { resultado.tentativas.push({ tipo: 'nf_por_nome', codigo: alvoNome, ok: false, status: 500, erro: e.message }); }

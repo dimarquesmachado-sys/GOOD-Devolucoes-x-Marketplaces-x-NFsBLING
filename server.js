@@ -395,7 +395,7 @@ app.get('/health', (req, res) => {
       // busca por nome. Escolher um lado apagaria a descricao do outro.
       // ⚠️ a resolucao JUNTA as duas: a 7.5.0 (passe curto + tetos) ja esta
       // na main, e este PR acrescenta o build frio que falha vazio.
-      version: '7.7.1 (o aviso de indice incompleto aparece TAMBEM quando a busca acha — a lista parcial se disfarcava de completa)',
+      version: '7.7.2 (revisao Codex #228: o passe curto do boot nao carimba mais o indice como completo, e a AMB ganhou o mesmo aviso de indice parcial na busca que acha)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
