@@ -471,10 +471,15 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
-      // b291 - ⚠️ status ANTES do .json() (varredura, Regra 4.2).
-      // Sem isto, resposta que nao e JSON — sessao expirada, 502 do
-      // Render — faz o `.json()` LANCAR e a tela fica pendurada.
-      if (!r.ok) throw new Error("HTTP " + r.status + " em o lançamento do defeito");
+      // b291 -> b303 (revisao Codex #245) - ⚠️ o `.json()` PRECISA rodar
+      // antes de decidir se e erro. O servidor devolve 400 (kit, sessao
+      // expirada, SKU invalido) com um corpo JSON estruturado — jogar
+      // fora so pelo status fazia o `if (d.kit && ...)` logo abaixo
+      // nunca rodar, e a tela SEMPRE dizia "Erro de conexao" pro
+      // estoquista, mesmo quando era so um kit pra explodir.
+      // O `.json()` continua dentro do try: se a resposta nao for JSON
+      // de verdade (502 do Render, sessao expirada sem corpo), ele
+      // lanca e cai no catch generico la embaixo - sem tela pendurada.
       var d = await r.json();
       if (!d.ok) {
         // v4.62 - kit devolvido explode em N unidades do produto simples
@@ -598,10 +603,11 @@
           body: JSON.stringify({ sku: c.sku, defeito: pend.payload.defeito, descricao: pend.payload.defeito,
             localizacao: pend.payload.localizacao, qtd: qtd, fotos: pend.payload.fotos })
         });
-        // b291 - ⚠️ status ANTES do .json() (varredura). Esta e a chamada
-        // que SALVA o defeito do componente do kit — se ela estourar, o
-        // dono nao sabe se gravou ou nao.
-        if (!r.ok) throw new Error("HTTP " + r.status + " ao lançar o componente");
+        // b291 -> b303 (revisao Codex #245, mesmo padrao do salvarDefeitoManual
+        // acima) - o `.json()` precisa rodar mesmo com r.ok false: o 400
+        // desta rota sempre vem com `erro` (e, se o componente resolvido
+        // ainda assim for kit, com `kit`/`componentes_det`). Jogar fora
+        // pelo status so trocava a causa real por "erro no {sku}" generico.
         var d2 = await r.json();
         if (d2 && d2.ok) lancados++;
         else { erro = (d2 && d2.erro) || ('erro no ' + c.sku); falharam.push(c); }

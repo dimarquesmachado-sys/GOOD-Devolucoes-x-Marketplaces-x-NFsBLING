@@ -37,6 +37,20 @@ const JS = path.join(__dirname, '..', 'public', 'js');
 const COBERTOS = ['lancar-defeito.js'];
 const ARQUIVOS = fs.readdirSync(JS).filter((f) => COBERTOS.includes(f));
 
+// ⚠️ revisao Codex #245 (P1) - `/api/defeitos/adicionar` SEMPRE devolve
+// corpo JSON estruturado, mesmo no 400 (kit detectado, sessao expirada,
+// SKU invalido) — e o proprio `d.kit`/`d.erro` so existem depois do
+// parse. Conferir `r.ok` ANTES do `.json()`, como a regra pede pras
+// outras chamadas, jogava esse corpo fora e escondia o caminho do kit.
+//
+// Estas duas chamadas continuam PROTEGIDAS contra o problema original
+// da Regra 4.2 (resposta que nao e JSON — sessao expirada sem corpo,
+// 502 do Render — travando a tela): o `.json()` delas vive dentro de um
+// `try` que tem `catch` proprio, repintando a mensagem de erro e
+// destravando o botao. So nao seguem o padrao `if (!r.ok)` porque
+// PRECISAM ler o corpo do 400 antes de decidir o que fazer.
+const EXCECOES = new Set(['lancar-defeito.js:469', 'lancar-defeito.js:600']);
+
 let totalFetch = 0;
 const desprotegidas = [];
 
@@ -45,12 +59,14 @@ for (const arq of ARQUIVOS) {
   linhas.forEach((l, i) => {
     if (!/await fetch\(/.test(l)) return;
     totalFetch++;
+    const chave = arq + ':' + (i + 1);
+    if (EXCECOES.has(chave)) return;
     // janela generosa: o .json() costuma vir logo abaixo, às vezes com
     // comentários no meio
     const janela = linhas.slice(i, i + 14).join(' ');
     if (!/\.json\(\)/.test(janela)) return;          // não faz parse, ok
     if (/if \(!r\.ok\)|if \(!resp\.ok\)|r\.ok \?/.test(janela)) return;   // confere
-    desprotegidas.push(arq + ':' + (i + 1));
+    desprotegidas.push(chave);
   });
 }
 
