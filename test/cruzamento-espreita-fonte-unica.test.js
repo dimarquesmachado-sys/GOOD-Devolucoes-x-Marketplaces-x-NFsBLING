@@ -116,7 +116,7 @@ const blocoRota = SRV.slice(iRota, fimR);
      'casa-nf: sem cache montado responde 503/inconclusivo, nao "ok:true, casou:false"');
   ok(/montarCruzamentoEspreita\(ESP_CACHE\)/.test(blocoRota),
      '  e usa a mesma funcao do cruzamento real (nao uma 3a copia)');
-  ok(/onde: casou \? casou\._estado : null/.test(blocoRota),
+  ok(/onde: \(casou && !noCru\) \? casou\._estado : null/.test(blocoRota),
      '  `onde` le o _estado marcado por quem monta a lista (nao um campo ausente)');
 }
 

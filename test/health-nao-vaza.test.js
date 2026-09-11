@@ -121,7 +121,7 @@ const blocoRota2 = srv.slice(iRota2, fimR2);
 // "conserta" um comportamento correto — risco real depois de um dia inteiro
 // caçando esta estrela.
 {
-  ok(/ja_baixada: !casou && !!noCru/.test(blocoRota2),
+  ok(/ja_baixada: !!noCru/.test(blocoRota2),
      '⚠️ a resposta separa "ja foi bipada" de "nao esta"');
   // b281.1 (Codex, P1): o "cache CRU" nunca tinha baixada pra achar — o
   // filtro ja rodou dentro do `montarEspreita()` antes do cache ser
@@ -133,6 +133,18 @@ const blocoRota2 = srv.slice(iRota2, fimR2);
      '  e nao mais no concat das 3 listas do cache (que nunca tem baixada)');
   ok(/Comportamento CORRETO, nao e bug/.test(blocoRota2),
      '  e diz por escrito que esse caso NAO e bug');
+}
+
+// ── b281.2 (Codex, P2): os 3 consertos da rodada seguinte ───────────
+{
+  ok(/if \(supabase\) \{/.test(blocoRota2),
+     '⚠️ a checagem na tabela roda sempre que ha supabase, nao so quando !casou');
+  ok(/nfAlvo\.padStart\(6, '0'\)/.test(blocoRota2),
+     '  ⚠️ inclui a variante com zero a esquerda na busca (NF gravada com padding)');
+  ok(/confrontar\.serieDaChave\(d\.nf_chave\)/.test(blocoRota2),
+     '  ⚠️ deriva a serie da nf_chave quando nf_serie estiver vazio');
+  ok(/casou: !!casou && !noCru/.test(blocoRota2),
+     '  ⚠️ ja_baixada (tabela) tem prioridade sobre um `casou` de cache defasado');
 }
 
 console.log('');
