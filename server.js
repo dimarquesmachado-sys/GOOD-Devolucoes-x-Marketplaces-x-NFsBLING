@@ -395,7 +395,7 @@ app.get('/health', (req, res) => {
       // busca por nome. Escolher um lado apagaria a descricao do outro.
       // ⚠️ a resolucao JUNTA as duas: a 7.5.0 (passe curto + tetos) ja esta
       // na main, e este PR acrescenta o build frio que falha vazio.
-      version: '7.7.2 (revisao Codex #228: o passe curto do boot nao carimba mais o indice como completo, e a AMB ganhou o mesmo aviso de indice parcial na busca que acha)',
+      version: '7.8.0 (pacote contado por ENVIO, nao por registro; e a busca marca o que JA FOI TRIADO)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -1476,15 +1476,49 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
                 }
               }
             }
+            // b282 - ⚠️ MARCA O QUE JA FOI TRIADO.
+            //
+            // CASO REAL (11/09): o dono buscou "charles", viu a NF 78425 na lista
+            // como qualquer outra — e ela JA TINHA SIDO TRIADA pelo Lucas no dia
+            // anterior, 16:21. Nada na tela dizia isso.
+            //
+            // ⚠️ O RISCO E TRIAR DE NOVO: o estoquista escolhe o card, refaz o
+            // trabalho, e pode gerar segunda entrada de estoque ou segunda NF de
+            // devolucao pro mesmo retorno.
+            //
+            // E explica a ausencia da ESTRELA sem parecer bug: triada sai da
+            // espreita de proposito.
+            const jaTriadas = new Map();
+            try {
+              const nums = rN.candidatos.map((c) => String(c.numero || '')).filter(Boolean);
+              if (nums.length) {
+                const { data } = await supabase.from('devolucoes')
+                  // ⚠️ os campos REAIS da tabela: `created_at` e `funcionario` (li o
+      // select da rota de listagem, ~L2808). Eu tinha escrito `triado_em` e
+      // `triado_por` de cabeca — Regra 4.12, ler o produtor antes.
+      .select('nf_numero, created_at, funcionario, status').in('nf_numero', nums);
+                for (const r of (data || [])) jaTriadas.set(String(r.nf_numero), r);
+              }
+            } catch (e) { /* sem a tabela, a lista sai sem a marca */ }
+
             resultado.candidatos_nome = rN.candidatos.map((c) => {
               const e = porNF.get(chaveNF(c.numero, c.serie));
               const itensDet = detalhes.get(String(c.id)) || null;
               const diag = diagnosticos.get(String(c.id)) || null;
               // sempre uma COPIA: o `c` e do indice compartilhado
+              // b282: a marca de triada vale pro card com ou sem espreita
+              const tri = jaTriadas.get(String(c.numero || ''));
+              const marcaTriada = tri ? {
+                ja_triada: true,
+                triada_em: tri.created_at || null,
+                triada_por: tri.funcionario || null,
+                triada_status: tri.status || null,
+              } : {};
               const base = { ...c, ...(itensDet ? { itens: itensDet } : {}), ...(diag ? { _detalhe: diag } : {}) };
-              if (!e) return base;
+              if (!e) return { ...base, ...marcaTriada };
               return {
                 ...base,
+                ...marcaTriada,
                 na_espreita: true,
                 espreita_estado: e._estado,
                 espreita_dias: e._estado === 'entregue' ? e.dias : e.dias_em_transito,

@@ -974,6 +974,30 @@ function renderizarCandidatosNome(mensagem, candidatos) {
     // O card comum e AZUL (classe .btn), e eu escrevia os itens em #333 —
     // preto no azul, ilegivel. Nos comuns o texto vai BRANCO; no estrelado,
     // que tem fundo claro, fica escuro (que ai contrasta).
+    // b282 - ⚠️ MARCA VISUAL DE "JA TRIADA".
+    //
+    // CASO REAL (11/09): o dono buscou "charles", viu a NF 78425 como
+    // qualquer outra — e ela JA TINHA SIDO TRIADA pelo Lucas no dia
+    // anterior, 16:21. Nada na tela dizia isso, e o risco e triar DE NOVO:
+    // segunda entrada de estoque, segunda NF de devolucao pro mesmo
+    // retorno.
+    //
+    // ⚠️ E explica a ausencia da ESTRELA sem parecer defeito: triada sai da
+    // espreita DE PROPOSITO.
+    const jaTri = !!c.ja_triada;
+    const quandoTri = c.triada_em
+      ? new Date(c.triada_em).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })
+      : '';
+    const avisoTriada = jaTri
+      ? '<div style="margin-top:6px; padding:6px 8px; border-radius:6px;'
+        + ' background:#fff3cd; color:#663c00; font-weight:700; font-size:13px;">'
+        + '✔️ JA TRIADA' + (c.triada_por ? ' por ' + escDef(c.triada_por) : '')
+        + (quandoTri ? ' · ' + escDef(quandoTri) : '')
+        + '<div style="font-weight:400; font-size:12px; margin-top:2px;">'
+        + 'Confere antes de triar de novo — pode gerar entrada e NF duplicadas.'
+        + '</div></div>'
+      : '';
+
     const estilo = naEsp
       ? 'text-align:left; padding:16px 18px; border:4px solid #f9a825; background:#fffde7; color:#333;'
         + ' box-shadow:0 4px 16px rgba(249,168,37,.55); transform:scale(1.02); margin:10px 0;'
@@ -1008,6 +1032,9 @@ function renderizarCandidatosNome(mensagem, candidatos) {
       + (c._antigo ? ' <span style="font-size:11px; background:#616161; color:#fff; padding:2px 7px; border-radius:10px;">📅 mais antiga</span>' : '')
       + (naEsp && c.tracking ? ' · 📮 ' + escapeHtml(c.tracking) : '')
       + itens
+      // b282: o aviso de JA TRIADA vai por ULTIMO, depois dos itens — e o
+      // que o estoquista le antes de clicar
+      + avisoTriada
       + '</button>';
   }
   html += '</div>';
