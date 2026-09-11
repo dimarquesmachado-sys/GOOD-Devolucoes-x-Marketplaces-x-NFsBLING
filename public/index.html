@@ -94,7 +94,7 @@
     <header>
       <h1>📦 GOOD Devolucoes</h1>
       <p>Identificar venda + NF-e + Triagem</p>
-      <p style="font-size: 10px; color: #888; margin-top: 4px;">v3.38 (busca por nome cobre os 120 dias) | <span id="serverVersion">checando...</span></p>
+      <p style="font-size: 10px; color: #888; margin-top: 4px;">v3.39 (busca por nome cobre os 120 dias) | <span id="serverVersion">checando...</span></p>
       <div class="user-badge">
         👤 <span id="userNome">-</span>
         <a href="/admin.html" id="btnPainelAdmin" style="display:none;background:#ffd700;color:#1d1d1f;padding:3px 10px;border-radius:10px;font-weight:700;margin-left:6px;">👑 Painel Admin<span id="avisoPainel"></span></a>
@@ -687,24 +687,45 @@
     // A tela sabia o SKU e nao oferecia nada. Agora o "nada encontrado"
     // traz o botao, e ele chega aqui ja preenchido.
     function abrirModalDefeito(skuInicial) {
-      limparKitPendente();   // v4.66
+      // b284 - ⚠️ O MODAL ABRE PRIMEIRO, E A LIMPEZA E A PROVA DE FALHA.
+      //
+      // CASO REAL (11/09): o dono clicou "➕ Lançar defeito para LV-ASH-4",
+      // a caixa de Defeitos FECHOU e o modal NAO ABRIU — ficou numa tela
+      // vazia, sem erro visivel e sem caminho de volta.
+      //
+      // A causa: a limpeza rodava ANTES de `classList.add('show')`, e
+      // varias linhas faziam `getElementById(x).value = ''` SEM conferir se
+      // o elemento existe. Um unico id ausente lanca TypeError, a funcao
+      // morre ali — e o modal nunca abre. Como quem chamou ja tinha fechado
+      // a caixa, sobra tela vazia.
+      //
+      // ⚠️ DUAS MUDANCAS, e a ordem importa:
+      //   1. ABRIR PRIMEIRO. Se a limpeza falhar, o dono ve o modal (talvez
+      //      com sujeira do uso anterior) em vez de tela vazia. Modal sujo
+      //      da pra usar; tela vazia, nao.
+      //   2. cada acesso protegido — `const el = (id) => document...`
+      const el = (id) => document.getElementById(id);
+      const valor = (id, v) => { const n = el(id); if (n) n.value = v; };
+      const html = (id, v) => { const n = el(id); if (n) n.innerHTML = v; };
+
+      const caixa = el('modalDefeito');
+      if (caixa) caixa.classList.add('show');
+
+      try { limparKitPendente(); } catch (e) { /* v4.66 */ }
       _defProdutoEscolhido = null;
-      // ⚠️ se veio SKU, ja preenche e dispara a busca do produto — senao
-      // o dono digita de novo o que a tela ja sabia
       const sku = String(skuInicial || '').trim();
-      document.getElementById('defBusca').value = sku;
-      document.getElementById('defResultados').innerHTML = '';
-      document.getElementById('defEscolhido').style.display = 'none';
-      if (document.getElementById('defImg')) document.getElementById('defImg').innerHTML = '';
-      document.getElementById('defProblema').value = '';
-      var fz = document.getElementById('defFotos'); if (fz) fz.value = '';
-      var fp = document.getElementById('defFotosPreview'); if (fp) fp.innerHTML = '';
-      document.getElementById('defLocal').value = '';
-      document.getElementById('defQtd').value = '1';
-      document.getElementById('defMsg').textContent = '';
-      var b = document.getElementById('defBtnSalvar');
-      b.disabled = true; b.style.opacity = '.5';
-      document.getElementById('modalDefeito').classList.add('show');
+      valor('defBusca', sku);
+      html('defResultados', '');
+      if (el('defEscolhido')) el('defEscolhido').style.display = 'none';
+      html('defImg', '');
+      valor('defProblema', '');
+      valor('defFotos', '');
+      html('defFotosPreview', '');
+      valor('defLocal', '');
+      valor('defQtd', '1');
+      if (el('defMsg')) el('defMsg').textContent = '';
+      const b = el('defBtnSalvar');
+      if (b) { b.disabled = true; b.style.opacity = '.5'; }
       // ⚠️ b283: com SKU de partida, DISPARA a busca — preencher o campo e
       // deixar o dono apertar Enter seria fazer metade do caminho.
       if (sku) setTimeout(function () { buscarProdutoDefeito(); }, 120);
