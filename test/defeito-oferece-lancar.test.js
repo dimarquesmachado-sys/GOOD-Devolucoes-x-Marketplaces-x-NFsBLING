@@ -22,8 +22,13 @@ const html = fs.readFileSync(path.join(RAIZ, 'public', 'index.html'), 'utf8');
 {
   ok(/Lançar defeito para/.test(ficha),
      'o "nada encontrado" oferece LANCAR pro SKU buscado');
-  ok(/Esse SKU ainda não tem defeito registrado/.test(ficha),
-     '  explicando que o vazio esta CERTO (nao e falha)');
+  // ⚠️ b285: a tela dizia "nada encontrado." E LOGO ABAIXO "esse SKU ainda
+  // nao tem defeito" — duas frases pro mesmo fato, e a primeira soa como
+  // BUSCA QUEBRADA. O dono leu como erro meu.
+  ok(/Nenhum defeito registrado para/.test(ficha),
+     '  numa frase SO, que diz o que aconteceu (nao "nada encontrado")');
+  ok(/a busca falhou/.test(ficha) && /color:#b00/.test(ficha),
+     '  ⚠️ e a falha DE VERDADE fica visivelmente diferente (vermelha)');
 
   // ⚠️ e só quando NÃO houve erro: se a consulta falhou, oferecer lançar
   // seria esconder o problema
