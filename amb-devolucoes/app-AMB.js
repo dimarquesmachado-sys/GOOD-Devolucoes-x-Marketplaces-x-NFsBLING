@@ -112,7 +112,11 @@ const criarMlBuscas = require('../lib/ml-buscas');
 const registrarIdentificar = require('./lib-AMB/identificar-AMB');
 const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 
-const VERSAO = 'AMB Devolucoes b307';
+// b308 - revisao Codex #249 foi so do lado GOOD (server.js/lib/): o
+// restaurar da AMB nao le shipment_id pra decidir a origem
+// (defeitos-ciclo-AMB.js:244-254) e a AMB nao tem relatorio de devolucoes
+// de venda - confirmado que nao ha nada a espelhar aqui.
+const VERSAO = 'AMB Devolucoes b308';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
