@@ -94,7 +94,7 @@
     <header>
       <h1>📦 GOOD Devolucoes</h1>
       <p>Identificar venda + NF-e + Triagem</p>
-      <p style="font-size: 10px; color: #888; margin-top: 4px;">v3.41 (busca por nome cobre os 120 dias) | <span id="serverVersion">checando...</span></p>
+      <p style="font-size: 10px; color: #888; margin-top: 4px;">v3.42 (busca por nome cobre os 120 dias) | <span id="serverVersion">checando...</span></p>
       <div class="user-badge">
         👤 <span id="userNome">-</span>
         <a href="/admin.html" id="btnPainelAdmin" style="display:none;background:#ffd700;color:#1d1d1f;padding:3px 10px;border-radius:10px;font-weight:700;margin-left:6px;">👑 Painel Admin<span id="avisoPainel"></span></a>
@@ -664,7 +664,7 @@
   <!-- v4.34 - colar/arrastar imagem da etiqueta na busca -->
   <script src="js/colar-imagem.js?v=4630"></script>
   <!-- v4.50 - ciclo do estoque de defeitos (ficha, pecas, pedidos) -->
-  <script src="js/defeitos-ficha.js?v=4903"></script>
+  <script src="js/defeitos-ficha.js?v=4905"></script>
 
   <!-- v3.96 - lancar produto com defeito (busca por parte do nome) -->
   <script>
@@ -686,6 +686,17 @@
     //
     // A tela sabia o SKU e nao oferecia nada. Agora o "nada encontrado"
     // traz o botao, e ele chega aqui ja preenchido.
+    // b287 - ⚠️ EXPOSTA EXPLICITAMENTE NO `window`.
+    //
+    // `function x() {}` num `<script>` inline JA cria `window.x` — em
+    // teoria. Mas a tela do dono disse "abrirModalDefeito nao esta
+    // disponivel", e o `defeitos-ficha.js` (que chama) vive dentro de uma
+    // IIFE, num arquivo EXTERNO carregado ANTES deste script.
+    //
+    // Nao vou depender de "em teoria" pela quarta vez: exponho no fim da
+    // declaracao, igual o `defeitos-ficha.js` ja faz com
+    // `window.fecharCaixaDefeitos` — que, nao por acaso, e o unico dos dois
+    // que estava funcionando.
     function abrirModalDefeito(skuInicial) {
       // b284 - ⚠️ O MODAL ABRE PRIMEIRO, E A LIMPEZA E A PROVA DE FALHA.
       //
@@ -731,6 +742,9 @@
       if (sku) setTimeout(function () { buscarProdutoDefeito(); }, 120);
       setTimeout(function () { document.getElementById('defBusca').focus(); }, 100);
     }
+
+    // b287: a exposicao, logo apos a declaracao
+    window.abrirModalDefeito = abrirModalDefeito;
 
     function fecharModalDefeito() {
       limparKitPendente();   // v4.66

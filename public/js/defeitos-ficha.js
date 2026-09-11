@@ -298,6 +298,21 @@
         // A tela SABIA o SKU e nao oferecia nada. Quem busca um SKU sem
         // defeito quase sempre quer lancar um.
         var termoBusca = String(q || '').trim();
+        // b288 - ⚠️ O BOTAO SO NASCE ONDE O LANCADOR EXISTE.
+        //
+        // Apontamento do Codex no #238: este arquivo e carregado tanto pela
+        // TRIAGEM (index.html, que declara e expoe `window.abrirModalDefeito`)
+        // quanto pelo PAINEL ADMIN (painel-devolucoes.html, que NAO tem essa
+        // funcao nem o modal). Antes o botao "➕ Lançar defeito" aparecia nas
+        // duas telas e, no painel admin, o clique SEMPRE ca[i]a no catch —
+        // um CTA morto por design.
+        //
+        // Confiro a disponibilidade AQUI, antes de montar o HTML, e so
+        // ofereco o botao onde ele de fato funciona. Isso bate com o
+        // proprio proposito do arquivo (comentario do topo): "monta o
+        // proprio HTML e nao depende de nada estar na pagina".
+        var lancadorDisponivel = termoBusca && !d.erro
+          && typeof window.abrirModalDefeito === 'function';
         // b285 - ⚠️ UMA FRASE SO, E QUE NAO PARECA FALHA.
         //
         // [stated] "ta dizendo nao encontrado o SKU, erro ai seu d novo"
@@ -316,7 +331,7 @@
               ? '<div style="color:#555;font-size:14px;">Nenhum defeito registrado para '
                 + '<b>' + esc(String(q).trim()) + '</b>.</div>'
               : '<div style="color:#888;font-size:13px;">nada encontrado.</div>'))
-          + (termoBusca && !d.erro
+          + (lancadorDisponivel
             ? '<div style="margin-top:10px;">'
               + '<button class="btn" id="btnLancarDoVazio" style="padding:10px 14px;">'
               + '➕ Lançar defeito para <b>' + esc(termoBusca) + '</b></button>'
@@ -339,16 +354,27 @@
         // ⚠️ E ABRO O MODAL ANTES DE FECHAR A CAIXA: na ordem anterior, se
         // o modal falhasse, a caixa ja estava fechada. Assim, se algo der
         // errado, ele continua vendo a lista de onde veio.
-        if (termoBusca && !d.erro) {
+        if (lancadorDisponivel) {
           const btn = document.getElementById('btnLancarDoVazio');
+          // b287 - ⚠️ POR `window.`, PORQUE ESTE ARQUIVO E UMA IIFE.
+          //
+          // Este arquivo inteiro vive dentro de `(function () { ... })()`
+          // (linha 18), e `abrirModalDefeito` mora num `<script>` inline do
+          // index.html. `window.abrirModalDefeito` alcanca de qualquer
+          // escopo — e por isso que o `fecharCaixaDefeitos` funcionava: ele
+          // e exposto com `window.fecharCaixaDefeitos = fechar`.
           if (btn) btn.onclick = function () {
             try {
-              if (typeof abrirModalDefeito !== 'function') {
-                throw new Error('abrirModalDefeito nao esta disponivel nesta tela');
+              // b288 - o `if` acima ja garantiu que o lancador existe nesta
+              // tela; o `typeof` aqui e so pra nao chamar algo que sumiu
+              // do window entre o render e o clique.
+              const abrir = window.abrirModalDefeito;
+              if (typeof abrir !== 'function') {
+                throw new Error('a tela de lançamento não está disponível agora');
               }
-              abrirModalDefeito(termoBusca);
+              abrir(termoBusca);
               // so fecha DEPOIS que o modal abriu
-              if (typeof fecharCaixaDefeitos === 'function') fecharCaixaDefeitos();
+              if (typeof window.fecharCaixaDefeitos === 'function') window.fecharCaixaDefeitos();
             } catch (err) {
               // ⚠️ o erro vai pra TELA, nao so pro console: o dono estava
               // vendo tela vazia e tendo que me avisar
