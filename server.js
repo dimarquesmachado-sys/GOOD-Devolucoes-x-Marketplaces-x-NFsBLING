@@ -395,7 +395,7 @@ app.get('/health', (req, res) => {
       // busca por nome. Escolher um lado apagaria a descricao do outro.
       // ⚠️ a resolucao JUNTA as duas: a 7.5.0 (passe curto + tetos) ja esta
       // na main, e este PR acrescenta o build frio que falha vazio.
-      version: '8.0.4 (o lancamento de defeito gravava coluna que nao existe e falhava; e a mensagem de fotos aparecia sem foto)',
+      version: '8.0.5 (o lancamento de defeito diz a CAUSA em vez de Erro de conexao, e trata sessao expirada)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
