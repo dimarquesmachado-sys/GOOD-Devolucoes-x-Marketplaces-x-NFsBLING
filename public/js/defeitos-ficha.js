@@ -343,12 +343,29 @@
           const btn = document.getElementById('btnLancarDoVazio');
           if (btn) btn.onclick = function () {
             try {
-              if (typeof abrirModalDefeito !== 'function') {
-                throw new Error('abrirModalDefeito nao esta disponivel nesta tela');
+              // b287 - ⚠️ POR `window.`, PORQUE ESTE ARQUIVO E UMA IIFE.
+              //
+              // A mensagem na tela disse a causa: "abrirModalDefeito nao
+              // esta disponivel nesta tela". E estava certa — este arquivo
+              // inteiro vive dentro de `(function () { ... })()` (linha 18),
+              // e a funcao mora num `<script>` inline do index.html.
+              //
+              // ⚠️ EU TINHA CONFERIDO E ERREI: olhei so os primeiros 400
+              // chars do arquivo, vi comentario e conclui "nao e IIFE". O
+              // wrapper comeca na linha 18. Conferir por amostra do inicio
+              // nao serve num arquivo que abre com 17 linhas de cabecalho.
+              //
+              // `window.abrirModalDefeito` alcanca de qualquer escopo — e
+              // por isso que o `fecharCaixaDefeitos` funcionava: ele e
+              // exposto com `window.fecharCaixaDefeitos = fechar`.
+              const abrir = (typeof window !== 'undefined')
+                ? window.abrirModalDefeito : null;
+              if (typeof abrir !== 'function') {
+                throw new Error('a tela de lançamento não está carregada nesta página');
               }
-              abrirModalDefeito(termoBusca);
+              abrir(termoBusca);
               // so fecha DEPOIS que o modal abriu
-              if (typeof fecharCaixaDefeitos === 'function') fecharCaixaDefeitos();
+              if (typeof window.fecharCaixaDefeitos === 'function') window.fecharCaixaDefeitos();
             } catch (err) {
               // ⚠️ o erro vai pra TELA, nao so pro console: o dono estava
               // vendo tela vazia e tendo que me avisar

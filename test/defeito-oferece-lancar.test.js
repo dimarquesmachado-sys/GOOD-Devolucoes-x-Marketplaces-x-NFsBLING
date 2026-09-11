@@ -73,7 +73,10 @@ const html = fs.readFileSync(path.join(RAIZ, 'public', 'index.html'), 'utf8');
 // sobrava tela vazia. Assim, se algo der errado, ele continua vendo a lista
 // de onde veio.
 {
-  const iAbre = ficha.indexOf('abrirModalDefeito(termoBusca)');
+  // ⚠️ b287: a chamada virou `abrir(termoBusca)`, com `abrir` vindo de
+  // `window.abrirModalDefeito` — este arquivo e uma IIFE e nao alcanca o
+  // escopo do `<script>` inline direto.
+  const iAbre = ficha.indexOf('abrir(termoBusca)');
   const iFecha = ficha.indexOf('fecharCaixaDefeitos();', iAbre);
   ok(iAbre > 0 && iFecha > iAbre,
      '⚠️ abre o modal ANTES de fechar a caixa (se falhar, ele nao fica sem nada)');
@@ -84,6 +87,13 @@ const html = fs.readFileSync(path.join(RAIZ, 'public', 'index.html'), 'utf8');
 // O dono ficou olhando tela vazia e teve que me avisar 3 vezes. Erro que só
 // vai para o console não existe para quem está operando.
 {
+  // ⚠️ e a busca passa pelo `window`, nao pelo escopo local
+  ok(/window\.abrirModalDefeito/.test(ficha),
+     '⚠️ alcanca a funcao por `window.` (este arquivo e uma IIFE)');
+  const html2 = fs.readFileSync(path.join(RAIZ, 'public', 'index.html'), 'utf8');
+  ok(/window\.abrirModalDefeito = abrirModalDefeito/.test(html2),
+     '  e o index.html EXPOE explicitamente (nao depende de "em teoria")');
+
   ok(/nao consegui abrir o lançamento/.test(ficha),
      '⚠️ a falha e escrita NA TELA (nao so no console)');
   ok(/Lançar Defeito" no topo da tela/.test(ficha),
