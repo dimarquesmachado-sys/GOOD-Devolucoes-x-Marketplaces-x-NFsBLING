@@ -182,7 +182,7 @@ ok(GOOD.indexOf('const porPedido') < GOOD.indexOf('let linhas = await buscar'),
    'porPedido e resolvido ANTES da busca (era depois; por isso nao dava pra filtrar no banco)');
 
 // ── 8. origem: devolucao SEM NF nao pode virar defeito de estoque ────
-ok(/veioDeDevolucao = !!\(item\.shipment_id/.test(GOOD),
+ok(/veioDeDevolucao = !!\(shipmentReal/.test(GOOD),
    'shipment_id e o sinal de origem (toda devolucao tem; defeito de estoque nao)');
 ok(/select\('id, tipo, tipo_anterior, status, shipment_id/.test(GOOD),
    '  e o select traz shipment_id (senao a checagem seria sempre falsa)');
@@ -190,6 +190,13 @@ ok(/shipment_id: String\(dados\.shipment_id \|\| dados\.nf_chave \|\| dados\.mag
    '  o server grava shipment_id em cascata: shipment > chave NF > protocolo Magalu');
 ok(/!dados\.shipment_id && !dados\.nf_chave && !dados\.magalu_protocolo/.test(SERVER),
    '  e exige um dos tres — por isso devolucao SEM NF existe e precisa ser reconhecida');
+
+// ── 9. revisao Codex #249: o shipment_id SINTETICO (DEF-*) do defeito de
+// estoque nao pode contar como prova de venda no restaurar ─────────────
+ok(/shipmentReal = item\.shipment_id && !\/\^DEF-\/\.test\(String\(item\.shipment_id\)\)/.test(GOOD),
+   'shipment_id que comeca com DEF- (gerado por server.js pro NOT NULL) e ignorado como sinal de venda');
+ok(/DEF-' \+ Date\.now\(\)/.test(SERVER),
+   '  o server realmente gera esse shipment_id sintetico pro defeito de estoque');
 
 console.log('');
 console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');

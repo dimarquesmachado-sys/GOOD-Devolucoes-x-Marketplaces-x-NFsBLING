@@ -395,7 +395,7 @@ app.get('/health', (req, res) => {
       // busca por nome. Escolher um lado apagaria a descricao do outro.
       // ⚠️ a resolucao JUNTA as duas: a 7.5.0 (passe curto + tetos) ja esta
       // na main, e este PR acrescenta o build frio que falha vazio.
-      version: '8.0.6 (revisao Codex #247: sessao expirada no lancamento de componente de kit nao vira mais "Erro de conexao")',
+      version: '8.1.2 (shipment_id sintetico do defeito nao conta como venda; e sessao expirada no componente de kit nao vira "Erro de conexao")',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -5143,6 +5143,27 @@ app.post('/api/defeitos/adicionar', requerEstoquista, async (req, res) => {
       // "Problemas reportados" (aquela e a fila fiscal do Diego, de produto
       // que voltou de venda e precisa de NF de devolucao). Este aqui nao tem
       // NF de venda nem cliente - e controle interno de estoque.
+      // b294 - ⚠️ `shipment_id` E OBRIGATORIO NA TABELA, E DEFEITO DE
+      // ESTOQUE NAO TEM ENVIO.
+      //
+      // O erro que o dono viu, agora legivel gracas a b293:
+      //   null value in column "shipment_id" violates not-null constraint
+      //
+      // A tabela `devolucoes` nasceu pra retorno de VENDA — todo registro
+      // vinha com envio. O defeito de estoque e controle INTERNO: nao tem
+      // venda, nem cliente, nem envio. A coluna continua exigindo valor.
+      //
+      // ⚠️ NAO USO NULO NEM STRING VAZIA: gero um id proprio e RECONHECIVEL
+      // (`DEF-<timestamp>-<aleatorio>`). Assim:
+      //   - a restricao do banco e respeitada sem migracao
+      //   - quem olhar a tabela SABE que aquilo nao e um envio de verdade
+      //   - nao colide com shipment do ML (que e so digito)
+      //
+      // 📌 O certo a longo prazo e a coluna aceitar nulo pra este `tipo`,
+      // mas isso e migracao no banco de producao — anotado, nao feito de
+      // madrugada.
+      shipment_id: 'DEF-' + Date.now() + '-'
+        + Math.random().toString(36).slice(2, 8).toUpperCase(),
       tipo: 'defeito_estoque',
       status: 'registrado',
       funcionario: req.usuario,
@@ -5165,7 +5186,29 @@ app.post('/api/defeitos/adicionar', requerEstoquista, async (req, res) => {
       defeito_qtd: qtd,
       problema_fotos: fotos.length ? fotos : null,
     }]).select().limit(1);
-    if (error) return res.status(500).json({ ok: false, erro: error.message });
+    if (error) {
+      // b294 - ⚠️ SE FALTAR OUTRA COLUNA OBRIGATORIA, DIGA QUAL E O QUE E.
+      //
+      // A tabela `devolucoes` nasceu pra retorno de VENDA, e o defeito de
+      // estoque nao preenche 14 das colunas que a triagem preenche
+      // (buyer_*, nf_*, order_id, pack_id...). Se outra delas tambem for
+      // NOT NULL, o erro vem UMA DE CADA VEZ — e o dono descobre no tapa,
+      // perdendo o preenchimento a cada tentativa.
+      //
+      // Nao da pra saber daqui QUAIS sao obrigatorias (so o banco sabe, e
+      // e o de producao). Entao entrego a mensagem util: o Postgres diz a
+      // coluna, e eu explico por que ela falta.
+      const falta = /null value in column "(\w+)"/.exec(error.message || "");
+      return res.status(500).json({
+        ok: false,
+        erro: falta
+          ? 'a coluna "' + falta[1] + '" e obrigatoria na tabela, e o '
+            + 'lançamento de defeito nao tem esse dado (defeito de estoque '
+            + 'nao vem de venda). Me manda esta mensagem.'
+          : error.message,
+        coluna_faltando: falta ? falta[1] : null,
+      });
+    }
     const linha = (criado || [])[0] || null;
     return res.json({
       ok: true,
