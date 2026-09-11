@@ -658,7 +658,16 @@
         }
         if (d2 && d2.ok) lancados++;
         else { erro = (d2 && d2.erro) || ('erro no ' + c.sku); falharam.push(c); }
-      } catch (e) { erro = 'Erro de conex\u00e3o no ' + c.sku + '.'; falharam.push(c); }
+      } catch (e) {
+        // revisao Codex #247 (P2) - o catch generico TROCAVA a mensagem
+        // acionavel (sessao expirada, HTTP sem corpo) por "Erro de conexao
+        // no <sku>", igualzinho ao bug que a b293 tinha acabado de corrigir
+        // na chamada principal (`salvarDefeitoManual`). Quem lancava um
+        // componente com sessao expirada continuava lendo "tente de novo"
+        // em vez de "entre de novo" \u2014 mesmo caminho, mesmo defeito.
+        erro = (e && e.message) || ('Erro de conex\u00e3o no ' + c.sku + '.');
+        falharam.push(c);
+      }
     }
     window._kitOcupado = false;
     if (btnSalvar) { btnSalvar.disabled = false; btnSalvar.style.opacity = ''; }
