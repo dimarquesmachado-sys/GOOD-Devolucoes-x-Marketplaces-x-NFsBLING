@@ -34,6 +34,18 @@
   var PREFIXO = '';
   var instalado = false;
 
+  // b290 (revisao Codex #242) - ⚠️ O ESTADO E DO MODULO, NAO DO HOST.
+  //
+  // Isto era `_defProdutoEscolhido = null;` (SEM `var`) dentro de
+  // `abrirModalDefeito`. No index.html funcionava por acidente: a tela
+  // ainda declara `var _defProdutoEscolhido` no proprio inline script, e
+  // essa var global e quem a atribuicao implicita encontrava.
+  //
+  // No painel-devolucoes.html essa declaracao nao existe em lugar nenhum.
+  // Em modo estrito, atribuir a um identificador nunca declarado lanca
+  // `ReferenceError` — e o lancamento morria ali, no primeiro clique.
+  var _defProdutoEscolhido = null;
+
   var HTML_MODAL = "<div class=\"modal-bg\" id=\"modalDefeito\">\n    <div class=\"modal modal-defeito\" style=\"max-width: 940px;\">\n      <h3>\u2795 Lan\u00e7ar produto com defeito</h3>\n      <p style=\"font-size:13px; color:#666; margin-bottom:10px;\">Busca por <b>parte do nome</b>, SKU ou EAN e escolhe o produto certo na lista.</p>\n\n      <div style=\"display:flex; gap:8px;\">\n        <input type=\"text\" id=\"defBusca\" placeholder=\"Ex: arandela 60, KJDD-E-187, 7898...\" style=\"flex:1; padding:11px; border:1px solid #ccc; border-radius:8px; font-size:15px;\" onkeydown=\"if(event.key==='Enter'){event.preventDefault();buscarProdutoDefeito();}\">\n        <button type=\"button\" onclick=\"buscarProdutoDefeito()\" style=\"background:#1565c0; color:#fff; border:none; border-radius:8px; padding:11px 18px; font-weight:700; cursor:pointer;\">\ud83d\udd0d</button>\n      </div>\n      <div id=\"defResultados\" style=\"margin-top:10px;\"></div>\n\n      <div id=\"defEscolhido\" style=\"display:none; margin-top:12px; background:#fff5f5; border:2px solid #ef9a9a; border-radius:10px; padding:12px;\">\n        <div style=\"display:flex; gap:10px; align-items:flex-start;\">\n          <div id=\"defImg\"></div>\n          <div style=\"flex:1; min-width:0;\">\n        <div style=\"font-size:14px;\"><b>Produto:</b> <span id=\"defNome\">-</span></div>\n        <div style=\"font-size:12px; color:#666; margin-top:3px;\">SKU <code id=\"defSku\">-</code> <span id=\"defEan\"></span></div>\n        <!-- v4.66 - os campos ficam AO LADO da foto, nao abaixo dela. Com a\n             foto de 260px, empilhado o quadro passava da tela e obrigava a\n             rolar (mesma correcao que a AMB ja tinha). -->\n        <div style=\"display:flex; gap:10px; margin-top:10px;\">\n          <div style=\"flex:2;\">\n            <label style=\"font-size:12px; color:#555; font-weight:600;\">Qual o defeito?</label>\n            <input type=\"text\" id=\"defProblema\" placeholder=\"Ex: globo trincado, n\u00e3o acende, falta pe\u00e7a\" style=\"width:100%; box-sizing:border-box; padding:9px; border:1px solid #ccc; border-radius:8px; font-size:14px;\">\n          </div>\n          <div style=\"width:90px;\">\n            <label style=\"font-size:12px; color:#555; font-weight:600;\">Qtd</label>\n            <input type=\"number\" id=\"defQtd\" value=\"1\" min=\"1\" max=\"999\" style=\"width:100%; box-sizing:border-box; padding:9px; border:1px solid #ccc; border-radius:8px; font-size:14px;\">\n          </div>\n        </div>\n        <!-- v4.51 - FOTOS no lancamento. Antes so a triagem do pacote gerava\n             foto e a peca lancada a mao ficava sem prova do estado. Vao pra\n             mesma coluna, entao a ficha mostra tudo junto. -->\n        <div style=\"margin-top:10px;\">\n          <label style=\"font-size:12px; color:#555; font-weight:600;\">\ud83d\udcf7 Fotos do defeito <span style=\"color:#888;font-weight:400;\">(opcional)</span></label>\n          <input type=\"file\" id=\"defFotos\" accept=\"image/*\" multiple capture=\"environment\"\n                 onchange=\"previewFotosDefeito()\"\n                 style=\"width:100%; box-sizing:border-box; padding:8px; border:1px dashed #ccc; border-radius:8px; font-size:13px; background:#fff;\">\n          <div id=\"defFotosPreview\" style=\"display:flex; gap:6px; flex-wrap:wrap; margin-top:7px;\"></div>\n        </div>\n        <div style=\"margin-top:8px;\">\n          <label style=\"font-size:12px; color:#555; font-weight:600;\">\ud83d\udccd Onde vai guardar <span style=\"color:#c62828;\">*obrigat\u00f3rio</span></label>\n          <input type=\"text\" id=\"defLocal\" placeholder=\"Ex: DEF-A3, prateleira 12...\" style=\"width:100%; box-sizing:border-box; padding:9px; border:1px solid #ccc; border-radius:8px; font-size:14px;\">\n        </div>\n          </div><!-- fecha a coluna da direita -->\n        </div><!-- fecha a linha foto + coluna -->\n      </div><!-- fecha o defEscolhido -->\n\n      <p id=\"defMsg\" style=\"font-size:13px; margin:8px 0 0;\"></p>\n\n      <div class=\"modal-acoes\" style=\"margin-top:14px;\">\n        <button type=\"button\" onclick=\"fecharModalDefeito()\" style=\"background:#999; color:#fff; border:none; border-radius:10px; padding:12px 20px; font-weight:700; cursor:pointer;\">Cancelar</button>\n        <button type=\"button\" id=\"defBtnSalvar\" onclick=\"salvarDefeitoManual()\" disabled style=\"background:#c62828; color:#fff; border:none; border-radius:10px; padding:12px 20px; font-weight:800; cursor:pointer; opacity:.5;\">\ud83d\udcbe Lan\u00e7ar defeito</button>\n      </div>\n    </div>\n  </div>";
 
 
@@ -406,16 +418,15 @@
         // v4.62 - kit devolvido explode em N unidades do produto simples
         if (d.kit && d.componentes_det && d.componentes_det.length) {
           btn.disabled = false; btn.textContent = '\ud83d\udcbe Lancar defeito';
-          // ⚠️ `explodirKitDefeito` vive no index.html (e so faz sentido na
-          // Triagem, que tem a tela de kit). No painel ela nao existe —
-          // entao chamo SE existir, em vez de derrubar o lançamento, que e
-          // o que o dono veio fazer.
-          if (typeof window.explodirKitDefeito === 'function') {
-            window.explodirKitDefeito(d, payload, msg);
-          } else if (msg) {
-            msg.textContent = '✅ Defeito lançado. (A explosão de kit só está '
-              + 'disponível na tela de Triagem.)';
-          }
+          // b290 (revisao Codex #242) - ⚠️ `explodirKitDefeito` AGORA VIVE
+          // AQUI, no modulo compartilhado. Antes ficava so no index.html:
+          // no painel, sem a funcao, isto caia num fallback que dizia
+          // "Defeito lançado" com o servidor tendo devolvido 400 e nada
+          // gravado — sucesso falso. Na Triagem, a funcao chamava `escDef`
+          // como global, mas `escDef` ja tinha virado privada desta IIFE —
+          // ReferenceError silencioso. As duas telas agora usam a MESMA
+          // implementacao, sem variante condicional.
+          explodirKitDefeito(d, payload, msg);
           return;
         }
         msg.innerHTML = '<span style="color:#c62828;">' + escDef(d.erro || 'erro') + '</span>';
@@ -438,7 +449,127 @@
       btn.disabled = false; btn.textContent = '\ud83d\udcbe Lancar defeito';
     }
   }
-  
+
+  // b290 (revisao Codex #242) - \u26a0\ufe0f O CAMINHO DO KIT VEIO INTEIRO PRA CA.
+  //
+  // `explodirKitDefeito` e `lancarComponenteKit` viviam SO no index.html \u2014
+  // sobraram la quando o resto do modal virou modulo compartilhado. Duas
+  // telas, dois jeitos de quebrar:
+  //   - painel-devolucoes.html: `explodirKitDefeito` nao existe, entao
+  //     o lan\u00e7amento de um kit caia num fallback que dizia "Defeito
+  //     lan\u00e7ado" \u2014 com o servidor tendo devolvido 400 e NADA gravado.
+  //   - index.html (Triagem): a funcao chamava `escDef` como global, mas
+  //     `escDef` ja tinha virado privada desta IIFE \u2014 `ReferenceError`
+  //     silencioso, o caminho quebrava do mesmo jeito.
+  //
+  // Agora as duas telas chamam a MESMA implementacao, com o `PREFIXO`
+  // certo em cada fetch \u2014 sem variante condicional em nenhuma delas.
+  function explodirKitDefeito(d, payload, msg) {
+    var lista = d.componentes_det || [];
+    if (!lista.length) {
+      msg.innerHTML = '<span style="color:#c62828;">' + escDef(d.erro || 'kit sem composicao') + '</span>';
+      return;
+    }
+    window._kitPendente = { d: d, payload: payload };
+    window._kitOcupado = false;
+    var completa = d.composicao_completa !== false;
+    var faltando = Number(d.componentes_faltando) || 0;
+    var qtdBase = parseInt(payload.qtd, 10) || 1;
+    var linhas = lista.map(function (c, i) {
+      var qtd = qtdBase * (c.quantidade || 1);
+      return '<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-top:1px solid #f0e6ef;">'
+        + '<div style="flex:1;min-width:0;">'
+          + '<div style="font-weight:700;font-size:13px;color:#241a35;">' + qtd + '\u00d7 <code>' + escDef(c.sku) + '</code></div>'
+          + (c.nome ? '<div style="font-size:11.5px;color:#71659a;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + escDef(c.nome) + '</div>' : '')
+        + '</div>'
+        + '<button type="button" onclick="lancarComponenteKit(' + i + ')" '
+          + 'style="background:#561A9E;color:#fff;border:none;border-radius:8px;padding:9px 13px;font-weight:700;cursor:pointer;white-space:nowrap;">'
+          + '\ud83d\udcbe Lan\u00e7ar aqui</button></div>';
+    }).join('');
+    msg.innerHTML = '<div style="background:#faf7ff;border:1px solid #e4dcf1;border-radius:10px;padding:11px 12px;text-align:left;">'
+      + '<div style="font-size:13px;color:#241a35;margin-bottom:4px;">'
+        + '\ud83d\udce6 <b>' + escDef(d.kit_sku || '') + ' \u00e9 um KIT.</b> No estoque quem existe \u00e9 o produto simples \u2014'
+        + ' escolha em qual pe\u00e7a lan\u00e7ar o defeito:</div>'
+      + linhas
+      + (!completa
+          ? '<div style="margin-top:9px;background:#fff8e1;border:1px solid #ffe082;border-radius:8px;padding:8px 10px;font-size:12px;color:#7a5c00;">'
+            + '\u26a0 N\u00e3o consegui resolver ' + faltando + ' pe\u00e7a(s) deste kit agora. Lance nas pe\u00e7as acima e'
+            + ' tente de novo em instantes para as demais (ou lance pelo SKU direto).</div>'
+          : '')
+      + (lista.length > 1 && completa
+          ? '<div style="margin-top:9px;text-align:right;"><button type="button" onclick="lancarComponenteKit(-1)" '
+            + 'style="background:#0F6E56;color:#fff;border:none;border-radius:8px;padding:9px 14px;font-weight:700;cursor:pointer;">'
+            + '\u26a1 Lan\u00e7ar em TODAS as pe\u00e7as</button></div>'
+          : '')
+      + '</div>';
+  }
+
+  // v4.66 - lanca em UM componente (indice) ou em TODOS (-1)
+  async function lancarComponenteKit(indice) {
+    var pend = window._kitPendente;
+    var msg = document.getElementById('defMsg');
+    if (!pend) { if (msg) msg.innerHTML = '<span style="color:#c62828;">recomece a busca do produto.</span>'; return; }
+    if (window._kitOcupado) return;      // toque duplo gravava duas vezes
+    window._kitOcupado = true;
+    var minhaEpoca = window._kitEpoca || 0;   // v4.72
+    var botoes = document.querySelectorAll('#defMsg button');
+    for (var b = 0; b < botoes.length; b++) { botoes[b].disabled = true; botoes[b].style.opacity = '.55'; }
+    // v4.71 (review do Codex) - o botao PRINCIPAL de salvar tambem trava:
+    // clicar nele durante os lancamentos tentaria gravar o KIT de novo
+    var btnSalvar = document.getElementById('defBtnSalvar');
+    if (btnSalvar) { btnSalvar.disabled = true; btnSalvar.style.opacity = '.5'; }
+    var lista = pend.d.componentes_det || [];
+    var alvos = indice < 0 ? lista : [lista[indice]];
+    var qtdBase = parseInt(pend.payload.qtd, 10) || 1;
+    var lancados = 0, erro = '', falharam = [];
+    for (var i = 0; i < alvos.length; i++) {
+      var c = alvos[i];
+      if (!c) continue;
+      // v4.72 - o operador trocou de produto/fechou o modal? o laco para aqui
+      if ((window._kitEpoca || 0) !== minhaEpoca) break;
+      var qtd = qtdBase * (c.quantidade || 1);
+      if (msg) msg.innerHTML = '<span style="color:#555;">lan\u00e7ando ' + qtd + '\u00d7 ' + escDef(c.sku) + '\u2026</span>';
+      try {
+        var r = await fetch(PREFIXO + '/api/defeitos/adicionar', {
+          method: 'POST', credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sku: c.sku, defeito: pend.payload.defeito, descricao: pend.payload.defeito,
+            localizacao: pend.payload.localizacao, qtd: qtd, fotos: pend.payload.fotos })
+        });
+        var d2 = await r.json();
+        if (d2 && d2.ok) lancados++;
+        else { erro = (d2 && d2.erro) || ('erro no ' + c.sku); falharam.push(c); }
+      } catch (e) { erro = 'Erro de conex\u00e3o no ' + c.sku + '.'; falharam.push(c); }
+    }
+    window._kitOcupado = false;
+    if (btnSalvar) { btnSalvar.disabled = false; btnSalvar.style.opacity = ''; }
+    // v4.72 - laco obsoleto nao escreve na tela nova nem fecha o modal dela
+    if ((window._kitEpoca || 0) !== minhaEpoca) return;
+    if (lancados && !falharam.length && msg) {
+      window._kitPendente = null;
+      msg.innerHTML = '<span style="color:#2e7d32;">\u2705 ' + lancados + ' pe\u00e7a(s) lan\u00e7ada(s) no produto simples!'
+        + ' Abra \ud83d\udd27 Defeitos pra ver e imprimir etiquetas.</span>';
+      setTimeout(function () { fecharModalDefeito(); }, 2200);
+    } else if (falharam.length && msg) {
+      // v4.71 (review do Codex) - PRESERVA o estado de composicao incompleta:
+      // forcar `true` escondia o aviso de peca nao resolvida e ainda
+      // liberava o "lancar em TODAS" com a composicao pela metade
+      pend.d = Object.assign({}, pend.d, {
+        componentes_det: falharam,
+        composicao_completa: pend.d.composicao_completa !== false,
+        componentes_faltando: pend.d.componentes_faltando || 0,
+      });
+      explodirKitDefeito(pend.d, pend.payload, msg);
+      msg.innerHTML = '<div style="background:#fdecea;border:1px solid #f5c6c3;border-radius:8px;padding:8px 10px;'
+        + 'font-size:12.5px;color:#8C1D18;margin-bottom:8px;">'
+        + (lancados ? '\u2705 ' + lancados + ' pe\u00e7a(s) lan\u00e7ada(s). ' : '')
+        + '\u274c Falhou em ' + falharam.length + ': ' + escDef(erro || '') + '<br>Tente de novo s\u00f3 nas pe\u00e7as abaixo.'
+        + '</div>' + msg.innerHTML;
+    } else if (msg) {
+      msg.innerHTML = '<span style="color:#c62828;">' + escDef(erro || 'nada lan\u00e7ado') + '</span>';
+    }
+  }
+
   // v4.66 (porte da AMB b180/b181) - A COMPOSICAO APARECE NA TELA,
   // ⚠️ as funcoes acima eram globais no inline. Exponho SO o que outras
   // telas chamam — o resto fica fechado aqui dentro.
@@ -454,6 +585,53 @@
     };
   }
 
+  // b290 (revisao Codex #242) - ⚠️ O MODAL LEVA A PROPRIA FOLHA DE ESTILO.
+  //
+  // CASO REAL: no painel-devolucoes.html, o modal injetado abria como
+  // conteudo normal NO FIM DA PAGINA — visivel desde o carregamento,
+  // porque `.modal-bg`/`.modal-bg.show`/`.modal` so existem em
+  // `styles.css`, que o painel nao importa (tem a propria folha inline,
+  // com `body`/`header`/`button` etc. no estilo do admin — importar
+  // `styles.css` inteiro ia colidir com ela).
+  //
+  // ⚠️ Todo seletor abaixo e prefixado com `#modalDefeito`: a
+  // especificidade de ID sempre vence a classe solta de `styles.css` e do
+  // `<style>` inline do index.html/AMB, entao injetar aqui SEMPRE (nao so
+  // "se faltar") e seguro — nas telas que ja tem a folha de estilo, os
+  // valores sao os MESMOS, entao nao muda nada visualmente.
+  var CSS_MODAL = ''
+    + '#modalDefeito.modal-bg{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:1000;display:none;align-items:center;justify-content:center;padding:14px;}'
+    + '#modalDefeito.modal-bg.show{display:flex;}'
+    + '#modalDefeito .modal{background:#fff;border-radius:14px;padding:22px;max-width:480px;width:100%;max-height:90vh;overflow-y:auto;}'
+    + '#modalDefeito .modal h3{font-size:18px;margin-bottom:12px;}'
+    + '#modalDefeito .modal p{font-size:14px;color:#444;line-height:1.5;margin-bottom:14px;}'
+    + '#modalDefeito .modal-acoes{display:flex;gap:10px;margin-top:18px;}'
+    + '#modalDefeito .modal-acoes button{flex:1;padding:12px;}'
+    + '#modalDefeito .modal-defeito{max-height:92vh;overflow-y:auto;}'
+    + '#modalDefeito #defResultados{max-height:46vh;overflow-y:auto;}'
+    + '#modalDefeito .foto-produto-lista{width:96px;height:96px;flex:0 0 auto;border-radius:9px;object-fit:contain;background:#fff;border:1px solid #e4dcf1;}'
+    + '#modalDefeito .foto-produto-escolhido{width:260px;height:260px;flex:0 0 auto;border-radius:10px;object-fit:contain;background:#fff;border:1px solid #e4dcf1;}'
+    + '#modalDefeito .foto-produto-lista.vazia,#modalDefeito .foto-produto-escolhido.vazia{display:flex;align-items:center;justify-content:center;background:#f2f2f7;color:#bbb;}'
+    + '#modalDefeito .foto-produto-lista.vazia{font-size:30px;}'
+    + '#modalDefeito .foto-produto-escolhido.vazia{font-size:46px;}'
+    + '#modalDefeito #defResultados .btn-escolher{margin-top:8px !important;padding:8px 16px !important;font-size:13px !important;}'
+    + '@media (max-width:700px){'
+    +   '#modalDefeito #defResultados{max-height:40vh;}'
+    +   '#modalDefeito #defEscolhido>div{flex-direction:column;}'
+    +   '#modalDefeito .foto-produto-lista{width:72px;height:72px;}'
+    +   '#modalDefeito .foto-produto-escolhido{width:150px;height:150px;}'
+    + '}';
+
+  function instalarEstilo() {
+    if (document.getElementById('lancarDefeitoEstilo')) return;
+    var alvo = document.head || document.body;
+    if (!alvo) return;
+    var tag = document.createElement('style');
+    tag.id = 'lancarDefeitoEstilo';
+    tag.textContent = CSS_MODAL;
+    alvo.appendChild(tag);
+  }
+
   function instalar(opcoes) {
     opcoes = opcoes || {};
     PREFIXO = String(opcoes.prefixo || '');
@@ -466,6 +644,7 @@
         caixa.innerHTML = HTML_MODAL;
         while (caixa.firstChild) document.body.appendChild(caixa.firstChild);
       }
+      instalarEstilo();
       instalado = true;
     }
 
@@ -476,6 +655,8 @@
     window.escolherProdutoDefeito = escolherProdutoDefeito;
     window.escolherComponenteKit = escolherComponenteKit;
     window.selecionarProdutoDefeito = selecionarProdutoDefeito;
+    window.explodirKitDefeito = explodirKitDefeito;
+    window.lancarComponenteKit = lancarComponenteKit;
     window.previewFotosDefeito = previewFotosDefeito;
     window.salvarDefeitoManual = salvarDefeitoManual;
     return true;

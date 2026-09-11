@@ -94,7 +94,7 @@
     <header>
       <h1>📦 GOOD Devolucoes</h1>
       <p>Identificar venda + NF-e + Triagem</p>
-      <p style="font-size: 10px; color: #888; margin-top: 4px;">v3.44 (busca por nome cobre os 120 dias) | <span id="serverVersion">checando...</span></p>
+      <p style="font-size: 10px; color: #888; margin-top: 4px;">v3.45 (busca por nome cobre os 120 dias) | <span id="serverVersion">checando...</span></p>
       <div class="user-badge">
         👤 <span id="userNome">-</span>
         <a href="/admin.html" id="btnPainelAdmin" style="display:none;background:#ffd700;color:#1d1d1f;padding:3px 10px;border-radius:10px;font-weight:700;margin-left:6px;">👑 Painel Admin<span id="avisoPainel"></span></a>
@@ -667,7 +667,7 @@
   <script src="js/defeitos-ficha.js?v=4907"></script>
   <!-- b289: o modal de lançar defeito, COMPARTILHADO entre as telas.
        O prefixo das rotas e parametro — a AMB instala com '/amb'. -->
-  <script src="js/lancar-defeito.js?v=1"></script>
+  <script src="js/lancar-defeito.js?v=2"></script>
   <script>
     // Triagem (GOOD): prefixo vazio
     if (window.LancarDefeito) window.LancarDefeito.instalar({ prefixo: '' });
@@ -700,136 +700,18 @@
 
   <!-- v3.96 - lancar produto com defeito (busca por parte do nome) -->
   <script>
-    var _defProdutoEscolhido = null;
-
     function abrirZoomProduto(src) {
       if (!src) return;
       document.getElementById('zoomProdutoImg').src = src;
       var z = document.getElementById('zoomProduto');
       z.style.display = 'flex';
     }
-    // b289 - ⚠️ O MODAL SAIU DAQUI PRO `js/lancar-defeito.js`.
-    //
-    // Ele vivia inline, e por isso so existia NESTA tela. O painel admin
-    // carrega a mesma caixa de Estoque de Defeitos e ficava sem o
-    // lançamento — o dono era jogado pra ca no meio do trabalho.
-    //
-    // [stated 11/09] "me deixa na mesma tela."
-    //
-    // Agora e modulo compartilhado, com o prefixo das rotas como PARAMETRO
-    // (regra da casa: peça nova nasce multi-empresa). A GOOD instala com
-    // prefixo vazio; a AMB instalaria com '/amb'.
-    //
-    // ⚠️ As funcoes continuam alcancaveis por `window.` — o
-    // `LancarDefeito.instalar()` expoe as mesmas que o inline expunha, e os
-    // `onclick` do HTML seguem funcionando.
-    // clicavel. A fila de confirm() saiu: o Diego nao via o que o kit tinha.
-    function explodirKitDefeito(d, payload, msg) {
-      var lista = d.componentes_det || [];
-      if (!lista.length) {
-        msg.innerHTML = '<span style="color:#c62828;">' + escDef(d.erro || 'kit sem composicao') + '</span>';
-        return;
-      }
-      window._kitPendente = { d: d, payload: payload };
-      window._kitOcupado = false;
-      var completa = d.composicao_completa !== false;
-      var faltando = Number(d.componentes_faltando) || 0;
-      var qtdBase = parseInt(payload.qtd, 10) || 1;
-      var linhas = lista.map(function (c, i) {
-        var qtd = qtdBase * (c.quantidade || 1);
-        return '<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-top:1px solid #f0e6ef;">'
-          + '<div style="flex:1;min-width:0;">'
-            + '<div style="font-weight:700;font-size:13px;color:#241a35;">' + qtd + '× <code>' + escDef(c.sku) + '</code></div>'
-            + (c.nome ? '<div style="font-size:11.5px;color:#71659a;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + escDef(c.nome) + '</div>' : '')
-          + '</div>'
-          + '<button type="button" onclick="lancarComponenteKit(' + i + ')" '
-            + 'style="background:#561A9E;color:#fff;border:none;border-radius:8px;padding:9px 13px;font-weight:700;cursor:pointer;white-space:nowrap;">'
-            + '💾 Lançar aqui</button></div>';
-      }).join('');
-      msg.innerHTML = '<div style="background:#faf7ff;border:1px solid #e4dcf1;border-radius:10px;padding:11px 12px;text-align:left;">'
-        + '<div style="font-size:13px;color:#241a35;margin-bottom:4px;">'
-          + '📦 <b>' + escDef(d.kit_sku || '') + ' é um KIT.</b> No estoque quem existe é o produto simples —'
-          + ' escolha em qual peça lançar o defeito:</div>'
-        + linhas
-        + (!completa
-            ? '<div style="margin-top:9px;background:#fff8e1;border:1px solid #ffe082;border-radius:8px;padding:8px 10px;font-size:12px;color:#7a5c00;">'
-              + '⚠ Não consegui resolver ' + faltando + ' peça(s) deste kit agora. Lance nas peças acima e'
-              + ' tente de novo em instantes para as demais (ou lance pelo SKU direto).</div>'
-            : '')
-        + (lista.length > 1 && completa
-            ? '<div style="margin-top:9px;text-align:right;"><button type="button" onclick="lancarComponenteKit(-1)" '
-              + 'style="background:#0F6E56;color:#fff;border:none;border-radius:8px;padding:9px 14px;font-weight:700;cursor:pointer;">'
-              + '⚡ Lançar em TODAS as peças</button></div>'
-            : '')
-        + '</div>';
-    }
-
-    // v4.66 - lanca em UM componente (indice) ou em TODOS (-1)
-    async function lancarComponenteKit(indice) {
-      var pend = window._kitPendente;
-      var msg = document.getElementById('defMsg');
-      if (!pend) { if (msg) msg.innerHTML = '<span style="color:#c62828;">recomece a busca do produto.</span>'; return; }
-      if (window._kitOcupado) return;      // toque duplo gravava duas vezes
-      window._kitOcupado = true;
-      var minhaEpoca = window._kitEpoca || 0;   // v4.72
-      var botoes = document.querySelectorAll('#defMsg button');
-      for (var b = 0; b < botoes.length; b++) { botoes[b].disabled = true; botoes[b].style.opacity = '.55'; }
-      // v4.71 (review do Codex) - o botao PRINCIPAL de salvar tambem trava:
-      // clicar nele durante os lancamentos tentaria gravar o KIT de novo
-      var btnSalvar = document.getElementById('defBtnSalvar');
-      if (btnSalvar) { btnSalvar.disabled = true; btnSalvar.style.opacity = '.5'; }
-      var lista = pend.d.componentes_det || [];
-      var alvos = indice < 0 ? lista : [lista[indice]];
-      var qtdBase = parseInt(pend.payload.qtd, 10) || 1;
-      var lancados = 0, erro = '', falharam = [];
-      for (var i = 0; i < alvos.length; i++) {
-        var c = alvos[i];
-        if (!c) continue;
-        // v4.72 - o operador trocou de produto/fechou o modal? o laco para aqui
-        if ((window._kitEpoca || 0) !== minhaEpoca) break;
-        var qtd = qtdBase * (c.quantidade || 1);
-        if (msg) msg.innerHTML = '<span style="color:#555;">lançando ' + qtd + '× ' + escDef(c.sku) + '…</span>';
-        try {
-          var r = await fetch('/api/defeitos/adicionar', {
-            method: 'POST', credentials: 'same-origin',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ sku: c.sku, defeito: pend.payload.defeito, descricao: pend.payload.defeito,
-              localizacao: pend.payload.localizacao, qtd: qtd, fotos: pend.payload.fotos })
-          });
-          var d2 = await r.json();
-          if (d2 && d2.ok) lancados++;
-          else { erro = (d2 && d2.erro) || ('erro no ' + c.sku); falharam.push(c); }
-        } catch (e) { erro = 'Erro de conexão no ' + c.sku + '.'; falharam.push(c); }
-      }
-      window._kitOcupado = false;
-      if (btnSalvar) { btnSalvar.disabled = false; btnSalvar.style.opacity = ''; }
-      // v4.72 - laco obsoleto nao escreve na tela nova nem fecha o modal dela
-      if ((window._kitEpoca || 0) !== minhaEpoca) return;
-      if (lancados && !falharam.length && msg) {
-        window._kitPendente = null;
-        msg.innerHTML = '<span style="color:#2e7d32;">\u2705 ' + lancados + ' peça(s) lançada(s) no produto simples!'
-          + ' Abra 🔧 Defeitos pra ver e imprimir etiquetas.</span>';
-        setTimeout(function () { fecharModalDefeito(); }, 2200);
-      } else if (falharam.length && msg) {
-        // v4.71 (review do Codex) - PRESERVA o estado de composicao incompleta:
-        // forcar `true` escondia o aviso de peca nao resolvida e ainda
-        // liberava o "lancar em TODAS" com a composicao pela metade
-        pend.d = Object.assign({}, pend.d, {
-          componentes_det: falharam,
-          composicao_completa: pend.d.composicao_completa !== false,
-          componentes_faltando: pend.d.componentes_faltando || 0,
-        });
-        explodirKitDefeito(pend.d, pend.payload, msg);
-        msg.innerHTML = '<div style="background:#fdecea;border:1px solid #f5c6c3;border-radius:8px;padding:8px 10px;'
-          + 'font-size:12.5px;color:#8C1D18;margin-bottom:8px;">'
-          + (lancados ? '\u2705 ' + lancados + ' peça(s) lançada(s). ' : '')
-          + '❌ Falhou em ' + falharam.length + ': ' + escDef(erro || '') + '<br>Tente de novo só nas peças abaixo.'
-          + '</div>' + msg.innerHTML;
-      } else if (msg) {
-        msg.innerHTML = '<span style="color:#c62828;">' + escDef(erro || 'nada lançado') + '</span>';
-      }
-    }
-</script>
+    // b289/b290 (revisao Codex #242) - ⚠️ O MODAL (e o caminho do KIT)
+    // SAIRAM DAQUI PRO `js/lancar-defeito.js`, modulo compartilhado com o
+    // painel admin. So `abrirZoomProduto` fica: usa o `#zoomProduto` que
+    // so existe nesta tela, e o modulo ja tem um fallback simples
+    // (`instalarZoomSeFaltar`) pras telas que nao tem essa lightbox.
+  </script>
 
   <!-- ESTOQUE DE DEFEITOS: a consulta abre AQUI dentro, numa janela, pra
        nao tirar o estoquista da tela de triagem no meio do trabalho. -->

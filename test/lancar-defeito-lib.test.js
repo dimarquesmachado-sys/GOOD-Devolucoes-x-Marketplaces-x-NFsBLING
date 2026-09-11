@@ -89,16 +89,61 @@ const src = fs.readFileSync(MOD, 'utf8');
   }
 }
 
-// ── e funções que só existem na Triagem são opcionais ───────────────
+// ── ⚠️ revisao Codex #242: o caminho do KIT e UNICO nas duas telas ──
 //
-// ⚠️ `explodirKitDefeito` vive no index.html e só faz sentido lá. No painel
-// não existe — chamar direto derrubaria o lançamento, que é o que o dono
-// veio fazer.
+// `explodirKitDefeito`/`lancarComponenteKit` viviam SO no index.html.
+// No painel, a funcao nao existia e o lançamento de um kit caia num
+// fallback que dizia "Defeito lançado" com o servidor tendo devolvido
+// 400 e nada gravado — sucesso falso. Na Triagem, a funcao chamava
+// `escDef` como global, que ja tinha virado privada desta IIFE —
+// ReferenceError silencioso. Nao pode sobrar variante condicional.
 {
-  ok(/typeof window\.explodirKitDefeito === 'function'/.test(src),
-     '⚠️ `explodirKitDefeito` e chamada SE existir (nao derruba o lançamento)');
+  ok(/function explodirKitDefeito\(d, payload, msg\)/.test(src),
+     '⚠️ `explodirKitDefeito` vive AQUI (modulo compartilhado), nao so numa tela');
+  ok(/function lancarComponenteKit\(indice\)/.test(src),
+     '  junto com `lancarComponenteKit`');
+  ok(!/typeof window\.explodirKitDefeito === 'function'/.test(src),
+     '  ⚠️ e o `salvarDefeitoManual` NAO tem mais fallback condicional');
+  ok(/explodirKitDefeito\(d, payload, msg\);\s*\n\s*return;/.test(src),
+     '  chama direto, sem `typeof ... === \'function\'` por perto');
+  ok(/window\.explodirKitDefeito = explodirKitDefeito;/.test(src),
+     '  e fica exposta em `window` (o HTML gerado chama por `onclick`)');
+  ok(/window\.lancarComponenteKit = lancarComponenteKit;/.test(src),
+     '  igual `lancarComponenteKit`');
   ok(/function instalarZoomSeFaltar/.test(src),
-     '  e o zoom da foto tem fallback (erro em onclick suja o console)');
+     '  e o zoom da foto continua com fallback (erro em onclick suja o console)');
+}
+
+// ── ⚠️ revisao Codex #242: o estado escolhido e DO MODULO ───────────
+//
+// Era `_defProdutoEscolhido = null;` sem `var`, dentro de
+// `abrirModalDefeito`. Funcionava por acidente no index.html (que
+// declarava a mesma var solta no proprio inline script). No painel, sem
+// essa declaracao em lugar nenhum, a atribuicao em modo estrito lançava
+// `ReferenceError` e travava o primeiro clique.
+{
+  ok(/var _defProdutoEscolhido = null;/.test(src),
+     '⚠️ `_defProdutoEscolhido` e declarada DENTRO do modulo (nao depende do host)');
+  const indexHtml = fs.readFileSync(path.join(RAIZ, 'public', 'index.html'), 'utf8');
+  ok(!/_defProdutoEscolhido/.test(indexHtml),
+     '  e o index.html nao tem mais a declaracao solta (era o que mascarava o bug)');
+}
+
+// ── ⚠️ revisao Codex #242: o modal leva a propria folha de estilo ───
+//
+// No painel-devolucoes.html, o modal injetado nao tinha `.modal-bg`/
+// `.modal-bg.show`/`.modal` em lugar nenhum (essas classes so existem em
+// `styles.css`, que o painel nao importa) — o formulario renderizava
+// como conteudo comum no fim da pagina, visivel desde o carregamento.
+{
+  ok(/function instalarEstilo\(\)/.test(src),
+     '⚠️ o modulo tem uma função que injeta a própria folha de estilo');
+  ok(/instalarEstilo\(\);/.test(src),
+     '  chamada durante o `instalar()`');
+  ok(/#modalDefeito\.modal-bg\{/.test(src) && /#modalDefeito\.modal-bg\.show\{/.test(src),
+     '  ⚠️ e cobre o `.modal-bg`/`.modal-bg.show` (sem eles, "show" nao vira overlay)');
+  ok(/document\.getElementById\('lancarDefeitoEstilo'\)/.test(src),
+     '  ⚠️ e nao injeta duas vezes (guarda por id)');
 }
 
 console.log('');
