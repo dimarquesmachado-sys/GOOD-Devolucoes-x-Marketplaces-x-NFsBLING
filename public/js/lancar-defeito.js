@@ -445,7 +445,18 @@
     document.getElementById('defLocal').style.background = '#fff';
     var btn = document.getElementById('defBtnSalvar');
     btn.disabled = true; btn.textContent = 'salvando...';
-    msg.innerHTML = '<span style="color:#555;">subindo fotos...</span>';
+    // b292 - ⚠️ "subindo fotos..." aparecia MESMO SEM FOTO.
+    //
+    // [stated 11/09] "apareceu a mensagem Subindo fotos (embora eu nao
+    // tenha subido foto alguma)". A mensagem era fixa, antes de conferir
+    // se ha arquivo — entao quem lançava sem foto lia que o sistema
+    // estava fazendo algo que nao ia fazer.
+    var qtdFotos = (document.getElementById("defFotos") || {}).files;
+    qtdFotos = qtdFotos ? qtdFotos.length : 0;
+    msg.innerHTML = '<span style="color:#555;">'
+      + (qtdFotos ? ('subindo ' + qtdFotos + ' foto' + (qtdFotos > 1 ? 's' : '') + '...')
+        : 'gravando o defeito...')
+      + '</span>';
     var fotosUrls = await subirFotosDefeito();
     var payload = {
       sku: _defProdutoEscolhido.sku,

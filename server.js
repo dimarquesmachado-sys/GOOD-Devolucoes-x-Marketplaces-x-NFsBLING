@@ -395,7 +395,7 @@ app.get('/health', (req, res) => {
       // busca por nome. Escolher um lado apagaria a descricao do outro.
       // ⚠️ a resolucao JUNTA as duas: a 7.5.0 (passe curto + tetos) ja esta
       // na main, e este PR acrescenta o build frio que falha vazio.
-      version: '8.0.3 (as 5 chamadas do modal conferem o status antes do .json() — a tela travava em Buscando pra sempre)',
+      version: '8.0.4 (o lancamento de defeito gravava coluna que nao existe e falhava; e a mensagem de fotos aparecia sem foto)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -5148,7 +5148,18 @@ app.post('/api/defeitos/adicionar', requerEstoquista, async (req, res) => {
       funcionario: req.usuario,
       produto_sku: String(prod.codigo || sku),
       produto_titulo: prod.nome || null,
-      produto_ean: prod.gtin || prod.ean || null,
+      // b292 - ⚠️ `produto_ean` NAO EXISTE NA TABELA, e derrubava o
+      // lançamento inteiro:
+      //   "Could not find the 'produto_ean' column of 'devolucoes'"
+      //
+      // Escrita e NUNCA LIDA — varri o repo e nenhum lugar consulta essa
+      // coluna. Foi acrescentada no insert sem a migracao correspondente,
+      // e o erro so aparece na hora de GRAVAR: o dono preenche tudo,
+      // clica em lançar, e leva a mensagem do Postgres na cara.
+      //
+      // ⚠️ O EAN NAO SE PERDE: ele ja vai na RESPOSTA (`ean:` abaixo), que
+      // e o que a tela usa pra montar a etiqueta. Removo do insert em vez
+      // de criar coluna que ninguem le.
       problema_descricao: `[LANCADO MANUAL por ${req.usuario}] ${defeito}`,
       localizacao: localizacao || null,
       defeito_qtd: qtd,
