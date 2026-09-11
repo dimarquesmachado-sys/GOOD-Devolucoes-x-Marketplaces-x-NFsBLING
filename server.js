@@ -395,7 +395,7 @@ app.get('/health', (req, res) => {
       // busca por nome. Escolher um lado apagaria a descricao do outro.
       // ⚠️ a resolucao JUNTA as duas: a 7.5.0 (passe curto + tetos) ja esta
       // na main, e este PR acrescenta o build frio que falha vazio.
-      version: '7.9.8 (no painel admin o botao de lancar defeito LEVA pra triagem com o SKU, em vez de sumir)',
+      version: '8.0.1 (revisao Codex #242: estado e CSS do modal viram do proprio modulo, e o caminho de kit devolvido e unico pras duas telas)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),

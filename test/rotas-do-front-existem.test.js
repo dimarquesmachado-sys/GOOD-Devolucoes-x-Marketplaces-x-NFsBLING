@@ -79,9 +79,12 @@ for (const [arq, nome] of TELAS) {
 // Foto de produto é enfeite: se falhar, o card fica sem foto e a devolução
 // segue. Nunca deve virar erro vermelho na tela.
 {
-  const html = fs.readFileSync(path.join(RAIZ, 'public', 'index.html'), 'utf8');
-  const i = html.indexOf("/api/produto/imagem/");
-  const bloco = html.slice(i, i + 900);
+  // ⚠️ b289: a busca de foto foi pro modulo `js/lancar-defeito.js` junto
+  // com o modal. Leio de la — e o `+ PREFIXO` entrou na rota, entao a
+  // busca do trecho usa o nome sem a barra inicial.
+  const modal = fs.readFileSync(path.join(RAIZ, 'public', 'js', 'lancar-defeito.js'), 'utf8');
+  const i = modal.indexOf("/api/produto/imagem/");
+  const bloco = modal.slice(i, i + 900);
   ok(/if \(!r\.ok\) continue/.test(bloco),
      'a busca de foto confere o status antes do .json()');
   ok(/\.json\(\)\.catch\(/.test(bloco),

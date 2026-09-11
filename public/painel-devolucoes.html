@@ -3875,6 +3875,13 @@
     carregar();
   </script>
 <script src="js/defeitos-ficha.js?v=4907"></script>
+  <!-- b289: o modal de lançar defeito, COMPARTILHADO entre as telas.
+       O prefixo das rotas e parametro — a AMB instala com '/amb'. -->
+  <script src="js/lancar-defeito.js?v=2"></script>
+  <script>
+    // Painel admin
+    if (window.LancarDefeito) window.LancarDefeito.instalar({ prefixo: '' });
+  </script>
 <script>
   // v4.50 - AVISO de pedidos esperando. Sem isso o admin so descobre que
   // tem coisa pra autorizar se abrir a fila por acaso.
