@@ -48,29 +48,48 @@ const html = fs.readFileSync(path.join(RAIZ, 'public', 'index.html'), 'utf8');
      'e `abrirModalDefeito` aceita o SKU de partida');
 }
 
-// ── ⚠️ e o onclick gerado COMPILA ───────────────────────────────────
+// ── ⚠️ o evento e ligado NO CODIGO, nao por `onclick` em texto ──────
 //
-// Minha 1ª versão usava `JSON.stringify`, que gera aspas DUPLAS — elas
-// fecham o atributo `onclick="..."` antes da hora e quebram o botão (e a
-// tela junto). Peguei testando o onclick com `new Function()`, não lendo.
+// O botão anterior montava o código dentro de `onclick="..."`. O HTML saía
+// certo (testei o gerado com `new Function`), mas o dono clicava, o card
+// sumia e o modal não abria — TRÊS vezes seguidas, inclusive depois de
+// Ctrl+F5 com a mensagem nova já na tela.
+//
+// Com `onclick` em texto, qualquer erro dentro da função vira silêncio: a
+// caixa já fechou e não sobra nada na tela. Ligando no código, o erro é
+// capturável — e vai para a TELA, não só para o console.
 {
-  ok(/&#39;/.test(ficha),
-     '⚠️ usa aspas simples ESCAPADAS (JSON.stringify quebraria o atributo)');
-  ok(!/abrirModalDefeito\(' \+ JSON\.stringify/.test(ficha),
-     '  e nao voltou pro JSON.stringify');
+  ok(/btn\.onclick = function \(\)/.test(ficha),
+     '⚠️ o evento e ligado no codigo (nao `onclick` montado em texto)');
+  ok(/id="btnLancarDoVazio"/.test(ficha),
+     '  com id proprio pra achar o botao');
+  ok(!/onclick="if \(typeof fecharCaixaDefeitos/.test(ficha),
+     '  e o onclick em texto SAIU');
+}
 
-  // simula o onclick com SKUs problemáticos
-  const esc = (s) => String(s).replace(/[&<>"]/g,
-    (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-  for (const termo of ['LV-ASH-4', "SKU'X", 'A<B&C']) {
-    const oc = "if (typeof fecharCaixaDefeitos === 'function') fecharCaixaDefeitos();"
-      + 'abrirModalDefeito(&#39;' + esc(termo.replace(/'/g, '')) + '&#39;)';
-    const real = oc.replace(/&#39;/g, "'").replace(/&amp;/g, '&')
-      .replace(/&lt;/g, '<').replace(/&gt;/g, '>');
-    let compila = true;
-    try { new Function(real); } catch (e) { compila = false; }
-    ok(compila, '  o onclick compila com SKU "' + termo + '"');
-  }
+// ── ⚠️ e a ORDEM: abre o modal ANTES de fechar a caixa ──────────────
+//
+// Na ordem anterior, se o modal falhasse, a caixa já estava fechada e
+// sobrava tela vazia. Assim, se algo der errado, ele continua vendo a lista
+// de onde veio.
+{
+  const iAbre = ficha.indexOf('abrirModalDefeito(termoBusca)');
+  const iFecha = ficha.indexOf('fecharCaixaDefeitos();', iAbre);
+  ok(iAbre > 0 && iFecha > iAbre,
+     '⚠️ abre o modal ANTES de fechar a caixa (se falhar, ele nao fica sem nada)');
+}
+
+// ── ⚠️ e a falha aparece NA TELA ────────────────────────────────────
+//
+// O dono ficou olhando tela vazia e teve que me avisar 3 vezes. Erro que só
+// vai para o console não existe para quem está operando.
+{
+  ok(/nao consegui abrir o lançamento/.test(ficha),
+     '⚠️ a falha e escrita NA TELA (nao so no console)');
+  ok(/Lançar Defeito" no topo da tela/.test(ficha),
+     '  com o caminho alternativo, pra ele nao ficar travado');
+  ok(/console\.error\('\[DEFEITOS\]/.test(ficha),
+     '  e tambem no console, pra diagnostico');
 }
 
 // ── e o modal dispara a busca, não só preenche ──────────────────────
