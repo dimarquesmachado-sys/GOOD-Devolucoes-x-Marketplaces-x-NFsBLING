@@ -296,6 +296,17 @@ async function construirIndiceInterno(opts = {}) {
     // Publicar um indice parcial com `ts` fresco faria a proxima busca
     // servir dele em vez de reconstruir.
     IDX.ts = (falhouGeral || cancelado) ? 0 : Date.now();
+    // b280.2 (auditoria do #228, Codex P1) - ⚠️ A AMB NUNCA LIMPAVA ISTO.
+    //
+    // A GOOD zera `IDX.parcialAte` quando a varredura termina (b268: "agora
+    // esta COMPLETO"). A AMB publica o parcial nos checkpoints (`pg === 3`,
+    // `pg % 10 === 0`) mas nunca tinha o espelho — uma vez que a 1a
+    // montagem publicasse QUALQUER checkpoint, `parcialAte` ficava travado
+    // naquela pagina PARA SEMPRE, mesmo depois do indice completar os 120
+    // dias. O aviso que este PR porta pra AMB (rN.parcial_ate_pagina)
+    // ficaria ligado o tempo todo — o estoquista veria "indice incompleto"
+    // numa busca com o indice ja pronto ha horas.
+    if (!falhouGeral && !cancelado) IDX.parcialAte = null;
     IDX.mapa = mapa;
     IDX.porPedido = porPedido;
     IDX.porId = porId;

@@ -160,6 +160,24 @@ const codigo = lerCodigo('lib/nf-nomes.js');
      'GOOD: a rota repassa o indice_incompleto (vazio OU parcial)');
   ok(/indice_nomes_vazio/.test(srv),
      '  ⚠️ e distingue VAZIO de parcial (a espera e diferente)');
+
+  // ── ⚠️ e o aviso aparece TAMBEM quando a busca ACHA ──────────────
+  //
+  // O aviso só existia no caminho de 404. O dono buscou "charles" com o
+  // índice a meio caminho, recebeu 2 NFs — e existem 5. Sem aviso, a lista
+  // PARECE completa.
+  //
+  // ⚠️ É pior que o caso anterior: "não achei nada" ao menos faz duvidar;
+  // "achei 2" faz escolher entre os 2, ou concluir que a devolução da caixa
+  // não está no sistema. A resposta parcial se disfarça de completa.
+  {
+    const i = srv.indexOf('Confere com a CAIXA e escolhe abaixo');
+    const bloco = srv.slice(i, i + 900);
+    ok(/rN\.montando \|\| rN\.indiceParcial/.test(bloco),
+       '⚠️ a resposta de SUCESSO tambem avisa se o indice esta incompleto');
+    ok(/pode haver MAIS NFs/.test(bloco),
+       '  dizendo que pode haver mais (a lista nao e definitiva)');
+  }
   ok(/notaIndiceParcial/.test(srv),
      '  e avisa o estoquista no texto do erro (nao so no JSON cru)');
 
@@ -170,6 +188,58 @@ const codigo = lerCodigo('lib/nf-nomes.js');
   const ambLib = lerCodigo('amb-devolucoes/lib-AMB/nf-nomes-AMB.js');
   ok(/generica: total > 50,[\s\S]{0,300}parcial_ate_pagina: IDX\.parcialAte/.test(ambLib),
      'AMB: o buscarPorNome() tambem marca o retorno como parcial (a GOOD porta indiceParcial pro retorno; a 1a rodada do porte pra AMB parou so no statusIndice)');
+
+  // ── ⚠️ auditoria do #228: a rota de IDENTIFICAR da AMB (a que o
+  // estoquista realmente bipa) tambem precisa do aviso no caminho de ACHOU,
+  // nao so o /api/triagem/identificar medido acima. O Codex apontou que
+  // `identificar-AMB.js:946-948` ainda devolvia a mensagem sem qualificar.
+  const ambIdentificar = fs.readFileSync(
+    path.join(RAIZ, 'amb-devolucoes', 'lib-AMB', 'identificar-AMB.js'), 'utf8');
+  {
+    const i = ambIdentificar.indexOf('Confere com a CAIXA e escolhe abaixo');
+    const bloco = ambIdentificar.slice(i, i + 700);
+    ok(/rN\.parcial_ate_pagina/.test(bloco),
+       'AMB: a rota de identificar (bipe) tambem avisa indice parcial no caminho de ACHOU');
+    ok(/pode haver MAIS NFs/.test(bloco),
+       '  dizendo que pode haver mais (a lista nao e definitiva)');
+  }
+}
+
+// ── ⚠️ P1 (auditoria): o passe CURTO do boot (maxPaginas) nao pode se
+// anunciar como indice COMPLETO ─────────────────────────────────────
+//
+// O Codex apontou que o passe curto do boot (`preAquecer({ maxPaginas: 10
+// })`, server.js) esgota o teto de paginas com a ultima ainda CHEIA — sem
+// bater na data de corte nem no fim dos dados — e o `construirIndice`
+// carimbava isso como "completo" (zerava `parcialAte`, carimbava `ts`). O
+// aviso de indice parcial que este PR criou ficaria mudo bem no passe que
+// MENOS cobre (~17 dos 120 dias).
+{
+  ok(/limitadoPorTeto/.test(codigo),
+     'GOOD: o build rastreia quando foi o TETO de paginas que parou, nao a data/fim dos dados');
+  ok(/if \(pg === maxPaginas\) limitadoPorTeto = true/.test(codigo),
+     '  ⚠️ so quando a ultima pagina lida ainda estava CHEIA');
+
+  const iCompleto = codigo.indexOf('const falhouVazio = !!erroBusca');
+  const blocoCompleto = codigo.slice(iCompleto, iCompleto + 500);
+  ok(/limitadoPorTeto[\s\S]*IDX\.parcialAte = paginasLidas/.test(blocoCompleto),
+     '  e quando limitou por teto, o indice continua marcado como PARCIAL (nao completo)');
+}
+
+// ── ⚠️ auditoria do #228: a AMB nunca LIMPAVA o `parcialAte` ────────
+//
+// Ao conferir o outro lado (regra da casa) antes de subir o aviso pra AMB,
+// achei que o `construirIndiceInterno` da AMB publica o parcial nos
+// checkpoints mas nunca tinha o espelho da GOOD (b268: "agora esta
+// COMPLETO") — uma vez publicado UM checkpoint, `parcialAte` ficava
+// travado pra sempre, e o aviso novo (acima) nunca desligaria depois do
+// indice completar.
+{
+  const ambLib = lerCodigo('amb-devolucoes/lib-AMB/nf-nomes-AMB.js');
+  const i = ambLib.indexOf('IDX.ts = (falhouGeral || cancelado)');
+  const bloco = ambLib.slice(i, i + 300);
+  ok(/IDX\.parcialAte = null/.test(bloco),
+     'AMB: o indice completo agora LIMPA o parcialAte (antes ficava travado pra sempre)');
 }
 
 // ── ⚠️ e o passe curto cobre DIAS SUFICIENTES ───────────────────────

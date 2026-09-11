@@ -395,7 +395,7 @@ app.get('/health', (req, res) => {
       // busca por nome. Escolher um lado apagaria a descricao do outro.
       // ⚠️ a resolucao JUNTA as duas: a 7.5.0 (passe curto + tetos) ja esta
       // na main, e este PR acrescenta o build frio que falha vazio.
-      version: '7.7.0 (cruzamento da espreita deduplicado numa fonte unica; sem cache = inconclusivo, nao "nao esta")',
+      version: '7.7.2 (revisao Codex #228: o passe curto do boot nao carimba mais o indice como completo, e a AMB ganhou o mesmo aviso de indice parcial na busca que acha)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -1534,7 +1534,22 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
             resultado.erro = `Achei ${rN.total_encontrados || rN.candidatos.length} NF(s) com esse nome ${cobertura}`
               + (rN.total_encontrados > rN.candidatos.length ? ` (mostrando ${rN.candidatos.length}, das mais recentes as mais antigas)` : '') + '.'
               + (estrelados ? ` ⭐ ${estrelados} está(ão) na ESPREITA — devolução a caminho.` : '')
-              + ' Confere com a CAIXA e escolhe abaixo:';
+              + ' Confere com a CAIXA e escolhe abaixo:'
+              // b280 - ⚠️ O AVISO DE INDICE PARCIAL TAMBEM QUANDO ACHA.
+              //
+              // Ele so existia no caminho de 404. Mas o dono buscou
+              // "charles" com o indice a meio caminho, recebeu 2 NFs — e
+              // existem 5. Sem aviso, a lista PARECE completa.
+              //
+              // ⚠️ E ISSO E PIOR QUE O CASO ANTERIOR: "nao achei nada" ao
+              // menos faz duvidar; "achei 2" faz o estoquista escolher
+              // entre os 2, ou concluir que a devolucao da caixa nao esta
+              // no sistema. A resposta parcial se disfarca de completa.
+              + ((rN.montando || rN.indiceParcial)
+                ? ' ⚠️ O indice ainda esta construindo — pode haver MAIS NFs'
+                  + ' com esse nome. Se a da caixa nao esta aqui, tente de'
+                  + ' novo em alguns minutos.'
+                : '');
             return res.status(300).json(resultado); // 300 Multiple Choices
           }
         } catch (e) { resultado.tentativas.push({ tipo: 'nf_por_nome', codigo: alvoNome, ok: false, status: 500, erro: e.message }); }
