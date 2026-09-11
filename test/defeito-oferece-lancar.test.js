@@ -139,6 +139,38 @@ const html = fs.readFileSync(path.join(RAIZ, 'public', 'index.html'), 'utf8');
      '  ⚠️ e nao sobrou acesso direto sem protecao (era o que matava a funcao)');
 }
 
+// ── ⚠️ e no PAINEL o botao LEVA pra triagem, nao some ───────────────
+//
+// CASO REAL (11/09): o dono buscou LV-ASH-4 e o botão SUMIU. Estava certo —
+// ele estava no `painel-devolucoes.html`, que não tem o modal. Mas sumir
+// não o ajuda: ele quer lançar o defeito, e a tela sabe o SKU.
+//
+// ⚠️ E eu passei 5 rodadas assumindo que ele estava na TRIAGEM, sem
+// perguntar de qual tela. A URL estava no print desde o começo.
+{
+  ok(/var semLancadorAqui = termoBusca && !d\.erro && !lancadorDisponivel/.test(ficha),
+     '⚠️ onde nao ha modal, a tela sabe disso explicitamente');
+  ok(/href="\/index\.html\?lancarDefeito=/.test(ficha)
+     || /index\.html\?lancarDefeito=/.test(ficha),
+     '  e o botao vira LINK pra triagem, levando o SKU');
+  ok(/Abre a tela de Triagem/.test(ficha),
+     '  dizendo pra onde vai (nao e um link mudo)');
+}
+
+// ── e a triagem RECEBE o SKU e abre sozinha ─────────────────────────
+//
+// ⚠️ Sem isto ele chegaria numa tela em branco e teria que digitar o SKU de
+// novo — que é exatamente o atalho que viemos construir.
+{
+  const h = fs.readFileSync(path.join(RAIZ, 'public', 'index.html'), 'utf8');
+  ok(/p\.get\('lancarDefeito'\)/.test(h),
+     'a triagem le o SKU da querystring');
+  ok(/history\.replaceState/.test(h),
+     '  ⚠️ e LIMPA a querystring (senao o modal reabre a cada recarga)');
+  ok(/DOMContentLoaded/.test(h),
+     '  esperando o DOM (este script roda no meio da pagina)');
+}
+
 console.log('');
 console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
 process.exit(falhas ? 1 : 0);
