@@ -101,7 +101,17 @@ const SRV = fs.readFileSync(path.join(RAIZ, 'server.js'), 'utf8');
 
   // /api/espreita/casa-nf/:nf: rejeita sem cache, usa a mesma funcao
   const iRota = SRV.indexOf("app.get('/api/espreita/casa-nf/:nf'");
-  const blocoRota = SRV.slice(iRota, iRota + 2000);
+  // ⚠️ recorto ate o FIM do handler contando chaves, nao por janela fixa.
+// A janela de 2000 chars quebrou quando o handler cresceu (o `onde` foi
+// parar em 2965) — e falharia de novo a cada comentario acrescentado.
+// Janela fixa em teste ja deu numero errado 7x em 10/09.
+let profR = 0;
+let fimR = iRota;
+for (let k = SRV.indexOf('{', iRota); k < SRV.length; k++) {
+  if (SRV[k] === '{') profR++;
+  else if (SRV[k] === '}') { profR--; if (profR === 0) { fimR = k; break; } }
+}
+const blocoRota = SRV.slice(iRota, fimR);
   ok(/if \(!ESP_CACHE\)/.test(blocoRota) && /res\.status\(503\)/.test(blocoRota),
      'casa-nf: sem cache montado responde 503/inconclusivo, nao "ok:true, casou:false"');
   ok(/montarCruzamentoEspreita\(ESP_CACHE\)/.test(blocoRota),

@@ -395,7 +395,7 @@ app.get('/health', (req, res) => {
       // busca por nome. Escolher um lado apagaria a descricao do outro.
       // ⚠️ a resolucao JUNTA as duas: a 7.5.0 (passe curto + tetos) ja esta
       // na main, e este PR acrescenta o build frio que falha vazio.
-      version: '7.8.0 (pacote contado por ENVIO, nao por registro; e a busca marca o que JA FOI TRIADO)',
+      version: '7.8.2 (pacote por ENVIO; busca marca o que JA FOI TRIADO; consulta de NF diz QUAL dos 3 motivos, batendo na tabela devolucoes)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -2116,7 +2116,7 @@ app.post('/api/admin/renovar-token-bling', async (req, res) => {
 //
 // Aqui e AUTENTICADO e responde UMA NF por vez: casa ou nao casa, e por
 // que. Sem despejar a lista.
-app.get('/api/espreita/casa-nf/:nf', requerLogin, (req, res) => {
+app.get('/api/espreita/casa-nf/:nf', requerLogin, async (req, res) => {
   const nfAlvo = String(req.params.nf || '').replace(/^0+/, '');
   const serieAlvo = String(req.query.serie || '').replace(/^0+/, '') || '1';
   if (!nfAlvo) return res.status(400).json({ ok: false, erro: 'informe o numero da NF' });
@@ -2144,14 +2144,61 @@ app.get('/api/espreita/casa-nf/:nf', requerLogin, (req, res) => {
 
   // ⚠️ e se nao casou, digo se ao menos o NUMERO aparece — distingue
   // "essa devolucao nao esta na espreita" de "esta, mas a serie divergiu"
+  // b281 - ⚠️ "NAO ESTA" TEM TRES MOTIVOS, E SO DOIS SAO BUG.
+  //
+  //   (a) ja foi BIPADA/baixada    -> saiu de proposito, esta CERTO
+  //   (b) a serie divergiu         -> bug de casamento
+  //   (c) nunca entrou na espreita -> bug de coleta, ou venda antiga
+  //
+  // (a) e o sistema funcionando. Sem distinguir, eu ia "consertar" um
+  // comportamento correto — risco real depois de um dia inteiro cacando
+  // esta estrela.
+  //
+  // b281.1 (Codex, P1) - ⚠️ O CACHE NUNCA TEM BAIXADA PRA ACHAR.
+  //
+  // O plano original era olhar o `ESP_CACHE` "antes do .filter(!baixado)" —
+  // mas esse filtro roda DENTRO do `montarEspreita()`, antes do cache ser
+  // gravado: manual baixa em server.js:5717, o alerta em 5836-5839/5957-5960,
+  // as recentes em 6037-6042. O que sobra em `entregues_recentes` /
+  // `nunca_bipadas` / `em_transito` ja saiu de la sem NENHUM baixado —
+  // reler essas 3 listas so repete o mesmo `montarCruzamentoEspreita` e
+  // NUNCA acha a baixa (o proprio cenario do Charles, apos o proximo
+  // refresh do cache, voltaria a dizer "nao esta").
+  //
+  // Fonte direta: a tabela `devolucoes` grava nf_numero/nf_serie no
+  // momento da BIPAGEM — aprovado (server.js:2981), problema (3170),
+  // divergente (3302), conserto (3716) — com o numero da NF que o
+  // estoquista escaneou. Bate o alvo contra quem foi bipado de verdade,
+  // sem depender do cache (e sobrevive a um cache frio ou vencido).
+  //
+  // ⚠️ LIMITE CONHECIDO: baixa MANUAL (checkbox do dono, tabela
+  // `espreita_notas`) nao tem coluna de NF — so `chave` (tracking/pedido).
+  // Sem uma NF pra buscar por ela, esse caminho continua sem cobertura
+  // aqui; o `motivo` cai em "nao esta em nenhuma das 3 listas" pra ele.
+  let noCru = null;
+  if (!casou && supabase) {
+    try {
+      const candidatos = [...new Set([nfAlvo, String(req.params.nf || '')])].filter(Boolean);
+      const { data } = await supabase
+        .from('devolucoes')
+        .select('nf_numero, nf_serie')
+        .in('nf_numero', candidatos);
+      noCru = (data || []).find((d) => chaveNF(d.nf_numero, d.nf_serie) === alvo) || null;
+    } catch (e) { /* sem isto, cai no motivo generico — nao trava a consulta */ }
+  }
+
   const soNumero = !casou && [...porNF.keys()].some((k) => k.split('/')[0] === nfAlvo);
 
   return res.json({
     ok: true,
     nf: alvo,
     casou: !!casou,
+    // b281: e `ja_baixada` separa o caso em que esta TUDO CERTO
+    ja_baixada: !casou && !!noCru,
     motivo: casou ? 'esta no cruzamento — a estrela deve sair'
-      : (soNumero ? '⚠️ o NUMERO esta na espreita, mas a SERIE divergiu'
+      : (noCru ? '✅ esta na espreita mas JA FOI BIPADA/baixada — por isso nao '
+          + 'ganha estrela. Comportamento CORRETO, nao e bug.'
+        : soNumero ? '⚠️ o NUMERO esta na espreita, mas a SERIE divergiu'
         : 'esta NF nao esta em nenhuma das 3 listas do cruzamento'),
     onde: casou ? casou._estado : null,
     cache: {
