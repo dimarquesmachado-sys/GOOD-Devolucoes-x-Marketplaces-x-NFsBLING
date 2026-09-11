@@ -16,7 +16,11 @@ const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o
 
 const RAIZ = path.join(__dirname, '..');
 const ficha = fs.readFileSync(path.join(RAIZ, 'public', 'js', 'defeitos-ficha.js'), 'utf8');
+// ⚠️ b289: o modal saiu do `index.html` inline pro modulo compartilhado
+// `js/lancar-defeito.js`. Os testes que conferiam o comportamento DELE
+// passam a ler o modulo; os que conferem a TELA continuam no html.
 const html = fs.readFileSync(path.join(RAIZ, 'public', 'index.html'), 'utf8');
+const modal = fs.readFileSync(path.join(RAIZ, 'public', 'js', 'lancar-defeito.js'), 'utf8');
 
 // ── o "nada encontrado" oferece o caminho ───────────────────────────
 {
@@ -44,7 +48,7 @@ const html = fs.readFileSync(path.join(RAIZ, 'public', 'index.html'), 'utf8');
   ok(/fecharCaixaDefeitos/.test(ficha), 'chama `fecharCaixaDefeitos` (o nome real)');
   ok(/window\.fecharCaixaDefeitos = fechar/.test(ficha),
      '  que esta exposto em window (senao o onclick nao alcanca)');
-  ok(/function abrirModalDefeito\(skuInicial\)/.test(html),
+  ok(/function abrirModalDefeito\(skuInicial\)/.test(modal),
      'e `abrirModalDefeito` aceita o SKU de partida');
 }
 
@@ -91,7 +95,7 @@ const html = fs.readFileSync(path.join(RAIZ, 'public', 'index.html'), 'utf8');
   ok(/window\.abrirModalDefeito/.test(ficha),
      '⚠️ alcanca a funcao por `window.` (este arquivo e uma IIFE)');
   const html2 = fs.readFileSync(path.join(RAIZ, 'public', 'index.html'), 'utf8');
-  ok(/window\.abrirModalDefeito = abrirModalDefeito/.test(html2),
+  ok(/window\.abrirModalDefeito = abrirModalDefeito/.test(modal),
      '  e o index.html EXPOE explicitamente (nao depende de "em teoria")');
 
   ok(/nao consegui abrir o lançamento/.test(ficha),
@@ -107,7 +111,7 @@ const html = fs.readFileSync(path.join(RAIZ, 'public', 'index.html'), 'utf8');
 // ⚠️ Preencher o campo e deixar o dono apertar Enter seria fazer metade do
 // caminho.
 {
-  ok(/if \(sku\) setTimeout\(function \(\) \{ buscarProdutoDefeito\(\); \}/.test(html),
+  ok(/if \(sku\) setTimeout\(function \(\) \{ buscarProdutoDefeito\(\); \}/.test(modal),
      'com SKU de partida, o modal DISPARA a busca do produto');
 }
 
@@ -122,9 +126,9 @@ const html = fs.readFileSync(path.join(RAIZ, 'public', 'index.html'), 'utf8');
 // existe. Um id ausente lança TypeError, a função morre — e como quem
 // chamou já tinha fechado a caixa, sobra tela vazia.
 {
-  const i = html.indexOf('function abrirModalDefeito');
-  const j = html.indexOf('function fecharModalDefeito');
-  const corpo = html.slice(i, j);
+  const i = modal.indexOf('function abrirModalDefeito');
+  const j = modal.indexOf('function fecharModalDefeito');
+  const corpo = modal.slice(i, j);
 
   // ⚠️ a ordem: abrir vem ANTES da limpeza
   const iShow = corpo.indexOf("classList.add('show')");
@@ -162,12 +166,11 @@ const html = fs.readFileSync(path.join(RAIZ, 'public', 'index.html'), 'utf8');
 // ⚠️ Sem isto ele chegaria numa tela em branco e teria que digitar o SKU de
 // novo — que é exatamente o atalho que viemos construir.
 {
-  const h = fs.readFileSync(path.join(RAIZ, 'public', 'index.html'), 'utf8');
-  ok(/p\.get\('lancarDefeito'\)/.test(h),
+  ok(/p\.get\('lancarDefeito'\)/.test(html),
      'a triagem le o SKU da querystring');
-  ok(/history\.replaceState/.test(h),
+  ok(/history\.replaceState/.test(html),
      '  ⚠️ e LIMPA a querystring (senao o modal reabre a cada recarga)');
-  ok(/DOMContentLoaded/.test(h),
+  ok(/DOMContentLoaded/.test(html),
      '  esperando o DOM (este script roda no meio da pagina)');
 }
 
