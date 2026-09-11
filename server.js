@@ -395,7 +395,7 @@ app.get('/health', (req, res) => {
       // busca por nome. Escolher um lado apagaria a descricao do outro.
       // ⚠️ a resolucao JUNTA as duas: a 7.5.0 (passe curto + tetos) ja esta
       // na main, e este PR acrescenta o build frio que falha vazio.
-      version: '7.9.4 (botao de lancar defeito liga o evento no codigo: abre o modal ANTES de fechar a caixa, e a falha aparece NA TELA)',
+      version: '7.9.5 (revisao do Codex no #237: CTA de lancar so aparece onde abrirModalDefeito existe, e o painel admin bumpado pro mesmo cache-buster do index)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),

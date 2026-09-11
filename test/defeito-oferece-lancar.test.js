@@ -17,6 +17,7 @@ const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o
 const RAIZ = path.join(__dirname, '..');
 const ficha = fs.readFileSync(path.join(RAIZ, 'public', 'js', 'defeitos-ficha.js'), 'utf8');
 const html = fs.readFileSync(path.join(RAIZ, 'public', 'index.html'), 'utf8');
+const painel = fs.readFileSync(path.join(RAIZ, 'public', 'painel-devolucoes.html'), 'utf8');
 
 // ── o "nada encontrado" oferece o caminho ───────────────────────────
 {
@@ -127,6 +128,36 @@ const html = fs.readFileSync(path.join(RAIZ, 'public', 'index.html'), 'utf8');
      '  e os acessos passam por helper que confere se o elemento existe');
   ok(!/document\.getElementById\('def\w+'\)\.value = /.test(corpo),
      '  ⚠️ e nao sobrou acesso direto sem protecao (era o que matava a funcao)');
+}
+
+// ── ⚠️ revisao do Codex no #237: o CTA nao aparece onde nao ha launcher ──
+//
+// defeitos-ficha.js e carregado tanto pela TRIAGEM (index.html, que tem
+// `abrirModalDefeito` e o botao "➕ Lançar Defeito" no topo) quanto pelo
+// PAINEL ADMIN (painel-devolucoes.html, que NAO tem nenhum dos dois). Antes
+// o CTA "➕ Lançar defeito para X" aparecia nas duas telas do mesmo jeito, e
+// no painel o clique sempre caia no catch apontando pra um botao que nao
+// existe ali - beco sem saida disfarcado de caminho.
+{
+  ok(/var podeAbrirModal = \(typeof abrirModalDefeito === 'function'\)/.test(ficha),
+     '⚠️ o CTA confere se `abrirModalDefeito` existe NESTA tela antes de aparecer');
+  ok(/termoBusca && !d\.erro && podeAbrirModal/.test(ficha),
+     '  e o botao so entra no HTML quando a funcao existe');
+  ok(/if \(termoBusca && !d\.erro && podeAbrirModal\) \{/.test(ficha),
+     '  e o listener so e ligado quando a funcao existe (mesma condicao)');
+}
+
+// ── ⚠️ revisao do Codex no #237: os DOIS consumidores usam o MESMO cache-buster ──
+//
+// index.html e painel-devolucoes.html carregam o mesmo defeitos-ficha.js.
+// Bumpar so um dos dois mantem o admin rodando o JS antigo em cache -
+// nenhum conserto feito no arquivo compartilhado chega la.
+{
+  const vIndex = (html.match(/defeitos-ficha\.js\?v=(\d+)/) || [])[1];
+  const vPainel = (painel.match(/defeitos-ficha\.js\?v=(\d+)/) || [])[1];
+  ok(!!vIndex && !!vPainel, 'os dois arquivos carregam defeitos-ficha.js com cache-buster');
+  ok(vIndex === vPainel,
+     '  ⚠️ e com o MESMO numero de versao (' + vIndex + ' vs ' + vPainel + ')');
 }
 
 console.log('');

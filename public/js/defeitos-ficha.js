@@ -309,6 +309,14 @@
         // Agora: com termo buscado, a frase diz o que de fato aconteceu
         // (esse SKU nao tem defeito) em vez do generico "nada encontrado".
         // Sem termo, ou com erro, mantem o texto neutro.
+        //
+        // v4.90 (review do Codex no #237, P2) - ⚠️ NA TELA DO PAINEL ADMIN
+        // (painel-devolucoes.html) NAO HA `abrirModalDefeito` NEM O BOTAO
+        // "➕ Lançar Defeito" NO TOPO. Antes o CTA aparecia do mesmo jeito
+        // la, e o clique sempre caia no catch com uma mensagem apontando pra
+        // um botao que nao existe naquela tela — beco sem saida disfarcado
+        // de caminho. Agora o CTA so aparece onde a funcao existe de verdade.
+        var podeAbrirModal = (typeof abrirModalDefeito === 'function');
         el.innerHTML = (d.erro
             ? '<div style="color:#b00;font-size:13px;">⚠️ a busca falhou ('
               + esc(d.erro) + ') — tente de novo.</div>'
@@ -316,7 +324,7 @@
               ? '<div style="color:#555;font-size:14px;">Nenhum defeito registrado para '
                 + '<b>' + esc(String(q).trim()) + '</b>.</div>'
               : '<div style="color:#888;font-size:13px;">nada encontrado.</div>'))
-          + (termoBusca && !d.erro
+          + (termoBusca && !d.erro && podeAbrirModal
             ? '<div style="margin-top:10px;">'
               + '<button class="btn" id="btnLancarDoVazio" style="padding:10px 14px;">'
               + '➕ Lançar defeito para <b>' + esc(termoBusca) + '</b></button>'
@@ -339,13 +347,10 @@
         // ⚠️ E ABRO O MODAL ANTES DE FECHAR A CAIXA: na ordem anterior, se
         // o modal falhasse, a caixa ja estava fechada. Assim, se algo der
         // errado, ele continua vendo a lista de onde veio.
-        if (termoBusca && !d.erro) {
+        if (termoBusca && !d.erro && podeAbrirModal) {
           const btn = document.getElementById('btnLancarDoVazio');
           if (btn) btn.onclick = function () {
             try {
-              if (typeof abrirModalDefeito !== 'function') {
-                throw new Error('abrirModalDefeito nao esta disponivel nesta tela');
-              }
               abrirModalDefeito(termoBusca);
               // so fecha DEPOIS que o modal abriu
               if (typeof fecharCaixaDefeitos === 'function') fecharCaixaDefeitos();
