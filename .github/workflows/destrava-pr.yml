@@ -34,6 +34,18 @@ on:
   # e quando a main anda (a branch pode ter ficado atras)
   push:
     branches: [main]
+  # ⚠️ E QUANDO QUALQUER BRANCH DE PR RECEBE PUSH.
+  #
+  # Motivo medido: em 10/09 o dono avisou "unable" TRES VEZES seguidas
+  # (#225, #226, #228) pelo mesmo motivo — eu subo a correcao DEPOIS da
+  # ultima revisao do Codex, entao nao ha `pull_request_review` novo e este
+  # workflow nunca acorda. As conversas antigas ficam segurando o merge, e
+  # so um humano percebe.
+  #
+  # Com `synchronize`, todo push num PR aberto re-avalia: se nao ha
+  # apontamento novo (a trava do passo 1 cuida disso), destrava sozinho.
+  pull_request:
+    types: [synchronize, reopened]
   # e sob demanda
   workflow_dispatch:
     inputs:
@@ -157,6 +169,9 @@ jobs:
             # ⚠️ SO EM `push` NA MAIN, e so quando NAO ha apontamento novo
             # (o `continue` la em cima ja cuidou disso). Se a main mudou, pode
             # ser justamente um conserto que o robo precisa conhecer.
+            # ⚠️ SO em `push` na MAIN. Num evento de PR isto viraria loop: o
+            # ciclo comita, o commit dispara `synchronize`, que re-dispara
+            # o ciclo, que comita de novo.
             if [ "${{ github.event_name }}" = "push" ]; then
               echo "  🔄 a main mudou — re-disparo o ciclo neste PR"
               gh workflow run auto-merge-codex.yml -f pr="$PR" >/dev/null 2>&1 \
