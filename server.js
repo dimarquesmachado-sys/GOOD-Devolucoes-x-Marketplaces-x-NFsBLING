@@ -395,7 +395,7 @@ app.get('/health', (req, res) => {
       // busca por nome. Escolher um lado apagaria a descricao do outro.
       // ⚠️ a resolucao JUNTA as duas: a 7.5.0 (passe curto + tetos) ja esta
       // na main, e este PR acrescenta o build frio que falha vazio.
-      version: '8.2.1 (o defeito grava status pendente — registrado nao passava no check da tabela; e o erro de regra fica legivel)',
+      version: '8.2.2 (o defeito grava tipo=problema + status=concluido — o par que a tabela aceita E que a caixa procura)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -5220,7 +5220,24 @@ app.post('/api/defeitos/adicionar', requerEstoquista, async (req, res) => {
       // madrugada.
       shipment_id: 'DEF-' + Date.now() + '-'
         + Math.random().toString(36).slice(2, 8).toUpperCase(),
-      tipo: 'defeito_estoque',
+      // b297 - ⚠️ 'defeito_estoque' NAO PASSA NO CHECK DE `tipo`.
+      //
+      // Terceiro erro de banco seguido (e a mensagem legivel entregou de
+      // novo): violates check constraint "devolucoes_tipo_check".
+      //
+      // ⚠️ O CODIGO LE `defeito_estoque` em varios lugares, mas a TABELA
+      // nunca aceitou gravar esse valor. Os 45 defeitos que existem hoje
+      // vieram da TRIAGEM, com `tipo: 'problema'` — e e assim que a caixa
+      // de Estoque de Defeitos os acha:
+      //   ATIVOS = 'and(tipo.eq.problema,status.eq.concluido),...'
+      //
+      // Entao gravo o par que a caixa JA procura e que a tabela JA aceita:
+      // `tipo: 'problema'` + `status: 'concluido'`. Conferi que 'problema'
+      // e gravado noutro ponto do server (logo passa no check).
+      //
+      // 📌 O certo a longo prazo e a tabela aceitar `defeito_estoque` —
+      // migracao em producao, anotada.
+      tipo: 'problema',
       // b296 - ⚠️ 'registrado' NAO PASSA NO CHECK DA TABELA.
       //
       // O erro que o dono viu (legivel gracas a b293):
@@ -5235,7 +5252,10 @@ app.post('/api/defeitos/adicionar', requerEstoquista, async (req, res) => {
       // TIPO (`tipo === 'defeito_estoque'`), nunca pelo status — conferi os
       // 2 lugares que o leem (server.js:3738 e 5309). `pendente` e o que os
       // outros 6 inserts usam.
-      status: 'pendente',
+      // ⚠️ b297: 'concluido' PORQUE a caixa procura o PAR
+      // (tipo=problema E status=concluido). Com 'pendente', o defeito
+      // gravaria mas NAO APARECERIA na lista — pior que falhar.
+      status: 'concluido',
       funcionario: req.usuario,
       produto_sku: String(prod.codigo || sku),
       produto_titulo: prod.nome || null,
