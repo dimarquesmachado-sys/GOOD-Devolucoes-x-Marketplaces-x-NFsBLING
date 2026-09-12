@@ -395,7 +395,7 @@ app.get('/health', (req, res) => {
       // busca por nome. Escolher um lado apagaria a descricao do outro.
       // ⚠️ a resolucao JUNTA as duas: a 7.5.0 (passe curto + tetos) ja esta
       // na main, e este PR acrescenta o build frio que falha vazio.
-      version: '8.4.2 (revisao Codex #253: o match do SKU pelo indice respeita acento e SKU desatualizado)',
+      version: '8.4.4 (match do SKU respeita acento; e o pai da variacao vem do campo do Bling, com orcamento de chamadas)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
