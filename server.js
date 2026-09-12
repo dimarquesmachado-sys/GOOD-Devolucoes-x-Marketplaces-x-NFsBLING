@@ -395,7 +395,7 @@ app.get('/health', (req, res) => {
       // busca por nome. Escolher um lado apagaria a descricao do outro.
       // ⚠️ a resolucao JUNTA as duas: a 7.5.0 (passe curto + tetos) ja esta
       // na main, e este PR acrescenta o build frio que falha vazio.
-      version: '8.2.4 (revisao Codex #252 cont.: /api/defeitos e /api/defeitos/por-sku nao selecionavam shipment_id — ehDefeitoDeEstoqueManual sempre dava falso e a origem na tela nunca mostrava ESTOQUE)',
+      version: '8.3.0 (a gravacao do defeito resolve o SKU pelo indice — eram 3 esperas na fila do Bling por lancamento)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -5149,7 +5149,38 @@ app.post('/api/defeitos/adicionar', requerEstoquista, async (req, res) => {
   if (!localizacao) return res.status(400).json({ ok: false, erro: 'informe ONDE VAI GUARDAR o produto' });
   try {
     // valida o SKU no Bling (nunca grava codigo que nao existe)
-    const rP = await buscarProdutoBlingPorSku(sku);
+    // b298 - ⚠️ O INDICE LOCAL RESOLVE O SKU, SEM IR NO BLING.
+    //
+    // [stated 11/09] "pra gravar q ta o problema so, ta demorado d+ pra
+    // gravar"
+    //
+    // A gravacao fazia TRES esperas na fila do porteiro:
+    //   1. `buscarProdutoBlingPorSku` -> 2 chamadas (lista + detalhe)
+    //   2. o detalhe pra saber se e KIT -> 1 chamada
+    // Com a conta apertada, cada uma custa segundos ou minutos.
+    //
+    // ⚠️ E O PRODUTO JA FOI ESCOLHIDO NA BUSCA: o front manda o SKU de um
+    // item que a lista devolveu, e o indice local tem o `id` dele. Nao ha
+    // por que perguntar ao Bling quem e o produto.
+    //
+    // O Bling continua como RESERVA: SKU que o indice nao tem (produto
+    // novo, indice ainda montando) cai no caminho antigo.
+    let rP = null;
+    if (IDX_PROD.ts && Array.isArray(IDX_PROD.itens)) {
+      const alvoSku = normProd(sku);
+      const doIndice = IDX_PROD.itens.find(
+        (it) => normProd(String(it.sku || it.codigo || '')) === alvoSku);
+      if (doIndice && doIndice.id) {
+        rP = { ok: true, produto: {
+          id: doIndice.id,
+          codigo: doIndice.sku,
+          nome: doIndice.nome,
+          gtin: doIndice.ean || null,
+        } };
+        console.log(`[DEFEITOS] SKU ${sku} resolvido pelo INDICE (sem ir no Bling)`);
+      }
+    }
+    if (!rP) rP = await buscarProdutoBlingPorSku(sku);
     const prod = rP.ok ? rP.produto : null;
     if (!prod) return res.status(400).json({ ok: false, erro: `SKU "${sku}" nao encontrado no Bling` });
 

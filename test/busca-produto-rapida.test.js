@@ -55,6 +55,31 @@ const srv = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
      '  ⚠️ e SO guarda resposta boa (erro em cache = erro permanente)');
 }
 
+// ── ⚠️ e a GRAVAÇÃO resolve o SKU pelo índice ───────────────────────
+//
+// [stated 11/09] "pra gravar q ta o problema so, ta demorado d+ pra gravar"
+//
+// A gravação fazia TRÊS esperas na fila do porteiro:
+//   `buscarProdutoBlingPorSku` → 2 chamadas (lista + detalhe)
+//   o detalhe para saber se é KIT → 1 chamada
+//
+// ⚠️ E o produto JÁ foi escolhido na busca: o front manda o SKU de um item
+// que a lista devolveu, e o índice local tem o `id` dele. Não há por que
+// perguntar ao Bling quem é o produto.
+{
+  const i = srv.indexOf("app.post('/api/defeitos/adicionar'");
+  const rota = srv.slice(i, i + 12000);
+  ok(/resolvido pelo INDICE \(sem ir no Bling\)/.test(rota),
+     '⚠️ a gravacao resolve o SKU pelo indice');
+  ok(/if \(!rP\) rP = await buscarProdutoBlingPorSku\(sku\)/.test(rota),
+     '  e o Bling segue como RESERVA (SKU que o indice nao tem)');
+
+  // ⚠️ o id tem que vir junto: sem ele, o detalhe do kit nao tem o que
+  // consultar e a gravacao quebraria
+  ok(/doIndice && doIndice\.id/.test(rota),
+     '  ⚠️ e so usa o indice quando ha `id` (o detalhe do kit precisa dele)');
+}
+
 console.log('');
 console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
 process.exit(falhas ? 1 : 0);
