@@ -27,7 +27,16 @@ const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o
 const src = fs.readFileSync(
   path.join(__dirname, '..', 'lib', 'rotas-admin-nf.js'), 'utf8');
 const i = src.indexOf("app.get('/api/produto/imagem/:id'");
-const rota = src.slice(i, i + 6000);
+// ⚠️ recorto ate o FIM do handler contando chaves, nao por janela fixa: a
+// de 6000 chars quebrou quando o bloco cresceu (o `pai_da_variacao` foi
+// parar em 6215). DECIMA vez hoje que janela fixa me da resposta errada.
+let prof = 0;
+let fim = i;
+for (let k = src.indexOf('{', i); k < src.length; k++) {
+  if (src[k] === '{') prof++;
+  else if (src[k] === '}') { prof--; if (prof === 0) { fim = k; break; } }
+}
+const rota = src.slice(i, fim);
 
 // ── ⚠️ a rota tenta o produto pai, mas SO pelo metadado do Bling ────
 {
@@ -49,6 +58,15 @@ const rota = src.slice(i, i + 6000);
   // e busca o DETALHE do pai — a listagem do Bling nao traz imagem
   ok(/rPai = await chamarBling\(`https:\/\/api\.bling\.com\.br\/Api\/v3\/produtos\/\$\{encodeURIComponent\(idPai\)\}`\)/.test(rota),
      '  e busca o DETALHE do pai pelo id (a listagem nao traz imagem)');
+
+  // ⚠️ b301.2: e o ORCAMENTO continua — a abordagem do robo e melhor (o
+  // Bling DIZ quem e o pai), mas ainda gasta 1 chamada por produto sem
+  // foto, e a lista pede 12 de uma vez. Foi assim que a cota estourou e
+  // TODAS as fotos sumiram.
+  ok(/function podeGastarNaFoto/.test(src),
+     '⚠️ ha orcamento de chamadas pra foto');
+  ok(/if \(idPai && podeGastarNaFoto\(\)\)/.test(rota),
+     '  e a busca do pai passa por ele');
 }
 
 // ── ⚠️ e SO depois que o detalhe do PROPRIO produto foi conferido ──
