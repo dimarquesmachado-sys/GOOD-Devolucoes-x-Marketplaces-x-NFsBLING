@@ -395,9 +395,7 @@ app.get('/health', (req, res) => {
       // busca por nome. Escolher um lado apagaria a descricao do outro.
       // ⚠️ a resolucao JUNTA as duas: a 7.5.0 (passe curto + tetos) ja esta
       // na main, e este PR acrescenta o build frio que falha vazio.
-      // ⚠️ a resolucao JUNTA as duas de novo: a 8.3.1 (foto da variacao) ja
-      // esta na main, e este PR acrescenta a revisao Codex #253.
-      version: '8.3.2 (a foto da variacao vem do produto PAI + revisao Codex #253: indice de defeito nao ignora mais acento no SKU, e detecta produto excluido/renomeado)',
+      version: '8.4.2 (revisao Codex #253: o match do SKU pelo indice respeita acento e SKU desatualizado)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),

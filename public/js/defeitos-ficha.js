@@ -208,7 +208,28 @@
     document.body.appendChild(d);
     return d;
   }
+  // b301 - ⚠️ `abrir()` aceita um DESTINO alternativo.
+  //
+  // [stated 11/09] "quando eu clico pra abrir um defeito, ele avanca o card
+  // e sai da tela com todos defeitos (...) tem como (...) so abrir embaixo?"
+  //
+  // Antes ele sempre trocava a caixa INTEIRA, e o voltar recarregava a
+  // lista geral — perdendo a busca digitada e a rolagem. Quem esta triando
+  // 10 pecas refaz o caminho 10 vezes.
+  //
+  // Com `_destinoFicha` apontado, o MESMO html da ficha vai pro container
+  // dentro do card. ⚠️ Reaproveito a montagem existente em vez de escrever
+  // uma segunda: dois HTMLs da mesma coisa garante que um fique pra tras.
+  var _destinoFicha = null;
   function abrir(html) {
+    if (_destinoFicha) {
+      const alvo = document.getElementById(_destinoFicha);
+      if (alvo) {
+        alvo.innerHTML = '<div style="border-top:1px solid #eee;margin-top:10px;'
+          + 'padding-top:10px;">' + html + '</div>';
+        return;
+      }
+    }
     var d = caixa();
     document.getElementById('caixaDefeitosCorpo').innerHTML = html;
     d.style.display = 'flex';
@@ -452,10 +473,29 @@
           // ja abria a ficha, mas nada dizia isso. Agora tem BOTAO explicito;
           // o clique no card continua funcionando pra quem ja conhece.
           + '<div style="margin-top:8px;">'
-          + '<button type="button" onclick="event.stopPropagation();abrirFichaDefeito(\'' + esc(it.id) + '\')" '
+          + '<button type="button" onclick="event.stopPropagation();expandirFichaNoCard(\'' + esc(x.id) + '\', this)" '
           + 'style="background:#561A9E;color:#fff;border:none;border-radius:8px;padding:8px 15px;'
           + 'font-size:13px;font-weight:700;cursor:pointer;">📂 Abrir dados da peça</button></div>'
-          + '</div></div>';
+          + '</div>'
+          // b301 - ⚠️ a ficha abre AQUI, embaixo do card.
+          //
+          // [stated 11/09] "quando eu clico pra abrir um defeito, ele avanca
+          // o card e sai da tela com todos defeitos (...) tem como ao inves
+          // de avancar pra um tipo de outro card, so abrir embaixo?"
+          //
+          // Antes a ficha SUBSTITUIA a lista inteira, e o voltar trazia de
+          // volta a lista GERAL — perdendo a busca e a rolagem. Agora ela
+          // expande no proprio card: o estoquista nao perde o contexto.
+          // ⚠️ b301.1 - A CONCATENACAO ESTAVA DENTRO DA STRING.
+          //
+          // `id="ficha-" + esc(x.id) + ""` fazia o id sair LITERAL, e as
+          // aspas duplas quebravam o HTML do card. A lista inteira caia em
+          // "erro ao buscar".
+          //
+          // `node --check` nao acusa (e string valida), o boot real nao
+          // monta card, e nenhum teste montava. So o dono clicando.
+          + '<div class="fichaNoCard" id="ficha-' + esc(x.id) + '" style="display:none;"></div>'
+          + '</div>';
       }).join('');
       buscarFotosDefeitos(itens);
     } catch (e) {
@@ -627,6 +667,46 @@
     var el = document.getElementById('blocoPecas');
     if (el) el.innerHTML = htmlPecas();
   }
+
+  // b301 - ⚠️ A FICHA EXPANDE NO CARD, SEM TROCAR DE TELA.
+  //
+  // [stated 11/09] "quando eu clico pra abrir um defeito, ele avanca o card
+  // e sai da tela com todos defeitos (...) quando eu clico pra voltar (...)
+  // ele volta pra pagina geral de defeitos. isso atrapalha"
+  //
+  // O `abrirFichaDefeito` substitui a caixa INTEIRA, e o voltar recarrega a
+  // lista geral — perdendo a busca digitada e a rolagem. Quem esta triando
+  // 10 pecas refaz o caminho 10 vezes.
+  //
+  // Aqui a ficha vira conteudo do proprio card: abre embaixo, fecha no
+  // mesmo botao, e a lista continua atras.
+  //
+  // 📌 O `abrirFichaDefeito` CONTINUA existindo — outros pontos chamam ele
+  // (busca por NF, retorno de acao) e la trocar de tela faz sentido.
+  window.expandirFichaNoCard = async function (id, botao) {
+    const alvo = document.getElementById('ficha-' + id);
+    if (!alvo) {
+      // ⚠️ sem o destino, caio no comportamento antigo em vez de nao fazer
+      // nada — melhor trocar de tela do que o botao morrer
+      return window.abrirFichaDefeito(id);
+    }
+    if (alvo.style.display !== 'none') {
+      alvo.style.display = 'none';
+      alvo.innerHTML = '';
+      if (botao) botao.textContent = '📂 Abrir dados da peça';
+      return;
+    }
+    alvo.style.display = 'block';
+    alvo.innerHTML = '<div style="padding:12px;color:#888;font-size:13px;">carregando…</div>';
+    if (botao) botao.textContent = '📂 Fechar dados da peça';
+    // ⚠️ aponto o destino e chamo a ficha DE SEMPRE — ela monta o html e o
+    // `abrir()` entrega aqui dentro. `finally` pra nao deixar o destino
+    // preso se der erro no meio (senao a proxima ficha abriria no card
+    // errado).
+    _destinoFicha = 'ficha-' + id;
+    try { await window.abrirFichaDefeito(id, true); }
+    finally { _destinoFicha = null; }
+  };
 
   window.abrirFichaDefeito = async function (id, voltando) {
     registrar('ficha', id, voltando);

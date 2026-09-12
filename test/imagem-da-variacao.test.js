@@ -28,8 +28,20 @@ const rota = src.slice(i, i + 6000);
 
   // ⚠️ e SÓ quando as outras falharam: foto é enfeite, não vale gastar
   // chamada do Bling (que espera na fila do porteiro)
-  ok(/if \(!url && \/\[-_\]\/\.test\(chave\)\)/.test(rota),
-     '  ⚠️ e SO quando as outras tentativas falharam (foto e enfeite)');
+  ok(/if \(!url && \/\[-_\]\/\.test\(chave\) && podeGastarNaFoto\(\)\)/.test(rota),
+     '  ⚠️ e SO quando as outras falharam E ha orcamento');
+
+  // ⚠️ o ORÇAMENTO existe porque a 1ª versão quebrou tudo: a lista pede
+  // foto de até 12 produtos de uma vez, cada um com até 4 tentativas — ~50
+  // chamadas simultâneas. A cota estourou e o Bling recusou TODAS,
+  // inclusive as que antes funcionavam. O dono viu "sumiram todas as
+  // imagens": eu tornei pior o que vim consertar.
+  ok(/function podeGastarNaFoto/.test(src),
+     '⚠️ ha orcamento de chamadas pra foto');
+  ok(/FOTO_EXTRA_POR_MIN \|\| 6/.test(src),
+     '  com teto por minuto, ajustavel por env');
+  ok(/nao pode atropelar a bipagem/i.test(src),
+     '  e o porque escrito (foto e enfeite; a bipagem divide a mesma cota)');
 }
 
 // ── e o corte funciona nos casos reais do print ─────────────────────
