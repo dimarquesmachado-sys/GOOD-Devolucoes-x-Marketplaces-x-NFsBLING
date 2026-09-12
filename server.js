@@ -395,7 +395,7 @@ app.get('/health', (req, res) => {
       // busca por nome. Escolher um lado apagaria a descricao do outro.
       // ⚠️ a resolucao JUNTA as duas: a 7.5.0 (passe curto + tetos) ja esta
       // na main, e este PR acrescenta o build frio que falha vazio.
-      version: '8.2.0 (busca de produto consulta o INDICE LOCAL antes do Bling, e a gravacao guarda o detalhe — era 1 min pra buscar e 2 pra gravar)',
+      version: '8.2.1 (o defeito grava status pendente — registrado nao passava no check da tabela; e o erro de regra fica legivel)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -5221,7 +5221,21 @@ app.post('/api/defeitos/adicionar', requerEstoquista, async (req, res) => {
       shipment_id: 'DEF-' + Date.now() + '-'
         + Math.random().toString(36).slice(2, 8).toUpperCase(),
       tipo: 'defeito_estoque',
-      status: 'registrado',
+      // b296 - ⚠️ 'registrado' NAO PASSA NO CHECK DA TABELA.
+      //
+      // O erro que o dono viu (legivel gracas a b293):
+      //   new row violates check constraint "devolucoes_status_check"
+      //
+      // A coluna `status` tem lista fechada de valores. Varri o que o
+      // codigo LE: pendente, concluido, cancelled, delivered,
+      // waiting_seller. 'registrado' era o UNICO uso no repo inteiro — foi
+      // escrito sem conferir a lista.
+      //
+      // ⚠️ E NAO MUDA COMPORTAMENTO: o defeito de estoque e filtrado pelo
+      // TIPO (`tipo === 'defeito_estoque'`), nunca pelo status — conferi os
+      // 2 lugares que o leem (server.js:3738 e 5309). `pendente` e o que os
+      // outros 6 inserts usam.
+      status: 'pendente',
       funcionario: req.usuario,
       produto_sku: String(prod.codigo || sku),
       produto_titulo: prod.nome || null,
@@ -5255,14 +5269,25 @@ app.post('/api/defeitos/adicionar', requerEstoquista, async (req, res) => {
       // e o de producao). Entao entrego a mensagem util: o Postgres diz a
       // coluna, e eu explico por que ela falta.
       const falta = /null value in column "(\w+)"/.exec(error.message || "");
+      // b296 - ⚠️ CHECK constraint tambem, nao so NOT NULL.
+      //
+      // O dono levou DOIS erros de banco seguidos: primeiro coluna
+      // obrigatoria, depois valor fora da lista aceita. Eu so tratava o
+      // primeiro — o segundo saiu cru na tela.
+      const checkRuim = /violates check constraint "(\w+)"/.exec(error.message || "");
       return res.status(500).json({
         ok: false,
-        erro: falta
+        erro: checkRuim
+          ? 'o banco recusou um valor pela regra "' + checkRuim[1]
+            + '" — e limitacao da tabela, nao do que voce digitou. '
+            + 'Me manda esta mensagem.'
+          : falta
           ? 'a coluna "' + falta[1] + '" e obrigatoria na tabela, e o '
             + 'lançamento de defeito nao tem esse dado (defeito de estoque '
             + 'nao vem de venda). Me manda esta mensagem.'
           : error.message,
         coluna_faltando: falta ? falta[1] : null,
+        regra_violada: checkRuim ? checkRuim[1] : null,
       });
     }
     const linha = (criado || [])[0] || null;
