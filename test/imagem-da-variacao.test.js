@@ -28,8 +28,18 @@ const rota = src.slice(i, i + 6000);
 
   // ⚠️ e SÓ quando as outras falharam: foto é enfeite, não vale gastar
   // chamada do Bling (que espera na fila do porteiro)
-  ok(/if \(!url && \/\[-_\]\/\.test\(chave\) && podeGastarNaFoto\(\)\)/.test(rota),
-     '  ⚠️ e SO quando as outras falharam E ha orcamento');
+  //
+  // v4.9x (review do Codex no #257) - a 1a versao gastava o orcamento
+  // (`podeGastarNaFoto()`) ANTES de validar se o `pai` derivado da chave era
+  // usavel. Uma chave como `A-B` consumia a cota mesmo sem chegar a
+  // consultar o Bling (o `pai.length >= 3` barrava depois), e seis chaves
+  // assim no mesmo minuto esgotavam o teto pra itens validos seguintes.
+  // Agora o orcamento so e gasto no instante em que a chamada ao Bling de
+  // fato vai acontecer - DEPOIS do `pai` validado.
+  ok(/if \(!url && \/\[-_\]\/\.test\(chave\)\) \{/.test(rota),
+     '  ⚠️ deriva e valida o pai ANTES de mexer no orcamento');
+  ok(/pai && pai !== chave && pai\.length >= 3 && podeGastarNaFoto\(\)/.test(rota),
+     '  ⚠️ e SO gasta orcamento com um pai valido, bem antes de chamar o Bling');
 
   // ⚠️ o ORÇAMENTO existe porque a 1ª versão quebrou tudo: a lista pede
   // foto de até 12 produtos de uma vez, cada um com até 4 tentativas — ~50

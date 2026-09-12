@@ -395,7 +395,7 @@ app.get('/health', (req, res) => {
       // busca por nome. Escolher um lado apagaria a descricao do outro.
       // ⚠️ a resolucao JUNTA as duas: a 7.5.0 (passe curto + tetos) ja esta
       // na main, e este PR acrescenta o build frio que falha vazio.
-      version: '8.4.0 (a ficha do defeito expande NO CARD, sem trocar de tela; e a busca de foto ganhou orcamento — a tentativa extra estourava a cota)',
+      version: '8.4.1 (revisao Codex #257: ficha-no-card tinha id quebrado/x indefinido/layout na flex-row/estado global sem fechar a anterior/nav empurrando a busca; e o orcamento da foto do pai era gasto antes de validar o SKU)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
