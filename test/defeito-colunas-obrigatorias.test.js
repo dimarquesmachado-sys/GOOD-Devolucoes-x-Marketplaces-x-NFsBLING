@@ -41,14 +41,30 @@ const insert = srv.slice(ini, srv.indexOf('}])', ini));
 // ⚠️ Não dá para saber daqui quais das 14 colunas ausentes são NOT NULL —
 // só o banco sabe, e é o de produção. Então a mensagem tem que servir.
 {
+  // ⚠️ recorto ate o fim do bloco contando chaves: a janela de 1400 chars
+  // quebrou quando o tratamento cresceu pra cobrir CHECK constraint tambem.
+  // Nona vez hoje que janela fixa me da resposta errada.
   const iErr = srv.indexOf('if (error) {', iDef);
-  const bloco = srv.slice(iErr, iErr + 1400);
+  let prof = 0;
+  let fimErr = iErr;
+  for (let k = srv.indexOf('{', iErr); k < srv.length; k++) {
+    if (srv[k] === '{') prof++;
+    else if (srv[k] === '}') { prof--; if (prof === 0) { fimErr = k; break; } }
+  }
+  const bloco = srv.slice(iErr, fimErr);
   ok(/null value in column/.test(bloco),
      'o erro de coluna obrigatoria e reconhecido');
   ok(/coluna_faltando/.test(bloco),
      '  e devolve QUAL coluna faltou');
   ok(/nao vem de venda/.test(bloco),
      '  explicando por que ela falta (defeito nao vem de venda)');
+
+  // ⚠️ e CHECK constraint tambem: o dono levou DOIS erros de banco
+  // seguidos — coluna obrigatoria, depois valor fora da lista aceita.
+  ok(/violates check constraint/.test(bloco),
+     '⚠️ e reconhece CHECK constraint tambem (nao so NOT NULL)');
+  ok(/regra_violada/.test(bloco),
+     '  devolvendo QUAL regra foi violada');
 }
 
 // ── e o parse da mensagem do Postgres funciona ──────────────────────
