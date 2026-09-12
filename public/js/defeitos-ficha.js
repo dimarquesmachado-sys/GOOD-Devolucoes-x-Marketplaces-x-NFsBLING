@@ -338,6 +338,18 @@
       if (meuToken !== window._buscaDefToken) return;   // v4.88 - chegou tarde
       var itens = d.itens || [];
       pintarAbas(d.contagem || {});
+      // b303 - ⚠️ (apontamento do Codex #260) PRECISA VIVER AQUI FORA.
+      //
+      // Estava declarado com `var` DENTRO do `if (!d.ok || !itens.length)`
+      // logo abaixo. `var` e funcao-scoped, entao o nome existia no resto da
+      // funcao (inclusive no ramo "achou resultado", b302) — mas so GANHAVA
+      // VALOR quando aquele if executava. Como os dois ramos sao mutuamente
+      // exclusivos (o if termina em `return`), no ramo "achou resultado"
+      // `termoBusca` ficava `undefined` pra sempre: `podeLancarOutra`
+      // (b302) nunca era verdadeiro, e o botao "Lançar OUTRA peça" —
+      // construido EXATAMENTE pro caso "SKU com resultado" — nunca aparecia.
+      // O proprio caso que motivou o b302 nao era resolvido por ele.
+      var termoBusca = String(q || '').trim();
       if (!d.ok || !itens.length) {
         // b283 - ⚠️ "NADA ENCONTRADO" NAO PODE SER BECO SEM SAIDA.
         //
@@ -348,7 +360,6 @@
         //
         // A tela SABIA o SKU e nao oferecia nada. Quem busca um SKU sem
         // defeito quase sempre quer lancar um.
-        var termoBusca = String(q || '').trim();
         // b288 - ⚠️ O BOTAO SO NASCE ONDE O LANCADOR EXISTE.
         //
         // Apontamento do Codex no #238: este arquivo e carregado tanto pela
@@ -543,6 +554,73 @@
           + '<div class="fichaNoCard" id="ficha-' + esc(it.id) + '" style="display:none;"></div>'
           + '</div>';
       }).join('');
+
+      // b302 - ⚠️ LANÇAR OUTRA PECA DO MESMO SKU, MESMO COM RESULTADO.
+      //
+      // [stated 11/09] "esse eu inseri o defeito aquela hora, salvou tudo
+      // OK! (...) eu tenho outro produto desse no estoque LV-ASH-4 e tenho q
+      // adicionar uma segunda peça com defeito. Nao aparece o botao"
+      //
+      // ⚠️ O BOTAO SO EXISTIA NO CAMINHO DO VAZIO. Mas ter um defeito
+      // registrado NAO IMPEDE ter outro — sao PECAS FISICAS diferentes, e no
+      // galpao isso e comum: chega uma segunda unidade quebrada do mesmo
+      // produto.
+      //
+      // O jeito antigo obrigava a fechar a caixa, abrir "Lançar Defeito" no
+      // topo e digitar o SKU de novo — que e exatamente o atalho que a gente
+      // veio construir.
+      //
+      // 📌 Uso `window.abrirModalDefeito` porque este arquivo e uma IIFE (a
+      // licao da b287), e so mostro onde o modal EXISTE (a b287.1: no painel
+      // admin nao existe).
+      //
+      // b303 - ⚠️ (apontamento do Codex #260) `termoBusca` NAO E SEMPRE UM
+      // SKU. `/api/defeitos/lista` (lib/defeitos-ciclo.js) tambem acha por
+      // numero da peca ("peça 4"), NF ou localizacao — nesses casos o termo
+      // digitado nao existe como SKU, e `/api/produtos/buscar` (que o modal
+      // usa pra procurar o produto) so busca por SKU/EAN/nome. Passar o
+      // termo bruto podia abrir o modal buscando algo que nao e produto
+      // nenhum. Uso o SKU DE FATO retornado nos itens, e so ofereco o atalho
+      // quando todos os itens achados sao do MESMO SKU — com termo ambiguo
+      // (varios SKUs na lista) nao da pra saber qual e "a mesma peça".
+      var skusAchados = itens.reduce(function (acc, it) {
+        if (it.sku && acc.indexOf(it.sku) === -1) acc.push(it.sku);
+        return acc;
+      }, []);
+      var skuLancarOutra = skusAchados.length === 1 ? skusAchados[0] : null;
+      var podeLancarOutra = skuLancarOutra
+        && typeof window.abrirModalDefeito === 'function';
+      if (podeLancarOutra) {
+        el.innerHTML += '<div style="margin-top:14px;padding-top:12px;'
+          + 'border-top:1px solid #eee;">'
+          + '<button type="button" id="btnLancarOutra" class="btn" '
+          + 'style="padding:10px 14px;">'
+          + '➕ Lançar OUTRA peça de <b>' + esc(skuLancarOutra) + '</b></button>'
+          + '<div style="font-size:12px;color:#888;margin-top:6px;">'
+          + 'Chegou mais uma unidade com defeito? Cada peça é um registro.'
+          + '</div></div>';
+        var btnOutra = document.getElementById('btnLancarOutra');
+        if (btnOutra) btnOutra.onclick = function () {
+          try {
+            window.abrirModalDefeito(skuLancarOutra);
+            // b303 - ⚠️ (apontamento do Codex #260) SO FECHA A CAIXA DEPOIS
+            // DE ABRIR O MODAL, E POR ISSO PRECISA FECHAR. `#caixaDefeitos`
+            // (esta busca) tem z-index 2000 de proposito, pra ficar por cima
+            // de tudo enquanto o dono busca; `#modalDefeito` tem z-index
+            // 1000. Sem fechar a caixa, o modal abre por TRAS dela — visualmente
+            // identico a nao ter feito nada. Mesma ordem do btnLancarDoVazio
+            // (b286, linhas acima): abre primeiro, fecha so se abriu.
+            if (typeof window.fecharCaixaDefeitos === 'function') window.fecharCaixaDefeitos();
+          } catch (err) {
+            // ⚠️ o erro vai pra TELA: o dono ficou 3 rodadas olhando tela
+            // vazia quando isto falhou silenciosamente (b286)
+            btnOutra.insertAdjacentHTML('afterend',
+              '<div style="margin-top:8px;color:#b00;font-size:13px;">'
+              + '⚠️ nao consegui abrir: ' + esc(err.message) + '</div>');
+            console.error('[DEFEITOS] lançar outra falhou:', err);
+          }
+        };
+      }
       buscarFotosDefeitos(itens);
     } catch (e) {
       el.innerHTML = '<div style="color:#c62828;font-size:13px;">erro ao buscar</div>';
