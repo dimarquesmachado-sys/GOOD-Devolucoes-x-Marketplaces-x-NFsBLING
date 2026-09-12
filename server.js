@@ -395,7 +395,7 @@ app.get('/health', (req, res) => {
       // busca por nome. Escolher um lado apagaria a descricao do outro.
       // ⚠️ a resolucao JUNTA as duas: a 7.5.0 (passe curto + tetos) ja esta
       // na main, e este PR acrescenta o build frio que falha vazio.
-      version: '8.2.2 (o defeito grava tipo=problema + status=concluido — o par que a tabela aceita E que a caixa procura)',
+      version: '8.2.3 (revisao Codex #252: defeito de estoque manual nao inflava mais devolucao de venda — fila fiscal, relatorio, origem na tela e restaurar reconhecem o shipment_id sintetico)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -3515,6 +3515,17 @@ app.get('/admin/relatorios.html', requerAdmin, (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'admin', 'relatorios.html'));
 });
 
+// b298 (revisao Codex #252) - o defeito de estoque lancado manualmente
+// grava `tipo: 'problema'` (o unico valor que a tabela `devolucoes`
+// aceita - server.js:5240), entao `tipo` sozinho nao distingue mais defeito
+// de estoque de devolucao de venda de verdade. O sinal que sobra e o
+// `shipment_id` sintetico (`DEF-<timestamp>-<aleatorio>`, server.js:5221):
+// nenhuma devolucao de venda tem esse prefixo. Usado em todo consumidor
+// que precisa separar os dois (fila fiscal, relatorio, origem na tela).
+function ehDefeitoDeEstoqueManual(d) {
+  return /^DEF-/.test(String((d && d.shipment_id) || ''));
+}
+
 // API: lista devolucoes pendentes (aprovadas + problemas)
 app.get('/api/admin/devolucoes', requerAdmin, async (req, res) => {
   if (!supabase) {
@@ -3557,10 +3568,15 @@ app.get('/api/admin/devolucoes', requerAdmin, async (req, res) => {
       console.warn('[ADMIN] cruzamento de entrega parcial falhou:', e.message || e);
     }
 
+    // este painel e a FILA FISCAL do Diego (emitir NF de devolucao) - o
+    // defeito de estoque lancado manualmente nao tem venda nem cliente por
+    // tras e nao deve entrar aqui (ehDefeitoDeEstoqueManual, acima).
+    const semDefeitoManual = comParcial.filter(d => !ehDefeitoDeEstoqueManual(d));
+
     // Separa por tipo
-    const aprovadas = comParcial.filter(d => d.tipo === 'aprovado');
-    const problemas = comParcial.filter(d => d.tipo === 'problema');
-    const divergentes = comParcial.filter(d => d.tipo === 'divergente'); // v3.18.0
+    const aprovadas = semDefeitoManual.filter(d => d.tipo === 'aprovado');
+    const problemas = semDefeitoManual.filter(d => d.tipo === 'problema');
+    const divergentes = semDefeitoManual.filter(d => d.tipo === 'divergente'); // v3.18.0
 
     // b200 - DECODIFICAR os marcadores no servidor.
     //
@@ -3572,7 +3588,7 @@ app.get('/api/admin/devolucoes', requerAdmin, async (req, res) => {
       aprovadas: marcadores.enriquecer(aprovadas),
       problemas: marcadores.enriquecer(problemas),
       divergentes, // v3.18.0
-      total: comParcial.length,
+      total: semDefeitoManual.length,
     });
   } catch (err) {
     return res.status(500).json({ ok: false, erro: err.message });
@@ -3750,7 +3766,10 @@ app.get('/api/defeitos/por-sku', requerEstoquista, async (req, res) => {
       sku: d.produto_sku || null,
       local: d.localizacao || null,
       qtd: d.defeito_qtd || 1,
-      origem: d.tipo === 'defeito_estoque' ? 'estoque' : 'devolucao',
+      // b298 (revisao Codex #252) - `tipo === 'defeito_estoque'` nunca mais
+      // acontece (a tabela so aceita 'problema'); o defeito de estoque
+      // manual se reconhece pelo shipment_id sintetico.
+      origem: ehDefeitoDeEstoqueManual(d) ? 'estoque' : 'devolucao',
       defeito: (d.problema_descricao || '')
         .replace(/^\[RE-BIPE\]\s*/, '')
         .replace(/^\[Reportado por [^\]]+\]\s*/, '')
@@ -5363,7 +5382,9 @@ app.get('/api/defeitos', requerEstoquista, async (req, res) => { // v3.90: estoq
       local: d.localizacao || null,
       qtd: d.defeito_qtd || null,
       defeito: (d.problema_descricao || '').replace(/^\[RE-BIPE\]\s*/, '').replace(/^\[Reportado por [^\]]+\]\s*/, '').replace(/^\[LANCADO MANUAL por [^\]]+\]\s*/, ''),
-      origem: d.tipo === 'defeito_estoque' ? 'estoque' : 'devolucao', // v3.97
+      // b298 (revisao Codex #252) - idem ao /api/defeitos/por-sku acima:
+      // `tipo` nao distingue mais, o shipment_id sintetico sim.
+      origem: ehDefeitoDeEstoqueManual(d) ? 'estoque' : 'devolucao', // v3.97
       status: d.status,
     }));
     if (q) itens = itens.filter(x => [x.sku, x.local, x.produto, x.nf].some(v => String(v || '').toUpperCase().includes(q)));

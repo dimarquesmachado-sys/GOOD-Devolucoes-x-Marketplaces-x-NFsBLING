@@ -112,11 +112,13 @@ const criarMlBuscas = require('../lib/ml-buscas');
 const registrarIdentificar = require('./lib-AMB/identificar-AMB');
 const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 
-// b308 - revisao Codex #249 foi so do lado GOOD (server.js/lib/): o
-// restaurar da AMB nao le shipment_id pra decidir a origem
-// (defeitos-ciclo-AMB.js:244-254) e a AMB nao tem relatorio de devolucoes
-// de venda - confirmado que nao ha nada a espelhar aqui.
-const VERSAO = 'AMB Devolucoes b308';
+// b309 - revisao Codex #252 tambem foi so do lado GOOD: la, o defeito de
+// estoque manual passou a gravar `tipo: 'problema'` (a tabela da GOOD nunca
+// aceitou 'defeito_estoque') e isso quebrou 3 consumidores que ainda
+// distinguiam por `tipo`. Aqui na AMB o defeito de estoque grava
+// `tipo: 'defeito_estoque'` DIRETO (app-AMB.js:1481) e a tabela dela aceita
+// esse valor de verdade - conferido que nao ha nada a espelhar.
+const VERSAO = 'AMB Devolucoes b309';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
