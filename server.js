@@ -395,7 +395,7 @@ app.get('/health', (req, res) => {
       // busca por nome. Escolher um lado apagaria a descricao do outro.
       // ⚠️ a resolucao JUNTA as duas: a 7.5.0 (passe curto + tetos) ja esta
       // na main, e este PR acrescenta o build frio que falha vazio.
-      version: '8.2.1 (o defeito grava status pendente — registrado nao passava no check da tabela; e o erro de regra fica legivel)',
+      version: '8.2.4 (revisao Codex #252 cont.: /api/defeitos e /api/defeitos/por-sku nao selecionavam shipment_id — ehDefeitoDeEstoqueManual sempre dava falso e a origem na tela nunca mostrava ESTOQUE)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -3515,6 +3515,17 @@ app.get('/admin/relatorios.html', requerAdmin, (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'admin', 'relatorios.html'));
 });
 
+// b298 (revisao Codex #252) - o defeito de estoque lancado manualmente
+// grava `tipo: 'problema'` (o unico valor que a tabela `devolucoes`
+// aceita - server.js:5240), entao `tipo` sozinho nao distingue mais defeito
+// de estoque de devolucao de venda de verdade. O sinal que sobra e o
+// `shipment_id` sintetico (`DEF-<timestamp>-<aleatorio>`, server.js:5221):
+// nenhuma devolucao de venda tem esse prefixo. Usado em todo consumidor
+// que precisa separar os dois (fila fiscal, relatorio, origem na tela).
+function ehDefeitoDeEstoqueManual(d) {
+  return /^DEF-/.test(String((d && d.shipment_id) || ''));
+}
+
 // API: lista devolucoes pendentes (aprovadas + problemas)
 app.get('/api/admin/devolucoes', requerAdmin, async (req, res) => {
   if (!supabase) {
@@ -3557,10 +3568,15 @@ app.get('/api/admin/devolucoes', requerAdmin, async (req, res) => {
       console.warn('[ADMIN] cruzamento de entrega parcial falhou:', e.message || e);
     }
 
+    // este painel e a FILA FISCAL do Diego (emitir NF de devolucao) - o
+    // defeito de estoque lancado manualmente nao tem venda nem cliente por
+    // tras e nao deve entrar aqui (ehDefeitoDeEstoqueManual, acima).
+    const semDefeitoManual = comParcial.filter(d => !ehDefeitoDeEstoqueManual(d));
+
     // Separa por tipo
-    const aprovadas = comParcial.filter(d => d.tipo === 'aprovado');
-    const problemas = comParcial.filter(d => d.tipo === 'problema');
-    const divergentes = comParcial.filter(d => d.tipo === 'divergente'); // v3.18.0
+    const aprovadas = semDefeitoManual.filter(d => d.tipo === 'aprovado');
+    const problemas = semDefeitoManual.filter(d => d.tipo === 'problema');
+    const divergentes = semDefeitoManual.filter(d => d.tipo === 'divergente'); // v3.18.0
 
     // b200 - DECODIFICAR os marcadores no servidor.
     //
@@ -3572,7 +3588,7 @@ app.get('/api/admin/devolucoes', requerAdmin, async (req, res) => {
       aprovadas: marcadores.enriquecer(aprovadas),
       problemas: marcadores.enriquecer(problemas),
       divergentes, // v3.18.0
-      total: comParcial.length,
+      total: semDefeitoManual.length,
     });
   } catch (err) {
     return res.status(500).json({ ok: false, erro: err.message });
@@ -3728,7 +3744,7 @@ app.get('/api/defeitos/por-sku', requerEstoquista, async (req, res) => {
   try {
     const { data, error } = await supabase
       .from('devolucoes')
-      .select('id, created_at, tipo, status, produto_titulo, produto_sku, localizacao, defeito_qtd, problema_descricao')
+      .select('id, created_at, tipo, status, produto_titulo, produto_sku, localizacao, defeito_qtd, problema_descricao, shipment_id')
       .in('tipo', ['problema', 'defeito_estoque'])
       .ilike('produto_sku', sku)
       .order('created_at', { ascending: false })
@@ -3750,7 +3766,10 @@ app.get('/api/defeitos/por-sku', requerEstoquista, async (req, res) => {
       sku: d.produto_sku || null,
       local: d.localizacao || null,
       qtd: d.defeito_qtd || 1,
-      origem: d.tipo === 'defeito_estoque' ? 'estoque' : 'devolucao',
+      // b298 (revisao Codex #252) - `tipo === 'defeito_estoque'` nunca mais
+      // acontece (a tabela so aceita 'problema'); o defeito de estoque
+      // manual se reconhece pelo shipment_id sintetico.
+      origem: ehDefeitoDeEstoqueManual(d) ? 'estoque' : 'devolucao',
       defeito: (d.problema_descricao || '')
         .replace(/^\[RE-BIPE\]\s*/, '')
         .replace(/^\[Reportado por [^\]]+\]\s*/, '')
@@ -5220,7 +5239,24 @@ app.post('/api/defeitos/adicionar', requerEstoquista, async (req, res) => {
       // madrugada.
       shipment_id: 'DEF-' + Date.now() + '-'
         + Math.random().toString(36).slice(2, 8).toUpperCase(),
-      tipo: 'defeito_estoque',
+      // b297 - ⚠️ 'defeito_estoque' NAO PASSA NO CHECK DE `tipo`.
+      //
+      // Terceiro erro de banco seguido (e a mensagem legivel entregou de
+      // novo): violates check constraint "devolucoes_tipo_check".
+      //
+      // ⚠️ O CODIGO LE `defeito_estoque` em varios lugares, mas a TABELA
+      // nunca aceitou gravar esse valor. Os 45 defeitos que existem hoje
+      // vieram da TRIAGEM, com `tipo: 'problema'` — e e assim que a caixa
+      // de Estoque de Defeitos os acha:
+      //   ATIVOS = 'and(tipo.eq.problema,status.eq.concluido),...'
+      //
+      // Entao gravo o par que a caixa JA procura e que a tabela JA aceita:
+      // `tipo: 'problema'` + `status: 'concluido'`. Conferi que 'problema'
+      // e gravado noutro ponto do server (logo passa no check).
+      //
+      // 📌 O certo a longo prazo e a tabela aceitar `defeito_estoque` —
+      // migracao em producao, anotada.
+      tipo: 'problema',
       // b296 - ⚠️ 'registrado' NAO PASSA NO CHECK DA TABELA.
       //
       // O erro que o dono viu (legivel gracas a b293):
@@ -5235,7 +5271,10 @@ app.post('/api/defeitos/adicionar', requerEstoquista, async (req, res) => {
       // TIPO (`tipo === 'defeito_estoque'`), nunca pelo status — conferi os
       // 2 lugares que o leem (server.js:3738 e 5309). `pendente` e o que os
       // outros 6 inserts usam.
-      status: 'pendente',
+      // ⚠️ b297: 'concluido' PORQUE a caixa procura o PAR
+      // (tipo=problema E status=concluido). Com 'pendente', o defeito
+      // gravaria mas NAO APARECERIA na lista — pior que falhar.
+      status: 'concluido',
       funcionario: req.usuario,
       produto_sku: String(prod.codigo || sku),
       produto_titulo: prod.nome || null,
@@ -5312,7 +5351,7 @@ app.get('/api/defeitos', requerEstoquista, async (req, res) => { // v3.90: estoq
   try {
     const { data, error } = await supabase
       .from('devolucoes')
-      .select('id, created_at, tipo, produto_titulo, produto_sku, nf_numero, localizacao, defeito_qtd, problema_descricao, status')
+      .select('id, created_at, tipo, produto_titulo, produto_sku, nf_numero, localizacao, defeito_qtd, problema_descricao, status, shipment_id')
       .in('tipo', ['problema', 'defeito_estoque']) // v3.97: devolucao com defeito + defeito lancado do estoque
       .not('localizacao', 'is', null)
       .neq('localizacao', '')
@@ -5343,7 +5382,9 @@ app.get('/api/defeitos', requerEstoquista, async (req, res) => { // v3.90: estoq
       local: d.localizacao || null,
       qtd: d.defeito_qtd || null,
       defeito: (d.problema_descricao || '').replace(/^\[RE-BIPE\]\s*/, '').replace(/^\[Reportado por [^\]]+\]\s*/, '').replace(/^\[LANCADO MANUAL por [^\]]+\]\s*/, ''),
-      origem: d.tipo === 'defeito_estoque' ? 'estoque' : 'devolucao', // v3.97
+      // b298 (revisao Codex #252) - idem ao /api/defeitos/por-sku acima:
+      // `tipo` nao distingue mais, o shipment_id sintetico sim.
+      origem: ehDefeitoDeEstoqueManual(d) ? 'estoque' : 'devolucao', // v3.97
       status: d.status,
     }));
     if (q) itens = itens.filter(x => [x.sku, x.local, x.produto, x.nf].some(v => String(v || '').toUpperCase().includes(q)));

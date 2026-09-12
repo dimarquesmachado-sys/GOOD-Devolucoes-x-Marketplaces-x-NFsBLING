@@ -20,7 +20,10 @@ let falhas = 0;
 const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o); };
 
 const srv = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
-const iDef = srv.indexOf("tipo: 'defeito_estoque'");
+// ⚠️ ancora pelo `shipment_id: 'DEF-'`, que e EXCLUSIVO deste insert e nao
+// muda com os consertos de tipo/status. Ancorar em `tipo: 'defeito_estoque'`
+// quebrou quando eu troquei o valor — e o teste inteiro caiu junto.
+const iDef = srv.indexOf("shipment_id: 'DEF-'");
 const ini = srv.lastIndexOf('insert([{', iDef);
 const insert = srv.slice(ini, srv.indexOf('}])', ini));
 
@@ -80,6 +83,34 @@ const insert = srv.slice(ini, srv.indexOf('}])', ini));
     ok(achado === esperado,
        '  parse: ' + (esperado || '(sem coluna)') + ' → ' + (achado || '(sem coluna)'));
   }
+}
+
+// ── ⚠️ e o tipo/status gravados sao os que a TABELA aceita ──────────
+//
+// Terceiro erro de banco seguido: `violates check constraint
+// "devolucoes_tipo_check"`. O código LÊ `defeito_estoque` em vários
+// lugares, mas a TABELA nunca aceitou gravar esse valor.
+//
+// Os 45 defeitos que existem hoje vieram da TRIAGEM, com `tipo: 'problema'`
+// — e é assim que a caixa de Estoque de Defeitos os acha:
+//   ATIVOS = 'and(tipo.eq.problema,status.eq.concluido),...'
+//
+// ⚠️ E o PAR importa: com `tipo: 'problema'` mas status errado, o defeito
+// gravaria e NÃO APARECERIA na lista — pior que falhar, porque o dono acha
+// que registrou.
+{
+  ok(/tipo: 'problema',/.test(insert),
+     '⚠️ o defeito grava `tipo: problema` (o que a tabela aceita)');
+  ok(/status: 'concluido',/.test(insert),
+     '  ⚠️ e `status: concluido` — o PAR que a caixa procura');
+  ok(!/tipo: 'defeito_estoque'/.test(insert),
+     '  e nao grava `defeito_estoque` (o check recusa)');
+
+  // e a caixa realmente procura esse par
+  const caixa = fs.readFileSync(
+    path.join(__dirname, '..', 'lib', 'defeitos-ciclo.js'), 'utf8');
+  ok(/tipo\.eq\.problema,status\.eq\.concluido/.test(caixa),
+     '  e a caixa de Defeitos procura exatamente esse par');
 }
 
 console.log('');

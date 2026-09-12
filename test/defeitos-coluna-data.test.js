@@ -80,14 +80,16 @@ ok(/x\.tipo === 'problema' && x\.status !== 'concluido'/.test(SERVER),
 ok(/x\.tipo === 'defeito_estoque' \|\| x\.status === 'concluido'/.test(SERVER),
    '  e libera so defeito_estoque ou concluido');
 
-// ── 6. restaurar excluido nao pode apagar a origem fiscal ────────────
-const restaura = GOOD.slice(GOOD.indexOf('const veioDeDevolucao'), GOOD.indexOf('const camposR'));
-ok(restaura.includes('nf_numero') && restaura.includes('nf_chave'),
-   'a restauracao olha vestigio de NF pra saber se veio de devolucao');
-ok(restaura.includes("? 'problema'"), '  com NF, volta como problema (nao vira defeito_estoque)');
-ok(restaura.includes("'defeito_estoque'"), '  sem NF, volta como defeito_estoque');
-ok(/select\('id, tipo, tipo_anterior, status, shipment_id[^']*nf_numero/.test(GOOD),
-   '  e o select traz os campos de origem (senao a checagem seria sempre falsa)');
+// ── 6. restaurar excluido: revisao Codex #252 - 'defeito_estoque' NUNCA
+// passou no check da tabela (o PR #252 provou isso e trocou a GRAVACAO do
+// defeito manual pra 'problema'). 'problema' e hoje o UNICO tipo valido de
+// volta tambem - o fallback sem tipo_anterior nao pode mais devolver
+// 'defeito_estoque', senao a restauracao leva 500 e o item fica excluido
+// pra sempre. ──────────────────────────────────────────────────────────
+const restaura = GOOD.slice(GOOD.indexOf('const tipoVolta'), GOOD.indexOf('const camposR'));
+ok(restaura.includes(": 'problema'"), '  sem tipo_anterior, volta como problema');
+ok(!restaura.includes("'defeito_estoque'"),
+   '  e NAO tem mais o fallback pra defeito_estoque (a tabela recusa)');
 
 // o resto do server ja filtrava assim — o modulo e que estava fora do padrao
 ok(/\.in\('tipo',\s*\['problema',\s*'defeito_estoque'\]\)/.test(SERVER),
@@ -181,22 +183,37 @@ const limiteDaConsulta = new Function(
 ok(GOOD.indexOf('const porPedido') < GOOD.indexOf('let linhas = await buscar'),
    'porPedido e resolvido ANTES da busca (era depois; por isso nao dava pra filtrar no banco)');
 
-// ── 8. origem: devolucao SEM NF nao pode virar defeito de estoque ────
-ok(/veioDeDevolucao = !!\(shipmentReal/.test(GOOD),
-   'shipment_id e o sinal de origem (toda devolucao tem; defeito de estoque nao)');
-ok(/select\('id, tipo, tipo_anterior, status, shipment_id/.test(GOOD),
-   '  e o select traz shipment_id (senao a checagem seria sempre falsa)');
+// ── 8. origem: devolucao SEM NF existe e precisa ser reconhecida ─────
 ok(/shipment_id: String\(dados\.shipment_id \|\| dados\.nf_chave \|\| dados\.magalu_protocolo/.test(SERVER),
-   '  o server grava shipment_id em cascata: shipment > chave NF > protocolo Magalu');
+   'o server grava shipment_id em cascata: shipment > chave NF > protocolo Magalu');
 ok(/!dados\.shipment_id && !dados\.nf_chave && !dados\.magalu_protocolo/.test(SERVER),
    '  e exige um dos tres — por isso devolucao SEM NF existe e precisa ser reconhecida');
 
-// ── 9. revisao Codex #249: o shipment_id SINTETICO (DEF-*) do defeito de
-// estoque nao pode contar como prova de venda no restaurar ─────────────
-ok(/shipmentReal = item\.shipment_id && !\/\^DEF-\/\.test\(String\(item\.shipment_id\)\)/.test(GOOD),
-   'shipment_id que comeca com DEF- (gerado por server.js pro NOT NULL) e ignorado como sinal de venda');
+// ── 9. revisao Codex #252: o shipment_id SINTETICO (DEF-*) do defeito de
+// estoque manual nao pode contar como devolucao de venda em NENHUM
+// consumidor que separa os dois por tipo (tipo agora e sempre 'problema'
+// pros dois) ────────────────────────────────────────────────────────────
 ok(/DEF-' \+ Date\.now\(\)/.test(SERVER),
-   '  o server realmente gera esse shipment_id sintetico pro defeito de estoque');
+   'o server gera um shipment_id sintetico pro defeito de estoque manual');
+ok(/function ehDefeitoDeEstoqueManual\(d\)/.test(SERVER),
+   '  e ha um reconhecedor unico do shipment_id sintetico (evita 4 regex divergentes)');
+ok(/return \/\^DEF-\/\.test\(String\(\(d && d\.shipment_id\) \|\| ''\)\)/.test(SERVER),
+   '  que so olha o prefixo DEF- (tipo nao serve mais pra distinguir)');
+
+// ── 10. ehDefeitoDeEstoqueManual so funciona se o SELECT trouxer
+// shipment_id — sem isso `d.shipment_id` e sempre undefined e a origem
+// mostrada na tela e SEMPRE 'devolucao', nunca 'estoque' (bug encontrado na
+// propria revisao Codex #252: os selects de /api/defeitos e
+// /api/defeitos/por-sku nao pediam shipment_id) ──────────────────────────
+const iniPorSku = SERVER.indexOf("app.get('/api/defeitos/por-sku'");
+const trechoPorSku = SERVER.slice(iniPorSku, SERVER.indexOf('origem:', iniPorSku));
+ok(/\.select\([^)]*\bshipment_id\b/.test(trechoPorSku),
+   '/api/defeitos/por-sku seleciona shipment_id (senao ehDefeitoDeEstoqueManual sempre da falso)');
+
+const iniListaDefeitos = SERVER.indexOf("app.get('/api/defeitos',");
+const trechoListaDefeitos = SERVER.slice(iniListaDefeitos, SERVER.indexOf('origem:', iniListaDefeitos));
+ok(/\.select\([^)]*\bshipment_id\b/.test(trechoListaDefeitos),
+   '/api/defeitos seleciona shipment_id (mesmo motivo)');
 
 console.log('');
 console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
