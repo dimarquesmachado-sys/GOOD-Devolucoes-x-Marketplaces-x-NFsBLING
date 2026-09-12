@@ -80,6 +80,40 @@ const srv = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
      '  ⚠️ e so usa o indice quando ha `id` (o detalhe do kit precisa dele)');
 }
 
+// ── revisao Codex #253: o match do indice NAO pode ignorar acento ──
+//
+// `normProd` usa NFD (tira acento) pra tolerar CAIXA — mas junto com isso
+// fundia SKUs que so diferem no acento (ex: "ABCA" e "ABCÁ"), e o `.find()`
+// pegava o primeiro da lista: produto ERRADO. `buscarProdutoBlingPorSku`
+// (o caminho antigo) nunca ignorou acento: so tenta exato, depois so-caixa.
+{
+  const i = srv.indexOf("app.post('/api/defeitos/adicionar'");
+  const rota = srv.slice(i, i + 12000);
+  const iResolveIndice = rota.indexOf('IDX_PROD.ts && Array.isArray');
+  const trechoIndice = rota.slice(iResolveIndice, rota.indexOf('if (!rP) rP ='));
+  ok(!/normProd/.test(trechoIndice),
+     '⚠️ o match do SKU no indice nao usa normProd (nao ignora mais acento)');
+  ok(/=== skuClean/.test(trechoIndice) && /toUpperCase\(\) === skuUpper/.test(trechoIndice),
+     '  e replica o criterio do Bling: exato, depois so-caixa');
+}
+
+// ── revisao Codex #253: indice desatualizado (produto excluido/renomeado)
+//
+// O indice e populado so no BOOT (ou rebuild manual de debug). Se o
+// produto sumiu do Bling depois disso, o 404 na chamada de detalhe (o
+// UNICO ponto que ainda fala com o Bling pra esse SKU) tem que barrar a
+// gravacao, nao ser engolido pelo catch generico.
+{
+  const i = srv.indexOf("app.post('/api/defeitos/adicionar'");
+  const rota = srv.slice(i, i + 12000);
+  ok(/prodViaIndice && rDet && rDet\.ok === false && rDet\.status === 404/.test(rota),
+     '⚠️ 404 no detalhe de produto resolvido pelo indice barra a gravacao');
+  const iCheck = rota.indexOf('prodViaIndice && rDet');
+  const iDet = rota.indexOf('const det = (rDet.ok');
+  ok(iCheck > 0 && iCheck < iDet,
+     '  e a checagem roda ANTES de usar `det` (senao o kit-check mascara o erro)');
+}
+
 console.log('');
 console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
 process.exit(falhas ? 1 : 0);

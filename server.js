@@ -395,7 +395,7 @@ app.get('/health', (req, res) => {
       // busca por nome. Escolher um lado apagaria a descricao do outro.
       // ⚠️ a resolucao JUNTA as duas: a 7.5.0 (passe curto + tetos) ja esta
       // na main, e este PR acrescenta o build frio que falha vazio.
-      version: '8.4.1 (URGENTE: a lista de defeitos estava quebrada — concatenacao dentro da string)',
+      version: '8.4.2 (revisao Codex #253: o match do SKU pelo indice respeita acento e SKU desatualizado)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -5165,11 +5165,22 @@ app.post('/api/defeitos/adicionar', requerEstoquista, async (req, res) => {
     //
     // O Bling continua como RESERVA: SKU que o indice nao tem (produto
     // novo, indice ainda montando) cai no caminho antigo.
+    //
+    // revisao Codex #253 (P2): o match NAO PODE IGNORAR ACENTO. `normProd`
+    // usa NFD pra tolerar CAIXA, mas junto com isso funde SKUs que so
+    // diferem no acento (ex: "ABCA" e "ABCÁ") - o `.find()` pegaria o
+    // primeiro da lista, um produto ERRADO. `buscarProdutoBlingPorSku` (o
+    // caminho antigo, lib/bling.js) nunca fez isso: so tenta exato e
+    // depois so-caixa. Replico o mesmo criterio aqui.
     let rP = null;
+    let prodViaIndice = false;
     if (IDX_PROD.ts && Array.isArray(IDX_PROD.itens)) {
-      const alvoSku = normProd(sku);
+      const skuClean = sku.trim();
+      const skuUpper = skuClean.toUpperCase();
       const doIndice = IDX_PROD.itens.find(
-        (it) => normProd(String(it.sku || it.codigo || '')) === alvoSku);
+        (it) => String(it.sku || it.codigo || '').trim() === skuClean)
+        || IDX_PROD.itens.find(
+        (it) => String(it.sku || it.codigo || '').trim().toUpperCase() === skuUpper);
       if (doIndice && doIndice.id) {
         rP = { ok: true, produto: {
           id: doIndice.id,
@@ -5177,6 +5188,7 @@ app.post('/api/defeitos/adicionar', requerEstoquista, async (req, res) => {
           nome: doIndice.nome,
           gtin: doIndice.ean || null,
         } };
+        prodViaIndice = true;
         console.log(`[DEFEITOS] SKU ${sku} resolvido pelo INDICE (sem ir no Bling)`);
       }
     }
@@ -5215,6 +5227,21 @@ app.post('/api/defeitos/adicionar', requerEstoquista, async (req, res) => {
         rDet = await chamarBling(`https://api.bling.com.br/Api/v3/produtos/${prod.id}`);
         // ⚠️ so guardo resposta BOA: erro em cache viraria erro permanente
         if (rDet && rDet.ok) global._DET_PROD_CACHE.set(_cacheKey, { ts: Date.now(), r: rDet });
+      }
+      // revisao Codex #253 (P2): o indice e populado so no BOOT (ou rebuild
+      // manual de debug) - se o produto foi excluido/renomeado no Bling
+      // depois disso, o indice segue "achando" ele valido, e esta chamada
+      // de detalhe e o UNICO ponto que ainda fala com o Bling de verdade
+      // pra esse SKU. Um 404 aqui, resolvido pelo indice, e DETERMINISTICO
+      // (mesmo criterio usado em resolverComponentesKit: 404 nao se
+      // resolve tentando de novo): produto sumiu. Sem isto, o catch
+      // generico ali embaixo engolia o erro e o defeito era gravado pra um
+      // SKU que nao existe mais - a validacao que a rota promete.
+      if (prodViaIndice && rDet && rDet.ok === false && rDet.status === 404) {
+        return res.status(400).json({
+          ok: false,
+          erro: `SKU "${sku}" nao encontrado no Bling (indice local desatualizado - tente novamente)`,
+        });
       }
       const det = (rDet.ok && rDet.data && rDet.data.data) || null;
       const comps = extrairComponentes(det);   // v4.66 - tolerante ao formato
