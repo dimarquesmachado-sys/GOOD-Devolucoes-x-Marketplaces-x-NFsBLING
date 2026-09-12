@@ -7,6 +7,16 @@
 // NO BLING, A FOTO DA VARIAÇÃO COSTUMA ESTAR NO PAI. A variação herda
 // visualmente, mas o registro dela vem sem imagem própria — e as 3
 // tentativas da rota procuravam só por ela.
+//
+// v8.3.2 (revisão do Codex no #254) - a 1a versão adivinhava o pai cortando
+// o sufixo da SKU no texto (`288-VAR` -> `288`), rodava ANTES do detalhe do
+// próprio produto (podia esconder a foto de verdade da variação) e aceitava
+// o 1o item da listagem por esse código adivinhado sem checar se batia —
+// pra um SKU comum como `ABC-RED`, um produto `ABC` qualquer no cadastro
+// virava "o pai" e a foto errada ficava fixa no cache. Corrigido: o pai só
+// vem do campo `produtoPai` que o próprio Bling devolve (nunca de um
+// palpite em cima do texto da SKU), e só depois que lista + detalhe do
+// próprio produto já procuraram e não acharam foto.
 
 const fs = require('fs');
 const path = require('path');
@@ -19,34 +29,35 @@ const src = fs.readFileSync(
 const i = src.indexOf("app.get('/api/produto/imagem/:id'");
 const rota = src.slice(i, i + 6000);
 
-// ── ⚠️ a rota tenta o produto pai ───────────────────────────────────
+// ── ⚠️ a rota tenta o produto pai, mas SO pelo metadado do Bling ────
 {
   ok(/pai_da_variacao/.test(rota),
      '⚠️ a rota tenta o PAI da variacao quando nao acha a foto');
-  ok(/chave\.replace\(\/\[-_\]\[\^-_\]\+\$\/, ''\)/.test(rota),
-     '  cortando o sufixo no ultimo separador');
 
-  // ⚠️ e SÓ quando as outras falharam: foto é enfeite, não vale gastar
-  // chamada do Bling (que espera na fila do porteiro)
-  ok(/if \(!url && \/\[-_\]\/\.test\(chave\)\)/.test(rota),
-     '  ⚠️ e SO quando as outras tentativas falharam (foto e enfeite)');
+  // ⚠️ nao pode mais adivinhar o pai cortando o sufixo da SKU no texto —
+  // foi isso que deixou "ABC-RED" herdar a foto de um "ABC" sem parentesco
+  ok(!/chave\.replace\(\/\[-_\]/.test(rota),
+     '  ⚠️ NAO adivinha mais o pai cortando o sufixo da SKU no texto');
+
+  // o id do pai tem que vir do campo que o Bling devolve, do detalhe
+  // (prioridade) ou da lista — nunca de regex em cima da SKU
+  ok(/detalhe\.produtoPai && detalhe\.produtoPai\.id/.test(rota),
+     '  o pai vem do `produtoPai` do DETALHE do proprio produto (prioridade)');
+  ok(/prod\.produtoPai && prod\.produtoPai\.id/.test(rota),
+     '  ou do `produtoPai` que ja veio na LISTAGEM, como reserva');
+
+  // e busca o DETALHE do pai — a listagem do Bling nao traz imagem
+  ok(/rPai = await chamarBling\(`https:\/\/api\.bling\.com\.br\/Api\/v3\/produtos\/\$\{encodeURIComponent\(idPai\)\}`\)/.test(rota),
+     '  e busca o DETALHE do pai pelo id (a listagem nao traz imagem)');
 }
 
-// ── e o corte funciona nos casos reais do print ─────────────────────
+// ── ⚠️ e SO depois que o detalhe do PROPRIO produto foi conferido ──
 {
-  const casos = [
-    ['288-VAR', '288'],
-    ['801s-BP', '801s'],
-    ['RA-45-GOLD-ASH', 'RA-45-GOLD'],
-    ['KJDD-E-003-GOLD', 'KJDD-E-003'],
-    ['SEMTRACO', null],          // sem separador: não tenta
-  ];
-  for (const [sku, esperado] of casos) {
-    const pai = sku.replace(/[-_][^-_]+$/, '');
-    const vale = pai !== sku && pai.length >= 3 ? pai : null;
-    ok(vale === esperado,
-       '  ' + sku.padEnd(17) + ' → ' + (vale || '(nao tenta)'));
-  }
+  const iDetalheProprio = rota.indexOf("// 4) o DETALHE do proprio produto");
+  const iPaiDaVariacao = rota.indexOf('idPai');
+  ok(iDetalheProprio > 0 && iPaiDaVariacao > iDetalheProprio,
+     '⚠️ o pai da variacao so entra DEPOIS do detalhe do proprio produto'
+     + ' (senao esconde a foto real da variacao)');
 }
 
 console.log('');
