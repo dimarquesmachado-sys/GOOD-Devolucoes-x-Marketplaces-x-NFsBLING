@@ -33,18 +33,42 @@ const src = fs.readFileSync(
 // Manter dois HTMLs da mesma ficha garante que um fique para trás. O
 // `abrir()` ganhou um destino alternativo, e o expandir aponta para ele
 // antes de chamar a ficha de sempre.
+//
+// v4.9x (review do Codex no #257) - a primeira versao guardava o destino
+// numa variavel global e a soltava no `finally` do PRIMEIRO carregamento.
+// Qualquer recarga POSTERIOR da mesma ficha (retirar peca, corrigir laudo,
+// excluir comentario) achava o destino ja nulo e caia no modal de tela
+// cheia, desfazendo a expansao. Agora o destino e recalculado A CADA
+// chamada a partir de `fichaInlineId` — que so muda quando o card e
+// explicitamente aberto ou fechado, nunca num `finally` de carregamento.
 {
-  ok(/var _destinoFicha = null;/.test(src),
+  ok(/function abrir\(html, destino\)/.test(src),
      '⚠️ o `abrir()` aceita destino alternativo');
-  ok(/_destinoFicha = 'ficha-' \+ id;/.test(src),
-     '  e o expandir aponta pra ele');
-  ok(/await window\.abrirFichaDefeito\(id, true\)/.test(src),
+  ok(/fichaInlineId = id;/.test(src),
+     '  e o expandir marca ESTA ficha como a inline aberta antes de chamar ela');
+  ok(/await window\.abrirFichaDefeito\(id\);/.test(src),
      '  ⚠️ chamando a ficha DE SEMPRE (nao um segundo montador)');
 
-  // ⚠️ e solta o destino mesmo se der erro: senão a próxima ficha abriria
-  // no card errado
-  ok(/finally \{ _destinoFicha = null; \}/.test(src),
-     '  ⚠️ e solta o destino no `finally` (senao a proxima abre no card errado)');
+  // ⚠️ o destino de uma recarga (nao so do primeiro load) tem que continuar
+  // calculado a partir do id da ficha ainda aberta - e nao ficar preso a
+  // uma variavel zerada assim que o primeiro `await` termina.
+  ok(/fichaInlineId != null && String\(fichaInlineId\) === String\(id\)/.test(src),
+     '  ⚠️ e o destino de CADA carregamento (inclusive recargas) reflete a ficha inline aberta');
+  ok(!/finally \{ _destinoFicha = null; \}/.test(src),
+     '  ⚠️ e nao solta mais o destino no fim do PRIMEIRO load (isso quebrava toda recarga seguinte)');
+}
+
+// ── ⚠️ e so UMA ficha inline aberta por vez ─────────────────────────
+//
+// `fichaAberta` e ids como edLaudo/blocoHist dentro do html da ficha sao
+// globais: com duas expandidas ao mesmo tempo, os dois cards teriam
+// elementos com o MESMO id e agir num (corrigir laudo, por exemplo)
+// podia gravar no card errado.
+{
+  ok(/function fecharFichaInline\(\)/.test(src),
+     'ha uma funcao que fecha a ficha inline aberta');
+  ok(/fecharFichaInline\(\);\s*\n\s*alvo\.style\.display = 'block';/.test(src),
+     '  ⚠️ e o expandir fecha a anterior ANTES de abrir uma nova');
 }
 
 // ── e o caminho antigo continua para quem precisa ───────────────────

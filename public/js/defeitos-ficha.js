@@ -28,6 +28,14 @@
   // tambem usa aspas duplas, entao o atributo quebrava e o clique no lapis
   // nao chamava nada. Agora o botao passa so o id e a funcao le daqui.
   var fichaAberta = null;
+  // v4.9x (review do Codex) - o id do card cuja ficha esta expandida INLINE
+  // agora, e o botao daquele card. So UMA por vez: o estado da ficha
+  // (fichaAberta, e ids como edLaudo/blocoHist dentro do html dela) e
+  // GLOBAL, entao abrir uma segunda sem fechar a primeira faz as duas
+  // compartilharem ids duplicados na pagina e a edicao de uma vazar pra
+  // outra.
+  var fichaInlineId = null;
+  var fichaBotaoAtual = null;
   // b127 - a prateleira que esta sendo olhada: com defeito, recuperados ou
   // descartados. Sem isso a peca ja resolvida ficava no meio das outras e
   // o estoquista nao sabia em qual mexer.
@@ -42,7 +50,11 @@
   // v4.88 (review do Codex) - a ficha so se recarrega se ELA ainda for a
   // tela aberta: se a requisicao demora e o operador fecha o card ou volta,
   // o refresh reabria a ficha antiga por cima do que ele estava fazendo.
+  // v4.9x - com a ficha expandida INLINE, `atual` nem sempre aponta pra ela
+  // (a expansao no card nao empilha navegacao - a tela de baixo continua
+  // sendo a busca). Quando ha uma expandida, e ELA quem decide.
   function fichaAindaAberta(id) {
+    if (fichaInlineId != null) return String(fichaInlineId) === String(id);
     return !!(atual && atual.tipo === 'ficha' && String(atual.arg) === String(id));
   }
 
@@ -217,13 +229,22 @@
   // lista geral — perdendo a busca digitada e a rolagem. Quem esta triando
   // 10 pecas refaz o caminho 10 vezes.
   //
-  // Com `_destinoFicha` apontado, o MESMO html da ficha vai pro container
+  // Com um `destino` apontado, o MESMO html da ficha vai pro container
   // dentro do card. ⚠️ Reaproveito a montagem existente em vez de escrever
   // uma segunda: dois HTMLs da mesma coisa garante que um fique pra tras.
-  var _destinoFicha = null;
-  function abrir(html) {
-    if (_destinoFicha) {
-      const alvo = document.getElementById(_destinoFicha);
+  //
+  // v4.9x (review do Codex) - o destino ERA uma variavel global zerada no
+  // `finally` do primeiro carregamento (`expandirFichaNoCard`). Qualquer
+  // recarga POSTERIOR da mesma ficha (retirar peca, corrigir laudo, excluir
+  // comentario) achava o destino ja nulo e caia no modal de tela cheia,
+  // desfazendo a expansao que acabara de abrir. Agora quem chama `abrir`
+  // decide o destino NA HORA (`abrirFichaDefeito` calcula a partir de
+  // `fichaInlineId`, que so muda quando o card e explicitamente
+  // aberto/fechado) — sem depender de uma variavel que uma chamada anterior
+  // podia ter zerado.
+  function abrir(html, destino) {
+    if (destino) {
+      const alvo = document.getElementById(destino);
       if (alvo) {
         alvo.innerHTML = '<div style="border-top:1px solid #eee;margin-top:10px;'
           + 'padding-top:10px;">' + html + '</div>';
@@ -240,6 +261,8 @@
     selecionados = {};
     pilha = [];
     atual = null;
+    fichaInlineId = null;
+    fichaBotaoAtual = null;
   }
   window.fecharCaixaDefeitos = fechar;
 
@@ -301,6 +324,13 @@
     // com defeito).
     var meuToken = (window._buscaDefToken = (window._buscaDefToken || 0) + 1);
     var minhaAba = abaAtual;
+    // v4.9x (review do Codex) - a lista vai ser REFEITA: qualquer ficha
+    // expandida inline pertence a um card que esta prestes a sumir. Sem
+    // isso, `fichaInlineId` continuava apontando pro id antigo e o PROXIMO
+    // clique em "Abrir dados da peça" (num card novo, fechado) achava que
+    // ja havia uma aberta e se comportava como se fosse fechar/repintar.
+    fichaInlineId = null;
+    fichaBotaoAtual = null;
     el.innerHTML = '<div style="color:#888;font-size:13px;">procurando...</div>';
     try {
       var d = await api('/api/defeitos/lista?q=' + encodeURIComponent(q.trim())
@@ -449,9 +479,19 @@
           : (it.situacao === 'descartado'
               ? '<span style="background:#eee;color:#555;border-radius:5px;padding:2px 8px;font-size:11.5px;font-weight:700;">DESCARTADA</span>'
               : '');
-        return '<div onclick="abrirFichaDefeito(\'' + esc(it.id) + '\')" '
-          + 'style="border:1px solid #eee;border-left:4px solid #9E1A1A;border-radius:9px;padding:10px 12px;'
-          + 'margin-bottom:7px;cursor:pointer;display:flex;gap:12px;align-items:flex-start;">'
+        // v4.9x (review do Codex) - o onclick que abre a ficha envolvia o
+        // CARD INTEIRO, inclusive a area onde a ficha expande. Sem parar a
+        // propagacao, qualquer clique dentro da ficha aberta (focar um
+        // campo, um botao de acao) borbulhava ate aqui e reabria a ficha
+        // cheia por cima, descartando o contexto que a expansao inline
+        // existe pra preservar. Agora o onclick fica so na linha
+        // foto+resumo (o que de fato deve abrir a ficha); a area da ficha
+        // expandida vive FORA dela, como irma, entao clique nela nunca
+        // borbulha pra este onclick.
+        return '<div style="border:1px solid #eee;border-left:4px solid #9E1A1A;border-radius:9px;padding:10px 12px;'
+          + 'margin-bottom:7px;">'
+          + '<div onclick="abrirFichaDefeito(\'' + esc(it.id) + '\')" '
+          + 'style="cursor:pointer;display:flex;gap:12px;align-items:flex-start;">'
           + '<div id="fotodef-' + i + '" data-sku="' + esc(sku) + '" '
           + 'style="width:84px;height:84px;flex:0 0 auto;border-radius:9px;background:#f2f2f7;'
           + 'border:1px solid #e4dcf1;display:flex;align-items:center;justify-content:center;font-size:26px;color:#bbb;">📦</div>'
@@ -473,9 +513,10 @@
           // ja abria a ficha, mas nada dizia isso. Agora tem BOTAO explicito;
           // o clique no card continua funcionando pra quem ja conhece.
           + '<div style="margin-top:8px;">'
-          + '<button type="button" onclick="event.stopPropagation();expandirFichaNoCard(\'' + esc(x.id) + '\', this)" '
+          + '<button type="button" onclick="event.stopPropagation();expandirFichaNoCard(\'' + esc(it.id) + '\', this)" '
           + 'style="background:#561A9E;color:#fff;border:none;border-radius:8px;padding:8px 15px;'
           + 'font-size:13px;font-weight:700;cursor:pointer;">📂 Abrir dados da peça</button></div>'
+          + '</div>'
           + '</div>'
           // b301 - ⚠️ a ficha abre AQUI, embaixo do card.
           //
@@ -486,15 +527,20 @@
           // Antes a ficha SUBSTITUIA a lista inteira, e o voltar trazia de
           // volta a lista GERAL — perdendo a busca e a rolagem. Agora ela
           // expande no proprio card: o estoquista nao perde o contexto.
-          // ⚠️ b301.1 - A CONCATENACAO ESTAVA DENTRO DA STRING.
           //
-          // `id="ficha-" + esc(x.id) + ""` fazia o id sair LITERAL, e as
-          // aspas duplas quebravam o HTML do card. A lista inteira caia em
-          // "erro ao buscar".
-          //
-          // `node --check` nao acusa (e string valida), o boot real nao
-          // monta card, e nenhum teste montava. So o dono clicando.
-          + '<div class="fichaNoCard" id="ficha-' + esc(x.id) + '" style="display:none;"></div>'
+          // v4.9x (review do Codex) - dois bugs aqui: (1) o id era montado
+          // com `+ esc(x.id) +` DENTRO de uma string de aspas simples — isso
+          // nao concatena nada, vira o texto LITERAL `id="ficha-" +
+          // esc(x.id) + ""` no HTML, entao nenhum elemento tinha o id que
+          // `expandirFichaNoCard` procura. (2) `x` nao existe neste escopo
+          // (o parametro do map e `it`) — na triagem, onde nao ha `x`
+          // global nenhum, isso jogava um ReferenceError que o catch de
+          // fora pegava e trocava a lista inteira por "erro ao buscar".
+          // (3) este container vivia DENTRO da linha `display:flex` de
+          // foto+resumo; expandido, ele entrava na mesma fileira horizontal
+          // em vez de abrir embaixo. Agora ele e irmao dessa linha, dentro
+          // do card (que nao e mais flex), abrindo abaixo em largura cheia.
+          + '<div class="fichaNoCard" id="ficha-' + esc(it.id) + '" style="display:none;"></div>'
           + '</div>';
       }).join('');
       buscarFotosDefeitos(itens);
@@ -683,40 +729,73 @@
   //
   // 📌 O `abrirFichaDefeito` CONTINUA existindo — outros pontos chamam ele
   // (busca por NF, retorno de acao) e la trocar de tela faz sentido.
+  // v4.9x (review do Codex) - fecha a ficha inline que porventura ja
+  // estivesse aberta em OUTRO card. `fichaAberta`, e ids como edLaudo e
+  // blocoHist dentro do html dela, sao globais: com duas expandidas ao
+  // mesmo tempo, os dois cards tem elementos com o MESMO id e agir num
+  // (corrigir laudo, por exemplo) podia gravar no card errado.
+  function fecharFichaInline() {
+    if (fichaInlineId == null) return;
+    var antigo = document.getElementById('ficha-' + fichaInlineId);
+    if (antigo) { antigo.style.display = 'none'; antigo.innerHTML = ''; }
+    if (fichaBotaoAtual) fichaBotaoAtual.textContent = '📂 Abrir dados da peça';
+    fichaInlineId = null;
+    fichaBotaoAtual = null;
+  }
+
   window.expandirFichaNoCard = async function (id, botao) {
     const alvo = document.getElementById('ficha-' + id);
     if (!alvo) {
+      // v4.9x - a lista pode ter sido refeita (nova busca, troca de aba)
+      // entre o render e o clique: o id antigo nao aponta mais pra nada.
+      fichaInlineId = null;
+      fichaBotaoAtual = null;
       // ⚠️ sem o destino, caio no comportamento antigo em vez de nao fazer
       // nada — melhor trocar de tela do que o botao morrer
       return window.abrirFichaDefeito(id);
     }
-    if (alvo.style.display !== 'none') {
-      alvo.style.display = 'none';
-      alvo.innerHTML = '';
-      if (botao) botao.textContent = '📂 Abrir dados da peça';
+    if (fichaInlineId != null && String(fichaInlineId) === String(id)) {
+      fecharFichaInline();
       return;
     }
+    // v4.9x - so uma ficha inline aberta por vez (ver comentario acima)
+    fecharFichaInline();
     alvo.style.display = 'block';
     alvo.innerHTML = '<div style="padding:12px;color:#888;font-size:13px;">carregando…</div>';
     if (botao) botao.textContent = '📂 Fechar dados da peça';
-    // ⚠️ aponto o destino e chamo a ficha DE SEMPRE — ela monta o html e o
-    // `abrir()` entrega aqui dentro. `finally` pra nao deixar o destino
-    // preso se der erro no meio (senao a proxima ficha abriria no card
-    // errado).
-    _destinoFicha = 'ficha-' + id;
-    try { await window.abrirFichaDefeito(id, true); }
-    finally { _destinoFicha = null; }
+    // v4.9x - marca ESTA como a inline aberta ANTES de chamar
+    // `abrirFichaDefeito`: e essa marca (nao mais uma variavel zerada no
+    // fim da carga) que faz toda recarga futura da mesma ficha (retirar
+    // peca, corrigir laudo, excluir comentario) continuar caindo aqui
+    // dentro, em vez de virar modal de tela cheia.
+    fichaInlineId = id;
+    fichaBotaoAtual = botao || null;
+    await window.abrirFichaDefeito(id);
   };
 
   window.abrirFichaDefeito = async function (id, voltando) {
-    registrar('ficha', id, voltando);
-    abrir(topo('carregando ficha...') + '<div style="padding:16px;color:#888;">um instante</div>');
+    // v4.9x (review do Codex) - INLINE e decidido por `fichaInlineId`, nao
+    // pelo parametro `voltando`. `expandirFichaNoCard` marca `fichaInlineId`
+    // ANTES de chamar esta funcao, e cada recarga futura (retirar peca,
+    // corrigir laudo, excluir comentario) chama de novo com o MESMO id —
+    // entao a comparacao continua valendo em toda recarga, sem depender de
+    // uma variavel que uma carga anterior podia ja ter zerado.
+    var inline = fichaInlineId != null && String(fichaInlineId) === String(id);
+    var destino = inline ? ('ficha-' + id) : null;
+    // v4.9x - quando inline, a tela de baixo continua sendo a BUSCA: o
+    // card so expandiu, nao navegou. Registrar aqui fazia `atual` apontar
+    // pra esta ficha, entao um "foi para a peça #4" clicado depois empurrava
+    // ESTA (e nao a busca) pra pilha — o Voltar do modal de tela cheia
+    // devolvia a ficha do card antigo em vez da lista de onde ele veio.
+    if (!inline) registrar('ficha', id, voltando);
+    abrir(inline ? '<div style="padding:16px;color:#888;">um instante</div>'
+      : (topo('carregando ficha...') + '<div style="padding:16px;color:#888;">um instante</div>'), destino);
     var d;
     try { d = await api('/api/defeitos/ficha/' + encodeURIComponent(id)); }
     catch (e) { d = { ok: false, erro: 'falha de conexao' }; }
     if (!d || !d.ok) {
-      abrir(topo('🔧 Ficha') + '<div style="padding:16px;color:#c62828;">'
-        + esc((d && d.erro) || 'não consegui abrir') + '</div>');
+      abrir((inline ? '' : topo('🔧 Ficha')) + '<div style="padding:16px;color:#c62828;">'
+        + esc((d && d.erro) || 'não consegui abrir') + '</div>', destino);
       return;
     }
     fichaAberta = d;
@@ -725,7 +804,12 @@
 
     // b121 - o numero da peca no titulo: e ele que voce ve no "foi para a
     // peca #4" e no dropdown, entao precisa estar visivel aqui tambem
-    var html = topo('📍 ' + esc(it.localizacao || 'sem local') + ' &nbsp;<span style="opacity:.75;font-weight:400;">PEÇA #' + esc(it.id) + '</span>')
+    // v4.9x (review do Codex) - inline o cabecalho some: ele trazia um
+    // "✕ Fechar" que chamava `fecharCaixaDefeitos()` (zerava pilha/atual/
+    // selecionados de navegacao do MODAL, que nem esta aberto aqui) sem
+    // fechar visualmente a ficha expandida — o botao "📂 Fechar dados da
+    // peça" do proprio card ja cobre essa acao.
+    var html = (inline ? '' : topo('📍 ' + esc(it.localizacao || 'sem local') + ' &nbsp;<span style="opacity:.75;font-weight:400;">PEÇA #' + esc(it.id) + '</span>'))
       + '<div style="padding:14px;">'
       + '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px;">'
       + '<code style="background:#f2f2f7;border-radius:5px;padding:2px 8px;font-size:13px;">' + esc(it.sku || '-') + '</code>'
@@ -792,7 +876,7 @@
             ? 'O admin já viu e liberou. Guarde a peça boa no armazém — não precisa mais mexer neste registro.'
             : 'O admin autorizou. Pode jogar fora.')
         + '</div></div></div>';
-      abrir(html);
+      abrir(html, destino);
       return;
     }
 
@@ -820,7 +904,7 @@
       + '</div>'
       + '<div id="edRetirada"></div><div id="edDescarte"></div>'
       + '</div>';
-    abrir(html);
+    abrir(html, destino);
   };
 
   /**
