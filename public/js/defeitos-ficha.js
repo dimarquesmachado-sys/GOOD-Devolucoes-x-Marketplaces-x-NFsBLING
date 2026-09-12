@@ -338,6 +338,18 @@
       if (meuToken !== window._buscaDefToken) return;   // v4.88 - chegou tarde
       var itens = d.itens || [];
       pintarAbas(d.contagem || {});
+      // b303 - ⚠️ (apontamento do Codex #260) PRECISA VIVER AQUI FORA.
+      //
+      // Estava declarado com `var` DENTRO do `if (!d.ok || !itens.length)`
+      // logo abaixo. `var` e funcao-scoped, entao o nome existia no resto da
+      // funcao (inclusive no ramo "achou resultado", b302) — mas so GANHAVA
+      // VALOR quando aquele if executava. Como os dois ramos sao mutuamente
+      // exclusivos (o if termina em `return`), no ramo "achou resultado"
+      // `termoBusca` ficava `undefined` pra sempre: `podeLancarOutra`
+      // (b302) nunca era verdadeiro, e o botao "Lançar OUTRA peça" —
+      // construido EXATAMENTE pro caso "SKU com resultado" — nunca aparecia.
+      // O proprio caso que motivou o b302 nao era resolvido por ele.
+      var termoBusca = String(q || '').trim();
       if (!d.ok || !itens.length) {
         // b283 - ⚠️ "NADA ENCONTRADO" NAO PODE SER BECO SEM SAIDA.
         //
@@ -348,7 +360,6 @@
         //
         // A tela SABIA o SKU e nao oferecia nada. Quem busca um SKU sem
         // defeito quase sempre quer lancar um.
-        var termoBusca = String(q || '').trim();
         // b288 - ⚠️ O BOTAO SO NASCE ONDE O LANCADOR EXISTE.
         //
         // Apontamento do Codex no #238: este arquivo e carregado tanto pela
@@ -562,21 +573,45 @@
       // 📌 Uso `window.abrirModalDefeito` porque este arquivo e uma IIFE (a
       // licao da b287), e so mostro onde o modal EXISTE (a b287.1: no painel
       // admin nao existe).
-      var podeLancarOutra = termoBusca
+      //
+      // b303 - ⚠️ (apontamento do Codex #260) `termoBusca` NAO E SEMPRE UM
+      // SKU. `/api/defeitos/lista` (lib/defeitos-ciclo.js) tambem acha por
+      // numero da peca ("peça 4"), NF ou localizacao — nesses casos o termo
+      // digitado nao existe como SKU, e `/api/produtos/buscar` (que o modal
+      // usa pra procurar o produto) so busca por SKU/EAN/nome. Passar o
+      // termo bruto podia abrir o modal buscando algo que nao e produto
+      // nenhum. Uso o SKU DE FATO retornado nos itens, e so ofereco o atalho
+      // quando todos os itens achados sao do MESMO SKU — com termo ambiguo
+      // (varios SKUs na lista) nao da pra saber qual e "a mesma peça".
+      var skusAchados = itens.reduce(function (acc, it) {
+        if (it.sku && acc.indexOf(it.sku) === -1) acc.push(it.sku);
+        return acc;
+      }, []);
+      var skuLancarOutra = skusAchados.length === 1 ? skusAchados[0] : null;
+      var podeLancarOutra = skuLancarOutra
         && typeof window.abrirModalDefeito === 'function';
       if (podeLancarOutra) {
         el.innerHTML += '<div style="margin-top:14px;padding-top:12px;'
           + 'border-top:1px solid #eee;">'
           + '<button type="button" id="btnLancarOutra" class="btn" '
           + 'style="padding:10px 14px;">'
-          + '➕ Lançar OUTRA peça de <b>' + esc(termoBusca) + '</b></button>'
+          + '➕ Lançar OUTRA peça de <b>' + esc(skuLancarOutra) + '</b></button>'
           + '<div style="font-size:12px;color:#888;margin-top:6px;">'
           + 'Chegou mais uma unidade com defeito? Cada peça é um registro.'
           + '</div></div>';
         var btnOutra = document.getElementById('btnLancarOutra');
         if (btnOutra) btnOutra.onclick = function () {
-          try { window.abrirModalDefeito(termoBusca); }
-          catch (err) {
+          try {
+            window.abrirModalDefeito(skuLancarOutra);
+            // b303 - ⚠️ (apontamento do Codex #260) SO FECHA A CAIXA DEPOIS
+            // DE ABRIR O MODAL, E POR ISSO PRECISA FECHAR. `#caixaDefeitos`
+            // (esta busca) tem z-index 2000 de proposito, pra ficar por cima
+            // de tudo enquanto o dono busca; `#modalDefeito` tem z-index
+            // 1000. Sem fechar a caixa, o modal abre por TRAS dela — visualmente
+            // identico a nao ter feito nada. Mesma ordem do btnLancarDoVazio
+            // (b286, linhas acima): abre primeiro, fecha so se abriu.
+            if (typeof window.fecharCaixaDefeitos === 'function') window.fecharCaixaDefeitos();
+          } catch (err) {
             // ⚠️ o erro vai pra TELA: o dono ficou 3 rodadas olhando tela
             // vazia quando isto falhou silenciosamente (b286)
             btnOutra.insertAdjacentHTML('afterend',

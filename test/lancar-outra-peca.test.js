@@ -23,12 +23,49 @@ const semC = src.split('\n').filter((l) => !l.trim().startsWith('//')).join('\n'
 
 // ── o botão aparece COM resultado também ────────────────────────────
 {
-  ok(/var podeLancarOutra = termoBusca/.test(semC),
+  ok(/var skuLancarOutra = skusAchados\.length === 1 \? skusAchados\[0\] : null;/.test(semC),
      '⚠️ ha caminho pra lançar OUTRA peça quando a busca ACHA');
   ok(/Lançar OUTRA peça de/.test(semC),
      '  com texto que diz que e outra peça');
   ok(/Cada peça é um registro/.test(semC),
      '  explicando por que (cada peça e um registro)');
+}
+
+// ── b303 (apontamento do Codex #260): termoBusca vive FORA do if ────
+//
+// `var` e funcao-scoped: declarado dentro do `if (!d.ok || !itens.length)`,
+// o nome existe no resto da funcao mas so GANHA VALOR quando aquele if
+// roda. Os dois ramos sao mutuamente exclusivos (o if termina em `return`),
+// entao no ramo "achou resultado" (onde o b302 vive) o valor ficava
+// `undefined` pra sempre — o proprio caso que motivou o botao nunca
+// disparava. A declaracao/atribuicao tem que vir ANTES do `if`.
+{
+  const antesDoIf = semC.split('if (!d.ok || !itens.length) {')[0];
+  ok(/var termoBusca = String\(q \|\| ''\)\.trim\(\);/.test(antesDoIf),
+     '⚠️ termoBusca e atribuido ANTES do if (nao so dentro do ramo vazio)');
+}
+
+// ── b303 (apontamento do Codex #260): usa o SKU achado, nao o termo bruto ─
+//
+// A busca tambem acha por numero da peça, NF ou localizacao — nesses casos
+// o termo digitado nao e um SKU, e /api/produtos/buscar so acha por
+// SKU/EAN/nome. Passar o termo bruto podia abrir o modal sem achar nada.
+{
+  ok(/var skusAchados = itens\.reduce/.test(semC),
+     '⚠️ calcula os SKUs de fato retornados pela busca');
+  ok(/window\.abrirModalDefeito\(skuLancarOutra\)/.test(semC),
+     '  e manda o SKU resolvido pro modal, nao o termo digitado');
+}
+
+// ── b303 (apontamento do Codex #260): fecha a caixa DEPOIS de abrir ──
+//
+// #caixaDefeitos tem z-index 2000 (fica por cima de tudo na busca);
+// #modalDefeito tem z-index 1000. Sem fechar a caixa depois de abrir o
+// modal, ele abre por TRAS dela — visualmente identico a nao ter feito
+// nada.
+{
+  ok(/window\.abrirModalDefeito\(skuLancarOutra\);[\s\S]{0,200}fecharCaixaDefeitos/.test(semC),
+     '⚠️ fecha #caixaDefeitos depois que o modal abre (senao ele fica atras)');
 }
 
 // ── ⚠️ e respeita as lições das rodadas anteriores ──────────────────
@@ -38,7 +75,7 @@ const semC = src.split('\n').filter((l) => !l.trim().startsWith('//')).join('\n'
      '⚠️ alcanca a funcao por `window.` (este arquivo e uma IIFE)');
 
   // b287.1: no painel admin o modal não existe — lá o botão não aparece
-  ok(/podeLancarOutra = termoBusca\s*\n?\s*&& typeof window\.abrirModalDefeito/.test(semC),
+  ok(/podeLancarOutra = skuLancarOutra\s*\n?\s*&& typeof window\.abrirModalDefeito/.test(semC),
      '  e so aparece onde o modal EXISTE');
 
   // b286: erro que só vai pro console não existe para quem opera
