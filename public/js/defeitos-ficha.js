@@ -486,7 +486,13 @@
           // Antes a ficha SUBSTITUIA a lista inteira, e o voltar trazia de
           // volta a lista GERAL — perdendo a busca e a rolagem. Agora ela
           // expande no proprio card: o estoquista nao perde o contexto.
-          + '<div class="fichaNoCard" id="ficha-" + esc(x.id) + "" style="display:none;"></div>'
+          // ⚠️ b301.1: a concatenacao estava DENTRO da string — o id saia
+          // literal (`ficha-" + esc(x.id) + "`) e as aspas duplas quebravam
+          // o HTML do card. A lista inteira caia em "erro ao buscar".
+          //
+          // Peguei porque o dono testou; `node --check` nao acusa (e string
+          // valida) e nenhum teste montava o card de verdade.
+          + '<div class="fichaNoCard" id="ficha-' + esc(x.id) + '" style="display:none;"></div>'
           + '</div>';
       }).join('');
       buscarFotosDefeitos(itens);

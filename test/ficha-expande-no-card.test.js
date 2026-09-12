@@ -58,6 +58,45 @@ const src = fs.readFileSync(
      '  ⚠️ e e o fallback quando o destino nao existe (botao nao morre)');
 }
 
+// ── ⚠️ e o HTML do card MONTA de verdade ────────────────────────────
+//
+// CASO REAL (11/09): minha edição pôs a concatenação DENTRO da string —
+// `id="ficha-" + esc(x.id) + ""` — então o id saía literal e as aspas
+// duplas quebravam o HTML. A lista inteira caiu em "erro ao buscar".
+//
+// ⚠️ `node --check` não acusa (é string válida) e nenhum teste montava o
+// card. Só o dono clicando. Este teste monta.
+{
+  const esc = (t) => String(t == null ? '' : t)
+    .replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const x = { id: 'b9a6be03-e7cf-4c0b-9875-f498699434c1' };
+
+  // o container da ficha, como o código monta
+  const div = '<div class="fichaNoCard" id="ficha-' + esc(x.id) + '" style="display:none;"></div>';
+  const idNoHtml = /id="([^"]+)"/.exec(div);
+  ok(!!idNoHtml, 'o container da ficha tem id');
+  ok(idNoHtml && idNoHtml[1] === 'ficha-' + x.id,
+     '⚠️ e o id e o ESPERADO (nao a string literal da concatenacao)');
+
+  // e o botão procura exatamente esse id
+  ok(/document\.getElementById\('ficha-' \+ id\)/.test(src),
+     '  e o expandir procura `ficha-` + id (o mesmo)');
+
+  // ⚠️ e nenhuma linha da montagem tem aspas ímpares
+  const linhas = src.split('\n');
+  const ini = linhas.findIndex((l) => l.includes('itens.map('));
+  const fim = linhas.findIndex((l, k) => k > ini && l.includes(").join('')"));
+  const ruins = [];
+  linhas.slice(ini, fim).forEach((l, k) => {
+    if (l.trim().startsWith('//')) return;
+    const m = l.match(/'/g);
+    if (m && m.length % 2 !== 0) ruins.push(ini + k + 1);
+  });
+  ok(ruins.length === 0,
+     '⚠️ nenhuma linha da montagem tem aspas impares'
+     + (ruins.length ? ' (L' + ruins.join(', L') + ')' : ''));
+}
+
 console.log('');
 console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
 process.exit(falhas ? 1 : 0);
