@@ -116,7 +116,12 @@ const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 // restaurar da AMB nao le shipment_id pra decidir a origem
 // (defeitos-ciclo-AMB.js:244-254) e a AMB nao tem relatorio de devolucoes
 // de venda - confirmado que nao ha nada a espelhar aqui.
-const VERSAO = 'AMB Devolucoes b308';
+// b344 - revisao Codex #250 tambem foi so do lado GOOD: a AMB nao tem o
+// indice local (IDX_PROD) na frente da busca (compat-AMB.js consulta o
+// Bling direto, sem esse atalho), e o /api/defeitos/adicionar dela
+// (bling.buscarProdutoPorSku) ja faz SO UMA chamada de detalhe - nunca
+// teve a duplicacao que a GOOD tinha. Nada a espelhar aqui tambem.
+const VERSAO = 'AMB Devolucoes b344';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();

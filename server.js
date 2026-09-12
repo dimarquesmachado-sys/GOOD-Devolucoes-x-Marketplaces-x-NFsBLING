@@ -395,7 +395,7 @@ app.get('/health', (req, res) => {
       // busca por nome. Escolher um lado apagaria a descricao do outro.
       // ⚠️ a resolucao JUNTA as duas: a 7.5.0 (passe curto + tetos) ja esta
       // na main, e este PR acrescenta o build frio que falha vazio.
-      version: '8.2.0 (busca de produto consulta o INDICE LOCAL antes do Bling, e a gravacao guarda o detalhe — era 1 min pra buscar e 2 pra gravar)',
+      version: '8.2.1 (revisao do Codex no #250: SKU exato do indice nao perde mais pra fuzzy de nome, diag_kit volta na resposta, log nao promete "sem Bling" a mais, e a gravacao nao pede o detalhe do produto 2x)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -4444,22 +4444,41 @@ app.get('/api/produtos/buscar', requerEstoquista, async (req, res) => {
     // ainda esta montando, o fluxo antigo roda igual. So deixou de ser o
     // PRIMEIRO a ser tentado.
     if (IDX_PROD.ts && Array.isArray(IDX_PROD.itens) && IDX_PROD.itens.length) {
-      const achados = [];
+      // v4.xx (review do Codex no #250) - EXATO (SKU/EAN) NUNCA PODE FICAR
+      // DE FORA por causa de nome fuzzy que apareceu antes no indice. Antes
+      // o laco somava exato + fuzzy no MESMO teto de 12 e parava ali: se o
+      // termo digitado tambem aparecesse dentro do NOME de produtos mais
+      // antigos no indice, esses fuzzy enchiam a cota e o SKU exato (que
+      // podia estar mais adiante no array) nem entrava na lista - a busca
+      // devolvia so o fuzzy errado e nunca chegava a tentar o Bling.
+      const exatos = [];
+      const fuzzy = [];
       for (const it of IDX_PROD.itens) {
         const skuIt = String(it.sku || it.codigo || '');
-        if (normProd(skuIt) === alvo
+        const ehExato = normProd(skuIt) === alvo
           || (it.eans || []).includes(q)
-          || normProd(it.ean) === alvo
-          || normProd(it.nome || '').includes(alvo)) {
-          achados.push(it);
-          if (achados.length >= 12) break;
+          || normProd(it.ean) === alvo;
+        if (ehExato) {
+          exatos.push(it);
+        } else if (fuzzy.length < 12 && normProd(it.nome || '').includes(alvo)) {
+          fuzzy.push(it);
         }
       }
+      const achados = exatos.length ? exatos.concat(fuzzy).slice(0, 12) : fuzzy;
       if (achados.length) {
         for (const it of achados) push(it);
         if (out.length) {
-          console.log(`[PRODUTOS] "${q}" resolvido pelo INDICE (${out.length}) — sem ir no Bling`);
-          return res.json({ ok: true, produtos: (await tirarKits(out, _diagKit)).slice(0, 10) });
+          // v4.xx (review do Codex no #250) - o log dizia categoricamente
+          // "sem ir no Bling", mas o tirarKits logo abaixo AINDA pode
+          // consultar o detalhe no Bling pra apurar kit sem `formato` no
+          // indice (comum apos reiniciar, com FORMATO_CACHE vazio). Isso so
+          // resolveu o MATCH sem ir no Bling - a composicao pode ir.
+          console.log(`[PRODUTOS] "${q}" resolvido pelo INDICE (${out.length}) — o match nao foi ao Bling (a apuracao de kit abaixo ainda pode ir)`);
+          return res.json({
+            ok: true,
+            produtos: (await tirarKits(out, _diagKit)).slice(0, 10),
+            diag_kit: _diagKit || undefined,
+          });
         }
       }
     }
@@ -5154,19 +5173,33 @@ app.post('/api/defeitos/adicionar', requerEstoquista, async (req, res) => {
       //
       // Guardo o detalhe por 6h: o mesmo SKU lançado de novo (que e o caso
       // comum — varias pecas do mesmo produto) nao paga a espera.
-      if (!global._DET_PROD_CACHE) global._DET_PROD_CACHE = new Map();
-      const _cacheKey = 'det:' + prod.id;
-      const _emCache = global._DET_PROD_CACHE.get(_cacheKey);
-      let rDet;
-      if (_emCache && (Date.now() - _emCache.ts) < 6 * 3600 * 1000) {
-        rDet = _emCache.r;
-        console.log('[DEFEITOS] detalhe do produto veio do cache (sem ir no Bling)');
-      } else {
-        rDet = await chamarBling(`https://api.bling.com.br/Api/v3/produtos/${prod.id}`);
-        // ⚠️ so guardo resposta BOA: erro em cache viraria erro permanente
-        if (rDet && rDet.ok) global._DET_PROD_CACHE.set(_cacheKey, { ts: Date.now(), r: rDet });
+      //
+      // v4.xx (review do Codex no #250) - ESTA CHAMADA JA ERA REDUNDANTE NO
+      // CAMINHO COMUM. `buscarProdutoBlingPorSku` (acima) JA faz sua propria
+      // consulta a /produtos/{id} pra trazer o EAN, e devolve esse MESMO
+      // detalhe em `prod` (marcado com `rP.detalhado`). Antes, mesmo com o
+      // cache abaixo acertando, o save ainda tinha acabado de pagar uma
+      // segunda ida na fila do Bling para o MESMO produto - o cache so
+      // evitava uma TERCEIRA. Reaproveitar `prod` quando ja vem detalhado
+      // elimina essa segunda chamada; o cache continua so pra quando aquela
+      // consulta interna falhar (prod cai pra dado de listagem, sem
+      // formato/estrutura confiavel).
+      let det = rP.detalhado ? prod : null;
+      if (!det) {
+        if (!global._DET_PROD_CACHE) global._DET_PROD_CACHE = new Map();
+        const _cacheKey = 'det:' + prod.id;
+        const _emCache = global._DET_PROD_CACHE.get(_cacheKey);
+        let rDet;
+        if (_emCache && (Date.now() - _emCache.ts) < 6 * 3600 * 1000) {
+          rDet = _emCache.r;
+          console.log('[DEFEITOS] detalhe do produto veio do cache (sem ir no Bling)');
+        } else {
+          rDet = await chamarBling(`https://api.bling.com.br/Api/v3/produtos/${prod.id}`);
+          // ⚠️ so guardo resposta BOA: erro em cache viraria erro permanente
+          if (rDet && rDet.ok) global._DET_PROD_CACHE.set(_cacheKey, { ts: Date.now(), r: rDet });
+        }
+        det = (rDet.ok && rDet.data && rDet.data.data) || null;
       }
-      const det = (rDet.ok && rDet.data && rDet.data.data) || null;
       const comps = extrairComponentes(det);   // v4.66 - tolerante ao formato
       const ehKit = comps.length > 0 || String((det && det.formato) || '').toUpperCase() === 'E';
       if (ehKit) {
