@@ -395,7 +395,7 @@ app.get('/health', (req, res) => {
       // busca por nome. Escolher um lado apagaria a descricao do outro.
       // ⚠️ a resolucao JUNTA as duas: a 7.5.0 (passe curto + tetos) ja esta
       // na main, e este PR acrescenta o build frio que falha vazio.
-      version: '8.1.2 (shipment_id sintetico do defeito nao conta como venda; e sessao expirada no componente de kit nao vira "Erro de conexao")',
+      version: '8.2.0 (busca de produto consulta o INDICE LOCAL antes do Bling, e a gravacao guarda o detalhe — era 1 min pra buscar e 2 pra gravar)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -4430,6 +4430,40 @@ app.get('/api/produtos/buscar', requerEstoquista, async (req, res) => {
     // produto traz), entao o indice local nunca acha por EAN. Quando o termo
     // parece um codigo de barras, perguntamos direto ao Bling pelos filtros
     // dedicados - e se um deles responder, ja resolve.
+    // b295 - ⚠️ O INDICE LOCAL VEM PRIMEIRO. ANTES, SO DEPOIS DO BLING.
+    //
+    // [stated 11/09] "demorou 1 minuto +- pra buscar 1 produto (...) No
+    // checkout offline (...) aparece rapidao o resultado da busca"
+    //
+    // A rota JA TINHA o indice local (`IDX_PROD`, milhares de produtos em
+    // memoria) — mas so consultava DEPOIS de tentar 3 chamadas ao Bling.
+    // Cada uma passa pela fila do porteiro e paga a latencia da API. Por
+    // isso o checkout, que consulta o indice direto, e "rapidao".
+    //
+    // ⚠️ O BLING CONTINUA COMO RESERVA: se o indice nao tem o produto, ou
+    // ainda esta montando, o fluxo antigo roda igual. So deixou de ser o
+    // PRIMEIRO a ser tentado.
+    if (IDX_PROD.ts && Array.isArray(IDX_PROD.itens) && IDX_PROD.itens.length) {
+      const achados = [];
+      for (const it of IDX_PROD.itens) {
+        const skuIt = String(it.sku || it.codigo || '');
+        if (normProd(skuIt) === alvo
+          || (it.eans || []).includes(q)
+          || normProd(it.ean) === alvo
+          || normProd(it.nome || '').includes(alvo)) {
+          achados.push(it);
+          if (achados.length >= 12) break;
+        }
+      }
+      if (achados.length) {
+        for (const it of achados) push(it);
+        if (out.length) {
+          console.log(`[PRODUTOS] "${q}" resolvido pelo INDICE (${out.length}) — sem ir no Bling`);
+          return res.json({ ok: true, produtos: (await tirarKits(out, _diagKit)).slice(0, 10) });
+        }
+      }
+    }
+    
     const pareceEan = /^\d{8,14}$/.test(q);
     if (pareceEan) {
       for (const filtro of ['gtin', 'codigo']) {
@@ -5109,7 +5143,29 @@ app.post('/api/defeitos/adicionar', requerEstoquista, async (req, res) => {
     // produto SIMPLES, que e o que figura no estoque e na nota.
     // ═══════════════════════════════════════════════════════════════════
     try {
-      const rDet = await chamarBling(`https://api.bling.com.br/Api/v3/produtos/${prod.id}`);
+      // b295 - ⚠️ CACHE DO DETALHE: a composicao de um produto quase nao muda.
+      //
+      // [stated 11/09] "pra gravar tambem ta super demorado. ja passaram 2
+      // minutos e nao grava"
+      //
+      // Esta chamada descobre se o produto e KIT (pra oferecer o lançamento
+      // por componente) — necessaria. Mas ela espera na FILA do porteiro do
+      // Bling, e com a conta apertada isso custa minutos.
+      //
+      // Guardo o detalhe por 6h: o mesmo SKU lançado de novo (que e o caso
+      // comum — varias pecas do mesmo produto) nao paga a espera.
+      if (!global._DET_PROD_CACHE) global._DET_PROD_CACHE = new Map();
+      const _cacheKey = 'det:' + prod.id;
+      const _emCache = global._DET_PROD_CACHE.get(_cacheKey);
+      let rDet;
+      if (_emCache && (Date.now() - _emCache.ts) < 6 * 3600 * 1000) {
+        rDet = _emCache.r;
+        console.log('[DEFEITOS] detalhe do produto veio do cache (sem ir no Bling)');
+      } else {
+        rDet = await chamarBling(`https://api.bling.com.br/Api/v3/produtos/${prod.id}`);
+        // ⚠️ so guardo resposta BOA: erro em cache viraria erro permanente
+        if (rDet && rDet.ok) global._DET_PROD_CACHE.set(_cacheKey, { ts: Date.now(), r: rDet });
+      }
       const det = (rDet.ok && rDet.data && rDet.data.data) || null;
       const comps = extrairComponentes(det);   // v4.66 - tolerante ao formato
       const ehKit = comps.length > 0 || String((det && det.formato) || '').toUpperCase() === 'E';
