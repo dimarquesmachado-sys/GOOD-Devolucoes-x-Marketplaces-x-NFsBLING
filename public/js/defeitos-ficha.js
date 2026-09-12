@@ -543,6 +543,49 @@
           + '<div class="fichaNoCard" id="ficha-' + esc(it.id) + '" style="display:none;"></div>'
           + '</div>';
       }).join('');
+
+      // b302 - ⚠️ LANÇAR OUTRA PECA DO MESMO SKU, MESMO COM RESULTADO.
+      //
+      // [stated 11/09] "esse eu inseri o defeito aquela hora, salvou tudo
+      // OK! (...) eu tenho outro produto desse no estoque LV-ASH-4 e tenho q
+      // adicionar uma segunda peça com defeito. Nao aparece o botao"
+      //
+      // ⚠️ O BOTAO SO EXISTIA NO CAMINHO DO VAZIO. Mas ter um defeito
+      // registrado NAO IMPEDE ter outro — sao PECAS FISICAS diferentes, e no
+      // galpao isso e comum: chega uma segunda unidade quebrada do mesmo
+      // produto.
+      //
+      // O jeito antigo obrigava a fechar a caixa, abrir "Lançar Defeito" no
+      // topo e digitar o SKU de novo — que e exatamente o atalho que a gente
+      // veio construir.
+      //
+      // 📌 Uso `window.abrirModalDefeito` porque este arquivo e uma IIFE (a
+      // licao da b287), e so mostro onde o modal EXISTE (a b287.1: no painel
+      // admin nao existe).
+      var podeLancarOutra = termoBusca
+        && typeof window.abrirModalDefeito === 'function';
+      if (podeLancarOutra) {
+        el.innerHTML += '<div style="margin-top:14px;padding-top:12px;'
+          + 'border-top:1px solid #eee;">'
+          + '<button type="button" id="btnLancarOutra" class="btn" '
+          + 'style="padding:10px 14px;">'
+          + '➕ Lançar OUTRA peça de <b>' + esc(termoBusca) + '</b></button>'
+          + '<div style="font-size:12px;color:#888;margin-top:6px;">'
+          + 'Chegou mais uma unidade com defeito? Cada peça é um registro.'
+          + '</div></div>';
+        var btnOutra = document.getElementById('btnLancarOutra');
+        if (btnOutra) btnOutra.onclick = function () {
+          try { window.abrirModalDefeito(termoBusca); }
+          catch (err) {
+            // ⚠️ o erro vai pra TELA: o dono ficou 3 rodadas olhando tela
+            // vazia quando isto falhou silenciosamente (b286)
+            btnOutra.insertAdjacentHTML('afterend',
+              '<div style="margin-top:8px;color:#b00;font-size:13px;">'
+              + '⚠️ nao consegui abrir: ' + esc(err.message) + '</div>');
+            console.error('[DEFEITOS] lançar outra falhou:', err);
+          }
+        };
+      }
       buscarFotosDefeitos(itens);
     } catch (e) {
       el.innerHTML = '<div style="color:#c62828;font-size:13px;">erro ao buscar</div>';
