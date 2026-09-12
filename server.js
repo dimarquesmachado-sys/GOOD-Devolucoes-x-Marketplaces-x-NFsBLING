@@ -395,7 +395,7 @@ app.get('/health', (req, res) => {
       // busca por nome. Escolher um lado apagaria a descricao do outro.
       // ⚠️ a resolucao JUNTA as duas: a 7.5.0 (passe curto + tetos) ja esta
       // na main, e este PR acrescenta o build frio que falha vazio.
-      version: '8.2.3 (revisao Codex #252: defeito de estoque manual nao inflava mais devolucao de venda — fila fiscal, relatorio, origem na tela e restaurar reconhecem o shipment_id sintetico)',
+      version: '8.2.4 (revisao Codex #252 cont.: /api/defeitos e /api/defeitos/por-sku nao selecionavam shipment_id — ehDefeitoDeEstoqueManual sempre dava falso e a origem na tela nunca mostrava ESTOQUE)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -3744,7 +3744,7 @@ app.get('/api/defeitos/por-sku', requerEstoquista, async (req, res) => {
   try {
     const { data, error } = await supabase
       .from('devolucoes')
-      .select('id, created_at, tipo, status, produto_titulo, produto_sku, localizacao, defeito_qtd, problema_descricao')
+      .select('id, created_at, tipo, status, produto_titulo, produto_sku, localizacao, defeito_qtd, problema_descricao, shipment_id')
       .in('tipo', ['problema', 'defeito_estoque'])
       .ilike('produto_sku', sku)
       .order('created_at', { ascending: false })
@@ -5351,7 +5351,7 @@ app.get('/api/defeitos', requerEstoquista, async (req, res) => { // v3.90: estoq
   try {
     const { data, error } = await supabase
       .from('devolucoes')
-      .select('id, created_at, tipo, produto_titulo, produto_sku, nf_numero, localizacao, defeito_qtd, problema_descricao, status')
+      .select('id, created_at, tipo, produto_titulo, produto_sku, nf_numero, localizacao, defeito_qtd, problema_descricao, status, shipment_id')
       .in('tipo', ['problema', 'defeito_estoque']) // v3.97: devolucao com defeito + defeito lancado do estoque
       .not('localizacao', 'is', null)
       .neq('localizacao', '')

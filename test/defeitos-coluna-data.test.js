@@ -200,6 +200,21 @@ ok(/function ehDefeitoDeEstoqueManual\(d\)/.test(SERVER),
 ok(/return \/\^DEF-\/\.test\(String\(\(d && d\.shipment_id\) \|\| ''\)\)/.test(SERVER),
    '  que so olha o prefixo DEF- (tipo nao serve mais pra distinguir)');
 
+// ── 10. ehDefeitoDeEstoqueManual so funciona se o SELECT trouxer
+// shipment_id — sem isso `d.shipment_id` e sempre undefined e a origem
+// mostrada na tela e SEMPRE 'devolucao', nunca 'estoque' (bug encontrado na
+// propria revisao Codex #252: os selects de /api/defeitos e
+// /api/defeitos/por-sku nao pediam shipment_id) ──────────────────────────
+const iniPorSku = SERVER.indexOf("app.get('/api/defeitos/por-sku'");
+const trechoPorSku = SERVER.slice(iniPorSku, SERVER.indexOf('origem:', iniPorSku));
+ok(/\.select\([^)]*\bshipment_id\b/.test(trechoPorSku),
+   '/api/defeitos/por-sku seleciona shipment_id (senao ehDefeitoDeEstoqueManual sempre da falso)');
+
+const iniListaDefeitos = SERVER.indexOf("app.get('/api/defeitos',");
+const trechoListaDefeitos = SERVER.slice(iniListaDefeitos, SERVER.indexOf('origem:', iniListaDefeitos));
+ok(/\.select\([^)]*\bshipment_id\b/.test(trechoListaDefeitos),
+   '/api/defeitos seleciona shipment_id (mesmo motivo)');
+
 console.log('');
 console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
 process.exit(falhas ? 1 : 0);
