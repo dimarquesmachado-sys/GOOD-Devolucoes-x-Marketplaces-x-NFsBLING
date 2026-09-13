@@ -93,7 +93,19 @@ const SRV = fs.readFileSync(path.join(RAIZ, 'server.js'), 'utf8');
 
   // /health: a contagem usa o Map deduplicado, nao concat+filter cru
   const iHealth = SRV.indexOf("app.get('/health'");
-  const blocoHealth = SRV.slice(iHealth, iHealth + 4000);
+  // ⚠️ recorto ate o fim do handler contando chaves, nao por janela fixa:
+  // o /health CRESCE a cada campo de diagnostico novo, e a janela de 4000
+  // quebrou quando entrou o `fotos_do_indice`.
+  //
+  // Decima segunda vez hoje que janela fixa me da resposta errada — e a
+  // pior parte e que o vermelho nao era bug, era o teste.
+  let profH = 0;
+  let fimH = iHealth;
+  for (let k = SRV.indexOf('{', iHealth); k < SRV.length; k++) {
+    if (SRV[k] === '{') profH++;
+    else if (SRV[k] === '}') { profH--; if (profH === 0) { fimH = k; break; } }
+  }
+  const blocoHealth = SRV.slice(iHealth, fimH);
   ok(/montarCruzamentoEspreita\(c\)\.porNF\.size/.test(blocoHealth),
      '/health conta NF UNICA (Map deduplicado), nao concat cru');
   ok(!/nfs_no_cruzamento_qtd: \[\]/.test(blocoHealth),
