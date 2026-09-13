@@ -59,6 +59,29 @@ const front = fs.readFileSync(
      '  e a busca procura pelo mesmo indice');
 }
 
+// ── ⚠️ e PARA se começar a cair no Bling ────────────────────────────
+//
+// Apontamento do Codex (P1): com o índice quente, os 60 pedidos são 60
+// respostas locais e ZERO chamada ao Bling. Mas com o índice FRIO, cada um
+// vira chamada — e 60 de uma vez é a avalanche que já derrubou o serviço.
+//
+// 📌 O limite é por COMPORTAMENTO (de onde a resposta veio), não por um
+// número escolhido no chute.
+{
+  ok(/var foraDoIndice = 0;/.test(front),
+     '⚠️ conta quantas respostas NAO vieram do indice');
+  ok(/if \(d && d\.via && d\.via !== 'indice'\) foraDoIndice\+\+;/.test(front),
+     '  usando o `via` que a rota devolve');
+  ok(/if \(foraDoIndice > 8\) \{[\s\S]{0,200}break;/.test(front),
+     '  ⚠️ e PARA quando passa de 8 (indice frio: tenta de novo na proxima abertura)');
+
+  // ⚠️ a guarda tem que vir ANTES de pintar, senão pinta e só depois para
+  const iGuarda = front.indexOf('if (foraDoIndice > 8)');
+  const iPinta = front.indexOf('if (d && d.ok && d.imagem)', iGuarda - 900);
+  ok(iGuarda > 0 && iGuarda < front.indexOf('cx.outerHTML', iGuarda - 900),
+     '  e a guarda vem antes de pintar');
+}
+
 console.log('');
 console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
 process.exit(falhas ? 1 : 0);
