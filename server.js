@@ -395,7 +395,7 @@ app.get('/health', (req, res) => {
       // busca por nome. Escolher um lado apagaria a descricao do outro.
       // ⚠️ a resolucao JUNTA as duas: a 7.5.0 (passe curto + tetos) ja esta
       // na main, e este PR acrescenta o build frio que falha vazio.
-      version: '9.2.1 (revisao Codex: fecha o card e limpa a borda; destaque escopado a #caixaDefeitos pra nao colidir com card-<id> do painel)',
+      version: '9.4.1 (revisao Codex #269 rodada 2: exclusao-por-marca fica atomica no /estado, entra no /excluir idempotente, na ficha e nos relatorios, e o filtro de estoque roda antes do .limit)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -3768,14 +3768,23 @@ app.get('/api/defeitos/por-sku', requerEstoquista, async (req, res) => {
   try {
     const { data, error } = await supabase
       .from('devolucoes')
-      .select('id, created_at, tipo, status, produto_titulo, produto_sku, localizacao, defeito_qtd, problema_descricao, shipment_id')
+      .select('id, created_at, tipo, status, estado_atual, produto_titulo, produto_sku, localizacao, defeito_qtd, problema_descricao, shipment_id')
       .in('tipo', ['problema', 'defeito_estoque'])
       .ilike('produto_sku', sku)
+      // b312 (revisao Codex #269, P2) - o filtro da marca (b311, abaixo)
+      // rodava em JS DEPOIS do .limit(50): um SKU com muitas linhas
+      // excluidas entre as 50 mais recentes ocupava a janela toda, e peca
+      // ativa mais antiga do mesmo SKU nem chegava a ser buscada - o
+      // endpoint respondia "nada disponivel" com estoque de verdade
+      // guardado. Filtrar no banco, ANTES do .limit, resolve na raiz (mesmo
+      // OR com is.null do filtro de lista, lib/defeitos-ciclo.js ~570).
+      .or('estado_atual.is.null,estado_atual.not.ilike.%REGISTRO EXCLUIDO%')
       .order('created_at', { ascending: false })
       .limit(50);
     if (error) return res.status(500).json({ ok: false, erro: error.message });
     // so o que ja esta guardado de fato (regra: devolucao so conta apos a NF)
-    const liberados = (data || []).filter(d => d.tipo === 'defeito_estoque' || d.status === 'concluido');
+    const liberados = (data || [])
+      .filter(d => d.tipo === 'defeito_estoque' || d.status === 'concluido');
     if (liberados.length === 0) return res.json({ ok: true, itens: [] });
     // pecas ja retiradas de cada um (pra ele saber o que ainda tem)
     const ids = liberados.map(d => d.id);
@@ -5543,10 +5552,16 @@ app.get('/api/defeitos', requerEstoquista, async (req, res) => { // v3.90: estoq
   try {
     const { data, error } = await supabase
       .from('devolucoes')
-      .select('id, created_at, tipo, produto_titulo, produto_sku, nf_numero, localizacao, defeito_qtd, problema_descricao, status, shipment_id')
+      .select('id, created_at, tipo, produto_titulo, produto_sku, nf_numero, localizacao, defeito_qtd, problema_descricao, status, estado_atual, shipment_id')
       .in('tipo', ['problema', 'defeito_estoque']) // v3.97: devolucao com defeito + defeito lancado do estoque
       .not('localizacao', 'is', null)
       .neq('localizacao', '')
+      // b312 (revisao Codex #269, P2) - idem ao /api/defeitos/por-sku: o
+      // filtro da marca de exclusao (b311, abaixo) rodava em JS DEPOIS do
+      // .limit(1000) - com 1000+ linhas excluidas na frente da ordenacao,
+      // a janela inteira podia ser so exclusao e peca ativa mais antiga
+      // nem chegava a esta resposta. Filtrar no banco, antes do .limit.
+      .or('estado_atual.is.null,estado_atual.not.ilike.%REGISTRO EXCLUIDO%')
       .order('localizacao', { ascending: true })
       .limit(1000);
     if (error) {
@@ -5560,6 +5575,11 @@ app.get('/api/defeitos', requerEstoquista, async (req, res) => { // v3.90: estoq
     // na tabela de defeitos depois que o Diego emite a NF e conclui - e ai que o
     // item foi liquidado e foi pro deposito DEFEITO (e nao pro GERAL, que volta
     // pra venda). Defeito lancado do ESTOQUE entra na hora (nao depende de NF).
+    // b312 (revisao Codex #269, P2) - `todos` ja vem sem quem tem a marca de
+    // exclusao (filtro de banco acima): alem de sanar o problema do
+    // .limit(), isso tira a peca excluida do `aguardandoNF` tambem - ela
+    // nao esta mais "aguardando" nada, foi decidida (exclusao), igual
+    // 'cancelled'/'delivered' abaixo ja tratavam pro fallback por status.
     const todos = data || [];
     // b305 (revisao Codex #264) - 'cancelled' e 'delivered' sao sentinelas
     // do lib/defeitos-ciclo.js (excluido/decidido via status, quando o tipo
@@ -5568,7 +5588,8 @@ app.get('/api/defeitos', requerEstoquista, async (req, res) => { // v3.90: estoq
     // recuperada/descartada por esse fallback inflava este contador.
     const aguardandoNF = todos.filter(x => x.tipo === 'problema'
       && x.status !== 'concluido' && x.status !== 'cancelled' && x.status !== 'delivered').length;
-    const liberados = todos.filter(x => x.tipo === 'defeito_estoque' || x.status === 'concluido');
+    const liberados = todos
+      .filter(x => x.tipo === 'defeito_estoque' || x.status === 'concluido');
 
     const q = String(req.query.q || '').trim().toUpperCase();
     let itens = liberados.map(d => ({
