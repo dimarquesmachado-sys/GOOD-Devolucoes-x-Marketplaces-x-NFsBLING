@@ -125,7 +125,13 @@ const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 // busca de produtos tratava indice com falha (`IDX_PROD.ts` preenchido +
 // `erro`) como "montado" - a AMB nao tem catalogo de produtos nem rota
 // /produtos/buscar (confirmado: sem IDX_PROD aqui) - nada a espelhar.
-const VERSAO = 'AMB Devolucoes b312';
+// b313 - revisao Codex #268 (card do defeito aberto ganha borda inteira,
+// e o fix seguinte que fecha o destaque + escopa a #caixaDefeitos) foi so
+// em public/js/defeitos-ficha.js (GOOD). A AMB usa sua PROPRIA copia
+// (js-AMB/defeitos-ficha.js, ainda em b291) e ela nao tem `marcarCardAberto`
+// nem a classe `cardDefeito.aberto` (confirmado por grep) - o recurso nunca
+// chegou aqui, entao nao ha nada a espelhar.
+const VERSAO = 'AMB Devolucoes b313';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
