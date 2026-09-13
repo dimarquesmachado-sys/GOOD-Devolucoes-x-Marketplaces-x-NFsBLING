@@ -395,7 +395,7 @@ app.get('/health', (req, res) => {
       // busca por nome. Escolher um lado apagaria a descricao do outro.
       // ⚠️ a resolucao JUNTA as duas: a 7.5.0 (passe curto + tetos) ja esta
       // na main, e este PR acrescenta o build frio que falha vazio.
-      version: '9.12.0 (os 12 primeiros cards voltam a poder usar o Bling — semBling em todos dava ZERO foto com o indice frio)',
+      version: '9.12.1 (os 12 primeiros podem usar o Bling; e a sentinela nao usa placeholder que some ao dar certo)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
