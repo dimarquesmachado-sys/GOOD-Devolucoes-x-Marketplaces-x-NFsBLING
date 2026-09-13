@@ -75,10 +75,16 @@ ok(condsFonte.includes('tipo.eq.defeito_estoque'), '  e segue pegando defeito_es
 ok(condsFonte.includes('tipo.eq.defeito_excluido'), '  e defeito_excluido (a aba Excluidos precisa)');
 
 // a regra fiscal existe mesmo no server, nao foi invencao minha
-ok(/x\.tipo === 'problema' && x\.status !== 'concluido'/.test(SERVER),
+ok(/x\.tipo === 'problema'[\s\S]{0,40}&&\s*x\.status !== 'concluido'/.test(SERVER),
    'o server conta problema+nao-concluido como aguardandoNF (a regra que o filtro respeita)');
 ok(/x\.tipo === 'defeito_estoque' \|\| x\.status === 'concluido'/.test(SERVER),
    '  e libera so defeito_estoque ou concluido');
+// revisao Codex #264 (P1) - sem esta excecao, uma peca excluida ou
+// recuperada/descartada pelo fallback de status (b305, ja 'cancelled' ou
+// 'delivered', nunca mais 'concluido') inflava o contador de "aguardando
+// NF", que e pra contar so quem realmente esta esperando a NF.
+ok(/x\.status !== 'concluido'[\s\S]{0,40}x\.status !== 'cancelled'[\s\S]{0,40}x\.status !== 'delivered'/.test(SERVER),
+   '  e nao conta as sentinelas de status (cancelled/delivered) do fallback como aguardando NF');
 
 // ── 6. restaurar excluido: revisao Codex #252 - 'defeito_estoque' NUNCA
 // passou no check da tabela (o PR #252 provou isso e trocou a GRAVACAO do
@@ -120,7 +126,12 @@ const idsForaDoEstado = new Function(trechoCond + '; return idsForaDoEstado;')()
 
 
 
-ok(c('excluido')==='tipo.eq.defeito_excluido', 'aba Excluidos pede so defeito_excluido');
+// revisao Codex #264 (P1) - a exclusao pode ter ficado marcada so pelo
+// status (b305, quando o tipo nao passa no check): a aba precisa achar os
+// dois formatos, senao a exclusao-por-status some da tela.
+ok(c('excluido').includes('tipo.eq.defeito_excluido'), 'aba Excluidos pede defeito_excluido');
+ok(c('excluido').includes('and(tipo.eq.problema,status.eq.cancelled)'),
+   '  e tambem a exclusao-por-status (tipo=problema + status=cancelled)');
 ok(!c('excluido').includes('defeito_estoque'), '  e nao arrasta os ativos (era o que estourava o limite)');
 
 ok(c('defeito').includes('and(tipo.eq.problema,status.eq.concluido)'), 'aba Com Defeito: problema so concluido');

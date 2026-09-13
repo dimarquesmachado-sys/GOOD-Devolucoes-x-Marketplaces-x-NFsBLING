@@ -33,11 +33,21 @@ const src = fs.readFileSync(
 }
 
 // ── e a decisão do admin também ─────────────────────────────────────
+//
+// revisao Codex #264 (P1): o fallback gravava `status: 'concluido'` — mas a
+// peça ATIVA já está com status='concluido' (é o par que /api/defeitos e
+// /api/defeitos/por-sku tratam como disponível pra canibalização). Gravar o
+// mesmo valor de novo era NO-OP: a peça autorizada continuava aparecendo
+// como se ainda estivesse lá, liberada pra retirar peça de novo.
 {
   ok(/decisao gravada via status/.test(src),
      '⚠️ recuperar/descartar tambem tem fallback');
-  ok(/status: 'concluido'/.test(src),
-     "  com 'concluido'");
+  const bloco = src.slice(src.indexOf('decisao gravada via status') - 400,
+                           src.indexOf('decisao gravada via status'));
+  ok(/status: 'delivered'/.test(bloco),
+     "  com um status que NAO seja 'concluido' (senao e no-op) nem 'cancelled' (senao vira exclusao)");
+  ok(!/status: 'concluido'/.test(bloco),
+     '  ⚠️ nao pode ser concluido: a peca ativa ja esta assim, ficaria disponivel de novo');
 }
 
 // ── ⚠️ e o fallback REALMENTE tira das listas ativas ────────────────
@@ -52,6 +62,26 @@ const src = fs.readFileSync(
     ok(/status\.eq\.concluido/.test(m[1]),
        '⚠️ os ATIVOS dependem do status — logo mudar o status TIRA de la');
   }
+}
+
+// ── ⚠️ e a exclusao-por-status continua visivel e reversivel ────────
+//
+// revisao Codex #264 (P1): quando o fallback grava so o `status`, a linha
+// mantem tipo='problema'. Se a aba Excluidos, o classificador situacaoDe()
+// e o /restaurar so souberem olhar tipo='defeito_excluido', o registro some
+// da tela assim que ela navega pra aba Excluidos e nunca mais pode ser
+// restaurado.
+{
+  const m = /const EXCLUIDOS = '([^']+)'/.exec(src);
+  ok(!!m, 'achei a definicao dos EXCLUIDOS (aba)');
+  if (m) {
+    ok(/tipo\.eq\.defeito_excluido/.test(m[1]) && /status\.eq\.cancelled/.test(m[1]),
+       '⚠️ a aba Excluidos busca os dois formatos (tipo OU status)');
+  }
+  ok(/situacaoDe[\s\S]{0,400}status === 'cancelled'/.test(src),
+     '⚠️ situacaoDe() tambem reconhece a exclusao-por-status');
+  ok(/excluidoPorStatus/.test(src),
+     '⚠️ /restaurar reconhece a exclusao-por-status (nao so o tipo)');
 }
 
 // ── e o estado_atual conta a história ───────────────────────────────
