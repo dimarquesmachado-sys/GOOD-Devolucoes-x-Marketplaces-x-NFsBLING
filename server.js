@@ -395,7 +395,7 @@ app.get('/health', (req, res) => {
       // busca por nome. Escolher um lado apagaria a descricao do outro.
       // ⚠️ a resolucao JUNTA as duas: a 7.5.0 (passe curto + tetos) ja esta
       // na main, e este PR acrescenta o build frio que falha vazio.
-      version: '8.7.0 (o /health mostra o estado do indice de produtos, e a busca avisa NA HORA quando ele ainda esta montando)',
+      version: '8.8.0 (o indice de produtos morria calado quando a conta estava em pausa — agora registra a falha e reagenda)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -3966,6 +3966,47 @@ function normProd(t) {
     .toUpperCase().trim();
 }
 
+// b304 - ⚠️ O INDICE MORRIA CALADO, E NINGUEM REAGENDAVA.
+//
+// O /health de 13/09 entregou o diagnostico que eu vinha SUPONDO:
+//   indice_produtos: montado=false, construindo=false, qtd=0, erro=null
+//   uptime_min: 2          (o indice e agendado pra 20s apos o boot)
+//   ritmo_compartilhado: pausa_ativa=true
+//
+// NEM MONTADO NEM CONSTRUINDO com 2 min de vida = ele TENTOU e FALHOU. E o
+// porque estava no mesmo /health: a conta em PAUSA. O indice tenta montar,
+// o porteiro segura, a construcao falha — e os tres `.catch(() => {})`
+// ENGOLEM o erro.
+//
+// ⚠️ RESULTADO: o indice fica morto pra sempre, TODA busca cai no Bling, e
+// o dono ve "Buscando no Bling..." por minutos. Foi o que ele relatou
+// varias vezes hoje.
+//
+// Esta funcao registra a falha e REAGENDA com espera crescente — porque a
+// pausa do porteiro passa, e quando passar vale tentar de novo.
+let _tentativasIndice = 0;
+function tentarConstruirIndice(motivo) {
+  if (IDX_PROD.ts || IDX_PROD.construindo) return;
+  construirIndiceProdutos()
+    .then(() => {
+      if (IDX_PROD.ts) {
+        _tentativasIndice = 0;
+        console.log(`[IDX_PROD] montado (${(IDX_PROD.itens || []).length} produtos) — ${motivo}`);
+      }
+    })
+    .catch((e) => {
+      _tentativasIndice += 1;
+      // ⚠️ o erro vai pro IDX_PROD.erro: e o que o /health mostra, e foi a
+      // falta dele que me deixou supondo
+      IDX_PROD.erro = String((e && e.message) || e).slice(0, 200);
+      // espera crescente, teto de 5 min: a pausa do porteiro dura pouco,
+      // mas se a conta estiver castigada nao adianta martelar
+      const esperaS = Math.min(30 * Math.pow(2, _tentativasIndice - 1), 300);
+      console.log(`[IDX_PROD] falhou (${IDX_PROD.erro}) — tento de novo em ${esperaS}s`);
+      setTimeout(() => tentarConstruirIndice('nova tentativa'), esperaS * 1000);
+    });
+}
+
 async function construirIndiceProdutos() {
   if (IDX_PROD.construindo) return IDX_PROD;
   IDX_PROD.construindo = true;
@@ -4557,7 +4598,7 @@ app.get('/api/produtos/buscar', requerEstoquista, async (req, res) => {
       // projeto Localizacao x Estoque). A fonte boa e o indice enriquecido
       // com o detalhe de cada produto.
       // v4.04 - NAO espera o indice construir (isso derrubava a requisicao)
-      if (!IDX_PROD.ts && !IDX_PROD.construindo) { construirIndiceProdutos().catch(() => {}); }
+      if (!IDX_PROD.ts && !IDX_PROD.construindo) { tentarConstruirIndice('busca pediu'); }
       for (const p of IDX_PROD.itens) {
         if ((p.eans || []).includes(q) || normProd(p.ean) === alvo) push(p);
         if (out.length >= 10) break;
@@ -4593,7 +4634,7 @@ app.get('/api/produtos/buscar', requerEstoquista, async (req, res) => {
     // qualquer ordem/posicao). Assim "arandela 60" acha "Luminaria Arandela
     // 60cm Parede", e "930b" acha "930bPRETO-1xLed-1xGarra".
     // v4.04 - NAO espera o indice construir (isso derrubava a requisicao)
-    if (!IDX_PROD.ts && !IDX_PROD.construindo) { construirIndiceProdutos().catch(() => {}); }
+    if (!IDX_PROD.ts && !IDX_PROD.construindo) { tentarConstruirIndice('busca pediu'); }
     const palavras = alvo.split(/\s+/).filter(Boolean);
     for (const p of IDX_PROD.itens) {
       if (out.length >= 30) break;
@@ -7993,7 +8034,7 @@ drenagem.daquiA(() => {
 
 drenagem.daquiA(() => nfNomes.preAquecer(), 20 * 1000 + ESPACO);
 // v4.04 - catalogo de produtos pre-aquecido (a busca do estoquista nunca espera)
-drenagem.daquiA(() => { construirIndiceProdutos().catch(() => {}); }, 20 * 1000 + ESPACO * 3);
+drenagem.daquiA(() => { tentarConstruirIndice('boot'); }, 20 * 1000 + ESPACO * 3);
 // v4.20 - a busca da data REAL de entrega roda sozinha, em ciclo proprio.
 // Antes so era disparada quando alguem abria o painel - e como o indice do ML
 // zera a cada deploy e leva ~2 min pra montar, o cache nunca enchia e o alerta
