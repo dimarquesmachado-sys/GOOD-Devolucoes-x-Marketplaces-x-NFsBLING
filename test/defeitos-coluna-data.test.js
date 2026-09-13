@@ -185,7 +185,22 @@ ok(/buscar\(q, estado, porPedido\)/.test(GOOD), 'a busca recebe a aba e o histor
 // legitimo se perde no meio do falso.
 ok(/for \(const aba of \[('[a-z]+',? ?)+\]\)/.test(GOOD),
    'a contagem consulta ABA POR ABA (com o total acima de 300, o numero da aba ficava MENOR que a lista exibida)');
-ok(/buscar\(termoContagem, aba, porPedido\)/.test(GOOD), '  cada aba com o seu proprio limite');
+ok(/contagem\[aba\] = await contarAba\(termoContagem, aba, porPedido\)/.test(GOOD),
+   '  cada aba conta pela contarAba() dedicada');
+
+// ⚠️ revisao Codex #270 (P2): mesmo ABA POR ABA, a contagem ainda vinha de
+// buscar() — que aplica limiteDaConsulta (300, ou ate 1000) ANTES do
+// .length. Passando de 300 excluidos, o botao voltava a mentir (agora pra
+// baixo, nao mais pra zero). Sem termo de busca, `cond` (a mesma condicao
+// que decide quem pertence a aba) ja é exata; contarAba() pede count exato
+// ao banco nesse caminho, sem materializar nem limitar as linhas.
+const trechoContarAba = GOOD.slice(
+  GOOD.indexOf('async function contarAba'),
+  GOOD.indexOf('const estado = String(req.query.estado'));
+ok(/count:\s*'exact',\s*head:\s*true/.test(trechoContarAba),
+   '⚠️ sem termo, contarAba() pede count exato ao banco (nao mais linhas cortadas por .limit)');
+ok(!/\.limit\(/.test(trechoContarAba),
+   '  e esse caminho nao usa limiteDaConsulta — o cap de 300/1000 da tela nao entra na contagem');
 
 // e quando os ids terminais nao cabem na URL, o limite compensa
 // a fatia comeca no ATIVOS pra levar junto o MAX_IDS_NA_URL que a funcao usa

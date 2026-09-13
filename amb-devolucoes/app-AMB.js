@@ -156,7 +156,14 @@ const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 // e server.js (GOOD) - a tabela da AMB aceita `tipo: 'defeito_excluido'` de
 // verdade (confirmado no #269 original), entao o fallback e os bugs dele
 // nao existem aqui. Nada a espelhar.
-const VERSAO = 'AMB Devolucoes b314';
+// b315 - revisao Codex #270 (GOOD): excluir de dentro da lista chama
+// buscarDefeitos() em vez de reabrir abrirBuscaDefeitos() (perdia a busca
+// digitada e a rolagem), e a contagem por aba usa count exato no banco em
+// vez do .limit(300/1000) da tela de itens. A AMB nunca ganhou o recurso
+// "excluir fica na mesma aba" do #270 (js-AMB/defeitos-ciclo-AMB.js ainda
+// conta com um unico buscar() sem aba nem paginacao, confirmado por grep) -
+// nada a espelhar.
+const VERSAO = 'AMB Devolucoes b315';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
