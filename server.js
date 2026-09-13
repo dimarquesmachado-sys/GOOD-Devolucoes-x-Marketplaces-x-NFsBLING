@@ -395,7 +395,7 @@ app.get('/health', (req, res) => {
       // busca por nome. Escolher um lado apagaria a descricao do outro.
       // ⚠️ a resolucao JUNTA as duas: a 7.5.0 (passe curto + tetos) ja esta
       // na main, e este PR acrescenta o build frio que falha vazio.
-      version: '9.11.1 (a tela volta nos cards sem foto em rodadas — uma consulta so era uma corrida perdida)',
+      version: '9.11.2 (revisao Codex #279: as rodadas param ao fechar a tela, e nao insistem em quem nao tem foto)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -8170,6 +8170,21 @@ registrarRotasAdminNF(app, {
       if (FOTOS_PEDIDAS.length > 200) FOTOS_PEDIDAS.shift();
     }
     if (!EAN_RODANDO) enriquecerEansEmBackground();
+  },
+  // b321.2: a tela precisa saber se o indice JA TEM o produto (e so falta
+  // a foto) ou se nem conhece o SKU. No 1o caso, insistir nas rodadas nao
+  // adianta: o worker ja buscou o detalhe e ele nao tinha imagem propria.
+  indiceTemProduto: (chave) => {
+    if (!IDX_PROD.ts || !Array.isArray(IDX_PROD.itens)) return false;
+    const bruto = String(chave || '').trim();
+    if (!bruto) return false;
+    const alvo = bruto.toUpperCase();
+    const it = IDX_PROD.itens.find(
+      (x) => String(x.sku || x.codigo || '').toUpperCase() === alvo
+        || String(x.id || '') === bruto);
+    // ⚠️ so e "definitivo" se o produto esta no indice E o detalhe dele ja
+    // foi buscado: se ainda nao foi, a foto pode chegar
+    return !!(it && it.eansCarregados && !it.imagem);
   },
   fotoDoIndice: (chave) => {
     if (!IDX_PROD.ts && !IDX_PROD.construindo) tentarConstruirIndice('foto pediu');

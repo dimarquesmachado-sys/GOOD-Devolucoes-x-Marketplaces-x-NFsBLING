@@ -706,6 +706,10 @@
    * segunda consulta do mesmo produto e instantanea. Uma de cada vez com
    * pausa: sao chamadas ao Bling.
    */
+  // ⚠️ b321.1: numera cada varredura de fotos, pra uma nova cancelar a
+  // anterior (o dono fecha a caixa ou busca outra coisa no meio)
+  var _fotoToken = 0;
+
   async function buscarFotosDefeitos(itens) {
     // b320 - ⚠️ O TETO DE 12 DEIXAVA 34 CARDS SEM PEDIR FOTO.
     //
@@ -742,8 +746,23 @@
     // Agora faz RODADAS: volta nos placeholders que faltam ate todos terem
     // foto ou acabarem as tentativas. Todas com `semBling` — a rota so
     // prioriza o worker serial, sem abrir chamada ao Bling por card.
+    // ⚠️ b321.1 (Codex, P2) - AS RODADAS PARAM SE A TELA FECHAR.
+    //
+    // Sao 12 rodadas x ate 60 cards. Se o dono fechar o modal ou fizer
+    // outra busca no meio, isto continuaria pedindo foto de uma lista que
+    // nao esta mais na tela — gastando requisicao e, pior, podendo pintar
+    // foto em card de OUTRA busca.
+    //
+    // Cada chamada do buscarFotosDefeitos ganha um numero; se outro comecar
+    // (ou a caixa fechar), o antigo desiste na proxima volta.
+    _fotoToken++;
+    var meuToken = _fotoToken;
     var MAX_RODADAS = 12;
     for (var rodada = 0; rodada < MAX_RODADAS; rodada++) {
+      // ⚠️ desisto se outra busca comecou ou a caixa fechou
+      if (meuToken !== _fotoToken) return;
+      var cxCaixa = document.getElementById('caixaDefeitos');
+      if (!cxCaixa || cxCaixa.style.display === 'none') return;
       var faltando = 0;
       for (var i = 0; i < itens.length && i < TETO_FOTOS; i++) {
         var cx = document.getElementById('fotodef-' + i);
@@ -759,6 +778,11 @@
               + 'style="width:84px;height:84px;flex:0 0 auto;border-radius:9px;object-fit:contain;'
               + 'background:#fff;border:1px solid #e4dcf1;cursor:zoom-in;">';
           }
+          // ⚠️ b321.2: o servidor diz quando NAO ADIANTA insistir — o
+          // produto esta no indice, o detalhe dele ja foi buscado, e nao
+          // tem imagem propria (variacao orfa, cujo pai nao esta no
+          // indice). Marco o card pra pular nas proximas rodadas.
+          if (d && d.definitivo && cx && cx.dataset) cx.dataset.sku = '-';
         } catch (e) { /* sem foto nao atrapalha */ }
         await new Promise(function (r) { setTimeout(r, 40); });
       }

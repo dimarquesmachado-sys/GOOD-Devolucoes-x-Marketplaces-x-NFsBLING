@@ -104,6 +104,40 @@ const front = fs.readFileSync(
      '⚠️ e PRIORIZA o worker ANTES de responder (senao ninguem produz a foto)');
 }
 
+// ── ⚠️ e as rodadas PARAM se a tela fechar ──────────────────────────
+//
+// Apontamento do Codex (P2): são 12 rodadas × até 60 cards. Se o dono
+// fechar o modal ou fizer outra busca no meio, isto continuaria pedindo
+// foto de uma lista que não está mais na tela — e pior, podendo pintar foto
+// em card de OUTRA busca.
+{
+  ok(/var _fotoToken = 0;/.test(front), '⚠️ cada varredura de fotos tem um numero');
+  ok(/if \(meuToken !== _fotoToken\) return;/.test(front),
+     '  e desiste se outra comecou');
+  ok(/cxCaixa\.style\.display === 'none'\) return;/.test(front),
+     '  ⚠️ ou se a caixa foi fechada');
+}
+
+// ── ⚠️ e não insiste em quem nunca vai ter foto ─────────────────────
+//
+// Apontamento do Codex (P2): a variação cujo `produtoPai` não está no
+// índice não ganha foto por nenhum caminho do `semBling` — o worker busca o
+// detalhe DELA, e a variação não tem imagem própria.
+//
+// Sem isto, ela gastava as 12 rodadas e atrasava as outras.
+{
+  const rota = fs.readFileSync(
+    path.join(__dirname, '..', 'lib', 'rotas-admin-nf.js'), 'utf8');
+  ok(/definitivo: !!\(typeof deps\.indiceTemProduto/.test(rota),
+     '⚠️ a rota marca quando nao adianta insistir');
+  ok(/if \(d && d\.definitivo && cx && cx\.dataset\) cx\.dataset\.sku = '-';/.test(front),
+     '  e a tela pula esse card nas proximas rodadas');
+
+  const srv = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
+  ok(/return !!\(it && it\.eansCarregados && !it\.imagem\);/.test(srv),
+     '  ⚠️ e so e definitivo se o detalhe JA foi buscado (senao a foto pode chegar)');
+}
+
 console.log('');
 console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
 process.exit(falhas ? 1 : 0);
