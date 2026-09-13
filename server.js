@@ -395,7 +395,7 @@ app.get('/health', (req, res) => {
       // busca por nome. Escolher um lado apagaria a descricao do outro.
       // ⚠️ a resolucao JUNTA as duas: a 7.5.0 (passe curto + tetos) ja esta
       // na main, e este PR acrescenta o build frio que falha vazio.
-      version: '9.11.0 (varredura do indice vira funcao reutilizavel; e semBling nos cards alem do orcamento)',
+      version: '9.11.1 (a tela volta nos cards sem foto em rodadas — uma consulta so era uma corrida perdida)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),

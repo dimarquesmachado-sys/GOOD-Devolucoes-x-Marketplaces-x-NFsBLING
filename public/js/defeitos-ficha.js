@@ -729,25 +729,43 @@
     // limite podia gastar ~5x mais cota, disputando com a bipagem.
     // Mantenho o orcamento de Bling nos primeiros 12 (igual antes) e peco
     // `semBling=1` pro resto - eles so ganham foto se ja estiver no indice.
-    var TETO_BLING = 12;
-    for (var i = 0; i < itens.length && i < TETO_FOTOS; i++) {
-      var cx = document.getElementById('fotodef-' + i);
-      if (!cx || !cx.dataset.sku || cx.dataset.sku === '-') continue;
-      try {
-        var semBling = i >= TETO_BLING ? '?semBling=1' : '';
-        var d = await api('/api/produto/imagem/' + encodeURIComponent(cx.dataset.sku) + semBling);
-        if (d && d.ok && d.imagem) {
-          cx.outerHTML = '<img src="' + esc(d.imagem) + '" alt="" '
-            + 'onclick="event.stopPropagation();window.open(this.src,\'_blank\')" '
-            + 'onerror="this.style.display=\'none\'" '
-            + 'style="width:84px;height:84px;flex:0 0 auto;border-radius:9px;object-fit:contain;'
-            + 'background:#fff;border:1px solid #e4dcf1;cursor:zoom-in;">';
-        }
-      } catch (e) { /* sem foto nao atrapalha */ }
-      // ⚠️ b320: a pausa existia porque cada foto ia ao BLING. Agora a rota
-      // resolve pelo indice local, que nao gasta cota — 40ms so pra nao
-      // travar a tela enquanto pinta. Com 46 itens: 6s virava 1,8s.
-      await new Promise(function (r) { setTimeout(r, 40); });
+    // b321 - ⚠️ UMA CONSULTA POR CARD ERA UMA CORRIDA.
+    //
+    // [stated 13/09] "algumas ainda sem aparecer" — depois de eu ter
+    // consertado o indice, o teto de 12 e a rota.
+    //
+    // ⚠️ DIAGNOSTICO DO CODEX, e ele achou o que me faltava: a tela pedia a
+    // foto UMA VEZ. Se o indice ainda nao tinha aquele produto, a rota
+    // avisava o worker — mas a resposta VAZIA ficava no card PRA SEMPRE.
+    // A foto chegava 2s depois e ninguem voltava pra buscar.
+    //
+    // Agora faz RODADAS: volta nos placeholders que faltam ate todos terem
+    // foto ou acabarem as tentativas. Todas com `semBling` — a rota so
+    // prioriza o worker serial, sem abrir chamada ao Bling por card.
+    var MAX_RODADAS = 12;
+    for (var rodada = 0; rodada < MAX_RODADAS; rodada++) {
+      var faltando = 0;
+      for (var i = 0; i < itens.length && i < TETO_FOTOS; i++) {
+        var cx = document.getElementById('fotodef-' + i);
+        if (!cx || !cx.dataset.sku || cx.dataset.sku === '-') continue;
+        faltando++;
+        try {
+          var d = await api('/api/produto/imagem/'
+            + encodeURIComponent(cx.dataset.sku) + '?semBling=1');
+          if (d && d.ok && d.imagem) {
+            cx.outerHTML = '<img src="' + esc(d.imagem) + '" alt="" '
+              + 'onclick="event.stopPropagation();window.open(this.src,\'_blank\')" '
+              + 'onerror="this.style.display=\'none\'" '
+              + 'style="width:84px;height:84px;flex:0 0 auto;border-radius:9px;object-fit:contain;'
+              + 'background:#fff;border:1px solid #e4dcf1;cursor:zoom-in;">';
+          }
+        } catch (e) { /* sem foto nao atrapalha */ }
+        await new Promise(function (r) { setTimeout(r, 40); });
+      }
+      // ⚠️ para quando todos tem foto (o placeholder sumiu do DOM) ou
+      // quando as tentativas acabam — nao fica girando pra sempre
+      if (!faltando || rodada === MAX_RODADAS - 1) break;
+      await new Promise(function (r) { setTimeout(r, 700); });
     }
   }
 
