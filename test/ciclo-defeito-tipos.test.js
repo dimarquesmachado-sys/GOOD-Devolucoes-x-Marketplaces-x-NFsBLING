@@ -95,6 +95,44 @@ const src = fs.readFileSync(
      '  e a decisao do admin tambem');
 }
 
+// ── ⚠️ e a exclusão NÃO depende de coluna com lista fechada ─────────
+//
+// [stated 13/09] TRÊS erros seguidos de check, e todos meus:
+//   defeito_excluido (tipo)  → tipo_check recusou
+//   cancelled (status)       → status_check recusou
+//   pendente (status)        → status_check recusou
+//
+// ⚠️ Eu estava ADIVINHANDO valores de lista fechada, um por vez, e cada
+// tentativa custou uma rodada do dono.
+//
+// O `estado_atual` é TEXTO LIVRE — não tem check. A marca vai lá, e a lista
+// filtra por ela.
+{
+  // ⚠️ o que importa e nao GRAVAR: as LEITURAS de `cancelled` continuam,
+  // porque registros antigos podem ter sido marcados assim antes de eu
+  // descobrir que o check recusa. Tirar a leitura sumiria com eles.
+  const iUpd = src.indexOf("if (rU.error && /check constraint/");
+  const bloco = src.slice(iUpd, iUpd + 900);
+  ok(!/status: 'cancelled'/.test(bloco),
+     '⚠️ o fallback nao GRAVA mais `cancelled` (o check recusa)');
+  ok(/x\.status === 'cancelled'\) return 'excluido'/.test(src),
+     '  mas a LEITURA fica (registros antigos podem ter a marca velha)');
+  ok(!/status: 'pendente',\n\s*estado_atual: camposExc/.test(src),
+     '  nem `pendente`');
+  ok(/estado_atual: camposExc\.estado_atual,/.test(src),
+     '  grava a marca no `estado_atual` (texto livre)');
+}
+
+// ── e a lista filtra pela marca ─────────────────────────────────────
+{
+  ok(/sel\.not\('estado_atual', 'ilike', '%REGISTRO EXCLUIDO%'\)/.test(src),
+     '⚠️ as abas ATIVAS escondem quem tem a marca');
+  ok(/sel\.ilike\('estado_atual', '%REGISTRO EXCLUIDO%'\)/.test(src),
+     '  ⚠️ e a aba EXCLUIDOS mostra so eles (senao nao da pra restaurar)');
+  ok(/if \(estado !== 'excluido'\)/.test(src),
+     '  com o filtro escolhido pela aba');
+}
+
 console.log('');
 console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
 process.exit(falhas ? 1 : 0);
