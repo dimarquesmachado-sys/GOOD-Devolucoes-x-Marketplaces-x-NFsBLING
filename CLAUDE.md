@@ -14,8 +14,11 @@ em uma reforma.
    formatar, extrair módulos, modernizar sintaxe ou corrigir problemas vizinhos.
 4. Preserve o que o usuário não pediu para mudar: textos, layout, ordem, respostas HTTP,
    formatos de payload, fallbacks, compatibilidade e comportamento da outra empresa.
-5. Se houver duas interpretações com consequências diferentes, pergunte antes de editar.
-   Se o repositório ou um teste já responde, investigue em vez de perguntar.
+5. Se houver duas interpretações, investigue primeiro o código, os testes, os documentos e
+   o contexto que o usuário já forneceu. Adote a interpretação mais conservadora quando a
+   decisão for reversível e não mudar contrato ou dados. Pergunte somente quando a escolha
+   continuar ambígua e uma resposta errada puder causar perda de dados, mudança de contrato
+   ou retrabalho relevante; faça uma pergunta objetiva, não uma lista de possibilidades.
 6. Nunca diga que algo funciona apenas porque o código "parece certo". Rode a verificação.
 
 ### Pare e confira o escopo
@@ -171,17 +174,23 @@ Em 13/09 isto derrubou **doze** testes diferentes num só dia: o teste fazia
 `SRV.slice(i, i + 4000)` para achar um trecho, o código cresceu, e o alvo saiu da janela.
 O vermelho não era bug — era o teste. E vermelho falso ensina a ignorar o vermelho.
 
-Recorte pelo **fim do bloco**, contando chaves:
+⚠️ **E contar `{` e `}` NÃO é a alternativa segura** — apontamento do Codex, e ele está
+certo: strings, templates, regex e comentários também contêm chaves. Provei com
+`const s = "tem { aqui"` — o contador não acha o fim e o recorte sai vazio. Os testes que
+escrevi contando chaves passam **por sorte**, não por desenho.
+
+Prefira **testar comportamento executando o código**. Se um teste legado precisar
+inspecionar fonte, delimite com **dois marcadores estáveis e exclusivos**, e falhe
+explicitamente se algum não existir:
 
 ```js
-let prof = 0;
-let fim = i;
-for (let k = SRV.indexOf('{', i); k < SRV.length; k++) {
-  if (SRV[k] === '{') prof++;
-  else if (SRV[k] === '}') { prof--; if (prof === 0) { fim = k; break; } }
-}
-const bloco = SRV.slice(i, fim);
+const inicio = SRV.indexOf("app.get('/health'");
+const fim = SRV.indexOf("app.get('/api/keepalive'", inicio);
+ok(inicio >= 0 && fim > inicio, 'marcadores da rota existem e estao na ordem esperada');
+const bloco = SRV.slice(inicio, fim);
 ```
+
+O helper `test/_recorte.js` faz isso — use-o em vez de repetir o padrão.
 
 ### ⚠️ Nunca ancore em valor que o conserto vai mudar
 
