@@ -879,12 +879,20 @@
   // Uma funcao so pros dois lados: abrir marca, fechar limpa. Varro TODOS
   // os cards em vez de guardar qual estava aberto — assim nao sobra
   // destaque orfao se a lista for remontada no meio.
+  //
+  // v4.9x (review do Codex) - tudo escopado a `#caixaDefeitos`: o painel de
+  // devolucoes usa esse MESMO `card-<id>` pra linhas da tabela `devolucoes`,
+  // que pode estar atras do modal de defeitos. Um `getElementById` solto
+  // (ou um `querySelectorAll('.cardDefeito')` sem escopo, se a classe algum
+  // dia colidir tambem) arriscava marcar/procurar no elemento errado.
   function marcarCardAberto(id) {
-    var todos = document.querySelectorAll('.cardDefeito');
-    for (var i = 0; i < todos.length; i++) todos[i].classList.remove('aberto');
-    if (!id) return;
-    var alvo = document.getElementById('card-' + id);
-    if (alvo) alvo.classList.add('aberto');
+    var caixa = document.getElementById('caixaDefeitos');
+    if (!caixa) return;
+    var todos = caixa.querySelectorAll('.cardDefeito');
+    var alvoId = id != null ? 'card-' + id : null;
+    for (var i = 0; i < todos.length; i++) {
+      todos[i].classList.toggle('aberto', alvoId != null && todos[i].id === alvoId);
+    }
   }
 
   window.expandirFichaNoCard = async function (id, botao) {
@@ -901,6 +909,7 @@
     }
     if (fichaInlineId != null && String(fichaInlineId) === String(id)) {
       fecharFichaInline();
+      marcarCardAberto(null);   // b309
       return;
     }
     // v4.9x - so uma ficha inline aberta por vez (ver comentario acima)

@@ -70,6 +70,26 @@ const src = fs.readFileSync(
   ok(cards.every((c) => !c.cls.has('aberto')), '  fecha: nenhum destacado');
 }
 
+// ── ⚠️ apontamentos do Codex (#268): fechar limpa, e o id nao colide ──
+{
+  // painel-devolucoes.html usa o MESMO `card-<id>` pra linhas da tabela
+  // `devolucoes` — sem escopo, marcarCardAberto podia achar/marcar o
+  // elemento errado quando o modal de defeitos abre por cima do painel.
+  ok(!/document\.getElementById\('card-' \+ id\)/.test(src),
+     'marcarCardAberto nao faz getElementById(\'card-\'+id) solto no document');
+  ok(/getElementById\('caixaDefeitos'\)/.test(src) &&
+     /caixa\.querySelectorAll\('\.cardDefeito'\)/.test(src),
+     '  ⚠️ escopado a #caixaDefeitos (nao ao document inteiro)');
+
+  // clicar no card JA aberto fecha a ficha (fecharFichaInline) — e tem que
+  // limpar o destaque tambem, senao a borda fica orfa no card fechado
+  const fechaMesmoId = src.match(
+    /String\(fichaInlineId\) === String\(id\)\) \{\n([\s\S]*?)\n\s*\}/);
+  ok(!!fechaMesmoId && /fecharFichaInline\(\);/.test(fechaMesmoId[1])
+     && /marcarCardAberto\(null\);/.test(fechaMesmoId[1]),
+     '  ⚠️ fechar clicando no mesmo card tambem chama marcarCardAberto(null)');
+}
+
 console.log('');
 console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
 process.exit(falhas ? 1 : 0);
