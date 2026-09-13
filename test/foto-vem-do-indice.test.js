@@ -28,6 +28,17 @@ const rota = fs.readFileSync(path.join(RAIZ, 'lib', 'rotas-admin-nf.js'), 'utf8'
   ok(/String\(x\.sku \|\| x\.codigo \|\| ''\)\.toUpperCase\(\) === alvo/.test(srv),
      '⚠️ e o SKU compara SO maiusculo, sem tirar acento (normProd juntaria SKUs diferentes)');
 
+  // revisao Codex #271 (rodada 4): SKU tem PRIORIDADE sobre ID — dois
+  // `.find()` separados (SKU primeiro), nao um `.find()` unico com `||`
+  // (esse devolveria quem viesse primeiro no catalogo, as vezes o produto
+  // errado quando uma chave numerica bate com o SKU de um e o id de outro)
+  {
+    const iFn = srv.indexOf('fotoDoIndice: (chave) => {');
+    const corpo = srv.slice(iFn, srv.indexOf('\n  },', iFn));
+    ok(/IDX_PROD\.itens\.find\(\(x\) => String\(x\.sku \|\| x\.codigo \|\| ''\)\.toUpperCase\(\) === alvo\)\s*\n\s*\|\| IDX_PROD\.itens\.find\(\(x\) => String\(x\.id \|\| ''\) === bruto\)/.test(corpo),
+       '⚠️ SKU/codigo casa PRIMEIRO; so cai pro id se nao achou por SKU (busca em 2 passos, nao um find so com OR)');
+  }
+
   // ⚠️ uma FUNÇÃO, não o objeto: assim a rota lê o estado ATUAL do índice,
   // não uma foto do momento em que o servidor subiu
   ok(/if \(!IDX_PROD\.ts \|\| !Array\.isArray\(IDX_PROD\.itens\)\) return null;/.test(srv),
@@ -110,6 +121,10 @@ const rota = fs.readFileSync(path.join(RAIZ, 'lib', 'rotas-admin-nf.js'), 'utf8'
     { id: '555', sku: '288-VAR', imagem: null, pai: '556' },
     { id: '556', sku: '288', imagem: 'https://x/pai-288.jpg' },
     { id: '777', sku: 'ORFAO-VAR', imagem: null, pai: '999' },   // pai fora do indice
+    // revisao Codex #271 (rodada 4): chave numerica que bate com o SKU de
+    // UM produto e com o id (Bling) de OUTRO — o id vem antes no catalogo
+    { id: '9001', sku: 'SKU-DO-OUTRO', imagem: 'https://x/errado-por-id.jpg' },
+    { id: '9002', sku: '9001', imagem: 'https://x/certo-por-sku.jpg' },
   ] };
   // ⚠️ b315.1 (Codex): as duas telas chamam a rota com chaves DIFERENTES —
   // `lancar-defeito.js` manda `p.id`, `defeitos-ficha.js` manda o SKU.
@@ -120,8 +135,8 @@ const rota = fs.readFileSync(path.join(RAIZ, 'lib', 'rotas-admin-nf.js'), 'utf8'
     const bruto = String(chave || '').trim();
     if (!bruto) return null;
     const alvo = bruto.toUpperCase();
-    const it = IDX.itens.find((x) => String(x.sku || '').toUpperCase() === alvo
-      || String(x.id || '') === bruto);
+    const it = IDX.itens.find((x) => String(x.sku || '').toUpperCase() === alvo)
+      || IDX.itens.find((x) => String(x.id || '') === bruto);
     if (!it) return null;
     if (it.imagem) return it.imagem;
     if (it.pai) {
@@ -146,6 +161,9 @@ const rota = fs.readFileSync(path.join(RAIZ, 'lib', 'rotas-admin-nf.js'), 'utf8'
      '⚠️ variacao sem foto propria pega a foto do PAI, dentro do indice');
   ok(fotoDoIndice('ORFAO-VAR') === null,
      '  e se o pai tambem nao esta no indice (ou nao tem foto), cai no Bling');
+  ok(fotoDoIndice('9001') === 'https://x/certo-por-sku.jpg',
+     '⚠️ SKU tem prioridade sobre ID: "9001" e SKU de um produto E id de'
+     + ' outro que vem ANTES no catalogo — acha pelo SKU, nao pelo id');
 }
 
 // ── ⚠️ e o índice aceita URL SEM extensão ───────────────────────────

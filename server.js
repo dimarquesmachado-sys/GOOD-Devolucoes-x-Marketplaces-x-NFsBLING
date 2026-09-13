@@ -395,7 +395,7 @@ app.get('/health', (req, res) => {
       // busca por nome. Escolher um lado apagaria a descricao do outro.
       // ⚠️ a resolucao JUNTA as duas: a 7.5.0 (passe curto + tetos) ja esta
       // na main, e este PR acrescenta o build frio que falha vazio.
-      version: '9.6.5 (revisao Codex #271, rodada 3: indice acorda sozinho na 1a foto, resolve variacao pelo pai, e retry apos falha transitoria no EAN)',
+      version: '9.6.6 (revisao Codex #271, rodada 4: fotoDoIndice prioriza SKU antes de cair pro id)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -8070,15 +8070,20 @@ registrarRotasAdminNF(app, {
   //    `produtoPai.id` que a listagem ou o detalhe trazem) — se o proprio
   //    item nao tem foto, busco a do pai TAMBEM NO INDICE (sem chamada
   //    extra ao Bling).
+  // revisao Codex #271 (rodada 4, P2): SKU antes de ID. Uma chave numerica
+  // podia bater com o SKU de um produto E com o id (Bling) de OUTRO — o
+  // .find() com OR devolvia o que viesse primeiro no catalogo, as vezes o
+  // produto errado (e cacheava a foto errada). `/api/produto/imagem` no
+  // Bling ja busca por `codigo` antes de tratar a chave como id; replico a
+  // ordem aqui: so cai pro id se nao achou por SKU/codigo.
   fotoDoIndice: (chave) => {
     if (!IDX_PROD.ts && !IDX_PROD.construindo) tentarConstruirIndice('foto pediu');
     if (!IDX_PROD.ts || !Array.isArray(IDX_PROD.itens)) return null;
     const bruto = String(chave || '').trim();
     if (!bruto) return null;
     const alvo = bruto.toUpperCase();
-    const it = IDX_PROD.itens.find(
-      (x) => String(x.sku || x.codigo || '').toUpperCase() === alvo
-        || String(x.id || '') === bruto);
+    const it = IDX_PROD.itens.find((x) => String(x.sku || x.codigo || '').toUpperCase() === alvo)
+      || IDX_PROD.itens.find((x) => String(x.id || '') === bruto);
     if (!it) return null;
     if (it.imagem) return it.imagem;
     if (it.pai) {
