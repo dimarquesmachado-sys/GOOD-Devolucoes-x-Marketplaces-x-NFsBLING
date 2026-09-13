@@ -21,8 +21,10 @@ const rota = fs.readFileSync(path.join(RAIZ, 'lib', 'rotas-admin-nf.js'), 'utf8'
 
 // ── o servidor passa a consulta ao índice ───────────────────────────
 {
-  ok(/fotoDoIndice: \(sku\) => \{/.test(srv),
+  ok(/fotoDoIndice: \(chave\) => \{/.test(srv),
      'o server passa `fotoDoIndice` pra rota');
+  ok(/String\(x\.id \|\| ''\) === bruto/.test(srv),
+     '⚠️ e ela aceita SKU **e** ID (as 2 telas mandam chaves diferentes)');
 
   // ⚠️ uma FUNÇÃO, não o objeto: assim a rota lê o estado ATUAL do índice,
   // não uma foto do momento em que o servidor subiu
@@ -45,14 +47,20 @@ const rota = fs.readFileSync(path.join(RAIZ, 'lib', 'rotas-admin-nf.js'), 'utf8'
 {
   const normProd = (s) => String(s || '').toUpperCase().trim();
   const IDX = { ts: Date.now(), itens: [
-    { sku: 'LV-ASH-4', imagem: 'https://x/foto.jpg' },
+    { id: '16234567', sku: 'LV-ASH-4', imagem: 'https://x/foto.jpg' },
     { sku: 'PT-06-ROSA', imagem: null },
   ] };
-  const fotoDoIndice = (sku) => {
+  // ⚠️ b315.1 (Codex): as duas telas chamam a rota com chaves DIFERENTES —
+  // `lancar-defeito.js` manda `p.id`, `defeitos-ficha.js` manda o SKU.
+  // Minha 1a versao so procurava por SKU: o modal de lançar defeito (de
+  // onde veio a reclamacao) continuaria indo no Bling. Meio conserto.
+  const fotoDoIndice = (chave) => {
     if (!IDX.ts || !Array.isArray(IDX.itens)) return null;
-    const alvo = normProd(sku);
-    if (!alvo) return null;
-    const it = IDX.itens.find((x) => normProd(x.sku) === alvo);
+    const bruto = String(chave || '').trim();
+    if (!bruto) return null;
+    const alvo = normProd(bruto);
+    const it = IDX.itens.find((x) => normProd(x.sku) === alvo
+      || String(x.id || '') === bruto);
     return (it && it.imagem) || null;
   };
   ok(fotoDoIndice('LV-ASH-4') === 'https://x/foto.jpg', '  acha pelo SKU');
@@ -61,6 +69,8 @@ const rota = fs.readFileSync(path.join(RAIZ, 'lib', 'rotas-admin-nf.js'), 'utf8'
      '  ⚠️ entrada SEM imagem cai no Bling (nao devolve vazio como se fosse foto)');
   ok(fotoDoIndice('NAO-EXISTE') === null, '  e SKU fora do indice tambem');
   ok(fotoDoIndice('') === null, '  e sku vazio nao quebra');
+  ok(fotoDoIndice('16234567') === 'https://x/foto.jpg',
+     '⚠️ e acha pelo ID tambem (o modal de lançar manda `p.id`, nao o SKU)');
 }
 
 console.log('');

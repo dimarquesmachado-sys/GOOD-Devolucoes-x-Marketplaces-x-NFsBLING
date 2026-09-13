@@ -395,7 +395,7 @@ app.get('/health', (req, res) => {
       // busca por nome. Escolher um lado apagaria a descricao do outro.
       // ⚠️ a resolucao JUNTA as duas: a 7.5.0 (passe curto + tetos) ja esta
       // na main, e este PR acrescenta o build frio que falha vazio.
-      version: '9.6.1 (a foto vem do INDICE antes do Bling; e a contagem por aba com caminho de reserva)',
+      version: '9.6.2 (revisao Codex #271: a foto pelo indice aceita SKU E ID — as 2 telas mandam chaves diferentes)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -8006,12 +8006,23 @@ registrarRotasAdminNF(app, {
   // O indice ja tem as imagens (1091 produtos, cada um com `imagem`). Passo
   // a funcao de consulta em vez do objeto: assim a rota le o estado ATUAL,
   // nao uma foto do momento em que o servidor subiu.
-  fotoDoIndice: (sku) => {
+  // ⚠️ b315.1 (Codex, P2) - ACEITA SKU **E** ID.
+  //
+  // As duas telas chamam a mesma rota com chaves DIFERENTES:
+  //   lancar-defeito.js -> `p.id`        (o id do Bling)
+  //   defeitos-ficha.js -> `dataset.sku` (o codigo)
+  //
+  // Minha versao so procurava por SKU, entao o modal de lançar defeito —
+  // que e de onde veio a reclamacao — continuaria indo no Bling e falhando
+  // com a conta em pausa. Meio conserto.
+  fotoDoIndice: (chave) => {
     if (!IDX_PROD.ts || !Array.isArray(IDX_PROD.itens)) return null;
-    const alvo = normProd(String(sku || ''));
-    if (!alvo) return null;
+    const bruto = String(chave || '').trim();
+    if (!bruto) return null;
+    const alvo = normProd(bruto);
     const it = IDX_PROD.itens.find(
-      (x) => normProd(String(x.sku || x.codigo || '')) === alvo);
+      (x) => normProd(String(x.sku || x.codigo || '')) === alvo
+        || String(x.id || '') === bruto);
     return (it && it.imagem) || null;
   },
 });
