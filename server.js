@@ -395,7 +395,7 @@ app.get('/health', (req, res) => {
       // busca por nome. Escolher um lado apagaria a descricao do outro.
       // ⚠️ a resolucao JUNTA as duas: a 7.5.0 (passe curto + tetos) ja esta
       // na main, e este PR acrescenta o build frio que falha vazio.
-      version: '9.6.4 (foto pelo indice: aceita URL sem extensao, aceita SKU e ID, e nao casa SKU por acento)',
+      version: '9.6.5 (revisao Codex #271, rodada 3: indice acorda sozinho na 1a foto, resolve variacao pelo pai, e retry apos falha transitoria no EAN)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -4091,6 +4091,12 @@ async function construirIndiceProdutos() {
           eans: eansCache || undefined,
           eansCarregados: !!eansCache,
           imagem: imgCache,
+          // revisao Codex #271 (rodada 3, P2): o PAI da variacao, quando o
+          // Bling manda (a listagem ja traz `produtoPai` as vezes). A foto
+          // da variacao costuma estar so no pai — mesmo caso ja tratado no
+          // fallback via Bling (rota /api/produto/imagem, passo
+          // "pai_da_variacao" / test/imagem-da-variacao.test.js).
+          pai: (p.produtoPai && p.produtoPai.id) || null,
           busca: normProd(skuItem + ' ' + (p.nome || '') + ' ' + ((eansCache || []).join(' ') || p.gtin || '')),
         });
       }
@@ -4134,31 +4140,46 @@ function enriquecerEansEmBackground() {
   (async () => {
     console.log(`[PRODUTOS] buscando EAN de ${fila.length} produtos (background)...`);
     for (const p of fila) {
+      // revisao Codex #271 (rodada 3, P2): so marca `eansCarregados` em
+      // SUCESSO. Antes, uma falha TRANSITORIA (Bling em pausa, timeout)
+      // marcava do mesmo jeito — e como o indice so monta UMA VEZ por vida
+      // do processo (`tentarConstruirIndice` nao reconstroi com ts
+      // preenchido), o produto ficava sem EAN/imagem pro resto do deploy,
+      // mesmo depois do Bling voltar. Falha agora deixa o item na fila; o
+      // loop de baixo (`retoma o que ficou`) tenta de novo.
       try {
         await esperarVezDetalhe();                        // v4.67 - ritmo global
         const r = await chamarBling(`https://api.bling.com.br/Api/v3/produtos/${p.id}`);
-        const det = (r && r.ok && ((r.data && r.data.data) || r.data)) || null;
-        const eans = possiveisGtins(det);
-        p.eans = eans;
-        p.eansCarregados = true;
-        if (eans.length) {
-          p.ean = eans[0];
-          p.busca = normProd(p.sku + ' ' + p.nome + ' ' + eans.join(' '));
-          EAN_POR_SKU.set(String(p.sku || '').toUpperCase(), eans); // v4.07: sobrevive ao rebuild
-          EAN_PROGRESSO.comEan++;
+        if (r && r.ok) {
+          const det = (r.data && r.data.data) || r.data || null;
+          const eans = possiveisGtins(det);
+          p.eans = eans;
+          p.eansCarregados = true;
+          if (eans.length) {
+            p.ean = eans[0];
+            p.busca = normProd(p.sku + ' ' + p.nome + ' ' + eans.join(' '));
+            EAN_POR_SKU.set(String(p.sku || '').toUpperCase(), eans); // v4.07: sobrevive ao rebuild
+            EAN_PROGRESSO.comEan++;
+          }
+          // v4.08 - mesma leitura ja traz a imagem (sem chamada extra)
+          // ⚠️ b315.2: idem no DETALHE — o mesmo produto sem extensao na URL
+          // ficava sem imagem pelos dois caminhos de popular o indice.
+          const img = imagemDoProduto(det) || extrairImagem(det);
+          if (img) { p.imagem = img; IMG_POR_SKU.set(String(p.sku || '').toUpperCase(), img); }
+          // revisao Codex #271 (rodada 3, P2): o pai as vezes so vem no
+          // DETALHE, nao na listagem — guarda se a listagem ainda nao tinha.
+          if (!p.pai && det && det.produtoPai && det.produtoPai.id) p.pai = det.produtoPai.id;
         }
-        // v4.08 - mesma leitura ja traz a imagem (sem chamada extra)
-        // ⚠️ b315.2: idem no DETALHE — o mesmo produto sem extensao na URL
-        // ficava sem imagem pelos dois caminhos de popular o indice.
-        const img = imagemDoProduto(det) || extrairImagem(det);
-        if (img) { p.imagem = img; IMG_POR_SKU.set(String(p.sku || '').toUpperCase(), img); }
-      } catch (e) { p.eansCarregados = true; }
+      } catch (e) { /* falha transitoria: fica na fila, tenta de novo depois */ }
       EAN_PROGRESSO.feitos++;
       await new Promise(r2 => setTimeout(r2, 340));
     }
     EAN_PROGRESSO.concluido = true;
     console.log(`[PRODUTOS] EANs prontos: ${EAN_PROGRESSO.comEan} de ${fila.length} (cache: ${EAN_POR_SKU.size} SKUs)`);
     // v4.07 - se o indice foi reconstruido no meio do caminho, retoma o que ficou
+    // revisao Codex #271 (rodada 3, P2): agora tambem pega quem falhou por
+    // transitorio (Bling em pausa) — esses ficam com `eansCarregados` falso
+    // de proposito
     if (IDX_PROD.itens.some(x => x.id && !x.eansCarregados)) {
       EAN_RODANDO = false;
       setTimeout(() => enriquecerEansEmBackground(), 1500);
@@ -8034,7 +8055,23 @@ registrarRotasAdminNF(app, {
   // MESMO alvo e a rota podia devolver (e CACHEAR) a foto do produto
   // errado. Troco pelo criterio exato (so maiuscula) que o resolvedor de
   // defeito ja usa pro codigo do Bling; a comparacao por id continua igual.
+  //
+  // revisao Codex #271 (rodada 3, P2): DUAS lacunas a mais.
+  //
+  // 1) SE O INDICE AINDA NAO MONTOU (`IDX_PROD.ts` zero — primeira tela
+  //    aberta apos um deploy), eu so devolvia null e a chamada ia direto
+  //    pro Bling, sem disparar a construcao. A busca por nome ja faz isso
+  //    (`tentarConstruirIndice('busca pediu')`, linha ~4670) — replico
+  //    aqui, senao a tela de defeitos nunca e quem acorda o indice.
+  //
+  // 2) O PAI DA VARIACAO: no Bling a foto da variacao costuma estar SO no
+  //    pai (mesmo caso do fallback via Bling, passo "pai_da_variacao" /
+  //    test/imagem-da-variacao.test.js). O indice agora guarda `pai` (o
+  //    `produtoPai.id` que a listagem ou o detalhe trazem) — se o proprio
+  //    item nao tem foto, busco a do pai TAMBEM NO INDICE (sem chamada
+  //    extra ao Bling).
   fotoDoIndice: (chave) => {
+    if (!IDX_PROD.ts && !IDX_PROD.construindo) tentarConstruirIndice('foto pediu');
     if (!IDX_PROD.ts || !Array.isArray(IDX_PROD.itens)) return null;
     const bruto = String(chave || '').trim();
     if (!bruto) return null;
@@ -8042,7 +8079,13 @@ registrarRotasAdminNF(app, {
     const it = IDX_PROD.itens.find(
       (x) => String(x.sku || x.codigo || '').toUpperCase() === alvo
         || String(x.id || '') === bruto);
-    return (it && it.imagem) || null;
+    if (!it) return null;
+    if (it.imagem) return it.imagem;
+    if (it.pai) {
+      const pai = IDX_PROD.itens.find((x) => String(x.id || '') === String(it.pai));
+      if (pai && pai.imagem) return pai.imagem;
+    }
+    return null;
   },
 });
 
