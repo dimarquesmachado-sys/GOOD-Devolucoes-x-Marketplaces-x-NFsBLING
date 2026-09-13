@@ -395,7 +395,7 @@ app.get('/health', (req, res) => {
       // busca por nome. Escolher um lado apagaria a descricao do outro.
       // ⚠️ a resolucao JUNTA as duas: a 7.5.0 (passe curto + tetos) ja esta
       // na main, e este PR acrescenta o build frio que falha vazio.
-      version: '8.5.0 (revisao Codex #257: ficha-no-card com a variavel certa e o resto dos 9 apontamentos; match do SKU com acento; pai da variacao pelo campo do Bling)',
+      version: '8.6.1 (revisao Codex #260: termoBusca vivia dentro do if vazio e ficava undefined no ramo com resultado — o botao da 8.6.0 nunca aparecia no proprio caso que motivou ele; agora manda o SKU achado, nao o termo digitado, e fecha a caixa de busca so depois que o modal abre)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
