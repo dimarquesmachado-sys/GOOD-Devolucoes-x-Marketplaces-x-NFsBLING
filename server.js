@@ -395,7 +395,7 @@ app.get('/health', (req, res) => {
       // busca por nome. Escolher um lado apagaria a descricao do outro.
       // ⚠️ a resolucao JUNTA as duas: a 7.5.0 (passe curto + tetos) ja esta
       // na main, e este PR acrescenta o build frio que falha vazio.
-      version: '9.4.1 (revisao Codex #269 rodada 2: exclusao-por-marca fica atomica no /estado, entra no /excluir idempotente, na ficha e nos relatorios, e o filtro de estoque roda antes do .limit)',
+      version: '9.5.0 (excluir mantem na mesma aba, e a aba Excluidos passa a ser contada — mostrava 0 sempre)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),

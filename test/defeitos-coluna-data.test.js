@@ -177,7 +177,13 @@ ok(GOOD.indexOf("if (fora.length)") < GOOD.indexOf('.limit(limiteDaConsulta'),
 ok(/\.or\(cond\)/.test(GOOD), 'a consulta usa a condicao da aba');
 ok(/buscar\(q, estado, porPedido\)/.test(GOOD), 'a busca recebe a aba e o historico por pedido');
 // seg4.4: a contagem tambem nao pode passar pelo limite compartilhado
-ok(/for \(const aba of \['defeito', 'recuperado', 'descartado'\]\)/.test(GOOD),
+// ⚠️ b314: a lista de abas CRESCE (entrou `excluido`, porque o botao
+// mostrava 0 mesmo com registros la). O que este teste guarda e que a
+// contagem seja feita ABA POR ABA — nao QUAIS abas existem hoje.
+//
+// Fixar os nomes fazia o teste reprovar a cada aba nova, e o vermelho
+// legitimo se perde no meio do falso.
+ok(/for \(const aba of \[('[a-z]+',? ?)+\]\)/.test(GOOD),
    'a contagem consulta ABA POR ABA (com o total acima de 300, o numero da aba ficava MENOR que a lista exibida)');
 ok(/buscar\(termoContagem, aba, porPedido\)/.test(GOOD), '  cada aba com o seu proprio limite');
 

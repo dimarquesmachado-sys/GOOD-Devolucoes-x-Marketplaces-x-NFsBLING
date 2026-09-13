@@ -185,7 +185,18 @@
       var r = await api('/api/defeitos/' + encodeURIComponent(id) + '/excluir',
         { method: 'POST', body: JSON.stringify({ motivo: motivo }) });
       if (r && r.ok) {
-        abaAtual = 'excluido';   // v4.85 - leva direto pra aba dos excluidos
+        // b314 - ⚠️ FICA NA MESMA ABA. Nao joga pros Excluidos.
+        //
+        // [stated 13/09] "o melhor era só excluir sumir o card e manter na
+        // tela dos defeitos, e não jogar a gente pro card dos excluídos. se
+        // excluí, quero tirar da frente. me deixa na mesma tela."
+        //
+        // O `abaAtual = excluido` levava pra outra aba — e quem esta limpando
+        // varios registros perde o lugar a cada exclusao, e tem que voltar e
+        // rolar de novo.
+        //
+        // 📌 O card some sozinho: a lista recarrega e o filtro da b310 esconde
+        // quem tem a marca. Nao preciso remover na mao.
         if (typeof abrirBuscaDefeitos === 'function') abrirBuscaDefeitos();
       } else if (msg) {
         msg.innerHTML = '<span style="color:#8C1D18;">' + esc((r && r.erro) || 'não consegui excluir') + '</span>';
