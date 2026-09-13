@@ -395,7 +395,7 @@ app.get('/health', (req, res) => {
       // busca por nome. Escolher um lado apagaria a descricao do outro.
       // ⚠️ a resolucao JUNTA as duas: a 7.5.0 (passe curto + tetos) ja esta
       // na main, e este PR acrescenta o build frio que falha vazio.
-      version: '8.9.1 (revisao Codex #264: o fallback por status estava no /restaurar em vez do /excluir, o de recuperar/descartar gravava concluido de novo — no-op — e a exclusao-por-status nao aparecia nem podia ser restaurada)',
+      version: '8.9.2 (o reagendamento do indice dispara de verdade; e o ciclo do defeito cai pro status)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -3984,27 +3984,51 @@ function normProd(t) {
 //
 // Esta funcao registra a falha e REAGENDA com espera crescente — porque a
 // pausa do porteiro passa, e quando passar vale tentar de novo.
+// b305 - ⚠️ Codex (#262): o reagendamento acima NUNCA disparava.
+//
+// `construirIndiceProdutos()` nao rejeita quando o Bling recusa a pagina
+// (o `if (!r || !r.ok) break` so sai do loop) — ela SEMPRE resolve, e as
+// linhas de baixo gravam `IDX_PROD.ts` de qualquer jeito, erro ou nao. Duas
+// consequencias, as duas silenciosas:
+//   1. o `.then()` via `if (IDX_PROD.ts)` batia com erro E ts preenchidos,
+//      logava "montado" e zerava as tentativas — a falha real nunca
+//      reagendava nada.
+//   2. pior: com `IDX_PROD.ts` preenchido, o guard no topo desta funcao
+//      (`if (IDX_PROD.ts || ...) return`) passa a barrar QUALQUER futura
+//      chamada — inclusive a que o proprio setTimeout ia fazer. O indice
+//      ficava morto pra sempre no primeiro erro, exatamente como antes do
+//      b304, so que agora com o erro anotado e ainda assim sem reagendar.
+//
+// O guard e o `.then()` agora conferem `IDX_PROD.erro` alem do `ts`: so
+// conta como "montado" quando NAO ha erro. Com erro, os dois caminhos
+// (`.then()` e `.catch()`) caem no mesmo `reagendarIndice()`.
 let _tentativasIndice = 0;
 function tentarConstruirIndice(motivo) {
-  if (IDX_PROD.ts || IDX_PROD.construindo) return;
+  if ((IDX_PROD.ts && !IDX_PROD.erro) || IDX_PROD.construindo) return;
   construirIndiceProdutos()
     .then(() => {
-      if (IDX_PROD.ts) {
+      if (IDX_PROD.ts && !IDX_PROD.erro) {
         _tentativasIndice = 0;
         console.log(`[IDX_PROD] montado (${(IDX_PROD.itens || []).length} produtos) — ${motivo}`);
+        return;
       }
+      reagendarIndice();
     })
     .catch((e) => {
-      _tentativasIndice += 1;
       // ⚠️ o erro vai pro IDX_PROD.erro: e o que o /health mostra, e foi a
       // falta dele que me deixou supondo
       IDX_PROD.erro = String((e && e.message) || e).slice(0, 200);
-      // espera crescente, teto de 5 min: a pausa do porteiro dura pouco,
-      // mas se a conta estiver castigada nao adianta martelar
-      const esperaS = Math.min(30 * Math.pow(2, _tentativasIndice - 1), 300);
-      console.log(`[IDX_PROD] falhou (${IDX_PROD.erro}) — tento de novo em ${esperaS}s`);
-      setTimeout(() => tentarConstruirIndice('nova tentativa'), esperaS * 1000);
+      reagendarIndice();
     });
+}
+
+function reagendarIndice() {
+  _tentativasIndice += 1;
+  // espera crescente, teto de 5 min: a pausa do porteiro dura pouco,
+  // mas se a conta estiver castigada nao adianta martelar
+  const esperaS = Math.min(30 * Math.pow(2, _tentativasIndice - 1), 300);
+  console.log(`[IDX_PROD] falhou (${IDX_PROD.erro}) — tento de novo em ${esperaS}s`);
+  setTimeout(() => tentarConstruirIndice('nova tentativa'), esperaS * 1000);
 }
 
 async function construirIndiceProdutos() {
