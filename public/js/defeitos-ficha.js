@@ -707,7 +707,23 @@
    * pausa: sao chamadas ao Bling.
    */
   async function buscarFotosDefeitos(itens) {
-    for (var i = 0; i < itens.length && i < 12; i++) {
+    // b320 - ⚠️ O TETO DE 12 DEIXAVA 34 CARDS SEM PEDIR FOTO.
+    //
+    // [stated 13/09] "ainda sem imagens", com ~70% dos cards no
+    // placeholder. A lista tem 46 pecas e este laco parava no 12o — os
+    // outros 34 NUNCA chamavam a rota.
+    //
+    // 📌 E FOI O QUE ME ENGANOU O DIA TODO: os primeiros cards tinham foto
+    // (ja estavam no cache do servidor), entao parecia que a busca
+    // funcionava e o problema era o indice ou o Bling. Eu media o indice,
+    // media a rota — os dois certos — e nao olhava o LACO da tela.
+    //
+    // ⚠️ O teto existia porque cada foto era uma chamada ao BLING. Agora
+    // a rota resolve pelo INDICE LOCAL (b315), que nao gasta cota: da pra
+    // pedir todas. Mantenho um teto alto so pra nao disparar centenas de
+    // requisicoes de uma vez numa lista gigante.
+    var TETO_FOTOS = 60;
+    for (var i = 0; i < itens.length && i < TETO_FOTOS; i++) {
       var cx = document.getElementById('fotodef-' + i);
       if (!cx || !cx.dataset.sku || cx.dataset.sku === '-') continue;
       try {
@@ -720,7 +736,10 @@
             + 'background:#fff;border:1px solid #e4dcf1;cursor:zoom-in;">';
         }
       } catch (e) { /* sem foto nao atrapalha */ }
-      await new Promise(function (r) { setTimeout(r, 140); });
+      // ⚠️ b320: a pausa existia porque cada foto ia ao BLING. Agora a rota
+      // resolve pelo indice local, que nao gasta cota — 40ms so pra nao
+      // travar a tela enquanto pinta. Com 46 itens: 6s virava 1,8s.
+      await new Promise(function (r) { setTimeout(r, 40); });
     }
   }
 
