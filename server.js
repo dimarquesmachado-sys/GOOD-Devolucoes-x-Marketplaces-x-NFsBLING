@@ -395,7 +395,7 @@ app.get('/health', (req, res) => {
       // busca por nome. Escolher um lado apagaria a descricao do outro.
       // ⚠️ a resolucao JUNTA as duas: a 7.5.0 (passe curto + tetos) ja esta
       // na main, e este PR acrescenta o build frio que falha vazio.
-      version: '8.9.2 (o reagendamento do indice dispara de verdade; e o ciclo do defeito cai pro status)',
+      version: '9.0.0 (a busca dispara o indice na hora quando ele nao existe, e o boot agenda em 5s — a janela apos o deploy jogava tudo no Bling)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -4558,7 +4558,23 @@ app.get('/api/produtos/buscar', requerEstoquista, async (req, res) => {
     //
     // ⚠️ Agora ele sabe NA HORA por que esta lento, e pode esperar sem
     // achar que travou.
-    if (!IDX_PROD.ts && IDX_PROD.construindo) {
+    // b306 - ⚠️ COBRE A JANELA INTEIRA, nao so o "construindo".
+    //
+    // [stated 13/09] "agora ta demorando mto pra achar o produto (...)
+    // pq isso? que inferno."
+    //
+    // Meu aviso anterior so pegava `construindo: true`. Mas ENTRE o boot
+    // e os 20s do agendamento, `ts` e null e `construindo` e FALSE —
+    // entao a busca passava direto e ia no Bling, que e lento.
+    //
+    // ⚠️ E ISSO ACONTECE DEPOIS DE CADA DEPLOY. Fizemos dezenas hoje, e
+    // o dono caiu nessa janela varias vezes sem entender por que.
+    //
+    // Agora: sem indice montado, DISPARO a construcao na hora (nao
+    // espero o agendamento) e aviso. Fica rapida em 1-2 min, e ele sabe
+    // por que esperar em vez de achar que travou.
+    if (!IDX_PROD.ts) {
+      tentarConstruirIndice('busca chegou antes do indice');
       return res.json({
         ok: true,
         produtos: [],
@@ -8064,7 +8080,14 @@ drenagem.daquiA(() => {
 
 drenagem.daquiA(() => nfNomes.preAquecer(), 20 * 1000 + ESPACO);
 // v4.04 - catalogo de produtos pre-aquecido (a busca do estoquista nunca espera)
-drenagem.daquiA(() => { tentarConstruirIndice('boot'); }, 20 * 1000 + ESPACO * 3);
+// b306 - ⚠️ 20s -> 5s: a janela entre o boot e o agendamento e o que fazia
+// a busca cair no Bling depois de cada deploy.
+//
+// O espacamento do boot existe pra nao dar avalanche de chamadas (b213),
+// e por isso mantenho o ESPACO. Mas 20s de espera fixa antes de COMECAR
+// era tempo morto puro: o indice e o que deixa a busca instantanea, e a
+// tela de lançar defeito e das primeiras que o galpao abre.
+drenagem.daquiA(() => { tentarConstruirIndice('boot'); }, 5 * 1000 + ESPACO * 3);
 // v4.20 - a busca da data REAL de entrega roda sozinha, em ciclo proprio.
 // Antes so era disparada quando alguem abria o painel - e como o indice do ML
 // zera a cada deploy e leva ~2 min pra montar, o cache nunca enchia e o alerta
