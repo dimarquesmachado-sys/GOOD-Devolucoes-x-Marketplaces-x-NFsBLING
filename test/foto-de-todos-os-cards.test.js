@@ -59,27 +59,25 @@ const front = fs.readFileSync(
      '  e a busca procura pelo mesmo indice');
 }
 
-// ── ⚠️ e PARA se começar a cair no Bling ────────────────────────────
+// ── ⚠️ e o orçamento de Bling não cresce com o teto ─────────────────
 //
 // Apontamento do Codex (P1): com o índice quente, os 60 pedidos são 60
 // respostas locais e ZERO chamada ao Bling. Mas com o índice FRIO, cada um
-// vira chamada — e 60 de uma vez é a avalanche que já derrubou o serviço.
+// vira até 4 chamadas — e 60 de uma vez é a avalanche que já derrubou o
+// serviço.
 //
-// 📌 O limite é por COMPORTAMENTO (de onde a resposta veio), não por um
-// número escolhido no chute.
+// 📌 A solução do robô é melhor que a minha (que era PARAR): os primeiros
+// 12 mantêm o orçamento de Bling que sempre tiveram, e do 13º em diante o
+// pedido vai com `semBling=1` — pede a foto, mas aceita ficar sem se o
+// índice não tiver. Assim as 46 são pedidas E a cota fica protegida.
 {
-  ok(/var foraDoIndice = 0;/.test(front),
-     '⚠️ conta quantas respostas NAO vieram do indice');
-  ok(/if \(d && d\.via && d\.via !== 'indice'\) foraDoIndice\+\+;/.test(front),
-     '  usando o `via` que a rota devolve');
-  ok(/if \(foraDoIndice > 8\) \{[\s\S]{0,200}break;/.test(front),
-     '  ⚠️ e PARA quando passa de 8 (indice frio: tenta de novo na proxima abertura)');
+  ok(/semBling/.test(front),
+     '⚠️ os cards alem do orcamento pedem com `semBling`');
 
-  // ⚠️ a guarda tem que vir ANTES de pintar, senão pinta e só depois para
-  const iGuarda = front.indexOf('if (foraDoIndice > 8)');
-  const iPinta = front.indexOf('if (d && d.ok && d.imagem)', iGuarda - 900);
-  ok(iGuarda > 0 && iGuarda < front.indexOf('cx.outerHTML', iGuarda - 900),
-     '  e a guarda vem antes de pintar');
+  const rota = fs.readFileSync(
+    path.join(__dirname, '..', 'lib', 'rotas-admin-nf.js'), 'utf8');
+  ok(/req\.query\.semBling/.test(rota),
+     '  e a ROTA respeita o parametro (os 2 lados, nao so o front)');
 }
 
 console.log('');

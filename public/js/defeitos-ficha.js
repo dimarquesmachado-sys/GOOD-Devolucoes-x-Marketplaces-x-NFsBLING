@@ -723,30 +723,19 @@
     // pedir todas. Mantenho um teto alto so pra nao disparar centenas de
     // requisicoes de uma vez numa lista gigante.
     var TETO_FOTOS = 60;
-    // ⚠️ b320.1: conta quantas respostas NAO vieram do indice local
-    var foraDoIndice = 0;
+    // revisao Codex #278 (P1): quando o item NAO esta no indice (frio ou
+    // sem `imagem`), a rota cai num fallback ao Bling com ate 4 chamadas
+    // SEM limite. Isso valia pro teto antigo de 12; abrir pra 60 sem
+    // limite podia gastar ~5x mais cota, disputando com a bipagem.
+    // Mantenho o orcamento de Bling nos primeiros 12 (igual antes) e peco
+    // `semBling=1` pro resto - eles so ganham foto se ja estiver no indice.
+    var TETO_BLING = 12;
     for (var i = 0; i < itens.length && i < TETO_FOTOS; i++) {
       var cx = document.getElementById('fotodef-' + i);
       if (!cx || !cx.dataset.sku || cx.dataset.sku === '-') continue;
       try {
-        var d = await api('/api/produto/imagem/' + encodeURIComponent(cx.dataset.sku));
-        // ⚠️ b320.1 (Codex, P1) - PARO SE COMECAR A CAIR NO BLING.
-        //
-        // Com o indice quente, os 60 pedidos sao 60 respostas locais e ZERO
-        // chamada ao Bling. Mas com o indice FRIO (logo apos o boot, ou
-        // produto sem `imagem`), cada um vira chamada — e 60 de uma vez e a
-        // avalanche que ja derrubou o servico antes.
-        //
-        // A rota diz de onde veio (`via`). Se passar de 8 que NAO vieram do
-        // indice, paro: as fotos que faltam entram na proxima abertura, quando
-        // o indice ja estiver quente.
-        //
-        // 📌 O limite e por COMPORTAMENTO, nao por um numero que eu chutei.
-        if (d && d.via && d.via !== 'indice') foraDoIndice++;
-        if (foraDoIndice > 8) {
-          console.log('[DEFEITOS] parei de pedir foto: indice ainda frio');
-          break;
-        }
+        var semBling = i >= TETO_BLING ? '?semBling=1' : '';
+        var d = await api('/api/produto/imagem/' + encodeURIComponent(cx.dataset.sku) + semBling);
         if (d && d.ok && d.imagem) {
           cx.outerHTML = '<img src="' + esc(d.imagem) + '" alt="" '
             + 'onclick="event.stopPropagation();window.open(this.src,\'_blank\')" '
