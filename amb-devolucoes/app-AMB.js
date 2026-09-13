@@ -168,7 +168,12 @@ const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 // alargada "volta ao amplo" que ja existia antes deste PR, so que agora
 // virando um head-count sem o filtro de JS por cima). A AMB nunca teve
 // MAX_IDS_NA_URL nem contarAba() (mesmo grep do b315) - nada a espelhar.
-const VERSAO = 'AMB Devolucoes b317';
+// b317 - revisao Codex #272 (GOOD): fila do enriquecimento de fotos passa
+// a reagir a pedido chegado NO MEIO da varredura, e a rota espera uma
+// chance curta do passo priorizado antes de cair no Bling. A AMB nunca
+// teve FOTOS_PEDIDAS/fotoDoIndice/enriquecerEansEmBackground (mesmo grep
+// do b316) - nada a espelhar.
+const VERSAO = 'AMB Devolucoes b318';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();

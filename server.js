@@ -395,7 +395,7 @@ app.get('/health', (req, res) => {
       // busca por nome. Escolher um lado apagaria a descricao do outro.
       // ⚠️ a resolucao JUNTA as duas: a 7.5.0 (passe curto + tetos) ja esta
       // na main, e este PR acrescenta o build frio que falha vazio.
-      version: '9.7.1 (o /health mostra quantas fotos o indice ja tem — sem isso eu nao distingo o passo nao rodou de nao achou)',
+      version: '9.8.0 (a fila de fotos reage a pedido no meio da varredura; e o /health mostra quantas fotos o indice ja tem)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -4156,31 +4156,45 @@ const EAN_PROGRESSO = { feitos: 0, total: 0, comEan: 0, concluido: false };
 function enriquecerEansEmBackground() {
   if (EAN_RODANDO) return;
   const fila = IDX_PROD.itens.filter(p => p.id && !p.eansCarregados);
-  // b316 - ⚠️ QUEM A TELA PEDIU VAI NA FRENTE.
+  if (fila.length === 0) { EAN_PROGRESSO.concluido = true; return; }
+  EAN_RODANDO = true;
+  EAN_PROGRESSO.total = fila.length;
+  EAN_PROGRESSO.feitos = 0;
+  EAN_PROGRESSO.concluido = false;
+  // b316 - ⚠️ QUEM A TELA PEDIU VAI NA FRENTE — MESMO QUEM PEDIU DEPOIS DO
+  // COMECO DA VARREDURA.
   //
   // A varredura na ordem do catalogo leva 6,4 min pra 1091 produtos, e
   // o Render reinicia antes de terminar — entao os ultimos NUNCA ganham
   // foto. Com a conta em pausa, pior: as poucas chamadas que passam sao
   // gastas em produtos que ninguem esta olhando.
   //
-  // As ~46 pecas do Estoque de Defeitos ganham foto em segundos assim.
-  if (FOTOS_PEDIDAS.length) {
-    const pedido = (p) => {
-      const sku = String(p.sku || p.codigo || '').toUpperCase();
-      const id = String(p.id || '');
-      return FOTOS_PEDIDAS.some((c) => String(c).toUpperCase() === sku
-        || String(c) === id);
-    };
-    fila.sort((a, b) => (pedido(b) ? 1 : 0) - (pedido(a) ? 1 : 0));
-  }
-  if (fila.length === 0) { EAN_PROGRESSO.concluido = true; return; }
-  EAN_RODANDO = true;
-  EAN_PROGRESSO.total = fila.length;
-  EAN_PROGRESSO.feitos = 0;
-  EAN_PROGRESSO.concluido = false;
+  // revisao Codex #272 (P1): a 1a versao so ordenava UMA VEZ, no snapshot
+  // de antes do loop comecar — um SKU pedido depois que a varredura ja
+  // estava em andamento ficava com a posicao original no catalogo (podia
+  // ser o ultimo dos 1091) e o `EAN_RODANDO` impedia reconstruir a fila.
+  // Exatamente o cenario que este passo existe pra resolver (Render
+  // reiniciando antes do fim) continuava sem prioridade. Agora cada item
+  // e escolhido NA HORA de processar, olhando `FOTOS_PEDIDAS` de novo —
+  // um pedido que chega no meio da varredura fura a fila no proximo item.
+  const pedido = (p) => {
+    if (!FOTOS_PEDIDAS.length) return false;
+    const sku = String(p.sku || p.codigo || '').toUpperCase();
+    const id = String(p.id || '');
+    return FOTOS_PEDIDAS.some((c) => String(c).toUpperCase() === sku
+      || String(c) === id);
+  };
+  const proximoDaFila = () => {
+    if (FOTOS_PEDIDAS.length) {
+      const idx = fila.findIndex(pedido);
+      if (idx !== -1) return fila.splice(idx, 1)[0];
+    }
+    return fila.shift();
+  };
   (async () => {
-    console.log(`[PRODUTOS] buscando EAN de ${fila.length} produtos (background)...`);
-    for (const p of fila) {
+    console.log(`[PRODUTOS] buscando EAN de ${EAN_PROGRESSO.total} produtos (background)...`);
+    let p;
+    while ((p = proximoDaFila())) {
       // revisao Codex #271 (rodada 3, P2): so marca `eansCarregados` em
       // SUCESSO. Antes, uma falha TRANSITORIA (Bling em pausa, timeout)
       // marcava do mesmo jeito — e como o indice so monta UMA VEZ por vida
@@ -4216,7 +4230,7 @@ function enriquecerEansEmBackground() {
       await new Promise(r2 => setTimeout(r2, 340));
     }
     EAN_PROGRESSO.concluido = true;
-    console.log(`[PRODUTOS] EANs prontos: ${EAN_PROGRESSO.comEan} de ${fila.length} (cache: ${EAN_POR_SKU.size} SKUs)`);
+    console.log(`[PRODUTOS] EANs prontos: ${EAN_PROGRESSO.comEan} de ${EAN_PROGRESSO.total} (cache: ${EAN_POR_SKU.size} SKUs)`);
     // v4.07 - se o indice foi reconstruido no meio do caminho, retoma o que ficou
     // revisao Codex #271 (rodada 3, P2): agora tambem pega quem falhou por
     // transitorio (Bling em pausa) — esses ficam com `eansCarregados` falso
@@ -8136,6 +8150,10 @@ registrarRotasAdminNF(app, {
   // Bling ja busca por `codigo` antes de tratar a chave como id; replico a
   // ordem aqui: so cai pro id se nao achou por SKU/codigo.
   // b316: a tela avisa quais SKUs precisa — eles furam a fila
+  // revisao Codex #272 (P1): so anotar nao adiantava se o passo estava
+  // PARADO entre uma rodada e outra — o retry so acorda sozinho depois de
+  // 1500ms (linha ~4222). Acorda na hora: se o passo nao esta rodando,
+  // dispara agora (a funcao ja checa `EAN_RODANDO` e sai se ja estiver).
   anotarFotoPedida: (chave) => {
     const c = String(chave || '').trim();
     if (!c) return;
@@ -8145,6 +8163,7 @@ registrarRotasAdminNF(app, {
       // "prioritario" perderia o sentido
       if (FOTOS_PEDIDAS.length > 200) FOTOS_PEDIDAS.shift();
     }
+    if (!EAN_RODANDO) enriquecerEansEmBackground();
   },
   fotoDoIndice: (chave) => {
     if (!IDX_PROD.ts && !IDX_PROD.construindo) tentarConstruirIndice('foto pediu');
