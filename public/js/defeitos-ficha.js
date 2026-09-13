@@ -799,8 +799,29 @@
         if (!cx || !cx.dataset.sku || cx.dataset.sku === '-') continue;
         faltando++;
         try {
+          // ⚠️ b323 - OS PRIMEIROS VOLTAM A PODER USAR O BLING.
+          //
+          // [stated 13/09] "nenhuma imagem d novo".
+          //
+          // O dado que fechou: a MESMA chave responde
+          //   sem `semBling`  -> {"imagem":"https://lh3...","via":"indice"}
+          //   com `semBling`  -> {"imagem":null}
+          //
+          // A primeira veio do CACHE do servidor (populado quando o dono
+          // abriu a URL na mao). O indice em si NAO tem esse produto agora.
+          //
+          // ⚠️ E EU TINHA POSTO `semBling` EM TODOS OS CARDS. Com o indice
+          // frio — que e o estado logo apos cada deploy, e fizemos dezenas
+          // hoje — isso da ZERO foto. Antes, os 12 primeiros iam ao Bling e
+          // apareciam.
+          //
+          // 📌 Volto ao orcamento que sempre existiu: os 12 primeiros podem
+          // usar o Bling (e o que populam fica no cache, valendo pra todos
+          // dali em diante); do 13o em diante, `semBling`. As rodadas
+          // continuam pegando o que o worker for produzindo.
+          var semBling = (rodada > 0 || i >= 12) ? '?semBling=1' : '';
           var d = await api('/api/produto/imagem/'
-            + encodeURIComponent(cx.dataset.sku) + '?semBling=1');
+            + encodeURIComponent(cx.dataset.sku) + semBling);
           if (d && d.ok && d.imagem) {
             cx.outerHTML = '<img src="' + esc(d.imagem) + '" alt="" '
               + 'onclick="event.stopPropagation();window.open(this.src,\'_blank\')" '

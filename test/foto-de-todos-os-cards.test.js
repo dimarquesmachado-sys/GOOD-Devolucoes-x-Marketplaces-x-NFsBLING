@@ -79,11 +79,25 @@ const front = fs.readFileSync(
 
 // ── e todos os cards usam o caminho seguro ──────────────────────────
 {
-  ok(/encodeURIComponent\(cx\.dataset\.sku\)\s*\n?\s*\+ '\?semBling=1'/.test(front)
-     || /\+ '\?semBling=1'/.test(front),
-     'todos os cards pedem com `semBling`');
-  ok(!/TETO_BLING/.test(front),
-     '  ⚠️ e nao ha mais orcamento especial pros 12 primeiros');
+  // ⚠️ b323: `semBling` em TODOS dava ZERO foto com o indice frio — que e
+  // o estado logo apos cada deploy. O dado que fechou: a mesma chave
+  // responde com imagem SEM o parametro e null COM ele.
+  //
+  // Os 12 primeiros da 1a rodada podem usar o Bling (o que eles populam
+  // fica no cache do servidor, valendo pros demais). O resto usa semBling.
+  ok(/var semBling = \(rodada > 0 \|\| i >= 12\) \? '\?semBling=1' : '';/.test(front),
+     '⚠️ os 12 primeiros da 1a rodada podem usar o Bling');
+  ok(/\+ semBling\)/.test(front),
+     '  e o parametro entra na URL');
+
+  // a regra, exercitada
+  const usa = (rodada, i) => ((rodada > 0 || i >= 12) ? 'semBling' : 'bling');
+  ok(usa(0, 0) === 'bling' && usa(0, 11) === 'bling',
+     '  os 12 primeiros da rodada 0: podem Bling');
+  ok(usa(0, 12) === 'semBling' && usa(0, 45) === 'semBling',
+     '  ⚠️ do 13o em diante: semBling (nao estoura a cota)');
+  ok(usa(1, 0) === 'semBling',
+     '  ⚠️ e nas rodadas seguintes TODOS usam semBling (ja esta no cache)');
 }
 
 // ── ⚠️ e o semBling PRIORIZA o worker antes de responder ────────────
