@@ -395,7 +395,7 @@ app.get('/health', (req, res) => {
       // busca por nome. Escolher um lado apagaria a descricao do outro.
       // ⚠️ a resolucao JUNTA as duas: a 7.5.0 (passe curto + tetos) ja esta
       // na main, e este PR acrescenta o build frio que falha vazio.
-      version: '9.3.0 (excluir defeito marca no estado_atual — texto livre, sem depender de coluna com lista fechada)',
+      version: '9.3.1 (revisao Codex #269: exclusao-so-por-marca agora filtra sem derrubar quem tem estado_atual nulo, aparece na aba Excluidos, e e reconhecida por situacaoDe/restaurar/estoque)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -3768,14 +3768,20 @@ app.get('/api/defeitos/por-sku', requerEstoquista, async (req, res) => {
   try {
     const { data, error } = await supabase
       .from('devolucoes')
-      .select('id, created_at, tipo, status, produto_titulo, produto_sku, localizacao, defeito_qtd, problema_descricao, shipment_id')
+      .select('id, created_at, tipo, status, estado_atual, produto_titulo, produto_sku, localizacao, defeito_qtd, problema_descricao, shipment_id')
       .in('tipo', ['problema', 'defeito_estoque'])
       .ilike('produto_sku', sku)
       .order('created_at', { ascending: false })
       .limit(50);
     if (error) return res.status(500).json({ ok: false, erro: error.message });
     // so o que ja esta guardado de fato (regra: devolucao so conta apos a NF)
-    const liberados = (data || []).filter(d => d.tipo === 'defeito_estoque' || d.status === 'concluido');
+    // b311 (revisao Codex #269, P1) - exclusao marcada SO no `estado_atual`
+    // (lib/defeitos-ciclo.js, b310) nao muda `tipo` nem `status`: um
+    // `problema/concluido` excluido assim continuava batendo aqui e
+    // aparecia disponivel pra canibalizar, mesmo ja excluido.
+    const liberados = (data || [])
+      .filter(d => d.tipo === 'defeito_estoque' || d.status === 'concluido')
+      .filter(d => !/REGISTRO EXCLUIDO/.test(String(d.estado_atual || '')));
     if (liberados.length === 0) return res.json({ ok: true, itens: [] });
     // pecas ja retiradas de cada um (pra ele saber o que ainda tem)
     const ids = liberados.map(d => d.id);
@@ -5543,7 +5549,7 @@ app.get('/api/defeitos', requerEstoquista, async (req, res) => { // v3.90: estoq
   try {
     const { data, error } = await supabase
       .from('devolucoes')
-      .select('id, created_at, tipo, produto_titulo, produto_sku, nf_numero, localizacao, defeito_qtd, problema_descricao, status, shipment_id')
+      .select('id, created_at, tipo, produto_titulo, produto_sku, nf_numero, localizacao, defeito_qtd, problema_descricao, status, estado_atual, shipment_id')
       .in('tipo', ['problema', 'defeito_estoque']) // v3.97: devolucao com defeito + defeito lancado do estoque
       .not('localizacao', 'is', null)
       .neq('localizacao', '')
@@ -5568,7 +5574,14 @@ app.get('/api/defeitos', requerEstoquista, async (req, res) => { // v3.90: estoq
     // recuperada/descartada por esse fallback inflava este contador.
     const aguardandoNF = todos.filter(x => x.tipo === 'problema'
       && x.status !== 'concluido' && x.status !== 'cancelled' && x.status !== 'delivered').length;
-    const liberados = todos.filter(x => x.tipo === 'defeito_estoque' || x.status === 'concluido');
+    // b311 (revisao Codex #269, P1) - idem ao /api/defeitos/por-sku: a
+    // exclusao marcada SO no `estado_atual` (b310) nao muda tipo/status,
+    // entao sem este filtro a peca excluida continua "liberada" aqui —
+    // aparecendo no estoque de defeitos e na sugestao de canibalizacao da
+    // triagem como se ainda estivesse disponivel.
+    const liberados = todos
+      .filter(x => x.tipo === 'defeito_estoque' || x.status === 'concluido')
+      .filter(x => !/REGISTRO EXCLUIDO/.test(String(x.estado_atual || '')));
 
     const q = String(req.query.q || '').trim().toUpperCase();
     let itens = liberados.map(d => ({

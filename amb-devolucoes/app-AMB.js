@@ -125,7 +125,17 @@ const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 // busca de produtos tratava indice com falha (`IDX_PROD.ts` preenchido +
 // `erro`) como "montado" - a AMB nao tem catalogo de produtos nem rota
 // /produtos/buscar (confirmado: sem IDX_PROD aqui) - nada a espelhar.
-const VERSAO = 'AMB Devolucoes b312';
+// b313 - revisao Codex #269 tambem foi so do lado GOOD (lib/defeitos-
+// ciclo.js): o fallback que marca a exclusao SO no `estado_atual` (b310)
+// existe porque a tabela `devolucoes` da GOOD recusa `tipo:
+// 'defeito_excluido'` no check constraint. Conferido: o
+// defeitos-ciclo-AMB.js NAO tem esse fallback (so o /excluir "normal",
+// que grava `tipo: 'defeito_excluido'` direto) - a tabela da AMB aceita
+// esse valor, entao os bugs do fallback (filtro NOT ILIKE derrubando
+// quem tem estado_atual NULL, classificacao que so olhava um status
+// especifico, /restaurar e /estado sem reconhecer a marca) nao existem
+// aqui - nada a espelhar.
+const VERSAO = 'AMB Devolucoes b313';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();

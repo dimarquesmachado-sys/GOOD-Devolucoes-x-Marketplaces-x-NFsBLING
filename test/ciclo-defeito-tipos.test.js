@@ -72,7 +72,7 @@ const src = fs.readFileSync(
 // da tela assim que ela navega pra aba Excluidos e nunca mais pode ser
 // restaurado.
 {
-  const m = /const EXCLUIDOS = '([^']+)'/.exec(src);
+  const m = /const EXCLUIDOS = "([^"]+)"/.exec(src);
   ok(!!m, 'achei a definicao dos EXCLUIDOS (aba)');
   if (m) {
     ok(/tipo\.eq\.defeito_excluido/.test(m[1]) && /status\.eq\.cancelled/.test(m[1]),
@@ -124,13 +124,74 @@ const src = fs.readFileSync(
 }
 
 // ── e a lista filtra pela marca ─────────────────────────────────────
+//
+// revisao Codex #269 (P1): `.not('estado_atual','ilike',...)` sozinho
+// derruba quem tem `estado_atual` NULL (NOT NULL = NULL em SQL, e
+// PostgREST trata como falso) — ou seja, esvaziava as proprias abas
+// ativas, porque quase nenhuma linha ativa tem a coluna preenchida.
 {
-  ok(/sel\.not\('estado_atual', 'ilike', '%REGISTRO EXCLUIDO%'\)/.test(src),
-     '⚠️ as abas ATIVAS escondem quem tem a marca');
-  ok(/sel\.ilike\('estado_atual', '%REGISTRO EXCLUIDO%'\)/.test(src),
-     '  ⚠️ e a aba EXCLUIDOS mostra so eles (senao nao da pra restaurar)');
-  ok(/if \(estado !== 'excluido'\)/.test(src),
-     '  com o filtro escolhido pela aba');
+  ok(/estado_atual\.is\.null/.test(src) && /estado_atual\.not\.ilike\.%REGISTRO EXCLUIDO%/.test(src),
+     '⚠️ o filtro das abas ativas/terminais inclui quem tem estado_atual NULL');
+  ok(/if \(estado !== 'excluido' && estado !== 'todos'\)/.test(src),
+     "  so fora das abas Excluidos e Todos (Todos precisa trazer TUDO)");
+  ok(!/sel\.ilike\('estado_atual', '%REGISTRO EXCLUIDO%'\)/.test(src),
+     '  ⚠️ e a aba Excluidos NAO usa um ilike proprio (isso e AND com o `cond` da aba e perderia excluido antigo sem a marca)');
+}
+
+// ── e a aba Excluidos acha o formato so-marca DENTRO do proprio OR ──
+//
+// revisao Codex #269 (P1): o `ilike` de cima era um segundo `.and()` sobre
+// o `cond` (EXCLUIDOS) que so aceita tipo=defeito_excluido OU
+// status=cancelled — um problema/concluido marcado so no estado_atual (o
+// formato que o b310 realmente grava) nunca casava com nenhum dos dois e
+// sumia da aba Excluidos.
+{
+  const m = /const EXCLUIDOS = "([^"]+)"/.exec(src);
+  ok(!!m, 'achei a definicao dos EXCLUIDOS (aba) — agora como string dupla, por causa do % dentro');
+  if (m) {
+    ok(/estado_atual\.ilike\.%REGISTRO EXCLUIDO%/.test(m[1]),
+       '⚠️ a marca faz parte do proprio OR da aba Excluidos, nao de um filtro extra em AND');
+  }
+}
+
+// ── e situacaoDe() reconhece a marca em QUALQUER tipo/status ────────
+//
+// revisao Codex #269 (P1): o formato so-marca (b310) preserva tipo/status
+// como estavam (ex.: problema/concluido, o par de peca ATIVA) — exigir um
+// status especifico (como 'pendente') pra reconhecer a marca deixava esse
+// formato invisivel pro classificador.
+{
+  ok(/if \(\/REGISTRO EXCLUIDO\/\.test\(String\(x\.estado_atual \|\| ''\)\)\) return 'excluido';/.test(src),
+     '⚠️ situacaoDe() aceita a marca sozinha, sem exigir tipo/status especificos');
+}
+
+// ── e o SELECT traz a coluna que o classificador precisa ────────────
+{
+  const m = /\.select\('id, produto_sku[^']*'\)/.exec(src);
+  ok(!!m && /estado_atual/.test(m[0]),
+     '⚠️ buscar() seleciona `estado_atual` (senao situacaoDe() nunca ve a marca)');
+}
+
+// ── e /restaurar aceita o formato so-marca sem inventar mudanca de tipo ──
+{
+  ok(/excluidoPorMarca/.test(src),
+     '⚠️ /restaurar reconhece a exclusao-so-por-estado_atual (b310)');
+  const iRestaurar = src.indexOf("app.post('/api/defeitos/:id/restaurar'");
+  const iExcluir = src.indexOf("app.post('/api/defeitos/:id/excluir'");
+  const blocoRestaurar = src.slice(iRestaurar, iExcluir);
+  ok(/else if \(excluidoPorMarca\)[\s\S]{0,500}update\(\{ estado_atual: null \}\)/.test(blocoRestaurar),
+     '  ⚠️ e so apaga a marca — nao mexe em tipo/status, que nunca mudaram de verdade nesse formato');
+}
+
+// ── e /estado (edicao livre) nao pode desfazer a exclusao por baixo ──
+{
+  ok(/PUT '\+ '\/api\/defeitos\/:id\/estado'|put\('\/api\/defeitos\/:id\/estado'/.test(src),
+     'achei a rota de edicao livre do estado');
+  const iEstado = src.indexOf("app.put('/api/defeitos/:id/estado'");
+  const iPedido = src.indexOf("app.post('/api/defeitos/pedido'");
+  const blocoEstado = src.slice(iEstado, iPedido > iEstado ? iPedido : undefined);
+  ok(/REGISTRO EXCLUIDO/.test(blocoEstado) && /res\.status\(400\)/.test(blocoEstado),
+     '⚠️ um usuario comum nao consegue limpar/trocar o estado de um registro excluido por esta rota (so o /restaurar, admin-only)');
 }
 
 console.log('');
