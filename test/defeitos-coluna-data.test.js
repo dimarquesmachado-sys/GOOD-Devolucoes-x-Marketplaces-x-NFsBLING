@@ -103,7 +103,12 @@ ok(/\.in\('tipo',\s*\['problema',\s*'defeito_estoque'\]\)/.test(SERVER),
 
 // a classificacao em abas e por TIPO, entao os novos caem na aba certa
 const clas = GOOD.slice(GOOD.indexOf('const situacaoDe'), GOOD.indexOf('const estado ='));
-ok(clas.includes("x.tipo === 'defeito_excluido'"), 'a aba Excluidos separa por tipo');
+// b312 (revisao Codex #269, rodada 2) - a checagem de exclusao (tipo,
+// status ou so a marca no estado_atual) virou a fonte unica
+// marcadoExcluido() (lib/defeito-excluido.js), usada aqui e em outros
+// pontos do ciclo (ficha, /excluir, relatorios) - ver test/ciclo-defeito-
+// tipos.test.js.
+ok(clas.includes('marcadoExcluido(x)'), 'a aba Excluidos separa usando a fonte unica marcadoExcluido()');
 ok(clas.includes("x.tipo === 'recuperado'"), 'Recuperados/Descartados por tipo');
 ok(clas.includes("|| 'defeito'"), '  e o resto cai em "defeito" (a aba Com Defeito)');
 

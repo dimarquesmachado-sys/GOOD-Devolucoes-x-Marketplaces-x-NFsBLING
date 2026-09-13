@@ -21,6 +21,13 @@ const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o
 
 const src = fs.readFileSync(
   path.join(__dirname, '..', 'lib', 'defeitos-ciclo.js'), 'utf8');
+const srcServer = fs.readFileSync(
+  path.join(__dirname, '..', 'server.js'), 'utf8');
+const srcRelatorios = fs.readFileSync(
+  path.join(__dirname, '..', 'lib', 'rotas-relatorios.js'), 'utf8');
+const srcHelper = fs.readFileSync(
+  path.join(__dirname, '..', 'lib', 'defeito-excluido.js'), 'utf8');
+const { marcadoExcluido } = require('../lib/defeito-excluido');
 
 // ── ⚠️ a exclusão tem fallback por status ───────────────────────────
 {
@@ -78,8 +85,11 @@ const src = fs.readFileSync(
     ok(/tipo\.eq\.defeito_excluido/.test(m[1]) && /status\.eq\.cancelled/.test(m[1]),
        '⚠️ a aba Excluidos busca os dois formatos (tipo OU status)');
   }
-  ok(/situacaoDe[\s\S]{0,400}status === 'cancelled'/.test(src),
-     '⚠️ situacaoDe() tambem reconhece a exclusao-por-status');
+  // b312 (revisao Codex #269, rodada 2) - essa checagem morou dentro de
+  // situacaoDe() ate virar a fonte unica marcadoExcluido() (lib/defeito-
+  // excluido.js), usada por situacaoDe(), ficha, /excluir e o relatorio.
+  ok(/status === 'cancelled'/.test(srcHelper),
+     '⚠️ a fonte unica de exclusao (usada por situacaoDe) reconhece a exclusao-por-status');
   ok(/excluidoPorStatus/.test(src),
      '⚠️ /restaurar reconhece a exclusao-por-status (nao so o tipo)');
 }
@@ -115,7 +125,7 @@ const src = fs.readFileSync(
   const bloco = src.slice(iUpd, iUpd + 900);
   ok(!/status: 'cancelled'/.test(bloco),
      '⚠️ o fallback nao GRAVA mais `cancelled` (o check recusa)');
-  ok(/x\.status === 'cancelled'\) return 'excluido'/.test(src),
+  ok(/item\.tipo === 'problema' && item\.status === 'cancelled'\) return true/.test(srcHelper),
      '  mas a LEITURA fica (registros antigos podem ter a marca velha)');
   ok(!/status: 'pendente',\n\s*estado_atual: camposExc/.test(src),
      '  nem `pendente`');
@@ -160,9 +170,58 @@ const src = fs.readFileSync(
 // como estavam (ex.: problema/concluido, o par de peca ATIVA) — exigir um
 // status especifico (como 'pendente') pra reconhecer a marca deixava esse
 // formato invisivel pro classificador.
+//
+// b312 (revisao Codex #269, rodada 2, P2) - os tres formatos agora moram
+// numa fonte unica (lib/defeito-excluido.js): antes situacaoDe() tinha seu
+// PROPRIO regex, case-sensitive, enquanto o filtro de banco (linha ~570)
+// usa ILIKE (case-insensitive) - uma marca gravada com case diferente do
+// usual passava pelo SQL mas continuava "ativa" na classificacao.
 {
-  ok(/if \(\/REGISTRO EXCLUIDO\/\.test\(String\(x\.estado_atual \|\| ''\)\)\) return 'excluido';/.test(src),
-     '⚠️ situacaoDe() aceita a marca sozinha, sem exigir tipo/status especificos');
+  ok(/situacaoDe = \(x\) => \{[\s\S]{0,80}if \(marcadoExcluido\(x\)\) return 'excluido';/.test(src),
+     '⚠️ situacaoDe() usa a fonte unica marcadoExcluido() (case-insensitive)');
+}
+
+// ── e a fonte unica e case-insensitive, igual o ILIKE do banco ─────
+{
+  ok(/require\('\.\/defeito-excluido'\)/.test(src),
+     '⚠️ defeitos-ciclo.js importa a fonte unica de exclusao');
+  ok(/MARCA_EXCLUIDO = \/REGISTRO EXCLUIDO\/i/.test(srcHelper),
+     '  ⚠️ e o regex da fonte unica e case-insensitive, igual o ILIKE');
+  ok(marcadoExcluido({ tipo: 'problema', status: 'concluido', estado_atual: 'registro excluido por engano' })
+     && marcadoExcluido({ tipo: 'problema', status: 'concluido', estado_atual: '🗑️ REGISTRO EXCLUIDO por fulano' })
+     && !marcadoExcluido({ tipo: 'problema', status: 'concluido', estado_atual: null }),
+     '  ⚠️ marcadoExcluido() reconhece a marca em qualquer case e ignora estado_atual null/ausente');
+}
+
+// ── e a ficha classifica a exclusao-so-por-marca tambem ─────────────
+//
+// revisao Codex #269 (rodada 2, P1): a ficha (GET /api/defeitos/ficha/:id)
+// so olhava tipo==='defeito_excluido' pra decidir `situacao` - um registro
+// excluido pelo fallback do estado_atual chegava como se estivesse ativo,
+// escondendo o botao Restaurar (admin-only) e liberando retirar
+// peca/pedido num registro ja excluido.
+{
+  const iFicha = src.indexOf("app.get('/api/defeitos/ficha/:id'");
+  const iComentario = src.indexOf("app.post('/api/defeitos/:id/comentario'");
+  const blocoFicha = src.slice(iFicha, iComentario > iFicha ? iComentario : undefined);
+  ok(/situacao: marcadoExcluido\(item\) \? 'excluido'/.test(blocoFicha),
+     '⚠️ a ficha usa marcadoExcluido() pra decidir a situacao (nao so tipo===defeito_excluido)');
+}
+
+// ── e /excluir e idempotente pros tres formatos (retry nao duplica) ─
+//
+// revisao Codex #269 (rodada 2, P2): o retry (resposta perdida, duplo
+// clique) so era pego se tipo==='defeito_excluido' - um registro ja
+// excluido pelo fallback do estado_atual seria excluido DE NOVO, trocando
+// o motivo/quem-excluiu original e duplicando a entrada no historico.
+{
+  const iExcluirIdem = src.indexOf("app.post('/api/defeitos/:id/excluir'");
+  const iLista = src.indexOf("app.get('/api/defeitos/lista'");
+  const blocoExcluirIdem = src.slice(iExcluirIdem, iLista > iExcluirIdem ? iLista : undefined);
+  ok(/select\('id, tipo, status, estado_atual, produto_sku'\)/.test(blocoExcluirIdem),
+     '⚠️ /excluir le status e estado_atual antes de decidir se ja esta excluido');
+  ok(/if \(marcadoExcluido\(item\)\) return res\.json\(\{ ok: true, ja_excluido: true \}\);/.test(blocoExcluirIdem),
+     '  ⚠️ e usa a fonte unica pra checar isso (pega os tres formatos)');
 }
 
 // ── e o SELECT traz a coluna que o classificador precisa ────────────
@@ -192,6 +251,57 @@ const src = fs.readFileSync(
   const blocoEstado = src.slice(iEstado, iPedido > iEstado ? iPedido : undefined);
   ok(/REGISTRO EXCLUIDO/.test(blocoEstado) && /res\.status\(400\)/.test(blocoEstado),
      '⚠️ um usuario comum nao consegue limpar/trocar o estado de um registro excluido por esta rota (so o /restaurar, admin-only)');
+
+  // b312 (revisao Codex #269, rodada 2, P2) - a trava era um SELECT
+  // separado do UPDATE: entre os dois, um admin podia excluir o registro
+  // e este UPDATE (que ja tinha passado no cheque) sobrescrevia a marca
+  // sem saber que ela tinha acabado de chegar. A checagem precisa estar no
+  // WHERE do proprio UPDATE, nao num SELECT antes dele.
+  ok(!/const atual = await cli\(\)\.from\(T_DEV\)\.select\('estado_atual'\)/.test(blocoEstado),
+     '  ⚠️ nao faz mais um SELECT separado so pra checar a marca (era a race condition)');
+  ok(/\.update\(\{ estado_atual: texto \|\| null \}\)\.eq\('id', req\.params\.id\)\s*\n\s*\.or\('estado_atual\.is\.null,estado_atual\.not\.ilike\.%REGISTRO EXCLUIDO%'\)/.test(blocoEstado),
+     "  ⚠️ a condicao 'nao esta excluido' entra no proprio UPDATE (atomico)");
+}
+
+// ── e o estoque (server.js) filtra a marca ANTES do .limit() ────────
+//
+// revisao Codex #269 (rodada 2, P2): o filtro rodava em JS DEPOIS do
+// .limit(50)/.limit(1000) - um SKU (ou uma pagina) com muitas linhas
+// excluidas entre as mais recentes ocupava a janela toda, e peca ativa
+// mais antiga nem chegava a ser buscada. O filtro tem que entrar no
+// banco, antes do .limit.
+{
+  const marcaAntesDoLimite = (ini, fimStr) => {
+    const iFim = srcServer.indexOf(fimStr, ini);
+    const bloco = srcServer.slice(ini, iFim);
+    const iOr = bloco.indexOf("estado_atual.is.null,estado_atual.not.ilike.%REGISTRO EXCLUIDO%");
+    // lastIndexOf: o COMENTARIO acima do .or() cita ".limit(50)"/".limit(1000)"
+    // a titulo de exemplo - a chamada de verdade e a ULTIMA ocorrencia do bloco.
+    const iLimit = bloco.lastIndexOf('.limit(');
+    return iOr !== -1 && iLimit !== -1 && iOr < iLimit;
+  };
+  const iPorSku = srcServer.indexOf("app.get('/api/defeitos/por-sku'");
+  ok(marcaAntesDoLimite(iPorSku, "if (error) return res.status(500)"),
+     '⚠️ /api/defeitos/por-sku filtra a marca no banco, antes do .limit(50)');
+  ok(!/\.filter\(d => !\/REGISTRO EXCLUIDO\/\.test\(String\(d\.estado_atual/.test(srcServer),
+     '  ⚠️ e nao repete o filtro em JS depois (o de banco ja cobre)');
+
+  const iDefeitos = srcServer.indexOf("app.get('/api/defeitos', requerEstoquista");
+  ok(marcaAntesDoLimite(iDefeitos, 'if (error) {'),
+     '⚠️ /api/defeitos filtra a marca no banco, antes do .limit(1000)');
+}
+
+// ── e o relatorio de devolucoes nao conta quem foi excluido ─────────
+//
+// revisao Codex #269 (rodada 2, P1): /api/admin/relatorios/devolucoes nao
+// selecionava nem filtrava `estado_atual` - um registro excluido
+// continuava inflando totalProblema, o percentual de problema e o
+// ranking de SKU problematico.
+{
+  ok(/estado_atual/.test(srcRelatorios) && /require\('\.\/defeito-excluido'\)/.test(srcRelatorios),
+     '⚠️ o relatorio seleciona estado_atual e usa a fonte unica de exclusao');
+  ok(/listaFinal = listaFinal\.filter\(d => !marcadoExcluido\(d\)\)/.test(srcRelatorios),
+     '  ⚠️ e tira quem foi excluido ANTES de qualquer agregacao (cards/rankings)');
 }
 
 console.log('');

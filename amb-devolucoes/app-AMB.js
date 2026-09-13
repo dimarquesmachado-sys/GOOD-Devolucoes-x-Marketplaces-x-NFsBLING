@@ -148,7 +148,15 @@ const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 // (js-AMB/defeitos-ficha.js, ainda em b291) e ela nao tem `marcarCardAberto`
 // nem a classe `cardDefeito.aberto` (confirmado por grep) - o recurso nunca
 // chegou aqui, entao nao ha nada a espelhar.
-const VERSAO = 'AMB Devolucoes b313';
+// b314 - revisao Codex #269 (rodada 2, 6 apontamentos novos sobre o fallback
+// que marca a exclusao SO no `estado_atual`, GOOD): guarda atomica no PUT
+// /estado, idempotencia no /excluir, ficha e relatorios reconhecendo a
+// marca, filtro de estoque antes do .limit(), regex case-insensitive numa
+// fonte unica (lib/defeito-excluido.js). Tudo dentro de lib/defeitos-ciclo.js
+// e server.js (GOOD) - a tabela da AMB aceita `tipo: 'defeito_excluido'` de
+// verdade (confirmado no #269 original), entao o fallback e os bugs dele
+// nao existem aqui. Nada a espelhar.
+const VERSAO = 'AMB Devolucoes b314';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
