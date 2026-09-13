@@ -131,6 +131,32 @@ const srv = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
      '  ⚠️ e o indice NAO soma mais o espacamento (nao e pre-aquecimento)');
 }
 
+// ── ⚠️ revisao Codex #276 (P1): a varredura e `fundo`, nao interativa ─
+//
+// `construirIndiceProdutos()` (a listagem) e `enriquecerEansEmBackground()`
+// (o detalhe, ~1.091 chamadas / ~6min) chamavam `chamarBling` SEM
+// `{ fundo: true }`. O `ritmo-bling` tem DUAS filas — interativa e de fundo
+// — e so despacha fundo quando ninguem interativo esta esperando
+// (lib/ritmo-bling.js). Sem a marca, esta varredura de boot entrava na
+// MESMA fila da busca do estoquista e do indice de nomes, podendo atrasar
+// os dois. `nfNomes.preAquecer` ja usa este padrao (`{ fundo: true, ... }`
+// em lib/nf-nomes.js) — o indice de produtos passa a seguir o mesmo.
+{
+  const iFn = srv.indexOf('async function construirIndiceProdutos');
+  const iEanFn = srv.indexOf('function enriquecerEansEmBackground');
+  ok(iFn > 0 && iEanFn > iFn, 'acho as duas funcoes, na ordem esperada');
+
+  const iListagem = srv.indexOf('api.bling.com.br/Api/v3/produtos?pagina=', iFn);
+  const trechoListagem = srv.slice(iListagem, srv.indexOf(');', iListagem));
+  ok(/\{\s*fundo:\s*true\s*\}/.test(trechoListagem),
+     '⚠️ a listagem de produtos (boot) chama chamarBling com `{ fundo: true }`');
+
+  const iDetalhe = srv.indexOf('api.bling.com.br/Api/v3/produtos/${p.id}', iEanFn);
+  const trechoDetalhe = srv.slice(iDetalhe, srv.indexOf(');', iDetalhe));
+  ok(/\{\s*fundo:\s*true\s*\}/.test(trechoDetalhe),
+     '  e o detalhe de cada produto (o loop de ~6min) tambem');
+}
+
 console.log('');
 console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
 process.exit(falhas ? 1 : 0);
