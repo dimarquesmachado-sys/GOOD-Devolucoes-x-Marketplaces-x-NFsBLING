@@ -185,8 +185,32 @@
       var r = await api('/api/defeitos/' + encodeURIComponent(id) + '/excluir',
         { method: 'POST', body: JSON.stringify({ motivo: motivo }) });
       if (r && r.ok) {
-        abaAtual = 'excluido';   // v4.85 - leva direto pra aba dos excluidos
-        if (typeof abrirBuscaDefeitos === 'function') abrirBuscaDefeitos();
+        // b314 - ⚠️ FICA NA MESMA ABA. Nao joga pros Excluidos.
+        //
+        // [stated 13/09] "o melhor era só excluir sumir o card e manter na
+        // tela dos defeitos, e não jogar a gente pro card dos excluídos. se
+        // excluí, quero tirar da frente. me deixa na mesma tela."
+        //
+        // O `abaAtual = excluido` levava pra outra aba — e quem esta limpando
+        // varios registros perde o lugar a cada exclusao, e tem que voltar e
+        // rolar de novo.
+        //
+        // 📌 O card some sozinho: a lista recarrega e o filtro da b310 esconde
+        // quem tem a marca. Nao preciso remover na mao.
+        //
+        // revisao Codex #270 (P1) - `abrirBuscaDefeitos()` sem termo
+        // RECONSTROI o modal inteiro: zera o campo #defBusca (perde a busca
+        // digitada), empilha uma entrada nova de navegacao e some com a
+        // rolagem — o mesmo "perder o lugar" que este ponto quer evitar,
+        // so que pela busca em vez da aba. Quando a ficha esta expandida
+        // INLINE (excluir de dentro da lista, o caso comum de "limpar
+        // varios"), chamo buscarDefeitos() direto: so re-renderiza #defLista
+        // com o MESMO termo e aba, sem tocar no resto da tela. Fora da
+        // lista (ficha em tela cheia, ex: veio de "foi para a peça #4") nao
+        // ha lista pra atualizar - ai sim volta pra busca.
+        var _eraInline = fichaInlineId != null && String(fichaInlineId) === String(id);
+        if (_eraInline && typeof buscarDefeitos === 'function') buscarDefeitos();
+        else if (typeof abrirBuscaDefeitos === 'function') abrirBuscaDefeitos();
       } else if (msg) {
         msg.innerHTML = '<span style="color:#8C1D18;">' + esc((r && r.erro) || 'não consegui excluir') + '</span>';
       }
