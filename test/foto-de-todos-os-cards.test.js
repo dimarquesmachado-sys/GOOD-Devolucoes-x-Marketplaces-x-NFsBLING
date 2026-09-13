@@ -115,8 +115,18 @@ const front = fs.readFileSync(
   const quantos = (front.match(/if \(meuToken !== _fotoToken\) return;/g) || []).length;
   ok(quantos >= 2,
      '  ⚠️ e desiste NA RODADA e DENTRO dela (achei ' + quantos + ')');
-  ok(/cxCaixa\.style\.display === 'none'\) return;/.test(front),
-     '  ⚠️ ou se a caixa foi fechada');
+  // ⚠️ b322: a checagem era `caixaDefeitos.style.display === 'none'`, e ela
+  // ABORTAVA TUDO. O `abrir()` retorna antes de tocar no display quando a
+  // ficha expande no card — entao o estilo inline podia continuar 'none'
+  // com a caixa VISIVEL, e a varredura desistia na primeira volta.
+  //
+  // Agora confere se os CARDS ainda existem no DOM: se a caixa fechou, eles
+  // sumiram. E comportamento observavel, nao um estilo que outro caminho
+  // pode nao ter setado.
+  ok(/getElementById\('fotodef-0'\)/.test(front),
+     '  ⚠️ ou se os cards sumiram do DOM (a caixa fechou)');
+  ok(!/style\.display === 'none'\) return;/.test(front),
+     '  e NAO depende do estilo inline (que nem sempre e setado)');
 }
 
 // ── ⚠️ e não insiste em quem nunca vai ter foto ─────────────────────

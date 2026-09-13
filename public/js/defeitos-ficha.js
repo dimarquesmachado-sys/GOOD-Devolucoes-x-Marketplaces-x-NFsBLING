@@ -761,8 +761,26 @@
     for (var rodada = 0; rodada < MAX_RODADAS; rodada++) {
       // ⚠️ desisto se outra busca comecou ou a caixa fechou
       if (meuToken !== _fotoToken) return;
-      var cxCaixa = document.getElementById('caixaDefeitos');
-      if (!cxCaixa || cxCaixa.style.display === 'none') return;
+      // ⚠️ b322 - A CHECAGEM DO `display` ABORTAVA TUDO, E FUI EU QUE PUS.
+      //
+      // [stated 13/09] "agora não mostra nenhuma foto d produto" — piorou
+      // depois do meu conserto anterior.
+      //
+      // Eu conferia `caixaDefeitos.style.display === 'none'` pra parar
+      // quando o dono fecha a tela. Mas o `abrir()` RETORNA ANTES de tocar
+      // no display quando a ficha expande no card (b301) — entao o estilo
+      // inline podia continuar 'none' com a caixa VISIVEL, e a varredura
+      // abortava na primeira volta. Nenhuma foto.
+      //
+      // 📌 O TOKEN JA RESOLVE O CANCELAMENTO com segurança: toda nova
+      // varredura (e toda nova busca) incrementa, e a antiga desiste. E o
+      // `fechar()` limpa a lista, entao os cards somem do DOM e o
+      // `if (!cx) continue` cuida do resto.
+      //
+      // ⚠️ Menos condicao, menos jeito de errar — e esta eu nao tinha como
+      // testar daqui, so o dono clicando.
+      if (!document.getElementById('fotodef-0')
+        && !document.getElementById('fotodef-1')) return;
       var faltando = 0;
       for (var i = 0; i < itens.length && i < TETO_FOTOS; i++) {
         // ⚠️ b321.3 (Codex, P2) - CONFERE DENTRO DA RODADA TAMBEM.
