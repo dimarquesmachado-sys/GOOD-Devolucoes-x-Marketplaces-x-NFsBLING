@@ -395,7 +395,7 @@ app.get('/health', (req, res) => {
       // busca por nome. Escolher um lado apagaria a descricao do outro.
       // ⚠️ a resolucao JUNTA as duas: a 7.5.0 (passe curto + tetos) ja esta
       // na main, e este PR acrescenta o build frio que falha vazio.
-      version: '8.8.0 (o indice de produtos morria calado quando a conta estava em pausa — agora registra a falha e reagenda)',
+      version: '8.9.0 (excluir/recuperar/descartar defeito caem pro status quando o tipo nao passa no check da tabela)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
