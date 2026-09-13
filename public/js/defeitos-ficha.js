@@ -706,6 +706,10 @@
    * segunda consulta do mesmo produto e instantanea. Uma de cada vez com
    * pausa: sao chamadas ao Bling.
    */
+  // ⚠️ b321.1: numera cada varredura de fotos, pra uma nova cancelar a
+  // anterior (o dono fecha a caixa ou busca outra coisa no meio)
+  var _fotoToken = 0;
+
   async function buscarFotosDefeitos(itens) {
     // b320 - ⚠️ O TETO DE 12 DEIXAVA 34 CARDS SEM PEDIR FOTO.
     //
@@ -729,25 +733,69 @@
     // limite podia gastar ~5x mais cota, disputando com a bipagem.
     // Mantenho o orcamento de Bling nos primeiros 12 (igual antes) e peco
     // `semBling=1` pro resto - eles so ganham foto se ja estiver no indice.
-    var TETO_BLING = 12;
-    for (var i = 0; i < itens.length && i < TETO_FOTOS; i++) {
-      var cx = document.getElementById('fotodef-' + i);
-      if (!cx || !cx.dataset.sku || cx.dataset.sku === '-') continue;
-      try {
-        var semBling = i >= TETO_BLING ? '?semBling=1' : '';
-        var d = await api('/api/produto/imagem/' + encodeURIComponent(cx.dataset.sku) + semBling);
-        if (d && d.ok && d.imagem) {
-          cx.outerHTML = '<img src="' + esc(d.imagem) + '" alt="" '
-            + 'onclick="event.stopPropagation();window.open(this.src,\'_blank\')" '
-            + 'onerror="this.style.display=\'none\'" '
-            + 'style="width:84px;height:84px;flex:0 0 auto;border-radius:9px;object-fit:contain;'
-            + 'background:#fff;border:1px solid #e4dcf1;cursor:zoom-in;">';
-        }
-      } catch (e) { /* sem foto nao atrapalha */ }
-      // ⚠️ b320: a pausa existia porque cada foto ia ao BLING. Agora a rota
-      // resolve pelo indice local, que nao gasta cota — 40ms so pra nao
-      // travar a tela enquanto pinta. Com 46 itens: 6s virava 1,8s.
-      await new Promise(function (r) { setTimeout(r, 40); });
+    // b321 - ⚠️ UMA CONSULTA POR CARD ERA UMA CORRIDA.
+    //
+    // [stated 13/09] "algumas ainda sem aparecer" — depois de eu ter
+    // consertado o indice, o teto de 12 e a rota.
+    //
+    // ⚠️ DIAGNOSTICO DO CODEX, e ele achou o que me faltava: a tela pedia a
+    // foto UMA VEZ. Se o indice ainda nao tinha aquele produto, a rota
+    // avisava o worker — mas a resposta VAZIA ficava no card PRA SEMPRE.
+    // A foto chegava 2s depois e ninguem voltava pra buscar.
+    //
+    // Agora faz RODADAS: volta nos placeholders que faltam ate todos terem
+    // foto ou acabarem as tentativas. Todas com `semBling` — a rota so
+    // prioriza o worker serial, sem abrir chamada ao Bling por card.
+    // ⚠️ b321.1 (Codex, P2) - AS RODADAS PARAM SE A TELA FECHAR.
+    //
+    // Sao 12 rodadas x ate 60 cards. Se o dono fechar o modal ou fizer
+    // outra busca no meio, isto continuaria pedindo foto de uma lista que
+    // nao esta mais na tela — gastando requisicao e, pior, podendo pintar
+    // foto em card de OUTRA busca.
+    //
+    // Cada chamada do buscarFotosDefeitos ganha um numero; se outro comecar
+    // (ou a caixa fechar), o antigo desiste na proxima volta.
+    _fotoToken++;
+    var meuToken = _fotoToken;
+    var MAX_RODADAS = 12;
+    for (var rodada = 0; rodada < MAX_RODADAS; rodada++) {
+      // ⚠️ desisto se outra busca comecou ou a caixa fechou
+      if (meuToken !== _fotoToken) return;
+      var cxCaixa = document.getElementById('caixaDefeitos');
+      if (!cxCaixa || cxCaixa.style.display === 'none') return;
+      var faltando = 0;
+      for (var i = 0; i < itens.length && i < TETO_FOTOS; i++) {
+        // ⚠️ b321.3 (Codex, P2) - CONFERE DENTRO DA RODADA TAMBEM.
+        //
+        // A checagem so no inicio de cada rodada nao basta: se o dono fechar
+        // a caixa no MEIO, esta rodada ainda faria ate 60 pedidos seriais —
+        // e podia pintar foto em card de outra busca.
+        if (meuToken !== _fotoToken) return;
+        var cx = document.getElementById('fotodef-' + i);
+        if (!cx || !cx.dataset.sku || cx.dataset.sku === '-') continue;
+        faltando++;
+        try {
+          var d = await api('/api/produto/imagem/'
+            + encodeURIComponent(cx.dataset.sku) + '?semBling=1');
+          if (d && d.ok && d.imagem) {
+            cx.outerHTML = '<img src="' + esc(d.imagem) + '" alt="" '
+              + 'onclick="event.stopPropagation();window.open(this.src,\'_blank\')" '
+              + 'onerror="this.style.display=\'none\'" '
+              + 'style="width:84px;height:84px;flex:0 0 auto;border-radius:9px;object-fit:contain;'
+              + 'background:#fff;border:1px solid #e4dcf1;cursor:zoom-in;">';
+          }
+          // ⚠️ b321.2: o servidor diz quando NAO ADIANTA insistir — o
+          // produto esta no indice, o detalhe dele ja foi buscado, e nao
+          // tem imagem propria (variacao orfa, cujo pai nao esta no
+          // indice). Marco o card pra pular nas proximas rodadas.
+          if (d && d.definitivo && cx && cx.dataset) cx.dataset.sku = '-';
+        } catch (e) { /* sem foto nao atrapalha */ }
+        await new Promise(function (r) { setTimeout(r, 40); });
+      }
+      // ⚠️ para quando todos tem foto (o placeholder sumiu do DOM) ou
+      // quando as tentativas acabam — nao fica girando pra sempre
+      if (!faltando || rodada === MAX_RODADAS - 1) break;
+      await new Promise(function (r) { setTimeout(r, 700); });
     }
   }
 

@@ -59,46 +59,100 @@ const front = fs.readFileSync(
      '  e a busca procura pelo mesmo indice');
 }
 
-// ── ⚠️ e o orçamento de Bling não cresce com o teto ─────────────────
+// ── ⚠️ a tela VOLTA nos placeholders que faltam ─────────────────────
 //
-// Apontamento do Codex (P1): com o índice quente, os 60 pedidos são 60
-// respostas locais e ZERO chamada ao Bling. Mas com o índice FRIO, cada um
-// vira até 4 chamadas — e 60 de uma vez é a avalanche que já derrubou o
-// serviço.
+// [stated 13/09] "algumas ainda sem aparecer" — depois de consertado o
+// índice, o teto de 12 e a rota.
 //
-// 📌 A solução do robô é melhor que a minha (que era PARAR): os primeiros
-// 12 mantêm o orçamento de Bling que sempre tiveram, e do 13º em diante o
-// pedido vai com `semBling=1` — pede a foto, mas aceita ficar sem se o
-// índice não tiver. Assim as 46 são pedidas E a cota fica protegida.
+// ⚠️ Diagnóstico do Codex, e ele achou o que me faltava: a tela pedia a
+// foto UMA VEZ. Se o índice ainda não tinha aquele produto, a rota avisava
+// o worker — mas a resposta VAZIA ficava no card PARA SEMPRE. A foto
+// chegava 2s depois e ninguém voltava para buscar.
 {
-  ok(/semBling/.test(front),
-     '⚠️ os cards alem do orcamento pedem com `semBling`');
-
-  const rota = fs.readFileSync(
-    path.join(__dirname, '..', 'lib', 'rotas-admin-nf.js'), 'utf8');
-  ok(/req\.query\.semBling/.test(rota),
-     '  e a ROTA respeita o parametro (os 2 lados, nao so o front)');
+  ok(/var MAX_RODADAS = 12;/.test(front),
+     '⚠️ a tela faz RODADAS (nao uma consulta so por card)');
+  ok(/for \(var rodada = 0; rodada < MAX_RODADAS; rodada\+\+\)/.test(front),
+     '  voltando nos placeholders que faltam');
+  ok(/if \(!faltando \|\| rodada === MAX_RODADAS - 1\) break;/.test(front),
+     '  ⚠️ e PARA quando todos tem foto ou as tentativas acabam');
 }
 
-// ── ⚠️ e o semBling corta ANTES de furar a fila de background ──────
+// ── e todos os cards usam o caminho seguro ──────────────────────────
+{
+  ok(/encodeURIComponent\(cx\.dataset\.sku\)\s*\n?\s*\+ '\?semBling=1'/.test(front)
+     || /\+ '\?semBling=1'/.test(front),
+     'todos os cards pedem com `semBling`');
+  ok(!/TETO_BLING/.test(front),
+     '  ⚠️ e nao ha mais orcamento especial pros 12 primeiros');
+}
+
+// ── ⚠️ e o semBling PRIORIZA o worker antes de responder ────────────
 //
-// Apontamento do Codex (P1, 2a rodada): o corte de semBling estava DEPOIS
-// de deps.anotarFotoPedida(chave) e das duas esperas de 300ms. Essa chamada
-// poe o SKU na fila PRIORITARIA do passo de detalhe do Bling (server.js) —
-// entao mesmo sem cair no fallback sincrono, o pedido com semBling=1 ainda
-// furava a fila e gastava cota em BACKGROUND pros itens que deveriam ficar
-// de fora do orcamento.
+// Sem isto a rota respondia vazio e NINGUÉM produzia a foto: a tela voltaria
+// em rodadas e receberia vazio para sempre.
+//
+// 📌 Isto não abre chamada ao Bling — só muda a ORDEM da fila do worker, que
+// percorreria o catálogo de qualquer jeito.
 {
   const rota = fs.readFileSync(
     path.join(__dirname, '..', 'lib', 'rotas-admin-nf.js'), 'utf8');
-  const iSemBling = rota.indexOf('req.query.semBling');
-  const iAnotar = rota.indexOf('deps.anotarFotoPedida(chave)');
-  ok(iSemBling >= 0, 'achou o corte de semBling na rota');
-  ok(iAnotar >= 0, 'achou a chamada que fura a fila de background');
-  if (iSemBling >= 0 && iAnotar >= 0) {
-    ok(iSemBling < iAnotar,
-       '⚠️ o corte de semBling vem ANTES de anotar/furar a fila (nao depois)');
-  }
+  const iSem = rota.indexOf('if (req.query.semBling)');
+  const iAnota = rota.indexOf('deps.anotarFotoPedida(chave)', iSem);
+  const iResp = rota.indexOf("via: 'sem_indice_sem_bling'", iSem);
+  ok(iSem >= 0, 'a rota trata o `semBling`');
+  ok(iAnota > iSem && iAnota < iResp,
+     '⚠️ e PRIORIZA o worker ANTES de responder (senao ninguem produz a foto)');
+}
+
+// ── ⚠️ e as rodadas PARAM se a tela fechar ──────────────────────────
+//
+// Apontamento do Codex (P2): são 12 rodadas × até 60 cards. Se o dono
+// fechar o modal ou fizer outra busca no meio, isto continuaria pedindo
+// foto de uma lista que não está mais na tela — e pior, podendo pintar foto
+// em card de OUTRA busca.
+{
+  ok(/var _fotoToken = 0;/.test(front), '⚠️ cada varredura de fotos tem um numero');
+  const quantos = (front.match(/if \(meuToken !== _fotoToken\) return;/g) || []).length;
+  ok(quantos >= 2,
+     '  ⚠️ e desiste NA RODADA e DENTRO dela (achei ' + quantos + ')');
+  ok(/cxCaixa\.style\.display === 'none'\) return;/.test(front),
+     '  ⚠️ ou se a caixa foi fechada');
+}
+
+// ── ⚠️ e não insiste em quem nunca vai ter foto ─────────────────────
+//
+// Apontamento do Codex (P2): a variação cujo `produtoPai` não está no
+// índice não ganha foto por nenhum caminho do `semBling` — o worker busca o
+// detalhe DELA, e a variação não tem imagem própria.
+//
+// Sem isto, ela gastava as 12 rodadas e atrasava as outras.
+{
+  const rota = fs.readFileSync(
+    path.join(__dirname, '..', 'lib', 'rotas-admin-nf.js'), 'utf8');
+  ok(/definitivo: !!\(typeof deps\.indiceTemProduto/.test(rota),
+     '⚠️ a rota marca quando nao adianta insistir');
+  ok(/if \(d && d\.definitivo && cx && cx\.dataset\) cx\.dataset\.sku = '-';/.test(front),
+     '  e a tela pula esse card nas proximas rodadas');
+
+  const srv = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
+  ok(/if \(!it \|\| !it\.eansCarregados \|\| it\.imagem\) return false;/.test(srv),
+     '  ⚠️ e so e definitivo se o detalhe JA foi buscado (senao a foto pode chegar)');
+
+  // ⚠️ b321.3 (Codex): a variacao pode ganhar foto DEPOIS, pelo PAI — se o
+  // pai ainda nao foi enriquecido, desistir agora repete o erro que este PR
+  // veio consertar.
+  ok(/if \(!pai \|\| !pai\.eansCarregados\) return false;/.test(srv),
+     '⚠️ e ESPERA o pai da variacao ser enriquecido antes de desistir');
+  ok(/if \(pai\.imagem\) return false;/.test(srv),
+     '  (e se o pai TEM foto, ela vai chegar — nao e definitivo)');
+
+  // ⚠️ e a MESMA precedencia do `fotoDoIndice`: SKU primeiro, id depois.
+  // Num `find` unico, um id que coincide com o SKU de outro produto pode
+  // casar antes — e as duas funcoes olhariam produtos DIFERENTES.
+  const iTem = srv.indexOf('indiceTemProduto: (chave) => {');
+  const blocoTem = srv.slice(iTem, srv.indexOf('fotoDoIndice:', iTem));
+  ok(/=== alvo\)\s*\n?\s*\|\| IDX_PROD\.itens\.find/.test(blocoTem),
+     '⚠️ e usa a MESMA precedencia do fotoDoIndice (SKU, depois id)');
 }
 
 console.log('');
