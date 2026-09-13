@@ -86,20 +86,43 @@ const srv = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
     else if (srv[k] === '}') { prof--; if (prof === 0) { fim = k; break; } }
   }
   const rota = srv.slice(i, fim);
-  ok(/if \(!IDX_PROD\.ts\) \{/.test(rota),
-     '⚠️ a busca cobre TODO caso sem indice (nao so o "construindo")');
+  // revisao Codex #265 (P1): `IDX_PROD.ts` fica preenchido MESMO quando a
+  // construcao falha — o gate tem que tratar erro como "sem indice", senao
+  // uma falha vira "montado" e a busca volta a cair no Bling calada.
+  ok(/if \(!IDX_PROD\.ts \|\| IDX_PROD\.erro\) \{/.test(rota),
+     '⚠️ a busca cobre TODO caso sem indice usavel (sem ts, OU com erro)');
   ok(/tentarConstruirIndice\('busca chegou antes do indice'\)/.test(rota),
      '  e DISPARA a construcao na hora (nao espera o agendamento)');
   ok(/Estou montando o catálogo/.test(rota),
      '  avisando por que esta lento');
 }
 
-// ── e o boot não perde tempo antes de começar ───────────────────────
+// ── e o /health nao chama uma falha de "montado" ────────────────────
+//
+// revisao Codex #265 (mesmo criterio do gate acima): `montado` so pode
+// ser true SEM erro, senao o /health mente no campo que existe pra nao
+// deixar a gente supondo (b303).
 {
-  ok(/tentarConstruirIndice\('boot'\); \}, 5 \* 1000/.test(srv),
-     '⚠️ o boot agenda em 5s (era 20s — tempo morto que criava a janela)');
-  ok(/ESPACO \* 3\)/.test(srv),
-     '  mantendo o espacamento que evita avalanche de chamadas');
+  ok(/montado: !!\(typeof IDX_PROD !== "undefined" && IDX_PROD\.ts && !IDX_PROD\.erro\)/.test(srv),
+     '⚠️ /health so reporta "montado" quando nao ha erro');
+}
+
+// ── e o agendamento do boot bate com o que ele afirma ────────────────
+//
+// revisao Codex #265 (P2): o comentario e o commit diziam "agenda em 5s",
+// mas com o ESPACO padrao (120000ms) o atraso EFETIVO e 5s + ESPACO*3 =
+// 365000ms (6min05s) — nao 5s. Calculo o valor de verdade em vez de
+// conferir os pedacos `5 * 1000` e `ESPACO * 3` isolados (foi assim que a
+// conta errada passou: cada pedaco batia, a soma nao).
+{
+  const m = srv.match(/tentarConstruirIndice\('boot'\); \}, (\S+) \* 1000 \+ ESPACO \* (\d+)\)/);
+  ok(!!m, '⚠️ acho a chamada de agendamento do boot pra conferir a conta');
+  if (m) {
+    const ESPACO_PADRAO = 120000;
+    const atrasoMs = Number(m[1]) * 1000 + ESPACO_PADRAO * Number(m[2]);
+    ok(atrasoMs === 365000,
+       `  atraso efetivo com ESPACO padrao = ${atrasoMs}ms (esperado 365000ms = 6min05s, dominado pelo espacamento de b272 — nao pelos 5s)`);
+  }
 }
 
 console.log('');
