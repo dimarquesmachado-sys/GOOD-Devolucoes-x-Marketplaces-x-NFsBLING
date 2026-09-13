@@ -210,6 +210,29 @@
   function caixa() {
     var d = document.getElementById('caixaDefeitos');
     if (d) return d;
+    // b309 - ⚠️ O ESTILO DO CARD ABERTO, injetado uma vez.
+    //
+    // [stated 13/09] "A borda pode ser um pouco mais forte e evidente que a
+    // dos demais cards, mas sem ficar exagerada."
+    //
+    // Fica no <style> e nao em concatenacao de string: assim eu ligo e
+    // desligo trocando UMA classe, sem remontar a lista — e sem risco de
+    // errar aspas no meio do HTML (o que ja derrubou a lista 2x hoje).
+    if (!document.getElementById('estiloCardDefeito')) {
+      var st = document.createElement('style');
+      st.id = 'estiloCardDefeito';
+      st.textContent = '.cardDefeito{transition:border-color .15s,box-shadow .15s;}'
+        + '.cardDefeito.aberto{'
+        // borda inteira, no mesmo vermelho da lateral (que ja e a cor de
+        // defeito na tela) — evidente sem virar alarme
+        + 'border:2px solid #9E1A1A !important;'
+        + 'border-left:5px solid #9E1A1A !important;'
+        // a sombra suave separa do fundo branco quando ha varios cards
+        + 'box-shadow:0 2px 10px rgba(158,26,26,.18);'
+        + '}';
+      document.head.appendChild(st);
+    }
+
     d = document.createElement('div');
     d.id = 'caixaDefeitos';
     d.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:2000;'
@@ -499,7 +522,22 @@
         // foto+resumo (o que de fato deve abrir a ficha); a area da ficha
         // expandida vive FORA dela, como irma, entao clique nela nunca
         // borbulha pra este onclick.
-        return '<div style="border:1px solid #eee;border-left:4px solid #9E1A1A;border-radius:9px;padding:10px 12px;'
+        // b309 - ⚠️ O CARD ABERTO GANHA BORDA INTEIRA.
+        //
+        // [stated 13/09] "quero que todo o card correspondente fique
+        // destacado com uma borda ao redor do retângulo inteiro, e não apenas
+        // com o destaque na lateral esquerda (...) Isso vai facilitar bastante
+        // a leitura quando houver vários produtos na mesma tela."
+        //
+        // Com a ficha expandindo DENTRO do card, sem isso nao da pra saber a
+        // qual produto pertencem as informacoes abaixo — ainda mais com varios
+        // defeitos na tela.
+        //
+        // A classe `cardDefeito` e o id deixam o destaque ser ligado/desligado
+        // sem remontar a lista. O estilo forte vive no <style> (b309), pra nao
+        // ficar costurado em concatenacao de string.
+        return '<div class="cardDefeito" id="card-' + esc(it.id) + '" '
+          + 'style="border:1px solid #eee;border-left:4px solid #9E1A1A;border-radius:9px;padding:10px 12px;'
           + 'margin-bottom:7px;">'
           // b308 - ⚠️ UM CAMINHO SO: o clique no card TAMBEM expande.
           //
@@ -832,12 +870,30 @@
     fichaBotaoAtual = null;
   }
 
+  // b309 - ⚠️ LIGA O DESTAQUE NO CARD ABERTO, DESLIGA NOS OUTROS.
+  //
+  // [stated 13/09] "O destaque deve permanecer enquanto aquele item estiver
+  // aberto/selecionado, para deixar visualmente claro qual produto está
+  // sendo tratado e a qual item pertencem as informações exibidas abaixo."
+  //
+  // Uma funcao so pros dois lados: abrir marca, fechar limpa. Varro TODOS
+  // os cards em vez de guardar qual estava aberto — assim nao sobra
+  // destaque orfao se a lista for remontada no meio.
+  function marcarCardAberto(id) {
+    var todos = document.querySelectorAll('.cardDefeito');
+    for (var i = 0; i < todos.length; i++) todos[i].classList.remove('aberto');
+    if (!id) return;
+    var alvo = document.getElementById('card-' + id);
+    if (alvo) alvo.classList.add('aberto');
+  }
+
   window.expandirFichaNoCard = async function (id, botao) {
     const alvo = document.getElementById('ficha-' + id);
     if (!alvo) {
       // v4.9x - a lista pode ter sido refeita (nova busca, troca de aba)
       // entre o render e o clique: o id antigo nao aponta mais pra nada.
       fichaInlineId = null;
+      marcarCardAberto(null);   // b309
       fichaBotaoAtual = null;
       // ⚠️ sem o destino, caio no comportamento antigo em vez de nao fazer
       // nada — melhor trocar de tela do que o botao morrer
@@ -858,6 +914,7 @@
     // peca, corrigir laudo, excluir comentario) continuar caindo aqui
     // dentro, em vez de virar modal de tela cheia.
     fichaInlineId = id;
+    marcarCardAberto(id);   // b309
     fichaBotaoAtual = botao || null;
     await window.abrirFichaDefeito(id);
   };
