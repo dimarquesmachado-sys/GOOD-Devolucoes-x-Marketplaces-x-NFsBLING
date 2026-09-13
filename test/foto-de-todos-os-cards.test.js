@@ -138,14 +138,6 @@ const front = fs.readFileSync(
   ok(/if \(!it \|\| !it\.eansCarregados \|\| it\.imagem\) return false;/.test(srv),
      '  ⚠️ e so e definitivo se o detalhe JA foi buscado (senao a foto pode chegar)');
 
-  // ⚠️ b321.3 (Codex): a variacao pode ganhar foto DEPOIS, pelo PAI — se o
-  // pai ainda nao foi enriquecido, desistir agora repete o erro que este PR
-  // veio consertar.
-  ok(/if \(!pai \|\| !pai\.eansCarregados\) return false;/.test(srv),
-     '⚠️ e ESPERA o pai da variacao ser enriquecido antes de desistir');
-  ok(/if \(pai\.imagem\) return false;/.test(srv),
-     '  (e se o pai TEM foto, ela vai chegar — nao e definitivo)');
-
   // ⚠️ e a MESMA precedencia do `fotoDoIndice`: SKU primeiro, id depois.
   // Num `find` unico, um id que coincide com o SKU de outro produto pode
   // casar antes — e as duas funcoes olhariam produtos DIFERENTES.
@@ -153,6 +145,63 @@ const front = fs.readFileSync(
   const blocoTem = srv.slice(iTem, srv.indexOf('fotoDoIndice:', iTem));
   ok(/=== alvo\)\s*\n?\s*\|\| IDX_PROD\.itens\.find/.test(blocoTem),
      '⚠️ e usa a MESMA precedencia do fotoDoIndice (SKU, depois id)');
+
+  // ⚠️ revisao Codex #279 (3a rodada, P2): "pai fora do indice" (variacao
+  // orfa, permanente) NAO pode ser tratado igual a "pai ainda nao
+  // enriquecido" (temporario) — so o 2o caso deve esperar. O `pai &&` na
+  // frente do `!pai.eansCarregados` e o que faz essa distincao; sem ele
+  // (`!pai || !pai.eansCarregados`), a variacao orfa nunca fica definitiva
+  // e volta a gastar as 12 rodadas.
+  ok(/if \(pai && !pai\.eansCarregados\) return false;/.test(blocoTem),
+     '⚠️ so espera o pai se ele EXISTE no indice e falta enriquecer'
+     + ' (pai ausente e permanente, nao espera)');
+  ok(!/if \(!pai \|\| !pai\.eansCarregados\) return false;/.test(blocoTem),
+     '  e nao trata "pai ausente" igual a "pai pendente" (isso reintroduz a orfa gastando as 12 rodadas)');
+
+  // ── revisao Codex #279 (3a rodada, P2): "pai fora do indice" e
+  // PERMANENTE (IDX_PROD.itens e uma lista fechada, montada uma vez por
+  // deploy), mas "pai ainda nao enriquecido" e TEMPORARIO (o worker ainda
+  // vai chegar nele). Tratar os dois igual — como uma versao anterior deste
+  // mesmo PR fez — faz a variacao orfa (ORFAO-VAR) voltar a gastar as 12
+  // rodadas, o bug que este campo foi criado pra resolver.
+  //
+  // Comportamento de verdade: a mesma logica, isolada (padrao do
+  // test/foto-vem-do-indice.test.js).
+  {
+    const IDX = { ts: Date.now(), itens: [
+      { id: '555', sku: '288-VAR', imagem: null, pai: '556', eansCarregados: true },
+      { id: '556', sku: '288', imagem: null, eansCarregados: false },   // pai NO indice, so falta o worker
+      { id: '777', sku: 'ORFAO-VAR', imagem: null, pai: '999', eansCarregados: true },   // pai NUNCA vai aparecer
+      { id: '888', sku: 'PAI-SEM-FOTO-VAR', imagem: null, pai: '890', eansCarregados: true },
+      { id: '890', sku: 'PAI-SEM-FOTO', imagem: null, eansCarregados: true },   // pai ja buscado, sem foto
+      { id: '9001', sku: 'SKU-DO-OUTRO', imagem: null, eansCarregados: true },
+      { id: '9002', sku: '9001', imagem: null, eansCarregados: false },
+    ] };
+    const indiceTemProduto = (chave) => {
+      if (!IDX.ts || !Array.isArray(IDX.itens)) return false;
+      const bruto = String(chave || '').trim();
+      if (!bruto) return false;
+      const alvo = bruto.toUpperCase();
+      const it = IDX.itens.find((x) => String(x.sku || '').toUpperCase() === alvo)
+        || IDX.itens.find((x) => String(x.id || '') === bruto);
+      if (!it || !it.eansCarregados || it.imagem) return false;
+      if (it.pai) {
+        const pai = IDX.itens.find((x) => String(x.id || '') === String(it.pai));
+        if (pai && !pai.eansCarregados) return false;
+        if (pai && pai.imagem) return false;
+      }
+      return true;
+    };
+    ok(indiceTemProduto('288-VAR') === false,
+       '⚠️ pai NO indice mas ainda nao enriquecido: espera (a foto pode chegar)');
+    ok(indiceTemProduto('ORFAO-VAR') === true,
+       '⚠️ pai FORA do indice (permanente): continua definitivo, nao gasta as 12 rodadas');
+    ok(indiceTemProduto('PAI-SEM-FOTO-VAR') === true,
+       '  pai ja buscado e sem foto: definitivo tambem');
+    ok(indiceTemProduto('9001') === false,
+       '⚠️ SKU tem prioridade sobre ID: "9001" e SKU (ainda sem detalhe) de um produto'
+       + ' e ID de outro (ja definitivo) que vem ANTES no catalogo - acha pelo SKU');
+  }
 }
 
 console.log('');

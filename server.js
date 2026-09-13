@@ -395,7 +395,7 @@ app.get('/health', (req, res) => {
       // busca por nome. Escolher um lado apagaria a descricao do outro.
       // ⚠️ a resolucao JUNTA as duas: a 7.5.0 (passe curto + tetos) ja esta
       // na main, e este PR acrescenta o build frio que falha vazio.
-      version: '9.11.4 (espera o pai antes de desistir da foto; cancela dentro da rodada; e pedido explicito volta pra fila apos falha)',
+      version: '9.11.5 (revisao Codex #279, 3a rodada: pai fora do indice e permanente, nao espera igual ao pai so pendente)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -8218,11 +8218,19 @@ registrarRotasAdminNF(app, {
     // DEPOIS — pelo PAI, que talvez nao tenha sido enriquecido ainda.
     // Marcar "definitivo" agora faria a tela desistir de um card que ia
     // receber a imagem, que e o mesmo erro que este PR veio consertar.
+    //
+    // revisao Codex #279 (3a rodada, P2): a versao anterior tratava "pai
+    // fora do indice" IGUAL a "pai ainda nao enriquecido" (as duas
+    // esperavam pra sempre). Mas `IDX_PROD.itens` e uma lista FECHADA,
+    // montada de uma vez so em `construirIndiceProdutos` (nao cresce
+    // depois) — se o pai nao esta nela, ele NUNCA vai aparecer, e essa e
+    // exatamente a variacao orfa que este campo foi criado pra resolver
+    // (ORFAO-VAR, `test/foto-vem-do-indice.test.js`). So espera quando o
+    // pai EXISTE no indice e so falta o worker chegar nele.
     if (it.pai) {
       const pai = IDX_PROD.itens.find((x) => String(x.id || '') === String(it.pai));
-      // se o pai nem esta no indice, ou ainda nao foi enriquecido, ESPERA
-      if (!pai || !pai.eansCarregados) return false;
-      if (pai.imagem) return false;   // vai vir pelo pai
+      if (pai && !pai.eansCarregados) return false;   // pai existe, so falta o worker
+      if (pai && pai.imagem) return false;   // vai vir pelo pai
     }
     return true;
   },

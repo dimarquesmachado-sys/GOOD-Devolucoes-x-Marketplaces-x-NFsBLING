@@ -187,7 +187,11 @@ const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 // de tentativas), em vez de esperar a varredura inteira do catalogo
 // terminar. A AMB nunca teve FOTOS_PEDIDAS/enriquecerEansEmBackground
 // (mesmo grep do b317) - nada a espelhar.
-const VERSAO = 'AMB Devolucoes b322';
+// b323 - revisao Codex #279, 3a rodada (GOOD): indiceTemProduto passa a
+// distinguir pai FORA do indice (variacao orfa, permanente) de pai AINDA
+// NAO enriquecido (temporario) - so o 2o caso espera. A AMB nunca teve
+// indiceTemProduto (mesmo grep do b321) - nada a espelhar.
+const VERSAO = 'AMB Devolucoes b323';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
