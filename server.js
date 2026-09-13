@@ -395,7 +395,7 @@ app.get('/health', (req, res) => {
       // busca por nome. Escolher um lado apagaria a descricao do outro.
       // ⚠️ a resolucao JUNTA as duas: a 7.5.0 (passe curto + tetos) ja esta
       // na main, e este PR acrescenta o build frio que falha vazio.
-      version: '9.5.1 (revisao Codex #270: exclusao inline atualiza a lista em vez de reabrir a busca, e a contagem da aba usa count exato no banco em vez do limite de 300/1000 da tela)',
+      version: '9.5.2 (revisao Codex #270 rodada 2: contarAba() cai pro caminho antigo — busca + filtro em JS — quando recuperado/descartado/defeito passam de MAX_IDS_NA_URL, senao o count exato contava a tabela inteira como se fosse so a aba)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),

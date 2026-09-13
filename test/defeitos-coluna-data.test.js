@@ -202,6 +202,40 @@ ok(/count:\s*'exact',\s*head:\s*true/.test(trechoContarAba),
 ok(!/\.limit\(/.test(trechoContarAba),
    '  e esse caminho nao usa limiteDaConsulta — o cap de 300/1000 da tela nao entra na contagem');
 
+// ⚠️ revisao Codex #270 (P2, rodada 2): o count exato quebra nos MESMOS
+// casos em que condicoesDoEstado()/idsForaDoEstado() alargam a condicao pra
+// nao montar um id.in(...) gigante (ver "volta ao amplo" perto de ATIVOS) -
+// um head-count direto nessa condicao alargada conta a TABELA INTEIRA (ou o
+// defeito ja resolvido por pedido) como se fosse so a aba, nao um numero
+// truncado como o buscar()+.limit() de antes. contarAba() precisa CAIR pro
+// caminho antigo (busca + filtro em JS) nesses casos, nao so quando ha termo.
+ok(/if \(termo \|\| alargouCondicaoDaAba\(estado, porPedido\)\)/.test(GOOD),
+   '⚠️ contarAba cai pro caminho antigo quando a condicao da aba foi alargada (nao so quando ha termo de busca)');
+
+const trechoAlargou = GOOD.slice(
+  GOOD.indexOf('function alargouCondicaoDaAba'),
+  GOOD.indexOf('async function contarAba'));
+const alargouCondicaoDaAba = new Function(
+  GOOD.slice(GOOD.indexOf('const ATIVOS ='), GOOD.indexOf('async function buscar(termo, estado, porPedido)'))
+  + '\n' + trechoAlargou + '; return alargouCondicaoDaAba;')();
+{
+  const poucosRecuperados = {}; for (let i = 0; i < 10; i++) poucosRecuperados[i] = 'recuperado';
+  const muitosRecuperados = {}; for (let i = 0; i < 200; i++) muitosRecuperados[i] = 'recuperado';
+  const muitosDescartados = {}; for (let i = 0; i < 200; i++) muitosDescartados[i] = 'descartado';
+  const muitosNoTotal = {}; for (let i = 0; i < 200; i++) muitosNoTotal[i] = (i % 2) ? 'recuperado' : 'descartado';
+
+  ok(alargouCondicaoDaAba('recuperado', poucosRecuperados) === false,
+     'poucos recuperados: condicoesDoEstado nao alarga, o count exato continua certo');
+  ok(alargouCondicaoDaAba('recuperado', muitosRecuperados) === true,
+     '⚠️ 200 recuperados (> MAX_IDS_NA_URL): condicoesDoEstado alargaria pra TUDO — precisa cair pro caminho antigo');
+  ok(alargouCondicaoDaAba('descartado', muitosDescartados) === true,
+     '  o mesmo vale pra descartado');
+  ok(alargouCondicaoDaAba('defeito', muitosNoTotal) === true,
+     '  e pra defeito, quando o TOTAL por pedido passa do limite (idsForaDoEstado tambem some da consulta)');
+  ok(alargouCondicaoDaAba('excluido', muitosNoTotal) === false,
+     '  excluido nao depende de porPedido — nunca alarga');
+}
+
 // e quando os ids terminais nao cabem na URL, o limite compensa
 // a fatia comeca no ATIVOS pra levar junto o MAX_IDS_NA_URL que a funcao usa
 const limiteDaConsulta = new Function(

@@ -163,7 +163,12 @@ const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 // "excluir fica na mesma aba" do #270 (js-AMB/defeitos-ciclo-AMB.js ainda
 // conta com um unico buscar() sem aba nem paginacao, confirmado por grep) -
 // nada a espelhar.
-const VERSAO = 'AMB Devolucoes b315';
+// b316 - revisao Codex #270 (rodada 2, GOOD): o count exato de contarAba()
+// quebrava quando porPedido passa de MAX_IDS_NA_URL (a mesma condicao
+// alargada "volta ao amplo" que ja existia antes deste PR, so que agora
+// virando um head-count sem o filtro de JS por cima). A AMB nunca teve
+// MAX_IDS_NA_URL nem contarAba() (mesmo grep do b315) - nada a espelhar.
+const VERSAO = 'AMB Devolucoes b316';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
