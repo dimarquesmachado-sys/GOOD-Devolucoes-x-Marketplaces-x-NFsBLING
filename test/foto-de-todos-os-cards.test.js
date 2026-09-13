@@ -80,6 +80,27 @@ const front = fs.readFileSync(
      '  e a ROTA respeita o parametro (os 2 lados, nao so o front)');
 }
 
+// ── ⚠️ e o semBling corta ANTES de furar a fila de background ──────
+//
+// Apontamento do Codex (P1, 2a rodada): o corte de semBling estava DEPOIS
+// de deps.anotarFotoPedida(chave) e das duas esperas de 300ms. Essa chamada
+// poe o SKU na fila PRIORITARIA do passo de detalhe do Bling (server.js) —
+// entao mesmo sem cair no fallback sincrono, o pedido com semBling=1 ainda
+// furava a fila e gastava cota em BACKGROUND pros itens que deveriam ficar
+// de fora do orcamento.
+{
+  const rota = fs.readFileSync(
+    path.join(__dirname, '..', 'lib', 'rotas-admin-nf.js'), 'utf8');
+  const iSemBling = rota.indexOf('req.query.semBling');
+  const iAnotar = rota.indexOf('deps.anotarFotoPedida(chave)');
+  ok(iSemBling >= 0, 'achou o corte de semBling na rota');
+  ok(iAnotar >= 0, 'achou a chamada que fura a fila de background');
+  if (iSemBling >= 0 && iAnotar >= 0) {
+    ok(iSemBling < iAnotar,
+       '⚠️ o corte de semBling vem ANTES de anotar/furar a fila (nao depois)');
+  }
+}
+
 console.log('');
 console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
 process.exit(falhas ? 1 : 0);
