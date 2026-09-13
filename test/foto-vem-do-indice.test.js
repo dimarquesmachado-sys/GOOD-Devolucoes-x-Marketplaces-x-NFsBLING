@@ -73,6 +73,33 @@ const rota = fs.readFileSync(path.join(RAIZ, 'lib', 'rotas-admin-nf.js'), 'utf8'
      '⚠️ e acha pelo ID tambem (o modal de lançar manda `p.id`, nao o SKU)');
 }
 
+// ── ⚠️ e o índice aceita URL SEM extensão ───────────────────────────
+//
+// Apontamento do Codex (P2): `extrairImagem` exige extensão no fim da URL
+// (.jpg/.png/...). Mas o Bling usa também o formato SEM extensão
+// (`lh3.googleusercontent.com/d/...`), e esses produtos ficavam com
+// `imagem: null` no índice — então a foto deles caía no Bling, que está em
+// pausa.
+//
+// ⚠️ Era justamente o caso que este PR veio resolver: meio conserto de novo.
+{
+  ok(/imagemDoProduto\(p\) \|\| extrairImagem\(p\)/.test(srv),
+     '⚠️ a listagem popula o indice com `imagemDoProduto` tambem');
+  ok(/imagemDoProduto\(det\) \|\| extrairImagem\(det\)/.test(srv),
+     '  e o detalhe tambem (os 2 caminhos de popular)');
+
+  // a diferença entre os dois extratores
+  const extrai = (o) => (typeof o === 'string' && /^https?:\/\//i.test(o.trim())
+    && /\.(jpe?g|png|webp|gif|bmp)(\?|$)/i.test(o.trim())) ? o.trim() : null;
+  const doProduto = (p) => (p && p.imagemURL) || null;
+
+  const semExt = { imagemURL: 'https://lh3.googleusercontent.com/d/1a2b3c' };
+  ok(extrai(semExt.imagemURL) === null,
+     '  (o extrator antigo REJEITA url sem extensao — era o bug)');
+  ok(doProduto(semExt) === semExt.imagemURL,
+     '  ⚠️ e o novo aceita (Google Drive nao poe extensao na url)');
+}
+
 console.log('');
 console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
 process.exit(falhas ? 1 : 0);

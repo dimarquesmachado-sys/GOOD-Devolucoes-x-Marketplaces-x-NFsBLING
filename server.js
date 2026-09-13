@@ -395,7 +395,7 @@ app.get('/health', (req, res) => {
       // busca por nome. Escolher um lado apagaria a descricao do outro.
       // ⚠️ a resolucao JUNTA as duas: a 7.5.0 (passe curto + tetos) ja esta
       // na main, e este PR acrescenta o build frio que falha vazio.
-      version: '9.6.2 (revisao Codex #271: a foto pelo indice aceita SKU E ID — as 2 telas mandam chaves diferentes)',
+      version: '9.6.3 (revisao Codex #271: o indice aceita imagem sem extensao na URL — Google Drive nao poe)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -4071,7 +4071,18 @@ async function construirIndiceProdutos() {
       for (const p of lista) {
         const skuItem = String(p.codigo || '').trim();
         const eansCache = EAN_POR_SKU.get(skuItem.toUpperCase()) || null;
-        const imgCache = IMG_POR_SKU.get(skuItem.toUpperCase()) || extrairImagem(p) || null;
+        // ⚠️ b315.2 (Codex, P2) - `imagemDoProduto` TAMBEM, nao so
+        // `extrairImagem`.
+        //
+        // `extrairImagem` exige extensao no fim da URL (.jpg/.png/...). Mas o
+        // Bling usa tambem o formato SEM extensao (`lh3.googleusercontent.com/
+        // d/...`), e esses produtos ficavam com `imagem: null` no indice —
+        // entao a foto deles caia no Bling, que esta em pausa. Era justamente
+        // o caso que este PR veio resolver.
+        //
+        // `imagemDoProduto` le os campos do Bling direto e aceita os dois.
+        const imgCache = IMG_POR_SKU.get(skuItem.toUpperCase())
+          || imagemDoProduto(p) || extrairImagem(p) || null;
         itens.push({
           id: p.id || null,
           sku: skuItem,
@@ -4137,7 +4148,9 @@ function enriquecerEansEmBackground() {
           EAN_PROGRESSO.comEan++;
         }
         // v4.08 - mesma leitura ja traz a imagem (sem chamada extra)
-        const img = extrairImagem(det);
+        // ⚠️ b315.2: idem no DETALHE — o mesmo produto sem extensao na URL
+        // ficava sem imagem pelos dois caminhos de popular o indice.
+        const img = imagemDoProduto(det) || extrairImagem(det);
         if (img) { p.imagem = img; IMG_POR_SKU.set(String(p.sku || '').toUpperCase(), img); }
       } catch (e) { p.eansCarregados = true; }
       EAN_PROGRESSO.feitos++;
