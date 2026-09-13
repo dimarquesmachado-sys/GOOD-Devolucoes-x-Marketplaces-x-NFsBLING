@@ -35,15 +35,21 @@ try {
   ok(false, 'localiza o objeto fotos_do_indice: ' + e.message);
 }
 
-ok(/com_foto:[\s\S]*IDX_PROD\.itens\.filter\(\(x\) => x && x\.imagem\)\.length/.test(diagnostico),
+// apontamento Codex #275 (rodada 2): os regexes abaixo leem o TEXTO fonte, e
+// um campo comentado (`// detalhes_feitos: ...`) continua tendo esse texto —
+// entao um campo removido via comentario passava como se ainda existisse.
+// Tira comentario de linha antes de checar presenca/ausencia de campos.
+const semComentarios = diagnostico.replace(/\/\/.*$/gm, '');
+
+ok(/com_foto:[\s\S]*IDX_PROD\.itens\.filter\(\(x\) => x && x\.imagem\)\.length/.test(semComentarios),
   'com_foto conta somente itens do indice que possuem imagem');
-ok(/detalhes_feitos:[\s\S]*EAN_PROGRESSO\.feitos/.test(diagnostico),
+ok(/detalhes_feitos:[\s\S]*EAN_PROGRESSO\.feitos/.test(semComentarios),
   'diagnostico informa quantos detalhes foram processados');
-ok(/detalhes_total:[\s\S]*EAN_PROGRESSO\.total/.test(diagnostico),
+ok(/detalhes_total:[\s\S]*EAN_PROGRESSO\.total/.test(semComentarios),
   'diagnostico informa o total de detalhes');
-ok(/passo_concluido:[\s\S]*EAN_PROGRESSO\.concluido/.test(diagnostico),
+ok(/passo_concluido:[\s\S]*EAN_PROGRESSO\.concluido/.test(semComentarios),
   'diagnostico informa se o passo terminou');
-ok(/fila_prioritaria:[\s\S]*FOTOS_PEDIDAS\.length/.test(diagnostico),
+ok(/fila_prioritaria:[\s\S]*FOTOS_PEDIDAS\.length/.test(semComentarios),
   'diagnostico informa o tamanho da fila prioritaria sem expor SKUs');
 
 // ⚠️ o /health é PÚBLICO: contagens sim, identificadores não.
@@ -54,11 +60,18 @@ ok(/fila_prioritaria:[\s\S]*FOTOS_PEDIDAS\.length/.test(diagnostico),
 // exigimos que toda referencia aos arrays com identificadores
 // (FOTOS_PEDIDAS guarda SKU cru; IDX_PROD.itens guarda sku/nome) so apareca
 // reduzida a `.length`/`.filter(...).length`, nunca como valor bruto.
-ok(!/(?:sku|nome)\s*:/.test(diagnostico),
+//
+// apontamento Codex #275 (rodada 2): a checagem de IDX_PROD.itens exigia so
+// que um `.filter(` viesse depois — um campo tipo
+// `itens_expostos: IDX_PROD.itens.filter((x) => x && x.imagem)` (sem
+// `.length`) passava e vazava os itens crus filtrados. Agora a lookahead
+// exige a cadeia inteira `.filter(...).length`, igual ja fazia a checagem
+// da FOTOS_PEDIDAS.
+ok(!/(?:sku|nome)\s*:/.test(semComentarios),
   'diagnostico nao inclui chave SKU nem nome de produto');
-ok(!/(?<!typeof\s)FOTOS_PEDIDAS(?!\.length\b)/.test(diagnostico),
+ok(!/(?<!typeof\s)FOTOS_PEDIDAS(?!\.length\b)/.test(semComentarios),
   'toda referencia a FOTOS_PEDIDAS no diagnostico usa .length (nunca expoe os SKUs da fila)');
-ok(!/(?<!Array\.isArray\()IDX_PROD\.itens(?!\.filter\()/.test(diagnostico),
+ok(!/(?<!Array\.isArray\()IDX_PROD\.itens(?!\.filter\([^,}]*?\)\.length)/.test(semComentarios),
   'toda referencia a IDX_PROD.itens no diagnostico usa .filter(...).length (nunca expoe os itens crus)');
 
 if (falhas) process.exit(1);
