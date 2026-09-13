@@ -112,8 +112,9 @@ const front = fs.readFileSync(
 // em card de OUTRA busca.
 {
   ok(/var _fotoToken = 0;/.test(front), '⚠️ cada varredura de fotos tem um numero');
-  ok(/if \(meuToken !== _fotoToken\) return;/.test(front),
-     '  e desiste se outra comecou');
+  const quantos = (front.match(/if \(meuToken !== _fotoToken\) return;/g) || []).length;
+  ok(quantos >= 2,
+     '  ⚠️ e desiste NA RODADA e DENTRO dela (achei ' + quantos + ')');
   ok(/cxCaixa\.style\.display === 'none'\) return;/.test(front),
      '  ⚠️ ou se a caixa foi fechada');
 }
@@ -134,8 +135,24 @@ const front = fs.readFileSync(
      '  e a tela pula esse card nas proximas rodadas');
 
   const srv = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
-  ok(/return !!\(it && it\.eansCarregados && !it\.imagem\);/.test(srv),
+  ok(/if \(!it \|\| !it\.eansCarregados \|\| it\.imagem\) return false;/.test(srv),
      '  ⚠️ e so e definitivo se o detalhe JA foi buscado (senao a foto pode chegar)');
+
+  // ⚠️ b321.3 (Codex): a variacao pode ganhar foto DEPOIS, pelo PAI — se o
+  // pai ainda nao foi enriquecido, desistir agora repete o erro que este PR
+  // veio consertar.
+  ok(/if \(!pai \|\| !pai\.eansCarregados\) return false;/.test(srv),
+     '⚠️ e ESPERA o pai da variacao ser enriquecido antes de desistir');
+  ok(/if \(pai\.imagem\) return false;/.test(srv),
+     '  (e se o pai TEM foto, ela vai chegar — nao e definitivo)');
+
+  // ⚠️ e a MESMA precedencia do `fotoDoIndice`: SKU primeiro, id depois.
+  // Num `find` unico, um id que coincide com o SKU de outro produto pode
+  // casar antes — e as duas funcoes olhariam produtos DIFERENTES.
+  const iTem = srv.indexOf('indiceTemProduto: (chave) => {');
+  const blocoTem = srv.slice(iTem, srv.indexOf('fotoDoIndice:', iTem));
+  ok(/=== alvo\)\s*\n?\s*\|\| IDX_PROD\.itens\.find/.test(blocoTem),
+     '⚠️ e usa a MESMA precedencia do fotoDoIndice (SKU, depois id)');
 }
 
 console.log('');

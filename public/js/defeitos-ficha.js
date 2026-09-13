@@ -765,6 +765,12 @@
       if (!cxCaixa || cxCaixa.style.display === 'none') return;
       var faltando = 0;
       for (var i = 0; i < itens.length && i < TETO_FOTOS; i++) {
+        // ⚠️ b321.3 (Codex, P2) - CONFERE DENTRO DA RODADA TAMBEM.
+        //
+        // A checagem so no inicio de cada rodada nao basta: se o dono fechar
+        // a caixa no MEIO, esta rodada ainda faria ate 60 pedidos seriais —
+        // e podia pintar foto em card de outra busca.
+        if (meuToken !== _fotoToken) return;
         var cx = document.getElementById('fotodef-' + i);
         if (!cx || !cx.dataset.sku || cx.dataset.sku === '-') continue;
         faltando++;

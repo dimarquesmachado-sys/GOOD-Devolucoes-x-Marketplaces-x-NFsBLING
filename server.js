@@ -395,7 +395,7 @@ app.get('/health', (req, res) => {
       // busca por nome. Escolher um lado apagaria a descricao do outro.
       // ⚠️ a resolucao JUNTA as duas: a 7.5.0 (passe curto + tetos) ja esta
       // na main, e este PR acrescenta o build frio que falha vazio.
-      version: '9.11.2 (revisao Codex #279: as rodadas param ao fechar a tela, e nao insistem em quem nao tem foto)',
+      version: '9.11.3 (revisao Codex #279 rodada 2: espera o pai antes de desistir da foto, e cancela dentro da rodada)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -8179,12 +8179,28 @@ registrarRotasAdminNF(app, {
     const bruto = String(chave || '').trim();
     if (!bruto) return false;
     const alvo = bruto.toUpperCase();
+    // ⚠️ b321.3 (Codex, P2) - MESMA PRECEDENCIA DO `fotoDoIndice`: SKU
+    // primeiro, id depois. Num `find` unico, um id que coincide com o SKU
+    // de outro produto pode casar ANTES — e as duas funcoes olhariam
+    // produtos DIFERENTES pra mesma chave.
     const it = IDX_PROD.itens.find(
-      (x) => String(x.sku || x.codigo || '').toUpperCase() === alvo
-        || String(x.id || '') === bruto);
-    // ⚠️ so e "definitivo" se o produto esta no indice E o detalhe dele ja
-    // foi buscado: se ainda nao foi, a foto pode chegar
-    return !!(it && it.eansCarregados && !it.imagem);
+      (x) => String(x.sku || x.codigo || '').toUpperCase() === alvo)
+      || IDX_PROD.itens.find((x) => String(x.id || '') === bruto);
+    if (!it || !it.eansCarregados || it.imagem) return false;
+
+    // ⚠️ b321.3 (Codex, P2) - ESPERA O PAI ANTES DE DESISTIR.
+    //
+    // A variacao pode ter o detalhe carregado e ainda assim ganhar foto
+    // DEPOIS — pelo PAI, que talvez nao tenha sido enriquecido ainda.
+    // Marcar "definitivo" agora faria a tela desistir de um card que ia
+    // receber a imagem, que e o mesmo erro que este PR veio consertar.
+    if (it.pai) {
+      const pai = IDX_PROD.itens.find((x) => String(x.id || '') === String(it.pai));
+      // se o pai nem esta no indice, ou ainda nao foi enriquecido, ESPERA
+      if (!pai || !pai.eansCarregados) return false;
+      if (pai.imagem) return false;   // vai vir pelo pai
+    }
+    return true;
   },
   fotoDoIndice: (chave) => {
     if (!IDX_PROD.ts && !IDX_PROD.construindo) tentarConstruirIndice('foto pediu');
