@@ -310,6 +310,15 @@
     atual = null;
     fichaInlineId = null;
     fichaBotaoAtual = null;
+    // b323 (Codex, P2) - ⚠️ FECHAR NAO CANCELAVA A VARREDURA DE FOTOS.
+    //
+    // `fechar()` so escondia a caixa; nao tocava em `_fotoToken` nem tirava
+    // os cards do DOM. A varredura de `buscarFotosDefeitos` (mais abaixo)
+    // continuava pedindo foto por ate 12 rodadas de uma lista que o dono ja
+    // fechou. Incrementar aqui usa o MESMO mecanismo de cancelamento que ja
+    // existe pra "outra busca comecou" — a rodada em andamento desiste na
+    // proxima checagem.
+    _fotoToken++;
   }
   window.fecharCaixaDefeitos = fechar;
 
@@ -694,7 +703,7 @@
           }
         };
       }
-      buscarFotosDefeitos(itens);
+      buscarFotosDefeitos(itens, el);
     } catch (e) {
       el.innerHTML = '<div style="color:#c62828;font-size:13px;">erro ao buscar</div>';
     }
@@ -710,7 +719,7 @@
   // anterior (o dono fecha a caixa ou busca outra coisa no meio)
   var _fotoToken = 0;
 
-  async function buscarFotosDefeitos(itens) {
+  async function buscarFotosDefeitos(itens, listaEl) {
     // b320 - ⚠️ O TETO DE 12 DEIXAVA 34 CARDS SEM PEDIR FOTO.
     //
     // [stated 13/09] "ainda sem imagens", com ~70% dos cards no
@@ -761,26 +770,23 @@
     for (var rodada = 0; rodada < MAX_RODADAS; rodada++) {
       // ⚠️ desisto se outra busca comecou ou a caixa fechou
       if (meuToken !== _fotoToken) return;
-      // ⚠️ b322 - A CHECAGEM DO `display` ABORTAVA TUDO, E FUI EU QUE PUS.
+      // ⚠️ b323 (Codex #280, P1) - O SENTINELA ERA UM PLACEHOLDER QUE SOME
+      // AO DAR CERTO.
       //
-      // [stated 13/09] "agora não mostra nenhuma foto d produto" — piorou
-      // depois do meu conserto anterior.
+      // O conserto anterior (b322) checava `fotodef-0` e `fotodef-1` pra
+      // saber se a lista ainda esta na tela. Mas quando a foto CHEGA,
+      // `cx.outerHTML` troca o placeholder por um `<img>` sem esse id — os
+      // dois primeiros cards com foto faziam este `if` dar verdadeiro (os
+      // dois sumiram) e abortar a varredura na 2a rodada, mesmo com o card
+      // 3 em diante ainda esperando foto.
       //
-      // Eu conferia `caixaDefeitos.style.display === 'none'` pra parar
-      // quando o dono fecha a tela. Mas o `abrir()` RETORNA ANTES de tocar
-      // no display quando a ficha expande no card (b301) — entao o estilo
-      // inline podia continuar 'none' com a caixa VISIVEL, e a varredura
-      // abortava na primeira volta. Nenhuma foto.
-      //
-      // 📌 O TOKEN JA RESOLVE O CANCELAMENTO com segurança: toda nova
-      // varredura (e toda nova busca) incrementa, e a antiga desiste. E o
-      // `fechar()` limpa a lista, entao os cards somem do DOM e o
-      // `if (!cx) continue` cuida do resto.
-      //
-      // ⚠️ Menos condicao, menos jeito de errar — e esta eu nao tinha como
-      // testar daqui, so o dono clicando.
-      if (!document.getElementById('fotodef-0')
-        && !document.getElementById('fotodef-1')) return;
+      // Uso `listaEl` (o `#defLista` desta busca) como sentinela: ele so
+      // sai do DOM quando a lista inteira e substituida (nova busca,
+      // ficha em tela cheia por cima) — nao quando UM card ganha foto.
+      // `fechar()` agora incrementa `_fotoToken` (b323, P2) pra cobrir o
+      // caso de o dono so fechar a caixa sem iniciar outra busca, ja que
+      // `listaEl` continua no DOM (so escondido) nesse caso.
+      if (!document.body.contains(listaEl)) return;
       var faltando = 0;
       for (var i = 0; i < itens.length && i < TETO_FOTOS; i++) {
         // ⚠️ b321.3 (Codex, P2) - CONFERE DENTRO DA RODADA TAMBEM.
