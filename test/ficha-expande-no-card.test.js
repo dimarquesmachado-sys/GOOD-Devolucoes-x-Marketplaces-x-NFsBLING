@@ -82,6 +82,38 @@ const src = fs.readFileSync(
      '  ⚠️ e e o fallback quando o destino nao existe (botao nao morre)');
 }
 
+// ── ⚠️ e ha UM CAMINHO SO pra abrir a ficha ─────────────────────────
+//
+// [stated 13/09] "tá rolando esses 2 modos de entrar, um qdo clico em abrir
+// detalhes, e outro qdo clico fora, mas ainda em cima do defeito, que muda
+// a tela do card (...) o ideal é eu clicar pra abrir detalhes, já ver e
+// resolver tudo ali, inclusive clicando excluir"
+//
+// O clique no card chamava `abrirFichaDefeito` (troca a tela) e o botão
+// chamava `expandirFichaNoCard`. Duas fichas para o mesmo defeito, e o dono
+// caía numa ou noutra sem saber por quê.
+{
+  // ⚠️ so no CARD da lista: a tela de Solicitacoes tambem tem um botao
+  // `abrirFichaDefeito`, e la trocar de tela e o certo (nao ha card pra
+  // expandir). Recorto a montagem do card em vez de varrer o arquivo.
+  const iMap = src.indexOf('itens.map(');
+  const fimMap = src.indexOf(").join('')", iMap);
+  const montagemCard = src.slice(iMap, fimMap);
+  ok(!/onclick="abrirFichaDefeito\(/.test(montagemCard),
+     '⚠️ o clique no CARD nao abre mais a tela cheia');
+  ok(/onclick="expandirFichaNoCard\(/.test(src),
+     '  os dois caminhos levam ao mesmo lugar (expande no card)');
+
+  // ⚠️ e o botão de excluir tem que estar na ficha que expande — era só na
+  // tela cheia que ele aparecia
+  const iFicha = src.indexOf('window.abrirFichaDefeito = async function');
+  const bloco = src.slice(iFicha);
+  ok(/Excluir este registro \(admin\)/.test(bloco),
+     '⚠️ e o botao de excluir vive na ficha (que e a mesma nos 2 caminhos)');
+  ok(/await window\.abrirFichaDefeito\(id\)/.test(src),
+     '  porque o expandir chama a MESMA ficha');
+}
+
 console.log('');
 console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
 process.exit(falhas ? 1 : 0);

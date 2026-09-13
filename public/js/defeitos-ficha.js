@@ -501,7 +501,18 @@
         // borbulha pra este onclick.
         return '<div style="border:1px solid #eee;border-left:4px solid #9E1A1A;border-radius:9px;padding:10px 12px;'
           + 'margin-bottom:7px;">'
-          + '<div onclick="abrirFichaDefeito(\'' + esc(it.id) + '\')" '
+          // b308 - ⚠️ UM CAMINHO SO: o clique no card TAMBEM expande.
+          //
+          // [stated 13/09] "tá rolando esses 2 modos de entrar, um qdo
+          // clico em abrir detalhes, e outro qdo clico fora, mas ainda em
+          // cima do defeito, que muda a tela do card (...) o ideal é eu
+          // clicar pra abrir detalhes, já ver e resolver tudo ali"
+          //
+          // O clique no card chamava `abrirFichaDefeito`, que TROCA a tela
+          // — e so nela aparecia o botao de excluir. Entao havia duas
+          // fichas diferentes pro mesmo defeito, com botoes diferentes, e o
+          // dono caia numa ou na outra sem saber por que.
+          + '<div onclick="expandirFichaNoCard(\'' + esc(it.id) + '\')" '
           + 'style="cursor:pointer;display:flex;gap:12px;align-items:flex-start;">'
           + '<div id="fotodef-' + i + '" data-sku="' + esc(sku) + '" '
           + 'style="width:84px;height:84px;flex:0 0 auto;border-radius:9px;background:#f2f2f7;'
