@@ -395,7 +395,7 @@ app.get('/health', (req, res) => {
       // busca por nome. Escolher um lado apagaria a descricao do outro.
       // ⚠️ a resolucao JUNTA as duas: a 7.5.0 (passe curto + tetos) ja esta
       // na main, e este PR acrescenta o build frio que falha vazio.
-      version: '9.6.3 (revisao Codex #271: o indice aceita imagem sem extensao na URL — Google Drive nao poe)',
+      version: '9.6.4 (foto pelo indice: aceita URL sem extensao, aceita SKU e ID, e nao casa SKU por acento)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -8028,13 +8028,19 @@ registrarRotasAdminNF(app, {
   // Minha versao so procurava por SKU, entao o modal de lançar defeito —
   // que e de onde veio a reclamacao — continuaria indo no Bling e falhando
   // com a conta em pausa. Meio conserto.
+  //
+  // revisao Codex #271 (P2): normProd() tira acento pra ACHAR por NOME
+  // (busca livre) — usado aqui pra comparar SKU, "ABCA" e "ABCÁ" viravam o
+  // MESMO alvo e a rota podia devolver (e CACHEAR) a foto do produto
+  // errado. Troco pelo criterio exato (so maiuscula) que o resolvedor de
+  // defeito ja usa pro codigo do Bling; a comparacao por id continua igual.
   fotoDoIndice: (chave) => {
     if (!IDX_PROD.ts || !Array.isArray(IDX_PROD.itens)) return null;
     const bruto = String(chave || '').trim();
     if (!bruto) return null;
-    const alvo = normProd(bruto);
+    const alvo = bruto.toUpperCase();
     const it = IDX_PROD.itens.find(
-      (x) => normProd(String(x.sku || x.codigo || '')) === alvo
+      (x) => String(x.sku || x.codigo || '').toUpperCase() === alvo
         || String(x.id || '') === bruto);
     return (it && it.imagem) || null;
   },
