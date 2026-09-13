@@ -723,11 +723,19 @@
     // pedir todas. Mantenho um teto alto so pra nao disparar centenas de
     // requisicoes de uma vez numa lista gigante.
     var TETO_FOTOS = 60;
+    // revisao Codex #278 (P1): quando o item NAO esta no indice (frio ou
+    // sem `imagem`), a rota cai num fallback ao Bling com ate 4 chamadas
+    // SEM limite. Isso valia pro teto antigo de 12; abrir pra 60 sem
+    // limite podia gastar ~5x mais cota, disputando com a bipagem.
+    // Mantenho o orcamento de Bling nos primeiros 12 (igual antes) e peco
+    // `semBling=1` pro resto - eles so ganham foto se ja estiver no indice.
+    var TETO_BLING = 12;
     for (var i = 0; i < itens.length && i < TETO_FOTOS; i++) {
       var cx = document.getElementById('fotodef-' + i);
       if (!cx || !cx.dataset.sku || cx.dataset.sku === '-') continue;
       try {
-        var d = await api('/api/produto/imagem/' + encodeURIComponent(cx.dataset.sku));
+        var semBling = i >= TETO_BLING ? '?semBling=1' : '';
+        var d = await api('/api/produto/imagem/' + encodeURIComponent(cx.dataset.sku) + semBling);
         if (d && d.ok && d.imagem) {
           cx.outerHTML = '<img src="' + esc(d.imagem) + '" alt="" '
             + 'onclick="event.stopPropagation();window.open(this.src,\'_blank\')" '
