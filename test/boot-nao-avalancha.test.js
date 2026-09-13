@@ -36,11 +36,30 @@ const srv = fs.readFileSync(path.join(RAIZ, 'server.js'), 'utf8');
      '  e os pre-aquecimentos usam ele (achei ' + comEspaco + ' usos)');
 
   // ⚠️ nenhum deles pode ter voltado para segundos fixos abaixo de 90s
-  const fixos = [...srv.matchAll(/drenagem\.daquiA\([^,]+,\s*(\d+)\s*\*\s*1000\)/g)]
-    .map((m) => Number(m[1]))
-    .filter((s) => s < 90);
-  ok(fixos.length <= 1,
-     '  e no maximo UM dispara antes de 90s (achei ' + fixos.length + ')');
+  // ⚠️ b319: o que a avalanche derruba e a COTA DE UMA CONTA — nao o
+  // numero de timers. Dois disparos cedo em APIs DIFERENTES (Bling e
+  // Magalu) nao competem entre si.
+  //
+  // Contar timers fazia o teste reprovar quando eu tirei o indice de
+  // produtos do ULTIMO lugar da fila (6,1 min — ele nunca montava a tempo,
+  // e o dono passou o dia sem foto e com busca lenta por causa disso).
+  //
+  // Agora conto por ALVO: no maximo um por API antes de 90s.
+  const cedo = [...srv.matchAll(/drenagem\.daquiA\(([^,]{0,120}?),\s*(\d+)\s*\*\s*1000\)/gs)]
+    .map((m) => ({ alvo: m[1].replace(/\s+/g, ' '), seg: Number(m[2]) }))
+    .filter((x) => x.seg < 90);
+
+  const porApi = {};
+  for (const c of cedo) {
+    const api = /magalu/i.test(c.alvo) ? 'magalu'
+      : /tentarConstruirIndice|Bling|produtos/i.test(c.alvo) ? 'bling'
+      : /ml|espreita|Returns/i.test(c.alvo) ? 'ml' : 'outro';
+    porApi[api] = (porApi[api] || 0) + 1;
+  }
+  const apisComDois = Object.entries(porApi).filter(([, n]) => n > 1);
+  ok(apisComDois.length === 0,
+     '  e no maximo UM disparo por API antes de 90s'
+     + (apisComDois.length ? ' (' + JSON.stringify(porApi) + ')' : ''));
 }
 
 // ── ⚠️ a espreita vem CEDO, porque é ela que a tela precisa ─────────
