@@ -125,6 +125,12 @@ const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 // busca de produtos tratava indice com falha (`IDX_PROD.ts` preenchido +
 // `erro`) como "montado" - a AMB nao tem catalogo de produtos nem rota
 // /produtos/buscar (confirmado: sem IDX_PROD aqui) - nada a espelhar.
+// b313 - as duas mudancas de hoje foram SO do lado GOOD; a AMB nao muda.
+//
+// ⚠️ Anoto as duas juntas porque cada uma veio de um PR diferente e o
+// merge as colocou na mesma linha — perder uma apagaria o registro de
+// por que a AMB ficou de fora.
+//
 // b313 - revisao Codex #269 tambem foi so do lado GOOD (lib/defeitos-
 // ciclo.js): o fallback que marca a exclusao SO no `estado_atual` (b310)
 // existe porque a tabela `devolucoes` da GOOD recusa `tipo:
@@ -135,6 +141,13 @@ const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 // quem tem estado_atual NULL, classificacao que so olhava um status
 // especifico, /restaurar e /estado sem reconhecer a marca) nao existem
 // aqui - nada a espelhar.
+//
+// b313 - revisao Codex #268 (card do defeito aberto ganha borda inteira,
+// e o fix seguinte que fecha o destaque + escopa a #caixaDefeitos) foi so
+// em public/js/defeitos-ficha.js (GOOD). A AMB usa sua PROPRIA copia
+// (js-AMB/defeitos-ficha.js, ainda em b291) e ela nao tem `marcarCardAberto`
+// nem a classe `cardDefeito.aberto` (confirmado por grep) - o recurso nunca
+// chegou aqui, entao nao ha nada a espelhar.
 const VERSAO = 'AMB Devolucoes b313';
 const SUBIU_EM = new Date().toISOString();
 
