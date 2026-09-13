@@ -25,6 +25,8 @@ const rota = fs.readFileSync(path.join(RAIZ, 'lib', 'rotas-admin-nf.js'), 'utf8'
      'o server passa `fotoDoIndice` pra rota');
   ok(/String\(x\.id \|\| ''\) === bruto/.test(srv),
      '⚠️ e ela aceita SKU **e** ID (as 2 telas mandam chaves diferentes)');
+  ok(/String\(x\.sku \|\| x\.codigo \|\| ''\)\.toUpperCase\(\) === alvo/.test(srv),
+     '⚠️ e o SKU compara SO maiusculo, sem tirar acento (normProd juntaria SKUs diferentes)');
 
   // ⚠️ uma FUNÇÃO, não o objeto: assim a rota lê o estado ATUAL do índice,
   // não uma foto do momento em que o servidor subiu
@@ -45,10 +47,14 @@ const rota = fs.readFileSync(path.join(RAIZ, 'lib', 'rotas-admin-nf.js'), 'utf8'
 
 // ── ⚠️ e a consulta se comporta ─────────────────────────────────────
 {
-  const normProd = (s) => String(s || '').toUpperCase().trim();
+  // revisao Codex #271 (P2): so maiuscula pra comparar - NAO tira acento
+  // (normProd tira, e "ABCA"/"ABCÁ" viravam o mesmo alvo: a foto de um
+  // vazava - e ficava CACHEADA - pro outro).
   const IDX = { ts: Date.now(), itens: [
     { id: '16234567', sku: 'LV-ASH-4', imagem: 'https://x/foto.jpg' },
     { sku: 'PT-06-ROSA', imagem: null },
+    { id: '333', sku: 'ABCA', imagem: 'https://x/abca.jpg' },
+    { id: '444', sku: 'ABCÁ', imagem: 'https://x/abca-acento.jpg' },
   ] };
   // ⚠️ b315.1 (Codex): as duas telas chamam a rota com chaves DIFERENTES —
   // `lancar-defeito.js` manda `p.id`, `defeitos-ficha.js` manda o SKU.
@@ -58,8 +64,8 @@ const rota = fs.readFileSync(path.join(RAIZ, 'lib', 'rotas-admin-nf.js'), 'utf8'
     if (!IDX.ts || !Array.isArray(IDX.itens)) return null;
     const bruto = String(chave || '').trim();
     if (!bruto) return null;
-    const alvo = normProd(bruto);
-    const it = IDX.itens.find((x) => normProd(x.sku) === alvo
+    const alvo = bruto.toUpperCase();
+    const it = IDX.itens.find((x) => String(x.sku || '').toUpperCase() === alvo
       || String(x.id || '') === bruto);
     return (it && it.imagem) || null;
   };
@@ -71,6 +77,10 @@ const rota = fs.readFileSync(path.join(RAIZ, 'lib', 'rotas-admin-nf.js'), 'utf8'
   ok(fotoDoIndice('') === null, '  e sku vazio nao quebra');
   ok(fotoDoIndice('16234567') === 'https://x/foto.jpg',
      '⚠️ e acha pelo ID tambem (o modal de lançar manda `p.id`, nao o SKU)');
+  ok(fotoDoIndice('ABCA') === 'https://x/abca.jpg',
+     '⚠️ "ABCA" e "ABCÁ" sao SKUs DIFERENTES — nao casa um pelo outro (sem tirar acento)');
+  ok(fotoDoIndice('ABCÁ') === 'https://x/abca-acento.jpg',
+     '  e o SKU com acento acha o proprio, nao o do vizinho');
 }
 
 console.log('');
