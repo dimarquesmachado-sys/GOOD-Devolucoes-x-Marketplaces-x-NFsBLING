@@ -177,7 +177,17 @@ const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 // de foto tinha que vir ANTES de anotarFotoPedida (que fura a fila de
 // background do Bling), nao depois. A AMB nunca teve a tela de 46 cards
 // nem o parametro semBling (mesmo grep do b317/b318) - nada a espelhar.
-const VERSAO = 'AMB Devolucoes b319';
+// b321 - revisao Codex #279 (GOOD): as rodadas de foto da tela de defeitos
+// cancelam ao fechar a caixa/comecar outra busca, e a tela para de insistir
+// numa variacao orfa que nunca vai ganhar foto. A AMB nunca ganhou o loop de
+// rodadas (`buscarFotosDefeitos` de js-AMB/defeitos-ficha.js ainda faz uma
+// passada so, confirmado por grep) - nada a espelhar.
+// b322 - revisao Codex #279, 2a rodada (GOOD): pedido explicito de foto que
+// falha por transitorio agora recoloca na fila do enriquecimento (com teto
+// de tentativas), em vez de esperar a varredura inteira do catalogo
+// terminar. A AMB nunca teve FOTOS_PEDIDAS/enriquecerEansEmBackground
+// (mesmo grep do b317) - nada a espelhar.
+const VERSAO = 'AMB Devolucoes b322';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();

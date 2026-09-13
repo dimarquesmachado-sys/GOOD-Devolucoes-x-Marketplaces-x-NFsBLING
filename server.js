@@ -395,7 +395,7 @@ app.get('/health', (req, res) => {
       // busca por nome. Escolher um lado apagaria a descricao do outro.
       // ⚠️ a resolucao JUNTA as duas: a 7.5.0 (passe curto + tetos) ja esta
       // na main, e este PR acrescenta o build frio que falha vazio.
-      version: '9.11.2 (revisao Codex #279: as rodadas param ao fechar a tela, e nao insistem em quem nao tem foto)',
+      version: '9.11.3 (revisao Codex #279, 2a rodada: pedido explicito recoloca na fila apos falha transitoria)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -4195,6 +4195,20 @@ function enriquecerEansEmBackground() {
     }
     return fila.shift();
   };
+  // apontamento do Codex #279 (P2): `proximoDaFila` ja RETIRA o item da
+  // `fila` local antes da chamada ao Bling. Se essa chamada falhar
+  // (transitorio), o item some desta varredura e so volta quando ELA
+  // TERMINAR POR INTEIRO (o "retoma o que ficou" abaixo) — minutos depois,
+  // bem apos as ~12 rodadas de 700ms que a tela de defeitos faz (b321).
+  // Recoloco na `fila` ATUAL pra tentar de novo em seguida, com um teto de
+  // 3 tentativas: sem o teto, um pedido que nunca responde ficaria SEMPRE
+  // em 1o lugar (e' o unico "pedido" na fila) e travaria o resto da
+  // varredura, que so avanca quando `proximoDaFila` nao acha pedido.
+  const MAX_RETENTATIVAS_PEDIDO = 3;
+  const recolocarPedidoNaFila = (p) => {
+    p._retentativasFoto = (p._retentativasFoto || 0) + 1;
+    if (p._retentativasFoto <= MAX_RETENTATIVAS_PEDIDO) fila.push(p);
+  };
   (async () => {
     console.log(`[PRODUTOS] buscando EAN de ${EAN_PROGRESSO.total} produtos (background)...`);
     let p;
@@ -4230,8 +4244,18 @@ function enriquecerEansEmBackground() {
           // revisao Codex #271 (rodada 3, P2): o pai as vezes so vem no
           // DETALHE, nao na listagem — guarda se a listagem ainda nao tinha.
           if (!p.pai && det && det.produtoPai && det.produtoPai.id) p.pai = det.produtoPai.id;
+        } else if (pedido(p)) {
+          recolocarPedidoNaFila(p);
         }
-      } catch (e) { /* falha transitoria: fica na fila, tenta de novo depois */ }
+      } catch (e) {
+        // falha transitoria: fica no INDICE pra retomada depois de a
+        // varredura inteira acabar (linha ~4244) — mas isso pode levar
+        // minutos, e um pedido explicito da tela so tem ~8s de rodadas
+        // (b321). apontamento do Codex #279 (P2): recoloca so quem foi
+        // PEDIDO, com um teto de tentativas pra nao travar o resto da
+        // fila num item que nunca vai responder.
+        if (pedido(p)) recolocarPedidoNaFila(p);
+      }
       EAN_PROGRESSO.feitos++;
       await new Promise(r2 => setTimeout(r2, 340));
     }
