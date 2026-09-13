@@ -121,7 +121,11 @@ const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 // defeito de estoque grava `tipo: 'defeito_estoque'` DIRETO (app-AMB.js:1481)
 // e a tabela dela aceita esse valor de verdade - nao ha shipment_id sintetico
 // nem SELECT faltando pra espelhar aqui.
-const VERSAO = 'AMB Devolucoes b311';
+// b312 - revisao Codex #265 foi so do lado GOOD (server.js): o gate da
+// busca de produtos tratava indice com falha (`IDX_PROD.ts` preenchido +
+// `erro`) como "montado" - a AMB nao tem catalogo de produtos nem rota
+// /produtos/buscar (confirmado: sem IDX_PROD aqui) - nada a espelhar.
+const VERSAO = 'AMB Devolucoes b312';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();

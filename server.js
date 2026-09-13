@@ -395,7 +395,7 @@ app.get('/health', (req, res) => {
       // busca por nome. Escolher um lado apagaria a descricao do outro.
       // ⚠️ a resolucao JUNTA as duas: a 7.5.0 (passe curto + tetos) ja esta
       // na main, e este PR acrescenta o build frio que falha vazio.
-      version: '9.0.0 (a busca dispara o indice na hora quando ele nao existe, e o boot agenda em 5s — a janela apos o deploy jogava tudo no Bling)',
+      version: '9.0.1 (revisao Codex #265: falha do indice nao passa mais por "montado", e a busca dispara o indice na hora quando ele nao existe ou tem erro)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -410,7 +410,11 @@ app.get('/health', (req, res) => {
     //
     // ⚠️ So contagens e estados: o /health e publico, nada de SKU ou nome.
     indice_produtos: {
-      montado: !!(typeof IDX_PROD !== "undefined" && IDX_PROD.ts),
+      // revisao Codex #265 (P1, mesmo criterio da busca): `ts` fica
+      // preenchido MESMO quando a construcao falha. "montado" so pode ser
+      // true sem erro — senao o /health mente exatamente no campo que
+      // existe pra nao deixar a gente supondo (b303).
+      montado: !!(typeof IDX_PROD !== "undefined" && IDX_PROD.ts && !IDX_PROD.erro),
       construindo: !!(typeof IDX_PROD !== "undefined" && IDX_PROD.construindo),
       qtd: (typeof IDX_PROD !== "undefined" && Array.isArray(IDX_PROD.itens))
         ? IDX_PROD.itens.length : 0,
@@ -4573,7 +4577,14 @@ app.get('/api/produtos/buscar', requerEstoquista, async (req, res) => {
     // Agora: sem indice montado, DISPARO a construcao na hora (nao
     // espero o agendamento) e aviso. Fica rapida em 1-2 min, e ele sabe
     // por que esperar em vez de achar que travou.
-    if (!IDX_PROD.ts) {
+    //
+    // revisao Codex #265 (P1): `IDX_PROD.ts` fica preenchido MESMO quando a
+    // construcao falha (construirIndiceProdutos grava ts e erro juntos —
+    // ver b305 acima). O gate `!IDX_PROD.ts` sozinho tratava essa falha
+    // como indice pronto, entao a busca caia direto no Bling de novo — o
+    // MESMO sintoma que este bloco existe pra evitar. O criterio de
+    // "montado" e o mesmo que `tentarConstruirIndice` usa: ts SEM erro.
+    if (!IDX_PROD.ts || IDX_PROD.erro) {
       tentarConstruirIndice('busca chegou antes do indice');
       return res.json({
         ok: true,
@@ -8080,13 +8091,19 @@ drenagem.daquiA(() => {
 
 drenagem.daquiA(() => nfNomes.preAquecer(), 20 * 1000 + ESPACO);
 // v4.04 - catalogo de produtos pre-aquecido (a busca do estoquista nunca espera)
-// b306 - ⚠️ 20s -> 5s: a janela entre o boot e o agendamento e o que fazia
-// a busca cair no Bling depois de cada deploy.
+// b306 - ⚠️ revisao Codex #265 (P2): a conta "agenda em 5s" estava ERRADA.
 //
-// O espacamento do boot existe pra nao dar avalanche de chamadas (b213),
-// e por isso mantenho o ESPACO. Mas 20s de espera fixa antes de COMECAR
-// era tempo morto puro: o indice e o que deixa a busca instantanea, e a
-// tela de lançar defeito e das primeiras que o galpao abre.
+// Com o ESPACO padrao (120000ms), este disparo roda em 5s + ESPACO*3 =
+// 6min05s — nao em 5s. O `produtos` continua de proposito na ULTIMA
+// posicao do espacamento (b272: "o mais pesado, e o menos urgente"), pra
+// nao entrar na avalanche que castigava a conta com 429 (b213). Trocar
+// 20s por 5s so tira 15s de um total de 6 minutos — nao resolve a janela
+// pos-deploy sozinho.
+//
+// O CONSERTO DE VERDADE pra janela e o de cima: a busca agora dispara
+// `tentarConstruirIndice` na hora que chega sem indice pronto, sem
+// esperar este agendamento. Este disparo do boot so cobre o caso de
+// ninguem ter buscado nada nesses 6 minutos.
 drenagem.daquiA(() => { tentarConstruirIndice('boot'); }, 5 * 1000 + ESPACO * 3);
 // v4.20 - a busca da data REAL de entrega roda sozinha, em ciclo proprio.
 // Antes so era disparada quando alguem abria o painel - e como o indice do ML

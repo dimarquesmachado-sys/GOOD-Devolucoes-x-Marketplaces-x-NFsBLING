@@ -20,9 +20,20 @@ const RAIZ = path.join(__dirname, '..');
 const src = fs.readFileSync(path.join(RAIZ, 'server.js'), 'utf8');
 
 // ── o /health expõe as duas ──────────────────────────────────────────
+//
+// ⚠️ NUNCA janela fixa aqui: um comentário a mais em qualquer ponto do
+// handler (ex.: revisao Codex #265) desloca `coordenacao:` pra fora de um
+// corte por distância e quebra o teste sem o /health ter mudado. Recorto
+// o handler inteiro contando chaves, como o indice-nao-morre-calado já faz.
 {
   const i = src.indexOf("app.get('/health'");
-  const rota = src.slice(i, i + 2500);
+  let prof = 0;
+  let fim = i;
+  for (let k = src.indexOf('{', i); k < src.length; k++) {
+    if (src[k] === '{') prof++;
+    else if (src[k] === '}') { prof--; if (prof === 0) { fim = k; break; } }
+  }
+  const rota = src.slice(i, fim);
   ok(/coordenacao:/.test(rota), 'o /health tem o bloco `coordenacao`');
   ok(/leitura_de_token/.test(rota), '  com o estado da leitura de token');
   ok(/ritmo_compartilhado/.test(rota), '  e do ritmo compartilhado');
