@@ -395,7 +395,7 @@ app.get('/health', (req, res) => {
       // busca por nome. Escolher um lado apagaria a descricao do outro.
       // ⚠️ a resolucao JUNTA as duas: a 7.5.0 (passe curto + tetos) ja esta
       // na main, e este PR acrescenta o build frio que falha vazio.
-      version: '9.10.2 (revisao Codex #278: semBling corta antes de furar a fila de background)',
+      version: '9.11.0 (varredura do indice vira funcao reutilizavel; e semBling nos cards alem do orcamento)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -4084,7 +4084,11 @@ async function construirIndiceProdutos() {
     for (let pagina = 1; pagina <= 40; pagina++) {
       let r = null;
       for (let tent = 1; tent <= 3; tent++) {
-        r = await chamarBling(`https://api.bling.com.br/Api/v3/produtos?pagina=${pagina}&limite=100`);
+        // revisao Codex #276 (P1): sem `fundo`, esta varredura de boot
+        // entrava na fila INTERATIVA do ritmo-bling — na mesma prioridade
+        // da busca do estoquista e do indice de nomes. `fundo: true` (o
+        // mesmo que `nfNomes.preAquecer` usa) cede pro que e urgente.
+        r = await chamarBling(`https://api.bling.com.br/Api/v3/produtos?pagina=${pagina}&limite=100`, { fundo: true });
         if (r && r.ok) break;
         falhas.push(`pagina ${pagina} tentativa ${tent}: ${(r && (r.status || r.error)) || 'falhou'}`);
         await new Promise(r2 => setTimeout(r2, 1200 * tent));
@@ -4204,7 +4208,9 @@ function enriquecerEansEmBackground() {
       // loop de baixo (`retoma o que ficou`) tenta de novo.
       try {
         await esperarVezDetalhe();                        // v4.67 - ritmo global
-        const r = await chamarBling(`https://api.bling.com.br/Api/v3/produtos/${p.id}`);
+        // revisao Codex #276 (P1): idem — detalhe de produto tambem e
+        // varredura de fundo, nao pode furar fila igual a busca do estoquista.
+        const r = await chamarBling(`https://api.bling.com.br/Api/v3/produtos/${p.id}`, { fundo: true });
         if (r && r.ok) {
           const det = (r.data && r.data.data) || r.data || null;
           const eans = possiveisGtins(det);
