@@ -395,7 +395,7 @@ app.get('/health', (req, res) => {
       // busca por nome. Escolher um lado apagaria a descricao do outro.
       // ⚠️ a resolucao JUNTA as duas: a 7.5.0 (passe curto + tetos) ja esta
       // na main, e este PR acrescenta o build frio que falha vazio.
-      version: '9.5.0 (excluir mantem na mesma aba, e a aba Excluidos passa a ser contada — mostrava 0 sempre)',
+      version: '9.6.0 (a foto do produto vem do INDICE local antes do Bling — com a conta em pausa, toda chamada de foto falhava)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -7994,6 +7994,26 @@ registrarRotasAdminNF(app, {
   chamarBling, chamarML, buscarNFnoML,
   buscarNFePorId, buscarNFBlindada,
   resolverIdNFPorChave, mapItensNF,
+  // b315 - ⚠️ O INDICE LOCAL, pra rota da foto nao ir no Bling.
+  //
+  // [stated 13/09] "a foto dos produtos na tela com defeitos não tá
+  // aparecendo"
+  //
+  // A rota `/api/produto/imagem` busca no Bling SEMPRE — e o /health mostra
+  // a conta com `pausa_ativa: true`. Com a pausa, toda chamada de foto
+  // falha, e sao ate 12 por abertura da lista.
+  //
+  // O indice ja tem as imagens (1091 produtos, cada um com `imagem`). Passo
+  // a funcao de consulta em vez do objeto: assim a rota le o estado ATUAL,
+  // nao uma foto do momento em que o servidor subiu.
+  fotoDoIndice: (sku) => {
+    if (!IDX_PROD.ts || !Array.isArray(IDX_PROD.itens)) return null;
+    const alvo = normProd(String(sku || ''));
+    if (!alvo) return null;
+    const it = IDX_PROD.itens.find(
+      (x) => normProd(String(x.sku || x.codigo || '')) === alvo);
+    return (it && it.imagem) || null;
+  },
 });
 
 // v4.50 - CICLO DO ESTOQUE DE DEFEITOS (ficha, comentarios, pecas,
