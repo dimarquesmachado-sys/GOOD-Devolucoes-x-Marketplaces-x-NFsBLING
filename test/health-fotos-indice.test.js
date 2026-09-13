@@ -23,21 +23,41 @@ try {
   ok(false, 'localiza o handler do /health: ' + e.message);
 }
 
-ok(/fotos_do_indice\s*:\s*\{/.test(health), '/health expoe o diagnostico de fotos do indice');
-ok(/com_foto:[\s\S]*IDX_PROD\.itens\.filter\(\(x\) => x && x\.imagem\)\.length/.test(health),
-  'com_foto conta somente itens do indice que possuem imagem');
-ok(/detalhes_feitos:[\s\S]*EAN_PROGRESSO\.feitos/.test(health),
-  'diagnostico informa quantos detalhes foram processados');
-ok(/detalhes_total:[\s\S]*EAN_PROGRESSO\.total/.test(health),
-  'diagnostico informa o total de detalhes');
-ok(/passo_concluido:[\s\S]*EAN_PROGRESSO\.concluido/.test(health),
-  'diagnostico informa se o passo terminou');
-ok(/fila_prioritaria:[\s\S]*FOTOS_PEDIDAS\.length/.test(health),
-  'diagnostico informa o tamanho da fila prioritaria sem expor SKUs');
+// ⚠️ b318 (Codex, P2) - RECORTO O OBJETO, e confiro DENTRO dele.
+//
+// Minha versao procurava os campos no /health INTEIRO. Se alguem mover
+// `com_foto` pra fora do `fotos_do_indice` mas deixar noutro lugar da rota,
+// o teste continuaria verde — e o diagnostico estaria quebrado.
+const iObj = health.indexOf('fotos_do_indice: {');
+ok(iObj >= 0, '/health expoe o diagnostico de fotos do indice');
+const objeto = iObj >= 0 ? health.slice(iObj, health.indexOf('indice_produtos:', iObj)) : '';
 
-// ⚠️ o /health é PÚBLICO: contagens sim, identificadores não
-ok(!/fotos_do_indice\s*:\s*\{[\s\S]*?(?:sku|nome)\s*:/.test(health),
-  'diagnostico nao inclui SKU nem nome de produto');
+ok(/com_foto:[\s\S]*IDX_PROD\.itens\.filter\(\(x\) => x && x\.imagem\)\.length/.test(objeto),
+  'com_foto conta somente itens do indice que possuem imagem');
+ok(/detalhes_feitos:[\s\S]*EAN_PROGRESSO\.feitos/.test(objeto),
+  'diagnostico informa quantos detalhes foram processados');
+ok(/detalhes_total:[\s\S]*EAN_PROGRESSO\.total/.test(objeto),
+  'diagnostico informa o total de detalhes');
+ok(/passo_concluido:[\s\S]*EAN_PROGRESSO\.concluido/.test(objeto),
+  'diagnostico informa se o passo terminou');
+ok(/fila_prioritaria:[\s\S]*FOTOS_PEDIDAS\.length/.test(objeto),
+  'diagnostico informa o tamanho da fila prioritaria');
+
+// ── ⚠️ b318 (Codex, P2) - o que VAZA, nao o nome do campo ────────────
+//
+// Minha versao proibia as CHAVES `sku:` e `nome:`. Mas o risco real e o
+// VALOR sair: `pendentes: FOTOS_PEDIDAS` (o array inteiro, com os SKUs) ou
+// `itens: IDX_PROD.itens` passariam batido, porque a chave tem outro nome.
+//
+// O /health e PUBLICO. Confiro o que SAI: nada de array de identificadores.
+ok(!/:\s*FOTOS_PEDIDAS\s*[,}]/.test(objeto),
+  '⚠️ nao publica a LISTA de SKUs pedidos (so `.length`)');
+ok(!/:\s*IDX_PROD\.itens\s*[,}]/.test(objeto),
+  '  nem o array de produtos do indice');
+ok(!/\.map\(|\.slice\(0,|\.join\(/.test(objeto),
+  '  e nao monta lista derivada deles');
+ok(!/(sku|nome|codigo|titulo)\s*:/i.test(objeto),
+  '  e nenhuma chave de identificador');
 
 if (falhas) process.exit(1);
 console.log('\n=== TODOS OS CASOS PASSARAM ===');
