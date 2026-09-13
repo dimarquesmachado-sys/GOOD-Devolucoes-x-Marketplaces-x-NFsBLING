@@ -37,8 +37,19 @@ const front = fs.readFileSync(path.join(RAIZ, 'public', 'js', 'defeitos-ficha.js
 {
   ok(!/abaAtual = 'excluido';/.test(front),
      '⚠️ excluir nao joga mais pra aba dos Excluidos');
-  ok(/abrirBuscaDefeitos\(\);/.test(front),
-     '  so recarrega a lista (o card some pelo filtro)');
+}
+
+// ── revisao Codex #270 (P1): refresh in-place, nao reabrir a busca ──
+//
+// "Call the existing buscarDefeitos() refresh path instead so the current
+// query, tab, and surrounding search UI remain intact" — abrirBuscaDefeitos()
+// sem termo reconstroi o modal inteiro (zera #defBusca, empilha navegacao),
+// o mesmo "perder o lugar" que este PR queria evitar.
+{
+  ok(/_eraInline[\s\S]{0,80}buscarDefeitos\(\)/.test(front),
+     '⚠️ exclusao inline chama buscarDefeitos() (mantem busca, aba e rolagem)');
+  ok(/else if \(typeof abrirBuscaDefeitos === 'function'\) abrirBuscaDefeitos\(\);/.test(front),
+     '  fora da lista (ficha em tela cheia, sem #defLista) ainda cai pra busca');
 }
 
 console.log('');

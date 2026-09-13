@@ -395,7 +395,7 @@ app.get('/health', (req, res) => {
       // busca por nome. Escolher um lado apagaria a descricao do outro.
       // ⚠️ a resolucao JUNTA as duas: a 7.5.0 (passe curto + tetos) ja esta
       // na main, e este PR acrescenta o build frio que falha vazio.
-      version: '9.6.0 (a foto do produto vem do INDICE local antes do Bling — com a conta em pausa, toda chamada de foto falhava)',
+      version: '9.6.1 (a foto vem do INDICE antes do Bling; e a contagem por aba com caminho de reserva)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
