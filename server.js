@@ -395,7 +395,7 @@ app.get('/health', (req, res) => {
       // busca por nome. Escolher um lado apagaria a descricao do outro.
       // ⚠️ a resolucao JUNTA as duas: a 7.5.0 (passe curto + tetos) ja esta
       // na main, e este PR acrescenta o build frio que falha vazio.
-      version: '9.7.0 (o passo das fotos prioriza os SKUs que a tela pediu — a varredura do catalogo nunca chegava neles)',
+      version: '9.7.1 (o /health mostra quantas fotos o indice ja tem — sem isso eu nao distingo o passo nao rodou de nao achou)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -409,6 +409,30 @@ app.get('/health', (req, res) => {
     // e supor foi o que me custou rodadas hoje.
     //
     // ⚠️ So contagens e estados: o /health e publico, nada de SKU ou nome.
+    // b317 - ⚠️ QUANTAS FOTOS O INDICE JA TEM.
+    //
+    // [stated 13/09] "as imagens defeitos agora, sumiram (...) estamos o
+    // dia inteiro nisso e não sai do lugar"
+    //
+    // Li o fluxo inteiro antes de mexer: front → rota → indice → Bling. O
+    // CODIGO esta certo em todos os pontos — a rota so cacheia quando ha
+    // foto, o front so troca quando vem imagem.
+    //
+    // ⚠️ O PROBLEMA E DADO, NAO CODIGO: a listagem do Bling nao traz
+    // imagem, e o passo que busca o detalhe leva ~6 min pros 1091
+    // produtos. Se o Render reinicia antes, o indice fica com produtos mas
+    // SEM fotos — e a rota cai no Bling, que esta em pausa.
+    //
+    // Sem este numero eu nao distingo "o passo nao rodou" de "rodou e nao
+    // achou". E foi supondo isso que eu queimei o dia dele.
+    fotos_do_indice: {
+      com_foto: (typeof IDX_PROD !== 'undefined' && Array.isArray(IDX_PROD.itens))
+        ? IDX_PROD.itens.filter((x) => x && x.imagem).length : 0,
+      detalhes_feitos: (typeof EAN_PROGRESSO !== 'undefined') ? EAN_PROGRESSO.feitos : 0,
+      detalhes_total: (typeof EAN_PROGRESSO !== 'undefined') ? EAN_PROGRESSO.total : 0,
+      passo_concluido: (typeof EAN_PROGRESSO !== 'undefined') ? !!EAN_PROGRESSO.concluido : false,
+      fila_prioritaria: (typeof FOTOS_PEDIDAS !== 'undefined') ? FOTOS_PEDIDAS.length : 0,
+    },
     indice_produtos: {
       // revisao Codex #265 (P1, mesmo criterio da busca): `ts` fica
       // preenchido MESMO quando a construcao falha. "montado" so pode ser
