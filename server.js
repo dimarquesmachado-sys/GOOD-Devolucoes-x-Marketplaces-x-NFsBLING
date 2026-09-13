@@ -395,7 +395,7 @@ app.get('/health', (req, res) => {
       // busca por nome. Escolher um lado apagaria a descricao do outro.
       // ⚠️ a resolucao JUNTA as duas: a 7.5.0 (passe curto + tetos) ja esta
       // na main, e este PR acrescenta o build frio que falha vazio.
-      version: '9.8.0 (a fila de fotos reage a pedido no meio da varredura; e o /health mostra quantas fotos o indice ja tem)',
+      version: '9.9.0 (o indice montava so aos 6 MINUTOS do boot — era o ultimo da fila. Agora aos 15s)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -8312,7 +8312,23 @@ drenagem.daquiA(() => nfNomes.preAquecer(), 20 * 1000 + ESPACO);
 // `tentarConstruirIndice` na hora que chega sem indice pronto, sem
 // esperar este agendamento. Este disparo do boot so cobre o caso de
 // ninguem ter buscado nada nesses 6 minutos.
-drenagem.daquiA(() => { tentarConstruirIndice('boot'); }, 5 * 1000 + ESPACO * 3);
+// b319 - ⚠️ O INDICE ERA O ULTIMO DA FILA DO BOOT: 6 MINUTOS.
+//
+// [stated 13/09] o /health aos 2 min de vida mostrou o indice
+// `montado:false, construindo:false, erro:null` — ou seja, NUNCA TENTOU.
+//
+// ⚠️ E A CONTA E SIMPLES, eu e que nao fiz: `5*1000 + ESPACO*3` com
+// ESPACO=120000 da 6,1 MINUTOS. Eu tinha reduzido 20s -> 5s achando que
+// resolvia; os 20s nunca foram o problema.
+//
+// O espacamento existe pra nao dar avalanche no boot (b213) — mas o indice
+// de produtos e o que deixa a busca INSTANTANEA e alimenta as fotos. Ele
+// estava em ULTIMO na fila, atras de 5 pre-aquecimentos.
+//
+// 📌 Passa pra 15s: ainda depois do pre-aquecimento imediato (0,3 min), mas
+// ANTES dos que levam minutos. A busca de produto e a tela de defeitos sao
+// das primeiras que o galpao abre.
+drenagem.daquiA(() => { tentarConstruirIndice('boot'); }, 15 * 1000);
 // v4.20 - a busca da data REAL de entrega roda sozinha, em ciclo proprio.
 // Antes so era disparada quando alguem abria o painel - e como o indice do ML
 // zera a cada deploy e leva ~2 min pra montar, o cache nunca enchia e o alerta

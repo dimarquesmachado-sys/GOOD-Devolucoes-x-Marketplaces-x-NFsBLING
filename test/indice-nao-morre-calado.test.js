@@ -107,22 +107,28 @@ const srv = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
      '⚠️ /health so reporta "montado" quando nao ha erro');
 }
 
-// ── e o agendamento do boot bate com o que ele afirma ────────────────
+// ── ⚠️ e o agendamento do boot é CALCULADO, não lido aos pedaços ─────
 //
-// revisao Codex #265 (P2): o comentario e o commit diziam "agenda em 5s",
-// mas com o ESPACO padrao (120000ms) o atraso EFETIVO e 5s + ESPACO*3 =
-// 365000ms (6min05s) — nao 5s. Calculo o valor de verdade em vez de
-// conferir os pedacos `5 * 1000` e `ESPACO * 3` isolados (foi assim que a
-// conta errada passou: cada pedaco batia, a soma nao).
+// Revisão Codex #265 (P2): o comentário dizia "agenda em 5s", mas com o
+// ESPACO padrão (120000ms) o atraso EFETIVO era 5s + ESPACO*3 = 6min05s.
+// Cada pedaço batia; a soma não.
+//
+// ⚠️ E o teste registrava os 365000ms como ESPERADO — então protegia o
+// número errado. O índice ficava em ÚLTIMO na fila do boot, nunca montava a
+// tempo, e o dono passou o dia com busca lenta e sem foto por causa disso.
+//
+// Agora o índice sai do espaçamento: ele não é pré-aquecimento, é o que faz
+// a busca ser instantânea e alimenta as fotos.
 {
-  const m = srv.match(/tentarConstruirIndice\('boot'\); \}, (\S+) \* 1000 \+ ESPACO \* (\d+)\)/);
+  const m = srv.match(/tentarConstruirIndice\('boot'\); \}, (\d+) \* 1000\)/);
   ok(!!m, '⚠️ acho a chamada de agendamento do boot pra conferir a conta');
   if (m) {
-    const ESPACO_PADRAO = 120000;
-    const atrasoMs = Number(m[1]) * 1000 + ESPACO_PADRAO * Number(m[2]);
-    ok(atrasoMs === 365000,
-       `  atraso efetivo com ESPACO padrao = ${atrasoMs}ms (esperado 365000ms = 6min05s, dominado pelo espacamento de b272 — nao pelos 5s)`);
+    const atrasoMs = Number(m[1]) * 1000;
+    ok(atrasoMs <= 30000,
+       `  atraso efetivo = ${atrasoMs}ms (tem que ser <= 30s; era 365000ms)`);
   }
+  ok(!/tentarConstruirIndice\('boot'\)[^;]*ESPACO/.test(srv),
+     '  ⚠️ e o indice NAO soma mais o espacamento (nao e pre-aquecimento)');
 }
 
 console.log('');
