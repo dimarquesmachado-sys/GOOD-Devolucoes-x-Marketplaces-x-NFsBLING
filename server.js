@@ -395,7 +395,7 @@ app.get('/health', (req, res) => {
       // busca por nome. Escolher um lado apagaria a descricao do outro.
       // ⚠️ a resolucao JUNTA as duas: a 7.5.0 (passe curto + tetos) ja esta
       // na main, e este PR acrescenta o build frio que falha vazio.
-      version: '9.6.6 (revisao Codex #271, rodada 4: fotoDoIndice prioriza SKU antes de cair pro id)',
+      version: '9.7.0 (o passo das fotos prioriza os SKUs que a tela pediu — a varredura do catalogo nunca chegava neles)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -4132,6 +4132,23 @@ const EAN_PROGRESSO = { feitos: 0, total: 0, comEan: 0, concluido: false };
 function enriquecerEansEmBackground() {
   if (EAN_RODANDO) return;
   const fila = IDX_PROD.itens.filter(p => p.id && !p.eansCarregados);
+  // b316 - ⚠️ QUEM A TELA PEDIU VAI NA FRENTE.
+  //
+  // A varredura na ordem do catalogo leva 6,4 min pra 1091 produtos, e
+  // o Render reinicia antes de terminar — entao os ultimos NUNCA ganham
+  // foto. Com a conta em pausa, pior: as poucas chamadas que passam sao
+  // gastas em produtos que ninguem esta olhando.
+  //
+  // As ~46 pecas do Estoque de Defeitos ganham foto em segundos assim.
+  if (FOTOS_PEDIDAS.length) {
+    const pedido = (p) => {
+      const sku = String(p.sku || p.codigo || '').toUpperCase();
+      const id = String(p.id || '');
+      return FOTOS_PEDIDAS.some((c) => String(c).toUpperCase() === sku
+        || String(c) === id);
+    };
+    fila.sort((a, b) => (pedido(b) ? 1 : 0) - (pedido(a) ? 1 : 0));
+  }
   if (fila.length === 0) { EAN_PROGRESSO.concluido = true; return; }
   EAN_RODANDO = true;
   EAN_PROGRESSO.total = fila.length;
@@ -4335,6 +4352,24 @@ let imagem = null;   // v4.84   // b196/v4.80 - motivo DESTE componente
 // fixa dentro de cada laco so espacava as chamadas DAQUELE laco: duas
 // buscas simultaneas (ou a busca + o enriquecimento por EAN) somavam o
 // dobro do ritmo na API do Bling. Agora o intervalo e global, como na AMB.
+// b316 - ⚠️ O PASSO DAS FOTOS PRIORIZA QUEM ESTA NA TELA.
+//
+// [stated 13/09] "uns 70% sem imagem."
+//
+// A CAUSA, medida: a LISTAGEM do Bling nao devolve imagem — so o DETALHE de
+// cada produto traz. Sao 1091 produtos a 350ms = 6,4 MINUTOS de trabalho
+// continuo, e o Render REINICIA quando fica ocioso. O cache vive em
+// memoria, entao cada reinicio joga tudo fora e o passo recomeca do zero.
+//
+// ⚠️ Com a conta em pausa (que e o estado atual), cada chamada ainda falha —
+// e o passo varre na ordem do catalogo, gastando as poucas chamadas que
+// passam em produtos que ninguem esta olhando.
+//
+// Enquanto nao ha tabela de cache no banco (migracao, que nao faco sozinho),
+// o que da pra melhorar e a ORDEM: os SKUs que a tela pediu vao PRA FRENTE
+// da fila. Assim as ~46 pecas do Estoque de Defeitos ganham foto em
+// segundos, em vez de esperar a varredura chegar nelas.
+const FOTOS_PEDIDAS = [];     // SKUs que alguma tela pediu e nao tinham foto
 const DETALHE_INTERVALO_MS = 350;
 let DETALHE_PROXIMO = 0;
 // v4.71 (review do Codex) - a ESPERA NA FILA tambem conta no prazo: com
@@ -8076,6 +8111,17 @@ registrarRotasAdminNF(app, {
   // produto errado (e cacheava a foto errada). `/api/produto/imagem` no
   // Bling ja busca por `codigo` antes de tratar a chave como id; replico a
   // ordem aqui: so cai pro id se nao achou por SKU/codigo.
+  // b316: a tela avisa quais SKUs precisa — eles furam a fila
+  anotarFotoPedida: (chave) => {
+    const c = String(chave || '').trim();
+    if (!c) return;
+    if (FOTOS_PEDIDAS.indexOf(c) === -1) {
+      FOTOS_PEDIDAS.push(c);
+      // ⚠️ teto: sem ele, uma tela com muitos itens encheria a lista e o
+      // "prioritario" perderia o sentido
+      if (FOTOS_PEDIDAS.length > 200) FOTOS_PEDIDAS.shift();
+    }
+  },
   fotoDoIndice: (chave) => {
     if (!IDX_PROD.ts && !IDX_PROD.construindo) tentarConstruirIndice('foto pediu');
     if (!IDX_PROD.ts || !Array.isArray(IDX_PROD.itens)) return null;
