@@ -173,7 +173,11 @@ const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 // chance curta do passo priorizado antes de cair no Bling. A AMB nunca
 // teve FOTOS_PEDIDAS/fotoDoIndice/enriquecerEansEmBackground (mesmo grep
 // do b316) - nada a espelhar.
-const VERSAO = 'AMB Devolucoes b318';
+// b319 - revisao Codex #278, 2a rodada (GOOD): o corte `semBling` na rota
+// de foto tinha que vir ANTES de anotarFotoPedida (que fura a fila de
+// background do Bling), nao depois. A AMB nunca teve a tela de 46 cards
+// nem o parametro semBling (mesmo grep do b317/b318) - nada a espelhar.
+const VERSAO = 'AMB Devolucoes b319';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
