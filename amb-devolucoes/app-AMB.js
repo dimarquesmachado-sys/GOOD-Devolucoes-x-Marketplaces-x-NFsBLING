@@ -121,7 +121,7 @@ const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 // defeito de estoque grava `tipo: 'defeito_estoque'` DIRETO (app-AMB.js:1481)
 // e a tabela dela aceita esse valor de verdade - nao ha shipment_id sintetico
 // nem SELECT faltando pra espelhar aqui.
-const VERSAO = 'AMB Devolucoes b310';
+const VERSAO = 'AMB Devolucoes b311';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
