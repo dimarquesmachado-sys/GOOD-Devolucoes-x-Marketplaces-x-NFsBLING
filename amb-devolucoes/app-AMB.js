@@ -168,7 +168,7 @@ const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 // alargada "volta ao amplo" que ja existia antes deste PR, so que agora
 // virando um head-count sem o filtro de JS por cima). A AMB nunca teve
 // MAX_IDS_NA_URL nem contarAba() (mesmo grep do b315) - nada a espelhar.
-const VERSAO = 'AMB Devolucoes b316';
+const VERSAO = 'AMB Devolucoes b317';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
