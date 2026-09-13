@@ -395,7 +395,7 @@ app.get('/health', (req, res) => {
       // busca por nome. Escolher um lado apagaria a descricao do outro.
       // ⚠️ a resolucao JUNTA as duas: a 7.5.0 (passe curto + tetos) ja esta
       // na main, e este PR acrescenta o build frio que falha vazio.
-      version: '8.8.0 (o indice de produtos morria calado quando a conta estava em pausa — agora registra a falha e reagenda)',
+      version: '8.9.1 (revisao Codex #264: o fallback por status estava no /restaurar em vez do /excluir, o de recuperar/descartar gravava concluido de novo — no-op — e a exclusao-por-status nao aparecia nem podia ser restaurada)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -5510,7 +5510,13 @@ app.get('/api/defeitos', requerEstoquista, async (req, res) => { // v3.90: estoq
     // item foi liquidado e foi pro deposito DEFEITO (e nao pro GERAL, que volta
     // pra venda). Defeito lancado do ESTOQUE entra na hora (nao depende de NF).
     const todos = data || [];
-    const aguardandoNF = todos.filter(x => x.tipo === 'problema' && x.status !== 'concluido').length;
+    // b305 (revisao Codex #264) - 'cancelled' e 'delivered' sao sentinelas
+    // do lib/defeitos-ciclo.js (excluido/decidido via status, quando o tipo
+    // nao passa no check da tabela): ja foram decididos, nao estao
+    // esperando NF nenhuma. Sem esta excecao, toda peca excluida ou
+    // recuperada/descartada por esse fallback inflava este contador.
+    const aguardandoNF = todos.filter(x => x.tipo === 'problema'
+      && x.status !== 'concluido' && x.status !== 'cancelled' && x.status !== 'delivered').length;
     const liberados = todos.filter(x => x.tipo === 'defeito_estoque' || x.status === 'concluido');
 
     const q = String(req.query.q || '').trim().toUpperCase();
