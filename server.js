@@ -395,10 +395,30 @@ app.get('/health', (req, res) => {
       // busca por nome. Escolher um lado apagaria a descricao do outro.
       // ⚠️ a resolucao JUNTA as duas: a 7.5.0 (passe curto + tetos) ja esta
       // na main, e este PR acrescenta o build frio que falha vazio.
-      version: '8.6.1 (revisao Codex #260: termoBusca vivia dentro do if vazio e ficava undefined no ramo com resultado — o botao da 8.6.0 nunca aparecia no proprio caso que motivou ele; agora manda o SKU achado, nao o termo digitado, e fecha a caixa de busca so depois que o modal abre)',
+      version: '8.7.0 (o /health mostra o estado do indice de produtos, e a busca avisa NA HORA quando ele ainda esta montando)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
+    // b303 - ⚠️ O ESTADO DO INDICE DE PRODUTOS.
+    //
+    // [stated 11/09] "Buscando no Bling... demorando mto" — mesmo depois
+    // de a busca passar a consultar o indice local primeiro.
+    //
+    // Se o indice nao montou, TUDO cai no Bling e a lentidao volta
+    // inteira. Eu nao tinha como saber qual dos dois era, entao supunha —
+    // e supor foi o que me custou rodadas hoje.
+    //
+    // ⚠️ So contagens e estados: o /health e publico, nada de SKU ou nome.
+    indice_produtos: {
+      montado: !!(typeof IDX_PROD !== "undefined" && IDX_PROD.ts),
+      construindo: !!(typeof IDX_PROD !== "undefined" && IDX_PROD.construindo),
+      qtd: (typeof IDX_PROD !== "undefined" && Array.isArray(IDX_PROD.itens))
+        ? IDX_PROD.itens.length : 0,
+      idade_min: (typeof IDX_PROD !== "undefined" && IDX_PROD.ts)
+        ? Math.round((Date.now() - IDX_PROD.ts) / 60000) : null,
+      erro: (typeof IDX_PROD !== "undefined" && IDX_PROD.erro)
+        ? String(IDX_PROD.erro).slice(0, 120) : null,
+    },
     node: process.version,
 
     // b254 - ⚠️ EU CONSTRUI AS DUAS PECAS E NAO DEI COMO CONFERIR.
@@ -4462,6 +4482,28 @@ app.get('/api/produtos/buscar', requerEstoquista, async (req, res) => {
     // ⚠️ O BLING CONTINUA COMO RESERVA: se o indice nao tem o produto, ou
     // ainda esta montando, o fluxo antigo roda igual. So deixou de ser o
     // PRIMEIRO a ser tentado.
+    // b303 - ⚠️ AVISA ANTES DE IR NO BLING, nao depois.
+    //
+    // [stated 11/09] "Buscando no Bling... demorando mto"
+    //
+    // O aviso de "montando o catalogo" existia — mas SO DEPOIS de tentar
+    // o Bling, que e justamente a parte lenta. Enquanto o indice monta
+    // (~1-2 min apos o boot, e o Render reinicia quando fica ocioso),
+    // cada busca ia pra fila e o dono ficava olhando "Buscando...".
+    //
+    // ⚠️ Agora ele sabe NA HORA por que esta lento, e pode esperar sem
+    // achar que travou.
+    if (!IDX_PROD.ts && IDX_PROD.construindo) {
+      return res.json({
+        ok: true,
+        produtos: [],
+        indexando: true,
+        dica: 'Estou montando o catálogo de produtos agora (leva 1-2 min '
+          + 'depois que o serviço acorda). Tenta de novo em instantes — '
+          + 'aí a busca fica instantânea.',
+      });
+    }
+
     if (IDX_PROD.ts && Array.isArray(IDX_PROD.itens) && IDX_PROD.itens.length) {
       const achados = [];
       for (const it of IDX_PROD.itens) {
