@@ -85,6 +85,41 @@ const chamarBlingOriginal = bling.chamarBling;
       const r = await nf.buscarPorNome('Fulano Testado');
       ok(r.candidatos.length === 1, '  a busca acha a NF que entrou depois do retry');
     }
+
+    // ── b354 (Codex, P1): 401 PERSISTENTE nao pode renovar o token a
+    // cada volta do retry manual. `chamarBling` de verdade ja renova
+    // sozinho no 401 (a nao ser que peca `semRetentativa`) — sem isso,
+    // as 3 voltas do laco de NFs e as 4 do laco de vendas dispararia uma
+    // renovacao CADA UMA, gastando o refresh token (uso unico) a toa.
+    {
+      let renovacoesNfe = 0, chamadasNfe = 0;
+      let renovacoesVendas = 0, chamadasVendas = 0;
+      // Mock fiel ao contrato real do chamarBling: sem `semRetentativa`,
+      // um 401 renova o token sozinho antes de responder (e aqui a
+      // resposta segue 401, simulando renovacao que nao resolve).
+      bling.chamarBling = async (url, opts) => {
+        if (url.startsWith('/nfe')) {
+          chamadasNfe++;
+          if (!(opts && opts.semRetentativa)) renovacoesNfe++;
+          return { ok: false, status: 401 };
+        }
+        chamadasVendas++;
+        if (!(opts && opts.semRetentativa)) renovacoesVendas++;
+        return { ok: false, status: 401 };
+      };
+
+      const nf = nfNomesFactory.criar(configAMB);
+      await nf.construirIndice();
+
+      const st = nf.statusIndice();
+      ok(chamadasNfe === 4, '  laco de NFs esgotou as 4 chamadas (1 + 3 retries)');
+      ok(renovacoesNfe === 1,
+         '  ⚠️ P1 (Codex): so a 1a chamada renova o token - as 3 retentativas usam semRetentativa');
+      ok(chamadasVendas === 4, '  laco de vendas esgotou as 4 tentativas');
+      ok(renovacoesVendas === 1,
+         '  ⚠️ P1 (Codex): idem no laco de vendas - so a 1a das 4 tentativas renova');
+      ok(!!st.erro, '  com 401 persistente nos dois lacos, o indice registra erro (nao trava sem avisar)');
+    }
   } finally {
     bling.chamarBling = chamarBlingOriginal;
   }

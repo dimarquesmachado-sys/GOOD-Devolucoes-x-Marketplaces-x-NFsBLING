@@ -179,10 +179,18 @@ async function construirIndiceInterno(opts = {}) {
         // ⚠️ b351: 401 tambem entra no retry — mesma razao do bloco das
         // vendas. E ESTE e o caminho das NOTAS, que a busca por NOME usa:
         // foi aqui que o `nfe pagina 1 HTTP 401` matou o indice inteiro.
+        //
+        // ⚠️ b354 (Codex, P1) - `semRetentativa` daqui pra frente: a
+        // chamada de cima ja deixou o `chamarBling` renovar o token UMA
+        // vez sozinho (e o `renovarToken` tem "pega carona" pra renovacao
+        // concorrente). Sem `semRetentativa`, cada uma destas 3 voltas
+        // tambem dispararia sua PROPRIA renovacao em caso de 401 — com as
+        // 8 tentativas de build la de cima, isso chegava a ~32 rotacoes
+        // do refresh token (uso unico) por um 401 so persistente.
         for (let tent = 1; tent <= 3 && !r.ok
           && (r.status === 429 || r.status === 401); tent++) {
           await drenagem.pausar(2000 * tent, deFundo || IDX.viroufundo, 'indice-nomes/retry');
-          r = await bling.chamarBling(`/nfe?limite=100&pagina=${pg}&tipo=1`);
+          r = await bling.chamarBling(`/nfe?limite=100&pagina=${pg}&tipo=1`, { semRetentativa: true });
         }
       }
       if (!r.ok) { erroBusca = `nfe pagina ${pg} HTTP ${r.status}`; break; }
@@ -263,7 +271,12 @@ async function construirIndiceInterno(opts = {}) {
         // o indice: espera e tenta a MESMA pagina de novo, ate 4x com backoff.
         let r = null;
         for (let tent = 1; tent <= 4; tent++) {
-          r = await bling.chamarBling(`/pedidos/vendas?limite=100&pagina=${pg}`);
+          // ⚠️ b354 (Codex, P1) - so a 1a tentativa deixa o `chamarBling`
+          // renovar o token sozinho no 401. Da 2a em diante, `semRetentativa`
+          // evita que CADA volta deste laco dispare sua PROPRIA renovacao
+          // (o refresh token e de uso unico; 4 tentativas x 8 builds de
+          // `tentar()` chegava a rotacoes demais por um 401 so persistente).
+          r = await bling.chamarBling(`/pedidos/vendas?limite=100&pagina=${pg}`, tent === 1 ? undefined : { semRetentativa: true });
           if (r.ok) { erroVendas = null; break; }
           // ⚠️ b351 - 401 TAMBEM ENTRA NO RETRY.
           //
