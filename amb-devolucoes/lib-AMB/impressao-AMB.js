@@ -25,7 +25,7 @@ const crypto = require('crypto');
 const QZ_CERT = process.env.GOODBKP_QZ_CERT || process.env.QZ_CERT || '';
 const QZ_PRIVKEY = process.env.GOODBKP_QZ_PRIVKEY || process.env.QZ_PRIVKEY || '';
 
-// IMPR.fila propria da AMB (a da GOOD vive no server dela)
+// fila propria da AMB (a da GOOD vive no server dela)
 // ⚠️ b347 - gaveta da impressao. Compartilhada, a etiqueta de uma
 // empresa sairia na impressora da outra.
 // ⚠️ b348 (Codex, P1) - OS TIPOS ORIGINAIS, que eu troquei sem olhar.
@@ -64,7 +64,7 @@ function zplDefeito({ sku, defeito, localizacao, quem, quando, nf, id }) {
     '^FO30,40^A0N,60,60^FDDEFEITO - AMBTotal^FS',
     '^FO30,110^GB752,4,4^FS',
     // b125 - numero da peca + codigo de barras tambem na etiqueta que sai
-    // pela IMPR.fila remota (a impressa pelo painel), pra as duas serem iguais
+    // pela fila remota (a impressa pelo painel), pra as duas serem iguais
     ...(id ? [
       `^FO30,140^A0N,60,60^FDPECA #${id}^FS`,
       `^FO30,205^BY3,2^BCN,70,Y,N,N^FD#${id}^FS`,
@@ -104,7 +104,7 @@ function registrarRotas(router, requerLogin) {
     }
   });
 
-  // O celular poe a etiqueta na IMPR.fila
+  // O celular poe a etiqueta na fila
   // ⚠️ b348 (Codex, P1) - A TROCA CEGA RENOMEOU A ROTA.
   //
   // `/api/etiqueta/fila` virou `/api/etiqueta/IMPR.fila` — o `sed` nao sabe
@@ -113,6 +113,7 @@ function registrarRotas(router, requerLogin) {
   //
   // ⚠️ E ISSO NAO DA ERRO NO BOOT: a rota sobe, com o nome errado. So
   // quebra quando alguem manda imprimir — no galpao, com etiqueta na mao.
+
   router.post('/api/etiqueta/fila', requerLogin, (req, res) => {
     const b = req.body || {};
     if (!b.sku) return res.status(400).json({ ok: false, erro: 'falta o sku' });
