@@ -147,8 +147,18 @@ function contarEstadoDoModulo(src) {
   //
   // 📌 Numero EXATO: qualquer mudanca — pra mais ou pra menos — faz o teste
   // falar, e quem mexeu confirma o novo valor de propósito.
-  ok(estado.length === 11,
-     `  📌 linha de base EXATA: ${estado.length} (esperado 11 ate o passo 2)`);
+  // ⚠️ b342 - PASSO 2, GAVETA 1 de 3: 11 -> 5.
+  //
+  // As 6 do indice de notas de devolucao viraram campos de `NF_DEV`, criado
+  // por `criarGavetaNfDev()`. Hoje ha uma instancia so e o comportamento e
+  // identico; quando o passo 3 montar a segunda empresa, cada uma tera a
+  // sua.
+  //
+  // 📌 Este numero e o placar da obra. Restam 5 no app-AMB:
+  //    usosQuerystringAMB, PENDENTES, LOGIN_FALHAS, ESPREITA_AMB_CACHE,
+  //    NF_NAT_CACHE_AMB
+  ok(estado.length === 5,
+     `  📌 linha de base EXATA: ${estado.length} (esperado 5 apos a gaveta 1)`);
   if (estado.length !== 11) {
     console.log('     -> se o passo 2 rodou, atualize o numero aqui E confirme '
       + 'que as que sobraram sao intencionais:');
