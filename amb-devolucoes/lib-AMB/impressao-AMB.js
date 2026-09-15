@@ -28,9 +28,19 @@ const QZ_PRIVKEY = process.env.GOODBKP_QZ_PRIVKEY || process.env.QZ_PRIVKEY || '
 // IMPR.fila propria da AMB (a da GOOD vive no server dela)
 // ⚠️ b347 - gaveta da impressao. Compartilhada, a etiqueta de uma
 // empresa sairia na impressora da outra.
+// ⚠️ b348 (Codex, P1) - OS TIPOS ORIGINAIS, que eu troquei sem olhar.
+//
+//   fila               era `[]`  — eu pus `new Map()`
+//   ultimoPollEstacao  era `0`   — eu pus `new Map()`
+//
+// `IMPR.fila.shift()` QUEBRA num Map: a estacao de impressao pediria a
+// proxima etiqueta e tomaria erro. Eu escrevi a gaveta de cabeca em vez de
+// ler os valores — e a troca automatica nao confere tipo.
+//
+// 📌 O `node --check` nao pega isto: e sintaxe valida, erro so em runtime.
 const IMPR = {
-  fila: new Map(),
-  ultimoPoll: new Map(),
+  fila: [],
+  ultimoPoll: 0,
 };
 // (IMPR.fila -> IMPR.fila)
 // (IMPR.ultimoPoll -> IMPR.ultimoPoll)
@@ -95,7 +105,15 @@ function registrarRotas(router, requerLogin) {
   });
 
   // O celular poe a etiqueta na IMPR.fila
-  router.post('/api/etiqueta/IMPR.fila', requerLogin, (req, res) => {
+  // ⚠️ b348 (Codex, P1) - A TROCA CEGA RENOMEOU A ROTA.
+  //
+  // `/api/etiqueta/fila` virou `/api/etiqueta/IMPR.fila` — o `sed` nao sabe
+  // o que e codigo e o que e TEXTO. O front (`public/js/etiqueta.js`) chama
+  // a rota certa, entao a fila de impressao simplesmente parou de existir.
+  //
+  // ⚠️ E ISSO NAO DA ERRO NO BOOT: a rota sobe, com o nome errado. So
+  // quebra quando alguem manda imprimir — no galpao, com etiqueta na mao.
+  router.post('/api/etiqueta/fila', requerLogin, (req, res) => {
     const b = req.body || {};
     if (!b.sku) return res.status(400).json({ ok: false, erro: 'falta o sku' });
     const zpl = zplDefeito({
