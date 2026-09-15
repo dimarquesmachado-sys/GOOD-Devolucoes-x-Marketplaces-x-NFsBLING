@@ -99,9 +99,10 @@ const chamarBlingOriginal = bling.chamarBling;
       'const alvoNome = nfNomes.colapsar(codigoOriginal);',
       'b226 - a mesma ajuda da GOOD');
 
-    ok(!/req\.para\b/.test(bloco),
+    ok(/comRecados\(resultado, req\.params\.codigo\)/.test(bloco),
        '⚠️ P2 (Codex): o 503 de indice indisponivel usa req.params.codigo, nao req.para (undefined)');
-    ok(/req\.params\.codigo/.test(bloco), '  (mesmo padrao de todo o resto da rota)');
+    ok(!/comRecados\(resultado, req\.para\b/.test(bloco),
+       '  (nao regrediu pro req.para que nunca existiu no Express)');
 
     ok(/status: rN\.candidatos\.length \? 200 : \(.*indice_vazio.*\? 503 : 404\)|nfPorNomeIndisponivel/.test(bloco),
        '  ⚠️ P2 (Codex): a tentativa nf_por_nome reporta 503 (nao 404) quando o indice esta cego');
