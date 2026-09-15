@@ -140,13 +140,55 @@ function assinar(payloadB64) {
 // 📌 Sem argumento, devolve o comportamento de hoje: os testes existentes e
 // o app-AMB continuam usando o modulo do mesmo jeito.
 function criar(cfg) {
+  // ⚠️ P1 (Codex, #295) - cfg no formato do config-da-empresa padrao
+  // (PREFIXO_ENV/PREFIXO, sem cookie/caminhoCookie/envUsers/envAdmins)
+  // cairia direto nos 4 padroes da AMB, em silencio: outra empresa
+  // autenticaria contra AMB_USERS e receberia o cookie 'sessao_amb' em
+  // '/amb'. Falha explicita aqui, na hora de integrar (passo 3), em vez
+  // de um bug de producao descoberto pelo galpao errado.
+  if (cfg && !('cookie' in cfg) && !('caminhoCookie' in cfg)
+      && !('envUsers' in cfg) && !('envAdmins' in cfg)) {
+    throw new Error(
+      "auth-AMB.criar: cfg nao tem cookie/caminhoCookie/envUsers/envAdmins "
+      + '— este cfg nao e o formato esperado (talvez seja o config-da-empresa '
+      + 'padrao, que nao tem campos de auth). Passe os 4 campos ou omita cfg '
+      + 'para usar os padroes da AMB.'
+    );
+  }
   const c = Object.assign({}, PADRAO, cfg || {});
   const users = parseUsers(process.env[c.envUsers] || '');
   const admins = parseAdmins(process.env[c.envAdmins] || '');
   const minhasSessoes = new Map();   // ⚠️ o mapa e DESTA empresa
 
+  // b130, restaurado (Codex P1, #295) - a fabrica tinha perdido a
+  // assinatura HMAC e ficado so com o Map: um restart do processo (deploy
+  // no Render) deslogava todo mundo de novo. Mesmo esquema de antes,
+  // agora por instancia.
   const meuValidar = (token, tipoExigido) => {
     if (!token) return null;
+
+    // 1) token assinado (o formato novo) - nao depende de memoria nenhuma
+    if (token.includes('.')) {
+      const [p, assinatura] = token.split('.');
+      if (p && assinatura) {
+        let esperada;
+        try { esperada = assinar(p); } catch (e) { esperada = null; }
+        // comparacao de tempo constante, pra nao vazar o segredo pelo relogio
+        const iguais = esperada && esperada.length === assinatura.length
+          && crypto.timingSafeEqual(Buffer.from(esperada), Buffer.from(assinatura));
+        if (iguais) {
+          try {
+            const dados = JSON.parse(Buffer.from(p.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString());
+            if (!dados || !dados.u) return null;
+            if (dados.e && Date.now() > dados.e) return null;          // venceu
+            if (tipoExigido && dados.t !== tipoExigido) return null;
+            return { usuario: dados.u, tipo: dados.t, criado: (dados.e || 0) - c.validadeMs };
+          } catch (e) { return null; }
+        }
+      }
+    }
+
+    // 2) token antigo, ainda na memoria deste processo
     const s = minhasSessoes.get(token);
     if (!s) return null;
     if (Date.now() - s.criado > c.validadeMs) { minhasSessoes.delete(token); return null; }
@@ -172,7 +214,11 @@ function criar(cfg) {
       };
     },
     novaSessao: (usuario, tipo) => {
-      const token = b64url(crypto.randomBytes(24));
+      const payload = JSON.stringify({ u: usuario, t: tipo, e: Date.now() + c.validadeMs });
+      const p = b64url(payload);
+      const token = p + '.' + assinar(p);
+      // o Map continua alimentado: serve de ponte pros tokens antigos e
+      // nao atrapalha em nada
       minhasSessoes.set(token, { usuario, tipo, criado: Date.now() });
       for (const [t, s] of minhasSessoes) {
         if (Date.now() - s.criado > c.validadeMs) minhasSessoes.delete(t);
