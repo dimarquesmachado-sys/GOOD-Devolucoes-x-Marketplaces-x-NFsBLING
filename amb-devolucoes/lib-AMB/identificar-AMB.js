@@ -788,6 +788,23 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
         try {
           const rN = await nfNomes.buscarPorNome(codigoOriginal);
           resultado.tentativas.push({ tipo: 'nf_por_nome', codigo: alvoNome, ok: rN.candidatos.length > 0, status: rN.candidatos.length ? 200 : 404, qtd: rN.candidatos.length });
+          // ⚠️ b351 - INDICE VAZIO NAO E "NAO EXISTE".
+          //
+          // [stated 15/09] o dono buscou "Lyvia", levou 404, e a nota estava no
+          // Bling. O indice mostrava `total_nfs: 0` e `erro: nfe pagina 1 HTTP
+          // 401` — ele nunca montou.
+          //
+          // ⚠️ E A BUSCA RESPONDIA IGUAL nos dois casos: "nao encontrado". O
+          // dono conclui que o pedido sumiu, quando o sistema e que esta cego.
+          //
+          // 📌 O aviso de indice PARCIAL ja existia — mas so no ramo que ACHA
+          // algo. Quem nao acha (o caso que importa) nao recebia nada.
+          if (rN.candidatos.length === 0 && rN.indice_vazio) {
+            resultado.erro = '⚠️ A busca por NOME esta indisponivel: o indice de notas nao montou'
+              + (rN.erro_indice ? ' (' + rN.erro_indice + ')' : '')
+              + '. ISSO NAO QUER DIZER QUE O PEDIDO NAO EXISTE — tente pela ETIQUETA, pela CHAVE da NF ou pelo NUMERO da nota.';
+            return res.status(503).json(await comRecados(resultado, req.para || null));
+          }
           if (rN.candidatos.length > 0) {
             // b226 - a mesma ajuda da GOOD: quem esta NA ESPREITA ganha estrela
             // e produto. A espreita da AMB e o `resumoEspreita()` do mlReturns;

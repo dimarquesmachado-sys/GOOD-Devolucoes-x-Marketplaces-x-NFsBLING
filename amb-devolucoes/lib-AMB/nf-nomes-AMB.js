@@ -166,7 +166,11 @@ async function construirIndiceInterno(opts = {}) {
       if (pg > 1) await drenagem.pausar(400, deFundo || IDX.viroufundo, 'indice-nomes');
       let r = await bling.chamarBling(`/nfe?limite=100&pagina=${pg}&tipo=1`);
       if (!r.ok && r.status === 429) {
-        for (let tent = 1; tent <= 3 && !r.ok && r.status === 429; tent++) {
+        // ⚠️ b351: 401 tambem entra no retry — mesma razao do bloco das
+        // vendas. E ESTE e o caminho das NOTAS, que a busca por NOME usa:
+        // foi aqui que o `nfe pagina 1 HTTP 401` matou o indice inteiro.
+        for (let tent = 1; tent <= 3 && !r.ok
+          && (r.status === 429 || r.status === 401); tent++) {
           await drenagem.pausar(2000 * tent, deFundo || IDX.viroufundo, 'indice-nomes/retry');
           r = await bling.chamarBling(`/nfe?limite=100&pagina=${pg}&tipo=1`);
         }
@@ -251,7 +255,20 @@ async function construirIndiceInterno(opts = {}) {
         for (let tent = 1; tent <= 4; tent++) {
           r = await bling.chamarBling(`/pedidos/vendas?limite=100&pagina=${pg}`);
           if (r.ok) { erroVendas = null; break; }
-          if (r.status === 429 || r.status === 503) {
+          // ⚠️ b351 - 401 TAMBEM ENTRA NO RETRY.
+          //
+          // [stated 15/09] o dono buscou "Lyvia" e nao achou. O indice
+          // mostrava `total_nfs: 0` e `erro: "nfe pagina 1 HTTP 401"`.
+          //
+          // ⚠️ E O TOKEN ESTAVA BOM: `/amb/bling/teste` respondeu na hora. O
+          // 401 foi PASSAGEIRO — o token estava sendo renovado naquele
+          // instante, e o indice tomou a recusa na PRIMEIRA pagina, desistiu,
+          // e ficou VAZIO ate o proximo reinicio do servico.
+          //
+          // 📌 Resultado pro dono: a busca por nome respondia "nao
+          // encontrado" pra TODO mundo, e parecia que o pedido nao existia.
+          // A nota da Lyvia estava no Bling o tempo todo.
+          if (r.status === 429 || r.status === 503 || r.status === 401) {
             erroVendas = `vendas pagina ${pg} HTTP ${r.status} (tent ${tent}/4)`;
             await sleep(1500 * tent);   // 1.5s, 3s, 4.5s
             continue;
@@ -377,9 +394,22 @@ async function buscarPorNome(texto, opts = {}) {
   const pagina = Math.max(Number(opts.pagina) || 1, 1);
   const alvo = colapsar(texto);
 
+  // ⚠️ b351 - a resposta vazia DIZ SE O INDICE ESTA CEGO.
+  //
+  // Sem isto, "nao ha NF com esse nome" e "o indice nunca montou" chegam na
+  // tela do mesmo jeito — e o dono conclui que o pedido nao existe.
   const vazio = (aviso) => ({
     alvo, via: null, candidatos: [],
     total: 0, pagina, por_pagina: porPagina, tem_mais: false, aviso,
+    // ⚠️ avaliado com GETTER, nao no momento da definicao.
+    //
+    // `vazio()` e definido no TOPO da funcao, antes de o indice tentar
+    // montar — se eu calcular aqui, capturo o estado VELHO e o sinal chega
+    // errado. Com getter, le quando a resposta e montada.
+    get indice_vazio() {
+      return !IDX.ts || Object.keys(IDX.mapa || {}).length === 0;
+    },
+    get erro_indice() { return IDX.erro || null; },
   });
 
   if (alvo.length < 5) return vazio('texto curto demais (minimo 5 letras)');
@@ -485,6 +515,14 @@ async function buscarPorNome(texto, opts = {}) {
     // valeu pro statusIndice, nao pra este retorno) -- um nome cuja NF
     // esta numa pagina ainda nao lida virava resultado vazio comum.
     parcial_ate_pagina: IDX.parcialAte || null,
+    // ⚠️ b351 - O RETORNO PRINCIPAL TAMBEM DIZ SE O INDICE ESTA CEGO.
+    //
+    // Eu tinha posto isto so no `vazio()` — mas ESTE e o retorno que a
+    // busca usa quando nao acha nada com o indice montado (ou nao).
+    // Descobri porque o campo chegava `undefined` no teste real; sem ele,
+    // "nao ha NF com esse nome" e "o indice nunca montou" chegam iguais.
+    indice_vazio: !IDX.ts || Object.keys(IDX.mapa || {}).length === 0,
+    erro_indice: IDX.erro || null,
   };
 }
 
@@ -526,8 +564,26 @@ function tentar(tentativa) {
     // b271 - ⚠️ FALHOU, TENTA DE NOVO (a AMB tambem — regra da casa).
     // Um 429 no boot deixava o cache vazio por 25 min.
     console.error(`[AMB/NF-NOMES] pre-aquecimento falhou (tentativa ${tentativa}/3):`, e.message);
-    if (tentativa >= 3) return;
-    const espera = 30000 * Math.pow(2, tentativa - 1);
+    // ⚠️ b351 - 3 TENTATIVAS EM 3,5 MIN NAO BASTAM.
+    //
+    // [stated 15/09] o indice da AMB estava com `total_nfs: 0` e
+    // `erro: "nfe pagina 1 HTTP 401"` — e o token estava BOM (o
+    // /amb/bling/teste respondeu na hora). O 401 foi passageiro, mas as 3
+    // tentativas queimaram nele e o indice ficou VAZIO ate o reinicio.
+    //
+    // 📌 Resultado: a busca por nome dizia "nao encontrado" pra TODO mundo,
+    // o dia inteiro. O dono procurou "Lyvia", nao achou, e a nota estava no
+    // Bling o tempo todo.
+    //
+    // ⚠️ Agora 8 tentativas com teto de 10 min: cobre ~40 min de Bling
+    // instavel em vez de 3,5. E o `.unref()` garante que isso nao segura o
+    // processo.
+    if (tentativa >= 8) {
+      console.error('[AMB/NF-NOMES] desisti apos 8 tentativas — o indice fica '
+        + 'VAZIO ate o proximo reinicio. A busca por NOME nao vai achar nada.');
+      return;
+    }
+    const espera = Math.min(30000 * Math.pow(2, tentativa - 1), 10 * 60 * 1000);
     console.log(`[AMB/NF-NOMES] tento de novo em ${espera / 1000}s`);
     // ⚠️ (Codex) setTimeout cru nao e cancelado pela drenagem — registra
     // com daquiA pra nao acordar o processo VELHO durante um deploy.
