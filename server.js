@@ -415,7 +415,7 @@ app.get('/health', (req, res) => {
       // busca por nome. Escolher um lado apagaria a descricao do outro.
       // ⚠️ a resolucao JUNTA as duas: a 7.5.0 (passe curto + tetos) ja esta
       // na main, e este PR acrescenta o build frio que falha vazio.
-      version: '9.17.0 (gaveta 1 de 3: o indice de NF de devolucao da AMB vira estado por instancia)',
+      version: '9.18.0 (passo 2 completo: as 11 variaveis soltas do app-AMB viraram 4 gavetas por assunto)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),

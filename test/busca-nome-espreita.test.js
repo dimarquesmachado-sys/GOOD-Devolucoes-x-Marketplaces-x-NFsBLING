@@ -98,11 +98,16 @@ const RAIZ = path.join(__dirname, '..');
   ok(/espreitaMontada\(\)/.test(AMB),
      '  lendo a espreita JA AGREGADA (ML+Shopee+Magalu, sem baixados, sem CD do ML) — nao o mlReturns cru');
   const APP = fs.readFileSync(path.join(RAIZ, 'amb-devolucoes', 'app-AMB.js'), 'utf8');
-  ok(/ESPREITA_AMB_CACHE = \{/.test(APP) && /espreitaMontada: \(\) => ESPREITA_AMB_CACHE/.test(APP),
+  ok(/CACHES = \{/.test(APP) && /espreitaMontada: \(\) => CACHES.espreita/.test(APP),
      '  e o app-AMB guarda a ultima espreita e passa por FUNCAO (escopo derrubou o boot 2x)');
   ok(/\.filter\(\(x\) => !x\.no_cd_ml\)/.test(APP), '  sem os que vao pro CD do ML');
-  const iDecl = APP.indexOf('let ESPREITA_AMB_CACHE');
-  const iUso = APP.indexOf('ESPREITA_AMB_CACHE = {');
+  // ⚠️ b343: a gaveta virou `const CACHES = {...}`, entao procuro pela
+  // DECLARACAO da gaveta, nao pelo `let` do nome antigo.
+  //
+  // O que este teste guarda continua valendo e ja derrubou o boot 2x:
+  // declarar DEPOIS do primeiro uso da TDZ (`const` nao sobe como `var`).
+  const iDecl = APP.indexOf('const CACHES = {');
+  const iUso = APP.indexOf('CACHES.espreita = {');
   ok(iDecl > 0 && iDecl < iUso, '  declarada ANTES de usar');
 
   for (const [nome, rel] of [['GOOD', 'public/js/busca.js'],
