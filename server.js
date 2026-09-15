@@ -415,7 +415,7 @@ app.get('/health', (req, res) => {
       // busca por nome. Escolher um lado apagaria a descricao do outro.
       // ⚠️ a resolucao JUNTA as duas: a 7.5.0 (passe curto + tetos) ja esta
       // na main, e este PR acrescenta o build frio que falha vazio.
-      version: '9.22.1 (Shopee-AMB: SHP.chegada esquecido em 3 lugares do refatoro derrubava o /api/espreita)',
+      version: '9.23.3 (revisao Codex #301: retry manual de 401 no indice de nomes da AMB nao renova o token a cada volta)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),

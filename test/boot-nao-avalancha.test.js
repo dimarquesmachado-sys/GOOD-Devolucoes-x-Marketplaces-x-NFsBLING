@@ -86,7 +86,20 @@ const srv = fs.readFileSync(path.join(RAIZ, 'server.js'), 'utf8');
   ];
   for (const [arq, nome] of MODULOS) {
     const src = fs.readFileSync(path.join(RAIZ, arq), 'utf8');
-    ok(/tentativa >= 3/.test(src), nome + ': tenta de novo se falhar');
+    // ⚠️ b351: o NUMERO de tentativas mudou (3 -> 8 no nf-nomes da AMB), e
+    // fixar o numero fazia o teste reprovar uma melhoria. O que importa e
+    // que EXISTA teto — desistir em algum momento, em vez de tentar pra
+    // sempre.
+    //
+    // 📌 O motivo da mudanca: 3 tentativas cobriam 3,5 min. Um 401
+    // passageiro do Bling queimava as tres e o indice ficava VAZIO o dia
+    // todo — a busca por nome dizia "nao encontrado" pra todo mundo.
+    const mTeto = /tentativa >= (\d+)/.exec(src);
+    ok(!!mTeto, nome + ': tenta de novo se falhar, com teto');
+    if (mTeto) {
+      ok(Number(mTeto[1]) >= 3 && Number(mTeto[1]) <= 12,
+         nome + `: o teto e ${mTeto[1]} tentativas (entre 3 e 12)`);
+    }
     ok(/30000 \* Math\.pow\(2, tentativa - 1\)/.test(src),
        '  com espera crescente (30s, 60s, 120s)');
   }
