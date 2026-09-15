@@ -60,8 +60,22 @@ function contarEstadoDoModulo(src) {
       //
       // 📌 O que importa nao e a FORMA da declaracao: um `const` de objeto
       // mutavel no escopo do modulo vaza entre instancias igual a um `let`.
+      // ⚠️ b343 - CONTA TAMBEM `const X = criarAlgo()`.
+      //
+      // A gaveta 1 virou `const NF_DEV = criarGavetaNfDev()` — uma CHAMADA
+      // que devolve objeto. Nao casava em nenhum padrao: o teste contava 3
+      // quando o real era 4.
+      //
+      // ⚠️ E esse e JUSTAMENTE o formato que o passo 3 vai usar em TODAS as
+      // gavetas. O teste ficaria cego no passo que existe pra vigiar.
       const m = /^(?:let|var) (\w+)/.exec(t)
-        || /^const (\w+)\s*=\s*(?:new Map\(\)|new Set\(\)|\[\]|\{)/.exec(t);
+        || /^const (\w+)\s*=\s*(?:new Map\(\)|new Set\(\)|\[\]|\{)/.exec(t)
+        // 📌 SO `criarGaveta*`, nao `criar*` em geral: `criarNfPessoa(...)`,
+        // `criarAdminHelpers(...)` e `criarMlBuscas(...)` sao CLIENTES ja
+        // parametrizados — recebem config e nao guardam estado da empresa.
+        // Conta-los inflaria o placar com o que ja esta resolvido, e o numero
+        // deixaria de significar "quanto falta".
+        || /^const (\w+)\s*=\s*criarGaveta\w*\(/.exec(t);
       if (m) estado.push(m[1]);
     }
 
@@ -157,8 +171,22 @@ function contarEstadoDoModulo(src) {
   // 📌 Este numero e o placar da obra. Restam 5 no app-AMB:
   //    usosQuerystringAMB, PENDENTES, LOGIN_FALHAS, ESPREITA_AMB_CACHE,
   //    NF_NAT_CACHE_AMB
-  ok(estado.length === 5,
-     `  📌 linha de base EXATA: ${estado.length} (esperado 5 apos a gaveta 1)`);
+  // ⚠️ b343 - PASSO 2 COMPLETO no app-AMB: 11 -> 3.
+  //
+  // As 11 variaveis soltas viraram 3 GAVETAS por assunto:
+  //   NF_DEV   o indice de notas de devolucao (6 variaveis)
+  //   ACESSO   chave na URL + falhas de login (2)
+  //   CACHES   espreita + naturezas da NF     (2)
+  //   TRIAGEM  pedidos em triagem             (1)
+  //
+  // 📌 SAO 4 OBJETOS, E O TESTE CONTA 3 + o NF_DEV que ja estava — todos
+  // AINDA no escopo do modulo. Isso e proposital: o passo 2 AGRUPA, o passo
+  // 3 e que os cria por instancia.
+  //
+  // ⚠️ O ganho ja e real: eram 11 pontos a mudar no passo 3, agora sao 4.
+  // E cada gaveta tem um nome que diz o que vaza se for esquecida.
+  ok(estado.length === 4,
+     `  📌 linha de base EXATA: ${estado.length} (4 gavetas apos o passo 2)`);
   if (estado.length !== 11) {
     console.log('     -> se o passo 2 rodou, atualize o numero aqui E confirme '
       + 'que as que sobraram sao intencionais:');

@@ -192,7 +192,7 @@ const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 // mais um 403 pendente, e vice-versa). A AMB nunca consultou
 // lib/token-leitor.js (os modulos lib-AMB/* nao honram essa politica,
 // confirmado por grep) - nada a espelhar.
-const VERSAO = 'AMB Devolucoes b342';
+const VERSAO = 'AMB Devolucoes b343';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -218,7 +218,15 @@ router.use(express.json({ limit: '12mb' }));
 router.use(cookieParser());
 
 // ── Trava de admin ───────────────────────────────────────────
-let usosQuerystringAMB = 0;
+// ⚠️ b343 - GAVETA 2 de 3: ACESSO (chave na URL + falhas de login).
+//
+// Mesmo motivo da gaveta 1: com duas empresas no processo, o contador de
+// uma somaria o da outra, e o bloqueio por tentativas erradas da Girassol
+// travaria quem errou a senha na AMB.
+//
+// ⚠️ O de ACESSO.falhasLogin e o pior dos dois: nao e so numero errado, e
+// USUARIO BLOQUEADO por erro de outra empresa.
+const ACESSO = { usosQuerystring: 0, falhasLogin: new Map() };
 
 function admin(req, res, next) {
   // b256 - ACEITA HEADER (ver a nota longa no server.js). A querystring
@@ -230,7 +238,7 @@ function admin(req, res, next) {
   if (doHeader) {
     // marca que veio pelo caminho novo
   } else if (req.query.k) {
-    usosQuerystringAMB++;
+    ACESSO.usosQuerystring++;
   }
   if (!chave || recebida !== chave) {
     return res.status(404).json({ error: 'not found' });
@@ -239,22 +247,27 @@ function admin(req, res, next) {
 }
 
 // ── State de uso unico pro OAuth ─────────────────────────────
-const PENDENTES = new Map();
+// ⚠️ b343 - a ultima do app-AMB: os pedidos em triagem.
+//
+// Junto com ACESSO e CACHES, formam as 3 gavetas que o passo 3 vai criar
+// POR EMPRESA. Hoje sao 3 objetos no escopo do modulo — que ainda vazariam
+// se houvesse duas empresas, mas agora sao 3 pontos a mudar em vez de 11.
+const TRIAGEM = { pendentes: new Map() };
 const VALIDADE_MS = 10 * 60 * 1000;
 
 function novoState(servico) {
   const s = crypto.randomBytes(24).toString('hex');
-  PENDENTES.set(s, { servico, criado_em: Date.now() });
-  for (const [k, v] of PENDENTES) {
-    if (Date.now() - v.criado_em > VALIDADE_MS) PENDENTES.delete(k);
+  TRIAGEM.pendentes.set(s, { servico, criado_em: Date.now() });
+  for (const [k, v] of TRIAGEM.pendentes) {
+    if (Date.now() - v.criado_em > VALIDADE_MS) TRIAGEM.pendentes.delete(k);
   }
   return s;
 }
 
 function consumirState(s) {
-  const reg = PENDENTES.get(s);
+  const reg = TRIAGEM.pendentes.get(s);
   if (!reg) return null;
-  PENDENTES.delete(s);
+  TRIAGEM.pendentes.delete(s);
   if (Date.now() - reg.criado_em > VALIDADE_MS) return null;
   return reg;
 }
@@ -510,7 +523,7 @@ router.get('/config', admin, (req, res) => {
     persistencia_token: tokens.diagnostico(),
     email: emailAMB.diagnostico(),
     tabelas_supabase: cfg.supabase.tabelas,
-    oauth_pendentes: PENDENTES.size,
+    oauth_pendentes: TRIAGEM.pendentes.size,
   });
 });
 
@@ -820,7 +833,7 @@ router.use(express.static(path.join(__dirname, 'public-AMB'), {
 // proxy do Render carimba - nao o primeiro valor que o cliente mandou.
 // Quem esta de castigo NUNCA e despejado pelo teto (senao bastava encher
 // o mapa pra zerar a punicao); com o mapa cheio, chave nova nao entra.
-const LOGIN_FALHAS = new Map();
+// (ACESSO.falhasLogin movido pra ACESSO.falhasLogin — b343)
 const LOGIN_MAX_USUARIO = 8;
 const LOGIN_MAX_CLIENTE = 30;
 const LOGIN_JANELA_MS = 10 * 60 * 1000;
@@ -846,7 +859,7 @@ function loginChaves(req, usuario) {
   return { doUsuario: 'u:' + loginIdent(usuario) + '|' + ip, doCliente: 'c:' + ip };
 }
 function castigoRestante(chave, agora) {
-  const reg = LOGIN_FALHAS.get(chave);
+  const reg = ACESSO.falhasLogin.get(chave);
   if (!reg || !reg.ate) return 0;
   if (agora < reg.ate) return Math.ceil((reg.ate - agora) / 1000);
   // seg1.5 (P2 da 5a rodada) - castigo cumprido zerava o balde INTEIRO, e
@@ -855,9 +868,9 @@ function castigoRestante(chave, agora) {
   // PUNICAO e liberada; a contagem sobrevive ate a janela fechar, entao o
   // proximo erro dentro dela volta a bloquear na hora. O acerto continua
   // limpando o balde do usuario naquele cliente.
-  if (agora - reg.desde > LOGIN_JANELA_MS) { LOGIN_FALHAS.delete(chave); return 0; }
+  if (agora - reg.desde > LOGIN_JANELA_MS) { ACESSO.falhasLogin.delete(chave); return 0; }
   reg.ate = 0;
-  LOGIN_FALHAS.set(chave, reg);
+  ACESSO.falhasLogin.set(chave, reg);
   return 0;
 }
 function loginBloqueado(chaves) {
@@ -865,38 +878,38 @@ function loginBloqueado(chaves) {
   return Math.max(castigoRestante(chaves.doUsuario, agora), castigoRestante(chaves.doCliente, agora));
 }
 function podarFalhas(agora) {
-  for (const [k, v] of LOGIN_FALHAS) {
-    if (agora - v.desde > LOGIN_JANELA_MS && (!v.ate || agora > v.ate)) LOGIN_FALHAS.delete(k);
+  for (const [k, v] of ACESSO.falhasLogin) {
+    if (agora - v.desde > LOGIN_JANELA_MS && (!v.ate || agora > v.ate)) ACESSO.falhasLogin.delete(k);
   }
-  if (LOGIN_FALHAS.size <= LOGIN_TETO_CHAVES) return;
-  const descartaveis = [...LOGIN_FALHAS.entries()]
+  if (ACESSO.falhasLogin.size <= LOGIN_TETO_CHAVES) return;
+  const descartaveis = [...ACESSO.falhasLogin.entries()]
     .filter(([, v]) => !(v.ate && agora < v.ate))     // em castigo fica
     .sort((a, b) => a[1].desde - b[1].desde);          // mais antigos primeiro
-  let sobrando = LOGIN_FALHAS.size - LOGIN_TETO_CHAVES;
+  let sobrando = ACESSO.falhasLogin.size - LOGIN_TETO_CHAVES;
   for (const [k] of descartaveis) {
     if (sobrando <= 0) break;
-    LOGIN_FALHAS.delete(k);
+    ACESSO.falhasLogin.delete(k);
     sobrando -= 1;
   }
 }
 function marcarFalha(chave, limite, agora) {
-  const existente = LOGIN_FALHAS.get(chave);
-  if (!existente && LOGIN_FALHAS.size >= LOGIN_TETO_CHAVES) return;   // cheio de castigos: nao cria chave nova
+  const existente = ACESSO.falhasLogin.get(chave);
+  if (!existente && ACESSO.falhasLogin.size >= LOGIN_TETO_CHAVES) return;   // cheio de castigos: nao cria chave nova
   const reg = existente || { n: 0, desde: agora, ate: 0 };
   if (agora - reg.desde > LOGIN_JANELA_MS) { reg.n = 0; reg.desde = agora; reg.ate = 0; }
   reg.n += 1;
   if (reg.n >= limite) reg.ate = agora + LOGIN_CASTIGO_MS;
-  LOGIN_FALHAS.set(chave, reg);
+  ACESSO.falhasLogin.set(chave, reg);
 }
 // seg1.3 (P1 da 3a rodada) - com o mapa cheio, marcarFalha simplesmente
 // nao registrava: um cliente novo ganhava tentativas ilimitadas (fail-OPEN).
 // Agora, se nao ha capacidade nem chave existente, a tentativa e RECUSADA
 // antes de olhar a senha - o limitador degrada FECHANDO, nao abrindo.
 function loginSemCapacidade(chaves) {
-  if (LOGIN_FALHAS.size < LOGIN_TETO_CHAVES) return false;
+  if (ACESSO.falhasLogin.size < LOGIN_TETO_CHAVES) return false;
   podarFalhas(Date.now());
-  if (LOGIN_FALHAS.size < LOGIN_TETO_CHAVES) return false;
-  return !LOGIN_FALHAS.has(chaves.doUsuario) && !LOGIN_FALHAS.has(chaves.doCliente);
+  if (ACESSO.falhasLogin.size < LOGIN_TETO_CHAVES) return false;
+  return !ACESSO.falhasLogin.has(chaves.doUsuario) && !ACESSO.falhasLogin.has(chaves.doCliente);
 }
 function loginErrou(chaves) {
   const agora = Date.now();
@@ -907,7 +920,7 @@ function loginErrou(chaves) {
 function loginAcertou(chaves) {
   // limpa so o balde do usuario naquele cliente; o do cliente segue
   // contando, senao um acerto no meio zeraria a varredura
-  LOGIN_FALHAS.delete(chaves.doUsuario);
+  ACESSO.falhasLogin.delete(chaves.doUsuario);
 }
 
 router.post('/api/auth/login', (req, res) => {
@@ -1335,7 +1348,12 @@ router.get('/api/debug/tiktok-devolucoes', admin, async (req, res) => {
 
 // b229 - a ultima espreita montada, pra busca por nome cruzar. Nivel do
 // modulo, declarada ANTES de quem usa (o erro de escopo de ontem, 3x).
-let ESPREITA_AMB_CACHE = null;
+// ⚠️ b343 - GAVETA 3 de 3: CACHES DE LEITURA.
+//
+// A espreita (o que esta em transito / entregue) e as naturezas das notas.
+// Com duas empresas, a Girassol veria os pacotes da AMB na tela de
+// conferencia — e agiria em cima deles.
+const CACHES = { espreita: null, naturezasNf: new Map() };
 
 // ── A ESPREITA (o que esta vindo pro galpao) ─────────────────
 router.get('/api/espreita', auth.requerLogin, async (req, res) => {
@@ -1457,7 +1475,7 @@ router.get('/api/espreita', auth.requerLogin, async (req, res) => {
   // baixados e sem os que vao pro CD do ML. Reimplementar a agregacao no
   // identificar-AMB (como eu tinha feito, lendo so o mlReturns cru) perdia
   // dois canais e mostrava estrela em pacote ja processado.
-  ESPREITA_AMB_CACHE = {
+  CACHES.espreita = {
     em_transito: emTransito.filter((x) => !x.no_cd_ml),
     entregues: [...enriquecer(baseML.entregues), ...enriquecer(baseShopee.entregues || [])],
     ts: Date.now(),
@@ -1663,20 +1681,20 @@ router.get('/nf/entrada/sonda', admin, async (req, res) => {
  *  RASCUNHO entra, e nele a natureza ainda pode ser preenchida ou trocada no
  *  Bling depois. Duas defesas: valor nao resolvido (null) nao e guardado, e o
  *  que fica guardado vence em 6h, revalidando sozinho. */
-const NF_NAT_CACHE_AMB = new Map();   // idDaNota -> { id, descricao, em }
+// (CACHES.naturezasNf movido pra CACHES.naturezasNf — b343)
 const NF_NAT_CACHE_MAX = 3000;
 const NF_NAT_CACHE_TTL = 6 * 60 * 60 * 1000;
 function guardarNaturezaAMB(idNota, natId, natDesc) {
   if (!natId) return;   // b336 r6 - nao resolvida: nao vira cache
-  NF_NAT_CACHE_AMB.set(String(idNota), { id: natId, descricao: natDesc, em: Date.now() });
-  while (NF_NAT_CACHE_AMB.size > NF_NAT_CACHE_MAX) {
-    NF_NAT_CACHE_AMB.delete(NF_NAT_CACHE_AMB.keys().next().value);
+  CACHES.naturezasNf.set(String(idNota), { id: natId, descricao: natDesc, em: Date.now() });
+  while (CACHES.naturezasNf.size > NF_NAT_CACHE_MAX) {
+    CACHES.naturezasNf.delete(CACHES.naturezasNf.keys().next().value);
   }
 }
 function naturezaDoCacheAMB(idNota) {
-  const at = NF_NAT_CACHE_AMB.get(String(idNota));
+  const at = CACHES.naturezasNf.get(String(idNota));
   if (!at) return null;
-  if ((Date.now() - at.em) > NF_NAT_CACHE_TTL) { NF_NAT_CACHE_AMB.delete(String(idNota)); return null; }
+  if ((Date.now() - at.em) > NF_NAT_CACHE_TTL) { CACHES.naturezasNf.delete(String(idNota)); return null; }
   return at;
 }
 
@@ -1727,7 +1745,7 @@ router.get('/nf/entrada/naturezas', admin, async (req, res) => {
     //  r5 - com cursor (?pular=N) ela avancava mas RECOMECAVA a contagem: a
     //       ultima fatia se declarava completa mostrando so as notas dela, e
     //       uma natureza que aparecesse numa fatia anterior sumia do resultado.
-    // Solucao: o que ja foi resolvido fica GUARDADO (NF_NAT_CACHE_AMB). Cada
+    // Solucao: o que ja foi resolvido fica GUARDADO (CACHES.naturezasNf). Cada
     // rodada gasta seu orcamento abrindo notas NOVAS e soma as antigas de
     // graca, entao o resultado so cresce e a ultima rodada tem tudo. Basta
     // repetir a MESMA URL ate sem_natureza_nao_lidas chegar a zero.
@@ -1992,7 +2010,7 @@ registrarCicloDefeitos(router, { auth, db, bling, cfg });
 registrarIdentificar(router, {
   // b229 - a espreita ja montada, por FUNCAO (o comentario abaixo avisa:
   // passar pelo escopo derrubou o boot 2x). O getter le o cache na hora.
-  espreitaMontada: () => ESPREITA_AMB_CACHE,
+  espreitaMontada: () => CACHES.espreita,
   ritmoBling: require('../lib/ritmo-bling'),   // b232.3 - MESMO modulo da GOOD: um portao por processo
   // b180 - TikTok na cascata da AMB (paridade com a GOOD). Passar por
   // parametro, nao pelo escopo: usar o escopo ja derrubou o boot 2x neste

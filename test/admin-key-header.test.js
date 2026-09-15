@@ -43,8 +43,10 @@ const amb = fs.readFileSync(path.join(RAIZ, 'amb-devolucoes', 'app-AMB.js'), 'ut
 // zero por um período, a querystring sai.
 {
   ok(/usosPorQuerystring\+\+/.test(srv), 'cada uso da querystring e contado (server)');
-  ok(/usosQuerystringAMB\+\+/.test(amb), '  e no app-AMB');
-  ok(/usos_por_querystring/.test(srv), 'e o /health mostra o contador');
+  // ⚠️ b343: `usosQuerystringAMB` virou `ACESSO.usosQuerystring` (gaveta 2).
+  // O comportamento guardado e o MESMO — cada uso da querystring e contado.
+  ok(/ACESSO\.usosQuerystring\+\+/.test(amb),
+     '  e no app-AMB (agora em ACESSO.usosQuerystring)');
   ok(/ROTACIONADA|rotacionada/.test(srv),
      '  com a nota de que a chave precisa ser ROTACIONADA depois (a antiga vazou em logs)');
 }
