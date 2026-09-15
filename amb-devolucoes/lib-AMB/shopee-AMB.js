@@ -124,7 +124,7 @@ function dispararChegadas(cards) {
       }
       await new Promise(r => setTimeout(r, 500));
     }
-    const comData = [...CHEGADA.values()].filter(e => e.v).length;
+    const comData = [...SHP.chegada.values()].filter(e => e.v).length;
     console.log(`[AMB/SHOPEE] chegada real: ${comData} com data / ${SHP.chegada.size} consultadas`);
   })().catch(() => {}).finally(() => { SHP.chegadaRodando = false; });
 }
@@ -292,8 +292,8 @@ async function resumoEspreita() {
     entregues: entregues.slice(0, 60), encerradas_indice: encerradas,
     chegadas: {
       consultadas: SHP.chegada.size,
-      com_data: [...CHEGADA.values()].filter(e => e.v).length,
-      ainda_nao: [...CHEGADA.values()].filter(e => e.chegou === false).length,
+      com_data: [...SHP.chegada.values()].filter(e => e.v).length,
+      ainda_nao: [...SHP.chegada.values()].filter(e => e.chegou === false).length,
       erro: SHP.chegadaErro,
     } };
 }
