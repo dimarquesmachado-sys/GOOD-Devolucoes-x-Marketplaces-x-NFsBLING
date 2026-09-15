@@ -170,7 +170,27 @@ function chaveDaRequisicao(req) {
   return { valor: null, via: 'nenhuma' };
 }
 
+// b325 - ⚠️ P2 DA AUDITORIA: A SESSAO DE ADMIN VALE TANTO QUANTO A CHAVE.
+//
+// O `adminOk` so aceitava a ADMIN_KEY — e como nao da pra mandar header
+// pelo navegador, a unica forma humana de abrir uma rota admin era pôr a
+// chave na URL (`?k=...`). Ela vaza em log, historico, referer e link
+// compartilhado; o proprio /health avisa isso ha meses.
+//
+// ⚠️ MAS BANIR A QUERYSTRING AGORA QUEBRARIA O USO REAL: e assim que o dono
+// abre essas rotas. Entao primeiro dou a ALTERNATIVA — quem ja esta logado
+// como admin no painel nao precisa de chave nenhuma.
+//
+// 📌 O `requerAdmin` (26 rotas) ja funcionava assim. Estas ~20 tinham ficado
+// pra tras, so com a chave.
 function adminOk(req) {
+  // sessao de admin ja autenticada: o caminho preferido
+  try {
+    if (req.cookies && req.cookies.sessao && validarSessao(req.cookies.sessao, 'admin')) {
+      return true;
+    }
+  } catch (e) { /* sem cookie-parser ou sessao invalida: cai na chave */ }
+
   const { valor } = chaveDaRequisicao(req);
   return !!ADMIN_KEY && valor === ADMIN_KEY;
 }
@@ -395,7 +415,7 @@ app.get('/health', (req, res) => {
       // busca por nome. Escolher um lado apagaria a descricao do outro.
       // ⚠️ a resolucao JUNTA as duas: a 7.5.0 (passe curto + tetos) ja esta
       // na main, e este PR acrescenta o build frio que falha vazio.
-      version: '9.12.1 (os 12 primeiros podem usar o Bling; e a sentinela nao usa placeholder que some ao dar certo)',
+      version: '9.13.0 (auditoria: SESSION_SECRET obrigatorio, sessao admin vale como chave, GET nao grava mais, e npm test)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -2838,8 +2858,41 @@ app.get('/api/auth/me', (req, res) => {
 // Antes as sessoes viviam so em memoria e cada deploy deslogava todo mundo.
 // Agora o token carrega usuario/tipo/validade com uma assinatura HMAC.
 // Os tokens antigos continuam aceitos enquanto o processo viver.
+// b324 - ⚠️ P0 DA AUDITORIA: O SEGREDO NAO PODE TER PADRAO PUBLICO.
+//
+// O fallback era `'good-sem-segredo'` — uma string FIXA, que esta neste
+// arquivo e no historico do git. Quem a le pode forjar um cookie e entrar
+// como ADMIN, porque o payload assinado carrega o tipo do usuario.
+//
+// ⚠️ E o 2o fallback (`ADMIN_KEY`) tambem e ruim: amarra duas coisas que
+// deveriam ser rotacionadas em momentos diferentes, e a ADMIN_KEY ja vazou
+// em logs (o proprio /health avisa isso).
+//
+// Agora: sem `SESSION_SECRET`, o processo NAO SOBE em producao. Falhar no
+// boot e barulhento; cair num padrao e silencioso — e o silencioso e o que
+// deixa a porta aberta por meses.
+//
+// 📌 Em teste/dev, gero um segredo ALEATORIO por processo: nao trava o
+// desenvolvimento e, por ser aleatorio, nao vira uma chave conhecida.
+let _SEGREDO_MEM = null;
 function _segredoSessao() {
-  return String(process.env.SESSION_SECRET || process.env.ADMIN_KEY || 'good-sem-segredo');
+  const doAmbiente = String(process.env.SESSION_SECRET || '').trim();
+  if (doAmbiente.length >= 16) return doAmbiente;
+
+  if (process.env.NODE_ENV === 'production') {
+    // ⚠️ nao ha fallback seguro em producao: derrubo com mensagem clara
+    console.error('[BOOT] FATAL: SESSION_SECRET ausente ou curto (min 16 chars).');
+    console.error('[BOOT] Defina SESSION_SECRET no Render, com valor aleatorio de 32+ bytes.');
+    console.error('[BOOT] ⚠️ NAO reaproveite a ADMIN_KEY: ela ja vazou em logs.');
+    process.exit(1);
+  }
+
+  if (!_SEGREDO_MEM) {
+    _SEGREDO_MEM = crypto.randomBytes(32).toString('hex');
+    console.warn('[BOOT] SESSION_SECRET ausente — usando segredo ALEATORIO desta '
+      + 'execucao (so fora de producao). As sessoes caem a cada reinicio.');
+  }
+  return _SEGREDO_MEM;
 }
 function _assinar(p) {
   return crypto.createHmac('sha256', _segredoSessao()).update(p).digest('base64')
@@ -5281,13 +5334,56 @@ async function montarIndiceNFDevolucao(maxPaginas) {
 // ⚠️ COMECE PELA SIMULACAO (`?simular=1`): mostra o plano sem gravar nada.
 // E ⚠️ o Render REINICIA o servico ao mudar env var — rodar fora do horario
 // do galpao (a regra da cota vale aqui tambem).
+// b326 - ⚠️ O POST e o caminho pra GRAVAR de verdade.
+//
+// Mesma logica do GET, mas so roda com POST explicito: prefetch, crawler e
+// preview de link nao disparam POST.
+app.post('/api/admin/migrar-envs', requerAdmin, async (req, res) => {
+  const { migrarEnvsDaGood } = require('./lib/migrar-envs');
+  const gravar = !!(req.body && (req.body.gravar === true || req.body.gravar === '1'));
+  if (!gravar) {
+    return res.status(400).json({
+      ok: false,
+      erro: 'mande {"gravar":true} no corpo pra confirmar — este endpoint '
+        + 'altera env vars e REINICIA o servico',
+    });
+  }
+  try {
+    const r = await migrarEnvsDaGood({ gravar: true });
+    console.log('[MIGRAR-ENVS] gravado por POST');
+    return res.json(r);
+  } catch (e) {
+    return res.status(500).json({ ok: false, erro: String(e.message || e) });
+  }
+});
+
 app.get('/api/admin/migrar-envs', requerAdmin, async (req, res) => {
   const { migrarEnvsDaGood } = require('./lib/migrar-envs');
   // b250.4 (Codex, P2): GET nao muta sem pedido EXPLICITO. Com cookie
   // `SameSite=Lax`, uma navegacao de outro site pra esta URL levaria o
   // cookie junto — e gravaria credencial e reiniciaria o servico sem ele
   // pedir. Agora o padrao e simular; gravar exige `?gravar=1`.
-  const gravar = req.query.gravar === '1' || req.query.gravar === 'true';
+  // b326 - ⚠️ P2 DA AUDITORIA: GET NAO GRAVA MAIS.
+  //
+  // Esta rota alterava variaveis do Render e REINICIAVA o servico com um
+  // `?gravar=1` na URL. GET tem que ser seguro: navegador faz prefetch,
+  // crawler visita, link compartilhado abre, e o historico guarda.
+  //
+  // ⚠️ Bastava alguem colar o link num chat que renderiza preview pra
+  // derrubar o servico no meio do expediente.
+  //
+  // Agora o GET so SIMULA. Pra gravar de verdade, POST — que nao e
+  // disparado por prefetch nem por abrir link.
+  const gravar = false;   // ⚠️ GET nunca grava; use o POST abaixo
+  if (req.query.gravar === '1' || req.query.gravar === 'true') {
+    return res.status(405).json({
+      ok: false,
+      erro: 'gravar por GET nao e mais aceito (o navegador pode disparar '
+        + 'sozinho, e o link fica no historico). Use POST nesta mesma rota.',
+      como: 'POST /api/admin/migrar-envs com {"gravar":true}',
+      simulacao: 'GET sem ?gravar mostra o que SERIA feito',
+    });
+  }
   try {
     const r = await migrarEnvsDaGood(_attRender, { simular: !gravar });
     if (!gravar) r.como_gravar = 'confira o plano acima e repita a URL com &gravar=1';
@@ -8585,6 +8681,25 @@ app.get('/api/admin/eventos-checkout', async (req, res) => {
     res.status(500).json({ ok: false, erro: e.message || 'erro' });
   }
 });
+
+// b324 - ⚠️ A CHECAGEM DO SEGREDO ACONTECE NO BOOT, nao no 1o login.
+
+//
+
+// `_segredoSessao()` so roda quando alguem entra — entao o processo
+
+// subia sem SESSION_SECRET e so quebraria no primeiro login, com o
+
+// galpao ja tentando trabalhar.
+
+//
+
+// Chamo aqui pra falhar ANTES de abrir a porta: se faltar em producao,
+
+// o deploy nao completa e o Render mantem a versao anterior no ar.
+
+_segredoSessao();
+
 
 app.listen(PORT, () => {
   console.log('============================================');

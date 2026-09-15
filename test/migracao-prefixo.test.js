@@ -231,11 +231,17 @@ function ler(empresa, nome, envs, tipo) {
       const fsy = require('fs');
       const srv2 = fsy.readFileSync(path.join(RAIZ, 'server.js'), 'utf8');
       const i2 = srv2.indexOf("app.get('/api/admin/migrar-envs'");
-      const rota = srv2.slice(i2, i2 + 900);
-      ok(/req\.query\.gravar/.test(rota),
-         'a rota so grava com `?gravar=1` (o padrao e simular)');
-      ok(/simular: !gravar/.test(rota),
-         '  e sem o parametro ela SIMULA — visita acidental nao escreve credencial');
+      // ⚠️ marcadores, nao janela fixa: o bloco cresceu com o 405 e o
+    // comentario, e 900 chars nao alcancavam mais. E a licao do dia (b322).
+    const { entreMarcadores } = require('./_recorte');
+    const rota = entreMarcadores(srv2,
+      "app.get('/api/admin/migrar-envs'", 'app.get(');
+      ok(/const gravar = false;/.test(rota),
+         '⚠️ b326: o GET NUNCA grava (prefetch/crawler/preview disparam GET sozinhos)');
+      ok(/return res\.status\(405\)/.test(rota),
+         '  e avisa com 405 quem tentar `?gravar=1`, apontando o POST');
+      ok(/app\.post\('\/api\/admin\/migrar-envs', requerAdmin/.test(srv2),
+         '  ⚠️ e ha um POST pra gravar de verdade (nao disparado por navegacao)');
     }
 
     limpar();
