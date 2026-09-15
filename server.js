@@ -415,7 +415,7 @@ app.get('/health', (req, res) => {
       // busca por nome. Escolher um lado apagaria a descricao do outro.
       // ⚠️ a resolucao JUNTA as duas: a 7.5.0 (passe curto + tetos) ja esta
       // na main, e este PR acrescenta o build frio que falha vazio.
-      version: '9.19.0 (o auth da AMB vira fabrica: cookie, usuarios e sessoes por empresa)',
+      version: '9.20.0 (os tokens do Magalu saem do escopo do modulo — uma empresa usaria a credencial da outra)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),

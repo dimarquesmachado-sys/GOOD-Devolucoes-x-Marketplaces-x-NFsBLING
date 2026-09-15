@@ -7,7 +7,7 @@
 // APP, e a CONTA autorizada e decidida por quem esta logado na
 // hora do consentimento. Entao usamos o MESMO MAGALU_CLIENT_ID/
 // SECRET da GOOD (vars sem prefixo, mesmo servico) e guardamos
-// TOKENS SEPARADOS da AMB (AMB_MAGALU_ACCESS_TOKEN/REFRESH),
+// TOKENS SEPARADOS da AMB (AMB_MAGALU_ACCESS_TOKEN/TOKENS.refresh),
 // obtidos com o Diego logado na conta Magalu DA AMBTOTAL.
 //
 // O tenant do portal Magalu Entregas e outro segredo por conta:
@@ -27,11 +27,11 @@ const axios = require('axios');
 const tokens = require('../../lib/render-tokens');
 const { registrarPreventiva } = require('../../lib/token-preventiva');   // b271
 // b272 (review do Codex) - ESTA DECLARACAO VOLTOU. Meu refactor da b271
-// apagou o bloco antigo levando junto o `let ultimaPersistenciaMagalu`, mas a
+// apagou o bloco antigo levando junto o `let RENOV.ultimaPersistencia`, mas a
 // funcao de renovar continua ATRIBUINDO a ela. Em modulo strict, isso
 // lanca ReferenceError bem depois do marketplace ja ter rotacionado o
 // refresh: o token novo nao seria gravado e a integracao morreria.
-let ultimaPersistenciaMagalu = false;
+// (RENOV.ultimaPersistencia -> RENOV.ultimaPersistencia — b345)
 
 const ID_BASE = 'https://id.magalu.com';
 const BFF = 'https://seller-devolution-bff.mglu.io';
@@ -74,13 +74,26 @@ const SCOPES = (process.env.MAGALU_SCOPES || [
   'open:logistic-seller-trackings:read',
 ].join(' ')).trim();
 
-let ACCESS = process.env.AMB_MAGALU_ACCESS_TOKEN || '';
-let REFRESH = process.env.AMB_MAGALU_REFRESH_TOKEN || '';
-let TENANT = process.env.AMB_MAGALU_TENANT_ID || '';
+// ⚠️ b345 - GAVETA DE TOKENS: o caso mais grave dos 30.
+//
+// TOKENS.access/TOKENS.refresh/TOKENS.tenant eram do MODULO. Com duas empresas, uma faria
+// requisicao ao Magalu com a CREDENCIAL DA OUTRA — e o marketplace nao
+// tem como saber: responderia com os dados da conta errada.
+//
+// ⚠️ E a renovacao piora: o refresh do Magalu e de uso unico. Duas
+// empresas renovando o MESMO token invalidam uma a outra em corrida.
+//
+// 📌 Os padroes leem as envs da AMB, entao hoje o comportamento e
+// IDENTICO. O passo 3 passa as envs da empresa.
+const TOKENS = {
+  access: process.env.AMB_MAGALU_ACCESS_TOKEN || '',
+  refresh: process.env.AMB_MAGALU_REFRESH_TOKEN || '',
+  tenant: process.env.AMB_MAGALU_TENANT_ID || '',
+};
 
 const temCredenciais = () => !!(CLIENT_ID && CLIENT_SECRET);
-const temToken = () => !!(ACCESS || REFRESH);
-const temTenant = () => !!TENANT;
+const temToken = () => !!(TOKENS.access || TOKENS.refresh);
+const temTenant = () => !!TOKENS.tenant;
 
 function urlAutorizacao(state, redirectUri) {
   // ═══════════════════════════════════════════════════════════════════
@@ -113,8 +126,8 @@ async function trocarCodePorToken(code, redirectUri) {
     code, redirect_uri: redirectUri,
   }, { timeout: 20000 });
 
-  ACCESS = r.data.access_token || '';
-  REFRESH = r.data.refresh_token || REFRESH;
+  TOKENS.access = r.data.access_token || '';
+  TOKENS.refresh = r.data.refresh_token || TOKENS.refresh;
   // ═══════════════════════════════════════════════════════════════════
   // b150 - PERSISTENCIA CONSERTADA. O consentimento da AMB passou
   // inteiro (login, lojas, code no callback) e quebrava AQUI: o modulo
@@ -124,8 +137,8 @@ async function trocarCodePorToken(code, redirectUri) {
   // producao ha semanas.
   // ═══════════════════════════════════════════════════════════════════
   const persistiu = await tokens.atualizarTokensNoRender([
-    { key: 'AMB_MAGALU_ACCESS_TOKEN',  value: ACCESS },
-    { key: 'AMB_MAGALU_REFRESH_TOKEN', value: REFRESH },
+    { key: 'AMB_MAGALU_ACCESS_TOKEN',  value: TOKENS.access },
+    { key: 'AMB_MAGALU_REFRESH_TOKEN', value: TOKENS.refresh },
   ]);
   return { ok: true, persistiu, expira_em_s: r.data.expires_in || null };
 }
@@ -135,42 +148,44 @@ async function trocarCodePorToken(code, redirectUri) {
 // normal podem chamar a renovacao ao mesmo tempo, com o MESMO refresh de uso
 // unico — a segunda chamada falha e, pior, pode gravar por cima. Agora quem
 // chega depois espera o resultado da que ja esta rodando.
-let renovacaoEmVooMagalu = null;
+// ⚠️ b345 - controle da renovacao (em voo + ultima persistencia).
+// Compartilhado, duas empresas renovariam em cima uma da outra.
+const RENOV = { emVoo: null, ultimaPersistencia: false };
 
 async function renovar() {
-  if (renovacaoEmVooMagalu) return renovacaoEmVooMagalu;      // b267 - pega carona
-  renovacaoEmVooMagalu = (async () => { try { return await renovarInterno(); } finally { renovacaoEmVooMagalu = null; } })();
-  return renovacaoEmVooMagalu;
+  if (RENOV.emVoo) return RENOV.emVoo;      // b267 - pega carona
+  RENOV.emVoo = (async () => { try { return await renovarInterno(); } finally { RENOV.emVoo = null; } })();
+  return RENOV.emVoo;
 }
 
 async function renovarInterno() {
 
-  if (!REFRESH) throw new Error('sem refresh token do Magalu da AMB - refaca o consentimento');
+  if (!TOKENS.refresh) throw new Error('sem refresh token do Magalu da AMB - refaca o consentimento');
   const corpo = new URLSearchParams({
-    grant_type: 'refresh_token', refresh_token: REFRESH,
+    grant_type: 'refresh_token', refresh_token: TOKENS.refresh,
     client_id: CLIENT_ID, client_secret: CLIENT_SECRET,
   });
   const r = await axios.post(`${ID_BASE}/oauth/token`, corpo.toString(), {
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, timeout: 20000,
   });
-  ACCESS = r.data.access_token || '';
-  if (r.data.refresh_token) REFRESH = r.data.refresh_token;
+  TOKENS.access = r.data.access_token || '';
+  if (r.data.refresh_token) TOKENS.refresh = r.data.refresh_token;
   // b266 (review do Codex) - a renovacao so vale se o refresh NOVO ficou
   // guardado: se o Magalu aceitou e o Render falhou, a env mantem o refresh
   // JA CONSUMIDO e o proximo restart cai sem token — justo o caso que da
   // mais trabalho pra recuperar (consentimento inteiro no navegador certo).
-  ultimaPersistenciaMagalu = !!(await tokens.atualizarTokensNoRender([   // b150: nome/formato certos
-    { key: 'AMB_MAGALU_ACCESS_TOKEN',  value: ACCESS },
-    { key: 'AMB_MAGALU_REFRESH_TOKEN', value: REFRESH },
+  RENOV.ultimaPersistencia = !!(await tokens.atualizarTokensNoRender([   // b150: nome/formato certos
+    { key: 'AMB_MAGALU_ACCESS_TOKEN',  value: TOKENS.access },
+    { key: 'AMB_MAGALU_REFRESH_TOKEN', value: TOKENS.refresh },
       ...(PREVENTIVA.parEnvCarimbo() ? [PREVENTIVA.parEnvCarimbo()] : []),   // b271
   ]));
-  if (!ultimaPersistenciaMagalu) console.error('[AMB/Magalu] renovou mas NAO persistiu no Render — refresh gravado esta consumido');
+  if (!RENOV.ultimaPersistencia) console.error('[AMB/Magalu] renovou mas NAO persistiu no Render — refresh gravado esta consumido');
   // b270 (review do Codex) - QUALQUER renovacao que persistiu conta pro
   // intervalo, nao so a preventiva. Uma renovacao normal (por 401) gravava
   // carimbo novo enquanto o contador em memoria seguia no antigo — e o
   // batimento renovava de novo pouco depois, gastando refresh a toa.
-  if (ultimaPersistenciaMagalu) PREVENTIVA.marcarRenovado();   // b271
-  return ACCESS;
+  if (RENOV.ultimaPersistencia) PREVENTIVA.marcarRenovado();   // b271
+  return TOKENS.access;
 }
 
 /** GET autenticado com renovacao automatica no 401.
@@ -179,14 +194,14 @@ async function renovarInterno() {
  *  chamarMagalu('/seller/v1/orders/...') — antes so URL cheia funcionava. */
 async function chamarMagalu(url, extra = {}) {
   const urlFinal = String(url).startsWith('http') ? url : (API_BASE + url);
-  if (!ACCESS && REFRESH) { try { await renovar(); } catch (e) { /* segue e falha adiante */ } }
+  if (!TOKENS.access && TOKENS.refresh) { try { await renovar(); } catch (e) { /* segue e falha adiante */ } }
   const fazer = () => axios.get(urlFinal, {
     ...extra,
-    headers: { Authorization: `Bearer ${ACCESS}`, ...(extra.headers || {}) },
+    headers: { Authorization: `Bearer ${TOKENS.access}`, ...(extra.headers || {}) },
     timeout: 25000, validateStatus: () => true,
   });
   let r = await fazer();
-  if (r.status === 401 && REFRESH) {
+  if (r.status === 401 && TOKENS.refresh) {
     try { await renovar(); r = await fazer(); } catch (e) { /* devolve o 401 */ }
   }
   return { ok: r.status >= 200 && r.status < 300, status: r.status, data: r.data };
@@ -215,13 +230,15 @@ async function remessasReversasDoTicket(ticketId) {
   return chamarMagalu(`/seller/v0/tickets/${encodeURIComponent(ticketId)}/returns`);
 }
 
+// ⚠️ b345 - os dois indices + os sinalizadores de construcao, numa gaveta.
+const INDICES = { fase2Rodando: false, construindo: false };
 const TIDX = { ts: 0, mapa: {}, total: 0, comReversa: 0, duracaoSeg: 0, erro: null };
 const soDigitos = (s) => String(s || '').replace(/\D/g, '');
 
-let _fase2Rodando = false;
+// (INDICES.fase2Rodando -> INDICES.fase2Rodando — b345)
 async function _fase2ReverseCodes(abertos) {
-  if (_fase2Rodando) return;
-  _fase2Rodando = true;
+  if (INDICES.fase2Rodando) return;
+  INDICES.fase2Rodando = true;
   try {
     let comReversa = 0;
     for (let i = 0; i < abertos.length; i += 4) {
@@ -243,7 +260,7 @@ async function _fase2ReverseCodes(abertos) {
     }
     TIDX.comReversa = comReversa;
     console.log(`[AMB/MAGALU] tickets fase 2: ${comReversa} reverse_codes indexados`);
-  } finally { _fase2Rodando = false; }
+  } finally { INDICES.fase2Rodando = false; }
 }
 
 async function construirIndiceDevolucoes(opts = {}) {
@@ -375,10 +392,10 @@ const cfg = {
 
 // ── A ESPREITA ───────────────────────────────────────────────
 const IDX = { ts: 0, porPedido: {}, lista: [], erro: null, duracaoSeg: 0 };
-let construindo = false;
+// (INDICES.construindo -> INDICES.INDICES.construindo — b345)
 
 const HDR = () => ({ headers: {
-  'x-tenant-id': TENANT,
+  'x-tenant-id': TOKENS.tenant,
   Origin: 'https://seller.magaluentregas.com.br',
   Referer: 'https://seller.magaluentregas.com.br/',
 } });
@@ -386,7 +403,7 @@ const HDR = () => ({ headers: {
 async function varrer(caminho, categoria) {
   const out = [];
   for (let off = 0; off < 500; off += 50) {
-    const r = await chamarMagalu(`${BFF}${caminho}/${TENANT}?limit=50&offset=${off}`, HDR());
+    const r = await chamarMagalu(`${BFF}${caminho}/${TOKENS.tenant}?limit=50&offset=${off}`, HDR());
     if (!r.ok) { IDX.erro = `${categoria} HTTP ${r.status}`; break; }
     const recs = (r.data && r.data.records) || [];
     for (const d of recs) {
@@ -410,9 +427,9 @@ async function varrer(caminho, categoria) {
 }
 
 async function construirIndice() {
-  if (construindo) return IDX;
+  if (INDICES.construindo) return IDX;
   if (!temToken() || !temTenant()) return IDX;
-  construindo = true;
+  INDICES.construindo = true;
   const t0 = Date.now();
   try {
     IDX.erro = null;
@@ -430,7 +447,7 @@ async function construirIndice() {
     IDX.duracaoSeg = Math.round((Date.now() - t0) / 1000);
     console.log(`[AMB/MAGALU] espreita: ${tudo.length} devolucoes em ${IDX.duracaoSeg}s`);
     return IDX;
-  } finally { construindo = false; }
+  } finally { INDICES.construindo = false; }
 }
 
 function resumoEspreita() {
@@ -460,7 +477,7 @@ function statusIndice() {
   return {
     credenciais_do_app: temCredenciais(),
     token_da_amb: temToken(),
-    tenant: TENANT || null,
+    tenant: TOKENS.tenant || null,
     quente: IDX.ts > 0,
     total: IDX.lista.length,
     erro: IDX.erro,
@@ -499,9 +516,9 @@ function appEmUso() {
 // como este, zero logica duplicada.
 const PREVENTIVA = registrarPreventiva({
   empresa: 'ambtotal', integracao: 'magalu',
-  temRefresh: () => !!REFRESH,
+  temRefresh: () => !!TOKENS.refresh,
   renovar: () => renovar(),
-  persistiu: () => ultimaPersistenciaMagalu,
+  persistiu: () => RENOV.ultimaPersistencia,
   carimboEnv: 'AMB_MAGALU_RENOVADO_EM',
   diasEnv: 'AMB_MAGALU_RENOVAR_DIAS',
 });

@@ -260,7 +260,16 @@ function contarEstadoDoModulo(src) {
   // 📌 O que sobrou (`PADRAO`) e uma TABELA DE VALORES FIXOS — provei que
   // ninguem escreve nela (0 atribuicoes). Nao vaza, como o `NOMES` do
   // marketplace-AMB.
-  ok(totalSingletons === 30,
+  // ⚠️ b345 - 30 -> 26: o `magalu-AMB` agrupou em 3 gavetas.
+  //
+  // O caso mais grave dos 30 estava aqui: ACCESS/REFRESH/TENANT no escopo
+  // do modulo. Com duas empresas, uma faria requisicao ao Magalu com a
+  // CREDENCIAL DA OUTRA — e o marketplace nao tem como saber: responderia
+  // com os dados da conta errada.
+  //
+  // ⚠️ E a renovacao piora: o refresh do Magalu e de USO UNICO. Duas
+  // empresas renovando o mesmo token invalidam uma a outra em corrida.
+  ok(totalSingletons === 26,
      `📌 linha de base EXATA dos singletons requeridos: ${totalSingletons} variaveis tambem vazam entre empresas — ${porArquivo.join('; ')}`);
 }
 
