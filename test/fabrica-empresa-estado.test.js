@@ -25,9 +25,20 @@ const app = fs.readFileSync(path.join(RAIZ, 'amb-devolucoes', 'app-AMB.js'), 'ut
 
 // ── o que JÁ é fábrica (o avanço real que existe) ───────────────────
 {
-  const comCriar = (app.match(/\.criar\(CFG_EMPRESA\)/g) || []).length;
-  ok(comCriar >= 5,
-     `${comCriar} clientes ja aceitam config por instancia (bling, ml, mlReturns, nfNomes, db)`);
+  // ⚠️ (Codex, P2) - CONTAR OCORRENCIAS AGREGADAS NAO PROVA QUAIS CLIENTES.
+  //
+  // `comCriar >= 5` so conta quantas vezes `.criar(CFG_EMPRESA)` aparece no
+  // arquivo. Se um cliente regredir pra singleton e outro for chamado 2x (ou
+  // sobrar um `.criar(CFG_EMPRESA)` esquecido num comentario), a contagem
+  // continua >= 5 e o teste nao percebe. Verifica os 5 clientes NOMEADOS.
+  const CLIENTES_ESPERADOS = ['bling-AMB', 'ml-AMB', 'ml-returns-AMB', 'nf-nomes-AMB', 'supabase-AMB'];
+  const faltando = CLIENTES_ESPERADOS.filter(
+    (nome) => !new RegExp(`require\\('\\./lib-AMB/${nome}'\\)\\.criar\\(CFG_EMPRESA\\)`).test(app)
+  );
+  ok(faltando.length === 0,
+     faltando.length === 0
+       ? `5 clientes ja aceitam config por instancia (${CLIENTES_ESPERADOS.join(', ')})`
+       : `⚠️ estes clientes NAO aceitam config por instancia: ${faltando.join(', ')}`);
 }
 
 // ── ⚠️ e o que AINDA trava: a empresa cravada ───────────────────────
