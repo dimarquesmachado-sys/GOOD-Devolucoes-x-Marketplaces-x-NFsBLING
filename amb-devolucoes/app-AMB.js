@@ -192,7 +192,7 @@ const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 // mais um 403 pendente, e vice-versa). A AMB nunca consultou
 // lib/token-leitor.js (os modulos lib-AMB/* nao honram essa politica,
 // confirmado por grep) - nada a espelhar.
-const VERSAO = 'AMB Devolucoes b341';
+const VERSAO = 'AMB Devolucoes b342';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -2088,21 +2088,42 @@ registrarRotasAdminNF(router, {
 // rota de leitura. Cada empresa consulta o PROPRIO Bling.
 // ═══════════════════════════════════════════════════════════════════
 const NF_DEV_TTL_AMB = 15 * 60 * 1000;
-const NF_DEV_INDICE_AMB = new Map();   // pedido -> { nf, data, contato }
-let NF_DEV_SEM_PEDIDO_AMB = [];        // b335 - notas SEM pedido (caso Full): o painel casa por cliente+SKU
-let NF_DEV_IGNORADAS_AMB = {};         // b335 r2 - naturezas que ficaram FORA do casamento (id -> contagem)
-let NF_DEV_CACHE_OK_AMB = false;       // b335 r2 - build valido, mesmo que os dois lados venham vazios
-let NF_DEV_INDICE_TS_AMB = 0;
-let NF_DEV_CARREGANDO_AMB = null;
+// ⚠️ b342 - GAVETA 1 de 3: O INDICE DE NOTAS DE DEVOLUCAO.
+//
+// [stated 15/09] "isso, uma gaveta pra cada. se for o melhor pro futuro,
+// segue nisso, independente do trabalho q isso resulte"
+//
+// Estas 6 variaveis existiam UMA VEZ no processo. Enquanto so a AMB roda
+// aqui, funciona. Mas quando a Girassol subir no mesmo servico, as duas
+// dividiriam a MESMA gaveta: a Girassol pediria o indice dela e receberia o
+// da AMB.
+//
+// ⚠️ E ISSO NAO DA ERRO — da DADO ERRADO com cara de certo. "Numero errado
+// e pior que numero ausente".
+//
+// 📌 Agora sao campos de um objeto CRIADO POR INSTANCIA. Hoje ha uma so, e
+// o comportamento e identico; quando o passo 3 montar a segunda empresa,
+// cada uma tera a sua.
+function criarGavetaNfDev() {
+  return {
+    indice: new Map(),      // pedido -> { nf, data, contato }
+    semPedido: [],          // b335 - notas SEM pedido (caso Full)
+    ignoradas: {},          // b335 r2 - naturezas que ficaram de fora
+    cacheOk: false,         // b335 r2 - build valido, mesmo que vazio
+    ts: 0,
+    carregando: null,
+  };
+}
+const NF_DEV = criarGavetaNfDev();
 
 async function montarIndiceNFDevolucaoAMB(maxPaginas) {
-  // b335 r2 (Codex #78): o guard usava NF_DEV_INDICE_AMB.size — se as entradas
+  // b335 r2 (Codex #78): o guard usava NF_DEV.indice.size — se as entradas
   // recentes fossem TODAS do Full (sem pedido), o mapa ficava vazio e CADA
   // request reconstruia os ~600 detalhes de novo, com 120ms de pausa cada,
   // ignorando o TTL. A flag diz "o build terminou", independente do formato.
-  if ((Date.now() - NF_DEV_INDICE_TS_AMB) < NF_DEV_TTL_AMB && NF_DEV_CACHE_OK_AMB) return;
-  if (NF_DEV_CARREGANDO_AMB) return NF_DEV_CARREGANDO_AMB;
-  NF_DEV_CARREGANDO_AMB = (async () => {
+  if ((Date.now() - NF_DEV.ts) < NF_DEV_TTL_AMB && NF_DEV.cacheOk) return;
+  if (NF_DEV.carregando) return NF_DEV.carregando;
+  NF_DEV.carregando = (async () => {
     const novo = new Map();
     const semPedido = [];
     try {
@@ -2195,20 +2216,20 @@ async function montarIndiceNFDevolucaoAMB(maxPaginas) {
         } catch (e) { /* pula essa nota */ }
         await new Promise(r => setTimeout(r, 120));
       }
-      NF_DEV_INDICE_AMB.clear();
-      for (const [k, v] of novo) NF_DEV_INDICE_AMB.set(k, v);
-      NF_DEV_SEM_PEDIDO_AMB = semPedido;   // b335
-      NF_DEV_IGNORADAS_AMB = ignoradas;    // b335 r2
-      NF_DEV_CACHE_OK_AMB = true;          // b335 r2 - build terminou (vazio de verdade tambem vale)
+      NF_DEV.indice.clear();
+      for (const [k, v] of novo) NF_DEV.indice.set(k, v);
+      NF_DEV.semPedido = semPedido;   // b335
+      NF_DEV.ignoradas = ignoradas;    // b335 r2
+      NF_DEV.cacheOk = true;          // b335 r2 - build terminou (vazio de verdade tambem vale)
       // b335 r3 (Codex #78): build INCOMPLETO (Bling caiu no meio) vale, mas
       // com validade curta — 2 min em vez de 15. Nem serve resultado furado
       // por 15 minutos, nem remonta 600 notas a cada request.
       const parcial = falhaLista || falhasDetalhe > 0;
-      NF_DEV_INDICE_TS_AMB = parcial ? (Date.now() - NF_DEV_TTL_AMB + 2 * 60 * 1000) : Date.now();
+      NF_DEV.ts = parcial ? (Date.now() - NF_DEV_TTL_AMB + 2 * 60 * 1000) : Date.now();
     } catch (e) { /* mantem o indice anterior */ }
-    finally { NF_DEV_CARREGANDO_AMB = null; }
+    finally { NF_DEV.carregando = null; }
   })();
-  return NF_DEV_CARREGANDO_AMB;
+  return NF_DEV.carregando;
 }
 
 // rota: dispara/consulta o indice. O front chama e depois cruza com o a espreita.
@@ -3038,17 +3059,17 @@ router.get('/api/admin/indice-nf-devolucao', auth.requerLogin, async (req, res) 
   try {
     await montarIndiceNFDevolucaoAMB(Number(req.query.paginas || 5));
     const mapa = {};
-    for (const [ped, info] of NF_DEV_INDICE_AMB) mapa[ped] = info;
-    return res.json({ ok: true, total: NF_DEV_INDICE_AMB.size, atualizado_em: NF_DEV_INDICE_TS_AMB,
+    for (const [ped, info] of NF_DEV.indice) mapa[ped] = info;
+    return res.json({ ok: true, total: NF_DEV.indice.size, atualizado_em: NF_DEV.ts,
       tipo_usado: String(FICHA_AMB.fiscal.nfEntradaTipo() || '0'),   // b335
       pedidos: mapa,
-      sem_pedido: NF_DEV_SEM_PEDIDO_AMB,   // b335 - notas sem vinculo (Full): o painel casa por cliente+SKU
-      naturezas_ignoradas: NF_DEV_IGNORADAS_AMB,   // b335 r2 - entradas fora do casamento, contadas por natureza
-      cache_ok: NF_DEV_CACHE_OK_AMB,   // b335 r3 - false = o Bling falhou e nao ha indice confiavel ainda
+      sem_pedido: NF_DEV.semPedido,   // b335 - notas sem vinculo (Full): o painel casa por cliente+SKU
+      naturezas_ignoradas: NF_DEV.ignoradas,   // b335 r2 - entradas fora do casamento, contadas por natureza
+      cache_ok: NF_DEV.cacheOk,   // b335 r3 - false = o Bling falhou e nao ha indice confiavel ainda
       // b335 r4 (Codex #78): idade medida no relogio do SERVIDOR. O painel
       // calcula a validade a partir dela (e nao de Date.now() na chegada),
       // senao o TTL curto de um build parcial virava 15 min no navegador.
-      idade_ms: Math.max(0, Date.now() - NF_DEV_INDICE_TS_AMB) });
+      idade_ms: Math.max(0, Date.now() - NF_DEV.ts) });
   } catch (e) { return res.status(500).json({ ok: false, erro: e.message }); }
 });
 
