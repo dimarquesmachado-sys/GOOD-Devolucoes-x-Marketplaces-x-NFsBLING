@@ -4,7 +4,9 @@
   "description": "Sistema de identificacao e triagem de devolucoes - GOOD Import",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "test": "node verifica.js",
+    "check": "node verifica.js"
   },
   "engines": {
     "node": ">=18.0.0"
