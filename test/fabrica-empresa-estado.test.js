@@ -49,8 +49,20 @@ function contarEstadoDoModulo(src) {
 
     // declaração de estado, só em profundidade 0
     if (prof === 0) {
-      const m = /^(?:let|var) (\w+)|^const (\w+)\s*=\s*(?:new Map\(\)|new Set\(\)|\[\])/.exec(t);
-      if (m) estado.push(m[1] || m[2]);
+      // ⚠️ b330.2 (Codex, P2) - CONTA TAMBEM ESTADO EM OBJETO.
+      //
+      // O PASSO 2 vai consolidar as 11 num objeto:
+      //   const ESTADO = { pendentes: new Map(), cache: null };
+      //
+      // Isso nao caía em nenhum padrao anterior — o teste diria "0
+      // variaveis de estado", VERDE, com o vazamento INTACTO. Seria inutil
+      // justo no passo que ele existe pra vigiar.
+      //
+      // 📌 O que importa nao e a FORMA da declaracao: um `const` de objeto
+      // mutavel no escopo do modulo vaza entre instancias igual a um `let`.
+      const m = /^(?:let|var) (\w+)/.exec(t)
+        || /^const (\w+)\s*=\s*(?:new Map\(\)|new Set\(\)|\[\]|\{)/.exec(t);
+      if (m) estado.push(m[1]);
     }
 
     // conta chaves IGNORANDO string/template/regex/comentário de linha
@@ -160,7 +172,13 @@ function contarEstadoDoModulo(src) {
     totalSingletons += estadoSingleton.length;
     porArquivo.push(`${nome}=${estadoSingleton.length}(${estadoSingleton.join(',')})`);
   }
-  ok(totalSingletons === 12,
+  // ⚠️ b330.2: era 12 e virou 16 porque a contagem passou a incluir estado
+  // em OBJETO (`const X = { ... }`) — que vaza igual a um `let`. As 4 novas
+  // sempre estiveram la; eu e que nao as via.
+  //
+  // 📌 O numero subir ao MELHORAR a medida e o esperado: a linha de base
+  // tem que refletir o que existe, nao o que eu conseguia enxergar.
+  ok(totalSingletons === 16,
      `📌 linha de base EXATA dos singletons requeridos: ${totalSingletons} variaveis tambem vazam entre empresas — ${porArquivo.join('; ')}`);
 }
 
