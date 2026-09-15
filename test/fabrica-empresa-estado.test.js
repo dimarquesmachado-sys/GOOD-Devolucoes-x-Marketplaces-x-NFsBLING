@@ -250,6 +250,16 @@ function contarEstadoDoModulo(src) {
   //
   // 📌 O numero subir ao MELHORAR a medida ou a lista e o esperado: a linha
   // de base tem que refletir o que existe, nao o que eu conseguia enxergar.
+  // ⚠️ b344 - 31 -> 30: o `auth-AMB` virou fabrica.
+  //
+  // Era o de MAIOR DANO: nao so o mapa de `sessoes` compartilhado, mas o
+  // NOME DO COOKIE, o CAMINHO e as ENVS cravados na AMB. Mesmo cookie no
+  // mesmo dominio = o navegador manda UM so: quem entrasse na Girassol
+  // derrubaria a sessao da AMB, ou entraria com ela.
+  //
+  // 📌 O que sobrou (`PADRAO`) e uma TABELA DE VALORES FIXOS — provei que
+  // ninguem escreve nela (0 atribuicoes). Nao vaza, como o `NOMES` do
+  // marketplace-AMB.
   ok(totalSingletons === 30,
      `📌 linha de base EXATA dos singletons requeridos: ${totalSingletons} variaveis tambem vazam entre empresas — ${porArquivo.join('; ')}`);
 }
