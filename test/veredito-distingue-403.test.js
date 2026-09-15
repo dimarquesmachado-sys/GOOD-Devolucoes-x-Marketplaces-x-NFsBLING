@@ -11,62 +11,93 @@
 //
 // 📌 O veredito NÃO foi afrouxado: o bloqueio continua. O que muda é dizer
 // QUAL é o saldo, para a decisão ser informada em vez de adivinhada.
+//
+// b329.1 (Codex, P2) - o "saldo" tem que ser por STATUS, não o total bruto
+// acumulado desde `DESDE`. Um 401 já resolvido por retry não pode impedir
+// que um 403 pendente seja identificado como "só 403" — e um 403 já
+// resolvido não pode "cobrir" um 401 pendente. Por isso este teste chama as
+// funções de verdade (`anotarInvalidacao`/`anotarRetry`/`vereditoDeCorte`)
+// em vez de casar texto solto no fonte: o bug só aparece quando 401 e 403
+// coexistem na mesma janela, e é exatamente isso que se testa aqui.
 
-const fs = require('fs');
 const path = require('path');
 
 let falhas = 0;
 const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o); };
 
-const src = fs.readFileSync(
-  path.join(__dirname, '..', 'lib', 'token-leitor.js'), 'utf8');
+const carregar = () => {
+  const p = path.join(__dirname, '..', 'lib', 'token-leitor.js');
+  delete require.cache[require.resolve(p)];
+  for (const k of Object.keys(process.env)) if (k.startsWith('TOKEN_POLITICA_')) delete process.env[k];
+  return require(p);
+};
 
-// ── o veredito separa 401 de 403 ────────────────────────────────────
+const porQue = (tl) => tl.vereditoDeCorte()['good/ml'].por_que || '';
+
+// ── o caso real do ML: só 403, sem 401 nenhum ───────────────────────
 {
-  ok(/const so403 = m\.invalidacoes\.por_403 > 0 && m\.invalidacoes\.por_401 === 0;/.test(src),
-     'o veredito detecta o caso "so 403"');
-  ok(/TODAS por 403/.test(src),
-     '⚠️ e avisa que pode ser rota restrita (renovacao nao cura)');
-  ok(/por_401=\$\{m\.invalidacoes\.por_401\}/.test(src),
-     '  e no caso misto, mostra os dois numeros');
+  const tl = carregar();
+  for (let i = 0; i < 12; i++) tl.anotarInvalidacao('good', 'ml', 403);
+  tl.anotarRetry('good', 'ml', false, 403);
+  tl.anotarRetry('good', 'ml', false, 403);
+  const q = porQue(tl);
+  ok(/TODAS por 403/.test(q), '⚠️ o caso real do ML (0x401, 12x403) aponta rota restrita (' + q + ')');
 }
 
-// ── ⚠️ e NÃO afrouxou: o bloqueio continua ──────────────────────────
-//
-// Este é o ponto que importa. Se o saldo passar a não bloquear, o veredito
-// diria "pronto" para um eixo que está tomando 401 o dia todo — e o corte
-// seguiria o conselho errado.
+// ── ⚠️ o bug do apontamento: um 401 JÁ RESOLVIDO não pode esconder um
+// 403 pendente. Com o total bruto, `por_401` continuava > 0 pra sempre
+// depois do primeiro 401 — mesmo com o retry dele já tendo dado certo — e
+// isso derrubava a detecção de "só 403" pro resto da janela.
 {
-  ok(/if \(invTotal > retryTotal\) \{/.test(src),
-     '⚠️ a condicao de bloqueio e a MESMA (saldo de invalidacao sem retry)');
-  ok(/motivos\.push\(`\$\{invTotal - retryTotal\} invalidacao/.test(src),
-     '  e continua entrando em `motivos` (que e o que bloqueia)');
+  const tl = carregar();
+  tl.anotarInvalidacao('good', 'ml', 401);
+  tl.anotarRetry('good', 'ml', true, 401);      // 401 resolvido, sem saldo
+  tl.anotarInvalidacao('good', 'ml', 403);      // 403 sem retry: pendente
+  const q = porQue(tl);
+  ok(/TODAS por 403/.test(q),
+     '⚠️ 401 ja resolvido nao esconde o 403 pendente (' + q + ')');
 }
 
-// ── a mensagem, exercitada com o caso real do ML ────────────────────
+// ── e o inverso: um 403 já resolvido não pode "cobrir" um 401 pendente
 {
-  const monta = (inv, retry) => {
-    const invTotal = inv.por_401 + inv.por_403 + (inv.outras || 0);
-    const retryTotal = retry.ok + retry.falhou;
-    if (invTotal <= retryTotal) return null;
-    const so403 = inv.por_403 > 0 && inv.por_401 === 0;
-    return `${invTotal - retryTotal} invalidacao(oes) sem retry conhecido`
-      + (so403 ? ' — TODAS por 403' : ` — por_401=${inv.por_401}, por_403=${inv.por_403}`);
-  };
+  const tl = carregar();
+  tl.anotarInvalidacao('good', 'ml', 403);
+  tl.anotarRetry('good', 'ml', true, 403);      // 403 resolvido, sem saldo
+  tl.anotarInvalidacao('good', 'ml', 401);      // 401 sem retry: pendente
+  const q = porQue(tl);
+  ok(!/TODAS por 403/.test(q) && /por_401=1/.test(q),
+     '  e um 403 ja resolvido nao e confundido com 401 pendente (' + q + ')');
+}
 
-  // o caso medido hoje no ML da GOOD
-  const ml = monta({ por_401: 0, por_403: 12, outras: 0 }, { ok: 0, falhou: 2 });
-  ok(/TODAS por 403/.test(ml || ''),
-     '⚠️ o caso real do ML (0x401, 12x403) aponta rota restrita');
+// ── `outras` pendente também impede "só 403" ────────────────────────
+{
+  const tl = carregar();
+  tl.anotarInvalidacao('good', 'ml', 403);      // pendente
+  tl.anotarInvalidacao('good', 'ml', 500);      // outras, pendente
+  const q = porQue(tl);
+  ok(!/TODAS por 403/.test(q) && /outras=1/.test(q),
+     '  e um saldo em `outras` tambem impede "TODAS por 403" (' + q + ')');
+}
 
-  // e um caso de token de verdade não pode dizer isso
-  const token = monta({ por_401: 8, por_403: 0, outras: 0 }, { ok: 0, falhou: 1 });
-  ok(!/TODAS por 403/.test(token || '') && /por_401=8/.test(token || ''),
-     '  ⚠️ e 401 puro NAO e confundido com permissao');
+// ── ⚠️ e NÃO afrouxou: retry cobrindo tudo não gera o motivo ────────
+{
+  const tl = carregar();
+  tl.anotarInvalidacao('good', 'ml', 401);
+  tl.anotarInvalidacao('good', 'ml', 401);
+  tl.anotarRetry('good', 'ml', true, 401);
+  tl.anotarRetry('good', 'ml', true, 401);
+  const q = porQue(tl);
+  ok(!/sem retry conhecido/.test(q),
+     '  retry cobrindo as invalidacoes nao gera o motivo (' + q + ')');
+}
 
-  // e sem saldo, não bloqueia
-  ok(monta({ por_401: 2, por_403: 0, outras: 0 }, { ok: 2, falhou: 0 }) === null,
-     '  e retry cobrindo as invalidacoes nao gera motivo');
+// ── e continua BLOQUEANDO quando há saldo (não afrouxa o veredito) ──
+{
+  const tl = carregar();
+  tl.anotarInvalidacao('good', 'ml', 401);
+  const v = tl.vereditoDeCorte()['good/ml'];
+  ok(v.pronto === false, '⚠️ invalidacao sem retry continua bloqueando o veredito');
+  ok(/sem retry conhecido/.test(v.por_que || ''), '  e o motivo aparece em `por_que`');
 }
 
 console.log('');
