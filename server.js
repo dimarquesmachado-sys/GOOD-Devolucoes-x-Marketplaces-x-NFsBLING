@@ -415,7 +415,7 @@ app.get('/health', (req, res) => {
       // busca por nome. Escolher um lado apagaria a descricao do outro.
       // ⚠️ a resolucao JUNTA as duas: a 7.5.0 (passe curto + tetos) ja esta
       // na main, e este PR acrescenta o build frio que falha vazio.
-      version: '9.21.0 (mais 4 modulos da AMB agrupados em gavetas — caches de catalogo, impressao, e-mail e NF de entrada)',
+      version: '9.21.1 (corrige a gaveta de impressao da AMB: fila/ultimoPoll viraram Map por engano, e a rota de enfileirar quebrou)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
