@@ -20,8 +20,11 @@
 
 const bling = require('./bling-AMB');
 
+// ⚠️ b347 - gaveta: o indice de NF de entrada + o sinalizador.
+// Compartilhado, a Girassol veria as notas de entrada da AMB.
+const EST = { construindo: false };
 const IDX = { ts: 0, porPedido: {}, porNome: {}, total: 0, erro: null, duracaoSeg: 0 };
-let construindo = false;
+// (EST.construindo -> EST.construindo — b347)
 
 const colapsar = (s) => String(s || '')
   .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
@@ -30,8 +33,8 @@ const colapsar = (s) => String(s || '')
 const TIPO = () => String(process.env.AMB_NF_ENTRADA_TIPO || '0');
 
 async function construirIndice() {
-  if (construindo) return IDX;
-  construindo = true;
+  if (EST.construindo) return IDX;
+  EST.construindo = true;
   const t0 = Date.now();
   try {
     const dias = Number(process.env.AMB_NF_ENTRADA_DIAS || 180);
@@ -71,7 +74,7 @@ async function construirIndice() {
     IDX.duracaoSeg = Math.round((Date.now() - t0) / 1000);
     console.log(`[AMB/NF-ENTRADA] ${total} notas de entrada (tipo=${TIPO()}) em ${IDX.duracaoSeg}s`);
     return IDX;
-  } finally { construindo = false; }
+  } finally { EST.construindo = false; }
 }
 
 /** A NF de devolucao desta venda ja saiu? Busca por pedido, depois nome. */
@@ -89,7 +92,9 @@ function jaEmitida({ pedido, nome }) {
 
 function statusIndice() {
   return {
-    quente: IDX.ts > 0, construindo,
+    // ⚠️ b347: era o atalho `construindo,` (chave E valor). Com o nome
+    // novo, preciso ser explicito: a chave continua `construindo`.
+    quente: IDX.ts > 0, construindo: EST.construindo,
     tipo_usado: TIPO(),
     total: IDX.total,
     pedidos_indexados: Object.keys(IDX.porPedido).length,

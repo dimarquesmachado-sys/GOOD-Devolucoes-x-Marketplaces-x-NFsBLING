@@ -25,9 +25,15 @@ const crypto = require('crypto');
 const QZ_CERT = process.env.GOODBKP_QZ_CERT || process.env.QZ_CERT || '';
 const QZ_PRIVKEY = process.env.GOODBKP_QZ_PRIVKEY || process.env.QZ_PRIVKEY || '';
 
-// fila propria da AMB (a da GOOD vive no server dela)
-const fila = [];
-let ultimoPollEstacao = 0;
+// IMPR.fila propria da AMB (a da GOOD vive no server dela)
+// ⚠️ b347 - gaveta da impressao. Compartilhada, a etiqueta de uma
+// empresa sairia na impressora da outra.
+const IMPR = {
+  fila: new Map(),
+  ultimoPoll: new Map(),
+};
+// (IMPR.fila -> IMPR.fila)
+// (IMPR.ultimoPoll -> IMPR.ultimoPoll)
 
 const limpo = (s, max) => String(s == null ? '' : s)
   .replace(/[\^~\\]/g, ' ')            // ^ e ~ sao comandos ZPL
@@ -48,7 +54,7 @@ function zplDefeito({ sku, defeito, localizacao, quem, quando, nf, id }) {
     '^FO30,40^A0N,60,60^FDDEFEITO - AMBTotal^FS',
     '^FO30,110^GB752,4,4^FS',
     // b125 - numero da peca + codigo de barras tambem na etiqueta que sai
-    // pela fila remota (a impressa pelo painel), pra as duas serem iguais
+    // pela IMPR.fila remota (a impressa pelo painel), pra as duas serem iguais
     ...(id ? [
       `^FO30,140^A0N,60,60^FDPECA #${id}^FS`,
       `^FO30,205^BY3,2^BCN,70,Y,N,N^FD#${id}^FS`,
@@ -88,21 +94,21 @@ function registrarRotas(router, requerLogin) {
     }
   });
 
-  // O celular poe a etiqueta na fila
-  router.post('/api/etiqueta/fila', requerLogin, (req, res) => {
+  // O celular poe a etiqueta na IMPR.fila
+  router.post('/api/etiqueta/IMPR.fila', requerLogin, (req, res) => {
     const b = req.body || {};
     if (!b.sku) return res.status(400).json({ ok: false, erro: 'falta o sku' });
     const zpl = zplDefeito({
       sku: b.sku, defeito: b.defeito, localizacao: b.localizacao,
       quem: req.usuario, nf: b.nf,
     });
-    fila.push({ id: Date.now() + '-' + Math.random().toString(36).slice(2, 7), zpl, criado: Date.now() });
-    if (fila.length > 50) fila.shift();
+    IMPR.fila.push({ id: Date.now() + '-' + Math.random().toString(36).slice(2, 7), zpl, criado: Date.now() });
+    if (IMPR.fila.length > 50) IMPR.fila.shift();
     res.json({
       ok: true,
-      na_fila: fila.length,
-      estacao_ativa: (Date.now() - ultimoPollEstacao) < 20000,
-      aviso: (Date.now() - ultimoPollEstacao) >= 20000
+      na_fila: IMPR.fila.length,
+      estacao_ativa: (Date.now() - IMPR.ultimoPoll) < 20000,
+      aviso: (Date.now() - IMPR.ultimoPoll) >= 20000
         ? 'nenhuma estacao de impressao ativa - abra o painel num computador com QZ Tray'
         : null,
     });
@@ -110,9 +116,9 @@ function registrarRotas(router, requerLogin) {
 
   // A estacao (painel aberto num PC) busca a proxima
   router.get('/api/etiqueta/proxima', requerLogin, (req, res) => {
-    ultimoPollEstacao = Date.now();
-    const prox = fila.shift() || null;
-    res.json({ ok: true, etiqueta: prox, restam: fila.length });
+    IMPR.ultimoPoll = Date.now();
+    const prox = IMPR.fila.shift() || null;
+    res.json({ ok: true, etiqueta: prox, restam: IMPR.fila.length });
   });
 
   // Preview do ZPL (debug / conferencia)
@@ -129,8 +135,8 @@ function registrarRotas(router, requerLogin) {
     res.json({
       ok: true,
       qz_configurado: !!(QZ_CERT && QZ_PRIVKEY),
-      na_fila: fila.length,
-      estacao_ativa: (Date.now() - ultimoPollEstacao) < 20000,
+      na_fila: IMPR.fila.length,
+      estacao_ativa: (Date.now() - IMPR.ultimoPoll) < 20000,
     });
   });
 }
