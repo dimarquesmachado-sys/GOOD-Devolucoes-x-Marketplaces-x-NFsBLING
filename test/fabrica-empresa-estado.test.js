@@ -128,6 +128,42 @@ const app = fs.readFileSync(path.join(RAIZ, 'amb-devolucoes', 'app-AMB.js'), 'ut
   }
 }
 
+// ── ⚠️ e os singletons que app-AMB.js REQUER tambem guardam estado ─────
+//
+// ⚠️ (Codex, P2) - O TESTE SO AUDITAVA app-AMB.js, IGNORANDO OS PROPRIOS
+// SINGLETONS QUE ELE REQUER.
+//
+// auth-AMB.js guarda o mapa de sessao (`sessoes`); shopee-AMB.js e
+// magalu-AMB.js guardam cache, credenciais e token — e os tres sao
+// exigidos DIRETO (sem `.criar(CFG_EMPRESA)`). Com duas empresas no
+// mesmo processo, ESSE estado tambem vaza entre elas: os passos 2 e 3
+// tem que converter esses modulos tambem, nao so app-AMB.js.
+//
+// 📌 Nao inventariei TODOS os ~13 modulos exigidos direto: alguns, como
+// admin-helpers-AMB.js, sao fabricas SEM estado proprio (recebem tudo por
+// injecao) — classificar isso como "singleton perigoso" seria a mesma
+// falsa precisao que este teste existe pra evitar. Os tres abaixo foram
+// lidos e confirmados um a um; o resto fica para os passos 2/3 avaliarem.
+{
+  const SINGLETONS_REQUERIDOS = ['auth-AMB', 'shopee-AMB', 'magalu-AMB'];
+  let totalSingletons = 0;
+  const porArquivo = [];
+  for (const nome of SINGLETONS_REQUERIDOS) {
+    const exigidoDireto = new RegExp(`require\\('\\./lib-AMB/${nome}'\\)(?!\\.criar)`).test(app);
+    ok(exigidoDireto, `${nome} ainda e exigido direto (singleton), nao .criar(CFG_EMPRESA)`);
+
+    const src = fs.readFileSync(path.join(RAIZ, 'amb-devolucoes', 'lib-AMB', `${nome}.js`), 'utf8');
+    const estadoSingleton = src.split('\n')
+      .filter((l) => /^let \w+|^const \w+ = new Map\(\)|^const \w+ = \[\]/.test(l))
+      .map((l) => (/^(?:let|const) (\w+)/.exec(l) || [])[1])
+      .filter(Boolean);
+    totalSingletons += estadoSingleton.length;
+    porArquivo.push(`${nome}=${estadoSingleton.length}(${estadoSingleton.join(',')})`);
+  }
+  ok(totalSingletons === 12,
+     `📌 linha de base EXATA dos singletons requeridos: ${totalSingletons} variaveis tambem vazam entre empresas — ${porArquivo.join('; ')}`);
+}
+
 // ── e o router sai pronto, não montável ─────────────────────────────
 {
   ok(/module\.exports/.test(app), 'o modulo exporta algo');
@@ -138,10 +174,18 @@ const app = fs.readFileSync(path.join(RAIZ, 'amb-devolucoes', 'app-AMB.js'), 'ut
   // { criarRouter }` — e com esse padrao o teste diria "ainda e router
   // pronto" DEPOIS do passo 3 ter funcionado. Falso alarme no exato momento
   // em que eu preciso confiar no teste.
+  // ⚠️ (Codex, P2) - A ALTERNATIVA ANTERIOR ERRAVA PRO OUTRO LADO.
+  //
+  // `/\bfunction (criarApp|criarRouter|criarAppEmpresa)\s*\(/` so via se a
+  // FUNCAO EXISTIA no arquivo — nao se ela era o que o modulo EXPORTA. Um
+  // `function criarRouter(...)` interno, com o arquivo ainda terminando em
+  // `module.exports = router` (o singleton pronto), passaria como "ja e
+  // fabrica" sem ser. Agora exige que o IDENTIFICADOR seja atribuido a
+  // `module.exports` (direto ou dentro do objeto acima).
   const exportaFabrica = /module\.exports\s*=\s*function/.test(app)
     || /module\.exports\.criar/.test(app)
     || /module\.exports\s*=\s*\{[^}]*\b(criar|criarApp|criarRouter|criarAppEmpresa)\b/.test(app)
-    || /\bfunction (criarApp|criarRouter|criarAppEmpresa)\s*\(/.test(app);
+    || /module\.exports\s*=\s*(criarApp|criarRouter|criarAppEmpresa)\s*;/.test(app);
   // 📌 LINHA DE BASE, como a contagem acima: hoje NAO e fabrica. Quando o
   // passo 3 rodar, esta asserção vira `ok(exportaFabrica, ...)` — e a
   // troca no diff e a prova de que o passo aconteceu.
