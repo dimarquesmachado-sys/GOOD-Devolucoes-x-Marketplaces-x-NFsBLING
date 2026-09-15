@@ -107,6 +107,19 @@ function contarEstadoDoModulo(src) {
   ok(!!m, 'a empresa vem de `configDaEmpresa`');
   ok(m && m[1] === 'ambtotal',
      `⚠️ mas CRAVADA em '${m ? m[1] : '?'}' — trocar a string SUBSTITUI a AMB, nao monta as duas`);
+
+  // ⚠️ (Codex, P2, 3a rodada) - CFG_EMPRESA NAO E A UNICA FONTE CRAVADA.
+  //
+  // `config-AMB.js` e um arquivo SO da AMB (nome e conteudo), e `FICHA_AMB`
+  // vem de `obterEmpresa('ambtotal')` tambem cravado — usado direto em
+  // rotas fiscais (naturezasDevolucaoIds, nfEntradaTipo) e em `envAmb()`
+  // espalhado pelo arquivo. Um passo 2/3 que so trocasse CFG_EMPRESA de
+  // parametro deixaria estas duas fontes ainda respondendo pela AMB.
+  ok(/require\('\.\/config-AMB'\)/.test(app),
+     'tambem importa config-AMB.js — arquivo SO da AMB, ja cravado no nome');
+  const mFicha = /const FICHA_AMB = obterEmpresa\('(\w+)'\)/.exec(app);
+  ok(mFicha && mFicha[1] === 'ambtotal',
+     `⚠️ e FICHA_AMB tambem CRAVADA em '${mFicha ? mFicha[1] : '?'}' via obterEmpresa — usada em rotas fiscais e em envAmb()`);
 }
 
 // ── ⚠️ e o estado no escopo do módulo ───────────────────────────────
@@ -154,13 +167,31 @@ function contarEstadoDoModulo(src) {
 // mesmo processo, ESSE estado tambem vaza entre elas: os passos 2 e 3
 // tem que converter esses modulos tambem, nao so app-AMB.js.
 //
-// 📌 Nao inventariei TODOS os ~13 modulos exigidos direto: alguns, como
-// admin-helpers-AMB.js, sao fabricas SEM estado proprio (recebem tudo por
-// injecao) — classificar isso como "singleton perigoso" seria a mesma
-// falsa precisao que este teste existe pra evitar. Os tres abaixo foram
-// lidos e confirmados um a um; o resto fica para os passos 2/3 avaliarem.
+// ⚠️ (Codex, P2, 3a rodada) - OS TRES NAO ERAM EXAUSTIVOS.
+//
+// app-AMB.js exige 13 modulos DIRETO (sem `.criar`). Os tres acima foram
+// os primeiros lidos; auditando os outros 10 um a um:
+//   - ml-motivo-AMB (CTX), impressao-AMB (fila, ultimoPollEstacao),
+//     nf-entrada-AMB (IDX, construindo), compat-AMB (5 caches de imagem/
+//     formato/SKU/kit) e email-AMB (mailer, motivoDesligado — o
+//     transportador de e-mail fica em cache OUTRA empresa herdaria)
+//     guardam estado real e entram na lista abaixo.
+//   - marketplace-AMB tem `NOMES`, mas e uma tabela ESTATICA de
+//     rotulo (ml -> "Mercado Livre"), igual pras duas empresas — nao e
+//     dado de negocio que vaza, entao fica de fora.
+//   - admin-helpers-AMB, rotas-admin-AMB, identificar-AMB e
+//     defeitos-ciclo-AMB sao fabricas SEM estado proprio (recebem tudo
+//     por injecao): medidos, deram 0 — classifica-los como "singleton
+//     perigoso" seria a mesma falsa precisao que este teste existe pra
+//     evitar.
+//
+// 📌 Com isso os 13 modulos exigidos direto foram todos auditados; nao
+// sobra mais nenhum "resto" para os passos 2/3 descobrirem depois.
 {
-  const SINGLETONS_REQUERIDOS = ['auth-AMB', 'shopee-AMB', 'magalu-AMB'];
+  const SINGLETONS_REQUERIDOS = [
+    'auth-AMB', 'shopee-AMB', 'magalu-AMB',
+    'ml-motivo-AMB', 'impressao-AMB', 'nf-entrada-AMB', 'compat-AMB', 'email-AMB',
+  ];
   let totalSingletons = 0;
   const porArquivo = [];
   for (const nome of SINGLETONS_REQUERIDOS) {
@@ -176,9 +207,12 @@ function contarEstadoDoModulo(src) {
   // em OBJETO (`const X = { ... }`) — que vaza igual a um `let`. As 4 novas
   // sempre estiveram la; eu e que nao as via.
   //
-  // 📌 O numero subir ao MELHORAR a medida e o esperado: a linha de base
-  // tem que refletir o que existe, nao o que eu conseguia enxergar.
-  ok(totalSingletons === 16,
+  // ⚠️ (Codex, P2, 3a rodada): 16 virou 30 porque a LISTA de modulos cresceu
+  // de 3 para 8 (ver comentario acima) — nao a medida em si.
+  //
+  // 📌 O numero subir ao MELHORAR a medida ou a lista e o esperado: a linha
+  // de base tem que refletir o que existe, nao o que eu conseguia enxergar.
+  ok(totalSingletons === 30,
      `📌 linha de base EXATA dos singletons requeridos: ${totalSingletons} variaveis tambem vazam entre empresas — ${porArquivo.join('; ')}`);
 }
 
@@ -212,6 +246,53 @@ function contarEstadoDoModulo(src) {
   // `module.exports = { criarRouter }` e o teste acusou na hora.
   ok(!exportaFabrica,
      '⚠️ e exporta um router PRONTO (nao uma fabrica) — o passo 3 muda isso');
+}
+
+// ── ⚠️ e o proprio `router` fica pronto no escopo do modulo ─────────
+//
+// ⚠️ (Codex, P2, 3a rodada) - `exportaFabrica` E SO NOME, NAO PROVA
+// INDEPENDENCIA.
+//
+// Um passo 3 poderia trocar so o EXPORT (`function criarRouter(){ return
+// router; }` + `module.exports = { criarRouter }`) sem tirar `const router
+// = express.Router()` do topo do arquivo. `exportaFabrica` viraria `true`
+// — mas as duas empresas ainda chamariam a "fabrica" e receberiam a MESMA
+// instancia, com o MESMO estado por baixo. Isso nao apareceria em nenhuma
+// asserção anterior, porque `contarEstadoDoModulo` nao reconhece
+// `express.Router()`/`express()` como criação de estado (de proposito,
+// pra nao mexer na linha de base de 11 ja revisada).
+//
+// 📌 Por isso este e um check SEPARADO: hoje `router` E de modulo (a causa
+// raiz do problema todo). Quando o passo 3 mover a criação do router para
+// DENTRO da fabrica, este regex para de casar e a asserção abaixo vira
+// `ok(!routerNoEscopoDoModulo, ...)` — a fabrica so prova que criou
+// instancias novas se este check tambem passar.
+{
+  const routerNoEscopoDoModulo = /^const \w+\s*=\s*express\.Router\(\)/m.test(app);
+  ok(routerNoEscopoDoModulo,
+     '⚠️ `router` ainda e criado UMA VEZ no escopo do modulo — o passo 3 tem que criar um por chamada da fabrica, senao duas empresas dividem a MESMA instancia mesmo com `exportaFabrica === true`');
+}
+
+// ── ⚠️ e o bootstrap em server.js so monta UMA empresa, cravada ─────
+//
+// ⚠️ (Codex, P2, 3a rodada) - ESTE TESTE NUNCA OLHOU PRA server.js.
+//
+// Os passos 2 e 3 podem converter app-AMB.js inteiro em fabrica e este
+// arquivo de teste continuaria verde do mesmo jeito, porque nenhuma
+// asserção acima executa ou inspeciona server.js. Mas e ELE quem decide
+// quantas empresas sobem: hoje monta app-AMB.js uma unica vez, na rota
+// fixa `/amb`. Ativar a Girassol so no registro (`lib/empresas.js`) nao
+// exporia `/girassol` enquanto este bootstrap nao mudar tambem.
+//
+// 📌 LINHA DE BASE: hoje o bootstrap e fixo. Quando o passo 3 trocar isto
+// por uma iteração sobre as empresas ativas do registro, este regex exato
+// para de casar e a asserção evidencia que o bootstrap tambem mudou — nao
+// so app-AMB.js.
+{
+  const srv = fs.readFileSync(path.join(RAIZ, 'server.js'), 'utf8');
+  const montaSoAmbFixo = /app\.use\('\/amb',\s*require\('\.\/amb-devolucoes\/app-AMB'\)\)/.test(srv);
+  ok(montaSoAmbFixo,
+     '⚠️ server.js monta app-AMB.js uma unica vez em `/amb`, CRAVADO — nao itera as empresas ativas do registro; ativar Girassol sozinho no registro nao expoe `/girassol`');
 }
 
 console.log('');
