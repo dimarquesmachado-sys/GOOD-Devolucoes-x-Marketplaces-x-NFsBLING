@@ -33,13 +33,22 @@ function limparHtml(t) {
     .trim();
 }
 
-const CTX = new Map();
+// ⚠️ b349 - gaveta do contexto de reclamacao.
+//
+// `MOT.ctx` guarda claimId -> contexto lido do ML. Cada empresa tem a SUA conta
+// no ML, entao claims sao de contas diferentes: compartilhado, a Girassol
+// leria o contexto de uma reclamacao da AMB.
+//
+// 📌 O `ROTULO` que esta neste arquivo NAO entra: e tabela de textos fixos,
+// zero escritas — provei antes de mexer. Agrupar constante inflaria o
+// placar e nao isolaria nada.
+const MOT = { ctx: new Map() };
 
 /** Le a reclamacao e as mensagens do mediador. */
 async function contextoDaReclamacao(claimId) {
   const k = String(claimId || '');
   if (!k) return null;
-  if (CTX.has(k)) return CTX.get(k);
+  if (MOT.ctx.has(k)) return MOT.ctx.get(k);
 
   const ctx = { claim_id: k, motivo: null, pontos: [], pacote_consolidado: false, sem_custo_pra_voce: false, resolucao: null };
   try {
@@ -66,7 +75,7 @@ async function contextoDaReclamacao(claimId) {
     if (!ctx.motivo && ctx.resolucao === 'item_returned') ctx.motivo = 'devolvido';
   } catch (e) { /* melhor sem contexto do que quebrar o bipe */ }
 
-  CTX.set(k, ctx);
+  MOT.ctx.set(k, ctx);
   return ctx;
 }
 

@@ -277,7 +277,18 @@ function contarEstadoDoModulo(src) {
   //
   // 📌 O de `compat` e o que o dono sentiria primeiro: foto e SKU trocados
   // entre empresas — e foto errada ele ja chamou de pior que foto ausente.
-  ok(totalSingletons === 19,
+  // ⚠️ b349 - 19 -> 16: os dois ultimos modulos.
+  //   shopee     5 -> 2 (cfg + SHP)     cache + estado da chegada
+  //   ml-motivo  2 -> 2 (MOT + ROTULO)  contexto da reclamacao
+  //
+  // 📌 O QUE SOBRA AGORA E QUASE SO FACHADA E CONSTANTE:
+  //   cfg (shopee, magalu)  interface publica — renomear quebra chamador
+  //   ROTULO, PADRAO        tabelas de texto fixo, zero escritas
+  //   TIDX, IDX, EST, CAT…  as gavetas em si, que o passo 3 cria por empresa
+  //
+  // Ou seja: o estado MUTAVEL solto acabou. O que resta sao os pontos que o
+  // passo 3 vai instanciar, e eles agora tem nome e limite claros.
+  ok(totalSingletons === 16,
      `📌 linha de base EXATA dos singletons requeridos: ${totalSingletons} variaveis tambem vazam entre empresas — ${porArquivo.join('; ')}`);
 }
 

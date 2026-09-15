@@ -23,12 +23,23 @@ const cfg = {
   get ativo() { return !!(URL_PROXY && KEY_PROXY); },
 };
 
-let cache = { ts: 0, dados: [] };
+// ⚠️ b349 - gaveta do Shopee: SHP.cache de devolucoes + estado da chegada.
+//
+// ⚠️ O `cfg` fica FORA de proposito: ele e INTERFACE PUBLICA (esta no
+// `module.exports` e quem chama le `shopee.cfg`). Renomear quebraria os
+// chamadores — e o que eu preciso isolar e o ESTADO, nao a fachada.
+const SHP = {
+  cache: { ts: 0, dados: [] },
+  chegada: new Map(),
+  chegadaRodando: false,
+  chegadaErro: null,
+};
+// (SHP.cache -> SHP.cache — b349)
 
 async function buscarDevolucoesProxy(forcar) {
   if (!cfg.ativo) return null;                     // integracao desligada
-  const idade = Date.now() - cache.ts;
-  if (!forcar && cache.ts > 0 && idade < 5 * 60 * 1000) return cache.dados;
+  const idade = Date.now() - SHP.cache.ts;
+  if (!forcar && SHP.cache.ts > 0 && idade < 5 * 60 * 1000) return SHP.cache.dados;
 
   const url = `${URL_PROXY}/${LOJA}/interno/devolucoes${forcar ? '?refresh=1' : ''}`;
   const r = await fetch(url, { headers: { 'x-internal-key': KEY_PROXY } });
@@ -36,12 +47,12 @@ async function buscarDevolucoesProxy(forcar) {
   if (!d || !d.ok) {
     throw new Error(`proxy shopee (loja ${LOJA}): ` + (d && d.erro ? d.erro : 'HTTP ' + r.status));
   }
-  cache = { ts: Date.now(), dados: d.devolucoes || [] };
-  return cache.dados;
+  SHP.cache = { ts: Date.now(), dados: d.devolucoes || [] };
+  return SHP.cache.dados;
 }
 
 // ============================================================
-// b50 - FASE 3: DATA REAL DE CHEGADA NO ESTOQUE (API oficial)
+// b50 - FASE 3: DATA REAL DE SHP.chegada NO ESTOQUE (API oficial)
 // ------------------------------------------------------------
 // O status da devolucao NAO diz quando (nem se) a mercadoria
 // chegou aqui. Quem sabe isso e o rastreio REVERSO da Shopee,
@@ -49,13 +60,13 @@ async function buscarDevolucoesProxy(forcar) {
 // (mesmo servico do proxy — reusa SHOPEE_PROXY_URL/KEY).
 // Retorna { chegou_no_estoque, chegou_em }.
 //
-// Padrao igual ao das datas de entrega do ML: cache em memoria,
+// Padrao igual ao das datas de entrega do ML: SHP.cache em memoria,
 // fila em background (a rota e LENTA — varre janelas de 15 dias),
 // e o card mostra o estimado ate a data real chegar.
 // ============================================================
-const CHEGADA = new Map();   // order_sn -> { v: dataISO|null, chegou: bool|null, tent: n, http, ts }
-let CHEGADA_RODANDO = false;
-let CHEGADA_ERRO = null;
+// (SHP.chegada -> SHP.chegada — b349)
+// (SHP.chegadaRodando -> SHP.chegadaRodando — b349)
+// (SHP.chegadaErro -> SHP.chegadaErro — b349)
 
 async function consultarChegada(orderSn) {
   const url = `${URL_PROXY}/${LOJA}/devolucao?order_sn=${encodeURIComponent(orderSn)}` +
@@ -80,10 +91,10 @@ async function consultarChegada(orderSn) {
 
 /** Dispara em background a consulta da chegada real dos cards Shopee. */
 function dispararChegadas(cards) {
-  if (!cfg.ativo || CHEGADA_RODANDO) return;
+  if (!cfg.ativo || SHP.chegadaRodando) return;
   const fila = [...new Set((cards || []).map(c => c && c.pedido).filter(Boolean))]
     .filter(sn => {
-      const e = CHEGADA.get(sn);
+      const e = SHP.chegada.get(sn);
       if (!e) return true;
       if (e.v) return false;                                  // ja tem data real: permanente
       if (e.chegou === false) return (Date.now() - (e.ts || 0)) > 30 * 60000;  // reconfere depois
@@ -91,31 +102,31 @@ function dispararChegadas(cards) {
     })
     .slice(0, 15);                                            // rota lenta: poucos por rodada
   if (!fila.length) return;
-  CHEGADA_RODANDO = true;
+  SHP.chegadaRodando = true;
   (async () => {
     for (const sn of fila) {
-      const antes = CHEGADA.get(sn) || { tent: 0 };
+      const antes = SHP.chegada.get(sn) || { tent: 0 };
       try {
         const r = await consultarChegada(sn);
-        CHEGADA.set(sn, {
+        SHP.chegada.set(sn, {
           v: r.chegou ? r.quando : null,
           chegou: r.chegou,
           tent: (antes.tent || 0) + 1,
           http: r.http, ts: Date.now(),
         });
-        if (r.erro) CHEGADA_ERRO = `HTTP ${r.http}: ${r.erro}`;
-        else if (r.http >= 400) CHEGADA_ERRO = `HTTP ${r.http}`;
-        else CHEGADA_ERRO = null;
+        if (r.erro) SHP.chegadaErro = `HTTP ${r.http}: ${r.erro}`;
+        else if (r.http >= 400) SHP.chegadaErro = `HTTP ${r.http}`;
+        else SHP.chegadaErro = null;
       } catch (e) {
-        CHEGADA.set(sn, { v: null, chegou: null, tent: (antes.tent || 0) + 1,
+        SHP.chegada.set(sn, { v: null, chegou: null, tent: (antes.tent || 0) + 1,
           http: 'exc', ts: Date.now() });
-        CHEGADA_ERRO = 'excecao: ' + String(e.message || e).slice(0, 60);
+        SHP.chegadaErro = 'excecao: ' + String(e.message || e).slice(0, 60);
       }
       await new Promise(r => setTimeout(r, 500));
     }
     const comData = [...CHEGADA.values()].filter(e => e.v).length;
-    console.log(`[AMB/SHOPEE] chegada real: ${comData} com data / ${CHEGADA.size} consultadas`);
-  })().catch(() => {}).finally(() => { CHEGADA_RODANDO = false; });
+    console.log(`[AMB/SHOPEE] chegada real: ${comData} com data / ${SHP.chegada.size} consultadas`);
+  })().catch(() => {}).finally(() => { SHP.chegadaRodando = false; });
 }
 
 const norm = (s) => String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
@@ -181,14 +192,14 @@ async function acharDevolucao(codigo) {
   let hit = lista.find(casa) || null;
   let usouRefresh = false;
 
-  // Nao achou na cache: forca uma leitura fresca antes de desistir —
+  // Nao achou na SHP.cache: forca uma leitura fresca antes de desistir —
   // a devolucao pode ter nascido nos ultimos minutos.
   if (!hit) {
     try {
       lista = await buscarDevolucoesProxy(true);
       usouRefresh = true;
       hit = lista.find(casa) || null;
-    } catch (e) { /* fica com a cache */ }
+    } catch (e) { /* fica com a SHP.cache */ }
   }
 
   // b53 - ULTIMA VIA: nao esta na lista de devolucoes SOLICITADAS. Pode ser
@@ -260,7 +271,7 @@ async function resumoEspreita() {
     // antigo (DELIVERY_DONE = entregue, data estimada da abertura).
     // Nunca REBAIXA um card por chegou:false — a janela de busca da
     // API e limitada e um falso negativo esconderia trabalho real.
-    const _ch = CHEGADA.get(String(d.order_sn || ''));
+    const _ch = SHP.chegada.get(String(d.order_sn || ''));
     const _chegouReal = !!(_ch && _ch.chegou === true && _ch.v);
     if (_chegouReal) {
       entregues.push({ ...card, dias_desde: dias(_ch.v),
@@ -280,10 +291,10 @@ async function resumoEspreita() {
   return { quente: true, em_transito: emTransito.slice(0, 60),
     entregues: entregues.slice(0, 60), encerradas_indice: encerradas,
     chegadas: {
-      consultadas: CHEGADA.size,
+      consultadas: SHP.chegada.size,
       com_data: [...CHEGADA.values()].filter(e => e.v).length,
       ainda_nao: [...CHEGADA.values()].filter(e => e.chegou === false).length,
-      erro: CHEGADA_ERRO,
+      erro: SHP.chegadaErro,
     } };
 }
 
