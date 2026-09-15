@@ -415,7 +415,7 @@ app.get('/health', (req, res) => {
       // busca por nome. Escolher um lado apagaria a descricao do outro.
       // ⚠️ a resolucao JUNTA as duas: a 7.5.0 (passe curto + tetos) ja esta
       // na main, e este PR acrescenta o build frio que falha vazio.
-      version: '9.15.0 (auditoria item 2: o veredito do corte distingue 403 de permissao de 401 de token)',
+      version: '9.15.4 (revisao codex #291 3a rodada: audita todos os singletons, config cravada e bootstrap fixo)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
