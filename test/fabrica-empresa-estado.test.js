@@ -60,8 +60,22 @@ function contarEstadoDoModulo(src) {
       //
       // 📌 O que importa nao e a FORMA da declaracao: um `const` de objeto
       // mutavel no escopo do modulo vaza entre instancias igual a um `let`.
+      //
+      // ⚠️ b342.1 (Codex, P2) - UMA FABRICA LOCAL CHAMADA UMA VEZ TAMBEM E
+      // ESTADO, E O PADRAO ACIMA NAO VIA ISSO.
+      //
+      // `const NF_DEV = criarGavetaNfDev();` nao e um literal (`{`/`new
+      // Map()`) nem um `require(...).criar(CFG_EMPRESA)` (que fica de fora
+      // de proposito — esses 5 ja aceitam config por instancia e viram
+      // per-instance quando o passo 3 envolver o arquivo numa fabrica).
+      // E' uma funcao SEM PARENTESES/ARGUMENTOS, definida no proprio
+      // modulo, chamada uma unica vez — exatamente o padrao que esconderia
+      // um vazamento igual ao das 6 variaveis que a gaveta 1 substituiu.
+      // `require(...)` sempre tem argumento entre os parenteses, entao
+      // `\(\)` vazio nao casa com o padrao dos 5 clientes ja-fabrica.
       const m = /^(?:let|var) (\w+)/.exec(t)
-        || /^const (\w+)\s*=\s*(?:new Map\(\)|new Set\(\)|\[\]|\{)/.exec(t);
+        || /^const (\w+)\s*=\s*(?:new Map\(\)|new Set\(\)|\[\]|\{)/.exec(t)
+        || /^const (\w+)\s*=\s*[a-zA-Z_]\w*\(\)\s*;?\s*$/.exec(t);
       if (m) estado.push(m[1]);
     }
 
@@ -147,18 +161,20 @@ function contarEstadoDoModulo(src) {
   //
   // 📌 Numero EXATO: qualquer mudanca — pra mais ou pra menos — faz o teste
   // falar, e quem mexeu confirma o novo valor de propósito.
-  // ⚠️ b342 - PASSO 2, GAVETA 1 de 3: 11 -> 5.
+  // ⚠️ b342 - PASSO 2, GAVETA 1 de 3: 11 -> 6.
   //
   // As 6 do indice de notas de devolucao viraram campos de `NF_DEV`, criado
   // por `criarGavetaNfDev()`. Hoje ha uma instancia so e o comportamento e
   // identico; quando o passo 3 montar a segunda empresa, cada uma tera a
-  // sua.
+  // sua. `NF_DEV` continua contado (b342.1, Codex P2): a fabrica so roda
+  // uma vez e o objeto que ela devolve ainda fica preso no escopo do
+  // modulo — e' exatamente o vazamento que este teste existe pra vigiar.
   //
-  // 📌 Este numero e o placar da obra. Restam 5 no app-AMB:
+  // 📌 Este numero e o placar da obra. Restam 6 no app-AMB:
   //    usosQuerystringAMB, PENDENTES, LOGIN_FALHAS, ESPREITA_AMB_CACHE,
-  //    NF_NAT_CACHE_AMB
-  ok(estado.length === 5,
-     `  📌 linha de base EXATA: ${estado.length} (esperado 5 apos a gaveta 1)`);
+  //    NF_NAT_CACHE_AMB, NF_DEV
+  ok(estado.length === 6,
+     `  📌 linha de base EXATA: ${estado.length} (esperado 6 apos a gaveta 1)`);
   if (estado.length !== 11) {
     console.log('     -> se o passo 2 rodou, atualize o numero aqui E confirme '
       + 'que as que sobraram sao intencionais:');
