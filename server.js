@@ -415,7 +415,7 @@ app.get('/health', (req, res) => {
       // busca por nome. Escolher um lado apagaria a descricao do outro.
       // ⚠️ a resolucao JUNTA as duas: a 7.5.0 (passe curto + tetos) ja esta
       // na main, e este PR acrescenta o build frio que falha vazio.
-      version: '9.13.0 (auditoria: SESSION_SECRET obrigatorio, sessao admin vale como chave, GET nao grava mais, e npm test)',
+      version: '9.13.1 (o segredo de sessao le ADMIN_SESSION_SECRET — o nome que o dono escolheu)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -2876,20 +2876,29 @@ app.get('/api/auth/me', (req, res) => {
 // desenvolvimento e, por ser aleatorio, nao vira uma chave conhecida.
 let _SEGREDO_MEM = null;
 function _segredoSessao() {
-  const doAmbiente = String(process.env.SESSION_SECRET || '').trim();
+  // b327 - ⚠️ O NOME DA VARIAVEL E `ADMIN_SESSION_SECRET`.
+  //
+  // [stated 13/09] "vou fazer uma palavra chamada ADMIN_SESSION_SECRET"
+  //
+  // Aceito os DOIS nomes, com o dele primeiro. Motivo: se o codigo ler um
+  // nome e o Render tiver outro, o deploy cai — e o erro ("segredo ausente")
+  // nao diz que o problema e o NOME, so que falta. Aceitar ambos elimina
+  // essa classe de engano.
+  const doAmbiente = String(
+    process.env.ADMIN_SESSION_SECRET || process.env.SESSION_SECRET || '').trim();
   if (doAmbiente.length >= 16) return doAmbiente;
 
   if (process.env.NODE_ENV === 'production') {
     // ⚠️ nao ha fallback seguro em producao: derrubo com mensagem clara
-    console.error('[BOOT] FATAL: SESSION_SECRET ausente ou curto (min 16 chars).');
-    console.error('[BOOT] Defina SESSION_SECRET no Render, com valor aleatorio de 32+ bytes.');
+    console.error('[BOOT] FATAL: ADMIN_SESSION_SECRET ausente ou curto (min 16 chars).');
+    console.error('[BOOT] Defina ADMIN_SESSION_SECRET no Render (Generate gera um bom valor).');
     console.error('[BOOT] ⚠️ NAO reaproveite a ADMIN_KEY: ela ja vazou em logs.');
     process.exit(1);
   }
 
   if (!_SEGREDO_MEM) {
     _SEGREDO_MEM = crypto.randomBytes(32).toString('hex');
-    console.warn('[BOOT] SESSION_SECRET ausente — usando segredo ALEATORIO desta '
+    console.warn('[BOOT] ADMIN_SESSION_SECRET ausente — usando segredo ALEATORIO desta '
       + 'execucao (so fora de producao). As sessoes caem a cada reinicio.');
   }
   return _SEGREDO_MEM;
