@@ -415,7 +415,7 @@ app.get('/health', (req, res) => {
       // busca por nome. Escolher um lado apagaria a descricao do outro.
       // ⚠️ a resolucao JUNTA as duas: a 7.5.0 (passe curto + tetos) ja esta
       // na main, e este PR acrescenta o build frio que falha vazio.
-      version: '9.19.1 (revisao Codex #295: sessao assinada da AMB volta a sobreviver ao restart; cfg sem campos de auth falha explicito)',
+      version: '9.20.1 (a sessao assinada da AMB volta a sobreviver ao restart)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),

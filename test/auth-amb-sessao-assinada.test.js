@@ -86,6 +86,54 @@ const authAMB = require('../amb-devolucoes/lib-AMB/auth-AMB.js');
   ok(!lancou, 'criar(cfg) com os 4 campos de auth funciona normalmente');
 }
 
+// ── ⚠️ e a assinatura inclui a EMPRESA ──────────────────────────────
+//
+// O #295 isolou as empresas (cada uma com seu mapa de sessoes). O #297
+// devolveu a sessao assinada, que sobrevive ao restart — certo e importante,
+// senao o galpao cai a cada deploy.
+//
+// ⚠️ MAS assinar so com o segredo do SERVIDOR reabriu o vazamento: o segredo
+// e o mesmo pras duas, e nada no token diz de quem ele e. Provei:
+// `gira.validarSessao(tokenDaAmb)` devolvia a sessao.
+//
+// Cada PR resolveu metade. Este teste guarda as DUAS ao mesmo tempo.
+{
+  // ⚠️ o modulo ja esta carregado no topo como `authAMB`; requerer de novo
+  // devolveria o MESMO objeto (cache do require), entao uso o que existe.
+  const auth = authAMB;
+  const fonte = require('fs').readFileSync(
+    require('path').join(__dirname, '..', 'amb-devolucoes', 'lib-AMB', 'auth-AMB.js'), 'utf8');
+  process.env.AMB_USERS = 'ana:s1';
+  process.env.AMB_ADMIN_USER = 'ana';
+  process.env.GIRA_TESTE_USERS = 'bruno:s2';
+  process.env.ADMIN_SESSION_SECRET = 'segredo-fixo-de-teste-com-40-caracteres!!';
+
+  ok(/function assinarCom\(escopo, payloadB64\)/.test(fonte),
+     '⚠️ a assinatura recebe o ESCOPO da empresa');
+  ok(/segredo\(\) \+ '\|' \+ String\(escopo/.test(fonte),
+     '  e o escopo entra na CHAVE do HMAC');
+
+  const amb = auth.criar();
+  const tk = amb.novaSessao('ana', 'admin');
+
+  // 1) sobrevive ao restart (instância nova = memória zerada)
+  const amb2 = auth.criar();
+  ok(!!amb2.validarSessao(tk),
+     '⚠️ 1) a sessao SOBREVIVE ao restart (o galpao nao cai no deploy)');
+
+  // 2) e não vale na outra empresa
+  const gira = auth.criar({
+    cookie: 'sessao_gira_teste',
+    envUsers: 'GIRA_TESTE_USERS',
+    envAdmins: 'GIRA_TESTE_ADMIN',
+  });
+  ok(!gira.validarSessao(tk),
+     '⚠️ 2) e NAO vale na outra empresa (o #297 tinha reaberto isso)');
+
+  const tg = gira.novaSessao('bruno', 'admin');
+  ok(!amb.validarSessao(tg), '  e no sentido contrario tambem');
+}
+
 console.log('');
 console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
 process.exit(falhas ? 1 : 0);
