@@ -38,22 +38,38 @@ const emailAMB = require('./email-AMB');
  * Por isso: busca profunda no objeto do detalhe e cache por id, pra a
  * segunda busca do mesmo produto ser instantanea.
  */
-const IMG_CACHE = new Map();
-const IMG_SEM_FOTO = new Map();   // b239 - lembra o "nao achei" por 10 min          // idProduto -> url|null
+// ⚠️ b347 - GAVETA DOS CACHES DE CATALOGO.
+//
+// Seis caches de produto: imagem, formato, SKU por id, componentes do kit.
+// Compartilhados, a Girassol veria a FOTO e o SKU dos produtos da AMB — e
+// foto trocada e o que o dono ja chamou de pior que foto ausente.
+//
+// 📌 O `detalheProximo` e o relogio do ritmo: compartilhado, uma empresa
+// gastaria a vez da outra na fila do Bling.
+const CAT = {
+  imgCache: new Map(),
+  imgSemFoto: new Map(),
+  formato: new Map(),
+  skuPorId: new Map(),
+  compsPorKit: new Map(),
+  detalheProximo: 0,
+};
+// (CAT.imgCache -> CAT.imgCache — b347)
+// (CAT.imgSemFoto -> CAT.imgSemFoto — b347)
 // b174 - veredito de FORMATO por produto: 'S' simples · 'E' kit/composicao
 // · 'V' pai de variacao. So guarda o que foi APURADO (listagem conclusiva
 // ou detalhe), nunca um palpite — assim um erro do Bling nao vira verdade.
-const FORMATO_CACHE = new Map();      // idProduto -> { fmt, ts }
+// (CAT.formato -> CAT.formato — b347)
 // b175 (P2 do Codex) - o veredito EXPIRA. Sem isso, produto que virou kit
 // depois continuaria passando como simples ate o servico reiniciar.
 const FORMATO_TTL_MS = 6 * 60 * 60 * 1000;   // 6h
 function FORMATO_CACHE_set(id, fmt) {
-  if (id && fmt) FORMATO_CACHE.set(id, { fmt, ts: Date.now() });
+  if (id && fmt) CAT.formato.set(id, { fmt, ts: Date.now() });
 }
 function FORMATO_CACHE_get(id) {
-  const reg = id ? FORMATO_CACHE.get(id) : null;
+  const reg = id ? CAT.formato.get(id) : null;
   if (!reg) return undefined;
-  if (Date.now() - reg.ts > FORMATO_TTL_MS) { FORMATO_CACHE.delete(id); return undefined; }
+  if (Date.now() - reg.ts > FORMATO_TTL_MS) { CAT.formato.delete(id); return undefined; }
   return reg.fmt;
 }
 // b175 (P2 do Codex) - ESPACAMENTO GLOBAL das consultas de detalhe. O
@@ -67,27 +83,27 @@ function FORMATO_CACHE_get(id) {
 // onde a estrutura vem + resolucao do id -> SKU (com cache por id).
 // b181 (review do Codex) - o cache de SKU EXPIRA (6h), igual ao de formato:
 // SKU trocado no Bling nao pode ficar sendo oferecido pra sempre.
-const SKU_POR_ID = new Map();          // idProduto -> { sku, nome, ts }
+// (CAT.skuPorId -> CAT.skuPorId — b347)
 const SKU_TTL_MS = 6 * 60 * 60 * 1000;
 function skuCacheGet(id) {
-  const reg = id ? SKU_POR_ID.get(id) : null;
+  const reg = id ? CAT.skuPorId.get(id) : null;
   if (!reg) return null;
-  if (Date.now() - reg.ts > SKU_TTL_MS) { SKU_POR_ID.delete(id); return null; }
+  if (Date.now() - reg.ts > SKU_TTL_MS) { CAT.skuPorId.delete(id); return null; }
   return reg;
 }
 function skuCacheSet(id, sku, nome, imagem) {
-  if (id && sku) SKU_POR_ID.set(id, { sku, nome: nome || '', imagem: imagem || null, ts: Date.now() });
+  if (id && sku) CAT.skuPorId.set(id, { sku, nome: nome || '', imagem: imagem || null, ts: Date.now() });
 }
 // b181 - teto de componentes e PRAZO total da resolucao. Sem prazo, um kit
 // de 12 pecas com o Bling lento (30s por chamada) segurava o POST por
 // minutos antes de o operador ver qualquer opcao.
 // b182 - composicao JA RESOLVIDA por kit (evita refazer as consultas a
 // cada busca). Mesmo TTL dos outros vereditos.
-const COMPS_POR_KIT = new Map();       // idKit -> { itens, faltando, ts }
+// (CAT.compsPorKit -> CAT.compsPorKit — b347)
 function compsCacheGet(id) {
-  const reg = id ? COMPS_POR_KIT.get(id) : null;
+  const reg = id ? CAT.compsPorKit.get(id) : null;
   if (!reg) return null;
-  if (Date.now() - reg.ts > SKU_TTL_MS) { COMPS_POR_KIT.delete(id); return null; }
+  if (Date.now() - reg.ts > SKU_TTL_MS) { CAT.compsPorKit.delete(id); return null; }
   return reg;
 }
 const COMPONENTES_MAX = 12;
@@ -116,14 +132,14 @@ async function comPrazo(promessa, ms) {
   } finally { clearTimeout(t); }
 }
 const DETALHE_INTERVALO_MS = 350;
-let DETALHE_PROXIMO = 0;
+// (CAT.detalheProximo -> CAT.detalheProximo — b347)
 // b186 (review do Codex no PR da GOOD) - a espera na FILA conta no prazo
 async function esperarVezDetalhe(prazoMs) {
   const agora = Date.now();
-  const alvo = Math.max(agora, DETALHE_PROXIMO);
+  const alvo = Math.max(agora, CAT.detalheProximo);
   const espera = alvo - agora;
   if (prazoMs !== undefined && espera > Math.max(0, prazoMs)) return false;
-  DETALHE_PROXIMO = alvo + DETALHE_INTERVALO_MS;
+  CAT.detalheProximo = alvo + DETALHE_INTERVALO_MS;
   if (espera > 0) await new Promise(r => setTimeout(r, espera));
   return true;
 }
@@ -392,7 +408,7 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
                 ? det.estrutura.componentes.length : 0;
               FORMATO_CACHE_set(det.id, compE > 0 ? 'E' : (String(det.formato || 'S').toUpperCase()));
               const urlE = primeiraImagem(det);
-              if (urlE) IMG_CACHE.set(det.id, urlE);
+              if (urlE) CAT.imgCache.set(det.id, urlE);
             }
             if (norm(eanDoProduto(det)).includes(alvo)) push({ ...p, gtin: eanDoProduto(det) });
             await new Promise(r2 => setTimeout(r2, 150));
@@ -471,7 +487,7 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
       const candidatos = out;   // b178 - todos os coletados concorrem; o corte em 20 e no fim
       let buscados = 0;
       // b177 (P2 da 3a review) - ids cujo DETALHE ja veio nesta requisicao.
-      // Produto sem foto nao alimenta o IMG_CACHE (de proposito: falha nao
+      // Produto sem foto nao alimenta o CAT.imgCache (de proposito: falha nao
       // vira cache), e a passada da foto pedia o MESMO produto de novo,
       // gastando duas chamadas e duas vagas do limitador por item.
       const jaBaixado = new Set();
@@ -493,7 +509,7 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
           FORMATO_CACHE_set(item.id, fmtDet);     // so o APURADO vira cache
         }
         const url = primeiraImagem(det);
-        if (url) IMG_CACHE.set(item.id, url);     // so sucesso
+        if (url) CAT.imgCache.set(item.id, url);     // so sucesso
         if (!item.imagem) item.imagem = url;
       };
       // 1a passada: veredito de formato (o que protege o estoque)
@@ -583,7 +599,7 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
                 if (detK) {
                   jaBaixado.add(item.id);
                   const urlK = primeiraImagem(detK);
-                  if (urlK) { IMG_CACHE.set(item.id, urlK); if (!item.imagem) item.imagem = urlK; }
+                  if (urlK) { CAT.imgCache.set(item.id, urlK); if (!item.imagem) item.imagem = urlK; }
                 }
               } catch (e) { /* imagem e opcional */ }
               // b197 (review do Codex) - resposta {ok:false} (429, rede, timeout)
@@ -614,7 +630,7 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
             item.componentes_motivo = rC.motivos;   // b195 - diagnostico na resposta
             // b183 - so a composicao COMPLETA vira cache de 6h (parcial presa
             // no cache faria o "tente de novo em instantes" virar mentira)
-            if (rC.faltando === 0) COMPS_POR_KIT.set(item.id, { itens: rC.itens, faltando: 0, ts: Date.now() });
+            if (rC.faltando === 0) CAT.compsPorKit.set(item.id, { itens: rC.itens, faltando: 0, ts: Date.now() });
           }
           kitsResolvidosPedido++;
         }
@@ -625,7 +641,7 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
       // o detalhe baixado agora ha pouco (b177: ja sabemos que nao tem foto)
       for (const item of finais) {
         if (!item.id || item.imagem || jaBaixado.has(item.id)) continue;
-        if (IMG_CACHE.has(item.id)) { item.imagem = IMG_CACHE.get(item.id); continue; }
+        if (CAT.imgCache.has(item.id)) { item.imagem = CAT.imgCache.get(item.id); continue; }
         if (buscados >= 12) break;
         try { await buscarDetalhe(item); } catch (e) { /* sem foto e ok */ }
         buscados++;
@@ -726,13 +742,13 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
     // "nao achei" tambem e lembrado, por 10 min: erra por pouco tempo se o
     // cadastro for corrigido, e economiza a rodada inteira no resto.
     const agora = Date.now();
-    const semFoto = IMG_SEM_FOTO.get(chaveCache);
-    if (semFoto && (agora - semFoto) >= 10 * 60 * 1000) IMG_SEM_FOTO.delete(chaveCache);   // b240
+    const semFoto = CAT.imgSemFoto.get(chaveCache);
+    if (semFoto && (agora - semFoto) >= 10 * 60 * 1000) CAT.imgSemFoto.delete(chaveCache);   // b240
     if (semFoto && (agora - semFoto) < 10 * 60 * 1000) {
       return res.json({ ok: true, chave, imagem: null, cache: true, motivo: 'sem foto (lembrado por 10 min)' });
     }
-    if (IMG_CACHE.has(chaveCache)) {
-      return res.json({ ok: true, chave, imagem: IMG_CACHE.get(chaveCache), cache: true });
+    if (CAT.imgCache.has(chaveCache)) {
+      return res.json({ ok: true, chave, imagem: CAT.imgCache.get(chaveCache), cache: true });
     }
     try {
       // mesmo caminho do checkout offline: lista por codigo (que ja pode
@@ -814,7 +830,7 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
       // Diego viu): o `|| lista[0]` era um FALLBACK CEGO. Quando o Bling
       // ignora o filtro ?codigo= e devolve a pagina padrao, esse primeiro
       // item — um produto qualquer — virava o "achado", com id e foto, e
-      // ainda ia pro IMG_CACHE sob o SKU pedido. Mesmo padrao que ja mordeu
+      // ainda ia pro CAT.imgCache sob o SKU pedido. Mesmo padrao que ja mordeu
       // na b98 (busca) e na b160 (entrada de estoque): fallback frouxo
       // devolve com confianca o produto errado.
       const porCodigo = acharSku((rL.ok && rL.data && rL.data.data) || [], false);   // b232 - so exato aqui
@@ -882,7 +898,7 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
       // em `id:<rejeitado>` faria uma NF posterior com esse id legitimo
       // receber, direto do cache, a foto de outro produto — exatamente o
       // caso que o fallback existe pra evitar.
-      if (url) IMG_CACHE.set(via === 'id_do_item_da_nf' ? chaveCache : chave, url);
+      if (url) CAT.imgCache.set(via === 'id_do_item_da_nf' ? chaveCache : chave, url);
       // b240 (review do Codex) - so lembrar ausencia quando o Bling
       // RESPONDEU. Se tudo falhou (429/timeout/rede), `url` tambem e null,
       // e gravar aqui esconderia a foto por 10 min mesmo com o Bling
@@ -893,11 +909,11 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
       // vezes) e a busca ampla tomou 429, a resposta e "nao sei", nao "nao
       // tem" — esconder a foto 10 min ai e afirmar o que nao se apurou.
       else if (blingRespondeu && !algumaFalhou) {
-        if (IMG_SEM_FOTO.size > 500) {   // b240 - nao crescer sem fim
+        if (CAT.imgSemFoto.size > 500) {   // b240 - nao crescer sem fim
           const corte = Date.now() - 10 * 60 * 1000;
-          for (const [k, t] of IMG_SEM_FOTO) if (t < corte) IMG_SEM_FOTO.delete(k);
+          for (const [k, t] of CAT.imgSemFoto) if (t < corte) CAT.imgSemFoto.delete(k);
         }
-        IMG_SEM_FOTO.set(chaveCache, Date.now());
+        CAT.imgSemFoto.set(chaveCache, Date.now());
       }
       // b225 - dizer POR ONDE achou (ou por que nao achou), como a GOOD ja
       // fazia: "imagem: null" sozinho nao distinguia produto sem foto de

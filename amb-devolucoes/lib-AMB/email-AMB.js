@@ -31,8 +31,14 @@
 
 'use strict';
 
-let mailer = null;
-let motivoDesligado = null;
+// ⚠️ b347 - gaveta do e-mail. Compartilhado, o aviso de uma empresa
+// sairia com o REMETENTE da outra.
+const MAIL = {
+  mailer: null,
+  motivoDesligado: null,
+};
+// (MAIL.mailer -> MAIL.mailer)
+// (MAIL.motivoDesligado -> MAIL.motivoDesligado)
 
 const pega = (a, b) => process.env[a] || process.env[b] || '';
 
@@ -45,16 +51,16 @@ function credenciais() {
 }
 
 function transporte() {
-  if (mailer || motivoDesligado) return mailer;
+  if (MAIL.mailer || MAIL.motivoDesligado) return MAIL.mailer;
   const c = credenciais();
   if (!c) {
-    motivoDesligado = 'faltam AMB_EMAIL_HOST / AMB_EMAIL_USER / AMB_EMAIL_PASS no Render';
-    console.log('[AMB/EMAIL] desligado -', motivoDesligado);
+    MAIL.motivoDesligado = 'faltam AMB_EMAIL_HOST / AMB_EMAIL_USER / AMB_EMAIL_PASS no Render';
+    console.log('[AMB/EMAIL] desligado -', MAIL.motivoDesligado);
     return null;
   }
   try {
     const nodemailer = require('nodemailer');
-    mailer = nodemailer.createTransport({
+    MAIL.mailer = nodemailer.createTransport({
       host: c.host,
       port: c.port,
       secure: c.port === 465,
@@ -62,9 +68,9 @@ function transporte() {
     });
     console.log(`[AMB/EMAIL] ligado - conta da AMBTotal (${c.user})`);
   } catch (e) {
-    motivoDesligado = e.message;
+    MAIL.motivoDesligado = e.message;
   }
-  return mailer;
+  return MAIL.mailer;
 }
 
 function destino() {

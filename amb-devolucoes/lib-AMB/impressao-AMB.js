@@ -26,8 +26,24 @@ const QZ_CERT = process.env.GOODBKP_QZ_CERT || process.env.QZ_CERT || '';
 const QZ_PRIVKEY = process.env.GOODBKP_QZ_PRIVKEY || process.env.QZ_PRIVKEY || '';
 
 // fila propria da AMB (a da GOOD vive no server dela)
-const fila = [];
-let ultimoPollEstacao = 0;
+// ⚠️ b347 - gaveta da impressao. Compartilhada, a etiqueta de uma
+// empresa sairia na impressora da outra.
+// ⚠️ b348 (Codex, P1) - OS TIPOS ORIGINAIS, que eu troquei sem olhar.
+//
+//   fila               era `[]`  — eu pus `new Map()`
+//   ultimoPollEstacao  era `0`   — eu pus `new Map()`
+//
+// `IMPR.fila.shift()` QUEBRA num Map: a estacao de impressao pediria a
+// proxima etiqueta e tomaria erro. Eu escrevi a gaveta de cabeca em vez de
+// ler os valores — e a troca automatica nao confere tipo.
+//
+// 📌 O `node --check` nao pega isto: e sintaxe valida, erro so em runtime.
+const IMPR = {
+  fila: [],
+  ultimoPoll: 0,
+};
+// (IMPR.fila -> IMPR.fila)
+// (IMPR.ultimoPoll -> IMPR.ultimoPoll)
 
 const limpo = (s, max) => String(s == null ? '' : s)
   .replace(/[\^~\\]/g, ' ')            // ^ e ~ sao comandos ZPL
@@ -89,6 +105,15 @@ function registrarRotas(router, requerLogin) {
   });
 
   // O celular poe a etiqueta na fila
+  // ⚠️ b348 (Codex, P1) - A TROCA CEGA RENOMEOU A ROTA.
+  //
+  // `/api/etiqueta/fila` virou `/api/etiqueta/IMPR.fila` — o `sed` nao sabe
+  // o que e codigo e o que e TEXTO. O front (`public/js/etiqueta.js`) chama
+  // a rota certa, entao a fila de impressao simplesmente parou de existir.
+  //
+  // ⚠️ E ISSO NAO DA ERRO NO BOOT: a rota sobe, com o nome errado. So
+  // quebra quando alguem manda imprimir — no galpao, com etiqueta na mao.
+
   router.post('/api/etiqueta/fila', requerLogin, (req, res) => {
     const b = req.body || {};
     if (!b.sku) return res.status(400).json({ ok: false, erro: 'falta o sku' });
@@ -96,13 +121,13 @@ function registrarRotas(router, requerLogin) {
       sku: b.sku, defeito: b.defeito, localizacao: b.localizacao,
       quem: req.usuario, nf: b.nf,
     });
-    fila.push({ id: Date.now() + '-' + Math.random().toString(36).slice(2, 7), zpl, criado: Date.now() });
-    if (fila.length > 50) fila.shift();
+    IMPR.fila.push({ id: Date.now() + '-' + Math.random().toString(36).slice(2, 7), zpl, criado: Date.now() });
+    if (IMPR.fila.length > 50) IMPR.fila.shift();
     res.json({
       ok: true,
-      na_fila: fila.length,
-      estacao_ativa: (Date.now() - ultimoPollEstacao) < 20000,
-      aviso: (Date.now() - ultimoPollEstacao) >= 20000
+      na_fila: IMPR.fila.length,
+      estacao_ativa: (Date.now() - IMPR.ultimoPoll) < 20000,
+      aviso: (Date.now() - IMPR.ultimoPoll) >= 20000
         ? 'nenhuma estacao de impressao ativa - abra o painel num computador com QZ Tray'
         : null,
     });
@@ -110,9 +135,9 @@ function registrarRotas(router, requerLogin) {
 
   // A estacao (painel aberto num PC) busca a proxima
   router.get('/api/etiqueta/proxima', requerLogin, (req, res) => {
-    ultimoPollEstacao = Date.now();
-    const prox = fila.shift() || null;
-    res.json({ ok: true, etiqueta: prox, restam: fila.length });
+    IMPR.ultimoPoll = Date.now();
+    const prox = IMPR.fila.shift() || null;
+    res.json({ ok: true, etiqueta: prox, restam: IMPR.fila.length });
   });
 
   // Preview do ZPL (debug / conferencia)
@@ -129,8 +154,8 @@ function registrarRotas(router, requerLogin) {
     res.json({
       ok: true,
       qz_configurado: !!(QZ_CERT && QZ_PRIVKEY),
-      na_fila: fila.length,
-      estacao_ativa: (Date.now() - ultimoPollEstacao) < 20000,
+      na_fila: IMPR.fila.length,
+      estacao_ativa: (Date.now() - IMPR.ultimoPoll) < 20000,
     });
   });
 }

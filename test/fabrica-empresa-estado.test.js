@@ -269,7 +269,15 @@ function contarEstadoDoModulo(src) {
   //
   // ⚠️ E a renovacao piora: o refresh do Magalu e de USO UNICO. Duas
   // empresas renovando o mesmo token invalidam uma a outra em corrida.
-  ok(totalSingletons === 26,
+  // ⚠️ b347 - 26 -> 19: quatro modulos agrupados.
+  //   compat      6 -> 1 (CAT)    caches de imagem, SKU, formato, kit
+  //   impressao   2 -> 1 (IMPR)   fila + ultimo poll
+  //   email       2 -> 1 (MAIL)   mailer + motivo
+  //   nf-entrada  2 -> 2 (EST+IDX) indice + sinalizador
+  //
+  // 📌 O de `compat` e o que o dono sentiria primeiro: foto e SKU trocados
+  // entre empresas — e foto errada ele ja chamou de pior que foto ausente.
+  ok(totalSingletons === 19,
      `📌 linha de base EXATA dos singletons requeridos: ${totalSingletons} variaveis tambem vazam entre empresas — ${porArquivo.join('; ')}`);
 }
 
