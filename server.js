@@ -415,7 +415,7 @@ app.get('/health', (req, res) => {
       // busca por nome. Escolher um lado apagaria a descricao do outro.
       // ⚠️ a resolucao JUNTA as duas: a 7.5.0 (passe curto + tetos) ja esta
       // na main, e este PR acrescenta o build frio que falha vazio.
-      version: '9.23.1 (revisao Codex #301: o portao do retry tambem aceita 401 — sem isso meu conserto nunca rodava)',
+      version: '9.23.2 (revisao Codex #301: portao do retry aceita 401, indice_vazio nao confunde conta nova com indice cego, tentativa nf_por_nome reporta 503)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),

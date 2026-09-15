@@ -787,7 +787,8 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
       if (alvoNome.length >= 5 && !/^\d+$/.test(String(codigoOriginal).trim())) {
         try {
           const rN = await nfNomes.buscarPorNome(codigoOriginal);
-          resultado.tentativas.push({ tipo: 'nf_por_nome', codigo: alvoNome, ok: rN.candidatos.length > 0, status: rN.candidatos.length ? 200 : 404, qtd: rN.candidatos.length });
+          const nfPorNomeIndisponivel = rN.candidatos.length === 0 && rN.indice_vazio;
+          resultado.tentativas.push({ tipo: 'nf_por_nome', codigo: alvoNome, ok: rN.candidatos.length > 0, status: rN.candidatos.length ? 200 : (nfPorNomeIndisponivel ? 503 : 404), qtd: rN.candidatos.length });
           // ⚠️ b351 - INDICE VAZIO NAO E "NAO EXISTE".
           //
           // [stated 15/09] o dono buscou "Lyvia", levou 404, e a nota estava no
@@ -799,15 +800,15 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
           //
           // 📌 O aviso de indice PARCIAL ja existia — mas so no ramo que ACHA
           // algo. Quem nao acha (o caso que importa) nao recebia nada.
-          if (rN.candidatos.length === 0 && rN.indice_vazio) {
+          if (nfPorNomeIndisponivel) {
             resultado.erro = '⚠️ A busca por NOME esta indisponivel: o indice de notas nao montou'
               + (rN.erro_indice ? ' (' + rN.erro_indice + ')' : '')
               + '. ISSO NAO QUER DIZER QUE O PEDIDO NAO EXISTE — tente pela ETIQUETA, pela CHAVE da NF ou pelo NUMERO da nota.';
-                        // ⚠️ b352 (Codex, P2): era `req.para`, que NAO EXISTE no Express
-              // — sempre `undefined`. Os outros 3 retornos deste arquivo usam
-              // `req.params.codigo`; eu escrevi de memoria em vez de copiar o
-              // padrao ao lado.
-              return res.status(503).json(await comRecados(resultado, req.params.codigo));
+            // ⚠️ b352 (Codex, P2): era `req.para`, que NAO EXISTE no Express
+            // — sempre `undefined`. Os outros 3 retornos deste arquivo usam
+            // `req.params.codigo`; eu escrevi de memoria em vez de copiar o
+            // padrao ao lado.
+            return res.status(503).json(await comRecados(resultado, req.params.codigo));
           }
           if (rN.candidatos.length > 0) {
             // b226 - a mesma ajuda da GOOD: quem esta NA ESPREITA ganha estrela

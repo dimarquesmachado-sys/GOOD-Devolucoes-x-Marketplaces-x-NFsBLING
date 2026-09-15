@@ -62,8 +62,14 @@ const src = fs.readFileSync(
 // ⚠️ "não há NF com esse nome" e "o índice nunca montou" chegavam IGUAIS na
 // tela. O dono conclui que o pedido sumiu.
 {
-  ok(/indice_vazio: !IDX\.ts \|\| Object\.keys\(IDX\.mapa \|\| \{\}\)\.length === 0/.test(src),
-     'a resposta diz se o indice esta vazio');
+  // ⚠️ b352 (Codex, P2): a versao com `|| Object.keys(IDX.mapa).length === 0`
+  // marcava uma conta nova/vazia (indice CONSTRUIU, zero NFs de verdade)
+  // como "indice cego" — uma busca legitima nessa conta virava 503 falso.
+  // `IDX.ts` sozinho ja so fica truthy apos construcao bem-sucedida.
+  ok(/indice_vazio: !IDX\.ts,/.test(src),
+     'a resposta diz se o indice esta vazio (so pelo estado da construcao)');
+  ok(!/indice_vazio: !IDX\.ts \|\| Object\.keys/.test(src),
+     '  ⚠️ e nao volta a contar o tamanho do mapa (conta vazia != indice cego)');
   ok(/erro_indice: IDX\.erro \|\| null/.test(src),
      '  e qual foi o erro');
 

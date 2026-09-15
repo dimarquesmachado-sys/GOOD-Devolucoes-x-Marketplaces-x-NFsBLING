@@ -416,8 +416,14 @@ async function buscarPorNome(texto, opts = {}) {
     // `vazio()` e definido no TOPO da funcao, antes de o indice tentar
     // montar — se eu calcular aqui, capturo o estado VELHO e o sinal chega
     // errado. Com getter, le quando a resposta e montada.
+    //
+    // ⚠️ (Codex, P2) so `!IDX.ts` — IDX.ts so vira Date.now() apos
+    // construcao BEM-SUCEDIDA (`falhouGeral` zera pra 0). Contar
+    // `Object.keys(IDX.mapa).length` junto marcava uma conta nova/vazia
+    // (indice construido, zero NFs de verdade) como "indice cego", e uma
+    // busca legitima virava 503 de indisponibilidade.
     get indice_vazio() {
-      return !IDX.ts || Object.keys(IDX.mapa || {}).length === 0;
+      return !IDX.ts;
     },
     get erro_indice() { return IDX.erro || null; },
   });
@@ -531,7 +537,11 @@ async function buscarPorNome(texto, opts = {}) {
     // busca usa quando nao acha nada com o indice montado (ou nao).
     // Descobri porque o campo chegava `undefined` no teste real; sem ele,
     // "nao ha NF com esse nome" e "o indice nunca montou" chegam iguais.
-    indice_vazio: !IDX.ts || Object.keys(IDX.mapa || {}).length === 0,
+    //
+    // ⚠️ (Codex, P2) so `!IDX.ts` — ver o mesmo ajuste no getter de vazio()
+    // acima: contar `mapa.length` marcava conta nova/vazia como indice
+    // cego.
+    indice_vazio: !IDX.ts,
     erro_indice: IDX.erro || null,
   };
 }
