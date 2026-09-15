@@ -56,9 +56,30 @@
 
 const crypto = require('crypto');
 
-const COOKIE = 'sessao_amb';
-const CAMINHO_COOKIE = '/amb';
-const VALIDADE_MS = 12 * 60 * 60 * 1000;   // 12 horas
+// ⚠️ b344 - ESTE MODULO ERA TODO CRAVADO NA AMB.
+//
+// [stated 15/09] "uma gaveta pra cada (...) a longo prazo o ganho e maior"
+//
+// Nao era so o `sessoes` compartilhado. O NOME DO COOKIE, o CAMINHO e as
+// ENVS estavam fixos na AMB:
+//   COOKIE        'sessao_amb'
+//   CAMINHO       '/amb'
+//   usuarios      AMB_USERS / AMB_ADMIN_USER
+//
+// ⚠️ COM DUAS EMPRESAS ISSO SERIA GRAVE: mesmo nome de cookie no mesmo
+// dominio = o navegador manda um so. Quem entrasse na Girassol derrubaria
+// a sessao da AMB — ou pior, entraria com a sessao dela.
+//
+// 📌 Os PADROES sao os valores atuais: sem passar nada, o comportamento e
+// IDENTICO ao de hoje. E o login e a coisa mais sensivel que existe aqui —
+// se quebrar, o galpao nao entra.
+const PADRAO = {
+  cookie: 'sessao_amb',
+  caminhoCookie: '/amb',
+  validadeMs: 12 * 60 * 60 * 1000,   // 12 horas
+  envUsers: 'AMB_USERS',
+  envAdmins: 'AMB_ADMIN_USER',
+};
 
 function parseUsers(txt) {
   const out = {};
@@ -80,10 +101,9 @@ function parseAdmins(txt) {
     .filter(Boolean);
 }
 
-const USERS = parseUsers(process.env.AMB_USERS || '');
-const ADMINS = parseAdmins(process.env.AMB_ADMIN_USER || '');
+// ⚠️ b344 - o modulo passa a ter UMA INSTANCIA PADRAO (a AMB de hoje) e a
+// poder criar outras. `criar(cfg)` la embaixo devolve tudo isto por empresa.
 
-const sessoes = new Map();   // token -> { usuario, tipo, criado }
 
 /** Segredo da assinatura. Estavel entre deploys — e esse o ponto. */
 function segredo() {
@@ -99,123 +119,140 @@ function assinar(payloadB64) {
     .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
-function novaSessao(usuario, tipo) {
-  const payload = JSON.stringify({ u: usuario, t: tipo, e: Date.now() + VALIDADE_MS });
-  const p = b64url(payload);
-  const token = p + '.' + assinar(p);
-  // o Map continua alimentado: serve de ponte pros tokens antigos e
-  // nao atrapalha em nada
-  sessoes.set(token, { usuario, tipo, criado: Date.now() });
-  for (const [t, s] of sessoes) {
-    if (Date.now() - s.criado > VALIDADE_MS) sessoes.delete(t);
-  }
-  return token;
-}
 
-function validarSessao(token, tipoEsperado) {
-  if (!token) return null;
-
-  // 1) token assinado (o novo formato) - nao depende de memoria nenhuma
-  if (token.includes('.')) {
-    const [p, assinatura] = token.split('.');
-    if (p && assinatura) {
-      let esperada;
-      try { esperada = assinar(p); } catch (e) { esperada = null; }
-      // comparacao de tempo constante, pra nao vazar o segredo pelo relogio
-      const iguais = esperada && esperada.length === assinatura.length
-        && crypto.timingSafeEqual(Buffer.from(esperada), Buffer.from(assinatura));
-      if (iguais) {
-        try {
-          const dados = JSON.parse(Buffer.from(p.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString());
-          if (!dados || !dados.u) return null;
-          if (dados.e && Date.now() > dados.e) return null;          // venceu
-          if (tipoEsperado && dados.t !== tipoEsperado) return null;
-          return { usuario: dados.u, tipo: dados.t, criado: (dados.e || 0) - VALIDADE_MS };
-        } catch (e) { return null; }
-      }
-    }
-  }
-
-  // 2) token antigo, ainda na memoria deste processo
-  const s = sessoes.get(token);
-  if (!s) return null;
-  if (Date.now() - s.criado > VALIDADE_MS) {
-    sessoes.delete(token);
-    return null;
-  }
-  if (tipoEsperado && s.tipo !== tipoEsperado) return null;
-  return s;
-}
 
 /**
  * Confere usuario e senha.
  * Devolve { nome, tipo } com o nome na grafia cadastrada, ou null.
  */
-function autenticar(usuario, senha) {
-  const chave = String(usuario || '').trim().toLowerCase();
-  const reg = USERS[chave];
-  if (!reg || reg.senha !== String(senha)) return null;
-  return {
-    nome: reg.nome,
-    tipo: ADMINS.includes(chave) ? 'admin' : 'estoquista',
-  };
-}
 
-function opcoesCookie() {
-  return {
-    httpOnly: true,
-    sameSite: 'lax',
-    path: CAMINHO_COOKIE,
-    // No Render (HTTPS) o cookie so trafega criptografado.
-    secure: process.env.NODE_ENV === 'production' || !!process.env.RENDER,
-    maxAge: VALIDADE_MS,
-  };
-}
 
-function tokenDaRequisicao(req) {
-  return (req.cookies && req.cookies[COOKIE]) || null;
-}
 
 /** Middleware: exige qualquer usuario logado. */
-function requerLogin(req, res, next) {
-  const s = validarSessao(tokenDaRequisicao(req));
-  if (!s) return res.status(401).json({ ok: false, erro: 'sessao invalida ou expirada' });
-  req.usuario = s.usuario;
-  req.tipoUsuario = s.tipo;
-  next();
-}
 
 /** Middleware: exige admin. */
-function requerAdmin(req, res, next) {
-  const s = validarSessao(tokenDaRequisicao(req), 'admin');
-  if (!s) return res.status(401).json({ ok: false, erro: 'acesso restrito ao admin' });
-  req.usuario = s.usuario;
-  req.tipoUsuario = s.tipo;
-  next();
-}
 
-function diagnostico() {
-  const nomes = Object.values(USERS).map(u => u.nome);
-  const adminsOk = ADMINS.filter(a => USERS[a]).map(a => USERS[a].nome);
-  const adminsFora = ADMINS.filter(a => !USERS[a]);
+
+// ⚠️ b344 - A FABRICA. Cada empresa recebe a SUA instancia: cookie proprio,
+// caminho proprio, usuarios proprios e — o que mais importa — o seu proprio
+// mapa de `sessoes`.
+//
+// 📌 Sem argumento, devolve o comportamento de hoje: os testes existentes e
+// o app-AMB continuam usando o modulo do mesmo jeito.
+function criar(cfg) {
+  const c = Object.assign({}, PADRAO, cfg || {});
+  const users = parseUsers(process.env[c.envUsers] || '');
+  const admins = parseAdmins(process.env[c.envAdmins] || '');
+  const minhasSessoes = new Map();   // ⚠️ o mapa e DESTA empresa
+
+  const meuValidar = (token, tipoExigido) => {
+    if (!token) return null;
+    const s = minhasSessoes.get(token);
+    if (!s) return null;
+    if (Date.now() - s.criado > c.validadeMs) { minhasSessoes.delete(token); return null; }
+    if (tipoExigido && s.tipo !== tipoExigido) return null;
+    return s;
+  };
+
   return {
-    usuarios_configurados: nomes.length,
-    nomes,                                   // nomes apenas, nunca senha
-    admins: adminsOk,
-    admins_nao_cadastrados: adminsFora,      // se vier cheio, ha erro de digitacao
-    tudo_certo: nomes.length > 0 && adminsOk.length > 0 && adminsFora.length === 0,
-    estoquistas: nomes.filter(n => !adminsOk.includes(n)),
-    sessoes_ativas: sessoes.size,
-    cookie: COOKIE,
+    COOKIE: c.cookie,
+    CAMINHO_COOKIE: c.caminhoCookie,
+    // ⚠️ COPIA EXATA do `autenticar` original — presumi duas coisas erradas
+    // na 1a versao e o teste real pegou:
+    //   - `parseAdmins` devolve ARRAY, nao Set (`.includes`, nao `.has`)
+    //   - o tipo nao-admin e 'estoquista', nao 'user'
+    // O 2o teria sido pior: login funcionando e permissao errada, sem erro.
+    autenticar: (usuario, senha) => {
+      const chave = String(usuario || '').trim().toLowerCase();
+      const reg = users[chave];
+      if (!reg || reg.senha !== String(senha)) return null;
+      return {
+        nome: reg.nome,
+        tipo: admins.includes(chave) ? 'admin' : 'estoquista',
+      };
+    },
+    novaSessao: (usuario, tipo) => {
+      const token = b64url(crypto.randomBytes(24));
+      minhasSessoes.set(token, { usuario, tipo, criado: Date.now() });
+      for (const [t, s] of minhasSessoes) {
+        if (Date.now() - s.criado > c.validadeMs) minhasSessoes.delete(t);
+      }
+      return token;
+    },
+    validarSessao: meuValidar,
+    sair: (token) => minhasSessoes.delete(token),
+    temUsuarios: () => Object.keys(users).length > 0,
+
+    // ⚠️ as 5 abaixo sao COPIA do original, com o estado trocado pelo desta
+    // instancia. Nao reescrevi nenhuma: o login e o que nao pode mudar de
+    // comportamento, e diferenca aqui so apareceria com o galpao parado na
+    // porta.
+    opcoesCookie: () => ({
+      httpOnly: true,
+      sameSite: 'lax',
+      path: c.caminhoCookie,
+      secure: process.env.NODE_ENV === 'production' || !!process.env.RENDER,
+      maxAge: c.validadeMs,
+    }),
+    tokenDaRequisicao: (req) => (req.cookies && req.cookies[c.cookie]) || null,
+    requerLogin: (req, res, next) => {
+      const tk = (req.cookies && req.cookies[c.cookie]) || null;
+      const ses = meuValidar(tk);
+      if (!ses) return res.status(401).json({ ok: false, erro: 'sessao invalida ou expirada' });
+      req.usuario = ses.usuario;
+      req.tipoUsuario = ses.tipo;
+      next();
+    },
+    requerAdmin: (req, res, next) => {
+      const tk = (req.cookies && req.cookies[c.cookie]) || null;
+      const ses = meuValidar(tk, 'admin');
+      if (!ses) return res.status(401).json({ ok: false, erro: 'acesso restrito ao admin' });
+      req.usuario = ses.usuario;
+      req.tipoUsuario = ses.tipo;
+      next();
+    },
+    diagnostico: () => {
+      const nomes = Object.values(users).map((u) => u.nome);
+      const adminsOk = admins.filter((a) => users[a]).map((a) => users[a].nome);
+      const adminsFora = admins.filter((a) => !users[a]);
+      return {
+        usuarios_configurados: nomes.length,
+        nomes,                                   // nomes apenas, nunca senha
+        admins: adminsOk,
+        admins_nao_cadastrados: adminsFora,      // se vier cheio, ha erro de digitacao
+        tudo_certo: nomes.length > 0 && adminsOk.length > 0 && adminsFora.length === 0,
+        estoquistas: nomes.filter((n) => !adminsOk.includes(n)),
+        sessoes_ativas: minhasSessoes.size,
+        cookie: c.cookie,
+      };
+    },
   };
 }
 
+// ⚠️ b344 - A INSTANCIA PADRAO VEM DA PROPRIA FABRICA.
+//
+// Sem isto, o modulo manteria `sessoes`/`USERS` soltos no escopo E uma
+// fabrica ao lado — duas fontes do mesmo estado, que e pior que o problema
+// original: a AMB usaria uma e quem chamasse `criar()` usaria outra, sem
+// nada avisando.
+//
+// 📌 O export abaixo reexporta desta instancia, entao `auth.requerLogin`,
+// `auth.autenticar` etc. seguem funcionando IGUAL pro app-AMB.
+const PADRAO_INST = criar();
+
+// ⚠️ TUDO REEXPORTADO DA INSTANCIA PADRAO. O app-AMB nao muda uma linha.
 module.exports = {
-  COOKIE, CAMINHO_COOKIE,
-  autenticar, novaSessao, validarSessao,
-  opcoesCookie, tokenDaRequisicao,
-  requerLogin, requerAdmin,
-  diagnostico,
-  temUsuarios: () => Object.keys(USERS).length > 0,
-  sair: (token) => sessoes.delete(token),
+  criar,
+  COOKIE: PADRAO_INST.COOKIE,
+  CAMINHO_COOKIE: PADRAO_INST.CAMINHO_COOKIE,
+  autenticar: PADRAO_INST.autenticar,
+  novaSessao: PADRAO_INST.novaSessao,
+  validarSessao: PADRAO_INST.validarSessao,
+  opcoesCookie: PADRAO_INST.opcoesCookie,
+  tokenDaRequisicao: PADRAO_INST.tokenDaRequisicao,
+  requerLogin: PADRAO_INST.requerLogin,
+  requerAdmin: PADRAO_INST.requerAdmin,
+  diagnostico: PADRAO_INST.diagnostico,
+  temUsuarios: PADRAO_INST.temUsuarios,
+  sair: PADRAO_INST.sair,
 };
