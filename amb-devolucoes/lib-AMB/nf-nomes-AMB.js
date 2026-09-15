@@ -165,7 +165,17 @@ async function construirIndiceInterno(opts = {}) {
       // esquecer, e a proxima varredura herda o comportamento.
       if (pg > 1) await drenagem.pausar(400, deFundo || IDX.viroufundo, 'indice-nomes');
       let r = await bling.chamarBling(`/nfe?limite=100&pagina=${pg}&tipo=1`);
-      if (!r.ok && r.status === 429) {
+      // ⚠️ b352 (Codex, P1) - O PORTAO TAMBEM PRECISA ACEITAR 401.
+      //
+      // Eu acrescentei 401 ao laco de dentro, mas o `if` que ENVOLVE o laco
+      // so deixava passar 429. Resultado: o retry que eu escrevi PRA TRATAR
+      // O 401 nunca rodava num 401 — exatamente o caso do dono (o indice da
+      // AMB morreu em `nfe pagina 1 HTTP 401`).
+      //
+      // 📌 Meio conserto, e do pior tipo: o codigo novo existe, parece
+      // certo na revisao, e nao e alcancado. So um teste que EXERCITA o
+      // caminho pega.
+      if (!r.ok && (r.status === 429 || r.status === 401)) {
         // ⚠️ b351: 401 tambem entra no retry — mesma razao do bloco das
         // vendas. E ESTE e o caminho das NOTAS, que a busca por NOME usa:
         // foi aqui que o `nfe pagina 1 HTTP 401` matou o indice inteiro.

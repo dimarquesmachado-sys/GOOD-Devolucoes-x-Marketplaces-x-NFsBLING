@@ -803,7 +803,11 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
             resultado.erro = '⚠️ A busca por NOME esta indisponivel: o indice de notas nao montou'
               + (rN.erro_indice ? ' (' + rN.erro_indice + ')' : '')
               + '. ISSO NAO QUER DIZER QUE O PEDIDO NAO EXISTE — tente pela ETIQUETA, pela CHAVE da NF ou pelo NUMERO da nota.';
-            return res.status(503).json(await comRecados(resultado, req.para || null));
+                        // ⚠️ b352 (Codex, P2): era `req.para`, que NAO EXISTE no Express
+              // — sempre `undefined`. Os outros 3 retornos deste arquivo usam
+              // `req.params.codigo`; eu escrevi de memoria em vez de copiar o
+              // padrao ao lado.
+              return res.status(503).json(await comRecados(resultado, req.params.codigo));
           }
           if (rN.candidatos.length > 0) {
             // b226 - a mesma ajuda da GOOD: quem esta NA ESPREITA ganha estrela
