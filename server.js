@@ -415,7 +415,7 @@ app.get('/health', (req, res) => {
       // busca por nome. Escolher um lado apagaria a descricao do outro.
       // ⚠️ a resolucao JUNTA as duas: a 7.5.0 (passe curto + tetos) ja esta
       // na main, e este PR acrescenta o build frio que falha vazio.
-      version: '9.13.1 (o segredo de sessao le ADMIN_SESSION_SECRET — o nome que o dono escolheu)',
+      version: '9.14.0 (auditoria item 3: o prefixo da Girassol no registro divergia do contrato)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
