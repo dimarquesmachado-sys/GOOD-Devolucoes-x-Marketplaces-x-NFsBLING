@@ -23,6 +23,54 @@ const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o
 const RAIZ = path.join(__dirname, '..');
 const app = fs.readFileSync(path.join(RAIZ, 'amb-devolucoes', 'app-AMB.js'), 'utf8');
 
+// ⚠️ b330.1 (Codex, P2) - ESCOPO POR PROFUNDIDADE, NAO POR INDENTACAO.
+//
+// Um filtro `/^let \w+/` trata COLUNA 0 como escopo lexico, e erra dos dois
+// lados: um `let` DENTRO de funcao escrito na coluna 0 seria contado (falso
+// positivo), e um estado REAL do modulo indentado escaparia da conta (falso
+// negativo — o perigoso, porque e o que vaza entre empresas sem o teste ver).
+//
+// Esta funcao acompanha a profundidade de bloco e so conta o que esta em
+// profundidade 0, ignorando chaves dentro de string, template e comentario
+// (a licao do `_recorte`: contador ingenuo quebra com elas). Usada tanto
+// para app-AMB.js quanto para os singletons que ele requer, pra nao duplicar
+// a mesma logica com regras diferentes.
+function contarEstadoDoModulo(src) {
+  const estado = [];
+  let prof = 0;
+  let emBlocoComentario = false;
+  for (const linha of src.split('\n')) {
+    const t = linha.trim();
+
+    // comentário de bloco
+    if (emBlocoComentario) { if (t.includes('*/')) emBlocoComentario = false; continue; }
+    if (t.startsWith('/*')) { if (!t.includes('*/')) emBlocoComentario = true; continue; }
+    if (t.startsWith('//')) continue;
+
+    // declaração de estado, só em profundidade 0
+    if (prof === 0) {
+      const m = /^(?:let|var) (\w+)|^const (\w+)\s*=\s*(?:new Map\(\)|new Set\(\)|\[\])/.exec(t);
+      if (m) estado.push(m[1] || m[2]);
+    }
+
+    // conta chaves IGNORANDO string/template/regex/comentário de linha
+    let emStr = null;
+    for (let k = 0; k < linha.length; k++) {
+      const c = linha[k];
+      if (emStr) {
+        if (c === '\\') { k++; continue; }
+        if (c === emStr) emStr = null;
+        continue;
+      }
+      if (c === '"' || c === "'" || c === '`') { emStr = c; continue; }
+      if (c === '/' && linha[k + 1] === '/') break;      // resto é comentário
+      if (c === '{') prof++;
+      else if (c === '}') prof--;
+    }
+  }
+  return estado;
+}
+
 // ── o que JÁ é fábrica (o avanço real que existe) ───────────────────
 {
   // ⚠️ (Codex, P2) - CONTAR OCORRENCIAS AGREGADAS NAO PROVA QUAIS CLIENTES.
@@ -55,52 +103,7 @@ const app = fs.readFileSync(path.join(RAIZ, 'amb-devolucoes', 'app-AMB.js'), 'ut
 // empresas no mesmo processo, o cache de uma responderia pela outra — e isso
 // não dá erro, dá **dado errado**, que é pior.
 {
-  // ⚠️ b330.1 (Codex, P2) - ESCOPO POR PROFUNDIDADE, NAO POR INDENTACAO.
-  //
-  // Minha versao filtrava `/^let \w+/` — so linha na COLUNA 0. Isso trata
-  // formatacao como escopo lexico, e erra dos dois lados:
-  //   - um `let` DENTRO de funcao escrito na coluna 0 seria contado (falso
-  //     positivo)
-  //   - um estado REAL do modulo indentado escaparia da conta (falso
-  //     negativo — o perigoso, porque e o que vaza entre empresas)
-  //
-  // Agora acompanho a profundidade de bloco e so conto o que esta em
-  // profundidade 0. Ignoro chaves dentro de string, template, regex e
-  // comentario (a licao do `_recorte`: contador ingenuo quebra com elas).
-  const estado = [];
-  {
-    let prof = 0;
-    let emBlocoComentario = false;
-    for (const linha of app.split('\n')) {
-      const t = linha.trim();
-
-      // comentário de bloco
-      if (emBlocoComentario) { if (t.includes('*/')) emBlocoComentario = false; continue; }
-      if (t.startsWith('/*')) { if (!t.includes('*/')) emBlocoComentario = true; continue; }
-      if (t.startsWith('//')) continue;
-
-      // declaração de estado, só em profundidade 0
-      if (prof === 0) {
-        const m = /^(?:let|var) (\w+)|^const (\w+)\s*=\s*(?:new Map\(\)|new Set\(\)|\[\])/.exec(t);
-        if (m) estado.push(m[1] || m[2]);
-      }
-
-      // conta chaves IGNORANDO string/template/regex/comentário de linha
-      let emStr = null;
-      for (let k = 0; k < linha.length; k++) {
-        const c = linha[k];
-        if (emStr) {
-          if (c === '\\') { k++; continue; }
-          if (c === emStr) emStr = null;
-          continue;
-        }
-        if (c === '"' || c === "'" || c === '`') { emStr = c; continue; }
-        if (c === '/' && linha[k + 1] === '/') break;      // resto é comentário
-        if (c === '{') prof++;
-        else if (c === '}') prof--;
-      }
-    }
-  }
+  const estado = contarEstadoDoModulo(app);
 
   ok(estado.length > 0,
      `⚠️ ha ${estado.length} variaveis de estado no escopo do modulo`);
@@ -153,10 +156,7 @@ const app = fs.readFileSync(path.join(RAIZ, 'amb-devolucoes', 'app-AMB.js'), 'ut
     ok(exigidoDireto, `${nome} ainda e exigido direto (singleton), nao .criar(CFG_EMPRESA)`);
 
     const src = fs.readFileSync(path.join(RAIZ, 'amb-devolucoes', 'lib-AMB', `${nome}.js`), 'utf8');
-    const estadoSingleton = src.split('\n')
-      .filter((l) => /^let \w+|^const \w+ = new Map\(\)|^const \w+ = \[\]/.test(l))
-      .map((l) => (/^(?:let|const) (\w+)/.exec(l) || [])[1])
-      .filter(Boolean);
+    const estadoSingleton = contarEstadoDoModulo(src);
     totalSingletons += estadoSingleton.length;
     porArquivo.push(`${nome}=${estadoSingleton.length}(${estadoSingleton.join(',')})`);
   }
