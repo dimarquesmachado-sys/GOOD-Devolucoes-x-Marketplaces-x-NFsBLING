@@ -1,9 +1,11 @@
 {
   "_leia_me": [
-    "CONTRATO DE EMPRESAS — v11 (14/09/2026)",
-    "  v11 declara as CAPACIDADES de cada empresa (fiscal, checkout, ml, ml-full, shopee,",
-    "  magalu, tiktok, madeira-madeira), derivadas do código e com vocabulário fechado: capacidade",
-    "  fora da lista derruba o boot, em vez de virar recurso desligado em silêncio.",
+    "CONTRATO DE EMPRESAS — v12 (16/09/2026)",
+    "  v12 materializa `dono_alvo` por (empresa, integração) a partir de",
+    "  `passo_2_eleicao.dono_eleito`. Antes cada empresa tinha `dono_alvo: null`",
+    "  (\"a eleger no passo 2\"), mas a eleição já tinha acontecido — o contrato",
+    "  tinha DUAS VERDADES sobre o mesmo dono. `passo_2_eleicao` fica como",
+    "  HISTÓRICO e mecânica da migração; a resposta por empresa é em `dono_alvo`.",
     "",
     "Dado, não código. Os dois repositórios leem este mesmo arquivo, byte a",
     "byte. O Mover-Pedidos tem um script que baixa o contrato da main do",
@@ -52,10 +54,14 @@
     "  v10 registra que 403 de ROTA RESTRITA não indica token — medido em",
     "      6h de operação real. Sem isso, um consumidor futuro",
     "      reintroduz a invalidação de cache que a gente acabou de tirar.",
-    "      Sugestão do Mover-Pedidos."
+    "      Sugestão do Mover-Pedidos.",
+    "  v11 declara as CAPACIDADES de cada empresa (fiscal, checkout, ml, ml-full, shopee,",
+    "      magalu, tiktok, madeira-madeira), derivadas do código e com vocabulário fechado:",
+    "      capacidade fora da lista derruba o boot, em vez de virar recurso desligado em",
+    "      silêncio."
   ],
-  "versao": 11,
-  "atualizado_em": "2026-09-14",
+  "versao": 12,
+  "atualizado_em": "2026-09-16",
   "servicos": {
     "_nota": "os serviços que leem este contrato. `dono_hoje`/`dono_alvo` só podem citar nomes daqui.",
     "lista": [

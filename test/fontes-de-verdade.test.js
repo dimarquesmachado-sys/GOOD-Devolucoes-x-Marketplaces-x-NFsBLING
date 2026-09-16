@@ -24,11 +24,20 @@ const RAIZ = path.join(__dirname, '..');
 const doc = fs.readFileSync(path.join(RAIZ, 'docs', 'EMBARCAR-GIRASSOL.md'), 'utf8');
 const contrato = JSON.parse(fs.readFileSync(path.join(RAIZ, 'contrato-empresas.json'), 'utf8'));
 
-// ── o documento usa o prefixo do contrato ───────────────────────────
+// ── nenhum documento de onboarding usa o prefixo antigo ─────────────
+//
+// ⚠️ O Codex achou: o teste original só lia EMBARCAR-GIRASSOL.md, mas
+// PLUGAR-EMPRESA-NOVA.md tinha o MESMO `GIRA_` obsoleto num outro trecho —
+// o teste passava enquanto um segundo caminho de onboarding continuava
+// ensinando o prefixo errado.
 {
-  ok(!/GIRA_[A-Z]/.test(doc),
-     '⚠️ o doc nao usa mais `GIRA_` (o contrato manda `GIRASSOL_`)');
-  ok(/GIRASSOL_/.test(doc), '  e usa o prefixo certo');
+  const DOCS_DE_ONBOARDING = ['EMBARCAR-GIRASSOL.md', 'PLUGAR-EMPRESA-NOVA.md'];
+  for (const nome of DOCS_DE_ONBOARDING) {
+    const texto = fs.readFileSync(path.join(RAIZ, 'docs', nome), 'utf8');
+    ok(!/GIRA_[A-Z]/.test(texto),
+       `⚠️ ${nome} nao usa mais \`GIRA_\` (o contrato manda \`GIRASSOL_\`)`);
+  }
+  ok(/GIRASSOL_/.test(doc), '  EMBARCAR-GIRASSOL.md usa o prefixo certo');
 
   // e bate com o contrato, não com uma constante que eu escolhi
   const daFicha = ((contrato.empresas || {}).girassol || {}).prefixo_env;
@@ -67,18 +76,37 @@ const contrato = JSON.parse(fs.readFileSync(path.join(RAIZ, 'contrato-empresas.j
 }
 
 // ── ⚠️ e bate com a eleição, em vez de contradizê-la ────────────────
+//
+// ⚠️ O Codex achou: a versão anterior pulava `integr` que não estivesse em
+// `alvo`, tratando TODA ausência como "empresa sem essa capacidade" — inclusive
+// quando a integração era suportada e alguém apagou a chave por engano (ex.:
+// `good.ml`). Agora a ausência só é aceita quando a `capacidade` associada
+// realmente falta na ficha; se a empresa suporta a integração, a chave é
+// OBRIGATÓRIA.
 {
   const bruto = JSON.stringify(contrato);
   const m = /"dono_eleito"\s*:\s*(\{[^}]*\})/.exec(bruto);
   ok(!!m, 'a eleicao existe no contrato (historico da migracao)');
+
+  // integrações cuja presença depende de uma `capacidade` declarada; as que
+  // não aparecem aqui (bling, bling_nfe) valem pra toda empresa do contrato.
+  const CAPACIDADE_DA_INTEGRACAO = { ml: 'ml', magalu: 'magalu', tiktok: 'tiktok' };
+
   if (m) {
     const eleito = JSON.parse(m[1]);
     for (const [chave, ficha] of Object.entries(contrato.empresas || {})) {
       const alvo = ficha.dono_alvo || {};
+      const capacidades = ficha.capacidades || [];
       for (const [integr, dono] of Object.entries(eleito)) {
-        if (!(integr in alvo)) continue;   // empresa sem essa capacidade
-        ok(alvo[integr] === dono,
-           `  ${chave}.${integr}: ficha diz "${alvo[integr]}", eleicao diz "${dono}"`);
+        const capacidadeExigida = CAPACIDADE_DA_INTEGRACAO[integr];
+        const suportada = !capacidadeExigida || capacidades.includes(capacidadeExigida);
+        if (!suportada) continue;   // empresa realmente nao tem essa capacidade
+        ok(integr in alvo,
+           `⚠️ ${chave}.${integr}: eleicao diz "${dono}" mas dono_alvo nao tem a chave (empresa suporta a integracao)`);
+        if (integr in alvo) {
+          ok(alvo[integr] === dono,
+             `  ${chave}.${integr}: ficha diz "${alvo[integr]}", eleicao diz "${dono}"`);
+        }
       }
     }
   }

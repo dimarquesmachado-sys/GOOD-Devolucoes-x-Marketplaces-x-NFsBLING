@@ -53,7 +53,7 @@ Por que importa: com um prefixo só, migrar a produção para o registro leria
 padrão. Ou seja, poderia mirar em **depósito, natureza ou empresa errada** sem avisar.
 
 Sem prefixo só cabe **uma** empresa no ambiente. Toda empresa nova precisa dos dois
-prefixos próprios (`GIRA_`).
+prefixos próprios (`GIRASSOL_`, conforme `contrato-empresas.json`).
 
 ---
 
