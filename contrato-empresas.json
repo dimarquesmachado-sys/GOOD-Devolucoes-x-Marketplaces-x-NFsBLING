@@ -110,9 +110,9 @@
         "_nota_bling_nfe": "o `bling_nfe` e um SEGUNDO app do Bling, com credencial propria, e o `nfTokenManager` do Mover-Pedidos o renova. MEDIDO no Devolucoes em 07/09: este repo NAO toca nele — usa um app por empresa (BLING_CLIENT_ID / AMB_ / GOOD_), sem credencial de NF-e separada."
       },
       "dono_alvo": {
-        "_nota": "a eleger no passo 2. `null` = ainda não decidido — não obedecer.",
-        "bling": null,
-        "ml": null,
+        "_nota": "⚠️ MATERIALIZADO em 16/09 a partir de `passo_2_eleicao.dono_eleito`. Antes ficava `null` com a nota \"a eleger no passo 2\" — mas a eleicao JA tinha acontecido, entao o contrato tinha DUAS VERDADES: quem lia aqui concluia \"nao decidido\", quem lia a eleicao concluia \"mover-pedidos\". Num arquivo criado pra impedir divergencia, isso e o pior defeito. O bloco `passo_2_eleicao` fica como HISTORICO e mecanica da migracao; a resposta por (empresa, integracao) e AQUI.",
+        "bling": "mover-pedidos",
+        "ml": "mover-pedidos",
         "magalu": "mover-pedidos",
         "bling_nfe": "mover-pedidos"
       },
@@ -172,9 +172,9 @@
         ]
       },
       "dono_alvo": {
-        "_nota": "a eleger no passo 2. `null` = ainda não decidido — não obedecer.",
-        "bling": null,
-        "ml": null,
+        "_nota": "⚠️ MATERIALIZADO em 16/09 a partir de `passo_2_eleicao.dono_eleito`. Antes ficava `null` com a nota \"a eleger no passo 2\" — mas a eleicao JA tinha acontecido, entao o contrato tinha DUAS VERDADES: quem lia aqui concluia \"nao decidido\", quem lia a eleicao concluia \"mover-pedidos\". Num arquivo criado pra impedir divergencia, isso e o pior defeito. O bloco `passo_2_eleicao` fica como HISTORICO e mecanica da migracao; a resposta por (empresa, integracao) e AQUI.",
+        "bling": "mover-pedidos",
+        "ml": "mover-pedidos",
         "magalu": "mover-pedidos",
         "bling_nfe": "mover-pedidos",
         "tiktok": "mover-pedidos"
@@ -239,9 +239,9 @@
         ]
       },
       "dono_alvo": {
-        "_nota": "a eleger no passo 2. `null` = ainda não decidido — não obedecer.",
-        "bling": null,
-        "ml": null,
+        "_nota": "⚠️ MATERIALIZADO em 16/09 a partir de `passo_2_eleicao.dono_eleito`. Antes ficava `null` com a nota \"a eleger no passo 2\" — mas a eleicao JA tinha acontecido, entao o contrato tinha DUAS VERDADES: quem lia aqui concluia \"nao decidido\", quem lia a eleicao concluia \"mover-pedidos\". Num arquivo criado pra impedir divergencia, isso e o pior defeito. O bloco `passo_2_eleicao` fica como HISTORICO e mecanica da migracao; a resposta por (empresa, integracao) e AQUI.",
+        "bling": "mover-pedidos",
+        "ml": "mover-pedidos",
         "magalu": "mover-pedidos",
         "bling_nfe": "mover-pedidos",
         "tiktok": "mover-pedidos"

@@ -1,7 +1,39 @@
 # Embarcar a Girassol no Devoluções — checklist
 
-**Estado em 05/09/2026:** as Fases 1, 2 e 3 estão prontas. O que falta é o
-que depende de provisionamento — credenciais e a ficha.
+> ## ⚠️ ESTADO REAL EM 16/09/2026 — LEIA ANTES DE USAR ESTE CHECKLIST
+>
+> **A Girassol NÃO pode ser ligada hoje.** Este documento dizia que "as Fases
+> 1, 2 e 3 estão prontas, só faltam credenciais e ficha" — e isso está
+> **errado**, do jeito mais caro possível.
+>
+> **O que falta de verdade:** `amb-devolucoes/app-AMB.js` ainda é um
+> **singleton da AMB**, não uma fábrica. Montar `/girassol` sobre ele faria a
+> Girassol operar com as **tabelas, credenciais, caches e sessões da AMB** —
+> sem erro visível, com dado errado.
+>
+> **Se alguém seguir a parte antiga deste documento**, vai criar variáveis com
+> o prefixo errado, concluir que só faltam credenciais, e montar a Girassol
+> sobre o backend da AMB. É o pior cenário: parece funcionar.
+>
+> ### Antes de qualquer coisa
+>
+> | não faça | por quê |
+> |---|---|
+> | descomentar a ficha da Girassol | o bootstrap não usa `ativa_em` ainda |
+> | montar `/girassol` | reusaria o router da AMB |
+> | criar pasta `girassol-devolucoes` | é a cópia que estamos evitando |
+>
+> **O trabalho que falta está medido** em `test/fabrica-empresa-estado.test.js`
+> — ele mostra quantos pontos de estado ainda são do módulo, e o número cai a
+> cada passo. Enquanto ele acusar estado compartilhado, a Girassol espera.
+>
+> ### Fontes de verdade
+>
+> 1. `contrato-empresas.json` — identidade, prefixos, capacidades, ativação
+> 2. `lib/empresas.js` — a ficha executável, que **deriva** do contrato
+>
+> Este checklist é **histórico**. Onde ele divergir dos dois acima, **eles
+> mandam**.
 
 > Este documento é para o dia em que for plugar. Nada aqui precisa ser feito
 > agora; o sistema funciona normalmente sem a Girassol.
@@ -28,38 +60,38 @@ colunas** da `devolucoes_amb`. O teste foi removido depois.
 No serviço **good-devolucoes-x-marketplaces-x-nfsbling**, aba
 **Environment**, criar com o prefixo da Girassol.
 
-> O prefixo vai ser decidido junto com a ficha (`GIRA_` é o natural, mas
+> O prefixo vai ser decidido junto com a ficha (`GIRASSOL_` é o natural, mas
 > qualquer um serve — só precisa ser o mesmo nos dois lugares).
 
 ### Bling
 ```
-GIRA_BLING_CLIENT_ID
-GIRA_BLING_CLIENT_SECRET
-GIRA_BLING_ACCESS_TOKEN
-GIRA_BLING_REFRESH_TOKEN
+GIRASSOL_BLING_CLIENT_ID
+GIRASSOL_BLING_CLIENT_SECRET
+GIRASSOL_BLING_ACCESS_TOKEN
+GIRASSOL_BLING_REFRESH_TOKEN
 ```
 
 ### Mercado Livre
 ```
-GIRA_ML_CLIENT_ID
-GIRA_ML_CLIENT_SECRET
-GIRA_ML_ACCESS_TOKEN
-GIRA_ML_REFRESH_TOKEN
-GIRA_ML_USER_ID
+GIRASSOL_ML_CLIENT_ID
+GIRASSOL_ML_CLIENT_SECRET
+GIRASSOL_ML_ACCESS_TOKEN
+GIRASSOL_ML_REFRESH_TOKEN
+GIRASSOL_ML_USER_ID
 ```
 
 ### Magalu
 ```
-GIRA_MAGALU_CLIENT_ID
-GIRA_MAGALU_CLIENT_SECRET
-GIRA_MAGALU_ACCESS_TOKEN
-GIRA_MAGALU_REFRESH_TOKEN
-GIRA_MAGALU_TENANT_ID
+GIRASSOL_MAGALU_CLIENT_ID
+GIRASSOL_MAGALU_CLIENT_SECRET
+GIRASSOL_MAGALU_ACCESS_TOKEN
+GIRASSOL_MAGALU_REFRESH_TOKEN
+GIRASSOL_MAGALU_TENANT_ID
 ```
 
 ### Shopee
 ```
-GIRA_SHOPEE_LOJA_KEY
+GIRASSOL_SHOPEE_LOJA_KEY
 ```
 As outras duas (`SHOPEE_PROXY_URL` e `SHOPEE_PROXY_KEY`) **já existem sem
 prefixo** e valem para todas — o serviço da Shopee é um só, multi-loja.
@@ -70,8 +102,8 @@ de tabela. O `SUPABASE_URL` e `SUPABASE_KEY` globais já atendem.
 
 ### Opcionais (têm padrão)
 ```
-GIRA_BLING_PAUSA_MS     (padrão 700)
-GIRA_ML_JANELA_DIAS     (padrão 60)
+GIRASSOL_BLING_PAUSA_MS     (padrão 700)
+GIRASSOL_ML_JANELA_DIAS     (padrão 60)
 ```
 
 ---
