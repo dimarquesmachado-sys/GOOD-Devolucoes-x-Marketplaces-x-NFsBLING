@@ -121,25 +121,30 @@ function contarEstadoDoModulo(src) {
        : `⚠️ estes clientes NAO aceitam config por instancia: ${faltando.join(', ')}`);
 }
 
-// ── ⚠️ e o que AINDA trava: a empresa cravada ───────────────────────
+// ── ⚠️ PASSO 3, FATIA 4: a empresa SAIU de dentro do código ─────────
+//
+// Este bloco guardava que a empresa ESTAVA cravada em 'ambtotal' — era a
+// linha de base do passo 1, e servia para medir o que faltava.
+//
+// ⚠️ Agora ela vem de env, então guardar o contrário seria PROTEGER O
+// PROBLEMA: o teste ficaria vermelho justo quando o trabalho foi feito.
+//
+// 📌 Eram DOIS pontos cravados (o Codex apontou o segundo na 3ª rodada do
+// passo 1): `CFG_EMPRESA` e `FICHA_AMB` — esta usada direto em rotas
+// fiscais. Os dois saem da MESMA chave agora.
 {
-  const m = /const CFG_EMPRESA = configDaEmpresa\('(\w+)'\)/.exec(app);
-  ok(!!m, 'a empresa vem de `configDaEmpresa`');
-  ok(m && m[1] === 'ambtotal',
-     `⚠️ mas CRAVADA em '${m ? m[1] : '?'}' — trocar a string SUBSTITUI a AMB, nao monta as duas`);
+  ok(/const EMPRESA_DESTE_APP = String\(process\.env\.DEVOLUCOES_EMPRESA \|\| 'ambtotal'\)/.test(app),
+     '⚠️ a empresa do app vem de env, com padrao `ambtotal`');
+  ok(/configDaEmpresa\(EMPRESA_DESTE_APP\)/.test(app),
+     '  a config usa essa chave');
+  ok(/obterEmpresa\(EMPRESA_DESTE_APP\)/.test(app),
+     '  ⚠️ e a FICHA tambem (era o 2o ponto, das rotas fiscais)');
 
-  // ⚠️ (Codex, P2, 3a rodada) - CFG_EMPRESA NAO E A UNICA FONTE CRAVADA.
-  //
-  // `config-AMB.js` e um arquivo SO da AMB (nome e conteudo), e `FICHA_AMB`
-  // vem de `obterEmpresa('ambtotal')` tambem cravado — usado direto em
-  // rotas fiscais (naturezasDevolucaoIds, nfEntradaTipo) e em `envAmb()`
-  // espalhado pelo arquivo. Um passo 2/3 que so trocasse CFG_EMPRESA de
-  // parametro deixaria estas duas fontes ainda respondendo pela AMB.
-  ok(/require\('\.\/config-AMB'\)/.test(app),
-     'tambem importa config-AMB.js — arquivo SO da AMB, ja cravado no nome');
-  const mFicha = /const FICHA_AMB = obterEmpresa\('(\w+)'\)/.exec(app);
-  ok(mFicha && mFicha[1] === 'ambtotal',
-     `⚠️ e FICHA_AMB tambem CRAVADA em '${mFicha ? mFicha[1] : '?'}' via obterEmpresa — usada em rotas fiscais e em envAmb()`);
+  // ⚠️ sem comentários: o texto que EXPLICA a mudança cita o formato velho
+  const semComent = app.split('\n').filter((l) => !l.trim().startsWith('//')).join('\n');
+  ok(!/configDaEmpresa\('ambtotal'\)/.test(semComent)
+     && !/obterEmpresa\('ambtotal'\)/.test(semComent),
+     '  e nenhum dos dois esta cravado no CODIGO');
 }
 
 // ── ⚠️ e o estado no escopo do módulo ───────────────────────────────
@@ -505,6 +510,32 @@ function contarEstadoDoModulo(src) {
     ok(false, '  o indice de NF nao vaza (pulado: fabrica indisponivel)');
     ok(false, '  a primeira manteve o que era dela (pulado: fabrica indisponivel)');
   }
+}
+
+// ── ⚠️ PASSO 3, FATIA 4: a empresa sai de dentro do código ──────────
+//
+// Era `configDaEmpresa('ambtotal')` — cravado. Trocar a string
+// SUBSTITUIRIA a AMB em vez de montar as duas, que é o P0 da auditoria.
+//
+// 📌 Agora vem de `DEVOLUCOES_EMPRESA`, com 'ambtotal' de PADRÃO: sem declarar
+// nada, o comportamento é idêntico. Quando o bootstrap montar por empresa,
+// ele passa a chave em vez de alguém editar código.
+{
+  ok(/const EMPRESA_DESTE_APP = String\(process\.env\.DEVOLUCOES_EMPRESA \|\| 'ambtotal'\)/.test(app),
+     '⚠️ a empresa do app vem de env, com padrao `ambtotal`');
+  ok(/configDaEmpresa\(EMPRESA_DESTE_APP\)/.test(app),
+     '  e a config usa essa chave');
+  ok(/obterEmpresa\(EMPRESA_DESTE_APP\)/.test(app),
+     '  ⚠️ e a FICHA tambem (era o 2o ponto cravado)');
+  // (a checagem "nao esta cravado" vive no bloco acima, que ignora
+  // comentarios — o texto que EXPLICA a mudanca cita o formato velho)
+
+  // ⚠️ e a chave muda o que IMPORTA — não é cosmético
+  const { obterEmpresa } = require('../lib/empresas');
+  const tabAmb = (obterEmpresa('ambtotal').tabelas || {}).devolucoes;
+  const tabGood = (obterEmpresa('good').tabelas || {}).devolucoes;
+  ok(!!tabAmb && !!tabGood && tabAmb !== tabGood,
+     `⚠️ a chave decide a TABELA (${tabAmb} x ${tabGood}) — trocar nao e cosmetico`);
 }
 
 console.log('');
