@@ -139,7 +139,6 @@ function criarAppEmpresa(empresaAlvo) {
 const express = require('express');
 const path = require('path');
 const crypto = require('crypto');
-const cfg = require('./config-AMB');
 // b249 - FASE 3, passo 4: os modulos que ja sao FABRICA sao montados COM A
 // FICHA, em vez de vir prontos com o config da AMB embutido.
 //
@@ -181,6 +180,26 @@ const { configDaEmpresa } = require('../lib/config-da-empresa');
 const EMPRESA_DESTE_APP = String(
   empresaAlvo || process.env.DEVOLUCOES_EMPRESA || 'ambtotal').trim();
 const CFG_EMPRESA = configDaEmpresa(EMPRESA_DESTE_APP);
+
+// ⚠️ b367 - O APP LARGA O `config-AMB` FIXO.
+//
+// Era `require('./config-AMB')` — arquivo SO DA AMB, lido 22 vezes
+// (NOME_EMPRESA, loja, bling, supabase, urlBase, PREFIXO). Com 2 empresas,
+// TODAS essas leituras seriam da AMB — e era por isso que o freio do
+// server.js existia.
+//
+// 📌 PROVEI A EQUIVALENCIA CAMPO A CAMPO antes de trocar, e achei 2 que
+// quebrariam producao:
+//   EMPRESA      'amb' x 'ambtotal'  -> orfanaria os dados
+//   shopee.loja  'amb' x 'ambtotal'  -> o PROXY so conhece 'amb': a Shopee
+//                                        cairia
+// Os dois passaram a usar `chaveDados`, e agora batem.
+//
+// ⚠️ A UNICA diferenca que SOBROU e intencional: o `redirectUri` agora leva
+// o prefixo da empresa. Era `/callback` pra todas; com 2, a Girassol
+// mandaria o marketplace devolver o codigo na rota da AMB — e o token dela
+// seria gravado na conta da AMBTotal.
+const cfg = CFG_EMPRESA;
 
 const bling = require('./lib-AMB/bling-AMB').criar(CFG_EMPRESA);
 const ml = require('./lib-AMB/ml-AMB').criar(CFG_EMPRESA);
@@ -461,7 +480,7 @@ function linksReclamacao(marketplace, d = {}) {
 }
 
 function redirectOAuth() {
-  return cfg.urlBase() + '/amb/oauth/callback';
+  return cfg.redirectUri('/oauth/callback');
 }
 
 // ── Paginas ──────────────────────────────────────────────────
