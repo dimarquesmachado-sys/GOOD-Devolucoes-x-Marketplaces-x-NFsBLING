@@ -254,9 +254,22 @@ function contarEstadoDoModulo(src) {
 //
 // 📌 Com isso os 13 modulos exigidos direto foram todos auditados; nao
 // sobra mais nenhum "resto" para os passos 2/3 descobrirem depois.
+// ⚠️ (Codex, P2) - `auth-AMB` FICOU NA LISTA DEPOIS DE JA CONVERTIDO (b360).
+//
+// O regex abaixo (`require('./lib-AMB/${nome}')(?!\.criar)`) roda no
+// FONTE CRU, sem tirar comentario. O bloco que explica o b360 em
+// app-AMB.js cita, em texto, `require('./lib-AMB/auth-AMB')` sem `.criar`
+// — e isso batia no regex, mantendo `exigidoDireto` verdadeiro mesmo
+// depois do require REAL (linha com `.criar(CFG_EMPRESA.AUTH)`) ter
+// deixado de casar. O teste ficava verde por coincidencia de comentario,
+// escondendo que auth-AMB ja tinha virado fabrica.
+//
+// 📌 Tirei auth-AMB da lista: ele ja usa `.criar(CFG_EMPRESA.AUTH)` (ver
+// asserção especifica mais abaixo, "o AUTH e por EMPRESA"), entao nao e
+// mais um singleton pendente pros passos 2/3.
 {
   const SINGLETONS_REQUERIDOS = [
-    'auth-AMB', 'shopee-AMB', 'magalu-AMB',
+    'shopee-AMB', 'magalu-AMB',
     'ml-motivo-AMB', 'impressao-AMB', 'nf-entrada-AMB', 'compat-AMB', 'email-AMB',
   ];
   let totalSingletons = 0;
@@ -593,6 +606,40 @@ function contarEstadoDoModulo(src) {
   const cookies = ['ambtotal', 'good'].map((k) => configDaEmpresa(k).AUTH.cookie);
   ok(new Set(cookies).size === cookies.length,
      `⚠️ cookies UNICOS por empresa (${cookies.join(' x ')})`);
+
+  // ⚠️ (Codex, P2) - regressao: a GOOD tem `prefixoRota: ''` e ainda roda em
+  // producao com `USERS`/`ADMIN_USER` sem prefixo (b250). Os dois bugs
+  // achados so aparecem com a GOOD, nunca com a AMB (que tem prefixoRota e
+  // ja usa nomes prefixados) — por isso a asserção acima nao os pegava.
+  {
+    const salvos = ['GOOD_USERS', 'USERS', 'GOOD_ADMIN_USER', 'ADMIN_USER']
+      .map((n) => [n, process.env[n]]);
+    delete process.env.GOOD_USERS;
+    delete process.env.GOOD_ADMIN_USER;
+    process.env.USERS = 'diego:s1';
+    process.env.ADMIN_USER = 'diego';
+
+    const authGood = configDaEmpresa('good').AUTH;
+    // ⚠️ o bootstrap (server.js/empresasAtivasNoDevolucoes) monta a GOOD em
+    // `/good`, nao em `/amb` — o cookie tem que ter o MESMO path, senao o
+    // navegador nao o envia de volta pras rotas da GOOD (login 200, sessao
+    // seguinte 401).
+    ok(authGood.caminhoCookie === '/good',
+       `⚠️ caminhoCookie da GOOD acompanha a rota que o bootstrap monta (veio '${authGood.caminhoCookie}')`);
+    // ⚠️ auth-AMB.js le `process.env[envUsers]` DIRETO (sem envDaEmpresa) —
+    // sem o nome HISTORICO aqui, a GOOD leria `GOOD_USERS` (vazio hoje) e
+    // ninguem conseguiria logar.
+    ok(authGood.envUsers === 'USERS' && authGood.envAdmins === 'ADMIN_USER',
+       `⚠️ sem GOOD_USERS/GOOD_ADMIN_USER no ambiente, cai no nome HISTORICO (veio '${authGood.envUsers}'/'${authGood.envAdmins}')`);
+
+    process.env.GOOD_USERS = 'diego:s1';
+    process.env.GOOD_ADMIN_USER = 'diego';
+    const authGoodNovo = configDaEmpresa('good').AUTH;
+    ok(authGoodNovo.envUsers === 'GOOD_USERS' && authGoodNovo.envAdmins === 'GOOD_ADMIN_USER',
+       `  com GOOD_USERS/GOOD_ADMIN_USER configurados, usa o nome NOVO (veio '${authGoodNovo.envUsers}'/'${authGoodNovo.envAdmins}')`);
+
+    for (const [n, v] of salvos) { if (v == null) delete process.env[n]; else process.env[n] = v; }
+  }
 
   // e o isolamento de verdade, com duas instâncias
   const auth = require('../amb-devolucoes/lib-AMB/auth-AMB.js');
