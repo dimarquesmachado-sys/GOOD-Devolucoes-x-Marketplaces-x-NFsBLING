@@ -14,7 +14,32 @@
 // ════════════════════════════════════════════════════════════════════
 (function () {
   'use strict';
-  var BASE = '/amb';
+  // ⚠️ b369 - A BASE VEM DA URL, nao cravada.
+  //
+  // Era `'/amb'` fixo. Com a Girassol em `/girassol`, toda chamada de API
+  // desta tela iria pro servidor da AMB — e como a sessao e por empresa, o
+  // usuario da Girassol levaria 401 em tudo, sem entender por que.
+  //
+  // 📌 O 1o segmento da URL E o prefixo da empresa: /amb/..., /girassol/...
+  // A GOOD e a raiz (sem prefixo), e por isso a lista de segmentos
+  // conhecidos decide — em vez de assumir que sempre ha um.
+  //
+  // ⚠️ NAO uso "o 1o segmento, seja qual for": se alguem abrir /qualquer/
+  // coisa, isso viraria base e as chamadas iriam pra lugar nenhum. So aceito
+  // o que o backend serve.
+  var PREFIXOS_CONHECIDOS = ['/amb', '/girassol'];
+  var BASE = (function () {
+    var caminho = String(window.location.pathname || '');
+    for (var i = 0; i < PREFIXOS_CONHECIDOS.length; i++) {
+      var p = PREFIXOS_CONHECIDOS[i];
+      if (caminho === p || caminho.indexOf(p + '/') === 0) return p;
+    }
+    return '';   // a GOOD e a raiz
+  })();
+
+  // ⚠️ b369: as telas precisam da base pra montar link e navegacao. Sem isto
+  // elas continuariam escrevendo `/amb/` na mao — que e o que estamos tirando.
+  window.APP_BASE = BASE;
 
   // so mexe no que e chamada de API deste servidor — nao toca em CDN,
   // caminho relativo (js-AMB/...), blob:, data: nem URL absoluta
