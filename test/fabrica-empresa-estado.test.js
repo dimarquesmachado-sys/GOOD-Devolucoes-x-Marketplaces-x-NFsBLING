@@ -268,10 +268,27 @@ function contarEstadoDoModulo(src) {
 // asserção especifica mais abaixo, "o AUTH e por EMPRESA"), entao nao e
 // mais um singleton pendente pros passos 2/3.
 {
+  // ⚠️ b361 - ESTA LISTA ENCOLHE A CADA MODULO CONVERTIDO.
+  //
+  // Ela guarda quem AINDA e instancia unica do processo. Conforme cada um
+  // vira `.criar(CFG_EMPRESA)`, sai daqui e entra na lista dos convertidos
+  // abaixo — que prova o contrario.
+  //
+  // 📌 Quando esta lista esvaziar, o freio do server.js pode sair e 2
+  // empresas podem subir juntas.
   const SINGLETONS_REQUERIDOS = [
-    'shopee-AMB', 'magalu-AMB',
     'ml-motivo-AMB', 'impressao-AMB', 'nf-entrada-AMB', 'compat-AMB', 'email-AMB',
   ];
+
+  // ⚠️ e estes JA sao por empresa — o teste prova, senao alguem poderia
+  // "converter" e o app continuar usando a instancia velha (foi o que
+  // aconteceu com o auth-AMB por um dia inteiro).
+  const JA_CONVERTIDOS = ['auth-AMB', 'magalu-AMB', 'shopee-AMB'];
+  for (const nome of JA_CONVERTIDOS) {
+    const usaFabrica = new RegExp(
+      `require\\('\\./lib-AMB/${nome}'\\)\\.criar\\(`).test(app);
+    ok(usaFabrica, `⚠️ ${nome}: o app usa .criar() (nao a instancia do processo)`);
+  }
   let totalSingletons = 0;
   const porArquivo = [];
   for (const nome of SINGLETONS_REQUERIDOS) {

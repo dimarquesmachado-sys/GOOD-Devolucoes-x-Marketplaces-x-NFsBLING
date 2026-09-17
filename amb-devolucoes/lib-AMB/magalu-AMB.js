@@ -21,6 +21,26 @@
 //   /v1/fulfillment/{tenant}  -> Fulfillment (o Magalu Full!)
 // ============================================================
 
+// ⚠️ b361 - O MAGALU VIRA FABRICA (2 de 13).
+//
+// Era instancia unica do processo. Guarda os TOKENS: com duas empresas, uma
+// faria requisicao ao Magalu com a CREDENCIAL DA OUTRA — e o marketplace
+// responde com os dados da conta errada, sem erro nenhum.
+//
+// 📌 ENVOLVO SEM REINDENTAR (mesma tecnica do app-AMB): reindentar 568
+// linhas daria um diff ilegivel onde ninguem acharia um erro real.
+//
+// ⚠️ AS 6 ENVS ERAM CRAVADAS EM `AMB_MAGALU_*`. Agora vem do prefixo da
+// empresa, com `AMB_` de padrao — a AMB le exatamente as mesmas de hoje.
+//
+// ⚠️ E HA 8 TIMERS AQUI (renovacao preventiva, pre-aquecimento). Com duas
+// instancias eles DOBRAM: duas renovacoes do mesmo token e corrida — e o
+// refresh do Magalu e de USO UNICO, entao uma invalidaria a outra. Por isso
+// `ligarRenovacaoPreventiva` continua sendo chamada UMA vez pelo app, e nao
+// dentro da fabrica.
+function criar(cfgEmpresa) {
+const _PREFIXO = String((cfgEmpresa && cfgEmpresa.PREFIXO_ENV) || 'AMB_');
+const _env = (nome) => process.env[_PREFIXO + 'MAGALU_' + nome] || '';
 'use strict';
 
 const axios = require('axios');
@@ -48,9 +68,9 @@ const API_BASE = process.env.MAGALU_API_BASE || 'https://api.magalu.com';
 // Sem essas variaveis, segue usando o app compartilhado com a GOOD -
 // entao criar isto nao muda nada enquanto voce nao preencher.
 // ═══════════════════════════════════════════════════════════════════════
-const CLIENT_ID = process.env.AMB_MAGALU_CLIENT_ID || process.env.MAGALU_CLIENT_ID || '';
-const CLIENT_SECRET = process.env.AMB_MAGALU_CLIENT_SECRET || process.env.MAGALU_CLIENT_SECRET || '';
-const APP_PROPRIO = !!process.env.AMB_MAGALU_CLIENT_ID;
+const CLIENT_ID = _env('CLIENT_ID') || process.env.MAGALU_CLIENT_ID || '';
+const CLIENT_SECRET = _env('CLIENT_SECRET') || process.env.MAGALU_CLIENT_SECRET || '';
+const APP_PROPRIO = !!_env('CLIENT_ID');
 // ═══════════════════════════════════════════════════════════════════════
 // b148 - OS ESCOPOS SAO OS MESMOS DA GOOD.
 // O app do Magalu e COMPARTILHADO pelas duas empresas, entao os escopos
@@ -101,9 +121,9 @@ function criarEstadoMagalu() {
   return {
     // tokens da conta — o mais sensivel
     tokens: {
-      access: process.env.AMB_MAGALU_ACCESS_TOKEN || '',
-      refresh: process.env.AMB_MAGALU_REFRESH_TOKEN || '',
-      tenant: process.env.AMB_MAGALU_TENANT_ID || '',
+      access: _env('ACCESS_TOKEN') || '',
+      refresh: _env('REFRESH_TOKEN') || '',
+      tenant: _env('TENANT_ID') || '',
     },
     // controle da renovacao (o refresh do Magalu e de uso unico)
     renov: { emVoo: null, ultimaPersistencia: false },
@@ -143,7 +163,7 @@ function urlAutorizacao(state, redirectUri) {
     client_id: CLIENT_ID, redirect_uri: redirectUri,
     response_type: 'code', scope: SCOPES, state,
   });
-  if (String(process.env.AMB_MAGALU_CHOOSE_TENANTS || 'true').toLowerCase() !== 'false') {
+  if (String(_env('CHOOSE_TENANTS') || 'true').toLowerCase() !== 'false') {
     p.set('choose_tenants', 'true');
   }
   return `${ID_BASE}/login?${p.toString()}`;
@@ -167,8 +187,8 @@ async function trocarCodePorToken(code, redirectUri) {
   // producao ha semanas.
   // ═══════════════════════════════════════════════════════════════════
   const persistiu = await tokens.atualizarTokensNoRender([
-    { key: 'AMB_MAGALU_ACCESS_TOKEN',  value: TOKENS.access },
-    { key: 'AMB_MAGALU_REFRESH_TOKEN', value: TOKENS.refresh },
+    { key: _PREFIXO + 'MAGALU_ACCESS_TOKEN',  value: TOKENS.access },
+    { key: _PREFIXO + 'MAGALU_REFRESH_TOKEN', value: TOKENS.refresh },
   ]);
   return { ok: true, persistiu, expira_em_s: r.data.expires_in || null };
 }
@@ -205,8 +225,8 @@ async function renovarInterno() {
   // JA CONSUMIDO e o proximo restart cai sem token — justo o caso que da
   // mais trabalho pra recuperar (consentimento inteiro no navegador certo).
   RENOV.ultimaPersistencia = !!(await tokens.atualizarTokensNoRender([   // b150: nome/formato certos
-    { key: 'AMB_MAGALU_ACCESS_TOKEN',  value: TOKENS.access },
-    { key: 'AMB_MAGALU_REFRESH_TOKEN', value: TOKENS.refresh },
+    { key: _PREFIXO + 'MAGALU_ACCESS_TOKEN',  value: TOKENS.access },
+    { key: _PREFIXO + 'MAGALU_REFRESH_TOKEN', value: TOKENS.refresh },
       ...(PREVENTIVA.parEnvCarimbo() ? [PREVENTIVA.parEnvCarimbo()] : []),   // b271
   ]));
   if (!RENOV.ultimaPersistencia) console.error('[AMB/Magalu] renovou mas NAO persistiu no Render — refresh gravado esta consumido');
@@ -482,7 +502,7 @@ async function construirIndice() {
 
 function resumoEspreita() {
   if (!temToken()) return { quente: false, desligada: true, falta: 'consentimento OAuth da conta Magalu da AMB', em_transito: [] };
-  if (!temTenant()) return { quente: false, desligada: true, falta: 'AMB_MAGALU_TENANT_ID', em_transito: [] };
+  if (!temTenant()) return { quente: false, desligada: true, falta: _PREFIXO + 'MAGALU_TENANT_ID', em_transito: [] };
   if (!IDX.ts) return { quente: false, em_transito: [] };
 
   const dias = (v) => v ? Math.floor((Date.now() - Date.parse(v)) / 864e5) : null;
@@ -527,7 +547,7 @@ function preAquecer() {
   setInterval(() => { construirIndiceDevolucoes({ reverseEmBackground: true }).catch(() => {}); }, 30 * 60 * 1000).unref();
 
   if (!temTenant()) {
-    console.log('[AMB/MAGALU] espreita desligada - falta AMB_MAGALU_TENANT_ID (tickets seguem)');
+    console.log('[AMB/MAGALU] espreita desligada - falta ' + _PREFIXO + 'MAGALU_TENANT_ID (tickets seguem)');
     return;
   }
   setTimeout(() => { construirIndice().catch(e => console.error('[AMB/MAGALU]', e.message)); }, 5 * 60 * 1000).unref();
@@ -545,24 +565,37 @@ function appEmUso() {
 // a EMPRESA como parametro: integracao nova (ou empresa nova) = um registro
 // como este, zero logica duplicada.
 const PREVENTIVA = registrarPreventiva({
-  empresa: 'ambtotal', integracao: 'magalu',
+  // b362 (review do Codex) - a empresa e o prefixo saem da FICHA recebida,
+  // nao do literal (mesmo padrao do bling-AMB, b246). Com duas instancias,
+  // `empresa: 'ambtotal'` fixo faria as duas competirem pelo MESMO registro
+  // de renovacao: a segunda substituiria o callback da primeira, e o
+  // batimento so renovaria a empresa registrada por ultimo.
+  empresa: (cfgEmpresa && cfgEmpresa.CHAVE_REGISTRO) || 'ambtotal', integracao: 'magalu',
   temRefresh: () => !!TOKENS.refresh,
   renovar: () => renovar(),
   persistiu: () => RENOV.ultimaPersistencia,
-  carimboEnv: 'AMB_MAGALU_RENOVADO_EM',
-  diasEnv: 'AMB_MAGALU_RENOVAR_DIAS',
+  carimboEnv: _PREFIXO + 'MAGALU_RENOVADO_EM',
+  diasEnv: _PREFIXO + 'MAGALU_RENOVAR_DIAS',
 });
 const renovacaoPreventiva = (op) => PREVENTIVA.preventiva(op);
 const ligarRenovacaoPreventiva = (op) => PREVENTIVA.ligar(op);
 
-module.exports = {
+
+return {
   appEmUso,
-  renovacaoPreventiva, ligarRenovacaoPreventiva,   // b265
-  cfg,                       // b152 - interface que a identificar espera
-  acharDevolucao,            // b152 - bipe: protocolo | reverse_code | pedido
+  renovacaoPreventiva, ligarRenovacaoPreventiva,
+  cfg,
+  acharDevolucao,
   listarTickets, remessasReversasDoTicket, construirIndiceDevolucoes,
   temCredenciais, temToken, temTenant,
   urlAutorizacao, trocarCodePorToken, chamarMagalu,
   construirIndice, resumoEspreita, statusIndice, preAquecer,
   porPedido: (p) => IDX.porPedido[String(p)] || null,
 };
+}
+
+// ⚠️ SO A FABRICA. Sem instancia padrao de proposito: se eu deixasse uma, o
+// app poderia continuar usando a antiga sem nada avisar — foi exatamente o
+// que aconteceu com o auth-AMB, que teve `criar()` por um dia inteiro
+// enquanto o app usava a instancia do processo.
+module.exports = { criar };

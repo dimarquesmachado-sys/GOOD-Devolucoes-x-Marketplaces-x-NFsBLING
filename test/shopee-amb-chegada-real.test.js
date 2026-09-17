@@ -15,7 +15,13 @@ process.env.SHOPEE_PROXY_URL = 'http://proxy.teste';
 process.env.SHOPEE_PROXY_KEY = 'chave-teste';
 process.env.AMB_SHOPEE_LOJA = 'amb';
 
-const shopee = require('../amb-devolucoes/lib-AMB/shopee-AMB');
+// ⚠️ b362: o modulo virou FABRICA (3 de 13) — exporta `{ criar }`, nao a
+// instancia pronta. Sem isto o teste pegava o objeto da fabrica e chamava
+// `resumoEspreita` nele, que nao existe ali.
+const _shopeeMod = require('../amb-devolucoes/lib-AMB/shopee-AMB');
+const shopee = (typeof _shopeeMod.criar === 'function')
+  ? _shopeeMod.criar({ PREFIXO_ENV: 'AMB_' })
+  : _shopeeMod;
 
 let falhas = 0;
 const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o); };
