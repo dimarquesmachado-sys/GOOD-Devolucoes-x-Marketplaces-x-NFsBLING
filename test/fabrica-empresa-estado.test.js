@@ -340,6 +340,16 @@ function contarEstadoDoModulo(src) {
   // `const X = criarAlgo()` contam igual, e sao coisas OPOSTAS pro passo 3.
   //
   // 📌 Agora meco o que resta a fazer: gaveta que NAO vem de fabrica.
+  //
+  // ⚠️ (Codex, P2) - `deFabrica === true` NAO PROVA INSTANCIA POR EMPRESA.
+  //
+  // Os 8 modulos acima continuam `exigidoDireto` (require direto, sem
+  // `.criar(CFG_EMPRESA)` — ver asserção logo acima). Por causa do cache de
+  // `require` do Node, `const _EST = criarEstadoShopee()` ainda roda UMA VEZ
+  // por processo, nao uma vez por empresa — o mesmo vazamento de hoje, so
+  // que embrulhado numa funcao. "soltos === 0" prova que a gaveta esta NO
+  // FORMATO que o passo 4 vai instanciar por empresa; NAO prova que o
+  // vazamento acabou. Isso so acontece quando `exigidoDireto` virar falso.
   const soltos = [];
   for (const nome of SINGLETONS_REQUERIDOS) {
     const src = fs.readFileSync(
@@ -354,7 +364,8 @@ function contarEstadoDoModulo(src) {
     }
   }
   ok(soltos.length === 0,
-     '⚠️ ZERO gavetas de estado soltas nos modulos'
+     '⚠️ ZERO gavetas de estado FORA DO FORMATO fabrica nos modulos (o vazamento entre'
+     + ' empresas so acaba quando `exigidoDireto` virar `.criar(CFG_EMPRESA)`)'
      + (soltos.length ? ` (achei: ${soltos.join(', ')})` : ''));
 }
 
