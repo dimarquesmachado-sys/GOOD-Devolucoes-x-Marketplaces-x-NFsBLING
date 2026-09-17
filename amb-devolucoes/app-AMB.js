@@ -187,7 +187,20 @@ const ml = require('./lib-AMB/ml-AMB').criar(CFG_EMPRESA);
 const mlReturns = require('./lib-AMB/ml-returns-AMB').criar(CFG_EMPRESA);
 const nfNomes = require('./lib-AMB/nf-nomes-AMB').criar(CFG_EMPRESA);
 const tokens = require('../lib/render-tokens');
-const auth = require('./lib-AMB/auth-AMB');
+// ⚠️ b360 - O AUTH PASSA A SER POR EMPRESA.
+//
+// Era `require('./lib-AMB/auth-AMB')` — a instancia PADRAO do modulo, UMA
+// por processo. A fabrica `criar(cfg)` existe desde o PR #295, mas o app
+// nunca a chamou: faltava a config ter os campos que ela exige.
+//
+// ⚠️ ERA O MAIOR RISCO DOS 13: cookie, sessoes e contagem de falhas de login
+// compartilhados. Duas empresas no mesmo processo e o login de uma valeria na
+// outra — e travar a conta de um usuario travaria nas duas.
+//
+// 📌 Os valores da AMB batem EXATAMENTE com os padroes de hoje (conferido
+// contra `PADRAO` no auth-AMB): mesmo cookie `sessao_amb`, mesmo caminho,
+// mesmas envs. Ninguem cai da sessao no deploy.
+const auth = require('./lib-AMB/auth-AMB').criar(CFG_EMPRESA.AUTH);
 const tiktokPonte = require('../lib/tiktok-ponte');
 const erroCodigo = require('../lib/erro-de-codigo');   // b205 - bug meu nao e falha do marketplace
 const confrontar = require('../lib/confrontar-nf');   // b208 - escada de desempate da NF
@@ -327,7 +340,7 @@ const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 // mais um 403 pendente, e vice-versa). A AMB nunca consultou
 // lib/token-leitor.js (os modulos lib-AMB/* nao honram essa politica,
 // confirmado por grep) - nada a espelhar.
-const VERSAO = 'AMB Devolucoes b359';
+const VERSAO = 'AMB Devolucoes b360';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();

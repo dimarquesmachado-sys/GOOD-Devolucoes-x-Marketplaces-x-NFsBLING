@@ -567,6 +567,51 @@ function contarEstadoDoModulo(src) {
      `⚠️ a chave decide a TABELA (${tabAmb} x ${tabGood}) — trocar nao e cosmetico`);
 }
 
+// ── ⚠️ o AUTH e por EMPRESA, não do processo ────────────────────────
+//
+// Era `require('./lib-AMB/auth-AMB')` — a instância PADRÃO, uma por
+// processo. A fábrica `criar(cfg)` existia desde o PR #295, mas o app nunca
+// a chamou: faltava a config ter os 4 campos que ela exige.
+//
+// ⚠️ Era o maior risco dos 13: cookie, sessões e contagem de falhas de login
+// compartilhados. Duas empresas e o login de uma valeria na outra.
+{
+  ok(/require\('\.\/lib-AMB\/auth-AMB'\)\.criar\(CFG_EMPRESA\.AUTH\)/.test(app),
+     '⚠️ o app cria o auth POR EMPRESA (era a instancia do processo)');
+
+  const { configDaEmpresa } = require('../lib/config-da-empresa');
+
+  // ⚠️ a AMB não pode mudar: cookie diferente = todo mundo cai no deploy
+  const authAmb = configDaEmpresa('ambtotal').AUTH;
+  ok(authAmb.cookie === 'sessao_amb' && authAmb.caminhoCookie === '/amb'
+     && authAmb.envUsers === 'AMB_USERS' && authAmb.envAdmins === 'AMB_ADMIN_USER',
+     '⚠️ e os valores da AMB sao IDENTICOS aos de hoje (ninguem cai da sessao)');
+
+  // ⚠️ e cookies únicos por empresa — a GOOD tem rota vazia e caía em
+  // `sessao_amb` no meu 1º rascunho: as duas com o MESMO cookie, que é
+  // exatamente o vazamento que este trabalho fecha.
+  const cookies = ['ambtotal', 'good'].map((k) => configDaEmpresa(k).AUTH.cookie);
+  ok(new Set(cookies).size === cookies.length,
+     `⚠️ cookies UNICOS por empresa (${cookies.join(' x ')})`);
+
+  // e o isolamento de verdade, com duas instâncias
+  const auth = require('../amb-devolucoes/lib-AMB/auth-AMB.js');
+  process.env.AMB_USERS = 'ana:s1';
+  process.env.AMB_ADMIN_USER = 'ana';
+  process.env.GIRA_ISO_USERS = 'bruno:s2';
+  process.env.ADMIN_SESSION_SECRET = 'segredo-fixo-de-teste-com-40-caracteres!!';
+
+  const a = auth.criar(authAmb);
+  const b = auth.criar({
+    cookie: 'sessao_gira_iso', caminhoCookie: '/gira-iso',
+    validadeMs: 12 * 60 * 60 * 1000,
+    envUsers: 'GIRA_ISO_USERS', envAdmins: 'GIRA_ISO_ADMIN',
+  });
+  const tk = a.novaSessao('ana', 'admin');
+  ok(!b.validarSessao(tk), '⚠️ token de uma empresa NAO vale na outra');
+  ok(!a.validarSessao(b.novaSessao('bruno', 'admin')), '  nos dois sentidos');
+}
+
 console.log('');
 console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
 process.exit(falhas ? 1 : 0);

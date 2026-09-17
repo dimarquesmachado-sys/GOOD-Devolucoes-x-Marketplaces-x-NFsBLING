@@ -109,9 +109,20 @@ Module._load = function (pedido) {
   if (pedido === '@supabase/supabase-js') return { createClient: () => clienteFalso() };
   if (pedido.indexOf('auth-AMB') !== -1) {
     const real = originalLoad.apply(this, arguments);
-    return Object.assign({}, real, {
+    // ⚠️ b360: o app agora chama `auth.criar(cfg)` em vez de usar a instancia
+    // pronta. Sobrepor so o objeto de cima nao bastava — o `criar()` devolvia
+    // o auth REAL, com o `requerLogin` de verdade, e a rota passou a exigir
+    // sessao (401) num teste que nao faz login.
+    //
+    // 📌 Entao sobreponho nos DOIS caminhos: no objeto (compatibilidade) e no
+    // que a fabrica devolve.
+    const livre = {
       requerLogin: (req, res, next) => next(),
       requerAdmin: (req, res, next) => next(),
+    };
+    return Object.assign({}, real, livre, {
+      criar: (cfg) => Object.assign({},
+        (typeof real.criar === 'function' ? real.criar(cfg) : real), livre),
     });
   }
   return originalLoad.apply(this, arguments);
