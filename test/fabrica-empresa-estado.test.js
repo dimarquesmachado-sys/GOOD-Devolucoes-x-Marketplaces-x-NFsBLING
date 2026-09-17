@@ -276,14 +276,20 @@ function contarEstadoDoModulo(src) {
   //
   // 📌 Quando esta lista esvaziar, o freio do server.js pode sair e 2
   // empresas podem subir juntas.
-  const SINGLETONS_REQUERIDOS = [
-    'ml-motivo-AMB', 'impressao-AMB', 'nf-entrada-AMB', 'compat-AMB', 'email-AMB',
-  ];
+  // ⚠️ b364 - A LISTA ESVAZIOU: nenhum dos modulos de estado e mais
+  // instancia unica do processo.
+  //
+  // 📌 Mas o freio do server.js NAO sai ainda: faltam os 5 de rotas
+  // (marketplace, admin-helpers, rotas-admin, identificar, defeitos-ciclo).
+  // Eles recebem `deps` em vez de guardar estado, entao o risco e menor —
+  // mas "menor" nao e "nenhum", e 2 empresas so sobem quando forem zero.
+  const SINGLETONS_REQUERIDOS = [];
 
   // ⚠️ e estes JA sao por empresa — o teste prova, senao alguem poderia
   // "converter" e o app continuar usando a instancia velha (foi o que
   // aconteceu com o auth-AMB por um dia inteiro).
-  const JA_CONVERTIDOS = ['auth-AMB', 'magalu-AMB', 'shopee-AMB'];
+  const JA_CONVERTIDOS = ['auth-AMB', 'magalu-AMB', 'shopee-AMB',
+    'ml-motivo-AMB', 'impressao-AMB', 'email-AMB', 'nf-entrada-AMB', 'compat-AMB'];
   for (const nome of JA_CONVERTIDOS) {
     const usaFabrica = new RegExp(
       `require\\('\\./lib-AMB/${nome}'\\)\\.criar\\(`).test(app);

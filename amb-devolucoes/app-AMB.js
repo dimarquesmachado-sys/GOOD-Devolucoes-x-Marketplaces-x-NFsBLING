@@ -215,12 +215,12 @@ const shopee = require('./lib-AMB/shopee-AMB').criar(CFG_EMPRESA);
 // ⚠️ b361: o magalu passa a ser POR EMPRESA — guarda os TOKENS, e duas
 // empresas dividindo credencial falariam com a conta errada do marketplace.
 const magalu = require('./lib-AMB/magalu-AMB').criar(CFG_EMPRESA);
-const mlMotivo = require('./lib-AMB/ml-motivo-AMB');
-const impressao = require('./lib-AMB/impressao-AMB');
-const emailAMB = require('./lib-AMB/email-AMB');
-const nfEntrada = require('./lib-AMB/nf-entrada-AMB');
+const mlMotivo = require('./lib-AMB/ml-motivo-AMB').criar(CFG_EMPRESA);   // b364
+const impressao = require('./lib-AMB/impressao-AMB').criar(CFG_EMPRESA);   // b364
+const emailAMB = require('./lib-AMB/email-AMB').criar(CFG_EMPRESA);   // b364
+const nfEntrada = require('./lib-AMB/nf-entrada-AMB').criar(CFG_EMPRESA);   // b364
 const multer = require('multer');
-const compat = require('./lib-AMB/compat-AMB');
+const compat = require('./lib-AMB/compat-AMB').criar(CFG_EMPRESA);   // b364
 const criarAdminHelpers = require('./lib-AMB/admin-helpers-AMB');
 // b240 - UNIFICADO com a GOOD. A versao comum e a que estava aqui (a mais
 // completa: tinha 2 funcoes e 3 consertos de bug que a GOOD nao tinha).
@@ -344,7 +344,7 @@ const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 // mais um 403 pendente, e vice-versa). A AMB nunca consultou
 // lib/token-leitor.js (os modulos lib-AMB/* nao honram essa politica,
 // confirmado por grep) - nada a espelhar.
-const VERSAO = 'AMB Devolucoes b363';
+const VERSAO = 'AMB Devolucoes b364';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();

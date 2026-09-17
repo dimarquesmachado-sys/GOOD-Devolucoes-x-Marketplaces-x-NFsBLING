@@ -16,6 +16,15 @@
 // o Diego ve qual tipo traz "Devolucao de venda".
 // ============================================================
 
+// ⚠️ b364 - VIRA FABRICA: o indice de NF de entrada — notas da outra empresa.
+//
+// Era instancia unica do processo. Mesma tecnica dos anteriores: envolvo
+// SEM REINDENTAR, pra o diff ficar legivel.
+//
+// ⚠️ As envs com prefixo passam a vir da empresa, com `AMB_` de padrao —
+// a AMB le exatamente as mesmas de hoje.
+function criar(cfgEmpresa) {
+const _PREFIXO = String((cfgEmpresa && cfgEmpresa.PREFIXO_ENV) || 'AMB_');
 'use strict';
 
 const bling = require('./bling-AMB');
@@ -46,14 +55,14 @@ const colapsar = (s) => String(s || '')
   .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
   .toUpperCase().replace(/[^A-Z]/g, '');
 
-const TIPO = () => String(process.env.AMB_NF_ENTRADA_TIPO || '0');
+const TIPO = () => String(process.env[_PREFIXO + 'NF_ENTRADA_TIPO'] || '0');
 
 async function construirIndice() {
   if (EST.construindo) return IDX;
   EST.construindo = true;
   const t0 = Date.now();
   try {
-    const dias = Number(process.env.AMB_NF_ENTRADA_DIAS || 180);
+    const dias = Number(process.env[_PREFIXO + 'NF_ENTRADA_DIAS'] || 180);
     const corte = Date.now() - dias * 864e5;
     const porPedido = {}, porNome = {};
     let total = 0, erro = null, parou = false;
@@ -150,4 +159,9 @@ function preAquecer() {
   setInterval(() => { construirIndice().catch(() => {}); }, 45 * 60 * 1000).unref();
 }
 
-module.exports = { construirIndice, jaEmitida, statusIndice, sondarTipos, preAquecer };
+
+return { construirIndice, jaEmitida, statusIndice, sondarTipos, preAquecer };
+}
+
+// ⚠️ so a fabrica — sem instancia padrao, pra ninguem usar a velha sem notar
+module.exports = { criar };

@@ -26,6 +26,15 @@
 //
 //  Montado pelo app-AMB.js com montar(router, deps).
 // ════════════════════════════════════════════════════════════════════════
+// ⚠️ b364 - VIRA FABRICA: caches de imagem, SKU, formato e kit — FOTO TROCADA.
+//
+// Era instancia unica do processo. Mesma tecnica dos anteriores: envolvo
+// SEM REINDENTAR, pra o diff ficar legivel.
+//
+// ⚠️ As envs com prefixo passam a vir da empresa, com `AMB_` de padrao —
+// a AMB le exatamente as mesmas de hoje.
+function criar(cfgEmpresa) {
+const _PREFIXO = String((cfgEmpresa && cfgEmpresa.PREFIXO_ENV) || 'AMB_');
 'use strict';
 
 const crypto = require('crypto');
@@ -990,7 +999,7 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
     if (!cliente) return res.status(500).json({ ok: false, erro: 'Supabase nao configurado' });
     if (!req.file) return res.status(400).json({ ok: false, erro: 'Foto nao enviada' });
 
-    const bucket = process.env.AMB_FOTOS_BUCKET || 'fotos-problema';
+    const bucket = process.env[_PREFIXO + 'FOTOS_BUCKET'] || 'fotos-problema';
     const ext = String(req.file.originalname || 'foto.jpg').split('.').pop().toLowerCase();
     const nome = `amb/${req.usuario}/${Date.now()}-${crypto.randomBytes(4).toString('hex')}.${ext}`;
 
@@ -1469,4 +1478,9 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
   return router;
 }
 
-module.exports = { montar, eanDoProduto, norm };
+
+return { montar, eanDoProduto, norm };
+}
+
+// ⚠️ so a fabrica — sem instancia padrao, pra ninguem usar a velha sem notar
+module.exports = { criar };
