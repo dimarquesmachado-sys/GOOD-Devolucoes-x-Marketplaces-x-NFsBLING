@@ -210,7 +210,9 @@ const magaluCancelados = require('../lib/magalu-cancelados');  // b191 - peca UN
 const db = require('./lib-AMB/supabase-AMB').criar(CFG_EMPRESA);
 const mkt = require('./lib-AMB/marketplace-AMB');
 const shopee = require('./lib-AMB/shopee-AMB');
-const magalu = require('./lib-AMB/magalu-AMB');
+// ⚠️ b361: o magalu passa a ser POR EMPRESA — guarda os TOKENS, e duas
+// empresas dividindo credencial falariam com a conta errada do marketplace.
+const magalu = require('./lib-AMB/magalu-AMB').criar(CFG_EMPRESA);
 const mlMotivo = require('./lib-AMB/ml-motivo-AMB');
 const impressao = require('./lib-AMB/impressao-AMB');
 const emailAMB = require('./lib-AMB/email-AMB');
@@ -340,7 +342,7 @@ const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 // mais um 403 pendente, e vice-versa). A AMB nunca consultou
 // lib/token-leitor.js (os modulos lib-AMB/* nao honram essa politica,
 // confirmado por grep) - nada a espelhar.
-const VERSAO = 'AMB Devolucoes b360';
+const VERSAO = 'AMB Devolucoes b362';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
