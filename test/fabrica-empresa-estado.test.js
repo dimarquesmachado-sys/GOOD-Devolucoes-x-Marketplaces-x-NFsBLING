@@ -68,14 +68,20 @@ function contarEstadoDoModulo(src) {
       //
       // ⚠️ E esse e JUSTAMENTE o formato que o passo 3 vai usar em TODAS as
       // gavetas. O teste ficaria cego no passo que existe pra vigiar.
+      // ⚠️ (Codex, P2) - `criarEstado*` E FABRICA DE ESTADO, IGUAL A
+      // `criarGaveta*`. O `magalu-AMB` criou `criarEstadoMagalu()` pra gerar
+      // a instancia de `EST_MAGALU` (que guarda os TOKENS) — nome diferente,
+      // mesmo formato perigoso. Sem este padrao o contador via 0 ali: a
+      // gaveta mais sensivel do modulo ficava invisivel bem no passo que
+      // existe pra vigia-la.
       const m = /^(?:let|var) (\w+)/.exec(t)
         || /^const (\w+)\s*=\s*(?:new Map\(\)|new Set\(\)|\[\]|\{)/.exec(t)
-        // 📌 SO `criarGaveta*`, nao `criar*` em geral: `criarNfPessoa(...)`,
-        // `criarAdminHelpers(...)` e `criarMlBuscas(...)` sao CLIENTES ja
-        // parametrizados — recebem config e nao guardam estado da empresa.
-        // Conta-los inflaria o placar com o que ja esta resolvido, e o numero
-        // deixaria de significar "quanto falta".
-        || /^const (\w+)\s*=\s*criarGaveta\w*\(/.exec(t);
+        // 📌 SO `criarGaveta*`/`criarEstado*`, nao `criar*` em geral:
+        // `criarNfPessoa(...)`, `criarAdminHelpers(...)` e `criarMlBuscas(...)`
+        // sao CLIENTES ja parametrizados — recebem config e nao guardam
+        // estado da empresa. Conta-los inflaria o placar com o que ja esta
+        // resolvido, e o numero deixaria de significar "quanto falta".
+        || /^const (\w+)\s*=\s*(?:criarGaveta|criarEstado)\w*\(/.exec(t);
       if (m) estado.push(m[1]);
     }
 
@@ -299,19 +305,26 @@ function contarEstadoDoModulo(src) {
   //
   // Ou seja: o estado MUTAVEL solto acabou. O que resta sao os pontos que o
   // passo 3 vai instanciar, e eles agora tem nome e limite claros.
-  // ⚠️ b354 - PASSO 3, FATIA 2: 16 -> 11. O `magalu-AMB` foi de 6 pra 1.
+  // ⚠️ b354 - PASSO 3, FATIA 2: 16 -> 12. O `magalu-AMB` foi de 6 pra 2.
   //
   // Mesma tecnica da fatia 1: uma fabrica (`criarEstadoMagalu`) cria as 5
-  // gavetas com escrita, e a instancia de hoje vem dela.
+  // gavetas com escrita, e a instancia de hoje (`EST_MAGALU`) vem dela.
   //
   // ⚠️ Era o de MAIOR RISCO dos que restavam: guarda os TOKENS. Duas
   // empresas dividindo `TOKENS.access` fariam requisicao ao Magalu com a
   // credencial UMA DA OUTRA — e o marketplace responde com os dados da conta
   // errada, sem erro nenhum.
   //
-  // 📌 O `cfg` que sobrou e fachada de leitura (0 escritas, medido) e esta no
-  // `module.exports` — renomear quebraria quem le `magalu.cfg`.
-  ok(totalSingletons === 11,
+  // ⚠️ (Codex, P2) - `EST_MAGALU` FICOU DE FORA DO PRIMEIRO NUMERO (11).
+  //
+  // O detector so reconhecia `criarGaveta*`, entao `const EST_MAGALU =
+  // criarEstadoMagalu()` — a instancia que guarda os TOKENS — nao casava em
+  // nenhum padrao e ficava invisivel. O numero fechava em 11 escondendo
+  // justo o ponto mais sensivel. Com o detector reconhecendo tambem
+  // `criarEstado*`, `magalu-AMB` conta 2: `EST_MAGALU` (a fabrica de
+  // estado) + `cfg` (fachada de leitura, 0 escritas, medido, no
+  // `module.exports` — renomear quebraria quem le `magalu.cfg`).
+  ok(totalSingletons === 12,
      `📌 linha de base EXATA dos singletons requeridos: ${totalSingletons} variaveis tambem vazam entre empresas — ${porArquivo.join('; ')}`);
 }
 

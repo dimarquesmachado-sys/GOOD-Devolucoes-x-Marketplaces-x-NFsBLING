@@ -415,7 +415,7 @@ app.get('/health', (req, res) => {
       // busca por nome. Escolher um lado apagaria a descricao do outro.
       // ⚠️ a resolucao JUNTA as duas: a 7.5.0 (passe curto + tetos) ja esta
       // na main, e este PR acrescenta o build frio que falha vazio.
-      version: '9.26.0 (passo 3 fatia 2: o estado do Magalu vem de uma fabrica — os tokens saem do escopo do modulo)',
+      version: '9.26.1 (revisao do Codex no #304: o detector de estado da AMB tambem reconhece `criarEstado*`, nao so `criarGaveta*` — EST_MAGALU, que guarda os TOKENS, ficava invisivel na contagem)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
