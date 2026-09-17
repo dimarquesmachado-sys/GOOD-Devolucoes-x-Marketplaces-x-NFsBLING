@@ -203,6 +203,37 @@ process.env.AMB_SUPABASE_KEY = 'chave-de-teste';
        '⚠️ nenhum link `/amb/` cravado no codigo'
        + (pos >= 0 ? ` (perto de: ${semComent.slice(Math.max(0, pos - 30), pos + 20).trim()})` : ''));
 
+    // ── ⚠️ O QUE AINDA IMPEDE 2 EMPRESAS — medido, não lembrado ────────
+    //
+    // Eu tirei o freio 2 vezes cedo demais. Na 1ª conferi só o que mexi; na
+    // 2ª varri o repo procurando `/amb/` em STRING — e o que faltava eram
+    // ENVS, que não têm essa forma.
+    //
+    // 📌 Este bloco LISTA o que falta, em vez de eu lembrar. Enquanto
+    // acusar, o freio do server.js fica.
+    const ENVS_CRAVADAS = [];
+    const dirLib = path.join(RAIZ, 'amb-devolucoes', 'lib-AMB');
+    for (const f of fs.readdirSync(dirLib)) {
+      if (!f.endsWith('.js')) continue;
+      const src = fs.readFileSync(path.join(dirLib, f), 'utf8');
+      const semC = src.split('\n').filter((l) => !l.trim().startsWith('//')).join('\n');
+      const achadas = [...new Set((semC.match(/process\.env\.AMB_[A-Z_]+/g) || []))];
+      for (const e of achadas) ENVS_CRAVADAS.push(`${f}: ${e.replace('process.env.', '')}`);
+    }
+    // ⚠️ não falho aqui: é um PLACAR, não um veredito. O freio é que protege.
+    console.log(ENVS_CRAVADAS.length
+      ? `    📌 ainda faltam ${ENVS_CRAVADAS.length} env(s) AMB_ cravada(s) — o freio fica:`
+      : '    ✅ nenhuma env AMB_ cravada nos modulos');
+    for (const e of ENVS_CRAVADAS.slice(0, 6)) console.log('       ' + e);
+
+    // e o freio TEM que estar la enquanto houver
+    const srvSrc = fs.readFileSync(path.join(RAIZ, 'server.js'), 'utf8');
+    const temFreio = /const naoAMB = ativas\.filter/.test(srvSrc);
+    ok(ENVS_CRAVADAS.length === 0 ? true : temFreio,
+       ENVS_CRAVADAS.length
+         ? '⚠️ ha env AMB_ cravada, entao o freio do server.js DEVE existir'
+         : '  (sem envs cravadas — o freio ja pode sair)');
+
     console.log('');
     console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
     process.exit(falhas ? 1 : 0);

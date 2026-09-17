@@ -1453,7 +1453,16 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
   });
 
   router.post('/api/admin/espreita/nota', auth.requerLogin, (req, res) => {
-    res.redirect(307, '/amb/api/espreita/nota');
+    // ⚠️ b371 (Codex, P1) - O POST IRMAO, QUE EU PERDI.
+    //
+    // Corrigi o GET logo acima e parei nele. Este POST continuava mandando
+    // pra `/amb/api/espreita/nota`: a Girassol gravaria a nota na rota da
+    // AMB — e o cookie dela e do `/girassol`, entao ou daria 401 ou, com
+    // sessao da AMB aberta no mesmo navegador, GRAVARIA NA EMPRESA ERRADA.
+    //
+    // 📌 Achar um caso e parar nele e o meu erro mais repetido hoje. A
+    // funcao inteira devia ter sido varrida no primeiro apontamento.
+    res.redirect(307, (req.baseUrl || '') + '/api/espreita/nota');
   });
 
   // ═══════════════════════════════════════════════════════════════

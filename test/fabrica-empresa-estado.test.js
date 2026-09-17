@@ -527,10 +527,22 @@ function contarEstadoDoModulo(src) {
   // cruzam. Guardo aqui so que o freio REALMENTE saiu — se alguem devolver
   // sem os motivos, este teste avisa que ha algo a reconsiderar.
   const srv = fs.readFileSync(path.join(RAIZ, 'server.js'), 'utf8');
-  ok(!/const naoAMB = ativas\.filter/.test(srv),
-     '⚠️ o freio saiu (os 3 motivos foram fechados e varridos)');
+  // ⚠️ b371: o freio VOLTOU, e com razao. Eu o tirei 2x cedo demais:
+  //   1a — conferi so os arquivos que mexi
+  //   2a — varri o repo procurando `/amb/` em STRING, e o que faltava eram
+  //        ENVS (`AMB_ID_EMPRESA_CONTROL`, `AMB_ID_NATUREZA_...`), que nao
+  //        tem essa forma
+  //
+  // ⚠️ A Girassol emitiria NF com a NATUREZA e a EMPRESA da AMBTotal — nota
+  // fiscal errada no CNPJ errado.
+  //
+  // 📌 Quem decide quando ele pode sair e o PLACAR em
+  // `duas-empresas-juntas.test.js`, que LISTA as envs que faltam. Nao eu,
+  // de memoria.
+  ok(/const naoAMB = ativas\.filter/.test(srv),
+     '⚠️ o freio existe enquanto houver env `AMB_` cravada nos modulos');
   ok(/for \(const emp of ativas\)/.test(srv),
-     '  e o bootstrap monta TODAS as ativas');
+     '  e o bootstrap monta as ativas que passarem por ele');
 
   // ⚠️ e o app nao carrega mais nada cravado na AMB
   const appSrc = fs.readFileSync(

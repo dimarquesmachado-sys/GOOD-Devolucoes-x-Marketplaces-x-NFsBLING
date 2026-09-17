@@ -323,33 +323,36 @@ app.use(express.json({ limit: '12mb' }));
   // 📌 Este freio troca esse vazamento silencioso por um boot que FALHA
   // alto — mesmo padrao de `envDaEmpresa` (lanca em empresa invalida).
   // Remover exige zerar `SINGLETONS_REQUERIDOS` no teste citado primeiro.
-  // ⚠️ b370 - O FREIO SAI. Agora com os motivos FECHADOS **e** VARRIDOS.
+  // ⚠️ b371 (Codex, P1) - O FREIO VOLTA. EU TIREI CEDO PELA **SEGUNDA** VEZ.
   //
-  // Eu ja tirei uma vez e errei: conferi so o que tinha mexido. Os motivos
-  // eram 3, e cada um virou um PR:
+  // Na 1a vez eu tinha conferido so os arquivos que mexi. Na 2a eu varri o
+  // repo — mas procurei por `/amb/` em STRING, e o que sobrou nao tem essa
+  // forma: sao ENVS.
   //
-  //   #317  o app largou o `config-AMB` fixo (22 leituras da AMB)
-  //   #317  o callback do OAuth saiu por empresa — era `/amb` cravado, e o
-  //         token da Girassol seria gravado na conta da AMBTotal
-  //   #318  os 48 links `/amb` do backend
-  //   #319  o front, que tinha `BASE = '/amb'` e 26 caminhos a mao
+  // ⚠️ Os modulos ainda leem direto:
+  //   AMB_ID_EMPRESA_CONTROL              (bling-AMB)
+  //   AMB_ID_NATUREZA_DEVOLUCAO_ENTRADA   (bling-AMB)
+  //   AMB_DEPOSITO_GERAL
+  //   AMB_NF_JANELA_DIAS
+  //   AMB_SESSION_SECRET
   //
-  // ⚠️ E DESTA VEZ VARRI O REPO INTEIRO antes de tirar, nao so os arquivos
-  // que eu tinha aberto. A varredura achou 3 que eu teria perdido:
-  //   - um `res.redirect(307, '/amb/api/espreita')` no compat-AMB
-  //   - a lista `outras_empresas` da rota de ids fiscais, cravada na AMB
-  //   - e o manifest da PWA, que fica da AMB DE PROPOSITO: uma PWA e
-  //     instalada por app, entao a Girassol precisa do SEU proprio — senao
-  //     as duas se instalariam como o mesmo app no celular
+  // A Girassol emitiria NF com a NATUREZA e a EMPRESA da AMBTotal. Isso e
+  // nota fiscal errada no CNPJ errado — o dano mais caro de todos.
   //
-  // 📌 O QUE PROTEGE AGORA e `test/duas-empresas-juntas.test.js`: monta 2
-  // empresas DIFERENTES e prova que sessao, cache, tabela e fila nao se
-  // cruzam. Freio de contagem protege contra o NUMERO; o teste, contra o
-  // VAZAMENTO — que e o que importa.
-  //
-  // ⚠️ A GIRASSOL CONTINUA INATIVA NO CONTRATO. Ativar e decisao do dono, e
-  // ainda falta a ficha executavel dela (comentada em lib/empresas.js), as
-  // credenciais `GIRASSOL_*` e as tabelas no Supabase.
+  // 📌 A LICAO, pela 3a vez hoje: eu meco o que CONSERTEI, nao o que FALTA.
+  // "Varri o repo" foi verdade e insuficiente — a varredura tinha o formato
+  // errado.
+  const naoAMB = ativas.filter((e) => e.chave !== 'ambtotal');
+  if (naoAMB.length > 0) {
+    throw new Error(
+      '[devolucoes] empresa(s) ativa(s) fora da AMB ('
+      + naoAMB.map((e) => e.chave).join(', ') + '), mas os modulos ainda leem '
+      + 'envs `AMB_*` direto: AMB_ID_EMPRESA_CONTROL, '
+      + 'AMB_ID_NATUREZA_DEVOLUCAO_ENTRADA, AMB_DEPOSITO_GERAL, '
+      + 'AMB_NF_JANELA_DIAS, AMB_SESSION_SECRET. A empresa nova emitiria NF '
+      + 'com a natureza e a empresa da AMBTotal. Parametrize essas envs pelo '
+      + 'prefixo da ficha antes de ativar.');
+  }
 
   for (const emp of ativas) {
     app.use(emp.rota, criarAppAMB(emp.chave));
@@ -485,7 +488,7 @@ app.get('/health', (req, res) => {
       // busca por nome. Escolher um lado apagaria a descricao do outro.
       // ⚠️ a resolucao JUNTA as duas: a 7.5.0 (passe curto + tetos) ja esta
       // na main, e este PR acrescenta o build frio que falha vazio.
-      version: '9.39.0 (o freio sai — agora com os motivos fechados E o repo varrido)',
+      version: '9.39.1 (o freio volta: faltam envs AMB_ cravadas, e um teste passa a LISTAR o que falta)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
