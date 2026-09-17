@@ -10,7 +10,18 @@
   "theme_color": "#1a0b2e",
   "lang": "pt-BR",
   "icons": [
-    { "src": "icone-AMB.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
-    { "src": "icone-AMB.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
-  ]
+    {
+      "src": "icone-AMB.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icone-AMB.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ],
+  "_nota": "⚠️ b370 - este manifest é DA AMB de propósito: nome, descrição e escopo. Uma PWA é instalada por app, então a Girassol precisa do SEU manifest (manifest-GIRASSOL.json), não deste parametrizado — senão as duas se instalariam como o mesmo app no celular e uma sobrescreveria a outra."
 }

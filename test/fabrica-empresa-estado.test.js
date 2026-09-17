@@ -514,21 +514,31 @@ function contarEstadoDoModulo(src) {
 // `test/_recorte.js`) com `ativas` simulado, em vez de so grepar o texto —
 // prova o COMPORTAMENTO, nao a forma do codigo.
 {
-  const { entreMarcadores } = require('./_recorte');
+  // ⚠️ b370 - O FREIO SAIU. Este bloco EXECUTAVA o freio pra provar que ele
+  // barrava empresa nao-AMB — era a linha de base de quando o app ainda
+  // carregava `config-AMB` e cravava `/amb` no OAuth.
+  //
+  // 📌 Os 3 motivos foram fechados (#317, #318, #319) e eu varri o repo
+  // inteiro antes de tirar (achei 3 que teria perdido: um redirect no
+  // compat-AMB, a lista `outras_empresas` e o manifest da PWA).
+  //
+  // ⚠️ O QUE PROTEGE AGORA e `test/duas-empresas-juntas.test.js`: monta 2
+  // empresas DIFERENTES e prova que sessao, cache, tabela e fila nao se
+  // cruzam. Guardo aqui so que o freio REALMENTE saiu — se alguem devolver
+  // sem os motivos, este teste avisa que ha algo a reconsiderar.
   const srv = fs.readFileSync(path.join(RAIZ, 'server.js'), 'utf8');
-  const trecho = entreMarcadores(srv,
-    "const naoAMB = ativas.filter((e) => e.chave !== 'ambtotal');",
-    'for (const emp of ativas) {');
-  const rodarFreio = new Function('ativas', trecho);
+  ok(!/const naoAMB = ativas\.filter/.test(srv),
+     '⚠️ o freio saiu (os 3 motivos foram fechados e varridos)');
+  ok(/for \(const emp of ativas\)/.test(srv),
+     '  e o bootstrap monta TODAS as ativas');
 
-  const naoLanca = (ativas) => { try { rodarFreio(ativas); return true; } catch (e) { return false; } };
-
-  ok(naoLanca([{ chave: 'ambtotal', rota: '/amb' }]),
-     '  so a AMB ativa: o freio NAO dispara (caso de hoje)');
-  ok(!naoLanca([{ chave: 'good', rota: '/good' }]),
-     '⚠️ so a GOOD ativa (AMB desligada no contrato): o freio DISPARA');
-  ok(!naoLanca([{ chave: 'ambtotal', rota: '/amb' }, { chave: 'good', rota: '/good' }]),
-     '  AMB + GOOD juntas: o freio continua disparando');
+  // ⚠️ e o app nao carrega mais nada cravado na AMB
+  const appSrc = fs.readFileSync(
+    path.join(RAIZ, 'amb-devolucoes', 'app-AMB.js'), 'utf8');
+  const semComent = appSrc.split('\n')
+    .filter((l) => !l.trim().startsWith('//')).join('\n');
+  ok(!/require\('\.\/config-AMB'\)/.test(semComent),
+     '⚠️ e o app nao carrega mais o `config-AMB` fixo');
 }
 
 // ── ⚠️ PASSO 3, FATIA 1: as 4 gavetas vêm de UMA fábrica ────────────

@@ -1441,7 +1441,15 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
   /** A espreita e a mesma - o painel so a chama por outro caminho. */
   router.get('/api/admin/espreita', auth.requerLogin, (req, res) => {
     const qs = req.originalUrl.includes('?') ? req.originalUrl.slice(req.originalUrl.indexOf('?')) : '';
-    res.redirect(307, '/amb/api/espreita' + qs);
+    // ⚠️ b370 - REDIRECT INTERNO CRAVADO NA AMB.
+    //
+    // O painel da Girassol chamaria `/girassol/api/admin/espreita` e seria
+    // mandado pra `/amb/api/espreita` — a rota da AMB, com a sessao errada.
+    // O usuario veria um 401 sem explicacao, ou pior: os dados da AMB.
+    //
+    // 📌 `req.baseUrl` e o prefixo onde ESTE router foi montado ('/amb' hoje,
+    // '/girassol' quando ela subir). Vem do Express, nao de configuracao.
+    res.redirect(307, (req.baseUrl || '') + '/api/espreita' + qs);
   });
 
   router.post('/api/admin/espreita/nota', auth.requerLogin, (req, res) => {

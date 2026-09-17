@@ -323,44 +323,33 @@ app.use(express.json({ limit: '12mb' }));
   // 📌 Este freio troca esse vazamento silencioso por um boot que FALHA
   // alto — mesmo padrao de `envDaEmpresa` (lanca em empresa invalida).
   // Remover exige zerar `SINGLETONS_REQUERIDOS` no teste citado primeiro.
-  // ⚠️ b366 (Codex, P1) - O FREIO VOLTA. EU TIREI CEDO DEMAIS.
+  // ⚠️ b370 - O FREIO SAI. Agora com os motivos FECHADOS **e** VARRIDOS.
   //
-  // Removi porque as 13 dependencias viraram fabrica — e isso e verdade. Mas
-  // conferi so o que EU tinha mexido, e nao o resto do arquivo.
+  // Eu ja tirei uma vez e errei: conferi so o que tinha mexido. Os motivos
+  // eram 3, e cada um virou um PR:
   //
-  // ⚠️ O `app-AMB.js` AINDA carrega `require('./config-AMB')` — arquivo SO DA
-  // AMB — e le dele 22 vezes: NOME_EMPRESA, loja, bling, supabase, urlBase,
-  // PREFIXO. Com 2 empresas, TODAS essas leituras seriam da AMB.
+  //   #317  o app largou o `config-AMB` fixo (22 leituras da AMB)
+  //   #317  o callback do OAuth saiu por empresa — era `/amb` cravado, e o
+  //         token da Girassol seria gravado na conta da AMBTotal
+  //   #318  os 48 links `/amb` do backend
+  //   #319  o front, que tinha `BASE = '/amb'` e 26 caminhos a mao
   //
-  // ⚠️ E o retorno do OAuth e montado em `/amb/oauth/callback`, CRAVADO: a 2a
-  // empresa mandaria o marketplace devolver o codigo na rota da AMB — e o
-  // token da Girassol seria gravado na conta da AMBTotal.
+  // ⚠️ E DESTA VEZ VARRI O REPO INTEIRO antes de tirar, nao so os arquivos
+  // que eu tinha aberto. A varredura achou 3 que eu teria perdido:
+  //   - um `res.redirect(307, '/amb/api/espreita')` no compat-AMB
+  //   - a lista `outras_empresas` da rota de ids fiscais, cravada na AMB
+  //   - e o manifest da PWA, que fica da AMB DE PROPOSITO: uma PWA e
+  //     instalada por app, entao a Girassol precisa do SEU proprio — senao
+  //     as duas se instalariam como o mesmo app no celular
   //
-  // 📌 A LICAO: "as dependencias viraram fabrica" NAO e o mesmo que "o app e
-  // multiempresa". Eu media o que tinha convertido, nao o que faltava.
+  // 📌 O QUE PROTEGE AGORA e `test/duas-empresas-juntas.test.js`: monta 2
+  // empresas DIFERENTES e prova que sessao, cache, tabela e fila nao se
+  // cruzam. Freio de contagem protege contra o NUMERO; o teste, contra o
+  // VAZAMENTO — que e o que importa.
   //
-  // ⚠️ b367 (Codex, P1) - `ativas.length > 1` NAO PEGAVA O CASO DE UMA SO
-  // EMPRESA NAO-AMB.
-  //
-  // Se o contrato desativar a AMB (`ativa_em.devolucoes: false`) e ativar
-  // so a GOOD, `ativas` tem 1 item e o freio antigo nao disparava. Mas
-  // `criarAppAMB('good')` passa pelo `config-AMB` do mesmo jeito: o
-  // `chaveDados` novo so evita o boot cair, nao troca o NOME_EMPRESA, a
-  // loja, as credenciais Bling nem o `/amb/oauth/callback` cravado — tudo
-  // isso continua vindo do `config-AMB`, que e SO DA AMB.
-  //
-  // 📌 O freio agora olha a CHAVE, nao a CONTAGEM: qualquer empresa ativa
-  // que nao seja 'ambtotal' derruba o boot, sozinha ou acompanhada.
-  const naoAMB = ativas.filter((e) => e.chave !== 'ambtotal');
-  if (naoAMB.length > 0) {
-    throw new Error(
-      '[devolucoes] empresa(s) ativa(s) fora da AMB ('
-      + naoAMB.map((e) => e.chave).join(', ') + '), mas o app-AMB.js ainda '
-      + 'carrega `config-AMB` (so da AMB, 22 leituras) e monta o callback '
-      + 'OAuth em `/amb` cravado. Montar qualquer uma delas assim usaria o '
-      + 'nome, a loja e as credenciais da AMB — e gravaria o token dela na '
-      + 'conta da AMBTotal.');
-  }
+  // ⚠️ A GIRASSOL CONTINUA INATIVA NO CONTRATO. Ativar e decisao do dono, e
+  // ainda falta a ficha executavel dela (comentada em lib/empresas.js), as
+  // credenciais `GIRASSOL_*` e as tabelas no Supabase.
 
   for (const emp of ativas) {
     app.use(emp.rota, criarAppAMB(emp.chave));
@@ -496,7 +485,7 @@ app.get('/health', (req, res) => {
       // busca por nome. Escolher um lado apagaria a descricao do outro.
       // ⚠️ a resolucao JUNTA as duas: a 7.5.0 (passe curto + tetos) ja esta
       // na main, e este PR acrescenta o build frio que falha vazio.
-      version: '9.38.0 (o front descobre a base pela URL — nao escreve mais /amb na mao)',
+      version: '9.39.0 (o freio sai — agora com os motivos fechados E o repo varrido)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -6952,7 +6941,14 @@ app.get('/api/ids-fiscais', requerLogin, async (req, res) => {
       ok: false,
       erro: 'informe a empresa: /api/ids-fiscais?empresa=good',
       aceitas_aqui: ['good'],
-      outras_empresas: { ambtotal: '/amb/api/ids-fiscais' },
+      // ⚠️ b370 - a lista sai do REGISTRO, nao cravada.
+      //
+      // Era `{ ambtotal: '/amb/api/ids-fiscais' }` — correto hoje, mas com a
+      // Girassol montada a mensagem citaria so a AMB, e quem procurasse os
+      // ids da Girassol nao acharia o caminho.
+      outras_empresas: Object.fromEntries(
+        require('./lib/empresas').empresasAtivasNoDevolucoes()
+          .map((e) => [e.chave, (e.rota || '') + '/api/ids-fiscais'])),
     });
   }
   if (alvo === 'good') {
