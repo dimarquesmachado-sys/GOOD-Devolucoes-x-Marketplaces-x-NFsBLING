@@ -35,7 +35,11 @@ const SERVER = fs.readFileSync(path.join(RAIZ, 'server.js'), 'utf8');
 
 // ── a empresa e FIXA nos dois servidores ─────────────────────────────
 {
-  ok(/const EMPRESA = 'amb';/.test(AMB),
+  // ⚠️ b359: o literal virou `CHAVE_DADOS`, que vem da FICHA da empresa. O
+  // que este teste guarda continua igual e continua importando: a empresa e
+  // FIXA no servidor, nao vem da URL — aceitar `?empresa=` deixaria uma ver
+  // os dados da outra.
+  ok(/const EMPRESA = CHAVE_DADOS;/.test(AMB),
      'a AMB fixa a empresa: aceitar ?empresa= deixaria uma ver os dados da outra');
   ok(/const empresa = 'good';/.test(SERVER), '  e a GOOD faz o mesmo');
   ok(!/req\.query\.empresa/.test(AMB.slice(AMB.indexOf('sem-retorno'), AMB.indexOf('sem-retorno') + 3000)),

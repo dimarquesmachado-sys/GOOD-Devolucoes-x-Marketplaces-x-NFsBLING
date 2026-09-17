@@ -14,6 +14,20 @@
 'use strict';
 
 module.exports = function registrarIdentificar(app, deps) {
+  // ⚠️ b359 - A CHAVE DO BANCO VEM DAS DEPS, nao de literal.
+  //
+  // Eram 2 literais `'amb'` aqui: um numa CONSULTA (`.eq('empresa', CHAVE_DADOS)`)
+  // e outro na ponte do TikTok. Com a Girassol montada, ela leria os dados da
+  // AMB — sem erro, com dado errado na tela.
+  //
+  // ⚠️ Derrubo se nao vier: silenciar com um padrao faria a empresa nova
+  // consultar a coluna errada, e o sintoma seria "nao achei nada".
+  const CHAVE_DADOS = deps && deps.chaveDados;
+  if (!CHAVE_DADOS) {
+    throw new Error('[identificar] `chaveDados` nao veio nas deps — e o valor '
+      + 'da coluna `empresa` no banco. Sem ele eu consultaria a empresa errada.');
+  }
+
   const {
     requerLogin, sleep,
     chamarML, chamarBling, chamarMagalu,
@@ -104,7 +118,7 @@ module.exports = function registrarIdentificar(app, deps) {
       if (!/^[A-Za-z0-9_-]{5,60}$/.test(q)) return [];
       const { data } = await supabase.from('eventos_checkout')
         .select('tipo, codigo, quem, criado_em, extra')
-        .eq('empresa', 'amb')
+        .eq('empresa', CHAVE_DADOS)
         .or('codigo.eq.' + q + ',codigo.ilike.%' + q + '%')
         .order('criado_em', { ascending: false })
         .limit(3);
@@ -743,7 +757,7 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
       // indice frio, podendo devolver 300 num casamento coincidente sem
       // nunca consultar o TikTok.
       try {
-        const rTk = await tiktokDev.procurar(tiktokPonte, 'amb', codigoOriginal, { limite: 200 });
+        const rTk = await tiktokDev.procurar(tiktokPonte, CHAVE_DADOS, codigoOriginal, { limite: 200 });
         resultado.tentativas.push({
           tipo: 'tiktok_devolucao', codigo: codigoOriginal,
           ok: !!(rTk && rTk.achado), status: (rTk && rTk.achado) ? 200 : (rTk && rTk.ok ? 404 : 502),
