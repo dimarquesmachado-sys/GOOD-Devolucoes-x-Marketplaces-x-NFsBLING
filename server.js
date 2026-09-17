@@ -323,10 +323,7 @@ app.use(express.json({ limit: '12mb' }));
   // 📌 Este freio troca esse vazamento silencioso por um boot que FALHA
   // alto — mesmo padrao de `envDaEmpresa` (lanca em empresa invalida).
   // Remover exige zerar `SINGLETONS_REQUERIDOS` no teste citado primeiro.
-  // ⚠️ b370 - O FREIO SAI. Agora com os motivos FECHADOS **e** VARRIDOS.
-  //
-  // Eu ja tirei uma vez e errei: conferi so o que tinha mexido. Os motivos
-  // eram 3, e cada um virou um PR:
+  // ⚠️ b370 - TIREI O FREIO uma vez, com os 3 motivos da varredura FECHADOS:
   //
   //   #317  o app largou o `config-AMB` fixo (22 leituras da AMB)
   //   #317  o callback do OAuth saiu por empresa — era `/amb` cravado, e o
@@ -334,22 +331,41 @@ app.use(express.json({ limit: '12mb' }));
   //   #318  os 48 links `/amb` do backend
   //   #319  o front, que tinha `BASE = '/amb'` e 26 caminhos a mao
   //
-  // ⚠️ E DESTA VEZ VARRI O REPO INTEIRO antes de tirar, nao so os arquivos
-  // que eu tinha aberto. A varredura achou 3 que eu teria perdido:
-  //   - um `res.redirect(307, '/amb/api/espreita')` no compat-AMB
-  //   - a lista `outras_empresas` da rota de ids fiscais, cravada na AMB
-  //   - e o manifest da PWA, que fica da AMB DE PROPOSITO: uma PWA e
-  //     instalada por app, entao a Girassol precisa do SEU proprio — senao
-  //     as duas se instalariam como o mesmo app no celular
+  // e mais 3 achados da varredura do repo inteiro: um `res.redirect(307,
+  // '/amb/api/espreita')` no compat-AMB, a lista `outras_empresas` cravada
+  // na AMB, e o manifest da PWA (que fica da AMB DE PROPOSITO).
   //
-  // 📌 O QUE PROTEGE AGORA e `test/duas-empresas-juntas.test.js`: monta 2
-  // empresas DIFERENTES e prova que sessao, cache, tabela e fila nao se
-  // cruzam. Freio de contagem protege contra o NUMERO; o teste, contra o
-  // VAZAMENTO — que e o que importa.
+  // ⚠️ b371 (Codex, P1) - O FREIO VOLTA. A varredura nao cobriu tudo.
   //
-  // ⚠️ A GIRASSOL CONTINUA INATIVA NO CONTRATO. Ativar e decisao do dono, e
-  // ainda falta a ficha executavel dela (comentada em lib/empresas.js), as
-  // credenciais `GIRASSOL_*` e as tabelas no Supabase.
+  // Sobraram 2 literais AMB vivos em rotas que continuam de pe com
+  // qualquer empresa montada:
+  //
+  //   - `bling.idsFiscais()` (amb-devolucoes/lib-AMB/bling-AMB.js) le
+  //     DIRETO `AMB_ID_NATUREZA_DEVOLUCAO_ENTRADA` e
+  //     `AMB_ID_EMPRESA_CONTROL` do env — nao passa pelo `fiscal` do
+  //     registro (lib/empresas.js), que ja tem essas mesmas contas por
+  //     empresa. Uma 2a empresa receberia os ids fiscais da AMB.
+  //   - `defeitos-ciclo-AMB.js` grava em `defeito_comentarios_amb` e
+  //     `defeito_pedidos_amb`, tabelas FIXAS — a 2a empresa gravaria
+  //     comentario e pedido de defeito nas tabelas da AMB.
+  //
+  // 📌 `test/duas-empresas-juntas.test.js` prova sessao, cache, tabela e
+  // fila de devolucao — mas nao exercita `idsFiscais()` nem o ciclo de
+  // defeitos, entao ele NAO acusa este vazamento. Ate esses dois lerem do
+  // registro por empresa, o freio fica: falhar o boot alto e melhor que
+  // devolver id fiscal ou gravar defeito da empresa errada em silencio.
+  const naoAMB = ativas.filter((e) => e.chave !== 'ambtotal');
+  if (naoAMB.length > 0) {
+    throw new Error(
+      '[devolucoes] empresa(s) ativa(s) fora da AMB ('
+      + naoAMB.map((e) => e.chave).join(', ') + '), mas '
+      + '`bling-AMB.js#idsFiscais()` ainda le '
+      + 'AMB_ID_NATUREZA_DEVOLUCAO_ENTRADA/AMB_ID_EMPRESA_CONTROL direto do '
+      + 'env, e `defeitos-ciclo-AMB.js` grava em tabelas fixas '
+      + '(defeito_comentarios_amb, defeito_pedidos_amb). Montar qualquer '
+      + 'uma delas assim devolveria ids fiscais da AMB e gravaria defeito '
+      + 'na tabela da AMB.');
+  }
 
   for (const emp of ativas) {
     app.use(emp.rota, criarAppAMB(emp.chave));
@@ -485,7 +501,7 @@ app.get('/health', (req, res) => {
       // busca por nome. Escolher um lado apagaria a descricao do outro.
       // ⚠️ a resolucao JUNTA as duas: a 7.5.0 (passe curto + tetos) ja esta
       // na main, e este PR acrescenta o build frio que falha vazio.
-      version: '9.39.0 (o freio sai — agora com os motivos fechados E o repo varrido)',
+      version: '9.40.0 (o freio volta — sobraram ids fiscais e tabelas de defeito cravados na AMB)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),

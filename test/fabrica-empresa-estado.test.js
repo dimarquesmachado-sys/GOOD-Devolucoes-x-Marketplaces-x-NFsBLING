@@ -514,23 +514,25 @@ function contarEstadoDoModulo(src) {
 // `test/_recorte.js`) com `ativas` simulado, em vez de so grepar o texto —
 // prova o COMPORTAMENTO, nao a forma do codigo.
 {
-  // ⚠️ b370 - O FREIO SAIU. Este bloco EXECUTAVA o freio pra provar que ele
-  // barrava empresa nao-AMB — era a linha de base de quando o app ainda
-  // carregava `config-AMB` e cravava `/amb` no OAuth.
+  // ⚠️ b370 - O FREIO SAIU uma vez, com os 3 motivos da varredura fechados
+  // (#317, #318, #319 + o redirect do compat-AMB, a lista `outras_empresas`
+  // e o manifest da PWA).
   //
-  // 📌 Os 3 motivos foram fechados (#317, #318, #319) e eu varri o repo
-  // inteiro antes de tirar (achei 3 que teria perdido: um redirect no
-  // compat-AMB, a lista `outras_empresas` e o manifest da PWA).
+  // ⚠️ b371 (Codex, P1) - E VOLTOU. `test/duas-empresas-juntas.test.js`
+  // prova sessao, cache, tabela e fila de devolucao — mas nao exercita
+  // `bling.idsFiscais()` nem o ciclo de defeitos, e os dois AINDA leem
+  // literal AMB (env `AMB_ID_NATUREZA_DEVOLUCAO_ENTRADA`/
+  // `AMB_ID_EMPRESA_CONTROL`, e as tabelas fixas `defeito_comentarios_amb`/
+  // `defeito_pedidos_amb`). Uma 2a empresa passaria por cima do teste de
+  // isolamento e ainda assim receberia dado da AMB nessas duas rotas.
   //
-  // ⚠️ O QUE PROTEGE AGORA e `test/duas-empresas-juntas.test.js`: monta 2
-  // empresas DIFERENTES e prova que sessao, cache, tabela e fila nao se
-  // cruzam. Guardo aqui so que o freio REALMENTE saiu — se alguem devolver
-  // sem os motivos, este teste avisa que ha algo a reconsiderar.
+  // 📌 Guardo aqui que o freio EXISTE de novo — se alguem tirar sem fechar
+  // esses dois, este teste avisa.
   const srv = fs.readFileSync(path.join(RAIZ, 'server.js'), 'utf8');
-  ok(!/const naoAMB = ativas\.filter/.test(srv),
-     '⚠️ o freio saiu (os 3 motivos foram fechados e varridos)');
+  ok(/const naoAMB = ativas\.filter/.test(srv),
+     '⚠️ o freio esta de volta (idsFiscais e defeitos-ciclo ainda sao AMB fixo)');
   ok(/for \(const emp of ativas\)/.test(srv),
-     '  e o bootstrap monta TODAS as ativas');
+     '  e o bootstrap ja monta TODAS as ativas (o freio e quem recusa o boot)');
 
   // ⚠️ e o app nao carrega mais nada cravado na AMB
   const appSrc = fs.readFileSync(

@@ -1453,7 +1453,13 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
   });
 
   router.post('/api/admin/espreita/nota', auth.requerLogin, (req, res) => {
-    res.redirect(307, '/amb/api/espreita/nota');
+    // ⚠️ (Codex, P1) - MESMO CRAVAMENTO DO GET ACIMA, so que no POST.
+    //
+    // O GET ja usa `req.baseUrl`; este alias ficou de fora e mandaria o
+    // envio de nota da Girassol pra `/amb/api/espreita/nota` — ou falha
+    // (cookie escopado em `/girassol`) ou, com sessao da AMB tambem
+    // aberta, grava a nota na conta errada.
+    res.redirect(307, (req.baseUrl || '') + '/api/espreita/nota');
   });
 
   // ═══════════════════════════════════════════════════════════════
