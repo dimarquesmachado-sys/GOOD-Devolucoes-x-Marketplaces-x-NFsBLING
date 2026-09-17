@@ -711,6 +711,59 @@ function contarEstadoDoModulo(src) {
   ok(!a.validarSessao(b.novaSessao('bruno', 'admin')), '  nos dois sentidos');
 }
 
+// ── ⚠️ (Codex, P2, PR #317) - redirectUri e render tambem tem o bug do path vazio ──
+//
+// O mesmo apontamento do AUTH.caminhoCookie (GOOD tem `prefixoRota: ''`)
+// existia em outros dois pontos de `configDaEmpresa`: `redirectUri()` cravava
+// `ficha.prefixoRota || ''` (sem o fallback pra `/` + chave), e `render`
+// prefixava as envs por empresa quando o Render e UM servico so, compartilhado
+// pelas duas.
+{
+  const { configDaEmpresa } = require('../lib/config-da-empresa');
+
+  const salvos = ['RENDER_EXTERNAL_URL', 'URL_BASE'].map((n) => [n, process.env[n]]);
+  delete process.env.URL_BASE;
+  process.env.RENDER_EXTERNAL_URL = 'https://exemplo.onrender.com';
+
+  const urlGood = configDaEmpresa('good').redirectUri('/oauth/callback');
+  ok(urlGood === 'https://exemplo.onrender.com/good/oauth/callback',
+     `⚠️ redirectUri da GOOD entra na rota que o bootstrap monta (/good), nao na raiz (veio '${urlGood}')`);
+
+  const urlAmb = configDaEmpresa('ambtotal').redirectUri('/oauth/callback');
+  ok(urlAmb === 'https://exemplo.onrender.com/amb/oauth/callback',
+     `  e a AMB continua igual (veio '${urlAmb}')`);
+
+  for (const [n, v] of salvos) { if (v == null) delete process.env[n]; else process.env[n] = v; }
+}
+
+{
+  const { configDaEmpresa } = require('../lib/config-da-empresa');
+
+  const salvos = ['RENDER_API_KEY', 'RENDER_API_KEY_v2', 'RENDER_SERVICE_ID',
+    'RENDER_SERVICE_ID_v2', 'AMB_RENDER_API_KEY', 'AMB_RENDER_SERVICE_ID']
+    .map((n) => [n, process.env[n]]);
+  delete process.env.AMB_RENDER_API_KEY;
+  delete process.env.AMB_RENDER_SERVICE_ID;
+  process.env.RENDER_API_KEY = 'chave-global';
+  process.env.RENDER_SERVICE_ID = 'servico-global';
+  delete process.env.RENDER_API_KEY_v2;
+  delete process.env.RENDER_SERVICE_ID_v2;
+
+  const render = configDaEmpresa('ambtotal').render;
+  ok(render.apiKey === 'chave-global' && render.serviceId === 'servico-global',
+     `⚠️ render le a GLOBAL (mesma que lib/render-tokens.js grava), nao a prefixada por empresa (veio apiKey='${render.apiKey}', serviceId='${render.serviceId}')`);
+
+  delete process.env.RENDER_API_KEY;
+  delete process.env.RENDER_SERVICE_ID;
+  process.env.RENDER_API_KEY_v2 = 'chave-v2';
+  process.env.RENDER_SERVICE_ID_v2 = 'servico-v2';
+  const renderV2 = configDaEmpresa('ambtotal').render;
+  ok(renderV2.apiKey === 'chave-v2' && renderV2.serviceId === 'servico-v2',
+     `  e o fallback _v2 continua funcionando (veio apiKey='${renderV2.apiKey}', serviceId='${renderV2.serviceId}')`);
+
+  for (const [n, v] of salvos) { if (v == null) delete process.env[n]; else process.env[n] = v; }
+}
+
 console.log('');
 console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
 process.exit(falhas ? 1 : 0);
