@@ -18,6 +18,15 @@
 //    produto quebrado — meses depois ninguem lembra o que era.
 // ============================================================
 
+// ⚠️ b364 - VIRA FABRICA: a fila de etiquetas — sairia na impressora da outra empresa.
+//
+// Era instancia unica do processo. Mesma tecnica dos anteriores: envolvo
+// SEM REINDENTAR, pra o diff ficar legivel.
+//
+// ⚠️ As envs com prefixo passam a vir da empresa, com `AMB_` de padrao —
+// a AMB le exatamente as mesmas de hoje.
+function criar(cfgEmpresa) {
+const _PREFIXO = String((cfgEmpresa && cfgEmpresa.PREFIXO_ENV) || 'AMB_');
 'use strict';
 
 const crypto = require('crypto');
@@ -175,4 +184,9 @@ function registrarRotas(router, requerLogin) {
   });
 }
 
-module.exports = { registrarRotas, zplDefeito, qzConfigurado: () => !!(QZ_CERT && QZ_PRIVKEY) };
+
+return { registrarRotas, zplDefeito, qzConfigurado: () => !!(QZ_CERT && QZ_PRIVKEY) };
+}
+
+// ⚠️ so a fabrica — sem instancia padrao, pra ninguem usar a velha sem notar
+module.exports = { criar };

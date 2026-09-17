@@ -29,6 +29,15 @@
 // triagem — no maximo sai um aviso no log.
 // ============================================================
 
+// ⚠️ b364 - VIRA FABRICA: o mailer — o aviso sairia com o REMETENTE da outra.
+//
+// Era instancia unica do processo. Mesma tecnica dos anteriores: envolvo
+// SEM REINDENTAR, pra o diff ficar legivel.
+//
+// ⚠️ As envs com prefixo passam a vir da empresa, com `AMB_` de padrao —
+// a AMB le exatamente as mesmas de hoje.
+function criar(cfgEmpresa) {
+const _PREFIXO = String((cfgEmpresa && cfgEmpresa.PREFIXO_ENV) || 'AMB_');
 'use strict';
 
 // ⚠️ b347 - gaveta do e-mail. Compartilhado, o aviso de uma empresa
@@ -133,9 +142,14 @@ function diagnostico() {
   };
 }
 
-module.exports = {
+
+return {
   avisarProblema,
   ligado: () => !!credenciais(),
   destino,
   diagnostico,
 };
+}
+
+// ⚠️ so a fabrica — sem instancia padrao, pra ninguem usar a velha sem notar
+module.exports = { criar };

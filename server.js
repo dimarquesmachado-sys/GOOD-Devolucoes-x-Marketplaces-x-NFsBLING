@@ -468,7 +468,7 @@ app.get('/health', (req, res) => {
       // busca por nome. Escolher um lado apagaria a descricao do outro.
       // ⚠️ a resolucao JUNTA as duas: a 7.5.0 (passe curto + tetos) ja esta
       // na main, e este PR acrescenta o build frio que falha vazio.
-      version: '9.33.1 (o Shopee por empresa; e o caminhoCookie/envUsers deixam de cair no fallback da AMB)',
+      version: '9.34.0 (os 5 modulos de estado que faltavam viram fabrica — nenhum e mais do processo)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
