@@ -496,7 +496,7 @@ app.get('/health', (req, res) => {
       // busca por nome. Escolher um lado apagaria a descricao do outro.
       // ⚠️ a resolucao JUNTA as duas: a 7.5.0 (passe curto + tetos) ja esta
       // na main, e este PR acrescenta o build frio que falha vazio.
-      version: '9.36.1 (b367.1/b367.2, Codex: redirectUri da GOOD e Render por servico)',
+      version: '9.37.1 (Codex, PR #318: a BASE da GOOD nao cai mais na raiz, e a interpolacao de rota nao fica mais literal)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),

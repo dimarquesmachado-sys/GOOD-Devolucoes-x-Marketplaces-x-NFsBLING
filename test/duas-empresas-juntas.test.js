@@ -177,6 +177,32 @@ process.env.AMB_SUPABASE_KEY = 'chave-de-teste';
        '⚠️ os 7 modulos de estado dao instancias separadas'
        + (separados.length ? ` — falharam: ${separados.join(', ')}` : ''));
 
+    // ── ⚠️ e os links do HTML saem da BASE da instância ───────────────
+    //
+    // Havia 48 links `/amb/...` escritos à mão. Com a Girassol em
+    // `/girassol`, todos levariam o usuário dela para dentro da AMB — e como
+    // a sessão é por empresa, ele cairia num login que não é o dele.
+    const appSrc = fs.readFileSync(
+      path.join(RAIZ, 'amb-devolucoes', 'app-AMB.js'), 'utf8');
+    ok(/const BASE = CFG_EMPRESA\.PREFIXO_ROTA;/.test(appSrc),
+       '⚠️ a BASE vem do prefixo da instancia, ja com o fallback da rota montada');
+
+    // ⚠️ apontamento do Codex no PR #318: o check antigo so olhava aspas
+    // fechadas NA MESMA LINHA (`["'`][^"'`\n]*\/amb\/...`). Um template
+    // multilinha com a abertura da crase numa linha e `/amb/...` la embaixo
+    // passava batido — foi exatamente o caso de `app-AMB.js:657-666`.
+    //
+    // 📌 Depois de tirar as linhas de comentario `//`, procuro o literal
+    // `/amb/` solto no restante do arquivo, sem exigir aspas na mesma linha.
+    // Conferido: hoje isso da zero ocorrencias (nenhuma rota, template ou
+    // require legitimo contem esse substring fora de comentario).
+    const semComent = appSrc.split('\n')
+      .filter((l) => !l.trim().startsWith('//')).join('\n');
+    const pos = semComent.indexOf('/amb/');
+    ok(pos < 0,
+       '⚠️ nenhum link `/amb/` cravado no codigo'
+       + (pos >= 0 ? ` (perto de: ${semComent.slice(Math.max(0, pos - 30), pos + 20).trim()})` : ''));
+
     console.log('');
     console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
     process.exit(falhas ? 1 : 0);
