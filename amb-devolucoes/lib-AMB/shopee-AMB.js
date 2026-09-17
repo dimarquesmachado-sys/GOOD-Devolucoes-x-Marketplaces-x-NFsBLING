@@ -28,12 +28,27 @@ const cfg = {
 // ⚠️ O `cfg` fica FORA de proposito: ele e INTERFACE PUBLICA (esta no
 // `module.exports` e quem chama le `shopee.cfg`). Renomear quebraria os
 // chamadores — e o que eu preciso isolar e o ESTADO, nao a fachada.
-const SHP = {
+// ⚠️ b355 - PASSO 3: fabrica do estado deste modulo.
+//
+// cache de devolucoes + estado da chegada.
+//
+// Mesma tecnica das fatias 1 e 2: a gaveta continua existindo com o
+// mesmo nome, mas NASCE de uma funcao — entao o passo 3 cria uma por
+// empresa em vez de uma por processo. Comportamento identico hoje.
+function criarEstadoShopee() {
+  return {
+    shp: {
   cache: { ts: 0, dados: [] },
   chegada: new Map(),
   chegadaRodando: false,
   chegadaErro: null,
-};
+},
+  };
+}
+
+// ⚠️ a instancia de hoje VEM da fabrica — sem duas fontes do mesmo estado
+const _EST = criarEstadoShopee();
+const SHP = _EST.shp;
 // (SHP.cache -> SHP.cache — b349)
 
 async function buscarDevolucoesProxy(forcar) {

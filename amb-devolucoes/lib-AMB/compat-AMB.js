@@ -46,14 +46,29 @@ const emailAMB = require('./email-AMB');
 //
 // 📌 O `detalheProximo` e o relogio do ritmo: compartilhado, uma empresa
 // gastaria a vez da outra na fila do Bling.
-const CAT = {
+// ⚠️ b355 - PASSO 3: fabrica do estado deste modulo.
+//
+// caches de imagem, SKU, formato e kit — foto trocada entre empresas.
+//
+// Mesma tecnica das fatias 1 e 2: a gaveta continua existindo com o
+// mesmo nome, mas NASCE de uma funcao — entao o passo 3 cria uma por
+// empresa em vez de uma por processo. Comportamento identico hoje.
+function criarEstadoCatalogo() {
+  return {
+    cat: {
   imgCache: new Map(),
   imgSemFoto: new Map(),
   formato: new Map(),
   skuPorId: new Map(),
   compsPorKit: new Map(),
   detalheProximo: 0,
-};
+},
+  };
+}
+
+// ⚠️ a instancia de hoje VEM da fabrica — sem duas fontes do mesmo estado
+const _EST = criarEstadoCatalogo();
+const CAT = _EST.cat;
 // (CAT.imgCache -> CAT.imgCache — b347)
 // (CAT.imgSemFoto -> CAT.imgSemFoto — b347)
 // b174 - veredito de FORMATO por produto: 'S' simples · 'E' kit/composicao

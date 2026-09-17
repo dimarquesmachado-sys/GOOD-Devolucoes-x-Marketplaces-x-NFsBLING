@@ -33,10 +33,25 @@
 
 // ⚠️ b347 - gaveta do e-mail. Compartilhado, o aviso de uma empresa
 // sairia com o REMETENTE da outra.
-const MAIL = {
+// ⚠️ b355 - PASSO 3: fabrica do estado deste modulo.
+//
+// o mailer — e-mail sairia com o remetente da outra.
+//
+// Mesma tecnica das fatias 1 e 2: a gaveta continua existindo com o
+// mesmo nome, mas NASCE de uma funcao — entao o passo 3 cria uma por
+// empresa em vez de uma por processo. Comportamento identico hoje.
+function criarEstadoEmail() {
+  return {
+    mail: {
   mailer: null,
   motivoDesligado: null,
-};
+},
+  };
+}
+
+// ⚠️ a instancia de hoje VEM da fabrica — sem duas fontes do mesmo estado
+const _EST = criarEstadoEmail();
+const MAIL = _EST.mail;
 // (MAIL.mailer -> MAIL.mailer)
 // (MAIL.motivoDesligado -> MAIL.motivoDesligado)
 

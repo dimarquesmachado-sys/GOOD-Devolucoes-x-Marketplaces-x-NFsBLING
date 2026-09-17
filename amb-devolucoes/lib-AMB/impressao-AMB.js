@@ -38,10 +38,25 @@ const QZ_PRIVKEY = process.env.GOODBKP_QZ_PRIVKEY || process.env.QZ_PRIVKEY || '
 // ler os valores — e a troca automatica nao confere tipo.
 //
 // 📌 O `node --check` nao pega isto: e sintaxe valida, erro so em runtime.
-const IMPR = {
+// ⚠️ b355 - PASSO 3: fabrica do estado deste modulo.
+//
+// fila de etiquetas — compartilhada, sai na impressora da outra empresa.
+//
+// Mesma tecnica das fatias 1 e 2: a gaveta continua existindo com o
+// mesmo nome, mas NASCE de uma funcao — entao o passo 3 cria uma por
+// empresa em vez de uma por processo. Comportamento identico hoje.
+function criarEstadoImpressao() {
+  return {
+    impr: {
   fila: [],
   ultimoPoll: 0,
-};
+},
+  };
+}
+
+// ⚠️ a instancia de hoje VEM da fabrica — sem duas fontes do mesmo estado
+const _EST = criarEstadoImpressao();
+const IMPR = _EST.impr;
 // (IMPR.fila -> IMPR.fila)
 // (IMPR.ultimoPoll -> IMPR.ultimoPoll)
 

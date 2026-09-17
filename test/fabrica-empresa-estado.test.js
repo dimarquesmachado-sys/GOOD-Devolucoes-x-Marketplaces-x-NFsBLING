@@ -324,8 +324,33 @@ function contarEstadoDoModulo(src) {
   // `criarEstado*`, `magalu-AMB` conta 2: `EST_MAGALU` (a fabrica de
   // estado) + `cfg` (fachada de leitura, 0 escritas, medido, no
   // `module.exports` — renomear quebraria quem le `magalu.cfg`).
-  ok(totalSingletons === 12,
-     `📌 linha de base EXATA dos singletons requeridos: ${totalSingletons} variaveis tambem vazam entre empresas — ${porArquivo.join('; ')}`);
+  // ⚠️ b355 - O QUE IMPORTA E ESTADO SOLTO, NAO CONTAGEM DE DECLARACOES.
+  //
+  // O numero parou de cair (11 antes e depois) mas a NATUREZA mudou: todas
+  // as gavetas dos modulos passaram a NASCER DE UMA FABRICA. Os 11 que
+  // sobram sao as fabricas em si (`_EST`, `EST_MAGALU`) e as fachadas
+  // (`cfg`, `ROTULO`, `PADRAO`), que nao guardam estado mutavel.
+  //
+  // ⚠️ Contar declaracoes viraria falso negativo: `const X = {...}` e
+  // `const X = criarAlgo()` contam igual, e sao coisas OPOSTAS pro passo 3.
+  //
+  // 📌 Agora meco o que resta a fazer: gaveta que NAO vem de fabrica.
+  const soltos = [];
+  for (const nome of SINGLETONS_REQUERIDOS) {
+    const src = fs.readFileSync(
+      path.join(RAIZ, 'amb-devolucoes', 'lib-AMB', `${nome}.js`), 'utf8');
+    for (const v of contarEstadoDoModulo(src)) {
+      // vem de fabrica? (`const X = criarAlgo()` ou `const X = _EST.y`)
+      const deFabrica = new RegExp('const ' + v + ' = (criar\\w+\\(|_EST\\.|EST_\\w+\\.)').test(src);
+      // e fachada/constante? (sem escrita em campo)
+      const escritas = (src.match(new RegExp('\\b' + v + '\\.\\w+\\s*=[^=]', 'g')) || []).length
+        + (src.match(new RegExp('\\b' + v + '\\.\\w+\\.(set|clear|delete|push|shift)\\(', 'g')) || []).length;
+      if (!deFabrica && escritas > 0) soltos.push(`${nome}.${v}`);
+    }
+  }
+  ok(soltos.length === 0,
+     '⚠️ ZERO gavetas de estado soltas nos modulos'
+     + (soltos.length ? ` (achei: ${soltos.join(', ')})` : ''));
 }
 
 // ── e o router sai pronto, não montável ─────────────────────────────
