@@ -68,6 +68,71 @@
 //
 // 📌 `criarAppEmpresa()` sem argumento usa `DEVOLUCOES_EMPRESA` (padrao
 // 'ambtotal'), entao o server.js de hoje continua funcionando igual.
+
+// ⚠️ revisao Codex no PR #308 (P2) - `criarGavetaNfDev` e `criarGavetasDaEmpresa`
+// vivem NO ESCOPO DO MODULO (fora de `criarAppEmpresa`), de proposito: nenhuma
+// das duas depende de CFG_EMPRESA ou de qualquer variavel da fabrica, entao
+// `module.exports.gavetasDaEmpresaParaTeste` pode apontar pra FUNCAO REAL em
+// vez de duplicar a forma do objeto a mao. Um clone passaria mesmo se a
+// producao mudasse o formato ou passasse a reaproveitar um Map — exatamente a
+// regressao que o teste de isolamento existe pra pegar. `criarAppEmpresa`
+// continua chamando estas fabricas a CADA execucao, entao GAVETAS continua
+// uma instancia por empresa.
+//
+// ⚠️ b342 - GAVETA 1 de 3: O INDICE DE NOTAS DE DEVOLUCAO.
+//
+// [stated 15/09] "isso, uma gaveta pra cada. se for o melhor pro futuro,
+// segue nisso, independente do trabalho q isso resulte"
+//
+// Estas 6 variaveis existiam UMA VEZ no processo. Enquanto so a AMB roda
+// aqui, funciona. Mas quando a Girassol subir no mesmo servico, as duas
+// dividiriam a MESMA gaveta: a Girassol pediria o indice dela e receberia o
+// da AMB.
+//
+// ⚠️ E ISSO NAO DA ERRO — da DADO ERRADO com cara de certo. "Numero errado
+// e pior que numero ausente".
+//
+// 📌 Agora sao campos de um objeto CRIADO POR INSTANCIA. Hoje ha uma so, e
+// o comportamento e identico; quando o passo 3 montar a segunda empresa,
+// cada uma tera a sua.
+function criarGavetaNfDev() {
+  return {
+    indice: new Map(),      // pedido -> { nf, data, contato }
+    semPedido: [],          // b335 - notas SEM pedido (caso Full)
+    ignoradas: {},          // b335 r2 - naturezas que ficaram de fora
+    cacheOk: false,         // b335 r2 - build valido, mesmo que vazio
+    ts: 0,
+    carregando: null,
+  };
+}
+
+// ⚠️ b353 - PASSO 3, FATIA 1: UMA FABRICA PARA AS 4 GAVETAS.
+//
+// O passo 2 agrupou as 41 variaveis soltas em 4 gavetas. Mas elas ainda
+// nascem em 4 PONTOS DIFERENTES do arquivo (linhas 229, 255, 1356, 2135) —
+// e o passo 3 precisa criar TODAS por empresa, de uma vez.
+//
+// ⚠️ NAO envolvo o arquivo inteiro numa funcao: sao 3.142 linhas (ja acima
+// do teto de 3.000 do dono), e seria o diff mais arriscado possivel — o
+// tipo de mudanca em que um `}` fora do lugar passa no `node --check` e
+// quebra no ar.
+//
+// 📌 Esta fatia junta o que ESTAVA espalhado num lugar so. Comportamento
+// IDENTICO hoje (uma instancia); e quando o router virar fabrica, a linha
+// que cria as gavetas da empresa ja existe e esta testada.
+function criarGavetasDaEmpresa() {
+  return {
+    // chave na URL + tentativas de login
+    acesso: { usosQuerystring: 0, falhasLogin: new Map() },
+    // pedidos em triagem
+    triagem: { pendentes: new Map() },
+    // espreita + naturezas da NF
+    caches: { espreita: null, naturezasNf: new Map() },
+    // o indice de notas de devolucao
+    nfDev: criarGavetaNfDev(),
+  };
+}
+
 function criarAppEmpresa(empresaAlvo) {
 'use strict';
 
@@ -298,31 +363,11 @@ router.use(cookieParser());
 // USUARIO BLOQUEADO por erro de outra empresa.
 // ⚠️ b353 - PASSO 3, FATIA 1: UMA FABRICA PARA AS 4 GAVETAS.
 //
-// O passo 2 agrupou as 41 variaveis soltas em 4 gavetas. Mas elas ainda
-// nascem em 4 PONTOS DIFERENTES do arquivo (linhas 229, 255, 1356, 2135) —
-// e o passo 3 precisa criar TODAS por empresa, de uma vez.
+// `criarGavetasDaEmpresa` (e `criarGavetaNfDev`, que ela usa) agora vivem no
+// escopo do MODULO, perto do topo do arquivo — ver comentario junto delas.
+// Isso nao muda o comportamento aqui: cada chamada de `criarAppEmpresa`
+// continua criando uma instancia nova de GAVETAS.
 //
-// ⚠️ NAO envolvo o arquivo inteiro numa funcao: sao 3.142 linhas (ja acima
-// do teto de 3.000 do dono), e seria o diff mais arriscado possivel — o
-// tipo de mudanca em que um `}` fora do lugar passa no `node --check` e
-// quebra no ar.
-//
-// 📌 Esta fatia junta o que ESTAVA espalhado num lugar so. Comportamento
-// IDENTICO hoje (uma instancia); e quando o router virar fabrica, a linha
-// que cria as gavetas da empresa ja existe e esta testada.
-function criarGavetasDaEmpresa() {
-  return {
-    // chave na URL + tentativas de login
-    acesso: { usosQuerystring: 0, falhasLogin: new Map() },
-    // pedidos em triagem
-    triagem: { pendentes: new Map() },
-    // espreita + naturezas da NF
-    caches: { espreita: null, naturezasNf: new Map() },
-    // o indice de notas de devolucao
-    nfDev: criarGavetaNfDev(),
-  };
-}
-
 // ⚠️ A instancia de HOJE vem da fabrica — nao ha duas fontes do mesmo
 // estado. Sem isto, a AMB usaria as gavetas soltas e quem chamasse a
 // fabrica usaria outras, sem nada avisando (foi o erro que quase cometi no
@@ -2214,30 +2259,9 @@ registrarRotasAdminNF(router, {
 const NF_DEV_TTL_AMB = 15 * 60 * 1000;
 // ⚠️ b342 - GAVETA 1 de 3: O INDICE DE NOTAS DE DEVOLUCAO.
 //
-// [stated 15/09] "isso, uma gaveta pra cada. se for o melhor pro futuro,
-// segue nisso, independente do trabalho q isso resulte"
-//
-// Estas 6 variaveis existiam UMA VEZ no processo. Enquanto so a AMB roda
-// aqui, funciona. Mas quando a Girassol subir no mesmo servico, as duas
-// dividiriam a MESMA gaveta: a Girassol pediria o indice dela e receberia o
-// da AMB.
-//
-// ⚠️ E ISSO NAO DA ERRO — da DADO ERRADO com cara de certo. "Numero errado
-// e pior que numero ausente".
-//
-// 📌 Agora sao campos de um objeto CRIADO POR INSTANCIA. Hoje ha uma so, e
-// o comportamento e identico; quando o passo 3 montar a segunda empresa,
-// cada uma tera a sua.
-function criarGavetaNfDev() {
-  return {
-    indice: new Map(),      // pedido -> { nf, data, contato }
-    semPedido: [],          // b335 - notas SEM pedido (caso Full)
-    ignoradas: {},          // b335 r2 - naturezas que ficaram de fora
-    cacheOk: false,         // b335 r2 - build valido, mesmo que vazio
-    ts: 0,
-    carregando: null,
-  };
-}
+// A fabrica (`criarGavetaNfDev`) vive no escopo do modulo, perto do topo do
+// arquivo (mesmo comentario de `criarGavetasDaEmpresa`) — aqui so pega a
+// instancia desta empresa.
 const NF_DEV = GAVETAS.nfDev;   // b353
 
 async function montarIndiceNFDevolucaoAMB(maxPaginas) {
@@ -3261,40 +3285,19 @@ console.log(`[amb-devolucoes] ${VERSAO} carregado - prefixo ${cfg.PREFIXO}`);
 // `.criar()`. O teste guarda os dois lados.
 module.exports = {
   criar: criarAppEmpresa,
-  // ⚠️ b358: este export existia SOLTO no fim do arquivo e passou a
-  // referenciar uma funcao que agora e INTERNA (`criarGavetasDaEmpresa` vive
-  // dentro de `criarAppEmpresa`). Quebrava o boot com
-  // "criarGavetasDaEmpresa is not defined" — e o `node --check` nao pega:
-  // e sintaxe valida, erro so em runtime.
+  // ⚠️ revisao Codex no PR #308 (P2) - ISTO CHAMAVA UM CLONE ESCRITO A MAO,
+  // nao `criarGavetasDaEmpresa`. Um clone passa mesmo se a fabrica real
+  // mudar de formato ou passar a reaproveitar um Map entre chamadas —
+  // exatamente a regressao que o teste de isolamento existe pra pegar.
   //
-  // 📌 O teste precisa de uma gaveta nova pra provar que 2 empresas nao
-  // compartilham. Exponho uma FUNCAO que cria uma, sem depender do escopo
-  // interno: ela replica o formato, e o teste real de isolamento e montar
-  // duas empresas (abaixo, no proprio teste).
-  // ⚠️ b358: o teste chama isto DUAS vezes e compara — entao tem que CRIAR
-  // gavetas novas, nao devolver as ultimas. Minha 1a versao devolvia
-  // `criarAppEmpresa.__gavetas`, que e `null` antes de montar qualquer app e
-  // o MESMO objeto nas duas chamadas: o teste quebrava com "Cannot read
-  // properties of null".
+  // 📌 Agora que `criarGavetasDaEmpresa` vive no escopo do MODULO (perto do
+  // topo do arquivo, fora de `criarAppEmpresa`), este export e a PROPRIA
+  // funcao — nao ha mais duas fontes do mesmo formato. Ela ja cria uma
+  // instancia nova a cada chamada (o teste chama duas vezes e compara).
   //
-  // 📌 A fabrica de gavetas vive DENTRO de `criarAppEmpresa`. Pra o teste
-  // alcanca-la sem montar um app inteiro, exponho a mesma forma aqui.
-  gavetasDaEmpresaParaTeste: () => ({
-    acesso: { usosQuerystring: 0, falhasLogin: new Map() },
-    triagem: { pendentes: new Map() },
-    caches: { espreita: null, naturezasNf: new Map() },
-    nfDev: {
-      indice: new Map(), semPedido: [], ignoradas: {},
-      cacheOk: false, ts: 0, carregando: null,
-    },
-  }),
+  // ⚠️ nome de propriedade escolhido a dedo: o mesmo teste tambem mede, pelo
+  // texto do arquivo, se o passo 3 trocou o export de router pronto por uma
+  // fabrica de verdade. Um nome comecando com o verbo que aquela outra
+  // asseracao procura acionaria o alarme errado.
+  gavetasDaEmpresaParaTeste: criarGavetasDaEmpresa,
 };
-// ⚠️ revisao Codex #303 (P2) - exposta so para o teste chamar a fabrica
-// REAL (test/fabrica-empresa-estado.test.js), em vez de duplicar a
-// implementacao num clone que nao pega regressao nenhuma no producao.
-//
-// ⚠️ nome de propriedade escolhido a dedo: o mesmo teste tambem mede, pelo
-// texto do arquivo, se o passo 3 (que ainda nao chegou) trocou o export
-// de router pronto por uma fabrica de verdade. Um nome comecando com o
-// verbo que aquela outra asseracao procura acionaria o alarme errado, sem
-// o passo 3 ter de fato acontecido.

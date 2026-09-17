@@ -304,6 +304,36 @@ app.use(express.json({ limit: '12mb' }));
     ? empresasAtivasNoDevolucoes()
     : [{ chave: 'ambtotal', rota: '/amb' }];
 
+  // ⚠️ revisao Codex no PR #308 (P1) - AS ROTAS FICAM ISOLADAS, MAS NEM
+  // TODA DEPENDENCIA DENTRO DELAS AINDA E.
+  //
+  // `criarAppAMB(chave)` ja cria um router e um GAVETAS por chamada — mas
+  // 8 modulos que a rota usa por baixo (auth-AMB, shopee-AMB, magalu-AMB,
+  // ml-motivo-AMB, impressao-AMB, nf-entrada-AMB, compat-AMB, email-AMB)
+  // ainda sao `require`idos DIRETO, sem `.criar(CFG_EMPRESA)` — sao
+  // singletons de PROCESSO (medido e listado em
+  // test/fabrica-empresa-estado.test.js, bloco SINGLETONS_REQUERIDOS).
+  //
+  // Com UMA empresa ativa isso nao vaza nada — e o caso de hoje. Mas se
+  // uma 2a empresa entrar (`ativa_em.devolucoes: true` no contrato) antes
+  // desses 8 virarem fabrica, a 2a rota autenticaria com AMB_USERS/cookie
+  // da AMB e usaria credencial de marketplace da AMB: dado de uma empresa
+  // vazando pra outra, sem erro nenhum avisando.
+  //
+  // 📌 Este freio troca esse vazamento silencioso por um boot que FALHA
+  // alto — mesmo padrao de `envDaEmpresa` (lanca em empresa invalida).
+  // Remover exige zerar `SINGLETONS_REQUERIDOS` no teste citado primeiro.
+  if (ativas.length > 1) {
+    throw new Error(
+      '[devolucoes] ' + ativas.length + ' empresas ativas ('
+      + ativas.map((e) => e.chave).join(', ') + '), mas app-AMB.js ainda '
+      + 'tem 8 dependencias em singleton de processo (auth-AMB, shopee-AMB, '
+      + 'magalu-AMB, ml-motivo-AMB, impressao-AMB, nf-entrada-AMB, '
+      + 'compat-AMB, email-AMB — ver test/fabrica-empresa-estado.test.js). '
+      + 'Monta-las assim misturaria sessao/credencial entre empresas. '
+      + 'Termine a fatia que falta antes de ativar uma 2a empresa.');
+  }
+
   for (const emp of ativas) {
     app.use(emp.rota, criarAppAMB(emp.chave));
     console.log(`[devolucoes] ${emp.chave} montada em ${emp.rota}`);
@@ -438,7 +468,7 @@ app.get('/health', (req, res) => {
       // busca por nome. Escolher um lado apagaria a descricao do outro.
       // ⚠️ a resolucao JUNTA as duas: a 7.5.0 (passe curto + tetos) ja esta
       // na main, e este PR acrescenta o build frio que falha vazio.
-      version: '9.30.0 (os literais amb saem do codigo: a chave do banco vem da ficha da empresa)',
+      version: '9.30.1 (a chave do banco vem da ficha; e o ativa_em e lido do CONTRATO, nao de um campo que a ficha nao tem)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
