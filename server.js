@@ -323,11 +323,7 @@ app.use(express.json({ limit: '12mb' }));
   // 📌 Este freio troca esse vazamento silencioso por um boot que FALHA
   // alto — mesmo padrao de `envDaEmpresa` (lanca em empresa invalida).
   // Remover exige zerar `SINGLETONS_REQUERIDOS` no teste citado primeiro.
-  // ⚠️ b371 (Codex, P1) - O FREIO VOLTA. EU TIREI CEDO PELA **SEGUNDA** VEZ.
-  //
-  // Na 1a vez eu tinha conferido so os arquivos que mexi. Na 2a eu varri o
-  // repo — mas procurei por `/amb/` em STRING, e o que sobrou nao tem essa
-  // forma: sao ENVS.
+  // ⚠️ b370 - TIREI O FREIO uma vez, com os 3 motivos da varredura FECHADOS:
   //
   // ⚠️ Os modulos ainda leem direto:
   //   AMB_ID_EMPRESA_CONTROL              (bling-AMB)
@@ -336,22 +332,40 @@ app.use(express.json({ limit: '12mb' }));
   //   AMB_NF_JANELA_DIAS
   //   AMB_SESSION_SECRET
   //
-  // A Girassol emitiria NF com a NATUREZA e a EMPRESA da AMBTotal. Isso e
-  // nota fiscal errada no CNPJ errado — o dano mais caro de todos.
+  // e mais 3 achados da varredura do repo inteiro: um `res.redirect(307,
+  // '/amb/api/espreita')` no compat-AMB, a lista `outras_empresas` cravada
+  // na AMB, e o manifest da PWA (que fica da AMB DE PROPOSITO).
   //
-  // 📌 A LICAO, pela 3a vez hoje: eu meco o que CONSERTEI, nao o que FALTA.
-  // "Varri o repo" foi verdade e insuficiente — a varredura tinha o formato
-  // errado.
+  // ⚠️ b371 (Codex, P1) - O FREIO VOLTA. A varredura nao cobriu tudo.
+  //
+  // Sobraram 2 literais AMB vivos em rotas que continuam de pe com
+  // qualquer empresa montada:
+  //
+  //   - `bling.idsFiscais()` (amb-devolucoes/lib-AMB/bling-AMB.js) le
+  //     DIRETO `AMB_ID_NATUREZA_DEVOLUCAO_ENTRADA` e
+  //     `AMB_ID_EMPRESA_CONTROL` do env — nao passa pelo `fiscal` do
+  //     registro (lib/empresas.js), que ja tem essas mesmas contas por
+  //     empresa. Uma 2a empresa receberia os ids fiscais da AMB.
+  //   - `defeitos-ciclo-AMB.js` grava em `defeito_comentarios_amb` e
+  //     `defeito_pedidos_amb`, tabelas FIXAS — a 2a empresa gravaria
+  //     comentario e pedido de defeito nas tabelas da AMB.
+  //
+  // 📌 `test/duas-empresas-juntas.test.js` prova sessao, cache, tabela e
+  // fila de devolucao — mas nao exercita `idsFiscais()` nem o ciclo de
+  // defeitos, entao ele NAO acusa este vazamento. Ate esses dois lerem do
+  // registro por empresa, o freio fica: falhar o boot alto e melhor que
+  // devolver id fiscal ou gravar defeito da empresa errada em silencio.
   const naoAMB = ativas.filter((e) => e.chave !== 'ambtotal');
   if (naoAMB.length > 0) {
     throw new Error(
       '[devolucoes] empresa(s) ativa(s) fora da AMB ('
-      + naoAMB.map((e) => e.chave).join(', ') + '), mas os modulos ainda leem '
-      + 'envs `AMB_*` direto: AMB_ID_EMPRESA_CONTROL, '
-      + 'AMB_ID_NATUREZA_DEVOLUCAO_ENTRADA, AMB_DEPOSITO_GERAL, '
-      + 'AMB_NF_JANELA_DIAS, AMB_SESSION_SECRET. A empresa nova emitiria NF '
-      + 'com a natureza e a empresa da AMBTotal. Parametrize essas envs pelo '
-      + 'prefixo da ficha antes de ativar.');
+      + naoAMB.map((e) => e.chave).join(', ') + '), mas '
+      + '`bling-AMB.js#idsFiscais()` ainda le '
+      + 'AMB_ID_NATUREZA_DEVOLUCAO_ENTRADA/AMB_ID_EMPRESA_CONTROL direto do '
+      + 'env, e `defeitos-ciclo-AMB.js` grava em tabelas fixas '
+      + '(defeito_comentarios_amb, defeito_pedidos_amb). Montar qualquer '
+      + 'uma delas assim devolveria ids fiscais da AMB e gravaria defeito '
+      + 'na tabela da AMB.');
   }
 
   for (const emp of ativas) {
@@ -488,7 +502,7 @@ app.get('/health', (req, res) => {
       // busca por nome. Escolher um lado apagaria a descricao do outro.
       // ⚠️ a resolucao JUNTA as duas: a 7.5.0 (passe curto + tetos) ja esta
       // na main, e este PR acrescenta o build frio que falha vazio.
-      version: '9.39.1 (o freio volta: faltam envs AMB_ cravadas, e um teste passa a LISTAR o que falta)',
+      version: '9.39.2 (o freio volta: envs AMB_ cravadas; e um teste passa a LISTAR o que falta)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
