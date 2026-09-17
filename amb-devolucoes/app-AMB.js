@@ -209,9 +209,19 @@ const cfg = CFG_EMPRESA;
 // login que nao e a dele.
 //
 // 📌 `BASE` e o prefixo da propria instancia: '/amb' hoje, '/girassol'
-// quando ela subir. Vazio na GOOD (que e a raiz), e por isso concateno sem
-// barra extra.
-const BASE = CFG_EMPRESA.PREFIXO || '';
+// quando ela subir.
+//
+// ⚠️ b368.1 (Codex, P2) - `CFG_EMPRESA.PREFIXO || ''` CAIA NA RAIZ PRA GOOD.
+//
+// `PREFIXO` e `ficha.prefixoRota` cru, e a GOOD tem `prefixoRota: ''` DE
+// PROPOSITO — mas ela NAO e montada na raiz: o bootstrap (server.js,
+// `empresasAtivasNoDevolucoes`) monta `criarAppEmpresa('good')` em `/good`
+// (mesmo fallback usado no cookie de sessao e no redirectUri, ver
+// lib/config-da-empresa.js). Cair em '' geraria links pra raiz do servico,
+// fora do router da GOOD.
+//
+// 📌 Uso `PREFIXO_ROTA`, que ja sai da config com esse fallback aplicado.
+const BASE = CFG_EMPRESA.PREFIXO_ROTA;
 
 const bling = require('./lib-AMB/bling-AMB').criar(CFG_EMPRESA);
 const ml = require('./lib-AMB/ml-AMB').criar(CFG_EMPRESA);
@@ -375,7 +385,7 @@ const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 // mais um 403 pendente, e vice-versa). A AMB nunca consultou
 // lib/token-leitor.js (os modulos lib-AMB/* nao honram essa politica,
 // confirmado por grep) - nada a espelhar.
-const VERSAO = 'AMB Devolucoes b368';
+const VERSAO = 'AMB Devolucoes b368.1';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -663,7 +673,7 @@ router.get('/oauth/callback', async (req, res) => {
           <tr><td>Validade do acesso</td><td>${r.expira_em_s ? Math.round(r.expira_em_s / 3600) + 'h (renova sozinho)' : '-'}</td></tr>
         </table></div>
         <div class="aviso">O indice de devolucoes comecou a ser montado agora e leva alguns minutos.
-        Acompanhe em <code>/amb/ml/indice?k=SUA_CHAVE</code>.</div>`));
+        Acompanhe em <code>${BASE}/ml/indice?k=SUA_CHAVE</code>.</div>`));
     }
 
     if (reg.servico === 'magalu') {
@@ -742,7 +752,7 @@ router.get('/ml/indice/construir', admin, (req, res) => {
     ok: true,
     iniciado: true,
     aviso: 'montando em background - pode levar alguns minutos',
-    acompanhe: cfg.urlBase() + '${BASE}/ml/indice?k=SUA_CHAVE',
+    acompanhe: cfg.urlBase() + BASE + '/ml/indice?k=SUA_CHAVE',
   });
 });
 
@@ -753,7 +763,7 @@ router.get('/ml/indice/construir', admin, (req, res) => {
 router.get('/ml/rastreio', admin, async (req, res) => {
   const codigo = req.query.codigo;
   if (!codigo) {
-    return res.status(400).json({ ok: false, erro: 'falta o codigo', uso: '${BASE}/ml/rastreio?codigo=AD123456789BR&k=SUA_CHAVE' });
+    return res.status(400).json({ ok: false, erro: 'falta o codigo', uso: BASE + '/ml/rastreio?codigo=AD123456789BR&k=SUA_CHAVE' });
   }
   const achado = await mlReturns.acharPorTracking(String(codigo));
   if (!achado) {
@@ -788,7 +798,7 @@ router.get('/nf/indice/construir', admin, (req, res) => {
   res.json({
     ok: true, iniciado: true,
     aviso: 'montando em background',
-    acompanhe: cfg.urlBase() + '${BASE}/nf/indice?k=SUA_CHAVE',
+    acompanhe: cfg.urlBase() + BASE + '/nf/indice?k=SUA_CHAVE',
   });
 });
 
@@ -799,7 +809,7 @@ router.get('/nf/indice/construir', admin, (req, res) => {
  */
 router.get('/shopee/chegada', admin, async (req, res) => {
   const sn = req.query.sn || req.query.order_sn;
-  if (!sn) return res.status(400).json({ ok: false, uso: '${BASE}/shopee/chegada?sn=ORDER_SN&k=SUA_CHAVE' });
+  if (!sn) return res.status(400).json({ ok: false, uso: BASE + '/shopee/chegada?sn=ORDER_SN&k=SUA_CHAVE' });
   if (!shopee.cfg.ativo) {
     return res.json({ ok: false, erro: 'integracao Shopee desligada — faltam SHOPEE_PROXY_URL / SHOPEE_PROXY_KEY no servico' });
   }
@@ -814,7 +824,7 @@ router.get('/shopee/chegada', admin, async (req, res) => {
 router.get('/nf/nome', admin, async (req, res) => {
   const q = req.query.q;
   if (!q) {
-    return res.status(400).json({ ok: false, erro: 'falta o q', uso: '${BASE}/nf/nome?q=NOMEDOCLIENTE&pagina=1&k=SUA_CHAVE' });
+    return res.status(400).json({ ok: false, erro: 'falta o q', uso: BASE + '/nf/nome?q=NOMEDOCLIENTE&pagina=1&k=SUA_CHAVE' });
   }
   const r = await nfNomes.buscarPorNome(String(q), {
     pagina: req.query.pagina,
@@ -853,7 +863,7 @@ router.get('/nf/nome', admin, async (req, res) => {
 router.get('/nf/itens', admin, async (req, res) => {
   const id = req.query.id;
   if (!id) {
-    return res.status(400).json({ ok: false, erro: 'falta o id', uso: '${BASE}/nf/itens?id=25994228847&k=SUA_CHAVE' });
+    return res.status(400).json({ ok: false, erro: 'falta o id', uso: BASE + '/nf/itens?id=25994228847&k=SUA_CHAVE' });
   }
   const r = await bling.buscarNFePorId(String(id));
   if (!r.ok) return res.json({ ok: false, erro: r.error, status: r.status });
@@ -895,7 +905,7 @@ router.get('/nf/itens', admin, async (req, res) => {
 router.get('/identificar', admin, async (req, res) => {
   const codigo = String(req.query.codigo || '').trim();
   if (!codigo) {
-    return res.status(400).json({ ok: false, erro: 'falta o codigo', uso: '${BASE}/identificar?codigo=XXX&k=SUA_CHAVE' });
+    return res.status(400).json({ ok: false, erro: 'falta o codigo', uso: BASE + '/identificar?codigo=XXX&k=SUA_CHAVE' });
   }
 
   const tentativas = [];
@@ -3278,15 +3288,15 @@ router.use((req, res) => {
     modulo: 'amb-devolucoes',
     versao: VERSAO,
     rotas: [
-      '${BASE}/conectar', '${BASE}/status', '${BASE}/config',
-      '${BASE}/ml/indice', '${BASE}/ml/indice/construir', '${BASE}/ml/rastreio', '${BASE}/ml/espreita',
-      '${BASE}/identificar', '${BASE}/nf/nome', '${BASE}/nf/itens', '${BASE}/nf/indice', '${BASE}/nf/indice/construir',
-      '${BASE}/api/auth/login', '${BASE}/api/auth/me', '${BASE}/api/triagem/identificar', '${BASE}/api/triagem/registrar',
-      '${BASE}/auth/diag', '${BASE}/db/teste', '${BASE}/api/nf/itens', '${BASE}/api/triagem/recentes',
-      '${BASE}/painel', '${BASE}/api/espreita', '${BASE}/api/recados', '${BASE}/api/defeitos',
-      '${BASE}/shopee/teste', '${BASE}/magalu/status', '${BASE}/nf/entrada/sonda', '${BASE}/nf/entrada/naturezas', '${BASE}/api/etiqueta/fila',
-      '${BASE}/ml/teste', '${BASE}/ml/eu', '${BASE}/bling/teste', '${BASE}/bling/produto',
-    ],
+      '/conectar', '/status', '/config',
+      '/ml/indice', '/ml/indice/construir', '/ml/rastreio', '/ml/espreita',
+      '/identificar', '/nf/nome', '/nf/itens', '/nf/indice', '/nf/indice/construir',
+      '/api/auth/login', '/api/auth/me', '/api/triagem/identificar', '/api/triagem/registrar',
+      '/auth/diag', '/db/teste', '/api/nf/itens', '/api/triagem/recentes',
+      '/painel', '/api/espreita', '/api/recados', '/api/defeitos',
+      '/shopee/teste', '/magalu/status', '/nf/entrada/sonda', '/nf/entrada/naturezas', '/api/etiqueta/fila',
+      '/ml/teste', '/ml/eu', '/bling/teste', '/bling/produto',
+    ].map(r => BASE + r),
   });
 });
 
@@ -3317,7 +3327,7 @@ if (!auth.temUsuarios()) {
   console.log('[amb-devolucoes] AMB_USERS vazio - ninguem consegue logar ainda');
 }
 
-console.log(`[amb-devolucoes] ${VERSAO} carregado - prefixo ${cfg.PREFIXO}`);
+console.log(`[amb-devolucoes] ${VERSAO} carregado - prefixo ${BASE}`);
 
 
 // ⚠️ b367 (Codex, P2) - o teste de isolamento chamava a FABRICA solta
