@@ -22,8 +22,24 @@ const bling = require('./bling-AMB');
 
 // ⚠️ b347 - gaveta: o indice de NF de entrada + o sinalizador.
 // Compartilhado, a Girassol veria as notas de entrada da AMB.
-const EST = { construindo: false };
-const IDX = { ts: 0, porPedido: {}, porNome: {}, total: 0, erro: null, duracaoSeg: 0 };
+// ⚠️ b355 - PASSO 3: fabrica do estado deste modulo.
+//
+// indice de NF de entrada + sinalizador.
+//
+// Mesma tecnica das fatias 1 e 2: a gaveta continua existindo com o
+// mesmo nome, mas NASCE de uma funcao — entao o passo 3 cria uma por
+// empresa em vez de uma por processo. Comportamento identico hoje.
+function criarEstadoNfEntrada() {
+  return {
+    est: { construindo: false },
+    idx: { ts: 0, porPedido: {}, porNome: {}, total: 0, erro: null, duracaoSeg: 0 },
+  };
+}
+
+// ⚠️ a instancia de hoje VEM da fabrica — sem duas fontes do mesmo estado
+const _EST = criarEstadoNfEntrada();
+const EST = _EST.est;
+const IDX = _EST.idx;   // b355
 // (EST.construindo -> EST.construindo — b347)
 
 const colapsar = (s) => String(s || '')

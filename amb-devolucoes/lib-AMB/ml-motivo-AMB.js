@@ -42,7 +42,22 @@ function limparHtml(t) {
 // 📌 O `ROTULO` que esta neste arquivo NAO entra: e tabela de textos fixos,
 // zero escritas — provei antes de mexer. Agrupar constante inflaria o
 // placar e nao isolaria nada.
-const MOT = { ctx: new Map() };
+// ⚠️ b355 - PASSO 3: fabrica do estado deste modulo.
+//
+// contexto de reclamacao lido do ML (cada empresa tem SUA conta).
+//
+// Mesma tecnica das fatias 1 e 2: a gaveta continua existindo com o
+// mesmo nome, mas NASCE de uma funcao — entao o passo 3 cria uma por
+// empresa em vez de uma por processo. Comportamento identico hoje.
+function criarEstadoMlMotivo() {
+  return {
+    mot: { ctx: new Map() },
+  };
+}
+
+// ⚠️ a instancia de hoje VEM da fabrica — sem duas fontes do mesmo estado
+const _EST = criarEstadoMlMotivo();
+const MOT = _EST.mot;
 
 /** Le a reclamacao e as mensagens do mediador. */
 async function contextoDaReclamacao(claimId) {
