@@ -541,10 +541,26 @@ function contarEstadoDoModulo(src) {
   // 📌 Quem decide quando ele pode sair e o PLACAR em
   // `duas-empresas-juntas.test.js`, que LISTA as envs que faltam. Nao eu,
   // de memoria.
-  ok(/const naoAMB = ativas\.filter/.test(srv),
-     '⚠️ o freio existe enquanto houver env `AMB_` cravada nos modulos');
-  ok(/for \(const emp of ativas\)/.test(srv),
-     '  e o bootstrap monta as ativas que passarem por ele');
+  //
+  // ⚠️ b372 (Codex, P2) - um regex que so confere se a DECLARACAO existe
+  // fica verde mesmo se o predicado ler o campo errado, o throw sair, ou o
+  // freio for movido pra depois do `app.use`. Executa o TRECHO REAL do
+  // freio (recortado por marcadores estaveis) com `ativas` simulado, como
+  // era antes do b370 — prova o COMPORTAMENTO, nao a forma do codigo.
+  const { entreMarcadores } = require('./_recorte');
+  const trecho = entreMarcadores(srv,
+    "const naoAMB = ativas.filter((e) => e.chave !== 'ambtotal');",
+    'for (const emp of ativas) {');
+  const rodarFreio = new Function('ativas', trecho);
+
+  const naoLanca = (ativas) => { try { rodarFreio(ativas); return true; } catch (e) { return false; } };
+
+  ok(naoLanca([{ chave: 'ambtotal', rota: '/amb' }]),
+     '  so a AMB ativa: o freio NAO dispara (caso de hoje)');
+  ok(!naoLanca([{ chave: 'good', rota: '/good' }]),
+     '⚠️ so a GOOD ativa (AMB desligada no contrato): o freio DISPARA');
+  ok(!naoLanca([{ chave: 'ambtotal', rota: '/amb' }, { chave: 'good', rota: '/good' }]),
+     '  AMB + GOOD juntas: o freio continua disparando');
 
   // ⚠️ e o app nao carrega mais nada cravado na AMB
   const appSrc = fs.readFileSync(
