@@ -496,7 +496,7 @@ app.get('/health', (req, res) => {
       // busca por nome. Escolher um lado apagaria a descricao do outro.
       // ⚠️ a resolucao JUNTA as duas: a 7.5.0 (passe curto + tetos) ja esta
       // na main, e este PR acrescenta o build frio que falha vazio.
-      version: '9.38.0 (o front descobre a base pela URL — nao escreve mais /amb na mao)',
+      version: '9.38.1 (apontamentos do Codex no PR #319: links da AMB por APP_BASE, case da URL, manifest por empresa)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),

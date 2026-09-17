@@ -139,6 +139,7 @@ function criarAppEmpresa(empresaAlvo) {
 const express = require('express');
 const path = require('path');
 const crypto = require('crypto');
+const MANIFEST_AMB = require('./public-AMB/manifest-AMB.json');
 // b249 - FASE 3, passo 4: os modulos que ja sao FABRICA sao montados COM A
 // FICHA, em vez de vir prontos com o config da AMB embutido.
 //
@@ -385,7 +386,7 @@ const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 // mais um 403 pendente, e vice-versa). A AMB nunca consultou
 // lib/token-leitor.js (os modulos lib-AMB/* nao honram essa politica,
 // confirmado por grep) - nada a espelhar.
-const VERSAO = 'AMB Devolucoes b369';
+const VERSAO = 'AMB Devolucoes b370';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -1008,6 +1009,18 @@ router.use('/js-AMB', (req, res, next) => {
   res.sendFile(path.join(__dirname, '..', 'public', 'js', nome), (err) => {
     if (err) next();   // sumiu da GOOD? cai pra copia local, se houver
   });
+});
+
+// Codex (PR #319, P2) - manifest-AMB.json tinha `start_url`/`scope` CRAVADOS
+// em `/amb/`. Instalado como PWA sob `/girassol`, o atalho abriria a AMB (e
+// o documento ficaria fora do `scope` declarado). O JSON estatico nao tem
+// como saber sob qual prefixo esta instancia foi montada — so o router sabe
+// (`BASE`, acima) — entao serve o arquivo aqui, com os 2 campos por cima.
+router.get('/manifest-AMB.json', (req, res) => {
+  res.json(Object.assign({}, MANIFEST_AMB, {
+    start_url: BASE + '/',
+    scope: BASE + '/',
+  }));
 });
 
 router.use(express.static(path.join(__dirname, 'public-AMB'), {

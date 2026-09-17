@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>AMBTotal - Painel de Devoluções</title>
   <!-- AMB Devol. b303 - painel portado da GOOD. O adaptador poe /amb nas chamadas -->
-  <script src="js-AMB/base-amb.js?v=b369"></script>
+  <script src="js-AMB/base-amb.js?v=b370"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -232,7 +232,7 @@
       <div class="header-acoes">
         <a href="painel" class="destaque">📊 Painel</a>
         <a href="defeitos-AMB.html" style="background:#c62828;color:#fff;">🔧 Defeitos</a>
-        <a href="">📦 Triagem (bipar)</a>
+        <a href="#" onclick="event.preventDefault();location.href=(window.APP_BASE||'')+'/';">📦 Triagem (bipar)</a>
         <a href="#" onclick="logout(event)">🚪 Sair</a>
       </div>
     </header>
@@ -411,7 +411,7 @@
           sec.innerHTML = '<div style="background:#fff5f5;border:2px solid #ef9a9a;border-radius:12px;padding:24px;text-align:center;margin:20px 0;">'
             + '<div style="font-size:20px;font-weight:800;color:#c62828;">🔒 Sessão de admin expirada</div>'
             + '<div style="font-size:14px;color:#666;margin:8px 0 16px;">Faça login de novo na AMBTotal para ver o painel.</div>'
-            + '<a href="" style="display:inline-block;background:#561A9E;color:#fff;text-decoration:none;padding:12px 24px;border-radius:10px;font-weight:700;">Ir para o login →</a>'
+            + '<a href="' + (window.APP_BASE || '') + '/" style="display:inline-block;background:#561A9E;color:#fff;text-decoration:none;padding:12px 24px;border-radius:10px;font-weight:700;">Ir para o login →</a>'
             + '</div>';
           return;
         }
@@ -910,7 +910,7 @@
                 + '<div id="edRecado' + rc.id + '"></div>'
                 + '</div>';
             }
-            h += '<a href="?bipe=' + encodeURIComponent(k) + '" target="_blank" '
+            h += '<a href="' + (window.APP_BASE || '') + '/?bipe=' + encodeURIComponent(k) + '" target="_blank" '
               + 'style="background:#3C3489;color:#fff;border-radius:8px;padding:5px 11px;font-size:12px;font-weight:700;'
               + 'text-decoration:none;margin-top:8px;display:inline-block;">🔎 Abrir a venda</a>'
               + '</div>';

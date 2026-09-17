@@ -29,7 +29,11 @@
   // o que o backend serve.
   var PREFIXOS_CONHECIDOS = ['/amb', '/girassol'];
   var BASE = (function () {
-    var caminho = String(window.location.pathname || '');
+    // Codex (PR #319, P2) - o Express serve /amb E /AMB (roteamento nao
+    // diferencia maiusculas por padrao). Sem baixar a caixa aqui, um link
+    // ou favorito em maiusculas cairia neste `''` (raiz da GOOD) e toda
+    // chamada de API desta tela levaria 401.
+    var caminho = String(window.location.pathname || '').toLowerCase();
     for (var i = 0; i < PREFIXOS_CONHECIDOS.length; i++) {
       var p = PREFIXOS_CONHECIDOS[i];
       if (caminho === p || caminho.indexOf(p + '/') === 0) return p;
