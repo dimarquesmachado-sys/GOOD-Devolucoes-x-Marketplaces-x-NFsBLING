@@ -502,6 +502,35 @@ function contarEstadoDoModulo(src) {
      '  montando cada uma com a SUA chave');
 }
 
+// ── ⚠️ b367 (Codex, P1) - o freio tem que olhar a CHAVE, nao a CONTAGEM ──
+//
+// `ativas.length > 1` deixava passar o caso de UMA SO empresa ativa que nao
+// seja a AMB (contrato com `ambtotal` desativado e `good` ativo, por
+// exemplo): o app-AMB.js continua lendo `config-AMB` (so da AMB) e crava o
+// callback OAuth em `/amb`, vazando nome, loja e credencial da AMB pra
+// dentro da conta errada — sozinha ou acompanhada, o vazamento e o mesmo.
+//
+// 📌 Executa o TRECHO REAL do freio (recortado por marcadores estaveis,
+// `test/_recorte.js`) com `ativas` simulado, em vez de so grepar o texto —
+// prova o COMPORTAMENTO, nao a forma do codigo.
+{
+  const { entreMarcadores } = require('./_recorte');
+  const srv = fs.readFileSync(path.join(RAIZ, 'server.js'), 'utf8');
+  const trecho = entreMarcadores(srv,
+    "const naoAMB = ativas.filter((e) => e.chave !== 'ambtotal');",
+    'for (const emp of ativas) {');
+  const rodarFreio = new Function('ativas', trecho);
+
+  const naoLanca = (ativas) => { try { rodarFreio(ativas); return true; } catch (e) { return false; } };
+
+  ok(naoLanca([{ chave: 'ambtotal', rota: '/amb' }]),
+     '  so a AMB ativa: o freio NAO dispara (caso de hoje)');
+  ok(!naoLanca([{ chave: 'good', rota: '/good' }]),
+     '⚠️ so a GOOD ativa (AMB desligada no contrato): o freio DISPARA');
+  ok(!naoLanca([{ chave: 'ambtotal', rota: '/amb' }, { chave: 'good', rota: '/good' }]),
+     '  AMB + GOOD juntas: o freio continua disparando');
+}
+
 // ── ⚠️ PASSO 3, FATIA 1: as 4 gavetas vêm de UMA fábrica ────────────
 //
 // O passo 2 agrupou as 41 variáveis em 4 gavetas — mas elas nasciam em 4

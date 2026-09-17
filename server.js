@@ -338,14 +338,28 @@ app.use(express.json({ limit: '12mb' }));
   //
   // 📌 A LICAO: "as dependencias viraram fabrica" NAO e o mesmo que "o app e
   // multiempresa". Eu media o que tinha convertido, nao o que faltava.
-  if (ativas.length > 1) {
+  //
+  // ⚠️ b367 (Codex, P1) - `ativas.length > 1` NAO PEGAVA O CASO DE UMA SO
+  // EMPRESA NAO-AMB.
+  //
+  // Se o contrato desativar a AMB (`ativa_em.devolucoes: false`) e ativar
+  // so a GOOD, `ativas` tem 1 item e o freio antigo nao disparava. Mas
+  // `criarAppAMB('good')` passa pelo `config-AMB` do mesmo jeito: o
+  // `chaveDados` novo so evita o boot cair, nao troca o NOME_EMPRESA, a
+  // loja, as credenciais Bling nem o `/amb/oauth/callback` cravado — tudo
+  // isso continua vindo do `config-AMB`, que e SO DA AMB.
+  //
+  // 📌 O freio agora olha a CHAVE, nao a CONTAGEM: qualquer empresa ativa
+  // que nao seja 'ambtotal' derruba o boot, sozinha ou acompanhada.
+  const naoAMB = ativas.filter((e) => e.chave !== 'ambtotal');
+  if (naoAMB.length > 0) {
     throw new Error(
-      '[devolucoes] ' + ativas.length + ' empresas ativas ('
-      + ativas.map((e) => e.chave).join(', ') + '), mas o app-AMB.js ainda '
+      '[devolucoes] empresa(s) ativa(s) fora da AMB ('
+      + naoAMB.map((e) => e.chave).join(', ') + '), mas o app-AMB.js ainda '
       + 'carrega `config-AMB` (so da AMB, 22 leituras) e monta o callback '
-      + 'OAuth em `/amb` cravado. Montar 2 assim faria a 2a usar o nome, a '
-      + 'loja e as credenciais da AMB — e gravar o token dela na conta da '
-      + 'AMBTotal.');
+      + 'OAuth em `/amb` cravado. Montar qualquer uma delas assim usaria o '
+      + 'nome, a loja e as credenciais da AMB — e gravaria o token dela na '
+      + 'conta da AMBTotal.');
   }
 
   for (const emp of ativas) {
@@ -482,7 +496,7 @@ app.get('/health', (req, res) => {
       // busca por nome. Escolher um lado apagaria a descricao do outro.
       // ⚠️ a resolucao JUNTA as duas: a 7.5.0 (passe curto + tetos) ja esta
       // na main, e este PR acrescenta o build frio que falha vazio.
-      version: '9.35.1 (o freio volta: eu tirei cedo demais, o app ainda carrega config-AMB e crava /amb no OAuth)',
+      version: '9.35.2 (o freio olha a CHAVE, nao a CONTAGEM: 1 empresa nao-AMB tambem dispara)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),

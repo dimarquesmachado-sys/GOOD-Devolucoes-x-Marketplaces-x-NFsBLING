@@ -143,8 +143,17 @@ process.env.AMB_SUPABASE_KEY = 'chave-de-teste';
     // sem provar NADA. Teste que passa por acidente é pior que teste nenhum.
     //
     // 📌 Então provo no nível que EU controlo: as gavetas das 2 instâncias.
-    const gav1 = mod.gavetasDaEmpresaParaTeste();
-    const gav2 = mod.gavetasDaEmpresaParaTeste();
+    //
+    // ⚠️ b367 (Codex, P2): eu chamava `mod.gavetasDaEmpresaParaTeste()` — a
+    // FABRICA solta, sem nenhum vinculo com `umaEmpresa`/`outra`. Isso cria
+    // um par de gavetas novo e vazio, desligado dos routers: mutar um lado
+    // nunca alcancaria o outro mesmo que os routers de verdade
+    // compartilhassem tudo. O teste passava sem provar isolamento nenhum.
+    //
+    // 📌 Agora lê a gaveta que CADA router de verdade usa (exposta em
+    // `router.gavetasParaTeste`, ver app-AMB.js).
+    const gav1 = umaEmpresa.gavetasParaTeste;
+    const gav2 = outra.gavetasParaTeste;
     ok(gav1 !== gav2, '⚠️ as gavetas das 2 instancias sao objetos diferentes');
 
     gav1.triagem.pendentes.set('pedido-da-1', {});
