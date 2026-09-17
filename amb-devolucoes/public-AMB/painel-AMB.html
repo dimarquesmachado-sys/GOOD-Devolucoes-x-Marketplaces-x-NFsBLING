@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>AMBTotal - Painel de Devoluções</title>
   <!-- AMB Devol. b310 - painel portado da GOOD. O adaptador poe /amb nas chamadas -->
-  <script src="js-AMB/base-amb.js?v=b63"></script>
+  <script src="js-AMB/base-amb.js?v=b369"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -237,7 +237,7 @@
              apontava pra raiz - que sob /amb cai no Devolucoes da GOOD. -->
         <a href="#" title="Estoque de pecas com defeito: buscar por SKU, abrir a ficha (fotos, historico, comentarios) e imprimir etiqueta" onclick="event.preventDefault();abrirBuscaDefeitos()" style="background:#c62828;color:#fff;">🔧 Defeitos</a>
         <a href="#" id="linkPedidos" title="Solicitacoes do galpao esperando decisao: liberar peca recuperada ou autorizar descarte (nao confundir com pedido de venda)" onclick="event.preventDefault();abrirFilaPedidos()" style="background:#0F6E56;color:#fff;">📥 Solicitações<span id="badgePedidos"></span></a>
-        <a href="/amb/" title="Vai para a tela de bipar as devolucoes que chegam">📦 Triagem (bipar)</a>
+        <a href="" title="Vai para a tela de bipar as devolucoes que chegam">📦 Triagem (bipar)</a>
         <a href="#" title="Encerra a sessao neste navegador" onclick="logout(event)">🚪 Sair</a>
       </div>
     </header>
@@ -442,7 +442,7 @@
           sec.innerHTML = '<div style="background:#fff5f5;border:2px solid #ef9a9a;border-radius:12px;padding:24px;text-align:center;margin:20px 0;">'
             + '<div style="font-size:20px;font-weight:800;color:#c62828;">🔒 Sessão de admin expirada</div>'
             + '<div style="font-size:14px;color:#666;margin:8px 0 16px;">Faça login de novo na AMBTotal para ver o painel.</div>'
-            + '<a href="/amb/" style="display:inline-block;background:#561A9E;color:#fff;text-decoration:none;padding:12px 24px;border-radius:10px;font-weight:700;">Ir para o login →</a>'
+            + '<a href="" style="display:inline-block;background:#561A9E;color:#fff;text-decoration:none;padding:12px 24px;border-radius:10px;font-weight:700;">Ir para o login →</a>'
             + '</div>';
           return;
         }
@@ -771,7 +771,7 @@
       lista.innerHTML = '';
       try {
         // 1) monta o indice de pedidos com NF de devolucao
-        var r = await fetch('/amb/api/admin/indice-nf-devolucao?paginas=6');   // b328 - rota DA AMB (antes chamava a da GOOD)
+        var r = await fetch('/api/admin/indice-nf-devolucao?paginas=6');   // b328 - rota DA AMB (antes chamava a da GOOD)
         var d = await r.json();
         if (!d.ok) { msg.innerHTML = '<span style="color:#c62828;">' + escapeHtml(d.erro || 'erro') + '</span>'; return; }
         window._indiceNFDev = d.pedidos || {};
@@ -1107,7 +1107,7 @@
                 + '<div id="edRecado' + rc.id + '"></div>'
                 + '</div>';
             }
-            h += '<a href="/amb/?bipe=' + encodeURIComponent(k) + '" target="_blank" '
+            h += '<a href="?bipe=' + encodeURIComponent(k) + '" target="_blank" '
               + 'style="background:#3C3489;color:#fff;border-radius:8px;padding:5px 11px;font-size:12px;font-weight:700;'
               + 'text-decoration:none;margin-top:8px;display:inline-block;">🔎 Abrir a venda</a>'
               + '</div>';
@@ -1128,7 +1128,7 @@
             + '<button onclick="editarRecado(' + rc.id + ')" style="background:#3C3489;color:#fff;border:none;'
             + 'border-radius:8px;padding:4px 10px;font-size:12px;cursor:pointer;margin-left:8px;">✏️ Editar</button>'
             + '<div id="edRecado' + rc.id + '"></div>'
-            + '<a href="/amb/?bipe=' + encodeURIComponent(rc.identificador || rc.chave || '') + '" target="_blank" '
+            + '<a href="?bipe=' + encodeURIComponent(rc.identificador || rc.chave || '') + '" target="_blank" '
             + 'style="background:#3C3489;color:#fff;border-radius:8px;padding:5px 11px;font-size:12px;font-weight:700;'
             + 'text-decoration:none;margin-left:8px;display:inline-block;">🔎 Abrir a venda</a>'
             + '<button onclick="removerRecado(' + rc.id + ')" style="background:#999;color:#fff;border:none;border-radius:8px;padding:4px 10px;font-size:12px;cursor:pointer;margin-left:8px;">✖ remover</button>'
@@ -1147,7 +1147,7 @@
               + '<button onclick="editarRecado(' + rc.id + ')" style="background:#3C3489;color:#fff;border:none;'
               + 'border-radius:8px;padding:4px 10px;font-size:12px;cursor:pointer;margin-left:8px;">✏️ Editar</button>'
               + '<div id="edRecado' + rc.id + '"></div>'
-              + '<a href="' + '/amb/?bipe=' + encodeURIComponent(rc.identificador || rc.chave || '') + '" target="_blank" '
+              + '<a href="' + (window.APP_BASE || '') + '/?bipe=' + encodeURIComponent(rc.identificador || rc.chave || '') + '" target="_blank" '
               + 'style="background:#3C3489;color:#fff;border-radius:8px;padding:5px 11px;font-size:12px;font-weight:700;'
               + 'text-decoration:none;margin-left:8px;display:inline-block;">🔎 Abrir a venda</a>'
               + '<button onclick="removerRecado(' + rc.id + ')" style="background:#999;color:#fff;border:none;border-radius:8px;padding:4px 10px;font-size:12px;cursor:pointer;margin-left:8px;">✖ remover</button>'
@@ -1169,7 +1169,7 @@
               // Enquanto nao houver exclusao de verdade, o botao sai daqui.
               // b220 (review do Codex) - o historico existe pra consulta, entao
               // ele tambem precisa do caminho de um clique pra venda.
-              + '<a href="/amb/?bipe=' + encodeURIComponent(rc.identificador || rc.chave || '') + '" target="_blank" '
+              + '<a href="?bipe=' + encodeURIComponent(rc.identificador || rc.chave || '') + '" target="_blank" '
               + 'style="background:#3C3489;color:#fff;border-radius:8px;padding:4px 10px;font-size:11.5px;font-weight:700;'
               + 'text-decoration:none;margin-left:8px;display:inline-block;">🔎 Abrir a venda</a>'
               + '<span style="font-size:11px;color:#999;margin-left:8px;">fica no histórico</span>'
@@ -2158,7 +2158,7 @@ async function carregarSemRetorno() {
       // operador) nunca apareceria. Mesmo TTL do servidor: 15 min.
       if (aprovadas.length && !_nfDevIndiceFresco() && !window._indiceNFDevCarregando) {
         window._indiceNFDevCarregando = true;
-        fetch('/amb/api/admin/indice-nf-devolucao?paginas=6')
+        fetch('/api/admin/indice-nf-devolucao?paginas=6')
           .then(function (r) { return r.json(); })
           .then(function (d) {
             if (d && d.ok && d.pedidos) {
@@ -2639,7 +2639,7 @@ async function carregarSemRetorno() {
     async function logout(e) {
       e.preventDefault();
       try { await fetch('/api/auth/logout', { method: 'POST' }); } catch (err) {}
-      location.href = '/amb/';   // b65 - login da AMB, nao o da GOOD
+      location.href = (window.APP_BASE || '') + '/';   // b65 - login da AMB, nao o da GOOD
     }
 
     let toastTimeout;
@@ -2701,7 +2701,7 @@ async function carregarSemRetorno() {
 
     (async function carregarIdsFiscais() {
       try {
-        const r = await fetch('/amb/api/ids-fiscais', { credentials: 'same-origin' }).then((x) => x.json());
+        const r = await fetch('/api/ids-fiscais', { credentials: 'same-origin' }).then((x) => x.json());
         if (r && r.ok) {
           GOOD_BLING.idEmpresaControl = r.idEmpresaControl;
           GOOD_BLING.idNaturezaOperacao = r.idNaturezaOperacao;
@@ -4276,13 +4276,13 @@ async function carregarSemRetorno() {
   }
 })();
 </script>
-<script src="js-AMB/defeitos-ficha.js?v=b291"></script>
+<script src="js-AMB/defeitos-ficha.js?v=b369"></script>
 <script>
   // b126 - AVISO de pedidos esperando. Sem isso o admin so descobre que
   // tem coisa pra autorizar se abrir a fila por acaso.
   (async function verPendentes() {
     try {
-      var r = await fetch('/amb/api/defeitos/pedidos?status=pendente', { credentials: 'same-origin' });
+      var r = await fetch('/api/defeitos/pedidos?status=pendente', { credentials: 'same-origin' });
       var d = await r.json();
       var n = (d && d.pedidos && d.pedidos.length) || 0;
       var b = document.getElementById('badgePedidos');
