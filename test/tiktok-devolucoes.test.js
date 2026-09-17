@@ -314,7 +314,10 @@ const AGUARDANDO_ENVIO = {
   const fs = require('fs');
   const path = require('path');
   const IDENT = fs.readFileSync(path.join(__dirname, '..', 'amb-devolucoes', 'lib-AMB', 'identificar-AMB.js'), 'utf8');
-  ok(/tiktokDev\.procurar\(tiktokPonte, 'amb', codigoOriginal/.test(IDENT),
+  // ⚠️ b359: o literal virou `CHAVE_DADOS`, que vem das deps (a ficha da
+  // empresa). O que importa aqui e que a rota CONSULTE o TikTok com a chave
+  // da empresa — nao qual string esta escrita.
+  ok(/tiktokDev\.procurar\(tiktokPonte, CHAVE_DADOS, codigoOriginal/.test(IDENT),
      'a rota da AMB consulta o TikTok');
 
   // b180.1: a chave 'amb' precisa existir no mapa da ponte, senao a

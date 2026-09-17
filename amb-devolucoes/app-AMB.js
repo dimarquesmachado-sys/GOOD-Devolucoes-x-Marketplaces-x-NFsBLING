@@ -151,6 +151,27 @@ const criarNfPessoa = require('../lib/nf-pessoa');
 const { obterEmpresa, envDaEmpresa } = require('../lib/empresas');
 // ⚠️ b356: idem — mesma chave, um lugar so decide qual empresa este app e.
 const FICHA_AMB = obterEmpresa(EMPRESA_DESTE_APP);
+
+// ⚠️ b359 - O VALOR DA COLUNA `empresa` NO BANCO, vindo da FICHA.
+//
+// Era o literal `'amb'` em 28 lugares. NAO e a `chave` ('ambtotal') nem o
+// `prefixoRota` ('/amb') — e um terceiro identificador, e trocar pelo errado
+// ORFANARIA todos os dados existentes da AMB.
+//
+// 📌 Com a ficha decidindo, a Girassol declara o dela e nao ha literal aqui.
+//
+// ⚠️ Sem `chaveDados` na ficha eu NAO adivinho: derrubo o boot. Silenciar
+// com um padrao escreveria dado com a chave errada — e isso o dono so
+// descobriria quando a tela viesse vazia.
+const CHAVE_DADOS = (() => {
+  const v = FICHA_AMB && FICHA_AMB.chaveDados;
+  if (!v) {
+    throw new Error(`[devolucoes] a ficha de "${EMPRESA_DESTE_APP}" nao declara `
+      + '`chaveDados` — e o valor da coluna `empresa` no banco. Sem ele eu '
+      + 'gravaria dado com a chave errada.');
+  }
+  return v;
+})();
 const envAmb = (nome, padrao) => envDaEmpresa(FICHA_AMB, nome, padrao);
 const registrarRotasAdminNF = require('./lib-AMB/rotas-admin-AMB');
 // b238 - UNIFICADO: era copia BYTE A BYTE da /lib. Medi os 9 modulos
@@ -241,7 +262,7 @@ const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 // mais um 403 pendente, e vice-versa). A AMB nunca consultou
 // lib/token-leitor.js (os modulos lib-AMB/* nao honram essa politica,
 // confirmado por grep) - nada a espelhar.
-const VERSAO = 'AMB Devolucoes b358';
+const VERSAO = 'AMB Devolucoes b359';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -2091,6 +2112,8 @@ const mlBuscas = criarMlBuscas(ml.chamarML);
 registrarCicloDefeitos(router, { auth, db, bling, cfg });
 
 registrarIdentificar(router, {
+  // ⚠️ b359: o valor da coluna `empresa` no banco — o modulo derruba sem ele
+  chaveDados: CHAVE_DADOS,
   // b229 - a espreita ja montada, por FUNCAO (o comentario abaixo avisa:
   // passar pelo escopo derrubou o boot 2x). O getter le o cache na hora.
   espreitaMontada: () => CACHES.espreita,
@@ -2531,7 +2554,7 @@ router.get('/api/debug/achar-nf', (req, res, next) => {
 
     return res.json({
       ok: true,
-      empresa: 'amb',
+      empresa: CHAVE_DADOS,
       pedido,
       data_referencia: data,
       // a blindada devolve { ok, via, nf, idNF, trace } — nao { match }
@@ -2571,7 +2594,7 @@ router.get('/api/admin/sem-retorno', auth.requerLogin, async (req, res) => {
     const sb = db.cliente();
     if (!sb) return res.status(503).json({ ok: false, erro: 'Supabase nao configurado' });
 
-    const EMPRESA = 'amb';
+    const EMPRESA = CHAVE_DADOS;
     const dias = Math.min(730, Math.max(1, parseInt(req.query.dias, 10) || 365));
     const desde = new Date(Date.now() - dias * 864e5).toISOString();
     const AGORA = Date.now();
@@ -2756,7 +2779,7 @@ router.get('/api/admin/sem-retorno', auth.requerLogin, async (req, res) => {
     // eram re-buscados a cada refresh — gastando os 8s dela — e a fase do
     // NUMERO, que vem depois, ja encontrava o orcamento vencido e saia na
     // hora.
-    vinculoCache.aplicar(itens, 'amb');
+    vinculoCache.aplicar(itens, CHAVE_DADOS);
 
     // ── b221: FASE ZERO — a busca EXATA pela chave ──────────────────────
     //
@@ -2769,12 +2792,12 @@ router.get('/api/admin/sem-retorno', auth.requerLogin, async (req, res) => {
     // tem chave (TikTok capturado sem detalhe).
     {
       let feitasChave = 0;
-      for (const item of vinculoCache.fila(itens, 'amb', 25,
+      for (const item of vinculoCache.fila(itens, CHAVE_DADOS, 25,
           (x) => String(x.nf_chave || '').replace(/\D/g, '').length === 44, 'chave')) {
         if (Date.now() - INICIO_BUSCA > 6000) break;
         if (feitasChave > 0) await new Promise((ok) => setTimeout(ok, 350));
         feitasChave++;
-        const idCache = vinculoCache.chaveDe(item, 'amb');
+        const idCache = vinculoCache.chaveDe(item, CHAVE_DADOS);
         try {
           // b221.1 (Codex): o prazo CANCELA, nao so abandona. Sem isto a
           // chamada seguia por ate 30s em segundo plano, ainda fazia o
@@ -2793,18 +2816,18 @@ router.get('/api/admin/sem-retorno', auth.requerLogin, async (req, res) => {
             if (r.match.numero) item.nf_numero = String(r.match.numero);
             item.nf_achada_por = 'chave';
             vinculoCache.guardar(item, item.nf_id_bling, 'chave',
-              { chave: item.nf_chave, numero: item.nf_numero, serie: item.nf_serie }, 'amb', idCache);
+              { chave: item.nf_chave, numero: item.nf_numero, serie: item.nf_serie }, CHAVE_DADOS, idCache);
           } else if (r && r.ok !== false && r.via === 'chave-nao-achou') {
             // b221.4 (Codex): respondeu VAZIO — a chave nao esta nesta conta.
             // So este caso esfria 20 min e recebe o motivo. Na rodada
             // anterior o motivo ficou num `if` INALCANCAVEL, dentro do ramo
             // de falha transitoria — o Codex pegou.
-            vinculoCache.marcarFalha(item, 'amb', 'chave');
+            vinculoCache.marcarFalha(item, CHAVE_DADOS, 'chave');
             item.nf_motivo_sem_vinculo = 'nao ha NF com esta chave nesta conta do Bling '
               + '— confira se e da empresa certa, ou se foi cancelada';
           } else if (r && r.ok !== false && r.via === 'chave-nota-morta') {
             // a nota existe mas esta cancelada/denegada: definitivo tambem
-            vinculoCache.marcarFalha(item, 'amb', 'chave');
+            vinculoCache.marcarFalha(item, CHAVE_DADOS, 'chave');
             item.nf_motivo_sem_vinculo = 'a NF desta chave esta cancelada ou denegada no Bling '
               + '(situacao ' + r.situacao + ')';
           } else {
@@ -2812,7 +2835,7 @@ router.get('/api/admin/sem-retorno', auth.requerLogin, async (req, res) => {
             // e falha transitoria (timeout, 429, erro) caem AQUI: nao sei nada
             // sobre a minha nota, entao nao esfrio 20 min — adio 2 e deixo as
             // fases seguintes tentarem.
-            vinculoCache.adiarPouco(item, 'amb', 'chave');
+            vinculoCache.adiarPouco(item, CHAVE_DADOS, 'chave');
           }
         } catch (e) { /* as fases seguintes tentam pelo numero */ }
       }
@@ -2833,10 +2856,10 @@ router.get('/api/admin/sem-retorno', auth.requerLogin, async (req, res) => {
 
 
     let buscadas = 0;
-    for (const item of vinculoCache.fila(itens, 'amb', 25, (x) => x.nf_numero, 'numero')) {
+    for (const item of vinculoCache.fila(itens, CHAVE_DADOS, 25, (x) => x.nf_numero, 'numero')) {
       // b204.1: a identidade de ANTES do enriquecimento — o refresh
       // seguinte le a linha crua e procura por ela.
-      const idCache = vinculoCache.chaveDe(item, 'amb');
+      const idCache = vinculoCache.chaveDe(item, CHAVE_DADOS);
       // b204: reserva os ultimos segundos pra fase da CHAVE, que e exata
       if (Date.now() - INICIO_BUSCA > 6000) break;
       // b203.1 (Codex): RITMO. O Bling limita a 3 req/s, e sao ate 25 itens
@@ -2901,12 +2924,12 @@ router.get('/api/admin/sem-retorno', auth.requerLogin, async (req, res) => {
           // b210.6 (Codex): so esfrio quando o Bling RESPONDEU. Prazo
           // estourado ou erro sao transitorios — adiar 20min por causa
           // deles contraria a propria regra que escrevi no b204.6.
-          if (respondeu && r.ok !== false) vinculoCache.marcarFalha(item, 'amb', 'numero');
+          if (respondeu && r.ok !== false) vinculoCache.marcarFalha(item, CHAVE_DADOS, 'numero');
           continue;
         }
         if (veredito.candidatas && veredito.candidatas.length > 1) {
           item.nf_candidatas = veredito.candidatas;
-          vinculoCache.marcarFalha(item, 'amb', 'numero');
+          vinculoCache.marcarFalha(item, CHAVE_DADOS, 'numero');
           continue;   // o dono escolhe; nao chuto
         }
         const escolhida = veredito.escolhida || null;
@@ -2925,7 +2948,7 @@ router.get('/api/admin/sem-retorno', auth.requerLogin, async (req, res) => {
           // b210.2 (Codex): a listagem pode vir SEM chave, e ai a serie
           // vinha null e o mapa nunca aprendia. A candidata costuma trazer
           // `serie` direto — uso ela como reserva.
-          confrontar.aprender('amb',
+          confrontar.aprender(CHAVE_DADOS,
             confrontar.serieDaChave(escolhida.chaveAcesso)
               || (escolhida.serie != null ? String(escolhida.serie) : null),
             escolhida);
@@ -2937,14 +2960,14 @@ router.get('/api/admin/sem-retorno', auth.requerLogin, async (req, res) => {
             || (escolhida && escolhida.serie != null ? String(escolhida.serie) : null);
           if (serieDela) {
             item.nf_serie = serieDela;
-            item.nf_canal = confrontar.canalDaSerie(serieDela, 'amb');
-            item.nf_do_full = confrontar.ehDoFull(serieDela, 'amb');
+            item.nf_canal = confrontar.canalDaSerie(serieDela, CHAVE_DADOS);
+            item.nf_do_full = confrontar.ehDoFull(serieDela, CHAVE_DADOS);
           }
           item.nf_achada_por = 'numero';
           // b207: esta fase perdeu a guarda quando reordenei os lacos —
           // sem ela, a busca era refeita a cada refresh.
           vinculoCache.guardar(item, item.nf_id_bling, 'numero',
-            { chave: item.nf_chave, numero: item.nf_numero, serie: item.nf_serie }, 'amb', idCache);
+            { chave: item.nf_chave, numero: item.nf_numero, serie: item.nf_serie }, CHAVE_DADOS, idCache);
           item.nf_achada_por = 'numero';
         } else if (r && r.ok !== false && item.nf_chave) {
           // b207 - DIZER por que nao achou. A busca ja filtra pela serie da
@@ -2959,14 +2982,14 @@ router.get('/api/admin/sem-retorno', auth.requerLogin, async (req, res) => {
             + String(item.nf_numero) + ' na serie ' + ch.slice(22, 25)
             + ' — pode estar cancelada, fora do alcance da busca, ou nao existir '
             + 'no Bling. Confira por la antes de concluir';
-          vinculoCache.guardar(item, item.nf_id_bling, 'numero', { chave: item.nf_chave, numero: item.nf_numero, serie: item.nf_serie }, 'amb', idCache);
+          vinculoCache.guardar(item, item.nf_id_bling, 'numero', { chave: item.nf_chave, numero: item.nf_numero, serie: item.nf_serie }, CHAVE_DADOS, idCache);
         }
         // b204.6 (Codex): so adio quando o Bling RESPONDEU e nao achou.
             // Erro (429/500) ou prazo estourado devolvem `r` nulo — isso e
             // ausencia de resposta, nao "nao existe". Adiar por 20 min uma
             // instabilidade de segundos deixaria o dono sem o botao a toa.
             if (!item.nf_id_bling && r && r.ok !== false) {
-              vinculoCache.marcarFalha(item, 'amb', 'numero');
+              vinculoCache.marcarFalha(item, CHAVE_DADOS, 'numero');
             }
       } catch (e) { /* segue pros caminhos abaixo */ }
     }
@@ -2983,7 +3006,7 @@ router.get('/api/admin/sem-retorno', auth.requerLogin, async (req, res) => {
       if (item.nf_id_bling) continue;
       // b204.1: a identidade de ANTES do enriquecimento — o refresh
       // seguinte le a linha crua e procura por ela.
-      const idCache = vinculoCache.chaveDe(item, 'amb');
+      const idCache = vinculoCache.chaveDe(item, CHAVE_DADOS);
       if (Date.now() - INICIO_BUSCA > 8000) break;   // o painel nao pode travar
       try {
         // a busca PAGINA no Bling e pode passar dos 8s sozinha; o teto do
@@ -3008,13 +3031,13 @@ router.get('/api/admin/sem-retorno', auth.requerLogin, async (req, res) => {
           item.nf_id_bling = String(id);
           item.nf_achada_por = item.nf_achada_por || 'chave';
           vinculoCache.guardar(item, item.nf_id_bling, 'chave',
-            { chave: item.nf_chave, numero: item.nf_numero, serie: item.nf_serie }, 'amb', idCache);
+            { chave: item.nf_chave, numero: item.nf_numero, serie: item.nf_serie }, CHAVE_DADOS, idCache);
         }
       } catch (e) { /* segue sem o link; o numero da NF esta no card */ }
     }
 
-    for (const item of vinculoCache.fila(itens, 'amb', 10, (x) => x.pedido, 'pedido')) {
-      const idCache = vinculoCache.chaveDe(item, 'amb');
+    for (const item of vinculoCache.fila(itens, CHAVE_DADOS, 10, (x) => x.pedido, 'pedido')) {
+      const idCache = vinculoCache.chaveDe(item, CHAVE_DADOS);
       // b204.5 (Codex): corte em 8s, nao 12. Esta fase ficava entre a do
       // NUMERO e a da CHAVE e podia comer 14s — depois disso a da chave,
       // com corte em 8s, saia na hora sem tentar nada.
@@ -3054,7 +3077,7 @@ router.get('/api/admin/sem-retorno', auth.requerLogin, async (req, res) => {
           const ci = String(item.nf_chave || '').replace(/\D/g, '');
           const ca = String(achada && achada.chaveAcesso || '').replace(/\D/g, '');
           if (ci && ca !== ci) {
-            vinculoCache.marcarFalha(item, 'amb', 'pedido');
+            vinculoCache.marcarFalha(item, CHAVE_DADOS, 'pedido');
             continue;   // a fase da CHAVE resolve; ela e exata
           }
         }
@@ -3066,14 +3089,14 @@ router.get('/api/admin/sem-retorno', auth.requerLogin, async (req, res) => {
             if (!item.nf_chave && achada.chaveAcesso) item.nf_chave = achada.chaveAcesso;
           }
           item.nf_achada_por = 'pedido';
-          vinculoCache.guardar(item, item.nf_id_bling, 'pedido', { chave: item.nf_chave, numero: item.nf_numero, serie: item.nf_serie }, 'amb', idCache);
+          vinculoCache.guardar(item, item.nf_id_bling, 'pedido', { chave: item.nf_chave, numero: item.nf_numero, serie: item.nf_serie }, CHAVE_DADOS, idCache);
         }
         // b204.6 (Codex): so adio quando o Bling RESPONDEU e nao achou.
             // Erro (429/500) ou prazo estourado devolvem `r` nulo — isso e
             // ausencia de resposta, nao "nao existe". Adiar por 20 min uma
             // instabilidade de segundos deixaria o dono sem o botao a toa.
             if (!item.nf_id_bling && r && r.ok !== false) {
-              vinculoCache.marcarFalha(item, 'amb', 'pedido');
+              vinculoCache.marcarFalha(item, CHAVE_DADOS, 'pedido');
             }
       } catch (e) { /* segue sem a nota; o card continua so informativo */ }
     }
@@ -3094,8 +3117,8 @@ router.get('/api/admin/sem-retorno', auth.requerLogin, async (req, res) => {
       const serie = item.nf_serie || confrontar.serieDaChave(item.nf_chave);
       if (!serie) continue;
       item.nf_serie = serie;
-      item.nf_canal = confrontar.canalDaSerie(serie, 'amb');
-      item.nf_do_full = confrontar.ehDoFull(serie, 'amb');
+      item.nf_canal = confrontar.canalDaSerie(serie, CHAVE_DADOS);
+      item.nf_do_full = confrontar.ehDoFull(serie, CHAVE_DADOS);
     }
 
     // b203.7 (Codex): RECALCULAR a acao depois de enriquecer.
