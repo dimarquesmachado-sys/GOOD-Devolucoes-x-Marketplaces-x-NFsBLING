@@ -9,7 +9,12 @@ const path = require('path');
 const {
   EMPRESAS, ENVS_OBRIGATORIAS, ENVS_BANCO,
   envDaEmpresa, obterEmpresa, listarEmpresas, conferirEmpresa, descobrirFicha,
+  empresasAtivasNoDevolucoes,
 } = require('../lib/empresas');
+// mesmo arquivo que `lib/empresas.js` requer: o `require` do Node cacheia
+// por caminho resolvido, entao mutar este objeto muta o MESMO que a funcao
+// le — sem precisar interceptar `require`.
+const CONTRATO_EMPRESAS = require('../contrato-empresas.json');
 
 let falhas = 0;
 const ok = (c, oque) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + oque); };
@@ -166,6 +171,32 @@ if (guardaKey) process.env.SUPABASE_KEY = guardaKey; else delete process.env.SUP
      '  e TODAS com prefixo AMB_ — nenhuma cobrada com o nome da GOOD');
   ok(faltando.includes('AMB_BLING_CLIENT_ID'),
      '  ex: AMB_BLING_CLIENT_ID (nome exato, pra colar no Render)');
+})();
+
+// ── 6b. empresasAtivasNoDevolucoes LE DO CONTRATO, nao da ficha ──────
+//
+// revisao Codex no PR #308 (P1): o codigo lia `ficha.ativa_em` — campo que
+// nunca existiu em `EMPRESAS` (so no `contrato-empresas.json`). `declarada`
+// saia sempre `null` pra qualquer empresa que nao fosse a AMB, e o "zero
+// deploy" do campo era decoracao. Prova: muda o CONTRATO de verdade (o
+// mesmo objeto que `lib/empresas.js` requer, pelo cache do Node) e confere
+// que a funcao REAGE — antes da correcao, mudar o contrato nao tinha efeito
+// nenhum e a AMB aparecia sempre, contrato dizendo o que fosse.
+(() => {
+  const guardaAtivaEm = CONTRATO_EMPRESAS.empresas.ambtotal.ativa_em;
+
+  ok(empresasAtivasNoDevolucoes().some((e) => e.chave === 'ambtotal'),
+     'hoje (sem `ativa_em` no contrato da AMB) a AMB esta ativa');
+
+  CONTRATO_EMPRESAS.empresas.ambtotal.ativa_em = { devolucoes: false };
+  const semAMB = empresasAtivasNoDevolucoes();
+  ok(!semAMB.some((e) => e.chave === 'ambtotal'),
+     '⚠️ com `ativa_em.devolucoes: false` no CONTRATO, a AMB sai da lista '
+     + '(achei: ' + JSON.stringify(semAMB) + ') — prova que a funcao le o CONTRATO, nao a ficha');
+
+  CONTRATO_EMPRESAS.empresas.ambtotal.ativa_em = guardaAtivaEm;
+  ok(empresasAtivasNoDevolucoes().some((e) => e.chave === 'ambtotal'),
+     '  e volta a entrar quando o contrato volta ao original (sem vazar estado pro resto do teste)');
 })();
 
 console.log('');
