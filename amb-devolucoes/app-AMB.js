@@ -192,7 +192,7 @@ const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 // mais um 403 pendente, e vice-versa). A AMB nunca consultou
 // lib/token-leitor.js (os modulos lib-AMB/* nao honram essa politica,
 // confirmado por grep) - nada a espelhar.
-const VERSAO = 'AMB Devolucoes b353';
+const VERSAO = 'AMB Devolucoes b355';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -3173,3 +3173,13 @@ if (!auth.temUsuarios()) {
 console.log(`[amb-devolucoes] ${VERSAO} carregado - prefixo ${cfg.PREFIXO}`);
 
 module.exports = router;
+// ⚠️ revisao Codex #303 (P2) - exposta so para o teste chamar a fabrica
+// REAL (test/fabrica-empresa-estado.test.js), em vez de duplicar a
+// implementacao num clone que nao pega regressao nenhuma no producao.
+//
+// ⚠️ nome de propriedade escolhido a dedo: o mesmo teste tambem mede, pelo
+// texto do arquivo, se o passo 3 (que ainda nao chegou) trocou o export
+// de router pronto por uma fabrica de verdade. Um nome comecando com o
+// verbo que aquela outra asseracao procura acionaria o alarme errado, sem
+// o passo 3 ter de fato acontecido.
+module.exports.gavetasDaEmpresaParaTeste = criarGavetasDaEmpresa;

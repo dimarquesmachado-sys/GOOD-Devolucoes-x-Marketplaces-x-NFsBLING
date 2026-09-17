@@ -404,29 +404,57 @@ function contarEstadoDoModulo(src) {
        `  ${nome} sai da gaveta \`${campo}\``);
   }
 
-  // ⚠️ e duas chamadas NÃO compartilham nada — é o ponto inteiro
-  const criarNfDev = () => ({ indice: new Map(), semPedido: [], ignoradas: {},
-    cacheOk: false, ts: 0, carregando: null });
-  const criar = () => ({
-    acesso: { usosQuerystring: 0, falhasLogin: new Map() },
-    triagem: { pendentes: new Map() },
-    caches: { espreita: null, naturezasNf: new Map() },
-    nfDev: criarNfDev(),
-  });
+  // ⚠️ e duas chamadas NÃO compartilham nada — é o ponto inteiro.
+  //
+  // 📌 revisao Codex #303 (P2): chamar a FABRICA REAL (exportada por
+  // app-AMB.js só para este teste), em vez de um clone escrito à mão —
+  // um clone passaria mesmo se a produção reaproveitasse um Map do
+  // escopo do módulo entre as duas chamadas.
+  process.env.AMB_SUPABASE_URL = process.env.AMB_SUPABASE_URL || 'https://teste.supabase.co';
+  process.env.AMB_SUPABASE_KEY = process.env.AMB_SUPABASE_KEY || 'chave-de-teste';
 
-  const a = criar();
-  const b = criar();
-  a.acesso.falhasLogin.set('ana', 3);
-  a.triagem.pendentes.set('p1', {});
-  a.caches.espreita = { dados: 'da A' };
-  a.nfDev.indice.set('4567', { nf: '123' });
+  const Module = require('module');
+  const originalLoad = Module._load;
+  Module._load = function (pedido) {
+    if (pedido === '@supabase/supabase-js') return { createClient: () => ({ from: () => ({}) }) };
+    if (pedido.indexOf('auth-AMB') !== -1) {
+      const real = originalLoad.apply(this, arguments);
+      return Object.assign({}, real, {
+        requerLogin: (req, res, next) => next(),
+        requerAdmin: (req, res, next) => next(),
+      });
+    }
+    return originalLoad.apply(this, arguments);
+  };
+  let routerAMB = null;
+  try { routerAMB = require(path.join(RAIZ, 'amb-devolucoes', 'app-AMB.js')); }
+  catch (e) { console.log('(nao consegui montar o app-AMB: ' + (e.message || e) + ')'); }
+  Module._load = originalLoad;
 
-  ok(!b.acesso.falhasLogin.has('ana'),
-     '⚠️ login travado numa empresa NAO trava a outra');
-  ok(b.triagem.pendentes.size === 0, '  triagem nao vaza');
-  ok(b.caches.espreita === null, '  espreita nao vaza');
-  ok(b.nfDev.indice.size === 0, '  ⚠️ e o indice de NF nao vaza (o pior deles)');
-  ok(a.nfDev.indice.size === 1, '  e a primeira manteve o que era dela');
+  const fabricaDisponivel = !!routerAMB && typeof routerAMB.gavetasDaEmpresaParaTeste === 'function';
+  ok(fabricaDisponivel, '  a fabrica real foi exportada e pode ser chamada aqui');
+
+  if (fabricaDisponivel) {
+    const a = routerAMB.gavetasDaEmpresaParaTeste();
+    const b = routerAMB.gavetasDaEmpresaParaTeste();
+    a.acesso.falhasLogin.set('ana', 3);
+    a.triagem.pendentes.set('p1', {});
+    a.caches.espreita = { dados: 'da A' };
+    a.nfDev.indice.set('4567', { nf: '123' });
+
+    ok(!b.acesso.falhasLogin.has('ana'),
+       '⚠️ login travado numa empresa NAO trava a outra');
+    ok(b.triagem.pendentes.size === 0, '  triagem nao vaza');
+    ok(b.caches.espreita === null, '  espreita nao vaza');
+    ok(b.nfDev.indice.size === 0, '  ⚠️ e o indice de NF nao vaza (o pior deles)');
+    ok(a.nfDev.indice.size === 1, '  e a primeira manteve o que era dela');
+  } else {
+    ok(false, '  login travado numa empresa NAO trava a outra (pulado: fabrica indisponivel)');
+    ok(false, '  triagem nao vaza (pulado: fabrica indisponivel)');
+    ok(false, '  espreita nao vaza (pulado: fabrica indisponivel)');
+    ok(false, '  o indice de NF nao vaza (pulado: fabrica indisponivel)');
+    ok(false, '  a primeira manteve o que era dela (pulado: fabrica indisponivel)');
+  }
 }
 
 console.log('');
