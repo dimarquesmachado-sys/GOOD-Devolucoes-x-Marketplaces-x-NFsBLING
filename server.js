@@ -415,7 +415,7 @@ app.get('/health', (req, res) => {
       // busca por nome. Escolher um lado apagaria a descricao do outro.
       // ⚠️ a resolucao JUNTA as duas: a 7.5.0 (passe curto + tetos) ja esta
       // na main, e este PR acrescenta o build frio que falha vazio.
-      version: '9.27.0 (passo 3 fatia 3: os 6 modulos restantes ganham fabrica — ZERO estado solto)',
+      version: '9.28.0 (passo 3 fatia 4: a empresa do app sai de dentro do codigo e vem de DEVOLUCOES_EMPRESA)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
