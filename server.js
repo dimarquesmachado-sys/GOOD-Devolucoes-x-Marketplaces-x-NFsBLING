@@ -323,16 +323,23 @@ app.use(express.json({ limit: '12mb' }));
   // 📌 Este freio troca esse vazamento silencioso por um boot que FALHA
   // alto — mesmo padrao de `envDaEmpresa` (lanca em empresa invalida).
   // Remover exige zerar `SINGLETONS_REQUERIDOS` no teste citado primeiro.
-  if (ativas.length > 1) {
-    throw new Error(
-      '[devolucoes] ' + ativas.length + ' empresas ativas ('
-      + ativas.map((e) => e.chave).join(', ') + '), mas app-AMB.js ainda '
-      + 'tem 8 dependencias em singleton de processo (auth-AMB, shopee-AMB, '
-      + 'magalu-AMB, ml-motivo-AMB, impressao-AMB, nf-entrada-AMB, '
-      + 'compat-AMB, email-AMB — ver test/fabrica-empresa-estado.test.js). '
-      + 'Monta-las assim misturaria sessao/credencial entre empresas. '
-      + 'Termine a fatia que falta antes de ativar uma 2a empresa.');
-  }
+  // ⚠️ b365 - O FREIO SAI: as 13 dependencias viraram fabrica.
+  //
+  // Ele existia porque `app-AMB.js` usava 13 modulos como instancia unica do
+  // processo — montar 2 empresas misturaria sessao, credencial e cache.
+  //
+  // 📌 AGORA: 8 guardavam estado e viraram `.criar(CFG_EMPRESA)`; os outros 5
+  // (marketplace, admin-helpers, rotas-admin, identificar, defeitos-ciclo)
+  // NAO guardam estado — medido, nao suposto: recebem o router e as deps DA
+  // INSTANCIA a cada chamada, e o unico valor de modulo e uma tabela de nomes
+  // sem escrita.
+  //
+  // ⚠️ E O QUE O SUBSTITUI e melhor que um teto: um teste que monta DUAS
+  // instancias e prova que sessao, cache e estado nao se cruzam. Freio de
+  // contagem protege contra o numero; o teste protege contra o VAZAMENTO.
+  //
+  // 📌 A Girassol continua inativa no contrato — ativar e decisao do dono, e
+  // ainda falta o frontend (que escreve `/amb` em varios pontos).
 
   for (const emp of ativas) {
     app.use(emp.rota, criarAppAMB(emp.chave));
@@ -468,7 +475,7 @@ app.get('/health', (req, res) => {
       // busca por nome. Escolher um lado apagaria a descricao do outro.
       // ⚠️ a resolucao JUNTA as duas: a 7.5.0 (passe curto + tetos) ja esta
       // na main, e este PR acrescenta o build frio que falha vazio.
-      version: '9.34.0 (os 5 modulos de estado que faltavam viram fabrica — nenhum e mais do processo)',
+      version: '9.35.0 (o freio sai: duas empresas sobem juntas, com teste que prova o isolamento)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
