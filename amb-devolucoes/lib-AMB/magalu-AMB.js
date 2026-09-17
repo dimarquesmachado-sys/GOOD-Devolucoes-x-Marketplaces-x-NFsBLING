@@ -85,11 +85,41 @@ const SCOPES = (process.env.MAGALU_SCOPES || [
 //
 // 📌 Os padroes leem as envs da AMB, entao hoje o comportamento e
 // IDENTICO. O passo 3 passa as envs da empresa.
-const TOKENS = {
-  access: process.env.AMB_MAGALU_ACCESS_TOKEN || '',
-  refresh: process.env.AMB_MAGALU_REFRESH_TOKEN || '',
-  tenant: process.env.AMB_MAGALU_TENANT_ID || '',
-};
+// ⚠️ b354 - PASSO 3, FATIA 2: UMA FABRICA PRO ESTADO DO MAGALU.
+//
+// Mesma tecnica da fatia 1 no app-AMB: as 5 gavetas com escrita nasciam em
+// pontos diferentes do arquivo. O passo 3 precisa criar TODAS por empresa.
+//
+// ⚠️ ESTE E O MODULO DE MAIOR RISCO DOS QUE RESTAM: guarda os TOKENS. Com
+// duas empresas dividindo `TOKENS.access`, uma faria requisicao ao Magalu
+// com a credencial da outra — e o marketplace responderia com os dados da
+// conta errada, sem erro nenhum.
+//
+// 📌 O `cfg` fica FORA: e fachada de leitura (0 escritas, medido) e esta no
+// `module.exports` — renomear quebraria quem le `magalu.cfg`.
+function criarEstadoMagalu() {
+  return {
+    // tokens da conta — o mais sensivel
+    tokens: {
+      access: process.env.AMB_MAGALU_ACCESS_TOKEN || '',
+      refresh: process.env.AMB_MAGALU_REFRESH_TOKEN || '',
+      tenant: process.env.AMB_MAGALU_TENANT_ID || '',
+    },
+    // controle da renovacao (o refresh do Magalu e de uso unico)
+    renov: { emVoo: null, ultimaPersistencia: false },
+    // sinalizadores de construcao
+    indices: { fase2Rodando: false, construindo: false },
+    // indice de tickets
+    tidx: { ts: 0, mapa: {}, total: 0, comReversa: 0, duracaoSeg: 0, erro: null },
+    // indice da espreita
+    idx: { ts: 0, porPedido: {}, lista: [], erro: null, duracaoSeg: 0 },
+  };
+}
+
+// ⚠️ a instancia de hoje VEM da fabrica — sem duas fontes do mesmo estado
+const EST_MAGALU = criarEstadoMagalu();
+
+const TOKENS = EST_MAGALU.tokens;
 
 const temCredenciais = () => !!(CLIENT_ID && CLIENT_SECRET);
 const temToken = () => !!(TOKENS.access || TOKENS.refresh);
@@ -150,7 +180,7 @@ async function trocarCodePorToken(code, redirectUri) {
 // chega depois espera o resultado da que ja esta rodando.
 // ⚠️ b345 - controle da renovacao (em voo + ultima persistencia).
 // Compartilhado, duas empresas renovariam em cima uma da outra.
-const RENOV = { emVoo: null, ultimaPersistencia: false };
+const RENOV = EST_MAGALU.renov;   // b354
 
 async function renovar() {
   if (RENOV.emVoo) return RENOV.emVoo;      // b267 - pega carona
@@ -231,8 +261,8 @@ async function remessasReversasDoTicket(ticketId) {
 }
 
 // ⚠️ b345 - os dois indices + os sinalizadores de construcao, numa gaveta.
-const INDICES = { fase2Rodando: false, construindo: false };
-const TIDX = { ts: 0, mapa: {}, total: 0, comReversa: 0, duracaoSeg: 0, erro: null };
+const INDICES = EST_MAGALU.indices;   // b354
+const TIDX = EST_MAGALU.tidx;   // b354
 const soDigitos = (s) => String(s || '').replace(/\D/g, '');
 
 // (INDICES.fase2Rodando -> INDICES.fase2Rodando — b345)
@@ -391,7 +421,7 @@ const cfg = {
 };
 
 // ── A ESPREITA ───────────────────────────────────────────────
-const IDX = { ts: 0, porPedido: {}, lista: [], erro: null, duracaoSeg: 0 };
+const IDX = EST_MAGALU.idx;   // b354
 // (INDICES.construindo -> INDICES.INDICES.construindo — b345)
 
 const HDR = () => ({ headers: {

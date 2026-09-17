@@ -299,7 +299,19 @@ function contarEstadoDoModulo(src) {
   //
   // Ou seja: o estado MUTAVEL solto acabou. O que resta sao os pontos que o
   // passo 3 vai instanciar, e eles agora tem nome e limite claros.
-  ok(totalSingletons === 16,
+  // ⚠️ b354 - PASSO 3, FATIA 2: 16 -> 11. O `magalu-AMB` foi de 6 pra 1.
+  //
+  // Mesma tecnica da fatia 1: uma fabrica (`criarEstadoMagalu`) cria as 5
+  // gavetas com escrita, e a instancia de hoje vem dela.
+  //
+  // ⚠️ Era o de MAIOR RISCO dos que restavam: guarda os TOKENS. Duas
+  // empresas dividindo `TOKENS.access` fariam requisicao ao Magalu com a
+  // credencial UMA DA OUTRA — e o marketplace responde com os dados da conta
+  // errada, sem erro nenhum.
+  //
+  // 📌 O `cfg` que sobrou e fachada de leitura (0 escritas, medido) e esta no
+  // `module.exports` — renomear quebraria quem le `magalu.cfg`.
+  ok(totalSingletons === 11,
      `📌 linha de base EXATA dos singletons requeridos: ${totalSingletons} variaveis tambem vazam entre empresas — ${porArquivo.join('; ')}`);
 }
 

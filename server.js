@@ -415,7 +415,7 @@ app.get('/health', (req, res) => {
       // busca por nome. Escolher um lado apagaria a descricao do outro.
       // ⚠️ a resolucao JUNTA as duas: a 7.5.0 (passe curto + tetos) ja esta
       // na main, e este PR acrescenta o build frio que falha vazio.
-      version: '9.25.1 (revisao do Codex no #303: AMB nao regride de b354 pra b353, e o teste de isolamento passa a chamar a fabrica real em vez de um clone)',
+      version: '9.26.0 (passo 3 fatia 2: o estado do Magalu vem de uma fabrica — os tokens saem do escopo do modulo)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
