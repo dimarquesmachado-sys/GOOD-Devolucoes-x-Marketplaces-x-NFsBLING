@@ -344,7 +344,7 @@ const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 // mais um 403 pendente, e vice-versa). A AMB nunca consultou
 // lib/token-leitor.js (os modulos lib-AMB/* nao honram essa politica,
 // confirmado por grep) - nada a espelhar.
-const VERSAO = 'AMB Devolucoes b364';
+const VERSAO = 'AMB Devolucoes b367';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -3286,6 +3286,17 @@ if (!auth.temUsuarios()) {
 
 console.log(`[amb-devolucoes] ${VERSAO} carregado - prefixo ${cfg.PREFIXO}`);
 
+
+// ⚠️ b367 (Codex, P2) - o teste de isolamento chamava a FABRICA solta
+// (`gavetasDaEmpresaParaTeste()`) pra pegar "as gavetas de cada instancia",
+// mas essa chamada nao tem nenhum vinculo com `umaEmpresa`/`outra`: cria um
+// par de gavetas NOVO e vazio, desligado do router. Mutar um lado nunca
+// alcancaria o outro nem que o router de verdade compartilhasse tudo —
+// o teste passava sem provar isolamento nenhum.
+//
+// 📌 Agora a PROPRIA instancia das gavetas usada por este router vai junto
+// no objeto devolvido, pra quem testa ler o estado real em vez de um clone.
+router.gavetasParaTeste = GAVETAS;
 
 // ⚠️ o `return` fica DENTRO da funcao, no lugar do antigo
 // `module.exports = router`.
