@@ -177,6 +177,23 @@ process.env.AMB_SUPABASE_KEY = 'chave-de-teste';
        '⚠️ os 7 modulos de estado dao instancias separadas'
        + (separados.length ? ` — falharam: ${separados.join(', ')}` : ''));
 
+    // ── ⚠️ e os links do HTML saem da BASE da instância ───────────────
+    //
+    // Havia 48 links `/amb/...` escritos à mão. Com a Girassol em
+    // `/girassol`, todos levariam o usuário dela para dentro da AMB — e como
+    // a sessão é por empresa, ele cairia num login que não é o dele.
+    const appSrc = fs.readFileSync(
+      path.join(RAIZ, 'amb-devolucoes', 'app-AMB.js'), 'utf8');
+    ok(/const BASE = CFG_EMPRESA\.PREFIXO \|\| '';/.test(appSrc),
+       '⚠️ a BASE vem do prefixo da instancia');
+
+    const semComent = appSrc.split('\n')
+      .filter((l) => !l.trim().startsWith('//')).join('\n');
+    const cravados = (semComent.match(/["'`][^"'`\n]*\/amb\/[^"'`\n]*["'`]/g) || []);
+    ok(cravados.length === 0,
+       '⚠️ nenhum link `/amb/` cravado no codigo'
+       + (cravados.length ? ` (${cravados.length}: ${cravados[0].slice(0, 38)})` : ''));
+
     console.log('');
     console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
     process.exit(falhas ? 1 : 0);

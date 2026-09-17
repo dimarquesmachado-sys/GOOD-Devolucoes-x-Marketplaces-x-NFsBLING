@@ -201,6 +201,18 @@ const CFG_EMPRESA = configDaEmpresa(EMPRESA_DESTE_APP);
 // seria gravado na conta da AMBTotal.
 const cfg = CFG_EMPRESA;
 
+// ⚠️ b368 - A BASE DAS ROTAS SAI DA FICHA, nao cravada.
+//
+// Havia 48 links `/amb/...` escritos a mao no HTML e nos redirects. Com a
+// Girassol montada em `/girassol`, todos eles levariam o usuario dela pra
+// dentro da AMB — e como a sessao e por empresa, ele cairia numa tela de
+// login que nao e a dele.
+//
+// 📌 `BASE` e o prefixo da propria instancia: '/amb' hoje, '/girassol'
+// quando ela subir. Vazio na GOOD (que e a raiz), e por isso concateno sem
+// barra extra.
+const BASE = CFG_EMPRESA.PREFIXO || '';
+
 const bling = require('./lib-AMB/bling-AMB').criar(CFG_EMPRESA);
 const ml = require('./lib-AMB/ml-AMB').criar(CFG_EMPRESA);
 const mlReturns = require('./lib-AMB/ml-returns-AMB').criar(CFG_EMPRESA);
@@ -363,7 +375,7 @@ const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 // mais um 403 pendente, e vice-versa). A AMB nunca consultou
 // lib/token-leitor.js (os modulos lib-AMB/* nao honram essa politica,
 // confirmado por grep) - nada a espelhar.
-const VERSAO = 'AMB Devolucoes b367.2';
+const VERSAO = 'AMB Devolucoes b368';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -541,12 +553,12 @@ router.get('/conectar', admin, (req, res) => {
     </div>
 
     <div class="card">
-      <a class="btn" href="/amb/oauth/iniciar?servico=bling&k=${k}">Conectar o Bling da AMBTotal</a>
-      <a class="btn" href="/amb/oauth/iniciar?servico=ml&k=${k}">Conectar o Mercado Livre da AMBTotal</a>
-      <a class="btn" href="/amb/oauth/iniciar?servico=magalu&k=${k}">Conectar o Magalu da AMBTotal</a>
-      <a class="btn cinza" href="/amb/ml/indice?k=${k}">Ver o indice de devolucoes</a>
-      <a class="btn cinza" href="/amb/nf/indice?k=${k}">Ver o indice de nomes</a>
-      <a class="btn cinza" href="/amb/config?k=${k}">Ver diagnostico completo</a>
+      <a class="btn" href="${BASE}/oauth/iniciar?servico=bling&k=${k}">Conectar o Bling da AMBTotal</a>
+      <a class="btn" href="${BASE}/oauth/iniciar?servico=ml&k=${k}">Conectar o Mercado Livre da AMBTotal</a>
+      <a class="btn" href="${BASE}/oauth/iniciar?servico=magalu&k=${k}">Conectar o Magalu da AMBTotal</a>
+      <a class="btn cinza" href="${BASE}/ml/indice?k=${k}">Ver o indice de devolucoes</a>
+      <a class="btn cinza" href="${BASE}/nf/indice?k=${k}">Ver o indice de nomes</a>
+      <a class="btn cinza" href="${BASE}/config?k=${k}">Ver diagnostico completo</a>
     </div>
 
     <div class="aviso">
@@ -730,7 +742,7 @@ router.get('/ml/indice/construir', admin, (req, res) => {
     ok: true,
     iniciado: true,
     aviso: 'montando em background - pode levar alguns minutos',
-    acompanhe: cfg.urlBase() + '/amb/ml/indice?k=SUA_CHAVE',
+    acompanhe: cfg.urlBase() + '${BASE}/ml/indice?k=SUA_CHAVE',
   });
 });
 
@@ -741,7 +753,7 @@ router.get('/ml/indice/construir', admin, (req, res) => {
 router.get('/ml/rastreio', admin, async (req, res) => {
   const codigo = req.query.codigo;
   if (!codigo) {
-    return res.status(400).json({ ok: false, erro: 'falta o codigo', uso: '/amb/ml/rastreio?codigo=AD123456789BR&k=SUA_CHAVE' });
+    return res.status(400).json({ ok: false, erro: 'falta o codigo', uso: '${BASE}/ml/rastreio?codigo=AD123456789BR&k=SUA_CHAVE' });
   }
   const achado = await mlReturns.acharPorTracking(String(codigo));
   if (!achado) {
@@ -776,7 +788,7 @@ router.get('/nf/indice/construir', admin, (req, res) => {
   res.json({
     ok: true, iniciado: true,
     aviso: 'montando em background',
-    acompanhe: cfg.urlBase() + '/amb/nf/indice?k=SUA_CHAVE',
+    acompanhe: cfg.urlBase() + '${BASE}/nf/indice?k=SUA_CHAVE',
   });
 });
 
@@ -787,7 +799,7 @@ router.get('/nf/indice/construir', admin, (req, res) => {
  */
 router.get('/shopee/chegada', admin, async (req, res) => {
   const sn = req.query.sn || req.query.order_sn;
-  if (!sn) return res.status(400).json({ ok: false, uso: '/amb/shopee/chegada?sn=ORDER_SN&k=SUA_CHAVE' });
+  if (!sn) return res.status(400).json({ ok: false, uso: '${BASE}/shopee/chegada?sn=ORDER_SN&k=SUA_CHAVE' });
   if (!shopee.cfg.ativo) {
     return res.json({ ok: false, erro: 'integracao Shopee desligada — faltam SHOPEE_PROXY_URL / SHOPEE_PROXY_KEY no servico' });
   }
@@ -802,7 +814,7 @@ router.get('/shopee/chegada', admin, async (req, res) => {
 router.get('/nf/nome', admin, async (req, res) => {
   const q = req.query.q;
   if (!q) {
-    return res.status(400).json({ ok: false, erro: 'falta o q', uso: '/amb/nf/nome?q=NOMEDOCLIENTE&pagina=1&k=SUA_CHAVE' });
+    return res.status(400).json({ ok: false, erro: 'falta o q', uso: '${BASE}/nf/nome?q=NOMEDOCLIENTE&pagina=1&k=SUA_CHAVE' });
   }
   const r = await nfNomes.buscarPorNome(String(q), {
     pagina: req.query.pagina,
@@ -817,11 +829,13 @@ router.get('/nf/nome', admin, async (req, res) => {
     pagina: r.pagina,
     tem_mais: r.tem_mais,
     proxima_pagina: r.tem_mais
-      ? `${cfg.urlBase()}/amb/nf/nome?q=${encodeURIComponent(String(q))}&pagina=${r.pagina + 1}&k=SUA_CHAVE`
+      ? `${cfg.urlBase()}${BASE}/nf/nome?q=${encodeURIComponent(String(q))}&pagina=${r.pagina + 1}&k=SUA_CHAVE`
       : null,
     mesmo_cliente_repetido: r.muitos_iguais || false,
     dica_desempate: r.muitos_iguais
-      ? 'todas as NFs sao do mesmo nome - use /amb/nf/itens?id=ID_DA_NF para ver os produtos de cada uma'
+      // ⚠️ b368: TEXTO de ajuda, nao link — mas o caminho tem que ser o da
+      // empresa, senao a Girassol leria uma instrucao pra usar a rota da AMB.
+      ? `todas as NFs sao do mesmo nome - use ${BASE}/nf/itens?id=ID_DA_NF para ver os produtos de cada uma`
       : null,
     candidatos: r.candidatos,
     indice: nfNomes.statusIndice(),
@@ -839,7 +853,7 @@ router.get('/nf/nome', admin, async (req, res) => {
 router.get('/nf/itens', admin, async (req, res) => {
   const id = req.query.id;
   if (!id) {
-    return res.status(400).json({ ok: false, erro: 'falta o id', uso: '/amb/nf/itens?id=25994228847&k=SUA_CHAVE' });
+    return res.status(400).json({ ok: false, erro: 'falta o id', uso: '${BASE}/nf/itens?id=25994228847&k=SUA_CHAVE' });
   }
   const r = await bling.buscarNFePorId(String(id));
   if (!r.ok) return res.json({ ok: false, erro: r.error, status: r.status });
@@ -881,7 +895,7 @@ router.get('/nf/itens', admin, async (req, res) => {
 router.get('/identificar', admin, async (req, res) => {
   const codigo = String(req.query.codigo || '').trim();
   if (!codigo) {
-    return res.status(400).json({ ok: false, erro: 'falta o codigo', uso: '/amb/identificar?codigo=XXX&k=SUA_CHAVE' });
+    return res.status(400).json({ ok: false, erro: 'falta o codigo', uso: '${BASE}/identificar?codigo=XXX&k=SUA_CHAVE' });
   }
 
   const tentativas = [];
@@ -3264,14 +3278,14 @@ router.use((req, res) => {
     modulo: 'amb-devolucoes',
     versao: VERSAO,
     rotas: [
-      '/amb/conectar', '/amb/status', '/amb/config',
-      '/amb/ml/indice', '/amb/ml/indice/construir', '/amb/ml/rastreio', '/amb/ml/espreita',
-      '/amb/identificar', '/amb/nf/nome', '/amb/nf/itens', '/amb/nf/indice', '/amb/nf/indice/construir',
-      '/amb/api/auth/login', '/amb/api/auth/me', '/amb/api/triagem/identificar', '/amb/api/triagem/registrar',
-      '/amb/auth/diag', '/amb/db/teste', '/amb/api/nf/itens', '/amb/api/triagem/recentes',
-      '/amb/painel', '/amb/api/espreita', '/amb/api/recados', '/amb/api/defeitos',
-      '/amb/shopee/teste', '/amb/magalu/status', '/amb/nf/entrada/sonda', '/amb/nf/entrada/naturezas', '/amb/api/etiqueta/fila',
-      '/amb/ml/teste', '/amb/ml/eu', '/amb/bling/teste', '/amb/bling/produto',
+      '${BASE}/conectar', '${BASE}/status', '${BASE}/config',
+      '${BASE}/ml/indice', '${BASE}/ml/indice/construir', '${BASE}/ml/rastreio', '${BASE}/ml/espreita',
+      '${BASE}/identificar', '${BASE}/nf/nome', '${BASE}/nf/itens', '${BASE}/nf/indice', '${BASE}/nf/indice/construir',
+      '${BASE}/api/auth/login', '${BASE}/api/auth/me', '${BASE}/api/triagem/identificar', '${BASE}/api/triagem/registrar',
+      '${BASE}/auth/diag', '${BASE}/db/teste', '${BASE}/api/nf/itens', '${BASE}/api/triagem/recentes',
+      '${BASE}/painel', '${BASE}/api/espreita', '${BASE}/api/recados', '${BASE}/api/defeitos',
+      '${BASE}/shopee/teste', '${BASE}/magalu/status', '${BASE}/nf/entrada/sonda', '${BASE}/nf/entrada/naturezas', '${BASE}/api/etiqueta/fila',
+      '${BASE}/ml/teste', '${BASE}/ml/eu', '${BASE}/bling/teste', '${BASE}/bling/produto',
     ],
   });
 });
