@@ -118,7 +118,17 @@ Module._load = function (pedido) {
 };
 
 let routerAMB = null;
-try { routerAMB = require('../amb-devolucoes/app-AMB.js'); }
+// ⚠️ b358: o modulo virou FABRICA — exporta `{ criar }`, nao o router.
+// Montar o export direto da "Router.use() requires a middleware function
+// but got a Object".
+//
+// 📌 `node --check` nao pega: e sintaxe valida, erro so ao montar. Quem
+// pegou foi este teste, que sobe o app de verdade.
+try {
+  const mod = require('../amb-devolucoes/app-AMB.js');
+  routerAMB = (typeof mod === 'function') ? mod
+    : (mod && typeof mod.criar === 'function') ? mod.criar() : mod;
+}
 catch (e) { console.log('(nao consegui montar o app-AMB: ' + (e.message || e) + ')'); }
 Module._load = originalLoad;
 

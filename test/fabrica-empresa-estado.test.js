@@ -133,8 +133,8 @@ function contarEstadoDoModulo(src) {
 // passo 1): `CFG_EMPRESA` e `FICHA_AMB` — esta usada direto em rotas
 // fiscais. Os dois saem da MESMA chave agora.
 {
-  ok(/const EMPRESA_DESTE_APP = String\(process\.env\.DEVOLUCOES_EMPRESA \|\| 'ambtotal'\)/.test(app),
-     '⚠️ a empresa do app vem de env, com padrao `ambtotal`');
+  ok(/empresaAlvo \|\| process\.env\.DEVOLUCOES_EMPRESA \|\| 'ambtotal'/.test(app),
+     '⚠️ a empresa vem do ARGUMENTO da fabrica, com a env de padrao');
   ok(/configDaEmpresa\(EMPRESA_DESTE_APP\)/.test(app),
      '  a config usa essa chave');
   ok(/obterEmpresa\(EMPRESA_DESTE_APP\)/.test(app),
@@ -155,8 +155,8 @@ function contarEstadoDoModulo(src) {
 {
   const estado = contarEstadoDoModulo(app);
 
-  ok(estado.length > 0,
-     `⚠️ ha ${estado.length} variaveis de estado no escopo do modulo`);
+  ok(estado.length === 0,
+     `⚠️ ha ${estado.length} variaveis de estado no escopo do modulo (0 = passo 3 feito)`);
 
   // as que guardam dado de negócio são as perigosas
   // ⚠️ b353: esta checagem media quantas variaveis SOLTAS guardavam dado de
@@ -164,8 +164,10 @@ function contarEstadoDoModulo(src) {
   // Agora ha UMA (`GAVETAS`), e ela guarda TODAS. Contar por nome viraria
   // falso negativo: 0 nao significa "nao ha dado de negocio", significa que o
   // nome mudou.
-  ok(estado.includes('GAVETAS'),
-     '⚠️ o que sobra e a GAVETAS — que guarda todo o dado de negocio da empresa');
+  // ⚠️ b358: o `GAVETAS` esta DENTRO da fabrica agora — procura-lo aqui
+  // seria guardar o estado anterior.
+  ok(!estado.includes('GAVETAS'),
+     '⚠️ e o GAVETAS saiu do escopo do modulo (esta dentro da fabrica)');
 
   // ⚠️ b330 (Codex, P2) - A LINHA DE BASE TEM QUE SER EXATA.
   //
@@ -207,8 +209,13 @@ function contarEstadoDoModulo(src) {
   //
   // 📌 E esse 1 e exatamente o que o resto do passo 3 vai mover pra dentro da
   // fabrica do router. De 41 pontos espalhados pra 1 — e ele tem nome.
-  ok(estado.length === 1,
-     `  📌 linha de base EXATA: ${estado.length} (1 ponto: GAVETAS)`);
+  // ⚠️ b358 - PASSO 3 COMPLETO: ZERO e o OBJETIVO.
+  //
+  // Este numero mediu o que FALTAVA o caminho inteiro: 11 -> 4 -> 1 -> 0.
+  // Todo o estado mudou pra dentro de `criarAppEmpresa`, entao nao ha mais
+  // nada no escopo do modulo.
+  ok(estado.length === 0,
+     `⚠️ ZERO estado no escopo do modulo (achei ${estado.length}: ${estado.join(', ')})`);
   if (estado.length !== 11) {
     console.log('     -> se o passo 2 rodou, atualize o numero aqui E confirme '
       + 'que as que sobraram sao intencionais:');
@@ -397,8 +404,15 @@ function contarEstadoDoModulo(src) {
   //
   // ⚠️ Provei que ela reage: acrescentei `function criarRouter` +
   // `module.exports = { criarRouter }` e o teste acusou na hora.
-  ok(!exportaFabrica,
-     '⚠️ e exporta um router PRONTO (nao uma fabrica) — o passo 3 muda isso');
+  // ⚠️ b358 - PASSO 3 COMPLETO: AGORA **E** UMA FABRICA.
+  //
+  // Esta assercao guardava o contrario — que o modulo exportava um router
+  // PRONTO. Era a linha de base; mantida, ficaria vermelha justo quando o
+  // trabalho foi feito.
+  ok(exportaFabrica,
+     '⚠️ o modulo exporta uma FABRICA (era um router pronto)');
+  ok(/module\.exports = \{\s*\n?\s*criar: criarAppEmpresa/.test(app),
+     '  via `criar(empresa)`');
 }
 
 // ── ⚠️ e o proprio `router` fica pronto no escopo do modulo ─────────
@@ -444,8 +458,12 @@ function contarEstadoDoModulo(src) {
 {
   const srv = fs.readFileSync(path.join(RAIZ, 'server.js'), 'utf8');
   const montaSoAmbFixo = /app\.use\('\/amb',\s*require\('\.\/amb-devolucoes\/app-AMB'\)\)/.test(srv);
-  ok(montaSoAmbFixo,
-     '⚠️ server.js monta app-AMB.js uma unica vez em `/amb`, CRAVADO — nao itera as empresas ativas do registro; ativar Girassol sozinho no registro nao expoe `/girassol`');
+  // ⚠️ b358: o server agora ITERA as empresas ativas do registro.
+  // ⚠️ `srv` ja existe neste escopo — reuso em vez de redeclarar
+  ok(/empresasAtivasNoDevolucoes\(\)/.test(srv),
+     '⚠️ o server percorre as empresas ATIVAS (nao monta /amb cravado)');
+  ok(/app\.use\(emp\.rota, criarAppAMB\(emp\.chave\)\)/.test(srv),
+     '  montando cada uma com a SUA chave');
 }
 
 // ── ⚠️ PASSO 3, FATIA 1: as 4 gavetas vêm de UMA fábrica ────────────
@@ -532,8 +550,8 @@ function contarEstadoDoModulo(src) {
 // nada, o comportamento é idêntico. Quando o bootstrap montar por empresa,
 // ele passa a chave em vez de alguém editar código.
 {
-  ok(/const EMPRESA_DESTE_APP = String\(process\.env\.DEVOLUCOES_EMPRESA \|\| 'ambtotal'\)/.test(app),
-     '⚠️ a empresa do app vem de env, com padrao `ambtotal`');
+  // ⚠️ b358: esta assercao guardava a fatia 4 (empresa vinda de env). O passo
+  // 3 fez o ARGUMENTO ganhar da env — ja guardado logo acima.
   ok(/configDaEmpresa\(EMPRESA_DESTE_APP\)/.test(app),
      '  e a config usa essa chave');
   ok(/obterEmpresa\(EMPRESA_DESTE_APP\)/.test(app),
