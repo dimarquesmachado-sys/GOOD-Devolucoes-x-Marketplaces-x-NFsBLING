@@ -187,8 +187,8 @@ async function trocarCodePorToken(code, redirectUri) {
   // producao ha semanas.
   // ═══════════════════════════════════════════════════════════════════
   const persistiu = await tokens.atualizarTokensNoRender([
-    { key: 'AMB_MAGALU_ACCESS_TOKEN',  value: TOKENS.access },
-    { key: 'AMB_MAGALU_REFRESH_TOKEN', value: TOKENS.refresh },
+    { key: _PREFIXO + 'MAGALU_ACCESS_TOKEN',  value: TOKENS.access },
+    { key: _PREFIXO + 'MAGALU_REFRESH_TOKEN', value: TOKENS.refresh },
   ]);
   return { ok: true, persistiu, expira_em_s: r.data.expires_in || null };
 }
@@ -225,8 +225,8 @@ async function renovarInterno() {
   // JA CONSUMIDO e o proximo restart cai sem token — justo o caso que da
   // mais trabalho pra recuperar (consentimento inteiro no navegador certo).
   RENOV.ultimaPersistencia = !!(await tokens.atualizarTokensNoRender([   // b150: nome/formato certos
-    { key: 'AMB_MAGALU_ACCESS_TOKEN',  value: TOKENS.access },
-    { key: 'AMB_MAGALU_REFRESH_TOKEN', value: TOKENS.refresh },
+    { key: _PREFIXO + 'MAGALU_ACCESS_TOKEN',  value: TOKENS.access },
+    { key: _PREFIXO + 'MAGALU_REFRESH_TOKEN', value: TOKENS.refresh },
       ...(PREVENTIVA.parEnvCarimbo() ? [PREVENTIVA.parEnvCarimbo()] : []),   // b271
   ]));
   if (!RENOV.ultimaPersistencia) console.error('[AMB/Magalu] renovou mas NAO persistiu no Render — refresh gravado esta consumido');
@@ -502,7 +502,7 @@ async function construirIndice() {
 
 function resumoEspreita() {
   if (!temToken()) return { quente: false, desligada: true, falta: 'consentimento OAuth da conta Magalu da AMB', em_transito: [] };
-  if (!temTenant()) return { quente: false, desligada: true, falta: 'AMB_MAGALU_TENANT_ID', em_transito: [] };
+  if (!temTenant()) return { quente: false, desligada: true, falta: _PREFIXO + 'MAGALU_TENANT_ID', em_transito: [] };
   if (!IDX.ts) return { quente: false, em_transito: [] };
 
   const dias = (v) => v ? Math.floor((Date.now() - Date.parse(v)) / 864e5) : null;
@@ -547,7 +547,7 @@ function preAquecer() {
   setInterval(() => { construirIndiceDevolucoes({ reverseEmBackground: true }).catch(() => {}); }, 30 * 60 * 1000).unref();
 
   if (!temTenant()) {
-    console.log('[AMB/MAGALU] espreita desligada - falta AMB_MAGALU_TENANT_ID (tickets seguem)');
+    console.log('[AMB/MAGALU] espreita desligada - falta ' + _PREFIXO + 'MAGALU_TENANT_ID (tickets seguem)');
     return;
   }
   setTimeout(() => { construirIndice().catch(e => console.error('[AMB/MAGALU]', e.message)); }, 5 * 60 * 1000).unref();
@@ -565,12 +565,17 @@ function appEmUso() {
 // a EMPRESA como parametro: integracao nova (ou empresa nova) = um registro
 // como este, zero logica duplicada.
 const PREVENTIVA = registrarPreventiva({
-  empresa: 'ambtotal', integracao: 'magalu',
+  // b362 (review do Codex) - a empresa e o prefixo saem da FICHA recebida,
+  // nao do literal (mesmo padrao do bling-AMB, b246). Com duas instancias,
+  // `empresa: 'ambtotal'` fixo faria as duas competirem pelo MESMO registro
+  // de renovacao: a segunda substituiria o callback da primeira, e o
+  // batimento so renovaria a empresa registrada por ultimo.
+  empresa: (cfgEmpresa && cfgEmpresa.CHAVE_REGISTRO) || 'ambtotal', integracao: 'magalu',
   temRefresh: () => !!TOKENS.refresh,
   renovar: () => renovar(),
   persistiu: () => RENOV.ultimaPersistencia,
-  carimboEnv: 'AMB_MAGALU_RENOVADO_EM',
-  diasEnv: 'AMB_MAGALU_RENOVAR_DIAS',
+  carimboEnv: _PREFIXO + 'MAGALU_RENOVADO_EM',
+  diasEnv: _PREFIXO + 'MAGALU_RENOVAR_DIAS',
 });
 const renovacaoPreventiva = (op) => PREVENTIVA.preventiva(op);
 const ligarRenovacaoPreventiva = (op) => PREVENTIVA.ligar(op);
