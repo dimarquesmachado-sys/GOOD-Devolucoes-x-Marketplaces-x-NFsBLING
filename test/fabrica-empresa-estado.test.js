@@ -264,14 +264,13 @@ function contarEstadoDoModulo(src) {
   // 📌 Quando esta lista esvaziar, o freio do server.js pode sair e 2
   // empresas podem subir juntas.
   const SINGLETONS_REQUERIDOS = [
-    'shopee-AMB',
     'ml-motivo-AMB', 'impressao-AMB', 'nf-entrada-AMB', 'compat-AMB', 'email-AMB',
   ];
 
   // ⚠️ e estes JA sao por empresa — o teste prova, senao alguem poderia
   // "converter" e o app continuar usando a instancia velha (foi o que
   // aconteceu com o auth-AMB por um dia inteiro).
-  const JA_CONVERTIDOS = ['auth-AMB', 'magalu-AMB'];
+  const JA_CONVERTIDOS = ['auth-AMB', 'magalu-AMB', 'shopee-AMB'];
   for (const nome of JA_CONVERTIDOS) {
     const usaFabrica = new RegExp(
       `require\\('\\./lib-AMB/${nome}'\\)\\.criar\\(`).test(app);

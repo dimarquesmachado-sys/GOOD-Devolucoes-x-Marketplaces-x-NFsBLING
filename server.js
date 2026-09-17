@@ -468,7 +468,7 @@ app.get('/health', (req, res) => {
       // busca por nome. Escolher um lado apagaria a descricao do outro.
       // ⚠️ a resolucao JUNTA as duas: a 7.5.0 (passe curto + tetos) ja esta
       // na main, e este PR acrescenta o build frio que falha vazio.
-      version: '9.32.1 (revisao Codex no PR #312: tokens/carimbo/registro da preventiva do Magalu seguem o prefixo da empresa, nao mais cravados em AMB_/ambtotal)',
+      version: '9.33.0 (o Shopee passa a ser por empresa — 3 de 13)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),

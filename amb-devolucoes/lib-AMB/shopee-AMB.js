@@ -12,11 +12,26 @@
 // /amb/shopee/teste mostra o erro exato.
 // ============================================================
 
+// ⚠️ b362 - O SHOPEE VIRA FABRICA (3 de 13).
+//
+// Era instancia unica do processo: o cache de devolucoes e o estado da
+// chegada eram compartilhados. Duas empresas e uma veria o pedido da outra.
+//
+// 📌 ENVOLVO SEM REINDENTAR, como nos anteriores.
+//
+// ⚠️ SO `AMB_SHOPEE_LOJA` E POR EMPRESA. `SHOPEE_PROXY_URL` e
+// `SHOPEE_PROXY_KEY` sao do SERVICO (o mesmo proxy atende as 3 lojas, por
+// isso o repo do proxy e multi-loja) — parametrizar essas duas seria
+// inventar uma separacao que nao existe e quebraria o proxy.
+//
+// ⚠️ E ha 4 timers aqui: como no magalu, quem os liga e o app, UMA vez.
+function criar(cfgEmpresa) {
+const _PREFIXO = String((cfgEmpresa && cfgEmpresa.PREFIXO_ENV) || 'AMB_');
 'use strict';
 
 const URL_PROXY = (process.env.SHOPEE_PROXY_URL || '').replace(/\/+$/, '');
 const KEY_PROXY = process.env.SHOPEE_PROXY_KEY || '';
-const LOJA = process.env.AMB_SHOPEE_LOJA || 'amb';
+const LOJA = process.env[_PREFIXO + 'SHOPEE_LOJA'] || 'amb';
 
 const cfg = {
   url: URL_PROXY, loja: LOJA,
@@ -331,5 +346,10 @@ function preAquecer() {
   }, 8 * 60 * 1000).unref();
 }
 
-module.exports = { cfg, buscarDevolucoesProxy, acharDevolucao, resumoEspreita, preAquecer, norm,
+
+return { cfg, buscarDevolucoesProxy, acharDevolucao, resumoEspreita, preAquecer,
   consultarChegada, dispararChegadas, consultarPedidoCancelado };
+}
+
+// ⚠️ so a fabrica — sem instancia padrao, pra ninguem usar a velha sem notar
+module.exports = { criar };
