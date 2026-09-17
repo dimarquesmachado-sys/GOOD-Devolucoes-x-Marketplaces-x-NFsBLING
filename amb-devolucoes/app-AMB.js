@@ -192,7 +192,7 @@ const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 // mais um 403 pendente, e vice-versa). A AMB nunca consultou
 // lib/token-leitor.js (os modulos lib-AMB/* nao honram essa politica,
 // confirmado por grep) - nada a espelhar.
-const VERSAO = 'AMB Devolucoes b354';
+const VERSAO = 'AMB Devolucoes b355';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -226,7 +226,40 @@ router.use(cookieParser());
 //
 // ⚠️ O de ACESSO.falhasLogin e o pior dos dois: nao e so numero errado, e
 // USUARIO BLOQUEADO por erro de outra empresa.
-const ACESSO = { usosQuerystring: 0, falhasLogin: new Map() };
+// ⚠️ b353 - PASSO 3, FATIA 1: UMA FABRICA PARA AS 4 GAVETAS.
+//
+// O passo 2 agrupou as 41 variaveis soltas em 4 gavetas. Mas elas ainda
+// nascem em 4 PONTOS DIFERENTES do arquivo (linhas 229, 255, 1356, 2135) —
+// e o passo 3 precisa criar TODAS por empresa, de uma vez.
+//
+// ⚠️ NAO envolvo o arquivo inteiro numa funcao: sao 3.142 linhas (ja acima
+// do teto de 3.000 do dono), e seria o diff mais arriscado possivel — o
+// tipo de mudanca em que um `}` fora do lugar passa no `node --check` e
+// quebra no ar.
+//
+// 📌 Esta fatia junta o que ESTAVA espalhado num lugar so. Comportamento
+// IDENTICO hoje (uma instancia); e quando o router virar fabrica, a linha
+// que cria as gavetas da empresa ja existe e esta testada.
+function criarGavetasDaEmpresa() {
+  return {
+    // chave na URL + tentativas de login
+    acesso: { usosQuerystring: 0, falhasLogin: new Map() },
+    // pedidos em triagem
+    triagem: { pendentes: new Map() },
+    // espreita + naturezas da NF
+    caches: { espreita: null, naturezasNf: new Map() },
+    // o indice de notas de devolucao
+    nfDev: criarGavetaNfDev(),
+  };
+}
+
+// ⚠️ A instancia de HOJE vem da fabrica — nao ha duas fontes do mesmo
+// estado. Sem isto, a AMB usaria as gavetas soltas e quem chamasse a
+// fabrica usaria outras, sem nada avisando (foi o erro que quase cometi no
+// auth-AMB hoje).
+const GAVETAS = criarGavetasDaEmpresa();
+
+const ACESSO = GAVETAS.acesso;
 
 function admin(req, res, next) {
   // b256 - ACEITA HEADER (ver a nota longa no server.js). A querystring
@@ -252,7 +285,7 @@ function admin(req, res, next) {
 // Junto com ACESSO e CACHES, formam as 3 gavetas que o passo 3 vai criar
 // POR EMPRESA. Hoje sao 3 objetos no escopo do modulo — que ainda vazariam
 // se houvesse duas empresas, mas agora sao 3 pontos a mudar em vez de 11.
-const TRIAGEM = { pendentes: new Map() };
+const TRIAGEM = GAVETAS.triagem;   // b353
 const VALIDADE_MS = 10 * 60 * 1000;
 
 function novoState(servico) {
@@ -1353,7 +1386,7 @@ router.get('/api/debug/tiktok-devolucoes', admin, async (req, res) => {
 // A espreita (o que esta em transito / entregue) e as naturezas das notas.
 // Com duas empresas, a Girassol veria os pacotes da AMB na tela de
 // conferencia — e agiria em cima deles.
-const CACHES = { espreita: null, naturezasNf: new Map() };
+const CACHES = GAVETAS.caches;   // b353
 
 // ── A ESPREITA (o que esta vindo pro galpao) ─────────────────
 router.get('/api/espreita', auth.requerLogin, async (req, res) => {
@@ -2132,7 +2165,7 @@ function criarGavetaNfDev() {
     carregando: null,
   };
 }
-const NF_DEV = criarGavetaNfDev();
+const NF_DEV = GAVETAS.nfDev;   // b353
 
 async function montarIndiceNFDevolucaoAMB(maxPaginas) {
   // b335 r2 (Codex #78): o guard usava NF_DEV.indice.size — se as entradas
@@ -3140,3 +3173,13 @@ if (!auth.temUsuarios()) {
 console.log(`[amb-devolucoes] ${VERSAO} carregado - prefixo ${cfg.PREFIXO}`);
 
 module.exports = router;
+// ⚠️ revisao Codex #303 (P2) - exposta so para o teste chamar a fabrica
+// REAL (test/fabrica-empresa-estado.test.js), em vez de duplicar a
+// implementacao num clone que nao pega regressao nenhuma no producao.
+//
+// ⚠️ nome de propriedade escolhido a dedo: o mesmo teste tambem mede, pelo
+// texto do arquivo, se o passo 3 (que ainda nao chegou) trocou o export
+// de router pronto por uma fabrica de verdade. Um nome comecando com o
+// verbo que aquela outra asseracao procura acionaria o alarme errado, sem
+// o passo 3 ter de fato acontecido.
+module.exports.gavetasDaEmpresaParaTeste = criarGavetasDaEmpresa;
