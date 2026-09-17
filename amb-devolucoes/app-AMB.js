@@ -209,7 +209,9 @@ const marcadores = require('../lib/marcadores-estornada');   // b200 - peca unic
 const magaluCancelados = require('../lib/magalu-cancelados');  // b191 - peca UNICA, empresa por parametro // b334 - ponte TikTok via Mover-Pedidos (peca unica, empresa como parametro)
 const db = require('./lib-AMB/supabase-AMB').criar(CFG_EMPRESA);
 const mkt = require('./lib-AMB/marketplace-AMB');
-const shopee = require('./lib-AMB/shopee-AMB');
+// ⚠️ b362: o shopee passa a ser POR EMPRESA — o cache de devolucoes e o
+// estado da chegada eram compartilhados.
+const shopee = require('./lib-AMB/shopee-AMB').criar(CFG_EMPRESA);
 // ⚠️ b361: o magalu passa a ser POR EMPRESA — guarda os TOKENS, e duas
 // empresas dividindo credencial falariam com a conta errada do marketplace.
 const magalu = require('./lib-AMB/magalu-AMB').criar(CFG_EMPRESA);
