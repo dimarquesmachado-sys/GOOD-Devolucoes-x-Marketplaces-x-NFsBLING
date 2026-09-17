@@ -438,7 +438,7 @@ app.get('/health', (req, res) => {
       // busca por nome. Escolher um lado apagaria a descricao do outro.
       // ⚠️ a resolucao JUNTA as duas: a 7.5.0 (passe curto + tetos) ja esta
       // na main, e este PR acrescenta o build frio que falha vazio.
-      version: '9.29.0 (PASSO 3 COMPLETO: o app-AMB virou fabrica e o server monta as empresas ATIVAS do registro)',
+      version: '9.30.0 (os literais amb saem do codigo: a chave do banco vem da ficha da empresa)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),

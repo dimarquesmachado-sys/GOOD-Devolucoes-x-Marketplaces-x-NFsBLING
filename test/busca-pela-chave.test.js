@@ -142,7 +142,11 @@ setTimeout(() => {
     const i = src.indexOf("'/api/admin/sem-retorno'");
     const rota = src.slice(i, i + 60000);
     const zero = rota.indexOf('FASE ZERO');
-    const numero = rota.search(/for \(const item of (comNumero|vinculoCache\.fila\(itens, 'amb', 25, \(x\) => x\.nf_numero)/);
+    // ⚠️ b359: o literal `'amb'` virou `CHAVE_DADOS` (vem da ficha da
+    // empresa). A GOOD ainda usa o formato antigo, entao aceito os dois —
+    // o que este teste guarda e a ORDEM (chave antes do numero), nao o
+    // nome da variavel.
+    const numero = rota.search(/for \(const item of (comNumero|vinculoCache\.fila\(itens, (?:'amb'|CHAVE_DADOS), 25, \(x\) => x\.nf_numero)/);
     ok(zero > 0 && numero > 0 && zero < numero,
        nome + ': a chave e a FASE ZERO, antes da busca por numero');
     // b221.4: cada resposta da fase zero tem seu ramo, e o motivo esta no
