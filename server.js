@@ -323,23 +323,30 @@ app.use(express.json({ limit: '12mb' }));
   // 📌 Este freio troca esse vazamento silencioso por um boot que FALHA
   // alto — mesmo padrao de `envDaEmpresa` (lanca em empresa invalida).
   // Remover exige zerar `SINGLETONS_REQUERIDOS` no teste citado primeiro.
-  // ⚠️ b365 - O FREIO SAI: as 13 dependencias viraram fabrica.
+  // ⚠️ b366 (Codex, P1) - O FREIO VOLTA. EU TIREI CEDO DEMAIS.
   //
-  // Ele existia porque `app-AMB.js` usava 13 modulos como instancia unica do
-  // processo — montar 2 empresas misturaria sessao, credencial e cache.
+  // Removi porque as 13 dependencias viraram fabrica — e isso e verdade. Mas
+  // conferi so o que EU tinha mexido, e nao o resto do arquivo.
   //
-  // 📌 AGORA: 8 guardavam estado e viraram `.criar(CFG_EMPRESA)`; os outros 5
-  // (marketplace, admin-helpers, rotas-admin, identificar, defeitos-ciclo)
-  // NAO guardam estado — medido, nao suposto: recebem o router e as deps DA
-  // INSTANCIA a cada chamada, e o unico valor de modulo e uma tabela de nomes
-  // sem escrita.
+  // ⚠️ O `app-AMB.js` AINDA carrega `require('./config-AMB')` — arquivo SO DA
+  // AMB — e le dele 22 vezes: NOME_EMPRESA, loja, bling, supabase, urlBase,
+  // PREFIXO. Com 2 empresas, TODAS essas leituras seriam da AMB.
   //
-  // ⚠️ E O QUE O SUBSTITUI e melhor que um teto: um teste que monta DUAS
-  // instancias e prova que sessao, cache e estado nao se cruzam. Freio de
-  // contagem protege contra o numero; o teste protege contra o VAZAMENTO.
+  // ⚠️ E o retorno do OAuth e montado em `/amb/oauth/callback`, CRAVADO: a 2a
+  // empresa mandaria o marketplace devolver o codigo na rota da AMB — e o
+  // token da Girassol seria gravado na conta da AMBTotal.
   //
-  // 📌 A Girassol continua inativa no contrato — ativar e decisao do dono, e
-  // ainda falta o frontend (que escreve `/amb` em varios pontos).
+  // 📌 A LICAO: "as dependencias viraram fabrica" NAO e o mesmo que "o app e
+  // multiempresa". Eu media o que tinha convertido, nao o que faltava.
+  if (ativas.length > 1) {
+    throw new Error(
+      '[devolucoes] ' + ativas.length + ' empresas ativas ('
+      + ativas.map((e) => e.chave).join(', ') + '), mas o app-AMB.js ainda '
+      + 'carrega `config-AMB` (so da AMB, 22 leituras) e monta o callback '
+      + 'OAuth em `/amb` cravado. Montar 2 assim faria a 2a usar o nome, a '
+      + 'loja e as credenciais da AMB — e gravar o token dela na conta da '
+      + 'AMBTotal.');
+  }
 
   for (const emp of ativas) {
     app.use(emp.rota, criarAppAMB(emp.chave));
@@ -475,7 +482,7 @@ app.get('/health', (req, res) => {
       // busca por nome. Escolher um lado apagaria a descricao do outro.
       // ⚠️ a resolucao JUNTA as duas: a 7.5.0 (passe curto + tetos) ja esta
       // na main, e este PR acrescenta o build frio que falha vazio.
-      version: '9.35.0 (o freio sai: duas empresas sobem juntas, com teste que prova o isolamento)',
+      version: '9.35.1 (o freio volta: eu tirei cedo demais, o app ainda carrega config-AMB e crava /amb no OAuth)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),

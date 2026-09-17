@@ -81,9 +81,24 @@ process.env.AMB_SUPABASE_KEY = 'chave-de-teste';
   const mod = require(path.join(RAIZ, 'amb-devolucoes', 'app-AMB.js'));
   ok(typeof mod.criar === 'function', 'o app-AMB e uma fabrica');
 
+  // ⚠️ b366 (Codex, P2): eu criava AS DUAS com 'ambtotal'.
+  //
+  // Assim o teste passaria mesmo que `empresaAlvo` fosse IGNORADO e toda
+  // instancia lesse as credenciais, tabelas e rotas da AMB — que e
+  // exatamente a regressao que o `require('./config-AMB')` ainda causa.
+  //
+  // 📌 Duas instancias da MESMA empresa provam que o objeto e novo. Nao
+  // provam ISOLAMENTO, que e o que este teste existe pra garantir.
   const umaEmpresa = mod.criar('ambtotal');
-  const outra = mod.criar('ambtotal');
+  const outra = mod.criar('good');
   ok(umaEmpresa !== outra, '  2 chamadas dao routers DIFERENTES');
+
+  // ⚠️ e a chave MUDA o que a instancia le — senao o argumento e decorativo
+  const { obterEmpresa } = require(path.join(RAIZ, 'lib', 'empresas'));
+  const tabA = (obterEmpresa('ambtotal').tabelas || {}).devolucoes;
+  const tabB = (obterEmpresa('good').tabelas || {}).devolucoes;
+  ok(tabA !== tabB,
+     `⚠️ empresas diferentes usam TABELAS diferentes (${tabA} x ${tabB})`);
 
   const app = express();
   app.use('/e1', umaEmpresa);
