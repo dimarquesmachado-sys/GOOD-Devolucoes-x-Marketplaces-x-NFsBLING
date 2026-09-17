@@ -98,7 +98,10 @@ const RAIZ = path.join(__dirname, '..');
   ok(/espreitaMontada\(\)/.test(AMB),
      '  lendo a espreita JA AGREGADA (ML+Shopee+Magalu, sem baixados, sem CD do ML) — nao o mlReturns cru');
   const APP = fs.readFileSync(path.join(RAIZ, 'amb-devolucoes', 'app-AMB.js'), 'utf8');
-  ok(/CACHES = \{/.test(APP) && /espreitaMontada: \(\) => CACHES.espreita/.test(APP),
+  // ⚠️ b353: a gaveta passou a vir da fabrica (`GAVETAS.caches`), entao o
+  // `= {` nao existe mais. O que este teste guarda continua igual: que o
+  // app-AMB tenha a gaveta e a exponha por FUNCAO.
+  ok(/const CACHES = GAVETAS\.caches/.test(APP) && /espreitaMontada: \(\) => CACHES.espreita/.test(APP),
      '  e o app-AMB guarda a ultima espreita e passa por FUNCAO (escopo derrubou o boot 2x)');
   ok(/\.filter\(\(x\) => !x\.no_cd_ml\)/.test(APP), '  sem os que vao pro CD do ML');
   // ⚠️ b343: a gaveta virou `const CACHES = {...}`, entao procuro pela
@@ -106,7 +109,10 @@ const RAIZ = path.join(__dirname, '..');
   //
   // O que este teste guarda continua valendo e ja derrubou o boot 2x:
   // declarar DEPOIS do primeiro uso da TDZ (`const` nao sobe como `var`).
-  const iDecl = APP.indexOf('const CACHES = {');
+  // ⚠️ b353: idem — procuro a declaracao no formato novo. A regra guardada
+  // e a MESMA (declarar ANTES de usar; `const` nao sobe como `var`), e ela
+  // ja derrubou o boot 2x.
+  const iDecl = APP.indexOf('const CACHES = GAVETAS.caches');
   const iUso = APP.indexOf('CACHES.espreita = {');
   ok(iDecl > 0 && iDecl < iUso, '  declarada ANTES de usar');
 

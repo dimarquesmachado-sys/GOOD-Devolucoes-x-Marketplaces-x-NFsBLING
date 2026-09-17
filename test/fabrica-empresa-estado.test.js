@@ -148,9 +148,13 @@ function contarEstadoDoModulo(src) {
      `⚠️ ha ${estado.length} variaveis de estado no escopo do modulo`);
 
   // as que guardam dado de negócio são as perigosas
-  const deNegocio = estado.filter((n) => /CACHE|INDICE|PENDENTES|ESPREITA|NF_DEV/i.test(n));
-  ok(deNegocio.length > 0,
-     `  ⚠️ ${deNegocio.length} guardam DADO DE NEGOCIO: ${deNegocio.slice(0, 5).join(', ')}`);
+  // ⚠️ b353: esta checagem media quantas variaveis SOLTAS guardavam dado de
+  // negocio — fazia sentido quando eram 11 com nomes como NF_DEV_INDICE_AMB.
+  // Agora ha UMA (`GAVETAS`), e ela guarda TODAS. Contar por nome viraria
+  // falso negativo: 0 nao significa "nao ha dado de negocio", significa que o
+  // nome mudou.
+  ok(estado.includes('GAVETAS'),
+     '⚠️ o que sobra e a GAVETAS — que guarda todo o dado de negocio da empresa');
 
   // ⚠️ b330 (Codex, P2) - A LINHA DE BASE TEM QUE SER EXATA.
   //
@@ -185,8 +189,15 @@ function contarEstadoDoModulo(src) {
   //
   // ⚠️ O ganho ja e real: eram 11 pontos a mudar no passo 3, agora sao 4.
   // E cada gaveta tem um nome que diz o que vaza se for esquecida.
-  ok(estado.length === 4,
-     `  📌 linha de base EXATA: ${estado.length} (4 gavetas apos o passo 2)`);
+  // ⚠️ b353 - PASSO 3, FATIA 1: 4 -> 1.
+  //
+  // As 4 gavetas saiam de 4 declaracoes; agora vem de `criarGavetasDaEmpresa()`
+  // e sobra UM ponto no escopo do modulo: o `GAVETAS`.
+  //
+  // 📌 E esse 1 e exatamente o que o resto do passo 3 vai mover pra dentro da
+  // fabrica do router. De 41 pontos espalhados pra 1 — e ele tem nome.
+  ok(estado.length === 1,
+     `  📌 linha de base EXATA: ${estado.length} (1 ponto: GAVETAS)`);
   if (estado.length !== 11) {
     console.log('     -> se o passo 2 rodou, atualize o numero aqui E confirme '
       + 'que as que sobraram sao intencionais:');
@@ -369,6 +380,53 @@ function contarEstadoDoModulo(src) {
   const montaSoAmbFixo = /app\.use\('\/amb',\s*require\('\.\/amb-devolucoes\/app-AMB'\)\)/.test(srv);
   ok(montaSoAmbFixo,
      '⚠️ server.js monta app-AMB.js uma unica vez em `/amb`, CRAVADO — nao itera as empresas ativas do registro; ativar Girassol sozinho no registro nao expoe `/girassol`');
+}
+
+// ── ⚠️ PASSO 3, FATIA 1: as 4 gavetas vêm de UMA fábrica ────────────
+//
+// O passo 2 agrupou as 41 variáveis em 4 gavetas — mas elas nasciam em 4
+// pontos diferentes do arquivo. O passo 3 precisa criar TODAS por empresa,
+// de uma vez.
+//
+// 📌 Não envolvi o arquivo numa função: são 3.142 linhas (acima do teto de
+// 3.000), e seria o diff mais arriscado possível. Esta fatia junta o que
+// estava espalhado; quando o router virar fábrica, a linha que cria as
+// gavetas da empresa já existe e está testada.
+{
+  ok(/function criarGavetasDaEmpresa\(\)/.test(app),
+     '⚠️ ha UMA fabrica que cria as 4 gavetas');
+  ok(/const GAVETAS = criarGavetasDaEmpresa\(\);/.test(app),
+     '  e a instancia de hoje VEM dela (nao ha 2 fontes do mesmo estado)');
+
+  for (const [nome, campo] of [['ACESSO', 'acesso'], ['TRIAGEM', 'triagem'],
+                               ['CACHES', 'caches'], ['NF_DEV', 'nfDev']]) {
+    ok(new RegExp('const ' + nome + ' = GAVETAS\\.' + campo).test(app),
+       `  ${nome} sai da gaveta \`${campo}\``);
+  }
+
+  // ⚠️ e duas chamadas NÃO compartilham nada — é o ponto inteiro
+  const criarNfDev = () => ({ indice: new Map(), semPedido: [], ignoradas: {},
+    cacheOk: false, ts: 0, carregando: null });
+  const criar = () => ({
+    acesso: { usosQuerystring: 0, falhasLogin: new Map() },
+    triagem: { pendentes: new Map() },
+    caches: { espreita: null, naturezasNf: new Map() },
+    nfDev: criarNfDev(),
+  });
+
+  const a = criar();
+  const b = criar();
+  a.acesso.falhasLogin.set('ana', 3);
+  a.triagem.pendentes.set('p1', {});
+  a.caches.espreita = { dados: 'da A' };
+  a.nfDev.indice.set('4567', { nf: '123' });
+
+  ok(!b.acesso.falhasLogin.has('ana'),
+     '⚠️ login travado numa empresa NAO trava a outra');
+  ok(b.triagem.pendentes.size === 0, '  triagem nao vaza');
+  ok(b.caches.espreita === null, '  espreita nao vaza');
+  ok(b.nfDev.indice.size === 0, '  ⚠️ e o indice de NF nao vaza (o pior deles)');
+  ok(a.nfDev.indice.size === 1, '  e a primeira manteve o que era dela');
 }
 
 console.log('');
