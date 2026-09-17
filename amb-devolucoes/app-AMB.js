@@ -67,7 +67,34 @@ const cfg = require('./config-AMB');
 //
 // Quando a Girassol entrar (Fase 4), o unico passo aqui e trocar a chave.
 const { configDaEmpresa } = require('../lib/config-da-empresa');
-const CFG_EMPRESA = configDaEmpresa('ambtotal');
+// ⚠️ b356 - PASSO 3, FATIA 4: A EMPRESA SAI DE DENTRO DO CODIGO.
+//
+// Era `configDaEmpresa('ambtotal')` — cravado. Trocar a string SUBSTITUIRIA
+// a AMB em vez de montar as duas, que e exatamente o que a auditoria do
+// Codex marcou como P0.
+//
+// 📌 Agora vem de `DEVOLUCOES_EMPRESA`, com 'ambtotal' de PADRAO: sem declarar
+// nada, o comportamento e IDENTICO ao de hoje. E quando o bootstrap montar
+// por empresa, ele passa a chave em vez de editar codigo.
+//
+// ⚠️ NAO transformei o modulo inteiro em fabrica: sao 3.142 linhas, acima do
+// teto de 3.000, e envolver tudo numa funcao e o diff mais arriscado
+// possivel. Esta fatia tira a EMPRESA do caminho critico; o router ainda e
+// um por processo, e o teste continua acusando isso.
+// ⚠️ O NOME NAO PODE TER PREFIXO DE EMPRESA.
+//
+// Eu tinha chamado de `AMB_APP_EMPRESA` — e o teste `config-le-do-registro`
+// acusou: a regra da casa e que nada leia `process.env.AMB_*` direto, tudo
+// passa por `envDaEmpresa` pra empresa nova entrar so com configuracao.
+//
+// 📌 E ele esta certo por um motivo ainda melhor: ESTA variavel DECIDE qual
+// empresa o app e. Chama-la de `AMB_*` e contraditorio — seria a variavel da
+// AMB dizendo que o app e da Girassol.
+//
+// ⚠️ E ela e a UNICA que nao pode passar por `envDaEmpresa`: ovo e galinha —
+// pra saber a env da empresa, preciso saber qual e a empresa.
+const EMPRESA_DESTE_APP = String(process.env.DEVOLUCOES_EMPRESA || 'ambtotal').trim();
+const CFG_EMPRESA = configDaEmpresa(EMPRESA_DESTE_APP);
 
 const bling = require('./lib-AMB/bling-AMB').criar(CFG_EMPRESA);
 const ml = require('./lib-AMB/ml-AMB').criar(CFG_EMPRESA);
@@ -101,7 +128,8 @@ const criarNfPessoa = require('../lib/nf-pessoa');
 // os MESMOS padroes que rodam hoje. Aqui eles eram lidos do ambiente em 9
 // pontos — cada um com sua propria cadeia de fallback escrita a mao.
 const { obterEmpresa, envDaEmpresa } = require('../lib/empresas');
-const FICHA_AMB = obterEmpresa('ambtotal');
+// ⚠️ b356: idem — mesma chave, um lugar so decide qual empresa este app e.
+const FICHA_AMB = obterEmpresa(EMPRESA_DESTE_APP);
 const envAmb = (nome, padrao) => envDaEmpresa(FICHA_AMB, nome, padrao);
 const registrarRotasAdminNF = require('./lib-AMB/rotas-admin-AMB');
 // b238 - UNIFICADO: era copia BYTE A BYTE da /lib. Medi os 9 modulos

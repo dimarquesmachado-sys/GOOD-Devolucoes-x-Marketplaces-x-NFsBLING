@@ -415,7 +415,7 @@ app.get('/health', (req, res) => {
       // busca por nome. Escolher um lado apagaria a descricao do outro.
       // ⚠️ a resolucao JUNTA as duas: a 7.5.0 (passe curto + tetos) ja esta
       // na main, e este PR acrescenta o build frio que falha vazio.
-      version: '9.27.1 (revisao Codex #305: versao AMB monotonica + mensagem do teste nao superestima o passo)',
+      version: '9.28.1 (a empresa do app vem de DEVOLUCOES_EMPRESA; e a versao da AMB volta a ser monotonica)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
