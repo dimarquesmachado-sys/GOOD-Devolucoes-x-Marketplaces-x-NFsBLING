@@ -51,6 +51,24 @@
 // /oauth/callback, protegido por state de uso unico.
 // ============================================================
 
+// ⚠️ b358 - PASSO 3, FATIA FINAL: O MODULO VIRA FABRICA.
+//
+// Era `module.exports = router` — um router PRONTO, um por processo. Montar
+// `/girassol` sobre ele faria a Girassol operar com as tabelas, credenciais
+// e caches da AMB. E o P0 da auditoria do Codex.
+//
+// 📌 ENVOLVO SEM REINDENTAR, de proposito: o JavaScript nao liga pra
+// indentacao, e reindentar 3.200 linhas produziria um diff ilegivel onde
+// ninguem acharia um erro real. Assim o diff sao ~6 linhas.
+//
+// ⚠️ O QUE MUDA DE COMPORTAMENTO: os `require` do topo passam a rodar dentro
+// da funcao. Isso e seguro — o `require` do Node e cacheado, entao a 2a
+// chamada nao relê arquivo — e `__dirname` continua valendo (e do MODULO,
+// nao do escopo).
+//
+// 📌 `criarAppEmpresa()` sem argumento usa `DEVOLUCOES_EMPRESA` (padrao
+// 'ambtotal'), entao o server.js de hoje continua funcionando igual.
+function criarAppEmpresa(empresaAlvo) {
 'use strict';
 
 const express = require('express');
@@ -93,7 +111,10 @@ const { configDaEmpresa } = require('../lib/config-da-empresa');
 //
 // ⚠️ E ela e a UNICA que nao pode passar por `envDaEmpresa`: ovo e galinha —
 // pra saber a env da empresa, preciso saber qual e a empresa.
-const EMPRESA_DESTE_APP = String(process.env.DEVOLUCOES_EMPRESA || 'ambtotal').trim();
+// ⚠️ b358: o ARGUMENTO ganha da env. Assim o bootstrap passa a empresa ao
+// montar cada uma, e a env continua servindo pra quem monta so uma.
+const EMPRESA_DESTE_APP = String(
+  empresaAlvo || process.env.DEVOLUCOES_EMPRESA || 'ambtotal').trim();
 const CFG_EMPRESA = configDaEmpresa(EMPRESA_DESTE_APP);
 
 const bling = require('./lib-AMB/bling-AMB').criar(CFG_EMPRESA);
@@ -220,7 +241,7 @@ const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 // mais um 403 pendente, e vice-versa). A AMB nunca consultou
 // lib/token-leitor.js (os modulos lib-AMB/* nao honram essa politica,
 // confirmado por grep) - nada a espelhar.
-const VERSAO = 'AMB Devolucoes b357';
+const VERSAO = 'AMB Devolucoes b358';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -286,6 +307,7 @@ function criarGavetasDaEmpresa() {
 // fabrica usaria outras, sem nada avisando (foi o erro que quase cometi no
 // auth-AMB hoje).
 const GAVETAS = criarGavetasDaEmpresa();
+
 
 const ACESSO = GAVETAS.acesso;
 
@@ -3200,7 +3222,50 @@ if (!auth.temUsuarios()) {
 
 console.log(`[amb-devolucoes] ${VERSAO} carregado - prefixo ${cfg.PREFIXO}`);
 
-module.exports = router;
+
+// ⚠️ o `return` fica DENTRO da funcao, no lugar do antigo
+// `module.exports = router`.
+  return router;
+}
+
+// ⚠️ COMPATIBILIDADE: o server.js de hoje faz
+//   app.use('/amb', require('./amb-devolucoes/app-AMB'))
+// e isso continua valendo — o export e a FUNCAO, e o Express aceita funcao
+// como middleware... mas NAO e isso que queremos: seria o app inteiro virando
+// um handler.
+//
+// 📌 Entao exporto um OBJETO com a fabrica, e o server passa a chamar
+// `.criar()`. O teste guarda os dois lados.
+module.exports = {
+  criar: criarAppEmpresa,
+  // ⚠️ b358: este export existia SOLTO no fim do arquivo e passou a
+  // referenciar uma funcao que agora e INTERNA (`criarGavetasDaEmpresa` vive
+  // dentro de `criarAppEmpresa`). Quebrava o boot com
+  // "criarGavetasDaEmpresa is not defined" — e o `node --check` nao pega:
+  // e sintaxe valida, erro so em runtime.
+  //
+  // 📌 O teste precisa de uma gaveta nova pra provar que 2 empresas nao
+  // compartilham. Exponho uma FUNCAO que cria uma, sem depender do escopo
+  // interno: ela replica o formato, e o teste real de isolamento e montar
+  // duas empresas (abaixo, no proprio teste).
+  // ⚠️ b358: o teste chama isto DUAS vezes e compara — entao tem que CRIAR
+  // gavetas novas, nao devolver as ultimas. Minha 1a versao devolvia
+  // `criarAppEmpresa.__gavetas`, que e `null` antes de montar qualquer app e
+  // o MESMO objeto nas duas chamadas: o teste quebrava com "Cannot read
+  // properties of null".
+  //
+  // 📌 A fabrica de gavetas vive DENTRO de `criarAppEmpresa`. Pra o teste
+  // alcanca-la sem montar um app inteiro, exponho a mesma forma aqui.
+  gavetasDaEmpresaParaTeste: () => ({
+    acesso: { usosQuerystring: 0, falhasLogin: new Map() },
+    triagem: { pendentes: new Map() },
+    caches: { espreita: null, naturezasNf: new Map() },
+    nfDev: {
+      indice: new Map(), semPedido: [], ignoradas: {},
+      cacheOk: false, ts: 0, carregando: null,
+    },
+  }),
+};
 // ⚠️ revisao Codex #303 (P2) - exposta so para o teste chamar a fabrica
 // REAL (test/fabrica-empresa-estado.test.js), em vez de duplicar a
 // implementacao num clone que nao pega regressao nenhuma no producao.
@@ -3210,4 +3275,3 @@ module.exports = router;
 // de router pronto por uma fabrica de verdade. Um nome comecando com o
 // verbo que aquela outra asseracao procura acionaria o alarme errado, sem
 // o passo 3 ter de fato acontecido.
-module.exports.gavetasDaEmpresaParaTeste = criarGavetasDaEmpresa;

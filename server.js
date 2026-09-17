@@ -285,7 +285,30 @@ const upload = multer({
 });
 
 app.use(express.json({ limit: '12mb' }));
-app.use('/amb', require('./amb-devolucoes/app-AMB'));
+// ⚠️ b358 - MONTA PELA FABRICA, e por EMPRESA ATIVA do registro.
+//
+// Era `app.use('/amb', require(...))` — um router pronto, cravado em /amb.
+//
+// 📌 Agora percorre as empresas que o registro diz ATIVAS neste servico.
+// Hoje so a AMB esta ativa, entao monta exatamente `/amb` como antes. Quando
+// a Girassol for ativada, ela entra SEM ninguem editar codigo.
+//
+// ⚠️ NAO ATIVO A GIRASSOL AQUI: ativar e decisao do dono, e o app-AMB ainda
+// tem literais 'amb' em consulta ao banco (o 3o achado do Codex). Este PR
+// entrega o MECANISMO; a ativacao vem depois, com esses literais tratados.
+{
+  const criarAppAMB = require('./amb-devolucoes/app-AMB').criar;
+  const { empresasAtivasNoDevolucoes } = require('./lib/empresas');
+
+  const ativas = (typeof empresasAtivasNoDevolucoes === 'function')
+    ? empresasAtivasNoDevolucoes()
+    : [{ chave: 'ambtotal', rota: '/amb' }];
+
+  for (const emp of ativas) {
+    app.use(emp.rota, criarAppAMB(emp.chave));
+    console.log(`[devolucoes] ${emp.chave} montada em ${emp.rota}`);
+  }
+}
 app.use(cookieParser());
 // ── seg2 - O HTML DO PAINEL PRECISA PASSAR PELO LOGIN ────────────────
 // Achado da auditoria de 26/08, conferido no codigo: as rotas protegidas
@@ -415,7 +438,7 @@ app.get('/health', (req, res) => {
       // busca por nome. Escolher um lado apagaria a descricao do outro.
       // ⚠️ a resolucao JUNTA as duas: a 7.5.0 (passe curto + tetos) ja esta
       // na main, e este PR acrescenta o build frio que falha vazio.
-      version: '9.28.1 (a empresa do app vem de DEVOLUCOES_EMPRESA; e a versao da AMB volta a ser monotonica)',
+      version: '9.29.0 (PASSO 3 COMPLETO: o app-AMB virou fabrica e o server monta as empresas ATIVAS do registro)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
