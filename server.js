@@ -468,7 +468,7 @@ app.get('/health', (req, res) => {
       // busca por nome. Escolher um lado apagaria a descricao do outro.
       // ⚠️ a resolucao JUNTA as duas: a 7.5.0 (passe curto + tetos) ja esta
       // na main, e este PR acrescenta o build frio que falha vazio.
-      version: '9.30.1 (a chave do banco vem da ficha; e o ativa_em e lido do CONTRATO, nao de um campo que a ficha nao tem)',
+      version: '9.31.0 (o auth passa a ser por empresa — o 1o dos 13 modulos que ainda eram do processo)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
