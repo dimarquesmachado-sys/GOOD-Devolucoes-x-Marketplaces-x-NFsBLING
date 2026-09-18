@@ -76,6 +76,16 @@ const { sufixoDaFicha, provisionarEmpresa, SUFIXO_VALIDO, RESERVADOS } =
     ok(!/drop table|truncate|delete from/i.test(sql.split('COMO TESTAR')[0]),
        'a funcao NAO apaga nada — so cria');
 
+    // ⚠️ (Codex, PR #323, P2) - defeito_comentarios/defeito_pedidos NAO
+    // entravam no molde: ativar uma empresa nova criava as 5 tabelas de
+    // sempre, mas o ciclo de defeitos (comentario, pedido, listarDefeitos)
+    // continuava sem tabela pra gravar — falha so descoberta na primeira
+    // vez que alguem mexesse numa peca com defeito da empresa nova.
+    ok(/\['defeito_comentarios',\s*'defeito_comentarios_amb'\]/.test(sql),
+       'o molde de defeito_comentarios entra na lista de tabelas criadas');
+    ok(/\['defeito_pedidos',\s*'defeito_pedidos_amb'\]/.test(sql),
+       '  e o de defeito_pedidos tambem');
+
     console.log('');
     console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
     process.exit(falhas ? 1 : 0);

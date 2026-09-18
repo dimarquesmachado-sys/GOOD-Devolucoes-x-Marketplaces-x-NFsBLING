@@ -502,7 +502,11 @@ app.get('/health', (req, res) => {
       // busca por nome. Escolher um lado apagaria a descricao do outro.
       // ⚠️ a resolucao JUNTA as duas: a 7.5.0 (passe curto + tetos) ja esta
       // na main, e este PR acrescenta o build frio que falha vazio.
-      version: '9.41.2 (o provisionamento CONFERE as tabelas: editar o SQL nao atualiza a rotina que ja esta no banco)',
+      // ⚠️ a resolucao JUNTA as duas de novo: o provisionamento passa a
+      // CONFERIR as tabelas em vez de confiar no silencio da RPC, e o
+      // auth-AMB tira o fallback pro ADMIN_KEY -- consertos independentes,
+      // do mesmo PR #323.
+      version: '9.41.3 (Codex, PR #323: provisionamento CONFERE as tabelas apos rodar, e auth-AMB exige SESSION_SECRET proprio por empresa em producao -- sem fallback pro ADMIN_KEY)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),

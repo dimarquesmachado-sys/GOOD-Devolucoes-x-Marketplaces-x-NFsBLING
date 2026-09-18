@@ -43,9 +43,12 @@
 //   formato:  <payload em base64url>.<assinatura>
 //   payload:  {"u":"diego","t":"admin","e":<expira em ms>}
 //
-// O segredo vem de AMB_SESSION_SECRET; se nao existir, usa a
-// ADMIN_KEY (que ja e estavel no Render). Trocar o segredo invalida
-// os tokens — que e o comportamento desejado.
+// O segredo vem de <PREFIXO>SESSION_SECRET (ex: AMB_SESSION_SECRET),
+// proprio de cada empresa (b373). Trocar o segredo invalida os tokens —
+// que e o comportamento desejado. Sem ele configurado, em producao o
+// boot desta empresa FALHA (Codex, PR #323, P1, 2a rodada): o ADMIN_KEY
+// SAIU dos fallbacks — ele tambem e forjavel (ja vazou em logs, mesmo
+// motivo do server.js:_segredoSessao nunca ter reaproveitado).
 //
 // COMPATIBILIDADE: os tokens ANTIGOS (aleatorios, guardados no Map)
 // continuam sendo aceitos enquanto o processo viver. Assim ninguem
@@ -105,6 +108,12 @@ function parseAdmins(txt) {
 // poder criar outras. `criar(cfg)` la embaixo devolve tudo isto por empresa.
 
 
+// ⚠️ (Codex, PR #323, P1, 2a rodada) - cache do segredo ALEATORIO por
+// prefixo, fora de producao. Mesmo padrao do `_SEGREDO_MEM` do server.js
+// (b324): so existe pra nao travar dev/teste sem `<PREFIXO>SESSION_SECRET`
+// configurado — em producao a funcao abaixo FALHA em vez de usar isto.
+const _segredosMemPorPrefixo = {};
+
 /** Segredo da assinatura. Estavel entre deploys — e esse o ponto. */
 // ⚠️ b373: recebe o PREFIXO da empresa. A funcao e global (fora da fabrica),
 // entao `c` nao existe aqui — minha 1a versao usava e teria quebrado em
@@ -117,35 +126,44 @@ function segredo(prefixo) {
   // fechamos hoje dependia justamente disso nao acontecer.
   //
   // 📌 `c.envUsers` e tipo 'AMB_USERS'; tiro o prefixo dele, que ja vem da
-  // ficha. Sem prefixo, cai no ADMIN_KEY como antes.
-  // ⚠️ b374 (Codex, P1) - SEM SEGREDO, NAO ASSINA.
+  // ficha.
+  // ⚠️ b374 (Codex, P1) - SEM SEGREDO, NAO ASSINA COM VALOR PREVISIVEL.
   //
   // Havia um literal `'amb-sem-segredo-configurado'` como ultimo recurso —
   // uma frase PUBLICA, no codigo, assinando sessao de ADMIN. Qualquer um que
   // leia o repo forja um cookie de administrador.
-  //
-  // ⚠️ E a empresa nova cairia nele sem perceber: o `conferirEmpresa` nao
-  // exige `<PREFIXO>SESSION_SECRET`.
-  //
-  // 📌 Agora derruba. Sessao de admin assinada com segredo publico e pior
-  // que sessao que nao funciona.
   const _pref = String(prefixo || 'AMB_');
-  // ⚠️ o fallback pra `AMB_SESSION_SECRET` SAIU: ele mantinha o vazamento.
-  // Com ele, a Girassol sem segredo proprio usaria o da AMB — e os cookies
-  // das duas passariam a valer um no outro, que e exatamente o que este
-  // trabalho fecha.
+  const doAmbiente = String(process.env[_pref + 'SESSION_SECRET'] || '').trim();
+  if (doAmbiente.length >= 16) return doAmbiente;
+
+  // ⚠️ (Codex, PR #323, P1, 2a rodada) - O `ADMIN_KEY` TAMBEM SAIU.
   //
-  // 📌 O `ADMIN_KEY` continua como ultimo recurso: e do SERVICO, nao de uma
-  // empresa, entao nao cruza dados entre elas.
-  const achado = String(process.env[_pref + 'SESSION_SECRET']
-    || process.env.ADMIN_KEY || '').trim();
-  if (!achado) {
-    throw new Error(`[auth] ${_pref}SESSION_SECRET nao configurado (nem `
-      + 'ADMIN_KEY). Sem segredo eu assinaria a sessao de admin com um valor '
-      + 'previsivel — qualquer um forjaria o cookie. Defina a env antes de '
-      + 'ativar esta empresa.');
+  // A 1a correcao do b374 trocou so o literal PUBLICO pelo `ADMIN_KEY` como
+  // ultimo recurso — mas o proprio apontamento do Codex citava os DOIS como
+  // fracos: o `ADMIN_KEY` ja vazou em logs (mesmo motivo pelo qual o
+  // server.js:_segredoSessao nunca o reaproveitou pro segredo de sessao da
+  // GOOD). E nenhuma checagem de boot (`lib/empresas.js:ENVS_OBRIGATORIAS`)
+  // exige `<PREFIXO>SESSION_SECRET`, entao a empresa passaria "pronta" com
+  // o cookie de admin ainda forjavel por quem tivesse o ADMIN_KEY.
+  //
+  // 📌 Mesmo padrao do server.js: falha alta em producao, e so gera um
+  // segredo ALEATORIO (por prefixo, aqui) fora dela — assim dev/teste sem
+  // a env configurada nao trava.
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error(`[auth-AMB] ${_pref}SESSION_SECRET ausente ou curto (min `
+      + '16 chars) em producao — sem um segredo proprio desta empresa, a '
+      + 'sessao cairia no ADMIN_KEY (ja vazado em logs) ou num literal '
+      + 'PUBLICO no codigo, e ficaria forjavel. Defina '
+      + `${_pref}SESSION_SECRET no Render.`);
   }
-  return achado;
+
+  if (!_segredosMemPorPrefixo[_pref]) {
+    _segredosMemPorPrefixo[_pref] = crypto.randomBytes(32).toString('hex');
+    console.warn(`[BOOT] ${_pref}SESSION_SECRET ausente — usando segredo `
+      + 'ALEATORIO desta execucao (so fora de producao). As sessoes desta '
+      + 'empresa caem a cada reinicio.');
+  }
+  return _segredosMemPorPrefixo[_pref];
 }
 
 const b64url = (buf) => Buffer.from(buf).toString('base64')
@@ -216,6 +234,13 @@ function criar(cfg) {
     );
   }
   const c = Object.assign({}, PADRAO, cfg || {});
+
+  // ⚠️ (Codex, PR #323, P1, 2a rodada) - VALIDA O SEGREDO NA ATIVACAO, nao
+  // so no 1o login. `segredo()` ja falha em producao sem
+  // `<PREFIXO>SESSION_SECRET` valido — chamar aqui garante que o BOOT desta
+  // empresa (nao a 1a requisicao) e quem acusa a falta.
+  segredo(String(c.cookie || '').replace(/^sessao_/, '').toUpperCase() + '_');
+
   const users = parseUsers(process.env[c.envUsers] || '');
   const admins = parseAdmins(process.env[c.envAdmins] || '');
   const minhasSessoes = new Map();   // ⚠️ o mapa e DESTA empresa

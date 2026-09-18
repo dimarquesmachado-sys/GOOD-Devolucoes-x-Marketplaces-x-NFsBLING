@@ -392,7 +392,12 @@ const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 // mais um 403 pendente, e vice-versa). A AMB nunca consultou
 // lib/token-leitor.js (os modulos lib-AMB/* nao honram essa politica,
 // confirmado por grep) - nada a espelhar.
-const VERSAO = 'AMB Devolucoes b374';
+// b375 - revisao Codex no PR #323, 2a rodada: o `auth-AMB` tambem tira o
+// fallback pro `ADMIN_KEY` (a 1a correcao do b374 tinha mantido -- o proprio
+// apontamento do Codex citava os dois como fracos). Sem
+// `<PREFIXO>SESSION_SECRET` proprio, o boot da empresa falha em producao,
+// em vez de assinar sessao de admin com uma chave que ja vazou em logs.
+const VERSAO = 'AMB Devolucoes b375';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
