@@ -105,12 +105,21 @@ const authAMB = require('../amb-devolucoes/lib-AMB/auth-AMB.js');
     require('path').join(__dirname, '..', 'amb-devolucoes', 'lib-AMB', 'auth-AMB.js'), 'utf8');
   process.env.AMB_USERS = 'ana:s1';
   process.env.AMB_ADMIN_USER = 'ana';
+  // ⚠️ b374: o auth agora DERRUBA sem segredo (era um literal publico
+  // assinando sessao de admin). Empresa ficticia de teste precisa do seu.
+  process.env.GIRA_TESTE_SESSION_SECRET = 'segredo-da-gira-teste-40-caracteres!!';
   process.env.GIRA_TESTE_USERS = 'bruno:s2';
   process.env.ADMIN_SESSION_SECRET = 'segredo-fixo-de-teste-com-40-caracteres!!';
 
   ok(/function assinarCom\(escopo, payloadB64\)/.test(fonte),
      '⚠️ a assinatura recebe o ESCOPO da empresa');
-  ok(/segredo\(\) \+ '\|' \+ String\(escopo/.test(fonte),
+  // ⚠️ b373: a `segredo()` passou a receber o PREFIXO da empresa — antes era
+  // `AMB_SESSION_SECRET` cravado, e duas empresas com o MESMO segredo
+  // assinariam cookies que valem uma na outra.
+  //
+  // 📌 O que este teste guarda continua igual: que o ESCOPO entra na chave
+  // do HMAC. Mudou so de onde vem o segredo.
+  ok(/segredo\(pref\) \+ '\|' \+ String\(escopo/.test(fonte),
      '  e o escopo entra na CHAVE do HMAC');
 
   const amb = auth.criar();

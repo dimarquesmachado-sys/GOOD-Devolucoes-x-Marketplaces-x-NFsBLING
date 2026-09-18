@@ -203,6 +203,93 @@ process.env.AMB_SUPABASE_KEY = 'chave-de-teste';
        '⚠️ nenhum link `/amb/` cravado no codigo'
        + (pos >= 0 ? ` (perto de: ${semComent.slice(Math.max(0, pos - 30), pos + 20).trim()})` : ''));
 
+    // ── ⚠️ O QUE AINDA IMPEDE 2 EMPRESAS — medido, não lembrado ────────
+    //
+    // Eu tirei o freio 2 vezes cedo demais. Na 1ª conferi só o que mexi; na
+    // 2ª varri o repo procurando `/amb/` em STRING — e o que faltava eram
+    // ENVS, que não têm essa forma.
+    //
+    // 📌 Este bloco LISTA o que falta, em vez de eu lembrar. Enquanto
+    // acusar, o freio do server.js fica.
+    const ENVS_CRAVADAS = [];
+    const dirLib = path.join(RAIZ, 'amb-devolucoes', 'lib-AMB');
+    for (const f of fs.readdirSync(dirLib)) {
+      if (!f.endsWith('.js')) continue;
+      const src = fs.readFileSync(path.join(dirLib, f), 'utf8');
+      const semC = src.split('\n').filter((l) => !l.trim().startsWith('//')).join('\n');
+      const achadas = [...new Set((semC.match(/process\.env\.AMB_[A-Z_]+/g) || []))];
+      for (const e of achadas) ENVS_CRAVADAS.push(`${f}: ${e.replace('process.env.', '')}`);
+    }
+    // ⚠️ b372 (Codex, P2) - zerar as ENVS nao basta: `defeitos-ciclo-AMB.js`
+    // grava em tabelas FIXAS (`defeito_comentarios_amb`, `defeito_pedidos_amb`)
+    // mesmo sem ler nenhuma env cravada. Sem este placar, o bloco abaixo
+    // declararia o freio removível so por zerar env, e uma 2a empresa
+    // continuaria gravando defeito na tabela da AMB.
+    // ⚠️ b373 - VARRE TODOS OS MODULOS, nao so o de defeitos.
+    //
+    // Minha versao anterior olhava tabela SO no `defeitos-ciclo-AMB` — e a
+    // `defeito_pedidos_amb` mora no `supabase-AMB`. O teste disse "pode
+    // tirar o freio" com uma tabela da AMB cravada.
+    //
+    // 📌 3a vez que meco o lugar errado. Agora: todos os arquivos, todas as
+    // formas.
+    const TABELAS_CRAVADAS = [];
+    for (const f of fs.readdirSync(dirLib)) {
+      if (!f.endsWith('.js')) continue;
+      const src = fs.readFileSync(path.join(dirLib, f), 'utf8');
+      const semC = src.split('\n').filter((l) => !l.trim().startsWith('//')).join('\n');
+      for (const t of new Set(semC.match(/['"][a-z][a-z_]*_amb['"]/g) || [])) {
+        // ⚠️ nem todo `*_amb` e tabela. Falso positivo ensina a ignorar o
+        // vermelho — entao excluo o que CONFERI que nao e:
+        //   sessao_amb         nome do cookie (correto, e por empresa)
+        //   nf_via_indice_amb  rotulo de AVISO na tela, nao tabela
+        if (/sessao_amb|nf_via_indice_amb/.test(t)) continue;
+        TABELAS_CRAVADAS.push(`${f}: ${t}`);
+      }
+    }
+
+    // ⚠️ não falho aqui: é um PLACAR, não um veredito. O freio é que protege.
+    console.log(ENVS_CRAVADAS.length
+      ? `    📌 ainda faltam ${ENVS_CRAVADAS.length} env(s) AMB_ cravada(s) — o freio fica:`
+      : '    ✅ nenhuma env AMB_ cravada nos modulos');
+    for (const e of ENVS_CRAVADAS.slice(0, 6)) console.log('       ' + e);
+    console.log(TABELAS_CRAVADAS.length
+      ? `    📌 ainda ha ${TABELAS_CRAVADAS.length} tabela(s) AMB fixa(s) — o freio fica:`
+      : '    ✅ nenhuma tabela fixa da AMB no ciclo de defeitos');
+    for (const t of TABELAS_CRAVADAS) console.log('       ' + t);
+
+    // ⚠️ b373 - E A 3a FORMA: usar a INSTANCIA PADRAO do modulo.
+    //
+    // `require('./bling-AMB')` sem `.criar()` devolve a instancia criada com
+    // o `config-AMB` fixo — a da AMB. Nao aparece como env nem como tabela,
+    // e foi o que sobrou depois de eu limpar as outras duas formas.
+    //
+    // 📌 3 vezes hoje eu disse "pode tirar o freio" olhando UMA forma. Agora
+    // o teste olha as tres.
+    const INSTANCIA_PADRAO = [];
+    for (const f of fs.readdirSync(dirLib)) {
+      if (!f.endsWith('.js')) continue;
+      const src = fs.readFileSync(path.join(dirLib, f), 'utf8');
+      const semC = src.split('\n').filter((l) => !l.trim().startsWith('//')).join('\n');
+      for (const m2 of semC.matchAll(/require\('\.\/([\w-]+-AMB)'\)(?!\.criar)/g)) {
+        INSTANCIA_PADRAO.push(`${f} -> ${m2[1]}`);
+      }
+    }
+    if (INSTANCIA_PADRAO.length) {
+      console.log(`    📌 e ${INSTANCIA_PADRAO.length} uso(s) da instancia PADRAO (config-AMB fixo):`);
+      for (const x of INSTANCIA_PADRAO.slice(0, 6)) console.log('       ' + x);
+    }
+
+    // e o freio TEM que estar la enquanto houver env OU tabela cravada
+    const srvSrc = fs.readFileSync(path.join(RAIZ, 'server.js'), 'utf8');
+    const temFreio = /const naoAMB = ativas\.filter/.test(srvSrc);
+    const faltaAlgo = ENVS_CRAVADAS.length > 0 || TABELAS_CRAVADAS.length > 0
+      || INSTANCIA_PADRAO.length > 0;
+    ok(faltaAlgo ? temFreio : true,
+       faltaAlgo
+         ? '⚠️ ha env ou tabela AMB cravada, entao o freio do server.js DEVE existir'
+         : '  (sem envs nem tabelas cravadas — o freio ja pode sair)');
+
     console.log('');
     console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
     process.exit(falhas ? 1 : 0);

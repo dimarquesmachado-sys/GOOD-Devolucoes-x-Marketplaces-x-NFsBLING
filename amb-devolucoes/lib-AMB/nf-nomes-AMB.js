@@ -49,8 +49,19 @@ const configAMB = require('../config-AMB');
 // b263 - pra parar a varredura quando o processo esta saindo
 const drenagem = require('../../lib/drenagem');
 
+// ⚠️ b372 - O BLING VEM DA EMPRESA, nao a instancia padrao.
+//
+// Era `require('./bling-AMB')` — a instancia criada com o `config-AMB` fixo.
+// A Girassol consultaria o Bling DA AMBTOTAL aqui: veria as notas dela e
+// emitiria na conta errada.
+//
+// 📌 `cfg.bling` ja vem na config da empresa; se nao vier, cai na padrao
+// (comportamento de hoje).
+const blingPadrao = require('./bling-AMB');
+
 function criarNfNomes(cfg) {
-const bling = require('./bling-AMB');
+  // ⚠️ b372: prefere o cliente Bling DESTA empresa
+  const bling = (cfg && cfg.clienteBling) || blingPadrao;
 
 const IDX = {
   ts: 0,
@@ -116,7 +127,7 @@ async function construirIndiceInterno(opts = {}) {
   const t0 = Date.now();
 
   try {
-    const dias = opts.dias || Number(process.env.AMB_NF_JANELA_DIAS || 120);
+    const dias = opts.dias || Number(process.env[(cfg && cfg.PREFIXO_ENV || 'AMB_') + 'NF_JANELA_DIAS'] || 120);
     const maxPaginas = opts.maxPaginas || 80;      // teto: 80x100 = 8000 NFs
     const corte = Date.now() - dias * 864e5;
 
@@ -389,7 +400,7 @@ function statusIndice() {
     total_nfs: IDX.totalNFs,
     nomes_distintos: IDX.nomes,
     nomes_curtos: Object.keys(IDX.mapaCurto).length,
-    janela_dias: Number(process.env.AMB_NF_JANELA_DIAS || 120),
+    janela_dias: Number(process.env[(cfg && cfg.PREFIXO_ENV || 'AMB_') + 'NF_JANELA_DIAS'] || 120),
     duracao_construcao_seg: IDX.duracaoSeg || null,
     erro: IDX.erro,
   };

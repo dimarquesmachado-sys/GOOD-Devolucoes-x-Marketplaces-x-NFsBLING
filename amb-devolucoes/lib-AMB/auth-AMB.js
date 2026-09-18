@@ -43,9 +43,12 @@
 //   formato:  <payload em base64url>.<assinatura>
 //   payload:  {"u":"diego","t":"admin","e":<expira em ms>}
 //
-// O segredo vem de AMB_SESSION_SECRET; se nao existir, usa a
-// ADMIN_KEY (que ja e estavel no Render). Trocar o segredo invalida
-// os tokens — que e o comportamento desejado.
+// O segredo vem de <PREFIXO>SESSION_SECRET (ex: AMB_SESSION_SECRET),
+// proprio de cada empresa (b373). Trocar o segredo invalida os tokens —
+// que e o comportamento desejado. Sem ele configurado, em producao o
+// boot desta empresa FALHA (Codex, PR #323, P1, 2a rodada): o ADMIN_KEY
+// SAIU dos fallbacks — ele tambem e forjavel (ja vazou em logs, mesmo
+// motivo do server.js:_segredoSessao nunca ter reaproveitado).
 //
 // COMPATIBILIDADE: os tokens ANTIGOS (aleatorios, guardados no Map)
 // continuam sendo aceitos enquanto o processo viver. Assim ninguem
@@ -105,10 +108,69 @@ function parseAdmins(txt) {
 // poder criar outras. `criar(cfg)` la embaixo devolve tudo isto por empresa.
 
 
+// ⚠️ (Codex, PR #323, P1, 2a rodada) - cache do segredo ALEATORIO por
+// prefixo, fora de producao. Mesmo padrao do `_SEGREDO_MEM` do server.js
+// (b324): so existe pra nao travar dev/teste sem `<PREFIXO>SESSION_SECRET`
+// configurado — em producao a funcao abaixo FALHA em vez de usar isto.
+const _segredosMemPorPrefixo = {};
+
 /** Segredo da assinatura. Estavel entre deploys — e esse o ponto. */
-function segredo() {
-  return String(process.env.AMB_SESSION_SECRET || process.env.ADMIN_KEY || '')
-    || 'amb-sem-segredo-configurado';
+// ⚠️ b373: recebe o PREFIXO da empresa. A funcao e global (fora da fabrica),
+// entao `c` nao existe aqui — minha 1a versao usava e teria quebrado em
+// runtime, com `node --check` passando.
+function segredo(prefixo) {
+  // ⚠️ b373 - O SEGREDO VEM DO PREFIXO DA EMPRESA.
+  //
+  // Era `AMB_SESSION_SECRET` cravado. Duas empresas com o MESMO segredo
+  // assinariam cookies que valem uma na outra — e o escopo por empresa que
+  // fechamos hoje dependia justamente disso nao acontecer.
+  //
+  // 📌 `c.envUsers` e tipo 'AMB_USERS'; tiro o prefixo dele, que ja vem da
+  // ficha.
+  // ⚠️ b374 (Codex, P1) - SEM SEGREDO, NAO ASSINA COM VALOR PREVISIVEL.
+  //
+  // Havia um literal `'amb-sem-segredo-configurado'` como ultimo recurso —
+  // uma frase PUBLICA, no codigo, assinando sessao de ADMIN. Qualquer um que
+  // leia o repo forja um cookie de administrador.
+  const _pref = String(prefixo || 'AMB_');
+  const doAmbiente = String(process.env[_pref + 'SESSION_SECRET'] || '').trim();
+  if (doAmbiente.length >= 16) return doAmbiente;
+
+  // ⚠️ (Codex, PR #323, P1, 2a rodada) - O `ADMIN_KEY` TAMBEM SAIU.
+  //
+  // A 1a correcao do b374 trocou so o literal PUBLICO pelo `ADMIN_KEY` como
+  // ultimo recurso — mas o proprio apontamento do Codex citava os DOIS como
+  // fracos: o `ADMIN_KEY` ja vazou em logs (mesmo motivo pelo qual o
+  // server.js:_segredoSessao nunca o reaproveitou pro segredo de sessao da
+  // GOOD). E nenhuma checagem de boot (`lib/empresas.js:ENVS_OBRIGATORIAS`)
+  // exige `<PREFIXO>SESSION_SECRET`, entao a empresa passaria "pronta" com
+  // o cookie de admin ainda forjavel por quem tivesse o ADMIN_KEY.
+  //
+  // 📌 Mesmo padrao do server.js: falha alta em producao, e so gera um
+  // segredo ALEATORIO (por prefixo, aqui) fora dela — assim dev/teste sem
+  // a env configurada nao trava.
+  // ⚠️ (Codex, PR #323, P2) - RENDER TAMBEM E PRODUCAO.
+  //
+  // So `NODE_ENV === 'production'` deixava passar um deploy no Render sem
+  // essa env setada e sem NODE_ENV=production: a funcao cairia no segredo
+  // ALEATORIO por processo, e um restart (o Diego faz varios por dia)
+  // derrubaria as sessoes de admin. `opcoesCookie()` mais abaixo ja trata
+  // Render como producao pro cookie `secure` — mesmo criterio aqui.
+  if (process.env.NODE_ENV === 'production' || !!process.env.RENDER) {
+    throw new Error(`[auth-AMB] ${_pref}SESSION_SECRET ausente ou curto (min `
+      + '16 chars) em producao — sem um segredo proprio desta empresa, a '
+      + 'sessao cairia no ADMIN_KEY (ja vazado em logs) ou num literal '
+      + 'PUBLICO no codigo, e ficaria forjavel. Defina '
+      + `${_pref}SESSION_SECRET no Render.`);
+  }
+
+  if (!_segredosMemPorPrefixo[_pref]) {
+    _segredosMemPorPrefixo[_pref] = crypto.randomBytes(32).toString('hex');
+    console.warn(`[BOOT] ${_pref}SESSION_SECRET ausente — usando segredo `
+      + 'ALEATORIO desta execucao (so fora de producao). As sessoes desta '
+      + 'empresa caem a cada reinicio.');
+  }
+  return _segredosMemPorPrefixo[_pref];
 }
 
 const b64url = (buf) => Buffer.from(buf).toString('base64')
@@ -129,7 +191,10 @@ const b64url = (buf) => Buffer.from(buf).toString('base64')
 // do HMAC. Token de uma empresa NAO valida na outra, e continua
 // sobrevivendo ao restart.
 function assinarCom(escopo, payloadB64) {
-  return crypto.createHmac('sha256', segredo() + '|' + String(escopo || ''))
+  // ⚠️ b373: o prefixo sai do proprio escopo (o nome do cookie: sessao_amb,
+  // sessao_girassol), entao cada empresa assina com o SEU segredo.
+  const pref = String(escopo || '').replace(/^sessao_/, '').toUpperCase() + '_';
+  return crypto.createHmac('sha256', segredo(pref) + '|' + String(escopo || ''))
     .update(payloadB64).digest('base64')
     .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
@@ -176,6 +241,13 @@ function criar(cfg) {
     );
   }
   const c = Object.assign({}, PADRAO, cfg || {});
+
+  // ⚠️ (Codex, PR #323, P1, 2a rodada) - VALIDA O SEGREDO NA ATIVACAO, nao
+  // so no 1o login. `segredo()` ja falha em producao sem
+  // `<PREFIXO>SESSION_SECRET` valido — chamar aqui garante que o BOOT desta
+  // empresa (nao a 1a requisicao) e quem acusa a falta.
+  segredo(String(c.cookie || '').replace(/^sessao_/, '').toUpperCase() + '_');
+
   const users = parseUsers(process.env[c.envUsers] || '');
   const admins = parseAdmins(process.env[c.envAdmins] || '');
   const minhasSessoes = new Map();   // ⚠️ o mapa e DESTA empresa
@@ -305,21 +377,40 @@ function criar(cfg) {
 //
 // 📌 O export abaixo reexporta desta instancia, entao `auth.requerLogin`,
 // `auth.autenticar` etc. seguem funcionando IGUAL pro app-AMB.
-const PADRAO_INST = criar();
+//
+// ⚠️ (Codex, PR #323, P2) - PREGUICOSA DE PROPOSITO.
+//
+// `criar()` (sem argumento) VALIDA o `AMB_SESSION_SECRET` na hora — e essa
+// checagem e o comportamento certo pra quem realmente monta a AMB. Mas
+// `require('./lib-AMB/auth-AMB')` roda esta linha na hora do PRIMEIRO
+// require, nao importa QUAL empresa provocou o require: `app-AMB.js` chama
+// este modulo pra QUALQUER empresa ativa (via `criarAppEmpresa(chave)`, ver
+// server.js). Uma producao so com a Girassol ativa (sem AMB) derrubaria o
+// boot exigindo `AMB_SESSION_SECRET` — de uma instancia que ninguem usa.
+//
+// 📌 Nenhum codigo de producao le estes campos direto (todos passam por
+// `.criar(CFG_EMPRESA.AUTH)`); sao getters so pra nao quebrar quem ainda
+// importar assim. Adiando a criacao pro 1o acesso, o require deixa de
+// validar um segredo que a empresa ativada pode nem usar.
+let _padraoInst = null;
+function padraoInst() {
+  if (!_padraoInst) _padraoInst = criar();
+  return _padraoInst;
+}
 
 // ⚠️ TUDO REEXPORTADO DA INSTANCIA PADRAO. O app-AMB nao muda uma linha.
 module.exports = {
   criar,
-  COOKIE: PADRAO_INST.COOKIE,
-  CAMINHO_COOKIE: PADRAO_INST.CAMINHO_COOKIE,
-  autenticar: PADRAO_INST.autenticar,
-  novaSessao: PADRAO_INST.novaSessao,
-  validarSessao: PADRAO_INST.validarSessao,
-  opcoesCookie: PADRAO_INST.opcoesCookie,
-  tokenDaRequisicao: PADRAO_INST.tokenDaRequisicao,
-  requerLogin: PADRAO_INST.requerLogin,
-  requerAdmin: PADRAO_INST.requerAdmin,
-  diagnostico: PADRAO_INST.diagnostico,
-  temUsuarios: PADRAO_INST.temUsuarios,
-  sair: PADRAO_INST.sair,
+  get COOKIE() { return padraoInst().COOKIE; },
+  get CAMINHO_COOKIE() { return padraoInst().CAMINHO_COOKIE; },
+  get autenticar() { return padraoInst().autenticar; },
+  get novaSessao() { return padraoInst().novaSessao; },
+  get validarSessao() { return padraoInst().validarSessao; },
+  get opcoesCookie() { return padraoInst().opcoesCookie; },
+  get tokenDaRequisicao() { return padraoInst().tokenDaRequisicao; },
+  get requerLogin() { return padraoInst().requerLogin; },
+  get requerAdmin() { return padraoInst().requerAdmin; },
+  get diagnostico() { return padraoInst().diagnostico; },
+  get temUsuarios() { return padraoInst().temUsuarios; },
+  get sair() { return padraoInst().sair; },
 };

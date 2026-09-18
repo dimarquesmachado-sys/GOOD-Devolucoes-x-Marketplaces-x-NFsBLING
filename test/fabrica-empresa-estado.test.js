@@ -514,8 +514,40 @@ function contarEstadoDoModulo(src) {
 // `test/_recorte.js`) com `ativas` simulado, em vez de so grepar o texto —
 // prova o COMPORTAMENTO, nao a forma do codigo.
 {
-  const { entreMarcadores } = require('./_recorte');
+  // ⚠️ b370 - O FREIO SAIU uma vez, com os 3 motivos da varredura fechados
+  // (#317, #318, #319 + o redirect do compat-AMB, a lista `outras_empresas`
+  // e o manifest da PWA).
+  //
+  // ⚠️ b371 (Codex, P1) - E VOLTOU. `test/duas-empresas-juntas.test.js`
+  // prova sessao, cache, tabela e fila de devolucao — mas nao exercita
+  // `bling.idsFiscais()` nem o ciclo de defeitos, e os dois AINDA leem
+  // literal AMB (env `AMB_ID_NATUREZA_DEVOLUCAO_ENTRADA`/
+  // `AMB_ID_EMPRESA_CONTROL`, e as tabelas fixas `defeito_comentarios_amb`/
+  // `defeito_pedidos_amb`). Uma 2a empresa passaria por cima do teste de
+  // isolamento e ainda assim receberia dado da AMB nessas duas rotas.
+  //
+  // 📌 Guardo aqui que o freio EXISTE de novo — se alguem tirar sem fechar
+  // esses dois, este teste avisa.
   const srv = fs.readFileSync(path.join(RAIZ, 'server.js'), 'utf8');
+  // ⚠️ b371: o freio VOLTOU, e com razao. Eu o tirei 2x cedo demais:
+  //   1a — conferi so os arquivos que mexi
+  //   2a — varri o repo procurando `/amb/` em STRING, e o que faltava eram
+  //        ENVS (`AMB_ID_EMPRESA_CONTROL`, `AMB_ID_NATUREZA_...`), que nao
+  //        tem essa forma
+  //
+  // ⚠️ A Girassol emitiria NF com a NATUREZA e a EMPRESA da AMBTotal — nota
+  // fiscal errada no CNPJ errado.
+  //
+  // 📌 Quem decide quando ele pode sair e o PLACAR em
+  // `duas-empresas-juntas.test.js`, que LISTA as envs que faltam. Nao eu,
+  // de memoria.
+  //
+  // ⚠️ b372 (Codex, P2) - um regex que so confere se a DECLARACAO existe
+  // fica verde mesmo se o predicado ler o campo errado, o throw sair, ou o
+  // freio for movido pra depois do `app.use`. Executa o TRECHO REAL do
+  // freio (recortado por marcadores estaveis) com `ativas` simulado, como
+  // era antes do b370 — prova o COMPORTAMENTO, nao a forma do codigo.
+  const { entreMarcadores } = require('./_recorte');
   const trecho = entreMarcadores(srv,
     "const naoAMB = ativas.filter((e) => e.chave !== 'ambtotal');",
     'for (const emp of ativas) {');
@@ -529,6 +561,14 @@ function contarEstadoDoModulo(src) {
      '⚠️ so a GOOD ativa (AMB desligada no contrato): o freio DISPARA');
   ok(!naoLanca([{ chave: 'ambtotal', rota: '/amb' }, { chave: 'good', rota: '/good' }]),
      '  AMB + GOOD juntas: o freio continua disparando');
+
+  // ⚠️ e o app nao carrega mais nada cravado na AMB
+  const appSrc = fs.readFileSync(
+    path.join(RAIZ, 'amb-devolucoes', 'app-AMB.js'), 'utf8');
+  const semComent = appSrc.split('\n')
+    .filter((l) => !l.trim().startsWith('//')).join('\n');
+  ok(!/require\('\.\/config-AMB'\)/.test(semComent),
+     '⚠️ e o app nao carrega mais o `config-AMB` fixo');
 }
 
 // ── ⚠️ PASSO 3, FATIA 1: as 4 gavetas vêm de UMA fábrica ────────────
@@ -697,8 +737,14 @@ function contarEstadoDoModulo(src) {
   const auth = require('../amb-devolucoes/lib-AMB/auth-AMB.js');
   process.env.AMB_USERS = 'ana:s1';
   process.env.AMB_ADMIN_USER = 'ana';
+  // ⚠️ b374: idem — sem segredo proprio o auth derruba, de proposito.
+  process.env.GIRA_ISO_SESSION_SECRET = 'segredo-da-gira-iso-40-caracteres!!!';
   process.env.GIRA_ISO_USERS = 'bruno:s2';
   process.env.ADMIN_SESSION_SECRET = 'segredo-fixo-de-teste-com-40-caracteres!!';
+  // ⚠️ b374: o auth derruba sem `<PREFIXO>SESSION_SECRET` — antes caia num
+  // literal publico (`amb-sem-segredo-configurado`) que assinava sessao de
+  // ADMIN. O teste precisa declarar o da AMB como producao declara.
+  process.env.AMB_SESSION_SECRET = 'segredo-da-amb-de-teste-40-caracteres!!';
 
   const a = auth.criar(authAmb);
   const b = auth.criar({

@@ -1441,11 +1441,28 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
   /** A espreita e a mesma - o painel so a chama por outro caminho. */
   router.get('/api/admin/espreita', auth.requerLogin, (req, res) => {
     const qs = req.originalUrl.includes('?') ? req.originalUrl.slice(req.originalUrl.indexOf('?')) : '';
-    res.redirect(307, '/amb/api/espreita' + qs);
+    // ⚠️ b370 - REDIRECT INTERNO CRAVADO NA AMB.
+    //
+    // O painel da Girassol chamaria `/girassol/api/admin/espreita` e seria
+    // mandado pra `/amb/api/espreita` — a rota da AMB, com a sessao errada.
+    // O usuario veria um 401 sem explicacao, ou pior: os dados da AMB.
+    //
+    // 📌 `req.baseUrl` e o prefixo onde ESTE router foi montado ('/amb' hoje,
+    // '/girassol' quando ela subir). Vem do Express, nao de configuracao.
+    res.redirect(307, (req.baseUrl || '') + '/api/espreita' + qs);
   });
 
   router.post('/api/admin/espreita/nota', auth.requerLogin, (req, res) => {
-    res.redirect(307, '/amb/api/espreita/nota');
+    // ⚠️ b371 (Codex, P1) - O POST IRMAO, QUE EU PERDI.
+    //
+    // Corrigi o GET logo acima e parei nele. Este POST continuava mandando
+    // pra `/amb/api/espreita/nota`: a Girassol gravaria a nota na rota da
+    // AMB — e o cookie dela e do `/girassol`, entao ou daria 401 ou, com
+    // sessao da AMB aberta no mesmo navegador, GRAVARIA NA EMPRESA ERRADA.
+    //
+    // 📌 Achar um caso e parar nele e o meu erro mais repetido hoje. A
+    // funcao inteira devia ter sido varrida no primeiro apontamento.
+    res.redirect(307, (req.baseUrl || '') + '/api/espreita/nota');
   });
 
   // ═══════════════════════════════════════════════════════════════

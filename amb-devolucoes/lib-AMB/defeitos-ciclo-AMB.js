@@ -25,8 +25,28 @@ module.exports = function registrarCicloDefeitos(router, deps) {
 
   // as tabelas novas ficam aqui, nao no supabase-AMB, pra este modulo ser
   // autocontido (o supabase-AMB nao precisa mudar)
-  const T_COM = 'defeito_comentarios_amb';
-  const T_PED = 'defeito_pedidos_amb';
+  // ⚠️ b373 - AS TABELAS SAEM DA FICHA.
+  //
+  // Eram `defeito_comentarios_amb` e `defeito_pedidos_amb` cravadas: a
+  // Girassol gravaria os defeitos dela NAS TABELAS DA AMB, misturando o
+  // estoque de defeitos das duas.
+  //
+  // 📌 A ficha ja tem o sufixo por empresa (`tabelas`). Uso o mesmo padrao
+  // das outras 5 tabelas, com o valor de hoje como base.
+  // ⚠️ b374 (Codex, P2) - O SUFIXO SAI DA TABELA, nao da chaveDados.
+      //
+      // Eu usei `chaveDados`, que na AMB e 'amb' e bate por acaso. Mas na
+      // GOOD a tabela e `devolucoes` SEM SUFIXO — minha versao geraria
+      // `defeito_pedidos_good`, que nao existe.
+      //
+      // 📌 O provisionador (`sql/provisionar-empresa.sql`) deriva o sufixo
+      // de `tabelas.devolucoes`. Uso a MESMA fonte, senao o nome que eu
+      // monto e o que o banco cria divergem.
+      const _tabDev = (cfg && cfg.supabase && cfg.supabase.tabelas
+        && cfg.supabase.tabelas.devolucoes) || 'devolucoes';
+      const _sufixo = String(_tabDev).replace(/^devolucoes_?/, '');
+  const T_COM = (_sufixo ? `defeito_comentarios_${_sufixo}` : 'defeito_comentarios');
+  const T_PED = (_sufixo ? `defeito_pedidos_${_sufixo}` : 'defeito_pedidos');
 
   const cli = () => db.conectar();
   const corpo = (req) => (req.body && req.body.dados) || req.body || {};
@@ -50,7 +70,12 @@ module.exports = function registrarCicloDefeitos(router, deps) {
   async function entradaNoEstoque({ sku, quantidade, observacao }) {
     if (!bling || !bling.chamarBling) return { ok: false, erro: 'Bling nao disponivel' };
     const deposito = (cfg && cfg.depositos && cfg.depositos.geral)
-      || process.env.AMB_DEPOSITO_GERAL || '14888917703';   // Geral da AMBTotal
+      // ⚠️ b373: o deposito vem da FICHA. Era `AMB_DEPOSITO_GERAL ||
+      // '14888917703'` — o Geral da AMBTotal CRAVADO: a Girassol movimentaria
+      // estoque no deposito da AMB.
+      || (cfg && cfg.fiscal && typeof cfg.fiscal.depositoGeral === 'function'
+        ? cfg.fiscal.depositoGeral() : '')
+      || '';
     try {
       // ═══════════════════════════════════════════════════════════════
       // b160 - RESOLUCAO BLINDADA DO PRODUTO. Antes, se o ?codigo= nao
