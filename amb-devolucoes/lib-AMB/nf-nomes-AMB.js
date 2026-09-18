@@ -49,8 +49,19 @@ const configAMB = require('../config-AMB');
 // b263 - pra parar a varredura quando o processo esta saindo
 const drenagem = require('../../lib/drenagem');
 
+// ⚠️ b372 - O BLING VEM DA EMPRESA, nao a instancia padrao.
+//
+// Era `require('./bling-AMB')` — a instancia criada com o `config-AMB` fixo.
+// A Girassol consultaria o Bling DA AMBTOTAL aqui: veria as notas dela e
+// emitiria na conta errada.
+//
+// 📌 `cfg.bling` ja vem na config da empresa; se nao vier, cai na padrao
+// (comportamento de hoje).
+const blingPadrao = require('./bling-AMB');
+
 function criarNfNomes(cfg) {
-const bling = require('./bling-AMB');
+  // ⚠️ b372: prefere o cliente Bling DESTA empresa
+  const bling = (cfg && cfg.clienteBling) || blingPadrao;
 
 const IDX = {
   ts: 0,
