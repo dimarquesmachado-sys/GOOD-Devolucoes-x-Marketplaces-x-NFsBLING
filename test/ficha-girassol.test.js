@@ -51,8 +51,24 @@ const contrato = JSON.parse(
 // passou a exigi-lo em produção e ninguém criou a env. O `conferirEmpresa`
 // não pedia essa env, então dizia "só faltam credenciais" enquanto o boot
 // morria. Agora ela entra na conta.
+//
+// ⚠️ (Codex #326, P2) - ISOLADO do ambiente real. `verifica.js` roda com o
+// env HERDADO do processo — se alguém já provisionou as `GIRASSOL_*` no
+// Render/CI antes de ligar a empresa, `conferirEmpresa` responderia
+// `pronta:true` e este teste cairia por um motivo que não é bug nenhum.
+// Limpo as `GIRASSOL_*` antes e devolvo o valor original depois, pra testar
+// SEMPRE o estado "nada configurado", que é o caso que este teste existe
+// pra cobrir.
 {
-  const r = conferirEmpresa('girassol');
+  const chavesGirassol = Object.keys(process.env).filter((k) => k.startsWith('GIRASSOL_'));
+  const originais = {};
+  chavesGirassol.forEach((k) => { originais[k] = process.env[k]; delete process.env[k]; });
+  let r;
+  try {
+    r = conferirEmpresa('girassol');
+  } finally {
+    chavesGirassol.forEach((k) => { process.env[k] = originais[k]; });
+  }
   ok(r.pronta === false, '⚠️ `conferirEmpresa` diz que NAO esta pronta');
   ok(Array.isArray(r.envsFaltando) && r.envsFaltando.length > 0,
      `  e LISTA o que falta (${(r.envsFaltando || []).length} envs)`);

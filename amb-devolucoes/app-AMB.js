@@ -409,7 +409,7 @@ const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 // derrubar a chamada quando o erro na tabela NAO for "tabela ausente" (antes
 // um erro de permissao, por exemplo, passava batido e a empresa saia
 // "pronta" sem a tabela confirmada).
-const VERSAO = 'AMB Devolucoes b380';
+const VERSAO = 'AMB Devolucoes b391';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -1954,7 +1954,12 @@ router.get('/nf/entrada/naturezas', admin, async (req, res) => {
     // com 3 podia esconder uma natureza que so aparece nas paginas 4-6 e
     // ainda assim dizer que a leitura foi completa.
     const paginas = Math.min(Math.max(Number(req.query.paginas) || 6, 1), 10);
-    const idsDevolucao = String(FICHA_AMB.fiscal.naturezasDevolucaoIds() || envAmb('NATUREZA_DEVOLUCAO') || '15110882041')
+    // b391 (P1 Codex #326): SEM fallback pro id cravado da AMB aqui. A ficha
+    // ja entrega o padrao certo pra AMB (fis() embute '15110882041') e vazio
+    // pra quem nao configurou (ex.: Girassol) — repetir o literal aqui fazia
+    // uma empresa sem `NATUREZAS_DEVOLUCAO_IDS` proprio classificar notas
+    // usando a natureza DA AMB, em silencio.
+    const idsDevolucao = String(FICHA_AMB.fiscal.naturezasDevolucaoIds() || envAmb('NATUREZA_DEVOLUCAO') || '')
       .split(',').map(s => s.trim()).filter(Boolean);
     const NFE_DESCARTAVEL = new Set([2, 9]);
 
@@ -2389,7 +2394,10 @@ async function montarIndiceNFDevolucaoAMB(maxPaginas) {
       // contendo "devolu". O que ficar de fora e contado por natureza em
       // `naturezas_ignoradas` — e por ali que se descobre um id novo (ex.: o
       // das notas da MAGALU LOG do Full, se a descricao nao vier) pra por na env.
-      const idsDevolucao = String(FICHA_AMB.fiscal.naturezasDevolucaoIds() || envAmb('NATUREZA_DEVOLUCAO') || '15110882041')
+      // b391 (P1 Codex #326): mesmo motivo da /nf/entrada/naturezas acima —
+      // sem literal da AMB aqui, senao uma empresa sem env propria herdaria
+      // a natureza da AMB em silencio.
+      const idsDevolucao = String(FICHA_AMB.fiscal.naturezasDevolucaoIds() || envAmb('NATUREZA_DEVOLUCAO') || '')
         .split(',').map(s => s.trim()).filter(Boolean);
       const ignoradas = {};
       // b335 r3 (Codex #78): NF CANCELADA (2) e DENEGADA (9) nao valem como
