@@ -37,6 +37,9 @@ function criar(cfgEmpresa) {
 const _PREFIXO = String((cfgEmpresa && cfgEmpresa.PREFIXO_ENV) || 'AMB_');
 'use strict';
 
+// ⚠️ b372: prefere o cliente Bling DESTA empresa
+const bling = (cfgEmpresa && cfgEmpresa.clienteBling) || blingPadrao;
+
 
 // ⚠️ b347 - gaveta: o indice de NF de entrada + o sinalizador.
 // Compartilhado, a Girassol veria as notas de entrada da AMB.
