@@ -81,22 +81,25 @@ paresProducao.forEach(([arq, env, ler]) => {
      '  ' + env + ': producao=' + emProducao + ' registro=' + doRegistro);
 });
 
-// o da AMB tem dois || encadeados; confere o ULTIMO valor literal
+// ⚠️ (Codex #326, P1) - SEM LITERAL DA AMB no encadeado do app-AMB.js.
+//
+// Ate a b391 o encadeado terminava em `|| '15110882041'` — redundante pra
+// AMB (a ficha ja embute esse padrao) e PERIGOSO pra qualquer empresa sem
+// `<PREFIXO>NATUREZAS_DEVOLUCAO_IDS` propria (ex.: Girassol, cujo padrao na
+// ficha e ''): ela herdava a natureza DA AMB em silencio, e passava a
+// classificar NF de OUTRA empresa como devolucao usando o id errado.
+//
+// A garantia agora e o CONTRARIO da antiga: nenhum id fiscal cravado pode
+// aparecer depois do `envAmb('NATUREZA_DEVOLUCAO')` — quem decide o padrao
+// e SEMPRE a ficha de cada empresa, nunca um literal aqui.
 (() => {
   const src = fs.readFileSync(path.join(__dirname, '..', 'amb-devolucoes', 'app-AMB.js'), 'utf8');
-  // b243: o app-AMB agora le do REGISTRO — o encadeado saiu de la e virou
-  // `FICHA_AMB.fiscal.naturezasDevolucaoIds() || envAmb('NATUREZA_DEVOLUCAO')
-  //  || '15110882041'`. A garantia continua a mesma: o ULTIMO literal do
-  // encadeado tem que bater com o padrao do registro. Se um dia divergirem,
-  // a AMB emitiria com UMA natureza onde produção usava outra.
-  const m = src.match(/naturezasDevolucaoIds\(\)\s*\|\|\s*envAmb\('NATUREZA_DEVOLUCAO'\)\s*\|\|\s*'([^']+)'/)
-    || src.match(/process\.env\.AMB_NATUREZAS_DEVOLUCAO_IDS\s*\|\|\s*process\.env\.AMB_NATUREZA_DEVOLUCAO\s*\|\|\s*'([^']+)'/);
-  ok(!!m, 'achei o encadeado de NATUREZAS_DEVOLUCAO (no registro ou no env)');
-  const doRegistroAmb = semEnv(['AMB_NATUREZAS_DEVOLUCAO_IDS', 'AMB_NATUREZA_DEVOLUCAO'],
-                               () => EMPRESAS.ambtotal.fiscal.naturezasDevolucaoIds());
-  ok(m && m[1] === doRegistroAmb,
-     '  naturezas AMB: producao=' + (m && m[1]) + ' registro=' + doRegistroAmb
-     + '  <- so 15110882041; a segunda natureza mudaria classificacao');
+  const ocorrencias = src.match(/naturezasDevolucaoIds\(\)\s*\|\|\s*envAmb\('NATUREZA_DEVOLUCAO'\)\s*\|\|\s*'[^']*'/g) || [];
+  ok(ocorrencias.length === 2, 'achei as 2 ocorrencias do encadeado de NATUREZAS_DEVOLUCAO em app-AMB.js');
+  ocorrencias.forEach((trecho, i) => {
+    ok(/\|\|\s*''$/.test(trecho),
+       '  ocorrencia ' + (i + 1) + ' sem literal cravado no fim: ' + trecho);
+  });
 })();
 
 // ── 2. DOIS prefixos: credencial x fiscal ────────────────────────────
