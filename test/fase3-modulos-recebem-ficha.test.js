@@ -43,8 +43,15 @@ for (const [nome, rel] of PRONTOS) {
 
   // ⚠️ o export padrão continua sendo o objeto pronto da AMB — é o que
   // permite fazer um módulo por PR sem mexer no app-AMB junto
-  ok(typeof mod === 'object' && Object.keys(mod).length > 5,
-     '  e o export padrao continua sendo o objeto pronto (compatibilidade)');
+  // ⚠️ b377 - A INSTANCIA PRONTA SAIU, de proposito.
+  //
+  // Este teste guardava que o export ainda trazia um objeto pronto, criado
+  // no require com o `config-AMB` fixo. Era compatibilidade — e virou
+  // vazamento: a empresa nova usaria o cliente DA AMBTOTAL sem nada avisar.
+  //
+  // 📌 Agora o modulo exporta SO a fabrica. Guardo isso.
+  ok(typeof mod.criar === 'function' && Object.keys(mod).length <= 3,
+     '  e o export e SO a fabrica (a instancia pronta saiu — era vazamento)');
 }
 
 // ── b247 (Codex, P2 no #173): a fábrica aceita a FICHA REAL ─────────
@@ -93,10 +100,16 @@ for (const [nome, rel] of PRONTOS) {
 // que já está rodando. Se compartilhassem estado, a Girassol leria as
 // tabelas da AMB — e ninguém notaria até o dado sair errado na tela.
 {
-  const db = require(path.join(RAIZ, 'amb-devolucoes/lib-AMB/supabase-AMB.js'));
+  // ⚠️ b377: o modulo exporta SO a fabrica agora — `db.tabelas` era da
+  // instancia pronta, que saiu (era criada no require com o `config-AMB`
+  // fixo, e virou vazamento).
+  //
+  // 📌 Crio a instancia da AMB aqui pra ter a mesma referencia de antes.
+  const dbMod = require(path.join(RAIZ, 'amb-devolucoes/lib-AMB/supabase-AMB.js'));
+  const db = dbMod.criar(require(path.join(RAIZ, 'amb-devolucoes/config-AMB')));
   const tabelaAmbAntes = db.tabelas.devolucoes;
 
-  const outra = db.criar({
+  const outra = dbMod.criar({
     supabase: { url: 'https://x.supabase.co', key: 'k',
                 tabelas: { devolucoes: 'devolucoes_teste' } },
   });
@@ -169,6 +182,15 @@ for (const [nome, rel] of PRONTOS) {
   let erro = null;
   try {
     const cfg = configDaEmpresa('good');   // outra empresa, mesma lib
+
+    // ⚠️ b377: `ml-returns` e `nf-nomes` agora EXIGEM o cliente da empresa —
+    // antes caiam na instancia padrao (config-AMB fixo), que era o vazamento.
+    // Monto os clientes base primeiro, como o app-AMB faz.
+    cfg.clienteBling = require(
+      path.join(RAIZ, 'amb-devolucoes/lib-AMB/bling-AMB.js')).criar(cfg);
+    cfg.clienteMl = require(
+      path.join(RAIZ, 'amb-devolucoes/lib-AMB/ml-AMB.js')).criar(cfg);
+
     for (const m of mods) require(path.join(RAIZ, 'amb-devolucoes/lib-AMB', m + '.js')).criar(cfg);
   } catch (e) { erro = e; }
   ok(!erro, 'os 5 modulos montam para OUTRA empresa, sem pasta nova'

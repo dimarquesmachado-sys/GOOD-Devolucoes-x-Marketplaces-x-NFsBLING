@@ -6,9 +6,6 @@
 // A Girassol consultaria o Bling DA AMBTOTAL aqui: veria as notas dela e
 // emitiria na conta errada.
 //
-// 📌 `cfg.bling` ja vem na config da empresa; se nao vier, cai na padrao
-// (comportamento de hoje).
-const blingPadrao = require('./bling-AMB');
 // amb-devolucoes/lib-AMB/nf-entrada-AMB.js     (AMB Devol. b11)
 // ------------------------------------------------------------
 // NFs de DEVOLUCAO (entrada) do Bling, indexadas por pedido e
@@ -33,12 +30,22 @@ const blingPadrao = require('./bling-AMB');
 //
 // ⚠️ As envs com prefixo passam a vir da empresa, com `AMB_` de padrao —
 // a AMB le exatamente as mesmas de hoje.
+// ⚠️ b377 - sem o cliente da empresa, derruba (mesma razao dos outros 4).
+function blingDa(cfg) {
+  const c = cfg && cfg.clienteBling;
+  if (!c) {
+    throw new Error('[nf-entrada-AMB] `clienteBling` nao veio na config da '
+      + 'empresa — sem ele eu usaria o Bling da AMBTotal.');
+  }
+  return c;
+}
+
 function criar(cfgEmpresa) {
 const _PREFIXO = String((cfgEmpresa && cfgEmpresa.PREFIXO_ENV) || 'AMB_');
 'use strict';
 
 // ⚠️ b372: prefere o cliente Bling DESTA empresa
-const bling = (cfgEmpresa && cfgEmpresa.clienteBling) || blingPadrao;
+const bling = blingDa(cfgEmpresa || cfg);
 
 
 // ⚠️ b347 - gaveta: o indice de NF de entrada + o sinalizador.
