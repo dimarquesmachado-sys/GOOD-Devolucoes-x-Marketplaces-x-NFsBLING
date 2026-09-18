@@ -127,7 +127,7 @@ async function construirIndiceInterno(opts = {}) {
   const t0 = Date.now();
 
   try {
-    const dias = opts.dias || Number(process.env.AMB_NF_JANELA_DIAS || 120);
+    const dias = opts.dias || Number(process.env[(cfg && cfg.PREFIXO_ENV || 'AMB_') + 'NF_JANELA_DIAS'] || 120);
     const maxPaginas = opts.maxPaginas || 80;      // teto: 80x100 = 8000 NFs
     const corte = Date.now() - dias * 864e5;
 
@@ -400,7 +400,7 @@ function statusIndice() {
     total_nfs: IDX.totalNFs,
     nomes_distintos: IDX.nomes,
     nomes_curtos: Object.keys(IDX.mapaCurto).length,
-    janela_dias: Number(process.env.AMB_NF_JANELA_DIAS || 120),
+    janela_dias: Number(process.env[(cfg && cfg.PREFIXO_ENV || 'AMB_') + 'NF_JANELA_DIAS'] || 120),
     duracao_construcao_seg: IDX.duracaoSeg || null,
     erro: IDX.erro,
   };

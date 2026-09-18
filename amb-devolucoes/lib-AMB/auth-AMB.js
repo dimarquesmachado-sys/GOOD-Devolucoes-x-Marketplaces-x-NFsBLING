@@ -106,8 +106,28 @@ function parseAdmins(txt) {
 
 
 /** Segredo da assinatura. Estavel entre deploys — e esse o ponto. */
-function segredo() {
-  return String(process.env.AMB_SESSION_SECRET || process.env.ADMIN_KEY || '')
+// ⚠️ b373: recebe o PREFIXO da empresa. A funcao e global (fora da fabrica),
+// entao `c` nao existe aqui — minha 1a versao usava e teria quebrado em
+// runtime, com `node --check` passando.
+function segredo(prefixo) {
+  // ⚠️ b373 - O SEGREDO VEM DO PREFIXO DA EMPRESA.
+  //
+  // Era `AMB_SESSION_SECRET` cravado. Duas empresas com o MESMO segredo
+  // assinariam cookies que valem uma na outra — e o escopo por empresa que
+  // fechamos hoje dependia justamente disso nao acontecer.
+  //
+  // 📌 `c.envUsers` e tipo 'AMB_USERS'; tiro o prefixo dele, que ja vem da
+  // ficha. Sem prefixo, cai no ADMIN_KEY como antes.
+  const _pref = String(prefixo || 'AMB_');
+  // ⚠️ o fallback pra `AMB_SESSION_SECRET` SAIU: ele mantinha o vazamento.
+  // Com ele, a Girassol sem segredo proprio usaria o da AMB — e os cookies
+  // das duas passariam a valer um no outro, que e exatamente o que este
+  // trabalho fecha.
+  //
+  // 📌 O `ADMIN_KEY` continua como ultimo recurso: e do SERVICO, nao de uma
+  // empresa, entao nao cruza dados entre elas.
+  return String(process.env[_pref + 'SESSION_SECRET']
+    || process.env.ADMIN_KEY || '')
     || 'amb-sem-segredo-configurado';
 }
 
@@ -129,7 +149,10 @@ const b64url = (buf) => Buffer.from(buf).toString('base64')
 // do HMAC. Token de uma empresa NAO valida na outra, e continua
 // sobrevivendo ao restart.
 function assinarCom(escopo, payloadB64) {
-  return crypto.createHmac('sha256', segredo() + '|' + String(escopo || ''))
+  // ⚠️ b373: o prefixo sai do proprio escopo (o nome do cookie: sessao_amb,
+  // sessao_girassol), entao cada empresa assina com o SEU segredo.
+  const pref = String(escopo || '').replace(/^sessao_/, '').toUpperCase() + '_';
+  return crypto.createHmac('sha256', segredo(pref) + '|' + String(escopo || ''))
     .update(payloadB64).digest('base64')
     .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }

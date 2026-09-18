@@ -225,13 +225,27 @@ process.env.AMB_SUPABASE_KEY = 'chave-de-teste';
     // mesmo sem ler nenhuma env cravada. Sem este placar, o bloco abaixo
     // declararia o freio removível so por zerar env, e uma 2a empresa
     // continuaria gravando defeito na tabela da AMB.
+    // ⚠️ b373 - VARRE TODOS OS MODULOS, nao so o de defeitos.
+    //
+    // Minha versao anterior olhava tabela SO no `defeitos-ciclo-AMB` — e a
+    // `defeito_pedidos_amb` mora no `supabase-AMB`. O teste disse "pode
+    // tirar o freio" com uma tabela da AMB cravada.
+    //
+    // 📌 3a vez que meco o lugar errado. Agora: todos os arquivos, todas as
+    // formas.
     const TABELAS_CRAVADAS = [];
-    {
-      const f = 'defeitos-ciclo-AMB.js';
+    for (const f of fs.readdirSync(dirLib)) {
+      if (!f.endsWith('.js')) continue;
       const src = fs.readFileSync(path.join(dirLib, f), 'utf8');
       const semC = src.split('\n').filter((l) => !l.trim().startsWith('//')).join('\n');
-      const achadas = [...new Set((semC.match(/'defeito_[a-z_]+_amb'/g) || []))];
-      for (const t of achadas) TABELAS_CRAVADAS.push(`${f}: ${t}`);
+      for (const t of new Set(semC.match(/['"][a-z][a-z_]*_amb['"]/g) || [])) {
+        // ⚠️ nem todo `*_amb` e tabela. Falso positivo ensina a ignorar o
+        // vermelho — entao excluo o que CONFERI que nao e:
+        //   sessao_amb         nome do cookie (correto, e por empresa)
+        //   nf_via_indice_amb  rotulo de AVISO na tela, nao tabela
+        if (/sessao_amb|nf_via_indice_amb/.test(t)) continue;
+        TABELAS_CRAVADAS.push(`${f}: ${t}`);
+      }
     }
 
     // ⚠️ não falho aqui: é um PLACAR, não um veredito. O freio é que protege.
@@ -244,10 +258,33 @@ process.env.AMB_SUPABASE_KEY = 'chave-de-teste';
       : '    ✅ nenhuma tabela fixa da AMB no ciclo de defeitos');
     for (const t of TABELAS_CRAVADAS) console.log('       ' + t);
 
+    // ⚠️ b373 - E A 3a FORMA: usar a INSTANCIA PADRAO do modulo.
+    //
+    // `require('./bling-AMB')` sem `.criar()` devolve a instancia criada com
+    // o `config-AMB` fixo — a da AMB. Nao aparece como env nem como tabela,
+    // e foi o que sobrou depois de eu limpar as outras duas formas.
+    //
+    // 📌 3 vezes hoje eu disse "pode tirar o freio" olhando UMA forma. Agora
+    // o teste olha as tres.
+    const INSTANCIA_PADRAO = [];
+    for (const f of fs.readdirSync(dirLib)) {
+      if (!f.endsWith('.js')) continue;
+      const src = fs.readFileSync(path.join(dirLib, f), 'utf8');
+      const semC = src.split('\n').filter((l) => !l.trim().startsWith('//')).join('\n');
+      for (const m2 of semC.matchAll(/require\('\.\/([\w-]+-AMB)'\)(?!\.criar)/g)) {
+        INSTANCIA_PADRAO.push(`${f} -> ${m2[1]}`);
+      }
+    }
+    if (INSTANCIA_PADRAO.length) {
+      console.log(`    📌 e ${INSTANCIA_PADRAO.length} uso(s) da instancia PADRAO (config-AMB fixo):`);
+      for (const x of INSTANCIA_PADRAO.slice(0, 6)) console.log('       ' + x);
+    }
+
     // e o freio TEM que estar la enquanto houver env OU tabela cravada
     const srvSrc = fs.readFileSync(path.join(RAIZ, 'server.js'), 'utf8');
     const temFreio = /const naoAMB = ativas\.filter/.test(srvSrc);
-    const faltaAlgo = ENVS_CRAVADAS.length > 0 || TABELAS_CRAVADAS.length > 0;
+    const faltaAlgo = ENVS_CRAVADAS.length > 0 || TABELAS_CRAVADAS.length > 0
+      || INSTANCIA_PADRAO.length > 0;
     ok(faltaAlgo ? temFreio : true,
        faltaAlgo
          ? '⚠️ ha env ou tabela AMB cravada, entao o freio do server.js DEVE existir'

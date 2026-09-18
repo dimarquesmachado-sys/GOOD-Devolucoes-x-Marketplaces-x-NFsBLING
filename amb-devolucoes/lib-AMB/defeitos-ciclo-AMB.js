@@ -25,8 +25,17 @@ module.exports = function registrarCicloDefeitos(router, deps) {
 
   // as tabelas novas ficam aqui, nao no supabase-AMB, pra este modulo ser
   // autocontido (o supabase-AMB nao precisa mudar)
-  const T_COM = 'defeito_comentarios_amb';
-  const T_PED = 'defeito_pedidos_amb';
+  // ⚠️ b373 - AS TABELAS SAEM DA FICHA.
+  //
+  // Eram `defeito_comentarios_amb` e `defeito_pedidos_amb` cravadas: a
+  // Girassol gravaria os defeitos dela NAS TABELAS DA AMB, misturando o
+  // estoque de defeitos das duas.
+  //
+  // 📌 A ficha ja tem o sufixo por empresa (`tabelas`). Uso o mesmo padrao
+  // das outras 5 tabelas, com o valor de hoje como base.
+  const _sufixo = (cfg && cfg.chaveDados) || (cfg && cfg.EMPRESA) || 'amb';
+  const T_COM = `defeito_comentarios_${_sufixo}`;
+  const T_PED = `defeito_pedidos_${_sufixo}`;
 
   const cli = () => db.conectar();
   const corpo = (req) => (req.body && req.body.dados) || req.body || {};
@@ -50,7 +59,12 @@ module.exports = function registrarCicloDefeitos(router, deps) {
   async function entradaNoEstoque({ sku, quantidade, observacao }) {
     if (!bling || !bling.chamarBling) return { ok: false, erro: 'Bling nao disponivel' };
     const deposito = (cfg && cfg.depositos && cfg.depositos.geral)
-      || process.env.AMB_DEPOSITO_GERAL || '14888917703';   // Geral da AMBTotal
+      // ⚠️ b373: o deposito vem da FICHA. Era `AMB_DEPOSITO_GERAL ||
+      // '14888917703'` — o Geral da AMBTotal CRAVADO: a Girassol movimentaria
+      // estoque no deposito da AMB.
+      || (cfg && cfg.fiscal && typeof cfg.fiscal.depositoGeral === 'function'
+        ? cfg.fiscal.depositoGeral() : '')
+      || '';
     try {
       // ═══════════════════════════════════════════════════════════════
       // b160 - RESOLUCAO BLINDADA DO PRODUTO. Antes, se o ?codigo= nao

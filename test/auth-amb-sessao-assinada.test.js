@@ -110,7 +110,13 @@ const authAMB = require('../amb-devolucoes/lib-AMB/auth-AMB.js');
 
   ok(/function assinarCom\(escopo, payloadB64\)/.test(fonte),
      '⚠️ a assinatura recebe o ESCOPO da empresa');
-  ok(/segredo\(\) \+ '\|' \+ String\(escopo/.test(fonte),
+  // ⚠️ b373: a `segredo()` passou a receber o PREFIXO da empresa — antes era
+  // `AMB_SESSION_SECRET` cravado, e duas empresas com o MESMO segredo
+  // assinariam cookies que valem uma na outra.
+  //
+  // 📌 O que este teste guarda continua igual: que o ESCOPO entra na chave
+  // do HMAC. Mudou so de onde vem o segredo.
+  ok(/segredo\(pref\) \+ '\|' \+ String\(escopo/.test(fonte),
      '  e o escopo entra na CHAVE do HMAC');
 
   const amb = auth.criar();

@@ -650,7 +650,15 @@ async function listarDefeitos({ busca } = {}) {
     // iria buscar na prateleira. Erro explicito e melhor que numero errado.
     if (linhas.length) {
       const idsPagina = linhas.map((x) => x.id).filter(Boolean);
-      const rped = await dbc.from('defeito_pedidos_amb')
+      // ⚠️ b373 - A TABELA SAI DO SUFIXO DA EMPRESA, como as outras.
+      //
+      // Era `'defeito_pedidos_amb'` cravada — a unica do modulo que nao
+      // passava pelo mapa `T`. A Girassol leria os pedidos de defeito DA AMB.
+      //
+      // 📌 So apareceu numa varredura AMPLA: o teste procurava nos modulos
+      // de defeito, e esta mora no supabase-AMB.
+      const _sufDef = (cfg && cfg.chaveDados) || (cfg && cfg.EMPRESA) || 'amb';
+      const rped = await dbc.from(`defeito_pedidos_${_sufDef}`)
         .select('defeito_id')
         .in('status', ['autorizado', 'concluido'])
         .in('defeito_id', idsPagina);
