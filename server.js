@@ -323,43 +323,49 @@ app.use(express.json({ limit: '12mb' }));
   // 📌 Este freio troca esse vazamento silencioso por um boot que FALHA
   // alto — mesmo padrao de `envDaEmpresa` (lanca em empresa invalida).
   // Remover exige zerar `SINGLETONS_REQUERIDOS` no teste citado primeiro.
-  // ⚠️ b366 (Codex, P1) - O FREIO VOLTA. EU TIREI CEDO DEMAIS.
+  // ⚠️ b370 - TIREI O FREIO uma vez, com os 3 motivos da varredura FECHADOS:
   //
-  // Removi porque as 13 dependencias viraram fabrica — e isso e verdade. Mas
-  // conferi so o que EU tinha mexido, e nao o resto do arquivo.
+  // ⚠️ Os modulos ainda leem direto:
+  //   AMB_ID_EMPRESA_CONTROL              (bling-AMB)
+  //   AMB_ID_NATUREZA_DEVOLUCAO_ENTRADA   (bling-AMB)
+  //   AMB_DEPOSITO_GERAL
+  //   AMB_NF_JANELA_DIAS
+  //   AMB_SESSION_SECRET
   //
-  // ⚠️ O `app-AMB.js` AINDA carrega `require('./config-AMB')` — arquivo SO DA
-  // AMB — e le dele 22 vezes: NOME_EMPRESA, loja, bling, supabase, urlBase,
-  // PREFIXO. Com 2 empresas, TODAS essas leituras seriam da AMB.
+  // e mais 3 achados da varredura do repo inteiro: um `res.redirect(307,
+  // '/amb/api/espreita')` no compat-AMB, a lista `outras_empresas` cravada
+  // na AMB, e o manifest da PWA (que fica da AMB DE PROPOSITO).
   //
-  // ⚠️ E o retorno do OAuth e montado em `/amb/oauth/callback`, CRAVADO: a 2a
-  // empresa mandaria o marketplace devolver o codigo na rota da AMB — e o
-  // token da Girassol seria gravado na conta da AMBTotal.
+  // ⚠️ b371 (Codex, P1) - O FREIO VOLTA. A varredura nao cobriu tudo.
   //
-  // 📌 A LICAO: "as dependencias viraram fabrica" NAO e o mesmo que "o app e
-  // multiempresa". Eu media o que tinha convertido, nao o que faltava.
+  // Sobraram 2 literais AMB vivos em rotas que continuam de pe com
+  // qualquer empresa montada:
   //
-  // ⚠️ b367 (Codex, P1) - `ativas.length > 1` NAO PEGAVA O CASO DE UMA SO
-  // EMPRESA NAO-AMB.
+  //   - `bling.idsFiscais()` (amb-devolucoes/lib-AMB/bling-AMB.js) le
+  //     DIRETO `AMB_ID_NATUREZA_DEVOLUCAO_ENTRADA` e
+  //     `AMB_ID_EMPRESA_CONTROL` do env — nao passa pelo `fiscal` do
+  //     registro (lib/empresas.js), que ja tem essas mesmas contas por
+  //     empresa. Uma 2a empresa receberia os ids fiscais da AMB.
+  //   - `defeitos-ciclo-AMB.js` grava em `defeito_comentarios_amb` e
+  //     `defeito_pedidos_amb`, tabelas FIXAS — a 2a empresa gravaria
+  //     comentario e pedido de defeito nas tabelas da AMB.
   //
-  // Se o contrato desativar a AMB (`ativa_em.devolucoes: false`) e ativar
-  // so a GOOD, `ativas` tem 1 item e o freio antigo nao disparava. Mas
-  // `criarAppAMB('good')` passa pelo `config-AMB` do mesmo jeito: o
-  // `chaveDados` novo so evita o boot cair, nao troca o NOME_EMPRESA, a
-  // loja, as credenciais Bling nem o `/amb/oauth/callback` cravado — tudo
-  // isso continua vindo do `config-AMB`, que e SO DA AMB.
-  //
-  // 📌 O freio agora olha a CHAVE, nao a CONTAGEM: qualquer empresa ativa
-  // que nao seja 'ambtotal' derruba o boot, sozinha ou acompanhada.
+  // 📌 `test/duas-empresas-juntas.test.js` prova sessao, cache, tabela e
+  // fila de devolucao — mas nao exercita `idsFiscais()` nem o ciclo de
+  // defeitos, entao ele NAO acusa este vazamento. Ate esses dois lerem do
+  // registro por empresa, o freio fica: falhar o boot alto e melhor que
+  // devolver id fiscal ou gravar defeito da empresa errada em silencio.
   const naoAMB = ativas.filter((e) => e.chave !== 'ambtotal');
   if (naoAMB.length > 0) {
     throw new Error(
       '[devolucoes] empresa(s) ativa(s) fora da AMB ('
-      + naoAMB.map((e) => e.chave).join(', ') + '), mas o app-AMB.js ainda '
-      + 'carrega `config-AMB` (so da AMB, 22 leituras) e monta o callback '
-      + 'OAuth em `/amb` cravado. Montar qualquer uma delas assim usaria o '
-      + 'nome, a loja e as credenciais da AMB — e gravaria o token dela na '
-      + 'conta da AMBTotal.');
+      + naoAMB.map((e) => e.chave).join(', ') + '), mas '
+      + '`bling-AMB.js#idsFiscais()` ainda le '
+      + 'AMB_ID_NATUREZA_DEVOLUCAO_ENTRADA/AMB_ID_EMPRESA_CONTROL direto do '
+      + 'env, e `defeitos-ciclo-AMB.js` grava em tabelas fixas '
+      + '(defeito_comentarios_amb, defeito_pedidos_amb). Montar qualquer '
+      + 'uma delas assim devolveria ids fiscais da AMB e gravaria defeito '
+      + 'na tabela da AMB.');
   }
 
   for (const emp of ativas) {
@@ -496,7 +502,7 @@ app.get('/health', (req, res) => {
       // busca por nome. Escolher um lado apagaria a descricao do outro.
       // ⚠️ a resolucao JUNTA as duas: a 7.5.0 (passe curto + tetos) ja esta
       // na main, e este PR acrescenta o build frio que falha vazio.
-      version: '9.38.0 (o front descobre a base pela URL — nao escreve mais /amb na mao)',
+      version: '9.39.3 (Codex, PR #320: placar lista tabelas AMB fixas tambem, e o teste do freio volta a EXECUTAR o guard)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -6952,7 +6958,14 @@ app.get('/api/ids-fiscais', requerLogin, async (req, res) => {
       ok: false,
       erro: 'informe a empresa: /api/ids-fiscais?empresa=good',
       aceitas_aqui: ['good'],
-      outras_empresas: { ambtotal: '/amb/api/ids-fiscais' },
+      // ⚠️ b370 - a lista sai do REGISTRO, nao cravada.
+      //
+      // Era `{ ambtotal: '/amb/api/ids-fiscais' }` — correto hoje, mas com a
+      // Girassol montada a mensagem citaria so a AMB, e quem procurasse os
+      // ids da Girassol nao acharia o caminho.
+      outras_empresas: Object.fromEntries(
+        require('./lib/empresas').empresasAtivasNoDevolucoes()
+          .map((e) => [e.chave, (e.rota || '') + '/api/ids-fiscais'])),
     });
   }
   if (alvo === 'good') {

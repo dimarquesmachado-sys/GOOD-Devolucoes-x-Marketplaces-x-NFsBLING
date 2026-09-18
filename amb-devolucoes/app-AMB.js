@@ -385,7 +385,7 @@ const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 // mais um 403 pendente, e vice-versa). A AMB nunca consultou
 // lib/token-leitor.js (os modulos lib-AMB/* nao honram essa politica,
 // confirmado por grep) - nada a espelhar.
-const VERSAO = 'AMB Devolucoes b369';
+const VERSAO = 'AMB Devolucoes b372';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
