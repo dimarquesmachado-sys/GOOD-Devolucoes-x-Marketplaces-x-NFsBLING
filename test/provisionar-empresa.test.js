@@ -150,6 +150,28 @@ const { sufixoDaFicha, provisionarEmpresa, SUFIXO_VALIDO, RESERVADOS } =
            'acusa falta quando so o `code` (PGRST205) denuncia, sem a frase no `message`');
       }
 
+      // 3) ⚠️ (Codex, PR #323, P2, b377) - erro na sonda que NAO e "tabela
+      //    ausente" (ex: permissao negada) nao pode passar batido. Antes,
+      //    como a mensagem/codigo nao batiam com nenhum padrao conhecido, o
+      //    `if` nem entrava — a tabela nao ia pra `faltando` e a funcao
+      //    devolvia `ok:true` sem ter confirmado a tabela de verdade.
+      {
+        const provisionar = carregarComFichaFalsa();
+        const cliente = {
+          rpc: async () => ({ data: [{ resultado: 'OK' }], error: null }),
+          from: (nome) => ({
+            select: async () => (nome === 'defeito_pedidos_gira'
+              ? { data: null, error: { message: 'permission denied for table defeito_pedidos_gira', code: '42501' } }
+              : { data: [], error: null }),
+          }),
+        };
+        const r = await provisionar('girateste', cliente);
+        ok(r.ok === false,
+           '⚠️ erro de permissao na sonda derruba o provisionamento (nao vira ok:true por engano)');
+        ok(!(r.tabelas_faltando || []).length,
+           '  nao classifica como "tabela ausente" (a mensagem nao diz isso)');
+      }
+
       delete require.cache[provisionarPath];
       delete require.cache[empresasPath];
       if (empresasReal) require.cache[empresasPath] = empresasReal;

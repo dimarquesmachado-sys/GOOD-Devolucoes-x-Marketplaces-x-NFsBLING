@@ -506,7 +506,12 @@ app.get('/health', (req, res) => {
       // CONFERIR as tabelas em vez de confiar no silencio da RPC, e o
       // auth-AMB tira o fallback pro ADMIN_KEY -- consertos independentes,
       // do mesmo PR #323.
-      version: '9.41.3 (a checagem do provisionamento monta o nome certo e le o codigo do erro)',
+      // b378 (Codex, PR #323, 3a rodada) - Render conta como producao pro
+      // segredo de sessao, a instancia PADRAO do auth-AMB deixa de validar
+      // AMB_SESSION_SECRET so por ser `require`ida, e a sonda pos-RPC do
+      // provisionamento derruba a chamada em erro que nao seja "tabela
+      // ausente" (antes passava batido).
+      version: '9.41.4 (auth-AMB preguicoso na instancia padrao + sonda do provisionamento nao ignora erro estranho)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),

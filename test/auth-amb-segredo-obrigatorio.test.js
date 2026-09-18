@@ -82,6 +82,40 @@ function rodar(env) {
   ok(r.ok, 'fora de producao, sem segredo proprio, so avisa — nao derruba o boot');
 }
 
+// ── ⚠️ (Codex, PR #323, P2, b377) - so o `require`, sem tocar na instancia
+//    PADRAO (a da AMB), NAO PODE exigir AMB_SESSION_SECRET.
+//
+// Antes, `const PADRAO_INST = criar();` rodava na hora do `require` — uma
+// producao so com a Girassol ativa (sem AMB) derrubaria o boot pedindo o
+// segredo de uma empresa que ninguem monta. Agora a instancia padrao e
+// preguicosa: so e criada se alguem acessar um dos campos reexportados
+// (`auth.autenticar`, etc). `criar(cfg)` para OUTRA empresa nunca toca nela.
+{
+  try {
+    execFileSync(process.execPath, ['-e', `
+      const auth = require(${JSON.stringify(AUTH_AMB)});
+      auth.criar({
+        cookie: 'sessao_zztest',
+        caminhoCookie: '/zztest',
+        envUsers: 'ZZTEST_USERS',
+        envAdmins: 'ZZTEST_ADMIN_USER',
+      });
+      console.log('BOOT_OK');
+    `], {
+      env: Object.assign({}, process.env, {
+        NODE_ENV: 'production',
+        AMB_SESSION_SECRET: '',
+        ZZTEST_SESSION_SECRET: 'segredo-forte-de-40-caracteres-aqui!!!!',
+      }),
+      stdio: 'pipe',
+    });
+    ok(true, '⚠️ producao SEM AMB_SESSION_SECRET sobe outra empresa, se o require nao tocar na instancia da AMB');
+  } catch (e) {
+    ok(false, '⚠️ producao SEM AMB_SESSION_SECRET sobe outra empresa, se o require nao tocar na instancia da AMB');
+    console.log('  ' + String((e && e.stderr) || e));
+  }
+}
+
 console.log('');
 console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
 process.exit(falhas ? 1 : 0);

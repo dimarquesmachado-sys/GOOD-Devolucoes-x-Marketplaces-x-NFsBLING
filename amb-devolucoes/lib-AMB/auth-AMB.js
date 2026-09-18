@@ -149,7 +149,14 @@ function segredo(prefixo) {
   // 📌 Mesmo padrao do server.js: falha alta em producao, e so gera um
   // segredo ALEATORIO (por prefixo, aqui) fora dela — assim dev/teste sem
   // a env configurada nao trava.
-  if (process.env.NODE_ENV === 'production') {
+  // ⚠️ (Codex, PR #323, P2) - RENDER TAMBEM E PRODUCAO.
+  //
+  // So `NODE_ENV === 'production'` deixava passar um deploy no Render sem
+  // essa env setada e sem NODE_ENV=production: a funcao cairia no segredo
+  // ALEATORIO por processo, e um restart (o Diego faz varios por dia)
+  // derrubaria as sessoes de admin. `opcoesCookie()` mais abaixo ja trata
+  // Render como producao pro cookie `secure` — mesmo criterio aqui.
+  if (process.env.NODE_ENV === 'production' || !!process.env.RENDER) {
     throw new Error(`[auth-AMB] ${_pref}SESSION_SECRET ausente ou curto (min `
       + '16 chars) em producao — sem um segredo proprio desta empresa, a '
       + 'sessao cairia no ADMIN_KEY (ja vazado em logs) ou num literal '
@@ -370,21 +377,40 @@ function criar(cfg) {
 //
 // 📌 O export abaixo reexporta desta instancia, entao `auth.requerLogin`,
 // `auth.autenticar` etc. seguem funcionando IGUAL pro app-AMB.
-const PADRAO_INST = criar();
+//
+// ⚠️ (Codex, PR #323, P2) - PREGUICOSA DE PROPOSITO.
+//
+// `criar()` (sem argumento) VALIDA o `AMB_SESSION_SECRET` na hora — e essa
+// checagem e o comportamento certo pra quem realmente monta a AMB. Mas
+// `require('./lib-AMB/auth-AMB')` roda esta linha na hora do PRIMEIRO
+// require, nao importa QUAL empresa provocou o require: `app-AMB.js` chama
+// este modulo pra QUALQUER empresa ativa (via `criarAppEmpresa(chave)`, ver
+// server.js). Uma producao so com a Girassol ativa (sem AMB) derrubaria o
+// boot exigindo `AMB_SESSION_SECRET` — de uma instancia que ninguem usa.
+//
+// 📌 Nenhum codigo de producao le estes campos direto (todos passam por
+// `.criar(CFG_EMPRESA.AUTH)`); sao getters so pra nao quebrar quem ainda
+// importar assim. Adiando a criacao pro 1o acesso, o require deixa de
+// validar um segredo que a empresa ativada pode nem usar.
+let _padraoInst = null;
+function padraoInst() {
+  if (!_padraoInst) _padraoInst = criar();
+  return _padraoInst;
+}
 
 // ⚠️ TUDO REEXPORTADO DA INSTANCIA PADRAO. O app-AMB nao muda uma linha.
 module.exports = {
   criar,
-  COOKIE: PADRAO_INST.COOKIE,
-  CAMINHO_COOKIE: PADRAO_INST.CAMINHO_COOKIE,
-  autenticar: PADRAO_INST.autenticar,
-  novaSessao: PADRAO_INST.novaSessao,
-  validarSessao: PADRAO_INST.validarSessao,
-  opcoesCookie: PADRAO_INST.opcoesCookie,
-  tokenDaRequisicao: PADRAO_INST.tokenDaRequisicao,
-  requerLogin: PADRAO_INST.requerLogin,
-  requerAdmin: PADRAO_INST.requerAdmin,
-  diagnostico: PADRAO_INST.diagnostico,
-  temUsuarios: PADRAO_INST.temUsuarios,
-  sair: PADRAO_INST.sair,
+  get COOKIE() { return padraoInst().COOKIE; },
+  get CAMINHO_COOKIE() { return padraoInst().CAMINHO_COOKIE; },
+  get autenticar() { return padraoInst().autenticar; },
+  get novaSessao() { return padraoInst().novaSessao; },
+  get validarSessao() { return padraoInst().validarSessao; },
+  get opcoesCookie() { return padraoInst().opcoesCookie; },
+  get tokenDaRequisicao() { return padraoInst().tokenDaRequisicao; },
+  get requerLogin() { return padraoInst().requerLogin; },
+  get requerAdmin() { return padraoInst().requerAdmin; },
+  get diagnostico() { return padraoInst().diagnostico; },
+  get temUsuarios() { return padraoInst().temUsuarios; },
+  get sair() { return padraoInst().sair; },
 };
