@@ -38,6 +38,10 @@
 // a AMB le exatamente as mesmas de hoje.
 function criar(cfgEmpresa) {
 const _PREFIXO = String((cfgEmpresa && cfgEmpresa.PREFIXO_ENV) || 'AMB_');
+// nome pro remetente/diagnostico e sigla pro assunto — mesmos valores de
+// hoje pra AMB (fallback), derivados da ficha pra qualquer empresa nova.
+const NOME_EMPRESA = String((cfgEmpresa && cfgEmpresa.NOME_EMPRESA) || 'AMBTotal');
+const SIGLA_EMPRESA = _PREFIXO.replace(/_+$/, '') || 'AMB';
 'use strict';
 
 // ⚠️ b347 - gaveta do e-mail. Compartilhado, o aviso de uma empresa
@@ -64,21 +68,34 @@ const MAIL = _EST.mail;
 // (MAIL.mailer -> MAIL.mailer)
 // (MAIL.motivoDesligado -> MAIL.motivoDesligado)
 
-const pega = (a, b) => process.env[a] || process.env[b] || '';
+const pega = (a, b) => process.env[a] || (b ? process.env[b] : '') || '';
+
+// ⚠️ apontamento do Codex no PR #325 (P1): `credenciais()`/`destino()` liam
+// o literal 'AMB_EMAIL_*' direto, ignorando o `_PREFIXO` que a fabrica ja
+// calcula — uma 2a empresa sem credencial propria enviaria (e o dono
+// receberia) o aviso pela conta da AMBTotal em vez de ficar desligado.
+//
+// A familia alternativa `AMBBKP_SMTP_*` e nome HISTORICO da propria AMB
+// (regra do Diego, ver cabecalho do arquivo) — nao existe padrao
+// equivalente pra outra empresa, entao so entra como fallback quando quem
+// esta chamando E a AMB. Sem essa guarda, uma empresa nova sem `<PREFIXO>
+// EMAIL_*` cairia na conta da AMB em vez de ficar desligada.
+const _LEGADO_AMB = _PREFIXO === 'AMB_';
 
 function credenciais() {
-  const host = pega('AMB_EMAIL_HOST', 'AMBBKP_SMTP_HOST');
-  const user = pega('AMB_EMAIL_USER', 'AMBBKP_SMTP_USER');
-  const pass = pega('AMB_EMAIL_PASS', 'AMBBKP_SMTP_PASS');
-  if (!host || !user || !pass) return null;      // sem conta da AMB = desligado
-  return { host, user, pass, port: Number(pega('AMB_EMAIL_PORT', 'AMBBKP_SMTP_PORT') || 587) };
+  const host = pega(_PREFIXO + 'EMAIL_HOST', _LEGADO_AMB ? 'AMBBKP_SMTP_HOST' : null);
+  const user = pega(_PREFIXO + 'EMAIL_USER', _LEGADO_AMB ? 'AMBBKP_SMTP_USER' : null);
+  const pass = pega(_PREFIXO + 'EMAIL_PASS', _LEGADO_AMB ? 'AMBBKP_SMTP_PASS' : null);
+  if (!host || !user || !pass) return null;      // sem conta da empresa = desligado
+  return { host, user, pass, port: Number(pega(_PREFIXO + 'EMAIL_PORT', _LEGADO_AMB ? 'AMBBKP_SMTP_PORT' : null) || 587) };
 }
 
 function transporte() {
   if (MAIL.mailer || MAIL.motivoDesligado) return MAIL.mailer;
   const c = credenciais();
   if (!c) {
-    MAIL.motivoDesligado = 'faltam AMB_EMAIL_HOST / AMB_EMAIL_USER / AMB_EMAIL_PASS no Render';
+    MAIL.motivoDesligado = 'faltam ' + _PREFIXO + 'EMAIL_HOST / ' + _PREFIXO + 'EMAIL_USER / '
+      + _PREFIXO + 'EMAIL_PASS no Render';
     console.log('[AMB/EMAIL] desligado -', MAIL.motivoDesligado);
     return null;
   }
@@ -90,7 +107,7 @@ function transporte() {
       secure: c.port === 465,
       auth: { user: c.user, pass: c.pass },
     });
-    console.log(`[AMB/EMAIL] ligado - conta da AMBTotal (${c.user})`);
+    console.log(`[AMB/EMAIL] ligado - conta da ${NOME_EMPRESA} (${c.user})`);
   } catch (e) {
     MAIL.motivoDesligado = e.message;
   }
@@ -99,7 +116,7 @@ function transporte() {
 
 function destino() {
   const c = credenciais();
-  return pega('AMB_EMAIL_PARA', 'AMBBKP_SMTP_PARA') || (c && c.user) || null;
+  return pega(_PREFIXO + 'EMAIL_PARA', _LEGADO_AMB ? 'AMBBKP_SMTP_PARA' : null) || (c && c.user) || null;
 }
 
 /** Problema reportado na triagem -> e-mail pro Diego. */
@@ -121,9 +138,9 @@ function avisarProblema(d) {
   ].filter(x => x !== null);
 
   t.sendMail({
-    from: `"Devolucoes AMBTotal" <${c.user}>`,
+    from: `"Devolucoes ${NOME_EMPRESA}" <${c.user}>`,
     to: destino(),
-    subject: `[AMB] Problema na devolucao${d.produto_sku ? ' - ' + d.produto_sku : ''}`,
+    subject: `[${SIGLA_EMPRESA}] Problema na devolucao${d.produto_sku ? ' - ' + d.produto_sku : ''}`,
     text: linhas.join('\n'),
   }).then(() => console.log('[AMB/EMAIL] aviso de problema enviado'))
     .catch(e => console.warn('[AMB/EMAIL] falhou (triagem seguiu normal):', e.message));
@@ -134,11 +151,14 @@ function diagnostico() {
   const c = credenciais();
   return {
     ligado: !!c,
-    conta: c ? 'AMBTotal (propria)' : null,
+    conta: c ? `${NOME_EMPRESA} (propria)` : null,
     remetente: c ? c.user : null,
     destino: destino(),
-    falta: c ? null : 'AMBBKP_SMTP_HOST, AMBBKP_SMTP_USER e AMBBKP_SMTP_PASS (ou a familia AMB_EMAIL_*) no Render',
-    observacao: 'este modulo nunca usa a conta de e-mail da GOOD',
+    falta: c
+      ? null
+      : _PREFIXO + 'EMAIL_HOST, ' + _PREFIXO + 'EMAIL_USER e ' + _PREFIXO + 'EMAIL_PASS'
+        + (_LEGADO_AMB ? ' (ou a familia AMBBKP_SMTP_*)' : '') + ' no Render',
+    observacao: 'este modulo nunca usa a conta de e-mail de outra empresa',
   };
 }
 

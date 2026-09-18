@@ -31,7 +31,14 @@ const _PREFIXO = String((cfgEmpresa && cfgEmpresa.PREFIXO_ENV) || 'AMB_');
 
 const URL_PROXY = (process.env.SHOPEE_PROXY_URL || '').replace(/\/+$/, '');
 const KEY_PROXY = process.env.SHOPEE_PROXY_KEY || '';
-const LOJA = process.env[_PREFIXO + 'SHOPEE_LOJA'] || 'amb';
+// ⚠️ apontamento do Codex no PR #325 (P1): o `|| 'amb'` cravado aqui e
+// exatamente o tipo de fallback que este PR diz ter removido — sem a env
+// por empresa, a 2a empresa consultaria a loja da AMB no proxy, achando que
+// e a dela. O fallback agora usa a CHAVE DE DADOS da propria ficha (a mesma
+// que o `config-da-empresa.js` ja usa pra `shopee.loja`), que bate com 'amb'
+// hoje e passa a ser 'girassol' quando ela subir.
+const LOJA = process.env[_PREFIXO + 'SHOPEE_LOJA']
+  || (cfgEmpresa && cfgEmpresa.EMPRESA) || 'amb';
 
 const cfg = {
   url: URL_PROXY, loja: LOJA,
