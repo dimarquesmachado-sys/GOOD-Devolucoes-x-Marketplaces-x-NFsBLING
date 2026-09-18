@@ -303,70 +303,40 @@ app.use(express.json({ limit: '12mb' }));
   const ativas = (typeof empresasAtivasNoDevolucoes === 'function')
     ? empresasAtivasNoDevolucoes()
     : [{ chave: 'ambtotal', rota: '/amb' }];
-
-  // ⚠️ revisao Codex no PR #308 (P1) - AS ROTAS FICAM ISOLADAS, MAS NEM
-  // TODA DEPENDENCIA DENTRO DELAS AINDA E.
+  // ⚠️ b379 - O FREIO SAI. Desta vez com as 4 formas VARRIDAS antes.
   //
-  // `criarAppAMB(chave)` ja cria um router e um GAVETAS por chamada — mas
-  // 8 modulos que a rota usa por baixo (auth-AMB, shopee-AMB, magalu-AMB,
-  // ml-motivo-AMB, impressao-AMB, nf-entrada-AMB, compat-AMB, email-AMB)
-  // ainda sao `require`idos DIRETO, sem `.criar(CFG_EMPRESA)` — sao
-  // singletons de PROCESSO (medido e listado em
-  // test/fabrica-empresa-estado.test.js, bloco SINGLETONS_REQUERIDOS).
+  // Eu tirei 3 vezes cedo demais hoje, e cada uma me ensinou uma forma de
+  // vazamento que eu nao estava procurando:
   //
-  // Com UMA empresa ativa isso nao vaza nada — e o caso de hoje. Mas se
-  // uma 2a empresa entrar (`ativa_em.devolucoes: true` no contrato) antes
-  // desses 8 virarem fabrica, a 2a rota autenticaria com AMB_USERS/cookie
-  // da AMB e usaria credencial de marketplace da AMB: dado de uma empresa
-  // vazando pra outra, sem erro nenhum avisando.
+  //   1a  conferi so os arquivos que EU tinha mexido
+  //   2a  varri o repo procurando `/amb/` em STRING — e o que faltava eram
+  //       ENVS, que nao tem essa forma
+  //   3a  varri env e tabela, mas a `defeito_pedidos_amb` morava no
+  //       `supabase-AMB` (eu olhava so o modulo de defeitos), e havia uma
+  //       4a forma: a INSTANCIA PADRAO do modulo
+  //       (`require('./bling-AMB')` sem `.criar()`), que nao aparece em
+  //       busca nenhuma das anteriores
   //
-  // 📌 Este freio troca esse vazamento silencioso por um boot que FALHA
-  // alto — mesmo padrao de `envDaEmpresa` (lanca em empresa invalida).
-  // Remover exige zerar `SINGLETONS_REQUERIDOS` no teste citado primeiro.
-  // ⚠️ b370 - TIREI O FREIO uma vez, com os 3 motivos da varredura FECHADOS:
+  // 📌 AS 4 FORMAS, todas fechadas e conferidas por varredura independente
+  // do teste, no backend, nos 13 modulos e no front:
+  //   env `AMB_*`            -> vem do prefixo da ficha
+  //   tabela `*_amb`         -> sufixo da ficha
+  //   `config-AMB` fixo      -> removido (era codigo morto no fim)
+  //   instancia padrao       -> so a fabrica; sem cliente, DERRUBA
   //
-  // ⚠️ Os modulos ainda leem direto:
-  //   AMB_ID_EMPRESA_CONTROL              (bling-AMB)
-  //   AMB_ID_NATUREZA_DEVOLUCAO_ENTRADA   (bling-AMB)
-  //   AMB_DEPOSITO_GERAL
-  //   AMB_NF_JANELA_DIAS
-  //   AMB_SESSION_SECRET
+  // ⚠️ E OS FALLBACKS SAIRAM JUNTO (5 deles). Cair no valor da AMB quando a
+  // empresa nova nao declara nao e compatibilidade — e vazamento com cara de
+  // seguranca, e foi o erro que mais repeti hoje.
   //
-  // e mais 3 achados da varredura do repo inteiro: um `res.redirect(307,
-  // '/amb/api/espreita')` no compat-AMB, a lista `outras_empresas` cravada
-  // na AMB, e o manifest da PWA (que fica da AMB DE PROPOSITO).
+  // 📌 O QUE PROTEGE AGORA e `test/duas-empresas-juntas.test.js`: monta 2
+  // empresas DIFERENTES e prova que sessao, cache, tabela e fila nao se
+  // cruzam. Ele tambem LISTA o que falta nas 4 formas — se alguem reintroduzir
+  // qualquer uma, ele acusa e nomeia.
   //
-  // ⚠️ b371 (Codex, P1) - O FREIO VOLTA. A varredura nao cobriu tudo.
-  //
-  // Sobraram 2 literais AMB vivos em rotas que continuam de pe com
-  // qualquer empresa montada:
-  //
-  //   - `bling.idsFiscais()` (amb-devolucoes/lib-AMB/bling-AMB.js) le
-  //     DIRETO `AMB_ID_NATUREZA_DEVOLUCAO_ENTRADA` e
-  //     `AMB_ID_EMPRESA_CONTROL` do env — nao passa pelo `fiscal` do
-  //     registro (lib/empresas.js), que ja tem essas mesmas contas por
-  //     empresa. Uma 2a empresa receberia os ids fiscais da AMB.
-  //   - `defeitos-ciclo-AMB.js` grava em `defeito_comentarios_amb` e
-  //     `defeito_pedidos_amb`, tabelas FIXAS — a 2a empresa gravaria
-  //     comentario e pedido de defeito nas tabelas da AMB.
-  //
-  // 📌 `test/duas-empresas-juntas.test.js` prova sessao, cache, tabela e
-  // fila de devolucao — mas nao exercita `idsFiscais()` nem o ciclo de
-  // defeitos, entao ele NAO acusa este vazamento. Ate esses dois lerem do
-  // registro por empresa, o freio fica: falhar o boot alto e melhor que
-  // devolver id fiscal ou gravar defeito da empresa errada em silencio.
-  const naoAMB = ativas.filter((e) => e.chave !== 'ambtotal');
-  if (naoAMB.length > 0) {
-    throw new Error(
-      '[devolucoes] empresa(s) ativa(s) fora da AMB ('
-      + naoAMB.map((e) => e.chave).join(', ') + '), mas '
-      + '`bling-AMB.js#idsFiscais()` ainda le '
-      + 'AMB_ID_NATUREZA_DEVOLUCAO_ENTRADA/AMB_ID_EMPRESA_CONTROL direto do '
-      + 'env, e `defeitos-ciclo-AMB.js` grava em tabelas fixas '
-      + '(defeito_comentarios_amb, defeito_pedidos_amb). Montar qualquer '
-      + 'uma delas assim devolveria ids fiscais da AMB e gravaria defeito '
-      + 'na tabela da AMB.');
-  }
+  // ⚠️ A GIRASSOL CONTINUA INATIVA NO CONTRATO. Ativar e decisao do dono, e
+  // ainda falta: a ficha executavel dela (comentada em lib/empresas.js), as
+  // credenciais `GIRASSOL_*`, as 7 tabelas no Supabase e o manifest proprio
+  // da PWA.
 
   for (const emp of ativas) {
     app.use(emp.rota, criarAppAMB(emp.chave));
@@ -511,7 +481,7 @@ app.get('/health', (req, res) => {
       // AMB_SESSION_SECRET so por ser `require`ida, e a sonda pos-RPC do
       // provisionamento derruba a chamada em erro que nao seja "tabela
       // ausente" (antes passava batido).
-      version: '9.42.2 (links do front absolutos pela BASE — relativo resolvia contra a pagina atual)',
+      version: '9.43.0 (o freio sai — as 4 formas de vazamento varridas no backend, nos 13 modulos e no front)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),

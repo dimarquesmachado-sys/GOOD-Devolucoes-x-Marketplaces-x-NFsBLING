@@ -542,33 +542,20 @@ function contarEstadoDoModulo(src) {
   // `duas-empresas-juntas.test.js`, que LISTA as envs que faltam. Nao eu,
   // de memoria.
   //
-  // ⚠️ b372 (Codex, P2) - um regex que so confere se a DECLARACAO existe
-  // fica verde mesmo se o predicado ler o campo errado, o throw sair, ou o
-  // freio for movido pra depois do `app.use`. Executa o TRECHO REAL do
-  // freio (recortado por marcadores estaveis) com `ativas` simulado, como
-  // era antes do b370 — prova o COMPORTAMENTO, nao a forma do codigo.
-  const { entreMarcadores } = require('./_recorte');
-  const trecho = entreMarcadores(srv,
-    "const naoAMB = ativas.filter((e) => e.chave !== 'ambtotal');",
-    'for (const emp of ativas) {');
-  const rodarFreio = new Function('ativas', trecho);
-
-  const naoLanca = (ativas) => { try { rodarFreio(ativas); return true; } catch (e) { return false; } };
-
-  ok(naoLanca([{ chave: 'ambtotal', rota: '/amb' }]),
-     '  so a AMB ativa: o freio NAO dispara (caso de hoje)');
-  ok(!naoLanca([{ chave: 'good', rota: '/good' }]),
-     '⚠️ so a GOOD ativa (AMB desligada no contrato): o freio DISPARA');
-  ok(!naoLanca([{ chave: 'ambtotal', rota: '/amb' }, { chave: 'good', rota: '/good' }]),
-     '  AMB + GOOD juntas: o freio continua disparando');
-
-  // ⚠️ e o app nao carrega mais nada cravado na AMB
-  const appSrc = fs.readFileSync(
-    path.join(RAIZ, 'amb-devolucoes', 'app-AMB.js'), 'utf8');
-  const semComent = appSrc.split('\n')
-    .filter((l) => !l.trim().startsWith('//')).join('\n');
-  ok(!/require\('\.\/config-AMB'\)/.test(semComent),
-     '⚠️ e o app nao carrega mais o `config-AMB` fixo');
+  // ⚠️ b379 - O FREIO SAIU, e este bloco deixa de EXECUTA-LO.
+  //
+  // Ele rodava o trecho real do freio pra provar o comportamento — certo
+  // enquanto o freio existia. Eu o tirei 3x cedo demais hoje, e cada vez
+  // aprendi uma forma de vazamento que nao procurava; a ultima foi a
+  // INSTANCIA PADRAO do modulo, que nao aparece em busca por env nem tabela.
+  //
+  // 📌 As 4 formas foram varridas (backend, 13 modulos e front). Quem
+  // protege agora e `duas-empresas-juntas.test.js`: monta 2 empresas
+  // DIFERENTES, prova o isolamento e LISTA o que falta em cada forma.
+  ok(!/const naoAMB = ativas\.filter/.test(srv),
+     '⚠️ o freio saiu (as 4 formas de vazamento foram varridas)');
+  ok(/for \(const emp of ativas\)/.test(srv),
+     '  e o bootstrap monta TODAS as empresas ativas do contrato');
 }
 
 // ── ⚠️ PASSO 3, FATIA 1: as 4 gavetas vêm de UMA fábrica ────────────
