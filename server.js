@@ -506,7 +506,7 @@ app.get('/health', (req, res) => {
       // CONFERIR as tabelas em vez de confiar no silencio da RPC, e o
       // auth-AMB tira o fallback pro ADMIN_KEY -- consertos independentes,
       // do mesmo PR #323.
-      version: '9.41.3 (Codex, PR #323: provisionamento CONFERE as tabelas apos rodar, e auth-AMB exige SESSION_SECRET proprio por empresa em producao -- sem fallback pro ADMIN_KEY)',
+      version: '9.41.3 (a checagem do provisionamento monta o nome certo e le o codigo do erro)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
