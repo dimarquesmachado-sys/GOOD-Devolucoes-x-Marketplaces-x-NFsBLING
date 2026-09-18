@@ -737,8 +737,14 @@ function contarEstadoDoModulo(src) {
   const auth = require('../amb-devolucoes/lib-AMB/auth-AMB.js');
   process.env.AMB_USERS = 'ana:s1';
   process.env.AMB_ADMIN_USER = 'ana';
+  // ⚠️ b374: idem — sem segredo proprio o auth derruba, de proposito.
+  process.env.GIRA_ISO_SESSION_SECRET = 'segredo-da-gira-iso-40-caracteres!!!';
   process.env.GIRA_ISO_USERS = 'bruno:s2';
   process.env.ADMIN_SESSION_SECRET = 'segredo-fixo-de-teste-com-40-caracteres!!';
+  // ⚠️ b374: o auth derruba sem `<PREFIXO>SESSION_SECRET` — antes caia num
+  // literal publico (`amb-sem-segredo-configurado`) que assinava sessao de
+  // ADMIN. O teste precisa declarar o da AMB como producao declara.
+  process.env.AMB_SESSION_SECRET = 'segredo-da-amb-de-teste-40-caracteres!!';
 
   const a = auth.criar(authAmb);
   const b = auth.criar({

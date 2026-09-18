@@ -40,7 +40,16 @@ declare
     ['espreita_notas',  'espreita_notas_amb'],
     ['recados',         'recados_amb'],
     ['pecas_retiradas', 'pecas_retiradas_amb'],
-    ['sku_depara',      'sku_depara_amb']
+    ['sku_depara',      'sku_depara_amb'],
+    -- ⚠️ b374 (Codex, P2) - AS 2 DO CICLO DE DEFEITOS FALTAVAM.
+    --
+    -- O app grava nelas, mas o provisionador nao as criava: a empresa nova
+    -- seria montada e a tela de defeitos quebraria na primeira gravacao —
+    -- "relation does not exist", so quando alguem usasse.
+    --
+    -- 📌 Mesmo molde das outras 5: copia da tabela da AMB.
+    ['defeito_comentarios', 'defeito_comentarios_amb'],
+    ['defeito_pedidos',     'defeito_pedidos_amb']
   ];
   i int;
   base text;
@@ -109,7 +118,11 @@ grant execute on function public.provisionar_empresa(text) to service_role;
 --   -- devolve 5 linhas "ja existia (nao mexi)"  ← é idempotente
 --
 -- E para limpar o teste (só o teste; a função não apaga nada):
+--   ⚠️ b374: as 2 de defeito entraram na lista — sem elas o rollback
+--   deixaria tabelas orfas, e o proximo provisionamento da mesma empresa
+--   acharia que ja existiam.
 --   drop table public.devolucoes_zz9, public.espreita_notas_zz9,
 --              public.recados_zz9, public.pecas_retiradas_zz9,
---              public.sku_depara_zz9;
+--              public.sku_depara_zz9, public.defeito_comentarios_zz9,
+--              public.defeito_pedidos_zz9;
 -- ============================================================

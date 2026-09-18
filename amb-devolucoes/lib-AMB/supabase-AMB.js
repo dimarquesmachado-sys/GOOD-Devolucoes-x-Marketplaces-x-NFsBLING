@@ -657,8 +657,19 @@ async function listarDefeitos({ busca } = {}) {
       //
       // 📌 So apareceu numa varredura AMPLA: o teste procurava nos modulos
       // de defeito, e esta mora no supabase-AMB.
-      const _sufDef = (cfg && cfg.chaveDados) || (cfg && cfg.EMPRESA) || 'amb';
-      const rped = await dbc.from(`defeito_pedidos_${_sufDef}`)
+      // ⚠️ b374 (Codex, P2) - O SUFIXO SAI DA TABELA, nao da chaveDados.
+      //
+      // Eu usei `chaveDados`, que na AMB e 'amb' e bate por acaso. Mas na
+      // GOOD a tabela e `devolucoes` SEM SUFIXO — minha versao geraria
+      // `defeito_pedidos_good`, que nao existe.
+      //
+      // 📌 O provisionador (`sql/provisionar-empresa.sql`) deriva o sufixo
+      // de `tabelas.devolucoes`. Uso a MESMA fonte, senao o nome que eu
+      // monto e o que o banco cria divergem.
+      const _tabDev = (cfg && cfg.supabase && cfg.supabase.tabelas
+        && cfg.supabase.tabelas.devolucoes) || 'devolucoes';
+      const _sufDef = String(_tabDev).replace(/^devolucoes_?/, '');
+      const rped = await dbc.from((_sufDef ? `defeito_pedidos_${_sufDef}` : 'defeito_pedidos'))
         .select('defeito_id')
         .in('status', ['autorizado', 'concluido'])
         .in('defeito_id', idsPagina);

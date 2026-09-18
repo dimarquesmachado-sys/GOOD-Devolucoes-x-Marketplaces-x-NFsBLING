@@ -118,6 +118,17 @@ function segredo(prefixo) {
   //
   // 📌 `c.envUsers` e tipo 'AMB_USERS'; tiro o prefixo dele, que ja vem da
   // ficha. Sem prefixo, cai no ADMIN_KEY como antes.
+  // ⚠️ b374 (Codex, P1) - SEM SEGREDO, NAO ASSINA.
+  //
+  // Havia um literal `'amb-sem-segredo-configurado'` como ultimo recurso —
+  // uma frase PUBLICA, no codigo, assinando sessao de ADMIN. Qualquer um que
+  // leia o repo forja um cookie de administrador.
+  //
+  // ⚠️ E a empresa nova cairia nele sem perceber: o `conferirEmpresa` nao
+  // exige `<PREFIXO>SESSION_SECRET`.
+  //
+  // 📌 Agora derruba. Sessao de admin assinada com segredo publico e pior
+  // que sessao que nao funciona.
   const _pref = String(prefixo || 'AMB_');
   // ⚠️ o fallback pra `AMB_SESSION_SECRET` SAIU: ele mantinha o vazamento.
   // Com ele, a Girassol sem segredo proprio usaria o da AMB — e os cookies
@@ -126,9 +137,15 @@ function segredo(prefixo) {
   //
   // 📌 O `ADMIN_KEY` continua como ultimo recurso: e do SERVICO, nao de uma
   // empresa, entao nao cruza dados entre elas.
-  return String(process.env[_pref + 'SESSION_SECRET']
-    || process.env.ADMIN_KEY || '')
-    || 'amb-sem-segredo-configurado';
+  const achado = String(process.env[_pref + 'SESSION_SECRET']
+    || process.env.ADMIN_KEY || '').trim();
+  if (!achado) {
+    throw new Error(`[auth] ${_pref}SESSION_SECRET nao configurado (nem `
+      + 'ADMIN_KEY). Sem segredo eu assinaria a sessao de admin com um valor '
+      + 'previsivel — qualquer um forjaria o cookie. Defina a env antes de '
+      + 'ativar esta empresa.');
+  }
+  return achado;
 }
 
 const b64url = (buf) => Buffer.from(buf).toString('base64')

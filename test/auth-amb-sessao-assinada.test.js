@@ -105,6 +105,9 @@ const authAMB = require('../amb-devolucoes/lib-AMB/auth-AMB.js');
     require('path').join(__dirname, '..', 'amb-devolucoes', 'lib-AMB', 'auth-AMB.js'), 'utf8');
   process.env.AMB_USERS = 'ana:s1';
   process.env.AMB_ADMIN_USER = 'ana';
+  // ⚠️ b374: o auth agora DERRUBA sem segredo (era um literal publico
+  // assinando sessao de admin). Empresa ficticia de teste precisa do seu.
+  process.env.GIRA_TESTE_SESSION_SECRET = 'segredo-da-gira-teste-40-caracteres!!';
   process.env.GIRA_TESTE_USERS = 'bruno:s2';
   process.env.ADMIN_SESSION_SECRET = 'segredo-fixo-de-teste-com-40-caracteres!!';
 
