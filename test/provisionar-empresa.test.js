@@ -76,6 +76,107 @@ const { sufixoDaFicha, provisionarEmpresa, SUFIXO_VALIDO, RESERVADOS } =
     ok(!/drop table|truncate|delete from/i.test(sql.split('COMO TESTAR')[0]),
        'a funcao NAO apaga nada — so cria');
 
+    // ⚠️ (Codex, PR #323, P2) - defeito_comentarios/defeito_pedidos NAO
+    // entravam no molde: ativar uma empresa nova criava as 5 tabelas de
+    // sempre, mas o ciclo de defeitos (comentario, pedido, listarDefeitos)
+    // continuava sem tabela pra gravar — falha so descoberta na primeira
+    // vez que alguem mexesse numa peca com defeito da empresa nova.
+    ok(/\['defeito_comentarios',\s*'defeito_comentarios_amb'\]/.test(sql),
+       'o molde de defeito_comentarios entra na lista de tabelas criadas');
+    ok(/\['defeito_pedidos',\s*'defeito_pedidos_amb'\]/.test(sql),
+       '  e o de defeito_pedidos tambem');
+
+    // ── ⚠️ (Codex, PR #323, P1, b376) - a CONFERENCIA pos-RPC, com sufixo real ──
+    //
+    // `provisionarEmpresa` roda a funcao do banco e depois sonda se as 7
+    // tabelas existem de verdade. O b376 consertou 2 furos nessa sonda (o
+    // sufixo ja vem com '_', e o `code` do erro nao era olhado quando a
+    // `message` vinha preenchida) mas nao deixou teste pra travar a
+    // regressao. Pra exercitar a sonda preciso de uma empresa com sufixo
+    // (nem 'good' nem 'ambtotal' tem), entao troco o que `obterEmpresa`
+    // devolve so aqui.
+    {
+      const empresasPath = require.resolve('../lib/empresas');
+      const provisionarPath = require.resolve('../lib/provisionar-empresa');
+      const empresasReal = require.cache[empresasPath];
+
+      const carregarComFichaFalsa = () => {
+        delete require.cache[empresasPath];
+        require.cache[empresasPath] = {
+          id: empresasPath, filename: empresasPath, loaded: true, children: [], paths: [],
+          exports: { obterEmpresa: () => ({ tabelas: { devolucoes: 'devolucoes_gira' } }) },
+        };
+        delete require.cache[provisionarPath];
+        return require(provisionarPath).provisionarEmpresa;
+      };
+
+      // 1) as 7 tabelas existem com o sufixo SIMPLES ('_gira', um underscore
+      //    so). Antes do b376, a sonda montava 'devolucoes__gira' (dois
+      //    underscores — `sufixoDaFicha` ja devolve o sufixo COM o '_'), que
+      //    nunca bate com nenhuma tabela real, e a empresa era recusada.
+      {
+        const provisionar = carregarComFichaFalsa();
+        const existentes = new Set(['devolucoes_gira', 'espreita_notas_gira', 'recados_gira',
+          'pecas_retiradas_gira', 'sku_depara_gira', 'defeito_comentarios_gira', 'defeito_pedidos_gira']);
+        const cliente = {
+          rpc: async () => ({ data: [{ resultado: 'OK' }], error: null }),
+          from: (nome) => ({
+            select: async () => (existentes.has(nome)
+              ? { data: [], error: null }
+              : { data: null, error: { message: `relation "${nome}" does not exist`, code: '42P01' } }),
+          }),
+        };
+        const r = await provisionar('girateste', cliente);
+        ok(r.ok === true,
+           'confere as 7 tabelas com o sufixo simples, sem underscore duplicado');
+      }
+
+      // 2) a rotina instalada no banco e a ANTIGA (5 tabelas): as 2 de
+      //    defeito faltam, e o PostgREST denuncia isso pelo `code`
+      //    (PGRST205), com uma `message` que so bate no padrao de `code`.
+      //    Antes do b376, `message || code` nunca chegava a olhar o `code`.
+      {
+        const provisionar = carregarComFichaFalsa();
+        const cliente = {
+          rpc: async () => ({ data: [{ resultado: 'OK' }], error: null }),
+          from: (nome) => ({
+            select: async () => (/^defeito_/.test(nome)
+              ? { data: null, error: { message: 'Could not find the table in the schema cache', code: 'PGRST205' } }
+              : { data: [], error: null }),
+          }),
+        };
+        const r = await provisionar('girateste', cliente);
+        ok(r.ok === false && (r.tabelas_faltando || []).length === 2,
+           'acusa falta quando so o `code` (PGRST205) denuncia, sem a frase no `message`');
+      }
+
+      // 3) ⚠️ (Codex, PR #323, P2, b377) - erro na sonda que NAO e "tabela
+      //    ausente" (ex: permissao negada) nao pode passar batido. Antes,
+      //    como a mensagem/codigo nao batiam com nenhum padrao conhecido, o
+      //    `if` nem entrava — a tabela nao ia pra `faltando` e a funcao
+      //    devolvia `ok:true` sem ter confirmado a tabela de verdade.
+      {
+        const provisionar = carregarComFichaFalsa();
+        const cliente = {
+          rpc: async () => ({ data: [{ resultado: 'OK' }], error: null }),
+          from: (nome) => ({
+            select: async () => (nome === 'defeito_pedidos_gira'
+              ? { data: null, error: { message: 'permission denied for table defeito_pedidos_gira', code: '42501' } }
+              : { data: [], error: null }),
+          }),
+        };
+        const r = await provisionar('girateste', cliente);
+        ok(r.ok === false,
+           '⚠️ erro de permissao na sonda derruba o provisionamento (nao vira ok:true por engano)');
+        ok(!(r.tabelas_faltando || []).length,
+           '  nao classifica como "tabela ausente" (a mensagem nao diz isso)');
+      }
+
+      delete require.cache[provisionarPath];
+      delete require.cache[empresasPath];
+      if (empresasReal) require.cache[empresasPath] = empresasReal;
+    }
+
     console.log('');
     console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
     process.exit(falhas ? 1 : 0);

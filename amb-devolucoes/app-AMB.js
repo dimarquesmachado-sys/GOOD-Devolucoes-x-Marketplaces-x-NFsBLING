@@ -392,7 +392,20 @@ const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 // mais um 403 pendente, e vice-versa). A AMB nunca consultou
 // lib/token-leitor.js (os modulos lib-AMB/* nao honram essa politica,
 // confirmado por grep) - nada a espelhar.
-const VERSAO = 'AMB Devolucoes b373';
+// b375 - revisao Codex no PR #323, 2a rodada: o `auth-AMB` tambem tira o
+// fallback pro `ADMIN_KEY` (a 1a correcao do b374 tinha mantido -- o proprio
+// apontamento do Codex citava os dois como fracos). Sem
+// `<PREFIXO>SESSION_SECRET` proprio, o boot da empresa falha em producao,
+// em vez de assinar sessao de admin com uma chave que ja vazou em logs.
+// b378 - revisao Codex no PR #323, 3a rodada: `RENDER` tambem conta como
+// producao pra exigir o segredo (nao so `NODE_ENV`); a instancia PADRAO do
+// `auth-AMB` (a da AMB) deixa de ser validada so por o modulo ser
+// `require`ido -- so quando alguem de fato usa os campos reexportados dela;
+// e a sonda pos-RPC do provisionamento (lib/provisionar-empresa.js) passa a
+// derrubar a chamada quando o erro na tabela NAO for "tabela ausente" (antes
+// um erro de permissao, por exemplo, passava batido e a empresa saia
+// "pronta" sem a tabela confirmada).
+const VERSAO = 'AMB Devolucoes b378';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();

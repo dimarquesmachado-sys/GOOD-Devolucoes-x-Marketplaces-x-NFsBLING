@@ -502,7 +502,16 @@ app.get('/health', (req, res) => {
       // busca por nome. Escolher um lado apagaria a descricao do outro.
       // ⚠️ a resolucao JUNTA as duas: a 7.5.0 (passe curto + tetos) ja esta
       // na main, e este PR acrescenta o build frio que falha vazio.
-      version: '9.40.1 (Codex, PR #322: nf-entrada-AMB.js recupera o cliente Bling da empresa, que sumiu no b372 e derrubava o indice com ReferenceError)',
+      // ⚠️ a resolucao JUNTA as duas de novo: o provisionamento passa a
+      // CONFERIR as tabelas em vez de confiar no silencio da RPC, e o
+      // auth-AMB tira o fallback pro ADMIN_KEY -- consertos independentes,
+      // do mesmo PR #323.
+      // b378 (Codex, PR #323, 3a rodada) - Render conta como producao pro
+      // segredo de sessao, a instancia PADRAO do auth-AMB deixa de validar
+      // AMB_SESSION_SECRET so por ser `require`ida, e a sonda pos-RPC do
+      // provisionamento derruba a chamada em erro que nao seja "tabela
+      // ausente" (antes passava batido).
+      version: '9.41.4 (auth-AMB preguicoso na instancia padrao + sonda do provisionamento nao ignora erro estranho)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),

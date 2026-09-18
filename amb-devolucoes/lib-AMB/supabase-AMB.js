@@ -650,7 +650,26 @@ async function listarDefeitos({ busca } = {}) {
     // iria buscar na prateleira. Erro explicito e melhor que numero errado.
     if (linhas.length) {
       const idsPagina = linhas.map((x) => x.id).filter(Boolean);
-      const rped = await dbc.from('defeito_pedidos_amb')
+      // ⚠️ b373 - A TABELA SAI DO SUFIXO DA EMPRESA, como as outras.
+      //
+      // Era `'defeito_pedidos_amb'` cravada — a unica do modulo que nao
+      // passava pelo mapa `T`. A Girassol leria os pedidos de defeito DA AMB.
+      //
+      // 📌 So apareceu numa varredura AMPLA: o teste procurava nos modulos
+      // de defeito, e esta mora no supabase-AMB.
+      // ⚠️ b374 (Codex, P2) - O SUFIXO SAI DA TABELA, nao da chaveDados.
+      //
+      // Eu usei `chaveDados`, que na AMB e 'amb' e bate por acaso. Mas na
+      // GOOD a tabela e `devolucoes` SEM SUFIXO — minha versao geraria
+      // `defeito_pedidos_good`, que nao existe.
+      //
+      // 📌 O provisionador (`sql/provisionar-empresa.sql`) deriva o sufixo
+      // de `tabelas.devolucoes`. Uso a MESMA fonte, senao o nome que eu
+      // monto e o que o banco cria divergem.
+      const _tabDev = (cfg && cfg.supabase && cfg.supabase.tabelas
+        && cfg.supabase.tabelas.devolucoes) || 'devolucoes';
+      const _sufDef = String(_tabDev).replace(/^devolucoes_?/, '');
+      const rped = await dbc.from((_sufDef ? `defeito_pedidos_${_sufDef}` : 'defeito_pedidos'))
         .select('defeito_id')
         .in('status', ['autorizado', 'concluido'])
         .in('defeito_id', idsPagina);
