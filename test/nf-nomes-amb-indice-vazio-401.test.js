@@ -31,22 +31,36 @@ const { entreMarcadores } = require('./_recorte');
 const nfNomesFactory = require('../amb-devolucoes/lib-AMB/nf-nomes-AMB.js');
 const configAMB = require('../amb-devolucoes/config-AMB.js');
 const bling = require('../amb-devolucoes/lib-AMB/bling-AMB.js');
+// ⚠️ b377 - o modulo agora EXIGE o cliente da empresa.
+//
+// Antes caia na instancia PADRAO, criada no require com o `config-AMB`
+// fixo — a empresa nova usaria o Bling DA AMBTOTAL sem nada avisar.
+//
+// 📌 O teste ja substitui o `chamarBling` (e o que ele exercita), entao
+// so preciso entregar o objeto pelo caminho novo.
+// ⚠️ UMA instancia, criada aqui, pra o teste poder substituir o
+// `chamarBling` NELA — antes ele substituia no MODULO, que agora nao tem
+// instancia propria.
+const blingDaEmpresa = require('../amb-devolucoes/lib-AMB/bling-AMB')
+  .criar(require('../amb-devolucoes/config-AMB'));
+const comCliente = (cfg) => Object.assign({}, cfg, { clienteBling: blingDaEmpresa });
+
 
 let falhas = 0;
 const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o); };
 
-const chamarBlingOriginal = bling.chamarBling;
+const chamarBlingOriginal = blingDaEmpresa.chamarBling;
 
 (async () => {
   try {
     // ── indice construido com ZERO NFs de verdade nao pode parecer cego ──
     {
-      bling.chamarBling = async (url) => {
+      blingDaEmpresa.chamarBling = async (url) => {
         if (url.startsWith('/nfe')) return { ok: true, status: 200, data: { data: [] } };
         return { ok: false, status: 400 };   // vendas: erro nao-recuperavel, para na hora
       };
 
-      const nf = nfNomesFactory.criar(configAMB);
+      const nf = nfNomesFactory.criar(comCliente(configAMB));
       await nf.construirIndice();
 
       const st = nf.statusIndice();
@@ -62,7 +76,7 @@ const chamarBlingOriginal = bling.chamarBling;
     // ── 401 na 1a pagina do /nfe entra no retry (nao so 429) ─────────────
     {
       let chamadas = 0;
-      bling.chamarBling = async (url) => {
+      blingDaEmpresa.chamarBling = async (url) => {
         if (url.startsWith('/nfe')) {
           chamadas++;
           if (chamadas === 1) return { ok: false, status: 401 };   // token sendo renovado
@@ -74,7 +88,7 @@ const chamarBlingOriginal = bling.chamarBling;
         return { ok: false, status: 400 };   // vendas: erro nao-recuperavel, para na hora
       };
 
-      const nf = nfNomesFactory.criar(configAMB);
+      const nf = nfNomesFactory.criar(comCliente(configAMB));
       await nf.construirIndice();
 
       const st = nf.statusIndice();
@@ -97,7 +111,7 @@ const chamarBlingOriginal = bling.chamarBling;
       // Mock fiel ao contrato real do chamarBling: sem `semRetentativa`,
       // um 401 renova o token sozinho antes de responder (e aqui a
       // resposta segue 401, simulando renovacao que nao resolve).
-      bling.chamarBling = async (url, opts) => {
+      blingDaEmpresa.chamarBling = async (url, opts) => {
         if (url.startsWith('/nfe')) {
           chamadasNfe++;
           if (!(opts && opts.semRetentativa)) renovacoesNfe++;
@@ -108,7 +122,7 @@ const chamarBlingOriginal = bling.chamarBling;
         return { ok: false, status: 401 };
       };
 
-      const nf = nfNomesFactory.criar(configAMB);
+      const nf = nfNomesFactory.criar(comCliente(configAMB));
       await nf.construirIndice();
 
       const st = nf.statusIndice();
@@ -121,7 +135,7 @@ const chamarBlingOriginal = bling.chamarBling;
       ok(!!st.erro, '  com 401 persistente nos dois lacos, o indice registra erro (nao trava sem avisar)');
     }
   } finally {
-    bling.chamarBling = chamarBlingOriginal;
+    blingDaEmpresa.chamarBling = chamarBlingOriginal;
   }
 
   // ── a rota de identificar deriva o status da tentativa do indice_vazio,

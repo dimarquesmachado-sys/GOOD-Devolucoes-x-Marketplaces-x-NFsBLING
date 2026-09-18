@@ -31,7 +31,32 @@ function criar(cfgEmpresa) {
 const _PREFIXO = String((cfgEmpresa && cfgEmpresa.PREFIXO_ENV) || 'AMB_');
 'use strict';
 
-const ml = require('./ml-AMB');
+// ⚠️ b377 - O CLIENTE VEM DA EMPRESA, nao a instancia padrao.
+//
+// Era `require('./ml-AMB')` sem `.criar()` — a instancia feita com o
+// `config-AMB` fixo. A Girassol usaria o ml DA AMBTOTAL.
+//
+
+// ⚠️ b377 - o cliente DESTA empresa, quando a config traz um.
+//
+// Fica no escopo do modulo (logo apos o require) de proposito: minha 1a
+// versao punha dentro da fabrica, ANTES da declaracao do `mlPadrao` —
+// TDZ, que o `node --check` nao pega.
+// ⚠️ b377 - SEM O CLIENTE DA EMPRESA, DERRUBA.
+//
+// Antes caia na instancia PADRAO do `ml-AMB` (feita com o `config-AMB`
+// fixo) — a empresa nova usaria o cliente DA AMBTOTAL sem nada avisar.
+//
+// 📌 Fallback pro valor de outra empresa nao e compatibilidade, e vazamento
+// com cara de seguranca. Ja tirei 3 iguais hoje.
+function mlDa(cfg) {
+  const c = cfg && cfg.clienteMl;
+  if (!c) {
+    throw new Error('[ml-motivo-AMB.js] `clienteMl` nao veio na config da empresa — '
+      + 'sem ele eu usaria o cliente da AMBTotal.');
+  }
+  return c;
+}
 
 function limparHtml(t) {
   return String(t || '')

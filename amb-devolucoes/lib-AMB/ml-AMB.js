@@ -25,7 +25,9 @@ const axios = require('axios');
 //
 // Envolver na fabrica move esse estado pra DENTRO de cada instancia, que
 // e exatamente o que precisa acontecer.
-const configAMB = require('../config-AMB');
+// ⚠️ b377 - o `config-AMB` fixo SAIU. Ficou so o require, sem uso, depois
+// que a instancia padrao foi removida — e require de arquivo da AMB num
+// modulo multiempresa e pegadinha esperando alguem usar.
 
 function criarMl(cfg) {
 const { atualizarTokensNoRender } = require('../../lib/render-tokens');
@@ -271,5 +273,11 @@ return {
 
 // b246: o objeto pronto da AMB continua sendo o export padrao (nada muda
 // pra quem ja usa — sao 6 pontos), e a fabrica fica em `.criar`.
-module.exports = criarMl(configAMB);
-module.exports.criar = criarMl;
+// ⚠️ b377 - A INSTANCIA PRONTA SAIU (era a ultima forma de vazamento).
+//
+// Era `criarMl(configAMB)` — criada NO REQUIRE com o `config-AMB` fixo.
+// Quem esquecesse o `.criar()` pegava o cliente DA AMBTOTAL sem nada
+// avisar, e isso nao aparecia em busca por env nem por tabela.
+//
+// 📌 Ninguem mais a consome: o app usa `.criar(CFG_EMPRESA)`.
+module.exports = { criar: criarMl };

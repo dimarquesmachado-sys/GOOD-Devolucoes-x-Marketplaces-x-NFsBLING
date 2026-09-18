@@ -52,7 +52,9 @@
 // `construindo=true` e desistiria, ficando com indice vazio pra sempre.
 //
 // A fabrica move essas travas pra dentro de cada instancia.
-const configAMB = require('../config-AMB');
+// ⚠️ b377 - o `config-AMB` fixo SAIU. Ficou so o require, sem uso, depois
+// que a instancia padrao foi removida — e require de arquivo da AMB num
+// modulo multiempresa e pegadinha esperando alguem usar.
 // b263.1 (Codex, P1) - ⚠️ A AMB TEM SCANNER PROPRIO, e eu tinha ligado a
 // drenagem so na GOOD. Sao ate 60 paginas + 900 chamadas por claim: se o
 // SIGTERM chega durante um preaquecimento da AMB, o processo velho continua
@@ -60,8 +62,35 @@ const configAMB = require('../config-AMB');
 // novo. Era a regra da casa que eu mesmo invoquei no commit e nao cumpri.
 const drenagem = require('../../lib/drenagem');
 
+// ⚠️ b377 - O CLIENTE VEM DA EMPRESA, nao a instancia padrao.
+//
+// Era `require('./ml-AMB')` sem `.criar()` — a instancia feita com o
+// `config-AMB` fixo. A Girassol usaria o ml DA AMBTOTAL.
+//
+
+// ⚠️ b377 - o cliente DESTA empresa, quando a config traz um.
+//
+// Fica no escopo do modulo (logo apos o require) de proposito: minha 1a
+// versao punha dentro da fabrica, ANTES da declaracao do `mlPadrao` —
+// TDZ, que o `node --check` nao pega.
+// ⚠️ b377 - SEM O CLIENTE DA EMPRESA, DERRUBA.
+//
+// Antes caia na instancia PADRAO do `ml-AMB` (feita com o `config-AMB`
+// fixo) — a empresa nova usaria o cliente DA AMBTOTAL sem nada avisar.
+//
+// 📌 Fallback pro valor de outra empresa nao e compatibilidade, e vazamento
+// com cara de seguranca. Ja tirei 3 iguais hoje.
+function mlDa(cfg) {
+  const c = cfg && cfg.clienteMl;
+  if (!c) {
+    throw new Error('[ml-returns-AMB.js] `clienteMl` nao veio na config da empresa — '
+      + 'sem ele eu usaria o cliente da AMBTotal.');
+  }
+  return c;
+}
+
 function criarMlReturns(cfg) {
-const ml = require('./ml-AMB');
+  const ml = mlDa(cfg);   // b377
 
 // b17 - detalhes do PEDIDO (apelido do comprador + itens) num
 // cache proprio: buscados em BACKGROUND depois que o indice
@@ -584,5 +613,15 @@ return {
 }
 
 // b248: export padrao = objeto pronto da AMB; fabrica em `.criar`.
-module.exports = criarMlReturns(configAMB);
-module.exports.criar = criarMlReturns;
+// ⚠️ b377 - A INSTANCIA PADRAO SAIU.
+//
+// Era `module.exports = criarMlReturns(configAMB)` — criada NO REQUIRE, com o
+// `config-AMB` fixo. Duas coisas erradas:
+//
+//   1. carregava o arquivo da AMB em todo boot, mesmo sem ninguem usar
+//   2. e agora que o modulo EXIGE o cliente da empresa, ela quebrava o boot:
+//      o `configAMB` nao tem `clienteMl`
+//
+// 📌 Ninguem mais a consome — o app usa `.criar(CFG_EMPRESA)`. Exporto so a
+// fabrica, como nos outros 8 modulos.
+module.exports = { criar: criarMlReturns };

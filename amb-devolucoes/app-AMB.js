@@ -223,15 +223,17 @@ const cfg = CFG_EMPRESA;
 // 📌 Uso `PREFIXO_ROTA`, que ja sai da config com esse fallback aplicado.
 const BASE = CFG_EMPRESA.PREFIXO_ROTA;
 
-const bling = require('./lib-AMB/bling-AMB').criar(CFG_EMPRESA);
-
-// ⚠️ b372 - os modulos que consultam o Bling recebem o cliente DESTA empresa.
+// ⚠️ b377 - CADA CLIENTE ENTRA NA CONFIG LOGO DEPOIS DE NASCER.
 //
-// `nf-nomes` e `nf-entrada` usavam a instancia PADRAO do modulo (criada com
-// o `config-AMB` fixo). A Girassol consultaria o Bling DA AMBTOTAL: veria as
-// notas dela, e emitiria na conta errada.
-CFG_EMPRESA.clienteBling = bling;
+// Minha 1a versao juntava as 3 atribuicoes no fim — mas o `mlReturns` e
+// criado na linha seguinte ao `ml` e JA PRECISA dele. Quebrou o boot.
+//
+// 📌 Sem isso o modulo usaria a instancia PADRAO (config-AMB fixo): a
+// empresa nova consultaria a conta da AMBTotal no ML.
+const bling = require('./lib-AMB/bling-AMB').criar(CFG_EMPRESA);
+CFG_EMPRESA.clienteBling = bling;   // b377
 const ml = require('./lib-AMB/ml-AMB').criar(CFG_EMPRESA);
+CFG_EMPRESA.clienteMl = ml;   // b377 — o mlReturns (abaixo) ja precisa dele
 const mlReturns = require('./lib-AMB/ml-returns-AMB').criar(CFG_EMPRESA);
 const nfNomes = require('./lib-AMB/nf-nomes-AMB').criar(CFG_EMPRESA);
 const tokens = require('../lib/render-tokens');
@@ -266,6 +268,7 @@ const magalu = require('./lib-AMB/magalu-AMB').criar(CFG_EMPRESA);
 const mlMotivo = require('./lib-AMB/ml-motivo-AMB').criar(CFG_EMPRESA);   // b364
 const impressao = require('./lib-AMB/impressao-AMB').criar(CFG_EMPRESA);   // b364
 const emailAMB = require('./lib-AMB/email-AMB').criar(CFG_EMPRESA);   // b364
+CFG_EMPRESA.clienteEmail = emailAMB;   // b377
 const nfEntrada = require('./lib-AMB/nf-entrada-AMB').criar(CFG_EMPRESA);   // b364
 const multer = require('multer');
 const compat = require('./lib-AMB/compat-AMB').criar(CFG_EMPRESA);   // b364
@@ -405,7 +408,7 @@ const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 // derrubar a chamada quando o erro na tabela NAO for "tabela ausente" (antes
 // um erro de permissao, por exemplo, passava batido e a empresa saia
 // "pronta" sem a tabela confirmada).
-const VERSAO = 'AMB Devolucoes b378';
+const VERSAO = 'AMB Devolucoes b377';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
