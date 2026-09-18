@@ -38,7 +38,32 @@ const _PREFIXO = String((cfgEmpresa && cfgEmpresa.PREFIXO_ENV) || 'AMB_');
 'use strict';
 
 const crypto = require('crypto');
-const emailAMB = require('./email-AMB');
+// ⚠️ b377 - O CLIENTE VEM DA EMPRESA, nao a instancia padrao.
+//
+// Era `require('./email-AMB')` sem `.criar()` — a instancia feita com o
+// `config-AMB` fixo. A Girassol usaria o email DA AMBTOTAL.
+//
+
+// ⚠️ b377 - o cliente DESTA empresa, quando a config traz um.
+//
+// Fica no escopo do modulo (logo apos o require) de proposito: minha 1a
+// versao punha dentro da fabrica, ANTES da declaracao do `emailAMBPadrao` —
+// TDZ, que o `node --check` nao pega.
+// ⚠️ b377 - SEM O CLIENTE DA EMPRESA, DERRUBA.
+//
+// Antes caia na instancia PADRAO do `email-AMB` (feita com o `config-AMB`
+// fixo) — a empresa nova usaria o cliente DA AMBTOTAL sem nada avisar.
+//
+// 📌 Fallback pro valor de outra empresa nao e compatibilidade, e vazamento
+// com cara de seguranca. Ja tirei 3 iguais hoje.
+function emailAMBDa(cfg) {
+  const c = cfg && cfg.clienteEmail;
+  if (!c) {
+    throw new Error('[compat-AMB.js] `clienteEmail` nao veio na config da empresa — '
+      + 'sem ele eu usaria o cliente da AMBTotal.');
+  }
+  return c;
+}
 
 /**
  * b76 - FOTO DO PRODUTO no "Lançar produto com defeito".

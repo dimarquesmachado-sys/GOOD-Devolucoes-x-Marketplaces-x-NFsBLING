@@ -34,7 +34,9 @@
 // AMB (`criarDb(configAMB)`), com a fabrica pendurada em `.criar`. Assim o
 // app-AMB nao muda nesta rodada — trocar os 6 modulos e o app de uma vez
 // seria o PR de 5.600 linhas que eu decidi NAO fazer.
-const configAMB = require('../config-AMB');
+// ⚠️ b377 - o `config-AMB` fixo SAIU. Ficou so o require, sem uso, depois
+// que a instancia padrao foi removida — e require de arquivo da AMB num
+// modulo multiempresa e pegadinha esperando alguem usar.
 
 function criarDb(cfg) {
 
@@ -1015,5 +1017,11 @@ return {
 
 // b245: o objeto pronto da AMB continua sendo o export padrao (nada muda
 // pra quem ja usa), e a fabrica fica em `.criar` pra proxima empresa.
-module.exports = criarDb(configAMB);
-module.exports.criar = criarDb;
+// ⚠️ b377 - A INSTANCIA PRONTA SAIU (era a ultima forma de vazamento).
+//
+// Era `criarDb(configAMB)` — criada NO REQUIRE com o `config-AMB` fixo.
+// Quem esquecesse o `.criar()` pegava o cliente DA AMBTOTAL sem nada
+// avisar, e isso nao aparecia em busca por env nem por tabela.
+//
+// 📌 Ninguem mais a consome: o app usa `.criar(CFG_EMPRESA)`.
+module.exports = { criar: criarDb };

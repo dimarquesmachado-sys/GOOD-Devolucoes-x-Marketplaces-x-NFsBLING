@@ -17,15 +17,29 @@
 const nfEntradaFactory = require('../amb-devolucoes/lib-AMB/nf-entrada-AMB.js');
 const configAMB = require('../amb-devolucoes/config-AMB.js');
 const bling = require('../amb-devolucoes/lib-AMB/bling-AMB.js');
+// ⚠️ b377 - o modulo agora EXIGE o cliente da empresa.
+//
+// Antes caia na instancia PADRAO, criada no require com o `config-AMB`
+// fixo — a empresa nova usaria o Bling DA AMBTOTAL sem nada avisar.
+//
+// 📌 O teste ja substitui o `chamarBling` (e o que ele exercita), entao
+// so preciso entregar o objeto pelo caminho novo.
+// ⚠️ UMA instancia, criada aqui, pra o teste poder substituir o
+// `chamarBling` NELA — antes ele substituia no MODULO, que agora nao tem
+// instancia propria.
+const blingDaEmpresa = require('../amb-devolucoes/lib-AMB/bling-AMB')
+  .criar(require('../amb-devolucoes/config-AMB'));
+const comCliente = (cfg) => Object.assign({}, cfg, { clienteBling: blingDaEmpresa });
+
 
 let falhas = 0;
 const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o); };
 
-const chamarBlingOriginal = bling.chamarBling;
+const chamarBlingOriginal = blingDaEmpresa.chamarBling;
 
 (async () => {
   try {
-    bling.chamarBling = async (url) => {
+    blingDaEmpresa.chamarBling = async (url) => {
       if (url.startsWith('/nfe')) {
         return {
           ok: true, status: 200,
@@ -35,7 +49,7 @@ const chamarBlingOriginal = bling.chamarBling;
       return { ok: false, status: 400 };
     };
 
-    const nf = nfEntradaFactory.criar(configAMB);
+    const nf = nfEntradaFactory.criar(comCliente(configAMB));
 
     let erro = null;
     await nf.construirIndice().catch((e) => { erro = e; });
@@ -53,7 +67,7 @@ const chamarBlingOriginal = bling.chamarBling;
     await nf.sondarTipos().catch((e) => { erroSonda = e; });
     ok(!erroSonda, '⚠️ P1 (Codex): sondarTipos() tambem nao explode (mesma variavel bling)');
   } finally {
-    bling.chamarBling = chamarBlingOriginal;
+    blingDaEmpresa.chamarBling = chamarBlingOriginal;
   }
 
   console.log('');

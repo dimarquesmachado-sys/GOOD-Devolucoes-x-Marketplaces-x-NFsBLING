@@ -45,7 +45,9 @@
 // `construindo=true` e desistiria, ficando com indice vazio pra sempre.
 //
 // A fabrica move essas travas pra dentro de cada instancia.
-const configAMB = require('../config-AMB');
+// ⚠️ b377 - o `config-AMB` fixo SAIU. Ficou so o require, sem uso, depois
+// que a instancia padrao foi removida — e require de arquivo da AMB num
+// modulo multiempresa e pegadinha esperando alguem usar.
 // b263 - pra parar a varredura quando o processo esta saindo
 const drenagem = require('../../lib/drenagem');
 
@@ -55,13 +57,27 @@ const drenagem = require('../../lib/drenagem');
 // A Girassol consultaria o Bling DA AMBTOTAL aqui: veria as notas dela e
 // emitiria na conta errada.
 //
-// 📌 `cfg.bling` ja vem na config da empresa; se nao vier, cai na padrao
-// (comportamento de hoje).
-const blingPadrao = require('./bling-AMB');
+
+// ⚠️ b377 - SEM O CLIENTE DA EMPRESA, DERRUBA.
+//
+// Meu script removeu esta funcao junto com a instancia padrao e deixou o
+// USO — `blingDa is not defined` no boot. `node --check` passou: a funcao
+// nao existir e erro de runtime, nao de sintaxe.
+//
+// 📌 Fallback pro cliente da AMB nao entra: e vazamento com cara de
+// compatibilidade, e ja tirei 4 iguais hoje.
+function blingDa(cfg) {
+  const c = cfg && cfg.clienteBling;
+  if (!c) {
+    throw new Error('[nf-nomes-AMB] `clienteBling` nao veio na config da '
+      + 'empresa — sem ele eu usaria o Bling da AMBTotal.');
+  }
+  return c;
+}
 
 function criarNfNomes(cfg) {
   // ⚠️ b372: prefere o cliente Bling DESTA empresa
-  const bling = (cfg && cfg.clienteBling) || blingPadrao;
+  const bling = blingDa(cfg);   // b377
 
 const IDX = {
   ts: 0,
@@ -741,5 +757,15 @@ return {
 }
 
 // b248: export padrao = objeto pronto da AMB; fabrica em `.criar`.
-module.exports = criarNfNomes(configAMB);
-module.exports.criar = criarNfNomes;
+// ⚠️ b377 - A INSTANCIA PADRAO SAIU.
+//
+// Era `module.exports = criarNfNomes(configAMB)` — criada NO REQUIRE, com o
+// `config-AMB` fixo. Duas coisas erradas:
+//
+//   1. carregava o arquivo da AMB em todo boot, mesmo sem ninguem usar
+//   2. e agora que o modulo EXIGE o cliente da empresa, ela quebrava o boot:
+//      o `configAMB` nao tem `clienteMl`
+//
+// 📌 Ninguem mais a consome — o app usa `.criar(CFG_EMPRESA)`. Exporto so a
+// fabrica, como nos outros 8 modulos.
+module.exports = { criar: criarNfNomes };

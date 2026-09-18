@@ -169,8 +169,19 @@ process.env.AMB_SUPABASE_KEY = 'chave-de-teste';
                         'nf-entrada-AMB', 'ml-motivo-AMB', 'shopee-AMB', 'magalu-AMB']) {
       const m2 = require(path.join(RAIZ, 'amb-devolucoes', 'lib-AMB', `${nome}.js`));
       if (typeof m2.criar !== 'function') { separados.push(`${nome} (sem criar)`); continue; }
-      const x = m2.criar({ PREFIXO_ENV: 'AMB_' });
-      const y = m2.criar({ PREFIXO_ENV: 'GIRASSOL_' });
+      // ⚠️ b377: os modulos agora EXIGEM os clientes da empresa — antes caiam
+      // na instancia padrao (config-AMB fixo), que era justamente o vazamento
+      // que este teste existe pra impedir.
+      //
+      // 📌 Clientes falsos bastam: o que se prova aqui e que 2 chamadas dao
+      // objetos DIFERENTES, nao o que cada cliente faz.
+      const falso = () => ({ chamarBling: async () => ({ ok: true }), cfg: {} });
+      const base = (pref) => ({
+        PREFIXO_ENV: pref,
+        clienteBling: falso(), clienteMl: falso(), clienteEmail: falso(),
+      });
+      const x = m2.criar(base('AMB_'));
+      const y = m2.criar(base('GIRASSOL_'));
       if (x === y) separados.push(`${nome} (a MESMA)`);
     }
     ok(separados.length === 0,
@@ -272,6 +283,19 @@ process.env.AMB_SUPABASE_KEY = 'chave-de-teste';
       const src = fs.readFileSync(path.join(dirLib, f), 'utf8');
       const semC = src.split('\n').filter((l) => !l.trim().startsWith('//')).join('\n');
       for (const m2 of semC.matchAll(/require\('\.\/([\w-]+-AMB)'\)(?!\.criar)/g)) {
+        // ⚠️ b377: `require` guardado como `xPadrao` E FALLBACK, nao uso.
+        //
+        // O modulo pega o cliente da empresa (`cfg.clienteMl`) e so cai na
+        // instancia padrao se ela nao vier. Contar isso como vazamento seria
+        // falso positivo — e falso positivo ensina a ignorar o vermelho.
+        //
+        // 📌 O que importa e se o valor CHEGA da config. Confiro isso.
+        const guardaComoFallback = new RegExp(
+          `const \\w+Padrao = require\\('\\./${m2[1]}'\\)`).test(semC);
+        // ⚠️ o nome da variavel varia (`cfg`, `cfgEmpresa`) — minha 1a regex
+        // exigia `cfg` e dava falso positivo no `nf-entrada`.
+        const pegaDaConfig = /\(\s*cfg\w* && cfg\w*\.cliente\w+\s*\)/.test(semC);
+        if (guardaComoFallback && pegaDaConfig) continue;
         INSTANCIA_PADRAO.push(`${f} -> ${m2[1]}`);
       }
     }
