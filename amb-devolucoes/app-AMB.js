@@ -409,7 +409,7 @@ const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 // derrubar a chamada quando o erro na tabela NAO for "tabela ausente" (antes
 // um erro de permissao, por exemplo, passava batido e a empresa saia
 // "pronta" sem a tabela confirmada).
-const VERSAO = 'AMB Devolucoes b379';
+const VERSAO = 'AMB Devolucoes b380';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -1580,11 +1580,14 @@ router.get('/debug/espreita', admin, async (req, res) => {
 // Igual a da GOOD (lib/rotas-debug.js): puxa via ponte o que o
 // Mover-Pedidos guarda das devolucoes TikTok. ?coletar=1&dias=60
 // coleta antes; ?limite=N. Publico: /amb/api/debug/tiktok-devolucoes
-// A empresa vai carimbada aqui porque este arquivo E o modulo da
-// AMB (regra do b324: ponto unico, nunca por chamada).
+//
+// ⚠️ apontamento do Codex no PR #325 (P1): a empresa vinha CRAVADA
+// ('ambtotal'), entao uma 2a empresa montada aqui consultaria a loja
+// TikTok da AMB. Mesmo padrao ja usado em bling-AMB/ml-AMB/magalu-AMB:
+// sai da ficha, com o mesmo literal so como fallback defensivo.
 router.get('/api/debug/tiktok-devolucoes', admin, async (req, res) => {
   try {
-    const r = await tiktokPonte.sondaDevolucoes('ambtotal', req.query);
+    const r = await tiktokPonte.sondaDevolucoes(CFG_EMPRESA.CHAVE_REGISTRO || 'ambtotal', req.query);
     res.status(r.ok ? 200 : 502).json(r);
   } catch (e) {
     res.status(500).json({ ok: false, erro: String(e.message || e).slice(0, 200) });
