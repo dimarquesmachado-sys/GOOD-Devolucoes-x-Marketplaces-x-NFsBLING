@@ -502,7 +502,7 @@ app.get('/health', (req, res) => {
       // busca por nome. Escolher um lado apagaria a descricao do outro.
       // ⚠️ a resolucao JUNTA as duas: a 7.5.0 (passe curto + tetos) ja esta
       // na main, e este PR acrescenta o build frio que falha vazio.
-      version: '9.39.3 (Codex, PR #320: placar lista tabelas AMB fixas tambem, e o teste do freio volta a EXECUTAR o guard)',
+      version: '9.40.1 (Codex, PR #322: nf-entrada-AMB.js recupera o cliente Bling da empresa, que sumiu no b372 e derrubava o indice com ReferenceError)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),

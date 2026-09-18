@@ -224,6 +224,13 @@ const cfg = CFG_EMPRESA;
 const BASE = CFG_EMPRESA.PREFIXO_ROTA;
 
 const bling = require('./lib-AMB/bling-AMB').criar(CFG_EMPRESA);
+
+// ⚠️ b372 - os modulos que consultam o Bling recebem o cliente DESTA empresa.
+//
+// `nf-nomes` e `nf-entrada` usavam a instancia PADRAO do modulo (criada com
+// o `config-AMB` fixo). A Girassol consultaria o Bling DA AMBTOTAL: veria as
+// notas dela, e emitiria na conta errada.
+CFG_EMPRESA.clienteBling = bling;
 const ml = require('./lib-AMB/ml-AMB').criar(CFG_EMPRESA);
 const mlReturns = require('./lib-AMB/ml-returns-AMB').criar(CFG_EMPRESA);
 const nfNomes = require('./lib-AMB/nf-nomes-AMB').criar(CFG_EMPRESA);
@@ -385,7 +392,7 @@ const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 // mais um 403 pendente, e vice-versa). A AMB nunca consultou
 // lib/token-leitor.js (os modulos lib-AMB/* nao honram essa politica,
 // confirmado por grep) - nada a espelhar.
-const VERSAO = 'AMB Devolucoes b372';
+const VERSAO = 'AMB Devolucoes b373';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();

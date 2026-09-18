@@ -289,7 +289,20 @@ async function listarNaturezas(forcar) {
  *  override -> nome exato -> nome aproximado. Sem achar, devolve null: quem
  *  chama recusa, em vez de emitir nota com natureza adivinhada. */
 async function naturezaDevolucaoEntrada() {
-  const forcado = String(process.env.AMB_ID_NATUREZA_DEVOLUCAO_ENTRADA || '').trim();
+  // ⚠️ b372 - A NATUREZA VEM DA FICHA, nao da env da AMB.
+  //
+  // Era `process.env.AMB_ID_NATUREZA_DEVOLUCAO_ENTRADA` cravado. A Girassol
+  // emitiria a NF de devolucao com a NATUREZA da AMBTotal — nota fiscal
+  // errada, no CNPJ errado.
+  //
+  // 📌 A ficha JA resolvia isso (`fiscal.naturezaDevolucao()`, que le
+  // `<PREFIXO_FISCAL>ID_NATUREZA_...`). O modulo e que nao a usava.
+  // ⚠️ o fallback pra env da AMB SAIU: ele mantinha o vazamento. Se a ficha
+  // da empresa nao declara a natureza, o certo e NAO TER — a rota descobre
+  // pelo nome, como ja fazia. Cair na natureza da AMBTotal e pior que vazio.
+  const forcado = String(
+    (cfg && cfg.fiscal && typeof cfg.fiscal.naturezaDevolucao === 'function'
+      ? cfg.fiscal.naturezaDevolucao() : '') || '').trim();
   if (forcado) return { ok: true, id: forcado, via: 'env' };
   const r = await listarNaturezas(false);
   if (!r.ok) return { ok: false, erro: r.erro || 'nao consegui listar as naturezas' };
@@ -339,12 +352,26 @@ async function naturezaDevolucaoEntrada() {
 
 /** Os dois ids que o painel precisa pra emitir a NF de devolucao. */
 async function idsFiscais() {
-  const empresa = String(process.env.AMB_ID_EMPRESA_CONTROL || '14901993834').trim();
+  // ⚠️ b372 - E AQUI ERA PIOR: o id da AMBTotal estava CRAVADO como padrao.
+  //
+  // `process.env.AMB_ID_EMPRESA_CONTROL || '14901993834'` — a Girassol, sem
+  // declarar nada, emitiria com o id de controle da AMBTotal. Silencioso.
+  //
+  // 📌 A ficha entrega o mesmo '14901993834' pra AMB (conferido), entao nada
+  // muda hoje; e a empresa nova recebe o SEU, ou nada.
+  // ⚠️ idem — e aqui era o pior: o id da AMBTotal estava cravado como padrao.
+  const empresa = String(
+    (cfg && cfg.fiscal && typeof cfg.fiscal.idEmpresaControl === 'function'
+      ? cfg.fiscal.idEmpresaControl() : '') || '').trim();
   const nat = await naturezaDevolucaoEntrada();
   return {
     ok: !!(empresa && nat.ok),
     idEmpresaControl: empresa || null,
-    empresa_via: process.env.AMB_ID_EMPRESA_CONTROL ? 'env' : 'padrao_do_codigo',
+    // ⚠️ b372: o diagnostico tambem lia a env da AMB. Agora diz de onde
+    // veio DE VERDADE — ficha, env ou nada.
+    empresa_via: (cfg && cfg.fiscal && typeof cfg.fiscal.idEmpresaControl === 'function'
+      && cfg.fiscal.idEmpresaControl()) ? 'ficha'
+      : 'ausente',
     idNaturezaOperacao: nat.ok ? nat.id : null,
     natureza_via: nat.via || null,
     natureza_descricao: nat.descricao || null,
