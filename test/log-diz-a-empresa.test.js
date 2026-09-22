@@ -44,6 +44,8 @@ const DIR = path.join(RAIZ, 'amb-devolucoes', 'lib-AMB');
 {
   const CONVERTIDOS = ['bling-AMB.js', 'ml-AMB.js', 'ml-returns-AMB.js',
     'nf-nomes-AMB.js', 'supabase-AMB.js'];
+  // ⚠️ os outros 6 usam `_TAG` (const na fábrica) em vez de `TAG_EMP` —
+  // nomes diferentes porque as fábricas têm assinaturas diferentes.
   for (const f of CONVERTIDOS) {
     const src = fs.readFileSync(path.join(DIR, f), 'utf8');
     const semCom = src.split('\n')
@@ -68,12 +70,14 @@ const DIR = path.join(RAIZ, 'amb-devolucoes', 'lib-AMB');
      '  cita a env do prefixo da empresa');
 }
 
-// ── 📌 o que AINDA diz AMB, medido e não esquecido ──────────────────
+// ── ✅ zero: nenhum log diz AMB fixo ────────────────────────────────
 //
-// 5 módulos (magalu, shopee, email, nf-entrada, compat) têm os logs
-// espalhados FORA da fábrica. Convertê-los exigiria estado de módulo — que
-// é justamente o que o primeiro bloco proíbe. Ficam para quando forem
-// refatorados; este contador impede que isso vire invisível.
+// ⚠️ A premissa que me travou no b396 estava ERRADA: eu achei que os logs
+// dos 6 módulos restantes estavam FORA da fábrica, e por isso usei estado
+// de módulo (que vazava entre empresas). Fui medir a profundidade de chaves
+// e os 22 estavam DENTRO — dava para usar `const` local o tempo todo.
+//
+// 📌 O contador fica em 0 e vira trava: qualquer `[AMB/` novo reprova.
 {
   let restantes = 0;
   const quais = [];
@@ -87,8 +91,8 @@ const DIR = path.join(RAIZ, 'amb-devolucoes', 'lib-AMB');
   }
   console.log(`    📌 ainda dizem [AMB/] fixo: ${restantes} em ${quais.length} modulo(s)`);
   for (const q of quais) console.log('       ' + q);
-  ok(restantes <= 22,
-     `  e o numero nao CRESCEU (${restantes}, teto 22)`);
+  ok(restantes === 0,
+     `  ⚠️ nenhum log com \`[AMB/\` fixo (${restantes})`);
 }
 
 console.log('');

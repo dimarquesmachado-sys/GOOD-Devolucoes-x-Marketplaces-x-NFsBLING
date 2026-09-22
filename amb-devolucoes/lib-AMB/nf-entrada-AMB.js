@@ -41,6 +41,15 @@ function blingDa(cfg) {
 }
 
 function criar(cfgEmpresa) {
+  // ⚠️ b400 - a etiqueta do log diz QUAL EMPRESA.
+  //
+  // Era `[AMB/...]` fixo: o Render junta o log das duas no MESMO lugar,
+  // e um erro da Girassol apareceria como AMB.
+  //
+  // 📌 CONST dentro da fábrica, nunca `let` no módulo — foi o erro que
+  // cometi no b396: a 2ª empresa sobrescrevia a etiqueta da 1ª.
+  const _TAG = String((cfgEmpresa && cfgEmpresa.PREFIXO_ENV) || 'AMB_')
+    .replace(/_$/, '');
 const _PREFIXO = String((cfgEmpresa && cfgEmpresa.PREFIXO_ENV) || 'AMB_');
 'use strict';
 
@@ -116,7 +125,7 @@ async function construirIndice() {
     IDX.total = total;
     IDX.erro = erro;
     IDX.duracaoSeg = Math.round((Date.now() - t0) / 1000);
-    console.log(`[AMB/NF-ENTRADA] ${total} notas de entrada (tipo=${TIPO()}) em ${IDX.duracaoSeg}s`);
+    console.log(`[${_TAG}/NF-ENTRADA] ${total} notas de entrada (tipo=${TIPO()}) em ${IDX.duracaoSeg}s`);
     return IDX;
   } finally { EST.construindo = false; }
 }
@@ -174,7 +183,7 @@ async function sondarTipos() {
 }
 
 function preAquecer() {
-  setTimeout(() => { construirIndice().catch(e => console.error('[AMB/NF-ENTRADA]', e.message)); }, 6 * 60 * 1000).unref();
+  setTimeout(() => { construirIndice().catch(e => console.error(`[${_TAG}/NF-ENTRADA]`, e.message)); }, 6 * 60 * 1000).unref();
   setInterval(() => { construirIndice().catch(() => {}); }, 45 * 60 * 1000).unref();
 }
 
