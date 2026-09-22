@@ -14,14 +14,37 @@
 > - `app-AMB.js` é uma **fábrica**: `criar(empresa)` devolve uma instância
 >   própria, com suas gavetas, sessões e caches
 > - o bootstrap monta **todas as empresas ativas** do `contrato-empresas.json`
-> - nada está cravado na AMB — nem env, nem tabela, nem cliente, nem rota,
->   nem no front
+> - env, tabela, cliente e rota vêm da ficha — nada disso está cravado na AMB
 > - a ficha da Girassol **existe** em `lib/empresas.js` (e é testada)
 >
 > **Prova disso:** `test/duas-empresas-juntas.test.js` monta duas empresas
 > diferentes no mesmo processo e verifica que sessão, cache, tabela e fila não
 > se cruzam. Se alguém reintroduzir qualquer forma de vazamento, ele acusa e
 > nomeia.
+>
+> ### ⚠️ Isto NÃO é tudo configuração — 2 pontos do FRONT ainda citam a AMB
+>
+> Apontado pelo Codex em 22/09: mesmo com a fábrica pronta, dois fluxos ainda
+> escrevem "AMBTotal" (ou envs `AMB_*`) fixos, sem olhar a empresa logada.
+> Ativar a Girassol com eles assim manda o operador para a conta ou os
+> pedidos ERRADOS — não é só falta de configuração, precisa de código:
+>
+> - **Links de pedido no painel** (`app-AMB.js` em `link_marketplace`, e o
+>   mesmo em `lib-AMB/identificar-AMB.js`): Shopee e Magalu abrem via
+>   `mover-pedidos-aguardando-x-atendido.onrender.com/amb-checkout-offline/...`
+>   e `.../magalu/ir/amb` — caminhos fixos da AMB nesse serviço EXTERNO (fora
+>   deste repo). Sem um equivalente lá para a Girassol, o clique cai na conta
+>   errada ou não acha o pedido.
+> - **Telas de conexão** (`/conectar`, `/oauth/iniciar`, `/oauth/callback` em
+>   `app-AMB.js`): título, textos de aviso e as mensagens de credencial
+>   faltando citam "AMBTotal" e as envs `AMB_BLING_*`/`AMB_ML_*`/
+>   `AMB_MAGALU_TENANT_ID` peladas, mesmo quando a instância é da Girassol —
+>   quem seguir a tela pode autorizar a conta errada ou nunca achar a env
+>   `GIRASSOL_*` que precisa configurar.
+>
+> **Mantenha `ativa_em.devolucoes: false` para a Girassol até esses dois
+> pontos virarem PR** — o resto do checklist (envs, tabelas, ids fiscais) pode
+> ser preparado antes, mas a ativação real depende disso.
 >
 > ### O que falta, e é tudo configuração
 >
@@ -47,9 +70,11 @@
 > `lib/provisionar-empresa.js` confere e avisa se faltarem, em vez de dizer
 > "ok" e a tela quebrar depois.
 >
-> **3. A PWA precisa de manifest próprio.** O `manifest-AMB.json` é da AMB de
-> propósito (nome, descrição, escopo). Sem um para a Girassol, as duas se
-> instalam como o MESMO app no celular e uma sobrescreve a outra.
+> **3. ~~A PWA precisa de manifest próprio~~ — não precisa mais.** A rota
+> `GET /manifest-AMB.json` (em `app-AMB.js`) já serve `id`, `name`,
+> `short_name`, `description`, `start_url` e `scope` calculados pela empresa
+> da instância (`FICHA_AMB.nome` e a base do router); não existe (nem deve
+> ser criado) um arquivo de manifest separado para a Girassol.
 >
 > ### E a ordem
 >
@@ -143,33 +168,15 @@ dela.
 
 ## O que NÃO está resolvido, e vale saber antes
 
+> ⚠️ Esta seção falava de um `app-AMB.js` singleton e de um bloco que
+> prefixava `/amb` fixo no front. As duas coisas já foram resolvidas (a
+> fábrica `criar(empresa)` e o front por URL, ver "O que o código já faz" no
+> topo) — apontado pelo Codex em 22/09 porque a versão antiga deste texto
+> ainda dizia o contrário e contradizia o restante do documento.
+>
+> O que falta de verdade é o que está descrito acima, em
+> "⚠️ Isto NÃO é tudo configuração": links de pedido Shopee/Magalu e as
+> telas de conexão/OAuth ainda citam a AMB.
+
 - **Usuários e login**: a AMB usa `AMB_USERS`. A Girassol vai precisar dos
   próprios — quem bipa, quem é admin.
-- **A rota**: ⚠️ **não é uma linha.** Eu escrevi isso antes de medir, e o
-  Codex me corrigiu. O `app-AMB.js` hoje monta UMA instância no
-  carregamento (`configDaEmpresa('ambtotal')`) e exporta o router pronto —
-  montar `/girassol` no `server.js` daria um segundo caminho para o **mesmo
-  backend da AMB**, com as tabelas da AMB. Para valer, o `app-AMB` precisa
-  virar função que recebe a empresa (o passo 4 da Fase 3 preparou os
-  módulos, mas o router em si ainda é singleton). É um PR próprio, e o
-  maior que sobrou.
-- **As telas**: `public-AMB/` tem os HTMLs da AMB. A Girassol usa os mesmos
-  arquivos? Se sim, eles precisam saber de qual empresa são — hoje têm um
-  bloco que prefixa `/amb` em toda chamada (b329). É a última amarra
-  literal que sobrou, e ainda não medi o tamanho dela.
-
-### Medi a última (05/09), e ela é menor do que parecia
-
-| arquivo | menções a `/amb` |
-|---|---:|
-| `index-AMB.html` | 4 |
-| `painel-AMB.html` | 12 |
-| `painel2-AMB.html` | 11 |
-| `defeitos-AMB.html` | 0 |
-
-**27 no total**, e a maior parte vem do bloco de compatibilidade do b329 —
-aquele que embrulha o `fetch` e prefixa `/amb` em todo caminho `/api/`.
-
-Ou seja: não são 27 lugares para consertar. É **um bloco** que precisa
-descobrir a empresa da URL em vez de escrever `/amb` fixo. Trabalho de um
-PR pequeno, não a refatoração das telas que eu temia.

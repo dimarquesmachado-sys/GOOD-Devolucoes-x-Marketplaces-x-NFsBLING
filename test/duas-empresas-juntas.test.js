@@ -327,6 +327,36 @@ process.env.AMB_SUPABASE_KEY = 'chave-de-teste';
     ok(/name: nomeEmpresa \+ ' - Devolucoes'/.test(appSrcPwa),
        '  e o NOME sai da ficha (nao e fixo na AMB)');
 
+    // ── ⚠️ e o titulo do atalho no iOS (Safari) tambem e por empresa ───
+    //
+    // Apontamento do Codex no PR #327: o manifest.json ja saia com nome por
+    // empresa, mas quem instala pela Safari/iOS usa a meta
+    // apple-mobile-web-app-title do HTML — que continuava cravada
+    // "Devolucoes AMB" pras duas.
+    const [rE1, rE2] = await Promise.all([pedir('/e1/'), pedir('/e2/')]);
+    const tituloIOS = (corpo) => {
+      const m3 = /apple-mobile-web-app-title" content="([^"]*)"/.exec(corpo);
+      return m3 && m3[1];
+    };
+    const tit1 = tituloIOS(rE1.corpo);
+    const tit2 = tituloIOS(rE2.corpo);
+    ok(!!tit1 && !!tit2 && tit1 !== tit2,
+       `⚠️ o titulo do atalho no iOS muda por empresa (${tit1} x ${tit2})`);
+    ok(tit2 !== 'Devolucoes AMB',
+       '  a 2a empresa nao fica com o titulo cravado da AMB');
+
+    // ── ⚠️ e a etiqueta de defeito nao sai cravada "AMBTotal" ──────────
+    //
+    // Apontamento do Codex no PR #327: zplDefeito() escrevia o literal
+    // "DEFEITO - AMBTotal" direto no ZPL, ignorando a empresa que a fabrica
+    // recebeu — a peca da Girassol sairia rotulada como da AMB.
+    const impressaoMod = require(path.join(RAIZ, 'amb-devolucoes', 'lib-AMB', 'impressao-AMB.js'));
+    const zplAmb = impressaoMod.criar({ NOME_EMPRESA: 'AMBTotal' }).zplDefeito({ sku: 'SKU1' });
+    const zplGira = impressaoMod.criar({ NOME_EMPRESA: 'Magazine Girassol' }).zplDefeito({ sku: 'SKU1' });
+    ok(zplAmb.includes('DEFEITO - AMBTotal'), '  a etiqueta da AMB continua dizendo AMBTotal');
+    ok(zplGira.includes('DEFEITO - Magazine Girassol') && !zplGira.includes('DEFEITO - AMBTotal'),
+       '⚠️ a etiqueta da Girassol sai com o nome dela, nao da AMB');
+
     console.log('');
     console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
     process.exit(falhas ? 1 : 0);

@@ -138,6 +138,7 @@ function criarAppEmpresa(empresaAlvo) {
 
 const express = require('express');
 const path = require('path');
+const fs = require('fs');
 const crypto = require('crypto');
 const MANIFEST_AMB = require('./public-AMB/manifest-AMB.json');
 // b249 - FASE 3, passo 4: os modulos que ja sao FABRICA sao montados COM A
@@ -286,6 +287,19 @@ const { obterEmpresa, envDaEmpresa } = require('../lib/empresas');
 // ⚠️ b356: idem — mesma chave, um lugar so decide qual empresa este app e.
 const FICHA_AMB = obterEmpresa(EMPRESA_DESTE_APP);
 
+// Codex (P2, PR #327) - o manifest-AMB.json ja saia com nome por empresa
+// (rota abaixo), mas o titulo do atalho no iOS/Safari vinha DESTE HTML
+// estatico, cravado "Devolucoes AMB" — quem instalasse pela Girassol via
+// Safari via o atalho com o nome da AMB. O HTML e lido uma vez aqui (a
+// empresa deste processo nao muda em runtime) e o titulo do iOS troca por
+// cima, do mesmo jeito que a rota do manifest ja faz com os campos dela.
+const INDEX_AMB_HTML = fs.readFileSync(
+  path.join(__dirname, 'public-AMB', 'index-AMB.html'), 'utf8'
+).replace(
+  '<meta name="apple-mobile-web-app-title" content="Devolucoes AMB">',
+  `<meta name="apple-mobile-web-app-title" content="Devolucoes ${((FICHA_AMB && FICHA_AMB.nome) || 'AMBTotal').split(' ')[0]}">`
+);
+
 // ⚠️ b359 - O VALOR DA COLUNA `empresa` NO BANCO, vindo da FICHA.
 //
 // Era o literal `'amb'` em 28 lugares. NAO e a `chave` ('ambtotal') nem o
@@ -409,7 +423,7 @@ const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 // derrubar a chamada quando o erro na tabela NAO for "tabela ausente" (antes
 // um erro de permissao, por exemplo, passava batido e a empresa saia
 // "pronta" sem a tabela confirmada).
-const VERSAO = 'AMB Devolucoes b383';
+const VERSAO = 'AMB Devolucoes b392';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -974,7 +988,7 @@ router.get('/identificar', admin, async (req, res) => {
 // explicita abaixo.
 router.get('/', (req, res) => {
   res.set('Cache-Control', 'no-cache, must-revalidate');
-  res.sendFile(path.join(__dirname, 'public-AMB', 'index-AMB.html'));
+  res.type('html').send(INDEX_AMB_HTML);
 });
 
 router.get('/painel', auth.requerLogin, (req, res) => {
