@@ -27,7 +27,17 @@
   // ⚠️ NAO uso "o 1o segmento, seja qual for": se alguem abrir /qualquer/
   // coisa, isso viraria base e as chamadas iriam pra lugar nenhum. So aceito
   // o que o backend serve.
-  var PREFIXOS_CONHECIDOS = ['/amb', '/girassol'];
+  //
+  // ⚠️ b397.1 (Codex, P1) - FALTAVA '/good' NA LISTA.
+  //
+  // O bootstrap (server.js, via `empresasAtivasNoDevolucoes`) pode montar
+  // `criarAppEmpresa('good')` em `/good` (mesmo fallback do PREFIXO_ROTA em
+  // app-AMB.js e do caminho do cookie em lib/config-da-empresa.js) — e essa
+  // instancia serve os MESMOS arquivos de `public-AMB/`. Sem '/good' aqui,
+  // BASE cai no `''` da raiz (que hoje e a GOOD "de verdade", fora desta
+  // fabrica) e tanto as chamadas de API quanto o `APP_EMPRESA` abaixo
+  // resolveriam errado pra essa instancia.
+  var PREFIXOS_CONHECIDOS = ['/amb', '/girassol', '/good'];
   var BASE = (function () {
     // Codex (PR #319, P2) - o Express serve /amb E /AMB (roteamento nao
     // diferencia maiusculas por padrao). Sem baixar a caixa aqui, um link

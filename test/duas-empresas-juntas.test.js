@@ -423,6 +423,31 @@ process.env.AMB_SUPABASE_KEY = 'chave-de-teste';
          `  ${painel}: nenhum caminho da AMB cravado`);
     }
 
+    // ── ⚠️ e o FALLBACK da tela de busca também (achado do Codex, #336) ─
+    //
+    // O b397 corrigiu os 2 painéis, mas a tela de busca (index-AMB.html)
+    // monta o link sozinha quando o backend não manda `link_marketplace`
+    // pronto — esse fallback continuava com `/magalu/ir/amb` e
+    // `amb-checkout-offline` cravados, então a seta ↗ ainda abria a
+    // AMBTotal nesse caminho.
+    const buscaJs = fs.readFileSync(path.join(RAIZ, 'amb-devolucoes',
+      'public-AMB', 'js-AMB', 'busca.js'), 'utf8');
+    ok(!/amb-checkout-offline/.test(buscaJs) && !/\/magalu\/ir\/amb['"?]/.test(buscaJs),
+       '⚠️ busca.js: nenhum caminho da AMB cravado no fallback do link');
+    ok(/window\.APP_EMPRESA/.test(buscaJs),
+       '  e usa a chave curta da empresa pra montar o link');
+
+    // ── ⚠️ e a chave da GOOD, quando ela sobe pela fábrica (achado do
+    // Codex, #336) ──────────────────────────────────────────────────────
+    //
+    // O bootstrap pode montar `criarAppEmpresa('good')` em `/good`, servindo
+    // os MESMOS arquivos de public-AMB/. Sem `/good` na lista de prefixos
+    // conhecidos, `BASE` caía no `''` da raiz — e `window.APP_EMPRESA`
+    // herdava o fallback `'amb'`, mandando essa instância pros links da
+    // AMBTotal.
+    ok(/PREFIXOS_CONHECIDOS = \[[^\]]*'\/good'/.test(baseJs),
+       "⚠️ base-amb.js: '/good' entra nos prefixos conhecidos");
+
     console.log('');
     console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
     process.exit(falhas ? 1 : 0);
