@@ -421,6 +421,18 @@ process.env.AMB_SUPABASE_KEY = 'chave-de-teste';
         path.join(RAIZ, 'amb-devolucoes', 'public-AMB', painel), 'utf8');
       ok(!/amb-checkout-offline/.test(html) && !/\/magalu\/ir\/amb['"?]/.test(html),
          `  ${painel}: nenhum caminho da AMB cravado`);
+
+      // ⚠️ b399 - FONTE UNICA: o `linkVenda()` USA o que o backend mandou.
+      //
+      // Minha 1a versao recalculava a URL no front com `APP_EMPRESA` — o que
+      // funciona, mas deixa a mesma regra em DOIS lugares. No dia em que uma
+      // mudar, volta o bug que este teste existe pra impedir.
+      //
+      // 📌 O backend ja monta `link_marketplace` pela ficha. O painel lista
+      // de `/api/admin/espreita`, que e justamente quem produz o campo —
+      // conferido antes de trocar.
+      ok(/return e\.link_marketplace \|\| null/.test(html),
+         `  ${painel}: o linkVenda USA o link do backend (fonte unica)`);
     }
 
     // ── ⚠️ e o FALLBACK da tela de busca também (achado do Codex, #336) ─
