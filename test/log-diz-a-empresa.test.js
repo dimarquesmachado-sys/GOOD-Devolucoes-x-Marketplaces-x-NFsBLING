@@ -79,11 +79,18 @@ const DIR = path.join(RAIZ, 'amb-devolucoes', 'lib-AMB');
 //
 // 📌 O contador fica em 0 e vira trava: qualquer `[AMB/` novo reprova.
 {
+  // ⚠️ b401 - VARRE O `app-AMB.js` TAMBEM.
+  //
+  // A versao do b400 olhava so `lib-AMB/` e dava 0 — mas o app tinha 3
+  // `[AMB/...]` fixos. Varredura que nao cobre um arquivo da a impressao de
+  // que ele esta limpo, que e pior que nao varrer.
   let restantes = 0;
   const quais = [];
-  for (const f of fs.readdirSync(DIR)) {
-    if (!f.endsWith('.js')) continue;
-    const src = fs.readFileSync(path.join(DIR, f), 'utf8');
+  const alvos = fs.readdirSync(DIR).filter((f) => f.endsWith('.js'))
+    .map((f) => [f, path.join(DIR, f)]);
+  alvos.push(['app-AMB.js', path.join(RAIZ, 'amb-devolucoes', 'app-AMB.js')]);
+  for (const [f, caminho] of alvos) {
+    const src = fs.readFileSync(caminho, 'utf8');
     const semCom = src.split('\n')
       .filter((l) => !l.trim().startsWith('//')).join('\n');
     const n = (semCom.match(/\[AMB\//g) || []).length;

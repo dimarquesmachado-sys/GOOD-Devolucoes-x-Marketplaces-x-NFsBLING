@@ -300,6 +300,14 @@ const NOME_EMPRESA = (FICHA_AMB && FICHA_AMB.nome) || 'AMBTotal';
 // La o checkout mora em `/<chave>-checkout-offline` e o Magalu em
 // `/magalu/ir/<chave>`. Uso `chaveDados` (a AMB e 'amb', nao 'ambtotal'),
 // que e a mesma chave curta que o proxy da Shopee ja conhece.
+// ⚠️ b401 - a etiqueta do log, tambem aqui no app.
+//
+// O teste do b400 varria so os modulos de `lib-AMB` — estes 3 no app
+// ficaram de fora e continuavam dizendo `[AMB/...]` pra toda empresa.
+// Varredura que nao cobre um arquivo da a impressao de que ele esta limpo.
+const TAG_APP = String((CFG_EMPRESA && CFG_EMPRESA.PREFIXO_ENV) || 'AMB_')
+  .replace(/_$/, '');
+
 const CHAVE_CHECKOUT = (FICHA_AMB && FICHA_AMB.chaveDados)
   || (FICHA_AMB && FICHA_AMB.chave) || 'amb';
 
@@ -439,7 +447,7 @@ const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 // derrubar a chamada quando o erro na tabela NAO for "tabela ausente" (antes
 // um erro de permissao, por exemplo, passava batido e a empresa saia
 // "pronta" sem a tabela confirmada).
-const VERSAO = 'AMB Devolucoes b400';
+const VERSAO = 'AMB Devolucoes b401';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -1241,7 +1249,7 @@ router.post('/api/auth/login', (req, res) => {
   // assim o registro da triagem sai sempre igual no banco.
   const token = auth.novaSessao(conta.nome, conta.tipo);
   res.cookie(auth.COOKIE, token, auth.opcoesCookie());
-  console.log(`[AMB/LOGIN] ${conta.nome} (${conta.tipo})`);
+  console.log(`[${TAG_APP}/LOGIN] ${conta.nome} (${conta.tipo})`);
   res.json({ ok: true, usuario: conta.nome, tipo: conta.tipo });
 });
 
@@ -1922,7 +1930,7 @@ router.get('/magalu/status', admin, (req, res) => {
 });
 
 router.get('/magalu/indice/construir', admin, (req, res) => {
-  magalu.construirIndice().catch(e => console.error('[AMB/MAGALU]', e.message));
+  magalu.construirIndice().catch(e => console.error(`[${TAG_APP}/MAGALU]`, e.message));
   res.json({ ok: true, iniciado: true });
 });
 
@@ -1964,7 +1972,7 @@ router.get('/nf/entrada/indice', admin, (req, res) => {
 });
 
 router.get('/nf/entrada/indice/construir', admin, (req, res) => {
-  nfEntrada.construirIndice().catch(e => console.error('[AMB/NF-ENTRADA]', e.message));
+  nfEntrada.construirIndice().catch(e => console.error(`[${TAG_APP}/NF-ENTRADA]`, e.message));
   res.json({ ok: true, iniciado: true });
 });
 
