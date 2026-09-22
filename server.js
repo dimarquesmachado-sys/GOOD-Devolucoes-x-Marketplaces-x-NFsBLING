@@ -481,7 +481,7 @@ app.get('/health', (req, res) => {
       // AMB_SESSION_SECRET so por ser `require`ida, e a sonda pos-RPC do
       // provisionamento derruba a chamada em erro que nao seja "tabela
       // ausente" (antes passava batido).
-      version: '9.50.0 (a seta do card abria o pedido no checkout da AMB — o ultimo P1 do Codex)',
+      version: '9.51.0 (o log diz de qual empresa e — os dois apps escrevem no mesmo lugar)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
