@@ -80,12 +80,15 @@ const limpo = (s, max) => String(s == null ? '' : s)
  */
 function zplDefeito({ sku, defeito, localizacao, quem, quando, nf, id }) {
   const data = quando || new Date().toLocaleDateString('pt-BR');
+  // Codex (P2, PR #327) - a etiqueta cravava "AMBTotal": a peca da Girassol
+  // saia rotulada (e podia ser guardada/roteada) como se fosse da AMB.
+  const nomeEmpresa = limpo((cfgEmpresa && cfgEmpresa.NOME_EMPRESA) || 'AMBTotal', 20);
   return [
     '^XA',
     '^CI28',                                     // UTF-8
     '^PW812',
     '^LL1218',
-    '^FO30,40^A0N,60,60^FDDEFEITO - AMBTotal^FS',
+    `^FO30,40^A0N,60,60^FDDEFEITO - ${nomeEmpresa}^FS`,
     '^FO30,110^GB752,4,4^FS',
     // b125 - numero da peca + codigo de barras tambem na etiqueta que sai
     // pela fila remota (a impressa pelo painel), pra as duas serem iguais
