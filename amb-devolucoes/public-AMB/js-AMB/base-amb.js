@@ -27,7 +27,17 @@
   // ⚠️ NAO uso "o 1o segmento, seja qual for": se alguem abrir /qualquer/
   // coisa, isso viraria base e as chamadas iriam pra lugar nenhum. So aceito
   // o que o backend serve.
-  var PREFIXOS_CONHECIDOS = ['/amb', '/girassol'];
+  //
+  // ⚠️ b397.1 (Codex, P1) - FALTAVA '/good' NA LISTA.
+  //
+  // O bootstrap (server.js, via `empresasAtivasNoDevolucoes`) pode montar
+  // `criarAppEmpresa('good')` em `/good` (mesmo fallback do PREFIXO_ROTA em
+  // app-AMB.js e do caminho do cookie em lib/config-da-empresa.js) — e essa
+  // instancia serve os MESMOS arquivos de `public-AMB/`. Sem '/good' aqui,
+  // BASE cai no `''` da raiz (que hoje e a GOOD "de verdade", fora desta
+  // fabrica) e tanto as chamadas de API quanto o `APP_EMPRESA` abaixo
+  // resolveriam errado pra essa instancia.
+  var PREFIXOS_CONHECIDOS = ['/amb', '/girassol', '/good'];
   var BASE = (function () {
     // Codex (PR #319, P2) - o Express serve /amb E /AMB (roteamento nao
     // diferencia maiusculas por padrao). Sem baixar a caixa aqui, um link
@@ -44,6 +54,18 @@
   // ⚠️ b369: as telas precisam da base pra montar link e navegacao. Sem isto
   // elas continuariam escrevendo `/amb/` na mao — que e o que estamos tirando.
   window.APP_BASE = BASE;
+
+  // ⚠️ b397 (Codex, P1) - A CHAVE CURTA DA EMPRESA, pros links externos.
+  //
+  // O backend ja monta `link_marketplace` pela ficha (b395), mas o PAINEL
+  // RECALCULA a URL no `linkVenda()` — com `/amb-checkout-offline` e
+  // `/magalu/ir/amb` cravados. Entao a seta ↗ da Girassol continuava abrindo
+  // o pedido no checkout DA AMBTOTAL: o conserto do backend nunca chegava na
+  // tela.
+  //
+  // 📌 A chave e a BASE sem a barra ('/amb' -> 'amb'). Vazio na GOOD, que e
+  // a raiz — por isso o `|| 'amb'`, que preserva o comportamento de hoje.
+  window.APP_EMPRESA = String(BASE || '').replace(/^\//, '') || 'amb';
 
   // so mexe no que e chamada de API deste servidor — nao toca em CDN,
   // caminho relativo (js-AMB/...), blob:, data: nem URL absoluta
