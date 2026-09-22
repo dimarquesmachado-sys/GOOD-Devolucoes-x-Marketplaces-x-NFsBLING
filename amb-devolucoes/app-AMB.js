@@ -287,6 +287,14 @@ const { obterEmpresa, envDaEmpresa } = require('../lib/empresas');
 // ⚠️ b356: idem — mesma chave, um lugar so decide qual empresa este app e.
 const FICHA_AMB = obterEmpresa(EMPRESA_DESTE_APP);
 
+// ⚠️ b394 (Codex, P1) - O NOME DA EMPRESA NAS TELAS SAI DA FICHA.
+//
+// As telas de conexao e os avisos de OAuth diziam "AMBTotal" em 12 lugares.
+// Montada a Girassol, o usuario dela leria "Bling da AMBTotal conectado" e
+// "confira que o navegador esteja logado na conta da AMBTotal" — instrucao
+// ERRADA, e justo na tela onde errar grava o token na conta errada.
+const NOME_EMPRESA = (FICHA_AMB && FICHA_AMB.nome) || 'AMBTotal';
+
 // Codex (P2, PR #327) - o manifest-AMB.json ja saia com nome por empresa
 // (rota abaixo), mas o titulo do atalho no iOS/Safari vinha DESTE HTML
 // estatico, cravado "Devolucoes AMB" — quem instalasse pela Girassol via
@@ -423,7 +431,7 @@ const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 // derrubar a chamada quando o erro na tabela NAO for "tabela ausente" (antes
 // um erro de permissao, por exemplo, passava batido e a empresa saia
 // "pronta" sem a tabela confirmada).
-const VERSAO = 'AMB Devolucoes b393';
+const VERSAO = 'AMB Devolucoes b395';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -576,7 +584,7 @@ router.get('/conectar', admin, (req, res) => {
     `<tr><td>${nome}</td><td>${pronto ? '<span class="ok">conectado</span>' : '<span class="erro">falta autorizar</span>'}${detalhe ? ' &middot; ' + detalhe : ''}</td></tr>`;
 
   const corpo = `
-    <h1>AMBTotal &middot; Devolucoes</h1>
+    <h1>${NOME_EMPRESA} &middot; Devolucoes</h1>
     <div class="sub">${VERSAO} &mdash; conexoes do modulo</div>
 
     <div class="card">
@@ -601,9 +609,9 @@ router.get('/conectar', admin, (req, res) => {
     </div>
 
     <div class="card">
-      <a class="btn" href="${BASE}/oauth/iniciar?servico=bling&k=${k}">Conectar o Bling da AMBTotal</a>
-      <a class="btn" href="${BASE}/oauth/iniciar?servico=ml&k=${k}">Conectar o Mercado Livre da AMBTotal</a>
-      <a class="btn" href="${BASE}/oauth/iniciar?servico=magalu&k=${k}">Conectar o Magalu da AMBTotal</a>
+      <a class="btn" href="${BASE}/oauth/iniciar?servico=bling&k=${k}">Conectar o Bling da ${NOME_EMPRESA}</a>
+      <a class="btn" href="${BASE}/oauth/iniciar?servico=ml&k=${k}">Conectar o Mercado Livre da ${NOME_EMPRESA}</a>
+      <a class="btn" href="${BASE}/oauth/iniciar?servico=magalu&k=${k}">Conectar o Magalu da ${NOME_EMPRESA}</a>
       <a class="btn cinza" href="${BASE}/ml/indice?k=${k}">Ver o indice de devolucoes</a>
       <a class="btn cinza" href="${BASE}/nf/indice?k=${k}">Ver o indice de nomes</a>
       <a class="btn cinza" href="${BASE}/config?k=${k}">Ver diagnostico completo</a>
@@ -611,12 +619,12 @@ router.get('/conectar', admin, (req, res) => {
 
     <div class="aviso">
       Clique, autorize na tela do marketplace e pronto — o resto acontece sozinho.
-      Confira antes que o navegador esteja logado na conta da <b>AMBTotal</b>.<br>
+      Confira antes que o navegador esteja logado na conta da <b>${NOME_EMPRESA}</b>.<br>
       &#9888;&#65039; No <b>Magalu</b> vale dobrado: e a conta LOGADA na hora do consentimento
       que fica autorizada — saia da conta da GOOD (ou use janela anonima) antes de clicar.<br><br>
       Endereco de retorno cadastrado nos apps:<br><code>${redirectOAuth()}</code>
     </div>`;
-  res.set('Content-Type', 'text/html; charset=utf-8').send(pagina('Conectar AMBTotal', corpo));
+  res.set('Content-Type', 'text/html; charset=utf-8').send(pagina(`Conectar ${NOME_EMPRESA}`, corpo));
 });
 
 // ── OAuth ────────────────────────────────────────────────────
@@ -689,7 +697,7 @@ router.get('/oauth/callback', async (req, res) => {
       const r = await bling.trocarCodePorToken(String(code));
       const teste = await bling.testeDeVida();
       return res.send(pagina('Bling conectado', `
-        <h1 class="ok">Bling da AMBTotal conectado</h1>
+        <h1 class="ok">Bling da ${NOME_EMPRESA} conectado</h1>
         <div class="card"><table>
           <tr><td>Token gravado no Render</td><td>${r.persistiu ? 'sim' : 'NAO'}</td></tr>
           <tr><td>Escopos</td><td>${(r.dados && r.dados.scope) || '-'}</td></tr>
@@ -703,7 +711,7 @@ router.get('/oauth/callback', async (req, res) => {
       // Com o ML recem-conectado, ja vale montar o indice.
       mlReturns.preAquecer(5000);
       return res.send(pagina('Mercado Livre conectado', `
-        <h1 class="ok">Mercado Livre da AMBTotal conectado</h1>
+        <h1 class="ok">Mercado Livre da ${NOME_EMPRESA} conectado</h1>
         <div class="card"><table>
           <tr><td>Conta</td><td>${teste.conta || '-'}</td></tr>
           <tr><td>user_id descoberto</td><td>${r.user_id || '-'}</td></tr>
@@ -718,12 +726,12 @@ router.get('/oauth/callback', async (req, res) => {
       const r = await magalu.trocarCodePorToken(String(code), redirectOAuth());
       magalu.preAquecer();
       return res.send(pagina('Magalu conectado', `
-        <h1 class="ok">Magalu da AMBTotal conectado</h1>
+        <h1 class="ok">Magalu da ${NOME_EMPRESA} conectado</h1>
         <div class="card"><table>
           <tr><td>Token gravado no Render</td><td>${r.persistiu ? 'sim' : 'NAO'}</td></tr>
           <tr><td>Tenant configurado</td><td>${magalu.temTenant() ? 'sim' : '<b>FALTA AMB_MAGALU_TENANT_ID</b>'}</td></tr>
         </table></div>
-        <div class="aviso">⚠️ Confira que o login foi feito na conta Magalu <b>da AMBTotal</b> —
+        <div class="aviso">⚠️ Confira que o login foi feito na conta Magalu <b>da ${NOME_EMPRESA}</b> —
         e a conta logada que fica autorizada, nao o app.
         ${magalu.temTenant() ? '' : '<br><br>Falta o tenant: abra seller.magaluentregas.com.br logado na AMB, F12 → Network → qualquer chamada ao seller-devolution-bff → header <code>x-tenant-id</code>. Grave em <code>AMB_MAGALU_TENANT_ID</code> no Render.'}</div>`));
     }
@@ -1064,7 +1072,7 @@ router.get('/manifest-AMB.json', (req, res) => {
   // 📌 O `id` fixa isso de vez: e o campo que a PWA usa pra identidade, e
   // sem ele o navegador cai no `start_url` — que ja diferia, mas nem todo
   // navegador respeita.
-  const nomeEmpresa = (FICHA_AMB && FICHA_AMB.nome) || 'AMBTotal';
+  const nomeEmpresa = NOME_EMPRESA;
   res.json(Object.assign({}, MANIFEST_AMB, {
     id: BASE + '/',
     name: nomeEmpresa + ' - Devolucoes',
