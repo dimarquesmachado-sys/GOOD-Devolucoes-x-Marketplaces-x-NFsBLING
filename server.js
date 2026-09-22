@@ -481,7 +481,7 @@ app.get('/health', (req, res) => {
       // AMB_SESSION_SECRET so por ser `require`ida, e a sonda pos-RPC do
       // provisionamento derruba a chamada em erro que nao seja "tabela
       // ausente" (antes passava batido).
-      version: '9.46.1 (URGENTE: a contagem das abas zerava — bug que eu introduzi no b383)',
+      version: '9.46.2 (AMB: apontamento do Codex no PR #329 — a contagem tambem alarga o limite)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),

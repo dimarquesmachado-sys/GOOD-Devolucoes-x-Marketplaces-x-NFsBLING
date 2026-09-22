@@ -57,7 +57,7 @@ const semComent = src.split('\n')
   };
   const limite = (estado, pp) => {
     const base = 300;
-    if (estado !== 'defeito') return base;
+    if (estado !== 'defeito' && estado !== null) return base;
     const n = Object.keys(pp || {}).length;
     if (!n || n <= MAX) return base;
     return Math.min(base + n, 1000);
@@ -73,6 +73,31 @@ const semComent = src.split('\n')
      '  e tem teto de 1000 (nao pede a tabela inteira)');
   ok(limite('recuperado', pp(400)) === 300,
      '  ⚠️ e so a aba `defeito` alarga (as outras nao tem o problema)');
+}
+
+// ── ⚠️ apontamento do Codex (PR #329, P2): a CONTAGEM tambem precisa
+// alargar o limite quando ha muitos resolvidos ──────────────────────
+//
+// A contagem chama `buscar(termo, null)` — sem exclusao (idsForaDoEstado
+// devolve [] pra ela). Sem alargar, essas resolvidas ocupam vaga nos 300
+// mais recentes e uma resolvida MAIS ANTIGA sai da janela — sumindo da
+// contagem outra vez, agora pelo limite em vez da exclusao.
+{
+  const MAX = 150;
+  const limite = (estado, pp) => {
+    const base = 300;
+    if (estado !== 'defeito' && estado !== null) return base;
+    const n = Object.keys(pp || {}).length;
+    if (!n || n <= MAX) return base;
+    return Math.min(base + n, 1000);
+  };
+  const pp = (n) => Object.fromEntries(
+    Array.from({ length: n }, (_, i) => ['id' + i, 'recuperado']));
+
+  ok(limite(null, pp(400)) === 700,
+     '⚠️ a contagem (null) alarga igual ao `defeito`: 400 resolvidas -> 700');
+  ok(limite(null, pp(50)) === 300,
+     '  poucas resolvidas: a contagem segue com o teto normal de 300');
 }
 
 // ── ⚠️ E A CONTAGEM DAS ABAS NÃO PODE USAR A EXCLUSÃO ───────────────

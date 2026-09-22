@@ -395,7 +395,12 @@ module.exports = function registrarCicloDefeitos(router, deps) {
 
     function limiteDaConsulta(estadoAlvo) {
       const base = 300;
-      if (estadoAlvo !== 'defeito') return base;
+      // ⚠️ b384 (Codex, PR #329, P2) - a CONTAGEM (chamada com `null`) tambem
+      // precisa alargar quando ha muitos resolvidos: sem exclusao na consulta
+      // (idsForaDoEstado ja devolve [] pra ela), essas linhas ocupam vaga nos
+      // 300 mais recentes e pecas resolvidas MAIS ANTIGAS saem da contagem —
+      // o mesmo sumico do b383, agora pelo limite em vez da exclusao.
+      if (estadoAlvo !== 'defeito' && estadoAlvo !== null) return base;
       const ids = Object.keys(porPedido || {}).length;
       if (!ids || ids <= MAX_IDS_NA_URL) return base;   // a exclusão entra na consulta
       return Math.min(base + ids, 1000);
