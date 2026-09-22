@@ -57,7 +57,7 @@ const semComent = src.split('\n')
   };
   const limite = (estado, pp) => {
     const base = 300;
-    if (estado !== 'defeito') return base;
+    if (estado !== 'defeito' && estado !== null) return base;
     const n = Object.keys(pp || {}).length;
     if (!n || n <= MAX) return base;
     return Math.min(base + n, 1000);
@@ -73,6 +73,76 @@ const semComent = src.split('\n')
      '  e tem teto de 1000 (nao pede a tabela inteira)');
   ok(limite('recuperado', pp(400)) === 300,
      '  ⚠️ e so a aba `defeito` alarga (as outras nao tem o problema)');
+}
+
+// ── ⚠️ apontamento do Codex (PR #329, P2): a CONTAGEM tambem precisa
+// alargar o limite quando ha muitos resolvidos ──────────────────────
+//
+// A contagem chama `buscar(termo, null)` — sem exclusao (idsForaDoEstado
+// devolve [] pra ela). Sem alargar, essas resolvidas ocupam vaga nos 300
+// mais recentes e uma resolvida MAIS ANTIGA sai da janela — sumindo da
+// contagem outra vez, agora pelo limite em vez da exclusao.
+{
+  const MAX = 150;
+  const limite = (estado, pp) => {
+    const base = 300;
+    if (estado !== 'defeito' && estado !== null) return base;
+    const n = Object.keys(pp || {}).length;
+    if (!n || n <= MAX) return base;
+    return Math.min(base + n, 1000);
+  };
+  const pp = (n) => Object.fromEntries(
+    Array.from({ length: n }, (_, i) => ['id' + i, 'recuperado']));
+
+  ok(limite(null, pp(400)) === 700,
+     '⚠️ a contagem (null) alarga igual ao `defeito`: 400 resolvidas -> 700');
+  ok(limite(null, pp(50)) === 300,
+     '  poucas resolvidas: a contagem segue com o teto normal de 300');
+}
+
+// ── ⚠️ E A CONTAGEM DAS ABAS NÃO PODE USAR A EXCLUSÃO ───────────────
+//
+// Bug que EU introduzi no conserto acima: a exclusão das resolvidas usava a
+// aba ABERTA, e a contagem chama a mesma `buscar()`. Resultado: na aba
+// "defeito", as abas "recuperado" e "descartado" mostravam ZERO — porque a
+// consulta da contagem tinha excluído justamente essas linhas.
+//
+// 📌 Número errado na tela é pior que número ausente.
+{
+  ok(/async function buscar\(termo, estadoDaConsulta\)/.test(semComent),
+     '⚠️ `buscar()` RECEBE o estado (nao le da aba aberta)');
+  ok(/const todas = await buscar\(termoContagem, null\)/.test(semComent),
+     '⚠️ e a CONTAGEM pede sem estado — precisa de TODAS as linhas');
+  ok(/let linhas = await buscar\(q, estadoPedido\)/.test(semComent),
+     '  enquanto a LISTA pede com exclusao (o conserto do sumico)');
+
+  // e os dois caminhos, exercitados
+  const MAX = 150;
+  const idsFora = (estado, pp) => {
+    if (estado !== 'defeito') return [];
+    const ids = Object.keys(pp || {});
+    return ids.length && ids.length <= MAX ? ids : [];
+  };
+  const porPedido = { a: 'recuperado', b: 'descartado', c: 'recuperado' };
+  const banco = [{ id: 'a' }, { id: 'b' }, { id: 'c' }, { id: 'd' }, { id: 'e' }];
+  const situacaoDe = (x) => porPedido[x.id] || 'defeito';
+  const buscar = (estadoDaConsulta) => {
+    const fora = idsFora(estadoDaConsulta, porPedido);
+    return banco.filter((x) => !fora.includes(x.id));
+  };
+  const contar = (estadoDaConsulta) => {
+    const c = { defeito: 0, recuperado: 0, descartado: 0 };
+    for (const x of buscar(estadoDaConsulta)) c[situacaoDe(x)]++;
+    return c;
+  };
+
+  const comEstado = contar('defeito');     // o bug
+  const semEstado = contar(null);          // o certo
+  ok(comEstado.recuperado === 0,
+     '  (reproduz o bug: com o estado, `recuperado` zerava)');
+  ok(semEstado.recuperado === 2 && semEstado.descartado === 1,
+     '⚠️ sem o estado, a contagem ve as 3 resolvidas');
+  ok(semEstado.defeito === 2, '  e os 2 ativos continuam contados');
 }
 
 console.log('');
