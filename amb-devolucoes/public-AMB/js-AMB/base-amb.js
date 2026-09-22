@@ -45,6 +45,18 @@
   // elas continuariam escrevendo `/amb/` na mao — que e o que estamos tirando.
   window.APP_BASE = BASE;
 
+  // ⚠️ b397 (Codex, P1) - A CHAVE CURTA DA EMPRESA, pros links externos.
+  //
+  // O backend ja monta `link_marketplace` pela ficha (b395), mas o PAINEL
+  // RECALCULA a URL no `linkVenda()` — com `/amb-checkout-offline` e
+  // `/magalu/ir/amb` cravados. Entao a seta ↗ da Girassol continuava abrindo
+  // o pedido no checkout DA AMBTOTAL: o conserto do backend nunca chegava na
+  // tela.
+  //
+  // 📌 A chave e a BASE sem a barra ('/amb' -> 'amb'). Vazio na GOOD, que e
+  // a raiz — por isso o `|| 'amb'`, que preserva o comportamento de hoje.
+  window.APP_EMPRESA = String(BASE || '').replace(/^\//, '') || 'amb';
+
   // so mexe no que e chamada de API deste servidor — nao toca em CDN,
   // caminho relativo (js-AMB/...), blob:, data: nem URL absoluta
   function precisaPrefixo(u) {

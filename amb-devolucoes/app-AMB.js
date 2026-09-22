@@ -439,7 +439,7 @@ const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 // derrubar a chamada quando o erro na tabela NAO for "tabela ausente" (antes
 // um erro de permissao, por exemplo, passava batido e a empresa saia
 // "pronta" sem a tabela confirmada).
-const VERSAO = 'AMB Devolucoes b396';
+const VERSAO = 'AMB Devolucoes b397';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();

@@ -402,6 +402,27 @@ process.env.AMB_SUPABASE_KEY = 'chave-de-teste';
     ok(!/\/amb-checkout-offline/.test(semComI),
        '⚠️ e no identificar-AMB tambem nao');
 
+    // ── ⚠️ e o FRONT também, senão o conserto do backend não chega ────
+    //
+    // O b395 fez o backend montar `link_marketplace` pela ficha. Mas o
+    // PAINEL RECALCULA a URL no `linkVenda()`, com `/amb-checkout-offline` e
+    // `/magalu/ir/amb` cravados — então a seta ↗ da Girassol continuava
+    // abrindo o pedido no checkout DA AMBTOTAL.
+    //
+    // 📌 Conserto no backend que a tela ignora não conserta nada. Eram 10
+    // lugares, nos dois painéis.
+    const baseJs = fs.readFileSync(path.join(RAIZ, 'amb-devolucoes',
+      'public-AMB', 'js-AMB', 'base-amb.js'), 'utf8');
+    ok(/window\.APP_EMPRESA = String\(BASE/.test(baseJs),
+       '⚠️ o front expoe a chave curta da empresa');
+
+    for (const painel of ['painel-AMB.html', 'painel2-AMB.html']) {
+      const html = fs.readFileSync(
+        path.join(RAIZ, 'amb-devolucoes', 'public-AMB', painel), 'utf8');
+      ok(!/amb-checkout-offline/.test(html) && !/\/magalu\/ir\/amb['"?]/.test(html),
+         `  ${painel}: nenhum caminho da AMB cravado`);
+    }
+
     console.log('');
     console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
     process.exit(falhas ? 1 : 0);

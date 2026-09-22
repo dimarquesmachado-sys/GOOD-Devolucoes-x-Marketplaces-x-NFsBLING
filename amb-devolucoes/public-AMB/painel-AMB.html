@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>AMBTotal - Painel de Devoluções</title>
   <!-- AMB Devol. b310 - painel portado da GOOD. O adaptador poe /amb nas chamadas -->
-  <script src="js-AMB/base-amb.js?v=b370"></script>
+  <script src="js-AMB/base-amb.js?v=b397"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -1836,14 +1836,14 @@ async function carregarSemRetorno() {
         // v3.78 - link direto pra venda/devolucao no marketplace
         const linkVenda = (e) => {
           if (e.marketplace === 'ml' && e.pedido) return 'https://www.mercadolivre.com.br/vendas/' + encodeURIComponent(e.pedido) + '/detalhe';
-          if (e.marketplace === 'shopee' && e.pedido) return 'https://mover-pedidos-aguardando-x-atendido.onrender.com/amb-checkout-offline/ir-shopee?sn=' + encodeURIComponent(e.pedido); // v3.80 - de-para order_sn->id interno, cai DENTRO do pedido
+          if (e.marketplace === 'shopee' && e.pedido) return 'https://mover-pedidos-aguardando-x-atendido.onrender.com/' + (window.APP_EMPRESA || 'amb') + '-checkout-offline/ir-shopee?sn=' + encodeURIComponent(e.pedido); // v3.80 - de-para order_sn->id interno, cai DENTRO do pedido
           if (e.marketplace === 'magalu') {
             // v4.36 - com o UUID da entrega em maos (deliveries[0].id, descoberto
             // via HAR), montamos o link DIRETO pro portal do seller - sem depender
             // do redirect externo.
             if (e.pedido && e.magalu_delivery_uuid) return 'https://seller.magalu.com/pedidos/' + encodeURIComponent(e.pedido) + '/' + encodeURIComponent(e.magalu_delivery_uuid);
             // v3.92 - fallback: redirect oficial que resolve o uuid no servico Mover Pedidos
-            if (e.pedido) return 'https://mover-pedidos-aguardando-x-atendido.onrender.com/magalu/ir/amb?n=' + encodeURIComponent(e.pedido);
+            if (e.pedido) return 'https://mover-pedidos-aguardando-x-atendido.onrender.com/magalu/ir/' + (window.APP_EMPRESA || 'amb') + '?n=' + encodeURIComponent(e.pedido);
             // fallback: sem numero do pedido, cai no portal de devolucoes por uuid
             if (e.uuid && e.categoria === 'agencia') return 'https://seller.magaluentregas.com.br/gestao-de-devolucoes/detalhes?id=' + encodeURIComponent(e.uuid) + '&type=' + encodeURIComponent(e.tipo || 'CUSTOMER_RETURN') + '&category=orders';
             return 'https://seller.magaluentregas.com.br/gestao-de-devolucoes';
@@ -1993,7 +1993,7 @@ async function carregarSemRetorno() {
             ) : '') +
             // v4.30 - Shopee: link pro pedido (o 🔗 ja resolve o de-para order_sn->id interno)
             (e.marketplace === 'shopee' && e.pedido ? (
-              ' <a href="https://mover-pedidos-aguardando-x-atendido.onrender.com/amb-checkout-offline/ir-shopee?sn=' + encodeURIComponent(e.pedido) + '" target="_blank" rel="noopener" style="background:#e65100;color:#fff;border-radius:8px;padding:5px 10px;font-size:12px;font-weight:700;text-decoration:none;">📦 abrir pedido Shopee</a>'
+              ' <a href="https://mover-pedidos-aguardando-x-atendido.onrender.com/' + (window.APP_EMPRESA || 'amb') + '-checkout-offline/ir-shopee?sn=' + encodeURIComponent(e.pedido) + '" target="_blank" rel="noopener" style="background:#e65100;color:#fff;border-radius:8px;padding:5px 10px;font-size:12px;font-weight:700;text-decoration:none;">📦 abrir pedido Shopee</a>'
             ) : '') +
             // v4.46 - TICKET MANUAL: sempre presente pra Magalu, num bloco proprio
             // (separado do comentario). Se tem ticket salvo -> link + editar/apagar,
@@ -3232,9 +3232,9 @@ async function carregarSemRetorno() {
       if (mkt === 'ml' || mkt === 'mercadolivre') {
         url = 'https://www.mercadolivre.com.br/vendas/' + encodeURIComponent(nOrder) + '/detalhe'; nome = 'Mercado Livre';
       } else if (mkt === 'shopee') {
-        url = 'https://mover-pedidos-aguardando-x-atendido.onrender.com/amb-checkout-offline/ir-shopee?sn=' + encodeURIComponent(nOrder); nome = 'Shopee';
+        url = 'https://mover-pedidos-aguardando-x-atendido.onrender.com/' + (window.APP_EMPRESA || 'amb') + '-checkout-offline/ir-shopee?sn=' + encodeURIComponent(nOrder); nome = 'Shopee';
       } else if (mkt === 'magalu') {
-        url = '/magalu/ir/amb?n=' + encodeURIComponent(String(nOrder).replace(/\D/g, '')); nome = 'Magalu';
+        url = '/magalu/ir/' + (window.APP_EMPRESA || 'amb') + '?n=' + encodeURIComponent(String(nOrder).replace(/\D/g, '')); nome = 'Magalu';
       }
       if (!url) return '';
       return ` <a class="btn" style="background:#561A9E;color:#fff;" href="${url}" target="_blank" rel="noopener" title="Abre o pedido no painel do marketplace">📦 Abrir pedido ${escapeHtml(nome)}</a>`;
@@ -4276,7 +4276,7 @@ async function carregarSemRetorno() {
   }
 })();
 </script>
-<script src="js-AMB/defeitos-ficha.js?v=b369"></script>
+<script src="js-AMB/defeitos-ficha.js?v=b397"></script>
 <script>
   // b126 - AVISO de pedidos esperando. Sem isso o admin so descobre que
   // tem coisa pra autorizar se abrir a fila por acaso.
