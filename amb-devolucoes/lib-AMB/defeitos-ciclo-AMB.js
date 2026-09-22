@@ -393,16 +393,22 @@ module.exports = function registrarCicloDefeitos(router, deps) {
       return ids.length && ids.length <= MAX_IDS_NA_URL ? ids : [];
     }
 
-    function limiteDaConsulta(estadoAlvo) {
+    // ⚠️ b385 - O LIMITE NAO DEPENDE MAIS DA ABA, so do que sera descartado.
+    //
+    // Antes so alargava em `defeito`. Mas a CONTAGEM chama sem estado (pra
+    // ver todas as linhas) e caia no 300 fixo — enquanto a LISTA pedia ate
+    // 1000.
+    //
+    // ⚠️ Com 400 resolvidas e 200 ativas: a lista mostrava os 200, e a aba
+    // dizia "100". A tela se contradizia — e o numero menor parece o certo.
+    //
+    // 📌 Alargar nunca prejudica: so pede mais linhas quando ha resolvidas
+    // pra descartar. Quem NAO descarta (a contagem) precisa do espaco do
+    // mesmo jeito, porque as resolvidas ocupam vaga la tambem.
+    function limiteDaConsulta() {
       const base = 300;
-      // ⚠️ b384 (Codex, PR #329, P2) - a CONTAGEM (chamada com `null`) tambem
-      // precisa alargar quando ha muitos resolvidos: sem exclusao na consulta
-      // (idsForaDoEstado ja devolve [] pra ela), essas linhas ocupam vaga nos
-      // 300 mais recentes e pecas resolvidas MAIS ANTIGAS saem da contagem —
-      // o mesmo sumico do b383, agora pelo limite em vez da exclusao.
-      if (estadoAlvo !== 'defeito' && estadoAlvo !== null) return base;
       const ids = Object.keys(porPedido || {}).length;
-      if (!ids || ids <= MAX_IDS_NA_URL) return base;   // a exclusão entra na consulta
+      if (!ids || ids <= MAX_IDS_NA_URL) return base;
       return Math.min(base + ids, 1000);
     }
 
@@ -431,7 +437,7 @@ module.exports = function registrarCicloDefeitos(router, deps) {
         .order('criado_em', { ascending: false })
         // ⚠️ b383: o limite cresce quando a exclusao nao cabe na URL, e os
         // ids resolvidos saem AQUI — nao depois, ocupando vaga.
-        .limit(limiteDaConsulta(estadoDaConsulta));
+        .limit(limiteDaConsulta());
       const foraDaqui = idsForaDoEstado(estadoDaConsulta);
       if (foraDaqui.length) sel = sel.not('id', 'in', '(' + foraDaqui.join(',') + ')');
       const r = await sel;
