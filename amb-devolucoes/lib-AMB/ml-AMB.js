@@ -30,6 +30,13 @@ const axios = require('axios');
 // modulo multiempresa e pegadinha esperando alguem usar.
 
 function criarMl(cfg) {
+  // ⚠️ b396 - A ETIQUETA DO LOG DIZ QUAL EMPRESA.
+  //
+  // Era `[AMB/...]` fixo. O Render junta o log das duas no MESMO
+  // lugar: com a Girassol montada, um erro dela apareceria como
+  // `[AMB/...]` e mandaria caçar no app errado.
+  const TAG_EMP = String((cfg && cfg.PREFIXO_ENV) || 'AMB_')
+    .replace(/_$/, '');
 const { atualizarTokensNoRender } = require('../../lib/render-tokens');
 const { registrarPreventiva } = require('../../lib/token-preventiva');   // b271
 // b272 (review do Codex) - ESTA DECLARACAO VOLTOU. Meu refactor da b271
@@ -110,10 +117,10 @@ async function renovarToken() {
 async function renovarTokenInterno() {
 
   if (!REFRESH_TOKEN) {
-    console.error('[AMB/ML] Sem refresh token - autorize pelo /amb/conectar');
+    console.error(`[${TAG_EMP}/ML] Sem refresh token - autorize pelo /amb/conectar`);
     return false;
   }
-  console.log('[AMB/ML] Renovando access token...');
+  console.log(`[${TAG_EMP}/ML] Renovando access token...`);
   try {
     const r = await axios.post(
       `${cfg.ml.apiBase}/oauth/token`,
@@ -146,7 +153,7 @@ async function renovarTokenInterno() {
     // guardado. Se o marketplace aceitou mas o Render falhou, a env ainda
     // tem o refresh JA CONSUMIDO: no proximo restart o token estaria morto.
     const persistiu = await atualizarTokensNoRender(gravar);
-    if (!persistiu) console.error('[AMB/ML] renovou no marketplace mas NAO persistiu no Render — o refresh gravado esta consumido');
+    if (!persistiu) console.error(`[${TAG_EMP}/ML] renovou no marketplace mas NAO persistiu no Render — o refresh gravado esta consumido`);
     ultimaPersistencia = !!persistiu;
     // b270 (review do Codex) - QUALQUER renovacao que persistiu conta pro
     // intervalo, nao so a preventiva. Uma renovacao normal (por 401) gravava
@@ -154,10 +161,10 @@ async function renovarTokenInterno() {
     // batimento renovava de novo pouco depois, gastando refresh a toa.
     if (ultimaPersistencia) PREVENTIVA.marcarRenovado();   // b271
 
-    console.log('[AMB/ML] Token renovado');
+    console.log(`[${TAG_EMP}/ML] Token renovado`);
     return true;
   } catch (erro) {
-    console.error('[AMB/ML] ERRO ao renovar:', (erro.response && erro.response.data) || erro.message);
+    console.error(`[${TAG_EMP}/ML] ERRO ao renovar:`, (erro.response && erro.response.data) || erro.message);
     return false;
   }
 }
@@ -195,7 +202,7 @@ async function chamarML(caminho, opcoes = {}) {
     }
 
     if (status === 429) {
-      console.log('[AMB/ML] 429 - aguardando 2s');
+      console.log(`[${TAG_EMP}/ML] 429 - aguardando 2s`);
       await sleep(2000);
       try {
         const r = await fazer();

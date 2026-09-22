@@ -90,6 +90,13 @@ function mlDa(cfg) {
 }
 
 function criarMlReturns(cfg) {
+  // ⚠️ b396 - A ETIQUETA DO LOG DIZ QUAL EMPRESA.
+  //
+  // Era `[AMB/...]` fixo. O Render junta o log das duas no MESMO
+  // lugar: com a Girassol montada, um erro dela apareceria como
+  // `[AMB/...]` e mandaria caçar no app errado.
+  const TAG_EMP = String((cfg && cfg.PREFIXO_ENV) || 'AMB_')
+    .replace(/_$/, '');
   const ml = mlDa(cfg);   // b377
 
 // b17 - detalhes do PEDIDO (apelido do comprador + itens) num
@@ -142,7 +149,7 @@ function dispararDatasEntrega(itens) {
       await new Promise(r => setTimeout(r, 300));
     }
     const ok = [...ENTREGA_REAL.values()].filter(e => e.v).length;
-    console.log('[AMB/ML-RETURNS] datas de entrega: ' + ok + ' reais / ' + ENTREGA_REAL.size + ' consultadas');
+    console.log(`[${TAG_EMP}/ML-RETURNS] datas de entrega: ` + ok + ' reais / ' + ENTREGA_REAL.size + ' consultadas');
   })().catch(() => {}).finally(() => { ENTREGA_RODANDO = false; });
 }
 let ENRIQ_ERRO = null;
@@ -386,7 +393,7 @@ async function construirIndiceInterno(opts = {}) {
 
     // ── 3) Segunda rodada: so os falhados, com calma ───────────
     if (falhados.length > 0) {
-      console.log(`[AMB/ML-RETURNS] 2a rodada: ${falhados.length} falhados - respirando 5s`);
+      console.log(`[${TAG_EMP}/ML-RETURNS] 2a rodada: ${falhados.length} falhados - respirando 5s`);
       await sleep(5000);
       for (const c of falhados) {
         try {
@@ -411,7 +418,7 @@ async function construirIndiceInterno(opts = {}) {
     IDX.duracaoSeg = Math.round((Date.now() - t0) / 1000);
     IDX.erro = erroBusca;
 
-    console.log(`[AMB/ML-RETURNS] indice: ${claims.length} claims, ${comTracking} com rastreio, em ${IDX.duracaoSeg}s`);
+    console.log(`[${TAG_EMP}/ML-RETURNS] indice: ${claims.length} claims, ${comTracking} com rastreio, em ${IDX.duracaoSeg}s`);
 
     // b22 - CONSERTO da 3a reclamacao do Diego: o gatilho antigo
     // usava uma variavel `dados` que NAO EXISTE neste escopo ->
@@ -423,9 +430,9 @@ async function construirIndiceInterno(opts = {}) {
         Object.values(mapa || {}).map(d => d && d.order_id).filter(Boolean)
           .map(String))].slice(0, 120);
       enriquecerLista(paraEnriquecer)
-        .then(() => console.log('[AMB/ML-RETURNS] pedidos enriquecidos: ' + PEDIDOS.size))
+        .then(() => console.log(`[${TAG_EMP}/ML-RETURNS] pedidos enriquecidos: ` + PEDIDOS.size))
         .catch(e => { ENRIQ_ERRO = e.message; });
-    } catch (e) { ENRIQ_ERRO = e.message; console.error('[AMB/ML-RETURNS] gatilho:', e.message); }
+    } catch (e) { ENRIQ_ERRO = e.message; console.error(`[${TAG_EMP}/ML-RETURNS] gatilho:`, e.message); }
     return IDX;
   } finally {
     construindo = false;
@@ -462,7 +469,7 @@ async function acharPorTracking(codigo) {
   if (!IDX.ts) {
     try { await construirIndice(); } catch (e) { /* segue vazio */ }
   } else if ((Date.now() - IDX.ts) > 30 * 60000) {
-    construirIndice().catch(e => console.error('[AMB/ML-RETURNS] atualizacao em background falhou:', e.message));
+    construirIndice().catch(e => console.error(`[${TAG_EMP}/ML-RETURNS] atualizacao em background falhou:`, e.message));
   }
   const achado = IDX.mapa[trk] || null;
   // b139 - quando NAO acha, deixa o porque a mao de quem chamou: sem isso
@@ -579,7 +586,7 @@ function resumoEspreita() {
 // Porte cego da assinatura da GOOD. Regra 4.12.
 function preAquecer(atrasoMs, tentativa = 1) {
   const atraso = atrasoMs != null ? atrasoMs : 3 * 60 * 1000;
-  console.log(`[AMB/ML-RETURNS] pre-aquecimento agendado para daqui a ${Math.round(atraso / 1000)}s`);
+  console.log(`[${TAG_EMP}/ML-RETURNS] pre-aquecimento agendado para daqui a ${Math.round(atraso / 1000)}s`);
   setTimeout(() => tentar(1), atraso).unref();
 }
 
@@ -595,10 +602,10 @@ function tentar(tentativa) {
   }).catch((e) => {
     // b271 - ⚠️ FALHOU, TENTA DE NOVO (a AMB tambem — regra da casa).
     // Um 429 no boot deixava o cache vazio por 25 min.
-    console.error(`[AMB/ML-RETURNS] pre-aquecimento falhou (tentativa ${tentativa}/3):`, e.message);
+    console.error(`[${TAG_EMP}/ML-RETURNS] pre-aquecimento falhou (tentativa ${tentativa}/3):`, e.message);
     if (tentativa >= 3) return;
     const espera = 30000 * Math.pow(2, tentativa - 1);
-    console.log(`[AMB/ML-RETURNS] tento de novo em ${espera / 1000}s`);
+    console.log(`[${TAG_EMP}/ML-RETURNS] tento de novo em ${espera / 1000}s`);
     // ⚠️ (Codex) setTimeout cru nao e cancelado pela drenagem — registra
     // com daquiA pra nao acordar o processo VELHO durante um deploy.
     drenagem.daquiA(() => tentar(tentativa + 1), espera);

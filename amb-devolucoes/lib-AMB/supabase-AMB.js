@@ -39,6 +39,13 @@
 // modulo multiempresa e pegadinha esperando alguem usar.
 
 function criarDb(cfg) {
+  // ⚠️ b396 - A ETIQUETA DO LOG DIZ QUAL EMPRESA.
+  //
+  // Era `[AMB/...]` fixo. O Render junta o log das duas no MESMO
+  // lugar: com a Girassol montada, um erro dela apareceria como
+  // `[AMB/...]` e mandaria caçar no app errado.
+  const TAG_EMP = String((cfg && cfg.PREFIXO_ENV) || 'AMB_')
+    .replace(/_$/, '');
 
 let cliente = null;
 let erroInicial = null;
@@ -47,7 +54,7 @@ function conectar() {
   if (cliente || erroInicial) return cliente;
   if (!cfg.supabase.url || !cfg.supabase.key) {
     erroInicial = 'AMB_SUPABASE_URL ou AMB_SUPABASE_KEY ausente';
-    console.log('[AMB/Supabase] ' + erroInicial);
+    console.log(`[${TAG_EMP}/Supabase] ` + erroInicial);
     return null;
   }
   try {
@@ -55,10 +62,10 @@ function conectar() {
     cliente = createClient(cfg.supabase.url, cfg.supabase.key, {
       auth: { persistSession: false },
     });
-    console.log('[AMB/Supabase] conectado');
+    console.log(`[${TAG_EMP}/Supabase] conectado`);
   } catch (e) {
     erroInicial = e.message;
-    console.error('[AMB/Supabase] falhou:', e.message);
+    console.error(`[${TAG_EMP}/Supabase] falhou:`, e.message);
   }
   return cliente;
 }

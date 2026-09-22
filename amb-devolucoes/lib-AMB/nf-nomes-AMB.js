@@ -76,6 +76,13 @@ function blingDa(cfg) {
 }
 
 function criarNfNomes(cfg) {
+  // ⚠️ b396 - A ETIQUETA DO LOG DIZ QUAL EMPRESA.
+  //
+  // Era `[AMB/...]` fixo. O Render junta o log das duas no MESMO
+  // lugar: com a Girassol montada, um erro dela apareceria como
+  // `[AMB/...]` e mandaria caçar no app errado.
+  const TAG_EMP = String((cfg && cfg.PREFIXO_ENV) || 'AMB_')
+    .replace(/_$/, '');
   // ⚠️ b372: prefere o cliente Bling DESTA empresa
   const bling = blingDa(cfg);   // b377
 
@@ -273,7 +280,7 @@ async function construirIndiceInterno(opts = {}) {
         IDX.mapaCurto = { ...mapaCurto };
         IDX.parcialAte = pg;
         IDX.totalNFs = totalNFs;
-        console.log(`[AMB/NF-NOMES] parcial publicado: ${pg} paginas, ${totalNFs} NFs`);
+        console.log(`[${TAG_EMP}/NF-NOMES] parcial publicado: ${pg} paginas, ${totalNFs} NFs`);
       }
 
       if (parouPorData || lista.length < 100) break;
@@ -387,7 +394,7 @@ async function construirIndiceInterno(opts = {}) {
     IDX.duracaoSeg = Math.round((Date.now() - t0) / 1000);
     IDX.erro = erroBusca;
 
-    console.log(`[AMB/NF-NOMES] indice: ${totalNFs} NFs de ${IDX.nomes} nomes (${dias}d) em ${IDX.duracaoSeg}s`);
+    console.log(`[${TAG_EMP}/NF-NOMES] indice: ${totalNFs} NFs de ${IDX.nomes} nomes (${dias}d) em ${IDX.duracaoSeg}s`);
     return IDX;
   } finally {
     construindo = false;
@@ -505,11 +512,11 @@ async function buscarPorNome(texto, opts = {}) {
       // b268.1 - ⚠️ dai em diante e trabalho de FUNDO: ninguem mais espera,
       // entao um SIGTERM tem que conseguir cancelar a varredura orfa.
       IDX.viroufundo = true;
-      console.log(`[AMB/NF-NOMES] indice ainda montando apos ${TETO_ESPERA_MS}ms — `
+      console.log(`[${TAG_EMP}/NF-NOMES] indice ainda montando apos ${TETO_ESPERA_MS}ms — `
         + 'respondo com o parcial e sigo montando (agora cancelavel)');
     }
   } else if ((Date.now() - IDX.ts) > 30 * 60000) {
-    construirIndice().catch(e => console.error('[AMB/NF-NOMES] atualizacao em background falhou:', e.message));
+    construirIndice().catch(e => console.error(`[${TAG_EMP}/NF-NOMES] atualizacao em background falhou:`, e.message));
   }
 
   const jaVi = new Set();
@@ -609,7 +616,7 @@ function ordenar(lista) {
 // violei no mesmo dia em que a apliquei em outros 4 arquivos.
 function preAquecer(atrasoMs, tentativa = 1) {
   const atraso = atrasoMs != null ? atrasoMs : 4 * 60 * 1000;
-  console.log(`[AMB/NF-NOMES] pre-aquecimento agendado para daqui a ${Math.round(atraso / 1000)}s`);
+  console.log(`[${TAG_EMP}/NF-NOMES] pre-aquecimento agendado para daqui a ${Math.round(atraso / 1000)}s`);
   setTimeout(() => tentar(1), atraso).unref();
 }
 
@@ -623,7 +630,7 @@ function tentar(tentativa) {
   }).catch((e) => {
     // b271 - ⚠️ FALHOU, TENTA DE NOVO (a AMB tambem — regra da casa).
     // Um 429 no boot deixava o cache vazio por 25 min.
-    console.error(`[AMB/NF-NOMES] pre-aquecimento falhou (tentativa ${tentativa}/3):`, e.message);
+    console.error(`[${TAG_EMP}/NF-NOMES] pre-aquecimento falhou (tentativa ${tentativa}/3):`, e.message);
     // ⚠️ b351 - 3 TENTATIVAS EM 3,5 MIN NAO BASTAM.
     //
     // [stated 15/09] o indice da AMB estava com `total_nfs: 0` e
@@ -639,12 +646,12 @@ function tentar(tentativa) {
     // instavel em vez de 3,5. E o `.unref()` garante que isso nao segura o
     // processo.
     if (tentativa >= 8) {
-      console.error('[AMB/NF-NOMES] desisti apos 8 tentativas — o indice fica '
+      console.error(`[${TAG_EMP}/NF-NOMES] desisti apos 8 tentativas — o indice fica `
         + 'VAZIO ate o proximo reinicio. A busca por NOME nao vai achar nada.');
       return;
     }
     const espera = Math.min(30000 * Math.pow(2, tentativa - 1), 10 * 60 * 1000);
-    console.log(`[AMB/NF-NOMES] tento de novo em ${espera / 1000}s`);
+    console.log(`[${TAG_EMP}/NF-NOMES] tento de novo em ${espera / 1000}s`);
     // ⚠️ (Codex) setTimeout cru nao e cancelado pela drenagem — registra
     // com daquiA pra nao acordar o processo VELHO durante um deploy.
     drenagem.daquiA(() => tentar(tentativa + 1), espera);
@@ -731,7 +738,7 @@ function dispararNfPorVenda(pares) {
       await new Promise(rs => setTimeout(rs, 350));
     }
     const ok = [...NF_POR_VENDA.values()].filter(e => e.numero).length;
-    console.log('[AMB/NF-NOMES] NFs pela venda: ' + ok + ' de ' + NF_POR_VENDA.size + ' consultadas');
+    console.log(`[${TAG_EMP}/NF-NOMES] NFs pela venda: ` + ok + ' de ' + NF_POR_VENDA.size + ' consultadas');
   })().catch(() => {}).finally(() => { NFV_RODANDO = false; });
 }
 

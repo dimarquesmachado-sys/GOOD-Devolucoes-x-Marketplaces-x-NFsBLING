@@ -33,6 +33,13 @@ const axios = require('axios');
 // modulo multiempresa e pegadinha esperando alguem usar.
 
 function criarBling(cfg) {
+  // ⚠️ b396 - A ETIQUETA DO LOG DIZ QUAL EMPRESA.
+  //
+  // Era `[AMB/...]` fixo. O Render junta o log das duas no MESMO
+  // lugar: com a Girassol montada, um erro dela apareceria como
+  // `[AMB/...]` e mandaria caçar no app errado.
+  const TAG_EMP = String((cfg && cfg.PREFIXO_ENV) || 'AMB_')
+    .replace(/_$/, '');
 const { atualizarTokensNoRender } = require('../../lib/render-tokens');
 const { registrarPreventiva } = require('../../lib/token-preventiva');   // b271
 // b272 (review do Codex) - ESTA DECLARACAO VOLTOU. Meu refactor da b271
@@ -71,14 +78,15 @@ async function renovarToken() {
 async function renovarTokenInterno() {
 
   if (!cfg.bling.clientId || !cfg.bling.clientSecret) {
-    console.error('[AMB/Bling] AMB_BLING_CLIENT_ID ou AMB_BLING_CLIENT_SECRET ausente');
+    console.error(`[${TAG_EMP}/Bling] ${TAG_EMP}_BLING_CLIENT_ID ou `
+      + `${TAG_EMP}_BLING_CLIENT_SECRET ausente`);
     return false;
   }
   if (!REFRESH_TOKEN) {
-    console.error('[AMB/Bling] Sem refresh token - rode o /amb/bling/setup');
+    console.error(`[${TAG_EMP}/Bling] Sem refresh token - rode o /amb/bling/setup`);
     return false;
   }
-  console.log('[AMB/Bling] Renovando access token...');
+  console.log(`[${TAG_EMP}/Bling] Renovando access token...`);
   try {
     const r = await axios.post(
       `${cfg.bling.apiBase}/oauth/token`,
@@ -99,16 +107,16 @@ async function renovarTokenInterno() {
       { key: cfg.bling.chaveRefresh, value: REFRESH_TOKEN },
       ...(PREVENTIVA.parEnvCarimbo() ? [PREVENTIVA.parEnvCarimbo()] : []),   // b271
     ]));
-    if (!ultimaPersistenciaBling) console.error('[AMB/Bling] renovou mas NAO persistiu no Render — refresh gravado esta consumido');
+    if (!ultimaPersistenciaBling) console.error(`[${TAG_EMP}/Bling] renovou mas NAO persistiu no Render — refresh gravado esta consumido`);
     // b270 (review do Codex) - QUALQUER renovacao que persistiu conta pro
     // intervalo, nao so a preventiva. Uma renovacao normal (por 401) gravava
     // carimbo novo enquanto o contador em memoria seguia no antigo — e o
     // batimento renovava de novo pouco depois, gastando refresh a toa.
     if (ultimaPersistenciaBling) PREVENTIVA.marcarRenovado();   // b271
-    console.log('[AMB/Bling] Token renovado');
+    console.log(`[${TAG_EMP}/Bling] Token renovado`);
     return true;
   } catch (erro) {
-    console.error('[AMB/Bling] ERRO ao renovar:', (erro.response && erro.response.data) || erro.message);
+    console.error(`[${TAG_EMP}/Bling] ERRO ao renovar:`, (erro.response && erro.response.data) || erro.message);
     return false;
   }
 }
@@ -192,7 +200,7 @@ async function chamarBling(caminho, opcoes = {}) {
     }
 
     if (status === 429) {
-      console.log('[AMB/Bling] 429 - aguardando 1.5s');
+      console.log(`[${TAG_EMP}/Bling] 429 - aguardando 1.5s`);
       await sleep(1500);
       try {
         const r = await fazer();
