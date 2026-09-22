@@ -75,6 +75,51 @@ const semComent = src.split('\n')
      '  ⚠️ e so a aba `defeito` alarga (as outras nao tem o problema)');
 }
 
+// ── ⚠️ E A CONTAGEM DAS ABAS NÃO PODE USAR A EXCLUSÃO ───────────────
+//
+// Bug que EU introduzi no conserto acima: a exclusão das resolvidas usava a
+// aba ABERTA, e a contagem chama a mesma `buscar()`. Resultado: na aba
+// "defeito", as abas "recuperado" e "descartado" mostravam ZERO — porque a
+// consulta da contagem tinha excluído justamente essas linhas.
+//
+// 📌 Número errado na tela é pior que número ausente.
+{
+  ok(/async function buscar\(termo, estadoDaConsulta\)/.test(semComent),
+     '⚠️ `buscar()` RECEBE o estado (nao le da aba aberta)');
+  ok(/const todas = await buscar\(termoContagem, null\)/.test(semComent),
+     '⚠️ e a CONTAGEM pede sem estado — precisa de TODAS as linhas');
+  ok(/let linhas = await buscar\(q, estadoPedido\)/.test(semComent),
+     '  enquanto a LISTA pede com exclusao (o conserto do sumico)');
+
+  // e os dois caminhos, exercitados
+  const MAX = 150;
+  const idsFora = (estado, pp) => {
+    if (estado !== 'defeito') return [];
+    const ids = Object.keys(pp || {});
+    return ids.length && ids.length <= MAX ? ids : [];
+  };
+  const porPedido = { a: 'recuperado', b: 'descartado', c: 'recuperado' };
+  const banco = [{ id: 'a' }, { id: 'b' }, { id: 'c' }, { id: 'd' }, { id: 'e' }];
+  const situacaoDe = (x) => porPedido[x.id] || 'defeito';
+  const buscar = (estadoDaConsulta) => {
+    const fora = idsFora(estadoDaConsulta, porPedido);
+    return banco.filter((x) => !fora.includes(x.id));
+  };
+  const contar = (estadoDaConsulta) => {
+    const c = { defeito: 0, recuperado: 0, descartado: 0 };
+    for (const x of buscar(estadoDaConsulta)) c[situacaoDe(x)]++;
+    return c;
+  };
+
+  const comEstado = contar('defeito');     // o bug
+  const semEstado = contar(null);          // o certo
+  ok(comEstado.recuperado === 0,
+     '  (reproduz o bug: com o estado, `recuperado` zerava)');
+  ok(semEstado.recuperado === 2 && semEstado.descartado === 1,
+     '⚠️ sem o estado, a contagem ve as 3 resolvidas');
+  ok(semEstado.defeito === 2, '  e os 2 ativos continuam contados');
+}
+
 console.log('');
 console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
 process.exit(falhas ? 1 : 0);

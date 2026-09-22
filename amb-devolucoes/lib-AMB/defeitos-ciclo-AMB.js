@@ -405,7 +405,19 @@ module.exports = function registrarCicloDefeitos(router, deps) {
     // lido depois, na hora de filtrar.
     const estadoPedido = String(req.query.estado || 'defeito').trim();
 
-    async function buscar(termo) {
+    // ⚠️ b384 - `buscar()` RECEBE o estado, nao le do escopo.
+    //
+    // No b383 eu fiz a exclusao das resolvidas usar `estadoPedido` — a aba
+    // ABERTA. Mas a CONTAGEM tambem chama `buscar()`, e precisa de TODAS as
+    // linhas pra somar cada aba.
+    //
+    // ⚠️ Resultado: na aba "defeito", as abas "recuperado" e "descartado"
+    // mostravam ZERO, porque a consulta da contagem tinha excluido justamente
+    // essas linhas. Numero errado na tela — pior que numero ausente.
+    //
+    // 📌 Agora quem chama diz pra que quer: a LISTA pede com exclusao (é o
+    // conserto do sumiço), a CONTAGEM pede sem (precisa de todas).
+    async function buscar(termo, estadoDaConsulta) {
       let sel = dbc.from(db.tabelas.devolucoes)
         .select('id, produto_sku, produto_titulo, localizacao, defeito_qtd, produto_qtd, problema_descricao, problema_fotos, tipo, status, funcionario, nf_numero, criado_em')
         // b168 - a aba EXCLUIDOS existe: a query INCLUI os excluidos e a
@@ -414,8 +426,8 @@ module.exports = function registrarCicloDefeitos(router, deps) {
         .order('criado_em', { ascending: false })
         // ⚠️ b383: o limite cresce quando a exclusao nao cabe na URL, e os
         // ids resolvidos saem AQUI — nao depois, ocupando vaga.
-        .limit(limiteDaConsulta(estadoPedido));
-      const foraDaqui = idsForaDoEstado(estadoPedido);
+        .limit(limiteDaConsulta(estadoDaConsulta));
+      const foraDaqui = idsForaDoEstado(estadoDaConsulta);
       if (foraDaqui.length) sel = sel.not('id', 'in', '(' + foraDaqui.join(',') + ')');
       const r = await sel;
       if (r.error) throw new Error(r.error.message);
@@ -438,7 +450,7 @@ module.exports = function registrarCicloDefeitos(router, deps) {
     }
 
     try {
-      let linhas = await buscar(q);
+      let linhas = await buscar(q, estadoPedido);
       let viaEan = null;
       let termoContagem = q;   // b209
 
@@ -468,7 +480,7 @@ module.exports = function registrarCicloDefeitos(router, deps) {
           const prod = (rB.ok && rB.data && rB.data.data && rB.data.data[0]) || null;
           if (prod && prod.codigo) {
             viaEan = { ean: q, sku: prod.codigo, nome: prod.nome || null };
-            linhas = await buscar(String(prod.codigo).toLowerCase());
+            linhas = await buscar(String(prod.codigo).toLowerCase(), estadoPedido);
             // b209 (review do Codex) - o caminho do EAN trocava a lista
             // SEM reaplicar a aba escolhida: com as abas finalmente visiveis,
             // a aba "Recuperados" podia mostrar peca com defeito. E a
@@ -483,7 +495,10 @@ module.exports = function registrarCicloDefeitos(router, deps) {
       // contagem de cada aba, pra tela mostrar quantas tem em cada uma
       // b209 - conta pelo termo que REALMENTE achou (o SKU, quando
       // veio de EAN), senao as abas mostram (0) mesmo com itens na tela
-      const todas = await buscar(termoContagem);
+      // ⚠️ b384: SEM estado — a contagem precisa de TODAS as linhas pra somar
+      // cada aba. Com o estado ela excluiria as resolvidas e mostraria ZERO em
+      // "recuperado" e "descartado" enquanto a aba "defeito" estivesse aberta.
+      const todas = await buscar(termoContagem, null);
       const contagem = { defeito: 0, recuperado: 0, descartado: 0 };
       for (const x of todas) contagem[situacaoDe(x)] = (contagem[situacaoDe(x)] || 0) + 1;
 
