@@ -47,10 +47,21 @@ const contrato = JSON.parse(fs.readFileSync(path.join(RAIZ, 'contrato-empresas.j
 
 // ── ⚠️ e o doc avisa que a Girassol NÃO pode ser ligada ─────────────
 {
-  ok(/NÃO pode ser ligada hoje/.test(doc),
-     '⚠️ o doc avisa, no topo, que a Girassol nao pode ser ligada');
-  ok(/singleton/i.test(doc),
-     '  dizendo o motivo real (o app-AMB ainda e singleton)');
+  // ⚠️ b382 - O AVISO MUDOU PORQUE O CODIGO MUDOU.
+  //
+  // O doc ja esteve errado nas DUAS direcoes: primeiro dizia "so faltam
+  // credenciais" quando o app era singleton; depois dizia que era singleton,
+  // quando ja tinha virado fabrica.
+  //
+  // 📌 O que este teste guarda agora nao e uma FRASE, e a propriedade que
+  // importa: o doc manda RODAR o `conferirEmpresa` em vez de confiar na
+  // pagina. Assim ele nao envelhece de novo.
+  ok(/conferirEmpresa\('girassol'\)/.test(doc),
+     '⚠️ o doc manda RODAR o verificador (em vez de listar de memoria)');
+  ok(/nao confie nesta página|não confie nesta página/i.test(doc),
+     '  dizendo explicitamente pra nao confiar na pagina');
+  ok(!/ainda é um \*\*singleton/.test(doc),
+     '  e a afirmacao de que o app e singleton saiu (deixou de ser verdade)');
   ok(!/as Fases 1, 2 e 3 estão prontas\. O que falta/.test(doc),
      '  ⚠️ e a frase "so faltam credenciais" saiu');
 }

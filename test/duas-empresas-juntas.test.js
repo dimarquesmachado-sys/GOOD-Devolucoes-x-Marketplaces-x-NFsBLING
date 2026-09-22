@@ -314,6 +314,19 @@ process.env.AMB_SUPABASE_KEY = 'chave-de-teste';
          ? '⚠️ ha env ou tabela AMB cravada, entao o freio do server.js DEVE existir'
          : '  (sem envs nem tabelas cravadas — o freio ja pode sair)');
 
+    // ── ⚠️ e a PWA de cada empresa é um app DIFERENTE ─────────────────
+    //
+    // `start_url` e `scope` já saíam da BASE, mas o NOME continuava
+    // "AMBTotal - Devoluções" para todas — e é o nome que o celular usa para
+    // decidir se é o mesmo app. Duas empresas com o mesmo nome se instalam
+    // como UM só, e a segunda sobrescreve o atalho da primeira.
+    const appSrcPwa = fs.readFileSync(
+      path.join(RAIZ, 'amb-devolucoes', 'app-AMB.js'), 'utf8');
+    ok(/id: BASE \+ '\/'/.test(appSrcPwa),
+       '⚠️ o manifest declara `id` por empresa (identidade da PWA)');
+    ok(/name: nomeEmpresa \+ ' - Devolucoes'/.test(appSrcPwa),
+       '  e o NOME sai da ficha (nao e fixo na AMB)');
+
     console.log('');
     console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
     process.exit(falhas ? 1 : 0);
