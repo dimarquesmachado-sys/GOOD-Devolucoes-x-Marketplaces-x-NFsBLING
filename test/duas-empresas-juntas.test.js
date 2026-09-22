@@ -375,6 +375,33 @@ process.env.AMB_SUPABASE_KEY = 'chave-de-teste';
     ok(fixos <= 2,
        `  e quase nao sobrou "AMBTotal" cravado (${fixos}, so os fallbacks)`);
 
+    // ── ⚠️ e os links pro OUTRO serviço citam a empresa certa ─────────
+    //
+    // Eram `/amb-checkout-offline/` e `/magalu/ir/amb` cravados. A seta ↗ do
+    // card da Girassol abriria o pedido no checkout DA AMBTOTAL — a tela
+    // mostraria a venda de outra empresa, sem nada avisar.
+    //
+    // 📌 Conferido no repo Mover-Pedidos: lá o checkout mora em
+    // `/<chave>-checkout-offline` (existem `amb-` e `good-`) e a rota do
+    // Magalu já aceita `/magalu/ir/<empresa>`. Não depende de mudança lá.
+    const appLinks = fs.readFileSync(
+      path.join(RAIZ, 'amb-devolucoes', 'app-AMB.js'), 'utf8');
+    const semComL = appLinks.split('\n')
+      .filter((l) => !l.trim().startsWith('//')).join('\n');
+    ok(!/\/amb-checkout-offline/.test(semComL),
+       '⚠️ nenhum `/amb-checkout-offline` cravado no app');
+    ok(!/\/magalu\/ir\/amb['"]/.test(semComL),
+       '  nem `/magalu/ir/amb`');
+    ok(/CHAVE_CHECKOUT/.test(semComL),
+       '  os dois saem da chave da ficha');
+
+    const ident = fs.readFileSync(
+      path.join(RAIZ, 'amb-devolucoes', 'lib-AMB', 'identificar-AMB.js'), 'utf8');
+    const semComI = ident.split('\n')
+      .filter((l) => !l.trim().startsWith('//')).join('\n');
+    ok(!/\/amb-checkout-offline/.test(semComI),
+       '⚠️ e no identificar-AMB tambem nao');
+
     console.log('');
     console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
     process.exit(falhas ? 1 : 0);
