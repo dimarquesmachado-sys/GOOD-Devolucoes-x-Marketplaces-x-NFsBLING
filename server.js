@@ -481,7 +481,7 @@ app.get('/health', (req, res) => {
       // AMB_SESSION_SECRET so por ser `require`ida, e a sonda pos-RPC do
       // provisionamento derruba a chamada em erro que nao seja "tabela
       // ausente" (antes passava batido).
-      version: '9.44.1 (fecha os 3 apontamentos do Codex no PR #326 — P1)',
+      version: '9.45.0 (a PWA de cada empresa e um app diferente; e o checklist da Girassol para de mentir)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),

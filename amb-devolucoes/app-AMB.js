@@ -409,7 +409,7 @@ const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 // derrubar a chamada quando o erro na tabela NAO for "tabela ausente" (antes
 // um erro de permissao, por exemplo, passava batido e a empresa saia
 // "pronta" sem a tabela confirmada).
-const VERSAO = 'AMB Devolucoes b391';
+const VERSAO = 'AMB Devolucoes b382';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -1040,7 +1040,22 @@ router.use('/js-AMB', (req, res, next) => {
 // como saber sob qual prefixo esta instancia foi montada — so o router sabe
 // (`BASE`, acima) — entao serve o arquivo aqui, com os 2 campos por cima.
 router.get('/manifest-AMB.json', (req, res) => {
+  // ⚠️ b382 - O NOME TAMBEM E POR EMPRESA, nao so o escopo.
+  //
+  // `start_url` e `scope` ja saiam da BASE. Mas o NOME continuava "AMBTotal
+  // - Devolucoes" pra todas — e e o nome que o celular usa pra decidir se e
+  // o mesmo app. Duas empresas com o mesmo nome se instalam como UM so, e a
+  // segunda sobrescreve o atalho da primeira.
+  //
+  // 📌 O `id` fixa isso de vez: e o campo que a PWA usa pra identidade, e
+  // sem ele o navegador cai no `start_url` — que ja diferia, mas nem todo
+  // navegador respeita.
+  const nomeEmpresa = (FICHA_AMB && FICHA_AMB.nome) || 'AMBTotal';
   res.json(Object.assign({}, MANIFEST_AMB, {
+    id: BASE + '/',
+    name: nomeEmpresa + ' - Devolucoes',
+    short_name: 'Devolucoes ' + nomeEmpresa.split(' ')[0],
+    description: 'Triagem de devolucoes do galpao da ' + nomeEmpresa,
     start_url: BASE + '/',
     scope: BASE + '/',
   }));

@@ -1,67 +1,61 @@
 # Embarcar a Girassol no Devoluções — checklist
 
-> ## ⚠️ ESTADO REAL EM 16/09/2026 — LEIA ANTES DE USAR ESTE CHECKLIST
+> ## ESTADO REAL EM 22/09/2026 — LEIA ANTES DE USAR ESTE CHECKLIST
 >
-> **A Girassol NÃO pode ser ligada hoje.** Este documento dizia que "as Fases
-> 1, 2 e 3 estão prontas, só faltam credenciais e ficha" — e isso está
-> **errado**, do jeito mais caro possível.
+> **O código está pronto. Falta configuração.**
 >
-> **O que falta de verdade:** `amb-devolucoes/app-AMB.js` ainda é um
-> **singleton da AMB**, não uma fábrica. Montar `/girassol` sobre ele faria a
-> Girassol operar com as **tabelas, credenciais, caches e sessões da AMB** —
-> sem erro visível, com dado errado.
+> Este aviso já esteve errado duas vezes, nas duas direções: primeiro dizia
+> "só faltam credenciais" quando o app ainda era um singleton da AMB; depois
+> dizia que o app era singleton, quando já tinha virado fábrica. Documento
+> que não acompanha o código é pior que documento nenhum — quem o lê age.
 >
-> **Se alguém seguir a parte antiga deste documento**, vai criar variáveis com
-> o prefixo errado, concluir que só faltam credenciais, e montar a Girassol
-> sobre o backend da AMB. É o pior cenário: parece funcionar.
+> ### O que o código já faz
 >
-> ### Antes de qualquer coisa
+> - `app-AMB.js` é uma **fábrica**: `criar(empresa)` devolve uma instância
+>   própria, com suas gavetas, sessões e caches
+> - o bootstrap monta **todas as empresas ativas** do `contrato-empresas.json`
+> - nada está cravado na AMB — nem env, nem tabela, nem cliente, nem rota,
+>   nem no front
+> - a ficha da Girassol **existe** em `lib/empresas.js` (e é testada)
 >
-> | não faça | por quê |
-> |---|---|
-> | descomentar a ficha da Girassol | o bootstrap não usa `ativa_em` ainda |
-> | montar `/girassol` | reusaria o router da AMB |
-> | criar pasta `girassol-devolucoes` | é a cópia que estamos evitando |
+> **Prova disso:** `test/duas-empresas-juntas.test.js` monta duas empresas
+> diferentes no mesmo processo e verifica que sessão, cache, tabela e fila não
+> se cruzam. Se alguém reintroduzir qualquer forma de vazamento, ele acusa e
+> nomeia.
 >
-> **O trabalho que falta está medido** em `test/fabrica-empresa-estado.test.js`
-> — ele mostra quantos pontos de estado ainda são do módulo, e o número cai a
-> cada passo. Enquanto ele acusar estado compartilhado, a Girassol espera.
+> ### O que falta, e é tudo configuração
 >
-> ### Fontes de verdade
+> Rode isto para ver a lista atualizada — não confie nesta página:
 >
-> 1. `contrato-empresas.json` — identidade, prefixos, capacidades, ativação
-> 2. `lib/empresas.js` — a ficha executável, que **deriva** do contrato
+> ```
+> node -e "console.log(require('./lib/empresas').conferirEmpresa('girassol'))"
+> ```
 >
-> Este checklist é **histórico**. Onde ele divergir dos dois acima, **eles
-> mandam**.
-
-> Este documento é para o dia em que for plugar. Nada aqui precisa ser feito
-> agora; o sistema funciona normalmente sem a Girassol.
-
----
-
-## O que já está pronto (não precisa fazer)
-
-| peça | onde | o que faz |
-|---|---|---|
-| registro de empresas | `lib/empresas.js` | a ficha de cada CNPJ, com prefixo e tabelas |
-| ponte registro→config | `lib/config-da-empresa.js` | monta as credenciais lendo o prefixo dela |
-| os 5 módulos | `amb-devolucoes/lib-AMB/` | recebem a empresa (`.criar(cfg)`) |
-| criação das tabelas | `sql/provisionar-empresa.sql` | ✅ **instalada no Supabase em 05/09** |
-
-A função de provisionamento foi testada: criou as 5 tabelas com sufixo
-`_zz9`, repetiu dizendo "ja existia", e a cópia veio com as **mesmas 40
-colunas** da `devolucoes_amb`. O teste foi removido depois.
-
----
-
-## Passo 1 — credenciais no Render
-
-No serviço **good-devolucoes-x-marketplaces-x-nfsbling**, aba
-**Environment**, criar com o prefixo da Girassol.
-
-> O prefixo vai ser decidido junto com a ficha (`GIRASSOL_` é o natural, mas
-> qualquer um serve — só precisa ser o mesmo nos dois lugares).
+> Em 22/09 ele responde: **10 envs** `GIRASSOL_*` (Bling, ML, USERS,
+> SESSION_SECRET, Supabase) e **3 campos fiscais** (`idEmpresaControl`,
+> `depositoGeral`, `naturezasDevolucaoIds`).
+>
+> ### ⚠️ Três armadilhas conhecidas
+>
+> **1. O `GIRASSOL_SESSION_SECRET` derruba o boot, não só avisa.** Em 18/09 o
+> deploy da AMB falhou 3× por falta do equivalente dela, e o serviço ficou 7
+> versões atrasado sem ninguém notar. Crie essa env junto com as outras.
+>
+> **2. A rotina `provisionar_empresa` no Supabase pode ser a ANTIGA**, de 5
+> tabelas — o ciclo de defeitos precisa de 7. Cole
+> `sql/provisionar-empresa.sql` no SQL Editor antes de provisionar. O
+> `lib/provisionar-empresa.js` confere e avisa se faltarem, em vez de dizer
+> "ok" e a tela quebrar depois.
+>
+> **3. A PWA precisa de manifest próprio.** O `manifest-AMB.json` é da AMB de
+> propósito (nome, descrição, escopo). Sem um para a Girassol, as duas se
+> instalam como o MESMO app no celular e uma sobrescreve a outra.
+>
+> ### E a ordem
+>
+> A empresa só monta quando `ativa_em.devolucoes` virar `true` no
+> `contrato-empresas.json`. **Esse é o último passo**, depois das envs, das
+> tabelas e dos ids fiscais — não o primeiro.
 
 ### Bling
 ```
