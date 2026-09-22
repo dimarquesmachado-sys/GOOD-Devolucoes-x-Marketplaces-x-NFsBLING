@@ -358,6 +358,53 @@ module.exports = function registrarCicloDefeitos(router, deps) {
       } catch (e) { /* segue com o termo digitado */ }
     }
 
+    // ⚠️ b383 - O `porPedido` SOBE PRA ANTES DA BUSCA.
+    //
+    // Ele so era montado DEPOIS, e a busca ja tinha acontecido com
+    // `.limit(300)` fixo. Peca ja recuperada/descartada POR PEDIDO entrava
+    // no resultado, OCUPAVA VAGA dentro do limite, e so era removida no
+    // filtro em JS — empurrando defeito ativo ANTIGO pra fora da tela.
+    //
+    // 📌 Conserto que a GOOD ja tinha (lib/defeitos-ciclo.js) e a AMB nao
+    // recebeu. Portado adaptando: la o `porPedido` ja nascia antes; aqui
+    // precisei subir a consulta, que e independente da busca.
+      const porPedido = {};
+      try {
+        const rp = await dbc.from(T_PED)
+          .select('defeito_id, tipo, status')
+          .in('status', ['autorizado', 'concluido']);
+        for (const p of (rp.data || [])) {
+          if (!p.defeito_id) continue;
+          porPedido[p.defeito_id] = p.tipo === 'descarte' ? 'descartado' : 'recuperado';
+        }
+      } catch (e) { /* sem os pedidos, vale so o tipo da linha */ }
+
+    // ⚠️ b383 - as peças resolvidas SAEM NA PRÓPRIA CONSULTA, não no pós-filtro.
+    //
+    // 📌 `MAX_IDS_NA_URL`: acima disso a lista de ids não cabe na URL da
+    // consulta, e a exclusão não entra. Aí o limite CRESCE pelo tanto que
+    // será descartado depois, para que sobrem 300 linhas úteis — com teto,
+    // para não pedir a tabela inteira.
+    const MAX_IDS_NA_URL = 150;
+
+    function idsForaDoEstado(estadoAlvo) {
+      if (estadoAlvo !== 'defeito') return [];
+      const ids = Object.keys(porPedido || {});
+      return ids.length && ids.length <= MAX_IDS_NA_URL ? ids : [];
+    }
+
+    function limiteDaConsulta(estadoAlvo) {
+      const base = 300;
+      if (estadoAlvo !== 'defeito') return base;
+      const ids = Object.keys(porPedido || {}).length;
+      if (!ids || ids <= MAX_IDS_NA_URL) return base;   // a exclusão entra na consulta
+      return Math.min(base + ids, 1000);
+    }
+
+    // ⚠️ o estado é lido AQUI porque `buscar()` precisa dele — antes só era
+    // lido depois, na hora de filtrar.
+    const estadoPedido = String(req.query.estado || 'defeito').trim();
+
     async function buscar(termo) {
       let sel = dbc.from(db.tabelas.devolucoes)
         .select('id, produto_sku, produto_titulo, localizacao, defeito_qtd, produto_qtd, problema_descricao, problema_fotos, tipo, status, funcionario, nf_numero, criado_em')
@@ -365,7 +412,11 @@ module.exports = function registrarCicloDefeitos(router, deps) {
         // situacaoDe manda cada um pra aba certa (as outras abas os escondem)
         .or('tipo.eq.defeito_estoque,status.eq.problema,tipo.eq.defeito_excluido')   // b166 - registro excluido some da lista
         .order('criado_em', { ascending: false })
-        .limit(300);
+        // ⚠️ b383: o limite cresce quando a exclusao nao cabe na URL, e os
+        // ids resolvidos saem AQUI — nao depois, ocupando vaga.
+        .limit(limiteDaConsulta(estadoPedido));
+      const foraDaqui = idsForaDoEstado(estadoPedido);
+      if (foraDaqui.length) sel = sel.not('id', 'in', '(' + foraDaqui.join(',') + ')');
       const r = await sel;
       if (r.error) throw new Error(r.error.message);
       let linhas = r.data || [];
@@ -398,16 +449,6 @@ module.exports = function registrarCicloDefeitos(router, deps) {
       // marcado - entao eu tambem olho os PEDIDOS ja autorizados. Assim
       // o historico antigo aparece na aba certa em vez de sumir.
       // ═══════════════════════════════════════════════════════════════
-      const porPedido = {};
-      try {
-        const rp = await dbc.from(T_PED)
-          .select('defeito_id, tipo, status')
-          .in('status', ['autorizado', 'concluido']);
-        for (const p of (rp.data || [])) {
-          if (!p.defeito_id) continue;
-          porPedido[p.defeito_id] = p.tipo === 'descarte' ? 'descartado' : 'recuperado';
-        }
-      } catch (e) { /* sem os pedidos, vale so o tipo da linha */ }
 
       const situacaoDe = (x) => {
         if (x.tipo === 'defeito_excluido') return 'excluido';   // b166
@@ -415,7 +456,7 @@ module.exports = function registrarCicloDefeitos(router, deps) {
         return porPedido[x.id] || 'defeito';
       };
 
-      const estado = String(req.query.estado || 'defeito').trim();
+      const estado = estadoPedido;   // b383 — lido antes, pra `buscar()` usar
       if (estado !== 'todos') {
         linhas = linhas.filter(x => situacaoDe(x) === estado);
       }
