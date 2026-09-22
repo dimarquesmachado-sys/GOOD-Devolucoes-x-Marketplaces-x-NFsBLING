@@ -357,6 +357,24 @@ process.env.AMB_SUPABASE_KEY = 'chave-de-teste';
     ok(zplGira.includes('DEFEITO - Magazine Girassol') && !zplGira.includes('DEFEITO - AMBTotal'),
        '⚠️ a etiqueta da Girassol sai com o nome dela, nao da AMB');
 
+    // ── ⚠️ e o NOME nas telas sai da ficha, não é "AMBTotal" fixo ─────
+    //
+    // As telas de conexão e os avisos de OAuth diziam "AMBTotal" em 12
+    // lugares. Montada a Girassol, o usuário dela leria "Bling da AMBTotal
+    // conectado" e "confira que o navegador esteja logado na conta da
+    // AMBTotal" — instrução ERRADA, e justo na tela onde errar grava o token
+    // na conta errada.
+    const appNome = fs.readFileSync(
+      path.join(RAIZ, 'amb-devolucoes', 'app-AMB.js'), 'utf8');
+    const semCom = appNome.split('\n')
+      .filter((l) => !l.trim().startsWith('//')).join('\n');
+    ok(/const NOME_EMPRESA = \(FICHA_AMB && FICHA_AMB\.nome\)/.test(semCom),
+       '⚠️ o nome das telas sai da ficha');
+    // ⚠️ sobra 1: o fallback do próprio NOME_EMPRESA e o do manifest
+    const fixos = (semCom.match(/AMBTotal/g) || []).length;
+    ok(fixos <= 2,
+       `  e quase nao sobrou "AMBTotal" cravado (${fixos}, so os fallbacks)`);
+
     console.log('');
     console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
     process.exit(falhas ? 1 : 0);
