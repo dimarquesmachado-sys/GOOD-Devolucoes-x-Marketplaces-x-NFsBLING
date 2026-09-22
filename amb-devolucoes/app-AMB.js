@@ -295,6 +295,14 @@ const FICHA_AMB = obterEmpresa(EMPRESA_DESTE_APP);
 // ERRADA, e justo na tela onde errar grava o token na conta errada.
 const NOME_EMPRESA = (FICHA_AMB && FICHA_AMB.nome) || 'AMBTotal';
 
+// ⚠️ b395 - a chave que o OUTRO servico usa nos caminhos dele.
+//
+// La o checkout mora em `/<chave>-checkout-offline` e o Magalu em
+// `/magalu/ir/<chave>`. Uso `chaveDados` (a AMB e 'amb', nao 'ambtotal'),
+// que e a mesma chave curta que o proxy da Shopee ja conhece.
+const CHAVE_CHECKOUT = (FICHA_AMB && FICHA_AMB.chaveDados)
+  || (FICHA_AMB && FICHA_AMB.chave) || 'amb';
+
 // Codex (P2, PR #327) - o manifest-AMB.json ja saia com nome por empresa
 // (rota abaixo), mas o titulo do atalho no iOS/Safari vinha DESTE HTML
 // estatico, cravado "Devolucoes AMB" — quem instalasse pela Girassol via
@@ -1709,12 +1717,29 @@ router.get('/api/espreita', auth.requerLogin, async (req, res) => {
       // b29 - a rota do Mover-Pedidos faz o de-para order_sn -> id
       // interno e cai DENTRO do pedido (mesma solucao dos checkouts;
       // exige a conta Shopee da AMB logada no navegador de destino)
-      link = 'https://mover-pedidos-aguardando-x-atendido.onrender.com/amb-checkout-offline/ir-shopee?sn=' +
+      // ⚠️ b395 (Codex, P1) - O LINK CITA A EMPRESA, e era 'amb' cravado.
+      //
+      // Montada a Girassol, a seta ↗ do card dela abriria o pedido no
+      // checkout DA AMBTOTAL — a tela mostraria a venda de outra empresa,
+      // sem nada avisar.
+      //
+      // 📌 Conferi no outro repo: o prefixo la segue `/<empresa>-checkout-
+      // offline` (existem `amb-` e `good-`). Entao monto pela ficha.
+      //
+      // ⚠️ A pasta da Girassol ainda NAO existe la: o link dela dara 404 ate
+      // alguem criar. E o certo — 404 e erro visivel; abrir o pedido da AMB
+      // e numero errado, que e pior.
+      link = 'https://mover-pedidos-aguardando-x-atendido.onrender.com/'
+        + CHAVE_CHECKOUT + '-checkout-offline/ir-shopee?sn=' +
         encodeURIComponent(x.pedido);
     } else if (x.marketplace === 'magalu' && x.pedido) {
       // b29 - modulo magalu-oauth (API oficial): resolve o UUID do
       // pacote e abre a tela exata do pedido no portal
-      link = 'https://mover-pedidos-aguardando-x-atendido.onrender.com/magalu/ir/amb?n=' +
+      // ⚠️ b395: idem. E aqui a rota de la JA aceita a empresa no path
+      // (`/magalu/ir/<empresa>`), conferido no repo Mover-Pedidos — nao
+      // depende de mudanca nenhuma fora daqui.
+      link = 'https://mover-pedidos-aguardando-x-atendido.onrender.com/magalu/ir/'
+        + CHAVE_CHECKOUT + '?n=' +
         encodeURIComponent(x.pedido);
     }
     return {

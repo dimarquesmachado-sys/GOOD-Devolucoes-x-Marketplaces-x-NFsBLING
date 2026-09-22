@@ -1153,7 +1153,13 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
     // resolve o order_sn no id interno (senao cai na busca geral)
     resultado.link_marketplace = {
       nome: 'Shopee',
-      url: 'https://mover-pedidos-aguardando-x-atendido.onrender.com/amb-checkout-offline/ir-shopee?sn='
+      // ⚠️ b395 (Codex, P1): era `/amb-checkout-offline/` cravado. A seta ↗
+      // da Girassol abriria o pedido no checkout DA AMBTOTAL.
+      //
+      // 📌 Uso a mesma `CHAVE_DADOS` que o b359 ja trouxe pras consultas —
+      // e a chave curta que o outro servico usa no caminho dele.
+      url: 'https://mover-pedidos-aguardando-x-atendido.onrender.com/'
+        + CHAVE_DADOS + '-checkout-offline/ir-shopee?sn='
         + encodeURIComponent(devShopee.order_sn),
     };
     resultado.encontrado = true;
