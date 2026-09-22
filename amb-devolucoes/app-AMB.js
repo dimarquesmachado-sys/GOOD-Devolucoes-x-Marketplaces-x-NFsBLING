@@ -431,7 +431,7 @@ const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 // derrubar a chamada quando o erro na tabela NAO for "tabela ausente" (antes
 // um erro de permissao, por exemplo, passava batido e a empresa saia
 // "pronta" sem a tabela confirmada).
-const VERSAO = 'AMB Devolucoes b394';
+const VERSAO = 'AMB Devolucoes b395';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -1072,7 +1072,7 @@ router.get('/manifest-AMB.json', (req, res) => {
   // 📌 O `id` fixa isso de vez: e o campo que a PWA usa pra identidade, e
   // sem ele o navegador cai no `start_url` — que ja diferia, mas nem todo
   // navegador respeita.
-  const nomeEmpresa = (FICHA_AMB && FICHA_AMB.nome) || '${NOME_EMPRESA}';
+  const nomeEmpresa = NOME_EMPRESA;
   res.json(Object.assign({}, MANIFEST_AMB, {
     id: BASE + '/',
     name: nomeEmpresa + ' - Devolucoes',
