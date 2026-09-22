@@ -402,6 +402,31 @@ process.env.AMB_SUPABASE_KEY = 'chave-de-teste';
     ok(!/\/amb-checkout-offline/.test(semComI),
        '⚠️ e no identificar-AMB tambem nao');
 
+    // ── ⚠️ e nem os 2 pontos que sobraram (Codex, PR #333) ─────────────
+    //
+    // O apontamento dizia: o card triado (linkPedidoMkt) e as duas telas
+    // de espreita (linkVenda + o botao solto "abrir pedido Shopee") NUNCA
+    // usavam o link que o backend ja monta certo — recalculavam por conta
+    // propria com 'amb' cravado. Isso incluia a tela DUPLICADA
+    // (painel2-AMB.html), que passou batido na 1a rodada.
+    const semCompat = fs.readFileSync(
+      path.join(RAIZ, 'amb-devolucoes', 'lib-AMB', 'compat-AMB.js'), 'utf8')
+      .split('\n').filter((l) => !l.trim().startsWith('//')).join('\n');
+    ok(!/\/amb-checkout-offline/.test(semCompat) && !/\/magalu\/ir\/amb['"]/.test(semCompat),
+       '⚠️ /api/admin/devolucoes (compat-AMB) tambem nao cravou a empresa');
+    ok(/link_marketplace/.test(semCompat),
+       '  e manda link_marketplace pronto, que e o que os paineis consomem');
+
+    for (const nomeHtml of ['painel-AMB.html', 'painel2-AMB.html']) {
+      const semComHtml = fs.readFileSync(
+        path.join(RAIZ, 'amb-devolucoes', 'public-AMB', nomeHtml), 'utf8')
+        .split('\n').filter((l) => !l.trim().startsWith('//')).join('\n');
+      ok(!/\/amb-checkout-offline/.test(semComHtml) && !/\/magalu\/ir\/amb['"]/.test(semComHtml),
+         `⚠️ ${nomeHtml} parou de montar o link na mao com 'amb' cravado`);
+      ok(/\.link_marketplace/.test(semComHtml),
+         `  ${nomeHtml} consome o link_marketplace pronto do backend`);
+    }
+
     console.log('');
     console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
     process.exit(falhas ? 1 : 0);

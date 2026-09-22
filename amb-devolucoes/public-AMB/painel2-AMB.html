@@ -1590,16 +1590,21 @@ async function carregarSemRetorno() {
           return;
         }
         // v3.78 - link direto pra venda/devolucao no marketplace
+        // ⚠️ b395 (Codex, P1) - Shopee e o fallback do Magalu citam a empresa
+        // no link, e aqui era 'amb' CRAVADO: montada a Girassol, a seta ↗
+        // abriria o pedido no checkout DA AMBTOTAL. Agora vem pronto do
+        // backend (`e.link_marketplace`, /api/espreita), que ja monta com a
+        // chave da FICHA.
         const linkVenda = (e) => {
           if (e.marketplace === 'ml' && e.pedido) return 'https://www.mercadolivre.com.br/vendas/' + encodeURIComponent(e.pedido) + '/detalhe';
-          if (e.marketplace === 'shopee' && e.pedido) return 'https://mover-pedidos-aguardando-x-atendido.onrender.com/amb-checkout-offline/ir-shopee?sn=' + encodeURIComponent(e.pedido); // v3.80 - de-para order_sn->id interno, cai DENTRO do pedido
+          if (e.marketplace === 'shopee' && e.pedido) return e.link_marketplace || null; // de-para order_sn->id interno, cai DENTRO do pedido
           if (e.marketplace === 'magalu') {
             // v4.36 - com o UUID da entrega em maos (deliveries[0].id, descoberto
             // via HAR), montamos o link DIRETO pro portal do seller - sem depender
             // do redirect externo.
             if (e.pedido && e.magalu_delivery_uuid) return 'https://seller.magalu.com/pedidos/' + encodeURIComponent(e.pedido) + '/' + encodeURIComponent(e.magalu_delivery_uuid);
             // v3.92 - fallback: redirect oficial que resolve o uuid no servico Mover Pedidos
-            if (e.pedido) return 'https://mover-pedidos-aguardando-x-atendido.onrender.com/magalu/ir/amb?n=' + encodeURIComponent(e.pedido);
+            if (e.pedido) return e.link_marketplace || null;
             // fallback: sem numero do pedido, cai no portal de devolucoes por uuid
             if (e.uuid && e.categoria === 'agencia') return 'https://seller.magaluentregas.com.br/gestao-de-devolucoes/detalhes?id=' + encodeURIComponent(e.uuid) + '&type=' + encodeURIComponent(e.tipo || 'CUSTOMER_RETURN') + '&category=orders';
             return 'https://seller.magaluentregas.com.br/gestao-de-devolucoes';
@@ -1748,8 +1753,10 @@ async function carregarSemRetorno() {
               ' <button id="cpml_' + escapeHtml(String(e.pedido)) + '" onclick="mlCopiarReclamacao(\'' + escapeHtml(String(e.pedido)) + '\', \'' + btoa(unescape(encodeURIComponent(String(e.produto || '')))) + '\', ' + (e.dias_em_transito || 0) + ', ' + (e.valor != null ? Number(e.valor) : 'null') + ')" style="background:#00695c;color:#fff;border:none;border-radius:8px;padding:5px 10px;font-size:12px;font-weight:700;cursor:pointer;">📋 copiar texto</button>'
             ) : '') +
             // v4.30 - Shopee: link pro pedido (o 🔗 ja resolve o de-para order_sn->id interno)
-            (e.marketplace === 'shopee' && e.pedido ? (
-              ' <a href="https://mover-pedidos-aguardando-x-atendido.onrender.com/amb-checkout-offline/ir-shopee?sn=' + encodeURIComponent(e.pedido) + '" target="_blank" rel="noopener" style="background:#e65100;color:#fff;border-radius:8px;padding:5px 10px;font-size:12px;font-weight:700;text-decoration:none;">📦 abrir pedido Shopee</a>'
+            // ⚠️ b395 (Codex, P1) - idem linkVenda: vem de e.link_marketplace
+            // (ja monta com a chave da FICHA), nao mais 'amb' cravado.
+            (e.marketplace === 'shopee' && e.pedido && e.link_marketplace ? (
+              ' <a href="' + e.link_marketplace + '" target="_blank" rel="noopener" style="background:#e65100;color:#fff;border-radius:8px;padding:5px 10px;font-size:12px;font-weight:700;text-decoration:none;">📦 abrir pedido Shopee</a>'
             ) : '') +
             // v4.46 - TICKET MANUAL: sempre presente pra Magalu, num bloco proprio
             // (separado do comentario). Se tem ticket salvo -> link + editar/apagar,
@@ -2656,6 +2663,12 @@ async function carregarSemRetorno() {
     // espreita. Mesma regra do linkVenda: ML abre a venda, Shopee passa
     // pelo de-para do checkout (order_sn -> id interno) e Magalu pela
     // rota OAuth que resolve o uuid do pacote.
+    //
+    // ⚠️ b395 (Codex, P1) - Shopee e Magalu citam a empresa no link, e
+    // aqui era 'amb' CRAVADO: montada a Girassol, este botao abriria o
+    // pedido no checkout DA AMBTOTAL. Agora o link vem pronto do backend
+    // (`d.link_marketplace`, /api/admin/devolucoes), que ja monta com a
+    // chave da FICHA — mesma correcao da espreita e do identificar.
     function linkPedidoMkt(d) {
       const nOrder = d.order_id || d.shipment_id || d.pack_id || '';
       if (!nOrder) return '';
@@ -2664,9 +2677,9 @@ async function carregarSemRetorno() {
       if (mkt === 'ml' || mkt === 'mercadolivre') {
         url = 'https://www.mercadolivre.com.br/vendas/' + encodeURIComponent(nOrder) + '/detalhe'; nome = 'Mercado Livre';
       } else if (mkt === 'shopee') {
-        url = 'https://mover-pedidos-aguardando-x-atendido.onrender.com/amb-checkout-offline/ir-shopee?sn=' + encodeURIComponent(nOrder); nome = 'Shopee';
+        url = d.link_marketplace || null; nome = 'Shopee';
       } else if (mkt === 'magalu') {
-        url = '/magalu/ir/amb?n=' + encodeURIComponent(String(nOrder).replace(/\D/g, '')); nome = 'Magalu';
+        url = d.link_marketplace || null; nome = 'Magalu';
       }
       if (!url) return '';
       return ` <a class="btn" style="background:#561A9E;color:#fff;" href="${url}" target="_blank" rel="noopener" title="Abre o pedido no painel do marketplace">📦 Abrir pedido ${escapeHtml(nome)}</a>`;

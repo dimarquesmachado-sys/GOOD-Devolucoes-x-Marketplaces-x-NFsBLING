@@ -1383,7 +1383,26 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
         db.listarFila({ status: 'divergente' }),
       ]);
       const lista = (r) => (r && r.ok && Array.isArray(r.registros)) ? r.registros : [];
-      const aprovadas = lista(apr), problemas = lista(prob), divergentes = lista(div);
+      // ⚠️ b395 (Codex, P1) - o botao "abrir pedido" do card (linkPedidoMkt,
+      // no painel) montava o link Shopee/Magalu com a empresa CRAVADA
+      // ('amb'). Mesma causa e mesma chave dos outros dois pontos ja
+      // corrigidos (identificar-AMB.js e /api/espreita): uso a chave de
+      // dados da FICHA, nao um literal.
+      const CHAVE_CHECKOUT = cfgEmpresa.EMPRESA || 'amb';
+      const comLinkMkt = (regs) => regs.map((r) => {
+        const nOrder = r.order_id || r.shipment_id || r.pack_id || null;
+        if (!nOrder) return r;
+        let link = null;
+        if (r.marketplace === 'shopee') {
+          link = 'https://mover-pedidos-aguardando-x-atendido.onrender.com/'
+            + CHAVE_CHECKOUT + '-checkout-offline/ir-shopee?sn=' + encodeURIComponent(nOrder);
+        } else if (r.marketplace === 'magalu') {
+          link = 'https://mover-pedidos-aguardando-x-atendido.onrender.com/magalu/ir/'
+            + CHAVE_CHECKOUT + '?n=' + encodeURIComponent(String(nOrder).replace(/\D/g, ''));
+        }
+        return link ? { ...r, link_marketplace: link } : r;
+      });
+      const aprovadas = comLinkMkt(lista(apr)), problemas = comLinkMkt(lista(prob)), divergentes = comLinkMkt(lista(div));
       res.json({
         ok: true, aprovadas, problemas, divergentes,
         total: aprovadas.length + problemas.length + divergentes.length,
