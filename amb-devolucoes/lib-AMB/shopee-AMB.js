@@ -26,6 +26,15 @@
 //
 // ⚠️ E ha 4 timers aqui: como no magalu, quem os liga e o app, UMA vez.
 function criar(cfgEmpresa) {
+  // ⚠️ b400 - a etiqueta do log diz QUAL EMPRESA.
+  //
+  // Era `[AMB/...]` fixo: o Render junta o log das duas no MESMO lugar,
+  // e um erro da Girassol apareceria como AMB.
+  //
+  // 📌 CONST dentro da fábrica, nunca `let` no módulo — foi o erro que
+  // cometi no b396: a 2ª empresa sobrescrevia a etiqueta da 1ª.
+  const _TAG = String((cfgEmpresa && cfgEmpresa.PREFIXO_ENV) || 'AMB_')
+    .replace(/_$/, '');
 const _PREFIXO = String((cfgEmpresa && cfgEmpresa.PREFIXO_ENV) || 'AMB_');
 'use strict';
 
@@ -162,7 +171,7 @@ function dispararChegadas(cards) {
       await new Promise(r => setTimeout(r, 500));
     }
     const comData = [...SHP.chegada.values()].filter(e => e.v).length;
-    console.log(`[AMB/SHOPEE] chegada real: ${comData} com data / ${SHP.chegada.size} consultadas`);
+    console.log(`[${_TAG}/SHOPEE] chegada real: ${comData} com data / ${SHP.chegada.size} consultadas`);
   })().catch(() => {}).finally(() => { SHP.chegadaRodando = false; });
 }
 
@@ -198,7 +207,7 @@ async function consultarPedidoCancelado(codigo) {
         { headers: { 'x-internal-key': KEY_PROXY } });
       const d = await r.json().catch(() => null);
       if (d && d.ok && d.encontrado && d.devolucao) {
-        console.log(`[AMB/SHOPEE] insucesso/cancelado achado via ${qs.split('=')[0]}: ${d.devolucao.order_sn}`);
+        console.log(`[${_TAG}/SHOPEE] insucesso/cancelado achado via ${qs.split('=')[0]}: ${d.devolucao.order_sn}`);
         return d.devolucao;
       }
     } catch (e) { /* tenta a proxima via */ }
@@ -337,7 +346,7 @@ async function resumoEspreita() {
 
 function preAquecer() {
   if (!cfg.ativo) {
-    console.log('[AMB/SHOPEE] desligada - falta SHOPEE_PROXY_URL/KEY no servico');
+    console.log(`[${_TAG}/SHOPEE] desligada - falta SHOPEE_PROXY_URL/KEY no servico`);
     return;
   }
   // 90s depois do boot (a GOOD usa 30s; aqui atrasamos pra nao
@@ -345,8 +354,8 @@ function preAquecer() {
   // renova a cada 8 minutos.
   setTimeout(() => {
     buscarDevolucoesProxy(false)
-      .then(l => console.log(`[AMB/SHOPEE] cache pre-aquecida: ${(l || []).length} devolucoes (loja ${LOJA})`))
-      .catch(e => console.warn('[AMB/SHOPEE] pre-aquecimento falhou:', e.message));
+      .then(l => console.log(`[${_TAG}/SHOPEE] cache pre-aquecida: ${(l || []).length} devolucoes (loja ${LOJA})`))
+      .catch(e => console.warn(`[${_TAG}/SHOPEE] pre-aquecimento falhou:`, e.message));
   }, 90 * 1000).unref();
   setInterval(() => {
     buscarDevolucoesProxy(false).catch(() => { /* proxima rodada tenta */ });

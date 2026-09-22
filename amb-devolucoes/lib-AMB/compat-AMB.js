@@ -34,6 +34,15 @@
 // ⚠️ As envs com prefixo passam a vir da empresa, com `AMB_` de padrao —
 // a AMB le exatamente as mesmas de hoje.
 function criar(cfgEmpresa) {
+  // ⚠️ b400 - a etiqueta do log diz QUAL EMPRESA.
+  //
+  // Era `[AMB/...]` fixo: o Render junta o log das duas no MESMO lugar,
+  // e um erro da Girassol apareceria como AMB.
+  //
+  // 📌 CONST dentro da fábrica, nunca `let` no módulo — foi o erro que
+  // cometi no b396: a 2ª empresa sobrescrevia a etiqueta da 1ª.
+  const _TAG = String((cfgEmpresa && cfgEmpresa.PREFIXO_ENV) || 'AMB_')
+    .replace(/_$/, '');
 const _PREFIXO = String((cfgEmpresa && cfgEmpresa.PREFIXO_ENV) || 'AMB_');
 'use strict';
 
@@ -1034,11 +1043,11 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
         upsert: false,
       });
       if (error) {
-        console.error('[AMB/FOTO] erro:', error.message);
+        console.error(`[${_TAG}/FOTO] erro:`, error.message);
         return res.status(500).json({ ok: false, erro: error.message, bucket });
       }
       const { data: pub } = cliente.storage.from(bucket).getPublicUrl(nome);
-      console.log(`[AMB/FOTO] ${req.usuario}: ${nome} (${(req.file.size / 1024).toFixed(0)}KB)`);
+      console.log(`[${_TAG}/FOTO] ${req.usuario}: ${nome} (${(req.file.size / 1024).toFixed(0)}KB)`);
       res.json({ ok: true, url: pub.publicUrl, filename: nome });
     } catch (e) {
       res.status(500).json({ ok: false, erro: String(e.message || e) });

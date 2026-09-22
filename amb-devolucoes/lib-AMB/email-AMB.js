@@ -37,6 +37,15 @@
 // ⚠️ As envs com prefixo passam a vir da empresa, com `AMB_` de padrao —
 // a AMB le exatamente as mesmas de hoje.
 function criar(cfgEmpresa) {
+  // ⚠️ b400 - a etiqueta do log diz QUAL EMPRESA.
+  //
+  // Era `[AMB/...]` fixo: o Render junta o log das duas no MESMO lugar,
+  // e um erro da Girassol apareceria como AMB.
+  //
+  // 📌 CONST dentro da fábrica, nunca `let` no módulo — foi o erro que
+  // cometi no b396: a 2ª empresa sobrescrevia a etiqueta da 1ª.
+  const _TAG = String((cfgEmpresa && cfgEmpresa.PREFIXO_ENV) || 'AMB_')
+    .replace(/_$/, '');
 const _PREFIXO = String((cfgEmpresa && cfgEmpresa.PREFIXO_ENV) || 'AMB_');
 // nome pro remetente/diagnostico e sigla pro assunto — mesmos valores de
 // hoje pra AMB (fallback), derivados da ficha pra qualquer empresa nova.
@@ -96,7 +105,7 @@ function transporte() {
   if (!c) {
     MAIL.motivoDesligado = 'faltam ' + _PREFIXO + 'EMAIL_HOST / ' + _PREFIXO + 'EMAIL_USER / '
       + _PREFIXO + 'EMAIL_PASS no Render';
-    console.log('[AMB/EMAIL] desligado -', MAIL.motivoDesligado);
+    console.log(`[${_TAG}/EMAIL] desligado -`, MAIL.motivoDesligado);
     return null;
   }
   try {
@@ -107,7 +116,7 @@ function transporte() {
       secure: c.port === 465,
       auth: { user: c.user, pass: c.pass },
     });
-    console.log(`[AMB/EMAIL] ligado - conta da ${NOME_EMPRESA} (${c.user})`);
+    console.log(`[${_TAG}/EMAIL] ligado - conta da ${NOME_EMPRESA} (${c.user})`);
   } catch (e) {
     MAIL.motivoDesligado = e.message;
   }
@@ -142,8 +151,8 @@ function avisarProblema(d) {
     to: destino(),
     subject: `[${SIGLA_EMPRESA}] Problema na devolucao${d.produto_sku ? ' - ' + d.produto_sku : ''}`,
     text: linhas.join('\n'),
-  }).then(() => console.log('[AMB/EMAIL] aviso de problema enviado'))
-    .catch(e => console.warn('[AMB/EMAIL] falhou (triagem seguiu normal):', e.message));
+  }).then(() => console.log(`[${_TAG}/EMAIL] aviso de problema enviado`))
+    .catch(e => console.warn(`[${_TAG}/EMAIL] falhou (triagem seguiu normal):`, e.message));
 }
 
 /** Pro /amb/config: estado real, sem expor senha. */

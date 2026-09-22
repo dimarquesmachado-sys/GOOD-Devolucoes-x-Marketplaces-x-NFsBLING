@@ -39,6 +39,15 @@
 // `ligarRenovacaoPreventiva` continua sendo chamada UMA vez pelo app, e nao
 // dentro da fabrica.
 function criar(cfgEmpresa) {
+  // ⚠️ b400 - a etiqueta do log diz QUAL EMPRESA.
+  //
+  // Era `[AMB/...]` fixo: o Render junta o log das duas no MESMO lugar,
+  // e um erro da Girassol apareceria como AMB.
+  //
+  // 📌 CONST dentro da fábrica, nunca `let` no módulo — foi o erro que
+  // cometi no b396: a 2ª empresa sobrescrevia a etiqueta da 1ª.
+  const _TAG = String((cfgEmpresa && cfgEmpresa.PREFIXO_ENV) || 'AMB_')
+    .replace(/_$/, '');
 const _PREFIXO = String((cfgEmpresa && cfgEmpresa.PREFIXO_ENV) || 'AMB_');
 const _env = (nome) => process.env[_PREFIXO + 'MAGALU_' + nome] || '';
 'use strict';
@@ -229,7 +238,7 @@ async function renovarInterno() {
     { key: _PREFIXO + 'MAGALU_REFRESH_TOKEN', value: TOKENS.refresh },
       ...(PREVENTIVA.parEnvCarimbo() ? [PREVENTIVA.parEnvCarimbo()] : []),   // b271
   ]));
-  if (!RENOV.ultimaPersistencia) console.error('[AMB/Magalu] renovou mas NAO persistiu no Render — refresh gravado esta consumido');
+  if (!RENOV.ultimaPersistencia) console.error(`[${_TAG}/Magalu] renovou mas NAO persistiu no Render — refresh gravado esta consumido`);
   // b270 (review do Codex) - QUALQUER renovacao que persistiu conta pro
   // intervalo, nao so a preventiva. Uma renovacao normal (por 401) gravava
   // carimbo novo enquanto o contador em memoria seguia no antigo — e o
@@ -309,7 +318,7 @@ async function _fase2ReverseCodes(abertos) {
       await new Promise(s => setTimeout(s, 220));
     }
     TIDX.comReversa = comReversa;
-    console.log(`[AMB/MAGALU] tickets fase 2: ${comReversa} reverse_codes indexados`);
+    console.log(`[${_TAG}/MAGALU] tickets fase 2: ${comReversa} reverse_codes indexados`);
   } finally { INDICES.fase2Rodando = false; }
 }
 
@@ -373,7 +382,7 @@ async function construirIndiceDevolucoes(opts = {}) {
   TIDX.total = total;
   TIDX.duracaoSeg = Math.round((Date.now() - t0) / 1000);
   if (total > 0) TIDX.erro = null;
-  console.log(`[AMB/MAGALU] tickets fase 1: ${total} (protocolo+pedido) em ${TIDX.duracaoSeg}s - ${abertos.length} p/ fase 2 (todos, fechados incluidos - b156)`);
+  console.log(`[${_TAG}/MAGALU] tickets fase 1: ${total} (protocolo+pedido) em ${TIDX.duracaoSeg}s - ${abertos.length} p/ fase 2 (todos, fechados incluidos - b156)`);
   if (opts.reverseEmBackground) {
     setImmediate(() => _fase2ReverseCodes(abertos)); // nao segura o bipe
   } else {
@@ -495,7 +504,7 @@ async function construirIndice() {
     IDX.lista = tudo;
     IDX.porPedido = porPedido;
     IDX.duracaoSeg = Math.round((Date.now() - t0) / 1000);
-    console.log(`[AMB/MAGALU] espreita: ${tudo.length} devolucoes em ${IDX.duracaoSeg}s`);
+    console.log(`[${_TAG}/MAGALU] espreita: ${tudo.length} devolucoes em ${IDX.duracaoSeg}s`);
     return IDX;
   } finally { INDICES.construindo = false; }
 }
@@ -538,19 +547,19 @@ function statusIndice() {
 
 function preAquecer() {
   if (!temToken()) {
-    console.log('[AMB/MAGALU] desligada - falta consentimento OAuth');
+    console.log(`[${_TAG}/MAGALU] desligada - falta consentimento OAuth`);
     return;
   }
   // b152 - TICKETS (o indice do bipe) so exigem o token: aquecem mesmo
   // sem o tenant. 3min pos-boot + a cada 30min, como na GOOD.
-  setTimeout(() => { construirIndiceDevolucoes().catch(e => console.error('[AMB/MAGALU] tickets:', e.message)); }, 3 * 60 * 1000).unref();
+  setTimeout(() => { construirIndiceDevolucoes().catch(e => console.error(`[${_TAG}/MAGALU] tickets:`, e.message)); }, 3 * 60 * 1000).unref();
   setInterval(() => { construirIndiceDevolucoes({ reverseEmBackground: true }).catch(() => {}); }, 30 * 60 * 1000).unref();
 
   if (!temTenant()) {
-    console.log('[AMB/MAGALU] espreita desligada - falta ' + _PREFIXO + 'MAGALU_TENANT_ID (tickets seguem)');
+    console.log(`[${_TAG}/MAGALU] espreita desligada - falta ` + _PREFIXO + 'MAGALU_TENANT_ID (tickets seguem)');
     return;
   }
-  setTimeout(() => { construirIndice().catch(e => console.error('[AMB/MAGALU]', e.message)); }, 5 * 60 * 1000).unref();
+  setTimeout(() => { construirIndice().catch(e => console.error(`[${_TAG}/MAGALU]`, e.message)); }, 5 * 60 * 1000).unref();
   setInterval(() => { construirIndice().catch(() => {}); }, 30 * 60 * 1000).unref();
 }
 

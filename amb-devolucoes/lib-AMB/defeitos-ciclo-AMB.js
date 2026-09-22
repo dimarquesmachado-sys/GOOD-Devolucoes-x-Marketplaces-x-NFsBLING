@@ -23,6 +23,9 @@
 module.exports = function registrarCicloDefeitos(router, deps) {
   const { auth, db, bling, cfg } = deps;
 
+  // ⚠️ b400 - a etiqueta do log diz QUAL EMPRESA (o Render junta as duas).
+  const _TAG = String((cfg && cfg.PREFIXO_ENV) || 'AMB_').replace(/_$/, '');
+
   // as tabelas novas ficam aqui, nao no supabase-AMB, pra este modulo ser
   // autocontido (o supabase-AMB nao precisa mudar)
   // ⚠️ b373 - AS TABELAS SAEM DA FICHA.
@@ -166,7 +169,7 @@ module.exports = function registrarCicloDefeitos(router, deps) {
         const ehLimite = r.status === 429
           || /limit|requisi|too many/i.test(JSON.stringify(r.error || r.data || ''));
         if (!ehLimite || tent === 3) break;
-        console.log('[AMB/DEFEITOS] estoque 429 - tentativa ' + tent + ', aguardando ' + (tent * 3) + 's');
+        console.log(`[${_TAG}/DEFEITOS] estoque 429 - tentativa ` + tent + ', aguardando ' + (tent * 3) + 's');
         await new Promise(s => setTimeout(s, tent * 3000));
       }
       if (!r.ok) {
