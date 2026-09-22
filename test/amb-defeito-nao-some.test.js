@@ -55,9 +55,9 @@ const semComent = src.split('\n')
     const ids = Object.keys(pp || {});
     return ids.length && ids.length <= MAX ? ids : [];
   };
-  const limite = (estado, pp) => {
+  const limite = (pp) => {
     const base = 300;
-    if (estado !== 'defeito' && estado !== null) return base;
+    // ⚠️ b385: nao filtra mais por aba — o limite so olha as resolvidas
     const n = Object.keys(pp || {}).length;
     if (!n || n <= MAX) return base;
     return Math.min(base + n, 1000);
@@ -65,14 +65,17 @@ const semComent = src.split('\n')
   const pp = (n) => Object.fromEntries(
     Array.from({ length: n }, (_, i) => ['id' + i, 'recuperado']));
 
-  ok(idsFora('defeito', pp(50)).length === 50 && limite('defeito', pp(50)) === 300,
+  ok(idsFora('defeito', pp(50)).length === 50 && limite(pp(50)) === 300,
      '  50 resolvidas: saem na consulta, limite segue 300');
-  ok(idsFora('defeito', pp(400)).length === 0 && limite('defeito', pp(400)) === 700,
+  ok(idsFora('defeito', pp(400)).length === 0 && limite(pp(400)) === 700,
      '⚠️ 400 resolvidas: nao cabem na URL, entao o limite CRESCE pra 700');
-  ok(limite('defeito', pp(9000)) === 1000,
+  ok(limite(pp(9000)) === 1000,
      '  e tem teto de 1000 (nao pede a tabela inteira)');
-  ok(limite('recuperado', pp(400)) === 300,
-     '  ⚠️ e so a aba `defeito` alarga (as outras nao tem o problema)');
+  // ⚠️ b385: o limite deixou de depender da aba. A CONTAGEM chama sem estado
+  // e caia no 300 fixo, enquanto a LISTA pedia ate 1000 — a tela mostrava
+  // mais itens do que a aba dizia existir.
+  ok(limite(pp(400)) === 700,
+     '⚠️ a CONTAGEM (sem estado) pede o MESMO limite que a lista');
 }
 
 // ── ⚠️ apontamento do Codex (PR #329, P2): a CONTAGEM tambem precisa
@@ -84,9 +87,9 @@ const semComent = src.split('\n')
 // contagem outra vez, agora pelo limite em vez da exclusao.
 {
   const MAX = 150;
-  const limite = (estado, pp) => {
+  const limite = (pp) => {
     const base = 300;
-    if (estado !== 'defeito' && estado !== null) return base;
+    // ⚠️ b385: nao filtra mais por aba
     const n = Object.keys(pp || {}).length;
     if (!n || n <= MAX) return base;
     return Math.min(base + n, 1000);
@@ -94,9 +97,9 @@ const semComent = src.split('\n')
   const pp = (n) => Object.fromEntries(
     Array.from({ length: n }, (_, i) => ['id' + i, 'recuperado']));
 
-  ok(limite(null, pp(400)) === 700,
+  ok(limite(pp(400)) === 700,
      '⚠️ a contagem (null) alarga igual ao `defeito`: 400 resolvidas -> 700');
-  ok(limite(null, pp(50)) === 300,
+  ok(limite(pp(50)) === 300,
      '  poucas resolvidas: a contagem segue com o teto normal de 300');
 }
 
