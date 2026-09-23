@@ -545,14 +545,22 @@ function statusIndice() {
   };
 }
 
-function preAquecer() {
+// ⚠️ b414 - ACEITA O ATRASO, pro app poder encadear.
+//
+// Era fixo aqui dentro. O app agora roda as rotinas UMA DE CADA VEZ e
+// precisa disparar com 0 — antes elas esperavam o proprio minuto e
+// voltavam a se atropelar, com o encadeamento sem efeito nenhum.
+//
+// 📌 `!= null` e nao `||`: com `||`, o 0 cairia no padrao e a mudanca
+// nao valeria nada — parecendo funcionar.
+function preAquecer(atrasoMs) {
   if (!temToken()) {
     console.log(`[${_TAG}/MAGALU] desligada - falta consentimento OAuth`);
     return;
   }
   // b152 - TICKETS (o indice do bipe) so exigem o token: aquecem mesmo
   // sem o tenant. 3min pos-boot + a cada 30min, como na GOOD.
-  setTimeout(() => { construirIndiceDevolucoes().catch(e => console.error(`[${_TAG}/MAGALU] tickets:`, e.message)); }, 3 * 60 * 1000).unref();
+  setTimeout(() => { construirIndiceDevolucoes().catch(e => console.error(`[${_TAG}/MAGALU] tickets:`, e.message)); }, (atrasoMs != null ? atrasoMs : 3 * 60 * 1000)).unref();
   setInterval(() => { construirIndiceDevolucoes({ reverseEmBackground: true }).catch(() => {}); }, 30 * 60 * 1000).unref();
 
   if (!temTenant()) {
