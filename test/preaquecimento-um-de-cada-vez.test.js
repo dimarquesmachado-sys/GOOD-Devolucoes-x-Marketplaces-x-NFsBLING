@@ -1,0 +1,74 @@
+'use strict';
+// ⚠️ O PRÉ-AQUECIMENTO SATUROU A COTA E ATRASOU A EMISSÃO DE NF.
+//
+// O dono emitiu 2 NFs juntas e levou 3 minutos. O log mostrou o serviço
+// recém-reiniciado, com três varreduras competindo: o índice de devoluções do
+// ML (195s), o de nomes (148s, 6.231 NFs) e o de notas de entrada.
+//
+// A intenção antiga ("1 minuto depois do outro pra não empilhar") não se
+// cumpria: o atraso era fixo e a DURAÇÃO não. O ml-returns começava aos 180s
+// e terminava aos 375s — o nf-nomes entrava em cima, aos 240s.
+
+const fs = require('fs');
+const path = require('path');
+
+let falhas = 0;
+const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o); };
+
+const RAIZ = path.join(__dirname, '..');
+const APP = fs.readFileSync(path.join(RAIZ, 'amb-devolucoes', 'app-AMB.js'), 'utf8');
+const semCom = APP.split('\n').filter((l) => !l.trim().startsWith('//')).join('\n');
+
+// ── a fila existe e espera de verdade ───────────────────────────────
+{
+  ok(/async function esperarTerminar/.test(semCom),
+     '⚠️ existe a espera entre as rotinas');
+  ok(/await esperarTerminar\('ml-returns'/.test(semCom)
+     && /await esperarTerminar\('nf-nomes'/.test(semCom),
+     '  e as pesadas esperam a anterior');
+  ok(/PREAQ_TETO_MS/.test(semCom),
+     '⚠️ com TETO — se uma travar, as seguintes rodam');
+}
+
+// ── ⚠️ e os módulos aceitam atraso 0 ────────────────────────────────
+//
+// Sem isso, o encadeamento não vale nada: cada um esperaria o próprio minuto
+// e voltariam a se atropelar — parecendo consertado.
+{
+  for (const m of ['nf-entrada', 'magalu', 'ml-returns', 'nf-nomes']) {
+    const src = fs.readFileSync(
+      path.join(RAIZ, 'amb-devolucoes', 'lib-AMB', `${m}-AMB.js`), 'utf8');
+    ok(/function preAquecer\(atrasoMs/.test(src),
+       `  ${m}: preAquecer aceita o atraso`);
+    ok(/atrasoMs != null/.test(src),
+       `  ⚠️ ${m}: usa \`!= null\` (com \`||\` o 0 viraria o padrao)`);
+  }
+}
+
+// ── os dois caminhos da espera, exercitados ─────────────────────────
+{
+  const TETO = 900;
+  const esperar = async (status) => {
+    const ate = Date.now() + TETO;
+    while (Date.now() < ate) {
+      await new Promise((r) => setTimeout(r, 100));
+      let st; try { st = status(); } catch (e) { return 'sem-status'; }
+      if (!st || !st.construindo) return 'terminou';
+    }
+    return 'teto';
+  };
+
+  return (async () => {
+    let fim = Date.now() + 300;
+    ok(await esperar(() => ({ construindo: Date.now() < fim })) === 'terminou',
+       '  espera ate a rotina terminar');
+    ok(await esperar(() => ({ construindo: true })) === 'teto',
+       '⚠️ e desiste no teto (rotina travada nao prende a fila)');
+    ok(await esperar(() => { throw new Error('sem status'); }) === 'sem-status',
+       '  e segue se o status nem responder');
+
+    console.log('');
+    console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
+    process.exit(falhas ? 1 : 0);
+  })();
+}

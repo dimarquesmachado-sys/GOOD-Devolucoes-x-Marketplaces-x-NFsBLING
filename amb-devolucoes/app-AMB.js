@@ -478,7 +478,7 @@ const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 // derrubar a chamada quando o erro na tabela NAO for "tabela ausente" (antes
 // um erro de permissao, por exemplo, passava batido e a empresa saia
 // "pronta" sem a tabela confirmada).
-const VERSAO = 'AMB Devolucoes b413';
+const VERSAO = 'AMB Devolucoes b414';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -3480,27 +3480,70 @@ router.use((req, res) => {
   });
 });
 
-// ── Pre-aquecimento atrasado ─────────────────────────────────
-// Nao competir com o boot do Devolucoes da GOOD, que monta os
-// indices dele nos primeiros segundos. Ninguem bipa caixa nos
-// 3 minutos seguintes a um deploy.
-if (ml.temToken()) {
-  mlReturns.preAquecer(Number(envAmb('ML_PREAQUECER_MS') || 180000));
-} else {
-  console.log('[amb-devolucoes] ML sem token - indice de devolucoes so apos autorizar');
+// ── Pré-aquecimento: UM DE CADA VEZ ──────────────────────────────────
+//
+// ⚠️ b414 - ELES SE ATROPELAVAM, e o dono sentiu na emissão de NF.
+//
+// A intenção original ("1 minuto depois do outro pra não empilhar") não se
+// cumpria, porque o atraso era fixo e a DURAÇÃO não. Com os números do log
+// de hoje:
+//
+//   180s  ml-returns começa — leva 195s, termina só aos 375s
+//   180s  magalu começa JUNTO com ele
+//   240s  nf-nomes começa — o ml-returns ainda está rodando
+//   360s  nf-entrada começa — idem
+//
+// Três varreduras competindo pela mesma cota. O log encheu de `429`, o
+// porteiro pausou a fila, e a emissão de NF do dono — que tem reserva
+// justamente pra não parar — ficou 3 minutos esperando.
+//
+// 📌 Agora cada um espera o anterior TERMINAR. Isso vale independente da
+// duração, que cresce com o volume: hoje são 6.231 NFs, amanhã mais.
+//
+// ⚠️ Com TETO por rotina: se uma travar, as seguintes rodam mesmo assim.
+// Encadear sem teto trocaria "se atropelam" por "uma trava e nenhuma roda".
+const PREAQ_TETO_MS = Number(envAmb('PREAQUECER_TETO_MS') || 8 * 60 * 1000);
+
+async function esperarTerminar(nome, status) {
+  const ate = Date.now() + PREAQ_TETO_MS;
+  while (Date.now() < ate) {
+    await new Promise((r) => setTimeout(r, 5000));
+    let st = null;
+    try { st = status(); } catch (e) { return; }   // sem status: segue
+    if (!st || !st.construindo) return;
+  }
+  console.log(`[${TAG_APP}/PREAQUECER] ${nome} passou do teto de `
+    + `${Math.round(PREAQ_TETO_MS / 1000)}s — sigo pro proximo`);
 }
 
-// O indice de nomes bate no Bling, nao no ML — sao cotas separadas.
-// Ainda assim vai 1 minuto depois do outro pra nao empilhar tudo.
-if (bling.temToken()) {
-  nfNomes.preAquecer(Number(envAmb('NF_PREAQUECER_MS') || 240000));
-  nfEntrada.preAquecer();
-} else {
-  console.log('[amb-devolucoes] Bling sem token - indices de nomes/entrada so apos autorizar');
-}
+(async () => {
+  // o 1º atraso continua existindo: não competir com o boot da GOOD
+  await new Promise((r) => setTimeout(r, Number(envAmb('PREAQUECER_MS') || 180000)));
 
-shopee.preAquecer();
-magalu.preAquecer();
+  if (ml.temToken()) {
+    mlReturns.preAquecer(0);
+    await esperarTerminar('ml-returns', () => mlReturns.statusIndice());
+  } else {
+    console.log('[amb-devolucoes] ML sem token - indice de devolucoes so apos conectar');
+  }
+
+  if (bling.temToken()) {
+    nfNomes.preAquecer(0);
+    await esperarTerminar('nf-nomes', () => nfNomes.statusIndice());
+    nfEntrada.preAquecer(0);
+    await esperarTerminar('nf-entrada', () => nfEntrada.statusIndice());
+  } else {
+    console.log('[amb-devolucoes] Bling sem token - indices de nomes/entrada so apos conectar');
+  }
+
+  magalu.preAquecer(0);
+  await esperarTerminar('magalu', () => magalu.statusIndice());
+
+  // ⚠️ a Shopee não expõe `construindo` — vai por último, sem espera.
+  shopee.preAquecer();
+
+  console.log(`[${TAG_APP}/PREAQUECER] fila concluida`);
+})().catch((e) => console.error(`[${TAG_APP}/PREAQUECER]`, e && e.message));
 
 
 if (!auth.temUsuarios()) {

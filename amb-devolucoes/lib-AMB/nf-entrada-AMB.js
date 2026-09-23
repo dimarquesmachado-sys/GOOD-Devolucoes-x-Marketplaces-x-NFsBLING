@@ -182,8 +182,16 @@ async function sondarTipos() {
   return out;
 }
 
-function preAquecer() {
-  setTimeout(() => { construirIndice().catch(e => console.error(`[${_TAG}/NF-ENTRADA]`, e.message)); }, 6 * 60 * 1000).unref();
+// ⚠️ b414 - ACEITA O ATRASO, pro app poder encadear.
+//
+// Era fixo aqui dentro. O app agora roda as rotinas UMA DE CADA VEZ e
+// precisa disparar com 0 — antes elas esperavam o proprio minuto e
+// voltavam a se atropelar, com o encadeamento sem efeito nenhum.
+//
+// 📌 `!= null` e nao `||`: com `||`, o 0 cairia no padrao e a mudanca
+// nao valeria nada — parecendo funcionar.
+function preAquecer(atrasoMs) {
+  setTimeout(() => { construirIndice().catch(e => console.error(`[${_TAG}/NF-ENTRADA]`, e.message)); }, (atrasoMs != null ? atrasoMs : 6 * 60 * 1000)).unref();
   setInterval(() => { construirIndice().catch(() => {}); }, 45 * 60 * 1000).unref();
 }
 
