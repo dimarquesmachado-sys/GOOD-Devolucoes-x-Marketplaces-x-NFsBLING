@@ -81,6 +81,25 @@ revisão e deploy — não uma tela.
 testes de paridade e pela revisão. Mas quem promete "plugar amanhã" precisa
 saber que o dia inclui um PR.
 
+### 📌 E há um assistente para a parte manual
+
+```
+node scripts/plugar-empresa.js girassol
+```
+
+Ele separa o que a máquina resolve do que só você tem:
+
+| quem resolve | o quê |
+|---|---|
+| **descobre no Bling** | depósito geral, natureza de devolução |
+| **gera** | o segredo da sessão (32 bytes) |
+| **monta** | o comando do Supabase, com o sufixo certo |
+| ⚠️ **só você** | as 6 credenciais, os usuários, e o `ID_EMPRESA_CONTROL` |
+
+⚠️ **O `ID_EMPRESA_CONTROL` não vem por API** — o `GET /empresas` do Bling dá
+404. Ele aparece na URL quando você abre a empresa no painel. Está marcado
+como `manual` no `lib/empresas.js` para ninguém prometer que descobre.
+
 ### Para ligar a Girassol (configuração do dono, mais 1 PR pontual)
 
 ⚠️ **O PR pontual primeiro:** virar `ativa_em.devolucoes` de `false` para
