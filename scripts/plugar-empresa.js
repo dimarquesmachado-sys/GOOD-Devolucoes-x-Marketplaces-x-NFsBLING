@@ -53,6 +53,19 @@ async function plugar(chave, deps) {
 
   const conf = conferirEmpresa(chave);
   const PREF = e.prefixoEnv;
+  // ⚠️ b410 (Codex, P2) - O FISCAL TEM PREFIXO PROPRIO.
+  //
+  // O registro guarda `prefixoEnv` e `prefixoFiscal` SEPARADOS de proposito —
+  // uma empresa pode ter credencial com um prefixo e fiscal com outro. Hoje
+  // as 3 coincidem, entao imprimir tudo com o de credencial "funciona" e
+  // esconde o erro ate a primeira que divergir.
+  //
+  // 📌 Justamente o tipo de coincidencia que me enganou no b405 (a pasta do
+  // checkout seguia a chave em 2 de 3 empresas).
+  // ⚠️ nullish, nao `||`: empresa com fiscal INTENCIONALMENTE sem prefixo
+  // (`prefixoFiscal: ''`) e credencial com prefixo cairia no `PREF` errado
+  // com `||`, porque '' e falsy. Mesmo criterio de `envDaEmpresa` (lib/empresas.js).
+  const PREF_FISCAL = (e.prefixoFiscal != null) ? e.prefixoFiscal : e.prefixoEnv;
   const suf = e.chaveDados || chave;
 
   // ── o que a máquina descobre ────────────────────────────────────
@@ -66,12 +79,19 @@ async function plugar(chave, deps) {
     }
   }
 
+  // ⚠️ `conferirEmpresa` NAO acusa `naturezaDevolucao` vazia de proposito (ela
+  // pode vir da API por nome) — entao `conf.fiscalSemValor` nunca diz se ja
+  // esta configurada. Quem decide isso e o CLI, e precisa do valor real.
+  const natFn = e.fiscal && e.fiscal.naturezaDevolucao;
+  const naturezaJaConfigurada = !!(typeof natFn === 'function' ? natFn() : natFn);
+
   return {
     ok: true,
-    chave, nome: e.nome, PREF, suf,
+    chave, nome: e.nome, PREF, PREF_FISCAL, suf,
     conf,
     descoberto,
     erroDescoberta,
+    naturezaJaConfigurada,
     segredo: segredoForte(),
     sqlProvisionar: `select provisionar_empresa('_${suf}');`,
   };
@@ -165,7 +185,7 @@ if (require.main === module) {
     if (d && d.ok !== false) {
       // ⚠️ b407 (Codex, P1): os valores vêm ANINHADOS em `d.descoberto`.
       const { deposito: dep, natureza: nat } = lerDescoberta(d);
-      if (dep) console.log(`   ${r.PREF}DEPOSITO_GERAL = ${dep.id}   (${dep.nome || 'achado no Bling'})`);
+      if (dep) console.log(`   ${r.PREF_FISCAL}DEPOSITO_GERAL = ${dep.id}   (${dep.nome || 'achado no Bling'})`);
       // ⚠️ b408 (Codex, P1) - O CAMPO E `ID_NATUREZA_DEVOLUCAO_ENTRADA`.
       //
       // O `descobrirFicha` resolve a natureza de ENTRADA (a de emitir). Eu
@@ -176,7 +196,7 @@ if (require.main === module) {
       // precisava do de buscar. Agora ao contrario. Sao parecidos no nome e
       // diferentes no uso — quem colar no lugar errado emite NF com a
       // natureza de busca.
-      if (nat) console.log(`   ${r.PREF}ID_NATUREZA_DEVOLUCAO_ENTRADA = ${nat.id || nat}   (achado no Bling)`);
+      if (nat) console.log(`   ${r.PREF_FISCAL}ID_NATUREZA_DEVOLUCAO_ENTRADA = ${nat.id || nat}   (achado no Bling)`);
       if (!dep && !nat) console.log('   (o Bling respondeu, mas não deu para deduzir depósito nem natureza)');
       for (const p of lerDescoberta(d).problemas) console.log('   ⚠️ ' + p);
     } else if (r.erroDescoberta) {
@@ -230,26 +250,50 @@ if (require.main === module) {
       naturezasDevolucaoIds: 'NATUREZAS_DEVOLUCAO_IDS',
       nfEntradaTipo: 'NF_ENTRADA_TIPO',
     };
-    const fiscaisFaltando = (r.conf.fiscalSemValor || []);
+    // ⚠️ b410 (Codex, P2) - A NATUREZA DE EMISSAO NAO ESTA NO `fiscalSemValor`.
+    //
+    // O `conferirEmpresa` NAO a exige (de proposito: a rota descobre pelo
+    // nome se faltar). Entao, quando nao ha access token e a descoberta e
+    // pulada, ela nao aparece em lugar NENHUM — nem no bloco descoberto, nem
+    // nesta lista.
+    //
+    // 📌 Acrescento pra quem esta plugando saber que ela existe, marcada como
+    // opcional — o oposto de escondê-la.
+    const fiscaisFaltando = (r.conf.fiscalSemValor || []).slice();
+    const jaDescobriu = !!(r.descoberto && r.descoberto.descoberto
+      && r.descoberto.descoberto.naturezaDevolucao);
+    // ⚠️ (Codex, P2) - NAO acusar quem ja configurou a env, so porque esta
+    // rodada nao tinha access token pra descobrir de novo. `jaDescobriu` so
+    // enxerga o achado DESTA execucao; `naturezaJaConfigurada` olha a ficha.
+    if (!jaDescobriu && !r.naturezaJaConfigurada
+        && !fiscaisFaltando.includes('naturezaDevolucao')) {
+      fiscaisFaltando.push('naturezaDevolucao');
+    }
     if (fiscaisFaltando.length) {
       console.log('   e os campos fiscais, do Bling DESTA empresa:');
       console.log('');
       for (const f of fiscaisFaltando) {
-        console.log('   ' + r.PREF + (NOME_ENV_FISCAL[f] || f));
+        const opcional = (f === 'naturezaDevolucao')
+          ? '   (opcional — sem ela a rota descobre pelo nome)' : '';
+        console.log('   ' + r.PREF_FISCAL + (NOME_ENV_FISCAL[f] || f) + opcional);
       }
       console.log('');
     }
 
-    console.log(`   ⚠️ O ${r.PREF}ID_EMPRESA_CONTROL a API do Bling NÃO devolve —`);
+    console.log(`   ⚠️ O ${r.PREF_FISCAL}ID_EMPRESA_CONTROL a API do Bling NÃO devolve —`);
     console.log('   o `GET /empresas` dá 404. Ele aparece na URL quando você abre');
     console.log('   a empresa no painel.');
     console.log('');
+    // ⚠️ b412 - JUNTA OS DOIS: o texto sem "acima" (do #354) e o
+    // `PREF_FISCAL` (da main). A versao do #354 usava `r.PREF`, que e o de
+    // CREDENCIAL — e o prefixo fiscal e separado. Pegar so um dos dois
+    // desfaria o conserto do outro.
     // ⚠️ b410 (Codex, P2) - NÃO DIGA "acima": quando não há access token (ou a
     // descoberta falha), nada sobre a natureza de EMITIR aparece acima disto
     // — e esta nota citava um valor que nunca foi mostrado. Agora ela nomeia
     // os dois campos direto, sem depender do que rolou lá em cima.
-    console.log(`   📌 O ${r.PREF}ID_NATUREZA_DEVOLUCAO_ENTRADA é a natureza de EMITIR,`);
-    console.log(`   diferente do ${r.PREF}NATUREZAS_DEVOLUCAO_IDS, que é a de BUSCAR.`);
+    console.log(`   📌 O ${r.PREF_FISCAL}ID_NATUREZA_DEVOLUCAO_ENTRADA é a natureza de EMITIR,`);
+    console.log(`   diferente do ${r.PREF_FISCAL}NATUREZAS_DEVOLUCAO_IDS, que é a de BUSCAR.`);
     console.log('   Nomes parecidos, usos diferentes: trocar os dois faz a NF sair');
     console.log('   com a natureza errada.');
     console.log('');
