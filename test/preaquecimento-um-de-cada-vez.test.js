@@ -90,8 +90,18 @@ const semCom = APP.split('\n').filter((l) => !l.trim().startsWith('//')).join('\
 
 // ── ⚠️ o OAuth no meio da espera não pode disparar duas vezes ───────
 {
-  ok(/jaPreAquecidoPeloOAuth/.test(semCom),
-     '⚠️ a fila sabe se o OAuth ja disparou o ml-returns');
+  // ⚠️ b417: os DOIS serviços com OAuth, não só o ML.
+  //
+  // Tratei o ml-returns no b415 e deixei o magalu de fora — mesmo bug, mesmo
+  // arquivo, 20 linhas abaixo. Consertar um de dois é o padrão que já me
+  // pegou hoje (a pasta do checkout, o prefixo fiscal): eu olho o caso que o
+  // apontamento cita e não pergunto quem mais faz igual.
+  for (const svc of ['ml', 'magalu']) {
+    ok(new RegExp(`jaPreAquecidoPeloOAuth\\.${svc} = true`).test(semCom),
+       `⚠️ o OAuth do ${svc} marca que ja disparou`);
+    ok(new RegExp(`jaPreAquecidoPeloOAuth\\.${svc}\\)`).test(semCom),
+       `  e a fila consulta antes de disparar o ${svc}`);
+  }
 
   // e a declaração vem ANTES de quem usa — `const` não sobe (TDZ)
   const linhas = APP.split('\n');
