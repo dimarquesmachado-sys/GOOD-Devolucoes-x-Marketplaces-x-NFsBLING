@@ -55,8 +55,9 @@ Além disso:
 
 A pergunta "amanhã eu ligo outra empresa?" tem duas respostas diferentes.
 
-**A Girassol, sim** — a ficha dela já está escrita e testada. Falta o que
-está abaixo.
+**A Girassol, quase** — a ficha dela já está escrita e testada. Falta o que
+está abaixo, incluindo 1 PR pontual (virar uma flag no contrato — não
+escrever uma ficha nova).
 
 **Qualquer outro CNPJ, não.** A lista de empresas é **código**, não cadastro:
 `contrato-empresas.json` mais a ficha em `lib/empresas.js`, com chave, chave
@@ -67,10 +68,19 @@ revisão e deploy — não uma tela.
 testes de paridade e pela revisão. Mas quem promete "plugar amanhã" precisa
 saber que o dia inclui um PR.
 
-### Para ligar a Girassol (tudo configuração do dono)
+### Para ligar a Girassol (configuração do dono, mais 1 PR pontual)
 
-**8 envs** `GIRASSOL_*`: as seis de Bling e ML, `GIRASSOL_USERS` e
-`GIRASSOL_SESSION_SECRET`.
+⚠️ **O PR pontual primeiro:** virar `ativa_em.devolucoes` de `false` para
+`true` na ficha da Girassol em `contrato-empresas.json`. Sem isso
+`empresasAtivasNoDevolucoes()` não devolve a Girassol e `/girassol` não monta
+— os itens abaixo podem estar todos prontos e a empresa continua fora do ar
+até esse PR entrar e implantar.
+
+**9 envs** `GIRASSOL_*`: as seis de Bling e ML, `GIRASSOL_USERS`,
+`GIRASSOL_SESSION_SECRET` e `GIRASSOL_ADMIN_USER`. ⚠️ Sem o `ADMIN_USER`,
+todo mundo listado em `GIRASSOL_USERS` vira `estoquista` — e ações que
+exigem admin (lançar estoque, gravar a NF de devolução, concluir triagem)
+ficam sem ninguém que possa fazer.
 
 ⚠️ **O Supabase NÃO precisa de par próprio.** O `conferirEmpresa` aceita o
 `SUPABASE_URL`/`SUPABASE_KEY` globais — e é assim que a AMB roda hoje. A
@@ -78,14 +88,18 @@ lista que ele imprime mostra `GIRASSOL_SUPABASE_URL (ou SUPABASE_URL)`: o
 "ou" importa. Criar um par próprio à toa é trabalho e mais um segredo para
 girar.
 
-**3 campos fiscais**, que vêm do Bling dela: `idEmpresaControl`,
-`depositoGeral`, `naturezasDevolucaoIds`. Sem padrão inventado, de propósito —
-NF com número errado é pior que NF ausente.
+**3 campos fiscais.** `depositoGeral` e `naturezasDevolucaoIds` vêm do Bling
+dela (via `descobrirFicha`). ⚠️ `idEmpresaControl` **não vem por API** —
+`GET /empresas` dá 404 nesta conta — é **manual**: defina
+`GIRASSOL_ID_EMPRESA_CONTROL` com o valor que a própria Girassol informa. Sem
+padrão inventado, de propósito — NF com número errado é pior que NF ausente.
 
 **As 7 tabelas** no Supabase. ⚠️ A rotina `provisionar_empresa` instalada lá
 pode ser a **antiga, de 5 tabelas**: cole `sql/provisionar-empresa.sql` no SQL
-Editor antes. O `lib/provisionar-empresa.js` confere e avisa se faltarem, em
-vez de dizer "ok" e a tela de defeitos quebrar depois.
+Editor antes — isso só cria/atualiza a FUNÇÃO, não roda nada sozinho. Depois
+**execute a função**: `select * from public.provisionar_empresa('_girassol');`
+no mesmo SQL Editor. O `lib/provisionar-empresa.js` confere e avisa se
+faltarem, em vez de dizer "ok" e a tela de defeitos quebrar depois.
 
 ⚠️ **Manifest: nada a fazer.** Uma versão anterior deste documento pedia um
 manifest próprio — está obsoleto. A rota `/manifest-AMB.json` já deriva `id`,
