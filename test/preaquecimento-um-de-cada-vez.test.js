@@ -56,8 +56,23 @@ const semCom = APP.split('\n').filter((l) => !l.trim().startsWith('//')).join('\
   for (const m of ['nf-nomes', 'ml-returns']) {
     const src = fs.readFileSync(
       path.join(RAIZ, 'amb-devolucoes', 'lib-AMB', `${m}-AMB.js`), 'utf8');
-    ok(/reagendado = true/.test(src),
-       `⚠️ ${m}: marca que VAI tentar de novo`);
+    // ⚠️ b416: NAO basta o texto existir — tem que estar na RETENTATIVA.
+    //
+    // No b415 marquei no `preAquecer` (o disparo inicial) e o teste passou,
+    // porque so procurava o texto no arquivo. A retentativa usa
+    // `drenagem.daquiA`, e a fresta continuou aberta.
+    // mede por ORDEM, não por distância: o comentário que explica o erro é
+    // longo, e uma janela fixa de caracteres não alcançaria.
+    // ⚠️ tira os comentários ANTES de medir: o comentário que explica este
+    // próprio erro menciona `drenagem.daquiA`, e a primeira ocorrência caía
+    // no texto, não no código. Medir em cima de comentário mede ficção.
+    const semCom2 = src.split('\n')
+      .filter((l) => !l.trim().startsWith('//')).join('\n');
+    const iRetry = semCom2.indexOf('drenagem.daquiA');
+    const iMarca = semCom2.lastIndexOf('reagendado = true', iRetry);
+    const iTentar = semCom2.indexOf('function tentar');
+    ok(iRetry > 0 && iMarca > iTentar && iMarca < iRetry,
+       `⚠️ ${m}: marca DENTRO de tentar(), antes da retentativa`);
     ok(/ocupado: construindo \|\| reagendado/.test(src),
        `  ${m}: e o status expoe os dois juntos`);
   }
