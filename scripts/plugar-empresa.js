@@ -62,7 +62,10 @@ async function plugar(chave, deps) {
   //
   // 📌 Justamente o tipo de coincidencia que me enganou no b405 (a pasta do
   // checkout seguia a chave em 2 de 3 empresas).
-  const PREF_FISCAL = e.prefixoFiscal || e.prefixoEnv;
+  // ⚠️ nullish, nao `||`: empresa com fiscal INTENCIONALMENTE sem prefixo
+  // (`prefixoFiscal: ''`) e credencial com prefixo cairia no `PREF` errado
+  // com `||`, porque '' e falsy. Mesmo criterio de `envDaEmpresa` (lib/empresas.js).
+  const PREF_FISCAL = (e.prefixoFiscal != null) ? e.prefixoFiscal : e.prefixoEnv;
   const suf = e.chaveDados || chave;
 
   // ── o que a máquina descobre ────────────────────────────────────
@@ -76,12 +79,19 @@ async function plugar(chave, deps) {
     }
   }
 
+  // ⚠️ `conferirEmpresa` NAO acusa `naturezaDevolucao` vazia de proposito (ela
+  // pode vir da API por nome) — entao `conf.fiscalSemValor` nunca diz se ja
+  // esta configurada. Quem decide isso e o CLI, e precisa do valor real.
+  const natFn = e.fiscal && e.fiscal.naturezaDevolucao;
+  const naturezaJaConfigurada = !!(typeof natFn === 'function' ? natFn() : natFn);
+
   return {
     ok: true,
     chave, nome: e.nome, PREF, PREF_FISCAL, suf,
     conf,
     descoberto,
     erroDescoberta,
+    naturezaJaConfigurada,
     segredo: segredoForte(),
     sqlProvisionar: `select provisionar_empresa('_${suf}');`,
   };
@@ -252,7 +262,11 @@ if (require.main === module) {
     const fiscaisFaltando = (r.conf.fiscalSemValor || []).slice();
     const jaDescobriu = !!(r.descoberto && r.descoberto.descoberto
       && r.descoberto.descoberto.naturezaDevolucao);
-    if (!jaDescobriu && !fiscaisFaltando.includes('naturezaDevolucao')) {
+    // ⚠️ (Codex, P2) - NAO acusar quem ja configurou a env, so porque esta
+    // rodada nao tinha access token pra descobrir de novo. `jaDescobriu` so
+    // enxerga o achado DESTA execucao; `naturezaJaConfigurada` olha a ficha.
+    if (!jaDescobriu && !r.naturezaJaConfigurada
+        && !fiscaisFaltando.includes('naturezaDevolucao')) {
       fiscaisFaltando.push('naturezaDevolucao');
     }
     if (fiscaisFaltando.length) {
