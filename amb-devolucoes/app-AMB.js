@@ -478,7 +478,7 @@ const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 // derrubar a chamada quando o erro na tabela NAO for "tabela ausente" (antes
 // um erro de permissao, por exemplo, passava batido e a empresa saia
 // "pronta" sem a tabela confirmada).
-const VERSAO = 'AMB Devolucoes b416';
+const VERSAO = 'AMB Devolucoes b417';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -723,7 +723,7 @@ router.get('/oauth/iniciar', admin, (req, res) => {
 // antes do boot terminar de ler o arquivo, daria ReferenceError por TDZ.
 //
 // 📌 `node --check` NAO pega isso. So percebi conferindo a ordem na mao.
-const jaPreAquecidoPeloOAuth = { ml: false };
+const jaPreAquecidoPeloOAuth = { ml: false, magalu: false };
 
 router.get('/oauth/callback', async (req, res) => {
   const { code, state, error, error_description } = req.query;
@@ -781,6 +781,12 @@ router.get('/oauth/callback', async (req, res) => {
 
     if (reg.servico === 'magalu') {
       const r = await magalu.trocarCodePorToken(String(code), redirectOAuth());
+      // b416 (Codex #356, P2) - MESMO RISCO DO ML, e o PIOR CASO: `preAquecer`
+      // do magalu cria um `setInterval` PERMANENTE. Sem esta marca, um OAuth
+      // concluido durante os 3 minutos de espera do boot dispara aqui E na
+      // fila la embaixo — dois `setInterval` de 30 em 30 min pra sempre,
+      // dobrando a varredura de tickets ate o proximo reinicio.
+      jaPreAquecidoPeloOAuth.magalu = true;   // b416: a fila nao repete
       magalu.preAquecer();
       return res.send(pagina('Magalu conectado', `
         <h1 class="ok">Magalu da ${NOME_EMPRESA} conectado</h1>
@@ -3560,8 +3566,17 @@ async function esperarTerminar(nome, status) {
     console.log('[amb-devolucoes] Bling sem token - indices de nomes/entrada so apos conectar');
   }
 
-  magalu.preAquecer(0);
-  await esperarTerminar('magalu', () => magalu.statusIndice());
+  // b416 (Codex #356, P2) - mesmo guarda do ml-returns acima: se o OAuth do
+  // Magalu ja disparou o `preAquecer` durante a espera, chamar de novo aqui
+  // criaria um SEGUNDO `setInterval` permanente (pior que o do ML, que so
+  // repetiria uma construcao).
+  if (jaPreAquecidoPeloOAuth.magalu) {
+    console.log(`[${TAG_APP}/PREAQUECER] magalu ja foi disparado pelo OAuth`);
+    await esperarTerminar('magalu', () => magalu.statusIndice());
+  } else {
+    magalu.preAquecer(0);
+    await esperarTerminar('magalu', () => magalu.statusIndice());
+  }
 
   // ⚠️ a Shopee não expõe `construindo` — vai por último, sem espera.
   shopee.preAquecer();
