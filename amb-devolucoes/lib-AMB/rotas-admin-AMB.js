@@ -20,7 +20,7 @@ module.exports = function registrarRotasAdminNF(app, deps) {
   const {
     supabase, requerAdmin, adminOk, sleep,
     chamarBling, chamarML, buscarNFnoML,
-    buscarNFePorId, buscarNFBlindada,
+    buscarNFePorId, buscarNFBlindada, naturezaDevolucaoDaEmpresa,   // b402
     resolverIdNFPorChave, mapItensNF,
     tabelaDevolucoes,
     buscarNFsPorNumero,   // b212 - usada pelo raio-x da busca por numero
@@ -1000,6 +1000,8 @@ app.get('/api/admin/nf-devolucao', requerAdmin, async (req, res) => {
     sku: req.query.sku || null,
     desde: req.query.desde || null,
     ate: req.query.ate || null,
+    // ⚠️ b402: sem isto, cai no id da AMBTotal cravado no lib/nf-pessoa.
+    naturezaId: naturezaDevolucaoDaEmpresa || null,
   });
   // b308 (review do Codex) - O CASO DAS DUAS COMPRAS. Se o cliente comprou o
   // mesmo SKU duas vezes e devolveu SO uma, a nota existente satisfaz
@@ -1167,6 +1169,8 @@ app.get('/api/debug/nf-devolucao', async (req, res) => {
     sku: req.query.sku || null,
     desde: req.query.desde || null,
     ate: req.query.ate || null,
+    // ⚠️ b402: sem isto, cai no id da AMBTotal cravado no lib/nf-pessoa.
+    naturezaId: naturezaDevolucaoDaEmpresa || null,
   });
   res.json(r);
 });
