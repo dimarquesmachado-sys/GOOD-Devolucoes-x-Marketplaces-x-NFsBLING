@@ -94,6 +94,15 @@ const IDX = {
 };
 
 let construindo = false;
+// ⚠️ b415 (Codex, P1) - "VAI TENTAR DE NOVO" e diferente de "parou".
+//
+// Quando a construcao falha (429, por exemplo), `construindo` vira false
+// e SO DEPOIS o `catch` agenda a proxima tentativa. Nessa fresta a fila
+// de pre-aquecimento achava que esta rotina tinha terminado e soltava a
+// seguinte — e 30s depois as duas rodavam juntas.
+//
+// 📌 Justo no cenario que a fila existe pra evitar: o 429.
+let reagendado = false;
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
 // b44 - SERIE REAL da NF: sai da chave de acesso NF-e (44 digitos),
@@ -403,6 +412,9 @@ async function construirIndiceInterno(opts = {}) {
 
 function statusIndice() {
   return {
+    // b415: a fila do pre-aquecimento precisa saber se ainda VEM mais
+    ocupado: construindo || reagendado,
+    construindo,
     // b268.1 - quem chama precisa distinguir "nao achei" de "ainda nao
     // varri essa pagina"
     parcial_ate_pagina: IDX.parcialAte || null,
@@ -617,6 +629,7 @@ function ordenar(lista) {
 function preAquecer(atrasoMs, tentativa = 1) {
   const atraso = atrasoMs != null ? atrasoMs : 4 * 60 * 1000;
   console.log(`[${TAG_EMP}/NF-NOMES] pre-aquecimento agendado para daqui a ${Math.round(atraso / 1000)}s`);
+  reagendado = true;   // b415: a fila do pre-aquecimento espera isto
   setTimeout(() => tentar(1), atraso).unref();
 }
 
@@ -624,6 +637,7 @@ function preAquecer(atrasoMs, tentativa = 1) {
 // nao tem `tentativa`, e o retry referenciava uma variavel inexistente —
 // ReferenceError dentro do `.catch()`, virando rejeicao nao tratada.
 function tentar(tentativa) {
+  reagendado = false;   // b415
   construirIndice().then((idx) => {
     if (!idx) return; // cancelado pela drenagem - nem sucesso nem falha
     if (idx.erro) throw new Error(idx.erro);

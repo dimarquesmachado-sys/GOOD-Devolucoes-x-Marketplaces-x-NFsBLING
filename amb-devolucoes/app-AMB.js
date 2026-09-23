@@ -478,7 +478,7 @@ const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 // derrubar a chamada quando o erro na tabela NAO for "tabela ausente" (antes
 // um erro de permissao, por exemplo, passava batido e a empresa saia
 // "pronta" sem a tabela confirmada).
-const VERSAO = 'AMB Devolucoes b414';
+const VERSAO = 'AMB Devolucoes b415';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -716,6 +716,15 @@ router.get('/oauth/iniciar', admin, (req, res) => {
   res.status(400).json({ ok: false, erro: 'servico invalido', use: 'bling, ml ou magalu' });
 });
 
+// ⚠️ b415 - DECLARADA AQUI, ANTES DE QUEM USA.
+//
+// Eu tinha posto junto da fila, la embaixo (L3509) — e o callback do OAuth
+// que a marca esta na L759. `const` nao sobe: se o dono concluisse o OAuth
+// antes do boot terminar de ler o arquivo, daria ReferenceError por TDZ.
+//
+// 📌 `node --check` NAO pega isso. So percebi conferindo a ordem na mao.
+const jaPreAquecidoPeloOAuth = { ml: false };
+
 router.get('/oauth/callback', async (req, res) => {
   const { code, state, error, error_description } = req.query;
 
@@ -756,6 +765,7 @@ router.get('/oauth/callback', async (req, res) => {
       const r = await ml.trocarCodePorToken(String(code), redirectOAuth());
       const teste = await ml.testeDeVida();
       // Com o ML recem-conectado, ja vale montar o indice.
+      jaPreAquecidoPeloOAuth.ml = true;   // b415: a fila nao repete
       mlReturns.preAquecer(5000);
       return res.send(pagina('Mercado Livre conectado', `
         <h1 class="ok">Mercado Livre da ${NOME_EMPRESA} conectado</h1>
@@ -3504,13 +3514,18 @@ router.use((req, res) => {
 // Encadear sem teto trocaria "se atropelam" por "uma trava e nenhuma roda".
 const PREAQ_TETO_MS = Number(envAmb('PREAQUECER_TETO_MS') || 8 * 60 * 1000);
 
+
 async function esperarTerminar(nome, status) {
   const ate = Date.now() + PREAQ_TETO_MS;
   while (Date.now() < ate) {
     await new Promise((r) => setTimeout(r, 5000));
     let st = null;
     try { st = status(); } catch (e) { return; }   // sem status: segue
-    if (!st || !st.construindo) return;
+    // ⚠️ b415: `ocupado` cobre "rodando OU vai tentar de novo". O
+    // `construindo` sozinho abria a fresta entre a falha e a retentativa —
+    // e o magalu nem tinha esse campo.
+    const aindaVem = st && (st.ocupado != null ? st.ocupado : st.construindo);
+    if (!aindaVem) return;
   }
   console.log(`[${TAG_APP}/PREAQUECER] ${nome} passou do teto de `
     + `${Math.round(PREAQ_TETO_MS / 1000)}s — sigo pro proximo`);
@@ -3521,8 +3536,17 @@ async function esperarTerminar(nome, status) {
   await new Promise((r) => setTimeout(r, Number(envAmb('PREAQUECER_MS') || 180000)));
 
   if (ml.temToken()) {
-    mlReturns.preAquecer(0);
-    await esperarTerminar('ml-returns', () => mlReturns.statusIndice());
+    // ⚠️ b415 (Codex, P2): se o dono concluir o OAuth do ML DURANTE os 3
+    // minutos de espera, o callback ja chama `preAquecer(5000)` — e esta fila
+    // chamaria de novo ao acordar. Duas construcoes do mesmo indice, na mesma
+    // cota, que e exatamente o que a fila existe pra impedir.
+    if (jaPreAquecidoPeloOAuth.ml) {
+      console.log(`[${TAG_APP}/PREAQUECER] ml-returns ja foi disparado pelo OAuth`);
+      await esperarTerminar('ml-returns', () => mlReturns.statusIndice());
+    } else {
+      mlReturns.preAquecer(0);
+      await esperarTerminar('ml-returns', () => mlReturns.statusIndice());
+    }
   } else {
     console.log('[amb-devolucoes] ML sem token - indice de devolucoes so apos conectar');
   }

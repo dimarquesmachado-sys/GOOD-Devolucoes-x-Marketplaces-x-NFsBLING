@@ -229,7 +229,16 @@ const IDX = {
   duracaoSeg: 0, erro: null, falhasReturns: 0, amostraFalhas: [],
 };
 
-let construindo = false;   // evita duas construcoes ao mesmo tempo
+let construindo = false;
+// ⚠️ b415 (Codex, P1) - "VAI TENTAR DE NOVO" e diferente de "parou".
+//
+// Quando a construcao falha (429, por exemplo), `construindo` vira false
+// e SO DEPOIS o `catch` agenda a proxima tentativa. Nessa fresta a fila
+// de pre-aquecimento achava que esta rotina tinha terminado e soltava a
+// seguinte — e 30s depois as duas rodavam juntas.
+//
+// 📌 Justo no cenario que a fila existe pra evitar: o 429.
+let reagendado = false;   // evita duas construcoes ao mesmo tempo
 
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 const normTrack = (s) => String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
@@ -441,6 +450,9 @@ async function construirIndiceInterno(opts = {}) {
 
 function statusIndice() {
   return {
+    // b415: a fila do pre-aquecimento precisa saber se ainda VEM mais
+    ocupado: construindo || reagendado,
+    construindo,
     pedidos_enriquecidos: PEDIDOS.size,
     datas_entrega_reais: [...ENTREGA_REAL.values()].filter(e => e.v).length,
     datas_entrega_nulas: [...ENTREGA_REAL.values()].filter(e => !e.v).length,
@@ -587,6 +599,7 @@ function resumoEspreita() {
 function preAquecer(atrasoMs, tentativa = 1) {
   const atraso = atrasoMs != null ? atrasoMs : 3 * 60 * 1000;
   console.log(`[${TAG_EMP}/ML-RETURNS] pre-aquecimento agendado para daqui a ${Math.round(atraso / 1000)}s`);
+  reagendado = true;   // b415: a fila do pre-aquecimento espera isto
   setTimeout(() => tentar(1), atraso).unref();
 }
 
@@ -596,6 +609,7 @@ function preAquecer(atrasoMs, tentativa = 1) {
 // tratada (podia derrubar o processo). `atrasoMs` e o atraso do PRIMEIRO
 // disparo; o contador de tentativas e outra coisa e mora aqui, separado.
 function tentar(tentativa) {
+  reagendado = false;   // b415
   construirIndice().then((idx) => {
     if (!idx) return; // cancelado pela drenagem - nem sucesso nem falha
     if (idx.erro) throw new Error(idx.erro);
