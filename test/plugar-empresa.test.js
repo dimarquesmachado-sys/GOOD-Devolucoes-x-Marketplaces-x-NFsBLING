@@ -8,12 +8,13 @@
 //   prometer demais  -> ele confia num id que o script não tinha como saber
 //   prometer de menos -> ele caça no DevTools algo que a API entrega
 
+const fs = require('fs');
 const path = require('path');
 
 let falhas = 0;
 const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o); };
 
-const { plugar, segredoForte } = require('../scripts/plugar-empresa');
+const { plugar, segredoForte, lerDescoberta } = require('../scripts/plugar-empresa');
 
 // ── o segredo gerado serve de verdade ───────────────────────────────
 {
@@ -44,6 +45,46 @@ const { plugar, segredoForte } = require('../scripts/plugar-empresa');
   // ⚠️ o que ele NÃO pode prometer
   ok((r.conf.fiscalSemValor || []).includes('idEmpresaControl'),
      '⚠️ `idEmpresaControl` continua na lista do que falta');
+
+  // ── ⚠️ os valores descobertos vêm ANINHADOS ──────────────────────
+  //
+  // Eu lia `d.depositoGeral`, e o `descobrirFicha` devolve em
+  // `d.descoberto.depositoGeral`. Sempre undefined: o caminho de SUCESSO não
+  // mostrava nada. Não apareceu no teste porque lá o Bling não responde —
+  // então o teste passava e o script não servia.
+  const fakeDescoberta = async () => ({
+    ok: true,
+    descoberto: {
+      depositoGeral: { id: '999', nome: 'Geral' },
+      naturezaDevolucao: { id: '777' },
+    },
+    problemas: [],
+  });
+  const reg2 = Object.assign({}, reg, { descobrirFicha: fakeDescoberta });
+  const rd = await plugar('girassol', { registro: reg2, chamarBling: () => {} });
+  // ⚠️ exercita a LEITURA de produção — foi ali que o erro morava, e meu
+  // primeiro teste olhava o retorno de `plugar()`, passando verde à toa.
+  const lido = lerDescoberta(rd.descoberto);
+  ok(lido.deposito && lido.deposito.id === '999',
+     '⚠️ a leitura pega o deposito de `.descoberto` (aninhado)');
+  ok(lido.natureza && lido.natureza.id === '777',
+     '  e a natureza tambem');
+  ok(lerDescoberta({ depositoGeral: { id: 'X' } }).deposito === null,
+     '⚠️ e NAO pega de `d` solto — era o bug');
+
+  // ── ⚠️ e o script NÃO pode usar o cliente que renova token ────────
+  //
+  // O cliente de produção renova sozinho ao tomar 401, e o Bling INVALIDA o
+  // refresh antigo. Num script de leitura isso queimaria o refresh que está
+  // no Render — o serviço no ar perderia o Bling daquela empresa.
+  const src = fs.readFileSync(
+    path.join(__dirname, '..', 'scripts', 'plugar-empresa.js'), 'utf8');
+  const semCom = src.split('\n')
+    .filter((l) => !l.trim().startsWith('//')).join('\n');
+  ok(!/bling-AMB'\)\.criar/.test(semCom),
+     '⚠️ NAO usa o cliente de producao (ele rotaciona o refresh)');
+  ok(/BLING_ACCESS_TOKEN/.test(semCom),
+     '  so consulta com ACCESS token pronto, nunca com o refresh');
 
   console.log('');
   console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
