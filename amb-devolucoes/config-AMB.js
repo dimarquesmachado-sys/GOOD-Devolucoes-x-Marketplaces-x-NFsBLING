@@ -1,9 +1,30 @@
+// ⚠️ ESTE ARQUIVO NAO E MAIS USADO EM PRODUCAO — E A LINHA DE BASE DOS TESTES.
+//
+// Ate o b377 ele era a config fixa da AMB, carregada pelo app e por 8
+// modulos. Hoje ninguem o importa fora de `test/`: quem manda e a ficha em
+// `lib/empresas.js`, pela ponte `lib/config-da-empresa.js`.
+//
+// 📌 NAO APAGUE. Tres testes o usam como REFERENCIA pra provar que a ficha
+// entrega EXATAMENTE os mesmos valores que rodavam antes da migracao
+// multiempresa:
+//
+//   test/fase3-modulos-recebem-ficha.test.js   compara campo a campo
+//   test/config-le-do-registro.test.js          confere que ele nao le env direto
+//   test/nf-nomes-amb-indice-vazio-401.test.js  monta o cliente de teste
+//
+// Sem ele, a prova de equivalencia some — e a proxima empresa embarca sem
+// ninguem poder dizer se algo mudou de valor no caminho.
+//
+// ⚠️ E as tabelas `*_amb` aqui dentro sao da AMB DE PROPOSITO: e o arquivo
+// dela. Varredura que acusa isso esta lendo o arquivo errado.
+
 // ============================================================
 // amb-devolucoes/config-AMB.js            (AMB Devolucoes b1)
 // ------------------------------------------------------------
-// Config unica da AMBTotal. TUDO que e credencial, nome de env
-// var, prefixo de rota ou caminho vive AQUI e em nenhum outro
-// lugar.
+// ⚠️ ERA a config unica da AMBTotal — "TUDO que e credencial,
+// nome de env var, prefixo de rota ou caminho vive AQUI". Isso
+// deixou de ser verdade no b377: hoje quem manda e a ficha em
+// `lib/empresas.js`. Ver o aviso no topo do arquivo.
 //
 // POR QUE ASSIM: no dia em que este modulo mudar de servico
 // (consolidacao no Mover-Pedidos), so este arquivo precisa ser
