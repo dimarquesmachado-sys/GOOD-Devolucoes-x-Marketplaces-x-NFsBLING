@@ -447,7 +447,7 @@ const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 // derrubar a chamada quando o erro na tabela NAO for "tabela ausente" (antes
 // um erro de permissao, por exemplo, passava batido e a empresa saia
 // "pronta" sem a tabela confirmada).
-const VERSAO = 'AMB Devolucoes b401';
+const VERSAO = 'AMB Devolucoes b402';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -2413,6 +2413,27 @@ registrarRotasAdminNF(router, {
   mapItensNF: nfp.mapItensNF,
   buscarNFsPorNumero: nfp.buscarNFsPorNumero,   // b212 - raio-x da busca por numero
   buscarNfDevolucaoBling: nfp.acharNfDevolucaoBling,   // b255
+
+  // ⚠️ b402 - A NATUREZA DA NF VEM DA FICHA, nao do padrao do lib/nf-pessoa.
+  //
+  // La dentro havia `process.env.AMB_NATUREZA_DEVOLUCAO || '15110882041'` —
+  // o id da AMBTotal CRAVADO. E os 2 chamadores (rotas-admin-AMB) nao
+  // passavam natureza nenhuma, entao TODOS caiam nesse padrao.
+  //
+  // ⚠️ A Girassol buscaria a NF de devolucao pela natureza da AMBTotal: nao
+  // acharia as dela, e poderia achar as da AMB.
+  // ⚠️ E O CAMPO E `naturezasDevolucaoIds`, NAO `naturezaDevolucao`.
+  //
+  // A ficha tem DOIS, e eu peguei o errado na 1a versao:
+  //   naturezaDevolucao      -> a natureza de EMITIR (vazia na AMB hoje)
+  //   naturezasDevolucaoIds  -> a(s) natureza(s) de BUSCAR  ← esta
+  //
+  // Com o errado a busca da AMB receberia vazio e RECUSARIA — um conserto
+  // que quebra o que estava funcionando. Conferi o valor antes: o campo de
+  // busca entrega '15110882041', exatamente o padrao que saiu do nf-pessoa.
+  naturezaDevolucaoDaEmpresa: (CFG_EMPRESA && CFG_EMPRESA.fiscal
+    && typeof CFG_EMPRESA.fiscal.naturezasDevolucaoIds === 'function')
+    ? CFG_EMPRESA.fiscal.naturezasDevolucaoIds() : null,
   nomesBatemNf: nfp.nomesBatem,   // b316 - MESMO comparador do casamento
   listarDepositos: bling.listarDepositos,   // b276
 });
