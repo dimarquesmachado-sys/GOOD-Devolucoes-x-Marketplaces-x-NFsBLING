@@ -123,6 +123,32 @@ const contrato = JSON.parse(fs.readFileSync(path.join(RAIZ, 'contrato-empresas.j
   }
 }
 
+// ── ⚠️ o documento de estado existe e manda MEDIR ───────────────────
+//
+// O `RETOMADA-MULTILOJA.md`, proposto em 17/09, nunca entrou na main — a
+// análise ficou só no chat, e 5 dias depois foi lida como se fosse o estado
+// atual. Os 3 bloqueadores que ela listava já estavam fechados.
+//
+// 📌 O que este teste guarda não é o CONTEÚDO (que envelhece), e sim que o
+// documento existe, que o manual aponta para ele, e que ele manda RODAR os
+// comandos em vez de confiar na página.
+{
+  const doc = path.join(RAIZ, 'docs', 'ESTADO-MULTILOJA.md');
+  ok(fs.existsSync(doc), '⚠️ o `docs/ESTADO-MULTILOJA.md` existe');
+  if (fs.existsSync(doc)) {
+    const txt = fs.readFileSync(doc, 'utf8');
+    ok(/conferirEmpresa\('girassol'\)/.test(txt),
+       '  e manda RODAR o verificador (nao lista de memoria)');
+    ok(/duas-empresas-juntas/.test(txt),
+       '  e aponta o teste que mede o isolamento');
+  }
+  const manual = path.join(RAIZ, 'CLAUDE.md');
+  if (fs.existsSync(manual)) {
+    ok(/ESTADO-MULTILOJA/.test(fs.readFileSync(manual, 'utf8')),
+       '  e o manual aponta pra ele');
+  }
+}
+
 console.log('');
 console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
 process.exit(falhas ? 1 : 0);
