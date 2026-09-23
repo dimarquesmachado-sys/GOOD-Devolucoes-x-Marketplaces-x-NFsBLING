@@ -212,8 +212,41 @@ if (require.main === module) {
     console.log('   As 6 de Bling e ML saem do painel de cada um (aplicativo/');
     console.log('   integração). Os usuários você define.');
     console.log('');
-    console.log(`   ⚠️ E o ${r.PREF}ID_EMPRESA_CONTROL: a API do Bling NÃO devolve`);
-    console.log('   esse id. Ele aparece na URL quando você abre a empresa no painel.');
+
+    // ⚠️ b409 (Codex, P2) - OS CAMPOS FISCAIS TAMBEM, nao so as envs.
+    //
+    // Eu imprimia so `envsFaltando`. Os 3 fiscais vivem em `fiscalSemValor` e
+    // NUNCA apareciam — quem seguisse a lista acharia que tinha terminado e
+    // o `conferirEmpresa` continuaria dizendo `pronta: false`, sem a pessoa
+    // saber por quê.
+    //
+    // ⚠️ E na rodada anterior eu troquei o rotulo da natureza de busca pela de
+    // entrada. Com isso o campo de BUSCA sumiu da tela de vez: nao estava nas
+    // envs, e o rotulo que o citava virou outro.
+    const NOME_ENV_FISCAL = {
+      idEmpresaControl: 'ID_EMPRESA_CONTROL',
+      depositoGeral: 'DEPOSITO_GERAL',
+      naturezaDevolucao: 'ID_NATUREZA_DEVOLUCAO_ENTRADA',
+      naturezasDevolucaoIds: 'NATUREZAS_DEVOLUCAO_IDS',
+      nfEntradaTipo: 'NF_ENTRADA_TIPO',
+    };
+    const fiscaisFaltando = (r.conf.fiscalSemValor || []);
+    if (fiscaisFaltando.length) {
+      console.log('   e os campos fiscais, do Bling DESTA empresa:');
+      console.log('');
+      for (const f of fiscaisFaltando) {
+        console.log('   ' + r.PREF + (NOME_ENV_FISCAL[f] || f));
+      }
+      console.log('');
+    }
+
+    console.log(`   ⚠️ O ${r.PREF}ID_EMPRESA_CONTROL a API do Bling NÃO devolve —`);
+    console.log('   o `GET /empresas` dá 404. Ele aparece na URL quando você abre');
+    console.log('   a empresa no painel.');
+    console.log('');
+    console.log(`   📌 E o ${r.PREF}NATUREZAS_DEVOLUCAO_IDS é a natureza de BUSCAR,`);
+    console.log('   diferente da de EMITIR acima. Nomes parecidos, usos diferentes:');
+    console.log('   trocar os dois faz a NF sair com a natureza errada.');
     console.log('');
 
     console.log('── e por último ──');
