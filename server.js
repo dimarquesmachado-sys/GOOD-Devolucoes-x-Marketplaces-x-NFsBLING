@@ -481,7 +481,7 @@ app.get('/health', (req, res) => {
       // AMB_SESSION_SECRET so por ser `require`ida, e a sonda pos-RPC do
       // provisionamento derruba a chamada em erro que nao seja "tabela
       // ausente" (antes passava batido).
-      version: '9.75.0 (b417: o magalu ficou de fora do conserto do OAuth)',
+      version: '9.76.0 (b418: agendado tambem e ocupado — e a varredura achou mais um)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),

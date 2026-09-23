@@ -75,6 +75,16 @@ function criarEstadoNfEntrada() {
 
 // ⚠️ a instancia de hoje VEM da fabrica — sem duas fontes do mesmo estado
 const _EST = criarEstadoNfEntrada();
+
+// ⚠️ b418 - AGENDADO TAMBEM E OCUPADO (mesma coisa do magalu).
+//
+// A fila do pre-aquecimento le `ocupado`. Entre agendar e o timer disparar,
+// este modulo dizia livre — e a fila soltava o proximo por cima.
+//
+// 📌 Este NAO foi apontado: achei varrendo os 5 modulos da fila, que e o que
+// eu deveria ter feito nas 4 vezes anteriores em vez de olhar so o citado.
+let agendado = false;
+
 const EST = _EST.est;
 const IDX = _EST.idx;   // b355
 // (EST.construindo -> EST.construindo — b347)
@@ -148,6 +158,8 @@ function statusIndice() {
     // ⚠️ b347: era o atalho `construindo,` (chave E valor). Com o nome
     // novo, preciso ser explicito: a chave continua `construindo`.
     quente: IDX.ts > 0, construindo: EST.construindo,
+    // b418: a fila do pre-aquecimento le isto
+    ocupado: !!(agendado || EST.construindo),
     tipo_usado: TIPO(),
     total: IDX.total,
     pedidos_indexados: Object.keys(IDX.porPedido).length,
@@ -191,7 +203,8 @@ async function sondarTipos() {
 // 📌 `!= null` e nao `||`: com `||`, o 0 cairia no padrao e a mudanca
 // nao valeria nada — parecendo funcionar.
 function preAquecer(atrasoMs) {
-  setTimeout(() => { construirIndice().catch(e => console.error(`[${_TAG}/NF-ENTRADA]`, e.message)); }, (atrasoMs != null ? atrasoMs : 6 * 60 * 1000)).unref();
+  agendado = true;   // b418
+  setTimeout(() => { agendado = false; construirIndice().catch(e => console.error(`[${_TAG}/NF-ENTRADA]`, e.message)); }, (atrasoMs != null ? atrasoMs : 6 * 60 * 1000)).unref();
   setInterval(() => { construirIndice().catch(() => {}); }, 45 * 60 * 1000).unref();
 }
 

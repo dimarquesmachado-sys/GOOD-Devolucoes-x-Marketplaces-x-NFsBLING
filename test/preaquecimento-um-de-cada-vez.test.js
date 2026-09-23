@@ -81,8 +81,29 @@ const semCom = APP.split('\n').filter((l) => !l.trim().startsWith('//')).join('\
   // hora, deixando ele fora da fila enquanto a fila parecia completa.
   const mag = fs.readFileSync(
     path.join(RAIZ, 'amb-devolucoes', 'lib-AMB', 'magalu-AMB.js'), 'utf8');
-  ok(/ocupado: !!\(INDICES/.test(mag),
-     '⚠️ magalu: expoe `ocupado` (nunca teve `construindo`)');
+  ok(/ocupado: !!\(agendado \|\| \(INDICES/.test(mag),
+     '⚠️ magalu: `ocupado` cobre AGENDADO + rodando');
+
+  // ⚠️ b418: e a varredura dos 5 módulos da fila achou o nf-entrada com o
+  // mesmo buraco — sem apontamento nenhum. É o que eu devia ter feito nas 4
+  // vezes anteriores, em vez de olhar só o módulo citado.
+  const ent = fs.readFileSync(
+    path.join(RAIZ, 'amb-devolucoes', 'lib-AMB', 'nf-entrada-AMB.js'), 'utf8');
+  ok(/ocupado: !!\(agendado \|\| EST\.construindo\)/.test(ent),
+     '⚠️ nf-entrada tambem (achado varrendo, nao apontado)');
+
+  // e os dois marcam ANTES do setTimeout
+  for (const [nome, src] of [['magalu', mag], ['nf-entrada', ent]]) {
+    const semC = src.split('\n').filter((l) => !l.trim().startsWith('//')).join('\n');
+    // ⚠️ mede dentro do `preAquecer`, não no 1º setTimeout do arquivo —
+    // há outros timers antes dele, e comparar com o primeiro media outra
+    // coisa (foi o que quebrou este teste na primeira escrita).
+    const iPre = semC.indexOf('function preAquecer');
+    const iTimer = semC.indexOf('setTimeout', iPre);
+    const iMarca = semC.indexOf('agendado = true', iPre);
+    ok(iPre > 0 && iMarca > 0 && iMarca < iTimer,
+       `  ${nome}: marca ANTES de agendar, dentro do preAquecer`);
+  }
 
   ok(/st\.ocupado != null \? st\.ocupado : st\.construindo/.test(semCom),
      '  e a fila le `ocupado`, com `construindo` so de reserva');
