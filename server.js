@@ -481,7 +481,7 @@ app.get('/health', (req, res) => {
       // AMB_SESSION_SECRET so por ser `require`ida, e a sonda pos-RPC do
       // provisionamento derruba a chamada em erro que nao seja "tabela
       // ausente" (antes passava batido).
-      version: '9.55.0 (o lib/nf-pessoa tinha a natureza fiscal da AMB cravada — fora do modulo)',
+      version: '9.55.1 (acharNfDevolucaoBling comparava lista de naturezas como string unica — Codex #341)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
