@@ -86,6 +86,49 @@ const { plugar, segredoForte, lerDescoberta } = require('../scripts/plugar-empre
   ok(/BLING_ACCESS_TOKEN/.test(semCom),
      '  so consulta com ACCESS token pronto, nunca com o refresh');
 
+  // ── ⚠️ o cliente de leitura aceita URL ABSOLUTA ──────────────────
+  //
+  // O `descobrirFicha` monta a URL completa antes de chamar. Eu concatenava a
+  // base outra vez: `/Api/v3https://api.bling.com.br/Api/v3/depositos`. Toda
+  // consulta daria 404, e o script diria "não descobri" — parecendo falta de
+  // permissão quando era erro meu de montagem.
+  {
+    const src2 = fs.readFileSync(
+      path.join(__dirname, '..', 'scripts', 'plugar-empresa.js'), 'utf8');
+    const semC2 = src2.split('\n')
+      .filter((l) => !l.trim().startsWith('//')).join('\n');
+    ok(/\^https\?:/.test(semC2),
+       '⚠️ o cliente de leitura detecta URL absoluta');
+    ok(!/fetch\('https:\/\/api\.bling\.com\.br\/Api\/v3' \+ caminho/.test(semC2),
+       '  e nao concatena a base as cegas');
+
+    // e a montagem, exercitada
+    const monta = (c) => (/^https?:\/\//.test(String(c))
+      ? c : 'https://api.bling.com.br/Api/v3' + c);
+    ok(monta('https://api.bling.com.br/Api/v3/depositos?limite=100')
+         === 'https://api.bling.com.br/Api/v3/depositos?limite=100',
+       '⚠️ URL absoluta passa intacta (era o bug)');
+    ok(monta('/depositos') === 'https://api.bling.com.br/Api/v3/depositos',
+       '  e caminho relativo ainda ganha a base');
+  }
+
+  // ── ⚠️ e o rótulo do campo fiscal ────────────────────────────────
+  //
+  // O `descobrirFicha` resolve a natureza de ENTRADA (emitir). Rotular como
+  // `NATUREZAS_DEVOLUCAO_IDS` (buscar) mandaria colar no campo errado.
+  //
+  // 📌 Eu já errei esses dois hoje, no b402 — na direção oposta.
+  {
+    const src3 = fs.readFileSync(
+      path.join(__dirname, '..', 'scripts', 'plugar-empresa.js'), 'utf8');
+    const semC3 = src3.split('\n')
+      .filter((l) => !l.trim().startsWith('//')).join('\n');
+    ok(/ID_NATUREZA_DEVOLUCAO_ENTRADA = /.test(semC3),
+       '⚠️ o rotulo da natureza descoberta e o de ENTRADA');
+    ok(!/NATUREZAS_DEVOLUCAO_IDS = \$\{nat/.test(semC3),
+       '  e nao o de busca (sao campos diferentes)');
+  }
+
   console.log('');
   console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
   process.exit(falhas ? 1 : 0);
