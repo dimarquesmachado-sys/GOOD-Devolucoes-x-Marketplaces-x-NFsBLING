@@ -153,6 +153,29 @@ const { plugar, segredoForte, lerDescoberta } = require('../scripts/plugar-empre
        '⚠️ e os 2 campos de natureza (emitir e buscar) continuam citados');
   }
 
+  // ── ⚠️ o prefixo FISCAL é separado do de credencial ──────────────
+  //
+  // O registro guarda os dois de propósito. Hoje as 3 empresas coincidem —
+  // então usar o de credencial "funciona" e esconde o erro até a primeira que
+  // divergir. Foi assim que a pasta do checkout me enganou: seguia a chave em
+  // 2 de 3.
+  {
+    const src5 = fs.readFileSync(
+      path.join(__dirname, '..', 'scripts', 'plugar-empresa.js'), 'utf8');
+    const semC5 = src5.split('\n')
+      .filter((l) => !l.trim().startsWith('//')).join('\n');
+    ok(/PREF_FISCAL/.test(semC5), '⚠️ usa o prefixo FISCAL nos campos fiscais');
+    ok(/prefixoFiscal \|\| e\.prefixoEnv/.test(semC5),
+       '  com o de credencial so como fallback');
+
+    const r5 = await plugar('girassol', { registro: reg, chamarBling: null });
+    ok(r5.PREF_FISCAL === 'GIRASSOL_', '  e entrega o valor da ficha');
+
+    // ⚠️ e a natureza de EMISSÃO é citada mesmo fora do `fiscalSemValor`
+    ok(/naturezaDevolucao/.test(semC5) && /opcional/.test(semC5),
+       '⚠️ a natureza de EMISSAO e citada, marcada como opcional');
+  }
+
   console.log('');
   console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
   process.exit(falhas ? 1 : 0);
