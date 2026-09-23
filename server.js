@@ -481,7 +481,7 @@ app.get('/health', (req, res) => {
       // AMB_SESSION_SECRET so por ser `require`ida, e a sonda pos-RPC do
       // provisionamento derruba a chamada em erro que nao seja "tabela
       // ausente" (antes passava batido).
-      version: '9.60.0 (a pasta do checkout vem da ficha — a Girassol foge do padrao)',
+      version: '9.61.0 (b407: o assistente lia o campo errado e podia QUEIMAR o refresh do Bling)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),

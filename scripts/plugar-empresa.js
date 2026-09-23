@@ -77,7 +77,24 @@ async function plugar(chave, deps) {
   };
 }
 
-module.exports = { plugar, segredoForte };
+// ⚠️ b407 - A LEITURA SAI PRA CA, pra o teste exercitar a DE PRODUÇÃO.
+//
+// Meu primeiro teste conferia o que `plugar()` devolve — e o erro estava na
+// LEITURA, dentro do bloco de impressão, que o teste não tocava. Ele passava
+// verde com o script sem servir para nada.
+//
+// 📌 Regra da casa: o teste exercita a função de produção, nunca uma cópia
+// da lógica nem um pedaço vizinho.
+function lerDescoberta(d) {
+  const achados = (d && d.descoberto) || {};
+  return {
+    deposito: achados.depositoGeral || null,
+    natureza: achados.naturezaDevolucao || null,
+    problemas: (d && d.problemas) || [],
+  };
+}
+
+module.exports = { plugar, segredoForte, lerDescoberta };
 
 /* ── linha de comando ──────────────────────────────────────── */
 if (require.main === module) {
@@ -89,12 +106,32 @@ if (require.main === module) {
 
   (async () => {
     const registro = require('../lib/empresas');
+    // ⚠️ b407 (Codex, P1) - NÃO USO O CLIENTE DE PRODUÇÃO AQUI.
+    //
+    // Ele renova o token sozinho ao tomar 401 — e o Bling INVALIDA o refresh
+    // antigo quando emite o novo. Num script de LEITURA, isso queimaria o
+    // refresh que está no Render: o serviço no ar perderia acesso ao Bling
+    // daquela empresa, por causa de um comando que só ia consultar.
+    //
+    // 📌 Então só consulto se já houver um ACCESS TOKEN pronto no ambiente, e
+    // com um cliente mínimo, que nunca renova nada. Sem ele, o script segue e
+    // diz o que falta — que é melhor que quebrar o que está funcionando.
     let chamarBling = null;
     try {
-      const cfgEmp = require('../lib/config-da-empresa').configDaEmpresa(chave);
-      const bling = require('../amb-devolucoes/lib-AMB/bling-AMB').criar(cfgEmp);
-      chamarBling = bling.chamarBling;
-    } catch (e) { /* sem credencial ainda — segue sem descobrir */ }
+      const reg0 = require('../lib/empresas');
+      const ficha = reg0.obterEmpresa(chave);
+      const pref = (ficha && ficha.prefixoEnv) || '';
+      const access = process.env[pref + 'BLING_ACCESS_TOKEN'];
+      if (access) {
+        chamarBling = async (caminho) => {
+          const r = await fetch('https://api.bling.com.br/Api/v3' + caminho, {
+            headers: { Authorization: 'Bearer ' + access, Accept: 'application/json' },
+          });
+          const data = await r.json().catch(() => null);
+          return { ok: r.ok, status: r.status, data };
+        };
+      }
+    } catch (e) { /* sem ficha ou sem token — segue sem descobrir */ }
 
     const r = await plugar(chave, { registro, chamarBling });
     if (!r.ok) { console.log('❌ ' + r.erro); process.exit(1); }
@@ -115,18 +152,22 @@ if (require.main === module) {
 
     const d = r.descoberto;
     if (d && d.ok !== false) {
-      const dep = d.depositoGeral;
-      const nat = d.naturezaDevolucao || d.natureza;
+      // ⚠️ b407 (Codex, P1): os valores vêm ANINHADOS em `d.descoberto`.
+      const { deposito: dep, natureza: nat } = lerDescoberta(d);
       if (dep) console.log(`   ${r.PREF}DEPOSITO_GERAL = ${dep.id}   (${dep.nome || 'achado no Bling'})`);
       if (nat) console.log(`   ${r.PREF}NATUREZAS_DEVOLUCAO_IDS = ${nat.id || nat}   (achado no Bling)`);
       if (!dep && !nat) console.log('   (o Bling respondeu, mas não deu para deduzir depósito nem natureza)');
-      for (const p of (d.problemas || [])) console.log('   ⚠️ ' + p);
+      for (const p of lerDescoberta(d).problemas) console.log('   ⚠️ ' + p);
     } else if (r.erroDescoberta) {
       console.log('   ⚠️ não consultei o Bling: ' + String(r.erroDescoberta).slice(0, 90));
       console.log('   (normal se as credenciais dela ainda não estão no ambiente)');
     } else {
-      console.log('   ⚠️ sem credencial do Bling no ambiente — o depósito e a natureza');
-      console.log('   ficam para quando você puser as 3 envs de Bling e rodar de novo.');
+      console.log(`   ⚠️ sem ${r.PREF}BLING_ACCESS_TOKEN no ambiente — o depósito e a`);
+      console.log('   natureza ficam para quando você tiver um access token válido.');
+      console.log('');
+      console.log('   📌 De propósito NÃO uso o refresh token aqui: o cliente de');
+      console.log('   produção renova sozinho no 401, e o Bling invalida o refresh');
+      console.log('   antigo — um comando de leitura derrubaria o serviço no ar.');
     }
 
     console.log('');
