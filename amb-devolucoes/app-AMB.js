@@ -478,7 +478,7 @@ const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 // derrubar a chamada quando o erro na tabela NAO for "tabela ausente" (antes
 // um erro de permissao, por exemplo, passava batido e a empresa saia
 // "pronta" sem a tabela confirmada).
-const VERSAO = 'AMB Devolucoes b417';
+const VERSAO = 'AMB Devolucoes b418';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -785,8 +785,17 @@ router.get('/oauth/callback', async (req, res) => {
       // concluido durante a espera da fila, ela dispararia de novo ao
       // acordar. Eu tratei o ML e deixei o Magalu de fora, com o mesmo bug
       // no mesmo arquivo, 20 linhas abaixo.
+      //
+      // ⚠️ b418 (Codex, PR #361): faltava o `5000` daqui. Sem atraso, o
+      // `preAquecer()` do magalu usa o padrao de 3 MINUTOS pros tickets —
+      // contra os 5s do ML (linha acima). A fila (`esperarTerminar`) so
+      // olha `statusIndice().ocupado`, e ele so vira `true` quando a
+      // construcao COMECA. Com 3 minutos de atraso, a 1ª conferencia da
+      // fila (5s depois) achava `ocupado: false`, seguia pro Shopee, e a
+      // construcao do magalu (que so comecaria 3min depois) sobrava pra
+      // rodar por cima dele — a serializacao que a fila existe pra evitar.
       jaPreAquecidoPeloOAuth.magalu = true;
-      magalu.preAquecer();
+      magalu.preAquecer(5000);
       return res.send(pagina('Magalu conectado', `
         <h1 class="ok">Magalu da ${NOME_EMPRESA} conectado</h1>
         <div class="card"><table>
