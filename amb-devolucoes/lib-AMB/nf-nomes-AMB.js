@@ -668,6 +668,17 @@ function tentar(tentativa) {
     console.log(`[${TAG_EMP}/NF-NOMES] tento de novo em ${espera / 1000}s`);
     // ⚠️ (Codex) setTimeout cru nao e cancelado pela drenagem — registra
     // com daquiA pra nao acordar o processo VELHO durante um deploy.
+    // ⚠️ b416 (Codex, P1) - AQUI e a retentativa de verdade.
+    //
+    // No b415 eu marquei `reagendado` no `preAquecer` — o disparo
+    // INICIAL — e achei que tinha coberto. A retentativa usa
+    // `drenagem.daquiA`, nao `setTimeout`, entao minha busca nao achou e
+    // a fresta continuou aberta: `construindo` cai, o catch chega aqui, e
+    // nesse meio a fila soltava o proximo.
+    //
+    // 📌 Consertei o sintoma no lugar errado e o teste passou, porque ele
+    // so conferia se o texto `reagendado = true` existia no arquivo.
+    reagendado = true;
     drenagem.daquiA(() => tentar(tentativa + 1), espera);
   });
 }

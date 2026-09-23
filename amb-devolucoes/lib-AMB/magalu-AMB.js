@@ -540,6 +540,14 @@ function statusIndice() {
     // em `INDICES.fase2Rodando`. A espera lia `st.construindo`, achava
     // `undefined` e retornava NA HORA: o magalu ficava fora da fila,
     // rodando por cima de quem viesse depois. A fila parecia completa.
+    // ⚠️ b416: o apontamento pedia incluir a fase de tickets — mas CONFERI e
+    // ela ja esta coberta: `construirIndice()` (a dos tickets) marca
+    // `INDICES.construindo`, e `construirIndiceDevolucoes()` marca
+    // `fase2Rodando`. Os 2 campos que existem cobrem as 2 funcoes.
+    //
+    // 📌 Eu tinha escrito `INDICES.ticketsRodando` aqui, um campo que NAO
+    // EXISTE — leria `undefined` pra sempre, calado. Conferi a lista real
+    // antes de subir.
     ocupado: !!(INDICES && (INDICES.fase2Rodando || INDICES.construindo)),
 
     credenciais_do_app: temCredenciais(),
