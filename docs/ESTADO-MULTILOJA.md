@@ -59,7 +59,20 @@ A pergunta "amanhã eu ligo outra empresa?" tem duas respostas diferentes.
 está abaixo, incluindo 1 PR pontual (virar uma flag no contrato — não
 escrever uma ficha nova).
 
-**Qualquer outro CNPJ, não.** A lista de empresas é **código**, não cadastro:
+**Qualquer outro CNPJ, não** — mas há um gerador que faz a parte chata:
+
+```
+node scripts/nova-empresa.js <chave> "<Nome da Empresa>"
+```
+
+Ele escreve a ficha, o trecho do contrato, o comando do Supabase e a lista de
+envs — no formato das empresas que já rodam. Você revisa, cola e abre o PR.
+
+⚠️ **Ele não escreve nos arquivos, não inventa id fiscal e não ativa nada.**
+Um teste prova que a ficha gerada é aceita pelo registro de verdade — gerar
+texto bonito que o registro recusa não serviria.
+
+A lista de empresas continua sendo **código**, não cadastro:
 `contrato-empresas.json` mais a ficha em `lib/empresas.js`, com chave, chave
 de dados, rota, prefixos, tabelas, campos fiscais e capacidades. Isso é PR,
 revisão e deploy — não uma tela.
