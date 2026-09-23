@@ -481,7 +481,7 @@ app.get('/health', (req, res) => {
       // AMB_SESSION_SECRET so por ser `require`ida, e a sonda pos-RPC do
       // provisionamento derruba a chamada em erro que nao seja "tabela
       // ausente" (antes passava batido).
-      version: '9.72.0 (b414: o pre-aquecimento roda UM DE CADA VEZ — tres varreduras competiam)',
+      version: '9.72.1 (b415: revisao do Codex #356 no pre-aquecimento escalonado da AMB)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),

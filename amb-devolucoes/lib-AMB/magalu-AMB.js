@@ -137,7 +137,7 @@ function criarEstadoMagalu() {
     // controle da renovacao (o refresh do Magalu e de uso unico)
     renov: { emVoo: null, ultimaPersistencia: false },
     // sinalizadores de construcao
-    indices: { fase2Rodando: false, construindo: false },
+    indices: { fase2Rodando: false, construindo: false, ticketsRodando: false },
     // indice de tickets
     tidx: { ts: 0, mapa: {}, total: 0, comReversa: 0, duracaoSeg: 0, erro: null },
     // indice da espreita
@@ -322,8 +322,18 @@ async function _fase2ReverseCodes(abertos) {
   } finally { INDICES.fase2Rodando = false; }
 }
 
+// ⚠️ b414 (Codex) - `esperarTerminar` do pre-aquecimento escalonado (app-AMB)
+// olha `statusIndice().construindo`, mas este indice (tickets) nunca teve
+// esse sinalizador: so existia `INDICES.fase2Rodando`, que so liga na FASE
+// 2. Resultado: a espera achava a rotina "pronta" no primeiro poll (5s),
+// mesmo com a fase 1 (paginas de tickets) ainda em voo, e a fila seguia pro
+// proximo marketplace competindo pela mesma cota.
+// 📌 `ticketsRodando` cobre a FUNCAO INTEIRA (fase 1 + fase 2 aguardada),
+// nao so a fase 2.
 async function construirIndiceDevolucoes(opts = {}) {
   if (!temToken()) { TIDX.erro = 'sem token Magalu da AMB'; return TIDX; }
+  INDICES.ticketsRodando = true;
+  try {
   const t0 = Date.now();
   const maxPaginas = opts.maxPaginas || 4;   // ate 400 tickets
   const mapa = {};
@@ -389,6 +399,7 @@ async function construirIndiceDevolucoes(opts = {}) {
     await _fase2ReverseCodes(abertos); // pre-aquecimento: completa tudo
   }
   return TIDX;
+  } finally { INDICES.ticketsRodando = false; }
 }
 
 function statusTickets() {
@@ -541,6 +552,9 @@ function statusIndice() {
     total: IDX.lista.length,
     erro: IDX.erro,
     duracao_seg: IDX.duracaoSeg || null,
+    // b414 (Codex) - o pre-aquecimento escalonado (app-AMB) espera este
+    // campo pra saber quando a rotina de tickets terminou.
+    construindo: INDICES.ticketsRodando,
     tickets: statusTickets(),   // b152 - o indice do bipe (P/R/O)
   };
 }

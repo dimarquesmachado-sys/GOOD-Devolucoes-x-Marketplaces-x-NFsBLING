@@ -478,7 +478,7 @@ const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 // derrubar a chamada quando o erro na tabela NAO for "tabela ausente" (antes
 // um erro de permissao, por exemplo, passava batido e a empresa saia
 // "pronta" sem a tabela confirmada).
-const VERSAO = 'AMB Devolucoes b414';
+const VERSAO = 'AMB Devolucoes b415';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -3510,19 +3510,35 @@ async function esperarTerminar(nome, status) {
     await new Promise((r) => setTimeout(r, 5000));
     let st = null;
     try { st = status(); } catch (e) { return; }   // sem status: segue
-    if (!st || !st.construindo) return;
+    // ⚠️ (Codex) `construindo` so cobre a chamada em voo. ml-returns e
+    // nf-nomes tem retry com backoff (ate 10min) que fica FORA dessa
+    // janela — sem checar `retry_pendente`, a fila via "terminou" no meio
+    // de um retry agendado e comecava a proxima rotina em cima dele.
+    if (!st || (!st.construindo && !st.retry_pendente)) return;
   }
   console.log(`[${TAG_APP}/PREAQUECER] ${nome} passou do teto de `
     + `${Math.round(PREAQ_TETO_MS / 1000)}s — sigo pro proximo`);
 }
 
 (async () => {
+  // ⚠️ b414 (Codex) - capturados ANTES da espera. Se ML ou Magalu forem
+  // autorizados DURANTE os 3min (o dono clicou "conectar" logo apos o
+  // deploy), o /oauth/callback ja chama `preAquecer()` na hora — chamar
+  // de novo aqui embaixo duplicaria a varredura. No Magalu e pior: cada
+  // chamada de `preAquecer` cria um `setInterval` PERMANENTE de refresh;
+  // duplicar aqui duplicaria esse intervalo pro resto da vida do processo,
+  // nao so uma varredura extra.
+  const mlJaAutorizado = ml.temToken();
+  const magaluJaAutorizado = magalu.temToken();
+
   // o 1º atraso continua existindo: não competir com o boot da GOOD
   await new Promise((r) => setTimeout(r, Number(envAmb('PREAQUECER_MS') || 180000)));
 
-  if (ml.temToken()) {
+  if (mlJaAutorizado) {
     mlReturns.preAquecer(0);
     await esperarTerminar('ml-returns', () => mlReturns.statusIndice());
+  } else if (ml.temToken()) {
+    console.log('[amb-devolucoes] ML autorizado durante a espera - o /oauth/callback ja agendou o pre-aquecimento, nao agendo de novo');
   } else {
     console.log('[amb-devolucoes] ML sem token - indice de devolucoes so apos conectar');
   }
@@ -3536,8 +3552,14 @@ async function esperarTerminar(nome, status) {
     console.log('[amb-devolucoes] Bling sem token - indices de nomes/entrada so apos conectar');
   }
 
-  magalu.preAquecer(0);
-  await esperarTerminar('magalu', () => magalu.statusIndice());
+  if (magaluJaAutorizado) {
+    magalu.preAquecer(0);
+    await esperarTerminar('magalu', () => magalu.statusIndice());
+  } else if (magalu.temToken()) {
+    console.log('[amb-devolucoes] Magalu autorizado durante a espera - o /oauth/callback ja agendou o pre-aquecimento, nao agendo de novo');
+  } else {
+    magalu.preAquecer(0);   // sem token: so loga "desligada" e sai, nao agenda nada
+  }
 
   // ⚠️ a Shopee não expõe `construindo` — vai por último, sem espera.
   shopee.preAquecer();

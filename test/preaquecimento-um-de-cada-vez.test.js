@@ -45,6 +45,79 @@ const semCom = APP.split('\n').filter((l) => !l.trim().startsWith('//')).join('\
   }
 }
 
+// ── ⚠️ P1 (Codex, PR #356): retry pendente nao pode virar "terminou" ──
+//
+// `construindo` cobre so a chamada em voo. Entre uma tentativa e a
+// proxima do retry (backoff de 30s a 10min), ele fica FALSO — e quem so
+// olha `construindo` acha que a rotina terminou e libera a proxima,
+// competindo com o retry que ainda vai disparar.
+{
+  for (const m of ['ml-returns', 'nf-nomes']) {
+    const src = fs.readFileSync(
+      path.join(RAIZ, 'amb-devolucoes', 'lib-AMB', `${m}-AMB.js`), 'utf8');
+    ok(/let retryPendente = false;/.test(src),
+       `  ${m}: tem o sinalizador de retry pendente`);
+    ok(/retryPendente = true;/.test(src),
+       `  ${m}: liga no 1o agendamento do preAquecer`);
+    ok(/retry_pendente: retryPendente,/.test(src),
+       `  ${m}: expoe no statusIndice`);
+  }
+  ok(/if \(!st \|\| \(!st\.construindo && !st\.retry_pendente\)\) return;/.test(semCom),
+     '⚠️ a fila do app-AMB espera `construindo` OU `retry_pendente`');
+}
+
+// ── e a simulacao prova a diferenca: so `construindo` libera cedo ────
+//
+// 3 polls simulados: a chamada em voo ja terminou (falhou) nos 3, mas o
+// retry agendado so realmente concluiu no 3o.
+{
+  const polls = [
+    { construindo: false, retry_pendente: true },
+    { construindo: false, retry_pendente: true },
+    { construindo: false, retry_pendente: false },
+  ];
+  const contarPolls = (checarRetry) => {
+    for (let i = 0; i < polls.length; i++) {
+      const st = polls[i];
+      if (!st || (!st.construindo && (!checarRetry || !st.retry_pendente))) return i + 1;
+    }
+    return -1;
+  };
+  ok(contarPolls(false) === 1,
+     '⚠️ SO com `construindo`: libera no 1o poll, com o retry ainda pendente (o bug)');
+  ok(contarPolls(true) === 3,
+     '  com `retry_pendente`: so libera quando o retry realmente terminou');
+}
+
+// ── ⚠️ P2 (Codex, PR #356): o Magalu tambem precisa aparecer "construindo" ──
+//
+// `magalu.statusIndice()` nao tinha `construindo` nenhum: a fila liberava
+// no 1o poll (5s), mesmo com a fase 1 (paginas de tickets) ainda em voo.
+{
+  const src = fs.readFileSync(
+    path.join(RAIZ, 'amb-devolucoes', 'lib-AMB', 'magalu-AMB.js'), 'utf8');
+  ok(/ticketsRodando: false/.test(src),
+     '  magalu: tem o sinalizador de tickets em construcao');
+  ok(/INDICES\.ticketsRodando = true;/.test(src) && /INDICES\.ticketsRodando = false;/.test(src),
+     '  magalu: liga/desliga ao redor da construcao (fase 1 + fase 2)');
+  ok(/construindo: INDICES\.ticketsRodando,/.test(src),
+     '  magalu: statusIndice expoe `construindo`');
+}
+
+// ── ⚠️ P2 (Codex, PR #356): nao agendar o preAquecer 2x ─────────────
+//
+// Se o ML/Magalu forem autorizados DURANTE os 3min de espera do boot, o
+// /oauth/callback ja chama preAquecer() na hora — chamar de novo aqui
+// duplicaria a varredura (e, no Magalu, duplicaria o setInterval
+// PERMANENTE de refresh).
+{
+  ok(/const mlJaAutorizado = ml\.temToken\(\);/.test(semCom)
+     && /const magaluJaAutorizado = magalu\.temToken\(\);/.test(semCom),
+     '⚠️ o estado do token e capturado ANTES da espera de 3min');
+  ok(/if \(mlJaAutorizado\) \{/.test(semCom) && /if \(magaluJaAutorizado\) \{/.test(semCom),
+     '  e o agendamento do boot so roda se o token JA existia antes da espera');
+}
+
 // ── os dois caminhos da espera, exercitados ─────────────────────────
 {
   const TETO = 900;

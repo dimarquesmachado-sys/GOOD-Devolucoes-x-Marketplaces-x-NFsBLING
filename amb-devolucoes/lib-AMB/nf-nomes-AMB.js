@@ -94,6 +94,16 @@ const IDX = {
 };
 
 let construindo = false;
+
+// ⚠️ b414 (Codex) - mesmo problema do ml-returns-AMB.js: `construindo` so
+// cobre a chamada em voo. Entre uma tentativa e outra do retry abaixo (ate
+// 10min de backoff), ele fica FALSO — e o pre-aquecimento escalonado do
+// app-AMB, que espera `construindo` virar falso pra liberar a proxima
+// rotina, via a fila como livre e comecava o Bling seguinte em cima do
+// retry ainda pendente.
+// 📌 Cobre do 1o disparo ate a ULTIMA tentativa (sucesso, cancelado ou as
+// 8 esgotadas), incluindo as esperas do backoff.
+let retryPendente = false;
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
 // b44 - SERIE REAL da NF: sai da chave de acesso NF-e (44 digitos),
@@ -419,6 +429,7 @@ function statusIndice() {
     com_numero: IDX.porNumero ? Object.keys(IDX.porNumero).length : 0,
     quente: IDX.ts > 0,
     construindo,
+    retry_pendente: retryPendente,
     idade_min: IDX.ts ? Math.round((Date.now() - IDX.ts) / 60000) : null,
     total_nfs: IDX.totalNFs,
     nomes_distintos: IDX.nomes,
@@ -616,6 +627,7 @@ function ordenar(lista) {
 // violei no mesmo dia em que a apliquei em outros 4 arquivos.
 function preAquecer(atrasoMs, tentativa = 1) {
   const atraso = atrasoMs != null ? atrasoMs : 4 * 60 * 1000;
+  retryPendente = true;
   console.log(`[${TAG_EMP}/NF-NOMES] pre-aquecimento agendado para daqui a ${Math.round(atraso / 1000)}s`);
   setTimeout(() => tentar(1), atraso).unref();
 }
@@ -625,8 +637,9 @@ function preAquecer(atrasoMs, tentativa = 1) {
 // ReferenceError dentro do `.catch()`, virando rejeicao nao tratada.
 function tentar(tentativa) {
   construirIndice().then((idx) => {
-    if (!idx) return; // cancelado pela drenagem - nem sucesso nem falha
+    if (!idx) { retryPendente = false; return; } // cancelado pela drenagem - nem sucesso nem falha
     if (idx.erro) throw new Error(idx.erro);
+    retryPendente = false;
   }).catch((e) => {
     // b271 - ⚠️ FALHOU, TENTA DE NOVO (a AMB tambem — regra da casa).
     // Um 429 no boot deixava o cache vazio por 25 min.
@@ -648,6 +661,7 @@ function tentar(tentativa) {
     if (tentativa >= 8) {
       console.error(`[${TAG_EMP}/NF-NOMES] desisti apos 8 tentativas — o indice fica `
         + 'VAZIO ate o proximo reinicio. A busca por NOME nao vai achar nada.');
+      retryPendente = false;
       return;
     }
     const espera = Math.min(30000 * Math.pow(2, tentativa - 1), 10 * 60 * 1000);

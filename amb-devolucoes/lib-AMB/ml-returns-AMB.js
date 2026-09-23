@@ -231,6 +231,16 @@ const IDX = {
 
 let construindo = false;   // evita duas construcoes ao mesmo tempo
 
+// ⚠️ b414 (Codex) - `construindo` so cobre a chamada em voo: entre uma
+// tentativa e outra do retry abaixo, ele fica FALSO enquanto o proximo
+// disparo so vai acontecer em 30-60s (backoff). Quem espera "terminou"
+// olhando so `construindo` (o pre-aquecimento escalonado do app-AMB)
+// via a fila como livre e comecava a proxima rotina em cima do retry
+// ainda pendente — voltando a competir pela mesma cota.
+// 📌 Este cobre do 1o disparo ate a ULTIMA tentativa (sucesso, cancelado
+// ou as 3 esgotadas), incluindo as esperas do backoff.
+let retryPendente = false;
+
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 const normTrack = (s) => String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
 
@@ -449,6 +459,7 @@ function statusIndice() {
     enriquecimento_erro: ENRIQ_ERRO,
     quente: IDX.ts > 0,
     construindo,
+    retry_pendente: retryPendente,
     idade_min: IDX.ts ? Math.round((Date.now() - IDX.ts) / 60000) : null,
     janela_dias: cfg.ml.janelaDias,
     total_claims: IDX.totalClaims,
@@ -586,6 +597,7 @@ function resumoEspreita() {
 // Porte cego da assinatura da GOOD. Regra 4.12.
 function preAquecer(atrasoMs, tentativa = 1) {
   const atraso = atrasoMs != null ? atrasoMs : 3 * 60 * 1000;
+  retryPendente = true;
   console.log(`[${TAG_EMP}/ML-RETURNS] pre-aquecimento agendado para daqui a ${Math.round(atraso / 1000)}s`);
   setTimeout(() => tentar(1), atraso).unref();
 }
@@ -597,13 +609,14 @@ function preAquecer(atrasoMs, tentativa = 1) {
 // disparo; o contador de tentativas e outra coisa e mora aqui, separado.
 function tentar(tentativa) {
   construirIndice().then((idx) => {
-    if (!idx) return; // cancelado pela drenagem - nem sucesso nem falha
+    if (!idx) { retryPendente = false; return; } // cancelado pela drenagem - nem sucesso nem falha
     if (idx.erro) throw new Error(idx.erro);
+    retryPendente = false;
   }).catch((e) => {
     // b271 - ⚠️ FALHOU, TENTA DE NOVO (a AMB tambem — regra da casa).
     // Um 429 no boot deixava o cache vazio por 25 min.
     console.error(`[${TAG_EMP}/ML-RETURNS] pre-aquecimento falhou (tentativa ${tentativa}/3):`, e.message);
-    if (tentativa >= 3) return;
+    if (tentativa >= 3) { retryPendente = false; return; }
     const espera = 30000 * Math.pow(2, tentativa - 1);
     console.log(`[${TAG_EMP}/ML-RETURNS] tento de novo em ${espera / 1000}s`);
     // ⚠️ (Codex) setTimeout cru nao e cancelado pela drenagem — registra
