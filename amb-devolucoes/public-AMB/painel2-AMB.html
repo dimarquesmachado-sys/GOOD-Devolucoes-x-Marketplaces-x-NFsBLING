@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>AMBTotal - Painel de Devoluções</title>
   <!-- AMB Devol. b303 - painel portado da GOOD. O adaptador poe /amb nas chamadas -->
-  <script src="js-AMB/base-amb.js?v=b399"></script>
+  <script src="js-AMB/base-amb.js?v=b405"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -1749,7 +1749,7 @@ async function carregarSemRetorno() {
             ) : '') +
             // v4.30 - Shopee: link pro pedido (o 🔗 ja resolve o de-para order_sn->id interno)
             (e.marketplace === 'shopee' && e.pedido ? (
-              ' <a href="https://mover-pedidos-aguardando-x-atendido.onrender.com/' + (window.APP_EMPRESA || 'amb') + '-checkout-offline/ir-shopee?sn=' + encodeURIComponent(e.pedido) + '" target="_blank" rel="noopener" style="background:#e65100;color:#fff;border-radius:8px;padding:5px 10px;font-size:12px;font-weight:700;text-decoration:none;">📦 abrir pedido Shopee</a>'
+              ' <a href="https://mover-pedidos-aguardando-x-atendido.onrender.com/' + (window.APP_PASTA_CHECKOUT || 'amb-checkout-offline') + '/ir-shopee?sn=' + encodeURIComponent(e.pedido) + '" target="_blank" rel="noopener" style="background:#e65100;color:#fff;border-radius:8px;padding:5px 10px;font-size:12px;font-weight:700;text-decoration:none;">📦 abrir pedido Shopee</a>'
             ) : '') +
             // v4.46 - TICKET MANUAL: sempre presente pra Magalu, num bloco proprio
             // (separado do comentario). Se tem ticket salvo -> link + editar/apagar,
@@ -2664,7 +2664,7 @@ async function carregarSemRetorno() {
       if (mkt === 'ml' || mkt === 'mercadolivre') {
         url = 'https://www.mercadolivre.com.br/vendas/' + encodeURIComponent(nOrder) + '/detalhe'; nome = 'Mercado Livre';
       } else if (mkt === 'shopee') {
-        url = 'https://mover-pedidos-aguardando-x-atendido.onrender.com/' + (window.APP_EMPRESA || 'amb') + '-checkout-offline/ir-shopee?sn=' + encodeURIComponent(nOrder); nome = 'Shopee';
+        url = 'https://mover-pedidos-aguardando-x-atendido.onrender.com/' + (window.APP_PASTA_CHECKOUT || 'amb-checkout-offline') + '/ir-shopee?sn=' + encodeURIComponent(nOrder); nome = 'Shopee';
       } else if (mkt === 'magalu') {
         url = '/magalu/ir/' + (window.APP_EMPRESA || 'amb') + '?n=' + encodeURIComponent(String(nOrder).replace(/\D/g, '')); nome = 'Magalu';
       }

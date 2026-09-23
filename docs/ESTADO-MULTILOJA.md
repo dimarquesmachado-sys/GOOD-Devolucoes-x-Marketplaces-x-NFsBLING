@@ -119,18 +119,31 @@ manifest próprio — está obsoleto. A rota `/manifest-AMB.json` já deriva `id
 nome e escopo da ficha, antes do estático. As duas PWAs já são apps
 diferentes.
 
-### ⚠️ E um bloqueador FORA deste repositório
+### ⚠️ A pasta do checkout NÃO segue a chave da empresa
 
-A seta ↗ do card Shopee da Girassol aponta para
-`/girassol-checkout-offline/ir-shopee` no **Mover-Pedidos** — e **essa pasta
-não existe lá**. Existem `amb-checkout-offline` e `good-checkout-offline`.
+Uma versão anterior deste documento dizia que a pasta da Girassol **não
+existia** no Mover-Pedidos e que o link dela daria 404. **Estava errado.**
 
-**Até alguém criá-la, o link da Girassol dá 404.** É de propósito: 404 é erro
-visível; abrir o pedido da AMB seria número errado com cara de acerto.
+Ela existe — com outro nome:
 
-📌 Para um CNPJ novo, o mesmo vale para: a chave reconhecida pelo proxy da
-Shopee, a rota `/magalu/ir/<empresa>` e o callback OAuth registrado em cada
-aplicação de marketplace.
+| empresa | pasta lá |
+|---|---|
+| AMB | `amb-checkout-offline` |
+| GOOD | `good-checkout-offline` |
+| **Girassol** | **`girassol-backup-offline`** ← foge do padrão |
+
+📌 O erro era montar `/<chave>-checkout-offline` e supor que valia para
+todas. Agora a pasta vem da ficha (`pastaCheckout`), e quem foge do padrão
+declara.
+
+⚠️ **E eu quase mandei alguém criar uma pasta que já existia.** Supor o
+padrão e escrever "não existe" no documento é pior que não ter documento:
+gera trabalho errado com aparência de diagnóstico.
+
+📌 Para um CNPJ novo, conferir **lá** qual é a pasta antes de declarar — e o
+mesmo para a chave do proxy da Shopee e a rota `/magalu/ir/<empresa>`, que
+são **outros dois identificadores** no mesmo serviço.
+
 
 ### Três provas que ninguém pode dar por código
 

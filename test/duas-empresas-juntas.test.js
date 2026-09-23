@@ -392,8 +392,11 @@ process.env.AMB_SUPABASE_KEY = 'chave-de-teste';
        '⚠️ nenhum `/amb-checkout-offline` cravado no app');
     ok(!/\/magalu\/ir\/amb['"]/.test(semComL),
        '  nem `/magalu/ir/amb`');
-    ok(/CHAVE_CHECKOUT/.test(semComL),
-       '  os dois saem da chave da ficha');
+    // ⚠️ b405: a pasta deixou de sair da CHAVE — a Girassol no Mover-Pedidos
+    // e `girassol-BACKUP-offline`, nao `girassol-checkout-offline`. Derivar da
+    // chave mandava o link dela pra uma pasta que nao existe.
+    ok(/PASTA_CHECKOUT/.test(semComL),
+       '  a pasta do checkout sai da FICHA (nao da chave)');
 
     const ident = fs.readFileSync(
       path.join(RAIZ, 'amb-devolucoes', 'lib-AMB', 'identificar-AMB.js'), 'utf8');
@@ -419,7 +422,11 @@ process.env.AMB_SUPABASE_KEY = 'chave-de-teste';
     for (const painel of ['painel-AMB.html', 'painel2-AMB.html']) {
       const html = fs.readFileSync(
         path.join(RAIZ, 'amb-devolucoes', 'public-AMB', painel), 'utf8');
-      ok(!/amb-checkout-offline/.test(html) && !/\/magalu\/ir\/amb['"?]/.test(html),
+      // ⚠️ o fallback `'amb-checkout-offline'` é aceitável: só vale se o
+      // `APP_PASTA_CHECKOUT` não vier, e preserva o comportamento de hoje.
+      const semFallback = html.replace(/\|\| 'amb-checkout-offline'/g, '');
+      ok(!/amb-checkout-offline/.test(semFallback)
+         && !/\/magalu\/ir\/amb['"?]/.test(html),
          `  ${painel}: nenhum caminho da AMB cravado`);
 
       // ⚠️ b399 - FONTE UNICA: o `linkVenda()` USA o que o backend mandou.
@@ -444,7 +451,9 @@ process.env.AMB_SUPABASE_KEY = 'chave-de-teste';
     // AMBTotal nesse caminho.
     const buscaJs = fs.readFileSync(path.join(RAIZ, 'amb-devolucoes',
       'public-AMB', 'js-AMB', 'busca.js'), 'utf8');
-    ok(!/amb-checkout-offline/.test(buscaJs) && !/\/magalu\/ir\/amb['"?]/.test(buscaJs),
+    // ⚠️ b405: mesmo criterio dos paineis — o fallback e aceitavel.
+    const buscaSemFb = buscaJs.replace(/\|\| 'amb-checkout-offline'/g, '');
+    ok(!/amb-checkout-offline/.test(buscaSemFb) && !/\/magalu\/ir\/amb['"?]/.test(buscaJs),
        '⚠️ busca.js: nenhum caminho da AMB cravado no fallback do link');
     ok(/window\.APP_EMPRESA/.test(buscaJs),
        '  e usa a chave curta da empresa pra montar o link');
