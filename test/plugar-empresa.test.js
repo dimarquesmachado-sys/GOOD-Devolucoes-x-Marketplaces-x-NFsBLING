@@ -153,6 +153,84 @@ const { plugar, segredoForte, lerDescoberta } = require('../scripts/plugar-empre
        '⚠️ e os 2 campos de natureza (emitir e buscar) continuam citados');
   }
 
+  // ── ⚠️ o prefixo FISCAL é separado do de credencial ──────────────
+  //
+  // O registro guarda os dois de propósito. Hoje as 3 empresas coincidem —
+  // então usar o de credencial "funciona" e esconde o erro até a primeira que
+  // divergir. Foi assim que a pasta do checkout me enganou: seguia a chave em
+  // 2 de 3.
+  {
+    const src5 = fs.readFileSync(
+      path.join(__dirname, '..', 'scripts', 'plugar-empresa.js'), 'utf8');
+    const semC5 = src5.split('\n')
+      .filter((l) => !l.trim().startsWith('//')).join('\n');
+    ok(/PREF_FISCAL/.test(semC5), '⚠️ usa o prefixo FISCAL nos campos fiscais');
+    // ⚠️ (Codex, P2) - nullish, nao `||`: fiscal com prefixo INTENCIONALMENTE
+    // vazio ('') nao pode cair no de credencial, porque '' e falsy pro `||`.
+    ok(/e\.prefixoFiscal != null.*e\.prefixoEnv/.test(semC5),
+       '  com o de credencial so quando o fiscal e null/undefined (nao so vazio)');
+
+    const r5 = await plugar('girassol', { registro: reg, chamarBling: null });
+    ok(r5.PREF_FISCAL === 'GIRASSOL_', '  e entrega o valor da ficha');
+
+    // ⚠️ e a natureza de EMISSÃO é citada mesmo fora do `fiscalSemValor`
+    ok(/naturezaDevolucao/.test(semC5) && /opcional/.test(semC5),
+       '⚠️ a natureza de EMISSAO e citada, marcada como opcional');
+
+    // ⚠️ prefixo fiscal '' (vazio de proposito) nao pode virar o de credencial
+    const empresaFiscalVazio = {
+      chave: 'x', nome: 'X', chaveDados: 'x',
+      prefixoEnv: 'X_', prefixoFiscal: '', fiscal: {},
+    };
+    const regFiscalVazio = {
+      obterEmpresa: (k) => (k === 'x' ? empresaFiscalVazio : reg.obterEmpresa(k)),
+      conferirEmpresa: () => ({ envsFaltando: [], fiscalSemValor: [] }),
+      descobrirFicha: reg.descobrirFicha,
+    };
+    const rFiscalVazio = await plugar('x', { registro: regFiscalVazio, chamarBling: null });
+    ok(rFiscalVazio.PREF_FISCAL === '',
+       '⚠️ prefixoFiscal vazio de proposito NAO cai no de credencial (era o bug)');
+  }
+
+  // ── ⚠️ natureza JÁ configurada não entra como faltando ────────────
+  //
+  // (Codex, P2) `jaDescobriu` só enxerga o achado DESTA execução do Bling.
+  // Quando a env já está preenchida mas não há access token pra consultar de
+  // novo, o script marcava a natureza como faltando mesmo assim — a pessoa
+  // via um campo "faltando" que já estava resolvido.
+  {
+    const empresaComNatureza = {
+      chave: 'y', nome: 'Y', chaveDados: 'y',
+      prefixoEnv: 'Y_', prefixoFiscal: 'Y_',
+      fiscal: { naturezaDevolucao: () => '12345' },
+    };
+    const regComNatureza = {
+      obterEmpresa: (k) => (k === 'y' ? empresaComNatureza : reg.obterEmpresa(k)),
+      conferirEmpresa: () => ({ envsFaltando: [], fiscalSemValor: [] }),
+      descobrirFicha: reg.descobrirFicha,
+    };
+    const rComNatureza = await plugar('y', { registro: regComNatureza, chamarBling: null });
+    ok(rComNatureza.naturezaJaConfigurada === true,
+       '⚠️ `plugar()` expõe que a natureza já está configurada na ficha');
+
+    const empresaSemNatureza = Object.assign({}, empresaComNatureza,
+      { fiscal: { naturezaDevolucao: () => '' } });
+    const regSemNatureza = Object.assign({}, regComNatureza,
+      { obterEmpresa: (k) => (k === 'y' ? empresaSemNatureza : reg.obterEmpresa(k)) });
+    const rSemNatureza = await plugar('y', { registro: regSemNatureza, chamarBling: null });
+    ok(rSemNatureza.naturezaJaConfigurada === false,
+       '  e diz false quando a env está mesmo vazia');
+
+    // ⚠️ e o CLI de fato consulta o campo antes de acusar "faltando"
+    const src6 = fs.readFileSync(
+      path.join(__dirname, '..', 'scripts', 'plugar-empresa.js'), 'utf8');
+    const semC6 = src6.split('\n')
+      .filter((l) => !l.trim().startsWith('//')).join('\n');
+    ok(/!jaDescobriu && !r\.naturezaJaConfigurada/.test(semC6),
+       '⚠️ o CLI só acusa a natureza como faltando quando NEM a descoberta '
+       + 'NEM a ficha já resolveram');
+  }
+
   console.log('');
   console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
   process.exit(falhas ? 1 : 0);

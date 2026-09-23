@@ -481,7 +481,7 @@ app.get('/health', (req, res) => {
       // AMB_SESSION_SECRET so por ser `require`ida, e a sonda pos-RPC do
       // provisionamento derruba a chamada em erro que nao seja "tabela
       // ausente" (antes passava batido).
-      version: '9.66.0 (b409: os campos fiscais nunca apareciam na lista do assistente)',
+      version: '9.68.0 (b411: prefixo fiscal vazio de proposito, e natureza ja configurada acusada como faltando)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
