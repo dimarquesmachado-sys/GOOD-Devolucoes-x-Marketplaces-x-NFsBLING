@@ -397,7 +397,7 @@ function renderizar(data, ok) {
       if (data.magalu || m.includes('magalu')) {
         alvo = { nome: 'Magalu', url: '/magalu/ir/' + (window.APP_EMPRESA || 'amb') + '?n=' + encodeURIComponent(String(order.id).replace(/\D/g, '')) };
       } else if (data.shopee || m.includes('shopee')) {
-        alvo = { nome: 'Shopee', url: 'https://mover-pedidos-aguardando-x-atendido.onrender.com/' + (window.APP_EMPRESA || 'amb') + '-checkout-offline/ir-shopee?sn=' + encodeURIComponent(order.id) };
+        alvo = { nome: 'Shopee', url: 'https://mover-pedidos-aguardando-x-atendido.onrender.com/' + (window.APP_PASTA_CHECKOUT || 'amb-checkout-offline') + '/ir-shopee?sn=' + encodeURIComponent(order.id) };
       } else if (/^\d{10,}$/.test(String(order.id))) {
         alvo = { nome: 'Mercado Livre', url: 'https://www.mercadolivre.com.br/vendas/' + encodeURIComponent(order.id) + '/detalhe' };
       }

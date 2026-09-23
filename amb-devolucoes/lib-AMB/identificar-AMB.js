@@ -23,6 +23,11 @@ module.exports = function registrarIdentificar(app, deps) {
   // ⚠️ Derrubo se nao vier: silenciar com um padrao faria a empresa nova
   // consultar a coluna errada, e o sintoma seria "nao achei nada".
   const CHAVE_DADOS = deps && deps.chaveDados;
+
+  // ⚠️ b405: a pasta no Mover-Pedidos NAO deriva da chave — a Girassol la e
+  // `girassol-backup-offline`. Vem da ficha, pelas deps.
+  const PASTA_CHECKOUT = (deps && deps.pastaCheckout)
+    || (CHAVE_DADOS || 'amb') + '-checkout-offline';
   if (!CHAVE_DADOS) {
     throw new Error('[identificar] `chaveDados` nao veio nas deps — e o valor '
       + 'da coluna `empresa` no banco. Sem ele eu consultaria a empresa errada.');
@@ -1159,7 +1164,7 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
       // 📌 Uso a mesma `CHAVE_DADOS` que o b359 ja trouxe pras consultas —
       // e a chave curta que o outro servico usa no caminho dele.
       url: 'https://mover-pedidos-aguardando-x-atendido.onrender.com/'
-        + CHAVE_DADOS + '-checkout-offline/ir-shopee?sn='
+        + PASTA_CHECKOUT + '/ir-shopee?sn='
         + encodeURIComponent(devShopee.order_sn),
     };
     resultado.encontrado = true;

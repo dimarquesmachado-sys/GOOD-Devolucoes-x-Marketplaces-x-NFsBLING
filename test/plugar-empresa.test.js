@@ -1,0 +1,92 @@
+'use strict';
+// ⚠️ O ASSISTENTE SEPARA O QUE A MÁQUINA RESOLVE DO QUE SÓ A PESSOA TEM.
+//
+// O dono olhou a lista de 9 envs + 3 ids fiscais + 7 tabelas e perguntou se
+// não dava para facilitar. Dá — para a maior parte. Este teste guarda a
+// separação, porque errar para qualquer lado custa:
+//
+//   prometer demais  -> ele confia num id que o script não tinha como saber
+//   prometer de menos -> ele caça no DevTools algo que a API entrega
+
+const fs = require('fs');
+const path = require('path');
+
+let falhas = 0;
+const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o); };
+
+const { plugar, segredoForte, lerDescoberta } = require('../scripts/plugar-empresa');
+
+// ── o segredo gerado serve de verdade ───────────────────────────────
+{
+  const s = segredoForte();
+  ok(s.length >= 32, `⚠️ o segredo passa do minimo de 16 do auth (${s.length})`);
+  ok(!/[+/=]/.test(s), '  e nao tem caractere que atrapalhe no painel do Render');
+  ok(segredoForte() !== segredoForte(), '⚠️ e cada chamada da um diferente');
+}
+
+// ── e o resto, em sequência ─────────────────────────────────────────
+(async () => {
+  const reg = require('../lib/empresas');
+
+  // recusa empresa que não está no registro
+  const r0 = await plugar('nao-existe-mesmo', { registro: reg });
+  ok(!r0.ok, '  recusa empresa fora do registro');
+  ok(/nova-empresa/.test(r0.erro || ''),
+     '  e aponta o gerador de ficha como passo anterior');
+
+  // ── sem credencial, ainda entrega o que dá ────────────────────────
+  const r = await plugar('girassol', { registro: reg, chamarBling: null });
+  ok(r.ok, 'roda sem credencial do Bling');
+  ok(!!r.segredo, '  e ainda assim gera o segredo');
+  ok(/provisionar_empresa\('_girassol'\)/.test(r.sqlProvisionar),
+     '  e monta o SQL com o sufixo certo');
+  ok(r.descoberto === null, '⚠️ e nao inventa o que so o Bling sabe');
+
+  // ⚠️ o que ele NÃO pode prometer
+  ok((r.conf.fiscalSemValor || []).includes('idEmpresaControl'),
+     '⚠️ `idEmpresaControl` continua na lista do que falta');
+
+  // ── ⚠️ os valores descobertos vêm ANINHADOS ──────────────────────
+  //
+  // Eu lia `d.depositoGeral`, e o `descobrirFicha` devolve em
+  // `d.descoberto.depositoGeral`. Sempre undefined: o caminho de SUCESSO não
+  // mostrava nada. Não apareceu no teste porque lá o Bling não responde —
+  // então o teste passava e o script não servia.
+  const fakeDescoberta = async () => ({
+    ok: true,
+    descoberto: {
+      depositoGeral: { id: '999', nome: 'Geral' },
+      naturezaDevolucao: { id: '777' },
+    },
+    problemas: [],
+  });
+  const reg2 = Object.assign({}, reg, { descobrirFicha: fakeDescoberta });
+  const rd = await plugar('girassol', { registro: reg2, chamarBling: () => {} });
+  // ⚠️ exercita a LEITURA de produção — foi ali que o erro morava, e meu
+  // primeiro teste olhava o retorno de `plugar()`, passando verde à toa.
+  const lido = lerDescoberta(rd.descoberto);
+  ok(lido.deposito && lido.deposito.id === '999',
+     '⚠️ a leitura pega o deposito de `.descoberto` (aninhado)');
+  ok(lido.natureza && lido.natureza.id === '777',
+     '  e a natureza tambem');
+  ok(lerDescoberta({ depositoGeral: { id: 'X' } }).deposito === null,
+     '⚠️ e NAO pega de `d` solto — era o bug');
+
+  // ── ⚠️ e o script NÃO pode usar o cliente que renova token ────────
+  //
+  // O cliente de produção renova sozinho ao tomar 401, e o Bling INVALIDA o
+  // refresh antigo. Num script de leitura isso queimaria o refresh que está
+  // no Render — o serviço no ar perderia o Bling daquela empresa.
+  const src = fs.readFileSync(
+    path.join(__dirname, '..', 'scripts', 'plugar-empresa.js'), 'utf8');
+  const semCom = src.split('\n')
+    .filter((l) => !l.trim().startsWith('//')).join('\n');
+  ok(!/bling-AMB'\)\.criar/.test(semCom),
+     '⚠️ NAO usa o cliente de producao (ele rotaciona o refresh)');
+  ok(/BLING_ACCESS_TOKEN/.test(semCom),
+     '  so consulta com ACCESS token pronto, nunca com o refresh');
+
+  console.log('');
+  console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
+  process.exit(falhas ? 1 : 0);
+})().catch((e) => { console.log('FALHA ' + e.message); process.exit(1); });

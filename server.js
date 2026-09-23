@@ -481,7 +481,7 @@ app.get('/health', (req, res) => {
       // AMB_SESSION_SECRET so por ser `require`ida, e a sonda pos-RPC do
       // provisionamento derruba a chamada em erro que nao seja "tabela
       // ausente" (antes passava batido).
-      version: '9.59.1 (b405: Codex no PR #344 — nova-empresa.js gerava contrato sem aliases/dono_hoje, sufixo colidivel, nome sem escape e sem ADMIN_USER)',
+      version: '9.62.0 (o gerador de ficha gerava contrato invalido — Codex no #344)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
