@@ -481,7 +481,7 @@ app.get('/health', (req, res) => {
       // AMB_SESSION_SECRET so por ser `require`ida, e a sonda pos-RPC do
       // provisionamento derruba a chamada em erro que nao seja "tabela
       // ausente" (antes passava batido).
-      version: '9.65.0 (b408: a URL dobrada e o rotulo do campo fiscal errado no assistente)',
+      version: '9.66.0 (b409: NATUREZAS_DEVOLUCAO_IDS sumiu do aviso do assistente)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),

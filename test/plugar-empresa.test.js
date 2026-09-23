@@ -129,6 +129,27 @@ const { plugar, segredoForte, lerDescoberta } = require('../scripts/plugar-empre
        '  e nao o de busca (sao campos diferentes)');
   }
 
+  // ── ⚠️ e o assistente avisa sobre NATUREZAS_DEVOLUCAO_IDS ─────────
+  //
+  // O b408 corrigiu o rótulo do campo descoberto (ID_NATUREZA_DEVOLUCAO_
+  // ENTRADA), mas isso tirou `NATUREZAS_DEVOLUCAO_IDS` do output inteiro —
+  // campo que a API do Bling nunca descobre e que continua obrigatório
+  // (apontamento do Codex, PR #350). Sem aviso, a empresa fica `pronta:
+  // false` para sempre sem o assistente dizer o motivo.
+  {
+    ok((r.conf.fiscalSemValor || []).includes('naturezasDevolucaoIds'),
+       '⚠️ `naturezasDevolucaoIds` segue faltando pra girassol (sem default)');
+
+    const src4 = fs.readFileSync(
+      path.join(__dirname, '..', 'scripts', 'plugar-empresa.js'), 'utf8');
+    const semC4 = src4.split('\n')
+      .filter((l) => !l.trim().startsWith('//')).join('\n');
+    ok(/fiscalSemValor \|\| \[\]\)\.includes\('naturezasDevolucaoIds'\)/.test(semC4),
+       '⚠️ o script confere se `naturezasDevolucaoIds` ficou sem valor');
+    ok(/NATUREZAS_DEVOLUCAO_IDS: a API do Bling também/.test(semC4),
+       '  e avisa que a API do Bling não descobre esse campo');
+  }
+
   console.log('');
   console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
   process.exit(falhas ? 1 : 0);

@@ -216,6 +216,22 @@ if (require.main === module) {
     console.log('   esse id. Ele aparece na URL quando você abre a empresa no painel.');
     console.log('');
 
+    // ⚠️ b409 (Codex #350, P2) - `NATUREZAS_DEVOLUCAO_IDS` NÃO TEM DESCOBERTA.
+    //
+    // O `descobrirFicha` só resolve a natureza de EMITIR (o que vira
+    // `ID_NATUREZA_DEVOLUCAO_ENTRADA` acima). A de BUSCAR — esta — a API do
+    // Bling não devolve de jeito nenhum. Antes do b408 o script rotulava o
+    // valor descoberto (o de emitir) com este nome por engano; ao corrigir o
+    // rótulo, o campo sumiu do output inteiro e o `conferirEmpresa` seguia
+    // reprovando a empresa (`fiscalSemValor`) sem dizer o motivo.
+    if ((r.conf.fiscalSemValor || []).includes('naturezasDevolucaoIds')) {
+      console.log(`   ⚠️ E o ${r.PREF}NATUREZAS_DEVOLUCAO_IDS: a API do Bling também`);
+      console.log('   não devolve essa lista. São os ids de natureza que o sistema trata');
+      console.log('   como devolução ao BUSCAR notas — defina manualmente (pode repetir o');
+      console.log(`   valor de ${r.PREF}ID_NATUREZA_DEVOLUCAO_ENTRADA, se fizer sentido pra ela).`);
+      console.log('');
+    }
+
     console.log('── e por último ──');
     console.log('');
     console.log(`   node -e "console.log(require('./lib/empresas').conferirEmpresa('${r.chave}'))"`);
