@@ -129,6 +129,30 @@ const { plugar, segredoForte, lerDescoberta } = require('../scripts/plugar-empre
        '  e nao o de busca (sao campos diferentes)');
   }
 
+  // ── ⚠️ os CAMPOS FISCAIS entram na lista, não só as envs ─────────
+  //
+  // Eu imprimia só `envsFaltando`. Os 3 fiscais vivem em `fiscalSemValor` e
+  // nunca apareciam — quem seguisse a lista acharia que terminou, e o
+  // `conferirEmpresa` continuaria dizendo `pronta: false` sem dizer por quê.
+  //
+  // ⚠️ E na rodada anterior eu troquei o rótulo da natureza de busca pela de
+  // entrada: com isso o campo de BUSCA sumiu da tela de vez.
+  {
+    const src4 = fs.readFileSync(
+      path.join(__dirname, '..', 'scripts', 'plugar-empresa.js'), 'utf8');
+    const semC4 = src4.split('\n')
+      .filter((l) => !l.trim().startsWith('//')).join('\n');
+    ok(/fiscalSemValor/.test(semC4),
+       '⚠️ o script LE `fiscalSemValor` (nao so as envs)');
+    ok(/NOME_ENV_FISCAL/.test(semC4),
+       '  e traduz o campo pro nome da env');
+
+    // ⚠️ e os 2 parecidos continuam AMBOS citados
+    ok(/ID_NATUREZA_DEVOLUCAO_ENTRADA/.test(semC4)
+       && /NATUREZAS_DEVOLUCAO_IDS/.test(semC4),
+       '⚠️ e os 2 campos de natureza (emitir e buscar) continuam citados');
+  }
+
   console.log('');
   console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
   process.exit(falhas ? 1 : 0);
