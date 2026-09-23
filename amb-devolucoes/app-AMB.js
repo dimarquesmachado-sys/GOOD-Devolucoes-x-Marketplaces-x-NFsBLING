@@ -319,8 +319,17 @@ const TAG_APP = String((CFG_EMPRESA && CFG_EMPRESA.PREFIXO_ENV) || 'AMB_')
 // nova. Nao mistura dado, mas manda a pessoa pro lugar errado.
 const PREFIXO_ENV_EMPRESA = String((CFG_EMPRESA && CFG_EMPRESA.PREFIXO_ENV) || 'AMB_');
 
-const CHAVE_CHECKOUT = (FICHA_AMB && FICHA_AMB.chaveDados)
-  || (FICHA_AMB && FICHA_AMB.chave) || 'amb';
+// ⚠️ b405 - A PASTA DO CHECKOUT VEM DA FICHA, nao da chave.
+//
+// Eu montava `/<chave>-checkout-offline`. Vale pra AMB e GOOD — mas a
+// Girassol no Mover-Pedidos e `girassol-BACKUP-offline`, nome historico.
+//
+// ⚠️ E eu escrevi no PR e no documento que "a pasta da Girassol nao existe
+// la, o link dara 404". ERRADO: existe, com outro nome. O 404 seria culpa do
+// meu caminho, nao falta de rota — e eu ia mandar alguem criar uma pasta que
+// ja existia.
+const PASTA_CHECKOUT = (FICHA_AMB && FICHA_AMB.pastaCheckout)
+  || ((FICHA_AMB && FICHA_AMB.chaveDados) || 'amb') + '-checkout-offline';
 
 // Codex (P2, PR #327) - o manifest-AMB.json ja saia com nome por empresa
 // (rota abaixo), mas o titulo do atalho no iOS/Safari vinha DESTE HTML
@@ -458,7 +467,7 @@ const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 // derrubar a chamada quando o erro na tabela NAO for "tabela ausente" (antes
 // um erro de permissao, por exemplo, passava batido e a empresa saia
 // "pronta" sem a tabela confirmada).
-const VERSAO = 'AMB Devolucoes b404';
+const VERSAO = 'AMB Devolucoes b405';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -1749,7 +1758,7 @@ router.get('/api/espreita', auth.requerLogin, async (req, res) => {
       // alguem criar. E o certo — 404 e erro visivel; abrir o pedido da AMB
       // e numero errado, que e pior.
       link = 'https://mover-pedidos-aguardando-x-atendido.onrender.com/'
-        + CHAVE_CHECKOUT + '-checkout-offline/ir-shopee?sn=' +
+        + PASTA_CHECKOUT + '/ir-shopee?sn=' +
         encodeURIComponent(x.pedido);
     } else if (x.marketplace === 'magalu' && x.pedido) {
       // b29 - modulo magalu-oauth (API oficial): resolve o UUID do
@@ -1757,8 +1766,10 @@ router.get('/api/espreita', auth.requerLogin, async (req, res) => {
       // ⚠️ b395: idem. E aqui a rota de la JA aceita a empresa no path
       // (`/magalu/ir/<empresa>`), conferido no repo Mover-Pedidos — nao
       // depende de mudanca nenhuma fora daqui.
+      // ⚠️ o Magalu segue a CHAVE (a rota la e `/magalu/ir/<empresa>`), nao a
+      // pasta — sao dois identificadores diferentes no mesmo servico.
       link = 'https://mover-pedidos-aguardando-x-atendido.onrender.com/magalu/ir/'
-        + CHAVE_CHECKOUT + '?n=' +
+        + ((FICHA_AMB && FICHA_AMB.chaveDados) || 'amb') + '?n=' +
         encodeURIComponent(x.pedido);
     }
     return {
@@ -2344,6 +2355,7 @@ registrarCicloDefeitos(router, { auth, db, bling, cfg });
 registrarIdentificar(router, {
   // ⚠️ b359: o valor da coluna `empresa` no banco — o modulo derruba sem ele
   chaveDados: CHAVE_DADOS,
+  pastaCheckout: PASTA_CHECKOUT,   // b405 — a pasta no Mover-Pedidos
   // b229 - a espreita ja montada, por FUNCAO (o comentario abaixo avisa:
   // passar pelo escopo derrubou o boot 2x). O getter le o cache na hora.
   espreitaMontada: () => CACHES.espreita,

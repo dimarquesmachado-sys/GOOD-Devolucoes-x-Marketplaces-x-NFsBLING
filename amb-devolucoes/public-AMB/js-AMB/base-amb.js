@@ -67,6 +67,18 @@
   // a raiz — por isso o `|| 'amb'`, que preserva o comportamento de hoje.
   window.APP_EMPRESA = String(BASE || '').replace(/^\//, '') || 'amb';
 
+  // ⚠️ b405 - A PASTA DO CHECKOUT NO MOVER-PEDIDOS.
+  //
+  // O front montava `<empresa>-checkout-offline`. Vale pra AMB e GOOD — mas
+  // a Girassol la e `girassol-BACKUP-offline`, nome historico. O link dela
+  // apontaria pra uma pasta que nao existe.
+  //
+  // 📌 Como o front nao tem a ficha, mapeio o que FOGE do padrao. Quem seguir
+  // o padrao nao precisa entrar aqui.
+  var PASTA_FORA_DO_PADRAO = { girassol: 'girassol-backup-offline' };
+  window.APP_PASTA_CHECKOUT = PASTA_FORA_DO_PADRAO[window.APP_EMPRESA]
+    || (window.APP_EMPRESA + '-checkout-offline');
+
   // so mexe no que e chamada de API deste servidor — nao toca em CDN,
   // caminho relativo (js-AMB/...), blob:, data: nem URL absoluta
   function precisaPrefixo(u) {
