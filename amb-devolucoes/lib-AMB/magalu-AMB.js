@@ -137,7 +137,13 @@ function criarEstadoMagalu() {
     // controle da renovacao (o refresh do Magalu e de uso unico)
     renov: { emVoo: null, ultimaPersistencia: false },
     // sinalizadores de construcao
-    indices: { fase2Rodando: false, construindo: false },
+    // b416 (Codex #356, P2 - auditoria do `ocupado` do b415) - o b415 fez
+    // `ocupado` olhar `fase2Rodando`, mas essa flag so liga na FASE 2
+    // (reverse_code). A FASE 1 inteira (listar as paginas de tickets, o que
+    // pode levar a maior parte do tempo com muitos tickets) passava com
+    // `ocupado: false` — a fila achava a rotina livre e liberava o Shopee
+    // por cima dela. `construindoTickets` cobre a rodada INTEIRA.
+    indices: { fase2Rodando: false, construindo: false, construindoTickets: false },
     // indice de tickets
     tidx: { ts: 0, mapa: {}, total: 0, comReversa: 0, duracaoSeg: 0, erro: null },
     // indice da espreita
@@ -329,7 +335,12 @@ async function construirIndiceDevolucoes(opts = {}) {
   const mapa = {};
   let total = 0;
   const abertos = [];
+  // b416 (Codex #356, P2) - marca a rodada INTEIRA (fase 1 listando os
+  // tickets + fase 2 buscando reverse_code). Ver comentario da declaracao
+  // de `construindoTickets` em `criarEstadoMagalu`.
+  INDICES.construindoTickets = true;
 
+  try {
   for (let pg = 0; pg < maxPaginas; pg++) {
     const r = await listarTickets({ _limit: 100, _offset: pg * 100 });
     if (!r.ok) { TIDX.erro = `listarTickets HTTP ${r.status}`; break; }
@@ -389,6 +400,7 @@ async function construirIndiceDevolucoes(opts = {}) {
     await _fase2ReverseCodes(abertos); // pre-aquecimento: completa tudo
   }
   return TIDX;
+  } finally { INDICES.construindoTickets = false; }
 }
 
 function statusTickets() {
@@ -540,7 +552,12 @@ function statusIndice() {
     // em `INDICES.fase2Rodando`. A espera lia `st.construindo`, achava
     // `undefined` e retornava NA HORA: o magalu ficava fora da fila,
     // rodando por cima de quem viesse depois. A fila parecia completa.
-    ocupado: !!(INDICES && (INDICES.fase2Rodando || INDICES.construindo)),
+    //
+    // ⚠️ b416 (Codex #356, P2 - auditoria) - `fase2Rodando` sozinho so
+    // cobre a FASE 2. A fase 1 (listar as paginas de tickets) passava com
+    // `ocupado: false` do mesmo jeito — `construindoTickets` cobre a
+    // rodada inteira (ver `construirIndiceDevolucoes`).
+    ocupado: !!(INDICES && (INDICES.fase2Rodando || INDICES.construindo || INDICES.construindoTickets)),
 
     credenciais_do_app: temCredenciais(),
     token_da_amb: temToken(),
