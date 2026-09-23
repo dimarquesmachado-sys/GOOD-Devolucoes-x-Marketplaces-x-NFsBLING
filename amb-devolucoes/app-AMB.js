@@ -344,6 +344,17 @@ const INDEX_AMB_HTML = fs.readFileSync(
   `<meta name="apple-mobile-web-app-title" content="Devolucoes ${((FICHA_AMB && FICHA_AMB.nome) || 'AMBTotal').split(' ')[0]}">`
 );
 
+// ⚠️ b406 (Codex, PR #345, P2) - A PASTA DO CHECKOUT no base-amb.js vinha de
+// um 2o mapa de excecao cravado no front (so cobria a Girassol). Uma 4a
+// empresa fora do padrao entraria na ficha (PASTA_CHECKOUT, acima) e nao
+// nesse mapa, e o link desta tela divergiria do que o backend monta.
+//
+// 📌 Mesmo padrao do INDEX_AMB_HTML: le o arquivo uma vez (a empresa deste
+// processo nao muda em runtime) e troca o marcador pelo valor da ficha.
+const BASE_AMB_JS = fs.readFileSync(
+  path.join(__dirname, 'public-AMB', 'js-AMB', 'base-amb.js'), 'utf8'
+).replace('"%%PASTA_CHECKOUT%%"', JSON.stringify(PASTA_CHECKOUT));
+
 // ⚠️ b359 - O VALOR DA COLUNA `empresa` NO BANCO, vindo da FICHA.
 //
 // Era o literal `'amb'` em 28 lugares. NAO e a `chave` ('ambtotal') nem o
@@ -467,7 +478,7 @@ const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 // derrubar a chamada quando o erro na tabela NAO for "tabela ausente" (antes
 // um erro de permissao, por exemplo, passava batido e a empresa saia
 // "pronta" sem a tabela confirmada).
-const VERSAO = 'AMB Devolucoes b405';
+const VERSAO = 'AMB Devolucoes b406';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -1117,6 +1128,14 @@ router.get('/manifest-AMB.json', (req, res) => {
     start_url: BASE + '/',
     scope: BASE + '/',
   }));
+});
+
+// b406 - serve o base-amb.js JA COM a pasta do checkout desta empresa (ficha
+// resolvida no boot). Registrada antes do static abaixo pra ter prioridade
+// no mesmo nome de arquivo.
+router.get('/js-AMB/base-amb.js', (req, res) => {
+  res.set('Cache-Control', 'no-cache, must-revalidate');   // mesma licao do b19
+  res.type('application/javascript').send(BASE_AMB_JS);
 });
 
 router.use(express.static(path.join(__dirname, 'public-AMB'), {
