@@ -27,7 +27,14 @@ const CFG = fs.readFileSync(path.join(RAIZ, 'amb-devolucoes', 'config-AMB.js'), 
      + (diretas.length ? ' (SOBRARAM: ' + diretas.slice(0, 5).join(', ') + ')' : ''));
 
   // b243: o app-AMB tambem — eram 9 pontos, os fiscais entre eles
-  const APP = fs.readFileSync(path.join(RAIZ, 'amb-devolucoes', 'app-AMB.js'), 'utf8');
+  // ⚠️ b402 - IGNORA COMENTARIO.
+  //
+  // O teste acusou `AMB_NATUREZA_DEVOLUCAO` no app — e as 2 ocorrencias eram
+  // COMENTARIOS meus, explicando que aquela env tinha saido. Vermelho por
+  // texto de comentario ensina a ignorar o vermelho, que e o pior efeito que
+  // um teste pode ter.
+  const APP = fs.readFileSync(path.join(RAIZ, 'amb-devolucoes', 'app-AMB.js'), 'utf8')
+    .split('\n').filter((x) => !x.trim().startsWith('//')).join('\n');
   const noApp = [...APP.matchAll(/process\.env\.AMB_(\w+)/g)].map((m) => m[1]);
   ok(noApp.length === 0,
      'app-AMB nao le `process.env.AMB_*` direto'

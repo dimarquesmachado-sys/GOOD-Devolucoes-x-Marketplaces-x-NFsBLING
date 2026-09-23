@@ -51,10 +51,32 @@ Além disso:
 
 ## O que falta, e não é código
 
+### ⚠️ Um CNPJ NOVO não entra só por configuração
+
+A pergunta "amanhã eu ligo outra empresa?" tem duas respostas diferentes.
+
+**A Girassol, sim** — a ficha dela já está escrita e testada. Falta o que
+está abaixo.
+
+**Qualquer outro CNPJ, não.** A lista de empresas é **código**, não cadastro:
+`contrato-empresas.json` mais a ficha em `lib/empresas.js`, com chave, chave
+de dados, rota, prefixos, tabelas, campos fiscais e capacidades. Isso é PR,
+revisão e deploy — não uma tela.
+
+📌 Isso é uma **escolha**, não um esquecimento: ficha em código passa pelos
+testes de paridade e pela revisão. Mas quem promete "plugar amanhã" precisa
+saber que o dia inclui um PR.
+
 ### Para ligar a Girassol (tudo configuração do dono)
 
-**10 envs** `GIRASSOL_*`: as seis de Bling e ML, `GIRASSOL_USERS`,
-`GIRASSOL_SESSION_SECRET`, e o par do Supabase.
+**8 envs** `GIRASSOL_*`: as seis de Bling e ML, `GIRASSOL_USERS` e
+`GIRASSOL_SESSION_SECRET`.
+
+⚠️ **O Supabase NÃO precisa de par próprio.** O `conferirEmpresa` aceita o
+`SUPABASE_URL`/`SUPABASE_KEY` globais — e é assim que a AMB roda hoje. A
+lista que ele imprime mostra `GIRASSOL_SUPABASE_URL (ou SUPABASE_URL)`: o
+"ou" importa. Criar um par próprio à toa é trabalho e mais um segredo para
+girar.
 
 **3 campos fiscais**, que vêm do Bling dela: `idEmpresaControl`,
 `depositoGeral`, `naturezasDevolucaoIds`. Sem padrão inventado, de propósito —
@@ -65,7 +87,23 @@ pode ser a **antiga, de 5 tabelas**: cole `sql/provisionar-empresa.sql` no SQL
 Editor antes. O `lib/provisionar-empresa.js` confere e avisa se faltarem, em
 vez de dizer "ok" e a tela de defeitos quebrar depois.
 
-**Um manifest próprio** da PWA, senão as duas se instalam como o mesmo app.
+⚠️ **Manifest: nada a fazer.** Uma versão anterior deste documento pedia um
+manifest próprio — está obsoleto. A rota `/manifest-AMB.json` já deriva `id`,
+nome e escopo da ficha, antes do estático. As duas PWAs já são apps
+diferentes.
+
+### ⚠️ E um bloqueador FORA deste repositório
+
+A seta ↗ do card Shopee da Girassol aponta para
+`/girassol-checkout-offline/ir-shopee` no **Mover-Pedidos** — e **essa pasta
+não existe lá**. Existem `amb-checkout-offline` e `good-checkout-offline`.
+
+**Até alguém criá-la, o link da Girassol dá 404.** É de propósito: 404 é erro
+visível; abrir o pedido da AMB seria número errado com cara de acerto.
+
+📌 Para um CNPJ novo, o mesmo vale para: a chave reconhecida pelo proxy da
+Shopee, a rota `/magalu/ir/<empresa>` e o callback OAuth registrado em cada
+aplicação de marketplace.
 
 ### Três provas que ninguém pode dar por código
 

@@ -308,6 +308,17 @@ const NOME_EMPRESA = (FICHA_AMB && FICHA_AMB.nome) || 'AMBTotal';
 const TAG_APP = String((CFG_EMPRESA && CFG_EMPRESA.PREFIXO_ENV) || 'AMB_')
   .replace(/_$/, '');
 
+// ⚠️ b403 (Codex) - O NOME DA ENV NOS TEXTOS DA TELA.
+//
+// O b394 trocou "AMBTotal" pelo nome da ficha, mas deixou os NOMES DAS
+// VARIAVEIS: a tela ainda manda conferir `AMB_BLING_CLIENT_ID` e
+// `AMB_MAGALU_TENANT_ID`.
+//
+// ⚠️ Quem estiver configurando a Girassol seguiria a instrucao e mexeria na
+// variavel DA AMB — quebrando a empresa que esta no ar pra tentar ligar a
+// nova. Nao mistura dado, mas manda a pessoa pro lugar errado.
+const PREFIXO_ENV_EMPRESA = String((CFG_EMPRESA && CFG_EMPRESA.PREFIXO_ENV) || 'AMB_');
+
 const CHAVE_CHECKOUT = (FICHA_AMB && FICHA_AMB.chaveDados)
   || (FICHA_AMB && FICHA_AMB.chave) || 'amb';
 
@@ -447,7 +458,7 @@ const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 // derrubar a chamada quando o erro na tabela NAO for "tabela ausente" (antes
 // um erro de permissao, por exemplo, passava batido e a empresa saia
 // "pronta" sem a tabela confirmada).
-const VERSAO = 'AMB Devolucoes b401';
+const VERSAO = 'AMB Devolucoes b403.1';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -616,7 +627,7 @@ router.get('/conectar', admin, (req, res) => {
         <tr><td>Magalu</td><td>${
           !magalu.temCredenciais() ? '<span class="erro">sem credenciais do app no servico</span>'
           : !magalu.temToken() ? '<b>falta o consentimento</b> (botao abaixo)'
-          : !magalu.temTenant() ? '<span class="ok">autorizado</span> &middot; <b>falta AMB_MAGALU_TENANT_ID</b>'
+          : !magalu.temTenant() ? `<span class="ok">autorizado</span> &middot; <b>falta ${PREFIXO_ENV_EMPRESA}MAGALU_TENANT_ID</b>`
           : `<span class="ok">conectado</span> &middot; tenant ${envAmb('MAGALU_TENANT_ID')}`}</td></tr>
         <tr><td>Shopee</td><td>${shopee.cfg.ativo
           ? `<span class="ok">ligada</span> &middot; loja ${shopee.cfg.loja}`
@@ -651,7 +662,7 @@ router.get('/oauth/iniciar', admin, (req, res) => {
     if (!bling.temCredenciais()) {
       return res.status(200).send(pagina('Falta credencial',
         `<h1>Faltam credenciais do Bling</h1><div class="card">Configure
-         <code>AMB_BLING_CLIENT_ID</code> e <code>AMB_BLING_CLIENT_SECRET</code> no Render.</div>`));
+         <code>${PREFIXO_ENV_EMPRESA}BLING_CLIENT_ID</code> e <code>${PREFIXO_ENV_EMPRESA}BLING_CLIENT_SECRET</code> no Render.</div>`));
     }
     const state = novoState('bling');
     const p = new URLSearchParams({
@@ -665,7 +676,7 @@ router.get('/oauth/iniciar', admin, (req, res) => {
     if (!ml.temCredenciais()) {
       return res.status(200).send(pagina('Falta credencial',
         `<h1>Faltam credenciais do Mercado Livre</h1><div class="card">Configure
-         <code>AMB_ML_CLIENT_ID</code> e <code>AMB_ML_CLIENT_SECRET</code> no Render.</div>`));
+         <code>${PREFIXO_ENV_EMPRESA}ML_CLIENT_ID</code> e <code>${PREFIXO_ENV_EMPRESA}ML_CLIENT_SECRET</code> no Render.</div>`));
     }
     const state = novoState('ml');
     return res.redirect(ml.urlAutorizacao(state, redirectOAuth()));
@@ -745,11 +756,11 @@ router.get('/oauth/callback', async (req, res) => {
         <h1 class="ok">Magalu da ${NOME_EMPRESA} conectado</h1>
         <div class="card"><table>
           <tr><td>Token gravado no Render</td><td>${r.persistiu ? 'sim' : 'NAO'}</td></tr>
-          <tr><td>Tenant configurado</td><td>${magalu.temTenant() ? 'sim' : '<b>FALTA AMB_MAGALU_TENANT_ID</b>'}</td></tr>
+          <tr><td>Tenant configurado</td><td>${magalu.temTenant() ? 'sim' : `<b>FALTA ${PREFIXO_ENV_EMPRESA}MAGALU_TENANT_ID</b>`}</td></tr>
         </table></div>
         <div class="aviso">⚠️ Confira que o login foi feito na conta Magalu <b>da ${NOME_EMPRESA}</b> —
         e a conta logada que fica autorizada, nao o app.
-        ${magalu.temTenant() ? '' : '<br><br>Falta o tenant: abra seller.magaluentregas.com.br logado na AMB, F12 → Network → qualquer chamada ao seller-devolution-bff → header <code>x-tenant-id</code>. Grave em <code>AMB_MAGALU_TENANT_ID</code> no Render.'}</div>`));
+        ${magalu.temTenant() ? '' : `<br><br>Falta o tenant: abra seller.magaluentregas.com.br logado na AMB, F12 → Network → qualquer chamada ao seller-devolution-bff → header <code>x-tenant-id</code>. Grave em <code>${PREFIXO_ENV_EMPRESA}MAGALU_TENANT_ID</code> no Render.`}</div>`));
     }
 
     res.status(400).json({ ok: false, erro: 'servico desconhecido no state' });
@@ -1980,7 +1991,7 @@ router.get('/nf/entrada/indice/construir', admin, (req, res) => {
 router.get('/nf/entrada/sonda', admin, async (req, res) => {
   res.json({ ok: true, versao: VERSAO,
     procure: 'o tipo cuja natureza diga Devolucao de venda',
-    depois: 'grave o numero em AMB_NF_ENTRADA_TIPO no Render (padrao atual: ' + (envAmb('NF_ENTRADA_TIPO') || '0') + ')',
+    depois: `grave o numero em ${PREFIXO_ENV_EMPRESA}NF_ENTRADA_TIPO no Render (padrao atual: ${envAmb('NF_ENTRADA_TIPO') || '0'})`,
     tipos: await nfEntrada.sondarTipos() });
 });
 
@@ -2222,7 +2233,7 @@ router.get('/nf/entrada/naturezas', admin, async (req, res) => {
         ? 'LEITURA INCOMPLETA — o Bling falhou em parte das consultas; nao calibre com este resultado, rode de novo daqui a pouco'
         : (semNaturezaNaoLidas > 0
           ? `FALTA LER ${semNaturezaNaoLidas} nota(s) (nao e erro do Bling): abra ESTA MESMA URL de novo — cada rodada avanca e SOMA com as anteriores. Calibre so quando sem_natureza_nao_lidas chegar a 0`
-          : 'olhe as naturezas com entra_no_aviso=false: se ALGUMA delas for devolucao de cliente (o exemplo_contato ajuda a reconhecer), cole o campo se_for_devolucao_de_cliente_use dela em AMB_NATUREZAS_DEVOLUCAO_IDS no Render. Uma de cada vez — nao junte todas') });
+          : `olhe as naturezas com entra_no_aviso=false: se ALGUMA delas for devolucao de cliente (o exemplo_contato ajuda a reconhecer), cole o campo se_for_devolucao_de_cliente_use dela em ${PREFIXO_ENV_EMPRESA}NATUREZAS_DEVOLUCAO_IDS no Render. Uma de cada vez — nao junte todas`) });
   } catch (e) {
     res.status(500).json({ ok: false, erro: String(e.message || e) });
   }
@@ -2413,6 +2424,27 @@ registrarRotasAdminNF(router, {
   mapItensNF: nfp.mapItensNF,
   buscarNFsPorNumero: nfp.buscarNFsPorNumero,   // b212 - raio-x da busca por numero
   buscarNfDevolucaoBling: nfp.acharNfDevolucaoBling,   // b255
+
+  // ⚠️ b402 - A NATUREZA DA NF VEM DA FICHA, nao do padrao do lib/nf-pessoa.
+  //
+  // La dentro havia `process.env.AMB_NATUREZA_DEVOLUCAO || '15110882041'` —
+  // o id da AMBTotal CRAVADO. E os 2 chamadores (rotas-admin-AMB) nao
+  // passavam natureza nenhuma, entao TODOS caiam nesse padrao.
+  //
+  // ⚠️ A Girassol buscaria a NF de devolucao pela natureza da AMBTotal: nao
+  // acharia as dela, e poderia achar as da AMB.
+  // ⚠️ E O CAMPO E `naturezasDevolucaoIds`, NAO `naturezaDevolucao`.
+  //
+  // A ficha tem DOIS, e eu peguei o errado na 1a versao:
+  //   naturezaDevolucao      -> a natureza de EMITIR (vazia na AMB hoje)
+  //   naturezasDevolucaoIds  -> a(s) natureza(s) de BUSCAR  ← esta
+  //
+  // Com o errado a busca da AMB receberia vazio e RECUSARIA — um conserto
+  // que quebra o que estava funcionando. Conferi o valor antes: o campo de
+  // busca entrega '15110882041', exatamente o padrao que saiu do nf-pessoa.
+  naturezaDevolucaoDaEmpresa: (CFG_EMPRESA && CFG_EMPRESA.fiscal
+    && typeof CFG_EMPRESA.fiscal.naturezasDevolucaoIds === 'function')
+    ? CFG_EMPRESA.fiscal.naturezasDevolucaoIds() : null,
   nomesBatemNf: nfp.nomesBatem,   // b316 - MESMO comparador do casamento
   listarDepositos: bling.listarDepositos,   // b276
 });
@@ -3441,7 +3473,7 @@ magalu.preAquecer();
 
 
 if (!auth.temUsuarios()) {
-  console.log('[amb-devolucoes] AMB_USERS vazio - ninguem consegue logar ainda');
+  console.log(`[amb-devolucoes] ${PREFIXO_ENV_EMPRESA}USERS vazio - ninguem consegue logar ainda`);
 }
 
 console.log(`[amb-devolucoes] ${VERSAO} carregado - prefixo ${BASE}`);
