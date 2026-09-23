@@ -482,6 +482,53 @@ process.env.AMB_SUPABASE_KEY = 'chave-de-teste';
     ok(/const PREFIXO_ENV_EMPRESA = String\(\(CFG_EMPRESA/.test(semComEnv),
        '  o prefixo sai da ficha');
 
+    // ⚠️ apontamento do Codex (#343): o teste acima só rejeita `AMB_<algo>`
+    // cravado — não pega `'texto ${PREFIXO_ENV_EMPRESA}...'` em aspas
+    // simples/duplas, onde o `${}` NUNCA interpola e a tela mostra o
+    // literal pro usuário. Aconteceu 6x no b403 (linhas 630, 759, 763,
+    // 1994, 2236, 3476) e passou batido pelo teste anterior.
+    //
+    // 📌 Precisa entender template literal ANINHADO (backtick com `${}` que
+    // contem outro backtick dentro, como a tabela de /conectar tem) — senao
+    // a 1a versao deste scanner fechava a string de fora no 1o backtick de
+    // dentro e saia contando lixo. Por isso usa PILHA: uma string abre um
+    // frame; um `${` dentro de crase abre um frame de EXPRESSAO que so
+    // fecha no `}` da MESMA profundidade.
+    {
+      const interpolacaoQuebrada = [];
+      const pilha = [];
+      let bloco = false; let linha = 1; let i = 0;
+      while (i < appEnv.length) {
+        const c = appEnv[i];
+        if (c === '\n') linha++;
+        const topo = pilha[pilha.length - 1];
+        if (bloco) { if (c === '*' && appEnv[i + 1] === '/') bloco = false; i++; continue; }
+        if (topo && topo.tipo === 'str') {
+          if (c === '\\') { i += 2; continue; }
+          if (c === topo.delim) { pilha.pop(); i++; continue; }
+          if (topo.delim === '`' && c === '$' && appEnv[i + 1] === '{') {
+            pilha.push({ tipo: 'expr', chaves: 0 }); i += 2; continue;
+          }
+          if (topo.delim !== '`' && c === '$' && appEnv[i + 1] === '{') interpolacaoQuebrada.push(linha);
+          i++; continue;
+        }
+        if (topo && topo.tipo === 'expr') {
+          if (c === '{') { topo.chaves++; i++; continue; }
+          if (c === '}') {
+            if (topo.chaves === 0) pilha.pop(); else topo.chaves--;
+            i++; continue;
+          }
+        }
+        if (c === '/' && appEnv[i + 1] === '/') { while (i < appEnv.length && appEnv[i] !== '\n') i++; continue; }
+        if (c === '/' && appEnv[i + 1] === '*') { bloco = true; i += 2; continue; }
+        if (c === '"' || c === "'" || c === '`') { pilha.push({ tipo: 'str', delim: c }); i++; continue; }
+        i++;
+      }
+      ok(interpolacaoQuebrada.length === 0,
+         '⚠️ nenhum `${...}` preso em aspas simples/duplas no app-AMB.js (nao interpola)'
+         + (interpolacaoQuebrada.length ? ` — linha ${interpolacaoQuebrada[0]}` : ''));
+    }
+
     console.log('');
     console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
     process.exit(falhas ? 1 : 0);
