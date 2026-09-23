@@ -73,11 +73,15 @@
   // a Girassol la e `girassol-BACKUP-offline`, nome historico. O link dela
   // apontaria pra uma pasta que nao existe.
   //
-  // 📌 Como o front nao tem a ficha, mapeio o que FOGE do padrao. Quem seguir
-  // o padrao nao precisa entrar aqui.
-  var PASTA_FORA_DO_PADRAO = { girassol: 'girassol-backup-offline' };
-  window.APP_PASTA_CHECKOUT = PASTA_FORA_DO_PADRAO[window.APP_EMPRESA]
-    || (window.APP_EMPRESA + '-checkout-offline');
+  // ⚠️ b406 (Codex, PR #345, P2) - ERA UM 2o MAPA DE EXCECAO, cravado aqui
+  // so pra Girassol. `app-AMB.js` (PASTA_CHECKOUT) ja resolve isso pela
+  // FICHA — uma 4a empresa com pasta fora do padrao entraria la e NAO aqui,
+  // e o link desta tela divergiria do que o backend monta, sem avisar.
+  //
+  // 📌 Agora o valor vem pronto do servidor: esta rota (js-AMB/base-amb.js
+  // em app-AMB.js) troca o marcador abaixo pelo PASTA_CHECKOUT da ficha
+  // antes de servir o arquivo. So ha UMA fonte da verdade.
+  window.APP_PASTA_CHECKOUT = "%%PASTA_CHECKOUT%%";
 
   // so mexe no que e chamada de API deste servidor — nao toca em CDN,
   // caminho relativo (js-AMB/...), blob:, data: nem URL absoluta
