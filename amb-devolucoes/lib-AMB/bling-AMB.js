@@ -200,7 +200,20 @@ async function chamarBling(caminho, opcoes = {}) {
     }
 
     if (status === 429) {
-      console.log(`[${TAG_EMP}/Bling] 429 - aguardando 1.5s`);
+      // ⚠️ b413 - A AMB NEM LIA O `retry-after`. Espera 1,5s fixo e pronto.
+      //
+      // Registro o que o Bling mandou, pra saber se os 1,5s (e os 60s do
+      // porteiro, do outro lado) fazem sentido. Sem mudar o comportamento —
+      // medir antes de mexer, porque soltar chamada durante 429 real pode
+      // estender o bloqueio da conta.
+      // ⚠️ a variavel do catch e `erro` (L179), nao `e` — conferi antes de
+      // usar. Com `e` isso lancaria ReferenceError JUSTO no caminho do 429,
+      // que e o que eu queria medir: a medicao mataria o que mede.
+      const raAMB = Number(erro && erro.response && erro.response.headers
+        && erro.response.headers['retry-after']);
+      console.log(`[${TAG_EMP}/Bling] 429 - aguardando 1.5s`
+        + ' | retry-after do Bling: '
+        + (Number.isFinite(raAMB) && raAMB > 0 ? raAMB + 's' : 'NAO MANDOU'));
       await sleep(1500);
       try {
         const r = await fazer();
