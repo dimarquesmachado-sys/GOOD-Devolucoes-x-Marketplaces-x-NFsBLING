@@ -478,7 +478,7 @@ const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 // derrubar a chamada quando o erro na tabela NAO for "tabela ausente" (antes
 // um erro de permissao, por exemplo, passava batido e a empresa saia
 // "pronta" sem a tabela confirmada).
-const VERSAO = 'AMB Devolucoes b416';
+const VERSAO = 'AMB Devolucoes b417';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -723,7 +723,7 @@ router.get('/oauth/iniciar', admin, (req, res) => {
 // antes do boot terminar de ler o arquivo, daria ReferenceError por TDZ.
 //
 // 📌 `node --check` NAO pega isso. So percebi conferindo a ordem na mao.
-const jaPreAquecidoPeloOAuth = { ml: false };
+const jaPreAquecidoPeloOAuth = { ml: false, magalu: false };
 
 router.get('/oauth/callback', async (req, res) => {
   const { code, state, error, error_description } = req.query;
@@ -781,6 +781,11 @@ router.get('/oauth/callback', async (req, res) => {
 
     if (reg.servico === 'magalu') {
       const r = await magalu.trocarCodePorToken(String(code), redirectOAuth());
+      // ⚠️ b417 (Codex, P2): mesmo caso do ML — se o OAuth do Magalu for
+      // concluido durante a espera da fila, ela dispararia de novo ao
+      // acordar. Eu tratei o ML e deixei o Magalu de fora, com o mesmo bug
+      // no mesmo arquivo, 20 linhas abaixo.
+      jaPreAquecidoPeloOAuth.magalu = true;
       magalu.preAquecer();
       return res.send(pagina('Magalu conectado', `
         <h1 class="ok">Magalu da ${NOME_EMPRESA} conectado</h1>
@@ -3560,7 +3565,11 @@ async function esperarTerminar(nome, status) {
     console.log('[amb-devolucoes] Bling sem token - indices de nomes/entrada so apos conectar');
   }
 
-  magalu.preAquecer(0);
+  if (jaPreAquecidoPeloOAuth.magalu) {
+    console.log(`[${TAG_APP}/PREAQUECER] magalu ja foi disparado pelo OAuth`);
+  } else {
+    magalu.preAquecer(0);
+  }
   await esperarTerminar('magalu', () => magalu.statusIndice());
 
   // ⚠️ a Shopee não expõe `construindo` — vai por último, sem espera.
