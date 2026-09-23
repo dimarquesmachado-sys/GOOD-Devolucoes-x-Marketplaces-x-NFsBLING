@@ -460,6 +460,28 @@ process.env.AMB_SUPABASE_KEY = 'chave-de-teste';
     ok(/PREFIXOS_CONHECIDOS = \[[^\]]*'\/good'/.test(baseJs),
        "⚠️ base-amb.js: '/good' entra nos prefixos conhecidos");
 
+    // ── ⚠️ e o NOME DA ENV nos textos da tela ─────────────────────────
+    //
+    // O b394 trocou "AMBTotal" pelo nome da ficha, mas deixou os NOMES DAS
+    // VARIÁVEIS: a tela mandava conferir `AMB_BLING_CLIENT_ID` mesmo na
+    // Girassol.
+    //
+    // ⚠️ Quem estivesse configurando a Girassol seguiria a instrução e
+    // mexeria na variável DA AMB — quebrando a empresa que está no ar para
+    // tentar ligar a nova. Não mistura dado; manda a pessoa ao lugar errado.
+    const appEnv = fs.readFileSync(
+      path.join(RAIZ, 'amb-devolucoes', 'app-AMB.js'), 'utf8');
+    const semComEnv = appEnv.split('\n')
+      .filter((l) => !l.trim().startsWith('//') && !/process\.env/.test(l))
+      .join('\n');
+    const naTela = (semComEnv.match(
+      /<code>AMB_[A-Z_]+<\/code>|grave o numero em AMB_[A-Z_]+/g) || []);
+    ok(naTela.length === 0,
+       '⚠️ nenhum nome de env `AMB_*` cravado no texto da tela'
+       + (naTela.length ? ` (${naTela[0]})` : ''));
+    ok(/const PREFIXO_ENV_EMPRESA = String\(\(CFG_EMPRESA/.test(semComEnv),
+       '  o prefixo sai da ficha');
+
     console.log('');
     console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
     process.exit(falhas ? 1 : 0);
