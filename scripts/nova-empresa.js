@@ -35,7 +35,16 @@
  * pior que ausente — ver `docs/ESTADO-MULTILOJA.md`). Não ativa a empresa.
  * ============================================================ */
 
+const fs = require('fs');
+const path = require('path');
+const { ENVS_OBRIGATORIAS } = require('../lib/empresas.js');
+
 const VALIDA_CHAVE = /^[a-z][a-z0-9]{2,14}$/;
+
+// ⚠️ a trava do banco (sql/provisionar-empresa.sql) recusa estes dois sufixos
+// mesmo fora do contrato — a GOOD usa sufixo VAZIO, entao `_good` nunca
+// aparece numa ficha, mas a funcao do banco recusa do mesmo jeito.
+const SUFIXOS_RESERVADOS_SQL = ['_amb', '_good'];
 
 function gerar(chave, nome, sufixoDados) {
   const erros = [];
@@ -48,15 +57,43 @@ function gerar(chave, nome, sufixoDados) {
   if (suf && !/^[a-z0-9]{2,12}$/.test(suf)) {
     erros.push(`sufixo de dados "${suf}" fora do formato: minúsculas/dígitos, 2 a 12`);
   }
+
+  const sufixoTabelas = suf ? `_${suf}` : '';
+
+  // ⚠️ (Codex, P1) — um sufixo que ja pertence a outra empresa nao dispara
+  // erro nenhum na hora de provisionar (a rotina e idempotente: so avisa que
+  // a tabela "ja existe"), e `conferirEmpresa` nao confere colisao. Ativar
+  // essa ficha leria/gravaria dado da empresa dona de verdade.
+  if (suf && /^[a-z0-9]{2,12}$/.test(suf)) {
+    let contratoAtual = { empresas: {} };
+    try {
+      contratoAtual = JSON.parse(
+        fs.readFileSync(path.join(__dirname, '..', 'contrato-empresas.json'), 'utf8')
+      );
+    } catch (err) { /* sem o contrato pra ler, so a trava do SQL protege */ }
+
+    const usados = new Set(SUFIXOS_RESERVADOS_SQL);
+    for (const e of Object.values(contratoAtual.empresas || {})) {
+      if (e && e.sufixo_tabelas) usados.add(e.sufixo_tabelas);
+    }
+    if (usados.has(sufixoTabelas)) {
+      erros.push(`sufixo de dados "${suf}" ja pertence a outra empresa (tabelas ${sufixoTabelas}*) — escolha outro`);
+    }
+  }
+
   if (erros.length) return { ok: false, erros };
 
   const PREF = chave.toUpperCase() + '_';
+  // ⚠️ (Codex, P2) — nome com aspa ou quebra de linha quebraria a sintaxe se
+  // fosse interpolado dentro de aspas simples (`nome: 'D'Ávila'`). Serializado
+  // como literal JS, qualquer nome cola sem erro.
+  const nomeLiteral = JSON.stringify(nome);
 
   const ficha = `    ${chave}: {
       chave: '${chave}',
       // ⚠️ o valor da coluna \`empresa\` no banco e o sufixo das tabelas.
       chaveDados: '${suf}',
-      nome: '${nome}',
+      nome: ${nomeLiteral},
       prefixoEnv: '${PREF}',
       prefixoFiscal: '${PREF}',
       prefixoRota: '/${chave}',
@@ -79,21 +116,48 @@ function gerar(chave, nome, sufixoDados) {
       },
     },`;
 
-  const contrato = JSON.stringify({
-    [chave]: {
-      nome,
-      prefixo_env: PREF,
-      slug_http: `/${chave}`,
-      chave_dados: suf,
-      ativa_em: { devolucoes: false },
+  // ⚠️ (Codex, P1) — o teste de contrato (`test/contrato-empresas.test.js`)
+  // itera `e.aliases` e `e.dono_hoje` de TODA empresa do arquivo, e confere
+  // `sufixo_tabelas` (nao `chave_dados`). Uma ficha sem esses campos derrubava
+  // `node verifica.js` pra qualquer empresa gerada — nao era so incompleta,
+  // quebrava o teste com TypeError.
+  //
+  // `capacidades`/`conta_marketplace`/`dono_alvo` abaixo saem com a linha de
+  // base COMUM as 3 empresas que ja rodam (fiscal/checkout/ml/ml-full/shopee/
+  // magalu, contas propria/propria/propria/compartilhada) — confira contra o
+  // Bling desta empresa antes de ativar; tiktok/madeira-madeira/expedicao
+  // variam por empresa e ficam de fora ate confirmar.
+  const contratoEmpresa = {
+    id_canonico: chave,
+    nome,
+    aliases: [chave],
+    slug_http: `/${chave}`,
+    prefixo_env: PREF,
+    prefixo_env_historico: { devolucoes: PREF, 'mover-pedidos': PREF },
+    prefixo_fiscal: PREF,
+    sufixo_tabelas: sufixoTabelas,
+    conta_marketplace: {
+      bling: 'propria', ml: 'propria', shopee: 'propria',
+      magalu: 'compartilhada', tiktok: 'nao_se_aplica',
     },
-  }, null, 2);
+    dono_hoje: {
+      _nota: 'so bling/ml: e o que este repo MEDE (lib/bling.js e lib/ml.js renovam qualquer empresa configurada aqui). magalu/bling_nfe/tiktok so tem dono quando o Mover-Pedidos plugar esta empresa.',
+      bling: ['devolucoes'],
+      ml: ['devolucoes'],
+    },
+    dono_alvo: {
+      bling: 'mover-pedidos', ml: 'mover-pedidos',
+      magalu: 'mover-pedidos', bling_nfe: 'mover-pedidos',
+    },
+    capacidades: ['fiscal', 'checkout', 'ml', 'ml-full', 'shopee', 'magalu'],
+    ativa_em: { devolucoes: false },
+  };
+  const contrato = JSON.stringify({ [chave]: contratoEmpresa }, null, 2);
 
-  const envs = [
-    'BLING_CLIENT_ID', 'BLING_CLIENT_SECRET', 'BLING_REFRESH_TOKEN',
-    'ML_CLIENT_ID', 'ML_CLIENT_SECRET', 'ML_REFRESH_TOKEN',
-    'USERS', 'SESSION_SECRET',
-  ].map((e) => PREF + e);
+  // ⚠️ (Codex, P2) — a lista vinha duplicada aqui e em `lib/empresas.js`
+  // (`ENVS_OBRIGATORIAS`); foi assim que o `ADMIN_USER` saiu de uma sem sair
+  // da outra. Lendo do registro, as duas nunca mais divergem.
+  const envs = ENVS_OBRIGATORIAS.map((e) => PREF + e);
 
   return { ok: true, chave, nome, suf, PREF, ficha, contrato, envs };
 }

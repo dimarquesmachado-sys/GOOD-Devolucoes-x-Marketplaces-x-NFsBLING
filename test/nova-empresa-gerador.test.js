@@ -12,6 +12,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const { execFileSync } = require('child_process');
 
 let falhas = 0;
 const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o); };
@@ -26,6 +27,16 @@ const { gerar } = require('../scripts/nova-empresa');
   ok(!gerar('a', 'X').ok, '  recusa chave curta demais');
   ok(!gerar('aurora', '').ok, '  recusa sem nome');
   ok(!gerar('aurora', 'X', 'SUF-INVALIDO').ok, '  recusa sufixo fora do formato');
+
+  // ⚠️ (Codex, PR #344, P1) — um sufixo que ja pertence a outra empresa nao
+  // dava erro nenhum: a provisao e idempotente (so avisa "ja existe") e
+  // `conferirEmpresa` nao confere colisao. A ficha gerada apontaria pras
+  // MESMAS tabelas da empresa dona, e ativar leria/gravaria dado dela.
+  const comSufixoDaAmb = gerar('novaempresa', 'Nova Empresa', 'amb');
+  ok(!comSufixoDaAmb.ok, '  recusa sufixo que ja pertence a outra empresa (contrato: _amb)');
+  const comSufixoReservadoNoSql = gerar('outraempresa', 'Outra Empresa', 'good');
+  ok(!comSufixoReservadoNoSql.ok,
+     '  recusa sufixo reservado pelo SQL mesmo sem estar em nenhum contrato (_good)');
 }
 
 // ── o que gera bate com o formato das que já rodam ──────────────────
@@ -45,6 +56,84 @@ const { gerar } = require('../scripts/nova-empresa');
   // e o contrato nasce INATIVO
   ok(/"devolucoes": false/.test(r.contrato),
      '⚠️ o contrato nasce com a empresa INATIVA');
+
+  // ⚠️ (Codex, PR #344, P1) — o contrato gerado nao tinha `aliases` nem
+  // `dono_hoje`, e usava `chave_dados` em vez de `sufixo_tabelas`. O teste de
+  // contrato itera esses campos em TODA empresa do arquivo: sem eles, colar a
+  // ficha derrubava `node verifica.js` com TypeError, nao com aviso.
+  const contratoObj = JSON.parse(r.contrato).aurora;
+  ok(Array.isArray(contratoObj.aliases) && contratoObj.aliases.includes('aurora'),
+     '  o contrato declara `aliases`');
+  ok(!!contratoObj.dono_hoje && !!contratoObj.dono_alvo,
+     '  e `dono_hoje`/`dono_alvo`');
+  ok(contratoObj.sufixo_tabelas === '_aurora' && contratoObj.chave_dados === undefined,
+     '  com `sufixo_tabelas` (nao `chave_dados`)');
+  // a eleicao do passo 2 exige bling/bling_nfe em `dono_alvo` de QUALQUER
+  // empresa, independente de capacidade declarada (teste em
+  // fontes-de-verdade.test.js) — sem isso o contrato validaria sozinho mas
+  // quebraria junto com a eleicao ja registrada.
+  ok(contratoObj.dono_alvo.bling === 'mover-pedidos' && contratoObj.dono_alvo.bling_nfe === 'mover-pedidos',
+     '  e `dono_alvo` cobre bling/bling_nfe, exigidos pela eleicao do passo 2');
+}
+
+// ── ⚠️ (Codex, PR #344, P2) — nome com aspa nao pode quebrar a ficha ──
+{
+  const r = gerar('aurora', "D'Ávila Comércio");
+  ok(r.ok, 'aceita nome com apostrofo');
+  // o trecho `nome: ...` da ficha tem que ser um literal JS valido —
+  // interpolado cru em aspas simples, `nome: 'D'Ávila...'` quebra a sintaxe
+  // de quem colar em lib/empresas.js.
+  const m = /nome: (.+),\n/.exec(r.ficha);
+  ok(!!m, '  a ficha tem a linha do nome');
+  if (m) {
+    let valor;
+    let lancou = false;
+    try { valor = new Function(`"use strict"; return (${m[1]});`)(); }
+    catch (err) { lancou = true; }
+    ok(!lancou && valor === "D'Ávila Comércio",
+       '  e o literal do nome e sintaxe JS valida, com o nome intacto');
+  }
+}
+
+// ── ⚠️ (Codex, PR #344, P2) — a lista de envs tem que ter ADMIN_USER ──
+{
+  const r = gerar('aurora', 'Aurora Comercio');
+  ok(r.envs.includes('AURORA_ADMIN_USER'),
+     '⚠️ a lista de envs do Render inclui ADMIN_USER (sem ele, ninguem faz acao de admin)');
+}
+
+// ── ⚠️ e a prova mais forte: o teste de contrato inteiro aceita a ficha ──
+//
+// Reproduz exatamente o que o Codex apontou: colar a ficha gerada no
+// contrato e rodar os testes que `node verifica.js` roda. Antes da correção
+// isto quebrava com TypeError (aliases/dono_hoje ausentes).
+{
+  const contratoPath = path.join(RAIZ, 'contrato-empresas.json');
+  const antesContrato = fs.readFileSync(contratoPath, 'utf8');
+  const r = gerar('aurora', 'Aurora Comercio', 'aur');
+  const contratoObj = JSON.parse(antesContrato);
+  Object.assign(contratoObj.empresas, JSON.parse(r.contrato));
+
+  const rodar = (arquivo) => {
+    try {
+      execFileSync(process.execPath, [path.join(RAIZ, 'test', arquivo)], { stdio: 'pipe' });
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, saida: String((err.stdout || '') + (err.stderr || '')) };
+    }
+  };
+
+  try {
+    fs.writeFileSync(contratoPath, JSON.stringify(contratoObj, null, 2));
+    const c1 = rodar('contrato-empresas.test.js');
+    ok(c1.ok, '⚠️ com a ficha colada, `test/contrato-empresas.test.js` passa'
+       + (c1.ok ? '' : ('\n' + c1.saida.split('\n').filter((l) => /FALHA/.test(l)).join('\n'))));
+    const c2 = rodar('fontes-de-verdade.test.js');
+    ok(c2.ok, '  e `test/fontes-de-verdade.test.js` tambem passa'
+       + (c2.ok ? '' : ('\n' + c2.saida.split('\n').filter((l) => /FALHA/.test(l)).join('\n'))));
+  } finally {
+    fs.writeFileSync(contratoPath, antesContrato);
+  }
 }
 
 // ── ⚠️ e a prova que importa: colada, o registro ACEITA ─────────────
