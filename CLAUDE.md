@@ -1,5 +1,10 @@
 # Manual de trabalho do Claude neste repositório
 
+> **Mexendo no multiloja?** Leia
+> [`docs/ESTADO-MULTILOJA.md`](docs/ESTADO-MULTILOJA.md) — ele diz o que está
+> fechado, o que falta e, principalmente, **como medir** em vez de confiar na
+> página. Os checklists mais antigos têm trechos que já não descrevem o código.
+
 Este arquivo é a memória operacional do projeto. Leia-o **antes de editar qualquer
 arquivo**, inclusive em pedidos aparentemente pequenos. O objetivo principal é fazer
 ajustes pequenos, corretos e fáceis de revisar — sem transformar uma correção pontual
