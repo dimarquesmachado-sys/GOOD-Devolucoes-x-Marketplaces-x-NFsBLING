@@ -153,6 +153,29 @@ const { plugar, segredoForte, lerDescoberta } = require('../scripts/plugar-empre
        '⚠️ e os 2 campos de natureza (emitir e buscar) continuam citados');
   }
 
+  // ── ⚠️ a nota final não pode citar algo que talvez nunca apareceu ──
+  //
+  // Sem access token (ou com a descoberta falhando), nenhuma natureza de
+  // EMITIR é impressa antes da nota final — mas ela dizia "diferente da de
+  // EMITIR acima", citando um valor que pode nunca ter sido mostrado
+  // (Codex, PR #351, discussion_r4084870381, P2).
+  //
+  // ⚠️ Os `console.log` da nota final vivem dentro do bloco de linha de
+  // comando (`require.main === module`), fora de qualquer função exportada
+  // — não tem como chamá-los sem reescrever o script. Sigo o padrão já
+  // usado nos blocos acima: checo o texto-fonte real, não uma cópia dele.
+  {
+    const src5 = fs.readFileSync(
+      path.join(__dirname, '..', 'scripts', 'plugar-empresa.js'), 'utf8');
+    const semC5 = src5.split('\n')
+      .filter((l) => !l.trim().startsWith('//')).join('\n');
+    ok(!/EMITIR acima/.test(semC5),
+       '⚠️ a nota final nao depende mais de algo impresso "acima" (podia nao existir)');
+    ok(/ID_NATUREZA_DEVOLUCAO_ENTRADA é a natureza de EMITIR/.test(semC5)
+       && /NATUREZAS_DEVOLUCAO_IDS, que é a de BUSCAR/.test(semC5),
+       '  e nomeia os dois campos direto, sem depender do que rolou antes');
+  }
+
   console.log('');
   console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
   process.exit(falhas ? 1 : 0);

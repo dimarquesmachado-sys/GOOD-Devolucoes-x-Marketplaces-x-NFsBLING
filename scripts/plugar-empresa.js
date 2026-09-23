@@ -244,9 +244,14 @@ if (require.main === module) {
     console.log('   o `GET /empresas` dá 404. Ele aparece na URL quando você abre');
     console.log('   a empresa no painel.');
     console.log('');
-    console.log(`   📌 E o ${r.PREF}NATUREZAS_DEVOLUCAO_IDS é a natureza de BUSCAR,`);
-    console.log('   diferente da de EMITIR acima. Nomes parecidos, usos diferentes:');
-    console.log('   trocar os dois faz a NF sair com a natureza errada.');
+    // ⚠️ b410 (Codex, P2) - NÃO DIGA "acima": quando não há access token (ou a
+    // descoberta falha), nada sobre a natureza de EMITIR aparece acima disto
+    // — e esta nota citava um valor que nunca foi mostrado. Agora ela nomeia
+    // os dois campos direto, sem depender do que rolou lá em cima.
+    console.log(`   📌 O ${r.PREF}ID_NATUREZA_DEVOLUCAO_ENTRADA é a natureza de EMITIR,`);
+    console.log(`   diferente do ${r.PREF}NATUREZAS_DEVOLUCAO_IDS, que é a de BUSCAR.`);
+    console.log('   Nomes parecidos, usos diferentes: trocar os dois faz a NF sair');
+    console.log('   com a natureza errada.');
     console.log('');
 
     console.log('── e por último ──');
