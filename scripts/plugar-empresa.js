@@ -124,7 +124,18 @@ if (require.main === module) {
       const access = process.env[pref + 'BLING_ACCESS_TOKEN'];
       if (access) {
         chamarBling = async (caminho) => {
-          const r = await fetch('https://api.bling.com.br/Api/v3' + caminho, {
+          // ⚠️ b408 (Codex, P1): o `descobrirFicha` monta a URL COMPLETA
+          // (`BASE_BLING + caminho + '?limite=...'`) antes de chamar. Eu
+          // concatenava a base OUTRA VEZ, gerando
+          // `/Api/v3https://api.bling.com.br/Api/v3/depositos` — 404 em toda
+          // consulta, e o script diria "nao descobri" achando que era falta
+          // de permissao.
+          //
+          // 📌 Aceito os dois formatos: se vier absoluta, uso como está.
+          const alvo = /^https?:\/\//.test(String(caminho))
+            ? caminho
+            : 'https://api.bling.com.br/Api/v3' + caminho;
+          const r = await fetch(alvo, {
             headers: { Authorization: 'Bearer ' + access, Accept: 'application/json' },
           });
           const data = await r.json().catch(() => null);
@@ -155,7 +166,17 @@ if (require.main === module) {
       // ⚠️ b407 (Codex, P1): os valores vêm ANINHADOS em `d.descoberto`.
       const { deposito: dep, natureza: nat } = lerDescoberta(d);
       if (dep) console.log(`   ${r.PREF}DEPOSITO_GERAL = ${dep.id}   (${dep.nome || 'achado no Bling'})`);
-      if (nat) console.log(`   ${r.PREF}NATUREZAS_DEVOLUCAO_IDS = ${nat.id || nat}   (achado no Bling)`);
+      // ⚠️ b408 (Codex, P1) - O CAMPO E `ID_NATUREZA_DEVOLUCAO_ENTRADA`.
+      //
+      // O `descobrirFicha` resolve a natureza de ENTRADA (a de emitir). Eu
+      // rotulava como `NATUREZAS_DEVOLUCAO_IDS`, que e a de BUSCAR — outro
+      // campo, outra finalidade.
+      //
+      // ⚠️ E EU JA ERREI ESSES DOIS HOJE, no b402: peguei o de emitir quando
+      // precisava do de buscar. Agora ao contrario. Sao parecidos no nome e
+      // diferentes no uso — quem colar no lugar errado emite NF com a
+      // natureza de busca.
+      if (nat) console.log(`   ${r.PREF}ID_NATUREZA_DEVOLUCAO_ENTRADA = ${nat.id || nat}   (achado no Bling)`);
       if (!dep && !nat) console.log('   (o Bling respondeu, mas não deu para deduzir depósito nem natureza)');
       for (const p of lerDescoberta(d).problemas) console.log('   ⚠️ ' + p);
     } else if (r.erroDescoberta) {
