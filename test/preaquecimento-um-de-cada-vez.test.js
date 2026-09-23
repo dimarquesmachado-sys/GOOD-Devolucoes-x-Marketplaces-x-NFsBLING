@@ -45,6 +45,47 @@ const semCom = APP.split('\n').filter((l) => !l.trim().startsWith('//')).join('\
   }
 }
 
+// ── ⚠️ a fresta entre FALHAR e TENTAR DE NOVO ───────────────────────
+//
+// Quando a construção falha (429!), `construindo` vira false e só DEPOIS o
+// `catch` agenda a próxima tentativa. Nessa fresta a fila achava que a rotina
+// tinha terminado e soltava a seguinte — e 30s depois as duas rodavam juntas.
+//
+// 📌 Justo no cenário que a fila existe pra evitar.
+{
+  for (const m of ['nf-nomes', 'ml-returns']) {
+    const src = fs.readFileSync(
+      path.join(RAIZ, 'amb-devolucoes', 'lib-AMB', `${m}-AMB.js`), 'utf8');
+    ok(/reagendado = true/.test(src),
+       `⚠️ ${m}: marca que VAI tentar de novo`);
+    ok(/ocupado: construindo \|\| reagendado/.test(src),
+       `  ${m}: e o status expoe os dois juntos`);
+  }
+
+  // ⚠️ o magalu NEM TINHA `construindo` — a espera lia undefined e voltava na
+  // hora, deixando ele fora da fila enquanto a fila parecia completa.
+  const mag = fs.readFileSync(
+    path.join(RAIZ, 'amb-devolucoes', 'lib-AMB', 'magalu-AMB.js'), 'utf8');
+  ok(/ocupado: !!\(INDICES/.test(mag),
+     '⚠️ magalu: expoe `ocupado` (nunca teve `construindo`)');
+
+  ok(/st\.ocupado != null \? st\.ocupado : st\.construindo/.test(semCom),
+     '  e a fila le `ocupado`, com `construindo` so de reserva');
+}
+
+// ── ⚠️ o OAuth no meio da espera não pode disparar duas vezes ───────
+{
+  ok(/jaPreAquecidoPeloOAuth/.test(semCom),
+     '⚠️ a fila sabe se o OAuth ja disparou o ml-returns');
+
+  // e a declaração vem ANTES de quem usa — `const` não sobe (TDZ)
+  const linhas = APP.split('\n');
+  const iDecl = linhas.findIndex((l) => /const jaPreAquecidoPeloOAuth/.test(l));
+  const iMarca = linhas.findIndex((l) => /jaPreAquecidoPeloOAuth\.ml = true/.test(l));
+  ok(iDecl >= 0 && iMarca >= 0 && iDecl < iMarca,
+     '⚠️ e e declarada ANTES do callback que a marca (TDZ)');
+}
+
 // ── os dois caminhos da espera, exercitados ─────────────────────────
 {
   const TETO = 900;

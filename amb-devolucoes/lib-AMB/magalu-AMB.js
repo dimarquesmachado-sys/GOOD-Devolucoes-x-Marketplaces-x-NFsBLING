@@ -534,6 +534,14 @@ function resumoEspreita() {
 
 function statusIndice() {
   return {
+    // ⚠️ b415 (Codex, P2) - A FILA ESPERAVA UM CAMPO QUE NAO EXISTIA.
+    //
+    // O `statusIndice` daqui nunca teve `construindo` — a fase ativa mora
+    // em `INDICES.fase2Rodando`. A espera lia `st.construindo`, achava
+    // `undefined` e retornava NA HORA: o magalu ficava fora da fila,
+    // rodando por cima de quem viesse depois. A fila parecia completa.
+    ocupado: !!(INDICES && (INDICES.fase2Rodando || INDICES.construindo)),
+
     credenciais_do_app: temCredenciais(),
     token_da_amb: temToken(),
     tenant: TOKENS.tenant || null,
