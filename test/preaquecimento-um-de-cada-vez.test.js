@@ -81,7 +81,7 @@ const semCom = APP.split('\n').filter((l) => !l.trim().startsWith('//')).join('\
   // hora, deixando ele fora da fila enquanto a fila parecia completa.
   const mag = fs.readFileSync(
     path.join(RAIZ, 'amb-devolucoes', 'lib-AMB', 'magalu-AMB.js'), 'utf8');
-  ok(/ocupado: !!\(agendado \|\| \(INDICES/.test(mag),
+  ok(/ocupado: !!\(INDICES && \(INDICES\.agendado/.test(mag),
      '⚠️ magalu: `ocupado` cobre AGENDADO + rodando');
 
   // ⚠️ b418: e a varredura dos 5 módulos da fila achou o nf-entrada com o
@@ -107,6 +107,37 @@ const semCom = APP.split('\n').filter((l) => !l.trim().startsWith('//')).join('\
 
   ok(/st\.ocupado != null \? st\.ocupado : st\.construindo/.test(semCom),
      '  e a fila le `ocupado`, com `construindo` so de reserva');
+}
+
+// ── ⚠️ b419 (Codex, P2) - `agendado` era do MODULO, nao da EMPRESA ──
+//
+// `let agendado` vivia fora da fabrica `criar()`. Com duas empresas no
+// mesmo processo (o bootstrap monta todas as ativas), o timer da empresa B
+// zerava o flag da empresa A: `statusIndice()` da A dizia livre com o
+// timer dela ainda por disparar. Prova executando DUAS instancias, nao lendo
+// o texto — e' exatamente o cenario que o texto sozinho nao pega.
+{
+  const magaluAMB = require(
+    path.join(RAIZ, 'amb-devolucoes', 'lib-AMB', 'magalu-AMB.js'));
+  process.env.ZTESTA_MAGALU_ACCESS_TOKEN = 'fake-a';
+  process.env.ZTESTB_MAGALU_ACCESS_TOKEN = 'fake-b';
+  const a = magaluAMB.criar({ PREFIXO_ENV: 'ZTESTA_', CHAVE_REGISTRO: 'ztesta' });
+  const b = magaluAMB.criar({ PREFIXO_ENV: 'ZTESTB_', CHAVE_REGISTRO: 'ztestb' });
+
+  ok(a.statusIndice().ocupado === false && b.statusIndice().ocupado === false,
+     '  as duas comecam livres');
+
+  // atraso bem longo: so importa o `agendado = true` imediato: o
+  // setTimeout NAO pode disparar durante o teste (chamaria a API de
+  // verdade). unref() garante que ele nao prende o processo.
+  a.preAquecer(10 * 60 * 1000);
+  ok(a.statusIndice().ocupado === true,
+     '  A fica ocupada assim que agenda');
+  ok(b.statusIndice().ocupado === false,
+     '⚠️ B NAO pode ficar ocupada so porque A agendou (o vazamento do b419)');
+
+  delete process.env.ZTESTA_MAGALU_ACCESS_TOKEN;
+  delete process.env.ZTESTB_MAGALU_ACCESS_TOKEN;
 }
 
 // ── ⚠️ o OAuth no meio da espera não pode disparar duas vezes ───────
