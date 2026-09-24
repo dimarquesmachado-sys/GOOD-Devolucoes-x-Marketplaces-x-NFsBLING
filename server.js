@@ -299,6 +299,7 @@ app.use(express.json({ limit: '12mb' }));
 {
   const criarAppAMB = require('./amb-devolucoes/app-AMB').criar;
   const { empresasAtivasNoDevolucoes } = require('./lib/empresas');
+  const { montarEmpresas } = require('./lib/montagem-empresas');
 
   const ativas = (typeof empresasAtivasNoDevolucoes === 'function')
     ? empresasAtivasNoDevolucoes()
@@ -342,49 +343,13 @@ app.use(express.json({ limit: '12mb' }));
   //
   // Antes, `criarAppAMB` lancando derrubava o BOOT INTEIRO: a GOOD e a AMB —
   // que estao no ar e atendendo — ficavam fora por causa de uma env faltando
-  // na empresa NOVA.
+  // na empresa NOVA. Ja aconteceu em 18/09 (3 deploys falhados, 7 versoes
+  // atrasado sem ninguem notar).
   //
-  // 📌 ISSO JA ACONTECEU: em 18/09 o deploy falhou 3x por falta do
-  // `AMB_SESSION_SECRET`, e o servico ficou 7 versoes atrasado sem ninguem
-  // notar. A empresa que quebra e sempre a que esta sendo ligada; quem paga
-  // sao as que ja funcionavam.
-  //
-  // ⚠️ NAO E "engolir erro": a empresa que falha NAO monta, e grita no log com
-  // o motivo. O que muda e o alcance do estrago — fica nela.
-  const falhas = [];
-  for (const emp of ativas) {
-    try {
-      app.use(emp.rota, criarAppAMB(emp.chave));
-      console.log(`[devolucoes] ${emp.chave} montada em ${emp.rota}`);
-    } catch (erro) {
-      falhas.push({ chave: emp.chave, motivo: (erro && erro.message) || String(erro) });
-      console.error(`[devolucoes] ⚠️ ${emp.chave} NAO montou: `
-        + `${(erro && erro.message) || erro}`);
-      console.error(`[devolucoes]    a rota ${emp.rota} vai responder 503 ate `
-        + 'isso ser resolvido; as outras empresas seguem no ar');
-
-      // a rota existe e EXPLICA, em vez de dar 404 e parecer que a empresa
-      // nunca existiu — 404 manda o dono procurar no lugar errado.
-      const motivoDesta = (erro && erro.message) || String(erro);
-      app.use(emp.rota, (req, res) => res.status(503).json({
-        ok: false,
-        empresa: emp.chave,
-        erro: 'esta empresa nao subiu neste deploy',
-        motivo: motivoDesta,
-      }));
-    }
-  }
-
-  // ⚠️ SE NENHUMA MONTOU, o processo nao tem razao de existir: derruba, pra o
-  // Render tentar de novo em vez de servir um app vazio que parece saudavel.
-  if (ativas.length && falhas.length === ativas.length) {
-    throw new Error('[devolucoes] NENHUMA empresa montou: '
-      + falhas.map((f) => `${f.chave} (${f.motivo})`).join(' | '));
-  }
-  if (falhas.length) {
-    console.error(`[devolucoes] ⚠️ ${falhas.length} de ${ativas.length} empresa(s) `
-      + `fora: ${falhas.map((f) => f.chave).join(', ')}`);
-  }
+  // 📌 A logica vive em `lib/montagem-empresas.js`, que junta as 2 versoes
+  // desta peca: a estrutura do Codex (modulo, freio por env, /health) e os 2
+  // cuidados que ela perdia (503 que EXPLICA, e derrubar quando NENHUMA sobe).
+  montarEmpresas({ app, empresas: ativas, criarApp: criarAppAMB });
 }
 app.use(cookieParser());
 // ── seg2 - O HTML DO PAINEL PRECISA PASSAR PELO LOGIN ────────────────
@@ -524,7 +489,7 @@ app.get('/health', (req, res) => {
       // AMB_SESSION_SECRET so por ser `require`ida, e a sonda pos-RPC do
       // provisionamento derruba a chamada em erro que nao seja "tabela
       // ausente" (antes passava batido).
-      version: '9.79.0 (b421: uma empresa que falha ao montar nao derruba as outras)',
+      version: '9.79.0 (b421: empresa que falha nao derruba as outras + freio por env)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -587,6 +552,9 @@ app.get('/health', (req, res) => {
     //
     // Aqui da pra ver de fora, sem expor token nem chave.
     coordenacao: {
+      // b421: qual empresa montou, qual falhou e qual foi desativada por env.
+      // ⚠️ sem valor de credencial nenhum — so o estado.
+      montagem_empresas: require('./lib/montagem-empresas').diagnostico(),
       leitura_de_token: tokenLeitorDiag(),
       ritmo_compartilhado: ritmoPorteiroDiag(),
       admin_key: diagnosticoAdminKey(),
