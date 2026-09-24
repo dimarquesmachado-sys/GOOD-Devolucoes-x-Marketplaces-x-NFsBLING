@@ -92,6 +92,14 @@ const fazLog = () => {
   ok(!/SESSION_SECRET/.test(vaza(quebrada)),
      '⚠️ e o corpo NAO entrega o nome da env (rota antes do login)');
   ok(!/SESSION_SECRET/.test(vaza(freadaResp)), '  nos dois casos');
+
+  // ⚠️ (Codex, P2) - o /health TAMBEM nao pode vazar: e publico, sem
+  // autenticacao (server.js registra `/health` sem middleware), e devolve
+  // exatamente o retorno de `montarEmpresas`/`diagnostico()`.
+  ok(!/SESSION_SECRET/.test(JSON.stringify(r)),
+     '⚠️ e o /health (o retorno de montarEmpresas) tambem nao entrega o nome da env');
+  ok(!r.find((x) => x.chave === 'quebrada').erro,
+     '  o item da que falhou nao carrega o campo `erro` (so o log do boot tem o motivo)');
 }
 
 // ── ⚠️ mesmo que NENHUMA monte, o processo NAO cai ──────────────────

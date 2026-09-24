@@ -60,6 +60,58 @@ if (!r.erro) {
      + '(achei: ' + JSON.stringify(r.registradas) + ')');
 }
 
+// ── ⚠️ (Codex, P1, revisao desta mesma peca) - `tabelas` e a MESMA classe
+// de furo que `chaveDados` (b422), so que o `throw` que fecha esta porta e
+// um TypeError implicito (`db.tabelas.devolucoes`), nao um `throw new
+// Error` — o sweep textual abaixo NAO acharia isto sozinho. Reproduz de
+// verdade: ficha sem `tabelas`, segredo VALIDO (pra isolar que quem lanca
+// e a validacao de tabelas, nao a de SESSION_SECRET).
+function rodarSemTabelas() {
+  try {
+    const saida = execFileSync(process.execPath, ['-e', `
+      process.env.NODE_ENV = 'production';
+      process.env.RENDER = '1';
+      process.env.DEVOLUCOES_EMPRESA = 'ambtotal';
+      process.env.AMB_SESSION_SECRET = 'segredo-de-teste-com-mais-de-16-chars';
+
+      // monkeypatch de obterEmpresa em processo isolado, sem tocar no
+      // registro real: intercepta o require.cache ANTES de qualquer outro
+      // modulo requerer 'lib/empresas', entao quem destructura
+      // { obterEmpresa } (config-da-empresa.js, app-AMB.js) ja recebe a
+      // versao patcheada.
+      const empresasPath = require.resolve('./lib/empresas');
+      const real = require(empresasPath);
+      const fichaSemTabelas = Object.assign({}, real.obterEmpresa('ambtotal'), { tabelas: undefined });
+      require.cache[empresasPath].exports = Object.assign({}, real, {
+        obterEmpresa: (chave) => (chave === 'ambtotal' ? fichaSemTabelas : real.obterEmpresa(chave)),
+      });
+
+      let lancou = null;
+      try {
+        require('./amb-devolucoes/app-AMB').criar('ambtotal');
+      } catch (e) {
+        lancou = e.message;
+      }
+      const { listar } = require('./lib/token-preventiva');
+      console.log(JSON.stringify({ lancou, registradas: listar().map((r) => r.empresa + '/' + r.integracao) }));
+    `], { cwd: raiz, env: Object.assign({}, process.env), stdio: 'pipe' });
+    return JSON.parse(String(saida).trim().split('\n').pop());
+  } catch (e) {
+    return { erro: String(e.stderr || e) };
+  }
+}
+
+const r2 = rodarSemTabelas();
+
+ok(!r2.erro, '⚠️ (tabelas) o processo isolado rodou sem crash inesperado: ' + (r2.erro || ''));
+if (!r2.erro) {
+  ok(!!r2.lancou && /tabelas/.test(r2.lancou),
+     '⚠️ sem `tabelas` na ficha, criarAppEmpresa(\'ambtotal\') lanca citando `tabelas` (nao um TypeError cru)');
+  ok(Array.isArray(r2.registradas) && r2.registradas.length === 0,
+     '⚠️ e NENHUMA renovacao preventiva fica registrada pra uma empresa sem `tabelas` '
+     + '(achei: ' + JSON.stringify(r2.registradas) + ')');
+}
+
 // ── ⚠️ b422: NENHUMA validacao pode ficar DEPOIS dos clientes ───────
 //
 // No b421 subi o SESSION_SECRET e parei ali — o `chaveDados` continuou sendo

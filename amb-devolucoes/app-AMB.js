@@ -286,6 +286,29 @@ const CHAVE_DADOS = (() => {
   return v;
 })();
 
+// ⚠️ (Codex, P1, revisao desta mesma peca) - `chaveDados` fechou UMA porta;
+// `tabelas` e OUTRA do mesmo tipo.
+//
+// `db.tabelas.devolucoes` e lido mais abaixo (`registrarRotasAdminNF`) na
+// CONSTRUCAO da app — nao dentro de uma rota — e `db` so nasce DEPOIS de
+// bling/ml/mlReturns (que ja registram timer de renovacao preventiva ao
+// serem criados). Se a ficha nao declarar `tabelas` (ou faltar uma das 5),
+// isso e um TypeError, nao um `throw new Error` — o mesmo furo do b422,
+// so que sem a palavra que o sweep de `test/amb-nao-registra-timer-sem-montar
+// .test.js` procura.
+//
+// 📌 Valido aqui, no mesmo ponto que valida `chaveDados`, ANTES de qualquer
+// `.criar()` que registre timer.
+(() => {
+  const ficha = require("../lib/empresas").obterEmpresa(EMPRESA_DESTE_APP);
+  const CHAVES_TABELA = ['devolucoes', 'espreitaNotas', 'recados', 'pecasRetiradas', 'skuDepara'];
+  const faltando = CHAVES_TABELA.filter((k) => !(ficha && ficha.tabelas && ficha.tabelas[k]));
+  if (faltando.length) {
+    throw new Error(`[devolucoes] a ficha de "${EMPRESA_DESTE_APP}" nao declara `
+      + `tabelas.${faltando.join(', tabelas.')} — sem elas eu leria/gravaria numa tabela errada.`);
+  }
+})();
+
 const auth = require('./lib-AMB/auth-AMB').criar(CFG_EMPRESA.AUTH);
 
 // ⚠️ b377 - CADA CLIENTE ENTRA NA CONFIG LOGO DEPOIS DE NASCER.
@@ -521,7 +544,7 @@ const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 // derrubar a chamada quando o erro na tabela NAO for "tabela ausente" (antes
 // um erro de permissao, por exemplo, passava batido e a empresa saia
 // "pronta" sem a tabela confirmada).
-const VERSAO = 'AMB Devolucoes b422';
+const VERSAO = 'AMB Devolucoes b423';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
