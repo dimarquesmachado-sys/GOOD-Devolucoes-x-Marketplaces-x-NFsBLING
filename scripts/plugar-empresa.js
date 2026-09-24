@@ -229,8 +229,21 @@ if (require.main === module) {
       .filter((x) => !/SESSION_SECRET|SUPABASE/.test(x));
     for (const x of faltam) console.log('   ' + x);
     console.log('');
-    console.log('   As 6 de Bling e ML saem do painel de cada um (aplicativo/');
-    console.log('   integração). Os usuários você define.');
+    console.log('   Os client id/secret saem do painel de cada marketplace');
+    console.log('   (aplicativo/integração). Os usuários você define.');
+    console.log('');
+    console.log('   ⚠️ E os REFRESH TOKENS: NÃO copie do Mover-Pedidos.');
+    console.log('   O refresh do Bling e do ML é de USO ÚNICO — duas cópias');
+    console.log('   capazes de renovar não são redundância, são dois');
+    console.log('   escritores, e o segundo invalida o do primeiro.');
+    console.log('');
+    console.log('   📌 Ponha o eixo em `remoto` e o token vem do dono:');
+    console.log(`      TOKEN_POLITICA_${r.chave.toUpperCase()}_BLING=remoto`);
+    console.log(`      TOKEN_POLITICA_${r.chave.toUpperCase()}_ML=remoto`);
+    console.log('      ADMIN_TOKEN_LEITURA_KEY   (o mesmo valor do dono)');
+    console.log('');
+    console.log('   Aí o conferidor para de pedir os refresh — e passa a');
+    console.log('   exigir a chave de leitura, sem a qual nenhuma chamada sai.');
     console.log('');
 
     // ⚠️ b409 (Codex, P2) - OS CAMPOS FISCAIS TAMBEM, nao so as envs.
