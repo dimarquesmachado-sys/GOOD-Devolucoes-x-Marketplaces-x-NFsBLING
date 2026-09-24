@@ -30,6 +30,8 @@ const axios = require('axios');
 // modulo multiempresa e pegadinha esperando alguem usar.
 
 function criarMl(cfg) {
+  // ⚠️ b424: a canonica do contrato (`ambtotal`), nao a curta (`amb`).
+  const CHAVE_TOKEN = (cfg && cfg.CHAVE_REGISTRO) || 'ambtotal';
   // ⚠️ b396 - A ETIQUETA DO LOG DIZ QUAL EMPRESA.
   //
   // Era `[AMB/...]` fixo. O Render junta o log das duas no MESMO
@@ -39,6 +41,16 @@ function criarMl(cfg) {
     .replace(/_$/, '');
 const { atualizarTokensNoRender } = require('../../lib/render-tokens');
 const { registrarPreventiva } = require('../../lib/token-preventiva');   // b271
+
+// ⚠️ b424 - O LEITOR DE TOKEN REMOTO, igual ao Bling e ao que a GOOD ja faz.
+//
+// O refresh do ML e de USO UNICO — e este e o que JA nos mordeu hoje: o log
+// do dono tinha `403 ... a rota ja renovou nesta janela, nao gasto outro
+// refresh (o do ML e de uso unico)`.
+//
+// 📌 Padrao `sombra`: le o dono e mede, mas usa o token local. A AMB segue
+// como hoje; so quem for posto em `remoto` muda.
+const tokenLeitor = require('../../lib/token-leitor');
 // b272 (review do Codex) - ESTA DECLARACAO VOLTOU. Meu refactor da b271
 // apagou o bloco antigo levando junto o `let ultimaPersistencia`, mas a
 // funcao de renovar continua ATRIBUINDO a ela. Em modulo strict, isso
@@ -115,6 +127,14 @@ async function renovarToken() {
 }
 
 async function renovarTokenInterno() {
+  // ⚠️ b424: em `remoto`, renovar aqui invalidaria o que o DONO gravou.
+  const polRenov = tokenLeitor.politicaDe(CHAVE_TOKEN, 'ml');
+  if (polRenov === 'remoto' || polRenov === 'bloqueado') {
+    tokenLeitor.registrarRecusa(CHAVE_TOKEN, 'ml');
+    console.warn(`[${TAG_EMP}/ML] renovacao local RECUSADA: o eixo `
+      + `${CHAVE_TOKEN}/ml esta em ${polRenov} (o dono e quem renova)`);
+    return false;
+  }
 
   if (!REFRESH_TOKEN) {
     console.error(`[${TAG_EMP}/ML] Sem refresh token - autorize pelo /amb/conectar`);
@@ -174,11 +194,22 @@ async function renovarTokenInterno() {
  * Aceita caminho relativo ("/users/me") ou URL inteira.
  */
 async function chamarML(caminho, opcoes = {}) {
+  // ⚠️ b424: de onde vem o token desta chamada (ver bling-AMB.js).
+  const tokenAgora = async () => {
+    const d = await tokenLeitor.resolverToken(CHAVE_TOKEN, 'ml');
+    if (d.usar === 'remoto') return d.access;
+    if (d.usar === 'falhar') {
+      const e = new Error('[token] ' + d.motivo);
+      e.semToken = true;
+      throw e;
+    }
+    return ACCESS_TOKEN;
+  };
   const url = caminho.startsWith('http') ? caminho : `${cfg.ml.apiBase}${caminho}`;
-  const fazer = () => axios({
+  const fazer = async () => axios({
     url,
     method: opcoes.method || 'GET',
-    headers: { Authorization: `Bearer ${ACCESS_TOKEN}`, ...(opcoes.headers || {}) },
+    headers: { Authorization: `Bearer ${await tokenAgora()}`, ...(opcoes.headers || {}) },
     data: opcoes.data,
     timeout: opcoes.timeout || 30000,
   });
@@ -190,6 +221,10 @@ async function chamarML(caminho, opcoes = {}) {
     const status = erro.response && erro.response.status;
 
     if (status === 401) {
+      // ⚠️ b424: invalida o cache do leitor — sem isto, em `remoto` a
+      // tentativa seguinte receberia o MESMO token morto.
+      tokenLeitor.invalidar(CHAVE_TOKEN, 'ml');
+      tokenLeitor.anotarInvalidacao(CHAVE_TOKEN, 'ml', 401);
       if (await renovarToken()) {
         try {
           const r = await fazer();

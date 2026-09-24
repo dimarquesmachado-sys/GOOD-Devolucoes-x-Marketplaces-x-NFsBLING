@@ -33,6 +33,11 @@ const axios = require('axios');
 // modulo multiempresa e pegadinha esperando alguem usar.
 
 function criarBling(cfg) {
+  // ⚠️ b424: a chave e a CANONICA do contrato (`ambtotal`), nao a curta
+  // (`amb`). O leitor aceita QUALQUER string sem reclamar — errar aqui daria
+  // `sombra` pra sempre, calado, e so apareceria no dia em que a Girassol
+  // renovasse por conta propria e queimasse o token do dono.
+  const CHAVE_TOKEN = (cfg && cfg.CHAVE_REGISTRO) || 'ambtotal';
   // ⚠️ b396 - A ETIQUETA DO LOG DIZ QUAL EMPRESA.
   //
   // Era `[AMB/...]` fixo. O Render junta o log das duas no MESMO
@@ -42,6 +47,18 @@ function criarBling(cfg) {
     .replace(/_$/, '');
 const { atualizarTokensNoRender } = require('../../lib/render-tokens');
 const { registrarPreventiva } = require('../../lib/token-preventiva');   // b271
+
+// ⚠️ b424 - O LEITOR DE TOKEN REMOTO, como a GOOD ja faz.
+//
+// O refresh do Bling e de USO UNICO: quando 2 servicos renovam a mesma conta,
+// o 2o invalida o que o 1o acabou de gravar. Por isso o desenho eleito no
+// contrato e UM dono (o Mover-Pedidos) e os outros LEEM.
+//
+// 📌 A politica e POR EMPRESA E POR INTEGRACAO, e o padrao e `sombra`: le o
+// dono e MEDE, mas continua usando o token local. Ligar isto NAO muda o
+// comportamento da AMB — ela segue como hoje, com uma leitura a mais que nao
+// decide nada. So quem for posto em `remoto` muda.
+const tokenLeitor = require('../../lib/token-leitor');
 // b272 (review do Codex) - ESTA DECLARACAO VOLTOU. Meu refactor da b271
 // apagou o bloco antigo levando junto o `let ultimaPersistenciaBling`, mas a
 // funcao de renovar continua ATRIBUINDO a ela. Em modulo strict, isso
@@ -76,6 +93,21 @@ async function renovarToken() {
 }
 
 async function renovarTokenInterno() {
+    // ⚠️ b424 - EM `remoto`, A RENOVACAO LOCAL E RECUSADA.
+    //
+    // E o ponto inteiro: se esta instancia renovar, ela consome o refresh de
+    // uso unico e invalida o que o DONO acabou de gravar. Recusar aqui e o
+    // que impede dois escritores.
+    //
+    // 📌 `sombra` (o padrao) NAO recusa — a AMB segue renovando como hoje.
+    const polRenov = tokenLeitor.politicaDe(CHAVE_TOKEN, 'bling');
+    if (polRenov === 'remoto' || polRenov === 'bloqueado') {
+      tokenLeitor.registrarRecusa(CHAVE_TOKEN, 'bling');   // vai pro /health
+      console.warn(`[${TAG_EMP}/Bling] renovacao local RECUSADA: o eixo `
+        + `${CHAVE_TOKEN}/bling esta em ${polRenov} (o dono e quem renova)`);
+      return false;
+    }
+
 
   if (!cfg.bling.clientId || !cfg.bling.clientSecret) {
     console.error(`[${TAG_EMP}/Bling] ${TAG_EMP}_BLING_CLIENT_ID ou `
@@ -164,11 +196,32 @@ function urlAutorizacao() {
 // ============================================================
 
 async function chamarBling(caminho, opcoes = {}) {
+  // ⚠️ b424 - DE ONDE VEM O TOKEN DESTA CHAMADA.
+  //
+  // `remoto`  -> o access que o DONO entregou (esta instancia nao renova)
+  // `falhar`  -> o dono nao respondeu e a politica proibe cair no local: a
+  //              chamada morre com aviso, em vez de renovar escondido e
+  //              queimar o refresh de uso unico
+  // `sombra`/`local` -> o token de sempre (a AMB de hoje)
+  //
+  // 📌 Le a CADA chamada de proposito: o leitor tem cache proprio, e assim
+  // uma invalidacao em 401 vale na chamada seguinte, sem reiniciar nada.
+  const tokenAgora = async () => {
+    const d = await tokenLeitor.resolverToken(CHAVE_TOKEN, 'bling');
+    if (d.usar === 'remoto') return d.access;
+    if (d.usar === 'falhar') {
+      const e = new Error('[token] ' + d.motivo);
+      e.semToken = true;
+      throw e;
+    }
+    return ACCESS_TOKEN;
+  };
+
   const url = caminho.startsWith('http') ? caminho : `${cfg.bling.apiBase}${caminho}`;
-  const fazer = () => axios({
+  const fazer = async () => axios({
     url,
     method: opcoes.method || 'GET',
-    headers: { Authorization: `Bearer ${ACCESS_TOKEN}`, ...(opcoes.headers || {}) },
+    headers: { Authorization: `Bearer ${await tokenAgora()}`, ...(opcoes.headers || {}) },
     data: opcoes.data,
     timeout: opcoes.timeout || 30000,
   });
@@ -188,6 +241,16 @@ async function chamarBling(caminho, opcoes = {}) {
     }
 
     if (status === 401) {
+      // ⚠️ b424 - INVALIDA O CACHE DO LEITOR ANTES DE QUALQUER COISA.
+      //
+      // Sem isto, em `remoto` o leitor devolveria o MESMO token morto na
+      // tentativa seguinte, e o retry fracassaria igual — parecendo problema
+      // do dono quando era cache nosso.
+      //
+      // 📌 Vale nas 4 politicas: invalidar cache vazio nao custa nada, e
+      // esquecer disto num `remoto` futuro custa uma tarde de diagnostico.
+      tokenLeitor.invalidar(CHAVE_TOKEN, 'bling');
+      tokenLeitor.anotarInvalidacao(CHAVE_TOKEN, 'bling', 401);
       if (await renovarToken()) {
         try {
           const r = await fazer();
