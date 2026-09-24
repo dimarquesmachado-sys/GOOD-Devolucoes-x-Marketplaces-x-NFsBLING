@@ -299,6 +299,7 @@ app.use(express.json({ limit: '12mb' }));
 {
   const criarAppAMB = require('./amb-devolucoes/app-AMB').criar;
   const { empresasAtivasNoDevolucoes } = require('./lib/empresas');
+  const { montarEmpresas } = require('./lib/montagem-empresas');
 
   const ativas = (typeof empresasAtivasNoDevolucoes === 'function')
     ? empresasAtivasNoDevolucoes()
@@ -338,10 +339,17 @@ app.use(express.json({ limit: '12mb' }));
   // credenciais `GIRASSOL_*`, as 7 tabelas no Supabase e o manifest proprio
   // da PWA.
 
-  for (const emp of ativas) {
-    app.use(emp.rota, criarAppAMB(emp.chave));
-    console.log(`[devolucoes] ${emp.chave} montada em ${emp.rota}`);
-  }
+  // ⚠️ b421 - UMA EMPRESA QUE FALHA NAO DERRUBA AS OUTRAS.
+  //
+  // Antes, `criarAppAMB` lancando derrubava o BOOT INTEIRO: a GOOD e a AMB —
+  // que estao no ar e atendendo — ficavam fora por causa de uma env faltando
+  // na empresa NOVA. Ja aconteceu em 18/09 (3 deploys falhados, 7 versoes
+  // atrasado sem ninguem notar).
+  //
+  // 📌 A logica vive em `lib/montagem-empresas.js`, que junta as 2 versoes
+  // desta peca: a estrutura do Codex (modulo, freio por env, /health) e os 2
+  // cuidados que ela perdia (503 que EXPLICA, e derrubar quando NENHUMA sobe).
+  montarEmpresas({ app, empresas: ativas, criarApp: criarAppAMB });
 }
 app.use(cookieParser());
 // ── seg2 - O HTML DO PAINEL PRECISA PASSAR PELO LOGIN ────────────────
@@ -481,7 +489,7 @@ app.get('/health', (req, res) => {
       // AMB_SESSION_SECRET so por ser `require`ida, e a sonda pos-RPC do
       // provisionamento derruba a chamada em erro que nao seja "tabela
       // ausente" (antes passava batido).
-      version: '9.78.0 (o OAuth do magalu esperava 3 min com a fila parada)',
+      version: '9.80.0 (b422: consertei uma porta e deixei a do lado aberta)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -544,6 +552,9 @@ app.get('/health', (req, res) => {
     //
     // Aqui da pra ver de fora, sem expor token nem chave.
     coordenacao: {
+      // b421: qual empresa montou, qual falhou e qual foi desativada por env.
+      // ⚠️ sem valor de credencial nenhum — so o estado.
+      montagem_empresas: require('./lib/montagem-empresas').diagnostico(),
       leitura_de_token: tokenLeitorDiag(),
       ritmo_compartilhado: ritmoPorteiroDiag(),
       admin_key: diagnosticoAdminKey(),

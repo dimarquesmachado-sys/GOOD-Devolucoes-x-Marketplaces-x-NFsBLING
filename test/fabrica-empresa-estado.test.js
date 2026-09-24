@@ -498,8 +498,12 @@ function contarEstadoDoModulo(src) {
   // ⚠️ `srv` ja existe neste escopo — reuso em vez de redeclarar
   ok(/empresasAtivasNoDevolucoes\(\)/.test(srv),
      '⚠️ o server percorre as empresas ATIVAS (nao monta /amb cravado)');
-  ok(/app\.use\(emp\.rota, criarAppAMB\(emp\.chave\)\)/.test(srv),
-     '  montando cada uma com a SUA chave');
+  // ⚠️ b421: o laco saiu do server e virou `lib/montagem-empresas.js`, pra
+  // cada empresa montar no proprio contorno. O que este teste protege
+  // continua valendo — que TODAS as ativas sao montadas, cada uma com a sua
+  // chave — so que agora pelo montador.
+  ok(/montarEmpresas\(\{ app, empresas: ativas, criarApp: criarAppAMB \}\)/.test(srv),
+     '  montando cada uma com a SUA chave, pelo montador isolado');
 }
 
 // ── ⚠️ b367 (Codex, P1) - o freio tem que olhar a CHAVE, nao a CONTAGEM ──
@@ -554,8 +558,8 @@ function contarEstadoDoModulo(src) {
   // DIFERENTES, prova o isolamento e LISTA o que falta em cada forma.
   ok(!/const naoAMB = ativas\.filter/.test(srv),
      '⚠️ o freio saiu (as 4 formas de vazamento foram varridas)');
-  ok(/for \(const emp of ativas\)/.test(srv),
-     '  e o bootstrap monta TODAS as empresas ativas do contrato');
+  ok(/empresas: ativas/.test(srv),
+     '  e o bootstrap entrega TODAS as ativas ao montador');
 }
 
 // ── ⚠️ PASSO 3, FATIA 1: as 4 gavetas vêm de UMA fábrica ────────────
