@@ -57,6 +57,26 @@ registrar('política de token', async (chave) => {
   // ⚠️ `sombra` não é erro: é o padrão, e significa "esta empresa renova
   // sozinha". Só vira problema se ela dividir a conta com outro serviço — e aí
   // o aviso abaixo é o que importa.
+  // ⚠️ b427 (Codex, P1) - `bloqueado` NÃO PODE PASSAR.
+  //
+  // Ele não é `remoto`, então caía no ramo "nenhum eixo remoto" e a sonda
+  // dizia OK — quando `bloqueado` significa que NENHUMA chamada sai. É o
+  // estado mais grave dos quatro, e era o único que passava calado.
+  //
+  // 📌 Pior: `politicaDe` normaliza valor inválido para `bloqueado`. Um erro
+  // de digitação na env viraria aprovação.
+  const bloqueados = ['bling', 'ml']
+    .filter((i) => tokenLeitor.politicaDe(chave, i) === 'bloqueado');
+  if (bloqueados.length) {
+    return {
+      ok: false,
+      detalhe: eixos.join(', '),
+      erro: `eixo(s) ${bloqueados.join(' e ')} em \`bloqueado\`: NENHUMA chamada `
+        + 'sai. Confira se a env da política não tem erro de digitação — valor '
+        + 'inválido vira `bloqueado`.',
+    };
+  }
+
   if (!algumRemoto) {
     return {
       ok: true,
@@ -78,19 +98,34 @@ registrar('o dono entrega o token', async (chave) => {
   const tokenLeitor = require('../lib/token-leitor');
   const remotos = ['bling', 'ml']
     .filter((i) => tokenLeitor.politicaDe(chave, i) === 'remoto');
-  if (!remotos.length) return { ok: true, detalhe: 'nenhum eixo remoto — nada a perguntar' };
+  // ⚠️ b427 (Codex, P2) - EM `sombra` TAMBÉM VALE PERGUNTAR.
+  //
+  // Antes eu pulava a checagem quando nada estava em `remoto` — mas `sombra` é
+  // o PADRÃO, e em produção ela CHAMA o dono do mesmo jeito (lê, mede, e usa o
+  // local). Pular aqui deixava o caminho mais usado sem nenhuma sonda.
+  //
+  // 📌 A diferença é o peso: em `sombra` o dono não responder é AVISO (a
+  // empresa segue com o token local); em `remoto` é ERRO (nada sai).
+  const sombras = ['bling', 'ml']
+    .filter((i) => tokenLeitor.politicaDe(chave, i) === 'sombra');
+  if (!remotos.length && !sombras.length) {
+    return { ok: true, detalhe: 'nenhum eixo consulta o dono' };
+  }
 
   const partes = [];
   let tudoOk = true;
-  for (const integracao of remotos) {
+  for (const integracao of [...remotos, ...sombras]) {
+    const ehRemoto = remotos.includes(integracao);
     try {
       const d = await tokenLeitor.resolverToken(chave, integracao);
       // ⚠️ `usar: 'remoto'` é o único que prova que o dono respondeu COM token.
-      const bom = d && d.usar === 'remoto' && !!d.access;
-      if (!bom) tudoOk = false;
-      partes.push(`${integracao}: ${bom ? 'entregou' : (d && d.motivo) || 'sem token'}`);
+      const bom = d && !!d.access && (d.usar === 'remoto' || d.estado === 'ok');
+      // ⚠️ só o eixo em `remoto` REPROVA: em `sombra` o token local salva.
+      if (!bom && ehRemoto) tudoOk = false;
+      partes.push(`${integracao}${ehRemoto ? '' : ' (sombra)'}: `
+        + `${bom ? 'entregou' : (d && d.motivo) || 'sem token'}`);
     } catch (err) {
-      tudoOk = false;
+      if (ehRemoto) tudoOk = false;
       partes.push(`${integracao}: erro — ${(err && err.message) || err}`);
     }
   }
@@ -105,33 +140,65 @@ registrar('o dono entrega o token', async (chave) => {
 /* ── 4. as tabelas existem no banco ──────────────────────────────── */
 registrar('tabelas no Supabase', async (chave) => {
   const { obterEmpresa } = require('../lib/empresas');
+  const { TABELAS_ESPERADAS } = require('../lib/provisionar-empresa');
   const e = obterEmpresa(chave);
-  const tabelas = Object.values((e && e.tabelas) || {});
-  if (!tabelas.length) return { ok: false, detalhe: 'a ficha não declara tabelas' };
+  const suf = e && e.chaveDados;
+  if (!suf) return { ok: false, detalhe: 'a ficha não declara `chaveDados`' };
+
+  // ⚠️ b427 (Codex, P1) - AS 7, NÃO AS 5 DA FICHA.
+  //
+  // A ficha declara 5 — as que o app usa por nome. O ciclo de defeitos precisa
+  // de mais 2, que o SQL cria e a ficha não cita. Montar a lista pela ficha
+  // confere 5 de 7 e diz que está tudo certo.
+  //
+  // 📌 E o documento que EU escrevi já dizia "são 7". Li a fonte errada tendo
+  // a certa na mão.
+  const tabelas = TABELAS_ESPERADAS.map((b) => `${b}_${suf}`);
 
   const url = process.env[e.prefixoEnv + 'SUPABASE_URL'] || process.env.SUPABASE_URL;
   const key = process.env[e.prefixoEnv + 'SUPABASE_KEY'] || process.env.SUPABASE_KEY;
   if (!url || !key) return { ok: false, detalhe: 'sem credencial do Supabase no ambiente' };
 
-  const faltam = [];
+  // ⚠️ b427 (Codex, P2) - "NÃO EXISTE" É DIFERENTE DE "NÃO CONSEGUI OLHAR".
+  //
+  // Antes, TODA resposta não-2xx virava "tabela faltando". Uma chave inválida
+  // (401/403) ou o PostgREST fora do ar mandaria o dono rodar o provisionador
+  // — que não resolveria nada, porque as tabelas podem estar lá.
+  const ausentes = [];
+  const naoOlhei = [];
   for (const t of tabelas) {
     try {
-      // ⚠️ `limit=0`: pergunta se a tabela existe sem trazer UMA linha. Uma
-      // sonda não pode ler dado de cliente pra responder "existe?".
+      // `limit=0`: pergunta se existe sem trazer UMA linha. Sonda não lê dado
+      // de cliente pra responder "existe?".
       const r = await fetch(`${url}/rest/v1/${t}?select=*&limit=0`, {
         headers: { apikey: key, Authorization: `Bearer ${key}` },
       });
-      if (!r.ok) faltam.push(t);
-    } catch (err) { faltam.push(t); }
+      if (r.ok) continue;
+      // 404 (e o 400 do PostgREST pra relação inexistente) = não existe.
+      // 401/403/5xx = problema de acesso ou do serviço, não da tabela.
+      if (r.status === 404 || r.status === 400) ausentes.push(t);
+      else naoOlhei.push(`${t} (HTTP ${r.status})`);
+    } catch (err) {
+      naoOlhei.push(`${t} (${(err && err.message) || 'sem resposta'})`);
+    }
+  }
+
+  if (naoOlhei.length) {
+    return {
+      ok: false,
+      detalhe: `não consegui conferir ${naoOlhei.length} de ${tabelas.length}`,
+      erro: `${naoOlhei.slice(0, 2).join(', ')} — isto NÃO quer dizer que a `
+        + 'tabela falta: pode ser chave inválida ou o Supabase fora',
+    };
   }
   return {
-    ok: faltam.length === 0,
-    detalhe: faltam.length === 0
+    ok: ausentes.length === 0,
+    detalhe: ausentes.length === 0
       ? `as ${tabelas.length} respondem`
-      : `faltam ${faltam.length}: ${faltam.join(', ')}`,
-    dica: faltam.length
+      : `faltam ${ausentes.length} de ${tabelas.length}: ${ausentes.join(', ')}`,
+    dica: ausentes.length
       ? 'cole sql/provisionar-empresa.sql no SQL Editor e rode '
-        + `select provisionar_empresa('_${e.chaveDados}');`
+        + `select provisionar_empresa('_${suf}');`
       : null,
   };
 });
@@ -140,10 +207,16 @@ registrar('tabelas no Supabase', async (chave) => {
 registrar('ainda desativada (esperado)', async (chave) => {
   const { empresasAtivasNoDevolucoes } = require('../lib/empresas');
   const ativa = empresasAtivasNoDevolucoes().some((x) => x.chave === chave);
+  // ⚠️ b427 (Codex, P2): já ativa REPROVA, não avisa.
+  //
+  // Antes eu devolvia `ok: true` com um aviso — e o aviso não conta pro código
+  // de saída. Uma ativação prematura passava por uma sonda VERDE, que é
+  // justamente o que ela existe pra impedir.
   return {
-    ok: true,
+    ok: !ativa,
     detalhe: ativa ? 'JÁ ESTÁ ATIVA' : 'desativada',
-    aviso: ativa ? 'a empresa já está ativa — esta sonda é para ANTES disso' : null,
+    erro: ativa ? 'a empresa já está ativa — esta sonda é para ANTES disso. '
+      + 'Se foi sem querer, o freio tira ela do ar sem editar o contrato.' : null,
   };
 });
 

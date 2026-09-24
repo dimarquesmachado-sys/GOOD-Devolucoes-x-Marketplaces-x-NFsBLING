@@ -489,7 +489,7 @@ app.get('/health', (req, res) => {
       // AMB_SESSION_SECRET so por ser `require`ida, e a sonda pos-RPC do
       // provisionamento derruba a chamada em erro que nao seja "tabela
       // ausente" (antes passava batido).
-      version: '9.83.0 (b426: sonda de pre-ativacao — confere se FUNCIONA, nao se esta escrito)',
+      version: '9.84.0 (b427: a sonda conferia 5 de 7 tabelas e aprovava)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
