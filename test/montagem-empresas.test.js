@@ -54,19 +54,37 @@ const fazLog = () => {
   ok(logger.linhas.some((l) => /as outras continuam/.test(l)),
      '  e o log diz que a falha foi contida');
 
-  // ⚠️ o 503 que EXPLICA — a versão só-estrutura perdia isto
-  const rotaQuebrada = app.rotas.find((x) => x.rota === '/quebrada');
-  ok(!!rotaQuebrada, '⚠️ a rota da quebrada EXISTE (nao da 404)');
-  if (rotaQuebrada) {
+  // ⚠️ o 503 que EXPLICA — para a que FALHOU e para a que foi FREADA.
+  //
+  // 404 mandaria o dono procurar no lugar errado nos dois casos: "nunca foi
+  // configurada" quando na verdade falhou, ou quando foi ELE que desligou.
+  const responder = (rota) => {
+    const r = app.rotas.find((x) => x.rota === rota);
+    if (!r) return null;
     let status = null; let corpo = null;
-    rotaQuebrada.handler({}, {
+    r.handler({}, {
       status(s) { status = s; return this; },
       json(c) { corpo = c; return this; },
     });
-    ok(status === 503, '  e responde 503');
-    ok(corpo && /SESSION_SECRET/.test(corpo.motivo || ''),
-       '⚠️ com o MOTIVO no corpo (404 mandaria procurar no lugar errado)');
-  }
+    return { status, corpo };
+  };
+
+  const quebrada = responder('/quebrada');
+  ok(quebrada && quebrada.status === 503,
+     '⚠️ a rota da que FALHOU existe e responde 503 (nao 404)');
+  ok(quebrada && quebrada.corpo.estado === 'falhou', '  dizendo que falhou');
+
+  const freadaResp = responder('/girassol');
+  ok(freadaResp && freadaResp.status === 503,
+     '⚠️ e a rota da FREADA tambem (nao 404)');
+  ok(freadaResp && freadaResp.corpo.estado === 'desativada_por_env',
+     '  com estado diferente: foi o dono que desligou');
+
+  // ⚠️ e NENHUM dos dois vaza a excecao — esta rota fica ANTES do login
+  const vaza = (r) => JSON.stringify(r && r.corpo || {});
+  ok(!/SESSION_SECRET/.test(vaza(quebrada)),
+     '⚠️ e o corpo NAO entrega o nome da env (rota antes do login)');
+  ok(!/SESSION_SECRET/.test(vaza(freadaResp)), '  nos dois casos');
 }
 
 // ── ⚠️ se NENHUMA montar, derruba ───────────────────────────────────
