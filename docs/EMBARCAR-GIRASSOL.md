@@ -82,6 +82,27 @@
 > `contrato-empresas.json`. **Esse é o último passo**, depois das envs, das
 > tabelas e dos ids fiscais — não o primeiro.
 
+### 📌 Antes de ativar: rode a sonda
+
+```
+node scripts/sonda-empresa.js girassol
+```
+
+Ela confere se **funciona**, não se está escrito — que é a diferença que já
+mordeu duas vezes aqui (a rotina de tabelas era a antiga; a pasta do checkout
+tinha outro nome).
+
+| confere | o quê |
+|---|---|
+| ficha | envs e campos fiscais, com o comando que resolve |
+| política de token | os eixos, e avisa se ninguém está em `remoto` |
+| o dono | se ele **entrega** o token de verdade |
+| Supabase | se as tabelas respondem (com `limit=0`, sem ler dado) |
+| estado | se a empresa ainda está desativada, como deve estar |
+
+⚠️ **Só leitura.** Não emite, não grava, não renova — uma renovação "só para
+testar" queimaria o refresh de uso único do dono.
+
 ### Bling
 ```
 GIRASSOL_BLING_CLIENT_ID
