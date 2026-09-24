@@ -225,6 +225,38 @@ const cfg = CFG_EMPRESA;
 // 📌 Uso `PREFIXO_ROTA`, que ja sai da config com esse fallback aplicado.
 const BASE = CFG_EMPRESA.PREFIXO_ROTA;
 
+// ⚠️ b360 - O AUTH PASSA A SER POR EMPRESA.
+//
+// Era `require('./lib-AMB/auth-AMB')` — a instancia PADRAO do modulo, UMA
+// por processo. A fabrica `criar(cfg)` existe desde o PR #295, mas o app
+// nunca a chamou: faltava a config ter os campos que ela exige.
+//
+// ⚠️ ERA O MAIOR RISCO DOS 13: cookie, sessoes e contagem de falhas de login
+// compartilhados. Duas empresas no mesmo processo e o login de uma valeria na
+// outra — e travar a conta de um usuario travaria nas duas.
+//
+// 📌 Os valores da AMB batem EXATAMENTE com os padroes de hoje (conferido
+// contra `PADRAO` no auth-AMB): mesmo cookie `sessao_amb`, mesmo caminho,
+// mesmas envs. Ninguem cai da sessao no deploy.
+//
+// ⚠️ b422 (Codex, P1) - VALIDA ANTES DE CRIAR O BLING/ML, nao depois.
+//
+// Este `criar()` e quem falha o boot da empresa quando falta o
+// `<PREFIXO>SESSION_SECRET` em producao (auth-AMB.js:159). Ele morava
+// DEPOIS de `bling.criar()`/`ml.criar()` — e os dois JA REGISTRAM a
+// renovacao preventiva (`registrarPreventiva`, com `autoLigar: true`) so
+// de serem criados, o que AGENDA um `setTimeout`/`setInterval` de verdade
+// no processo. O `throw` do auth acontecia tarde demais: o try/catch do
+// bootstrap (server.js) pega a excecao e poe a rota em 503, mas os timers
+// da empresa "que nao subiu" continuavam vivos e, horas depois, renovariam
+// o refresh token de USO UNICO do Bling/ML e gravariam o novo no Render —
+// de uma empresa fora do ar, sem ninguem notar.
+//
+// 📌 Validar aqui, ANTES de qualquer `.criar()` que registre timer, faz o
+// `throw` acontecer cedo: nenhum cliente chega a ser construido e nenhuma
+// renovacao preventiva chega a ser agendada.
+const auth = require('./lib-AMB/auth-AMB').criar(CFG_EMPRESA.AUTH);
+
 // ⚠️ b377 - CADA CLIENTE ENTRA NA CONFIG LOGO DEPOIS DE NASCER.
 //
 // Minha 1a versao juntava as 3 atribuicoes no fim — mas o `mlReturns` e
@@ -239,20 +271,6 @@ CFG_EMPRESA.clienteMl = ml;   // b377 — o mlReturns (abaixo) ja precisa dele
 const mlReturns = require('./lib-AMB/ml-returns-AMB').criar(CFG_EMPRESA);
 const nfNomes = require('./lib-AMB/nf-nomes-AMB').criar(CFG_EMPRESA);
 const tokens = require('../lib/render-tokens');
-// ⚠️ b360 - O AUTH PASSA A SER POR EMPRESA.
-//
-// Era `require('./lib-AMB/auth-AMB')` — a instancia PADRAO do modulo, UMA
-// por processo. A fabrica `criar(cfg)` existe desde o PR #295, mas o app
-// nunca a chamou: faltava a config ter os campos que ela exige.
-//
-// ⚠️ ERA O MAIOR RISCO DOS 13: cookie, sessoes e contagem de falhas de login
-// compartilhados. Duas empresas no mesmo processo e o login de uma valeria na
-// outra — e travar a conta de um usuario travaria nas duas.
-//
-// 📌 Os valores da AMB batem EXATAMENTE com os padroes de hoje (conferido
-// contra `PADRAO` no auth-AMB): mesmo cookie `sessao_amb`, mesmo caminho,
-// mesmas envs. Ninguem cai da sessao no deploy.
-const auth = require('./lib-AMB/auth-AMB').criar(CFG_EMPRESA.AUTH);
 const tiktokPonte = require('../lib/tiktok-ponte');
 const erroCodigo = require('../lib/erro-de-codigo');   // b205 - bug meu nao e falha do marketplace
 const confrontar = require('../lib/confrontar-nf');   // b208 - escada de desempate da NF
@@ -478,7 +496,7 @@ const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 // derrubar a chamada quando o erro na tabela NAO for "tabela ausente" (antes
 // um erro de permissao, por exemplo, passava batido e a empresa saia
 // "pronta" sem a tabela confirmada).
-const VERSAO = 'AMB Devolucoes b420';
+const VERSAO = 'AMB Devolucoes b422';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();

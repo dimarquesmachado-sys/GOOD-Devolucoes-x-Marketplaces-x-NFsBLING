@@ -489,7 +489,7 @@ app.get('/health', (req, res) => {
       // AMB_SESSION_SECRET so por ser `require`ida, e a sonda pos-RPC do
       // provisionamento derruba a chamada em erro que nao seja "tabela
       // ausente" (antes passava batido).
-      version: '9.79.0 (b421: empresa que falha nao derruba as outras + freio por env)',
+      version: '9.79.1 (b422: falha de empresa de fora nao derruba mais o host - GOOD nunca esta em `empresas`)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),

@@ -6,9 +6,16 @@
 // NOVA. Já aconteceu em 18/09: 3 deploys falhados, 7 versões atrasado sem
 // ninguém notar.
 //
-// 📌 Este teste cobre as DUAS versões da peça: a estrutura do Codex (freio
-// por env, estado no health) e os 2 cuidados que ela perdia (503 que explica,
-// derrubar quando nenhuma sobe).
+// 📌 Este teste cobre a estrutura do Codex (freio por env, estado no health)
+// e o cuidado que ela perdia (503 que explica, em vez de 404).
+//
+// ⚠️ (achado do Codex, P1) - este arquivo TINHA um 3o caso, "se nenhuma
+// montar, o processo cai" — só que `empresas` aqui é sempre as de FORA (a
+// AMB, e um dia a Girassol); a GOOD é o host que chama `montarEmpresas` e
+// nunca entra nessa lista. Com 1 empresa ativa (o caso de hoje), a falha
+// dela batia "nenhuma montou" e o `throw` derrubava o processo inteiro —
+// reproduzindo o incidente de 18/09 que este módulo existe pra evitar. O
+// caso abaixo prova o oposto: falhar todas as empresas de fora NUNCA lança.
 
 const { montarEmpresas, diagnostico, freada, nomeFreio } =
   require('../lib/montagem-empresas');
@@ -69,21 +76,38 @@ const fazLog = () => {
   }
 }
 
-// ── ⚠️ se NENHUMA montar, derruba ───────────────────────────────────
+// ── ⚠️ mesmo que NENHUMA monte, o processo NAO cai ──────────────────
 //
-// Servir um app vazio que responde 200 no /health é pior que cair: o Render
-// acha que está tudo bem, não reinicia, e ninguém percebe.
+// `empresas` aqui é só as de FORA — a GOOD (o host) já está no ar antes
+// deste módulo rodar, com ou sem nenhuma delas. Lançar aqui derrubaria a
+// GOOD junto, e com 1 única empresa ativa (o caso de hoje) "nenhuma montou"
+// é exatamente "a única falhou" — o incidente de 18/09 de novo.
 {
   const app = fazApp(); const logger = fazLog();
   let caiu = false;
+  let r = null;
   try {
-    montarEmpresas({
+    r = montarEmpresas({
       app, logger, ambiente: {},
       empresas: [{ chave: 'a', rota: '/a' }, { chave: 'b', rota: '/b' }],
       criarApp: () => { throw new Error('tudo quebrado'); },
     });
-  } catch (e) { caiu = /NENHUMA empresa montou/.test(e.message); }
-  ok(caiu, '⚠️ se TODAS falham, o processo cai (nao serve app vazio)');
+  } catch (e) { caiu = true; }
+  ok(!caiu, '⚠️ mesmo as DUAS empresas de fora falhando, nada e lancado');
+  ok(r && r.every((x) => x.estado === 'falhou'),
+     '  as duas ficam nomeadas como falha no diagnostico');
+
+  // ⚠️ o caso REAL de hoje: uma unica empresa ativa (a AMB) e ela falha.
+  const app2 = fazApp(); const logger2 = fazLog();
+  let caiu2 = false;
+  try {
+    montarEmpresas({
+      app: app2, logger: logger2, ambiente: {},
+      empresas: [{ chave: 'ambtotal', rota: '/amb' }],
+      criarApp: () => { throw new Error('AMB_SESSION_SECRET ausente'); },
+    });
+  } catch (e) { caiu2 = true; }
+  ok(!caiu2, '⚠️ a UNICA empresa ativa falhando tambem nao derruba o processo');
 }
 
 // ── ⚠️ mas tudo DESATIVADO nao e falha ──────────────────────────────
