@@ -489,7 +489,15 @@ app.get('/health', (req, res) => {
       // AMB_SESSION_SECRET so por ser `require`ida, e a sonda pos-RPC do
       // provisionamento derruba a chamada em erro que nao seja "tabela
       // ausente" (antes passava batido).
-      version: '9.84.0 (b427: a sonda conferia 5 de 7 tabelas e aprovava)',
+      // b428 (Codex, PR #367, 2a rodada) - a correcao do b427 ainda tinha 3
+      // furos: o sufixo das 7 tabelas vinha de `chaveDados` (confunde com o
+      // valor da coluna `empresa`; a GOOD tem `chaveDados` mas tabela SEM
+      // sufixo, entao sondaria `devolucoes_good` a toa), so 404/400 contava
+      // como "tabela ausente" (um 400 de request malformada nao prova
+      // ausencia), e uma chave Supabase `anon` passava no `limit=0` mesmo
+      // sem poder ler/gravar de verdade (RLS ligado sem policy responde 200
+      // vazio pra qualquer chave). Cada sonda de tabela tambem ganhou timeout.
+      version: '9.84.1 (b428: sufixo da ficha, so 42P01/PGRST205 e a service_role, nao so 200)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),

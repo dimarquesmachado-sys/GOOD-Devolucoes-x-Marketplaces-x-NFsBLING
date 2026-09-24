@@ -544,7 +544,15 @@ const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 // derrubar a chamada quando o erro na tabela NAO for "tabela ausente" (antes
 // um erro de permissao, por exemplo, passava batido e a empresa saia
 // "pronta" sem a tabela confirmada).
-const VERSAO = 'AMB Devolucoes b424';
+// b427/b428 - revisao Codex no PR #367 (2 rodadas): `scripts/sonda-empresa.js`
+// (a sonda de pre-ativacao, GOOD/CLI) passou a conferir as 7 tabelas do
+// provisionador com o sufixo da FICHA (nao de `chaveDados`), a reprovar eixo
+// de token BLOQUEADO e chave Supabase que nao seja `service_role`, a
+// exercitar o eixo `sombra`, a classificar "tabela ausente" so por
+// 42P01/PGRST205 (nao por status HTTP cru), a por timeout em cada sonda de
+// tabela e a reprovar empresa ja ativa. A AMB nunca chamou este script nem
+// `lib/provisionar-empresa.js` (confirmado por grep) - nada a espelhar.
+const VERSAO = 'AMB Devolucoes b426';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();

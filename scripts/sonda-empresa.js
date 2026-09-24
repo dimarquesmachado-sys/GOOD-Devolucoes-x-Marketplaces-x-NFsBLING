@@ -26,6 +26,19 @@
 const CHECAGENS = [];
 const registrar = (nome, fn) => CHECAGENS.push({ nome, fn });
 
+/**
+ * O `role` embutido no JWT da chave Supabase ('anon' ou 'service_role').
+ * Não é uma chamada de rede: é so decodificar o payload do proprio token.
+ */
+function papelDaChaveSupabase(key) {
+  try {
+    const partes = String(key || '').split('.');
+    if (partes.length !== 3) return null;
+    const payload = JSON.parse(Buffer.from(partes[1], 'base64url').toString('utf8'));
+    return (payload && payload.role) || null;
+  } catch (err) { return null; }
+}
+
 /* ── 1. a ficha existe e está completa ───────────────────────────── */
 registrar('ficha e configuração', async (chave) => {
   const { obterEmpresa, conferirEmpresa } = require('../lib/empresas');
@@ -140,55 +153,84 @@ registrar('o dono entrega o token', async (chave) => {
 /* ── 4. as tabelas existem no banco ──────────────────────────────── */
 registrar('tabelas no Supabase', async (chave) => {
   const { obterEmpresa } = require('../lib/empresas');
-  const { TABELAS_ESPERADAS } = require('../lib/provisionar-empresa');
+  const { sufixoDaFicha, TABELAS_ESPERADAS } = require('../lib/provisionar-empresa');
   const e = obterEmpresa(chave);
-  const suf = e && e.chaveDados;
-  if (!suf) return { ok: false, detalhe: 'a ficha não declara `chaveDados`' };
 
-  // ⚠️ b427 (Codex, P1) - AS 7, NÃO AS 5 DA FICHA.
+  // ⚠️ (Codex, 2a rodada, P2) - O SUFIXO VEM DA FICHA, NÃO DE `chaveDados`.
   //
-  // A ficha declara 5 — as que o app usa por nome. O ciclo de defeitos precisa
-  // de mais 2, que o SQL cria e a ficha não cita. Montar a lista pela ficha
-  // confere 5 de 7 e diz que está tudo certo.
-  //
-  // 📌 E o documento que EU escrevi já dizia "são 7". Li a fonte errada tendo
-  // a certa na mão.
-  const tabelas = TABELAS_ESPERADAS.map((b) => `${b}_${suf}`);
+  // `chaveDados` é o valor gravado na coluna `empresa` do banco — um
+  // identificador DIFERENTE do sufixo físico da tabela. A própria GOOD prova
+  // a diferença: `chaveDados` é 'good', mas as tabelas dela NÃO têm sufixo.
+  // Usar `chaveDados` faria `sondar('good')` procurar `devolucoes_good`
+  // (que não existe) e sugerir o sufixo RESERVADO `_good`. `sufixoDaFicha`
+  // (a mesma função que `provisionarEmpresa` usa) lê o nome real da tabela
+  // na ficha em vez de inventar.
+  const s = sufixoDaFicha(e);
+  if (!s.ok) return { ok: false, detalhe: s.erro };
+  const tabelas = TABELAS_ESPERADAS.map((base) => base + s.sufixo);
 
   const url = process.env[e.prefixoEnv + 'SUPABASE_URL'] || process.env.SUPABASE_URL;
   const key = process.env[e.prefixoEnv + 'SUPABASE_KEY'] || process.env.SUPABASE_KEY;
   if (!url || !key) return { ok: false, detalhe: 'sem credencial do Supabase no ambiente' };
 
-  // ⚠️ b427 (Codex, P2) - "NÃO EXISTE" É DIFERENTE DE "NÃO CONSEGUI OLHAR".
-  //
-  // Antes, TODA resposta não-2xx virava "tabela faltando". Uma chave inválida
-  // (401/403) ou o PostgREST fora do ar mandaria o dono rodar o provisionador
-  // — que não resolveria nada, porque as tabelas podem estar lá.
+  // ⚠️ (Codex, 2a rodada, P2) - CHAVE `anon` PASSA NO `limit=0` E NÃO PROVA
+  // NADA. As tabelas nascem com RLS ligado e SEM policy (é assim que
+  // `sql/provisionar-empresa.sql` cria): o PostgREST responde 200 com lista
+  // vazia pra QUALQUER chave, porque nenhuma linha bate numa policy que não
+  // existe. A aplicação usa esta MESMA chave pra ler e gravar de verdade —
+  // decide pelo `role` do JWT, sem precisar de outra chamada de rede.
+  const papel = papelDaChaveSupabase(key);
+  if (papel !== 'service_role') {
+    return {
+      ok: false,
+      detalhe: `a chave Supabase é \`${papel || 'formato desconhecido'}\`, não \`service_role\``,
+      erro: 'com RLS ligado e sem policy, uma chave anon responde 200 vazio no '
+        + '`limit=0` mesmo sem conseguir ler ou gravar nada de verdade — troque '
+        + 'pela service_role no painel do Supabase (Settings > API)',
+    };
+  }
+
   const ausentes = [];
   const naoOlhei = [];
   for (const t of tabelas) {
     try {
-      // `limit=0`: pergunta se existe sem trazer UMA linha. Sonda não lê dado
-      // de cliente pra responder "existe?".
+      // ⚠️ `limit=0`: pergunta se a tabela existe sem trazer UMA linha. Uma
+      // sonda não pode ler dado de cliente pra responder "existe?".
+      // ⚠️ (Codex, 2a rodada, P2) - TIMEOUT em cada probe: sem isto, um
+      // Supabase que aceita a conexão e trava deixa a sonda parada nas 7
+      // tabelas, uma por vez, no timeout longo do runtime, em vez de virar
+      // um resultado reprovado rápido.
       const r = await fetch(`${url}/rest/v1/${t}?select=*&limit=0`, {
         headers: { apikey: key, Authorization: `Bearer ${key}` },
+        signal: AbortSignal.timeout(8000),
       });
       if (r.ok) continue;
-      // 404 (e o 400 do PostgREST pra relação inexistente) = não existe.
-      // 401/403/5xx = problema de acesso ou do serviço, não da tabela.
-      if (r.status === 404 || r.status === 400) ausentes.push(t);
-      else naoOlhei.push(`${t} (HTTP ${r.status})`);
+
+      // ⚠️ (Codex, 2a rodada, P2) - SÓ 42P01/PGRST205 (relação inexistente)
+      // PROVA AUSÊNCIA. Classificar por status (404/400) ainda confundia um
+      // 400 de request malformada ou um 404 de gateway com "tabela não
+      // existe". `lib/provisionar-empresa.js` já resolve isso olhando o
+      // CÓDIGO do erro no corpo, não só o status HTTP — mesmo padrão aqui.
+      let corpo = {};
+      try { corpo = await r.json(); } catch (err) { corpo = {}; }
+      const msg = String(corpo.message || '');
+      const cod = String(corpo.code || '');
+      if (/does not exist|could not find the table/i.test(msg) || /42P01|PGRST205/i.test(cod)) {
+        ausentes.push(t);
+      } else {
+        naoOlhei.push(`${t}: HTTP ${r.status} ${msg || cod || 'erro desconhecido'}`);
+      }
     } catch (err) {
-      naoOlhei.push(`${t} (${(err && err.message) || 'sem resposta'})`);
+      naoOlhei.push(`${t}: ${(err && err.message) || err}`);
     }
   }
 
   if (naoOlhei.length) {
     return {
       ok: false,
-      detalhe: `não consegui conferir ${naoOlhei.length} de ${tabelas.length}`,
-      erro: `${naoOlhei.slice(0, 2).join(', ')} — isto NÃO quer dizer que a `
-        + 'tabela falta: pode ser chave inválida ou o Supabase fora',
+      detalhe: `não consegui confirmar ${naoOlhei.length} de ${tabelas.length} `
+        + '(erro na sonda, não "tabela ausente")',
+      erro: naoOlhei.join(' | '),
     };
   }
   return {
@@ -198,7 +240,7 @@ registrar('tabelas no Supabase', async (chave) => {
       : `faltam ${ausentes.length} de ${tabelas.length}: ${ausentes.join(', ')}`,
     dica: ausentes.length
       ? 'cole sql/provisionar-empresa.sql no SQL Editor e rode '
-        + `select provisionar_empresa('_${suf}');`
+        + `select provisionar_empresa('${s.sufixo}');`
       : null,
   };
 });
