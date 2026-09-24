@@ -338,9 +338,52 @@ app.use(express.json({ limit: '12mb' }));
   // credenciais `GIRASSOL_*`, as 7 tabelas no Supabase e o manifest proprio
   // da PWA.
 
+  // ⚠️ b421 - UMA EMPRESA QUE FALHA NAO DERRUBA AS OUTRAS.
+  //
+  // Antes, `criarAppAMB` lancando derrubava o BOOT INTEIRO: a GOOD e a AMB —
+  // que estao no ar e atendendo — ficavam fora por causa de uma env faltando
+  // na empresa NOVA.
+  //
+  // 📌 ISSO JA ACONTECEU: em 18/09 o deploy falhou 3x por falta do
+  // `AMB_SESSION_SECRET`, e o servico ficou 7 versoes atrasado sem ninguem
+  // notar. A empresa que quebra e sempre a que esta sendo ligada; quem paga
+  // sao as que ja funcionavam.
+  //
+  // ⚠️ NAO E "engolir erro": a empresa que falha NAO monta, e grita no log com
+  // o motivo. O que muda e o alcance do estrago — fica nela.
+  const falhas = [];
   for (const emp of ativas) {
-    app.use(emp.rota, criarAppAMB(emp.chave));
-    console.log(`[devolucoes] ${emp.chave} montada em ${emp.rota}`);
+    try {
+      app.use(emp.rota, criarAppAMB(emp.chave));
+      console.log(`[devolucoes] ${emp.chave} montada em ${emp.rota}`);
+    } catch (erro) {
+      falhas.push({ chave: emp.chave, motivo: (erro && erro.message) || String(erro) });
+      console.error(`[devolucoes] ⚠️ ${emp.chave} NAO montou: `
+        + `${(erro && erro.message) || erro}`);
+      console.error(`[devolucoes]    a rota ${emp.rota} vai responder 503 ate `
+        + 'isso ser resolvido; as outras empresas seguem no ar');
+
+      // a rota existe e EXPLICA, em vez de dar 404 e parecer que a empresa
+      // nunca existiu — 404 manda o dono procurar no lugar errado.
+      const motivoDesta = (erro && erro.message) || String(erro);
+      app.use(emp.rota, (req, res) => res.status(503).json({
+        ok: false,
+        empresa: emp.chave,
+        erro: 'esta empresa nao subiu neste deploy',
+        motivo: motivoDesta,
+      }));
+    }
+  }
+
+  // ⚠️ SE NENHUMA MONTOU, o processo nao tem razao de existir: derruba, pra o
+  // Render tentar de novo em vez de servir um app vazio que parece saudavel.
+  if (ativas.length && falhas.length === ativas.length) {
+    throw new Error('[devolucoes] NENHUMA empresa montou: '
+      + falhas.map((f) => `${f.chave} (${f.motivo})`).join(' | '));
+  }
+  if (falhas.length) {
+    console.error(`[devolucoes] ⚠️ ${falhas.length} de ${ativas.length} empresa(s) `
+      + `fora: ${falhas.map((f) => f.chave).join(', ')}`);
   }
 }
 app.use(cookieParser());
@@ -481,7 +524,7 @@ app.get('/health', (req, res) => {
       // AMB_SESSION_SECRET so por ser `require`ida, e a sonda pos-RPC do
       // provisionamento derruba a chamada em erro que nao seja "tabela
       // ausente" (antes passava batido).
-      version: '9.78.0 (o OAuth do magalu esperava 3 min com a fila parada)',
+      version: '9.79.0 (b421: uma empresa que falha ao montar nao derruba as outras)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
