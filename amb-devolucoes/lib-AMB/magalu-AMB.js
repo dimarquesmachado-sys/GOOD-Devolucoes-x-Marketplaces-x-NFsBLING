@@ -1,3 +1,4 @@
+
 // ============================================================
 // amb-devolucoes/lib-AMB/magalu-AMB.js         (AMB Devol. b156)
 // ------------------------------------------------------------
@@ -136,8 +137,23 @@ function criarEstadoMagalu() {
     },
     // controle da renovacao (o refresh do Magalu e de uso unico)
     renov: { emVoo: null, ultimaPersistencia: false },
+    // ⚠️ b419 (Codex, P2) - `agendado` MORAVA NO MODULO, fora da fabrica.
+    //
+    // Com duas empresas, `criar()` roda duas vezes mas o modulo e UM SO —
+    // o `let agendado` era compartilhado. O timeout da empresa B zerava o
+    // flag da empresa A: `statusIndice()` da A dizia livre com o timer
+    // dela ainda pra disparar, e a fila deixava passar por cima de quem
+    // estivesse rodando. Mesmo erro do b400 (etiqueta fixa), em outra
+    // gaveta. Agora vive em `indices`, junto do resto do estado por
+    // empresa.
+    //
+    // ⚠️ b414 - ACEITA O ATRASO no preAquecer, pro app poder encadear.
+    // ⚠️ b418 (Codex, P2) - AGENDADO TAMBEM E OCUPADO: entre `preAquecer`
+    // agendar e o timer disparar, `ocupado` dizia FALSE — a mesma fresta
+    // do `reagendado` (b415/b416) em outro modulo, la entre falhar e
+    // retentar, aqui entre agendar e comecar.
     // sinalizadores de construcao
-    indices: { fase2Rodando: false, construindo: false },
+    indices: { fase2Rodando: false, construindo: false, agendado: false },
     // indice de tickets
     tidx: { ts: 0, mapa: {}, total: 0, comReversa: 0, duracaoSeg: 0, erro: null },
     // indice da espreita
@@ -548,7 +564,8 @@ function statusIndice() {
     // 📌 Eu tinha escrito `INDICES.ticketsRodando` aqui, um campo que NAO
     // EXISTE — leria `undefined` pra sempre, calado. Conferi a lista real
     // antes de subir.
-    ocupado: !!(INDICES && (INDICES.fase2Rodando || INDICES.construindo)),
+    ocupado: !!(INDICES && (INDICES.agendado || INDICES.fase2Rodando
+      || INDICES.construindo)),
 
     credenciais_do_app: temCredenciais(),
     token_da_amb: temToken(),
@@ -561,14 +578,7 @@ function statusIndice() {
   };
 }
 
-// ⚠️ b414 - ACEITA O ATRASO, pro app poder encadear.
-//
-// Era fixo aqui dentro. O app agora roda as rotinas UMA DE CADA VEZ e
-// precisa disparar com 0 — antes elas esperavam o proprio minuto e
-// voltavam a se atropelar, com o encadeamento sem efeito nenhum.
-//
-// 📌 `!= null` e nao `||`: com `||`, o 0 cairia no padrao e a mudanca
-// nao valeria nada — parecendo funcionar.
+
 function preAquecer(atrasoMs) {
   if (!temToken()) {
     console.log(`[${_TAG}/MAGALU] desligada - falta consentimento OAuth`);
@@ -576,7 +586,8 @@ function preAquecer(atrasoMs) {
   }
   // b152 - TICKETS (o indice do bipe) so exigem o token: aquecem mesmo
   // sem o tenant. 3min pos-boot + a cada 30min, como na GOOD.
-  setTimeout(() => { construirIndiceDevolucoes().catch(e => console.error(`[${_TAG}/MAGALU] tickets:`, e.message)); }, (atrasoMs != null ? atrasoMs : 3 * 60 * 1000)).unref();
+  INDICES.agendado = true;   // b418/b419: a fila conta isto como ocupado
+  setTimeout(() => { INDICES.agendado = false; construirIndiceDevolucoes().catch(e => console.error(`[${_TAG}/MAGALU] tickets:`, e.message)); }, (atrasoMs != null ? atrasoMs : 3 * 60 * 1000)).unref();
   setInterval(() => { construirIndiceDevolucoes({ reverseEmBackground: true }).catch(() => {}); }, 30 * 60 * 1000).unref();
 
   if (!temTenant()) {

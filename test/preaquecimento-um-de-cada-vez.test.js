@@ -82,11 +82,63 @@ const semCom = APP.split('\n').filter((l) => !l.trim().startsWith('//')).join('\
   // hora, deixando ele fora da fila enquanto a fila parecia completa.
   const mag = fs.readFileSync(
     path.join(RAIZ, 'amb-devolucoes', 'lib-AMB', 'magalu-AMB.js'), 'utf8');
-  ok(/ocupado: !!\(INDICES/.test(mag),
-     '⚠️ magalu: expoe `ocupado` (nunca teve `construindo`)');
+  ok(/ocupado: !!\(INDICES && \(INDICES\.agendado/.test(mag),
+     '⚠️ magalu: `ocupado` cobre AGENDADO + rodando');
+
+  // ⚠️ b418: e a varredura dos 5 módulos da fila achou o nf-entrada com o
+  // mesmo buraco — sem apontamento nenhum. É o que eu devia ter feito nas 4
+  // vezes anteriores, em vez de olhar só o módulo citado.
+  const ent = fs.readFileSync(
+    path.join(RAIZ, 'amb-devolucoes', 'lib-AMB', 'nf-entrada-AMB.js'), 'utf8');
+  ok(/ocupado: !!\(agendado \|\| EST\.construindo\)/.test(ent),
+     '⚠️ nf-entrada tambem (achado varrendo, nao apontado)');
+
+  // e os dois marcam ANTES do setTimeout
+  for (const [nome, src] of [['magalu', mag], ['nf-entrada', ent]]) {
+    const semC = src.split('\n').filter((l) => !l.trim().startsWith('//')).join('\n');
+    // ⚠️ mede dentro do `preAquecer`, não no 1º setTimeout do arquivo —
+    // há outros timers antes dele, e comparar com o primeiro media outra
+    // coisa (foi o que quebrou este teste na primeira escrita).
+    const iPre = semC.indexOf('function preAquecer');
+    const iTimer = semC.indexOf('setTimeout', iPre);
+    const iMarca = semC.indexOf('agendado = true', iPre);
+    ok(iPre > 0 && iMarca > 0 && iMarca < iTimer,
+       `  ${nome}: marca ANTES de agendar, dentro do preAquecer`);
+  }
 
   ok(/st\.ocupado != null \? st\.ocupado : st\.construindo/.test(semCom),
      '  e a fila le `ocupado`, com `construindo` so de reserva');
+}
+
+// ── ⚠️ b419 (Codex, P2) - `agendado` era do MODULO, nao da EMPRESA ──
+//
+// `let agendado` vivia fora da fabrica `criar()`. Com duas empresas no
+// mesmo processo (o bootstrap monta todas as ativas), o timer da empresa B
+// zerava o flag da empresa A: `statusIndice()` da A dizia livre com o
+// timer dela ainda por disparar. Prova executando DUAS instancias, nao lendo
+// o texto — e' exatamente o cenario que o texto sozinho nao pega.
+{
+  const magaluAMB = require(
+    path.join(RAIZ, 'amb-devolucoes', 'lib-AMB', 'magalu-AMB.js'));
+  process.env.ZTESTA_MAGALU_ACCESS_TOKEN = 'fake-a';
+  process.env.ZTESTB_MAGALU_ACCESS_TOKEN = 'fake-b';
+  const a = magaluAMB.criar({ PREFIXO_ENV: 'ZTESTA_', CHAVE_REGISTRO: 'ztesta' });
+  const b = magaluAMB.criar({ PREFIXO_ENV: 'ZTESTB_', CHAVE_REGISTRO: 'ztestb' });
+
+  ok(a.statusIndice().ocupado === false && b.statusIndice().ocupado === false,
+     '  as duas comecam livres');
+
+  // atraso bem longo: so importa o `agendado = true` imediato: o
+  // setTimeout NAO pode disparar durante o teste (chamaria a API de
+  // verdade). unref() garante que ele nao prende o processo.
+  a.preAquecer(10 * 60 * 1000);
+  ok(a.statusIndice().ocupado === true,
+     '  A fica ocupada assim que agenda');
+  ok(b.statusIndice().ocupado === false,
+     '⚠️ B NAO pode ficar ocupada so porque A agendou (o vazamento do b419)');
+
+  delete process.env.ZTESTA_MAGALU_ACCESS_TOKEN;
+  delete process.env.ZTESTB_MAGALU_ACCESS_TOKEN;
 }
 
 // ── ⚠️ o OAuth no meio da espera não pode disparar duas vezes ───────
@@ -97,6 +149,20 @@ const semCom = APP.split('\n').filter((l) => !l.trim().startsWith('//')).join('\
   // arquivo, 20 linhas abaixo. Consertar um de dois é o padrão que já me
   // pegou hoje (a pasta do checkout, o prefixo fiscal): eu olho o caso que o
   // apontamento cita e não pergunto quem mais faz igual.
+  // ⚠️ b420: e o callback do OAuth dispara com atraso CURTO.
+  //
+  // O do magalu chamava `preAquecer()` sem argumento — 3 minutos. Antes do
+  // b418 isso não aparecia, porque `agendado` não contava como ocupado e a
+  // fila passava direto. Ao fechar aquela fresta, eu criei esta espera: a
+  // fila ficava 3 minutos parada esperando o magalu COMEÇAR.
+  //
+  // 📌 Conserto de um buraco que abre outro — vale conferir o efeito do
+  // conserto, não só o buraco.
+  ok(/magalu\.preAquecer\(5000\)/.test(semCom),
+     '⚠️ o OAuth do magalu dispara com atraso curto (nao os 3 min padrao)');
+  ok(/mlReturns\.preAquecer\(5000\)/.test(semCom),
+     '  e o do ML tambem');
+
   for (const svc of ['ml', 'magalu']) {
     ok(new RegExp(`jaPreAquecidoPeloOAuth\\.${svc} = true`).test(semCom),
        `⚠️ o OAuth do ${svc} marca que ja disparou`);
