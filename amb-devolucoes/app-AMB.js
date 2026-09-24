@@ -552,7 +552,12 @@ const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 // 42P01/PGRST205 (nao por status HTTP cru), a por timeout em cada sonda de
 // tabela e a reprovar empresa ja ativa. A AMB nunca chamou este script nem
 // `lib/provisionar-empresa.js` (confirmado por grep) - nada a espelhar.
-const VERSAO = 'AMB Devolucoes b426';
+// b429 - revisao Codex no PR #367 (3a rodada): a mesma sonda passou a
+// testar o token com uma chamada REAL de leitura ao Bling/ML (nao so
+// olhar se veio string nao vazia), inclusive no eixo `local` (antes
+// excluido da checagem). Continua GOOD/CLI-only - a AMB nao chama este
+// script.
+const VERSAO = 'AMB Devolucoes b427';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();

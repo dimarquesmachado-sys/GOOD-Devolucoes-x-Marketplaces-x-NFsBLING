@@ -39,6 +39,50 @@ function papelDaChaveSupabase(key) {
   } catch (err) { return null; }
 }
 
+/**
+ * Testa um access token com UMA chamada real, de leitura, ao endpoint que
+ * `lib/empresas.js:descobrirFicha` já usa pra descobrir a ficha (mesma rota,
+ * mesmo formato de URL absoluta) — provado seguro em produção.
+ *
+ * @returns {{aceito: true|false|null, motivo?: string}} `null` = rede/serviço
+ * não confirmou nada (não é prova de token ruim, mas também não é "pode
+ * ativar").
+ */
+async function testarTokenBling(access, apiBase) {
+  try {
+    const url = `${apiBase}/situacoes?limite=1&pagina=1`;
+    const r = await fetch(url, {
+      headers: { Authorization: `Bearer ${access}`, Accept: 'application/json' },
+      signal: AbortSignal.timeout(8000),
+    });
+    if (r.status === 401 || r.status === 403) {
+      return { aceito: false, motivo: `HTTP ${r.status} — credencial recusada` };
+    }
+    if (!r.ok) return { aceito: null, motivo: `HTTP ${r.status} — não deu para confirmar` };
+    return { aceito: true };
+  } catch (err) {
+    return { aceito: null, motivo: (err && err.message) || String(err) };
+  }
+}
+
+/** Mesma ideia, com `/users/me` — o mesmo endpoint já usado em lib/rotas-debug.js
+ * para confirmar identidade do token do ML sem exigir escopo extra. */
+async function testarTokenML(access, apiBase) {
+  try {
+    const r = await fetch(`${apiBase}/users/me`, {
+      headers: { Authorization: `Bearer ${access}` },
+      signal: AbortSignal.timeout(8000),
+    });
+    if (r.status === 401 || r.status === 403) {
+      return { aceito: false, motivo: `HTTP ${r.status} — credencial recusada` };
+    }
+    if (!r.ok) return { aceito: null, motivo: `HTTP ${r.status} — não deu para confirmar` };
+    return { aceito: true };
+  } catch (err) {
+    return { aceito: null, motivo: (err && err.message) || String(err) };
+  }
+}
+
 /* ── 1. a ficha existe e está completa ───────────────────────────── */
 registrar('ficha e configuração', async (chave) => {
   const { obterEmpresa, conferirEmpresa } = require('../lib/empresas');
@@ -106,47 +150,78 @@ registrar('política de token', async (chave) => {
   return { ok: true, detalhe: eixos.join(', ') + ', chave de leitura presente' };
 });
 
-/* ── 3. o dono responde? (só se algum eixo estiver remoto) ───────── */
+/* ── 3. o marketplace ACEITA o token que a produção vai usar ──────── */
 registrar('o dono entrega o token', async (chave) => {
   const tokenLeitor = require('../lib/token-leitor');
-  const remotos = ['bling', 'ml']
-    .filter((i) => tokenLeitor.politicaDe(chave, i) === 'remoto');
-  // ⚠️ b427 (Codex, P2) - EM `sombra` TAMBÉM VALE PERGUNTAR.
+  const { configDaEmpresa } = require('../lib/config-da-empresa');
+
+  // ⚠️ (Codex, 3a rodada, P2) x2 — DOIS BURACOS NO MESMO LUGAR:
   //
-  // Antes eu pulava a checagem quando nada estava em `remoto` — mas `sombra` é
-  // o PADRÃO, e em produção ela CHAMA o dono do mesmo jeito (lê, mede, e usa o
-  // local). Pular aqui deixava o caminho mais usado sem nenhuma sonda.
+  // 1) `d.access` NÃO PROVA que o Bling/ML aceita: só prova que ALGUÉM
+  //    devolveu uma string não vazia. Token revogado, expirado ou de conta
+  //    errada passava calado, e a sonda dizia "entregou".
+  // 2) Eixo em `local` era EXCLUÍDO desta checagem inteira — mas em
+  //    produção ele TAMBÉM faz chamada, só que sem consultar o dono. Um
+  //    `local` com token morto tinha zero sonda.
   //
-  // 📌 A diferença é o peso: em `sombra` o dono não responder é AVISO (a
-  // empresa segue com o token local); em `remoto` é ERRO (nada sai).
-  const sombras = ['bling', 'ml']
-    .filter((i) => tokenLeitor.politicaDe(chave, i) === 'sombra');
-  if (!remotos.length && !sombras.length) {
-    return { ok: true, detalhe: 'nenhum eixo consulta o dono' };
+  // 📌 Agora todo eixo NÃO bloqueado é testado com uma chamada REAL, de
+  // leitura, pelo MESMO caminho de credencial que a produção usa: se o
+  // dono responde (`remoto`), o token dele; senão (`local`, ou `sombra`
+  // caindo no local), o access token local da própria ficha.
+  const bloqueados = ['bling', 'ml']
+    .filter((i) => tokenLeitor.politicaDe(chave, i) === 'bloqueado');
+  const alvos = ['bling', 'ml'].filter((i) => !bloqueados.includes(i));
+  if (!alvos.length) {
+    return { ok: true, detalhe: 'os dois eixos estão `bloqueado` — nada pra testar aqui' };
   }
+
+  const cfg = configDaEmpresa(chave);
+  const TESTAR = { bling: testarTokenBling, ml: testarTokenML };
+  const ACCESS_LOCAL = { bling: cfg.bling.accessToken, ml: cfg.ml.accessToken };
 
   const partes = [];
   let tudoOk = true;
-  for (const integracao of [...remotos, ...sombras]) {
-    const ehRemoto = remotos.includes(integracao);
+  for (const integracao of alvos) {
+    const politica = tokenLeitor.politicaDe(chave, integracao);
+    let access = null;
+    let motivo = null;
     try {
       const d = await tokenLeitor.resolverToken(chave, integracao);
-      // ⚠️ `usar: 'remoto'` é o único que prova que o dono respondeu COM token.
-      const bom = d && !!d.access && (d.usar === 'remoto' || d.estado === 'ok');
-      // ⚠️ só o eixo em `remoto` REPROVA: em `sombra` o token local salva.
-      if (!bom && ehRemoto) tudoOk = false;
-      partes.push(`${integracao}${ehRemoto ? '' : ' (sombra)'}: `
-        + `${bom ? 'entregou' : (d && d.motivo) || 'sem token'}`);
+      if (d.usar === 'remoto') access = d.access;
+      else if (d.usar === 'local') access = ACCESS_LOCAL[integracao] || null;
+      motivo = (d && d.motivo) || null;
     } catch (err) {
-      if (ehRemoto) tudoOk = false;
-      partes.push(`${integracao}: erro — ${(err && err.message) || err}`);
+      motivo = (err && err.message) || String(err);
+    }
+
+    if (!access) {
+      // ⚠️ o eixo NÃO está bloqueado (senão nem entraria em `alvos`) — se
+      // mesmo assim não há credencial nenhuma pra testar, é reprovação: a
+      // produção também não teria o que mandar.
+      tudoOk = false;
+      partes.push(`${integracao} (${politica}): sem token pra testar `
+        + `(${motivo || 'nenhuma fonte devolveu credencial'})`);
+      continue;
+    }
+
+    const r = await TESTAR[integracao](access, cfg[integracao].apiBase);
+    if (r.aceito === false) {
+      tudoOk = false;
+      partes.push(`${integracao} (${politica}): o marketplace RECUSOU — ${r.motivo}`);
+    } else if (r.aceito === true) {
+      partes.push(`${integracao} (${politica}): aceitou numa chamada real`);
+    } else {
+      // rede/serviço não confirmou — não é prova de token ruim, mas também
+      // não é "pode ativar" (mesmo critério do `naoOlhei` da checagem de tabelas)
+      tudoOk = false;
+      partes.push(`${integracao} (${politica}): não consegui confirmar — ${r.motivo}`);
     }
   }
   return {
     ok: tudoOk,
     detalhe: partes.join(' | '),
-    erro: tudoOk ? null : 'o dono não entregou o token — em `remoto` isso '
-      + 'derruba TODA chamada ao marketplace desta empresa',
+    erro: tudoOk ? null : 'ao menos um eixo não teve o token confirmado por uma '
+      + 'chamada real ao marketplace — a produção falharia na primeira chamada',
   };
 });
 

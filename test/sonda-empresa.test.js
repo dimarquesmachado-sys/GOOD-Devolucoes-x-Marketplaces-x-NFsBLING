@@ -158,10 +158,60 @@ async function testeTabelasSegundaRodada() {
   const semC3 = src3.split('\n').filter((l) => !l.trim().startsWith('//')).join('\n');
   ok(/=== 'bloqueado'/.test(semC3), '⚠️ a sonda olha `bloqueado`');
   ok(/bloqueados\.length/.test(semC3), '  e REPROVA quando encontra');
+}
 
-  // e o caminho `sombra` (o padrão) também é exercitado
-  ok(/sombras/.test(semC3),
-     '⚠️ e o caminho `sombra` (o PADRAO) tambem consulta o dono');
+// ── ⚠️ (Codex, 3a rodada) `d.access` nao vazio NAO prova que o marketplace
+// aceita, e eixo `local` era EXCLUIDO da checagem inteira ──────────────────
+//
+// Antes: um token revogado passava calado (so olhava se veio string), e um
+// eixo em `local` nem entrava no loop (so `remoto`/`sombra` eram varridos).
+// Em producao, `local` TAMBEM faz chamada — so nao consulta o dono antes.
+async function testeTokenAceitoDeVerdade() {
+  const chk = CHECAGENS.find((c) => /dono entrega/i.test(c.nome));
+  const fetchReal = global.fetch;
+  const limpar = () => {
+    for (const k of ['TOKEN_POLITICA_GIRASSOL_BLING', 'TOKEN_POLITICA_GIRASSOL_ML',
+      'GIRASSOL_BLING_ACCESS_TOKEN', 'GIRASSOL_ML_ACCESS_TOKEN']) delete process.env[k];
+  };
+  limpar();
+
+  // 1) eixo `local` — ANTES nem entrava nesta checagem. Agora entra, e uma
+  // chamada real que o marketplace ACEITA aprova.
+  process.env.TOKEN_POLITICA_GIRASSOL_BLING = 'local';
+  process.env.TOKEN_POLITICA_GIRASSOL_ML = 'bloqueado';   // fora do escopo deste caso
+  process.env.GIRASSOL_BLING_ACCESS_TOKEN = 'token-local-fake';
+  let urlChamada = null;
+  let chamouComBearer = false;
+  global.fetch = async (url, opts) => {
+    urlChamada = String(url);
+    chamouComBearer = /token-local-fake/.test((opts && opts.headers && opts.headers.Authorization) || '');
+    return { ok: true, status: 200, json: async () => ({}) };
+  };
+  const rLocalOk = await chk.fn('girassol');
+  ok(chamouComBearer && /situacoes/.test(urlChamada || ''),
+     '⚠️ eixo `local` agora É testado com o token local de verdade (antes nem entrava aqui)');
+  ok(rLocalOk.ok === true && /bling \(local\): aceitou/.test(rLocalOk.detalhe || ''),
+     '  e aprova quando o marketplace aceita');
+
+  // 2) mesmo eixo `local`, mas o marketplace RECUSA (401) — `d.access` era
+  // nao vazio (a falha antiga), e ainda assim tinha que reprovar.
+  global.fetch = async () => ({ ok: false, status: 401, json: async () => ({}) });
+  const rLocalRuim = await chk.fn('girassol');
+  ok(rLocalRuim.ok === false && /RECUSOU/.test(rLocalRuim.detalhe || ''),
+     '⚠️ token nao-vazio mas RECUSADO pelo marketplace reprova (antes so olhava se veio string)');
+
+  // 3) `sombra` (o padrão) caindo no LOCAL por o dono nao estar configurado —
+  // o caminho mais comum em producao — tambem é exercitado com o token real.
+  limpar();
+  process.env.GIRASSOL_BLING_ACCESS_TOKEN = 'token-sombra-fake';
+  process.env.TOKEN_POLITICA_GIRASSOL_ML = 'bloqueado';
+  global.fetch = async () => ({ ok: true, status: 200, json: async () => ({}) });
+  const rSombra = await chk.fn('girassol');
+  ok(rSombra.ok === true && /bling \(sombra\): aceitou/.test(rSombra.detalhe || ''),
+     '⚠️ e o caminho `sombra` (o PADRAO), caindo no local, tambem é exercitado com o token real');
+
+  global.fetch = fetchReal;
+  limpar();
 }
 
 // ── ⚠️ já ativa REPROVA ─────────────────────────────────────────────
@@ -202,7 +252,7 @@ async function testeTabelasSegundaRodada() {
       ok(l2.length === CHECAGENS.length, '  e as outras rodaram mesmo assim');
       CHECAGENS.pop();
 
-      return testeTabelasSegundaRodada().then(() => {
+      return testeTabelasSegundaRodada().then(() => testeTokenAceitoDeVerdade()).then(() => {
         console.log('');
         console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
         process.exit(falhas ? 1 : 0);

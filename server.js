@@ -497,7 +497,14 @@ app.get('/health', (req, res) => {
       // ausencia), e uma chave Supabase `anon` passava no `limit=0` mesmo
       // sem poder ler/gravar de verdade (RLS ligado sem policy responde 200
       // vazio pra qualquer chave). Cada sonda de tabela tambem ganhou timeout.
-      version: '9.84.1 (b428: sufixo da ficha, so 42P01/PGRST205 e a service_role, nao so 200)',
+      // b429 (Codex, PR #367, 3a rodada) - a checagem "o dono entrega o
+      // token" so olhava se `d.access` era uma string nao vazia: um token
+      // revogado/expirado passava calado, e o eixo `local` nem entrava na
+      // checagem (so `remoto`/`sombra` eram varridos, mas em producao
+      // `local` TAMBEM faz chamada). Agora todo eixo NAO bloqueado leva uma
+      // chamada real de leitura (Bling `/situacoes`, ML `/users/me`) com o
+      // MESMO token que a producao usaria — 401/403 reprova de verdade.
+      version: '9.85.0 (b429: o token e testado com uma chamada real ao marketplace)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
