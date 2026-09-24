@@ -11,6 +11,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const { entreMarcadores } = require('./_recorte');
 
 let falhas = 0;
 const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o); };
@@ -148,6 +149,20 @@ const semCom = APP.split('\n').filter((l) => !l.trim().startsWith('//')).join('\
   // arquivo, 20 linhas abaixo. Consertar um de dois é o padrão que já me
   // pegou hoje (a pasta do checkout, o prefixo fiscal): eu olho o caso que o
   // apontamento cita e não pergunto quem mais faz igual.
+  // ⚠️ b420: e o callback do OAuth dispara com atraso CURTO.
+  //
+  // O do magalu chamava `preAquecer()` sem argumento — 3 minutos. Antes do
+  // b418 isso não aparecia, porque `agendado` não contava como ocupado e a
+  // fila passava direto. Ao fechar aquela fresta, eu criei esta espera: a
+  // fila ficava 3 minutos parada esperando o magalu COMEÇAR.
+  //
+  // 📌 Conserto de um buraco que abre outro — vale conferir o efeito do
+  // conserto, não só o buraco.
+  ok(/magalu\.preAquecer\(5000\)/.test(semCom),
+     '⚠️ o OAuth do magalu dispara com atraso curto (nao os 3 min padrao)');
+  ok(/mlReturns\.preAquecer\(5000\)/.test(semCom),
+     '  e o do ML tambem');
+
   for (const svc of ['ml', 'magalu']) {
     ok(new RegExp(`jaPreAquecidoPeloOAuth\\.${svc} = true`).test(semCom),
        `⚠️ o OAuth do ${svc} marca que ja disparou`);
@@ -161,6 +176,27 @@ const semCom = APP.split('\n').filter((l) => !l.trim().startsWith('//')).join('\
   const iMarca = linhas.findIndex((l) => /jaPreAquecidoPeloOAuth\.ml = true/.test(l));
   ok(iDecl >= 0 && iMarca >= 0 && iDecl < iMarca,
      '⚠️ e e declarada ANTES do callback que a marca (TDZ)');
+}
+
+// ── ⚠️ o OAuth do magalu tinha que disparar RAPIDO, como o do ML ────
+//
+// b418 (Codex, apontamento no PR #361 ja merged): o callback marcava
+// `jaPreAquecidoPeloOAuth.magalu` (b417 corrigiu isso), mas chamava
+// `magalu.preAquecer()` SEM atraso — e o `preAquecer(atrasoMs)` do magalu
+// usa o padrao de 3 MINUTOS pros tickets quando `atrasoMs` e `null`. A fila
+// so olha `statusIndice().ocupado`, que so vira `true` quando a construcao
+// COMECA. Com 3 minutos de atraso, a 1ª conferencia da fila (5s depois)
+// achava `ocupado: false` e seguia pro Shopee — a mesma fresta que o b415
+// fechou pro ML com `mlReturns.preAquecer(5000)`, so que o magalu ficou de
+// fora (mesmo bug do b417, agora num ponto diferente do mesmo callback).
+{
+  const blocoMagalu = entreMarcadores(semCom,
+    "if (reg.servico === 'magalu')",
+    "res.status(400).json({ ok: false, erro: 'servico desconhecido no state' });");
+  ok(/magalu\.preAquecer\(5000\)/.test(blocoMagalu),
+     '⚠️ o callback do magalu dispara com o MESMO atraso curto do ML (5000ms)');
+  ok(!/magalu\.preAquecer\(\);/.test(blocoMagalu),
+     '  e nao sobrou a chamada sem atraso (3min por padrao)');
 }
 
 // ── os dois caminhos da espera, exercitados ─────────────────────────
