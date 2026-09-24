@@ -255,6 +255,37 @@ const BASE = CFG_EMPRESA.PREFIXO_ROTA;
 // 📌 Validar aqui, ANTES de qualquer `.criar()` que registre timer, faz o
 // `throw` acontecer cedo: nenhum cliente chega a ser construido e nenhuma
 // renovacao preventiva chega a ser agendada.
+// ⚠️ b422 (Codex, P1) - A FICHA INTEIRA E VALIDADA ANTES DOS CLIENTES.
+//
+// No b421 eu subi a validacao do SESSION_SECRET pra antes dos `.criar()` que
+// registram timer — e parei ali. Mas o `chaveDados` continuava sendo validado
+// DEPOIS, ja com os timers agendados.
+//
+// 📌 O EFEITO ERA IDENTICO AO QUE EU TINHA ACABADO DE CONSERTAR: uma empresa
+// com segredo valido e ficha incompleta agendava a renovacao preventiva,
+// tomava o `throw` depois, virava 503 — e horas depois os timers renovavam de
+// verdade o refresh de USO UNICO, queimando o token do Mover-Pedidos pra uma
+// empresa que nunca subiu.
+//
+// ⚠️ Consertei UMA porta e deixei a do lado aberta.
+//
+// 📌 `obterEmpresa` nao depende de nada que nasca depois, entao a ficha e
+// buscada AQUI. O `FICHA_AMB` la embaixo continua onde estava — esta
+// validacao so adianta a conferencia, nao move a declaracao.
+const CHAVE_DADOS = (() => {
+  // ⚠️ `require` direto: o `obterEmpresa` do topo so nasce mais abaixo, e
+  // usa-lo aqui dava "Cannot access before initialization". Errei isto 2x
+  // hoje — `const` nao sobe, e a ordem do arquivo manda.
+  const ficha = require("../lib/empresas").obterEmpresa(EMPRESA_DESTE_APP);
+  const v = ficha && ficha.chaveDados;
+  if (!v) {
+    throw new Error(`[devolucoes] a ficha de "${EMPRESA_DESTE_APP}" nao declara `
+      + '`chaveDados` — e o valor da coluna `empresa` no banco. Sem ele eu '
+      + 'gravaria dado com a chave errada.');
+  }
+  return v;
+})();
+
 const auth = require('./lib-AMB/auth-AMB').criar(CFG_EMPRESA.AUTH);
 
 // ⚠️ b377 - CADA CLIENTE ENTRA NA CONFIG LOGO DEPOIS DE NASCER.
@@ -304,6 +335,8 @@ const criarNfPessoa = require('../lib/nf-pessoa');
 const { obterEmpresa, envDaEmpresa } = require('../lib/empresas');
 // ⚠️ b356: idem — mesma chave, um lugar so decide qual empresa este app e.
 const FICHA_AMB = obterEmpresa(EMPRESA_DESTE_APP);
+
+
 
 // ⚠️ b394 (Codex, P1) - O NOME DA EMPRESA NAS TELAS SAI DA FICHA.
 //
@@ -384,15 +417,7 @@ const BASE_AMB_JS = fs.readFileSync(
 // ⚠️ Sem `chaveDados` na ficha eu NAO adivinho: derrubo o boot. Silenciar
 // com um padrao escreveria dado com a chave errada — e isso o dono so
 // descobriria quando a tela viesse vazia.
-const CHAVE_DADOS = (() => {
-  const v = FICHA_AMB && FICHA_AMB.chaveDados;
-  if (!v) {
-    throw new Error(`[devolucoes] a ficha de "${EMPRESA_DESTE_APP}" nao declara `
-      + '`chaveDados` — e o valor da coluna `empresa` no banco. Sem ele eu '
-      + 'gravaria dado com a chave errada.');
-  }
-  return v;
-})();
+// ⚠️ b422: o CHAVE_DADOS subiu — ver a validacao da ficha, antes dos clientes.
 const envAmb = (nome, padrao) => envDaEmpresa(FICHA_AMB, nome, padrao);
 const registrarRotasAdminNF = require('./lib-AMB/rotas-admin-AMB');
 // b238 - UNIFICADO: era copia BYTE A BYTE da /lib. Medi os 9 modulos

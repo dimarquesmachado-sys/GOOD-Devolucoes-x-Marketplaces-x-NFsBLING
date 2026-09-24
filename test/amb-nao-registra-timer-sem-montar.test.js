@@ -60,6 +60,32 @@ if (!r.erro) {
      + '(achei: ' + JSON.stringify(r.registradas) + ')');
 }
 
+// ── ⚠️ b422: NENHUMA validacao pode ficar DEPOIS dos clientes ───────
+//
+// No b421 subi o SESSION_SECRET e parei ali — o `chaveDados` continuou sendo
+// validado 120 linhas depois, ja com os timers agendados, com o MESMO efeito
+// que eu tinha acabado de consertar.
+//
+// 📌 Entao o teste VARRE: qualquer `throw` depois do primeiro `.criar()` que
+// registra timer e um buraco igual. Checar so o campo citado foi o erro.
+{
+  const fs = require('fs');
+  const APP = fs.readFileSync(
+    path.join(raiz, 'amb-devolucoes', 'app-AMB.js'), 'utf8');
+  const linhas = APP.split('\n');
+  const iCliente = linhas.findIndex((l) =>
+    !l.trim().startsWith('//') && /(bling|ml)-AMB'\)\.criar/.test(l));
+  const tardios = linhas
+    .map((l, i) => ({ l, i }))
+    .filter(({ l, i }) => i > iCliente && /throw new Error/.test(l)
+                          && !l.trim().startsWith('//'));
+
+  ok(iCliente > 0, 'achei onde o 1o cliente com timer nasce');
+  ok(tardios.length === 0,
+     '⚠️ NENHUM `throw` depois do 1o cliente com timer'
+     + (tardios.length ? ` (L${tardios.map((t) => t.i + 1).join(', L')})` : ''));
+}
+
 console.log('');
 console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
 process.exit(falhas ? 1 : 0);
