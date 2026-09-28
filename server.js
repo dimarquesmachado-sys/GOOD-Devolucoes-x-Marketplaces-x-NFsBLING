@@ -514,7 +514,7 @@ app.get('/health', (req, res) => {
       // de BUSCAR em vez da de EMITIR. So o lado AMB muda de comportamento
       // (lib/ids-fiscais-auto.js e amb-devolucoes/app-AMB.js) — este arquivo
       // so acompanha o numero do build.
-      version: '9.92.0 (b435: os acertos do Codex na descoberta dos ids fiscais)',
+      version: '9.94.0 (b437: os acertos do Codex na descoberta dos ids fiscais)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -2419,7 +2419,17 @@ app.get('/api/espreita/casa-nf/:nf', requerLogin, async (req, res) => {
 //
 // 📌 Ela precisa rodar ONDE as envs vivem. Por isso a rota.
 //
-//   https://<host>/api/admin/sonda-empresa/girassol?k=SUA_ADMIN_KEY
+// b430 (Codex, PR #368, P1) - o exemplo original mandava a ADMIN_KEY pela
+// URL (?k=...) — e esta mesma secao documenta que credencial em querystring
+// fica em log de acesso do Render, do proxy, e em historico/link copiado.
+// A excecao de compatibilidade e pra link ANTIGO ja salvo, nao pra rota
+// nova. O `adminOk` ja aceita a sessao de admin logada (painel-devolucoes),
+// entao o uso recomendado e no MESMO navegador, sem chave nenhuma:
+//
+//   https://<host>/api/admin/sonda-empresa/girassol
+//
+// Fora do navegador (curl/script), use o header `x-admin-key` — nunca a
+// querystring.
 //
 // ⚠️ Protegida pela chave admin, como as outras sondas. E continua SO
 // LEITURA: nao emite, nao grava, nao renova, nao ativa.
