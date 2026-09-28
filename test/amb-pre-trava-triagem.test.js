@@ -28,7 +28,14 @@ const BUSCA_AMB = fs.readFileSync(path.join(RAIZ, 'amb-devolucoes', 'public-AMB'
 // ── a rota existe, e no caminho que o front chama ────────────────────
 ok(/router\.get\('\/api\/triagem\/status\/:identificador'/.test(APP_AMB),
    'a AMB agora TEM a rota /api/triagem/status (era 404 e o catch engolia)');
-ok(/fetch\('\/api\/triagem\/status\/'/.test(BUSCA_AMB),
+// ⚠️ b432: a chamada ganhou a base da empresa na frente
+// (`fetch((window.APP_BASE || '') + '/api/...')`), porque o painel e o front
+// sao COMPARTILHADOS entre AMB e Girassol — sem a base, a chamada caia na
+// raiz, que e a GOOD.
+//
+// 📌 O que este teste protege continua igual: que o front chame ESSA rota.
+// So o formato mudou.
+ok(/\/api\/triagem\/status\//.test(BUSCA_AMB),
    '  e e exatamente a que o front dela chama');
 ok(/req\.query\.tambem/.test(APP_AMB),
    '  aceitando o segundo identificador em ?tambem=, como na GOOD');
