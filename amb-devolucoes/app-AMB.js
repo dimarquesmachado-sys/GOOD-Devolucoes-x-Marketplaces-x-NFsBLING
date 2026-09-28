@@ -557,7 +557,13 @@ const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 // olhar se veio string nao vazia), inclusive no eixo `local` (antes
 // excluido da checagem). Continua GOOD/CLI-only - a AMB nao chama este
 // script.
-const VERSAO = 'AMB Devolucoes b430';
+// b431 (Codex, PR #372) - corrige 5 apontamentos na rota
+// `/api/ids-fiscais-auto` e no helper `lib/ids-fiscais-auto.js`: require
+// que saia do repo, natureza de SAIDA aceita por engano, paginacao do
+// catalogo do Bling, cache de leitura que falhou e rotulo de env trocado
+// (a natureza descoberta e a de EMITIR, `ID_NATUREZA_DEVOLUCAO_ENTRADA`,
+// nao a de BUSCAR, `NATUREZAS_DEVOLUCAO_IDS`).
+const VERSAO = 'AMB Devolucoes b431';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -1684,7 +1690,7 @@ router.get('/api/triagem/fila', auth.requerLogin, async (req, res) => {
 // ⚠️ E diz o que NAO deu, com os candidatos — nunca escolhe no empate.
 router.get('/api/ids-fiscais-auto', admin, async (req, res) => {
   try {
-    const { descobrirIdsFiscais } = require('../../lib/ids-fiscais-auto');
+    const { descobrirIdsFiscais } = require('../lib/ids-fiscais-auto');
     const d = await descobrirIdsFiscais(
       EMPRESA_DESTE_APP, bling.chamarBling, { semCache: req.query.refresh === '1' });
     if (!d.ok) return res.status(502).json(d);
@@ -1699,7 +1705,10 @@ router.get('/api/ids-fiscais-auto', admin, async (req, res) => {
 
     const paraColar = [
       linha('DEPOSITO_GERAL', d.depositoGeral),
-      linha('NATUREZAS_DEVOLUCAO_IDS', d.naturezasDevolucaoIds),
+      // ⚠️ (Codex, P1) - ID_NATUREZA_DEVOLUCAO_ENTRADA e a de EMITIR (a que
+      // este modulo descobre); NATUREZAS_DEVOLUCAO_IDS e a de BUSCAR nota ja
+      // emitida (outro campo, outro uso — scripts/plugar-empresa.js:262-263).
+      linha('ID_NATUREZA_DEVOLUCAO_ENTRADA', d.naturezasDevolucaoIds),
       linha('ID_EMPRESA_CONTROL', d.idEmpresaControl),
     ];
     const faltam = paraColar.filter((x) => !x.valor);
