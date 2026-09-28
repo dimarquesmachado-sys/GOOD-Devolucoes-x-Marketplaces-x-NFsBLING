@@ -588,7 +588,7 @@ const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 // catalogo do Bling, cache de leitura que falhou e rotulo de env trocado
 // (a natureza descoberta e a de EMITIR, `ID_NATUREZA_DEVOLUCAO_ENTRADA`,
 // nao a de BUSCAR, `NATUREZAS_DEVOLUCAO_IDS`).
-const VERSAO = 'AMB Devolucoes b441';
+const VERSAO = 'AMB Devolucoes b442';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -936,6 +936,10 @@ router.get('/status', (req, res) => {
     subiu_em: SUBIU_EM,
     uptime_s: Math.round(process.uptime()),
     memoria_mb: Math.round(process.memoryUsage().rss / 1048576),
+    // b442 - como conferir se o ritmo esta segurando: `pausas429` cresce
+    // devagar (ou para) e `na_fila` mostra quem espera. Antes deste build
+    // nao havia fila — o cliente martelava.
+    ritmo_bling: (typeof bling.estadoRitmo === 'function') ? bling.estadoRitmo() : null,
     conectado: { bling: bling.temToken(), ml: ml.temToken(), ml_user: ml.userId() || null },
     indice_ml: { quente: idx.quente, construindo: idx.construindo, rastreios: idx.com_tracking, idade_min: idx.idade_min },
     indice_nomes: { quente: nfNomes.statusIndice().quente, nfs: nfNomes.statusIndice().total_nfs },

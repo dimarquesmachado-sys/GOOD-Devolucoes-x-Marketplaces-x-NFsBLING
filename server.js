@@ -521,7 +521,7 @@ app.get('/health', (req, res) => {
       // escopo que ja estava certo. Agora `erros` vem ROTULADO por lista
       // (`{ lista: 'naturezas', erro }`) e o aviso so dispara quando ha um
       // erro de verdade rotulado pra naturezas.
-      version: '9.98.0 (b441: aviso de escopo so dispara com erro de verdade, nao lista vazia)',
+      version: '9.98.0 (b442: o cliente da AMB/Girassol respeita a cota — era um martelo)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
