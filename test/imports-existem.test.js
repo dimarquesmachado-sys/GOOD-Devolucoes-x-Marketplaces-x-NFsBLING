@@ -160,8 +160,13 @@ for (const rel of ['server.js', 'amb-devolucoes/app-AMB.js']) {
     for (const m of src.matchAll(/require\(\s*['"](\.[^'"]+)['"]\s*\)/g)) {
       const alvo = m[1];
       const base = path2.resolve(dir, alvo);
-      const existe = ['', '.js', '.json', '/index.js']
-        .some((suf) => fs2.existsSync(base + suf));
+      // ⚠️ `fs.existsSync(base)` sozinho aceita um DIRETORIO sem `index.js`
+      // nem `package.json` com `main` — o Node recusa esse require em
+      // tempo de execucao, mas o existsSync dava "existe" so por a pasta
+      // estar la. `require.resolve` usa a MESMA resolucao do Node de
+      // verdade, entao pega esse caso (apontamento do Codex no #373).
+      let existe = true;
+      try { require.resolve(base); } catch (e) { existe = false; }
       if (!existe) quebrados.push(`${rel} -> ${alvo}`);
     }
   }

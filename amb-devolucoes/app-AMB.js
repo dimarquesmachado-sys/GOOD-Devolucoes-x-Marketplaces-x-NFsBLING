@@ -557,7 +557,7 @@ const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 // olhar se veio string nao vazia), inclusive no eixo `local` (antes
 // excluido da checagem). Continua GOOD/CLI-only - a AMB nao chama este
 // script.
-const VERSAO = 'AMB Devolucoes b430';
+const VERSAO = 'AMB Devolucoes b432';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
