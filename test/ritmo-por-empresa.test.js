@@ -124,6 +124,24 @@ const { criarRitmo } = require('../lib/ritmo-por-empresa');
       path.join(__dirname, '..', 'amb-devolucoes', 'lib-AMB', 'nf-nomes-AMB.js'), 'utf8');
     ok(/chamarBling\(`\/nfe[^`]*`, \{ fundo: deFundo/.test(nomes),
        '⚠️ a varredura de nomes passa `fundo` pro cliente');
+    // ⚠️ b443 (Codex, P2), 2a rodada: o apontamento citou 3 chamadas de
+    // `chamarBling` neste laco (NFs x2 + vendas) — a 1a rodada consertou so
+    // as duas de `/nfe` e a de `/pedidos/vendas` ficou de fora, sem `fundo`
+    // nenhum. VARREDURA das 3, uma por uma, pra nao repetir: quem chamar de
+    // novo sem `fundo` acusa aqui, nao so grep pontual.
+    {
+      const iFn = nomes.indexOf('async function construirIndiceInterno(opts = {}) {');
+      const iFim = nomes.indexOf('async function buscarPorNome(', iFn);
+      ok(iFn >= 0 && iFim > iFn, '  achei os marcadores de construirIndiceInterno');
+      const corpo = nomes.slice(iFn, iFim);
+      const chamadas = [...corpo.matchAll(/bling\.chamarBling\([^)]*\)/gs)];
+      ok(chamadas.length === 3,
+         `  as 3 chamadas do laco de construcao (achei ${chamadas.length})`);
+      const semFundo = chamadas.filter((m) => !/fundo/.test(m[0]));
+      ok(semFundo.length === 0,
+         '⚠️ TODAS as chamadas do laco (NFs e vendas) passam `fundo`'
+         + (semFundo.length ? ' (SEM fundo: ' + semFundo.map((m) => m[0]).join(' | ') + ')' : ''));
+    }
     const ent = fs.readFileSync(
       path.join(__dirname, '..', 'amb-devolucoes', 'lib-AMB', 'nf-entrada-AMB.js'), 'utf8');
     ok(/chamarBling\(`\/nfe[^`]*`, \{ fundo: true/.test(ent),

@@ -588,7 +588,10 @@ const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 // catalogo do Bling, cache de leitura que falhou e rotulo de env trocado
 // (a natureza descoberta e a de EMITIR, `ID_NATUREZA_DEVOLUCAO_ENTRADA`,
 // nao a de BUSCAR, `NATUREZAS_DEVOLUCAO_IDS`).
-const VERSAO = 'AMB Devolucoes b443';
+// b444 - o b443 so passou `fundo` nas 2 chamadas de `/nfe` do laco do
+// indice de nomes; a de `/pedidos/vendas`, tambem citada no apontamento
+// original, ficou de fora. Ver nf-nomes-AMB.js.
+const VERSAO = 'AMB Devolucoes b444';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();

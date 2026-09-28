@@ -521,7 +521,11 @@ app.get('/health', (req, res) => {
       // escopo que ja estava certo. Agora `erros` vem ROTULADO por lista
       // (`{ lista: 'naturezas', erro }`) e o aviso so dispara quando ha um
       // erro de verdade rotulado pra naturezas.
-      version: '9.99.0 (b443: os 6 furos do ritmo — rajada, 429 escondido, 401 fora da fila, fundo, fila da GOOD)',
+      // b444 - o b443 consertou 2 das 3 chamadas do laco de indice de nomes
+      // que deveriam passar `fundo` (as duas de `/nfe`); a de
+      // `/pedidos/vendas`, que o apontamento original tambem citava, ficou
+      // de fora. Mesmo arquivo, mesma causa — so faltou a 3a chamada.
+      version: '9.99.0 (b444: a 3a chamada do indice de nomes tambem passa fundo)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),

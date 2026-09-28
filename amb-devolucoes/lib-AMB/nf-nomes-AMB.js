@@ -319,7 +319,10 @@ async function construirIndiceInterno(opts = {}) {
           // evita que CADA volta deste laco dispare sua PROPRIA renovacao
           // (o refresh token e de uso unico; 4 tentativas x 8 builds de
           // `tentar()` chegava a rotacoes demais por um 401 so persistente).
-          r = await bling.chamarBling(`/pedidos/vendas?limite=100&pagina=${pg}`, tent === 1 ? undefined : { semRetentativa: true });
+          // ⚠️ b443 (Codex, P2) - `fundo: deFundo` FALTAVA aqui tambem. O
+          // apontamento citou as 3 chamadas deste laco (NFs x2 + vendas); a
+          // rodada anterior consertou so as duas de `/nfe` e esqueceu esta.
+          r = await bling.chamarBling(`/pedidos/vendas?limite=100&pagina=${pg}`, tent === 1 ? { fundo: deFundo } : { semRetentativa: true, fundo: deFundo });
           if (r.ok) { erroVendas = null; break; }
           // ⚠️ b351 - 401 TAMBEM ENTRA NO RETRY.
           //
