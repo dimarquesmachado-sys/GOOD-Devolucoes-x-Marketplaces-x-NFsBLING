@@ -168,6 +168,17 @@ registrar('o dono entrega o token', async (chave) => {
   // leitura, pelo MESMO caminho de credencial que a produção usa: se o
   // dono responde (`remoto`), o token dele; senão (`local`, ou `sombra`
   // caindo no local), o access token local da própria ficha.
+  //
+  // ⚠️ b430 (Codex, PR #368, P2) - RODANDO NA ROTA, ESTA SONDA COMPARTILHA O
+  // CACHE DE 5 MIN DE `lib/token-leitor` COM A PRODUÇÃO. Por linha de
+  // comando cada chamada nasce num processo novo (cache sempre vazio), mas
+  // pela rota (`server.js`, processo de vida longa) uma leitura anterior —
+  // da própria produção ou de uma sonda anterior — pode estar cacheada. Sem
+  // invalidar antes, `resolverToken` devolveria o token GUARDADO e a sonda
+  // aprovaria mesmo que o dono tenha ficado indisponível depois daquele
+  // cache. Invalidar aqui é seguro: a chave do cache é por (empresa,
+  // integração), então só afeta ESTA empresa/eixo, e uma leitura a mais no
+  // dono é exatamente o preço de uma sonda que prova de verdade.
   const bloqueados = ['bling', 'ml']
     .filter((i) => tokenLeitor.politicaDe(chave, i) === 'bloqueado');
   const alvos = ['bling', 'ml'].filter((i) => !bloqueados.includes(i));
@@ -186,6 +197,7 @@ registrar('o dono entrega o token', async (chave) => {
     let access = null;
     let motivo = null;
     try {
+      tokenLeitor.invalidar(chave, integracao);
       const d = await tokenLeitor.resolverToken(chave, integracao);
       if (d.usar === 'remoto') access = d.access;
       else if (d.usar === 'local') access = ACCESS_LOCAL[integracao] || null;
