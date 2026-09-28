@@ -590,7 +590,7 @@ const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 // web-app-title); P2 link do Magalu no painel/busca sem o host do
 // Mover-Pedidos (404); P2 `srcFoto` sem `APP_BASE` (miniatura/zoom levava
 // 401 fora da raiz); P2 `defeitos-AMB.html` com `href="/"` cravado.
-const VERSAO = 'AMB Devolucoes b434';
+const VERSAO = 'AMB Devolucoes b436';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();

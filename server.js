@@ -510,7 +510,7 @@ app.get('/health', (req, res) => {
       // Nada a espelhar aqui: sao mudancas so no app-AMB.js e no front da
       // AMB/Girassol (public-AMB/, extensao-bridge/) — a GOOD ja tinha o
       // link do Magalu com o host certo e nao usa APP_BASE.
-      version: '9.91.0 (b434: os 5 acertos do Codex na ativacao da Girassol)',
+      version: '9.93.0 (b436: os 5 acertos do Codex na ativacao da Girassol)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -2415,7 +2415,17 @@ app.get('/api/espreita/casa-nf/:nf', requerLogin, async (req, res) => {
 //
 // 📌 Ela precisa rodar ONDE as envs vivem. Por isso a rota.
 //
-//   https://<host>/api/admin/sonda-empresa/girassol?k=SUA_ADMIN_KEY
+// b430 (Codex, PR #368, P1) - o exemplo original mandava a ADMIN_KEY pela
+// URL (?k=...) — e esta mesma secao documenta que credencial em querystring
+// fica em log de acesso do Render, do proxy, e em historico/link copiado.
+// A excecao de compatibilidade e pra link ANTIGO ja salvo, nao pra rota
+// nova. O `adminOk` ja aceita a sessao de admin logada (painel-devolucoes),
+// entao o uso recomendado e no MESMO navegador, sem chave nenhuma:
+//
+//   https://<host>/api/admin/sonda-empresa/girassol
+//
+// Fora do navegador (curl/script), use o header `x-admin-key` — nunca a
+// querystring.
 //
 // ⚠️ Protegida pela chave admin, como as outras sondas. E continua SO
 // LEITURA: nao emite, nao grava, nao renova, nao ativa.
