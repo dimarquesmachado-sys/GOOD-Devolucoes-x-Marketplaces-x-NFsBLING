@@ -582,15 +582,13 @@ const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 // olhar se veio string nao vazia), inclusive no eixo `local` (antes
 // excluido da checagem). Continua GOOD/CLI-only - a AMB nao chama este
 // script.
-// b428 - corrige os 5 apontamentos do Codex no PR #370 (Girassol ativada):
-// P1 `chamarBlingViaBridge` cravava `empresa: 'ambtotal'` (o painel agora e
-// compartilhado com a Girassol; usa `window.APP_EMPRESA` + `girassol` na
-// extensao); P2 titulo/h1 do index e do painel viravam "AMBTotal" tambem
-// pra Girassol (templatados pelo NOME_EMPRESA, como ja era o apple-mobile-
-// web-app-title); P2 link do Magalu no painel/busca sem o host do
-// Mover-Pedidos (404); P2 `srcFoto` sem `APP_BASE` (miniatura/zoom levava
-// 401 fora da raiz); P2 `defeitos-AMB.html` com `href="/"` cravado.
-const VERSAO = 'AMB Devolucoes b436';
+// b431 (Codex, PR #372) - corrige 5 apontamentos na rota
+// `/api/ids-fiscais-auto` e no helper `lib/ids-fiscais-auto.js`: require
+// que saia do repo, natureza de SAIDA aceita por engano, paginacao do
+// catalogo do Bling, cache de leitura que falhou e rotulo de env trocado
+// (a natureza descoberta e a de EMITIR, `ID_NATUREZA_DEVOLUCAO_ENTRADA`,
+// nao a de BUSCAR, `NATUREZAS_DEVOLUCAO_IDS`).
+const VERSAO = 'AMB Devolucoes b438';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -1741,7 +1739,10 @@ router.get('/api/ids-fiscais-auto', admin, async (req, res) => {
 
     const paraColar = [
       linha('DEPOSITO_GERAL', d.depositoGeral),
-      linha('NATUREZAS_DEVOLUCAO_IDS', d.naturezasDevolucaoIds),
+      // ⚠️ (Codex, P1) - ID_NATUREZA_DEVOLUCAO_ENTRADA e a de EMITIR (a que
+      // este modulo descobre); NATUREZAS_DEVOLUCAO_IDS e a de BUSCAR nota ja
+      // emitida (outro campo, outro uso — scripts/plugar-empresa.js:262-263).
+      linha('ID_NATUREZA_DEVOLUCAO_ENTRADA', d.naturezasDevolucaoIds),
       linha('ID_EMPRESA_CONTROL', d.idEmpresaControl),
     ];
     const faltam = paraColar.filter((x) => !x.valor);

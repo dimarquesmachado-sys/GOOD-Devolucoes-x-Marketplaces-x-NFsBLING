@@ -504,13 +504,17 @@ app.get('/health', (req, res) => {
       // `local` TAMBEM faz chamada). Agora todo eixo NAO bloqueado leva uma
       // chamada real de leitura (Bling `/situacoes`, ML `/users/me`) com o
       // MESMO token que a producao usaria — 401/403 reprova de verdade.
-      // b430 - correcao dos 5 apontamentos do Codex no PR #370 (Girassol):
-      // 1 P1 (Bridge pedia os ids fiscais da AMB numa devolucao da
-      // Girassol) e 4 P2 (branding, links do Magalu e fotos quebradas).
-      // Nada a espelhar aqui: sao mudancas so no app-AMB.js e no front da
-      // AMB/Girassol (public-AMB/, extensao-bridge/) — a GOOD ja tinha o
-      // link do Magalu com o host certo e nao usa APP_BASE.
-      version: '9.93.0 (b436: os 5 acertos do Codex na ativacao da Girassol)',
+      // b431 (Codex, PR #372) - a rota `/api/ids-fiscais-auto` (so na AMB)
+      // tinha 5 apontamentos: o `require` do helper saia do repo
+      // (`../../lib` em vez de `../lib`, MODULE_NOT_FOUND em toda chamada),
+      // a natureza aceitava um registro de SAIDA so por citar "mercadoria"
+      // (emitiria com a natureza errada), depositos/naturezas so liam a 1a
+      // pagina de 100, uma leitura que falhasse (401/429/rede) virava cache
+      // de "nao existe" por 30 min, e a natureza descoberta rotulava a env
+      // de BUSCAR em vez da de EMITIR. So o lado AMB muda de comportamento
+      // (lib/ids-fiscais-auto.js e amb-devolucoes/app-AMB.js) — este arquivo
+      // so acompanha o numero do build.
+      version: '9.95.0 (b438: os acertos do Codex na descoberta dos ids fiscais)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
