@@ -514,7 +514,14 @@ app.get('/health', (req, res) => {
       // de BUSCAR em vez da de EMITIR. So o lado AMB muda de comportamento
       // (lib/ids-fiscais-auto.js e amb-devolucoes/app-AMB.js) — este arquivo
       // so acompanha o numero do build.
-      version: '9.97.0 (b440: "nao achei" e "nao consegui olhar" sao diagnosticos opostos)',
+      // b441 (Codex, PR #377) - o aviso "cheira a escopo faltando" nascia so
+      // de `naturezas === 0`, sem checar se a leitura tinha REALMENTE
+      // falhado: uma empresa nova sem nenhuma natureza cadastrada tambem le
+      // 0, sem erro nenhum, e caia no mesmo aviso — mandando mexer num
+      // escopo que ja estava certo. Agora `erros` vem ROTULADO por lista
+      // (`{ lista: 'naturezas', erro }`) e o aviso so dispara quando ha um
+      // erro de verdade rotulado pra naturezas.
+      version: '9.98.0 (b441: aviso de escopo so dispara com erro de verdade, nao lista vazia)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),

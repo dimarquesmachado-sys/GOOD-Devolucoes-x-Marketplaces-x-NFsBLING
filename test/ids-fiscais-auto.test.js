@@ -172,19 +172,43 @@ const {
     const appSemCom = appSrc.split('\n').filter((l) => !l.trim().startsWith('//')).join('\n');
     ok(/erros_nas_listas/.test(appSemCom),
        '⚠️ a rota EXPOE os erros HTTP das listas (403 nao vira "0 itens")');
-    ok(/naturezas === 0 && d\.lidos\.depositos > 0/.test(appSemCom),
-       '  e avisa quando depositos vem e naturezas nao (cheira a escopo)');
+    ok(/e\.lista === 'naturezas'/.test(appSemCom),
+       '  e o aviso de escopo olha o erro ROTULADO da lista de naturezas');
+    // ⚠️ (Codex, PR #377) - o aviso NAO pode mais nascer so de `naturezas ===
+    // 0`: uma empresa nova sem nenhuma natureza cadastrada tambem le 0, SEM
+    // erro nenhum, e o aviso mandaria mexer no escopo (problema errado).
+    ok(!/naturezas === 0 && d\.lidos\.depositos > 0/.test(appSemCom),
+       '  ⚠️ (Codex) e nao mais so pela lista vazia, sem checar se HOUVE erro');
 
+    // ── ⚠️ (Codex, PR #377) - `erros` agora rotula QUAL lista falhou ────
+    //
+    // Antes: `['HTTP 403']` pelado. Com as duas listas zeradas (ou uma
+    // zerada de verdade e a outra falhando), nao dava pra saber se era
+    // deposito ou natureza que precisava de escopo.
     const fake403 = async (url) => /depositos/.test(url)
       ? { ok: true, data: { data: [{ id: 1, descricao: 'Geral' }] } }
       : { ok: false, status: 403 };
-    return descobrirIdsFiscais('t403', fake403, { semCache: true }).then((d3) => {
-      ok(Array.isArray(d3.erros) && d3.erros.includes('HTTP 403'),
-         '⚠️ e o modulo CAPTURA o 403 (nao some como lista vazia)');
+    const d3 = await descobrirIdsFiscais('t403', fake403, { semCache: true });
+    ok(Array.isArray(d3.erros) && d3.erros.length === 1,
+       '⚠️ e o modulo CAPTURA o 403 (nao some como lista vazia)');
+    ok(d3.erros[0] && d3.erros[0].lista === 'naturezas' && d3.erros[0].erro === 'HTTP 403',
+       '⚠️ (Codex) e o erro vem ROTULADO com a lista que falhou (naturezas, nao depositos)');
 
-      console.log('');
-      console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
-      process.exit(falhas ? 1 : 0);
-    });
+    // ⚠️ (Codex, PR #377) - a REGRESSAO que o P2 apontou: naturezas
+    // genuinamente vazia (o Bling respondeu OK, so nao ha nenhuma cadastrada
+    // ainda) NAO pode virar "cheira a escopo faltando" — o dono cadastraria
+    // escopo que ja tem, em vez de criar a natureza que falta de verdade.
+    const fakeVaziaSemErro = async (url) => /depositos/.test(url)
+      ? { ok: true, data: { data: [{ id: 1, descricao: 'Geral' }] } }
+      : { ok: true, data: { data: [] } };
+    const d4 = await descobrirIdsFiscais('t-vazia-sem-erro', fakeVaziaSemErro, { semCache: true });
+    ok(d4.lidos.naturezas === 0 && d4.lidos.depositos === 1,
+       '  monta o cenario: naturezas veio OK e vazia, depositos veio OK');
+    ok(Array.isArray(d4.erros) && d4.erros.length === 0,
+       '⚠️ (Codex) e SEM nenhum erro rotulado — a rota nao teria como confundir com falta de escopo');
+
+    console.log('');
+    console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
+    process.exit(falhas ? 1 : 0);
   });
 }
