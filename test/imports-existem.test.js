@@ -95,6 +95,87 @@ for (const rel of ['server.js', 'amb-devolucoes/app-AMB.js']) {
      + (orfaos.length ? ' (achei: ' + orfaos.join(', ') + ')' : ''));
 }
 
+// ── ⚠️ b431: TODO `require` RELATIVO TEM QUE RESOLVER ───────────────
+//
+// Escrevi `require('../../lib/ids-fiscais-auto')` de dentro de
+// `amb-devolucoes/app-AMB.js`, quando o certo é `../lib/`. O arquivo subiu,
+// o boot passou e a rota morreu em produção com "Cannot find module".
+//
+// 📌 POR QUE NADA PEGOU: o require estava DENTRO da função da rota. `node
+// --check` só olha sintaxe; o boot real nunca executa aquela linha; e este
+// teste conferia só se o módulo estava DECLARADO, não se o caminho existe.
+//
+// ⚠️ Require dentro de função é código que só roda quando alguém clica — e
+// "só quando alguém clica" é onde o erro aparece primeiro pro dono, não pra
+// mim. Agora o caminho é resolvido em disco, esteja ele onde estiver.
+{
+  const fs2 = require('fs');
+  const path2 = require('path');
+  const quebrados = [];
+
+  // ⚠️ varre o repo INTEIRO, não só os 2 arquivos que o resto do teste olha:
+  // o caminho quebrado pode estar em qualquer módulo, e foi num que o bloco
+  // acima nem visitava.
+  const varrer = (dir, acc = []) => {
+    for (const nome of fs2.readdirSync(dir)) {
+      if (nome === 'node_modules' || nome === '.git' || nome === 'data') continue;
+      // ⚠️ b431 - `lib-AMB/` NA RAIZ É CÓPIA ÓRFÃ (achada por esta varredura,
+      // 24/09). Ninguém a carrega: o app usa `amb-devolucoes/lib-AMB/`. Ela
+      // entrou em 17/09, provavelmente por upload na pasta errada — o mesmo
+      // acidente que já derrubou o serviço inteiro em 23/07.
+      //
+      // 📌 Pulo em vez de acusar: os caminhos dela quebram de verdade, mas
+      // acusar aqui esconderia um require quebrado REAL no meio do ruído.
+      // Apagar é decisão do dono — está anotado pra ele decidir.
+      if (dir === RAIZ && nome === 'lib-AMB') continue;
+      const cheio = path2.join(dir, nome);
+      const st = fs2.statSync(cheio);
+      if (st.isDirectory()) varrer(cheio, acc);
+      else if (nome.endsWith('.js')) acc.push(cheio);
+    }
+    return acc;
+  };
+
+  for (const abs of varrer(RAIZ)) {
+    const rel = path2.relative(RAIZ, abs);
+    // ⚠️ os testes montam caminho relativo à RAIZ pra rodar outro processo
+    // (`node ./amb-devolucoes/app-AMB`), não pra importar. Medir isso como
+    // import acusaria o que está certo — e teste que acusa o certo ensina a
+    // ignorar o vermelho.
+    if (rel.startsWith('test/')) continue;
+    let src = '';
+    try { src = fs2.readFileSync(abs, 'utf8'); } catch (e) { continue; }
+    // ⚠️ tira comentário ANTES de varrer: os arquivos daqui citam caminhos em
+    // texto explicativo ("require('./lib-AMB/auth-AMB')" numa nota), e medir
+    // em cima de comentário mede ficção — já me custou uma rodada hoje.
+    src = src.split('\n')
+      .filter((l) => !l.trim().startsWith('//') && !l.trim().startsWith('*'))
+      // ⚠️ e fora as linhas que IMPRIMEM um require (os scripts mostram ao
+      // dono o comando que ele deve rodar). Ali o caminho é relativo à RAIZ,
+      // não ao arquivo — medir isso como import acusa o que está certo.
+      .filter((l) => !/console\.log\(/.test(l))
+      .join('\n');
+    const dir = path2.dirname(abs);
+
+    for (const m of src.matchAll(/require\(\s*['"](\.[^'"]+)['"]\s*\)/g)) {
+      const alvo = m[1];
+      const base = path2.resolve(dir, alvo);
+      // ⚠️ `fs.existsSync(base)` sozinho aceita um DIRETORIO sem `index.js`
+      // nem `package.json` com `main` — o Node recusa esse require em
+      // tempo de execucao, mas o existsSync dava "existe" so por a pasta
+      // estar la. `require.resolve` usa a MESMA resolucao do Node de
+      // verdade, entao pega esse caso (apontamento do Codex no #373).
+      let existe = true;
+      try { require.resolve(base); } catch (e) { existe = false; }
+      if (!existe) quebrados.push(`${rel} -> ${alvo}`);
+    }
+  }
+
+  ok(quebrados.length === 0,
+     '⚠️ todo `require` relativo resolve em disco'
+     + (quebrados.length ? ' (quebrados: ' + quebrados.slice(0, 4).join(' | ') + ')' : ''));
+}
+
 console.log('');
 console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
 process.exit(falhas ? 1 : 0);

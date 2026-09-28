@@ -6,7 +6,7 @@ let usuarioLogado = null;
 
 async function checarSessao() {
   try {
-    const r = await fetch('/api/auth/me');
+    const r = await fetch((window.APP_BASE || '') + '/api/auth/me');
     const d = await r.json();
     if (d.ok) {
       // Tanto admin quanto estoquista vao pra mesma tela
@@ -52,7 +52,7 @@ async function fazerLogin(e) {
   btn.textContent = 'Entrando...';
 
   try {
-    const r = await fetch('/api/auth/login', {
+    const r = await fetch((window.APP_BASE || '') + '/api/auth/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ usuario, senha }),
@@ -89,7 +89,7 @@ async function fazerLogin(e) {
 async function fazerLogout(e) {
   if (e) e.preventDefault();
   try {
-    await fetch('/api/auth/logout', { method: 'POST' });
+    await fetch((window.APP_BASE || '') + '/api/auth/logout', { method: 'POST' });
   } catch (err) {}
   location.reload();
 }

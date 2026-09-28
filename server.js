@@ -508,7 +508,7 @@ app.get('/health', (req, res) => {
       // sido rotulado "b428" de novo, um numero JA usado (2a rodada do
       // #367) e anterior ao b429 que ja estava na main — o /health parecia
       // ter regredido pra um build mais velho.
-      version: '9.86.0 (b430: sonda por rota sem chave na URL, cache sempre invalidado antes do teste)',
+      version: '9.90.0 (b433: os acertos do Codex na sonda por rota)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),

@@ -36,13 +36,26 @@ const contrato = JSON.parse(
 // ── ⚠️ mas ela NÃO monta: quem decide é o contrato ──────────────────
 {
   const ativas = empresasAtivasNoDevolucoes().map((e) => e.chave);
-  ok(!ativas.includes('girassol'),
-     '⚠️ a Girassol NAO monta (o contrato diz `ativa_em.devolucoes: false`)');
-  ok(ativas.includes('ambtotal'), '  e a AMB continua montando');
+  // ⚠️ b429 - A GIRASSOL FOI ATIVADA (24/09), e esta trava muda de lado.
+  //
+  // Ela guardava a empresa DESATIVADA — certo enquanto faltava configuração.
+  // O dono pôs as 7 envs, criou as 7 tabelas e a sonda aprovou banco e ML.
+  //
+  // 📌 O que o teste protege agora é o contrário: que ela MONTE, e que montar
+  // a Girassol não tenha tirado a AMB do ar.
+  ok(ativas.includes('girassol'),
+     '⚠️ a Girassol MONTA (contrato ativado em 24/09)');
+  ok(ativas.includes('ambtotal'),
+     '⚠️ e a AMB continua montando (ativar uma nao tira a outra)');
 
   const ativaNoContrato = ((contrato.empresas || {}).girassol || {}).ativa_em || {};
-  ok(ativaNoContrato.devolucoes !== true,
-     '  ⚠️ e o contrato confirma: ela nao esta ativa aqui');
+  ok(ativaNoContrato.devolucoes === true,
+     '  e o contrato confirma a ativacao');
+
+  // ⚠️ e o freio continua sendo o caminho de volta — sem editar contrato.
+  const { nomeFreio } = require('../lib/montagem-empresas');
+  ok(nomeFreio('girassol') === 'DEVOLUCOES_DESATIVAR_GIRASSOL',
+     '  e o freio existe pra tirar ela do ar sem PR');
 }
 
 // ── e o verificador DIZ o que falta, antes de alguém tentar ─────────
