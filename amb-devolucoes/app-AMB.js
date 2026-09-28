@@ -557,7 +557,7 @@ const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 // olhar se veio string nao vazia), inclusive no eixo `local` (antes
 // excluido da checagem). Continua GOOD/CLI-only - a AMB nao chama este
 // script.
-const VERSAO = 'AMB Devolucoes b430';
+const VERSAO = 'AMB Devolucoes b432';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -1684,7 +1684,7 @@ router.get('/api/triagem/fila', auth.requerLogin, async (req, res) => {
 // ⚠️ E diz o que NAO deu, com os candidatos — nunca escolhe no empate.
 router.get('/api/ids-fiscais-auto', admin, async (req, res) => {
   try {
-    const { descobrirIdsFiscais } = require('../../lib/ids-fiscais-auto');
+    const { descobrirIdsFiscais } = require('../lib/ids-fiscais-auto');
     const d = await descobrirIdsFiscais(
       EMPRESA_DESTE_APP, bling.chamarBling, { semCache: req.query.refresh === '1' });
     if (!d.ok) return res.status(502).json(d);
