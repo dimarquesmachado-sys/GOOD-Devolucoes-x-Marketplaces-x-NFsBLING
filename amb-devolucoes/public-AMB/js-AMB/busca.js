@@ -770,7 +770,7 @@ async function buscarFotosItens(itens) {
       // b233 - o id do produto vindo do item da NF e o caminho que nao erra:
       // e o vinculo que o Bling gravou na emissao. Vai na frente do SKU.
       const pid = pidItem;
-      const r = await fetch('/api/produto/imagem/' + encodeURIComponent(chave || pidItem)
+      const r = await fetch((window.APP_BASE || '') + '/api/produto/imagem/' + encodeURIComponent(chave || pidItem)
         + (pid ? '?produtoId=' + encodeURIComponent(pid) : ''), { credentials: 'same-origin' });
       const d = await r.json();
       if (d && d.ok && !d.imagem && d.motivo) console.info('[FOTO]', chave, '→', d.motivo);
@@ -833,7 +833,7 @@ async function verificarTriagemExistente(shipmentId, idAlternativo) {
     const extra = unicos.length
       ? '?' + unicos.map((x) => 'tambem=' + encodeURIComponent(x)).join('&')
       : '';
-    const r = await fetch('/api/triagem/status/' + encodeURIComponent(shipmentId) + extra);
+    const r = await fetch((window.APP_BASE || '') + '/api/triagem/status/' + encodeURIComponent(shipmentId) + extra);
     const d = await r.json();
     if (!d.ok) {
       renderizarBotoesTriagem();
@@ -1127,7 +1127,7 @@ async function recadoCiente(id, btn) {
   btn.disabled = true;
   btn.textContent = 'salvando...';
   try {
-    const r = await fetch('/api/recado/' + id + '/ciente', { method: 'POST' });
+    const r = await fetch((window.APP_BASE || '') + '/api/recado/' + id + '/ciente', { method: 'POST' });
     const d = await r.json();
     if (!d.ok) { btn.disabled = false; btn.textContent = '✓ OK, ciente'; alert('Falhou: ' + (d.erro || '')); return; }
     window._recadosPendentes = (window._recadosPendentes || []).filter(x => x !== id);

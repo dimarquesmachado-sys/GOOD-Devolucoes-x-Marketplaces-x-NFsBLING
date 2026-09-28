@@ -510,7 +510,7 @@ app.get('/health', (req, res) => {
       // Nada a espelhar aqui: sao mudancas so no app-AMB.js e no front da
       // AMB/Girassol (public-AMB/, extensao-bridge/) — a GOOD ja tinha o
       // link do Magalu com o host certo e nao usa APP_BASE.
-      version: '9.86.0 (b430: corrige 5 apontamentos do Codex no PR #370)',
+      version: '9.91.0 (b434: os 5 acertos do Codex na ativacao da Girassol)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),

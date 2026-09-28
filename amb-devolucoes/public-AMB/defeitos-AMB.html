@@ -33,7 +33,7 @@
     .loading { text-align: center; padding: 40px; color: #888; }
   </style>
   <!-- adaptador de caminho (poe /amb nas chamadas de API) -->
-  <script src="js-AMB/base-amb.js?v=b406"></script>
+  <script src="js-AMB/base-amb.js?v=b432"></script>
 </head>
 <body>
   <header>
@@ -66,7 +66,7 @@
       lista.innerHTML = '<div class="loading">Carregando...</div>';
       const q = document.getElementById('busca').value.trim();
       try {
-        const r = await fetch('/api/defeitos' + (q ? '?q=' + encodeURIComponent(q) : ''), { credentials: 'same-origin' });
+        const r = await fetch((window.APP_BASE || '') + '/api/defeitos' + (q ? '?q=' + encodeURIComponent(q) : ''), { credentials: 'same-origin' });
         if (r.status === 401) {
           // v3.91 - NAO redireciona (isso causava o "piscar" em loop). Mostra aviso.
           resumo.textContent = '';

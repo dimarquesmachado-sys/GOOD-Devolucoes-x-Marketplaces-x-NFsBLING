@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>AMBTotal - Painel de Devoluções</title>
   <!-- AMB Devol. b303 - painel portado da GOOD. O adaptador poe /amb nas chamadas -->
-  <script src="js-AMB/base-amb.js?v=b406"></script>
+  <script src="js-AMB/base-amb.js?v=b432"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -401,7 +401,7 @@
       document.getElementById('secoes').style.display = 'none';
 
       try {
-        const r = await fetch('/api/admin/devolucoes', { credentials: 'same-origin' });
+        const r = await fetch((window.APP_BASE || '') + '/api/admin/devolucoes', { credentials: 'same-origin' });
         if (r.status === 401) {
           // v3.93 - NAO redireciona (isso causava o painel PISCAR em loop quando
           // a sessao de admin expirava). Mostra aviso com botao de entrar.
@@ -561,7 +561,7 @@
     // v3.80.2 - acoes da espreita INLINE no card (zero popups)
     window._espComentarios = {};
     async function espreitaNotaPost(payload) {
-      const r = await fetch('/api/admin/espreita/nota', {
+      const r = await fetch((window.APP_BASE || '') + '/api/admin/espreita/nota', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
       });
       return await r.json();
@@ -619,7 +619,7 @@
     window._recadosCache = window._recadosCache || [];
     async function atualizarCacheRecados() {
       try {
-        var r = await fetch('/api/admin/recados');
+        var r = await fetch((window.APP_BASE || '') + '/api/admin/recados');
         var d = await r.json();
         window._recadosCache = (d.ok && d.recados) ? d.recados : [];
       } catch (e) {}
@@ -661,7 +661,7 @@
       if (!texto) { alert('Escreva o aviso antes de salvar.'); return; }
       if (!chave) { alert('Sem identificador pra prender o aviso.'); return; }
       try {
-        var r = await fetch('/api/admin/recado', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ chave: chave, texto: texto }) });
+        var r = await fetch((window.APP_BASE || '') + '/api/admin/recado', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ chave: chave, texto: texto }) });
         var d = await r.json();
         if (!d.ok) { alert(d.erro || 'erro ao salvar'); return; }
         await atualizarCacheRecados();
@@ -676,7 +676,7 @@
     async function removerAlertaEstoquista(id, chaveNota) {
       if (!confirm('Remover este aviso pro estoquista?')) return;
       try {
-        await fetch('/api/admin/recado/' + id + '/remover', { method: 'POST' });
+        await fetch((window.APP_BASE || '') + '/api/admin/recado/' + id + '/remover', { method: 'POST' });
         await atualizarCacheRecados();
         var area = document.getElementById('recadoArea-' + chaveNota);
         if (area) area.style.display = 'none';
@@ -699,7 +699,7 @@
       const texto = document.getElementById('recadoTexto').value.trim();
       const msg = document.getElementById('recadoMsg');
       if (!chave || !texto) { msg.innerHTML = '<span style="color:#c62828;">Preencha o identificador e o texto.</span>'; return; }
-      const r = await fetch('/api/admin/recado', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ chave, texto }) });
+      const r = await fetch((window.APP_BASE || '') + '/api/admin/recado', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ chave, texto }) });
       const d = await r.json();
       if (!d.ok) { msg.innerHTML = '<span style="color:#c62828;">❌ ' + escapeHtml(d.erro || 'erro') + '</span>'; return; }
       // b222: aviso que se VE — portado do painel-AMB. Eu tinha dito no
@@ -747,7 +747,7 @@
       }
       if (msg) msg.innerHTML = '<span style="color:#555;">salvando…</span>';
       try {
-        const r = await fetch('/api/admin/recado/' + id, {
+        const r = await fetch((window.APP_BASE || '') + '/api/admin/recado/' + id, {
           method: 'PUT', credentials: 'same-origin',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ identificador: ident, texto: texto }),
@@ -769,7 +769,7 @@
     };
 
     async function removerRecado(id) {
-      await fetch('/api/admin/recado/' + id + '/remover', { method: 'POST' });
+      await fetch((window.APP_BASE || '') + '/api/admin/recado/' + id + '/remover', { method: 'POST' });
       carregarRecados();
     }
     // v4.48 - carrega as NFs de devolucao do Bling e mostra numa tabela.
@@ -786,14 +786,14 @@
       lista.innerHTML = '';
       try {
         // 1) monta o indice de pedidos com NF de devolucao
-        var r = await fetch('/api/admin/indice-nf-devolucao?paginas=6');   // b328 - rota DA AMB (antes chamava a da GOOD)
+        var r = await fetch((window.APP_BASE || '') + '/api/admin/indice-nf-devolucao?paginas=6');   // b328 - rota DA AMB (antes chamava a da GOOD)
         var d = await r.json();
         if (!d.ok) { msg.innerHTML = '<span style="color:#c62828;">' + escapeHtml(d.erro || 'erro') + '</span>'; return; }
         window._indiceNFDev = d.pedidos || {};
         var totalIndice = d.total || 0;
 
         // 2) pega o a espreita atual pra cruzar
-        var re2 = await fetch('/api/admin/espreita');
+        var re2 = await fetch((window.APP_BASE || '') + '/api/admin/espreita');
         var esp = await re2.json();
         var emT = (esp.em_transito || []);
         var nb = (esp.nunca_bipadas || []);
@@ -846,7 +846,7 @@
         bmsg.textContent = 'baixando ' + (i + 1) + '/' + comNF.length + '...';
         try {
           var chave = comNF[i].chave_nota || comNF[i].chave || String(comNF[i].tracking || (comNF[i].marketplace + ':' + comNF[i].pedido));
-          var r = await fetch('/api/admin/espreita/nota', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ chave: chave, baixado: true, comentario: 'Baixa automática: NF de devolução já emitida no Bling.' }) });
+          var r = await fetch((window.APP_BASE || '') + '/api/admin/espreita/nota', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ chave: chave, baixado: true, comentario: 'Baixa automática: NF de devolução já emitida no Bling.' }) });
           var d = await r.json();
           if (d.ok) ok++; else erro++;
         } catch (e) { erro++; }
@@ -857,7 +857,7 @@
 
     async function carregarRecados() {
       try {
-        const r = await fetch('/api/admin/recados');
+        const r = await fetch((window.APP_BASE || '') + '/api/admin/recados');
         const d = await r.json();
         const lista = document.getElementById('listaRecados');
         if (!d.ok) { lista.innerHTML = '<span style="color:#c62828;font-size:13px;">' + escapeHtml(d.erro || 'erro') + '</span>'; return; }
@@ -995,7 +995,7 @@
       /* eslint-disable no-unreachable */
       msg.innerHTML = '<span style="color:#666;">enviando...</span>';
       try {
-        const r = await fetch('/api/admin/espreita/lancar-nf', {
+        const r = await fetch((window.APP_BASE || '') + '/api/admin/espreita/lancar-nf', {
           method: 'POST', credentials: 'same-origin',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ pedidos: sel }),
@@ -1051,7 +1051,7 @@ async function gerarLoteEstornadas() {
         + '/' + marcados.length + '...';
 
       try {
-        const r = await fetch('/api/admin/sem-retorno/registrar', {
+        const r = await fetch((window.APP_BASE || '') + '/api/admin/sem-retorno/registrar', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(d),
@@ -1102,7 +1102,7 @@ async function gerarDoCardEstornadas(dadosJson) {
   // `title` do botao, e o toast conta o que aconteceu depois.
 
   try {
-    const r = await fetch('/api/admin/sem-retorno/registrar', {
+    const r = await fetch((window.APP_BASE || '') + '/api/admin/sem-retorno/registrar', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(d),
@@ -1172,7 +1172,7 @@ async function gerarDoCardEstornadas(dadosJson) {
 
 async function carregarSemRetorno() {
       try {
-        const r = await fetch('/api/admin/sem-retorno');
+        const r = await fetch((window.APP_BASE || '') + '/api/admin/sem-retorno');
         const d = await r.json();
 
         // b184 (Codex): ESCONDER quando esvazia. Antes eu so saia da funcao,
@@ -1550,7 +1550,7 @@ async function carregarSemRetorno() {
     async function carregarEspreita() {
       atualizarCacheRecados();
       try {
-        const r = await fetch('/api/admin/espreita');
+        const r = await fetch((window.APP_BASE || '') + '/api/admin/espreita');
         const d = await r.json();
         const sec = document.getElementById('secaoEspreita');
         const lista = document.getElementById('listaEspreita');
@@ -1791,7 +1791,7 @@ async function carregarSemRetorno() {
     async function atualizarUmCard(devolucaoId) {
       const el = document.getElementById('card-' + devolucaoId);
       try {
-        const r = await fetch('/api/admin/devolucoes');
+        const r = await fetch((window.APP_BASE || '') + '/api/admin/devolucoes');
         const d = await r.json();
         if (!d.ok) return;
         dados = d; // mantem o estado global em dia (pra proximas acoes)
@@ -1896,7 +1896,7 @@ async function carregarSemRetorno() {
       // b328 - carrega o indice DA AMB em segundo plano e redesenha a fila
       if (aprovadas.length && !window._indiceNFDev && !window._indiceNFDevCarregando) {
         window._indiceNFDevCarregando = true;
-        fetch('/api/admin/indice-nf-devolucao?paginas=6')
+        fetch((window.APP_BASE || '') + '/api/admin/indice-nf-devolucao?paginas=6')
           .then(function (r) { return r.json(); })
           .then(function (d) {
             if (d && d.ok && d.pedidos) {
@@ -2237,7 +2237,7 @@ async function carregarSemRetorno() {
     async function concluir(id) {
       if (!confirm('Marcar como concluido?')) return;
       try {
-        const r = await fetch('/api/admin/concluir/' + id, { method: 'PUT' });
+        const r = await fetch((window.APP_BASE || '') + '/api/admin/concluir/' + id, { method: 'PUT' });
         const d = await r.json();
         if (d.ok) {
           toast('Concluido!', 'ok');
@@ -2253,7 +2253,7 @@ async function carregarSemRetorno() {
     async function deletar(id) {
       if (!confirm('Deletar permanentemente este registro?')) return;
       try {
-        const r = await fetch('/api/admin/devolucao/' + id, { method: 'DELETE' });
+        const r = await fetch((window.APP_BASE || '') + '/api/admin/devolucao/' + id, { method: 'DELETE' });
         const d = await r.json();
         if (d.ok) {
           toast('Deletado!', 'ok');
@@ -2268,7 +2268,7 @@ async function carregarSemRetorno() {
 
     async function logout(e) {
       e.preventDefault();
-      try { await fetch('/api/auth/logout', { method: 'POST' }); } catch (err) {}
+      try { await fetch((window.APP_BASE || '') + '/api/auth/logout', { method: 'POST' }); } catch (err) {}
       location.href = (window.APP_BASE || '') + '/';   // b65 - login da AMB, nao o da GOOD
     }
 
@@ -2331,7 +2331,7 @@ async function carregarSemRetorno() {
 
     (async function carregarIdsFiscais() {
       try {
-        const r = await fetch('/api/ids-fiscais', { credentials: 'same-origin' }).then((x) => x.json());
+        const r = await fetch((window.APP_BASE || '') + '/api/ids-fiscais', { credentials: 'same-origin' }).then((x) => x.json());
         if (r && r.ok) {
           GOOD_BLING.idEmpresaControl = r.idEmpresaControl;
           GOOD_BLING.idNaturezaOperacao = r.idNaturezaOperacao;
@@ -2946,7 +2946,7 @@ async function carregarSemRetorno() {
       // fica aberto e dá pra concluir depois pelo botão de lote)
       async function concluirQuieto(id) {
         try {
-          await fetch('/api/admin/concluir/' + id, { method: 'PUT' });
+          await fetch((window.APP_BASE || '') + '/api/admin/concluir/' + id, { method: 'PUT' });
         } catch (e) { console.warn('[Esteira] concluir falhou (nao critico):', id, e.message || e); }
       }
 
@@ -3062,7 +3062,7 @@ async function carregarSemRetorno() {
       for (let i = 0; i < ids.length; i++) {
         if (btn) btn.textContent = `⏳ Concluindo ${i + 1}/${ids.length}...`;
         try {
-          const r = await fetch('/api/admin/concluir/' + ids[i], { method: 'PUT' });
+          const r = await fetch((window.APP_BASE || '') + '/api/admin/concluir/' + ids[i], { method: 'PUT' });
           const d = await r.json();
           if (d.ok) ok++;
           else { falha++; erros.push(`${ids[i]}: ${d.erro || 'falha'}`); }
@@ -3175,7 +3175,7 @@ async function carregarSemRetorno() {
       btn.disabled = true;
       btn.textContent = `⏳ Lançando ${numeros.length} NF(s)...`;
       try {
-        const r = await fetch('/api/admin/lancar-por-nf', {
+        const r = await fetch((window.APP_BASE || '') + '/api/admin/lancar-por-nf', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ numeros }),
@@ -3317,7 +3317,7 @@ async function carregarSemRetorno() {
           // reabria depois sem saber que ja estava resolvido.
           if (!confirm('Confirmar que a NF de devolução JÁ foi emitida no Bling?\n\nO card sai da fila e fica marcado como concluído.')) return;
           try {
-            const r = await fetch('/api/admin/concluir/' + id, { method: 'PUT' });
+            const r = await fetch((window.APP_BASE || '') + '/api/admin/concluir/' + id, { method: 'PUT' });
             const d2 = await r.json();
             if (d2 && d2.ok === false) { alert('Falhou: ' + (d2.erro || '')); return; }
             toast('Marcado como concluído', 'ok');
@@ -3584,7 +3584,7 @@ async function carregarSemRetorno() {
 // lanca devolucao manual dentro de um fulfillment.
 (async function carregarDepositosAMB() {
   try {
-    const r = await fetch('/api/depositos', { credentials: 'same-origin' }).then(x => x.json());
+    const r = await fetch((window.APP_BASE || '') + '/api/depositos', { credentials: 'same-origin' }).then(x => x.json());
     if (!r.ok || !r.depositos) throw new Error(r.erro || 'sem lista');
     // b278 (review do Codex) - o regex antigo (`^full\b`) NAO pegava "Magalu
     // Full" nem "Shopee Full", entao eles apareciam no seletor. Mesmo filtro
