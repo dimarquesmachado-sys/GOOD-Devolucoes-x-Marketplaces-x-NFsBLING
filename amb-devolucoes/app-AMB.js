@@ -588,7 +588,7 @@ const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 // catalogo do Bling, cache de leitura que falhou e rotulo de env trocado
 // (a natureza descoberta e a de EMITIR, `ID_NATUREZA_DEVOLUCAO_ENTRADA`,
 // nao a de BUSCAR, `NATUREZAS_DEVOLUCAO_IDS`).
-const VERSAO = 'AMB Devolucoes b439';
+const VERSAO = 'AMB Devolucoes b441';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -1747,10 +1747,32 @@ router.get('/api/ids-fiscais-auto', admin, async (req, res) => {
     ];
     const faltam = paraColar.filter((x) => !x.valor);
 
+    // ⚠️ b440 - OS ERROS DAS LISTAS APARECEM. Na Girassol o Bling devolveu 5
+    // depositos e ZERO naturezas — e a rota dizia "NAO ACHEI natureza", como
+    // se a lista tivesse vindo e nao tivesse a certa. Mas o modulo guarda
+    // `erros` (HTTP 403, por exemplo), e eu nao mostrava.
+    //
+    // 📌 "Nao achei" e "nao consegui olhar" sao diagnosticos OPOSTOS: um manda
+    // o dono cadastrar natureza no Bling; o outro manda marcar escopo no app.
+    // Esconder o erro mandaria ele consertar a coisa errada.
+    //
+    // ⚠️ (Codex, PR #377, b441) - o aviso de "cheira a escopo" NAO pode
+    // disparar so por `naturezas === 0`: uma empresa nova sem nenhuma
+    // natureza cadastrada tambem le 0 (sem erro nenhum), e o aviso mandaria
+    // ela mexer no escopo do app — o problema errado. So dispara quando a
+    // LEITURA de naturezas falhou de verdade (`d.erros` com `lista ===
+    // 'naturezas'`); lista vazia sem erro segue como "NAO ACHEI" (cadastrar).
+    const erroNaturezas = d.erros && d.erros.find((e) => e.lista === 'naturezas');
     return res.json({
       ok: faltam.length === 0,
       empresa: d.empresa,
       lidos: d.lidos,
+      erros_nas_listas: d.erros && d.erros.length ? d.erros : undefined,
+      aviso: erroNaturezas
+        ? `naturezas NAO deu pra ler (${erroNaturezas.erro}): cheira a ESCOPO `
+          + 'faltando no app do Bling (Naturezas de operacao — leitura), nao '
+          + 'a lista vazia'
+        : undefined,
       para_colar_no_render: paraColar.filter((x) => x.valor),
       ainda_falta: faltam.length ? faltam : undefined,
       // ⚠️ o idEmpresaControl costuma cair aqui: o `GET /empresas` do Bling da
