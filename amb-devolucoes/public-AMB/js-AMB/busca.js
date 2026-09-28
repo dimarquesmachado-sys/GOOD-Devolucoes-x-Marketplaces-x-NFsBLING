@@ -395,7 +395,10 @@ function renderizar(data, ok) {
     if (!alvo && order && order.id) {
       const m = String(data.metodo || '').toLowerCase();
       if (data.magalu || m.includes('magalu')) {
-        alvo = { nome: 'Magalu', url: '/magalu/ir/' + (window.APP_EMPRESA || 'amb') + '?n=' + encodeURIComponent(String(order.id).replace(/\D/g, '')) };
+        // Codex (revisão do PR #370, P2) - faltava o host do Mover-Pedidos
+        // (igual ao Shopee, abaixo): a URL relativa abria /magalu/ir/... NESTE
+        // servidor de Devoluções, que não tem essa rota -> 404.
+        alvo = { nome: 'Magalu', url: 'https://mover-pedidos-aguardando-x-atendido.onrender.com/magalu/ir/' + (window.APP_EMPRESA || 'amb') + '?n=' + encodeURIComponent(String(order.id).replace(/\D/g, '')) };
       } else if (data.shopee || m.includes('shopee')) {
         alvo = { nome: 'Shopee', url: 'https://mover-pedidos-aguardando-x-atendido.onrender.com/' + (window.APP_PASTA_CHECKOUT || 'amb-checkout-offline') + '/ir-shopee?sn=' + encodeURIComponent(order.id) };
       } else if (/^\d{10,}$/.test(String(order.id))) {

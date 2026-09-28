@@ -2566,7 +2566,11 @@ async function carregarSemRetorno() {
     function srcFoto(url) {
       const partes = String(url || '').split('/fotos-problema/');
       if (partes.length !== 2) return url;
-      return '/api/admin/foto/' + partes[1].split('/').map(encodeURIComponent).join('/');
+      // Codex (revisão do PR #370, P2) - `<img src>` não passa pelo fetch()
+      // que base-amb.js prefixa por empresa; sem o APP_BASE aqui, a Girassol
+      // (e qualquer empresa fora da raiz) pedia a foto na raiz da GOOD sem a
+      // sessão certa e levava 401.
+      return (window.APP_BASE || '') + '/api/admin/foto/' + partes[1].split('/').map(encodeURIComponent).join('/');
     }
 
     function abrirFoto(url) {
@@ -3234,7 +3238,10 @@ async function carregarSemRetorno() {
       } else if (mkt === 'shopee') {
         url = 'https://mover-pedidos-aguardando-x-atendido.onrender.com/' + (window.APP_PASTA_CHECKOUT || 'amb-checkout-offline') + '/ir-shopee?sn=' + encodeURIComponent(nOrder); nome = 'Shopee';
       } else if (mkt === 'magalu') {
-        url = '/magalu/ir/' + (window.APP_EMPRESA || 'amb') + '?n=' + encodeURIComponent(String(nOrder).replace(/\D/g, '')); nome = 'Magalu';
+        // Codex (revisão do PR #370, P2) - faltava o host do Mover-Pedidos
+        // (igual ao Shopee, acima): a URL relativa abria /magalu/ir/... NESTE
+        // servidor de Devoluções, que não tem essa rota -> 404.
+        url = 'https://mover-pedidos-aguardando-x-atendido.onrender.com/magalu/ir/' + (window.APP_EMPRESA || 'amb') + '?n=' + encodeURIComponent(String(nOrder).replace(/\D/g, '')); nome = 'Magalu';
       }
       if (!url) return '';
       return ` <a class="btn" style="background:#561A9E;color:#fff;" href="${url}" target="_blank" rel="noopener" title="Abre o pedido no painel do marketplace">📦 Abrir pedido ${escapeHtml(nome)}</a>`;
@@ -4191,10 +4198,16 @@ async function carregarSemRetorno() {
       // CFOP da natureza não existe lá.
       //
       // Marcar cada chamada é frágil: qualquer caminho novo nasce errado e
-      // ninguém percebe até sair nota errada. Como este arquivo é o painel
-      // DA AMB, toda chamada daqui é da AMB — então carimbo no lugar por
-      // onde todas passam, sem depender de memória.
-      payload = Object.assign({}, payload || {}, { empresa: 'ambtotal' });
+      // ninguém percebe até sair nota errada. Como toda chamada daqui passa
+      // por este ponto único, carimbo aqui em vez de depender de memória.
+      //
+      // ⚠️ Codex (revisão do PR #370, P1) - este arquivo (public-AMB/) hoje
+      // serve TANTO a AMB quanto a Girassol (mesma pasta, prefixo por
+      // empresa). `'ambtotal'` cravado fazia a Girassol pedir os ids
+      // fiscais da AMB. `window.APP_EMPRESA` (base-amb.js) já resolve pela
+      // URL — 'amb', 'girassol' ou 'good' — e a extensão (ENDERECO_IDS)
+      // sabe mapear cada um pro endpoint certo.
+      payload = Object.assign({}, payload || {}, { empresa: window.APP_EMPRESA || 'ambtotal' });
       return new Promise((resolve, reject) => {
         const requisicaoId = 'req_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
         let timeout;
