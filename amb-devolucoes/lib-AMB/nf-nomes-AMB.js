@@ -207,7 +207,13 @@ async function construirIndiceInterno(opts = {}) {
       // processo esta saindo, ela lanca. Nao ha checagem manual pra eu
       // esquecer, e a proxima varredura herda o comportamento.
       if (pg > 1) await drenagem.pausar(400, deFundo || IDX.viroufundo, 'indice-nomes');
-      let r = await bling.chamarBling(`/nfe?limite=100&pagina=${pg}&tipo=1`, { fundo: deFundo });   // b443
+      // ⚠️ b445 (Codex, P2) - `IDX.viroufundo` TAMBEM CONTA AQUI, nao so no
+      // `drenagem.pausar` acima. Uma busca fria que estourou o teto de 12s
+      // vira fundo (b268.1) e o `drenagem.pausar` ja respeitava isso — mas
+      // o `chamarBling` desta MESMA varredura continuava mandando `fundo:
+      // deFundo` (travado no valor do INICIO), entao a fila do ritmo seguia
+      // tratando como interativo mesmo depois que ninguem mais esperava.
+      let r = await bling.chamarBling(`/nfe?limite=100&pagina=${pg}&tipo=1`, { fundo: deFundo || IDX.viroufundo });   // b443
       // ⚠️ b352 (Codex, P1) - O PORTAO TAMBEM PRECISA ACEITAR 401.
       //
       // Eu acrescentei 401 ao laco de dentro, mas o `if` que ENVOLVE o laco
@@ -233,7 +239,7 @@ async function construirIndiceInterno(opts = {}) {
         for (let tent = 1; tent <= 3 && !r.ok
           && (r.status === 429 || r.status === 401); tent++) {
           await drenagem.pausar(2000 * tent, deFundo || IDX.viroufundo, 'indice-nomes/retry');
-          r = await bling.chamarBling(`/nfe?limite=100&pagina=${pg}&tipo=1`, { fundo: deFundo, semRetentativa: true });
+          r = await bling.chamarBling(`/nfe?limite=100&pagina=${pg}&tipo=1`, { fundo: deFundo || IDX.viroufundo, semRetentativa: true });
         }
       }
       if (!r.ok) { erroBusca = `nfe pagina ${pg} HTTP ${r.status}`; break; }
@@ -322,7 +328,7 @@ async function construirIndiceInterno(opts = {}) {
           // ⚠️ b443 (Codex, P2) - `fundo: deFundo` FALTAVA aqui tambem. O
           // apontamento citou as 3 chamadas deste laco (NFs x2 + vendas); a
           // rodada anterior consertou so as duas de `/nfe` e esqueceu esta.
-          r = await bling.chamarBling(`/pedidos/vendas?limite=100&pagina=${pg}`, tent === 1 ? { fundo: deFundo } : { semRetentativa: true, fundo: deFundo });
+          r = await bling.chamarBling(`/pedidos/vendas?limite=100&pagina=${pg}`, tent === 1 ? { fundo: deFundo || IDX.viroufundo } : { semRetentativa: true, fundo: deFundo || IDX.viroufundo });
           if (r.ok) { erroVendas = null; break; }
           // ⚠️ b351 - 401 TAMBEM ENTRA NO RETRY.
           //
@@ -641,7 +647,13 @@ function preAquecer(atrasoMs, tentativa = 1) {
 // ReferenceError dentro do `.catch()`, virando rejeicao nao tratada.
 function tentar(tentativa) {
   reagendado = false;   // b415
-  construirIndice().then((idx) => {
+  // ⚠️ b445 (Codex, P2) - PRE-AQUECIMENTO E SEMPRE FUNDO. `deFundo` (dentro
+  // de `construirIndiceInterno`) so vira `true` sozinho quando ja existe um
+  // indice VELHO pra servir (`!!IDX.ts`) — no boot `IDX.ts` ainda e 0, entao
+  // esta varredura de ate 8.000 NFs entrava na fila INTERATIVA, disputando
+  // espaco com buscas de verdade, mesmo sem ninguem esperando por ela: e
+  // trabalho de fundo por definicao.
+  construirIndice({ fundo: true }).then((idx) => {
     if (!idx) return; // cancelado pela drenagem - nem sucesso nem falha
     if (idx.erro) throw new Error(idx.erro);
   }).catch((e) => {

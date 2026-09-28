@@ -525,7 +525,16 @@ app.get('/health', (req, res) => {
       // que deveriam passar `fundo` (as duas de `/nfe`); a de
       // `/pedidos/vendas`, que o apontamento original tambem citava, ficou
       // de fora. Mesmo arquivo, mesma causa — so faltou a 3a chamada.
-      version: '9.99.0 (b444: a 3a chamada do indice de nomes tambem passa fundo)',
+      // b445 (Codex, revisao do #379) - so na AMB/Girassol (bling-AMB.js,
+      // nf-nomes-AMB.js, identificar-AMB.js): um 429 sem `semRetentativa`
+      // avisava o ritmo 2x (o mesmo erro dobrava o backoff de 1s pra 2s); o
+      // pre-aquecimento do boot nao se declarava `fundo` (competia com o
+      // estoquista, e ignorava `IDX.viroufundo` depois que uma busca fria
+      // virava fundo); e o cancelamento por timeout (5s) no identificar so
+      // era checado ANTES de entrar na fila da empresa, nao antes de sair —
+      // um candidato "desistido" ainda batia no Bling depois de esperar
+      // numa pausa de 429. Este arquivo so acompanha o numero do build.
+      version: '9.99.0 (b445: 429 nao dobra sozinho, boot vira fundo, cancelamento nao vaza pro Bling)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),

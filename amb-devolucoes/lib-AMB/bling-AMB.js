@@ -265,7 +265,13 @@ async function chamarBling(caminho, opcoes = {}) {
     // Antes este ramo devolvia sem avisar: a fila nao pausava, o proximo
     // chamador batia no mesmo segundo e tomava 429 de novo. Um 429 que a
     // fila nao ve e um 429 que se repete.
-    if (status === 429) {
+    // ⚠️ b445 (Codex, P2) - SO AQUI quando `semRetentativa`: sem a condicao,
+    // uma chamada NORMAL avisava aqui E DE NOVO mais abaixo (linha ~328, no
+    // ramo que trata o mesmo 429) — o mesmo erro contava duas vezes e o
+    // backoff pulava de 1s pra 2s num 429 so. Quem tem retentativa propria
+    // (`semRetentativa`) nunca chega no ramo de baixo (retorna logo depois),
+    // entao precisa avisar AQUI — e so aqui.
+    if (status === 429 && opcoes.semRetentativa) {
       const raSR = Number(erro && erro.response && erro.response.headers
         && erro.response.headers['retry-after']);
       ritmo.avisar429(Number.isFinite(raSR) && raSR > 0 ? raSR : 0);
@@ -376,8 +382,8 @@ async function buscarPedidoPorId(id) {
 }
 
 /** GET /nfe/{id} */
-async function buscarNFePorId(id) {
-  const r = await chamarBling(`/nfe/${id}`);
+async function buscarNFePorId(id, opcoes) {
+  const r = await chamarBling(`/nfe/${id}`, opcoes);
   return r.ok ? { ok: true, nfe: (r.data && r.data.data) || null } : r;
 }
 
@@ -594,6 +600,11 @@ return {
   temToken: () => !!ACCESS_TOKEN,
   temCredenciais: () => !!(cfg.bling.clientId && cfg.bling.clientSecret),
   estadoRitmo: () => ritmo.estado(),   // b442: quantos na fila, pausas por 429
+  // ⚠️ b445 (Codex, P1) - a VEZ na fila DESTA empresa, exposta pra quem
+  // precisa checar cancelamento ENTRE a espera e a chamada (o mesmo desenho
+  // que `lib/ritmo-bling.js` ja da pra GOOD). Chamar com `{ semRitmo: true }`
+  // depois, senao `chamarBling` espera a vez de novo.
+  aguardarVez: (opcoes) => ritmo.aguardarVez(opcoes),
   listarDepositos, lancarEstoqueNf,
   listarNaturezas, naturezaDevolucaoEntrada, idsFiscais,   // b283
 };

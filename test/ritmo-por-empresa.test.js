@@ -16,6 +16,32 @@ const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o
 
 const { criarRitmo } = require('../lib/ritmo-por-empresa');
 
+// ⚠️ b445 - para testar `chamarBling` de verdade (nao so grep de fonte),
+// troco o `axios` no cache do require ANTES do 1o `require('bling-AMB')`
+// deste processo — e o `tokenLeitor.resolverToken`, que senao tentaria
+// falar com o Render de verdade. `chamarBling` E a funcao com o bug (dois
+// `if (status === 429)` avisando o mesmo erro); mockar so ele, como os
+// outros testes fazem, escondia justamente o codigo que preciso exercitar.
+const axiosPath = require.resolve('axios');
+let respostasAxios = [];
+require.cache[axiosPath] = {
+  id: axiosPath, filename: axiosPath, loaded: true,
+  exports: () => {
+    const proxima = respostasAxios.shift();
+    if (!proxima) return Promise.resolve({ status: 200, data: { data: [] } });
+    return proxima.erro ? Promise.reject(proxima.erro) : Promise.resolve(proxima.ok);
+  },
+};
+const tokenLeitorAMB = require('../lib/token-leitor');
+tokenLeitorAMB.resolverToken = async () => ({ usar: 'local', access: null });
+const blingAMBFactory = require('../amb-devolucoes/lib-AMB/bling-AMB');
+const configAMB = require('../amb-devolucoes/config-AMB');
+function erro429(retryAfter) {
+  const e = new Error('429');
+  e.response = { status: 429, headers: retryAfter ? { 'retry-after': String(retryAfter) } : {}, data: {} };
+  return e;
+}
+
 // ── o ritmo segura no limite ────────────────────────────────────────
 (async () => {
   {
@@ -153,6 +179,75 @@ const { criarRitmo } = require('../lib/ritmo-por-empresa');
     const identSem = ident.split('\n').filter((l) => !l.trim().startsWith('//')).join('\n');
     ok(!/ritmoBling\.aguardarVez/.test(identSem),
        '⚠️ o identificar NAO pede mais vez na fila singleton da GOOD');
+  }
+
+  // ── ⚠️ b445 (Codex, P2) - um 429 SO avisa o ritmo UMA vez ───────────
+  //
+  // O conserto do b443 (avisar mesmo com `semRetentativa`) virou um NOVO
+  // bug: uma chamada NORMAL (sem `semRetentativa`) avisava no bloco de
+  // cima E DE NOVO no bloco de baixo, pro MESMO erro — 1 HTTP 429 contava
+  // como 2, e o backoff pulava de 1s pra 2s num 429 so.
+  {
+    const bling = blingAMBFactory.criar(configAMB);
+    respostasAxios = [
+      { erro: erro429() },                          // 1a tentativa: 429
+      { ok: { status: 200, data: { data: [] } } },   // retry (dentro do proprio chamarBling): OK
+    ];
+    const r = await bling.chamarBling('/teste-429-unico');
+    ok(r.ok === true, '⚠️ chamarBling se recupera sozinho depois de 1 429');
+    ok(bling.estadoRitmo().pausas429 === 1,
+       `⚠️ um 429 SO avisa o ritmo 1 vez (pausas429=${bling.estadoRitmo().pausas429}, era 2)`);
+  }
+
+  // ── e com `semRetentativa`, o 429 ainda avisa (o P1 original) ───────
+  {
+    const bling = blingAMBFactory.criar(configAMB);
+    respostasAxios = [{ erro: erro429() }];
+    const r = await bling.chamarBling('/teste-429-semretentativa', { semRetentativa: true });
+    ok(r.ok === false && r.status === 429, '  semRetentativa devolve a falha sem tentar de novo');
+    ok(bling.estadoRitmo().pausas429 === 1,
+       '  ⚠️ e MESMO ASSIM avisa o ritmo (nao regride o P1 do b443)');
+  }
+
+  // ── ⚠️ b445 (Codex, P1) - cancelamento ANTES de sair da fila ────────
+  //
+  // No identificar-AMB.js, o `desistiu.agora` so valia se checado ANTES da
+  // chamada esperar a vez na fila da empresa — senao um candidato que
+  // "desistiu" (timeout de 5s da corrida) ainda saia pro Bling depois de
+  // esperar minutos numa pausa de 429, gastando cota que ja não importava
+  // pra ninguem. A GOOD resolve isso esperando a vez FORA (`ritmoBling.
+  // aguardarVez()`) e SO DEPOIS checando `desistiu` — o mesmo desenho tem
+  // que valer aqui, com a fila DESTA empresa.
+  {
+    const ident = fs.readFileSync(
+      path.join(__dirname, '..', 'amb-devolucoes', 'lib-AMB', 'identificar-AMB.js'), 'utf8');
+    const iBloco = ident.indexOf('const desistiu = { agora: false };');
+    const iFim = ident.indexOf('new Promise((ok) => setTimeout(() => { desistiu.agora = true;', iBloco);
+    ok(iBloco >= 0 && iFim > iBloco, '  achei os marcadores do bloco de corrida (Promise.race)');
+    const bloco = ident.slice(iBloco, iFim);
+    const iEspera = bloco.indexOf('await aguardarVezBling()');
+    const iCheca = bloco.indexOf('if (desistiu.agora) return { _tarde: true };');
+    ok(iEspera >= 0 && iCheca > iEspera,
+       '⚠️ espera a vez na fila da empresa ANTES de checar `desistiu` (nao depois)');
+    ok(/buscarNFePorId\(c\.id, \{ semRitmo: true \}\)/.test(bloco),
+       '  e pula a espera DE DENTRO do chamarBling (semRitmo) — so espera 1 vez');
+
+    // e a fila usada e a DESTA empresa (exposta pelo cliente Bling), nao a
+    // GOOD: `bling.aguardarVez` -> injetada como `aguardarVezBling` nas
+    // deps do registrarIdentificar.
+    const app = fs.readFileSync(
+      path.join(__dirname, '..', 'amb-devolucoes', 'app-AMB.js'), 'utf8');
+    ok(/aguardarVezBling: bling\.aguardarVez/.test(app),
+       '  a fila injetada e a do cliente Bling DESTA empresa (bling.aguardarVez)');
+    ok(/aguardarVez: \(opcoes\) => ritmo\.aguardarVez\(opcoes\)/.test(
+       fs.readFileSync(path.join(__dirname, '..', 'amb-devolucoes', 'lib-AMB', 'bling-AMB.js'), 'utf8')),
+       '  e o cliente expoe a fila DELE (nao um singleton emprestado)');
+
+    // ⚠️ e o adaptador cru precisa REPASSAR opcoes, senao `semRitmo` (e
+    // `fundo`, e qualquer outra) morre silenciosa no meio do caminho — foi
+    // exatamente essa a causa do P2 anterior (b443) com o `semRitmo` velho.
+    ok(/const nfePorIdCru = \(id, opcoes\) => bling\.chamarBling\(`\/nfe\/\$\{id\}`, opcoes\)/.test(app),
+       '⚠️ o adaptador `nfePorIdCru` repassa `opcoes` (nao descarta o 2o argumento)');
   }
 
   console.log('');
