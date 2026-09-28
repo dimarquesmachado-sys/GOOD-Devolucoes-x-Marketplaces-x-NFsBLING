@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>AMBTotal - Painel de Devoluções</title>
   <!-- AMB Devol. b310 - painel portado da GOOD. O adaptador poe /amb nas chamadas -->
-  <script src="js-AMB/base-amb.js?v=b432"></script>
+  <script src="js-AMB/base-amb.js?v=b439"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -2958,7 +2958,7 @@ async function carregarSemRetorno() {
       const txtOriginal = btn ? btn.textContent : null;
       if (btn) { btn.disabled = true; btn.textContent = '🔎 Buscando...'; }
       try {
-        const r = await fetch(`/api/admin/buscar-nf/${devolucaoId}`, { method: 'POST' });
+        const r = await fetch(`${window.APP_BASE || ''}/api/admin/buscar-nf/${devolucaoId}`, { method: 'POST' });
         const d = await r.json();
         if (d.ok) {
           toast(`NF ${d.nf_numero}${d.nf_serie ? '/s' + d.nf_serie : ''} vinculada! (${d.via || 'ok'})`, 'ok');
@@ -3017,7 +3017,7 @@ async function carregarSemRetorno() {
         const reg = fila[i];
         btn.textContent = `⏹ Parar · ${i + 1}/${fila.length} (✅${ok} ❌${falha})`;
         try {
-          const r = await fetch(`/api/admin/buscar-nf/${reg.id}`, { method: 'POST' });
+          const r = await fetch(`${window.APP_BASE || ''}/api/admin/buscar-nf/${reg.id}`, { method: 'POST' });
           const d = await r.json();
           if (d.ok) {
             ok++;
@@ -3303,7 +3303,7 @@ async function carregarSemRetorno() {
         const idBling = box.dataset.nf;
         if (!idBling) continue;
         try {
-          const r = await fetch(`/api/admin/nf-itens/${idBling}`);
+          const r = await fetch(`${window.APP_BASE || ''}/api/admin/nf-itens/${idBling}`);
           const d = await r.json();
           if (!d.ok) throw new Error(d.erro || 'falha');
           // b170 - mesma decisao do render: some se so repete, amarelo se
@@ -3356,7 +3356,7 @@ async function carregarSemRetorno() {
       const txt = el.textContent;
       el.textContent = '⏳ buscando itens...';
       try {
-        const r = await fetch(`/api/admin/nf-itens/${idBling}`);
+        const r = await fetch(`${window.APP_BASE || ''}/api/admin/nf-itens/${idBling}`);
         const d = await r.json();
         if (!d.ok) throw new Error(d.erro || 'falha');
         const linhas = (d.itens || []).map(i => {
@@ -3386,7 +3386,7 @@ async function carregarSemRetorno() {
       const t = btn ? btn.textContent : '';
       if (btn) { btn.disabled = true; btn.textContent = '🔗 Procurando...'; }
       try {
-        const r = await fetch(`/api/admin/full-vincular/${id}`, { method: 'POST' });
+        const r = await fetch(`${window.APP_BASE || ''}/api/admin/full-vincular/${id}`, { method: 'POST' });
         const d = await r.json();
         if (d.ok) {
           toast(`Devolução ML nº ${d.nf_devolucao_numero || '?'} vinculada ao card!`, 'ok');
@@ -3469,7 +3469,7 @@ async function carregarSemRetorno() {
       const t = btn ? btn.textContent : '';
       if (btn) { btn.disabled = true; btn.textContent = '📦 Lançando...'; }
       try {
-        const r = await fetch(`/api/admin/full-lancar-estoque/${id}`, {
+        const r = await fetch(`${window.APP_BASE || ''}/api/admin/full-lancar-estoque/${id}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ idDeposito }),
@@ -3511,7 +3511,7 @@ async function carregarSemRetorno() {
       const qs = idNFBling
         ? `id=${encodeURIComponent(idNFBling)}`
         : `numero=${encodeURIComponent(nfNumero || '')}&chave=${encodeURIComponent(chaveNF || '')}`;
-      const rId = await fetch(`/api/admin/resolver-id-nf?${qs}`);
+      const rId = await fetch(`${window.APP_BASE || ''}/api/admin/resolver-id-nf?${qs}`);
       const dId = await rId.json();
       if (!dId.ok || !dId.idBling) {
         throw new Error(dId.erro || 'ID interno da NF não localizado no Bling');
@@ -3534,7 +3534,7 @@ async function carregarSemRetorno() {
       }
 
       try {
-        await fetch(`/api/admin/registrar-devolucao-gerada/${devolucaoId}`, {
+        await fetch(`${window.APP_BASE || ''}/api/admin/registrar-devolucao-gerada/${devolucaoId}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -3664,7 +3664,7 @@ async function carregarSemRetorno() {
           if (msg.toLowerCase().includes('ja possui devolucao')) {
             // Card órfão: acha e vincula em vez de falhar
             try {
-              const rV = await fetch(`/api/admin/vincular-devolucao-existente/${item.id}`, { method: 'POST' });
+              const rV = await fetch(`${window.APP_BASE || ''}/api/admin/vincular-devolucao-existente/${item.id}`, { method: 'POST' });
               const dV = await rV.json();
               if (dV.ok) {
                 vinculadas++;
@@ -3805,7 +3805,7 @@ async function carregarSemRetorno() {
         const reg = fila[i];
         btn.textContent = `⏹ Parar · ${i + 1}/${fila.length} (✅${ok} ❌${falha})`;
         try {
-          const r = await fetch(`/api/admin/carregar-itens/${reg.id}`, { method: 'POST' });
+          const r = await fetch(`${window.APP_BASE || ''}/api/admin/carregar-itens/${reg.id}`, { method: 'POST' });
           const d = await r.json();
           if (d.ok) ok++;
           else { falha++; erros.push(`NF ${reg.nf_numero || reg.id}: ${(d.erro || '').slice(0, 80)}`); }
@@ -3908,7 +3908,7 @@ async function carregarSemRetorno() {
         const qs = idNFOriginalBling
           ? `id=${encodeURIComponent(idNFOriginalBling)}`
           : `numero=${encodeURIComponent(nfNumero || '')}&chave=${encodeURIComponent(chaveNF || '')}`;
-        const rId = await fetch(`/api/admin/resolver-id-nf?${qs}`);
+        const rId = await fetch(`${window.APP_BASE || ''}/api/admin/resolver-id-nf?${qs}`);
         const dId = await rId.json();
         if (!dId.ok || !dId.idBling) {
           throw new Error(dId.erro || 'Não consegui achar o ID interno dessa NF no Bling.');
@@ -3948,7 +3948,7 @@ async function carregarSemRetorno() {
         // Registra no Supabase pra nao gerar de novo (nao critico)
         document.getElementById('statusGerar').textContent = 'Registrando no sistema...';
         try {
-          await fetch(`/api/admin/registrar-devolucao-gerada/${devolucaoId}`, {
+          await fetch(`${window.APP_BASE || ''}/api/admin/registrar-devolucao-gerada/${devolucaoId}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -4014,7 +4014,7 @@ async function carregarSemRetorno() {
             </div>
           `;
           try {
-            const rV = await fetch(`/api/admin/vincular-devolucao-existente/${devolucaoId}`, { method: 'POST' });
+            const rV = await fetch(`${window.APP_BASE || ''}/api/admin/vincular-devolucao-existente/${devolucaoId}`, { method: 'POST' });
             const dV = await rV.json();
             if (dV.ok) {
               conteudo.innerHTML = `
@@ -4289,7 +4289,7 @@ async function carregarSemRetorno() {
   }
 })();
 </script>
-<script src="js-AMB/defeitos-ficha.js?v=b432"></script>
+<script src="js-AMB/defeitos-ficha.js?v=b439"></script>
 <script>
   // b126 - AVISO de pedidos esperando. Sem isso o admin so descobre que
   // tem coisa pra autorizar se abrir a fila por acaso.
