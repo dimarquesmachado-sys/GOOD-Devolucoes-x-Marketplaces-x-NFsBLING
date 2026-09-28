@@ -223,6 +223,25 @@ async function testeTokenAceitoDeVerdade() {
      '⚠️ ja ativa REPROVA (aviso nao conta no codigo de saida)');
 }
 
+// ── ⚠️ e há ROTA, porque o dono não usa terminal ────────────────────
+//
+// A sonda por linha de comando não serve para quem está configurando pelo
+// painel do Render: rodar no sandbox reprova por falta de env que ESTÁ
+// configurada lá. Ela precisa rodar ONDE as envs vivem.
+{
+  const srv = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
+  const semComSrv = srv.split('\n')
+    .filter((l) => !l.trim().startsWith('//')).join('\n');
+
+  ok(/\/api\/admin\/sonda-empresa\/:chave/.test(semComSrv),
+     '⚠️ existe rota pra sonda (o dono nao roda comando)');
+  ok(/if \(!adminOk\(req\)\) return res\.status\(404\)[\s\S]{0,400}?sondar/.test(semComSrv)
+     || /sonda-empresa\/:chave[\s\S]{0,200}adminOk/.test(semComSrv),
+     '⚠️ e ela exige a chave admin (404 sem ela)');
+  ok(/pode_ativar/.test(semComSrv),
+     '  e responde `pode_ativar`, nao so a lista');
+}
+
 // ── roda de ponta a ponta sem quebrar ───────────────────────────────
 {
   return sondar('girassol').then((linhas) => {
