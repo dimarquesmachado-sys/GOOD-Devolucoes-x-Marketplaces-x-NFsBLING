@@ -504,7 +504,7 @@ app.get('/health', (req, res) => {
       // `local` TAMBEM faz chamada). Agora todo eixo NAO bloqueado leva uma
       // chamada real de leitura (Bling `/situacoes`, ML `/users/me`) com o
       // MESMO token que a producao usaria — 401/403 reprova de verdade.
-      version: '9.85.0 (b429: o token e testado com uma chamada real ao marketplace)',
+      version: '9.85.0 (b428: a sonda vira rota — ela tem que rodar onde as envs vivem)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -2398,6 +2398,38 @@ app.get('/api/espreita/casa-nf/:nf', requerLogin, async (req, res) => {
       com_nf: porNF.size,
     },
   });
+});
+
+// ⚠️ b428 - A SONDA DE EMPRESA POR ROTA, porque o dono nao usa terminal.
+//
+// `scripts/sonda-empresa.js` so roda por linha de comando — e quem precisa
+// dela e justamente quem esta configurando pelo painel do Render. Rodar no
+// meu sandbox nao serve: as envs dele nao estao la, e a sonda reprova por
+// falta de coisa que ESTA configurada.
+//
+// 📌 Ela precisa rodar ONDE as envs vivem. Por isso a rota.
+//
+//   https://<host>/api/admin/sonda-empresa/girassol?k=SUA_ADMIN_KEY
+//
+// ⚠️ Protegida pela chave admin, como as outras sondas. E continua SO
+// LEITURA: nao emite, nao grava, nao renova, nao ativa.
+app.get('/api/admin/sonda-empresa/:chave', async (req, res) => {
+  if (!adminOk(req)) return res.status(404).send('Not found');
+  try {
+    const { sondar } = require('./scripts/sonda-empresa');
+    const chave = String(req.params.chave || '').trim().toLowerCase();
+    const linhas = await sondar(chave);
+    const reprovadas = linhas.filter((l) => !l.ok).length;
+    return res.json({
+      ok: reprovadas === 0,
+      empresa: chave,
+      reprovadas,
+      pode_ativar: reprovadas === 0,
+      checagens: linhas,
+    });
+  } catch (e) {
+    return res.status(500).json({ ok: false, erro: String((e && e.message) || e).slice(0, 300) });
+  }
 });
 
 app.get('/api/nf/entrada/sonda', async (req, res) => {
