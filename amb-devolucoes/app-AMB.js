@@ -557,7 +557,18 @@ const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 // olhar se veio string nao vazia), inclusive no eixo `local` (antes
 // excluido da checagem). Continua GOOD/CLI-only - a AMB nao chama este
 // script.
-const VERSAO = 'AMB Devolucoes b432';
+// b430 - revisao Codex no PR #368: a sonda ganhou uma rota
+// (`/api/admin/sonda-empresa/:chave`, so em server.js, sem equivalente na
+// AMB) pra rodar onde as envs do dono vivem; a correcao trocou o exemplo de
+// URL com a ADMIN_KEY na querystring pelo uso via sessao de admin, e a
+// checagem de token passou a chamar `tokenLeitor.invalidar(empresa,
+// integracao)` antes de testar — pra nao aprovar com um token que so esta
+// "bom" porque o cache de 5 min (`lib/token-leitor.js`) ainda nao expirou.
+// A AMB usa o MESMO `lib/token-leitor` em producao (`lib-AMB/ml-AMB.js`,
+// `lib-AMB/bling-AMB.js`), mas o cache e por (empresa, integracao) — sondar
+// 'girassol' ou 'good' invalida so a entrada daquela empresa, nunca a da
+// AMB. Nada muda pro fluxo de producao da AMB.
+const VERSAO = 'AMB Devolucoes b433';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();

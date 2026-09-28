@@ -504,7 +504,11 @@ app.get('/health', (req, res) => {
       // `local` TAMBEM faz chamada). Agora todo eixo NAO bloqueado leva uma
       // chamada real de leitura (Bling `/situacoes`, ML `/users/me`) com o
       // MESMO token que a producao usaria — 401/403 reprova de verdade.
-      version: '9.89.0 (b432: o painel da Girassol pedia os ids fiscais da GOOD)',
+      // b430 (Codex, PR #368) - o build anterior (a sonda virar rota) tinha
+      // sido rotulado "b428" de novo, um numero JA usado (2a rodada do
+      // #367) e anterior ao b429 que ja estava na main — o /health parecia
+      // ter regredido pra um build mais velho.
+      version: '9.90.0 (b433: os acertos do Codex na sonda por rota)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -2409,7 +2413,17 @@ app.get('/api/espreita/casa-nf/:nf', requerLogin, async (req, res) => {
 //
 // 📌 Ela precisa rodar ONDE as envs vivem. Por isso a rota.
 //
-//   https://<host>/api/admin/sonda-empresa/girassol?k=SUA_ADMIN_KEY
+// b430 (Codex, PR #368, P1) - o exemplo original mandava a ADMIN_KEY pela
+// URL (?k=...) — e esta mesma secao documenta que credencial em querystring
+// fica em log de acesso do Render, do proxy, e em historico/link copiado.
+// A excecao de compatibilidade e pra link ANTIGO ja salvo, nao pra rota
+// nova. O `adminOk` ja aceita a sessao de admin logada (painel-devolucoes),
+// entao o uso recomendado e no MESMO navegador, sem chave nenhuma:
+//
+//   https://<host>/api/admin/sonda-empresa/girassol
+//
+// Fora do navegador (curl/script), use o header `x-admin-key` — nunca a
+// querystring.
 //
 // ⚠️ Protegida pela chave admin, como as outras sondas. E continua SO
 // LEITURA: nao emite, nao grava, nao renova, nao ativa.
