@@ -563,7 +563,7 @@ const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 // catalogo do Bling, cache de leitura que falhou e rotulo de env trocado
 // (a natureza descoberta e a de EMITIR, `ID_NATUREZA_DEVOLUCAO_ENTRADA`,
 // nao a de BUSCAR, `NATUREZAS_DEVOLUCAO_IDS`).
-const VERSAO = 'AMB Devolucoes b431';
+const VERSAO = 'AMB Devolucoes b435';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
