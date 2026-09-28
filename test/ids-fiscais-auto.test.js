@@ -163,8 +163,28 @@ const {
     ok(/linha\('ID_NATUREZA_DEVOLUCAO_ENTRADA', d\.naturezasDevolucaoIds\)/.test(semCom),
        '⚠️ (Codex, P1) a natureza achada rotula ID_NATUREZA_DEVOLUCAO_ENTRADA (a de EMITIR)');
 
-    console.log('');
-    console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
-    process.exit(falhas ? 1 : 0);
+    // ⚠️ b440: os erros das listas APARECEM na resposta. Na Girassol vieram
+    // 5 depósitos e 0 naturezas, e a rota dizia "NAO ACHEI" — como se a lista
+    // tivesse vindo. Era erro escondido. "Não achei" e "não consegui olhar"
+    // mandam consertar coisas OPOSTAS: cadastrar natureza × marcar escopo.
+    const appSrc = fs.readFileSync(
+      path.join(__dirname, '..', 'amb-devolucoes', 'app-AMB.js'), 'utf8');
+    const appSemCom = appSrc.split('\n').filter((l) => !l.trim().startsWith('//')).join('\n');
+    ok(/erros_nas_listas/.test(appSemCom),
+       '⚠️ a rota EXPOE os erros HTTP das listas (403 nao vira "0 itens")');
+    ok(/naturezas === 0 && d\.lidos\.depositos > 0/.test(appSemCom),
+       '  e avisa quando depositos vem e naturezas nao (cheira a escopo)');
+
+    const fake403 = async (url) => /depositos/.test(url)
+      ? { ok: true, data: { data: [{ id: 1, descricao: 'Geral' }] } }
+      : { ok: false, status: 403 };
+    return descobrirIdsFiscais('t403', fake403, { semCache: true }).then((d3) => {
+      ok(Array.isArray(d3.erros) && d3.erros.includes('HTTP 403'),
+         '⚠️ e o modulo CAPTURA o 403 (nao some como lista vazia)');
+
+      console.log('');
+      console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
+      process.exit(falhas ? 1 : 0);
+    });
   });
 }

@@ -514,7 +514,7 @@ app.get('/health', (req, res) => {
       // de BUSCAR em vez da de EMITIR. So o lado AMB muda de comportamento
       // (lib/ids-fiscais-auto.js e amb-devolucoes/app-AMB.js) — este arquivo
       // so acompanha o numero do build.
-      version: '9.96.0 (b439: 26 chamadas escaparam por usarem CRASE)',
+      version: '9.97.0 (b440: "nao achei" e "nao consegui olhar" sao diagnosticos opostos)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
