@@ -489,7 +489,22 @@ app.get('/health', (req, res) => {
       // AMB_SESSION_SECRET so por ser `require`ida, e a sonda pos-RPC do
       // provisionamento derruba a chamada em erro que nao seja "tabela
       // ausente" (antes passava batido).
-      version: '9.82.0 (b425: o conferidor entende a politica de token)',
+      // b428 (Codex, PR #367, 2a rodada) - a correcao do b427 ainda tinha 3
+      // furos: o sufixo das 7 tabelas vinha de `chaveDados` (confunde com o
+      // valor da coluna `empresa`; a GOOD tem `chaveDados` mas tabela SEM
+      // sufixo, entao sondaria `devolucoes_good` a toa), so 404/400 contava
+      // como "tabela ausente" (um 400 de request malformada nao prova
+      // ausencia), e uma chave Supabase `anon` passava no `limit=0` mesmo
+      // sem poder ler/gravar de verdade (RLS ligado sem policy responde 200
+      // vazio pra qualquer chave). Cada sonda de tabela tambem ganhou timeout.
+      // b429 (Codex, PR #367, 3a rodada) - a checagem "o dono entrega o
+      // token" so olhava se `d.access` era uma string nao vazia: um token
+      // revogado/expirado passava calado, e o eixo `local` nem entrava na
+      // checagem (so `remoto`/`sombra` eram varridos, mas em producao
+      // `local` TAMBEM faz chamada). Agora todo eixo NAO bloqueado leva uma
+      // chamada real de leitura (Bling `/situacoes`, ML `/users/me`) com o
+      // MESMO token que a producao usaria — 401/403 reprova de verdade.
+      version: '9.85.0 (b429: o token e testado com uma chamada real ao marketplace)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
