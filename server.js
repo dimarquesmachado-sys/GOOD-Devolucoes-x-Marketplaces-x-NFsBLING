@@ -521,7 +521,7 @@ app.get('/health', (req, res) => {
       // escopo que ja estava certo. Agora `erros` vem ROTULADO por lista
       // (`{ lista: 'naturezas', erro }`) e o aviso so dispara quando ha um
       // erro de verdade rotulado pra naturezas.
-      version: '9.98.0 (b442: o cliente da AMB/Girassol respeita a cota — era um martelo)',
+      version: '9.99.0 (b443: os 6 furos do ritmo — rajada, 429 escondido, 401 fora da fila, fundo, fila da GOOD)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),

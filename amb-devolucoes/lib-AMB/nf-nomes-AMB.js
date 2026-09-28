@@ -207,7 +207,7 @@ async function construirIndiceInterno(opts = {}) {
       // processo esta saindo, ela lanca. Nao ha checagem manual pra eu
       // esquecer, e a proxima varredura herda o comportamento.
       if (pg > 1) await drenagem.pausar(400, deFundo || IDX.viroufundo, 'indice-nomes');
-      let r = await bling.chamarBling(`/nfe?limite=100&pagina=${pg}&tipo=1`);
+      let r = await bling.chamarBling(`/nfe?limite=100&pagina=${pg}&tipo=1`, { fundo: deFundo });   // b443
       // ⚠️ b352 (Codex, P1) - O PORTAO TAMBEM PRECISA ACEITAR 401.
       //
       // Eu acrescentei 401 ao laco de dentro, mas o `if` que ENVOLVE o laco
@@ -233,7 +233,7 @@ async function construirIndiceInterno(opts = {}) {
         for (let tent = 1; tent <= 3 && !r.ok
           && (r.status === 429 || r.status === 401); tent++) {
           await drenagem.pausar(2000 * tent, deFundo || IDX.viroufundo, 'indice-nomes/retry');
-          r = await bling.chamarBling(`/nfe?limite=100&pagina=${pg}&tipo=1`, { semRetentativa: true });
+          r = await bling.chamarBling(`/nfe?limite=100&pagina=${pg}&tipo=1`, { fundo: deFundo, semRetentativa: true });
         }
       }
       if (!r.ok) { erroBusca = `nfe pagina ${pg} HTTP ${r.status}`; break; }

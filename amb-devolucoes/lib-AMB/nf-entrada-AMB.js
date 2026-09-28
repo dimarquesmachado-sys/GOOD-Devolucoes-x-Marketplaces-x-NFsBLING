@@ -106,7 +106,7 @@ async function construirIndice() {
     let total = 0, erro = null, parou = false;
 
     for (let pg = 1; pg <= 40; pg++) {
-      const r = await bling.chamarBling(`/nfe?limite=100&pagina=${pg}&tipo=${TIPO()}`);
+      const r = await bling.chamarBling(`/nfe?limite=100&pagina=${pg}&tipo=${TIPO()}`, { fundo: true });
       if (!r.ok) { erro = `nfe entrada pagina ${pg} HTTP ${r.status}`; break; }
       const lista = (r.data && r.data.data) || [];
       if (!lista.length) break;

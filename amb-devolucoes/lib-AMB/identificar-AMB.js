@@ -902,9 +902,15 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
                   const desistiu = { agora: false };
                   const det = await Promise.race([
                     (async () => {
-                      await ritmoBling.aguardarVez();
+                      // ⚠️ b443 (Codex, P2) - NAO pede mais vez na fila da GOOD.
+                      // `ritmoBling` e o singleton de `lib/ritmo-bling.js`, com a
+                      // conta cravada em 'good': a AMB e a Girassol esperavam na
+                      // cota de OUTRA empresa e depois chamavam com `semRitmo`,
+                      // pulando a fila delas. Agora o cliente da empresa (que
+                      // tem fila propria desde o b442) cuida — uma contagem so,
+                      // na conta certa.
                       if (desistiu.agora) return { _tarde: true };   // nem sai
-                      return buscarNFePorId(c.id, { semRitmo: true });
+                      return buscarNFePorId(c.id);
                     })().then((r) => (desistiu.agora ? { _tarde: true } : r)),
                     new Promise((ok) => setTimeout(() => { desistiu.agora = true; ok({ _timeout: true }); }, 5000)),
                   ]);

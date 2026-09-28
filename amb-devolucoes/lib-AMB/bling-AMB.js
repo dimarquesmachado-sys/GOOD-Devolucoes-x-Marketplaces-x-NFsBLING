@@ -261,6 +261,15 @@ async function chamarBling(caminho, opcoes = {}) {
     // `semRetentativa`: sem isso o 401/429 dorme 1,5s e dispara OUTRA
     // requisicao depois que o chamador ja desistiu (trabalho orfao, fora
     // da cadencia global).
+    // ⚠️ b443 (Codex, P1) - TODO 429 AVISA O RITMO, mesmo sem retentativa.
+    // Antes este ramo devolvia sem avisar: a fila nao pausava, o proximo
+    // chamador batia no mesmo segundo e tomava 429 de novo. Um 429 que a
+    // fila nao ve e um 429 que se repete.
+    if (status === 429) {
+      const raSR = Number(erro && erro.response && erro.response.headers
+        && erro.response.headers['retry-after']);
+      ritmo.avisar429(Number.isFinite(raSR) && raSR > 0 ? raSR : 0);
+    }
     if (opcoes.semRetentativa) {
       return { ok: false, status, error: (erro.response && erro.response.data) || erro.message };
     }
@@ -277,10 +286,23 @@ async function chamarBling(caminho, opcoes = {}) {
       tokenLeitor.invalidar(CHAVE_TOKEN, 'bling');
       tokenLeitor.anotarInvalidacao(CHAVE_TOKEN, 'bling', 401);
       if (await renovarToken()) {
+        // ⚠️ b443 (Codex, P1): o retry pos-401 tambem pede a VEZ. Antes
+        // chamava `fazer()` direto — uma renovacao rapida punha a 4a chamada
+        // no mesmo segundo das 3 que a fila tinha liberado.
+        if (!opcoes.semRitmo) {
+          try { await ritmo.aguardarVez({ fundo: !!opcoes.fundo }); }
+          catch (eFila) {
+            return { ok: false, status: 0, error: eFila.message, filaEstourou: true };
+          }
+        }
         try {
           const r = await fazer();
+          ritmo.avisarOk();
           return { ok: true, data: r.data, status: r.status };
         } catch (e2) {
+          // e se ESSE tomar 429, avisa tambem — e o mesmo P1
+          const st2 = e2.response && e2.response.status;
+          if (st2 === 429) ritmo.avisar429(0);
           return { ok: false, status: e2.response && e2.response.status, error: (e2.response && e2.response.data) || e2.message };
         }
       }
@@ -321,7 +343,12 @@ async function chamarBling(caminho, opcoes = {}) {
         ritmo.avisarOk();
         return { ok: true, data: r.data, status: r.status };
       } catch (e2) {
-        return { ok: false, status: e2.response && e2.response.status, error: (e2.response && e2.response.data) || e2.message };
+        // ⚠️ b443 (Codex, P1): o 2o 429 seguido TAMBEM avisa. Sem isto a
+        // fila achava que a pausa tinha bastado e soltava o proximo no
+        // mesmo ritmo — que tomava o 3o.
+        const st2 = e2.response && e2.response.status;
+        if (st2 === 429) ritmo.avisar429(0);
+        return { ok: false, status: st2, error: (e2.response && e2.response.data) || e2.message };
       }
     }
 

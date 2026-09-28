@@ -22,8 +22,11 @@ const { criarRitmo } = require('../lib/ritmo-por-empresa');
     const r = criarRitmo({ nome: 't', limitePorSegundo: 3 });
     const t0 = Date.now(); const tempos = [];
     for (let i = 0; i < 4; i++) { await r.aguardarVez(); tempos.push(Date.now() - t0); }
-    ok(tempos[2] < 200 && tempos[3] >= 900,
-       `⚠️ 3 passam na hora, a 4a espera a janela (${tempos.join(',')}ms)`);
+    // ⚠️ b443 (Codex, P1): ESPAÇADAS, não rajada. Minha 1ª versão soltava as
+    // 3 no mesmo milissegundo — uma rajada no início da janela encosta na
+    // anterior e o Bling conta 6 em pouco mais de 1s.
+    ok(tempos[1] >= 300 && tempos[2] >= 600 && tempos[3] >= 950,
+       `⚠️ as liberacoes sao ESPACADAS (~333ms), nao em rajada (${tempos.join(',')}ms)`);
   }
 
   // ── interativo passa na frente do fundo ─────────────────────────
@@ -56,6 +59,25 @@ const { criarRitmo } = require('../lib/ritmo-por-empresa');
     ok(teto === 15000, '  e nunca passa de 15s');
   }
 
+  // ── ⚠️ quem estourou o teto NÃO consome vaga ────────────────────
+  //
+  // Antes o callback expirado ficava na fila, o despachante registrava a
+  // liberação e SÓ DEPOIS ele descobria que já tinha desistido — a vaga ia
+  // pro lixo e o próximo esperava um intervalo à toa.
+  {
+    const r = criarRitmo({ nome: 't', limitePorSegundo: 3, tetoMs: 100 });
+    r.avisar429(1);   // pausa 1s: os 2 abaixo vão estourar o teto de 100ms
+    const a = r.aguardarVez().catch(() => 'estourou');
+    const b = r.aguardarVez().catch(() => 'estourou');
+    await Promise.all([a, b]);
+    // ao sair da pausa, o próximo pedido deve ser atendido sem pagar por eles
+    await new Promise((x) => setTimeout(x, 1000));
+    const antes = r.estado().liberadas;
+    await r.aguardarVez();
+    ok(r.estado().liberadas === antes + 1,
+       '⚠️ os 2 expirados NAO contaram como liberacao (so o vivo contou)');
+  }
+
   // ── o teto de espera não prende ninguém pra sempre ──────────────
   {
     const r = criarRitmo({ nome: 't', limitePorSegundo: 1, tetoMs: 300 });
@@ -80,6 +102,39 @@ const { criarRitmo } = require('../lib/ritmo-por-empresa');
     ok(!/await sleep\(1500\);/.test(semCom),
        '⚠️ e o sleep(1500) fixo SAIU (era o martelo)');
     ok(/estadoRitmo/.test(semCom), '  e expoe o estado (pro /status)');
+
+    // ⚠️ b443 (Codex, P1): TODO 429 avisa — semRetentativa, retry do 401,
+    // 2º 429 seguido. Um 429 que a fila não vê é um 429 que se repete.
+    const avisos = (semCom.match(/ritmo\.avisar429\(/g) || []).length;
+    ok(avisos >= 4, `⚠️ o 429 avisa o ritmo em TODOS os caminhos (${avisos} pontos, era 1)`);
+
+    // e o retry pós-401 passa pela fila
+    const i401 = semCom.indexOf('if (status === 401)');
+    const bloco401 = semCom.slice(i401, semCom.indexOf('if (status === 429)', i401));
+    ok(/await ritmo\.aguardarVez/.test(bloco401),
+       '⚠️ o retry pos-401 pede a VEZ (nao chama fazer() direto)');
+  }
+
+  // ── ⚠️ o pré-aquecimento entra como FUNDO ────────────────────────
+  //
+  // Ninguém na AMB passava `fundo: true` — tudo entrava como interativo, e o
+  // índice de 8.000 notas competia de igual com o clique do estoquista.
+  {
+    const nomes = fs.readFileSync(
+      path.join(__dirname, '..', 'amb-devolucoes', 'lib-AMB', 'nf-nomes-AMB.js'), 'utf8');
+    ok(/chamarBling\(`\/nfe[^`]*`, \{ fundo: deFundo/.test(nomes),
+       '⚠️ a varredura de nomes passa `fundo` pro cliente');
+    const ent = fs.readFileSync(
+      path.join(__dirname, '..', 'amb-devolucoes', 'lib-AMB', 'nf-entrada-AMB.js'), 'utf8');
+    ok(/chamarBling\(`\/nfe[^`]*`, \{ fundo: true/.test(ent),
+       '  e a de notas de entrada tambem');
+
+    // e o identificar não pede mais vez na fila da GOOD
+    const ident = fs.readFileSync(
+      path.join(__dirname, '..', 'amb-devolucoes', 'lib-AMB', 'identificar-AMB.js'), 'utf8');
+    const identSem = ident.split('\n').filter((l) => !l.trim().startsWith('//')).join('\n');
+    ok(!/ritmoBling\.aguardarVez/.test(identSem),
+       '⚠️ o identificar NAO pede mais vez na fila singleton da GOOD');
   }
 
   console.log('');
