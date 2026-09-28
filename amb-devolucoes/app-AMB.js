@@ -557,7 +557,7 @@ const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 // olhar se veio string nao vazia), inclusive no eixo `local` (antes
 // excluido da checagem). Continua GOOD/CLI-only - a AMB nao chama este
 // script.
-const VERSAO = 'AMB Devolucoes b427';
+const VERSAO = 'AMB Devolucoes b430';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -1669,6 +1669,59 @@ router.get('/api/triagem/fila', auth.requerLogin, async (req, res) => {
 // b283 - os ids fiscais desta empresa, pro painel parar de te-los cravados.
 // A natureza vem da API (achada pelo nome); o id da empresa nao tem API na
 // v3 do Bling (GET /empresas da 404), entao vem de env por empresa.
+// ⚠️ b430 - OS IDS FISCAIS, DESCOBERTOS E PRONTOS PRA COLAR.
+//
+// O dono, ligando a Girassol: "descobre ai pegando direto do Bling, senao vai
+// me atrapalhar. tem que ter isso automatizado pra qualquer empresa nova."
+//
+// Ele esta certo. Ate aqui, ligar uma empresa exigia cacar 3 numeros no painel
+// com o F12 — e 2 dos 3 a API entrega. Fazer a pessoa cacar o que a maquina
+// sabe e trabalho inventado.
+//
+//   GET <base>/api/ids-fiscais-auto?k=ADMIN_KEY
+//
+// 📌 Responde o nome EXATO da env e o valor, pra copiar e colar no Render.
+// ⚠️ E diz o que NAO deu, com os candidatos — nunca escolhe no empate.
+router.get('/api/ids-fiscais-auto', admin, async (req, res) => {
+  try {
+    const { descobrirIdsFiscais } = require('../../lib/ids-fiscais-auto');
+    const d = await descobrirIdsFiscais(
+      EMPRESA_DESTE_APP, bling.chamarBling, { semCache: req.query.refresh === '1' });
+    if (!d.ok) return res.status(502).json(d);
+
+    const pref = (FICHA_AMB && FICHA_AMB.prefixoFiscal) || '';
+    const linha = (envSufixo, achado) => ({
+      env: pref + envSufixo,
+      valor: achado.id,
+      via: achado.via,
+      candidatos: achado.candidatos || undefined,
+    });
+
+    const paraColar = [
+      linha('DEPOSITO_GERAL', d.depositoGeral),
+      linha('NATUREZAS_DEVOLUCAO_IDS', d.naturezasDevolucaoIds),
+      linha('ID_EMPRESA_CONTROL', d.idEmpresaControl),
+    ];
+    const faltam = paraColar.filter((x) => !x.valor);
+
+    return res.json({
+      ok: faltam.length === 0,
+      empresa: d.empresa,
+      lidos: d.lidos,
+      para_colar_no_render: paraColar.filter((x) => x.valor),
+      ainda_falta: faltam.length ? faltam : undefined,
+      // ⚠️ o idEmpresaControl costuma cair aqui: o `GET /empresas` do Bling da
+      // 404 e a v3 nao manda `idEmpresa` no /depositos. Esse sai do F12 mesmo.
+      nota: faltam.some((x) => /ID_EMPRESA_CONTROL/.test(x.env))
+        ? 'o ID_EMPRESA_CONTROL a API do Bling nao entrega: abra a empresa no '
+          + 'painel e pegue o id da URL'
+        : undefined,
+    });
+  } catch (e) {
+    return res.status(500).json({ ok: false, erro: String((e && e.message) || e).slice(0, 300) });
+  }
+});
+
 router.get('/api/ids-fiscais', auth.requerLogin, async (req, res) => {
   res.json({ ok: true, ...(await bling.idsFiscais()) });
 });

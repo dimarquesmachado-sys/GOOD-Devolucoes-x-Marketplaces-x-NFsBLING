@@ -504,7 +504,7 @@ app.get('/health', (req, res) => {
       // `local` TAMBEM faz chamada). Agora todo eixo NAO bloqueado leva uma
       // chamada real de leitura (Bling `/situacoes`, ML `/users/me`) com o
       // MESMO token que a producao usaria — 401/403 reprova de verdade.
-      version: '9.86.0 (b429: a GIRASSOL ENTRA — 3a empresa no Devolucoes)',
+      version: '9.87.0 (b430: os ids fiscais se descobrem sozinhos — o que da)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
