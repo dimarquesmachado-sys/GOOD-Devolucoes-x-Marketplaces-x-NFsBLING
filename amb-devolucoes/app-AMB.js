@@ -411,11 +411,24 @@ const PASTA_CHECKOUT = (FICHA_AMB && FICHA_AMB.pastaCheckout)
 // Safari via o atalho com o nome da AMB. O HTML e lido uma vez aqui (a
 // empresa deste processo nao muda em runtime) e o titulo do iOS troca por
 // cima, do mesmo jeito que a rota do manifest ja faz com os campos dela.
+// ⚠️ Codex (revisão do PR #370, P2) - MESMO FURO, no título e nos <h1> da
+// tela de login/app. So o atalho do iOS (acima) tinha sido trocado; quem
+// só olhasse a tela (sem instalar) continuava lendo "AMBTotal" logada na
+// Girassol. Mesmo padrão: troca o texto ESTÁTICO pelo nome da ficha.
 const INDEX_AMB_HTML = fs.readFileSync(
   path.join(__dirname, 'public-AMB', 'index-AMB.html'), 'utf8'
 ).replace(
   '<meta name="apple-mobile-web-app-title" content="Devolucoes AMB">',
   `<meta name="apple-mobile-web-app-title" content="Devolucoes ${((FICHA_AMB && FICHA_AMB.nome) || 'AMBTotal').split(' ')[0]}">`
+).replace(
+  '<title>AMBTotal - Devoluções Marketplaces</title>',
+  `<title>${NOME_EMPRESA} - Devoluções Marketplaces</title>`
+).replace(
+  '<h1 style="display:inline-block;vertical-align:middle;">AMBTotal Devoluções</h1>',
+  `<h1 style="display:inline-block;vertical-align:middle;">${NOME_EMPRESA} Devoluções</h1>`
+).replace(
+  '<h1>AMBTotal Devoluções</h1>',
+  `<h1>${NOME_EMPRESA} Devoluções</h1>`
 );
 
 // ⚠️ b406 (Codex, PR #345, P2) - A PASTA DO CHECKOUT no base-amb.js vinha de
@@ -428,6 +441,18 @@ const INDEX_AMB_HTML = fs.readFileSync(
 const BASE_AMB_JS = fs.readFileSync(
   path.join(__dirname, 'public-AMB', 'js-AMB', 'base-amb.js'), 'utf8'
 ).replace('"%%PASTA_CHECKOUT%%"', JSON.stringify(PASTA_CHECKOUT));
+
+// ⚠️ Codex (revisão do PR #370, P2) - MESMO FURO do INDEX_AMB_HTML, agora no
+// painel: título e <h1> diziam "AMBTotal" pra Girassol tambem.
+const PAINEL_AMB_HTML = fs.readFileSync(
+  path.join(__dirname, 'public-AMB', 'painel-AMB.html'), 'utf8'
+).replace(
+  '<title>AMBTotal - Painel de Devoluções</title>',
+  `<title>${NOME_EMPRESA} - Painel de Devoluções</title>`
+).replace(
+  '<h1>👑 Painel de Devoluções — AMBTotal</h1>',
+  `<h1>👑 Painel de Devoluções — ${NOME_EMPRESA}</h1>`
+);
 
 // ⚠️ b359 - O VALOR DA COLUNA `empresa` NO BANCO, vindo da FICHA.
 //
@@ -563,7 +588,7 @@ const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 // catalogo do Bling, cache de leitura que falhou e rotulo de env trocado
 // (a natureza descoberta e a de EMITIR, `ID_NATUREZA_DEVOLUCAO_ENTRADA`,
 // nao a de BUSCAR, `NATUREZAS_DEVOLUCAO_IDS`).
-const VERSAO = 'AMB Devolucoes b437';
+const VERSAO = 'AMB Devolucoes b438';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -1157,7 +1182,7 @@ router.get('/', (req, res) => {
 
 router.get('/painel', auth.requerLogin, (req, res) => {
   res.set('Cache-Control', 'no-cache, must-revalidate');   // b19: tela nunca presa
-  res.sendFile(path.join(__dirname, 'public-AMB', 'painel-AMB.html'));
+  res.type('html').send(PAINEL_AMB_HTML);
 });
 
 // ── seg2 - MESMO FURO NA AMB, POR OUTRO CAMINHO ──────────────────────
@@ -1245,6 +1270,15 @@ router.get('/manifest-AMB.json', (req, res) => {
 router.get('/js-AMB/base-amb.js', (req, res) => {
   res.set('Cache-Control', 'no-cache, must-revalidate');   // mesma licao do b19
   res.type('application/javascript').send(BASE_AMB_JS);
+});
+
+// Codex (revisão do PR #370, P2) - o seg2 (acima, exigirLoginNoPainelHtml)
+// ja cobre o acesso direto a /painel-AMB.html pelo static; esta rota so
+// garante que ESSE caminho tambem sirva a versao com o nome da empresa
+// certo, e nao o arquivo cru (que o static abaixo serviria sem template).
+router.get('/painel-AMB.html', (req, res) => {
+  res.set('Cache-Control', 'no-cache, must-revalidate');   // mesma licao do b19
+  res.type('html').send(PAINEL_AMB_HTML);
 });
 
 router.use(express.static(path.join(__dirname, 'public-AMB'), {

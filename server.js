@@ -514,7 +514,7 @@ app.get('/health', (req, res) => {
       // de BUSCAR em vez da de EMITIR. So o lado AMB muda de comportamento
       // (lib/ids-fiscais-auto.js e amb-devolucoes/app-AMB.js) — este arquivo
       // so acompanha o numero do build.
-      version: '9.94.0 (b437: os acertos do Codex na descoberta dos ids fiscais)',
+      version: '9.95.0 (b438: os acertos do Codex na descoberta dos ids fiscais)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),

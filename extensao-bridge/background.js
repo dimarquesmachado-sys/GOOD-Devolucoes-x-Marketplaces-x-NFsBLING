@@ -61,6 +61,7 @@ const API_SISTEMA = 'https://good-devolucoes-x-marketplaces-x-nfsbling.onrender.
 const ENDERECO_IDS = {
   good: '/api/ids-fiscais?empresa=good',
   ambtotal: '/amb/api/ids-fiscais',
+  girassol: '/girassol/api/ids-fiscais',
 };
 
 // Ultimo recurso SO PRA GOOD: se o servidor nao responder, a GOOD continua
