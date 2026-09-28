@@ -24,6 +24,9 @@ const RAIZ = path.join(__dirname, '..');
 const APP_AMB = fs.readFileSync(path.join(RAIZ, 'amb-devolucoes', 'app-AMB.js'), 'utf8');
 const DB_AMB = fs.readFileSync(path.join(RAIZ, 'amb-devolucoes', 'lib-AMB', 'supabase-AMB.js'), 'utf8');
 const BUSCA_AMB = fs.readFileSync(path.join(RAIZ, 'amb-devolucoes', 'public-AMB', 'js-AMB', 'busca.js'), 'utf8');
+// ⚠️ sem comentário: medir em cima de comentário mede ficção.
+const SEM_COMENTARIO_BUSCA = BUSCA_AMB.split('\n')
+  .filter((l) => !l.trim().startsWith('//') && !l.trim().startsWith('*')).join('\n');
 
 // ── a rota existe, e no caminho que o front chama ────────────────────
 ok(/router\.get\('\/api\/triagem\/status\/:identificador'/.test(APP_AMB),
@@ -35,7 +38,16 @@ ok(/router\.get\('\/api\/triagem\/status\/:identificador'/.test(APP_AMB),
 //
 // 📌 O que este teste protege continua igual: que o front chame ESSA rota.
 // So o formato mudou.
-ok(/\/api\/triagem\/status\//.test(BUSCA_AMB),
+// ⚠️ b439 (Codex, P2): eu afrouxei demais. `/api/triagem/status/` casa até em
+// COMENTÁRIO ou string morta — o teste passaria com a chamada apagada.
+//
+// 📌 Volta a exigir que seja uma CHAMADA: `fetch` e a rota na MESMA linha, em
+// código (não em comentário). Cobre as 3 aspas e o prefixo da empresa sem
+// depender da forma exata de concatenar.
+//
+// ⚠️ Afrouxar um teste pra fazer verde é apagar o teste devagar.
+ok(SEM_COMENTARIO_BUSCA.split('\n')
+     .some((l) => /fetch\(/.test(l) && /\/api\/triagem\/status\//.test(l)),
    '  e e exatamente a que o front dela chama');
 ok(/req\.query\.tambem/.test(APP_AMB),
    '  aceitando o segundo identificador em ?tambem=, como na GOOD');

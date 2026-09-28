@@ -39,7 +39,15 @@ const DIR = path.join(RAIZ, 'amb-devolucoes', 'public-AMB');
     // caminho que estava em texto explicativo.
     const semCom = src.split('\n')
       .filter((l) => !l.trim().startsWith('//') && !l.trim().startsWith('*')).join('\n');
-    const achados = [...semCom.matchAll(/fetch\(\s*['"]\/api\//g)];
+    // ⚠️ b439 (Codex, P2) - AS 3 FORMAS DE ASPA, nao 2.
+    //
+    // Minha varredura olhava `'` e `"` — e 26 chamadas usavam CRASE
+    // (`fetch(\`/api/...\`)`). O teste dizia verde com 26 quebradas.
+    //
+    // 📌 O MESMO ERRO DE ONTEM, de novo: varredura que cobre quase todas as
+    // formas dá a impressão de que está limpo, e é pior que não varrer.
+    // Ontem foi "não cobre um arquivo"; hoje, "não cobre uma aspa".
+    const achados = [...semCom.matchAll(/fetch\(\s*[`'"]\/api\//g)];
     if (achados.length) {
       nus.push(`${path.basename(abs)} (${achados.length})`);
     }
