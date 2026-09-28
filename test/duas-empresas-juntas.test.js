@@ -345,6 +345,17 @@ process.env.AMB_SUPABASE_KEY = 'chave-de-teste';
     ok(tit2 !== 'Devolucoes AMB',
        '  a 2a empresa nao fica com o titulo cravado da AMB');
 
+    // ── ⚠️ e o TITULO/<h1> visiveis da tela de login/app tambem ────────
+    //
+    // Apontamento do Codex no PR #370: so o atalho do iOS (acima) tinha
+    // sido trocado. Quem so olhasse a tela (sem instalar) continuava lendo
+    // "AMBTotal Devoluções" logado na Girassol — a mesma confusao que o
+    // titulo do iOS ja tinha resolvido, mas so nele.
+    ok(rE1.corpo.includes('AMBTotal Devoluções'),
+       '  a AMB continua mostrando "AMBTotal Devoluções" na tela');
+    ok(!rE2.corpo.includes('AMBTotal Devoluções') && rE2.corpo.includes('GOOD Import (GIMPO) Devoluções'),
+       '⚠️ a 2a empresa mostra o NOME DELA na tela, nao "AMBTotal Devoluções"');
+
     // ── ⚠️ e a etiqueta de defeito nao sai cravada "AMBTotal" ──────────
     //
     // Apontamento do Codex no PR #327: zplDefeito() escrevia o literal
@@ -370,10 +381,14 @@ process.env.AMB_SUPABASE_KEY = 'chave-de-teste';
       .filter((l) => !l.trim().startsWith('//')).join('\n');
     ok(/const NOME_EMPRESA = \(FICHA_AMB && FICHA_AMB\.nome\)/.test(semCom),
        '⚠️ o nome das telas sai da ficha');
-    // ⚠️ sobra 1: o fallback do próprio NOME_EMPRESA e o do manifest
+    // ⚠️ sobram 2 fallbacks (NOME_EMPRESA e o do manifest/iOS) + 5 marcadores
+    // de busca dos `.replace()` do PR #370 (título/h1 do index e do painel,
+    // que citam "AMBTotal" pra achar o texto ANTES de trocar — o valor
+    // renderizado sai de NOME_EMPRESA, não deste literal; ver os testes de
+    // corpo HTTP acima e a checagem do painel abaixo).
     const fixos = (semCom.match(/AMBTotal/g) || []).length;
-    ok(fixos <= 2,
-       `  e quase nao sobrou "AMBTotal" cravado (${fixos}, so os fallbacks)`);
+    ok(fixos <= 7,
+       `  e quase nao sobrou "AMBTotal" cravado (${fixos}, so os fallbacks e os marcadores de replace())`);
 
     // ── ⚠️ e os links pro OUTRO serviço citam a empresa certa ─────────
     //
@@ -440,6 +455,26 @@ process.env.AMB_SUPABASE_KEY = 'chave-de-teste';
       // conferido antes de trocar.
       ok(/return e\.link_marketplace \|\| null/.test(html),
          `  ${painel}: o linkVenda USA o link do backend (fonte unica)`);
+    }
+
+    // ── ⚠️ e o TITULO/<h1> do painel tambem sai da ficha (Codex, PR #370) ──
+    //
+    // painel-AMB.html (servido via /painel e /painel-AMB.html) e templatado
+    // em app-AMB.js do mesmo jeito que o index — troca o texto ESTATICO
+    // "AMBTotal" pelo NOME_EMPRESA antes de mandar pro navegador. Se o
+    // marcador daqui divergir do arquivo, o `.replace()` vira um no-op
+    // silencioso: confere os DOIS lados da mesma string.
+    const painelHtmlCru = fs.readFileSync(
+      path.join(RAIZ, 'amb-devolucoes', 'public-AMB', 'painel-AMB.html'), 'utf8');
+    const marcadoresPainel = [
+      '<title>AMBTotal - Painel de Devoluções</title>',
+      '<h1>👑 Painel de Devoluções — AMBTotal</h1>',
+    ];
+    for (const marcador of marcadoresPainel) {
+      ok(painelHtmlCru.includes(marcador),
+         `⚠️ painel-AMB.html ainda tem o marcador "${marcador}" que o app-AMB.js troca`);
+      ok(appNome.includes(`'${marcador}'`) || appNome.includes(`"${marcador}"`),
+         `  e app-AMB.js tem um .replace() pra esse marcador exato`);
     }
 
     // ── ⚠️ e o FALLBACK da tela de busca também (achado do Codex, #336) ─

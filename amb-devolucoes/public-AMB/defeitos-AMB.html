@@ -39,8 +39,11 @@
   <header>
     <h1>🔧 Localização Defeitos</h1>
     <div>
-      <a href="/">← Voltar à Triagem</a>
-      <a href="/">📦 Triagem</a>
+      <!-- Codex (revisão do PR #370, P2) - href="/" fixo tirava a Girassol
+           (e qualquer empresa fora da raiz) do próprio prefixo. Mesmo padrão
+           já usado em painel2-AMB.html. -->
+      <a href="#" onclick="event.preventDefault();location.href=(window.APP_BASE||'')+'/';">← Voltar à Triagem</a>
+      <a href="#" onclick="event.preventDefault();location.href=(window.APP_BASE||'')+'/';">📦 Triagem</a>
     </div>
   </header>
 
@@ -67,7 +70,7 @@
         if (r.status === 401) {
           // v3.91 - NAO redireciona (isso causava o "piscar" em loop). Mostra aviso.
           resumo.textContent = '';
-          lista.innerHTML = '<div class="vazio">🔒 Sessão expirada. <a href="/" style="color:#b00020;font-weight:700;">Voltar à triagem e entrar de novo</a></div>';
+          lista.innerHTML = '<div class="vazio">🔒 Sessão expirada. <a href="' + (window.APP_BASE || '') + '/" style="color:#b00020;font-weight:700;">Voltar à triagem e entrar de novo</a></div>';
           return;
         }
         const d = await r.json();

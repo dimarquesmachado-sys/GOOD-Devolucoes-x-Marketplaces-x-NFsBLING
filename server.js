@@ -504,11 +504,13 @@ app.get('/health', (req, res) => {
       // `local` TAMBEM faz chamada). Agora todo eixo NAO bloqueado leva uma
       // chamada real de leitura (Bling `/situacoes`, ML `/users/me`) com o
       // MESMO token que a producao usaria — 401/403 reprova de verdade.
-      // b430 (Codex, PR #368) - o build anterior (a sonda virar rota) tinha
-      // sido rotulado "b428" de novo, um numero JA usado (2a rodada do
-      // #367) e anterior ao b429 que ja estava na main — o /health parecia
-      // ter regredido pra um build mais velho.
-      version: '9.90.0 (b433: os acertos do Codex na sonda por rota)',
+      // b430 - correcao dos 5 apontamentos do Codex no PR #370 (Girassol):
+      // 1 P1 (Bridge pedia os ids fiscais da AMB numa devolucao da
+      // Girassol) e 4 P2 (branding, links do Magalu e fotos quebradas).
+      // Nada a espelhar aqui: sao mudancas so no app-AMB.js e no front da
+      // AMB/Girassol (public-AMB/, extensao-bridge/) — a GOOD ja tinha o
+      // link do Magalu com o host certo e nao usa APP_BASE.
+      version: '9.93.0 (b436: os 5 acertos do Codex na ativacao da Girassol)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
