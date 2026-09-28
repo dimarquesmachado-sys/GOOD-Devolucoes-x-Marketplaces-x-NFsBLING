@@ -1684,7 +1684,7 @@ router.get('/api/triagem/fila', auth.requerLogin, async (req, res) => {
 // ⚠️ E diz o que NAO deu, com os candidatos — nunca escolhe no empate.
 router.get('/api/ids-fiscais-auto', admin, async (req, res) => {
   try {
-    const { descobrirIdsFiscais } = require('../../lib/ids-fiscais-auto');
+    const { descobrirIdsFiscais } = require('../lib/ids-fiscais-auto');
     const d = await descobrirIdsFiscais(
       EMPRESA_DESTE_APP, bling.chamarBling, { semCache: req.query.refresh === '1' });
     if (!d.ok) return res.status(502).json(d);
