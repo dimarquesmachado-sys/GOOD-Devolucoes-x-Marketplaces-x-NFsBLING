@@ -547,6 +547,21 @@ app.post('/api/admin/lancar-por-nf', requerAdmin, async (req, res) => {
         .in('nf_numero', candidatos)
         .limit(1);
       if (jaTem && jaTem.length > 0) {
+        // ⚠️ b450 - CARD ORFAO DO BUG ANTIGO: gravado com status 'pendente',
+        // que nao existe no modelo da AMB (aprovado/problema/divergente) —
+        // invisivel em toda tela. Em vez de recusar ("ja existe"), CONSERTO:
+        // vira 'aprovado' e aparece. E o que o dono queria desde o 1o clique.
+        if (jaTem[0].status === 'pendente') {
+          const { error: eFix } = await supabase.from(TAB)
+            .update({ status: 'aprovado', tipo: 'devolucao' })
+            .eq('id', jaTem[0].id);
+          if (!eFix) {
+            criados++;
+            resultados.push({ numero: num, ok: true, id: jaTem[0].id,
+              motivo: 'card orfao (status pendente) consertado — agora aparece em Aprovadas' });
+            continue;
+          }
+        }
         resultados.push({ numero: num, ok: false, motivo: `ja existe card (${jaTem[0].status})` });
         continue;
       }
@@ -607,8 +622,17 @@ app.post('/api/admin/lancar-por-nf', requerAdmin, async (req, res) => {
           nf_id_bling: String(nf.id),
           nf_link_danfe: nf.linkDanfe || (nf.chaveAcesso ? 'https://meudanfe.com.br/consulta/' + nf.chaveAcesso : null),
           nf_itens: mapItensNF(nf),
-          tipo: 'aprovado',
-          status: 'pendente',
+          // ⚠️ b450 - O MODELO DA AMB, NAO O DA GOOD. Esta rota foi portada da
+          // GOOD, onde a devolucao tem `tipo: 'aprovado' + status: 'pendente'`.
+          // Na AMB (e na Girassol) e o CONTRARIO: `tipo` diz o que a peca e
+          // ('devolucao', 'recuperado', 'descartado') e `status` diz a fila
+          // ('aprovado', 'problema', 'divergente'). A tela "Aprovadas" filtra
+          // `status = 'aprovado'` — entao todo card lancado aqui nascia
+          // INVISIVEL: existia (a 2a tentativa dizia "ja existe card
+          // pendente") mas nunca aparecia. O dono achou na Girassol em 30/09;
+          // na AMB nunca tinha funcionado.
+          tipo: 'devolucao',
+          status: 'aprovado',
           funcionario: req.usuario,
           problema_descricao: `[LANCAMENTO MANUAL por ${req.usuario}] card criado pelo nº da NF`,
         }])

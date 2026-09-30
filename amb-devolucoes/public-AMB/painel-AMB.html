@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>AMBTotal - Painel de Devoluções</title>
   <!-- AMB Devol. b310 - painel portado da GOOD. O adaptador poe /amb nas chamadas -->
-  <script src="js-AMB/base-amb.js?v=b447"></script>
+  <script src="js-AMB/base-amb.js?v=b449"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -3868,9 +3868,14 @@ async function carregarSemRetorno() {
         if (!d.ok) throw new Error(d.erro || 'falha');
         const pulados = (d.resultados || []).filter(x => !x.ok);
         if (pulados.length > 0) console.warn('[Lançar por NF] Pulados:', pulados);
+        // b449 - o motivo na tela (ver painel2)
+        if (pulados.length > 0) {
+          const linhas = pulados.map(x => `• NF ${x.numero}: ${x.motivo || 'sem motivo'}`);
+          alert(`⚠️ ${pulados.length} nota(s) pulada(s):\n\n${linhas.join('\n')}`);
+        }
         toast(
           `➕ ${d.criados} card(s) criado(s)` +
-          (pulados.length > 0 ? ` · ⚠️ ${pulados.length} pulado(s) (detalhes no console F12)` : ''),
+          (pulados.length > 0 ? ` · ⚠️ ${pulados.length} pulado(s)` : ''),
           pulados.length > 0 && d.criados === 0 ? 'err' : 'ok'
         );
         carregar();
@@ -4289,7 +4294,7 @@ async function carregarSemRetorno() {
   }
 })();
 </script>
-<script src="js-AMB/defeitos-ficha.js?v=b447"></script>
+<script src="js-AMB/defeitos-ficha.js?v=b449"></script>
 <script>
   // b126 - AVISO de pedidos esperando. Sem isso o admin so descobre que
   // tem coisa pra autorizar se abrir a fila por acaso.
