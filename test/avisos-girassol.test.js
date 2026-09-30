@@ -23,9 +23,9 @@ const bling = semComentarios('amb-devolucoes/lib-AMB/bling-AMB.js');
 const ml = semComentarios('amb-devolucoes/lib-AMB/ml-AMB.js');
 const supabase = semComentarios('amb-devolucoes/lib-AMB/supabase-AMB.js');
 
-ok(!bling.includes('/amb/bling/setup'),
-   '⚠️ Bling nao manda a Girassol autorizar na rota da AMB');
-ok(/cfg\.PREFIXO_ROTA}\/bling\/setup/.test(bling),
+ok(!bling.includes('/amb/conectar') && !/bling\/setup/.test(bling),
+   '⚠️ Bling nao manda a Girassol autorizar na rota da AMB (nem numa rota que nao existe no router)');
+ok((bling.match(/cfg\.PREFIXO_ROTA}\/conectar/g) || []).length === 2,
    '  e monta a rota de recuperacao pela empresa da instancia');
 ok(!ml.includes('/amb/conectar'),
    '⚠️ ML nao manda a Girassol autorizar na rota da AMB');
@@ -33,8 +33,9 @@ ok(/cfg\.PREFIXO_ROTA}\/conectar/.test(ml),
    '  e monta a rota de recuperacao pela empresa da instancia');
 ok(!/defina AMB_ID_NATUREZA_DEVOLUCAO_ENTRADA/.test(bling),
    '⚠️ ambiguidade fiscal nao pede a env da AMB para outra empresa');
-ok(/cfg\.PREFIXO_ENV}ID_NATUREZA_DEVOLUCAO_ENTRADA/.test(bling),
-   '  e pede a env da empresa da instancia');
+ok((bling.match(/cfg\.PREFIXO_FISCAL}ID_NATUREZA_DEVOLUCAO_ENTRADA/g) || []).length === 2
+   && !/cfg\.PREFIXO_ENV}ID_NATUREZA/.test(bling),
+   '  e pede a env FISCAL (a que a busca le) da empresa da instancia');
 ok(!supabase.includes("erroInicial = 'AMB_SUPABASE_URL"),
    '⚠️ erro de banco nao atribui a falha sempre a AMB');
 ok(/cfg\.PREFIXO_ENV/.test(supabase) && /SUPABASE_URL\/.*SUPABASE_KEY/.test(supabase),
