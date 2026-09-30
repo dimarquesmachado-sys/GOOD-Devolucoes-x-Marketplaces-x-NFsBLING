@@ -467,7 +467,7 @@ function renderizar(data, ok) {
       .dvi-cod span{font-size:15px;}
     }
     .linha-selos{display:flex;flex-wrap:wrap;align-items:center;gap:7px;margin-bottom:10px;}
-    .selo-mkt{margin-left:auto;background:#561A9E;color:#fff;text-decoration:none;padding:8px 14px;border-radius:9px;font-weight:700;font-size:13px;white-space:nowrap;}
+    .selo-mkt{margin-left:auto;background:var(--marca);color:var(--sobre-marca);text-decoration:none;padding:8px 14px;border-radius:9px;font-weight:700;font-size:13px;white-space:nowrap;}
     @media (max-width:600px){.selo-mkt{margin-left:0;flex:1 1 100%;text-align:center;}}
     .triagem-botoes{grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:9px!important;}
     .triagem-btn{padding:14px 8px!important;font-size:13px!important;line-height:1.25!important;}
@@ -906,7 +906,7 @@ window.irProRecado = function () {
         REPORTAR<br>PROBLEMA
       </button>
       <button class="triagem-btn triagem-btn-divergente" onclick="abrirModalDivergente()"
-              style="background:linear-gradient(135deg,#7b1fa2,#4a148c); color:white;">
+              style="background:linear-gradient(135deg, var(--marca), var(--escuro)); color:white;">
         <span class="triagem-btn-icon">🔄</span>
         PRODUTO<br>DIVERGENTE
       </button>

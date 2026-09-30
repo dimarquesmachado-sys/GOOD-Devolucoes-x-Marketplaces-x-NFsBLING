@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>AMBTotal - Painel de Devoluções</title>
   <!-- AMB Devol. b303 - painel portado da GOOD. O adaptador poe /amb nas chamadas -->
-  <script src="js-AMB/base-amb.js?v=b439"></script>
+  <script src="js-AMB/base-amb.js?v=b447"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -15,7 +15,7 @@
     .container { max-width: 1200px; margin: 0 auto; }
 
     header {
-      background: linear-gradient(135deg, #561A9E 0%, #7B3FC4 100%);
+      background: linear-gradient(135deg, var(--marca) 0%, var(--marca-claro) 100%);
       border-radius: 12px; padding: 20px; margin-bottom: 14px;
       box-shadow: 0 2px 8px rgba(0,0,0,0.15); color: white;
       display: flex; align-items: center; justify-content: space-between;
@@ -257,7 +257,7 @@
           Mostrar concluídos
         </label>
         <button onclick="carregar()">🔄 Recarregar</button>
-        <button id="btnVarreduraNF" onclick="varrerNFsFaltantes()" style="background:#561A9E; color:#fff;" title="Busca e vincula a NF de TODOS os registros sem NF, um por vez (respeita o limite do Bling)">🔎 Buscar NFs faltantes</button>
+        <button id="btnVarreduraNF" onclick="varrerNFsFaltantes()" style="background:var(--marca); color:var(--sobre-marca);" title="Busca e vincula a NF de TODOS os registros sem NF, um por vez (respeita o limite do Bling)">🔎 Buscar NFs faltantes</button>
         <button id="btnLancarNF" onclick="lancarPorNF()" style="background:#37474f; color:#fff;" title="Cria cards em Aprovadas a partir do número da NF de venda (série 1) — pra devoluções que não passaram pela bipagem">➕ Lançar por NF</button>
         <button id="btnCarregarItens" onclick="carregarItensAntigos()" style="background:#2e7d32; color:#fff;" title="Retrofit: busca no Bling e grava os itens/quantidades dos cards ANTIGOS, pra caixinha verde já vir aberta">🧾 Carregar itens (antigos)</button>
         <span class="resultado-info" id="resultadoInfo"></span>
@@ -325,7 +325,7 @@
       <div class="secao">
         <h2>
           🔄 Produtos divergentes (envio errado)
-          <span class="badge-count" id="countDivergentes" style="background:#7b1fa2;">0</span>
+          <span class="badge-count" id="countDivergentes" style="background:var(--marca);">0</span>
         </h2>
         <div id="listaDivergentes"></div>
       </div>
@@ -367,7 +367,7 @@
       <div class="secao" id="secaoEspreita" style="display:none; grid-column: 1 / -1;">
         <h2>
           📮 À espreita — devoluções a caminho (Magalu · ML · Shopee)
-          <span class="badge-count" id="countEspreita" style="background:#561A9E;">0</span>
+          <span class="badge-count" id="countEspreita" style="background:var(--marca);">0</span>
         </h2>
         <div id="listaEspreita"></div>
       </div>
@@ -411,7 +411,7 @@
           sec.innerHTML = '<div style="background:#fff5f5;border:2px solid #ef9a9a;border-radius:12px;padding:24px;text-align:center;margin:20px 0;">'
             + '<div style="font-size:20px;font-weight:800;color:#c62828;">🔒 Sessão de admin expirada</div>'
             + '<div style="font-size:14px;color:#666;margin:8px 0 16px;">Faça login de novo na AMBTotal para ver o painel.</div>'
-            + '<a href="' + (window.APP_BASE || '') + '/" style="display:inline-block;background:#561A9E;color:#fff;text-decoration:none;padding:12px 24px;border-radius:10px;font-weight:700;">Ir para o login →</a>'
+            + '<a href="' + (window.APP_BASE || '') + '/" style="display:inline-block;background:var(--marca);color:var(--sobre-marca);text-decoration:none;padding:12px 24px;border-radius:10px;font-weight:700;">Ir para o login →</a>'
             + '</div>';
           return;
         }
@@ -453,7 +453,7 @@
       if (!e.pedido) return '';
       var url = 'https://seller.magalu.com/tickets/?orderNumber=' + encodeURIComponent(String(e.pedido).replace(/\D/g, ''));
       // v4.46 - pilula compacta, fica na MESMA linha do 🔗 abrir do pedido
-      return ' <a href="' + url + '" target="_blank" rel="noopener" style="background:#561A9E;color:#fff;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;text-decoration:none;margin-left:4px;">📋 protocolos</a>';
+      return ' <a href="' + url + '" target="_blank" rel="noopener" style="background:var(--marca);color:var(--sobre-marca);padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;text-decoration:none;margin-left:4px;">📋 protocolos</a>';
     }
 
     // v4.31 - campo TICKET so pra Magalu: salva o numero da reclamacao e monta
@@ -581,7 +581,7 @@
       if (modo === 'comentar') {
         const atual = window._espComentarios[chave] || '';
         area.innerHTML = '<div style="background:#faf5ff;border:1px solid #c9b3e6;border-radius:8px;padding:10px;margin-top:8px;">'
-          + '<b style="font-size:12px;color:#4a148c;">💬 Comentário / tratativa com o marketplace</b>'
+          + '<b style="font-size:12px;color:var(--marca-texto);">💬 Comentário / tratativa com o marketplace</b>'
           + '<textarea id="espTexto-' + chave + '" rows="3" style="width:100%;box-sizing:border-box;margin-top:6px;padding:8px;border:1px solid #ccc;border-radius:8px;font-size:13px;">' + escapeHtml(atual) + '</textarea>'
           + '<div style="margin-top:6px;">'
           + '<button onclick="espreitaSalvarComentario(\'' + chave + '\')" style="background:#2e7d32;color:#fff;' + btnCss + '">💾 Salvar</button> '
@@ -1653,10 +1653,10 @@ async function carregarSemRetorno() {
                   : (e.produto ? '<br><span style="font-size:12px;color:#333;">📦 ' + escapeHtml(e.produto) + (e.qtd ? ' ×' + e.qtd : '') +
                       ((e.sku || e.valor_nf != null) ? '<br><span style="color:#555;">' + (e.sku ? '🏷️ ' + escapeHtml(String(e.sku)) + '  ' : '') + (e.valor_nf != null ? '💵 NF R$ ' + Number(e.valor_nf).toFixed(2).replace('.', ',') : '') + '</span>' : '') +
                       '</span>' : ''))
-              + (e.comentario ? '<div style="font-size:12px;color:#4a148c;background:#f3e5f5;border-radius:6px;padding:6px 8px;margin-top:6px;">💬 ' + comentarioComLinks(e.comentario, e.marketplace) + '</div>' : '')
+              + (e.comentario ? '<div style="font-size:12px;color:var(--marca-texto);background:#f3e5f5;border-radius:6px;padding:6px 8px;margin-top:6px;">💬 ' + comentarioComLinks(e.comentario, e.marketplace) + '</div>' : '')
               + '<div style="margin-top:6px;">'
               + '<button onclick="espreitaAbrir(\'' + e.chave_nota + '\', \'processar\')" style="background:#2e7d32;color:#fff;border:none;border-radius:8px;padding:5px 10px;font-size:12px;font-weight:700;cursor:pointer;">✓ achei / já processado</button> '
-              + '<button onclick="espreitaAbrir(\'' + e.chave_nota + '\', \'comentar\')" style="background:#561A9E;color:#fff;border:none;border-radius:8px;padding:5px 10px;font-size:12px;font-weight:700;cursor:pointer;">💬 ' + (e.comentario ? 'editar comentário' : 'comentário') + '</button>'
+              + '<button onclick="espreitaAbrir(\'' + e.chave_nota + '\', \'comentar\')" style="background:var(--marca);color:var(--sobre-marca);border:none;border-radius:8px;padding:5px 10px;font-size:12px;font-weight:700;cursor:pointer;">💬 ' + (e.comentario ? 'editar comentário' : 'comentário') + '</button>'
               + ' <button id="btnAlerta-' + e.chave_nota + '" onclick="alertarEstoquista(\'' + escapeHtml(String(e.pedido || '')) + '\', \'' + escapeHtml(String(e.tracking || '')) + '\', \'' + e.chave_nota + '\')" style="background:#c62828;color:#fff;border:none;border-radius:8px;padding:5px 10px;font-size:12px;font-weight:700;cursor:pointer;">📣 ' + (recadoDaChave(e.pedido, e.tracking) ? 'aviso ✔' : 'aviso estoquista') + '</button>'
               + '</div>'
               + (e.marketplace === 'magalu' && e.ticket ? (
@@ -1668,7 +1668,7 @@ async function carregarSemRetorno() {
                   '<div style="margin-top:5px;background:#eef;border-radius:8px;padding:6px 9px;">'
                   + '<span style="font-size:11px;color:#555;font-weight:700;">🎫 Nº do ticket:</span> '
                   + '<input id="tk_' + escapeHtml(String(e.chave_nota)) + '" placeholder="cole o protocolo" style="width:130px;padding:4px 7px;border:1px solid #c9b3e6;border-radius:6px;font-size:12px;">'
-                  + ' <button onclick="magaluSalvarTicket(\'' + escapeHtml(String(e.chave_nota)) + '\')" style="background:#561A9E;color:#fff;border:none;border-radius:6px;padding:4px 9px;font-size:12px;font-weight:700;cursor:pointer;">salvar ticket</button></div>'
+                  + ' <button onclick="magaluSalvarTicket(\'' + escapeHtml(String(e.chave_nota)) + '\')" style="background:var(--marca);color:var(--sobre-marca);border:none;border-radius:6px;padding:4px 9px;font-size:12px;font-weight:700;cursor:pointer;">salvar ticket</button></div>'
                 ) : '')
               + '<div id="espArea-' + e.chave_nota + '" style="display:none;"></div>' + '<div id="recadoArea-' + e.chave_nota + '" style="display:none;"></div></div>';
             window._espComentarios[e.chave_nota] = e.comentario || '';
@@ -1700,12 +1700,12 @@ async function carregarSemRetorno() {
           + fb('ml', 'Mercado Livre (' + emT.filter(x => x.marketplace === 'ml').length + ')', '#f9a825')
           + fb('magalu', 'Magalu (' + emT.filter(x => x.marketplace === 'magalu').length + ')', '#1565c0')
           + fb('shopee', 'Shopee (' + emT.filter(x => x.marketplace === 'shopee').length + ')', '#e65100')
-          + '<button onclick="espreitaOrdenar()" style="border:1px solid #561A9E;background:#fff;color:#561A9E;border-radius:14px;padding:5px 12px;font-size:12px;font-weight:700;cursor:pointer;">' + (window._espOrdem === 'antigas' ? '⌛ mais antigas primeiro' : '🕐 mais recentes primeiro') + ' ↕</button>'
+          + '<button onclick="espreitaOrdenar()" style="border:1px solid var(--marca);background:#fff;color:var(--marca-texto);border-radius:14px;padding:5px 12px;font-size:12px;font-weight:700;cursor:pointer;">' + (window._espOrdem === 'antigas' ? '⌛ mais antigas primeiro' : '🕐 mais recentes primeiro') + ' ↕</button>'
           + '</div>';
         for (const e of itens) {
           const m = MKT[e.marketplace] || { nome: e.marketplace || '?', cor: '#616161' };
           const atrasada = (e.dias_em_transito || 0) > 30;
-          html += '<div style="border:1px solid ' + (atrasada ? '#ef9a9a' : '#c9b3e6') + ';border-left:5px solid ' + (atrasada ? '#c62828' : '#561A9E') + ';border-radius:8px;padding:10px 12px;margin-bottom:8px;background:' + (atrasada ? '#fff5f5' : '#faf5ff') + ';">' +
+          html += '<div style="border:1px solid ' + (atrasada ? '#ef9a9a' : '#c9b3e6') + ';border-left:5px solid ' + (atrasada ? '#c62828' : 'var(--marca)') + ';border-radius:8px;padding:10px 12px;margin-bottom:8px;background:' + (atrasada ? '#fff5f5' : '#faf5ff') + ';">' +
             '<span style="background:' + m.cor + ';color:#fff;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;">' + m.nome + '</span> ' +
             '<b>' + escapeHtml(String(e.pedido || e.tracking || '-')) + '</b>' +
             (e.pack_id ? ' · <span style="font-size:11px;color:#555;">pack <code>' + escapeHtml(String(e.pack_id)) + '</code></span>' : '') +
@@ -1737,10 +1737,10 @@ async function carregarSemRetorno() {
                 (e.valor_nf != null ? '💵 NF R$ ' + Number(e.valor_nf).toFixed(2).replace('.', ',') : '') +
               '</span>' : '') +
               '</span>' : '') +
-            (e.comentario ? '<div style="font-size:12px;color:#4a148c;background:#f3e5f5;border-radius:6px;padding:6px 8px;margin-top:6px;">💬 ' + comentarioComLinks(e.comentario, e.marketplace) + '</div>' : '') +
+            (e.comentario ? '<div style="font-size:12px;color:var(--marca-texto);background:#f3e5f5;border-radius:6px;padding:6px 8px;margin-top:6px;">💬 ' + comentarioComLinks(e.comentario, e.marketplace) + '</div>' : '') +
             '<div style="margin-top:6px;">' +
               '<button onclick="espreitaAbrir(\'' + e.chave_nota + '\', \'processar\')" style="background:#2e7d32;color:#fff;border:none;border-radius:8px;padding:5px 10px;font-size:12px;font-weight:700;cursor:pointer;">✓ já processado</button> ' +
-              '<button onclick="espreitaAbrir(\'' + e.chave_nota + '\', \'comentar\')" style="background:#561A9E;color:#fff;border:none;border-radius:8px;padding:5px 10px;font-size:12px;font-weight:700;cursor:pointer;">💬 ' + (e.comentario ? 'editar comentário' : 'comentário') + '</button>' +
+              '<button onclick="espreitaAbrir(\'' + e.chave_nota + '\', \'comentar\')" style="background:var(--marca);color:var(--sobre-marca);border:none;border-radius:8px;padding:5px 10px;font-size:12px;font-weight:700;cursor:pointer;">💬 ' + (e.comentario ? 'editar comentário' : 'comentário') + '</button>' +
               ' <button id="btnAlerta-' + e.chave_nota + '" onclick="alertarEstoquista(\'' + escapeHtml(String(e.pedido || '')) + '\', \'' + escapeHtml(String(e.tracking || '')) + '\', \'' + e.chave_nota + '\')" style="background:#c62828;color:#fff;border:none;border-radius:8px;padding:5px 10px;font-size:12px;font-weight:700;cursor:pointer;">📣 ' + (recadoDaChave(e.pedido, e.tracking) ? 'aviso ✔' : 'aviso estoquista') + '</button>' +
             // v4.30 - ML: link pra mensagens DENTRO do pedido + texto pronto pra colar
             (e.marketplace === 'ml' && e.pedido ? (
@@ -1767,7 +1767,7 @@ async function carregarSemRetorno() {
               '<div style="margin-top:6px;background:#eef;border-radius:8px;padding:6px 9px;">' +
                 '<span style="font-size:11px;color:#555;font-weight:700;">🎫 Nº do ticket:</span> ' +
                 '<input id="tk_' + escapeHtml(String(e.chave_nota)) + '" placeholder="cole o protocolo" style="width:130px;padding:4px 7px;border:1px solid #c9b3e6;border-radius:6px;font-size:12px;">' +
-                ' <button onclick="magaluSalvarTicket(\'' + escapeHtml(String(e.chave_nota)) + '\')" style="background:#561A9E;color:#fff;border:none;border-radius:6px;padding:4px 9px;font-size:12px;font-weight:700;cursor:pointer;">salvar ticket</button>' +
+                ' <button onclick="magaluSalvarTicket(\'' + escapeHtml(String(e.chave_nota)) + '\')" style="background:var(--marca);color:var(--sobre-marca);border:none;border-radius:6px;padding:4px 9px;font-size:12px;font-weight:700;cursor:pointer;">salvar ticket</button>' +
                 ' <button id="cp_' + escapeHtml(String(e.pedido || '')) + '" onclick="magaluCopiarReclamacao(\'' + escapeHtml(String(e.pedido || '')) + '\', \'' + btoa(unescape(encodeURIComponent(String(e.produto || '')))) + '\', ' + (e.dias_em_transito || 0) + ', ' + (e.valor != null ? Number(e.valor) : 'null') + ')" style="background:#00695c;color:#fff;border:none;border-radius:6px;padding:4px 9px;font-size:11px;font-weight:700;cursor:pointer;">📋 copiar texto</button>' +
               '</div>'
             ) : '') +
@@ -2037,7 +2037,7 @@ async function carregarSemRetorno() {
                   : ''
               }
               ${!d.nf_numero && !d.nf_id_bling && d.order_id
-                ? `<button class="btn" style="background:#561A9E;" onclick="buscarNFRegistro('${d.id}', this)" title="Busca a NF desta venda no ML e no Bling (janela de datas) e vincula ao card">🔎 Buscar NF</button>`
+                ? `<button class="btn" style="background:var(--marca);" onclick="buscarNFRegistro('${d.id}', this)" title="Busca a NF desta venda no ML e no Bling (janela de datas) e vincula ao card">🔎 Buscar NF</button>`
                 : ''
               }
               <button class="btn btn-verde" onclick="concluir('${d.id}')">✅ Marcar como concluido</button>
@@ -2124,10 +2124,10 @@ async function carregarSemRetorno() {
       }
 
       return `
-        <div class="item ${concluido ? 'concluido' : ''}" id="card-${d.id}" style="${d.nf_devolucao_id_bling ? 'border:2px solid #2e7d32;' : ''}border-left:5px solid #7b1fa2; background:#f3e5f5;">
+        <div class="item ${concluido ? 'concluido' : ''}" id="card-${d.id}" style="${d.nf_devolucao_id_bling ? 'border:2px solid #2e7d32;' : ''}border-left:5px solid var(--marca); background:#f3e5f5;">
           <div class="item-header">
             <div>
-              <div class="item-titulo">${escapeHtml(d.produto_titulo || '-')} <span style="background:#7b1fa2;color:white;padding:3px 8px;border-radius:10px;font-size:10px;font-weight:700;margin-left:6px;">🔄 DIVERGENTE</span>${badgeRebipe}</div>
+              <div class="item-titulo">${escapeHtml(d.produto_titulo || '-')} <span style="background:var(--marca);color:var(--sobre-marca);padding:3px 8px;border-radius:10px;font-size:10px;font-weight:700;margin-left:6px;">🔄 DIVERGENTE</span>${badgeRebipe}</div>
               <div class="item-data">${dataFmt(d.created_at)}</div>
             </div>
             ${concluido ? '<span style="background:#999;color:white;padding:3px 8px;border-radius:10px;font-size:10px;font-weight:700;">RESOLVIDO</span>' : ''}
@@ -2138,12 +2138,12 @@ async function carregarSemRetorno() {
             <div style="display:flex; justify-content:space-between; gap:10px;">
               <div style="flex:1;">
                 <div style="color:#888; font-size:10px; text-transform:uppercase; letter-spacing:0.5px;">📋 Esperado (NF)</div>
-                <div style="color:#4a148c; font-weight:700; margin-top:2px;">SKU ${escapeHtml(esperadoTxt)}</div>
+                <div style="color:var(--marca-texto); font-weight:700; margin-top:2px;">SKU ${escapeHtml(esperadoTxt)}</div>
               </div>
-              <div style="font-size:18px; color:#7b1fa2;">→</div>
+              <div style="font-size:18px; color:var(--marca-texto);">→</div>
               <div style="flex:1; text-align:right;">
                 <div style="color:#888; font-size:10px; text-transform:uppercase; letter-spacing:0.5px;">✅ Voltou de fato</div>
-                <div style="color:#4a148c; font-weight:700; margin-top:2px;">SKU ${escapeHtml(voltouTxt)}</div>
+                <div style="color:var(--marca-texto); font-weight:700; margin-top:2px;">SKU ${escapeHtml(voltouTxt)}</div>
               </div>
             </div>
           </div>
@@ -2159,7 +2159,7 @@ async function carregarSemRetorno() {
             ${d.shipment_id ? ` · <strong>Shipment:</strong> <code>${d.shipment_id}</code>` : ''}
           </div>
 
-          ${desc ? `<div class="descricao-problema" style="border-color:#c9b3e6;background:#fff;color:#4a148c;">💬 ${escapeHtml(desc)}</div>` : ''}
+          ${desc ? `<div class="descricao-problema" style="border-color:#c9b3e6;background:#fff;color:var(--marca-texto);">💬 ${escapeHtml(desc)}</div>` : ''}
 
           ${fotos.length ? `
             <div class="fotos-mini">
@@ -2514,7 +2514,7 @@ async function carregarSemRetorno() {
 
       const parou = !varreduraAtiva && (ok + falha) < fila.length;
       varreduraAtiva = false;
-      btn.style.background = '#561A9E';
+      btn.style.background = 'var(--marca)';
       btn.textContent = '🔎 Buscar NFs faltantes';
 
       if (naoAchadas.length > 0) {
@@ -2676,7 +2676,7 @@ async function carregarSemRetorno() {
         url = 'https://mover-pedidos-aguardando-x-atendido.onrender.com/magalu/ir/' + (window.APP_EMPRESA || 'amb') + '?n=' + encodeURIComponent(String(nOrder).replace(/\D/g, '')); nome = 'Magalu';
       }
       if (!url) return '';
-      return ` <a class="btn" style="background:#561A9E;color:#fff;" href="${url}" target="_blank" rel="noopener" title="Abre o pedido no painel do marketplace">📦 Abrir pedido ${escapeHtml(nome)}</a>`;
+      return ` <a class="btn" style="background:var(--marca);color:var(--sobre-marca);" href="${url}" target="_blank" rel="noopener" title="Abre o pedido no painel do marketplace">📦 Abrir pedido ${escapeHtml(nome)}</a>`;
     }
 
     function renderItensCard(d) {
@@ -3332,7 +3332,7 @@ async function carregarSemRetorno() {
           conteudo.innerHTML = `
             <h3 style="font-size:18px; margin-bottom:12px;">🔗 Devolução já existe no Bling</h3>
             <div style="text-align:center; padding:24px;">
-              <div class="spinner" style="display:inline-block; width:32px; height:32px; border:4px solid #f0f0f0; border-top-color:#561A9E; border-radius:50%; animation:spin 0.8s linear infinite;"></div>
+              <div class="spinner" style="display:inline-block; width:32px; height:32px; border:4px solid #f0f0f0; border-top-color:var(--marca-texto); border-radius:50%; animation:spin 0.8s linear infinite;"></div>
               <p style="margin-top:12px; color:#555; font-size:14px;">Localizando a NF de devolução no Bling pra vincular ao card...</p>
             </div>
           `;

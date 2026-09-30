@@ -248,7 +248,7 @@
   }
 
   function topo(titulo, extra) {
-    return '<div style="position:sticky;top:0;background:#561A9E;color:#fff;padding:12px 16px;'
+    return '<div style="position:sticky;top:0;background:var(--marca);color:var(--sobre-marca);padding:12px 16px;'
       + 'display:flex;align-items:center;gap:10px;z-index:2;">'
       // b289 - a seta aparece quando há histórico OU quando dá pra voltar
       // pra uma busca; e agora diz "Voltar" por extenso, porque só a flecha
@@ -336,7 +336,7 @@
       + (pec.length ? '<div style="margin-top:9px;font-size:12.5px;color:#555;">🔩 ' + pec.length + ' peça(s) já retirada(s) desta</div>' : '')
       + '<div style="margin-top:11px;display:flex;gap:7px;flex-wrap:wrap;">'
       + '<button type="button" onclick="event.stopPropagation();abrirFichaDefeito(\'' + esc(id) + '\')" '
-      + 'style="background:#561A9E;color:#fff;border:none;border-radius:8px;padding:8px 14px;font-size:12.5px;'
+      + 'style="background:var(--marca);color:var(--sobre-marca);border:none;border-radius:8px;padding:8px 14px;font-size:12.5px;'
       + 'font-weight:700;cursor:pointer;">📂 Abrir ficha completa (ações)</button>'
       + '<button type="button" onclick="event.stopPropagation();alternarDetalheDefeito(\'' + esc(id) + '\')" '
       + 'style="background:#fff;color:#777;border:1px solid #ccc;border-radius:8px;padding:8px 14px;'
@@ -362,7 +362,7 @@
       + '<div style="display:flex;gap:7px;margin-bottom:12px;">'
       + '<input id="defBusca" placeholder="SKU, EAN, localização, produto ou o número da peça (ex: peça 4)"'
       + ' style="flex:1;height:42px;font-size:14px;padding:0 12px;border:1px solid #ddd;border-radius:9px;">'
-      + '<button onclick="buscarDefeitos()" style="background:#561A9E;color:#fff;border:none;border-radius:9px;padding:0 18px;font-weight:700;cursor:pointer;">Buscar</button>'
+      + '<button onclick="buscarDefeitos()" style="background:var(--marca);color:var(--sobre-marca);border:none;border-radius:9px;padding:0 18px;font-weight:700;cursor:pointer;">Buscar</button>'
       + '</div>'
       // b208 (review do Codex) - AS ABAS NUNCA APARECIAM: `pintarAbas` procura
       // por #defAbas e o elemento nao existia em lugar nenhum do HTML. Era
@@ -454,11 +454,11 @@
           // o clique no card continua funcionando pra quem ja conhece.
           + '<div style="margin-top:8px;">'
           + '<button type="button" onclick="event.stopPropagation();abrirFichaDefeito(\'' + esc(it.id) + '\')" '
-          + 'style="background:#561A9E;color:#fff;border:none;border-radius:8px;padding:8px 15px;'
+          + 'style="background:var(--marca);color:var(--sobre-marca);border:none;border-radius:8px;padding:8px 15px;'
           + 'font-size:13px;font-weight:700;cursor:pointer;">📂 Abrir dados da peça</button>'
           // b289 - o segundo botao deixa claro que o card abre aqui mesmo
           + '<button type="button" onclick="event.stopPropagation();alternarDetalheDefeito(\'' + esc(it.id) + '\')" '
-          + 'style="margin-left:7px;background:#fff;color:#561A9E;border:1.5px solid #561A9E;border-radius:8px;'
+          + 'style="margin-left:7px;background:#fff;color:var(--marca-texto);border:1.5px solid var(--marca);border-radius:8px;'
           + 'padding:8px 13px;font-size:13px;font-weight:700;cursor:pointer;">👁 Ver aqui</button></div>'
           + '</div></div>'
           // b289 - onde o detalhe abre, logo abaixo do card e dentro da lista
@@ -532,11 +532,11 @@
       // recente: ganha o numero cheio e o selo, como qualquer outra ultima.
       + '<span style="display:inline-block;min-width:20px;text-align:center;border-radius:6px;font-size:11.5px;'
       + 'font-weight:800;margin-right:6px;padding:1px 5px;'
-      + (com.length === 0 ? 'background:#561A9E;color:#fff;' : 'background:#EEEDFE;color:#3C3489;') + '">1</span>'
+      + (com.length === 0 ? 'background:var(--marca);color:var(--sobre-marca);' : 'background:#EEEDFE;color:#3C3489;') + '">1</span>'
       + esc(capitalizar(it.laudo) || 'Sem descrição do defeito')
-      + (com.length === 0 ? ' <span style="font-size:10.5px;color:#561A9E;background:#EEEDFE;border-radius:5px;padding:1px 6px;">mais recente</span>' : '')
+      + (com.length === 0 ? ' <span style="font-size:10.5px;color:var(--marca-texto);background:#EEEDFE;border-radius:5px;padding:1px 6px;">mais recente</span>' : '')
       + ' <a href="#" onclick="event.preventDefault();editarLaudo()" '
-      + 'style="font-size:11.5px;color:#561A9E;text-decoration:none;">✏️ Corrigir</a>'
+      + 'style="font-size:11.5px;color:var(--marca-texto);text-decoration:none;">✏️ Corrigir</a>'
       // b119 - a descricao do defeito tambem ganha o 🗑️. Ela so tinha o
       // lapis, e apagar dependia de abrir, limpar o texto e salvar - coisa
       // que ninguem adivinha, ainda mais com o comentario logo abaixo
@@ -556,12 +556,12 @@
           var ultima = iC === com.length - 1;
           var selo = '<span style="display:inline-block;min-width:20px;text-align:center;'
             + 'border-radius:6px;font-size:11.5px;font-weight:800;margin-right:6px;padding:1px 5px;'
-            + (ultima ? 'background:#561A9E;color:#fff;' : 'background:#EEEDFE;color:#3C3489;') + '">'
+            + (ultima ? 'background:var(--marca);color:var(--sobre-marca);' : 'background:#EEEDFE;color:#3C3489;') + '">'
             + num + '</span>';
           return '<div style="margin-bottom:9px;"><div style="font-size:13.5px;">' + selo + esc(capitalizar(c.texto))
-            + (ultima ? ' <span style="font-size:10.5px;color:#561A9E;background:#EEEDFE;border-radius:5px;padding:1px 6px;">mais recente</span>' : '')
+            + (ultima ? ' <span style="font-size:10.5px;color:var(--marca-texto);background:#EEEDFE;border-radius:5px;padding:1px 6px;">mais recente</span>' : '')
             + ' <a href="#" onclick="event.preventDefault();editarComentario(\'' + esc(c.id) + '\')" '
-            + 'style="font-size:11.5px;color:#561A9E;text-decoration:none;">✏️</a>'
+            + 'style="font-size:11.5px;color:var(--marca-texto);text-decoration:none;">✏️</a>'
             + ' <a href="#" onclick="event.preventDefault();excluirComentario(\'' + esc(c.id) + '\')" '
             + 'style="font-size:11.5px;color:#8C1D18;text-decoration:none;">🗑️</a>'
             + '<div id="edCom' + esc(c.id) + '"></div></div>'
@@ -572,8 +572,8 @@
       + '<input id="defCom" placeholder="escrever no histórico desta peça..." '
       // b121 - borda azul SEMPRE, nao so no clique: assim se enxerga que
       // ali da pra escrever, sem precisar descobrir clicando
-      + 'style="flex:1;height:38px;font-size:13px;padding:0 10px;border:2px solid #7B3FC4;border-radius:8px;outline:none;">'
-      + '<button onclick="comentarDefeito(\'' + esc(it.id) + '\')" style="border:1px solid #561A9E;background:#561A9E;'
+      + 'style="flex:1;height:38px;font-size:13px;padding:0 10px;border:2px solid var(--marca-claro);border-radius:8px;outline:none;">'
+      + '<button onclick="comentarDefeito(\'' + esc(it.id) + '\')" style="border:1px solid var(--marca);background:var(--marca);'
       + 'color:#fff;border-radius:8px;padding:0 16px;height:38px;cursor:pointer;font-weight:600;">Adicionar</button></div>'
       + '<div id="msgCom" style="font-size:12px;color:#8C1D18;margin-bottom:12px;"></div>';
   }
@@ -591,7 +591,7 @@
         + '<b style="color:#8C1D18;">SAIU</b> ' + esc(capitalizar(p.peca))
         + (p.destino_defeito_id
             ? ' <a href="#" onclick="event.preventDefault();abrirFichaDefeito(\'' + esc(p.destino_defeito_id) + '\')" '
-              + 'style="color:#561A9E;font-size:11.5px;">→ foi para a PEÇA #' + esc(p.destino_defeito_id) + '</a>'
+              + 'style="color:var(--marca-texto);font-size:11.5px;">→ foi para a PEÇA #' + esc(p.destino_defeito_id) + '</a>'
             : (p.usada_em ? ' <span style="color:#777;font-size:11.5px;">→ ' + esc(p.usada_em) + '</span>' : ''))
         + ' <span style="color:#999;font-size:11.5px;">· ' + esc(p.quem || '-') + ' · ' + dataBr(p.criado_em) + '</span></div>';
     }).join('');
@@ -599,7 +599,7 @@
       return '<div style="background:#E1F5EE;border-left:3px solid #116B4E;border-radius:0 8px 8px 0;padding:8px 11px;font-size:13px;margin-bottom:5px;">'
         + '<b style="color:#0F6E56;">ENTROU</b> ' + esc(capitalizar(p.peca))
         + ' <a href="#" onclick="event.preventDefault();abrirFichaDefeito(\'' + esc(p.defeito_id) + '\')" '
-        + 'style="color:#561A9E;font-size:11.5px;">← veio da PEÇA #' + esc(p.defeito_id) + '</a>'
+        + 'style="color:var(--marca-texto);font-size:11.5px;">← veio da PEÇA #' + esc(p.defeito_id) + '</a>'
         + ' <span style="color:#999;font-size:11.5px;">· ' + esc(p.quem || '-') + ' · ' + dataBr(p.criado_em) + '</span></div>';
     }).join('');
     return h;
@@ -614,7 +614,7 @@
       + 'padding:10px 13px;margin:10px 0 4px;">'
       + '<div style="font-size:10.5px;color:#854F0B;letter-spacing:.5px;font-weight:800;margin-bottom:3px;">COMO ESTÁ AGORA</div>'
       + '<div style="font-size:14px;font-weight:600;color:#412402;">' + esc(txt)
-      + ' <a href="#" onclick="event.preventDefault();editarEstado()" style="font-size:11.5px;color:#561A9E;text-decoration:none;font-weight:400;">✏️ Ajustar</a>'
+      + ' <a href="#" onclick="event.preventDefault();editarEstado()" style="font-size:11.5px;color:var(--marca-texto);text-decoration:none;font-weight:400;">✏️ Ajustar</a>'
       + (proprio
           ? ' <a href="#" onclick="event.preventDefault();limparEstado()" style="font-size:11.5px;color:#8C1D18;text-decoration:none;font-weight:400;">🗑️</a>'
           : '')
@@ -711,7 +711,7 @@
         // b168 - o admin pode DESFAZER a exclusao
         + (it.situacao === 'excluido' && euSouAdmin
             ? '<div style="margin-top:8px;"><button type="button" onclick="restaurarRegistro(\'' + esc(it.id) + '\')"'
-              + ' style="background:#561A9E;color:#fff;border:none;border-radius:8px;padding:9px 14px;font-weight:700;cursor:pointer;">↩️ Restaurar registro (admin)</button>'
+              + ' style="background:var(--marca);color:var(--sobre-marca);border:none;border-radius:8px;padding:9px 14px;font-weight:700;cursor:pointer;">↩️ Restaurar registro (admin)</button>'
               // b207 (review do Codex) - o aviso do restaurar precisa de um
               // lugar pra aparecer: neste ramo (registro ja fechado) o
               // #edExcluir nao existia, entao erro de rede ficava MUDO e o
@@ -991,7 +991,7 @@
             + '</span></label>'
             + '<input id="peca_' + esc(x.id) + '" placeholder="o que você tirou desta? (ex: cúpula, base)" '
             + 'oninput="marcarPeca(\'' + esc(x.id) + '\',this.value)" '
-            + 'style="width:100%;height:42px;margin-top:8px;padding:0 12px;border:2px solid #7B3FC4;border-radius:8px;font-size:14px;display:none;"></div>';
+            + 'style="width:100%;height:42px;margin-top:8px;padding:0 12px;border:2px solid var(--marca-claro);border-radius:8px;font-size:14px;display:none;"></div>';
         }).join('')
       : '<div style="font-size:12.5px;color:#999;">nenhuma outra peça com esse SKU no estoque de defeitos.</div>';
     html += '</div>'
@@ -1155,7 +1155,7 @@
             + '</b>'
             + (p.estoque_produto_id
                 ? '<a href="https://www.bling.com.br/estoque.php?buscaid=' + esc(p.estoque_produto_id)
-                  + '" target="_blank" style="color:#561A9E;font-weight:600;font-size:12.5px;">conferir no Bling ↗</a>'
+                  + '" target="_blank" style="color:var(--marca-texto);font-weight:600;font-size:12.5px;">conferir no Bling ↗</a>'
                 : '')
             + '</div>'
           : '')
