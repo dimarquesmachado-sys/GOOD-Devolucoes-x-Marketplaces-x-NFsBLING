@@ -336,16 +336,38 @@ registrar('tabelas no Supabase', async (chave) => {
 registrar('estado no contrato', async (chave) => {
   // 30/09 (Codex): esta checagem REPROVAVA a empresa ja ativa (b427), porque a
   // sonda nasceu pra PRE-ativacao. A Girassol esta no ar e a sonda virou
-  // conferencia de saude: reprovar por "estar ativa" deixava a rota sempre
-  // vermelha e a frase final dizendo "NAO ative ainda" pra quem ja ativou.
-  // Agora e informativa: diz o estado, e a frase final se adapta.
+  // conferencia de saude. Agora e informativa sobre o CONTRATO, e a frase
+  // final se adapta.
+  //
+  // ⚠️ 30/09 r2 (Codex, P2): "ativa no contrato" NAO e "no ar". Uma empresa
+  // freada por DEVOLUCOES_DESATIVAR_<X>=1, ou que falhou no boot, esta ativa
+  // no contrato e FORA do ar — e a sonda dizia "ativa e saudavel". Quando a
+  // sonda roda DENTRO do servidor (a rota), o `diagnostico()` da montagem tem
+  // o estado real: montada / falhou / desativada_por_env. Cruzo os dois. Por
+  // linha de comando (sem servidor) nao ha montagem, e fico so no contrato —
+  // e digo isso.
   const { empresasAtivasNoDevolucoes } = require('../lib/empresas');
-  const ativa = empresasAtivasNoDevolucoes().some((x) => x.chave === chave);
-  return {
-    ok: true,
-    detalhe: ativa ? 'ativa' : 'desativada',
-    aviso: ativa ? null : 'ainda desativada - ative `ativa_em.devolucoes` quando as outras checagens ficarem verdes',
-  };
+  const ativaNoContrato = empresasAtivasNoDevolucoes().some((x) => x.chave === chave);
+  if (!ativaNoContrato) {
+    return {
+      ok: true, detalhe: 'desativada',
+      aviso: 'ainda desativada - ative `ativa_em.devolucoes` quando as outras checagens ficarem verdes',
+    };
+  }
+  let montagem = [];
+  try { montagem = require('../lib/montagem-empresas').diagnostico(); } catch (e) { montagem = []; }
+  const m = montagem.find((x) => x.chave === chave);
+  if (!m) {
+    // sem montagem = rodando fora do servidor (linha de comando)
+    return { ok: true, detalhe: 'ativa (no contrato; sem servidor pra conferir se montou)' };
+  }
+  if (m.estado === 'montada') return { ok: true, detalhe: 'ativa e montada' };
+  if (m.estado === 'desativada_por_env') {
+    return { ok: false, detalhe: 'ativa no contrato mas FREADA por env',
+      erro: `${require('../lib/montagem-empresas').nomeFreio(chave)}=1 esta ligada: a empresa NAO esta no ar. Remova a env pra voltar.` };
+  }
+  return { ok: false, detalhe: 'ativa no contrato mas FALHOU no boot',
+    erro: 'a montagem falhou: veja /health -> montagem_empresas e o log do boot' };
 });
 
 async function sondar(chave) {
@@ -385,7 +407,7 @@ if (require.main === module) {
       if (!l.ok) bloqueia++;
       console.log('');
     }
-    const jaAtiva = linhas.some((l) => l.nome === 'estado no contrato' && l.detalhe === 'ativa');
+    const jaAtiva = linhas.some((l) => l.nome === 'estado no contrato' && /^ativa/.test(String(l.detalhe || '')));
     if (bloqueia) {
       console.log(jaAtiva
         ? `  ❌ ${bloqueia} checagem(ns) reprovada(s) numa empresa JÁ ATIVA — conferir o que quebrou.`
