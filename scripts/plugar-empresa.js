@@ -299,9 +299,11 @@ if (require.main === module) {
     //   https://www.bling.com.br/operacao.fiscal.php?buscaid=<ID>
     // Eu mandava ele capturar payload no F12. A URL já mostra.
     console.log('   📌 Natureza pelo PAINEL (mais simples que o F12): Configurações →');
-    console.log('   Notas fiscais → Natureza de operação → clique na de DEVOLUÇÃO');
-    console.log('   (entrada). A URL termina em `?buscaid=<ID>` — esse é o número.');
-    console.log('   ⚠️ Não pegue a padrão de VENDA: devolução é ENTRADA.');
+    console.log('   Notas fiscais → Natureza de operação → clique na de');
+    console.log('   "Devolução de Mercadoria - Entrada". A URL termina em');
+    console.log('   `?buscaid=<ID>` — esse é o número.');
+    console.log('   ⚠️ Não pegue a de VENDA (devolução é ENTRADA) nem "Devolução de');
+    console.log('   Compra". Se houver mais de uma parecida, confira o nome exato.');
     console.log('');
     console.log(`   ⚠️ O ${r.PREF_FISCAL}ID_EMPRESA_CONTROL a API do Bling NÃO devolve —`);
     console.log('   o `GET /empresas` dá 404. Ele aparece na URL quando você abre');
