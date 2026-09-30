@@ -20,7 +20,9 @@ const { sondar, CHECAGENS } = require('../scripts/sonda-empresa');
 // ── a sonda cobre o que importa ─────────────────────────────────────
 {
   const nomes = CHECAGENS.map((c) => c.nome).join(' | ');
-  for (const esperado of ['ficha', 'token', 'dono', 'Supabase', 'desativada']) {
+  // 30/09: a 5a checagem virou "estado no contrato" (informativa) - antes era
+  // "ainda desativada (esperado)", que reprovava a empresa ja ativa.
+  for (const esperado of ['ficha', 'token', 'dono', 'Supabase', 'estado no contrato']) {
     ok(new RegExp(esperado, 'i').test(nomes), `  confere: ${esperado}`);
   }
 }
@@ -219,8 +221,17 @@ async function testeTokenAceitoDeVerdade() {
   const src4 = fs.readFileSync(
     path.join(__dirname, '..', 'scripts', 'sonda-empresa.js'), 'utf8');
   const semC4 = src4.split('\n').filter((l) => !l.trim().startsWith('//')).join('\n');
-  ok(/ok: !ativa/.test(semC4),
-     '⚠️ ja ativa REPROVA (aviso nao conta no codigo de saida)');
+  // ⚠️ 30/09: virou o contrario. A sonda nasceu pra PRE-ativacao e "ja ativa"
+  // REPROVAVA (b427). A Girassol esta no ar e a sonda e conferencia de saude:
+  // reprovar por "estar ativa" deixava a rota sempre vermelha e a frase final
+  // dizendo "NAO ative ainda" pra quem ja tinha ativado (achado do Codex).
+  // Agora a checagem e INFORMATIVA e a frase final depende do estado.
+  ok(!/ok: !ativa/.test(semC4),
+     '⚠️ estar ativa NAO reprova mais (a sonda serve depois da ativacao)');
+  ok(/registrar\('estado no contrato'/.test(semC4),
+     '  a checagem virou "estado no contrato", informativa');
+  ok(/A empresa está ativa e saudável/.test(src4) && /NÃO ative ainda/.test(src4),
+     '  e a frase final tem as 2 versoes: ativa-saudavel e nao-ative-ainda');
 }
 
 // ── ⚠️ e há ROTA, porque o dono não usa terminal ────────────────────
