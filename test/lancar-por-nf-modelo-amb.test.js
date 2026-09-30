@@ -48,6 +48,27 @@ ok(/jaTem\[0\]\.status === 'pendente'/.test(bloco),
 ok(/\.update\(\{ status: 'aprovado', tipo: 'devolucao' \}\)/.test(bloco),
    '  e CONSERTADO pra aprovado (nao "ja existe" pra sempre)');
 
+// ── ⚠️ b453: SEM TETO de 15 no front — vai em levas ─────────────────
+//
+// O dono: "15 e pouco". O teto existia porque a rota faz 2 chamadas ao Bling
+// por nota numa requisicao so. Agora o front divide em levas de 15 e chama
+// varias vezes, com progresso — o lote inteiro de uma vez.
+for (const painel of ['painel-AMB.html', 'painel2-AMB.html']) {
+  const html = fs.readFileSync(
+    path.join(__dirname, '..', 'amb-devolucoes', 'public-AMB', painel), 'utf8');
+  const semComH = html.split('\n').filter((l) => !l.trim().startsWith('//')).join('\n');
+  const iFn = semComH.indexOf('async function lancarPorNF');
+  const fn = semComH.slice(iFn, iFn + 4000);
+  ok(!/numeros = numeros\.slice\(0, 15\)/.test(fn),
+     `⚠️ ${painel}: o teto de 15 SAIU (nao corta mais a lista)`);
+  ok(/const LEVA = 15/.test(fn) && /for \(let i = 0; i < numeros\.length; i \+= LEVA\)/.test(fn),
+     `  ${painel}: e vai em LEVAS de 15, uma chamada por leva`);
+  ok(/Leva \$\{nLeva\}\/\$\{totalLevas\}/.test(fn),
+     `  ${painel}: com progresso no botao`);
+  ok(/criadosTotal \+= /.test(fn) && /resultadosTotal\.push/.test(fn),
+     `  ${painel}: e soma os resultados de todas as levas`);
+}
+
 console.log('');
 console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
 process.exit(falhas ? 1 : 0);
