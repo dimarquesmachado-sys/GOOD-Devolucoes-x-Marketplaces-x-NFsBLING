@@ -232,6 +232,18 @@ async function testeTokenAceitoDeVerdade() {
      '  a checagem virou "estado no contrato", informativa');
   ok(/A empresa está ativa e saudável/.test(src4) && /NÃO ative ainda/.test(src4),
      '  e a frase final tem as 2 versoes: ativa-saudavel e nao-ative-ainda');
+
+  // 30/09 r2 (Codex, P2): "ativa no contrato" nao e "no ar". Freada por env ou
+  // falhou no boot = ativa no contrato E fora do ar. A sonda cruza com o
+  // diagnostico() da montagem quando roda dentro do servidor.
+  ok(/montagem-empresas'\)\.diagnostico\(\)/.test(semC4),
+     '⚠️ a checagem cruza o contrato com o estado MONTADO (diagnostico da montagem)');
+  ok(/desativada_por_env/.test(semC4) && /FREADA por env/.test(semC4),
+     '  e reprova quando a empresa esta freada por env (ativa no contrato, fora do ar)');
+  ok(/FALHOU no boot/.test(semC4),
+     '  e reprova quando a montagem falhou');
+  ok(/sem servidor pra conferir se montou/.test(semC4),
+     '  e por linha de comando (sem montagem) diz que so olhou o contrato');
 }
 
 // ── ⚠️ e há ROTA, porque o dono não usa terminal ────────────────────

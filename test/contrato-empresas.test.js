@@ -468,6 +468,16 @@ const registro = require('../lib/empresas.js');
      + (parecemSegredo.length ? ' (SUSPEITO: ' + parecemSegredo.map((x) => x[0]).join(', ') + ')' : ''));
 }
 
+// ── o banner do _leia_me tem que bater com `versao` (Codex, #388) ───
+{
+  const banner = String(contrato._leia_me[0]);
+  const m = banner.match(/\bv(\d+)\s*\((\d{2})\/(\d{2})\/(\d{4})\)/);
+  ok(!!m && Number(m[1]) === contrato.versao,
+     'o banner do _leia_me cita a MESMA versao do campo `versao` (v' + contrato.versao + ')');
+  ok(!!m && m[4] + '-' + m[3] + '-' + m[2] === contrato.atualizado_em,
+     'o banner cita a MESMA data de `atualizado_em` (' + contrato.atualizado_em + ')');
+}
+
 console.log('');
 console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
 process.exit(falhas ? 1 : 0);
