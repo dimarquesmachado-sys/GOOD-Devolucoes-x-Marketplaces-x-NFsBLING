@@ -50,8 +50,19 @@ const LIB_AMB = path.join(RAIZ, 'amb-devolucoes', 'lib-AMB');
   const app = fs.readFileSync(path.join(RAIZ, 'amb-devolucoes', 'app-AMB.js'), 'utf8');
   ok(/require\('\.\.\/lib\/ml-buscas'\)/.test(app),
      'app-AMB importa `ml-buscas` da /lib comum');
-  ok(/require\('\.\.\/lib\/ritmo-bling'\)/.test(app),
-     'app-AMB importa `ritmo-bling` da /lib comum');
+  // ⚠️ b445 (Codex, P1) - `ritmo-bling` SAIU da lista de "AMB importa": o
+  // proprio import era o bug. `lib/ritmo-bling.js` e o portao SINGLETON da
+  // GOOD, com a conta cravada em 'good' — a AMB/Girassol importava ele so
+  // pra pedir vez na cota de OUTRA empresa (identificar-AMB.js, com
+  // `semRitmo` pra nao contar 2x). O conserto nao foi trazer uma copia:
+  // foi parar de usar o modulo errado. Quem cobre a AMB agora e
+  // `lib/ritmo-por-empresa.js` (fila POR EMPRESA, tambem em /lib — nasceu
+  // compartilhada, sem copia em lib-AMB, como a regra pede) — ver o bloco
+  // "AMB usa o ritmo POR EMPRESA" no test/ritmo-por-empresa.test.js.
+  //
+  // O bloco de cima (linha 37) continua garantindo que `ritmo-bling`
+  // segue existindo em /lib e sem copia em lib-AMB — so a AMB PRECISAR
+  // dele e que deixou de ser verdade.
 }
 
 // ── módulo NOVO nasce compartilhado ──────────────────────────────────

@@ -588,7 +588,17 @@ const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 // catalogo do Bling, cache de leitura que falhou e rotulo de env trocado
 // (a natureza descoberta e a de EMITIR, `ID_NATUREZA_DEVOLUCAO_ENTRADA`,
 // nao a de BUSCAR, `NATUREZAS_DEVOLUCAO_IDS`).
-const VERSAO = 'AMB Devolucoes b441';
+// b444 - o b443 so passou `fundo` nas 2 chamadas de `/nfe` do laco do
+// indice de nomes; a de `/pedidos/vendas`, tambem citada no apontamento
+// original, ficou de fora. Ver nf-nomes-AMB.js.
+// b445 (Codex, revisao do #379) - tres furos que sobraram do ritmo por
+// empresa: 429 sem `semRetentativa` avisava o ritmo 2x (dobrava o backoff
+// sozinho); o pre-aquecimento do boot nao se declarava `fundo` (e ignorava
+// `IDX.viroufundo`); e o cancelamento por timeout no identificar so era
+// checado ANTES de entrar na fila da empresa — nao antes de sair, entao um
+// candidato ja desistido ainda batia no Bling depois de esperar numa pausa
+// de 429. Ver bling-AMB.js, nf-nomes-AMB.js e identificar-AMB.js.
+const VERSAO = 'AMB Devolucoes b445';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -936,6 +946,10 @@ router.get('/status', (req, res) => {
     subiu_em: SUBIU_EM,
     uptime_s: Math.round(process.uptime()),
     memoria_mb: Math.round(process.memoryUsage().rss / 1048576),
+    // b442 - como conferir se o ritmo esta segurando: `pausas429` cresce
+    // devagar (ou para) e `na_fila` mostra quem espera. Antes deste build
+    // nao havia fila — o cliente martelava.
+    ritmo_bling: (typeof bling.estadoRitmo === 'function') ? bling.estadoRitmo() : null,
     conectado: { bling: bling.temToken(), ml: ml.temToken(), ml_user: ml.userId() || null },
     indice_ml: { quente: idx.quente, construindo: idx.construindo, rastreios: idx.com_tracking, idade_min: idx.idade_min },
     indice_nomes: { quente: nfNomes.statusIndice().quente, nfs: nfNomes.statusIndice().total_nfs },
@@ -2576,7 +2590,12 @@ const dorme = (ms) => new Promise(r => setTimeout(r, ms));
 // mesmo com a nota existindo (id 26351839464 = NF 2228, caso real).
 // Aqui passamos o CRU, no formato que o codigo da GOOD espera.
 // ══════════════════════════════════════════════════════════════════════
-const nfePorIdCru = (id) => bling.chamarBling(`/nfe/${id}`);
+// ⚠️ b445 (Codex, P1) - `opcoes` PRECISA CHEGAR NO `chamarBling`. Era
+// `(id) => bling.chamarBling(...)`, um adaptador de 1 argumento so — quem
+// chamava `buscarNFePorId(c.id, { semRitmo: true })` (identificar-AMB.js)
+// tinha o 2o argumento DESCARTADO aqui, silenciosamente, e o `semRitmo`
+// nunca chegava no cliente Bling.
+const nfePorIdCru = (id, opcoes) => bling.chamarBling(`/nfe/${id}`, opcoes);
 const nfp = criarNfPessoa({ chamarBling: bling.chamarBling, sleep: dorme });
 const ajudantes = criarAdminHelpers({
   chamarBling: bling.chamarBling,
@@ -2599,7 +2618,12 @@ registrarIdentificar(router, {
   // b229 - a espreita ja montada, por FUNCAO (o comentario abaixo avisa:
   // passar pelo escopo derrubou o boot 2x). O getter le o cache na hora.
   espreitaMontada: () => CACHES.espreita,
-  ritmoBling: require('../lib/ritmo-bling'),   // b232.3 - MESMO modulo da GOOD: um portao por processo
+  // ⚠️ b445 (Codex, P1) - NAO E MAIS o singleton da GOOD (`lib/ritmo-bling`,
+  // conta cravada em 'good'; o b443 ja tinha tirado o uso dele aqui dentro).
+  // O que a rota precisa e a VEZ na fila DESTA empresa, pra poder checar
+  // cancelamento ANTES de disparar a chamada — `bling.aguardarVez` e a fila
+  // por empresa (b442) exposta pra isso.
+  aguardarVezBling: bling.aguardarVez,
   // b180 - TikTok na cascata da AMB (paridade com a GOOD). Passar por
   // parametro, nao pelo escopo: usar o escopo ja derrubou o boot 2x neste
   // projeto (b300 e b302 no lado da GOOD).
