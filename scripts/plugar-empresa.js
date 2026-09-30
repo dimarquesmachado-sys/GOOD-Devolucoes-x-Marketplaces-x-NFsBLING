@@ -293,6 +293,18 @@ if (require.main === module) {
       console.log('');
     }
 
+    // ⚠️ b441 - O CAMINHO QUE O DONO ACHOU, e que é mais simples que o F12:
+    // no painel do Bling, Configurações → Notas fiscais → Natureza de
+    // operação → clicar na natureza. A URL traz o id:
+    //   https://www.bling.com.br/operacao.fiscal.php?buscaid=<ID>
+    // Eu mandava ele capturar payload no F12. A URL já mostra.
+    console.log('   📌 Natureza pelo PAINEL (mais simples que o F12): Configurações →');
+    console.log('   Notas fiscais → Natureza de operação → clique na de');
+    console.log('   "Devolução de Mercadoria - Entrada". A URL termina em');
+    console.log('   `?buscaid=<ID>` — esse é o número.');
+    console.log('   ⚠️ Não pegue a de VENDA (devolução é ENTRADA) nem "Devolução de');
+    console.log('   Compra". Se houver mais de uma parecida, confira o nome exato.');
+    console.log('');
     console.log(`   ⚠️ O ${r.PREF_FISCAL}ID_EMPRESA_CONTROL a API do Bling NÃO devolve —`);
     console.log('   o `GET /empresas` dá 404. Ele aparece na URL quando você abre');
     console.log('   a empresa no painel.');
