@@ -514,7 +514,27 @@ app.get('/health', (req, res) => {
       // de BUSCAR em vez da de EMITIR. So o lado AMB muda de comportamento
       // (lib/ids-fiscais-auto.js e amb-devolucoes/app-AMB.js) — este arquivo
       // so acompanha o numero do build.
-      version: '9.96.0 (b439: 26 chamadas escaparam por usarem CRASE)',
+      // b441 (Codex, PR #377) - o aviso "cheira a escopo faltando" nascia so
+      // de `naturezas === 0`, sem checar se a leitura tinha REALMENTE
+      // falhado: uma empresa nova sem nenhuma natureza cadastrada tambem le
+      // 0, sem erro nenhum, e caia no mesmo aviso — mandando mexer num
+      // escopo que ja estava certo. Agora `erros` vem ROTULADO por lista
+      // (`{ lista: 'naturezas', erro }`) e o aviso so dispara quando ha um
+      // erro de verdade rotulado pra naturezas.
+      // b444 - o b443 consertou 2 das 3 chamadas do laco de indice de nomes
+      // que deveriam passar `fundo` (as duas de `/nfe`); a de
+      // `/pedidos/vendas`, que o apontamento original tambem citava, ficou
+      // de fora. Mesmo arquivo, mesma causa — so faltou a 3a chamada.
+      // b445 (Codex, revisao do #379) - so na AMB/Girassol (bling-AMB.js,
+      // nf-nomes-AMB.js, identificar-AMB.js): um 429 sem `semRetentativa`
+      // avisava o ritmo 2x (o mesmo erro dobrava o backoff de 1s pra 2s); o
+      // pre-aquecimento do boot nao se declarava `fundo` (competia com o
+      // estoquista, e ignorava `IDX.viroufundo` depois que uma busca fria
+      // virava fundo); e o cancelamento por timeout (5s) no identificar so
+      // era checado ANTES de entrar na fila da empresa, nao antes de sair —
+      // um candidato "desistido" ainda batia no Bling depois de esperar
+      // numa pausa de 429. Este arquivo so acompanha o numero do build.
+      version: '9.99.0 (b445: 429 nao dobra sozinho, boot vira fundo, cancelamento nao vaza pro Bling)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),

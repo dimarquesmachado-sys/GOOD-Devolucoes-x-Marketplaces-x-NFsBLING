@@ -52,7 +52,12 @@ module.exports = function registrarIdentificar(app, deps) {
     tiktokPonte, tiktokDev,  // b180 - TikTok na cascata (paridade com a GOOD)
     mlReturns,               // b142 - indice claims->returns do ML (faltava)
     espreitaMontada,         // b229 - getter da espreita ja agregada (ML+Shopee+Magalu, sem baixados)
-    ritmoBling,              // b232.3 - portao global de ritmo do Bling (a cota e da CONTA)
+    // ⚠️ b445 (Codex, P1) - NAO E MAIS `ritmoBling` (o singleton da GOOD,
+    // b232.3): o b443 tirou esse uso porque cravava a cota na conta 'good'.
+    // O que sobrou e a VEZ na fila DESTA empresa, exposta pelo cliente Bling
+    // (`bling.aguardarVez`), pro cancelamento (linha ~910) poder acontecer
+    // ANTES da chamada sair — nao so antes de ENTRAR na fila.
+    aguardarVezBling,
     supabase,                // ev2 - pro registro do checkout offline
     db,                      // b213 - pra buscar o RECADO desta devolucao
   } = deps;
@@ -902,7 +907,22 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
                   const desistiu = { agora: false };
                   const det = await Promise.race([
                     (async () => {
-                      await ritmoBling.aguardarVez();
+                      // ⚠️ b443 (Codex, P2) - NAO pede mais vez na fila da GOOD.
+                      // `ritmoBling` era o singleton de `lib/ritmo-bling.js`, com a
+                      // conta cravada em 'good': a AMB e a Girassol esperavam na
+                      // cota de OUTRA empresa. Agora o cliente da empresa (que
+                      // tem fila propria desde o b442) cuida — uma contagem so,
+                      // na conta certa.
+                      //
+                      // ⚠️ b445 (Codex, P1) - mas a espera PRECISA acontecer AQUI
+                      // FORA, antes do `if (desistiu.agora)`, igual a GOOD faz com
+                      // `ritmoBling.aguardarVez()` (server.js). Com a espera
+                      // ESCONDIDA dentro do `chamarBling` (via `buscarNFePorId`
+                      // direto), o cancelamento so era visto DEPOIS que a fila
+                      // liberava a chamada — e ela ja tinha saido pro Bling. Numa
+                      // pausa de 429 (ate 15s), isso vira trafego orfao consumindo
+                      // a cota justamente quando ela esta mais apertada.
+                      await aguardarVezBling();
                       if (desistiu.agora) return { _tarde: true };   // nem sai
                       return buscarNFePorId(c.id, { semRitmo: true });
                     })().then((r) => (desistiu.agora ? { _tarde: true } : r)),

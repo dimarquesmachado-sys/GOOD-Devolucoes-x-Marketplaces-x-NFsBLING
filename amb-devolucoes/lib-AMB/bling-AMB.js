@@ -38,6 +38,20 @@ function criarBling(cfg) {
   // `sombra` pra sempre, calado, e so apareceria no dia em que a Girassol
   // renovasse por conta propria e queimasse o token do dono.
   const CHAVE_TOKEN = (cfg && cfg.CHAVE_REGISTRO) || 'ambtotal';
+
+  // ⚠️ b442 - O RITMO, POR EMPRESA. Este cliente NAO passava por fila
+  // nenhuma: batia direto, tomava 429, esperava 1,5s fixo e batia de novo.
+  // A AMB nunca incomodou (volume baixo); a Girassol tem o dobro e saturou o
+  // Bling dela no 1o pre-aquecimento — o log encheu de 429.
+  //
+  // 📌 Uma fila por empresa, porque a cota do Bling e DA CONTA. O ritmo da
+  // GOOD (`lib/ritmo-bling.js`) e singleton amarrado ao porteiro central com
+  // a conta cravada em 'good' — reaproveitar mandaria a Girassol pedir vez na
+  // cota da GOOD.
+  const ritmo = require('../../lib/ritmo-por-empresa').criarRitmo({
+    nome: CHAVE_TOKEN + '/bling',
+    limitePorSegundo: Number(process.env.BLING_REQ_POR_SEGUNDO || 3),
+  });
   // ⚠️ b396 - A ETIQUETA DO LOG DIZ QUAL EMPRESA.
   //
   // Era `[AMB/...]` fixo. O Render junta o log das duas no MESMO
@@ -226,8 +240,19 @@ async function chamarBling(caminho, opcoes = {}) {
     timeout: opcoes.timeout || 30000,
   });
 
+  // ⚠️ b442: pede a VEZ antes de bater no Bling. `semRitmo` e pro proprio
+  // refresh de token, que nao pode ficar preso atras da fila que ele vai
+  // destravar (mesmo desenho da GOOD).
+  if (!opcoes.semRitmo) {
+    try { await ritmo.aguardarVez({ fundo: !!opcoes.fundo }); }
+    catch (eFila) {
+      return { ok: false, status: 0, error: eFila.message, filaEstourou: true };
+    }
+  }
+
   try {
     const r = await fazer();
+    ritmo.avisarOk();
     return { ok: true, data: r.data, status: r.status };
   } catch (erro) {
     const status = erro.response && erro.response.status;
@@ -236,6 +261,21 @@ async function chamarBling(caminho, opcoes = {}) {
     // `semRetentativa`: sem isso o 401/429 dorme 1,5s e dispara OUTRA
     // requisicao depois que o chamador ja desistiu (trabalho orfao, fora
     // da cadencia global).
+    // ⚠️ b443 (Codex, P1) - TODO 429 AVISA O RITMO, mesmo sem retentativa.
+    // Antes este ramo devolvia sem avisar: a fila nao pausava, o proximo
+    // chamador batia no mesmo segundo e tomava 429 de novo. Um 429 que a
+    // fila nao ve e um 429 que se repete.
+    // ⚠️ b445 (Codex, P2) - SO AQUI quando `semRetentativa`: sem a condicao,
+    // uma chamada NORMAL avisava aqui E DE NOVO mais abaixo (linha ~328, no
+    // ramo que trata o mesmo 429) — o mesmo erro contava duas vezes e o
+    // backoff pulava de 1s pra 2s num 429 so. Quem tem retentativa propria
+    // (`semRetentativa`) nunca chega no ramo de baixo (retorna logo depois),
+    // entao precisa avisar AQUI — e so aqui.
+    if (status === 429 && opcoes.semRetentativa) {
+      const raSR = Number(erro && erro.response && erro.response.headers
+        && erro.response.headers['retry-after']);
+      ritmo.avisar429(Number.isFinite(raSR) && raSR > 0 ? raSR : 0);
+    }
     if (opcoes.semRetentativa) {
       return { ok: false, status, error: (erro.response && erro.response.data) || erro.message };
     }
@@ -252,10 +292,23 @@ async function chamarBling(caminho, opcoes = {}) {
       tokenLeitor.invalidar(CHAVE_TOKEN, 'bling');
       tokenLeitor.anotarInvalidacao(CHAVE_TOKEN, 'bling', 401);
       if (await renovarToken()) {
+        // ⚠️ b443 (Codex, P1): o retry pos-401 tambem pede a VEZ. Antes
+        // chamava `fazer()` direto — uma renovacao rapida punha a 4a chamada
+        // no mesmo segundo das 3 que a fila tinha liberado.
+        if (!opcoes.semRitmo) {
+          try { await ritmo.aguardarVez({ fundo: !!opcoes.fundo }); }
+          catch (eFila) {
+            return { ok: false, status: 0, error: eFila.message, filaEstourou: true };
+          }
+        }
         try {
           const r = await fazer();
+          ritmo.avisarOk();
           return { ok: true, data: r.data, status: r.status };
         } catch (e2) {
+          // e se ESSE tomar 429, avisa tambem — e o mesmo P1
+          const st2 = e2.response && e2.response.status;
+          if (st2 === 429) ritmo.avisar429(0);
           return { ok: false, status: e2.response && e2.response.status, error: (e2.response && e2.response.data) || e2.message };
         }
       }
@@ -274,15 +327,34 @@ async function chamarBling(caminho, opcoes = {}) {
       // que e o que eu queria medir: a medicao mataria o que mede.
       const raAMB = Number(erro && erro.response && erro.response.headers
         && erro.response.headers['retry-after']);
-      console.log(`[${TAG_EMP}/Bling] 429 - aguardando 1.5s`
+      // ⚠️ b442: o 429 PAUSA A FILA da empresa, e a pausa e proporcional —
+      // 1s, 2s, 4s... ate 15s enquanto os 429 se seguirem. O dado de 28/09
+      // (log da Girassol) diz que o Bling NAO manda retry-after, entao a
+      // pausa e escolha nossa: curta e crescente, nao 1,5s fixo martelando.
+      const pausaMs = ritmo.avisar429(Number.isFinite(raAMB) && raAMB > 0 ? raAMB : 0);
+      console.log(`[${TAG_EMP}/Bling] 429 - pausa de ${Math.round(pausaMs / 1000)}s`
         + ' | retry-after do Bling: '
-        + (Number.isFinite(raAMB) && raAMB > 0 ? raAMB + 's' : 'NAO MANDOU'));
-      await sleep(1500);
+        + (Number.isFinite(raAMB) && raAMB > 0 ? raAMB + 's' : 'NAO MANDOU')
+        + ' | quem: ' + (opcoes.fundo ? 'fundo' : 'operacao'));
+      await sleep(pausaMs);
+      // e pede a vez de novo: a fila pode ter outros esperando
+      if (!opcoes.semRitmo) {
+        try { await ritmo.aguardarVez({ fundo: !!opcoes.fundo }); }
+        catch (eFila) {
+          return { ok: false, status: 0, error: eFila.message, filaEstourou: true };
+        }
+      }
       try {
         const r = await fazer();
+        ritmo.avisarOk();
         return { ok: true, data: r.data, status: r.status };
       } catch (e2) {
-        return { ok: false, status: e2.response && e2.response.status, error: (e2.response && e2.response.data) || e2.message };
+        // ⚠️ b443 (Codex, P1): o 2o 429 seguido TAMBEM avisa. Sem isto a
+        // fila achava que a pausa tinha bastado e soltava o proximo no
+        // mesmo ritmo — que tomava o 3o.
+        const st2 = e2.response && e2.response.status;
+        if (st2 === 429) ritmo.avisar429(0);
+        return { ok: false, status: st2, error: (e2.response && e2.response.data) || e2.message };
       }
     }
 
@@ -310,8 +382,8 @@ async function buscarPedidoPorId(id) {
 }
 
 /** GET /nfe/{id} */
-async function buscarNFePorId(id) {
-  const r = await chamarBling(`/nfe/${id}`);
+async function buscarNFePorId(id, opcoes) {
+  const r = await chamarBling(`/nfe/${id}`, opcoes);
   return r.ok ? { ok: true, nfe: (r.data && r.data.data) || null } : r;
 }
 
@@ -527,6 +599,12 @@ return {
   testeDeVida,
   temToken: () => !!ACCESS_TOKEN,
   temCredenciais: () => !!(cfg.bling.clientId && cfg.bling.clientSecret),
+  estadoRitmo: () => ritmo.estado(),   // b442: quantos na fila, pausas por 429
+  // ⚠️ b445 (Codex, P1) - a VEZ na fila DESTA empresa, exposta pra quem
+  // precisa checar cancelamento ENTRE a espera e a chamada (o mesmo desenho
+  // que `lib/ritmo-bling.js` ja da pra GOOD). Chamar com `{ semRitmo: true }`
+  // depois, senao `chamarBling` espera a vez de novo.
+  aguardarVez: (opcoes) => ritmo.aguardarVez(opcoes),
   listarDepositos, lancarEstoqueNf,
   listarNaturezas, naturezaDevolucaoEntrada, idsFiscais,   // b283
 };
