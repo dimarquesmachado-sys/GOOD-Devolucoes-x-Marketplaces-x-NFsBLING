@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>AMBTotal - Painel de Devoluções</title>
   <!-- AMB Devol. b310 - painel portado da GOOD. O adaptador poe /amb nas chamadas -->
-  <script src="js-AMB/base-amb.js?v=b449"></script>
+  <script src="js-AMB/base-amb.js?v=b453"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -3839,7 +3839,7 @@ async function carregarSemRetorno() {
       const entrada = prompt(
         '➕ LANÇAR POR NF\n\n' +
         'Cole os números das NFs de VENDA (série 1), separados por espaço, vírgula ou linha.\n' +
-        'Máximo 15 por vez. Exemplo: 74241, 74655 74702\n\n' +
+        'Quantas quiser — vao em levas de 15, com progresso. Exemplo: 74241, 74655 74702\n\n' +
         'Guardas automáticas: NF já lançada é pulada · série 2 (FULL) é recusada.'
       );
       if (!entrada) return;
@@ -3849,23 +3849,38 @@ async function carregarSemRetorno() {
         toast('Nenhum número de NF reconhecido no texto colado.', 'err');
         return;
       }
-      if (numeros.length > 15) {
-        toast(`Limite de 15 por vez — vou lançar os 15 primeiros (${numeros.length - 15} ficaram de fora).`, 'err');
-        numeros = numeros.slice(0, 15);
-      }
+      // ⚠️ b453 - SEM TETO. O dono: "15 e pouco". O teto existia porque a rota
+      // faz 2 chamadas ao Bling por nota, numa requisicao so, com a tela
+      // esperando — 100 notas travariam a tela por minutos. Agora o FRONT
+      // divide em levas de 15 e chama a rota varias vezes, com progresso no
+      // botao: a tela nao trava, cada leva respeita a cota, e o servidor nao
+      // muda. O lote inteiro vai de uma vez.
       if (!confirm(`Lançar ${numeros.length} card(s) pelo número da NF?\n\n${numeros.join(', ')}\n\nO servidor busca cada NF no Bling (~5-15s por nota). Aguarde o resumo.`)) return;
 
       const txtOriginal = btn.textContent;
       btn.disabled = true;
       btn.textContent = `⏳ Lançando ${numeros.length} NF(s)...`;
       try {
-        const r = await fetch((window.APP_BASE || '') + '/api/admin/lancar-por-nf', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ numeros }),
-        });
-        const d = await r.json();
-        if (!d.ok) throw new Error(d.erro || 'falha');
+        // b453: levas de 15, uma chamada por leva, progresso no botao
+        const LEVA = 15;
+        const totalLevas = Math.ceil(numeros.length / LEVA);
+        let criadosTotal = 0;
+        const resultadosTotal = [];
+        for (let i = 0; i < numeros.length; i += LEVA) {
+          const leva = numeros.slice(i, i + LEVA);
+          const nLeva = Math.floor(i / LEVA) + 1;
+          btn.textContent = `⏳ Leva ${nLeva}/${totalLevas} (${i + leva.length}/${numeros.length} NFs)...`;
+          const r = await fetch((window.APP_BASE || '') + '/api/admin/lancar-por-nf', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ numeros: leva }),
+          });
+          const dl = await r.json();
+          if (!dl.ok) throw new Error(dl.erro || `falha na leva ${nLeva}`);
+          criadosTotal += Number(dl.criados || 0);
+          resultadosTotal.push(...(dl.resultados || []));
+        }
+        const d = { ok: true, criados: criadosTotal, resultados: resultadosTotal };
         const pulados = (d.resultados || []).filter(x => !x.ok);
         if (pulados.length > 0) console.warn('[Lançar por NF] Pulados:', pulados);
         // b449 - o motivo na tela (ver painel2)
@@ -4294,7 +4309,7 @@ async function carregarSemRetorno() {
   }
 })();
 </script>
-<script src="js-AMB/defeitos-ficha.js?v=b449"></script>
+<script src="js-AMB/defeitos-ficha.js?v=b453"></script>
 <script>
   // b126 - AVISO de pedidos esperando. Sem isso o admin so descobre que
   // tem coisa pra autorizar se abrir a fila por acaso.
