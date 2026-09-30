@@ -415,7 +415,48 @@ const PASTA_CHECKOUT = (FICHA_AMB && FICHA_AMB.pastaCheckout)
 // tela de login/app. So o atalho do iOS (acima) tinha sido trocado; quem
 // só olhasse a tela (sem instalar) continuava lendo "AMBTotal" logada na
 // Girassol. Mesmo padrão: troca o texto ESTÁTICO pelo nome da ficha.
-const INDEX_AMB_HTML = fs.readFileSync(
+// ⚠️ b447 - O TEMA DA EMPRESA, injetado no <head> de cada tela.
+//
+// O painel e compartilhado entre AMB e Girassol, e ate aqui era roxo pra
+// todas. Cada ficha declara a paleta dela (`tema`), e este <style> redefine
+// as variaveis do :root DEPOIS do styles.css — entao vence. A AMB declara
+// exatamente os valores que ja estavam cravados: nao muda um pixel.
+//
+// 📌 Sem `tema` na ficha (empresa nova que nao declarou), fica o padrao do
+// styles.css — o roxo. Melhor herdar que quebrar.
+const TEMA = (FICHA_AMB && FICHA_AMB.tema) || null;
+const STYLE_TEMA = TEMA ? `<style id="tema-empresa">
+  :root {
+    --roxo:${TEMA.marca}; --roxo-claro:${TEMA.marcaClaro};
+    --marca:${TEMA.marca}; --marca-claro:${TEMA.marcaClaro};
+    --sobre-marca:${TEMA.sobreMarca}; --marca-texto:${TEMA.marcaTexto};
+    --marca-texto-2:${TEMA.marcaTexto2 || TEMA.marcaTexto};
+    --escuro:${TEMA.escuro};
+    --fundo:${TEMA.fundo}; --borda:${TEMA.borda};
+    --texto:${TEMA.texto}; --apagado:${TEMA.apagado};
+  }
+</style>` : '';
+const META_THEME = TEMA ? `<meta name="theme-color" content="${TEMA.themeColor}">` : null;
+
+// aplica o tema num HTML: poe o <style> logo apos o styles.css e troca o
+// theme-color. Uma funcao so, usada nas 4 telas.
+function comTema(html) {
+  if (!TEMA) return html;
+  let out = html;
+  // depois do styles.css, pra vencer na cascata. (O regex e a string ficam
+  // em linhas separadas de proposito: aspas dentro do regex + `${}` na mesma
+  // linha confundem o teste `duas-empresas-juntas`, que e textual.)
+  const RE_LINK_CSS = /(<link rel=.stylesheet. href=.styles\.css[^>]*>)/;
+  const injecao = '$1\n  ' + STYLE_TEMA;
+  out = out.replace(RE_LINK_CSS, injecao);
+  // se a tela nao tem styles.css, poe antes do primeiro <style>
+  if (!out.includes('id="tema-empresa"')) out = out.replace(/<style>/, STYLE_TEMA + '\n  <style>');
+  // (sem aspas dentro do regex — o teste textual as le como strings)
+  if (META_THEME) out = out.replace(/<meta name=.theme-color. content=.[^>]*>/, META_THEME);
+  return out;
+}
+
+const INDEX_AMB_HTML = comTema(fs.readFileSync(
   path.join(__dirname, 'public-AMB', 'index-AMB.html'), 'utf8'
 ).replace(
   '<meta name="apple-mobile-web-app-title" content="Devolucoes AMB">',
@@ -429,7 +470,7 @@ const INDEX_AMB_HTML = fs.readFileSync(
 ).replace(
   '<h1>AMBTotal Devoluções</h1>',
   `<h1>${NOME_EMPRESA} Devoluções</h1>`
-);
+));   // b447: fecha o comTema(
 
 // ⚠️ b406 (Codex, PR #345, P2) - A PASTA DO CHECKOUT no base-amb.js vinha de
 // um 2o mapa de excecao cravado no front (so cobria a Girassol). Uma 4a
@@ -444,7 +485,7 @@ const BASE_AMB_JS = fs.readFileSync(
 
 // ⚠️ Codex (revisão do PR #370, P2) - MESMO FURO do INDEX_AMB_HTML, agora no
 // painel: título e <h1> diziam "AMBTotal" pra Girassol tambem.
-const PAINEL_AMB_HTML = fs.readFileSync(
+const PAINEL_AMB_HTML = comTema(fs.readFileSync(
   path.join(__dirname, 'public-AMB', 'painel-AMB.html'), 'utf8'
 ).replace(
   '<title>AMBTotal - Painel de Devoluções</title>',
@@ -452,7 +493,7 @@ const PAINEL_AMB_HTML = fs.readFileSync(
 ).replace(
   '<h1>👑 Painel de Devoluções — AMBTotal</h1>',
   `<h1>👑 Painel de Devoluções — ${NOME_EMPRESA}</h1>`
-);
+));   // b447: com o tema da empresa
 
 // ⚠️ b359 - O VALOR DA COLUNA `empresa` NO BANCO, vindo da FICHA.
 //
@@ -598,7 +639,7 @@ const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 // checado ANTES de entrar na fila da empresa — nao antes de sair, entao um
 // candidato ja desistido ainda batia no Bling depois de esperar numa pausa
 // de 429. Ver bling-AMB.js, nf-nomes-AMB.js e identificar-AMB.js.
-const VERSAO = 'AMB Devolucoes b446';
+const VERSAO = 'AMB Devolucoes b447';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -1293,6 +1334,23 @@ router.get('/js-AMB/base-amb.js', (req, res) => {
 router.get('/painel-AMB.html', (req, res) => {
   res.set('Cache-Control', 'no-cache, must-revalidate');   // mesma licao do b19
   res.type('html').send(PAINEL_AMB_HTML);
+});
+
+// ⚠️ b447 - painel2 e defeitos TAMBEM ganham o tema. Eles iam pelo
+// express.static, cru — a Girassol abria essas duas roxas mesmo com o index
+// e o painel ja amarelos. Tela compartilhada tem que receber o tema em TODA
+// rota que a entrega, nao so nas que ja tinham substituicao.
+const PAINEL2_AMB_HTML = comTema(fs.readFileSync(
+  path.join(__dirname, 'public-AMB', 'painel2-AMB.html'), 'utf8'));
+const DEFEITOS_AMB_HTML = comTema(fs.readFileSync(
+  path.join(__dirname, 'public-AMB', 'defeitos-AMB.html'), 'utf8'));
+router.get('/painel2-AMB.html', (req, res) => {
+  res.set('Cache-Control', 'no-cache, must-revalidate');
+  res.type('html').send(PAINEL2_AMB_HTML);
+});
+router.get('/defeitos-AMB.html', (req, res) => {
+  res.set('Cache-Control', 'no-cache, must-revalidate');
+  res.type('html').send(DEFEITOS_AMB_HTML);
 });
 
 router.use(express.static(path.join(__dirname, 'public-AMB'), {

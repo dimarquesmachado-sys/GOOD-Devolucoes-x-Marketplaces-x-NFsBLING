@@ -42,8 +42,14 @@ PAINEIS.forEach(([nome, arq]) => {
      '  o card das aprovadas recebe a classe quando ha NF de devolucao');
 
   // o card divergente tem cor propria (roxo) e nao pode perde-la
-  const iDiv = html.indexOf("border-left:5px solid #7b1fa2");
-  ok(iDiv !== -1, '  o card divergente mantem a lateral roxa da secao');
+  // b447: a cor virou variavel do tema (`var(--marca)`), porque o painel e
+  // compartilhado e a Girassol nao e roxa. O que este teste protege — o card
+  // divergente com a cor da MARCA na lateral — continua igual.
+  // A GOOD (public/) segue com o hex — ela tem front proprio e nao entrou no
+  // tema por empresa. Os paineis da AMB usam a variavel. Aceito os dois.
+  let iDiv = html.indexOf("border-left:5px solid var(--marca)");
+  if (iDiv === -1) iDiv = html.indexOf("border-left:5px solid #7b1fa2");
+  ok(iDiv !== -1, '  o card divergente mantem a lateral na cor da marca');
   const trechoDiv = html.slice(iDiv - 220, iDiv + 60);
   ok(/nf_devolucao_id_bling \? 'border:2px solid #2e7d32;' : ''/.test(trechoDiv),
      '  e ganha o contorno verde por fora quando ja tem NF');

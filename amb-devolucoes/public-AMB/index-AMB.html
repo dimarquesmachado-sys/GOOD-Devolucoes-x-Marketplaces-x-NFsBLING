@@ -9,14 +9,14 @@
   <title>AMBTotal - Devoluções Marketplaces</title>
   <!-- AMB Devol. b59 - tela portada da GOOD (modulos identicos + adaptador),
        com o CSS e o app de celular (PWA) da AMB de volta -->
-  <link rel="stylesheet" href="styles.css?v=b59">
+  <link rel="stylesheet" href="styles.css?v=b447">
   <!-- b201/b202 (pedido do Diego: "o + ta cinza, dificil de ver") - o emoji
        ➕ e desenhado pelo navegador na paleta dele (cinza/rosa claro), nao
        obedece `color` e sumia. Virou um "+" tipografico com peso 900:
          · fundos BRANCOS  -> roxo da AMBTotal #561A9E (10,3:1)
          · cabecalho roxo  -> SELO branco com o roxo dentro (10,3:1)
        Testei lilas no cabecalho primeiro; a review mostrou que nenhum tom
-       alcanca 4,5:1 sobre o gradiente #561A9E -> #7B3FC4, por isso o selo. -->
+       alcanca 4,5:1 sobre o gradiente #561A9E -> var(--marca-claro), por isso o selo. -->
   <style>
     /* os 2 links do estoque de defeitos: a DIREITA no computador, igual
        o cracha do usuario (que e absolute, top/right). No celular o
@@ -275,14 +275,14 @@
       </div>
 
       <!-- v3.31 - painel do OCR do remetente (etiquetas Correios sem codigo util) -->
-      <div id="ocrPanel" style="display:none; margin-top:12px; border:2px solid #6a1b9a; border-radius:12px; padding:12px; background:#faf5ff;">
+      <div id="ocrPanel" style="display:none; margin-top:12px; border:2px solid var(--marca); border-radius:12px; padding:12px; background:#faf5ff;">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-          <b style="color:#6a1b9a;">👤 Ler REMETENTE (OCR)</b>
+          <b style="color:var(--marca-texto);">👤 Ler REMETENTE (OCR)</b>
           <button type="button" onclick="fecharOcrRemetente()" style="background:#999; color:white; border:none; border-radius:8px; padding:6px 12px; cursor:pointer;">✕ Fechar</button>
         </div>
         <video id="ocrVideo" playsinline muted style="width:100%; border-radius:10px; background:#000;"></video>
         <button type="button" onclick="capturarELerOcr()"
-                style="width:100%; margin-top:8px; padding:12px; background:#6a1b9a; color:white; border:none; border-radius:10px; font-weight:700; cursor:pointer;">
+                style="width:100%; margin-top:8px; padding:12px; background:var(--marca); color:var(--sobre-marca); border:none; border-radius:10px; font-weight:700; cursor:pointer;">
           📸 Capturar e ler
         </button>
         <p id="ocrStatus" style="font-size:13px; margin:8px 0 0;">Abrindo câmera...</p>
@@ -302,7 +302,7 @@
         <div style="font-size:11px;color:#8a8a8a;letter-spacing:.4px;margin-bottom:7px;">ESTOQUE DE DEFEITOS</div>
         <div style="display:flex;gap:7px;">
           <button type="button" class="btn-apoio" onclick="abrirBuscaDefeitos()">🔧 defeitos</button>
-          <button type="button" class="btn-apoio" onclick="abrirModalDefeito()"><span style="color:#561A9E;font-weight:900;font-size:1.15em;line-height:0;">+</span> lançar</button>
+          <button type="button" class="btn-apoio" onclick="abrirModalDefeito()"><span style="color:var(--marca-texto);font-weight:900;font-size:1.15em;line-height:0;">+</span> lançar</button>
         </div>
       </div>
       <p class="hint dica-formatos" onclick="this.classList.toggle('aberta')" title="toque para ver todos os formatos">
@@ -329,7 +329,7 @@
   <!-- v3.96 - MODAL: lancar produto com defeito (busca por nome/SKU/EAN) -->
   <div class="modal-bg" id="modalDefeito">
     <div class="modal modal-defeito" style="max-width: 940px;">
-      <h3><span style="color:#561A9E;font-weight:900;font-size:1.15em;line-height:0;">+</span> Lançar produto com defeito</h3>
+      <h3><span style="color:var(--marca-texto);font-weight:900;font-size:1.15em;line-height:0;">+</span> Lançar produto com defeito</h3>
       <p style="font-size:13px; color:#666; margin-bottom:10px;">Busca por <b>parte do nome</b>, SKU ou EAN e escolhe o produto certo na lista.</p>
 
       <div style="display:flex; gap:8px;">
@@ -621,7 +621,7 @@
       <div class="modal-acoes">
         <button class="btn-cancelar" onclick="fecharModal('modalDivergente')">Cancelar</button>
         <button class="btn-action" id="btnContinuarDivergente" disabled
-                style="margin:0; padding:12px; opacity:0.5; cursor:not-allowed; background:linear-gradient(135deg,#7b1fa2,#4a148c);"
+                style="margin:0; padding:12px; opacity:0.5; cursor:not-allowed; background:linear-gradient(135deg, var(--marca), var(--escuro));"
                 onclick="continuarDivergenteFotos()">
           📷 Continuar (tirar fotos)
         </button>
@@ -633,12 +633,12 @@
   <div class="modal-bg" id="modalConfirmacaoDivergente">
     <div class="modal" style="max-width: 500px;">
       <h3>🔄 Confirmar Produto Divergente</h3>
-      <div style="background:#f3e5f5; border:1px solid #7b1fa2; padding:12px; border-radius:8px; margin-bottom:14px;">
-        <div style="font-size:12px; color:#4a148c; margin-bottom:4px;"><strong>Esperado (NF):</strong></div>
+      <div style="background:#f3e5f5; border:1px solid var(--marca); padding:12px; border-radius:8px; margin-bottom:14px;">
+        <div style="font-size:12px; color:var(--marca-texto); margin-bottom:4px;"><strong>Esperado (NF):</strong></div>
         <div id="confirmacaoDivEsperado" style="font-size:13px; margin-bottom:8px;">—</div>
-        <div style="font-size:12px; color:#4a148c; margin-bottom:4px;"><strong>Voltou de fato:</strong></div>
+        <div style="font-size:12px; color:var(--marca-texto); margin-bottom:4px;"><strong>Voltou de fato:</strong></div>
         <div id="confirmacaoDivRecebido" style="font-size:13px;">—</div>
-        <div style="font-size:11px; color:#7b1fa2; margin-top:8px;">
+        <div style="font-size:11px; color:var(--marca-texto); margin-top:8px;">
           ✅ <span id="confirmacaoDivFotosCount">0</span> fotos anexadas
         </div>
       </div>
@@ -650,7 +650,7 @@
       <div class="modal-acoes">
         <button class="btn-cancelar" onclick="fecharModal('modalConfirmacaoDivergente')">Cancelar</button>
         <button class="btn-action" id="btnEncerrarDivergente"
-                style="margin:0; padding:12px; background:linear-gradient(135deg,#7b1fa2,#4a148c);"
+                style="margin:0; padding:12px; background:linear-gradient(135deg, var(--marca), var(--escuro));"
                 onclick="encerrarDivergente()">
           ✅ Sim, Registrar
         </button>
@@ -759,25 +759,25 @@
        8. app       -> entry point (DOM refs, event listeners, init)
        ============================================================ -->
   <!-- adaptador de caminho: TEM que vir antes dos modulos -->
-  <script src="js-AMB/base-amb.js?v=b439"></script>
-  <script src="js-AMB/helpers.js?v=b439"></script>
-  <script src="js-AMB/auth.js?v=b439"></script>
-  <script src="js-AMB/scanner.js?v=b439"></script>
-  <script src="js-AMB/camera.js?v=b439"></script>
-  <script src="js-AMB/bipagem.js?v=b439"></script>
-  <script src="js-AMB/busca.js?v=b439"></script>
+  <script src="js-AMB/base-amb.js?v=b447"></script>
+  <script src="js-AMB/helpers.js?v=b447"></script>
+  <script src="js-AMB/auth.js?v=b447"></script>
+  <script src="js-AMB/scanner.js?v=b447"></script>
+  <script src="js-AMB/camera.js?v=b447"></script>
+  <script src="js-AMB/bipagem.js?v=b447"></script>
+  <script src="js-AMB/busca.js?v=b447"></script>
   <script src="https://cdn.jsdelivr.net/npm/qz-tray@2.2.4/qz-tray.js"></script>
-  <script src="js-AMB/etiqueta.js?v=b439"></script>
-  <script src="js-AMB/triagem.js?v=b439"></script>
+  <script src="js-AMB/etiqueta.js?v=b447"></script>
+  <script src="js-AMB/triagem.js?v=b447"></script>
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
   <!-- v5 - le QR code no COMPUTADOR (o BarcodeDetector so existe no Android) -->
   <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
-  <script src="js-AMB/ocr.js?v=b439"></script>
-  <script src="js-AMB/app.js?v=b439"></script>
+  <script src="js-AMB/ocr.js?v=b447"></script>
+  <script src="js-AMB/app.js?v=b447"></script>
   <!-- b96 - ciclo do estoque de defeitos (ficha, fotos, pedidos) -->
-  <script src="js-AMB/defeitos-ficha.js?v=b439"></script>
+  <script src="js-AMB/defeitos-ficha.js?v=b447"></script>
   <!-- b81 - colar/arrastar imagem da etiqueta na busca -->
-  <script src="js-AMB/colar-imagem.js?v=b439"></script>
+  <script src="js-AMB/colar-imagem.js?v=b447"></script>
 
   <!-- v3.96 - lancar produto com defeito (busca por parte do nome) -->
   <script>
@@ -873,7 +873,7 @@
             + (p.ean ? ' &middot; EAN ' + escDef(p.ean) : '') + '</div>'
             + (ehKitCard
                 ? '<div style="margin-top:9px;">'
-                    + '<div style="font-size:12.5px;color:#561A9E;font-weight:700;margin-bottom:5px;">'
+                    + '<div style="font-size:12.5px;color:var(--marca-texto);font-weight:700;margin-bottom:5px;">'
                       + (comps
                           ? 'Este kit é montado com estas peças — clique na que está com defeito:'
                           : 'É um KIT — não dá pra lançar defeito nele. Não consegui listar as peças agora;'
@@ -1145,7 +1145,7 @@
             + (c.nome ? '<div style="font-size:11.5px;color:#71659a;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + escDef(c.nome) + '</div>' : '')
           + '</div>'
           + '<button type="button" onclick="lancarComponenteKit(' + i + ')" '
-            + 'style="background:#561A9E;color:#fff;border:none;border-radius:8px;padding:9px 13px;font-weight:700;cursor:pointer;white-space:nowrap;">'
+            + 'style="background:var(--marca);color:var(--sobre-marca);border:none;border-radius:8px;padding:9px 13px;font-weight:700;cursor:pointer;white-space:nowrap;">'
             + '💾 Lançar aqui</button></div>';
       }).join('');
       msg.innerHTML = '<div style="background:#faf7ff;border:1px solid #e4dcf1;border-radius:10px;padding:11px 12px;text-align:left;">'
@@ -1299,7 +1299,7 @@
   <div id="modalColaBipe" class="modal-bg" onclick="if(event.target===this)fecharColaBipe()">
     <div class="modal" style="max-width:520px;width:94%;padding:0;overflow:hidden;">
       <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid #eee;background:#f2ecfb;">
-        <b style="font-size:16px;color:#561A9E;">❓ O que bipar em cada etiqueta</b>
+        <b style="font-size:16px;color:var(--marca-texto);">❓ O que bipar em cada etiqueta</b>
         <button type="button" onclick="fecharColaBipe()" style="background:#999;color:#fff;border:none;border-radius:8px;padding:6px 12px;cursor:pointer;">✕ Fechar</button>
       </div>
       <div style="padding:6px 18px 16px;max-height:70vh;overflow-y:auto;">
@@ -1313,7 +1313,7 @@
         <div class="cola-li">Agência Magalu → bipe o <b>PROTOCOLO da devolução</b>: 16 números começando com o ano (ex.: 2026…). Vem impresso na etiqueta/QR da agência e na tela de Devoluções do portal. <b>Não é o rastreio!</b></div>
         <div class="cola-li">Sabendo o <b>nº do pedido</b> (ex.: 15496…) → também acha</div>
         <div class="cola-li">Etiqueta dos <b>CORREIOS</b> (PAC reverso)? → só pelo <b>NOME do remetente</b></div>
-        <div class="cola-mkt" style="color:#7b1fa2;"><span class="cola-chip" style="background:#7b1fa2;"></span> TIKTOK · AMAZON · OUTROS</div>
+        <div class="cola-mkt" style="color:var(--marca-texto);"><span class="cola-chip" style="background:var(--marca);"></span> TIKTOK · AMAZON · OUTROS</div>
         <div class="cola-li"><b>NOME do remetente</b> (colado, como vem na etiqueta)</div>
         <div class="cola-mkt" style="color:#1a7f37;"><span class="cola-chip" style="background:#1a7f37;"></span> CORINGAS (valem pra tudo)</div>
         <div class="cola-li"><b>NOME do remetente</b> (acha em qualquer marketplace) · <b>Chave da DANFE</b> (os 44 números da nota) · <b>nº da NF</b> · <b>📎 foto da etiqueta</b></div>
