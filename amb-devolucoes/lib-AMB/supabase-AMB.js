@@ -53,7 +53,8 @@ let erroInicial = null;
 function conectar() {
   if (cliente || erroInicial) return cliente;
   if (!cfg.supabase.url || !cfg.supabase.key) {
-    erroInicial = 'AMB_SUPABASE_URL ou AMB_SUPABASE_KEY ausente';
+    const prefixo = String(cfg.PREFIXO_ENV || 'AMB_');
+    erroInicial = `${prefixo}SUPABASE_URL/${prefixo}SUPABASE_KEY ou SUPABASE_URL/SUPABASE_KEY ausente`;
     console.log(`[${TAG_EMP}/Supabase] ` + erroInicial);
     return null;
   }

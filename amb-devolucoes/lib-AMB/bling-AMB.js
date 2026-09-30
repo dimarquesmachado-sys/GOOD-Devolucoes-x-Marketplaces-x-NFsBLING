@@ -129,7 +129,7 @@ async function renovarTokenInterno() {
     return false;
   }
   if (!REFRESH_TOKEN) {
-    console.error(`[${TAG_EMP}/Bling] Sem refresh token - rode o /amb/bling/setup`);
+    console.error(`[${TAG_EMP}/Bling] Sem refresh token - rode o ${cfg.PREFIXO_ROTA}/bling/setup`);
     return false;
   }
   console.log(`[${TAG_EMP}/Bling] Renovando access token...`);
@@ -312,7 +312,7 @@ async function chamarBling(caminho, opcoes = {}) {
           return { ok: false, status: e2.response && e2.response.status, error: (e2.response && e2.response.data) || e2.message };
         }
       }
-      return { ok: false, status: 401, error: 'token invalido e refresh falhou - rode o /amb/bling/setup' };
+      return { ok: false, status: 401, error: `token invalido e refresh falhou - rode o ${cfg.PREFIXO_ROTA}/bling/setup` };
     }
 
     if (status === 429) {
@@ -482,7 +482,7 @@ async function naturezaDevolucaoEntrada() {
   if (exatas.length > 1) {
     return {
       ok: false,
-      erro: 'ha mais de uma natureza com o nome "Devolucao de Mercadoria - Entrada" nesta empresa — defina AMB_ID_NATUREZA_DEVOLUCAO_ENTRADA pra escolher',
+      erro: `ha mais de uma natureza com o nome "Devolucao de Mercadoria - Entrada" nesta empresa — defina ${cfg.PREFIXO_ENV}ID_NATUREZA_DEVOLUCAO_ENTRADA pra escolher`,
       candidatos: exatas.slice(0, 5).map(n => ({ id: n.id, descricao: n.descricao })),
     };
   }
@@ -501,7 +501,7 @@ async function naturezaDevolucaoEntrada() {
   if (candidatos.length > 1) {
     return {
       ok: false,
-      erro: 'mais de uma natureza de "devolucao ... entrada" nesta empresa — defina AMB_ID_NATUREZA_DEVOLUCAO_ENTRADA pra escolher',
+      erro: `mais de uma natureza de "devolucao ... entrada" nesta empresa — defina ${cfg.PREFIXO_ENV}ID_NATUREZA_DEVOLUCAO_ENTRADA pra escolher`,
       candidatos: candidatos.slice(0, 5).map(n => ({ id: n.id, descricao: n.descricao })),
     };
   }
