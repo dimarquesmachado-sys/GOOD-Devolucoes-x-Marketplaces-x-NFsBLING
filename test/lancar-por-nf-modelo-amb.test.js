@@ -67,6 +67,19 @@ for (const painel of ['painel-AMB.html', 'painel2-AMB.html']) {
      `  ${painel}: com progresso no botao`);
   ok(/criadosTotal \+= /.test(fn) && /resultadosTotal\.push/.test(fn),
      `  ${painel}: e soma os resultados de todas as levas`);
+
+  // ⚠️ b454 (Codex): a leva que FALHA nao derruba as outras. Antes um erro
+  // de rede na 4a leva ia pro catch de fora e perdia o que 1-3 criaram —
+  // sem alert, sem toast, sem recarregar. Agora vira "pulada" com motivo.
+  const iLaco = fn.indexOf('for (let i = 0; i < numeros.length; i += LEVA)');
+  const laco = fn.slice(iLaco, fn.indexOf('const d = { ok: true', iLaco));
+  ok(/try \{[\s\S]*?await fetch[\s\S]*?\} catch \(eLeva\)/.test(laco),
+     `⚠️ ${painel}: o fetch de cada leva tem try/catch PROPRIO (falha nao vaza)`);
+  ok(/motivo: `leva \$\{nLeva\} falhou/.test(laco),
+     `  ${painel}: e a leva que falhou vira "pulada" com o motivo`);
+  // e o contador so avanca depois que a leva volta
+  ok(/feitas \+= leva\.length;/.test(laco) && laco.indexOf('feitas += leva.length') > laco.indexOf('catch (eLeva)'),
+     `  ${painel}: o contador avanca DEPOIS da leva voltar (nao antes)`);
 }
 
 console.log('');

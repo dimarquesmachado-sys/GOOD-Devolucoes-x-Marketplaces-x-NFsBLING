@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>AMBTotal - Painel de Devoluções</title>
   <!-- AMB Devol. b303 - painel portado da GOOD. O adaptador poe /amb nas chamadas -->
-  <script src="js-AMB/base-amb.js?v=b453"></script>
+  <script src="js-AMB/base-amb.js?v=b454"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -3182,19 +3182,36 @@ async function carregarSemRetorno() {
         const totalLevas = Math.ceil(numeros.length / LEVA);
         let criadosTotal = 0;
         const resultadosTotal = [];
+        // ⚠️ b454 (Codex, 2x P2) - E SE A LEVA 4 FALHAR? Antes, um erro de rede
+        // no meio jogava pro catch de fora e PERDIA o que as levas 1-3 ja
+        // tinham criado: nem alert, nem toast, nem recarregar. O dono veria
+        // "Erro ao lançar" com 45 cards ja no banco, sem saber. Agora a leva
+        // que falha vira um "pulado" com o motivo, e o resto segue.
+        // E o contador so avanca DEPOIS que a leva volta — antes ele dizia
+        // "15/100" enquanto a 1a leva nem tinha terminado.
+        let feitas = 0;
         for (let i = 0; i < numeros.length; i += LEVA) {
           const leva = numeros.slice(i, i + LEVA);
           const nLeva = Math.floor(i / LEVA) + 1;
-          btn.textContent = `⏳ Leva ${nLeva}/${totalLevas} (${i + leva.length}/${numeros.length} NFs)...`;
-          const r = await fetch((window.APP_BASE || '') + '/api/admin/lancar-por-nf', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ numeros: leva }),
-          });
-          const dl = await r.json();
-          if (!dl.ok) throw new Error(dl.erro || `falha na leva ${nLeva}`);
-          criadosTotal += Number(dl.criados || 0);
-          resultadosTotal.push(...(dl.resultados || []));
+          btn.textContent = `⏳ Leva ${nLeva}/${totalLevas} (${feitas}/${numeros.length} NFs feitas)...`;
+          try {
+            const r = await fetch((window.APP_BASE || '') + '/api/admin/lancar-por-nf', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ numeros: leva }),
+            });
+            const dl = await r.json();
+            if (!dl.ok) throw new Error(dl.erro || `falha na leva ${nLeva}`);
+            criadosTotal += Number(dl.criados || 0);
+            resultadosTotal.push(...(dl.resultados || []));
+          } catch (eLeva) {
+            // a leva inteira vira "pulada", com o motivo — e o laco continua
+            for (const num of leva) {
+              resultadosTotal.push({ numero: num, ok: false,
+                motivo: `leva ${nLeva} falhou: ${eLeva.message || eLeva}` });
+            }
+          }
+          feitas += leva.length;
         }
         const d = { ok: true, criados: criadosTotal, resultados: resultadosTotal };
         const pulados = (d.resultados || []).filter(x => !x.ok);
