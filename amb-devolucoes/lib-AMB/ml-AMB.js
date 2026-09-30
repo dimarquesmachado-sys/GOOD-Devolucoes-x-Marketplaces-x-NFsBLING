@@ -137,7 +137,7 @@ async function renovarTokenInterno() {
   }
 
   if (!REFRESH_TOKEN) {
-    console.error(`[${TAG_EMP}/ML] Sem refresh token - autorize pelo /amb/conectar`);
+    console.error(`[${TAG_EMP}/ML] Sem refresh token - autorize pelo ${cfg.PREFIXO_ROTA}/conectar`);
     return false;
   }
   console.log(`[${TAG_EMP}/ML] Renovando access token...`);
@@ -233,7 +233,7 @@ async function chamarML(caminho, opcoes = {}) {
           return { ok: false, status: e2.response && e2.response.status, error: (e2.response && e2.response.data) || e2.message };
         }
       }
-      return { ok: false, status: 401, error: 'token invalido e refresh falhou - reautorize pelo /amb/conectar' };
+      return { ok: false, status: 401, error: `token invalido e refresh falhou - reautorize pelo ${cfg.PREFIXO_ROTA}/conectar` };
     }
 
     if (status === 429) {
