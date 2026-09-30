@@ -333,19 +333,18 @@ registrar('tabelas no Supabase', async (chave) => {
 });
 
 /* ── 5. a empresa está desativada (é assim que tem que estar) ────── */
-registrar('ainda desativada (esperado)', async (chave) => {
+registrar('estado no contrato', async (chave) => {
+  // 30/09 (Codex): esta checagem REPROVAVA a empresa ja ativa (b427), porque a
+  // sonda nasceu pra PRE-ativacao. A Girassol esta no ar e a sonda virou
+  // conferencia de saude: reprovar por "estar ativa" deixava a rota sempre
+  // vermelha e a frase final dizendo "NAO ative ainda" pra quem ja ativou.
+  // Agora e informativa: diz o estado, e a frase final se adapta.
   const { empresasAtivasNoDevolucoes } = require('../lib/empresas');
   const ativa = empresasAtivasNoDevolucoes().some((x) => x.chave === chave);
-  // ⚠️ b427 (Codex, P2): já ativa REPROVA, não avisa.
-  //
-  // Antes eu devolvia `ok: true` com um aviso — e o aviso não conta pro código
-  // de saída. Uma ativação prematura passava por uma sonda VERDE, que é
-  // justamente o que ela existe pra impedir.
   return {
-    ok: !ativa,
-    detalhe: ativa ? 'JÁ ESTÁ ATIVA' : 'desativada',
-    erro: ativa ? 'a empresa já está ativa — esta sonda é para ANTES disso. '
-      + 'Se foi sem querer, o freio tira ela do ar sem editar o contrato.' : null,
+    ok: true,
+    detalhe: ativa ? 'ativa' : 'desativada',
+    aviso: ativa ? null : 'ainda desativada - ative `ativa_em.devolucoes` quando as outras checagens ficarem verdes',
   };
 });
 
@@ -386,10 +385,15 @@ if (require.main === module) {
       if (!l.ok) bloqueia++;
       console.log('');
     }
+    const jaAtiva = linhas.some((l) => l.nome === 'estado no contrato' && l.detalhe === 'ativa');
     if (bloqueia) {
-      console.log(`  ❌ ${bloqueia} checagem(ns) reprovada(s) — NÃO ative ainda.`);
+      console.log(jaAtiva
+        ? `  ❌ ${bloqueia} checagem(ns) reprovada(s) numa empresa JÁ ATIVA — conferir o que quebrou.`
+        : `  ❌ ${bloqueia} checagem(ns) reprovada(s) — NÃO ative ainda.`);
     } else {
-      console.log('  ✅ tudo respondeu. Pode ativar `ativa_em.devolucoes`.');
+      console.log(jaAtiva
+        ? '  ✅ tudo respondeu. A empresa está ativa e saudável.'
+        : '  ✅ tudo respondeu. Pode ativar `ativa_em.devolucoes`.');
       console.log('');
       console.log('  ⚠️ E deixe o freio à mão para o caso de estranhar:');
       console.log(`     DEVOLUCOES_DESATIVAR_${chave.toUpperCase()}=1`);
