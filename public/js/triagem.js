@@ -169,8 +169,14 @@ async function confirmarAprovar() {
     } else if (r.status === 422 && d.sem_origem) {
       // b459 - sem pedido/rastreio/NF: o estoquista bipou o codigo de barras
       // do PRODUTO. Um toast some antes de ler; isto fica ate ele fechar.
+      // b461 (Codex): restaura o botao (ficava "Salvando..." travado) e devolve
+      // o foco ao campo de bipagem — o alert manda bipar o rastreio, e o
+      // leitor digita onde o foco estiver.
       fecharModal('modalAprovar');
+      btn.disabled = false;
+      btn.innerHTML = '✅ Confirmar';
       alert('⚠️ NAO DA PRA APROVAR\n\n' + d.erro);
+      if (typeof inputCodigo !== 'undefined' && inputCodigo) { inputCodigo.value = ''; inputCodigo.focus(); }
     } else if (r.status === 409 && d.erro === 'duplicata') {
       fecharModal('modalAprovar');
       toast('Esta devolucao ja foi triada antes!', 'err');
@@ -852,6 +858,11 @@ async function encerrarParcial() {
         inputCodigo.value = '';
         inputCodigo.focus();
       }, 2800);
+    } else if (r.status === 422 && d.sem_origem) {
+      // b461 (Codex): a parcial posta no mesmo endpoint — mesmo tratamento
+      btn.disabled = false;
+      alert('⚠️ NAO DA PRA APROVAR\n\n' + d.erro);
+      if (typeof inputCodigo !== 'undefined' && inputCodigo) { inputCodigo.value = ''; inputCodigo.focus(); }
     } else if (r.status === 409 && d.erro === 'duplicata') {
       fecharModal('modalConfirmacaoParcial');
       toast('Esta devolucao ja foi triada antes!', 'err');
