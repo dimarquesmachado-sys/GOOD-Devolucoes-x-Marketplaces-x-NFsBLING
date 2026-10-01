@@ -534,7 +534,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.110.0 (b459: triagem sem pedido/rastreio/NF nao aprova — card nascia inutil)',
+      version: '9.111.0 (b460: o painel da AMB/Girassol mostra quem bipou — saia vazio desde o porte)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),

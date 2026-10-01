@@ -1177,7 +1177,14 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
     // e aqui, no backend, pra valer em todo front; a mensagem ensina.
     const origem = require('../../lib/triagem-tem-origem').conferirOrigem(d);
     if (!origem.ok) return res.status(origem.status).json({ ok: false, erro: origem.erro, sem_origem: true });
-    const r = await db.registrarTriagem({ ...d, status: 'aprovado', funcionario: req.usuario });
+    // ⚠️ b460 - PARIDADE COM A GOOD: ela grava "Aprovado por X [bipagem OK]"
+    // em problema_descricao ao aprovar; a AMB gravava so `funcionario`, e o
+    // painel (portado da GOOD) le problema_descricao — "por" saia VAZIO em
+    // todo card aprovado da AMB e da Girassol, mesmo com o nome gravado.
+    const marcaBipagem = d.bipagem_forcada
+      ? `[BIPAGEM FORCADA] OBS: ${d.bipagem_observacao || ''}` : '[bipagem OK]';
+    const descricao = d.problema_descricao || `Aprovado por ${req.usuario} ${marcaBipagem}`;
+    const r = await db.registrarTriagem({ ...d, problema_descricao: descricao, status: 'aprovado', funcionario: req.usuario });
     res.json(r.ok ? await completarRegistro(r, d) : r);
   });
 

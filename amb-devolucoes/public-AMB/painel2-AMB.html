@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>AMBTotal - Painel de Devoluções</title>
   <!-- AMB Devol. b303 - painel portado da GOOD. O adaptador poe /amb nas chamadas -->
-  <script src="js-AMB/base-amb.js?v=b459"></script>
+  <script src="js-AMB/base-amb.js?v=b460"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -1957,7 +1957,9 @@ async function carregarSemRetorno() {
           + '</div>'
         : '';
 
-      const desc = (d.problema_descricao || '').replace(/^Aprovado por\s+/, '');
+      // b460: nos cards antigos da AMB/Girassol problema_descricao e nulo — o
+      // nome esta em `funcionario`. Le dali como reserva, senao "por" sai vazio.
+      const desc = (d.problema_descricao || '').replace(/^Aprovado por\s+/, '') || (d.funcionario || '');
 
       // v3.17.0 - detecta se eh devolucao parcial (tem fotos + descricao comeca com [DEVOLUCAO PARCIAL)
       const ehParcial = (d.problema_descricao || '').startsWith('[DEVOLUCAO PARCIAL');
