@@ -534,7 +534,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.109.0 (b458: a captura persistente chega na AMB e na Girassol — so a GOOD tinha)',
+      version: '9.110.0 (b459: triagem sem pedido/rastreio/NF nao aprova — card nascia inutil)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -3249,6 +3249,11 @@ app.post('/api/triagem/aprovar', requerEstoquista, async (req, res) => {
     return res.status(500).json({ ok: false, erro: 'Supabase nao configurado' });
   }
   const dados = req.body || {};
+  // b459 - sem origem (pedido/rastreio/NF) nao aprova — ver lib/triagem-tem-origem
+  {
+    const origem = require('./lib/triagem-tem-origem').conferirOrigem(dados.dados || dados);
+    if (!origem.ok) return res.status(origem.status).json({ ok: false, erro: origem.erro, sem_origem: true });
+  }
 
   // v3.62.1 - vendas sem shipment (Magalu, chave DANFE, numero da NF) sao
   // identificadas pela nf_chave. A validacao aceita qualquer um dos dois -

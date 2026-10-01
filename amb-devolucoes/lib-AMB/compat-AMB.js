@@ -1171,6 +1171,12 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
   /** Triagem OK: o que voltou confere com a NF. */
   router.post('/api/triagem/aprovar', auth.requerLogin, async (req, res) => {
     const d = corpo(req);
+    // ⚠️ b459 - SEM ORIGEM NAO APROVA. O estoquista da Girassol bipou o codigo
+    // de barras do PRODUTO em vez do rastreio: 3 cards nasceram so com SKU e
+    // quantidade, sem NF nem pedido — impossivel emitir a devolucao. A trava
+    // e aqui, no backend, pra valer em todo front; a mensagem ensina.
+    const origem = require('../../lib/triagem-tem-origem').conferirOrigem(d);
+    if (!origem.ok) return res.status(origem.status).json({ ok: false, erro: origem.erro, sem_origem: true });
     const r = await db.registrarTriagem({ ...d, status: 'aprovado', funcionario: req.usuario });
     res.json(r.ok ? await completarRegistro(r, d) : r);
   });
