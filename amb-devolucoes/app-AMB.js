@@ -641,7 +641,7 @@ const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 // checado ANTES de entrar na fila da empresa — nao antes de sair, entao um
 // candidato ja desistido ainda batia no Bling depois de esperar numa pausa
 // de 429. Ver bling-AMB.js, nf-nomes-AMB.js e identificar-AMB.js.
-const VERSAO = 'AMB Devolucoes b475';
+const VERSAO = 'AMB Devolucoes b476';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -2036,7 +2036,14 @@ function capturarDevolucoesEmpresa(emTransito, forcar) {
     .finally(() => { CAPTURA.rodando = false; });
 }
 
-router.get('/api/espreita', auth.requerLogin, async (req, res) => {
+// ⚠️ b476 - A ESPREITA MONTA SOZINHA (como na GOOD). Antes, o painel so montava
+// quando alguem abria /api/espreita: a captura persistente (b455) ficava
+// `ultima: null` por 8 horas se ninguem abrisse a tela, e as rotas que dependem
+// do "a espreita montado" (/api/admin/orfaos, b465) exigiam abrir outra URL
+// antes. Agora o miolo e uma funcao, a rota so a chama, e um relogio (90s apos
+// o boot, depois a cada 3 min — o mesmo da GOOD) a mantem quente. A captura
+// (1x/hora) e o indice de nomes (que ela dispara se frio) vem de brinde.
+async function montarEspreitaAMB() {
   // b29 - cada fonte com a propria rede de protecao: uma quebrar
   // NUNCA derruba as outras, e o erro vai ESCRITO pro painel.
   const vazio = { quente: false, em_transito: [], entregues: [], aguardando_postagem: 0 };
@@ -2180,7 +2187,7 @@ router.get('/api/espreita', auth.requerLogin, async (req, res) => {
     ts: Date.now(),
   };
   capturarDevolucoesEmpresa(emTransito);   // b455: guarda no banco, 1x/hora (nao bloqueia a resposta)
-  res.json({
+  return ({
     ok: true,
     versao: VERSAO,
     // b293 (teste dele, 19/08: "espreita nao trouxe resultado (...) Mercado
@@ -2213,7 +2220,24 @@ router.get('/api/espreita', auth.requerLogin, async (req, res) => {
       ...enriquecer(baseShopee.entregues || [])]
       .sort((x, y) => (x.dias_desde ?? 9999) - (y.dias_desde ?? 9999)),
   });
+}
+
+router.get('/api/espreita', auth.requerLogin, async (req, res) => {
+  res.json(await montarEspreitaAMB());
 });
+
+let ESP_AMB_MONTANDO = null;
+function preAquecerEspreitaAMB(motivo) {
+  if (ESP_AMB_MONTANDO) return ESP_AMB_MONTANDO;
+  ESP_AMB_MONTANDO = montarEspreitaAMB()
+    .then((r) => { console.log(`[${TAG_APP}/ESPREITA] pre-aquecida (${motivo}): ${(r && r.em_transito && r.em_transito.length) || 0} a caminho, ${(r && r.entregues && r.entregues.length) || 0} entregues`); })
+    .catch((e) => { console.warn(`[${TAG_APP}/ESPREITA] pre-aquecimento falhou (${motivo}):`, e && e.message); })
+    .finally(() => { ESP_AMB_MONTANDO = null; });
+  return ESP_AMB_MONTANDO;
+}
+// .unref(): o relogio nao segura o processo (os testes fazem boot real e precisam sair)
+setTimeout(() => preAquecerEspreitaAMB('boot'), 90 * 1000).unref();
+setInterval(() => preAquecerEspreitaAMB('relogio'), 3 * 60 * 1000).unref();
 
 router.post('/api/espreita/nota', auth.requerLogin, async (req, res) => {
   const { chave, marketplace, comentario, ticket, baixado } = req.body || {};
