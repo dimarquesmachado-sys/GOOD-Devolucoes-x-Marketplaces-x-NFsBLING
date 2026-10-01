@@ -534,7 +534,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.115.1 (b466: a rota de orfaos da AMB/Girassol recebe a espreita — dizia nao montado pra sempre)',
+      version: '9.119.0 (b471: orfaos — filho que casou, titulo x SKU pai, tamanho P x G)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),

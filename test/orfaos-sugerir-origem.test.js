@@ -44,6 +44,71 @@ ok(o2.candidatos.length === 0 && /Bling/.test(o2.dica), '  sem candidato: a dica
 ok(sugerirOrigem(null, null).total_orfaos === 0, '  entradas nulas nao lancam');
 ok(sugerirOrigem([{ id: 9, produto_sku: '' }], esp).orfaos[0].candidatos.length === 0, '  orfao sem SKU: zero candidatos (nao casa com tudo)');
 
+// ── b467: a Girassol tem metade do catalogo em variacao — a Shopee/ML informam
+// o SKU do PAI, o card tem o da VARIACAO. Exato nao casa; pai e titulo casam,
+// marcados como aproximados. Os limites foram medidos com os titulos REAIS
+// do "a espreita" da Girassol (01/10).
+{
+  const { raizSku, tituloCasa } = require('../lib/orfaos-sugerir-origem');
+  ok(raizSku('10-AE-8f-g80-180mm') === raizSku('10-AE-8F-180mm-PAI'), '⚠️ raiz do SKU: a variacao (g80) casa com o pai (-PAI)');
+  ok(raizSku('10-AE-8f-g80-180mm') !== raizSku('10-furo-180mm-PAI'), '  mas anti-empastamento NAO casa com lisa');
+  const AE80 = '10 X Lixas Disco Anti-Empastamento 7 Polegadas 180mm 8 Furos Pluma Lixadeira Politriz KaQi GRÃO:80';
+  ok(tituloCasa('Par Lâminas Faca 82mm Corte p/ Plaina Elétrica PB-92 1900b HSS 82 Universal KaQi',
+                '4 x Lâminas Faca 82mm Corte p/ Plaina Elétrica PB-92 1900b HSS 82 Universal KaQi'),
+     '⚠️ titulo: "Par Laminas..." casa com "4 x Laminas..." (mesmo produto, kit diferente)');
+  ok(!tituloCasa(AE80, '10 X Lixas Disco Grão 7 Polegadas 180mm 8 Furos Lixadeira Politriz KaQi'),
+     '  titulo: anti-empastamento NAO casa com lisa (10 palavras iguais em 12 nao basta)');
+  ok(!tituloCasa(AE80, '30 X Lixas Disco Anti-Empastamento 5 Polegadas 125mm 8 Furos Pluma Lixadeira Politriz KaQi'),
+     '⚠️ titulo: 180mm NAO casa com 125mm (medida que nao bate derruba)');
+  ok(!tituloCasa('Suporte Prato Disco 4 Polegadas 100mm Politriz Esmerilhadeira Lixadeira M14 KaQi',
+                 'Suporte Disco Prato 125mm 5 Polegadas p/ Politriz Esmerilhadeira Lixadeira M14 KaQi'),
+     '  titulo: prato 100mm NAO casa com 125mm');
+  // o caso real dos 3 orfaos x a lista real (recorte)
+  const cards = [
+    { id: 1, produto_sku: '10-AE-8f-g80-180mm', produto_qtd: 5, produto_titulo: AE80 },
+    { id: 2, produto_sku: '10-AE-8f-g800-180mm', produto_qtd: 2, produto_titulo: AE80.replace('GRÃO:80', 'GRÃO:800') },
+    { id: 3, produto_sku: 'parlamplaina', produto_qtd: 1, produto_titulo: 'Par Lâminas Faca 82mm Corte p/ Plaina Elétrica PB-92 1900b HSS 82 Universal KaQi' },
+  ];
+  const esp2 = [
+    { marketplace: 'shopee', pedido: '260703PQQ2XJC2', tracking: 'BR260329038134J', itens: [{ titulo: '10 X Lixas Disco Anti-Empastamento 7 Polegadas 180mm 8 Furos Grão Lixadeira Politriz KaQi', sku: '10-AE-8F-180mm-PAI', qtd: 2 }] },
+    { marketplace: 'shopee', pedido: '260804ECX604PK', tracking: 'BR262733569134U', itens: [{ titulo: '4 x Lâminas Faca 82mm Corte p/ Plaina Elétrica PB-92 1900b HSS 82 Universal KaQi', sku: '2xpareslaminas', qtd: 1 }] },
+    { marketplace: 'shopee', pedido: '260819Q58K3AWF', tracking: 'BR263672109548S', itens: [{ titulo: '10 X Lixas Disco Grão 7 Polegadas 180mm 8 Furos Lixadeira Politriz KaQi', sku: '10-furo-180mm-PAI', qtd: 1 }] },
+  ];
+  const r2 = sugerirOrigem(cards, esp2);
+  const c1 = r2.orfaos.find((x) => x.orfao.id === 1).candidatos;
+  const c2 = r2.orfaos.find((x) => x.orfao.id === 2).candidatos;
+  const c3 = r2.orfaos.find((x) => x.orfao.id === 3).candidatos;
+  ok(c1.length === 1 && c1[0].pedido === '260703PQQ2XJC2' && c1[0].via === 'sku_pai', '⚠️ orfao g80: casa o pedido das AE pelo pai, e SO ele (nao a lisa)');
+  ok(c2.length === 1 && c2[0].via === 'sku_pai' && c2[0].qtd_bate === true, '  orfao g800: o mesmo, e a quantidade bate');
+  ok(c3.length === 1 && c3[0].pedido === '260804ECX604PK' && c3[0].via === 'titulo', '⚠️ orfao laminas: casa pelo titulo (SKU "parlamplaina" x "2xpareslaminas" nao tem raiz comum)');
+  ok(/via = como casou/.test(r2.orfaos.find((x) => x.orfao.id === 3).dica), '  e a dica explica que via != sku e aproximado');
+}
+
+// ── b468 (Codex #396): medida solta, titulo do GOOD (it.produto), SKU vazio ──
+{
+  const { tituloCasa } = require('../lib/orfaos-sugerir-origem');
+  ok(!tituloCasa('Disco 5 Polegadas Politriz Universal Lixadeira', 'Disco 7 Polegadas Politriz Universal Lixadeira'),
+     '⚠️ numero solto de MEDIDA ("5" x "7" Polegadas") diferencia o produto');
+  ok(tituloCasa('4 x Laminas Faca 82mm Aco Inox Premium', 'Par Laminas Faca 82mm Aco Inox Premium'),
+     '  quantidade de kit ("4 x") continua ignorada');
+  ok(tituloCasa('Kit com 4 Laminas Faca 82mm Aco Inox Premium', 'Laminas Faca 82mm Aco Inox Premium'),
+     '  "kit com 4" tambem');
+
+  // GOOD/Shopee: o enriquecimento deixa so d.produto (titulo), sem itens
+  const orf = [{ id: 9, produto_sku: 'SKU-SEM-RELACAO', produto_titulo: 'Disco 7 Polegadas Politriz Universal Lixadeira', produto_qtd: 1 }];
+  const rG = sugerirOrigem(orf, [{ marketplace: 'shopee', pedido: 'P1', tracking: 'T1', produto: 'Disco 7 Polegadas Politriz Universal Lixadeira', sku: 'OUTRO' }]);
+  ok(rG.orfaos[0].candidatos.length === 1 && rG.orfaos[0].candidatos[0].via === 'titulo', '⚠️ casa pelo it.produto (titulo montado pela espreita GOOD)');
+
+  // orfao so com titulo: item filho SEM sku nao pode virar o "casado"
+  const orf2 = [{ id: 10, produto_titulo: 'Disco 7 Polegadas Politriz Universal Lixadeira', produto_qtd: 2 }];
+  const rS = sugerirOrigem(orf2, [{ marketplace: 'shopee', pedido: 'P2', tracking: 'T2', qtd: 9, itens: [
+    { titulo: 'Capa Protetora Azul Grande Resistente', qtd: 5 },
+    { titulo: 'Disco 7 Polegadas Politriz Universal Lixadeira', qtd: 2 },
+  ] }]);
+  ok(rS.orfaos[0].candidatos.length === 1 && rS.orfaos[0].candidatos[0].qtd_no_pedido === 2 && rS.orfaos[0].candidatos[0].qtd_bate === true,
+     '⚠️ orfao sem SKU: o item casado e o do titulo, nao o 1o filho sem SKU');
+}
+
 // ── as rotas existem nas 3 empresas e usam a lib ──
 const compat = fs.readFileSync(path.join(__dirname, '..', 'amb-devolucoes', 'lib-AMB', 'compat-AMB.js'), 'utf8');
 const good = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
@@ -72,6 +137,86 @@ ok(/deps\.espreitaMontada/.test(rota), '  e le a espreita por deps.espreitaMonta
   const usados = [...new Set([...rota.matchAll(/deps\.(\w+)/g)].map((m) => m[1]))];
   const faltam = usados.filter((k) => !new RegExp('\\b' + k + '\\b').test(chamada));
   ok(faltam.length === 0, `  todo deps.X que a rota le chega na chamada (faltam: ${faltam.join(', ') || 'nenhum'})`);
+}
+
+// b468 - a contrapartida da medida solta: o numero de QUANTIDADE DO KIT ("10 X")
+// NAO discrimina — kit maior do mesmo produto continua candidato (aproximado).
+// Sem esta asserção, alguem "melhora" a medida solta e mata o casamento de kit.
+{
+  const { tituloCasa: tc } = require('../lib/orfaos-sugerir-origem');
+  ok(tc('10 X Lixas Disco Anti-Empastamento 7 Polegadas 180mm 8 Furos Pluma Lixadeira Politriz KaQi',
+        '20 X Lixas Disco Anti-Empastamento 7 Polegadas 180mm 8 Furos Grão Lixadeira Politriz KaQi'),
+     '  o numero de quantidade do kit ("10 X" x "20 X") NAO discrimina — kit maior ainda casa');
+}
+
+// b469 - Codex #396 (2a rodada): irma nao casa como pai; "2x" colado e kit;
+// qtd do topo (Shopee GOOD, sem itens) tambem desempata.
+{
+  const o = (sku, extra) => sugerirOrigem([{ id: 1, produto_sku: sku, produto_qtd: 2 }], [Object.assign({ marketplace: 'ml', tracking: 'T' }, extra)]).orfaos[0].candidatos;
+  ok(o('10-AE-8F-G80-180mm', { itens: [{ sku: '10-AE-8F-G800-180mm', qtd: 2 }] }).every((c) => c.via === 'sku_irmao'), '⚠️ variacao IRMA (G800 x G80) NAO casa como pai — entra como sku_irmao, a mais fraca (pode ser "item errado": cliente pediu 800, recebeu 80)');
+  ok(o('10-AE-8F-G80-180mm', { sku: '10-AE-8F-180mm-PAI' }).map((c) => c.via).join() === 'sku_pai', '  o PAI real continua casando');
+  const { tituloCasa: tc } = require('../lib/orfaos-sugerir-origem');
+  ok(tc('2x Lixas Disco Anti-Empastamento 7 Polegadas 180mm', '4x Lixas Disco Anti-Empastamento 7 Polegadas 180mm'), '  "2x" x "4x" colado = kit, casa');
+  const r = sugerirOrigem([{ id: 1, produto_sku: 'A-G80', produto_qtd: 2 }],
+    [{ sku: 'A-PAI', qtd: 1, tracking: 'T1' }, { sku: 'A-PAI', qtd: 2, tracking: 'T2' }]).orfaos[0].candidatos;
+  // b470 (Codex, 3a rodada): a qtd do TOPO na GOOD e a soma do pedido (multi-item),
+  // nao a do produto casado — NAO desempata. Fica informativa em qtd_total_pedido.
+  ok(r.every((c) => c.qtd_bate === null) && r.find((c) => c.tracking === 'T2').qtd_total_pedido === 2,
+     '  qtd do topo NAO desempata (e a soma do pedido) — vai em qtd_total_pedido');
+}
+
+// b469 (minha versao): a irma e CANDIDATO fraco, nao excluida — ordem e dica
+{
+  const m = require('../lib/orfaos-sugerir-origem');
+  const o2 = { id: 1, produto_sku: '10-AE-8f-g80-180mm', produto_qtd: 5, produto_titulo: 'x y z w' };
+  const r = m.sugerirOrigem([o2], [
+    { marketplace: 'shopee', pedido: 'PAI', tracking: 'A', itens: [{ titulo: 'x', sku: '10-AE-8F-180mm-PAI', qtd: 5 }] },
+    { marketplace: 'ml', pedido: 'IRMA', tracking: 'B', itens: [{ titulo: 'x', sku: '10-AE-8F-G800-180mm', qtd: 5 }] },
+    { marketplace: 'ml', pedido: 'MESMA', tracking: 'C', itens: [{ titulo: 'x', sku: '10-AE-8F-G80-180MM', qtd: 1 }] },
+    { marketplace: 'good', pedido: 'RAIZ', tracking: 'D', sku: '10-AE-8F-180mm-PAI', produto: 'x', qtd: 5 },
+  ]);
+  const cs = r.orfaos[0].candidatos;
+  ok(cs.map((c) => c.via).join(',') === 'sku,sku_pai,sku_pai,sku_irmao', '  ordem: sku > sku_pai > sku_irmao (a irma por ultimo, mas presente)');
+  // b470 (Codex): it.qtd na raiz e a SOMA do pedido na GOOD — informa, nao ranqueia
+  ok(cs.find((c) => c.pedido === 'RAIZ').qtd_bate === null && cs.find((c) => c.pedido === 'RAIZ').qtd_total_pedido === 5,
+     '  qtd da RAIZ nao ranqueia (qtd_bate null) — vai em qtd_total_pedido, informativa');
+  ok(!m.tituloCasa('Lixa Disco 180mm Grão 80 Premium KaQi', 'Lixa Disco 180mm Grão 800 Premium KaQi'),
+     '⚠️ titulo: grao 80 x grao 800 (ambos declaram) NAO casa — grao e variacao');
+  ok(m.tituloCasa('10 X Lixas Disco Anti-Empastamento 7 Polegadas 180mm 8 Furos Pluma Lixadeira Politriz KaQi GRÃO:80',
+                  '10 X Lixas Disco Anti-Empastamento 7 Polegadas 180mm 8 Furos Grão Lixadeira Politriz KaQi'),
+     '  mas orfao "GRAO:80" x pai "Grao" sem numero casa (o pai nao especifica — caso real)');
+  ok(/sku_irmao e OUTRA variacao/.test(r.orfaos[0].dica), '  e a dica explica o sku_irmao');
+}
+
+// ── b471 (Codex, 4a revisao): filho que justificou o casamento, titulo x SKU pai, tamanho ──
+{
+  const m = require('../lib/orfaos-sugerir-origem');
+  // 1) irma G800 ANTES da G80 no pedido: a qtd e a do filho G80, nao a do primeiro de mesma raiz
+  const o = { id: 1, produto_sku: '10-AE-8F-G80-180mm', produto_qtd: 2 };
+  const r = m.sugerirOrigem([o], [
+    { marketplace: 'ml', pedido: 'P1', tracking: 'A', itens: [
+      { sku: '10-AE-8F-G800-180mm', qtd: 1 }, { sku: '10-AE-8F-180mm-PAI', qtd: 2 } ] },
+  ]);
+  const c = r.orfaos[0].candidatos[0];
+  ok(c.via === 'sku_pai' && c.qtd_no_pedido === 2 && c.qtd_bate === true,
+     '⚠️ multi-item: a qtd vem do filho que justificou o sku_pai (nao da irma G800 que veio antes)');
+  // 2) SKU de pai, mas o titulo da unidade diz OUTRO grao -> irma, nao pai
+  const o2 = { id: 2, produto_sku: 'A-G80', produto_qtd: 1, produto_titulo: 'Lixa Disco 180mm Grao 80 Premium' };
+  const r2 = m.sugerirOrigem([o2], [
+    { marketplace: 'ml', pedido: 'P2', tracking: 'B', itens: [{ sku: 'A-PAI', titulo: 'Lixa Disco 180mm Grao 800 Premium', qtd: 1 }] },
+  ]);
+  ok(r2.orfaos[0].candidatos[0].via === 'sku_irmao', '⚠️ SKU A-PAI com titulo "Grao 800" x orfao "Grao 80" = sku_irmao, nao sku_pai');
+  const r2b = m.sugerirOrigem([o2], [
+    { marketplace: 'ml', pedido: 'P2', tracking: 'B', itens: [{ sku: 'A-PAI', titulo: 'Lixa Disco 180mm Grao Premium', qtd: 1 }] },
+  ]);
+  ok(r2b.orfaos[0].candidatos[0].via === 'sku_pai', '  titulo do pai sem grao nao conflita: segue sku_pai');
+  // 3) tamanho por letra
+  ok(!m.tituloCasa('Capa Protetora Impermeavel Premium Tamanho P Azul', 'Capa Protetora Impermeavel Premium Tamanho G Azul'),
+     '⚠️ titulo: Tamanho P x Tamanho G NAO casa');
+  ok(m.tituloCasa('Capa Protetora Impermeavel Premium Tamanho P Azul', 'Capa Protetora Impermeavel Premium Tamanho P Azul'),
+     '  mesmo tamanho casa');
+  ok(m.tituloCasa('Capa Protetora Impermeavel Premium Tamanho P Azul', 'Capa Protetora Impermeavel Premium Azul'),
+     '  so um declara tamanho: casa (o outro nao especifica)');
 }
 
 console.log('');
