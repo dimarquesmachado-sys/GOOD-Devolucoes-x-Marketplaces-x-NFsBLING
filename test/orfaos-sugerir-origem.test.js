@@ -44,6 +44,46 @@ ok(o2.candidatos.length === 0 && /Bling/.test(o2.dica), '  sem candidato: a dica
 ok(sugerirOrigem(null, null).total_orfaos === 0, '  entradas nulas nao lancam');
 ok(sugerirOrigem([{ id: 9, produto_sku: '' }], esp).orfaos[0].candidatos.length === 0, '  orfao sem SKU: zero candidatos (nao casa com tudo)');
 
+// ── b467: a Girassol tem metade do catalogo em variacao — a Shopee/ML informam
+// o SKU do PAI, o card tem o da VARIACAO. Exato nao casa; pai e titulo casam,
+// marcados como aproximados. Os limites foram medidos com os titulos REAIS
+// do "a espreita" da Girassol (01/10).
+{
+  const { raizSku, tituloCasa } = require('../lib/orfaos-sugerir-origem');
+  ok(raizSku('10-AE-8f-g80-180mm') === raizSku('10-AE-8F-180mm-PAI'), '⚠️ raiz do SKU: a variacao (g80) casa com o pai (-PAI)');
+  ok(raizSku('10-AE-8f-g80-180mm') !== raizSku('10-furo-180mm-PAI'), '  mas anti-empastamento NAO casa com lisa');
+  const AE80 = '10 X Lixas Disco Anti-Empastamento 7 Polegadas 180mm 8 Furos Pluma Lixadeira Politriz KaQi GRÃO:80';
+  ok(tituloCasa('Par Lâminas Faca 82mm Corte p/ Plaina Elétrica PB-92 1900b HSS 82 Universal KaQi',
+                '4 x Lâminas Faca 82mm Corte p/ Plaina Elétrica PB-92 1900b HSS 82 Universal KaQi'),
+     '⚠️ titulo: "Par Laminas..." casa com "4 x Laminas..." (mesmo produto, kit diferente)');
+  ok(!tituloCasa(AE80, '10 X Lixas Disco Grão 7 Polegadas 180mm 8 Furos Lixadeira Politriz KaQi'),
+     '  titulo: anti-empastamento NAO casa com lisa (10 palavras iguais em 12 nao basta)');
+  ok(!tituloCasa(AE80, '30 X Lixas Disco Anti-Empastamento 5 Polegadas 125mm 8 Furos Pluma Lixadeira Politriz KaQi'),
+     '⚠️ titulo: 180mm NAO casa com 125mm (medida que nao bate derruba)');
+  ok(!tituloCasa('Suporte Prato Disco 4 Polegadas 100mm Politriz Esmerilhadeira Lixadeira M14 KaQi',
+                 'Suporte Disco Prato 125mm 5 Polegadas p/ Politriz Esmerilhadeira Lixadeira M14 KaQi'),
+     '  titulo: prato 100mm NAO casa com 125mm');
+  // o caso real dos 3 orfaos x a lista real (recorte)
+  const cards = [
+    { id: 1, produto_sku: '10-AE-8f-g80-180mm', produto_qtd: 5, produto_titulo: AE80 },
+    { id: 2, produto_sku: '10-AE-8f-g800-180mm', produto_qtd: 2, produto_titulo: AE80.replace('GRÃO:80', 'GRÃO:800') },
+    { id: 3, produto_sku: 'parlamplaina', produto_qtd: 1, produto_titulo: 'Par Lâminas Faca 82mm Corte p/ Plaina Elétrica PB-92 1900b HSS 82 Universal KaQi' },
+  ];
+  const esp2 = [
+    { marketplace: 'shopee', pedido: '260703PQQ2XJC2', tracking: 'BR260329038134J', itens: [{ titulo: '10 X Lixas Disco Anti-Empastamento 7 Polegadas 180mm 8 Furos Grão Lixadeira Politriz KaQi', sku: '10-AE-8F-180mm-PAI', qtd: 2 }] },
+    { marketplace: 'shopee', pedido: '260804ECX604PK', tracking: 'BR262733569134U', itens: [{ titulo: '4 x Lâminas Faca 82mm Corte p/ Plaina Elétrica PB-92 1900b HSS 82 Universal KaQi', sku: '2xpareslaminas', qtd: 1 }] },
+    { marketplace: 'shopee', pedido: '260819Q58K3AWF', tracking: 'BR263672109548S', itens: [{ titulo: '10 X Lixas Disco Grão 7 Polegadas 180mm 8 Furos Lixadeira Politriz KaQi', sku: '10-furo-180mm-PAI', qtd: 1 }] },
+  ];
+  const r2 = sugerirOrigem(cards, esp2);
+  const c1 = r2.orfaos.find((x) => x.orfao.id === 1).candidatos;
+  const c2 = r2.orfaos.find((x) => x.orfao.id === 2).candidatos;
+  const c3 = r2.orfaos.find((x) => x.orfao.id === 3).candidatos;
+  ok(c1.length === 1 && c1[0].pedido === '260703PQQ2XJC2' && c1[0].via === 'sku_pai', '⚠️ orfao g80: casa o pedido das AE pelo pai, e SO ele (nao a lisa)');
+  ok(c2.length === 1 && c2[0].via === 'sku_pai' && c2[0].qtd_bate === true, '  orfao g800: o mesmo, e a quantidade bate');
+  ok(c3.length === 1 && c3[0].pedido === '260804ECX604PK' && c3[0].via === 'titulo', '⚠️ orfao laminas: casa pelo titulo (SKU "parlamplaina" x "2xpareslaminas" nao tem raiz comum)');
+  ok(/via = como casou/.test(r2.orfaos.find((x) => x.orfao.id === 3).dica), '  e a dica explica que via != sku e aproximado');
+}
+
 // ── as rotas existem nas 3 empresas e usam a lib ──
 const compat = fs.readFileSync(path.join(__dirname, '..', 'amb-devolucoes', 'lib-AMB', 'compat-AMB.js'), 'utf8');
 const good = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
