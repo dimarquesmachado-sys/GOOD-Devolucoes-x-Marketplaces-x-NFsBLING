@@ -202,16 +202,30 @@ setInterval(retrofitItensPendentes, 6 * 60 * 60 * 1000);  // e a cada 6 horas
 // v3.29 - Itens completos de uma NF (pro expansor "▼ itens da NF")
 app.get('/api/admin/nf-itens/:idBling', requerAdmin, async (req, res) => {
   try {
-    const r = await buscarNFePorId(String(req.params.idBling).trim());
+    const idBling = String(req.params.idBling).trim();
+    // b476 - o painel agora carrega os itens SOZINHO (um card por vez); quando
+    // vem de la (?auto=1) e FUNDO na fila do Bling, pra nao competir com o bipe.
+    const auto = String(req.query.auto || '') === '1';
+    const r = await buscarNFePorId(idBling, { fundo: auto });
     const nf = (r.ok && r.data?.data) ? r.data.data : null;
-    if (!nf) return res.status(404).json({ ok: false, erro: 'NF nao encontrada no Bling' });
+    if (!nf) return res.status(r.status === 429 ? 503 : 404).json({ ok: false, erro: r.status === 429 ? 'Bling em 429 — tente de novo' : 'NF nao encontrada no Bling' });
     const itens = Array.isArray(nf.itens) ? nf.itens.map(it => ({
       titulo: it.descricao || null,
       sku: it.codigo || null,
       quantidade: it.quantidade || null,
       valor: it.valor || null,
     })) : [];
-    return res.json({ ok: true, numero: nf.numero, serie: nf.serie, itens });
+    // ⚠️ b476 - GRAVA no(s) card(s) dessa NF que ainda nao tem nf_itens: na
+    // proxima abertura do painel vem inline, sem chamada ao Bling. E a mesma
+    // coluna/formato que o enriquecimento pos-triagem grava (quando ele nao
+    // falha por 429). Nao bloqueia a resposta; so quem tem nf_itens nulo.
+    if (supabase && tabelaDevolucoes && itens.length) {
+      supabase.from(tabelaDevolucoes).update({ nf_itens: itens })
+        .eq('nf_id_bling', String(idBling)).is('nf_itens', null)
+        .then(({ error }) => { if (error) console.warn('[NF-ITENS] nao gravou nf_itens no card:', error.message); })
+        .catch((e) => console.warn('[NF-ITENS] falhou ao gravar:', e.message));
+    }
+    return res.json({ ok: true, numero: nf.numero, serie: nf.serie, itens, gravado_no_card: !!(supabase && tabelaDevolucoes && itens.length) });
   } catch (e) {
     return res.status(500).json({ ok: false, erro: e.message || 'erro interno' });
   }

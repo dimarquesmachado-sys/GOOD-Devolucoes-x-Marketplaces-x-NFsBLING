@@ -2185,6 +2185,7 @@ async function carregarSemRetorno() {
         : '<div class="vazio">Nenhum produto divergente. 🎉</div>';
 
       autoCarregarItens();   // b67 - itens ja abertos, sem clicar
+      setTimeout(autoCarregarItensNF, 300);   // b476: itens da NF abertos sem clicar
     }
 
     function limparBusca() {
@@ -3342,7 +3343,7 @@ async function carregarSemRetorno() {
       return false;
     }
 
-    async function verItensNF(idBling, el) {
+    async function verItensNF(idBling, el, auto) {
       const box = el.nextElementSibling; // .itens-nf-box
       if (!box) return false;
       if (box.style.display !== 'none') {
@@ -3358,7 +3359,7 @@ async function carregarSemRetorno() {
       const txt = el.textContent;
       el.textContent = '⏳ buscando itens...';
       try {
-        const r = await fetch(`${window.APP_BASE || ''}/api/admin/nf-itens/${idBling}`);
+        const r = await fetch(`${window.APP_BASE || ''}/api/admin/nf-itens/${idBling}${auto ? '?auto=1' : ''}`);
         const d = await r.json();
         if (!d.ok) throw new Error(d.erro || 'falha');
         const linhas = (d.itens || []).map(i => {
@@ -3374,10 +3375,34 @@ async function carregarSemRetorno() {
         box.style.display = 'block';
         el.textContent = '▲ itens da NF';
       } catch (e) {
-        toast('Erro ao buscar itens da NF: ' + (e.message || e), 'err');
+        if (auto) console.warn('[itens NF] auto: ' + (e.message || e)); else toast('Erro ao buscar itens da NF: ' + (e.message || e), 'err');
         el.textContent = txt;
       }
       return false;
+    }
+
+    // ⚠️ b476 - ITENS DA NF ABERTOS SEM CLICAR (pedido do dono, 01/10). O card
+    // ja vem inline quando tem `nf_itens` gravado; quando so tem o id da NF
+    // (o enriquecimento pos-triagem falhou por 429), ficava o link "itens da
+    // NF" esperando clique. Agora carrega SOZINHO — UM POR VEZ (em serie), como
+    // fundo na fila do Bling (?auto=1), pra nao martelar a cota. E a rota
+    // GRAVA nf_itens no card: na proxima abertura vem inline, sem chamada.
+    let AUTO_ITENS_RODANDO = false;
+    async function autoCarregarItensNF() {
+      if (AUTO_ITENS_RODANDO) return;
+      AUTO_ITENS_RODANDO = true;
+      try {
+        const links = Array.from(document.querySelectorAll('a[onclick*="verItensNF("]'));
+        for (const el of links) {
+          if (!document.body.contains(el)) continue;             // a lista foi re-renderizada
+          const box = el.nextElementSibling;
+          if (!box || box.dataset.carregado === '1') continue;
+          const m = String(el.getAttribute('onclick') || '').match(/verItensNF\('([^']+)'/);
+          if (!m) continue;
+          await verItensNF(m[1], el, true);
+          await new Promise((ok) => setTimeout(ok, 400));       // respiro entre cards
+        }
+      } finally { AUTO_ITENS_RODANDO = false; }
     }
 
     // v3.26 - INTELIGÊNCIA FULL
