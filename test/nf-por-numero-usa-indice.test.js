@@ -21,8 +21,8 @@ const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o
   // devolve 3 NFs: 126421/1, 126421/2 (colide) e 127796/1.
   const nfs = [
     { id: 11, numero: '126421', serie: '1', contato: { nome: 'Celma Ribeiro Albeche' }, dataEmissao: '2026-09-30 10:00:00', valorNota: 195.97, chaveAcesso: '3526092754845600014755001' + '0001264211' + '46709322' + '5' },
-    { id: 12, numero: '126421', serie: '2', contato: { nome: 'Fulano Full' }, dataEmissao: '2026-09-30 10:00:00', valorNota: 10, chaveAcesso: '3526092754845600014755002' + '0001264211' + '46709322' + '5' },
-    { id: 13, numero: '127796', serie: '1', contato: { nome: 'Jacson Froes Yn' }, dataEmissao: '2026-09-30 11:00:00', valorNota: 27.9, chaveAcesso: '3526092754845600014755001' + '0001277961' + '46709322' + '5' },
+    { id: 12, numero: '126421', serie: '', contato: { nome: 'Fulano Full' }, dataEmissao: '2026-09-30 10:00:00', valorNota: 10, chaveAcesso: '3526092754845600014755002' + '0001264211' + '46709322' + '5' },
+    { id: 13, numero: '127796', serie: '', contato: { nome: 'Jacson Froes Yn' }, dataEmissao: '2026-09-30 11:00:00', valorNota: 27.9, chaveAcesso: '3526092754845600014755001' + '0001277961' + '46709322' + '5' },
   ];
   let pagina = 0;
   const chamarBling = async () => (++pagina === 1 ? { ok: true, status: 200, data: { data: nfs } } : { ok: true, status: 200, data: { data: [] } });
@@ -49,6 +49,7 @@ const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o
     const r2 = nfNomes.acharPorNumero('126421');
     ok(r2 && r2._series_colidem === true, `⚠️ ${nome}: 126421 existe nas series 1 e 2 -> marcado _series_colidem (o atalho NAO pode usar)`);
     ok(nfNomes.acharPorNumero('000127796') && String(nfNomes.acharPorNumero('000127796').id) === '13', `  ${nome}: zeros a esquerda nao atrapalham`);
+    ok(r1 && r1.serie === '1', `⚠️ ${nome}: nf.serie vazio na listagem -> a serie vem da chave de acesso (b474, Codex P1)`);
     ok(nfNomes.acharPorNumero('999999') === null, `  ${nome}: numero que nao esta no indice -> null (cai na varredura)`);
   }
 
