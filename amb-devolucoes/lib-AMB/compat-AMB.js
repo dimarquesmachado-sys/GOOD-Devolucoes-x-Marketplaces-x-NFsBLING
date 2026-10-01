@@ -1219,6 +1219,9 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
    *  unidade em defeito, marca a retirada (canibalizacao). */
   router.post('/api/triagem/consertado', auth.requerLogin, async (req, res) => {
     const d = corpo(req);
+    // b461 (Codex, P2): o "Consertei" grava aprovado pelo mesmo caminho — mesma trava
+    const origemC = require('../../lib/triagem-tem-origem').conferirOrigem(d);
+    if (!origemC.ok) return res.status(origemC.status).json({ ok: false, erro: origemC.erro, sem_origem: true });
     const problema = String(d.descricao || d.problema_descricao || '').trim();
     if (!problema) return res.status(400).json({ ok: false, erro: 'descreva o que estava com defeito' });
     const peca = String(d.peca || '').trim();
