@@ -467,7 +467,11 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
       tipoTentativa = 'numero_nf';
       console.log(`[BUSCA] NUMERO NF: numero=${numeroDaChave} serie=${serieDaChave || '(todas)'}`);
       let achadas = [];
-      try { achadas = await buscarNFsPorNumero(numeroDaChave, serieDaChave); } catch (e) { achadas = []; }
+      let blingIndisponivel = false;   // b472: "nao sei" != "nao existe"
+      try {
+        achadas = await buscarNFsPorNumero(numeroDaChave, serieDaChave);
+        if (achadas === null) { blingIndisponivel = true; achadas = []; }
+      } catch (e) { achadas = []; }
 
       if (achadas.length > 1) {
         // AMBIGUIDADE: mesma numeracao em series diferentes. Carrega o basico
@@ -504,8 +508,16 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
     resultado.tentativas.push({
       tipo: tipoTentativa,
       codigo: ehChaveNFe ? codigoLimpo : String(codigoOriginal || '').trim(),
-      ok: !!idNF, status: idNF ? 200 : 404,
+      ok: !!idNF, status: idNF ? 200 : (blingIndisponivel ? 503 : 404),
     });
+    // ⚠️ b472 - "NAO SEI" != "NAO EXISTE": se o Bling nao respondeu (429 em
+    // cascata), a mensagem certa e "tente de novo", nao "confira o numero" — a
+    // nota pode existir (a 126421 existia) e o operador desistia dela.
+    if (!idNF && blingIndisponivel) {
+      resultado.erro = `⚠️ O Bling NAO RESPONDEU ao procurar a NF ${numeroDaChave} (cota/429). ISSO NAO QUER DIZER QUE A NOTA NAO EXISTE — espere 1 minuto e bipe de novo.`;
+      resultado.bling_indisponivel = true;
+      return res.status(503).json(await comRecados(resultado, req.params.codigo));
+    }
     if (!idNF) {
       resultado.erro = ehChaveNFe
         ? `Chave lida, mas a NF ${numeroDaChave} (serie ${serieDaChave}) nao foi localizada no Bling.`

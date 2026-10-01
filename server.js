@@ -534,7 +534,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.119.0 (b471: orfaos — filho que casou, titulo x SKU pai, tamanho P x G)',
+      version: '9.117.0 (b472: Bling em 429 nao vira "NF nao existe" — diz "tente de novo")',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -1190,7 +1190,11 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
       tipoTentativa = 'numero_nf';
       console.log(`[BUSCA] NUMERO NF: numero=${numeroDaChave} serie=${serieDaChave || '(todas)'}`);
       let achadas = [];
-      try { achadas = await buscarNFsPorNumero(numeroDaChave, serieDaChave); } catch (e) { achadas = []; }
+      let blingIndisponivel = false;   // b472: "nao sei" != "nao existe"
+      try {
+        achadas = await buscarNFsPorNumero(numeroDaChave, serieDaChave);
+        if (achadas === null) { blingIndisponivel = true; achadas = []; }
+      } catch (e) { achadas = []; }
 
       if (achadas.length > 1) {
         // AMBIGUIDADE: mesma numeracao em series diferentes. Carrega o basico
@@ -1227,8 +1231,16 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
     resultado.tentativas.push({
       tipo: tipoTentativa,
       codigo: ehChaveNFe ? codigoLimpo : String(codigoOriginal || '').trim(),
-      ok: !!idNF, status: idNF ? 200 : 404,
+      ok: !!idNF, status: idNF ? 200 : (blingIndisponivel ? 503 : 404),
     });
+    // ⚠️ b472 - "NAO SEI" != "NAO EXISTE": se o Bling nao respondeu (429 em
+    // cascata), a mensagem certa e "tente de novo", nao "confira o numero" — a
+    // nota pode existir (a 126421 existia) e o operador desistia dela.
+    if (!idNF && blingIndisponivel) {
+      resultado.erro = `⚠️ O Bling NAO RESPONDEU ao procurar a NF ${numeroDaChave} (cota/429). ISSO NAO QUER DIZER QUE A NOTA NAO EXISTE — espere 1 minuto e bipe de novo.`;
+      resultado.bling_indisponivel = true;
+      return res.status(503).json(resultado);
+    }
     if (!idNF) {
       resultado.erro = ehChaveNFe
         ? `Chave lida, mas a NF ${numeroDaChave} (serie ${serieDaChave}) nao foi localizada no Bling.`

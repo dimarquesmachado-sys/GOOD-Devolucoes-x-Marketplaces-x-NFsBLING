@@ -757,6 +757,9 @@ app.get('/api/debug/nf-numero/:numero', async (req, res) => {
       req.query.serie || null,
       { trace, mesesAtras: Number(req.query.meses) || 18 },
     );
+    if (achadas === null) {   // b472: o Bling nao respondeu — nao e "nao existe"
+      return res.status(503).json({ ok: false, erro: 'o Bling nao respondeu (cota/429) — tente de novo em 1 minuto; isso NAO quer dizer que a NF nao existe', bling_indisponivel: true, trace });
+    }
     res.json({ ok: true, numero: req.params.numero, achadas, passos: trace });
   } catch (e) {
     res.status(500).json({ ok: false, erro: String(e.message || e), passos: trace });
