@@ -166,6 +166,11 @@ async function confirmarAprovar() {
         inputCodigo.value = '';
         inputCodigo.focus();
       }, 2500);
+    } else if (r.status === 422 && d.sem_origem) {
+      // b459 - sem pedido/rastreio/NF: o estoquista bipou o codigo de barras
+      // do PRODUTO. Um toast some antes de ler; isto fica ate ele fechar.
+      fecharModal('modalAprovar');
+      alert('⚠️ NAO DA PRA APROVAR\n\n' + d.erro);
     } else if (r.status === 409 && d.erro === 'duplicata') {
       fecharModal('modalAprovar');
       toast('Esta devolucao ja foi triada antes!', 'err');
