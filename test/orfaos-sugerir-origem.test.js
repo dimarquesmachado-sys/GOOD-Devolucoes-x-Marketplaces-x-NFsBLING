@@ -84,6 +84,31 @@ ok(sugerirOrigem([{ id: 9, produto_sku: '' }], esp).orfaos[0].candidatos.length 
   ok(/via = como casou/.test(r2.orfaos.find((x) => x.orfao.id === 3).dica), '  e a dica explica que via != sku e aproximado');
 }
 
+// ── b468 (Codex #396): medida solta, titulo do GOOD (it.produto), SKU vazio ──
+{
+  const { tituloCasa } = require('../lib/orfaos-sugerir-origem');
+  ok(!tituloCasa('Disco 5 Polegadas Politriz Universal Lixadeira', 'Disco 7 Polegadas Politriz Universal Lixadeira'),
+     '⚠️ numero solto de MEDIDA ("5" x "7" Polegadas") diferencia o produto');
+  ok(tituloCasa('4 x Laminas Faca 82mm Aco Inox Premium', 'Par Laminas Faca 82mm Aco Inox Premium'),
+     '  quantidade de kit ("4 x") continua ignorada');
+  ok(tituloCasa('Kit com 4 Laminas Faca 82mm Aco Inox Premium', 'Laminas Faca 82mm Aco Inox Premium'),
+     '  "kit com 4" tambem');
+
+  // GOOD/Shopee: o enriquecimento deixa so d.produto (titulo), sem itens
+  const orf = [{ id: 9, produto_sku: 'SKU-SEM-RELACAO', produto_titulo: 'Disco 7 Polegadas Politriz Universal Lixadeira', produto_qtd: 1 }];
+  const rG = sugerirOrigem(orf, [{ marketplace: 'shopee', pedido: 'P1', tracking: 'T1', produto: 'Disco 7 Polegadas Politriz Universal Lixadeira', sku: 'OUTRO' }]);
+  ok(rG.orfaos[0].candidatos.length === 1 && rG.orfaos[0].candidatos[0].via === 'titulo', '⚠️ casa pelo it.produto (titulo montado pela espreita GOOD)');
+
+  // orfao so com titulo: item filho SEM sku nao pode virar o "casado"
+  const orf2 = [{ id: 10, produto_titulo: 'Disco 7 Polegadas Politriz Universal Lixadeira', produto_qtd: 2 }];
+  const rS = sugerirOrigem(orf2, [{ marketplace: 'shopee', pedido: 'P2', tracking: 'T2', qtd: 9, itens: [
+    { titulo: 'Capa Protetora Azul Grande Resistente', qtd: 5 },
+    { titulo: 'Disco 7 Polegadas Politriz Universal Lixadeira', qtd: 2 },
+  ] }]);
+  ok(rS.orfaos[0].candidatos.length === 1 && rS.orfaos[0].candidatos[0].qtd_no_pedido === 2 && rS.orfaos[0].candidatos[0].qtd_bate === true,
+     '⚠️ orfao sem SKU: o item casado e o do titulo, nao o 1o filho sem SKU');
+}
+
 // ── as rotas existem nas 3 empresas e usam a lib ──
 const compat = fs.readFileSync(path.join(__dirname, '..', 'amb-devolucoes', 'lib-AMB', 'compat-AMB.js'), 'utf8');
 const good = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
