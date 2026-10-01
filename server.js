@@ -1473,7 +1473,7 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
         resultado.tentativas.push({ tipo: 'shopee_return', v: '3.34.3', codigo: codigoOriginal, ok: false, status: 500, erro: e.message || String(e) });
         console.error('[BUSCA][shopee] proxy falhou:', e.message || e);
       }
-    } else {
+    } else if (!shopee.cfg.ativo) {   // b475 (Codex, P2): so quando DESLIGADA — nome puro com Shopee ativa nao e "desligada"
       // v3.34.3: mesmo desligada, a tentativa aparece e se explica
       resultado.tentativas.push({ tipo: 'shopee_return', v: '3.34.3', codigo: codigoOriginal, ok: false, status: 0, erro: 'SHOPEE_PROXY_URL/SHOPEE_PROXY_KEY ausentes no Render deste servico' });
     }

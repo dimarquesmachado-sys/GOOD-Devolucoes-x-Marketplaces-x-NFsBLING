@@ -32,6 +32,10 @@ for (const [p, nome] of [['amb-devolucoes/lib-AMB/identificar-AMB.js', 'AMB/Gira
   ok(!/if \(!ehNomePuro && !devShopee\) \{/.test(s), `⚠️ ${nome}: o if externo (!devShopee) NAO ganhou !ehNomePuro (ele contem a busca por nome)`);
   // e a busca por nome em si NAO e pulada
   ok(/const rN = await nfNomes\.buscarPorNome\(codigoOriginal\);/.test(s) && !/if \(!ehNomePuro[^\n]*buscarPorNome/.test(s), `  ${nome}: a busca por nome roda normalmente`);
+  // b475 (Codex, P2): o else da Shopee so registra "desligada" quando ela ESTA desligada
+  ok(!/\} else \{\s*\n[^\n]*\n\s*resultado\.tentativas\.push\(\{ tipo: 'shopee_return', v: '3\.34\.3', codigo: codigoOriginal, ok: false, status: 0/.test(s),
+     `  ${nome}: o else da Shopee nao e incondicional (nome puro com Shopee ativa nao vira "desligada")`);
+  ok(/\} else if \(!shopee\.cfg\.ativo\) \{/.test(s), `  ${nome}: ... e so quando !shopee.cfg.ativo`);
 }
 
 // a regra do "nome puro": casos
