@@ -153,13 +153,29 @@ ok(/deps\.espreitaMontada/.test(rota), '  e le a espreita por deps.espreitaMonta
 // qtd do topo (Shopee GOOD, sem itens) tambem desempata.
 {
   const o = (sku, extra) => sugerirOrigem([{ id: 1, produto_sku: sku, produto_qtd: 2 }], [Object.assign({ marketplace: 'ml', tracking: 'T' }, extra)]).orfaos[0].candidatos;
-  ok(o('10-AE-8F-G80-180mm', { itens: [{ sku: '10-AE-8F-G800-180mm', qtd: 2 }] }).length === 0, '⚠️ variacao irma (g800) NAO casa como pai de g80');
+  ok(o('10-AE-8F-G80-180mm', { itens: [{ sku: '10-AE-8F-G800-180mm', qtd: 2 }] }).every((c) => c.via === 'sku_irmao'), '⚠️ variacao IRMA (G800 x G80) NAO casa como pai — entra como sku_irmao, a mais fraca (pode ser "item errado": cliente pediu 800, recebeu 80)');
   ok(o('10-AE-8F-G80-180mm', { sku: '10-AE-8F-180mm-PAI' }).map((c) => c.via).join() === 'sku_pai', '  o PAI real continua casando');
   const { tituloCasa: tc } = require('../lib/orfaos-sugerir-origem');
   ok(tc('2x Lixas Disco Anti-Empastamento 7 Polegadas 180mm', '4x Lixas Disco Anti-Empastamento 7 Polegadas 180mm'), '  "2x" x "4x" colado = kit, casa');
   const r = sugerirOrigem([{ id: 1, produto_sku: 'A-G80', produto_qtd: 2 }],
     [{ sku: 'A-PAI', qtd: 1, tracking: 'T1' }, { sku: 'A-PAI', qtd: 2, tracking: 'T2' }]).orfaos[0].candidatos;
   ok(r[0].tracking === 'T2' && r[0].qtd_bate === true, '  qtd do topo desempata quando nao ha item filho');
+}
+
+// b469 (minha versao): a irma e CANDIDATO fraco, nao excluida — ordem e dica
+{
+  const m = require('../lib/orfaos-sugerir-origem');
+  const o2 = { id: 1, produto_sku: '10-AE-8f-g80-180mm', produto_qtd: 5, produto_titulo: 'x y z w' };
+  const r = m.sugerirOrigem([o2], [
+    { marketplace: 'shopee', pedido: 'PAI', tracking: 'A', itens: [{ titulo: 'x', sku: '10-AE-8F-180mm-PAI', qtd: 5 }] },
+    { marketplace: 'ml', pedido: 'IRMA', tracking: 'B', itens: [{ titulo: 'x', sku: '10-AE-8F-G800-180mm', qtd: 5 }] },
+    { marketplace: 'ml', pedido: 'MESMA', tracking: 'C', itens: [{ titulo: 'x', sku: '10-AE-8F-G80-180MM', qtd: 1 }] },
+    { marketplace: 'good', pedido: 'RAIZ', tracking: 'D', sku: '10-AE-8F-180mm-PAI', produto: 'x', qtd: 5 },
+  ]);
+  const cs = r.orfaos[0].candidatos;
+  ok(cs.map((c) => c.via).join(',') === 'sku,sku_pai,sku_pai,sku_irmao', '  ordem: sku > sku_pai > sku_irmao (a irma por ultimo, mas presente)');
+  ok(cs.find((c) => c.pedido === 'RAIZ').qtd_bate === true, '  qtd_bate usa it.qtd quando nao ha item filho (GOOD/Shopee com a quantidade na raiz)');
+  ok(/sku_irmao e OUTRA variacao/.test(r.orfaos[0].dica), '  e a dica explica o sku_irmao');
 }
 
 console.log('');
