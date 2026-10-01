@@ -326,6 +326,8 @@ const mlReturns = require('./lib-AMB/ml-returns-AMB').criar(CFG_EMPRESA);
 const nfNomes = require('./lib-AMB/nf-nomes-AMB').criar(CFG_EMPRESA);
 const tokens = require('../lib/render-tokens');
 const tiktokPonte = require('../lib/tiktok-ponte');
+const devCapturadas = require('../lib/devolucoes-capturadas');   // b455: a captura persistente, que so a GOOD chamava
+const tiktokDevCaptura = require('../lib/tiktok-devolucoes');     // b455: normaliza o TikTok pra captura (o mesmo modulo que o identificar recebe por deps)
 const erroCodigo = require('../lib/erro-de-codigo');   // b205 - bug meu nao e falha do marketplace
 const confrontar = require('../lib/confrontar-nf');   // b208 - escada de desempate da NF
 const vinculoCache = require('../lib/vinculo-nf-cache');   // b204 - vinculo NF ja achado
@@ -639,7 +641,7 @@ const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 // checado ANTES de entrar na fila da empresa — nao antes de sair, entao um
 // candidato ja desistido ainda batia no Bling depois de esperar numa pausa
 // de 429. Ver bling-AMB.js, nf-nomes-AMB.js e identificar-AMB.js.
-const VERSAO = 'AMB Devolucoes b457';
+const VERSAO = 'AMB Devolucoes b458';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -991,6 +993,7 @@ router.get('/status', (req, res) => {
     // devagar (ou para) e `na_fila` mostra quem espera. Antes deste build
     // nao havia fila — o cliente martelava.
     ritmo_bling: (typeof bling.estadoRitmo === 'function') ? bling.estadoRitmo() : null,
+    captura: (typeof CAPTURA !== 'undefined') ? CAPTURA.estado : null,   // b455: ultima gravacao em devolucoes_capturadas
     conectado: { bling: bling.temToken(), ml: ml.temToken(), ml_user: ml.userId() || null },
     indice_ml: { quente: idx.quente, construindo: idx.construindo, rastreios: idx.com_tracking, idade_min: idx.idade_min },
     indice_nomes: { quente: nfNomes.statusIndice().quente, nfs: nfNomes.statusIndice().total_nfs },
@@ -1989,6 +1992,50 @@ router.get('/api/debug/tiktok-devolucoes', admin, async (req, res) => {
 const CACHES = GAVETAS.caches;   // b353
 
 // ── A ESPREITA (o que esta vindo pro galpao) ─────────────────
+// ⚠️ b455 - A CAPTURA PERSISTENTE, que so a GOOD tinha (auditoria do Codex,
+// 01/10). A GOOD grava o "a espreita" em `devolucoes_capturadas` uma vez por
+// hora — assim o dado esta no banco quando o pacote chega, mesmo que o
+// servidor reinicie ou o marketplace suma com a devolucao da API. A AMB e a
+// Girassol so LIAM essa tabela (relatorio de refunds TikTok): nunca gravaram.
+// "Portar tudo, sempre" — ficou pra tras aqui.
+//
+// 📌 Mesma lib da GOOD (`lib/devolucoes-capturadas`, que ja recebe a empresa
+// como parametro), mesmo limite de 1x/hora. Liga na rota que monta o
+// agregado — e a mesma lista que a tela mostra. Sem timer novo: o painel e
+// aberto varias vezes por dia, e o throttle garante que nao grava a toa.
+const CAPTURA = { ultima: 0, rodando: false, estado: { ultima: null, gravadas: 0, erro: null } };
+const CAPTURA_INTERVALO_MS = 60 * 60 * 1000;
+const CAPTURA_LIMITE_TIKTOK = 300;
+function capturarDevolucoesEmpresa(emTransito, forcar) {
+  const sb = db.cliente();
+  if (!sb) { CAPTURA.estado.erro = 'Supabase nao configurado'; return; }
+  if (CAPTURA.rodando) return;
+  if (!forcar && Date.now() - CAPTURA.ultima < CAPTURA_INTERVALO_MS) return;
+  CAPTURA.rodando = true;
+  CAPTURA.ultima = Date.now();
+  const linhas = (emTransito || []).map((d) => devCapturadas.traduzir(d, CHAVE_DADOS)).filter(Boolean);
+  // o TikTok entra pela ponte, como na GOOD — e um erro la nao derruba o resto
+  let erroTikTok = null;
+  const comTikTok = tiktokPonte.sondaDevolucoes(CHAVE_DADOS, { limite: CAPTURA_LIMITE_TIKTOK })
+    .then((r) => ((r && r.ok && Array.isArray(r.devolucoes)) ? r.devolucoes : [])
+      .map((d) => devCapturadas.traduzir(tiktokDevCaptura.normalizar(d, CHAVE_DADOS), CHAVE_DADOS))
+      .filter(Boolean))
+    .catch((e) => { erroTikTok = e.message; return []; });
+  return comTikTok.then((extras) => devCapturadas.guardar(sb, linhas.concat(extras)))
+    .then((r) => {
+      CAPTURA.estado = {
+        ultima: new Date().toISOString(),
+        gravadas: (r && r.gravadas) || 0,
+        tiktok_erro: erroTikTok || undefined,
+        erro: (r && r.ok) ? null : ((r && r.erros) || ['falha desconhecida']).join(' | '),
+      };
+      if (r && r.ok) console.log(`[${TAG_APP}/CAPTURA] ${r.gravadas} devolucoes guardadas`);
+      else console.error(`[${TAG_APP}/CAPTURA] falhou: ${CAPTURA.estado.erro}`);
+    })
+    .catch((e) => { CAPTURA.estado = { ...CAPTURA.estado, erro: e.message }; })
+    .finally(() => { CAPTURA.rodando = false; });
+}
+
 router.get('/api/espreita', auth.requerLogin, async (req, res) => {
   // b29 - cada fonte com a propria rede de protecao: uma quebrar
   // NUNCA derruba as outras, e o erro vai ESCRITO pro painel.
@@ -2132,6 +2179,7 @@ router.get('/api/espreita', auth.requerLogin, async (req, res) => {
     entregues: [...enriquecer(baseML.entregues), ...enriquecer(baseShopee.entregues || [])],
     ts: Date.now(),
   };
+  capturarDevolucoesEmpresa(emTransito);   // b455: guarda no banco, 1x/hora (nao bloqueia a resposta)
   res.json({
     ok: true,
     versao: VERSAO,
