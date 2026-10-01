@@ -641,7 +641,7 @@ const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 // checado ANTES de entrar na fila da empresa — nao antes de sair, entao um
 // candidato ja desistido ainda batia no Bling depois de esperar numa pausa
 // de 429. Ver bling-AMB.js, nf-nomes-AMB.js e identificar-AMB.js.
-const VERSAO = 'AMB Devolucoes b465';
+const VERSAO = 'AMB Devolucoes b466';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -2679,7 +2679,11 @@ impressao.registrarRotas(router, auth.requerLogin);
 // status de triagem). Tem que ser montado ANTES do catch-all 404 abaixo.
 // b74 - passa a VERSAO pro compat: o /health mostrava um numero fixo
 // ('AMB b68') e a tela imprimia ele no topo, desencontrado do servidor.
-compat.montar(router, { auth, db, bling, cfg, multer, versao: VERSAO });
+// b466 - o compat precisa de espreitaMontada e chaveDados (a rota /api/admin/orfaos,
+// b465, lia deps.espreitaMontada — que so era passada pro OUTRO objeto de deps,
+// la embaixo; aqui chegava undefined e a rota dizia "nao montado" pra sempre).
+compat.montar(router, { auth, db, bling, cfg, multer, versao: VERSAO,
+  chaveDados: CHAVE_DADOS, espreitaMontada: () => CACHES.espreita });
 
 // b61 - LEVA 4a do porte GOOD -> AMB: as 13 rotas /api/admin/* que o
 // painel usa (fotos, itens da NF, vincular/lancar Full, lancar por NF,
