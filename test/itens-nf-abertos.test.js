@@ -38,8 +38,11 @@ for (const p of ['amb-devolucoes/public-AMB/painel2-AMB.html', 'amb-devolucoes/p
   const nome = p.split('/').pop();
   ok(/async function verItensNF\(idBling, el, auto\)/.test(s), `⚠️ ${nome}: verItensNF aceita o modo auto`);
   ok(/\/api\/admin\/nf-itens\/\$\{idBling\}\$\{auto \? '\?auto=1' : ''\}/.test(s), `  ${nome}: manda ?auto=1 no modo auto`);
-  ok(/async function autoCarregarItensNF\(\)/.test(s) && /await verItensNF\(m\[1\], el, true\);/.test(s) && /await new Promise\(\(ok\) => setTimeout\(ok, 400\)\)/.test(s),
+  ok(/async function autoCarregarItensNF\(\)/.test(s) && /await verItensNF\(id, els\[0\], true\);/.test(s) && /await new Promise\(\(ok\) => setTimeout\(ok, 400\)\)/.test(s),
      `  ${nome}: auto-carrega EM SERIE (um por vez, com respiro) — nao dispara 30 chamadas juntas`);
+  // b478 (Codex): a mesma NF em varios cards = UMA chamada; os irmaos copiam a caixa
+  ok(/const grupos = new Map\(\);/.test(s) && /grupos\.get\(m\[1\]\)\.push\(el\)/.test(s) && /b\.innerHTML = caixa\.innerHTML;/.test(s),
+     `⚠️ ${nome}: agrupa por id da NF — 1 chamada ao Bling por NF, os outros cards da mesma NF copiam a caixa`);
   // b477 (Codex, P2 x3): re-render no meio nao perde os links novos; 503 repesca; sem link cravado
   ok(/if \(AUTO_ITENS_RODANDO\) \{ AUTO_ITENS_PENDENTE = true; return; \}/.test(s) && /if \(AUTO_ITENS_PENDENTE\) \{ AUTO_ITENS_PENDENTE = false; setTimeout\(autoCarregarItensNF, 300\); \}/.test(s),
      `  ${nome}: renderizar() no meio de um lote marca pendente e roda de novo no fim (nao perde os links novos)`);
@@ -61,6 +64,15 @@ for (const p of ['amb-devolucoes/public-AMB/painel2-AMB.html', 'amb-devolucoes/p
 // o painel-AMB mantem o auto-carregar das caixas (b67) — os dois convivem
 ok(/autoCarregarItens\(\);\s*\/\/ b67/.test(fs.readFileSync(path.join(__dirname, '..', 'amb-devolucoes/public-AMB/painel-AMB.html'), 'utf8')),
    '  painel-AMB: o auto das caixas (b67, aprovados) continua; o novo cobre os links (problemas/divergentes)');
+
+// b478 (Codex): o autoCarregarItens do painel antigo tambem busca em FUNDO (?auto=1)
+{
+  const s = fs.readFileSync(path.join(__dirname, '..', 'amb-devolucoes/public-AMB/painel-AMB.html'), 'utf8');
+  const i = s.indexOf('async function autoCarregarItens()');
+  const f = s.indexOf('function tentarItensDeNovo', i);
+  ok(i >= 0 && f > i && /nf-itens\/\$\{idBling\}\?auto=1`/.test(s.slice(i, f)),
+     '⚠️ painel-AMB: autoCarregarItens (caixas b67) manda ?auto=1 — fundo na fila do Bling, nao compete com o bipe');
+}
 
 console.log('');
 console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');

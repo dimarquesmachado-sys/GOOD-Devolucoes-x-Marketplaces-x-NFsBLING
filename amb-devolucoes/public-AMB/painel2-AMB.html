@@ -2747,22 +2747,45 @@ async function carregarSemRetorno() {
       AUTO_ITENS_RODANDO = true;
       const repescar = [];   // b477 (Codex): os que tomaram 503 (Bling em 429) voltam uma vez, 30s depois
       try {
-        const links = Array.from(document.querySelectorAll('a[onclick*="verItensNF("]'));
-        for (const el of links) {
-          if (!document.body.contains(el)) continue;             // a lista foi re-renderizada
+        // b478 (Codex): agrupa por id da NF — UMA chamada ao Bling por NF; os outros
+        // cards da mesma NF (re-bipada/repetida) copiam a caixa ja preenchida.
+        const grupos = new Map();
+        for (const el of document.querySelectorAll('a[onclick*="verItensNF("]')) {
           const box = el.nextElementSibling;
           if (!box || box.dataset.carregado === '1') continue;
           const m = String(el.getAttribute('onclick') || '').match(/verItensNF\('([^']+)'/);
           if (!m) continue;
-          const r = await verItensNF(m[1], el, true);
-          if (r === 'retry') repescar.push([m[1], el]);
-          await new Promise((ok) => setTimeout(ok, 400));       // respiro entre cards
+          if (!grupos.has(m[1])) grupos.set(m[1], []);
+          grupos.get(m[1]).push(el);
+        }
+        const copiarParaIrmaos = (els) => {
+          const [lider, ...irmaos] = els;
+          const caixa = lider.nextElementSibling;
+          if (!caixa || caixa.dataset.carregado !== '1') return;
+          for (const el of irmaos) {
+            const b = el.nextElementSibling;
+            if (!b || b.dataset.carregado === '1') continue;
+            b.innerHTML = caixa.innerHTML;
+            b.dataset.carregado = '1';
+            b.style.display = 'block';
+            el.textContent = '▲ itens da NF';
+          }
+        };
+        for (const [id, els0] of grupos) {
+          const els = els0.filter((el) => document.body.contains(el));   // a lista foi re-renderizada
+          if (!els.length) continue;
+          const r = await verItensNF(id, els[0], true);
+          if (r === 'retry') repescar.push([id, els]);
+          else copiarParaIrmaos(els);
+          await new Promise((ok) => setTimeout(ok, 400));       // respiro entre NFs
         }
         if (repescar.length) {
           await new Promise((ok) => setTimeout(ok, 30000));
-          for (const [id, el] of repescar) {
-            if (!document.body.contains(el) || (el.nextElementSibling && el.nextElementSibling.dataset.carregado === '1')) continue;
-            await verItensNF(id, el, true);
+          for (const [id, els0] of repescar) {
+            const els = els0.filter((el) => document.body.contains(el) && el.nextElementSibling && el.nextElementSibling.dataset.carregado !== '1');
+            if (!els.length) continue;
+            await verItensNF(id, els[0], true);
+            copiarParaIrmaos(els);
             await new Promise((ok) => setTimeout(ok, 400));
           }
         }
