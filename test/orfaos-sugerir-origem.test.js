@@ -54,8 +54,25 @@ const iR = compat.indexOf("router.get('/api/admin/orfaos'");
 const rota = compat.slice(iR, iR + 2500);
 ok(!/\bCHAVE_DADOS\b/.test(rota) && /deps\.chaveDados/.test(rota), '⚠️ a rota da fabrica usa deps.chaveDados (CHAVE_DADOS nao existe la — 1a versao usava)');
 ok(/deps\.espreitaMontada/.test(rota), '  e le a espreita por deps.espreitaMontada (que o app-AMB passa)');
-ok(/espreitaMontada: \(\) => CACHES\.espreita/.test(fs.readFileSync(path.join(__dirname, '..', 'amb-devolucoes', 'app-AMB.js'), 'utf8')),
-   '  e o app-AMB passa espreitaMontada nas deps');
+// ⚠️ b466 — REGRA 12 NA FORMA MAIS TRAICOEIRA: o nome EXISTIA no app-AMB, mas
+// num objeto de deps que vai pra OUTRO modulo. O compat recebia
+// { auth, db, bling, cfg, multer, versao } — sem espreitaMontada nem
+// chaveDados — e a rota dizia "nao montado" pra sempre em producao. O teste
+// anterior conferia que o nome existia no arquivo, nao que chegava NA
+// CHAMADA DO COMPAT. Agora confere a chamada.
+{
+  const app = fs.readFileSync(path.join(__dirname, '..', 'amb-devolucoes', 'app-AMB.js'), 'utf8');
+  const iM = app.indexOf('compat.montar(router,');
+  const chamada = app.slice(iM, app.indexOf(');', iM) + 2);
+  ok(iM > 0 && /espreitaMontada: \(\) => CACHES\.espreita/.test(chamada),
+     '⚠️ espreitaMontada e passada NA CHAMADA compat.montar(...) (nao so em algum objeto do arquivo)');
+  ok(/chaveDados: CHAVE_DADOS/.test(chamada),
+     '  e chaveDados tambem (a rota responde "empresa")');
+  // e todo deps.X que a rota de orfaos le esta na chamada
+  const usados = [...new Set([...rota.matchAll(/deps\.(\w+)/g)].map((m) => m[1]))];
+  const faltam = usados.filter((k) => !new RegExp('\\b' + k + '\\b').test(chamada));
+  ok(faltam.length === 0, `  todo deps.X que a rota le chega na chamada (faltam: ${faltam.join(', ') || 'nenhum'})`);
+}
 
 console.log('');
 console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
