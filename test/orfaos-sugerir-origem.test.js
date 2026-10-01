@@ -159,7 +159,10 @@ ok(/deps\.espreitaMontada/.test(rota), '  e le a espreita por deps.espreitaMonta
   ok(tc('2x Lixas Disco Anti-Empastamento 7 Polegadas 180mm', '4x Lixas Disco Anti-Empastamento 7 Polegadas 180mm'), '  "2x" x "4x" colado = kit, casa');
   const r = sugerirOrigem([{ id: 1, produto_sku: 'A-G80', produto_qtd: 2 }],
     [{ sku: 'A-PAI', qtd: 1, tracking: 'T1' }, { sku: 'A-PAI', qtd: 2, tracking: 'T2' }]).orfaos[0].candidatos;
-  ok(r[0].tracking === 'T2' && r[0].qtd_bate === true, '  qtd do topo desempata quando nao ha item filho');
+  // b470 (Codex, 3a rodada): a qtd do TOPO na GOOD e a soma do pedido (multi-item),
+  // nao a do produto casado — NAO desempata. Fica informativa em qtd_total_pedido.
+  ok(r.every((c) => c.qtd_bate === null) && r.find((c) => c.tracking === 'T2').qtd_total_pedido === 2,
+     '  qtd do topo NAO desempata (e a soma do pedido) — vai em qtd_total_pedido');
 }
 
 // b469 (minha versao): a irma e CANDIDATO fraco, nao excluida — ordem e dica
@@ -174,7 +177,14 @@ ok(/deps\.espreitaMontada/.test(rota), '  e le a espreita por deps.espreitaMonta
   ]);
   const cs = r.orfaos[0].candidatos;
   ok(cs.map((c) => c.via).join(',') === 'sku,sku_pai,sku_pai,sku_irmao', '  ordem: sku > sku_pai > sku_irmao (a irma por ultimo, mas presente)');
-  ok(cs.find((c) => c.pedido === 'RAIZ').qtd_bate === true, '  qtd_bate usa it.qtd quando nao ha item filho (GOOD/Shopee com a quantidade na raiz)');
+  // b470 (Codex): it.qtd na raiz e a SOMA do pedido na GOOD — informa, nao ranqueia
+  ok(cs.find((c) => c.pedido === 'RAIZ').qtd_bate === null && cs.find((c) => c.pedido === 'RAIZ').qtd_total_pedido === 5,
+     '  qtd da RAIZ nao ranqueia (qtd_bate null) — vai em qtd_total_pedido, informativa');
+  ok(!m.tituloCasa('Lixa Disco 180mm Grão 80 Premium KaQi', 'Lixa Disco 180mm Grão 800 Premium KaQi'),
+     '⚠️ titulo: grao 80 x grao 800 (ambos declaram) NAO casa — grao e variacao');
+  ok(m.tituloCasa('10 X Lixas Disco Anti-Empastamento 7 Polegadas 180mm 8 Furos Pluma Lixadeira Politriz KaQi GRÃO:80',
+                  '10 X Lixas Disco Anti-Empastamento 7 Polegadas 180mm 8 Furos Grão Lixadeira Politriz KaQi'),
+     '  mas orfao "GRAO:80" x pai "Grao" sem numero casa (o pai nao especifica — caso real)');
   ok(/sku_irmao e OUTRA variacao/.test(r.orfaos[0].dica), '  e a dica explica o sku_irmao');
 }
 
