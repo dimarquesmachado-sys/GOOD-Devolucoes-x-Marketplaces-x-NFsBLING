@@ -534,7 +534,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.111.0 (b460: o painel da AMB/Girassol mostra quem bipou — saia vazio desde o porte)',
+      version: '9.113.0 (b462: o payload da triagem manda o marketplace — a busca sabia, o card nao)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -3230,6 +3230,19 @@ async function enriquecerTriagem(registroId, dados) {
     }
   } catch (e) { /* idem */ }
 
+  // b462 (achado do Codex, 01/10): a busca identifica o marketplace e o
+  // payload agora o manda — mas a GOOD nunca gravou essa coluna, e eu NAO
+  // SEI se a tabela raiz `devolucoes` a tem (as _amb/_girassol tem). Por
+  // isso vai num update SEPARADO, com erro proprio: se a coluna nao existir,
+  // so ESTE falha, com aviso claro — o insert e o patch principal (pedido,
+  // NF, itens) nunca dependem dele. Por no insert, sem saber, quebraria toda
+  // triagem da GOOD.
+  if (dados.marketplace) {
+    try {
+      const { error } = await supabase.from('devolucoes').update({ marketplace: String(dados.marketplace) }).eq('id', registroId);
+      if (error) console.warn(`[TRIAGEM] marketplace nao gravou (a tabela devolucoes tem a coluna? rode: alter table devolucoes add column if not exists marketplace text): ${error.message}`);
+    } catch (e) { console.warn('[TRIAGEM] marketplace falhou:', e.message || e); }
+  }
   if (!Object.keys(patch).length) return;
   try {
     const { error } = await supabase.from('devolucoes').update(patch).eq('id', registroId);
