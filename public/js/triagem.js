@@ -245,12 +245,15 @@ function montarPayloadTriagem() {
   // magalu, ml) mas o payload nao mandava — a AMB gravava marketplace: null
   // sempre, e a GOOD nem tinha o campo no insert. O card nascia sem origem
   // mesmo com a busca certa. Deduzo do `metodo` so quando ele nomeia um
-  // marketplace (numero_nf / chave_danfe NAO sao marketplace — ficam null).
+  // marketplace (numero_nf / chave_danfe NAO sao marketplace — ficam null; e
+  // order.id NAO prova ML: na busca por NF ele vem do numeroPedidoLoja do
+  // Bling, que tambem e de Magalu/Amazon). Os metodos de ML sao os que o
+  // servidor realmente devolve (server.js, metodoUsado).
   const mapaMetodo = { shopee_return: 'shopee', magalu_devolucao: 'magalu', tiktok_devolucao: 'tiktok',
-    ml_devolucao: 'ml', ml_shipment: 'ml', ml_claim: 'ml' };
+    correios_reverso_ml: 'ml', shipment_id: 'ml', pack_id: 'ml', order_id: 'ml' };
   const marketplaceTriagem = ultimaBusca.marketplace
     || mapaMetodo[ultimaBusca.metodo]
-    || (order.id ? 'ml' : null);   // order_id so existe pra venda do ML
+    || null;
 
   return {
     marketplace: marketplaceTriagem,

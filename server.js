@@ -534,7 +534,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.113.0 (b462: o payload da triagem manda o marketplace — a busca sabia, o card nao)',
+      version: '9.114.0 (b463: o payload da triagem manda o marketplace — a busca sabia, o card nao)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -3203,8 +3203,25 @@ function agendarEnriquecimento(registroId, dados) {
   });
 }
 
+// b462 (achado do Codex, 01/10): a busca identifica o marketplace e o
+// payload agora o manda — mas a GOOD nunca gravou essa coluna, e eu NAO
+// SEI se a tabela raiz `devolucoes` a tem (as _amb/_girassol tem). Por
+// isso vai num update SEPARADO, com erro proprio: se a coluna nao existir,
+// so ESTE falha, com aviso claro — o insert e o patch principal (pedido,
+// NF, itens) nunca dependem dele. Por no insert, sem saber, quebraria toda
+// triagem da GOOD. Roda ANTES das buscas lentas no Bling (o dado ja e
+// conhecido) e tambem na rota do consertado, que nao enriquece.
+async function gravarMarketplaceTriagem(registroId, dados) {
+  if (!supabase || !registroId || !dados || !dados.marketplace) return;
+  try {
+    const { error } = await supabase.from('devolucoes').update({ marketplace: String(dados.marketplace) }).eq('id', registroId);
+    if (error) console.warn(`[TRIAGEM] marketplace nao gravou (a tabela devolucoes tem a coluna? rode: alter table devolucoes add column if not exists marketplace text): ${error.message}`);
+  } catch (e) { console.warn('[TRIAGEM] marketplace falhou:', e.message || e); }
+}
+
 async function enriquecerTriagem(registroId, dados) {
   if (!supabase || !registroId) return;
+  await gravarMarketplaceTriagem(registroId, dados);
   const patch = {};
 
   try {
@@ -3230,19 +3247,6 @@ async function enriquecerTriagem(registroId, dados) {
     }
   } catch (e) { /* idem */ }
 
-  // b462 (achado do Codex, 01/10): a busca identifica o marketplace e o
-  // payload agora o manda — mas a GOOD nunca gravou essa coluna, e eu NAO
-  // SEI se a tabela raiz `devolucoes` a tem (as _amb/_girassol tem). Por
-  // isso vai num update SEPARADO, com erro proprio: se a coluna nao existir,
-  // so ESTE falha, com aviso claro — o insert e o patch principal (pedido,
-  // NF, itens) nunca dependem dele. Por no insert, sem saber, quebraria toda
-  // triagem da GOOD.
-  if (dados.marketplace) {
-    try {
-      const { error } = await supabase.from('devolucoes').update({ marketplace: String(dados.marketplace) }).eq('id', registroId);
-      if (error) console.warn(`[TRIAGEM] marketplace nao gravou (a tabela devolucoes tem a coluna? rode: alter table devolucoes add column if not exists marketplace text): ${error.message}`);
-    } catch (e) { console.warn('[TRIAGEM] marketplace falhou:', e.message || e); }
-  }
   if (!Object.keys(patch).length) return;
   try {
     const { error } = await supabase.from('devolucoes').update(patch).eq('id', registroId);
@@ -4158,6 +4162,7 @@ app.post('/api/triagem/consertado', requerEstoquista, async (req, res) => {
     }
 
     try { await enviarEmailProblema({ ...data, problema_descricao: infoConserto }, [], req.usuario); } catch (e) { /* email e best-effort */ }
+    await gravarMarketplaceTriagem(data.id, dados);
     return res.json({ ok: true, id: data.id, conserto: infoConserto });
   } catch (e) { return res.status(500).json({ ok: false, erro: e.message }); }
 });

@@ -33,14 +33,28 @@ const good = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
 const semCom = good.split('\n').filter((l) => !l.trim().startsWith('//')).join('\n');
 ok(!/\.insert\(\[\{\s*marketplace:/.test(semCom),
    '⚠️ a GOOD NAO poe marketplace no INSERT (coluna pode nao existir na raiz — quebraria toda triagem)');
+const iH = semCom.indexOf('async function gravarMarketplaceTriagem(');
 const iE = semCom.indexOf('async function enriquecerTriagem(');
+ok(iH >= 0 && iE > iH, 'marcadores do helper e do enriquecimento existem');
+const helper = semCom.slice(iH, iE);
 const enr = semCom.slice(iE, semCom.indexOf('\n}\n', iE));
-ok(/update\(\{ marketplace: String\(dados\.marketplace\) \}\)/.test(enr),
-   '  a GOOD grava no enriquecimento, em update SEPARADO');
-ok(/add column if not exists marketplace/.test(enr),
+ok(/update\(\{ marketplace: String\(dados\.marketplace\) \}\)/.test(helper),
+   '  a GOOD grava em update SEPARADO (helper gravarMarketplaceTriagem)');
+ok(/add column if not exists marketplace/.test(helper),
    '  e se a coluna faltar, o aviso diz o ALTER TABLE a rodar');
-ok(enr.indexOf('marketplace') < enr.indexOf('if (!Object.keys(patch).length) return;'),
-   '  e ANTES do return do patch vazio (senao nunca roda quando so o marketplace muda)');
+const iCham = enr.indexOf('gravarMarketplaceTriagem(');
+ok(iCham >= 0 && iCham < enr.indexOf('buscarPedidoBlingPorNumeroLoja'),
+   '⚠️ o enriquecimento grava ANTES das buscas lentas no Bling (restart/25s nao perdem a origem)');
+
+const iC = semCom.indexOf("app.post('/api/triagem/consertado'");
+const cons = semCom.slice(iC, semCom.indexOf('\n});\n', iC));
+ok(iC >= 0 && /gravarMarketplaceTriagem\(data\.id, dados\)/.test(cons),
+   '⚠️ a rota do consertado (que nao enriquece) tambem grava o marketplace');
+
+// P1: order.id NAO prova ML (na busca por NF vem do numeroPedidoLoja)
+ok(!/order\.id \? 'ml'/.test(fn), '⚠️ order.id NAO vira "ml" (NF de Magalu/Amazon tem order.id)');
+ok(/correios_reverso_ml: 'ml'/.test(fn) && /shipment_id: 'ml'/.test(fn),
+   '  ML so por metodo real de ML devolvido pelo servidor');
 
 console.log('');
 console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
