@@ -534,7 +534,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.117.0 (b468: orfaos — medida solta diferencia o titulo, casa pelo titulo do GOOD, item casado sem SKU vazio)',
+      version: '9.118.0 (b469: orfaos — irma g800 nao casa como pai, 2x colado e kit, qtd do topo desempata)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),

@@ -149,6 +149,19 @@ ok(/deps\.espreitaMontada/.test(rota), '  e le a espreita por deps.espreitaMonta
      '  o numero de quantidade do kit ("10 X" x "20 X") NAO discrimina — kit maior ainda casa');
 }
 
+// b469 - Codex #396 (2a rodada): irma nao casa como pai; "2x" colado e kit;
+// qtd do topo (Shopee GOOD, sem itens) tambem desempata.
+{
+  const o = (sku, extra) => sugerirOrigem([{ id: 1, produto_sku: sku, produto_qtd: 2 }], [Object.assign({ marketplace: 'ml', tracking: 'T' }, extra)]).orfaos[0].candidatos;
+  ok(o('10-AE-8F-G80-180mm', { itens: [{ sku: '10-AE-8F-G800-180mm', qtd: 2 }] }).length === 0, '⚠️ variacao irma (g800) NAO casa como pai de g80');
+  ok(o('10-AE-8F-G80-180mm', { sku: '10-AE-8F-180mm-PAI' }).map((c) => c.via).join() === 'sku_pai', '  o PAI real continua casando');
+  const { tituloCasa: tc } = require('../lib/orfaos-sugerir-origem');
+  ok(tc('2x Lixas Disco Anti-Empastamento 7 Polegadas 180mm', '4x Lixas Disco Anti-Empastamento 7 Polegadas 180mm'), '  "2x" x "4x" colado = kit, casa');
+  const r = sugerirOrigem([{ id: 1, produto_sku: 'A-G80', produto_qtd: 2 }],
+    [{ sku: 'A-PAI', qtd: 1, tracking: 'T1' }, { sku: 'A-PAI', qtd: 2, tracking: 'T2' }]).orfaos[0].candidatos;
+  ok(r[0].tracking === 'T2' && r[0].qtd_bate === true, '  qtd do topo desempata quando nao ha item filho');
+}
+
 console.log('');
 console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
 process.exit(falhas ? 1 : 0);
