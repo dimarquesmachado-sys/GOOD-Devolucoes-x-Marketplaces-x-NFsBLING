@@ -59,3 +59,26 @@ ok(/correios_reverso_ml: 'ml'/.test(fn) && /shipment_id: 'ml'/.test(fn),
 console.log('');
 console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
 process.exit(falhas ? 1 : 0);
+
+// ── b463 (duas travas a mais, de erros que EU cometi na mesma rodada) ──
+{
+  const front2 = fs.readFileSync(path.join(__dirname, '..', 'public', 'js', 'triagem.js'), 'utf8');
+  const i2 = front2.indexOf('function montarPayloadTriagem()');
+  const fn2 = front2.slice(i2, front2.indexOf('\n}\n', i2)).split('\n').filter((l) => !l.trim().startsWith('//')).join('\n');
+  // 1) todo metodo do mapa EXISTE no backend — na 1a versao escrevi 'ml_claim',
+  //    'ml_shipment', 'ml_devolucao', que nao existem em lugar nenhum
+  const good2 = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
+  const amb2 = fs.readFileSync(path.join(__dirname, '..', 'amb-devolucoes', 'lib-AMB', 'identificar-AMB.js'), 'utf8');
+  const metodos = new Set([...(good2 + amb2).matchAll(/metodo(?:Usado)? = '([a-z_]+)'/g)].map((x) => x[1]));
+  const noMapa = [...fn2.matchAll(/(\w+): '(ml|shopee|magalu|tiktok)'/g)].map((x) => x[1]);
+  const fantasmas = noMapa.filter((m) => !metodos.has(m));
+  ok(fantasmas.length === 0, `  todo metodo do mapa existe no backend (fantasmas: ${fantasmas.join(', ') || 'nenhum'})`);
+  // 2) a chamada no /consertado NAO e "return gravar..." — ao inserir antes do
+  //    `return res.json(...)` eu peguei o "return " junto com a indentacao, e a
+  //    rota retornaria sem responder. node --check nao pega.
+  const semCom2 = good2.split('\n').filter((l) => !l.trim().startsWith('//')).join('\n');
+  const iC = semCom2.indexOf("app.post('/api/triagem/consertado'");
+  const cons = semCom2.slice(iC, iC + 4000);
+  ok(/gravarMarketplaceTriagem\(/.test(cons) && !/return gravarMarketplaceTriagem/.test(cons),
+     '⚠️ o /consertado chama a gravacao SEM return (a rota segue e responde)');
+}
