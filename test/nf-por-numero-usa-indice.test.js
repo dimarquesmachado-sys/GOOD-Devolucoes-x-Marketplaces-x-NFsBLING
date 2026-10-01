@@ -60,11 +60,23 @@ const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o
     const j = s.indexOf('achadas = await buscarNFsPorNumero(numeroDaChave, serieDaChave)');
     ok(i > 0 && j > 0 && i < j, `⚠️ identificar ${nome}: consulta o indice ANTES da varredura`);
     ok(/!reg\._series_colidem/.test(s), `  identificar ${nome}: NAO usa o atalho quando as series colidem`);
-    ok(/String\(reg\.serie \|\| ''\) === String\(serieDaChave\)/.test(s), `  identificar ${nome}: com serie pedida, a serie tem que bater`);
+    // b474 (Codex, P1): sem serie o indice NAO prova unicidade (parcial, 120d, nomes curtos fora) — o atalho EXIGE serie
+    ok(/&& serieDaChave && String\(reg\.serie \|\| ''\) === String\(serieDaChave\)/.test(s), `⚠️ identificar ${nome}: o atalho EXIGE serie e ela tem que bater (so numero digitado vai pela varredura)`);
+    ok(!/\(!serieDaChave \|\| String\(reg\.serie/.test(s), `  identificar ${nome}: nao ha mais o "ou sem serie"`);
     ok(/nf_via_indice_numero/.test(s), `  identificar ${nome}: avisa que veio do indice (auditavel)`);
     // e a varredura esta no ELSE (nao roda quando o indice resolveu)
     const bloco = s.slice(i, j);
     ok(/\} else \{\s*try \{\s*achadas = await buscarNFsPorNumero/.test(s.slice(i, j + 80)), `  identificar ${nome}: a varredura so roda no else`);
+  }
+
+  // b474 (Codex, P2): o checkpoint PARCIAL da AMB publica porNumero (antes so no fim)
+  {
+    const amb = semCom('amb-devolucoes/lib-AMB/nf-nomes-AMB.js');
+    const iP = amb.indexOf('IDX.mapa = { ...mapa };');
+    ok(iP > 0 && /IDX\.porNumero = \{ \.\.\.porNumero \};/.test(amb.slice(iP, iP + 300)), '  nf-nomes-AMB: o parcial publica porNumero junto com mapa/mapaCurto');
+    const good = semCom('lib/nf-nomes.js');
+    const iG = good.indexOf('IDX.mapa = { ...mapa };');
+    ok(iG > 0 && /IDX\.porNumero = \{ \.\.\.porNumero \};/.test(good.slice(iG, iG + 300)), '  nf-nomes (GOOD): idem');
   }
 
   // ── o front manda numero/serie SEMPRE no clique do candidato ──

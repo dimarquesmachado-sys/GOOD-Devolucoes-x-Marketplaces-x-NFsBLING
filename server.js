@@ -1197,8 +1197,15 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
       let viaIndice = null;
       try {
         const reg = (typeof nfNomes.acharPorNumero === 'function') ? nfNomes.acharPorNumero(numeroDaChave) : null;
+        // ⚠️ b474 (Codex, P1): SEM serie no input, o indice NAO prova que o
+        // numero e unico — ele e parcial durante a montagem, cobre 120 dias (a
+        // varredura cobre 18 meses) e omite notas cujo nome colapsa em menos de
+        // 5 letras. Uma serie 2 fora do indice e eu pegaria a serie 1 achando
+        // que era a unica. Entao o atalho EXIGE serie (o clique no candidato
+        // manda numero/serie desde o b473); so numero digitado vai pela
+        // varredura, que trata a ambiguidade. E a serie do indice tem que bater.
         if (reg && reg.id && !reg._series_colidem
-            && (!serieDaChave || String(reg.serie || '') === String(serieDaChave))) {
+            && serieDaChave && String(reg.serie || '') === String(serieDaChave)) {
           viaIndice = { id: String(reg.id), serie: reg.serie || null, numero: reg.numero || null };
         }
       } catch (e) { viaIndice = null; }

@@ -304,6 +304,7 @@ async function construirIndiceInterno(opts = {}) {
       if (primeiraMontagem && (pg === 3 || pg % 10 === 0)) {
         IDX.mapa = { ...mapa };
         IDX.mapaCurto = { ...mapaCurto };
+        IDX.porNumero = { ...porNumero };   // b474 (Codex, P2): o parcial tambem publica o indice por numero
         IDX.parcialAte = pg;
         IDX.totalNFs = totalNFs;
         console.log(`[${TAG_EMP}/NF-NOMES] parcial publicado: ${pg} paginas, ${totalNFs} NFs`);
