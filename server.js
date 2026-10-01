@@ -534,7 +534,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.120.0 (b475: nome puro vai direto ao indice — pula Magalu, Shopee forcada e TikTok)',
+      version: '9.121.2 (b478: itens da NF — 1 chamada por NF no auto-carregar; painel AMB antigo em fundo (?auto=1))',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),

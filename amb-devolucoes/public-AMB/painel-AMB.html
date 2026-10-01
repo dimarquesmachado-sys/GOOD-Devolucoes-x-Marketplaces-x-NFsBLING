@@ -2185,6 +2185,7 @@ async function carregarSemRetorno() {
         : '<div class="vazio">Nenhum produto divergente. 🎉</div>';
 
       autoCarregarItens();   // b67 - itens ja abertos, sem clicar
+      setTimeout(autoCarregarItensNF, 300);   // b476: itens da NF abertos sem clicar
     }
 
     function limparBusca() {
@@ -2443,7 +2444,7 @@ async function carregarSemRetorno() {
           <div class="item-detalhes">
             <strong>${escapeHtml(d.produto_sku || '-')}</strong> ·
             <strong>${d.produto_qtd || '-'} un</strong> ·
-            ${moeda(d.produto_valor_unit)}${d.nf_id_bling ? ` · <a href="#" onclick="return verItensNF('${d.nf_id_bling}', this)" style="color:#1565c0;font-size:12px;text-decoration:none;font-weight:600;" title="Mostra todos os itens e quantidades desta NF">▼ itens da NF</a><span class="itens-nf-box" style="display:none;"></span>` : ''}<br>
+            ${moeda(d.produto_valor_unit)}${renderItensCard(d)}<br>
             <strong>NF:</strong> ${escapeHtml(d.nf_numero || '-')} ·
             <strong>Cliente:</strong> ${escapeHtml(d.buyer_nome || '-')}<br>
             ${linkPedido(d)}
@@ -2527,7 +2528,7 @@ async function carregarSemRetorno() {
           <div class="item-detalhes">
             <strong>${escapeHtml(d.produto_sku || '-')}</strong> ·
             <strong>${d.produto_qtd || '-'} un</strong> ·
-            ${moeda(d.produto_valor_unit)}${d.nf_id_bling ? ` · <a href="#" onclick="return verItensNF('${d.nf_id_bling}', this)" style="color:#1565c0;font-size:12px;text-decoration:none;font-weight:600;" title="Mostra todos os itens e quantidades desta NF">▼ itens da NF</a><span class="itens-nf-box" style="display:none;"></span>` : ''}<br>
+            ${moeda(d.produto_valor_unit)}${renderItensCard(d)}<br>
             <strong>NF original:</strong> ${escapeHtml(d.nf_numero || '-')} ·
             <strong>Cliente:</strong> ${escapeHtml(d.buyer_nome || '-')}<br>
             ${linkPedido(d)}
@@ -3305,7 +3306,7 @@ async function carregarSemRetorno() {
         const idBling = box.dataset.nf;
         if (!idBling) continue;
         try {
-          const r = await fetch(`${window.APP_BASE || ''}/api/admin/nf-itens/${idBling}`);
+          const r = await fetch(`${window.APP_BASE || ''}/api/admin/nf-itens/${idBling}?auto=1`);   // b478 (Codex): fundo na fila do Bling
           const d = await r.json();
           if (!d.ok) throw new Error(d.erro || 'falha');
           // b170 - mesma decisao do render: some se so repete, amarelo se
@@ -3342,7 +3343,7 @@ async function carregarSemRetorno() {
       return false;
     }
 
-    async function verItensNF(idBling, el) {
+    async function verItensNF(idBling, el, auto) {
       const box = el.nextElementSibling; // .itens-nf-box
       if (!box) return false;
       if (box.style.display !== 'none') {
@@ -3358,9 +3359,9 @@ async function carregarSemRetorno() {
       const txt = el.textContent;
       el.textContent = '⏳ buscando itens...';
       try {
-        const r = await fetch(`${window.APP_BASE || ''}/api/admin/nf-itens/${idBling}`);
+        const r = await fetch(`${window.APP_BASE || ''}/api/admin/nf-itens/${idBling}${auto ? '?auto=1' : ''}`);
         const d = await r.json();
-        if (!d.ok) throw new Error(d.erro || 'falha');
+        if (!d.ok) { const err = new Error(d.erro || 'falha'); err.status = r.status; throw err; }
         const linhas = (d.itens || []).map(i => {
           const q = Number(i.quantidade);
           const qtd = isNaN(q) ? (i.quantidade || '?') : (q % 1 === 0 ? q : q.toFixed(2));
@@ -3374,10 +3375,72 @@ async function carregarSemRetorno() {
         box.style.display = 'block';
         el.textContent = '▲ itens da NF';
       } catch (e) {
-        toast('Erro ao buscar itens da NF: ' + (e.message || e), 'err');
+        if (auto) console.warn('[itens NF] auto: ' + (e.message || e)); else toast('Erro ao buscar itens da NF: ' + (e.message || e), 'err');
         el.textContent = txt;
+        if (auto && e.status === 503) return 'retry';   // b477 (Codex): Bling em 429 — repescar, nao desistir
       }
       return false;
+    }
+
+    // ⚠️ b476 - ITENS DA NF ABERTOS SEM CLICAR (pedido do dono, 01/10). O card
+    // ja vem inline quando tem `nf_itens` gravado; quando so tem o id da NF
+    // (o enriquecimento pos-triagem falhou por 429), ficava o link "itens da
+    // NF" esperando clique. Agora carrega SOZINHO — UM POR VEZ (em serie), como
+    // fundo na fila do Bling (?auto=1), pra nao martelar a cota. E a rota
+    // GRAVA nf_itens no card: na proxima abertura vem inline, sem chamada.
+    let AUTO_ITENS_RODANDO = false;
+    let AUTO_ITENS_PENDENTE = false;   // b477 (Codex): renderizar() no meio de um lote -> roda de novo no fim
+    async function autoCarregarItensNF() {
+      if (AUTO_ITENS_RODANDO) { AUTO_ITENS_PENDENTE = true; return; }
+      AUTO_ITENS_RODANDO = true;
+      const repescar = [];   // b477 (Codex): os que tomaram 503 (Bling em 429) voltam uma vez, 30s depois
+      try {
+        // b478 (Codex): agrupa por id da NF — UMA chamada ao Bling por NF; os outros
+        // cards da mesma NF (re-bipada/repetida) copiam a caixa ja preenchida.
+        const grupos = new Map();
+        for (const el of document.querySelectorAll('a[onclick*="verItensNF("]')) {
+          const box = el.nextElementSibling;
+          if (!box || box.dataset.carregado === '1') continue;
+          const m = String(el.getAttribute('onclick') || '').match(/verItensNF\('([^']+)'/);
+          if (!m) continue;
+          if (!grupos.has(m[1])) grupos.set(m[1], []);
+          grupos.get(m[1]).push(el);
+        }
+        const copiarParaIrmaos = (els) => {
+          const [lider, ...irmaos] = els;
+          const caixa = lider.nextElementSibling;
+          if (!caixa || caixa.dataset.carregado !== '1') return;
+          for (const el of irmaos) {
+            const b = el.nextElementSibling;
+            if (!b || b.dataset.carregado === '1') continue;
+            b.innerHTML = caixa.innerHTML;
+            b.dataset.carregado = '1';
+            b.style.display = 'block';
+            el.textContent = '▲ itens da NF';
+          }
+        };
+        for (const [id, els0] of grupos) {
+          const els = els0.filter((el) => document.body.contains(el));   // a lista foi re-renderizada
+          if (!els.length) continue;
+          const r = await verItensNF(id, els[0], true);
+          if (r === 'retry') repescar.push([id, els]);
+          else copiarParaIrmaos(els);
+          await new Promise((ok) => setTimeout(ok, 400));       // respiro entre NFs
+        }
+        if (repescar.length) {
+          await new Promise((ok) => setTimeout(ok, 30000));
+          for (const [id, els0] of repescar) {
+            const els = els0.filter((el) => document.body.contains(el) && el.nextElementSibling && el.nextElementSibling.dataset.carregado !== '1');
+            if (!els.length) continue;
+            await verItensNF(id, els[0], true);
+            copiarParaIrmaos(els);
+            await new Promise((ok) => setTimeout(ok, 400));
+          }
+        }
+      } finally {
+        AUTO_ITENS_RODANDO = false;
+        if (AUTO_ITENS_PENDENTE) { AUTO_ITENS_PENDENTE = false; setTimeout(autoCarregarItensNF, 300); }
+      }
     }
 
     // v3.26 - INTELIGÊNCIA FULL
