@@ -961,7 +961,10 @@ function renderizarCandidatosNome(mensagem, candidatos) {
   for (const c of candidatos) {
     const dt = c.dataEmissao ? String(c.dataEmissao).slice(0, 10).split('-').reverse().join('/') : '-';
     const vl = (c.valor != null) ? ('R$ ' + Number(c.valor).toFixed(2).replace('.', ',')) : '-';
-    const alvo = c.serie && c.serie !== '1' ? (c.numero + '/' + c.serie) : c.numero;
+    // b473: manda SEMPRE numero/serie no clique — antes a serie 1 ia so como
+    // numero, e o backend tinha que descobrir a serie varrendo o Bling. Com a
+    // serie, o atalho pelo indice (b473) resolve sem ambiguidade.
+    const alvo = c.serie ? (c.numero + '/' + c.serie) : c.numero;
     // b226 - o candidato que esta NA ESPREITA ganha estrela, borda e o
     // produto. [stated] "se ele tem q triar um mouse, e tem 5 maristelas na
     // relação da busca, e 1 maristela é uma bola de basquete, com certeza

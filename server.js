@@ -534,7 +534,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.117.0 (b472: Bling em 429 nao vira "NF nao existe" — diz "tente de novo")',
+      version: '9.119.0 (b474: atalho do indice so com serie explicita; serie da GOOD pela chave)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -1191,10 +1191,34 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
       console.log(`[BUSCA] NUMERO NF: numero=${numeroDaChave} serie=${serieDaChave || '(todas)'}`);
       let achadas = [];
       let blingIndisponivel = false;   // b472: "nao sei" != "nao existe"
+      // b473 - o indice de nomes ja tem o id dessa nota: UMA chamada em vez da
+      // varredura dia a dia (dezenas). So cai na varredura se o indice nao tem
+      // (nota antiga) ou ha ambiguidade entre series. Ver a nota na AMB.
+      let viaIndice = null;
       try {
-        achadas = await buscarNFsPorNumero(numeroDaChave, serieDaChave);
-        if (achadas === null) { blingIndisponivel = true; achadas = []; }
-      } catch (e) { achadas = []; }
+        const reg = (typeof nfNomes.acharPorNumero === 'function') ? nfNomes.acharPorNumero(numeroDaChave) : null;
+        // ⚠️ b474 (Codex, P1): SEM serie no input, o indice NAO prova que o
+        // numero e unico — ele e parcial durante a montagem, cobre 120 dias (a
+        // varredura cobre 18 meses) e omite notas cujo nome colapsa em menos de
+        // 5 letras. Uma serie 2 fora do indice e eu pegaria a serie 1 achando
+        // que era a unica. Entao o atalho EXIGE serie (o clique no candidato
+        // manda numero/serie desde o b473); so numero digitado vai pela
+        // varredura, que trata a ambiguidade. E a serie do indice tem que bater.
+        if (reg && reg.id && !reg._series_colidem
+            && serieDaChave && String(reg.serie || '') === String(serieDaChave)) {
+          viaIndice = { id: String(reg.id), serie: reg.serie || null, numero: reg.numero || null };
+        }
+      } catch (e) { viaIndice = null; }
+      if (viaIndice) {
+        achadas = [viaIndice];
+        resultado.avisos.push({ tipo: 'nf_via_indice_numero', mensagem: `NF ${numeroDaChave} achada pelo indice de notas (sem varrer o Bling)` });
+        console.log(`[BUSCA] NUMERO NF: ${numeroDaChave} veio do INDICE (id ${viaIndice.id}) — sem varredura`);
+      } else {
+        try {
+          achadas = await buscarNFsPorNumero(numeroDaChave, serieDaChave);
+          if (achadas === null) { blingIndisponivel = true; achadas = []; }
+        } catch (e) { achadas = []; }
+      }
 
       if (achadas.length > 1) {
         // AMBIGUIDADE: mesma numeracao em series diferentes. Carrega o basico
