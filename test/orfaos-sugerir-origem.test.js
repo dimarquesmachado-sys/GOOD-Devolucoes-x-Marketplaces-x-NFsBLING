@@ -139,6 +139,16 @@ ok(/deps\.espreitaMontada/.test(rota), '  e le a espreita por deps.espreitaMonta
   ok(faltam.length === 0, `  todo deps.X que a rota le chega na chamada (faltam: ${faltam.join(', ') || 'nenhum'})`);
 }
 
+// b468 - a contrapartida da medida solta: o numero de QUANTIDADE DO KIT ("10 X")
+// NAO discrimina — kit maior do mesmo produto continua candidato (aproximado).
+// Sem esta asserção, alguem "melhora" a medida solta e mata o casamento de kit.
+{
+  const { tituloCasa: tc } = require('../lib/orfaos-sugerir-origem');
+  ok(tc('10 X Lixas Disco Anti-Empastamento 7 Polegadas 180mm 8 Furos Pluma Lixadeira Politriz KaQi',
+        '20 X Lixas Disco Anti-Empastamento 7 Polegadas 180mm 8 Furos Grão Lixadeira Politriz KaQi'),
+     '  o numero de quantidade do kit ("10 X" x "20 X") NAO discrimina — kit maior ainda casa');
+}
+
 console.log('');
 console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
 process.exit(falhas ? 1 : 0);
