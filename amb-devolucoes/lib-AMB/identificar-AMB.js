@@ -143,6 +143,15 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
   res.set('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
   res.set('Pragma', 'no-cache');
   const codigoOriginal = String(req.params.codigo || '').trim();
+  // ⚠️ b475 - NOME PURO NAO E RASTREIO. Um texto SEM NENHUM DIGITO nunca e
+  // etiqueta de ML, Correios (AD/AP...BR), Shopee (BR...Z), Magalu, TikTok
+  // (18 digitos) nem chave/numero de NF. Mas o bipe por nome passava por
+  // TODAS essas etapas antes do indice de nomes — e a Shopee, quando nao
+  // acha, consulta DE NOVO forcando a API (?refresh=1, sem timeout); depois a
+  // ponte do TikTok no Mover-Pedidos. Medido pelo dono (01/10, Girassol): mais
+  // de 1 minuto pra achar pelo nome, com o indice quente. Nome puro vai direto
+  // ao indice. Nome com digito ("Jose 2") segue o caminho antigo.
+  const ehNomePuro = !/\d/.test(codigoOriginal) && codigoOriginal.replace(/[^A-Za-z\u00C0-\u017F]/g, '').length >= 5;
   // ══════════════════════════════════════════════════════════════════
   // b89 - RELOGIO DA BUSCA
   // A rota faz ate 18 chamadas de rede EM SEQUENCIA. Sem medir, apertar
@@ -230,6 +239,8 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
     encontrado: false,
     avisos: [],
   };
+  // b475 - registra o atalho do nome puro (auditavel nas tentativas); AQUI, depois de `resultado` existir (TDZ)
+  if (ehNomePuro) resultado.tentativas.push({ tipo: 'nome_puro', codigo: codigoOriginal, ok: true, status: 200, obs: 'sem digito: pulei Magalu, Shopee e TikTok (nao e rastreio) e fui direto ao indice de nomes' });
 
   let shipment = null;
   let order = null;
@@ -277,7 +288,7 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
   // cascata ML (16 digitos caia como "pack ML" e esperava 404s a toa).
   const pistaMagalu = origemQrMagalu || /^20\d{14}$/.test(codigoLimpo);
   if (pistaMagalu) {
-    if (await tentarDevolucaoMagalu()) return;
+    if (!ehNomePuro && await tentarDevolucaoMagalu()) return;   // b475: nome puro pula
   }
 
   // CORREIOS REVERSO (v3.65): AD/AP...BR = devolucao por agencia. O codigo
@@ -732,7 +743,7 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
   // MAGALU fallback tardio: reverse_code (10 dig) ou pedido (16 dig sem cara
   // de protocolo) - so tenta se nada acima resolveu e nao tentou ainda.
   if (!shipment && !pack && !pistaMagalu) {
-    if (await tentarDevolucaoMagalu()) return;
+    if (!ehNomePuro && await tentarDevolucaoMagalu()) return;   // b475: nome puro pula
   }
 
   // ===== SHOPEE (v3.33): tenta casar como etiqueta de devolucao Shopee =====
@@ -743,7 +754,7 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
     // b89 - o spx-first ja consultou a Shopee com ESTE codigo e nao achou:
     // repetir a consulta so dobra o tempo (o proxy varre a lista de
     // devolucoes em janelas de 15 dias) pra dar o mesmo resultado.
-    if (!devShopee && shopee.cfg.ativo && !resultado._shopeeJaTentado) {
+    if (!ehNomePuro && !devShopee && shopee.cfg.ativo && !resultado._shopeeJaTentado) {   // b475: nome puro pula
       try {
         marcar('shopee-2a-vez:inicio');
         infoShopee = await shopee.acharDevolucao(codigoOriginal);
@@ -778,7 +789,7 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
       // primeiro na busca por nome, que varre ate 8.000 NFs do Bling com
       // indice frio, podendo devolver 300 num casamento coincidente sem
       // nunca consultar o TikTok.
-      try {
+      if (!ehNomePuro) try {   // b475: nome puro pula SO o TikTok (o bloco segue pra busca por nome)
         const rTk = await tiktokDev.procurar(tiktokPonte, CHAVE_DADOS, codigoOriginal, { limite: 200 });
         resultado.tentativas.push({
           tipo: 'tiktok_devolucao', codigo: codigoOriginal,
