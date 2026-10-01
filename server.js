@@ -534,7 +534,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.119.0 (b474: atalho do indice so com serie explicita; serie da GOOD pela chave)',
+      version: '9.120.0 (b475: nome puro vai direto ao indice — pula Magalu, Shopee forcada e TikTok)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -882,6 +882,15 @@ app.use('/api/devolucao/identificar', (req, res, next) => {
 
 app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
   const codigoOriginal = String(req.params.codigo || '').trim();
+  // ⚠️ b475 - NOME PURO NAO E RASTREIO. Um texto SEM NENHUM DIGITO nunca e
+  // etiqueta de ML, Correios (AD/AP...BR), Shopee (BR...Z), Magalu, TikTok
+  // (18 digitos) nem chave/numero de NF. Mas o bipe por nome passava por
+  // TODAS essas etapas antes do indice de nomes — e a Shopee, quando nao
+  // acha, consulta DE NOVO forcando a API (?refresh=1, sem timeout); depois a
+  // ponte do TikTok no Mover-Pedidos. Medido pelo dono (01/10, Girassol): mais
+  // de 1 minuto pra achar pelo nome, com o indice quente. Nome puro vai direto
+  // ao indice. Nome com digito ("Jose 2") segue o caminho antigo.
+  const ehNomePuro = !/\d/.test(codigoOriginal) && codigoOriginal.replace(/[^A-Za-z\u00C0-\u017F]/g, '').length >= 5;
 
   if (!codigoOriginal) {
     return res.status(400).json({ ok: false, erro: 'Codigo nao informado' });
@@ -938,6 +947,8 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
     encontrado: false,
     avisos: [],
   };
+  // b475 - registra o atalho do nome puro (auditavel nas tentativas); AQUI, depois de `resultado` existir (TDZ)
+  if (ehNomePuro) resultado.tentativas.push({ tipo: 'nome_puro', codigo: codigoOriginal, ok: true, status: 200, obs: 'sem digito: pulei Magalu, Shopee e TikTok (nao e rastreio) e fui direto ao indice de nomes' });
 
   let shipment = null;
   let order = null;
@@ -982,7 +993,7 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
   // cascata ML (16 digitos caia como "pack ML" e esperava 404s a toa).
   const pistaMagalu = origemQrMagalu || /^20\d{14}$/.test(codigoLimpo);
   if (pistaMagalu) {
-    if (await tentarDevolucaoMagalu()) return;
+    if (!ehNomePuro && await tentarDevolucaoMagalu()) return;   // b475: nome puro pula
   }
 
   // CORREIOS REVERSO (v3.65): AD/AP...BR = devolucao por agencia. O codigo
@@ -1465,7 +1476,7 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
   // MAGALU fallback tardio: reverse_code (10 dig) ou pedido (16 dig sem cara
   // de protocolo) - so tenta se nada acima resolveu e nao tentou ainda.
   if (!shipment && !pack && !pistaMagalu) {
-    if (await tentarDevolucaoMagalu()) return;
+    if (!ehNomePuro && await tentarDevolucaoMagalu()) return;   // b475: nome puro pula
   }
 
   // ===== SHOPEE (v3.33): tenta casar como etiqueta de devolucao Shopee =====
@@ -1473,7 +1484,7 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
     let devShopee = resultado._shopeeDev || null; // v3.47.2: reusa o spx-first
     delete resultado._shopeeDev; // campo interno - nao vaza no JSON
     let infoShopee = null;
-    if (!devShopee && shopee.cfg.ativo) {
+    if (!ehNomePuro && !devShopee && shopee.cfg.ativo) {   // b475: nome puro pula
       try {
         infoShopee = await shopee.acharDevolucao(codigoOriginal);
         devShopee = infoShopee.hit;
@@ -1486,7 +1497,7 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
         resultado.tentativas.push({ tipo: 'shopee_return', v: '3.34.3', codigo: codigoOriginal, ok: false, status: 500, erro: e.message || String(e) });
         console.error('[BUSCA][shopee] proxy falhou:', e.message || e);
       }
-    } else {
+    } else if (!shopee.cfg.ativo) {   // b475 (Codex, P2): so quando DESLIGADA — nome puro com Shopee ativa nao e "desligada"
       // v3.34.3: mesmo desligada, a tentativa aparece e se explica
       resultado.tentativas.push({ tipo: 'shopee_return', v: '3.34.3', codigo: codigoOriginal, ok: false, status: 0, erro: 'SHOPEE_PROXY_URL/SHOPEE_PROXY_KEY ausentes no Render deste servico' });
     }
@@ -1497,7 +1508,7 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
     // e reembolso puro, que nunca vira pacote). Tentar antes dos outros
     // gastaria uma chamada de rede na maioria dos bipes pra nada.
     if (!devShopee) {
-      try {
+      if (!ehNomePuro) try {   // b475: nome puro pula SO o TikTok (o bloco segue pra busca por nome)
         const rTk = await tiktokDev.procurar(tiktokPonte, 'good', codigoOriginal, { limite: 200 });
         resultado.tentativas.push({
           tipo: 'tiktok_devolucao', codigo: codigoOriginal,
