@@ -269,7 +269,18 @@ async function construirIndiceInterno(opts = {}) {
         const nlj = String(nf.numeroLoja || nf.numeroPedidoLoja || '').trim();
         if (nlj) porPedido[nlj] = registro;
         const numN = String(nf.numero || '').replace(/^0+/, '');
-        if (numN) porNumero[numN] = registro;
+        // ⚠️ b473 - MESMO NUMERO EM SERIES DIFERENTES (a serie 2 do Full) e
+        // AMBIGUIDADE: o atalho "busca por numero usa o id do indice" so pode
+        // valer quando ha UMA nota com esse numero. Marco a colisao; quem usa
+        // o atalho cai na varredura antiga (que trata a ambiguidade) se vir
+        // `_series_colidem`.
+        if (numN) {
+          if (porNumero[numN] && String(porNumero[numN].serie || '') !== String(registro.serie || '')) {
+            porNumero[numN]._series_colidem = true;
+            registro._series_colidem = true;
+          }
+          porNumero[numN] = registro;
+        }
         if (numN) if (nf.id) porId[String(nf.id)] = registro;
 
         (mapa[chave] = mapa[chave] || []).push(registro);
