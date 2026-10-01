@@ -534,7 +534,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.112.0 (b461: a trava de origem aceita chave DANFE e protocolo Magalu — recusava bipe legitimo)',
+      version: '9.112.1 (b462: 422 sem_origem desfaz o modal da parcial e do Consertei)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),

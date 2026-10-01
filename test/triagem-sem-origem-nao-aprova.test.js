@@ -83,6 +83,15 @@ ok(ramos === 2, `  o ramo 422 existe nas 2 funcoes que postam em /aprovar (achei
   const bP = front.slice(front.indexOf('r.status === 422 && d.sem_origem', iP), front.indexOf('r.status === 409', iP));
   ok(/btn\.disabled = false/.test(bP) && /inputCodigo\.focus\(\)/.test(bP),
      '  encerrarParcial: idem (botao e foco)');
+  // b462 (Codex): a parcial fecha o modal e restaura o rotulo; o Consertei
+  // trata o 422 sem toast, fechando modalProblema e devolvendo o foco
+  ok(/fecharModal\('modalConfirmacaoParcial'\)/.test(bP) && /btn\.innerHTML = '✅ Sim, Encerrar'/.test(bP),
+     '  encerrarParcial: fecha a confirmacao e restaura "Sim, Encerrar"');
+  const iC = front.indexOf("fetch('/api/triagem/consertado'");
+  const bC = front.slice(iC, front.indexOf("toast('🔧 Consertado!", iC));
+  ok(iC >= 0 && /rc\.status === 422 && dc\.sem_origem/.test(bC) && /fecharModal\('modalProblema'\)/.test(bC) &&
+     /alert\('⚠️ NAO DA PRA APROVAR/.test(bC) && /inputCodigo\.focus\(\)/.test(bC),
+     '  Consertei: 422 sem_origem fecha o modal, mostra alert e devolve o foco');
 }
 
 console.log('');

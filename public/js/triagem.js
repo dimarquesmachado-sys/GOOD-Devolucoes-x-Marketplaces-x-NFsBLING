@@ -415,7 +415,18 @@ async function enviarProblema() {
         body: JSON.stringify(pc),
       });
       var dc = await rc.json();
-      if (!dc.ok) { toast(dc.erro || 'falhou', 'err'); return; }
+      if (!dc.ok) {
+        if (rc.status === 422 && dc.sem_origem) {
+          // b462 (Codex): o "Consertei" tambem passa pela trava de origem. A
+          // instrucao e longa — alert (como no aprovar) e foco de volta no leitor.
+          fecharModal('modalProblema');
+          alert('⚠️ NAO DA PRA APROVAR\n\n' + dc.erro);
+          if (typeof inputCodigo !== 'undefined' && inputCodigo) { inputCodigo.value = ''; inputCodigo.focus(); }
+          return;
+        }
+        toast(dc.erro || 'falhou', 'err');
+        return;
+      }
       toast('🔧 Consertado! Vai pro estoque.', 'ok');
       window.fotosUploadadas = [];
       mostrarSucesso('🔧 Produto consertado!', 'Foi pra fila de aprovadas — o Diego emite a NF e inclui no estoque.');
@@ -859,8 +870,12 @@ async function encerrarParcial() {
         inputCodigo.focus();
       }, 2800);
     } else if (r.status === 422 && d.sem_origem) {
-      // b461 (Codex): a parcial posta no mesmo endpoint — mesmo tratamento
+      // b461 (Codex): a parcial posta no mesmo endpoint — mesmo tratamento.
+      // b462 (Codex): fecha a confirmacao e tira o "Enviando..." — senao o
+      // foco ia pro campo atras do modal e o operador ficava num dialogo velho.
+      fecharModal('modalConfirmacaoParcial');
       btn.disabled = false;
+      btn.innerHTML = '✅ Sim, Encerrar';
       alert('⚠️ NAO DA PRA APROVAR\n\n' + d.erro);
       if (typeof inputCodigo !== 'undefined' && inputCodigo) { inputCodigo.value = ''; inputCodigo.focus(); }
     } else if (r.status === 409 && d.erro === 'duplicata') {
