@@ -1400,6 +1400,33 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
   // ═══════════════════════════════════════════════════════════════════
 
   /** As 3 filas de uma vez, no formato que o painel espera. */
+  // ⚠️ b465 - CARD ORFAO x "A ESPREITA": de onde o pacote provavelmente veio.
+  // O estoquista bipou o codigo de barras do PRODUTO em 3 pacotes (Girassol,
+  // 30/09) e os cards nasceram so com SKU e quantidade. A trava (b459) impede
+  // que se repita; esta rota ajuda com os que JA existem: casa o SKU do orfao
+  // com as devolucoes que o sistema esperava e mostra o rastreio pra triar
+  // de novo. E sugestao — quem decide e o dono. Ver lib/orfaos-sugerir-origem.
+  router.get('/api/admin/orfaos', auth.requerLogin, async (req, res) => {
+    try {
+      const { sugerirOrigem } = require('../../lib/orfaos-sugerir-origem');
+      const [apr, prob, div, conc] = await Promise.all(
+        ['aprovado', 'problema', 'divergente', 'concluido'].map((status) => db.listarFila({ status, limite: 300 })));
+      const lista = (r) => (r && r.ok && Array.isArray(r.registros)) ? r.registros : [];
+      const todos = [...lista(apr), ...lista(prob), ...lista(div), ...lista(conc)];
+      const esp = (typeof deps.espreitaMontada === 'function' ? deps.espreitaMontada() : null);
+      if (!esp) {
+        return res.json({ ok: false, erro: 'o "a espreita" ainda nao foi montado nesta subida: abra o painel (ou /api/espreita) e tente de novo em 1 min' });
+      }
+      const aCaminho = [...(esp.em_transito || []), ...(esp.entregues || [])];
+      // "ja triado" = existe card com o mesmo pedido ou rastreio (sem consulta extra)
+      const pedidos = new Set(todos.map((c) => String(c.order_id || '')).filter(Boolean));
+      const rastreios = new Set(todos.map((c) => String(c.tracking || c.shipment_id || '')).filter(Boolean));
+      const jaTriado = (it) => (it.pedido && pedidos.has(String(it.pedido))) || (it.tracking && rastreios.has(String(it.tracking)));
+      const r = sugerirOrigem(lista(apr), aCaminho, { jaTriado });
+      res.json({ ok: true, empresa: deps.chaveDados || null, a_caminho: aCaminho.length, ...r });
+    } catch (e) { res.status(500).json({ ok: false, erro: String(e.message || e) }); }
+  });
+
   router.get('/api/admin/devolucoes', auth.requerLogin, async (req, res) => {
     try {
       const [apr, prob, div] = await Promise.all([

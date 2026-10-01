@@ -534,7 +534,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.114.1 (b464: teste do marketplace da triagem agora executa todas as travas)',
+      version: '9.115.0 (b465: card orfao x a-espreita — sugere de onde o pacote veio, pelo SKU)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -8296,6 +8296,30 @@ item.nf_id_bling = String(achada.id);
     erroCodigo.registrar(e, 'sem-retorno');
     return res.status(500).json({ ok: false, erro: erroCodigo.paraTela(e, 'sem-retorno') });
   }
+});
+
+// b465 - CARD ORFAO x "A ESPREITA" (a mesma lib das 3 empresas — ver
+// lib/orfaos-sugerir-origem e a rota gemea na fabrica AMB/Girassol).
+app.get('/api/admin/orfaos', requerAdmin, async (req, res) => {
+  try {
+    if (!supabase) return res.status(500).json({ ok: false, erro: 'Supabase nao configurado' });
+    const { sugerirOrigem } = require('./lib/orfaos-sugerir-origem');
+    const { data, error } = await supabase.from('devolucoes').select('*')
+      .order('created_at', { ascending: false }).limit(400);
+    if (error) return res.status(500).json({ ok: false, erro: error.message });
+    const todos = data || [];
+    if (!ESP_CACHE) {
+      return res.json({ ok: false, erro: 'o "a espreita" ainda nao foi montado nesta subida: abra o painel (ou /api/admin/espreita) e tente de novo em 1 min' });
+    }
+    const c = ESP_CACHE;
+    const aCaminho = [...(c.em_transito || []), ...(c.entregues_recentes || []), ...(c.nunca_bipadas || [])];
+    const pedidos = new Set(todos.map((x) => String(x.order_id || '')).filter(Boolean));
+    const rastreios = new Set(todos.map((x) => String(x.tracking || x.shipment_id || '')).filter(Boolean));
+    const jaTriado = (it) => (it.pedido && pedidos.has(String(it.pedido))) || (it.tracking && rastreios.has(String(it.tracking)));
+    const aprovados = todos.filter((x) => x.tipo === 'aprovado' || x.status === 'aprovado');
+    const r = sugerirOrigem(aprovados, aCaminho, { jaTriado });
+    res.json({ ok: true, empresa: 'good', a_caminho: aCaminho.length, ...r });
+  } catch (e) { res.status(500).json({ ok: false, erro: String(e.message || e) }); }
 });
 
 app.get('/api/admin/espreita', requerAdmin, async (req, res) => {
