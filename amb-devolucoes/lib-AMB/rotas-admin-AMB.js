@@ -220,8 +220,9 @@ app.get('/api/admin/nf-itens/:idBling', requerAdmin, async (req, res) => {
     // coluna/formato que o enriquecimento pos-triagem grava (quando ele nao
     // falha por 429). Nao bloqueia a resposta; so quem tem nf_itens nulo.
     if (supabase && tabelaDevolucoes && itens.length) {
+      // b477 (Codex): `[]` tambem conta como "sem itens" (o resto do app trata assim)
       supabase.from(tabelaDevolucoes).update({ nf_itens: itens })
-        .eq('nf_id_bling', String(idBling)).is('nf_itens', null)
+        .eq('nf_id_bling', String(idBling)).or('nf_itens.is.null,nf_itens.eq.[]')
         .then(({ error }) => { if (error) console.warn('[NF-ITENS] nao gravou nf_itens no card:', error.message); })
         .catch((e) => console.warn('[NF-ITENS] falhou ao gravar:', e.message));
     }

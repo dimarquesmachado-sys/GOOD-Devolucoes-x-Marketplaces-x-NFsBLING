@@ -2070,7 +2070,7 @@ async function carregarSemRetorno() {
           <div class="item-detalhes">
             <strong>${escapeHtml(d.produto_sku || '-')}</strong> ·
             <strong>${d.produto_qtd || '-'} un</strong> ·
-            ${moeda(d.produto_valor_unit)}${d.nf_id_bling ? ` · <a href="#" onclick="return verItensNF('${d.nf_id_bling}', this)" style="color:#1565c0;font-size:12px;text-decoration:none;font-weight:600;" title="Mostra todos os itens e quantidades desta NF">▼ itens da NF</a><span class="itens-nf-box" style="display:none;"></span>` : ''}<br>
+            ${moeda(d.produto_valor_unit)}${renderItensCard(d)}<br>
             <strong>NF:</strong> ${escapeHtml(d.nf_numero || '-')} ·
             <strong>Cliente:</strong> ${escapeHtml(d.buyer_nome || '-')}<br>
             ${linkPedido(d)}
@@ -2154,7 +2154,7 @@ async function carregarSemRetorno() {
           <div class="item-detalhes">
             <strong>${escapeHtml(d.produto_sku || '-')}</strong> ·
             <strong>${d.produto_qtd || '-'} un</strong> ·
-            ${moeda(d.produto_valor_unit)}${d.nf_id_bling ? ` · <a href="#" onclick="return verItensNF('${d.nf_id_bling}', this)" style="color:#1565c0;font-size:12px;text-decoration:none;font-weight:600;" title="Mostra todos os itens e quantidades desta NF">▼ itens da NF</a><span class="itens-nf-box" style="display:none;"></span>` : ''}<br>
+            ${moeda(d.produto_valor_unit)}${renderItensCard(d)}<br>
             <strong>NF original:</strong> ${escapeHtml(d.nf_numero || '-')} ·
             <strong>Cliente:</strong> ${escapeHtml(d.buyer_nome || '-')}<br>
             ${linkPedido(d)}
@@ -2713,7 +2713,7 @@ async function carregarSemRetorno() {
       try {
         const r = await fetch(`${window.APP_BASE || ''}/api/admin/nf-itens/${idBling}${auto ? '?auto=1' : ''}`);
         const d = await r.json();
-        if (!d.ok) throw new Error(d.erro || 'falha');
+        if (!d.ok) { const err = new Error(d.erro || 'falha'); err.status = r.status; throw err; }
         const linhas = (d.itens || []).map(i => {
           const q = Number(i.quantidade);
           const qtd = isNaN(q) ? (i.quantidade || '?') : (q % 1 === 0 ? q : q.toFixed(2));
@@ -2729,6 +2729,7 @@ async function carregarSemRetorno() {
       } catch (e) {
         if (auto) console.warn('[itens NF] auto: ' + (e.message || e)); else toast('Erro ao buscar itens da NF: ' + (e.message || e), 'err');
         el.textContent = txt;
+        if (auto && e.status === 503) return 'retry';   // b477 (Codex): Bling em 429 — repescar, nao desistir
       }
       return false;
     }
@@ -2740,9 +2741,11 @@ async function carregarSemRetorno() {
     // fundo na fila do Bling (?auto=1), pra nao martelar a cota. E a rota
     // GRAVA nf_itens no card: na proxima abertura vem inline, sem chamada.
     let AUTO_ITENS_RODANDO = false;
+    let AUTO_ITENS_PENDENTE = false;   // b477 (Codex): renderizar() no meio de um lote -> roda de novo no fim
     async function autoCarregarItensNF() {
-      if (AUTO_ITENS_RODANDO) return;
+      if (AUTO_ITENS_RODANDO) { AUTO_ITENS_PENDENTE = true; return; }
       AUTO_ITENS_RODANDO = true;
+      const repescar = [];   // b477 (Codex): os que tomaram 503 (Bling em 429) voltam uma vez, 30s depois
       try {
         const links = Array.from(document.querySelectorAll('a[onclick*="verItensNF("]'));
         for (const el of links) {
@@ -2751,10 +2754,22 @@ async function carregarSemRetorno() {
           if (!box || box.dataset.carregado === '1') continue;
           const m = String(el.getAttribute('onclick') || '').match(/verItensNF\('([^']+)'/);
           if (!m) continue;
-          await verItensNF(m[1], el, true);
+          const r = await verItensNF(m[1], el, true);
+          if (r === 'retry') repescar.push([m[1], el]);
           await new Promise((ok) => setTimeout(ok, 400));       // respiro entre cards
         }
-      } finally { AUTO_ITENS_RODANDO = false; }
+        if (repescar.length) {
+          await new Promise((ok) => setTimeout(ok, 30000));
+          for (const [id, el] of repescar) {
+            if (!document.body.contains(el) || (el.nextElementSibling && el.nextElementSibling.dataset.carregado === '1')) continue;
+            await verItensNF(id, el, true);
+            await new Promise((ok) => setTimeout(ok, 400));
+          }
+        }
+      } finally {
+        AUTO_ITENS_RODANDO = false;
+        if (AUTO_ITENS_PENDENTE) { AUTO_ITENS_PENDENTE = false; setTimeout(autoCarregarItensNF, 300); }
+      }
     }
 
     // v3.26 - INTELIGÊNCIA FULL

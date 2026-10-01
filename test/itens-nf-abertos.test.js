@@ -24,8 +24,9 @@ for (const [p, nome, tabela] of [['amb-devolucoes/lib-AMB/rotas-admin-AMB.js', '
      `⚠️ ${nome}: vindo do auto-carregar (?auto=1) e FUNDO na fila do Bling (nao compete com o bipe)`);
   ok(new RegExp("\\.from\\(" + tabela.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + "\\)\\.update\\(\\{ nf_itens: itens \\}\\)").test(rota),
      `⚠️ ${nome}: GRAVA nf_itens no card (proxima abertura vem inline, sem Bling)`);
-  ok(/\.eq\('nf_id_bling', String\(idBling\)\)\.is\('nf_itens', null\)/.test(rota),
-     `  ${nome}: so nos cards dessa NF que ainda NAO tem nf_itens (nao sobrescreve o enriquecimento)`);
+  // b477 (Codex): `[]` tambem e "sem itens"
+  ok(/\.eq\('nf_id_bling', String\(idBling\)\)\.or\('nf_itens\.is\.null,nf_itens\.eq\.\[\]'\)/.test(rota),
+     `  ${nome}: so nos cards dessa NF sem itens — null OU [] (nao sobrescreve o enriquecimento)`);
   ok(/r\.status === 429 \? 503/.test(rota), `  ${nome}: 429 do Bling vira 503 "tente de novo", nao 404 "nao encontrada" (nao sei != nao existe)`);
   ok(/\.catch\(\(e\) => console\.warn/.test(rota) && !/await supabase\.from/.test(rota.slice(rota.indexOf('update({ nf_itens'))),
      `  ${nome}: a gravacao nao bloqueia a resposta e nao derruba a rota se falhar`);
@@ -39,7 +40,16 @@ for (const p of ['amb-devolucoes/public-AMB/painel2-AMB.html', 'amb-devolucoes/p
   ok(/\/api\/admin\/nf-itens\/\$\{idBling\}\$\{auto \? '\?auto=1' : ''\}/.test(s), `  ${nome}: manda ?auto=1 no modo auto`);
   ok(/async function autoCarregarItensNF\(\)/.test(s) && /await verItensNF\(m\[1\], el, true\);/.test(s) && /await new Promise\(\(ok\) => setTimeout\(ok, 400\)\)/.test(s),
      `  ${nome}: auto-carrega EM SERIE (um por vez, com respiro) — nao dispara 30 chamadas juntas`);
-  ok(/if \(AUTO_ITENS_RODANDO\) return;/.test(s), `  ${nome}: nao roda 2 em paralelo (re-render no meio)`);
+  // b477 (Codex, P2 x3): re-render no meio nao perde os links novos; 503 repesca; sem link cravado
+  ok(/if \(AUTO_ITENS_RODANDO\) \{ AUTO_ITENS_PENDENTE = true; return; \}/.test(s) && /if \(AUTO_ITENS_PENDENTE\) \{ AUTO_ITENS_PENDENTE = false; setTimeout\(autoCarregarItensNF, 300\); \}/.test(s),
+     `  ${nome}: renderizar() no meio de um lote marca pendente e roda de novo no fim (nao perde os links novos)`);
+  ok(/if \(auto && e\.status === 503\) return 'retry';/.test(s) && /if \(r === 'retry'\) repescar\.push/.test(s) && /setTimeout\(ok, 30000\)/.test(s),
+     `  ${nome}: 503 (Bling em 429) entra na repescagem de 30s — nao desiste do card`);
+  // ⚠️ P1: problema/divergente usam renderItensCard(d) — com nf_itens gravado vem INLINE e o auto nao busca
+  ok(!/\$\{d\.nf_id_bling \? `[^`]*verItensNF\('\$\{d\.nf_id_bling\}', this\)/.test(s),
+     `⚠️ ${nome}: nenhum link verItensNF cravado em problema/divergente (ia buscar no Bling mesmo com itens gravados)`);
+  ok((s.match(/\$\{renderItensCard\(d\)\}/g) || []).length >= 3,
+     `  ${nome}: problema e divergente usam renderItensCard(d), como o aprovado (inline se tem itens)`);
   // pendurado no FIM do renderizar(), fora de qualquer if interno
   const r0 = s.indexOf('    function renderizar() {');
   const r1 = s.indexOf('\n    }\n', r0);
