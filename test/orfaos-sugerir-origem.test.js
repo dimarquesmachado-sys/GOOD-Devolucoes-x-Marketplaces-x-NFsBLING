@@ -188,6 +188,37 @@ ok(/deps\.espreitaMontada/.test(rota), '  e le a espreita por deps.espreitaMonta
   ok(/sku_irmao e OUTRA variacao/.test(r.orfaos[0].dica), '  e a dica explica o sku_irmao');
 }
 
+// ── b471 (Codex, 4a revisao): filho que justificou o casamento, titulo x SKU pai, tamanho ──
+{
+  const m = require('../lib/orfaos-sugerir-origem');
+  // 1) irma G800 ANTES da G80 no pedido: a qtd e a do filho G80, nao a do primeiro de mesma raiz
+  const o = { id: 1, produto_sku: '10-AE-8F-G80-180mm', produto_qtd: 2 };
+  const r = m.sugerirOrigem([o], [
+    { marketplace: 'ml', pedido: 'P1', tracking: 'A', itens: [
+      { sku: '10-AE-8F-G800-180mm', qtd: 1 }, { sku: '10-AE-8F-180mm-PAI', qtd: 2 } ] },
+  ]);
+  const c = r.orfaos[0].candidatos[0];
+  ok(c.via === 'sku_pai' && c.qtd_no_pedido === 2 && c.qtd_bate === true,
+     '⚠️ multi-item: a qtd vem do filho que justificou o sku_pai (nao da irma G800 que veio antes)');
+  // 2) SKU de pai, mas o titulo da unidade diz OUTRO grao -> irma, nao pai
+  const o2 = { id: 2, produto_sku: 'A-G80', produto_qtd: 1, produto_titulo: 'Lixa Disco 180mm Grao 80 Premium' };
+  const r2 = m.sugerirOrigem([o2], [
+    { marketplace: 'ml', pedido: 'P2', tracking: 'B', itens: [{ sku: 'A-PAI', titulo: 'Lixa Disco 180mm Grao 800 Premium', qtd: 1 }] },
+  ]);
+  ok(r2.orfaos[0].candidatos[0].via === 'sku_irmao', '⚠️ SKU A-PAI com titulo "Grao 800" x orfao "Grao 80" = sku_irmao, nao sku_pai');
+  const r2b = m.sugerirOrigem([o2], [
+    { marketplace: 'ml', pedido: 'P2', tracking: 'B', itens: [{ sku: 'A-PAI', titulo: 'Lixa Disco 180mm Grao Premium', qtd: 1 }] },
+  ]);
+  ok(r2b.orfaos[0].candidatos[0].via === 'sku_pai', '  titulo do pai sem grao nao conflita: segue sku_pai');
+  // 3) tamanho por letra
+  ok(!m.tituloCasa('Capa Protetora Impermeavel Premium Tamanho P Azul', 'Capa Protetora Impermeavel Premium Tamanho G Azul'),
+     '⚠️ titulo: Tamanho P x Tamanho G NAO casa');
+  ok(m.tituloCasa('Capa Protetora Impermeavel Premium Tamanho P Azul', 'Capa Protetora Impermeavel Premium Tamanho P Azul'),
+     '  mesmo tamanho casa');
+  ok(m.tituloCasa('Capa Protetora Impermeavel Premium Tamanho P Azul', 'Capa Protetora Impermeavel Premium Azul'),
+     '  so um declara tamanho: casa (o outro nao especifica)');
+}
+
 console.log('');
 console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
 process.exit(falhas ? 1 : 0);
