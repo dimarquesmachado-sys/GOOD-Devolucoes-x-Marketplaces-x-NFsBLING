@@ -5,9 +5,9 @@
 const fs = require('fs'); const path = require('path'); const vm = require('vm');
 let falhas = 0;
 const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o); };
-const PAINEIS = ['painel-AMB.html', 'painel2-AMB.html'];   // Codex #404: o painel2 ainda e servido
+const PAINEIS = ['amb-devolucoes/public-AMB/painel-AMB.html', 'amb-devolucoes/public-AMB/painel2-AMB.html', 'public/painel-devolucoes.html'];   // b484: + GOOD
 for (const nomePainel of PAINEIS) {
-const html = fs.readFileSync(path.join(__dirname, '..', 'amb-devolucoes', 'public-AMB', nomePainel), 'utf8');
+const html = fs.readFileSync(path.join(__dirname, '..', nomePainel), 'utf8');
 console.log('— ' + nomePainel);
 function fonteDaFuncao(nome) {
   const i = html.search(new RegExp('(async\\s+)?function ' + nome + '\\s*\\('));
@@ -55,7 +55,9 @@ ok(/botaoFullEstoque\(d, false\)/.test(ih) && /avisoFullHtml\(d\)/.test(ih), '  
 ok(/botaoFullEstoque\(d, true\)/.test(ip) && /avisoFullHtml\(d\)/.test(ip), '⚠️ card de PROBLEMA tambem lanca (antes: "nao faca nada")');
 }
 // rota: trava de lancamento duplo e registro no card
-const rota = fs.readFileSync(path.join(__dirname, '..', 'amb-devolucoes', 'lib-AMB', 'rotas-admin-AMB.js'), 'utf8');
+for (const arqRota of ['amb-devolucoes/lib-AMB/rotas-admin-AMB.js', 'lib/rotas-admin-nf.js']) {
+console.log('— rota ' + arqRota);
+const rota = fs.readFileSync(path.join(__dirname, '..', arqRota), 'utf8');
 const r0 = rota.indexOf("app.post('/api/admin/full-lancar-estoque/:id'");
 const r1 = rota.indexOf('app.post(', r0 + 10);
 const corpoRota = rota.slice(r0, r1);
@@ -66,6 +68,9 @@ ok(/falta_coluna: true/.test(corpoRota) && /add column if not exists estoque_lan
 ok(/estoque_lancado_em: null, estoque_deposito: null \}\)\.eq\('id', req\.params\.id\)\.eq\('estoque_deposito', marca\)/.test(corpoRota), '  Bling recusou: a reserva e devolvida (so se ainda for a minha)');
 ok(/update\(\{ estoque_lancado_em: new Date\(\)\.toISOString\(\), estoque_deposito: depNome \}\)/.test(corpoRota), '⚠️ rota: depois do Bling aceitar, marca o card (quando e onde)');
 ok(/naoAplicou/.test(corpoRota) && /st !== 408/.test(corpoRota) && /incerto: true/.test(corpoRota) && corpoRota.indexOf('incerto: true') < corpoRota.indexOf('estoque_lancado_em: null, estoque_deposito: null'), '⚠️ Codex #404 (P1, 2a): timeout/sem resposta/5xx MANTEM a reserva LANCANDO (so 4xx ou fila estourada devolve)');
+}
+const good = fs.readFileSync(path.join(__dirname, '..', 'lib', 'rotas-admin-nf.js'), 'utf8');
+ok(/app\.get\('\/api\/depositos'/.test(good) && !/DEPOSITOS_VALIDOS\.has\(/.test(good), '⚠️ GOOD: lista VIVA de depositos (GET /api/depositos) no lugar da lista fixa de ids');
 console.log('');
 console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
 process.exit(falhas ? 1 : 0);
