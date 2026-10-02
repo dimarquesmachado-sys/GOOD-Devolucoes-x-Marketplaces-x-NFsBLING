@@ -454,6 +454,13 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
 
   if (!shipment && !pack && (ehChaveNFe || ehNumeroNF)) {
     let numeroDaChave, serieDaChave, idNF = null, tipoTentativa;
+    /* ⚠️ HOTFIX b479 — `blingIndisponivel` era declarada DENTRO do else (caminho do numero) e lida
+       DEPOIS dele, no codigo comum aos dois caminhos: ReferenceError em TODA busca por CHAVE da DANFE
+       e por NUMERO de NF (inclusive o clique no candidato por nome) desde o b472 (#397, 01/10). A
+       rota e async sem captura: o erro virava rejeicao nao tratada, o pedido ficava SEM RESPOSTA ate
+       o Render cortar — e a tela mostrava "Unexpected token '<'" (a pagina de erro do Render).
+       Achado ao conferir a leitura de DANFE da Girassol a pedido do dono (02/10). */
+    let blingIndisponivel = false;   // b472: "nao sei" != "nao existe" — escopo do bloco inteiro
 
     if (ehChaveNFe) {
       const modelo = codigoLimpo.substr(20, 2);
@@ -478,7 +485,6 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
       tipoTentativa = 'numero_nf';
       console.log(`[BUSCA] NUMERO NF: numero=${numeroDaChave} serie=${serieDaChave || '(todas)'}`);
       let achadas = [];
-      let blingIndisponivel = false;   // b472: "nao sei" != "nao existe"
       // ⚠️ b473 - O INDICE DE NOMES JA TEM O ID DESSA NOTA. A busca por numero
       // saia sondando o Bling dia a dia (12 sondas de ancora + bissecao + paginas
       // — dezenas de chamadas), cada uma esperando a fila em pausa de 429: no

@@ -534,7 +534,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.122.0 (b478: clique no candidato com serie na AMB/Girassol; HTML no lugar de JSON diz reiniciando)',
+      version: '9.123.1 (b481 HOTFIX: busca por CHAVE da DANFE e por NUMERO voltam a responder)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -1177,6 +1177,13 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
 
   if (!shipment && !pack && (ehChaveNFe || ehNumeroNF)) {
     let numeroDaChave, serieDaChave, idNF = null, tipoTentativa;
+    /* ⚠️ HOTFIX b479 — `blingIndisponivel` era declarada DENTRO do else (caminho do numero) e lida
+       DEPOIS dele, no codigo comum aos dois caminhos: ReferenceError em TODA busca por CHAVE da DANFE
+       e por NUMERO de NF (inclusive o clique no candidato por nome) desde o b472 (#397, 01/10). A
+       rota e async sem captura: o erro virava rejeicao nao tratada, o pedido ficava SEM RESPOSTA ate
+       o Render cortar — e a tela mostrava "Unexpected token '<'" (a pagina de erro do Render).
+       Achado ao conferir a leitura de DANFE da Girassol a pedido do dono (02/10). */
+    let blingIndisponivel = false;   // b472: "nao sei" != "nao existe" — escopo do bloco inteiro
 
     if (ehChaveNFe) {
       const modelo = codigoLimpo.substr(20, 2);
@@ -1201,7 +1208,6 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
       tipoTentativa = 'numero_nf';
       console.log(`[BUSCA] NUMERO NF: numero=${numeroDaChave} serie=${serieDaChave || '(todas)'}`);
       let achadas = [];
-      let blingIndisponivel = false;   // b472: "nao sei" != "nao existe"
       // b473 - o indice de nomes ja tem o id dessa nota: UMA chamada em vez da
       // varredura dia a dia (dezenas). So cai na varredura se o indice nao tem
       // (nota antiga) ou ha ambiguidade entre series. Ver a nota na AMB.
