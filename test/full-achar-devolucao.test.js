@@ -8,10 +8,11 @@ let falhas = 0;
 const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o); };
 const CH_VENDA = '35260727548456000147550020000492861144343275';
 const chave = (serie, n) => '3526082754845600014755' + String(serie).padStart(3, '0') + String(n).padStart(9, '0') + '1158076413';
-function cenario(arq, { paginas, detalhes, falharPagina, falharDetalhe }) {
+function cenario(arq, { paginas, detalhes, falharPagina, falharDetalhe, regExtra }) {
   const handlers = {};
   const app = { get: (p, ...f) => { handlers['GET ' + p] = f[f.length - 1]; }, post: (p, ...f) => { handlers['POST ' + p] = f[f.length - 1]; }, put() {}, delete() {}, patch() {}, use() {} };
   const reg = { id: 7, nf_chave: CH_VENDA, nf_serie: '2', nf_data_emissao: '2026-07-27T19:52:40-03:00', buyer_nome: 'Marcos Vieira Lima', produto_valor_unit: 897.9, produto_qtd: 1, produto_sku: 'PM1' };
+  Object.assign(reg, regExtra || {});
   const gravado = {};
   const sb = { from: () => {
     const q = { _upd: null,
@@ -75,6 +76,22 @@ const certa = { id: 'C49304', numero: '49304', serie: '2', chaveAcesso: chave(2,
     const pg1 = cheia.slice(0, 99).concat([{ id: 'C49304', numero: '49304', dataEmissao: '2026-08-25', contato: { nome: 'Marcos Vieira Lima' }, valorNota: 897.9, chaveAcesso: chave(2, 49304) }]);
     r = await cenario(arq, { paginas: [pg1, [certa]], detalhes: { C49304: certa }, falharPagina: 2 })();
     ok(r.status === 503 && !r.gravado.nf_devolucao_id_bling, '⚠️ Codex #406 (P1): busca incompleta + so valor/nome, sem XML: nao grava a NF, devolve 503');
+    // 10) Codex #406 (P2): nome curto ("Ana Li") nao tem pedaco de 4 letras — o nome exato admite a NF (valor diferente) e o XML prova
+    const fetchOrig = global.fetch;
+    global.fetch = async () => ({ ok: true, text: async () => '<refNFe>' + CH_VENDA + '</refNFe>' });
+    const curta = { id: 'S1', numero: '51000', serie: '2', chaveAcesso: chave(2, 51000), dataEmissao: '2026-09-02', contato: { nome: 'Ana Li' }, valorNota: 1, itens: [], xml: 'http://xml.exemplo/s1' };
+    r = await cenario(arq, { paginas: [[{ id: 'S1', numero: '51000', dataEmissao: '2026-09-02', contato: { nome: 'Ana Li' }, valorNota: 1, chaveAcesso: chave(2, 51000) }]], detalhes: { S1: curta }, regExtra: { buyer_nome: 'Ana Li' } })();
+    global.fetch = fetchOrig;
+    ok(r.status === 200 && r.corpo.nf_devolucao_numero === '51000', '⚠️ Codex #406 (P2): comprador "Ana Li" (sem pedaco de 4 letras) ainda admite a NF pelo nome exato e vincula com o XML');
+    // 11) Codex #406 (P2): UM prazo pra varredura — XMLs lentos nao somam 8s x 15; estourou, o resto e "nao conferido" (503)
+    const dateOrig = Date.now; let salto = 0; let chamadasXml = 0;
+    Date.now = () => dateOrig() + salto;
+    global.fetch = async () => { chamadasXml++; salto += 10000; throw new Error('timeout'); };
+    const lentas = Array.from({ length: 6 }, (_, i) => lista(i + 700, { valorNota: 897.9, contato: { nome: 'Outro Nome' } }));
+    const detLentas = Object.fromEntries(lentas.map((x) => [x.id, Object.assign({}, x, { serie: '2', chaveAcesso: chave(2, 700 + x.numero % 100), itens: [{ codigo: 'PM1' }], xml: 'http://xml.exemplo/' + x.id })]));
+    r = await cenario(arq, { paginas: [lentas], detalhes: detLentas })();
+    Date.now = dateOrig; global.fetch = fetchOrig;
+    ok(chamadasXml <= 3 && r.status === 503 && r.corpo.incompleto === true && !r.gravado.nf_devolucao_id_bling, '⚠️ Codex #406 (P2): prazo unico — com XMLs que estouram, para de buscar (' + chamadasXml + ' XML) e devolve 503 sem gravar');
     // 5) varreu tudo e de fato nao tem serie 2: ai sim 404
     r = await cenario(arq, { paginas: [mais9], detalhes: Object.fromEntries(mais9.map((x) => [x.id, Object.assign({}, x, { serie: '1' })])) })();
     ok(r.status === 404 && /Nenhuma NF de entrada serie 2/.test(r.corpo.erro), '  varredura completa sem serie 2: 404 de verdade');
@@ -84,7 +101,7 @@ const certa = { id: 'C49304', numero: '49304', serie: '2', chaveAcesso: chave(2,
     const src = fs.readFileSync(path.join(__dirname, '..', arq), 'utf8');
     const ini = src.indexOf("app.post('/api/admin/full-vincular/:id'"), fim = src.indexOf('app.post(', ini + 20);
     const rota = src.slice(ini, fim);
-    ok(/fetch\(nf\.xml, \{ signal: [^}]*AbortSignal\.timeout\(8000\)/.test(rota), '  Codex #406 (P2): o XML da candidata tem PRAZO (' + path.basename(arq) + ')');
+    ok(/fetch\(nf\.xml, \{ signal: [^}]*AbortSignal\.timeout\(Math\.min\(8000, restante\)\)/.test(rota) && /LIMITE_VARREDURA/.test(rota), '  Codex #406 (P2): o XML da candidata tem PRAZO (' + path.basename(arq) + ')');
     ok(!/for \(let t = 1; !r\.ok && t <= 2; t\+\+\)/.test(rota), '  Codex #406 (P2): sem retentativa na rota por cima da do cliente (' + path.basename(arq) + ')');
   }
   console.log('');
