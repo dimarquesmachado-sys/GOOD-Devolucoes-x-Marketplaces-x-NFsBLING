@@ -534,7 +534,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.121.0 (b476: a espreita da AMB/Girassol monta sozinha — captura e indice sem depender de abrir a tela)',
+      version: '9.122.0 (b477: espreita AMB — relogio na drenagem, sem autocura do indice nem captura com fonte fria, uma montagem so)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),

@@ -325,6 +325,7 @@ CFG_EMPRESA.clienteMl = ml;   // b377 — o mlReturns (abaixo) ja precisa dele
 const mlReturns = require('./lib-AMB/ml-returns-AMB').criar(CFG_EMPRESA);
 const nfNomes = require('./lib-AMB/nf-nomes-AMB').criar(CFG_EMPRESA);
 const tokens = require('../lib/render-tokens');
+const drenagem = require('../lib/drenagem');   // b477: timers que param no SIGTERM
 const tiktokPonte = require('../lib/tiktok-ponte');
 const devCapturadas = require('../lib/devolucoes-capturadas');   // b455: a captura persistente, que so a GOOD chamava
 const tiktokDevCaptura = require('../lib/tiktok-devolucoes');     // b455: normaliza o TikTok pra captura (o mesmo modulo que o identificar recebe por deps)
@@ -641,7 +642,7 @@ const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 // checado ANTES de entrar na fila da empresa — nao antes de sair, entao um
 // candidato ja desistido ainda batia no Bling depois de esperar numa pausa
 // de 429. Ver bling-AMB.js, nf-nomes-AMB.js e identificar-AMB.js.
-const VERSAO = 'AMB Devolucoes b476';
+const VERSAO = 'AMB Devolucoes b477';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -2043,7 +2044,7 @@ function capturarDevolucoesEmpresa(emTransito, forcar) {
 // antes. Agora o miolo e uma funcao, a rota so a chama, e um relogio (90s apos
 // o boot, depois a cada 3 min — o mesmo da GOOD) a mantem quente. A captura
 // (1x/hora) e o indice de nomes (que ela dispara se frio) vem de brinde.
-async function montarEspreitaAMB() {
+async function montarEspreitaAMB({ fundo = false } = {}) {
   // b29 - cada fonte com a propria rede de protecao: uma quebrar
   // NUNCA derruba as outras, e o erro vai ESCRITO pro painel.
   const vazio = { quente: false, em_transito: [], entregues: [], aguardando_postagem: 0 };
@@ -2056,7 +2057,10 @@ async function montarEspreitaAMB() {
   const stNomes = nfNomes.statusIndice() || {};
   // b36 - AUTOCURA do índice de NOMES (espelho da b29 pro ML): é ele
   // que dá cliente/NF/valor pra Shopee — frio = tela seca sem aviso.
-  if (!stNomes.quente && !stNomes.construindo) {
+  // b477 (Codex, P2): o relogio (`fundo`) NAO dispara a construcao — o indice
+  // frio entra pela fila do pre-aquecimento (ML -> nomes -> NF entrada), que
+  // existe pra nao competir por cota no boot. So a rota interativa autocura.
+  if (!fundo && !stNomes.quente && !stNomes.construindo) {
     try { nfNomes.construirIndice().catch(() => {}); } catch (e) {}
   }
   const notas = await db.notasEspreita();
@@ -2186,7 +2190,11 @@ async function montarEspreitaAMB() {
     entregues: [...enriquecer(baseML.entregues), ...enriquecer(baseShopee.entregues || [])],
     ts: Date.now(),
   };
-  capturarDevolucoesEmpresa(emTransito);   // b455: guarda no banco, 1x/hora (nao bloqueia a resposta)
+  // b477 (Codex, P2): a montagem do relogio, com fonte ainda fria, NAO gasta a
+  // vaga de 1h da captura (voltaria vazia e as de 3 min seriam barradas).
+  const fonteFria = fundo && ((ml.temToken() && !baseML.quente)
+    || (!baseMagalu.desligada && !baseMagalu.quente));
+  if (!fonteFria) capturarDevolucoesEmpresa(emTransito);   // b455: guarda no banco, 1x/hora (nao bloqueia a resposta)
   return ({
     ok: true,
     versao: VERSAO,
@@ -2222,22 +2230,26 @@ async function montarEspreitaAMB() {
   });
 }
 
-router.get('/api/espreita', auth.requerLogin, async (req, res) => {
-  res.json(await montarEspreitaAMB());
-});
-
+// b477 (Codex, P2): UMA montagem por vez — rota e relogio dividem a mesma promise.
 let ESP_AMB_MONTANDO = null;
-function preAquecerEspreitaAMB(motivo) {
+function montarEspreitaAMBUnica(opcoes) {
   if (ESP_AMB_MONTANDO) return ESP_AMB_MONTANDO;
-  ESP_AMB_MONTANDO = montarEspreitaAMB()
-    .then((r) => { console.log(`[${TAG_APP}/ESPREITA] pre-aquecida (${motivo}): ${(r && r.em_transito && r.em_transito.length) || 0} a caminho, ${(r && r.entregues && r.entregues.length) || 0} entregues`); })
-    .catch((e) => { console.warn(`[${TAG_APP}/ESPREITA] pre-aquecimento falhou (${motivo}):`, e && e.message); })
-    .finally(() => { ESP_AMB_MONTANDO = null; });
+  ESP_AMB_MONTANDO = montarEspreitaAMB(opcoes).finally(() => { ESP_AMB_MONTANDO = null; });
   return ESP_AMB_MONTANDO;
 }
-// .unref(): o relogio nao segura o processo (os testes fazem boot real e precisam sair)
-setTimeout(() => preAquecerEspreitaAMB('boot'), 90 * 1000).unref();
-setInterval(() => preAquecerEspreitaAMB('relogio'), 3 * 60 * 1000).unref();
+
+router.get('/api/espreita', auth.requerLogin, async (req, res) => {
+  res.json(await montarEspreitaAMBUnica());
+});
+
+function preAquecerEspreitaAMB(motivo) {
+  return montarEspreitaAMBUnica({ fundo: true })
+    .then((r) => { console.log(`[${TAG_APP}/ESPREITA] pre-aquecida (${motivo}): ${(r && r.em_transito && r.em_transito.length) || 0} a caminho, ${(r && r.entregues && r.entregues.length) || 0} entregues`); })
+    .catch((e) => { console.warn(`[${TAG_APP}/ESPREITA] pre-aquecimento falhou (${motivo}):`, e && e.message); });
+}
+// b477 (Codex, P2): timers da drenagem — o processo velho do deploy para de trabalhar
+drenagem.daquiA(() => preAquecerEspreitaAMB('boot'), 90 * 1000);
+drenagem.intervalo(() => preAquecerEspreitaAMB('relogio'), 3 * 60 * 1000);
 
 router.post('/api/espreita/nota', auth.requerLogin, async (req, res) => {
   const { chave, marketplace, comentario, ticket, baixado } = req.body || {};
