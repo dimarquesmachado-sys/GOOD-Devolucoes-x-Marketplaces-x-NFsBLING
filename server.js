@@ -534,7 +534,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.125.0 (b485: Codex #405 — FULL na GOOD: reserva/fila/paginacao/retry confirmado/serie real)',
+      version: '9.126.0 (b486: Codex #405 — retry forcado do lancamento de estoque e atomico, GOOD+AMB)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
