@@ -57,11 +57,12 @@ setTimeout(async () => {
     if (!ck) continue;
     const antes = rejeicoesDeCodigo().length;
     const rc = await bipar(nome + ' chave', base + prefixo + '/api/devolucao/identificar/' + CHAVE, ck);
-    ok(!rc.semResposta || rejeicoesDeCodigo().length === antes, `⚠️ ${nome}: bipe da CHAVE da DANFE responde (status ${rc.status || ('sem resposta em 30s' + (rejeicoesDeCodigo().length > antes ? ' — ERRO DE CODIGO: ' + rejeicoesDeCodigo().slice(-1)[0] : ', sem erro de codigo'))})`);
-    ok(rc.semResposta || rc.tipos.includes('chave_danfe'), `  ${nome}: ... e passou pelo caminho da chave (chave_danfe)`);
+    ok(!rc.semResposta && rejeicoesDeCodigo().length === antes, `⚠️ ${nome}: bipe da CHAVE da DANFE responde (status ${rc.status || ('sem resposta em 30s' + (rejeicoesDeCodigo().length > antes ? ' — ERRO DE CODIGO: ' + rejeicoesDeCodigo().slice(-1)[0] : ', sem erro de codigo'))})`);
+    ok(!rc.semResposta && rc.tipos.includes('chave_danfe'), `  ${nome}: ... e passou pelo caminho da chave (chave_danfe)`);
     const antesN = rejeicoesDeCodigo().length;
     const rn = await bipar(nome + ' numero', base + prefixo + '/api/devolucao/identificar/' + encodeURIComponent('126421/1'), ck);
-    ok(!rn.semResposta || rejeicoesDeCodigo().length === antesN, `⚠️ ${nome}: bipe do NUMERO/serie responde (status ${rn.status || ('sem resposta em 30s' + (rejeicoesDeCodigo().length > antesN ? ' — ERRO DE CODIGO: ' + rejeicoesDeCodigo().slice(-1)[0] : ', sem erro de codigo'))})`);
+    ok(!rn.semResposta && rejeicoesDeCodigo().length === antesN, `⚠️ ${nome}: bipe do NUMERO/serie responde (status ${rn.status || ('sem resposta em 30s' + (rejeicoesDeCodigo().length > antesN ? ' — ERRO DE CODIGO: ' + rejeicoesDeCodigo().slice(-1)[0] : ', sem erro de codigo'))})`);
+    ok(!rn.semResposta && rn.tipos.includes('numero_nf'), `  ${nome}: ... e passou pelo caminho do numero (numero_nf)`);
   }
   ok(rejeicoesDeCodigo().length === 0, '⚠️ nenhum erro de codigo solto na rota (' + (rejeicoesDeCodigo().join(' | ') || 'zero') + ')');
   console.log('');
