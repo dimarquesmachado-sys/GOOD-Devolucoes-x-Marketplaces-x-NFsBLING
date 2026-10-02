@@ -58,9 +58,26 @@ const certa = { id: 'C49304', numero: '49304', serie: '2', chaveAcesso: chave(2,
     // 4) o detalhe das candidatas nao vem: nao verificada = incompleta
     r = await cenario(arq, { paginas: [[{ id: 'C49304', numero: '49304', dataEmissao: '2026-08-25', contato: { nome: 'Marcos Vieira Lima' }, valorNota: 897.9 }]], detalhes: {}, falharDetalhe: true })();
     ok(r.status === 503 && r.corpo.incompleto === true, '  detalhe que nao veio: incompleta (503), nao "nao existe"');
+    // 6) Codex #406 (P1): MESMO SKU + pedaco de nome, valor diferente e sem XML = NAO e prova da transacao
+    const alheia = { id: 'X1', numero: '50999', serie: '2', chaveAcesso: chave(2, 50999), dataEmissao: '2026-09-02', contato: { nome: 'Maria Lima' }, valorNota: 450, itens: [{ codigo: 'PM1' }] };
+    r = await cenario(arq, { paginas: [[{ id: 'X1', numero: '50999', dataEmissao: '2026-09-02', contato: { nome: 'Maria Lima' }, valorNota: 450, chaveAcesso: chave(2, 50999) }]], detalhes: { X1: alheia } })();
+    ok(r.status === 404 && !r.gravado.nf_devolucao_id_bling, '⚠️ Codex #406 (P1): mesmo SKU + "Lima", valor diferente e sem XML: NAO vincula nota de outro cliente');
+    // 7) Codex #406 (P2): a certa SEM chave na lista nao some atras de 16 com chave da mesma serie
+    const comChave = Array.from({ length: 16 }, (_, i) => lista(i + 500, { contato: { nome: 'Joana Lima' }, valorNota: 77, chaveAcesso: chave(2, 900 + i) }));
+    const det7 = { C49304: certa }; comChave.forEach((x) => { det7[x.id] = Object.assign({}, x, { serie: '2', itens: [] }); });
+    r = await cenario(arq, { paginas: [comChave.concat([{ id: 'C49304', numero: '49304', dataEmissao: '2026-08-25', contato: { nome: 'Marcos Vieira Lima' }, valorNota: 897.9 }])], detalhes: det7 })();
+    ok(r.status === 200 && r.corpo.nf_devolucao_numero === '49304', '⚠️ Codex #406 (P2): a certa sem chave na lista e conferida mesmo com 16 da mesma serie na frente');
     // 5) varreu tudo e de fato nao tem serie 2: ai sim 404
     r = await cenario(arq, { paginas: [mais9], detalhes: Object.fromEntries(mais9.map((x) => [x.id, Object.assign({}, x, { serie: '1' })])) })();
     ok(r.status === 404 && /Nenhuma NF de entrada serie 2/.test(r.corpo.erro), '  varredura completa sem serie 2: 404 de verdade');
+  }
+  const fs = require('fs');
+  for (const arq of ['amb-devolucoes/lib-AMB/rotas-admin-AMB.js', 'lib/rotas-admin-nf.js']) {
+    const src = fs.readFileSync(path.join(__dirname, '..', arq), 'utf8');
+    const ini = src.indexOf("app.post('/api/admin/full-vincular/:id'"), fim = src.indexOf('app.post(', ini + 20);
+    const rota = src.slice(ini, fim);
+    ok(/fetch\(nf\.xml, \{ signal: [^}]*AbortSignal\.timeout\(8000\)/.test(rota), '  Codex #406 (P2): o XML da candidata tem PRAZO (' + path.basename(arq) + ')');
+    ok(!/for \(let t = 1; !r\.ok && t <= 2; t\+\+\)/.test(rota), '  Codex #406 (P2): sem retentativa na rota por cima da do cliente (' + path.basename(arq) + ')');
   }
   console.log('');
   console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
