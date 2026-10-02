@@ -1927,6 +1927,17 @@ async function carregarSemRetorno() {
       renderizar();
     }
 
+    // b307/b308 - texto dentro de argumento de onclick precisa de escape de JS, nao de HTML
+    // (mesma funcao do painel-AMB.html): titulo com apostrofo, D'AVILA, matava o botao.
+    function jsArg(v) {
+      return String(v == null ? '' : v)
+        .replace(/&/g, '&amp;')
+        .replace(/\\/g, '\\\\')
+        .replace(/'/g, "\\'")
+        .replace(/"/g, '&quot;')
+        .replace(/</g, '\\x3C')
+        .replace(/\r?\n/g, ' ');
+    }
     function escapeHtml(s) {
       if (s == null) return '';
       return String(s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
@@ -2177,6 +2188,7 @@ async function carregarSemRetorno() {
           ` : ''}
 
           ${concluido ? '' : `
+            ${ehSerie2(d) ? avisoFullHtml(d) : ''}
             <div class="item-acoes">
               ${d.nf_link_danfe ? `<a class="btn btn-cinza" href="${d.nf_link_danfe}" target="_blank">📄 DANFE</a>` : ''}
               ${d.nf_id_bling
@@ -2188,7 +2200,7 @@ async function carregarSemRetorno() {
               ${ehSerie2(d) && !d.nf_devolucao_id_bling
                 ? `<a class="btn" style="background:#00695c;color:#fff;" href="https://www.mercadolivre.com.br/emissor/vendas/${d.order_id || ''}/faturas" target="_blank" title="Venda FULL (s\u00e9rie 2): a NF de devolu\u00e7\u00e3o \u00e9 emitida pelo PR\u00d3PRIO Mercado Livre. N\u00c3O gere outra no Bling (duplicidade fiscal). Clique pra ver/baixar a NF no emissor do ML.">🏬 FULL</a><button class="btn" style="background:#00838f;" onclick="fullVincular('${d.id}', this)" title="Procura no Bling a NF de ENTRADA s\u00e9rie 2 que o ML emitiu pra esta devolu\u00e7\u00e3o e vincula ao card">🔗 Achar devolu\u00e7\u00e3o no Bling</button>`
                 : !d.nf_devolucao_id_bling && (d.nf_id_bling || d.nf_numero)
-                ? `<button class="btn" style="background:#1565c0;" onclick="abrirModalGerarDevolucao('${d.id}', '${d.nf_id_bling || ''}', '${escapeHtml(d.nf_numero || '')}', '${escapeHtml(d.produto_titulo || '')}', '${String(d.nf_chave || '').replace(/[^0-9]/g, '')}', 'divergente')" title="Abre as op\u00e7\u00f5es: criar RASCUNHO (salvar sem emitir, pra editar no Bling) ou gerar + emitir direto">🧾 Gerar NF (rascunho ou emitir)</button>`
+                ? `<button class="btn" style="background:#1565c0;" onclick="abrirModalGerarDevolucao('${d.id}', '${d.nf_id_bling || ''}', '${escapeHtml(d.nf_numero || '')}', '${jsArg(d.produto_titulo || '')}', '${String(d.nf_chave || '').replace(/[^0-9]/g, '')}', 'divergente')" title="Abre as op\u00e7\u00f5es: criar RASCUNHO (salvar sem emitir, pra editar no Bling) ou gerar + emitir direto">🧾 Gerar NF (rascunho ou emitir)</button>`
                 : d.nf_devolucao_id_bling
                   ? `<a class="btn btn-verde" href="https://www.bling.com.br/notas.entrada.php#edit/${d.nf_devolucao_id_bling}" target="_blank" title="NF de devolu\u00e7\u00e3o j\u00e1 gerada. Produto com problema: a do FULL (emitida pelo marketplace) n\u00e3o lan\u00e7a estoque sozinha \u2014 use o bot\u00e3o 📦 (abre no DEFEITOS); NF emitida aqui j\u00e1 lan\u00e7ou estoque.">📝 Devolu\u00e7\u00e3o: ${d.nf_devolucao_numero || 'ver'}</a>${ehSerie2(d) ? botaoFullEstoque(d, true) : ''}`
                   : ''
@@ -2375,6 +2387,9 @@ async function carregarSemRetorno() {
       // aberta e quem decide e o admin.
       // b490 - pedido do dono (02/10): DIVERGENTE (envio errado) tambem abre no DEFEITOS
       var ehProblema = /problema|defeito|avariad|quebrad|ruim|divergen/i.test(String(statusTriagem || ''));
+      // b491 (Codex #407) - divergente so gera RASCUNHO: a NF sai com os itens da NF original, e emitir
+      // direto lancaria estoque do SKU vendido em vez do que voltou.
+      var ehDivergente = /divergen/i.test(String(statusTriagem || ''));
       const conteudo = document.getElementById('modalGerarConteudo');
       conteudo.innerHTML = `
         <h3 style="font-size:18px; margin-bottom:12px;">🧾 Gerar NF Devolução</h3>
@@ -2398,14 +2413,20 @@ async function carregarSemRetorno() {
         </div>
         <div style="display:flex; gap:8px; justify-content:flex-end; flex-wrap:wrap;">
           <button class="btn btn-cinza" onclick="fecharModalGerarDevolucao()">Cancelar</button>
-          <button class="btn" style="background:#455a64; color:#fff;" id="btnGerarRascunho"
+          <button class="btn" style="background:#455a64; color:#fff;" id="btnGerarRascunho"${ehProblema ? ' disabled' : ''}
             onclick="confirmarGerarDevolucao('${devolucaoId}', '${idNFOriginalBling}', '${nfNumero}', false, '${chaveNF}')">
             🧪 Criar rascunho
           </button>
-          <button class="btn btn-verde" id="btnGerarEmitir"
+          ${ehDivergente ? `
+          <div style="font-size:13px;color:#e65100;background:#fff3e0;border:2px solid #ef6c00;border-radius:8px;padding:10px;max-width:340px;">
+            <b>⚠️ Só rascunho para este caso.</b><br>
+            Voltou um produto <b>diferente</b> do vendido (envio errado). A nota sai com os itens da nota
+            original: abra o rascunho no Bling, troque a linha pelo SKU que voltou e valide por lá.
+          </div>` : `
+          <button class="btn btn-verde" id="btnGerarEmitir"${ehProblema ? ' disabled' : ''}
             onclick="confirmarGerarDevolucao('${devolucaoId}', '${idNFOriginalBling}', '${nfNumero}', true, '${chaveNF}')">
             🧾 Gerar + Emitir NF
-          </button>
+          </button>`}
         </div>
       `;
       document.getElementById('modalGerarDevolucao').style.display = 'flex';
@@ -2429,6 +2450,8 @@ async function carregarSemRetorno() {
           return '<option value="' + escapeHtml(d.id) + '"' + (String(d.id) === String(alvo) ? ' selected' : '')
             + '>📦 ' + escapeHtml(d.descricao) + '</option>';
         }).join('');
+        // b491 (Codex #407) - sem deposito escolhido o confirmar cairia no GERAL; libera so com a lista montada
+        ['btnGerarRascunho', 'btnGerarEmitir'].forEach(function (id) { var b = document.getElementById(id); if (b) b.disabled = false; });
       })();
     }
 

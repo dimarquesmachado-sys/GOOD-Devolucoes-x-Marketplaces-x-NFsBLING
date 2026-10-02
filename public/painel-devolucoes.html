@@ -2556,6 +2556,7 @@
           ` : ''}
 
           ${concluido ? '' : `
+            ${ehSerie2(d) ? avisoFullHtml(d) : ''}
             <div class="item-acoes">
               ${d.nf_link_danfe ? `<a class="btn btn-cinza" href="${d.nf_link_danfe}" target="_blank">📄 DANFE</a>` : ''}
               ${d.nf_id_bling
@@ -2567,7 +2568,7 @@
               ${ehSerie2(d) && !d.nf_devolucao_id_bling
                 ? `<a class="btn" style="background:#00695c;color:#fff;" href="https://www.mercadolivre.com.br/emissor/vendas/${d.order_id || ''}/faturas" target="_blank" title="Venda FULL (s\u00e9rie 2): a NF de devolu\u00e7\u00e3o \u00e9 emitida pelo PR\u00d3PRIO Mercado Livre. N\u00c3O gere outra no Bling (duplicidade fiscal). Clique pra ver/baixar a NF no emissor do ML.">🏬 FULL</a><button class="btn" style="background:#00838f;" onclick="fullVincular('${d.id}', this)" title="Procura no Bling a NF de ENTRADA s\u00e9rie 2 que o ML emitiu pra esta devolu\u00e7\u00e3o e vincula ao card">🔗 Achar devolu\u00e7\u00e3o no Bling</button>`
                 : !d.nf_devolucao_id_bling && (d.nf_id_bling || d.nf_numero)
-                ? `<button class="btn" style="background:#1565c0;" onclick="abrirModalGerarDevolucao('${d.id}', '${d.nf_id_bling || ''}', '${escapeHtml(d.nf_numero || '')}', '${jsArg(d.produto_titulo || '')}', '${String(d.nf_chave || '').replace(/[^0-9]/g, '')}', ${!!d.so_rascunho}, 'defeito')" title="Abre as op\u00e7\u00f5es: criar RASCUNHO (salvar sem emitir, pra editar no Bling) ou gerar + emitir direto">🧾 Gerar NF (rascunho ou emitir)</button>`
+                ? `<button class="btn" style="background:#1565c0;" onclick="abrirModalGerarDevolucao('${d.id}', '${d.nf_id_bling || ''}', '${escapeHtml(d.nf_numero || '')}', '${jsArg(d.produto_titulo || '')}', '${String(d.nf_chave || '').replace(/[^0-9]/g, '')}', true, 'defeito', true)" title="Abre as op\u00e7\u00f5es: criar RASCUNHO (salvar sem emitir, pra editar no Bling) ou gerar + emitir direto">🧾 Gerar NF (rascunho ou emitir)</button>`
                 : d.nf_devolucao_id_bling
                   ? `<a class="btn btn-verde" href="https://www.bling.com.br/notas.entrada.php#edit/${d.nf_devolucao_id_bling}" target="_blank" title="NF de devolu\u00e7\u00e3o j\u00e1 gerada. Produto com problema: a do FULL (emitida pelo marketplace) n\u00e3o lan\u00e7a estoque sozinha \u2014 use o bot\u00e3o 📦 (abre no DEFEITOS); NF emitida aqui j\u00e1 lan\u00e7ou estoque.">📝 Devolu\u00e7\u00e3o: ${d.nf_devolucao_numero || 'ver'}</a>${ehSerie2(d) ? botaoFullEstoque(d, true) : ''}`
                   : ''
@@ -2738,7 +2739,7 @@
     // O rascunho e seguro e e o que o dono ja faz: "qdo eu gero rascunho, é
     // pra eu entrar no bling e editar aquela NF. depois eu vou no bling,
     // edito e manualmente valido a NF".
-    function abrirModalGerarDevolucao(devolucaoId, idNFOriginalBling, nfNumero, produtoTitulo, chaveNF, soRascunho, depSugerido) {
+    function abrirModalGerarDevolucao(devolucaoId, idNFOriginalBling, nfNumero, produtoTitulo, chaveNF, soRascunho, depSugerido, divergente) {
       chaveNF = chaveNF || '';
       const conteudo = document.getElementById('modalGerarConteudo');
       conteudo.innerHTML = `
@@ -2774,9 +2775,13 @@
           <div style="font-size:13px;color:#e65100;background:#fff3e0;border:2px solid #ef6c00;
                       border-radius:8px;padding:10px;max-width:340px;">
             <b>⚠️ Só rascunho para este caso.</b><br>
-            A nota de devolução sai com <b>todos os itens da nota original</b>, e aqui pode ser
+            ${divergente
+              ? `A nota de devolução sai com os itens da <b>nota original</b>, mas voltou um produto
+            <b>diferente</b> (envio errado). Abra o rascunho no Bling, troque a linha pelo SKU que
+            realmente voltou e valide por lá — emitir direto lançaria estoque do SKU errado.`
+              : `A nota de devolução sai com <b>todos os itens da nota original</b>, e aqui pode ser
             que só parte tenha sido reembolsada. Abra o rascunho no Bling, ajuste as linhas e
-            valide por lá.
+            valide por lá.`}
           </div>` : `
           <button class="btn btn-verde" id="btnGerarEmitir"
             onclick="confirmarGerarDevolucao('${devolucaoId}', '${idNFOriginalBling}', '${nfNumero}', true, '${chaveNF}')">

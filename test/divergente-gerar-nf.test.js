@@ -15,12 +15,25 @@ for (const arq of ['amb-devolucoes/public-AMB/painel-AMB.html', 'amb-devolucoes/
   const div = fonte(html, 'itemHtmlDivergente');
   ok(/abrirModalGerarDevolucao\(/.test(div) && /Gerar NF/.test(div), '⚠️ ' + arq + ': o card DIVERGENTE tem o botao "Gerar NF"');
   ok(/fullVincular\(/.test(div) && /botaoFullEstoque\(d, true\)/.test(div), '  ' + arq + ': divergente do FULL segue o fluxo do Full (achar a NF do marketplace + estoque no DEFEITOS)');
+  // b492 (Codex #407): aviso do marketplace do FULL, e apostrofo no titulo nao mata o botao
+  ok(/avisoFullHtml\(d\)/.test(div), '⚠️ ' + arq + ': divergente FULL mostra o aviso do marketplace (avisoFullHtml)');
+  ok(/abrirModalGerarDevolucao\([^\n]*jsArg\(d\.produto_titulo/.test(div), '⚠️ ' + arq + ': titulo vai com jsArg (D\'Avila) no onclick');
+  const modal2 = fonte(html, 'abrirModalGerarDevolucao');
+  if (/AMB/.test(arq)) {
+    ok(/jsArg\(d\.produto_sku/.test(div) || /painel2/.test(arq), '  ' + arq + ': SKU vai com jsArg');
+    ok(/function jsArg\(/.test(html), '  ' + arq + ': jsArg existe na tela');
+    ok(/ehDivergente \? `/.test(modal2) && /id="btnGerarEmitir"/.test(modal2), '⚠️ ' + arq + ': divergente NAO tem "Gerar + Emitir" (so rascunho)');
+    ok(/id="btnGerarRascunho"\$\{ehProblema \? ' disabled'/.test(modal2) && /id="btnGerarEmitir"\$\{ehProblema \? ' disabled'/.test(modal2), '⚠️ ' + arq + ': botoes nascem travados ate o DEFEITOS carregar');
+    ok(/disabled = false/.test(modal2) || /liberarBotoesGerar\(\)/.test(modal2), '  ' + arq + ': botoes liberam com a lista montada');
+  } else {
+    ok(/true, 'defeito', true\)" title=/.test(div), '⚠️ ' + arq + ': divergente da GOOD e so rascunho (soRascunho=true, divergente=true)');
+  }
   if (/AMB/.test(arq)) {
     ok(/'divergente'(, '\$\{serieDoRegistro\(d\)\}')?\)" title=/.test(div), '  ' + arq + ': o modal recebe "divergente" como status');
     const modal = fonte(html, 'abrirModalGerarDevolucao');
     ok(/ehProblema = \/problema\|defeito\|avariad\|quebrad\|ruim\|divergen\/i/.test(modal), '⚠️ ' + arq + ': divergente abre no DEFEITOS');
   } else {
-    ok(/, 'defeito'\)" title=/.test(div), '⚠️ ' + arq + ': divergente pede DEFEITOS ao modal da GOOD (dep_sugerido "defeito")');
+    ok(/, 'defeito'(, true)?\)" title=/.test(div), '⚠️ ' + arq + ': divergente pede DEFEITOS ao modal da GOOD (dep_sugerido "defeito")');
   }
 }
 console.log('');
