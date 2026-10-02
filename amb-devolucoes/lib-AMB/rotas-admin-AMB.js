@@ -448,9 +448,23 @@ app.post('/api/admin/full-vincular/:id', requerAdmin, async (req, res) => {
 app.post('/api/admin/full-lancar-estoque/:id', requerAdmin, async (req, res) => {
   if (!supabase) return res.status(500).json({ ok: false, erro: 'Supabase nao configurado' });
   try {
+    // b482 - select('*'): as colunas estoque_lancado_em/estoque_deposito podem nao existir
+    // nesta tabela; pedir por nome derrubaria a rota inteira ("column does not exist").
     const { data: reg, error: errReg } = await supabase
-      .from(TAB).select('id, nf_devolucao_id_bling, nf_devolucao_numero').eq('id', req.params.id).single();
+      .from(TAB).select('*').eq('id', req.params.id).single();
     if (errReg || !reg) return res.status(404).json({ ok: false, erro: 'Registro nao encontrado' });
+    /* b482 - pedido do dono (02/10): devolucao do FULL nao gera NF (a do ML ja existe) — o que
+       ele faz e LANCAR NO ESTOQUE pra revender. Lancar 2x DOBRA o estoque: se o card ja registra
+       o lancamento, recusa com quando/onde (so passa com forcar:true, decisao consciente). */
+    const forcar = !!(req.body && req.body.forcar === true);
+    if (reg.estoque_lancado_em && !forcar) {
+      const emAndamento = /^LANCANDO/.test(String(reg.estoque_deposito || ''));
+      return res.status(409).json({ ok: false, ja_lancado: true,
+        erro: emAndamento
+          ? 'ja ha um lancamento de estoque em andamento (ou interrompido) desta devolucao, desde ' + String(reg.estoque_lancado_em).slice(0, 16).replace('T', ' ') + ' — confira no Bling antes de lancar de novo'
+          : 'o estoque desta devolucao JA foi lancado' + (reg.estoque_deposito ? ' no deposito ' + reg.estoque_deposito : '') +
+            ' em ' + String(reg.estoque_lancado_em).slice(0, 16).replace('T', ' ') + ' — lancar de novo dobraria o estoque' });
+    }
     if (!reg.nf_devolucao_id_bling) {
       return res.status(400).json({ ok: false, erro: 'Card sem devolucao vinculada - use o 🔗 Achar devolucao primeiro' });
     }
@@ -507,15 +521,56 @@ app.post('/api/admin/full-lancar-estoque/:id', requerAdmin, async (req, res) => 
       return res.status(503).json({ ok: false, erro: motivo + ' — tente de novo em instantes' });
     }
 
+    /* Codex #404 (P1 x2): a checagem acima e LIDA — duas abas/admins/retentativas ao mesmo tempo
+       passariam as duas e dobrariam o estoque. A trava de verdade e esta RESERVA condicional no
+       banco (so 1 update acha estoque_lancado_em vazio). E ela exige as colunas: sem rastro
+       duravel nao ha como recusar o 2o lancamento depois de um refresh — entao NAO lanca. */
+    const marca = 'LANCANDO ' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    let qRes = supabase.from(TAB).update({ estoque_lancado_em: new Date().toISOString(), estoque_deposito: marca }).eq('id', req.params.id);
+    if (!forcar) qRes = qRes.is('estoque_lancado_em', null);
+    const { data: reservou, error: errRes } = await qRes.select('id');
+    if (errRes) {
+      const sql = 'alter table public.' + TAB + ' add column if not exists estoque_lancado_em timestamptz, add column if not exists estoque_deposito text;';
+      return res.status(503).json({ ok: false, falta_coluna: true, sql,
+        erro: 'nao lancei: a tabela ' + TAB + ' ainda nao tem onde registrar o lancamento (sem isso, um 2o clique dobraria o estoque). Rode no Supabase: ' + sql });
+    }
+    if (!reservou || !reservou.length) {
+      return res.status(409).json({ ok: false, ja_lancado: true, erro: 'outro lancamento desta devolucao comecou agora mesmo — atualize a pagina' });
+    }
     const url = `https://api.bling.com.br/Api/v3/nfe/${reg.nf_devolucao_id_bling}/lancar-estoque/${deposito}`;
     const r = await chamarBling(url, { method: 'POST', data: {} });
     if (!r.ok) {
       const detalhe = r.error?.error?.description || r.error?.error?.message || JSON.stringify(r.error || {}).slice(0, 180);
+      /* Codex #404 (P1, 2a rodada): so devolve a reserva quando o Bling DEFINITIVAMENTE nao aplicou
+         (a requisicao nem saiu, ou ele respondeu 4xx). Timeout / queda de conexao / 5xx podem ter
+         chegado e lancado: devolver a reserva ali deixaria o retry dobrar o estoque. Nesses casos a
+         marca LANCANDO fica (o 409 acima manda conferir no Bling; forcar:true e a decisao consciente). */
+      const st = Number(r.status) || 0;
+      const naoAplicou = r.filaEstourou === true || (st >= 400 && st < 500 && st !== 408);
+      if (!naoAplicou) {
+        return res.status(502).json({ ok: false, incerto: true,
+          erro: 'o Bling nao confirmou o lancamento (' + (st ? 'HTTP ' + st : 'sem resposta') + ': ' + detalhe + ') — ele PODE ter lancado. Confira o estoque no Bling antes de tentar de novo; o card ficou marcado "em andamento" pra nao dobrar.' });
+      }
+      // o Bling NAO lancou: devolve a reserva (so se ainda for a minha)
+      try { await supabase.from(TAB).update({ estoque_lancado_em: null, estoque_deposito: null }).eq('id', req.params.id).eq('estoque_deposito', marca); } catch (eL) {}
       return res.status(502).json({ ok: false, erro: `Bling recusou (HTTP ${r.status}): ${detalhe}` });
     }
 
     console.log(`[FULL-ESTOQUE] ${req.params.id}: estoque lancado (NF dev ${reg.nf_devolucao_numero}, deposito ${deposito})`);
-    return res.json({ ok: true, nf_devolucao_numero: reg.nf_devolucao_numero, deposito });
+    // b482 - marca no card (some o botao e a trava acima passa a valer). Se as colunas nao
+    // existirem nesta tabela, o lancamento JA aconteceu no Bling: responde ok com o aviso.
+    const depObj = listaDeps.find((d) => String(d.id) === String(deposito)) || null;
+    const depNome = depObj ? depObj.descricao : String(deposito);
+    let persistiu = false, aviso = null;
+    try {
+      const { error: errM } = await supabase.from(TAB)
+        .update({ estoque_lancado_em: new Date().toISOString(), estoque_deposito: depNome })
+        .eq('id', req.params.id);
+      persistiu = !errM;
+      // a reserva (LANCANDO...) continua no card: o 2o clique segue barrado mesmo se este update falhar
+      if (errM) aviso = 'lancou no Bling; o card ficou marcado como "em andamento" (' + String(errM.message || errM).slice(0, 100) + ')';
+    } catch (eM) { aviso = 'lancou no Bling; o card ficou marcado como "em andamento"'; }
+    return res.json({ ok: true, nf_devolucao_numero: reg.nf_devolucao_numero, deposito, deposito_nome: depNome, persistiu, aviso });
   } catch (e) {
     console.error('[FULL-ESTOQUE] erro:', e);
     return res.status(500).json({ ok: false, erro: e.message || 'erro interno' });
