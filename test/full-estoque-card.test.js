@@ -65,6 +65,7 @@ ok(/\.is\('estoque_lancado_em', null\)/.test(corpoRota) && /select\('id'\)/.test
 ok(/falta_coluna: true/.test(corpoRota) && /add column if not exists estoque_lancado_em timestamptz/.test(corpoRota), '⚠️ Codex #404 (P1): sem as colunas de rastro NAO lanca — e devolve o SQL pra criar');
 ok(/estoque_lancado_em: null, estoque_deposito: null \}\)\.eq\('id', req\.params\.id\)\.eq\('estoque_deposito', marca\)/.test(corpoRota), '  Bling recusou: a reserva e devolvida (so se ainda for a minha)');
 ok(/update\(\{ estoque_lancado_em: new Date\(\)\.toISOString\(\), estoque_deposito: depNome \}\)/.test(corpoRota), '⚠️ rota: depois do Bling aceitar, marca o card (quando e onde)');
+ok(/naoAplicou/.test(corpoRota) && /st !== 408/.test(corpoRota) && /incerto: true/.test(corpoRota) && corpoRota.indexOf('incerto: true') < corpoRota.indexOf('estoque_lancado_em: null, estoque_deposito: null'), '⚠️ Codex #404 (P1, 2a): timeout/sem resposta/5xx MANTEM a reserva LANCANDO (so 4xx ou fila estourada devolve)');
 console.log('');
 console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
 process.exit(falhas ? 1 : 0);

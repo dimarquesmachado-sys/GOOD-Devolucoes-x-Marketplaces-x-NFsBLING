@@ -540,9 +540,19 @@ app.post('/api/admin/full-lancar-estoque/:id', requerAdmin, async (req, res) => 
     const url = `https://api.bling.com.br/Api/v3/nfe/${reg.nf_devolucao_id_bling}/lancar-estoque/${deposito}`;
     const r = await chamarBling(url, { method: 'POST', data: {} });
     if (!r.ok) {
+      const detalhe = r.error?.error?.description || r.error?.error?.message || JSON.stringify(r.error || {}).slice(0, 180);
+      /* Codex #404 (P1, 2a rodada): so devolve a reserva quando o Bling DEFINITIVAMENTE nao aplicou
+         (a requisicao nem saiu, ou ele respondeu 4xx). Timeout / queda de conexao / 5xx podem ter
+         chegado e lancado: devolver a reserva ali deixaria o retry dobrar o estoque. Nesses casos a
+         marca LANCANDO fica (o 409 acima manda conferir no Bling; forcar:true e a decisao consciente). */
+      const st = Number(r.status) || 0;
+      const naoAplicou = r.filaEstourou === true || (st >= 400 && st < 500 && st !== 408);
+      if (!naoAplicou) {
+        return res.status(502).json({ ok: false, incerto: true,
+          erro: 'o Bling nao confirmou o lancamento (' + (st ? 'HTTP ' + st : 'sem resposta') + ': ' + detalhe + ') — ele PODE ter lancado. Confira o estoque no Bling antes de tentar de novo; o card ficou marcado "em andamento" pra nao dobrar.' });
+      }
       // o Bling NAO lancou: devolve a reserva (so se ainda for a minha)
       try { await supabase.from(TAB).update({ estoque_lancado_em: null, estoque_deposito: null }).eq('id', req.params.id).eq('estoque_deposito', marca); } catch (eL) {}
-      const detalhe = r.error?.error?.description || r.error?.error?.message || JSON.stringify(r.error || {}).slice(0, 180);
       return res.status(502).json({ ok: false, erro: `Bling recusou (HTTP ${r.status}): ${detalhe}` });
     }
 
