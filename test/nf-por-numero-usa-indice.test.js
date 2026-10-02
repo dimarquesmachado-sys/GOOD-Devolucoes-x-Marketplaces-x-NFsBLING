@@ -81,10 +81,15 @@ const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o
   }
 
   // ── o front manda numero/serie SEMPRE no clique do candidato ──
-  const front = fs.readFileSync(path.join(__dirname, '..', 'public', 'js', 'busca.js'), 'utf8');
-  ok(/const alvo = c\.serie \? \(c\.numero \+ '\/' \+ c\.serie\) : c\.numero;/.test(front),
-     '  front: o clique no candidato manda numero/serie sempre (antes omitia a serie 1)');
-  ok(!/c\.serie !== '1'/.test(front), "  front: nao ha mais a excecao da serie 1");
+  // ⚠️ b478: a AMB/Girassol tem o PROPRIO js-AMB/busca.js — o b473 so chegou na GOOD
+  // e o clique na Girassol continuou sem serie (o atalho exige serie: 30s de varredura).
+  // Os DOIS fronts, sempre.
+  for (const [p, nome] of [[['public', 'js', 'busca.js'], 'GOOD'], [['amb-devolucoes', 'public-AMB', 'js-AMB', 'busca.js'], 'AMB/Girassol']]) {
+    const front = fs.readFileSync(path.join(__dirname, '..', ...p), 'utf8');
+    ok(/const alvo = c\.serie \? \(c\.numero \+ '\/' \+ c\.serie\) : c\.numero;/.test(front),
+       `⚠️ front ${nome}: o clique no candidato manda numero/serie sempre (antes omitia a serie 1)`);
+    ok(!/c\.serie !== '1'/.test(front), `  front ${nome}: nao ha mais a excecao da serie 1`);
+  }
 
   console.log('');
   console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
