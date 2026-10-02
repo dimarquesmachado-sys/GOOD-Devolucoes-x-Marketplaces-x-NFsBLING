@@ -448,9 +448,19 @@ app.post('/api/admin/full-vincular/:id', requerAdmin, async (req, res) => {
 app.post('/api/admin/full-lancar-estoque/:id', requerAdmin, async (req, res) => {
   if (!supabase) return res.status(500).json({ ok: false, erro: 'Supabase nao configurado' });
   try {
+    // b482 - select('*'): as colunas estoque_lancado_em/estoque_deposito podem nao existir
+    // nesta tabela; pedir por nome derrubaria a rota inteira ("column does not exist").
     const { data: reg, error: errReg } = await supabase
-      .from(TAB).select('id, nf_devolucao_id_bling, nf_devolucao_numero').eq('id', req.params.id).single();
+      .from(TAB).select('*').eq('id', req.params.id).single();
     if (errReg || !reg) return res.status(404).json({ ok: false, erro: 'Registro nao encontrado' });
+    /* b482 - pedido do dono (02/10): devolucao do FULL nao gera NF (a do ML ja existe) — o que
+       ele faz e LANCAR NO ESTOQUE pra revender. Lancar 2x DOBRA o estoque: se o card ja registra
+       o lancamento, recusa com quando/onde (so passa com forcar:true, decisao consciente). */
+    if (reg.estoque_lancado_em && !(req.body && req.body.forcar === true)) {
+      return res.status(409).json({ ok: false, ja_lancado: true,
+        erro: 'o estoque desta devolucao JA foi lancado' + (reg.estoque_deposito ? ' no deposito ' + reg.estoque_deposito : '') +
+          ' em ' + String(reg.estoque_lancado_em).slice(0, 16).replace('T', ' ') + ' — lancar de novo dobraria o estoque' });
+    }
     if (!reg.nf_devolucao_id_bling) {
       return res.status(400).json({ ok: false, erro: 'Card sem devolucao vinculada - use o 🔗 Achar devolucao primeiro' });
     }
@@ -515,7 +525,19 @@ app.post('/api/admin/full-lancar-estoque/:id', requerAdmin, async (req, res) => 
     }
 
     console.log(`[FULL-ESTOQUE] ${req.params.id}: estoque lancado (NF dev ${reg.nf_devolucao_numero}, deposito ${deposito})`);
-    return res.json({ ok: true, nf_devolucao_numero: reg.nf_devolucao_numero, deposito });
+    // b482 - marca no card (some o botao e a trava acima passa a valer). Se as colunas nao
+    // existirem nesta tabela, o lancamento JA aconteceu no Bling: responde ok com o aviso.
+    const depObj = listaDeps.find((d) => String(d.id) === String(deposito)) || null;
+    const depNome = depObj ? depObj.descricao : String(deposito);
+    let persistiu = false, aviso = null;
+    try {
+      const { error: errM } = await supabase.from(TAB)
+        .update({ estoque_lancado_em: new Date().toISOString(), estoque_deposito: depNome })
+        .eq('id', req.params.id);
+      persistiu = !errM;
+      if (errM) aviso = 'lancou no Bling, mas nao gravou no card (' + String(errM.message || errM).slice(0, 120) + ') — o botao vai reaparecer; NAO lance de novo';
+    } catch (eM) { aviso = 'lancou no Bling, mas nao gravou no card — NAO lance de novo'; }
+    return res.json({ ok: true, nf_devolucao_numero: reg.nf_devolucao_numero, deposito, deposito_nome: depNome, persistiu, aviso });
   } catch (e) {
     console.error('[FULL-ESTOQUE] erro:', e);
     return res.status(500).json({ ok: false, erro: e.message || 'erro interno' });
