@@ -2392,6 +2392,7 @@
           </div>
           ${avisoMulti}${blocoFotos}${blocoConserto}
           ${concluido ? '' : `
+            ${ehSerie2(d) ? avisoFullHtml(d) : ''}
             <div class="item-acoes">
               ${d.nf_link_danfe ? `<a class="btn btn-cinza" href="${d.nf_link_danfe}" target="_blank">📄 Ver DANFE</a>` : ''}
               ${d.nf_id_bling
@@ -2404,7 +2405,7 @@
                 : !d.nf_devolucao_id_bling && (d.nf_id_bling || d.nf_numero)
                 ? `<button class="btn" style="background:#1565c0;" onclick="abrirModalGerarDevolucao('${d.id}', '${d.nf_id_bling || ''}', '${escapeHtml(d.nf_numero || '')}', '${jsArg(d.produto_titulo || '')}', '${String(d.nf_chave || '').replace(/[^0-9]/g, '')}', ${!!d.so_rascunho}, '${d.dep_sugerido || ''}')" title="Abre as op\u00e7\u00f5es: criar RASCUNHO (salvar sem emitir, pra editar no Bling) ou gerar + emitir direto">🧾 Gerar NF (rascunho ou emitir)</button>`
                 : d.nf_devolucao_id_bling
-                  ? `<a class="btn btn-verde" href="https://www.bling.com.br/notas.entrada.php#edit/${d.nf_devolucao_id_bling}" target="_blank" title="NF de devolu\u00e7\u00e3o j\u00e1 gerada">📝 Devolu\u00e7\u00e3o: ${d.nf_devolucao_numero || 'ver'}</a>${ehSerie2(d) ? `<button class="btn" style="background:#4527a0;" onclick="fullLancarEstoque('${d.id}', this)" title="Lan\u00e7a o ESTOQUE de entrada desta devolu\u00e7\u00e3o no dep\u00f3sito GERAL (API oficial). S\u00f3 clique se ainda N\u00c3O lan\u00e7ou e o produto est\u00e1 ok pra revenda.">📦 Lan\u00e7ar estoque (Geral)</button>` : ''}`
+                  ? `<a class="btn btn-verde" href="https://www.bling.com.br/notas.entrada.php#edit/${d.nf_devolucao_id_bling}" target="_blank" title="NF de devolu\u00e7\u00e3o j\u00e1 gerada">📝 Devolu\u00e7\u00e3o: ${d.nf_devolucao_numero || 'ver'}</a>${ehSerie2(d) ? botaoFullEstoque(d, false) : ''}`
                   : ''
               }
               ${!d.nf_numero && !d.nf_id_bling && d.order_id
@@ -2462,6 +2463,7 @@
             </div>
           ` : ''}
           ${concluido ? '' : `
+            ${ehSerie2(d) ? avisoFullHtml(d) : ''}
             <div class="item-acoes">
               ${d.nf_link_danfe ? `<a class="btn btn-cinza" href="${d.nf_link_danfe}" target="_blank">📄 DANFE</a>` : ''}
               <label style="display:inline-flex;align-items:center;gap:5px;font-size:12px;background:#fff3e0;border:1px solid #ffcc80;padding:5px 9px;border-radius:6px;cursor:pointer;" title="Seleciona pra ações em lote (emitir NF / concluir)"><input type="checkbox" class="chk-esteira" data-secao="problemas" data-id="${d.id}" data-nfid="${d.nf_id_bling || ''}" data-nfnum="${escapeHtml(String(d.nf_numero || ''))}" data-chave="${String(d.nf_chave || '').replace(/[^0-9]/g, '')}" data-full="${ehSerie2(d) ? '1' : '0'}" data-sorascunho="${d.so_rascunho ? '1' : '0'}" onchange="atualizarContadorEsteira('problemas')"> selecionar</label>
@@ -2470,7 +2472,7 @@
                 : !d.nf_devolucao_id_bling && (d.nf_id_bling || d.nf_numero)
                 ? `<button class="btn" style="background:#1565c0;" onclick="abrirModalGerarDevolucao('${d.id}', '${d.nf_id_bling || ''}', '${escapeHtml(d.nf_numero || '')}', '${jsArg(d.produto_titulo || '')}', '${String(d.nf_chave || '').replace(/[^0-9]/g, '')}', ${!!d.so_rascunho}, '${d.dep_sugerido || ''}')" title="Abre as op\u00e7\u00f5es: criar RASCUNHO (salvar sem emitir, pra editar no Bling) ou gerar + emitir direto">🧾 Gerar NF (rascunho ou emitir)</button>`
                 : d.nf_devolucao_id_bling
-                  ? `<a class="btn btn-verde" href="https://www.bling.com.br/notas.entrada.php#edit/${d.nf_devolucao_id_bling}" target="_blank" title="NF de devolu\u00e7\u00e3o j\u00e1 gerada. Produto com problema: NF importada do ML n\u00e3o lan\u00e7a estoque (n\u00e3o fa\u00e7a nada); NF emitida aqui lan\u00e7ou estoque (cancele o lan\u00e7amento no Bling).">📝 Devolu\u00e7\u00e3o: ${d.nf_devolucao_numero || 'ver'}</a>`
+                  ? `<a class="btn btn-verde" href="https://www.bling.com.br/notas.entrada.php#edit/${d.nf_devolucao_id_bling}" target="_blank" title="NF de devolu\u00e7\u00e3o j\u00e1 gerada. Produto com problema: a do FULL (emitida pelo marketplace) n\u00e3o lan\u00e7a estoque sozinha \u2014 use o bot\u00e3o 📦 (abre no DEFEITOS); NF emitida aqui j\u00e1 lan\u00e7ou estoque.">📝 Devolu\u00e7\u00e3o: ${d.nf_devolucao_numero || 'ver'}</a>${ehSerie2(d) ? botaoFullEstoque(d, true) : ''}`
                   : ''
               }
               <button class="btn btn-verde" onclick="concluir('${d.id}')">✅ Marcar como resolvido</button>
@@ -3097,36 +3099,142 @@
 
     // Lança o estoque de entrada da devolução vinculada (API oficial),
     // no depósito escolhido no seletor da seção Aprovadas (padrão: Geral)
-    async function fullLancarEstoque(id, btn) {
-      const idDeposito = depositoDaSecao('aprovadas');
-      const depNome = depositoNome(idDeposito);
-      if (!confirm(
-        `📦 Lançar ESTOQUE de entrada desta devolução no depósito ${depNome}?\n\n` +
-        '⚠️ Só clique se AINDA NÃO lançou (lançar 2x pode dobrar o estoque).\n' +
-        '⚠️ Produto quebrado/com defeito? Escolha DEFEITOS API no seletor 📦 antes, ou não lance.'
-      )) return;
-      const t = btn ? btn.textContent : '';
-      if (btn) { btn.disabled = true; btn.textContent = '📦 Lançando...'; }
-      try {
-        const r = await fetch(`/api/admin/full-lancar-estoque/${id}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ idDeposito }),
-        });
-        const d = await r.json();
-        if (d.ok) {
-          toast(`Estoque lançado no depósito ${depositoNome(d.deposito || idDeposito)}! ✅`, 'ok');
-          if (btn) btn.textContent = '📦 Estoque lançado ✓';
-        } else {
-          toast('Bling recusou: ' + (d.erro || 'sem detalhes'), 'err');
-          if (btn) { btn.disabled = false; btn.textContent = t; }
-        }
-      } catch (e) {
-        toast('Erro: ' + (e.message || e), 'err');
-        if (btn) { btn.disabled = false; btn.textContent = t; }
-      }
+    /* b482 - pedido do dono (02/10): na devolucao do FULL a NF de devolucao e do PROPRIO
+       marketplace (serie 2) — nao se gera outra. O card DIZ isso com clareza e oferece o que ele
+       faz de verdade: LANCAR NO ESTOQUE pra revender. Aprovada abre no GERAL, problema no DEFEITOS
+       — sempre com a escolha do deposito na mao dele. (Codex #404: o mesmo nos dois paineis.) */
+    function nomeMarketplaceFull(d) {
+      var m = String(d.marketplace || '').toLowerCase();
+      if (m === 'ml' || m === 'mercadolivre' || m === 'mercado livre') return 'Mercado Livre';
+      if (m === 'shopee') return 'Shopee';
+      if (m === 'magalu') return 'Magalu';
+      if (m === 'amazon') return 'Amazon';
+      return 'marketplace';   // Codex #404: nunca afirmar o emissor errado
     }
-
+    // Codex #405 (P2): a serie do Full nem sempre e 2 (ehSerie2 trata toda serie != 1 como Full)
+    function serieFull(d) {
+      var direto = String(d.nf_serie || '').trim().replace(/^0+/, '');
+      if (direto) return direto;
+      var ch = String(d.nf_chave || '').replace(/\D/g, '');
+      return ch.length === 44 ? (ch.substr(22, 3).replace(/^0+/, '') || '?') : '?';
+    }
+    function avisoFullHtml(d) {
+      var mkt = nomeMarketplaceFull(d);
+      var rotSerie = 'SÉRIE ' + escapeHtml(serieFull(d));
+      var doMkt = mkt === 'marketplace' ? 'do próprio marketplace' : 'do ' + mkt.toUpperCase();
+      var ok = !!d.nf_devolucao_id_bling;
+      var dep = String(d.estoque_deposito || '');
+      var lancando = /^LANCANDO/.test(dep);
+      var lancado = !!d.estoque_lancado_em && !lancando;
+      var cor = ok ? '#e8f5e9;border:2px solid #43a047;color:#1b5e20' : '#fff8e1;border:2px solid #ffb300;color:#5d4037';
+      var txt = ok
+        ? '🏬 <b>FULL · ' + rotSerie + ' — NF DE DEVOLUÇÃO JÁ EMITIDA PELO ' + (mkt === 'marketplace' ? 'MARKETPLACE' : mkt.toUpperCase()) + '</b>' + (d.nf_devolucao_numero ? ' (nº ' + escapeHtml(String(d.nf_devolucao_numero)) + ')' : '') +
+          ' e já está no Bling. <b>Não gere NF.</b> ' + (lancado ? 'Estoque já lançado' + (dep ? ' em <b>' + escapeHtml(dep) + '</b>' : '') + ' ✓' : lancando ? '⏳ Lançamento de estoque em andamento (ou interrompido).' : 'Só falta <b>lançar no estoque</b> 📦.')
+        : '🏬 <b>FULL · ' + rotSerie + ' — a NF de devolução é ' + doMkt + '</b> (não gere NF). Ela <b>ainda não está no Bling</b>' +
+          (mkt === 'Mercado Livre' ? ': a Toolbox importa sozinha quando ela aparecer — aí clique em 🔗 Achar e lance no estoque.' : ': importe o XML dela no Bling e clique em 🔗 Achar.');
+      return '<div style="background:' + cor + ';border-radius:8px;padding:8px 11px;margin:8px 0;font-size:13px;line-height:1.45;">' + txt + '</div>';
+    }
+    function botaoFullEstoque(d, ehProblema) {
+      var dep = String(d.estoque_deposito || '');
+      if (d.estoque_lancado_em && !/^LANCANDO/.test(dep)) {
+        return '<span class="btn btn-cinza" style="cursor:default;" title="Lançado em ' + escapeHtml(String(d.estoque_lancado_em).slice(0, 16).replace('T', ' ')) + '">📦 Estoque lançado' + (dep ? ' (' + escapeHtml(dep) + ')' : '') + ' ✓</span>';
+      }
+      var idSeguro = String(d.id == null ? '' : d.id).replace(/[^0-9A-Za-z_-]/g, '');
+      var nfSegura = String(d.nf_devolucao_numero || '').replace(/[^0-9]/g, '');
+      return '<button class="btn" style="background:#4527a0;" onclick="abrirModalFullEstoque(\'' + idSeguro + '\', ' + (ehProblema ? 'true' : 'false') + ', \'' + nfSegura + '\', this)" title="A NF de devolução já é a do marketplace: aqui só entra o produto no seu depósito (você escolhe qual).">📦 Lançar no estoque</button>';
+    }
+    async function abrirModalFullEstoque(id, ehProblema, nfNum, btn) {
+      var velho = document.getElementById('modalFullEstoque'); if (velho) velho.remove();
+      var fundo = document.createElement('div');
+      fundo.id = 'modalFullEstoque';
+      fundo.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9999;display:flex;align-items:center;justify-content:center;';
+      fundo.innerHTML = '<div style="background:#fff;border-radius:12px;padding:18px 20px;max-width:440px;width:92%;box-shadow:0 10px 30px rgba(0,0,0,.25);font-size:14px;">' +
+        '<div style="font-weight:700;font-size:16px;margin-bottom:6px;">📦 Lançar no estoque — devolução FULL</div>' +
+        '<div style="color:#555;margin-bottom:12px;">A NF de devolução já é a do marketplace' + (nfNum ? ' (nº ' + escapeHtml(nfNum) + ')' : '') + ' — aqui só entra o produto no depósito que você escolher.' +
+        (ehProblema ? ' <b>Produto com problema: abre no DEFEITOS.</b>' : ' <b>Produto ok: abre no GERAL</b> pra voltar à venda.') + '</div>' +
+        '<label style="font-size:12px;color:#666;">Depósito</label>' +
+        '<select id="depFullEstoque" style="width:100%;padding:8px;margin:4px 0 6px;border-radius:6px;border:1px solid #bbb;"><option value="">carregando depósitos…</option></select>' +
+        '<div id="depFullAviso" style="font-size:12px;color:#b71c1c;min-height:16px;margin-bottom:8px;"></div>' +
+        '<div style="display:flex;gap:8px;justify-content:flex-end;">' +
+        '<button class="btn btn-cinza" id="fullEstCancelar">Cancelar</button>' +
+        '<button class="btn" style="background:#4527a0;" id="fullEstLancar" disabled>📦 Lançar</button></div></div>';
+      document.body.appendChild(fundo);
+      var sel = document.getElementById('depFullEstoque');
+      var bLan = document.getElementById('fullEstLancar');
+      var aviso = document.getElementById('depFullAviso');
+      document.getElementById('fullEstCancelar').onclick = function () { fundo.remove(); };
+      fundo.addEventListener('click', function (ev) { if (ev.target === fundo) fundo.remove(); });
+      sel.onchange = function () { bLan.disabled = !sel.value; };
+      try {
+        var r = await fetch((window.APP_BASE || '') + '/api/depositos', { credentials: 'same-origin' }).then(function (x) { return x.json(); });
+        if (!r.ok || !r.depositos) throw new Error(r.erro || 'sem lista');
+        // mesmo criterio do modal de gerar devolucao: nunca um deposito de FULL do marketplace
+        var deps = r.depositos.filter(function (d) { return !/full/i.test(String(d.descricao || '')); });
+        var idDef = (deps.find(function (d) { return /^defeitos?$/i.test(String(d.descricao || '').trim()); })
+                  || deps.find(function (d) { return /defeito/i.test(d.descricao || ''); }) || {}).id || null;
+        // Codex #405 (P2): o GERAL pelo NOME vem antes do "padrao" da conta (que pode ser outro)
+        var idGer = (deps.find(function (d) { return /^geral$/i.test(String(d.descricao || '').trim()); })
+                  || deps.find(function (d) { return /geral/i.test(d.descricao || ''); })
+                  || deps.find(function (d) { return d.padrao; }) || deps[0] || {}).id || null;
+        /* Codex #404 (P2): produto com PROBLEMA nunca cai no GERAL por falta do DEFEITOS — sem ele,
+           nada vem marcado e o botao so libera depois de uma escolha consciente. */
+        var alvo = ehProblema ? (idDef || '') : (idGer || '');
+        sel.innerHTML = (alvo ? '' : '<option value="" selected>— escolha o depósito —</option>') + deps.map(function (d) {
+          return '<option value="' + escapeHtml(d.id) + '"' + (alvo && String(d.id) === String(alvo) ? ' selected' : '') + '>📦 ' + escapeHtml(d.descricao) + '</option>';
+        }).join('');
+        if (ehProblema && !idDef) aviso.textContent = 'Não achei um depósito DEFEITOS nesta empresa — escolha onde lançar o produto com problema.';
+        bLan.disabled = !sel.value;
+      } catch (e) {
+        sel.innerHTML = '<option value="">depósitos indisponíveis — recarregue a página</option>';
+      }
+      async function enviar(forcar) {
+        var idDeposito = sel.value;
+        if (!idDeposito) return;
+        var nomeDep = sel.options[sel.selectedIndex] ? sel.options[sel.selectedIndex].textContent.replace(/^📦\s*/, '') : idDeposito;
+        bLan.disabled = true; bLan.textContent = '📦 Lançando…';
+        try {
+          var corpo = { idDeposito: idDeposito };
+          if (forcar) corpo.forcar = true;
+          var resp = await fetch((window.APP_BASE || '') + '/api/admin/full-lancar-estoque/' + encodeURIComponent(id), {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(corpo),
+          });
+          var d = await resp.json();
+          if (d.ok) {
+            // Codex #405 (P2): o Bling lancou mas o card nao registrou — dizer, nao fingir que esta tudo certo
+            if (d.persistiu === false || d.aviso) {
+              toast('Estoque lançado no ' + (d.deposito_nome || nomeDep) + ', MAS: ' + (d.aviso || 'o card não registrou') + ' — não lance de novo.', 'err');
+              if (btn) { btn.disabled = true; btn.textContent = '📦 Lançado (' + (d.deposito_nome || nomeDep) + ') ⚠️ não registrado no card'; }
+            } else {
+              toast('Estoque lançado no depósito ' + (d.deposito_nome || nomeDep) + '! ✅', 'ok');
+              if (btn) { btn.disabled = true; btn.textContent = '📦 Estoque lançado (' + (d.deposito_nome || nomeDep) + ') ✓'; }
+            }
+            fundo.remove();
+            return;
+          }
+          if (d.em_andamento) {
+            /* Codex #405 (P1): lancamento INCERTO (timeout/queda) deixou o card "em andamento" — so o dono,
+               depois de CONFERIR no Bling, decide lancar de novo (forcar), e com uma confirmacao explicita. */
+            aviso.innerHTML = '⚠️ ' + escapeHtml(d.erro || 'há um lançamento em andamento ou interrompido') +
+              '<br><button class="btn btn-vermelho" id="fullEstForcar" style="margin-top:8px;">Conferi no Bling e NÃO entrou — lançar mesmo assim</button>';
+            bLan.disabled = false; bLan.textContent = '📦 Lançar';
+            document.getElementById('fullEstForcar').onclick = function () {
+              if (!confirm('Você CONFERIU no Bling que o estoque desta devolução NÃO entrou?\n\nSe já entrou, lançar de novo DOBRA o estoque.')) return;
+              enviar(true);
+            };
+            return;
+          }
+          toast((d.ja_lancado ? '⛔ ' : '') + (d.erro || 'sem detalhes'), 'err');
+          bLan.disabled = false; bLan.textContent = '📦 Lançar';
+          if (d.ja_lancado && btn) { btn.disabled = true; btn.textContent = '📦 Estoque já lançado ✓'; fundo.remove(); }
+        } catch (e) {
+          toast('Erro: ' + (e.message || e), 'err');
+          bLan.disabled = false; bLan.textContent = '📦 Lançar';
+        }
+      }
+      bLan.onclick = function () { enviar(false); };
+    }
+    // compatibilidade: qualquer chamada antiga abre o modal novo (aprovada = GERAL)
+    function fullLancarEstoque(id, btn) { return abrirModalFullEstoque(id, false, '', btn); }
     function rotuloEsteira(secao) {
       return secao === 'aprovadas' ? 'btnEsteiraAprovadas' : 'btnEsteiraProblemas';
     }
