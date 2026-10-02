@@ -9,6 +9,11 @@ const path = require('path');
 let falhas = 0;
 const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o); };
 const PORTA = 4000 + Math.floor(Math.random() * 900);
+// Nenhuma credencial real herdada do ambiente: com token vencido o cliente gastaria o refresh
+// token de verdade e gravaria o novo no Render. Apaga tudo que parece credencial/persistencia.
+for (const k of Object.keys(process.env)) {
+  if (/TOKEN|SECRET|KEY|PASS|CLIENT|SUPABASE|RENDER|_URL$|_USERS$|_USER$/i.test(k)) delete process.env[k];
+}
 // No CI o runner TEM internet: o Bling/ML com credencial falsa respondia devagar (refresh, retentativa)
 // e o pedido passava do prazo — no sandbox a rede externa ja falha na hora. Proxy morto pro axios
 // (que respeita HTTPS_PROXY) deixa os dois ambientes iguais: chamada externa falha imediatamente.
@@ -48,7 +53,8 @@ async function bipar(rot, url, cookie) {
 setTimeout(async () => {
   for (const [nome, prefixo, u, s] of [['AMB', '/amb', 'ana', 's1'], ['Girassol', '/girassol', 'gi', 's2'], ['GOOD', '', 'g', 'g1']]) {
     const ck = await login(prefixo, u, s);
-    if (!ck) { console.log('  (' + nome + ': sem sessao no teste — pulo)'); continue; }
+    ok(!!ck, `⚠️ ${nome}: login do teste devolveu sessao`);
+    if (!ck) continue;
     const antes = rejeicoesDeCodigo().length;
     const rc = await bipar(nome + ' chave', base + prefixo + '/api/devolucao/identificar/' + CHAVE, ck);
     ok(!rc.semResposta || rejeicoesDeCodigo().length === antes, `⚠️ ${nome}: bipe da CHAVE da DANFE responde (status ${rc.status || ('sem resposta em 30s' + (rejeicoesDeCodigo().length > antes ? ' — ERRO DE CODIGO: ' + rejeicoesDeCodigo().slice(-1)[0] : ', sem erro de codigo'))})`);
