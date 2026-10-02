@@ -306,11 +306,21 @@ app.post('/api/admin/full-vincular/:id', requerAdmin, async (req, res) => {
     // Varre notas de ENTRADA na janela e junta candidatas por valor/nome
     let varridas = 0;                      // b141 - pro diagnostico
     const candidatos = [];
-    for (let pg = 1; pg <= 5; pg++) {
+    /* b485 - caso real (02/10, Marcos Vieira Lima / PM1): a NF 49304 (devolucao do ML, serie 2,
+       25/08) ESTAVA no Bling e o Achar disse "nenhuma serie 2". Dois furos: (1) pagina que falhava
+       (429/5xx) encerrava a varredura em silencio e o resultado virava "nao existe"; (2) so as 6
+       candidatas MAIS RECENTES eram conferidas — com nome comum (Lima, Marcos...) outras notas
+       empurravam a certa pra fora. Agora: pagina que falha tenta de novo e, persistindo, a busca
+       e INCOMPLETA (nunca "nao existe"); a fila de candidatas vai pela forca do sinal. */
+    let incompleto = null;
+    const MAX_PG = 20;
+    for (let pg = 1; pg <= MAX_PG; pg++) {
       if (pg > 1) await sleep(400);
       const url = `https://api.bling.com.br/Api/v3/nfe?limite=100&pagina=${pg}&tipo=0&dataEmissaoInicial=${ini}&dataEmissaoFinal=${fim}`;
-      const r = await chamarBling(url);
-      if (!r.ok) break;
+      let r = await chamarBling(url);
+      for (let t = 1; !r.ok && t <= 2; t++) { await sleep(1500 * t); r = await chamarBling(url); }
+      if (!r.ok) { incompleto = 'o Bling nao respondeu a pagina ' + pg + ' das notas de entrada (HTTP ' + (r.status || '?') + ')'; break; }
+      if (pg === MAX_PG && (r.data?.data || []).length === 100) incompleto = 'a janela tem mais de ' + (MAX_PG * 100) + ' notas de entrada — so varri as ' + (MAX_PG * 100) + ' primeiras';
       const lista = r.data?.data || [];
       if (lista.length === 0) break;
       for (const nf of lista) {
@@ -324,7 +334,25 @@ app.post('/api/admin/full-vincular/:id', requerAdmin, async (req, res) => {
       }
       if (lista.length < 100) break;
     }
-    candidatos.sort((a, b) => new Date(b.dataEmissao || 0) - new Date(a.dataEmissao || 0));
+    // b485 - a lista do Bling costuma trazer a chave: a serie sai dela SEM buscar o detalhe
+    const serieDaLista = (nf) => { const ch = String(nf.chaveAcesso || '').replace(/\D/g, ''); return ch.length === 44 ? ch.substr(22, 3).replace(/^0+/, '') : ''; };
+    const forcaPrevia = (nf) => {
+      let pp = 0;
+      const sL = serieDaLista(nf);
+      if (sL && serieReg && sL === serieReg) pp += 4;
+      if (valorEsperado > 0 && nf.valorNota != null && Math.abs(Number(nf.valorNota) - valorEsperado) < 0.05) pp += 2;
+      const nn = String(nf.contato?.nome || '').toLowerCase();
+      pp += pedacos.filter(w => nn.includes(w)).length;          // mais pedacos do nome = mais forte
+      return pp;
+    };
+    // serie CONHECIDA pela chave e diferente da do card nao e a devolucao do Full — sai antes do detalhe
+    const totalCandidatas = candidatos.length;
+    for (let ci = candidatos.length - 1; ci >= 0; ci--) {
+      const sL = serieDaLista(candidatos[ci]);
+      if (sL && (sL === '1' || (serieReg && sL !== serieReg))) candidatos.splice(ci, 1);
+    }
+    candidatos.sort((a, b) => (forcaPrevia(b) - forcaPrevia(a)) || (new Date(b.dataEmissao || 0) - new Date(a.dataEmissao || 0)));
+    let naoVerificadas = 0;
 
     // ═══════════════════════════════════════════════════════════════════
     // b143 - CASAR POR EVIDENCIA, NAO POR NOME.
@@ -370,11 +398,11 @@ app.post('/api/admin/full-vincular/:id', requerAdmin, async (req, res) => {
 
     // Confirma a serie 2 na NF completa (a lista pode nao trazer serie)
     let melhor = null;
-    for (const cand of candidatos.slice(0, 6)) {
+    for (const cand of candidatos.slice(0, 15)) {
       await sleep(400);
       const rFull = await buscarNFePorId(cand.id);
       const nfc = (rFull.ok && rFull.data?.data) ? rFull.data.data : null;
-      if (!nfc) continue;
+      if (!nfc) { naoVerificadas++; continue; }      // b485: detalhe que nao veio = nao verificada (nao e 'nao e')
       const chaveD = String(nfc.chaveAcesso || '').replace(/\D/g, '');
       // b216: idem — serie != 1 e Full
       const sNF = String(nfc.serie || '').trim().replace(/^0+/, '')
@@ -416,16 +444,23 @@ app.post('/api/admin/full-vincular/:id', requerAdmin, async (req, res) => {
       });
     }
 
+    // b485 - "nao sei" != "nao existe": busca que nao terminou nao conclui ausencia
+    if (incompleto || naoVerificadas > 0) {
+      return res.status(503).json({ ok: false, incompleto: true,
+        erro: 'Busca INCOMPLETA — ' + (incompleto || (naoVerificadas + ' candidata(s) o Bling nao deixou conferir')) +
+          '. Isso NAO quer dizer que a NF nao existe: tente de novo em instantes.',
+        diag: { janela: { de: ini, ate: fim }, notas_de_entrada_varridas: varridas, candidatas: totalCandidatas, nao_verificadas: naoVerificadas } });
+    }
     return res.status(404).json({
       ok: false,
-      erro: `Nenhuma NF de entrada serie 2 correspondente na janela ${ini}..${fim} (${candidatos.length} candidata(s) testada(s)). Se ainda nao importou o XML no Bling, use o selo 🏬 pra baixar.`,
+      erro: `Nenhuma NF de entrada serie 2 correspondente na janela ${ini}..${fim} (${totalCandidatas} candidata(s), ${Math.min(candidatos.length, 15)} conferida(s)). Se ainda nao importou o XML no Bling, a Toolbox traz sozinha quando a vigia achar.`,
       // b141 - DIZ O QUE FEZ. Antes so avisava que nao achou, e nao dava pra
       // saber se a janela estava curta, se o nome nao bateu, se o valor nao
       // bateu, ou se o Bling nem devolveu notas de entrada.
       diag: {
         janela: { de: ini, ate: fim },
         notas_de_entrada_varridas: varridas,
-        candidatas: candidatos.length,
+        candidatas: totalCandidatas,
         melhor_pontuacao: (typeof melhor !== 'undefined' && melhor) ? { pontos: melhor.pts, sinais: melhor.porque, nf: melhor.nf?.numero } : null,
         procurei_por: {
           nome_do_card: reg.buyer_nome || null,
