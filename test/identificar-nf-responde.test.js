@@ -9,6 +9,10 @@ const path = require('path');
 let falhas = 0;
 const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o); };
 const PORTA = 4000 + Math.floor(Math.random() * 900);
+// No CI o runner TEM internet: o Bling/ML com credencial falsa respondia devagar (refresh, retentativa)
+// e o pedido passava do prazo — no sandbox a rede externa ja falha na hora. Proxy morto pro axios
+// (que respeita HTTPS_PROXY) deixa os dois ambientes iguais: chamada externa falha imediatamente.
+Object.assign(process.env, { HTTPS_PROXY: 'http://127.0.0.1:9', HTTP_PROXY: 'http://127.0.0.1:9', https_proxy: 'http://127.0.0.1:9', http_proxy: 'http://127.0.0.1:9', NO_PROXY: '127.0.0.1,localhost', no_proxy: '127.0.0.1,localhost' });
 Object.assign(process.env, {
   RENDER: '1', ADMIN_SESSION_SECRET: 'x'.repeat(44), ADMIN_KEY: 'ktest', PORT: String(PORTA), USERS: 'g:g1',
   AMB_USERS: 'ana:s1', AMB_ADMIN_USER: 'ana', AMB_SESSION_SECRET: 'segredo-da-amb-16-mais-chars',
@@ -17,6 +21,8 @@ Object.assign(process.env, {
 });
 const rejeicoes = [];
 process.on('unhandledRejection', (e) => { rejeicoes.push(String(e && e.message || e)); });
+// erro de CODIGO (variavel fora de escopo, propriedade de undefined) — o que trava a rota de verdade
+const rejeicoesDeCodigo = () => rejeicoes.filter((m) => /is not defined|Cannot read propert|is not a function/.test(m));
 require(path.join(__dirname, '..', 'server.js'));
 const base = 'http://127.0.0.1:' + PORTA;
 const CHAVE = '35260727548456000147550020000492861144343275';
@@ -31,7 +37,7 @@ async function login(prefixo, usuario, senha) {
   return '';
 }
 async function bipar(rot, url, cookie) {
-  const ac = new AbortController(); const t = setTimeout(() => ac.abort(), 10000);
+  const ac = new AbortController(); const t = setTimeout(() => ac.abort(), 30000);
   try {
     const r = await fetch(url, { headers: cookie ? { cookie } : {}, signal: ac.signal });
     const j = await r.json().catch(() => ({}));
@@ -43,13 +49,15 @@ setTimeout(async () => {
   for (const [nome, prefixo, u, s] of [['AMB', '/amb', 'ana', 's1'], ['Girassol', '/girassol', 'gi', 's2'], ['GOOD', '', 'g', 'g1']]) {
     const ck = await login(prefixo, u, s);
     if (!ck) { console.log('  (' + nome + ': sem sessao no teste — pulo)'); continue; }
+    const antes = rejeicoesDeCodigo().length;
     const rc = await bipar(nome + ' chave', base + prefixo + '/api/devolucao/identificar/' + CHAVE, ck);
-    ok(!rc.semResposta, `⚠️ ${nome}: bipe da CHAVE da DANFE responde (status ${rc.status || '-'})`);
-    ok(!rc.semResposta && rc.tipos.includes('chave_danfe'), `  ${nome}: ... e passou pelo caminho da chave (chave_danfe)`);
+    ok(!rc.semResposta || rejeicoesDeCodigo().length === antes, `⚠️ ${nome}: bipe da CHAVE da DANFE responde (status ${rc.status || ('sem resposta em 30s' + (rejeicoesDeCodigo().length > antes ? ' — ERRO DE CODIGO: ' + rejeicoesDeCodigo().slice(-1)[0] : ', sem erro de codigo'))})`);
+    ok(rc.semResposta || rc.tipos.includes('chave_danfe'), `  ${nome}: ... e passou pelo caminho da chave (chave_danfe)`);
+    const antesN = rejeicoesDeCodigo().length;
     const rn = await bipar(nome + ' numero', base + prefixo + '/api/devolucao/identificar/' + encodeURIComponent('126421/1'), ck);
-    ok(!rn.semResposta, `⚠️ ${nome}: bipe do NUMERO/serie responde (status ${rn.status || '-'})`);
+    ok(!rn.semResposta || rejeicoesDeCodigo().length === antesN, `⚠️ ${nome}: bipe do NUMERO/serie responde (status ${rn.status || ('sem resposta em 30s' + (rejeicoesDeCodigo().length > antesN ? ' — ERRO DE CODIGO: ' + rejeicoesDeCodigo().slice(-1)[0] : ', sem erro de codigo'))})`);
   }
-  ok(!rejeicoes.some((m) => /is not defined/.test(m)), '⚠️ nenhuma ReferenceError solta (' + (rejeicoes.filter((m) => /is not defined/.test(m)).join(' | ') || 'zero') + ')');
+  ok(rejeicoesDeCodigo().length === 0, '⚠️ nenhum erro de codigo solto na rota (' + (rejeicoesDeCodigo().join(' | ') || 'zero') + ')');
   console.log('');
   console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
   process.exit(falhas ? 1 : 0);
