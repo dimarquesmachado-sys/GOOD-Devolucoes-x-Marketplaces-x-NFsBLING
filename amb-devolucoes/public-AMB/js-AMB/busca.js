@@ -38,12 +38,25 @@ async function buscar() {
 
   try {
     const resp = await fetch(`${window.APP_BASE || ''}/api/devolucao/identificar/${encodeURIComponent(codigo)}?_=${Date.now()}`, { cache: 'no-store' } /* b232.1: o Cache-Control do servidor nao invalida o que JA esta no cache — a URL precisa ser nova. O dono viu isso: a mesma URL devolvia resposta velha, e com ?x=1 vinha a certa */);
+    // b478: HTML onde devia vir JSON = o servidor nao respondeu (Render reiniciando
+    // no deploy -> 502/503, ou pagina de erro). O dono viu "Unexpected token '<',
+    // <!DOCTYPE ... is not valid JSON" logo apos um deploy e nao tinha como saber.
+    // Agora o aviso diz o que foi e o que fazer, com o status HTTP.
+    const tipo = String(resp.headers.get('content-type') || '');
+    if (!/json/i.test(tipo)) {
+      const reiniciando = resp.status === 502 || resp.status === 503 || resp.status === 504;
+      renderizarErro((reiniciando
+        ? '\u23f3 O servidor estava REINICIANDO (deploy) e ainda nao respondeu'
+        : '\u26a0\ufe0f O servidor respondeu uma pagina, nao dados')
+        + ' (HTTP ' + resp.status + '). Espere 30 segundos e bipe de novo.');
+      return;
+    }
     const data = await resp.json();
     window._ultimaRespostaBipe = data;   // ev2 - pro bloco do checkout
     ultimaBusca = data;
     renderizar(data, resp.ok);
   } catch (err) {
-    renderizarErro('Erro de conexao: ' + err.message);
+    renderizarErro('Erro de conexao: ' + err.message + ' — confira a internet e bipe de novo.');
   } finally {
     divLoading.classList.remove('show');
     btnBuscar.disabled = false;
@@ -1066,7 +1079,11 @@ function renderizarCandidatosNome(mensagem, candidatos) {
   for (const c of candidatos) {
     const dt = c.dataEmissao ? String(c.dataEmissao).slice(0, 10).split('-').reverse().join('/') : '-';
     const vl = (c.valor != null) ? ('R$ ' + Number(c.valor).toFixed(2).replace('.', ',')) : '-';
-    const alvo = c.serie && c.serie !== '1' ? (c.numero + '/' + c.serie) : c.numero;
+    // b478: manda SEMPRE numero/serie no clique — o #398 (b473) so mudou o
+    // busca.js da GOOD; este arquivo e SEPARADO e ficou pra tras. Sem a serie,
+    // o atalho do indice (b474, que EXIGE serie) nunca valia aqui e o clique no
+    // candidato continuava pela varredura do Bling (30s medidos pelo dono).
+    const alvo = c.serie ? (c.numero + '/' + c.serie) : c.numero;
     // b226 - o candidato que esta NA ESPREITA ganha estrela, borda e o
     // produto. [stated] "se ele tem q triar um mouse, e tem 5 maristelas na
     // relação da busca, e 1 maristela é uma bola de basquete, com certeza
