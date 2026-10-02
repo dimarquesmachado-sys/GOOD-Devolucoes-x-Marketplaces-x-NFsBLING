@@ -67,6 +67,14 @@ const certa = { id: 'C49304', numero: '49304', serie: '2', chaveAcesso: chave(2,
     const det7 = { C49304: certa }; comChave.forEach((x) => { det7[x.id] = Object.assign({}, x, { serie: '2', itens: [] }); });
     r = await cenario(arq, { paginas: [comChave.concat([{ id: 'C49304', numero: '49304', dataEmissao: '2026-08-25', contato: { nome: 'Marcos Vieira Lima' }, valorNota: 897.9 }])], detalhes: det7 })();
     ok(r.status === 200 && r.corpo.nf_devolucao_numero === '49304', '⚠️ Codex #406 (P2): a certa sem chave na lista e conferida mesmo com 16 da mesma serie na frente');
+    // 8) Codex #406 (P2): 16 candidatas so-nome sem chave na lista, nenhuma serve — o corte de 15 nao vira 404
+    const sem16 = Array.from({ length: 16 }, (_, i) => lista(i + 600));
+    r = await cenario(arq, { paginas: [sem16], detalhes: Object.fromEntries(sem16.map((x) => [x.id, Object.assign({}, x, { serie: '1' })])) })();
+    ok(r.status === 503 && r.corpo.incompleto === true && /limite de 15/.test(r.corpo.erro), '⚠️ Codex #406 (P2): 16 candidatas, 15 conferidas e nada achado: 503 incompleta, nunca 404');
+    // 9) Codex #406 (P1): pagina 2 falhou e a unica candidata tem so valor (sem XML) — nao grava, 503
+    const pg1 = cheia.slice(0, 99).concat([{ id: 'C49304', numero: '49304', dataEmissao: '2026-08-25', contato: { nome: 'Marcos Vieira Lima' }, valorNota: 897.9, chaveAcesso: chave(2, 49304) }]);
+    r = await cenario(arq, { paginas: [pg1, [certa]], detalhes: { C49304: certa }, falharPagina: 2 })();
+    ok(r.status === 503 && !r.gravado.nf_devolucao_id_bling, '⚠️ Codex #406 (P1): busca incompleta + so valor/nome, sem XML: nao grava a NF, devolve 503');
     // 5) varreu tudo e de fato nao tem serie 2: ai sim 404
     r = await cenario(arq, { paginas: [mais9], detalhes: Object.fromEntries(mais9.map((x) => [x.id, Object.assign({}, x, { serie: '1' })])) })();
     ok(r.status === 404 && /Nenhuma NF de entrada serie 2/.test(r.corpo.erro), '  varredura completa sem serie 2: 404 de verdade');
