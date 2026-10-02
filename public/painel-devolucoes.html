@@ -3111,8 +3111,15 @@
       if (m === 'amazon') return 'Amazon';
       return 'marketplace';   // Codex #404: nunca afirmar o emissor errado
     }
+    // Codex #405: ehSerie2 trata como FULL toda serie != 1 — o rotulo mostra a serie REAL do card
     function avisoFullHtml(d) {
       var mkt = nomeMarketplaceFull(d);
+      var serieFull = String(d.nf_serie || '').trim().replace(/^0+/, '');
+      if (!serieFull) {
+        var chFull = String(d.nf_chave || '').replace(/\D/g, '');
+        if (chFull.length === 44) serieFull = chFull.substr(22, 3).replace(/^0+/, '');
+      }
+      var serieTxt = 'SÉRIE ' + escapeHtml(serieFull || '2');
       var doMkt = mkt === 'marketplace' ? 'do próprio marketplace' : 'do ' + mkt.toUpperCase();
       var ok = !!d.nf_devolucao_id_bling;
       var dep = String(d.estoque_deposito || '');
@@ -3120,9 +3127,9 @@
       var lancado = !!d.estoque_lancado_em && !lancando;
       var cor = ok ? '#e8f5e9;border:2px solid #43a047;color:#1b5e20' : '#fff8e1;border:2px solid #ffb300;color:#5d4037';
       var txt = ok
-        ? '🏬 <b>FULL · SÉRIE 2 — NF DE DEVOLUÇÃO JÁ EMITIDA PELO ' + (mkt === 'marketplace' ? 'MARKETPLACE' : mkt.toUpperCase()) + '</b>' + (d.nf_devolucao_numero ? ' (nº ' + escapeHtml(String(d.nf_devolucao_numero)) + ')' : '') +
+        ? '🏬 <b>FULL · ' + serieTxt + ' — NF DE DEVOLUÇÃO JÁ EMITIDA PELO ' + (mkt === 'marketplace' ? 'MARKETPLACE' : mkt.toUpperCase()) + '</b>' + (d.nf_devolucao_numero ? ' (nº ' + escapeHtml(String(d.nf_devolucao_numero)) + ')' : '') +
           ' e já está no Bling. <b>Não gere NF.</b> ' + (lancado ? 'Estoque já lançado' + (dep ? ' em <b>' + escapeHtml(dep) + '</b>' : '') + ' ✓' : lancando ? '⏳ Lançamento de estoque em andamento (ou interrompido).' : 'Só falta <b>lançar no estoque</b> 📦.')
-        : '🏬 <b>FULL · SÉRIE 2 — a NF de devolução é ' + doMkt + '</b> (não gere NF). Ela <b>ainda não está no Bling</b>' +
+        : '🏬 <b>FULL · ' + serieTxt + ' — a NF de devolução é ' + doMkt + '</b> (não gere NF). Ela <b>ainda não está no Bling</b>' +
           (mkt === 'Mercado Livre' ? ': a Toolbox importa sozinha quando ela aparecer — aí clique em 🔗 Achar e lance no estoque.' : ': importe o XML dela no Bling e clique em 🔗 Achar.');
       return '<div style="background:' + cor + ';border-radius:8px;padding:8px 11px;margin:8px 0;font-size:13px;line-height:1.45;">' + txt + '</div>';
     }
@@ -3164,8 +3171,9 @@
         var deps = r.depositos.filter(function (d) { return !/full/i.test(String(d.descricao || '')); });
         var idDef = (deps.find(function (d) { return /^defeitos?$/i.test(String(d.descricao || '').trim()); })
                   || deps.find(function (d) { return /defeito/i.test(d.descricao || ''); }) || {}).id || null;
-        var idGer = (deps.find(function (d) { return d.padrao; })
-                  || deps.find(function (d) { return /geral/i.test(d.descricao || ''); }) || deps[0] || {}).id || null;
+        // Codex #405: o deposito de NOME Geral vem antes do `padrao` da conta (que pode ser outro)
+        var idGer = (deps.find(function (d) { return /geral/i.test(d.descricao || ''); })
+                  || deps.find(function (d) { return d.padrao; }) || deps[0] || {}).id || null;
         /* Codex #404 (P2): produto com PROBLEMA nunca cai no GERAL por falta do DEFEITOS — sem ele,
            nada vem marcado e o botao so libera depois de uma escolha consciente. */
         var alvo = ehProblema ? (idDef || '') : (idGer || '');
@@ -3183,18 +3191,36 @@
         var nomeDep = sel.options[sel.selectedIndex] ? sel.options[sel.selectedIndex].textContent.replace(/^📦\s*/, '') : idDeposito;
         bLan.disabled = true; bLan.textContent = '📦 Lançando…';
         try {
-          var resp = await fetch((window.APP_BASE || '') + '/api/admin/full-lancar-estoque/' + encodeURIComponent(id), {
-            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ idDeposito: idDeposito }),
-          });
-          var d = await resp.json();
-          if (d.ok) {
+          var forcar = false, d;
+          for (;;) {
+            var resp = await fetch((window.APP_BASE || '') + '/api/admin/full-lancar-estoque/' + encodeURIComponent(id), {
+              method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(forcar ? { idDeposito: idDeposito, forcar: true } : { idDeposito: idDeposito }),
+            });
+            d = await resp.json();
+            /* Codex #405: lancamento INCERTO (timeout/5xx) ou reserva "em andamento" — o servidor
+               segura o card e so aceita outro envio com forcar:true. Aqui o operador confirma
+               DEPOIS de conferir o estoque no Bling (lancar 2x dobra o estoque). */
+            if (!d.ok && !forcar && (d.incerto || d.em_andamento)) {
+              if (confirm((d.erro || 'O lançamento ficou incerto.') + '\n\nVocê JÁ CONFERIU no Bling que o estoque NÃO foi lançado? Se confirmar, lanço de novo (se ele já tiver lançado, o estoque dobra).')) { forcar = true; continue; }
+            }
+            break;
+          }
+          if (d.ok && d.persistiu === false) {
+            // Bling lancou, mas o card nao foi marcado: nao e "sucesso limpo" — fica "em andamento"
+            toast('⚠️ Lançado no Bling, mas o card não foi atualizado', 'err');
+            aviso.textContent = '⚠️ ' + (d.aviso || 'O Bling lançou o estoque, mas o card não foi atualizado e segue "em andamento".') + ' NÃO lance de novo.';
+            bLan.textContent = 'Fechar'; bLan.disabled = false; bLan.onclick = function () { fundo.remove(); };
+            document.getElementById('fullEstCancelar').style.display = 'none';
+            sel.disabled = true;
+          } else if (d.ok) {
             toast('Estoque lançado no depósito ' + (d.deposito_nome || nomeDep) + '! ✅', 'ok');
             if (btn) { btn.disabled = true; btn.textContent = '📦 Estoque lançado (' + (d.deposito_nome || nomeDep) + ') ✓'; }
             fundo.remove();
           } else {
             toast((d.ja_lancado ? '⛔ ' : '') + (d.erro || 'sem detalhes'), 'err');
             bLan.disabled = false; bLan.textContent = '📦 Lançar';
-            if (d.ja_lancado && btn) { btn.disabled = true; btn.textContent = '📦 Estoque já lançado ✓'; fundo.remove(); }
+            // so o "ja LANCADO" definitivo some com o botao; "em andamento" / "outro comecou agora" ficam pra confirmar
+            if (d.ja_lancado && !d.em_andamento && !d.concorrente && btn) { btn.disabled = true; btn.textContent = '📦 Estoque já lançado ✓'; fundo.remove(); }
           }
         } catch (e) {
           toast('Erro: ' + (e.message || e), 'err');
