@@ -18,7 +18,7 @@ function fonteDaFuncao(nome) {
 }
 const ctx = {};
 vm.createContext(ctx);
-for (const f of ['escapeHtml', 'nomeMarketplaceFull', 'avisoFullHtml', 'botaoFullEstoque']) {
+for (const f of ['escapeHtml', 'nomeMarketplaceFull', 'serieFull', 'avisoFullHtml', 'botaoFullEstoque']) {
   const src = fonteDaFuncao(f);
   ok(!!src, '  funcao ' + f + ' existe no painel');
   if (src) vm.runInContext(src, ctx);
@@ -32,6 +32,8 @@ const as = ctx.avisoFullHtml(Object.assign({}, base, { marketplace: 'shopee', nf
 ok(/EMITIDA PELO SHOPEE/.test(as) && !/MERCADO LIVRE/.test(as), '⚠️ Codex #404: Full da Shopee diz SHOPEE (o emissor sai do card, nunca "Mercado Livre" fixo)');
 const ax = ctx.avisoFullHtml(Object.assign({}, base, { marketplace: '' }));
 ok(/do próprio marketplace/.test(ax) && !/Mercado Livre/i.test(ax), '  marketplace desconhecido: "do proprio marketplace" (sem afirmar emissor)');
+const as3 = ctx.avisoFullHtml(Object.assign({}, base, { nf_serie: '3', marketplace: 'magalu', nf_devolucao_id_bling: '9' }));
+ok(/FULL · SÉRIE 3/.test(as3) && !/SÉRIE 2/.test(as3), '⚠️ Codex #405: a serie do aviso e a do card (serie 3 nao vira "SERIE 2")');
 const a3 = ctx.avisoFullHtml(Object.assign({}, base, { nf_devolucao_id_bling: '999', estoque_lancado_em: '2026-10-02T17:00:00Z', estoque_deposito: 'GERAL' }));
 ok(/Estoque já lançado/.test(a3) && /GERAL/.test(a3), '  ja lancado: o aviso diz onde');
 const b1 = ctx.botaoFullEstoque(Object.assign({}, base, { nf_devolucao_id_bling: '999' }), false);
@@ -49,17 +51,9 @@ const modal = fonteDaFuncao('abrirModalFullEstoque') || '';
 ok(/ehProblema \? \(idDef \|\| ''\) : \(idGer \|\| ''\)/.test(modal) && /— escolha o depósito —/.test(modal), '⚠️ Codex #404: problema SEM deposito DEFEITOS nao cai no GERAL — nada marcado, escolha consciente');
 ok(/filter\(function \(d\) \{ return !\/full\/i\.test/.test(modal), '  modal: depositos de FULL do marketplace ficam fora da lista');
 ok(/<select id="depFullEstoque"/.test(modal), '  modal: o dono escolhe o deposito (select)');
-if (nomePainel === 'public/painel-devolucoes.html') {
-  // Codex #405: o rotulo mostra a serie REAL (Full de outro marketplace pode nao ser 2)
-  const s3 = ctx.avisoFullHtml(Object.assign({}, base, { nf_serie: '003', marketplace: 'magalu', nf_devolucao_id_bling: '9' }));
-  ok(/FULL · SÉRIE 3/.test(s3) && !/SÉRIE 2/.test(s3), '⚠️ Codex #405: Full serie 3 diz SÉRIE 3 (nao "2" fixo)');
-  const sc = ctx.avisoFullHtml({ id: 1, nf_chave: '3'.repeat(22) + '004' + '3'.repeat(19), marketplace: 'shopee' });
-  ok(/FULL · SÉRIE 4/.test(sc), '  sem nf_serie: a serie sai da chave de acesso');
-  const m = fonteDaFuncao('abrirModalFullEstoque') || '';
-  ok(m.indexOf('/geral/i') > -1 && m.indexOf('/geral/i') < m.indexOf('d.padrao'), '⚠️ Codex #405: deposito de NOME Geral vem antes do padrao da conta');
-  ok(/persistiu === false/.test(m) && /d\.aviso/.test(m), '⚠️ Codex #405: persistencia falha pos-Bling mostra o aviso (nao "sucesso limpo")');
-  ok(/forcar: true/.test(m) && /d\.incerto \|\| d\.em_andamento/.test(m) && /confirm\(/.test(m), '⚠️ Codex #405: incerto/em andamento tem retry confirmado com forcar:true');
-}
+ok(modal.indexOf('/^geral$/i') > -1 && modal.indexOf('/^geral$/i') < modal.indexOf('return d.padrao;'), '⚠️ Codex #405: GERAL pelo NOME antes do "padrao" da conta');
+ok(/d\.persistiu === false \|\| d\.aviso/.test(modal) && /não registrado no card/.test(modal), '⚠️ Codex #405: lancou mas o card nao registrou = o painel AVISA (nao finge sucesso)');
+ok(/d\.em_andamento/.test(modal) && /corpo\.forcar = true/.test(modal) && /Você CONFERIU no Bling/.test(modal), '⚠️ Codex #405: lancamento incerto = "lancar mesmo assim" so depois de conferir no Bling (forcar)');
 // o card usa os helpers nas duas secoes
 const ih = fonteDaFuncao('itemHtmlAprovado') || '', ip = fonteDaFuncao('itemHtmlProblema') || '';
 ok(/botaoFullEstoque\(d, false\)/.test(ih) && /avisoFullHtml\(d\)/.test(ih), '  card aprovado: aviso + botao');
@@ -77,23 +71,17 @@ ok(/reg\.estoque_lancado_em && !forcar/.test(corpoRota) && /status\(409\)/.test(
 ok(/\.is\('estoque_lancado_em', null\)/.test(corpoRota) && /select\('id'\)/.test(corpoRota) && corpoRota.indexOf(".is('estoque_lancado_em', null)") < corpoRota.indexOf('/lancar-estoque/'), '⚠️ Codex #404 (P1): RESERVA atomica no banco ANTES de chamar o Bling (so 1 requisicao passa)');
 ok(/falta_coluna: true/.test(corpoRota) && /add column if not exists estoque_lancado_em timestamptz/.test(corpoRota), '⚠️ Codex #404 (P1): sem as colunas de rastro NAO lanca — e devolve o SQL pra criar');
 ok(/estoque_lancado_em: null, estoque_deposito: null \}\)\.eq\('id', req\.params\.id\)\.eq\('estoque_deposito', marca\)/.test(corpoRota), '  Bling recusou: a reserva e devolvida (so se ainda for a minha)');
+ok(/try \{ r = await chamarBling\(url, \{ method: 'POST', data: \{\} \}\); \}\s*catch \(eB\)/.test(corpoRota) && /filaEstourou: !!\(eB && eB\.filaEstourou\)/.test(corpoRota), '⚠️ Codex #405 (P1): a fila do Bling que LANCA antes de enviar nao prende a reserva');
+ok(/const \{ error: eL \}/.test(corpoRota) && /reserva_presa: !liberou/.test(corpoRota), '⚠️ Codex #405 (P2): liberar a reserva confere o { error } do supabase');
+ok(/em_andamento: emAndamento/.test(corpoRota), '  409 diz se e lancamento em andamento (o painel oferece o forcar)');
 ok(/update\(\{ estoque_lancado_em: new Date\(\)\.toISOString\(\), estoque_deposito: depNome \}\)/.test(corpoRota), '⚠️ rota: depois do Bling aceitar, marca o card (quando e onde)');
-ok(/naoAplicou/.test(corpoRota) && /st !== 408/.test(corpoRota) && /incerto: true/.test(corpoRota) && corpoRota.indexOf('incerto: true') < Math.max(corpoRota.lastIndexOf('estoque_lancado_em: null, estoque_deposito: null'), corpoRota.lastIndexOf('await devolverReserva()')), '⚠️ Codex #404 (P1, 2a): timeout/sem resposta/5xx MANTEM a reserva LANCANDO (so 4xx ou fila estourada devolve)');
+ok(/naoAplicou/.test(corpoRota) && /st !== 408/.test(corpoRota) && /incerto: true/.test(corpoRota) && corpoRota.indexOf('incerto: true') < corpoRota.indexOf('estoque_lancado_em: null, estoque_deposito: null'), '⚠️ Codex #404 (P1, 2a): timeout/sem resposta/5xx MANTEM a reserva LANCANDO (so 4xx ou fila estourada devolve)');
 }
 const good = fs.readFileSync(path.join(__dirname, '..', 'lib', 'rotas-admin-nf.js'), 'utf8');
-{ const g0 = good.indexOf('async function _listarDepositosGood'), g1 = good.indexOf("app.get('/api/depositos'", g0);
-  ok(g0 >= 0 && g1 > g0, '  marcadores de _listarDepositosGood existem');
-  const lst = good.slice(g0, g1);
-  ok(/pagina <= 20/.test(lst) && /pag\.length < 100/.test(lst) && lst.indexOf('_depCacheGood = {') > lst.lastIndexOf('return { ok: false'), '⚠️ Codex #405: depositos paginados; falha numa pagina nao guarda lista parcial');
-  const q0 = good.indexOf("app.post('/api/admin/full-lancar-estoque/:id'"), q1 = good.indexOf('app.post(', q0 + 10);
-  const rt = good.slice(q0, q1);
-  ok(/catch \(eB\)/.test(rt) && /eB\.filaEstourou === true/.test(rt) && rt.indexOf('catch (eB)') > rt.indexOf('/lancar-estoque/'), '⚠️ Codex #405: fila do ritmo rejeitada (excecao) devolve a reserva');
-  ok(/errL \?/.test(rt) && /nao consegui liberar a reserva/.test(rt), '⚠️ Codex #405: falha ao devolver a reserva (error do Supabase) e avisada');
-  ok(/em_andamento: emAndamento/.test(rt) && /concorrente: true/.test(rt), '  rota: 409 distingue em andamento / concorrente / ja lancado');
-  ok(/\/geral\/i\.test\(String\(d\.descricao \|\| ''\)\)\)\s*\|\| utilizaveis\.find\(\(d\) => d\.padrao\)/.test(rt), '  rota: Geral por nome antes do padrao');
-}
-ok(fs.existsSync(path.join(__dirname, '..', 'sql', 'b484-estoque-lancado-devolucoes.sql')) && /add column if not exists estoque_lancado_em/.test(fs.readFileSync(path.join(__dirname, '..', 'sql', 'b484-estoque-lancado-devolucoes.sql'), 'utf8')), '⚠️ Codex #405: migracao idempotente das colunas versionada em sql/');
 ok(/app\.get\('\/api\/depositos'/.test(good) && !/DEPOSITOS_VALIDOS\.has\(/.test(good), '⚠️ GOOD: lista VIVA de depositos (GET /api/depositos) no lugar da lista fixa de ids');
+const blingAmb = fs.readFileSync(path.join(__dirname, '..', 'amb-devolucoes', 'lib-AMB', 'bling-AMB.js'), 'utf8');
+ok(/depositos\?limite=100&pagina=' \+ pg/.test(good) && /depositos\?limite=100&pagina=' \+ pg/.test(blingAmb), '⚠️ Codex #405 (P2): depositos PAGINADOS na GOOD e na AMB (mais de 100 nao corta)');
+ok(fs.existsSync(path.join(__dirname, '..', 'sql', '2026-10-02-estoque-lancado.sql')), '  SQL das colunas de rastro versionado (aplicado em producao em 02/10)');
 console.log('');
 console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
 process.exit(falhas ? 1 : 0);

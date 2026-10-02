@@ -459,7 +459,7 @@ app.post('/api/admin/full-lancar-estoque/:id', requerAdmin, async (req, res) => 
     const forcar = !!(req.body && req.body.forcar === true);
     if (reg.estoque_lancado_em && !forcar) {
       const emAndamento = /^LANCANDO/.test(String(reg.estoque_deposito || ''));
-      return res.status(409).json({ ok: false, ja_lancado: true,
+      return res.status(409).json({ ok: false, ja_lancado: true, em_andamento: emAndamento,   // Codex #405: o painel oferece o 'lancar mesmo assim'
         erro: emAndamento
           ? 'ja ha um lancamento de estoque em andamento (ou interrompido) desta devolucao, desde ' + String(reg.estoque_lancado_em).slice(0, 16).replace('T', ' ') + ' — confira no Bling antes de lancar de novo'
           : 'o estoque desta devolucao JA foi lancado' + (reg.estoque_deposito ? ' no deposito ' + reg.estoque_deposito : '') +
@@ -538,7 +538,12 @@ app.post('/api/admin/full-lancar-estoque/:id', requerAdmin, async (req, res) => 
       return res.status(409).json({ ok: false, ja_lancado: true, erro: 'outro lancamento desta devolucao comecou agora mesmo — atualize a pagina' });
     }
     const url = `https://api.bling.com.br/Api/v3/nfe/${reg.nf_devolucao_id_bling}/lancar-estoque/${deposito}`;
-    const r = await chamarBling(url, { method: 'POST', data: {} });
+    /* Codex #405 (P1): a fila do Bling pode REJEITAR antes de enviar — o chamarBling da GOOD
+       LANCA (e.filaEstourou) em vez de devolver; sem este try a rota caia no catch geral (500) com
+       a reserva LANCANDO presa. Nao saiu nada = devolve a reserva; outra excecao = incerto. */
+    let r;
+    try { r = await chamarBling(url, { method: 'POST', data: {} }); }
+    catch (eB) { r = { ok: false, status: 0, error: { error: { message: String((eB && eB.message) || eB) } }, filaEstourou: !!(eB && eB.filaEstourou) }; }
     if (!r.ok) {
       const detalhe = r.error?.error?.description || r.error?.error?.message || JSON.stringify(r.error || {}).slice(0, 180);
       /* Codex #404 (P1, 2a rodada): so devolve a reserva quando o Bling DEFINITIVAMENTE nao aplicou
@@ -552,8 +557,14 @@ app.post('/api/admin/full-lancar-estoque/:id', requerAdmin, async (req, res) => 
           erro: 'o Bling nao confirmou o lancamento (' + (st ? 'HTTP ' + st : 'sem resposta') + ': ' + detalhe + ') — ele PODE ter lancado. Confira o estoque no Bling antes de tentar de novo; o card ficou marcado "em andamento" pra nao dobrar.' });
       }
       // o Bling NAO lancou: devolve a reserva (so se ainda for a minha)
-      try { await supabase.from(TAB).update({ estoque_lancado_em: null, estoque_deposito: null }).eq('id', req.params.id).eq('estoque_deposito', marca); } catch (eL) {}
-      return res.status(502).json({ ok: false, erro: `Bling recusou (HTTP ${r.status}): ${detalhe}` });
+      let liberou = false;
+      try {
+        const { error: eL } = await supabase.from(TAB).update({ estoque_lancado_em: null, estoque_deposito: null }).eq('id', req.params.id).eq('estoque_deposito', marca);
+        liberou = !eL;   // Codex #405 (P2): o supabase devolve { error } em vez de lancar
+      } catch (eL) { liberou = false; }
+      const motivo = r.filaEstourou ? 'o Bling esta ocupado (fila cheia) — NADA foi lancado; tente de novo em instantes' : `Bling recusou (HTTP ${r.status}): ${detalhe}`;
+      return res.status(r.filaEstourou ? 503 : 502).json({ ok: false, reserva_presa: !liberou,
+        erro: motivo + (liberou ? '' : ' — a marca de "em andamento" NAO saiu do card; o Bling nao lancou, entao pode usar "lancar mesmo assim"') });
     }
 
     console.log(`[FULL-ESTOQUE] ${req.params.id}: estoque lancado (NF dev ${reg.nf_devolucao_numero}, deposito ${deposito})`);

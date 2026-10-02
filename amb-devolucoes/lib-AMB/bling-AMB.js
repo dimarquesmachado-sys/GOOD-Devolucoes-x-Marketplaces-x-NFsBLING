@@ -541,9 +541,16 @@ async function listarDepositos(forcar) {
   if (!forcar && _depCache.ts && (Date.now() - _depCache.ts) < 10 * 60 * 1000) {
     return { ok: true, depositos: _depCache.lista, cache: true };
   }
-  const r = await chamarBling('/depositos?limite=100&pagina=1');
-  if (!r.ok) return { ok: false, status: r.status, erro: 'Bling nao devolveu os depositos' };
-  const lista = ((r.data && r.data.data) || []).map(d => ({
+  // Codex #405 (P2): paginado — conta com mais de 100 depositos nao pode ter a lista cortada na 1a pagina
+  const brutos = [];
+  for (let pg = 1; pg <= 10; pg++) {
+    const r = await chamarBling('/depositos?limite=100&pagina=' + pg);
+    if (!r.ok) return { ok: false, status: r.status, erro: 'Bling nao devolveu os depositos (pagina ' + pg + ')' };
+    const pag = (r.data && r.data.data) || [];
+    brutos.push(...pag);
+    if (pag.length < 100) break;
+  }
+  const lista = brutos.map(d => ({
     id: String(d.id),
     descricao: d.descricao || ('deposito ' + d.id),
     padrao: !!d.padrao,
