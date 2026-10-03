@@ -2383,7 +2383,48 @@ async function carregarSemRetorno() {
       return false;
     }
 
+    /* b500 - DEVOLUCAO PARCIAL (pedido do dono, 02/10): a NF de devolucao e gerada pelo Bling a partir da
+       NF original INTEIRA (todos os itens). Se voltou MENOS do que a NF (menos produtos ou menos pecas),
+       emitir direto devolveria o que nao voltou — so o RASCUNHO fica liberado, com a lista do que tirar. */
+    function faltasDevolucaoParcial(reg) {
+      var voltou = Array.isArray(reg && reg.itens_devolvidos) ? reg.itens_devolvidos : [];
+      var nf = Array.isArray(reg && reg.nf_itens) ? reg.nf_itens : [];
+      if (!voltou.length || !nf.length) return [];   // sem as duas listas nao da pra afirmar nada
+      var norm = function (s) { return String(s || '').trim().toUpperCase(); };
+      var volt = {};
+      voltou.forEach(function (i) { var k = norm(i.sku); if (k) volt[k] = (volt[k] || 0) + (Number(i.qtd) || 0); });
+      var faltas = [];
+      nf.forEach(function (i) {
+        var k = norm(i.sku || i.codigo); var q = Number(i.quantidade || i.qtd) || 0;
+        if (!k || !q) return;
+        var v = volt[k] || 0;
+        if (v < q) faltas.push({ sku: i.sku || i.codigo, sobra: +(q - v).toFixed(3) });
+        volt[k] = Math.max(0, v - q);
+      });
+      return faltas;
+    }
+    function travaDevolucaoParcial(devolucaoId) {
+      try {
+        if (typeof dados === 'undefined' || !dados) return;
+        var reg = [].concat(dados.aprovadas || [], dados.problemas || [], dados.divergentes || []).find(function (x) { return String(x.id) === String(devolucaoId); });
+        var faltas = faltasDevolucaoParcial(reg);
+        var bEmitir = document.getElementById('btnGerarEmitir');
+        if (!faltas.length || !bEmitir) return;
+        bEmitir.disabled = true;
+        bEmitir.title = 'Devolução PARCIAL: gere em rascunho e tire do Bling o que não voltou';
+        if (!document.getElementById('avisoParcial')) {
+          var av = document.createElement('div');
+          av.id = 'avisoParcial';
+          av.style.cssText = 'background:#fff3e0;border:2px solid #ef6c00;color:#e65100;border-radius:8px;padding:8px 11px;margin:8px 0;font-size:13px;line-height:1.45;';
+          av.innerHTML = '⚠️ <b>Devolução PARCIAL</b> — voltou menos do que a NF. O Bling copia a NF inteira, então só o <b>rascunho</b> está liberado. ' +
+            'No rascunho, <b>remova</b>: ' + faltas.map(function (f) { return f.sobra + '× <code>' + escapeHtml(String(f.sku)) + '</code>'; }).join(' · ') + ' — e depois emita.';
+          bEmitir.parentNode.insertBefore(av, bEmitir.parentNode.firstChild);
+        }
+      } catch (e) { /* trava e protecao extra: falhar aqui nao pode travar o modal */ }
+    }
     function abrirModalGerarDevolucao(devolucaoId, idNFOriginalBling, nfNumero, produtoTitulo, chaveNF, statusTriagem) {
+      var _idParcial = arguments[0];   // b500: o 1o parametro e o id do card (o nome muda entre as telas)
+      setTimeout(function () { travaDevolucaoParcial(_idParcial); }, 60);   // devolucao parcial so em rascunho
       chaveNF = chaveNF || '';
       // b287 (pedido dele, 19/08) - o padrao do deposito segue a FILA de onde
       // o card veio: ⚠️ Problemas -> DEFEITOS; ✅ Aprovadas e 🔄 Divergentes ->
