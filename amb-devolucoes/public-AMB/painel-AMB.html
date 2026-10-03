@@ -2397,7 +2397,7 @@ async function carregarSemRetorno() {
           </div>
           ${blocoFotos}${blocoConserto}
           ${concluido ? '' : `
-            ${ehSerie2(d) ? avisoFullHtml(d) : ''}
+            ${linhaItensDevolvidos(d)}${ehSerie2(d) ? avisoFullHtml(d) : ''}
             <div class="item-acoes">
               ${d.nf_link_danfe ? `<a class="btn btn-cinza" href="${d.nf_link_danfe}" target="_blank">📄 Ver DANFE</a>` : ''}
               ${d.nf_id_bling
@@ -2463,7 +2463,7 @@ async function carregarSemRetorno() {
             </div>
           ` : ''}
           ${concluido ? '' : `
-            ${ehSerie2(d) ? avisoFullHtml(d) : ''}
+            ${linhaItensDevolvidos(d)}${ehSerie2(d) ? avisoFullHtml(d) : ''}
             <div class="item-acoes">
               ${d.nf_link_danfe ? `<a class="btn btn-cinza" href="${d.nf_link_danfe}" target="_blank">📄 DANFE</a>` : ''}
               <label style="display:inline-flex;align-items:center;gap:5px;font-size:12px;background:#fff3e0;border:1px solid #ffcc80;padding:5px 9px;border-radius:6px;cursor:pointer;" title="Seleciona pra ações em lote (emitir NF / concluir)"><input type="checkbox" class="chk-esteira" data-sorascunho="${d.so_rascunho ? '1' : '0'}" data-secao="problemas" data-id="${d.id}" data-nfid="${d.nf_id_bling || ''}" data-nfnum="${escapeHtml(String(d.nf_numero || ''))}" data-chave="${String(d.nf_chave || '').replace(/[^0-9]/g, '')}" data-full="${ehSerie2(d) ? '1' : '0'}" onchange="atualizarContadorEsteira('problemas')"> selecionar</label>
@@ -2551,7 +2551,7 @@ async function carregarSemRetorno() {
           ` : ''}
 
           ${concluido ? '' : `
-            ${ehSerie2(d) ? avisoFullHtml(d) : ''}
+            ${linhaItensDevolvidos(d)}${ehSerie2(d) ? avisoFullHtml(d) : ''}
             <div class="item-acoes">
               ${d.nf_link_danfe ? `<a class="btn btn-cinza" href="${d.nf_link_danfe}" target="_blank">📄 DANFE</a>` : ''}
               ${d.nf_id_bling
@@ -3502,6 +3502,15 @@ async function carregarSemRetorno() {
       // b492: o campo marketplace pode vir vazio — o id do pedido do ML tem formato proprio (20 + 14 digitos)
       if (/^20\d{14}$/.test(String(d.order_id || ''))) return 'Mercado Livre';
       return 'marketplace';   // Codex #404: nunca afirmar o emissor errado
+    }
+    /* b497 - devolucao com VARIOS produtos na mesma NF (caso Cabo Lateral, 02/10: 3 produtos, 1 de cada,
+       e o card mostrava "1o item x 3"). Mostra o que VOLTOU de fato, item por item — nas 3 telas. */
+    function linhaItensDevolvidos(d) {
+      var it = Array.isArray(d.itens_devolvidos) ? d.itens_devolvidos : [];
+      if (it.length < 2) return '';
+      return '<div style="background:#e0f2f1;border:1px solid #00695c;color:#004d40;border-radius:8px;padding:6px 10px;margin:6px 0;font-size:13px;">📦 <b>Voltaram ' + it.length + ' produtos diferentes:</b> ' +
+        it.map(function (i) { var t = i.titulo || i.descricao || ''; return escapeHtml(String(i.qtd || 1)) + '× <code>' + escapeHtml(String(i.sku || '?')) + '</code>' + (t ? ' ' + escapeHtml(String(t).slice(0, 40)) : ''); }).join(' · ') +
+        '<br><span style="font-size:12px;">O resumo acima mostra só o 1º item — a NF de devolução tem de levar TODOS estes.</span></div>';
     }
     // Codex #405 (P2): a serie do Full nem sempre e 2 (ehSerie2 trata toda serie != 1 como Full)
     function serieFull(d) {

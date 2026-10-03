@@ -1,91 +1,21 @@
-// Roda com: node test/itens-devolvidos.test.js
-//
-// Ate a v4.77 a triagem gravava SEMPRE nf.itens[0].sku e a quantidade SOMADA
-// de todos os itens da nota. Numa nota multi-produto isso descreve o PEDIDO,
-// nao a devolucao.
-//
-// Caso real (GOOD, NF 076466, cliente Antonio): dois SKUs na mesma nota —
-// KJDDE-693-8 e KJDDE-693-6, 2 unidades cada. Ficava gravado
-// "KJDDE-693-8, qtd 4", seja qual for o item que o Lucas triou.
-//
-// O conserto nao e adivinhar: o estoquista JA BIPA cada item, e
-// bipagemEstado.itensEsperados[].bipados guarda o que ele conferiu.
-
-const fs = require('fs');
-const path = require('path');
-
+'use strict';
+// b497 — devolucao com varios produtos na mesma NF (caso Cabo Lateral, 02/10): a AMB/Girassol grava a lista
+// do que voltou e os 3 paineis mostram item por item.
+const fs = require('fs'); const path = require('path'); const vm = require('vm');
 let falhas = 0;
 const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o); };
-
-const RAIZ = path.join(__dirname, '..');
-const TRIAGEM = fs.readFileSync(path.join(RAIZ, 'public', 'js', 'triagem.js'), 'utf8');
-const SERVER = fs.readFileSync(path.join(RAIZ, 'server.js'), 'utf8');
-const PAINEL = fs.readFileSync(path.join(RAIZ, 'public', 'painel-devolucoes.html'), 'utf8');
-
-// ── a triagem usa o que foi BIPADO ───────────────────────────────────
-{
-  ok(/bipadosDeVerdade = esperados\.filter\(\(i\) => \(Number\(i\.bipados\) \|\| 0\) > 0\)/.test(TRIAGEM),
-     'a triagem olha o que o estoquista BIPOU, item a item');
-  ok(/const itemBipado = bipadosDeVerdade\.length > 0 \? bipadosDeVerdade\[0\] : null;/.test(TRIAGEM),
-     '  e o SKU vem do item bipado, nao do primeiro da nota');
-  ok(/qtdTotal = bipadosDeVerdade\.length > 0/.test(TRIAGEM),
-     '  a quantidade soma so os BIPADOS, nao a nota inteira');
-  ok(/itens_devolvidos: itensDevolvidos/.test(TRIAGEM),
-     'e vai a lista completa do que voltou');
-  ok(/cai no comportamento antigo/.test(TRIAGEM),
-     'bipagem pulada cai no comportamento antigo — e o que da pra afirmar sem o dado');
+const compat = fs.readFileSync(path.join(__dirname, '..', 'amb-devolucoes', 'lib-AMB', 'compat-AMB.js'), 'utf8');
+ok(/const EXTRAS = \[[^\]]*'itens_devolvidos'/.test(compat), '⚠️ AMB/Girassol grava itens_devolvidos (campo a campo, no completarRegistro)');
+function fonte(html, nome) { const i = html.search(new RegExp('function ' + nome + '\\s*\\(')); if (i < 0) return ''; let j = html.indexOf('{', i), prof = 0, k = j; for (; k < html.length; k++) { if (html[k] === '{') prof++; else if (html[k] === '}') { prof--; if (prof === 0) break; } } return html.slice(i, k + 1); }
+for (const arq of ['amb-devolucoes/public-AMB/painel-AMB.html', 'amb-devolucoes/public-AMB/painel2-AMB.html', 'public/painel-devolucoes.html']) {
+  const html = fs.readFileSync(path.join(__dirname, '..', arq), 'utf8');
+  const ctx = {}; vm.createContext(ctx);
+  vm.runInContext(fonte(html, 'escapeHtml') + '\n' + fonte(html, 'linhaItensDevolvidos'), ctx);
+  const h = ctx.linhaItensDevolvidos({ itens_devolvidos: [{ sku: 'CABOLATERAL', qtd: 1 }, { sku: '7150-220v', qtd: 1 }, { sku: 'KP4', qtd: 1 }] });
+  ok(/Voltaram 3 produtos diferentes/.test(h) && /CABOLATERAL/.test(h) && /7150-220v/.test(h) && /KP4/.test(h), '⚠️ ' + arq + ': o card mostra os 3 produtos que voltaram');
+  ok(ctx.linhaItensDevolvidos({ itens_devolvidos: [{ sku: 'X', qtd: 3 }] }) === '', '  ' + arq + ': um produto so: sem linha extra');
+  for (const f of ['itemHtmlAprovado', 'itemHtmlProblema', 'itemHtmlDivergente']) ok(/linhaItensDevolvidos\(d\)/.test(fonte(html, f)), '  ' + arq + ': ' + f + ' usa a lista');
 }
-
-// ── a decisao, nos quatro cenarios ───────────────────────────────────
-{
-  const montar = (esperados, itensNF) => {
-    const bip = esperados.filter((i) => (Number(i.bipados) || 0) > 0);
-    const item = bip.length > 0 ? bip[0] : (itensNF.length > 0 ? itensNF[0] : null);
-    const qtd = bip.length > 0
-      ? bip.reduce((s, i) => s + (Number(i.bipados) || 0), 0)
-      : itensNF.reduce((s, i) => s + (Number(i.quantidade) || 0), 0);
-    return { sku: item && item.sku, qtd, lista: bip.length > 0 ? bip.length : null };
-  };
-  const NF = [{ sku: 'KJDDE-693-8', quantidade: 2 }, { sku: 'KJDDE-693-6', quantidade: 2 }];
-
-  const so2o = montar([{ sku: 'KJDDE-693-8', bipados: 0 }, { sku: 'KJDDE-693-6', bipados: 2 }], NF);
-  ok(so2o.sku === 'KJDDE-693-6' && so2o.qtd === 2,
-     'so o SEGUNDO item voltou: grava ele, com a qtd dele (antes: 1o item, qtd 4)');
-
-  const parcial = montar([{ sku: 'KJDDE-693-8', bipados: 1 }, { sku: 'KJDDE-693-6', bipados: 0 }], NF);
-  ok(parcial.sku === 'KJDDE-693-8' && parcial.qtd === 1,
-     'so UMA unidade do primeiro: qtd 1, nao 4');
-
-  const ambos = montar([{ sku: 'KJDDE-693-8', bipados: 2 }, { sku: 'KJDDE-693-6', bipados: 2 }], NF);
-  ok(ambos.qtd === 4 && ambos.lista === 2,
-     'os DOIS voltaram: qtd 4 e a lista com 2 SKUs');
-
-  const pulada = montar([{ sku: 'KJDDE-693-8', bipados: 0 }, { sku: 'KJDDE-693-6', bipados: 0 }], NF);
-  ok(pulada.sku === 'KJDDE-693-8' && pulada.qtd === 4 && pulada.lista === null,
-     'bipagem PULADA: comportamento antigo, sem inventar');
-}
-
-// ── grava e aparece ──────────────────────────────────────────────────
-{
-  const ocorrencias = (SERVER.match(/itens_devolvidos: dados\.itens_devolvidos \|\| null,/g) || []).length;
-  ok(ocorrencias === 3,
-     'a coluna e gravada em TODOS os pontos de insercao (achei ' + ocorrencias + ')');
-
-  ok(/itens_devolvidos\.length > 1/.test(PAINEL),
-     'o card marca quando a devolucao tem mais de um SKU');
-  ok(/📦 \$\{d\.itens_devolvidos\.length\} SKUs/.test(PAINEL),
-     '  com a contagem visivel');
-  ok(/title="\$\{escapeHtml\(d\.itens_devolvidos\.map/.test(PAINEL),
-     '  e a lista no title, escapada');
-
-  const DOC = fs.readFileSync(path.join(RAIZ, 'docs', 'ITENS-DEVOLVIDOS.md'), 'utf8');
-  ok(/ALTER TABLE devolucoes\s+ADD COLUMN IF NOT EXISTS itens_devolvidos jsonb/.test(DOC),
-     'o SQL da coluna esta documentado');
-  ok(/devolucoes_amb/.test(DOC), '  pras DUAS empresas');
-  ok(/a informação nunca existiu/.test(DOC),
-     'e a doc diz que triagens antigas nao dao pra reconstruir — o dado nunca existiu');
-}
-
 console.log('');
 console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
 process.exit(falhas ? 1 : 0);

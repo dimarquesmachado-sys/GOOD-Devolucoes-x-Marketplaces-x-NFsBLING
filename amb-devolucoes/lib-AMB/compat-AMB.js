@@ -1154,9 +1154,11 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
   // essa coluna, entao as 6 fotos da triagem eram enviadas, subiam pro
   // Storage e sumiam na hora de gravar a linha. Era por isso que a ficha
   // dizia "FOTOS DA TRIAGEM (0)".
+  /* b497 - itens_devolvidos: a lista do que voltou (varios produtos na mesma NF). A tela ja mandava;
+     a AMB/Girassol descartava e o card virava '1o item x qtd somada' (caso Cabo Lateral, 02/10). */
   const EXTRAS = ['produto_valor_unit', 'nf_link_danfe', 'buyer_id', 'buyer_nickname',
                   'produto_mlb', 'magalu_protocolo', 'marketplace', 'tracking',
-                  'problema_fotos'];
+                  'problema_fotos', 'itens_devolvidos'];
   async function completarRegistro(r, d) {
     // a tela manda as fotos com nomes diferentes conforme o fluxo
     if (!d.problema_fotos) {
