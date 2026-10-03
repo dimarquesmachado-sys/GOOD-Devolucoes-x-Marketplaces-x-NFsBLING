@@ -14,6 +14,8 @@ for (const arq of ['amb-devolucoes/public-AMB/painel-AMB.html', 'amb-devolucoes/
   const html = fs.readFileSync(path.join(__dirname, '..', arq), 'utf8');
   const jan = fonte(html, 'janelaPainel');
   ok(/Copiar texto/.test(jan) && /navigator\.clipboard/.test(jan) && /max-height:86vh/.test(jan), '⚠️ ' + arq + ': janela do painel com "Copiar texto" e espaco pro texto inteiro');
+  ok(/velho\._resolver\(false\)/.test(jan), '  ' + arq + ': a janela anterior e resolvida antes de ser trocada (Codex #408)');
+  ok(/writeText\(t\)\.then\(ok, antigo\)/.test(jan) && /Selecionado — aperte Ctrl\+C/.test(jan), '  ' + arq + ': copiar com plano B e aviso se o navegador negar (Codex #408)');
   const est = fonte(html, 'rodarEsteira');
   ok(/await confirmarPainel\(/.test(est) && !/if \(!confirm\(\n\s*`🏭 ESTEIRA/.test(est), '⚠️ ' + arq + ': a esteira confirma na janela do painel (nao mais no confirm() do navegador)');
   const ach = fonte(html, 'fullVincular');

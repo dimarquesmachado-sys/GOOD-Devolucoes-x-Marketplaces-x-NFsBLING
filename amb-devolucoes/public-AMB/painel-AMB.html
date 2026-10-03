@@ -3425,7 +3425,7 @@ async function carregarSemRetorno() {
           return { ok: true, status: r.status };
         } else {
           if (silencioso) {
-            avisoPainel('🔗 Achar devolução no Bling', (d.erro || 'nao achou') + (d.diag ? '\n\n' + JSON.stringify(d.diag, null, 2) : ''));   // b492: copiavel
+            // Codex #408: a vigia automatica e SILENCIOSA — janela so quando o dono clica
             if (btn) { btn.disabled = false; btn.textContent = t; }
             return { ok: false, status: r.status };
           }
@@ -3440,7 +3440,7 @@ async function carregarSemRetorno() {
                 + ` / R$ ${d.diag.procurei_por?.valor_esperado ?? '-'}`
                 + `\n\n${d.diag.dica || ''}`;
             }
-            alert((d.erro || 'nao consegui') + extra);
+            avisoPainel('🔗 Achar devolução no Bling', (d.erro || 'nao consegui') + extra);   // b493 (Codex #408): janela copiavel no lugar do alert()
             toast(d.erro || 'nao consegui', 'erro');
           if (btn) { btn.disabled = false; btn.textContent = t; }
           return { ok: false, status: r.status };
@@ -3632,7 +3632,8 @@ async function carregarSemRetorno() {
        pagina, texto inteiro visivel e um botao "Copiar texto". */
     function janelaPainel(titulo, texto, botoes) {
       return new Promise(function (resolve) {
-        var velho = document.getElementById('janelaPainel'); if (velho) velho.remove();
+        // Codex #408: a janela anterior e RESOLVIDA (como 'fechou') antes de sair — senao quem esperava por ela ficava preso pra sempre
+        var velho = document.getElementById('janelaPainel'); if (velho) { if (velho._resolver) velho._resolver(false); velho.remove(); }
         var fundo = document.createElement('div');
         fundo.id = 'janelaPainel';
         fundo.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:10000;display:flex;align-items:center;justify-content:center;';
@@ -3646,15 +3647,21 @@ async function carregarSemRetorno() {
         });
         fundo.innerHTML = html + '</div></div>';
         document.body.appendChild(fundo);
-        var fechar = function (v) { fundo.remove(); resolve(v); };
+        var fechar = function (v) { fundo._resolver = null; fundo.remove(); resolve(v); };
+        fundo._resolver = resolve;
         fundo.querySelectorAll('button[data-i]').forEach(function (el) {
           el.onclick = function () { fechar((botoes || [{ valor: true }])[Number(el.getAttribute('data-i'))].valor); };
         });
         document.getElementById('janelaPainelCopiar').onclick = function () {
-          var t = document.getElementById('janelaPainelTexto').textContent;
-          var ok = function () { var b = document.getElementById('janelaPainelCopiar'); if (b) b.textContent = '✅ Copiado'; };
-          if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(t).then(ok, function () {});
-          else { var ta = document.createElement('textarea'); ta.value = t; document.body.appendChild(ta); ta.select(); try { document.execCommand('copy'); ok(); } catch (e) {} ta.remove(); }
+          var pre = document.getElementById('janelaPainelTexto');
+          var t = pre.textContent;
+          var bt = document.getElementById('janelaPainelCopiar');
+          var ok = function () { if (bt) bt.textContent = '✅ Copiado'; };
+          // Codex #408: se o navegador negar, tenta o jeito antigo; se tambem falhar, SELECIONA o texto e diz
+          var falhou = function () { var sel = window.getSelection(), rg = document.createRange(); rg.selectNodeContents(pre); sel.removeAllRanges(); sel.addRange(rg); if (bt) bt.textContent = '⚠️ Selecionado — aperte Ctrl+C'; };
+          var antigo = function () { var ta = document.createElement('textarea'); ta.value = t; document.body.appendChild(ta); ta.select(); var deu = false; try { deu = document.execCommand('copy'); } catch (e) { deu = false; } ta.remove(); if (deu) ok(); else falhou(); };
+          if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(t).then(ok, antigo);
+          else antigo();
         };
         fundo.addEventListener('click', function (ev) { if (ev.target === fundo) fechar(false); });
       });
