@@ -2756,18 +2756,23 @@
       var faltas = [];
       nf.forEach(function (i) {
         var k = norm(i.sku || i.codigo); var q = Number(i.quantidade || i.qtd) || 0;
-        if (!k || !q) return;
+        if (!k || !q) { faltas.push({ sku: i.sku || i.codigo || '(item sem SKU/quantidade)', sobra: q || '?' }); return; }   // linha que nao da pra conferir = nao emite direto
         var v = volt[k] || 0;
         if (v < q) faltas.push({ sku: i.sku || i.codigo, sobra: +(q - v).toFixed(3) });
         volt[k] = Math.max(0, v - q);
       });
       return faltas;
     }
+    function faltasDoCard(devolucaoId) {
+      try {
+        if (typeof dados === 'undefined' || !dados) return [];
+        var reg = [].concat(dados.aprovadas || [], dados.problemas || [], dados.divergentes || []).find(function (x) { return String(x.id) === String(devolucaoId); });
+        return faltasDevolucaoParcial(reg);
+      } catch (e) { return []; }
+    }
     function travaDevolucaoParcial(devolucaoId) {
       try {
-        if (typeof dados === 'undefined' || !dados) return;
-        var reg = [].concat(dados.aprovadas || [], dados.problemas || [], dados.divergentes || []).find(function (x) { return String(x.id) === String(devolucaoId); });
-        var faltas = faltasDevolucaoParcial(reg);
+        var faltas = faltasDoCard(devolucaoId);
         var bEmitir = document.getElementById('btnGerarEmitir');
         if (!faltas.length || !bEmitir) return;
         bEmitir.disabled = true;
@@ -2784,6 +2789,7 @@
     }
     function abrirModalGerarDevolucao(devolucaoId, idNFOriginalBling, nfNumero, produtoTitulo, chaveNF, soRascunho, depSugerido, divergente) {
       var _idParcial = arguments[0];   // b500: o 1o parametro e o id do card (o nome muda entre as telas)
+      window._devParcial = faltasDoCard(_idParcial).length > 0;   // lido por quem libera os botoes (deposito carrega depois)
       setTimeout(function () { travaDevolucaoParcial(_idParcial); }, 60);   // devolucao parcial so em rascunho
       chaveNF = chaveNF || '';
       const conteudo = document.getElementById('modalGerarConteudo');
@@ -3430,7 +3436,8 @@
       // rascunho um por um e ajusta no Bling.
       const fila = marcados
         .filter(c => (c.dataset.nfid || c.dataset.nfnum) && c.dataset.full !== '1'
-          && c.dataset.sorascunho !== '1')
+          && c.dataset.sorascunho !== '1'
+          && faltasDoCard(c.dataset.id).length === 0)   // b500: devolucao PARCIAL so em rascunho, nunca no lote
         .map(c => ({
           id: c.dataset.id,
           nfid: c.dataset.nfid || '',

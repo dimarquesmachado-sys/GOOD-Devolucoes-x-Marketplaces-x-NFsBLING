@@ -15,6 +15,14 @@ for (const arq of ['amb-devolucoes/public-AMB/painel-AMB.html', 'amb-devolucoes/
   ok(ctx.faltasDevolucaoParcial({ nf_itens: [{ sku: 'A', quantidade: 3 }], itens_devolvidos: [{ sku: 'A', qtd: 1 }] }).length === 1, '  ' + arq + ': mesma peca, quantidade menor tambem e parcial');
   ok(ctx.faltasDevolucaoParcial({ nf_itens: nf }).length === 0, '  ' + arq + ': sem a lista do que voltou nao afirma nada (sem trava)');
   ok(/var _idParcial = arguments\[0\];/.test(fonte(html, 'abrirModalGerarDevolucao')), '  ' + arq + ': o modal aplica a trava ao abrir');
+  // b501 (Codex #412) - linha da NF que nao da pra conferir (sem SKU/qtd) nao pode ser ignorada
+  ok(ctx.faltasDevolucaoParcial({ nf_itens: [{ sku: 'A', quantidade: 1 }, { sku: null, quantidade: 1 }], itens_devolvidos: [{ sku: 'A', qtd: 1 }] }).length === 1, '⚠️ ' + arq + ': linha da NF sem SKU = indeterminada, so rascunho');
+  // b501 - o lote (esteira) tambem respeita a trava
+  const esteira = fonte(html, 'rodarEsteira');
+  ok(/faltasDoCard\(c\.dataset\.id\)\.length === 0/.test(esteira), '⚠️ ' + arq + ': o lote "Emitir selecionadas" exclui devolucao parcial');
+  // b501 - deposito que carrega depois nao reabre o emitir
+  ok(/window\._devParcial = faltasDoCard\(_idParcial\)/.test(fonte(html, 'abrirModalGerarDevolucao')), '  ' + arq + ': a flag de parcial nasce sincrona na abertura');
+  if (!arq.endsWith('painel-devolucoes.html')) ok(/_devParcial\)\) b\.disabled = false/.test(html), '⚠️ ' + arq + ': liberar botoes preserva a trava do emitir');
 }
 console.log('');
 console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
