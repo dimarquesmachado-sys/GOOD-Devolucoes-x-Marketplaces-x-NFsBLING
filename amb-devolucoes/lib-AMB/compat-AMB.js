@@ -1228,6 +1228,9 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
   /** Veio produto DIFERENTE do que a NF diz. */
   router.post('/api/triagem/divergente', auth.requerLogin, async (req, res) => {
     const d = descricaoDivergente(corpo(req), req.usuario);
+    // b497 (Codex #411): a tela monta itens_devolvidos com os itens ESPERADOS da NF que foram bipados;
+    // no divergente o que voltou e o produto_correto_*, entao a lista nao pode ser gravada (a GOOD tambem nao grava).
+    delete d.itens_devolvidos;
     const r = await db.registrarTriagem({ ...d, status: 'divergente', funcionario: req.usuario });
     res.json(r.ok ? await completarRegistro(r, d) : r);
   });
@@ -1258,7 +1261,8 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
           usadaEm: d.shipment_id || d.nf_chave || null, quem: req.usuario });
       } catch (e) { /* o conserto ja foi gravado; a retirada e complemento */ }
     }
-    res.json({ ...r, consertado: true });
+    // b497 (Codex #411): este fluxo tambem recebe itens_devolvidos da tela
+    res.json({ ...(await completarRegistro(r, d)), consertado: true });
   });
 
   /** Ha outras unidades do mesmo SKU guardadas em defeito? */

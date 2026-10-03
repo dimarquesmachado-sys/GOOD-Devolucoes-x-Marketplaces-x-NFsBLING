@@ -534,7 +534,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.126.12 (b498: devolucao com varios produtos — lista do que voltou gravada na AMB/Girassol e mostrada nas 3 telas)',
+      version: '9.126.13 (b499 Codex #411: devolucao com varios produtos — lista do que voltou gravada na AMB/Girassol e mostrada nas 3 telas)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),

@@ -2101,6 +2101,7 @@ async function carregarSemRetorno() {
           const campos = [
             d.nf_numero, d.order_id, d.pack_id, d.shipment_id,
             d.produto_titulo, d.produto_sku, d.produto_mlb,
+            ...(Array.isArray(d.itens_devolvidos) ? d.itens_devolvidos.flatMap(i => [i && i.sku, i && i.titulo]) : []),
             d.buyer_nome, d.buyer_id,
             d.problema_descricao,
           ].map(v => String(v || '').toLowerCase());
@@ -2396,8 +2397,9 @@ async function carregarSemRetorno() {
             ${d.shipment_id ? ` · <strong>Shipment:</strong> <code>${d.shipment_id}</code>` : ''}
           </div>
           ${blocoFotos}${blocoConserto}
+          ${linhaItensDevolvidos(d)}
           ${concluido ? '' : `
-            ${linhaItensDevolvidos(d)}${ehSerie2(d) ? avisoFullHtml(d) : ''}
+            ${ehSerie2(d) ? avisoFullHtml(d) : ''}
             <div class="item-acoes">
               ${d.nf_link_danfe ? `<a class="btn btn-cinza" href="${d.nf_link_danfe}" target="_blank">📄 Ver DANFE</a>` : ''}
               ${d.nf_id_bling
@@ -2462,8 +2464,9 @@ async function carregarSemRetorno() {
               </button>
             </div>
           ` : ''}
+          ${linhaItensDevolvidos(d)}
           ${concluido ? '' : `
-            ${linhaItensDevolvidos(d)}${ehSerie2(d) ? avisoFullHtml(d) : ''}
+            ${ehSerie2(d) ? avisoFullHtml(d) : ''}
             <div class="item-acoes">
               ${d.nf_link_danfe ? `<a class="btn btn-cinza" href="${d.nf_link_danfe}" target="_blank">📄 DANFE</a>` : ''}
               <label style="display:inline-flex;align-items:center;gap:5px;font-size:12px;background:#fff3e0;border:1px solid #ffcc80;padding:5px 9px;border-radius:6px;cursor:pointer;" title="Seleciona pra ações em lote (emitir NF / concluir)"><input type="checkbox" class="chk-esteira" data-sorascunho="${d.so_rascunho ? '1' : '0'}" data-secao="problemas" data-id="${d.id}" data-nfid="${d.nf_id_bling || ''}" data-nfnum="${escapeHtml(String(d.nf_numero || ''))}" data-chave="${String(d.nf_chave || '').replace(/[^0-9]/g, '')}" data-full="${ehSerie2(d) ? '1' : '0'}" onchange="atualizarContadorEsteira('problemas')"> selecionar</label>
@@ -2550,8 +2553,9 @@ async function carregarSemRetorno() {
             </div>
           ` : ''}
 
+          ${linhaItensDevolvidos(d)}
           ${concluido ? '' : `
-            ${linhaItensDevolvidos(d)}${ehSerie2(d) ? avisoFullHtml(d) : ''}
+            ${ehSerie2(d) ? avisoFullHtml(d) : ''}
             <div class="item-acoes">
               ${d.nf_link_danfe ? `<a class="btn btn-cinza" href="${d.nf_link_danfe}" target="_blank">📄 DANFE</a>` : ''}
               ${d.nf_id_bling
