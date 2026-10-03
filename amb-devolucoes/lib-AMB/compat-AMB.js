@@ -1122,6 +1122,14 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
   // encaminhar com o status certo — nada de traduzir campo a campo.
   // ═══════════════════════════════════════════════════════════════════
   const corpo = (req) => (req.body && req.body.dados) || req.body || {};
+  /* b494 - caso real (02/10, Girassol, "Cabo Lateral", NF 127261): o estoquista escreveu o problema
+     e o card do painel veio SEM a mensagem — e o e-mail sairia com "(sem descricao)". A tela manda
+     o texto em `descricao`; o registrarTriagem da AMB/Girassol so grava `problema_descricao` (a GOOD
+     faz essa troca na propria rota; o porte perdeu, como ja tinha perdido as fotos no b113). */
+  const comDescricao = (d) => {
+    const txt = String((d && (d.problema_descricao || d.descricao)) || '').trim();
+    return txt ? Object.assign({}, d, { problema_descricao: txt }) : d;
+  };
 
   /**
    * b66 - A tela manda MAIS campos do que o registrarTriagem da AMB
@@ -1192,7 +1200,7 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
    *  unidades do mesmo SKU em defeito (a tela usa pro alerta de
    *  canibalizacao) — mesmo comportamento do /api/triagem/registrar. */
   router.post('/api/triagem/problema', auth.requerLogin, async (req, res) => {
-    const d = corpo(req);
+    const d = comDescricao(corpo(req));
     let r = await db.registrarTriagem({ ...d, status: 'problema', funcionario: req.usuario });
     if (!r.ok) return res.json(r);
     r = await completarRegistro(r, d);
@@ -1209,7 +1217,7 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
 
   /** Veio produto DIFERENTE do que a NF diz. */
   router.post('/api/triagem/divergente', auth.requerLogin, async (req, res) => {
-    const d = corpo(req);
+    const d = comDescricao(corpo(req));
     const r = await db.registrarTriagem({ ...d, status: 'divergente', funcionario: req.usuario });
     res.json(r.ok ? await completarRegistro(r, d) : r);
   });
