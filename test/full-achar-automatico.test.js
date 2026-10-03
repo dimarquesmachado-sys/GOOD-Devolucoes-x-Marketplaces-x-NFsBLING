@@ -26,6 +26,14 @@ const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o
     await deps.varrerFullSemNF();
     ok(chamados.length === 0, '  ' + path.basename(arq) + ': quem nao achou espera (nao martela o Bling a cada volta)');
   }
+  const fs = require('fs');
+  for (const [arq, col] of [['amb-devolucoes/lib-AMB/rotas-admin-AMB.js', 'criado_em'], ['lib/rotas-admin-nf.js', 'created_at']]) {
+    const s = fs.readFileSync(path.join(__dirname, '..', arq), 'utf8');
+    ok(s.indexOf(".gte('" + col + "', desde).order('" + col + "'") > -1, '⚠️ Codex #410: ' + arq + ' usa a coluna de data certa (' + col + ')');
+    ok(/RESULTADOS\.indexOf\(String\(d\.tipo/.test(s), '⚠️ Codex #410: ' + arq + ' le o resultado da triagem em tipo OU status');
+    ok(/_fundo: true/.test(s) && /req\._fundo \? \{ fundo: true \}/.test(s), '⚠️ Codex #410: ' + arq + ' a varredura automatica vai como trafego de FUNDO');
+    ok(/desistiu: f >= 8/.test(s), '⚠️ pergunta do dono: ' + arq + ' desiste do card depois de 8 tentativas (nao fica retestando pra sempre)');
+  }
   console.log('');
   console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
   process.exit(falhas ? 1 : 0);
