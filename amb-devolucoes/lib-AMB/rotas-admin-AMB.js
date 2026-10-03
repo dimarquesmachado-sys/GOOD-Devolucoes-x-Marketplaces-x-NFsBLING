@@ -1855,4 +1855,55 @@ app.delete('/api/admin/devolucao/:id', requerAdmin, async (req, res) => {
   }
 });
 
+
+  /* b496 - pedido do dono (02/10): "automatiza esse passo, pra eu nao ter que clicar em Achar NF
+     no Bling — apos ser triada ja faca essa consulta". O servidor procura sozinho a NF de
+     devolucao do marketplace (serie != 1) dos cards do FULL que ainda nao tem a NF ligada —
+     logo depois da triagem (varredura a cada 5 min) e de novo mais tarde, se a NF ainda nao
+     chegou no Bling (a Toolbox importa depois). Usa a MESMA rota do botao (mesma prova, mesmo
+     "nao sei != nao existe"), achada na pilha do roteador — nada duplicado. Cota: no maximo
+     3 cards por volta, um de cada vez, e cada card espera 30 min apos nao achar (6 h depois da
+     3a vez) — o 503 "busca incompleta" volta a tentar na proxima volta. */
+  const _fullTentativas = new Map();   // id -> { prox: ts, falhas }
+  let _fullVarrendo = false;
+  function _handlerAchar() {
+    const pilha = (app && (app.stack || (app._router && app._router.stack))) || [];
+    const camada = pilha.find((l) => l.route && l.route.path === '/api/admin/full-vincular/:id' && l.route.methods && l.route.methods.post);
+    return camada ? camada.route.stack[camada.route.stack.length - 1].handle : null;
+  }
+  async function _varrerFullSemNF() {
+    if (_fullVarrendo || !supabase) return;
+    _fullVarrendo = true;
+    try {
+      const handler = _handlerAchar();
+      if (!handler) return;
+      const desde = new Date(Date.now() - 60 * 864e5).toISOString();
+      const { data, error } = await supabase.from(TAB)
+        .select('id, nf_serie, nf_chave, nf_devolucao_id_bling, status, created_at')
+        .is('nf_devolucao_id_bling', null).in('status', ['aprovado', 'problema', 'divergente'])
+        .gte('created_at', desde).order('created_at', { ascending: false }).limit(60);
+      if (error || !Array.isArray(data)) return;
+      const serie = (d) => { const s = String(d.nf_serie || '').trim().replace(/^0+/, ''); if (s) return s; const ch = String(d.nf_chave || '').replace(/\D/g, ''); return ch.length === 44 ? ch.substr(22, 3).replace(/^0+/, '') : ''; };
+      const agora = Date.now();
+      const fila = data.filter((d) => { const s = serie(d); return s && s !== '1'; })
+        .filter((d) => { const t = _fullTentativas.get(String(d.id)); return !t || t.prox <= agora; }).slice(0, 3);
+      for (const d of fila) {
+        const out = await new Promise((resolve) => {
+          const res = { _s: 200, status(s) { this._s = s; return this; }, json(o) { resolve({ status: this._s, corpo: o }); } };
+          Promise.resolve(handler({ params: { id: String(d.id) }, body: {} }, res)).catch((e) => resolve({ status: 500, corpo: { ok: false, erro: String(e && e.message || e) } }));
+        });
+        const id = String(d.id);
+        if (out.corpo && out.corpo.ok) { _fullTentativas.delete(id); console.log('[FULL-AUTO] ' + id + ': devolucao ligada sozinha (NF ' + (out.corpo.nf_devolucao_numero || '?') + ')'); }
+        else if (out.status === 503) { _fullTentativas.set(id, { prox: Date.now() + 5 * 60 * 1000, falhas: ((_fullTentativas.get(id) || {}).falhas || 0) }); }   // incompleta: tenta na proxima volta
+        else { const f = ((_fullTentativas.get(id) || {}).falhas || 0) + 1; _fullTentativas.set(id, { prox: Date.now() + (f >= 3 ? 6 * 3600e3 : 30 * 60e3), falhas: f }); }
+        await sleep(2000);
+      }
+    } catch (e) { console.warn('[FULL-AUTO] varredura falhou:', e.message || e); }
+    finally { _fullVarrendo = false; }
+  }
+  deps.varrerFullSemNF = _varrerFullSemNF;   // teste (e quem quiser disparar na mao)
+  if (process.env.FULL_ACHAR_AUTO !== 'off' && !process.env.NODE_TEST_SEM_TIMERS) {
+    const t0 = setTimeout(() => { _varrerFullSemNF(); const t1 = setInterval(_varrerFullSemNF, 5 * 60 * 1000); if (t1.unref) t1.unref(); }, 3 * 60 * 1000);
+    if (t0.unref) t0.unref();
+  }
 };
