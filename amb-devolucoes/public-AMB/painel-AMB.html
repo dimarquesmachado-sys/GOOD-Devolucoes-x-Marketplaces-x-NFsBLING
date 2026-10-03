@@ -2551,11 +2551,22 @@ async function carregarSemRetorno() {
           ` : ''}
 
           ${concluido ? '' : `
+            ${ehSerie2(d) ? avisoFullHtml(d) : ''}
             <div class="item-acoes">
               ${d.nf_link_danfe ? `<a class="btn btn-cinza" href="${d.nf_link_danfe}" target="_blank">📄 DANFE</a>` : ''}
               ${d.nf_id_bling
                 ? `<a class="btn btn-verde" href="https://www.bling.com.br/notas.fiscais.php#edit/${d.nf_id_bling}" target="_blank">🔗 Abrir NF no Bling</a>${linkPedidoMkt(d)}`
                 : ''
+              }
+              <!-- b490 - pedido do dono (02/10): divergente (envio errado) tambem gera a NF de devolucao;
+                   o modal abre no DEFEITOS (o produto que voltou nao e o vendido — vai pra conferencia). -->
+              ${ehSerie2(d) && !d.nf_devolucao_id_bling
+                ? `<a class="btn" style="background:#00695c;color:#fff;" href="https://www.mercadolivre.com.br/emissor/vendas/${d.order_id || ''}/faturas" target="_blank" title="Venda FULL (s\u00e9rie 2): a NF de devolu\u00e7\u00e3o \u00e9 emitida pelo PR\u00d3PRIO Mercado Livre. N\u00c3O gere outra no Bling (duplicidade fiscal). Clique pra ver/baixar a NF no emissor do ML.">🏬 FULL</a><button class="btn" style="background:#00838f;" onclick="fullVincular('${d.id}', this)" title="Procura no Bling a NF de ENTRADA s\u00e9rie 2 que o ML emitiu pra esta devolu\u00e7\u00e3o e vincula ao card">🔗 Achar devolu\u00e7\u00e3o no Bling</button>`
+                : !d.nf_devolucao_id_bling && (d.nf_id_bling || d.nf_numero)
+                ? `<button class="btn" style="background:#1565c0;" onclick="abrirModalGerarDevolucao('${d.id}', '${d.nf_id_bling || ''}', '${escapeHtml(d.nf_numero || '')}', '${jsArg(d.produto_titulo || '')}', '${String(d.nf_chave || '').replace(/[^0-9]/g, '')}', '${jsArg(d.buyer_nome || d.cliente || d.cliente_ml || '')}', '${jsArg(d.produto_sku || '')}', '${String(d.data_origem || d.nf_data || d.criado_em || '').slice(0,10)}', 'divergente', '${serieDoRegistro(d)}')" title="Abre as op\u00e7\u00f5es: criar RASCUNHO (salvar sem emitir, pra editar no Bling) ou gerar + emitir direto">🧾 Gerar NF (rascunho ou emitir)</button>`
+                : d.nf_devolucao_id_bling
+                  ? `<a class="btn btn-verde" href="https://www.bling.com.br/notas.entrada.php#edit/${d.nf_devolucao_id_bling}" target="_blank" title="NF de devolu\u00e7\u00e3o j\u00e1 gerada. Produto com problema: a do FULL (emitida pelo marketplace) n\u00e3o lan\u00e7a estoque sozinha \u2014 use o bot\u00e3o 📦 (abre no DEFEITOS); NF emitida aqui j\u00e1 lan\u00e7ou estoque.">📝 Devolu\u00e7\u00e3o: ${d.nf_devolucao_numero || 'ver'}</a>${ehSerie2(d) ? botaoFullEstoque(d, true) : ''}`
+                  : ''
               }
               <button class="btn btn-verde" onclick="concluir('${d.id}')">✅ Marcar como resolvido</button>
               <button class="btn btn-vermelho" onclick="deletar('${d.id}')">🗑️</button>
@@ -2806,10 +2817,19 @@ async function carregarSemRetorno() {
       // o card veio, que e onde a informacao ja esta:
       //   ✅ Aprovadas   -> GERAL    (produto bom, volta a vender)
       //   ⚠️ Problemas   -> DEFEITOS
-      //   🔄 Divergentes -> GERAL    (envio errado; o produto esta bom)
+      //   🔄 Divergentes -> DEFEITOS (b490, pedido do dono: o que voltou nao e o vendido — conferir antes de revender)
       // Continua so como PADRAO: a lista fica aberta e quem decide e o admin
       // (a correcao da b260 segue valendo).
-      var ehProblema = /problema|defeito|avariad|quebrad|ruim/i.test(String(statusTriagem || ''));
+      // b490 - pedido do dono (02/10): DIVERGENTE (envio errado) tambem abre no DEFEITOS
+      var ehProblema = /problema|defeito|avariad|quebrad|ruim|divergen/i.test(String(statusTriagem || ''));
+      // b491 (Codex #407) - divergente so gera RASCUNHO: a NF sai com os itens da NF original, e emitir
+      // direto lancaria estoque do SKU vendido em vez do que voltou.
+      var ehDivergente = /divergen/i.test(String(statusTriagem || ''));
+      // b491 (Codex #407) - ate o deposito carregar o select vale '' e o confirmar cairia no GERAL;
+      // por isso, quando o padrao e DEFEITOS, os botoes so liberam depois da lista montada.
+      function liberarBotoesGerar() {
+        ['btnGerarRascunho', 'btnGerarEmitir'].forEach(function (id) { var b = document.getElementById(id); if (b) b.disabled = false; });
+      }
       // E o nome: "DEFEITOS API" e deposito da GOOD; na AMB chama so
       // "DEFEITOS". Por isso parei de cravar id — o depMonta acha o
       // deposito pelo NOME na lista viva de /api/depositos, que ja e o que
@@ -2837,14 +2857,20 @@ async function carregarSemRetorno() {
         </div>
         <div style="display:flex; gap:8px; justify-content:flex-end; flex-wrap:wrap;">
           <button class="btn btn-cinza" onclick="fecharModalGerarDevolucao()">Cancelar</button>
-          <button class="btn" style="background:#455a64; color:#fff;" id="btnGerarRascunho"
+          <button class="btn" style="background:#455a64; color:#fff;" id="btnGerarRascunho"${ehProblema ? ' disabled' : ''}
             onclick="confirmarGerarDevolucao('${devolucaoId}', '${idNFOriginalBling}', '${nfNumero}', false, '${chaveNF}')">
             🧪 Criar rascunho
           </button>
-          <button class="btn btn-verde" id="btnGerarEmitir"
+          ${ehDivergente ? `
+          <div style="font-size:13px;color:#e65100;background:#fff3e0;border:2px solid #ef6c00;border-radius:8px;padding:10px;max-width:340px;">
+            <b>⚠️ Só rascunho para este caso.</b><br>
+            Voltou um produto <b>diferente</b> do vendido (envio errado). A nota sai com os itens da nota
+            original: abra o rascunho no Bling, troque a linha pelo SKU que voltou e valide por lá.
+          </div>` : `
+          <button class="btn btn-verde" id="btnGerarEmitir"${ehProblema ? ' disabled' : ''}
             onclick="confirmarGerarDevolucao('${devolucaoId}', '${idNFOriginalBling}', '${nfNumero}', true, '${chaveNF}')">
             🧾 Gerar + Emitir NF
-          </button>
+          </button>`}
         </div>
       `;
       document.getElementById('modalGerarDevolucao').style.display = 'flex';
@@ -2871,6 +2897,7 @@ async function carregarSemRetorno() {
           sel.innerHTML = deps.map(function (d) {
             return '<option value="' + escapeHtml(d.id) + '"' + (d.id === alvo ? ' selected' : '') + '>📦 ' + escapeHtml(d.descricao) + '</option>';
           }).join('') || '<option value="">(sem depósitos)</option>';
+          if (alvo) liberarBotoesGerar();
         } catch (e) {
           sel.innerHTML = '<option value="">depósitos indisponíveis — recarregue a página</option>';
         }
