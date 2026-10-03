@@ -1122,6 +1122,22 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
   // encaminhar com o status certo — nada de traduzir campo a campo.
   // ═══════════════════════════════════════════════════════════════════
   const corpo = (req) => (req.body && req.body.dados) || req.body || {};
+  /* b494 - caso real (02/10, Girassol, "Cabo Lateral", NF 127261): o estoquista escreveu o problema
+     e o card do painel veio SEM a mensagem — e o e-mail sairia com "(sem descricao)". A tela manda
+     o texto em `descricao`; o registrarTriagem da AMB/Girassol so grava `problema_descricao` (a GOOD
+     faz essa troca na propria rota; o porte perdeu, como ja tinha perdido as fotos no b113). */
+  const comDescricao = (d) => {
+    const txt = String((d && (d.problema_descricao || d.descricao)) || '').trim();
+    return txt ? Object.assign({}, d, { problema_descricao: txt }) : d;
+  };
+  /* b495 (Codex #409, P1) - o divergente NAO manda texto: a tela manda observacao + SKUs. A GOOD monta a
+     mensagem na rota ("[DIVERGENTE por X] NF tinha SKU..."); aqui a mesma, senao o card segue em branco. */
+  const descricaoDivergente = (d, usuario) => {
+    const dd = d || {};
+    const obs = String(dd.observacao || '').trim();
+    const txt = `[DIVERGENTE por ${usuario}] NF tinha SKU ${dd.produto_sku_esperado || '?'}, mas voltou SKU ${dd.produto_correto_sku || '?'} (${dd.produto_correto_titulo || '?'})${obs ? '. OBS: ' + obs : ''}`;
+    return Object.assign({}, dd, { problema_descricao: (dd.forcar ? '[RE-BIPE] ' : '') + txt });
+  };
 
   /**
    * b66 - A tela manda MAIS campos do que o registrarTriagem da AMB
@@ -1192,7 +1208,7 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
    *  unidades do mesmo SKU em defeito (a tela usa pro alerta de
    *  canibalizacao) — mesmo comportamento do /api/triagem/registrar. */
   router.post('/api/triagem/problema', auth.requerLogin, async (req, res) => {
-    const d = corpo(req);
+    const d = comDescricao(corpo(req));
     let r = await db.registrarTriagem({ ...d, status: 'problema', funcionario: req.usuario });
     if (!r.ok) return res.json(r);
     r = await completarRegistro(r, d);
@@ -1209,7 +1225,7 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
 
   /** Veio produto DIFERENTE do que a NF diz. */
   router.post('/api/triagem/divergente', auth.requerLogin, async (req, res) => {
-    const d = corpo(req);
+    const d = descricaoDivergente(corpo(req), req.usuario);
     const r = await db.registrarTriagem({ ...d, status: 'divergente', funcionario: req.usuario });
     res.json(r.ok ? await completarRegistro(r, d) : r);
   });
