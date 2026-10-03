@@ -642,7 +642,7 @@ const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 // checado ANTES de entrar na fila da empresa — nao antes de sair, entao um
 // candidato ja desistido ainda batia no Bling depois de esperar numa pausa
 // de 429. Ver bling-AMB.js, nf-nomes-AMB.js e identificar-AMB.js.
-const VERSAO = 'AMB Devolucoes b501';
+const VERSAO = 'AMB Devolucoes b502';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -1974,6 +1974,19 @@ router.get('/debug/espreita', admin, async (req, res) => {
 // ('ambtotal'), entao uma 2a empresa montada aqui consultaria a loja
 // TikTok da AMB. Mesmo padrao ja usado em bling-AMB/ml-AMB/magalu-AMB:
 // sai da ficha, com o mesmo literal so como fallback defensivo.
+/* b502 - LER O ML na conta DESTA empresa (AMB/Girassol), como a GOOD ja tem em /api/debug/ml-get.
+   Pra mapear com dado real a devolucao do FULL que volta pelo RETIRO (02/10, Marcos Vieira Lima:
+   "revisado — solicite a retirada"; etiqueta da retirada sem NF, Ref. ID + codigo de barras) antes
+   de programar o "vem pelo RETIRO" na fila e o bipe da etiqueta. So GET, so api.mercadolibre.com, admin. */
+router.get('/api/debug/ml-get', admin, async (req, res) => {
+  const p = String(req.query.path || '').trim();
+  if (!p.startsWith('/') || p.startsWith('//')) return res.status(400).json({ ok: false, erro: 'informe ?path=/... (ex.: /orders/2000017621674072)' });
+  try {
+    const r = await ml.chamarML('https://api.mercadolibre.com' + p);
+    return res.status(r.ok ? 200 : (r.status || 502)).json({ ok: !!r.ok, status: r.status, data: r.ok ? r.data : r.error });
+  } catch (e) { return res.status(502).json({ ok: false, erro: String((e && e.message) || e) }); }
+});
+
 router.get('/api/debug/tiktok-devolucoes', admin, async (req, res) => {
   try {
     const r = await tiktokPonte.sondaDevolucoes(CFG_EMPRESA.CHAVE_REGISTRO || 'ambtotal', req.query);
