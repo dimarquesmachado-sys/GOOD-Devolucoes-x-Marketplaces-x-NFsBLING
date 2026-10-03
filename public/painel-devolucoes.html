@@ -3103,7 +3103,7 @@
           toast(`Devolução ML nº ${d.nf_devolucao_numero || '?'} vinculada ao card!`, 'ok');
           carregar();
         } else {
-          toast('Não achei: ' + (d.erro || 'sem detalhes'), 'err');
+          avisoPainel('🔗 Achar devolução no Bling', 'Não achei: ' + (d.erro || 'sem detalhes') + (d.diag ? '\n\n' + JSON.stringify(d.diag, null, 2) : ''));   // b492: copiavel
           if (btn) { btn.disabled = false; btn.textContent = t; }
         }
       } catch (e) {
@@ -3124,6 +3124,8 @@
       if (m === 'shopee') return 'Shopee';
       if (m === 'magalu') return 'Magalu';
       if (m === 'amazon') return 'Amazon';
+      // b492: o campo marketplace pode vir vazio — o id do pedido do ML tem formato proprio (20 + 14 digitos)
+      if (/^20\d{14}$/.test(String(d.order_id || ''))) return 'Mercado Livre';
       return 'marketplace';   // Codex #404: nunca afirmar o emissor errado
     }
     // Codex #405 (P2): a serie do Full nem sempre e 2 (ehSerie2 trata toda serie != 1 como Full)
@@ -3250,6 +3252,49 @@
     }
     // compatibilidade: qualquer chamada antiga abre o modal novo (aprovada = GERAL)
     function fullLancarEstoque(id, btn) { return abrirModalFullEstoque(id, false, '', btn); }
+    /* b492 - pedido do dono (02/10): os avisos do painel eram confirm()/toast — janela pequena, com
+       rolagem, com cara de ERRO e sem como copiar o texto pra mandar. Agora: janela no layout da
+       pagina, texto inteiro visivel e um botao "Copiar texto". */
+    function janelaPainel(titulo, texto, botoes) {
+      return new Promise(function (resolve) {
+        // Codex #408: a janela anterior e RESOLVIDA (como 'fechou') antes de sair — senao quem esperava por ela ficava preso pra sempre
+        var velho = document.getElementById('janelaPainel'); if (velho) { if (velho._resolver) velho._resolver(false); velho.remove(); }
+        var fundo = document.createElement('div');
+        fundo.id = 'janelaPainel';
+        fundo.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:10000;display:flex;align-items:center;justify-content:center;';
+        var html = '<div style="background:#fff;border-radius:12px;padding:18px 20px;max-width:640px;width:94%;max-height:86vh;display:flex;flex-direction:column;box-shadow:0 10px 30px rgba(0,0,0,.25);font-size:14px;">' +
+          '<div style="font-weight:700;font-size:16px;margin-bottom:10px;">' + escapeHtml(titulo) + '</div>' +
+          '<pre id="janelaPainelTexto" style="white-space:pre-wrap;word-break:break-word;font-family:inherit;font-size:13.5px;line-height:1.5;background:#f6f7f9;border:1px solid #e3e5e8;border-radius:8px;padding:12px;margin:0 0 14px;overflow:auto;flex:1;">' + escapeHtml(texto) + '</pre>' +
+          '<div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;">' +
+          '<button class="btn btn-cinza" id="janelaPainelCopiar">📋 Copiar texto</button>';
+        (botoes || [{ rotulo: 'OK', valor: true, cor: '#1565c0' }]).forEach(function (b, i) {
+          html += '<button class="btn" data-i="' + i + '" style="background:' + (b.cor || '#1565c0') + ';color:#fff;">' + escapeHtml(b.rotulo) + '</button>';
+        });
+        fundo.innerHTML = html + '</div></div>';
+        document.body.appendChild(fundo);
+        var fechar = function (v) { fundo._resolver = null; fundo.remove(); resolve(v); };
+        fundo._resolver = resolve;
+        fundo.querySelectorAll('button[data-i]').forEach(function (el) {
+          el.onclick = function () { fechar((botoes || [{ valor: true }])[Number(el.getAttribute('data-i'))].valor); };
+        });
+        document.getElementById('janelaPainelCopiar').onclick = function () {
+          var pre = document.getElementById('janelaPainelTexto');
+          var t = pre.textContent;
+          var bt = document.getElementById('janelaPainelCopiar');
+          var ok = function () { if (bt) bt.textContent = '✅ Copiado'; };
+          // Codex #408: se o navegador negar, tenta o jeito antigo; se tambem falhar, SELECIONA o texto e diz
+          var falhou = function () { var sel = window.getSelection(), rg = document.createRange(); rg.selectNodeContents(pre); sel.removeAllRanges(); sel.addRange(rg); if (bt) bt.textContent = '⚠️ Selecionado — aperte Ctrl+C'; };
+          var antigo = function () { var ta = document.createElement('textarea'); ta.value = t; document.body.appendChild(ta); ta.select(); var deu = false; try { deu = document.execCommand('copy'); } catch (e) { deu = false; } ta.remove(); if (deu) ok(); else falhou(); };
+          if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(t).then(ok, antigo);
+          else antigo();
+        };
+        fundo.addEventListener('click', function (ev) { if (ev.target === fundo) fechar(false); });
+      });
+    }
+    function confirmarPainel(titulo, texto, rotuloOk) {
+      return janelaPainel(titulo, texto, [{ rotulo: 'Cancelar', valor: false, cor: '#757575' }, { rotulo: rotuloOk || 'Confirmar', valor: true, cor: '#1565c0' }]);
+    }
+    function avisoPainel(titulo, texto) { return janelaPainel(titulo, texto, [{ rotulo: 'Fechar', valor: true, cor: '#1565c0' }]); }
     function rotuloEsteira(secao) {
       return secao === 'aprovadas' ? 'btnEsteiraAprovadas' : 'btnEsteiraProblemas';
     }
@@ -3358,7 +3403,7 @@
       const depGeral = idDeposito === DEPOSITO_GERAL_ID;
 
       const estimMin = Math.ceil(fila.length * 30 / 60);
-      if (!confirm(
+      if (!(await confirmarPainel('🏭 Esteira — gerar e EMITIR as NFs de devolução',
         `🏭 ESTEIRA: gerar + EMITIR (SEFAZ) a NF de devolução de ${fila.length} card(s)?\n\n` +
         (puladosFull > 0 ? `🏬 ${puladosFull} card(s) FULL serão pulados (NF de devolução é emitida pelo próprio ML).\n` : '') +
         (pulados > 0 ? `⚠️ ${pulados} selecionado(s) SEM NF serão pulados (rode o 🔎 Buscar NFs pra eles).\n` : '') +
@@ -3372,8 +3417,8 @@
             ? `• Depósito GERAL escolhido: cards ficam ABERTOS e no fim aviso quais lançamentos de estoque CANCELAR (mude pra DEFEITOS API pra não precisar cancelar)\n`
             : `• Estoque entra quarentenado em ${depNome}: nada a cancelar — cards emitidos serão CONCLUÍDOS automaticamente\n`)
           : `• Emitida/vinculada com sucesso = card marcado como CONCLUÍDO automaticamente\n`) +
-        `• Pra PARAR: clique de novo no botão (o que já foi emitido, fica)`
-      )) return;
+        `• Pra PARAR: clique de novo no botão (o que já foi emitido, fica)`,
+        '🏭 Emitir agora'))) return;
 
       esteiraAtiva = true;
       esteiraSecao = secao;
