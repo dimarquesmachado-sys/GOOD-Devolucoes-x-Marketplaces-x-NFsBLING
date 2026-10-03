@@ -1154,9 +1154,11 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
   // essa coluna, entao as 6 fotos da triagem eram enviadas, subiam pro
   // Storage e sumiam na hora de gravar a linha. Era por isso que a ficha
   // dizia "FOTOS DA TRIAGEM (0)".
+  /* b497 - itens_devolvidos: a lista do que voltou (varios produtos na mesma NF). A tela ja mandava;
+     a AMB/Girassol descartava e o card virava '1o item x qtd somada' (caso Cabo Lateral, 02/10). */
   const EXTRAS = ['produto_valor_unit', 'nf_link_danfe', 'buyer_id', 'buyer_nickname',
                   'produto_mlb', 'magalu_protocolo', 'marketplace', 'tracking',
-                  'problema_fotos'];
+                  'problema_fotos', 'itens_devolvidos'];
   async function completarRegistro(r, d) {
     // a tela manda as fotos com nomes diferentes conforme o fluxo
     if (!d.problema_fotos) {
@@ -1226,6 +1228,9 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
   /** Veio produto DIFERENTE do que a NF diz. */
   router.post('/api/triagem/divergente', auth.requerLogin, async (req, res) => {
     const d = descricaoDivergente(corpo(req), req.usuario);
+    // b497 (Codex #411): a tela monta itens_devolvidos com os itens ESPERADOS da NF que foram bipados;
+    // no divergente o que voltou e o produto_correto_*, entao a lista nao pode ser gravada (a GOOD tambem nao grava).
+    delete d.itens_devolvidos;
     const r = await db.registrarTriagem({ ...d, status: 'divergente', funcionario: req.usuario });
     res.json(r.ok ? await completarRegistro(r, d) : r);
   });
@@ -1256,7 +1261,8 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
           usadaEm: d.shipment_id || d.nf_chave || null, quem: req.usuario });
       } catch (e) { /* o conserto ja foi gravado; a retirada e complemento */ }
     }
-    res.json({ ...r, consertado: true });
+    // b497 (Codex #411): este fluxo tambem recebe itens_devolvidos da tela
+    res.json({ ...(await completarRegistro(r, d)), consertado: true });
   });
 
   /** Ha outras unidades do mesmo SKU guardadas em defeito? */

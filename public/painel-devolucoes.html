@@ -1953,6 +1953,7 @@
           const campos = [
             d.nf_numero, d.order_id, d.pack_id, d.shipment_id,
             d.produto_titulo, d.produto_sku, d.produto_mlb,
+            ...(Array.isArray(d.itens_devolvidos) ? d.itens_devolvidos.flatMap(i => [i && i.sku, i && i.titulo]) : []),
             d.buyer_nome, d.buyer_id,
             d.problema_descricao,
           ].map(v => String(v || '').toLowerCase());
@@ -2391,6 +2392,7 @@
             ${rotuloShipment(d.shipment_id)}
           </div>
           ${avisoMulti}${blocoFotos}${blocoConserto}
+          ${linhaItensDevolvidos(d)}
           ${concluido ? '' : `
             ${ehSerie2(d) ? avisoFullHtml(d) : ''}
             <div class="item-acoes">
@@ -2462,6 +2464,7 @@
               </button>
             </div>
           ` : ''}
+          ${linhaItensDevolvidos(d)}
           ${concluido ? '' : `
             ${ehSerie2(d) ? avisoFullHtml(d) : ''}
             <div class="item-acoes">
@@ -2555,6 +2558,7 @@
             </div>
           ` : ''}
 
+          ${linhaItensDevolvidos(d)}
           ${concluido ? '' : `
             ${ehSerie2(d) ? avisoFullHtml(d) : ''}
             <div class="item-acoes">
@@ -3127,6 +3131,15 @@
       // b492: o campo marketplace pode vir vazio — o id do pedido do ML tem formato proprio (20 + 14 digitos)
       if (/^20\d{14}$/.test(String(d.order_id || ''))) return 'Mercado Livre';
       return 'marketplace';   // Codex #404: nunca afirmar o emissor errado
+    }
+    /* b497 - devolucao com VARIOS produtos na mesma NF (caso Cabo Lateral, 02/10: 3 produtos, 1 de cada,
+       e o card mostrava "1o item x 3"). Mostra o que VOLTOU de fato, item por item — nas 3 telas. */
+    function linhaItensDevolvidos(d) {
+      var it = Array.isArray(d.itens_devolvidos) ? d.itens_devolvidos : [];
+      if (it.length < 2) return '';
+      return '<div style="background:#e0f2f1;border:1px solid #00695c;color:#004d40;border-radius:8px;padding:6px 10px;margin:6px 0;font-size:13px;">📦 <b>Voltaram ' + it.length + ' produtos diferentes:</b> ' +
+        it.map(function (i) { var t = i.titulo || i.descricao || ''; return escapeHtml(String(i.qtd || 1)) + '× <code>' + escapeHtml(String(i.sku || '?')) + '</code>' + (t ? ' ' + escapeHtml(String(t).slice(0, 40)) : ''); }).join(' · ') +
+        '<br><span style="font-size:12px;">O resumo acima mostra só o 1º item — a NF de devolução tem de levar TODOS estes.</span></div>';
     }
     // Codex #405 (P2): a serie do Full nem sempre e 2 (ehSerie2 trata toda serie != 1 como Full)
     function serieFull(d) {
