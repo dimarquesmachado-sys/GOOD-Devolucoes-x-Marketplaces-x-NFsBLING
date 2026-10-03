@@ -1130,6 +1130,14 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
     const txt = String((d && (d.problema_descricao || d.descricao)) || '').trim();
     return txt ? Object.assign({}, d, { problema_descricao: txt }) : d;
   };
+  /* b495 (Codex #409, P1) - o divergente NAO manda texto: a tela manda observacao + SKUs. A GOOD monta a
+     mensagem na rota ("[DIVERGENTE por X] NF tinha SKU..."); aqui a mesma, senao o card segue em branco. */
+  const descricaoDivergente = (d, usuario) => {
+    const dd = d || {};
+    const obs = String(dd.observacao || '').trim();
+    const txt = `[DIVERGENTE por ${usuario}] NF tinha SKU ${dd.produto_sku_esperado || '?'}, mas voltou SKU ${dd.produto_correto_sku || '?'} (${dd.produto_correto_titulo || '?'})${obs ? '. OBS: ' + obs : ''}`;
+    return Object.assign({}, dd, { problema_descricao: (dd.forcar ? '[RE-BIPE] ' : '') + txt });
+  };
 
   /**
    * b66 - A tela manda MAIS campos do que o registrarTriagem da AMB
@@ -1217,7 +1225,7 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
 
   /** Veio produto DIFERENTE do que a NF diz. */
   router.post('/api/triagem/divergente', auth.requerLogin, async (req, res) => {
-    const d = comDescricao(corpo(req));
+    const d = descricaoDivergente(corpo(req), req.usuario);
     const r = await db.registrarTriagem({ ...d, status: 'divergente', funcionario: req.usuario });
     res.json(r.ok ? await completarRegistro(r, d) : r);
   });
