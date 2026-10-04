@@ -534,7 +534,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.126.17 (b503: devolucao do Full que o CD manda pro vendedor fica na fila como vem pelo RETIRO)',
+      version: '9.126.18 (b504: bipe da etiqueta de retirada mostra as pecas vem pelo RETIRO)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -2359,6 +2359,19 @@ app.post('/api/admin/renovar-token-bling', async (req, res) => {
 //
 // Aqui e AUTENTICADO e responde UMA NF por vez: casa ou nao casa, e por
 // que. Sem despejar a lista.
+/* b504 - pedido do dono (02/10): o bipe da ETIQUETA DE RETIRADA do Full nao acha nada (o codigo dela nao
+   existe na API do ML — provado com os dados do caso Marcos). Esta rota leve, pra tela do galpao (login de
+   funcionario), lista SO as pecas que a espreita marcou "vem pelo RETIRO" (#414): o bipe mostra essas pra
+   escolher quando o codigo nao e encontrado. */
+app.get('/api/espreita/retiro', requerLogin, (req, res) => {
+  try {
+    const base = mlReturns.resumoEspreita() || {};
+    const itens = (base.em_transito || []).filter((x) => x && x.vem_pelo_retiro)
+      .map((x) => ({ pedido: x.pedido, status: x.status, tracking: x.tracking || null, dias: x.dias_em_transito || null }));
+    return res.json({ ok: true, itens });
+  } catch (e) { return res.json({ ok: false, itens: [], erro: String((e && e.message) || e) }); }
+});
+
 app.get('/api/espreita/casa-nf/:nf', requerLogin, async (req, res) => {
   const nfAlvo = String(req.params.nf || '').replace(/^0+/, '');
   const serieAlvo = String(req.query.serie || '').replace(/^0+/, '') || '1';
