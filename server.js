@@ -544,7 +544,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.126.40 (b527: parcial sem lista nao libera o emitir direto; aviso de pendencia nao some)',
+      version: '9.126.41 (b528: captura — chave fiscal de 44 digitos no campo da NF; TikTok com falha tenta em 5 min)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -8981,7 +8981,7 @@ function capturarDevolucoes(resultadoEspreita, forcar, limiteTikTok) {
         tiktok_erro: erroTikTok || undefined,
         erro: r.ok ? null : (r.erros || ['falha desconhecida']).join(' | '),
       };
-      CAPTURA_FALHOU = !r.ok;   // b518
+      CAPTURA_FALHOU = !r.ok || !!(erroTikTok && !/mapead|configur|deslig|sem token|nao tem/i.test(String(erroTikTok)));   // b518/b528: TikTok com falha passageira tambem tenta em 5 min
       if (r.ok) console.log(`[CAPTURA] ${r.gravadas} devolucoes guardadas`);
       else console.warn('[CAPTURA] falhou:', CAPTURA_ESTADO.erro);
       return CAPTURA_ESTADO;   // b185 - quem forcou espera este resultado
