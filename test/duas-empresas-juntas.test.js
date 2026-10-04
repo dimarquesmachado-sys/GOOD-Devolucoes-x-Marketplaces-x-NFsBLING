@@ -431,7 +431,8 @@ process.env.AMB_SUPABASE_KEY = 'chave-de-teste';
     // lugares, nos dois painéis.
     const baseJs = fs.readFileSync(path.join(RAIZ, 'amb-devolucoes',
       'public-AMB', 'js-AMB', 'base-amb.js'), 'utf8');
-    ok(/window\.APP_EMPRESA = String\(BASE/.test(baseJs),
+    // b513: a chave vem da ficha (o servidor injeta %%APP_EMPRESA%%); a URL so e reserva se o marcador nao foi trocado
+    ok(/var CHAVE_DA_FICHA = "%%APP_EMPRESA%%"/.test(baseJs) && /window\.APP_EMPRESA = \(CHAVE_DA_FICHA/.test(baseJs),
        '⚠️ o front expoe a chave curta da empresa');
 
     for (const painel of ['painel-AMB.html', 'painel2-AMB.html']) {

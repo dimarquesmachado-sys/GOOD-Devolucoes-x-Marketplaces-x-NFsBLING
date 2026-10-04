@@ -42,10 +42,13 @@
   // dado e configuracao da empresa ERRADA, em silencio. Estas telas (public-AMB) so existem montadas SOB o
   // prefixo de uma empresa (/<empresa>/...), entao o 1o segmento da URL E a empresa — qualquer uma, sem
   // cadastrar aqui. Minuscula pelo mesmo motivo do PR #319 (o Express serve /AMB e /amb).
-  var BASE = (function () {
+  // b513: a rota vem da FICHA (o servidor troca o marcador abaixo — app-AMB.js, BASE_AMB_JS). So se o marcador
+  // nao foi trocado (arquivo servido cru, o que nao deve acontecer) cai na URL — nunca numa lista nem na raiz.
+  var BASE_DA_FICHA = "%%APP_BASE%%";
+  var BASE = (BASE_DA_FICHA.indexOf('%%') === -1) ? BASE_DA_FICHA : (function () {
     var caminho = String(window.location.pathname || '').toLowerCase();
     var seg = caminho.split('/')[1] || '';
-    if (!seg || seg.indexOf('.') !== -1) return '';   // so na raiz (nao acontece pra estas telas)
+    if (!seg || seg.indexOf('.') !== -1) return '';
     return '/' + seg;
   })();
 
@@ -63,7 +66,10 @@
   //
   // 📌 A chave e a BASE sem a barra ('/amb' -> 'amb'). Vazio na GOOD, que e
   // a raiz — por isso o `|| 'amb'`, que preserva o comportamento de hoje.
-  window.APP_EMPRESA = String(BASE || '').replace(/^\//, '') || 'amb';
+  // b513: a CHAVE DE DADOS vem da ficha (nem sempre e a rota sem a barra) — sem o fallback 'amb' de antes,
+  // que mandava uma empresa sem chave pros dados da AMBTotal.
+  var CHAVE_DA_FICHA = "%%APP_EMPRESA%%";
+  window.APP_EMPRESA = (CHAVE_DA_FICHA.indexOf('%%') === -1 && CHAVE_DA_FICHA) ? CHAVE_DA_FICHA : String(BASE || '').replace(/^\//, '');
 
   // ⚠️ b405 - A PASTA DO CHECKOUT NO MOVER-PEDIDOS.
   //
