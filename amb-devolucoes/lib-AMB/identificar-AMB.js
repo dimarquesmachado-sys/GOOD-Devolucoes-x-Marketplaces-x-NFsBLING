@@ -1047,15 +1047,16 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
               const nums = rN.candidatos.map((c) => String(c.numero || '')).filter(Boolean);
               const tabDev = db && db.tabelas && db.tabelas.devolucoes;
               if (nums.length && supabase && tabDev) {
-                const { data } = await supabase.from(tabDev).select('nf_numero, criado_em, funcionario, status').in('nf_numero', nums);
-                for (const r of (data || [])) jaTriadas.set(String(r.nf_numero), r);
+                const { data } = await supabase.from(tabDev).select('nf_numero, nf_serie, criado_em, funcionario, status').in('nf_numero', nums);
+                // numero+SERIE (chaveNF): o numero se repete entre series; so o numero marcaria NF de outra serie
+                for (const r of (data || [])) jaTriadas.set(chaveNF(r.nf_numero, r.nf_serie), r);
               }
             } catch (e) { /* sem a marca */ }
             resultado.candidatos_nome = rN.candidatos.map((c) => {
               const e = porNF.get(chaveNF(c.numero, c.serie));
               const itensDet = detalhes.get(String(c.id)) || null;
               const diag = diagnosticos.get(String(c.id)) || null;
-              const tri = jaTriadas.get(String(c.numero || ''));
+              const tri = jaTriadas.get(chaveNF(c.numero, c.serie));
               const marcaTriada = tri ? { ja_triada: true, triada_em: tri.criado_em || null, triada_por: tri.funcionario || null, triada_status: tri.status || null } : {};
               // sempre uma COPIA: o `c` e do indice compartilhado
               const base = { ...c, ...(itensDet ? { itens: itensDet } : {}), ...(diag ? { _detalhe: diag } : {}) };
