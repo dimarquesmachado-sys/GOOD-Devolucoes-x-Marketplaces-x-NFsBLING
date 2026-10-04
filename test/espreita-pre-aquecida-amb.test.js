@@ -22,9 +22,9 @@ ok(/res\.json\(await montarEspreitaAMBUnica\(\)\);/.test(rota) && rota.split('\n
 // dentro da funcao: nenhum req./res. (ela roda sem request, pelo relogio)
 const funcao = sem.slice(iF, iR);
 ok(!/\b(req|res)\.\w+/.test(funcao), '⚠️ a funcao nao usa req nem res (roda pelo relogio, sem request)');
-ok(/capturarDevolucoesEmpresa\(emTransito\)/.test(funcao), '  a captura persistente (1x/hora) esta dentro — o relogio a dispara');
+ok(/capturarDevolucoesEmpresa\(emTransito(\.concat\(extrasShopee\))?\)/.test(funcao), '  a captura persistente (1x/hora) esta dentro — o relogio a dispara');
 ok(/!fundo && !stNomes\.quente && !stNomes\.construindo/.test(funcao) && /nfNomes\.construirIndice\(\)/.test(funcao), '⚠️ b477: a rota interativa autocura o indice frio; o relogio (fundo) NAO — a fila do pre-aquecimento cuida');
-ok(/const fonteFria = fundo && /.test(funcao) && /if \(!fonteFria\) capturarDevolucoesEmpresa\(emTransito\)/.test(funcao), '⚠️ b477: relogio com fonte fria nao gasta a vaga de 1h da captura');
+ok(/const fonteFria = fundo && /.test(funcao) && /if \(!fonteFria\) capturarDevolucoesEmpresa\(emTransito(\.concat\(extrasShopee\))?\)/.test(funcao), '⚠️ b477: relogio com fonte fria nao gasta a vaga de 1h da captura');
 ok(/CACHES\.espreita = \{/.test(funcao), '  grava CACHES.espreita (o que /api/admin/orfaos le via espreitaMontada)');
 // o relogio
 ok(/drenagem\.daquiA\(\(\) => preAquecerEspreitaAMB\('boot'\), 90 \* 1000\);/.test(sem), '⚠️ b477: relogio na drenagem — 90s apos o boot');

@@ -514,6 +514,14 @@ async function construirIndice() {
       catch (e) { IDX.erro = `${cat}: ${e.message}`; }
       await new Promise(s => setTimeout(s, 200));
     }
+    // b521 - AUDITORIA (Codex, 04/10): com 503 em TODAS as categorias a lista vinha vazia e o indice era marcado
+    // como pronto ("quente") e sem erro — pra quem olha, "nao ha devolucoes". Falha nao e lista vazia: se nada
+    // veio E houve erro, mantem a ULTIMA lista valida (com a idade dela) e o erro aparece no resumo.
+    if (!tudo.length && IDX.erro) {
+      IDX.erroEm = Date.now();
+      console.warn(`[${_TAG}/MAGALU] espreita FALHOU (${IDX.erro}) — mantida a ultima lista valida`);
+      return IDX;
+    }
     const porPedido = {};
     for (const d of tudo) if (d.pedido) porPedido[d.pedido] = d;
     IDX.ts = Date.now();
@@ -528,7 +536,7 @@ async function construirIndice() {
 function resumoEspreita() {
   if (!temToken()) return { quente: false, desligada: true, falta: 'consentimento OAuth da conta Magalu da AMB', em_transito: [] };
   if (!temTenant()) return { quente: false, desligada: true, falta: _PREFIXO + 'MAGALU_TENANT_ID', em_transito: [] };
-  if (!IDX.ts) return { quente: false, em_transito: [] };
+  if (!IDX.ts) return { quente: false, em_transito: [], erro: IDX.erro || null };   // b521: nunca montou — e se falhou, diz por que
 
   const dias = (v) => v ? Math.floor((Date.now() - Date.parse(v)) / 864e5) : null;
   const emTransito = [];
@@ -545,7 +553,8 @@ function resumoEspreita() {
     });
   }
   emTransito.sort((x, y) => (y.dias_em_transito || 0) - (x.dias_em_transito || 0));
-  return { quente: true, idade_min: Math.round((Date.now() - IDX.ts) / 60000), em_transito: emTransito, entregues_indice: entregues };
+  // b521: o erro da ultima tentativa vai junto (lista mantida + idade + erro, nunca 'vazio sem erro')
+  return { quente: true, idade_min: Math.round((Date.now() - IDX.ts) / 60000), em_transito: emTransito, entregues_indice: entregues, erro: IDX.erro || null };
 }
 
 function statusIndice() {

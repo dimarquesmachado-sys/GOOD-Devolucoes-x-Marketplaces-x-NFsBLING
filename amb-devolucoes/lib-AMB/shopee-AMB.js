@@ -335,6 +335,9 @@ async function resumoEspreita() {
   // Na 1a passada o card sai estimado; nas seguintes ja vem com a data.
   dispararChegadas([...entregues, ...emTransito]);
   return { quente: true, em_transito: emTransito.slice(0, 60),
+    // b521 - AUDITORIA (Codex, 04/10): o corte de 60 e da TELA; a captura persistente recebe TODAS (as mais novas
+    // ficavam de fora quando havia mais de 60 a caminho — ordem: as mais antigas primeiro).
+    em_transito_todas: emTransito,
     entregues: entregues.slice(0, 60), encerradas_indice: encerradas,
     chegadas: {
       consultadas: SHP.chegada.size,

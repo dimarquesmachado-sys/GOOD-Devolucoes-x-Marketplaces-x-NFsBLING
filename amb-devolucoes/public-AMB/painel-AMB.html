@@ -1840,7 +1840,13 @@ async function carregarSemRetorno() {
           ml: { nome: 'Mercado Livre', cor: '#f9a825' },
           shopee: { nome: 'Shopee', cor: '#e65100' },
         };
-        let html = '<p style="font-size:13px;color:#666;margin:4px 0 10px;">' +
+        // b521 (Codex): fonte quente COM erro = lista antiga na tela; avisa (o texto cru do erro fica no console, ver b205)
+        const fm = (d.fontes && d.fontes.magalu) || {};
+        if (fm.erro) { try { console.info('[ESPREITA] magalu:', String(fm.erro)); } catch (e) {} }
+        const avisoMagalu = fm.erro
+          ? '<div style="background:#FFFBF0;border:1px solid #ffe082;border-radius:9px;padding:8px 12px;margin-bottom:8px;font-size:12.5px;color:#7a5c00;">⚠️ Magalu indisponível agora — a lista do Magalu pode estar desatualizada' + (fm.idade_min != null ? ' (última atualização há ' + escapeHtml(String(fm.idade_min)) + ' min)' : '') + '.</div>'
+          : '';
+        let html = avisoMagalu + '<p style="font-size:13px;color:#666;margin:4px 0 10px;">' +
           (window._espBusca ? '🔍 <b>filtrando por "' + escapeHtml(window._espBusca) + '"</b> · ' : '') +
           '<span style="color:#888;">🕐 atualizado ' + (window._espUltima ? window._espUltima.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '') + ' · atualiza sozinho a cada 4 min</span> · ' +
           '🚚 <b>' + emT.length + '</b> em trânsito · ⏰ <b style="color:#c62828;">' + atras.length + '</b> atrasada(s) +30d' +

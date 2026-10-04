@@ -1,0 +1,21 @@
+'use strict';
+// b521 — auditoria (Codex, 04/10): a captura recebe TODAS as devolucoes Shopee; Magalu com falha nao vira "sem devolucoes".
+const fs = require('fs'); const path = require('path');
+let falhas = 0;
+const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o); };
+const R = path.join(__dirname, '..');
+const rd = (a) => fs.readFileSync(path.join(R, a), 'utf8');
+ok(/em_transito_todas: emTransito,/.test(rd('lib/shopee-proxy.js')) && /em_transito_todas: emTransito,/.test(rd('amb-devolucoes/lib-AMB/shopee-AMB.js')), '⚠️ as duas libs da Shopee entregam a lista COMPLETA (o corte fica so na tela)');
+const g = rd('server.js');
+ok(/const shopeeExtras = Array\.isArray\(shopeeR\.em_transito_todas\)/.test(g) && /\.concat\(\(resultadoEspreita && resultadoEspreita\.shopee_extras_captura\) \|\| \[\]\)/.test(g), '⚠️ GOOD: a captura recebe as que passaram do corte de 40');
+ok(!/ESP_SHOPEE_EXTRAS/.test(g) && /defineProperty\(resultadoEsp, 'shopee_extras_captura'/.test(g), '⚠️ GOOD: extras viajam no resultado da montagem, nao em global (montagens simultaneas nao se misturam)');
+ok(/fm\.erro/.test(rd('amb-devolucoes/public-AMB/painel-AMB.html')) && /avisoMagalu \+ '<p/.test(rd('amb-devolucoes/public-AMB/painel-AMB.html')), '⚠️ AMB: o painel quente avisa Magalu com erro/lista antiga');
+const a = rd('amb-devolucoes/app-AMB.js');
+ok(/capturarDevolucoesEmpresa\(emTransito\.concat\(extrasShopee\)\)/.test(a), '⚠️ AMB/Girassol: a captura recebe as que passaram do corte de 60');
+const m = rd('amb-devolucoes/lib-AMB/magalu-AMB.js');
+ok(/if \(!tudo\.length && IDX\.erro\) \{/.test(m), '⚠️ Magalu: falha em todas as categorias MANTEM a ultima lista valida (nao vira vazia)');
+ok(/entregues_indice: entregues, erro: IDX\.erro \|\| null \}/.test(m) && /erro: erroMagalu \|\| null, idade_min/.test(a), '  e o erro + a idade aparecem no resumo da espreita');
+for (const f of ['painel-AMB.html', 'painel2-AMB.html']) ok(/const avisoMagalu = fm\.erro/.test(rd('amb-devolucoes/public-AMB/' + f)), '⚠️ ' + f + ': avisa o Magalu com falha mesmo com outra fonte quente (Codex #431, nas DUAS telas)');
+console.log('');
+console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
+process.exit(falhas ? 1 : 0);
