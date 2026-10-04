@@ -544,7 +544,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.126.37 (b524: o bipe consulta a captura em todo "nao encontrado"; sem reembolso TikTok; card so clicavel com NF)',
+      version: '9.126.39 (b526: sonda exige conta do ML verificavel, batimento real da captura, canais pela config)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -2543,7 +2543,8 @@ app.get('/api/admin/sonda-empresa/:chave', async (req, res) => {
   try {
     const { sondar } = require('./scripts/sonda-empresa');
     const chave = String(req.params.chave || '').trim().toLowerCase();
-    const linhas = await sondar(chave);
+    // b526 (Codex #433): o batimento da captura vive na memoria deste servidor (so a GOOD roda aqui)
+    const linhas = await sondar(chave, { capturaEstado: (emp) => (emp === 'good' ? CAPTURA_ESTADO : null) });
     const reprovadas = linhas.filter((l) => !l.ok).length;
     return res.json({
       ok: reprovadas === 0,
