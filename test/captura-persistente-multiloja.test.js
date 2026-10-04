@@ -28,7 +28,7 @@ ok(/CAPTURA_INTERVALO_MS = 60 \* 60 \* 1000/.test(semCom),
    '  com o mesmo limite da GOOD: 1x/hora');
 ok(/tiktokPonte\.sondaDevolucoes\(CHAVE_DADOS/.test(semCom),
    '  e inclui o TikTok pela ponte, como a GOOD');
-ok(/capturarDevolucoesEmpresa\(emTransito\)/.test(semCom),
+ok(/capturarDevolucoesEmpresa\(emTransito(\.concat\(extrasShopee\))?\)/.test(semCom),
    '⚠️ e e CHAMADA na rota que monta o agregado (nao e codigo morto)');
 
 // ⚠️ Regra 12: os nomes que a funcao usa EXISTEM no escopo. Na 1a versao usei

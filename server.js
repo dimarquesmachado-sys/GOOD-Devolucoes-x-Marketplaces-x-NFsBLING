@@ -544,7 +544,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.126.33 (b519: card de aprovadas da GOOD mostra quem triou pela reserva funcionario)',
+      version: '9.126.34 (b521: captura recebe TODAS as devolucoes Shopee, sem o corte da tela)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -6695,12 +6695,15 @@ app.post('/api/recado/:id/ciente', requerLogin, async (req, res) => {
   } catch (e) { return res.status(500).json({ ok: false, erro: e.message }); }
 });
 
+let ESP_SHOPEE_EXTRAS = [];   // b521: devolucoes Shopee alem do corte de 40 da tela (so pra captura)
 async function montarEspreita() {
   // v3.77 - agregador: Magalu (BFF) + ML (indice claims->returns) + Shopee (proxy)
   const magaluR = espreita.resumo();
   const mlR = mlReturns.resumoEspreita();
   let shopeeR = { quente: false, em_transito: [] };
   try { shopeeR = await shopee.resumoEspreita(); } catch (e) { shopeeR = { quente: false, erro: e.message, em_transito: [] }; }
+  // b521 (auditoria): o que passou do corte da TELA vai so pra captura persistente
+  ESP_SHOPEE_EXTRAS = Array.isArray(shopeeR.em_transito_todas) ? shopeeR.em_transito_todas.slice((shopeeR.em_transito || []).length) : [];
   let unificada = [
     ...magaluR.em_transito.map(d => ({ marketplace: 'magalu', pedido: d.pedido, tracking: null, status: (d.categoria || '') + (d.status ? ' / ' + d.status : ''), dias_em_transito: d.dias_em_transito, valor: d.valor, uuid: d.chave || null, tipo: d.tipo || null, categoria: d.categoria || null })),
     ...(mlR.em_transito || []).filter(d => (d.dias_em_transito == null) || d.dias_em_transito <= 120), // v4.18: corte de sanidade
@@ -8906,7 +8909,8 @@ function capturarDevolucoes(resultadoEspreita, forcar, limiteTikTok) {
   // montarEspreita() devolve { em_transito, atrasadas_30d, nunca_bipadas, ... }
   // e eu lia `.itens`, que nao existe — entao a captura gravava ZERO desde
   // que subiu, calada. E o painel de estornadas consultaria uma tabela vazia.
-  const lista = (resultadoEspreita && (resultadoEspreita.em_transito || resultadoEspreita.itens)) || [];
+  // b521 - AUDITORIA (Codex, 04/10): + as devolucoes Shopee que passaram do corte de 40 da tela
+  const lista = ((resultadoEspreita && (resultadoEspreita.em_transito || resultadoEspreita.itens)) || []).concat(ESP_SHOPEE_EXTRAS || []);
 
   // b184.3 (Codex): NAO sair quando os outros 3 vierem vazios.
   //

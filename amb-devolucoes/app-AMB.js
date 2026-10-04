@@ -647,7 +647,7 @@ const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 // checado ANTES de entrar na fila da empresa — nao antes de sair, entao um
 // candidato ja desistido ainda batia no Bling depois de esperar numa pausa
 // de 429. Ver bling-AMB.js, nf-nomes-AMB.js e identificar-AMB.js.
-const VERSAO = 'AMB Devolucoes b518';
+const VERSAO = 'AMB Devolucoes b521';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -2083,6 +2083,7 @@ async function montarEspreitaAMB({ fundo = false } = {}) {
   try { baseML = mlReturns.resumoEspreita(); } catch (e) { erroML = e.message; }
   try { baseShopee = await shopee.resumoEspreita(); } catch (e) { erroShopee = e.message; }
   try { baseMagalu = magalu.resumoEspreita(); } catch (e) { erroMagalu = e.message; }
+  if (!erroMagalu && baseMagalu && baseMagalu.erro) erroMagalu = baseMagalu.erro;   // b521: a falha do Magalu aparece (nao vira 'sem devolucoes')
   const stML = mlReturns.statusIndice();
   const stNomes = nfNomes.statusIndice() || {};
   // b36 - AUTOCURA do índice de NOMES (espelho da b29 pro ML): é ele
@@ -2224,7 +2225,9 @@ async function montarEspreitaAMB({ fundo = false } = {}) {
   // vaga de 1h da captura (voltaria vazia e as de 3 min seriam barradas).
   const fonteFria = fundo && ((ml.temToken() && !baseML.quente)
     || (!baseMagalu.desligada && !baseMagalu.quente));
-  if (!fonteFria) capturarDevolucoesEmpresa(emTransito);   // b455: guarda no banco, 1x/hora (nao bloqueia a resposta)
+  // b521 - AUDITORIA (Codex, 04/10): o corte de 60 da Shopee e da TELA; a captura recebe tambem as que passaram dele
+  const extrasShopee = (baseShopee && Array.isArray(baseShopee.em_transito_todas)) ? baseShopee.em_transito_todas.slice((baseShopee.em_transito || []).length) : [];
+  if (!fonteFria) capturarDevolucoesEmpresa(emTransito.concat(extrasShopee));   // b455: guarda no banco, 1x/hora (nao bloqueia a resposta)
   return ({
     ok: true,
     versao: VERSAO,
@@ -2244,7 +2247,9 @@ async function montarEspreitaAMB({ fundo = false } = {}) {
             erro: erroML || stML.erro || null, total_claims: stML.total_claims || 0 },
       shopee: { quente: baseShopee.quente, desligada: !!baseShopee.desligada, erro: erroShopee || baseShopee.erro || null,
                 chegadas: baseShopee.chegadas || null },
-      magalu: { quente: baseMagalu.quente, desligada: !!baseMagalu.desligada, falta: baseMagalu.falta || null },
+      // b521 - AUDITORIA: o Magalu mostra o ERRO e a idade da lista (falha nao parece 'sem devolucoes')
+      magalu: { quente: baseMagalu.quente, desligada: !!baseMagalu.desligada, falta: baseMagalu.falta || null,
+                erro: erroMagalu || null, idade_min: (baseMagalu.idade_min != null ? baseMagalu.idade_min : null) },
       nf_entrada: nfEntrada.statusIndice(),
       nomes: { quente: !!stNomes.quente, construindo: !!stNomes.construindo,
                erro: stNomes.erro || stNomes.erro_busca || stNomes.erro_vendas || null,
