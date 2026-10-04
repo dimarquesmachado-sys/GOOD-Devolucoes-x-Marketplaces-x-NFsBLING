@@ -544,7 +544,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.126.41 (b528: captura — chave fiscal de 44 digitos no campo da NF; TikTok com falha tenta em 5 min)',
+      version: '9.126.42 (b530: Magalu sem fallback pro client da GOOD; b528: captura — chave fiscal de 44 digitos no campo da NF; TikTok com falha tenta em 5 min)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),

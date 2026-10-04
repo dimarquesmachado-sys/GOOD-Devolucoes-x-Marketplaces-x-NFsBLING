@@ -75,11 +75,12 @@ const API_BASE = process.env.MAGALU_API_BASE || 'https://api.magalu.com';
 // consentir no app da GOOD, a saida e criar um app proprio pra ela no
 // portal de desenvolvedores e por as credenciais dele aqui:
 //     AMB_MAGALU_CLIENT_ID / AMB_MAGALU_CLIENT_SECRET   (no Render)
-// Sem essas variaveis, segue usando o app compartilhado com a GOOD -
-// entao criar isto nao muda nada enquanto voce nao preencher.
+// b530 - SEM fallback pro MAGALU_CLIENT_ID da GOOD: AMB e Girassol tem client
+// proprio (contrato v14). Sem as vars do prefixo fica sem credencial, em vez
+// de reconectar a conta por um client que nao e o dela.
 // ═══════════════════════════════════════════════════════════════════════
-const CLIENT_ID = _env('CLIENT_ID') || process.env.MAGALU_CLIENT_ID || '';
-const CLIENT_SECRET = _env('CLIENT_SECRET') || process.env.MAGALU_CLIENT_SECRET || '';
+const CLIENT_ID = _env('CLIENT_ID');
+const CLIENT_SECRET = _env('CLIENT_SECRET');
 const APP_PROPRIO = !!_env('CLIENT_ID');
 // ═══════════════════════════════════════════════════════════════════════
 // b148 - OS ESCOPOS SAO OS MESMOS DA GOOD.
