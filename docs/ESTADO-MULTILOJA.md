@@ -49,7 +49,7 @@ Além disso:
 - a PWA tem `id` e nome por empresa (senão as duas se instalam como um app só)
 - o segredo do cookie é por empresa, e **sem ele o boot cai** — de propósito
 - a Girassol esta **ATIVA e operando desde 30/09/2026** (64 NFs lancadas e 64 devolucoes emitidas; apps
-  proprios em Bling, ML, Shopee e Magalu)
+  proprios em Bling, ML e Shopee; Magalu usa o app compartilhado da GOOD, com token proprio por empresa)
 
 ## O que falta, e não é código
 
@@ -57,9 +57,9 @@ Além disso:
 
 A pergunta "amanhã eu ligo outra empresa?" tem duas respostas diferentes.
 
-**A Girassol, quase** — a ficha dela já está escrita e testada. Falta o que
-está abaixo, incluindo 1 PR pontual (virar uma flag no contrato — não
-escrever uma ficha nova).
+**A Girassol já foi ligada** (30/09/2026) — a seção "Para ligar a Girassol"
+abaixo é o **histórico** desse embarque, não pendência. Use-a como roteiro
+para a próxima empresa, com as correções de `docs/EMBARCAR-GIRASSOL.md`.
 
 **Qualquer outro CNPJ, não** — mas há um gerador que faz a parte chata:
 
@@ -102,7 +102,10 @@ Ele separa o que a máquina resolve do que só você tem:
 404. Ele aparece na URL quando você abre a empresa no painel. Está marcado
 como `manual` no `lib/empresas.js` para ninguém prometer que descobre.
 
-### Para ligar a Girassol (configuração do dono, mais 1 PR pontual)
+### Para ligar a Girassol (HISTÓRICO — já feito em 30/09/2026)
+
+> ⚠️ Não execute de novo: `ativa_em.devolucoes` já é `true`. Para uma empresa
+> nova, a ficha nasce `false` e só vira `true` depois da sonda verde.
 
 ⚠️ **O PR pontual primeiro:** virar `ativa_em.devolucoes` de `false` para
 `true` na ficha da Girassol em `contrato-empresas.json`. Sem isso
@@ -169,8 +172,8 @@ são **outros dois identificadores** no mesmo serviço.
 ### Três provas que ninguém pode dar por código
 
 1. ~~A Girassol nunca rodou.~~ **PROVADO em 30/09/2026:** a Girassol opera com credencial, tabela e dado
-   reais (64 NFs lancadas pelo "Lancar por NF" e 64 NFs de devolucao emitidas em massa; Bling, ML, Shopee e
-   Magalu com apps PROPRIOS).
+   reais (64 NFs lancadas pelo "Lancar por NF" e 64 NFs de devolucao emitidas em massa; Bling, ML e Shopee
+   com apps PROPRIOS; Magalu com o app compartilhado da GOOD e token proprio).
 2. ~~O provisionamento nunca rodou no Supabase real.~~ **PROVADO:** as tabelas `*_girassol` existem em
    producao e ja receberam alteracoes (ex.: `itens_devolvidos`, colunas de estoque do Full, 02/10).
 3. **O rollback nunca foi testado** -- continua valendo: nenhuma empresa foi desativada pra ser revertida.
