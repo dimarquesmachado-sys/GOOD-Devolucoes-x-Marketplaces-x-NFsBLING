@@ -544,7 +544,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.126.35 (b522: captura recebe TODAS as devolucoes Shopee; Magalu com falha nao vira sem devolucoes)',
+      version: '9.126.36 (b523: o bipe consulta a captura persistente quando nada mais acha)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -1875,6 +1875,22 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
       resultado.erro = (pareceSPX
         ? 'Etiqueta Shopee (SPX) nao casou com as devolucoes. Se ela diz "SPX INSUCESSO": o QR/barras so contem o rastreio (a Shopee nao indexa esse codigo) — DIGITE o "Pedido" impresso na etiqueta (ex: 260623TX31XFMT) que o sistema busca o pedido cancelado. Devolucao normal: tente o "Pedido" ou a chave da DANFE.'
         : 'Codigo nao encontrado em shipments/packs do ML nem nas devolucoes Shopee.') + diag + nota403 + notaIndiceParcial;
+      // b523 - AUDITORIA (Codex, 04/10): o bipe passa a consultar a CAPTURA PERSISTENTE (o que a espreita guardou
+      // antes). Objetivo: achar o pacote mesmo depois que o marketplace parou de listar a devolucao. So DESTA
+      // empresa; ate 3 s (nao trava o bipe); falhou = segue o "nao encontrado" de sempre.
+      try {
+        const cap = await Promise.race([
+          devCapturadas.procurar(supabase, 'good', [String(req.params.codigo || '').trim()]),
+          new Promise((ok) => setTimeout(() => ok(null), 3000)),
+        ]);
+        if (cap && cap.ok && Array.isArray(cap.achados) && cap.achados.length) {
+          resultado.capturadas = cap.achados.slice(0, 5).map((x) => ({
+            marketplace: x.marketplace || null, pedido: x.pedido || x.order_id || null, rastreio: x.rastreio || null,
+            nf_numero: x.nf_numero || null, nf_chave: x.nf_chave || null, cliente_nome: x.cliente_nome || null,
+            visto_em: x.atualizado_em || x.capturado_em || x.criado_em || null,
+          }));
+        }
+      } catch (e) { /* captura e ajuda: nunca derruba o bipe */ }
       return res.status(404).json(resultado);
     }
 

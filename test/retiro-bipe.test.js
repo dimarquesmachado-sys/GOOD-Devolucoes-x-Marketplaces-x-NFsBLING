@@ -9,11 +9,11 @@ ok(/router\.get\('\/api\/espreita\/retiro', auth\.requerLogin,/.test(rd('amb-dev
 for (const a of ['server.js', 'amb-devolucoes/app-AMB.js']) ok(/filter\(\(x\) => x && x\.vem_pelo_retiro\)/.test(rd(a)), '  ' + a + ': so as pecas marcadas "vem pelo RETIRO" (#414)');
 for (const a of ['public/js/busca.js', 'public/js/busca.js']) {
   const s = rd(a);
-  ok(/sugerirRetiro\(\);   \/\/ b504\n    return;/.test(s), '⚠️ ' + a + ': o "nao encontrado" chama a sugestao do retiro');
+  ok(/sugerirRetiro\(\);   \/\/ b504\n(    mostrarCapturadas\(data\.capturadas\);   \/\/ b523\n)?    return;/.test(s), '⚠️ ' + a + ': o "nao encontrado" chama a sugestao do retiro');
   ok(/function buscarPedidoRetiro\(pedido\)/.test(s) && /onclick="buscarPedidoRetiro\(/.test(s), '  ' + a + ': o toque busca pelo numero do pedido (funcao existe)');
   ok(/'\/api\/espreita\/retiro'/.test(s) && /window\.APP_BASE/.test(s), '  ' + a + ': chama a rota da propria empresa');
 }
-ok(/js\/busca\.js\?v=4782/.test(rd('public/index.html')) && /js-AMB\/busca\.js\?v=b516/.test(rd('amb-devolucoes/public-AMB/index-AMB.html')), '  ?v= bumpado nas duas telas (sem cache velho)');
+ok(/js\/busca\.js\?v=4783/.test(rd('public/index.html')) && /js-AMB\/busca\.js\?v=b523/.test(rd('amb-devolucoes/public-AMB/index-AMB.html')), '  ?v= bumpado nas duas telas (sem cache velho)');
 console.log('');
 console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
 process.exit(falhas ? 1 : 0);
