@@ -1098,6 +1098,15 @@ function renderizarCandidatosNome(mensagem, candidatos) {
     // O card comum e AZUL (classe .btn), e eu escrevia os itens em #333 —
     // preto no azul, ilegivel. Nos comuns o texto vai BRANCO; no estrelado,
     // que tem fundo claro, fica escuro (que ai contrasta).
+    // b514 - MARCA "JA TRIADA" (porte da GOOD, b282): o servidor desta empresa agora informa (identificar-AMB).
+    const jaTri = !!c.ja_triada;
+    const quandoTri = c.triada_em ? new Date(c.triada_em).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : '';
+    const avisoTriada = jaTri
+      ? '<div style="margin-top:6px; padding:6px 8px; border-radius:6px; background:#fff3cd; color:#663c00; font-weight:700; font-size:13px;">'
+        + '⚠️ JÁ TRIADA' + (c.triada_por ? ' por ' + escapeHtml(String(c.triada_por)) : '') + (quandoTri ? ' · ' + escapeHtml(quandoTri) : '')
+        + '<div style="font-weight:400; font-size:12px; margin-top:2px;">Confere antes de triar de novo — pode gerar entrada e NF duplicadas.</div></div>'
+      : '';
+
     const estilo = naEsp
       ? 'text-align:left; padding:16px 18px; border:4px solid #f9a825; background:#fffde7; color:#333;'
         + ' box-shadow:0 4px 16px rgba(249,168,37,.55); transform:scale(1.02); margin:10px 0;'
@@ -1132,6 +1141,7 @@ function renderizarCandidatosNome(mensagem, candidatos) {
       + (c._antigo ? ' <span style="font-size:11px; background:#616161; color:#fff; padding:2px 7px; border-radius:10px;">📅 mais antiga</span>' : '')
       + (naEsp && c.tracking ? ' · 📮 ' + escapeHtml(c.tracking) : '')
       + itens
+      + avisoTriada   // b514: o que o estoquista le antes de clicar
       + '</button>';
   }
   html += '</div>';

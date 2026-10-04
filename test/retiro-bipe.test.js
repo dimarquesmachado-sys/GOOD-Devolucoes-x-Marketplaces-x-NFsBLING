@@ -13,7 +13,7 @@ for (const a of ['public/js/busca.js', 'amb-devolucoes/public-AMB/js-AMB/busca.j
   ok(/function buscarPedidoRetiro\(pedido\)/.test(s) && /onclick="buscarPedidoRetiro\(/.test(s), '  ' + a + ': o toque busca pelo numero do pedido (funcao existe)');
   ok(/'\/api\/espreita\/retiro'/.test(s) && /window\.APP_BASE/.test(s), '  ' + a + ': chama a rota da propria empresa');
 }
-ok(/js\/busca\.js\?v=4781/.test(rd('public/index.html')) && /js-AMB\/busca\.js\?v=b506/.test(rd('amb-devolucoes/public-AMB/index-AMB.html')), '  ?v= bumpado nas duas telas (sem cache velho)');
+ok(/js\/busca\.js\?v=4781/.test(rd('public/index.html')) && /js-AMB\/busca\.js\?v=b514/.test(rd('amb-devolucoes/public-AMB/index-AMB.html')), '  ?v= bumpado nas duas telas (sem cache velho)');
 console.log('');
 console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
 process.exit(falhas ? 1 : 0);
