@@ -544,7 +544,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.126.25 (b511: unificacao passo 2 — copia antiga da espreita apagada; dinheiro nas entregues)',
+      version: '9.126.26 (b512: GOOD aplica o de-para de SKU ao gravar a triagem)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -3433,7 +3433,7 @@ app.post('/api/triagem/aprovar', requerEstoquista, async (req, res) => {
         pedido_bling_numero: pedidoBlingNumero,
         produto_titulo: dados.produto_titulo || null,
         produto_mlb: dados.produto_mlb || null,
-        produto_sku: dados.produto_sku || null,
+        produto_sku: (await skuAtualGOOD(dados.produto_sku)) || null,   // b512: de-para (produto renomeado no Bling)
         produto_qtd: dados.produto_qtd || null,
         // v4.77 - a lista do que REALMENTE voltou, quando a bipagem
         // registrou. O produto_sku sozinho descreve a NOTA em caso
@@ -3622,7 +3622,7 @@ app.post('/api/triagem/problema', requerEstoquista, async (req, res) => {
         pedido_bling_numero: pedidoBlingNumero,
         produto_titulo: dados.produto_titulo || null,
         produto_mlb: dados.produto_mlb || null,
-        produto_sku: dados.produto_sku || null,
+        produto_sku: (await skuAtualGOOD(dados.produto_sku)) || null,   // b512: de-para (produto renomeado no Bling)
         produto_qtd: dados.produto_qtd || null,
         // v4.77 - a lista do que REALMENTE voltou, quando a bipagem
         // registrou. O produto_sku sozinho descreve a NOTA em caso
@@ -3757,7 +3757,7 @@ app.post('/api/triagem/divergente', requerEstoquista, async (req, res) => {
         // SKU e titulo agora sao do produto que VOLTOU (nao do que estava na NF)
         produto_titulo: dados.produto_correto_titulo || null,
         produto_mlb: dados.produto_mlb || null,
-        produto_sku: skuVoltou,
+        produto_sku: (await skuAtualGOOD(skuVoltou)) || skuVoltou,   // b512: de-para tambem no que voltou de fato
         produto_qtd: dados.produto_qtd || 1,
         produto_valor_unit: dados.produto_valor_unit || null,
         // NF original mantida pra rastrear o pedido que originou
@@ -4196,7 +4196,7 @@ app.post('/api/triagem/consertado', requerEstoquista, async (req, res) => {
         buyer_nickname: dados.buyer_nickname || null,
         produto_titulo: dados.produto_titulo || null,
         produto_mlb: dados.produto_mlb || null,
-        produto_sku: dados.produto_sku || null,
+        produto_sku: (await skuAtualGOOD(dados.produto_sku)) || null,   // b512: de-para (produto renomeado no Bling)
         produto_qtd: dados.produto_qtd || null,
         // v4.77 - a lista do que REALMENTE voltou, quando a bipagem
         // registrou. O produto_sku sozinho descreve a NOTA em caso
@@ -5283,6 +5283,13 @@ function classificarMotivoDevolucao(order, shipment) {
    rotas da AMB, com a biblioteca unica lib/sku-depara.js (empresa como parametro). Tabela sku_depara criada
    pelo dono em 02/10 (like sku_depara_amb). */
 const skuDeparaGOOD = require('./lib/sku-depara').criarSkuDepara({ obterDb: () => supabase, tabelaDepara: 'sku_depara', tabelaDevolucoes: 'devolucoes', colunaData: 'created_at' });
+// b512 - de-para, parte 2 (auditoria multiempresa): a GOOD APLICA a ligacao ao gravar a triagem — o SKU antigo
+// (produto renomeado no Bling) grava como o ATUAL, que e o que comanda a NF de devolucao e o estoque. Igual a
+// AMB/Girassol (b258). De-para e ajuda: falha nele NUNCA trava o registro (grava o SKU como veio).
+async function skuAtualGOOD(sku) {
+  if (!sku) return sku;
+  try { const r = await skuDeparaGOOD.resolverSku(sku); return (r && r.trocado && r.sku) ? r.sku : sku; } catch (e) { return sku; }
+}
 app.get('/api/admin/sku-depara', requerAdmin, async (req, res) => { res.json(await skuDeparaGOOD.listarDepara()); });
 app.post('/api/admin/sku-depara', requerAdmin, async (req, res) => {
   const b = req.body || {};
