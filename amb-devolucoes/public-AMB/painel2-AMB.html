@@ -976,23 +976,7 @@
       const msg = document.getElementById('alertaMsg');
       if (sel.length === 0) { msg.innerHTML = '<span style="color:#c62828;">Marque pelo menos um.</span>'; return; }
       if (!confirm('Mandar ' + sel.length + ' devolução(ões) pra fila "Aprovadas - aguardando NF"?\n\nElas vão aparecer lá com todos os itens da venda, pra você escolher o depósito e emitir.')) return;
-      // b330 - ESTA FUNCAO NAO EXISTE NA AMB, e e melhor dizer isso do que
-      // deixar dar 404 mudo. A rota `/api/admin/espreita/lancar-nf` so existe
-      // no modulo da GOOD e GRAVA NA TABELA DA GOOD.
-      //
-      // Antes da b329 a chamada ia sem prefixo, ou seja, batia na raiz: dava
-      // 401 (sessao da GOOD faltando) ou — com a GOOD logada no mesmo
-      // navegador — criaria registros de pedidos DA AMB dentro da GOOD. Ou
-      // seja: nunca funcionou aqui, e o jeito de "funcionar" era pior.
-      //
-      // Portar a rota pra AMB e trabalho proprio (consulta o ML e grava
-      // triagem); ate la, aviso claro em vez de erro silencioso.
-      msg.innerHTML = '<span style="color:#c62828;">Esta ação ainda não existe na AMBTotal — só na GOOD. '
-        + 'Por enquanto, lance a devolução pela triagem (bipe) ou pelo card. '
-        + 'Avise o Diego se precisar dela aqui.</span>';
-      return;
-
-      /* eslint-disable no-unreachable */
+      // b507 (auditoria multiempresa): a rota agora existe na AMB/Girassol, com o banco e o ML DESTA empresa
       msg.innerHTML = '<span style="color:#666;">enviando...</span>';
       try {
         const r = await fetch((window.APP_BASE || '') + '/api/admin/espreita/lancar-nf', {
@@ -1006,6 +990,7 @@
         if ((d.ja_existiam || []).length) t += ' <span style="color:#666;">· ' + d.ja_existiam.length + ' já tinham registro</span>';
         if ((d.sem_nf || []).length) t += ' <span style="color:#c62828;">· ⚠️ ' + d.sem_nf.length + ' SEM NF: ' + d.sem_nf.join(', ') + '</span>';
         if ((d.falhas || []).length) t += ' <span style="color:#c62828;">· ' + d.falhas.length + ' falharam</span>';
+        if ((d.restantes || []).length) t += ' <span style="color:#e65100;">· ⏳ faltam ' + d.restantes.length + ' (tempo esgotado): marque de novo e envie — os já criados são pulados</span>';
         msg.innerHTML = t;
         setTimeout(function () { carregar(); }, 1800);
       } catch (e) { msg.innerHTML = '<span style="color:#c62828;">erro de conexão</span>'; }
@@ -1634,7 +1619,7 @@ async function carregarSemRetorno() {
             const m = MKT[e.marketplace] || { nome: e.marketplace, cor: '#616161' };
             html += '<div style="border-left:4px solid ' + m.cor + ';background:#fff;border-radius:8px;padding:8px 10px;margin-bottom:6px;">'
               + '<span style="background:' + m.cor + ';color:#fff;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;">' + m.nome + '</span> '
-              + (e.pedido ? '<input type="checkbox" class="chkAlerta" value="' + escapeHtml(String(e.pedido)) + '" style="margin-right:7px;transform:scale(1.2);"> ' : '')
+              + (e.pedido && e.marketplace === 'ml' ? '<input type="checkbox" class="chkAlerta" value="' + escapeHtml(String(e.pedido)) + '" style="margin-right:7px;transform:scale(1.2);"> ' : '')
               + '<b>' + escapeHtml(String(e.pedido || e.tracking || '-')) + '</b>'
               + (e.pack_id ? ' · <span style="font-size:11px;color:#555;">pack <code>' + escapeHtml(String(e.pack_id)) + '</code></span>' : '')
               + (e.pedido && e.tracking ? ' · <code style="font-size:11px;">' + escapeHtml(String(e.tracking)) + '</code>' : '')
