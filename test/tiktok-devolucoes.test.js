@@ -292,7 +292,7 @@ const AGUARDANDO_ENVIO = {
   const fs = require('fs');
   const path = require('path');
   const RAIZ = path.join(__dirname, '..');
-  [['GOOD', 'public/js/busca.js'], ['AMB', 'amb-devolucoes/public-AMB/js-AMB/busca.js']].forEach(([nome, rel]) => {
+  [['GOOD', 'public/js/busca.js'], ['AMB', 'public/js/busca.js']].forEach(([nome, rel]) => {
     const src = fs.readFileSync(path.join(RAIZ, rel), 'utf8');
     const i = src.indexOf('if (data.tiktok) {');
     const bloco = src.slice(i, src.indexOf("html += '</div>';", i) + 40);
@@ -348,7 +348,7 @@ const AGUARDANDO_ENVIO = {
   const path = require('path');
   const RAIZ = path.join(__dirname, '..');
   const GOOD = fs.readFileSync(path.join(RAIZ, 'public', 'js', 'busca.js'), 'utf8');
-  const AMB = fs.readFileSync(path.join(RAIZ, 'amb-devolucoes', 'public-AMB', 'js-AMB', 'busca.js'), 'utf8');
+  const AMB = fs.readFileSync(path.join(RAIZ, 'public', 'js', 'busca.js'), 'utf8');
 
   [['GOOD', GOOD], ['AMB', AMB]].forEach(([nome, src]) => {
     ok(/if \(data\.tiktok\) \{/.test(src), nome + ': a tela tem bloco do TikTok');

@@ -25,7 +25,7 @@ const APP_AMB = fs.readFileSync(path.join(RAIZ, 'amb-devolucoes', 'app-AMB.js'),
 const mLista = APP_AMB.match(/const JS_COMPARTILHADOS = \[([\s\S]*?)\];/);
 ok(!!mLista, 'app-AMB.js declara a lista de modulos compartilhados');
 const COMPARTILHADOS = (mLista ? mLista[1] : '').match(/'([^']+)'/g).map((x) => x.replace(/'/g, ''));
-ok(COMPARTILHADOS.length === 9, '  com os 9 arquivos que eram identicos');
+ok(COMPARTILHADOS.length === 10, '  com os 10 arquivos compartilhados (b516: busca.js unificado entrou)');
 
 // ── as copias sumiram de verdade ────────────────────────────────────
 COMPARTILHADOS.forEach((f) => {
@@ -35,7 +35,7 @@ COMPARTILHADOS.forEach((f) => {
 });
 
 // ── o que DEVE continuar separado ───────────────────────────────────
-['auth.js', 'busca.js', 'defeitos-ficha.js', 'base-amb.js'].forEach((f) => {
+['auth.js', 'defeitos-ficha.js', 'base-amb.js'].forEach((f) => {   // b516: busca.js saiu daqui (tela de bipe unica)
   ok(fs.existsSync(path.join(RAIZ, 'amb-devolucoes', 'public-AMB', 'js-AMB', f)),
      f + ' continua proprio da AMB (diverge de verdade, ou so existe aqui)');
   ok(COMPARTILHADOS.indexOf(f) === -1, '  e fora da lista de compartilhados');

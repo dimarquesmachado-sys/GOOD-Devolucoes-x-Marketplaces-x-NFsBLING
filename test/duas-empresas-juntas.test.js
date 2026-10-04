@@ -485,8 +485,7 @@ process.env.AMB_SUPABASE_KEY = 'chave-de-teste';
     // pronto — esse fallback continuava com `/magalu/ir/amb` e
     // `amb-checkout-offline` cravados, então a seta ↗ ainda abria a
     // AMBTotal nesse caminho.
-    const buscaJs = fs.readFileSync(path.join(RAIZ, 'amb-devolucoes',
-      'public-AMB', 'js-AMB', 'busca.js'), 'utf8');
+    const buscaJs = fs.readFileSync(path.join(RAIZ, 'public', 'js', 'busca.js'), 'utf8');
     // ⚠️ b405: mesmo criterio dos paineis — o fallback e aceitavel.
     const buscaSemFb = buscaJs.replace(/\|\| 'amb-checkout-offline'/g, '');
     ok(!/amb-checkout-offline/.test(buscaSemFb) && !/\/magalu\/ir\/amb['"?]/.test(buscaJs),

@@ -1047,9 +1047,13 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
               const nums = rN.candidatos.map((c) => String(c.numero || '')).filter(Boolean);
               const tabDev = db && db.tabelas && db.tabelas.devolucoes;
               if (nums.length && supabase && tabDev) {
-                const { data } = await supabase.from(tabDev).select('nf_numero, nf_serie, criado_em, funcionario, status').in('nf_numero', nums);
+                const { data } = await supabase.from(tabDev).select('nf_numero, nf_serie, nf_chave, criado_em, funcionario, status').in('nf_numero', nums);
                 // numero+SERIE (chaveNF): o numero se repete entre series; so o numero marcaria NF de outra serie
-                for (const r of (data || [])) jaTriadas.set(chaveNF(r.nf_numero, r.nf_serie), r);
+                // b517: triagem antiga so tem a serie dentro da nf_chave (44 digitos, posicoes 22-25)
+                for (const r of (data || [])) {
+                  const dig = String(r.nf_chave || '').replace(/\D/g, '');
+                  jaTriadas.set(chaveNF(r.nf_numero, r.nf_serie || (dig.length === 44 ? dig.slice(22, 25) : null)), r);
+                }
               }
             } catch (e) { /* sem a marca */ }
             resultado.candidatos_nome = rN.candidatos.map((c) => {

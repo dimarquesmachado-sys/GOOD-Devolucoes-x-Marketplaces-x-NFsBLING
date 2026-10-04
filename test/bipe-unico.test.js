@@ -1,0 +1,21 @@
+'use strict';
+// b516 — tela de bipe UNICA: um busca.js so (public/js), servido a GOOD e a AMB/Girassol (JS_COMPARTILHADOS).
+const fs = require('fs'); const path = require('path');
+let falhas = 0;
+const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o); };
+const R = path.join(__dirname, '..');
+ok(!fs.existsSync(path.join(R, 'amb-devolucoes', 'public-AMB', 'js-AMB', 'busca.js')), '⚠️ a copia da AMB/Girassol sumiu (nao ha mais duas telas pra divergir)');
+const app = fs.readFileSync(path.join(R, 'amb-devolucoes', 'app-AMB.js'), 'utf8');
+ok(/const JS_COMPARTILHADOS = \[[^\]]*'busca\.js'/.test(app), '⚠️ a AMB/Girassol serve a tela unica (JS_COMPARTILHADOS)');
+const h = fs.readFileSync(path.join(R, 'public', 'index.html'), 'utf8');
+const iG = h.indexOf("window.APP_EMPRESA = 'good'"); const iB = h.indexOf('js/busca.js?v=');
+ok(iG > 0 && iB > iG && /window\.APP_PASTA_CHECKOUT = 'good-checkout-offline'/.test(h), '⚠️ a GOOD declara os dados dela ANTES da tela unica (empresa, pasta do checkout)');
+ok(/--marca: #561A9E/.test(h), '  a GOOD declara a cor da marca (o selo do marketplace usa)');
+const b = fs.readFileSync(path.join(R, 'public', 'js', 'busca.js'), 'utf8');
+ok(!/\/magalu\/ir\/good/.test(b) && !/good-checkout-offline/.test(b), '⚠️ a tela unica nao tem valor da GOOD escrito a mao (vem dos dados da empresa)');
+ok(/const avisoTriada = jaTri/.test(b), '  e tem o aviso JA TRIADA (#425)');
+const s = fs.readFileSync(path.join(R, 'server.js'), 'utf8');
+ok(/jaTriadas\.set\(chaveNF\(r\.nf_numero, r\.nf_serie \|\| confrontar\.serieDaChave\(r\.nf_chave\)\), r\)/.test(s) && /jaTriadas\.get\(chaveNF\(c\.numero, c\.serie\)\)/.test(s), '  GOOD: JA TRIADA casa numero+serie (paridade com o #425)');
+console.log('');
+console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
+process.exit(falhas ? 1 : 0);

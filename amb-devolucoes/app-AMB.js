@@ -647,7 +647,7 @@ const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 // checado ANTES de entrar na fila da empresa — nao antes de sair, entao um
 // candidato ja desistido ainda batia no Bling depois de esperar numa pausa
 // de 429. Ver bling-AMB.js, nf-nomes-AMB.js e identificar-AMB.js.
-const VERSAO = 'AMB Devolucoes b515';
+const VERSAO = 'AMB Devolucoes b517';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -1291,6 +1291,7 @@ router.use(exigirLoginNoPainelHtml);
 const JS_COMPARTILHADOS = [
   'app.js', 'bipagem.js', 'camera.js', 'colar-imagem.js',
   'etiqueta.js', 'helpers.js', 'ocr.js', 'scanner.js', 'triagem.js',
+  'busca.js',   // b516: tela de bipe UNICA (era copia por empresa)
 ];
 
 router.use('/js-AMB', (req, res, next) => {
