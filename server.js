@@ -544,7 +544,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.126.32 (b518: auditoria — TikTok da AMB/Girassol capturado; falha de gravacao tenta em 5 min; NF da AMB pesquisavel)',
+      version: '9.126.33 (b519: card de aprovadas da GOOD mostra quem triou pela reserva funcionario)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),

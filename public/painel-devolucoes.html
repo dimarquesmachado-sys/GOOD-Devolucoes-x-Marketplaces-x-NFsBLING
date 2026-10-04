@@ -2313,7 +2313,9 @@
       // devolucao, e o painel ja o carregava — mas so pra um botao separado,
       // nunca pra esta fila. Agora a fila consulta o mesmo indice.
       const avisoJaTemNF = _nfDevAvisoHtml(d);
-      const desc = (d.problema_descricao || '').replace(/^Aprovado por\s+/, '');
+      // b519 - AUDITORIA (Codex, 04/10): registro com a descricao vazia mostrava "por" em branco; o nome tambem fica
+      // em `funcionario` (a AMB/Girassol ja lia de reserva). Paridade.
+      const desc = (d.problema_descricao || '').replace(/^Aprovado por\s+/, '') || (d.funcionario || '');
 
       // v3.17.0 - detecta se eh devolucao parcial (tem fotos + descricao comeca com [DEVOLUCAO PARCIAL)
       const ehParcial = (d.problema_descricao || '').startsWith('[DEVOLUCAO PARCIAL');
