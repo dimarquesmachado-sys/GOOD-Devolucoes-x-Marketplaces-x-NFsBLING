@@ -534,7 +534,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.126.22 (b508: Codex #418 - lancar da espreita na AMB: sessao admin, chave exata, pack, so ML, orcamento de tempo)',
+      version: '9.126.23 (b509: de-para de SKU tambem na GOOD — tabela, rotas e tela)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -5269,6 +5269,20 @@ function classificarMotivoDevolucao(order, shipment) {
 // tivesse sido triado, com TODOS os itens da venda - e ele cai na fila
 // "Aprovadas - aguardando NF", onde o Diego ja escolhe o deposito e emite.
 // Regra dele: venda sem NF nao passa - se nao achou, e problema do app.
+/* b509 - DE-PARA DE SKU na GOOD (auditoria multiempresa de 02/10: so a AMB/Girassol tinha). Mesma tela e mesmas
+   rotas da AMB, com a biblioteca unica lib/sku-depara.js (empresa como parametro). Tabela sku_depara criada
+   pelo dono em 02/10 (like sku_depara_amb). */
+const skuDeparaGOOD = require('./lib/sku-depara').criarSkuDepara({ obterDb: () => supabase, tabelaDepara: 'sku_depara', tabelaDevolucoes: 'devolucoes', colunaData: 'created_at' });
+app.get('/api/admin/sku-depara', requerAdmin, async (req, res) => { res.json(await skuDeparaGOOD.listarDepara()); });
+app.post('/api/admin/sku-depara', requerAdmin, async (req, res) => {
+  const b = req.body || {};
+  const r = await skuDeparaGOOD.salvarDepara({ sku_antigo: b.sku_antigo || b.antigo, sku_atual: b.sku_atual || b.atual, produto_id: b.produto_id || null, quem: req.usuario || null });
+  res.status(r.ok ? 200 : 400).json(r);
+});
+app.get('/api/admin/sku-depara/retroativo', requerAdmin, async (req, res) => { res.json(await skuDeparaGOOD.corrigirSkusAntigos({ aplicar: false })); });
+app.post('/api/admin/sku-depara/retroativo', requerAdmin, async (req, res) => { res.json(await skuDeparaGOOD.corrigirSkusAntigos({ aplicar: true })); });
+app.delete('/api/admin/sku-depara/:sku', requerAdmin, async (req, res) => { res.json(await skuDeparaGOOD.apagarDepara(req.params.sku)); });
+
 app.post('/api/admin/espreita/lancar-nf', requerAdmin, async (req, res) => {
   const pedidos = Array.isArray(req.body?.pedidos) ? req.body.pedidos : [];
   if (pedidos.length === 0) return res.status(400).json({ ok: false, erro: 'nenhum pedido selecionado' });
