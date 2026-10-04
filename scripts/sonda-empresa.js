@@ -77,7 +77,11 @@ async function testarTokenML(access, apiBase) {
       return { aceito: false, motivo: `HTTP ${r.status} — credencial recusada` };
     }
     if (!r.ok) return { aceito: null, motivo: `HTTP ${r.status} — não deu para confirmar` };
-    return { aceito: true };
+    // b525 - AUDITORIA (Codex, 04/10): token ACEITO nao prova que e da conta CERTA (um token de outra conta passava).
+    // Devolve quem e a conta, pra checagem comparar com <PREFIXO>ML_USER_ID.
+    let conta = null;
+    try { const j = await r.json(); conta = j && j.id != null ? { id: String(j.id), apelido: j.nickname || null } : null; } catch (e) { conta = null; }
+    return { aceito: true, conta };
   } catch (err) {
     return { aceito: null, motivo: (err && err.message) || String(err) };
   }
@@ -221,7 +225,15 @@ registrar('o dono entrega o token', async (chave) => {
       tudoOk = false;
       partes.push(`${integracao} (${politica}): o marketplace RECUSOU — ${r.motivo}`);
     } else if (r.aceito === true) {
-      partes.push(`${integracao} (${politica}): aceitou numa chamada real`);
+      // b525 - AUDITORIA: no ML, confere se o token e da CONTA DESTA empresa (<PREFIXO>ML_USER_ID)
+      const esperado = integracao === 'ml' ? String(process.env[(require('../lib/empresas').obterEmpresa(chave) || {}).prefixoEnv + 'ML_USER_ID'] || '').trim() : '';
+      if (integracao === 'ml' && r.conta && esperado && r.conta.id !== esperado) {
+        tudoOk = false;
+        partes.push(`ml (${politica}): ⚠️ token de OUTRA conta — respondeu ${r.conta.id}${r.conta.apelido ? ' (' + r.conta.apelido + ')' : ''}, esperado ${esperado}`);
+        continue;
+      }
+      partes.push(`${integracao} (${politica}): aceitou numa chamada real`
+        + (integracao === 'ml' && r.conta ? (esperado ? ` — conta ${r.conta.id} CONFIRMADA` : ` — conta ${r.conta.id} (NAO VERIFICADA: falta ML_USER_ID da empresa)`) : ''));
     } else {
       // rede/serviço não confirmou — não é prova de token ruim, mas também
       // não é "pode ativar" (mesmo critério do `naoOlhei` da checagem de tabelas)
@@ -333,6 +345,52 @@ registrar('tabelas no Supabase', async (chave) => {
 });
 
 /* ── 5. a empresa está desativada (é assim que tem que estar) ────── */
+/* -- b525 - AUDITORIA (Codex, 04/10): CAPTURA RECENTE ---------------------------------------
+   A captura persistente e o que o bipe consulta quando o marketplace para de listar (#432). Sonda verde sem
+   captura recente era meia verdade. Le a ultima linha DESTA empresa em devolucoes_capturadas. */
+registrar('captura recente', async (chave) => {
+  const e = require('../lib/empresas').obterEmpresa(chave);
+  const url = process.env[(e && e.prefixoEnv || '') + 'SUPABASE_URL'] || process.env.SUPABASE_URL;
+  const key = process.env[(e && e.prefixoEnv || '') + 'SUPABASE_KEY'] || process.env.SUPABASE_KEY;
+  if (!url || !key) return { ok: false, detalhe: 'NAO VERIFICADO — sem as envs do Supabase', erro: 'sem SUPABASE_URL/KEY' };
+  try {
+    const sb = require('@supabase/supabase-js').createClient(url, key);
+    const emp = String((e && e.chaveDados) || chave).toLowerCase();
+    const r = await sb.from('devolucoes_capturadas').select('*').eq('empresa', emp).order('visto_por_ultimo', { ascending: false }).limit(1);   // coluna que a captura renova a cada gravacao
+    if (r.error) return { ok: false, detalhe: 'FALHOU — ' + r.error.message, erro: r.error.message };
+    const l = (r.data || [])[0];
+    if (!l) return { ok: true, detalhe: 'NAO VERIFICADO — nenhuma captura gravada ainda pra ' + emp, aviso: 'sem linha nenhuma: a captura nunca gravou nesta empresa (ou ela e nova)' };
+    const quando = l.visto_por_ultimo || l.capturado_em;
+    const horas = quando ? (Date.now() - new Date(quando).getTime()) / 3600e3 : null;
+    if (horas == null) return { ok: true, detalhe: 'NAO VERIFICADO — a linha nao tem data' };
+    if (horas > 6) return { ok: false, detalhe: 'FALHOU — ultima captura ha ' + Math.round(horas) + ' h', erro: 'a captura grava 1x/hora: mais de 6 h sem gravar e falha (veja /<empresa>/status -> captura)' };
+    return { ok: true, detalhe: 'CONFIRMADO — ultima captura ha ' + Math.round(horas * 60) + ' min' };
+  } catch (err) { return { ok: false, detalhe: 'NAO VERIFICADO — ' + ((err && err.message) || err) }; }
+});
+
+/* -- b525 - AUDITORIA: CANAIS (confirmado / falhou / nao aplicavel / nao verificado) ------------
+   A sonda so testava Bling e ML. Aqui o estado de configuracao dos outros canais, sem chamar a API deles
+   (Shopee vai pelo proxy; TikTok pela ponte com mapa FECHADO de lojas no Mover-Pedidos). */
+registrar('canais (Magalu, Shopee, TikTok)', async (chave) => {
+  const e = require('../lib/empresas').obterEmpresa(chave) || {};
+  const pre = e.prefixoEnv || '';
+  const tem = (n) => !!String(process.env[pre + n] || '').trim();
+  const partes = [];
+  // Magalu: token + tenant da empresa; credencial propria ou a da GOOD
+  if (tem('MAGALU_ACCESS_TOKEN') || tem('MAGALU_REFRESH_TOKEN')) {
+    partes.push('Magalu: ' + (tem('MAGALU_TENANT_ID') ? 'configurado' : 'FALHOU (falta ' + pre + 'MAGALU_TENANT_ID)')
+      + (tem('MAGALU_CLIENT_ID') ? ' · credencial propria' : ' · usa a credencial da GOOD'));
+  } else partes.push('Magalu: NAO APLICAVEL (sem token da empresa)');
+  // Shopee: proxy compartilhado (o servico multi-loja)
+  partes.push('Shopee: ' + ((process.env.SHOPEE_PROXY_URL && process.env.SHOPEE_PROXY_KEY) ? 'NAO VERIFICADO (proxy configurado; a loja e conferida no /' + chave + '/status)' : 'FALHOU (proxy sem SHOPEE_PROXY_URL/KEY)'));
+  // TikTok: a ponte tem mapa fechado de lojas
+  let tiktok = 'NAO VERIFICADO';
+  try { const ponte = require('../lib/tiktok-ponte'); if (typeof ponte.lojaDaEmpresa === 'function') tiktok = ponte.lojaDaEmpresa(e.chaveDados || chave) ? 'mapeado na ponte' : 'NAO APLICAVEL (loja nao mapeada na ponte do Mover-Pedidos)'; } catch (err) { tiktok = 'NAO VERIFICADO'; }
+  partes.push('TikTok: ' + tiktok);
+  const falhou = partes.some((x) => /FALHOU/.test(x));
+  return { ok: !falhou, detalhe: partes.join(' | '), erro: falhou ? 'algum canal configurado pela metade' : null };
+});
+
 registrar('estado no contrato', async (chave) => {
   // 30/09 (Codex): esta checagem REPROVAVA a empresa ja ativa (b427), porque a
   // sonda nasceu pra PRE-ativacao. A Girassol esta no ar e a sonda virou
