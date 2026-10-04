@@ -157,6 +157,7 @@ async function confirmarAprovar() {
       body: JSON.stringify(payload),
     });
     const d = await r.json();
+    if (d && d.ok && d.aviso) toast('⚠️ ' + d.aviso, 'warn');   // b520: salvo, mas com pendencia — avisa
     if (d.ok) {
       fecharModal('modalAprovar');
       mostrarSucesso('✅ Incluido no estoque!', 'Diego ja foi avisado. Quando for emitir, basta clicar em "Abrir NF no Bling" no painel.');
@@ -867,6 +868,7 @@ async function encerrarParcial() {
       body: JSON.stringify(payload),
     });
     const d = await r.json();
+    if (d && d.ok && d.aviso) toast('⚠️ ' + d.aviso, 'warn');   // b520: salvo, mas com pendencia — avisa
     if (d.ok) {
       fecharModal('modalConfirmacaoParcial');
       // Reset flags

@@ -544,7 +544,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.126.34 (b521: captura recebe TODAS as devolucoes Shopee, sem o corte da tela)',
+      version: '9.126.35 (b522: captura recebe TODAS as devolucoes Shopee; Magalu com falha nao vira sem devolucoes)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
