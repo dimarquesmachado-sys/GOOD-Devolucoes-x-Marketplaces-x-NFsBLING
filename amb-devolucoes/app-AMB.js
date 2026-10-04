@@ -3139,6 +3139,9 @@ router.post('/api/admin/espreita/lancar-nf', auth.requerAdmin, async (req, res) 
         produto_titulo: (primeiro.item && primeiro.item.title) || null,
         produto_sku: (primeiro.item && (primeiro.item.seller_sku || primeiro.item.seller_custom_field)) || null,
         produto_qtd: qtdTotal || 1,
+        // Codex #418 (P2): a venda com VARIOS produtos guarda TODOS (o card mostra item por item em 'itens da NF'),
+        // em vez de so o 1o com a quantidade somada. Nao vira 'itens_devolvidos': a espreita nao sabe o que voltou.
+        nf_itens: itens.map((x) => ({ sku: (x.item && (x.item.seller_sku || x.item.seller_custom_field)) || null, titulo: (x.item && x.item.title) || null, quantidade: x.quantity || 1, valor: x.unit_price != null ? x.unit_price : null })),
         nf_numero: nf.numero, nf_serie: nf.serie, nf_chave: nf.chave, nf_id_bling: nf.id_bling || null,
         nf_valor: nf.valor || null, nf_data_emissao: nf.data_emissao || null,
         status: 'aprovado', funcionario: req.usuario || 'admin',
