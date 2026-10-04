@@ -44,10 +44,12 @@ Além disso:
 
 - `app-AMB.js` é fábrica: `criar(empresa)` devolve instância própria
 - o bootstrap monta **todas** as empresas ativas do contrato
-- o front descobre a base pela URL (`/amb`, `/girassol`, ou raiz)
+- o **servidor** entrega ao front a rota e a chave de dados da ficha (b513); sem lista fechada de empresas e
+  sem cair na raiz da GOOD — a URL so e reserva se o marcador nao for trocado
 - a PWA tem `id` e nome por empresa (senão as duas se instalam como um app só)
 - o segredo do cookie é por empresa, e **sem ele o boot cai** — de propósito
-- a ficha da Girassol existe e é testada; a empresa segue **inativa** no contrato
+- a Girassol esta **ATIVA e operando desde 30/09/2026** (64 NFs lancadas e 64 devolucoes emitidas; apps
+  proprios em Bling, ML, Shopee e Magalu)
 
 ## O que falta, e não é código
 
