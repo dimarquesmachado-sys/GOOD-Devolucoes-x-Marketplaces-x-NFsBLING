@@ -133,6 +133,7 @@ function renderizar(data, ok) {
       return;
     }
     renderizarErro(data.erro || 'Codigo nao encontrado', data.tentativas);
+    sugerirRetiro();   // b504
     return;
   }
 
@@ -1182,4 +1183,26 @@ function renderizarErro(mensagem, tentativas) {
   html += '</div>';
   divResultado.innerHTML = html + blocoEventosCheckout();   // ev2
   divResultado.classList.add('show');
+}
+
+// b504 - bipe da ETIQUETA DE RETIRADA do Full: o codigo dela nao existe na API do ML. Quando o bipe nao acha
+// nada e ha pecas "vem pelo RETIRO", mostra essas pra escolher — um toque busca pelo numero do pedido.
+async function sugerirRetiro() {
+  try {
+    const r = await fetch((window.APP_BASE || '') + '/api/espreita/retiro');
+    const d = await r.json();
+    const itens = (d && d.ok && Array.isArray(d.itens)) ? d.itens : [];
+    if (!itens.length || !divResultado) return;
+    let html = '<div class="card" style="border:2px solid #6a1b9a;margin-top:10px;"><div style="font-weight:700;color:#6a1b9a;margin-bottom:6px;">🔁 Pode ser uma etiqueta de RETIRADA do Full — estas peças estão vindo pelo retiro:</div>';
+    itens.forEach((it) => {
+      html += '<div style="padding:7px 9px;margin:5px 0;background:#f3e5f5;border-radius:8px;cursor:pointer;" onclick="buscarPedidoRetiro(\'' + escapeHtml(String(it.pedido || '')) + '\')">' +
+        '📦 Pedido <b>' + escapeHtml(String(it.pedido || '?')) + '</b> — ' + escapeHtml(String(it.status || '')) + '</div>';
+    });
+    divResultado.insertAdjacentHTML('beforeend', html + '</div>');
+  } catch (e) { /* sugestao extra: falhar aqui nao muda o erro que ja esta na tela */ }
+}
+function buscarPedidoRetiro(pedido) {
+  if (!pedido) return;
+  inputCodigo.value = String(pedido);
+  buscar();
 }
