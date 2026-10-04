@@ -647,7 +647,7 @@ const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 // checado ANTES de entrar na fila da empresa — nao antes de sair, entao um
 // candidato ja desistido ainda batia no Bling depois de esperar numa pausa
 // de 429. Ver bling-AMB.js, nf-nomes-AMB.js e identificar-AMB.js.
-const VERSAO = 'AMB Devolucoes b517';
+const VERSAO = 'AMB Devolucoes b518';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -2030,16 +2030,26 @@ function capturarDevolucoesEmpresa(emTransito, forcar) {
   const sb = db.cliente();
   if (!sb) { CAPTURA.estado.erro = 'Supabase nao configurado'; return; }
   if (CAPTURA.rodando) return;
-  if (!forcar && Date.now() - CAPTURA.ultima < CAPTURA_INTERVALO_MS) return;
+  // b518 - AUDITORIA (Codex, 04/10): a janela de 1 h contava a TENTATIVA — banco falhou, ninguem tentava de
+  // novo por 1 h. Agora: 1 h desde a ultima GRAVACAO BEM-SUCEDIDA; depois de falha, nova tentativa em 5 min.
+  const _desde = CAPTURA.falhou ? (5 * 60 * 1000) : CAPTURA_INTERVALO_MS;
+  if (!forcar && Date.now() - CAPTURA.ultima < _desde) return;
   CAPTURA.rodando = true;
   CAPTURA.ultima = Date.now();
   const linhas = (emTransito || []).map((d) => devCapturadas.traduzir(d, CHAVE_DADOS)).filter(Boolean);
   // o TikTok entra pela ponte, como na GOOD — e um erro la nao derruba o resto
   let erroTikTok = null;
   const comTikTok = tiktokPonte.sondaDevolucoes(CHAVE_DADOS, { limite: CAPTURA_LIMITE_TIKTOK })
-    .then((r) => ((r && r.ok && Array.isArray(r.devolucoes)) ? r.devolucoes : [])
-      .map((d) => devCapturadas.traduzir(tiktokDevCaptura.normalizar(d, CHAVE_DADOS), CHAVE_DADOS))
-      .filter(Boolean))
+    // b518 - AUDITORIA (Codex, 04/10, ALTA): lia `r.devolucoes`, mas a ponte entrega a lista em `r.cru.devolucoes`
+    // (a GOOD ja lia certo) — o TikTok da AMB/Girassol NUNCA era capturado, e com `erro: null`. E a ponte devolve
+    // ok:false (nao rejeita): sem este ramo, a falha virava lista vazia sem `tiktok_erro`.
+    .then((r) => {
+      if (!r || !r.ok) { erroTikTok = (r && r.erro) || 'ponte indisponivel'; return []; }
+      if (!r.cru || !Array.isArray(r.cru.devolucoes)) { erroTikTok = 'a ponte respondeu sem a lista de devolucoes'; return []; }
+      return r.cru.devolucoes
+        .map((d) => devCapturadas.traduzir(tiktokDevCaptura.normalizar(d, CHAVE_DADOS), CHAVE_DADOS))
+        .filter(Boolean);
+    })
     .catch((e) => { erroTikTok = e.message; return []; });
   return comTikTok.then((extras) => devCapturadas.guardar(sb, linhas.concat(extras)))
     .then((r) => {
@@ -2049,10 +2059,11 @@ function capturarDevolucoesEmpresa(emTransito, forcar) {
         tiktok_erro: erroTikTok || undefined,
         erro: (r && r.ok) ? null : ((r && r.erros) || ['falha desconhecida']).join(' | '),
       };
+      CAPTURA.falhou = !(r && r.ok);   // b518: falha = nova tentativa em 5 min (nao em 1 h)
       if (r && r.ok) console.log(`[${TAG_APP}/CAPTURA] ${r.gravadas} devolucoes guardadas`);
       else console.error(`[${TAG_APP}/CAPTURA] falhou: ${CAPTURA.estado.erro}`);
     })
-    .catch((e) => { CAPTURA.estado = { ...CAPTURA.estado, erro: e.message }; })
+    .catch((e) => { CAPTURA.falhou = true; CAPTURA.estado = { ...CAPTURA.estado, erro: e.message }; })
     .finally(() => { CAPTURA.rodando = false; });
 }
 
