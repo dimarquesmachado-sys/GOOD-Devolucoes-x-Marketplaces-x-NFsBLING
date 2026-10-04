@@ -1159,6 +1159,11 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
   const EXTRAS = ['produto_valor_unit', 'nf_link_danfe', 'buyer_id', 'buyer_nickname',
                   'produto_mlb', 'magalu_protocolo', 'marketplace', 'tracking',
                   'problema_fotos', 'itens_devolvidos'];
+  // b520: o que ficou sem salvar, em portugues (fotos e itens sao os que importam pra decisao da NF)
+  function avisoPendentes(pend) {
+    const nomes = { problema_fotos: 'fotos', itens_devolvidos: 'lista de itens que voltaram', marketplace: 'marketplace', tracking: 'rastreio' };
+    return 'Registro salvo, mas NAO gravou: ' + pend.map((k) => nomes[k] || k).join(', ') + ' — confira no painel.';
+  }
   async function completarRegistro(r, d) {
     // a tela manda as fotos com nomes diferentes conforme o fluxo
     if (!d.problema_fotos) {
@@ -1174,15 +1179,17 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
       const u = await db.atualizarTriagem(id, campos);
       if (u.ok) return { ...r, registro: u.registro };
       // alguma coluna nao existe: salva uma a uma o que a tabela aceitar
-      let ultimo = r;
+      // b520 - AUDITORIA (Codex, 04/10): a aprovacao dizia 'sucesso' mesmo quando fotos/itens nao gravavam.
+      // Agora a resposta diz exatamente o que ficou PENDENTE (o registro principal ja esta salvo).
+      let ultimo = r; const pendentes = [];
       for (const [k, v] of Object.entries(campos)) {
         try {
           const u2 = await db.atualizarTriagem(id, { [k]: v });
-          if (u2.ok) ultimo = { ...ultimo, registro: u2.registro };
-        } catch (e) { /* coluna inexistente: ignora esse campo */ }
+          if (u2.ok) ultimo = { ...ultimo, registro: u2.registro }; else pendentes.push(k);
+        } catch (e) { pendentes.push(k); }
       }
-      return ultimo;
-    } catch (e) { return r; }
+      return pendentes.length ? { ...ultimo, pendentes, aviso: avisoPendentes(pendentes) } : ultimo;
+    } catch (e) { const pend = Object.keys(campos); return { ...r, pendentes: pend, aviso: avisoPendentes(pend) }; }
   }
 
 
@@ -1201,7 +1208,19 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
     // todo card aprovado da AMB e da Girassol, mesmo com o nome gravado.
     const marcaBipagem = d.bipagem_forcada
       ? `[BIPAGEM FORCADA] OBS: ${d.bipagem_observacao || ''}` : '[bipagem OK]';
-    const descricao = d.problema_descricao || `Aprovado por ${req.usuario} ${marcaBipagem}`;
+    // b520 - AUDITORIA (Codex, 04/10): a DEVOLUCAO PARCIAL perdia a caracterizacao na AMB/Girassol — a tela manda
+    // eh_parcial, produto_qtd_original e observacao_parcial, e aqui so se lia problema_descricao (vazio na parcial):
+    // o registro virava 'Aprovado por X' e o painel (que reconhece a parcial pelo texto) perdia o selo, as fotos e a
+    // trava. Paridade com a GOOD (v3.17.0): mesmo texto, mesma exigencia de 6 fotos.
+    const ehParcial = !!d.eh_parcial;
+    const fotosParcial = Array.isArray(d.fotos_parcial) ? d.fotos_parcial : [];
+    if (ehParcial && fotosParcial.length < 6) {
+      return res.status(400).json({ ok: false, erro: 'Devolucao parcial requer no minimo 6 fotos (recebido: ' + fotosParcial.length + ')' });
+    }
+    const obsParcial = String(d.observacao_parcial || '').trim();
+    const descricao = ehParcial
+      ? `[DEVOLUCAO PARCIAL por ${req.usuario}] Recebido: ${d.produto_qtd} de ${d.produto_qtd_original || '?'} unidades.${obsParcial ? ' OBS: ' + obsParcial : ''}`
+      : (d.problema_descricao || `Aprovado por ${req.usuario} ${marcaBipagem}`);
     const r = await db.registrarTriagem({ ...d, problema_descricao: descricao, status: 'aprovado', funcionario: req.usuario });
     res.json(r.ok ? await completarRegistro(r, d) : r);
   });
