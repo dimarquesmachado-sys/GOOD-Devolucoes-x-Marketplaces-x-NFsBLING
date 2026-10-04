@@ -21,7 +21,6 @@ const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o
 const PAINEIS = [
   ['GOOD  painel-devolucoes', path.join(RAIZ, 'public', 'painel-devolucoes.html')],
   ['AMB   painel-AMB',        path.join(RAIZ, 'amb-devolucoes', 'public-AMB', 'painel-AMB.html')],
-  ['AMB   painel2-AMB',       path.join(RAIZ, 'amb-devolucoes', 'public-AMB', 'painel2-AMB.html')],
 ];
 
 PAINEIS.forEach(([nome, arq]) => {

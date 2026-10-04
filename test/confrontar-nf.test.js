@@ -81,7 +81,6 @@ const CHAVE_S3 = '35260864289091000100550030000006371448079669';   // serie 003,
   for (const [nome, rel] of [
     ['GOOD', 'public/painel-devolucoes.html'],
     ['AMB (servido)', 'amb-devolucoes/public-AMB/painel-AMB.html'],
-    ['AMB (direto)', 'amb-devolucoes/public-AMB/painel2-AMB.html'],
   ]) {
     const html = fs.readFileSync(path.join(RAIZ, rel), 'utf8');
     ok(/qual é a desta venda\?/.test(html), nome + ': o card pergunta qual das notas e');
@@ -132,7 +131,6 @@ const CHAVE_S3 = '35260864289091000100550030000006371448079669';   // serie 003,
   for (const [nome, rel] of [
     ['GOOD', 'public/painel-devolucoes.html'],
     ['AMB (servido)', 'amb-devolucoes/public-AMB/painel-AMB.html'],
-    ['AMB (direto)', 'amb-devolucoes/public-AMB/painel2-AMB.html'],
   ]) {
     const html = fs.readFileSync(path.join(RAIZ, rel), 'utf8');
     ok(/emitida pelo /.test(html) && /marketplace no Full/.test(html),

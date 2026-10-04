@@ -66,7 +66,7 @@ const DIR = path.join(RAIZ, 'amb-devolucoes', 'public-AMB');
 
   // ⚠️ o painel PRECISA carregar o base-amb.js, senão APP_BASE é undefined e
   // o fallback `|| ''` manda tudo pra raiz de novo — o bug de volta, calado.
-  for (const painel of ['painel-AMB.html', 'painel2-AMB.html']) {
+  for (const painel of ['painel-AMB.html']) {
     const html = fs.readFileSync(path.join(DIR, painel), 'utf8');
     ok(/js-AMB\/base-amb\.js/.test(html),
        `⚠️ ${painel} CARREGA o base-amb.js (senao APP_BASE fica undefined)`);

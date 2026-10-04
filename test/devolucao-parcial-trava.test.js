@@ -5,7 +5,7 @@ let falhas = 0;
 const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o); };
 function fonte(html, nome) { const i = html.search(new RegExp('function ' + nome + '\\s*\\(')); if (i < 0) return ''; let j = html.indexOf('{', i), prof = 0, k = j; for (; k < html.length; k++) { if (html[k] === '{') prof++; else if (html[k] === '}') { prof--; if (prof === 0) break; } } return html.slice(i, k + 1); }
 const nf = [{ sku: 'CABOLATERAL', quantidade: 1 }, { sku: '7150-220v', quantidade: 1 }, { sku: 'KP4', quantidade: 1 }];
-for (const arq of ['amb-devolucoes/public-AMB/painel-AMB.html', 'amb-devolucoes/public-AMB/painel2-AMB.html', 'public/painel-devolucoes.html']) {
+for (const arq of ['amb-devolucoes/public-AMB/painel-AMB.html', 'public/painel-devolucoes.html']) {
   const html = fs.readFileSync(path.join(__dirname, '..', arq), 'utf8');
   const ctx = {}; vm.createContext(ctx); vm.runInContext(fonte(html, 'faltasDevolucaoParcial'), ctx);
   const total = ctx.faltasDevolucaoParcial({ nf_itens: nf, itens_devolvidos: [{ sku: 'CABOLATERAL', qtd: 1 }, { sku: '7150-220v', qtd: 1 }, { sku: 'KP4', qtd: 1 }] });

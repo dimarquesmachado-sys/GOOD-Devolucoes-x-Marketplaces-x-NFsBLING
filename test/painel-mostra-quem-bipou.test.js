@@ -25,7 +25,7 @@ ok(/\[bipagem OK\]/.test(bloco) && /\[BIPAGEM FORCADA\]/.test(bloco),
 ok(/problema_descricao: descricao/.test(bloco),
    '  e manda pro registrarTriagem (nao so no log)');
 
-for (const painel of ['painel-AMB.html', 'painel2-AMB.html']) {
+for (const painel of ['painel-AMB.html']) {
   const html = fs.readFileSync(path.join(__dirname, '..', 'amb-devolucoes', 'public-AMB', painel), 'utf8');
   ok(/\.replace\(\/\^Aprovado por\\s\+\/, ''\) \|\| \(d\.funcionario \|\| ''\)/.test(html),
      `⚠️ ${painel}: le \`funcionario\` como reserva (cobre os cards antigos)`);

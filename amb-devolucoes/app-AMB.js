@@ -647,7 +647,7 @@ const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 // checado ANTES de entrar na fila da empresa — nao antes de sair, entao um
 // candidato ja desistido ainda batia no Bling depois de esperar numa pausa
 // de 429. Ver bling-AMB.js, nf-nomes-AMB.js e identificar-AMB.js.
-const VERSAO = 'AMB Devolucoes b531';
+const VERSAO = 'AMB Devolucoes b532';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -1350,14 +1350,12 @@ router.get('/painel-AMB.html', (req, res) => {
 // express.static, cru — a Girassol abria essas duas roxas mesmo com o index
 // e o painel ja amarelos. Tela compartilhada tem que receber o tema em TODA
 // rota que a entrega, nao so nas que ja tinham substituicao.
-const PAINEL2_AMB_HTML = comTema(fs.readFileSync(
-  path.join(__dirname, 'public-AMB', 'painel2-AMB.html'), 'utf8'));
 const DEFEITOS_AMB_HTML = comTema(fs.readFileSync(
   path.join(__dirname, 'public-AMB', 'defeitos-AMB.html'), 'utf8'));
-router.get('/painel2-AMB.html', (req, res) => {
-  res.set('Cache-Control', 'no-cache, must-revalidate');
-  res.type('html').send(PAINEL2_AMB_HTML);
-});
+// b532 - UNIFICACAO DO PAINEL, passo 1 (dono, 04/10: "so usa o triagem e o painel admin"): o painel2 era uma copia
+// mais antiga do painel-AMB (nenhuma funcao so dele, 19 a menos), que nenhuma tela linkava — cada ajuste de tela
+// era feito nele tambem a toa. Aposentado: quem tiver o endereco salvo cai no painel de verdade.
+router.get('/painel2-AMB.html', (req, res) => res.redirect(302, (req.baseUrl || '') + '/painel'));
 router.get('/defeitos-AMB.html', (req, res) => {
   res.set('Cache-Control', 'no-cache, must-revalidate');
   res.type('html').send(DEFEITOS_AMB_HTML);

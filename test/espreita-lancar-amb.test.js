@@ -16,7 +16,7 @@ ok(/if \(!ja \|\| ja\.ok === false\)/.test(rota), '  banco fora do ar = falha av
 ok(/ml\.chamarML\('\/orders\/' \+ oid\)/.test(rota) && /invoice_data\?siteId=MLB/.test(rota), '  le a venda e a NF no ML DESTA empresa');
 ok(/db\.registrarTriagem\(\{/.test(rota) && /status: 'aprovado'/.test(rota), '⚠️ grava na tabela DESTA empresa como aprovada aguardando NF');
 ok(/nf_itens: itens\.map\(/.test(rota), '  Codex #418: venda com varios produtos guarda todos (nao so o 1o)');
-for (const f of ['painel-AMB.html', 'painel2-AMB.html']) {
+for (const f of ['painel-AMB.html']) {
   const h = fs.readFileSync(path.join(__dirname, '..', 'amb-devolucoes', 'public-AMB', f), 'utf8');
   ok(!/ESTA FUNCAO NAO EXISTE NA AMB/.test(h) && !/ainda n.o existe na AMBTotal/.test(h), '⚠️ ' + f + ': o aviso "nao existe na AMB" saiu — o botao funciona');
   ok(/\(window\.APP_BASE \|\| ''\) \+ '\/api\/admin\/espreita\/lancar-nf'/.test(h), '  ' + f + ': chama a rota da propria empresa');

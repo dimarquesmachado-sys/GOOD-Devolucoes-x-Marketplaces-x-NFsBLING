@@ -10,7 +10,7 @@ function fonte(html, nome) {
   for (; k < html.length; k++) { if (html[k] === '{') prof++; else if (html[k] === '}') { prof--; if (prof === 0) break; } }
   return html.slice(i, k + 1);
 }
-for (const arq of ['amb-devolucoes/public-AMB/painel-AMB.html', 'amb-devolucoes/public-AMB/painel2-AMB.html', 'public/painel-devolucoes.html']) {
+for (const arq of ['amb-devolucoes/public-AMB/painel-AMB.html', 'public/painel-devolucoes.html']) {
   const html = fs.readFileSync(path.join(__dirname, '..', arq), 'utf8');
   const div = fonte(html, 'itemHtmlDivergente');
   ok(/abrirModalGerarDevolucao\(/.test(div) && /Gerar NF/.test(div), '⚠️ ' + arq + ': o card DIVERGENTE tem o botao "Gerar NF"');

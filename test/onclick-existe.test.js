@@ -51,7 +51,6 @@ function declaradaGlobal(codigo, f) {
 for (const [nome, rel] of [
   ['GOOD', 'public/painel-devolucoes.html'],
   ['AMB (servido)', 'amb-devolucoes/public-AMB/painel-AMB.html'],
-  ['AMB (direto)', 'amb-devolucoes/public-AMB/painel2-AMB.html'],
 ]) {
   const s = fs.readFileSync(path.join(RAIZ, rel), 'utf8');
   const chamadas = new Set([...s.matchAll(/onclick="(\w+)\(/g)].map((m) => m[1]));
