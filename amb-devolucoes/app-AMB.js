@@ -647,7 +647,7 @@ const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 // checado ANTES de entrar na fila da empresa — nao antes de sair, entao um
 // candidato ja desistido ainda batia no Bling depois de esperar numa pausa
 // de 429. Ver bling-AMB.js, nf-nomes-AMB.js e identificar-AMB.js.
-const VERSAO = 'AMB Devolucoes b528';
+const VERSAO = 'AMB Devolucoes b530';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -875,8 +875,8 @@ router.get('/oauth/iniciar', admin, (req, res) => {
     if (!magalu.temCredenciais()) {
       return res.status(200).send(pagina('Falta credencial',
         `<h1>Faltam credenciais do Magalu</h1><div class="card">Este servico precisa das vars
-         <code>MAGALU_CLIENT_ID</code> e <code>MAGALU_CLIENT_SECRET</code> (as mesmas da GOOD —
-         nao tem prefixo AMB porque o app e compartilhado; a CONTA autorizada e decidida no login).</div>`));
+         <code>${PREFIXO_ENV_EMPRESA}MAGALU_CLIENT_ID</code> e <code>${PREFIXO_ENV_EMPRESA}MAGALU_CLIENT_SECRET</code>
+         (client PROPRIO desta empresa — nao use as da GOOD, sem prefixo).</div>`));
     }
     const state = novoState('magalu');
     return res.redirect(magalu.urlAutorizacao(state, redirectOAuth()));
