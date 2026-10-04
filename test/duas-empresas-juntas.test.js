@@ -431,8 +431,8 @@ process.env.AMB_SUPABASE_KEY = 'chave-de-teste';
     // lugares, nos dois painéis.
     const baseJs = fs.readFileSync(path.join(RAIZ, 'amb-devolucoes',
       'public-AMB', 'js-AMB', 'base-amb.js'), 'utf8');
-    ok(/window\.APP_EMPRESA = String\(BASE/.test(baseJs),
-       '⚠️ o front expoe a chave curta da empresa');
+    ok(/window\.APP_EMPRESA = "%%APP_EMPRESA%%"/.test(baseJs),
+       '⚠️ o front recebe a chave de dados diretamente da ficha');
 
     for (const painel of ['painel-AMB.html', 'painel2-AMB.html']) {
       const html = fs.readFileSync(
@@ -493,16 +493,17 @@ process.env.AMB_SUPABASE_KEY = 'chave-de-teste';
     ok(/window\.APP_EMPRESA/.test(buscaJs),
        '  e usa a chave curta da empresa pra montar o link');
 
-    // ── ⚠️ e a chave da GOOD, quando ela sobe pela fábrica (achado do
-    // Codex, #336) ──────────────────────────────────────────────────────
-    //
-    // O bootstrap pode montar `criarAppEmpresa('good')` em `/good`, servindo
-    // os MESMOS arquivos de public-AMB/. Sem `/good` na lista de prefixos
-    // conhecidos, `BASE` caía no `''` da raiz — e `window.APP_EMPRESA`
-    // herdava o fallback `'amb'`, mandando essa instância pros links da
-    // AMBTotal.
-    ok(/PREFIXOS_CONHECIDOS = \[[^\]]*'\/good'/.test(baseJs),
-       "⚠️ base-amb.js: '/good' entra nos prefixos conhecidos");
+    // Nenhuma lista de empresas no front: BASE/chave vêm da ficha. Assim a
+    // 4a, 10a ou 20a empresa não exige editar JavaScript compartilhado e
+    // jamais cai silenciosamente na raiz GOOD por não estar numa allowlist.
+    ok(/var BASE = "%%APP_BASE%%"/.test(baseJs)
+       && !/PREFIXOS_CONHECIDOS/.test(baseJs),
+       '⚠️ base-amb.js recebe a rota da ficha, sem lista fechada de CNPJs');
+    const defeitosFront = fs.readFileSync(path.join(RAIZ, 'amb-devolucoes',
+      'public-AMB', 'js-AMB', 'defeitos-ficha.js'), 'utf8');
+    ok(/var BASE = window\.APP_BASE \|\| ''/.test(defeitosFront)
+       && !/location\.pathname\.indexOf\('\/amb'\)/.test(defeitosFront),
+       '⚠️ a tela de defeitos tambem usa a base da ficha (nao reconhece so AMB)');
 
     // ── ⚠️ e o NOME DA ENV nos textos da tela ─────────────────────────
     //

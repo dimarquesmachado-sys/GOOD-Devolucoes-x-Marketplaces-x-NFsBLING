@@ -484,7 +484,9 @@ const INDEX_AMB_HTML = comTema(fs.readFileSync(
 // processo nao muda em runtime) e troca o marcador pelo valor da ficha.
 const BASE_AMB_JS = fs.readFileSync(
   path.join(__dirname, 'public-AMB', 'js-AMB', 'base-amb.js'), 'utf8'
-).replace('"%%PASTA_CHECKOUT%%"', JSON.stringify(PASTA_CHECKOUT));
+).replace('"%%APP_BASE%%"', JSON.stringify(BASE))
+  .replace('"%%APP_EMPRESA%%"', JSON.stringify(CHAVE_DADOS))
+  .replace('"%%PASTA_CHECKOUT%%"', JSON.stringify(PASTA_CHECKOUT));
 
 // ⚠️ Codex (revisão do PR #370, P2) - MESMO FURO do INDEX_AMB_HTML, agora no
 // painel: título e <h1> diziam "AMBTotal" pra Girassol tambem.

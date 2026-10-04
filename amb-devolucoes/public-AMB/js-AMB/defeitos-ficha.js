@@ -18,7 +18,9 @@
 (function () {
   'use strict';
 
-  var BASE = (location.pathname.indexOf('/amb') === 0) ? '/amb' : '';
+  // `base-amb.js` recebe a rota da ficha no backend. Derivar aqui por uma
+  // empresa conhecida mandava Girassol e qualquer 4o CNPJ para a raiz GOOD.
+  var BASE = window.APP_BASE || '';
   var euSouAdmin = false;
   var selecionados = {};        // defeito_id -> peca retirada (montar uma boa)
   // b115 - a ficha aberta fica AQUI. Antes eu mandava o texto atual dentro

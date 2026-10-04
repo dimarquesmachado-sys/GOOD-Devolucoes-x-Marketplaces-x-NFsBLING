@@ -14,42 +14,16 @@
 // ════════════════════════════════════════════════════════════════════
 (function () {
   'use strict';
-  // ⚠️ b369 - A BASE VEM DA URL, nao cravada.
+  // ⚠️ A BASE VEM DA FICHA QUE MONTOU ESTE ROUTER, nao de uma lista no front.
   //
   // Era `'/amb'` fixo. Com a Girassol em `/girassol`, toda chamada de API
   // desta tela iria pro servidor da AMB — e como a sessao e por empresa, o
   // usuario da Girassol levaria 401 em tudo, sem entender por que.
   //
-  // 📌 O 1o segmento da URL E o prefixo da empresa: /amb/..., /girassol/...
-  // A GOOD e a raiz (sem prefixo), e por isso a lista de segmentos
-  // conhecidos decide — em vez de assumir que sempre ha um.
-  //
-  // ⚠️ NAO uso "o 1o segmento, seja qual for": se alguem abrir /qualquer/
-  // coisa, isso viraria base e as chamadas iriam pra lugar nenhum. So aceito
-  // o que o backend serve.
-  //
-  // ⚠️ b397.1 (Codex, P1) - FALTAVA '/good' NA LISTA.
-  //
-  // O bootstrap (server.js, via `empresasAtivasNoDevolucoes`) pode montar
-  // `criarAppEmpresa('good')` em `/good` (mesmo fallback do PREFIXO_ROTA em
-  // app-AMB.js e do caminho do cookie em lib/config-da-empresa.js) — e essa
-  // instancia serve os MESMOS arquivos de `public-AMB/`. Sem '/good' aqui,
-  // BASE cai no `''` da raiz (que hoje e a GOOD "de verdade", fora desta
-  // fabrica) e tanto as chamadas de API quanto o `APP_EMPRESA` abaixo
-  // resolveriam errado pra essa instancia.
-  var PREFIXOS_CONHECIDOS = ['/amb', '/girassol', '/good'];
-  var BASE = (function () {
-    // Codex (PR #319, P2) - o Express serve /amb E /AMB (roteamento nao
-    // diferencia maiusculas por padrao). Sem baixar a caixa aqui, um link
-    // ou favorito em maiusculas cairia neste `''` (raiz da GOOD) e toda
-    // chamada de API desta tela levaria 401.
-    var caminho = String(window.location.pathname || '').toLowerCase();
-    for (var i = 0; i < PREFIXOS_CONHECIDOS.length; i++) {
-      var p = PREFIXOS_CONHECIDOS[i];
-      if (caminho === p || caminho.indexOf(p + '/') === 0) return p;
-    }
-    return '';   // a GOOD e a raiz
-  })();
+  // Uma lista ['/amb', '/girassol', '/good'] obrigava alterar este arquivo
+  // para cada CNPJ novo. Pior: esquecer fazia a tela cair na raiz da GOOD.
+  // O servidor substitui estes marcadores com JSON.stringify antes de servir.
+  var BASE = "%%APP_BASE%%";
 
   // ⚠️ b369: as telas precisam da base pra montar link e navegacao. Sem isto
   // elas continuariam escrevendo `/amb/` na mao — que e o que estamos tirando.
@@ -63,9 +37,9 @@
   // o pedido no checkout DA AMBTOTAL: o conserto do backend nunca chegava na
   // tela.
   //
-  // 📌 A chave e a BASE sem a barra ('/amb' -> 'amb'). Vazio na GOOD, que e
-  // a raiz — por isso o `|| 'amb'`, que preserva o comportamento de hoje.
-  window.APP_EMPRESA = String(BASE || '').replace(/^\//, '') || 'amb';
+  // Nao derive da rota: chave de dados e slug HTTP sao identificadores
+  // diferentes (a AMB, por exemplo, tem registro `ambtotal` e dado `amb`).
+  window.APP_EMPRESA = "%%APP_EMPRESA%%";
 
   // ⚠️ b405 - A PASTA DO CHECKOUT NO MOVER-PEDIDOS.
   //
