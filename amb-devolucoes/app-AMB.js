@@ -647,7 +647,7 @@ const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 // checado ANTES de entrar na fila da empresa — nao antes de sair, entao um
 // candidato ja desistido ainda batia no Bling depois de esperar numa pausa
 // de 429. Ver bling-AMB.js, nf-nomes-AMB.js e identificar-AMB.js.
-const VERSAO = 'AMB Devolucoes b527';
+const VERSAO = 'AMB Devolucoes b528';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -2059,7 +2059,9 @@ function capturarDevolucoesEmpresa(emTransito, forcar) {
         tiktok_erro: erroTikTok || undefined,
         erro: (r && r.ok) ? null : ((r && r.erros) || ['falha desconhecida']).join(' | '),
       };
-      CAPTURA.falhou = !(r && r.ok);   // b518: falha = nova tentativa em 5 min (nao em 1 h)
+      // b528 - AUDITORIA (Codex, b520): TikTok com falha PASSAGEIRA (banco OK) tambem tenta de novo em 5 min; falta de
+      // configuracao (loja nao mapeada, sem token) e permanente e segue a janela de 1 h.
+      CAPTURA.falhou = !(r && r.ok) || !!(erroTikTok && !/mapead|configur|deslig|sem token|nao tem/i.test(String(erroTikTok)));   // b518/b528
       if (r && r.ok) console.log(`[${TAG_APP}/CAPTURA] ${r.gravadas} devolucoes guardadas`);
       else console.error(`[${TAG_APP}/CAPTURA] falhou: ${CAPTURA.estado.erro}`);
     })

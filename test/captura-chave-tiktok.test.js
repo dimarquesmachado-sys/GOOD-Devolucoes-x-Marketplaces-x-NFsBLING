@@ -1,0 +1,21 @@
+'use strict';
+// b528 — auditoria (Codex, b520): chave FISCAL (44 digitos) no campo da NF da captura; TikTok com falha passageira tenta em 5 min.
+const fs = require('fs'); const path = require('path');
+let falhas = 0;
+const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o); };
+const R = path.join(__dirname, '..');
+const { traduzir } = require(path.join(R, 'lib', 'devolucoes-capturadas.js'));
+const chave = '35260712345678000199550010000012341000012345';
+const l1 = traduzir({ marketplace: 'ml', pedido: 'P1', chave_nota: 'ml:P1', nf_ml_chave: chave }, 'good');
+ok(l1 && l1.nf_chave === chave, '⚠️ a chave da anotacao (ml:P1) NAO vai pro campo da NF; a fiscal de 44 digitos vai (' + (l1 && l1.nf_chave) + ')');
+const l2 = traduzir({ marketplace: 'shopee', pedido: 'P2', chave_nota: 'BR123' }, 'good');
+ok(l2 && l2.nf_chave === null, '  sem chave fiscal, o campo fica vazio (nunca um codigo que nao e de NF)');
+const l3 = traduzir({ marketplace: 'ml', pedido: 'P3', nf_chave: chave }, 'girassol');
+ok(l3 && l3.nf_chave === chave, '  a chave que ja vinha certa continua indo');
+const a = fs.readFileSync(path.join(R, 'amb-devolucoes', 'app-AMB.js'), 'utf8');
+const g = fs.readFileSync(path.join(R, 'server.js'), 'utf8');
+ok(/CAPTURA\.falhou = !\(r && r\.ok\) \|\| !!\(erroTikTok && !\/mapead\|configur/.test(a), '⚠️ AMB/Girassol: TikTok com falha passageira tenta de novo em 5 min (falta de configuracao segue 1 h)');
+ok(/CAPTURA_FALHOU = !r\.ok \|\| !!\(erroTikTok && !\/mapead\|configur/.test(g), '⚠️ GOOD: idem');
+console.log('');
+console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
+process.exit(falhas ? 1 : 0);
