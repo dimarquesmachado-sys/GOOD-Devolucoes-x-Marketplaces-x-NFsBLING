@@ -544,7 +544,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.126.36 (b523: o bipe consulta a captura persistente quando nada mais acha)',
+      version: '9.126.37 (b524: o bipe consulta a captura em todo "nao encontrado"; sem reembolso TikTok; card so clicavel com NF)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -890,6 +890,13 @@ app.use('/api/devolucao/identificar', (req, res, next) => {
   next();
 });
 
+// b523 - AUDITORIA (Codex, 04/10): antes de QUALQUER "nao encontrado" o bipe consulta a CAPTURA PERSISTENTE (o que
+// a espreita guardou) so DESTA empresa, ate 3 s. Reembolso puro do TikTok fica de fora (ver a lib).
+async function anexarCapturadas(resultado, ids) {
+  const lista = await devCapturadas.sugestoesParaBipe(supabase, 'good', ids, 3000);
+  if (lista.length) resultado.capturadas = lista;
+  return resultado;
+}
 app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
   const codigoOriginal = String(req.params.codigo || '').trim();
   // ⚠️ b475 - NOME PURO NAO E RASTREIO. Um texto SEM NENHUM DIGITO nunca e
@@ -1042,7 +1049,7 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
       // Sem match: orientacao clara (nao vaga pela cascata - 9 digitos
       // limpos cairiam na bissecao de NF e perderiam tempo a toa).
       resultado.erro = `Rastreio CORREIOS ${trk} nao encontrado nas devolucoes ML recentes${devML && devML.claim_id ? ` (claim ${devML.claim_id} sem pedido vinculado)` : ''}. Pode ser devolucao de OUTRO marketplace orientada pelos Correios (Shopee, TikTok...) - confira o REMETENTE na etiqueta, ou bipe a chave da DANFE se a nota vier na caixa.`;
-      return res.status(404).json(resultado);
+      return res.status(404).json(await anexarCapturadas(resultado, [req.params.codigo, trk]));
     }
   }
 
@@ -1131,7 +1138,7 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
       resultado.erro = `QR do ML lido (shipment ${codigoLimpo}) mas a API não achou esse envio. Na MESMA etiqueta: (1) bipe o CÓDIGO DE BARRAS grande, ou (2) digite o Pack ID impresso (2000...). Se for devolução FULL (endereçada ao CD do ML), use a chave da DANFE ou ➕ Lançar por NF.`;
     }
     resultado.qr_ml_sem_shipment = true;
-    return res.status(404).json(resultado);
+    return res.status(404).json(await anexarCapturadas(resultado, [req.params.codigo, codigoLimpo]));
   }
 
   // ===== CHAVE NF-e (v3.34): bipou a chave de 44 digitos da DANFE =====
@@ -1296,7 +1303,7 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
       resultado.erro = ehChaveNFe
         ? `Chave lida, mas a NF ${numeroDaChave} (serie ${serieDaChave}) nao foi localizada no Bling.`
         : `NF ${numeroDaChave} nao localizada no Bling (procurei em todas as series, ultimos 18 meses). Confira o numero, ou bipe a chave da DANFE.`;
-      return res.status(404).json(resultado);
+      return res.status(404).json(await anexarCapturadas(resultado, [req.params.codigo, codigoLimpo, numeroDaChave]));
     }
     const rFullNF = await buscarNFePorId(idNF);
     const nfCh = (rFullNF.ok && rFullNF.data?.data) ? rFullNF.data.data : null;
@@ -1875,23 +1882,7 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
       resultado.erro = (pareceSPX
         ? 'Etiqueta Shopee (SPX) nao casou com as devolucoes. Se ela diz "SPX INSUCESSO": o QR/barras so contem o rastreio (a Shopee nao indexa esse codigo) — DIGITE o "Pedido" impresso na etiqueta (ex: 260623TX31XFMT) que o sistema busca o pedido cancelado. Devolucao normal: tente o "Pedido" ou a chave da DANFE.'
         : 'Codigo nao encontrado em shipments/packs do ML nem nas devolucoes Shopee.') + diag + nota403 + notaIndiceParcial;
-      // b523 - AUDITORIA (Codex, 04/10): o bipe passa a consultar a CAPTURA PERSISTENTE (o que a espreita guardou
-      // antes). Objetivo: achar o pacote mesmo depois que o marketplace parou de listar a devolucao. So DESTA
-      // empresa; ate 3 s (nao trava o bipe); falhou = segue o "nao encontrado" de sempre.
-      try {
-        const cap = await Promise.race([
-          devCapturadas.procurar(supabase, 'good', [String(req.params.codigo || '').trim()]),
-          new Promise((ok) => setTimeout(() => ok(null), 3000)),
-        ]);
-        if (cap && cap.ok && Array.isArray(cap.achados) && cap.achados.length) {
-          resultado.capturadas = cap.achados.slice(0, 5).map((x) => ({
-            marketplace: x.marketplace || null, pedido: x.pedido || x.order_id || null, rastreio: x.rastreio || null,
-            nf_numero: x.nf_numero || null, nf_chave: x.nf_chave || null, cliente_nome: x.cliente_nome || null,
-            visto_em: x.atualizado_em || x.capturado_em || x.criado_em || null,
-          }));
-        }
-      } catch (e) { /* captura e ajuda: nunca derruba o bipe */ }
-      return res.status(404).json(resultado);
+      return res.status(404).json(await anexarCapturadas(resultado, [req.params.codigo, codigoLimpo]));
     }
 
     console.log(`[BUSCA] SHOPEE: return_sn=${devShopee.return_sn} order_sn=${devShopee.order_sn} tracking=${devShopee.tracking_number}`);

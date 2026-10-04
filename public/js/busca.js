@@ -1232,11 +1232,14 @@ function mostrarCapturadas(lista) {
     if (!Array.isArray(lista) || !lista.length || !divResultado) return;
     let html = '<div class="card" style="border:2px solid #00695c;margin-top:10px;"><div style="font-weight:700;color:#00695c;margin-bottom:6px;">📦 Achei no que foi GUARDADO antes (o marketplace pode ter parado de listar):</div>';
     lista.forEach((c) => {
-      const alvo = c.nf_numero || c.pedido || '';
-      html += '<div style="padding:7px 9px;margin:5px 0;background:#e0f2f1;border-radius:8px;cursor:pointer;" onclick="buscarPedidoRetiro(\'' + escapeHtml(String(alvo)) + '\')">'
+      // So vira toque quando ha NF guardada: buscar o PEDIDO repetiria a consulta que acabou de falhar e
+      // devolveria este mesmo card (Codex #432). Sem NF, o card so informa.
+      const alvo = c.nf_numero || '';
+      html += '<div style="padding:7px 9px;margin:5px 0;background:#e0f2f1;border-radius:8px;' + (alvo ? 'cursor:pointer;" onclick="buscarPedidoRetiro(\'' + escapeHtml(String(alvo)) + '\')"' : '"') + '>'
         + escapeHtml(String(c.marketplace || '').toUpperCase()) + ' · Pedido <b>' + escapeHtml(String(c.pedido || '-')) + '</b>'
         + (c.nf_numero ? ' · NF <b>' + escapeHtml(String(c.nf_numero)) + '</b>' : '')
-        + (c.cliente_nome ? ' · ' + escapeHtml(String(c.cliente_nome)) : '') + '</div>';
+        + (c.cliente_nome ? ' · ' + escapeHtml(String(c.cliente_nome)) : '')
+        + (alvo ? '' : ' <i>(sem NF guardada — busque pela NF)</i>') + '</div>';
     });
     divResultado.insertAdjacentHTML('beforeend', html + '</div>');
   } catch (e) { /* sugestao extra: falhar aqui nao muda o erro que ja esta na tela */ }
