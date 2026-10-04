@@ -60,6 +60,22 @@ function gerar(chave, nome, sufixoDados) {
 
   const sufixoTabelas = suf ? `_${suf}` : '';
 
+  // b529 - AUDITORIA (Codex, b520): o gerador aceitava uma chave que JA EXISTE se viesse com outro sufixo
+  // (gerar('girassol', ..., 'sufteste') saia ok) — a ficha nova sobrescreveria a identidade da empresa de verdade
+  // (rota, sessao, tokens). Chave existente no contrato OU no registro de empresas = recusa.
+  if (VALIDA_CHAVE.test(String(chave || ''))) {
+    let jaExiste = false;
+    try {
+      const contrato = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'contrato-empresas.json'), 'utf8'));
+      if (contrato && contrato.empresas && Object.prototype.hasOwnProperty.call(contrato.empresas, chave)) jaExiste = true;
+    } catch (e) { /* sem o contrato, confere o registro abaixo */ }
+    try {
+      const reg = require('../lib/empresas');
+      if (typeof reg.obterEmpresa === 'function' && reg.obterEmpresa(chave)) jaExiste = true;
+    } catch (e) { /* registro indisponivel: o contrato ja decidiu acima */ }
+    if (jaExiste) erros.push(`a chave "${chave}" JA EXISTE (contrato/registro de empresas) — empresa nova precisa de chave nova`);
+  }
+
   // ⚠️ (Codex, P1) — um sufixo que ja pertence a outra empresa nao dispara
   // erro nenhum na hora de provisionar (a rotina e idempotente: so avisa que
   // a tabela "ja existe"), e `conferirEmpresa` nao confere colisao. Ativar
