@@ -6695,7 +6695,6 @@ app.post('/api/recado/:id/ciente', requerLogin, async (req, res) => {
   } catch (e) { return res.status(500).json({ ok: false, erro: e.message }); }
 });
 
-let ESP_SHOPEE_EXTRAS = [];   // b521: devolucoes Shopee alem do corte de 40 da tela (so pra captura)
 async function montarEspreita() {
   // v3.77 - agregador: Magalu (BFF) + ML (indice claims->returns) + Shopee (proxy)
   const magaluR = espreita.resumo();
@@ -6703,7 +6702,7 @@ async function montarEspreita() {
   let shopeeR = { quente: false, em_transito: [] };
   try { shopeeR = await shopee.resumoEspreita(); } catch (e) { shopeeR = { quente: false, erro: e.message, em_transito: [] }; }
   // b521 (auditoria): o que passou do corte da TELA vai so pra captura persistente
-  ESP_SHOPEE_EXTRAS = Array.isArray(shopeeR.em_transito_todas) ? shopeeR.em_transito_todas.slice((shopeeR.em_transito || []).length) : [];
+  const shopeeExtras = Array.isArray(shopeeR.em_transito_todas) ? shopeeR.em_transito_todas.slice((shopeeR.em_transito || []).length) : [];
   let unificada = [
     ...magaluR.em_transito.map(d => ({ marketplace: 'magalu', pedido: d.pedido, tracking: null, status: (d.categoria || '') + (d.status ? ' / ' + d.status : ''), dias_em_transito: d.dias_em_transito, valor: d.valor, uuid: d.chave || null, tipo: d.tipo || null, categoria: d.categoria || null })),
     ...(mlR.em_transito || []).filter(d => (d.dias_em_transito == null) || d.dias_em_transito <= 120), // v4.18: corte de sanidade
@@ -7118,7 +7117,7 @@ let entreguesRecentes = [];
       }
 
   } catch (e) { nuncaBipadas = []; }
-  return ({
+  const resultadoEsp = ({
     ok: true,
     quente: magaluR.quente || mlR.quente || shopeeR.quente,
     em_transito: unificada,
@@ -7146,6 +7145,10 @@ let entreguesRecentes = [];
     fontes: { magalu: magaluR.quente, ml: mlR.quente, shopee: shopeeR.quente },
     erro: magaluR.erro || shopeeR.erro || null,
   });
+  // b521: os extras viajam NO resultado (nao em global: duas montagens simultaneas se misturariam).
+  // Nao enumeravel: nao vai pro JSON da tela nem pro spread do cache.
+  Object.defineProperty(resultadoEsp, 'shopee_extras_captura', { value: shopeeExtras, enumerable: false });
+  return resultadoEsp;
 }
 
 // v4.51 - a rota: serve o cache instantaneo se recente; senao monta e cacheia.
@@ -8910,7 +8913,7 @@ function capturarDevolucoes(resultadoEspreita, forcar, limiteTikTok) {
   // e eu lia `.itens`, que nao existe — entao a captura gravava ZERO desde
   // que subiu, calada. E o painel de estornadas consultaria uma tabela vazia.
   // b521 - AUDITORIA (Codex, 04/10): + as devolucoes Shopee que passaram do corte de 40 da tela
-  const lista = ((resultadoEspreita && (resultadoEspreita.em_transito || resultadoEspreita.itens)) || []).concat(ESP_SHOPEE_EXTRAS || []);
+  const lista = ((resultadoEspreita && (resultadoEspreita.em_transito || resultadoEspreita.itens)) || []).concat((resultadoEspreita && resultadoEspreita.shopee_extras_captura) || []);
 
   // b184.3 (Codex): NAO sair quando os outros 3 vierem vazios.
   //
