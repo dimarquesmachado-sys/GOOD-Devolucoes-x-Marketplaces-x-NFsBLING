@@ -544,7 +544,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.126.29 (b515: JA TRIADA por numero+serie; b514: aviso JA TRIADA na busca por nome tambem na AMB/Girassol)',
+      version: '9.126.30 (b516: tela de bipe UNICA pras tres empresas; JA TRIADA por numero+serie na GOOD)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -1749,8 +1749,9 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
                   // ⚠️ os campos REAIS da tabela: `created_at` e `funcionario` (li o
       // select da rota de listagem, ~L2808). Eu tinha escrito `triado_em` e
       // `triado_por` de cabeca — Regra 4.12, ler o produtor antes.
-      .select('nf_numero, created_at, funcionario, status').in('nf_numero', nums);
-                for (const r of (data || [])) jaTriadas.set(String(r.nf_numero), r);
+      .select('nf_numero, nf_serie, created_at, funcionario, status').in('nf_numero', nums);
+                // b516 (paridade com o #425): numero+SERIE — o numero se repete entre series
+                for (const r of (data || [])) jaTriadas.set(chaveNF(r.nf_numero, r.nf_serie), r);
               }
             } catch (e) { /* sem a tabela, a lista sai sem a marca */ }
 
@@ -1760,7 +1761,7 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
               const diag = diagnosticos.get(String(c.id)) || null;
               // sempre uma COPIA: o `c` e do indice compartilhado
               // b282: a marca de triada vale pro card com ou sem espreita
-              const tri = jaTriadas.get(String(c.numero || ''));
+              const tri = jaTriadas.get(chaveNF(c.numero, c.serie));
               const marcaTriada = tri ? {
                 ja_triada: true,
                 triada_em: tri.created_at || null,

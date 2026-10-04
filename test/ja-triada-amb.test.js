@@ -7,7 +7,7 @@ const idf = fs.readFileSync(path.join(__dirname, '..', 'amb-devolucoes', 'lib-AM
 ok(/supabase\.from\(tabDev\)\.select\('nf_numero, nf_serie, criado_em, funcionario, status'\)\.in\('nf_numero', nums\)/.test(idf), '⚠️ o servidor da AMB/Girassol consulta a triagem na tabela DESTA empresa (db.tabelas)');
 ok(/if \(!e\) return \{ \.\.\.base, \.\.\.marcaTriada \};/.test(idf) && /\.\.\.base,\n\s+\.\.\.marcaTriada,/.test(idf), '  a marca vai nos dois caminhos (com e sem espreita)');
 ok(/catch \(e\) \{ \/\* sem a marca \*\/ \}/.test(idf), '  falha na consulta = lista sem a marca (nunca trava a busca)');
-const b = fs.readFileSync(path.join(__dirname, '..', 'amb-devolucoes', 'public-AMB', 'js-AMB', 'busca.js'), 'utf8');
+const b = fs.readFileSync(path.join(__dirname, '..', 'public', 'js', 'busca.js'), 'utf8');
 const i = b.indexOf('function renderizarCandidatosNome('); const f = b.slice(i, b.indexOf('\nfunction ', i + 10));
 ok(/const avisoTriada = jaTri/.test(f) && /\+ avisoTriada/.test(f), '⚠️ a tela mostra o aviso JA TRIADA no candidato');
 ok(/escapeHtml\(String\(c\.triada_por\)\)/.test(f), '  quem triou passa pelo escape (sem HTML injetado)');

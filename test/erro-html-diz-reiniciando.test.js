@@ -9,7 +9,7 @@ const path = require('path');
 let falhas = 0;
 const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o); };
 
-for (const [p, nome] of [[['public', 'js', 'busca.js'], 'GOOD'], [['amb-devolucoes', 'public-AMB', 'js-AMB', 'busca.js'], 'AMB/Girassol']]) {
+for (const [p, nome] of [[['public', 'js', 'busca.js'], 'GOOD'], [['public', 'js', 'busca.js'], 'AMB/Girassol']]) {
   const s = fs.readFileSync(path.join(__dirname, '..', ...p), 'utf8').split('\n').filter((l) => !l.trim().startsWith('//')).join('\n');
   const i = s.indexOf('/api/devolucao/identificar/');
   const bloco = s.slice(i, i + 1800);
@@ -22,9 +22,9 @@ for (const [p, nome] of [[['public', 'js', 'busca.js'], 'GOOD'], [['amb-devoluco
 }
 // e os HTMLs da AMB carregam o busca.js com ?v= novo (mexeu no .js = bump)
 const html = fs.readFileSync(path.join(__dirname, '..', 'amb-devolucoes', 'public-AMB', 'index-AMB.html'), 'utf8');
-ok(/js-AMB\/busca\.js\?v=b514/.test(html), '  index-AMB.html carrega js-AMB/busca.js?v=b514 (bump — senao o galpao testa o front velho do cache)');
+ok(/js-AMB\/busca\.js\?v=b516/.test(html), '  index-AMB.html carrega js-AMB/busca.js?v=b516 (bump — senao o galpao testa o front velho do cache)');
 const htmlG = fs.readFileSync(path.join(__dirname, '..', 'public', 'index.html'), 'utf8');
-ok(/js\/busca\.js\?v=4781/.test(htmlG), '  index.html (GOOD) carrega js/busca.js?v=4781');
+ok(/js\/busca\.js\?v=4782/.test(htmlG), '  index.html (GOOD) carrega js/busca.js?v=4782');
 
 console.log('');
 console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');

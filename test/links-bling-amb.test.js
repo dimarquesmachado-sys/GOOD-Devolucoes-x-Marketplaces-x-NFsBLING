@@ -11,7 +11,7 @@ ok(i > app.indexOf('const ajudantes = criarAdminHelpers('), '  registrada depois
 ok(/ajudantes\.buscarNFnoBlingPorNumero\(numeroNF/.test(rota) && /bling\.buscarNFePorId\(/.test(rota), '  usa o Bling DESTA empresa (ajudante + cliente do modulo)');
 ok(/if \(!numeroNF\) \{\n\s+return res\.json\(\{ ok: false/.test(rota), '  sem numero da NF: resposta clara, sem chutar');
 ok(/catch \(e\) \{/.test(rota), '  erro do Bling nao derruba (responde ok:false)');
-const front = fs.readFileSync(path.join(__dirname, '..', 'amb-devolucoes', 'public-AMB', 'js-AMB', 'busca.js'), 'utf8');
+const front = fs.readFileSync(path.join(__dirname, '..', 'public', 'js', 'busca.js'), 'utf8');
 ok(/`\$\{window\.APP_BASE \|\| ''\}\/api\/nf\/buscar-links-bling\//.test(front), '⚠️ a tela chama com o prefixo da empresa (sem ele caia na GOOD)');
 ok(!/const url = `\/api\/nf\/buscar-links-bling\//.test(front), '  nao sobrou chamada sem prefixo');
 console.log('');

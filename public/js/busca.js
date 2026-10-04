@@ -1,3 +1,8 @@
+/* b516 - TELA DE BIPE UNICA (unificacao multiempresa, 03/10). Era uma copia por empresa (GOOD em public/js,
+   AMB/Girassol em public-AMB/js-AMB) com 212 linhas diferentes. Esta e a versao da AMB/Girassol (que ja resolvia
+   tudo por empresa: APP_BASE, APP_EMPRESA, APP_PASTA_CHECKOUT, cor da marca) + o que so a GOOD tinha (aviso JA
+   TRIADA, #425). Servida a TODAS: a GOOD carrega daqui; a AMB/Girassol, por JS_COMPARTILHADOS (app-AMB.js).
+   A GOOD declara os dados dela no index.html antes deste arquivo. Ajuste aqui vale pras tres e pras proximas. */
 // ============================================================
 // busca.js - busca pela etiqueta, render do resultado completo
 // v3.18.0 - 3o botao PRODUTO DIVERGENTE
@@ -37,7 +42,7 @@ async function buscar() {
   btnBuscar.disabled = true;
 
   try {
-    const resp = await fetch(`/api/devolucao/identificar/${encodeURIComponent(codigo)}?_=${Date.now()}`, { cache: 'no-store' } /* b232.1: o Cache-Control do servidor nao invalida o que JA esta no cache — a URL precisa ser nova. O dono viu isso: a mesma URL devolvia resposta velha, e com ?x=1 vinha a certa */);
+    const resp = await fetch(`${window.APP_BASE || ''}/api/devolucao/identificar/${encodeURIComponent(codigo)}?_=${Date.now()}`, { cache: 'no-store' } /* b232.1: o Cache-Control do servidor nao invalida o que JA esta no cache — a URL precisa ser nova. O dono viu isso: a mesma URL devolvia resposta velha, e com ?x=1 vinha a certa */);
     // b478: HTML onde devia vir JSON = o servidor nao respondeu (Render reiniciando
     // no deploy -> 502/503, ou pagina de erro). O dono viu "Unexpected token '<',
     // <!DOCTYPE ... is not valid JSON" logo apos um deploy e nao tinha como saber.
@@ -77,7 +82,8 @@ async function buscarLinksBling(orderId, dataVenda, numeroNF) {
     if (dataVenda) params.set('data', dataVenda);
     if (numeroNF) params.set('numeroNF', numeroNF);
     const queryStr = params.toString() ? `?${params.toString()}` : '';
-    const url = `/api/nf/buscar-links-bling/${encodeURIComponent(orderId)}${queryStr}`;
+    // b506 (auditoria multiempresa): com o prefixo DESTA empresa — sem ele caia na rota da GOOD
+    const url = `${window.APP_BASE || ''}/api/nf/buscar-links-bling/${encodeURIComponent(orderId)}${queryStr}`;
     const resp = await fetch(url);
     const data = await resp.json();
 
@@ -159,6 +165,10 @@ function renderizar(data, ok) {
       titulo: it.titulo || '-',
       sku: it.sku || itensML[i]?.item?.seller_sku || '-',
       ean: it.ean || '-',
+      // b235 (review do Codex) - o id do produto tem que SOBREVIVER a
+      // remontagem do item aqui; sem isso o `?produtoId=` nunca era enviado
+      // e a parte 1 nao servia pra nada.
+      produto_id: (it.produto_id || it.produtoId || (it.produto && it.produto.id)) || null,
       quantidade: Number(it.quantidade) || itensML[i]?.quantity || 1,
       valor: it.valor || itensML[i]?.unit_price,
       mlb: itensML[i]?.item?.id || null,
@@ -237,15 +247,25 @@ function renderizar(data, ok) {
   for (const rc of (data.recados || [])) {
     const lido = !!rc.ciente_em;
     html += '<div id="recado-' + rc.id + '" style="border:3px solid ' + (lido ? '#9e9e9e' : '#c62828') + ';background:' + (lido ? '#fafafa' : '#fff3e0') + ';border-radius:10px;padding:12px;margin-bottom:12px;">'
-      + '<div style="font-size:15px;font-weight:800;color:' + (lido ? '#616161' : '#c62828') + ';">📣 RECADO SOBRE ESSA DEVOLUÇÃO</div>'
-      + '<div style="font-size:15px;margin:6px 0;white-space:pre-wrap;">' + escapeHtml(rc.texto) + '</div>'
+      // b226 (pedido do Diego) - cores invertidas: o TITULO fica no vinho
+      // (#7f1d1d) e o texto do recado no vermelho mais claro (#c62828).
+      + '<div style="font-size:15px;font-weight:800;color:' + (lido ? '#616161' : '#7f1d1d') + ';">📣 RECADO SOBRE ESSA DEVOLUÇÃO</div>'
+      // b223 (pedido do Diego) - o texto do recado E a instrucao: ele estava
+      // do mesmo tamanho do resto da tela e passava batido. Agora vem
+      // grande, em negrito e com fundo proprio, pra o estoquista ler antes
+      // de encostar na caixa.
+      + '<div style="font-size:' + (lido ? '16px' : '21px') + ';font-weight:' + (lido ? '600' : '800') + ';'
+      + 'line-height:1.35;margin:10px 0;white-space:pre-wrap;color:' + (lido ? '#444' : '#c62828') + ';'
+      + (lido ? '' : 'background:#fff;border:2px solid #f0b4ae;border-radius:9px;padding:11px 13px;')
+      + '" id="recado-texto-' + rc.id + '">' + escapeHtml(rc.texto) + '</div>'
       + (lido
           ? '<div style="font-size:12px;color:#666;">✅ ciente por ' + escapeHtml(rc.ciente_por || '-') + ' em ' + (rc.ciente_em ? String(rc.ciente_em).slice(0, 10).split('-').reverse().join('/') : '-') + '</div>'
           : '<button onclick="recadoCiente(' + rc.id + ', this)" style="background:#2e7d32;color:#fff;border:none;border-radius:8px;padding:10px 18px;font-size:14px;font-weight:800;cursor:pointer;">✓ OK, ciente</button>')
       + '</div>';
   }
 
-  // BADGES TOPO — v4.37: linha flex, com o botao do marketplace no canto
+  // BADGES TOPO — b85: viram uma linha flex pra o botao do marketplace
+  // caber no canto direito, em vez de ocupar uma linha so pra ele.
   html += '<div class="linha-selos">';
   html += ehDevolucao
     ? '<span class="badge badge-devolucao">📦 DEVOLUCAO</span>'
@@ -386,20 +406,21 @@ function renderizar(data, ok) {
     html += '</div>';
   }
 
-  // v4.33 - a barra amarela gigante saiu: a quantidade agora vive
-  // dentro do card do produto, em cima do titulo (sem repetir).
-
-  // v4.37 - BOTAO PRA ABRIR O PEDIDO NO MARKETPLACE, no canto direito da
-  // linha dos selos. Shopee passa pelo de-para do checkout da GOOD (que
-  // resolve o order_sn no id interno) e Magalu pela rota OAuth da GOOD.
+  // b75 - BOTAO PRA ABRIR O PEDIDO NO MARKETPLACE.
+  // O backend manda data.link_marketplace pronto (na Shopee ele passa
+  // pelo de-para que resolve o order_sn no id interno). Se nao vier,
+  // monta pelo canal identificado — assim vale pro ML e pro Magalu.
   (function () {
     let alvo = data.link_marketplace || null;
     if (!alvo && order && order.id) {
       const m = String(data.metodo || '').toLowerCase();
       if (data.magalu || m.includes('magalu')) {
-        alvo = { nome: 'Magalu', url: '/magalu/ir/good?n=' + encodeURIComponent(String(order.id).replace(/\D/g, '')) };
+        // Codex (revisão do PR #370, P2) - faltava o host do Mover-Pedidos
+        // (igual ao Shopee, abaixo): a URL relativa abria /magalu/ir/... NESTE
+        // servidor de Devoluções, que não tem essa rota -> 404.
+        alvo = { nome: 'Magalu', url: 'https://mover-pedidos-aguardando-x-atendido.onrender.com/magalu/ir/' + (window.APP_EMPRESA || 'amb') + '?n=' + encodeURIComponent(String(order.id).replace(/\D/g, '')) };
       } else if (data.shopee || m.includes('shopee')) {
-        alvo = { nome: 'Shopee', url: 'https://mover-pedidos-aguardando-x-atendido.onrender.com/good-checkout-offline/ir-shopee?sn=' + encodeURIComponent(order.id) };
+        alvo = { nome: 'Shopee', url: 'https://mover-pedidos-aguardando-x-atendido.onrender.com/' + (window.APP_PASTA_CHECKOUT || 'amb-checkout-offline') + '/ir-shopee?sn=' + encodeURIComponent(order.id) };
       } else if (/^\d{10,}$/.test(String(order.id))) {
         alvo = { nome: 'Mercado Livre', url: 'https://www.mercadolivre.com.br/vendas/' + encodeURIComponent(order.id) + '/detalhe' };
       }
@@ -410,6 +431,31 @@ function renderizar(data, ok) {
     }
   })();
   html += '</div>';
+
+  // b263 (aviso da Shopee de 17/08/2026) - as APIs de devolucao passaram a
+  // dizer quando volta SO PARTE da quantidade (`is_partial_quantity_return`)
+  // e quando o reembolso foi menor que o maximo (`is_refund_amount_adjusted`).
+  // Isso muda o trabalho do galpao: hoje o estoquista so descobre que voltou
+  // 1 de 3 abrindo a caixa. O aviso vem ANTES, no topo do card.
+  (function () {
+    var sh = data.shopee || null;
+    if (!sh) return;
+    var parcial = sh.is_partial_quantity_return === true;
+    var ajustado = sh.is_refund_amount_adjusted === true;
+    if (!parcial && !ajustado) return;
+    html += '<div style="background:#FFF3E0;border:2px solid #E65100;border-radius:9px;'
+      + 'padding:11px 13px;margin:10px 0;">'
+      + (parcial ? '<div style="font-size:16px;font-weight:800;color:#E65100;">📦 Devolução PARCIAL — não volta tudo</div>'
+          + '<div style="font-size:13.5px;color:#7a4a10;margin-top:3px;">O comprador está devolvendo apenas parte das unidades. '
+          + 'Confira a quantidade na caixa antes de lançar o estoque.</div>' : '')
+      + (ajustado ? '<div style="font-size:' + (parcial ? '13px' : '15px') + ';font-weight:' + (parcial ? '600' : '800')
+          + ';color:#E65100;margin-top:' + (parcial ? '7px' : '0') + ';">💰 Reembolso menor que o valor máximo</div>'
+          + '<div style="font-size:13px;color:#7a4a10;">A Shopee devolveu ao comprador menos que o total do pedido.</div>' : '')
+      + '</div>';
+  })();
+
+  // b80 - a barra amarela gigante saiu: a quantidade agora vive
+  // dentro do card do produto, em cima do titulo (sem repetir).
 
   // CARDS DOS PRODUTOS (Bling = titulo limpo + EAN, ML = fallback)
   if (itensRender.length > 0) {
@@ -441,7 +487,7 @@ function renderizar(data, ok) {
       .dvi-cod span{font-size:15px;}
     }
     .linha-selos{display:flex;flex-wrap:wrap;align-items:center;gap:7px;margin-bottom:10px;}
-    .selo-mkt{margin-left:auto;background:#561A9E;color:#fff;text-decoration:none;padding:8px 14px;border-radius:9px;font-weight:700;font-size:13px;white-space:nowrap;}
+    .selo-mkt{margin-left:auto;background:var(--marca);color:var(--sobre-marca);text-decoration:none;padding:8px 14px;border-radius:9px;font-weight:700;font-size:13px;white-space:nowrap;}
     @media (max-width:600px){.selo-mkt{margin-left:0;flex:1 1 100%;text-align:center;}}
     .triagem-botoes{grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:9px!important;}
     .triagem-btn{padding:14px 8px!important;font-size:13px!important;line-height:1.25!important;}
@@ -468,10 +514,10 @@ function renderizar(data, ok) {
     }
   </style>`;
     html += '<div class="itens-lista">';
-    // v4.31 - FOTO DO PRODUTO no card do item, a esquerda do 2x/titulo/
-    // SKU/EAN: o estoquista bate o olho e confere com a caixa sem
-    // procurar em outro canto. A imagem entra depois (a identificacao
-    // nao espera por ela) - ver buscarFotosItens().
+    // b78 - FOTO DO PRODUTO no card do item. Fica a ESQUERDA, do lado do
+    // 2x/titulo/SKU/EAN, pra o estoquista bater o olho e conferir com a
+    // caixa sem procurar em outro canto. A imagem entra depois (a busca
+    // nao espera por ela) - ver buscarFotosItens() abaixo.
     itensRender.forEach((it, _i) => {
       html += `<div class="item-card dvi">
         <div class="dvi-f" id="fotoitem-${_i}">\u{1F4E6}</div>
@@ -489,7 +535,13 @@ function renderizar(data, ok) {
   // AVISOS
   if (data.avisos?.length) {
     data.avisos.forEach(a => {
-      html += `<div class="aviso-box" style="margin-top:10px;">⚠️ ${escapeHtml(a.mensagem)}</div>`;
+      // b74 - aviso de SUCESSO nao pode ter cara de alerta. "NF achada"
+      // aparecia com ⚠️ igual a um erro. Agora o que deu certo vem em
+      // verde com ✅; o que e problema segue amarelo com ⚠️.
+      const ehBoa = /^(nf_via_|nf_achada|ok_)/.test(String(a.tipo || ''));
+      html += ehBoa
+        ? `<div style="margin-top:10px;background:#e8f5e9;border:1px solid #a5d6a7;border-radius:8px;padding:9px 11px;font-size:13px;color:#1b5e20;">✅ ${escapeHtml(a.mensagem)}</div>`
+        : `<div class="aviso-box" style="margin-top:10px;">⚠️ ${escapeHtml(a.mensagem)}</div>`;
     });
   }
 
@@ -575,7 +627,12 @@ function renderizar(data, ok) {
   html += '<div class="bloco">';
   html += '<div class="secao-titulo">Pedido</div>';
   html += '<div class="item-grid">';
-  html += `<div><div class="label">Order ID (ML)</div><div class="valor">${order.id || '-'}</div></div>`;
+  // b74 - o rotulo era fixo "Order ID (ML)" e aparecia assim tambem em
+  // pedido Shopee/Magalu. Agora segue o canal identificado.
+  const _rotuloPedido = data.magalu ? 'Pedido Magalu'
+    : (data.shopee || String(data.metodo || '').includes('shopee')) ? 'Pedido Shopee'
+    : 'Order ID (ML)';
+  html += `<div><div class="label">${_rotuloPedido}</div><div class="valor">${order.id || '-'}</div></div>`;
   html += `<div><div class="label">Pack ID</div><div class="valor">${order.pack_id || '-'}</div></div>`;
   html += `<div><div class="label">Status venda</div><div class="valor">${traduzirStatus(order.status)}</div></div>`;
   html += `<div><div class="label">Status pagamento</div><div class="valor">${traduzirPagamento(payment.status)}${payment.transaction_amount_refunded ? ' (estornado: ' + moeda(payment.transaction_amount_refunded) + ')' : ''}</div></div>`;
@@ -616,6 +673,19 @@ function renderizar(data, ok) {
 
   // DEBUG
   html += '<details><summary>🔧 Tentativas e diagnostico</summary>';
+  // b89 - quanto a busca demorou e onde. A rota faz varias chamadas de
+  // rede em sequencia; com isso na tela da pra ver qual etapa pesa.
+  if (data._ms) {
+    const seg = (data._ms / 1000).toFixed(1);
+    html += `<div style="font-size:12.5px;color:#555;margin:6px 0;">`
+      + `⏱️ a busca levou <b>${seg}s</b>`;
+    if (Array.isArray(data._marcos) && data._marcos.length) {
+      html += ' &mdash; ' + data._marcos.map(function (m) {
+        return escapeHtml(m.fase) + ' ' + (m.ms / 1000).toFixed(1) + 's';
+      }).join(' · ');
+    }
+    html += '</div>';
+  }
   html += '<ul class="tentativas-list">';
   data.tentativas.forEach(t => {
     const icone = t.ok ? '✅' : '❌';
@@ -631,7 +701,7 @@ function renderizar(data, ok) {
 
   divResultado.innerHTML = html + blocoEventosCheckout();   // ev2
   divResultado.classList.add('show');
-  buscarFotosItens(itensRender);   // v4.31 - fotos dos itens (nao bloqueia)
+  buscarFotosItens(itensRender);   // b78 - fotos dos itens (nao bloqueia)
 
   // Apos render, verifica triagem existente (nao bloqueia o render).
   // v3.21 - vendas de OUTROS marketplaces (Magalu, Amazon...) identificadas
@@ -695,7 +765,7 @@ function renderizar(data, ok) {
 
 // ================ VERIFICAR TRIAGEM EXISTENTE ================
 /**
- * v4.31 - Busca a foto de cada item DEPOIS que o resultado ja apareceu.
+ * b78 - Busca a foto de cada item DEPOIS que o resultado ja apareceu.
  * A identificacao nao pode esperar por imagem. O servidor resolve pelo
  * SKU (ou pelo id do produto) e cacheia, entao bipar o mesmo produto de
  * novo ja vem instantaneo. Uma de cada vez com pausa: sao chamadas ao
@@ -705,13 +775,25 @@ async function buscarFotosItens(itens) {
   if (!Array.isArray(itens) || !itens.length) return;
   for (let i = 0; i < itens.length && i < 4; i++) {
     const it = itens[i];
-    const chave = (it && (it.sku || it.id)) || null;
-    if (!chave || chave === '-') continue;
+    // b235 - item com vinculo mas SEM codigo: o id vira a chave, senao a
+    // busca era descartada aqui mesmo, com o identificador confiavel em mao.
+    const pidItem = (it && (it.produto_id || it.produtoId)) ? String(it.produto_id || it.produtoId).replace(/\D/g, '') : '';
+    const chave = (it && (it.sku || it.id)) || (pidItem || null);
+    if (!chave || chave === '-') {
+      if (!pidItem) continue;
+    }
     const alvo = document.getElementById('fotoitem-' + i);
     if (!alvo) continue;
     try {
-      const r = await fetch('/api/produto/imagem/' + encodeURIComponent(chave), { credentials: 'same-origin' });
+      // b225 - manda tambem o EAN que a tela ja mostra: quando o SKU do
+      // anuncio nao casa com o codigo do Bling, e por ele que a foto vem.
+      // b233 - o id do produto vindo do item da NF e o caminho que nao erra:
+      // e o vinculo que o Bling gravou na emissao. Vai na frente do SKU.
+      const pid = pidItem;
+      const r = await fetch((window.APP_BASE || '') + '/api/produto/imagem/' + encodeURIComponent(chave || pidItem)
+        + (pid ? '?produtoId=' + encodeURIComponent(pid) : ''), { credentials: 'same-origin' });
       const d = await r.json();
+      if (d && d.ok && !d.imagem && d.motivo) console.info('[FOTO]', chave, '→', d.motivo);
       if (d && d.ok && d.imagem) {
         alvo.outerHTML = '<img class="dvi-f" src="' + escapeHtml(d.imagem) + '" alt=""'
           + ' onclick="abrirZoomProduto(this.src)" onerror="this.style.display=\'none\'"'
@@ -771,7 +853,7 @@ async function verificarTriagemExistente(shipmentId, idAlternativo) {
     const extra = unicos.length
       ? '?' + unicos.map((x) => 'tambem=' + encodeURIComponent(x)).join('&')
       : '';
-    const r = await fetch('/api/triagem/status/' + encodeURIComponent(shipmentId) + extra);
+    const r = await fetch((window.APP_BASE || '') + '/api/triagem/status/' + encodeURIComponent(shipmentId) + extra);
     const d = await r.json();
     if (!d.ok) {
       renderizarBotoesTriagem();
@@ -791,12 +873,41 @@ async function verificarTriagemExistente(shipmentId, idAlternativo) {
 function renderizarBotoesTriagem() {
   const cont = document.getElementById('triagemConteudo');
   if (!cont) return;
+// b223/b224 (review do Codex) - PRECISA ser global: o `onclick` inline e
+// avaliado no escopo da window, e a funcao estava presa dentro de
+// renderizarBotoesTriagem — clicar dava ReferenceError e o atalho, que
+// existe justamente pro celular, nunca rolava a tela.
+window.irProRecado = function () {
+  const id = (window._recadosPendentes || [])[0];
+  const el = id ? document.getElementById('recado-' + id) : document.querySelector('[id^="recado-"]');
+  if (!el) return;
+  el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  let n = 0;
+  const piscar = setInterval(() => {
+    el.style.boxShadow = (n % 2 === 0) ? '0 0 0 6px rgba(198,40,40,.35)' : 'none';
+    if (++n > 5) { clearInterval(piscar); el.style.boxShadow = 'none'; }
+  }, 220);
+  // b224 - guarda o handle: se a busca re-renderizar o card no meio, o
+  // intervalo antigo ficava mexendo num elemento que ja saiu da tela.
+  if (window._piscaRecado) clearInterval(window._piscaRecado);
+  window._piscaRecado = piscar;
+};
+
   // v3.33 - TRAVA: recado sem ciencia bloqueia a triagem. O estoquista tem
   // que ler e clicar "OK, ciente" antes de incluir no estoque/reportar.
   if ((window._recadosPendentes || []).length > 0) {
     cont.innerHTML = '<div style="border:3px solid #c62828;background:#fff3e0;border-radius:10px;padding:16px;text-align:center;">'
-      + '<div style="font-size:16px;font-weight:800;color:#c62828;">🔒 Triagem bloqueada</div>'
-      + '<div style="font-size:14px;margin-top:6px;">Leia o <b>RECADO</b> no topo da tela e clique em <b>"✓ OK, ciente"</b> para liberar os botões.</div>'
+      + '<div style="font-size:19px;font-weight:800;color:#c62828;">🔒 Triagem bloqueada</div>'
+      // b223 - o caminho pra destravar tem que saltar: fonte maior, o botao
+      // desenhado do mesmo jeito que ele vai ver la em cima, e um atalho que
+      // rola a tela ate o recado (em celular ele fica fora da area visivel).
+      + '<div style="font-size:16px;margin-top:8px;line-height:1.5;">Leia o <b>RECADO</b> no topo da tela e clique em</div>'
+      + '<div style="display:inline-block;background:#2e7d32;color:#fff;border-radius:8px;padding:9px 18px;'
+      + 'font-size:16px;font-weight:800;margin:9px 0 4px;">✓ OK, ciente</div>'
+      + '<div style="font-size:16px;">para liberar os botões.</div>'
+      + '<button type="button" onclick="irProRecado()" style="margin-top:11px;background:#c62828;color:#fff;'
+      + 'border:none;border-radius:9px;padding:11px 20px;font-size:15px;font-weight:800;cursor:pointer;">'
+      + '⬆️ Ir para o recado</button>'
       + '</div>';
     return;
   }
@@ -815,7 +926,7 @@ function renderizarBotoesTriagem() {
         REPORTAR<br>PROBLEMA
       </button>
       <button class="triagem-btn triagem-btn-divergente" onclick="abrirModalDivergente()"
-              style="background:linear-gradient(135deg,#7b1fa2,#4a148c); color:white;">
+              style="background:linear-gradient(135deg, var(--marca), var(--escuro)); color:white;">
         <span class="triagem-btn-icon">🔄</span>
         PRODUTO<br>DIVERGENTE
       </button>
@@ -975,9 +1086,10 @@ function renderizarCandidatosNome(mensagem, candidatos) {
   for (const c of candidatos) {
     const dt = c.dataEmissao ? String(c.dataEmissao).slice(0, 10).split('-').reverse().join('/') : '-';
     const vl = (c.valor != null) ? ('R$ ' + Number(c.valor).toFixed(2).replace('.', ',')) : '-';
-    // b473: manda SEMPRE numero/serie no clique — antes a serie 1 ia so como
-    // numero, e o backend tinha que descobrir a serie varrendo o Bling. Com a
-    // serie, o atalho pelo indice (b473) resolve sem ambiguidade.
+    // b478: manda SEMPRE numero/serie no clique — o #398 (b473) so mudou o
+    // busca.js da GOOD; este arquivo e SEPARADO e ficou pra tras. Sem a serie,
+    // o atalho do indice (b474, que EXIGE serie) nunca valia aqui e o clique no
+    // candidato continuava pela varredura do Bling (30s medidos pelo dono).
     const alvo = c.serie ? (c.numero + '/' + c.serie) : c.numero;
     // b226 - o candidato que esta NA ESPREITA ganha estrela, borda e o
     // produto. [stated] "se ele tem q triar um mouse, e tem 5 maristelas na
@@ -991,28 +1103,13 @@ function renderizarCandidatosNome(mensagem, candidatos) {
     // O card comum e AZUL (classe .btn), e eu escrevia os itens em #333 —
     // preto no azul, ilegivel. Nos comuns o texto vai BRANCO; no estrelado,
     // que tem fundo claro, fica escuro (que ai contrasta).
-    // b282 - ⚠️ MARCA VISUAL DE "JA TRIADA".
-    //
-    // CASO REAL (11/09): o dono buscou "charles", viu a NF 78425 como
-    // qualquer outra — e ela JA TINHA SIDO TRIADA pelo Lucas no dia
-    // anterior, 16:21. Nada na tela dizia isso, e o risco e triar DE NOVO:
-    // segunda entrada de estoque, segunda NF de devolucao pro mesmo
-    // retorno.
-    //
-    // ⚠️ E explica a ausencia da ESTRELA sem parecer defeito: triada sai da
-    // espreita DE PROPOSITO.
+    // b514 - MARCA "JA TRIADA" (porte da GOOD, b282): o servidor desta empresa agora informa (identificar-AMB).
     const jaTri = !!c.ja_triada;
-    const quandoTri = c.triada_em
-      ? new Date(c.triada_em).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })
-      : '';
+    const quandoTri = c.triada_em ? new Date(c.triada_em).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : '';
     const avisoTriada = jaTri
-      ? '<div style="margin-top:6px; padding:6px 8px; border-radius:6px;'
-        + ' background:#fff3cd; color:#663c00; font-weight:700; font-size:13px;">'
-        + '✔️ JA TRIADA' + (c.triada_por ? ' por ' + escDef(c.triada_por) : '')
-        + (quandoTri ? ' · ' + escDef(quandoTri) : '')
-        + '<div style="font-weight:400; font-size:12px; margin-top:2px;">'
-        + 'Confere antes de triar de novo — pode gerar entrada e NF duplicadas.'
-        + '</div></div>'
+      ? '<div style="margin-top:6px; padding:6px 8px; border-radius:6px; background:#fff3cd; color:#663c00; font-weight:700; font-size:13px;">'
+        + '⚠️ JÁ TRIADA' + (c.triada_por ? ' por ' + escapeHtml(String(c.triada_por)) : '') + (quandoTri ? ' · ' + escapeHtml(quandoTri) : '')
+        + '<div style="font-weight:400; font-size:12px; margin-top:2px;">Confere antes de triar de novo — pode gerar entrada e NF duplicadas.</div></div>'
       : '';
 
     const estilo = naEsp
@@ -1049,9 +1146,7 @@ function renderizarCandidatosNome(mensagem, candidatos) {
       + (c._antigo ? ' <span style="font-size:11px; background:#616161; color:#fff; padding:2px 7px; border-radius:10px;">📅 mais antiga</span>' : '')
       + (naEsp && c.tracking ? ' · 📮 ' + escapeHtml(c.tracking) : '')
       + itens
-      // b282: o aviso de JA TRIADA vai por ULTIMO, depois dos itens — e o
-      // que o estoquista le antes de clicar
-      + avisoTriada
+      + avisoTriada   // b514: o que o estoquista le antes de clicar
       + '</button>';
   }
   html += '</div>';
@@ -1066,11 +1161,23 @@ async function recadoCiente(id, btn) {
   btn.disabled = true;
   btn.textContent = 'salvando...';
   try {
-    const r = await fetch('/api/recado/' + id + '/ciente', { method: 'POST' });
+    const r = await fetch((window.APP_BASE || '') + '/api/recado/' + id + '/ciente', { method: 'POST' });
     const d = await r.json();
     if (!d.ok) { btn.disabled = false; btn.textContent = '✓ OK, ciente'; alert('Falhou: ' + (d.erro || '')); return; }
     window._recadosPendentes = (window._recadosPendentes || []).filter(x => x !== id);
     if ((window._recadosPendentes || []).length === 0) renderizarBotoesTriagem(); // libera a triagem
+    // b224 (review do Codex) - o texto tambem sai do estado "grita": sem
+    // isto ele continuava 21px/800 vermelho depois do "OK, ciente", e so
+    // voltava ao normal na proxima busca.
+    const txt = document.getElementById('recado-texto-' + id);
+    if (txt) {
+      txt.style.fontSize = '16px';
+      txt.style.fontWeight = '600';
+      txt.style.color = '#444';
+      txt.style.background = 'none';
+      txt.style.border = 'none';
+      txt.style.padding = '0';
+    }
     const box = document.getElementById('recado-' + id);
     if (box) {
       box.style.borderColor = '#9e9e9e';

@@ -23,7 +23,7 @@ const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o
 const RAIZ = path.join(__dirname, '..');
 const APP_AMB = fs.readFileSync(path.join(RAIZ, 'amb-devolucoes', 'app-AMB.js'), 'utf8');
 const DB_AMB = fs.readFileSync(path.join(RAIZ, 'amb-devolucoes', 'lib-AMB', 'supabase-AMB.js'), 'utf8');
-const BUSCA_AMB = fs.readFileSync(path.join(RAIZ, 'amb-devolucoes', 'public-AMB', 'js-AMB', 'busca.js'), 'utf8');
+const BUSCA_AMB = fs.readFileSync(path.join(RAIZ, 'public', 'js', 'busca.js'), 'utf8');
 // ⚠️ sem comentário: medir em cima de comentário mede ficção.
 const SEM_COMENTARIO_BUSCA = BUSCA_AMB.split('\n')
   .filter((l) => !l.trim().startsWith('//') && !l.trim().startsWith('*')).join('\n');

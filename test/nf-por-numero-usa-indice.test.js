@@ -84,7 +84,7 @@ const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o
   // ⚠️ b478: a AMB/Girassol tem o PROPRIO js-AMB/busca.js — o b473 so chegou na GOOD
   // e o clique na Girassol continuou sem serie (o atalho exige serie: 30s de varredura).
   // Os DOIS fronts, sempre.
-  for (const [p, nome] of [[['public', 'js', 'busca.js'], 'GOOD'], [['amb-devolucoes', 'public-AMB', 'js-AMB', 'busca.js'], 'AMB/Girassol']]) {
+  for (const [p, nome] of [[['public', 'js', 'busca.js'], 'GOOD'], [['public', 'js', 'busca.js'], 'AMB/Girassol']]) {
     const front = fs.readFileSync(path.join(__dirname, '..', ...p), 'utf8');
     ok(/const alvo = c\.serie \? \(c\.numero \+ '\/' \+ c\.serie\) : c\.numero;/.test(front),
        `⚠️ front ${nome}: o clique no candidato manda numero/serie sempre (antes omitia a serie 1)`);

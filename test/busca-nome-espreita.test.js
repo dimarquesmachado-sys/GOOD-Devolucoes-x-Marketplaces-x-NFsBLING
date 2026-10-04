@@ -117,7 +117,7 @@ const RAIZ = path.join(__dirname, '..');
   ok(iDecl > 0 && iDecl < iUso, '  declarada ANTES de usar');
 
   for (const [nome, rel] of [['GOOD', 'public/js/busca.js'],
-                             ['AMB', 'amb-devolucoes/public-AMB/js-AMB/busca.js']]) {
+                             ['AMB', 'public/js/busca.js']]) {
     const js = fs.readFileSync(path.join(RAIZ, rel), 'utf8');
     ok(/ENTREGUE/.test(js) && /A CAMINHO/.test(js), nome + ' front: distingue ENTREGUE de A CAMINHO');
     ok(/⭐/.test(js), nome + ' front: com a estrela');
