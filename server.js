@@ -544,7 +544,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.126.48 (b537: GOOD serve o painel unico em /painel-novo.html, pra testar lado a lado)',
+      version: '9.126.49 (b538: painel unico — defeitos/relatorios da GOOD, aviso de NF em todas as filas, so-rascunho, itens da NF alem de 40)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -3917,9 +3917,6 @@ app.get('/js-AMB/base-amb.js', (req, res) => {
   if (!BASE_AMB_JS_GOOD) return res.status(500).type('text/plain').send('base-amb indisponivel');
   res.set('Cache-Control', 'no-cache, must-revalidate');
   res.type('application/javascript').send(BASE_AMB_JS_GOOD);
-});
-app.get('/js-AMB/defeitos-ficha.js', (req, res) => {
-  res.sendFile(path.join(__dirname, 'amb-devolucoes', 'public-AMB', 'js-AMB', 'defeitos-ficha.js'));
 });
 app.get('/painel-novo.html', requerAdmin, (req, res) => {
   if (!PAINEL_UNICO_GOOD) return res.status(500).type('text/plain').send('painel unico indisponivel — use /painel-devolucoes.html');

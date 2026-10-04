@@ -22,14 +22,14 @@ for (const arq of ['amb-devolucoes/public-AMB/painel-AMB.html', 'public/painel-d
   if (/AMB/.test(arq)) {
     ok(/jsArg\(d\.produto_sku/.test(div) || /painel2/.test(arq), '  ' + arq + ': SKU vai com jsArg');
     ok(/function jsArg\(/.test(html), '  ' + arq + ': jsArg existe na tela');
-    ok(/ehDivergente \? `/.test(modal2) && /id="btnGerarEmitir"/.test(modal2), '⚠️ ' + arq + ': divergente NAO tem "Gerar + Emitir" (so rascunho)');
+    ok(/(ehDivergente|\(ehDivergente \|\| soRascunho\)) \? `/.test(modal2) && /id="btnGerarEmitir"/.test(modal2), '⚠️ ' + arq + ': divergente NAO tem "Gerar + Emitir" (so rascunho)');
     ok(/id="btnGerarRascunho"\$\{ehProblema \? ' disabled'/.test(modal2) && /id="btnGerarEmitir"\$\{ehProblema \? ' disabled'/.test(modal2), '⚠️ ' + arq + ': botoes nascem travados ate o DEFEITOS carregar');
     ok(/disabled = false/.test(modal2) || /liberarBotoesGerar\(\)/.test(modal2), '  ' + arq + ': botoes liberam com a lista montada');
   } else {
     ok(/true, 'defeito', true\)" title=/.test(div), '⚠️ ' + arq + ': divergente da GOOD e so rascunho (soRascunho=true, divergente=true)');
   }
   if (/AMB/.test(arq)) {
-    ok(/'divergente'(, '\$\{serieDoRegistro\(d\)\}')?\)" title=/.test(div), '  ' + arq + ': o modal recebe "divergente" como status');
+    ok(/'divergente'(, '\$\{serieDoRegistro\(d\)\}'(, \$\{!!d\.so_rascunho\})?)?\)" title=/.test(div), '  ' + arq + ': o modal recebe "divergente" como status');
     const modal = fonte(html, 'abrirModalGerarDevolucao');
     ok(/ehProblema = \/problema\|defeito\|avariad\|quebrad\|ruim\|divergen\/i/.test(modal), '⚠️ ' + arq + ': divergente abre no DEFEITOS');
   } else {
