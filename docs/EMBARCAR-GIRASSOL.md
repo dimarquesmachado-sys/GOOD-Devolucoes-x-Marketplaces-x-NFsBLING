@@ -3,7 +3,7 @@
 > ## ⚠️ ATUALIZACAO 04/10/2026 — A GIRASSOL JA FOI EMBARCADA
 >
 > A Girassol esta **ATIVA e operando desde 30/09/2026** (`ativa_em.devolucoes: true`): 64 NFs lancadas pelo
-> "Lancar por NF" e 64 NFs de devolucao emitidas em massa; Bling, ML e Shopee com apps PROPRIOS (Magalu usa o app compartilhado da GOOD, com token proprio da empresa); as
+> "Lancar por NF" e 64 NFs de devolucao emitidas em massa; Bling, ML, Shopee e Magalu com apps PROPRIOS — o Magalu da Girassol ganhou client PROPRIO em 30/09 (`GIRASSOL_MAGALU_CLIENT_ID`, criado pela CLI `idm`, separado do client de expedicao/estoque da conta; informado pelo dono). ⚠️ O `contrato-empresas.json` ainda marca esse Magalu como compartilhado: esta DESATUALIZADO e a correcao exige PR gemeo no Mover-Pedidos (contrato espelhado). A AMB ainda usa o app da GOOD no Magalu (candidata a migrar); as
 > SETE tabelas `*_girassol` provisionadas em producao. O texto abaixo e o HISTORICO do embarque (de 22/09) —
 > as instrucoes de "manter inativa" e a contagem de 5 tabelas valiam ANTES da ativacao.
 >
