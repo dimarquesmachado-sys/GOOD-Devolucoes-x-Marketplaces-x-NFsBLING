@@ -49,10 +49,10 @@ const amb = fs.readFileSync(path.join(__dirname, '..', 'amb-devolucoes', 'lib-AM
 const good = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
 const semCom = (s) => s.split('\n').filter((l) => !l.trim().startsWith('//')).join('\n');
 const iAmb = semCom(amb).indexOf("router.post('/api/triagem/aprovar'");
-const blocoAmb = semCom(amb).slice(iAmb, iAmb + 900);
+const blocoAmb = semCom(amb).slice(iAmb, iAmb + 4000);   // b520: a rota cresceu (parcial); a janela de 900 cortava o registrarTriagem
 ok(/triagem-tem-origem/.test(blocoAmb) && /sem_origem: true/.test(blocoAmb),
    '⚠️ a rota de aprovar da AMB/Girassol usa a trava');
-ok(blocoAmb.indexOf('conferirOrigem') < blocoAmb.indexOf('registrarTriagem'),
+ok(blocoAmb.indexOf('registrarTriagem') > -1 && blocoAmb.indexOf('conferirOrigem') < blocoAmb.indexOf('registrarTriagem'),
    '  e ANTES de gravar (nao depois)');
 const iGood = semCom(good).indexOf("app.post('/api/triagem/aprovar'");
 const blocoGood = semCom(good).slice(iGood, iGood + 1200);
