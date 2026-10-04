@@ -225,15 +225,29 @@ registrar('o dono entrega o token', async (chave) => {
       tudoOk = false;
       partes.push(`${integracao} (${politica}): o marketplace RECUSOU — ${r.motivo}`);
     } else if (r.aceito === true) {
-      // b525 - AUDITORIA: no ML, confere se o token e da CONTA DESTA empresa (<PREFIXO>ML_USER_ID)
-      const esperado = integracao === 'ml' ? String(process.env[(require('../lib/empresas').obterEmpresa(chave) || {}).prefixoEnv + 'ML_USER_ID'] || '').trim() : '';
-      if (integracao === 'ml' && r.conta && esperado && r.conta.id !== esperado) {
-        tudoOk = false;
-        partes.push(`ml (${politica}): ⚠️ token de OUTRA conta — respondeu ${r.conta.id}${r.conta.apelido ? ' (' + r.conta.apelido + ')' : ''}, esperado ${esperado}`);
+      // b525 - AUDITORIA: no ML, o token tem de ser da CONTA DESTA empresa. `cfg.ml.userId` ja resolve o
+      // prefixo E o fallback legado (GOOD usa ML_USER_ID sem prefixo). Sem identidade dos dois lados, reprova.
+      if (integracao === 'ml') {
+        const esperado = String(cfg.ml.userId || '').trim();
+        if (!esperado) {
+          tudoOk = false;
+          partes.push(`ml (${politica}): conta NAO VERIFICADA — falta ${cfg.ml.chaveUserId} no ambiente`);
+          continue;
+        }
+        if (!r.conta) {
+          tudoOk = false;
+          partes.push(`ml (${politica}): conta NAO VERIFICADA — /users/me respondeu sem o id do dono do token`);
+          continue;
+        }
+        if (r.conta.id !== esperado) {
+          tudoOk = false;
+          partes.push(`ml (${politica}): ⚠️ token de OUTRA conta — respondeu ${r.conta.id}${r.conta.apelido ? ' (' + r.conta.apelido + ')' : ''}, esperado ${esperado}`);
+          continue;
+        }
+        partes.push(`ml (${politica}): aceitou numa chamada real — conta ${r.conta.id} CONFIRMADA`);
         continue;
       }
-      partes.push(`${integracao} (${politica}): aceitou numa chamada real`
-        + (integracao === 'ml' && r.conta ? (esperado ? ` — conta ${r.conta.id} CONFIRMADA` : ` — conta ${r.conta.id} (NAO VERIFICADA: falta ML_USER_ID da empresa)`) : ''));
+      partes.push(`${integracao} (${politica}): aceitou numa chamada real`);
     } else {
       // rede/serviço não confirmou — não é prova de token ruim, mas também
       // não é "pode ativar" (mesmo critério do `naoOlhei` da checagem de tabelas)
@@ -348,44 +362,64 @@ registrar('tabelas no Supabase', async (chave) => {
 /* -- b525 - AUDITORIA (Codex, 04/10): CAPTURA RECENTE ---------------------------------------
    A captura persistente e o que o bipe consulta quando o marketplace para de listar (#432). Sonda verde sem
    captura recente era meia verdade. Le a ultima linha DESTA empresa em devolucoes_capturadas. */
-registrar('captura recente', async (chave) => {
+registrar('captura recente', async (chave, ctx) => {
   const e = require('../lib/empresas').obterEmpresa(chave);
+  const emp = String((e && e.chaveDados) || chave).toLowerCase();
+  // ⚠️ (Codex #433, P2) A IDADE DA ULTIMA LINHA NAO PROVA A CAPTURA: num periodo sem devolucao listada o
+  // `guardar` recebe lista vazia e nao toca em linha nenhuma, com a captura saudavel. Quem prova que o ciclo
+  // roda e o BATIMENTO em memoria do servidor (`ultima`, atualizado ate com lista vazia), que a rota repassa
+  // em `ctx.capturaEstado`. Por linha de comando nao ha servidor: fica NAO VERIFICADO, sem decidir pela idade.
+  const estado = ctx && typeof ctx.capturaEstado === 'function' ? ctx.capturaEstado(emp) : null;
+  if (estado) {
+    if (estado.erro) return { ok: false, detalhe: 'FALHOU — ' + estado.erro, erro: 'o ultimo ciclo da captura falhou (veja /<empresa>/status -> captura)' };
+    if (!estado.ultima) return { ok: false, detalhe: 'NAO VERIFICADO — a captura ainda nao rodou neste boot', erro: 'sem ciclo concluido desde o boot do servidor' };
+    const horas = (Date.now() - new Date(estado.ultima).getTime()) / 3600e3;
+    if (horas > 6) return { ok: false, detalhe: 'FALHOU — ultimo ciclo ha ' + Math.round(horas) + ' h', erro: 'a captura roda 1x/hora: mais de 6 h sem ciclo e falha' };
+    return { ok: true, detalhe: 'CONFIRMADO — ultimo ciclo ha ' + Math.round(horas * 60) + ' min (' + (estado.gravadas || 0) + ' gravada(s))' };
+  }
   const url = process.env[(e && e.prefixoEnv || '') + 'SUPABASE_URL'] || process.env.SUPABASE_URL;
   const key = process.env[(e && e.prefixoEnv || '') + 'SUPABASE_KEY'] || process.env.SUPABASE_KEY;
   if (!url || !key) return { ok: false, detalhe: 'NAO VERIFICADO — sem as envs do Supabase', erro: 'sem SUPABASE_URL/KEY' };
   try {
-    const sb = require('@supabase/supabase-js').createClient(url, key);
-    const emp = String((e && e.chaveDados) || chave).toLowerCase();
-    const r = await sb.from('devolucoes_capturadas').select('*').eq('empresa', emp).order('visto_por_ultimo', { ascending: false }).limit(1);   // coluna que a captura renova a cada gravacao
-    if (r.error) return { ok: false, detalhe: 'FALHOU — ' + r.error.message, erro: r.error.message };
-    const l = (r.data || [])[0];
-    if (!l) return { ok: true, detalhe: 'NAO VERIFICADO — nenhuma captura gravada ainda pra ' + emp, aviso: 'sem linha nenhuma: a captura nunca gravou nesta empresa (ou ela e nova)' };
-    const quando = l.visto_por_ultimo || l.capturado_em;
-    const horas = quando ? (Date.now() - new Date(quando).getTime()) / 3600e3 : null;
-    if (horas == null) return { ok: true, detalhe: 'NAO VERIFICADO — a linha nao tem data' };
-    if (horas > 6) return { ok: false, detalhe: 'FALHOU — ultima captura ha ' + Math.round(horas) + ' h', erro: 'a captura grava 1x/hora: mais de 6 h sem gravar e falha (veja /<empresa>/status -> captura)' };
-    return { ok: true, detalhe: 'CONFIRMADO — ultima captura ha ' + Math.round(horas * 60) + ' min' };
-  } catch (err) { return { ok: false, detalhe: 'NAO VERIFICADO — ' + ((err && err.message) || err) }; }
+    // fetch com timeout (como as outras sondas): o builder do supabase-js nao tem timeout e travaria a sonda
+    const r = await fetch(`${url}/rest/v1/devolucoes_capturadas?select=visto_por_ultimo&empresa=eq.${encodeURIComponent(emp)}&order=visto_por_ultimo.desc&limit=1`, {
+      headers: { apikey: key, Authorization: `Bearer ${key}` },
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!r.ok) return { ok: false, detalhe: 'FALHOU — HTTP ' + r.status + ' ao ler devolucoes_capturadas', erro: 'tabela devolucoes_capturadas ilegivel' };
+    const dados = await r.json();
+    const l = Array.isArray(dados) ? dados[0] : null;
+    const aviso = 'sem batimento do servidor (linha de comando): idade de linha nao prova a captura — rode pela rota /api/admin/sonda-empresa/' + chave;
+    if (!l) return { ok: true, detalhe: 'NAO VERIFICADO — nenhuma linha gravada ainda pra ' + emp, aviso };
+    return { ok: true, detalhe: 'NAO VERIFICADO — ultima linha gravada em ' + l.visto_por_ultimo, aviso };
+  } catch (err) { return { ok: false, detalhe: 'NAO VERIFICADO — ' + ((err && err.message) || err), erro: 'leitura da captura falhou ou estourou o tempo' }; }
 });
+
 
 /* -- b525 - AUDITORIA: CANAIS (confirmado / falhou / nao aplicavel / nao verificado) ------------
    A sonda so testava Bling e ML. Aqui o estado de configuracao dos outros canais, sem chamar a API deles
    (Shopee vai pelo proxy; TikTok pela ponte com mapa FECHADO de lojas no Mover-Pedidos). */
 registrar('canais (Magalu, Shopee, TikTok)', async (chave) => {
   const e = require('../lib/empresas').obterEmpresa(chave) || {};
-  const pre = e.prefixoEnv || '';
-  const tem = (n) => !!String(process.env[pre + n] || '').trim();
+  // mesma resolucao da producao (prefixo + fallback legado), nao nomes de env montados a mao
+  const mg = require('../lib/config-da-empresa').configDaEmpresa(chave).magalu;
+  const tem = (v) => !!String(v || '').trim();
   const partes = [];
   // Magalu: token + tenant da empresa; credencial propria ou a da GOOD
-  if (tem('MAGALU_ACCESS_TOKEN') || tem('MAGALU_REFRESH_TOKEN')) {
-    partes.push('Magalu: ' + (tem('MAGALU_TENANT_ID') ? 'configurado' : 'FALHOU (falta ' + pre + 'MAGALU_TENANT_ID)')
-      + (tem('MAGALU_CLIENT_ID') ? ' · credencial propria' : ' · usa a credencial da GOOD'));
+  if (tem(mg.accessToken) || tem(mg.refreshToken)) {
+    partes.push('Magalu: ' + (tem(mg.tenantId) ? 'configurado' : 'FALHOU (falta ' + (e.prefixoEnv || '') + 'MAGALU_TENANT_ID)')
+      + (tem(mg.clientId) ? ' · credencial propria' : ' · usa a credencial da GOOD'));
   } else partes.push('Magalu: NAO APLICAVEL (sem token da empresa)');
   // Shopee: proxy compartilhado (o servico multi-loja)
   partes.push('Shopee: ' + ((process.env.SHOPEE_PROXY_URL && process.env.SHOPEE_PROXY_KEY) ? 'NAO VERIFICADO (proxy configurado; a loja e conferida no /' + chave + '/status)' : 'FALHOU (proxy sem SHOPEE_PROXY_URL/KEY)'));
-  // TikTok: a ponte tem mapa fechado de lojas
+  // TikTok: a ponte tem mapa fechado de lojas E precisa de URL/KEY, senao toda chamada falha
   let tiktok = 'NAO VERIFICADO';
-  try { const ponte = require('../lib/tiktok-ponte'); if (typeof ponte.lojaDaEmpresa === 'function') tiktok = ponte.lojaDaEmpresa(e.chaveDados || chave) ? 'mapeado na ponte' : 'NAO APLICAVEL (loja nao mapeada na ponte do Mover-Pedidos)'; } catch (err) { tiktok = 'NAO VERIFICADO'; }
+  try {
+    const ponte = require('../lib/tiktok-ponte');
+    if (!ponte.lojaDaEmpresa(e.chaveDados || chave)) tiktok = 'NAO APLICAVEL (loja nao mapeada na ponte do Mover-Pedidos)';
+    else if (!ponte.configPonte().ok) tiktok = 'FALHOU (ponte sem MOVER_PEDIDOS_URL/KEY)';
+    else tiktok = 'mapeado na ponte';
+  } catch (err) { tiktok = 'NAO VERIFICADO'; }
   partes.push('TikTok: ' + tiktok);
   const falhou = partes.some((x) => /FALHOU/.test(x));
   return { ok: !falhou, detalhe: partes.join(' | '), erro: falhou ? 'algum canal configurado pela metade' : null };
@@ -428,11 +462,11 @@ registrar('estado no contrato', async (chave) => {
     erro: 'a montagem falhou: veja /health -> montagem_empresas e o log do boot' };
 });
 
-async function sondar(chave) {
+async function sondar(chave, ctx) {
   const linhas = [];
   for (const { nome, fn } of CHECAGENS) {
     try {
-      const r = await fn(chave);
+      const r = await fn(chave, ctx);
       linhas.push({ nome, ...r });
     } catch (err) {
       linhas.push({ nome, ok: false, detalhe: `a checagem quebrou: ${(err && err.message) || err}` });
