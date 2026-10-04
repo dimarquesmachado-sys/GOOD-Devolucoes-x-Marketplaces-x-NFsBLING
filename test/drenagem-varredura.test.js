@@ -14,7 +14,6 @@ const ler = (p) => fs.readFileSync(path.join(RAIZ, p), 'utf8');
 
 const MODULOS = [
   ['lib/nf-nomes.js', 'GOOD nf-nomes'],
-  ['lib/ml-returns.js', 'GOOD ml-returns'],
   ['amb-devolucoes/lib-AMB/nf-nomes-AMB.js', 'AMB nf-nomes'],
   ['amb-devolucoes/lib-AMB/ml-returns-AMB.js', 'AMB ml-returns'],
 ];

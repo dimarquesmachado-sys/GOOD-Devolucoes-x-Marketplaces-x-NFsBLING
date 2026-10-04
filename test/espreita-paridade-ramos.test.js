@@ -50,7 +50,7 @@ const SRC = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
 // (`lib/ml-returns.js`) nao punha nas entregues. O campo existia e valia
 // null sempre. Paridade de fachada.
 {
-  const ML = fs.readFileSync(path.join(__dirname, '..', 'lib', 'ml-returns.js'), 'utf8');
+  const ML = fs.readFileSync(path.join(__dirname, '..', 'amb-devolucoes', 'lib-AMB', 'ml-returns-AMB.js')   /* b511: fabrica unica */, 'utf8');
   const iE = ML.indexOf('entreguesLista.push({');
   const linhaEntregues = ML.slice(iE, ML.indexOf('});', iE));
   ok(/status_money/.test(linhaEntregues),

@@ -622,6 +622,9 @@ function resumoEspreita() {
         entregue_em: real || d.entregue_em || null,
         data_precisa: !!real,
         claim_id: d.claim_id, shipment_devolucao: d.shipment_devolucao || null,
+        // b511 (unificacao, UNIAO): a copia antiga da GOOD entregava o dinheiro da devolucao nas ENTREGUES — o card
+        // de alerta da GOOD calcula 'dinheiro' daqui. Sem isto, a GOOD perdia a info ao usar esta fabrica (#420).
+        status_money: d.status_money || null,
       
         ...(PEDIDOS.get(String(d.order_id)) || {}),
       });

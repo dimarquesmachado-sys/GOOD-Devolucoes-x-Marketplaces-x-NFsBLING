@@ -3,7 +3,7 @@
 const fs = require('fs'); const path = require('path');
 let falhas = 0;
 const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o); };
-for (const arq of ['lib/ml-returns.js', 'amb-devolucoes/lib-AMB/ml-returns-AMB.js']) {
+for (const arq of ['amb-devolucoes/lib-AMB/ml-returns-AMB.js']   /* b511: a GOOD usa a mesma fabrica (#420) */) {
   const s = fs.readFileSync(path.join(__dirname, '..', arq), 'utf8');
   ok(/if \(reg\.destino === 'seller'\) \{/.test(s) && /\/stock\/fulfillment\/operations\/search\?seller_id=' \+ sel \+ '&inventory_id=' \+ inv/.test(s), '⚠️ ' + arq + ': so a peca que vai pro vendedor consulta o estoque do Full');
   ok(/&date_from=' \+ de/.test(s) && /rr\.data && rr\.data\.date_created/.test(s), '⚠️ ' + arq + ': so operacoes DEPOIS da abertura desta devolucao (o anuncio pode ter outras retiradas)');
