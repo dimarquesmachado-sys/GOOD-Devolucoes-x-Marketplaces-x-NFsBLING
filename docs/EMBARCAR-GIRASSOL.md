@@ -1,5 +1,19 @@
 # Embarcar a Girassol no Devoluções — checklist
 
+> ## ⚠️ ATUALIZACAO 04/10/2026 — A GIRASSOL JA FOI EMBARCADA
+>
+> A Girassol esta **ATIVA e operando desde 30/09/2026** (`ativa_em.devolucoes: true`): 64 NFs lancadas pelo
+> "Lancar por NF" e 64 NFs de devolucao emitidas em massa; Bling, ML, Shopee e Magalu com apps PROPRIOS — o Magalu da Girassol ganhou client PROPRIO em 30/09 (`GIRASSOL_MAGALU_CLIENT_ID`, criado pela CLI `idm`, separado do client de expedicao/estoque da conta; informado pelo dono). ⚠️ O `contrato-empresas.json` ainda marca esse Magalu como compartilhado: esta DESATUALIZADO e a correcao exige PR gemeo no Mover-Pedidos (contrato espelhado). A AMB ainda usa o app da GOOD no Magalu (candidata a migrar); as
+> SETE tabelas `*_girassol` provisionadas em producao. O texto abaixo e o HISTORICO do embarque (de 22/09) —
+> as instrucoes de "manter inativa" e a contagem de 5 tabelas valiam ANTES da ativacao.
+>
+> **Pra embarcar a PROXIMA empresa, use este documento como roteiro, com estas correcoes:** sao 7 tabelas
+> (rode o `sql/provisionar-empresa.sql` atual); a empresa nasce INATIVA no contrato e so e ativada depois da
+> sonda verde; o front recebe a empresa do servidor (b513) — nada a cadastrar no navegador; e cada CNPJ usa
+> apps PROPRIOS em todos os marketplaces, inclusive o Magalu (regra do dono: nenhuma dependencia entre
+> empresas; hoje so a AMB ainda usa o app da GOOD no Magalu — o `apps_por_servico` do contrato esta desatualizado). Se a empresa tiver TikTok, a ponte do Mover-Pedidos tem um
+> mapa fechado de lojas (`lib/tiktok-ponte.js`) que precisa do ajuste coordenado.
+
 > ## ESTADO REAL EM 22/09/2026 — LEIA ANTES DE USAR ESTE CHECKLIST
 >
 > **O código está pronto. Falta configuração.**
