@@ -10,8 +10,8 @@
 > **Pra embarcar a PROXIMA empresa, use este documento como roteiro, com estas correcoes:** sao 7 tabelas
 > (rode o `sql/provisionar-empresa.sql` atual); a empresa nasce INATIVA no contrato e so e ativada depois da
 > sonda verde; o front recebe a empresa do servidor (b513) — nada a cadastrar no navegador; e cada CNPJ usa
-> apps PROPRIOS no Bling, ML e Shopee (regra do dono); o Magalu e a excecao — app compartilhado, token por
-> empresa (`contrato-empresas.json`, `apps_por_servico`). Se a empresa tiver TikTok, a ponte do Mover-Pedidos tem um
+> apps PROPRIOS em todos os marketplaces, inclusive o Magalu (regra do dono: nenhuma dependencia entre
+> empresas; hoje so a AMB ainda usa o app da GOOD no Magalu — o `apps_por_servico` do contrato esta desatualizado). Se a empresa tiver TikTok, a ponte do Mover-Pedidos tem um
 > mapa fechado de lojas (`lib/tiktok-ponte.js`) que precisa do ajuste coordenado.
 
 > ## ESTADO REAL EM 22/09/2026 — LEIA ANTES DE USAR ESTE CHECKLIST
