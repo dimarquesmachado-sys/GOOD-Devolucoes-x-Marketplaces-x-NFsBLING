@@ -544,7 +544,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.126.31 (b517: Codex #426 — --escuro na GOOD, serie da nf_chave no JA TRIADA, produtoId na foto da GOOD)',
+      version: '9.126.32 (b518: auditoria — TikTok da AMB/Girassol capturado; falha de gravacao tenta em 5 min; NF da AMB pesquisavel)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -8882,6 +8882,7 @@ drenagem.intervalo(preAquecerEspreita, 3 * 60 * 1000);
 // ============================================================
 const CAPTURA_INTERVALO_MS = 60 * 60 * 1000;   // de hora em hora
 let CAPTURA_ULTIMA = 0;
+let CAPTURA_FALHOU = false;   // b518: falha de gravacao = nova tentativa em 5 min
 let CAPTURA_RODANDO = false;
 let CAPTURA_ESTADO = { ultima: null, gravadas: 0, erro: null };
 
@@ -8896,7 +8897,9 @@ function capturarDevolucoes(resultadoEspreita, forcar, limiteTikTok) {
   // juntas duplicariam o trabalho e brigariam pelo mesmo upsert.
   if (!supabase) { CAPTURA_ESTADO = { ...CAPTURA_ESTADO, erro: 'Supabase nao configurado' }; return; }
   if (CAPTURA_RODANDO) return;
-  if (!forcar && Date.now() - CAPTURA_ULTIMA < CAPTURA_INTERVALO_MS) return;
+  // b518 - AUDITORIA (Codex, 04/10): a janela de 1 h contava a TENTATIVA — banco falhou, ninguem tentava de novo
+  // por 1 h. Agora: 1 h desde a ultima GRAVACAO BEM-SUCEDIDA; depois de falha, nova tentativa em 5 min.
+  if (!forcar && Date.now() - CAPTURA_ULTIMA < (CAPTURA_FALHOU ? 5 * 60 * 1000 : CAPTURA_INTERVALO_MS)) return;
 
   // b184.2 (Codex): o campo e `em_transito`, nao `itens`.
   //
@@ -8963,11 +8966,13 @@ function capturarDevolucoes(resultadoEspreita, forcar, limiteTikTok) {
         tiktok_erro: erroTikTok || undefined,
         erro: r.ok ? null : (r.erros || ['falha desconhecida']).join(' | '),
       };
+      CAPTURA_FALHOU = !r.ok;   // b518
       if (r.ok) console.log(`[CAPTURA] ${r.gravadas} devolucoes guardadas`);
       else console.warn('[CAPTURA] falhou:', CAPTURA_ESTADO.erro);
       return CAPTURA_ESTADO;   // b185 - quem forcou espera este resultado
     })
     .catch((e) => {
+      CAPTURA_FALHOU = true;   // b518
       CAPTURA_ESTADO = { ultima: new Date().toISOString(), gravadas: 0, erro: e.message || String(e) };
       console.warn('[CAPTURA] erro:', CAPTURA_ESTADO.erro);
       return CAPTURA_ESTADO;
