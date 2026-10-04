@@ -19,7 +19,7 @@ const AMB = fs.readFileSync(path.join(RAIZ, 'amb-devolucoes', 'app-AMB.js'), 'ut
 // Eu tinha portado so pro painel2, que so e alcancavel pelo endereco
 // direto — na pratica o card nao apareceria pra ele.
 const PAINEL_AMB = fs.readFileSync(path.join(RAIZ, 'amb-devolucoes', 'public-AMB', 'painel-AMB.html'), 'utf8');
-const PAINEL_AMB2 = fs.readFileSync(path.join(RAIZ, 'amb-devolucoes', 'public-AMB', 'painel2-AMB.html'), 'utf8');
+const PAINEL_AMB2 = fs.readFileSync(path.join(RAIZ, 'amb-devolucoes', 'public-AMB', 'painel-AMB.html'), 'utf8');
 const PAINEL_GOOD = fs.readFileSync(path.join(RAIZ, 'public', 'painel-devolucoes.html'), 'utf8');
 const SERVER = fs.readFileSync(path.join(RAIZ, 'server.js'), 'utf8');
 

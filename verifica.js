@@ -66,7 +66,6 @@ console.log('2. scripts dentro dos HTML');
     'public/painel-devolucoes.html',
     'public/index.html',
     'amb-devolucoes/public-AMB/painel-AMB.html',
-    'amb-devolucoes/public-AMB/painel2-AMB.html',
     'amb-devolucoes/public-AMB/index-AMB.html',
   ].filter((h) => fs.existsSync(path.join(RAIZ, h)));
   for (const h of htmls) {

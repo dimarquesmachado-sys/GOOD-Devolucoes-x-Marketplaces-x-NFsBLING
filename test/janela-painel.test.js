@@ -10,7 +10,7 @@ function fonte(html, nome) {
   for (; k < html.length; k++) { if (html[k] === '{') prof++; else if (html[k] === '}') { prof--; if (prof === 0) break; } }
   return html.slice(i, k + 1);
 }
-for (const arq of ['amb-devolucoes/public-AMB/painel-AMB.html', 'amb-devolucoes/public-AMB/painel2-AMB.html', 'public/painel-devolucoes.html']) {
+for (const arq of ['amb-devolucoes/public-AMB/painel-AMB.html', 'public/painel-devolucoes.html']) {
   const html = fs.readFileSync(path.join(__dirname, '..', arq), 'utf8');
   const jan = fonte(html, 'janelaPainel');
   ok(/Copiar texto/.test(jan) && /navigator\.clipboard/.test(jan) && /max-height:86vh/.test(jan), '⚠️ ' + arq + ': janela do painel com "Copiar texto" e espaco pro texto inteiro');

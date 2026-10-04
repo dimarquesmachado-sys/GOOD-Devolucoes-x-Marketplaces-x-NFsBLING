@@ -75,7 +75,6 @@ const RAIZ = path.join(__dirname, '..');
   for (const [nome, rel] of [
     ['GOOD', 'public/painel-devolucoes.html'],
     ['AMB (servido)', 'amb-devolucoes/public-AMB/painel-AMB.html'],
-    ['AMB (direto)', 'amb-devolucoes/public-AMB/painel2-AMB.html'],
   ]) {
     const html = fs.readFileSync(path.join(RAIZ, rel), 'utf8');
     ok(/x\.nf_motivo_sem_vinculo/.test(html), nome + ': e a tela mostra o motivo');
@@ -112,7 +111,6 @@ const RAIZ = path.join(__dirname, '..');
   for (const [nome, rel] of [
     ['GOOD', 'public/painel-devolucoes.html'],
     ['AMB (servido)', 'amb-devolucoes/public-AMB/painel-AMB.html'],
-    ['AMB (direto)', 'amb-devolucoes/public-AMB/painel2-AMB.html'],
   ]) {
     const html = fs.readFileSync(path.join(RAIZ, rel), 'utf8');
     ok(/QUALQUER serie != 1 e Full/.test(html),

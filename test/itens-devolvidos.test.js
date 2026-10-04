@@ -13,7 +13,7 @@ ok(/completarRegistro\(r, d\)/.test(rotaCons), '⚠️ AMB/Girassol: /consertado
 const rotaDiv = entreMarcadores(compat, "router.post('/api/triagem/divergente'", "router.post('/api/triagem/consertado'");
 ok(/delete d\.itens_devolvidos/.test(rotaDiv), '⚠️ AMB/Girassol: /divergente NAO grava a lista dos itens esperados');
 function fonte(html, nome) { const i = html.search(new RegExp('function ' + nome + '\\s*\\(')); if (i < 0) return ''; let j = html.indexOf('{', i), prof = 0, k = j; for (; k < html.length; k++) { if (html[k] === '{') prof++; else if (html[k] === '}') { prof--; if (prof === 0) break; } } return html.slice(i, k + 1); }
-for (const arq of ['amb-devolucoes/public-AMB/painel-AMB.html', 'amb-devolucoes/public-AMB/painel2-AMB.html', 'public/painel-devolucoes.html']) {
+for (const arq of ['amb-devolucoes/public-AMB/painel-AMB.html', 'public/painel-devolucoes.html']) {
   const html = fs.readFileSync(path.join(__dirname, '..', arq), 'utf8');
   const ctx = {}; vm.createContext(ctx);
   vm.runInContext(fonte(html, 'escapeHtml') + '\n' + fonte(html, 'linhaItensDevolvidos'), ctx);

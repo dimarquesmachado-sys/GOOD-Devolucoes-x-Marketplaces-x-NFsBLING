@@ -65,7 +65,6 @@ const RAIZ = path.join(__dirname, '..');
   for (const [nome, rel] of [
     ['GOOD', 'public/painel-devolucoes.html'],
     ['AMB (servido)', 'amb-devolucoes/public-AMB/painel-AMB.html'],
-    ['AMB (direto)', 'amb-devolucoes/public-AMB/painel2-AMB.html'],
   ]) {
     const html = fs.readFileSync(path.join(RAIZ, rel), 'utf8');
     ok(!/\[DEFEITO\\\]\/\.test\(d\.problema_descricao/.test(html),
@@ -112,7 +111,6 @@ const RAIZ = path.join(__dirname, '..');
   // a AMB ja resolvia pelo `ehProblema` — os dois paineis
   for (const [nome, rel] of [
     ['AMB (servido)', 'amb-devolucoes/public-AMB/painel-AMB.html'],
-    ['AMB (direto)', 'amb-devolucoes/public-AMB/painel2-AMB.html'],
   ]) {
     const html = fs.readFileSync(path.join(RAIZ, rel), 'utf8');
     ok(/ehProblema\s*\n?\s*\?\s*\(?\s*(idDefeitos|DEPOSITOS_AMB\.defeitos)/.test(html),

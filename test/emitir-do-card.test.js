@@ -233,7 +233,6 @@ const PAINEL = fs.readFileSync(path.join(RAIZ, 'public', 'painel-devolucoes.html
   const PAINEIS = [
     ['GOOD', PAINEL],
     ['AMB (servido)', fs.readFileSync(path.join(RAIZ, 'amb-devolucoes', 'public-AMB', 'painel-AMB.html'), 'utf8')],
-    ['AMB (direto)', fs.readFileSync(path.join(RAIZ, 'amb-devolucoes', 'public-AMB', 'painel2-AMB.html'), 'utf8')],
   ];
 
   for (const [nome, html] of PAINEIS) {
@@ -268,7 +267,7 @@ const PAINEL = fs.readFileSync(path.join(RAIZ, 'public', 'painel-devolucoes.html
 
   // b199.3: os parametros que cada modal da AMB usa de verdade
   const P_AMB = fs.readFileSync(path.join(RAIZ, 'amb-devolucoes', 'public-AMB', 'painel-AMB.html'), 'utf8');
-  const P_AMB2 = fs.readFileSync(path.join(RAIZ, 'amb-devolucoes', 'public-AMB', 'painel2-AMB.html'), 'utf8');
+  const P_AMB2 = fs.readFileSync(path.join(RAIZ, 'amb-devolucoes', 'public-AMB', 'painel-AMB.html'), 'utf8');
   ok(/String\(d\.cliente \|\| ''\),\s*\n\s*String\(d\.sku \|\| ''\)/.test(P_AMB),
      'o painel servido passa cliente e sku — sem eles a trava de NF duplicada nao roda');
   // b199.5: o padrao e DEFEITO — Geral so com entrada EXPLICITA
@@ -276,8 +275,8 @@ const PAINEL = fs.readFileSync(path.join(RAIZ, 'public', 'painel-devolucoes.html
      'o deposito padrao e DEFEITO: so vai pra Geral quando SABEMOS que voltou');
   ok(/\(d\.entrada_estoque === true \? '' : 'defeito'\)/.test(P_AMB2),
      '  nos dois paineis da AMB');
-  ok(/Reembolso do TikTok nem popula esse campo/.test(P_AMB2),
-     '  com o motivo: reembolso do TikTok nao popula o campo, e cairia em Geral');
+  // b532: as duas checagens abaixo eram de TEXTO que so existia no painel2 (comentario do motivo e o aviso
+  // 'esta tela nao checa sozinha'); o painel2 foi aposentado — o painel-AMB TEM a trava de NF duplicada.
 
   // e o payload leva o que a trava precisa
   for (const [nome, html] of [['GOOD', PAINEL], ['AMB (servido)', P_AMB], ['AMB (direto)', P_AMB2]]) {
@@ -300,9 +299,6 @@ const PAINEL = fs.readFileSync(path.join(RAIZ, 'public', 'painel-devolucoes.html
   ok(/o lote passa pela fila/.test(AMB_APP),
      '  com o motivo: consertei o caminho direto e esqueci o do lote');
 
-  // o painel2 avisa que nao checa duplicata
-  ok(/esta tela não checa sozinha/.test(P_AMB2),
-     'o painel2 avisa que nao tem a trava de NF duplicada (ela vive no painel-AMB)');
 
   // b199.3: duas abas nao criam dois registros
   ok(/corrida_resolvida: true/.test(AMB_APP),
@@ -322,7 +318,6 @@ const PAINEL = fs.readFileSync(path.join(RAIZ, 'public', 'painel-devolucoes.html
   for (const [nome, html] of [
     ['GOOD', PAINEL],
     ['AMB (servido)', fs.readFileSync(path.join(RAIZ, 'amb-devolucoes', 'public-AMB', 'painel-AMB.html'), 'utf8')],
-    ['AMB (direto)', fs.readFileSync(path.join(RAIZ, 'amb-devolucoes', 'public-AMB', 'painel2-AMB.html'), 'utf8')],
   ]) {
     ok(!/Gerar rascunhos das selecionadas/.test(html),
        nome + ': o rotulo nao promete rascunho em lugar nenhum');
@@ -333,7 +328,6 @@ const PAINEL = fs.readFileSync(path.join(RAIZ, 'public', 'painel-devolucoes.html
   // e o modal da AMB nao recebe o parametro errado
   for (const [nome, html] of [
     ['AMB (servido)', fs.readFileSync(path.join(RAIZ, 'amb-devolucoes', 'public-AMB', 'painel-AMB.html'), 'utf8')],
-    ['AMB (direto)', fs.readFileSync(path.join(RAIZ, 'amb-devolucoes', 'public-AMB', 'painel2-AMB.html'), 'utf8')],
   ]) {
     ok(/confira as linhas no Bling/i.test(html),
        nome + ': avisa por toast em vez de passar `true` na posicao errada');

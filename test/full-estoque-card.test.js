@@ -5,7 +5,7 @@
 const fs = require('fs'); const path = require('path'); const vm = require('vm');
 let falhas = 0;
 const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o); };
-const PAINEIS = ['amb-devolucoes/public-AMB/painel-AMB.html', 'amb-devolucoes/public-AMB/painel2-AMB.html', 'public/painel-devolucoes.html'];   // b484: + GOOD
+const PAINEIS = ['amb-devolucoes/public-AMB/painel-AMB.html', 'public/painel-devolucoes.html'];   // b484: + GOOD
 for (const nomePainel of PAINEIS) {
 const html = fs.readFileSync(path.join(__dirname, '..', nomePainel), 'utf8');
 console.log('— ' + nomePainel);

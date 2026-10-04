@@ -53,7 +53,7 @@ ok(/\.update\(\{ status: 'aprovado', tipo: 'devolucao' \}\)/.test(bloco),
 // O dono: "15 e pouco". O teto existia porque a rota faz 2 chamadas ao Bling
 // por nota numa requisicao so. Agora o front divide em levas de 15 e chama
 // varias vezes, com progresso — o lote inteiro de uma vez.
-for (const painel of ['painel-AMB.html', 'painel2-AMB.html']) {
+for (const painel of ['painel-AMB.html']) {
   const html = fs.readFileSync(
     path.join(__dirname, '..', 'amb-devolucoes', 'public-AMB', painel), 'utf8');
   const semComH = html.split('\n').filter((l) => !l.trim().startsWith('//')).join('\n');

@@ -435,7 +435,7 @@ process.env.AMB_SUPABASE_KEY = 'chave-de-teste';
     ok(/var CHAVE_DA_FICHA = "%%APP_EMPRESA%%"/.test(baseJs) && /window\.APP_EMPRESA = \(CHAVE_DA_FICHA/.test(baseJs),
        '⚠️ o front expoe a chave curta da empresa');
 
-    for (const painel of ['painel-AMB.html', 'painel2-AMB.html']) {
+    for (const painel of ['painel-AMB.html']) {
       const html = fs.readFileSync(
         path.join(RAIZ, 'amb-devolucoes', 'public-AMB', painel), 'utf8');
       // ⚠️ o fallback `'amb-checkout-offline'` é aceitável: só vale se o
