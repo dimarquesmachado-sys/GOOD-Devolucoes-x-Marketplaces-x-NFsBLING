@@ -15,7 +15,7 @@ const b = fs.readFileSync(path.join(R, 'public', 'js', 'busca.js'), 'utf8');
 ok(!/\/magalu\/ir\/good/.test(b) && !/good-checkout-offline/.test(b), '⚠️ a tela unica nao tem valor da GOOD escrito a mao (vem dos dados da empresa)');
 ok(/const avisoTriada = jaTri/.test(b), '  e tem o aviso JA TRIADA (#425)');
 const s = fs.readFileSync(path.join(R, 'server.js'), 'utf8');
-ok(/jaTriadas\.set\(chaveNF\(r\.nf_numero, r\.nf_serie\), r\)/.test(s) && /jaTriadas\.get\(chaveNF\(c\.numero, c\.serie\)\)/.test(s), '  GOOD: JA TRIADA casa numero+serie (paridade com o #425)');
+ok(/jaTriadas\.set\(chaveNF\(r\.nf_numero, r\.nf_serie \|\| confrontar\.serieDaChave\(r\.nf_chave\)\), r\)/.test(s) && /jaTriadas\.get\(chaveNF\(c\.numero, c\.serie\)\)/.test(s), '  GOOD: JA TRIADA casa numero+serie (paridade com o #425)');
 console.log('');
 console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
 process.exit(falhas ? 1 : 0);

@@ -544,7 +544,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.126.30 (b516: tela de bipe UNICA pras tres empresas; JA TRIADA por numero+serie na GOOD)',
+      version: '9.126.31 (b517: Codex #426 — --escuro na GOOD, serie da nf_chave no JA TRIADA, produtoId na foto da GOOD)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -1749,9 +1749,10 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
                   // ⚠️ os campos REAIS da tabela: `created_at` e `funcionario` (li o
       // select da rota de listagem, ~L2808). Eu tinha escrito `triado_em` e
       // `triado_por` de cabeca — Regra 4.12, ler o produtor antes.
-      .select('nf_numero, nf_serie, created_at, funcionario, status').in('nf_numero', nums);
+      .select('nf_numero, nf_serie, nf_chave, created_at, funcionario, status').in('nf_numero', nums);
                 // b516 (paridade com o #425): numero+SERIE — o numero se repete entre series
-                for (const r of (data || [])) jaTriadas.set(chaveNF(r.nf_numero, r.nf_serie), r);
+                // b517: triagem antiga so tem a serie dentro da nf_chave (44 digitos)
+                for (const r of (data || [])) jaTriadas.set(chaveNF(r.nf_numero, r.nf_serie || confrontar.serieDaChave(r.nf_chave)), r);
               }
             } catch (e) { /* sem a tabela, a lista sai sem a marca */ }
 
