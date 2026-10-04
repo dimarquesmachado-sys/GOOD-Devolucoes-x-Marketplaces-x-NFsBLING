@@ -1039,15 +1039,30 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
                 }
               }
             }
+            // b514 - "JA TRIADA" na busca por nome (porte da GOOD, b282 — caso real de 11/09: a NF 78425 ja triada
+            // pelo Lucas aparecia como qualquer outra; risco de triar DE NOVO = estoque e NF de devolucao duplicados).
+            // Uma consulta so, na tabela DESTA empresa (db.tabelas); falhou = a lista sai sem a marca, nunca trava.
+            const jaTriadas = new Map();
+            try {
+              const nums = rN.candidatos.map((c) => String(c.numero || '')).filter(Boolean);
+              const tabDev = db && db.tabelas && db.tabelas.devolucoes;
+              if (nums.length && supabase && tabDev) {
+                const { data } = await supabase.from(tabDev).select('nf_numero, criado_em, funcionario, status').in('nf_numero', nums);
+                for (const r of (data || [])) jaTriadas.set(String(r.nf_numero), r);
+              }
+            } catch (e) { /* sem a marca */ }
             resultado.candidatos_nome = rN.candidatos.map((c) => {
               const e = porNF.get(chaveNF(c.numero, c.serie));
               const itensDet = detalhes.get(String(c.id)) || null;
               const diag = diagnosticos.get(String(c.id)) || null;
+              const tri = jaTriadas.get(String(c.numero || ''));
+              const marcaTriada = tri ? { ja_triada: true, triada_em: tri.criado_em || null, triada_por: tri.funcionario || null, triada_status: tri.status || null } : {};
               // sempre uma COPIA: o `c` e do indice compartilhado
               const base = { ...c, ...(itensDet ? { itens: itensDet } : {}), ...(diag ? { _detalhe: diag } : {}) };
-              if (!e) return base;
+              if (!e) return { ...base, ...marcaTriada };
               return {
                 ...base,
+                ...marcaTriada,
                 na_espreita: true,
                 espreita_estado: e._estado,
                 espreita_dias: e._estado === 'entregue' ? (e.dias_desde != null ? e.dias_desde : e.dias) : e.dias_em_transito,
