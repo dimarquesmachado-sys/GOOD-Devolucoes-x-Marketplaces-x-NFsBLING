@@ -431,7 +431,8 @@ process.env.AMB_SUPABASE_KEY = 'chave-de-teste';
     // lugares, nos dois painéis.
     const baseJs = fs.readFileSync(path.join(RAIZ, 'amb-devolucoes',
       'public-AMB', 'js-AMB', 'base-amb.js'), 'utf8');
-    ok(/window\.APP_EMPRESA = String\(BASE/.test(baseJs),
+    // b513: a chave vem da ficha (o servidor injeta %%APP_EMPRESA%%); a URL so e reserva se o marcador nao foi trocado
+    ok(/var CHAVE_DA_FICHA = "%%APP_EMPRESA%%"/.test(baseJs) && /window\.APP_EMPRESA = \(CHAVE_DA_FICHA/.test(baseJs),
        '⚠️ o front expoe a chave curta da empresa');
 
     for (const painel of ['painel-AMB.html', 'painel2-AMB.html']) {
@@ -501,8 +502,9 @@ process.env.AMB_SUPABASE_KEY = 'chave-de-teste';
     // conhecidos, `BASE` caía no `''` da raiz — e `window.APP_EMPRESA`
     // herdava o fallback `'amb'`, mandando essa instância pros links da
     // AMBTotal.
-    ok(/PREFIXOS_CONHECIDOS = \[[^\]]*'\/good'/.test(baseJs),
-       "⚠️ base-amb.js: '/good' entra nos prefixos conhecidos");
+    // b513: a lista fechada saiu — a base e o 1o segmento da URL (qualquer empresa, inclusive /good e uma 4a).
+    ok(!/PREFIXOS_CONHECIDOS/.test(baseJs) && /caminho\.split\('\/'\)\[1\]/.test(baseJs),
+       "⚠️ base-amb.js: sem lista fechada de empresas (a base vem da URL)");
 
     // ── ⚠️ e o NOME DA ENV nos textos da tela ─────────────────────────
     //

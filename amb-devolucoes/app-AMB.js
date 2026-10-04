@@ -484,7 +484,12 @@ const INDEX_AMB_HTML = comTema(fs.readFileSync(
 // processo nao muda em runtime) e troca o marcador pelo valor da ficha.
 const BASE_AMB_JS = fs.readFileSync(
   path.join(__dirname, 'public-AMB', 'js-AMB', 'base-amb.js'), 'utf8'
-).replace('"%%PASTA_CHECKOUT%%"', JSON.stringify(PASTA_CHECKOUT));
+)
+  // b513 (desenho do Codex, auditoria de 03/10): o SERVIDOR, que sabe qual empresa montou, entrega a rota e a
+  // CHAVE DE DADOS da ficha — a chave nem sempre e a rota sem a barra. O navegador nao deduz nem cai na AMB/GOOD.
+  .replace('"%%APP_BASE%%"', JSON.stringify(BASE))
+  .replace('"%%APP_EMPRESA%%"', JSON.stringify(CHAVE_DADOS))
+  .replace('"%%PASTA_CHECKOUT%%"', JSON.stringify(PASTA_CHECKOUT));
 
 // ⚠️ Codex (revisão do PR #370, P2) - MESMO FURO do INDEX_AMB_HTML, agora no
 // painel: título e <h1> diziam "AMBTotal" pra Girassol tambem.
@@ -642,7 +647,7 @@ const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 // checado ANTES de entrar na fila da empresa — nao antes de sair, entao um
 // candidato ja desistido ainda batia no Bling depois de esperar numa pausa
 // de 429. Ver bling-AMB.js, nf-nomes-AMB.js e identificar-AMB.js.
-const VERSAO = 'AMB Devolucoes b511';
+const VERSAO = 'AMB Devolucoes b513';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
