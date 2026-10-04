@@ -171,7 +171,7 @@
         "magalu": { "devolucoes": "proprio (AMB_MAGALU_CLIENT_ID — client DevolucoesAMB criado pelo idm em 04/10)", "mover-pedidos": "compartilhado (MAGALU_CLIENT_ID)" }
       },
       "dono_hoje": {
-        "_nota": "⚠️ A VERDADE DE HOJE, não o desejado. Mais de um serviço = conflito ATIVO.",
+        "_nota": "⚠️ A VERDADE DE HOJE, não o desejado. Mais de um serviço = conflito ATIVO — EXCETO o Magalu, onde cada serviço usa um client DIFERENTE (ver `apps_por_servico`): tokens de clients diferentes não brigam, cada um renova o seu. Dois donos, zero conflito.",
         "bling": [
           "devolucoes",
           "mover-pedidos"
@@ -246,7 +246,7 @@
         "magalu": { "devolucoes": "proprio (GIRASSOL_MAGALU_CLIENT_ID — client criado pelo idm em 30/09)", "mover-pedidos": "compartilhado (MAGALU_CLIENT_ID)" }
       },
       "dono_hoje": {
-        "_nota": "⚠️ A VERDADE DE HOJE, não o desejado. Mais de um serviço = conflito ATIVO — EXCETO quando cada serviço usa um APP DIFERENTE do marketplace (ver `apps_por_servico`): tokens de apps diferentes não brigam, cada um renova o seu. É o caso do Bling e do ML da Girassol desde 24/09/2026: o Devoluções criou apps PRÓPRIOS, o Mover-Pedidos segue com os dele. Dois donos, zero conflito.",
+        "_nota": "⚠️ A VERDADE DE HOJE, não o desejado. Mais de um serviço = conflito ATIVO — EXCETO quando cada serviço usa um APP DIFERENTE do marketplace (ver `apps_por_servico`): tokens de apps diferentes não brigam, cada um renova o seu. É o caso do Bling e do ML da Girassol desde 24/09/2026, e do Magalu desde 30/09: o Devoluções criou apps/clients PRÓPRIOS, o Mover-Pedidos segue com os dele. Dois donos, zero conflito.",
         "bling": [
           "devolucoes",
           "mover-pedidos"
@@ -334,7 +334,7 @@
           "empresa_aceita": "o id canônico E os aliases do contrato; normaliza pro canônico na resposta (/amb/ml e /ambtotal/ml dão a mesma coisa)",
           "integracao_ausente": "404 — nunca `access: null` (GOOD/tiktok é o caso real)",
           "bling_nfe": "exposta desde o dia 1, mesmo sem consumidor aqui",
-          "magalu_e_tiktok": "501 declarado até existir leitor — o `dono_hoje` desses eixos já é só do Mover-Pedidos, não há corrida a matar, e rota sem consumidor é superfície à toa. Ligar é uma linha quando precisarmos.",
+          "magalu_e_tiktok": "501 declarado até existir leitor — o `dono_hoje` do TikTok é só do Mover-Pedidos, e o do Magalu da GOOD também; na Girassol e na AMB o Devolucoes renova o token do client PROPRIO (sem disputa, ver `apps_por_servico`), então não há corrida a matar, e rota sem consumidor é superfície à toa. Ligar é uma linha quando precisarmos.",
           "expira_em": "⚠️ vem `null` honesto por ora — os managers renovam por 401 e não expõem o instante. O contrato de leitura já cobre: 401 -> re-pedir."
         },
         "auth_detalhe": {
