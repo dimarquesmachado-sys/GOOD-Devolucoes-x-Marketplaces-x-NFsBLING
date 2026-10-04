@@ -18,7 +18,9 @@
 (function () {
   'use strict';
 
-  var BASE = (location.pathname.indexOf('/amb') === 0) ? '/amb' : '';
+  // b513 - era so '/amb': na Girassol (e em qualquer CNPJ novo) a ficha do defeito chamava a raiz = API da GOOD.
+  // Agora usa a base da empresa que o base-amb.js ja resolveu (carregado antes nas telas).
+  var BASE = (typeof window.APP_BASE === 'string') ? window.APP_BASE : ('/' + (String(location.pathname || '').toLowerCase().split('/')[1] || '')).replace(/^\/$/, '');
   var euSouAdmin = false;
   var selecionados = {};        // defeito_id -> peca retirada (montar uma boa)
   // b115 - a ficha aberta fica AQUI. Antes eu mandava o texto atual dentro

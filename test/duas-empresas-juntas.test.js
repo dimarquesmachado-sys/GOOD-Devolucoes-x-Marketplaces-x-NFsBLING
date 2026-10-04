@@ -501,8 +501,9 @@ process.env.AMB_SUPABASE_KEY = 'chave-de-teste';
     // conhecidos, `BASE` caía no `''` da raiz — e `window.APP_EMPRESA`
     // herdava o fallback `'amb'`, mandando essa instância pros links da
     // AMBTotal.
-    ok(/PREFIXOS_CONHECIDOS = \[[^\]]*'\/good'/.test(baseJs),
-       "⚠️ base-amb.js: '/good' entra nos prefixos conhecidos");
+    // b513: a lista fechada saiu — a base e o 1o segmento da URL (qualquer empresa, inclusive /good e uma 4a).
+    ok(!/PREFIXOS_CONHECIDOS/.test(baseJs) && /caminho\.split\('\/'\)\[1\]/.test(baseJs),
+       "⚠️ base-amb.js: sem lista fechada de empresas (a base vem da URL)");
 
     // ── ⚠️ e o NOME DA ENV nos textos da tela ─────────────────────────
     //

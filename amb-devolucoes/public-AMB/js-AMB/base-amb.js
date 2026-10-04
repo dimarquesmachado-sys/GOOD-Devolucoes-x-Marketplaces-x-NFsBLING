@@ -37,18 +37,16 @@
   // BASE cai no `''` da raiz (que hoje e a GOOD "de verdade", fora desta
   // fabrica) e tanto as chamadas de API quanto o `APP_EMPRESA` abaixo
   // resolveriam errado pra essa instancia.
-  var PREFIXOS_CONHECIDOS = ['/amb', '/girassol', '/good'];
+  // ★ b513 - SEM LISTA FECHADA DE EMPRESAS (auditoria multiloja, 03/10 — achado do Codex, conferido no codigo).
+  // A lista ['/amb','/girassol','/good'] fazia uma 4a empresa (ex.: /loja4) cair no '' da raiz = API da GOOD:
+  // dado e configuracao da empresa ERRADA, em silencio. Estas telas (public-AMB) so existem montadas SOB o
+  // prefixo de uma empresa (/<empresa>/...), entao o 1o segmento da URL E a empresa — qualquer uma, sem
+  // cadastrar aqui. Minuscula pelo mesmo motivo do PR #319 (o Express serve /AMB e /amb).
   var BASE = (function () {
-    // Codex (PR #319, P2) - o Express serve /amb E /AMB (roteamento nao
-    // diferencia maiusculas por padrao). Sem baixar a caixa aqui, um link
-    // ou favorito em maiusculas cairia neste `''` (raiz da GOOD) e toda
-    // chamada de API desta tela levaria 401.
     var caminho = String(window.location.pathname || '').toLowerCase();
-    for (var i = 0; i < PREFIXOS_CONHECIDOS.length; i++) {
-      var p = PREFIXOS_CONHECIDOS[i];
-      if (caminho === p || caminho.indexOf(p + '/') === 0) return p;
-    }
-    return '';   // a GOOD e a raiz
+    var seg = caminho.split('/')[1] || '';
+    if (!seg || seg.indexOf('.') !== -1) return '';   // so na raiz (nao acontece pra estas telas)
+    return '/' + seg;
   })();
 
   // ⚠️ b369: as telas precisam da base pra montar link e navegacao. Sem isto

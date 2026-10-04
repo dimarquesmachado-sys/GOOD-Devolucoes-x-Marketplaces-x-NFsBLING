@@ -166,12 +166,17 @@ são **outros dois identificadores** no mesmo serviço.
 
 ### Três provas que ninguém pode dar por código
 
-1. **A Girassol nunca rodou.** O teste monta duas empresas com configuração de
-   sandbox: prova isolamento, **não** prova que ela funciona com credencial,
-   tabela e dado reais.
-2. **O provisionamento nunca rodou no Supabase real.**
-3. **O rollback nunca foi testado** — ela nunca foi ativada para ser revertida.
+1. ~~A Girassol nunca rodou.~~ **PROVADO em 30/09/2026:** a Girassol opera com credencial, tabela e dado
+   reais (64 NFs lancadas pelo "Lancar por NF" e 64 NFs de devolucao emitidas em massa; Bling, ML, Shopee e
+   Magalu com apps PROPRIOS).
+2. ~~O provisionamento nunca rodou no Supabase real.~~ **PROVADO:** as tabelas `*_girassol` existem em
+   producao e ja receberam alteracoes (ex.: `itens_devolvidos`, colunas de estoque do Full, 02/10).
+3. **O rollback nunca foi testado** -- continua valendo: nenhuma empresa foi desativada pra ser revertida.
 
+**b513 (03/10):** o navegador nao tem mais lista fechada de empresas (`base-amb.js`): a base e o 1o segmento
+da URL, entao uma 4a empresa NAO cai na raiz da GOOD. A ficha de defeitos (`defeitos-ficha.js`) so reconhecia
+`/amb` e na Girassol chamava a GOOD -- consertado. Teste: `front-empresa-sem-lista` (roda o codigo de producao
+com /loja4).
 ## Trilha separada: o dono dos tokens
 
 **Não confundir com o multiloja.** O contrato elegeu o Mover-Pedidos como dono
