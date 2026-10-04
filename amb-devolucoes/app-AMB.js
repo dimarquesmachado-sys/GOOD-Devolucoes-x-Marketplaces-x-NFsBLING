@@ -642,7 +642,7 @@ const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 // checado ANTES de entrar na fila da empresa — nao antes de sair, entao um
 // candidato ja desistido ainda batia no Bling depois de esperar numa pausa
 // de 429. Ver bling-AMB.js, nf-nomes-AMB.js e identificar-AMB.js.
-const VERSAO = 'AMB Devolucoes b507';
+const VERSAO = 'AMB Devolucoes b508';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -3077,13 +3077,22 @@ async function montarIndiceNFDevolucaoAMB(maxPaginas) {
    mostrava que a acao nao existia nesta empresa). Porte da rota da GOOD com o banco, o ML e o Bling DESTA empresa:
    pra cada pedido marcado, pula se ja tem triagem (jaTriado), le a venda no ML, acha a NF pela chave do envio
    (invoice_data), tenta o id no Bling pelo numero e grava como APROVADA aguardando NF. Mesmo formato de
-   resposta da GOOD (criados / sem_nf / ja_existiam / falhas); ate 40 pedidos por vez, com pausa. */
-router.post('/api/admin/espreita/lancar-nf', admin, async (req, res) => {
+   resposta da GOOD (criados / sem_nf / ja_existiam / falhas); ate 40 pedidos por vez, com pausa.
+   b508 (Codex #418): sessao de admin DA EMPRESA (o painel nao manda ?k=), pack como fallback do envio, NF do Bling
+   conferida pela CHAVE (mesmo numero em series diferentes), so pedido ML, orcamento de tempo e trava contra clique duplo.
+   NAO grava itens_devolvidos: o doc ITENS-DEVOLVIDOS.md reserva a coluna ao que foi BIPADO, e aqui nada voltou ainda. */
+const LANCANDO_ESPREITA = new Set();       // pedidos em andamento (clique duplo / retry na mesma instancia)
+const ORCAMENTO_LANCAR_MS = 20000;         // abaixo da janela de ~25s do Render; o resto volta em `restantes`
+router.post('/api/admin/espreita/lancar-nf', auth.requerAdmin, async (req, res) => {
   const pedidos = Array.isArray(req.body && req.body.pedidos) ? req.body.pedidos : [];
   if (!pedidos.length) return res.status(400).json({ ok: false, erro: 'nenhum pedido selecionado' });
-  const criados = [], semNf = [], jaExistiam = [], falhas = [];
+  const criados = [], semNf = [], jaExistiam = [], falhas = [], restantes = [];
+  const inicioLote = Date.now();
   for (const orderId of pedidos.slice(0, 40)) {
     const oid = String(orderId || '').trim();
+    if (oid && Date.now() - inicioLote > ORCAMENTO_LANCAR_MS) { restantes.push(oid); continue; }
+    if (oid && LANCANDO_ESPREITA.has(oid)) { falhas.push({ pedido: oid, erro: 'ja esta sendo lancado — aguarde' }); continue; }
+    if (oid) LANCANDO_ESPREITA.add(oid);
     try {
       if (!oid) continue;
       const ja = await db.jaTriado({ orderId: oid });
@@ -3092,7 +3101,13 @@ router.post('/api/admin/espreita/lancar-nf', admin, async (req, res) => {
       const rO = await ml.chamarML('/orders/' + oid);
       if (!rO || !rO.ok || !rO.data) { falhas.push({ pedido: oid, erro: 'nao achei a venda no ML' }); continue; }
       const od = rO.data;
-      const shipIda = od.shipping && od.shipping.id;
+      let shipIda = od.shipping && od.shipping.id;
+      // venda de carrinho: o envio mora no PACK (mesmo fallback do ml-returns-AMB.enriquecerPedido)
+      if (!shipIda && od.pack_id) {
+        const rP = await ml.chamarML('/packs/' + od.pack_id);
+        const pk = rP && rP.ok && rP.data;
+        shipIda = (pk && pk.shipment && pk.shipment.id) || (pk && Array.isArray(pk.shipments) && pk.shipments[0] && pk.shipments[0].id) || null;
+      }
       let nf = null;
       if (shipIda) {
         const rN = await ml.chamarML('/shipments/' + shipIda + '/invoice_data?siteId=MLB');
@@ -3101,8 +3116,16 @@ router.post('/api/admin/espreita/lancar-nf', admin, async (req, res) => {
       }
       if (!nf) { semNf.push(oid); continue; }
       try {
-        const rB = await ajudantes.buscarNFnoBlingPorNumero(nf.numero, null, { maxPaginas: 30 });
-        const m = rB && rB.ok && rB.match;
+        // so aceita a nota cuja CHAVE bate: o mesmo numero existe em series diferentes e o id errado
+        // faria a devolucao ser gerada contra outra venda (o gerador prioriza nf_id_bling)
+        const mesmaChave = (x) => !!x && String(x.chaveAcesso || '').replace(/\D/g, '') === nf.chave;
+        let m = null;
+        const rC = await ajudantes.buscarNFPelaChave(nf.chave);
+        if (rC && rC.ok && rC.match && mesmaChave(rC.match)) m = rC.match;
+        if (!m) {
+          const rB = await ajudantes.buscarNFnoBlingPorNumero(nf.numero, null, { maxPaginas: 30, chave: nf.chave });
+          m = (rB && rB.ok && (rB.candidatas || []).find(mesmaChave)) || null;
+        }
         if (m && m.id) { nf.id_bling = String(m.id); nf.valor = m.valorNota || null; nf.data_emissao = m.dataEmissao || null; }
       } catch (e) { /* segue sem o id; o gerador ainda tenta pela chave */ }
       const b = od.buyer || {};
@@ -3125,8 +3148,9 @@ router.post('/api/admin/espreita/lancar-nf', admin, async (req, res) => {
       criados.push({ pedido: oid, id: r.registro.id, nf: nf.numero, id_bling: nf.id_bling || null, itens: itens.length, qtd: qtdTotal });
       await new Promise((ok) => setTimeout(ok, 250));
     } catch (e) { falhas.push({ pedido: oid, erro: String((e && e.message) || e) }); }
+    finally { if (oid) LANCANDO_ESPREITA.delete(oid); }
   }
-  return res.json({ ok: true, criados: criados.length, detalhe_criados: criados, sem_nf: semNf, ja_existiam: jaExistiam, falhas,
+  return res.json({ ok: true, criados: criados.length, detalhe_criados: criados, sem_nf: semNf, ja_existiam: jaExistiam, falhas, restantes,
     aviso: semNf.length ? 'Estas vendas nao tem NF identificada no app - confira no Bling antes de emitir' : null });
 });
 

@@ -1208,6 +1208,7 @@
         if ((d.ja_existiam || []).length) t += ' <span style="color:#666;">· ' + d.ja_existiam.length + ' já tinham registro</span>';
         if ((d.sem_nf || []).length) t += ' <span style="color:#c62828;">· ⚠️ ' + d.sem_nf.length + ' SEM NF: ' + d.sem_nf.join(', ') + '</span>';
         if ((d.falhas || []).length) t += ' <span style="color:#c62828;">· ' + d.falhas.length + ' falharam</span>';
+        if ((d.restantes || []).length) t += ' <span style="color:#e65100;">· ⏳ faltam ' + d.restantes.length + ' (tempo esgotado): marque de novo e envie — os já criados são pulados</span>';
         msg.innerHTML = t;
         setTimeout(function () { carregar(); }, 1800);
       } catch (e) { msg.innerHTML = '<span style="color:#c62828;">erro de conexão</span>'; }
@@ -1862,7 +1863,7 @@ async function carregarSemRetorno() {
             const m = MKT[e.marketplace] || { nome: e.marketplace, cor: '#616161' };
             html += '<div style="border-left:4px solid ' + m.cor + ';background:#fff;border-radius:8px;padding:8px 10px;margin-bottom:6px;">'
               + '<span style="background:' + m.cor + ';color:#fff;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;">' + m.nome + '</span> '
-              + (e.pedido ? '<input type="checkbox" class="chkAlerta" value="' + escapeHtml(String(e.pedido)) + '" style="margin-right:7px;transform:scale(1.2);"> ' : '')
+              + (e.pedido && e.marketplace === 'ml' ? '<input type="checkbox" class="chkAlerta" value="' + escapeHtml(String(e.pedido)) + '" style="margin-right:7px;transform:scale(1.2);"> ' : '')
               + '<b>' + escapeHtml(String(e.pedido || e.tracking || '-')) + '</b>'
               + (e.pack_id ? ' · <span style="font-size:11px;color:#555;">pack <code>' + escapeHtml(String(e.pack_id)) + '</code></span>' : '')
               + (e.pedido && e.tracking ? ' · <code style="font-size:11px;">' + escapeHtml(String(e.tracking)) + '</code>' : '')
