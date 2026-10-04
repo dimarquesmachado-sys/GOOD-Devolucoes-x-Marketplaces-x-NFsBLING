@@ -80,7 +80,6 @@ const srv = fs.readFileSync(path.join(RAIZ, 'server.js'), 'utf8');
 {
   const MODULOS = [
     ['lib/nf-nomes.js', 'GOOD nf-nomes'],
-    ['lib/ml-returns.js', 'GOOD ml-returns (a da ESTRELA)'],
     ['amb-devolucoes/lib-AMB/nf-nomes-AMB.js', 'AMB nf-nomes'],
     ['amb-devolucoes/lib-AMB/ml-returns-AMB.js', 'AMB ml-returns'],
   ];
@@ -110,7 +109,7 @@ const srv = fs.readFileSync(path.join(RAIZ, 'server.js'), 'utf8');
 // ⚠️ Se a causa foi 429, tentar logo de novo só piora — vira o mesmo
 // problema que o retry veio resolver.
 {
-  const ml = fs.readFileSync(path.join(RAIZ, 'lib', 'ml-returns.js'), 'utf8');
+  const ml = fs.readFileSync(path.join(RAIZ, 'amb-devolucoes', 'lib-AMB', 'ml-returns-AMB.js')   /* b511: fabrica unica */, 'utf8');
   const m = /const espera = (\d+) \* Math\.pow/.exec(ml);
   ok(!!m && Number(m[1]) >= 20000,
      '⚠️ a 1a espera e longa (' + (m ? m[1] : '?') + 'ms) — se foi 429, insistir piora');
@@ -130,7 +129,7 @@ const srv = fs.readFileSync(path.join(RAIZ, 'server.js'), 'utf8');
 // violada no mesmo dia em que a apliquei em outros 4 arquivos.
 {
   const MODULOS = [
-    'lib/nf-nomes.js', 'lib/ml-returns.js',
+    'lib/nf-nomes.js',
     'amb-devolucoes/lib-AMB/nf-nomes-AMB.js',
     'amb-devolucoes/lib-AMB/ml-returns-AMB.js',
   ];

@@ -84,7 +84,7 @@ function corpoDaFuncao(src, nome) {
 {
   const modulos = [
     ['nfNomes', 'lib/nf-nomes.js'],
-    ['mlReturns', 'lib/ml-returns.js'],
+    ['mlReturns', 'amb-devolucoes/lib-AMB/ml-returns-AMB.js'],
     ['vinculoCache', 'lib/vinculo-nf-cache.js'],
     ['ritmoBling', 'lib/ritmo-bling.js'],
   ];

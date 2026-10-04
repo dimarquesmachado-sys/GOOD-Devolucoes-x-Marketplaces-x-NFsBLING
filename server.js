@@ -94,7 +94,7 @@ const magalu = require('./lib/magalu')({ atualizarTokensNoRender: _attRender });
    AMB/Girassol (lib-AMB/ml-returns-AMB.js, 735 linhas — superconjunto: tudo da GOOD + enriquecimento do
    pedido, data de entrega real, diagnostico do tracking). A GOOD passa a usar a MESMA fabrica, com o cliente
    do ML dela (o da fabrica fala em caminho relativo; o da GOOD, em URL inteira). Um conserto na espreita
-   agora vale pras tres empresas e pras proximas. A copia antiga sai no passo 2 (junto com a mudanca pra lib/). */
+   agora vale pras tres empresas e pras proximas. b511 (passo 2): a copia antiga foi APAGADA. */
 const mlReturns = require('./amb-devolucoes/lib-AMB/ml-returns-AMB').criar({
   PREFIXO_ENV: 'GOOD_',
   ml: { janelaDias: 120 },
@@ -544,7 +544,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.126.24 (b510: GOOD usa a mesma espreita do ML da AMB/Girassol — fabrica unica)',
+      version: '9.126.25 (b511: unificacao passo 2 — copia antiga da espreita apagada; dinheiro nas entregues)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
