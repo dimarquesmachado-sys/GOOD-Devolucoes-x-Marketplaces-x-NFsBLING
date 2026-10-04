@@ -642,7 +642,7 @@ const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 // checado ANTES de entrar na fila da empresa — nao antes de sair, entao um
 // candidato ja desistido ainda batia no Bling depois de esperar numa pausa
 // de 429. Ver bling-AMB.js, nf-nomes-AMB.js e identificar-AMB.js.
-const VERSAO = 'AMB Devolucoes b506';
+const VERSAO = 'AMB Devolucoes b507';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -3073,6 +3073,63 @@ async function montarIndiceNFDevolucaoAMB(maxPaginas) {
 // que ganharam o botao — e a rota nao existia aqui. Todo clique dava 404.
 //
 // Mesma logica da GOOD, com a tabela e a empresa da AMB.
+/* b507 - AUDITORIA MULTIEMPRESA (02/10): "mandar da espreita para Aprovadas" so existia na GOOD (o painel daqui
+   mostrava que a acao nao existia nesta empresa). Porte da rota da GOOD com o banco, o ML e o Bling DESTA empresa:
+   pra cada pedido marcado, pula se ja tem triagem (jaTriado), le a venda no ML, acha a NF pela chave do envio
+   (invoice_data), tenta o id no Bling pelo numero e grava como APROVADA aguardando NF. Mesmo formato de
+   resposta da GOOD (criados / sem_nf / ja_existiam / falhas); ate 40 pedidos por vez, com pausa. */
+router.post('/api/admin/espreita/lancar-nf', admin, async (req, res) => {
+  const pedidos = Array.isArray(req.body && req.body.pedidos) ? req.body.pedidos : [];
+  if (!pedidos.length) return res.status(400).json({ ok: false, erro: 'nenhum pedido selecionado' });
+  const criados = [], semNf = [], jaExistiam = [], falhas = [];
+  for (const orderId of pedidos.slice(0, 40)) {
+    const oid = String(orderId || '').trim();
+    try {
+      if (!oid) continue;
+      const ja = await db.jaTriado({ orderId: oid });
+      if (!ja || ja.ok === false) { falhas.push({ pedido: oid, erro: 'nao consegui conferir se ja existe (banco) — tente de novo' }); continue; }
+      if (ja.triado || (Array.isArray(ja.registros) && ja.registros.length)) { jaExistiam.push(oid); continue; }
+      const rO = await ml.chamarML('/orders/' + oid);
+      if (!rO || !rO.ok || !rO.data) { falhas.push({ pedido: oid, erro: 'nao achei a venda no ML' }); continue; }
+      const od = rO.data;
+      const shipIda = od.shipping && od.shipping.id;
+      let nf = null;
+      if (shipIda) {
+        const rN = await ml.chamarML('/shipments/' + shipIda + '/invoice_data?siteId=MLB');
+        const ch = rN && rN.ok && rN.data && rN.data.fiscal_key ? String(rN.data.fiscal_key) : '';
+        if (/^\d{44}$/.test(ch)) nf = { chave: ch, numero: ch.slice(25, 34).replace(/^0+/, ''), serie: ch.slice(22, 25).replace(/^0+/, '') || '1' };
+      }
+      if (!nf) { semNf.push(oid); continue; }
+      try {
+        const rB = await ajudantes.buscarNFnoBlingPorNumero(nf.numero, null, { maxPaginas: 30 });
+        const m = rB && rB.ok && rB.match;
+        if (m && m.id) { nf.id_bling = String(m.id); nf.valor = m.valorNota || null; nf.data_emissao = m.dataEmissao || null; }
+      } catch (e) { /* segue sem o id; o gerador ainda tenta pela chave */ }
+      const b = od.buyer || {};
+      const itens = od.order_items || [];
+      const qtdTotal = itens.reduce((a, x) => a + (x.quantity || 0), 0);
+      const primeiro = itens[0] || {};
+      const resumoItens = itens.map((x) => (x.quantity || 1) + 'x ' + ((x.item && (x.item.seller_sku || x.item.seller_custom_field)) || '?') + ' - ' + ((x.item && x.item.title) || '')).join(' | ');
+      const r = await db.registrarTriagem({
+        marketplace: 'ml', order_id: oid, pack_id: od.pack_id ? String(od.pack_id) : null, shipment_id: String(shipIda || oid),
+        buyer_nome: [b.first_name, b.last_name].filter(Boolean).join(' ') || b.nickname || null,
+        produto_titulo: (primeiro.item && primeiro.item.title) || null,
+        produto_sku: (primeiro.item && (primeiro.item.seller_sku || primeiro.item.seller_custom_field)) || null,
+        produto_qtd: qtdTotal || 1,
+        nf_numero: nf.numero, nf_serie: nf.serie, nf_chave: nf.chave, nf_id_bling: nf.id_bling || null,
+        nf_valor: nf.valor || null, nf_data_emissao: nf.data_emissao || null,
+        status: 'aprovado', funcionario: req.usuario || 'admin',
+        problema_descricao: '[LANCADO DO PAINEL A ESPREITA por ' + (req.usuario || 'admin') + '] itens da venda: ' + resumoItens,
+      });
+      if (!r || !r.ok || !r.registro) { falhas.push({ pedido: oid, erro: (r && r.erro) || 'falha ao gravar' }); continue; }
+      criados.push({ pedido: oid, id: r.registro.id, nf: nf.numero, id_bling: nf.id_bling || null, itens: itens.length, qtd: qtdTotal });
+      await new Promise((ok) => setTimeout(ok, 250));
+    } catch (e) { falhas.push({ pedido: oid, erro: String((e && e.message) || e) }); }
+  }
+  return res.json({ ok: true, criados: criados.length, detalhe_criados: criados, sem_nf: semNf, ja_existiam: jaExistiam, falhas,
+    aviso: semNf.length ? 'Estas vendas nao tem NF identificada no app - confira no Bling antes de emitir' : null });
+});
+
 /* b506 - AUDITORIA MULTIEMPRESA (02/10): o botao "buscar a NF no Bling" da tela de bipe da AMB/Girassol
    chamava esta rota SEM o prefixo da empresa — caia na rota da GOOD (raiz): 401 sem a sessao da GOOD ou,
    com a GOOD logada no mesmo navegador, procurava no BLING DA GOOD. Agora a rota existe aqui, com o Bling
