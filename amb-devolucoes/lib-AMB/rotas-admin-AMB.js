@@ -1146,14 +1146,22 @@ app.get('/api/admin/nf-devolucao', requerAdmin, async (req, res) => {
   if (typeof buscarNfDevolucaoBling !== 'function') {
     return res.status(500).json({ ok: false, erro: 'busca nao injetada nas deps' });
   }
-  const r = await buscarNfDevolucaoBling({
-    cliente: req.query.cliente || null,
-    sku: req.query.sku || null,
-    desde: req.query.desde || null,
-    ate: req.query.ate || null,
-    // ⚠️ b402: sem isto, cai no id da AMBTotal cravado no lib/nf-pessoa.
-    naturezaId: naturezaDevolucaoDaEmpresa || null,
-  });
+  // Codex #441 (P1): na GOOD o chamarBling PODE LANCAR (a fila do ritmo rejeita no timeout, antes do
+  // try da lib). Rota async no Express 4 nao pega rejeicao: a requisicao ficava sem resposta.
+  // Busca que nao rodou = INDETERMINADO, nunca "nao achei".
+  let r;
+  try {
+    r = await buscarNfDevolucaoBling({
+      cliente: req.query.cliente || null,
+      sku: req.query.sku || null,
+      desde: req.query.desde || null,
+      ate: req.query.ate || null,
+      // ⚠️ b402: sem isto, cai no id da AMBTotal cravado no lib/nf-pessoa.
+      naturezaId: naturezaDevolucaoDaEmpresa || null,
+    });
+  } catch (e) {
+    return res.json({ ok: false, motivo: 'nao consegui consultar o Bling agora (fila ocupada ou fora do ar) — confira no Bling antes de gerar' });
+  }
   // b308 (review do Codex) - O CASO DAS DUAS COMPRAS. Se o cliente comprou o
   // mesmo SKU duas vezes e devolveu SO uma, a nota existente satisfaz
   // "cliente + sku" nos DOIS cards e o card errado perderia os botoes. O
@@ -1212,28 +1220,26 @@ app.get('/api/admin/nf-devolucao', requerAdmin, async (req, res) => {
         const normSku = (x) => String(x || '').toLowerCase().normalize('NFD')
           .replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim().toUpperCase();
         const skuNorm = normSku(skuBusca);
-        const TETO_IRMAS = 500;
-        const { data: irmasBrutas, error: erroIrmas } = await supabase
-          .from(TAB)
-          // b317 (review do Codex) - a irma so cria duvida se ela mesma
-          // AINDA nao tem nota. Compra antiga ja resolvida (com
-          // nf_devolucao_id_bling preenchido) nao disputa esta nota, e usa-la
-          // pra declarar ambiguidade fazia o contrario do que deve: soltava a
-          // emissao num caso que era unico, arriscando a duplicata.
-          // b318 (review do Codex) - (a) a coluna e `nf_data_emissao`; `nf_data`
-          // NAO existe na tabela e eu teria lido undefined em todo registro.
-          // (b) `%` e `_` sao CURINGA no ilike: um SKU com underline casaria
-          // com qualquer caractere ali e traria irma que nao e irma.
-          .select('id, buyer_nome, produto_sku, nf_devolucao_id_bling, nf_data_emissao, criado_em')
-          .is('nf_devolucao_id_bling', null)
-          .ilike('produto_sku', '%' + String(skuBusca).replace(/[\\%_]/g, (m) => '\\' + m) + '%')
-          .limit(TETO_IRMAS);
-        // b320 (review do Codex) - o teto NAO pode ser avaliado sobre o
-        // resultado do `%SKU%`: um SKU curto ("12") enche as 500 linhas com
-        // ABC12, 1200 e afins, e eu declarava indeterminado sem existir UMA
-        // irma de verdade — soltando a emissao num caso unico. O teto so faz
-        // sentido depois da comparacao EXATA normalizada, entao a checagem
-        // dele foi movida pra baixo do filtro.
+        /* Codex #441 (P2 x2): o prefiltro `ilike %SKU%` no banco nao enxerga acento nem espaco interno
+           (a normSku enxerga), e sem ORDER BY o corte de 500 podia deixar a irma de verdade de fora.
+           Agora le TODAS as sem-nota, paginando com ordem estavel, e compara em JS com a normSku.
+           Se nem assim couber no teto de paginas, e INDETERMINADO (nunca "nao ha irma").
+           b317 - a irma so cria duvida se ela mesma AINDA nao tem nota (nf_devolucao_id_bling nulo).
+           b318 - a coluna de data e `nf_data_emissao`; `nf_data` NAO existe na tabela. */
+        const POR_PAGINA = 1000, MAX_PAGINAS = 10;
+        let irmasBrutas = [], erroIrmas = null, truncouIrmas = false;
+        for (let pg = 0; pg < MAX_PAGINAS; pg++) {
+          const { data: lote, error: eLote } = await supabase
+            .from(TAB)
+            .select('id, buyer_nome, produto_sku, nf_devolucao_id_bling, nf_data_emissao, criado_em')
+            .is('nf_devolucao_id_bling', null)
+            .order('id', { ascending: true })
+            .range(pg * POR_PAGINA, pg * POR_PAGINA + POR_PAGINA - 1);
+          if (eLote) { erroIrmas = eLote; break; }
+          irmasBrutas = irmasBrutas.concat(lote || []);
+          if (!lote || lote.length < POR_PAGINA) break;
+          if (pg === MAX_PAGINAS - 1) truncouIrmas = true;
+        }
         const comparaNome = (typeof nomesBatemNf === 'function')
           ? nomesBatemNf
           : (x, y) => normSku(x) === normSku(y);   // sem o oficial, exige igualdade
@@ -1268,9 +1274,8 @@ app.get('/api/admin/nf-devolucao', requerAdmin, async (req, res) => {
           normSku(u.produto_sku) === skuNorm && comparaNome(u.buyer_nome, cliBusca)
         ));
 
-        // b320 - agora sim: bati no teto E sobrou irma exata? entao a lista
-        // pode estar truncada COM irmas de verdade, e ai e indeterminado.
-        if (!erroIrmas && (irmasBrutas || []).length >= TETO_IRMAS && irmas.length) {
+        // Codex #441: lista truncada (sem ordem/pagina completa) = nao da pra afirmar que nao ha irma.
+        if (!erroIrmas && truncouIrmas) {
           return res.json({
             ok: false,
             motivo: 'ha registros demais deste SKU pra eu conferir se este cliente tem outra compra igual — confira no Bling antes de gerar',

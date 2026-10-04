@@ -544,7 +544,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.126.45 (b533: rotulo do envio no painel da AMB/Girassol — chave de NF nao aparece como Shipment)',
+      version: '9.126.47 (b535: rota de NF de devolucao da GOOD — URL absoluta no Bling, timeout da fila vira indeterminado, irmas sem corte)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -8573,7 +8573,17 @@ registrarRotasRelatorios(app, { supabase, requerAdmin });
 
 // v3.44 - rotas admin-NF (mesmo ponto: todas as deps ja declaradas acima)
 const registrarRotasAdminNF = require('./lib/rotas-admin-nf');
+// Codex #441 (P1): a busca de NF de devolucao do lib/nf-pessoa chama caminhos RELATIVOS (/nfe...), que a AMB prefixa
+// no proprio client; o chamarBling da GOOD passa a URL direto ao axios (ERR_INVALID_URL). Adaptador so pra esta rota.
+const nfpDevolucaoRota = require('./lib/nf-pessoa')({
+  chamarBling: (u, o) => chamarBling(String(u).startsWith('/') ? 'https://api.bling.com.br/Api/v3' + u : u, o),
+  sleep,
+});
 registrarRotasAdminNF(app, {
+  // b534 - a rota de NF de devolucao ja emitida (painel unico): busca da lib UNICA nf-pessoa, natureza da FICHA da GOOD
+  buscarNfDevolucaoBling: nfpDevolucaoRota.acharNfDevolucaoBling,
+  nomesBatemNf: nfpDevolucaoRota.nomesBatem,
+  naturezaDevolucaoDaEmpresa: (() => { try { const e = require('./lib/empresas').obterEmpresa('good'); return (e && e.fiscal && typeof e.fiscal.naturezasDevolucaoIds === 'function') ? e.fiscal.naturezasDevolucaoIds() : null; } catch (err) { return null; } })(),
   supabase, requerAdmin, adminOk, sleep,
   chamarBling, chamarML, buscarNFnoML,
   buscarNFePorId, buscarNFBlindada,
