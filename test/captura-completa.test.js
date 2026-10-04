@@ -15,6 +15,7 @@ ok(/capturarDevolucoesEmpresa\(emTransito\.concat\(extrasShopee\)\)/.test(a), '�
 const m = rd('amb-devolucoes/lib-AMB/magalu-AMB.js');
 ok(/if \(!tudo\.length && IDX\.erro\) \{/.test(m), '⚠️ Magalu: falha em todas as categorias MANTEM a ultima lista valida (nao vira vazia)');
 ok(/entregues_indice: entregues, erro: IDX\.erro \|\| null \}/.test(m) && /erro: erroMagalu \|\| null, idade_min/.test(a), '  e o erro + a idade aparecem no resumo da espreita');
+for (const f of ['painel-AMB.html', 'painel2-AMB.html']) ok(/const avisoMagalu = fm\.erro/.test(rd('amb-devolucoes/public-AMB/' + f)), '⚠️ ' + f + ': avisa o Magalu com falha mesmo com outra fonte quente (Codex #431, nas DUAS telas)');
 console.log('');
 console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
 process.exit(falhas ? 1 : 0);
