@@ -161,7 +161,8 @@ async function confirmarAprovar() {
     if (d.ok) {
       fecharModal('modalAprovar');
       mostrarSucesso('✅ Incluido no estoque!', 'Diego ja foi avisado. Quando for emitir, basta clicar em "Abrir NF no Bling" no painel.');
-      toast('Aprovacao registrada!', 'ok');
+      // b524 - AUDITORIA (Codex, b520): o sucesso trocava o aviso na hora; com pendencia, o aviso fica
+      if (!d.aviso) toast('Aprovacao registrada!', 'ok');
       setTimeout(() => {
         divResultado.classList.remove('show');
         inputCodigo.value = '';
@@ -878,7 +879,7 @@ async function encerrarParcial() {
 
       mostrarSucesso(
         '📦 Devolução PARCIAL registrada!',
-        `Documentação salva: ${bipagemEstado.totalBipado} de ${bipagemEstado.totalEsperado} unidades + ${fotosOk.length} fotos. Diego pode contestar com o marketplace se necessário.`
+        (d.aviso ? '⚠️ ' + d.aviso + ' — ' : '') + `Documentação: ${bipagemEstado.totalBipado} de ${bipagemEstado.totalEsperado} unidades + ${fotosOk.length} fotos${d.aviso ? ' (nem tudo gravou — veja o aviso)' : ' salvas'}. Diego pode contestar com o marketplace se necessário.`
       );
       toast('Devolucao parcial registrada!', 'ok');
       setTimeout(() => {

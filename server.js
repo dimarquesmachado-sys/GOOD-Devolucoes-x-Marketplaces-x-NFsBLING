@@ -544,7 +544,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.126.39 (b526: sonda exige conta do ML verificavel, batimento real da captura, canais pela config)',
+      version: '9.126.40 (b527: parcial sem lista nao libera o emitir direto; aviso de pendencia nao some)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),

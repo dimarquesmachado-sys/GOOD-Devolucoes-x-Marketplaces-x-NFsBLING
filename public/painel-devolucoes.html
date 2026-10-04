@@ -2765,7 +2765,17 @@
     function faltasDevolucaoParcial(reg) {
       var voltou = Array.isArray(reg && reg.itens_devolvidos) ? reg.itens_devolvidos : [];
       var nf = Array.isArray(reg && reg.nf_itens) ? reg.nf_itens : [];
-      if (!voltou.length || !nf.length) return [];   // sem as duas listas nao da pra afirmar nada
+      // b524 - AUDITORIA (Codex, b520): sem as listas, uma devolucao PARCIAL conhecida (o texto da triagem ou as
+      // quantidades dizem) NAO pode liberar o 'emitir direto' — a NF do Bling copia a original INTEIRA. Nao saber
+      // o que voltou trava; so a ausencia de qualquer sinal de parcial segue liberando (como antes).
+      var desc = String((reg && reg.problema_descricao) || '');
+      var qOrig = Number(reg && reg.produto_qtd_original), qVolta = Number(reg && reg.produto_qtd);
+      var ehParcial = desc.indexOf('[DEVOLUCAO PARCIAL') === 0 || (qOrig > 0 && qVolta >= 0 && qVolta < qOrig);
+      if (!voltou.length || !nf.length) {
+        if (!ehParcial) return [];
+        var mm = desc.match(/Recebido:\s*([\d.,]+)\s*de\s*([\d.,?]+)/);
+        return [{ sku: '(devolucao PARCIAL' + (mm ? ': voltou ' + mm[1] + ' de ' + mm[2] : '') + ' — a lista de itens nao esta no card; confira no rascunho)', sobra: '?' }];
+      }
       var norm = function (s) { return String(s || '').trim().toUpperCase(); };
       var volt = {};
       voltou.forEach(function (i) { var k = norm(i.sku); if (k) volt[k] = (volt[k] || 0) + (Number(i.qtd) || 0); });
