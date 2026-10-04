@@ -77,7 +77,8 @@ async function buscarLinksBling(orderId, dataVenda, numeroNF) {
     if (dataVenda) params.set('data', dataVenda);
     if (numeroNF) params.set('numeroNF', numeroNF);
     const queryStr = params.toString() ? `?${params.toString()}` : '';
-    const url = `/api/nf/buscar-links-bling/${encodeURIComponent(orderId)}${queryStr}`;
+    // b506 (auditoria multiempresa): com o prefixo DESTA empresa — sem ele caia na rota da GOOD
+    const url = `${window.APP_BASE || ''}/api/nf/buscar-links-bling/${encodeURIComponent(orderId)}${queryStr}`;
     const resp = await fetch(url);
     const data = await resp.json();
 

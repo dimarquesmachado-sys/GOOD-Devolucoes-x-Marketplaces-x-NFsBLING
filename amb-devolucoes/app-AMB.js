@@ -642,7 +642,7 @@ const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 // checado ANTES de entrar na fila da empresa — nao antes de sair, entao um
 // candidato ja desistido ainda batia no Bling depois de esperar numa pausa
 // de 429. Ver bling-AMB.js, nf-nomes-AMB.js e identificar-AMB.js.
-const VERSAO = 'AMB Devolucoes b505';
+const VERSAO = 'AMB Devolucoes b506';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -3073,6 +3073,34 @@ async function montarIndiceNFDevolucaoAMB(maxPaginas) {
 // que ganharam o botao — e a rota nao existia aqui. Todo clique dava 404.
 //
 // Mesma logica da GOOD, com a tabela e a empresa da AMB.
+/* b506 - AUDITORIA MULTIEMPRESA (02/10): o botao "buscar a NF no Bling" da tela de bipe da AMB/Girassol
+   chamava esta rota SEM o prefixo da empresa — caia na rota da GOOD (raiz): 401 sem a sessao da GOOD ou,
+   com a GOOD logada no mesmo navegador, procurava no BLING DA GOOD. Agora a rota existe aqui, com o Bling
+   DESTA empresa, e a tela chama com o prefixo. Busca pelo NUMERO da NF (o ajudante desta empresa); sem o
+   numero, responde claro em vez de chutar (a busca por pedido da GOOD nao existe nos ajudantes daqui). */
+router.get('/api/nf/buscar-links-bling/:orderId', auth.requerLogin, async (req, res) => {
+  const numeroNF = String(req.query.numeroNF || '').replace(/\D/g, '');
+  const dataRef = req.query.data || null;
+  if (!numeroNF) {
+    return res.json({ ok: false, estrategia: 'numero', erro: 'Nesta empresa a busca no Bling e pelo NUMERO da NF — este pedido ainda nao tem a NF identificada. Bipe de novo daqui a pouco ou abra pelo card.' });
+  }
+  try {
+    const rBusca = await ajudantes.buscarNFnoBlingPorNumero(numeroNF, dataRef, { maxPaginas: 50 });
+    if (!rBusca || !rBusca.ok) return res.json({ ok: false, estrategia: 'numero', erro: 'Erro ao buscar NF no Bling (tente de novo)', detalhes: rBusca || null });
+    if (!rBusca.match) return res.json({ ok: false, estrategia: 'numero', erro: 'NF ' + numeroNF + ' nao encontrada no Bling desta empresa', detalhes: rBusca });
+    const rCompleta = await bling.buscarNFePorId(String(rBusca.match.id));
+    const nf = (rCompleta && rCompleta.ok && rCompleta.data && rCompleta.data.data) ? rCompleta.data.data : rBusca.match;
+    const itensBling = Array.isArray(nf.itens) ? nf.itens.map((it) => ({ titulo: it.descricao || null, sku: it.codigo || null, ean: it.gtin || null, quantidade: it.quantidade || null, valor: it.valor || null, unidade: it.unidade || null })) : [];
+    return res.json({
+      ok: true, estrategia: 'numero', paginas_verificadas: rBusca.pagina, total_scanned: rBusca.totalScanned,
+      nf: { fonte: 'bling', numero: nf.numero, serie: nf.serie, chaveAcesso: nf.chaveAcesso, valor: nf.valorNota, dataEmissao: nf.dataEmissao,
+        linkDanfe: nf.linkDanfe, linkPdf: nf.linkPDF, linkXml: nf.xml, idBling: nf.id, numeroPedidoLoja: nf.numeroPedidoLoja, itens: itensBling },
+    });
+  } catch (e) {
+    return res.json({ ok: false, estrategia: 'numero', erro: 'Erro ao buscar NF no Bling: ' + String((e && e.message) || e) });
+  }
+});
+
 router.post('/api/admin/sem-retorno/registrar', auth.requerAdmin, async (req, res) => {
   try {
     const sb = db.cliente();
