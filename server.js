@@ -89,7 +89,17 @@ const magalu = require('./lib/magalu')({ atualizarTokensNoRender: _attRender });
 // v3.65 - CORREIOS REVERSO: devolucoes ML "por agencia" chegam com etiqueta
 // dos Correios (AD/AP...BR). O indice claims->returns mapeia esse rastreio
 // de volta pra venda. ~95% das devolucoes Correios do GOOD sao ML.
-const mlReturns = require('./lib/ml-returns')({ chamarML });
+/* b510 - UNIFICACAO MULTIEMPRESA, passo 1 (pedido do dono, 02/10: "pra uma 4a empresa ja ser tudo melhor
+   separado"). A espreita do ML tinha DUAS copias: lib/ml-returns.js (GOOD, 443 linhas) e a fabrica da
+   AMB/Girassol (lib-AMB/ml-returns-AMB.js, 735 linhas — superconjunto: tudo da GOOD + enriquecimento do
+   pedido, data de entrega real, diagnostico do tracking). A GOOD passa a usar a MESMA fabrica, com o cliente
+   do ML dela (o da fabrica fala em caminho relativo; o da GOOD, em URL inteira). Um conserto na espreita
+   agora vale pras tres empresas e pras proximas. A copia antiga sai no passo 2 (junto com a mudanca pra lib/). */
+const mlReturns = require('./amb-devolucoes/lib-AMB/ml-returns-AMB').criar({
+  PREFIXO_ENV: 'GOOD_',
+  ml: { janelaDias: 120 },
+  clienteMl: { chamarML: (p) => chamarML(/^https?:\/\//i.test(String(p)) ? String(p) : 'https://api.mercadolibre.com' + String(p)) },
+});
 
 // v3.71 - busca de NF pelo NOME do remetente (etiquetas Correios da Amazon
 // etc). O nome vem COLADO na etiqueta (RENATONEVES) - o indice colapsa os
@@ -534,7 +544,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.126.23 (b509: de-para de SKU tambem na GOOD — tabela, rotas e tela)',
+      version: '9.126.24 (b510: GOOD usa a mesma espreita do ML da AMB/Girassol — fabrica unica)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
