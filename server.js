@@ -544,7 +544,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.126.50 (b538: painel unico da GOOD monta — faltava o fs no server.js)',
+      version: '9.126.51 (b539: endereco oficial da GOOD entrega o painel unico; o antigo fica em /painel-antigo.html)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -3926,7 +3926,17 @@ app.get('/painel-novo.html', requerAdmin, (req, res) => {
   res.type('html').send(PAINEL_UNICO_GOOD);
 });
 
+// b539 - UNIFICACAO DO PAINEL: o endereco OFICIAL da GOOD passa a entregar o PAINEL UNICO (o mesmo da AMB/Girassol,
+// com nome, cores e empresa da GOOD). O painel antigo fica em /painel-antigo.html como RESERVA por alguns dias — e
+// e o que este endereco entrega se o unico nao montar. A copia antiga so e apagada num PR seguinte.
+app.get('/painel-antigo.html', requerAdmin, (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'painel-devolucoes.html'));
+});
 app.get('/painel-devolucoes.html', requerAdmin, (req, res) => {
+  if (PAINEL_UNICO_GOOD) {
+    res.set('Cache-Control', 'no-cache, must-revalidate');
+    return res.type('html').send(PAINEL_UNICO_GOOD);
+  }
   res.sendFile(path.join(__dirname, 'public', 'painel-devolucoes.html'));
 });
 
