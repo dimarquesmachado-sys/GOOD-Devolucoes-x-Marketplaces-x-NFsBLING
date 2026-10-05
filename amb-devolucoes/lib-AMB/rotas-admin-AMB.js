@@ -43,6 +43,11 @@ module.exports = function registrarRotasAdminNF(app, deps) {
   // b544 - UNIFICACAO DAS ROTAS, passo 1: a coluna de data da tabela tambem vem de fora (AMB/Girassol: criado_em;
   // GOOD: created_at) — pra esta copia servir qualquer empresa.
   const COL_CRIADO = deps.colunaCriadoEm || 'criado_em';
+  // b546 (Codex #449) - O MODELO tipo/status tambem vem de fora. AMB/Girassol: `tipo` = o que a peca e
+  // ('devolucao'...) e `status` = a fila ('aprovado'/'problema'/'divergente'). GOOD: o CONTRARIO — o resultado da
+  // triagem fica em `tipo` ('aprovado'...) e o card aberto tem `status: 'pendente'`.
+  const TRIAGEM_NO_TIPO = !!deps.triagemNoTipo;
+  const COL_RESULTADO = TRIAGEM_NO_TIPO ? 'tipo' : 'status';
 
 app.get('/api/admin/foto/*', requerAdmin, async (req, res) => {
   try {
@@ -153,8 +158,8 @@ async function retrofitItensPendentes() {
   try {
     const corte = new Date(Date.now() - 60 * 864e5).toISOString();
     const { data } = await supabase.from(TAB)
-      .select('id, nf_id_bling, nf_numero, nf_chave, nf_itens, status, ' + COL_CRIADO)
-      .in('status', ['aprovado', 'problema', 'divergente'])
+      .select('id, nf_id_bling, nf_numero, nf_chave, nf_itens, status, tipo, ' + COL_CRIADO)
+      .in(COL_RESULTADO, ['aprovado', 'problema', 'divergente'])
       .gte(COL_CRIADO, corte)
       .order(COL_CRIADO, { ascending: false })
       .limit(60);
@@ -678,7 +683,8 @@ app.post('/api/admin/lancar-por-nf', requerAdmin, async (req, res) => {
         // que nao existe no modelo da AMB (aprovado/problema/divergente) —
         // invisivel em toda tela. Em vez de recusar ("ja existe"), CONSERTO:
         // vira 'aprovado' e aparece. E o que o dono queria desde o 1o clique.
-        if (jaTem[0].status === 'pendente') {
+        // (so no modelo da AMB: na GOOD 'pendente' e o status NORMAL de um card aberto — nao mexe)
+        if (!TRIAGEM_NO_TIPO && jaTem[0].status === 'pendente') {
           const { error: eFix } = await supabase.from(TAB)
             .update({ status: 'aprovado', tipo: 'devolucao' })
             .eq('id', jaTem[0].id);
@@ -758,8 +764,9 @@ app.post('/api/admin/lancar-por-nf', requerAdmin, async (req, res) => {
           // INVISIVEL: existia (a 2a tentativa dizia "ja existe card
           // pendente") mas nunca aparecia. O dono achou na Girassol em 30/09;
           // na AMB nunca tinha funcionado.
-          tipo: 'devolucao',
-          status: 'aprovado',
+          // b546 (Codex #449): na GOOD o modelo e o outro (tipo 'aprovado' + status 'pendente')
+          tipo: TRIAGEM_NO_TIPO ? 'aprovado' : 'devolucao',
+          status: TRIAGEM_NO_TIPO ? 'pendente' : 'aprovado',
           funcionario: req.usuario,
           problema_descricao: `[LANCAMENTO MANUAL por ${req.usuario}] card criado pelo nº da NF`,
         }])
@@ -1329,14 +1336,20 @@ app.get('/api/debug/nf-devolucao', async (req, res) => {
   if (typeof buscarNfDevolucaoBling !== 'function') {
     return res.status(500).json({ ok: false, erro: 'busca nao injetada nas deps' });
   }
-  const r = await buscarNfDevolucaoBling({
-    cliente: req.query.cliente || null,
-    sku: req.query.sku || null,
-    desde: req.query.desde || null,
-    ate: req.query.ate || null,
-    // ⚠️ b402: sem isto, cai no id da AMBTotal cravado no lib/nf-pessoa.
-    naturezaId: naturezaDevolucaoDaEmpresa || null,
-  });
+  // b546 (Codex #449): chamarBling pode LANCAR (fila cheia); rota async no Express 4 nao pega rejeicao
+  let r;
+  try {
+    r = await buscarNfDevolucaoBling({
+      cliente: req.query.cliente || null,
+      sku: req.query.sku || null,
+      desde: req.query.desde || null,
+      ate: req.query.ate || null,
+      // ⚠️ b402: sem isto, cai no id da AMBTotal cravado no lib/nf-pessoa.
+      naturezaId: naturezaDevolucaoDaEmpresa || null,
+    });
+  } catch (e) {
+    return res.status(503).json({ ok: false, erro: 'nao consegui consultar o Bling agora (fila ocupada ou fora do ar): ' + String((e && e.message) || e).slice(0, 160) });
+  }
   res.json(r);
 });
 
@@ -1380,7 +1393,8 @@ app.get('/api/debug/ids-fiscais', async (req, res) => {
   res.json({
     ok: true,
     procurando: 'idEmpresaControl e idNaturezaOperacao ("Devolucao de Mercadoria - Entrada") desta empresa',
-    hoje_no_codigo: { idEmpresaControl: '14901993834', idNaturezaOperacao: '15110128838' },
+    // b546 (Codex #449): cada empresa informa os SEUS ids; sem isso, o padrao historico (AMBTotal)
+    hoje_no_codigo: deps.idsFiscaisHoje || { idEmpresaControl: '14901993834', idNaturezaOperacao: '15110128838' },
     resultado: out,
   });
 });

@@ -544,7 +544,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.126.56 (b544: ligar devolucao existente usa a natureza da ficha; coluna de data parametrizada)',
+      version: '9.126.58 (b546: rotas unicas na GOOD — modelo tipo/status, ML relativo, ids fiscais da GOOD, adminOk)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -8614,14 +8614,17 @@ registrarRotasDebug(app, {
 registrarRotasRelatorios(app, { supabase, requerAdmin });
 
 // v3.44 - rotas admin-NF (mesmo ponto: todas as deps ja declaradas acima)
-const registrarRotasAdminNF = require('./lib/rotas-admin-nf');
+// b545: lib/rotas-admin-nf.js (a copia da GOOD) nao e mais carregada — ver DEPS_ADMIN_NF abaixo
 // Codex #441 (P1): a busca de NF de devolucao do lib/nf-pessoa chama caminhos RELATIVOS (/nfe...), que a AMB prefixa
 // no proprio client; o chamarBling da GOOD passa a URL direto ao axios (ERR_INVALID_URL). Adaptador so pra esta rota.
 const nfpDevolucaoRota = require('./lib/nf-pessoa')({
   chamarBling: (u, o) => chamarBling(String(u).startsWith('/') ? 'https://api.bling.com.br/Api/v3' + u : u, o),
   sleep,
 });
-registrarRotasAdminNF(app, {
+// b545 - UNIFICACAO DAS ROTAS DE ADMIN, passo 2: a GOOD usa a copia UNICA das rotas de admin das NFs (a mesma da
+// AMB/Girassol: amb-devolucoes/lib-AMB/rotas-admin-AMB.js), com a tabela, a coluna de data, a natureza e o Bling DELA.
+// As 2 rotas so da GOOD (imagem do produto pelo indice e a lista de depositos) ficam em lib/rotas-admin-good-extra.js.
+const DEPS_ADMIN_NF = {
   // b534 - a rota de NF de devolucao ja emitida (painel unico): busca da lib UNICA nf-pessoa, natureza da FICHA da GOOD
   buscarNfDevolucaoBling: nfpDevolucaoRota.acharNfDevolucaoBling,
   nomesBatemNf: nfpDevolucaoRota.nomesBatem,
@@ -8741,7 +8744,22 @@ registrarRotasAdminNF(app, {
     }
     return null;
   },
-});
+};
+const ROTAS_GOOD_EXTRA = require('./lib/rotas-admin-good-extra')(app, DEPS_ADMIN_NF);
+require('./amb-devolucoes/lib-AMB/rotas-admin-AMB.js')(app, Object.assign({}, DEPS_ADMIN_NF, {
+  // a copia unica chama o Bling com caminho relativo ('/nfe/...'); o cliente da GOOD quer o endereco inteiro
+  chamarBling: (u, ...resto) => chamarBling(/^https?:/i.test(String(u)) ? u : 'https://api.bling.com.br/Api/v3' + u, ...resto),
+  tabelaDevolucoes: 'devolucoes',
+  colunaCriadoEm: 'created_at',
+  triagemNoTipo: true,   // b546 (Codex #449): na GOOD o resultado da triagem fica em `tipo` e o card aberto e status 'pendente'
+  // b546: a copia unica chama o ML com caminho relativo ('/users/me'); o cliente da GOOD exige o endereco inteiro
+  chamarML: (u, ...resto) => chamarML(/^https?:/i.test(String(u)) ? u : 'https://api.mercadolibre.com' + u, ...resto),
+  // b546: a sonda de ids fiscais mostra os ids DA GOOD (nao os cravados da AMB)
+  idsFiscaisHoje: { idEmpresaControl: FICHA_GOOD.fiscal.idEmpresaControl(), idNaturezaOperacao: FICHA_GOOD.fiscal.naturezasDevolucaoIds() },
+  buscarNFsPorNumero: nfpDevolucaoRota.buscarNFsPorNumero,
+  buscarNFnoBlingPorNumero,
+  listarDepositos: ROTAS_GOOD_EXTRA.listarDepositos,
+}));
 
 // v4.50 - CICLO DO ESTOQUE DE DEFEITOS (ficha, comentarios, pecas,
 // pedidos do galpao, lancamento de estoque no Bling). Mesmo conjunto que
