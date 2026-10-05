@@ -544,7 +544,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.126.47 (b535: rota de NF de devolucao da GOOD — URL absoluta no Bling, timeout da fila vira indeterminado, irmas sem corte)',
+      version: '9.126.49 (b538: painel unico — defeitos/relatorios da GOOD, aviso de NF em todas as filas, so-rascunho, itens da NF alem de 40)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -3894,6 +3894,36 @@ async function enviarEmailProblema(devolucao, fotos, usuario) {
 // confundia com index.html na hora de subir). O /admin.html antigo continua
 // funcionando como redirect, entao links e favoritos nao quebram.
 app.get('/admin.html', (req, res) => res.redirect('/painel-devolucoes.html'));
+// b537 - UNIFICACAO DO PAINEL, item 3 (passo de teste): a GOOD serve o PAINEL UNICO (o da AMB/Girassol, que ja tem
+// tudo o que o da GOOD tinha — #440 — e chama so rotas que a GOOD atende — #441) num endereco NOVO, pro dono testar
+// lado a lado com o atual. Quando ele aprovar, /painel-devolucoes.html passa a entregar este e a copia antiga sai.
+// O que muda da AMB pra GOOD: o nome no titulo, as cores (paleta roxa da GOOD) e o arquivo que diz qual e a
+// empresa (base-amb.js com a raiz, a chave 'good' e a pasta do checkout da GOOD).
+const { montarPainelUnicoGood } = require('./lib/painel-unico');   // b537: a montagem e testavel
+const PAINEL_UNICO_GOOD = (() => {
+  try { return montarPainelUnicoGood(fs.readFileSync(path.join(__dirname, 'amb-devolucoes', 'public-AMB', 'painel-AMB.html'), 'utf8')); }
+  catch (e) { console.warn('[PAINEL-UNICO] nao montou:', e.message); return null; }
+})();
+// o arquivo que diz qual e a empresa, preenchido com a GOOD (na AMB/Girassol quem preenche e o modulo delas)
+const BASE_AMB_JS_GOOD = (() => {
+  try {
+    return fs.readFileSync(path.join(__dirname, 'amb-devolucoes', 'public-AMB', 'js-AMB', 'base-amb.js'), 'utf8')
+      .replace('"%%APP_BASE%%"', JSON.stringify(''))
+      .replace('"%%APP_EMPRESA%%"', JSON.stringify('good'))
+      .replace('"%%PASTA_CHECKOUT%%"', JSON.stringify('good-checkout-offline'));
+  } catch (e) { return null; }
+})();
+app.get('/js-AMB/base-amb.js', (req, res) => {
+  if (!BASE_AMB_JS_GOOD) return res.status(500).type('text/plain').send('base-amb indisponivel');
+  res.set('Cache-Control', 'no-cache, must-revalidate');
+  res.type('application/javascript').send(BASE_AMB_JS_GOOD);
+});
+app.get('/painel-novo.html', requerAdmin, (req, res) => {
+  if (!PAINEL_UNICO_GOOD) return res.status(500).type('text/plain').send('painel unico indisponivel — use /painel-devolucoes.html');
+  res.set('Cache-Control', 'no-cache, must-revalidate');
+  res.type('html').send(PAINEL_UNICO_GOOD);
+});
+
 app.get('/painel-devolucoes.html', requerAdmin, (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'painel-devolucoes.html'));
 });

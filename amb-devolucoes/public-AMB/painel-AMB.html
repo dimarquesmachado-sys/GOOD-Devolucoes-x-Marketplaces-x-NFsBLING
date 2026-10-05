@@ -470,6 +470,17 @@
           }
         }, 4 * 60 * 1000);
       }
+      // b538 (Codex #442): o frescor do indice de NFs so era testado dentro do renderizar(), que so roda se
+      // alguem mexe na tela. Painel aberto e parado no galpao ficava com o retrato da primeira carga e o
+      // operador podia gerar nota duplicada. Este relogio revalida sozinho quando o TTL vence (b340 r2 da GOOD).
+      if (!window._nfDevAuto) {
+        window._nfDevAuto = setInterval(function () {
+          if (document.hidden) return;
+          if (window._indiceNFDevCarregando) return;
+          if (_nfDevIndiceFresco()) return;
+          try { renderizar(); } catch (e) { /* tenta de novo no proximo ciclo */ }
+        }, 60 * 1000);
+      }
       carregarRecados();
     }
 
@@ -1357,7 +1368,8 @@ async function gerarDoCardEstornadas(dadosJson) {
       String(d.sku || ''),
       String(d.nf_emitida_em || d.criado_no_mkt || ''),
       (d.entrada_estoque === true ? '' : 'defeito'),
-      ''
+      '',
+      true   // b538 (Codex #442): o modal agora TEM modo so-rascunho (11o parametro) — a nota sai com a NF inteira
     );
 
     // ⚠️ mercadoria que NAO voltou: entrada no estoque geral criaria
@@ -2133,7 +2145,19 @@ async function carregarSemRetorno() {
       // b335 r4 (Codex #78): tem que ser a fila INTEIRA, nao a filtrada pela
       // busca/data da tela — se o filtro esconde um dos dois cards em disputa,
       // o outro pareceria unico e o aviso ambiguo apareceria assim mesmo.
-      window._cardsParaNfDev = (dados && Array.isArray(dados.aprovadas)) ? dados.aprovadas : aprovadas;
+      // b538 (Codex #442): problemas e divergentes tambem geram/ligam NF de devolucao, entao uma nota que
+      // pertence a um deles pareceria exclusiva do card aprovado. A disputa considera TODAS as secoes
+      // nao concluidas (porte do b340 r2 da GOOD).
+      const _todosCards = []
+        .concat(Array.isArray(dados.aprovadas) ? dados.aprovadas : [])
+        .concat(Array.isArray(dados.problemas) ? dados.problemas : [])
+        .concat(Array.isArray(dados.divergentes) ? dados.divergentes : []);
+      window._cardsParaNfDev = _todosCards.filter(function (c) { return c && c.status !== 'concluido'; });
+      // /api/admin/devolucoes devolve no maximo 1000 registros de TODOS os tipos. No teto ha cards abertos
+      // fora da lista e a unicidade deixa de ser verificavel — o casamento cliente+SKU se desliga sozinho.
+      window._nfDevFilaTruncada = (_todosCards.length >= 1000);
+      window._nfDevAvisos = null;   // recomputa uma vez por render
+      _nfDevPrepararAvisos();
 
       document.getElementById('listaAprovadas').innerHTML = aprovadas.length
         ? aprovadas.map(itemHtmlAprovado).join('')
@@ -2148,7 +2172,11 @@ async function carregarSemRetorno() {
       // inteiro no galpao; sem isso o aviso ficaria preso no retrato da
       // primeira carga e uma NF emitida depois (pelo marketplace ou por outro
       // operador) nunca apareceria. Mesmo TTL do servidor: 15 min.
-      if (aprovadas.length && !_nfDevIndiceFresco() && !window._indiceNFDevCarregando) {
+      // b538 (Codex #442): o gatilho olhava so `aprovadas`; problema e divergente tambem tem botao de gerar
+      // NF, entao conta card acionavel (nao concluido) de qualquer secao.
+      const _temCardQueGeraNF = [aprovadas, problemas, divergentes]
+        .some(function (l) { return l.some(function (c) { return c && c.status !== 'concluido'; }); });
+      if (_temCardQueGeraNF && !_nfDevIndiceFresco() && !window._indiceNFDevCarregando) {
         window._indiceNFDevCarregando = true;
         fetch((window.APP_BASE || '') + '/api/admin/indice-nf-devolucao?paginas=6')
           .then(function (r) { return r.json(); })
@@ -2158,8 +2186,9 @@ async function carregarSemRetorno() {
               window._indiceNFDevSemPedido = d.sem_pedido || [];   // b335 - notas do Full (sem pedido)
               window._indiceNFDevOk = (d.cache_ok === true);   // b335 r2/r4 - ver comentario do outro carregador
               window._indiceNFDevTs = Date.now() - (Number(d.idade_ms) || 0);   // b335 r3/r4
-              const alvo = document.getElementById('listaAprovadas');
-              if (alvo && aprovadas.length) alvo.innerHTML = aprovadas.map(itemHtmlAprovado).join('');
+              // b538: renderizar() refaz com os filtros ATUAIS e as 3 secoes (e nao redispara este fetch: a
+              // flag ja esta marcada). Redesenhar so as aprovadas deixava problema/divergente sem o aviso.
+              try { renderizar(); } catch (e) { /* a fila redesenha no proximo ciclo */ }
             }
           })
           .catch(function () { /* sem indice, a fila segue como sempre foi */ })
@@ -2210,7 +2239,10 @@ async function carregarSemRetorno() {
         .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
         .replace(/[^a-z0-9 ]/g, ' ')
         .split(/\s+/)
-        .filter(function (t) { return t && ['de', 'da', 'do', 'das', 'dos', 'e'].indexOf(t) < 0; });
+        .filter(function (t) { return t && ['de', 'da', 'do', 'das', 'dos', 'e'].indexOf(t) < 0; })
+        // b538 (porte do b340 r2 da GOOD): palavras DISTINTAS. Sem isso "Joao Joao" contava duas em comum
+        // com "Joao Silva" e passava no minimo de 2, casando a venda errada.
+        .filter(function (t, i, arr) { return arr.indexOf(t) === i; });
     }
     // b335 r3 (Codex #78): a data de referencia do card. A coluna gravada e
     // `nf_data_emissao` (data da NF de VENDA) — `nf_data` NAO existe na tabela
@@ -2222,7 +2254,7 @@ async function carregarSemRetorno() {
     function _nfDevPisoDoCard(d) {
       const venda = String(d.nf_data_emissao || '').slice(0, 10);
       if (/^\d{4}-\d{2}-\d{2}$/.test(venda)) return _nfDevDiasAntes(venda, 1);
-      const triagem = String(d.criado_em || '').slice(0, 10);
+      const triagem = String(d.criado_em || d.created_at || '').slice(0, 10);
       if (/^\d{4}-\d{2}-\d{2}$/.test(triagem)) return _nfDevDiasAntes(triagem, 60);
       return null;   // sem data nenhuma, nao casa
     }
@@ -2264,23 +2296,74 @@ async function carregarSemRetorno() {
     // uma nota que serve a dois cards abertos (duas compras do mesmo SKU, uma
     // devolvida) nao pode dizer "ja resolvido" para os dois. E o mesmo criterio
     // que as b317-b320 usam do lado do servidor pra soltar ou travar a emissao.
-    function _achaNfDevPorClienteSku(d) {
-      const cands = _nfDevCandidatas(d);
-      if (cands.length !== 1) return null;
-      const nota = cands[0];
+    // b538 (porte do b340 r2/r3 da GOOD): UMA passada por render, guardada num mapa (antes cada card refazia
+    // o rescan da fila inteira); fila no teto de 1000 nao afirma unicidade; nota JA VINCULADA a algum card
+    // (inclusive concluido) sai do fallback.
+    function _nfDevPrepararAvisos() {
+      const mapa = {};
       const fila = window._cardsParaNfDev || [];
-      var quantosCards = 0;
-      for (var i = 0; i < fila.length; i++) {
-        const outro = fila[i];
-        const ped = String(outro.order_id || outro.pedido || '').replace(/\s/g, '');
-        if (ped && window._indiceNFDev && window._indiceNFDev[ped]) continue;   // esse ja casou por pedido
-        const c = _nfDevCandidatas(outro);
-        for (var j = 0; j < c.length; j++) {
-          if (String(c[j].id) === String(nota.id)) { quantosCards++; break; }
-        }
-        if (quantosCards > 1) return null;
+      if (window._nfDevFilaTruncada) { window._nfDevAvisos = mapa; return; }
+      const reservadas = {};
+      for (var r0 = 0; r0 < fila.length; r0++) {
+        const cr = fila[r0];
+        const idNota = cr && (cr.nf_devolucao_id_bling || cr.nf_devolucao_id);
+        if (idNota) reservadas[String(idNota)] = true;
       }
-      return nota;
+      const porCard = [];
+      const contaNota = {};
+      for (var i = 0; i < fila.length; i++) {
+        const c = fila[i];
+        if (c && c.status === 'concluido') continue;   // concluido nao disputa
+        const ped = String(c.order_id || c.pedido || '').replace(/\s/g, '');
+        if (ped && window._indiceNFDev && window._indiceNFDev[ped]) continue;   // ja casou por pedido
+        const cands = _nfDevCandidatas(c).filter(function (n) { return !reservadas[String(n.id)]; });
+        if (!cands.length) continue;
+        porCard.push({ card: c, cands: cands });
+        for (var j = 0; j < cands.length; j++) {
+          const k = String(cands[j].id);
+          contaNota[k] = (contaNota[k] || 0) + 1;
+        }
+      }
+      for (var x = 0; x < porCard.length; x++) {
+        const item = porCard[x];
+        if (item.cands.length !== 1) continue;               // card com 2 notas: ambiguo
+        const nota = item.cands[0];
+        if (contaNota[String(nota.id)] > 1) continue;        // nota servindo 2 cards: ambiguo
+        if (item.card && item.card.id != null) mapa[String(item.card.id)] = nota;
+      }
+      window._nfDevAvisos = mapa;
+    }
+    function _achaNfDevPorClienteSku(d) {
+      if (!window._nfDevAvisos) _nfDevPrepararAvisos();
+      if (!d || d.id == null) return null;
+      return window._nfDevAvisos[String(d.id)] || null;
+    }
+    // b538 (Codex #442): o aviso virou funcao porque PROBLEMA e DIVERGENTE tambem tem botao de gerar NF —
+    // mostrar so nas aprovadas deixava o operador emitir nota duplicada por aquelas secoes.
+    function _nfDevAvisoHtml(d) {
+      if (!d) return '';
+      const _pedCard = String(d.order_id || d.pedido || '').replace(/\s/g, '');
+      let _nfDev = (_pedCard && window._indiceNFDev) ? window._indiceNFDev[_pedCard] : null;
+      // b335 - FALLBACK pro Full: a NF-e de devolucao importada vem SEM o numero do pedido (o Bling nao
+      // preenche o vinculo), entao o pedido nunca casa. Casa pelo que a nota TEM: cliente + SKU.
+      let _nfDevVia = 'pedido';
+      if (!_nfDev) {
+        const _achada = _achaNfDevPorClienteSku(d);
+        if (_achada) { _nfDev = _achada; _nfDevVia = 'cliente+sku'; }
+      }
+      if (!_nfDev) return '';
+      // b335 - campos consertados: o indice manda `nf` e `id`
+      return '<div style="background:#e8f5e9;border:1px solid #a5d6a7;border-radius:8px;padding:8px 10px;margin:6px 0;font-size:13px;">'
+        + '✅ <b>Esta venda já tem NF de devolução no Bling</b>'
+        + (_nfDev.nf ? ' — nº ' + escapeHtml(String(_nfDev.nf)) : '')
+        + (_nfDev.id ? ' · <a href="https://www.bling.com.br/notas.entrada.php#edit/' + encodeURIComponent(_nfDev.id) + '" target="_blank">🔗 abrir no Bling</a>' : '')
+        + (_nfDevVia === 'cliente+sku'
+            ? '<br><span style="font-size:12px;color:#5a7a5e;">Casada por <b>cliente + SKU</b> (nota sem nº de pedido — padrão do Full'
+              + (_nfDev.serie != null && _nfDev.serie !== '' ? ', série ' + escapeHtml(String(_nfDev.serie)) : '')
+              + '). Confira o nome antes de concluir.</span>'
+            : '')
+        + '<br><span style="font-size:12px;color:#5a7a5e;">Não precisa gerar de novo — se já resolveu, marque como concluído.</span>'
+        + '</div>';
     }
     function moeda(v) {
       if (v == null) return '-';
@@ -2320,31 +2403,7 @@ async function carregarSemRetorno() {
       // b328 - AVISA NO CARD que a venda JA TEM NF de devolucao no Bling
       // DA AMB (mesma coisa que a b326 fez na GOOD). O indice agora e o da
       // propria empresa: ate a b328 os paineis da AMB liam o indice da GOOD.
-      const _pedCard = String(d.order_id || d.pedido || '').replace(/\s/g, '');
-      let _nfDev = (_pedCard && window._indiceNFDev) ? window._indiceNFDev[_pedCard] : null;
-      // b335 - FALLBACK pro Full: a NF-e de devolucao importada vem SEM o numero
-      // do pedido (o Bling nao preenche o vinculo), entao o pedido nunca casa.
-      // Casa pelo que a nota TEM: cliente + SKU — os dois precisam bater.
-      let _nfDevVia = 'pedido';
-      if (!_nfDev) {
-        const _achada = _achaNfDevPorClienteSku(d);
-        if (_achada) { _nfDev = _achada; _nfDevVia = 'cliente+sku'; }
-      }
-      // b335 - campos consertados: o indice manda `nf` e (agora) `id` — o aviso
-      // usava `numero`, que nao existia, e saia sem o nº e sem o link.
-      const avisoJaTemNF = _nfDev
-        ? '<div style="background:#e8f5e9;border:1px solid #a5d6a7;border-radius:8px;padding:8px 10px;margin:6px 0;font-size:13px;">'
-          + '✅ <b>Esta venda já tem NF de devolução no Bling</b>'
-          + (_nfDev.nf ? ' — nº ' + escapeHtml(String(_nfDev.nf)) : '')
-          + (_nfDev.id ? ' · <a href="https://www.bling.com.br/notas.entrada.php#edit/' + encodeURIComponent(_nfDev.id) + '" target="_blank">🔗 abrir no Bling</a>' : '')
-          + (_nfDevVia === 'cliente+sku'
-              ? '<br><span style="font-size:12px;color:#5a7a5e;">Casada por <b>cliente + SKU</b> (nota sem nº de pedido — padrão do Full'
-                + (_nfDev.serie != null && _nfDev.serie !== '' ? ', série ' + escapeHtml(String(_nfDev.serie)) : '')
-                + '). Confira o nome antes de concluir.</span>'
-              : '')
-          + '<br><span style="font-size:12px;color:#5a7a5e;">Não precisa gerar de novo — se já resolveu, marque como concluído.</span>'
-          + '</div>'
-        : '';
+      const avisoJaTemNF = _nfDevAvisoHtml(d);   // b538: a mesma funcao serve problema e divergente
 
       // b460: nos cards antigos da AMB/Girassol problema_descricao e nulo — o
       // nome esta em `funcionario`. Le dali como reserva, senao "por" sai vazio.
@@ -2424,7 +2483,7 @@ async function carregarSemRetorno() {
               ${ehSerie2(d) && !d.nf_devolucao_id_bling
                 ? `<a class="btn" style="background:#00695c;color:#fff;" href="https://www.mercadolivre.com.br/emissor/vendas/${d.order_id || ''}/faturas" target="_blank" title="Venda FULL (s\u00e9rie 2): a NF de devolu\u00e7\u00e3o \u00e9 emitida pelo PR\u00d3PRIO Mercado Livre. N\u00c3O gere outra no Bling (duplicidade fiscal). Clique pra ver/baixar a NF no emissor do ML.">🏬 FULL</a><button class="btn" style="background:#00838f;" onclick="fullVincular('${d.id}', this)" title="Procura no Bling a NF de ENTRADA s\u00e9rie 2 que o ML emitiu pra esta devolu\u00e7\u00e3o e vincula ao card">🔗 Achar devolu\u00e7\u00e3o no Bling</button>`
                 : !d.nf_devolucao_id_bling && (d.nf_id_bling || d.nf_numero)
-                ? `<button class="btn" style="background:#1565c0;" onclick="abrirModalGerarDevolucao('${d.id}', '${d.nf_id_bling || ''}', '${escapeHtml(d.nf_numero || '')}', '${escapeHtml(d.produto_titulo || '')}', '${String(d.nf_chave || '').replace(/[^0-9]/g, '')}', '${jsArg(d.buyer_nome || d.cliente || d.cliente_ml || '')}', '${escapeHtml(d.produto_sku || '')}', '${String(d.data_origem || d.nf_data || d.criado_em || '').slice(0,10)}', '${escapeHtml((d.dep_sugerido || d.status || d.tipo) || '')}', '${serieDoRegistro(d)}')" title="Abre as op\u00e7\u00f5es: criar RASCUNHO (salvar sem emitir, pra editar no Bling) ou gerar + emitir direto">🧾 Gerar NF (rascunho ou emitir)</button>`
+                ? `<button class="btn" style="background:#1565c0;" onclick="abrirModalGerarDevolucao('${d.id}', '${d.nf_id_bling || ''}', '${escapeHtml(d.nf_numero || '')}', '${escapeHtml(d.produto_titulo || '')}', '${String(d.nf_chave || '').replace(/[^0-9]/g, '')}', '${jsArg(d.buyer_nome || d.cliente || d.cliente_ml || '')}', '${escapeHtml(d.produto_sku || '')}', '${String(d.data_origem || d.nf_data || d.criado_em || '').slice(0,10)}', '${escapeHtml((d.dep_sugerido || d.status || d.tipo) || '')}', '${serieDoRegistro(d)}', ${!!d.so_rascunho})" title="Abre as op\u00e7\u00f5es: criar RASCUNHO (salvar sem emitir, pra editar no Bling) ou gerar + emitir direto">🧾 Gerar NF (rascunho ou emitir)</button>`
                 : d.nf_devolucao_id_bling
                   ? `<a class="btn btn-verde" href="https://www.bling.com.br/notas.entrada.php#edit/${d.nf_devolucao_id_bling}" target="_blank" title="NF de devolu\u00e7\u00e3o j\u00e1 gerada">📝 Devolu\u00e7\u00e3o: ${d.nf_devolucao_numero || 'ver'}</a>${ehSerie2(d) ? botaoFullEstoque(d, false) : ''}`
                   : ''
@@ -2457,6 +2516,7 @@ async function carregarSemRetorno() {
             </div>
             ${concluido ? '<span style="background:#999;color:white;padding:3px 8px;border-radius:10px;font-size:10px;font-weight:700;">RESOLVIDO</span>' : ''}
           </div>
+          ${_nfDevAvisoHtml(d)}
           <div class="item-detalhes">
             <strong>${escapeHtml(d.produto_sku || '-')}</strong> ·
             <strong>${d.produto_qtd || '-'} un</strong> ·
@@ -2487,7 +2547,7 @@ async function carregarSemRetorno() {
               ${ehSerie2(d) && !d.nf_devolucao_id_bling
                 ? `<a class="btn" style="background:#00695c;color:#fff;" href="https://www.mercadolivre.com.br/emissor/vendas/${d.order_id || ''}/faturas" target="_blank" title="Venda FULL (s\u00e9rie 2): a NF de devolu\u00e7\u00e3o \u00e9 emitida pelo PR\u00d3PRIO Mercado Livre. N\u00c3O gere outra no Bling (duplicidade fiscal). Clique pra ver/baixar a NF no emissor do ML.">🏬 FULL</a><button class="btn" style="background:#00838f;" onclick="fullVincular('${d.id}', this)" title="Procura no Bling a NF de ENTRADA s\u00e9rie 2 que o ML emitiu pra esta devolu\u00e7\u00e3o e vincula ao card">🔗 Achar devolu\u00e7\u00e3o no Bling</button>`
                 : !d.nf_devolucao_id_bling && (d.nf_id_bling || d.nf_numero)
-                ? `<button class="btn" style="background:#1565c0;" onclick="abrirModalGerarDevolucao('${d.id}', '${d.nf_id_bling || ''}', '${escapeHtml(d.nf_numero || '')}', '${escapeHtml(d.produto_titulo || '')}', '${String(d.nf_chave || '').replace(/[^0-9]/g, '')}', '${jsArg(d.buyer_nome || d.cliente || d.cliente_ml || '')}', '${escapeHtml(d.produto_sku || '')}', '${String(d.data_origem || d.nf_data || d.criado_em || '').slice(0,10)}', '${escapeHtml(d.status || d.tipo || '')}', '${serieDoRegistro(d)}')" title="Abre as op\u00e7\u00f5es: criar RASCUNHO (salvar sem emitir, pra editar no Bling) ou gerar + emitir direto">🧾 Gerar NF (rascunho ou emitir)</button>`
+                ? `<button class="btn" style="background:#1565c0;" onclick="abrirModalGerarDevolucao('${d.id}', '${d.nf_id_bling || ''}', '${escapeHtml(d.nf_numero || '')}', '${escapeHtml(d.produto_titulo || '')}', '${String(d.nf_chave || '').replace(/[^0-9]/g, '')}', '${jsArg(d.buyer_nome || d.cliente || d.cliente_ml || '')}', '${escapeHtml(d.produto_sku || '')}', '${String(d.data_origem || d.nf_data || d.criado_em || '').slice(0,10)}', '${escapeHtml(d.status || d.tipo || '')}', '${serieDoRegistro(d)}', ${!!d.so_rascunho})" title="Abre as op\u00e7\u00f5es: criar RASCUNHO (salvar sem emitir, pra editar no Bling) ou gerar + emitir direto">🧾 Gerar NF (rascunho ou emitir)</button>`
                 : d.nf_devolucao_id_bling
                   ? `<a class="btn btn-verde" href="https://www.bling.com.br/notas.entrada.php#edit/${d.nf_devolucao_id_bling}" target="_blank" title="NF de devolu\u00e7\u00e3o j\u00e1 gerada. Produto com problema: a do FULL (emitida pelo marketplace) n\u00e3o lan\u00e7a estoque sozinha \u2014 use o bot\u00e3o 📦 (abre no DEFEITOS); NF emitida aqui j\u00e1 lan\u00e7ou estoque.">📝 Devolu\u00e7\u00e3o: ${d.nf_devolucao_numero || 'ver'}</a>${ehSerie2(d) ? botaoFullEstoque(d, true) : ''}`
                   : ''
@@ -2542,6 +2602,7 @@ async function carregarSemRetorno() {
               </div>
             </div>
           </div>
+          ${_nfDevAvisoHtml(d)}
 
           <div class="item-detalhes">
             <strong>${escapeHtml(d.produto_sku || '-')}</strong> ·
@@ -2581,7 +2642,7 @@ async function carregarSemRetorno() {
               ${ehSerie2(d) && !d.nf_devolucao_id_bling
                 ? `<a class="btn" style="background:#00695c;color:#fff;" href="https://www.mercadolivre.com.br/emissor/vendas/${d.order_id || ''}/faturas" target="_blank" title="Venda FULL (s\u00e9rie 2): a NF de devolu\u00e7\u00e3o \u00e9 emitida pelo PR\u00d3PRIO Mercado Livre. N\u00c3O gere outra no Bling (duplicidade fiscal). Clique pra ver/baixar a NF no emissor do ML.">🏬 FULL</a><button class="btn" style="background:#00838f;" onclick="fullVincular('${d.id}', this)" title="Procura no Bling a NF de ENTRADA s\u00e9rie 2 que o ML emitiu pra esta devolu\u00e7\u00e3o e vincula ao card">🔗 Achar devolu\u00e7\u00e3o no Bling</button>`
                 : !d.nf_devolucao_id_bling && (d.nf_id_bling || d.nf_numero)
-                ? `<button class="btn" style="background:#1565c0;" onclick="abrirModalGerarDevolucao('${d.id}', '${d.nf_id_bling || ''}', '${escapeHtml(d.nf_numero || '')}', '${jsArg(d.produto_titulo || '')}', '${String(d.nf_chave || '').replace(/[^0-9]/g, '')}', '${jsArg(d.buyer_nome || d.cliente || d.cliente_ml || '')}', '${jsArg(d.produto_sku || '')}', '${String(d.data_origem || d.nf_data || d.criado_em || '').slice(0,10)}', 'divergente', '${serieDoRegistro(d)}')" title="Abre as op\u00e7\u00f5es: criar RASCUNHO (salvar sem emitir, pra editar no Bling) ou gerar + emitir direto">🧾 Gerar NF (rascunho ou emitir)</button>`
+                ? `<button class="btn" style="background:#1565c0;" onclick="abrirModalGerarDevolucao('${d.id}', '${d.nf_id_bling || ''}', '${escapeHtml(d.nf_numero || '')}', '${jsArg(d.produto_titulo || '')}', '${String(d.nf_chave || '').replace(/[^0-9]/g, '')}', '${jsArg(d.buyer_nome || d.cliente || d.cliente_ml || '')}', '${jsArg(d.produto_sku || '')}', '${String(d.data_origem || d.nf_data || d.criado_em || '').slice(0,10)}', 'divergente', '${serieDoRegistro(d)}', ${!!d.so_rascunho})" title="Abre as op\u00e7\u00f5es: criar RASCUNHO (salvar sem emitir, pra editar no Bling) ou gerar + emitir direto">🧾 Gerar NF (rascunho ou emitir)</button>`
                 : d.nf_devolucao_id_bling
                   ? `<a class="btn btn-verde" href="https://www.bling.com.br/notas.entrada.php#edit/${d.nf_devolucao_id_bling}" target="_blank" title="NF de devolu\u00e7\u00e3o j\u00e1 gerada. Produto com problema: a do FULL (emitida pelo marketplace) n\u00e3o lan\u00e7a estoque sozinha \u2014 use o bot\u00e3o 📦 (abre no DEFEITOS); NF emitida aqui j\u00e1 lan\u00e7ou estoque.">📝 Devolu\u00e7\u00e3o: ${d.nf_devolucao_numero || 'ver'}</a>${ehSerie2(d) ? botaoFullEstoque(d, true) : ''}`
                   : ''
@@ -2882,7 +2943,7 @@ async function carregarSemRetorno() {
         }
       } catch (e) { /* trava e protecao extra: falhar aqui nao pode travar o modal */ }
     }
-    function abrirModalGerarDevolucao(devolucaoId, idNFOriginalBling, nfNumero, produtoTitulo, chaveNF, cliente, skuItem, dataVenda, statusTriagem, serieNFOriginal) {
+    function abrirModalGerarDevolucao(devolucaoId, idNFOriginalBling, nfNumero, produtoTitulo, chaveNF, cliente, skuItem, dataVenda, statusTriagem, serieNFOriginal, soRascunho) {
       var _idParcial = arguments[0];   // b500: o 1o parametro e o id do card (o nome muda entre as telas)
       window._devParcial = faltasDoCard(_idParcial).length > 0;   // lido por quem libera os botoes (deposito carrega depois)
       setTimeout(function () { travaDevolucaoParcial(_idParcial); }, 60);   // devolucao parcial so em rascunho
@@ -2936,11 +2997,15 @@ async function carregarSemRetorno() {
             onclick="confirmarGerarDevolucao('${devolucaoId}', '${idNFOriginalBling}', '${nfNumero}', false, '${chaveNF}')">
             🧪 Criar rascunho
           </button>
-          ${ehDivergente ? `
+          ${(ehDivergente || soRascunho) ? `
           <div style="font-size:13px;color:#e65100;background:#fff3e0;border:2px solid #ef6c00;border-radius:8px;padding:10px;max-width:340px;">
             <b>⚠️ Só rascunho para este caso.</b><br>
-            Voltou um produto <b>diferente</b> do vendido (envio errado). A nota sai com os itens da nota
-            original: abra o rascunho no Bling, troque a linha pelo SKU que voltou e valide por lá.
+            ${ehDivergente
+              ? `Voltou um produto <b>diferente</b> do vendido (envio errado). A nota sai com os itens da nota
+            original: abra o rascunho no Bling, troque a linha pelo SKU que voltou e valide por lá.`
+              : `A nota de devolução sai com <b>todos os itens da nota original</b>, e aqui pode ser
+            que só parte tenha sido reembolsada. Abra o rascunho no Bling, ajuste as linhas e
+            valide por lá.`}
           </div>` : `
           <button class="btn btn-verde" id="btnGerarEmitir"${ehProblema ? ' disabled' : ''}
             onclick="confirmarGerarDevolucao('${devolucaoId}', '${idNFOriginalBling}', '${nfNumero}', true, '${chaveNF}')">
@@ -3404,6 +3469,10 @@ async function carregarSemRetorno() {
     async function autoCarregarItens() {
       const caixas = Array.prototype.slice.call(
         document.querySelectorAll('.itens-nf-auto:not([data-feito])')).slice(0, 40);
+      // b538 (Codex #442): o lote e de 40 por vez; sem nova passada, a 41a caixa em diante ficava para sempre
+      // em "buscando itens da NF..." (a fila traz ate 1000 registros). Cada caixa leva data-feito antes do
+      // await, entao passadas sobrepostas nao repetem busca.
+      const haMais = caixas.length === 40;
       for (const box of caixas) {
         box.dataset.feito = '1';
         const idBling = box.dataset.nf;
@@ -3433,6 +3502,7 @@ async function carregarSemRetorno() {
         }
         await new Promise(r => setTimeout(r, 220));
       }
+      if (haMais && document.querySelector('.itens-nf-auto:not([data-feito])')) autoCarregarItens();
     }
 
     // b170 - refaz a busca de UMA caixa que falhou
