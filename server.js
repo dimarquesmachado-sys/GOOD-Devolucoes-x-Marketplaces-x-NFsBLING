@@ -544,7 +544,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.126.49 (b538: painel unico — defeitos/relatorios da GOOD, aviso de NF em todas as filas, so-rascunho, itens da NF alem de 40)',
+      version: '9.126.50 (b538: painel unico da GOOD monta — faltava o fs no server.js)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -3900,14 +3900,16 @@ app.get('/admin.html', (req, res) => res.redirect('/painel-devolucoes.html'));
 // O que muda da AMB pra GOOD: o nome no titulo, as cores (paleta roxa da GOOD) e o arquivo que diz qual e a
 // empresa (base-amb.js com a raiz, a chave 'good' e a pasta do checkout da GOOD).
 const { montarPainelUnicoGood } = require('./lib/painel-unico');   // b537: a montagem e testavel
+// b538 - o server.js NAO tem `fs` no topo: o painel unico nao montava ('fs is not defined') e o /painel-novo.html
+// respondia 'indisponivel'. require('fs') aqui; e o teste agora SOBE o servidor e confere o log.
 const PAINEL_UNICO_GOOD = (() => {
-  try { return montarPainelUnicoGood(fs.readFileSync(path.join(__dirname, 'amb-devolucoes', 'public-AMB', 'painel-AMB.html'), 'utf8')); }
+  try { return montarPainelUnicoGood(require('fs').readFileSync(path.join(__dirname, 'amb-devolucoes', 'public-AMB', 'painel-AMB.html'), 'utf8')); }
   catch (e) { console.warn('[PAINEL-UNICO] nao montou:', e.message); return null; }
 })();
 // o arquivo que diz qual e a empresa, preenchido com a GOOD (na AMB/Girassol quem preenche e o modulo delas)
 const BASE_AMB_JS_GOOD = (() => {
   try {
-    return fs.readFileSync(path.join(__dirname, 'amb-devolucoes', 'public-AMB', 'js-AMB', 'base-amb.js'), 'utf8')
+    return require('fs').readFileSync(path.join(__dirname, 'amb-devolucoes', 'public-AMB', 'js-AMB', 'base-amb.js'), 'utf8')
       .replace('"%%APP_BASE%%"', JSON.stringify(''))
       .replace('"%%APP_EMPRESA%%"', JSON.stringify('good'))
       .replace('"%%PASTA_CHECKOUT%%"', JSON.stringify('good-checkout-offline'));
