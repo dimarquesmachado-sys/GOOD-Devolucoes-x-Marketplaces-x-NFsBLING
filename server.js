@@ -544,7 +544,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.126.53 (b541: problemas abrem o Gerar NF em DEFEITOS; painel no celular sem botao saindo da tela)',
+      version: '9.126.54 (b542: celular — anexar etiqueta da triagem e blocos do painel sem sair da tela)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
