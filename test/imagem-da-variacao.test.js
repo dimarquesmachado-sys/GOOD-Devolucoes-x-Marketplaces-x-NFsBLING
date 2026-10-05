@@ -25,7 +25,7 @@ let falhas = 0;
 const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o); };
 
 const src = fs.readFileSync(
-  path.join(__dirname, '..', 'lib', 'rotas-admin-nf.js'), 'utf8');
+  path.join(__dirname, '..', 'lib', 'rotas-admin-good-extra.js'), 'utf8');
 const i = src.indexOf("app.get('/api/produto/imagem/:id'");
 // ⚠️ recorto ate o FIM do handler contando chaves, nao por janela fixa: a
 // de 6000 chars quebrou quando o bloco cresceu (o `pai_da_variacao` foi

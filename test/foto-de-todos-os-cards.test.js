@@ -109,7 +109,7 @@ const front = fs.readFileSync(
 // percorreria o catálogo de qualquer jeito.
 {
   const rota = fs.readFileSync(
-    path.join(__dirname, '..', 'lib', 'rotas-admin-nf.js'), 'utf8');
+    path.join(__dirname, '..', 'lib', 'rotas-admin-good-extra.js'), 'utf8');
   const iSem = rota.indexOf('if (req.query.semBling)');
   const iAnota = rota.indexOf('deps.anotarFotoPedida(chave)', iSem);
   const iResp = rota.indexOf("via: 'sem_indice_sem_bling'", iSem);
@@ -174,7 +174,7 @@ const front = fs.readFileSync(
 // Sem isto, ela gastava as 12 rodadas e atrasava as outras.
 {
   const rota = fs.readFileSync(
-    path.join(__dirname, '..', 'lib', 'rotas-admin-nf.js'), 'utf8');
+    path.join(__dirname, '..', 'lib', 'rotas-admin-good-extra.js'), 'utf8');
   ok(/definitivo: !!\(typeof deps\.indiceTemProduto/.test(rota),
      '⚠️ a rota marca quando nao adianta insistir');
   ok(/if \(d && d\.definitivo && cx && cx\.dataset\) cx\.dataset\.sku = '-';/.test(front),

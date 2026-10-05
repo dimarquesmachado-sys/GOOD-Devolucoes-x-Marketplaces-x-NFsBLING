@@ -6,7 +6,7 @@ process.env.NODE_TEST_SEM_TIMERS = '1';
 let falhas = 0;
 const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o); };
 (async () => {
-  for (const arq of [path.join(__dirname, '..', 'amb-devolucoes', 'lib-AMB', 'rotas-admin-AMB.js'), path.join(__dirname, '..', 'lib', 'rotas-admin-nf.js')]) {
+  for (const arq of [path.join(__dirname, '..', 'amb-devolucoes', 'lib-AMB', 'rotas-admin-AMB.js')]) {
     const chamados = [];
     let respostaAchar = { s: 404, o: { ok: false, erro: 'nao achei' } };
     const stack = [];
@@ -27,7 +27,7 @@ const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o
     ok(chamados.length === 0, '  ' + path.basename(arq) + ': quem nao achou espera (nao martela o Bling a cada volta)');
   }
   const fs = require('fs');
-  for (const [arq, col] of [['amb-devolucoes/lib-AMB/rotas-admin-AMB.js', 'criado_em'], ['lib/rotas-admin-nf.js', 'created_at']]) {
+  for (const [arq, col] of [['amb-devolucoes/lib-AMB/rotas-admin-AMB.js', 'criado_em']]) {
     const s = fs.readFileSync(path.join(__dirname, '..', arq), 'utf8');
     // b544: na copia da AMB/Girassol a coluna virou parametro (COL_CRIADO, padrao criado_em) — a unificacao das rotas
     ok(s.indexOf(".gte('" + col + "', desde).order('" + col + "'") > -1 || (col === 'criado_em' && s.indexOf(".gte(COL_CRIADO, desde).order(COL_CRIADO") > -1 && s.indexOf("deps.colunaCriadoEm || 'criado_em'") > -1), '⚠️ Codex #410: ' + arq + ' usa a coluna de data certa (' + col + ')');

@@ -544,7 +544,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.126.59 (b548: itens da NF abertos em todos os cards; NF com varios produtos diz isso na linha)',
+      version: '9.126.61 (b550: copia antiga das rotas de admin da GOOD apagada — uma so pras 3)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -8614,7 +8614,7 @@ registrarRotasDebug(app, {
 registrarRotasRelatorios(app, { supabase, requerAdmin });
 
 // v3.44 - rotas admin-NF (mesmo ponto: todas as deps ja declaradas acima)
-// b545: lib/rotas-admin-nf.js (a copia da GOOD) nao e mais carregada — ver DEPS_ADMIN_NF abaixo
+// b545/b547: a copia das rotas de admin da GOOD (lib/rotas-admin-nf.js) foi apagada — ver DEPS_ADMIN_NF abaixo
 // Codex #441 (P1): a busca de NF de devolucao do lib/nf-pessoa chama caminhos RELATIVOS (/nfe...), que a AMB prefixa
 // no proprio client; o chamarBling da GOOD passa a URL direto ao axios (ERR_INVALID_URL). Adaptador so pra esta rota.
 const nfpDevolucaoRota = require('./lib/nf-pessoa')({

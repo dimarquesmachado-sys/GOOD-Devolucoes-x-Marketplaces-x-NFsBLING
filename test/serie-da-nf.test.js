@@ -119,8 +119,7 @@ const RAIZ = path.join(__dirname, '..');
        nome + ': e a serie vai no payload (o caso resolvido AUTOMATICO perdia)');
   }
 
-  for (const [nome, rel] of [['GOOD', 'lib/rotas-admin-nf.js'],
-                             ['AMB', 'amb-devolucoes/lib-AMB/rotas-admin-AMB.js']]) {
+  for (const [nome, rel] of [['AMB/Girassol e GOOD (copia unica desde b545)', 'amb-devolucoes/lib-AMB/rotas-admin-AMB.js']]) {
     const src = fs.readFileSync(path.join(RAIZ, rel), 'utf8');
     ok(/const ehFull = !!serieReg && serieReg !== '1'/.test(src),
        nome + ': a rota full-vincular aceita qualquer serie de Full');
@@ -152,8 +151,7 @@ const RAIZ = path.join(__dirname, '..');
   ok(ok2('1', '2') === false, 'e a da matriz continua fora');
   ok(ok2('3', null) === true, 'card sem serie conhecida: aceita qualquer Full');
 
-  for (const [nome, rel] of [['GOOD', 'lib/rotas-admin-nf.js'],
-                             ['AMB', 'amb-devolucoes/lib-AMB/rotas-admin-AMB.js']]) {
+  for (const [nome, rel] of [['AMB/Girassol e GOOD (copia unica desde b545)', 'amb-devolucoes/lib-AMB/rotas-admin-AMB.js']]) {
     const src = fs.readFileSync(path.join(RAIZ, rel), 'utf8');
     ok(/sNF !== '1' && \(!serieReg \|\| sNF === serieReg\)/.test(src),
        nome + ': a serie da devolucao tem que bater com a da venda');
