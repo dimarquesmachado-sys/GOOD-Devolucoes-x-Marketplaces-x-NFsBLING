@@ -1319,7 +1319,13 @@
   // b549 - dono, 05/10 ('tem que editar no estoque defeitos'): peca sem descricao (ex.: #113, triada antes do texto
   // do problema ser gravado) — escrever direto da lista: abre a ficha e ja abre a caixa de edicao da descricao.
   window.escreverLaudoDireto = async function (id) {
+    // review do Codex: com outro card expandido inline, `fichaInlineId` ficava no card antigo e o salvar nao
+    // recarregava a ficha (comentario de auditoria/numeracao velhos). Fecha o inline antes de abrir em tela cheia.
+    fecharFichaInline();
+    marcarCardAberto(null);
     try { await window.abrirFichaDefeito(id); } catch (e) { return; }
+    // se a ficha nao carregou, `fichaAberta` ainda e a da peca anterior: nao abrir a edicao dela por engano
+    if (!fichaAberta || !fichaAberta.item || String(fichaAberta.item.id) !== String(id)) return;
     if (typeof window.editarLaudo === 'function') window.editarLaudo();
   };
 
