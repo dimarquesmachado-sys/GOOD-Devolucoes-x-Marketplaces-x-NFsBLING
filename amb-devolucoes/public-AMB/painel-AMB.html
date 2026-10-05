@@ -2481,9 +2481,7 @@ async function carregarSemRetorno() {
           </div>
           ${avisoJaTemNF}
           <div class="item-detalhes">
-            <strong>${escapeHtml(d.produto_sku || '-')}</strong> ·
-            <strong>${d.produto_qtd || '-'} un</strong> ·
-            ${moeda(d.produto_valor_unit)}${renderItensCard(d)}<br>
+            <span class="linha-produto">${linhaProduto(d)}</span>${renderItensCard(d)}<br>
             <strong>NF:</strong> ${escapeHtml(d.nf_numero || '-')} ·
             <strong>Cliente:</strong> ${escapeHtml(d.buyer_nome || '-')}<br>
             ${linkPedido(d)}
@@ -2539,9 +2537,7 @@ async function carregarSemRetorno() {
           </div>
           ${_nfDevAvisoHtml(d)}
           <div class="item-detalhes">
-            <strong>${escapeHtml(d.produto_sku || '-')}</strong> ·
-            <strong>${d.produto_qtd || '-'} un</strong> ·
-            ${moeda(d.produto_valor_unit)}${d.nf_id_bling ? ` · <a href="#" onclick="return verItensNF('${d.nf_id_bling}', this)" style="color:#1565c0;font-size:12px;text-decoration:none;font-weight:600;" title="Mostra todos os itens e quantidades desta NF">▼ itens da NF</a><span class="itens-nf-box" style="display:none;"></span>` : ''}<br>
+            <span class="linha-produto">${linhaProduto(d)}</span>${renderItensCard(d)}<br>
             <strong>NF:</strong> ${escapeHtml(d.nf_numero || '-')} ·
             <strong>Cliente:</strong> ${escapeHtml(d.buyer_nome || '-')}<br>
             ${linkPedido(d)}
@@ -2626,9 +2622,7 @@ async function carregarSemRetorno() {
           ${_nfDevAvisoHtml(d)}
 
           <div class="item-detalhes">
-            <strong>${escapeHtml(d.produto_sku || '-')}</strong> ·
-            <strong>${d.produto_qtd || '-'} un</strong> ·
-            ${moeda(d.produto_valor_unit)}${d.nf_id_bling ? ` · <a href="#" onclick="return verItensNF('${d.nf_id_bling}', this)" style="color:#1565c0;font-size:12px;text-decoration:none;font-weight:600;" title="Mostra todos os itens e quantidades desta NF">▼ itens da NF</a><span class="itens-nf-box" style="display:none;"></span>` : ''}<br>
+            <span class="linha-produto">${linhaProduto(d)}</span>${renderItensCard(d)}<br>
             <strong>NF original:</strong> ${escapeHtml(d.nf_numero || '-')} ·
             <strong>Cliente:</strong> ${escapeHtml(d.buyer_nome || '-')}<br>
             ${linkPedido(d)}
@@ -3465,6 +3459,18 @@ async function carregarSemRetorno() {
         <div style="color:#2e7d32;margin-bottom:4px;">✔ <strong>Itens da NF ${escapeHtml(String(numero || ''))}</strong> (${lista.length}):</div>${linhas}</div>`;
     }
 
+    // b548 - dono, 05/10 (Girassol, NF 127261: 'CABOLATERAL · 3 un', mas a NF tem 3 produtos de 1 un cada): quando a
+    // NF tem MAIS DE UM produto, a linha do card diz isso — a lista vem aberta logo abaixo — em vez de mostrar o 1o
+    // SKU com a quantidade total. Com a lista ainda nao carregada, a caixa automatica corrige a linha quando chega.
+    function textoVariosProdutos(n) { return '<strong>' + n + ' produtos diferentes na NF</strong> \u00b7 lista abaixo'; }
+    function linhaProduto(d) {
+      var itens = Array.isArray(d.nf_itens) ? d.nf_itens : [];
+      var skus = {}; itens.forEach(function (i) { var k = String(i.sku || i.codigo || '').trim().toUpperCase(); if (k) skus[k] = 1; });
+      var n = Object.keys(skus).length;
+      if (n > 1) return textoVariosProdutos(n);
+      return '<strong>' + escapeHtml(d.produto_sku || '-') + '</strong> \u00b7 <strong>' + (d.produto_qtd || '-') + ' un</strong> \u00b7 ' + moeda(d.produto_valor_unit);
+    }
+
     function renderItensCard(d) {
       if (Array.isArray(d.nf_itens) && d.nf_itens.length > 0) {
         const bloco = decidirBlocoItens(d.nf_numero, d.nf_itens, d.produto_sku, d.produto_qtd);   // b170
@@ -3507,6 +3513,13 @@ async function carregarSemRetorno() {
           const bloco = decidirBlocoItens(d.numero, d.itens || [], box.dataset.sku, box.dataset.qtd);
           if (!bloco) { box.remove(); continue; }
           box.innerHTML = bloco;
+          try {
+            var distintos = {}; (d.itens || []).forEach(function (i) { var k = String(i.sku || '').trim().toUpperCase(); if (k) distintos[k] = 1; });
+            var nDist = Object.keys(distintos).length;
+            var cardEl = box.closest('.item') || box.parentNode;
+            var linha = cardEl && cardEl.querySelector('.linha-produto');
+            if (linha && nDist > 1) linha.innerHTML = textoVariosProdutos(nDist);
+          } catch (e) { /* so a linha de resumo; a lista ja esta na tela */ }
           box.style.background = 'none'; box.style.border = 'none'; box.style.padding = '0';
           box.style.color = '#241a35';
         } catch (e) {
