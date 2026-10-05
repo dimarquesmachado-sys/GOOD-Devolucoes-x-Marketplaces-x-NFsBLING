@@ -47,7 +47,7 @@ ok(/const haMais = caixas\.length === 40;/.test(T) && /if \(haMais && document\.
 const s = fs.readFileSync(path.join(R, 'server.js'), 'utf8');
 ok(/app\.get\('\/painel-novo\.html', requerAdmin,/.test(s), '⚠️ /painel-novo.html exige o login de admin');
 ok(/\.replace\('"%%APP_EMPRESA%%"', JSON\.stringify\('good'\)\)/.test(s) && /\.replace\('"%%APP_BASE%%"', JSON\.stringify\(''\)\)/.test(s), '⚠️ o base-amb da GOOD diz empresa "good" e base na raiz (nada de cair na AMB)');
-ok(/app\.get\('\/painel-devolucoes\.html', requerAdmin, \(req, res\) => \{\n  res\.sendFile\(path\.join\(__dirname, 'public', 'painel-devolucoes\.html'\)\);/.test(s), '  o painel atual da GOOD continua igual ate o dono aprovar o novo');
+ok(/app\.get\('\/painel-devolucoes\.html', requerAdmin, \(req, res\) => \{\n  if \(PAINEL_UNICO_GOOD\)/.test(s) && /app\.get\('\/painel-antigo\.html', requerAdmin,/.test(s), '⚠️ b539: o endereco oficial entrega o painel unico; o antigo fica de reserva em /painel-antigo.html');
 console.log('');
 console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
 process.exit(falhas ? 1 : 0);
