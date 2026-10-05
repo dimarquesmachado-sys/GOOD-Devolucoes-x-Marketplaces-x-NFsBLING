@@ -448,7 +448,7 @@
           sec.style.display = '';
           sec.innerHTML = '<div style="background:#fff5f5;border:2px solid #ef9a9a;border-radius:12px;padding:24px;text-align:center;margin:20px 0;">'
             + '<div style="font-size:20px;font-weight:800;color:#c62828;">🔒 Sessão de admin expirada</div>'
-            + '<div style="font-size:14px;color:#666;margin:8px 0 16px;">Faça login de novo na AMBTotal para ver o painel.</div>'
+            + '<div style="font-size:14px;color:#666;margin:8px 0 16px;">Faça login de novo na ' + escapeHtml(nomeDaEmpresaTela()) + ' para ver o painel.</div>'
             + '<a href="' + (window.APP_BASE || '') + '/" style="display:inline-block;background:var(--marca);color:var(--sobre-marca);text-decoration:none;padding:12px 24px;border-radius:10px;font-weight:700;">Ir para o login →</a>'
             + '</div>';
           return;
@@ -2405,6 +2405,8 @@ async function carregarSemRetorno() {
       return ' · <strong>Shipment:</strong> <code>' + escapeHtml(s) + '</code>';
     }
 
+    // b540: o nome da empresa desta tela, do titulo que o servidor de cada empresa preenche
+    function nomeDaEmpresaTela() { var t = String(document.title || ''); var i = t.indexOf(' - '); return i > 0 ? t.slice(0, i) : 'esta empresa'; }
     function itemHtmlAprovado(d) {
       const concluido = d.status === 'concluido';
       // b328 - AVISA NO CARD que a venda JA TEM NF de devolucao no Bling
@@ -3868,7 +3870,9 @@ async function carregarSemRetorno() {
         // certos (natureza de operacao e empresa) ao servidor. Sem este campo
         // ela assumiria 'good' — que era o unico comportamento que existia — e
         // a nota da AMB sairia com os dados da GOOD.
-        empresa: 'ambtotal',
+        // b540 - REVISAO DO PAINEL UNICO: era 'ambtotal' FIXO — na GOOD e na Girassol a emissao EM LOTE pedia os
+        // dados fiscais da AMB. Agora a empresa DESTA tela, igual ao botao de um card so (que ja fazia certo).
+        empresa: window.APP_EMPRESA || 'ambtotal',
         devolucaoId: String(devolucaoId),
         idDeposito: String(idDeposito || DEPOSITOS_AMB.geral || ''),   // b275
       });
@@ -4300,7 +4304,7 @@ async function carregarSemRetorno() {
         // Verifica se a extensao Bridge esta instalada/atualizada
         if (!await verificarBridgeInstalada()) {
           throw new Error(
-            'Extensão de devoluções não detectada (no Firefox da AMB ela se chama "AMBTotal Devoluções Bridge"). ' +
+            'Extensão de devoluções não detectada (no navegador desta empresa — na AMB ela se chama "AMBTotal Devoluções Bridge"). ' +
             'Instale/atualize a extensão e recarregue a página (Ctrl+Shift+R).'
           );
         }
