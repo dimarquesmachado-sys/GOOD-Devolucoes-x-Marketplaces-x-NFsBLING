@@ -544,7 +544,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.126.57 (b545: GOOD usa a copia UNICA das rotas de admin das NFs, a mesma da AMB/Girassol)',
+      version: '9.126.58 (b546: rotas unicas na GOOD — modelo tipo/status, ML relativo, ids fiscais da GOOD, adminOk)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -8751,6 +8751,11 @@ require('./amb-devolucoes/lib-AMB/rotas-admin-AMB.js')(app, Object.assign({}, DE
   chamarBling: (u, ...resto) => chamarBling(/^https?:/i.test(String(u)) ? u : 'https://api.bling.com.br/Api/v3' + u, ...resto),
   tabelaDevolucoes: 'devolucoes',
   colunaCriadoEm: 'created_at',
+  triagemNoTipo: true,   // b546 (Codex #449): na GOOD o resultado da triagem fica em `tipo` e o card aberto e status 'pendente'
+  // b546: a copia unica chama o ML com caminho relativo ('/users/me'); o cliente da GOOD exige o endereco inteiro
+  chamarML: (u, ...resto) => chamarML(/^https?:/i.test(String(u)) ? u : 'https://api.mercadolibre.com' + u, ...resto),
+  // b546: a sonda de ids fiscais mostra os ids DA GOOD (nao os cravados da AMB)
+  idsFiscaisHoje: { idEmpresaControl: FICHA_GOOD.fiscal.idEmpresaControl(), idNaturezaOperacao: FICHA_GOOD.fiscal.naturezasDevolucaoIds() },
   buscarNFsPorNumero: nfpDevolucaoRota.buscarNFsPorNumero,
   buscarNFnoBlingPorNumero,
   listarDepositos: ROTAS_GOOD_EXTRA.listarDepositos,
