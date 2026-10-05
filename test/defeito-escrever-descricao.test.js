@@ -19,7 +19,7 @@ for (const arq of ['amb-devolucoes/public-AMB/js-AMB/defeitos-ficha.js', 'public
   ok(b.indexOf('fecharFichaInline()') >= 0 && b.indexOf('fecharFichaInline()') < b.indexOf('abrirFichaDefeito(id)'), '⚠️ GOOD: fecha a ficha inline de OUTRO card antes de abrir em tela cheia');
   ok(/fichaAberta\.item\.id\) !== String\(id\)\) return;/.test(b), '  GOOD: ficha que nao carregou nao abre a edicao da peca anterior');
 }
-for (const [arq, v] of [['amb-devolucoes/public-AMB/index-AMB.html', 'b549'], ['amb-devolucoes/public-AMB/painel-AMB.html', 'b549'], ['public/index.html', '4924'], ['public/painel-devolucoes.html', '4924'], ['lib/painel-unico.js', '4924']]) {
+for (const [arq, v] of [['amb-devolucoes/public-AMB/index-AMB.html', 'b551'], ['amb-devolucoes/public-AMB/painel-AMB.html', 'b551'], ['public/index.html', '4924'], ['public/painel-devolucoes.html', '4924'], ['lib/painel-unico.js', '4924']]) {
   ok(fs.readFileSync(path.join(R, arq), 'utf8').includes('defeitos-ficha.js?v=' + v), '  ' + arq + ': ?v= novo');
 }
 console.log('');

@@ -871,6 +871,8 @@
   // do problema ser gravado) — escrever direto da lista: abre a ficha e ja abre a caixa de edicao da descricao.
   window.escreverLaudoDireto = async function (id) {
     try { await window.abrirFichaDefeito(id); } catch (e) { return; }
+    // review do Codex #452: se a ficha nao carregou, `fichaAberta` ainda e a da peca ANTERIOR — nao editar a errada
+    if (!fichaAberta || !fichaAberta.item || String(fichaAberta.item.id) !== String(id)) return;
     if (typeof window.editarLaudo === 'function') window.editarLaudo();
   };
 
