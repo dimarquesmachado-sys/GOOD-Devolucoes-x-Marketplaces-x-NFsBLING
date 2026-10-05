@@ -40,6 +40,9 @@ module.exports = function registrarRotasAdminNF(app, deps) {
   // o Bling.
   // ═══════════════════════════════════════════════════════════════════
   const TAB = tabelaDevolucoes || 'devolucoes';
+  // b544 - UNIFICACAO DAS ROTAS, passo 1: a coluna de data da tabela tambem vem de fora (AMB/Girassol: criado_em;
+  // GOOD: created_at) — pra esta copia servir qualquer empresa.
+  const COL_CRIADO = deps.colunaCriadoEm || 'criado_em';
 
 app.get('/api/admin/foto/*', requerAdmin, async (req, res) => {
   try {
@@ -150,10 +153,10 @@ async function retrofitItensPendentes() {
   try {
     const corte = new Date(Date.now() - 60 * 864e5).toISOString();
     const { data } = await supabase.from(TAB)
-      .select('id, nf_id_bling, nf_numero, nf_chave, nf_itens, status, criado_em')
+      .select('id, nf_id_bling, nf_numero, nf_chave, nf_itens, status, ' + COL_CRIADO)
       .in('status', ['aprovado', 'problema', 'divergente'])
-      .gte('criado_em', corte)
-      .order('criado_em', { ascending: false })
+      .gte(COL_CRIADO, corte)
+      .order(COL_CRIADO, { ascending: false })
       .limit(60);
     const pendentes = (data || [])
       .filter(r => (!Array.isArray(r.nf_itens) || r.nf_itens.length === 0)
@@ -788,7 +791,13 @@ app.post('/api/admin/lancar-por-nf', requerAdmin, async (req, res) => {
 // janela recente, casa por nome do comprador OU valor, e grava.
 app.post('/api/admin/vincular-devolucao-existente/:id', requerAdmin, async (req, res) => {
   if (!supabase) return res.status(500).json({ ok: false, erro: 'Supabase nao configurado' });
-  const NATUREZA_DEVOLUCAO_GOOD = '5776118802';
+  // b544 - a natureza de devolucao vem da FICHA DA EMPRESA (era a da GOOD escrita a mao: na AMB/Girassol esta rota
+  // nunca achava a NF; e na GOOD so aceitava 1 das 2 naturezas da ficha). Sem natureza configurada, avisa —
+  // 'nao sei qual natureza' nao e 'nao existe NF'.
+  const NATUREZAS_DEVOLUCAO = String(naturezaDevolucaoDaEmpresa || '').split(',').map((x) => x.trim()).filter(Boolean);
+  if (!NATUREZAS_DEVOLUCAO.length) {
+    return res.status(500).json({ ok: false, erro: 'natureza de devolucao desta empresa nao configurada na ficha' });
+  }
   try {
     const { data: reg, error: errReg } = await supabase
       .from(TAB)
@@ -824,7 +833,7 @@ app.post('/api/admin/vincular-devolucao-existente/:id', requerAdmin, async (req,
       const lista = r.data?.data || [];
       if (lista.length === 0) break;
       for (const nf of lista) {
-        if (String(nf.naturezaOperacao?.id || '') !== NATUREZA_DEVOLUCAO_GOOD) continue;
+        if (!NATUREZAS_DEVOLUCAO.includes(String(nf.naturezaOperacao?.id || ''))) continue;
         varridas++;
         const nomeNF = String(nf.contato?.nome || '').toLowerCase();
         // basta UM pedaco do nome bater (o sobrenome, normalmente)
@@ -1231,7 +1240,7 @@ app.get('/api/admin/nf-devolucao', requerAdmin, async (req, res) => {
         for (let pg = 0; pg < MAX_PAGINAS; pg++) {
           const { data: lote, error: eLote } = await supabase
             .from(TAB)
-            .select('id, buyer_nome, produto_sku, nf_devolucao_id_bling, nf_data_emissao, criado_em')
+            .select('id, buyer_nome, produto_sku, nf_devolucao_id_bling, nf_data_emissao, ' + COL_CRIADO)
             .is('nf_devolucao_id_bling', null)
             .order('id', { ascending: true })
             .range(pg * POR_PAGINA, pg * POR_PAGINA + POR_PAGINA - 1);
@@ -1888,7 +1897,7 @@ app.delete('/api/admin/devolucao/:id', requerAdmin, async (req, res) => {
          filtro olha os dois em JS, sem supor coluna; (P2) a serie e filtrada ANTES do corte, com
          folga de 500 linhas, pra card do FULL nao ficar atras de serie 1 recente. */
       const { data, error } = await supabase.from(TAB).select('*')
-        .is('nf_devolucao_id_bling', null).gte('criado_em', desde).order('criado_em', { ascending: false }).limit(500);
+        .is('nf_devolucao_id_bling', null).gte(COL_CRIADO, desde).order(COL_CRIADO, { ascending: false }).limit(500);
       if (error || !Array.isArray(data)) return;
       const serie = (d) => { const s = String(d.nf_serie || '').trim().replace(/^0+/, ''); if (s) return s; const ch = String(d.nf_chave || '').replace(/\D/g, ''); return ch.length === 44 ? ch.substr(22, 3).replace(/^0+/, '') : ''; };
       const RESULTADOS = ['aprovado', 'problema', 'divergente'];
