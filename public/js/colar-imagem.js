@@ -108,6 +108,10 @@
       + 'color:#534AB7;border:1px solid #CECBF6;border-radius:10px;font-weight:500;font-size:12.5px;'
       + 'line-height:1.2;cursor:pointer;';
     btn.innerHTML = '\u{1F4CE}<br>anexar imagem etiqueta';
+    // b542 - celular (dono, 05/10: 'triagem, anexar etiqueta, botao fora'): a linha quebra em vez de empurrar o botao
+    // pra fora da tela, e o botao nunca passa da largura da linha.
+    linha.style.flexWrap = 'wrap';
+    btn.style.maxWidth = '100%';
     linha.appendChild(btn);
 
     zona = document.createElement('div');

@@ -59,6 +59,13 @@
       code, .item-detalhes, .item-titulo, .descricao-problema { overflow-wrap: anywhere; word-break: break-word; }
       .secao { padding: 12px; }
       .container, .secoes, .secao, .item-acoes { max-width: 100%; min-width: 0; }
+      /* b542 - celular (dono, 05/10: 'os blocos pra emitir NF de tamanhos diferentes, tem que dar zoom in e out'):
+         a pagina nunca fica mais larga que a tela — os blocos tem a largura da tela, e o que for mais largo
+         (tabela, lista da esteira) rola DENTRO do proprio bloco */
+      html, body { max-width: 100%; overflow-x: hidden; }
+      .secao { overflow-x: auto; }
+      .secao table { max-width: 100%; }
+      .filtros-linha { flex-wrap: wrap; }
     }
 
     .secoes {
@@ -187,6 +194,11 @@
     .filtros label {
       display: flex; align-items: center; gap: 6px; cursor: pointer;
       user-select: none; white-space: nowrap;
+    }
+    /* b542 - fica DEPOIS das regras base (.secoes e .filtros label), senao elas ganham por vir depois */
+    @media (max-width: 600px) {
+      .secoes { grid-template-columns: minmax(0, 1fr); }
+      .filtros label { white-space: normal; }
     }
     .filtros input[type="text"], .filtros input[type="date"] {
       padding: 8px 12px; border: 1px solid #d0d0d0; border-radius: 6px;
