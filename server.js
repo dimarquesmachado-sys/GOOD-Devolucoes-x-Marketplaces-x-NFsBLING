@@ -544,7 +544,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.126.51 (b539: endereco oficial da GOOD entrega o painel unico; o antigo fica em /painel-antigo.html)',
+      version: '9.126.52 (b540: painel unico — emissao em lote com a empresa da tela, nao a AMB fixa)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
