@@ -22,7 +22,7 @@ const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o
 
 const RAIZ = path.join(__dirname, '..');
 const srv = fs.readFileSync(path.join(RAIZ, 'server.js'), 'utf8');
-const rota = fs.readFileSync(path.join(RAIZ, 'lib', 'rotas-admin-nf.js'), 'utf8');
+const rota = fs.readFileSync(path.join(RAIZ, 'lib', 'rotas-admin-good-extra.js'), 'utf8');
 
 // ── a tela avisa o que precisa ──────────────────────────────────────
 {

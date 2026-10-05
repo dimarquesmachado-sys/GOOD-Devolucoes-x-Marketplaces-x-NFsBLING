@@ -68,7 +68,7 @@ Supabase e os ids fiscais (empresa, depósito, natureza). **Não muda comportame
 quem lê, lê os mesmos valores de antes.
 
 O teste prova que os ids do registro **conferem com o que está em produção hoje**
-(`lib/bling.js`, `lib/rotas-admin-nf.js`). Se alguém mudar um id num lugar só, o teste
+(`lib/bling.js`, `amb-devolucoes/lib-AMB/rotas-admin-AMB.js`, a cópia ÚNICA das rotas de admin desde b545). Se alguém mudar um id num lugar só, o teste
 quebra.
 
 Traz também `conferirEmpresa()`, que responde "o que falta para ligar esta empresa?"
@@ -81,7 +81,7 @@ Trocar, um por um, os pontos que hoje leem env solta ou têm id fixo no meio do 
 para lerem do registro. Cada troca é um PR pequeno, e a prova é que o valor resolvido
 continua idêntico.
 
-Começar por `lib/rotas-admin-nf.js` e `lib/bling.js`, que são onde os ids fiscais estão
+Começar por `amb-devolucoes/lib-AMB/rotas-admin-AMB.js` (rotas de admin únicas, b545) e `lib/bling.js`, que são onde os ids fiscais estão
 escritos à mão.
 
 ### Fase 2 — Os gêmeos idênticos viram peça única

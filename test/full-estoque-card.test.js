@@ -60,7 +60,7 @@ ok(/botaoFullEstoque\(d, false\)/.test(ih) && /avisoFullHtml\(d\)/.test(ih), '  
 ok(/botaoFullEstoque\(d, true\)/.test(ip) && /avisoFullHtml\(d\)/.test(ip), '⚠️ card de PROBLEMA tambem lanca (antes: "nao faca nada")');
 }
 // rota: trava de lancamento duplo e registro no card
-for (const arqRota of ['amb-devolucoes/lib-AMB/rotas-admin-AMB.js', 'lib/rotas-admin-nf.js']) {
+for (const arqRota of ['amb-devolucoes/lib-AMB/rotas-admin-AMB.js']) {
 console.log('— rota ' + arqRota);
 const rota = fs.readFileSync(path.join(__dirname, '..', arqRota), 'utf8');
 const r0 = rota.indexOf("app.post('/api/admin/full-lancar-estoque/:id'");
@@ -78,7 +78,7 @@ ok(/em_andamento: emAndamento/.test(corpoRota), '  409 diz se e lancamento em an
 ok(/update\(\{ estoque_lancado_em: new Date\(\)\.toISOString\(\), estoque_deposito: depNome \}\)/.test(corpoRota), '⚠️ rota: depois do Bling aceitar, marca o card (quando e onde)');
 ok(/naoAplicou/.test(corpoRota) && /st !== 408/.test(corpoRota) && /incerto: true/.test(corpoRota) && corpoRota.indexOf('incerto: true') < corpoRota.indexOf('estoque_lancado_em: null, estoque_deposito: null'), '⚠️ Codex #404 (P1, 2a): timeout/sem resposta/5xx MANTEM a reserva LANCANDO (so 4xx ou fila estourada devolve)');
 }
-const good = fs.readFileSync(path.join(__dirname, '..', 'lib', 'rotas-admin-nf.js'), 'utf8');
+const good = fs.readFileSync(path.join(__dirname, '..', 'lib', 'rotas-admin-good-extra.js'), 'utf8');   // b547: a rota de depositos da GOOD mudou pra ca (sem mudanca)
 ok(/app\.get\('\/api\/depositos'/.test(good) && !/DEPOSITOS_VALIDOS\.has\(/.test(good), '⚠️ GOOD: lista VIVA de depositos (GET /api/depositos) no lugar da lista fixa de ids');
 const blingAmb = fs.readFileSync(path.join(__dirname, '..', 'amb-devolucoes', 'lib-AMB', 'bling-AMB.js'), 'utf8');
 ok(/depositos\?limite=100&pagina=' \+ pg/.test(good) && /depositos\?limite=100&pagina=' \+ pg/.test(blingAmb), '⚠️ Codex #405 (P2): depositos PAGINADOS na GOOD e na AMB (mais de 100 nao corta)');
