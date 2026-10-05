@@ -5,7 +5,7 @@ const ok = (c, m) => { console.log((c ? 'ok   ' : 'FALHA ') + m); if (!c) falhas
 const idx = fs.readFileSync('public/index.html', 'utf8');
 const srv = fs.readFileSync('server.js', 'utf8');
 const amb = fs.readFileSync('amb-devolucoes/lib-AMB/identificar-AMB.js', 'utf8');
-const rota = fs.readFileSync('lib/rotas-admin-nf.js', 'utf8');
+const rota = fs.readFileSync('lib/rotas-admin-good-extra.js', 'utf8');
 ok(/:root\s*\{[^}]*--escuro:/.test(idx), 'GOOD define --escuro (busca.js usa var(--escuro))');
 ok(/nf_serie, nf_chave, created_at/.test(srv) && /confrontar\.serieDaChave\(r\.nf_chave\)/.test(srv), 'GOOD: JA TRIADA recupera a serie da nf_chave');
 ok(/nf_serie, nf_chave, criado_em/.test(amb) && /slice\(22, 25\)/.test(amb), 'AMB: JA TRIADA recupera a serie da nf_chave');

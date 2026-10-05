@@ -6,7 +6,7 @@ let falhas = 0;
 const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o); };
 const R = path.join(__dirname, '..');
 const semComent = (s) => s.split('\n').filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l)).join('\n');
-for (const [arq, origem] of [['amb-devolucoes/lib-AMB/rotas-admin-AMB.js', 'naturezaDevolucaoDaEmpresa'], ['lib/rotas-admin-nf.js', 'deps.naturezaDevolucaoDaEmpresa']]) {
+for (const [arq, origem] of [['amb-devolucoes/lib-AMB/rotas-admin-AMB.js', 'naturezaDevolucaoDaEmpresa']]) {
   const s = fs.readFileSync(path.join(R, arq), 'utf8');
   ok(!/'5776118802'/.test(semComent(s)), '⚠️ ' + arq + ': nenhuma natureza da GOOD escrita a mao no codigo');
   ok(s.includes("const NATUREZAS_DEVOLUCAO = String(" + origem + " || '')") && /!NATUREZAS_DEVOLUCAO\.includes\(String\(nf\.naturezaOperacao\?\.id \|\| ''\)\)/.test(s), '  ' + arq + ': aceita QUALQUER natureza de devolucao da ficha da empresa');

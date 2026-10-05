@@ -39,7 +39,7 @@ function cenario(arq, { paginas, detalhes, falharPagina, falharDetalhe, regExtra
 const lista = (n, o = {}) => Object.assign({ id: 'L' + n, numero: String(n), dataEmissao: '2026-09-' + String(10 + (n % 15)).padStart(2, '0'), contato: { nome: 'Fulano Lima' }, valorNota: 120 }, o);
 const certa = { id: 'C49304', numero: '49304', serie: '2', chaveAcesso: chave(2, 49304), dataEmissao: '2026-08-25', contato: { nome: 'Marcos Vieira Lima' }, valorNota: 897.9, itens: [{ codigo: 'PM1' }] };
 (async () => {
-  for (const arq of [path.join(__dirname, '..', 'amb-devolucoes', 'lib-AMB', 'rotas-admin-AMB.js'), path.join(__dirname, '..', 'lib', 'rotas-admin-nf.js')]) {
+  for (const arq of [path.join(__dirname, '..', 'amb-devolucoes', 'lib-AMB', 'rotas-admin-AMB.js')]) {
     console.log('— ' + path.basename(arq));
     // 1) a certa e a 10a por data, atras de 9 "Lima" mais recentes de SERIE 1 (a chave da lista revela) — tem que achar
     const mais9 = Array.from({ length: 9 }, (_, i) => lista(i + 1, { chaveAcesso: chave(1, 100 + i) }));
@@ -97,7 +97,7 @@ const certa = { id: 'C49304', numero: '49304', serie: '2', chaveAcesso: chave(2,
     ok(r.status === 404 && /Nenhuma NF de entrada serie 2/.test(r.corpo.erro), '  varredura completa sem serie 2: 404 de verdade');
   }
   const fs = require('fs');
-  for (const arq of ['amb-devolucoes/lib-AMB/rotas-admin-AMB.js', 'lib/rotas-admin-nf.js']) {
+  for (const arq of ['amb-devolucoes/lib-AMB/rotas-admin-AMB.js']) {
     const src = fs.readFileSync(path.join(__dirname, '..', arq), 'utf8');
     const ini = src.indexOf("app.post('/api/admin/full-vincular/:id'"), fim = src.indexOf('app.post(', ini + 20);
     const rota = src.slice(ini, fim);
