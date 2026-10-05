@@ -29,7 +29,8 @@ const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o
   const fs = require('fs');
   for (const [arq, col] of [['amb-devolucoes/lib-AMB/rotas-admin-AMB.js', 'criado_em'], ['lib/rotas-admin-nf.js', 'created_at']]) {
     const s = fs.readFileSync(path.join(__dirname, '..', arq), 'utf8');
-    ok(s.indexOf(".gte('" + col + "', desde).order('" + col + "'") > -1, '⚠️ Codex #410: ' + arq + ' usa a coluna de data certa (' + col + ')');
+    // b544: na copia da AMB/Girassol a coluna virou parametro (COL_CRIADO, padrao criado_em) — a unificacao das rotas
+    ok(s.indexOf(".gte('" + col + "', desde).order('" + col + "'") > -1 || (col === 'criado_em' && s.indexOf(".gte(COL_CRIADO, desde).order(COL_CRIADO") > -1 && s.indexOf("deps.colunaCriadoEm || 'criado_em'") > -1), '⚠️ Codex #410: ' + arq + ' usa a coluna de data certa (' + col + ')');
     ok(/RESULTADOS\.indexOf\(String\(d\.tipo/.test(s), '⚠️ Codex #410: ' + arq + ' le o resultado da triagem em tipo OU status');
     ok(/_fundo: true/.test(s) && /req\._fundo \? \{ fundo: true \}/.test(s), '⚠️ Codex #410: ' + arq + ' a varredura automatica vai como trafego de FUNDO');
     ok(/desistiu: f >= 8/.test(s), '⚠️ pergunta do dono: ' + arq + ' desiste do card depois de 8 tentativas (nao fica retestando pra sempre)');
