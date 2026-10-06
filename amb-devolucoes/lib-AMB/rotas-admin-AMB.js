@@ -1158,6 +1158,38 @@ app.get('/api/debug/nf-entrada/:idNF', async (req, res) => {
 // devolucao pra esta volta? Cobre os DOIS casos que o Diego citou: a NF que
 // o Full do ML emite sozinho e a entrada que outro admin ja lancou. Achou ->
 // a tela mostra a nota e esconde o gerar, deixando so incluir estoque.
+// b572 - dono, 06/10: card de KIT mostra o ANUNCIO vendido (titulo e SKU do marketplace, ex.: '4 Lixas 4 Pol ... +
+// Disco Prato + Adaptador M14' / '4LixDIAM-1DISC-1PIN-Kit51'); os itens da NF seguem listados embaixo, um por um.
+// Comeca pelo ML (/orders/{id} -> order_items[].item.title/seller_sku). Cache de 6 h por pedido; outro marketplace
+// responde suportado:false (a tela mantem a linha de 'N produtos'). Nao grava nada no banco.
+const _cacheAnuncio = new Map();
+app.get('/api/admin/anuncio-do-pedido', requerAdmin, async (req, res) => {
+  const mkt = String(req.query.mkt || '').toLowerCase();
+  const pedido = String(req.query.pedido || '').replace(/\D/g, '');
+  if (!pedido) return res.status(400).json({ ok: false, erro: 'pedido obrigatorio' });
+  // Codex #464 (P2): marketplace vazio + id no formato do ML (20 + 14 digitos) e ML — mesma inferencia do painel (b492)
+  const ehML = /^(ml|mercadolivre|mercado_livre|mercado livre)$/.test(mkt) || (!mkt && /^20\d{14}$/.test(pedido));
+  if (!ehML) return res.json({ ok: false, suportado: false, motivo: 'por enquanto so o ML' });
+  const chave = 'ml:' + pedido;
+  const c = _cacheAnuncio.get(chave);
+  if (c && Date.now() - c.ts < 6 * 3600e3) return res.json(c.v);
+  try {
+    const r = await chamarML('/orders/' + pedido);
+    if (!r || !r.ok) return res.status(502).json({ ok: false, erro: 'ML nao devolveu o pedido', status: (r && r.status) || null });
+    const itens = ((r.data && r.data.order_items) || []).map((oi) => ({
+      titulo: (oi.item && oi.item.title) || null,
+      sku: (oi.item && (oi.item.seller_sku || oi.item.seller_custom_field)) || null,
+      qtd: oi.quantity || null,
+    }));
+    const v = { ok: true, mkt: 'ml', pedido, itens, titulo: (itens[0] && itens[0].titulo) || null, sku: (itens[0] && itens[0].sku) || null };
+    if (_cacheAnuncio.size > 2000) _cacheAnuncio.clear();
+    _cacheAnuncio.set(chave, { ts: Date.now(), v });
+    return res.json(v);
+  } catch (e) {
+    return res.status(502).json({ ok: false, erro: e.message });
+  }
+});
+
 app.get('/api/admin/nf-devolucao', requerAdmin, async (req, res) => {
   if (typeof buscarNfDevolucaoBling !== 'function') {
     return res.status(500).json({ ok: false, erro: 'busca nao injetada nas deps' });
