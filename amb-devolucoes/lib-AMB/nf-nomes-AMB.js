@@ -194,6 +194,7 @@ async function construirIndiceInterno(opts = {}) {
     const vendasPorLoja = {};   // b34 - numeroLoja GARANTIDO nas vendas
     const porNumero = {};
     let totalNFs = 0, erroBusca = null, parouPorData = false;
+    let ultimaCheia = false, paginasLidas = 0;   // b562 - pra saber se foi o TETO de paginas que parou
 
     // A listagem do Bling vem naturalmente da mais nova pra mais
     // velha. Nao usamos filtro de data de proposito: o Bling anexa a
@@ -322,7 +323,7 @@ async function construirIndiceInterno(opts = {}) {
       // completo por 3 paginas), e a partir da pagina 3 (a 10 nao chega
       // dentro dos 12s com a latencia real do Bling).
       const primeiraMontagem = !IDX.ts;
-      if (primeiraMontagem && (pg === 3 || pg % 10 === 0)) {
+      if (primeiraMontagem && (pg % 3 === 0 || pg % 10 === 0)   /* b562 - porte da GOOD: checkpoint a cada 3 paginas na 1a montagem */) {
         IDX.mapa = { ...mapa };
         IDX.mapaCurto = { ...mapaCurto };
         IDX.porNumero = { ...porNumero };   // b474 (Codex, P2): o parcial tambem publica o indice por numero
@@ -332,6 +333,7 @@ async function construirIndiceInterno(opts = {}) {
         console.log(`[${TAG_EMP}/NF-NOMES] parcial publicado: ${pg} paginas, ${totalNFs} NFs`);
       }
 
+      paginasLidas = pg; ultimaCheia = lista.length >= 100;   // b562
       if (parouPorData || lista.length < 100) break;
       await sleep(cfg.bling.pausaMs / 2);   // respeita o rate limit do Bling
     }
@@ -428,6 +430,10 @@ async function construirIndiceInterno(opts = {}) {
     // varredura nao completou — reaproveito em vez de criar outro caminho.
     // Publicar um indice parcial com `ts` fresco faria a proxima busca
     // servir dele em vez de reconstruir.
+    // b562 - porte da GOOD: se foi o TETO de paginas que parou (a ultima pagina lida ainda estava CHEIA), o indice NAO
+    // esta completo — continua PARCIAL, e a busca avisa. So a data de corte ou o fim dos dados fecham o indice.
+    const parouPorTeto = !parouPorData && ultimaCheia && paginasLidas >= maxPaginas;
+    IDX.parouPor = parouPorTeto ? 'teto' : (parouPorData ? 'data' : 'fim');
     IDX.ts = (falhouGeral || cancelado) ? 0 : Date.now();
     // b280.2 (auditoria do #228, Codex P1) - ⚠️ A AMB NUNCA LIMPAVA ISTO.
     //
@@ -439,7 +445,10 @@ async function construirIndiceInterno(opts = {}) {
     // dias. O aviso que este PR porta pra AMB (rN.parcial_ate_pagina)
     // ficaria ligado o tempo todo — o estoquista veria "indice incompleto"
     // numa busca com o indice ja pronto ha horas.
-    if (!falhouGeral && !cancelado) IDX.parcialAte = null;
+    if (!falhouGeral && !cancelado) {
+      if (parouPorTeto) IDX.parcialAte = paginasLidas;
+      else IDX.parcialAte = null;
+    }
     IDX.mapa = mapa;
     IDX.porPedido = porPedido;
     IDX.porId = porId;
@@ -494,6 +503,7 @@ function statusIndice() {
     construindo,
     idade_min: IDX.ts ? Math.round((Date.now() - IDX.ts) / 60000) : null,
     total_nfs: IDX.totalNFs,
+      parou_por: IDX.parouPor || null,   // b562 - 'teto' = cortado pelo limite de paginas
       nf_mais_antiga: IDX.maisAntiga || null,   // b560 - a tela da GOOD le este campo
       construindo_ha_s: IDX.construindoDesde ? Math.round((Date.now() - IDX.construindoDesde) / 1000) : null,   // b556
     nomes_distintos: IDX.nomes,
@@ -671,6 +681,7 @@ async function buscarPorNome(texto, opts = {}) {
     vias,
     candidatos: fatia,
     montando: !IDX.ts,   // b560
+    indiceParcial: !!IDX.parcialAte,   // b562 - porte da GOOD: o indice ainda nao cobre a janela toda
     total_encontrados: hits.length,   // b560 - nome que a GOOD usa (mesmo valor de `total`)
     total,
     pagina,
