@@ -1089,7 +1089,13 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
             });
             resultado.candidatos_nome.sort((a, b) => (b.na_espreita ? 1 : 0) - (a.na_espreita ? 1 : 0));
             const estrelados = resultado.candidatos_nome.filter((c) => c.na_espreita).length;
-            resultado.erro = `Achei ${rN.candidatos.length} NF(s) recente(s) com esse nome.`
+            const nAntigas = rN.candidatos.filter((c) => c._antigo).length;
+            const nTotalN = rN.total_encontrados || rN.candidatos.length;
+            resultado.erro = `Achei ${nTotalN} NF(s) com esse nome`
+              + (nTotalN > rN.candidatos.length
+                ? ` — mostrando ${rN.candidatos.length - nAntigas} recente(s)` + (nAntigas ? ` e ${nAntigas} antiga(s) (amostra)` : '')
+                : '')
+              + '.'
               + (estrelados ? ` ⭐ ${estrelados} está(ão) na ESPREITA — devolução a caminho.` : '')
               + ' Confere com a CAIXA e escolhe abaixo:'
               // b280 (Codex, P1) - mesmo aviso que o #228 deu pra GOOD: o
