@@ -253,7 +253,7 @@ async function chamarBling(caminho, opcoes = {}) {
 
   try {
     const r = await fazer();
-    ritmo.avisarOk();
+    ritmo.avisarOk(opcoes.fundo ? 'fundo' : 'operacao');
     return { ok: true, data: r.data, status: r.status };
   } catch (erro) {
     const status = erro.response && erro.response.status;
@@ -304,7 +304,7 @@ async function chamarBling(caminho, opcoes = {}) {
         }
         try {
           const r = await fazer();
-          ritmo.avisarOk();
+          ritmo.avisarOk(opcoes.fundo ? 'fundo' : 'operacao');
           return { ok: true, data: r.data, status: r.status };
         } catch (e2) {
           // e se ESSE tomar 429, avisa tambem — e o mesmo P1
@@ -347,7 +347,7 @@ async function chamarBling(caminho, opcoes = {}) {
       }
       try {
         const r = await fazer();
-        ritmo.avisarOk();
+        ritmo.avisarOk(opcoes.fundo ? 'fundo' : 'operacao');
         return { ok: true, data: r.data, status: r.status };
       } catch (e2) {
         // ⚠️ b443 (Codex, P1): o 2o 429 seguido TAMBEM avisa. Sem isto a
