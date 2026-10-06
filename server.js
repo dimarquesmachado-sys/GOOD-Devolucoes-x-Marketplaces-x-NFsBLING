@@ -112,6 +112,7 @@ const nfNomes = require('./amb-devolucoes/lib-AMB/nf-nomes-AMB').criar({
   PREFIXO_ENV: 'GOOD_',
   bling: { pausaMs: 700 },
   nomeMinimo: 5,
+  semVendas: true,   // b564: a GOOD nao usa os mapas de venda — pula o passe de /pedidos/vendas
   clienteBling: { chamarBling: (u, ...resto) => chamarBling(/^https?:/i.test(String(u)) ? u : 'https://api.bling.com.br/Api/v3' + u, ...resto) },
 });
 const ritmoBling = require('./lib/ritmo-bling');
@@ -553,7 +554,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.126.70 (b563: GOOD usa a copia UNICA do indice de nomes das NFs)',
+      version: '9.126.71 (b564: indice de nomes — drenagem so para o fundo, opcoes por agendamento, GOOD sem passe de vendas)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
