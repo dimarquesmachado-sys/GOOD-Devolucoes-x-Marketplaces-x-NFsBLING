@@ -160,6 +160,15 @@ async function construirIndiceInterno(opts = {}) {
   const t0 = Date.now();
   const minhaGeracao = ++geracaoConstrucao;
   IDX.construindoDesde = t0;   // b556: carimbo no caminho COMUM (pre-aquecimento, rota manual, autocura e busca)
+  // b559 (Codex, P1) - TETO NO CAMINHO COMUM: pre-aquecimento, rota manual e autocura chamam `construirIndice()`
+  // direto; se uma delas travar, a busca fria so recebia `jaEmAndamento`. O teto abandona AQUI (so a propria geracao).
+  const TETO_CONSTRUCAO_MS = Number(process.env.NF_NOMES_TETO_CONSTRUCAO_MS || 240000);
+  const timerTeto = setTimeout(() => {
+    if (minhaGeracao !== geracaoConstrucao) return;
+    console.warn(`[${TAG_EMP}/NF-NOMES] construcao passou de ${TETO_CONSTRUCAO_MS / 1000}s — abandono e libero pra proxima tentar`);
+    abandonarConstrucao();
+  }, TETO_CONSTRUCAO_MS);
+  if (timerTeto.unref) timerTeto.unref();
 
   try {
     const dias = opts.dias || Number(process.env[(cfg && cfg.PREFIXO_ENV || 'AMB_') + 'NF_JANELA_DIAS'] || 120);
@@ -211,6 +220,7 @@ async function construirIndiceInterno(opts = {}) {
       // processo esta saindo, ela lanca. Nao ha checagem manual pra eu
       // esquecer, e a proxima varredura herda o comportamento.
       if (pg > 1) await drenagem.pausar(400, deFundo || IDX.viroufundo, 'indice-nomes');
+      if (minhaGeracao !== geracaoConstrucao) { cancelado = true; break; }   // b559 - abandonada durante a pausa: nao chama o Bling
       // ⚠️ b445 (Codex, P2) - `IDX.viroufundo` TAMBEM CONTA AQUI, nao so no
       // `drenagem.pausar` acima. Uma busca fria que estourou o teto de 12s
       // vira fundo (b268.1) e o `drenagem.pausar` ja respeitava isso — mas
@@ -218,6 +228,7 @@ async function construirIndiceInterno(opts = {}) {
       // deFundo` (travado no valor do INICIO), entao a fila do ritmo seguia
       // tratando como interativo mesmo depois que ninguem mais esperava.
       let r = await bling.chamarBling(`/nfe?limite=100&pagina=${pg}&tipo=1`, { fundo: deFundo || IDX.viroufundo });   // b443
+      if (minhaGeracao !== geracaoConstrucao) { cancelado = true; break; }   // b559 - abandonada com a chamada pendente: nao tenta de novo nem publica parcial
       // ⚠️ b352 (Codex, P1) - O PORTAO TAMBEM PRECISA ACEITAR 401.
       //
       // Eu acrescentei 401 ao laco de dentro, mas o `if` que ENVOLVE o laco
@@ -243,8 +254,11 @@ async function construirIndiceInterno(opts = {}) {
         for (let tent = 1; tent <= 3 && !r.ok
           && (r.status === 429 || r.status === 401); tent++) {
           await drenagem.pausar(2000 * tent, deFundo || IDX.viroufundo, 'indice-nomes/retry');
+          if (minhaGeracao !== geracaoConstrucao) { cancelado = true; break; }   // b559
           r = await bling.chamarBling(`/nfe?limite=100&pagina=${pg}&tipo=1`, { fundo: deFundo || IDX.viroufundo, semRetentativa: true });
+          if (minhaGeracao !== geracaoConstrucao) { cancelado = true; break; }   // b559
         }
+        if (cancelado) break;
       }
       if (!r.ok) { erroBusca = `nfe pagina ${pg} HTTP ${r.status}`; break; }
 
@@ -337,6 +351,7 @@ async function construirIndiceInterno(opts = {}) {
         // o indice: espera e tenta a MESMA pagina de novo, ate 4x com backoff.
         let r = null;
         for (let tent = 1; tent <= 4; tent++) {
+          if (minhaGeracao !== geracaoConstrucao) { cancelado = true; break; }   // b559 - abandonada durante o backoff
           // ⚠️ b354 (Codex, P1) - so a 1a tentativa deixa o `chamarBling`
           // renovar o token sozinho no 401. Da 2a em diante, `semRetentativa`
           // evita que CADA volta deste laco dispare sua PROPRIA renovacao
@@ -346,6 +361,7 @@ async function construirIndiceInterno(opts = {}) {
           // apontamento citou as 3 chamadas deste laco (NFs x2 + vendas); a
           // rodada anterior consertou so as duas de `/nfe` e esqueceu esta.
           r = await bling.chamarBling(`/pedidos/vendas?limite=100&pagina=${pg}`, tent === 1 ? { fundo: deFundo || IDX.viroufundo } : { semRetentativa: true, fundo: deFundo || IDX.viroufundo });
+          if (minhaGeracao !== geracaoConstrucao) { cancelado = true; break; }   // b559 - abandonada com a chamada pendente
           if (r.ok) { erroVendas = null; break; }
           // ⚠️ b351 - 401 TAMBEM ENTRA NO RETRY.
           //
@@ -368,6 +384,7 @@ async function construirIndiceInterno(opts = {}) {
           erroVendas = `vendas pagina ${pg} HTTP ${r.status}`;
           break;   // erro nao-recuperavel: para
         }
+        if (cancelado) break;
         if (!r || !r.ok) break;   // esgotou as tentativas desta pagina
         const lote = (r.data && r.data.data) || [];
         if (!lote.length) break;
@@ -435,6 +452,7 @@ async function construirIndiceInterno(opts = {}) {
     console.log(`[${TAG_EMP}/NF-NOMES] indice: ${totalNFs} NFs de ${IDX.nomes} nomes (${dias}d) em ${IDX.duracaoSeg}s`);
     return IDX;
   } finally {
+    clearTimeout(timerTeto);
     // b556: se a construcao foi abandonada pelo teto, a guarda ja foi liberada (e talvez retomada por outra)
     if (geracaoConstrucao === minhaGeracao) { construindo = false; IDX.construindoDesde = null; }
   }
@@ -558,10 +576,9 @@ async function buscarPorNome(texto, opts = {}) {
       IDX.emConstrucao = Promise.race([
         construirIndice(),
         new Promise((ok) => { timerTeto = setTimeout(() => {
-          console.warn(`[${TAG_EMP}/NF-NOMES] construcao passou de ${TETO_CONSTRUCAO_MS / 1000}s — abandono e libero pra proxima tentar`);
-          abandonarConstrucao();
+          // b559: quem abandona (libera a guarda) e o teto de `construirIndiceInterno`; aqui so solta a espera da busca
           ok();
-        }, TETO_CONSTRUCAO_MS); }),
+        }, TETO_CONSTRUCAO_MS + 1000); }),
       ])
         .catch(() => {})
         .finally(() => { clearTimeout(timerTeto); IDX.emConstrucao = null; });

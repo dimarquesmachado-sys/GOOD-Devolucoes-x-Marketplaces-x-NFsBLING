@@ -7,7 +7,7 @@ const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o
 process.env.NF_NOMES_TETO_CONSTRUCAO_MS = '150';
 const fs = require('fs');
 const A = fs.readFileSync(path.join(__dirname, '..', 'amb-devolucoes', 'lib-AMB', 'nf-nomes-AMB.js'), 'utf8');
-ok((A.match(/if \(minhaGeracao !== geracaoConstrucao\) \{ cancelado = true; break; \}/g) || []).length === 2, '⚠️ os DOIS lacos de paginas param quando a montagem foi abandonada');
+ok((A.match(/if \(minhaGeracao !== geracaoConstrucao\) \{ cancelado = true; break; \}/g) || []).length >= 2, '⚠️ os DOIS lacos de paginas param quando a montagem foi abandonada');
 ok(/if \(minhaGeracao !== geracaoConstrucao\) return IDX;\n\s+const falhouGeral/.test(A), '⚠️ a abandonada nao publica nada no indice (a nova manda nele)');
 (async () => {
   let chamadas = 0;
