@@ -3463,6 +3463,15 @@ async function carregarSemRetorno() {
     // NF tem MAIS DE UM produto, a linha do card diz isso — a lista vem aberta logo abaixo — em vez de mostrar o 1o
     // SKU com a quantidade total. Com a lista ainda nao carregada, a caixa automatica corrige a linha quando chega.
     function textoVariosProdutos(n) { return '<strong>' + n + ' produtos diferentes na NF</strong> \u00b7 lista abaixo'; }
+    async function mostrarAnuncioDoKit(linha, mkt, pedido, nDist) {
+      try {
+        const r = await fetch((window.APP_BASE || '') + '/api/admin/anuncio-do-pedido?mkt=' + encodeURIComponent(mkt || '') + '&pedido=' + encodeURIComponent(pedido));
+        const j = await r.json();
+        if (!j || !j.ok || !j.titulo) return;   // outro marketplace ou ML fora: fica a linha de 'N produtos'
+        linha.innerHTML = '🧩 <strong>' + escapeHtml(j.titulo) + '</strong>' + (j.sku ? ' · SKU <code>' + escapeHtml(j.sku) + '</code>' : '')
+          + ' · <span style="color:#6a1b9a;">kit com ' + nDist + ' produtos — itens da NF abaixo</span>';
+      } catch (e) { /* so o resumo do card; a lista da NF ja esta na tela */ }
+    }
     function linhaProduto(d) {
       var itens = Array.isArray(d.nf_itens) ? d.nf_itens : [];
       var skus = {}; itens.forEach(function (i) { var k = String(i.sku || i.codigo || '').trim().toUpperCase(); if (k) skus[k] = 1; });
@@ -3481,7 +3490,7 @@ async function carregarSemRetorno() {
         // preenche sozinha assim que a lista termina de renderizar.
         // b170 - leva junto o SKU/qtd do card pro confronto na chegada.
         return `<span class="itens-nf-auto" data-nf="${escapeHtml(String(d.nf_id_bling))}"
-          data-sku="${escapeHtml(String(d.produto_sku || ''))}" data-qtd="${escapeHtml(String(d.produto_qtd || ''))}"
+          data-sku="${escapeHtml(String(d.produto_sku || ''))}" data-qtd="${escapeHtml(String(d.produto_qtd || ''))}" data-mkt="${escapeHtml(String(d.marketplace || ''))}" data-pedido="${escapeHtml(String(d.order_id || ''))}"
           style="display:block;margin-top:6px;background:#faf7ff;border:1px solid #e4dcf1;border-radius:8px;padding:8px 10px;font-size:12.5px;color:#71659a;">
           buscando itens da NF...</span>`;
       }
@@ -3519,6 +3528,9 @@ async function carregarSemRetorno() {
             var cardEl = box.closest('.item') || box.parentNode;
             var linha = cardEl && cardEl.querySelector('.linha-produto');
             if (linha && nDist > 1) linha.innerHTML = textoVariosProdutos(nDist);
+            // b572 - dono: card de KIT mostra o ANUNCIO vendido (titulo + SKU do kit no marketplace); os itens da NF
+            // continuam listados embaixo, um por um, como saem na NF de devolucao
+            if (linha && nDist > 1 && box.dataset.pedido) mostrarAnuncioDoKit(linha, box.dataset.mkt, box.dataset.pedido, nDist);
           } catch (e) { /* so a linha de resumo; a lista ja esta na tela */ }
           box.style.background = 'none'; box.style.border = 'none'; box.style.padding = '0';
           box.style.color = '#241a35';
@@ -3689,7 +3701,7 @@ async function carregarSemRetorno() {
       if (it.length < 2) return '';
       return '<div style="background:#e0f2f1;border:1px solid #00695c;color:#004d40;border-radius:8px;padding:6px 10px;margin:6px 0;font-size:13px;">📦 <b>Voltaram ' + it.length + ' produtos diferentes:</b> ' +
         it.map(function (i) { var t = i.titulo || i.descricao || ''; return escapeHtml(String(i.qtd || 1)) + '× <code>' + escapeHtml(String(i.sku || '?')) + '</code>' + (t ? ' ' + escapeHtml(String(t).slice(0, 40)) : ''); }).join(' · ') +
-        '<br><span style="font-size:12px;">O resumo acima mostra só o 1º item — a NF de devolução tem de levar TODOS estes.</span></div>';
+        '<br><span style="font-size:12px;">A NF de devolução sai com todos estes itens, um por um.</span></div>';   // b572: nao e erro
     }
     // Codex #405 (P2): a serie do Full nem sempre e 2 (ehSerie2 trata toda serie != 1 como Full)
     function serieFull(d) {

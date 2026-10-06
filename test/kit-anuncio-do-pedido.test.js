@@ -1,0 +1,28 @@
+'use strict';
+// b572 — card de KIT mostra o anuncio vendido (titulo + SKU do marketplace). Roda a rota de producao com o ML falso.
+const path = require('path'); const fs = require('fs');
+let falhas = 0;
+const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o); };
+(async () => {
+  const stack = []; const reg = (m) => (p, ...f) => stack.push({ m, p, h: f[f.length - 1] });
+  const app = { get: reg('get'), post: reg('post'), put: reg('put'), delete: reg('delete'), patch: reg('patch'), use() {} };
+  const q = new Proxy({}, { get: (t, k) => (k === 'then' ? (r) => r({ data: [], error: null }) : () => q) });
+  let chamadas = 0;
+  const chamarML = async (c) => { chamadas++; return /\/orders\/2000018571424600$/.test(c) ? { ok: true, status: 200, data: { order_items: [{ quantity: 1, item: { title: '4 Lixas 4 Pol 100mm Diamantada + Disco Prato + Adaptador M14', seller_sku: '4LixDIAM-1DISC-1PIN-Kit51' } }] } } : { ok: false, status: 404 }; };
+  process.env.NODE_TEST_SEM_TIMERS = '1';
+  require(path.join(__dirname, '..', 'amb-devolucoes', 'lib-AMB', 'rotas-admin-AMB.js'))(app, { supabase: { from: () => q, storage: { from: () => ({}) } }, requerAdmin: (a, b, n) => n(), adminOk: () => true, sleep: async () => {}, chamarML, chamarBling: async () => ({ ok: false }), tabelaDevolucoes: 'devolucoes' });
+  const rota = stack.find((x) => x.p === '/api/admin/anuncio-do-pedido');
+  const chamar = (query) => new Promise((res) => rota.h({ query }, { _s: 200, status(s) { this._s = s; return this; }, json(o) { res({ s: this._s, o }); } }));
+  const r1 = await chamar({ mkt: 'ml', pedido: '2000018571424600' });
+  ok(r1.o.ok && r1.o.titulo === '4 Lixas 4 Pol 100mm Diamantada + Disco Prato + Adaptador M14' && r1.o.sku === '4LixDIAM-1DISC-1PIN-Kit51', '⚠️ o anuncio do pedido vem do ML (titulo + SKU do kit) — caso real da Girassol');
+  await chamar({ mkt: 'ml', pedido: '2000018571424600' });
+  ok(chamadas === 1, '  segunda vez sai do cache (nao chama o ML de novo)');
+  const r3 = await chamar({ mkt: 'shopee', pedido: '123' });
+  ok(r3.o.ok === false && r3.o.suportado === false, '  outro marketplace: suportado:false (a tela mantem "N produtos")');
+  const h = fs.readFileSync(path.join(__dirname, '..', 'amb-devolucoes', 'public-AMB', 'painel-AMB.html'), 'utf8');
+  ok(/data-mkt="\$\{escapeHtml\(String\(d\.marketplace \|\| ''\)\)\}" data-pedido="\$\{escapeHtml\(String\(d\.order_id \|\| ''\)\)\}"/.test(h) && /mostrarAnuncioDoKit\(linha, box\.dataset\.mkt, box\.dataset\.pedido, nDist\)/.test(h), '⚠️ o card de kit pede o anuncio e troca a linha de cima (itens da NF seguem embaixo)');
+  ok(!/O resumo acima mostra só o 1º item/.test(h), '  o aviso que parecia erro saiu');
+  console.log('');
+  console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
+  process.exit(falhas ? 1 : 0);
+})().catch((e) => { console.log('FALHA (excecao):', e && e.stack); process.exit(1); });
