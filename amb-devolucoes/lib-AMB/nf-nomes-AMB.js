@@ -205,15 +205,12 @@ async function construirIndiceInterno(opts = {}) {
       // b263 - o SEGUNDO laco deste arquivo tambem. ⚠️ Achei porque conferi a
       // contagem depois de aplicar — a primeira tentativa pegou so um dos dois,
       // por diferenca de indentacao.
-      if (drenagem.estaDrenando()) {
+      // b564 (Codex, P2) - SO TRABALHO DE FUNDO PARA NA DRENAGEM: a busca fria que o estoquista espera (`deFundo` falso,
+      // sem `viroufundo`) segue ate o fim — parar aqui devolveria um "nao encontrado" falso. E quem para marca
+      // `cancelado`, pra o indice truncado NAO ser carimbado como completo nem sobrescrever o que ja estava servindo.
+      if (drenagem.estaDrenando() && (deFundo || IDX.viroufundo)) {
         console.log(`[NF-NOMES-AMB] drenando — paro o indice na pagina ${pg}`);
-        break;
-      }
-      // b263 - a AMB tambem. ⚠️ Regra da casa: ao consertar um lado,
-      // conferir o outro ANTES de subir — a AMB fica pra tras de conserto
-      // feito na GOOD, e isso ja aconteceu varias vezes.
-      if (drenagem.estaDrenando()) {
-        console.log(`[NF-NOMES-AMB] drenando — paro o indice na pagina ${pg}`);
+        cancelado = true;
         break;
       }
       // b228 - RITMO e RETENTATIVA (o mesmo da GOOD, que parava na pagina 20
@@ -344,13 +341,17 @@ async function construirIndiceInterno(opts = {}) {
     // não casa pelo pedido. Erro aqui NÃO derruba o índice de NFs.
     let vendasLidas = 0, erroVendas = null;
     try {
-      for (let pg = 1; pg <= maxPaginas; pg++) {
+      // b564 (Codex, P2) - `cfg.semVendas`: a GOOD so usa nome/status/numero, nao os mapas de venda; pula ate 80 paginas de
+      // /pedidos/vendas que estourariam o teto de construcao. Sem a opcao, nada muda (AMB/Girassol).
+      const maxPaginasVendas = (cfg && cfg.semVendas) ? 0 : maxPaginas;
+      for (let pg = 1; pg <= maxPaginasVendas; pg++) {
         if (minhaGeracao !== geracaoConstrucao) { cancelado = true; break; }   // b558 - abandonada pelo teto: para de chamar o Bling
         // b263 - o SEGUNDO laco deste arquivo tambem. ⚠️ Achei porque conferi a
         // contagem depois de aplicar — a primeira tentativa pegou so um dos dois,
         // por diferenca de indentacao.
-        if (drenagem.estaDrenando()) {
+        if (drenagem.estaDrenando() && (deFundo || IDX.viroufundo)) {   // b564: mesma regra do laco das NFs
           console.log(`[NF-NOMES-AMB] drenando — paro o indice na pagina ${pg}`);
+          cancelado = true;
           break;
         }
         // b40 - 429 (rate limit do Bling) na leitura de vendas NAO derruba mais
@@ -424,6 +425,7 @@ async function construirIndiceInterno(opts = {}) {
     // e a montagem nova; o `finally` desta tambem nao mexe na guarda (geracao diferente).
     if (minhaGeracao !== geracaoConstrucao) return IDX;
     const falhouGeral = !!erroBusca && totalNFs === 0;
+    if (cancelado) return IDX;   // b564: interrompida pela drenagem — nao publica o indice truncado (o parcial dos checkpoints ja ficou)
     // b263.1 (Codex, P2) - ⚠️ CANCELAMENTO CONTA COMO FALHA AQUI.
     //
     // A AMB ja tinha o `falhouGeral` pra nao carimbar `ts` quando a
@@ -532,6 +534,12 @@ function statusIndice() {
  * Dentro de cada faixa, mais recente primeiro.
  */
 async function buscarPorNome(texto, opts = {}) {
+  // b563 - nome minimo por empresa (a GOOD para com menos de 5 letras — nao devolve uma lista enorme). Sem a
+  // opcao, nada muda (AMB/Girassol).
+  const _MIN_NOME = Number(cfg && cfg.nomeMinimo) || 0;
+  if (_MIN_NOME && colapsar(texto).length < _MIN_NOME) {
+    return { alvo: colapsar(texto), via: null, vias: [], candidatos: [], total: 0, total_encontrados: 0, pagina: 1, por_pagina: 0, tem_mais: false, montando: !IDX.ts, indiceParcial: !!IDX.parcialAte };
+  }
   const porPagina = Math.min(Math.max(Number(opts.porPagina) || 8, 1), 50);
   const pagina = Math.max(Number(opts.pagina) || 1, 1);
   const alvo = colapsar(texto);
@@ -736,16 +744,22 @@ function ordenar(lista) {
 // Regra 4.12 — LER O PRODUTOR ANTES DE ESCREVER O CONSUMIDOR — que eu
 // violei no mesmo dia em que a apliquei em outros 4 arquivos.
 function preAquecer(atrasoMs, tentativa = 1) {
+  // b563 - aceita tambem o formato da GOOD: preAquecer({ maxPaginas }) = monta JA, como fundo, com essas opcoes (o
+  // passe curto do boot); preAquecer(ms) e o formato da AMB/Girassol (agenda). Sem argumento, como sempre (4 min).
+  // b564 (Codex, P2): as opcoes ficam na CLOSURE de cada agendamento (e de suas retentativas) — uma variavel unica era
+  // sobrescrita por um preaquecimento posterior e a retentativa do passe curto perdia o `maxPaginas`.
+  let opcoes = {};
+  if (atrasoMs && typeof atrasoMs === 'object') { opcoes = atrasoMs; atrasoMs = 0; }
   const atraso = atrasoMs != null ? atrasoMs : 4 * 60 * 1000;
   console.log(`[${TAG_EMP}/NF-NOMES] pre-aquecimento agendado para daqui a ${Math.round(atraso / 1000)}s`);
   reagendado = true;   // b415: a fila do pre-aquecimento espera isto
-  setTimeout(() => tentar(1), atraso).unref();
+  setTimeout(() => tentar(1, opcoes), atraso).unref();
 }
 
 // ⚠️ (Codex, PR #213) mesmo bug do ml-returns-AMB.js: `preAquecer(atrasoMs)`
 // nao tem `tentativa`, e o retry referenciava uma variavel inexistente —
 // ReferenceError dentro do `.catch()`, virando rejeicao nao tratada.
-function tentar(tentativa) {
+function tentar(tentativa, opcoes) {
   reagendado = false;   // b415
   // ⚠️ b445 (Codex, P2) - PRE-AQUECIMENTO E SEMPRE FUNDO. `deFundo` (dentro
   // de `construirIndiceInterno`) so vira `true` sozinho quando ja existe um
@@ -753,7 +767,7 @@ function tentar(tentativa) {
   // esta varredura de ate 8.000 NFs entrava na fila INTERATIVA, disputando
   // espaco com buscas de verdade, mesmo sem ninguem esperando por ela: e
   // trabalho de fundo por definicao.
-  construirIndice({ fundo: true }).then((idx) => {
+  construirIndice(Object.assign({}, opcoes, { fundo: true })).then((idx) => {   // b563: opcoes da GOOD (maxPaginas), sempre fundo
     if (!idx) return; // cancelado pela drenagem - nem sucesso nem falha
     if (idx.erro) throw new Error(idx.erro);
   }).catch((e) => {
@@ -794,7 +808,7 @@ function tentar(tentativa) {
     // 📌 Consertei o sintoma no lugar errado e o teste passou, porque ele
     // so conferia se o texto `reagendado = true` existia no arquivo.
     reagendado = true;
-    drenagem.daquiA(() => tentar(tentativa + 1), espera);
+    drenagem.daquiA(() => tentar(tentativa + 1, opcoes), espera);
   });
 }
 

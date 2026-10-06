@@ -104,7 +104,17 @@ const mlReturns = require('./amb-devolucoes/lib-AMB/ml-returns-AMB').criar({
 // v3.71 - busca de NF pelo NOME do remetente (etiquetas Correios da Amazon
 // etc). O nome vem COLADO na etiqueta (RENATONEVES) - o indice colapsa os
 // nomes do Bling tambem e compara colapsado com colapsado.
-const nfNomes = require('./lib/nf-nomes')({ chamarBling });
+// b563 - UNIFICACAO DO INDICE DE NOMES: a GOOD usa a copia UNICA (amb-devolucoes/lib-AMB/nf-nomes-AMB.js, a fabrica da
+// AMB/Girassol) — que ganhou, nos PRs #455-#457, as protecoes que so a copia da GOOD tinha (teto de construcao,
+// 'montando', vendas antigas, parcial pelo teto), com os testes antigos da GOOD rodando sobre ela. Bling DA GOOD
+// (caminho relativo vira endereco inteiro) e o nome minimo de 5 letras. A copia antiga (lib/nf-nomes.js) nao carrega.
+const nfNomes = require('./amb-devolucoes/lib-AMB/nf-nomes-AMB').criar({
+  PREFIXO_ENV: 'GOOD_',
+  bling: { pausaMs: 700 },
+  nomeMinimo: 5,
+  semVendas: true,   // b564: a GOOD nao usa os mapas de venda — pula o passe de /pedidos/vendas
+  clienteBling: { chamarBling: (u, ...resto) => chamarBling(/^https?:/i.test(String(u)) ? u : 'https://api.bling.com.br/Api/v3' + u, ...resto) },
+});
 const ritmoBling = require('./lib/ritmo-bling');
 // b244 - FASE 1 (fim): a GOOD tambem le os campos FISCAIS do registro.
 // Sao os mesmos 4 valores que ja estavam la com padrao IDENTICO
@@ -544,7 +554,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.126.69 (b562: indice de nomes da AMB/Girassol — parcial quando o teto de paginas corta; checkpoint a cada 3)',
+      version: '9.126.71 (b564: indice de nomes — drenagem so para o fundo, opcoes por agendamento, GOOD sem passe de vendas)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -8841,7 +8851,7 @@ drenagem.daquiA(() => magalu.preAquecer(), 20 * 1000);
 //
 // Ordem final: magalu -> espreita -> nfNomes -> mlReturns(+aoSucesso).
 // O `aoSucesso` cobre o atraso do mlReturns ter ficado em 4o.
-drenagem.daquiA(() => nfNomes.preAquecer(), 20 * 1000 + ESPACO);
+drenagem.daquiA(() => nfNomes.preAquecer(0), 20 * 1000 + ESPACO);
 drenagem.daquiA(() => mlReturns.preAquecer(1, preAquecerEspreita), 20 * 1000 + ESPACO * 2);
 
 // b272 - ⚠️ DOIS PASSES: um CURTO logo, e o completo depois.
@@ -8875,7 +8885,7 @@ drenagem.daquiA(() => {
   console.log(`[BOOT] passe curto do indice de nomes (${PAGINAS_PASSE_CURTO} paginas, ~17 dias)`);
 }, 45 * 1000);
 
-drenagem.daquiA(() => nfNomes.preAquecer(), 20 * 1000 + ESPACO);
+drenagem.daquiA(() => nfNomes.preAquecer(0), 20 * 1000 + ESPACO);
 // v4.04 - catalogo de produtos pre-aquecido (a busca do estoquista nunca espera)
 // b306 - ⚠️ revisao Codex #265 (P2): a conta "agenda em 5s" estava ERRADA.
 //
@@ -8929,7 +8939,7 @@ drenagem.intervalo(cicloDatasEntrega, 5 * 60 * 1000);
 drenagem.daquiA(() => { if (magalu.cfg.autorizado) espreita.preAquecer(); }, 20 * 1000 + Math.round(ESPACO / 2));
 drenagem.intervalo(() => magalu.preAquecer(), 25 * 60 * 1000);
 drenagem.intervalo(() => mlReturns.preAquecer(), 25 * 60 * 1000);
-drenagem.intervalo(() => nfNomes.preAquecer(), 25 * 60 * 1000);
+drenagem.intervalo(() => nfNomes.preAquecer(0), 25 * 60 * 1000);
 drenagem.intervalo(() => { if (magalu.cfg.autorizado) espreita.preAquecer(); }, 25 * 60 * 1000);
 
 // v4.51 - pre-aquece o RESULTADO FINAL do a espreita (o painel montado), pra
