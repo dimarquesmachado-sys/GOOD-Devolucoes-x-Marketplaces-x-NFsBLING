@@ -306,10 +306,27 @@ async function listarTickets(params = {}) {
 
 // 9 digitos, 2 letras — ex. AA123456789BR)
 
-function mensagensDoTicket(ticketId) {
-
-  return chamarMagalu(`/seller/v0/tickets/${encodeURIComponent(ticketId)}/messages`);
-
+// Codex #460: (a) a lista de mensagens e PAGINADA — so a 1a pagina podia esconder a mensagem com o codigo;
+// (b) o Magalu limita a leitura de mensagens do SAC (~200/min) e a fase 2 roda 4 tickets por vez: uma vaga a cada
+// 400 ms (<= 150/min), reservada em ordem mesmo com chamadas simultaneas.
+let _proximaVagaMensagem = 0;
+async function aguardarVagaMensagem() {
+  const agora = Date.now();
+  const vez = Math.max(agora, _proximaVagaMensagem);
+  _proximaVagaMensagem = vez + 400;
+  if (vez > agora) await new Promise((ok) => setTimeout(ok, vez - agora));
+}
+async function mensagensDoTicket(ticketId) {
+  const todas = [];
+  for (let pg = 0; pg < 5; pg++) {   // ate 500 mensagens por ticket
+    await aguardarVagaMensagem();
+    const r = await chamarMagalu(`/seller/v0/tickets/${encodeURIComponent(ticketId)}/messages?_limit=100&_offset=${pg * 100}`);
+    if (!r.ok) return pg === 0 ? r : { ok: true, data: { results: todas } };   // pagina seguinte falhou: fica o que leu
+    const lote = (r.data && r.data.results) || [];
+    todas.push(...lote);
+    if (lote.length < 100) break;
+  }
+  return { ok: true, data: { results: todas } };
 }
 
 function codigoNoTexto(texto) {
@@ -346,7 +363,8 @@ async function _fase2ReverseCodes(abertos) {
           // gerado outra etiqueta), em varios campos possiveis; sem codigo nas remessas, procura nas MENSAGENS do
           // ticket (o cliente costuma escrever o codigo); por ultimo, o de uma remessa antiga, marcado como talvez
           // obsoleto. Antes: so a primeira remessa com reverse_code — o bipe da AMB/Girassol perdia esses casos.
-          const CAMPOS_CODIGO = ['reverse_code', 'tracking_code', 'object_code', 'tracking', 'code', 'reverse_tracking_code'];
+          // Codex #460: 'code' e o identificador do PARCEIRO, nao rastreio — fora (senao pula a busca nas mensagens)
+          const CAMPOS_CODIGO = ['reverse_code', 'tracking_code', 'object_code', 'tracking', 'reverse_tracking_code'];
           const codigoDe = (x) => {
             for (const c of CAMPOS_CODIGO) { const v = x && x[c]; if (v && String(v).trim()) return String(v).trim(); }
             return null;
