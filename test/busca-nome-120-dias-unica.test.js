@@ -126,6 +126,56 @@ function hitsOrdenados(r) {
        'busca por nome que so existe na pagina MAIS ANTIGA acha a NF de la');
   }
 
+  // b561 (Codex #456) - a amostra antiga NAO se repete na pagina 2
+  {
+    const p1 = await nf.buscarPorNome('RAFAEL', { pagina: 1, porPagina: 8 });
+    const p2 = await nf.buscarPorNome('RAFAEL', { pagina: 2, porPagina: 8 });
+    const vistos = new Set(p1.candidatos.map((c) => String(c.id)));
+    ok(p2.candidatos.length === 8 && p2.candidatos.every((c) => !vistos.has(String(c.id))),
+       'b561: a pagina 2 nao repete candidato da amostra antiga da pagina 1');
+  }
+
+  // b561 - amostra escolhida por DATA, nao por ordem de confianca
+  {
+    const dia = (n) => new Date(Date.now() - n * 864e5).toISOString().slice(0, 10) + ' 10:00:00';
+    let pgm = 0;
+    const nfm = criar({
+      chamarBling: async () => {
+        pgm++;
+        if (pgm > 1) return { ok: true, data: { data: [] } };
+        return { ok: true, data: { data: [
+          ...Array.from({ length: 10 }, (_, i) => ({ id: 100 + i, numero: String(100 + i), dataEmissao: dia(100), contato: { nome: 'Jose Silva' } })),
+          ...Array.from({ length: 20 }, (_, i) => ({ id: 200 + i, numero: String(200 + i), dataEmissao: dia(5), contato: { nome: 'Jose Silva Junior' } })),
+        ] } };
+      },
+    });
+    await nfm.construirIndice();
+    const rm = await nfm.buscarPorNome('Jose Silva', { porPagina: 8 });
+    const antigos = rm.candidatos.filter((c) => c._antigo);
+    const maisAntigaData = [...rm.candidatos].map((c) => String(c.dataEmissao)).sort()[0];
+    ok(antigos.some((c) => String(c.dataEmissao) === maisAntigaData && c.id < 200),
+       'b561: a amostra inclui a NF mais antiga de verdade (exata, 100d), nao so a ultima do rank');
+  }
+
+  // b561 - nf_mais_antiga nao anda pra uma NF recusada pelo corte da janela
+  {
+    const dia2 = (n) => new Date(Date.now() - n * 864e5).toISOString().slice(0, 10) + ' 10:00:00';
+    let pgc = 0;
+    const nfc = criar({
+      chamarBling: async () => {
+        pgc++;
+        if (pgc > 1) return { ok: true, data: { data: [] } };
+        return { ok: true, data: { data: [
+          { id: 1, numero: '1', dataEmissao: dia2(10), contato: { nome: 'Maria Recente' } },
+          { id: 2, numero: '2', dataEmissao: dia2(400), contato: { nome: 'Maria Velha' } },
+        ] } };
+      },
+    });
+    await nfc.construirIndice();
+    ok(nfc.statusIndice().nf_mais_antiga === dia2(10),
+       'b561: nf_mais_antiga nao recua pra NF fora da janela (recusada pelo corte)');
+  }
+
   console.log('');
   console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
   process.exit(falhas ? 1 : 0);
