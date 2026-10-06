@@ -28,7 +28,7 @@ const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o
   const chamarBling = async () => (++pagina === 1 ? { ok: true, status: 200, data: { data: nfs } } : { ok: true, status: 200, data: { data: [] } });
 
   for (const [nome, caminho, opts] of [
-    ['GOOD', '../lib/nf-nomes', { chamarBling }],
+    // b565: a GOOD usa a copia unica desde o #458 (lib/nf-nomes.js apagada) — fica so a unica
     ['AMB/Girassol', '../amb-devolucoes/lib-AMB/nf-nomes-AMB', null],
   ]) {
     let nfNomes;
@@ -75,7 +75,7 @@ const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o
     const amb = semCom('amb-devolucoes/lib-AMB/nf-nomes-AMB.js');
     const iP = amb.indexOf('IDX.mapa = { ...mapa };');
     ok(iP > 0 && /IDX\.porNumero = \{ \.\.\.porNumero \};/.test(amb.slice(iP, iP + 300)), '  nf-nomes-AMB: o parcial publica porNumero junto com mapa/mapaCurto');
-    const good = semCom('lib/nf-nomes.js');
+    const good = semCom('amb-devolucoes/lib-AMB/nf-nomes-AMB.js');
     const iG = good.indexOf('IDX.mapa = { ...mapa };');
     ok(iG > 0 && /IDX\.porNumero = \{ \.\.\.porNumero \};/.test(good.slice(iG, iG + 300)), '  nf-nomes (GOOD): idem');
   }

@@ -1,3 +1,4 @@
+// b562 - COPIA do teste da GOOD rodando SOBRE a copia unica do indice: as regras 'GOOD:' valem para ela.
 // Roda com: node test/busca-nome-teto.test.js
 //
 // ⚠️ RECLAMAÇÃO REAL DO DONO (10/09): buscou "charles" e passou de 3
@@ -21,12 +22,12 @@ const RAIZ = path.join(__dirname, '..');
 // ⚠️ as DUAS empresas — a AMB tinha o mesmo `await` sem teto na linha 366,
 // e conferir o outro lado antes de subir e regra da casa.
 const MODULOS = [
-  ['lib/nf-nomes.js', 'GOOD'],
+  ['amb-devolucoes/lib-AMB/nf-nomes-AMB.js', 'GOOD'],
   ['amb-devolucoes/lib-AMB/nf-nomes-AMB.js', 'AMB'],
 ];
 const semComent = (t) => t.split('\n').filter((l) => !l.trim().startsWith('//')).join('\n');
 const lerCodigo = (p) => semComent(fs.readFileSync(path.join(RAIZ, p), 'utf8'));
-const codigo = lerCodigo('lib/nf-nomes.js');
+const codigo = lerCodigo('amb-devolucoes/lib-AMB/nf-nomes-AMB.js');   // b565: a GOOD usa a copia unica desde o #458
 
 // ── ⚠️ o teto de espera é do ESTOQUISTA, não do índice ──────────────
 {
@@ -215,14 +216,14 @@ const codigo = lerCodigo('lib/nf-nomes.js');
 // aviso de indice parcial que este PR criou ficaria mudo bem no passe que
 // MENOS cobre (~17 dos 120 dias).
 {
-  ok(/limitadoPorTeto/.test(codigo),
+  ok(/parouPorTeto/.test(codigo),   // b565: nomes da copia unica (mesmo comportamento: b562)
      'GOOD: o build rastreia quando foi o TETO de paginas que parou, nao a data/fim dos dados');
-  ok(/if \(pg === maxPaginas\) limitadoPorTeto = true/.test(codigo),
+  ok(/paginasLidas = pg; ultimaCheia = lista\.length >= 100;/.test(codigo) && /const parouPorTeto = !parouPorData && ultimaCheia && paginasLidas >= maxPaginas;/.test(codigo),
      '  ⚠️ so quando a ultima pagina lida ainda estava CHEIA');
 
-  const iCompleto = codigo.indexOf('const falhouVazio = !!erroBusca');
-  const blocoCompleto = codigo.slice(iCompleto, iCompleto + 500);
-  ok(/limitadoPorTeto[\s\S]*IDX\.parcialAte = paginasLidas/.test(blocoCompleto),
+  const iCompleto = codigo.indexOf('const parouPorTeto = ');
+  const blocoCompleto = codigo.slice(iCompleto, iCompleto + 1200);
+  ok(/parouPorTeto[\s\S]*IDX\.parcialAte = paginasLidas/.test(blocoCompleto),
      '  e quando limitou por teto, o indice continua marcado como PARCIAL (nao completo)');
 }
 

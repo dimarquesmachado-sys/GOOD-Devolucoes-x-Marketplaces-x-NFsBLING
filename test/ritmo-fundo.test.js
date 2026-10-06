@@ -16,7 +16,7 @@ const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o
 
 const RAIZ = path.join(__dirname, '..');
 const BLING = fs.readFileSync(path.join(RAIZ, 'lib', 'bling.js'), 'utf8');
-const NOMES = fs.readFileSync(path.join(RAIZ, 'lib', 'nf-nomes.js'), 'utf8');
+const NOMES = fs.readFileSync(path.join(RAIZ, 'amb-devolucoes', 'lib-AMB', 'nf-nomes-AMB.js'), 'utf8');
 
 // ── a prioridade funciona de verdade ────────────────────────────────
 {
@@ -112,7 +112,7 @@ function conferirCodigo() {
   // b272: o preAquecer passou a aceitar opcoes (`{ fundo: true, ...opcoes }`)
   // pro boot poder fazer um passe curto de 3 paginas. O que importa e o
   // `fundo: true` continuar la, nao o formato exato do objeto.
-  ok(/construirIndice\(\{ fundo: true[,}]/.test(NOMES),
+  ok(/construirIndice\(\{ fundo: true[,}]/.test(NOMES) || /construirIndice\(Object\.assign\(\{\}, opcoes, \{ fundo: true \}\)\)/.test(NOMES),   // b565: forma da copia unica
      'o pre-aquecimento do boot se declara FUNDO (ninguem espera por ele)');
   ok(/const deFundo = opts\.fundo !== undefined \? !!opts\.fundo : !!IDX\.ts/.test(NOMES),
      'e a construcao sob demanda so e fundo se ja houver indice velho pra servir');

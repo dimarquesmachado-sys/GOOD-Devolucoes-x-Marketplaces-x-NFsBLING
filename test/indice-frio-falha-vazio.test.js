@@ -1,3 +1,5 @@
+// b560 - COPIA do teste da GOOD rodando SOBRE a copia unica do indice (amb-devolucoes/lib-AMB/nf-nomes-AMB.js):
+// garante que a unica tem o comportamento que a GOOD exigia, antes de a GOOD trocar de copia.
 // Roda com: node test/indice-frio-falha-vazio.test.js
 //
 // Achado do Codex (revisao inline do #220, em lib/nf-nomes.js:279):
@@ -18,7 +20,7 @@
 // FALSE, a tela engolia o aviso, e como `vencido` (em buscarPorNome) tambem
 // le `IDX.ts`, a busca ficava 30 MINUTOS repetindo "nao encontrado" seco.
 
-const criar = require('../lib/nf-nomes.js');
+const _fab = require('../amb-devolucoes/lib-AMB/nf-nomes-AMB.js'); const criar = (o) => _fab.criar({ PREFIXO_ENV: 'T_', bling: { pausaMs: 0 }, clienteBling: { chamarBling: o.chamarBling } });
 
 let falhas = 0;
 const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o); };

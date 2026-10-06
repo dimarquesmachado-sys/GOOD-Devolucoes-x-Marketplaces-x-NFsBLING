@@ -79,7 +79,7 @@ const srv = fs.readFileSync(path.join(RAIZ, 'server.js'), 'utf8');
 // MINUTOS, até o próximo ciclo. E cache vazio = sem estrela na tela.
 {
   const MODULOS = [
-    ['lib/nf-nomes.js', 'GOOD nf-nomes'],
+    ['amb-devolucoes/lib-AMB/nf-nomes-AMB.js', 'GOOD nf-nomes'],
     ['amb-devolucoes/lib-AMB/nf-nomes-AMB.js', 'AMB nf-nomes'],
     ['amb-devolucoes/lib-AMB/ml-returns-AMB.js', 'AMB ml-returns'],
   ];
@@ -129,7 +129,7 @@ const srv = fs.readFileSync(path.join(RAIZ, 'server.js'), 'utf8');
 // violada no mesmo dia em que a apliquei em outros 4 arquivos.
 {
   const MODULOS = [
-    'lib/nf-nomes.js',
+    'amb-devolucoes/lib-AMB/nf-nomes-AMB.js',
     'amb-devolucoes/lib-AMB/nf-nomes-AMB.js',
     'amb-devolucoes/lib-AMB/ml-returns-AMB.js',
   ];
