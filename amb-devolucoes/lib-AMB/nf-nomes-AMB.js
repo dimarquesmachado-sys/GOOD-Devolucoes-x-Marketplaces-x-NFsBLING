@@ -94,6 +94,7 @@ const IDX = {
 };
 
 let construindo = false;
+let geracaoConstrucao = 0;   // b556: quem abandona uma construcao travada invalida o `finally` dela
 // ⚠️ b415 (Codex, P1) - "VAI TENTAR DE NOVO" e diferente de "parou".
 //
 // Quando a construcao falha (429, por exemplo), `construindo` vira false
@@ -157,6 +158,8 @@ async function construirIndiceInterno(opts = {}) {
   if (construindo) return { ...IDX, jaEmAndamento: true };
   construindo = true;
   const t0 = Date.now();
+  const minhaGeracao = ++geracaoConstrucao;
+  IDX.construindoDesde = t0;   // b556: carimbo no caminho COMUM (pre-aquecimento, rota manual, autocura e busca)
 
   try {
     const dias = opts.dias || Number(process.env[(cfg && cfg.PREFIXO_ENV || 'AMB_') + 'NF_JANELA_DIAS'] || 120);
@@ -427,8 +430,17 @@ async function construirIndiceInterno(opts = {}) {
     console.log(`[${TAG_EMP}/NF-NOMES] indice: ${totalNFs} NFs de ${IDX.nomes} nomes (${dias}d) em ${IDX.duracaoSeg}s`);
     return IDX;
   } finally {
-    construindo = false;
+    // b556: se a construcao foi abandonada pelo teto, a guarda ja foi liberada (e talvez retomada por outra)
+    if (geracaoConstrucao === minhaGeracao) { construindo = false; IDX.construindoDesde = null; }
   }
+}
+
+// b556: libera a guarda de uma construcao travada. Nao da pra cancelar a promessa, mas o `finally` dela
+// (geracao antiga) deixa de mexer na guarda — a proxima busca consegue montar um indice novo.
+function abandonarConstrucao() {
+  geracaoConstrucao++;
+  construindo = false;
+  IDX.construindoDesde = null;
 }
 
 function statusIndice() {
@@ -537,16 +549,17 @@ async function buscarPorNome(texto, opts = {}) {
       // ficava pendurado e toda busca seguinte esperava por ele. O carimbo de inicio aparece no status (/health) e
       // e limpo ao terminar.
       const TETO_CONSTRUCAO_MS = Number(process.env.NF_NOMES_TETO_CONSTRUCAO_MS || 240000);
-      IDX.construindoDesde = Date.now();
+      let timerTeto;
       IDX.emConstrucao = Promise.race([
         construirIndice(),
-        new Promise((ok) => setTimeout(() => {
+        new Promise((ok) => { timerTeto = setTimeout(() => {
           console.warn(`[${TAG_EMP}/NF-NOMES] construcao passou de ${TETO_CONSTRUCAO_MS / 1000}s — abandono e libero pra proxima tentar`);
+          abandonarConstrucao();
           ok();
-        }, TETO_CONSTRUCAO_MS)),
+        }, TETO_CONSTRUCAO_MS); }),
       ])
         .catch(() => {})
-        .finally(() => { IDX.emConstrucao = null; IDX.construindoDesde = null; });
+        .finally(() => { clearTimeout(timerTeto); IDX.emConstrucao = null; });
     }
     try {
       await Promise.race([
