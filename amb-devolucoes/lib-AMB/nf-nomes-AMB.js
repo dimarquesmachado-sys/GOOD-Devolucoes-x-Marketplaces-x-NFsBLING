@@ -532,6 +532,12 @@ function statusIndice() {
  * Dentro de cada faixa, mais recente primeiro.
  */
 async function buscarPorNome(texto, opts = {}) {
+  // b563 - nome minimo por empresa (a GOOD para com menos de 5 letras — nao devolve uma lista enorme). Sem a
+  // opcao, nada muda (AMB/Girassol).
+  const _MIN_NOME = Number(cfg && cfg.nomeMinimo) || 0;
+  if (_MIN_NOME && colapsar(texto).length < _MIN_NOME) {
+    return { alvo: colapsar(texto), via: null, vias: [], candidatos: [], total: 0, total_encontrados: 0, pagina: 1, por_pagina: 0, tem_mais: false, montando: !IDX.ts, indiceParcial: !!IDX.parcialAte };
+  }
   const porPagina = Math.min(Math.max(Number(opts.porPagina) || 8, 1), 50);
   const pagina = Math.max(Number(opts.pagina) || 1, 1);
   const alvo = colapsar(texto);
@@ -736,6 +742,9 @@ function ordenar(lista) {
 // Regra 4.12 — LER O PRODUTOR ANTES DE ESCREVER O CONSUMIDOR — que eu
 // violei no mesmo dia em que a apliquei em outros 4 arquivos.
 function preAquecer(atrasoMs, tentativa = 1) {
+  // b563 - aceita tambem o formato da GOOD: preAquecer({ maxPaginas }) = monta JA, como fundo, com essas opcoes (o
+  // passe curto do boot); preAquecer(ms) e o formato da AMB/Girassol (agenda). Sem argumento, como sempre (4 min).
+  if (atrasoMs && typeof atrasoMs === 'object') { _opcoesPreAquecer = atrasoMs; atrasoMs = 0; } else { _opcoesPreAquecer = {}; }
   const atraso = atrasoMs != null ? atrasoMs : 4 * 60 * 1000;
   console.log(`[${TAG_EMP}/NF-NOMES] pre-aquecimento agendado para daqui a ${Math.round(atraso / 1000)}s`);
   reagendado = true;   // b415: a fila do pre-aquecimento espera isto
@@ -745,6 +754,7 @@ function preAquecer(atrasoMs, tentativa = 1) {
 // ⚠️ (Codex, PR #213) mesmo bug do ml-returns-AMB.js: `preAquecer(atrasoMs)`
 // nao tem `tentativa`, e o retry referenciava uma variavel inexistente —
 // ReferenceError dentro do `.catch()`, virando rejeicao nao tratada.
+let _opcoesPreAquecer = {};   // b563
 function tentar(tentativa) {
   reagendado = false;   // b415
   // ⚠️ b445 (Codex, P2) - PRE-AQUECIMENTO E SEMPRE FUNDO. `deFundo` (dentro
@@ -753,7 +763,7 @@ function tentar(tentativa) {
   // esta varredura de ate 8.000 NFs entrava na fila INTERATIVA, disputando
   // espaco com buscas de verdade, mesmo sem ninguem esperando por ela: e
   // trabalho de fundo por definicao.
-  construirIndice({ fundo: true }).then((idx) => {
+  construirIndice(Object.assign({}, _opcoesPreAquecer, { fundo: true })).then((idx) => {   // b563: opcoes da GOOD (maxPaginas), sempre fundo
     if (!idx) return; // cancelado pela drenagem - nem sucesso nem falha
     if (idx.erro) throw new Error(idx.erro);
   }).catch((e) => {
