@@ -302,6 +302,25 @@ async function listarTickets(params = {}) {
   return chamarMagalu(`/seller/v0/tickets${qs ? '?' + qs : ''}`);
 }
 
+// b566 - porte da GOOD: mensagens do ticket e o codigo de postagem escrito no texto (formato Correios: 2 letras,
+
+// 9 digitos, 2 letras — ex. AA123456789BR)
+
+function mensagensDoTicket(ticketId) {
+
+  return chamarMagalu(`/seller/v0/tickets/${encodeURIComponent(ticketId)}/messages`);
+
+}
+
+function codigoNoTexto(texto) {
+
+  const m = String(texto || '').match(/\b([A-Za-z]{2}\d{9}[A-Za-z]{2})\b/);
+
+  return m ? m[1].toUpperCase() : null;
+
+}
+
+
 async function remessasReversasDoTicket(ticketId) {
   return chamarMagalu(`/seller/v0/tickets/${encodeURIComponent(ticketId)}/returns`);
 }
@@ -323,11 +342,41 @@ async function _fase2ReverseCodes(abertos) {
         try {
           const rr = await remessasReversasDoTicket(dev.ticket_id);
           const res = (rr.ok && rr.data && rr.data.results) ? rr.data.results : [];
-          const comRc = res.find(x => x.reverse_code);
-          const rc = comRc ? comRc.reverse_code : null;
+          // b566 - porte da GOOD (lib/magalu.js): o codigo da reversa e o da remessa MAIS RECENTE (o cliente pode ter
+          // gerado outra etiqueta), em varios campos possiveis; sem codigo nas remessas, procura nas MENSAGENS do
+          // ticket (o cliente costuma escrever o codigo); por ultimo, o de uma remessa antiga, marcado como talvez
+          // obsoleto. Antes: so a primeira remessa com reverse_code — o bipe da AMB/Girassol perdia esses casos.
+          const CAMPOS_CODIGO = ['reverse_code', 'tracking_code', 'object_code', 'tracking', 'code', 'reverse_tracking_code'];
+          const codigoDe = (x) => {
+            for (const c of CAMPOS_CODIGO) { const v = x && x[c]; if (v && String(v).trim()) return String(v).trim(); }
+            return null;
+          };
+          const ordenadas = res.slice().sort((a, b) =>
+            String((b && (b.created_at || b.date)) || '').localeCompare(String((a && (a.created_at || a.date)) || '')));
+          let rc = ordenadas.length ? codigoDe(ordenadas[0]) : null;
+          const rcAntigo = ordenadas.map(codigoDe).find(Boolean) || null;
+          if (!rc) {
+            try {
+              const mm = await mensagensDoTicket(dev.ticket_id);
+              const msgs = (mm.ok && mm.data && mm.data.results) ? mm.data.results : [];
+              const porData = msgs.slice().sort((a, b) =>
+                String((b && (b.created_at || b.date || b.sent_at)) || '').localeCompare(String((a && (a.created_at || a.date || a.sent_at)) || '')));
+              for (const msg of porData) {
+                const achado = codigoNoTexto((msg && (msg.body || msg.message || msg.text)) || '');
+                if (achado) { rc = achado; dev.codigo_da_mensagem = true; break; }
+              }
+            } catch (e) { /* segue sem codigo; melhor que derrubar a fase 2 */ }
+            if (!rc && rcAntigo) { rc = rcAntigo; dev.codigo_possivelmente_obsoleto = true; }
+          }
           if (rc) {
             dev.reverse_code = String(rc);
             TIDX.mapa['R:' + dev.reverse_code] = dev;
+            // b566 - porte da GOOD: o bipe procura SO OS DIGITOS do codigo (acharDevolucao -> soDigitos), e a chave aqui
+            // tinha as letras ('R:DA597697016BR') — o bipe pelo codigo de postagem nunca achava por este caminho.
+            // Indexa tambem a versao so-digitos, sem SOBRESCREVER outra devolucao que ja tenha a mesma chave
+            // (DA597697016BR e XY597697016ZW colidiriam).
+            const soNum = String(rc).replace(/\D/g, '');
+            if (soNum && soNum !== dev.reverse_code && !TIDX.mapa['R:' + soNum]) TIDX.mapa['R:' + soNum] = dev;
             comReversa++;
           }
         } catch (e) { /* esse ticket fica sem reverse_code */ }
