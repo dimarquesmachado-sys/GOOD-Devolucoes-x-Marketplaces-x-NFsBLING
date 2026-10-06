@@ -3979,11 +3979,22 @@ async function carregarSemRetorno() {
           chave: c.dataset.chave || '',
         }));
       const puladosFull = marcados.filter(c => c.dataset.full === '1').length;
-      const pulados = marcados.length - fila.length - puladosFull;
+      // b574 - dono, 06/10: a mensagem dizia 'SEM NF' pra QUALQUER card pulado — inclusive o que tinha NF e foi pulado
+      // por ser so-rascunho ou por a lista do que voltou nao bater com a da NF. Agora cada motivo com o seu numero.
+      const temNF = (c) => !!(c.dataset.nfid || c.dataset.nfnum);
+      const puladosSemNF = marcados.filter(c => c.dataset.full !== '1' && !temNF(c)).length;
+      const puladosRascunho = marcados.filter(c => c.dataset.full !== '1' && temNF(c) && c.dataset.sorascunho === '1').length;
+      const puladosParcial = marcados.filter(c => c.dataset.full !== '1' && temNF(c) && c.dataset.sorascunho !== '1'
+        && faltasDoCard(c.dataset.id).length > 0).length;
+      const pulados = puladosSemNF + puladosRascunho + puladosParcial;
+      const linhasPulados =
+        (puladosSemNF > 0 ? `⚠️ ${puladosSemNF} selecionado(s) SEM NF serão pulados (rode o 🔎 Buscar NFs pra eles).\n` : '') +
+        (puladosRascunho > 0 ? `📝 ${puladosRascunho} card(s) "só rascunho" (estornadas sem retorno) serão pulados — gere a NF pelo botão do card.\n` : '') +
+        (puladosParcial > 0 ? `🧩 ${puladosParcial} card(s) com devolução PARCIAL (o que voltou não bate com a NF) serão pulados — gere em rascunho pelo botão do card.\n` : '');
       if (fila.length === 0) {
-        toast(puladosFull > 0
+        toast(puladosFull > 0 && pulados === 0
           ? 'Só tem card FULL selecionado — a NF de devolução deles é emitida pelo próprio ML (selo 🏬).'
-          : 'Nenhum dos selecionados tem NF vinculada (rode o 🔎 Buscar NFs primeiro).', 'err');
+          : ('Nenhum card pode ir no lote: ' + linhasPulados.replace(/\n/g, ' ').trim()), 'err');
         return;
       }
 
@@ -4001,7 +4012,7 @@ async function carregarSemRetorno() {
       if (!(await confirmarPainel('🏭 Esteira — gerar e EMITIR as NFs de devolução',
         `🏭 ESTEIRA: gerar + EMITIR (SEFAZ) a NF de devolução de ${fila.length} card(s)?\n\n` +
         (puladosFull > 0 ? `🏬 ${puladosFull} card(s) FULL serão pulados (NF de devolução é emitida pelo próprio ML).\n` : '') +
-        (pulados > 0 ? `⚠️ ${pulados} selecionado(s) SEM NF serão pulados (rode o 🔎 Buscar NFs pra eles).\n` : '') +
+        linhasPulados +
         (puladosFull > 0 || pulados > 0 ? `\n` : '') +
         `• 📦 Depósito do estoque: ${depNome}\n` +
         `• Um por vez (SEFAZ é serial) — de 10s a 1min+ cada, estimativa ~${estimMin || 1} min no total\n` +

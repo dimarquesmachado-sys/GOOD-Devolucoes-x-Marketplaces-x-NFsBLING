@@ -558,7 +558,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.126.80 (b573: card de kit mostra o anuncio vendido — titulo e SKU do marketplace; kits com NF ja carregada, ML inferido, varios anuncios)',
+      version: '9.126.81 (b574: emissao em lote diz o motivo certo de cada card pulado)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
