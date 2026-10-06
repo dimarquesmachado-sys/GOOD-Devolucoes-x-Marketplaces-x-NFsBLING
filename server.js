@@ -84,7 +84,11 @@ const shopee = require('./lib/shopee-proxy');
 // v3.52 - MAGALU: devolucao la e um TICKET de pos-venda com "remessa reversa".
 // OAuth 2.0 via ID Magalu; tokens persistidos nas env vars do Render.
 const { atualizarTokensNoRender: _attRender } = require('./lib/render-tokens');
-const magalu = require('./lib/magalu')({ atualizarTokensNoRender: _attRender });
+// b569 - UNIFICACAO DO MAGALU: a GOOD usa a copia UNICA (amb-devolucoes/lib-AMB/magalu-AMB.js, a fabrica da AMB/Girassol),
+// que ganhou no #460 o que so a GOOD tinha (mensagens do ticket, remessa mais recente, codigo so-digitos). PREFIXO ''
+// = as MESMAS variaveis da GOOD (MAGALU_ACCESS_TOKEN...), gravadas pelo mesmo lib/render-tokens; CHAVE_REGISTRO 'good'
+// (senao o registro de tokens marcaria 'ambtotal'). A copia antiga (lib/magalu.js) deixa de carregar.
+const magalu = require('./amb-devolucoes/lib-AMB/magalu-AMB').criar({ PREFIXO_ENV: '', CHAVE_REGISTRO: 'good' });
 
 // v3.65 - CORREIOS REVERSO: devolucoes ML "por agencia" chegam com etiqueta
 // dos Correios (AD/AP...BR). O indice claims->returns mapeia esse rastreio
@@ -554,7 +558,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.126.75 (b569: Magalu — bipe com codigo original, mensagem anterior a remessa nao vale, paginacao por meta.links.next)',
+      version: '9.126.76 (b569: GOOD usa a copia UNICA do Magalu, com as variaveis MAGALU_* dela)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -8938,7 +8942,8 @@ drenagem.intervalo(cicloDatasEntrega, 5 * 60 * 1000);
 // ⚠️ a espreita e a que a TELA precisa (a estrela da busca por nome), entao
 // ela vem CEDO — logo depois do magalu, nao no fim da fila.
 drenagem.daquiA(() => { if (magalu.cfg.autorizado) espreita.preAquecer(); }, 20 * 1000 + Math.round(ESPACO / 2));
-drenagem.intervalo(() => magalu.preAquecer(), 25 * 60 * 1000);
+// b569 - a copia unica do Magalu tem o PROPRIO relogio de 30 min (criado uma vez no preAquecer do boot); chamar de
+// novo a cada 25 min so duplicaria as montagens. O boot (acima) basta.
 drenagem.intervalo(() => mlReturns.preAquecer(), 25 * 60 * 1000);
 drenagem.intervalo(() => nfNomes.preAquecer(0), 25 * 60 * 1000);
 drenagem.intervalo(() => { if (magalu.cfg.autorizado) espreita.preAquecer(); }, 25 * 60 * 1000);

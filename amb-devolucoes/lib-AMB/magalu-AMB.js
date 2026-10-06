@@ -47,9 +47,11 @@ function criar(cfgEmpresa) {
   //
   // 📌 CONST dentro da fábrica, nunca `let` no módulo — foi o erro que
   // cometi no b396: a 2ª empresa sobrescrevia a etiqueta da 1ª.
-  const _TAG = String((cfgEmpresa && cfgEmpresa.PREFIXO_ENV) || 'AMB_')
+  const _TAG = String((cfgEmpresa && cfgEmpresa.PREFIXO_ENV != null) ? (cfgEmpresa.PREFIXO_ENV || 'GOOD_') : 'AMB_')
     .replace(/_$/, '');
-const _PREFIXO = String((cfgEmpresa && cfgEmpresa.PREFIXO_ENV) || 'AMB_');
+// b569 - prefixo VAZIO e valido (a GOOD usa MAGALU_* sem prefixo). Era `|| 'AMB_'`: com '' a GOOD leria e GRAVARIA
+// os tokens do Magalu da AMB. So a ausencia do campo cai no padrao historico.
+const _PREFIXO = (cfgEmpresa && cfgEmpresa.PREFIXO_ENV != null) ? String(cfgEmpresa.PREFIXO_ENV) : 'AMB_';
 const _env = (nome) => process.env[_PREFIXO + 'MAGALU_' + nome] || '';
 'use strict';
 
@@ -216,7 +218,7 @@ async function trocarCodePorToken(code, redirectUri) {
     { key: _PREFIXO + 'MAGALU_ACCESS_TOKEN',  value: TOKENS.access },
     { key: _PREFIXO + 'MAGALU_REFRESH_TOKEN', value: TOKENS.refresh },
   ]);
-  return { ok: true, persistiu, expira_em_s: r.data.expires_in || null };
+  return { ok: true, persistiu, expira_em_s: r.data.expires_in || null, scope: r.data.scope || null };   // b569: scope (tela da GOOD)
 }
 
 // b267 (review do Codex) - UMA renovacao por vez NESTA integracao. Serializar
@@ -540,6 +542,10 @@ async function acharDevolucao(codigo) {
 // b152 - a interface que a identificar da GOOD espera do cliente Magalu
 const cfg = {
   get ativo() { return temCredenciais(); },
+  // b569 - campos que a GOOD le (mesmos nomes de env, com o prefixo da empresa)
+  get clientId() { return CLIENT_ID; },
+  get redirectUri() { return _env('REDIRECT_URI') || null; },
+  get scopes() { return SCOPES; },
   get autorizado() { return temToken(); },
   apiBase: API_BASE,
 };
@@ -676,14 +682,20 @@ function preAquecer(atrasoMs) {
   // sem o tenant. 3min pos-boot + a cada 30min, como na GOOD.
   INDICES.agendado = true;   // b418/b419: a fila conta isto como ocupado
   setTimeout(() => { INDICES.agendado = false; construirIndiceDevolucoes().catch(e => console.error(`[${_TAG}/MAGALU] tickets:`, e.message)); }, (atrasoMs != null ? atrasoMs : 3 * 60 * 1000)).unref();
+  // b569 - os relogios de 30 min sao criados UMA vez por empresa: chamar preAquecer de novo (a GOOD chamava a cada
+  // 25 min) empilharia um relogio novo a cada chamada — dezenas de montagens simultaneas em um dia.
+  if (!INDICES.relogioTickets) { INDICES.relogioTickets = true;
   setInterval(() => { construirIndiceDevolucoes({ reverseEmBackground: true }).catch(() => {}); }, 30 * 60 * 1000).unref();
+  }
 
   if (!temTenant()) {
     console.log(`[${_TAG}/MAGALU] espreita desligada - falta ` + _PREFIXO + 'MAGALU_TENANT_ID (tickets seguem)');
     return;
   }
   setTimeout(() => { construirIndice().catch(e => console.error(`[${_TAG}/MAGALU]`, e.message)); }, 5 * 60 * 1000).unref();
+  if (!INDICES.relogioEspreita) { INDICES.relogioEspreita = true;
   setInterval(() => { construirIndice().catch(() => {}); }, 30 * 60 * 1000).unref();
+  }
 }
 
 // b149 - pra a tela de conexoes dizer qual app esta sendo usado
@@ -720,6 +732,14 @@ return {
   acharDevolucao,
   listarTickets, remessasReversasDoTicket, construirIndiceDevolucoes,
   temCredenciais, temToken, temTenant,
+  // b569 - nomes que a GOOD usa na tela de conectar (endereco de retorno = MAGALU_REDIRECT_URI da empresa);
+  // trocarCodePorTokens LANCA no erro, como a rota da GOOD espera (ela mostra o erro no catch)
+  urlConsentimento: (state) => urlAutorizacao(state, _env('REDIRECT_URI')),
+  trocarCodePorTokens: async (code) => {
+    const r = await trocarCodePorToken(code, _env('REDIRECT_URI'));
+    if (!r || !r.ok) throw new Error((r && (r.erro || r.motivo)) || 'Magalu recusou a troca do code');
+    return r;
+  },
   urlAutorizacao, trocarCodePorToken, chamarMagalu,
   construirIndice, resumoEspreita, statusIndice, preAquecer,
   porPedido: (p) => IDX.porPedido[String(p)] || null,
