@@ -483,7 +483,8 @@ async function acharDevolucao(codigo) {
     // on-demand: so a fase 1 (1-2s); reverse_codes completam em background
     try { await construirIndiceDevolucoes({ reverseEmBackground: true }); } catch (e) { /* segue com o que tiver */ }
   }
-  const porTicket = TIDX.mapa['P:' + dig] || TIDX.mapa['R:' + dig] || TIDX.mapa['O:' + dig] || null;
+  // b567 (Codex #460): o codigo COMPLETO (letras+digitos) vem primeiro — e ele que desempata dois codigos com os mesmos digitos
+  const porTicket = TIDX.mapa['R:' + bruto.toUpperCase()] || TIDX.mapa['P:' + dig] || TIDX.mapa['R:' + dig] || TIDX.mapa['O:' + dig] || null;
   if (porTicket) return porTicket;
 
   const daEspreita = IDX.porPedido[dig] || null;
