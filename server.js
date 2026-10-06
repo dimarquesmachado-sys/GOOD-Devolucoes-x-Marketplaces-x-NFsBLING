@@ -544,7 +544,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.126.63 (b553: GOOD usa a copia UNICA do ciclo de defeitos, a mesma da AMB/Girassol)',
+      version: '9.126.62 (b551: estoque de defeitos — escrever a descricao direto da lista)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -8765,45 +8765,10 @@ require('./amb-devolucoes/lib-AMB/rotas-admin-AMB.js')(app, Object.assign({}, DE
 // pedidos do galpao, lancamento de estoque no Bling). Mesmo conjunto que
 // roda na AMBTotal, adaptado pra forma da GOOD: recebe o app e o supabase
 // cru, e a checagem de admin usa req.tipoUsuario ou a chave ?k=.
-// b553 - UNIFICACAO DO CICLO DE DEFEITOS (servidor): a GOOD usa a copia UNICA (amb-devolucoes/lib-AMB/defeitos-ciclo-AMB.js),
-// a mesma da AMB/Girassol — as 16 rotas do estoque de defeitos. O adaptador abaixo entrega a ela o login, o banco, o
-// Bling e a configuracao DA GOOD (tabelas sem sufixo: devolucoes, defeito_comentarios, defeito_pedidos, pecas_retiradas).
-// A GOOD ganha o de-para de SKU na busca do estoque de defeitos. A copia antiga (lib/defeitos-ciclo.js) deixa de carregar.
-const DEPOSITO_GERAL_GOOD_DEF = FICHA_GOOD.fiscal.depositoGeral() || '4956031259';   // v4.57 - Geral da GOOD
-require('./amb-devolucoes/lib-AMB/defeitos-ciclo-AMB')(app, {
-  auth: {
-    requerLogin,
-    validarSessao,
-    tokenDaRequisicao: (req) => (req && req.cookies && req.cookies.sessao) || null,
-  },
-  db: {
-    tabelas: { devolucoes: 'devolucoes', pecasRetiradas: 'pecas_retiradas' },
-    conectar: () => supabase,
-    async atualizarTriagem(id, campos) {
-      try {
-        const r = await supabase.from('devolucoes').update(campos).eq('id', id).select().limit(1);
-        if (r.error) return { ok: false, erro: r.error.message };
-        if (!r.data || !r.data.length) return { ok: false, erro: 'triagem nao encontrada' };
-        return { ok: true, registro: r.data[0] };
-      } catch (e) { return { ok: false, erro: e.message }; }
-    },
-    resolverSku: (sku) => skuDeparaGOOD.resolverSku(sku),
-    async registrarPecaRetirada({ defeitoId, peca, usadaEm, quem }) {
-      try {
-        const r = await supabase.from('pecas_retiradas').insert([{ defeito_id: defeitoId || null, peca: peca || null, usada_em: usadaEm || null, quem: quem || null }]).select();
-        if (r.error) return { ok: false, erro: r.error.message };
-        return { ok: true, registro: (r.data || [])[0] || null };
-      } catch (e) { return { ok: false, erro: e.message }; }
-    },
-  },
-  // a copia unica chama o Bling com caminho relativo; o cliente da GOOD quer o endereco inteiro
-  bling: { chamarBling: (u, ...resto) => chamarBling(/^https?:/i.test(String(u)) ? u : 'https://api.bling.com.br/Api/v3' + u, ...resto) },
-  cfg: {
-    PREFIXO_ENV: 'GOOD_',
-    supabase: { tabelas: { devolucoes: 'devolucoes' } },
-    fiscal: { depositoGeral: () => DEPOSITO_GERAL_GOOD_DEF },
-    depositos: { geral: DEPOSITO_GERAL_GOOD_DEF },
-  },
+const registrarCicloDefeitos = require('./lib/defeitos-ciclo');
+registrarCicloDefeitos(app, {
+  supabase, requerLogin, chamarBling, adminOk,
+  DEPOSITO_GERAL: FICHA_GOOD.fiscal.depositoGeral() || '4956031259',   // v4.57 - Geral da GOOD
 });
 
 // v3.45 - rotas de impressao (QZ assinado + fila remota)
