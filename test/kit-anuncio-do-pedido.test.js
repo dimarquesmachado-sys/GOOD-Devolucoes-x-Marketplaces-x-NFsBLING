@@ -19,8 +19,14 @@ const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o
   ok(chamadas === 1, '  segunda vez sai do cache (nao chama o ML de novo)');
   const r3 = await chamar({ mkt: 'shopee', pedido: '123' });
   ok(r3.o.ok === false && r3.o.suportado === false, '  outro marketplace: suportado:false (a tela mantem "N produtos")');
+  const r4 = await chamar({ mkt: '', pedido: '2000018571424600' });
+  ok(r4.o.ok && r4.o.titulo, '⚠️ Codex P2: marketplace vazio + id 20+14 digitos e inferido como ML');
+  const r5 = await chamar({ mkt: '', pedido: '123' });
+  ok(r5.o.ok === false && r5.o.suportado === false, '  marketplace vazio sem formato de ML segue nao suportado');
   const h = fs.readFileSync(path.join(__dirname, '..', 'amb-devolucoes', 'public-AMB', 'painel-AMB.html'), 'utf8');
   ok(/data-mkt="\$\{escapeHtml\(String\(d\.marketplace \|\| ''\)\)\}" data-pedido="\$\{escapeHtml\(String\(d\.order_id \|\| ''\)\)\}"/.test(h) && /mostrarAnuncioDoKit\(linha, box\.dataset\.mkt, box\.dataset\.pedido, nDist\)/.test(h), '⚠️ o card de kit pede o anuncio e troca a linha de cima (itens da NF seguem embaixo)');
+  ok(/class="itens-nf-inline"\$\{kitAttr\}/.test(h) && /\.itens-nf-inline\[data-kit-n\]:not\(\[data-feito\]\)/.test(h) && /mostrarAnuncioDoKit\(linha, b\.dataset\.mkt, b\.dataset\.pedido, Number\(b\.dataset\.kitN\)\)/.test(h), '⚠️ Codex P1: kit com nf_itens ja carregados tambem pede o anuncio');
+  ok(/pedido com ' \+ an\.length \+ ' anúncios/.test(h), '⚠️ Codex P3: pedido com varios anuncios lista todos, nao so o 1o');
   ok(!/O resumo acima mostra só o 1º item/.test(h), '  o aviso que parecia erro saiu');
   console.log('');
   console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');

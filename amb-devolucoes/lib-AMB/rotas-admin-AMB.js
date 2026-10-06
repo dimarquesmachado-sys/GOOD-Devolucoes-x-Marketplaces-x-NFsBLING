@@ -1167,7 +1167,9 @@ app.get('/api/admin/anuncio-do-pedido', requerAdmin, async (req, res) => {
   const mkt = String(req.query.mkt || '').toLowerCase();
   const pedido = String(req.query.pedido || '').replace(/\D/g, '');
   if (!pedido) return res.status(400).json({ ok: false, erro: 'pedido obrigatorio' });
-  if (!/^(ml|mercadolivre|mercado_livre|mercado livre)$/.test(mkt)) return res.json({ ok: false, suportado: false, motivo: 'por enquanto so o ML' });
+  // Codex #464 (P2): marketplace vazio + id no formato do ML (20 + 14 digitos) e ML — mesma inferencia do painel (b492)
+  const ehML = /^(ml|mercadolivre|mercado_livre|mercado livre)$/.test(mkt) || (!mkt && /^20\d{14}$/.test(pedido));
+  if (!ehML) return res.json({ ok: false, suportado: false, motivo: 'por enquanto so o ML' });
   const chave = 'ml:' + pedido;
   const c = _cacheAnuncio.get(chave);
   if (c && Date.now() - c.ts < 6 * 3600e3) return res.json(c.v);

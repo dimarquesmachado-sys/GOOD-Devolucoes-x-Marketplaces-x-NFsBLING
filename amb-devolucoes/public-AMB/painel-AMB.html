@@ -3468,8 +3468,11 @@ async function carregarSemRetorno() {
         const r = await fetch((window.APP_BASE || '') + '/api/admin/anuncio-do-pedido?mkt=' + encodeURIComponent(mkt || '') + '&pedido=' + encodeURIComponent(pedido));
         const j = await r.json();
         if (!j || !j.ok || !j.titulo) return;   // outro marketplace ou ML fora: fica a linha de 'N produtos'
-        linha.innerHTML = '🧩 <strong>' + escapeHtml(j.titulo) + '</strong>' + (j.sku ? ' · SKU <code>' + escapeHtml(j.sku) + '</code>' : '')
-          + ' · <span style="color:#6a1b9a;">kit com ' + nDist + ' produtos — itens da NF abaixo</span>';
+        // Codex #464 (P3): pedido com VARIOS anuncios lista todos; so com 1 anuncio ele e 'o kit' do card
+        var an = (Array.isArray(j.itens) ? j.itens : []).filter(function (x) { return x && x.titulo; });
+        if (!an.length) an = [{ titulo: j.titulo, sku: j.sku }];
+        var txt = an.map(function (x) { return (an.length > 1 && x.qtd ? escapeHtml(String(x.qtd)) + '× ' : '') + '<strong>' + escapeHtml(x.titulo) + '</strong>' + (x.sku ? ' · SKU <code>' + escapeHtml(x.sku) + '</code>' : ''); }).join(' + ');
+        linha.innerHTML = '🧩 ' + txt + ' · <span style="color:#6a1b9a;">' + (an.length > 1 ? 'pedido com ' + an.length + ' anúncios' : 'kit') + ' com ' + nDist + ' produtos — itens da NF abaixo</span>';
       } catch (e) { /* so o resumo do card; a lista da NF ja esta na tela */ }
     }
     function linhaProduto(d) {
@@ -3483,7 +3486,10 @@ async function carregarSemRetorno() {
     function renderItensCard(d) {
       if (Array.isArray(d.nf_itens) && d.nf_itens.length > 0) {
         const bloco = decidirBlocoItens(d.nf_numero, d.nf_itens, d.produto_sku, d.produto_qtd);   // b170
-        return bloco ? `<span class="itens-nf-inline">${bloco}</span>` : '';
+        // Codex #464 (P1): NF ja carregada nao tem caixa automatica — marca pro anuncio do kit ser buscado
+        const nDistInline = new Set(d.nf_itens.map(i => String(i.sku || i.codigo || '').trim().toUpperCase()).filter(Boolean)).size;   // mesma conta de linhaProduto
+        const kitAttr = (nDistInline > 1 && d.order_id) ? ` data-kit-n="${nDistInline}" data-mkt="${escapeHtml(String(d.marketplace || ''))}" data-pedido="${escapeHtml(String(d.order_id))}"` : '';
+        return bloco ? `<span class="itens-nf-inline"${kitAttr}>${bloco}</span>` : '';
       }
       if (d.nf_id_bling) {
         // b67 - JA VEM ABERTO: nada de setinha. A caixa nasce visivel e se
@@ -3503,6 +3509,13 @@ async function carregarSemRetorno() {
      * daria 429. Cada caixa e buscada uma unica vez (data-feito).
      */
     async function autoCarregarItens() {
+      // Codex #464 (P1): kits cujos itens da NF ja vieram em nf_itens — busca o anuncio uma vez por card
+      document.querySelectorAll('.itens-nf-inline[data-kit-n]:not([data-feito])').forEach(function (b) {
+        b.dataset.feito = '1';
+        var cardEl = b.closest('.item') || b.parentNode;
+        var linha = cardEl && cardEl.querySelector('.linha-produto');
+        if (linha) mostrarAnuncioDoKit(linha, b.dataset.mkt, b.dataset.pedido, Number(b.dataset.kitN));
+      });
       const caixas = Array.prototype.slice.call(
         document.querySelectorAll('.itens-nf-auto:not([data-feito])')).slice(0, 40);
       // b538 (Codex #442): o lote e de 40 por vez; sem nova passada, a 41a caixa em diante ficava para sempre
