@@ -1,3 +1,5 @@
+// b566 - COPIA do teste da GOOD rodando SOBRE a copia unica do Magalu (amb-devolucoes/lib-AMB/magalu-AMB.js), com as
+// checagens de texto adaptadas a forma da unica (mesmo comportamento).
 // Roda com: node test/magalu-reversas.test.js
 //
 // A conversa do Checkout mapeou os cancelamentos do Magalu e achou 14 casos
@@ -60,7 +62,7 @@ ok(/linhas\.push\(\{ code, erro:/.test(DEBUG),
 // coletado 05/08, entregue no galpao 06/08. Nossa consulta dizia
 // tem_reversa:false, e o pacote ficou tres semanas sem ninguem esperando.
 {
-  const MAGALU = fs.readFileSync(path.join(__dirname, '..', 'lib', 'magalu.js'), 'utf8');
+  const MAGALU = fs.readFileSync(path.join(__dirname, '..', 'amb-devolucoes', 'lib-AMB', 'magalu-AMB.js'), 'utf8');
 
   ok(/CAMPOS_CODIGO = \['reverse_code'/.test(MAGALU),
      'o codigo e procurado em VARIOS campos, nao so `reverse_code`');
@@ -68,11 +70,11 @@ ok(/linhas\.push\(\{ code, erro:/.test(DEBUG),
      'e entre VARIAS remessas pego a mais recente — com reagendamento, a ultima e a que valeu');
 
   // a segunda fonte: o texto do SAC
-  ok(/async function mensagensDoTicket/.test(MAGALU),
+  ok(/function mensagensDoTicket/.test(MAGALU),
      'ha segunda fonte: as mensagens do protocolo');
 
   // b190.1: o codigo da MAIS RECENTE e o que vale
-  ok(/const rcMaisRecente = ordenadas\.length \? codigoDe\(ordenadas\[0\]\)/.test(MAGALU),
+  ok(/let rc = ordenadas\.length \? codigoDe\(ordenadas\[0\]\)/.test(MAGALU),
      'o codigo vem da remessa MAIS RECENTE — a reagendada, que aconteceu');
   ok(/dev\.codigo_possivelmente_obsoleto = true/.test(MAGALU),
      '  e o codigo de tentativa ANTERIOR e ultimo recurso, marcado como suspeito');
@@ -87,10 +89,10 @@ ok(/linhas\.push\(\{ code, erro:/.test(DEBUG),
   // b190.1: o indice precisa casar com a busca, que limpa o codigo
   ok(/const soNum = String\(rc\)\.replace\(\/\\D\/g, ''\);/.test(MAGALU),
      'o codigo e indexado TAMBEM so com digitos');
-  ok(/acharDevolucao\(\) LIMPA o codigo/.test(MAGALU),
+  ok(/const dig = soDigitos\(bruto\);/.test(MAGALU),
      '  porque a busca limpa antes de procurar — senao o caso continuaria escapando');
   // b190.3: dois codigos podem colidir quando reduzidos a digitos
-  ok(/&& !IDX\.mapa\['R:' \+ soNum\]/.test(MAGALU),
+  ok(/&& !TIDX\.mapa\['R:' \+ soNum\]/.test(MAGALU),
      '  e a chave so-digitos nao SOBRESCREVE: DA597697016BR e XY597697016ZW colidiriam');
   // b190.3: a mensagem mais recente, pelo mesmo motivo da remessa
   ok(/const porData = msgs\.slice\(\)\.sort/.test(MAGALU),
@@ -99,7 +101,7 @@ ok(/linhas\.push\(\{ code, erro:/.test(DEBUG),
      '  consultada SO quando o /returns nao deu codigo (uma chamada a mais, so onde precisa)');
 
   // o garimpo no texto livre
-  const fn = new Function('return ' + MAGALU.match(/function codigoNoTexto[\s\S]*?\n  \}/)[0])();
+  const fn = new Function('return ' + MAGALU.match(/function codigoNoTexto[\s\S]*?\n\s*\}/)[0])();
   ok(fn('O número da coleta a ser realizado é 4667981503 - Nº do objeto: DA597697016BR') === 'DA597697016BR',
      'acha o objeto no texto do SAC (o caso real)');
   ok(fn('Prezado, segue AP268276786BR para devolucao') === 'AP268276786BR',
