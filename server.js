@@ -87,7 +87,7 @@ const { atualizarTokensNoRender: _attRender } = require('./lib/render-tokens');
 // b569 - UNIFICACAO DO MAGALU: a GOOD usa a copia UNICA (amb-devolucoes/lib-AMB/magalu-AMB.js, a fabrica da AMB/Girassol),
 // que ganhou no #460 o que so a GOOD tinha (mensagens do ticket, remessa mais recente, codigo so-digitos). PREFIXO ''
 // = as MESMAS variaveis da GOOD (MAGALU_ACCESS_TOKEN...), gravadas pelo mesmo lib/render-tokens; CHAVE_REGISTRO 'good'
-// (senao o registro de tokens marcaria 'ambtotal'). A copia antiga (lib/magalu.js) deixa de carregar.
+// (senao o registro de tokens marcaria 'ambtotal'). A copia antiga (lib/magalu.js) foi apagada no b570.
 const magalu = require('./amb-devolucoes/lib-AMB/magalu-AMB').criar({ PREFIXO_ENV: '', CHAVE_REGISTRO: 'good' });
 
 // v3.65 - CORREIOS REVERSO: devolucoes ML "por agencia" chegam com etiqueta
@@ -558,7 +558,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.126.76 (b569: GOOD usa a copia UNICA do Magalu, com as variaveis MAGALU_* dela)',
+      version: '9.126.77 (b570: copia antiga do Magalu da GOOD apagada — uma so pras 3)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
