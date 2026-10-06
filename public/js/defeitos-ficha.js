@@ -599,7 +599,9 @@
           + '<div style="font-size:13px;margin-top:4px;font-weight:600;">' + esc(it.titulo || '') + '</div>'
           + (laudo
               ? '<div style="font-size:12.5px;color:#8C1D18;background:#FBEAE8;border-radius:7px;padding:5px 9px;margin-top:6px;">🔧 ' + esc(capitalizar(laudo)) + '</div>'
-              : '<div style="font-size:12px;color:#999;margin-top:6px;font-style:italic;">Sem descrição do defeito — abra a ficha e escreva no histórico</div>')
+              : '<div style="font-size:12px;color:#999;margin-top:6px;font-style:italic;">Sem descrição do defeito '
+              + '<a href="#" onclick="event.preventDefault();event.stopPropagation();escreverLaudoDireto(' + JSON.stringify(String(it.id)).replace(/"/g, '&quot;') + ')" '
+              + 'style="color:#1565c0;font-weight:700;font-style:normal;text-decoration:none;">✏️ escrever a descrição</a></div>')
           + (it.tem_fotos ? '<div style="font-size:11.5px;color:#777;margin-top:4px;">📷 ' + it.tem_fotos + ' foto(s)</div>' : '')
           // v4.90 (pedido do Diego: "a pessoa tem q ter bola de cristal pra saber
           // q pode clicar. tudo q puder clicar, faz um botão") - o card inteiro
@@ -1313,6 +1315,19 @@
     };
     if (onExcluir) window[idCaixa + 'Excluir'] = onExcluir;
   }
+
+  // b549 - dono, 05/10 ('tem que editar no estoque defeitos'): peca sem descricao (ex.: #113, triada antes do texto
+  // do problema ser gravado) — escrever direto da lista: abre a ficha e ja abre a caixa de edicao da descricao.
+  window.escreverLaudoDireto = async function (id) {
+    // review do Codex: com outro card expandido inline, `fichaInlineId` ficava no card antigo e o salvar nao
+    // recarregava a ficha (comentario de auditoria/numeracao velhos). Fecha o inline antes de abrir em tela cheia.
+    fecharFichaInline();
+    marcarCardAberto(null);
+    try { await window.abrirFichaDefeito(id); } catch (e) { return; }
+    // se a ficha nao carregou, `fichaAberta` ainda e a da peca anterior: nao abrir a edicao dela por engano
+    if (!fichaAberta || !fichaAberta.item || String(fichaAberta.item.id) !== String(id)) return;
+    if (typeof window.editarLaudo === 'function') window.editarLaudo();
+  };
 
   window.editarLaudo = function () {
     if (!fichaAberta || !fichaAberta.item) return;
