@@ -454,6 +454,7 @@ function statusIndice() {
     construindo,
     idade_min: IDX.ts ? Math.round((Date.now() - IDX.ts) / 60000) : null,
     total_nfs: IDX.totalNFs,
+      construindo_ha_s: IDX.construindoDesde ? Math.round((Date.now() - IDX.construindoDesde) / 1000) : null,   // b556
     nomes_distintos: IDX.nomes,
     nomes_curtos: Object.keys(IDX.mapaCurto).length,
     janela_dias: Number(process.env[(cfg && cfg.PREFIXO_ENV || 'AMB_') + 'NF_JANELA_DIAS'] || 120),
@@ -531,9 +532,21 @@ async function buscarPorNome(texto, opts = {}) {
     // depois do timeout comeca OUTRA varredura de 80 paginas, e o
     // estoquista que busca de novo dobra o trafego do Bling.
     if (!IDX.emConstrucao) {
-      IDX.emConstrucao = construirIndice()
+      // b556 - TETO DE CONSTRUCAO (protecao que so a copia da GOOD tinha): se a montagem passar do teto (porteiro
+      // do Bling pausado, fila travada), ela e abandonada e libera a proxima tentativa — sem isto o `emConstrucao`
+      // ficava pendurado e toda busca seguinte esperava por ele. O carimbo de inicio aparece no status (/health) e
+      // e limpo ao terminar.
+      const TETO_CONSTRUCAO_MS = Number(process.env.NF_NOMES_TETO_CONSTRUCAO_MS || 240000);
+      IDX.construindoDesde = Date.now();
+      IDX.emConstrucao = Promise.race([
+        construirIndice(),
+        new Promise((ok) => setTimeout(() => {
+          console.warn(`[${TAG_EMP}/NF-NOMES] construcao passou de ${TETO_CONSTRUCAO_MS / 1000}s — abandono e libero pra proxima tentar`);
+          ok();
+        }, TETO_CONSTRUCAO_MS)),
+      ])
         .catch(() => {})
-        .finally(() => { IDX.emConstrucao = null; });
+        .finally(() => { IDX.emConstrucao = null; IDX.construindoDesde = null; });
     }
     try {
       await Promise.race([
