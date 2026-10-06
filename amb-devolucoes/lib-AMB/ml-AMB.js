@@ -37,7 +37,7 @@ function criarMl(cfg) {
   // Era `[AMB/...]` fixo. O Render junta o log das duas no MESMO
   // lugar: com a Girassol montada, um erro dela apareceria como
   // `[AMB/...]` e mandaria caçar no app errado.
-  const TAG_EMP = String((cfg && cfg.PREFIXO_ENV) || 'AMB_')
+  const TAG_EMP = String((cfg && cfg.PREFIXO_ENV != null) ? (cfg.PREFIXO_ENV || 'GOOD_') : 'AMB_')
     .replace(/_$/, '');
 const { atualizarTokensNoRender } = require('../../lib/render-tokens');
 const { registrarPreventiva } = require('../../lib/token-preventiva');   // b271
@@ -193,6 +193,16 @@ async function renovarTokenInterno() {
  * Chamada base. Retry de 401 (renova) e 429 (espera).
  * Aceita caminho relativo ("/users/me") ou URL inteira.
  */
+// b571 - trava do 403 por rota (porte da GOOD)
+const ML_ULTIMA_RENOV_POR_ROTA = new Map();
+const ML_JANELA_RENOV_MS = 10 * 60 * 1000;
+function rotaDe(url) {
+  try { return new URL(String(url)).pathname.replace(/\/\d{6,}/g, '/{id}').replace(/\/[A-Z]{2,4}\d{6,}/g, '/{id}'); }
+  catch (e) { return String(url).split('?')[0]; }
+}
+function podeRenovarPor403(url) { return Date.now() - (ML_ULTIMA_RENOV_POR_ROTA.get(rotaDe(url)) || 0) >= ML_JANELA_RENOV_MS; }
+function registrarRenovacaoPor403(url) { ML_ULTIMA_RENOV_POR_ROTA.set(rotaDe(url), Date.now()); }
+
 async function chamarML(caminho, opcoes = {}) {
   // ⚠️ b424: de onde vem o token desta chamada (ver bling-AMB.js).
   const tokenAgora = async () => {
@@ -234,6 +244,27 @@ async function chamarML(caminho, opcoes = {}) {
         }
       }
       return { ok: false, status: 401, error: `token invalido e refresh falhou - reautorize pelo ${cfg.PREFIXO_ROTA}/conectar` };
+    }
+
+    // b571 - porte da GOOD (lib/ml.js): 403 TAMBEM pode ser token vencido. Renova no maximo 1x por ROTA a cada 10 min
+    // (o refresh do ML e de uso unico e 403 de permissao nao melhora com token novo); o relogio da rota so anda se o
+    // refresh foi de fato gasto.
+    if (status === 403) {
+      if (!podeRenovarPor403(url)) {
+        return { ok: false, status: 403, error: (erro.response && erro.response.data) || erro.message, rota_ja_renovou: true };
+      }
+      tokenLeitor.invalidar(CHAVE_TOKEN, 'ml');
+      tokenLeitor.anotarInvalidacao(CHAVE_TOKEN, 'ml', 403);
+      if (await renovarToken()) {
+        registrarRenovacaoPor403(url);
+        try {
+          const r = await fazer();
+          return { ok: true, data: r.data, status: r.status };
+        } catch (e2) {
+          return { ok: false, status: e2.response && e2.response.status, error: (e2.response && e2.response.data) || e2.message };
+        }
+      }
+      return { ok: false, status: 403, error: (erro.response && erro.response.data) || erro.message };
     }
 
     if (status === 429) {
@@ -293,8 +324,8 @@ const PREVENTIVA = registrarPreventiva({
   temRefresh: () => !!REFRESH_TOKEN,
   renovar: () => renovarToken(),
   persistiu: () => ultimaPersistencia,
-  carimboEnv: (cfg.PREFIXO_ENV || 'AMB_') + 'ML_RENOVADO_EM',
-  diasEnv: (cfg.PREFIXO_ENV || 'AMB_') + 'ML_RENOVAR_DIAS',
+  carimboEnv: ((cfg.PREFIXO_ENV != null) ? cfg.PREFIXO_ENV : 'AMB_') + 'ML_RENOVADO_EM',
+  diasEnv: ((cfg.PREFIXO_ENV != null) ? cfg.PREFIXO_ENV : 'AMB_') + 'ML_RENOVAR_DIAS',
 });
 const renovacaoPreventiva = (op) => PREVENTIVA.preventiva(op);
 const ligarRenovacaoPreventiva = (op) => PREVENTIVA.ligar(op);

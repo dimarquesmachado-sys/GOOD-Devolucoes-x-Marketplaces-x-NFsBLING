@@ -50,7 +50,7 @@ const DIR = path.join(RAIZ, 'amb-devolucoes', 'lib-AMB');
     const src = fs.readFileSync(path.join(DIR, f), 'utf8');
     const semCom = src.split('\n')
       .filter((l) => !l.trim().startsWith('//')).join('\n');
-    ok(/const TAG_EMP = String\(\(cfg && cfg\.PREFIXO_ENV\)/.test(semCom),
+    ok(/const TAG_EMP = String\(\(cfg && cfg\.PREFIXO_ENV/.test(semCom),   // b571: aceita o prefixo vazio valido
        `  ${f}: a etiqueta sai da ficha (const na fabrica)`);
     ok(!/\[AMB\//.test(semCom), `  ${f}: e nao sobrou \`[AMB/\` cravado`);
   }

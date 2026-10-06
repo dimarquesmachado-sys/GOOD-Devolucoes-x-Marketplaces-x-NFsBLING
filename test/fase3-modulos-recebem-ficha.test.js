@@ -147,7 +147,7 @@ for (const [nome, rel] of PRONTOS) {
     const src = fs.readFileSync(path.join(RAIZ, 'amb-devolucoes', 'lib-AMB', arq), 'utf8');
     ok(/empresa: cfg\.CHAVE_REGISTRO/.test(src),
        arq + ': a empresa da renovacao sai da FICHA, nao do literal');
-    ok(/\(cfg\.PREFIXO_ENV \|\| 'AMB_'\)/.test(src),
+    ok(/\(cfg\.PREFIXO_ENV \|\| 'AMB_'\)/.test(src) || /\(\(cfg\.PREFIXO_ENV != null\) \? cfg\.PREFIXO_ENV : 'AMB_'\)/.test(src),   // b571: prefixo vazio valido
        '  e o prefixo das env vars tambem');
   }
 }
