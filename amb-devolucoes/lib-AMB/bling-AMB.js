@@ -51,6 +51,7 @@ function criarBling(cfg) {
   const ritmo = require('../../lib/ritmo-por-empresa').criarRitmo({
     nome: CHAVE_TOKEN + '/bling',
     limitePorSegundo: Number(process.env.BLING_REQ_POR_SEGUNDO || 3),
+    contaPorteiro: CHAVE_TOKEN,   // b577 - pede a vez ao porteiro central na conta DESTA empresa (girassol/ambtotal)
   });
   // ⚠️ b396 - A ETIQUETA DO LOG DIZ QUAL EMPRESA.
   //
@@ -274,7 +275,7 @@ async function chamarBling(caminho, opcoes = {}) {
     if (status === 429 && opcoes.semRetentativa) {
       const raSR = Number(erro && erro.response && erro.response.headers
         && erro.response.headers['retry-after']);
-      ritmo.avisar429(Number.isFinite(raSR) && raSR > 0 ? raSR : 0);
+      ritmo.avisar429(Number.isFinite(raSR) && raSR > 0 ? raSR : 0, opcoes.fundo ? 'fundo' : 'operacao');
     }
     if (opcoes.semRetentativa) {
       return { ok: false, status, error: (erro.response && erro.response.data) || erro.message };
@@ -308,7 +309,7 @@ async function chamarBling(caminho, opcoes = {}) {
         } catch (e2) {
           // e se ESSE tomar 429, avisa tambem — e o mesmo P1
           const st2 = e2.response && e2.response.status;
-          if (st2 === 429) ritmo.avisar429(0);
+          if (st2 === 429) ritmo.avisar429(0, opcoes.fundo ? 'fundo' : 'operacao');
           return { ok: false, status: e2.response && e2.response.status, error: (e2.response && e2.response.data) || e2.message };
         }
       }
@@ -331,7 +332,7 @@ async function chamarBling(caminho, opcoes = {}) {
       // 1s, 2s, 4s... ate 15s enquanto os 429 se seguirem. O dado de 28/09
       // (log da Girassol) diz que o Bling NAO manda retry-after, entao a
       // pausa e escolha nossa: curta e crescente, nao 1,5s fixo martelando.
-      const pausaMs = ritmo.avisar429(Number.isFinite(raAMB) && raAMB > 0 ? raAMB : 0);
+      const pausaMs = ritmo.avisar429(Number.isFinite(raAMB) && raAMB > 0 ? raAMB : 0, opcoes.fundo ? 'fundo' : 'operacao');
       console.log(`[${TAG_EMP}/Bling] 429 - pausa de ${Math.round(pausaMs / 1000)}s`
         + ' | retry-after do Bling: '
         + (Number.isFinite(raAMB) && raAMB > 0 ? raAMB + 's' : 'NAO MANDOU')
@@ -353,7 +354,7 @@ async function chamarBling(caminho, opcoes = {}) {
         // fila achava que a pausa tinha bastado e soltava o proximo no
         // mesmo ritmo — que tomava o 3o.
         const st2 = e2.response && e2.response.status;
-        if (st2 === 429) ritmo.avisar429(0);
+        if (st2 === 429) ritmo.avisar429(0, opcoes.fundo ? 'fundo' : 'operacao');
         return { ok: false, status: st2, error: (e2.response && e2.response.data) || e2.message };
       }
     }
