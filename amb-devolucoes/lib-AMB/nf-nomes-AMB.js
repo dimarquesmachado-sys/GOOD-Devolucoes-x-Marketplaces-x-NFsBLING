@@ -190,6 +190,7 @@ async function construirIndiceInterno(opts = {}) {
     // hora atual na data e o filtro de mesmo dia sempre volta zero.
     // Paginamos e cortamos pela data no nosso lado.
     for (let pg = 1; pg <= maxPaginas; pg++) {
+      if (minhaGeracao !== geracaoConstrucao) { cancelado = true; break; }   // b558 - abandonada pelo teto: para de chamar o Bling
       // b263 - o SEGUNDO laco deste arquivo tambem. ⚠️ Achei porque conferi a
       // contagem depois de aplicar — a primeira tentativa pegou so um dos dois,
       // por diferenca de indentacao.
@@ -324,6 +325,7 @@ async function construirIndiceInterno(opts = {}) {
     let vendasLidas = 0, erroVendas = null;
     try {
       for (let pg = 1; pg <= maxPaginas; pg++) {
+        if (minhaGeracao !== geracaoConstrucao) { cancelado = true; break; }   // b558 - abandonada pelo teto: para de chamar o Bling
         // b263 - o SEGUNDO laco deste arquivo tambem. ⚠️ Achei porque conferi a
         // contagem depois de aplicar — a primeira tentativa pegou so um dos dois,
         // por diferenca de indentacao.
@@ -395,6 +397,9 @@ async function construirIndiceInterno(opts = {}) {
     // Mesma regra do indice do ML: se falhou e nao veio nada, nao
     // marca como quente — o proximo bipe tenta de novo em vez de
     // confiar num indice vazio por 30 minutos.
+    // b558 - montagem ABANDONADA pelo teto (outra ja pode estar montando): nao toca no indice — quem manda nele agora
+    // e a montagem nova; o `finally` desta tambem nao mexe na guarda (geracao diferente).
+    if (minhaGeracao !== geracaoConstrucao) return IDX;
     const falhouGeral = !!erroBusca && totalNFs === 0;
     // b263.1 (Codex, P2) - ⚠️ CANCELAMENTO CONTA COMO FALHA AQUI.
     //
