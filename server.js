@@ -554,7 +554,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.126.72 (b565: copia antiga do indice de nomes da GOOD apagada — uma so pras 3)',
+      version: '9.126.75 (b569: Magalu — bipe com codigo original, mensagem anterior a remessa nao vale, paginacao por meta.links.next)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -1378,7 +1378,8 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
   async function tentarDevolucaoMagalu() {
     if (!magalu.cfg.ativo || !magalu.cfg.autorizado) return false;
     let devMag = null;
-    try { devMag = await magalu.acharDevolucao(codigoLimpo); } catch (e) { devMag = null; }
+    // Codex #460: o codigo completo (letras+digitos) desempata codigos com os mesmos digitos; se um QR trocou o codigo, vale o do QR
+    try { devMag = await magalu.acharDevolucao(codigoOriginal.replace(/[^0-9]/g, '') === codigoLimpo ? codigoOriginal : codigoLimpo); } catch (e) { devMag = null; }
     resultado.tentativas.push({
       tipo: 'magalu_devolucao', codigo: codigoLimpo,
       ok: !!devMag, status: devMag ? 200 : 404,

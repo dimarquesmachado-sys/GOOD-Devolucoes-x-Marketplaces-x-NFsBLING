@@ -302,6 +302,45 @@ async function listarTickets(params = {}) {
   return chamarMagalu(`/seller/v0/tickets${qs ? '?' + qs : ''}`);
 }
 
+// b566 - porte da GOOD: mensagens do ticket e o codigo de postagem escrito no texto (formato Correios: 2 letras,
+
+// 9 digitos, 2 letras — ex. AA123456789BR)
+
+// Codex #460: (a) a lista de mensagens e PAGINADA — so a 1a pagina podia esconder a mensagem com o codigo;
+// (b) o Magalu limita a leitura de mensagens do SAC (~200/min) e a fase 2 roda 4 tickets por vez: uma vaga a cada
+// 400 ms (<= 150/min), reservada em ordem mesmo com chamadas simultaneas.
+let _proximaVagaMensagem = 0;
+async function aguardarVagaMensagem() {
+  const agora = Date.now();
+  const vez = Math.max(agora, _proximaVagaMensagem);
+  _proximaVagaMensagem = vez + 400;
+  if (vez > agora) await new Promise((ok) => setTimeout(ok, vez - agora));
+}
+async function mensagensDoTicket(ticketId) {
+  const todas = [];
+  for (let pg = 0; pg < 50; pg++) {   // trava de seguranca (5.000 mensagens); quem manda e o meta.links.next
+    await aguardarVagaMensagem();
+    const r = await chamarMagalu(`/seller/v0/tickets/${encodeURIComponent(ticketId)}/messages?_limit=100&_offset=${pg * 100}`);
+    if (!r.ok) return pg === 0 ? r : { ok: true, data: { results: todas } };   // pagina seguinte falhou: fica o que leu
+    const lote = (r.data && r.data.results) || [];
+    todas.push(...lote);
+    // Codex #460: o fim da lista e o 'meta.links.next' do Magalu; sem 'meta' na resposta, pagina cheia = pode ter mais
+    const links = r.data && r.data.meta && r.data.meta.links;
+    const temMais = links ? !!links.next : lote.length >= 100;
+    if (!lote.length || !temMais) break;
+  }
+  return { ok: true, data: { results: todas } };
+}
+
+function codigoNoTexto(texto) {
+
+  const m = String(texto || '').match(/\b([A-Za-z]{2}\d{9}[A-Za-z]{2})\b/);
+
+  return m ? m[1].toUpperCase() : null;
+
+}
+
+
 async function remessasReversasDoTicket(ticketId) {
   return chamarMagalu(`/seller/v0/tickets/${encodeURIComponent(ticketId)}/returns`);
 }
@@ -323,11 +362,49 @@ async function _fase2ReverseCodes(abertos) {
         try {
           const rr = await remessasReversasDoTicket(dev.ticket_id);
           const res = (rr.ok && rr.data && rr.data.results) ? rr.data.results : [];
-          const comRc = res.find(x => x.reverse_code);
-          const rc = comRc ? comRc.reverse_code : null;
+          // b566 - porte da GOOD (lib/magalu.js): o codigo da reversa e o da remessa MAIS RECENTE (o cliente pode ter
+          // gerado outra etiqueta), em varios campos possiveis; sem codigo nas remessas, procura nas MENSAGENS do
+          // ticket (o cliente costuma escrever o codigo); por ultimo, o de uma remessa antiga, marcado como talvez
+          // obsoleto. Antes: so a primeira remessa com reverse_code — o bipe da AMB/Girassol perdia esses casos.
+          // Codex #460: 'code' e o identificador do PARCEIRO, nao rastreio — fora (senao pula a busca nas mensagens)
+          const CAMPOS_CODIGO = ['reverse_code', 'tracking_code', 'object_code', 'tracking', 'reverse_tracking_code'];
+          const codigoDe = (x) => {
+            for (const c of CAMPOS_CODIGO) { const v = x && x[c]; if (v && String(v).trim()) return String(v).trim(); }
+            return null;
+          };
+          const ordenadas = res.slice().sort((a, b) =>
+            String((b && (b.created_at || b.date)) || '').localeCompare(String((a && (a.created_at || a.date)) || '')));
+          let rc = ordenadas.length ? codigoDe(ordenadas[0]) : null;
+          const rcAntigo = ordenadas.map(codigoDe).find(Boolean) || null;
+          if (!rc) {
+            try {
+              const mm = await mensagensDoTicket(dev.ticket_id);
+              const msgs = (mm.ok && mm.data && mm.data.results) ? mm.data.results : [];
+              const porData = msgs.slice().sort((a, b) =>
+                String((b && (b.created_at || b.date || b.sent_at)) || '').localeCompare(String((a && (a.created_at || a.date || a.sent_at)) || '')));
+              // Codex #460: codigo escrito ANTES da remessa mais recente e de uma tentativa que falhou — nao vale como atual
+              const dataRecente = String((ordenadas[0] && (ordenadas[0].created_at || ordenadas[0].date)) || '');
+              let codigoAntigoMsg = null;
+              for (const msg of porData) {
+                const achado = codigoNoTexto((msg && (msg.body || msg.message || msg.text)) || '');
+                if (!achado) continue;
+                const dataMsg = String((msg && (msg.created_at || msg.date || msg.sent_at)) || '');
+                if (dataRecente && dataMsg && dataMsg < dataRecente) { codigoAntigoMsg = codigoAntigoMsg || achado; continue; }
+                rc = achado; dev.codigo_da_mensagem = true; break;
+              }
+              if (!rc && !rcAntigo && codigoAntigoMsg) { rc = codigoAntigoMsg; dev.codigo_da_mensagem = true; dev.codigo_possivelmente_obsoleto = true; }
+            } catch (e) { /* segue sem codigo; melhor que derrubar a fase 2 */ }
+            if (!rc && rcAntigo) { rc = rcAntigo; dev.codigo_possivelmente_obsoleto = true; }
+          }
           if (rc) {
             dev.reverse_code = String(rc);
             TIDX.mapa['R:' + dev.reverse_code] = dev;
+            // b566 - porte da GOOD: o bipe procura SO OS DIGITOS do codigo (acharDevolucao -> soDigitos), e a chave aqui
+            // tinha as letras ('R:DA597697016BR') — o bipe pelo codigo de postagem nunca achava por este caminho.
+            // Indexa tambem a versao so-digitos, sem SOBRESCREVER outra devolucao que ja tenha a mesma chave
+            // (DA597697016BR e XY597697016ZW colidiriam).
+            const soNum = String(rc).replace(/\D/g, '');
+            if (soNum && soNum !== dev.reverse_code && !TIDX.mapa['R:' + soNum]) TIDX.mapa['R:' + soNum] = dev;
             comReversa++;
           }
         } catch (e) { /* esse ticket fica sem reverse_code */ }
@@ -434,7 +511,8 @@ async function acharDevolucao(codigo) {
     // on-demand: so a fase 1 (1-2s); reverse_codes completam em background
     try { await construirIndiceDevolucoes({ reverseEmBackground: true }); } catch (e) { /* segue com o que tiver */ }
   }
-  const porTicket = TIDX.mapa['P:' + dig] || TIDX.mapa['R:' + dig] || TIDX.mapa['O:' + dig] || null;
+  // b567 (Codex #460): o codigo COMPLETO (letras+digitos) vem primeiro — e ele que desempata dois codigos com os mesmos digitos
+  const porTicket = TIDX.mapa['R:' + bruto.toUpperCase()] || TIDX.mapa['P:' + dig] || TIDX.mapa['R:' + dig] || TIDX.mapa['O:' + dig] || null;
   if (porTicket) return porTicket;
 
   const daEspreita = IDX.porPedido[dig] || null;
