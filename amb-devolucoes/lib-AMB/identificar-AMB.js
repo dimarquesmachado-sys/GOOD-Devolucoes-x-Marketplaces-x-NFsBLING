@@ -643,7 +643,8 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
   async function tentarDevolucaoMagalu() {
     if (!magalu.cfg.ativo || !magalu.cfg.autorizado) return false;
     let devMag = null;
-    try { devMag = await magalu.acharDevolucao(codigoLimpo); } catch (e) { devMag = null; }
+    // Codex #460: o codigo completo (letras+digitos) desempata codigos com os mesmos digitos; se um QR trocou o codigo, vale o do QR
+    try { devMag = await magalu.acharDevolucao(codigoOriginal.replace(/[^0-9]/g, '') === codigoLimpo ? codigoOriginal : codigoLimpo); } catch (e) { devMag = null; }
     resultado.tentativas.push({
       tipo: 'magalu_devolucao', codigo: codigoLimpo,
       ok: !!devMag, status: devMag ? 200 : 404,

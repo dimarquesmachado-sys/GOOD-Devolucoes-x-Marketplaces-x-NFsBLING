@@ -5,7 +5,7 @@ let falhas = 0;
 const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o); };
 const A = fs.readFileSync(path.join(__dirname, '..', 'amb-devolucoes', 'lib-AMB', 'magalu-AMB.js'), 'utf8');
 ok(/const CAMPOS_CODIGO = \['reverse_code', 'tracking_code', 'object_code', 'tracking', 'reverse_tracking_code'\];/.test(A), "⚠️ 'code' (identificador do parceiro) fora dos campos de rastreio");
-ok(/messages\?_limit=100&_offset=\$\{pg \* 100\}/.test(A) && /if \(lote\.length < 100\) break;/.test(A), '⚠️ mensagens PAGINADAS (o codigo pode estar alem da 1a pagina)');
+ok(/messages\?_limit=100&_offset=\$\{pg \* 100\}/.test(A) && /meta\.links/.test(A), '⚠️ mensagens PAGINADAS (o codigo pode estar alem da 1a pagina)');
 ok(/await aguardarVagaMensagem\(\);/.test(A) && /_proximaVagaMensagem = vez \+ 400;/.test(A), '⚠️ uma leitura de mensagem a cada 400 ms (<= 150/min, abaixo do limite do Magalu), em ordem mesmo com 4 simultaneas');
 // a vaga e reservada em ordem: 4 chamadas simultaneas ficam espacadas
 (async () => {

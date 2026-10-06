@@ -318,13 +318,16 @@ async function aguardarVagaMensagem() {
 }
 async function mensagensDoTicket(ticketId) {
   const todas = [];
-  for (let pg = 0; pg < 5; pg++) {   // ate 500 mensagens por ticket
+  for (let pg = 0; pg < 50; pg++) {   // trava de seguranca (5.000 mensagens); quem manda e o meta.links.next
     await aguardarVagaMensagem();
     const r = await chamarMagalu(`/seller/v0/tickets/${encodeURIComponent(ticketId)}/messages?_limit=100&_offset=${pg * 100}`);
     if (!r.ok) return pg === 0 ? r : { ok: true, data: { results: todas } };   // pagina seguinte falhou: fica o que leu
     const lote = (r.data && r.data.results) || [];
     todas.push(...lote);
-    if (lote.length < 100) break;
+    // Codex #460: o fim da lista e o 'meta.links.next' do Magalu; sem 'meta' na resposta, pagina cheia = pode ter mais
+    const links = r.data && r.data.meta && r.data.meta.links;
+    const temMais = links ? !!links.next : lote.length >= 100;
+    if (!lote.length || !temMais) break;
   }
   return { ok: true, data: { results: todas } };
 }
@@ -379,10 +382,17 @@ async function _fase2ReverseCodes(abertos) {
               const msgs = (mm.ok && mm.data && mm.data.results) ? mm.data.results : [];
               const porData = msgs.slice().sort((a, b) =>
                 String((b && (b.created_at || b.date || b.sent_at)) || '').localeCompare(String((a && (a.created_at || a.date || a.sent_at)) || '')));
+              // Codex #460: codigo escrito ANTES da remessa mais recente e de uma tentativa que falhou — nao vale como atual
+              const dataRecente = String((ordenadas[0] && (ordenadas[0].created_at || ordenadas[0].date)) || '');
+              let codigoAntigoMsg = null;
               for (const msg of porData) {
                 const achado = codigoNoTexto((msg && (msg.body || msg.message || msg.text)) || '');
-                if (achado) { rc = achado; dev.codigo_da_mensagem = true; break; }
+                if (!achado) continue;
+                const dataMsg = String((msg && (msg.created_at || msg.date || msg.sent_at)) || '');
+                if (dataRecente && dataMsg && dataMsg < dataRecente) { codigoAntigoMsg = codigoAntigoMsg || achado; continue; }
+                rc = achado; dev.codigo_da_mensagem = true; break;
               }
+              if (!rc && !rcAntigo && codigoAntigoMsg) { rc = codigoAntigoMsg; dev.codigo_da_mensagem = true; dev.codigo_possivelmente_obsoleto = true; }
             } catch (e) { /* segue sem codigo; melhor que derrubar a fase 2 */ }
             if (!rc && rcAntigo) { rc = rcAntigo; dev.codigo_possivelmente_obsoleto = true; }
           }
