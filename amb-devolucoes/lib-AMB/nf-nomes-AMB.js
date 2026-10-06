@@ -155,6 +155,7 @@ async function construirIndice(opts = {}) {
 }
 
 async function construirIndiceInterno(opts = {}) {
+  IDX._maisAntigaAcum = null;   // b560 - recalculada a cada montagem (a janela anda)
   if (construindo) return { ...IDX, jaEmAndamento: true };
   construindo = true;
   const t0 = Date.now();
@@ -267,6 +268,8 @@ async function construirIndiceInterno(opts = {}) {
 
       for (const nf of lista) {
         const quando = Date.parse(String(nf.dataEmissao || '').replace(' ', 'T'));
+        // b560 - a NF mais antiga do indice (a tela da GOOD mostra a cobertura; vale pras 3)
+        if (nf.dataEmissao && (!IDX._maisAntigaAcum || String(nf.dataEmissao) < IDX._maisAntigaAcum)) IDX._maisAntigaAcum = String(nf.dataEmissao);
         if (quando && quando < corte) { parouPorData = true; break; }
 
         const nomeOriginal = (nf.contato && nf.contato.nome) || '';
@@ -325,6 +328,7 @@ async function construirIndiceInterno(opts = {}) {
         IDX.porNumero = { ...porNumero };   // b474 (Codex, P2): o parcial tambem publica o indice por numero
         IDX.parcialAte = pg;
         IDX.totalNFs = totalNFs;
+        IDX.maisAntiga = IDX._maisAntigaAcum || IDX.maisAntiga || null;
         console.log(`[${TAG_EMP}/NF-NOMES] parcial publicado: ${pg} paginas, ${totalNFs} NFs`);
       }
 
@@ -445,6 +449,7 @@ async function construirIndiceInterno(opts = {}) {
     IDX.porNumero = porNumero;
     IDX.mapaCurto = mapaCurto;
     IDX.totalNFs = totalNFs;
+    IDX.maisAntiga = IDX._maisAntigaAcum || IDX.maisAntiga || null;
     IDX.nomes = Object.keys(mapa).length;
     IDX.duracaoSeg = Math.round((Date.now() - t0) / 1000);
     IDX.erro = erroBusca;
@@ -489,6 +494,7 @@ function statusIndice() {
     construindo,
     idade_min: IDX.ts ? Math.round((Date.now() - IDX.ts) / 60000) : null,
     total_nfs: IDX.totalNFs,
+      nf_mais_antiga: IDX.maisAntiga || null,   // b560 - a tela da GOOD le este campo
       construindo_ha_s: IDX.construindoDesde ? Math.round((Date.now() - IDX.construindoDesde) / 1000) : null,   // b556
     nomes_distintos: IDX.nomes,
     nomes_curtos: Object.keys(IDX.mapaCurto).length,
@@ -636,13 +642,30 @@ async function buscarPorNome(texto, opts = {}) {
 
   const total = hits.length;
   const inicio = (pagina - 1) * porPagina;
-  const fatia = hits.slice(inicio, inicio + porPagina);
+  let fatia = hits.slice(inicio, inicio + porPagina);   // b560: let (a marca de antigo reatribui)
+  // b560 - porte da GOOD ('era o bug: so o mes atual chegava'): na 1a pagina, alem dos mais recentes, vem uma AMOSTRA
+  // dos mais antigos do resto (sempre inclui o mais antigo de todos), marcada `_antigo`. A paginacao continua igual
+  // (a pagina 2 comeca onde a 1 parou) — a amostra so antecipa que existem vendas antigas com esse nome.
+  if (inicio === 0 && hits.length > porPagina) {
+    const resto = hits.slice(porPagina);
+    const idxs = new Set([resto.length - 1]);
+    const passo = Math.max(1, Math.floor(resto.length / 6));
+    for (let i = 0; i < resto.length && idxs.size < 6; i += passo) idxs.add(i);
+    fatia = fatia.concat([...idxs].sort((x, y) => x - y).map((i) => Object.assign({}, resto[i], { _antigo: true })));
+  }
 
+  // b560 - porte da GOOD (testes antigos dela rodados sobre esta copia): (1) quem nao esta entre os 8 mais recentes
+  // vem marcado `_antigo`, pro estoquista saber que e venda antiga; (2) `montando` quando ainda nao ha indice
+  // completo — a tela diz 'ainda montando' em vez de 'nao encontrado' seco (inclusive quando a 1a montagem falha).
+  const MAIS_RECENTES = 8;
+  fatia = fatia.map((c, i) => ((inicio + i) >= MAIS_RECENTES ? Object.assign({}, c, { _antigo: true }) : c));
   return {
     alvo,
     via: vias[0] || null,
     vias,
     candidatos: fatia,
+    montando: !IDX.ts,   // b560
+    total_encontrados: hits.length,   // b560 - nome que a GOOD usa (mesmo valor de `total`)
     total,
     pagina,
     por_pagina: porPagina,
