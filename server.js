@@ -554,7 +554,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.126.71 (b564: indice de nomes — drenagem so para o fundo, opcoes por agendamento, GOOD sem passe de vendas)',
+      version: '9.126.72 (b565: copia antiga do indice de nomes da GOOD apagada — uma so pras 3)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),

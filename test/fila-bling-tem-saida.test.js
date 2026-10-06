@@ -67,7 +67,7 @@ const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o
   // O teto da fila protege UMA chamada. A construção inteira (19 páginas)
   // precisa do seu — senão fica pendurada somando esperas legítimas.
   {
-    const src = fs.readFileSync(path.join(__dirname, '..', 'lib', 'nf-nomes.js'), 'utf8');
+    const src = fs.readFileSync(path.join(__dirname, '..', 'amb-devolucoes', 'lib-AMB', 'nf-nomes-AMB.js'), 'utf8');
     ok(/NF_NOMES_TETO_CONSTRUCAO_MS/.test(src),
        'a construcao do indice tem teto proprio (e ajustavel por env)');
     ok(/IDX\.emConstrucao = Promise\.race/.test(src),

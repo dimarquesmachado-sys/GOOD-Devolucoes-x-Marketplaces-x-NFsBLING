@@ -83,7 +83,7 @@ function corpoDaFuncao(src, nome) {
 // ── funções chamadas em módulos: existem no que o módulo exporta? ────
 {
   const modulos = [
-    ['nfNomes', 'lib/nf-nomes.js'],
+    ['nfNomes', 'amb-devolucoes/lib-AMB/nf-nomes-AMB.js'],
     ['mlReturns', 'amb-devolucoes/lib-AMB/ml-returns-AMB.js'],
     ['vinculoCache', 'lib/vinculo-nf-cache.js'],
     ['ritmoBling', 'lib/ritmo-bling.js'],

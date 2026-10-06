@@ -14,7 +14,7 @@ const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o
 
 const RAIZ = path.join(__dirname, '..');
 
-for (const [nome, rel] of [['GOOD', 'lib/nf-nomes.js'],
+for (const [nome, rel] of [['GOOD', 'amb-devolucoes/lib-AMB/nf-nomes-AMB.js'],
                            ['AMB', 'amb-devolucoes/lib-AMB/nf-nomes-AMB.js']]) {
   const src = fs.readFileSync(path.join(RAIZ, rel), 'utf8');
   // ⚠️ SEM JANELA FIXA. Os 1400 chars quebraram assim que entrou um bloco
@@ -43,10 +43,11 @@ for (const [nome, rel] of [['GOOD', 'lib/nf-nomes.js'],
 
 // a GOOD reconstroi em BACKGROUND, como a AMB ja fazia
 {
-  const good = fs.readFileSync(path.join(RAIZ, 'lib', 'nf-nomes.js'), 'utf8');
-  ok(/IDX\.reconstruindo = true/.test(good),
+  // b565: a GOOD usa a copia UNICA desde o #458 (lib/nf-nomes.js apagada) — confere a forma dela do mesmo comportamento
+  const good = fs.readFileSync(path.join(RAIZ, 'amb-devolucoes', 'lib-AMB', 'nf-nomes-AMB.js'), 'utf8');
+  ok(/\} else if \(\(Date\.now\(\) - IDX\.ts\) > 30 \* 60000\) \{\n\s+construirIndice\(/.test(good),
      'GOOD: reconstroi em background — com ~60s de indice, refazer na busca faria o estoquista esperar');
-  ok(/if \(vencido && !IDX\.ts\)/.test(good),
+  ok(/if \(!IDX\.ts\) \{/.test(good),
      '  so espera quando NAO ha indice nenhum');
   // e o mapa so troca no fim: durante a reconstrucao, a busca le o velho inteiro
   // b233: a publicacao do indice e um bloco so — ts, cobertura e mapa
