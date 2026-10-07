@@ -45,7 +45,7 @@ for (const [nome, rel] of [['GOOD', 'amb-devolucoes/lib-AMB/nf-nomes-AMB.js'],
 {
   // b565: a GOOD usa a copia UNICA desde o #458 (lib/nf-nomes.js apagada) — confere a forma dela do mesmo comportamento
   const good = fs.readFileSync(path.join(RAIZ, 'amb-devolucoes', 'lib-AMB', 'nf-nomes-AMB.js'), 'utf8');
-  ok(/\} else if \(\(Date\.now\(\) - IDX\.ts\) > 30 \* 60000\) \{\n\s+construirIndice\(/.test(good),
+  ok(/\} else if \(\(Date\.now\(\) - IDX\.ts\) > 30 \* 60000\) \{\n\s+(construirIndice|atualizarIndice)\(/.test(good),   // b579: renovacao incremental
      'GOOD: reconstroi em background — com ~60s de indice, refazer na busca faria o estoquista esperar');
   ok(/if \(!IDX\.ts\) \{/.test(good),
      '  so espera quando NAO ha indice nenhum');
@@ -57,8 +57,10 @@ for (const [nome, rel] of [['GOOD', 'amb-devolucoes/lib-AMB/nf-nomes-AMB.js'],
   // b276: `IDX.ts` virou condicional (`falhouVazio ? 0 : Date.now()`) pra
   // um build frio que falha vazio nao se anunciar como completo — o texto
   // exato mudou, mas o invariante (carimbo antes do mapa, sem await) segue.
-  const mIC = good.match(/IDX\.ts = [^\n]*Date\.now\(\);/);
-  const iC = mIC ? good.indexOf(mIC[0]) : -1;
+  // b579: o carimbo procurado e o da MONTAGEM (construirIndiceInterno), nao o da renovacao incremental
+  const iInterno = Math.max(0, good.indexOf('async function construirIndiceInterno'));
+  const mIC = good.slice(iInterno).match(/IDX\.ts = [^\n]*Date\.now\(\);/);
+  const iC = mIC ? good.indexOf(mIC[0], iInterno) : -1;
   const iM = good.indexOf('IDX.mapa = mapa;');
   ok(iC > 0 && iM > iC, '  o mapa e publicado depois do carimbo de tempo');
   ok(!/await/.test(good.slice(iC, iM)),
