@@ -22,7 +22,8 @@ const nf = (id, nome, dias, ped) => ({ id, numero: String(1000 + id), serie: '1'
   const depois = fab.criar({ PREFIXO_ENV: 'T_', bling: { pausaMs: 0 }, clienteBling: bling, armazemNfNomes: armazem });
   await depois.atualizarIndice();
   ok(depois.statusIndice().carregado_do_armazem, '⚠️ o servidor novo sobe com o indice SALVO');
-  console.log('   chamadas:', JSON.stringify(chamadas)); ok(chamadas.filter((u) => /\/nfe\?/.test(u)).length === 1, '⚠️ e so le 1 pagina de NFs do Bling (a renovacao do que entrou depois) — nao remonta (' + chamadas.length + ')');
+  console.log('   chamadas:', JSON.stringify(chamadas)); ok(chamadas.filter((u) => /\/nfe\?/.test(u)).length === 1 && !chamadas.some((u) => /pedidos\/vendas/.test(u)),   // Codex #468: sem a passada de vendas = sem montagem completa
+     '⚠️ e so le 1 pagina de NFs do Bling (a renovacao do que entrou depois) — nao remonta (' + chamadas.length + ')');
   ok((await depois.buscarPorNome('Ana Maria Pereira')).candidatos.length === 1 && (await depois.buscarPorNome('Diego Novo Cliente')).candidatos.length === 1, '  acha as notas antigas (do retrato) e a nova (da renovacao)');
   ok(depois.acharPorPedido ? !!(await depois.acharPorPedido('P3')) || true : true, '  (pedido do retrato preservado)');
   // Codex #468 — data do retrato legivel, vendas por loja preservadas, varredura com erro nao grava
