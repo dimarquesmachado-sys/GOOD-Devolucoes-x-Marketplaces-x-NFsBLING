@@ -201,6 +201,55 @@ function indexarNF(nf, m) {
   return true;
 }
 
+// b580 - INDICE SALVO (cfg.armazemNfNomes = lib/armazem-indices). Depois de montar (completa) ou de a renovacao trazer
+// nota nova (no maximo 1 gravacao a cada 20 min), grava um retrato compacto; quando o servidor sobe, carrega o retrato
+// em vez de remontar pelo Bling e so renova o que entrou depois. Retrato de mais de 36 h ou ilegivel = montagem normal.
+const ARMAZEM = (cfg && cfg.armazemNfNomes) || null;
+let _ultimaGravacao = 0;
+function retratoDoIndice() {
+  const pedidoDe = {};
+  for (const [ped, reg] of Object.entries(IDX.porPedido || {})) if (reg && reg.id) pedidoDe[String(reg.id)] = ped;
+  const vistos = new Set(); const nfs = [];
+  for (const lista of Object.values(IDX.mapa || {})) {
+    for (const r of lista) {
+      const id = String(r.id); if (vistos.has(id)) continue; vistos.add(id);
+      nfs.push([id, r.numero || '', r.serie || '', r.nome || '', r.dataEmissao || null, r.valor != null ? r.valor : null, pedidoDe[id] || '']);
+    }
+  }
+  const vendas = Object.entries(IDX.vendasPorLoja || {}).map(([loja, v]) => [loja, v.nome, v.valor, v.id_venda, v.numero_venda, v._q || 0]);
+  return { v: 1, salvo_em: new Date().toISOString(), ultimaCompleta: IDX.ultimaCompleta ? new Date(IDX.ultimaCompleta).toISOString() : null,
+    maisAntiga: IDX.maisAntiga || null, parcialAte: IDX.parcialAte || null, parouPor: IDX.parouPor || null, nfs, vendas };
+}
+async function gravarIndice(motivo, forcar) {
+  if (!ARMAZEM || !IDX.ts) return;
+  if (IDX.erroVendas) return;   // varredura de /pedidos/vendas falhou: o retrato nao guarda a falha e a subida nao refaz essa passada
+  if (IDX.erro) return;   // varredura truncada por erro: o retrato nao guarda a falha, entao nao grava (o anterior continua valendo)
+  if (!forcar && Date.now() - _ultimaGravacao < 20 * 60000) return;
+  _ultimaGravacao = Date.now();
+  const r = await ARMAZEM.salvar('nf-nomes', retratoDoIndice());
+  IDX.ultimaGravacao = { em: new Date().toISOString(), motivo, ok: !!(r && r.ok), bytes: (r && r.bytes) || null, erro: (r && r.erro) || null };
+}
+async function carregarIndiceSalvo() {
+  if (!ARMAZEM || IDX.ts) return false;
+  const ret = await ARMAZEM.carregar('nf-nomes');
+  if (!ret || ret.v !== 1 || !Array.isArray(ret.nfs) || !ret.ultimaCompleta) return false;
+  const completaEm = Date.parse(ret.ultimaCompleta);
+  if (!(completaEm > 0) || Date.now() - completaEm > 36 * 3600e3) return false;   // velho demais ou data ilegivel: monta pelo Bling
+  const m = { mapa: {}, mapaCurto: {}, porPedido: {}, porNumero: {}, porId: {} };
+  let n = 0;
+  for (const [id, numero, serie, nome, dataEmissao, valor, pedido] of ret.nfs) {
+    if (indexarNF({ id, numero, serie, chaveAcesso: null, contato: { nome }, dataEmissao, valorNota: valor, numeroLoja: pedido }, m)) n++;
+  }
+  const vendasPorLoja = {};
+  for (const [loja, nome, valor, id_venda, numero_venda, _q] of (ret.vendas || [])) vendasPorLoja[loja] = { nome, valor, id_venda, numero_venda, _q };
+  if (IDX.ts) return false;   // uma montagem terminou enquanto lia o retrato: vale a dela
+  Object.assign(IDX, m, { totalNFs: n, nomes: Object.keys(m.mapa).length, ultimaCompleta: completaEm, vendasPorLoja, maisAntiga: ret.maisAntiga || null,
+    parcialAte: ret.parcialAte || null, parouPor: ret.parouPor || null, _ids: null, ts: Date.now(), erro: null,
+    carregadoDoArmazem: ret.salvo_em });
+  console.log(`[${TAG_EMP}/NF-NOMES] indice carregado do armazem: ${n} NFs (salvo em ${ret.salvo_em}) — renovo so o que entrou depois`);
+  return true;
+}
+
 // b579 - RENOVACAO INCREMENTAL (dono, 06/10: 'senao vai atolar as chamadas no Bling'). Antes, toda renovacao (de 30 em
 // 30 min de uso, e a cada pre-aquecimento) remontava o indice INTEIRO — na Girassol, todas as paginas de 120 dias. A
 // lista de NFs do Bling vem da mais nova pra mais antiga: a renovacao le so as primeiras paginas e para na primeira
@@ -216,6 +265,7 @@ function montagemCompletaVencida() {
   return idadeH > 20 && h >= 1 && h < 6;   // so de madrugada (fora do horario do galpao)
 }
 async function atualizarIndice(opts = {}) {
+  if (!IDX.ts && ARMAZEM && await carregarIndiceSalvo()) return atualizarIndice(opts);   // b580 - sobe com o indice salvo
   if (!IDX.ts || !IDX.porId || montagemCompletaVencida()) return construirIndice(Object.assign({}, opts, { fundo: true }));
   if (construindo || _incrementando) return IDX;
   _incrementando = true;
@@ -245,6 +295,7 @@ async function atualizarIndice(opts = {}) {
     }
     if (!erro) IDX.ts = Date.now();   // "nao sei" (erro) nao finge que renovou: a proxima busca tenta de novo
     IDX.ultimaIncremental = { em: new Date().toISOString(), paginas, novas, erro };
+    if (novas > 0) gravarIndice('renovacao').catch(() => {});   // b580
     console.log(`[${TAG_EMP}/NF-NOMES] renovacao incremental: ${novas} NF(s) nova(s) em ${paginas} pagina(s)` + (erro ? ` — ${erro}` : ''));
     return IDX;
   } finally { _incrementando = false; }
@@ -514,6 +565,7 @@ async function construirIndiceInterno(opts = {}) {
     IDX.porPedido = porPedido;
     IDX.porId = porId;
     IDX.ultimaCompleta = Date.now();   // b579 - a renovacao incremental mede a idade a partir daqui
+    setTimeout(() => gravarIndice('montagem completa', true).catch(() => {}), 0);   // b580 - depois de publicar
     IDX._ids = null;                   // b579 - o conjunto de ids conhecidos e refeito na 1a renovacao
     IDX.vendasPorLoja = vendasPorLoja;
     IDX.vendasLidas = vendasLidas;
@@ -569,7 +621,9 @@ function statusIndice() {
       parou_por: IDX.parouPor || null,   // b562 - 'teto' = cortado pelo limite de paginas
       nf_mais_antiga: IDX.maisAntiga || null,
       ultima_completa: IDX.ultimaCompleta ? new Date(IDX.ultimaCompleta).toISOString() : null,   // b579
-      ultima_incremental: IDX.ultimaIncremental || null,   // b579   // b560 - a tela da GOOD le este campo
+      ultima_incremental: IDX.ultimaIncremental || null,
+      ultima_gravacao: IDX.ultimaGravacao || null,   // b580
+      carregado_do_armazem: IDX.carregadoDoArmazem || null,   // b580   // b579   // b560 - a tela da GOOD le este campo
       construindo_ha_s: IDX.construindoDesde ? Math.round((Date.now() - IDX.construindoDesde) / 1000) : null,   // b556
     nomes_distintos: IDX.nomes,
     nomes_curtos: Object.keys(IDX.mapaCurto).length,
@@ -661,7 +715,7 @@ async function buscarPorNome(texto, opts = {}) {
       const TETO_CONSTRUCAO_MS = Number(process.env.NF_NOMES_TETO_CONSTRUCAO_MS || 240000);
       let timerTeto;
       IDX.emConstrucao = Promise.race([
-        construirIndice(),
+        atualizarIndice(),   // b580 - sem indice: tenta o salvo antes de montar pelo Bling
         new Promise((ok) => { timerTeto = setTimeout(() => {
           // b559: quem abandona (libera a guarda) e o teto de `construirIndiceInterno`; aqui so solta a espera da busca
           ok();
@@ -831,7 +885,7 @@ function tentar(tentativa, opcoes) {
   // espaco com buscas de verdade, mesmo sem ninguem esperando por ela: e
   // trabalho de fundo por definicao.
   // b579 - com indice pronto (e sem pedido de passe curto), renova em vez de remontar tudo (a GOOD chama de 25 em 25 min)
-  (IDX.ts && !(opcoes && opcoes.maxPaginas) ? atualizarIndice() : construirIndice(Object.assign({}, opcoes, { fundo: true }))).then((idx) => {   // b563/b579
+  ((ARMAZEM && !IDX.ts) || (IDX.ts && !(opcoes && opcoes.maxPaginas)) ? atualizarIndice(opcoes) : construirIndice(Object.assign({}, opcoes, { fundo: true })))   /* b580: na subida, tenta o indice salvo */.then((idx) => {   // b563/b579
     if (!idx) return; // cancelado pela drenagem - nem sucesso nem falha
     if (idx.erro) throw new Error(idx.erro);
   }).catch((e) => {
