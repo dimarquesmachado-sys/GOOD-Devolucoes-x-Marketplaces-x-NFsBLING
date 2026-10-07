@@ -154,6 +154,102 @@ async function construirIndice(opts = {}) {
   }
 }
 
+// b579 - a regra de cadastrar UMA nota no indice (a montagem completa e a renovacao incremental usam esta mesma).
+// Devolve false quando o nome e curto demais pra indexar.
+function indexarNF(nf, m) {
+  const { mapa, mapaCurto, porPedido, porNumero, porId } = m;
+  const nomeOriginal = (nf.contato && nf.contato.nome) || '';
+  const chave = colapsar(nomeOriginal);
+  if (!chave || chave.length < 5) return false;
+
+    const registro = {
+      id: String(nf.id),
+      numero: String(nf.numero || '').replace(/^0+/, ''),   // b41 - sem zeros a esquerda
+      serie: serieDaChave(nf.chaveAcesso, String(nf.serie || '').trim() || null),   // b44 - serie REAL da chave de acesso
+      nome: nomeOriginal,
+      dataEmissao: nf.dataEmissao || null,
+      valor: nf.valorNota != null ? nf.valorNota : null,
+    };
+
+    // b17 - indice POR PEDIDO: e daqui que o painel puxa o
+    // cliente e a NF da venda pra cada devolucao a espreita.
+    const nlj = String(nf.numeroLoja || nf.numeroPedidoLoja || '').trim();
+    if (nlj) porPedido[nlj] = registro;
+    const numN = String(nf.numero || '').replace(/^0+/, '');
+    // ⚠️ b473 - MESMO NUMERO EM SERIES DIFERENTES (a serie 2 do Full) e
+    // AMBIGUIDADE: o atalho "busca por numero usa o id do indice" so pode
+    // valer quando ha UMA nota com esse numero. Marco a colisao; quem usa
+    // o atalho cai na varredura antiga (que trata a ambiguidade) se vir
+    // `_series_colidem`.
+    if (numN) {
+      if (porNumero[numN] && String(porNumero[numN].serie || '') !== String(registro.serie || '')) {
+        porNumero[numN]._series_colidem = true;
+        registro._series_colidem = true;
+      }
+      porNumero[numN] = registro;
+    }
+    if (numN) if (nf.id) porId[String(nf.id)] = registro;
+
+    (mapa[chave] = mapa[chave] || []).push(registro);
+
+    // indice extra: primeiro+ultimo nome
+    const curto = primeiroUltimo(nomeOriginal);
+    if (curto && curto.length >= 5 && curto !== chave) {
+      (mapaCurto[curto] = mapaCurto[curto] || []).push(registro);
+    }
+
+  return true;
+}
+
+// b579 - RENOVACAO INCREMENTAL (dono, 06/10: 'senao vai atolar as chamadas no Bling'). Antes, toda renovacao (de 30 em
+// 30 min de uso, e a cada pre-aquecimento) remontava o indice INTEIRO — na Girassol, todas as paginas de 120 dias. A
+// lista de NFs do Bling vem da mais nova pra mais antiga: a renovacao le so as primeiras paginas e para na primeira
+// que ja tem nota conhecida. A montagem completa (que tira o que saiu da janela) fica pra MADRUGADA, 1x por dia.
+const INCR_MAX_PAGINAS = 10;
+let _incrementando = false;
+function montagemCompletaVencida() {
+  const ult = IDX.ultimaCompleta || 0;
+  if (!ult) return true;
+  const idadeH = (Date.now() - ult) / 3600e3;
+  if (idadeH > 36) return true;   // passou da madrugada sem montar: nao fica mais de 1,5 dia sem limpar
+  const h = Number(new Date().toLocaleString('en-US', { timeZone: 'America/Sao_Paulo', hour: 'numeric', hour12: false }));
+  return idadeH > 20 && h >= 1 && h < 6;   // so de madrugada (fora do horario do galpao)
+}
+async function atualizarIndice(opts = {}) {
+  if (!IDX.ts || !IDX.porId || montagemCompletaVencida()) return construirIndice(Object.assign({}, opts, { fundo: true }));
+  if (construindo || _incrementando) return IDX;
+  _incrementando = true;
+  try {
+    if (!IDX._ids) {
+      IDX._ids = new Set();
+      for (const lista of Object.values(IDX.mapa || {})) for (const reg of lista) IDX._ids.add(String(reg.id));
+    }
+    const alvo = { mapa: IDX.mapa, mapaCurto: IDX.mapaCurto, porPedido: IDX.porPedido || (IDX.porPedido = {}),
+      porNumero: IDX.porNumero || (IDX.porNumero = {}), porId: IDX.porId };
+    let novas = 0, paginas = 0, erro = null;
+    for (let pg = 1; pg <= INCR_MAX_PAGINAS; pg++) {
+      if (drenagem.estaDrenando()) break;
+      if (pg > 1) await drenagem.pausar(400, true, 'indice-nomes/incremental');
+      const r = await bling.chamarBling(`/nfe?limite=100&pagina=${pg}&tipo=1`, { fundo: true });
+      if (!r.ok) { erro = `pagina ${pg} HTTP ${r.status}`; break; }
+      const lista = (r.data && r.data.data) || [];
+      paginas = pg;
+      if (!lista.length) break;
+      let conhecidas = 0;
+      for (const nf of lista) {
+        const id = String(nf.id);
+        if (IDX._ids.has(id)) { conhecidas++; continue; }
+        if (indexarNF(nf, alvo)) { IDX._ids.add(id); novas++; IDX.totalNFs = (IDX.totalNFs || 0) + 1; }
+      }
+      if (conhecidas > 0) break;   // chegou na parte que o indice ja tem
+    }
+    if (!erro) IDX.ts = Date.now();   // "nao sei" (erro) nao finge que renovou: a proxima busca tenta de novo
+    IDX.ultimaIncremental = { em: new Date().toISOString(), paginas, novas, erro };
+    console.log(`[${TAG_EMP}/NF-NOMES] renovacao incremental: ${novas} NF(s) nova(s) em ${paginas} pagina(s)` + (erro ? ` — ${erro}` : ''));
+    return IDX;
+  } finally { _incrementando = false; }
+}
+
 async function construirIndiceInterno(opts = {}) {
   if (construindo) return { ...IDX, jaEmAndamento: true };
   IDX._maisAntigaAcum = null;   // b560 - recalculada a cada montagem (a janela anda); so DEPOIS da guarda (b561)
@@ -173,7 +269,9 @@ async function construirIndiceInterno(opts = {}) {
 
   try {
     const dias = opts.dias || Number(process.env[(cfg && cfg.PREFIXO_ENV || 'AMB_') + 'NF_JANELA_DIAS'] || 120);
-    const maxPaginas = opts.maxPaginas || 80;      // teto: 80x100 = 8000 NFs
+    // b579 - teto da montagem COMPLETA ajustavel por empresa (<PREFIXO>NF_NOMES_MAX_PAGINAS; a Girassol passa de 8.000
+    // NFs em 120 dias). Padrao 80 (8.000 NFs). A montagem completa agora so roda no boot e de madrugada.
+    const maxPaginas = opts.maxPaginas || Number(process.env[String((cfg && cfg.PREFIXO_ENV) || '') + 'NF_NOMES_MAX_PAGINAS']) || 80;
     const corte = Date.now() - dias * 864e5;
 
     // b263.1 - ⚠️ EU USEI ESTAS DUAS SEM DECLARAR NESTE ARQUIVO. A GOOD
@@ -270,46 +368,7 @@ async function construirIndiceInterno(opts = {}) {
         // b560/b561 - a NF mais antiga do indice (cobertura); so conta NF que ENTROU (depois do corte)
         if (nf.dataEmissao && (!IDX._maisAntigaAcum || String(nf.dataEmissao) < IDX._maisAntigaAcum)) IDX._maisAntigaAcum = String(nf.dataEmissao);
 
-        const nomeOriginal = (nf.contato && nf.contato.nome) || '';
-        const chave = colapsar(nomeOriginal);
-        if (!chave || chave.length < 5) continue;
-
-        const registro = {
-          id: String(nf.id),
-          numero: String(nf.numero || '').replace(/^0+/, ''),   // b41 - sem zeros a esquerda
-          serie: serieDaChave(nf.chaveAcesso, String(nf.serie || '').trim() || null),   // b44 - serie REAL da chave de acesso
-          nome: nomeOriginal,
-          dataEmissao: nf.dataEmissao || null,
-          valor: nf.valorNota != null ? nf.valorNota : null,
-        };
-
-        // b17 - indice POR PEDIDO: e daqui que o painel puxa o
-        // cliente e a NF da venda pra cada devolucao a espreita.
-        const nlj = String(nf.numeroLoja || nf.numeroPedidoLoja || '').trim();
-        if (nlj) porPedido[nlj] = registro;
-        const numN = String(nf.numero || '').replace(/^0+/, '');
-        // ⚠️ b473 - MESMO NUMERO EM SERIES DIFERENTES (a serie 2 do Full) e
-        // AMBIGUIDADE: o atalho "busca por numero usa o id do indice" so pode
-        // valer quando ha UMA nota com esse numero. Marco a colisao; quem usa
-        // o atalho cai na varredura antiga (que trata a ambiguidade) se vir
-        // `_series_colidem`.
-        if (numN) {
-          if (porNumero[numN] && String(porNumero[numN].serie || '') !== String(registro.serie || '')) {
-            porNumero[numN]._series_colidem = true;
-            registro._series_colidem = true;
-          }
-          porNumero[numN] = registro;
-        }
-        if (numN) if (nf.id) porId[String(nf.id)] = registro;
-
-        (mapa[chave] = mapa[chave] || []).push(registro);
-
-        // indice extra: primeiro+ultimo nome
-        const curto = primeiroUltimo(nomeOriginal);
-        if (curto && curto.length >= 5 && curto !== chave) {
-          (mapaCurto[curto] = mapaCurto[curto] || []).push(registro);
-        }
-
+        if (!indexarNF(nf, { mapa, mapaCurto, porPedido, porNumero, porId })) continue;   // b579 - regra unica (montagem e renovacao)
         totalNFs++;
       }
 
@@ -454,6 +513,8 @@ async function construirIndiceInterno(opts = {}) {
     IDX.mapa = mapa;
     IDX.porPedido = porPedido;
     IDX.porId = porId;
+    IDX.ultimaCompleta = Date.now();   // b579 - a renovacao incremental mede a idade a partir daqui
+    IDX._ids = null;                   // b579 - o conjunto de ids conhecidos e refeito na 1a renovacao
     IDX.vendasPorLoja = vendasPorLoja;
     IDX.vendasLidas = vendasLidas;
     IDX.erroVendas = erroVendas;
@@ -506,7 +567,9 @@ function statusIndice() {
     idade_min: IDX.ts ? Math.round((Date.now() - IDX.ts) / 60000) : null,
     total_nfs: IDX.totalNFs,
       parou_por: IDX.parouPor || null,   // b562 - 'teto' = cortado pelo limite de paginas
-      nf_mais_antiga: IDX.maisAntiga || null,   // b560 - a tela da GOOD le este campo
+      nf_mais_antiga: IDX.maisAntiga || null,
+      ultima_completa: IDX.ultimaCompleta ? new Date(IDX.ultimaCompleta).toISOString() : null,   // b579
+      ultima_incremental: IDX.ultimaIncremental || null,   // b579   // b560 - a tela da GOOD le este campo
       construindo_ha_s: IDX.construindoDesde ? Math.round((Date.now() - IDX.construindoDesde) / 1000) : null,   // b556
     nomes_distintos: IDX.nomes,
     nomes_curtos: Object.keys(IDX.mapaCurto).length,
@@ -621,7 +684,7 @@ async function buscarPorNome(texto, opts = {}) {
         + 'respondo com o parcial e sigo montando (agora cancelavel)');
     }
   } else if ((Date.now() - IDX.ts) > 30 * 60000) {
-    construirIndice().catch(e => console.error(`[${TAG_EMP}/NF-NOMES] atualizacao em background falhou:`, e.message));
+    atualizarIndice().catch(e => console.error(`[${TAG_EMP}/NF-NOMES] atualizacao em background falhou:`, e.message));   // b579
   }
 
   const jaVi = new Set();
@@ -767,7 +830,8 @@ function tentar(tentativa, opcoes) {
   // esta varredura de ate 8.000 NFs entrava na fila INTERATIVA, disputando
   // espaco com buscas de verdade, mesmo sem ninguem esperando por ela: e
   // trabalho de fundo por definicao.
-  construirIndice(Object.assign({}, opcoes, { fundo: true })).then((idx) => {   // b563: opcoes da GOOD (maxPaginas), sempre fundo
+  // b579 - com indice pronto (e sem pedido de passe curto), renova em vez de remontar tudo (a GOOD chama de 25 em 25 min)
+  (IDX.ts && !(opcoes && opcoes.maxPaginas) ? atualizarIndice() : construirIndice(Object.assign({}, opcoes, { fundo: true }))).then((idx) => {   // b563/b579
     if (!idx) return; // cancelado pela drenagem - nem sucesso nem falha
     if (idx.erro) throw new Error(idx.erro);
   }).catch((e) => {
@@ -912,7 +976,7 @@ function acharPorPedido(pedido) {
 }
 
 return {
-  construirIndice, statusIndice, buscarPorNome, acharPorPedido, acharPorNumero, acharVendaPorLoja, nfDaVenda, nfDaLoja, acharNfPorNomeIndice, dispararNfPorVenda, preAquecer,
+  construirIndice, atualizarIndice, statusIndice, buscarPorNome, acharPorPedido, acharPorNumero, acharVendaPorLoja, nfDaVenda, nfDaLoja, acharNfPorNomeIndice, dispararNfPorVenda, preAquecer,
   colapsar, primeiroUltimo,
 };
 }
