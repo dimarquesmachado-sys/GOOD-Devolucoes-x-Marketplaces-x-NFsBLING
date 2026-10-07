@@ -222,6 +222,7 @@ function retratoDoIndice() {
 }
 async function gravarIndice(motivo, forcar) {
   if (!ARMAZEM || !IDX.ts) return;
+  if (IDX.erroVendas) return;   // varredura de /pedidos/vendas falhou: o retrato nao guarda a falha e a subida nao refaz essa passada
   if (IDX.erro) return;   // varredura truncada por erro: o retrato nao guarda a falha, entao nao grava (o anterior continua valendo)
   if (!forcar && Date.now() - _ultimaGravacao < 20 * 60000) return;
   _ultimaGravacao = Date.now();
@@ -242,7 +243,7 @@ async function carregarIndiceSalvo() {
   const vendasPorLoja = {};
   for (const [loja, nome, valor, id_venda, numero_venda, _q] of (ret.vendas || [])) vendasPorLoja[loja] = { nome, valor, id_venda, numero_venda, _q };
   if (IDX.ts) return false;   // uma montagem terminou enquanto lia o retrato: vale a dela
-  Object.assign(IDX, m, { totalNFs: n, ultimaCompleta: completaEm, vendasPorLoja, maisAntiga: ret.maisAntiga || null,
+  Object.assign(IDX, m, { totalNFs: n, nomes: Object.keys(m.mapa).length, ultimaCompleta: completaEm, vendasPorLoja, maisAntiga: ret.maisAntiga || null,
     parcialAte: ret.parcialAte || null, parouPor: ret.parouPor || null, _ids: null, ts: Date.now(), erro: null,
     carregadoDoArmazem: ret.salvo_em });
   console.log(`[${TAG_EMP}/NF-NOMES] indice carregado do armazem: ${n} NFs (salvo em ${ret.salvo_em}) — renovo so o que entrou depois`);

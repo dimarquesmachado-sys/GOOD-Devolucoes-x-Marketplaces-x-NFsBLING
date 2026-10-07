@@ -37,6 +37,25 @@ const nf = (id, nome, dias, ped) => ({ id, numero: String(1000 + id), serie: '1'
   await truncada.construirIndice({ fundo: true });
   await new Promise((r) => setTimeout(r, 20));
   ok(paginaErro > 0 && !comErro['nf-nomes'], '⚠️ varredura que falhou no meio NAO e gravada como retrato saudavel');
+  // Codex #468 (2a rodada) — vendas com erro nao grava; contagem de nomes volta; bucket com falha passageira tenta de novo
+  const comErroV = {};
+  const blingErroV = { chamarBling: async (u) => { if (/pedidos\/vendas/.test(u)) return { ok: false, status: 500, data: {} }; return { ok: true, status: 200, data: { data: u.indexOf('pagina=1') >= 0 ? cheia : [] } }; } };
+  const vendasRuins = fab.criar({ PREFIXO_ENV: 'T_', bling: { pausaMs: 0 }, clienteBling: blingErroV, armazemNfNomes: { salvar: async (n, o) => { comErroV[n] = o; return { ok: true }; }, carregar: async () => null } });
+  await vendasRuins.construirIndice({ fundo: true });
+  await new Promise((r) => setTimeout(r, 20));
+  ok(vendasRuins.statusIndice().erro_vendas && !comErroV['nf-nomes'], '⚠️ varredura de vendas que falhou NAO e gravada como retrato saudavel');
+  ok(depois.statusIndice().nomes_distintos > 0, '⚠️ restaurado, o indice informa a contagem de nomes distintos');
+  const arm = require('../lib/armazem-indices');
+  let tentativas = 0;
+  const sbFalha = { storage: { createBucket: async () => { tentativas++; return { error: { message: 'fetch failed', statusCode: '503' } }; }, from: () => ({ upload: async () => ({ error: null }) }) } };
+  const a1 = arm.criarArmazem({ obterSupabase: () => sbFalha, chave: 'x' });
+  await a1.salvar('t', {}); await a1.salvar('t', {});
+  ok(tentativas === 2, '⚠️ falha passageira ao criar o bucket: tenta criar de novo na proxima gravacao');
+  let t2 = 0;
+  const sbExiste = { storage: { createBucket: async () => { t2++; return { error: { message: 'The resource already exists', statusCode: '409' } }; }, from: () => ({ upload: async () => ({ error: null }) }) } };
+  const a2 = arm.criarArmazem({ obterSupabase: () => sbExiste, chave: 'x' });
+  await a2.salvar('t', {}); await a2.salvar('t', {});
+  ok(t2 === 1, '  bucket que ja existe: nao insiste');
   const velho = JSON.parse(JSON.stringify(guardado['nf-nomes'])); velho.ultimaCompleta = new Date(Date.now() - 40 * 3600e3).toISOString();
   const outro = fab.criar({ PREFIXO_ENV: 'T_', bling: { pausaMs: 0 }, clienteBling: bling, armazemNfNomes: { salvar: armazem.salvar, carregar: async () => velho } });
   chamadas.length = 0; await outro.atualizarIndice();
