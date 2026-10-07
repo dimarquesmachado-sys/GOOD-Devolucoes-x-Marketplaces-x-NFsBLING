@@ -323,6 +323,8 @@ CFG_EMPRESA.clienteBling = bling;   // b377
 const ml = require('./lib-AMB/ml-AMB').criar(CFG_EMPRESA);
 CFG_EMPRESA.clienteMl = ml;   // b377 — o mlReturns (abaixo) ja precisa dele
 const mlReturns = require('./lib-AMB/ml-returns-AMB').criar(CFG_EMPRESA);
+// b580 - indice de nomes salvo no armazem PRIVADO desta empresa (o `db` e criado logo abaixo; so e usado depois do boot)
+CFG_EMPRESA.armazemNfNomes = require('../lib/armazem-indices').criarArmazem({ obterSupabase: () => db.conectar(), chave: CFG_EMPRESA.CHAVE_REGISTRO || 'ambtotal' });
 const nfNomes = require('./lib-AMB/nf-nomes-AMB').criar(CFG_EMPRESA);
 const tokens = require('../lib/render-tokens');
 const drenagem = require('../lib/drenagem');   // b477: timers que param no SIGTERM
@@ -647,7 +649,7 @@ const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 // checado ANTES de entrar na fila da empresa — nao antes de sair, entao um
 // candidato ja desistido ainda batia no Bling depois de esperar numa pausa
 // de 429. Ver bling-AMB.js, nf-nomes-AMB.js e identificar-AMB.js.
-const VERSAO = 'AMB Devolucoes b579';
+const VERSAO = 'AMB Devolucoes b580';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();

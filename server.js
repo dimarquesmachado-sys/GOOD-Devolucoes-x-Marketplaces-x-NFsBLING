@@ -116,6 +116,8 @@ const nfNomes = require('./amb-devolucoes/lib-AMB/nf-nomes-AMB').criar({
   PREFIXO_ENV: 'GOOD_',
   bling: { pausaMs: 700 },
   nomeMinimo: 5,
+  // b580 - indice salvo no armazem PRIVADO (deploy carrega em vez de remontar pelo Bling)
+  armazemNfNomes: require('./lib/armazem-indices').criarArmazem({ obterSupabase: () => supabase, chave: 'good' }),
   semVendas: true,   // b564: a GOOD nao usa os mapas de venda — pula o passe de /pedidos/vendas
   clienteBling: { chamarBling: (u, ...resto) => chamarBling(/^https?:/i.test(String(u)) ? u : 'https://api.bling.com.br/Api/v3' + u, ...resto) },
 });
@@ -558,7 +560,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.126.85 (b579: indice de nomes renova so as notas novas; montagem completa so de madrugada)',
+      version: '9.126.86 (b580: indice de nomes salvo no armazem privado — deploy carrega em vez de remontar)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
