@@ -13,7 +13,10 @@ for (const a of ['public/js/busca.js', 'public/js/busca.js']) {
   ok(/function buscarPedidoRetiro\(pedido\)/.test(s) && /onclick="buscarPedidoRetiro\(/.test(s), '  ' + a + ': o toque busca pelo numero do pedido (funcao existe)');
   ok(/'\/api\/espreita\/retiro'/.test(s) && /window\.APP_BASE/.test(s), '  ' + a + ': chama a rota da propria empresa');
 }
-ok(/js\/busca\.js\?v=4784/.test(rd('public/index.html')) && /js-AMB\/busca\.js\?v=b524/.test(rd('amb-devolucoes/public-AMB/index-AMB.html')), '  ?v= bumpado nas duas telas (sem cache velho)');
+// b590: versao MINIMA (cada mudanca no busca.js sobe o ?v=; travar o numero exato quebrava este teste a cada bump)
+const _vG = Number((rd('public/index.html').match(/js\/busca\.js\?v=(\d+)/) || [])[1]) || 0;
+const _vA = Number((rd('amb-devolucoes/public-AMB/index-AMB.html').match(/js-AMB\/busca\.js\?v=b(\d+)/) || [])[1]) || 0;
+ok(_vG >= 4784 && _vA >= 524, '  ?v= bumpado nas duas telas (sem cache velho)');
 console.log('');
 console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
 process.exit(falhas ? 1 : 0);

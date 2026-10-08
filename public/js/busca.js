@@ -774,7 +774,9 @@ function renderizar(data, ok) {
  */
 async function buscarFotosItens(itens) {
   if (!Array.isArray(itens) || !itens.length) return;
-  for (let i = 0; i < itens.length && i < 4; i++) {
+  // b590 - dono, 08/10 (Girassol, NF 127729 — kit de 6 itens): so os 4 primeiros pediam foto, e o prato e o pino (5o e
+  // 6o) ficavam no 📦. Agora ate 12 itens (kits reais cabem; uma por vez, como antes, e o servidor guarda em cache).
+  for (let i = 0; i < itens.length && i < 12; i++) {
     const it = itens[i];
     // b235 - item com vinculo mas SEM codigo: o id vira a chave, senao a
     // busca era descartada aqui mesmo, com o identificador confiavel em mao.

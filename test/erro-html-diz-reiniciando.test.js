@@ -22,9 +22,9 @@ for (const [p, nome] of [[['public', 'js', 'busca.js'], 'GOOD'], [['public', 'js
 }
 // e os HTMLs da AMB carregam o busca.js com ?v= novo (mexeu no .js = bump)
 const html = fs.readFileSync(path.join(__dirname, '..', 'amb-devolucoes', 'public-AMB', 'index-AMB.html'), 'utf8');
-ok(/js-AMB\/busca\.js\?v=b524/.test(html), '  index-AMB.html carrega js-AMB/busca.js?v=b524 (bump — senao o galpao testa o front velho do cache)');
+ok((Number(((html.match(/js-AMB\/busca\.js\?v=b(\d+)/) || [])[1]) || 0) >= 524), '  index-AMB.html carrega js-AMB/busca.js?v=b524 (bump — senao o galpao testa o front velho do cache)');
 const htmlG = fs.readFileSync(path.join(__dirname, '..', 'public', 'index.html'), 'utf8');
-ok(/js\/busca\.js\?v=4784/.test(htmlG), '  index.html (GOOD) carrega js/busca.js?v=4784');
+ok((Number(((htmlG.match(/js\/busca\.js\?v=(\d+)/) || [])[1]) || 0) >= 4784), '  index.html (GOOD) carrega js/busca.js?v=4784');
 
 console.log('');
 console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
