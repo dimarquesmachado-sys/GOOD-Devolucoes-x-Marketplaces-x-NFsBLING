@@ -585,8 +585,16 @@ async function construirIndiceInterno(opts = {}) {
     IDX.mapa = mapa;
     IDX.porPedido = porPedido;
     IDX.porId = porId;
-    IDX.ultimaCompleta = Date.now();   // b579 - a renovacao incremental mede a idade a partir daqui
-    setTimeout(() => gravarIndice('montagem completa', true).catch(() => {}), 0);   // b580 - depois de publicar
+    // b586 - dono, 08/10 (GOOD com 999 NFs de 10 paginas, marcada como completa e SALVA): o PASSE CURTO do boot
+    // (opts.maxPaginas, pro bipe ter algo rapido) nao e montagem completa. Antes ele carimbava ultimaCompleta — e a
+    // renovacao achava que o indice estava inteiro, deixando o resto dos 120 dias pra madrugada seguinte. Agora so a
+    // montagem SEM teto informado carimba e grava; depois do passe curto, a proxima renovacao faz a completa.
+    if (!opts.maxPaginas) {
+      IDX.ultimaCompleta = Date.now();   // b579 - a renovacao incremental mede a idade a partir daqui
+      setTimeout(() => gravarIndice('montagem completa', true).catch(() => {}), 0);   // b580 - depois de publicar
+    } else {
+      IDX.ultimaCompleta = 0;            // b586 - passe curto: a completa ainda esta por fazer
+    }
     IDX._ids = null;                   // b579 - o conjunto de ids conhecidos e refeito na 1a renovacao
     IDX.vendasPorLoja = vendasPorLoja;
     IDX.vendasLidas = vendasLidas;
