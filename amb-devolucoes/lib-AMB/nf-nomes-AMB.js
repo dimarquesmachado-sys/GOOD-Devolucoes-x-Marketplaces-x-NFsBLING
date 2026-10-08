@@ -589,11 +589,13 @@ async function construirIndiceInterno(opts = {}) {
     // (opts.maxPaginas, pro bipe ter algo rapido) nao e montagem completa. Antes ele carimbava ultimaCompleta — e a
     // renovacao achava que o indice estava inteiro, deixando o resto dos 120 dias pra madrugada seguinte. Agora so a
     // montagem SEM teto informado carimba e grava; depois do passe curto, a proxima renovacao faz a completa.
-    if (!opts.maxPaginas) {
+    // Codex #471: o que conta e o passe ter PARADO no teto (parouPorTeto) — se a listagem acabou ou bateu na data
+    // de corte antes dele, o indice cobre a janela inteira e e completo mesmo com maxPaginas informado.
+    if (!(opts.maxPaginas && parouPorTeto)) {
       IDX.ultimaCompleta = Date.now();   // b579 - a renovacao incremental mede a idade a partir daqui
       setTimeout(() => gravarIndice('montagem completa', true).catch(() => {}), 0);   // b580 - depois de publicar
     } else {
-      IDX.ultimaCompleta = 0;            // b586 - passe curto: a completa ainda esta por fazer
+      IDX.ultimaCompleta = 0;            // b586 - passe curto que parou no teto: a completa ainda esta por fazer
     }
     IDX._ids = null;                   // b579 - o conjunto de ids conhecidos e refeito na 1a renovacao
     IDX.vendasPorLoja = vendasPorLoja;

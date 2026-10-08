@@ -20,6 +20,12 @@ const nf = (id, dias) => ({ id, numero: String(1000 + id), serie: '1', dataEmiss
   await new Promise((r) => setTimeout(r, 20));
   ok(!!emp.statusIndice().ultima_completa && emp.statusIndice().total_nfs === 1500, '⚠️ depois do passe curto, a renovacao faz a montagem COMPLETA (' + emp.statusIndice().total_nfs + ' NFs)');
   ok(gravados.length === 1, '  e so ela grava o retrato');
+  // Codex #471: teto informado MAIOR que as paginas existentes — a listagem acabou antes, entao e completo e salvo
+  const gravados2 = [];
+  const emp2 = fab.criar({ PREFIXO_ENV: 'T_', bling: { pausaMs: 0 }, clienteBling: bling, armazemNfNomes: { salvar: async (n, o) => { gravados2.push(o); return { ok: true, bytes: 1 }; }, carregar: async () => null }, semPassadaVendas: true });
+  await emp2.construirIndice({ fundo: true, maxPaginas: 50 });
+  await new Promise((r) => setTimeout(r, 20));
+  ok(!!emp2.statusIndice().ultima_completa && gravados2.length === 1, '⚠️ teto informado que NAO foi atingido (listagem acabou antes) conta como completo e e salvo');
   console.log('');
   console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
   process.exit(falhas ? 1 : 0);
