@@ -649,7 +649,7 @@ const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 // checado ANTES de entrar na fila da empresa — nao antes de sair, entao um
 // candidato ja desistido ainda batia no Bling depois de esperar numa pausa
 // de 429. Ver bling-AMB.js, nf-nomes-AMB.js e identificar-AMB.js.
-const VERSAO = 'AMB Devolucoes b584';
+const VERSAO = 'AMB Devolucoes b585';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -4059,8 +4059,8 @@ router.use((req, res) => {
 const PREAQ_TETO_MS = Number(envAmb('PREAQUECER_TETO_MS') || 8 * 60 * 1000);
 
 
-async function esperarTerminar(nome, status) {
-  const ate = Date.now() + PREAQ_TETO_MS;
+async function esperarTerminar(nome, status, tetoMs = PREAQ_TETO_MS) {
+  const ate = Date.now() + tetoMs;
   while (Date.now() < ate) {
     await new Promise((r) => setTimeout(r, 5000));
     let st = null;
@@ -4072,7 +4072,7 @@ async function esperarTerminar(nome, status) {
     if (!aindaVem) return;
   }
   console.log(`[${TAG_APP}/PREAQUECER] ${nome} passou do teto de `
-    + `${Math.round(PREAQ_TETO_MS / 1000)}s — sigo pro proximo`);
+    + `${Math.round(tetoMs / 1000)}s — sigo pro proximo`);
 }
 
 (async () => {
@@ -4097,7 +4097,9 @@ async function esperarTerminar(nome, status) {
 
   if (bling.temToken()) {
     nfNomes.preAquecer(0);
-    await esperarTerminar('nf-nomes', () => nfNomes.statusIndice());
+    // Codex #470: a montagem do nf-nomes pode durar ate o proprio teto de construcao (15-30 min com 300 paginas);
+    // com o teto padrao de 8 min a fila soltava o nf-entrada com o nf-nomes ainda varrendo o Bling.
+    await esperarTerminar('nf-nomes', () => nfNomes.statusIndice(), Math.max(PREAQ_TETO_MS, nfNomes.tetoConstrucaoMs() + 30000));
     nfEntrada.preAquecer(0);
     await esperarTerminar('nf-entrada', () => nfEntrada.statusIndice());
   } else {
