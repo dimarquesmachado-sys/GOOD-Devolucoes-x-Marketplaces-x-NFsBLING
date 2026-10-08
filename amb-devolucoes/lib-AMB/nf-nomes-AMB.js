@@ -255,6 +255,12 @@ async function carregarIndiceSalvo() {
 // lista de NFs do Bling vem da mais nova pra mais antiga: a renovacao le so as primeiras paginas e para na primeira
 // que ja tem nota conhecida. A montagem completa (que tira o que saiu da janela) fica pra MADRUGADA, 1x por dia.
 const INCR_MAX_PAGINAS = 10;
+// b584 - dono, 07/10 ('multiempresa, todas igual nesse teto maior'): o teto da montagem COMPLETA e 300 paginas pras
+// tres empresas. Com a renovacao incremental (#467), o indice salvo (#468) e a montagem completa so de madrugada, o
+// teto maior nao pesa no dia a dia — e a montagem para sozinha no corte dos 120 dias (empresa com menos notas le
+// menos paginas). A Girassol tinha ~11.500 NFs na janela (116 paginas): o teto antigo de 80 cortava 1/3 das vendas.
+// <PREFIXO>NF_NOMES_MAX_PAGINAS continua valendo pra ajustar uma empresa.
+const TETO_PAGINAS_PADRAO = 300;
 let _incrementando = false;
 function montagemCompletaVencida() {
   const ult = IDX.ultimaCompleta || 0;
@@ -314,7 +320,7 @@ async function construirIndiceInterno(opts = {}) {
   // montagem de 300 paginas (~3 s por pagina com o ritmo e o porteiro) nunca cabia nele — era abandonada sempre no
   // meio e o indice nunca completava. O teto de tempo agora acompanha o teto de PAGINAS: 3 s por pagina, minimo 4 min
   // (80 paginas = 4 min, como antes; 300 = 15 min). NF_NOMES_TETO_CONSTRUCAO_MS continua mandando, se definido.
-  const _paginasPrevistas = opts.maxPaginas || Number(process.env[String((cfg && cfg.PREFIXO_ENV) || '') + 'NF_NOMES_MAX_PAGINAS']) || 80;
+  const _paginasPrevistas = opts.maxPaginas || Number(process.env[String((cfg && cfg.PREFIXO_ENV) || '') + 'NF_NOMES_MAX_PAGINAS']) || TETO_PAGINAS_PADRAO;
   const TETO_CONSTRUCAO_MS = Number(process.env.NF_NOMES_TETO_CONSTRUCAO_MS) || Math.max(240000, _paginasPrevistas * 3000);
   const timerTeto = setTimeout(() => {
     if (minhaGeracao !== geracaoConstrucao) return;
@@ -327,7 +333,7 @@ async function construirIndiceInterno(opts = {}) {
     const dias = opts.dias || Number(process.env[(cfg && cfg.PREFIXO_ENV || 'AMB_') + 'NF_JANELA_DIAS'] || 120);
     // b579 - teto da montagem COMPLETA ajustavel por empresa (<PREFIXO>NF_NOMES_MAX_PAGINAS; a Girassol passa de 8.000
     // NFs em 120 dias). Padrao 80 (8.000 NFs). A montagem completa agora so roda no boot e de madrugada.
-    const maxPaginas = opts.maxPaginas || Number(process.env[String((cfg && cfg.PREFIXO_ENV) || '') + 'NF_NOMES_MAX_PAGINAS']) || 80;
+    const maxPaginas = opts.maxPaginas || Number(process.env[String((cfg && cfg.PREFIXO_ENV) || '') + 'NF_NOMES_MAX_PAGINAS']) || TETO_PAGINAS_PADRAO;
     const corte = Date.now() - dias * 864e5;
 
     // b263.1 - ⚠️ EU USEI ESTAS DUAS SEM DECLARAR NESTE ARQUIVO. A GOOD
