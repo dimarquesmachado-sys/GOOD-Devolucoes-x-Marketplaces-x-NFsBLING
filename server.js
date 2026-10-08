@@ -560,7 +560,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.126.97 (b592: Codex #474 - lista da NF tardia tira o bloco Voltaram, busca acha titulo do anuncio, selo conta linha sem SKU)',
+      version: '9.126.98 (b593: card de varios produtos — titulo do anuncio, selo VARIOS PRODUTOS, sem lista repetida)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
