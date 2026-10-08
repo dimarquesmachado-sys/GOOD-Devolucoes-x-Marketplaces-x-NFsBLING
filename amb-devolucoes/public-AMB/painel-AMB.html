@@ -3462,7 +3462,8 @@ async function carregarSemRetorno() {
     // b548 - dono, 05/10 (Girassol, NF 127261: 'CABOLATERAL · 3 un', mas a NF tem 3 produtos de 1 un cada): quando a
     // NF tem MAIS DE UM produto, a linha do card diz isso — a lista vem aberta logo abaixo — em vez de mostrar o 1o
     // SKU com a quantidade total. Com a lista ainda nao carregada, a caixa automatica corrige a linha quando chega.
-    function textoVariosProdutos(n) { return '<strong>' + n + ' produtos diferentes na NF</strong> \u00b7 lista abaixo'; }
+    // b591 - dono, 08/10: 'so informar no topo produto KIT' (a lista dos itens vem logo abaixo, nao precisa repetir)
+    function textoVariosProdutos(n) { return '🧩 <strong>KIT</strong> \u00b7 ' + n + ' produtos na NF \u2014 itens abaixo'; }
     async function mostrarAnuncioDoKit(linha, mkt, pedido, nDist) {
       try {
         const r = await fetch((window.APP_BASE || '') + '/api/admin/anuncio-do-pedido?mkt=' + encodeURIComponent(mkt || '') + '&pedido=' + encodeURIComponent(pedido));
@@ -3712,6 +3713,9 @@ async function carregarSemRetorno() {
     function linhaItensDevolvidos(d) {
       var it = Array.isArray(d.itens_devolvidos) ? d.itens_devolvidos : [];
       if (it.length < 2) return '';
+      // b591 - dono, 08/10 (NF 127013): com TODOS os itens da NF de volta, este bloco so repetia a lista da NF que ja
+      // esta no card (e o topo ja diz KIT). Fica so quando a devolucao e PARCIAL — ai ele diz o que voltou de fato.
+      try { if (typeof faltasDevolucaoParcial === 'function' && faltasDevolucaoParcial(d).length === 0) return ''; } catch (e) { /* na duvida, mostra */ }
       return '<div style="background:#e0f2f1;border:1px solid #00695c;color:#004d40;border-radius:8px;padding:6px 10px;margin:6px 0;font-size:13px;">📦 <b>Voltaram ' + it.length + ' produtos diferentes:</b> ' +
         it.map(function (i) { var t = i.titulo || i.descricao || ''; return escapeHtml(String(i.qtd || 1)) + '× <code>' + escapeHtml(String(i.sku || '?')) + '</code>' + (t ? ' ' + escapeHtml(String(t).slice(0, 40)) : ''); }).join(' · ') +
         '<br><span style="font-size:12px;">A NF de devolução sai com todos estes itens, um por um.</span></div>';   // b572: nao e erro
