@@ -418,6 +418,15 @@ async function construirIndiceInterno(opts = {}) {
     // proximo bipe tenta reconstruir em vez de confiar num indice vazio
     // por 30 minutos. Falha silenciosa e a pior especie.
     const falhouGeral = !!erroBusca && Object.keys(mapa).length === 0;
+    // b587 (Codex #472, P2) - com o relogio da espreita remontando sozinho, uma falha geral NAO pode apagar o indice
+    // bom que ja existia: mantem o mapa e o `ts` antigos (continua velho, entao a proxima passada tenta de novo) e so
+    // registra o erro. Sem indice anterior, publica o vazio frio de sempre (ts 0).
+    if (falhouGeral && Object.keys(IDX.mapa).length > 0) {
+      IDX.erro = erroBusca;
+      IDX.duracaoSeg = Math.round((Date.now() - t0) / 1000);
+      console.log(`[${TAG_EMP}/ML-RETURNS] remontagem falhou (${erroBusca}) - mantido o indice anterior`);
+      return IDX;
+    }
     IDX.ts = falhouGeral ? 0 : Date.now();
     IDX.mapa = mapa;
     IDX.totalClaims = claims.length;
@@ -586,7 +595,11 @@ function resumoEspreita() {
   // ninguem esta construindo, a propria espreita dispara a
   // reconstrucao. Antes so o bipe religava — galpao parado = ML
   // sumido do painel pra sempre (foi o que o Diego viu em 01/08).
-  if (!IDX.ts && !construindo) {
+  // b586 - o indice do ML tambem se atualiza pelo relogio da espreita (a cada 3 min, ela passa aqui): se tem mais de
+  // 30 min, remonta em segundo plano. Antes so o BIPE religava um indice velho — com o galpao horas sem bipar ML, o
+  // indice da Girassol chegou a 321 min, e o primeiro bipe usava o velho (devolucao nova = 'nao encontrado').
+  // A GOOD tem relogio de 25 min (server.js). Sem indice nenhum, monta, como antes.
+  if (!construindo && (!IDX.ts || (Date.now() - IDX.ts) > 30 * 60000)) {
     construirIndice().catch(e => { IDX.erro = e.message; });
   }
 
