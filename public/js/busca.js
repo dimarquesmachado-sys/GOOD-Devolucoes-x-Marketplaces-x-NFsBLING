@@ -772,12 +772,17 @@ function renderizar(data, ok) {
  * novo ja vem instantaneo. Uma de cada vez com pausa: sao chamadas ao
  * Bling. Se nao vier foto, o 📦 fica e nada quebra.
  */
+let _passeFotosItens = 0;
 async function buscarFotosItens(itens) {
+  // b590.1 (Codex #473) - cada render abre um passe novo e o antigo para: os ids fotoitem-N se repetem entre pacotes,
+  // e o passe do pacote A (itens 5+) nao pode pintar a foto dele no cartao do pacote B.
+  const meuPasse = ++_passeFotosItens;
   if (!Array.isArray(itens) || !itens.length) return;
   // b590 - dono, 08/10 (Girassol, NF 127729 — kit de 6 itens): so os 4 primeiros pediam foto, e o prato e o pino (5o e
   // 6o) ficavam no 📦. Agora TODOS os itens (dono: 'pq so 12?' — nao havia motivo forte): uma foto por vez, como antes,
   // e o servidor guarda em cache (o mesmo produto nao consulta o Bling de novo).
   for (let i = 0; i < itens.length; i++) {
+    if (meuPasse !== _passeFotosItens) return;
     const it = itens[i];
     // b235 - item com vinculo mas SEM codigo: o id vira a chave, senao a
     // busca era descartada aqui mesmo, com o identificador confiavel em mao.
@@ -797,6 +802,7 @@ async function buscarFotosItens(itens) {
       const r = await fetch((window.APP_BASE || '') + '/api/produto/imagem/' + encodeURIComponent(chave || pidItem)
         + (pid ? '?produtoId=' + encodeURIComponent(pid) : ''), { credentials: 'same-origin' });
       const d = await r.json();
+      if (meuPasse !== _passeFotosItens) return;
       if (d && d.ok && !d.imagem && d.motivo) console.info('[FOTO]', chave, '→', d.motivo);
       if (d && d.ok && d.imagem) {
         alvo.outerHTML = '<img class="dvi-f" src="' + escapeHtml(d.imagem) + '" alt=""'
