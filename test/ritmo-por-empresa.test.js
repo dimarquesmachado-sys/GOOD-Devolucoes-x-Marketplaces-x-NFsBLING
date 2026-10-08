@@ -161,8 +161,8 @@ function erro429(retryAfter) {
       ok(iFn >= 0 && iFim > iFn, '  achei os marcadores de construirIndiceInterno');
       const corpo = nomes.slice(iFn, iFim);
       const chamadas = [...corpo.matchAll(/bling\.chamarBling\([^)]*\)/gs)];
-      ok(chamadas.length === 3,
-         `  as 3 chamadas do laco de construcao (achei ${chamadas.length})`);
+      ok(chamadas.length === 4,   // b589: NFs x2 + pagina-sentinela do teto + vendas
+         `  as 4 chamadas do laco de construcao (achei ${chamadas.length})`);
       const semFundo = chamadas.filter((m) => !/fundo/.test(m[0]));
       ok(semFundo.length === 0,
          '⚠️ TODAS as chamadas do laco (NFs e vendas) passam `fundo`'
