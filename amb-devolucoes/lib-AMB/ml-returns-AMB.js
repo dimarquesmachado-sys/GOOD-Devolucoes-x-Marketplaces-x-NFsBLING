@@ -418,6 +418,15 @@ async function construirIndiceInterno(opts = {}) {
     // proximo bipe tenta reconstruir em vez de confiar num indice vazio
     // por 30 minutos. Falha silenciosa e a pior especie.
     const falhouGeral = !!erroBusca && Object.keys(mapa).length === 0;
+    // b587 (Codex #472, P2) - com o relogio da espreita remontando sozinho, uma falha geral NAO pode apagar o indice
+    // bom que ja existia: mantem o mapa e o `ts` antigos (continua velho, entao a proxima passada tenta de novo) e so
+    // registra o erro. Sem indice anterior, publica o vazio frio de sempre (ts 0).
+    if (falhouGeral && Object.keys(IDX.mapa).length > 0) {
+      IDX.erro = erroBusca;
+      IDX.duracaoSeg = Math.round((Date.now() - t0) / 1000);
+      console.log(`[${TAG_EMP}/ML-RETURNS] remontagem falhou (${erroBusca}) - mantido o indice anterior`);
+      return IDX;
+    }
     IDX.ts = falhouGeral ? 0 : Date.now();
     IDX.mapa = mapa;
     IDX.totalClaims = claims.length;
