@@ -310,7 +310,12 @@ async function construirIndiceInterno(opts = {}) {
   IDX.construindoDesde = t0;   // b556: carimbo no caminho COMUM (pre-aquecimento, rota manual, autocura e busca)
   // b559 (Codex, P1) - TETO NO CAMINHO COMUM: pre-aquecimento, rota manual e autocura chamam `construirIndice()`
   // direto; se uma delas travar, a busca fria so recebia `jaEmAndamento`. O teto abandona AQUI (so a propria geracao).
-  const TETO_CONSTRUCAO_MS = Number(process.env.NF_NOMES_TETO_CONSTRUCAO_MS || 240000);
+  // b583 - dono, 07/10 (Girassol com 300 paginas: parou na 87, abandonada): o teto de TEMPO era fixo em 4 min, e uma
+  // montagem de 300 paginas (~3 s por pagina com o ritmo e o porteiro) nunca cabia nele — era abandonada sempre no
+  // meio e o indice nunca completava. O teto de tempo agora acompanha o teto de PAGINAS: 3 s por pagina, minimo 4 min
+  // (80 paginas = 4 min, como antes; 300 = 15 min). NF_NOMES_TETO_CONSTRUCAO_MS continua mandando, se definido.
+  const _paginasPrevistas = opts.maxPaginas || Number(process.env[String((cfg && cfg.PREFIXO_ENV) || '') + 'NF_NOMES_MAX_PAGINAS']) || 80;
+  const TETO_CONSTRUCAO_MS = Number(process.env.NF_NOMES_TETO_CONSTRUCAO_MS) || Math.max(240000, _paginasPrevistas * 3000);
   const timerTeto = setTimeout(() => {
     if (minhaGeracao !== geracaoConstrucao) return;
     console.warn(`[${TAG_EMP}/NF-NOMES] construcao passou de ${TETO_CONSTRUCAO_MS / 1000}s — abandono e libero pra proxima tentar`);
