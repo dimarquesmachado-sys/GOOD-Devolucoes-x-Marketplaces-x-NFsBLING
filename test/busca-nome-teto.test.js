@@ -218,7 +218,7 @@ const codigo = lerCodigo('amb-devolucoes/lib-AMB/nf-nomes-AMB.js');   // b565: a
 {
   ok(/parouPorTeto/.test(codigo),   // b565: nomes da copia unica (mesmo comportamento: b562)
      'GOOD: o build rastreia quando foi o TETO de paginas que parou, nao a data/fim dos dados');
-  ok(/paginasLidas = pg; ultimaCheia = lista\.length >= 100;/.test(codigo) && /const parouPorTeto = !parouPorData && ultimaCheia && paginasLidas >= maxPaginas;/.test(codigo),
+  ok(/paginasLidas = pg; ultimaCheia = lista\.length >= 100;/.test(codigo) && /const parouPorTeto = !parouPorData && ultimaCheia && paginasLidas >= maxPaginas && !fimNoTeto;/.test(codigo),
      '  ⚠️ so quando a ultima pagina lida ainda estava CHEIA');
 
   const iCompleto = codigo.indexOf('const parouPorTeto = ');

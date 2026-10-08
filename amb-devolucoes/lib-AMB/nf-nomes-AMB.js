@@ -466,6 +466,25 @@ async function construirIndiceInterno(opts = {}) {
       await sleep(cfg.bling.pausaMs / 2);   // respeita o rate limit do Bling
     }
 
+    // b589 (Codex #471, P2) - pagina CHEIA no teto nao prova truncamento: se a janela tem exatamente `maxPaginas` x 100
+    // NFs, a pagina seguinte vem vazia (ou ja alem do corte) e o indice esta completo. Uma pagina-sentinela decide;
+    // se ela falhar, continua valendo "parou no teto" (conservador: a completa sera refeita).
+    let fimNoTeto = false;
+    if (!parouPorData && !erroBusca && !cancelado && ultimaCheia && paginasLidas >= maxPaginas && minhaGeracao === geracaoConstrucao
+      && !(drenagem.estaDrenando() && (deFundo || IDX.viroufundo))) {
+      await drenagem.pausar(400, deFundo || IDX.viroufundo, 'indice-nomes');
+      if (minhaGeracao !== geracaoConstrucao) cancelado = true;
+      else {
+        const rs = await bling.chamarBling(`/nfe?limite=100&pagina=${maxPaginas + 1}&tipo=1`, { fundo: deFundo || IDX.viroufundo, semRetentativa: true });
+        if (minhaGeracao !== geracaoConstrucao) cancelado = true;
+        else if (rs && rs.ok) {
+          const prox = (rs.data && rs.data.data) || [];
+          const q0 = prox.length ? Date.parse(String(prox[0].dataEmissao || '').replace(' ', 'T')) : 0;
+          fimNoTeto = prox.length === 0 || !!(q0 && q0 < corte);
+        }
+      }
+    }
+
     // ── b34: PASSE 2 — VENDAS do Bling. /pedidos/vendas traz
     // numeroLoja SEMPRE (mais contato e total) — é a espinha dos
     // checkouts. Cobre Shopee/TikTok/Amazon quando a lista de NFs
@@ -565,7 +584,7 @@ async function construirIndiceInterno(opts = {}) {
     // servir dele em vez de reconstruir.
     // b562 - porte da GOOD: se foi o TETO de paginas que parou (a ultima pagina lida ainda estava CHEIA), o indice NAO
     // esta completo — continua PARCIAL, e a busca avisa. So a data de corte ou o fim dos dados fecham o indice.
-    const parouPorTeto = !parouPorData && ultimaCheia && paginasLidas >= maxPaginas;
+    const parouPorTeto = !parouPorData && ultimaCheia && paginasLidas >= maxPaginas && !fimNoTeto;
     IDX.parouPor = parouPorTeto ? 'teto' : (parouPorData ? 'data' : 'fim');
     IDX.ts = (falhouGeral || cancelado) ? 0 : Date.now();
     // b280.2 (auditoria do #228, Codex P1) - ⚠️ A AMB NUNCA LIMPAVA ISTO.

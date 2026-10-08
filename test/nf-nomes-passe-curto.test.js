@@ -11,7 +11,7 @@ const nf = (id, dias) => ({ id, numero: String(1000 + id), serie: '1', dataEmiss
   const gravados = [];
   const armazem = { salvar: async (n, o) => { gravados.push(o); return { ok: true, bytes: 1 }; }, carregar: async () => null };
   const fab = require(path.join(__dirname, '..', 'amb-devolucoes', 'lib-AMB', 'nf-nomes-AMB.js'));
-  const emp = fab.criar({ PREFIXO_ENV: 'T_', bling: { pausaMs: 0 }, clienteBling: bling, armazemNfNomes: armazem, semPassadaVendas: true });
+  const emp = fab.criar({ PREFIXO_ENV: 'T_', bling: { pausaMs: 0 }, clienteBling: bling, armazemNfNomes: armazem, semVendas: true });
   await emp.construirIndice({ fundo: true, maxPaginas: 3 });   // passe curto
   await new Promise((r) => setTimeout(r, 20));
   ok(!emp.statusIndice().ultima_completa, '⚠️ o passe curto NAO carimba montagem completa');
@@ -22,10 +22,16 @@ const nf = (id, dias) => ({ id, numero: String(1000 + id), serie: '1', dataEmiss
   ok(gravados.length === 1, '  e so ela grava o retrato');
   // Codex #471: teto informado MAIOR que as paginas existentes — a listagem acabou antes, entao e completo e salvo
   const gravados2 = [];
-  const emp2 = fab.criar({ PREFIXO_ENV: 'T_', bling: { pausaMs: 0 }, clienteBling: bling, armazemNfNomes: { salvar: async (n, o) => { gravados2.push(o); return { ok: true, bytes: 1 }; }, carregar: async () => null }, semPassadaVendas: true });
+  const emp2 = fab.criar({ PREFIXO_ENV: 'T_', bling: { pausaMs: 0 }, clienteBling: bling, armazemNfNomes: { salvar: async (n, o) => { gravados2.push(o); return { ok: true, bytes: 1 }; }, carregar: async () => null }, semVendas: true });
   await emp2.construirIndice({ fundo: true, maxPaginas: 50 });
   await new Promise((r) => setTimeout(r, 20));
   ok(!!emp2.statusIndice().ultima_completa && gravados2.length === 1, '⚠️ teto informado que NAO foi atingido (listagem acabou antes) conta como completo e e salvo');
+  // Codex #471 (2): a janela tem EXATAMENTE maxPaginas x 100 NFs — a pagina seguinte vem vazia, entao e completo
+  const gravados3 = [];
+  const emp3 = fab.criar({ PREFIXO_ENV: 'T_', bling: { pausaMs: 0 }, clienteBling: bling, armazemNfNomes: { salvar: async (n, o) => { gravados3.push(o); return { ok: true, bytes: 1 }; }, carregar: async () => null }, semVendas: true });
+  await emp3.construirIndice({ fundo: true, maxPaginas: 15 });
+  await new Promise((r) => setTimeout(r, 20));
+  ok(!!emp3.statusIndice().ultima_completa && gravados3.length === 1, '⚠️ pagina cheia exatamente no teto, com a seguinte vazia, conta como completo e e salvo');
   console.log('');
   console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
   process.exit(falhas ? 1 : 0);

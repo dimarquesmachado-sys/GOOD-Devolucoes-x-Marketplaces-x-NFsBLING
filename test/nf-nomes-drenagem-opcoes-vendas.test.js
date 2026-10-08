@@ -26,7 +26,7 @@ function bling() {
   let emp = fab.criar({ PREFIXO_ENV: 'T_', bling: { pausaMs: 0 }, clienteBling: b });
   const idx = await emp.construirIndice({ fundo: false, maxPaginas: 3 });
   ok(idx && idx.ts > 0 && idx.totalNFs === 300, '⚠️ construcao de busca (nao fundo) NAO para na drenagem: ' + (idx && idx.totalNFs) + ' NFs');
-  ok(b.urls.filter((u) => u.startsWith('/nfe')).length === 3, 'leu as 3 paginas mesmo drenando');
+  ok(b.urls.filter((u) => u.startsWith('/nfe') && Number(/pagina=(\d+)/.exec(u)[1]) <= 3).length === 3, 'leu as 3 paginas mesmo drenando');   // b589: a 4a e a sentinela do teto
   // 1b) fundo + drenando: para, nao publica
   drenandoFalso = false;
   b = bling(); b.drenarNaPagina1 = true;
@@ -62,7 +62,7 @@ function bling() {
   if (retry) retry();
   await new Promise((r2) => setTimeout(r2, 1500));
   console.error = origErr2; drenagem.daquiA = daquiAOrig;
-  ok(chamadas.filter((u) => u.startsWith('/nfe')).length === 2, '⚠️ a retentativa manteve maxPaginas do SEU agendamento (' + chamadas.length + ' chamadas)');
+  ok(chamadas.filter((u) => u.startsWith('/nfe') && Number(/pagina=(\d+)/.exec(u)[1]) <= 2).length === 2, '⚠️ a retentativa manteve maxPaginas do SEU agendamento (' + chamadas.length + ' chamadas)');
   console.log('');
   console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
   process.exit(falhas ? 1 : 0);
