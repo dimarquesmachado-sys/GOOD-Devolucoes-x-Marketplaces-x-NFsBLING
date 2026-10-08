@@ -2085,6 +2085,7 @@ async function carregarSemRetorno() {
         const novo = tmp.firstElementChild;
         if (!novo) { renderizar(); return; }
         el.replaceWith(novo);
+        if (typeof autoCarregarItens === 'function') autoCarregarItens();   // Codex #474: reaplica titulo do anuncio / itens da NF no card novo
 
         // pisca a borda do card novo
         requestAnimationFrame(() => {
@@ -2123,6 +2124,8 @@ async function carregarSemRetorno() {
           const campos = [
             d.nf_numero, d.order_id, d.pack_id, d.shipment_id,
             d.produto_titulo, d.produto_sku, d.produto_mlb,
+            d.anuncio_titulo, d.anuncio_sku,   // Codex #474: titulo do anuncio mostrado no card
+            ...anuncioDaBusca(d),   // Codex #474 (2): cache POR PEDIDO — sobrevive ao atualizarUmCard, que troca o `dados` inteiro
             ...(Array.isArray(d.itens_devolvidos) ? d.itens_devolvidos.flatMap(i => [i && i.sku, i && i.titulo]) : []),
             d.buyer_nome, d.buyer_id,
             d.problema_descricao,
@@ -2474,7 +2477,7 @@ async function carregarSemRetorno() {
         <div class="item ${concluido ? 'concluido' : ''}${d.nf_devolucao_id_bling ? ' nf-emitida' : ''}" id="card-${d.id}" ${ehParcial ? 'style="border-left-color:#f57c00;background:#fff8e7;"' : ''}>
           <div class="item-header">
             <div>
-              <div class="item-titulo">${escapeHtml(d.produto_titulo || '-')}${badgeParcial}${badgeRebipe}${badgeConsertado}</div>
+              <div class="item-titulo"><span class="titulo-txt">${escapeHtml(d.produto_titulo || '-')}</span><span class="selo-varios">${seloVariosProdutos(d)}</span>${badgeParcial}${badgeRebipe}${badgeConsertado}</div>
               <div class="item-data">por ${escapeHtml(desc)} · ${dataFmt((d.criado_em || d.created_at))}</div>
             </div>
             ${concluido ? '<span style="background:#999;color:white;padding:3px 8px;border-radius:10px;font-size:10px;font-weight:700;">CONCLUIDO</span>' : ''}
@@ -2530,7 +2533,7 @@ async function carregarSemRetorno() {
         <div class="item problema ${concluido ? 'concluido' : ''}" id="card-${d.id}">
           <div class="item-header">
             <div>
-              <div class="item-titulo">${escapeHtml(d.produto_titulo || '-')}${badgeRebipe}</div>
+              <div class="item-titulo"><span class="titulo-txt">${escapeHtml(d.produto_titulo || '-')}</span><span class="selo-varios">${seloVariosProdutos(d)}</span>${badgeRebipe}</div>
               <div class="item-data">${dataFmt((d.criado_em || d.created_at))}</div>
             </div>
             ${concluido ? '<span style="background:#999;color:white;padding:3px 8px;border-radius:10px;font-size:10px;font-weight:700;">RESOLVIDO</span>' : ''}
@@ -2599,7 +2602,7 @@ async function carregarSemRetorno() {
         <div class="item ${concluido ? 'concluido' : ''}" id="card-${d.id}" style="${d.nf_devolucao_id_bling ? 'border:2px solid #2e7d32;' : ''}border-left:5px solid var(--marca); background:#f3e5f5;">
           <div class="item-header">
             <div>
-              <div class="item-titulo">${escapeHtml(d.produto_titulo || '-')} <span style="background:var(--marca);color:var(--sobre-marca);padding:3px 8px;border-radius:10px;font-size:10px;font-weight:700;margin-left:6px;">🔄 DIVERGENTE</span>${badgeRebipe}</div>
+              <div class="item-titulo"><span class="titulo-txt">${escapeHtml(d.produto_titulo || '-')}</span><span class="selo-varios">${seloVariosProdutos(d)}</span> <span style="background:var(--marca);color:var(--sobre-marca);padding:3px 8px;border-radius:10px;font-size:10px;font-weight:700;margin-left:6px;">🔄 DIVERGENTE</span>${badgeRebipe}</div>
               <div class="item-data">${dataFmt((d.criado_em || d.created_at))}</div>
             </div>
             ${concluido ? '<span style="background:#999;color:white;padding:3px 8px;border-radius:10px;font-size:10px;font-weight:700;">RESOLVIDO</span>' : ''}
@@ -3462,16 +3465,64 @@ async function carregarSemRetorno() {
     // b548 - dono, 05/10 (Girassol, NF 127261: 'CABOLATERAL · 3 un', mas a NF tem 3 produtos de 1 un cada): quando a
     // NF tem MAIS DE UM produto, a linha do card diz isso — a lista vem aberta logo abaixo — em vez de mostrar o 1o
     // SKU com a quantidade total. Com a lista ainda nao carregada, a caixa automatica corrige a linha quando chega.
-    function textoVariosProdutos(n) { return '<strong>' + n + ' produtos diferentes na NF</strong> \u00b7 lista abaixo'; }
+    // b591 - dono, 08/10: 'so informar no topo produto KIT' (a lista dos itens vem logo abaixo, nao precisa repetir)
+    function textoVariosProdutos(n) { return '<strong>' + n + ' produtos na NF</strong> \u00b7 itens abaixo'; }
+    // b591 - dono, 08/10: NF com mais de 1 produto ganha o selo VARIOS PRODUTOS no TITULO do card (nao 'KIT': uma NF com
+    // varios SKUs pode ser so uma compra de produtos separados — Codex #474). O selo nasce no render (nf_itens gravados)
+    // ou quando a lista da NF chega (marcarVariosProdutos).
+    var SELO_VARIOS = ' <span style="background:#6a1b9a;color:#fff;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;white-space:nowrap;">VÁRIOS PRODUTOS</span>';
+    // Codex #474: linha da NF sem SKU/codigo tambem e um produto — conta pelo id/titulo (so o selo; a conta de kit segue por SKU)
+    function nProdutosDistintos(lista) {
+      var ks = {}; (Array.isArray(lista) ? lista : []).forEach(function (i) { var k = String((i && (i.sku || i.codigo || i.produto_id || i.titulo || i.descricao)) || '').trim().toUpperCase(); if (k) ks[k] = 1; });
+      return Object.keys(ks).length;
+    }
+    function nDistintosNF(d) { return nProdutosDistintos(d && d.nf_itens); }
+    // Codex #474: card antigo sem nf_itens mostra o bloco 'Voltaram...' (unica lista); quando a lista da NF chega
+    // e bate com o que voltou, o bloco sai — mesma regra de linhaItensDevolvidos.
+    function regDoCard(cardEl) {
+      return cardEl && dados && [].concat(dados.aprovadas || [], dados.problemas || [], dados.divergentes || []).find(function (x) { return 'card-' + x.id === cardEl.id; });
+    }
+    function ocultarVoltaramSeCompleto(cardEl, itensNF) {
+      try {
+        var blk = cardEl && cardEl.querySelector('.bloco-voltaram'); if (!blk || !Array.isArray(itensNF) || !itensNF.length) return;
+        var reg = regDoCard(cardEl);
+        if (reg && faltasDevolucaoParcial(Object.assign({}, reg, { nf_itens: itensNF })).length === 0) blk.remove();
+      } catch (e) { /* na duvida, o bloco fica */ }
+    }
+    // Codex #474: resposta do anuncio por pedido — o card re-renderizado (atualizarUmCard) reaplica sem nova busca
+    var anuncioCache = {};
+    // Codex #474 (2): o anuncio mostrado fica guardado por PEDIDO, fora do `dados` (que o atualizarUmCard substitui inteiro);
+    // a busca le daqui, entao achar um card pelo titulo do anuncio continua valendo depois de redesenhar outro card.
+    var anuncioPorPedido = {};
+    function anuncioDaBusca(d) { var a = d && d.order_id ? anuncioPorPedido[String(d.order_id)] : null; return a ? [a.titulo, a.sku] : []; }
+    function seloVariosProdutos(d) { return nDistintosNF(d) > 1 ? SELO_VARIOS : ''; }
+    function marcarVariosProdutos(linha, n) {
+      try { var card = linha && linha.closest('.item'); var sel = card && card.querySelector('.selo-varios'); if (sel && n > 1) sel.innerHTML = SELO_VARIOS; } catch (e) { /* so o selo */ }
+    }
     async function mostrarAnuncioDoKit(linha, mkt, pedido, nDist) {
       try {
-        const r = await fetch((window.APP_BASE || '') + '/api/admin/anuncio-do-pedido?mkt=' + encodeURIComponent(mkt || '') + '&pedido=' + encodeURIComponent(pedido));
-        const j = await r.json();
+        var chave = (mkt || '') + '|' + pedido;
+        var j = anuncioCache[chave];
+        if (!j) {
+          const r = await fetch((window.APP_BASE || '') + '/api/admin/anuncio-do-pedido?mkt=' + encodeURIComponent(mkt || '') + '&pedido=' + encodeURIComponent(pedido));
+          j = await r.json();
+        }
         if (!j || !j.ok || !j.titulo) return;   // outro marketplace ou ML fora: fica a linha de 'N produtos'
+        anuncioCache[chave] = j;
         // Codex #464 (P3): pedido com VARIOS anuncios lista todos; so com 1 anuncio ele e 'o kit' do card
         var an = (Array.isArray(j.itens) ? j.itens : []).filter(function (x) { return x && x.titulo; });
         if (!an.length) an = [{ titulo: j.titulo, sku: j.sku }];
         var txt = an.map(function (x) { return (an.length > 1 && x.qtd ? escapeHtml(String(x.qtd)) + '× ' : '') + '<strong>' + escapeHtml(x.titulo) + '</strong>' + (x.sku ? ' · SKU <code>' + escapeHtml(x.sku) + '</code>' : ''); }).join(' + ');
+        marcarVariosProdutos(linha, nDist);
+        var card = linha.closest && linha.closest('.item'); var tit = card && card.querySelector('.titulo-txt');
+        if (an.length === 1 && tit) {
+          anuncioPorPedido[String(pedido)] = { titulo: an[0].titulo, sku: an[0].sku || '' };   // Codex #474 (2)
+          var reg = regDoCard(card); if (reg) { reg.anuncio_titulo = an[0].titulo; reg.anuncio_sku = an[0].sku || ''; }   // Codex #474: a busca acha o que o card mostra
+          // b591 - dono: o titulo do ANUNCIO e o titulo principal do card; embaixo, os itens da NF um por um
+          tit.textContent = an[0].titulo;
+          linha.innerHTML = (an[0].sku ? 'SKU do anúncio <code>' + escapeHtml(an[0].sku) + '</code> · ' : '') + '<strong>' + nDist + ' produtos na NF</strong> · itens abaixo';
+          return;
+        }
         linha.innerHTML = '🧩 ' + txt + ' · <span style="color:#6a1b9a;">' + (an.length > 1 ? 'pedido com ' + an.length + ' anúncios' : 'kit') + ' com ' + nDist + ' produtos — itens da NF abaixo</span>';
       } catch (e) { /* so o resumo do card; a lista da NF ja esta na tela */ }
     }
@@ -3541,6 +3592,8 @@ async function carregarSemRetorno() {
             var cardEl = box.closest('.item') || box.parentNode;
             var linha = cardEl && cardEl.querySelector('.linha-produto');
             if (linha && nDist > 1) linha.innerHTML = textoVariosProdutos(nDist);
+            if (linha) marcarVariosProdutos(linha, nProdutosDistintos(d.itens));   // b591 (Codex #474: conta linha sem SKU)
+            ocultarVoltaramSeCompleto(cardEl, d.itens);   // Codex #474
             // b572 - dono: card de KIT mostra o ANUNCIO vendido (titulo + SKU do kit no marketplace); os itens da NF
             // continuam listados embaixo, um por um, como saem na NF de devolucao
             if (linha && nDist > 1 && box.dataset.pedido) mostrarAnuncioDoKit(linha, box.dataset.mkt, box.dataset.pedido, nDist);
@@ -3712,7 +3765,10 @@ async function carregarSemRetorno() {
     function linhaItensDevolvidos(d) {
       var it = Array.isArray(d.itens_devolvidos) ? d.itens_devolvidos : [];
       if (it.length < 2) return '';
-      return '<div style="background:#e0f2f1;border:1px solid #00695c;color:#004d40;border-radius:8px;padding:6px 10px;margin:6px 0;font-size:13px;">📦 <b>Voltaram ' + it.length + ' produtos diferentes:</b> ' +
+      // b591 - dono, 08/10 (NF 127013): com TODOS os itens da NF de volta, este bloco so repetia a lista da NF que ja
+      // esta no card (e o topo ja diz KIT). Fica so quando a devolucao e PARCIAL — ai ele diz o que voltou de fato.
+      try { if (Array.isArray(d.nf_itens) && d.nf_itens.length && typeof faltasDevolucaoParcial === 'function' && faltasDevolucaoParcial(d).length === 0) return ''; } catch (e) { /* na duvida, mostra */ }   // Codex #474: sem a lista da NF, este bloco e a unica lista
+      return '<div class="bloco-voltaram" style="background:#e0f2f1;border:1px solid #00695c;color:#004d40;border-radius:8px;padding:6px 10px;margin:6px 0;font-size:13px;">📦 <b>Voltaram ' + it.length + ' produtos diferentes:</b> ' +
         it.map(function (i) { var t = i.titulo || i.descricao || ''; return escapeHtml(String(i.qtd || 1)) + '× <code>' + escapeHtml(String(i.sku || '?')) + '</code>' + (t ? ' ' + escapeHtml(String(t).slice(0, 40)) : ''); }).join(' · ') +
         '<br><span style="font-size:12px;">A NF de devolução sai com todos estes itens, um por um.</span></div>';   // b572: nao e erro
     }

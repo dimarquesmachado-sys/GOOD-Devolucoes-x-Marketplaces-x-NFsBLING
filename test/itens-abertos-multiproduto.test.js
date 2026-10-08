@@ -9,7 +9,7 @@ function fonte(nome) { const i = h.search(new RegExp('function ' + nome + '\\s*\
 const ctx = { escapeHtml: (x) => String(x), moeda: (v) => 'R$ ' + v }; vm.createContext(ctx);
 vm.runInContext(fonte('textoVariosProdutos') + '\n' + fonte('linhaProduto'), ctx);
 const nf127261 = { produto_sku: 'CABOLATERAL', produto_qtd: 3, produto_valor_unit: 16.58, nf_itens: [{ sku: 'CABOLATERAL', quantidade: 1 }, { sku: '7150-220v', quantidade: 1 }, { sku: 'KP4', quantidade: 1 }] };
-ok(/3 produtos diferentes na NF/.test(ctx.linhaProduto(nf127261)) && !/3 un/.test(ctx.linhaProduto(nf127261)), '⚠️ NF com 3 produtos: a linha diz "3 produtos diferentes" (nao "CABOLATERAL · 3 un")');
+ok(/<strong>3 produtos na NF<\/strong>/.test(ctx.linhaProduto(nf127261)) && !/3 un/.test(ctx.linhaProduto(nf127261)), '⚠️ NF com 3 produtos: a linha diz "3 produtos diferentes" (nao "CABOLATERAL · 3 un")');
 ok(/CABOLATERAL.*3 un/.test(ctx.linhaProduto({ produto_sku: 'CABOLATERAL', produto_qtd: 3, produto_valor_unit: 16.58, nf_itens: [{ sku: 'CABOLATERAL', quantidade: 3 }] })), '  NF de um produto so: linha de sempre (SKU · qtd · valor)');
 for (const f of ['itemHtmlProblema', 'itemHtmlDivergente', 'itemHtmlAprovado']) {
   const c = fonte(f);
