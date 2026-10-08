@@ -27,6 +27,7 @@ c = mkBlk(); ctx.ocultarVoltaramSeCompleto(c.el, [{ sku: 'A', quantidade: 1 }, {
 ok(!c.removido(), '  lista tardia com item que nao voltou (parcial): o bloco fica');
 ok(/d\.anuncio_titulo, d\.anuncio_sku/.test(h) && /reg\.anuncio_titulo = an\[0\]\.titulo/.test(h), '⚠️ titulo/SKU do anuncio entram na busca');
 ok(/el\.replaceWith\(novo\);\s*if \(typeof autoCarregarItens === 'function'\) autoCarregarItens\(\);/.test(h), '⚠️ atualizarUmCard reaplica o titulo do anuncio no card novo');
+ok(/var anuncioPorPedido = \{\};/.test(h) && /\.\.\.anuncioDaBusca\(d\),/.test(h) && /anuncioPorPedido\[String\(pedido\)\] = \{ titulo: an\[0\]\.titulo/.test(h), '⚠️ a busca pelo titulo do anuncio sobrevive ao redesenho de outro card (cache por pedido — Codex #474)');
 console.log('');
 console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
 process.exit(falhas ? 1 : 0);

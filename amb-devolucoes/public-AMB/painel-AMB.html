@@ -2125,6 +2125,7 @@ async function carregarSemRetorno() {
             d.nf_numero, d.order_id, d.pack_id, d.shipment_id,
             d.produto_titulo, d.produto_sku, d.produto_mlb,
             d.anuncio_titulo, d.anuncio_sku,   // Codex #474: titulo do anuncio mostrado no card
+            ...anuncioDaBusca(d),   // Codex #474 (2): cache POR PEDIDO — sobrevive ao atualizarUmCard, que troca o `dados` inteiro
             ...(Array.isArray(d.itens_devolvidos) ? d.itens_devolvidos.flatMap(i => [i && i.sku, i && i.titulo]) : []),
             d.buyer_nome, d.buyer_id,
             d.problema_descricao,
@@ -3490,6 +3491,10 @@ async function carregarSemRetorno() {
     }
     // Codex #474: resposta do anuncio por pedido — o card re-renderizado (atualizarUmCard) reaplica sem nova busca
     var anuncioCache = {};
+    // Codex #474 (2): o anuncio mostrado fica guardado por PEDIDO, fora do `dados` (que o atualizarUmCard substitui inteiro);
+    // a busca le daqui, entao achar um card pelo titulo do anuncio continua valendo depois de redesenhar outro card.
+    var anuncioPorPedido = {};
+    function anuncioDaBusca(d) { var a = d && d.order_id ? anuncioPorPedido[String(d.order_id)] : null; return a ? [a.titulo, a.sku] : []; }
     function seloVariosProdutos(d) { return nDistintosNF(d) > 1 ? SELO_VARIOS : ''; }
     function marcarVariosProdutos(linha, n) {
       try { var card = linha && linha.closest('.item'); var sel = card && card.querySelector('.selo-varios'); if (sel && n > 1) sel.innerHTML = SELO_VARIOS; } catch (e) { /* so o selo */ }
@@ -3511,6 +3516,7 @@ async function carregarSemRetorno() {
         marcarVariosProdutos(linha, nDist);
         var card = linha.closest && linha.closest('.item'); var tit = card && card.querySelector('.titulo-txt');
         if (an.length === 1 && tit) {
+          anuncioPorPedido[String(pedido)] = { titulo: an[0].titulo, sku: an[0].sku || '' };   // Codex #474 (2)
           var reg = regDoCard(card); if (reg) { reg.anuncio_titulo = an[0].titulo; reg.anuncio_sku = an[0].sku || ''; }   // Codex #474: a busca acha o que o card mostra
           // b591 - dono: o titulo do ANUNCIO e o titulo principal do card; embaixo, os itens da NF um por um
           tit.textContent = an[0].titulo;
