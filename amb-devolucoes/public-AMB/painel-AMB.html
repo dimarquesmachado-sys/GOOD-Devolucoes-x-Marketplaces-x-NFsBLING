@@ -3529,6 +3529,8 @@ async function carregarSemRetorno() {
         if (!an.length) an = [{ titulo: j.titulo, sku: j.sku }];
         var txt = an.map(function (x) { return (an.length > 1 && x.qtd ? escapeHtml(String(x.qtd)) + '× ' : '') + '<strong>' + escapeHtml(x.titulo) + '</strong>' + (x.sku ? ' · SKU <code>' + escapeHtml(x.sku) + '</code>' : ''); }).join(' + ');
         marcarVariosProdutos(linha, nDist);
+        // b599 - do pedido de venda do Bling, so vale quando ele RESUME a NF (menos linhas = o kit); senao nao acrescenta nada
+        if (j.fonte === 'bling' && !(an.length >= 1 && an.length < nDist)) return;
         var card = linha.closest && linha.closest('.item'); var tit = card && card.querySelector('.titulo-txt');
         if (an.length === 1 && tit) {
           anuncioPorPedido[String(pedido)] = { titulo: an[0].titulo, sku: an[0].sku || '' };   // Codex #474 (2)

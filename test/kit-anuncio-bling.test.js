@@ -1,0 +1,30 @@
+'use strict';
+// b599 — marketplaces sem API (Amazon, Leroy, Madeira...): anuncio pelo PEDIDO DE VENDA do Bling, como trafego de fundo.
+const path = require('path'); const fs = require('fs');
+let falhas = 0;
+const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o); };
+(async () => {
+  const stack = []; const reg = (m) => (p, ...f) => stack.push({ m, p, h: f[f.length - 1] });
+  const app = { get: reg('get'), post: reg('post'), put: reg('put'), delete: reg('delete'), patch: reg('patch'), use() {} };
+  const q = new Proxy({}, { get: (t, k) => (k === 'then' ? (r) => r({ data: [], error: null }) : () => q) });
+  const chamadas = [];
+  const chamarBling = async (u, o) => { chamadas.push({ u, fundo: !!(o && o.fundo) });
+    if (/numerosLojas\[\]=AMZ-111/.test(u)) return { ok: true, data: { data: [{ id: 77, numeroLoja: 'AMZ-111' }] } };
+    if (/numerosLojas\[\]=FULL-9/.test(u)) return { ok: true, data: { data: [] } };
+    if (/\/pedidos\/vendas\/77$/.test(u)) return { ok: true, data: { data: { itens: [{ descricao: '4 Lixas + Disco Prato + Pino', codigo: '4LixDIAM-1DISC-1PIN-Kit51', quantidade: 1, valor: 78.99 }] } } };
+    return { ok: false, status: 500 }; };
+  process.env.NODE_TEST_SEM_TIMERS = '1';
+  require(path.join(__dirname, '..', 'amb-devolucoes', 'lib-AMB', 'rotas-admin-AMB.js'))(app, { supabase: { from: () => q, storage: { from: () => ({}) } }, requerAdmin: (a, b, n) => n(), adminOk: () => true, sleep: async () => {}, chamarML: async () => ({ ok: false }), chamarBling, tabelaDevolucoes: 'devolucoes' });
+  const rota = stack.find((x) => x.p === '/api/admin/anuncio-do-pedido');
+  const chamar = (query) => new Promise((res) => rota.h({ query }, { _s: 200, status(s) { this._s = s; return this; }, json(o) { res({ s: this._s, o }); } }));
+  const r = await chamar({ mkt: 'amazon', pedido: 'AMZ-111' });
+  ok(r.o.ok && r.o.fonte === 'bling' && r.o.titulo === '4 Lixas + Disco Prato + Pino' && r.o.sku === '4LixDIAM-1DISC-1PIN-Kit51' && r.o.itens[0].preco === 78.99, '⚠️ Amazon (sem API): titulo, SKU e preco vem do pedido de venda do Bling');
+  ok(chamadas.every((c) => c.fundo), '  as consultas ao Bling vao como trafego de FUNDO (o galpao na frente)');
+  const r2 = await chamar({ mkt: 'madeira', pedido: 'FULL-9' });
+  ok(r2.o.ok === false && r2.o.suportado === false, '  sem pedido de venda no Bling (Full so com NF): suportado:false — card fica com o titulo generico');
+  const h = fs.readFileSync(path.join(__dirname, '..', 'amb-devolucoes', 'public-AMB', 'painel-AMB.html'), 'utf8');
+  ok(/if \(j\.fonte === 'bling' && !\(an\.length >= 1 && an\.length < nDist\)\) return;/.test(h), '⚠️ o painel so usa o pedido do Bling quando ele RESUME a NF (menos linhas = kit)');
+  console.log('');
+  console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
+  process.exit(falhas ? 1 : 0);
+})().catch((e) => { console.log('FALHA (excecao):', e && e.stack); process.exit(1); });
