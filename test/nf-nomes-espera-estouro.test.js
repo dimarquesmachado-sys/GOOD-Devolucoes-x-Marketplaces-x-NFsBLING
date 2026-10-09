@@ -36,6 +36,15 @@ const nf = (id, dias) => ({ id, numero: String(1000 + id), serie: '1', dataEmiss
   const nV = rotulos.filter((x) => x === 'indice-nomes/vendas-retry').length;
   ok(nV === 3, '⚠️ vendas com HTTP 0 nas 4 tentativas: 3 esperas, nenhuma depois da ultima (' + nV + ')');
   ok(/if \(e && e\.name === 'Cancelado'\) cancelado = true; else erroVendas = e\.message;/.test(src), '⚠️ a drenagem do deploy no meio das vendas CANCELA a montagem (nao vira erro de vendas e nao publica)');
+  // Codex #481 (4): deploy comecou a drenar DURANTE a espera das NFs -> cancela, sem nova chamada ao Bling
+  let chamadas5 = 0;
+  const estaOrig = dren.estaDrenando;
+  const pausarOrig = dren.pausar;
+  dren.pausar = async () => { dren.estaDrenando = () => true; };
+  const emp5 = fab.criar({ PREFIXO_ENV: 'T_', bling: { pausaMs: 0 }, clienteBling: { chamarBling: async () => { chamadas5++; return { ok: false, status: 503 }; } }, armazemNfNomes: { salvar: async () => ({ ok: true, bytes: 1 }), carregar: async () => null }, semVendas: true });
+  await emp5.construirIndice({ fundo: true });
+  dren.estaDrenando = estaOrig; dren.pausar = pausarOrig;
+  ok(chamadas5 === 1, '⚠️ drenagem durante a espera das NFs: nenhuma chamada nova ao Bling (' + chamadas5 + ' chamadas)');
   console.log('');
   console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
   process.exit(falhas ? 1 : 0);

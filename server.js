@@ -560,7 +560,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.126.107 (b602: estouro na fila (HTTP 0) e 5xx tentam de novo na montagem do indice de nomes)',
+      version: '9.126.108 (b602: estouro na fila (HTTP 0) e 5xx tentam de novo na montagem do indice de nomes)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),

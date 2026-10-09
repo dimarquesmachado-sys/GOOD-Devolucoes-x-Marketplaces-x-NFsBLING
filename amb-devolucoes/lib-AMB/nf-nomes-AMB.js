@@ -432,6 +432,8 @@ async function construirIndiceInterno(opts = {}) {
           && _recuperavel(r.status); tent++) {
           await drenagem.pausar(_esperaTent(r.status, tent), deFundo || IDX.viroufundo, 'indice-nomes/retry');
           if (minhaGeracao !== geracaoConstrucao) { cancelado = true; break; }   // b559
+          // Codex #481 (4): a busca fria pode virar fundo DURANTE a espera (o booleano foi passado por valor) — reconfere
+          if ((deFundo || IDX.viroufundo) && drenagem.estaDrenando()) { cancelado = true; break; }
           r = await bling.chamarBling(`/nfe?limite=100&pagina=${pg}&tipo=1`, { fundo: deFundo || IDX.viroufundo, semRetentativa: true });
           if (minhaGeracao !== geracaoConstrucao) { cancelado = true; break; }   // b559
         }
