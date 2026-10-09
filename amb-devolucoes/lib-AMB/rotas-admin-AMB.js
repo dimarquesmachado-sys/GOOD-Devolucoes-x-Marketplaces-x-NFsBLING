@@ -1212,7 +1212,7 @@ async function anuncioShopee(sn, res) {
       { headers: { 'x-internal-key': px.key } });
     const j = await r.json().catch(() => null);
     if (!r.ok || !j || !j.ok) return res.status(502).json({ ok: false, erro: 'servico da Shopee nao devolveu o pedido', status: r.status, detalhe: j && j.erro });
-    const itens = (j.itens || []).map((i) => ({ titulo: i.titulo ? (i.variacao ? i.titulo + ' — ' + i.variacao : i.titulo) : null, sku: i.sku || null, qtd: i.qtd || null, preco: i.preco || null }));
+    const itens = (j.itens || []).map((i) => ({ titulo: i.titulo ? (i.variacao ? i.titulo + ' — ' + i.variacao : i.titulo) : null, sku: i.sku || null, qtd: i.qtd || null, preco: i.preco != null ? i.preco : null }));   // preco 0 (brinde) e preco
     const v = { ok: true, mkt: 'shopee', pedido: sn, itens, titulo: (itens[0] && itens[0].titulo) || null, sku: (itens[0] && itens[0].sku) || null };
     if (_cacheAnuncio.size > 2000) _cacheAnuncio.clear();
     _cacheAnuncio.set(chave, { ts: Date.now(), v });
