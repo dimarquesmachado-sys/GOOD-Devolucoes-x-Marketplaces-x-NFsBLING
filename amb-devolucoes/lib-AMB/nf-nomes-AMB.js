@@ -545,6 +545,7 @@ async function construirIndiceInterno(opts = {}) {
             erroVendas = `vendas pagina ${pg} HTTP ${r.status} (tent ${tent}/4)`;
             // Codex #481 (2): a espera respeita a drenagem do deploy (era sleep cru); estouro/5xx esperam o bastante pra
             // atravessar a pausa de fundo do porteiro, como na passada das NFs
+            if (tent >= 4) break;   // Codex #481 (3): depois da ultima tentativa nao ha o que esperar
             await drenagem.pausar(r.status === 429 || r.status === 401 ? 1500 * tent : [15000, 30000, 60000, 90000][tent - 1] || 90000, deFundo || IDX.viroufundo, 'indice-nomes/vendas-retry');
             if (minhaGeracao !== geracaoConstrucao) { cancelado = true; break; }
             if ((deFundo || IDX.viroufundo) && drenagem.estaDrenando()) { cancelado = true; break; }   // deploy drenando: fundo para
@@ -578,7 +579,10 @@ async function construirIndiceInterno(opts = {}) {
         if (velhas === lote.length) break;   // página inteira antes do corte
         await sleep(350);
       }
-    } catch (e) { erroVendas = e.message; }
+    } catch (e) {
+      // Codex #481 (3): a drenagem do deploy cancela com `Cancelado` — e cancelamento da montagem (nao publica), nao erro de vendas
+      if (e && e.name === 'Cancelado') cancelado = true; else erroVendas = e.message;
+    }
 
     // Mesma regra do indice do ML: se falhou e nao veio nada, nao
     // marca como quente — o proximo bipe tenta de novo em vez de

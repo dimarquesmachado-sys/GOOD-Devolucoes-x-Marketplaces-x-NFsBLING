@@ -10,7 +10,8 @@ const nf = (id, dias) => ({ id, numero: String(1000 + id), serie: '1', dataEmiss
   const pagina = (pg) => Array.from({ length: 100 }, (_, i) => nf(pg * 1000 + i, pg));
   const esperas = [];
   const dren = require(path.join(__dirname, '..', 'lib', 'drenagem.js'));
-  dren.pausar = async (ms) => { esperas.push(ms); };   // sem esperar de verdade no teste
+  const rotulos = [];
+  dren.pausar = async (ms, fundo, rot) => { esperas.push(ms); rotulos.push(rot); };   // sem esperar de verdade no teste
   const fab = require(path.join(__dirname, '..', 'amb-devolucoes', 'lib-AMB', 'nf-nomes-AMB.js'));
   let falhasPg1 = 2;
   const bling = { chamarBling: async (u) => { const pg = Number((/pagina=(\d+)/.exec(u) || [])[1]); if (pg === 1 && falhasPg1 > 0) { falhasPg1--; return { ok: false, status: 0 }; } return { ok: true, status: 200, data: { data: pg <= 3 ? pagina(pg) : [] } }; } };
@@ -28,6 +29,13 @@ const nf = (id, dias) => ({ id, numero: String(1000 + id), serie: '1', dataEmiss
   await emp3.construirIndice({ fundo: true });
   ok(chamadas3 === 1 && esperas.length === 0, '⚠️ status vazio (token bloqueado) NAO entra nas tentativas: 1 chamada, sem espera (' + chamadas3 + ' chamadas)');
   ok(/'indice-nomes\/vendas-retry'/.test(src) && !/await sleep\(1500 \* tent\)/.test(src), '  as tentativas das vendas esperam pela drenagem (nao sleep cru)');
+  // Codex #481 (3): vendas com HTTP 0 nas 4 tentativas — 3 esperas (nao espera depois da ultima)
+  rotulos.length = 0;
+  const emp4 = fab.criar({ PREFIXO_ENV: 'T_', bling: { pausaMs: 0 }, clienteBling: { chamarBling: async (u) => (/pedidos\/vendas/.test(u) ? { ok: false, status: 0 } : { ok: true, status: 200, data: { data: /pagina=1\b/.test(u) ? pagina(1) : [] } }) }, armazemNfNomes: { salvar: async () => ({ ok: true, bytes: 1 }), carregar: async () => null } });
+  await emp4.construirIndice({ fundo: true });
+  const nV = rotulos.filter((x) => x === 'indice-nomes/vendas-retry').length;
+  ok(nV === 3, '⚠️ vendas com HTTP 0 nas 4 tentativas: 3 esperas, nenhuma depois da ultima (' + nV + ')');
+  ok(/if \(e && e\.name === 'Cancelado'\) cancelado = true; else erroVendas = e\.message;/.test(src), '⚠️ a drenagem do deploy no meio das vendas CANCELA a montagem (nao vira erro de vendas e nao publica)');
   console.log('');
   console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
   process.exit(falhas ? 1 : 0);
