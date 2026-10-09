@@ -24,6 +24,17 @@ const nf = (id, dias) => ({ id, numero: String(1000 + id), serie: '1', dataEmiss
   await new Promise((r) => setTimeout(r, 1400));   // parada > teto de 600 ms
   console.warn = ow;
   ok(avisos.some((a) => /sem pagina nova/.test(a)), '⚠️ montagem PARADA (sem pagina nova alem do teto) e abandonada');
+  // Codex #482: pagina VAZIA de /nfe tambem e resposta; sem contar, a passada de vendas herdava o relogio velho
+  ok(emp.tetoAbsolutoConstrucaoMs() === 3 * emp.tetoConstrucaoMs(), 'teto absoluto exportado = 3x o de inatividade (a fila do pre-aquecimento espera por ele)');
+  const lento = { chamarBling: async (u) => {
+    const pg = Number((/pagina=(\d+)/.exec(u) || [])[1]);
+    if (/\/nfe/.test(u)) { await new Promise((r) => setTimeout(r, pg === 1 ? 50 : 450)); return { ok: true, status: 200, data: { data: pg === 1 ? pagina(1) : [] } }; }
+    await new Promise((r) => setTimeout(r, 300)); return { ok: true, status: 200, data: { data: [] } };
+  } };
+  const avisos3 = []; console.warn = (m) => avisos3.push(String(m));
+  const emp3 = fab.criar({ PREFIXO_ENV: 'T_', bling: { pausaMs: 0 }, clienteBling: lento, armazemNfNomes: { salvar: async () => ({ ok: true, bytes: 1 }), carregar: async () => null } });
+  await emp3.construirIndice({ fundo: true }); console.warn = ow;
+  ok(!avisos3.some((a) => /abandono/.test(a)), '⚠️ pagina vazia de /nfe conta como progresso: a passada de vendas nao e abandonada');
   console.log('');
   console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
   process.exit(falhas ? 1 : 0);

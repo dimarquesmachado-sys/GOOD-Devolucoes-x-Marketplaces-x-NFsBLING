@@ -649,7 +649,7 @@ const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 // checado ANTES de entrar na fila da empresa — nao antes de sair, entao um
 // candidato ja desistido ainda batia no Bling depois de esperar numa pausa
 // de 429. Ver bling-AMB.js, nf-nomes-AMB.js e identificar-AMB.js.
-const VERSAO = 'AMB Devolucoes b603';
+const VERSAO = 'AMB Devolucoes b604';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -4102,7 +4102,7 @@ async function esperarTerminar(nome, status, tetoMs = PREAQ_TETO_MS) {
     nfNomes.preAquecer(0);
     // Codex #470: a montagem do nf-nomes pode durar ate o proprio teto de construcao (15-30 min com 300 paginas);
     // com o teto padrao de 8 min a fila soltava o nf-entrada com o nf-nomes ainda varrendo o Bling.
-    await esperarTerminar('nf-nomes', () => nfNomes.statusIndice(), Math.max(PREAQ_TETO_MS, nfNomes.tetoConstrucaoMs() + 30000));
+    await esperarTerminar('nf-nomes', () => nfNomes.statusIndice(), Math.max(PREAQ_TETO_MS, nfNomes.tetoAbsolutoConstrucaoMs() + 30000));
     nfEntrada.preAquecer(0);
     await esperarTerminar('nf-entrada', () => nfEntrada.statusIndice());
   } else {
