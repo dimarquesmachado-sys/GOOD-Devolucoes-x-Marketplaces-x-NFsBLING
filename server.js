@@ -560,7 +560,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.126.102 (b597: anuncio do pedido tambem na Shopee, pelo servico da Shopee)',
+      version: '9.126.103 (b598: anuncio do pedido tambem no TikTok, pela ponte do Mover-Pedidos)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -8766,6 +8766,7 @@ const ROTAS_GOOD_EXTRA = require('./lib/rotas-admin-good-extra')(app, DEPS_ADMIN
 require('./amb-devolucoes/lib-AMB/rotas-admin-AMB.js')(app, Object.assign({}, DEPS_ADMIN_NF, {
   chamarMagalu: magalu.chamarMagalu,   // b595 - anuncio do pedido do Magalu (card de varios produtos)
   shopeeProxy: { url: shopee.cfg.url, loja: shopee.cfg.loja, key: shopee.cfg.key || process.env.SHOPEE_PROXY_KEY || '' },   // b597 - anuncio da Shopee
+  tiktokPonte, tiktokLoja: tiktokPonte.lojaDaEmpresa('good'),   // b598 - anuncio do TikTok
   // a copia unica chama o Bling com caminho relativo ('/nfe/...'); o cliente da GOOD quer o endereco inteiro
   chamarBling: (u, ...resto) => chamarBling(/^https?:/i.test(String(u)) ? u : 'https://api.bling.com.br/Api/v3' + u, ...resto),
   tabelaDevolucoes: 'devolucoes',

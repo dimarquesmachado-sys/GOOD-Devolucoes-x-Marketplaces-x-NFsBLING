@@ -649,7 +649,7 @@ const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 // checado ANTES de entrar na fila da empresa — nao antes de sair, entao um
 // candidato ja desistido ainda batia no Bling depois de esperar numa pausa
 // de 429. Ver bling-AMB.js, nf-nomes-AMB.js e identificar-AMB.js.
-const VERSAO = 'AMB Devolucoes b597';
+const VERSAO = 'AMB Devolucoes b598';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -2877,6 +2877,7 @@ registrarRotasAdminNF(router, {
   tabelaDevolucoes: db.tabelas.devolucoes,   // b144 - devolucoes_amb
   chamarMagalu: magalu.chamarMagalu,   // b595 - anuncio do pedido do Magalu (card de varios produtos)
   shopeeProxy: { url: shopee.cfg.url, loja: shopee.cfg.loja, key: process.env.SHOPEE_PROXY_KEY || '' },   // b597 - anuncio da Shopee
+  tiktokPonte, tiktokLoja: tiktokPonte.lojaDaEmpresa(CFG_EMPRESA.CHAVE_REGISTRO || 'ambtotal'),   // b598 - anuncio do TikTok
   supabase: db.conectar(),
   requerAdmin: auth.requerAdmin,
   // usado nas fotos: aceita sessao de admin OU a chave ?k=ADMIN_KEY

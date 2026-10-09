@@ -1178,6 +1178,8 @@ app.get('/api/admin/anuncio-do-pedido', requerAdmin, async (req, res) => {
   // order_sn da Shopee tem ao menos uma LETRA (regra do painel) — sem isso, o pedido do ML (20 + 14 digitos) cairia aqui
   const ehShopee = /^shopee/.test(mkt) || (!mkt && /^\d{6}(?=[A-Z0-9]*[A-Z])[A-Z0-9]{6,}$/.test(snShopee));
   if (ehShopee) return anuncioShopee(snShopee, res);
+  // b598 - TikTok: pela rota de consulta da API do TikTok no Mover-Pedidos (/tiktok/sonda), mesma ponte das devolucoes
+  if (/^tiktok/.test(mkt)) return anuncioTikTok(pedido, res);
   if (!ehML) return res.json({ ok: false, suportado: false, motivo: 'marketplace ainda sem anuncio (ML e Magalu ligados)' });
   const chave = 'ml:' + pedido;
   const c = _cacheAnuncio.get(chave);
@@ -1198,6 +1200,38 @@ app.get('/api/admin/anuncio-do-pedido', requerAdmin, async (req, res) => {
     return res.status(502).json({ ok: false, erro: e.message });
   }
 });
+
+// b598 - anuncio do pedido no TikTok. Formato conferido num pedido REAL da Girassol (586485718877832225):
+// data.orders[0].line_items[] = UMA linha por unidade, com product_name, sku_name ('Padrao' quando nao ha variacao),
+// seller_sku e sale_price (texto). Linhas do mesmo SKU viram um item com a quantidade.
+async function anuncioTikTok(pedido, res) {
+  const ponte = deps.tiktokPonte; const loja = deps.tiktokLoja;
+  if (!ponte || typeof ponte.chamarMoverPedidos !== 'function' || !loja) return res.json({ ok: false, suportado: false, motivo: 'TikTok nao ligado nesta empresa' });
+  if (!pedido) return res.status(400).json({ ok: false, erro: 'pedido obrigatorio' });
+  const chave = 'tiktok:' + loja + ':' + pedido;
+  const c = _cacheAnuncio.get(chave);
+  if (c && Date.now() - c.ts < 6 * 3600e3) return res.json(c.v);
+  try {
+    const r = await ponte.chamarMoverPedidos('/tiktok/sonda', { loja, caminho: '/order/202309/orders', ids: pedido });
+    const cru = r && (r.corpo || r.data || r);
+    const ped = cru && cru.resposta_crua && cru.resposta_crua.data && (cru.resposta_crua.data.orders || [])[0];
+    if (!ped) return res.status(502).json({ ok: false, erro: 'TikTok nao devolveu o pedido', detalhe: (r && r.erro) || (cru && cru.resposta_crua && cru.resposta_crua.message) || null });
+    const porSku = new Map();
+    (ped.line_items || []).forEach((li) => {
+      const k = String(li.seller_sku || li.sku_id || li.product_name || '');
+      const varia = li.sku_name && !/^(padr[aã]o|default)$/i.test(String(li.sku_name).trim()) ? li.sku_name : null;
+      const atual = porSku.get(k) || { titulo: li.product_name ? (varia ? li.product_name + ' — ' + varia : li.product_name) : null, sku: li.seller_sku || null, qtd: 0, preco: li.sale_price != null && li.sale_price !== '' ? Number(li.sale_price) : null };
+      atual.qtd += 1; porSku.set(k, atual);
+    });
+    const itens = [...porSku.values()];
+    const v = { ok: true, mkt: 'tiktok', pedido, itens, titulo: (itens[0] && itens[0].titulo) || null, sku: (itens[0] && itens[0].sku) || null };
+    if (_cacheAnuncio.size > 2000) _cacheAnuncio.clear();
+    _cacheAnuncio.set(chave, { ts: Date.now(), v });
+    return res.json(v);
+  } catch (e) {
+    return res.status(502).json({ ok: false, erro: e.message });
+  }
+}
 
 // b597 - anuncio do pedido na Shopee, pelo servico da Shopee (mesmo formato de resposta do ML/Magalu)
 async function anuncioShopee(sn, res) {
