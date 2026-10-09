@@ -560,7 +560,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.126.99 (b594: card de varios produtos — titulo do anuncio, selo VARIOS PRODUTOS, sem lista repetida)',
+      version: '9.126.100 (b595: anuncio do pedido tambem no Magalu — card de varios produtos)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -8764,6 +8764,7 @@ const DEPS_ADMIN_NF = {
 };
 const ROTAS_GOOD_EXTRA = require('./lib/rotas-admin-good-extra')(app, DEPS_ADMIN_NF);
 require('./amb-devolucoes/lib-AMB/rotas-admin-AMB.js')(app, Object.assign({}, DEPS_ADMIN_NF, {
+  chamarMagalu: magalu.chamarMagalu,   // b595 - anuncio do pedido do Magalu (card de varios produtos)
   // a copia unica chama o Bling com caminho relativo ('/nfe/...'); o cliente da GOOD quer o endereco inteiro
   chamarBling: (u, ...resto) => chamarBling(/^https?:/i.test(String(u)) ? u : 'https://api.bling.com.br/Api/v3' + u, ...resto),
   tabelaDevolucoes: 'devolucoes',

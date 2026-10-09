@@ -1169,7 +1169,11 @@ app.get('/api/admin/anuncio-do-pedido', requerAdmin, async (req, res) => {
   if (!pedido) return res.status(400).json({ ok: false, erro: 'pedido obrigatorio' });
   // Codex #464 (P2): marketplace vazio + id no formato do ML (20 + 14 digitos) e ML — mesma inferencia do painel (b492)
   const ehML = /^(ml|mercadolivre|mercado_livre|mercado livre)$/.test(mkt) || (!mkt && /^20\d{14}$/.test(pedido));
-  if (!ehML) return res.json({ ok: false, suportado: false, motivo: 'por enquanto so o ML' });
+  // b595 - dono, 08/10: 'todos marketplaces fornecem titulo e SKU do anuncio'. Magalu: /seller/v1/orders/{codigo de 16
+  // digitos} -> deliveries[].items[].info.name / info.sku (formato conferido num pedido real da GOOD, 1575070106528392).
+  const ehMagalu = /^magalu|magazine/.test(mkt) || (!mkt && /^\d{16}$/.test(pedido) && !/^20\d{14}$/.test(pedido));
+  if (ehMagalu) return anuncioMagalu(pedido, res);
+  if (!ehML) return res.json({ ok: false, suportado: false, motivo: 'marketplace ainda sem anuncio (ML e Magalu ligados)' });
   const chave = 'ml:' + pedido;
   const c = _cacheAnuncio.get(chave);
   if (c && Date.now() - c.ts < 6 * 3600e3) return res.json(c.v);
@@ -1189,6 +1193,29 @@ app.get('/api/admin/anuncio-do-pedido', requerAdmin, async (req, res) => {
     return res.status(502).json({ ok: false, erro: e.message });
   }
 });
+
+// b595 - anuncio do pedido no Magalu (mesmo formato de resposta do ML)
+async function anuncioMagalu(pedido, res) {
+  if (typeof deps.chamarMagalu !== 'function') return res.json({ ok: false, suportado: false, motivo: 'Magalu nao ligado nesta empresa' });
+  const chave = 'magalu:' + pedido;
+  const c = _cacheAnuncio.get(chave);
+  if (c && Date.now() - c.ts < 6 * 3600e3) return res.json(c.v);
+  try {
+    const r = await deps.chamarMagalu('/seller/v1/orders/' + pedido);
+    if (!r || !r.ok) return res.status(502).json({ ok: false, erro: 'Magalu nao devolveu o pedido', status: (r && r.status) || null });
+    const itens = [];
+    ((r.data && r.data.deliveries) || []).forEach((dl) => ((dl && dl.items) || []).forEach((it) => {
+      const info = (it && it.info) || {};
+      itens.push({ titulo: info.name || null, sku: info.sku || null, qtd: (it && it.quantity) || null });
+    }));
+    const v = { ok: true, mkt: 'magalu', pedido, itens, titulo: (itens[0] && itens[0].titulo) || null, sku: (itens[0] && itens[0].sku) || null };
+    if (_cacheAnuncio.size > 2000) _cacheAnuncio.clear();
+    _cacheAnuncio.set(chave, { ts: Date.now(), v });
+    return res.json(v);
+  } catch (e) {
+    return res.status(502).json({ ok: false, erro: e.message });
+  }
+}
 
 app.get('/api/admin/nf-devolucao', requerAdmin, async (req, res) => {
   if (typeof buscarNfDevolucaoBling !== 'function') {
