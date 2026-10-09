@@ -649,7 +649,7 @@ const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 // checado ANTES de entrar na fila da empresa — nao antes de sair, entao um
 // candidato ja desistido ainda batia no Bling depois de esperar numa pausa
 // de 429. Ver bling-AMB.js, nf-nomes-AMB.js e identificar-AMB.js.
-const VERSAO = 'AMB Devolucoes b604';
+const VERSAO = 'AMB Devolucoes b605';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -1075,6 +1075,15 @@ router.get('/ml/espreita', admin, (req, res) => {
 });
 
 // ── BUSCA POR NOME (pega-tudo: TikTok, Amazon, qualquer canal) ─
+
+/** 09/10 (dono: 'descobre' quem consome a cota) - o estado do PORTEIRO central desta conta do Bling: quem pediu vez hoje
+ *  (por servico), quantos 429 vieram com o porteiro folgado (consumo FORA dele) e os ultimos 429. So leitura. */
+router.get('/porteiro', admin, async (req, res) => {
+  try {
+    const e = typeof bling.estadoPorteiro === 'function' ? await bling.estadoPorteiro() : { ok: false, erro: 'cliente do Bling sem porteiro' };
+    res.json({ ok: true, versao: VERSAO, empresa: NOME_EMPRESA, porteiro: e });
+  } catch (err) { res.status(500).json({ ok: false, erro: err.message }); }
+});
 
 /** Estado do indice de NFs por nome. */
 router.get('/nf/indice', admin, (req, res) => {

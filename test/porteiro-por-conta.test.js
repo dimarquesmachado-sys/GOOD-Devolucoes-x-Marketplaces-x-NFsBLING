@@ -15,7 +15,7 @@ axios.post = async (url, corpo, opts) => { pedidos.push({ url, params: opts && o
   ok(P.CONTA === 'good' && g.CONTA === 'girassol', '⚠️ a GOOD segue na instancia padrao (good); a Girassol tem a dela');
   await g.avisar429(30, 'operacao');
   ok(g.diagnostico().pausa_termina_em_s > 0 && P.diagnostico().pausa_termina_em_s === 0, '⚠️ pausa da conta da Girassol NAO segura a GOOD');
-  ok(pedidos.some((p) => /aviso-429/.test(p.url) && p.params.conta === 'girassol' && p.params.prioridade === 'operacao'), '  o 429 vai pro porteiro na conta girassol, com a origem');
+  ok(pedidos.some((p) => /aviso-429/.test(p.url) && p.params.conta === 'girassol' && p.params.prioridade === 'operacao' && p.params.servico === 'devolucoes'), '  o 429 vai pro porteiro na conta girassol, com a origem e o servico (devolucoes)');
   // o ritmo da empresa pede a vez ao porteiro da conta dela antes de liberar
   pedidos.length = 0; respostas = [{ ok: false, esperar_ms: 120 }, { ok: true }];
   const R = require(path.join(__dirname, '..', 'lib', 'ritmo-por-empresa.js')).criarRitmo({ nome: 'teste', contaPorteiro: 'ambtotal' });
@@ -59,6 +59,10 @@ axios.post = async (url, corpo, opts) => { pedidos.push({ url, params: opts && o
   const venc = await R5.aguardarVez({}).then(() => false, (e) => !!e.filaEstourou);
   await dorme(1200);
   ok(venc && R5.estado().na_fila.interativa === 0 && pedidos.filter((p) => /permissao/.test(p.url)).length === 0, '⚠️ espera vencida sai da fila e nao consome vaga do porteiro');
+  pedidos.length = 0;
+  const axiosGet = axios.get; axios.get = async (url, o) => ({ status: 200, data: { ok: true, conta: o.params.conta, por_servico: { devolucoes: { permitidas: 3 } } } });
+  const est = await R.estadoPorteiro(); axios.get = axiosGet;
+  ok(est && est.conta === 'ambtotal' && est.por_servico.devolucoes.permitidas === 3, '⚠️ a empresa le o estado do porteiro DA CONTA dela (quem consome a cota)');
   const fs = require('fs'); const A = fs.readFileSync(path.join(__dirname, '..', 'amb-devolucoes', 'lib-AMB', 'bling-AMB.js'), 'utf8');
   ok(/contaPorteiro: CHAVE_TOKEN,/.test(A) && (A.match(/ritmo\.avisar429\([^\n]*opcoes\.fundo \? 'fundo' : 'operacao'\)/g) || []).length === 4, '⚠️ o Bling da AMB/Girassol liga o porteiro da conta dela e avisa os 4 429 com a origem');
   console.log('');

@@ -497,6 +497,14 @@ function montarCruzamentoEspreita(cache) {
   return { porNF, chaveNF };
 }
 
+// 09/10 (dono: 'descobre' quem consome a cota) - o estado do PORTEIRO central na conta da GOOD: quem pediu vez hoje (por
+// servico), 429 com o porteiro folgado (consumo FORA dele) e os ultimos 429. So leitura; requerAdmin e declarado mais
+// abaixo (function, sobe pro topo).
+app.get('/api/debug/porteiro', (req, res, next) => requerAdmin(req, res, next), async (req, res) => {
+  try { res.json({ ok: true, empresa: 'good', porteiro: await require('./lib/ritmo-porteiro').estadoDaConta() }); }
+  catch (e) { res.status(500).json({ ok: false, erro: e.message }); }
+});
+
 app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
@@ -560,7 +568,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.126.110 (b604: Codex #482 - progresso em pagina vazia/sentinela; fila e busca fria esperam o teto absoluto da montagem)',
+      version: '9.126.111 (b605: o Devolucoes se identifica no porteiro da cota — servico=devolucoes)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
