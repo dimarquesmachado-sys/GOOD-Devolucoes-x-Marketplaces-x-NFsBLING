@@ -126,7 +126,7 @@ const chamarBlingOriginal = blingDaEmpresa.chamarBling;
       await nf.construirIndice();
 
       const st = nf.statusIndice();
-      ok(chamadasNfe === 4, '  laco de NFs esgotou as 4 chamadas (1 + 3 retries)');
+      ok(chamadasNfe === 5, '  laco de NFs esgotou as 5 chamadas (1 + 4 retries — b602)');
       ok(renovacoesNfe === 1,
          '  ⚠️ P1 (Codex): so a 1a chamada renova o token - as 3 retentativas usam semRetentativa');
       ok(chamadasVendas === 4, '  laco de vendas esgotou as 4 tentativas');
