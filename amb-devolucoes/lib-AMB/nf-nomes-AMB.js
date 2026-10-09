@@ -585,7 +585,18 @@ async function construirIndiceInterno(opts = {}) {
     // b562 - porte da GOOD: se foi o TETO de paginas que parou (a ultima pagina lida ainda estava CHEIA), o indice NAO
     // esta completo — continua PARCIAL, e a busca avisa. So a data de corte ou o fim dos dados fecham o indice.
     const parouPorTeto = !parouPorData && ultimaCheia && paginasLidas >= maxPaginas && !fimNoTeto;
-    IDX.parouPor = parouPorTeto ? 'teto' : (parouPorData ? 'data' : 'fim');
+    // b601 - dono, 09/10: 'nfe pagina 2 HTTP 0' (o Bling nao respondeu) era tratado como FIM da lista: o indice de 100 NFs
+    // (2 dias) substituia o inteiro, ficava 'completo' e era GRAVADO no armazem. Erro no meio NAO e fim:
+    //  - com um indice anterior MAIOR, ele fica (so anota o erro; a proxima montagem tenta de novo);
+    //  - sem indice melhor, publica o que leu como PARCIAL (parou_por 'erro'), sem marcar completa e sem gravar.
+    const parouPorErro = !!erroBusca && !parouPorData;
+    if (parouPorErro && (IDX.totalNFs || 0) > totalNFs) {
+      IDX.erro = erroBusca;
+      IDX.duracaoSeg = Math.round((Date.now() - t0) / 1000);
+      console.log(`[${TAG_EMP}/NF-NOMES] montagem parou em erro (${erroBusca}) com ${totalNFs} NFs - mantido o indice anterior (${IDX.totalNFs})`);
+      return IDX;
+    }
+    IDX.parouPor = parouPorErro ? 'erro' : (parouPorTeto ? 'teto' : (parouPorData ? 'data' : 'fim'));
     IDX.ts = (falhouGeral || cancelado) ? 0 : Date.now();
     // b280.2 (auditoria do #228, Codex P1) - ⚠️ A AMB NUNCA LIMPAVA ISTO.
     //
@@ -598,7 +609,7 @@ async function construirIndiceInterno(opts = {}) {
     // ficaria ligado o tempo todo — o estoquista veria "indice incompleto"
     // numa busca com o indice ja pronto ha horas.
     if (!falhouGeral && !cancelado) {
-      if (parouPorTeto) IDX.parcialAte = paginasLidas;
+      if (parouPorTeto || parouPorErro) IDX.parcialAte = paginasLidas;   // b601: erro no meio tambem e parcial
       else IDX.parcialAte = null;
     }
     IDX.mapa = mapa;
@@ -610,7 +621,7 @@ async function construirIndiceInterno(opts = {}) {
     // montagem SEM teto informado carimba e grava; depois do passe curto, a proxima renovacao faz a completa.
     // Codex #471: o que conta e o passe ter PARADO no teto (parouPorTeto) — se a listagem acabou ou bateu na data
     // de corte antes dele, o indice cobre a janela inteira e e completo mesmo com maxPaginas informado.
-    if (!(opts.maxPaginas && parouPorTeto)) {
+    if (!(opts.maxPaginas && parouPorTeto) && !parouPorErro) {   // b601: montagem que parou em erro nao e completa nem e gravada
       IDX.ultimaCompleta = Date.now();   // b579 - a renovacao incremental mede a idade a partir daqui
       setTimeout(() => gravarIndice('montagem completa', true).catch(() => {}), 0);   // b580 - depois de publicar
     } else {
