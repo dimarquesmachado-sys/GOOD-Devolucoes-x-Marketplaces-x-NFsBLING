@@ -1180,7 +1180,9 @@ app.get('/api/admin/anuncio-do-pedido', requerAdmin, async (req, res) => {
   if (ehShopee) return anuncioShopee(snShopee, res);
   // b598 - TikTok: pela rota de consulta da API do TikTok no Mover-Pedidos (/tiktok/sonda), mesma ponte das devolucoes
   if (/^tiktok/.test(mkt)) return anuncioTikTok(pedido, res);
-  if (!ehML) return res.json({ ok: false, suportado: false, motivo: 'marketplace ainda sem anuncio (ML e Magalu ligados)' });
+  // b599 - marketplace sem API ligada (Amazon, Leroy, Madeira...): o PEDIDO DE VENDA do Bling (dono: 'a maioria passa pelo
+  // Bling; Full pode nao ter pedido'). Sem pedido no Bling, responde suportado:false e o card fica com o titulo generico.
+  if (!ehML) return anuncioBling(String(req.query.pedido || '').trim(), res);
   const chave = 'ml:' + pedido;
   const c = _cacheAnuncio.get(chave);
   if (c && Date.now() - c.ts < 6 * 3600e3) return res.json(c.v);
@@ -1191,6 +1193,7 @@ app.get('/api/admin/anuncio-do-pedido', requerAdmin, async (req, res) => {
       titulo: (oi.item && oi.item.title) || null,
       sku: (oi.item && (oi.item.seller_sku || oi.item.seller_custom_field)) || null,
       qtd: oi.quantity || null,
+      preco: oi.unit_price != null ? Number(oi.unit_price) : null,   // Codex #478: preco do anuncio
     }));
     const v = { ok: true, mkt: 'ml', pedido, itens, titulo: (itens[0] && itens[0].titulo) || null, sku: (itens[0] && itens[0].sku) || null };
     if (_cacheAnuncio.size > 2000) _cacheAnuncio.clear();
@@ -1200,6 +1203,37 @@ app.get('/api/admin/anuncio-do-pedido', requerAdmin, async (req, res) => {
     return res.status(502).json({ ok: false, erro: e.message });
   }
 });
+
+// b599 - anuncio pelo PEDIDO DE VENDA do Bling (numeroLoja = numero do pedido no marketplace). Trafego de FUNDO (o
+// porteiro poe a operacao do galpao na frente). O painel so usa o resultado quando o pedido RESUME a NF (menos linhas
+// que a NF = o kit vendido); pedido com as pecas separadas nao acrescenta nada e a tela segue com o titulo generico.
+async function anuncioBling(numeroLoja, res) {
+  if (!numeroLoja) return res.status(400).json({ ok: false, erro: 'pedido obrigatorio' });
+  const chave = 'bling:' + numeroLoja;
+  const c = _cacheAnuncio.get(chave);
+  if (c && Date.now() - c.ts < 6 * 3600e3) return res.json(c.v);
+  try {
+    const rA = await chamarBling('/pedidos/vendas?limite=20&pagina=1&numerosLojas[]=' + encodeURIComponent(numeroLoja), { fundo: true });
+    if (!rA || !rA.ok) return res.status(502).json({ ok: false, erro: 'Bling nao respondeu a consulta do pedido', status: (rA && rA.status) || null });
+    const lista = (rA.data && rA.data.data) || [];
+    const ped = lista.find((x) => String(x.numeroLoja || '').trim() === numeroLoja);
+    if (!ped) {
+      const vNada = { ok: false, suportado: false, motivo: 'sem pedido de venda no Bling (ex.: Full so com NF)' };
+      _cacheAnuncio.set(chave, { ts: Date.now(), v: vNada });   // so chega aqui com a consulta OK = resposta CONCLUSIVA
+      return res.json(vNada);
+    }
+    const rP = await chamarBling('/pedidos/vendas/' + encodeURIComponent(ped.id), { fundo: true });
+    const det = (rP && rP.ok && rP.data && rP.data.data) || null;
+    if (!det) return res.status(502).json({ ok: false, erro: 'Bling nao devolveu o pedido', status: rP && rP.status });
+    const itens = (det.itens || []).map((i) => ({ titulo: i.descricao || null, sku: i.codigo || null, qtd: i.quantidade != null ? Number(i.quantidade) : null, preco: i.valor != null ? Number(i.valor) : null }));
+    const v = { ok: true, mkt: 'bling', fonte: 'bling', pedido: numeroLoja, itens, titulo: (itens[0] && itens[0].titulo) || null, sku: (itens[0] && itens[0].sku) || null };
+    if (_cacheAnuncio.size > 2000) _cacheAnuncio.clear();
+    _cacheAnuncio.set(chave, { ts: Date.now(), v });
+    return res.json(v);
+  } catch (e) {
+    return res.status(502).json({ ok: false, erro: e.message });
+  }
+}
 
 // b598 - anuncio do pedido no TikTok. Formato conferido num pedido REAL da Girassol (586485718877832225):
 // data.orders[0].line_items[] = UMA linha por unidade, com product_name, sku_name ('Padrao' quando nao ha variacao),
@@ -1268,7 +1302,9 @@ async function anuncioMagalu(pedido, res) {
     const itens = [];
     ((r.data && r.data.deliveries) || []).forEach((dl) => ((dl && dl.items) || []).forEach((it) => {
       const info = (it && it.info) || {};
-      itens.push({ titulo: info.name || null, sku: info.sku || null, qtd: (it && it.quantity) || null });
+      // preco: unit_price.value / normalizer (centavos — formato do pedido real 1575070106528392: 52790 / 100)
+      const up = it && it.unit_price; const prc = up && up.value != null ? Number(up.value) / (Number(up.normalizer) || 1) : null;
+      itens.push({ titulo: info.name || null, sku: info.sku || null, qtd: (it && it.quantity) || null, preco: prc });
     }));
     const v = { ok: true, mkt: 'magalu', pedido, itens, titulo: (itens[0] && itens[0].titulo) || null, sku: (itens[0] && itens[0].sku) || null };
     if (_cacheAnuncio.size > 2000) _cacheAnuncio.clear();

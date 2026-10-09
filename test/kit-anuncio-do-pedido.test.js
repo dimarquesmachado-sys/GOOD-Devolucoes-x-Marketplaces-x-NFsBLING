@@ -8,13 +8,14 @@ const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o
   const app = { get: reg('get'), post: reg('post'), put: reg('put'), delete: reg('delete'), patch: reg('patch'), use() {} };
   const q = new Proxy({}, { get: (t, k) => (k === 'then' ? (r) => r({ data: [], error: null }) : () => q) });
   let chamadas = 0;
-  const chamarML = async (c) => { chamadas++; return /\/orders\/2000018571424600$/.test(c) ? { ok: true, status: 200, data: { order_items: [{ quantity: 1, item: { title: '4 Lixas 4 Pol 100mm Diamantada + Disco Prato + Adaptador M14', seller_sku: '4LixDIAM-1DISC-1PIN-Kit51' } }] } } : { ok: false, status: 404 }; };
+  const chamarML = async (c) => { chamadas++; return /\/orders\/2000018571424600$/.test(c) ? { ok: true, status: 200, data: { order_items: [{ quantity: 1, unit_price: 78.99, item: { title: '4 Lixas 4 Pol 100mm Diamantada + Disco Prato + Adaptador M14', seller_sku: '4LixDIAM-1DISC-1PIN-Kit51' } }] } } : { ok: false, status: 404 }; };
   process.env.NODE_TEST_SEM_TIMERS = '1';
-  require(path.join(__dirname, '..', 'amb-devolucoes', 'lib-AMB', 'rotas-admin-AMB.js'))(app, { supabase: { from: () => q, storage: { from: () => ({}) } }, requerAdmin: (a, b, n) => n(), adminOk: () => true, sleep: async () => {}, chamarML, chamarBling: async () => ({ ok: false }), tabelaDevolucoes: 'devolucoes' });
+  require(path.join(__dirname, '..', 'amb-devolucoes', 'lib-AMB', 'rotas-admin-AMB.js'))(app, { supabase: { from: () => q, storage: { from: () => ({}) } }, requerAdmin: (a, b, n) => n(), adminOk: () => true, sleep: async () => {}, chamarML, chamarBling: async () => ({ ok: true, data: { data: [] } }), tabelaDevolucoes: 'devolucoes' });
   const rota = stack.find((x) => x.p === '/api/admin/anuncio-do-pedido');
   const chamar = (query) => new Promise((res) => rota.h({ query }, { _s: 200, status(s) { this._s = s; return this; }, json(o) { res({ s: this._s, o }); } }));
   const r1 = await chamar({ mkt: 'ml', pedido: '2000018571424600' });
   ok(r1.o.ok && r1.o.titulo === '4 Lixas 4 Pol 100mm Diamantada + Disco Prato + Adaptador M14' && r1.o.sku === '4LixDIAM-1DISC-1PIN-Kit51', '⚠️ o anuncio do pedido vem do ML (titulo + SKU do kit) — caso real da Girassol');
+  ok(r1.o.itens[0].preco === 78.99, '  preco do anuncio do ML (unit_price)');
   await chamar({ mkt: 'ml', pedido: '2000018571424600' });
   ok(chamadas === 1, '  segunda vez sai do cache (nao chama o ML de novo)');
   const r3 = await chamar({ mkt: 'shopee', pedido: '123' });
