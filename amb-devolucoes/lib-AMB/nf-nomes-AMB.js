@@ -412,7 +412,9 @@ async function construirIndiceInterno(opts = {}) {
       // enquanto o porteiro segurava o fundo por 175 s depois de 429s da conta — nao e 'nao existe', e 'agora nao' (Regra
       // 4.14d). 0 e 5xx entram nas tentativas, e a espera cresce o bastante pra atravessar a pausa de fundo do porteiro
       // (15 + 30 + 60 + 90 s, dentro do teto da montagem); 401 segue com espera curta (e renovacao de token).
-      const _recuperavel = (st) => st === 429 || st === 401 || st === 0 || st == null || st === 500 || st === 502 || st === 503 || st === 504;   // Codex #481: 500 tambem
+      // Codex #481 (2): status VAZIO nao entra — e o token bloqueado/remoto sem token (bling-AMB lanca antes do axios),
+      // falha permanente de configuracao; o estouro da fila volta com status 0 (o que aparecia como 'HTTP 0').
+      const _recuperavel = (st) => st === 429 || st === 401 || st === 0 || st === 500 || st === 502 || st === 503 || st === 504;   // Codex #481: 500 tambem
       const _esperaTent = (st, tent) => (st === 401 ? 2000 * tent : [15000, 30000, 60000, 90000][tent - 1] || 90000);
       if (!r.ok && _recuperavel(r.status)) {
         // ⚠️ b351: 401 tambem entra no retry — mesma razao do bloco das
@@ -539,9 +541,13 @@ async function construirIndiceInterno(opts = {}) {
           // 📌 Resultado pro dono: a busca por nome respondia "nao
           // encontrado" pra TODO mundo, e parecia que o pedido nao existia.
           // A nota da Lyvia estava no Bling o tempo todo.
-          if (r.status === 429 || r.status === 503 || r.status === 401 || r.status === 0 || r.status == null || r.status === 500 || r.status === 502 || r.status === 504) {   // b602: 0 = estouro na fila; 500 (Codex #481)
+          if (r.status === 429 || r.status === 503 || r.status === 401 || r.status === 0 || r.status === 500 || r.status === 502 || r.status === 504) {   // b602: 0 = estouro na fila; 500 (Codex #481); status vazio (token bloqueado) nao
             erroVendas = `vendas pagina ${pg} HTTP ${r.status} (tent ${tent}/4)`;
-            await sleep(1500 * tent);   // 1.5s, 3s, 4.5s
+            // Codex #481 (2): a espera respeita a drenagem do deploy (era sleep cru); estouro/5xx esperam o bastante pra
+            // atravessar a pausa de fundo do porteiro, como na passada das NFs
+            await drenagem.pausar(r.status === 429 || r.status === 401 ? 1500 * tent : [15000, 30000, 60000, 90000][tent - 1] || 90000, deFundo || IDX.viroufundo, 'indice-nomes/vendas-retry');
+            if (minhaGeracao !== geracaoConstrucao) { cancelado = true; break; }
+            if ((deFundo || IDX.viroufundo) && drenagem.estaDrenando()) { cancelado = true; break; }   // deploy drenando: fundo para
             continue;
           }
           erroVendas = `vendas pagina ${pg} HTTP ${r.status}`;

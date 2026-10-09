@@ -21,6 +21,13 @@ const nf = (id, dias) => ({ id, numero: String(1000 + id), serie: '1', dataEmiss
   ok(esperas.slice(0, 2).join(',') === '15000,30000', '  esperas que atravessam a pausa de fundo do porteiro (15 s, 30 s): ' + esperas.slice(0, 3).join(','));
   const src = require('fs').readFileSync(path.join(__dirname, '..', 'amb-devolucoes', 'lib-AMB', 'nf-nomes-AMB.js'), 'utf8');
   ok(/st === 500 \|\| st === 502/.test(src) && /r\.status === 500 \|\| r\.status === 502/.test(src), '  HTTP 500 do Bling tambem tenta de novo, nas NFs e nas vendas (Codex #481)');
+  // Codex #481 (2): status VAZIO (token bloqueado/remoto sem token) e falha permanente — nao espera 195 s
+  let chamadas3 = 0;
+  const emp3 = fab.criar({ PREFIXO_ENV: 'T_', bling: { pausaMs: 0 }, clienteBling: { chamarBling: async () => { chamadas3++; return { ok: false }; } }, armazemNfNomes: { salvar: async () => ({ ok: true, bytes: 1 }), carregar: async () => null }, semVendas: true });
+  esperas.length = 0;
+  await emp3.construirIndice({ fundo: true });
+  ok(chamadas3 === 1 && esperas.length === 0, '⚠️ status vazio (token bloqueado) NAO entra nas tentativas: 1 chamada, sem espera (' + chamadas3 + ' chamadas)');
+  ok(/'indice-nomes\/vendas-retry'/.test(src) && !/await sleep\(1500 \* tent\)/.test(src), '  as tentativas das vendas esperam pela drenagem (nao sleep cru)');
   console.log('');
   console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
   process.exit(falhas ? 1 : 0);
