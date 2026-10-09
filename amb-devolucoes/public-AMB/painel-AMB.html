@@ -3527,7 +3527,9 @@ async function carregarSemRetorno() {
         // Codex #464 (P3): pedido com VARIOS anuncios lista todos; so com 1 anuncio ele e 'o kit' do card
         var an = (Array.isArray(j.itens) ? j.itens : []).filter(function (x) { return x && x.titulo; });
         if (!an.length) an = [{ titulo: j.titulo, sku: j.sku }];
-        var txt = an.map(function (x) { return (an.length > 1 && x.qtd ? escapeHtml(String(x.qtd)) + '× ' : '') + '<strong>' + escapeHtml(x.titulo) + '</strong>' + (x.sku ? ' · SKU <code>' + escapeHtml(x.sku) + '</code>' : ''); }).join(' + ');
+        // Codex #478: o PRECO do anuncio tambem aparece (dono: 'titulo e preco')
+        var reais = function (v) { var n = Number(v); return (v != null && v !== '' && Number.isFinite(n)) ? n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : ''; };
+        var txt = an.map(function (x) { return (an.length > 1 && x.qtd ? escapeHtml(String(x.qtd)) + '× ' : '') + '<strong>' + escapeHtml(x.titulo) + '</strong>' + (x.sku ? ' · SKU <code>' + escapeHtml(x.sku) + '</code>' : '') + (reais(x.preco) ? ' · ' + reais(x.preco) : ''); }).join(' + ');
         marcarVariosProdutos(linha, nDist);
         // b599 - do pedido de venda do Bling, so vale quando ele RESUME a NF (menos linhas = o kit); senao nao acrescenta nada
         if (j.fonte === 'bling' && !(an.length >= 1 && an.length < nDist)) return;
@@ -3539,7 +3541,7 @@ async function carregarSemRetorno() {
           tit.textContent = an[0].titulo;
           tit.setAttribute('data-anuncio', '1');   // b596
           try { var selA = card.querySelector('.selo-varios'); if (selA) selA.innerHTML = SELO_VARIOS; } catch (e) { /* so o selo */ }
-          linha.innerHTML = (an[0].sku ? 'SKU do anúncio <code>' + escapeHtml(an[0].sku) + '</code> · ' : '') + '<strong>' + nDist + ' produtos na NF</strong> · itens abaixo';
+          linha.innerHTML = (an[0].sku ? 'SKU do anúncio <code>' + escapeHtml(an[0].sku) + '</code> · ' : '') + (reais(an[0].preco) ? 'vendido por <strong>' + reais(an[0].preco) + '</strong> · ' : '') + '<strong>' + nDist + ' produtos na NF</strong> · itens abaixo';
           return;
         }
         linha.innerHTML = '🧩 ' + txt + ' · <span style="color:#6a1b9a;">' + (an.length > 1 ? 'pedido com ' + an.length + ' anúncios' : 'kit') + ' com ' + nDist + ' produtos — itens da NF abaixo</span>';

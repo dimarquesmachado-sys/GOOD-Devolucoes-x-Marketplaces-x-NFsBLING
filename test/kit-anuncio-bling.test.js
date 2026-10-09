@@ -24,6 +24,7 @@ const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o
   ok(r2.o.ok === false && r2.o.suportado === false, '  sem pedido de venda no Bling (Full so com NF): suportado:false — card fica com o titulo generico');
   const h = fs.readFileSync(path.join(__dirname, '..', 'amb-devolucoes', 'public-AMB', 'painel-AMB.html'), 'utf8');
   ok(/if \(j\.fonte === 'bling' && !\(an\.length >= 1 && an\.length < nDist\)\) return;/.test(h), '⚠️ o painel so usa o pedido do Bling quando ele RESUME a NF (menos linhas = kit)');
+  ok(/vendido por <strong>' \+ reais\(an\[0\]\.preco\)/.test(h) && /reais\(x\.preco\)/.test(h), '⚠️ o card mostra o PRECO do anuncio (Codex #478)');
   console.log('');
   console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
   process.exit(falhas ? 1 : 0);

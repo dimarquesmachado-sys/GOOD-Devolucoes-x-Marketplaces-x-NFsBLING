@@ -1193,6 +1193,7 @@ app.get('/api/admin/anuncio-do-pedido', requerAdmin, async (req, res) => {
       titulo: (oi.item && oi.item.title) || null,
       sku: (oi.item && (oi.item.seller_sku || oi.item.seller_custom_field)) || null,
       qtd: oi.quantity || null,
+      preco: oi.unit_price != null ? Number(oi.unit_price) : null,   // Codex #478: preco do anuncio
     }));
     const v = { ok: true, mkt: 'ml', pedido, itens, titulo: (itens[0] && itens[0].titulo) || null, sku: (itens[0] && itens[0].sku) || null };
     if (_cacheAnuncio.size > 2000) _cacheAnuncio.clear();
@@ -1300,7 +1301,9 @@ async function anuncioMagalu(pedido, res) {
     const itens = [];
     ((r.data && r.data.deliveries) || []).forEach((dl) => ((dl && dl.items) || []).forEach((it) => {
       const info = (it && it.info) || {};
-      itens.push({ titulo: info.name || null, sku: info.sku || null, qtd: (it && it.quantity) || null });
+      // preco: unit_price.value / normalizer (centavos — formato do pedido real 1575070106528392: 52790 / 100)
+      const up = it && it.unit_price; const prc = up && up.value != null ? Number(up.value) / (Number(up.normalizer) || 1) : null;
+      itens.push({ titulo: info.name || null, sku: info.sku || null, qtd: (it && it.quantity) || null, preco: prc });
     }));
     const v = { ok: true, mkt: 'magalu', pedido, itens, titulo: (itens[0] && itens[0].titulo) || null, sku: (itens[0] && itens[0].sku) || null };
     if (_cacheAnuncio.size > 2000) _cacheAnuncio.clear();
