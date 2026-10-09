@@ -15,7 +15,7 @@ axios.post = async (url, corpo, opts) => { pedidos.push({ url, params: opts && o
   ok(P.CONTA === 'good' && g.CONTA === 'girassol', '⚠️ a GOOD segue na instancia padrao (good); a Girassol tem a dela');
   await g.avisar429(30, 'operacao');
   ok(g.diagnostico().pausa_termina_em_s > 0 && P.diagnostico().pausa_termina_em_s === 0, '⚠️ pausa da conta da Girassol NAO segura a GOOD');
-  ok(pedidos.some((p) => /aviso-429/.test(p.url) && p.params.conta === 'girassol' && p.params.prioridade === 'operacao'), '  o 429 vai pro porteiro na conta girassol, com a origem');
+  ok(pedidos.some((p) => /aviso-429/.test(p.url) && p.params.conta === 'girassol' && p.params.prioridade === 'operacao' && p.params.servico === 'devolucoes'), '  o 429 vai pro porteiro na conta girassol, com a origem e o servico (devolucoes)');
   // o ritmo da empresa pede a vez ao porteiro da conta dela antes de liberar
   pedidos.length = 0; respostas = [{ ok: false, esperar_ms: 120 }, { ok: true }];
   const R = require(path.join(__dirname, '..', 'lib', 'ritmo-por-empresa.js')).criarRitmo({ nome: 'teste', contaPorteiro: 'ambtotal' });
