@@ -36,7 +36,7 @@ for (const [nome, rel] of [['GOOD', 'amb-devolucoes/lib-AMB/nf-nomes-AMB.js'],
   // ela tambem e o ponto de cancelamento. O ritmo do Bling nao mudou.
   ok(/setTimeout\(ok, 400\)/.test(laco) || /drenagem\.pausar\(400/.test(laco),
      nome + ': pausa de 400ms entre paginas — o Bling limita a 3 req/s');
-  ok(/r\.status === 429/.test(laco) && /tent <= 3/.test(laco),
+  ok(/r\.status === 429|st === 429/.test(laco) && /tent <= [34]/.test(laco),   // b602: 4 tentativas, com 0/5xx tambem
      nome + ': 429 e fila, nao recusa — tenta ate 3x com espera crescente');
   ok(/2000 \* tent/.test(laco), nome + '  com espera crescente (2s, 4s, 6s)');
 }

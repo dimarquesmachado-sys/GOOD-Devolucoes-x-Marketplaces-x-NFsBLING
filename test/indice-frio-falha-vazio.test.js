@@ -20,6 +20,7 @@
 // FALSE, a tela engolia o aviso, e como `vencido` (em buscarPorNome) tambem
 // le `IDX.ts`, a busca ficava 30 MINUTOS repetindo "nao encontrado" seco.
 
+require('../lib/drenagem').pausar = async () => {};   // b602: 500 agora tenta de novo esperando ate 90 s — no teste, sem esperar
 const _fab = require('../amb-devolucoes/lib-AMB/nf-nomes-AMB.js'); const criar = (o) => _fab.criar({ PREFIXO_ENV: 'T_', bling: { pausaMs: 0 }, clienteBling: { chamarBling: o.chamarBling } });
 
 let falhas = 0;

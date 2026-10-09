@@ -11,6 +11,7 @@ const nf = (id, nome, dias, ped) => ({ id, numero: String(1000 + id), serie: '1'
   let base = [nf(3, 'Carla Souza Lima', 1, 'P3'), nf(2, 'Bruno Alves Costa', 2), nf(1, 'Ana Maria Pereira', 3)];
   const chamadas = [];
   const bling = { chamarBling: async (u) => { chamadas.push(u); const pg = Number((/pagina=(\d+)/.exec(u) || [])[1]); return { ok: true, status: 200, data: { data: pg === 1 ? base : [] } }; } };
+  require(path.join(__dirname, '..', 'lib', 'drenagem.js')).pausar = async () => {};   // b602: tentativas sem esperar no teste
   const fab = require(path.join(__dirname, '..', 'amb-devolucoes', 'lib-AMB', 'nf-nomes-AMB.js'));
   const antes = fab.criar({ PREFIXO_ENV: 'T_', bling: { pausaMs: 0 }, clienteBling: bling, armazemNfNomes: armazem });
   await antes.construirIndice({ fundo: true });

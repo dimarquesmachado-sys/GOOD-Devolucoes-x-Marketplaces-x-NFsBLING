@@ -408,7 +408,15 @@ async function construirIndiceInterno(opts = {}) {
       // 📌 Meio conserto, e do pior tipo: o codigo novo existe, parece
       // certo na revisao, e nao e alcancado. So um teste que EXERCITA o
       // caminho pega.
-      if (!r.ok && (r.status === 429 || r.status === 401)) {
+      // b602 - dono, 09/10 (Girassol): 'nfe pagina 1 HTTP 0' 5x em 20 min. HTTP 0 = a chamada DESISTIU na fila (estouro)
+      // enquanto o porteiro segurava o fundo por 175 s depois de 429s da conta — nao e 'nao existe', e 'agora nao' (Regra
+      // 4.14d). 0 e 5xx entram nas tentativas, e a espera cresce o bastante pra atravessar a pausa de fundo do porteiro
+      // (15 + 30 + 60 + 90 s, dentro do teto da montagem); 401 segue com espera curta (e renovacao de token).
+      // Codex #481 (2): status VAZIO nao entra — e o token bloqueado/remoto sem token (bling-AMB lanca antes do axios),
+      // falha permanente de configuracao; o estouro da fila volta com status 0 (o que aparecia como 'HTTP 0').
+      const _recuperavel = (st) => st === 429 || st === 401 || st === 0 || st === 500 || st === 502 || st === 503 || st === 504;   // Codex #481: 500 tambem
+      const _esperaTent = (st, tent) => (st === 401 ? 2000 * tent : [15000, 30000, 60000, 90000][tent - 1] || 90000);
+      if (!r.ok && _recuperavel(r.status)) {
         // ⚠️ b351: 401 tambem entra no retry — mesma razao do bloco das
         // vendas. E ESTE e o caminho das NOTAS, que a busca por NOME usa:
         // foi aqui que o `nfe pagina 1 HTTP 401` matou o indice inteiro.
@@ -420,10 +428,12 @@ async function construirIndiceInterno(opts = {}) {
         // tambem dispararia sua PROPRIA renovacao em caso de 401 — com as
         // 8 tentativas de build la de cima, isso chegava a ~32 rotacoes
         // do refresh token (uso unico) por um 401 so persistente.
-        for (let tent = 1; tent <= 3 && !r.ok
-          && (r.status === 429 || r.status === 401); tent++) {
-          await drenagem.pausar(2000 * tent, deFundo || IDX.viroufundo, 'indice-nomes/retry');
+        for (let tent = 1; tent <= 4 && !r.ok
+          && _recuperavel(r.status); tent++) {
+          await drenagem.pausar(_esperaTent(r.status, tent), deFundo || IDX.viroufundo, 'indice-nomes/retry');
           if (minhaGeracao !== geracaoConstrucao) { cancelado = true; break; }   // b559
+          // Codex #481 (4): a busca fria pode virar fundo DURANTE a espera (o booleano foi passado por valor) — reconfere
+          if ((deFundo || IDX.viroufundo) && drenagem.estaDrenando()) { cancelado = true; break; }
           r = await bling.chamarBling(`/nfe?limite=100&pagina=${pg}&tipo=1`, { fundo: deFundo || IDX.viroufundo, semRetentativa: true });
           if (minhaGeracao !== geracaoConstrucao) { cancelado = true; break; }   // b559
         }
@@ -533,9 +543,14 @@ async function construirIndiceInterno(opts = {}) {
           // 📌 Resultado pro dono: a busca por nome respondia "nao
           // encontrado" pra TODO mundo, e parecia que o pedido nao existia.
           // A nota da Lyvia estava no Bling o tempo todo.
-          if (r.status === 429 || r.status === 503 || r.status === 401) {
+          if (r.status === 429 || r.status === 503 || r.status === 401 || r.status === 0 || r.status === 500 || r.status === 502 || r.status === 504) {   // b602: 0 = estouro na fila; 500 (Codex #481); status vazio (token bloqueado) nao
             erroVendas = `vendas pagina ${pg} HTTP ${r.status} (tent ${tent}/4)`;
-            await sleep(1500 * tent);   // 1.5s, 3s, 4.5s
+            // Codex #481 (2): a espera respeita a drenagem do deploy (era sleep cru); estouro/5xx esperam o bastante pra
+            // atravessar a pausa de fundo do porteiro, como na passada das NFs
+            if (tent >= 4) break;   // Codex #481 (3): depois da ultima tentativa nao ha o que esperar
+            await drenagem.pausar(r.status === 429 || r.status === 401 ? 1500 * tent : [15000, 30000, 60000, 90000][tent - 1] || 90000, deFundo || IDX.viroufundo, 'indice-nomes/vendas-retry');
+            if (minhaGeracao !== geracaoConstrucao) { cancelado = true; break; }
+            if ((deFundo || IDX.viroufundo) && drenagem.estaDrenando()) { cancelado = true; break; }   // deploy drenando: fundo para
             continue;
           }
           erroVendas = `vendas pagina ${pg} HTTP ${r.status}`;
@@ -566,7 +581,10 @@ async function construirIndiceInterno(opts = {}) {
         if (velhas === lote.length) break;   // página inteira antes do corte
         await sleep(350);
       }
-    } catch (e) { erroVendas = e.message; }
+    } catch (e) {
+      // Codex #481 (3): a drenagem do deploy cancela com `Cancelado` — e cancelamento da montagem (nao publica), nao erro de vendas
+      if (e && e.name === 'Cancelado') cancelado = true; else erroVendas = e.message;
+    }
 
     // Mesma regra do indice do ML: se falhou e nao veio nada, nao
     // marca como quente — o proximo bipe tenta de novo em vez de

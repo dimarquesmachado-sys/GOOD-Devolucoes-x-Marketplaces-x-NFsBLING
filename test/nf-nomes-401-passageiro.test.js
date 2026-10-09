@@ -22,7 +22,7 @@ const src = fs.readFileSync(
 
 // ── ⚠️ o PORTÃO aceita 401, não só o laço de dentro ─────────────────
 {
-  ok(/if \(!r\.ok && \(r\.status === 429 \|\| r\.status === 401\)\) \{/.test(src),
+  ok(/if \(!r\.ok && \(r\.status === 429 \|\| r\.status === 401\)\) \{/.test(src) || (/if \(!r\.ok && _recuperavel\(r\.status\)\) \{/.test(src) && /const _recuperavel = \(st\) => st === 429 \|\| st === 401/.test(src)),   // b602: 0 e 5xx tambem
      '⚠️ o portao das NOTAS aceita 401 (era so 429 — o retry nunca rodava)');
   ok(/r\.status === 429 \|\| r\.status === 503 \|\| r\.status === 401/.test(src),
      '  e o das VENDAS tambem');

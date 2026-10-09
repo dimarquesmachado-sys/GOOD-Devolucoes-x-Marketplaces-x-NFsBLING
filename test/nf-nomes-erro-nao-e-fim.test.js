@@ -8,6 +8,7 @@ const nf = (id, dias) => ({ id, numero: String(1000 + id), serie: '1', dataEmiss
 // b601 — caso real (09/10): 'nfe pagina 2 HTTP 0' virava FIM da lista — indice de 100 NFs, 'completo' e gravado.
 (async () => {
   const pagina = (pg) => Array.from({ length: 100 }, (_, i) => nf(pg * 1000 + i, pg));
+  require(path.join(__dirname, '..', 'lib', 'drenagem.js')).pausar = async () => {};   // b602: as tentativas esperam ate 90 s — no teste, sem esperar
   const fab = require(path.join(__dirname, '..', 'amb-devolucoes', 'lib-AMB', 'nf-nomes-AMB.js'));
   let falharPg2 = false;
   const bling = { chamarBling: async (u) => { const pg = Number((/pagina=(\d+)/.exec(u) || [])[1]); if (falharPg2 && pg === 2) return { ok: false, status: 0 }; return { ok: true, status: 200, data: { data: pg <= 5 ? pagina(pg) : [] } }; } };
