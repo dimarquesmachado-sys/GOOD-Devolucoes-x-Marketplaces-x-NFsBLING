@@ -270,6 +270,8 @@ function tetoConstrucaoMs(opts = {}) {
   const passadas = (cfg && cfg.semVendas) ? 1 : 2;   // /nfe + /pedidos/vendas, cada uma ate o teto de paginas
   return Number(process.env.NF_NOMES_TETO_CONSTRUCAO_MS) || Math.max(240000, paginasAlvo(opts) * 3000 * passadas);
 }
+// Codex #482: a montagem que segue andando vai ate 3x o teto de inatividade; a fila do pre-aquecimento e a busca fria esperam por ISSO.
+function tetoAbsolutoConstrucaoMs(opts = {}) { return 3 * tetoConstrucaoMs(opts); }
 let _incrementando = false;
 function montagemCompletaVencida() {
   const ult = IDX.ultimaCompleta || 0;
@@ -332,11 +334,22 @@ async function construirIndiceInterno(opts = {}) {
   // Codex #470: sao DUAS passadas (/nfe e /pedidos/vendas), cada uma ate o teto de paginas — 300 paginas = 30 min
   // (15 min na GOOD, que pula as vendas). Ver tetoConstrucaoMs().
   const TETO_CONSTRUCAO_MS = tetoConstrucaoMs(opts);
-  const timerTeto = setTimeout(() => {
-    if (minhaGeracao !== geracaoConstrucao) return;
-    console.warn(`[${TAG_EMP}/NF-NOMES] construcao passou de ${TETO_CONSTRUCAO_MS / 1000}s — abandono e libero pra proxima tentar`);
+  // b603 - dono, 09/10 (Girassol): a montagem leu as 114 paginas da janela inteira (11.317 NFs) mas foi ABANDONADA pelo
+  // teto de TEMPO total — com a conta tomando 429, cada estouro agora espera a pausa do porteiro (b602) e o total passa
+  // do teto mesmo com a montagem andando. O teto vira de INATIVIDADE: abandona so quando nenhuma pagina chega por
+  // TETO_CONSTRUCAO_MS (montagem travada de verdade); montagem andando devagar segue. Teto ABSOLUTO de 3x pra nao ficar
+  // pendurada pra sempre.
+  let ultimoProgresso = Date.now();
+  const marcarProgresso = () => { ultimoProgresso = Date.now(); };
+  const inicioConstrucao = Date.now();
+  const timerTeto = setInterval(() => {
+    if (minhaGeracao !== geracaoConstrucao) { clearInterval(timerTeto); return; }
+    const parada = Date.now() - ultimoProgresso; const total = Date.now() - inicioConstrucao;
+    if (parada < TETO_CONSTRUCAO_MS && total < tetoAbsolutoConstrucaoMs(opts)) return;
+    clearInterval(timerTeto);
+    console.warn(`[${TAG_EMP}/NF-NOMES] construcao ${parada >= TETO_CONSTRUCAO_MS ? 'parada ha ' + Math.round(parada / 1000) + 's sem pagina nova' : 'passou de ' + Math.round(total / 1000) + 's no total'} — abandono e libero pra proxima tentar`);
     abandonarConstrucao();
-  }, TETO_CONSTRUCAO_MS);
+  }, Math.min(30000, Math.max(25, Math.round(TETO_CONSTRUCAO_MS / 8))));   // confere a cada 1/8 do teto (no maximo 30 s)
   if (timerTeto.unref) timerTeto.unref();
 
   try {
@@ -441,6 +454,7 @@ async function construirIndiceInterno(opts = {}) {
       }
       if (!r.ok) { erroBusca = `nfe pagina ${pg} HTTP ${r.status}`; break; }
 
+      marcarProgresso();   // Codex #482: pagina vazia tambem e resposta (antes de decidir parar)
       const lista = (r.data && r.data.data) || [];
       if (lista.length === 0) break;
 
@@ -472,6 +486,7 @@ async function construirIndiceInterno(opts = {}) {
       }
 
       paginasLidas = pg; ultimaCheia = lista.length >= 100;   // b562
+      marcarProgresso();   // b603
       if (parouPorData || lista.length < 100) break;
       await sleep(cfg.bling.pausaMs / 2);   // respeita o rate limit do Bling
     }
@@ -488,6 +503,7 @@ async function construirIndiceInterno(opts = {}) {
         const rs = await bling.chamarBling(`/nfe?limite=100&pagina=${maxPaginas + 1}&tipo=1`, { fundo: deFundo || IDX.viroufundo, semRetentativa: true });
         if (minhaGeracao !== geracaoConstrucao) cancelado = true;
         else if (rs && rs.ok) {
+          marcarProgresso();   // Codex #482: a sentinela respondeu; a passada de vendas parte com o relogio zerado
           const prox = (rs.data && rs.data.data) || [];
           const q0 = prox.length ? Date.parse(String(prox[0].dataEmissao || '').replace(' ', 'T')) : 0;
           fimNoTeto = prox.length === 0 || !!(q0 && q0 < corte);
@@ -529,7 +545,7 @@ async function construirIndiceInterno(opts = {}) {
           // rodada anterior consertou so as duas de `/nfe` e esqueceu esta.
           r = await bling.chamarBling(`/pedidos/vendas?limite=100&pagina=${pg}`, tent === 1 ? { fundo: deFundo || IDX.viroufundo } : { semRetentativa: true, fundo: deFundo || IDX.viroufundo });
           if (minhaGeracao !== geracaoConstrucao) { cancelado = true; break; }   // b559 - abandonada com a chamada pendente
-          if (r.ok) { erroVendas = null; break; }
+          if (r.ok) { erroVendas = null; marcarProgresso(); break; }   // b603: pagina de vendas tambem e progresso
           // ⚠️ b351 - 401 TAMBEM ENTRA NO RETRY.
           //
           // [stated 15/09] o dono buscou "Lyvia" e nao achou. O indice
@@ -660,7 +676,7 @@ async function construirIndiceInterno(opts = {}) {
     console.log(`[${TAG_EMP}/NF-NOMES] indice: ${totalNFs} NFs de ${IDX.nomes} nomes (${dias}d) em ${IDX.duracaoSeg}s`);
     return IDX;
   } finally {
-    clearTimeout(timerTeto);
+    clearInterval(timerTeto);
     // b556: se a construcao foi abandonada pelo teto, a guarda ja foi liberada (e talvez retomada por outra)
     if (geracaoConstrucao === minhaGeracao) { construindo = false; IDX.construindoDesde = null; }
   }
@@ -791,7 +807,9 @@ async function buscarPorNome(texto, opts = {}) {
       // do Bling pausado, fila travada), ela e abandonada e libera a proxima tentativa — sem isto o `emConstrucao`
       // ficava pendurado e toda busca seguinte esperava por ele. O carimbo de inicio aparece no status (/health) e
       // e limpo ao terminar.
-      const TETO_CONSTRUCAO_MS = Number(process.env.NF_NOMES_TETO_CONSTRUCAO_MS || 240000);
+      // Codex #482: o teto da montagem agora e de inatividade (ate 3x no total); soltar `emConstrucao` no teto antigo
+      // faria a proxima busca fria criar outro embrulho que recebe `jaEmAndamento` e nao espera o build real.
+      const TETO_CONSTRUCAO_MS = tetoAbsolutoConstrucaoMs();
       let timerTeto;
       IDX.emConstrucao = Promise.race([
         atualizarIndice(),   // b580 - sem indice: tenta o salvo antes de montar pelo Bling
@@ -801,7 +819,7 @@ async function buscarPorNome(texto, opts = {}) {
         }, TETO_CONSTRUCAO_MS + 1000); }),
       ])
         .catch(() => {})
-        .finally(() => { clearTimeout(timerTeto); IDX.emConstrucao = null; });
+        .finally(() => { clearInterval(timerTeto); IDX.emConstrucao = null; });
     }
     try {
       await Promise.race([
@@ -1109,7 +1127,7 @@ function acharPorPedido(pedido) {
 }
 
 return {
-  construirIndice, atualizarIndice, statusIndice, tetoConstrucaoMs, buscarPorNome, acharPorPedido, acharPorNumero, acharVendaPorLoja, nfDaVenda, nfDaLoja, acharNfPorNomeIndice, dispararNfPorVenda, preAquecer,
+  construirIndice, atualizarIndice, statusIndice, tetoConstrucaoMs, tetoAbsolutoConstrucaoMs, buscarPorNome, acharPorPedido, acharPorNumero, acharVendaPorLoja, nfDaVenda, nfDaLoja, acharNfPorNomeIndice, dispararNfPorVenda, preAquecer,
   colapsar, primeiroUltimo,
 };
 }
