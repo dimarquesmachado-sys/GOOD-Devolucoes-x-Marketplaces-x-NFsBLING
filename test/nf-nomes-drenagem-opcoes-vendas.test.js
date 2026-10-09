@@ -46,7 +46,7 @@ function bling() {
   ok(b.urls.some((u) => u.startsWith('/pedidos/vendas')), 'sem a opcao (AMB/Girassol) o passe de vendas continua');
   // 2) opcoes por agendamento: o 1o falha e retenta; um 2o preAquecer sem opcoes nao pode mudar o que a retentativa usa
   const chamadas = []; let nTotal = 0;
-  const fabrica = fab.criar({ PREFIXO_ENV: 'T_', semVendas: true, bling: { pausaMs: 0 }, clienteBling: { chamarBling: async (u) => { chamadas.push(u); if (++nTotal === 1) return { ok: false, status: 500, data: {} }; return { ok: true, status: 200, data: { data: pagina(chamadas.length) } }; } } });
+  const fabrica = fab.criar({ PREFIXO_ENV: 'T_', semVendas: true, bling: { pausaMs: 0 }, clienteBling: { chamarBling: async (u) => { chamadas.push(u); if (++nTotal === 1) return { ok: false, status: 400, data: {} };   /* b602: 500 agora tenta de novo na hora; 400 e a falha de verdade que agenda a retentativa */ return { ok: true, status: 200, data: { data: pagina(chamadas.length) } }; } } });
   const daquiAOrig = drenagem.daquiA; let retry = null;
   drenagem.daquiA = (fn) => { retry = fn; return { unref() {} }; };
   const origErr = console.error; console.error = () => {};

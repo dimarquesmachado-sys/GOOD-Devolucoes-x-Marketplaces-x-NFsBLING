@@ -19,6 +19,8 @@ const nf = (id, dias) => ({ id, numero: String(1000 + id), serie: '1', dataEmiss
   const st = emp.statusIndice();
   ok(st.total_nfs === 300 && !st.erro && st.parou_por !== 'erro', '⚠️ pagina 1 deu HTTP 0 duas vezes (estouro): esperou, tentou de novo e montou as 300 NFs (' + st.total_nfs + ', ' + st.erro + ')');
   ok(esperas.slice(0, 2).join(',') === '15000,30000', '  esperas que atravessam a pausa de fundo do porteiro (15 s, 30 s): ' + esperas.slice(0, 3).join(','));
+  const src = require('fs').readFileSync(path.join(__dirname, '..', 'amb-devolucoes', 'lib-AMB', 'nf-nomes-AMB.js'), 'utf8');
+  ok(/st === 500 \|\| st === 502/.test(src) && /r\.status === 500 \|\| r\.status === 502/.test(src), '  HTTP 500 do Bling tambem tenta de novo, nas NFs e nas vendas (Codex #481)');
   console.log('');
   console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
   process.exit(falhas ? 1 : 0);
