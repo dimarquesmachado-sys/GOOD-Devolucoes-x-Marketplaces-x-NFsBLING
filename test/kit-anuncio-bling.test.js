@@ -22,6 +22,10 @@ const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o
   ok(chamadas.every((c) => c.fundo), '  as consultas ao Bling vao como trafego de FUNDO (o galpao na frente)');
   const r2 = await chamar({ mkt: 'madeira', pedido: 'FULL-9' });
   ok(r2.o.ok === false && r2.o.suportado === false, '  sem pedido de venda no Bling (Full so com NF): suportado:false — card fica com o titulo generico');
+  const r3 = await chamar({ mkt: 'amazon', pedido: 'ERRO-1' });
+  ok(r3.s === 502 && r3.o.ok === false && r3.o.suportado === undefined, '⚠️ falha do Bling (401/429/500) na consulta: 502 visivel e retentavel, nao "sem pedido"');
+  const r4 = await chamar({ mkt: 'amazon', pedido: 'ERRO-1' });
+  ok(r4.s === 502, '  a falha NAO e cacheada');
   const h = fs.readFileSync(path.join(__dirname, '..', 'amb-devolucoes', 'public-AMB', 'painel-AMB.html'), 'utf8');
   ok(/if \(j\.fonte === 'bling' && !\(an\.length >= 1 && an\.length < nDist\)\) return;/.test(h), '⚠️ o painel so usa o pedido do Bling quando ele RESUME a NF (menos linhas = kit)');
   ok(/vendido por <strong>' \+ reais\(an\[0\]\.preco\)/.test(h) && /reais\(x\.preco\)/.test(h), '⚠️ o card mostra o PRECO do anuncio (Codex #478)');

@@ -1214,11 +1214,12 @@ async function anuncioBling(numeroLoja, res) {
   if (c && Date.now() - c.ts < 6 * 3600e3) return res.json(c.v);
   try {
     const rA = await chamarBling('/pedidos/vendas?limite=20&pagina=1&numerosLojas[]=' + encodeURIComponent(numeroLoja), { fundo: true });
-    const lista = (rA && rA.ok && rA.data && rA.data.data) || [];
+    if (!rA || !rA.ok) return res.status(502).json({ ok: false, erro: 'Bling nao respondeu a consulta do pedido', status: (rA && rA.status) || null });
+    const lista = (rA.data && rA.data.data) || [];
     const ped = lista.find((x) => String(x.numeroLoja || '').trim() === numeroLoja);
     if (!ped) {
       const vNada = { ok: false, suportado: false, motivo: 'sem pedido de venda no Bling (ex.: Full so com NF)' };
-      if (rA && rA.ok) _cacheAnuncio.set(chave, { ts: Date.now(), v: vNada });   // so cacheia resposta CONCLUSIVA
+      _cacheAnuncio.set(chave, { ts: Date.now(), v: vNada });   // so chega aqui com a consulta OK = resposta CONCLUSIVA
       return res.json(vNada);
     }
     const rP = await chamarBling('/pedidos/vendas/' + encodeURIComponent(ped.id), { fundo: true });
