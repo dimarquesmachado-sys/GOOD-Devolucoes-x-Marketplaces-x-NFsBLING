@@ -497,6 +497,14 @@ function montarCruzamentoEspreita(cache) {
   return { porNF, chaveNF };
 }
 
+// 09/10 (dono: 'descobre' quem consome a cota) - o estado do PORTEIRO central na conta da GOOD: quem pediu vez hoje (por
+// servico), 429 com o porteiro folgado (consumo FORA dele) e os ultimos 429. So leitura; requerAdmin e declarado mais
+// abaixo (function, sobe pro topo).
+app.get('/api/debug/porteiro', (req, res, next) => requerAdmin(req, res, next), async (req, res) => {
+  try { res.json({ ok: true, empresa: 'good', porteiro: await require('./lib/ritmo-porteiro').estadoDaConta() }); }
+  catch (e) { res.status(500).json({ ok: false, erro: e.message }); }
+});
+
 app.get('/health', (req, res) => {
   res.json({
     status: 'ok',

@@ -608,6 +608,7 @@ return {
   temToken: () => !!ACCESS_TOKEN,
   temCredenciais: () => !!(cfg.bling.clientId && cfg.bling.clientSecret),
   estadoRitmo: () => ritmo.estado(),   // b442: quantos na fila, pausas por 429
+  estadoPorteiro: () => ritmo.estadoPorteiro(),   // 09/10: quem consome a cota desta conta (porteiro central)
   // ⚠️ b445 (Codex, P1) - a VEZ na fila DESTA empresa, exposta pra quem
   // precisa checar cancelamento ENTRE a espera e a chamada (o mesmo desenho
   // que `lib/ritmo-bling.js` ja da pra GOOD). Chamar com `{ semRitmo: true }`
