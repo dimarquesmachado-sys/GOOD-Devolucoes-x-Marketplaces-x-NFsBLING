@@ -1166,13 +1166,18 @@ const _cacheAnuncio = new Map();
 app.get('/api/admin/anuncio-do-pedido', requerAdmin, async (req, res) => {
   const mkt = String(req.query.mkt || '').toLowerCase();
   const pedido = String(req.query.pedido || '').replace(/\D/g, '');
-  if (!pedido) return res.status(400).json({ ok: false, erro: 'pedido obrigatorio' });
+  if (!pedido && !String(req.query.pedido || '').trim()) return res.status(400).json({ ok: false, erro: 'pedido obrigatorio' });
   // Codex #464 (P2): marketplace vazio + id no formato do ML (20 + 14 digitos) e ML — mesma inferencia do painel (b492)
   const ehML = /^(ml|mercadolivre|mercado_livre|mercado livre)$/.test(mkt) || (!mkt && /^20\d{14}$/.test(pedido));
   // b595 - dono, 08/10: 'todos marketplaces fornecem titulo e SKU do anuncio'. Magalu: /seller/v1/orders/{codigo de 16
   // digitos} -> deliveries[].items[].info.name / info.sku (formato conferido num pedido real da GOOD, 1575070106528392).
   const ehMagalu = /^magalu|magazine/.test(mkt) || (!mkt && /^\d{16}$/.test(pedido) && !/^20\d{14}$/.test(pedido));
   if (ehMagalu) return anuncioMagalu(pedido, res);
+  // b597 - Shopee: o servico da Shopee (proxy multi-loja) expoe /:loja/interno/anuncio-do-pedido (PR #27 de la)
+  const snShopee = String(req.query.pedido || '').trim();
+  // order_sn da Shopee tem ao menos uma LETRA (regra do painel) — sem isso, o pedido do ML (20 + 14 digitos) cairia aqui
+  const ehShopee = /^shopee/.test(mkt) || (!mkt && /^\d{6}(?=[A-Z0-9]*[A-Z])[A-Z0-9]{6,}$/.test(snShopee));
+  if (ehShopee) return anuncioShopee(snShopee, res);
   if (!ehML) return res.json({ ok: false, suportado: false, motivo: 'marketplace ainda sem anuncio (ML e Magalu ligados)' });
   const chave = 'ml:' + pedido;
   const c = _cacheAnuncio.get(chave);
@@ -1193,6 +1198,29 @@ app.get('/api/admin/anuncio-do-pedido', requerAdmin, async (req, res) => {
     return res.status(502).json({ ok: false, erro: e.message });
   }
 });
+
+// b597 - anuncio do pedido na Shopee, pelo servico da Shopee (mesmo formato de resposta do ML/Magalu)
+async function anuncioShopee(sn, res) {
+  const px = deps.shopeeProxy || {};
+  if (!px.url || !px.loja || !px.key) return res.json({ ok: false, suportado: false, motivo: 'servico da Shopee nao configurado nesta empresa' });
+  if (!sn) return res.status(400).json({ ok: false, erro: 'pedido obrigatorio' });
+  const chave = 'shopee:' + px.loja + ':' + sn;
+  const c = _cacheAnuncio.get(chave);
+  if (c && Date.now() - c.ts < 6 * 3600e3) return res.json(c.v);
+  try {
+    const r = await fetch(String(px.url).replace(/\/+$/, '') + '/' + encodeURIComponent(px.loja) + '/interno/anuncio-do-pedido?sn=' + encodeURIComponent(sn),
+      { headers: { 'x-internal-key': px.key } });
+    const j = await r.json().catch(() => null);
+    if (!r.ok || !j || !j.ok) return res.status(502).json({ ok: false, erro: 'servico da Shopee nao devolveu o pedido', status: r.status, detalhe: j && j.erro });
+    const itens = (j.itens || []).map((i) => ({ titulo: i.titulo ? (i.variacao ? i.titulo + ' — ' + i.variacao : i.titulo) : null, sku: i.sku || null, qtd: i.qtd || null, preco: i.preco != null ? i.preco : null }));   // preco 0 (brinde) e preco
+    const v = { ok: true, mkt: 'shopee', pedido: sn, itens, titulo: (itens[0] && itens[0].titulo) || null, sku: (itens[0] && itens[0].sku) || null };
+    if (_cacheAnuncio.size > 2000) _cacheAnuncio.clear();
+    _cacheAnuncio.set(chave, { ts: Date.now(), v });
+    return res.json(v);
+  } catch (e) {
+    return res.status(502).json({ ok: false, erro: e.message });
+  }
+}
 
 // b595 - anuncio do pedido no Magalu (mesmo formato de resposta do ML)
 async function anuncioMagalu(pedido, res) {
