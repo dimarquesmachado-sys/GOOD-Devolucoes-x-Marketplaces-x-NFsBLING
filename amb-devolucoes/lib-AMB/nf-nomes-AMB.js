@@ -332,11 +332,22 @@ async function construirIndiceInterno(opts = {}) {
   // Codex #470: sao DUAS passadas (/nfe e /pedidos/vendas), cada uma ate o teto de paginas — 300 paginas = 30 min
   // (15 min na GOOD, que pula as vendas). Ver tetoConstrucaoMs().
   const TETO_CONSTRUCAO_MS = tetoConstrucaoMs(opts);
-  const timerTeto = setTimeout(() => {
-    if (minhaGeracao !== geracaoConstrucao) return;
-    console.warn(`[${TAG_EMP}/NF-NOMES] construcao passou de ${TETO_CONSTRUCAO_MS / 1000}s — abandono e libero pra proxima tentar`);
+  // b603 - dono, 09/10 (Girassol): a montagem leu as 114 paginas da janela inteira (11.317 NFs) mas foi ABANDONADA pelo
+  // teto de TEMPO total — com a conta tomando 429, cada estouro agora espera a pausa do porteiro (b602) e o total passa
+  // do teto mesmo com a montagem andando. O teto vira de INATIVIDADE: abandona so quando nenhuma pagina chega por
+  // TETO_CONSTRUCAO_MS (montagem travada de verdade); montagem andando devagar segue. Teto ABSOLUTO de 3x pra nao ficar
+  // pendurada pra sempre.
+  let ultimoProgresso = Date.now();
+  const marcarProgresso = () => { ultimoProgresso = Date.now(); };
+  const inicioConstrucao = Date.now();
+  const timerTeto = setInterval(() => {
+    if (minhaGeracao !== geracaoConstrucao) { clearInterval(timerTeto); return; }
+    const parada = Date.now() - ultimoProgresso; const total = Date.now() - inicioConstrucao;
+    if (parada < TETO_CONSTRUCAO_MS && total < 3 * TETO_CONSTRUCAO_MS) return;
+    clearInterval(timerTeto);
+    console.warn(`[${TAG_EMP}/NF-NOMES] construcao ${parada >= TETO_CONSTRUCAO_MS ? 'parada ha ' + Math.round(parada / 1000) + 's sem pagina nova' : 'passou de ' + Math.round(total / 1000) + 's no total'} — abandono e libero pra proxima tentar`);
     abandonarConstrucao();
-  }, TETO_CONSTRUCAO_MS);
+  }, Math.min(30000, Math.max(25, Math.round(TETO_CONSTRUCAO_MS / 8))));   // confere a cada 1/8 do teto (no maximo 30 s)
   if (timerTeto.unref) timerTeto.unref();
 
   try {
@@ -472,6 +483,7 @@ async function construirIndiceInterno(opts = {}) {
       }
 
       paginasLidas = pg; ultimaCheia = lista.length >= 100;   // b562
+      marcarProgresso();   // b603
       if (parouPorData || lista.length < 100) break;
       await sleep(cfg.bling.pausaMs / 2);   // respeita o rate limit do Bling
     }
@@ -529,7 +541,7 @@ async function construirIndiceInterno(opts = {}) {
           // rodada anterior consertou so as duas de `/nfe` e esqueceu esta.
           r = await bling.chamarBling(`/pedidos/vendas?limite=100&pagina=${pg}`, tent === 1 ? { fundo: deFundo || IDX.viroufundo } : { semRetentativa: true, fundo: deFundo || IDX.viroufundo });
           if (minhaGeracao !== geracaoConstrucao) { cancelado = true; break; }   // b559 - abandonada com a chamada pendente
-          if (r.ok) { erroVendas = null; break; }
+          if (r.ok) { erroVendas = null; marcarProgresso(); break; }   // b603: pagina de vendas tambem e progresso
           // ⚠️ b351 - 401 TAMBEM ENTRA NO RETRY.
           //
           // [stated 15/09] o dono buscou "Lyvia" e nao achou. O indice
@@ -660,7 +672,7 @@ async function construirIndiceInterno(opts = {}) {
     console.log(`[${TAG_EMP}/NF-NOMES] indice: ${totalNFs} NFs de ${IDX.nomes} nomes (${dias}d) em ${IDX.duracaoSeg}s`);
     return IDX;
   } finally {
-    clearTimeout(timerTeto);
+    clearInterval(timerTeto);
     // b556: se a construcao foi abandonada pelo teto, a guarda ja foi liberada (e talvez retomada por outra)
     if (geracaoConstrucao === minhaGeracao) { construindo = false; IDX.construindoDesde = null; }
   }
@@ -801,7 +813,7 @@ async function buscarPorNome(texto, opts = {}) {
         }, TETO_CONSTRUCAO_MS + 1000); }),
       ])
         .catch(() => {})
-        .finally(() => { clearTimeout(timerTeto); IDX.emConstrucao = null; });
+        .finally(() => { clearInterval(timerTeto); IDX.emConstrucao = null; });
     }
     try {
       await Promise.race([
