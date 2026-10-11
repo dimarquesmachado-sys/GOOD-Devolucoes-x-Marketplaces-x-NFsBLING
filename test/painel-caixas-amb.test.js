@@ -9,10 +9,11 @@ async function rodar({ filas, captura, erroCaptura }) {
   const rotas = {}; const reg = (m) => (p, ...f) => { rotas[m + ' ' + p] = f[f.length - 1]; };
   const router = { get: reg('get'), post: reg('post'), put: reg('put'), delete: reg('delete'), patch: reg('patch'), use() {} };
   const consultas = []; const selects = [];
-  const chain = () => { const q = { select(s) { selects.push(s); return q; }, eq(c, v) { consultas.push([c, v]); return q; }, in() { return q; }, then(r) { return r({ data: erroCaptura ? null : captura, error: erroCaptura ? { message: 'permission denied' } : null }); } }; return q; };
+  const chain = (tabela) => { const q = { select(s) { if (tabela !== 'devolucoes_x') selects.push(s); return q; }, eq(c, v) { consultas.push([c, v]); return q; }, in() { return q; }, then(r) { if (tabela === 'devolucoes_x') return r({ data: filas.concluido || [], error: null }); return r({ data: erroCaptura ? null : captura, error: erroCaptura ? { message: 'permission denied' } : null }); } }; return q; };
   const db = {
     listarFila: async ({ status }) => ({ ok: true, registros: filas[status] || [] }),
-    conectar: () => ({ from: () => chain() }),
+    tabelas: { devolucoes: 'devolucoes_x' },
+    conectar: () => ({ from: (t) => chain(t) }),
   };
   const mult = () => ({ single: () => (q, r, n) => n(), array: () => (q, r, n) => n(), fields: () => (q, r, n) => n() });
   mult.memoryStorage = () => ({});

@@ -649,7 +649,7 @@ const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 // checado ANTES de entrar na fila da empresa — nao antes de sair, entao um
 // candidato ja desistido ainda batia no Bling depois de esperar numa pausa
 // de 429. Ver bling-AMB.js, nf-nomes-AMB.js e identificar-AMB.js.
-const VERSAO = 'AMB Devolucoes b608';
+const VERSAO = 'AMB Devolucoes b609';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -2085,13 +2085,51 @@ function capturarDevolucoesEmpresa(emTransito, forcar) {
 // antes. Agora o miolo e uma funcao, a rota so a chama, e um relogio (90s apos
 // o boot, depois a cada 3 min — o mesmo da GOOD) a mantem quente. A captura
 // (1x/hora) e o indice de nomes (que ela dispara se frio) vem de brinde.
+// b609 (Codex, #485): pack do ML com VARIOS pedidos. O indice de devolucoes so guarda `order_id` quando a reclamacao e de
+// ORDER; de PACK traz so o resource_id, e o card nascia vazio. Resolve pack -> pedidos como a GOOD (server.js,
+// resolverIdentidadeEspreita): 1 pedido = preenche; varios = `pack_varios_pedidos` (o painel avisa em vez de chutar).
+// Cache por rastreio so de resultado conclusivo (falha passageira refaz) e teto de consultas novas por montagem.
+const ESP_PACK_AMB = new Map();
+async function resolverPacksEspreitaAMB(itens, limite = 20) {
+  let novas = 0;
+  const saida = [];
+  for (const x of (itens || [])) {
+    if (!x || x.pedido || x.marketplace !== 'ml' || !x.tracking) { saida.push(x); continue; }
+    let r = ESP_PACK_AMB.get(x.tracking);
+    if (r === undefined && novas < limite) {
+      novas++;
+      try {
+        const achado = await mlReturns.acharPorTracking(x.tracking);
+        if (achado && achado.order_id) {
+          r = { pedido: String(achado.order_id) };
+          ESP_PACK_AMB.set(x.tracking, r);
+        } else if (achado && achado.resource === 'pack' && achado.resource_id) {
+          const rPk = await ml.chamarML('/packs/' + achado.resource_id);
+          if (rPk && rPk.ok) {
+            const ordens = (rPk.data && Array.isArray(rPk.data.orders)) ? rPk.data.orders : [];
+            r = { pack_id: String(achado.resource_id) };
+            if (ordens.length === 1) r.pedido = String(ordens[0].id);
+            else if (ordens.length > 1) { r.pack_varios_pedidos = ordens.length; r.pedidos_do_pack = ordens.map((o) => String(o.id)).slice(0, 10); }
+            ESP_PACK_AMB.set(x.tracking, r);
+          }
+        }
+      } catch (e) { /* sem identidade: o card segue como estava */ }
+    }
+    saida.push(r ? { ...x, ...r } : x);
+  }
+  return saida;
+}
+
 async function montarEspreitaAMB({ fundo = false } = {}) {
   // b29 - cada fonte com a propria rede de protecao: uma quebrar
   // NUNCA derruba as outras, e o erro vai ESCRITO pro painel.
   const vazio = { quente: false, em_transito: [], entregues: [], aguardando_postagem: 0 };
   let baseML = vazio, baseShopee = vazio, baseMagalu = vazio;
   let erroML = null, erroShopee = null, erroMagalu = null;
-  try { baseML = mlReturns.resumoEspreita(); } catch (e) { erroML = e.message; }
+  try {
+    baseML = mlReturns.resumoEspreita();
+    baseML = { ...baseML, em_transito: await resolverPacksEspreitaAMB(baseML.em_transito), entregues: await resolverPacksEspreitaAMB(baseML.entregues) };
+  } catch (e) { erroML = e.message; }
   try { baseShopee = await shopee.resumoEspreita(); } catch (e) { erroShopee = e.message; }
   try { baseMagalu = magalu.resumoEspreita(); } catch (e) { erroMagalu = e.message; }
   if (!erroMagalu && baseMagalu && baseMagalu.erro) erroMagalu = baseMagalu.erro;   // b521: a falha do Magalu aparece (nao vira 'sem devolucoes')
