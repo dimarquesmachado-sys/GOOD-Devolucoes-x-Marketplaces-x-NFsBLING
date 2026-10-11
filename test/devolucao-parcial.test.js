@@ -120,7 +120,7 @@ const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o
   const path = require('path');
   const RAIZ = path.join(__dirname, '..');
   const SERVER = fs.readFileSync(path.join(RAIZ, 'server.js'), 'utf8');
-  const PAINEL = fs.readFileSync(path.join(RAIZ, 'public', 'painel-devolucoes.html'), 'utf8');
+  const PAINEL = fs.readFileSync(path.join(RAIZ, 'amb-devolucoes', 'public-AMB', 'painel-AMB.html'), 'utf8');
 
   ok(/devParcial\.anotar\(data, devParcial\.esperadoDeCapturadas/.test(SERVER),
      'a rota do admin cruza as triagens com as devolucoes capturadas');

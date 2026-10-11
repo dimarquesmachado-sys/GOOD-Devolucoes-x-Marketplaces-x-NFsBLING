@@ -1476,7 +1476,23 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
         db.listarFila({ status: 'divergente' }),
       ]);
       const lista = (r) => (r && r.ok && Array.isArray(r.registros)) ? r.registros : [];
-      const aprovadas = lista(apr), problemas = lista(prob), divergentes = lista(div);
+      let aprovadas = lista(apr), problemas = lista(prob), divergentes = lista(div);
+      // b606 - nivelar por cima (GOOD v4.67): devolucao que volta em VARIAS CAIXAS. Cruza os pedidos com a captura DESTA
+      // empresa (devolucoes_capturadas, empresa = chaveDados) e anota `parcial` (CAIXA 1/2 + aviso no card). Falha aqui so
+      // deixa sem o selo — a lista sai igual.
+      try {
+        const todas = aprovadas.concat(problemas, divergentes);
+        const pedidos = [...new Set(todas.map((d) => d.order_id).filter(Boolean))];
+        const cliente = (typeof db.conectar === 'function') ? db.conectar() : null;
+        if (pedidos.length && cliente && deps.chaveDados) {
+          const { data: cap } = await cliente.from('devolucoes_capturadas').select('pedido, tipo_tiktok, status')
+            .eq('empresa', deps.chaveDados).in('pedido', pedidos.slice(0, 300));
+          const devParcial = require('../../lib/devolucao-parcial');
+          const anotadas = new Map(devParcial.anotar(todas, devParcial.esperadoDeCapturadas(cap || [])).map((d) => [d.id, d]));
+          const trocar = (l) => l.map((d) => anotadas.get(d.id) || d);
+          aprovadas = trocar(aprovadas); problemas = trocar(problemas); divergentes = trocar(divergentes);
+        }
+      } catch (e) { console.warn('[ADMIN] cruzamento de entrega parcial falhou:', e.message || e); }
       res.json({
         ok: true, aprovadas, problemas, divergentes,
         total: aprovadas.length + problemas.length + divergentes.length,
