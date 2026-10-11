@@ -1513,8 +1513,14 @@ async function carregarSemRetorno() {
             ? '<div style="font-size:12px;color:#00695c;margin-top:4px;">'
               + '📦 Devolução <b>SEM entrada de estoque</b> — a mercadoria não voltou ao CD</div>'
             : (x.entrada_estoque === true
+              // b607 - porte da GOOD (b194.1, Codex): so diz 'o marketplace registrou' quando ELE registrou mesmo; no
+              // `saiu_e_nao_entregou` nao ha registro de devolucao — so se sabe que saiu e nao foi entregue.
               ? '<div style="font-size:12px;color:#00695c;margin-top:4px;">'
-                + '📦 Devolução <b>COM entrada</b> — o produto voltou (confira no recebimento)</div>'
+                + (x.tem_devolucao_registrada
+                  ? '📦 Devolução <b>COM entrada</b> — o marketplace registrou o retorno; '
+                    + 'confirme que o pacote está no galpão</div>'
+                  : '📦 Devolução <b>COM entrada</b> — não foi entregue ao cliente, '
+                    + 'então <b>deve</b> ter voltado; confirme no recebimento</div>')
               : (x.classe
                 ? '<div style="font-size:12px;color:#e65100;margin-top:4px;">'
                   + '❓ <b>Confira se houve devolução física</b> antes de dar baixa</div>'
@@ -1908,7 +1914,14 @@ async function carregarSemRetorno() {
               + (linkVenda(e) ? ' <a href="' + linkVenda(e) + '" target="_blank" rel="noopener" style="background:#1565c0;color:#fff;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;text-decoration:none;margin-left:6px;">🔗 abrir</a>' : '')
               + (e.marketplace === 'magalu' ? magaluProtocolosHtml(e) : '') // v4.46 - protocolos na linha do abrir (alerta)
               + '<br><span style="font-size:12px;color:#555;">Entregue há <b>' + (e.dias_desde != null ? e.dias_desde : '?') + ' dia(s)</b> · sem triagem no sistema'
-              + (e.cliente ? ' · 👤 ' + escapeHtml(e.cliente) : '') + (e.nf ? ' · 🧾 NF ' + escapeHtml(String(e.nf)) : '') + (e.logistica ? ' · <span style="background:#455a64;color:#fff;padding:1px 6px;border-radius:8px;font-size:10px;font-weight:700;">' + escapeHtml(e.logistica) + (e.nf_devolucao ? ' · <span style="background:#2e7d32;color:#fff;padding:1px 7px;border-radius:8px;font-size:10px;font-weight:800;">✅ NF DEVOLUÇÃO ' + escapeHtml(String(e.nf_devolucao.nf || '')) + '</span>' : '') + '</span>' : '') + (e.nf_devolucao ? ' · <span style="background:#2e7d32;color:#fff;padding:1px 7px;border-radius:8px;font-size:10px;font-weight:800;">✅ NF DEVOLUÇÃO ' + escapeHtml(String(e.nf_devolucao.nf || '')) + '</span>' : '') + '</span>'
+              + (e.cliente ? ' · 👤 ' + escapeHtml(e.cliente) : '')
+              // b607 - porte da GOOD (b236.7): venda num PACK com varios pedidos — o sistema NAO chuta qual voltou (NF e
+              // produto errados seriam piores que nada), mas o card DIZ isso e o que fazer, senao parece bug.
+              + (e.pack_varios_pedidos
+                  ? ' · <span style="color:#e65100;" title="A venda tem ' + escapeHtml(String(e.pack_varios_pedidos))
+                    + ' pedidos no mesmo pack. Nao da pra saber qual voltou sem abrir no ML — por isso nao mostro NF e produto, pra nao arriscar o errado.">'
+                    + '📦 pack com ' + escapeHtml(String(e.pack_varios_pedidos)) + ' pedidos — abra no ML pra ver qual voltou</span>'
+                  : '') + (e.nf ? ' · 🧾 NF ' + escapeHtml(String(e.nf)) : '') + (e.logistica ? ' · <span style="background:#455a64;color:#fff;padding:1px 6px;border-radius:8px;font-size:10px;font-weight:700;">' + escapeHtml(e.logistica) + (e.nf_devolucao ? ' · <span style="background:#2e7d32;color:#fff;padding:1px 7px;border-radius:8px;font-size:10px;font-weight:800;">✅ NF DEVOLUÇÃO ' + escapeHtml(String(e.nf_devolucao.nf || '')) + '</span>' : '') + '</span>' : '') + (e.nf_devolucao ? ' · <span style="background:#2e7d32;color:#fff;padding:1px 7px;border-radius:8px;font-size:10px;font-weight:800;">✅ NF DEVOLUÇÃO ' + escapeHtml(String(e.nf_devolucao.nf || '')) + '</span>' : '') + '</span>'
               + ((e.itens && e.itens.length)
                   ? '<div style="font-size:12px;color:#333;margin-top:4px;background:#fff;border-radius:6px;padding:5px 8px;">'
                     + e.itens.map(function (it) {
@@ -1982,6 +1995,12 @@ async function carregarSemRetorno() {
             '<br><span style="font-size:12px;color:#555;">' +
             (e.dias_em_transito != null ? 'Em trânsito há <b>' + e.dias_em_transito + ' dia(s)</b>' : 'Em trânsito') +
             (e.status ? ' · ' + escapeHtml(String(e.status)) : '') +
+            // b607 - porte da GOOD (b236.8): o pack ambiguo tambem no card EM TRANSITO — mesma frase, mesmo motivo
+            (e.pack_varios_pedidos
+              ? ' · <span style="color:#e65100;" title="A venda tem ' + escapeHtml(String(e.pack_varios_pedidos))
+                + ' pedidos no mesmo pack. Nao da pra saber qual voltou sem abrir no ML.">'
+                + '📦 pack com ' + escapeHtml(String(e.pack_varios_pedidos)) + ' pedidos — abra no ML pra ver qual voltou</span>'
+              : '') +
             (e.chegou_cd ? ' — <b style="color:#00695c;">🏭 em revisão no CD do ML (ainda não despachado pra você)</b>' : (e.no_cd_ml ? ' — <b style="color:#00695c;">🚚 a caminho do CD do ML (ainda não chegou lá)</b>' : (e.congelada ? ' — <b style="color:#616161;">🧊 status congelado na Shopee, confirmar no 🔗</b>' : (atrasada ? ' — <b style="color:#c62828;">⚠️ candidata a extravio, cobrar o marketplace</b>' : '')))) + '</span>' +
             // v4.43 - linha 1: cliente + NF + logistica juntos (NF so aqui, uma vez)
             ((e.cliente || e.nf || e.logistica || e.dinheiro) ?
@@ -2754,6 +2773,15 @@ async function carregarSemRetorno() {
     }
 
     async function concluir(id) {
+      // b607 - porte da GOOD: caso do card de estornadas so gerou RASCUNHO — pergunta antes de esconder da fila
+      {
+        const card = document.getElementById('card-' + id);
+        const chk = card && card.querySelector('.chk-esteira');
+        if (chk && chk.dataset.sorascunho === '1') {
+          if (!confirm('Este caso veio do card de estornadas e só gerou RASCUNHO.\n\n'
+            + 'Já validou a NF no Bling? Concluir aqui esconde o caso da fila.')) return;
+        }
+      }
       if (!confirm('Marcar como concluido?')) return;
       try {
         const r = await fetch((window.APP_BASE || '') + '/api/admin/concluir/' + id, { method: 'PUT' });
@@ -4245,9 +4273,17 @@ async function carregarSemRetorno() {
       }
       if (concluindoLote) return;
 
-      const marcados = [...document.querySelectorAll(`.chk-esteira[data-secao="${secao}"]:checked`)];
+      // b607 - porte da GOOD (painel antigo), perdido na unificacao: o caso que veio do card de ESTORNADAS so gerou
+      // RASCUNHO — concluir em lote esconderia da fila antes de alguem validar a NF no Bling. Esses ficam de fora.
+      const marcadosTodos = [...document.querySelectorAll(`.chk-esteira[data-secao="${secao}"]:checked`)];
+      const marcados = marcadosTodos.filter((c) => c.dataset.sorascunho !== '1');
+      const puladosRascunho = marcadosTodos.length - marcados.length;
+      if (puladosRascunho > 0) {
+        toast(puladosRascunho + ' caso(s) do card de estornadas foram pulados: '
+          + 'conclua depois de validar a NF no Bling.', 'err');
+      }
       if (marcados.length === 0) {
-        toast('Nenhum card selecionado. Marque os checkboxes "selecionar" (ou "todas") primeiro.', 'err');
+        if (puladosRascunho === 0) toast('Nenhum card selecionado. Marque os checkboxes "selecionar" (ou "todas") primeiro.', 'err');
         return;
       }
       const ids = marcados.map(c => c.dataset.id);

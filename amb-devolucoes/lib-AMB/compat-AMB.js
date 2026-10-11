@@ -245,6 +245,7 @@ function eanDoProduto(p) {
 }
 
 function montar(router, deps) {
+  const _marcadoresEstornada = (l) => { try { return require('../../lib/marcadores-estornada').enriquecer(l); } catch (e) { console.warn('[ADMIN] marcadores das estornadas falharam:', e.message || e); return l; } };   // b607
   const { auth, db, bling, cfg, multer } = deps;
 
   // upload em memoria: a foto vai direto pro Supabase, nao encosta no disco
@@ -1501,7 +1502,9 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
         }
       } catch (e) { console.warn('[ADMIN] cruzamento de entrega parcial falhou:', e.message || e); }
       res.json({
-        ok: true, aprovadas, problemas, divergentes,
+        // b607 - nivelar por cima (GOOD b200): decodifica os marcadores das ESTORNADAS (so_rascunho, dep_sugerido, data_origem)
+        // — sem isso o caso de estornada sem retorno abria o Gerar NF liberando a emissao e no deposito GERAL.
+        ok: true, aprovadas: _marcadoresEstornada(aprovadas), problemas: _marcadoresEstornada(problemas), divergentes: _marcadoresEstornada(divergentes),
         total: aprovadas.length + problemas.length + divergentes.length,
       });
     } catch (e) {
