@@ -732,6 +732,7 @@ function tentar(tentativa) {
 return {
   construirIndice, statusIndice, acharPorTracking, ultimaBuscaTracking, resumoEspreita, preAquecer,
   enriquecerLista,
+  infoPedido: (id) => PEDIDOS.get(String(id)) || null,
   tamanho: () => Object.keys(IDX.mapa).length,
 };
 }

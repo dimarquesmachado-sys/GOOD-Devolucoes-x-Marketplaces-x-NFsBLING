@@ -28,7 +28,11 @@ const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o
   const SRV = fs.readFileSync(path.join(__dirname, '..', 'amb-devolucoes', 'app-AMB.js'), 'utf8');
   const bloco = entreMarcadores(SRV, 'async function resolverPacksEspreitaAMB', 'async function montarEspreitaAMB');
   ok(/\/packs\//.test(bloco) && /pack_varios_pedidos/.test(bloco) && /pedidos_do_pack/.test(bloco), '⚠️ a espreita da AMB resolve pack -> pedidos e marca pack com varios pedidos');
-  ok(/resolverPacksEspreitaAMB\(baseML\.em_transito\)/.test(SRV) && /resolverPacksEspreitaAMB\(baseML\.entregues\)/.test(SRV), '  em transito e entregues passam pelo resolvedor');
+  ok(/resolverPacksEspreitaAMB\(baseML\.em_transito, orcPacks\)/.test(SRV) && /resolverPacksEspreitaAMB\(baseML\.entregues, orcPacks\)/.test(SRV), '  em transito e entregues passam pelo resolvedor');
+  ok(/orcPacks/.test(SRV) && /orcamento\.novas < orcamento\.limite/.test(bloco), '⚠️ b610: as duas listas dividem UM teto de consultas de pack por montagem');
+  ok(/mlReturns\.infoPedido\(r\.pedido\)/.test(bloco), '⚠️ b610: pack com 1 pedido junta o enriquecimento (PEDIDOS) do pedido resolvido');
+  const ML = fs.readFileSync(path.join(__dirname, '..', 'amb-devolucoes', 'lib-AMB', 'ml-returns-AMB.js'), 'utf8');
+  ok(/infoPedido:/.test(ML), '  ml-returns-AMB exporta infoPedido');
   console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
   process.exit(falhas ? 1 : 0);
 })().catch((e) => { console.log('FALHA (excecao):', e && e.stack); process.exit(1); });

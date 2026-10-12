@@ -649,7 +649,7 @@ const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 // checado ANTES de entrar na fila da empresa — nao antes de sair, entao um
 // candidato ja desistido ainda batia no Bling depois de esperar numa pausa
 // de 429. Ver bling-AMB.js, nf-nomes-AMB.js e identificar-AMB.js.
-const VERSAO = 'AMB Devolucoes b609';
+const VERSAO = 'AMB Devolucoes b610';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -2090,14 +2090,13 @@ function capturarDevolucoesEmpresa(emTransito, forcar) {
 // resolverIdentidadeEspreita): 1 pedido = preenche; varios = `pack_varios_pedidos` (o painel avisa em vez de chutar).
 // Cache por rastreio so de resultado conclusivo (falha passageira refaz) e teto de consultas novas por montagem.
 const ESP_PACK_AMB = new Map();
-async function resolverPacksEspreitaAMB(itens, limite = 20) {
-  let novas = 0;
+async function resolverPacksEspreitaAMB(itens, orcamento = { novas: 0, limite: 20 }) {
   const saida = [];
   for (const x of (itens || [])) {
     if (!x || x.pedido || x.marketplace !== 'ml' || !x.tracking) { saida.push(x); continue; }
     let r = ESP_PACK_AMB.get(x.tracking);
-    if (r === undefined && novas < limite) {
-      novas++;
+    if (r === undefined && orcamento.novas < orcamento.limite) {
+      orcamento.novas++;
       try {
         const achado = await mlReturns.acharPorTracking(x.tracking);
         if (achado && achado.order_id) {
@@ -2115,7 +2114,9 @@ async function resolverPacksEspreitaAMB(itens, limite = 20) {
         }
       } catch (e) { /* sem identidade: o card segue como estava */ }
     }
-    saida.push(r ? { ...x, ...r } : x);
+    // b610 (Codex, #485): o item do indice nasce com order_id nulo, entao o resumo nao achou o PEDIDOS dele; com o
+    // pedido resolvido, junta o que o enriquecimento (comprador/itens/NF) ja guardou — a cada montagem, sem cachear.
+    saida.push(r ? { ...x, ...(r.pedido ? (mlReturns.infoPedido(r.pedido) || {}) : {}), ...r } : x);
   }
   return saida;
 }
@@ -2128,7 +2129,8 @@ async function montarEspreitaAMB({ fundo = false } = {}) {
   let erroML = null, erroShopee = null, erroMagalu = null;
   try {
     baseML = mlReturns.resumoEspreita();
-    baseML = { ...baseML, em_transito: await resolverPacksEspreitaAMB(baseML.em_transito), entregues: await resolverPacksEspreitaAMB(baseML.entregues) };
+    const orcPacks = { novas: 0, limite: 20 };   // b610: UM teto por montagem, dividido entre as duas listas
+    baseML = { ...baseML, em_transito: await resolverPacksEspreitaAMB(baseML.em_transito, orcPacks), entregues: await resolverPacksEspreitaAMB(baseML.entregues, orcPacks) };
   } catch (e) { erroML = e.message; }
   try { baseShopee = await shopee.resumoEspreita(); } catch (e) { erroShopee = e.message; }
   try { baseMagalu = magalu.resumoEspreita(); } catch (e) { erroMagalu = e.message; }
