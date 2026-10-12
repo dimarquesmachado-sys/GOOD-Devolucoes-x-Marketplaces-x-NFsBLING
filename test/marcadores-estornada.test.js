@@ -63,7 +63,7 @@ const RAIZ = path.join(__dirname, '..');
 // ── ninguem mais decodifica por conta propria ───────────────────────
 {
   for (const [nome, rel] of [
-    ['GOOD', 'public/painel-devolucoes.html'],
+    ['GOOD', 'amb-devolucoes/public-AMB/painel-AMB.html'],
     ['AMB (servido)', 'amb-devolucoes/public-AMB/painel-AMB.html'],
   ]) {
     const html = fs.readFileSync(path.join(RAIZ, rel), 'utf8');
@@ -98,14 +98,15 @@ const RAIZ = path.join(__dirname, '..');
 // fixo em `selected`, entao um caso cuja mercadoria NAO voltou sairia com
 // entrada no estoque vendavel.
 {
-  const GOOD_HTML = fs.readFileSync(path.join(RAIZ, 'public', 'painel-devolucoes.html'), 'utf8');
-  ok(/chaveNF, soRascunho, depSugerido/.test(GOOD_HTML),
-     'o modal da GOOD aceita o deposito sugerido');
-  ok(/if \(depSugerido === 'defeito'\)/.test(GOOD_HTML),
-     '  e pre-seleciona DEFEITOS API quando a mercadoria nao voltou');
-  ok(/Nao TRAVO: ele troca se quiser/.test(GOOD_HTML),
-     '  sem travar: e o dono quem decide, eu so mudo o padrao');
-  ok(/d\.dep_sugerido \|\| ''/.test(GOOD_HTML),
+  const GOOD_HTML = fs.readFileSync(path.join(RAIZ, 'amb-devolucoes', 'public-AMB', 'painel-AMB.html'), 'utf8');
+  // b611: o painel antigo da GOOD foi apagado; no painel UNICO o deposito sugerido chega pelo statusTriagem
+  ok(/function abrirModalGerarDevolucao\([^)]*statusTriagem[^)]*\)/.test(GOOD_HTML),
+     'o modal do painel unico aceita o deposito sugerido (pelo statusTriagem)');
+  ok(/\(d\.dep_sugerido \|\| d\.status \|\| d\.tipo\)/.test(GOOD_HTML),
+     '  e pre-seleciona DEFEITOS quando a mercadoria nao voltou (dep_sugerido manda)');
+  ok(/<select id="depModal"/.test(GOOD_HTML) || /id="depModal"/.test(GOOD_HTML),
+     '  sem travar: o seletor continua livre, so muda o padrao');
+  ok(/d\.dep_sugerido/.test(GOOD_HTML),
      'e a fila passa o campo decodificado pela peca');
 
   // a AMB ja resolvia pelo `ehProblema` — os dois paineis

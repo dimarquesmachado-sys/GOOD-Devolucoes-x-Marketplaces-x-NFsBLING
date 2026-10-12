@@ -19,7 +19,7 @@ let falhas = 0;
 const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o); };
 
 const PAINEIS = [
-  ['GOOD  painel-devolucoes', path.join(RAIZ, 'public', 'painel-devolucoes.html')],
+  ['GOOD  painel-devolucoes', path.join(RAIZ, 'amb-devolucoes', 'public-AMB', 'painel-AMB.html')],
   ['AMB   painel-AMB',        path.join(RAIZ, 'amb-devolucoes', 'public-AMB', 'painel-AMB.html')],
 ];
 

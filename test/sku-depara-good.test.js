@@ -18,7 +18,7 @@ const { criarSkuDepara } = require('../lib/sku-depara');
   ok((await criarSkuDepara({ obterDb: () => null, tabelaDepara: 'x', tabelaDevolucoes: 'y' }).resolverSku('A')).sku === 'A', '  sem banco: nunca trava (devolve o proprio SKU)');
   const s = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
   for (const rt of ["app.get('/api/admin/sku-depara', requerAdmin", "app.post('/api/admin/sku-depara', requerAdmin", "app.get('/api/admin/sku-depara/retroativo', requerAdmin", "app.post('/api/admin/sku-depara/retroativo', requerAdmin", "app.delete('/api/admin/sku-depara/:sku', requerAdmin"]) ok(s.includes(rt), '  GOOD: ' + rt.split("'")[1] + ' (' + rt.split('(')[0] + ', admin)');
-  const h = fs.readFileSync(path.join(__dirname, '..', 'public', 'painel-devolucoes.html'), 'utf8');
+  const h = fs.readFileSync(path.join(__dirname, '..', 'amb-devolucoes', 'public-AMB', 'painel-AMB.html'), 'utf8');
   ok(/id="caixaDepara"/.test(h) && /function alternarDepara\(/.test(h) && /function salvarDepara\(/.test(h) && /function apagarDepara\(/.test(h), '⚠️ painel da GOOD tem a mesma tela do de-para da AMB');
   console.log('');
   console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');

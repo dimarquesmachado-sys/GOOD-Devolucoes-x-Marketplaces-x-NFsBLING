@@ -118,7 +118,7 @@ const SRC = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
 
 // ── e o caso do pack ambiguo se explica na tela ─────────────────────
 {
-  const html = fs.readFileSync(path.join(__dirname, '..', 'public', 'painel-devolucoes.html'), 'utf8');
+  const html = fs.readFileSync(path.join(__dirname, '..', 'amb-devolucoes', 'public-AMB', 'painel-AMB.html'), 'utf8');
   ok((html.match(/pack_varios_pedidos/g) || []).length >= 3,
      'os DOIS cards (alerta e em transito) explicam o pack ambiguo');
   ok(/abra no ML pra ver qual voltou/.test(html),

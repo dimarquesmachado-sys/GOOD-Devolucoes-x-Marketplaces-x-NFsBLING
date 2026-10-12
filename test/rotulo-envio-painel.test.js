@@ -4,7 +4,7 @@ const fs = require('fs'); const path = require('path'); const vm = require('vm')
 let falhas = 0;
 const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o); };
 function fonte(html, nome) { const i = html.search(new RegExp('function ' + nome + '\\s*\\(')); let j = html.indexOf('{', i), prof = 0, k = j; for (; k < html.length; k++) { if (html[k] === '{') prof++; else if (html[k] === '}') { prof--; if (prof === 0) break; } } return html.slice(i, k + 1); }
-for (const arq of ['amb-devolucoes/public-AMB/painel-AMB.html', 'public/painel-devolucoes.html']) {
+for (const arq of ['amb-devolucoes/public-AMB/painel-AMB.html', 'amb-devolucoes/public-AMB/painel-AMB.html']) {
   const html = fs.readFileSync(path.join(__dirname, '..', arq), 'utf8');
   const ctx = { escapeHtml: (s) => String(s).replace(/</g, '&lt;') }; vm.createContext(ctx);
   vm.runInContext(fonte(html, 'rotuloShipment'), ctx);

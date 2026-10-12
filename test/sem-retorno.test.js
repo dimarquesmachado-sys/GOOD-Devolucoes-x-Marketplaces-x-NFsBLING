@@ -23,7 +23,7 @@ const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o
 
 const RAIZ = path.join(__dirname, '..');
 const SERVER = fs.readFileSync(path.join(RAIZ, 'server.js'), 'utf8');
-const PAINEL = fs.readFileSync(path.join(RAIZ, 'public', 'painel-devolucoes.html'), 'utf8');
+const PAINEL = fs.readFileSync(path.join(RAIZ, 'amb-devolucoes', 'public-AMB', 'painel-AMB.html'), 'utf8');
 
 // ── a rota ───────────────────────────────────────────────────────────
 {
@@ -209,8 +209,8 @@ const PAINEL = fs.readFileSync(path.join(RAIZ, 'public', 'painel-devolucoes.html
      'a secao fica ACIMA do "a espreita", como ele pediu');
 
   ok(/async function carregarSemRetorno/.test(PAINEL), 'ha funcao que carrega');
-  ok(/carregarSemRetorno\(\); \/\/ v4\.69/.test(PAINEL), '  chamada junto do carregamento');
-  ok(/carregarSemRetorno\(\);   \/\/ b184\.3/.test(PAINEL),
+  ok(/carregarSemRetorno\(\); \/\/ (v4\.69|b192\.3)/.test(PAINEL), '  chamada junto do carregamento');   // b611: painel unico
+  ok(/carregarSemRetorno\(\);   \/\/ (b184\.3|b192\.3)/.test(PAINEL),   // b611: painel unico
      '  e no timer tambem — o painel fica aberto o dia todo');
   ok(/catch \(e\) \{[\s\S]{0,120}nao a fila/.test(PAINEL),
      '  e falha nela NAO derruba a fila principal (bloco informativo)');

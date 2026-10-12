@@ -20,7 +20,7 @@ const AMB = fs.readFileSync(path.join(RAIZ, 'amb-devolucoes', 'app-AMB.js'), 'ut
 // direto — na pratica o card nao apareceria pra ele.
 const PAINEL_AMB = fs.readFileSync(path.join(RAIZ, 'amb-devolucoes', 'public-AMB', 'painel-AMB.html'), 'utf8');
 const PAINEL_AMB2 = fs.readFileSync(path.join(RAIZ, 'amb-devolucoes', 'public-AMB', 'painel-AMB.html'), 'utf8');
-const PAINEL_GOOD = fs.readFileSync(path.join(RAIZ, 'public', 'painel-devolucoes.html'), 'utf8');
+const PAINEL_GOOD = fs.readFileSync(path.join(RAIZ, 'amb-devolucoes', 'public-AMB', 'painel-AMB.html'), 'utf8');
 const SERVER = fs.readFileSync(path.join(RAIZ, 'server.js'), 'utf8');
 
 // ── a AMB usa a MESMA lib, nao uma copia ─────────────────────────────
