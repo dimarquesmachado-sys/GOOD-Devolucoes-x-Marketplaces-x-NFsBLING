@@ -23,8 +23,12 @@ const TELAS = fs.readdirSync(PUB).filter((f) => f.endsWith('.html'));
 
 // mapeia: arquivo js -> { tela: versao }
 const versoes = {};
-for (const tela of TELAS) {
-  const s = fs.readFileSync(path.join(PUB, tela), 'utf8');
+// b612: o painel da GOOD nao e mais um arquivo em public/ — e o painel unico MONTADO (lib/painel-unico), que carrega
+// os mesmos /js/... da triagem (defeitos-ficha, lancar-defeito). Entra na conta como tela.
+const PAINEL_GOOD = require(path.join(__dirname, '..', 'lib', 'painel-unico.js')).montarPainelUnicoGood(
+  fs.readFileSync(path.join(__dirname, '..', 'amb-devolucoes', 'public-AMB', 'painel-AMB.html'), 'utf8'));
+for (const tela of TELAS.concat(['painel-devolucoes.html (montado)'])) {
+  const s = tela.endsWith('(montado)') ? PAINEL_GOOD.replace(/src="\/js\//g, 'src="js/') : fs.readFileSync(path.join(PUB, tela), 'utf8');
   for (const m of s.matchAll(/(js\/[\w-]+\.js)\?v=(\d+)/g)) {
     versoes[m[1]] = versoes[m[1]] || {};
     versoes[m[1]][tela] = Number(m[2]);
