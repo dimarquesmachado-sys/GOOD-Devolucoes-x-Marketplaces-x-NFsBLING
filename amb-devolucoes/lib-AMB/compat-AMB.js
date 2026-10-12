@@ -1476,7 +1476,30 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
         db.listarFila({ status: 'divergente' }),
       ]);
       const lista = (r) => (r && r.ok && Array.isArray(r.registros)) ? r.registros : [];
-      const aprovadas = lista(apr), problemas = lista(prob), divergentes = lista(div);
+      let aprovadas = lista(apr), problemas = lista(prob), divergentes = lista(div);
+      // b606 - nivelar por cima (GOOD v4.67): devolucao que volta em VARIAS CAIXAS. Cruza os pedidos com a captura DESTA
+      // empresa (devolucoes_capturadas, empresa = chaveDados) e anota `parcial` (CAIXA 1/2 + aviso no card). Falha aqui so
+      // deixa sem o selo — a lista sai igual.
+      try {
+        // as irmas JA CONCLUIDAS contam como caixa recebida (senao emitir uma e recarregar devolve a outra pra
+        // "aguardando"); entram so na conta, nao na resposta.
+        const conc = lista(await db.listarFila({ status: 'concluido', limite: 200 }));
+        const abertas = aprovadas.concat(problemas, divergentes);
+        const todas = abertas.concat(conc);
+        const pedidos = [...new Set(abertas.map((d) => d.order_id).filter(Boolean))];
+        const cliente = (typeof db.conectar === 'function') ? db.conectar() : null;
+        if (pedidos.length && cliente && deps.chaveDados) {
+          // shipment/rastreio sao os nomes GRAVADOS na captura: sem eles, 2 registros do mesmo pacote viram 2 caixas
+          const { data: cap, error: errCap } = await cliente.from('devolucoes_capturadas')
+            .select('pedido, tipo_tiktok, status, shipment, rastreio')
+            .eq('empresa', deps.chaveDados).in('pedido', pedidos.slice(0, 300));
+          if (errCap) throw new Error(errCap.message || String(errCap));
+          const devParcial = require('../../lib/devolucao-parcial');
+          const anotadas = new Map(devParcial.anotar(todas, devParcial.esperadoDeCapturadas(cap || [])).map((d) => [d.id, d]));
+          const trocar = (l) => l.map((d) => anotadas.get(d.id) || d);
+          aprovadas = trocar(aprovadas); problemas = trocar(problemas); divergentes = trocar(divergentes);
+        }
+      } catch (e) { console.warn('[ADMIN] cruzamento de entrega parcial falhou:', e.message || e); }
       res.json({
         ok: true, aprovadas, problemas, divergentes,
         total: aprovadas.length + problemas.length + divergentes.length,

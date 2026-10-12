@@ -2422,6 +2422,34 @@ async function carregarSemRetorno() {
 
     // b540: o nome da empresa desta tela, do titulo que o servidor de cada empresa preenche
     function nomeDaEmpresaTela() { var t = String(document.title || ''); var i = t.indexOf(' - '); return i > 0 ? t.slice(0, i) : 'esta empresa'; }
+    // b606 - porte da GOOD (v4.67), perdido na unificacao: devolucao que volta em VARIAS CAIXAS. O servidor anota
+    // `d.parcial` (lib/devolucao-parcial) nas 3 filas; o card mostra CAIXA 1/2 no titulo e o aviso pra so emitir a NF
+    // quando todas chegarem (pedido do dono: '1a devolucao triada / AGUARDANDO 2a'). Aprovada, problema e divergente
+    // oferecem a mesma emissao de NF, entao as 3 usam estes dois helpers.
+    function badgeMultiCaixa(d) {
+      const multi = d.parcial || null;
+      return multi
+        ? '<span style="background:' + (multi.completo ? '#2e7d32' : '#e65100') + ';color:white;'
+          + 'padding:3px 8px;border-radius:10px;font-size:10px;font-weight:700;margin-left:6px;">'
+          + (multi.completo ? '✅ ' : '⏳ ')
+          + 'CAIXA ' + (multi.esta || '?') + '/' + (multi.esperadas || multi.vieram)
+          + '</span>'
+        : '';
+    }
+    function avisoMultiCaixa(d) {
+      const multi = d.parcial || null;
+      return !multi ? ''
+        : (multi.completo
+          ? '<div style="margin:8px 0;padding:10px;border-radius:8px;background:#e8f5e9;'
+            + 'border:2px solid #2e7d32;color:#1b5e20;font-weight:700;">'
+            + '✅ TODAS AS CAIXAS CHEGARAM — ' + escapeHtml(multi.rotulo || '') + '</div>'
+          : '<div style="margin:8px 0;padding:10px;border-radius:8px;background:#fff3e0;'
+            + 'border:2px solid #ef6c00;color:#e65100;font-weight:700;">'
+            + '⏳ AGUARDANDO OUTRA CAIXA — ' + escapeHtml(multi.rotulo || '')
+            + '<div style="font-weight:400;margin-top:4px;font-size:13px;">'
+            + 'Este pedido volta em mais de uma entrega. <b>Espere todas</b> antes de emitir a NF de devolução.'
+            + '</div></div>');
+    }
     function itemHtmlAprovado(d) {
       const concluido = d.status === 'concluido';
       // b328 - AVISA NO CARD que a venda JA TEM NF de devolucao no Bling
@@ -2448,6 +2476,11 @@ async function carregarSemRetorno() {
       // v3.99 - CONSERTADO pelo estoquista: voltou quebrado mas foi salvo com
       // peca de outra unidade. Emite a NF INCLUINDO em estoque (e da pra
       // contestar o marketplace por fora).
+      // b606 - porte da GOOD (painel antigo, v4.67), perdido na unificacao: devolucao que volta em VARIAS CAIXAS. O servidor
+      // anota `d.parcial` (lib/devolucao-parcial); o card mostra CAIXA 1/2 no titulo e o aviso pra so emitir a NF quando
+      // todas chegarem (pedido do dono: '1a devolucao triada / AGUARDANDO 2a').
+      const badgeMulti = badgeMultiCaixa(d);
+      const avisoMulti = avisoMultiCaixa(d);
       const ehConsertado = !!d.conserto_info || (d.problema_descricao || '').includes('[CONSERTADO]');
       const badgeConsertado = ehConsertado
         ? '<span style="background:#00695c;color:white;padding:3px 8px;border-radius:10px;font-size:10px;font-weight:700;margin-left:6px;">🔧 CONSERTADO</span>'
@@ -2477,7 +2510,7 @@ async function carregarSemRetorno() {
         <div class="item ${concluido ? 'concluido' : ''}${d.nf_devolucao_id_bling ? ' nf-emitida' : ''}" id="card-${d.id}" ${ehParcial ? 'style="border-left-color:#f57c00;background:#fff8e7;"' : ''}>
           <div class="item-header">
             <div>
-              <div class="item-titulo"><span class="titulo-txt"${anuncioDoCardCache(d) ? ' data-anuncio="1"' : ''}>${escapeHtml(tituloInicialDoCard(d))}</span><span class="selo-varios">${seloVariosProdutos(d)}</span>${badgeParcial}${badgeRebipe}${badgeConsertado}</div>
+              <div class="item-titulo"><span class="titulo-txt"${anuncioDoCardCache(d) ? ' data-anuncio="1"' : ''}>${escapeHtml(tituloInicialDoCard(d))}</span><span class="selo-varios">${seloVariosProdutos(d)}</span>${badgeParcial}${badgeMulti}${badgeRebipe}${badgeConsertado}</div>
               <div class="item-data">por ${escapeHtml(desc)} · ${dataFmt((d.criado_em || d.created_at))}</div>
             </div>
             ${concluido ? '<span style="background:#999;color:white;padding:3px 8px;border-radius:10px;font-size:10px;font-weight:700;">CONCLUIDO</span>' : ''}
@@ -2491,7 +2524,7 @@ async function carregarSemRetorno() {
             ${d.pack_id ? ` · <strong>Pack:</strong> <code>${d.pack_id}</code>` : ''}
             ${rotuloShipment(d.shipment_id)}
           </div>
-          ${blocoFotos}${blocoConserto}
+          ${avisoMulti}${blocoFotos}${blocoConserto}
           ${linhaItensDevolvidos(d)}
           ${concluido ? '' : `
             ${ehSerie2(d) ? avisoFullHtml(d) : ''}
@@ -2533,12 +2566,12 @@ async function carregarSemRetorno() {
         <div class="item problema ${concluido ? 'concluido' : ''}" id="card-${d.id}">
           <div class="item-header">
             <div>
-              <div class="item-titulo"><span class="titulo-txt"${anuncioDoCardCache(d) ? ' data-anuncio="1"' : ''}>${escapeHtml(tituloInicialDoCard(d))}</span><span class="selo-varios">${seloVariosProdutos(d)}</span>${badgeRebipe}</div>
+              <div class="item-titulo"><span class="titulo-txt"${anuncioDoCardCache(d) ? ' data-anuncio="1"' : ''}>${escapeHtml(tituloInicialDoCard(d))}</span><span class="selo-varios">${seloVariosProdutos(d)}</span>${badgeMultiCaixa(d)}${badgeRebipe}</div>
               <div class="item-data">${dataFmt((d.criado_em || d.created_at))}</div>
             </div>
             ${concluido ? '<span style="background:#999;color:white;padding:3px 8px;border-radius:10px;font-size:10px;font-weight:700;">RESOLVIDO</span>' : ''}
           </div>
-          ${_nfDevAvisoHtml(d)}
+          ${avisoMultiCaixa(d)}${_nfDevAvisoHtml(d)}
           <div class="item-detalhes">
             <span class="linha-produto">${linhaProduto(d)}</span>${renderItensCard(d)}<br>
             <strong>NF:</strong> ${escapeHtml(d.nf_numero || '-')} ·
@@ -2602,7 +2635,7 @@ async function carregarSemRetorno() {
         <div class="item ${concluido ? 'concluido' : ''}" id="card-${d.id}" style="${d.nf_devolucao_id_bling ? 'border:2px solid #2e7d32;' : ''}border-left:5px solid var(--marca); background:#f3e5f5;">
           <div class="item-header">
             <div>
-              <div class="item-titulo"><span class="titulo-txt"${anuncioDoCardCache(d) ? ' data-anuncio="1"' : ''}>${escapeHtml(tituloInicialDoCard(d))}</span><span class="selo-varios">${seloVariosProdutos(d)}</span> <span style="background:var(--marca);color:var(--sobre-marca);padding:3px 8px;border-radius:10px;font-size:10px;font-weight:700;margin-left:6px;">🔄 DIVERGENTE</span>${badgeRebipe}</div>
+              <div class="item-titulo"><span class="titulo-txt"${anuncioDoCardCache(d) ? ' data-anuncio="1"' : ''}>${escapeHtml(tituloInicialDoCard(d))}</span><span class="selo-varios">${seloVariosProdutos(d)}</span> <span style="background:var(--marca);color:var(--sobre-marca);padding:3px 8px;border-radius:10px;font-size:10px;font-weight:700;margin-left:6px;">🔄 DIVERGENTE</span>${badgeMultiCaixa(d)}${badgeRebipe}</div>
               <div class="item-data">${dataFmt((d.criado_em || d.created_at))}</div>
             </div>
             ${concluido ? '<span style="background:#999;color:white;padding:3px 8px;border-radius:10px;font-size:10px;font-weight:700;">RESOLVIDO</span>' : ''}
@@ -2622,7 +2655,7 @@ async function carregarSemRetorno() {
               </div>
             </div>
           </div>
-          ${_nfDevAvisoHtml(d)}
+          ${avisoMultiCaixa(d)}${_nfDevAvisoHtml(d)}
 
           <div class="item-detalhes">
             <span class="linha-produto">${linhaProduto(d)}</span>${renderItensCard(d)}<br>
