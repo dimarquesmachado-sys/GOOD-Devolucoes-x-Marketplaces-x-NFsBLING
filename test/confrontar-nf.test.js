@@ -79,7 +79,7 @@ const CHAVE_S3 = '35260864289091000100550030000006371448079669';   // serie 003,
 // ── e o card mostra as candidatas ───────────────────────────────────
 {
   for (const [nome, rel] of [
-    ['GOOD', 'public/painel-devolucoes.html'],
+    ['GOOD', 'amb-devolucoes/public-AMB/painel-AMB.html'],
     ['AMB (servido)', 'amb-devolucoes/public-AMB/painel-AMB.html'],
   ]) {
     const html = fs.readFileSync(path.join(RAIZ, rel), 'utf8');
@@ -129,7 +129,7 @@ const CHAVE_S3 = '35260864289091000100550030000006371448079669';   // serie 003,
        nome + ': a rota marca quando a nota e do Full');
   }
   for (const [nome, rel] of [
-    ['GOOD', 'public/painel-devolucoes.html'],
+    ['GOOD', 'amb-devolucoes/public-AMB/painel-AMB.html'],
     ['AMB (servido)', 'amb-devolucoes/public-AMB/painel-AMB.html'],
   ]) {
     const html = fs.readFileSync(path.join(RAIZ, rel), 'utf8');

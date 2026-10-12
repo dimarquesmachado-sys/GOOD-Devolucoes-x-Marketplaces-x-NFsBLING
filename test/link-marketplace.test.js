@@ -48,7 +48,7 @@ function qual(id) {
 // ── e as tres secoes usam a mesma funcao ────────────────────────────
 {
   for (const [nome, rel] of [
-    ['GOOD', 'public/painel-devolucoes.html'],
+    ['GOOD', 'amb-devolucoes/public-AMB/painel-AMB.html'],
     ['AMB (servido)', 'amb-devolucoes/public-AMB/painel-AMB.html'],
   ]) {
     const html = fs.readFileSync(path.join(RAIZ, rel), 'utf8');

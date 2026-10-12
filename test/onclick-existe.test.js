@@ -49,7 +49,7 @@ function declaradaGlobal(codigo, f) {
 }
 
 for (const [nome, rel] of [
-  ['GOOD', 'public/painel-devolucoes.html'],
+  ['GOOD', 'amb-devolucoes/public-AMB/painel-AMB.html'],
   ['AMB (servido)', 'amb-devolucoes/public-AMB/painel-AMB.html'],
 ]) {
   const s = fs.readFileSync(path.join(RAIZ, rel), 'utf8');

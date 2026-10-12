@@ -73,7 +73,7 @@ const RAIZ = path.join(__dirname, '..');
   }
 
   for (const [nome, rel] of [
-    ['GOOD', 'public/painel-devolucoes.html'],
+    ['GOOD', 'amb-devolucoes/public-AMB/painel-AMB.html'],
     ['AMB (servido)', 'amb-devolucoes/public-AMB/painel-AMB.html'],
   ]) {
     const html = fs.readFileSync(path.join(RAIZ, rel), 'utf8');
@@ -109,7 +109,7 @@ const RAIZ = path.join(__dirname, '..');
      'e a serie sai da chave quando nao vem direto');
 
   for (const [nome, rel] of [
-    ['GOOD', 'public/painel-devolucoes.html'],
+    ['GOOD', 'amb-devolucoes/public-AMB/painel-AMB.html'],
     ['AMB (servido)', 'amb-devolucoes/public-AMB/painel-AMB.html'],
   ]) {
     const html = fs.readFileSync(path.join(RAIZ, rel), 'utf8');

@@ -17,7 +17,7 @@ const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o
 
 const RAIZ = path.join(__dirname, '..');
 const SERVER = fs.readFileSync(path.join(RAIZ, 'server.js'), 'utf8');
-const PAINEL = fs.readFileSync(path.join(RAIZ, 'public', 'painel-devolucoes.html'), 'utf8');
+const PAINEL = fs.readFileSync(path.join(RAIZ, 'amb-devolucoes', 'public-AMB', 'painel-AMB.html'), 'utf8');
 
 // ── a rota que registra ──────────────────────────────────────────────
 {
@@ -94,15 +94,15 @@ const PAINEL = fs.readFileSync(path.join(RAIZ, 'public', 'painel-devolucoes.html
   //    transmitiria TODOS pra SEFAZ, e e irreversivel.
   ok(/function abrirModalGerarDevolucao\([^)]*soRascunho[^)]*\)/.test(PAINEL),
      'o modal aceita "so rascunho"');
-  ok(/\$\{soRascunho \?/.test(PAINEL),
+  ok(/\$\{soRascunho \?/.test(PAINEL) || /\$\{\(ehDivergente \|\| soRascunho\) \?/.test(PAINEL),   // b611: painel unico
      '  e esconde o "Gerar \+ Emitir" quando pedido');
   ok(/todos os itens da nota original/.test(PAINEL),
      '  explicando por que: a nota sai com a original inteira');
   const iFn = PAINEL.indexOf('async function gerarDoCardEstornadas');
-  const fn = PAINEL.slice(iFn, iFn + 3500);
-  ok(/replace\(\/\[\^0-9\]\/g, ''\),\s*\n\s*true,/.test(fn),
+  const fn = PAINEL.slice(iFn, iFn + 7000);   // b611: no painel unico a funcao tem mais comentarios
+  ok(/replace\(\/\[\^0-9\]\/g, ''\),\s*\n\s*true,/.test(fn) || /replace\(\/\[\^0-9\]\/g, ''\),[\s\S]{0,500}\n\s*true\s+\/\/ b538/.test(fn),   // b611: painel unico (11o parametro)
      'e o card SEMPRE pede so rascunho — que e o que o dono ja faz (edita no Bling)');
-  ok(/d\.entrada_estoque === true \? '' : 'defeito'\s*\n\s*\)/.test(fn),
+  ok(/d\.entrada_estoque === true \? '' : 'defeito'/.test(fn),   // b611: painel unico (vai no statusTriagem)
      '  passando tambem o deposito sugerido, pro seletor abrir no certo');
 
   // 2. card que ainda da pra CANCELAR nao pode oferecer devolucao

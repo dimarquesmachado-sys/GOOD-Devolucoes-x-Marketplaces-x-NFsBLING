@@ -132,7 +132,7 @@ const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o
   const path = require('path');
   const SRC = fs.readFileSync(path.join(__dirname, '..', 'lib', 'magalu-cancelados.js'), 'utf8');
   const SERVER = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
-  const PAINEL = fs.readFileSync(path.join(__dirname, '..', 'public', 'painel-devolucoes.html'), 'utf8');
+  const PAINEL = fs.readFileSync(path.join(__dirname, '..', 'amb-devolucoes', 'public-AMB', 'painel-AMB.html'), 'utf8');
 
   ok(/return \{ ok: false, itens: \[\], erro:/.test(SRC),
      'a busca devolve erro em vez de lancar (isto alimenta um painel)');
@@ -186,7 +186,7 @@ const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o
   const fs = require('fs');
   const path = require('path');
   const SERVER = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
-  const PAINEL = fs.readFileSync(path.join(__dirname, '..', 'public', 'painel-devolucoes.html'), 'utf8');
+  const PAINEL = fs.readFileSync(path.join(__dirname, '..', 'amb-devolucoes', 'public-AMB', 'painel-AMB.html'), 'utf8');
 
   ok(/valor_rateado: d\.valor_rateado \|\| undefined/.test(SERVER),
      'o marcador de rateio CHEGA na tela (era calculado e nao repassado)');
@@ -288,7 +288,7 @@ const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o
 {
   const fs = require('fs');
   const path = require('path');
-  const PAINEL = fs.readFileSync(path.join(__dirname, '..', 'public', 'painel-devolucoes.html'), 'utf8');
+  const PAINEL = fs.readFileSync(path.join(__dirname, '..', 'amb-devolucoes', 'public-AMB', 'painel-AMB.html'), 'utf8');
 
   ok(/💸 PREJUÍZO INTEGRAL/.test(PAINEL),
      'o card marca o prejuizo integral em vermelho');
@@ -460,7 +460,7 @@ const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o
 {
   const fs2 = require('fs');
   const path2 = require('path');
-  const PAINEL2 = fs2.readFileSync(path2.join(__dirname, '..', 'public', 'painel-devolucoes.html'), 'utf8');
+  const PAINEL2 = fs2.readFileSync(path2.join(__dirname, '..', 'amb-devolucoes', 'public-AMB', 'painel-AMB.html'), 'utf8');
   ok(/x\.tem_devolucao_registrada\s*\n?\s*\? '📦 Devolução <b>COM entrada/.test(PAINEL2),
      'o texto so diz "o marketplace registrou" quando ELE registrou mesmo');
   ok(/não foi entregue ao cliente, '/.test(PAINEL2),
@@ -478,7 +478,7 @@ const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o
   const fs3 = require('fs');
   const path3 = require('path');
   const SERVER3 = fs3.readFileSync(path3.join(__dirname, '..', 'server.js'), 'utf8');
-  const PAINEL3 = fs3.readFileSync(path3.join(__dirname, '..', 'public', 'painel-devolucoes.html'), 'utf8');
+  const PAINEL3 = fs3.readFileSync(path3.join(__dirname, '..', 'amb-devolucoes', 'public-AMB', 'painel-AMB.html'), 'utf8');
   const LIB2 = fs3.readFileSync(path3.join(__dirname, '..', 'lib', 'magalu-cancelados.js'), 'utf8');
   const i3 = SERVER3.indexOf("'/api/admin/sem-retorno'");
   const rota3 = SERVER3.slice(i3, i3 + 60000);   // a rota cresceu (b204)
