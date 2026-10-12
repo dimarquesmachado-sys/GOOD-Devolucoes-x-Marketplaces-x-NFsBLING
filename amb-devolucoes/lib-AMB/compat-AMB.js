@@ -245,6 +245,7 @@ function eanDoProduto(p) {
 }
 
 function montar(router, deps) {
+  const _marcadoresEstornada = (l) => { try { return require('../../lib/marcadores-estornada').enriquecer(l); } catch (e) { console.warn('[ADMIN] marcadores das estornadas falharam:', e.message || e); return l; } };   // b607
   const { auth, db, bling, cfg, multer } = deps;
 
   // upload em memoria: a foto vai direto pro Supabase, nao encosta no disco
@@ -1481,12 +1482,8 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
       // empresa (devolucoes_capturadas, empresa = chaveDados) e anota `parcial` (CAIXA 1/2 + aviso no card). Falha aqui so
       // deixa sem o selo — a lista sai igual.
       try {
-        // as irmas JA CONCLUIDAS contam como caixa recebida (senao emitir uma e recarregar devolve a outra pra
-        // "aguardando"); entram so na conta, nao na resposta.
-        const conc = lista(await db.listarFila({ status: 'concluido', limite: 200 }));
         const abertas = aprovadas.concat(problemas, divergentes);
-        const todas = abertas.concat(conc);
-        const pedidos = [...new Set(abertas.map((d) => d.order_id).filter(Boolean))];
+        const pedidos = [...new Set(abertas.map((d) => d.order_id).filter(Boolean))].slice(0, 300);
         const cliente = (typeof db.conectar === 'function') ? db.conectar() : null;
         if (pedidos.length && cliente && deps.chaveDados) {
           // shipment/rastreio sao os nomes GRAVADOS na captura: sem eles, 2 registros do mesmo pacote viram 2 caixas
@@ -1494,6 +1491,13 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
             .select('pedido, tipo_tiktok, status, shipment, rastreio')
             .eq('empresa', deps.chaveDados).in('pedido', pedidos.slice(0, 300));
           if (errCap) throw new Error(errCap.message || String(errCap));
+          // as irmas JA CONCLUIDAS contam como caixa recebida (senao emitir uma e recarregar devolve a outra pra
+          // "aguardando"); entram so na conta, nao na resposta. b609 (Codex): buscadas PELOS PEDIDOS ativos — a janela
+          // global de 200 (listarFila) perdia irma antiga e o card ficava "aguardando outra caixa" com todas ja aqui.
+          const { data: conc, error: errConc } = await cliente.from(db.tabelas.devolucoes)
+            .select('*').eq('status', 'concluido').in('order_id', pedidos);
+          if (errConc) throw new Error(errConc.message || String(errConc));
+          const todas = abertas.concat(conc || []);
           const devParcial = require('../../lib/devolucao-parcial');
           const anotadas = new Map(devParcial.anotar(todas, devParcial.esperadoDeCapturadas(cap || [])).map((d) => [d.id, d]));
           const trocar = (l) => l.map((d) => anotadas.get(d.id) || d);
@@ -1501,7 +1505,9 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
         }
       } catch (e) { console.warn('[ADMIN] cruzamento de entrega parcial falhou:', e.message || e); }
       res.json({
-        ok: true, aprovadas, problemas, divergentes,
+        // b607 - nivelar por cima (GOOD b200): decodifica os marcadores das ESTORNADAS (so_rascunho, dep_sugerido, data_origem)
+        // — sem isso o caso de estornada sem retorno abria o Gerar NF liberando a emissao e no deposito GERAL.
+        ok: true, aprovadas: _marcadoresEstornada(aprovadas), problemas: _marcadoresEstornada(problemas), divergentes: _marcadoresEstornada(divergentes),
         total: aprovadas.length + problemas.length + divergentes.length,
       });
     } catch (e) {
