@@ -81,9 +81,12 @@ const src = fs.readFileSync(MOD, 'utf8');
 
 // ── ⚠️ e as DUAS telas da GOOD carregam e instalam ──────────────────
 {
+  // b612: o painel da GOOD e o painel UNICO montado pra ela (lib/painel-unico) — o arquivo antigo foi apagado
+  const painelGood = require(path.join(RAIZ, 'lib', 'painel-unico.js')).montarPainelUnicoGood(
+    fs.readFileSync(path.join(RAIZ, 'amb-devolucoes', 'public-AMB', 'painel-AMB.html'), 'utf8'));
   for (const tela of ['index.html', 'painel-devolucoes.html']) {
-    const h = fs.readFileSync(path.join(RAIZ, 'public', tela), 'utf8');
-    ok(/<script src="js\/lancar-defeito\.js\?v=\d+"><\/script>/.test(h),
+    const h = tela === 'painel-devolucoes.html' ? painelGood : fs.readFileSync(path.join(RAIZ, 'public', tela), 'utf8');
+    ok(/<script src="\/?js\/lancar-defeito\.js\?v=\d+"><\/script>/.test(h),
        tela + ': carrega o modulo');
     ok(/LancarDefeito\.instalar\(/.test(h), '  e chama `instalar()`');
   }

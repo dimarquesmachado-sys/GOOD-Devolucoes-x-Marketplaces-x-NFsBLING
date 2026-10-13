@@ -568,7 +568,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.126.117 (b611: os 22 testes do painel da GOOD passam a proteger o painel unico)',
+      version: '9.126.118 (b612: painel antigo da GOOD apagado — /painel-devolucoes.html entrega o painel unico)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -3946,7 +3946,7 @@ app.get('/js-AMB/base-amb.js', (req, res) => {
   res.type('application/javascript').send(BASE_AMB_JS_GOOD);
 });
 app.get('/painel-novo.html', requerAdmin, (req, res) => {
-  if (!PAINEL_UNICO_GOOD) return res.status(500).type('text/plain').send('painel unico indisponivel — use /painel-devolucoes.html');
+  if (!PAINEL_UNICO_GOOD) return res.status(500).type('text/plain').send('painel unico indisponivel — reinicie o servico (veja o log do boot)');
   res.set('Cache-Control', 'no-cache, must-revalidate');
   res.type('html').send(PAINEL_UNICO_GOOD);
 });
@@ -3954,15 +3954,15 @@ app.get('/painel-novo.html', requerAdmin, (req, res) => {
 // b539 - UNIFICACAO DO PAINEL: o endereco OFICIAL da GOOD passa a entregar o PAINEL UNICO (o mesmo da AMB/Girassol,
 // com nome, cores e empresa da GOOD). O painel antigo fica em /painel-antigo.html como RESERVA por alguns dias — e
 // e o que este endereco entrega se o unico nao montar. A copia antiga so e apagada num PR seguinte.
-app.get('/painel-antigo.html', requerAdmin, (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'painel-devolucoes.html'));
-});
+// b612 - o painel antigo (public/painel-devolucoes.html) foi APAGADO. Codex #486: como o express.static(public) vem
+// ANTES desta rota, enquanto o arquivo existia a GOOD continuava recebendo o ANTIGO neste endereco — o unico so aparecia
+// em /painel-novo.html. Sem o arquivo, o static nao acha nada e esta rota entrega o unico (montado com a ficha de
+// defeitos e o Lancar defeito da GOOD — lib/painel-unico). O que so o antigo fazia ja entrou (#484, #485).
+app.get('/painel-antigo.html', requerAdmin, (req, res) => res.redirect('/painel-devolucoes.html'));   // favorito antigo
 app.get('/painel-devolucoes.html', requerAdmin, (req, res) => {
-  if (PAINEL_UNICO_GOOD) {
-    res.set('Cache-Control', 'no-cache, must-revalidate');
-    return res.type('html').send(PAINEL_UNICO_GOOD);
-  }
-  res.sendFile(path.join(__dirname, 'public', 'painel-devolucoes.html'));
+  if (!PAINEL_UNICO_GOOD) return res.status(500).type('text/plain').send('painel unico indisponivel — reinicie o servico (veja o log do boot)');
+  res.set('Cache-Control', 'no-cache, must-revalidate');
+  return res.type('html').send(PAINEL_UNICO_GOOD);
 });
 
 // v3.16.0: Pagina de relatorios (requer auth)
