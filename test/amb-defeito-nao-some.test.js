@@ -1,153 +1,81 @@
 'use strict';
-// ⚠️ DEFEITO ATIVO ANTIGO SUMINDO DA TELA DA AMB.
-//
-// A consulta trazia ativos E resolvidos com `.limit(300)` fixo, e só separava
-// depois, num filtro em JS. Peça já recuperada/descartada POR PEDIDO ocupava
-// vaga dentro do limite — empurrando defeito ativo ANTIGO para fora.
-//
-// O estoquista via a lista "completa" sem a peça que procurava, e nada no
-// sistema dizia que faltava alguém: 300 linhas vieram, 300 linhas apareceram.
-//
-// 📌 Conserto que a GOOD já tinha e a AMB não recebeu — a dívida recorrente
-// de `docs/divida-copias-empresas.md`.
+// Executa a lista do servidor comum com as fichas AMB/Girassol.
+// Regressoes b383/b384/b385: peças resolvidas por pedido ocupavam o limite
+// antes de desaparecerem em JS; a aba aberta também zerava a contagem
+// das demais. Nenhuma função de filtro/limite é clonada neste teste.
+const assert = require('assert').strict;
+const { criarEmpresa } = require('./defeitos-servidor-unico.test');
 
-const fs = require('fs');
-const path = require('path');
-
-let falhas = 0;
-const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o); };
-
-const RAIZ = path.join(__dirname, '..');
-const src = fs.readFileSync(
-  path.join(RAIZ, 'amb-devolucoes', 'lib-AMB', 'defeitos-ciclo-AMB.js'), 'utf8');
-const semComent = src.split('\n')
-  .filter((l) => !l.trim().startsWith('//')).join('\n');
-
-// ── o limite deixou de ser fixo ─────────────────────────────────────
-{
-  ok(!/\.limit\(300\)/.test(semComent),
-     '⚠️ a consulta nao usa mais `.limit(300)` cravado');
-  ok(/\.limit\(limiteDaConsulta\(/.test(semComent),
-     '  o limite e calculado pelo volume de resolvidas');
-  ok(/\.not\('id', 'in'/.test(semComent),
-     '⚠️ e as resolvidas saem NA CONSULTA, nao no pos-filtro');
+let falhas = 0; let casos = 0;
+async function caso(nome, testar) {
+  casos++;
+  try { await testar(); console.log('ok  ' + nome); }
+  catch (e) { falhas++; console.log('FALHA ' + nome + '\n  ' + e.message); }
 }
 
-// ── ⚠️ e o `porPedido` nasce ANTES da busca ─────────────────────────
-//
-// Sem isso o conserto não teria como funcionar: a busca já teria acontecido
-// quando soubéssemos quais peças excluir.
-{
-  const iPorPedido = semComent.indexOf('const porPedido = {}');
-  const iBuscar = semComent.indexOf('async function buscar(');
-  ok(iPorPedido > 0 && iBuscar > 0 && iPorPedido < iBuscar,
-     '⚠️ o `porPedido` e montado ANTES de `buscar()`');
+function historico(chave, recuperadas, descartadas, ativas) {
+  const e = criarEmpresa(chave);
+  for (let id = 1; id <= recuperadas + descartadas; id++) {
+    e.item(id);
+    e.banco.tabelas[e.n.ped].push({ id, defeito_id: id,
+      tipo: id <= recuperadas ? 'recuperado' : 'descarte', status: 'autorizado' });
+  }
+  for (let i = 1; i <= ativas; i++) {
+    e.item(recuperadas + descartadas + i, { [e.ficha.defeitos.colunaData]: '2020-01-01T00:00:00Z' });
+  }
+  return e;
 }
 
-// ── os dois caminhos do limite, exercitados ─────────────────────────
-//
-// ⚠️ Acima de MAX_IDS_NA_URL a lista de ids não cabe na URL, a exclusão não
-// entra, e eles voltariam a ocupar vaga. Nesse caso o limite CRESCE.
-{
-  const MAX = 150;
-  const idsFora = (estado, pp) => {
-    if (estado !== 'defeito') return [];
-    const ids = Object.keys(pp || {});
-    return ids.length && ids.length <= MAX ? ids : [];
-  };
-  const limite = (pp) => {
-    const base = 300;
-    // ⚠️ b385: nao filtra mais por aba — o limite so olha as resolvidas
-    const n = Object.keys(pp || {}).length;
-    if (!n || n <= MAX) return base;
-    return Math.min(base + n, 1000);
-  };
-  const pp = (n) => Object.fromEntries(
-    Array.from({ length: n }, (_, i) => ['id' + i, 'recuperado']));
-
-  ok(idsFora('defeito', pp(50)).length === 50 && limite(pp(50)) === 300,
-     '  50 resolvidas: saem na consulta, limite segue 300');
-  ok(idsFora('defeito', pp(400)).length === 0 && limite(pp(400)) === 700,
-     '⚠️ 400 resolvidas: nao cabem na URL, entao o limite CRESCE pra 700');
-  ok(limite(pp(9000)) === 1000,
-     '  e tem teto de 1000 (nao pede a tabela inteira)');
-  // ⚠️ b385: o limite deixou de depender da aba. A CONTAGEM chama sem estado
-  // e caia no 300 fixo, enquanto a LISTA pedia ate 1000 — a tela mostrava
-  // mais itens do que a aba dizia existir.
-  ok(limite(pp(400)) === 700,
-     '⚠️ a CONTAGEM (sem estado) pede o MESMO limite que a lista');
+async function main() {
+  for (const chave of ['ambtotal', 'girassol']) {
+    await caso(chave + ': 50 resolvidas saem no banco antes do limite de 300', async () => {
+      const e = historico(chave, 30, 20, 310);
+      const r = await e.pedir('GET', '/api/defeitos/lista');
+      assert.equal(r.statusCode, 200); assert.equal(r.body.itens.length, 300);
+      assert(r.body.itens.every(x => x.id > 50));
+      assert.deepEqual(r.body.contagem, { defeito: 310, recuperado: 30, descartado: 20, excluido: 0 });
+      const pagina = e.banco.chamadas.find(c => c.tabela === e.n.dev && c.limites != null);
+      assert.equal(pagina.limites, 300);
+      assert(pagina.expressoes.some(expr => expr.startsWith('id.not.in.(')), 'resolvidas devem sair na consulta');
+    });
+    await caso(chave + ': 400 resolvidas alargam a lista e não truncam contagem', async () => {
+      const e = historico(chave, 250, 150, 200);
+      const r = await e.pedir('GET', '/api/defeitos/lista');
+      assert.equal(r.statusCode, 200); assert.equal(r.body.itens.length, 200);
+      assert(r.body.itens.every(x => x.id > 400));
+      assert.deepEqual(r.body.contagem, { defeito: 200, recuperado: 250, descartado: 150, excluido: 0 });
+      const pagina = e.banco.chamadas.find(c => c.tabela === e.n.dev && c.limites != null);
+      assert.equal(pagina.limites, 700);
+      assert(!pagina.expressoes.some(expr => expr.startsWith('id.not.in.(')), 'não monta URL com 400 IDs');
+      assert(e.banco.chamadas.filter(c => c.opcoes.head).every(c => c.limites == null));
+    });
+    await caso(chave + ': mudar aba não zera nem altera os totais das outras abas', async () => {
+      const e = historico(chave, 2, 1, 2);
+      const esperado = { defeito: 2, recuperado: 2, descartado: 1, excluido: 0 };
+      const ids = { defeito: [4, 5], recuperado: [1, 2], descartado: [3], excluido: [] };
+      for (const estado of Object.keys(ids)) {
+        const r = await e.pedir('GET', '/api/defeitos/lista', { query: { estado } });
+        assert.equal(r.statusCode, 200); assert.deepEqual(r.body.contagem, esperado);
+        assert.deepEqual(r.body.itens.map(x => x.id).sort(), ids[estado]);
+      }
+    });
+    await caso(chave + ': o teto de 1000 da consulta não limita a contagem de 900 resolvidas', async () => {
+      const e = historico(chave, 900, 0, 100);
+      const r = await e.pedir('GET', '/api/defeitos/lista');
+      assert.equal(r.statusCode, 200); assert.equal(r.body.itens.length, 100);
+      assert(r.body.itens.every(x => x.id > 900));
+      assert.deepEqual(r.body.contagem, { defeito: 100, recuperado: 900, descartado: 0, excluido: 0 });
+      const pagina = e.banco.chamadas.find(c => c.tabela === e.n.dev && c.limites != null);
+      assert.equal(pagina.limites, 1000);
+      for (const consulta of e.banco.chamadas.filter(c => c.opcoes.head)) {
+        assert.equal(consulta.limites, null);
+        for (const expr of consulta.expressoes) for (const m of expr.matchAll(/\bid\.(?:not\.)?in\.\(([^)]*)\)/g)) {
+          assert(m[1].split(',').length <= 150);
+        }
+      }
+    });
+  }
+  console.log('\n=== ' + casos + ' CASOS: ' + (falhas ? falhas + ' FALHA(S)' : 'TODOS PASSARAM'));
+  process.exitCode = falhas ? 1 : 0;
 }
-
-// ── ⚠️ apontamento do Codex (PR #329, P2): a CONTAGEM tambem precisa
-// alargar o limite quando ha muitos resolvidos ──────────────────────
-//
-// A contagem chama `buscar(termo, null)` — sem exclusao (idsForaDoEstado
-// devolve [] pra ela). Sem alargar, essas resolvidas ocupam vaga nos 300
-// mais recentes e uma resolvida MAIS ANTIGA sai da janela — sumindo da
-// contagem outra vez, agora pelo limite em vez da exclusao.
-{
-  const MAX = 150;
-  const limite = (pp) => {
-    const base = 300;
-    // ⚠️ b385: nao filtra mais por aba
-    const n = Object.keys(pp || {}).length;
-    if (!n || n <= MAX) return base;
-    return Math.min(base + n, 1000);
-  };
-  const pp = (n) => Object.fromEntries(
-    Array.from({ length: n }, (_, i) => ['id' + i, 'recuperado']));
-
-  ok(limite(pp(400)) === 700,
-     '⚠️ a contagem (null) alarga igual ao `defeito`: 400 resolvidas -> 700');
-  ok(limite(pp(50)) === 300,
-     '  poucas resolvidas: a contagem segue com o teto normal de 300');
-}
-
-// ── ⚠️ E A CONTAGEM DAS ABAS NÃO PODE USAR A EXCLUSÃO ───────────────
-//
-// Bug que EU introduzi no conserto acima: a exclusão das resolvidas usava a
-// aba ABERTA, e a contagem chama a mesma `buscar()`. Resultado: na aba
-// "defeito", as abas "recuperado" e "descartado" mostravam ZERO — porque a
-// consulta da contagem tinha excluído justamente essas linhas.
-//
-// 📌 Número errado na tela é pior que número ausente.
-{
-  ok(/async function buscar\(termo, estadoDaConsulta\)/.test(semComent),
-     '⚠️ `buscar()` RECEBE o estado (nao le da aba aberta)');
-  ok(/const todas = await buscar\(termoContagem, null\)/.test(semComent),
-     '⚠️ e a CONTAGEM pede sem estado — precisa de TODAS as linhas');
-  ok(/let linhas = await buscar\(q, estadoPedido\)/.test(semComent),
-     '  enquanto a LISTA pede com exclusao (o conserto do sumico)');
-
-  // e os dois caminhos, exercitados
-  const MAX = 150;
-  const idsFora = (estado, pp) => {
-    if (estado !== 'defeito') return [];
-    const ids = Object.keys(pp || {});
-    return ids.length && ids.length <= MAX ? ids : [];
-  };
-  const porPedido = { a: 'recuperado', b: 'descartado', c: 'recuperado' };
-  const banco = [{ id: 'a' }, { id: 'b' }, { id: 'c' }, { id: 'd' }, { id: 'e' }];
-  const situacaoDe = (x) => porPedido[x.id] || 'defeito';
-  const buscar = (estadoDaConsulta) => {
-    const fora = idsFora(estadoDaConsulta, porPedido);
-    return banco.filter((x) => !fora.includes(x.id));
-  };
-  const contar = (estadoDaConsulta) => {
-    const c = { defeito: 0, recuperado: 0, descartado: 0 };
-    for (const x of buscar(estadoDaConsulta)) c[situacaoDe(x)]++;
-    return c;
-  };
-
-  const comEstado = contar('defeito');     // o bug
-  const semEstado = contar(null);          // o certo
-  ok(comEstado.recuperado === 0,
-     '  (reproduz o bug: com o estado, `recuperado` zerava)');
-  ok(semEstado.recuperado === 2 && semEstado.descartado === 1,
-     '⚠️ sem o estado, a contagem ve as 3 resolvidas');
-  ok(semEstado.defeito === 2, '  e os 2 ativos continuam contados');
-}
-
-console.log('');
-console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
-process.exit(falhas ? 1 : 0);
+main().catch(e => { console.error('FALHA fatal: ' + e.stack); process.exitCode = 1; });

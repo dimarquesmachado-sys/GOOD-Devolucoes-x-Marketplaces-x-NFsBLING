@@ -45,9 +45,13 @@ const js = fs.readdirSync(path.join(__dirname, '..', 'public', 'js'))
   .map((f) => fs.readFileSync(path.join(__dirname, '..', 'public', 'js', f), 'utf8')).join('\n');
 ok(js.includes('.criado_em'), 'o painel realmente le .criado_em (por isso o nome de saida ficou)');
 
-// ── 4. a AMB nao foi tocada ──────────────────────────────────────────
-const AMB = fs.readFileSync(path.join(__dirname, '..', 'amb-devolucoes', 'lib-AMB', 'defeitos-ciclo-AMB.js'), 'utf8');
-ok(/\.select\([^)]*criado_em[^)]*\)/.test(AMB), 'a AMB segue com criado_em (a tabela dela e assim)');
+// ── 4. servidor unico conserva a coluna real da AMB e Girassol ──────
+// O arquivo da AMB deixou de existir: a diferenca vive na ficha que
+// chega ao mesmo SELECT/ORDER da GOOD, não em outra implementação.
+for (const chave of ['ambtotal', 'girassol']) {
+  const modelo = require('../lib/empresas').obterEmpresa(chave).defeitos;
+  ok(modelo.colunaData === 'criado_em', chave + ' segue com criado_em na ficha (a tabela dela e assim)');
+}
 
 
 
