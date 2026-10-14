@@ -469,7 +469,8 @@
       euSouAdmin ? '<button onclick="abrirFilaPedidos()" style="background:rgba(255,255,255,.2);color:#fff;border:none;border-radius:8px;padding:6px 12px;cursor:pointer;">📥 Solicitações</button>' : '')
       + '<div style="padding:14px;">'
       + '<div style="display:flex;gap:7px;margin-bottom:12px;">'
-      + '<input id="defBusca" placeholder="SKU, EAN, localização, produto ou o número da peça (ex: peça 4)"'
+      // Codex #493: id proprio — o index-AMB.html ja tem um #defBusca (o do Lancar defeito)
+      + '<input id="defBuscaLista" placeholder="SKU, EAN, localização, produto ou o número da peça (ex: peça 4)"'
       + ' style="flex:1;height:42px;font-size:14px;padding:0 12px;border:1px solid #ddd;border-radius:9px;">'
       + '<button onclick="buscarDefeitos()" style="background:var(--marca);color:var(--sobre-marca);border:none;border-radius:9px;padding:0 18px;font-weight:700;cursor:pointer;">Buscar</button>'
       + '</div>'
@@ -479,7 +480,7 @@
       // era a aba errada, era a barra inteira faltando.
       + '<div id="defAbas" style="display:flex;gap:7px;flex-wrap:wrap;margin-bottom:12px;"></div>'
       + '<div id="defLista"><div style="color:#888;font-size:13px;">Digite e busque, ou veja os últimos abaixo.</div></div></div>');
-    var i = document.getElementById('defBusca');
+    var i = document.getElementById('defBuscaLista');
     if (i) {
       i.value = termo || '';
       i.addEventListener('keydown', function (e) { if (e.key === 'Enter') buscarDefeitos(); });
@@ -491,7 +492,7 @@
   window.buscarDefeitos = async function () {
     var el = document.getElementById('defLista');
     if (!el) return;
-    var q = (document.getElementById('defBusca') || {}).value || '';
+    var q = (document.getElementById('defBuscaLista') || {}).value || '';
     // b290 (review do Codex) - o termo REAL mora aqui. Todos os pontos do
     // repo chamam `abrirBuscaDefeitos()` SEM argumento, entao guardar o
     // parametro daquela funcao nunca dava um destino utilizavel e o botao
@@ -510,6 +511,7 @@
     // ja havia uma aberta e se comportava como se fosse fechar/repintar.
     fichaInlineId = null;
     fichaBotaoAtual = null;
+    _geracaoFicha++;   // Codex #493: ficha ainda carregando num card que vai sumir nao pinta mais nada
     el.innerHTML = '<div style="color:#888;font-size:13px;">procurando...</div>';
     try {
       var d = await api('/api/defeitos/lista?q=' + encodeURIComponent(q.trim())
@@ -1028,7 +1030,8 @@ async function buscarFotosDefeitos(itens) {
   // (corrigir laudo, por exemplo) podia gravar no card errado.
   function fecharFichaInline() {
     if (fichaInlineId == null) return;
-    var antigo = document.getElementById('ficha-' + fichaInlineId);
+    _geracaoFicha++;   // Codex #493: fechar o card enquanto carrega — a resposta tardia nao reabre nada
+    var antigo =document.getElementById('ficha-' + fichaInlineId);
     if (antigo) { antigo.style.display = 'none'; antigo.innerHTML = ''; }
     if (fichaBotaoAtual) fichaBotaoAtual.textContent = '📂 Abrir dados da peça';
     fichaInlineId = null;

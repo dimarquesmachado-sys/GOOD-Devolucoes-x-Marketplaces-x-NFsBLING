@@ -23,7 +23,7 @@ const faltam = [...fns(good)].filter((n) => !fu.has(n));
 ok(faltam.length === 0, '⚠️ nenhuma funcao da ficha da GOOD ficou de fora (' + (faltam.join(', ') || 'ok') + ')');
 // o painel da Girassol/AMB carrega a ficha unica + o Lancar defeito (com o prefixo da empresa); a GOOD troca o bloco
 const painel = fs.readFileSync(path.join(R, 'amb-devolucoes', 'public-AMB', 'painel-AMB.html'), 'utf8');
-ok(/<!-- ficha-defeitos:inicio[\s\S]*js-AMB\/defeitos-ficha\.js\?v=b619[\s\S]*js-AMB\/lancar-defeito\.js[\s\S]*LancarDefeito\.instalar\(\{ prefixo: window\.APP_BASE \|\| '' \}\)[\s\S]*<!-- ficha-defeitos:fim -->/.test(painel), '⚠️ painel da Girassol/AMB: ficha unica + Lancar defeito com o prefixo da empresa');
+ok(/<!-- ficha-defeitos:inicio[\s\S]*js-AMB\/defeitos-ficha\.js\?v=b620[\s\S]*js-AMB\/lancar-defeito\.js[\s\S]*LancarDefeito\.instalar\(\{ prefixo: window\.APP_BASE \|\| '' \}\)[\s\S]*<!-- ficha-defeitos:fim -->/.test(painel), '⚠️ painel da Girassol/AMB: ficha unica + Lancar defeito com o prefixo da empresa');
 const app = fs.readFileSync(path.join(R, 'amb-devolucoes', 'app-AMB.js'), 'utf8');
 ok(/router\.get\('\/js-AMB\/lancar-defeito\.js'/.test(app) && /'public', 'js', 'lancar-defeito\.js'/.test(app), '  o modulo do Lancar defeito e servido da peca da GOOD (sem copia)');
 const g = require(path.join(R, 'lib', 'painel-unico.js')).montarPainelUnicoGood(painel);
@@ -31,6 +31,9 @@ ok(/\/js\/defeitos-ficha\.js/.test(g) && (g.match(/lancar-defeito\.js/g) || []).
 // Codex #493
 ok(!/semBling/.test(unica) && /async function buscarFotosDefeitos/.test(unica), '⚠️ fotos: a busca e a da AMB (12 por vez, sem o modo sem-Bling que a rota dela nao tem)');
 ok(/var minhaVez = \+\+_geracaoFicha;[\s\S]{0,400}if \(minhaVez !== _geracaoFicha\) return;/.test(unica), '⚠️ abrir A e logo B: a resposta atrasada de A nao sobrescreve a ficha aberta');
+ok(/fichaBotaoAtual = null;\s*_geracaoFicha\+\+;[\s\S]{0,200}procurando\.\.\./.test(unica), '⚠️ lista refeita (busca/aba) invalida a ficha que ainda carregava');
+ok(/function fecharFichaInline\(\) \{\s*if \(fichaInlineId == null\) return;\s*_geracaoFicha\+\+;/.test(unica), '⚠️ fechar o card enquanto carrega invalida a resposta tardia');
+ok(!/getElementById\('defBusca'\)/.test(unica) && /id="defBuscaLista"/.test(unica), '⚠️ a busca da ficha tem id proprio (o index-AMB ja tem #defBusca do Lancar defeito)');
 const tri = fs.readFileSync(path.join(R, 'amb-devolucoes', 'public-AMB', 'index-AMB.html'), 'utf8');
 ok(/function abrirModalDefeito\(skuInicial\)[\s\S]{0,1600}document\.getElementById\('defBusca'\)\.value = skuInicial;\s*buscarProdutoDefeito\(\);/.test(tri), '⚠️ triagem: o Lancar defeito chamado pela ficha ja vem com o SKU buscado');
 console.log('');
