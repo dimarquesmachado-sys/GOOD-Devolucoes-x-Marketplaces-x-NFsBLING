@@ -568,7 +568,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.126.121 (b615: etiqueta de retorno trocada pelo ML nao vira caixa nova)',
+      version: '9.126.122 (b616: logo e icone por empresa — a Girassol volta a ter o dela)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),

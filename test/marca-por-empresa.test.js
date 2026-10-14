@@ -1,0 +1,24 @@
+'use strict';
+// 14/10 — logo e icone POR EMPRESA (a Girassol mostrava o logo e o icone da AMB na triagem e na aba do navegador).
+const fs = require('fs'); const path = require('path');
+let falhas = 0;
+const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o); };
+const { criarMarca } = require('../amb-devolucoes/lib-AMB/marca-AMB.js');
+const { obterEmpresa } = require('../lib/empresas.js');
+const PUB = path.join(__dirname, '..', 'amb-devolucoes', 'public-AMB');
+const triagem = fs.readFileSync(path.join(PUB, 'index-AMB.html'), 'utf8');
+const gi = criarMarca(obterEmpresa('girassol'));
+const tg = gi.aplicar(triagem);
+ok(!/logo-AMB\.png|icone-AMB\.png/.test(tg.replace(/manifest-AMB\.json/g, '')), '⚠️ triagem da Girassol: nenhum logo/icone da AMB sobra');
+ok((tg.match(/src="marcas\/girassol\/icone-192\.png"/g) || []).length === 2, '  os 2 logos da triagem (topo e faixa baixa) sao os da Girassol');
+ok(/<link rel="icon" type="image\/png" href="marcas\/girassol\/icone-192\.png">/.test(tg) && /<link rel="apple-touch-icon" href="marcas\/girassol\/apple-touch-icon\.png">/.test(tg), '⚠️ icone da aba e do atalho do celular = Girassol');
+for (const f of [gi.logo, gi.icone, gi.iconeToque]) ok(fs.existsSync(path.join(PUB, f)), '  arquivo existe: ' + f);
+ok(gi.iconesDoManifesto([{ src: 'icone-AMB.png', sizes: '192x192' }, { src: 'icone-AMB.png', sizes: '512x512' }]).every((i) => i.src === 'marcas/girassol/icone-192.png'), '  o atalho instalado (manifesto) usa o icone da Girassol');
+const am = criarMarca(obterEmpresa('ambtotal'));
+ok(am.aplicar(triagem) === triagem && am.logo === 'logo-AMB.png' && am.icone === 'icone-AMB.png', '⚠️ AMB (sem marca na ficha): a tela sai igual a antes');
+ok(criarMarca(null).icone === 'icone-AMB.png', '  ficha sem marca nenhuma: cai nos arquivos de sempre, sem quebrar');
+const app = fs.readFileSync(path.join(__dirname, '..', 'amb-devolucoes', 'app-AMB.js'), 'utf8');
+ok(/const INDEX_AMB_HTML = comMarca\(comTema\(/.test(app) && /<link rel=\\?"icon\\?" type=\\?"image\/png\\?" href=\\?"\$\{ICONE_EMPRESA\}\\?">/.test(app) && /icons: MARCA\.iconesDoManifesto\(MANIFEST_AMB\.icons\)/.test(app), '⚠️ o app aplica a marca na triagem, poe o icone da empresa na aba do painel e no manifesto');
+console.log('');
+console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
+process.exit(falhas ? 1 : 0);
