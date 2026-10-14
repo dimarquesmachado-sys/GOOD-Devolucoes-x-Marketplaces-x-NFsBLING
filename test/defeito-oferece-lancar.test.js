@@ -15,7 +15,7 @@ let falhas = 0;
 const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o); };
 
 const RAIZ = path.join(__dirname, '..');
-const ficha = fs.readFileSync(path.join(RAIZ, 'public', 'js', 'defeitos-ficha.js'), 'utf8');
+const ficha = fs.readFileSync(path.join(RAIZ, 'amb-devolucoes', 'public-AMB', 'js-AMB', 'defeitos-ficha.js'), 'utf8');
 // ⚠️ b289: o modal saiu do `index.html` inline pro modulo compartilhado
 // `js/lancar-defeito.js`. Os testes que conferiam o comportamento DELE
 // passam a ler o modulo; os que conferem a TELA continuam no html.

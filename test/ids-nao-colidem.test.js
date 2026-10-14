@@ -32,7 +32,7 @@ const idsInjetados = new Set([...html.matchAll(/id=\\"([\w-]+)\\"/g)].map((m) =>
 ok(idsInjetados.size > 0, 'achei os ids que o modal injeta (' + idsInjetados.size + ')');
 
 // os ids que a OUTRA peça da mesma página procura
-const caixa = fs.readFileSync(path.join(RAIZ, 'public', 'js', 'defeitos-ficha.js'), 'utf8');
+const caixa = fs.readFileSync(path.join(RAIZ, 'amb-devolucoes', 'public-AMB', 'js-AMB', 'defeitos-ficha.js'), 'utf8');
 const idsCaixa = new Set([...caixa.matchAll(/getElementById\('([\w-]+)'\)/g)].map((m) => m[1]));
 ok(idsCaixa.size > 0, 'e os que a caixa de Defeitos procura (' + idsCaixa.size + ')');
 
