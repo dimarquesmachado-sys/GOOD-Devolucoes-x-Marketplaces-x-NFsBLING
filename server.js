@@ -568,7 +568,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.126.121 (b615: etiqueta de retorno trocada pelo ML nao vira caixa nova)',
+      version: '9.126.123 (b617: etiqueta trocada so sai da conta quando o ML parou de mostra-la)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -4018,7 +4018,7 @@ app.get('/api/admin/devolucoes', requerAdmin, async (req, res) => {
       if (pedidos.length && supabase) {
         const { data: cap, error: errCap } = await supabase
           .from('devolucoes_capturadas')
-          .select('pedido, tipo_tiktok, status, shipment, rastreio, claim_id:cru->>claim_id')   // 14/10: etiqueta trocada na mesma claim
+          .select('pedido, tipo_tiktok, status, shipment, rastreio, visto_por_ultimo, claim_id:cru->>claim_id')   // 14/10: etiqueta trocada na mesma claim
           .in('pedido', pedidos.slice(0, 300));
         if (errCap) throw new Error(errCap.message || String(errCap));
         comParcial = devParcial.anotar(data, devParcial.esperadoDeCapturadas(cap || []));

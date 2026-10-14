@@ -8,8 +8,8 @@ const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o
 const dp = require('../lib/devolucao-parcial.js');
 // os 2 registros como vieram de /api/debug/capturadas (so os campos que a conta usa)
 const real = [
-  { pedido: '2000018478090602', status: 'shipped', rastreio: 'E7SKWJGYQRLJJODKORQCNPJ5MI', claim_id: '5581409961' },
-  { pedido: '2000018478090602', status: 'ready_to_ship', rastreio: 'MEL48075103729FMDOR01', claim_id: '5581409961' },
+  { pedido: '2000018478090602', status: 'shipped', rastreio: 'E7SKWJGYQRLJJODKORQCNPJ5MI', claim_id: '5581409961', visto_por_ultimo: '2026-10-08T15:02:53.303+00:00' },
+  { pedido: '2000018478090602', status: 'ready_to_ship', rastreio: 'MEL48075103729FMDOR01', claim_id: '5581409961', visto_por_ultimo: '2026-10-07T06:22:33.808+00:00' },
 ];
 ok(dp.esperadoDeCapturadas(real)['2000018478090602'] === 1, '⚠️ caso real: mesma claim, etiqueta trocada (uma parada em ready_to_ship) -> 1 caixa (era 2)');
 ok(dp.esperadoDeCapturadas(real.map((r) => ({ ...r, claim_id: undefined, cru: { claim_id: 5581409961 } })))['2000018478090602'] === 1, '  a claim tambem vale vinda dentro do cru');
@@ -21,6 +21,15 @@ ok(dp.esperadoDeCapturadas([
   { pedido: '8', status: 'ready_to_ship', rastreio: 'A', claim_id: '1' },
   { pedido: '8', status: 'ready_to_ship', rastreio: 'B', claim_id: '1' },
 ])['8'] === 2, '  nenhuma saiu ainda: nao da pra saber qual e a trocada — conta como antes');
+// Codex #489: 2 caixas de VERDADE na mesma claim, a 1a saiu e a 2a ainda nao — a 2a continua aparecendo nas capturas
+ok(dp.esperadoDeCapturadas([
+  { pedido: '5', status: 'shipped', rastreio: 'A', claim_id: '1', visto_por_ultimo: '2026-10-08T15:00:00Z' },
+  { pedido: '5', status: 'ready_to_ship', rastreio: 'B', claim_id: '1', visto_por_ultimo: '2026-10-08T14:00:00Z' },
+])['5'] === 2, '⚠️ 2a caixa de verdade ainda pendente (o ML continua mostrando) CONTINUA contando (Codex #489)');
+ok(dp.esperadoDeCapturadas([
+  { pedido: '4', status: 'shipped', rastreio: 'A', claim_id: '1' },
+  { pedido: '4', status: 'ready_to_ship', rastreio: 'B', claim_id: '1' },
+])['4'] === 2, '  sem a data de visto por ultimo, nao descarta (conta como antes)');
 ok(dp.esperadoDeCapturadas([
   { pedido: '7', status: 'ready_to_ship', rastreio: 'A', claim_id: '1' },
   { pedido: '7', status: 'shipped', rastreio: 'B', claim_id: '2' },
@@ -32,7 +41,7 @@ ok(dp.esperadoDeCapturadas([
 // as duas listas do painel (GOOD e Girassol/AMB) buscam a claim junto
 for (const arq of ['server.js', 'amb-devolucoes/lib-AMB/compat-AMB.js']) {
   const s = fs.readFileSync(path.join(__dirname, '..', arq), 'utf8');
-  ok(/\.select\('pedido, tipo_tiktok, status, shipment, rastreio, claim_id:cru->>claim_id'\)/.test(s), '⚠️ ' + arq + ' busca a claim junto com a captura');
+  ok(/\.select\('pedido, tipo_tiktok, status, shipment, rastreio, visto_por_ultimo, claim_id:cru->>claim_id'\)/.test(s), '⚠️ ' + arq + ' busca a claim junto com a captura');
 }
 console.log('');
 console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
