@@ -1488,7 +1488,7 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
         if (pedidos.length && cliente && deps.chaveDados) {
           // shipment/rastreio sao os nomes GRAVADOS na captura: sem eles, 2 registros do mesmo pacote viram 2 caixas
           const { data: cap, error: errCap } = await cliente.from('devolucoes_capturadas')
-            .select('pedido, tipo_tiktok, status, shipment, rastreio')
+            .select('pedido, tipo_tiktok, status, shipment, rastreio, claim_id:cru->>claim_id')   // 14/10: etiqueta trocada na mesma claim
             .eq('empresa', deps.chaveDados).in('pedido', pedidos.slice(0, 300));
           if (errCap) throw new Error(errCap.message || String(errCap));
           // as irmas JA CONCLUIDAS contam como caixa recebida (senao emitir uma e recarregar devolve a outra pra
