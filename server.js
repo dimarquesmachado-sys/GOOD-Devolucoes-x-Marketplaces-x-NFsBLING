@@ -568,7 +568,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.126.128 (b622: conferidor valida cada campo do tema/marca — Codex #494)',
+      version: '9.126.129 (b623: a GOOD tambem usa a ficha de defeitos unica — a copia dela saiu)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -3940,6 +3940,14 @@ const BASE_AMB_JS_GOOD = (() => {
       .replace('"%%PASTA_CHECKOUT%%"', JSON.stringify('good-checkout-offline'));
   } catch (e) { return null; }
 })();
+// 14/10 - a GOOD usa a FICHA DE DEFEITOS UNICA (a mesma da Girassol/AMB e das proximas): o arquivo dela
+// (public/js/defeitos-ficha.js) saiu; este endereco entrega a unica. A pagina diz qual estrategia de foto usar
+// (window.FOTO_SEM_BLING = true na GOOD, que tem o modo sem-Bling e o worker de fotos).
+const FICHA_DEFEITOS_UNICA = path.join(__dirname, 'amb-devolucoes', 'public-AMB', 'js-AMB', 'defeitos-ficha.js');
+app.get('/js/defeitos-ficha.js', (req, res) => {
+  res.set('Cache-Control', 'no-cache, must-revalidate');
+  res.type('application/javascript').sendFile(FICHA_DEFEITOS_UNICA);
+});
 app.get('/js-AMB/base-amb.js', (req, res) => {
   if (!BASE_AMB_JS_GOOD) return res.status(500).type('text/plain').send('base-amb indisponivel');
   res.set('Cache-Control', 'no-cache, must-revalidate');

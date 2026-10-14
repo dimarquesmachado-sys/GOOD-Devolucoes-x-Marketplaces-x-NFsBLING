@@ -654,7 +654,7 @@
   <script src="js/bipagem.js?v=4560"></script>
   <!-- b516: a tela de bipe e UNICA (public/js/busca.js) e le os dados da empresa daqui — na GOOD, a raiz. -->
   <script>window.APP_BASE = ''; window.APP_EMPRESA = 'good'; window.APP_PASTA_CHECKOUT = 'good-checkout-offline';</script>
-  <style>:root { --marca: #561A9E; --sobre-marca: #fff; --escuro: #4a148c; }</style>
+  <style>:root { --marca: #561A9E; --sobre-marca: #fff; --escuro: #4a148c; --marca-claro: #7B3FC4; --marca-texto: #561A9E; }</style>   <!-- 14/10: + as 2 cores que a ficha de defeitos unica usa -->
   <script src="js/busca.js?v=4786"></script>
   <script src="https://cdn.jsdelivr.net/npm/qz-tray@2.2.4/qz-tray.js"></script>
   <script src="js/etiqueta.js?v=4560"></script>
@@ -667,7 +667,8 @@
   <!-- v4.34 - colar/arrastar imagem da etiqueta na busca -->
   <script src="js/colar-imagem.js?v=4631"></script>
   <!-- v4.50 - ciclo do estoque de defeitos (ficha, pecas, pedidos) -->
-  <script src="js/defeitos-ficha.js?v=4924"></script>
+  <script>window.FOTO_SEM_BLING = true;   /* 14/10: a GOOD tem o modo sem-Bling da foto (a ficha unica escolhe por isto) */</script>
+  <script src="js/defeitos-ficha.js?v=b623"></script>
   <!-- b289: o modal de lançar defeito, COMPARTILHADO entre as telas.
        O prefixo das rotas e parametro — a AMB instala com '/amb'. -->
   <script src="js/lancar-defeito.js?v=7"></script>

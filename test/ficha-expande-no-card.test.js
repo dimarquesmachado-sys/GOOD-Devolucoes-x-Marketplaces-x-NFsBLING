@@ -16,7 +16,7 @@ let falhas = 0;
 const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o); };
 
 const src = fs.readFileSync(
-  path.join(__dirname, '..', 'public', 'js', 'defeitos-ficha.js'), 'utf8');
+  path.join(__dirname, '..', 'amb-devolucoes', 'public-AMB', 'js-AMB', 'defeitos-ficha.js'), 'utf8');
 
 // ── a ficha abre dentro do card ─────────────────────────────────────
 {

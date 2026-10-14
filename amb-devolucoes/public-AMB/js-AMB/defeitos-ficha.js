@@ -847,7 +847,14 @@
   var _fotoToken = 0;
   // Codex #493: a busca de fotos fica a da AMB (12 por vez) — a rota de foto da Girassol/AMB nao tem o modo 'sem Bling'
   // da GOOD, e a versao da GOOD consultaria ate 60 SKUs no Bling de uma vez
-async function buscarFotosDefeitos(itens) {
+// 14/10 - DUAS ESTRATEGIAS DE FOTO, escolhidas pela pagina (a ficha e a mesma nas 3 empresas):
+  //  - window.FOTO_SEM_BLING = true (GOOD): a rota de foto tem o modo 'sem Bling' e um indice com worker — a tela pede
+  //    sem gastar cota e espera o worker (a versao que a GOOD sempre usou);
+  //  - sem a marca (Girassol/AMB): a rota delas nao tem esse modo — 12 por rodada, com o Bling (Codex #493).
+  function buscarFotosDefeitos(itens, listaEl) {
+    return window.FOTO_SEM_BLING ? buscarFotosDefeitosSemBling(itens, listaEl) : buscarFotosDefeitosComBling(itens, listaEl);
+  }
+  async function buscarFotosDefeitosComBling(itens) {
     for (var i = 0; i < itens.length && i < 12; i++) {
       var cx = document.getElementById('fotodef-' + i);
       if (!cx || !cx.dataset.sku || cx.dataset.sku === '-') continue;
@@ -862,6 +869,131 @@ async function buscarFotosDefeitos(itens) {
         }
       } catch (e) { /* sem foto nao atrapalha */ }
       await new Promise(function (r) { setTimeout(r, 140); });
+    }
+  }
+
+  async function buscarFotosDefeitosSemBling(itens, listaEl) {
+    // b320 - ⚠️ O TETO DE 12 DEIXAVA 34 CARDS SEM PEDIR FOTO.
+    //
+    // [stated 13/09] "ainda sem imagens", com ~70% dos cards no
+    // placeholder. A lista tem 46 pecas e este laco parava no 12o — os
+    // outros 34 NUNCA chamavam a rota.
+    //
+    // 📌 E FOI O QUE ME ENGANOU O DIA TODO: os primeiros cards tinham foto
+    // (ja estavam no cache do servidor), entao parecia que a busca
+    // funcionava e o problema era o indice ou o Bling. Eu media o indice,
+    // media a rota — os dois certos — e nao olhava o LACO da tela.
+    //
+    // ⚠️ O teto existia porque cada foto era uma chamada ao BLING. Agora
+    // a rota resolve pelo INDICE LOCAL (b315), que nao gasta cota: da pra
+    // pedir todas. Mantenho um teto alto so pra nao disparar centenas de
+    // requisicoes de uma vez numa lista gigante.
+    var TETO_FOTOS = 60;
+    // revisao Codex #278 (P1): quando o item NAO esta no indice (frio ou
+    // sem `imagem`), a rota cai num fallback ao Bling com ate 4 chamadas
+    // SEM limite. Isso valia pro teto antigo de 12; abrir pra 60 sem
+    // limite podia gastar ~5x mais cota, disputando com a bipagem.
+    // Mantenho o orcamento de Bling nos primeiros 12 (igual antes) e peco
+    // `semBling=1` pro resto - eles so ganham foto se ja estiver no indice.
+    // b321 - ⚠️ UMA CONSULTA POR CARD ERA UMA CORRIDA.
+    //
+    // [stated 13/09] "algumas ainda sem aparecer" — depois de eu ter
+    // consertado o indice, o teto de 12 e a rota.
+    //
+    // ⚠️ DIAGNOSTICO DO CODEX, e ele achou o que me faltava: a tela pedia a
+    // foto UMA VEZ. Se o indice ainda nao tinha aquele produto, a rota
+    // avisava o worker — mas a resposta VAZIA ficava no card PRA SEMPRE.
+    // A foto chegava 2s depois e ninguem voltava pra buscar.
+    //
+    // Agora faz RODADAS: volta nos placeholders que faltam ate todos terem
+    // foto ou acabarem as tentativas. Todas com `semBling` — a rota so
+    // prioriza o worker serial, sem abrir chamada ao Bling por card.
+    // ⚠️ b321.1 (Codex, P2) - AS RODADAS PARAM SE A TELA FECHAR.
+    //
+    // Sao 12 rodadas x ate 60 cards. Se o dono fechar o modal ou fizer
+    // outra busca no meio, isto continuaria pedindo foto de uma lista que
+    // nao esta mais na tela — gastando requisicao e, pior, podendo pintar
+    // foto em card de OUTRA busca.
+    //
+    // Cada chamada do buscarFotosDefeitos ganha um numero; se outro comecar
+    // (ou a caixa fechar), o antigo desiste na proxima volta.
+    _fotoToken++;
+    var meuToken = _fotoToken;
+    var MAX_RODADAS = 12;
+    for (var rodada = 0; rodada < MAX_RODADAS; rodada++) {
+      // ⚠️ desisto se outra busca comecou ou a caixa fechou
+      if (meuToken !== _fotoToken) return;
+      // ⚠️ b323 (Codex #280, P1) - O SENTINELA ERA UM PLACEHOLDER QUE SOME
+      // AO DAR CERTO.
+      //
+      // O conserto anterior (b322) checava `fotodef-0` e `fotodef-1` pra
+      // saber se a lista ainda esta na tela. Mas quando a foto CHEGA,
+      // `cx.outerHTML` troca o placeholder por um `<img>` sem esse id — os
+      // dois primeiros cards com foto faziam este `if` dar verdadeiro (os
+      // dois sumiram) e abortar a varredura na 2a rodada, mesmo com o card
+      // 3 em diante ainda esperando foto.
+      //
+      // Uso `listaEl` (o `#defLista` desta busca) como sentinela: ele so
+      // sai do DOM quando a lista inteira e substituida (nova busca,
+      // ficha em tela cheia por cima) — nao quando UM card ganha foto.
+      // `fechar()` agora incrementa `_fotoToken` (b323, P2) pra cobrir o
+      // caso de o dono so fechar a caixa sem iniciar outra busca, ja que
+      // `listaEl` continua no DOM (so escondido) nesse caso.
+      if (!document.body.contains(listaEl)) return;
+      var faltando = 0;
+      for (var i = 0; i < itens.length && i < TETO_FOTOS; i++) {
+        // ⚠️ b321.3 (Codex, P2) - CONFERE DENTRO DA RODADA TAMBEM.
+        //
+        // A checagem so no inicio de cada rodada nao basta: se o dono fechar
+        // a caixa no MEIO, esta rodada ainda faria ate 60 pedidos seriais —
+        // e podia pintar foto em card de outra busca.
+        if (meuToken !== _fotoToken) return;
+        var cx = document.getElementById('fotodef-' + i);
+        if (!cx || !cx.dataset.sku || cx.dataset.sku === '-') continue;
+        faltando++;
+        try {
+          // ⚠️ b323 - OS PRIMEIROS VOLTAM A PODER USAR O BLING.
+          //
+          // [stated 13/09] "nenhuma imagem d novo".
+          //
+          // O dado que fechou: a MESMA chave responde
+          //   sem `semBling`  -> {"imagem":"https://lh3...","via":"indice"}
+          //   com `semBling`  -> {"imagem":null}
+          //
+          // A primeira veio do CACHE do servidor (populado quando o dono
+          // abriu a URL na mao). O indice em si NAO tem esse produto agora.
+          //
+          // ⚠️ E EU TINHA POSTO `semBling` EM TODOS OS CARDS. Com o indice
+          // frio — que e o estado logo apos cada deploy, e fizemos dezenas
+          // hoje — isso da ZERO foto. Antes, os 12 primeiros iam ao Bling e
+          // apareciam.
+          //
+          // 📌 Volto ao orcamento que sempre existiu: os 12 primeiros podem
+          // usar o Bling (e o que populam fica no cache, valendo pra todos
+          // dali em diante); do 13o em diante, `semBling`. As rodadas
+          // continuam pegando o que o worker for produzindo.
+          var semBling = (rodada > 0 || i >= 12) ? '?semBling=1' : '';
+          var d = await api('/api/produto/imagem/'
+            + encodeURIComponent(cx.dataset.sku) + semBling);
+          if (d && d.ok && d.imagem) {
+            cx.outerHTML = '<img src="' + esc(d.imagem) + '" alt="" '
+              + 'onclick="event.stopPropagation();window.open(this.src,\'_blank\')" '
+              + 'onerror="this.style.display=\'none\'" '
+              + 'style="width:84px;height:84px;flex:0 0 auto;border-radius:9px;object-fit:contain;'
+              + 'background:#fff;border:1px solid #e4dcf1;cursor:zoom-in;">';
+          }
+          // ⚠️ b321.2: o servidor diz quando NAO ADIANTA insistir — o
+          // produto esta no indice, o detalhe dele ja foi buscado, e nao
+          // tem imagem propria (variacao orfa, cujo pai nao esta no
+          // indice). Marco o card pra pular nas proximas rodadas.
+          if (d && d.definitivo && cx && cx.dataset) cx.dataset.sku = '-';
+        } catch (e) { /* sem foto nao atrapalha */ }
+        await new Promise(function (r) { setTimeout(r, 40); });
+      }
+      // ⚠️ para quando todos tem foto (o placeholder sumiu do DOM) ou
+      // quando as tentativas acabam — nao fica girando pra sempre
+      if (!faltando || rodada === MAX_RODADAS - 1) break;
+      await new Promise(function (r) { setTimeout(r, 700); });
     }
   }
 

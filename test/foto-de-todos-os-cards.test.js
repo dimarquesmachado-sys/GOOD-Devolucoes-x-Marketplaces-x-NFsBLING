@@ -17,19 +17,23 @@ let falhas = 0;
 const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o); };
 
 const front = fs.readFileSync(
-  path.join(__dirname, '..', 'public', 'js', 'defeitos-ficha.js'), 'utf8');
+  path.join(__dirname, '..', 'amb-devolucoes', 'public-AMB', 'js-AMB', 'defeitos-ficha.js'), 'utf8');
+// 14/10 - a ficha e UNICA nas 3 empresas e tem as DUAS estrategias de foto; este teste e o da GOOD (sem-Bling, worker
+// de fotos), entao as conferencias de foto olham a funcao dela — a da Girassol/AMB e outra (12 por rodada, com Bling).
+const _iFoto = front.indexOf('async function buscarFotosDefeitosSemBling(');
+const frontFoto = _iFoto >= 0 ? front.slice(_iFoto, front.indexOf('\n  }\n', _iFoto) + 4) : '';
 
 // ── o teto cobre a lista real ───────────────────────────────────────
 {
-  const m = /var TETO_FOTOS = (\d+);/.exec(front);
+  const m = /var TETO_FOTOS = (\d+);/.exec(frontFoto);
   ok(!!m, 'o teto de fotos e uma constante nomeada (nao numero solto)');
   if (m) {
     const teto = Number(m[1]);
     ok(teto >= 46,
        `⚠️ o teto (${teto}) cobre a lista real do galpao (46 pecas hoje)`);
   }
-  ok(!/i < itens\.length && i < 12/.test(front),
-     '  e o teto de 12 saiu');
+  ok(!/i < itens\.length && i < 12/.test(frontFoto),
+     '  e o teto de 12 saiu (na estrategia da GOOD — a da Girassol/AMB e 12 de proposito, Codex #493)');
 }
 
 // ── ⚠️ e a pausa não faz a tela parecer travada ─────────────────────
@@ -37,11 +41,11 @@ const front = fs.readFileSync(
 // A pausa existia porque cada foto ia ao BLING. Agora a rota resolve pelo
 // índice local, que não gasta cota.
 {
-  const m = /setTimeout\(r, (\d+)\); \}\);/.exec(front);
+  const m = /setTimeout\(r, (\d+)\); \}\);/.exec(frontFoto);
   ok(!!m, 'ha pausa entre os pedidos de foto');
   if (m) {
     const pausa = Number(m[1]);
-    const teto = Number((/var TETO_FOTOS = (\d+);/.exec(front) || [])[1] || 60);
+    const teto = Number((/var TETO_FOTOS = (\d+);/.exec(frontFoto) || [])[1] || 60);
     const segundos = (teto * pausa) / 1000;
     ok(segundos <= 4,
        `  ⚠️ e pintar o teto inteiro leva ${segundos.toFixed(1)}s (tem que ser <= 4s)`);
@@ -129,7 +133,7 @@ const front = fs.readFileSync(
   const quantos = (front.match(/if \(meuToken !== _fotoToken\) return;/g) || []).length;
   ok(quantos >= 2,
      '  ⚠️ e desiste NA RODADA e DENTRO dela (achei ' + quantos + ')');
-  ok(!/style\.display === 'none'\) return;/.test(front),
+  ok(!/style\.display === 'none'\) return;/.test(frontFoto),
      '  e NAO depende do estilo inline (que nem sempre e setado)');
 }
 
@@ -141,9 +145,9 @@ const front = fs.readFileSync(
 // foto faziam a checagem dar "sumiu" e abortavam a varredura na 2a rodada,
 // mesmo com cards depois deles ainda esperando foto.
 {
-  ok(/async function buscarFotosDefeitos\(itens, listaEl\)/.test(front),
+  ok(/async function buscarFotosDefeitosSemBling\(itens, listaEl\)/.test(front) && /function buscarFotosDefeitos\(itens, listaEl\) \{\s*return window\.FOTO_SEM_BLING \? buscarFotosDefeitosSemBling\(itens, listaEl\)/.test(front),
      '⚠️ a varredura recebe o container da lista (nao infere pelos cards)');
-  ok(/if \(!document\.body\.contains\(listaEl\)\) return;/.test(front),
+  ok(/if \(!document\.body\.contains\(listaEl\)\) return;/.test(frontFoto),
      '  e o sentinela e o CONTAINER da lista, que nao muda quando UM card ganha foto');
   ok(/buscarFotosDefeitos\(itens, el\);/.test(front),
      '  e quem chama passa o mesmo container que recebeu os cards (#defLista)');

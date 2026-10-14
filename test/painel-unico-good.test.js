@@ -12,7 +12,7 @@ ok(/Painel de Devoluções — GOOD Import \(GIMPO\)<\/h1>/.test(h) && !/— AMB
 ok(/id="tema-empresa"/.test(h) && /--marca:#561A9E/.test(h), '  paleta roxa da GOOD');
 ok(/src="\/js-AMB\/base-amb\.js\?v=good537"/.test(h), '⚠️ o arquivo de empresa vem da RAIZ da GOOD');
 // b538 (Codex #442) — o painel unico nao pode perder o que o painel atual da GOOD tem.
-ok(/<script src="\/js\/defeitos-ficha\.js\?v=\d+"><\/script>/.test(h) && /<script src="\/js\/lancar-defeito\.js\?v=\d+"><\/script>/.test(h)
+ok(/<script src="\/js\/defeitos-ficha\.js\?v=[\w.]+"><\/script>/.test(h) && /<script src="\/js\/lancar-defeito\.js\?v=\d+"><\/script>/.test(h)
   && /LancarDefeito\.instalar\(\{ prefixo: ''/.test(h) && !/js-AMB\/defeitos-ficha/.test(h), '⚠️ defeitos da GOOD + modal "Lancar defeito" (e nao o fork da AMB)');
 ok(/<div class="header-acoes">\s*<a href="\/admin\/relatorios\.html"/.test(h), '⚠️ link dos Relatorios no cabecalho');
 const { entreMarcadores } = require('./_recorte');

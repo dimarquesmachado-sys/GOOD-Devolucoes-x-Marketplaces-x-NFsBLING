@@ -13,7 +13,7 @@ const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o
 
 const RAIZ = path.join(__dirname, '..');
 const ciclo = fs.readFileSync(path.join(RAIZ, 'lib', 'defeitos-ciclo.js'), 'utf8');
-const front = fs.readFileSync(path.join(RAIZ, 'public', 'js', 'defeitos-ficha.js'), 'utf8');
+const front = fs.readFileSync(path.join(RAIZ, 'amb-devolucoes', 'public-AMB', 'js-AMB', 'defeitos-ficha.js'), 'utf8');
 
 // ── ⚠️ a aba de Excluídos é contada ─────────────────────────────────
 //
