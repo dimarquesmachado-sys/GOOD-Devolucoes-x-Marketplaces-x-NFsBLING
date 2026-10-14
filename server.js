@@ -568,7 +568,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.126.119 (b613: a ficha da vez vai nos avisos ao porteiro — 429 classificado e sucesso zera o degrau)',
+      version: '9.126.120 (b614: a ficha da vez vai nos avisos ao porteiro — 429 classificado e sucesso zera o degrau)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -1701,9 +1701,9 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
                   const desistiu = { agora: false };
                   const det = await Promise.race([
                     (async () => {
-                      await ritmoBling.aguardarVez();
+                      const fichaVez = await ritmoBling.aguardarVez();
                       if (desistiu.agora) return { _tarde: true };   // nem sai
-                      return buscarNFePorId(c.id, { semRitmo: true });
+                      return buscarNFePorId(c.id, { semRitmo: true, ficha: fichaVez });   // 14/10 (Codex): a ficha segue pros avisos
                     })().then((r) => (desistiu.agora ? { _tarde: true } : r)),
                     new Promise((ok) => setTimeout(() => { desistiu.agora = true; ok({ _timeout: true }); }, 5000)),
                   ]);

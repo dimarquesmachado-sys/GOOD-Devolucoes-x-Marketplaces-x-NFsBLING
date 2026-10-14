@@ -250,6 +250,8 @@ async function chamarBling(caminho, opcoes = {}) {
     catch (eFila) {
       return { ok: false, status: 0, error: eFila.message, filaEstourou: true };
     }
+  } else {
+    _ficha = opcoes.ficha || null;   // 14/10 (Codex): quem ja esperou a vez por fora entrega a ficha aqui
   }
 
   try {
@@ -302,7 +304,7 @@ async function chamarBling(caminho, opcoes = {}) {
           catch (eFila) {
             return { ok: false, status: 0, error: eFila.message, filaEstourou: true };
           }
-        }
+        } else _ficha = null;   // 14/10: o retry e outra requisicao — nao reaproveita a ficha da 1a
         try {
           const r = await fazer();
           ritmo.avisarOk(opcoes.fundo ? 'fundo' : 'operacao', _ficha);
@@ -345,7 +347,7 @@ async function chamarBling(caminho, opcoes = {}) {
         catch (eFila) {
           return { ok: false, status: 0, error: eFila.message, filaEstourou: true };
         }
-      }
+      } else _ficha = null;   // 14/10: idem
       try {
         const r = await fazer();
         ritmo.avisarOk(opcoes.fundo ? 'fundo' : 'operacao', _ficha);

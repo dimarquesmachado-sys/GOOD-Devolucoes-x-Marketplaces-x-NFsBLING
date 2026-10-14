@@ -229,7 +229,7 @@ function erro429(retryAfter) {
     const iCheca = bloco.indexOf('if (desistiu.agora) return { _tarde: true };');
     ok(iEspera >= 0 && iCheca > iEspera,
        '⚠️ espera a vez na fila da empresa ANTES de checar `desistiu` (nao depois)');
-    ok(/buscarNFePorId\(c\.id, \{ semRitmo: true \}\)/.test(bloco),
+    ok(/buscarNFePorId\(c\.id, \{ semRitmo: true(, ficha: fichaVez)? \}\)/.test(bloco),
        '  e pula a espera DE DENTRO do chamarBling (semRitmo) — so espera 1 vez');
 
     // e a fila usada e a DESTA empresa (exposta pelo cliente Bling), nao a
