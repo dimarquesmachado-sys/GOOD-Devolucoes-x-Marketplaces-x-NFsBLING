@@ -109,7 +109,8 @@ const insert = srv.slice(ini, srv.indexOf('}])', ini));
   // e a caixa realmente procura esse par
   const caixa = fs.readFileSync(
     path.join(__dirname, '..', 'lib', 'defeitos-ciclo.js'), 'utf8');
-  ok(/tipo\.eq\.problema,status\.eq\.concluido/.test(caixa),
+  ok(/const ATIVOS = modelo\.ativos/.test(caixa)
+     && require('../lib/empresas').obterEmpresa('good').defeitos.ativos.includes('tipo.eq.problema,status.eq.concluido'),
      '  e a caixa de Defeitos procura exatamente esse par');
 }
 

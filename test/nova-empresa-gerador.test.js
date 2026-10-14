@@ -159,6 +159,37 @@ const { gerar } = require('../scripts/nova-empresa');
     ok(!!e, '⚠️ a ficha GERADA e aceita pelo registro');
     ok(e && e.tabelas.devolucoes === 'devolucoes_aurora', '  com as tabelas certas');
 
+    const modeloEsperado = {
+      colunaData: 'criado_em',
+      ativos: 'tipo.eq.defeito_estoque,status.eq.problema',
+      exclusao: 'tipo',
+      tipoRestauradoPadrao: 'defeito_estoque',
+      statusDecisaoFallback: null,
+    };
+    ok(e && e.defeitos && Object.entries(modeloEsperado).every(([campo, valor]) =>
+      Object.hasOwn(e.defeitos, campo) && e.defeitos[campo] === valor),
+    '⚠️ a ficha GERADA declara o modelo completo de defeitos do schema provisionado');
+
+    // O registro aceitar a ficha nao basta: o servidor comum rejeita um
+    // modelo incompleto ao montar. Exercite o registrar real, sem banco,
+    // Bling ou servidor HTTP, com a mesma ficha recem-colada.
+    const rotas = [];
+    const router = Object.fromEntries(['get', 'post', 'put', 'delete'].map(verbo =>
+      [verbo, (rota, ...handlers) => rotas.push({ verbo, rota, handlers })]));
+    const requerLogin = (req, res, next) => next();
+    let erroCiclo = null;
+    try {
+      require('../lib/defeitos-ciclo')(router, {
+        supabase: null, requerLogin,
+        DEPOSITO_GERAL: e.fiscal.depositoGeral(),
+        modelo: { ...e.defeitos, tabelas: e.tabelas },
+      });
+    } catch (err) { erroCiclo = err; }
+    ok(!erroCiclo && rotas.length === 16
+      && rotas.every(r => r.rota.startsWith('/api/defeitos/') && r.handlers[0] === requerLogin),
+    '⚠️ a ficha GERADA monta as 16 rotas autenticadas do servidor unico'
+      + (erroCiclo ? ': ' + erroCiclo.message : ''));
+
     const c = reg.conferirEmpresa('aurora');
     ok(c && c.pronta === false, '  e `conferirEmpresa` a reconhece (pronta: false)');
     ok(c && (c.fiscalSemValor || []).length === 3,
