@@ -64,3 +64,22 @@ por acaso se chamam igual.
 1. Ela herda os 4 já comuns (`ml-buscas`, `ritmo-bling`, `nf-pessoa`, `render-tokens`) sem trabalho
 2. Para os demais, **copiar da AMB**: nas 3 unificações de hoje, a versão dela era a mais completa em 2 de 3 casos
 3. ⚠️ E a lição das unificações: **conferir os DOIS lados**. Em `render-tokens` eu adotei a versão da AMB e perdi a fila única, que só existia na da GOOD
+
+## Atualização — 14/10/2026 (o que mudou desde a medição de 04/09)
+
+| peça | situação hoje |
+|---|---|
+| `magalu` | ✅ **peça única** (#461/#462, 07/10) — `amb-devolucoes/lib-AMB/magalu-AMB.js` serve as 3 |
+| índice de nomes das NFs | ✅ **peça única** — `amb-devolucoes/lib-AMB/nf-nomes-AMB.js` |
+| painel de devoluções | ✅ **peça única** — `painel-AMB.html`; a GOOD recebe o mesmo montado pra ela (`lib/painel-unico.js`, #487) |
+| logo e ícone por empresa | ✅ **peça multiloja** — `lib/marca-empresa.js` + `marca` na ficha (#490/#492) |
+| ficha de defeitos (tela) | ✅ **única na fábrica** (Girassol, AMB e as próximas — #493); a GOOD ainda carrega a dela (`public/js/defeitos-ficha.js`) |
+| porteiro da cota do Bling | ✅ por conta (`lib/ritmo-porteiro.js` → `criarPorteiro({ conta })`) |
+| `defeitos-ciclo` (servidor) | ⏳ duas cópias — schema diferente de verdade (`created_at`×`criado_em`, excluir por marcador×por tipo) |
+| `ml` / `ml-returns` · `bling` | ⏸ duas cópias por decisão — a GOOD tem dono de token próprio e as duas divergem nos dois sentidos |
+
+**Para um CNPJ novo nada disso trava:** ele entra pela fábrica (`amb-devolucoes/`), a mesma da Girassol e da AMB —
+`node scripts/nova-empresa.js <chave> "<Nome>"` gera a ficha (agora já com `tema` e `marca`), o contrato e a lista de
+envs; `conferirEmpresa('<chave>')` diz o que falta (e, desde 14/10, **avisa** se a empresa vai sair com as cores ou o
+logo da AMB).
+
