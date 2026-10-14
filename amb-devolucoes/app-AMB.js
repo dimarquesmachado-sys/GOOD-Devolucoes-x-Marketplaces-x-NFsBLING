@@ -463,7 +463,7 @@ function comTema(html) {
 
 // 14/10 - a MARCA (logo e icone) vem da ficha: sem isso a Girassol mostrava o logo e o icone da AMB na triagem e na aba
 // do navegador. Sem `marca` na ficha, fica o da AMB (os arquivos de sempre).
-const MARCA = require('./lib-AMB/marca-AMB').criarMarca(FICHA_AMB);
+const MARCA = require('../lib/marca-empresa').criarMarca(FICHA_AMB, { logo: 'logo-AMB.png', icone: 'icone-AMB.png' });   // peca multiloja em /lib
 const ICONE_EMPRESA = MARCA.icone;
 const comMarca = MARCA.aplicar;
 const INDEX_AMB_HTML = comMarca(comTema(fs.readFileSync(
@@ -654,7 +654,7 @@ const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 // checado ANTES de entrar na fila da empresa — nao antes de sair, entao um
 // candidato ja desistido ainda batia no Bling depois de esperar numa pausa
 // de 429. Ver bling-AMB.js, nf-nomes-AMB.js e identificar-AMB.js.
-const VERSAO = 'AMB Devolucoes b617';
+const VERSAO = 'AMB Devolucoes b618';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();

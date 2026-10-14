@@ -138,7 +138,7 @@
     .topo-faixa { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
     .topo-logo { width: 52px; height: 52px; object-fit: contain; border-radius: 11px;
                  background: rgba(255,255,255,.9); padding: 4px; flex: 0 0 auto; }
-    .topo-txt { flex: 1; min-width: 0; }
+    .topo-txt { flex: 1 1 220px; min-width: 0; }   /* 14/10: o titulo guarda 220px antes de os links caberem do lado */
     .topo-txt h1 { font-size: 22px; line-height: 1.15; margin: 0; }
     .topo-txt p { font-size: 12.5px; opacity: .85; margin: 2px 0 0; }
     .topo-versao { opacity: .65; font-size: 11px; }
@@ -153,7 +153,10 @@
       .links-defeitos { flex: 1 1 100%; justify-content: center; margin-top: 8px; }
       header .user-badge { flex: 1 1 100%; justify-content: center; margin-top: 6px; }
     }
-    .links-defeitos { display: flex; gap: 6px; flex: 0 0 auto; }
+    /* 14/10 (dono: na triagem da Girassol o '❓ O que bipar' saia da tela) - os links quebram linha em vez de empurrar
+       a faixa pra fora; quando nao cabem ao lado do titulo, descem inteiros pra linha de baixo, encostados a direita
+       (a triagem da GOOD ja quebrava assim). */
+    .links-defeitos { display: flex; gap: 6px; flex: 0 1 auto; flex-wrap: wrap; justify-content: flex-end; min-width: 0; margin-left: auto; }
     .links-defeitos a {
       background: rgba(255,255,255,.16); color: #fff; text-decoration: none;
       padding: 5px 11px; border-radius: 9px; font-size: 12px; font-weight: 500;
