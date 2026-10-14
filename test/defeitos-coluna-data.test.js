@@ -11,6 +11,7 @@ const fs = require('fs');
 const path = require('path');
 
 const GOOD = fs.readFileSync(path.join(__dirname, '..', 'lib', 'defeitos-ciclo.js'), 'utf8');
+const MODELO_GOOD = require('../lib/empresas').obterEmpresa('good').defeitos;
 let falhas = 0;
 const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o); };
 
@@ -20,10 +21,10 @@ const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o
 // deixando o trecho vazio e os dois casos abaixo falhando a toa.
 const iniL = GOOD.indexOf("let sel = dbc.from(T_DEV)");
 const trechoLista = GOOD.slice(iniL, GOOD.indexOf(".limit(limiteDaConsulta", iniL) + 22);
-ok(trechoLista.includes("created_at"), 'o select da lista pede created_at');
+ok(trechoLista.includes('COLUNA_DATA') && MODELO_GOOD.colunaData === 'created_at', 'o select da lista pede a coluna created_at da ficha');
 ok(!/\.select\([^)]*\bcriado_em\b/.test(trechoLista),
    'o select da lista NAO pede criado_em (era o que quebrava)');
-ok(trechoLista.includes(".order('created_at'"), 'o order da lista usa created_at');
+ok(trechoLista.includes('.order(COLUNA_DATA'), 'o order da lista usa a mesma coluna da ficha');
 
 // ── 2. as OUTRAS tabelas seguem com criado_em (nao foram tocadas) ────
 // defeito_comentarios, pecas_retiradas e defeito_pedidos sao tabelas
@@ -36,9 +37,9 @@ ok(trechoLista.includes(".order('created_at'"), 'o order da lista usa created_at
 // ── 3. o CONTRATO com o painel nao mudou ─────────────────────────────
 // O front le `.criado_em` (10 usos em public/js). A resposta tem que
 // continuar chamando assim, so mudando de onde o valor vem.
-ok(/criado_em:\s*x\.created_at/.test(GOOD), 'a lista devolve criado_em a partir de created_at');
-ok(/criado_em:\s*item\.created_at\s*\|\|\s*item\.criado_em/.test(GOOD),
-   'a ficha devolve criado_em tolerante (la e select("*"))');
+ok(/criado_em:\s*x\[COLUNA_DATA\]/.test(GOOD), 'a lista devolve criado_em a partir da coluna da empresa');
+ok(/criado_em:\s*item\[COLUNA_DATA\]/.test(GOOD),
+   'a ficha devolve criado_em a partir da mesma coluna da empresa');
 const js = fs.readdirSync(path.join(__dirname, '..', 'public', 'js'))
   .filter((f) => f.endsWith('.js'))
   .map((f) => fs.readFileSync(path.join(__dirname, '..', 'public', 'js', f), 'utf8')).join('\n');
@@ -62,7 +63,8 @@ ok(/tipo:\s*'problema'/.test(SERVER), 'a GOOD grava tipo:"problema" (server.js)'
 ok(/status:\s*'problema'/.test(AMB_COMPAT), 'a AMB grava status:"problema" (compat-AMB.js) — esquemas diferentes');
 
 // as condicoes agora vivem nas constantes lidas por condicoesDoEstado
-const condsFonte = GOOD.slice(GOOD.indexOf('const ATIVOS ='), GOOD.indexOf('const MAX_IDS_NA_URL'));
+ok(/const ATIVOS = modelo\.ativos/.test(GOOD), 'o filtro ativo vem do modelo da empresa');
+const condsFonte = MODELO_GOOD.ativos + GOOD.slice(GOOD.indexOf('const TERMINAIS ='), GOOD.indexOf('const MAX_IDS_NA_URL'));
 ok(condsFonte.includes('and(tipo.eq.problema,status.eq.concluido)'),
    'problema entra SO com status=concluido (a regra fiscal da v3.98)');
 ok(!/(^|[,'])tipo\.eq\.problema(?!,status)/.test(condsFonte),
@@ -93,7 +95,7 @@ ok(/x\.status !== 'concluido'[\s\S]{0,40}x\.status !== 'cancelled'[\s\S]{0,40}x\
 // 'defeito_estoque', senao a restauracao leva 500 e o item fica excluido
 // pra sempre. ──────────────────────────────────────────────────────────
 const restaura = GOOD.slice(GOOD.indexOf('const tipoVolta'), GOOD.indexOf('const camposR'));
-ok(restaura.includes(": 'problema'"), '  sem tipo_anterior, volta como problema');
+ok(restaura.includes('modelo.tipoRestauradoPadrao') && MODELO_GOOD.tipoRestauradoPadrao === 'problema', '  sem tipo_anterior, usa o fallback problema da GOOD');
 ok(!restaura.includes("'defeito_estoque'"),
    '  e NAO tem mais o fallback pra defeito_estoque (a tabela recusa)');
 
@@ -119,10 +121,10 @@ ok(clas.includes("|| 'defeito'"), '  e o resto cai em "defeito" (a aba Com Defei
 // excluidos) e so entao a aba era aplicada em JS: com historico grande,
 // defeito ativo antigo sumia da aba "Com Defeito".
 const iniC = GOOD.indexOf('const ATIVOS =');
-const fimC = GOOD.indexOf('async function buscar(termo, estado, porPedido)');
+const fimC = GOOD.indexOf('async function buscar(');
 const trechoCond = GOOD.slice(iniC, fimC);
-const condicoesDoEstado = new Function(trechoCond + '; return condicoesDoEstado;')();
-const idsForaDoEstado = new Function(trechoCond + '; return idsForaDoEstado;')();
+const condicoesDoEstado = new Function('modelo', trechoCond + '; return condicoesDoEstado;')(MODELO_GOOD);
+const idsForaDoEstado = new Function('modelo', trechoCond + '; return idsForaDoEstado;')(MODELO_GOOD);
 {
   const porPedido = { '10': 'recuperado', '11': 'descartado', '12': 'recuperado' };
   const c = (e, pp = porPedido) => condicoesDoEstado(e, pp);
@@ -202,45 +204,24 @@ ok(/count:\s*'exact',\s*head:\s*true/.test(trechoContarAba),
 ok(!/\.limit\(/.test(trechoContarAba),
    '  e esse caminho nao usa limiteDaConsulta — o cap de 300/1000 da tela nao entra na contagem');
 
-// ⚠️ revisao Codex #270 (P2, rodada 2): o count exato quebra nos MESMOS
-// casos em que condicoesDoEstado()/idsForaDoEstado() alargam a condicao pra
-// nao montar um id.in(...) gigante (ver "volta ao amplo" perto de ATIVOS) -
-// um head-count direto nessa condicao alargada conta a TABELA INTEIRA (ou o
-// defeito ja resolvido por pedido) como se fosse so a aba, nao um numero
-// truncado como o buscar()+.limit() de antes. contarAba() precisa CAIR pro
-// caminho antigo (busca + filtro em JS) nesses casos, nao so quando ha termo.
-ok(/if \(termo \|\| alargouCondicaoDaAba\(estado, porPedido\)\)/.test(GOOD),
-   '⚠️ contarAba cai pro caminho antigo quando a condicao da aba foi alargada (nao so quando ha termo de busca)');
-
-const trechoAlargou = GOOD.slice(
-  GOOD.indexOf('function alargouCondicaoDaAba'),
-  GOOD.indexOf('async function contarAba'));
-const alargouCondicaoDaAba = new Function(
-  GOOD.slice(GOOD.indexOf('const ATIVOS ='), GOOD.indexOf('async function buscar(termo, estado, porPedido)'))
-  + '\n' + trechoAlargou + '; return alargouCondicaoDaAba;')();
-{
-  const poucosRecuperados = {}; for (let i = 0; i < 10; i++) poucosRecuperados[i] = 'recuperado';
-  const muitosRecuperados = {}; for (let i = 0; i < 200; i++) muitosRecuperados[i] = 'recuperado';
-  const muitosDescartados = {}; for (let i = 0; i < 200; i++) muitosDescartados[i] = 'descartado';
-  const muitosNoTotal = {}; for (let i = 0; i < 200; i++) muitosNoTotal[i] = (i % 2) ? 'recuperado' : 'descartado';
-
-  ok(alargouCondicaoDaAba('recuperado', poucosRecuperados) === false,
-     'poucos recuperados: condicoesDoEstado nao alarga, o count exato continua certo');
-  ok(alargouCondicaoDaAba('recuperado', muitosRecuperados) === true,
-     '⚠️ 200 recuperados (> MAX_IDS_NA_URL): condicoesDoEstado alargaria pra TUDO — precisa cair pro caminho antigo');
-  ok(alargouCondicaoDaAba('descartado', muitosDescartados) === true,
-     '  o mesmo vale pra descartado');
-  ok(alargouCondicaoDaAba('defeito', muitosNoTotal) === true,
-     '  e pra defeito, quando o TOTAL por pedido passa do limite (idsForaDoEstado tambem some da consulta)');
-  ok(alargouCondicaoDaAba('excluido', muitosNoTotal) === false,
-     '  excluido nao depende de porPedido — nunca alarga');
-}
+// Muitos pedidos nao podem voltar ao count de uma lista limitada, nem a
+// um head-count de TUDO. A contagem sem termo usa lotes pequenos de ids,
+// soma terminais explicitos sem duplicar e subtrai resolvidos dos ativos.
+// Os casos funcionais com 400 pedidos estao em defeitos-servidor-unico.
+ok(/if \(termo\)/.test(trechoContarAba) && !/alargouCondicaoDaAba/.test(trechoContarAba),
+   '⚠️ muitos ids nao fazem a contagem sem termo voltar a buscar linhas limitadas');
+ok(/i \+= MAX_IDS_NA_URL/.test(trechoContarAba) && /\.in\('id', lote\)/.test(trechoContarAba),
+   '  os ids por pedido entram em lotes menores que o teto da URL');
+ok(/total - resolvidos/.test(trechoContarAba) && /totalPorTipo \+ totalPorPedido/.test(trechoContarAba),
+   '  ativos excluem resolvidos; terminais somam tipo e pedidos sem sobreposicao');
+ok(/buscar\(termo, estado, porPedido, true\)/.test(trechoContarAba),
+   '  com termo, a contagem mantem o orcamento maior do caminho legado');
 
 // e quando os ids terminais nao cabem na URL, o limite compensa
 // a fatia comeca no ATIVOS pra levar junto o MAX_IDS_NA_URL que a funcao usa
-const limiteDaConsulta = new Function(
-  GOOD.slice(GOOD.indexOf('const ATIVOS ='), GOOD.indexOf('async function buscar(termo, estado, porPedido)'))
-  + '; return limiteDaConsulta;')();
+const limiteDaConsulta = new Function('modelo',
+  GOOD.slice(GOOD.indexOf('const ATIVOS ='), GOOD.indexOf('async function buscar('))
+  + '; return limiteDaConsulta;')(MODELO_GOOD);
 {
   const poucos = {}; for (let i = 0; i < 10; i++) poucos[i] = 'recuperado';
   const muitos = {}; for (let i = 0; i < 500; i++) muitos[i] = 'recuperado';
@@ -250,6 +231,8 @@ const limiteDaConsulta = new Function(
   const absurdo = {}; for (let i = 0; i < 5000; i++) absurdo[i] = 'recuperado';
   ok(limiteDaConsulta('defeito', absurdo) === 1000, '  com teto de 1000, pra nao pedir a tabela inteira');
   ok(limiteDaConsulta('recuperado', muitos) === 300, '  nas abas terminais o limite nao muda');
+  ok(limiteDaConsulta('recuperado', muitos, true) === 800,
+     '  mas a contagem textual terminal preserva o orcamento dos pedidos antigos');
 }
 ok(GOOD.indexOf('const porPedido') < GOOD.indexOf('let linhas = await buscar'),
    'porPedido e resolvido ANTES da busca (era depois; por isso nao dava pra filtrar no banco)');

@@ -28,13 +28,14 @@ const srcRelatorios = fs.readFileSync(
 const srcHelper = fs.readFileSync(
   path.join(__dirname, '..', 'lib', 'defeito-excluido.js'), 'utf8');
 const { marcadoExcluido } = require('../lib/defeito-excluido');
+const modeloGood = require('../lib/empresas').obterEmpresa('good').defeitos;
 
 // ── ⚠️ a exclusão tem fallback por status ───────────────────────────
 {
   ok(/check constraint/.test(src),
      '⚠️ o codigo reconhece a recusa do check');
-  ok(/excluido via status/.test(src),
-     '  e a exclusao cai pro `status` quando o tipo e recusado');
+  ok(modeloGood.exclusao === 'marca' && /if \(modelo.exclusao === 'marca'\)/.test(src),
+     '  a GOOD grava exclusao por marca sem tentar tipo recusado');
   ok(/status: 'cancelled'/.test(src),
      "  com 'cancelled' (valor que o codigo ja le)");
 }
@@ -51,7 +52,7 @@ const { marcadoExcluido } = require('../lib/defeito-excluido');
      '⚠️ recuperar/descartar tambem tem fallback');
   const bloco = src.slice(src.indexOf('decisao gravada via status') - 400,
                            src.indexOf('decisao gravada via status'));
-  ok(/status: 'delivered'/.test(bloco),
+  ok(/status: modelo\.statusDecisaoFallback/.test(bloco) && modeloGood.statusDecisaoFallback === 'delivered',
      "  com um status que NAO seja 'concluido' (senao e no-op) nem 'cancelled' (senao vira exclusao)");
   ok(!/status: 'concluido'/.test(bloco),
      '  ⚠️ nao pode ser concluido: a peca ativa ja esta assim, ficaria disponivel de novo');
@@ -62,11 +63,11 @@ const { marcadoExcluido } = require('../lib/defeito-excluido');
 // Não adianta gravar se o registro continuar aparecendo: o dono acharia que
 // a exclusão não funcionou.
 {
-  const m = /const ATIVOS = '([^']+)'/.exec(src);
+  const m = /const ATIVOS = modelo\.ativos/.exec(src);
   ok(!!m, 'achei a definicao dos ATIVOS');
   if (m) {
     // ATIVOS exige status=concluido junto de tipo=problema
-    ok(/status\.eq\.concluido/.test(m[1]),
+    ok(/status\.eq\.concluido/.test(modeloGood.ativos),
        '⚠️ os ATIVOS dependem do status — logo mudar o status TIRA de la');
   }
 }
@@ -226,7 +227,7 @@ const { marcadoExcluido } = require('../lib/defeito-excluido');
 
 // ── e o SELECT traz a coluna que o classificador precisa ────────────
 {
-  const m = /\.select\('id, produto_sku[^']*'\)/.exec(src);
+  const m = /\.select\('id, produto_sku[^\n]*/.exec(src);
   ok(!!m && /estado_atual/.test(m[0]),
      '⚠️ buscar() seleciona `estado_atual` (senao situacaoDe() nunca ve a marca)');
 }

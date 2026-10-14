@@ -27,9 +27,9 @@ const ok = (c, oque) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') 
 // do registro. Entao o padrao de producao passou a aparecer como
 // `FICHA_X.fiscal.campo() || 'valor'`.
 //
-// A GARANTIA E A MESMA e continua valendo: o literal escrito no codigo tem
-// que bater com o padrao do registro. Se divergirem, produção emitiria com
-// um deposito/natureza e o registro diria outro — em silencio.
+// Quando ainda existe um literal no consumidor, ele deve bater com a
+// ficha. O ciclo compartilhado recebe o deposito diretamente da ficha:
+// nesse caso confira a atribuicao real, sem exigir um fallback duplicado.
 const ACESSOR_DO_ENV = {
   GOOD_NF_ENTRADA_TIPO: 'nfEntradaTipo',
   GOOD_NATUREZAS_DEVOLUCAO_IDS: 'naturezasDevolucaoIds',
@@ -51,7 +51,12 @@ function padraoDeProducao(arquivo, envName) {
   if (!acessor) return null;
   const reNovo = new RegExp(acessor + "\\(\\)(?:[^'\"\\n]*\\|\\|[^'\"\\n]*)?\\s*\\|\\|\\s*['\"]([^'\"]+)['\"]");
   const m2 = src.match(reNovo);
-  return m2 ? m2[1] : null;
+  if (m2) return m2[1];
+  if (envName === 'GOOD_DEPOSITO_GERAL'
+      && /DEPOSITO_GERAL:\s*FICHA_GOOD\.fiscal\.depositoGeral\(\)\s*,/.test(src)) {
+    return semEnv([envName], () => EMPRESAS.good.fiscal.depositoGeral());
+  }
+  return null;
 }
 
 // Compara o FALLBACK do registro com o FALLBACK de producao. Se a env

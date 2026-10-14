@@ -8805,7 +8805,9 @@ require('./amb-devolucoes/lib-AMB/rotas-admin-AMB.js')(app, Object.assign({}, DE
 const registrarCicloDefeitos = require('./lib/defeitos-ciclo');
 registrarCicloDefeitos(app, {
   supabase, requerLogin, chamarBling, adminOk,
-  DEPOSITO_GERAL: FICHA_GOOD.fiscal.depositoGeral() || '4956031259',   // v4.57 - Geral da GOOD
+  DEPOSITO_GERAL: FICHA_GOOD.fiscal.depositoGeral(),
+  modelo: { ...FICHA_GOOD.defeitos, tabelas: FICHA_GOOD.tabelas },
+  rotulo: FICHA_GOOD.nome,
 });
 
 // v3.45 - rotas de impressao (QZ assinado + fila remota)

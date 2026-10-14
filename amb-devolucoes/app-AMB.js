@@ -530,7 +530,7 @@ const registrarRotasAdminNF = require('./lib-AMB/rotas-admin-AMB');
 // esquema?" — nao estava: 9 modulos em copia, a AMB importava so 2 da /lib.
 const criarMlBuscas = require('../lib/ml-buscas');
 const registrarIdentificar = require('./lib-AMB/identificar-AMB');
-const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
+const registrarCicloDefeitos = require('../lib/defeitos-ciclo');
 
 // b310 - continuacao da revisao Codex #252, ainda so do lado GOOD: la, o
 // defeito de estoque manual passou a gravar `tipo: 'problema'` (a tabela da
@@ -2870,7 +2870,15 @@ const ajudantes = criarAdminHelpers({
 // que a AMB ja tinha (ml, bling, magalu, shopee, nf-nomes).
 const mlBuscas = criarMlBuscas(ml.chamarML);
 // b95 - ciclo do estoque de defeitos (ficha, comentarios, pedidos)
-registrarCicloDefeitos(router, { auth, db, bling, cfg });
+registrarCicloDefeitos(router, {
+  supabase: () => db.conectar(),
+  requerLogin: auth.requerLogin,
+  chamarBling: (...args) => bling.chamarBling(...args),
+  DEPOSITO_GERAL: cfg.fiscal.depositoGeral(),
+  resolverSku: (sku) => db.resolverSku(sku),
+  modelo: { ...cfg.defeitos, tabelas: cfg.supabase.tabelas },
+  rotulo: cfg.NOME_EMPRESA,
+});
 
 registrarIdentificar(router, {
   // ⚠️ b359: o valor da coluna `empresa` no banco — o modulo derruba sem ele

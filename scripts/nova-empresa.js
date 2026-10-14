@@ -120,6 +120,15 @@ function gerar(chave, nome, sufixoDados) {
         pecasRetiradas: 'pecas_retiradas_${suf}',
         skuDepara: 'sku_depara_${suf}',
       },
+      // O provisionador cria o schema da fabrica (AMB/Girassol).
+      // O servidor comum exige este modelo explicito, sem herdar o da GOOD.
+      defeitos: {
+        colunaData: 'criado_em',
+        ativos: 'tipo.eq.defeito_estoque,status.eq.problema',
+        exclusao: 'tipo',
+        tipoRestauradoPadrao: 'defeito_estoque',
+        statusDecisaoFallback: null,
+      },
       fiscal: {
         // ⚠️ TODOS sem padrão: esta empresa declara os SEUS nas envs
         // \`${PREF}*\`, ou não tem. Inventar um id aqui emitiria NF com número
