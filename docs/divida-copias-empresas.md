@@ -73,13 +73,20 @@ por acaso se chamam igual.
 | índice de nomes das NFs | ✅ **peça única** — `amb-devolucoes/lib-AMB/nf-nomes-AMB.js` |
 | painel de devoluções | ✅ **peça única** — `painel-AMB.html`; a GOOD recebe o mesmo montado pra ela (`lib/painel-unico.js`, #487) |
 | logo e ícone por empresa | ✅ **peça multiloja** — `lib/marca-empresa.js` + `marca` na ficha (#490/#492) |
-| ficha de defeitos (tela) | ✅ **única na fábrica** (Girassol, AMB e as próximas — #493); a GOOD ainda carrega a dela (`public/js/defeitos-ficha.js`) |
+| ficha de defeitos (tela) | ✅ **peça única nas três empresas** — `js-AMB/defeitos-ficha.js` (#493/#495) |
 | porteiro da cota do Bling | ✅ por conta (`lib/ritmo-porteiro.js` → `criarPorteiro({ conta })`) |
-| `defeitos-ciclo` (servidor) | ⏳ duas cópias — schema diferente de verdade (`created_at`×`criado_em`, excluir por marcador×por tipo) |
+| `defeitos-ciclo` (servidor) | ✅ **peça única nas três empresas** — `lib/defeitos-ciclo.js`; diferenças de schema declaradas em `defeitos` na ficha |
 | `ml` / `ml-returns` · `bling` | ⏸ duas cópias por decisão — a GOOD tem dono de token próprio e as duas divergem nos dois sentidos |
 
 **Para um CNPJ novo nada disso trava:** ele entra pela fábrica (`amb-devolucoes/`), a mesma da Girassol e da AMB —
-`node scripts/nova-empresa.js <chave> "<Nome>"` gera a ficha (agora já com `tema` e `marca`), o contrato e a lista de
+`node scripts/nova-empresa.js <chave> "<Nome>"` gera a ficha (agora já com `tema`, `marca` e modelo de `defeitos`), o contrato e a lista de
 envs; `conferirEmpresa('<chave>')` diz o que falta (e, desde 14/10, **avisa** se a empresa vai sair com as cores ou o
 logo da AMB).
 
+O ciclo comum recebe da instância seu banco, autenticação, Bling e depósito Geral. A ficha define tabelas,
+coluna de data, condição de ativos e formato de exclusão/restauração. Comentários e pedidos usam o sufixo
+da tabela de devoluções registrada. A trava fiscal de ativos da GOOD continua no modelo dela.
+
+As contagens sem busca textual usam o banco, incluindo pedidos antigos em lotes de até 150 IDs; a busca
+textual mantém o orçamento limitado anterior. Os testes executam o servidor comum nas três empresas,
+montam a fábrica real para Girassol/AMBTotal e impedem recriar `defeitos-ciclo-AMB.js`.

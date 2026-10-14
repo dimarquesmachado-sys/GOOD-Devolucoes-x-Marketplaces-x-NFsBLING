@@ -34,7 +34,7 @@ const LIB_AMB = path.join(RAIZ, 'amb-devolucoes', 'lib-AMB');
 
 // ── o que já foi unificado NÃO pode voltar a ter cópia ───────────────
 {
-  const unificados = ['ml-buscas', 'ritmo-bling', 'nf-pessoa', 'render-tokens'];   // cresce a cada unificação
+  const unificados = ['ml-buscas', 'ritmo-bling', 'nf-pessoa', 'render-tokens', 'defeitos-ciclo'];   // cresce a cada unificação
   for (const nome of unificados) {
     const naLib = fs.existsSync(path.join(LIB, nome + '.js'));
     const copias = fs.readdirSync(LIB_AMB)
@@ -50,6 +50,11 @@ const LIB_AMB = path.join(RAIZ, 'amb-devolucoes', 'lib-AMB');
   const app = fs.readFileSync(path.join(RAIZ, 'amb-devolucoes', 'app-AMB.js'), 'utf8');
   ok(/require\('\.\.\/lib\/ml-buscas'\)/.test(app),
      'app-AMB importa `ml-buscas` da /lib comum');
+  ok(/require\('\.\.\/lib\/defeitos-ciclo'\)/.test(app),
+     'app-AMB importa `defeitos-ciclo` da /lib comum');
+  const semComentarios = app.split('\n').filter(l => !l.trim().startsWith('//')).join('\n');
+  ok(!/require\([^)]*defeitos-ciclo-AMB/.test(semComentarios),
+     'app-AMB não volta a importar a cópia do ciclo de defeitos');
   // ⚠️ b445 (Codex, P1) - `ritmo-bling` SAIU da lista de "AMB importa": o
   // proprio import era o bug. `lib/ritmo-bling.js` e o portao SINGLETON da
   // GOOD, com a conta cravada em 'good' — a AMB/Girassol importava ele so
@@ -73,7 +78,7 @@ const LIB_AMB = path.join(RAIZ, 'amb-devolucoes', 'lib-AMB');
 {
   const DIVIDA_CONHECIDA = new Set([
     'bling', 'ml', 'ml-returns', 'magalu', 'nf-nomes', 'nf-pessoa',
-    'defeitos-ciclo', 'render-tokens', 'supabase', 'auth', 'compat',
+    'render-tokens', 'supabase', 'auth', 'compat',
     'rotas-admin', 'identificar', 'admin-helpers', 'shopee', 'triagem',
     'espreita', 'recados', 'checkout', 'nf-devolucao', 'utils',
   ]);
