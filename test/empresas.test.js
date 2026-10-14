@@ -212,6 +212,13 @@ if (guardaKey) process.env.SUPABASE_KEY = guardaKey; else delete process.env.SUP
   const g = E.obterEmpresa('girassol'); const marcaG = g.marca; g.marca = null;
   const c2 = E.conferirEmpresa('girassol'); g.marca = marcaG;
   ok(c2.avisos.some((a) => /logo da AMB/.test(a)), '⚠️ empresa sem marca: o conferidor avisa que vai sair o logo da AMB');
+  // Codex #494: ficha PARCIAL (tema vazio / marca so com icone) tambem avisa
+  const temaG = g.tema; const marcaG2 = g.marca;
+  g.tema = {}; g.marca = { icone: marcaG2.icone };
+  const c3 = E.conferirEmpresa('girassol'); g.tema = temaG; g.marca = marcaG2;
+  ok(c3.avisos.some((a) => /tema\.marca\b/.test(a)) && c3.avisos.some((a) => /tema\.themeColor/.test(a)), '⚠️ tema vazio: avisa cada cor ausente');
+  ok(c3.avisos.some((a) => /marca\.logo/.test(a)) && !c3.avisos.some((a) => /marca\.icone\b/.test(a)), '⚠️ marca so com icone: avisa o logo ausente');
+  ok(E.conferirEmpresa('girassol').avisos.length === 0, '  e a ficha restaurada volta a zero avisos');
 }
 console.log('');
 console.log(falhas === 0 ? '--- registro: ok' : '--- registro: ' + falhas + ' FALHA(S)');
