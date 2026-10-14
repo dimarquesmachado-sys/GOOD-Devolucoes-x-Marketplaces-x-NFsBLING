@@ -64,7 +64,7 @@ axios.post = async (url, corpo, opts) => { pedidos.push({ url, params: opts && o
   const est = await R.estadoPorteiro(); axios.get = axiosGet;
   ok(est && est.conta === 'ambtotal' && est.por_servico.devolucoes.permitidas === 3, '⚠️ a empresa le o estado do porteiro DA CONTA dela (quem consome a cota)');
   const fs = require('fs'); const A = fs.readFileSync(path.join(__dirname, '..', 'amb-devolucoes', 'lib-AMB', 'bling-AMB.js'), 'utf8');
-  ok(/contaPorteiro: CHAVE_TOKEN,/.test(A) && (A.match(/ritmo\.avisar429\([^\n]*opcoes\.fundo \? 'fundo' : 'operacao'\)/g) || []).length === 4, '⚠️ o Bling da AMB/Girassol liga o porteiro da conta dela e avisa os 4 429 com a origem');
+  ok(/contaPorteiro: CHAVE_TOKEN,/.test(A) && (A.match(/ritmo\.avisar429\([^\n]*opcoes\.fundo \? 'fundo' : 'operacao'(, _ficha)?\)/g) || []).length === 4, '⚠️ o Bling da AMB/Girassol liga o porteiro da conta dela e avisa os 4 429 com a origem');
   console.log('');
   console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
   process.exit(falhas ? 1 : 0);

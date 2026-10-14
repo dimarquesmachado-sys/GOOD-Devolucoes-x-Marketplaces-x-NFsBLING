@@ -988,9 +988,9 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
                       // liberava a chamada — e ela ja tinha saido pro Bling. Numa
                       // pausa de 429 (ate 15s), isso vira trafego orfao consumindo
                       // a cota justamente quando ela esta mais apertada.
-                      await aguardarVezBling();
+                      const fichaVez = await aguardarVezBling();
                       if (desistiu.agora) return { _tarde: true };   // nem sai
-                      return buscarNFePorId(c.id, { semRitmo: true });
+                      return buscarNFePorId(c.id, { semRitmo: true, ficha: fichaVez });   // 14/10 (Codex): a ficha segue pros avisos
                     })().then((r) => (desistiu.agora ? { _tarde: true } : r)),
                     new Promise((ok) => setTimeout(() => { desistiu.agora = true; ok({ _timeout: true }); }, 5000)),
                   ]);

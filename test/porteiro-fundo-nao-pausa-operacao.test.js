@@ -51,7 +51,7 @@ const porteiro = require('../lib/ritmo-porteiro');
     const src = fs.readFileSync(path.join(__dirname, '..', 'lib', 'bling.js'), 'utf8');
     const semCom = src.split('\n').filter((l) => !l.trim().startsWith('//')).join('\n');
     const chamadas = (semCom.match(/porteiroRitmo\.avisar429\(/g) || []).length;
-    const comPri = (semCom.match(/avisar429\([^\n]*'fundo' : 'operacao'\)/g) || []).length;
+    const comPri = (semCom.match(/avisar429\([^\n]*'fundo' : 'operacao'(, _ficha)?\)/g) || []).length;   // 14/10: + a ficha da vez
     ok(chamadas >= 2 && chamadas === comPri,
        `⚠️ TODOS os avisar429 do bling.js mandam quem tomou (${comPri}/${chamadas})`);
     ok(!/avisar429\([^)]*: 60\)/.test(semCom),
