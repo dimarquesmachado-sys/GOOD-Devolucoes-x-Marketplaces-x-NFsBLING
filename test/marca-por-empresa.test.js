@@ -3,7 +3,7 @@
 const fs = require('fs'); const path = require('path');
 let falhas = 0;
 const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o); };
-const { criarMarca } = require('../amb-devolucoes/lib-AMB/marca-AMB.js');
+const { criarMarca } = require('../lib/marca-empresa.js');
 const { obterEmpresa } = require('../lib/empresas.js');
 const PUB = path.join(__dirname, '..', 'amb-devolucoes', 'public-AMB');
 const triagem = fs.readFileSync(path.join(PUB, 'index-AMB.html'), 'utf8');
