@@ -654,7 +654,7 @@ const registrarCicloDefeitos = require('./lib-AMB/defeitos-ciclo-AMB');
 // checado ANTES de entrar na fila da empresa — nao antes de sair, entao um
 // candidato ja desistido ainda batia no Bling depois de esperar numa pausa
 // de 429. Ver bling-AMB.js, nf-nomes-AMB.js e identificar-AMB.js.
-const VERSAO = 'AMB Devolucoes b618';
+const VERSAO = 'AMB Devolucoes b619';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -1350,6 +1350,14 @@ router.get('/manifest-AMB.json', (req, res) => {
 // b406 - serve o base-amb.js JA COM a pasta do checkout desta empresa (ficha
 // resolvida no boot). Registrada antes do static abaixo pra ter prioridade
 // no mesmo nome de arquivo.
+// 14/10 - o modal Lancar defeito do PAINEL e o mesmo modulo da GOOD (public/js/lancar-defeito.js), servido daqui pra
+// Girassol/AMB sem copia: o painel instala com o prefixo da empresa (APP_BASE). A ficha unica oferece o botao quando o
+// modulo esta instalado.
+const LANCAR_DEFEITO_JS = path.join(__dirname, '..', 'public', 'js', 'lancar-defeito.js');
+router.get('/js-AMB/lancar-defeito.js', (req, res) => {
+  res.set('Cache-Control', 'no-cache, must-revalidate');
+  res.type('application/javascript').sendFile(LANCAR_DEFEITO_JS);
+});
 router.get('/js-AMB/base-amb.js', (req, res) => {
   res.set('Cache-Control', 'no-cache, must-revalidate');   // mesma licao do b19
   res.type('application/javascript').send(BASE_AMB_JS);

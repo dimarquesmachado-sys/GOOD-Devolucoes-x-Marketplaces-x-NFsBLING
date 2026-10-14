@@ -1,3 +1,4 @@
+// 14/10 - FICHA DE DEFEITOS UNICA (Girassol, AMB e as proximas): juncao das duas copias pelo ancestral comum (05/08).
 // ════════════════════════════════════════════════════════════════════════
 //  defeitos-ficha.js  (AMB Devol. b97)
 //  ------------------------------------------------------------------
@@ -28,6 +29,14 @@
   // tambem usa aspas duplas, entao o atributo quebrava e o clique no lapis
   // nao chamava nada. Agora o botao passa so o id e a funcao le daqui.
   var fichaAberta = null;
+  // v4.9x (review do Codex) - o id do card cuja ficha esta expandida INLINE
+  // agora, e o botao daquele card. So UMA por vez: o estado da ficha
+  // (fichaAberta, e ids como edLaudo/blocoHist dentro do html dela) e
+  // GLOBAL, entao abrir uma segunda sem fechar a primeira faz as duas
+  // compartilharem ids duplicados na pagina e a edicao de uma vazar pra
+  // outra.
+  var fichaInlineId = null;
+  var fichaBotaoAtual = null;
   // b127 - a prateleira que esta sendo olhada: com defeito, recuperados ou
   // descartados. Sem isso a peca ja resolvida ficava no meio das outras e
   // o estoquista nao sabia em qual mexer.
@@ -51,6 +60,17 @@
   // tela aberta: se a requisicao demora e o operador fecha o card ou volta,
   // o refresh reabria a ficha antiga por cima do que ele estava fazendo.
   function fichaAindaAberta(id) {
+    return !!(atual && atual.tipo === 'ficha' && String(atual.arg) === String(id));
+  }
+
+  // v4.88 (review do Codex) - a ficha so se recarrega se ELA ainda for a
+  // tela aberta: se a requisicao demora e o operador fecha o card ou volta,
+  // o refresh reabria a ficha antiga por cima do que ele estava fazendo.
+  // v4.9x - com a ficha expandida INLINE, `atual` nem sempre aponta pra ela
+  // (a expansao no card nao empilha navegacao - a tela de baixo continua
+  // sendo a busca). Quando ha uma expandida, e ELA quem decide.
+  function fichaAindaAberta(id) {
+    if (fichaInlineId != null) return String(fichaInlineId) === String(id);
     return !!(atual && atual.tipo === 'ficha' && String(atual.arg) === String(id));
   }
 
@@ -191,10 +211,32 @@
       var r = await api('/api/defeitos/' + encodeURIComponent(id) + '/excluir',
         { method: 'POST', body: JSON.stringify({ motivo: motivo }) });
       if (r && r.ok) {
-        // b206 - abre JA na aba dos excluidos: ele reclamou que excluiu e
-        // "nao achei uma abinha dos excluidos" — agora a tela leva ate ela.
-        abaAtual = 'excluido';
-        if (typeof abrirBuscaDefeitos === 'function') abrirBuscaDefeitos();
+        // b314 - ⚠️ FICA NA MESMA ABA. Nao joga pros Excluidos.
+        //
+        // [stated 13/09] "o melhor era só excluir sumir o card e manter na
+        // tela dos defeitos, e não jogar a gente pro card dos excluídos. se
+        // excluí, quero tirar da frente. me deixa na mesma tela."
+        //
+        // O `abaAtual = excluido` levava pra outra aba — e quem esta limpando
+        // varios registros perde o lugar a cada exclusao, e tem que voltar e
+        // rolar de novo.
+        //
+        // 📌 O card some sozinho: a lista recarrega e o filtro da b310 esconde
+        // quem tem a marca. Nao preciso remover na mao.
+        //
+        // revisao Codex #270 (P1) - `abrirBuscaDefeitos()` sem termo
+        // RECONSTROI o modal inteiro: zera o campo #defBusca (perde a busca
+        // digitada), empilha uma entrada nova de navegacao e some com a
+        // rolagem — o mesmo "perder o lugar" que este ponto quer evitar,
+        // so que pela busca em vez da aba. Quando a ficha esta expandida
+        // INLINE (excluir de dentro da lista, o caso comum de "limpar
+        // varios"), chamo buscarDefeitos() direto: so re-renderiza #defLista
+        // com o MESMO termo e aba, sem tocar no resto da tela. Fora da
+        // lista (ficha em tela cheia, ex: veio de "foi para a peça #4") nao
+        // ha lista pra atualizar - ai sim volta pra busca.
+        var _eraInline = fichaInlineId != null && String(fichaInlineId) === String(id);
+        if (_eraInline && typeof buscarDefeitos === 'function') buscarDefeitos();
+        else if (typeof abrirBuscaDefeitos === 'function') abrirBuscaDefeitos();
       } else if (msg) {
         msg.innerHTML = '<span style="color:#8C1D18;">' + esc((r && r.erro) || 'não consegui excluir') + '</span>';
       }
@@ -218,6 +260,29 @@
   function caixa() {
     var d = document.getElementById('caixaDefeitos');
     if (d) return d;
+    // b309 - ⚠️ O ESTILO DO CARD ABERTO, injetado uma vez.
+    //
+    // [stated 13/09] "A borda pode ser um pouco mais forte e evidente que a
+    // dos demais cards, mas sem ficar exagerada."
+    //
+    // Fica no <style> e nao em concatenacao de string: assim eu ligo e
+    // desligo trocando UMA classe, sem remontar a lista — e sem risco de
+    // errar aspas no meio do HTML (o que ja derrubou a lista 2x hoje).
+    if (!document.getElementById('estiloCardDefeito')) {
+      var st = document.createElement('style');
+      st.id = 'estiloCardDefeito';
+      st.textContent = '.cardDefeito{transition:border-color .15s,box-shadow .15s;}'
+        + '.cardDefeito.aberto{'
+        // borda inteira, no mesmo vermelho da lateral (que ja e a cor de
+        // defeito na tela) — evidente sem virar alarme
+        + 'border:2px solid #9E1A1A !important;'
+        + 'border-left:5px solid #9E1A1A !important;'
+        // a sombra suave separa do fundo branco quando ha varios cards
+        + 'box-shadow:0 2px 10px rgba(158,26,26,.18);'
+        + '}';
+      document.head.appendChild(st);
+    }
+
     d = document.createElement('div');
     d.id = 'caixaDefeitos';
     d.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:2000;'
@@ -228,7 +293,37 @@
     document.body.appendChild(d);
     return d;
   }
-  function abrir(html) {
+  // b301 - ⚠️ `abrir()` aceita um DESTINO alternativo.
+  //
+  // [stated 11/09] "quando eu clico pra abrir um defeito, ele avanca o card
+  // e sai da tela com todos defeitos (...) tem como (...) so abrir embaixo?"
+  //
+  // Antes ele sempre trocava a caixa INTEIRA, e o voltar recarregava a
+  // lista geral — perdendo a busca digitada e a rolagem. Quem esta triando
+  // 10 pecas refaz o caminho 10 vezes.
+  //
+  // Com um `destino` apontado, o MESMO html da ficha vai pro container
+  // dentro do card. ⚠️ Reaproveito a montagem existente em vez de escrever
+  // uma segunda: dois HTMLs da mesma coisa garante que um fique pra tras.
+  //
+  // v4.9x (review do Codex) - o destino ERA uma variavel global zerada no
+  // `finally` do primeiro carregamento (`expandirFichaNoCard`). Qualquer
+  // recarga POSTERIOR da mesma ficha (retirar peca, corrigir laudo, excluir
+  // comentario) achava o destino ja nulo e caia no modal de tela cheia,
+  // desfazendo a expansao que acabara de abrir. Agora quem chama `abrir`
+  // decide o destino NA HORA (`abrirFichaDefeito` calcula a partir de
+  // `fichaInlineId`, que so muda quando o card e explicitamente
+  // aberto/fechado) — sem depender de uma variavel que uma chamada anterior
+  // podia ter zerado.
+  function abrir(html, destino) {
+    if (destino) {
+      const alvo = document.getElementById(destino);
+      if (alvo) {
+        alvo.innerHTML = '<div style="border-top:1px solid #eee;margin-top:10px;'
+          + 'padding-top:10px;">' + html + '</div>';
+        return;
+      }
+    }
     var d = caixa();
     document.getElementById('caixaDefeitosCorpo').innerHTML = html;
     d.style.display = 'flex';
@@ -239,6 +334,17 @@
     selecionados = {};
     pilha = [];
     atual = null;
+    fichaInlineId = null;
+    fichaBotaoAtual = null;
+    // b323 (Codex, P2) - ⚠️ FECHAR NAO CANCELAVA A VARREDURA DE FOTOS.
+    //
+    // `fechar()` so escondia a caixa; nao tocava em `_fotoToken` nem tirava
+    // os cards do DOM. A varredura de `buscarFotosDefeitos` (mais abaixo)
+    // continuava pedindo foto por ate 12 rodadas de uma lista que o dono ja
+    // fechou. Incrementar aqui usa o MESMO mecanismo de cancelamento que ja
+    // existe pra "outra busca comecou" — a rodada em andamento desiste na
+    // proxima checagem.
+    _fotoToken++;
   }
   window.fecharCaixaDefeitos = fechar;
 
@@ -396,6 +502,13 @@
     // com defeito).
     var meuToken = (window._buscaDefToken = (window._buscaDefToken || 0) + 1);
     var minhaAba = abaAtual;
+    // v4.9x (review do Codex) - a lista vai ser REFEITA: qualquer ficha
+    // expandida inline pertence a um card que esta prestes a sumir. Sem
+    // isso, `fichaInlineId` continuava apontando pro id antigo e o PROXIMO
+    // clique em "Abrir dados da peça" (num card novo, fechado) achava que
+    // ja havia uma aberta e se comportava como se fosse fechar/repintar.
+    fichaInlineId = null;
+    fichaBotaoAtual = null;
     el.innerHTML = '<div style="color:#888;font-size:13px;">procurando...</div>';
     try {
       var d = await api('/api/defeitos/lista?q=' + encodeURIComponent(q.trim())
@@ -403,9 +516,140 @@
       if (meuToken !== window._buscaDefToken) return;   // b209 - chegou tarde
       var itens = d.itens || [];
       pintarAbas(d.contagem || {});
+      // b303 - ⚠️ (apontamento do Codex #260) PRECISA VIVER AQUI FORA.
+      //
+      // Estava declarado com `var` DENTRO do `if (!d.ok || !itens.length)`
+      // logo abaixo. `var` e funcao-scoped, entao o nome existia no resto da
+      // funcao (inclusive no ramo "achou resultado", b302) — mas so GANHAVA
+      // VALOR quando aquele if executava. Como os dois ramos sao mutuamente
+      // exclusivos (o if termina em `return`), no ramo "achou resultado"
+      // `termoBusca` ficava `undefined` pra sempre: `podeLancarOutra`
+      // (b302) nunca era verdadeiro, e o botao "Lançar OUTRA peça" —
+      // construido EXATAMENTE pro caso "SKU com resultado" — nunca aparecia.
+      // O proprio caso que motivou o b302 nao era resolvido por ele.
+      var termoBusca = String(q || '').trim();
       if (!d.ok || !itens.length) {
-        el.innerHTML = '<div style="color:#888;font-size:13px;">nada encontrado'
-          + (d.erro ? ' (' + esc(d.erro) + ')' : '') + '.</div>';
+        // b283 - ⚠️ "NADA ENCONTRADO" NAO PODE SER BECO SEM SAIDA.
+        //
+        // CASO REAL (11/09): o dono foi LANCAR um defeito do SKU LV-ASH-4.
+        // Buscou aqui, leu "nada encontrado" — que estava CERTO, nao ha
+        // defeito desse SKU — e o caminho morria. Ele teria que fechar,
+        // abrir "Lancar Defeito" e digitar o SKU de novo.
+        //
+        // A tela SABIA o SKU e nao oferecia nada. Quem busca um SKU sem
+        // defeito quase sempre quer lancar um.
+        // b288 - ⚠️ O BOTAO SO NASCE ONDE O LANCADOR EXISTE.
+        //
+        // Apontamento do Codex no #238: este arquivo e carregado tanto pela
+        // TRIAGEM (index.html, que declara e expoe `window.abrirModalDefeito`)
+        // quanto pelo PAINEL ADMIN (painel-devolucoes.html, que NAO tem essa
+        // funcao nem o modal). Antes o botao "➕ Lançar defeito" aparecia nas
+        // duas telas e, no painel admin, o clique SEMPRE ca[i]a no catch —
+        // um CTA morto por design.
+        //
+        // Confiro a disponibilidade AQUI, antes de montar o HTML, e so
+        // ofereco o botao onde ele de fato funciona. Isso bate com o
+        // proprio proposito do arquivo (comentario do topo): "monta o
+        // proprio HTML e nao depende de nada estar na pagina".
+        var lancadorDisponivel = termoBusca && !d.erro
+          && typeof window.abrirModalDefeito === 'function';
+
+        // b288 - ⚠️ NO PAINEL, O BOTAO LEVA PRA TRIAGEM EM VEZ DE SUMIR.
+        //
+        // CASO REAL (11/09): o dono buscou LV-ASH-4 e o botao SUMIU. Estava
+        // certo — ele estava no `painel-devolucoes.html`, que nao tem o
+        // modal de lançamento. Mas sumir nao o ajuda: ele quer lançar o
+        // defeito, e a tela sabe o SKU.
+        //
+        // ⚠️ E EU PASSEI 5 RODADAS assumindo que ele estava na TRIAGEM, sem
+        // perguntar de qual tela. A URL estava no print desde o comeco.
+        //
+        // Aqui o botao vira LINK pra triagem, levando o SKU na querystring.
+        // Caminho mais longo que o modal, mas e um caminho — e o dono nao
+        // fica sem saida.
+        var semLancadorAqui = termoBusca && !d.erro && !lancadorDisponivel;
+        // b285 - ⚠️ UMA FRASE SO, E QUE NAO PARECA FALHA.
+        //
+        // [stated] "ta dizendo nao encontrado o SKU, erro ai seu d novo"
+        //
+        // A tela dizia "nada encontrado." e LOGO ABAIXO "Esse SKU ainda nao
+        // tem defeito registrado" — duas frases pro mesmo fato, e a
+        // primeira soa como BUSCA QUEBRADA. O dono leu como erro meu.
+        //
+        // Agora: com termo buscado, a frase diz o que de fato aconteceu
+        // (esse SKU nao tem defeito) em vez do generico "nada encontrado".
+        // Sem termo, ou com erro, mantem o texto neutro.
+        el.innerHTML = (d.erro
+            ? '<div style="color:#b00;font-size:13px;">⚠️ a busca falhou ('
+              + esc(d.erro) + ') — tente de novo.</div>'
+            : (String(q || '').trim()
+              ? '<div style="color:#555;font-size:14px;">Nenhum defeito registrado para '
+                + '<b>' + esc(String(q).trim()) + '</b>.</div>'
+              : '<div style="color:#888;font-size:13px;">nada encontrado.</div>'))
+          + (lancadorDisponivel
+            ? '<div style="margin-top:10px;">'
+              + '<button class="btn" id="btnLancarDoVazio" style="padding:10px 14px;">'
+              + '➕ Lançar defeito para <b>' + esc(termoBusca) + '</b></button>'
+              + '<div style="font-size:12px;color:#888;margin-top:6px;">'
+              + 'Abre o lançamento já com esse SKU.</div></div>'
+            : '')
+          + (semLancadorAqui
+            ? '<div style="margin-top:10px;">'
+              + '<a class="btn" style="padding:10px 14px; display:inline-block;'
+              + ' text-decoration:none;" href="/index.html?lancarDefeito='
+              + encodeURIComponent(termoBusca) + '">'
+              + '➕ Lançar defeito para <b>' + esc(termoBusca) + '</b></a>'
+              + '<div style="font-size:12px;color:#888;margin-top:6px;">'
+              + 'Abre a tela de Triagem, que é onde o lançamento acontece.</div></div>'
+            : '');
+
+        // b286 - ⚠️ EVENTO LIGADO NO CODIGO, NAO `onclick` EM TEXTO.
+        //
+        // O botao anterior montava o codigo dentro de `onclick="..."`. O
+        // HTML saia certo (testei o gerado com `new Function`), mas o dono
+        // clicava, o card sumia e o modal nao abria — TRES vezes seguidas,
+        // inclusive depois de Ctrl+F5 com a mensagem nova ja na tela.
+        //
+        // Com `onclick` em texto, qualquer erro dentro da funcao vira um
+        // silencio: a caixa ja fechou e nao sobra nada na tela. Ligando
+        // aqui eu ENXERGO o erro e mostro pro dono, em vez de ele ficar
+        // olhando tela vazia e me avisar de novo.
+        //
+        // ⚠️ E ABRO O MODAL ANTES DE FECHAR A CAIXA: na ordem anterior, se
+        // o modal falhasse, a caixa ja estava fechada. Assim, se algo der
+        // errado, ele continua vendo a lista de onde veio.
+        if (lancadorDisponivel) {
+          const btn = document.getElementById('btnLancarDoVazio');
+          // b287 - ⚠️ POR `window.`, PORQUE ESTE ARQUIVO E UMA IIFE.
+          //
+          // Este arquivo inteiro vive dentro de `(function () { ... })()`
+          // (linha 18), e `abrirModalDefeito` mora num `<script>` inline do
+          // index.html. `window.abrirModalDefeito` alcanca de qualquer
+          // escopo — e por isso que o `fecharCaixaDefeitos` funcionava: ele
+          // e exposto com `window.fecharCaixaDefeitos = fechar`.
+          if (btn) btn.onclick = function () {
+            try {
+              // b288 - o `if` acima ja garantiu que o lancador existe nesta
+              // tela; o `typeof` aqui e so pra nao chamar algo que sumiu
+              // do window entre o render e o clique.
+              const abrir = window.abrirModalDefeito;
+              if (typeof abrir !== 'function') {
+                throw new Error('a tela de lançamento não está disponível agora');
+              }
+              abrir(termoBusca);
+              // so fecha DEPOIS que o modal abriu
+              if (typeof window.fecharCaixaDefeitos === 'function') window.fecharCaixaDefeitos();
+            } catch (err) {
+              // ⚠️ o erro vai pra TELA, nao so pro console: o dono estava
+              // vendo tela vazia e tendo que me avisar
+              btn.insertAdjacentHTML('afterend',
+                '<div style="margin-top:8px;color:#b00;font-size:13px;">'
+                + '⚠️ nao consegui abrir o lançamento: ' + esc(err.message)
+                + '<br>Usa o botao "➕ Lançar Defeito" no topo da tela.</div>');
+              console.error('[DEFEITOS] abrir lancamento falhou:', err);
+            }
+          };
+        }
         return;
       }
       var aviso = d.via_ean
@@ -424,16 +668,45 @@
           : (it.situacao === 'descartado'
               ? '<span style="background:#eee;color:#555;border-radius:5px;padding:2px 8px;font-size:11.5px;font-weight:700;">DESCARTADA</span>'
               : '');
-        // b289 (pedido dele, 19/08: "para ver os detalhes, eu clico, muda a
-        // paginacao. tenta fazer de abrir embaixo, sem trocar a pagina do
-        // card... melhor ainda, se puder so abrir expandir ao inves de piscar
-        // o card e abrir numa telinha nova") - o clique no CARD agora EXPANDE
-        // os detalhes logo abaixo, mantendo a lista na frente; quem quer a
-        // tela cheia (com as acoes) usa o botao "📂 Abrir dados da peça".
-        return '<div style="margin-bottom:7px;">'
-          + '<div onclick="alternarDetalheDefeito(\'' + esc(it.id) + '\')" '
+        // v4.9x (review do Codex) - o onclick que abre a ficha envolvia o
+        // CARD INTEIRO, inclusive a area onde a ficha expande. Sem parar a
+        // propagacao, qualquer clique dentro da ficha aberta (focar um
+        // campo, um botao de acao) borbulhava ate aqui e reabria a ficha
+        // cheia por cima, descartando o contexto que a expansao inline
+        // existe pra preservar. Agora o onclick fica so na linha
+        // foto+resumo (o que de fato deve abrir a ficha); a area da ficha
+        // expandida vive FORA dela, como irma, entao clique nela nunca
+        // borbulha pra este onclick.
+        // b309 - ⚠️ O CARD ABERTO GANHA BORDA INTEIRA.
+        //
+        // [stated 13/09] "quero que todo o card correspondente fique
+        // destacado com uma borda ao redor do retângulo inteiro, e não apenas
+        // com o destaque na lateral esquerda (...) Isso vai facilitar bastante
+        // a leitura quando houver vários produtos na mesma tela."
+        //
+        // Com a ficha expandindo DENTRO do card, sem isso nao da pra saber a
+        // qual produto pertencem as informacoes abaixo — ainda mais com varios
+        // defeitos na tela.
+        //
+        // A classe `cardDefeito` e o id deixam o destaque ser ligado/desligado
+        // sem remontar a lista. O estilo forte vive no <style> (b309), pra nao
+        // ficar costurado em concatenacao de string.
+        return '<div class="cardDefeito" id="card-' + esc(it.id) + '" '
           + 'style="border:1px solid #eee;border-left:4px solid #9E1A1A;border-radius:9px;padding:10px 12px;'
-          + 'cursor:pointer;display:flex;gap:12px;align-items:flex-start;">'
+          + 'margin-bottom:7px;">'
+          // b308 - ⚠️ UM CAMINHO SO: o clique no card TAMBEM expande.
+          //
+          // [stated 13/09] "tá rolando esses 2 modos de entrar, um qdo
+          // clico em abrir detalhes, e outro qdo clico fora, mas ainda em
+          // cima do defeito, que muda a tela do card (...) o ideal é eu
+          // clicar pra abrir detalhes, já ver e resolver tudo ali"
+          //
+          // O clique no card chamava `abrirFichaDefeito`, que TROCA a tela
+          // — e so nela aparecia o botao de excluir. Entao havia duas
+          // fichas diferentes pro mesmo defeito, com botoes diferentes, e o
+          // dono caia numa ou na outra sem saber por que.
+          + '<div onclick="expandirFichaNoCard(\'' + esc(it.id) + '\')" '
+          + 'style="cursor:pointer;display:flex;gap:12px;align-items:flex-start;">'
           + '<div id="fotodef-' + i + '" data-sku="' + esc(sku) + '" '
           + 'style="width:84px;height:84px;flex:0 0 auto;border-radius:9px;background:#f2f2f7;'
           + 'border:1px solid #e4dcf1;display:flex;align-items:center;justify-content:center;font-size:26px;color:#bbb;">📦</div>'
@@ -457,19 +730,104 @@
           // ja abria a ficha, mas nada dizia isso. Agora tem BOTAO explicito;
           // o clique no card continua funcionando pra quem ja conhece.
           + '<div style="margin-top:8px;">'
-          + '<button type="button" onclick="event.stopPropagation();abrirFichaDefeito(\'' + esc(it.id) + '\')" '
+          + '<button type="button" onclick="event.stopPropagation();expandirFichaNoCard(\'' + esc(it.id) + '\', this)" '
           + 'style="background:var(--marca);color:var(--sobre-marca);border:none;border-radius:8px;padding:8px 15px;'
-          + 'font-size:13px;font-weight:700;cursor:pointer;">📂 Abrir dados da peça</button>'
-          // b289 - o segundo botao deixa claro que o card abre aqui mesmo
-          + '<button type="button" onclick="event.stopPropagation();alternarDetalheDefeito(\'' + esc(it.id) + '\')" '
-          + 'style="margin-left:7px;background:#fff;color:var(--marca-texto);border:1.5px solid var(--marca);border-radius:8px;'
-          + 'padding:8px 13px;font-size:13px;font-weight:700;cursor:pointer;">👁 Ver aqui</button></div>'
-          + '</div></div>'
-          // b289 - onde o detalhe abre, logo abaixo do card e dentro da lista
-          + '<div id="detdef-' + esc(it.id) + '" style="display:none;"></div>'
+          + 'font-size:13px;font-weight:700;cursor:pointer;">📂 Abrir dados da peça</button></div>'
+          + '</div>'
+          + '</div>'
+          // b301 - ⚠️ a ficha abre AQUI, embaixo do card.
+          //
+          // [stated 11/09] "quando eu clico pra abrir um defeito, ele avanca
+          // o card e sai da tela com todos defeitos (...) tem como ao inves
+          // de avancar pra um tipo de outro card, so abrir embaixo?"
+          //
+          // Antes a ficha SUBSTITUIA a lista inteira, e o voltar trazia de
+          // volta a lista GERAL — perdendo a busca e a rolagem. Agora ela
+          // expande no proprio card: o estoquista nao perde o contexto.
+          //
+          // v4.9x (review do Codex) - dois bugs aqui: (1) o id era montado
+          // com `+ esc(x.id) +` DENTRO de uma string de aspas simples — isso
+          // nao concatena nada, vira o texto LITERAL `id="ficha-" +
+          // esc(x.id) + ""` no HTML, entao nenhum elemento tinha o id que
+          // `expandirFichaNoCard` procura. (2) `x` nao existe neste escopo
+          // (o parametro do map e `it`) — na triagem, onde nao ha `x`
+          // global nenhum, isso jogava um ReferenceError que o catch de
+          // fora pegava e trocava a lista inteira por "erro ao buscar".
+          // (3) este container vivia DENTRO da linha `display:flex` de
+          // foto+resumo; expandido, ele entrava na mesma fileira horizontal
+          // em vez de abrir embaixo. Agora ele e irmao dessa linha, dentro
+          // do card (que nao e mais flex), abrindo abaixo em largura cheia.
+          + '<div class="fichaNoCard" id="ficha-' + esc(it.id) + '" style="display:none;"></div>'
           + '</div>';
       }).join('');
-      buscarFotosDefeitos(itens);
+
+      // b302 - ⚠️ LANÇAR OUTRA PECA DO MESMO SKU, MESMO COM RESULTADO.
+      //
+      // [stated 11/09] "esse eu inseri o defeito aquela hora, salvou tudo
+      // OK! (...) eu tenho outro produto desse no estoque LV-ASH-4 e tenho q
+      // adicionar uma segunda peça com defeito. Nao aparece o botao"
+      //
+      // ⚠️ O BOTAO SO EXISTIA NO CAMINHO DO VAZIO. Mas ter um defeito
+      // registrado NAO IMPEDE ter outro — sao PECAS FISICAS diferentes, e no
+      // galpao isso e comum: chega uma segunda unidade quebrada do mesmo
+      // produto.
+      //
+      // O jeito antigo obrigava a fechar a caixa, abrir "Lançar Defeito" no
+      // topo e digitar o SKU de novo — que e exatamente o atalho que a gente
+      // veio construir.
+      //
+      // 📌 Uso `window.abrirModalDefeito` porque este arquivo e uma IIFE (a
+      // licao da b287), e so mostro onde o modal EXISTE (a b287.1: no painel
+      // admin nao existe).
+      //
+      // b303 - ⚠️ (apontamento do Codex #260) `termoBusca` NAO E SEMPRE UM
+      // SKU. `/api/defeitos/lista` (lib/defeitos-ciclo.js) tambem acha por
+      // numero da peca ("peça 4"), NF ou localizacao — nesses casos o termo
+      // digitado nao existe como SKU, e `/api/produtos/buscar` (que o modal
+      // usa pra procurar o produto) so busca por SKU/EAN/nome. Passar o
+      // termo bruto podia abrir o modal buscando algo que nao e produto
+      // nenhum. Uso o SKU DE FATO retornado nos itens, e so ofereco o atalho
+      // quando todos os itens achados sao do MESMO SKU — com termo ambiguo
+      // (varios SKUs na lista) nao da pra saber qual e "a mesma peça".
+      var skusAchados = itens.reduce(function (acc, it) {
+        if (it.sku && acc.indexOf(it.sku) === -1) acc.push(it.sku);
+        return acc;
+      }, []);
+      var skuLancarOutra = skusAchados.length === 1 ? skusAchados[0] : null;
+      var podeLancarOutra = skuLancarOutra
+        && typeof window.abrirModalDefeito === 'function';
+      if (podeLancarOutra) {
+        el.innerHTML += '<div style="margin-top:14px;padding-top:12px;'
+          + 'border-top:1px solid #eee;">'
+          + '<button type="button" id="btnLancarOutra" class="btn" '
+          + 'style="padding:10px 14px;">'
+          + '➕ Lançar OUTRA peça de <b>' + esc(skuLancarOutra) + '</b></button>'
+          + '<div style="font-size:12px;color:#888;margin-top:6px;">'
+          + 'Chegou mais uma unidade com defeito? Cada peça é um registro.'
+          + '</div></div>';
+        var btnOutra = document.getElementById('btnLancarOutra');
+        if (btnOutra) btnOutra.onclick = function () {
+          try {
+            window.abrirModalDefeito(skuLancarOutra);
+            // b303 - ⚠️ (apontamento do Codex #260) SO FECHA A CAIXA DEPOIS
+            // DE ABRIR O MODAL, E POR ISSO PRECISA FECHAR. `#caixaDefeitos`
+            // (esta busca) tem z-index 2000 de proposito, pra ficar por cima
+            // de tudo enquanto o dono busca; `#modalDefeito` tem z-index
+            // 1000. Sem fechar a caixa, o modal abre por TRAS dela — visualmente
+            // identico a nao ter feito nada. Mesma ordem do btnLancarDoVazio
+            // (b286, linhas acima): abre primeiro, fecha so se abriu.
+            if (typeof window.fecharCaixaDefeitos === 'function') window.fecharCaixaDefeitos();
+          } catch (err) {
+            // ⚠️ o erro vai pra TELA: o dono ficou 3 rodadas olhando tela
+            // vazia quando isto falhou silenciosamente (b286)
+            btnOutra.insertAdjacentHTML('afterend',
+              '<div style="margin-top:8px;color:#b00;font-size:13px;">'
+              + '⚠️ nao consegui abrir: ' + esc(err.message) + '</div>');
+            console.error('[DEFEITOS] lançar outra falhou:', err);
+          }
+        };
+      }
+      buscarFotosDefeitos(itens, el);
     } catch (e) {
       el.innerHTML = '<div style="color:#c62828;font-size:13px;">erro ao buscar</div>';
     }
@@ -481,21 +839,132 @@
    * segunda consulta do mesmo produto e instantanea. Uma de cada vez com
    * pausa: sao chamadas ao Bling.
    */
-  async function buscarFotosDefeitos(itens) {
-    for (var i = 0; i < itens.length && i < 12; i++) {
-      var cx = document.getElementById('fotodef-' + i);
-      if (!cx || !cx.dataset.sku || cx.dataset.sku === '-') continue;
-      try {
-        var d = await api('/api/produto/imagem/' + encodeURIComponent(cx.dataset.sku));
-        if (d && d.ok && d.imagem) {
-          cx.outerHTML = '<img src="' + esc(d.imagem) + '" alt="" '
-            + 'onclick="event.stopPropagation();window.open(this.src,\'_blank\')" '
-            + 'onerror="this.style.display=\'none\'" '
-            + 'style="width:84px;height:84px;flex:0 0 auto;border-radius:9px;object-fit:contain;'
-            + 'background:#fff;border:1px solid #e4dcf1;cursor:zoom-in;">';
-        }
-      } catch (e) { /* sem foto nao atrapalha */ }
-      await new Promise(function (r) { setTimeout(r, 140); });
+  // ⚠️ b321.1: numera cada varredura de fotos, pra uma nova cancelar a
+  // anterior (o dono fecha a caixa ou busca outra coisa no meio)
+  var _fotoToken = 0;
+
+  async function buscarFotosDefeitos(itens, listaEl) {
+    // b320 - ⚠️ O TETO DE 12 DEIXAVA 34 CARDS SEM PEDIR FOTO.
+    //
+    // [stated 13/09] "ainda sem imagens", com ~70% dos cards no
+    // placeholder. A lista tem 46 pecas e este laco parava no 12o — os
+    // outros 34 NUNCA chamavam a rota.
+    //
+    // 📌 E FOI O QUE ME ENGANOU O DIA TODO: os primeiros cards tinham foto
+    // (ja estavam no cache do servidor), entao parecia que a busca
+    // funcionava e o problema era o indice ou o Bling. Eu media o indice,
+    // media a rota — os dois certos — e nao olhava o LACO da tela.
+    //
+    // ⚠️ O teto existia porque cada foto era uma chamada ao BLING. Agora
+    // a rota resolve pelo INDICE LOCAL (b315), que nao gasta cota: da pra
+    // pedir todas. Mantenho um teto alto so pra nao disparar centenas de
+    // requisicoes de uma vez numa lista gigante.
+    var TETO_FOTOS = 60;
+    // revisao Codex #278 (P1): quando o item NAO esta no indice (frio ou
+    // sem `imagem`), a rota cai num fallback ao Bling com ate 4 chamadas
+    // SEM limite. Isso valia pro teto antigo de 12; abrir pra 60 sem
+    // limite podia gastar ~5x mais cota, disputando com a bipagem.
+    // Mantenho o orcamento de Bling nos primeiros 12 (igual antes) e peco
+    // `semBling=1` pro resto - eles so ganham foto se ja estiver no indice.
+    // b321 - ⚠️ UMA CONSULTA POR CARD ERA UMA CORRIDA.
+    //
+    // [stated 13/09] "algumas ainda sem aparecer" — depois de eu ter
+    // consertado o indice, o teto de 12 e a rota.
+    //
+    // ⚠️ DIAGNOSTICO DO CODEX, e ele achou o que me faltava: a tela pedia a
+    // foto UMA VEZ. Se o indice ainda nao tinha aquele produto, a rota
+    // avisava o worker — mas a resposta VAZIA ficava no card PRA SEMPRE.
+    // A foto chegava 2s depois e ninguem voltava pra buscar.
+    //
+    // Agora faz RODADAS: volta nos placeholders que faltam ate todos terem
+    // foto ou acabarem as tentativas. Todas com `semBling` — a rota so
+    // prioriza o worker serial, sem abrir chamada ao Bling por card.
+    // ⚠️ b321.1 (Codex, P2) - AS RODADAS PARAM SE A TELA FECHAR.
+    //
+    // Sao 12 rodadas x ate 60 cards. Se o dono fechar o modal ou fizer
+    // outra busca no meio, isto continuaria pedindo foto de uma lista que
+    // nao esta mais na tela — gastando requisicao e, pior, podendo pintar
+    // foto em card de OUTRA busca.
+    //
+    // Cada chamada do buscarFotosDefeitos ganha um numero; se outro comecar
+    // (ou a caixa fechar), o antigo desiste na proxima volta.
+    _fotoToken++;
+    var meuToken = _fotoToken;
+    var MAX_RODADAS = 12;
+    for (var rodada = 0; rodada < MAX_RODADAS; rodada++) {
+      // ⚠️ desisto se outra busca comecou ou a caixa fechou
+      if (meuToken !== _fotoToken) return;
+      // ⚠️ b323 (Codex #280, P1) - O SENTINELA ERA UM PLACEHOLDER QUE SOME
+      // AO DAR CERTO.
+      //
+      // O conserto anterior (b322) checava `fotodef-0` e `fotodef-1` pra
+      // saber se a lista ainda esta na tela. Mas quando a foto CHEGA,
+      // `cx.outerHTML` troca o placeholder por um `<img>` sem esse id — os
+      // dois primeiros cards com foto faziam este `if` dar verdadeiro (os
+      // dois sumiram) e abortar a varredura na 2a rodada, mesmo com o card
+      // 3 em diante ainda esperando foto.
+      //
+      // Uso `listaEl` (o `#defLista` desta busca) como sentinela: ele so
+      // sai do DOM quando a lista inteira e substituida (nova busca,
+      // ficha em tela cheia por cima) — nao quando UM card ganha foto.
+      // `fechar()` agora incrementa `_fotoToken` (b323, P2) pra cobrir o
+      // caso de o dono so fechar a caixa sem iniciar outra busca, ja que
+      // `listaEl` continua no DOM (so escondido) nesse caso.
+      if (!document.body.contains(listaEl)) return;
+      var faltando = 0;
+      for (var i = 0; i < itens.length && i < TETO_FOTOS; i++) {
+        // ⚠️ b321.3 (Codex, P2) - CONFERE DENTRO DA RODADA TAMBEM.
+        //
+        // A checagem so no inicio de cada rodada nao basta: se o dono fechar
+        // a caixa no MEIO, esta rodada ainda faria ate 60 pedidos seriais —
+        // e podia pintar foto em card de outra busca.
+        if (meuToken !== _fotoToken) return;
+        var cx = document.getElementById('fotodef-' + i);
+        if (!cx || !cx.dataset.sku || cx.dataset.sku === '-') continue;
+        faltando++;
+        try {
+          // ⚠️ b323 - OS PRIMEIROS VOLTAM A PODER USAR O BLING.
+          //
+          // [stated 13/09] "nenhuma imagem d novo".
+          //
+          // O dado que fechou: a MESMA chave responde
+          //   sem `semBling`  -> {"imagem":"https://lh3...","via":"indice"}
+          //   com `semBling`  -> {"imagem":null}
+          //
+          // A primeira veio do CACHE do servidor (populado quando o dono
+          // abriu a URL na mao). O indice em si NAO tem esse produto agora.
+          //
+          // ⚠️ E EU TINHA POSTO `semBling` EM TODOS OS CARDS. Com o indice
+          // frio — que e o estado logo apos cada deploy, e fizemos dezenas
+          // hoje — isso da ZERO foto. Antes, os 12 primeiros iam ao Bling e
+          // apareciam.
+          //
+          // 📌 Volto ao orcamento que sempre existiu: os 12 primeiros podem
+          // usar o Bling (e o que populam fica no cache, valendo pra todos
+          // dali em diante); do 13o em diante, `semBling`. As rodadas
+          // continuam pegando o que o worker for produzindo.
+          var semBling = (rodada > 0 || i >= 12) ? '?semBling=1' : '';
+          var d = await api('/api/produto/imagem/'
+            + encodeURIComponent(cx.dataset.sku) + semBling);
+          if (d && d.ok && d.imagem) {
+            cx.outerHTML = '<img src="' + esc(d.imagem) + '" alt="" '
+              + 'onclick="event.stopPropagation();window.open(this.src,\'_blank\')" '
+              + 'onerror="this.style.display=\'none\'" '
+              + 'style="width:84px;height:84px;flex:0 0 auto;border-radius:9px;object-fit:contain;'
+              + 'background:#fff;border:1px solid #e4dcf1;cursor:zoom-in;">';
+          }
+          // ⚠️ b321.2: o servidor diz quando NAO ADIANTA insistir — o
+          // produto esta no indice, o detalhe dele ja foi buscado, e nao
+          // tem imagem propria (variacao orfa, cujo pai nao esta no
+          // indice). Marco o card pra pular nas proximas rodadas.
+          if (d && d.definitivo && cx && cx.dataset) cx.dataset.sku = '-';
+        } catch (e) { /* sem foto nao atrapalha */ }
+        await new Promise(function (r) { setTimeout(r, 40); });
+      }
+      // ⚠️ para quando todos tem foto (o placeholder sumiu do DOM) ou
+      // quando as tentativas acabam — nao fica girando pra sempre
+      if (!faltando || rodada === MAX_RODADAS - 1) break;
+      await new Promise(function (r) { setTimeout(r, 700); });
     }
   }
 
@@ -642,16 +1111,117 @@
     if (el) el.innerHTML = htmlPecas();
   }
 
+  // b301 - ⚠️ A FICHA EXPANDE NO CARD, SEM TROCAR DE TELA.
+  //
+  // [stated 11/09] "quando eu clico pra abrir um defeito, ele avanca o card
+  // e sai da tela com todos defeitos (...) quando eu clico pra voltar (...)
+  // ele volta pra pagina geral de defeitos. isso atrapalha"
+  //
+  // O `abrirFichaDefeito` substitui a caixa INTEIRA, e o voltar recarrega a
+  // lista geral — perdendo a busca digitada e a rolagem. Quem esta triando
+  // 10 pecas refaz o caminho 10 vezes.
+  //
+  // Aqui a ficha vira conteudo do proprio card: abre embaixo, fecha no
+  // mesmo botao, e a lista continua atras.
+  //
+  // 📌 O `abrirFichaDefeito` CONTINUA existindo — outros pontos chamam ele
+  // (busca por NF, retorno de acao) e la trocar de tela faz sentido.
+  // v4.9x (review do Codex) - fecha a ficha inline que porventura ja
+  // estivesse aberta em OUTRO card. `fichaAberta`, e ids como edLaudo e
+  // blocoHist dentro do html dela, sao globais: com duas expandidas ao
+  // mesmo tempo, os dois cards tem elementos com o MESMO id e agir num
+  // (corrigir laudo, por exemplo) podia gravar no card errado.
+  function fecharFichaInline() {
+    if (fichaInlineId == null) return;
+    var antigo = document.getElementById('ficha-' + fichaInlineId);
+    if (antigo) { antigo.style.display = 'none'; antigo.innerHTML = ''; }
+    if (fichaBotaoAtual) fichaBotaoAtual.textContent = '📂 Abrir dados da peça';
+    fichaInlineId = null;
+    fichaBotaoAtual = null;
+  }
+
+  // b309 - ⚠️ LIGA O DESTAQUE NO CARD ABERTO, DESLIGA NOS OUTROS.
+  //
+  // [stated 13/09] "O destaque deve permanecer enquanto aquele item estiver
+  // aberto/selecionado, para deixar visualmente claro qual produto está
+  // sendo tratado e a qual item pertencem as informações exibidas abaixo."
+  //
+  // Uma funcao so pros dois lados: abrir marca, fechar limpa. Varro TODOS
+  // os cards em vez de guardar qual estava aberto — assim nao sobra
+  // destaque orfao se a lista for remontada no meio.
+  //
+  // v4.9x (review do Codex) - tudo escopado a `#caixaDefeitos`: o painel de
+  // devolucoes usa esse MESMO `card-<id>` pra linhas da tabela `devolucoes`,
+  // que pode estar atras do modal de defeitos. Um `getElementById` solto
+  // (ou um `querySelectorAll('.cardDefeito')` sem escopo, se a classe algum
+  // dia colidir tambem) arriscava marcar/procurar no elemento errado.
+  function marcarCardAberto(id) {
+    var caixa = document.getElementById('caixaDefeitos');
+    if (!caixa) return;
+    var todos = caixa.querySelectorAll('.cardDefeito');
+    var alvoId = id != null ? 'card-' + id : null;
+    for (var i = 0; i < todos.length; i++) {
+      todos[i].classList.toggle('aberto', alvoId != null && todos[i].id === alvoId);
+    }
+  }
+
+  window.expandirFichaNoCard = async function (id, botao) {
+    const alvo = document.getElementById('ficha-' + id);
+    if (!alvo) {
+      // v4.9x - a lista pode ter sido refeita (nova busca, troca de aba)
+      // entre o render e o clique: o id antigo nao aponta mais pra nada.
+      fichaInlineId = null;
+      marcarCardAberto(null);   // b309
+      fichaBotaoAtual = null;
+      // ⚠️ sem o destino, caio no comportamento antigo em vez de nao fazer
+      // nada — melhor trocar de tela do que o botao morrer
+      return window.abrirFichaDefeito(id);
+    }
+    if (fichaInlineId != null && String(fichaInlineId) === String(id)) {
+      fecharFichaInline();
+      marcarCardAberto(null);   // b309
+      return;
+    }
+    // v4.9x - so uma ficha inline aberta por vez (ver comentario acima)
+    fecharFichaInline();
+    alvo.style.display = 'block';
+    alvo.innerHTML = '<div style="padding:12px;color:#888;font-size:13px;">carregando…</div>';
+    if (botao) botao.textContent = '📂 Fechar dados da peça';
+    // v4.9x - marca ESTA como a inline aberta ANTES de chamar
+    // `abrirFichaDefeito`: e essa marca (nao mais uma variavel zerada no
+    // fim da carga) que faz toda recarga futura da mesma ficha (retirar
+    // peca, corrigir laudo, excluir comentario) continuar caindo aqui
+    // dentro, em vez de virar modal de tela cheia.
+    fichaInlineId = id;
+    marcarCardAberto(id);   // b309
+    fichaBotaoAtual = botao || null;
+    await window.abrirFichaDefeito(id);
+  };
+
   window.abrirFichaDefeito = async function (id, voltando) {
-    registrar('ficha', id, voltando);
-    naRaizBusca = false;   // b291
-    abrir(topo('carregando ficha...') + '<div style="padding:16px;color:#888;">um instante</div>');
+    // v4.9x (review do Codex) - INLINE e decidido por `fichaInlineId`, nao
+    // pelo parametro `voltando`. `expandirFichaNoCard` marca `fichaInlineId`
+    // ANTES de chamar esta funcao, e cada recarga futura (retirar peca,
+    // corrigir laudo, excluir comentario) chama de novo com o MESMO id —
+    // entao a comparacao continua valendo em toda recarga, sem depender de
+    // uma variavel que uma carga anterior podia ja ter zerado.
+    var inline = fichaInlineId != null && String(fichaInlineId) === String(id);
+    var destino = inline ? ('ficha-' + id) : null;
+    // v4.9x - quando inline, a tela de baixo continua sendo a BUSCA: o
+    // card so expandiu, nao navegou. Registrar aqui fazia `atual` apontar
+    // pra esta ficha, entao um "foi para a peça #4" clicado depois empurrava
+    // ESTA (e nao a busca) pra pilha — o Voltar do modal de tela cheia
+    // devolvia a ficha do card antigo em vez da lista de onde ele veio.
+    if (!inline) registrar('ficha', id, voltando);
+    if (!inline) naRaizBusca = false;   // b291 (AMB): saiu da raiz da busca
+    abrir(inline ? '<div style="padding:16px;color:#888;">um instante</div>'
+      : (topo('carregando ficha...') + '<div style="padding:16px;color:#888;">um instante</div>'), destino);
     var d;
     try { d = await api('/api/defeitos/ficha/' + encodeURIComponent(id)); }
     catch (e) { d = { ok: false, erro: 'falha de conexao' }; }
     if (!d || !d.ok) {
-      abrir(topo('🔧 Ficha') + '<div style="padding:16px;color:#c62828;">'
-        + esc((d && d.erro) || 'não consegui abrir') + '</div>');
+      abrir((inline ? '' : topo('🔧 Ficha')) + '<div style="padding:16px;color:#c62828;">'
+        + esc((d && d.erro) || 'não consegui abrir') + '</div>', destino);
       return;
     }
     fichaAberta = d;
@@ -660,7 +1230,12 @@
 
     // b121 - o numero da peca no titulo: e ele que voce ve no "foi para a
     // peca #4" e no dropdown, entao precisa estar visivel aqui tambem
-    var html = topo('📍 ' + esc(it.localizacao || 'sem local') + ' &nbsp;<span style="opacity:.75;font-weight:400;">PEÇA #' + esc(it.id) + '</span>')
+    // v4.9x (review do Codex) - inline o cabecalho some: ele trazia um
+    // "✕ Fechar" que chamava `fecharCaixaDefeitos()` (zerava pilha/atual/
+    // selecionados de navegacao do MODAL, que nem esta aberto aqui) sem
+    // fechar visualmente a ficha expandida — o botao "📂 Fechar dados da
+    // peça" do proprio card ja cobre essa acao.
+    var html = (inline ? '' : topo('📍 ' + esc(it.localizacao || 'sem local') + ' &nbsp;<span style="opacity:.75;font-weight:400;">PEÇA #' + esc(it.id) + '</span>'))
       + '<div style="padding:14px;">'
       + '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px;">'
       + '<code style="background:#f2f2f7;border-radius:5px;padding:2px 8px;font-size:13px;">' + esc(it.sku || '-') + '</code>'
@@ -727,7 +1302,7 @@
             ? 'O admin já viu e liberou. Guarde a peça boa no armazém — não precisa mais mexer neste registro.'
             : 'O admin autorizou. Pode jogar fora.')
         + '</div></div></div>';
-      abrir(html);
+      abrir(html, destino);
       return;
     }
 
@@ -756,7 +1331,7 @@
       + '</div>'
       + '<div id="edRetirada"></div><div id="edDescarte"></div>'
       + '</div>';
-    abrir(html);
+    abrir(html, destino);
   };
 
   /**
@@ -870,8 +1445,12 @@
   // b549 - dono, 05/10 ('tem que editar no estoque defeitos'): peca sem descricao (ex.: #113, triada antes do texto
   // do problema ser gravado) — escrever direto da lista: abre a ficha e ja abre a caixa de edicao da descricao.
   window.escreverLaudoDireto = async function (id) {
+    // review do Codex: com outro card expandido inline, `fichaInlineId` ficava no card antigo e o salvar nao
+    // recarregava a ficha (comentario de auditoria/numeracao velhos). Fecha o inline antes de abrir em tela cheia.
+    fecharFichaInline();
+    marcarCardAberto(null);
     try { await window.abrirFichaDefeito(id); } catch (e) { return; }
-    // review do Codex #452: se a ficha nao carregou, `fichaAberta` ainda e a da peca ANTERIOR — nao editar a errada
+    // se a ficha nao carregou, `fichaAberta` ainda e a da peca anterior: nao abrir a edicao dela por engano
     if (!fichaAberta || !fichaAberta.item || String(fichaAberta.item.id) !== String(id)) return;
     if (typeof window.editarLaudo === 'function') window.editarLaudo();
   };
