@@ -13,7 +13,10 @@ ok(!/logo-AMB\.png|icone-AMB\.png/.test(tg.replace(/manifest-AMB\.json/g, '')), 
 ok((tg.match(/src="marcas\/girassol\/icone-192\.png"/g) || []).length === 2, '  os 2 logos da triagem (topo e faixa baixa) sao os da Girassol');
 ok(/<link rel="icon" type="image\/png" href="marcas\/girassol\/icone-192\.png">/.test(tg) && /<link rel="apple-touch-icon" href="marcas\/girassol\/apple-touch-icon\.png">/.test(tg), '⚠️ icone da aba e do atalho do celular = Girassol');
 for (const f of [gi.logo, gi.icone, gi.iconeToque]) ok(fs.existsSync(path.join(PUB, f)), '  arquivo existe: ' + f);
-ok(gi.iconesDoManifesto([{ src: 'icone-AMB.png', sizes: '192x192' }, { src: 'icone-AMB.png', sizes: '512x512' }]).every((i) => i.src === 'marcas/girassol/icone-192.png'), '  o atalho instalado (manifesto) usa o icone da Girassol');
+const ic = gi.iconesDoManifesto([{ src: 'icone-AMB.png', sizes: '192x192', type: 'image/png' }, { src: 'icone-AMB.png', sizes: '512x512', type: 'image/png' }]);
+ok(ic.length === 1 && ic[0].src === 'marcas/girassol/icone-192.png' && ic[0].sizes === '192x192', '⚠️ manifesto da Girassol: so declara o tamanho que o arquivo tem (sem 512x512 falso)');
+ok(criarMarca({ marca: { icone: 'a.png', icone512: 'b.png' } }).iconesDoManifesto([{ sizes: '192x192' }]).map((i) => i.src + i.sizes).join() === 'a.png192x192,b.png512x512', '  com icone512 real, o 512 e declarado');
+ok(criarMarca(obterEmpresa('ambtotal')).iconesDoManifesto([{ src: 'icone-AMB.png', sizes: '192x192' }, { src: 'icone-AMB.png', sizes: '512x512' }]).length === 2, '  AMB: manifesto igual a antes (2 registros)');
 const am = criarMarca(obterEmpresa('ambtotal'));
 ok(am.aplicar(triagem) === triagem && am.logo === 'logo-AMB.png' && am.icone === 'icone-AMB.png', '⚠️ AMB (sem marca na ficha): a tela sai igual a antes');
 ok(criarMarca(null).icone === 'icone-AMB.png', '  ficha sem marca nenhuma: cai nos arquivos de sempre, sem quebrar');

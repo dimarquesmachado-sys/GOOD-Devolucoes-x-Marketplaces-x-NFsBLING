@@ -14,9 +14,16 @@ function criarMarca(ficha) {
       .split('<link rel="icon" type="image/png" href="icone-AMB.png">').join(`<link rel="icon" type="image/png" href="${icone}">`)
       .split('<link rel="apple-touch-icon" href="icone-AMB.png">').join(`<link rel="apple-touch-icon" href="${iconeToque}">`);
   }
-  // o atalho instalado (manifesto) usa o icone da empresa
+  // o atalho instalado (manifesto) usa o icone da empresa. Sem `marca` na ficha, o manifesto fica como sempre foi.
+  // Com `marca`, so declara o tamanho que o arquivo TEM (192x192): nao existe icone 512 da empresa, e um 512x512
+  // apontando pra um PNG de 192 e mentira no manifesto (Codex, PR #490). Um 512 real entra por `marca.icone512`.
   function iconesDoManifesto(icons) {
-    return (Array.isArray(icons) ? icons : []).map((i) => Object.assign({}, i, { src: icone }));
+    const lista = Array.isArray(icons) ? icons : [];
+    if (!ficha || !ficha.marca) return lista.map((i) => Object.assign({}, i, { src: icone }));
+    const base = lista.find((i) => i && i.sizes === '192x192') || lista[0] || { type: 'image/png', purpose: 'any' };
+    const out = [Object.assign({}, base, { src: icone, sizes: '192x192' })];
+    if (m.icone512) out.push(Object.assign({}, base, { src: m.icone512, sizes: '512x512' }));
+    return out;
   }
   return { logo, icone, iconeToque, aplicar, iconesDoManifesto };
 }
