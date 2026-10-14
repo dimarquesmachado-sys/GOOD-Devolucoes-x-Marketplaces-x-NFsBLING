@@ -793,7 +793,8 @@
       z.style.display = 'flex';
     }
 
-    function abrirModalDefeito() {
+    // Codex #493: a ficha unica chama abrirModalDefeito(sku) no 'nao achei — lancar defeito'; com o SKU, ja busca
+    function abrirModalDefeito(skuInicial) {
       limparKitPendente();   // b181 - estado do kit anterior nunca sobrevive
       _defProdutoEscolhido = null;
       document.getElementById('defBusca').value = '';
@@ -810,6 +811,10 @@
       b.disabled = true; b.style.opacity = '.5';
       document.getElementById('modalDefeito').classList.add('show');
       setTimeout(function () { document.getElementById('defBusca').focus(); }, 100);
+      if (skuInicial && typeof skuInicial === 'string') {
+        document.getElementById('defBusca').value = skuInicial;
+        buscarProdutoDefeito();
+      }
     }
 
     function fecharModalDefeito() {

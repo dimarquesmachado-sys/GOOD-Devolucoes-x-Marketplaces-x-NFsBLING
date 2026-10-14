@@ -28,6 +28,11 @@ const app = fs.readFileSync(path.join(R, 'amb-devolucoes', 'app-AMB.js'), 'utf8'
 ok(/router\.get\('\/js-AMB\/lancar-defeito\.js'/.test(app) && /'public', 'js', 'lancar-defeito\.js'/.test(app), '  o modulo do Lancar defeito e servido da peca da GOOD (sem copia)');
 const g = require(path.join(R, 'lib', 'painel-unico.js')).montarPainelUnicoGood(painel);
 ok(/\/js\/defeitos-ficha\.js/.test(g) && (g.match(/lancar-defeito\.js/g) || []).length === 1 && !/js-AMB\/defeitos-ficha|js-AMB\/lancar-defeito/.test(g), '⚠️ painel da GOOD: continua com a ficha dela e UM Lancar defeito (nao instala duas vezes)');
+// Codex #493
+ok(!/semBling/.test(unica) && /async function buscarFotosDefeitos/.test(unica), '⚠️ fotos: a busca e a da AMB (12 por vez, sem o modo sem-Bling que a rota dela nao tem)');
+ok(/var minhaVez = \+\+_geracaoFicha;[\s\S]{0,400}if \(minhaVez !== _geracaoFicha\) return;/.test(unica), '⚠️ abrir A e logo B: a resposta atrasada de A nao sobrescreve a ficha aberta');
+const tri = fs.readFileSync(path.join(R, 'amb-devolucoes', 'public-AMB', 'index-AMB.html'), 'utf8');
+ok(/function abrirModalDefeito\(skuInicial\)[\s\S]{0,1600}document\.getElementById\('defBusca'\)\.value = skuInicial;\s*buscarProdutoDefeito\(\);/.test(tri), '⚠️ triagem: o Lancar defeito chamado pela ficha ja vem com o SKU buscado');
 console.log('');
 console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
 process.exit(falhas ? 1 : 0);
