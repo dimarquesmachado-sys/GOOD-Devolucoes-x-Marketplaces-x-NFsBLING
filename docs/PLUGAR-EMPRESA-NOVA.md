@@ -172,3 +172,16 @@ erro que se repete:
 A regra que sai daqui: **num PR que promete "não muda comportamento", qualquer valor
 padrão diferente do de produção é uma mudança de comportamento** — mesmo que pareça
 melhoria.
+
+## Cores e logo (14/10/2026)
+
+A ficha gerada já traz `tema` (cores) e `marca` (logo e ícone). Antes de ativar:
+
+1. ajuste as cores do `tema` para as da empresa;
+2. suba o logo/ícone em `amb-devolucoes/public-AMB/marcas/<chave>/` (`icone-192.png` 192×192 e
+   `apple-touch-icon.png` 180×180);
+3. rode `conferirEmpresa('<chave>')` — ele **avisa** (sem reprovar) se faltar o tema, a marca ou algum arquivo.
+
+Sem isso a empresa funciona, mas a triagem e o painel saem com as cores e o logo da AMB — foi o que a Girassol mostrou
+até o b616.
+

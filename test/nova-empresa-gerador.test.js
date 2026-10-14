@@ -46,6 +46,9 @@ const { gerar } = require('../scripts/nova-empresa');
   ok(/chaveDados: 'aurora'/.test(r.ficha), '  com a chave de dados');
   ok(/devolucoes: 'devolucoes_aurora'/.test(r.ficha), '  e as 5 tabelas com sufixo');
   ok(/prefixoRota: '\/aurora'/.test(r.ficha), '  e a rota');
+  // 14/10 - a ficha nova nasce com CORES e LOGO proprios (sem eles a tela saia com as cores e o logo da AMB)
+  ok(/tema: \{[\s\S]*marca: '#/.test(r.ficha), '⚠️ a ficha nova ja traz o `tema` (cores da empresa)');
+  ok(/marca: \{\s*\n\s*logo: 'marcas\/aurora\/icone-192\.png'/.test(r.ficha), '⚠️ e a `marca` (logo e icone em marcas/aurora/)');
 
   // ⚠️ o fiscal NUNCA pode nascer com padrão
   ok(/'ID_EMPRESA_CONTROL', ''\)/.test(r.ficha),

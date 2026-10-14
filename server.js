@@ -568,7 +568,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.126.126 (b620: ficha de defeitos da Girassol/AMB — Codex #493: lista refeita invalida ficha pendente, busca com id proprio)',
+      version: '9.126.127 (b621: CNPJ novo nasce com cores e logo proprios; o conferidor avisa o que falta)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),

@@ -202,6 +202,17 @@ if (guardaKey) process.env.SUPABASE_KEY = guardaKey; else delete process.env.SUP
      '  e volta a entrar quando o contrato volta ao original (sem vazar estado pro resto do teste)');
 })();
 
+// 14/10 - o conferidor AVISA (sem reprovar) quando a empresa das telas da fabrica nao tem cores/logo proprios
+{
+  const E = require('../lib/empresas');
+  for (const k of ['ambtotal', 'girassol']) {
+    const c = E.conferirEmpresa(k);
+    ok(Array.isArray(c.avisos) && c.avisos.length === 0, '  ' + k + ': tem tema e marca (sem avisos)');
+  }
+  const g = E.obterEmpresa('girassol'); const marcaG = g.marca; g.marca = null;
+  const c2 = E.conferirEmpresa('girassol'); g.marca = marcaG;
+  ok(c2.avisos.some((a) => /logo da AMB/.test(a)), '⚠️ empresa sem marca: o conferidor avisa que vai sair o logo da AMB');
+}
 console.log('');
 console.log(falhas === 0 ? '--- registro: ok' : '--- registro: ' + falhas + ' FALHA(S)');
 

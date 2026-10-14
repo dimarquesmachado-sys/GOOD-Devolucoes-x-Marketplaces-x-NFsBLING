@@ -130,6 +130,19 @@ function gerar(chave, nome, sufixoDados) {
         naturezasDevolucaoIds: () => fis(EMPRESAS.${chave}, 'NATUREZAS_DEVOLUCAO_IDS', ''),
         nfEntradaTipo:         () => fis(EMPRESAS.${chave}, 'NF_ENTRADA_TIPO', '0'),
       },
+      // ⚠️ AS CORES DA EMPRESA (topo, botoes, cards). Sem \`tema\`, a triagem e o painel saem com as cores da AMB.
+      // Troque pelos tons da marca (mesmo formato da Girassol: texto sobre a marca com contraste de leitura).
+      tema: {
+        marca: '#2f6fb3', marcaClaro: '#5a92cc', sobreMarca: '#ffffff', marcaTexto: '#1f4f82', marcaTexto2: '#2f6fb3',
+        escuro: '#14243a', fundo: '#f4f8fc', borda: '#d6e3f1', texto: '#14243a', apagado: '#6b7c90', themeColor: '#14243a',
+      },
+      // ⚠️ LOGO E ICONE (triagem, aba do navegador, atalho do celular). Suba os arquivos em
+      // amb-devolucoes/public-AMB/marcas/${chave}/ — sem eles a tela mostra o logo da AMB.
+      marca: {
+        logo: 'marcas/${chave}/icone-192.png',
+        icone: 'marcas/${chave}/icone-192.png',
+        iconeToque: 'marcas/${chave}/apple-touch-icon.png',
+      },
     },`;
 
   // ⚠️ (Codex, P1) — o teste de contrato (`test/contrato-empresas.test.js`)
@@ -210,6 +223,12 @@ if (require.main === module) {
   console.log('   o ciclo de defeitos precisa de 7.');
   console.log('');
   console.log(`   select provisionar_empresa('_${r.suf}');`);
+  console.log('');
+  console.log('════ 3b. logo e cores ════');
+  console.log('');
+  console.log('   Suba o logo/icone da empresa em amb-devolucoes/public-AMB/marcas/' + chave + '/');
+  console.log('   (icone-192.png 192x192 e apple-touch-icon.png 180x180) e ajuste as cores do `tema` na ficha.');
+  console.log('   Sem isso a triagem e o painel saem com o logo e as cores da AMB.');
   console.log('');
   console.log('════ 4. as envs no Render ════');
   console.log('');
