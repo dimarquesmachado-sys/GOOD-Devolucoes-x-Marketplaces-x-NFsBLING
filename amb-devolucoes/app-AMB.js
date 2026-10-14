@@ -461,7 +461,12 @@ function comTema(html) {
   return out;
 }
 
-const INDEX_AMB_HTML = comTema(fs.readFileSync(
+// 14/10 - a MARCA (logo e icone) vem da ficha: sem isso a Girassol mostrava o logo e o icone da AMB na triagem e na aba
+// do navegador. Sem `marca` na ficha, fica o da AMB (os arquivos de sempre).
+const MARCA = require('./lib-AMB/marca-AMB').criarMarca(FICHA_AMB);
+const ICONE_EMPRESA = MARCA.icone;
+const comMarca = MARCA.aplicar;
+const INDEX_AMB_HTML = comMarca(comTema(fs.readFileSync(
   path.join(__dirname, 'public-AMB', 'index-AMB.html'), 'utf8'
 ).replace(
   '<meta name="apple-mobile-web-app-title" content="Devolucoes AMB">',
@@ -475,7 +480,7 @@ const INDEX_AMB_HTML = comTema(fs.readFileSync(
 ).replace(
   '<h1>AMBTotal Devoluções</h1>',
   `<h1>${NOME_EMPRESA} Devoluções</h1>`
-));   // b447: fecha o comTema(
+)));   // b447: fecha o comTema( — 14/10: e o comMarca(
 
 // ⚠️ b406 (Codex, PR #345, P2) - A PASTA DO CHECKOUT no base-amb.js vinha de
 // um 2o mapa de excecao cravado no front (so cobria a Girassol). Uma 4a
@@ -499,7 +504,7 @@ const PAINEL_AMB_HTML = comTema(fs.readFileSync(
   path.join(__dirname, 'public-AMB', 'painel-AMB.html'), 'utf8'
 ).replace(
   '<title>AMBTotal - Painel de Devoluções</title>',
-  `<title>${NOME_EMPRESA} - Painel de Devoluções</title>`
+  `<title>${NOME_EMPRESA} - Painel de Devoluções</title>\n  <link rel="icon" type="image/png" href="${ICONE_EMPRESA}">`   // 14/10: o icone da aba e o da empresa
 ).replace(
   '<h1>👑 Painel de Devoluções — AMBTotal</h1>',
   `<h1>👑 Painel de Devoluções — ${NOME_EMPRESA}</h1>`
@@ -1337,6 +1342,8 @@ router.get('/manifest-AMB.json', (req, res) => {
     description: 'Triagem de devolucoes do galpao da ' + nomeEmpresa,
     start_url: BASE + '/',
     scope: BASE + '/',
+    // 14/10: o icone do atalho instalado tambem e o da empresa
+    icons: MARCA.iconesDoManifesto(MANIFEST_AMB.icons),
   }));
 });
 
