@@ -29,6 +29,21 @@ function mlDeMentira(chamadas) {
   { const ch = []; const f = fabrica({ chamarML: mlDeMentira(ch), userId: () => '555' });
     await f.construirIndice().catch(() => {});
     ok(!ch.some((x) => /\/users\/me/.test(x)) && ch.some((x) => /555/.test(x)), '  cliente com userId: usa o dele e nao pergunta ao ML'); }
+  // 2b) Codex #500 P1: religar o ML noutro vendedor sem reiniciar — o proximo indice usa o vendedor novo
+  { const ch = []; let uid = '111'; const f = fabrica({ chamarML: mlDeMentira(ch), userId: () => uid });
+    await f.construirIndice().catch(() => {});
+    uid = '222'; ch.length = 0;
+    await f.construirIndice().catch(() => {});
+    ok(ch.some((x) => /222/.test(x)) && !ch.some((x) => /111/.test(x)), '⚠️ religou o ML noutro vendedor: o indice seguinte usa o novo (sem cache de processo)'); }
+  { const ch = []; let n = 0; const f = fabrica({ chamarML: mlDeMentira(ch), quemSouEu: async () => ({ ok: true, user_id: 100 + (++n) }) });
+    await f.construirIndice().catch(() => {});
+    ch.length = 0;
+    await f.construirIndice().catch(() => {});
+    ok(n === 2 && ch.some((x) => /102/.test(x)) && !ch.some((x) => /101/.test(x)), '  quemSouEu e perguntado de novo a cada montagem'); }
+  // 2c) Codex #500 P2: quemSouEu falhou (401/429) — nao repete /users/me cru
+  { const ch = []; const f = fabrica({ chamarML: mlDeMentira(ch), quemSouEu: async () => ({ ok: false, status: 429 }) });
+    await f.construirIndice().catch(() => {});
+    ok(!ch.some((x) => /\/users\/me/.test(x)), '⚠️ quemSouEu falhou: nao repete /users/me pelo chamarML'); }
   // 3) a GOOD entrega o vendedor dela (ML_USER_ID) a fabrica
   { const src = require('fs').readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
     const i = src.indexOf("require('./amb-devolucoes/lib-AMB/ml-returns-AMB').criar({");

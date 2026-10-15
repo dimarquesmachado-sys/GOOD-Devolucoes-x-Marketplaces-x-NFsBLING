@@ -246,18 +246,19 @@ const normTrack = (s) => String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '')
 // 15/10 (log: '[GOOD/ML-RETURNS] pre-aquecimento falhou: ml.userId is not a function', 3/3 tentativas, a cada boot):
 // desde a unificacao (b510, 04/10) a GOOD entrega um cliente do ML so com chamarML — sem userId/quemSouEu — e o indice
 // de devolucoes do ML DA GOOD nao montava. A fabrica nao pode depender do formato do cliente de cada empresa: usa o que
-// o cliente tiver e, no fim, pergunta ao proprio ML (/users/me) pelo token DA EMPRESA. Guardado depois da 1a vez.
-let _meuUserIdCache = null;
+// o cliente tiver e, no fim, pergunta ao proprio ML (/users/me) pelo token DA EMPRESA.
+// ⚠️ Sem cache de processo (Codex #500): a AMB pode religar o ML noutro vendedor sem reiniciar, e um id guardado
+// filtraria as devolucoes com o vendedor antigo e o token novo. Custa 1 consulta por montagem do indice.
+// ⚠️ Se quemSouEu existe, ele JA chamou /users/me: repetir a chamada duplicaria rotacao de refresh token / espera de 429.
 async function meuUserId() {
-  if (_meuUserIdCache) return _meuUserIdCache;
-  if (typeof ml.userId === 'function' && ml.userId()) return (_meuUserIdCache = String(ml.userId()));
+  if (typeof ml.userId === 'function' && ml.userId()) return String(ml.userId());
   if (typeof ml.quemSouEu === 'function') {
     const eu = await ml.quemSouEu();
-    if (eu && eu.ok && eu.user_id) return (_meuUserIdCache = String(eu.user_id));
+    return eu && eu.ok && eu.user_id ? String(eu.user_id) : null;
   }
   const r = await ml.chamarML('/users/me');
   const id = r && r.ok && r.data && r.data.id;
-  return id ? (_meuUserIdCache = String(id)) : null;
+  return id ? String(id) : null;
 }
 
 /** Extrai os trechos de devolucao de um claim e joga no mapa. */
