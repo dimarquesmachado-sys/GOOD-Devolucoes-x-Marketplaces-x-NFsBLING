@@ -149,8 +149,25 @@ const reg = { id: 132, nf_chave: CH_VENDA, nf_numero: '127406', buyer_nome: 'Jon
     const r = await m.chamar('POST /api/admin/vincular-devolucao-existente/:id', { params: { id: '502' }, body: {} });
     m.restaurar();
     ok(!r.corpo.ok && r.status === 503 && /INCOMPLETA/.test(r.corpo.erro), '⚠️ lista do Bling falhou: 503 incompleta, tente de novo (nunca "nenhuma devolucao") (Codex #499)'); }
+  // Codex #499 (3a) — inconclusiva vai pro fim da fila na nova tentativa (nao trava a busca na mesma candidata)
+  { const X = nfDev('X', '129001', 'Jonatas Ramos De Souza', 29.9, '50');   // ranqueada primeiro (nome + valor)
+    const Z = nfDev('Z', '129002', 'Outro Cliente', 5, '10');
+    const W = nfDev('W', '129003', 'Sem Nome', 1, '11');
+    const detalhes = {}; for (const n of [X, Z, W]) detalhes[n.id] = Object.assign({}, n, { xml: 'x://' + n.id });
+    const xmls = { 'x://X': '', 'x://Z': XML(CH_OUTRA), 'x://W': XML(CH_OUTRA) };   // X: corpo vazio (inconclusiva)
+    const pag = [X, Z];
+    const m = montar({ reg: Object.assign({}, reg, { id: 503 }), paginas: [pag], detalhes, xmls });
+    const r1 = await m.chamar('POST /api/admin/vincular-devolucao-existente/:id', { params: { id: '503' }, body: {} });
+    pag.push(W);
+    const ordem = []; const f0 = global.fetch; global.fetch = async (u) => { ordem.push(u); return f0(u); };
+    const r2 = await m.chamar('POST /api/admin/vincular-devolucao-existente/:id', { params: { id: '503' }, body: {} });
+    m.restaurar();
+    ok(r1.status === 503 && r2.status === 503 && ordem[0] === 'x://W' && ordem[1] === 'x://X', '⚠️ candidata inconclusiva vai pro fim da fila na nova tentativa (Codex #499 3a)'); }
   const src = require('fs').readFileSync(path.join(__dirname, '..', 'amb-devolucoes', 'lib-AMB', 'rotas-admin-AMB.js'), 'utf8');
   ok(/const PRAZO_VINCULAR_MS = 25000;/.test(src) && /AbortSignal\.timeout\(Math\.min\(8000, restante\(\)\)\)/.test(src), '  a busca inteira tem prazo (25 s) e cada XML respeita o que sobra (Codex #499)');
+  ok(/VINC_MEMO_TTL\) _vincConferidas\.delete/.test(src) && /_vincConferidas\.size >= 500/.test(src), '  memoria das conferidas expira e tem teto (Codex #499 3a)');
+  ok(/limiteLote/.test(src) && /acabou o prazo do lote/.test(src) && /Math\.min\(Date\.now\(\) \+ 20000, limiteLote\)/.test(src), '  o lote do resgate tem um prazo so (Codex #499 3a)');
+  ok(/status: 'prazo'/.test(src), '  a listagem do Bling tambem respeita o prazo (Codex #499 3a)');
   console.log('');
   console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
   process.exit(falhas ? 1 : 0);

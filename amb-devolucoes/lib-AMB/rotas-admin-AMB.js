@@ -828,7 +828,8 @@ async function provarDevolucaoDaVenda(idDevolucao, chaveVenda, limite) {
 
 // Codex #499: candidatas que JA foram conferidas e NAO sao deste card ficam guardadas por 30 min — a nova tentativa
 // continua de onde parou (a certa pode estar la no fim de uma janela cheia de devolucoes do mesmo preco).
-const _vincConferidas = new Map();   // cardId -> { ids: Set, em }
+const _vincConferidas = new Map();   // cardId -> { chave, ids: Set (descartadas), tent: Map id->n (inconclusivas), em }
+const VINC_MEMO_TTL = 30 * 60 * 1000;
 const PRAZO_VINCULAR_MS = 25000;     // a busca inteira cabe neste prazo; passou, devolve 'incompleta, tente de novo'
 
 async function acharDevolucaoComProva(reg) {
@@ -852,8 +853,13 @@ async function acharDevolucaoComProva(reg) {
   for (let pg = 1; pg <= 4; pg++) {
     if (pg > 1) await sleep(400);
     const url = `https://api.bling.com.br/Api/v3/nfe?limite=100&pagina=${pg}&tipo=0&dataEmissaoInicial=${ini}&dataEmissaoFinal=${fim}`;
-    const r = await chamarBling(url);
-    if (!r.ok) { paginaFalhou = { pagina: pg, status: r.status }; break; }   // Codex #499: lista indisponivel != 'nao existe'
+    // Codex #499: a listagem tambem cabe no prazo (fila do ritmo + HTTP de 30 s); estourou = pagina que falhou
+    if (limite - Date.now() <= 500) { paginaFalhou = { pagina: pg, status: 'prazo' }; break; }
+    const r = await Promise.race([
+      Promise.resolve().then(() => chamarBling(url)).catch(() => null),
+      new Promise((ok) => setTimeout(() => ok(null), Math.max(0, limite - Date.now() - 300))),
+    ]);
+    if (!r || !r.ok) { paginaFalhou = { pagina: pg, status: r ? r.status : 'prazo' }; break; }   // Codex #499: lista indisponivel != 'nao existe'
     const lista = r.data?.data || [];
     if (lista.length === 0) break;
     for (const nf of lista) {
@@ -869,9 +875,15 @@ async function acharDevolucaoComProva(reg) {
   }
   candidatos.sort((a, b) => (b.pista - a.pista) || (new Date(b.nf.dataEmissao || 0) - new Date(a.nf.dataEmissao || 0)));
   const chaveCard = String(reg.id);
+  // Codex #499: varre as expiradas (a memoria nao cresce com cada card ja conferido)
+  for (const [k, v] of _vincConferidas) if (Date.now() - v.em >= VINC_MEMO_TTL) _vincConferidas.delete(k);
   const memo = _vincConferidas.get(chaveCard);
   // Codex #499: as descartadas valem SO pra mesma chave de venda (o resgate de NF pode corrigir a chave do card)
-  const jaNaoSao = (memo && memo.chave === chaveVenda && Date.now() - memo.em < 30 * 60 * 1000) ? memo.ids : new Set();
+  const memoValida = memo && memo.chave === chaveVenda;
+  const jaNaoSao = memoValida ? memo.ids : new Set();
+  const tent = memoValida ? memo.tent : new Map();
+  // Codex #499: quem ja ficou inconclusiva vai pro fim da fila (sort estavel) — a nova tentativa nao trava na mesma
+  candidatos.sort((a, b) => (tent.get(String(a.nf.id)) || 0) - (tent.get(String(b.nf.id)) || 0));
   let naoConferidas = 0; let puladas = 0;
   for (const c of candidatos) {
     if (jaNaoSao.has(String(c.nf.id))) { puladas++; continue; }
@@ -880,9 +892,10 @@ async function acharDevolucaoComProva(reg) {
     const p = await provarDevolucaoDaVenda(c.nf.id, chaveVenda, limite);
     if (p.prova === true) { _vincConferidas.delete(chaveCard); return { ok: true, nf: c.nf, candidatas: candidatos.length }; }
     if (p.prova === false) jaNaoSao.add(String(c.nf.id));
-    else naoConferidas++;
+    else { naoConferidas++; tent.set(String(c.nf.id), (tent.get(String(c.nf.id)) || 0) + 1); }
   }
-  _vincConferidas.set(chaveCard, { chave: chaveVenda, ids: jaNaoSao, em: Date.now() });
+  if (_vincConferidas.size >= 500) _vincConferidas.delete(_vincConferidas.keys().next().value);
+  _vincConferidas.set(chaveCard, { chave: chaveVenda, ids: jaNaoSao, tent, em: Date.now() });
   if (paginaFalhou || naoConferidas) {
     return { ok: false, status: 503, erro: 'busca INCOMPLETA — '
       + (paginaFalhou ? 'a lista de notas do Bling falhou na pagina ' + paginaFalhou.pagina + ' (HTTP ' + (paginaFalhou.status || '?') + '); ' : '')
@@ -954,7 +967,9 @@ app.get('/api/admin/reconferir-vinculo', requerAdmin, async (req, res) => {
   }
   const aplicar = String(req.query.confirmar || '') === '1' && tokenOk;
   const resultados = [];
+  const limiteLote = Date.now() + 50000;   // Codex #499: um prazo pro LOTE inteiro (cada card ainda tem no maximo 20 s)
   for (const id of ids) {
+    if (limiteLote - Date.now() <= 1500) { resultados.push({ id, resultado: 'NAO conferido — acabou o prazo do lote; nada muda neste card, tente de novo' }); continue; }
     try {
       const { data: reg, error: errLer } = await supabase.from(TAB).select('*').eq('id', id).single();
       // Codex #499: erro do banco nao e 'card nao encontrado' — o card nem foi conferido
@@ -966,7 +981,7 @@ app.get('/api/admin/reconferir-vinculo', requerAdmin, async (req, res) => {
       // Codex #499: a fila do card — na GOOD fica em `tipo` (o card aberto tem status 'pendente'); na fabrica, no status
       const reabrir = pedida || (TRIAGEM_NO_TIPO && FILAS.includes(String(reg.tipo || '')) ? String(reg.tipo) : 'aprovado');
       await sleep(400);
-      const p = await provarDevolucaoDaVenda(reg.nf_devolucao_id_bling, chaveVenda, Date.now() + 20000);
+      const p = await provarDevolucaoDaVenda(reg.nf_devolucao_id_bling, chaveVenda, Math.min(Date.now() + 20000, limiteLote));
       const base = { id, nf_venda: reg.nf_numero || null, cliente: reg.buyer_nome || null, nf_devolucao: reg.nf_devolucao_numero, status: reg.status };
       if (p.prova === true) { resultados.push(Object.assign(base, { resultado: 'VINCULO CERTO — a devolucao referencia a NF de venda; nada muda' })); continue; }
       if (p.prova === null) { resultados.push(Object.assign(base, { resultado: 'nao deu pra conferir o XML agora — nada muda; tente de novo' })); continue; }
