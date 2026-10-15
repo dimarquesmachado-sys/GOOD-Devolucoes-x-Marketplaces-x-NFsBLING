@@ -9,7 +9,8 @@ const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o
 const CH_VENDA = '35260927548456000147550010001274061820750644';
 const CH_OUTRA = '35260927548456000147550010001299991820750600';
 const NAT = '15103';
-function montar({ reg, paginas, detalhes, xmls, falharXml }) {
+const XML = (ref) => '<nfeProc><NFe><infNFe Id="NFe1"><ide><NFref><refNFe>' + ref + '</refNFe></NFref></ide></infNFe></NFe></nfeProc>';
+function montar({ reg, paginas, detalhes, xmls, falharXml, depsExtra, falharPagina }) {
   const handlers = {};
   const app = { get: (p, ...f) => { handlers['GET ' + p] = f[f.length - 1]; }, post: (p, ...f) => { handlers['POST ' + p] = f[f.length - 1]; }, put() {}, delete() {}, patch() {}, use() {} };
   const gravado = {};
@@ -18,11 +19,11 @@ function montar({ reg, paginas, detalhes, xmls, falharXml }) {
       single: async () => ({ data: reg, error: null }),
       update(o) { Object.assign(gravado, o); return { eq: async () => ({ error: null }) }; } };
     return q; }, storage: { from: () => ({}) } };
-  const chamarBling = async (url) => { const m = /pagina=(\d+)/.exec(url); const pg = m ? Number(m[1]) : 1; return { ok: true, data: { data: paginas[pg - 1] || [] } }; };
+  const chamarBling = async (url) => { const m = /pagina=(\d+)/.exec(url); const pg = m ? Number(m[1]) : 1; if (falharPagina === pg) return { ok: false, status: 429 }; return { ok: true, data: { data: paginas[pg - 1] || [] } }; };
   const buscarNFePorId = async (id) => (detalhes[id] ? { ok: true, data: { data: detalhes[id] } } : { ok: false, status: 404 });
   const deps = { supabase: sb, requerAdmin: (q, r, n) => n && n(), adminOk: () => true, sleep: async () => {}, chamarBling, chamarML: async () => ({ ok: false }),
     buscarNFnoML: async () => null, buscarNFePorId, buscarNFBlindada: async () => null, resolverIdNFPorChave: async () => null, mapItensNF: () => [],
-    tabelaDevolucoes: 'devolucoes_girassol', naturezaDevolucaoDaEmpresa: NAT, listarDepositos: async () => ({ ok: true, depositos: [] }) };
+    tabelaDevolucoes: 'devolucoes_girassol', naturezaDevolucaoDaEmpresa: NAT, listarDepositos: async () => ({ ok: true, depositos: [] }), ...(depsExtra || {}) };
   const arq = path.join(__dirname, '..', 'amb-devolucoes', 'lib-AMB', 'rotas-admin-AMB.js');
   delete require.cache[require.resolve(arq)];
   require(arq)(app, deps);
@@ -42,8 +43,8 @@ const reg = { id: 132, nf_chave: CH_VENDA, nf_numero: '127406', buyer_nome: 'Jon
   { const outras = [1, 2, 3, 4, 5, 6].map((i) => nfDev('O' + i, '12940' + i, 'Cliente ' + i + ' Santos', 29.9, '1' + i));
     const certa = nfDev('CERTA', '129100', 'Jonatas Ramos De Souza', 29.9, '01');
     const detalhes = {}; const xmls = {};
-    for (const n of outras) { detalhes[n.id] = Object.assign({}, n, { xml: 'x://' + n.id }); xmls['x://' + n.id] = '<refNFe>' + CH_OUTRA + '</refNFe>'; }
-    detalhes.CERTA = Object.assign({}, certa, { xml: 'x://CERTA' }); xmls['x://CERTA'] = '<NFref><refNFe>' + CH_VENDA + '</refNFe></NFref>';
+    for (const n of outras) { detalhes[n.id] = Object.assign({}, n, { xml: 'x://' + n.id }); xmls['x://' + n.id] = XML(CH_OUTRA); }
+    detalhes.CERTA = Object.assign({}, certa, { xml: 'x://CERTA' }); xmls['x://CERTA'] = XML(CH_VENDA);
     const m = montar({ reg: Object.assign({}, reg), paginas: [[...outras, certa]], detalhes, xmls });
     const r = await m.chamar('POST /api/admin/vincular-devolucao-existente/:id', { params: { id: '132' }, body: {} });
     m.restaurar();
@@ -51,7 +52,7 @@ const reg = { id: 132, nf_chave: CH_VENDA, nf_numero: '127406', buyer_nome: 'Jon
   // 2) nenhuma referencia a venda -> NAO liga (a esteira conta falha e o card fica aberto)
   { const outras = [1, 2].map((i) => nfDev('O' + i, '1295' + i, 'Jonatas Outro', 29.9, '2' + i));
     const detalhes = {}; const xmls = {};
-    for (const n of outras) { detalhes[n.id] = Object.assign({}, n, { xml: 'x://' + n.id }); xmls['x://' + n.id] = '<refNFe>' + CH_OUTRA + '</refNFe>'; }
+    for (const n of outras) { detalhes[n.id] = Object.assign({}, n, { xml: 'x://' + n.id }); xmls['x://' + n.id] = XML(CH_OUTRA); }
     const m = montar({ reg: Object.assign({}, reg), paginas: [outras], detalhes, xmls });
     const r = await m.chamar('POST /api/admin/vincular-devolucao-existente/:id', { params: { id: '132' }, body: {} });
     m.restaurar();
@@ -70,7 +71,7 @@ const reg = { id: 132, nf_chave: CH_VENDA, nf_numero: '127406', buyer_nome: 'Jon
   // 5) RESGATE: card concluido com a devolucao de OUTRA venda -> mostra; com confirmar=1, desfaz e reabre
   { const regErrado = Object.assign({}, reg, { status: 'concluido', nf_devolucao_id_bling: 'O1', nf_devolucao_numero: '129356', data_concluido: '2026-10-15T09:20:00Z' });
     const det = { O1: Object.assign(nfDev('O1', '129356', 'Outro Cliente Silva', 29.9, '40'), { xml: 'x://O1' }) };
-    const xmls = { 'x://O1': '<refNFe>' + CH_OUTRA + '</refNFe>' };
+    const xmls = { 'x://O1': XML(CH_OUTRA) };
     let m = montar({ reg: Object.assign({}, regErrado), paginas: [[]], detalhes: det, xmls });
     let r = await m.chamar('GET /api/admin/reconferir-vinculo', { query: { ids: '132' } });
     m.restaurar();
@@ -82,10 +83,39 @@ const reg = { id: 132, nf_chave: CH_VENDA, nf_numero: '127406', buyer_nome: 'Jon
        && r.gravado.nf_devolucao_id_bling === null && r.gravado.data_concluido === null, '⚠️ resgate com confirmar=1: desfaz o vinculo e REABRE o card em Aprovadas'); }
   // 6) RESGATE de vinculo CERTO: nada muda
   { const regCerto = Object.assign({}, reg, { status: 'concluido', nf_devolucao_id_bling: 'C1', nf_devolucao_numero: '129100' });
-    const m = montar({ reg: regCerto, paginas: [[]], detalhes: { C1: Object.assign(nfDev('C1', '129100', 'Jonatas', 29.9, '01'), { xml: 'x://C1' }) }, xmls: { 'x://C1': '<refNFe>' + CH_VENDA + '</refNFe>' } });
+    const m = montar({ reg: regCerto, paginas: [[]], detalhes: { C1: Object.assign(nfDev('C1', '129100', 'Jonatas', 29.9, '01'), { xml: 'x://C1' }) }, xmls: { 'x://C1': XML(CH_VENDA) } });
     const r = await m.chamar('GET /api/admin/reconferir-vinculo', { query: { ids: '132', confirmar: '1' } });
     m.restaurar();
     ok(/VINCULO CERTO/.test(r.corpo.resultados[0].resultado) && !('status' in r.gravado), '  resgate de vinculo certo: confirma e nao mexe'); }
+  // Codex #499 — XML invalido (pagina de erro, vazio) NUNCA desfaz vinculo
+  { const regErrado = Object.assign({}, reg, { status: 'concluido', nf_devolucao_id_bling: 'O1', nf_devolucao_numero: '129356' });
+    const m = montar({ reg: regErrado, paginas: [[]], detalhes: { O1: Object.assign(nfDev('O1', '129356', 'X', 29.9, '40'), { xml: 'x://O1' }) }, xmls: { 'x://O1': '<html>erro 502</html>' } });
+    const r = await m.chamar('GET /api/admin/reconferir-vinculo', { query: { ids: '132', confirmar: '1' } });
+    m.restaurar();
+    ok(/nao deu pra conferir/.test(r.corpo.resultados[0].resultado) && !('status' in r.gravado), '⚠️ XML que nao e NF-e (pagina de erro): inconclusivo — o vinculo NAO e desfeito (Codex #499)'); }
+  // Codex #499 — GOOD: a fila fica em `tipo` e o card aberto e status 'pendente'
+  { const regGood = Object.assign({}, reg, { status: 'concluido', tipo: 'problema', nf_devolucao_id_bling: 'O1', nf_devolucao_numero: '129356' });
+    const m = montar({ reg: regGood, paginas: [[]], detalhes: { O1: Object.assign(nfDev('O1', '129356', 'X', 29.9, '40'), { xml: 'x://O1' }) }, xmls: { 'x://O1': XML(CH_OUTRA) }, depsExtra: { triagemNoTipo: true } });
+    const r = await m.chamar('GET /api/admin/reconferir-vinculo', { query: { ids: '132', confirmar: '1' } });
+    m.restaurar();
+    ok(r.gravado.tipo === 'problema' && r.gravado.status === 'pendente' && r.gravado.nf_devolucao_id_bling === null, '⚠️ GOOD: reabre na fila de origem (tipo problema) com status pendente — nao grava status=aprovado (Codex #499)'); }
+  // Codex #499 — a certa depois da 15a (janela cheia de devolucoes do mesmo preco)
+  { const outras = Array.from({ length: 22 }, (_, i) => nfDev('O' + i, String(129400 + i), 'Cliente ' + i + ' Ramos', 29.9, String(10 + (i % 40)).padStart(2, '0')));
+    const certa = nfDev('CERTA', '129100', 'Jonatas Ramos De Souza', 29.9, '00');
+    const detalhes = {}; const xmls = {};
+    for (const n of outras) { detalhes[n.id] = Object.assign({}, n, { xml: 'x://' + n.id }); xmls['x://' + n.id] = XML(CH_OUTRA); }
+    detalhes.CERTA = Object.assign({}, certa, { xml: 'x://CERTA' }); xmls['x://CERTA'] = XML(CH_VENDA);
+    const m = montar({ reg: Object.assign({}, reg, { id: 501 }), paginas: [[...outras, certa]], detalhes, xmls });
+    const r = await m.chamar('POST /api/admin/vincular-devolucao-existente/:id', { params: { id: '501' }, body: {} });
+    m.restaurar();
+    ok(r.corpo.ok && r.gravado.nf_devolucao_numero === '129100', '⚠️ a devolucao certa la depois da 15a candidata tambem e achada (Codex #499)'); }
+  // Codex #499 — pagina do Bling falhou: busca INCOMPLETA (503), nunca 'nao existe' (404)
+  { const m = montar({ reg: Object.assign({}, reg, { id: 502 }), paginas: [[]], detalhes: {}, xmls: {}, falharPagina: 1 });
+    const r = await m.chamar('POST /api/admin/vincular-devolucao-existente/:id', { params: { id: '502' }, body: {} });
+    m.restaurar();
+    ok(!r.corpo.ok && r.status === 503 && /INCOMPLETA/.test(r.corpo.erro), '⚠️ lista do Bling falhou: 503 incompleta, tente de novo (nunca "nenhuma devolucao") (Codex #499)'); }
+  const src = require('fs').readFileSync(path.join(__dirname, '..', 'amb-devolucoes', 'lib-AMB', 'rotas-admin-AMB.js'), 'utf8');
+  ok(/const PRAZO_VINCULAR_MS = 25000;/.test(src) && /AbortSignal\.timeout\(Math\.min\(8000, restante\(\)\)\)/.test(src), '  a busca inteira tem prazo (25 s) e cada XML respeita o que sobra (Codex #499)');
   console.log('');
   console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
   process.exit(falhas ? 1 : 0);
