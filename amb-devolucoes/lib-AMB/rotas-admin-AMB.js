@@ -810,7 +810,8 @@ async function provarDevolucaoDaVenda(idDevolucao, chaveVenda, limite) {
   // Codex #499: so um XML de NF-e COMPLETO pode dizer 'nao e' — senao uma pagina de erro desfaria um vinculo certo.
   const restante = () => (limite ? limite - Date.now() : 8000);
   if (restante() <= 500) return { prova: null, nf: null };
-  const r = await buscarNFePorId(idDevolucao);
+  // Codex #499: o detalhe do Bling tambem cabe no prazo (o cliente HTTP espera ate 30 s + fila)
+  const r = await Promise.race([buscarNFePorId(idDevolucao), new Promise((ok) => setTimeout(() => ok(null), Math.max(0, restante() - 300)))]);
   const nfc = (r && r.ok && r.data && r.data.data) ? r.data.data : null;
   if (!nfc || !nfc.xml) return { prova: null, nf: nfc };
   if (restante() <= 500) return { prova: null, nf: nfc };
@@ -869,7 +870,8 @@ async function acharDevolucaoComProva(reg) {
   candidatos.sort((a, b) => (b.pista - a.pista) || (new Date(b.nf.dataEmissao || 0) - new Date(a.nf.dataEmissao || 0)));
   const chaveCard = String(reg.id);
   const memo = _vincConferidas.get(chaveCard);
-  const jaNaoSao = (memo && Date.now() - memo.em < 30 * 60 * 1000) ? memo.ids : new Set();
+  // Codex #499: as descartadas valem SO pra mesma chave de venda (o resgate de NF pode corrigir a chave do card)
+  const jaNaoSao = (memo && memo.chave === chaveVenda && Date.now() - memo.em < 30 * 60 * 1000) ? memo.ids : new Set();
   let naoConferidas = 0; let puladas = 0;
   for (const c of candidatos) {
     if (jaNaoSao.has(String(c.nf.id))) { puladas++; continue; }
@@ -880,7 +882,7 @@ async function acharDevolucaoComProva(reg) {
     if (p.prova === false) jaNaoSao.add(String(c.nf.id));
     else naoConferidas++;
   }
-  _vincConferidas.set(chaveCard, { ids: jaNaoSao, em: Date.now() });
+  _vincConferidas.set(chaveCard, { chave: chaveVenda, ids: jaNaoSao, em: Date.now() });
   if (paginaFalhou || naoConferidas) {
     return { ok: false, status: 503, erro: 'busca INCOMPLETA — '
       + (paginaFalhou ? 'a lista de notas do Bling falhou na pagina ' + paginaFalhou.pagina + ' (HTTP ' + (paginaFalhou.status || '?') + '); ' : '')
@@ -932,17 +934,31 @@ app.post('/api/admin/vincular-devolucao-existente/:id', requerAdmin, async (req,
 // onde saiu a esteira).
 //   /girassol/api/admin/reconferir-vinculo?ids=117,129,132&k=SUA_ADMIN_KEY            (so mostra)
 //   /girassol/api/admin/reconferir-vinculo?ids=117,129,132&confirmar=1&k=SUA_ADMIN_KEY (aplica)
+// Codex #499: desfazer vinculo por GET com a sessao do admin seria alvo de link malicioso de outro site. A conferencia
+// (sem confirmar) devolve um TOKEN que vale 15 min pros MESMOS ids; o confirmar=1 so aplica com ele — quem nao viu a
+// conferencia nao tem o token.
+const _segredoResgate = process.env.ADMIN_KEY || require('crypto').randomBytes(24).toString('hex');
+function tokenResgate(ids, janela) {
+  return require('crypto').createHmac('sha256', _segredoResgate).update(ids.join(',') + '|' + janela).digest('hex').slice(0, 24);
+}
 app.get('/api/admin/reconferir-vinculo', requerAdmin, async (req, res) => {
   if (!supabase) return res.status(500).json({ ok: false, erro: 'Supabase nao configurado' });
   const ids = String(req.query.ids || '').split(',').map((x) => x.trim()).filter((x) => /^\d+$/.test(x)).slice(0, 30);
   if (!ids.length) return res.status(400).json({ ok: false, erro: 'passe ids=1,2,3' });
   const FILAS = ['aprovado', 'problema', 'divergente'];
   const pedida = FILAS.includes(String(req.query.reabrir || '')) ? String(req.query.reabrir) : null;
-  const aplicar = String(req.query.confirmar || '') === '1';
+  const janela = Math.floor(Date.now() / (15 * 60 * 1000));
+  const tokenOk = [janela, janela - 1].some((j) => tokenResgate(ids, j) === String(req.query.token || ''));
+  if (String(req.query.confirmar || '') === '1' && !tokenOk) {
+    return res.status(403).json({ ok: false, erro: 'para aplicar, use o link confirmar_url que a conferencia (sem confirmar) devolve — ele vale 15 min' });
+  }
+  const aplicar = String(req.query.confirmar || '') === '1' && tokenOk;
   const resultados = [];
   for (const id of ids) {
     try {
-      const { data: reg } = await supabase.from(TAB).select('*').eq('id', id).single();
+      const { data: reg, error: errLer } = await supabase.from(TAB).select('*').eq('id', id).single();
+      // Codex #499: erro do banco nao e 'card nao encontrado' — o card nem foi conferido
+      if (errLer && !/0 rows|no rows|PGRST116/i.test(String(errLer.message || errLer.code || ''))) { resultados.push({ id, resultado: 'FALHA ao ler o card no banco (' + (errLer.message || errLer.code) + ') — nada conferido; tente de novo' }); continue; }
       if (!reg) { resultados.push({ id, resultado: 'card nao encontrado' }); continue; }
       if (!reg.nf_devolucao_id_bling) { resultados.push({ id, resultado: 'sem devolucao ligada — nada a conferir', status: reg.status }); continue; }
       const chaveVenda = String(reg.nf_chave || '').replace(/\D/g, '');
@@ -959,13 +975,23 @@ app.get('/api/admin/reconferir-vinculo', requerAdmin, async (req, res) => {
       const reabre = TRIAGEM_NO_TIPO
         ? { nf_devolucao_id_bling: null, nf_devolucao_numero: null, tipo: reabrir, status: 'pendente', data_concluido: null }
         : { nf_devolucao_id_bling: null, nf_devolucao_numero: null, status: reabrir, data_concluido: null };
-      const { error } = await supabase.from(TAB).update(reabre).eq('id', id);
+      // Codex #499: so desfaz se o vinculo AINDA e o que foi conferido (outro pedido pode ter corrigido no meio)
+      const { data: mudou, error } = await supabase.from(TAB).update(reabre).eq('id', id)
+        .eq('nf_devolucao_id_bling', String(reg.nf_devolucao_id_bling)).select('id');
       if (error) { resultados.push(Object.assign(base, { resultado: 'VINCULO ERRADO, mas falhou ao desfazer: ' + error.message })); continue; }
+      if (!Array.isArray(mudou) || mudou.length === 0) { resultados.push(Object.assign(base, { resultado: 'o vinculo do card MUDOU enquanto eu conferia — nada desfeito; confira de novo' })); continue; }
       console.log(`[RECONFERIR-VINCULO] ${id}: devolucao ${reg.nf_devolucao_numero} era de outra venda (${cliDev || '?'}) — vinculo DESFEITO, card reaberto em ${reabrir}`);
       resultados.push(Object.assign(base, { resultado: 'VINCULO ERRADO — DESFEITO; card reaberto em ' + reabrir + ' (a devolucao ' + reg.nf_devolucao_numero + ' era de ' + (cliDev || 'outra venda') + ')' }));
     } catch (e) { resultados.push({ id, resultado: 'erro: ' + (e.message || e) }); }
   }
-  return res.json({ ok: true, aplicado: aplicar, reabrir: pedida || 'a fila de origem do card', resultados });
+  const resposta = { ok: true, aplicado: aplicar, reabrir: pedida || 'a fila de origem do card', resultados };
+  if (!aplicar && resultados.some((x) => /VINCULO ERRADO/.test(x.resultado || ''))) {
+    const qs = new URLSearchParams({ ids: ids.join(','), confirmar: '1', token: tokenResgate(ids, janela) });
+    if (pedida) qs.set('reabrir', pedida);
+    if (req.query.k) qs.set('k', String(req.query.k));
+    resposta.confirmar_url = (req.baseUrl || '') + req.path + '?' + qs.toString();
+  }
+  return res.json(resposta);
 });
 
 app.get('/api/debug/nf-numero/:numero', async (req, res) => {
