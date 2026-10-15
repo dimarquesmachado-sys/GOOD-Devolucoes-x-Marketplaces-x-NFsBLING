@@ -796,15 +796,80 @@ app.post('/api/admin/lancar-por-nf', requerAdmin, async (req, res) => {
 // (timeout do painel), o card fica "orfao". Esta rota procura a
 // NF de ENTRADA (tipo=0) com a natureza de devolucao da GOOD na
 // janela recente, casa por nome do comprador OU valor, e grava.
+// 15/10 (dono: 'rodei 6 NFs na lista da Girassol, so subiram 4 no Bling, 2 sumiram') - VINCULAR SO COM PROVA.
+// A esteira chama esta rota quando o Bling diz que a NF de venda 'ja possui devolucao'. Antes ela aceitava como
+// 'a devolucao deste card' qualquer NF de devolucao emitida desde a criacao do card que tivesse o MESMO VALOR ou
+// UMA PALAVRA do nome do cliente (>= 4 letras), e pegava a MAIS RECENTE. Caso real (log de 15/10): o card 132 foi
+// ligado a 129356 entre 7 candidatas — numa esteira, as NFs que acabaram de ser emitidas pra OUTROS clientes sao
+// justamente as mais recentes, e lixa de mesmo preco e regra. O card era concluido sem NF propria.
+// Agora: so liga a devolucao cujo XML REFERENCIA A CHAVE DA NF DE VENDA do card (a <refNFe> — a mesma prova
+// cabal da vinculacao do Full). Sem prova, nao liga e nao conclui: a esteira conta FALHA e o card fica aberto.
+async function provarDevolucaoDaVenda(idDevolucao, chaveVenda, ctx) {
+  // devolve true (o XML referencia a NF de venda), false (nao referencia) ou null (nao deu pra conferir)
+  const r = await buscarNFePorId(idDevolucao, ctx && ctx.fundo ? { fundo: true } : undefined);
+  const nfc = (r && r.ok && r.data && r.data.data) ? r.data.data : null;
+  if (!nfc || !nfc.xml) return { prova: null, nf: nfc };
+  try {
+    const rx = await fetch(nfc.xml, { signal: (typeof AbortSignal !== 'undefined' && AbortSignal.timeout) ? AbortSignal.timeout(8000) : undefined });
+    if (!rx.ok) return { prova: null, nf: nfc };
+    const txt = await rx.text();
+    return { prova: txt.replace(/\D/g, '').includes(chaveVenda), nf: nfc };
+  } catch (e) { return { prova: null, nf: nfc }; }
+}
+
+async function acharDevolucaoComProva(reg) {
+  const NATUREZAS_DEVOLUCAO = String(naturezaDevolucaoDaEmpresa || '').split(',').map((x) => x.trim()).filter(Boolean);
+  if (!NATUREZAS_DEVOLUCAO.length) return { ok: false, status: 500, erro: 'natureza de devolucao desta empresa nao configurada na ficha' };
+  const chaveVenda = String(reg.nf_chave || '').replace(/\D/g, '');
+  if (chaveVenda.length !== 44) {
+    return { ok: false, status: 409, erro: 'sem a chave da NF de venda neste card, nao da pra PROVAR qual devolucao e dela — gere ou vincule pelo botao do card' };
+  }
+  const f = (d) => d.toISOString().slice(0, 10);
+  const iniData = reg.created_at ? new Date(new Date(reg.created_at).getTime() - 864e5) : new Date(Date.now() - 30 * 864e5);
+  const ini = f(iniData);
+  const fim = f(new Date(Date.now() + 864e5));
+  const nomeBusca = String(reg.buyer_nome || '').trim().toLowerCase();
+  const pedacos = nomeBusca.split(/\s+/).filter(w => w.length >= 4);
+  const valorEsperado = (Number(reg.produto_valor_unit) || 0) * (Number(reg.produto_qtd) || 1);
+  const candidatos = [];
+  let varridas = 0;
+  for (let pg = 1; pg <= 4; pg++) {
+    if (pg > 1) await sleep(400);
+    const url = `https://api.bling.com.br/Api/v3/nfe?limite=100&pagina=${pg}&tipo=0&dataEmissaoInicial=${ini}&dataEmissaoFinal=${fim}`;
+    const r = await chamarBling(url);
+    if (!r.ok) break;
+    const lista = r.data?.data || [];
+    if (lista.length === 0) break;
+    for (const nf of lista) {
+      if (!NATUREZAS_DEVOLUCAO.includes(String(nf.naturezaOperacao?.id || ''))) continue;
+      varridas++;
+      // nome e valor so ORDENAM quem conferir primeiro — quem decide e o XML
+      const nomeNF = String(nf.contato?.nome || '').toLowerCase();
+      const pista = (pedacos.length > 0 && pedacos.some(w => nomeNF.includes(w)) ? 1 : 0)
+        + (valorEsperado > 0 && nf.valorNota != null && Math.abs(Number(nf.valorNota) - valorEsperado) < 0.05 ? 1 : 0);
+      candidatos.push({ nf, pista });
+    }
+  }
+  candidatos.sort((a, b) => (b.pista - a.pista) || (new Date(b.nf.dataEmissao || 0) - new Date(a.nf.dataEmissao || 0)));
+  let naoConferidas = 0;
+  const conferir = candidatos.slice(0, 15);
+  for (const c of conferir) {
+    await sleep(400);
+    const p = await provarDevolucaoDaVenda(c.nf.id, chaveVenda);
+    if (p.prova === true) return { ok: true, nf: c.nf, candidatas: candidatos.length, conferidas: conferir.length };
+    if (p.prova === null) naoConferidas++;
+  }
+  const cortadas = Math.max(0, candidatos.length - conferir.length);
+  if (naoConferidas || cortadas) {
+    return { ok: false, status: 503, erro: 'nao deu pra conferir ' + (naoConferidas + cortadas) + ' de ' + candidatos.length
+      + ' devolucao(oes) candidatas — nada vinculado; tente de novo', candidatas: candidatos.length, varridas };
+  }
+  return { ok: false, status: 404, erro: 'nenhuma NF de devolucao emitida desde ' + ini + ' referencia a NF de venda deste card'
+    + ' (' + candidatos.length + ' conferida(s)) — nada vinculado', candidatas: candidatos.length, varridas };
+}
+
 app.post('/api/admin/vincular-devolucao-existente/:id', requerAdmin, async (req, res) => {
   if (!supabase) return res.status(500).json({ ok: false, erro: 'Supabase nao configurado' });
-  // b544 - a natureza de devolucao vem da FICHA DA EMPRESA (era a da GOOD escrita a mao: na AMB/Girassol esta rota
-  // nunca achava a NF; e na GOOD so aceitava 1 das 2 naturezas da ficha). Sem natureza configurada, avisa —
-  // 'nao sei qual natureza' nao e 'nao existe NF'.
-  const NATUREZAS_DEVOLUCAO = String(naturezaDevolucaoDaEmpresa || '').split(',').map((x) => x.trim()).filter(Boolean);
-  if (!NATUREZAS_DEVOLUCAO.length) {
-    return res.status(500).json({ ok: false, erro: 'natureza de devolucao desta empresa nao configurada na ficha' });
-  }
   try {
     const { data: reg, error: errReg } = await supabase
       .from(TAB)
@@ -815,51 +880,12 @@ app.post('/api/admin/vincular-devolucao-existente/:id', requerAdmin, async (req,
     if (reg.nf_devolucao_id_bling) {
       return res.json({ ok: true, ja_tinha: true, nf_devolucao_numero: reg.nf_devolucao_numero });
     }
-
-    // Janela: da criacao do registro (menos 1 dia) ate amanha
-    const f = (d) => d.toISOString().slice(0, 10);
-    const iniData = reg.created_at ? new Date(new Date(reg.created_at).getTime() - 864e5) : new Date(Date.now() - 30 * 864e5);
-    const ini = f(iniData);
-    const fim = f(new Date(Date.now() + 864e5));
-
-    const nomeBusca = String(reg.buyer_nome || '').trim().toLowerCase();
-    // b141 - casar por PEDACOS do nome. O nome do card vem do ML e o da NF
-    // vem do cadastro fiscal - quase nunca sao identicos ("Monica Rosrigues"
-    // no card, "Monica Maria Rodrigues" na nota). O includes() da string
-    // inteira falhava sempre nesses casos.
-    const pedacos = nomeBusca.split(/\s+/).filter(w => w.length >= 4);
-    const valorEsperado = (Number(reg.produto_valor_unit) || 0) * (Number(reg.produto_qtd) || 1);
-
-    let varridas = 0;                      // b141 - pro diagnostico
-    const candidatos = [];
-    for (let pg = 1; pg <= 4; pg++) {
-      if (pg > 1) await sleep(400);
-      const url = `https://api.bling.com.br/Api/v3/nfe?limite=100&pagina=${pg}&tipo=0&dataEmissaoInicial=${ini}&dataEmissaoFinal=${fim}`;
-      const r = await chamarBling(url);
-      if (!r.ok) break;
-      const lista = r.data?.data || [];
-      if (lista.length === 0) break;
-      for (const nf of lista) {
-        if (!NATUREZAS_DEVOLUCAO.includes(String(nf.naturezaOperacao?.id || ''))) continue;
-        varridas++;
-        const nomeNF = String(nf.contato?.nome || '').toLowerCase();
-        // basta UM pedaco do nome bater (o sobrenome, normalmente)
-        const bateNome = pedacos.length > 0 && pedacos.some(w => nomeNF.includes(w));
-        const bateValor = valorEsperado > 0 && nf.valorNota != null &&
-          Math.abs(Number(nf.valorNota) - valorEsperado) < 0.05;
-        if (bateNome || bateValor) candidatos.push(nf);
-      }
-      if (lista.length < 100) break;
+    const achou = await acharDevolucaoComProva(reg);
+    if (!achou.ok) {
+      console.log(`[VINCULAR-DEV] ${req.params.id}: NADA vinculado — ${achou.erro}`);
+      return res.status(achou.status || 404).json({ ok: false, erro: achou.erro, candidatas: achou.candidatas || 0 });
     }
-
-    if (candidatos.length === 0) {
-      return res.status(404).json({ ok: false, erro: 'Nenhuma NF de devolucao correspondente achada no Bling (janela ' + ini + '..' + fim + ')' });
-    }
-
-    // Mais recente primeiro
-    candidatos.sort((a, b) => new Date(b.dataEmissao || 0) - new Date(a.dataEmissao || 0));
-    const nf = candidatos[0];
-
+    const nf = achou.nf;
     const { error: errUpd } = await supabase
       .from(TAB)
       .update({
@@ -868,23 +894,53 @@ app.post('/api/admin/vincular-devolucao-existente/:id', requerAdmin, async (req,
       })
       .eq('id', req.params.id);
     if (errUpd) return res.status(500).json({ ok: false, erro: 'Achei a NF ' + nf.numero + ' mas falhou ao gravar: ' + errUpd.message });
-
-    console.log(`[VINCULAR-DEV] ${req.params.id}: NF devolucao ${nf.numero} (id ${nf.id}) vinculada (${candidatos.length} candidata(s))`);
-    return res.json({ ok: true, nf_devolucao_numero: String(nf.numero || ''), nf_devolucao_id_bling: String(nf.id), candidatas: candidatos.length });
+    console.log(`[VINCULAR-DEV] ${req.params.id}: NF devolucao ${nf.numero} (id ${nf.id}) vinculada — o XML referencia a NF de venda (${achou.candidatas} candidata(s))`);
+    return res.json({ ok: true, nf_devolucao_numero: String(nf.numero || ''), nf_devolucao_id_bling: String(nf.id), candidatas: achou.candidatas, prova: 'xml' });
   } catch (e) {
     console.error('[VINCULAR-DEV] erro:', e);
     return res.status(500).json({ ok: false, erro: e.message || 'erro interno' });
   }
 });
 
-// ============================================================
-// v3.19.2 - RAIO-X do resgate de NF (dry-run, abre no navegador)
-// b212 - RAIO-X DA BUSCA POR NUMERO DE NF. O Diego buscou a NF 2447 e a
-// tela respondeu "nao localizada", mas a MESMA nota aparece quando ele
-// busca pelo pack id do ML. A funcao ja aceita um `trace`; esta rota
-// simplesmente expoe esse passo a passo, pra a causa aparecer em vez de
-// eu adivinhar (filtro ?numero= nao honrado? serie? janela de datas?).
-// GET /api/debug/nf-numero/:numero?k=ADMIN_KEY[&serie=1]
+// 15/10 - RESGATE dos cards que a vinculacao antiga (sem prova) concluiu com a devolucao de OUTRO cliente.
+// Confere a devolucao ligada ao card pelo XML: referencia a NF de venda = vinculo certo, nada muda; NAO referencia
+// = desfaz o vinculo e REABRE o card (volta pra lista, pra emitir a devolucao dele). Sem ?confirmar=1 so MOSTRA
+// o que faria. ids=117,129,132 confere varios; reabrir=aprovado|problema|divergente (padrao: aprovado — a lista de
+// onde saiu a esteira).
+//   /girassol/api/admin/reconferir-vinculo?ids=117,129,132&k=SUA_ADMIN_KEY            (so mostra)
+//   /girassol/api/admin/reconferir-vinculo?ids=117,129,132&confirmar=1&k=SUA_ADMIN_KEY (aplica)
+app.get('/api/admin/reconferir-vinculo', requerAdmin, async (req, res) => {
+  if (!supabase) return res.status(500).json({ ok: false, erro: 'Supabase nao configurado' });
+  const ids = String(req.query.ids || '').split(',').map((x) => x.trim()).filter((x) => /^\d+$/.test(x)).slice(0, 30);
+  if (!ids.length) return res.status(400).json({ ok: false, erro: 'passe ids=1,2,3' });
+  const reabrir = ['aprovado', 'problema', 'divergente'].includes(String(req.query.reabrir || '')) ? String(req.query.reabrir) : 'aprovado';
+  const aplicar = String(req.query.confirmar || '') === '1';
+  const resultados = [];
+  for (const id of ids) {
+    try {
+      const { data: reg } = await supabase.from(TAB).select('*').eq('id', id).single();
+      if (!reg) { resultados.push({ id, resultado: 'card nao encontrado' }); continue; }
+      if (!reg.nf_devolucao_id_bling) { resultados.push({ id, resultado: 'sem devolucao ligada — nada a conferir', status: reg.status }); continue; }
+      const chaveVenda = String(reg.nf_chave || '').replace(/\D/g, '');
+      if (chaveVenda.length !== 44) { resultados.push({ id, resultado: 'card sem a chave da NF de venda — nao da pra provar; nada muda', nf_devolucao: reg.nf_devolucao_numero }); continue; }
+      await sleep(400);
+      const p = await provarDevolucaoDaVenda(reg.nf_devolucao_id_bling, chaveVenda);
+      const base = { id, nf_venda: reg.nf_numero || null, cliente: reg.buyer_nome || null, nf_devolucao: reg.nf_devolucao_numero, status: reg.status };
+      if (p.prova === true) { resultados.push(Object.assign(base, { resultado: 'VINCULO CERTO — a devolucao referencia a NF de venda; nada muda' })); continue; }
+      if (p.prova === null) { resultados.push(Object.assign(base, { resultado: 'nao deu pra conferir o XML agora — nada muda; tente de novo' })); continue; }
+      const cliDev = (p.nf && p.nf.contato && p.nf.contato.nome) || null;
+      if (!aplicar) { resultados.push(Object.assign(base, { resultado: 'VINCULO ERRADO — a devolucao ' + reg.nf_devolucao_numero + ' e de outra venda (' + (cliDev || '?') + '); com confirmar=1, desfaz e reabre em ' + reabrir })); continue; }
+      const { error } = await supabase.from(TAB).update({
+        nf_devolucao_id_bling: null, nf_devolucao_numero: null, status: reabrir, data_concluido: null,
+      }).eq('id', id);
+      if (error) { resultados.push(Object.assign(base, { resultado: 'VINCULO ERRADO, mas falhou ao desfazer: ' + error.message })); continue; }
+      console.log(`[RECONFERIR-VINCULO] ${id}: devolucao ${reg.nf_devolucao_numero} era de outra venda (${cliDev || '?'}) — vinculo DESFEITO, card reaberto em ${reabrir}`);
+      resultados.push(Object.assign(base, { resultado: 'VINCULO ERRADO — DESFEITO; card reaberto em ' + reabrir + ' (a devolucao ' + reg.nf_devolucao_numero + ' era de ' + (cliDev || 'outra venda') + ')' }));
+    } catch (e) { resultados.push({ id, resultado: 'erro: ' + (e.message || e) }); }
+  }
+  return res.json({ ok: true, aplicado: aplicar, reabrir, resultados });
+});
+
 app.get('/api/debug/nf-numero/:numero', async (req, res) => {
   if (!adminOk(req)) return res.status(403).json({ ok: false, erro: 'so admin' });
   const trace = [];
