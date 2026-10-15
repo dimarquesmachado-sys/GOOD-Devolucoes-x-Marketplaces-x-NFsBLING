@@ -102,7 +102,13 @@ const magalu = require('./amb-devolucoes/lib-AMB/magalu-AMB').criar({ PREFIXO_EN
 const mlReturns = require('./amb-devolucoes/lib-AMB/ml-returns-AMB').criar({
   PREFIXO_ENV: 'GOOD_',
   ml: { janelaDias: 120 },
-  clienteMl: { chamarML: (p) => chamarML(/^https?:\/\//i.test(String(p)) ? String(p) : 'https://api.mercadolibre.com' + String(p)) },
+  // 15/10: a fabrica pergunta QUEM e o vendedor pra listar as devolucoes — sem userId o indice do ML da GOOD nao
+  // montava desde 04/10 ('ml.userId is not a function'). A GOOD ja tem o numero dela em ML_USER_ID; sem ele, a
+  // fabrica pergunta ao ML (/users/me) pelo token da GOOD.
+  clienteMl: {
+    chamarML: (p) => chamarML(/^https?:\/\//i.test(String(p)) ? String(p) : 'https://api.mercadolibre.com' + String(p)),
+    userId: () => (ML_USER_ID ? String(ML_USER_ID) : null),
+  },
 });
 
 // v3.71 - busca de NF pelo NOME do remetente (etiquetas Correios da Amazon
@@ -568,7 +574,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.126.132 (b624.3: vincular devolucao existente so com prova pelo XML; resgate dos cards ligados errado)',
+      version: '9.126.133 (b625: indice de devolucoes do ML da GOOD volta a montar — cliente do ML com o vendedor)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),

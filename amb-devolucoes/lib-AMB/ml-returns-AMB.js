@@ -243,10 +243,21 @@ let reagendado = false;   // evita duas construcoes ao mesmo tempo
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 const normTrack = (s) => String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
 
+// 15/10 (log: '[GOOD/ML-RETURNS] pre-aquecimento falhou: ml.userId is not a function', 3/3 tentativas, a cada boot):
+// desde a unificacao (b510, 04/10) a GOOD entrega um cliente do ML so com chamarML — sem userId/quemSouEu — e o indice
+// de devolucoes do ML DA GOOD nao montava. A fabrica nao pode depender do formato do cliente de cada empresa: usa o que
+// o cliente tiver e, no fim, pergunta ao proprio ML (/users/me) pelo token DA EMPRESA. Guardado depois da 1a vez.
+let _meuUserIdCache = null;
 async function meuUserId() {
-  if (ml.userId()) return ml.userId();
-  const eu = await ml.quemSouEu();
-  return eu.ok ? String(eu.user_id) : null;
+  if (_meuUserIdCache) return _meuUserIdCache;
+  if (typeof ml.userId === 'function' && ml.userId()) return (_meuUserIdCache = String(ml.userId()));
+  if (typeof ml.quemSouEu === 'function') {
+    const eu = await ml.quemSouEu();
+    if (eu && eu.ok && eu.user_id) return (_meuUserIdCache = String(eu.user_id));
+  }
+  const r = await ml.chamarML('/users/me');
+  const id = r && r.ok && r.data && r.data.id;
+  return id ? (_meuUserIdCache = String(id)) : null;
 }
 
 /** Extrai os trechos de devolucao de um claim e joga no mapa. */
