@@ -264,13 +264,18 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
   // abaixo). Mas o ML NUNCA e eliminado - se a Shopee nao achar, a cascata
   // ML roda igual. Nenhum caminho e perdido (insucesso ML existe!).
   const pistaSPX = /^BR\d{11,}[A-Z]$/i.test(codigoOriginal.trim());
+  // 29/10 (dono: digitou o pedido Shopee 2609069UWS4UFX — tosquiadeira R$ 1.574,90 entregue e nunca conferida — e
+  // o sistema leu 'NF 26090694', nao achou nada e ainda sugeriu uma retirada do ML). PEDIDO DA SHOPEE: 6 digitos da
+  // data (AAMMDD) + 8 letras/numeros, com ao menos uma letra. Vai pra Shopee PRIMEIRO, pelo mesmo caminho do rastreio
+  // SPX (a lista da Shopee casa por order_sn), e NUNCA vira numero de NF.
+  const pistaPedidoShopee = /^\d{6}(?=[A-Z0-9]{8}$)[A-Z0-9]*[A-Z][A-Z0-9]*$/i.test(codigoOriginal.trim());
 
   // v3.47.2 - Quando o codigo tem PISTA de SPX (BR+12dig+1letra), tenta a
   // Shopee JA AQUI (antes da cascata ML), pra o bipe de insucesso Shopee
   // responder rapido sem os 404 de shipment/pack. MAS se a Shopee nao achar,
   // NAO retorna - deixa a cascata ML rodar normal logo abaixo (insucesso ML
   // usa etiqueta Correios, que tb comeca com BR). Nenhum caminho e perdido.
-  if (pistaSPX && shopee.cfg.ativo) {
+  if ((pistaSPX || pistaPedidoShopee) && shopee.cfg.ativo) {
     try {
       marcar('shopee-spx:inicio');
       const infoSPX = await shopee.acharDevolucao(codigoOriginal);
@@ -458,7 +463,15 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
   // escolher a serie (default: serie 1, o padrao da casa).
   const ehChaveNFe = codigoLimpo.length === 44;
   const mNumSerie = String(codigoOriginal || '').trim().match(/^(\d{4,9})\s*[\/\-]\s*(\d{1,3})$/);
-  const ehNumeroNF = !ehChaveNFe && (mNumSerie || /^\d{4,9}$/.test(codigoLimpo));
+  // 29/10: a protecao que a GOOD ja tinha (server.js) — codigo com LETRA nao e numero de NF (o pedido Shopee
+  // 2609069UWS4UFX virava 'NF 26090694'). Rotulos como 'NF', 'nota', 'num' sao tirados antes de procurar letra.
+  const semRotulosNF = String(codigoOriginal || '').trim()
+    .replace(/\b([A-Za-z])\s*\.\s*(?=[A-Za-z]\b)/g, '$1')
+    .replace(/[\u00ba\u00b0]/g, ' ')
+    .replace(/\b(?:nf-?e?|nota|fiscal|n[uu\u00fa]mero|num|n)\b/gi, ' ')
+    .replace(/[\s:.#\-]+/g, '');
+  const temLetraNoOriginal = /[A-Za-z]/.test(semRotulosNF);
+  const ehNumeroNF = !ehChaveNFe && (mNumSerie || (/^\d{4,9}$/.test(codigoLimpo) && !temLetraNoOriginal));
 
   if (!shipment && !pack && (ehChaveNFe || ehNumeroNF)) {
     let numeroDaChave, serieDaChave, idNF = null, tipoTentativa;
