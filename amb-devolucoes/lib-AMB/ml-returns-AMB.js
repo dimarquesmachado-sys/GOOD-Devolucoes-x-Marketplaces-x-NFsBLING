@@ -348,7 +348,12 @@ async function construirIndiceInterno(opts = {}) {
           `/post-purchase/v1/claims/search?status=${st}${extras}&offset=${pg * 30}&limit=30`
         );
         if (!r.ok) {
-          erroBusca = `claims/search(${st}) HTTP ${r.status}: ${JSON.stringify(r.error || '').slice(0, 120)}`;
+          // 29/10: GOOD com 'claims/search(closed) HTTP 403 PA_UNAUTHORIZED_RESULT_FROM_POLICIES' e as abertas ok.
+          // Pra diagnosticar sem chute: EM QUAL pagina parou, quantas ja tinham vindo desse status e a mensagem
+          // inteira do ML (antes cortava em 120 caracteres, no meio de 'At least one policy re...').
+          const doStatus = claims.filter((c) => c.status === st).length;
+          erroBusca = `claims/search(${st}) pagina ${pg + 1} (offset ${pg * 30}, ${doStatus} desse status ja coletadas)`
+            + ` HTTP ${r.status}: ${JSON.stringify(r.error || '').slice(0, 400)}`;
           break;
         }
         const lista = (r.data && r.data.data) || [];
