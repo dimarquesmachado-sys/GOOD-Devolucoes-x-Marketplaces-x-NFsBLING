@@ -30,6 +30,25 @@ m = esperadoDeCapturadas([
   { pedido: 'P4', marketplace: 'shopee', rastreio: 'BR222222222222B' },
 ]);
 ok(m.P4 === 2, '  dois rastreios reais (linhas antigas sem return_sn) continuam 2');
+// Codex #508: transicao — devolucao A nova (return_sn + BR_A) e devolucao B antiga (so BR_B) = 2
+m = esperadoDeCapturadas([
+  { pedido: 'P7', marketplace: 'shopee', rastreio: 'BR111111111111A', return_sn: '2610010AAAAAAAA' },
+  { pedido: 'P7', marketplace: 'shopee', rastreio: 'BR222222222222B' },
+]);
+ok(m.P7 === 2, '⚠️ Codex: transicao (uma devolucao nova com return_sn, outra antiga so com rastreio) = 2 caixas');
+// transicao mista: A antiga (numero + BR_A em linhas separadas, sem return_sn) e B nova (return_sn + BR_B) = 2
+m = esperadoDeCapturadas([
+  { pedido: 'P8', marketplace: 'shopee', rastreio: '2610010AAAAAAAA' }, { pedido: 'P8', marketplace: 'shopee', rastreio: 'BR111111111111A' },
+  { pedido: 'P8', marketplace: 'shopee', rastreio: 'BR222222222222B', return_sn: '2610020BBBBBBBB' },
+]);
+ok(m.P8 === 2, '  transicao mista (A antiga em duas linhas + B nova) = 2 caixas');
+// a mesma devolucao nova vista em analise (numero) e depois com BR (as duas linhas com return_sn) = 1
+m = esperadoDeCapturadas([
+  { pedido: 'P9', marketplace: 'shopee', rastreio: '2610010AAAAAAAA', return_sn: '2610010AAAAAAAA' },
+  { pedido: 'P9', marketplace: 'shopee', rastreio: 'BR111111111111A', return_sn: '2610010AAAAAAAA' },
+  { pedido: 'P9', marketplace: 'shopee', rastreio: 'BR111111111111A' },
+]);
+ok(m.P9 === 1, '  a mesma devolucao em 3 linhas (numero, BR com e sem return_sn) = 1 caixa');
 // 5) ML nao muda: dois envios diferentes = 2; mesmo envio repetido = 1
 m = esperadoDeCapturadas([
   { pedido: 'ML1', marketplace: 'ml', shipment: '48000000001' }, { pedido: 'ML1', marketplace: 'ml', shipment: '48000000002' },
