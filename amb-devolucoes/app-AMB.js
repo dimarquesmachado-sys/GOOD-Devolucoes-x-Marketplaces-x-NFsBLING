@@ -655,7 +655,7 @@ const registrarCicloDefeitos = require('../lib/defeitos-ciclo');
 // candidato ja desistido ainda batia no Bling depois de esperar numa pausa
 // de 429. Ver bling-AMB.js, nf-nomes-AMB.js e identificar-AMB.js.
 // 29/10: sem o 'AMB' na frente — a mesma peca serve Girassol, AMB e as proximas; a empresa vai no campo `empresa`
-const VERSAO = 'Devolucoes b630';
+const VERSAO = 'Devolucoes b631';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -2246,8 +2246,9 @@ async function montarEspreitaAMB({ fundo = false } = {}) {
     const nfVendaFirme = x.nf_ml_numero ? { n: x.nf_ml_numero, s: x.nf_ml_serie }
       : (venda && venda.numero) ? { n: venda.numero, s: venda.serie }
       : (nfv && nfv.numero) ? { n: nfv.numero, s: nfv.serie } : null;
-    const nfDev = (nf && nf.emitida === true) ? nf
-      : (nfVendaFirme ? nfEntrada.jaEmitida({ nfVenda: nfVendaFirme.n, serieVenda: nfVendaFirme.s }) : nf);
+    // marca SEPARADA, so quando veio da prova do XML (o indice por pedido nao filtra cancelada nem natureza)
+    const nfXml = nfVendaFirme ? nfEntrada.jaEmitida({ nfVenda: nfVendaFirme.n, serieVenda: nfVendaFirme.s }) : null;
+    const nfDev = (nf && nf.emitida === true) ? nf : (nfXml && nfXml.emitida === true ? nfXml : nf);
     return {
       ...x,
       link_marketplace: link,
@@ -2262,6 +2263,7 @@ async function montarEspreitaAMB({ fundo = false } = {}) {
         : (nfNome && nfNome.id) ? ('https://www.bling.com.br/notas.fiscais.php#edit/' + nfNome.id) : null,
       comentario: n && n.comentario, ticket: n && n.ticket,
       baixado: !!(n && n.baixado),
+      nf_devolucao_xml: !!(nfXml && nfXml.emitida === true && nfXml.via === 'xml'),
       nf_devolucao_emitida: nfDev.emitida === true ? (nfDev.nf && nfDev.nf.numero) || true : false,
     };
   }).filter(x => !x.baixado);

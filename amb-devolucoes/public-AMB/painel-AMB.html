@@ -830,7 +830,7 @@
           var ped = String(it.pedido || '').replace(/\s/g, '');
           var chave = String(it.chave_nota || it.tracking || (it.marketplace + ':' + it.pedido));
           if (vistos[chave]) return false;
-          var tem = !!((ped && window._indiceNFDev[ped]) || it.nf_devolucao_emitida);
+          var tem = !!((ped && window._indiceNFDev[ped]) || it.nf_devolucao_xml);
           if (tem) vistos[chave] = true;
           return tem;
         });

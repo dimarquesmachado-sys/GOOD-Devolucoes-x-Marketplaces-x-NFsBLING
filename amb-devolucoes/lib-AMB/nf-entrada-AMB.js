@@ -120,10 +120,16 @@ function chaveVenda(serie, numero) {
   return (Number.isFinite(s) && Number.isFinite(n) && n > 0) ? (s + ':' + n) : null;
 }
 // { vendas: [...] } quando o XML e de NF-e COMPLETA; null quando nao deu pra conferir (rede, sem XML, corpo truncado)
-async function provarUma(reg) {
+async function provarUma(reg, natDev) {
   const r = await bling.chamarBling('/nfe/' + encodeURIComponent(reg.id), { fundo: true });
   const d = (r && r.ok && r.data && r.data.data) ? r.data.data : null;
   if (!d || !d.xml) return null;
+  // listagem sem natureza: confirma pelo detalhe. Sem natureza no detalhe tambem = 'nao sei' (tenta de novo)
+  if (!reg.natureza) {
+    const nd = d.naturezaOperacao && d.naturezaOperacao.id != null ? String(d.naturezaOperacao.id) : '';
+    if (!nd) return null;
+    if (!natDev.has(nd)) return { vendas: [] };
+  }
   let txt;
   try {
     const rx = await fetch(d.xml, { signal: (typeof AbortSignal !== 'undefined' && AbortSignal.timeout) ? AbortSignal.timeout(8000) : undefined });
@@ -148,6 +154,7 @@ function remontarPorVenda() {
 }
 async function provarPendentes() {
   if (PROVANDO) return;
+  const natDev = new Set(naturezasDevolucao());
   PROVANDO = true;
   try {
     let feitas = 0;
@@ -155,7 +162,7 @@ async function provarPendentes() {
       if (PROVAS.has(reg.id) || (TENTOU.get(reg.id) || 0) >= 3) continue;
       if (feitas >= PROVAS_POR_RODADA) break;
       feitas++;
-      const p = await provarUma(reg).catch(() => null);
+      const p = await provarUma(reg, natDev).catch(() => null);
       if (p) PROVAS.set(reg.id, p); else TENTOU.set(reg.id, (TENTOU.get(reg.id) || 0) + 1);
       if (feitas % 20 === 0) remontarPorVenda();
       await new Promise((ok) => setTimeout(ok, 350));
@@ -194,7 +201,8 @@ async function construirIndice() {
         if (reg.pedido) porPedido[reg.pedido] = reg;
         // 29/10: candidata a NF de DEVOLUCAO (natureza de devolucao da empresa + autorizada) — a prova pelo XML diz
         // de qual NF de venda ela e (vale tambem pra devolucao feita A MAO no Bling, que nao traz o numero do pedido)
-        if (natDev.has(reg.natureza) && SITUACOES_VALIDAS.has(Number(reg.situacao))) candidatas.push(reg);
+        // listagem SEM natureza tambem entra: provarUma confere pelo detalhe
+        if ((natDev.has(reg.natureza) || !reg.natureza) && SITUACOES_VALIDAS.has(Number(reg.situacao))) candidatas.push(reg);
         const ch = colapsar(reg.nome);
         if (ch.length >= 5) (porNome[ch] = porNome[ch] || []).push(reg);
         total++;
