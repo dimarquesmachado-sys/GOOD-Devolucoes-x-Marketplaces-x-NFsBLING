@@ -7,10 +7,12 @@ const vc = require('../lib/vinculo-nf-cache');
 let falhas = 0;
 const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o); };
 const ch = (n) => '3526103246198800018255001' + String(n).padStart(9, '0') + '1893419862';
-function armazemFalso(inicial) {
+function armazemFalso(inicial, { leituraFalha } = {}) {
   const arq = { ...(inicial || {}) }; let salvos = 0;
-  return { arq, get salvos() { return salvos; },
+  const st = { falha: !!leituraFalha };
+  return { arq, st, get salvos() { return salvos; },
     carregar: async (nome) => (arq[nome] ? JSON.parse(JSON.stringify(arq[nome])) : null),
+    carregarComEstado: async (nome) => (st.falha ? { ok: false, erro: 'timeout' } : { ok: true, obj: arq[nome] ? JSON.parse(JSON.stringify(arq[nome])) : null }),
     salvar: async (nome, obj) => { salvos++; arq[nome] = JSON.parse(JSON.stringify(obj)); return { ok: true } } };
 }
 (async () => {
@@ -35,7 +37,8 @@ function armazemFalso(inicial) {
     { nf_chave: ch(22222), nf_numero: '22222' },    // Bling fora (nao sei)
     { nf_numero: '33333' },                         // sem chave: nao entra
   ];
-  const buscar = async (c) => {
+  const opsVistas = [];
+  const buscar = async (c, op) => { opsVistas.push(op || {});
     if (c === ch(80848)) return { ok: true, match: { id: 'id80848', numero: '080848' } };
     if (c === ch(80316)) return { ok: true, match: { id: 'id80316', numero: '080316' } };
     if (c === ch(11111)) return { ok: true, via: 'chave-nao-achou', match: null };
@@ -45,6 +48,8 @@ function armazemFalso(inicial) {
   ok(f.iniciada && f.pendentes === 4 && itens.slice(0, 4).every((x) => x.nf_vinculo_pendente) && !itens[4].nf_vinculo_pendente,
     '⚠️ os cards com chave que ficaram sem vez vao pra fila e ja saem marcados "procurando"');
   ok(vc.completarChaveEmFundo(itens, 'teste2', buscar).iniciada === false, '  uma fila por empresa por vez (nao duplica)');
+  await f.promessa;
+  ok(opsVistas.length === 4 && opsVistas.every((o) => o.fundo === true), '⚠️ Codex: a fila consulta o Bling no modo FUNDO (nao compete com o galpao)');
   await f.promessa;
   const proxima = [{ nf_chave: ch(80848) }, { nf_chave: ch(80316) }, { nf_chave: ch(11111) }, { nf_chave: ch(22222) }];
   vc.aplicar(proxima, 'teste2');
@@ -59,6 +64,35 @@ function armazemFalso(inicial) {
   vc.guardar({ nf_chave: ch(2) }, 'novo', 'chave', {}, 'teste3');
   await new Promise((r) => setTimeout(r, 5600));
   ok(arm3.salvos === 0 && arm3.arq['vinculos-nf-chave'].v['teste3|chave:' + ch(1)].id === 'velho', '  sem armazem ligado/carregado, nao grava (nao apaga o que estava guardado)');
+  // Codex: vinculo achado ANTES de o armazem carregar e gravado depois do carregamento
+  vc.guardar({ nf_chave: ch(44444) }, 'cedo', 'chave', {}, 'teste4');
+  const arm4 = armazemFalso();
+  await vc.ligarArmazem('teste4', arm4);
+  await new Promise((r) => setTimeout(r, 5600));
+  ok(arm4.arq['vinculos-nf-chave'] && arm4.arq['vinculos-nf-chave'].v['teste4|chave:' + ch(44444)].id === 'cedo', '⚠️ Codex: vinculo achado antes do armazem carregar e gravado depois (nao fica so na memoria)');
+  // Codex: leitura do armazem FALHOU — nao marca carregado e nao grava por cima do que esta guardado
+  const arm5 = armazemFalso({ 'vinculos-nf-chave': { v: { ['teste5|chave:' + ch(1)]: { id: 'guardado' } } } }, { leituraFalha: true });
+  const r5 = await vc.ligarArmazem('teste5', arm5);
+  vc.guardar({ nf_chave: ch(2) }, 'novo', 'chave', {}, 'teste5');
+  await new Promise((r) => setTimeout(r, 5600));
+  ok(r5.ok === false && arm5.salvos === 0 && arm5.arq['vinculos-nf-chave'].v['teste5|chave:' + ch(1)].id === 'guardado', '⚠️ Codex: leitura falhou -> nao grava (nao apaga os vinculos guardados)');
+  // Codex: servidor drenando (deploy) -> a fila nao comeca outra consulta
+  const dr = require('../lib/drenagem'); const orig = dr.estaDrenando; dr.estaDrenando = () => true;
+  let chamadas = 0;
+  const f6 = vc.completarChaveEmFundo([{ nf_chave: ch(61) }, { nf_chave: ch(62) }], 'teste6', async () => { chamadas++; return null; }, { pausaMs: 5 });
+  await f6.promessa; dr.estaDrenando = orig;
+  ok(chamadas === 0, '⚠️ Codex: com o servidor desligando, a fila de segundo plano para');
+  // armazem de verdade: 'nao existe' x 'falhou' (Supabase de mentira)
+  const { criarArmazem } = require('../lib/armazem-indices');
+  const sbCom = (erro) => ({ storage: { from: () => ({ download: async () => ({ data: null, error: erro }) }) } });
+  const nao = await criarArmazem({ obterSupabase: () => sbCom({ message: 'Object not found', statusCode: '404' }), chave: 'x' }).carregarComEstado('a');
+  const falhou = await criarArmazem({ obterSupabase: () => sbCom({ message: 'fetch failed', statusCode: '500' }), chave: 'x' }).carregarComEstado('a');
+  ok(nao.ok === true && nao.obj === null && falhou.ok === false, '  armazem: "arquivo nao existe" e diferente de "falhou a leitura"');
+  // as duas buscas pela chave repassam o fundo
+  for (const arq of ['lib/bling.js', 'amb-devolucoes/lib-AMB/admin-helpers-AMB.js']) {
+    const s = fs.readFileSync(path.join(__dirname, '..', arq), 'utf8');
+    ok(/chamarBling\(url, opcoes\.fundo \? \{ fundo: true \} : \{\}\)/.test(s) && /buscarNFePorId\(lista\[0\]\.id, opcoes\.fundo \? \{ fundo: true \} : \{\}\)/.test(s), '  ' + arq + ': a busca pela chave repassa o modo fundo (lista e detalhe)');
+  }
   // 5) quem usa
   const srv = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
   const fab = fs.readFileSync(path.join(__dirname, '..', 'amb-devolucoes', 'app-AMB.js'), 'utf8');

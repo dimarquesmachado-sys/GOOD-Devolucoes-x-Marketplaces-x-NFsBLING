@@ -298,7 +298,8 @@ async function buscarNFPelaChave(chave, opcoes = {}) {
   // 429 as vezes — mas 429 e passageiro, nao recusa.
   const url = 'https://api.bling.com.br/Api/v3/nfe?limite=5&pagina=1&tipo=1&chaveAcesso=' + ch;
   // (1) o prazo do chamador vale DENTRO da chamada, nao so entre elas
-  const r = await comCancelamento(chamarBling(url), opcoes.cancelar);
+  // 29/10 (Codex #509): quem chama em SEGUNDO PLANO manda fundo:true — vai pra fila de fundo do porteiro do Bling
+  const r = await comCancelamento(chamarBling(url, opcoes.fundo ? { fundo: true } : {}), opcoes.cancelar);
   if (!r.ok) return { ok: false, status: r.status, error: r.error, match: null };
 
   // (4) 200 com corpo estranho NAO e lista vazia — quinta vez desta familia
@@ -328,7 +329,7 @@ async function buscarNFPelaChave(chave, opcoes = {}) {
   if (!nf && lista.length === 1 && !lista[0].chaveAcesso && opcoes.confirmarNoDetalhe !== false) {
     await sleep(350);
     if (opcoes.cancelar && opcoes.cancelar.agora) return { ok: false, error: 'cancelado', match: null };
-    const det = await comCancelamento(buscarNFePorId(lista[0].id), opcoes.cancelar);
+    const det = await comCancelamento(buscarNFePorId(lista[0].id, opcoes.fundo ? { fundo: true } : {}), opcoes.cancelar);
     const nfd = (det.ok && det.data && typeof det.data.data === 'object') ? det.data.data : null;
     // b221.1 (Codex): falha no detalhe NAO e "nao achou". Um 429 aqui
     // virava `chave-nao-achou`, a rota dizia "esta chave nao esta nesta
