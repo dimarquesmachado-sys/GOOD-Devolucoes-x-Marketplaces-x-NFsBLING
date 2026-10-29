@@ -582,7 +582,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.126.145 (b635: Shopee conta a caixa pela devolucao, nao pelo rastreio — fim do falso CAIXA 1/2)',
+      version: '9.126.146 (b636: vinculo da NF pela chave permanente no armazem + completado em segundo plano — fim do falso nao localizada)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -8073,6 +8073,9 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
         } catch (e) { /* as fases seguintes tentam pelo numero */ }
       }
     }
+    // 29/10: o que a abertura nao alcancou pela chave continua em SEGUNDO PLANO (vinculo-nf-cache) — a proxima
+    // abertura ja vem vinculada, e o card desta diz 'procurando' em vez de 'nao localizada'
+    vinculoCache.completarChaveEmFundo(itens, empresa, buscarNFPelaChave);
 
 
     const semVinculo = itens.filter((x) => x.nf_numero && !x.nf_id_bling);
@@ -8902,6 +8905,11 @@ drenagem.daquiA(() => magalu.preAquecer(), 20 * 1000);
 // O `aoSucesso` cobre o atraso do mlReturns ter ficado em 4o.
 drenagem.daquiA(() => nfNomes.preAquecer(0), 20 * 1000 + ESPACO);
 drenagem.daquiA(() => mlReturns.preAquecer(1, preAquecerEspreita), 20 * 1000 + ESPACO * 2);
+// 29/10: vinculo da NF pela chave e PERMANENTE e mora no armazem privado — deploy nao apaga mais (1 leitura do
+// Storage, nao toca o Bling)
+drenagem.daquiA(() => vinculoCache.ligarArmazem('good', require('./lib/armazem-indices').criarArmazem({ obterSupabase: () => supabase, chave: 'good' }))
+  .then((r) => console.log('[VINCULO-NF] good: vinculos pela chave carregados do armazem:', r && r.carregados))
+  .catch((e) => console.error('[VINCULO-NF] good: armazem', e.message)), 8000);
 // 29/10: notas de entrada (NF de devolucao feita a mao, prova do XML) — por ultimo, no ritmo de FUNDO do Bling
 drenagem.daquiA(() => nfEntradaGood.preAquecer(0), 20 * 1000 + ESPACO * 4);
 

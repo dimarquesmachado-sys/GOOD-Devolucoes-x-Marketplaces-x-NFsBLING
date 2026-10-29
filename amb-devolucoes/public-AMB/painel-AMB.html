@@ -1704,7 +1704,10 @@ async function carregarSemRetorno() {
               + (x.nf_numero
                   ? (x.nf_motivo_sem_vinculo
                 ? 'NF ' + escapeHtml(String(x.nf_numero)) + ': ' + escapeHtml(x.nf_motivo_sem_vinculo)
-                : 'NF ' + escapeHtml(String(x.nf_numero)) + ' não localizada no Bling')
+                // 29/10: na fila de segundo plano = ainda nao procurada, nao 'nao existe'
+                : x.nf_vinculo_pendente
+                  ? '🔄 NF ' + escapeHtml(String(x.nf_numero)) + ': procurando no Bling — recarregue em 1 ou 2 minutos'
+                  : 'NF ' + escapeHtml(String(x.nf_numero)) + ' não localizada no Bling')
                   : 'sem NF vinculada a este pedido')
               + '</div>';
 
