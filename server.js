@@ -574,7 +574,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.126.137 (b628: espreita da Shopee — so reembolso e nunca postada saem de em transito; entregue vai pro alerta nas 3)',
+      version: '9.126.138 (b629: bipe pelo NUMERO DO PEDIDO da Shopee vai pra Shopee; codigo com letra nao vira NF nas 3)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -1011,13 +1011,16 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
   // abaixo). Mas o ML NUNCA e eliminado - se a Shopee nao achar, a cascata
   // ML roda igual. Nenhum caminho e perdido (insucesso ML existe!).
   const pistaSPX = /^BR\d{11,}[A-Z]$/i.test(codigoOriginal.trim());
+  // 29/10: PEDIDO DA SHOPEE (AAMMDD + 8 letras/numeros) vai pra Shopee primeiro — a mesma regra da peca da
+  // Girassol/AMB (identificar-AMB.js)
+  const pistaPedidoShopee = /^\d{6}(?=[A-Z0-9]{8}$)[A-Z0-9]*[A-Z][A-Z0-9]*$/i.test(codigoOriginal.trim());
 
   // v3.47.2 - Quando o codigo tem PISTA de SPX (BR+12dig+1letra), tenta a
   // Shopee JA AQUI (antes da cascata ML), pra o bipe de insucesso Shopee
   // responder rapido sem os 404 de shipment/pack. MAS se a Shopee nao achar,
   // NAO retorna - deixa a cascata ML rodar normal logo abaixo (insucesso ML
   // usa etiqueta Correios, que tb comeca com BR). Nenhum caminho e perdido.
-  if (pistaSPX && shopee.cfg.ativo) {
+  if ((pistaSPX || pistaPedidoShopee) && shopee.cfg.ativo) {
     try {
       const infoSPX = await shopee.acharDevolucao(codigoOriginal);
       if (infoSPX && infoSPX.hit) {

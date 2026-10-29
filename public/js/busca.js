@@ -35,6 +35,7 @@ function blocoEventosCheckout() {
 async function buscar() {
   const codigo = inputCodigo.value.trim();
   if (!codigo) { toast('Digite ou bipe um codigo', 'err'); return; }
+  window._ultimoCodigoBusca = codigo;   // 29/10: a tela decide se sugere o retiro do ML (nao pra codigo da Shopee)
 
   divResultado.classList.remove('show');
   divResultado.innerHTML = '';
@@ -139,7 +140,10 @@ function renderizar(data, ok) {
       return;
     }
     renderizarErro(data.erro || 'Codigo nao encontrado', data.tentativas);
-    sugerirRetiro();   // b504
+    // 29/10: a retirada do Full e do ML — nao sugerir pra codigo que e claramente da Shopee (pedido ou rastreio SPX)
+    const _cod = String(window._ultimoCodigoBusca || '').trim();
+    const _ehShopee = /^\d{6}(?=[A-Z0-9]{8}$)[A-Z0-9]*[A-Z][A-Z0-9]*$/i.test(_cod) || /^BR\d{11,}[A-Z]$/i.test(_cod);
+    if (!_ehShopee) sugerirRetiro();   // b504
     mostrarCapturadas(data.capturadas);   // b523
     return;
   }
