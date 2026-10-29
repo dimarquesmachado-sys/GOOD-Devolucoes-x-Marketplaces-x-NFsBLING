@@ -574,7 +574,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.126.137 (b629: bipe pelo NUMERO DO PEDIDO da Shopee vai pra Shopee; codigo com letra nao vira NF nas 3)',
+      version: '9.126.138 (b629: bipe pelo NUMERO DO PEDIDO da Shopee vai pra Shopee; codigo com letra nao vira NF nas 3)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -6893,7 +6893,8 @@ let entreguesRecentes = [];
     // v3.95 - usa a data REAL de entrega quando ja estiver no cache; o corte de
     // 5-90 dias e aplicado DEPOIS da correcao (antes, o last_updated do return
     // encolhia a conta e o item aparecia com menos dias do que os reais).
-  const brutos = [...(mlR.entregues || []), ...(magaluR.entregues || [])];
+  // 29/10: a Shopee entra no bloco de entregues (a espreita dela descartava a devolucao ENTREGUE como 'encerrada')
+  const brutos = [...(mlR.entregues || []), ...(magaluR.entregues || []), ...((shopeeR && shopeeR.entregues) || [])];
     // v4.27 - a data REAL de entrega e o que decide os dias. Buscar em
     // background NAO chega a tempo na primeira carga (o alerta responde antes),
     // e o painel acaba mostrando o last_updated do return, que e sempre MAIOR
