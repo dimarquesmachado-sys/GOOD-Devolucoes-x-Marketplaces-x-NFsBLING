@@ -582,7 +582,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.126.142 (b633: GOOD reconhece NF de devolucao feita a mao no Bling pela NF de venda do XML; pack_id e entregues recentes)',
+      version: '9.126.143 (b634: NF de venda da espreita so de fonte firme — palpite pelo nome vai pra nf_venda_provavel)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
