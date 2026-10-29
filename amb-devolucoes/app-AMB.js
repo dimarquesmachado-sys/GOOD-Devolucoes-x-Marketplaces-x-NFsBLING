@@ -654,7 +654,8 @@ const registrarCicloDefeitos = require('../lib/defeitos-ciclo');
 // checado ANTES de entrar na fila da empresa — nao antes de sair, entao um
 // candidato ja desistido ainda batia no Bling depois de esperar numa pausa
 // de 429. Ver bling-AMB.js, nf-nomes-AMB.js e identificar-AMB.js.
-const VERSAO = 'AMB Devolucoes b626';
+// 29/10: sem o 'AMB' na frente — a mesma peca serve Girassol, AMB e as proximas; a empresa vai no campo `empresa`
+const VERSAO = 'Devolucoes b627';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
