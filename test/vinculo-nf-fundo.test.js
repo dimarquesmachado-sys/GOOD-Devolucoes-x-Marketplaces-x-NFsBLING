@@ -76,6 +76,16 @@ function armazemFalso(inicial, { leituraFalha } = {}) {
   vc.guardar({ nf_chave: ch(2) }, 'novo', 'chave', {}, 'teste5');
   await new Promise((r) => setTimeout(r, 5600));
   ok(r5.ok === false && arm5.salvos === 0 && arm5.arq['vinculos-nf-chave'].v['teste5|chave:' + ch(1)].id === 'guardado', '⚠️ Codex: leitura falhou -> nao grava (nao apaga os vinculos guardados)');
+  // Codex: o upload FALHOU ({ ok:false }, sem lancar) -> reagenda e grava na proxima tentativa
+  const arm7 = armazemFalso(); let tentativas = 0; const salvarOk = arm7.salvar;
+  arm7.salvar = async (n, o) => (++tentativas === 1 ? { ok: false, erro: 'rede' } : salvarOk(n, o));
+  await vc.ligarArmazem('teste7', arm7);
+  const stOrig = global.setTimeout;
+  global.setTimeout = (fn, ms, ...a) => stOrig(fn, ms === 60000 ? 10 : ms === 5000 ? 10 : ms, ...a);   // encurta so as esperas da gravacao
+  vc.guardar({ nf_chave: ch(7) }, 'x7', 'chave', {}, 'teste7');
+  await new Promise((r) => stOrig(r, 300));
+  global.setTimeout = stOrig;
+  ok(tentativas === 2 && arm7.arq['vinculos-nf-chave'].v['teste7|chave:' + ch(7)].id === 'x7', '⚠️ Codex: upload falhou -> tenta de novo e grava (nao fica so na memoria)');
   // Codex: servidor drenando (deploy) -> a fila nao comeca outra consulta
   const dr = require('../lib/drenagem'); const orig = dr.estaDrenando; dr.estaDrenando = () => true;
   let chamadas = 0;
