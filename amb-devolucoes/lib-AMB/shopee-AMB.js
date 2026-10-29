@@ -25,6 +25,20 @@
 // inventar uma separacao que nao existe e quebraria o proxy.
 //
 // ⚠️ E ha 4 timers aqui: como no magalu, quem os liga e o app, UMA vez.
+// 29/10 — devolucao da Shopee que NAO vai chegar nada (regra unica, a GOOD usa a mesma em lib/shopee-proxy.js):
+// so reembolso, ou com retorno mas nunca postada (sem rastreio, transporte nao iniciado e o prazo de postar vencido
+// ha mais de 2 dias). Na duvida (campo ausente), devolve false: continua 'em transito'.
+function naoVemNada(d) {
+  if (!d) return false;
+  if (d.return_solution === 1) return true;
+  const semRastreio = !d.tracking_number;
+  // o transporte so e conhecido quando o shopee-sync consultou o detalhe; null/ausente = nao sei -> nao classifica
+  const rls = d.reverse_logistics_status;
+  const naoIniciou = rls != null && (rls === '' || /NOT_STARTED/i.test(String(rls))) && !d.logistics_status;
+  const prazo = Number(d.return_ship_due_date) || 0;
+  return d.return_solution === 0 && semRastreio && naoIniciou && prazo > 0 && (Date.now() / 1000) > prazo + 2 * 86400;
+}
+
 function criar(cfgEmpresa) {
   // ⚠️ b400 - a etiqueta do log diz QUAL EMPRESA.
   //
@@ -280,7 +294,7 @@ async function resumoEspreita() {
   const FIM = /DONE|CLOSED|CANCELLED|REFUND_PAID|SELLER_COMPENSAT/i;
 
   const emTransito = [], entregues = [];
-  let encerradas = 0;
+  let encerradas = 0, soReembolso = 0, nuncaPostadas = 0;
   for (const d of lista) {
     const st = String(d.status || '');
     const lst = String(d.logistics_status || d.logistic_status || '');
@@ -289,6 +303,12 @@ async function resumoEspreita() {
     // mas entregue SEM bipe é exatamente o alerta do bloco vermelho.
     const entregouLst = /DELIVERY_DONE/i.test(lst);
     if (!entregouLst && FIM.test(st)) { encerradas++; continue; }
+    // 29/10 (dono: 60 devolucoes 'ACCEPTED' de julho a setembro na espreita da Girassol) — com o shopee-sync #30 a
+    // lista passou a trazer a SOLUCAO e os PRAZOS. Duas situacoes nao sao 'em transito' e nao vao chegar nada:
+    //   so reembolso (return_solution 1): o comprador fica com o produto;
+    //   nunca postada: com retorno, mas sem rastreio, transporte nao iniciado e o prazo pra postar ja venceu.
+    // Entregue continua indo pro bloco 'chegou' (vem antes). Sem esses campos (shopee-sync antigo), nada muda.
+    if (!entregouLst && naoVemNada(d)) { (d.return_solution === 1 ? soReembolso++ : nuncaPostadas++); continue; }
     // b17 - o proxy ja entrega motivo e itens; traduzimos o motivo
     // pra linguagem de galpao e passamos os itens adiante.
     const MOTIVO = { CHANGE_MIND: 'arrependimento', NOT_RECEIPT: 'não recebeu',
@@ -339,6 +359,7 @@ async function resumoEspreita() {
     // ficavam de fora quando havia mais de 60 a caminho — ordem: as mais antigas primeiro).
     em_transito_todas: emTransito,
     entregues: entregues.slice(0, 60), encerradas_indice: encerradas,
+    so_reembolso: soReembolso, nunca_postadas: nuncaPostadas,
     chegadas: {
       consultadas: SHP.chegada.size,
       com_data: [...SHP.chegada.values()].filter(e => e.v).length,
@@ -371,4 +392,4 @@ return { cfg, buscarDevolucoesProxy, acharDevolucao, resumoEspreita, preAquecer,
 }
 
 // ⚠️ so a fabrica — sem instancia padrao, pra ninguem usar a velha sem notar
-module.exports = { criar };
+module.exports = { criar, naoVemNada };
