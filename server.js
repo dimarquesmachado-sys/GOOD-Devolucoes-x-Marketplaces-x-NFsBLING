@@ -143,6 +143,14 @@ const drenagem = require('./lib/drenagem');
 drenagem.ligar();
 
 const FICHA_GOOD = obterEmpresa('good');
+// 29/10 (nivela a GOOD pelo #505) — NF de devolucao feita A MAO no Bling reconhecida pela NF de venda que ela
+// referencia no XML. A MESMA peca da fabrica (nf-entrada-AMB), com o Bling e a ficha fiscal da GOOD.
+const nfEntradaGood = require('./amb-devolucoes/lib-AMB/nf-entrada-AMB').criar({
+  PREFIXO_ENV: 'GOOD_',
+  fiscal: FICHA_GOOD.fiscal,
+  clienteBling: { chamarBling: (u, ...resto) => chamarBling(/^https?:/i.test(String(u)) ? u : 'https://api.bling.com.br/Api/v3' + u, ...resto) },
+});
+const { marcarNfDevolucaoXml } = require('./lib/espreita-nf-dev-xml');
 
 // v3.76 - devolucoes ESPERADAS do portal Magalu Entregas (indice 'a espreita')
 const espreita = require('./lib/magalu-espreita')({ chamarMagalu: magalu.chamarMagalu });
@@ -574,7 +582,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.126.140 (b631: NF manual sem natureza na lista confere pelo detalhe; baixa em massa so confia na marca do XML)',
+      version: '9.126.141 (b632: GOOD reconhece NF de devolucao feita a mao no Bling pela NF de venda do XML)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -6788,6 +6796,7 @@ app.post('/api/recado/:id/ciente', requerLogin, async (req, res) => {
   } catch (e) { return res.status(500).json({ ok: false, erro: e.message }); }
 });
 
+const NF_DEV_XML_DEPS = { jaEmitida: (o) => nfEntradaGood.jaEmitida(o), acharPorPedido: (p) => nfNomes.acharPorPedido(p) };
 async function montarEspreita() {
   // v3.77 - agregador: Magalu (BFF) + ML (indice claims->returns) + Shopee (proxy)
   const magaluR = espreita.resumo();
@@ -7214,13 +7223,14 @@ let entreguesRecentes = [];
   const resultadoEsp = ({
     ok: true,
     quente: magaluR.quente || mlR.quente || shopeeR.quente,
-    em_transito: unificada,
+    // 29/10: marca nf_devolucao_xml (NF de devolucao provada pelo XML — vale a feita a mao no Bling)
+    em_transito: marcarNfDevolucaoXml(unificada, NF_DEV_XML_DEPS),
     atrasadas_30d: unificada.filter(d => (d.dias_em_transito || 0) > 30),
     ml_aguardando_postagem: mlR.aguardando_postagem || 0,
     magalu_chegadas_30d: magaluR.chegadas_30d || 0,
     shopee_recebidas_baixadas: recebidasShopee,
     baixadas_manuais: baixadasManuais,
-    nunca_bipadas: nuncaBipadas,
+    nunca_bipadas: marcarNfDevolucaoXml(nuncaBipadas, NF_DEV_XML_DEPS),
 
     // b274 - ⚠️ AS ENTREGUES RECENTES, PRA BUSCA CASAR A ESTRELA.
     //
@@ -7235,8 +7245,8 @@ let entreguesRecentes = [];
     //
     // Entao: lista separada, mesma origem, SEM o piso. O alerta continua
     // igual — nao mexo em `nuncaBipadas`.
-    entregues_recentes: entreguesRecentes,
-    fontes: { magalu: magaluR.quente, ml: mlR.quente, shopee: shopeeR.quente },
+    entregues_recentes: marcarNfDevolucaoXml(entreguesRecentes, NF_DEV_XML_DEPS),
+    fontes: { magalu: magaluR.quente, ml: mlR.quente, shopee: shopeeR.quente, nf_entrada: nfEntradaGood.statusIndice() },
     erro: magaluR.erro || shopeeR.erro || null,
   });
   // b521: os extras viajam NO resultado (nao em global: duas montagens simultaneas se misturariam).
@@ -8892,6 +8902,8 @@ drenagem.daquiA(() => magalu.preAquecer(), 20 * 1000);
 // O `aoSucesso` cobre o atraso do mlReturns ter ficado em 4o.
 drenagem.daquiA(() => nfNomes.preAquecer(0), 20 * 1000 + ESPACO);
 drenagem.daquiA(() => mlReturns.preAquecer(1, preAquecerEspreita), 20 * 1000 + ESPACO * 2);
+// 29/10: notas de entrada (NF de devolucao feita a mao, prova do XML) — por ultimo, no ritmo de FUNDO do Bling
+drenagem.daquiA(() => nfEntradaGood.preAquecer(0), 20 * 1000 + ESPACO * 4);
 
 // b272 - ⚠️ DOIS PASSES: um CURTO logo, e o completo depois.
 //

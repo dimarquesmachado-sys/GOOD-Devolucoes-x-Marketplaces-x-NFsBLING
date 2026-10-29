@@ -29,7 +29,8 @@ const codigo = srv.split('\n').filter((l) => !l.trim().startsWith('//')).join('\
 // o teste `campo-tem-produtor` acusou. É a Regra 4.12 (ler o produtor antes
 // de escrever o consumidor), e foi a segunda vez que ela me pegou hoje.
 {
-  ok(/entregues_recentes: entreguesRecentes/.test(codigo),
+  // 29/10: a lista pode passar pela marca da NF de devolucao provada pelo XML (marcarNfDevolucaoXml) — continua exposta
+  ok(/entregues_recentes: (marcarNfDevolucaoXml\()?entreguesRecentes/.test(codigo),
      'o cache EXPÕE `entregues_recentes` (o produtor existe)');
   ok(/let entreguesRecentes = \[\]/.test(codigo),
      '  declarada FORA do try (o `baseAlerta` nao alcanca o retorno)');
