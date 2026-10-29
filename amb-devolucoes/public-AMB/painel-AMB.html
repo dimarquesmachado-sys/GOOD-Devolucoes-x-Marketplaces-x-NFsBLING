@@ -821,7 +821,7 @@
         var emT = (esp.em_transito || []);
         var nb = (esp.nunca_bipadas || []);
         // 29/10: as ENTREGUES (bloco 'chegou na sua matriz') tambem — e onde ficam as que alguem resolveu a mao no Bling
-        var todos = emT.concat(nb).concat(esp.entregues || []);
+        var todos = emT.concat(nb).concat(esp.entregues || []).concat(esp.entregues_recentes || []);   // GOOD: entregue < 5 dias vem em entregues_recentes
 
         // 3) quais itens em aberto tem NF de devolucao? Pelo pedido (indice do Bling) OU pela marca do servidor, que
         // reconhece a devolucao pela NF de venda que ela referencia no XML (vale pra nota feita a mao, sem o pedido)
