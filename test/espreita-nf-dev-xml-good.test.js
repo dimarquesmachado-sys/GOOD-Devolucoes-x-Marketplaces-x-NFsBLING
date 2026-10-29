@@ -26,7 +26,7 @@ global.fetch = async (u) => (XMLS[u] ? { ok: true, status: 200, text: async () =
   ok(!frio[0].nf_devolucao_xml, '  indice ainda frio: nao marca (e nao quebra)');
   await nfe.construirIndice();
   for (let i = 0; i < 40 && nfe.statusIndice().devolucoes.provando; i++) await new Promise((r) => setTimeout(r, 100));
-  const porPedido = { S1: { numero: '50002', serie: '1' }, S9: { numero: '59999', serie: null } };
+  const porPedido = { PK1: { numero: '50001', serie: '1' }, S1: { numero: '50002', serie: '1' }, S9: { numero: '59999', serie: null } };
   const deps = { jaEmitida: (o) => nfe.jaEmitida(o), acharPorPedido: (p) => porPedido[p] || null };
   const orig = [
     { marketplace: 'ml', pedido: 'P1', nf_ml_numero: '50001', nf_ml_serie: '1' },        // ML: NF de venda no card
@@ -34,11 +34,13 @@ global.fetch = async (u) => (XMLS[u] ? { ok: true, status: 200, text: async () =
     { marketplace: 'ml', pedido: 'P3', nf_ml_numero: '50003', nf_ml_serie: '1' },        // sem devolucao no Bling
     { marketplace: 'shopee', pedido: 'S9' },                                              // NF do pedido sem serie
     { marketplace: 'magalu', pedido: 'M1', cliente: 'Fulano' },                           // sem NF firme
+    { marketplace: 'ml', pedido: 'P5', pack_id: 'PK1' },                                  // carrinho: venda indexada pelo PACK
   ];
   const out = marcarNfDevolucaoXml(orig, deps);
   ok(out[0].nf_devolucao_xml === true && out[0].nf_devolucao_emitida === '7001', '⚠️ GOOD/ML: devolucao 7001 feita a mao reconhecida pela NF de venda 50001 do card');
   ok(out[1].nf_devolucao_xml === true, '⚠️ GOOD/Shopee: NF de venda achada pelo PEDIDO no indice de NFs -> reconhecida');
   ok(!out[2].nf_devolucao_xml && !out[3].nf_devolucao_xml && !out[4].nf_devolucao_xml, '⚠️ sem devolucao, sem serie ou sem NF firme: NAO marca (nao chuta)');
+  ok(out[5].nf_devolucao_xml === true, '⚠️ ML carrinho: pedido nao acha, o PACK acha a NF de venda -> reconhecida');
   ok(!orig[0].nf_devolucao_xml && out[2] === orig[2], '  nao mexe nos objetos de quem chamou (podem ser do cache)');
   const srv = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
   ok(/require\('\.\/amb-devolucoes\/lib-AMB\/nf-entrada-AMB'\)\.criar\(\{\s*PREFIXO_ENV: 'GOOD_',\s*fiscal: FICHA_GOOD\.fiscal,/.test(srv), '  GOOD usa a MESMA peca da fabrica (nf-entrada-AMB) com a ficha fiscal dela');
@@ -47,6 +49,7 @@ global.fetch = async (u) => (XMLS[u] ? { ok: true, status: 200, text: async () =
   ok(/drenagem\.daquiA\(\(\) => nfEntradaGood\.preAquecer\(0\)/.test(srv), '  o indice de notas de entrada da GOOD e agendado no boot');
   const painel = fs.readFileSync(path.join(__dirname, '..', 'amb-devolucoes', 'public-AMB', 'painel-AMB.html'), 'utf8');
   ok(/it\.nf_devolucao_xml/.test(painel), '  painel unico (o mesmo da GOOD) aceita a marca nf_devolucao_xml na baixa em massa');
+  ok(/esp\.entregues_recentes/.test(painel), '⚠️ baixa em massa do painel tambem le entregues_recentes (GOOD: entregue < 5 dias)');
   global.fetch = fetchOrig;
   console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
   process.exit(falhas ? 1 : 0);
