@@ -41,7 +41,8 @@ ok(dp.esperadoDeCapturadas([
 // as duas listas do painel (GOOD e Girassol/AMB) buscam a claim junto
 for (const arq of ['server.js', 'amb-devolucoes/lib-AMB/compat-AMB.js']) {
   const s = fs.readFileSync(path.join(__dirname, '..', arq), 'utf8');
-  ok(/\.select\('pedido, tipo_tiktok, status, shipment, rastreio, visto_por_ultimo, claim_id:cru->>claim_id'\)/.test(s), '⚠️ ' + arq + ' busca a claim junto com a captura');
+  // 29/10: a consulta ganhou marketplace e return_sn (Shopee conta a caixa pela devolucao) — a claim continua junto
+  ok(/\.select\('pedido, [^']*\bshipment, rastreio, visto_por_ultimo, claim_id:cru->>claim_id\b[^']*'\)/.test(s), '⚠️ ' + arq + ' busca a claim junto com a captura');
 }
 console.log('');
 console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
