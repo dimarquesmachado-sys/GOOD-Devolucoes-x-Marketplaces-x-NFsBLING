@@ -2253,14 +2253,21 @@ async function montarEspreitaAMB({ fundo = false } = {}) {
       ...x,
       link_marketplace: link,
       cliente: (venda && venda.nome) || (vendaLoja && vendaLoja.nome) || x.cliente_ml || null,
-      nf_venda: x.nf_ml_numero || (venda && venda.numero) || (nfv && nfv.numero) || (nfNome && nfNome.numero) || null,
+      // 29/10 (dono: a tosquiadeira 2609069UWS4UFX, venda NF 126747, apareceu com 'NF 126807' depois de um deploy).
+      // Com os mapas venda->NF ainda enchendo, o card caia no PALPITE PELO NOME — e cliente que comprou mais de uma vez
+      // pegava a NF de OUTRA compra, mostrada como certa. A captura guardada grava este campo como a NF da venda
+      // (devolucoes-capturadas: nf_numero), entao o palpite virava dado. Agora: nf_venda/nf_serie/link so de fonte
+      // FIRME (ML, venda pelo pedido, loja) — como a GOOD, que usa a busca blindada pelo pedido. O palpite vai pra
+      // nf_venda_provavel, marcado, e nunca e salvo como NF. Numero ausente e melhor que numero errado.
+      nf_venda: x.nf_ml_numero || (venda && venda.numero) || (nfv && nfv.numero) || null,
       // b38 - serie da NF, da mesma fonte que deu o numero
-      nf_serie: x.nf_ml_serie || (venda && venda.serie) || (nfv && nfv.serie) || (nfNome && nfNome.serie) || null,
+      nf_serie: x.nf_ml_serie || (venda && venda.serie) || (nfv && nfv.serie) || null,
+      nf_venda_provavel: (!jaTemNf && nfNome && nfNome.numero)
+        ? { numero: nfNome.numero, serie: nfNome.serie || null, id_bling: nfNome.id || null, via: 'nome do cliente' } : null,
       nf_valor: (venda && venda.valor != null) ? venda.valor
         : (vendaLoja && vendaLoja.valor != null) ? vendaLoja.valor
         : (x.valor_venda != null ? x.valor_venda : null),
-      link_nf_bling: (venda && venda.id) ? ('https://www.bling.com.br/notas.fiscais.php#edit/' + venda.id)
-        : (nfNome && nfNome.id) ? ('https://www.bling.com.br/notas.fiscais.php#edit/' + nfNome.id) : null,
+      link_nf_bling: (venda && venda.id) ? ('https://www.bling.com.br/notas.fiscais.php#edit/' + venda.id) : null,
       comentario: n && n.comentario, ticket: n && n.ticket,
       baixado: !!(n && n.baixado),
       nf_devolucao_xml: !!(nfXml && nfXml.emitida === true && nfXml.via === 'xml'),
