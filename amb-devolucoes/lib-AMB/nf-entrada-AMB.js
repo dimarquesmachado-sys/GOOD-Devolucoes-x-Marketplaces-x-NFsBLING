@@ -95,6 +95,81 @@ const colapsar = (s) => String(s || '')
 
 const TIPO = () => String(process.env[_PREFIXO + 'NF_ENTRADA_TIPO'] || '0');
 
+// ===== 29/10 — NF DE DEVOLUCAO RECONHECIDA PELA NF DE VENDA QUE ELA DEVOLVE =====
+// Dono, 29/10: emitiu a NF de devolucao da tosquiadeira A MAO no Bling. A espreita so reconhecia devolucao pelo
+// NUMERO DO PEDIDO (numeroLoja) — e na Girassol nenhuma nota de entrada traz isso (pedidos_indexados: 0). Toda NF
+// de devolucao, por regra da SEFAZ, REFERENCIA a chave da NF de venda (<refNFe>) — a mesma prova do vinculo (#499).
+// A chave carrega serie (pos. 23-25) e numero (pos. 26-34) da venda. Cada nota e lida UMA vez (resultado conclusivo
+// fica guardado; 'nao sei' tenta de novo ate 3 vezes), no ritmo de FUNDO do Bling, com teto por rodada.
+// Autorizada: 5, 6, 7 no Bling (autorizada / emitida DANFE / registrada). Outra situacao nao conta — cancelada ou
+// pendente nao e devolucao emitida. Na duvida, nao marca: marca errada esconderia uma devolucao pendente.
+const SITUACOES_VALIDAS = new Set([5, 6, 7]);
+const PROVAS = new Map();    // id da NF de entrada -> { vendas: ['serie:numero'] }   (so resultado CONCLUSIVO)
+const TENTOU = new Map();    // id -> quantas vezes deu 'nao sei'
+const PROVAS_POR_RODADA = Number(process.env[_PREFIXO + 'NF_ENTRADA_PROVAS_RODADA'] || 120);
+let PROVANDO = false;
+function naturezasDevolucao() {
+  try {
+    const f = cfgEmpresa && cfgEmpresa.fiscal;
+    const v = (f && typeof f.naturezasDevolucaoIds === 'function') ? f.naturezasDevolucaoIds() : null;
+    return String(v || '').split(',').map((x) => x.trim()).filter(Boolean);
+  } catch (e) { return []; }
+}
+function chaveVenda(serie, numero) {
+  const s = parseInt(String(serie == null ? '' : serie), 10), n = parseInt(String(numero == null ? '' : numero), 10);
+  return (Number.isFinite(s) && Number.isFinite(n) && n > 0) ? (s + ':' + n) : null;
+}
+// { vendas: [...] } quando o XML e de NF-e COMPLETA; null quando nao deu pra conferir (rede, sem XML, corpo truncado)
+async function provarUma(reg, natDev) {
+  const r = await bling.chamarBling('/nfe/' + encodeURIComponent(reg.id), { fundo: true });
+  const d = (r && r.ok && r.data && r.data.data) ? r.data.data : null;
+  if (!d || !d.xml) return null;
+  // listagem sem natureza: confirma pelo detalhe. Sem natureza no detalhe tambem = 'nao sei' (tenta de novo)
+  if (!reg.natureza) {
+    const nd = d.naturezaOperacao && d.naturezaOperacao.id != null ? String(d.naturezaOperacao.id) : '';
+    if (!nd) return null;
+    if (!natDev.has(nd)) return { vendas: [] };
+  }
+  let txt;
+  try {
+    const rx = await fetch(d.xml, { signal: (typeof AbortSignal !== 'undefined' && AbortSignal.timeout) ? AbortSignal.timeout(8000) : undefined });
+    if (!rx.ok) return null;
+    txt = await rx.text();
+  } catch (e) { return null; }
+  if (!/<infNFe[\s>]/.test(txt) || !/<\/NFe>/.test(txt)) return null;
+  const emit = (/<emit>[\s\S]*?<CNPJ>(\d{14})<\/CNPJ>/.exec(txt) || [])[1] || null;
+  const refs = [...txt.matchAll(/<refNFe>\s*(\d{44})\s*<\/refNFe>/g)].map((m) => m[1]);
+  // so referencia a NF do PROPRIO CNPJ (devolucao de venda nossa); sem o CNPJ do emitente, nao arrisca
+  const vendas = emit ? refs.filter((c) => c.substr(6, 14) === emit).map((c) => chaveVenda(c.substr(22, 3), c.substr(25, 9))).filter(Boolean) : [];
+  return { vendas };
+}
+function remontarPorVenda() {
+  const pv = {};
+  for (const reg of (IDX.candidatas || [])) {
+    const p = PROVAS.get(reg.id);
+    if (!p) continue;
+    for (const k of p.vendas) pv[k] = { id: reg.id, numero: reg.numero, dataEmissao: reg.dataEmissao, nome: reg.nome };
+  }
+  IDX.porVenda = pv;
+}
+async function provarPendentes() {
+  if (PROVANDO) return;
+  const natDev = new Set(naturezasDevolucao());
+  PROVANDO = true;
+  try {
+    let feitas = 0;
+    for (const reg of (IDX.candidatas || [])) {
+      if (PROVAS.has(reg.id) || (TENTOU.get(reg.id) || 0) >= 3) continue;
+      if (feitas >= PROVAS_POR_RODADA) break;
+      feitas++;
+      const p = await provarUma(reg, natDev).catch(() => null);
+      if (p) PROVAS.set(reg.id, p); else TENTOU.set(reg.id, (TENTOU.get(reg.id) || 0) + 1);
+      if (feitas % 20 === 0) remontarPorVenda();
+      await new Promise((ok) => setTimeout(ok, 350));
+    }
+    remontarPorVenda();
+  } finally { PROVANDO = false; }
+}
 async function construirIndice() {
   if (EST.construindo) return IDX;
   EST.construindo = true;
@@ -103,6 +178,8 @@ async function construirIndice() {
     const dias = Number(process.env[_PREFIXO + 'NF_ENTRADA_DIAS'] || 180);
     const corte = Date.now() - dias * 864e5;
     const porPedido = {}, porNome = {};
+    const candidatas = [];
+    const natDev = new Set(naturezasDevolucao());
     let total = 0, erro = null, parou = false;
 
     for (let pg = 1; pg <= 40; pg++) {
@@ -119,8 +196,13 @@ async function construirIndice() {
           nome: (n.contato && n.contato.nome) || '',
           pedido: String(n.numeroLoja || n.numeroPedidoLoja || ''),
           situacao: n.situacao != null ? n.situacao : null,
+          natureza: String((n.naturezaOperacao && n.naturezaOperacao.id) || ''),
         };
         if (reg.pedido) porPedido[reg.pedido] = reg;
+        // 29/10: candidata a NF de DEVOLUCAO (natureza de devolucao da empresa + autorizada) — a prova pelo XML diz
+        // de qual NF de venda ela e (vale tambem pra devolucao feita A MAO no Bling, que nao traz o numero do pedido)
+        // listagem SEM natureza tambem entra: provarUma confere pelo detalhe
+        if ((natDev.has(reg.natureza) || !reg.natureza) && SITUACOES_VALIDAS.has(Number(reg.situacao))) candidatas.push(reg);
         const ch = colapsar(reg.nome);
         if (ch.length >= 5) (porNome[ch] = porNome[ch] || []).push(reg);
         total++;
@@ -132,6 +214,14 @@ async function construirIndice() {
     IDX.ts = (erro && total === 0) ? 0 : Date.now();
     IDX.porPedido = porPedido;
     IDX.porNome = porNome;
+    // 29/10: lista inteira substitui; lista que parou numa pagina com erro SOMA a anterior (nao apaga o que ja se sabia)
+    if (!erro) IDX.candidatas = candidatas;
+    else {
+      const ids = new Set(candidatas.map((r) => r.id));
+      IDX.candidatas = candidatas.concat((IDX.candidatas || []).filter((r) => !ids.has(r.id)));
+    }
+    remontarPorVenda();
+    provarPendentes().catch((e) => console.error(`[${_TAG}/NF-ENTRADA] prova`, e.message));
     IDX.total = total;
     IDX.erro = erro;
     IDX.duracaoSeg = Math.round((Date.now() - t0) / 1000);
@@ -141,10 +231,15 @@ async function construirIndice() {
 }
 
 /** A NF de devolucao desta venda ja saiu? Busca por pedido, depois nome. */
-function jaEmitida({ pedido, nome }) {
+function jaEmitida({ pedido, nome, nfVenda, serieVenda }) {
   if (!IDX.ts) return { indice_frio: true, emitida: null };
   if (pedido && IDX.porPedido[String(pedido)]) {
     return { emitida: true, nf: IDX.porPedido[String(pedido)], via: 'pedido' };
+  }
+  // 29/10: pela NF DE VENDA que a devolucao referencia no XML (serie + numero). Sem a serie, nao chuta.
+  const kv = chaveVenda(serieVenda, nfVenda);
+  if (kv && IDX.porVenda && IDX.porVenda[kv]) {
+    return { emitida: true, nf: IDX.porVenda[kv], via: 'xml' };
   }
   const ch = colapsar(nome);
   if (ch.length >= 5 && IDX.porNome[ch] && IDX.porNome[ch].length) {
@@ -163,6 +258,13 @@ function statusIndice() {
     tipo_usado: TIPO(),
     total: IDX.total,
     pedidos_indexados: Object.keys(IDX.porPedido).length,
+    // 29/10: NFs de devolucao reconhecidas pela NF de venda (prova do XML)
+    devolucoes: {
+      candidatas: (IDX.candidatas || []).length,
+      provadas: (IDX.candidatas || []).filter((r) => PROVAS.has(r.id)).length,
+      vendas_reconhecidas: Object.keys(IDX.porVenda || {}).length,
+      provando: PROVANDO,
+    },
     erro: IDX.erro,
     duracao_seg: IDX.duracaoSeg || null,
     idade_min: IDX.ts ? Math.round((Date.now() - IDX.ts) / 60000) : null,

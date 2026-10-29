@@ -655,7 +655,7 @@ const registrarCicloDefeitos = require('../lib/defeitos-ciclo');
 // candidato ja desistido ainda batia no Bling depois de esperar numa pausa
 // de 429. Ver bling-AMB.js, nf-nomes-AMB.js e identificar-AMB.js.
 // 29/10: sem o 'AMB' na frente — a mesma peca serve Girassol, AMB e as proximas; a empresa vai no campo `empresa`
-const VERSAO = 'Devolucoes b629';
+const VERSAO = 'Devolucoes b631';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -2240,6 +2240,15 @@ async function montarEspreitaAMB({ fundo = false } = {}) {
         + ((FICHA_AMB && FICHA_AMB.chaveDados) || 'amb') + '?n=' +
         encodeURIComponent(x.pedido);
     }
+    // 29/10: a NF de devolucao tambem e reconhecida pela NF DE VENDA que ela referencia no XML (vale pra nota feita
+    // a mao no Bling). So fonte FIRME da NF de venda (ML, pedido, loja) — o palpite pelo nome fica de fora: marca
+    // errada esconderia uma devolucao pendente (e o botao de baixa em massa usa esta marca).
+    const nfVendaFirme = x.nf_ml_numero ? { n: x.nf_ml_numero, s: x.nf_ml_serie }
+      : (venda && venda.numero) ? { n: venda.numero, s: venda.serie }
+      : (nfv && nfv.numero) ? { n: nfv.numero, s: nfv.serie } : null;
+    // marca SEPARADA, so quando veio da prova do XML (o indice por pedido nao filtra cancelada nem natureza)
+    const nfXml = nfVendaFirme ? nfEntrada.jaEmitida({ nfVenda: nfVendaFirme.n, serieVenda: nfVendaFirme.s }) : null;
+    const nfDev = (nf && nf.emitida === true) ? nf : (nfXml && nfXml.emitida === true ? nfXml : nf);
     return {
       ...x,
       link_marketplace: link,
@@ -2254,7 +2263,8 @@ async function montarEspreitaAMB({ fundo = false } = {}) {
         : (nfNome && nfNome.id) ? ('https://www.bling.com.br/notas.fiscais.php#edit/' + nfNome.id) : null,
       comentario: n && n.comentario, ticket: n && n.ticket,
       baixado: !!(n && n.baixado),
-      nf_devolucao_emitida: nf.emitida === true ? (nf.nf && nf.nf.numero) || true : false,
+      nf_devolucao_xml: !!(nfXml && nfXml.emitida === true && nfXml.via === 'xml'),
+      nf_devolucao_emitida: nfDev.emitida === true ? (nfDev.nf && nfDev.nf.numero) || true : false,
     };
   }).filter(x => !x.baixado);
 
