@@ -334,6 +334,7 @@ const tiktokDevCaptura = require('../lib/tiktok-devolucoes');     // b455: norma
 const erroCodigo = require('../lib/erro-de-codigo');   // b205 - bug meu nao e falha do marketplace
 const confrontar = require('../lib/confrontar-nf');   // b208 - escada de desempate da NF
 const vinculoCache = require('../lib/vinculo-nf-cache');   // b204 - vinculo NF ja achado
+const espreitaTriadas = require('../lib/espreita-ja-triadas');   // 30/10 - espreita sem o que ja foi triado
 // 29/10: vinculo pela chave e PERMANENTE e mora no armazem privado da empresa — deploy nao apaga mais
 setTimeout(() => { vinculoCache.ligarArmazem(CHAVE_DADOS, CFG_EMPRESA.armazemNfNomes)
   .then((r) => console.log(`[VINCULO-NF] ${CHAVE_DADOS}: vinculos pela chave carregados do armazem:`, r && r.carregados))
@@ -659,7 +660,7 @@ const registrarCicloDefeitos = require('../lib/defeitos-ciclo');
 // candidato ja desistido ainda batia no Bling depois de esperar numa pausa
 // de 429. Ver bling-AMB.js, nf-nomes-AMB.js e identificar-AMB.js.
 // 29/10: sem o 'AMB' na frente — a mesma peca serve Girassol, AMB e as proximas; a empresa vai no campo `empresa`
-const VERSAO = 'Devolucoes b638';
+const VERSAO = 'Devolucoes b639';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -2304,9 +2305,17 @@ async function montarEspreitaAMB({ fundo = false } = {}) {
   // baixados e sem os que vao pro CD do ML. Reimplementar a agregacao no
   // identificar-AMB (como eu tinha feito, lendo so o mlReturns cru) perdia
   // dois canais e mostrava estrela em pacote ja processado.
+  // 30/10: tira o que JA FOI TRIADO (lib/espreita-ja-triadas — a regra que a GOOD ja tinha). A captura acima segue
+  // recebendo a lista inteira (e o registro do que o marketplace diz); a TELA e a busca nao mostram o que ja foi bipado.
+  const entreguesBrutas = [...enriquecer(baseML.entregues), ...enriquecer(baseShopee.entregues || [])];
+  const triadas = await espreitaTriadas.chavesTriadas(db.cliente(), db.tabelas && db.tabelas.devolucoes, entreguesBrutas.concat(emTransito));
+  if (!triadas.ok) console.error(`[ESPREITA ${CHAVE_DADOS}] triagens nao conferidas (lista vai inteira):`, triadas.erro);
+  const entreguesFinal = espreitaTriadas.semTriadas(entreguesBrutas, triadas.achados)
+    .sort((x, y) => (x.dias_desde ?? 9999) - (y.dias_desde ?? 9999));
+  const emTransitoFinal = espreitaTriadas.semTriadas(emTransito, triadas.achados, { soShopee: true });   // como a GOOD (v3.79)
   CACHES.espreita = {
-    em_transito: emTransito.filter((x) => !x.no_cd_ml),
-    entregues: [...enriquecer(baseML.entregues), ...enriquecer(baseShopee.entregues || [])],
+    em_transito: emTransitoFinal.filter((x) => !x.no_cd_ml),
+    entregues: entreguesFinal,
     ts: Date.now(),
   };
   // b477 (Codex, P2): a montagem do relogio, com fonte ainda fria, NAO gasta a
@@ -2344,12 +2353,11 @@ async function montarEspreitaAMB({ fundo = false } = {}) {
                nfs: (stNomes.total_nfs != null ? stNomes.total_nfs : null),
                vendas: (stNomes.vendas_com_loja != null ? stNomes.vendas_com_loja : null) },
     },
-    em_transito: emTransito,
-    atrasadas_30d: emTransito.filter(x => (x.dias_em_transito || 0) > 30).length,
+    em_transito: emTransitoFinal,
+    atrasadas_30d: emTransitoFinal.filter(x => (x.dias_em_transito || 0) > 30).length,
+    triadas_ocultas: triadas.ok ? (entreguesBrutas.length - entreguesFinal.length) + (emTransito.length - emTransitoFinal.length) : null,
     aguardando_postagem: baseML.aguardando_postagem,
-    entregues: [...enriquecer(baseML.entregues),
-      ...enriquecer(baseShopee.entregues || [])]
-      .sort((x, y) => (x.dias_desde ?? 9999) - (y.dias_desde ?? 9999)),
+    entregues: entreguesFinal,
   });
 }
 
