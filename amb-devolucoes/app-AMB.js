@@ -334,6 +334,10 @@ const tiktokDevCaptura = require('../lib/tiktok-devolucoes');     // b455: norma
 const erroCodigo = require('../lib/erro-de-codigo');   // b205 - bug meu nao e falha do marketplace
 const confrontar = require('../lib/confrontar-nf');   // b208 - escada de desempate da NF
 const vinculoCache = require('../lib/vinculo-nf-cache');   // b204 - vinculo NF ja achado
+// 29/10: vinculo pela chave e PERMANENTE e mora no armazem privado da empresa — deploy nao apaga mais
+setTimeout(() => { vinculoCache.ligarArmazem(CHAVE_DADOS, CFG_EMPRESA.armazemNfNomes)
+  .then((r) => console.log(`[VINCULO-NF] ${CHAVE_DADOS}: vinculos pela chave carregados do armazem:`, r && r.carregados))
+  .catch((e) => console.error(`[VINCULO-NF] ${CHAVE_DADOS}: armazem`, e.message)); }, 8000).unref();
 const marcadores = require('../lib/marcadores-estornada');   // b200 - peca unica dos marcadores
 const magaluCancelados = require('../lib/magalu-cancelados');  // b191 - peca UNICA, empresa por parametro // b334 - ponte TikTok via Mover-Pedidos (peca unica, empresa como parametro)
 const db = require('./lib-AMB/supabase-AMB').criar(CFG_EMPRESA);
@@ -655,7 +659,7 @@ const registrarCicloDefeitos = require('../lib/defeitos-ciclo');
 // candidato ja desistido ainda batia no Bling depois de esperar numa pausa
 // de 429. Ver bling-AMB.js, nf-nomes-AMB.js e identificar-AMB.js.
 // 29/10: sem o 'AMB' na frente — a mesma peca serve Girassol, AMB e as proximas; a empresa vai no campo `empresa`
-const VERSAO = 'Devolucoes b635.1';
+const VERSAO = 'Devolucoes b636.2';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -3752,6 +3756,10 @@ router.get('/api/admin/sem-retorno', auth.requerLogin, async (req, res) => {
       }
     }
 
+
+    // 29/10: o que a abertura nao alcancou pela chave continua em SEGUNDO PLANO (vinculo-nf-cache) — a proxima
+    // abertura ja vem vinculada, e o card desta diz 'procurando' em vez de 'nao localizada'
+    vinculoCache.completarChaveEmFundo(itens, CHAVE_DADOS, (ch, op) => ajudantes.buscarNFPelaChave(ch, op));
 
     // b204.3 (Codex): a fase do NUMERO vem PRIMEIRO, como na GOOD.
     //
