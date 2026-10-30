@@ -6,7 +6,7 @@ const path = require('path'); const fs = require('fs');
 let falhas = 0;
 const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o); };
 const nulo = async () => null;
-function montar(shopeeHit) {
+function montar(shopeeHit, magaluFake) {
   const rotas = {};
   const app = { get: (p, ...f) => { rotas[p] = f[f.length - 1]; }, post() {}, put() {}, delete() {}, use() {} };
   const consultasNF = [];
@@ -20,7 +20,7 @@ function montar(shopeeHit) {
     buscarOrderViaShipmentReturn: nulo, buscarOrdersPorComprador: nulo, classificarMotivoDevolucao: () => null, acharDevolucao: nulo, buscarPorNome: nulo,
     shopee: { cfg: { ativo: true }, acharDevolucao: async (c) => (shopeeHit && String(c).trim() === shopeeHit.order_sn ? { hit: shopeeHit, qtd: 1 } : { hit: null, qtd: 0 }),
       buscarDevolucoesProxy: async () => [], consultarPedidoCancelado: nulo },
-    magalu: { cfg: { ativo: false } }, nfNomes: { buscarPorNumero: () => null, statusIndice: () => ({}) },
+    magalu: magaluFake || { cfg: { ativo: false } }, nfNomes: { buscarPorNumero: () => null, statusIndice: () => ({}) },
     tiktokPonte: null, tiktokDev: null, mlReturns: { acharPorTracking: () => null, statusIndice: () => ({}) }, espreitaMontada: () => null,
     aguardarVezBling: async () => {}, supabase: null, db: { ligado: () => false },
   };
@@ -49,8 +49,19 @@ function montar(shopeeHit) {
   { const m = montar(null); const r = await m.chamar('124729');
     const t = (r.corpo && r.corpo.tentativas) || [];
     ok(t.some((x) => x.tipo === 'numero_nf') || m.consultasNF.includes('124729'), '  numero de NF de verdade (124729) continua buscado como NF'); }
+  // 29/10: com a Shopee ja tendo achado, a Magalu NAO e consultada (antes: 'magalu_devolucao: 26090694 -> 404')
+  { let chamadas = 0;
+    const mag = { cfg: { ativo: true, autorizado: true }, acharDevolucao: async () => { chamadas++; return null; } };
+    const m = montar(HIT, mag); const r = await m.chamar('2609069UWS4UFX');
+    const t = (r.corpo && r.corpo.tentativas) || [];
+    ok(chamadas === 0 && !t.some((x) => x.tipo === 'magalu_devolucao'), '⚠️ Shopee achou: a Magalu nao e consultada a toa (sem "magalu_devolucao 26090694 -> 404")'); }
+  { let chamadas = 0;
+    const mag = { cfg: { ativo: true, autorizado: true }, acharDevolucao: async () => { chamadas++; return null; } };
+    const m = montar(null, mag); await m.chamar('260813898DFEWW');
+    ok(chamadas === 1, '  Shopee NAO achou: a Magalu continua sendo a reserva (fallback tardio mantido)'); }
   // 4) GOOD e tela unica
   const srv = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
+  ok(/if \(!shipment && !pack && !pistaMagalu && !resultado\._shopeeDev\) \{/.test(srv), '  GOOD: a mesma regra (Magalu so se a Shopee nao achou)');
   ok(/const pistaPedidoShopee = /.test(srv) && /if \(\(pistaSPX \|\| pistaPedidoShopee\) && shopee\.cfg\.ativo\)/.test(srv), '  GOOD: o pedido Shopee tambem vai pra Shopee primeiro');
   const tela = fs.readFileSync(path.join(__dirname, '..', 'public', 'js', 'busca.js'), 'utf8');
   ok(/window\._ultimoCodigoBusca = codigo;/.test(tela) && /if \(!_ehShopee\) sugerirRetiro\(\);/.test(tela), '  tela unica: nao sugere retirada do Full do ML pra codigo da Shopee');
