@@ -798,7 +798,10 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
 
   // MAGALU fallback tardio: reverse_code (10 dig) ou pedido (16 dig sem cara
   // de protocolo) - so tenta se nada acima resolveu e nao tentou ainda.
-  if (!shipment && !pack && !pistaMagalu) {
+  // 29/10 (dono: o pedido Shopee 2609069UWS4UFX abriu certo, mas a lista de tentativas ainda mostrava
+  // 'magalu_devolucao: 26090694 -> 404'): a Shopee ja ACHOU a devolucao (_shopeeDev) — consultar a Magalu com os
+  // digitos do codigo era chamada a toa em todo bipe da Shopee. O comentario acima ja dizia 'so se nada resolveu'.
+  if (!shipment && !pack && !pistaMagalu && !resultado._shopeeDev) {
     if (!ehNomePuro && await tentarDevolucaoMagalu()) return;   // b475: nome puro pula
   }
 
