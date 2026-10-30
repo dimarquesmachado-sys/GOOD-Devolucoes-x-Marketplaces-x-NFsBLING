@@ -9,6 +9,8 @@ const TRIAGENS = [
   { order_id: '2609069UWS4UFX', shipment_id: 'AP487838326BR', problema_descricao: null },           // tosquiadeira (Shopee)
   { order_id: '2000018478090602', shipment_id: '48075103729', problema_descricao: null },           // card 129, Jonatas (ML)
   { order_id: '2000099999999999', shipment_id: null, problema_descricao: 'estornada [caso:#777] sem retorno' },  // caso, nao bipe
+  { order_id: null, shipment_id: null, tracking: 'BR999888777666X', problema_descricao: null },     // Codex: triagem SO com rastreio
+  { order_id: null, pack_id: '2000015000000001', shipment_id: null, problema_descricao: null },      // triagem pelo pack (carrinho ML)
 ];
 function sbFalso({ erro } = {}) {
   return { from: () => ({ select: () => ({ in: async (col, vals) => (erro ? { data: null, error: { message: 'timeout' } }
@@ -30,6 +32,13 @@ function sbFalso({ erro } = {}) {
   // so pelo envio de devolucao do ML (o pedido nao bate)
   const r2 = await chavesTriadas(sbFalso(), 'devolucoes', [{ marketplace: 'ml', pedido: 'OUTRO', shipment_devolucao: '48075103729' }]);
   ok(semTriadas([{ marketplace: 'ml', pedido: 'OUTRO', shipment_devolucao: '48075103729' }], r2.achados).length === 0, '  ML: o numero do envio de devolucao sozinho ja identifica a triagem');
+  // Codex #512: triagem registrada SO com o rastreio (coluna tracking) tira o card
+  const soRastreio = [{ marketplace: 'shopee', pedido: 'PSR', tracking: 'BR999888777666X' }];
+  const r4 = await chavesTriadas(sbFalso(), 'devolucoes', soRastreio);
+  ok(semTriadas(soRastreio, r4.achados).length === 0, '⚠️ Codex: triagem feita so com o rastreio (coluna tracking) tira o card');
+  const doPack = [{ marketplace: 'ml', pedido: '2000018000000001', pack_id: '2000015000000001' }];
+  const r5 = await chavesTriadas(sbFalso(), 'devolucoes', doPack);
+  ok(semTriadas(doPack, r5.achados).length === 0, '  triagem registrada pelo pack do carrinho tira o card');
   // em transito: so Shopee (como a GOOD v3.79)
   const emT = [{ marketplace: 'shopee', pedido: '2609069UWS4UFX', tracking: 'AP487838326BR' }, { marketplace: 'ml', pedido: '2000018478090602' }];
   ok(semTriadas(emT, r.achados, { soShopee: true }).map((d) => d.marketplace).join() === 'ml', '  em transito: tira so a Shopee triada (paridade com a GOOD)');
