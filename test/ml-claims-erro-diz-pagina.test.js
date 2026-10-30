@@ -13,7 +13,8 @@ const ARQ = path.join(__dirname, '..', 'amb-devolucoes', 'lib-AMB', 'ml-returns-
     chamarML: async (p) => {
       const off = Number((/offset=(\d+)/.exec(p) || [])[1] || 0);
       if (/status=opened/.test(p)) return { ok: true, status: 200, data: { data: off === 0 ? [{ id: 1, status: 'opened' }] : [] } };
-      if (/status=closed/.test(p) && off === 60) return { ok: false, status: 403, error: { code: 'PA_UNAUTHORIZED_RESULT_FROM_POLICIES', message: MSG } };
+      // 30/10: da pagina 3 em diante TUDO bloqueado (a faixa inteira, uma por uma) — e ai que a coleta para com o erro
+      if (/status=closed/.test(p) && off >= 60) return { ok: false, status: 403, error: { code: 'PA_UNAUTHORIZED_RESULT_FROM_POLICIES', message: MSG } };
       if (/status=closed/.test(p)) return { ok: true, status: 200, data: { data: Array.from({ length: 30 }, (_, i) => ({ id: 1000 + off + i, status: 'closed' })) } };
       return { ok: true, status: 200, data: {} };
     },

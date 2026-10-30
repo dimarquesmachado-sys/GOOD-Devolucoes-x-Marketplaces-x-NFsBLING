@@ -334,6 +334,30 @@ async function construirIndiceInterno(opts = {}) {
     // ── 1) Coletar os claims (duas passadas: opened + closed) ──
     const claims = [];
     const vistos = new Set();
+    let bloqueadasML = 0;   // 30/10: reclamacoes que o ML recusou mostrar (403 de politica), puladas uma a uma
+    const guardarClaim = (c) => {
+      if (!c || vistos.has(c.id)) return;
+      vistos.add(c.id);
+      claims.push({ id: c.id, resource: c.resource, resource_id: c.resource_id, status: c.status, stage: c.stage, date: c.date_created });
+    };
+    // { coletadas, bloqueadas, fim, erro } — reconsulta a faixa da pagina com limit=1
+    const isolarPaginaBloqueada = async (st, pg) => {
+      let coletadas = 0, bloqueadas = 0;
+      for (let k = 0; k < 30; k++) {
+        drenagem.pontoDeCancelamento(true, 'ml-returns-amb');
+        const r1 = await ml.chamarML(`/post-purchase/v1/claims/search?status=${st}${extras}&offset=${pg * 30 + k}&limit=1`);
+        if (!r1.ok) {
+          if (r1.status === 403) { bloqueadas++; continue; }
+          return { coletadas, bloqueadas, fim: true, erro: `claims/search(${st}) offset ${pg * 30 + k} (isolando a pagina ${pg + 1}) HTTP ${r1.status}: ${JSON.stringify(r1.error || '').slice(0, 300)}` };
+        }
+        const l1 = (r1.data && r1.data.data) || [];
+        if (l1.length === 0) return { coletadas, bloqueadas, fim: true };
+        for (const c of l1) guardarClaim(c);
+        coletadas += l1.length;
+        await sleep(150);
+      }
+      return { coletadas, bloqueadas, fim: false };
+    };
     const uid = await meuUserId();
     const desde = new Date(Date.now() - janelaDias * 864e5).toISOString().replace('Z', '-00:00');
     const extras = uid
@@ -347,6 +371,24 @@ async function construirIndiceInterno(opts = {}) {
         const r = await ml.chamarML(
           `/post-purchase/v1/claims/search?status=${st}${extras}&offset=${pg * 30}&limit=30`
         );
+        if (!r.ok && r.status === 403) {
+          // 30/10: 403 da POLITICA do ML numa pagina. Pode ser o status inteiro bloqueado OU uma reclamacao especifica
+          // que o ML nao deixa este usuario ver e que derruba a pagina dela. Sem chutar: reconsulta a faixa UM POR UM,
+          // pula so as bloqueadas e segue. Se as 30 vierem bloqueadas, e o status inteiro: para como antes.
+          const iso = await isolarPaginaBloqueada(st, pg);
+          bloqueadasML += iso.bloqueadas;
+          if (iso.erro) { erroBusca = iso.erro; break; }
+          if (iso.coletadas === 0 && iso.bloqueadas > 0) {
+            const doStatus = claims.filter((c) => c.status === st).length;
+            erroBusca = `claims/search(${st}) pagina ${pg + 1} (offset ${pg * 30}, ${doStatus} desse status ja coletadas)`
+              + ` HTTP 403 em TODAS as ${iso.bloqueadas} da faixa (uma por uma) — o status inteiro parece bloqueado pra este usuario`
+              + `: ${JSON.stringify(r.error || '').slice(0, 300)}`;
+            break;
+          }
+          if (iso.fim) break;
+          await sleep(200);
+          continue;
+        }
         if (!r.ok) {
           // 29/10: GOOD com 'claims/search(closed) HTTP 403 PA_UNAUTHORIZED_RESULT_FROM_POLICIES' e as abertas ok.
           // Pra diagnosticar sem chute: EM QUAL pagina parou, quantas ja tinham vindo desse status e a mensagem
@@ -358,14 +400,7 @@ async function construirIndiceInterno(opts = {}) {
         }
         const lista = (r.data && r.data.data) || [];
         if (lista.length === 0) break;
-        for (const c of lista) {
-          if (vistos.has(c.id)) continue;
-          vistos.add(c.id);
-          claims.push({
-            id: c.id, resource: c.resource, resource_id: c.resource_id,
-            status: c.status, stage: c.stage, date: c.date_created,
-          });
-        }
+        for (const c of lista) guardarClaim(c);
         if (lista.length < 30) break;
         await sleep(200);
       }
@@ -452,6 +487,7 @@ async function construirIndiceInterno(opts = {}) {
     IDX.amostraFalhas = amostraFalhas;
     IDX.duracaoSeg = Math.round((Date.now() - t0) / 1000);
     IDX.erro = erroBusca;
+    IDX.bloqueadasML = bloqueadasML;   // 30/10: reclamacoes recusadas pela politica do ML, puladas uma a uma
 
     console.log(`[${TAG_EMP}/ML-RETURNS] indice: ${claims.length} claims, ${comTracking} com rastreio, em ${IDX.duracaoSeg}s`);
 
@@ -490,6 +526,7 @@ function statusIndice() {
     idade_min: IDX.ts ? Math.round((Date.now() - IDX.ts) / 60000) : null,
     janela_dias: cfg.ml.janelaDias,
     total_claims: IDX.totalClaims,
+    claims_bloqueadas: IDX.bloqueadasML || 0,   // 30/10: o ML recusou mostrar (403 de politica) — puladas, o resto foi coletado
     com_tracking: IDX.comTracking,
     returns_com_falha_persistente: IDX.falhasReturns || 0,
     amostra_falhas: IDX.amostraFalhas || [],
