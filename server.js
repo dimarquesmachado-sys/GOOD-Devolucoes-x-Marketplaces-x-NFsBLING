@@ -582,7 +582,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.126.148 (b636.2: vinculo da NF pela chave permanente no armazem + completado em segundo plano — fim do falso nao localizada)',
+      version: '9.126.150 (b638: cabecalho do painel unico sem o AMB b67 fixo)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
