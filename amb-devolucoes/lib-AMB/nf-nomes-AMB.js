@@ -692,6 +692,7 @@ function abandonarConstrucao() {
 
 function statusIndice() {
   return {
+    nf_por_venda: statusNfPorVenda(),   // 30/10: o mapa venda -> NF (fonte firme da Shopee) e quanto veio do armazem
     // b415: a fila do pre-aquecimento precisa saber se ainda VEM mais
     ocupado: construindo || reagendado,
     construindo,
@@ -1034,6 +1035,63 @@ function tentar(tentativa, opcoes) {
 // Cache permanente com retentativa (padrão da ENTREGA_REAL/b30).
 const NF_POR_VENDA = new Map();
 const NF_POR_LOJA = new Map();   // b39 - numeroLoja -> {numero,serie} (a chave que o card sempre tem)   // id_venda -> { numero, serie, id_nf, tent, http }
+// 30/10 - ⚠️ O MAPA VENDA -> NF AGORA E GUARDADO NO ARMAZEM (um arquivo por empresa).
+// Dono, 30/10: na espreita da Girassol, TODOS os cards da Shopee vieram sem NF de venda firme (so o palpite pelo
+// nome) — e de manha os mesmos cards tinham (a tosquiadeira vinha com 126747). Este mapa e a fonte firme da NF de
+// venda da Shopee e ficava SO NA MEMORIA: todo deploy apagava, e ele se refaz aos poucos (40 vendas por montagem,
+// ate 2 consultas ao Bling cada). Sem NF firme, a prova pelo XML (#505) nao roda pros cards da Shopee.
+// Agora: guarda no armazem (o mesmo do indice), carrega no boot; grava somando com o que esta la, nunca antes de
+// carregar, e tenta de novo se ler/gravar falhar. Cada entrada vale 30 dias (cobre a rara NF cancelada e reemitida).
+const NOME_ARQ_NFV = 'nf-por-venda';
+const NFV_VALIDADE_MS = 30 * 86400 * 1000;
+let nfvCarregado = false, nfvTimer = null, nfvRetry = null, nfvCarregados = 0;
+async function carregarNfPorVenda() {
+  if (!ARMAZEM || typeof ARMAZEM.carregarComEstado !== 'function') return { ok: false, erro: 'sem armazem' };
+  const lido = await ARMAZEM.carregarComEstado(NOME_ARQ_NFV).catch((e) => ({ ok: false, erro: e.message }));
+  if (!lido || !lido.ok) {   // falhou a leitura: nao marca carregado (gravar agora apagaria o guardado) e tenta de novo
+    if (!nfvRetry) { nfvRetry = setTimeout(() => { nfvRetry = null; carregarNfPorVenda().catch(() => {}); }, 5 * 60 * 1000); if (nfvRetry.unref) nfvRetry.unref(); }
+    return { ok: false, erro: lido && lido.erro };
+  }
+  const v = (lido.obj && lido.obj.v && typeof lido.obj.v === 'object') ? lido.obj.v : {};
+  const agora = Date.now();
+  let n = 0;
+  for (const [id, x] of Object.entries(v)) {
+    if (!x || !x.numero || !x.em || agora - x.em > NFV_VALIDADE_MS) continue;
+    const ja = NF_POR_VENDA.get(id);
+    if (ja && ja.numero) continue;
+    NF_POR_VENDA.set(id, { numero: String(x.numero), serie: x.serie || null, id_nf: x.id_nf || null, tent: 1, http: 'armazem', em: x.em, loja: x.loja || null });
+    if (x.loja) NF_POR_LOJA.set(String(x.loja), { numero: String(x.numero), serie: x.serie || null });
+    n++;
+  }
+  nfvCarregado = true;
+  nfvCarregados = n;
+  for (const [id, e] of NF_POR_VENDA) { if (e && e.numero && !(id in v)) { agendarSalvarNfv(); break; } }   // achadas antes de carregar
+  return { ok: true, carregados: n };
+}
+function statusNfPorVenda() {
+  let comNf = 0; for (const e of NF_POR_VENDA.values()) if (e && e.numero) comNf++;
+  return { com_nf: comNf, consultadas: NF_POR_VENDA.size, carregado_do_armazem: nfvCarregado, vieram_do_armazem: nfvCarregados };
+}
+function agendarSalvarNfv() {
+  if (!ARMAZEM || !nfvCarregado || nfvTimer) return;
+  const reagendar = () => { if (nfvTimer) return; nfvTimer = setTimeout(() => { nfvTimer = null; agendarSalvarNfv(); }, 60 * 1000); if (nfvTimer.unref) nfvTimer.unref(); };
+  nfvTimer = setTimeout(async () => {
+    nfvTimer = null;
+    try {
+      const lido = await ARMAZEM.carregarComEstado(NOME_ARQ_NFV);
+      if (!lido || !lido.ok) { reagendar(); return; }
+      const v = (lido.obj && lido.obj.v && typeof lido.obj.v === 'object') ? { ...lido.obj.v } : {};
+      const agora = Date.now();
+      for (const [id, e] of NF_POR_VENDA) {
+        if (e && e.numero) v[id] = { numero: String(e.numero), serie: e.serie || null, id_nf: e.id_nf || null, loja: e.loja || null, em: e.em || agora };
+      }
+      for (const [id, x] of Object.entries(v)) if (!x || !x.em || agora - x.em > 2 * NFV_VALIDADE_MS) delete v[id];   // poda o velho
+      const g = await ARMAZEM.salvar(NOME_ARQ_NFV, { v, salvo_em: new Date().toISOString() });
+      if (!g || g.ok === false) reagendar();
+    } catch (e) { reagendar(); }
+  }, 10 * 1000);
+  if (nfvTimer.unref) nfvTimer.unref();
+}
 let NFV_RODANDO = false;
 
 // b47 - acha a NF por NOME direto no indice em memoria (SINCRONO, sem rebuild).
@@ -1099,7 +1157,7 @@ function dispararNfPorVenda(pares) {
             http = rn.status || http;
           }
         }
-        NF_POR_VENDA.set(id, { numero, serie, id_nf: nfId, tent: (antes.tent || 0) + 1, http });
+        NF_POR_VENDA.set(id, { numero, serie, id_nf: nfId, tent: (antes.tent || 0) + 1, http, em: Date.now(), loja: loja || null });   // 30/10: em/loja pro armazem
         if (loja && numero) NF_POR_LOJA.set(loja, { numero, serie });
       } catch (e) {
         NF_POR_VENDA.set(id, { numero: null, serie: null, id_nf: null, tent: (antes.tent || 0) + 1, http: 'exc:' + String(e.message).slice(0, 40) });
@@ -1108,6 +1166,7 @@ function dispararNfPorVenda(pares) {
     }
     const ok = [...NF_POR_VENDA.values()].filter(e => e.numero).length;
     console.log(`[${TAG_EMP}/NF-NOMES] NFs pela venda: ` + ok + ' de ' + NF_POR_VENDA.size + ' consultadas');
+    if (ok > 0) agendarSalvarNfv();   // 30/10: guarda o que achou (sobrevive a deploy)
   })().catch(() => {}).finally(() => { NFV_RODANDO = false; });
 }
 
@@ -1126,8 +1185,10 @@ function acharPorPedido(pedido) {
   return (k && IDX.porPedido && IDX.porPedido[k]) || null;
 }
 
+// 30/10: carrega o mapa venda -> NF guardado (1 leitura do Storage, nao toca o Bling)
+if (ARMAZEM) { const tCarga = setTimeout(() => { carregarNfPorVenda().catch(() => {}); }, 3000); if (tCarga.unref) tCarga.unref(); }
 return {
-  construirIndice, atualizarIndice, statusIndice, tetoConstrucaoMs, tetoAbsolutoConstrucaoMs, buscarPorNome, acharPorPedido, acharPorNumero, acharVendaPorLoja, nfDaVenda, nfDaLoja, acharNfPorNomeIndice, dispararNfPorVenda, preAquecer,
+  construirIndice, atualizarIndice, statusIndice, tetoConstrucaoMs, tetoAbsolutoConstrucaoMs, buscarPorNome, acharPorPedido, acharPorNumero, acharVendaPorLoja, nfDaVenda, nfDaLoja, acharNfPorNomeIndice, carregarNfPorVenda, statusNfPorVenda, dispararNfPorVenda, preAquecer,
   colapsar, primeiroUltimo,
 };
 }
