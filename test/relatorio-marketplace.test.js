@@ -46,7 +46,12 @@ async function chamarRota(query) {
   let handler = null;
   const nada = () => {};
   const app = { get: (rota, _mw, h) => { if (rota === '/api/admin/relatorios/devolucoes') handler = h; }, post: nada, put: nada, delete: nada, patch: nada };
-  registrarRotasRelatorios(app, { supabase: sb, requerAdmin: (q2, r2, n) => n() });
+  registrarRotasRelatorios(app, {
+    supabase: sb, requerAdmin: (q2, r2, n) => n(),
+    // b650 - o contrato agora exige os nomes da empresa; aqui, os da GOOD.
+    tabelas: { devolucoes: 'devolucoes', tags: 'tags', devolucaoTags: 'devolucao_tags' },
+    buscarProdutos: null,
+  });
   let corpo = null, status = 200;
   const res = { status(s) { status = s; return this; }, json(b) { corpo = b; return this; } };
   await handler({ query }, res);
