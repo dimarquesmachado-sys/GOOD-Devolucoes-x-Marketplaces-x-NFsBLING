@@ -57,6 +57,24 @@ function armazem() { const arq = {}; return { arq, carregarComEstado: async (n) 
   await new Promise((r) => setTimeout(r, 5600));
   const g9 = arm9.arq['vinculos-nf-chave'].v['canc9|chave:' + ch(9)];
   ok(g9 && g9.morta === true, '⚠️ Codex: nota morta achada antes do carregamento substitui o vinculo vivo do arquivo');
+  // Codex #515: vinculo comum (fallback numero/serie) NAO sobrescreve a marca de nota morta
+  vc.marcarMorta({ nf_chave: ch(10) }, 'canc10', 2);
+  vc.guardar({ nf_chave: ch(10) }, 'vivo', 'chave', {}, 'canc10');
+  const m10 = vc.ler({ nf_chave: ch(10) }, 'canc10');
+  ok(m10 && m10.morta === true && m10.id === null, '⚠️ Codex: guardar() nao sobrescreve nota morta com vinculo vivo');
+  // Codex #515: card com id do BANCO e sem entrada no cache recebe a 1a conferencia (e nao repete a cada abertura se falhar)
+  const l11 = [{ nf_chave: ch(11), nf_id_bling: 'idbanco', prazo_cancelamento: 12 }];
+  const c11 = [];
+  const f11 = vc.completarChaveEmFundo(l11, 'canc11', async (c) => { c11.push(c); return { ok: true, via: 'chave-nota-morta', situacao: 2, match: null }; }, { pausaMs: 5 });
+  await f11.promessa;
+  const d11 = [{ nf_chave: ch(11), nf_id_bling: 'idbanco' }]; vc.aplicar(d11, 'canc11');
+  ok(c11.length === 1 && d11[0].nf_cancelada === true, '⚠️ Codex: id vindo do banco (sem cache) e conferido e pega a nota cancelada');
+  const l12 = [{ nf_chave: ch(12), nf_id_bling: 'idbanco', prazo_cancelamento: 12 }];
+  const c12 = [];
+  const b12 = async (c) => { c12.push(c); return { ok: false }; };
+  await vc.completarChaveEmFundo(l12, 'canc12', b12, { pausaMs: 5 }).promessa;
+  const f12 = vc.completarChaveEmFundo(l12, 'canc12', b12, { pausaMs: 5 });
+  ok(c12.length === 1 && f12.iniciada === false, '  falha na conferencia nao e refeita a cada abertura');
   // 4) as duas rotas tiram o cancelado da lista e marcam permanente na fase da chave
   for (const [arq, emp] of [['server.js', 'empresa'], ['amb-devolucoes/app-AMB.js', 'CHAVE_DADOS']]) {
     const s = fs.readFileSync(path.join(__dirname, '..', arq), 'utf8');

@@ -660,7 +660,7 @@ const registrarCicloDefeitos = require('../lib/defeitos-ciclo');
 // candidato ja desistido ainda batia no Bling depois de esperar numa pausa
 // de 429. Ver bling-AMB.js, nf-nomes-AMB.js e identificar-AMB.js.
 // 29/10: sem o 'AMB' na frente — a mesma peca serve Girassol, AMB e as proximas; a empresa vai no campo `empresa`
-const VERSAO = 'Devolucoes b642';
+const VERSAO = 'Devolucoes b643';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -3922,7 +3922,7 @@ router.get('/api/admin/sem-retorno', auth.requerLogin, async (req, res) => {
       } catch (e) { /* segue pros caminhos abaixo */ }
     }
 
-    const semVinculoAMB = itens.filter((x) => x.nf_chave && !x.nf_id_bling);
+    const semVinculoAMB = itens.filter((x) => x.nf_chave && !x.nf_id_bling && !x.nf_cancelada);   // Codex #515: nota morta nao se procura
     const filaAMB = semVinculoAMB.filter((x) => x.marketplace === 'magalu').slice(0, 15)
       .concat(semVinculoAMB.filter((x) => x.marketplace !== 'magalu').slice(0, 10));
 
