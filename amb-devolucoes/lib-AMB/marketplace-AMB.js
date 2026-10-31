@@ -48,6 +48,15 @@ function detectar(numeroPedidoLoja, pistas = {}) {
     return { marketplace: 'ml', confianca: 'alta', motivo: '16 digitos iniciando em 2000' };
   }
 
+  // 31/10: Amazon — 000-0000000-0000000 (ex 702-9567465-0509861). Antes caia em 'desconhecido'.
+  if (/^\d{3}-\d{7}-\d{7}$/.test(n)) {
+    return { marketplace: 'amazon', confianca: 'alta', motivo: 'formato Amazon 000-0000000-0000000' };
+  }
+  // 31/10: Magalu — 16 digitos comecando em 15 (ex 1572870105525626, o formato de hoje nas 3 empresas). Antes so
+  // aceitava ate 14 digitos e o de 16 caia em 'desconhecido'. O ML de 16 digitos comeca em 2000 (ja tratado acima).
+  if (/^15\d{14}$/.test(n)) {
+    return { marketplace: 'magalu', confianca: 'media', motivo: '16 digitos iniciando em 15, padrao Magalu' };
+  }
   // TikTok Shop: 18 digitos
   if (/^\d{18}$/.test(n)) {
     return { marketplace: 'tiktok', confianca: 'alta', motivo: '18 digitos, padrao TikTok Shop' };
