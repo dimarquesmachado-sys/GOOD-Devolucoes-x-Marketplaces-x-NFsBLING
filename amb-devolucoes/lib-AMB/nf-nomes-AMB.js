@@ -1044,6 +1044,8 @@ const NF_POR_LOJA = new Map();   // b39 - numeroLoja -> {numero,serie} (a chave 
 // carregar, e tenta de novo se ler/gravar falhar. Cada entrada vale 30 dias (cobre a rara NF cancelada e reemitida).
 const NOME_ARQ_NFV = 'nf-por-venda';
 const NFV_VALIDADE_MS = 30 * 86400 * 1000;
+// Validade vale em TODO uso (nao so ao carregar): entrada restaurada perto dos 30 dias nao pode ficar firme pra sempre.
+const nfvVale = (e) => !!(e && e.numero && (!e.em || Date.now() - e.em <= NFV_VALIDADE_MS));
 let nfvCarregado = false, nfvTimer = null, nfvRetry = null, nfvCarregados = 0;
 async function carregarNfPorVenda() {
   if (!ARMAZEM || typeof ARMAZEM.carregarComEstado !== 'function') return { ok: false, erro: 'sem armazem' };
@@ -1058,14 +1060,18 @@ async function carregarNfPorVenda() {
   for (const [id, x] of Object.entries(v)) {
     if (!x || !x.numero || !x.em || agora - x.em > NFV_VALIDADE_MS) continue;
     const ja = NF_POR_VENDA.get(id);
-    if (ja && ja.numero) continue;
+    if (nfvVale(ja)) continue;
     NF_POR_VENDA.set(id, { numero: String(x.numero), serie: x.serie || null, id_nf: x.id_nf || null, tent: 1, http: 'armazem', em: x.em, loja: x.loja || null });
-    if (x.loja) NF_POR_LOJA.set(String(x.loja), { numero: String(x.numero), serie: x.serie || null });
+    if (x.loja) NF_POR_LOJA.set(String(x.loja), { numero: String(x.numero), serie: x.serie || null, em: x.em });
     n++;
   }
   nfvCarregado = true;
   nfvCarregados = n;
-  for (const [id, e] of NF_POR_VENDA) { if (e && e.numero && !(id in v)) { agendarSalvarNfv(); break; } }   // achadas antes de carregar
+  // achadas/renovadas antes de carregar: salva se faltar no armazem OU se diferir (numero, serie ou data) do guardado
+  for (const [id, e] of NF_POR_VENDA) {
+    const g = v[id];
+    if (nfvVale(e) && (!g || String(g.numero) !== String(e.numero) || (g.serie || null) !== (e.serie || null) || (e.em && g.em !== e.em))) { agendarSalvarNfv(); break; }
+  }
   return { ok: true, carregados: n };
 }
 function statusNfPorVenda() {
@@ -1083,7 +1089,7 @@ function agendarSalvarNfv() {
       const v = (lido.obj && lido.obj.v && typeof lido.obj.v === 'object') ? { ...lido.obj.v } : {};
       const agora = Date.now();
       for (const [id, e] of NF_POR_VENDA) {
-        if (e && e.numero) v[id] = { numero: String(e.numero), serie: e.serie || null, id_nf: e.id_nf || null, loja: e.loja || null, em: e.em || agora };
+        if (nfvVale(e)) v[id] = { numero: String(e.numero), serie: e.serie || null, id_nf: e.id_nf || null, loja: e.loja || null, em: e.em || agora };
       }
       for (const [id, x] of Object.entries(v)) if (!x || !x.em || agora - x.em > 2 * NFV_VALIDADE_MS) delete v[id];   // poda o velho
       const g = await ARMAZEM.salvar(NOME_ARQ_NFV, { v, salvo_em: new Date().toISOString() });
@@ -1117,12 +1123,12 @@ function acharNfPorNomeIndice(nome) {
 
 function nfDaLoja(numeroLoja) {
   const e = numeroLoja ? NF_POR_LOJA.get(String(numeroLoja).trim()) : null;
-  return (e && e.numero) ? e : null;
+  return nfvVale(e) ? e : null;
 }
 
 function nfDaVenda(idVenda) {
   const e = idVenda ? NF_POR_VENDA.get(String(idVenda)) : null;
-  return (e && e.numero) ? e : null;
+  return nfvVale(e) ? e : null;
 }
 
 function dispararNfPorVenda(pares) {
@@ -1133,14 +1139,15 @@ function dispararNfPorVenda(pares) {
   const fila = norm.filter(x => {
     if (vistos.has(x.id)) return false; vistos.add(x.id);
     const e = NF_POR_VENDA.get(x.id);
-    return !e || (!e.numero && (e.tent || 0) < 3);
+    return !e || (e.numero ? !nfvVale(e) : (e.tent || 0) < 3);   // vencida (30 dias) volta pra fila
   }).slice(0, 40);
   if (!fila.length) return;
   NFV_RODANDO = true;
   (async () => {
     for (const item of fila) {
       const id = item.id, loja = item.loja;
-      const antes = NF_POR_VENDA.get(id) || { tent: 0 };
+      const antes0 = NF_POR_VENDA.get(id);
+      const antes = (antes0 && !antes0.numero) ? antes0 : { tent: 0 };   // vencida recomeca a contagem de tentativas
       try {
         const r = await bling.chamarBling('/pedidos/vendas/' + id);
         const v = (r.ok && r.data && r.data.data) || null;
@@ -1158,7 +1165,7 @@ function dispararNfPorVenda(pares) {
           }
         }
         NF_POR_VENDA.set(id, { numero, serie, id_nf: nfId, tent: (antes.tent || 0) + 1, http, em: Date.now(), loja: loja || null });   // 30/10: em/loja pro armazem
-        if (loja && numero) NF_POR_LOJA.set(loja, { numero, serie });
+        if (loja && numero) NF_POR_LOJA.set(loja, { numero, serie, em: Date.now() });
       } catch (e) {
         NF_POR_VENDA.set(id, { numero: null, serie: null, id_nf: null, tent: (antes.tent || 0) + 1, http: 'exc:' + String(e.message).slice(0, 40) });
       }

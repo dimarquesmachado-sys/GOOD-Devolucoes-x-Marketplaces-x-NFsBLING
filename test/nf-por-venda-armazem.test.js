@@ -59,6 +59,34 @@ function montar(arm, chamadas) {
   const m4 = montar(arm4);
   const r4 = await m4.carregarNfPorVenda();
   ok(r4.ok === false && m4.statusIndice().nf_por_venda.carregado_do_armazem === false && arm4.gravacoes === 0, '  leitura do armazem falhou: nao grava (nao apaga o que estava guardado)');
+  // 5) (Codex #516) entrada restaurada com 29 dias expira DURANTE o uso e a venda volta pra fila do Bling
+  const arm5 = armazem({ 'nf-por-venda': { v: { V1: { numero: '111', serie: '1', loja: 'L5', em: agora - 29 * 86400e3 } } } });
+  const ch5 = [];
+  const m5 = montar(arm5, ch5);
+  await m5.carregarNfPorVenda();
+  ok(m5.nfDaVenda('V1') && m5.nfDaLoja('L5'), '  restaurada com 29 dias: ainda vale hoje');
+  const dateNow = Date.now;
+  Date.now = () => dateNow() + 2 * 86400e3;
+  try {
+    ok(!m5.nfDaVenda('V1') && !m5.nfDaLoja('L5'), '⚠️ 2 dias depois (31 dias) a NF restaurada NAO e mais firme (nfDaVenda e nfDaLoja)');
+    m5.dispararNfPorVenda([{ id: 'V1', loja: 'L5' }]);
+    for (let i = 0; i < 30 && !(m5.nfDaVenda('V1')); i++) await espera(100);
+  } finally { Date.now = dateNow; }
+  ok(ch5.some((u) => /pedidos\/vendas\/V1$/.test(u)) && m5.nfDaVenda('V1') && m5.nfDaVenda('V1').numero === '127877', '  a venda vencida e consultada de novo no Bling (127877)');
+  // 6) (Codex #516) renovada antes do armazem carregar, com ID ja guardado: a gravacao nao se perde
+  let solta; const portao = new Promise((r) => { solta = r; });
+  const arm6 = armazem({ 'nf-por-venda': { v: { V1: { numero: '111', serie: '1', loja: 'L6', em: agora - 5 * 86400e3 } } } });
+  const lerOrig = arm6.carregarComEstado;
+  arm6.carregarComEstado = async (n) => { await portao; return lerOrig(n); };
+  const m6 = montar(arm6);
+  m6.dispararNfPorVenda([{ id: 'V1', loja: 'L6' }]);
+  for (let i = 0; i < 30 && !m6.nfDaVenda('V1'); i++) await espera(100);
+  await espera(700);   // deixa a consulta terminar (e o salvar ser descartado) ANTES da leitura voltar
+  solta();
+  await m6.carregarNfPorVenda();
+  await espera(10600);
+  const g6 = arm6.arq['nf-por-venda'].v.V1;
+  ok(g6 && g6.numero === '127877', '⚠️ renovada antes da carga (ID ja no armazem com outra NF): e gravada depois que a leitura volta');
   console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
   process.exit(falhas ? 1 : 0);
 })().catch((e) => { console.log('FALHA (excecao):', e && e.stack); process.exit(1); });
