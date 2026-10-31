@@ -160,6 +160,7 @@ const tiktokDev = require('./lib/tiktok-devolucoes');           // v4.66
 const erroCodigo = require('./lib/erro-de-codigo');   // b205 - bug meu nao e falha do marketplace
 const confrontar = require('./lib/confrontar-nf');   // b208 - escada de desempate da NF
 const vinculoCache = require('./lib/vinculo-nf-cache');   // b204 - vinculo NF ja achado
+const sessaoMeiaNoite = require('./lib/sessao-meia-noite');   // 31/10 - o login acaba na meia-noite (SP)
 const marcadores = require('./lib/marcadores-estornada');   // b200 - peca unica dos marcadores
 // b201 - `magaluCancelados` NUNCA foi importado nesta empresa.
 //
@@ -295,8 +296,8 @@ function validarSessao(token, tipoEsperado = null) {
   // 2) token antigo, ainda na memoria deste processo
   const s = sessoes.get(token);
   if (!s) return null;
-  // Sessao expira em 12h
-  if (Date.now() - s.criado > 12 * 60 * 60 * 1000) {
+  // Sessao expira em 12h — ou na meia-noite (SP), o que vier primeiro (31/10)
+  if (sessaoMeiaNoite.venceu(s.criado, 12 * 60 * 60 * 1000)) {
     sessoes.delete(token);
     return null;
   }
@@ -582,7 +583,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.126.158 (b646: devolucao do ML com revisao no CD conta 1 caixa — fim do falso CAIXA 1/2 no ML)',
+      version: '9.126.159 (b647: login do Devolucoes acaba na meia-noite de Sao Paulo — cada funcionario entra com o proprio login de manha)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -3126,7 +3127,7 @@ app.post('/api/auth/login', (req, res) => {
     // v4.25 - em producao (Render, HTTPS) o cookie so trafega criptografado.
     // Em localhost fica desligado pra nao atrapalhar teste local.
     secure: process.env.NODE_ENV === 'production' || !!process.env.RENDER,
-    maxAge: 12 * 60 * 60 * 1000, // 12h
+    maxAge: sessaoMeiaNoite.maxAgeCookie(12 * 60 * 60 * 1000), // 31/10: ate a meia-noite (SP) ou 12h, o que vier primeiro
   });
   console.log(`[LOGIN] ${contaReal} (${tipo})`);
   return res.json({ ok: true, usuario: contaReal, tipo });
@@ -3203,7 +3204,9 @@ function _assinar(p) {
     .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 function novaSessaoAssinada(usuario, tipo, validadeMs) {
-  const payload = JSON.stringify({ u: usuario, t: tipo, e: Date.now() + (validadeMs || 12 * 60 * 60 * 1000) });
+  // 31/10: acaba na MEIA-NOITE de Sao Paulo ou nas 12 h, o que vier primeiro; `c` guarda a hora do login
+  const criado = Date.now();
+  const payload = JSON.stringify({ u: usuario, t: tipo, e: sessaoMeiaNoite.expiraEm(criado, validadeMs || 12 * 60 * 60 * 1000), c: criado });
   const p = Buffer.from(payload).toString('base64')
     .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
   return p + '.' + _assinar(p);
@@ -3220,6 +3223,10 @@ function validarSessaoAssinada(token) {
     const d = JSON.parse(Buffer.from(p.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString());
     if (!d || !d.u) return null;
     if (d.e && Date.now() > d.e) return null;
+    // 31/10: passou da meia-noite desde o login -> acabou. Token de antes deste deploy nao traz `c`: a hora do login
+    // e a expiracao antiga menos as 12 h de entao.
+    const criadoTok = d.c || (d.e ? d.e - 12 * 60 * 60 * 1000 : 0);
+    if (criadoTok && sessaoMeiaNoite.venceu(criadoTok, 12 * 60 * 60 * 1000)) return null;
     return { usuario: d.u, tipo: d.t };
   } catch (e) { return null; }
 }

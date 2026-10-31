@@ -56,6 +56,7 @@
 // ============================================================
 
 'use strict';
+const sessaoMeiaNoite = require('../../lib/sessao-meia-noite');   // 31/10 - o login acaba na meia-noite (SP)
 
 const crypto = require('crypto');
 
@@ -274,8 +275,11 @@ function criar(cfg) {
             const dados = JSON.parse(Buffer.from(p.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString());
             if (!dados || !dados.u) return null;
             if (dados.e && Date.now() > dados.e) return null;          // venceu
+            // 31/10: passou da meia-noite (SP) desde o login -> acabou. Token de antes deste deploy nao traz `c`.
+            const criadoTok = dados.c || ((dados.e || 0) - c.validadeMs);
+            if (criadoTok > 0 && sessaoMeiaNoite.venceu(criadoTok, c.validadeMs)) return null;
             if (tipoExigido && dados.t !== tipoExigido) return null;
-            return { usuario: dados.u, tipo: dados.t, criado: (dados.e || 0) - c.validadeMs };
+            return { usuario: dados.u, tipo: dados.t, criado: criadoTok };
           } catch (e) { return null; }
         }
       }
@@ -284,7 +288,7 @@ function criar(cfg) {
     // 2) token antigo, ainda na memoria deste processo
     const s = minhasSessoes.get(token);
     if (!s) return null;
-    if (Date.now() - s.criado > c.validadeMs) { minhasSessoes.delete(token); return null; }
+    if (sessaoMeiaNoite.venceu(s.criado, c.validadeMs)) { minhasSessoes.delete(token); return null; }   // 31/10: ou a meia-noite
     if (tipoExigido && s.tipo !== tipoExigido) return null;
     return s;
   };
@@ -307,14 +311,16 @@ function criar(cfg) {
       };
     },
     novaSessao: (usuario, tipo) => {
-      const payload = JSON.stringify({ u: usuario, t: tipo, e: Date.now() + c.validadeMs });
+      // 31/10: acaba na MEIA-NOITE de Sao Paulo ou nas 12 h, o que vier primeiro; `c` guarda a hora do login
+      const agoraLogin = Date.now();
+      const payload = JSON.stringify({ u: usuario, t: tipo, e: sessaoMeiaNoite.expiraEm(agoraLogin, c.validadeMs), c: agoraLogin });
       const p = b64url(payload);
       const token = p + '.' + assinarCom(c.cookie, p);   // b346
       // o Map continua alimentado: serve de ponte pros tokens antigos e
       // nao atrapalha em nada
       minhasSessoes.set(token, { usuario, tipo, criado: Date.now() });
       for (const [t, s] of minhasSessoes) {
-        if (Date.now() - s.criado > c.validadeMs) minhasSessoes.delete(t);
+        if (sessaoMeiaNoite.venceu(s.criado, c.validadeMs)) minhasSessoes.delete(t);
       }
       return token;
     },
@@ -331,7 +337,7 @@ function criar(cfg) {
       sameSite: 'lax',
       path: c.caminhoCookie,
       secure: process.env.NODE_ENV === 'production' || !!process.env.RENDER,
-      maxAge: c.validadeMs,
+      maxAge: sessaoMeiaNoite.maxAgeCookie(c.validadeMs),   // 31/10: ate a meia-noite (SP) ou 12h
     }),
     tokenDaRequisicao: (req) => (req.cookies && req.cookies[c.cookie]) || null,
     requerLogin: (req, res, next) => {
