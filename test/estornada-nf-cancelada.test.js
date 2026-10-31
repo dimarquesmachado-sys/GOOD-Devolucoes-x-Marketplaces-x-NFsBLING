@@ -46,6 +46,17 @@ function armazem() { const arq = {}; return { arq, carregarComEstado: async (n) 
   const depois = [{ nf_chave: ch(4), nf_id_bling: 'id4' }]; vc.aplicar(depois, 'canc4');
   ok(depois[0].nf_cancelada === true, '⚠️ vinculo feito antes do cancelamento: a reconferencia pega a nota morta');
   ok(!lista[0].nf_vinculo_pendente, '  reconferencia nao marca o card como "procurando"');
+  // Codex #515: nota morta sem id NAO entra em nenhuma fila de busca (chave ou numero)
+  const naFila = vc.fila([{ nf_chave: ch(3) }, { nf_chave: ch(7) }], 'canc3', 10, null, 'chave');
+  ok(naFila.length === 1 && naFila[0].nf_chave === ch(7), '⚠️ Codex: nota morta fica fora da fila de busca (nao gasta o teto da abertura)');
+  ok(vc.fila([{ nf_chave: ch(8), nf_cancelada: true }], 'canc3', 10, null, 'numero').length === 0, '  card ja marcado cancelado tambem fica fora da fila pelo numero');
+  // Codex #515: nota morta descoberta ANTES do armazem carregar, com o arquivo guardando o vinculo 'vivo' — regrava
+  const arm9 = armazem(); arm9.arq['vinculos-nf-chave'] = { v: { ['canc9|chave:' + ch(9)]: { id: 'vivo', numero: '9', serie: '1', chave: ch(9) } } };
+  vc.marcarMorta({ nf_chave: ch(9) }, 'canc9', 2);
+  await vc.ligarArmazem('canc9', arm9);
+  await new Promise((r) => setTimeout(r, 5600));
+  const g9 = arm9.arq['vinculos-nf-chave'].v['canc9|chave:' + ch(9)];
+  ok(g9 && g9.morta === true, '⚠️ Codex: nota morta achada antes do carregamento substitui o vinculo vivo do arquivo');
   // 4) as duas rotas tiram o cancelado da lista e marcam permanente na fase da chave
   for (const [arq, emp] of [['server.js', 'empresa'], ['amb-devolucoes/app-AMB.js', 'CHAVE_DADOS']]) {
     const s = fs.readFileSync(path.join(__dirname, '..', arq), 'utf8');
