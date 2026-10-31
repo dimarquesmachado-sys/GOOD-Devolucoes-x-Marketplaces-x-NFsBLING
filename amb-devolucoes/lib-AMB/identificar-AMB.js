@@ -13,6 +13,23 @@
 // ════════════════════════════════════════════════════════════════════════
 'use strict';
 
+// 30/10 - ⚠️ NF GUARDADA SO VIRA TOQUE SE O INDICE CONFIRMAR QUE E DAQUELE PEDIDO.
+// De 04/10 (b518) ate o #507 (29/10), a espreita desta fabrica gravava na captura o PALPITE da NF pelo nome do
+// cliente como se fosse a NF da venda (a tosquiadeira 2609069UWS4UFX, venda 126747, foi guardada como 126807). A
+// captura regrava as linhas a cada hora, entao o que ainda esta na espreita ja se corrigiu; as linhas de devolucoes
+// que sairam da lista do marketplace guardam o palpite. No card 'Achei no que foi GUARDADO', a NF vira um TOQUE que
+// abre a triagem dela — com o palpite, a triagem da venda ERRADA. Sem apagar nada no banco: a NF guardada so vale se
+// a NF que o indice tem PARA AQUELE PEDIDO for a mesma; senao o card fica 'sem NF guardada' (como ja e pra quem nao
+// tem). TikTok vem de outra fonte (a API dele), fica como esta.
+function validarNfGuardada(c, nfNomes) {
+  if (!c || !c.nf_numero || String(c.marketplace || '').toLowerCase() === 'tiktok') return c;
+  const norm = (v) => String(v || '').replace(/\D/g, '').replace(/^0+/, '');
+  let firme = null;
+  try { firme = (c.pedido && nfNomes && typeof nfNomes.acharPorPedido === 'function') ? nfNomes.acharPorPedido(String(c.pedido)) : null; } catch (e) { firme = null; }
+  if (firme && firme.numero && norm(firme.numero) === norm(c.nf_numero)) return c;
+  return { ...c, nf_numero: null, nf_guardada_nao_confirmada: true };
+}
+
 module.exports = function registrarIdentificar(app, deps) {
   // ⚠️ b359 - A CHAVE DO BANCO VEM DAS DEPS, nao de literal.
   //
@@ -111,9 +128,11 @@ module.exports = function registrarIdentificar(app, deps) {
   // so DESTA empresa (CHAVE_DADOS), ate 3 s. Reembolso puro do TikTok fica de fora (ver a lib).
   async function anexarCapturadas(resultado, ids) {
     const lista = await require('../../lib/devolucoes-capturadas').sugestoesParaBipe(supabase, CHAVE_DADOS, ids, 3000);
-    if (lista.length) resultado.capturadas = lista;
+    if (lista.length) resultado.capturadas = lista.map((c) => validarNfGuardada(c, nfNomes));
     return resultado;
   }
+
+
 
   // ev2 - eventos do CHECKOUT OFFLINE que casam com o codigo bipado
   async function buscarEventosCheckout(codigo) {
@@ -1616,3 +1635,4 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
 // Funciona pra TUDO (canceladas, ativas, etc) - NFs nunca somem do Bling.
 // ============================================================
 };
+module.exports.validarNfGuardada = validarNfGuardada;   // 30/10: exposta pro teste exercitar a de producao

@@ -582,7 +582,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.126.152 (b640: reclamacao do ML bloqueada pela politica e pulada — nao derruba mais a coleta das encerradas)',
+      version: '9.126.153 (b641: NF guardada na captura so vira toque se o indice confirmar o pedido — palpites antigos neutralizados)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
