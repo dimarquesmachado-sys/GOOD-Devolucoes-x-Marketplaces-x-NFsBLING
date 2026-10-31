@@ -582,7 +582,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.126.157 (b645: mapa venda -> NF guardado no armazem — NF firme da Shopee sobrevive a deploy)',
+      version: '9.126.158 (b646: devolucao do ML com revisao no CD conta 1 caixa — fim do falso CAIXA 1/2 no ML)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -4046,7 +4046,7 @@ app.get('/api/admin/devolucoes', requerAdmin, async (req, res) => {
       if (pedidos.length && supabase) {
         const { data: cap, error: errCap } = await supabase
           .from('devolucoes_capturadas')
-          .select('pedido, marketplace, tipo_tiktok, status, shipment, rastreio, visto_por_ultimo, claim_id:cru->>claim_id, return_sn:cru->>return_sn')   // 14/10: etiqueta trocada na mesma claim
+          .select('pedido, marketplace, tipo_tiktok, status, shipment, rastreio, visto_por_ultimo, claim_id:cru->>claim_id, return_sn:cru->>return_sn, no_cd_ml:cru->>no_cd_ml')   // 14/10: etiqueta trocada na mesma claim
           .in('pedido', pedidos.slice(0, 300));
         if (errCap) throw new Error(errCap.message || String(errCap));
         comParcial = devParcial.anotar(data, devParcial.esperadoDeCapturadas(cap || []));

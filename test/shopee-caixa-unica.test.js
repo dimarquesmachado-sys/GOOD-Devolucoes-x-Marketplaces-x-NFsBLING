@@ -59,7 +59,7 @@ ok(m.ML1 === 2 && m.ML2 === 1, '  ML continua igual (2 envios = 2 caixas; o mesm
 m = esperadoDeCapturadas([{ pedido: 'P6', marketplace: 'shopee', rastreio: 'BR333333333333C', status: 'CANCELLED' }]);
 ok(m.P6 === undefined, '  devolucao cancelada continua sem contar');
 // 7) quem alimenta a contagem traz marketplace e return_sn; a Shopee da GOOD passa a mandar o return_sn no card
-const sel = /\.select\('pedido, marketplace, tipo_tiktok, status, shipment, rastreio, visto_por_ultimo, claim_id:cru->>claim_id, return_sn:cru->>return_sn'\)/;
+const sel = /\.select\('pedido, marketplace, tipo_tiktok, status, shipment, rastreio, visto_por_ultimo, claim_id:cru->>claim_id, return_sn:cru->>return_sn[^']*'\)/;   // 31/10: + no_cd_ml
 ok(sel.test(fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8')) && sel.test(fs.readFileSync(path.join(__dirname, '..', 'amb-devolucoes', 'lib-AMB', 'compat-AMB.js'), 'utf8')),
   '⚠️ as duas consultas (GOOD e Girassol/AMB) trazem marketplace e return_sn pra contagem');
 const sp = fs.readFileSync(path.join(__dirname, '..', 'lib', 'shopee-proxy.js'), 'utf8');
