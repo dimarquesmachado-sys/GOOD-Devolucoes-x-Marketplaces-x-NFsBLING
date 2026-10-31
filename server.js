@@ -583,7 +583,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.126.158 (b647: login do Devolucoes acaba na meia-noite de Sao Paulo — cada funcionario entra com o proprio login de manha)',
+      version: '9.126.159 (b647: login do Devolucoes acaba na meia-noite de Sao Paulo — cada funcionario entra com o proprio login de manha)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -4053,7 +4053,7 @@ app.get('/api/admin/devolucoes', requerAdmin, async (req, res) => {
       if (pedidos.length && supabase) {
         const { data: cap, error: errCap } = await supabase
           .from('devolucoes_capturadas')
-          .select('pedido, marketplace, tipo_tiktok, status, shipment, rastreio, visto_por_ultimo, claim_id:cru->>claim_id, return_sn:cru->>return_sn')   // 14/10: etiqueta trocada na mesma claim
+          .select('pedido, marketplace, tipo_tiktok, status, shipment, rastreio, visto_por_ultimo, claim_id:cru->>claim_id, return_sn:cru->>return_sn, no_cd_ml:cru->>no_cd_ml')   // 14/10: etiqueta trocada na mesma claim
           .in('pedido', pedidos.slice(0, 300));
         if (errCap) throw new Error(errCap.message || String(errCap));
         comParcial = devParcial.anotar(data, devParcial.esperadoDeCapturadas(cap || []));
