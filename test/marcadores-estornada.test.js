@@ -76,7 +76,8 @@ const RAIZ = path.join(__dirname, '..');
   // e o servidor decodifica antes de mandar
   const SERVER = fs.readFileSync(path.join(RAIZ, 'server.js'), 'utf8');
   const AMB = fs.readFileSync(path.join(RAIZ, 'amb-devolucoes', 'app-AMB.js'), 'utf8');
-  ok(/marcadores\.enriquecer\(aprovadas\)/.test(SERVER), 'a GOOD enriquece a fila');
+  // 31/10: a lista passa antes pela correcao do canal (aprovadas.map(corrigirMarketplaceExibido)) — continua enriquecida
+  ok(/marcadores\.enriquecer\(aprovadas(\.map\(corrigirMarketplaceExibido\))?\)/.test(SERVER), 'a GOOD enriquece a fila');
   // b200.1: o campo da AMB e `registros` — conferido em `listarFila`
   ok(/marcadores\.enriquecer\(r\.registros\)/.test(AMB),
      'e a AMB enriquece `registros`, que e o que `listarFila` devolve');

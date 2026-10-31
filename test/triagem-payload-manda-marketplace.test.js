@@ -38,7 +38,8 @@ const iE = semCom.indexOf('async function enriquecerTriagem(');
 ok(iH >= 0 && iE > iH, 'marcadores do helper e do enriquecimento existem');
 const helper = semCom.slice(iH, iE);
 const enr = semCom.slice(iE, semCom.indexOf('\n}\n', iE));
-ok(/update\(\{ marketplace: String\(dados\.marketplace\) \}\)/.test(helper),
+// 31/10: grava o que veio da busca OU, sem ele, o canal pelo numero do pedido (mktTriagem) — continua update separado
+ok(/update\(\{ marketplace: String\((dados\.marketplace|mktTriagem)\) \}\)/.test(helper),
    '  a GOOD grava em update SEPARADO (helper gravarMarketplaceTriagem)');
 ok(/add column if not exists marketplace/.test(helper),
    '  e se a coluna faltar, o aviso diz o ALTER TABLE a rodar');

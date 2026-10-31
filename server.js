@@ -583,7 +583,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.126.159 (b647: login do Devolucoes acaba na meia-noite de Sao Paulo — cada funcionario entra com o proprio login de manha)',
+      version: '9.126.160 (b648: canal pelo numero do pedido — triagem pela NF nao vira mais Mercado Livre por padrao)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -3349,10 +3349,31 @@ function agendarEnriquecimento(registroId, dados) {
 // NF, itens) nunca dependem dele. Por no insert, sem saber, quebraria toda
 // triagem da GOOD. Roda ANTES das buscas lentas no Bling (o dado ja e
 // conhecido) e tambem na rota do consertado, que nao enriquece.
-async function gravarMarketplaceTriagem(registroId, dados) {
-  if (!supabase || !registroId || !dados || !dados.marketplace) return;
+// 31/10: o canal pelo FORMATO do numero do pedido (detector da casa). So responde com confianca alta ou media;
+// senao null — marketplace errado e pior que vazio.
+const mktDetector = require('./amb-devolucoes/lib-AMB/marketplace-AMB');
+function marketplacePeloPedido(pedido) {
   try {
-    const { error } = await supabase.from('devolucoes').update({ marketplace: String(dados.marketplace) }).eq('id', registroId);
+    const r = mktDetector.detectar(pedido, {});
+    return (r && r.marketplace && r.marketplace !== 'desconhecido' && (r.confianca === 'alta' || r.confianca === 'media')) ? r.marketplace : null;
+  } catch (e) { return null; }
+}
+// Registro antigo com o padrao 'mercadolivre' (ou vazio) mas pedido de OUTRO canal: corrige NA HORA DE MOSTRAR
+// (sem mexer no banco). Pedido de ML, ou formato que o detector nao afirma, fica como esta.
+function corrigirMarketplaceExibido(d) {
+  if (!d || (d.marketplace && d.marketplace !== 'mercadolivre')) return d;
+  const certo = marketplacePeloPedido(d.order_id);
+  return (certo && certo !== 'ml') ? { ...d, marketplace: certo, marketplace_corrigido: true } : d;
+}
+async function gravarMarketplaceTriagem(registroId, dados) {
+  if (!supabase || !registroId || !dados) return;
+  // 31/10: bipe pela CHAVE DA NF nao traz o marketplace — o registro ficava no padrao 'mercadolivre' (pedido Amazon
+  // 702-..., Magalu 15..., TikTok 58... contados como ML no relatorio e com link pro ML no card). O numero do pedido
+  // diz o canal: usa o detector da casa (marketplace-AMB) quando a confianca e alta ou media.
+  const mktTriagem = dados.marketplace || marketplacePeloPedido(dados.order_id);
+  if (!mktTriagem) return;
+  try {
+    const { error } = await supabase.from('devolucoes').update({ marketplace: String(mktTriagem) }).eq('id', registroId);
     if (error) console.warn(`[TRIAGEM] marketplace nao gravou (a tabela devolucoes tem a coluna? rode: alter table devolucoes add column if not exists marketplace text): ${error.message}`);
   } catch (e) { console.warn('[TRIAGEM] marketplace falhou:', e.message || e); }
 }
@@ -4079,9 +4100,9 @@ app.get('/api/admin/devolucoes', requerAdmin, async (req, res) => {
     // unica decodifica aqui, e a tela le campos normais.
     res.json({
       ok: true,
-      aprovadas: marcadores.enriquecer(aprovadas),
-      problemas: marcadores.enriquecer(problemas),
-      divergentes, // v3.18.0
+      aprovadas: marcadores.enriquecer(aprovadas.map(corrigirMarketplaceExibido)),   // 31/10: canal pelo pedido
+      problemas: marcadores.enriquecer(problemas.map(corrigirMarketplaceExibido)),
+      divergentes: divergentes.map(corrigirMarketplaceExibido), // v3.18.0
       total: semDefeitoManual.length,
     });
   } catch (err) {
