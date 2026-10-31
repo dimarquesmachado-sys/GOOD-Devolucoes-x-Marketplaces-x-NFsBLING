@@ -583,7 +583,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.126.160 (b648: canal pelo numero do pedido — triagem pela NF nao vira mais Mercado Livre por padrao)',
+      version: '9.126.161 (b649: relatorio — canal pelo numero do pedido e o Mercado Livre num rotulo so)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -3350,21 +3350,9 @@ function agendarEnriquecimento(registroId, dados) {
 // triagem da GOOD. Roda ANTES das buscas lentas no Bling (o dado ja e
 // conhecido) e tambem na rota do consertado, que nao enriquece.
 // 31/10: o canal pelo FORMATO do numero do pedido (detector da casa). So responde com confianca alta ou media;
-// senao null — marketplace errado e pior que vazio.
-const mktDetector = require('./amb-devolucoes/lib-AMB/marketplace-AMB');
-function marketplacePeloPedido(pedido) {
-  try {
-    const r = mktDetector.detectar(pedido, {});
-    return (r && r.marketplace && r.marketplace !== 'desconhecido' && (r.confianca === 'alta' || r.confianca === 'media')) ? r.marketplace : null;
-  } catch (e) { return null; }
-}
-// Registro antigo com o padrao 'mercadolivre' (ou vazio) mas pedido de OUTRO canal: corrige NA HORA DE MOSTRAR
-// (sem mexer no banco). Pedido de ML, ou formato que o detector nao afirma, fica como esta.
-function corrigirMarketplaceExibido(d) {
-  if (!d || (d.marketplace && d.marketplace !== 'mercadolivre')) return d;
-  const certo = marketplacePeloPedido(d.order_id);
-  return (certo && certo !== 'ml') ? { ...d, marketplace: certo, marketplace_corrigido: true } : d;
-}
+// senao null — marketplace errado e pior que vazio. b649: as duas funcoes moraram aqui ate o b648; foram para
+// lib/marketplace-exibido.js (logica identica) para a lista e o RELATORIO usarem a mesma regra.
+const { marketplacePeloPedido, corrigirMarketplaceExibido } = require('./lib/marketplace-exibido');
 async function gravarMarketplaceTriagem(registroId, dados) {
   if (!supabase || !registroId || !dados) return;
   // 31/10: bipe pela CHAVE DA NF nao traz o marketplace — o registro ficava no padrao 'mercadolivre' (pedido Amazon
