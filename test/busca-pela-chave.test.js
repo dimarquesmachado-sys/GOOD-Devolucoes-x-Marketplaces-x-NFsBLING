@@ -154,8 +154,9 @@ setTimeout(() => {
     const z = rota.slice(rota.indexOf('FASE ZERO'), rota.indexOf('FASE ZERO') + 4500);
     ok(/r\.via === 'chave-nao-achou'\) \{[\s\S]{0,400}marcarFalha[\s\S]{0,200}nao ha NF com esta chave/.test(z),
        nome + ': vazio de verdade -> esfria 20min E recebe o motivo (no ramo certo)');
-    ok(/r\.via === 'chave-nota-morta'\) \{[\s\S]{0,300}marcarFalha/.test(z),
-       nome + ': nota cancelada -> esfria 20min, com a situacao no motivo');
+    // 30/10: nota morta virou marca PERMANENTE (marcarMorta) — mais forte que esfriar 20 min; o motivo continua
+    ok(/r\.via === 'chave-nota-morta'\) \{[\s\S]{0,300}(marcarFalha|marcarMorta)[\s\S]{0,300}situacao ' \+ r\.situacao/.test(z),
+       nome + ': nota cancelada -> nao se procura de novo (marca permanente), com a situacao no motivo');
     ok(/\} else \{[\s\S]{0,400}adiarPouco/.test(z) && !/chave-ignorada'\) \{[\s\S]{0,200}marcarFalha/.test(z),
        nome + ': filtro ignorado e falha transitoria -> adia 2min, NAO 20');
     ok(/if \(r\.match\.numero\) item\.nf_numero = String\(r\.match\.numero\)/.test(rota),

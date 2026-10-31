@@ -660,7 +660,7 @@ const registrarCicloDefeitos = require('../lib/defeitos-ciclo');
 // candidato ja desistido ainda batia no Bling depois de esperar numa pausa
 // de 429. Ver bling-AMB.js, nf-nomes-AMB.js e identificar-AMB.js.
 // 29/10: sem o 'AMB' na frente — a mesma peca serve Girassol, AMB e as proximas; a empresa vai no campo `empresa`
-const VERSAO = 'Devolucoes b641';
+const VERSAO = 'Devolucoes b642';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -3750,7 +3750,8 @@ router.get('/api/admin/sem-retorno', auth.requerLogin, async (req, res) => {
               + '— confira se e da empresa certa, ou se foi cancelada';
           } else if (r && r.ok !== false && r.via === 'chave-nota-morta') {
             // a nota existe mas esta cancelada/denegada: definitivo tambem
-            vinculoCache.marcarFalha(item, CHAVE_DADOS, 'chave');
+            vinculoCache.marcarMorta(item, CHAVE_DADOS, r.situacao);   // 30/10: permanente — e o card sai da lista (resolvido)
+            item.nf_cancelada = true;
             item.nf_motivo_sem_vinculo = 'a NF desta chave esta cancelada ou denegada no Bling '
               + '(situacao ' + r.situacao + ')';
           } else {
@@ -4084,10 +4085,16 @@ router.get('/api/admin/sem-retorno', auth.requerLogin, async (req, res) => {
       return (b.valor || 0) - (a.valor || 0);
     });
 
+    // 30/10: NF de venda CANCELADA/denegada = caso RESOLVIDO (por cancelamento) — sai da lista, como sai quem ganhou
+    // NF de devolucao. Antes: 'casos resolvidos por cancelamento reaparecem aqui', com o botao de gerar devolucao
+    // contra nota morta (a SEFAZ rejeita).
+    let canceladasOcultas = 0;
+    for (let i = itens.length - 1; i >= 0; i--) if (itens[i] && itens[i].nf_cancelada) { itens.splice(i, 1); canceladasOcultas++; }
     return res.json({
       ok: true,
       empresa: EMPRESA,
       total: itens.length,
+      canceladas_ocultas: canceladasOcultas,
       valor_total: Number(itens.reduce((t, x) => t + (Number(x.valor) || 0), 0).toFixed(2)),
       podem_cancelar: itens.filter((x) => x.acao === 'cancelar_nf').length,
       magalu_erro: magaluErro || undefined,
