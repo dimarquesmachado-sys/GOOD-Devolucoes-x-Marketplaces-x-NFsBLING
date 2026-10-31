@@ -15,7 +15,11 @@ ok(m('261014JE047FHN') === 'shopee', '  Shopee alfanumerico continua Shopee');
 ok(m('9914488') === 'magalu' && mkt.detectar('9914488', {}).confianca === 'baixa', '  numerico curto continua palpite de baixa confianca (nao vira rotulo na GOOD)');
 const s = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
 ok(/const mktTriagem = dados\.marketplace \|\| marketplacePeloPedido\(dados\.order_id\);/.test(s), '⚠️ GOOD: triagem sem marketplace grava o canal pelo numero do pedido');
-ok(/r\.confianca === 'alta' \|\| r\.confianca === 'media'/.test(s), '  GOOD: so com confianca alta ou media (marketplace errado e pior que vazio)');
+// b649: as funcoes foram para lib/marketplace-exibido.js — o teste roda a peca de PRODUCAO, nao le texto
+const mx = require('../lib/marketplace-exibido');
+ok(mx.marketplacePeloPedido('9914488') === null && mx.marketplacePeloPedido('702-9567465-0509861') === 'amazon',
+  '  GOOD: so com confianca alta ou media (marketplace errado e pior que vazio)');
+ok(/require\('\.\/lib\/marketplace-exibido'\)/.test(s), '  GOOD: o server.js usa a peca unica (lista e relatorio com a mesma regra)');
 ok(/aprovadas: marcadores\.enriquecer\(aprovadas\.map\(corrigirMarketplaceExibido\)\)/.test(s) && /problemas: marcadores\.enriquecer\(problemas\.map\(corrigirMarketplaceExibido\)\)/.test(s),
   '⚠️ GOOD: a lista corrige os registros antigos na hora de mostrar (sem mexer no banco)');
 console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
