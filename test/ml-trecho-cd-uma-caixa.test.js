@@ -26,5 +26,22 @@ ok(esperadoDeCapturadas([
   { pedido: '6', marketplace: 'ml', status: 'shipped', shipment: 'A', claim_id: '1' },
   { pedido: '6', marketplace: 'ml', status: 'delivered', shipment: 'B', claim_id: '1' },
 ])['6'] === 2, '  captura antiga sem a marca do CD: igual a antes (nao chuta)');
+// Codex #517: etiqueta velha (nunca saiu, superada) + trecho do CD ativo = 1 caixa (antes do conserto do Codex: 0)
+ok(esperadoDeCapturadas([
+  { pedido: '5', marketplace: 'ml', status: 'ready_to_ship', shipment: 'VELHA', claim_id: '1', no_cd_ml: 'false', visto_por_ultimo: '2026-10-20T10:00:00Z' },
+  { pedido: '5', marketplace: 'ml', status: 'shipped', shipment: 'CD', claim_id: '1', no_cd_ml: 'true', visto_por_ultimo: '2026-10-28T10:00:00Z' },
+])['5'] === 1, '⚠️ Codex: etiqueta velha superada + trecho do CD ativo = 1 caixa (nunca zero)');
+// as tres juntas: etiqueta velha + trecho do CD + reenvio pro galpao = 1
+ok(esperadoDeCapturadas([
+  { pedido: '4', marketplace: 'ml', status: 'ready_to_ship', shipment: 'VELHA', claim_id: '1', no_cd_ml: 'false', visto_por_ultimo: '2026-10-15T10:00:00Z' },
+  { pedido: '4', marketplace: 'ml', status: 'shipped', shipment: 'CD', claim_id: '1', no_cd_ml: 'true', visto_por_ultimo: '2026-10-20T10:00:00Z' },
+  { pedido: '4', marketplace: 'ml', status: 'delivered', shipment: 'GALPAO', claim_id: '1', no_cd_ml: 'false', visto_por_ultimo: '2026-10-28T10:00:00Z' },
+])['4'] === 1, '  etiqueta velha + trecho do CD + reenvio pro galpao = 1 caixa');
+// salvaguarda: com outra claim no pedido, a conta nao fica abaixo do real
+ok(esperadoDeCapturadas([
+  { pedido: '3', marketplace: 'ml', status: 'ready_to_ship', shipment: 'VELHA', claim_id: '1', no_cd_ml: 'false', visto_por_ultimo: '2026-10-20T10:00:00Z' },
+  { pedido: '3', marketplace: 'ml', status: 'shipped', shipment: 'CD', claim_id: '1', no_cd_ml: 'true', visto_por_ultimo: '2026-10-28T10:00:00Z' },
+  { pedido: '3', marketplace: 'ml', status: 'shipped', shipment: 'OUTRA', claim_id: '2', no_cd_ml: 'false', visto_por_ultimo: '2026-10-28T10:00:00Z' },
+])['3'] === 2, '  com outra claim no pedido: 2 (uma por claim), sem perder a ativa');
 console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
 process.exit(falhas ? 1 : 0);
