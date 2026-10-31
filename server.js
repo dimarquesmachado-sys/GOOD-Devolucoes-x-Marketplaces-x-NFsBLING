@@ -582,7 +582,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.126.153 (b641: NF guardada na captura so vira toque se o indice confirmar o pedido — palpites antigos neutralizados)',
+      version: '9.126.155 (b643: estornada com NF de venda cancelada sai da lista; cancelaveis reconferidos em segundo plano)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -8063,7 +8063,8 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
               + '— confira se e da empresa certa, ou se foi cancelada';
           } else if (r && r.ok !== false && r.via === 'chave-nota-morta') {
             // a nota existe mas esta cancelada/denegada: definitivo tambem
-            vinculoCache.marcarFalha(item, empresa, 'chave');
+            vinculoCache.marcarMorta(item, empresa, r.situacao);   // 30/10: permanente — e o card sai da lista (resolvido)
+            item.nf_cancelada = true;
             item.nf_motivo_sem_vinculo = 'a NF desta chave esta cancelada ou denegada no Bling '
               + '(situacao ' + r.situacao + ')';
           } else {
@@ -8081,7 +8082,7 @@ app.get('/api/admin/sem-retorno', requerAdmin, async (req, res) => {
     vinculoCache.completarChaveEmFundo(itens, empresa, buscarNFPelaChave);
 
 
-    const semVinculo = itens.filter((x) => x.nf_numero && !x.nf_id_bling);
+    const semVinculo = itens.filter((x) => x.nf_numero && !x.nf_id_bling && !x.nf_cancelada);   // 30/10: nota morta nao se procura
     const doMagalu = semVinculo.filter((x) => x.marketplace === 'magalu').slice(0, 15);
     const dosOutros = semVinculo.filter((x) => x.marketplace !== 'magalu').slice(0, 10);
     // b196 - BUSCAR PELO PEDIDO quando nao ha numero nem chave.
@@ -8479,10 +8480,16 @@ item.nf_id_bling = String(achada.id);
       return (b.valor || 0) - (a.valor || 0);   // nos outros, o maior valor primeiro
     });
 
+    // 30/10: NF de venda CANCELADA/denegada = caso RESOLVIDO (por cancelamento) — sai da lista, como sai quem ganhou
+    // NF de devolucao. Antes: 'casos resolvidos por cancelamento reaparecem aqui', com o botao de gerar devolucao
+    // contra nota morta (a SEFAZ rejeita).
+    let canceladasOcultas = 0;
+    for (let i = itens.length - 1; i >= 0; i--) if (itens[i] && itens[i].nf_cancelada) { itens.splice(i, 1); canceladasOcultas++; }
     return res.json({
       ok: true,
       empresa,
       total: itens.length,
+      canceladas_ocultas: canceladasOcultas,
       valor_total: Number(itens.reduce((t, x) => t + (Number(x.valor) || 0), 0).toFixed(2)),
       podem_cancelar: itens.filter((x) => x.acao === 'cancelar_nf').length,
       // b189 - se o Magalu nao veio, o dono TEM que saber: a lista parece
@@ -8509,9 +8516,9 @@ item.nf_id_bling = String(achada.id);
       // reapareceria pra sempre. Falta um jeito de marcar "resolvido por
       // cancelamento"; ate la, o aviso deixa isso explicito na resposta em
       // vez de o dono descobrir sozinho vendo o caso voltar.
-      aviso_cancelados: 'Casos resolvidos por CANCELAMENTO da NF de venda ainda '
-        + 'reaparecem aqui: a lista so sabe descartar quem ganhou NF de devolucao. '
-        + 'Vale conferir no Bling antes de agir num item marcado como cancelavel.',
+      aviso_cancelados: 'Casos resolvidos por CANCELAMENTO da NF de venda saem da lista quando o Bling confirma a nota '
+        + 'cancelada (a situacao dos canceláveis e reconferida em segundo plano, ate 1x por hora). '
+        + 'Acabou de cancelar? Pode levar ate 1h pra sumir daqui.',
       leia: 'Vendas reembolsadas SEM devolucao fisica: o produto nao volta, mas a NF de venda '
         + 'continua gerando imposto. Ate 20 dias da pra CANCELAR a nota; depois, NF de devolucao. '
         + 'O deposito e o de DEFEITO — nao entra no estoque vendavel, porque a mercadoria nunca chegou.',
