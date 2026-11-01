@@ -26,6 +26,9 @@ const mlClient = require('./lib/ml');
 
 // v3.16.0 - Dashboard de relatorios
 const registrarRotasRelatorios = require('./lib/rotas-relatorios');
+// b650 - a peca virou multiempresa: a busca textual que ela usava por dentro
+// agora e injetada por quem registra (aqui, a da GOOD).
+const produtosClient = require('./lib/produtos-client');
 
 // Re-exports pra manter mesma sintaxe nas chamadas existentes
 const chamarBling = blingClient.chamarBling;
@@ -583,7 +586,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.126.161 (b649: relatorio — canal pelo numero do pedido e o Mercado Livre num rotulo so)',
+      version: '9.126.162 (b650: relatorio de devolucoes vira peca multiempresa — tabelas e busca por parametro)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -8694,7 +8697,14 @@ registrarRotasDebug(app, {
 // v3.16.0: REGISTRA ROTAS DO DASHBOARD DE RELATORIOS
 // (deve vir DEPOIS das declaracoes de supabase, requerAdmin, etc)
 // ============================================================
-registrarRotasRelatorios(app, { supabase, requerAdmin });
+registrarRotasRelatorios(app, {
+  supabase, requerAdmin,
+  // b650 - os nomes das tabelas DA GOOD, que antes eram cravados na peca.
+  // Mesmos nomes de sempre: comportamento identico, provado em
+  // test/relatorio-peca-multiempresa.test.js.
+  tabelas: { devolucoes: 'devolucoes', tags: 'tags', devolucaoTags: 'devolucao_tags' },
+  buscarProdutos: produtosClient.buscarTextual,
+});
 
 // v3.44 - rotas admin-NF (mesmo ponto: todas as deps ja declaradas acima)
 // b545/b547: a copia das rotas de admin da GOOD (lib/rotas-admin-nf.js) foi apagada — ver DEPS_ADMIN_NF abaixo
