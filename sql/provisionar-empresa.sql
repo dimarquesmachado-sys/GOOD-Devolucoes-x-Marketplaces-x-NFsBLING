@@ -49,7 +49,12 @@ declare
     --
     -- 📌 Mesmo molde das outras 5: copia da tabela da AMB.
     ['defeito_comentarios', 'defeito_comentarios_amb'],
-    ['defeito_pedidos',     'defeito_pedidos_amb']
+    ['defeito_pedidos',     'defeito_pedidos_amb'],
+    -- b651 - as 2 do RELATORIO de devolucoes (tags). Mesma licao do b374:
+    -- o relatorio le e grava nelas; sem as duas, a empresa nova abriria o
+    -- relatorio e quebraria na primeira tag, so quando alguem usasse.
+    ['tags',           'tags_amb'],
+    ['devolucao_tags', 'devolucao_tags_amb']
   ];
   i int;
   base text;
@@ -100,6 +105,26 @@ begin
     resultado := 'criada (copia de ' || molde || ')';
     return next;
   end loop;
+
+  -- b651 - FOREIGN KEYS das tabelas de tags. `LIKE ... INCLUDING ALL` copia
+  -- colunas, defaults, indices e constraints LOCAIS, mas NAO copia foreign
+  -- key — e o relatorio depende delas: o PostgREST so faz o embed
+  -- devolucao_tags -> tags (e -> devolucoes) enxergando a FK no catalogo.
+  -- Idempotente: so cria a constraint que ainda nao existe.
+  if to_regclass('public.devolucao_tags' || sufixo) is not null then
+    if not exists (select 1 from pg_constraint
+                   where conname = 'devolucao_tags' || sufixo || '_tag_id_fkey') then
+      execute format('alter table public.%I add constraint %I foreign key (tag_id) references public.%I (id) on delete cascade',
+        'devolucao_tags' || sufixo, 'devolucao_tags' || sufixo || '_tag_id_fkey', 'tags' || sufixo);
+      tabela := 'devolucao_tags' || sufixo; resultado := 'FK tag_id -> tags criada'; return next;
+    end if;
+    if not exists (select 1 from pg_constraint
+                   where conname = 'devolucao_tags' || sufixo || '_devolucao_id_fkey') then
+      execute format('alter table public.%I add constraint %I foreign key (devolucao_id) references public.%I (id) on delete cascade',
+        'devolucao_tags' || sufixo, 'devolucao_tags' || sufixo || '_devolucao_id_fkey', 'devolucoes' || sufixo);
+      tabela := 'devolucao_tags' || sufixo; resultado := 'FK devolucao_id -> devolucoes criada'; return next;
+    end if;
+  end if;
 end;
 $$;
 
@@ -124,5 +149,6 @@ grant execute on function public.provisionar_empresa(text) to service_role;
 --   drop table public.devolucoes_zz9, public.espreita_notas_zz9,
 --              public.recados_zz9, public.pecas_retiradas_zz9,
 --              public.sku_depara_zz9, public.defeito_comentarios_zz9,
---              public.defeito_pedidos_zz9;
+--              public.defeito_pedidos_zz9, public.devolucao_tags_zz9,
+--              public.tags_zz9;   -- b651: as 2 do relatorio (devolucao_tags antes, pela FK)
 -- ============================================================
