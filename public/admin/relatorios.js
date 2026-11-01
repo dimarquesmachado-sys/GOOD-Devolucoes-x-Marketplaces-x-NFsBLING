@@ -4,6 +4,11 @@
 // Frontend do relatorio. Usa fetch direto pros endpoints.
 // ============================================================
 
+// b651 - a MESMA pagina roda na GOOD (raiz) e nas instancias /amb e
+// /girassol: a base da API sai do caminho da propria pagina.
+// '' na GOOD; '/amb' e '/girassol' nas instancias.
+const BASE_API = location.pathname.replace(/\/admin\/relatorios\.html.*$/i, '');
+
 // Estado global
 let dadosAtual = null;   // ultima resposta de /api/admin/relatorios/devolucoes
 let tagsCache = [];      // todas as tags
@@ -75,7 +80,7 @@ async function carregar() {
   document.getElementById('tabelaWrap').innerHTML = '<div class="loading">Carregando...</div>';
 
   try {
-    const r = await fetch('/api/admin/relatorios/devolucoes?' + params.toString(), {
+    const r = await fetch(BASE_API + '/api/admin/relatorios/devolucoes?' + params.toString(), {
       credentials: 'include',
     });
     const d = await r.json();
@@ -319,7 +324,7 @@ function renderizarTabela(devolucoes) {
 
 async function carregarTags() {
   try {
-    const r = await fetch('/api/admin/tags', { credentials: 'include' });
+    const r = await fetch(BASE_API + '/api/admin/tags', { credentials: 'include' });
     const d = await r.json();
     if (d.ok) {
       tagsCache = d.tags || [];
@@ -361,7 +366,7 @@ async function adicionarTag() {
     return;
   }
   try {
-    const r = await fetch('/api/admin/tags', {
+    const r = await fetch(BASE_API + '/api/admin/tags', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
@@ -383,7 +388,7 @@ async function adicionarTag() {
 async function excluirTag(id, nome) {
   if (!confirm(`Excluir a tag "${nome}"?\n\nIsso removerá ela de todas as devoluções marcadas.`)) return;
   try {
-    const r = await fetch('/api/admin/tags/' + id, {
+    const r = await fetch(BASE_API + '/api/admin/tags/' + id, {
       method: 'DELETE',
       credentials: 'include',
     });
@@ -438,7 +443,7 @@ async function salvarTagsAplicadas() {
     .map(el => el.dataset.id);
 
   try {
-    const r = await fetch('/api/admin/devolucao/' + devolucaoSelecionadaId + '/tags', {
+    const r = await fetch(BASE_API + '/api/admin/devolucao/' + devolucaoSelecionadaId + '/tags', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
