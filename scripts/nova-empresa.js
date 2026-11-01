@@ -119,6 +119,8 @@ function gerar(chave, nome, sufixoDados) {
         recados: 'recados_${suf}',
         pecasRetiradas: 'pecas_retiradas_${suf}',
         skuDepara: 'sku_depara_${suf}',
+        tags: 'tags_${suf}',
+        devolucaoTags: 'devolucao_tags_${suf}',
       },
       // O provisionador cria o schema da fabrica (AMB/Girassol).
       // O servidor comum exige este modelo explicito, sem herdar o da GOOD.

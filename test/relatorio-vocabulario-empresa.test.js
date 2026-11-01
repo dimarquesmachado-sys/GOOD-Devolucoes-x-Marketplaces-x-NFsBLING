@@ -65,7 +65,10 @@ async function sobe(extra, dados) {
   await pega(good.porta, '/api/admin/relatorios/devolucoes?data_inicio=2026-10-01&tipo=aprovado');
   ok(good.chamadas.some((c) => c[0] === 'order' && c[1] === 'created_at'), 'GOOD: continua em created_at');
   ok(good.chamadas.some((c) => c[0] === 'eq' && c[1] === 'tipo' && c[2] === 'aprovado'), 'GOOD: filtro de tipo continua eq(tipo)');
-  ok(!good.chamadas.some((c) => c[0] === 'or'), 'GOOD: sem or de status');
+  ok(!good.chamadas.some((c) => c[0] === 'or' && /status/.test(c[1])), 'GOOD: sem or de status');
+  // b654 (Codex #522): shipment_id NULL permanece; so DEF-% sai
+  ok(good.chamadas.some((c) => c[0] === 'or' && c[1] === 'shipment_id.is.null,shipment_id.not.like.DEF-%'), 'GOOD: exclusao de DEF- preserva shipment_id NULL');
+  ok(!good.chamadas.some((c) => c[0] === 'not' && c[1] === 'shipment_id'), 'GOOD: sem .not simples em shipment_id');
   good.srv.close();
 
   let erro = null;

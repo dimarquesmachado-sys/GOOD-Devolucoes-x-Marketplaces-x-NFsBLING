@@ -45,6 +45,7 @@ const { gerar } = require('../scripts/nova-empresa');
   ok(r.ok, 'gera a ficha');
   ok(/chaveDados: 'aurora'/.test(r.ficha), '  com a chave de dados');
   ok(/devolucoes: 'devolucoes_aurora'/.test(r.ficha), '  e as 5 tabelas com sufixo');
+  ok(/tags: 'tags_aurora'/.test(r.ficha) && /devolucaoTags: 'devolucao_tags_aurora'/.test(r.ficha), '  e as tabelas de tags exigidas pelo relatorio (b654)');
   ok(/prefixoRota: '\/aurora'/.test(r.ficha), '  e a rota');
   // 14/10 - a ficha nova nasce com CORES e LOGO proprios (sem eles a tela saia com as cores e o logo da AMB)
   ok(/tema: \{[\s\S]*marca: '#/.test(r.ficha), '⚠️ a ficha nova ja traz o `tema` (cores da empresa)');
