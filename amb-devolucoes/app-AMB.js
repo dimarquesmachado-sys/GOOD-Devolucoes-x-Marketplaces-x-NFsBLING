@@ -661,7 +661,7 @@ const registrarCicloDefeitos = require('../lib/defeitos-ciclo');
 // candidato ja desistido ainda batia no Bling depois de esperar numa pausa
 // de 429. Ver bling-AMB.js, nf-nomes-AMB.js e identificar-AMB.js.
 // 29/10: sem o 'AMB' na frente — a mesma peca serve Girassol, AMB e as proximas; a empresa vai no campo `empresa`
-const VERSAO = 'Devolucoes b649';
+const VERSAO = 'Devolucoes b652';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -3047,13 +3047,20 @@ registrarRotasRelatorios(router, {
     devolucaoTags: db.tabelas.devolucaoTags,
   },
   buscarProdutos: null,
+  // b652 (Codex #522) - vocabulario da tabela da AMB/Girassol
+  colunaData: 'criado_em',
+  tipoNoStatus: true,
 });
 
 // b651 - a pagina e o js do relatorio sao os MESMOS arquivos da GOOD,
 // servidos sob o prefixo da empresa (o js deriva a base da API do caminho
 // da propria pagina). Mesma protecao da GOOD: a pagina exige admin.
+// b652 (Codex #522) - o "Voltar ao Admin" da pagina e ../admin.html (redirect so
+// existe na raiz da GOOD): sob o prefixo da empresa aponta pro /painel dela.
+const RELATORIOS_HTML_EMPRESA = fs.readFileSync(path.join(__dirname, '..', 'public', 'admin', 'relatorios.html'), 'utf8')
+  .replace('href="../admin.html"', 'href="../painel"');
 router.get('/admin/relatorios.html', auth.requerAdmin, (req, res) => {
-  res.sendFile(path.join(__dirname, '..', 'public', 'admin', 'relatorios.html'));
+  res.type('html').send(RELATORIOS_HTML_EMPRESA);
 });
 router.get('/admin/relatorios.js', (req, res) => {
   res.type('application/javascript');
