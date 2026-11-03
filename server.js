@@ -586,7 +586,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.126.167 (b656: painel com Mercado Livre num rotulo so — ml e mercadolivre unificados na chegada da lista)',
+      version: '9.126.168 (b657: desempate da NF trata ml e mercadolivre como UM canal; SQL regrava o legado provado pelo pedido ML)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
