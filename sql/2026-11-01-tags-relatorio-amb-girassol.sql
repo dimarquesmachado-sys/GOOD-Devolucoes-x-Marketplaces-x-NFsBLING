@@ -68,7 +68,36 @@ end
 $$;
 
 -- ============================================================
--- COMO CONFERIR (mesmo editor, depois de rodar):
+-- b655 — RECARREGAR O CACHE DO PostgREST (obrigatorio, roda junto)
+--
+-- O embed do relatorio depende do PostgREST ENXERGAR as FKs novas, e ele
+-- le o schema de um CACHE. DDL rodado dentro de bloco `do $$` nem sempre
+-- dispara o reload automatico — foi exatamente o erro visto em producao
+-- em 03/11: "Could not find a relationship between 'devolucoes_girassol'
+-- and 'devolucao_tags_girassol' in the schema cache", com as tabelas e
+-- FKs ja criadas. O notify abaixo forca o reload; vale segundos depois.
+-- ============================================================
+notify pgrst, 'reload schema';
+
+-- ============================================================
+-- CONFERENCIA (ja roda junto): esperado = 8 linhas (4 tabelas + 4 FKs)
+-- ============================================================
+select 'tabela' as tipo, table_name as nome
+  from information_schema.tables
+ where table_schema = 'public'
+   and table_name in ('tags_amb', 'devolucao_tags_amb',
+                      'tags_girassol', 'devolucao_tags_girassol')
+union all
+select 'fk', conname
+  from pg_constraint
+ where conname in ('devolucao_tags_amb_tag_id_fkey',
+                   'devolucao_tags_amb_devolucao_id_fkey',
+                   'devolucao_tags_girassol_tag_id_fkey',
+                   'devolucao_tags_girassol_devolucao_id_fkey')
+ order by 1, 2;
+
+-- ============================================================
+-- (a conferencia manual antiga fica como referencia)
 --
 --   select table_name from information_schema.tables
 --    where table_schema = 'public'
