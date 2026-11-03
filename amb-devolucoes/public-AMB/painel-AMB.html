@@ -467,17 +467,17 @@
           return;
         }
         const d = await r.json();
-        if (!d.ok) {
         // b656 - 'ml' e 'mercadolivre' sao o MESMO canal, gravado em epocas
-        // diferentes. Unifica na BORDA (na lista que chega da API) pra badge,
-        // cor, link de vendas, checkbox de alerta e a aba/contagem "Mercado
-        // Livre" enxergarem UM canal so — sem tocar o banco. (Irmao do mesmo
-        // ajuste na outra carga desta pagina.)
+        // diferentes. Unifica ANTES de qualquer guard (payload de erro nao tem
+        // listas — vira no-op) pra badge, cor, link de vendas, checkbox de
+        // alerta e a aba/contagem "Mercado Livre" enxergarem UM canal so, nas
+        // DUAS cargas desta pagina, sem tocar o banco.
         for (const _v of Object.values(d || {})) {
           if (Array.isArray(_v)) for (const _x of _v) {
             if (_x && _x.marketplace === 'mercadolivre') _x.marketplace = 'ml';
           }
         }
+        if (!d.ok) {
           throw new Error(d.erro || 'falha');
         }
         dados = d;
@@ -2099,17 +2099,17 @@ async function carregarSemRetorno() {
       try {
         const r = await fetch((window.APP_BASE || '') + '/api/admin/devolucoes');
         const d = await r.json();
-        if (!d.ok) return;
         // b656 - 'ml' e 'mercadolivre' sao o MESMO canal, gravado em epocas
-        // diferentes. Unifica na BORDA (na lista que chega da API) pra badge,
-        // cor, link de vendas, checkbox de alerta e a aba/contagem "Mercado
-        // Livre" enxergarem UM canal so — sem tocar o banco. (Irmao do mesmo
-        // ajuste na outra carga desta pagina.)
+        // diferentes. Unifica ANTES de qualquer guard (payload de erro nao tem
+        // listas — vira no-op) pra badge, cor, link de vendas, checkbox de
+        // alerta e a aba/contagem "Mercado Livre" enxergarem UM canal so, nas
+        // DUAS cargas desta pagina, sem tocar o banco.
         for (const _v of Object.values(d || {})) {
           if (Array.isArray(_v)) for (const _x of _v) {
             if (_x && _x.marketplace === 'mercadolivre') _x.marketplace = 'ml';
           }
         }
+        if (!d.ok) return;
         dados = d; // mantem o estado global em dia (pra proximas acoes)
 
         // acha o registro atualizado e a funcao de render da secao dele
