@@ -125,6 +125,14 @@ begin
       tabela := 'devolucao_tags' || sufixo; resultado := 'FK devolucao_id -> devolucoes criada'; return next;
     end if;
   end if;
+
+  -- b655 - RECARREGAR O CACHE DO PostgREST. O embed do relatorio depende
+  -- dele ENXERGAR as tabelas e FKs novas, e DDL feito aqui dentro nao
+  -- dispara o reload automatico (visto em producao em 03/11: tabela e FK
+  -- criadas e o embed ainda falhando com "in the schema cache"). Sem isto,
+  -- a empresa nova so funcionaria depois de um reload manual.
+  perform pg_notify('pgrst', 'reload schema');
+  tabela := '(cache)'; resultado := 'PostgREST avisado pra reler o schema'; return next;
 end;
 $$;
 

@@ -11,6 +11,9 @@
 --   `LIKE ... INCLUDING ALL` copia colunas, tipos, defaults, indices e
 --   constraints locais (o unique do nome, que da o erro "ja existe tag"),
 --   entao as novas nascem identicas sem ninguem redigitar coluna.
+--   ⚠️ UMA coluna e ajustada depois do LIKE: `devolucao_tags_X.devolucao_id`
+--   ganha o TIPO do `devolucoes_X.id` da propria empresa (uuid na GOOD,
+--   bigint na AMB/Girassol) — ver o bloco b655 dentro do DO.
 --
 -- ⚠️ O QUE O LIKE NAO COPIA: foreign key. E o relatorio DEPENDE delas —
 -- o PostgREST so monta o embed devolucao_tags -> tags (e -> devolucoes)
@@ -26,6 +29,9 @@ declare
   sufixo text;
   par text[];
   nova text;
+  tipo_pai text;
+  tipo_filho text;
+  linhas bigint;
 begin
   -- os moldes da GOOD precisam existir; sem eles, parar AVISANDO
   if to_regclass('public.tags') is null or to_regclass('public.devolucao_tags') is null then
@@ -45,6 +51,32 @@ begin
         raise notice '% criada (copia de %)', nova, par[1];
       end if;
     end loop;
+
+    -- ⚠️ b655 — O TIPO DO VINCULO E DA EMPRESA, nao da GOOD (erro real de
+    -- 03/11: 42804 "devolucao_id and id are of incompatible types: uuid and
+    -- bigint"). O LIKE copia `devolucao_id` como uuid (o id da GOOD), mas o
+    -- `devolucoes_amb.id` e BIGINT — a AMB e a Girassol nasceram com id
+    -- numerico. Entao a coluna de vinculo e ajustada pro tipo do id da
+    -- tabela-mae DESTA empresa, lido do catalogo (vale pra qualquer tipo
+    -- que uma empresa futura tenha). So mexe em tabela VAZIA: com linhas,
+    -- para AVISANDO em vez de arriscar dado.
+    select atttypid::regtype::text into tipo_pai
+      from pg_attribute
+     where attrelid = ('public.devolucoes' || sufixo)::regclass
+       and attname = 'id' and not attisdropped;
+    select atttypid::regtype::text into tipo_filho
+      from pg_attribute
+     where attrelid = ('public.devolucao_tags' || sufixo)::regclass
+       and attname = 'devolucao_id' and not attisdropped;
+    if tipo_filho is distinct from tipo_pai then
+      execute format('select count(*) from public.%I', 'devolucao_tags' || sufixo) into linhas;
+      if linhas > 0 then
+        raise exception 'devolucao_tags% tem % linha(s) com devolucao_id % — nao altero tipo com dados; me chame com este erro', sufixo, linhas, tipo_filho;
+      end if;
+      execute format('alter table public.%I alter column devolucao_id type %s using null::%s',
+        'devolucao_tags' || sufixo, tipo_pai, tipo_pai);
+      raise notice 'devolucao_tags%.devolucao_id: % -> % (o tipo do id de devolucoes%)', sufixo, tipo_filho, tipo_pai, sufixo;
+    end if;
 
     -- as FOREIGN KEYS do embed (ver cabecalho). on delete cascade:
     --   - apagar uma TAG some com os vinculos dela (o codigo do relatorio
@@ -68,7 +100,36 @@ end
 $$;
 
 -- ============================================================
--- COMO CONFERIR (mesmo editor, depois de rodar):
+-- b655 — RECARREGAR O CACHE DO PostgREST (obrigatorio, roda junto)
+--
+-- O embed do relatorio depende do PostgREST ENXERGAR as FKs novas, e ele
+-- le o schema de um CACHE. DDL rodado dentro de bloco `do $$` nem sempre
+-- dispara o reload automatico — foi exatamente o erro visto em producao
+-- em 03/11: "Could not find a relationship between 'devolucoes_girassol'
+-- and 'devolucao_tags_girassol' in the schema cache", com as tabelas e
+-- FKs ja criadas. O notify abaixo forca o reload; vale segundos depois.
+-- ============================================================
+notify pgrst, 'reload schema';
+
+-- ============================================================
+-- CONFERENCIA (ja roda junto): esperado = 8 linhas (4 tabelas + 4 FKs)
+-- ============================================================
+select 'tabela' as tipo, table_name as nome
+  from information_schema.tables
+ where table_schema = 'public'
+   and table_name in ('tags_amb', 'devolucao_tags_amb',
+                      'tags_girassol', 'devolucao_tags_girassol')
+union all
+select 'fk', conname
+  from pg_constraint
+ where conname in ('devolucao_tags_amb_tag_id_fkey',
+                   'devolucao_tags_amb_devolucao_id_fkey',
+                   'devolucao_tags_girassol_tag_id_fkey',
+                   'devolucao_tags_girassol_devolucao_id_fkey')
+ order by 1, 2;
+
+-- ============================================================
+-- (a conferencia manual antiga fica como referencia)
 --
 --   select table_name from information_schema.tables
 --    where table_schema = 'public'
