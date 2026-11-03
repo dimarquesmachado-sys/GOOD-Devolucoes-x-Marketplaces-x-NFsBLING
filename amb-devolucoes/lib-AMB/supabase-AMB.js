@@ -38,6 +38,30 @@
 // que a instancia padrao foi removida — e require de arquivo da AMB num
 // modulo multiempresa e pegadinha esperando alguem usar.
 
+// b653 (PR #522 r3) - a TRADUCAO do vocabulario desta empresa (tipo sempre
+// 'devolucao', desfecho no `status`, data em `criado_em`) pro vocabulario
+// da GOOD, que o front e o relatorio entendem. Era inline no map de
+// triagensDe; virou funcao NOMEADA (nivel do modulo, exportada) porque o
+// b652 precisou da MESMA regra dentro de lib/rotas-relatorios — e la ela e
+// inline de novo (a lib nao pode importar modulo de empresa). O que impede
+// as duas de divergirem e test/relatorio-traducao-paridade.test.js, que
+// roda AS DUAS de producao sobre os mesmos casos. triagensDe usa esta.
+function linhaNoVocabularioDaGood(x) {
+  return ({
+      ...x,
+      created_at: x.criado_em,
+      // na AMB o `tipo` e sempre 'devolucao' e o desfecho mora no status;
+      // na GOOD o tipo E o desfecho. Aqui a gente entrega como a GOOD.
+      tipo: x.tipo && x.tipo !== 'devolucao' ? x.tipo : (x.status || 'aprovado'),
+      status_original: x.status,
+      // b166.2 (Codex): a tela agora le o campo `funcionario` direto (vem no
+      // select acima), entao nao precisa mais inventar marcador dentro da
+      // descricao — o que so funcionava pra nome de uma palavra sem acento.
+      // A descricao volta a ser o que e: a descricao.
+      problema_descricao: x.problema_descricao,
+    });
+}
+
 function criarDb(cfg) {
   // ⚠️ b396 - A ETIQUETA DO LOG DIZ QUAL EMPRESA.
   //
@@ -169,19 +193,7 @@ async function triagensDe(identificadores) {
     if (r.error) return { ok: false, erro: r.error.message };
 
     // traduz pro vocabulario que o front (vindo da GOOD) entende
-    const registros = (r.data || []).map((x) => ({
-      ...x,
-      created_at: x.criado_em,
-      // na AMB o `tipo` e sempre 'devolucao' e o desfecho mora no status;
-      // na GOOD o tipo E o desfecho. Aqui a gente entrega como a GOOD.
-      tipo: x.tipo && x.tipo !== 'devolucao' ? x.tipo : (x.status || 'aprovado'),
-      status_original: x.status,
-      // b166.2 (Codex): a tela agora le o campo `funcionario` direto (vem no
-      // select acima), entao nao precisa mais inventar marcador dentro da
-      // descricao — o que so funcionava pra nome de uma palavra sem acento.
-      // A descricao volta a ser o que e: a descricao.
-      problema_descricao: x.problema_descricao,
-    }));
+    const registros = (r.data || []).map(linhaNoVocabularioDaGood);
     return { ok: true, registros };
   } catch (e) {
     return { ok: false, erro: e.message };
@@ -1032,4 +1044,4 @@ return {
 // avisar, e isso nao aparecia em busca por env nem por tabela.
 //
 // 📌 Ninguem mais a consome: o app usa `.criar(CFG_EMPRESA)`.
-module.exports = { criar: criarDb };
+module.exports = { criar: criarDb, linhaNoVocabularioDaGood };

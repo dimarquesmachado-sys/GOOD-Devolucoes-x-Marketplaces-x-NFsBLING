@@ -330,6 +330,7 @@ const tokens = require('../lib/render-tokens');
 const drenagem = require('../lib/drenagem');   // b477: timers que param no SIGTERM
 const tiktokPonte = require('../lib/tiktok-ponte');
 const devCapturadas = require('../lib/devolucoes-capturadas');   // b455: a captura persistente, que so a GOOD chamava
+const registrarRotasRelatorios = require('../lib/rotas-relatorios');   // b651 - relatorio de devolucoes (peca multiempresa do b650)
 const tiktokDevCaptura = require('../lib/tiktok-devolucoes');     // b455: normaliza o TikTok pra captura (o mesmo modulo que o identificar recebe por deps)
 const erroCodigo = require('../lib/erro-de-codigo');   // b205 - bug meu nao e falha do marketplace
 const confrontar = require('../lib/confrontar-nf');   // b208 - escada de desempate da NF
@@ -660,7 +661,7 @@ const registrarCicloDefeitos = require('../lib/defeitos-ciclo');
 // candidato ja desistido ainda batia no Bling depois de esperar numa pausa
 // de 429. Ver bling-AMB.js, nf-nomes-AMB.js e identificar-AMB.js.
 // 29/10: sem o 'AMB' na frente — a mesma peca serve Girassol, AMB e as proximas; a empresa vai no campo `empresa`
-const VERSAO = 'Devolucoes b649';
+const VERSAO = 'Devolucoes b654';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -3025,6 +3026,45 @@ registrarRotasAdminNF(router, {
     ? CFG_EMPRESA.fiscal.naturezasDevolucaoIds() : null,
   nomesBatemNf: nfp.nomesBatem,   // b316 - MESMO comparador do casamento
   listarDepositos: bling.listarDepositos,   // b276
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// b651 - RELATORIO DE DEVOLUCOES NAS 3 (fatia 2 do porte; a peca virou
+// multiempresa no b650). E o MESMO relatorio da GOOD, lendo as tabelas
+// DESTA empresa (vem da ficha). Enquanto as tabelas de tags da empresa
+// nao existirem no Supabase (sql/2026-11-01-tags-relatorio-amb-girassol.sql),
+// o relatorio responde o erro do banco NOMEANDO a tabela que falta — nunca
+// cai no dado de outra empresa (a peca derruba o registro sem os nomes).
+// A busca textual de produtos e indice proprio da GOOD: aqui declara null,
+// e a rota responde 501 explicando, em vez de fingir resultado vazio.
+// ═══════════════════════════════════════════════════════════════════
+registrarRotasRelatorios(router, {
+  supabase: db.conectar(),
+  requerAdmin: auth.requerAdmin,
+  tabelas: {
+    devolucoes: db.tabelas.devolucoes,
+    tags: db.tabelas.tags,
+    devolucaoTags: db.tabelas.devolucaoTags,
+  },
+  buscarProdutos: null,
+  // b652 (Codex #522) - vocabulario da tabela da AMB/Girassol
+  colunaData: 'criado_em',
+  tipoNoStatus: true,
+});
+
+// b651 - a pagina e o js do relatorio sao os MESMOS arquivos da GOOD,
+// servidos sob o prefixo da empresa (o js deriva a base da API do caminho
+// da propria pagina). Mesma protecao da GOOD: a pagina exige admin.
+// b652 (Codex #522) - o "Voltar ao Admin" da pagina e ../admin.html (redirect so
+// existe na raiz da GOOD): sob o prefixo da empresa aponta pro /painel dela.
+const RELATORIOS_HTML_EMPRESA = fs.readFileSync(path.join(__dirname, '..', 'public', 'admin', 'relatorios.html'), 'utf8')
+  .replace('href="../admin.html"', 'href="../painel"');
+router.get('/admin/relatorios.html', auth.requerAdmin, (req, res) => {
+  res.type('html').send(RELATORIOS_HTML_EMPRESA);
+});
+router.get('/admin/relatorios.js', (req, res) => {
+  res.type('application/javascript');
+  res.sendFile(path.join(__dirname, '..', 'public', 'admin', 'relatorios.js'));
 });
 
 

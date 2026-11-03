@@ -67,11 +67,19 @@ ok(/replace\(\/\["',\(\)\]\/g, ''\)/.test(DB_AMB),
   const src = DB_AMB.slice(i, DB_AMB.indexOf('/** Grava uma triagem', i));
   ok(/funcionario/.test(DB_AMB.slice(DB_AMB.indexOf('async function triagensDe'), DB_AMB.indexOf('/** Grava uma triagem'))),
      '  e o select traz o funcionario, que a tela le direto');
-  ok(/created_at: x\.criado_em/.test(src),
+  // b653 (PR #522 r3) - a traducao saiu do map inline e virou a funcao
+  // NOMEADA linhaNoVocabularioDaGood (nivel do modulo, exportada), porque o
+  // b652 pos a mesma regra no relatorio. Mesma intencao de sempre nos 3
+  // asserts; muda ONDE o texto mora — e ganha a amarra de que triagensDe
+  // USA a funcao (re-inlinar aqui divergiria na primeira mudanca).
+  ok(/\.map\(linhaNoVocabularioDaGood\)/.test(src),
+     'triagensDe usa a traducao NOMEADA (paridade com o relatorio e testada a parte)');
+  const fonteFn = DB_AMB.slice(DB_AMB.indexOf('function linhaNoVocabularioDaGood'), i);
+  ok(/created_at: x\.criado_em/.test(fonteFn),
      'traduz criado_em -> created_at (o front espera o nome da GOOD)');
-  ok(/x\.tipo !== 'devolucao'/.test(src),
+  ok(/x\.tipo !== 'devolucao'/.test(fonteFn),
      '  e traduz o tipo: na AMB e sempre "devolucao" e o desfecho mora no status');
-  ok(/status_original/.test(src), '  guardando o status original, pra nao perder informacao');
+  ok(/status_original/.test(fonteFn), '  guardando o status original, pra nao perder informacao');
 }
 
 // ── prova de ponta a ponta: rota REAL + triagensDe REAL ─────────────
