@@ -467,6 +467,16 @@
           return;
         }
         const d = await r.json();
+        // b656 - 'ml' e 'mercadolivre' sao o MESMO canal, gravado em epocas
+        // diferentes. Unifica ANTES de qualquer guard (payload de erro nao tem
+        // listas — vira no-op) pra badge, cor, link de vendas, checkbox de
+        // alerta e a aba/contagem "Mercado Livre" enxergarem UM canal so, nas
+        // DUAS cargas desta pagina, sem tocar o banco.
+        for (const _v of Object.values(d || {})) {
+          if (Array.isArray(_v)) for (const _x of _v) {
+            if (_x && _x.marketplace === 'mercadolivre') _x.marketplace = 'ml';
+          }
+        }
         if (!d.ok) {
           throw new Error(d.erro || 'falha');
         }
@@ -1555,12 +1565,12 @@ async function carregarSemRetorno() {
           // b188 - TAG DO MARKETPLACE, igual aos outros cards do painel.
           // Sem ela o dono nao sabe de onde veio o caso, e com ML e Shopee
           // entrando na lista isso fica pior.
-          const CORES_MKT = { tiktok: '#000', shopee: '#ee4d2d', magalu: '#0086ff', ml: '#ffe600' };
+          const CORES_MKT = { tiktok: '#000', shopee: '#ee4d2d', magalu: '#0086ff', ml: '#ffe600', mercadolivre: '#ffe600' };   // b656 - alias antigo, mesma cor
           const mkt = String(x.marketplace || '').toLowerCase();
-          const NOMES_MKT = { tiktok: 'TikTok', shopee: 'Shopee', magalu: 'Magalu', ml: 'Mercado Livre' };
+          const NOMES_MKT = { tiktok: 'TikTok', shopee: 'Shopee', magalu: 'Magalu', ml: 'Mercado Livre', mercadolivre: 'Mercado Livre' };   // b656 - alias antigo, mesmo rotulo
           const tagMkt = mkt
             ? '<span style="background:' + (CORES_MKT[mkt] || '#607d8b') + ';'
-              + 'color:' + (mkt === 'ml' ? '#333' : '#fff') + ';padding:3px 8px;border-radius:10px;'
+              + 'color:' + (mkt === 'ml' || mkt === 'mercadolivre' ? '#333' : '#fff') + ';padding:3px 8px;border-radius:10px;'
               + 'font-size:10px;font-weight:700;margin-right:6px;">'
               + escapeHtml(NOMES_MKT[mkt] || x.marketplace) + '</span>'
             : '';
@@ -2089,6 +2099,16 @@ async function carregarSemRetorno() {
       try {
         const r = await fetch((window.APP_BASE || '') + '/api/admin/devolucoes');
         const d = await r.json();
+        // b656 - 'ml' e 'mercadolivre' sao o MESMO canal, gravado em epocas
+        // diferentes. Unifica ANTES de qualquer guard (payload de erro nao tem
+        // listas — vira no-op) pra badge, cor, link de vendas, checkbox de
+        // alerta e a aba/contagem "Mercado Livre" enxergarem UM canal so, nas
+        // DUAS cargas desta pagina, sem tocar o banco.
+        for (const _v of Object.values(d || {})) {
+          if (Array.isArray(_v)) for (const _x of _v) {
+            if (_x && _x.marketplace === 'mercadolivre') _x.marketplace = 'ml';
+          }
+        }
         if (!d.ok) return;
         dados = d; // mantem o estado global em dia (pra proximas acoes)
 
