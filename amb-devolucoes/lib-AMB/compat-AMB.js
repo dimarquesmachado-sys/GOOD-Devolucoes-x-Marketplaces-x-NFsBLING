@@ -1471,6 +1471,12 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
 
   router.get('/api/admin/devolucoes', auth.requerLogin, async (req, res) => {
     try {
+      // b658 - nivelar por cima (GOOD 31/10): canal pelo NUMERO DO PEDIDO.
+      // Registro antigo 'mercadolivre' (ou sem canal) com pedido de outro
+      // formato ja aparecia CERTO na lista da GOOD e ficava errado/sem
+      // origem aqui — mesma peca, mesmo ponto (depois do parcial, antes
+      // dos marcadores), sem tocar o banco.
+      const { corrigirMarketplaceExibido } = require('../../lib/marketplace-exibido');
       const [apr, prob, div] = await Promise.all([
         db.listarFila({ status: 'aprovado' }),
         db.listarFila({ status: 'problema' }),
@@ -1507,7 +1513,10 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
       res.json({
         // b607 - nivelar por cima (GOOD b200): decodifica os marcadores das ESTORNADAS (so_rascunho, dep_sugerido, data_origem)
         // — sem isso o caso de estornada sem retorno abria o Gerar NF liberando a emissao e no deposito GERAL.
-        ok: true, aprovadas: _marcadoresEstornada(aprovadas), problemas: _marcadoresEstornada(problemas), divergentes: _marcadoresEstornada(divergentes),
+        ok: true,
+        aprovadas: _marcadoresEstornada(aprovadas.map(corrigirMarketplaceExibido)),   // b658 - canal pelo pedido
+        problemas: _marcadoresEstornada(problemas.map(corrigirMarketplaceExibido)),
+        divergentes: _marcadoresEstornada(divergentes.map(corrigirMarketplaceExibido)),
         total: aprovadas.length + problemas.length + divergentes.length,
       });
     } catch (e) {
