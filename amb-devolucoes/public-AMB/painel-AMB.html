@@ -4550,8 +4550,8 @@ async function carregarSemRetorno() {
         // Verifica se a extensao Bridge esta instalada/atualizada
         if (!await verificarBridgeInstalada()) {
           throw new Error(
-            'Extensão de devoluções não detectada (no navegador desta empresa — na AMB ela se chama "AMBTotal Devoluções Bridge"). ' +
-            'Instale/atualize a extensão e recarregue a página (Ctrl+Shift+R).'
+            'Extensão de devoluções não detectada neste navegador (é a Toolbox 2.1+ — ou a "Devoluções Bridge" antiga). ' +
+            'Confira se ela está instalada e ATIVA neste navegador, se o Bling está logado em outra aba, e tente de novo (ela pode ter carregado depois da página).'
           );
         }
         document.getElementById('statusGerar').textContent = 'Falando com o Bling (via extensão)...';
@@ -4785,11 +4785,26 @@ async function carregarSemRetorno() {
     // chamadas ao Bling com privilegios (sem CORS).
     // Sem a extensao instalada, a chamada vai dar timeout.
 
-    let bridgeInstaladaCache = null;
+    // b668 - A CORRIDA DO CARREGAMENTO. A pre-deteccao roda no fim deste script,
+    // durante o parse da pagina; o content script da extensao (Toolbox/Bridge)
+    // e injetado em `document_idle`, DEPOIS da pagina carregar — num painel
+    // pesado (a GOOD, com dezenas de cards) isso leva mais de 1,5 s. O PING
+    // saia antes da extensao existir, o timeout gravava `false` no cache e o
+    // cache nunca era refeito: todo "Gerar NF" dali em diante dizia "extensao
+    // nao detectada" com a Toolbox instalada (caso real, GOOD, 07/11). Agora:
+    //   1. resultado NEGATIVO nunca e guardado — a proxima chamada pergunta de novo;
+    //   2. um ouvinte PERMANENTE pega o GOOD_BRIDGE_INSTALADA que a extensao
+    //      anuncia ao injetar (e qualquer PONG), e marca a Bridge como presente.
+    let bridgeInstaladaCache = null;   // so vira true; nunca false
+    window.addEventListener('message', (event) => {
+      if (event.source !== window) return;
+      const t = event.data && event.data.tipo;
+      if (t === 'GOOD_BRIDGE_INSTALADA' || t === 'GOOD_BRIDGE_PONG') bridgeInstaladaCache = true;
+    });
 
     // Detecta se a extensao esta instalada (via postMessage PING/PONG)
     function verificarBridgeInstalada() {
-      if (bridgeInstaladaCache !== null) return Promise.resolve(bridgeInstaladaCache);
+      if (bridgeInstaladaCache === true) return Promise.resolve(true);
 
       return new Promise(resolve => {
         let resolved = false;
@@ -4808,8 +4823,7 @@ async function carregarSemRetorno() {
         setTimeout(() => {
           if (!resolved) {
             window.removeEventListener('message', handler);
-            bridgeInstaladaCache = false;
-            resolve(false);
+            resolve(false);   // b668: NAO grava false — a extensao pode injetar logo depois
           }
         }, 1500);
       });

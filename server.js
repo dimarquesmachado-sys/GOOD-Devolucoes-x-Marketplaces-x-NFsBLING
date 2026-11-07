@@ -613,7 +613,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.126.178 (b667: JS compartilhado chama a API com a base da empresa explicita — sem depender do embrulho do fetch)',
+      version: '9.126.179 (b668: deteccao da Bridge/Toolbox nao perde a corrida do carregamento — Gerar NF volta a achar a extensao)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
