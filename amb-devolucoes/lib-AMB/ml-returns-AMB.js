@@ -42,6 +42,7 @@
 // ============================================================
 
 'use strict';
+const { PREFIXO_SEM_EMPRESA } = require('../../lib/empresas');   // b662 - nunca ler as envs da AMB por fallback
 
 // b248 - FASE 3, passo 3 (ultimo antes do app): RECEBE a ficha.
 //
@@ -95,7 +96,7 @@ function criarMlReturns(cfg) {
   // Era `[AMB/...]` fixo. O Render junta o log das duas no MESMO
   // lugar: com a Girassol montada, um erro dela apareceria como
   // `[AMB/...]` e mandaria caçar no app errado.
-  const TAG_EMP = String((cfg && cfg.PREFIXO_ENV) || 'AMB_')
+  const TAG_EMP = String((cfg && cfg.PREFIXO_ENV) || PREFIXO_SEM_EMPRESA)
     .replace(/_$/, '');
   const ml = mlDa(cfg);   // b377
 

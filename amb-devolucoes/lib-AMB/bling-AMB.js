@@ -17,6 +17,7 @@
 // ============================================================
 
 'use strict';
+const { PREFIXO_SEM_EMPRESA } = require('../../lib/empresas');   // b662 - nunca ler as envs da AMB por fallback
 
 const axios = require('axios');
 // b246 - FASE 3, passo 2: RECEBE a ficha em vez de importar o config.
@@ -59,7 +60,7 @@ function criarBling(cfg) {
   // Era `[AMB/...]` fixo. O Render junta o log das duas no MESMO
   // lugar: com a Girassol montada, um erro dela apareceria como
   // `[AMB/...]` e mandaria caçar no app errado.
-  const TAG_EMP = String((cfg && cfg.PREFIXO_ENV) || 'AMB_')
+  const TAG_EMP = String((cfg && cfg.PREFIXO_ENV) || PREFIXO_SEM_EMPRESA)
     .replace(/_$/, '');
 const { atualizarTokensNoRender } = require('../../lib/render-tokens');
 const { registrarPreventiva } = require('../../lib/token-preventiva');   // b271
@@ -593,8 +594,8 @@ const PREVENTIVA = registrarPreventiva({
   temRefresh: () => !!REFRESH_TOKEN,
   renovar: () => renovarToken(),
   persistiu: () => ultimaPersistenciaBling,
-  carimboEnv: (cfg.PREFIXO_ENV || 'AMB_') + 'BLING_RENOVADO_EM',
-  diasEnv: (cfg.PREFIXO_ENV || 'AMB_') + 'BLING_RENOVAR_DIAS',
+  carimboEnv: (cfg.PREFIXO_ENV || PREFIXO_SEM_EMPRESA) + 'BLING_RENOVADO_EM',
+  diasEnv: (cfg.PREFIXO_ENV || PREFIXO_SEM_EMPRESA) + 'BLING_RENOVAR_DIAS',
 });
 const renovacaoPreventiva = (op) => PREVENTIVA.preventiva(op);
 const ligarRenovacaoPreventiva = (op) => PREVENTIVA.ligar(op);

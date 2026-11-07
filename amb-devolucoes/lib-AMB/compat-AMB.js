@@ -34,6 +34,7 @@
 // ⚠️ As envs com prefixo passam a vir da empresa, com `AMB_` de padrao —
 // a AMB le exatamente as mesmas de hoje.
 function criar(cfgEmpresa) {
+  const { PREFIXO_SEM_EMPRESA } = require('../../lib/empresas');   // b662 - nunca ler as envs da AMB por fallback
   // ⚠️ b400 - a etiqueta do log diz QUAL EMPRESA.
   //
   // Era `[AMB/...]` fixo: o Render junta o log das duas no MESMO lugar,
@@ -41,9 +42,9 @@ function criar(cfgEmpresa) {
   //
   // 📌 CONST dentro da fábrica, nunca `let` no módulo — foi o erro que
   // cometi no b396: a 2ª empresa sobrescrevia a etiqueta da 1ª.
-  const _TAG = String((cfgEmpresa && cfgEmpresa.PREFIXO_ENV) || 'AMB_')
+  const _TAG = String((cfgEmpresa && cfgEmpresa.PREFIXO_ENV) || PREFIXO_SEM_EMPRESA)
     .replace(/_$/, '');
-const _PREFIXO = String((cfgEmpresa && cfgEmpresa.PREFIXO_ENV) || 'AMB_');
+const _PREFIXO = String((cfgEmpresa && cfgEmpresa.PREFIXO_ENV) || PREFIXO_SEM_EMPRESA);
 'use strict';
 
 const crypto = require('crypto');

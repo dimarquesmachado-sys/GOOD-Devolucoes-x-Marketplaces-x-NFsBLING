@@ -20,6 +20,7 @@
 // ============================================================
 
 'use strict';
+const { PREFIXO_SEM_EMPRESA } = require('../../lib/empresas');   // b662 - nunca ler as envs da AMB por fallback
 
 // b245 - FASE 3, passo 1: RECEBE a ficha em vez de importar o config da AMB.
 //
@@ -68,7 +69,7 @@ function criarDb(cfg) {
   // Era `[AMB/...]` fixo. O Render junta o log das duas no MESMO
   // lugar: com a Girassol montada, um erro dela apareceria como
   // `[AMB/...]` e mandaria caçar no app errado.
-  const TAG_EMP = String((cfg && cfg.PREFIXO_ENV) || 'AMB_')
+  const TAG_EMP = String((cfg && cfg.PREFIXO_ENV) || PREFIXO_SEM_EMPRESA)
     .replace(/_$/, '');
 
 let cliente = null;
@@ -77,7 +78,7 @@ let erroInicial = null;
 function conectar() {
   if (cliente || erroInicial) return cliente;
   if (!cfg.supabase.url || !cfg.supabase.key) {
-    const prefixo = String(cfg.PREFIXO_ENV || 'AMB_');
+    const prefixo = String(cfg.PREFIXO_ENV || PREFIXO_SEM_EMPRESA);
     erroInicial = `${prefixo}SUPABASE_URL/${prefixo}SUPABASE_KEY ou SUPABASE_URL/SUPABASE_KEY ausente`;
     console.log(`[${TAG_EMP}/Supabase] ` + erroInicial);
     return null;

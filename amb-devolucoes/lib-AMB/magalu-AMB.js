@@ -40,6 +40,7 @@
 // `ligarRenovacaoPreventiva` continua sendo chamada UMA vez pelo app, e nao
 // dentro da fabrica.
 function criar(cfgEmpresa) {
+  const { PREFIXO_SEM_EMPRESA } = require('../../lib/empresas');   // b662 - nunca ler as envs da AMB por fallback
   const { SEM_EMPRESA } = require('../../lib/empresas');   // b661 - nunca cair na AMB
   // ⚠️ b400 - a etiqueta do log diz QUAL EMPRESA.
   //
@@ -48,11 +49,11 @@ function criar(cfgEmpresa) {
   //
   // 📌 CONST dentro da fábrica, nunca `let` no módulo — foi o erro que
   // cometi no b396: a 2ª empresa sobrescrevia a etiqueta da 1ª.
-  const _TAG = String((cfgEmpresa && cfgEmpresa.PREFIXO_ENV != null) ? (cfgEmpresa.PREFIXO_ENV || 'GOOD_') : 'AMB_')
+  const _TAG = String((cfgEmpresa && cfgEmpresa.PREFIXO_ENV != null) ? (cfgEmpresa.PREFIXO_ENV || 'GOOD_') : PREFIXO_SEM_EMPRESA)
     .replace(/_$/, '');
 // b569 - prefixo VAZIO e valido (a GOOD usa MAGALU_* sem prefixo). Era `|| 'AMB_'`: com '' a GOOD leria e GRAVARIA
 // os tokens do Magalu da AMB. So a ausencia do campo cai no padrao historico.
-const _PREFIXO = (cfgEmpresa && cfgEmpresa.PREFIXO_ENV != null) ? String(cfgEmpresa.PREFIXO_ENV) : 'AMB_';
+const _PREFIXO = (cfgEmpresa && cfgEmpresa.PREFIXO_ENV != null) ? String(cfgEmpresa.PREFIXO_ENV) : PREFIXO_SEM_EMPRESA;
 const _env = (nome) => process.env[_PREFIXO + 'MAGALU_' + nome] || '';
 'use strict';
 

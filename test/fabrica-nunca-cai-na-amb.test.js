@@ -44,6 +44,23 @@ ok(SEM_EMPRESA === 'sem-empresa', '⚠️ o registro exporta o marcador SEM_EMPR
   ok(erro && /empresa desconhecida: sem-empresa/.test(erro), `⚠️ a fabrica sem empresa (sem argumento e sem DEVOLUCOES_EMPRESA) RECUSA montar: "${erro}"`);
 }
 
+// ── 1b. o PREFIXO DE ENV tambem (b662): sem prefixo, a peca le SEMEMPRESA_*, nunca AMB_* ──
+{
+  const { PREFIXO_SEM_EMPRESA } = require('../lib/empresas');
+  ok(PREFIXO_SEM_EMPRESA === 'SEMEMPRESA_', '⚠️ o registro exporta PREFIXO_SEM_EMPRESA');
+  process.env.AMB_SHOPEE_LOJA = 'loja-da-amb-na-env';
+  process.env.SEMEMPRESA_SHOPEE_LOJA = 'loja-sentinela';
+  const shopee = require('../amb-devolucoes/lib-AMB/shopee-AMB').criar({});
+  ok(shopee.cfg && shopee.cfg.loja === 'loja-sentinela', `  Shopee sem PREFIXO_ENV le SEMEMPRESA_SHOPEE_LOJA ('${shopee.cfg && shopee.cfg.loja}'), nao AMB_SHOPEE_LOJA`);
+  delete process.env.AMB_SHOPEE_LOJA; delete process.env.SEMEMPRESA_SHOPEE_LOJA;
+  const tp = require('../lib/token-preventiva');
+  const bling = tp.listar().find((x) => x.empresa === SEM_EMPRESA && x.integracao === 'bling');
+  ok(bling && bling.carimbo_env === 'SEMEMPRESA_BLING_RENOVADO_EM' && bling.dias_env === 'SEMEMPRESA_BLING_RENOVAR_DIAS',
+     `  a preventiva do Bling sem prefixo carimba em SEMEMPRESA_* (${bling && bling.carimbo_env}), nao em AMB_*`);
+  const ml = tp.listar().find((x) => x.empresa === SEM_EMPRESA && x.integracao === 'ml');
+  ok(ml && ml.carimbo_env === 'SEMEMPRESA_ML_RENOVADO_EM', `  idem o ML (${ml && ml.carimbo_env})`);
+}
+
 // ── 2. invariante de texto: nenhum fallback de identidade pra AMB ────
 {
   const arquivos = ['amb-devolucoes/app-AMB.js', ...fs.readdirSync(path.join(RAIZ, 'amb-devolucoes', 'lib-AMB'))
@@ -55,8 +72,15 @@ ok(SEM_EMPRESA === 'sem-empresa', '⚠️ o registro exporta o marcador SEM_EMPR
     // identidade da empresa caindo na AMB: `|| 'ambtotal'` ou `|| 'amb'` (loja/pasta/chave)
     const m = codigo.match(/\|\|\s*'(ambtotal|amb)'/g);
     if (m) ruins.push(a + ' (' + m.length + ')');
+    // b662: prefixo de env caindo em AMB_ (`|| 'AMB_'` ou `: 'AMB_'` de ternario) — comparar `=== 'AMB_'` e legado, nao fallback
+    const mp = codigo.match(/(\|\||:)\s*'AMB_'/g);
+    if (mp) ruins.push(a + ' (prefixo AMB_ x' + mp.length + ')');
   }
-  ok(ruins.length === 0, '⚠️ nenhuma peca da fabrica cai em ambtotal/amb por fallback' + (ruins.length ? ' — achei: ' + ruins.join(', ') : ''));
+  ok(ruins.length === 0, '⚠️ nenhuma peca da fabrica cai em ambtotal/amb/AMB_ por fallback' + (ruins.length ? ' — achei: ' + ruins.join(', ') : ''));
+  for (const a of fs.readdirSync(path.join(RAIZ, 'amb-devolucoes', 'lib-AMB')).filter((f) => f.endsWith('.js'))) {
+    const src = fs.readFileSync(path.join(RAIZ, 'amb-devolucoes', 'lib-AMB', a), 'utf8');
+    if (/PREFIXO_SEM_EMPRESA/.test(src)) ok(/const \{ PREFIXO_SEM_EMPRESA \} = require\('\.\.\/\.\.\/lib\/empresas'\)/.test(src), `  ${a} importa PREFIXO_SEM_EMPRESA do registro`);
+  }
   const app = fs.readFileSync(path.join(RAIZ, 'amb-devolucoes', 'app-AMB.js'), 'utf8');
   ok(/empresaAlvo \|\| process\.env\.DEVOLUCOES_EMPRESA \|\| SEM_EMPRESA/.test(app), '  a fabrica: argumento > env > SEM_EMPRESA (nunca ambtotal)');
   for (const a of ['ml-AMB', 'bling-AMB', 'magalu-AMB', 'shopee-AMB', 'identificar-AMB']) {

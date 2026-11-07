@@ -56,6 +56,7 @@
 // ============================================================
 
 'use strict';
+const { PREFIXO_SEM_EMPRESA } = require('../../lib/empresas');   // b662 - nunca ler as envs da AMB por fallback
 const sessaoMeiaNoite = require('../../lib/sessao-meia-noite');   // 31/10 - o login acaba na meia-noite (SP)
 
 const crypto = require('crypto');
@@ -133,7 +134,7 @@ function segredo(prefixo) {
   // Havia um literal `'amb-sem-segredo-configurado'` como ultimo recurso —
   // uma frase PUBLICA, no codigo, assinando sessao de ADMIN. Qualquer um que
   // leia o repo forja um cookie de administrador.
-  const _pref = String(prefixo || 'AMB_');
+  const _pref = String(prefixo || PREFIXO_SEM_EMPRESA);
   const doAmbiente = String(process.env[_pref + 'SESSION_SECRET'] || '').trim();
   if (doAmbiente.length >= 16) return doAmbiente;
 
