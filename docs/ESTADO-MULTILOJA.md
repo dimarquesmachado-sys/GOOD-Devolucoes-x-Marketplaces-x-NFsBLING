@@ -51,6 +51,27 @@ Além disso:
 - a Girassol esta **ATIVA e operando desde 30/09/2026** (64 NFs lancadas e 64 devolucoes emitidas; apps
   proprios em Bling, ML e Shopee; Magalu usa o app compartilhado da GOOD, com token proprio por empresa)
 
+## Fechar uma empresa (inclusive a GOOD) — sem deploy (b659)
+
+Uma empresa que encerra some do serviço trocando **uma env** no Render do
+`good-devolucoes-x-marketplaces-x-nfsbling`, aba Environment:
+
+| empresa | env | efeito |
+|---|---|---|
+| Girassol | `DEVOLUCOES_DESATIVAR_GIRASSOL=1` | não monta; `/girassol/...` responde 503 explicando; nenhuma rotina dela roda |
+| AMBTotal | `DEVOLUCOES_DESATIVAR_AMBTOTAL=1` | idem em `/amb/...` |
+| GOOD (a hospedeira, na raiz) | `DEVOLUCOES_DESATIVAR_GOOD=1` | nenhuma rotina dela é agendada (índices, espreita, captura, Shopee); a tela e a API da raiz respondem 503; `/health` mostra `good: desativada_por_env` |
+
+Com a GOOD fora, `DEVOLUCOES_RAIZ=/girassol` (opcional) faz a raiz `/`
+redirecionar pra empresa que ficou; sem ela, a raiz mostra uma página com os
+links das empresas ativas. Os caminhos do SERVIÇO continuam vivos com qualquer
+empresa desligada: `/health`, `/api/keepalive`, a ponte do checkout
+(`/api/interno/...`), a sonda (`/api/admin/sonda-empresa/...`) e as páginas
+públicas que os apps dos marketplaces apontam (política de privacidade e
+termos). As credenciais da empresa fechada podem ser apagadas depois, com
+calma — nada mais as lê. Teste: `test/freio-da-hospedeira.test.js` sobe o
+servidor com a env ligada e prova cada ponto.
+
 ## O que falta, e não é código
 
 ### ⚠️ Um CNPJ NOVO não entra só por configuração
