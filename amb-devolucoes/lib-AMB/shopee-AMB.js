@@ -51,6 +51,7 @@ function criar(cfgEmpresa) {
     .replace(/_$/, '');
 const _PREFIXO = String((cfgEmpresa && cfgEmpresa.PREFIXO_ENV) || 'AMB_');
 'use strict';
+const { SEM_EMPRESA } = require('../../lib/empresas');   // b661 - nunca cair na AMB
 
 const URL_PROXY = (process.env.SHOPEE_PROXY_URL || '').replace(/\/+$/, '');
 const KEY_PROXY = process.env.SHOPEE_PROXY_KEY || '';
@@ -61,7 +62,7 @@ const KEY_PROXY = process.env.SHOPEE_PROXY_KEY || '';
 // que o `config-da-empresa.js` ja usa pra `shopee.loja`), que bate com 'amb'
 // hoje e passa a ser 'girassol' quando ela subir.
 const LOJA = process.env[_PREFIXO + 'SHOPEE_LOJA']
-  || (cfgEmpresa && cfgEmpresa.EMPRESA) || 'amb';
+  || (cfgEmpresa && cfgEmpresa.EMPRESA) || SEM_EMPRESA;   // b661: sem empresa = loja invalida no proxy, nao a da AMB
 
 const cfg = {
   url: URL_PROXY, loja: LOJA,

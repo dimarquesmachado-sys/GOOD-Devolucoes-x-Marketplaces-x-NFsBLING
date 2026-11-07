@@ -151,6 +151,7 @@ const MANIFEST_AMB = require('./public-AMB/manifest-AMB.json');
 //
 // Quando a Girassol entrar (Fase 4), o unico passo aqui e trocar a chave.
 const { configDaEmpresa } = require('../lib/config-da-empresa');
+const { SEM_EMPRESA } = require('../lib/empresas');   // b661 - nunca cair na AMB (declarado ANTES do 1o uso, logo abaixo)
 // ⚠️ b356 - PASSO 3, FATIA 4: A EMPRESA SAI DE DENTRO DO CODIGO.
 //
 // Era `configDaEmpresa('ambtotal')` — cravado. Trocar a string SUBSTITUIRIA
@@ -180,7 +181,7 @@ const { configDaEmpresa } = require('../lib/config-da-empresa');
 // ⚠️ b358: o ARGUMENTO ganha da env. Assim o bootstrap passa a empresa ao
 // montar cada uma, e a env continua servindo pra quem monta so uma.
 const EMPRESA_DESTE_APP = String(
-  empresaAlvo || process.env.DEVOLUCOES_EMPRESA || 'ambtotal').trim();
+  empresaAlvo || process.env.DEVOLUCOES_EMPRESA || SEM_EMPRESA).trim();   // b661: sem empresa a fabrica recusa (configDaEmpresa lanca), nao monta a AMB
 const CFG_EMPRESA = configDaEmpresa(EMPRESA_DESTE_APP);
 
 // ⚠️ b367 - O APP LARGA O `config-AMB` FIXO.
@@ -324,7 +325,7 @@ const ml = require('./lib-AMB/ml-AMB').criar(CFG_EMPRESA);
 CFG_EMPRESA.clienteMl = ml;   // b377 — o mlReturns (abaixo) ja precisa dele
 const mlReturns = require('./lib-AMB/ml-returns-AMB').criar(CFG_EMPRESA);
 // b580 - indice de nomes salvo no armazem PRIVADO desta empresa (o `db` e criado logo abaixo; so e usado depois do boot)
-CFG_EMPRESA.armazemNfNomes = require('../lib/armazem-indices').criarArmazem({ obterSupabase: () => db.conectar(), chave: CFG_EMPRESA.CHAVE_REGISTRO || 'ambtotal' });
+CFG_EMPRESA.armazemNfNomes = require('../lib/armazem-indices').criarArmazem({ obterSupabase: () => db.conectar(), chave: CFG_EMPRESA.CHAVE_REGISTRO || SEM_EMPRESA });   // b661
 const nfNomes = require('./lib-AMB/nf-nomes-AMB').criar(CFG_EMPRESA);
 const tokens = require('../lib/render-tokens');
 const drenagem = require('../lib/drenagem');   // b477: timers que param no SIGTERM
@@ -414,7 +415,7 @@ const PREFIXO_ENV_EMPRESA = String((CFG_EMPRESA && CFG_EMPRESA.PREFIXO_ENV) || '
 // meu caminho, nao falta de rota — e eu ia mandar alguem criar uma pasta que
 // ja existia.
 const PASTA_CHECKOUT = (FICHA_AMB && FICHA_AMB.pastaCheckout)
-  || ((FICHA_AMB && FICHA_AMB.chaveDados) || 'amb') + '-checkout-offline';
+  || ((FICHA_AMB && FICHA_AMB.chaveDados) || SEM_EMPRESA) + '-checkout-offline';   // b661
 
 // Codex (P2, PR #327) - o manifest-AMB.json ja saia com nome por empresa
 // (rota abaixo), mas o titulo do atalho no iOS/Safari vinha DESTE HTML
@@ -661,7 +662,7 @@ const registrarCicloDefeitos = require('../lib/defeitos-ciclo');
 // candidato ja desistido ainda batia no Bling depois de esperar numa pausa
 // de 429. Ver bling-AMB.js, nf-nomes-AMB.js e identificar-AMB.js.
 // 29/10: sem o 'AMB' na frente — a mesma peca serve Girassol, AMB e as proximas; a empresa vai no campo `empresa`
-const VERSAO = 'Devolucoes b660';
+const VERSAO = 'Devolucoes b661';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -2026,7 +2027,7 @@ router.get('/api/debug/ml-get', admin, async (req, res) => {
 
 router.get('/api/debug/tiktok-devolucoes', admin, async (req, res) => {
   try {
-    const r = await tiktokPonte.sondaDevolucoes(CFG_EMPRESA.CHAVE_REGISTRO || 'ambtotal', req.query);
+    const r = await tiktokPonte.sondaDevolucoes(CFG_EMPRESA.CHAVE_REGISTRO || SEM_EMPRESA, req.query);   // b661
     res.status(r.ok ? 200 : 502).json(r);
   } catch (e) {
     res.status(500).json({ ok: false, erro: String(e.message || e).slice(0, 200) });
@@ -2243,7 +2244,7 @@ async function montarEspreitaAMB({ fundo = false } = {}) {
       // ⚠️ o Magalu segue a CHAVE (a rota la e `/magalu/ir/<empresa>`), nao a
       // pasta — sao dois identificadores diferentes no mesmo servico.
       link = 'https://mover-pedidos-aguardando-x-atendido.onrender.com/magalu/ir/'
-        + ((FICHA_AMB && FICHA_AMB.chaveDados) || 'amb') + '?n=' +
+        + ((FICHA_AMB && FICHA_AMB.chaveDados) || SEM_EMPRESA) + '?n=' +   // b661
         encodeURIComponent(x.pedido);
     }
     // 29/10: a NF de devolucao tambem e reconhecida pela NF DE VENDA que ela referencia no XML (vale pra nota feita
@@ -2980,7 +2981,7 @@ registrarRotasAdminNF(router, {
   tabelaDevolucoes: db.tabelas.devolucoes,   // b144 - devolucoes_amb
   chamarMagalu: magalu.chamarMagalu,   // b595 - anuncio do pedido do Magalu (card de varios produtos)
   shopeeProxy: { url: shopee.cfg.url, loja: shopee.cfg.loja, key: process.env.SHOPEE_PROXY_KEY || '' },   // b597 - anuncio da Shopee
-  tiktokPonte, tiktokLoja: tiktokPonte.lojaDaEmpresa(CFG_EMPRESA.CHAVE_REGISTRO || 'ambtotal'),   // b598 - anuncio do TikTok
+  tiktokPonte, tiktokLoja: tiktokPonte.lojaDaEmpresa(CFG_EMPRESA.CHAVE_REGISTRO || SEM_EMPRESA),   // b598 - anuncio do TikTok; b661: nunca a AMB
   supabase: db.conectar(),
   requerAdmin: auth.requerAdmin,
   // usado nas fotos: aceita sessao de admin OU a chave ?k=ADMIN_KEY

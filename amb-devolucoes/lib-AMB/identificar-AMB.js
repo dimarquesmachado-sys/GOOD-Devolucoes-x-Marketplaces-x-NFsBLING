@@ -12,6 +12,7 @@
 //  chega por injecao, e um Router do express tem .get igual ao app.
 // ════════════════════════════════════════════════════════════════════════
 'use strict';
+const { SEM_EMPRESA } = require('../../lib/empresas');   // b661 - nunca cair na AMB
 
 // 30/10 - ⚠️ NF GUARDADA SO VIRA TOQUE SE O INDICE CONFIRMAR QUE E DAQUELE PEDIDO.
 // De 04/10 (b518) ate o #507 (29/10), a espreita desta fabrica gravava na captura o PALPITE da NF pelo nome do
@@ -44,7 +45,7 @@ module.exports = function registrarIdentificar(app, deps) {
   // ⚠️ b405: a pasta no Mover-Pedidos NAO deriva da chave — a Girassol la e
   // `girassol-backup-offline`. Vem da ficha, pelas deps.
   const PASTA_CHECKOUT = (deps && deps.pastaCheckout)
-    || (CHAVE_DADOS || 'amb') + '-checkout-offline';
+    || (CHAVE_DADOS || SEM_EMPRESA) + '-checkout-offline';   // b661: link quebrado e visivel, nao o checkout da AMB
   if (!CHAVE_DADOS) {
     throw new Error('[identificar] `chaveDados` nao veio nas deps — e o valor '
       + 'da coluna `empresa` no banco. Sem ele eu consultaria a empresa errada.');

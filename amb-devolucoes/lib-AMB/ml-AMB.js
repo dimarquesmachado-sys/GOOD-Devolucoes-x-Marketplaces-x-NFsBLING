@@ -30,8 +30,9 @@ const axios = require('axios');
 // modulo multiempresa e pegadinha esperando alguem usar.
 
 function criarMl(cfg) {
+  const { SEM_EMPRESA } = require('../../lib/empresas');   // b661 - nunca cair na AMB
   // ⚠️ b424: a canonica do contrato (`ambtotal`), nao a curta (`amb`).
-  const CHAVE_TOKEN = (cfg && cfg.CHAVE_REGISTRO) || 'ambtotal';
+  const CHAVE_TOKEN = (cfg && cfg.CHAVE_REGISTRO) || SEM_EMPRESA;   // b661: sem empresa = leitor diz 'desconhecida', nao o token da AMB
   // ⚠️ b396 - A ETIQUETA DO LOG DIZ QUAL EMPRESA.
   //
   // Era `[AMB/...]` fixo. O Render junta o log das duas no MESMO
@@ -320,7 +321,7 @@ const PREVENTIVA = registrarPreventiva({
   // literal. Com duas instancias, `empresa: 'ambtotal'` fixo faria as duas
   // competirem pelo MESMO carimbo de renovacao — uma renovaria o token e a
   // outra acharia que ja tinha renovado.
-  empresa: cfg.CHAVE_REGISTRO || 'ambtotal', integracao: 'ml',
+  empresa: cfg.CHAVE_REGISTRO || SEM_EMPRESA, integracao: 'ml',   // b661
   temRefresh: () => !!REFRESH_TOKEN,
   renovar: () => renovarToken(),
   persistiu: () => ultimaPersistencia,
