@@ -118,7 +118,8 @@ const MODULOS = [
 
   const consumidores = MODULOS.map(([a]) => ler(a)).join('\n') + ler('server.js');
   for (const fn of usaveis) {
-    ok(new RegExp('drenagem\\.' + fn + '\\(').test(consumidores),
+    // b659: no server.js os agendamentos de boot da GOOD passam por `agendaGood` (= drenagem com a GOOD ligada)
+    ok(new RegExp('(?:drenagem|agendaGood)\\.' + fn + '\\(').test(consumidores),
        '`' + fn + '` esta LIGADA em algum consumidor (nao so criada)');
   }
 }

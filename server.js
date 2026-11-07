@@ -144,6 +144,15 @@ const { obterEmpresa } = require('./lib/empresas');
 // estamos matando entre servicos, acontecendo dentro do mesmo servico.
 const drenagem = require('./lib/drenagem');
 drenagem.ligar();
+// b659 - FREIO DA HOSPEDEIRA. A GOOD e a empresa que hospeda as outras (ela nao
+// passa por montarEmpresas), entao DEVOLUCOES_DESATIVAR_GOOD=1 nao valia pra ela:
+// as rotinas dela subiam e a raiz servia a tela dela mesmo encerrada. Agora o
+// mesmo freio das outras vale aqui — nenhuma rotina dela e agendada (ver
+// `agendaGood`, mais abaixo), e o espaco dela na raiz responde 503 (ver o
+// bloco de montagem). Uma empresa que fecha some trocando UMA env, sem deploy.
+const { freada: _freadaEmpresa } = require('./lib/montagem-empresas');
+const GOOD_DESLIGADA = _freadaEmpresa('good');
+if (GOOD_DESLIGADA) console.warn('[devolucoes] good DESATIVADA por DEVOLUCOES_DESATIVAR_GOOD — nenhuma rotina dela sobe; a raiz responde 503');
 
 const FICHA_GOOD = obterEmpresa('good');
 // 29/10 (nivela a GOOD pelo #505) — NF de devolucao feita A MAO no Bling reconhecida pela NF de venda que ela
@@ -252,7 +261,7 @@ function diagnosticoAdminKey() {
   };
 }
 
-shopee.iniciarPreAquecimento();
+if (!GOOD_DESLIGADA) shopee.iniciarPreAquecimento();   // b659: Shopee da GOOD (SHOPEE_PROXY_* sem prefixo) so com ela ligada
 
 const EMAIL_HOST = process.env.EMAIL_HOST;
 const EMAIL_PORT = parseInt(process.env.EMAIL_PORT || '465', 10);
@@ -394,6 +403,24 @@ app.use(express.json({ limit: '12mb' }));
   // desta peca: a estrutura do Codex (modulo, freio por env, /health) e os 2
   // cuidados que ela perdia (503 que EXPLICA, e derrubar quando NENHUMA sobe).
   montarEmpresas({ app, empresas: ativas, criarApp: criarAppAMB });
+
+  // b659 - a hospedeira (GOOD) entra no mesmo diagnostico do /health, e com o
+  // freio ligado o espaco dela na raiz fecha ANTES do cookieParser/static/rotas
+  // dela — so passam as empresas montadas e os caminhos do SERVICO (que nao
+  // sao de empresa nenhuma: /health, a ponte do checkout, a sonda, as paginas
+  // publicas que os apps dos marketplaces apontam). DEVOLUCOES_RAIZ (opcional,
+  // ex. /girassol) diz pra onde a raiz redireciona quando a GOOD esta fora.
+  const { registrarHospedeira, freioDaHospedeira } = require('./lib/montagem-empresas');
+  registrarHospedeira({ chave: 'good', rota: '/', estado: GOOD_DESLIGADA ? 'desativada_por_env' : 'montada' });
+  if (GOOD_DESLIGADA) {
+    app.use(freioDaHospedeira({
+      chave: 'good',
+      rotasAtivas: ativas.map((e) => e.rota),
+      caminhosDoServico: ['/health', '/api/keepalive', '/api/interno', '/api/admin/eventos-checkout',
+        '/api/admin/sonda-empresa', '/politica-de-privacidade', '/termos-de-uso'],
+      raiz: String(process.env.DEVOLUCOES_RAIZ || '').trim(),
+    }));
+  }
 }
 app.use(cookieParser());
 // ── seg2 - O HTML DO PAINEL PRECISA PASSAR PELO LOGIN ────────────────
@@ -586,7 +613,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.126.169 (b658: lista das instancias corrige canal pelo numero do pedido — nivelada com a GOOD)',
+      version: '9.126.170 (b659: a GOOD obedece ao mesmo freio por env das outras — fechar uma empresa sem deploy)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -8924,7 +8951,12 @@ registrarRotasImpressao(app, { requerEstoquista, crypto, sleep });
 // ele nao morrer a cada deploy. Fica anotado — e trabalho proprio, nao
 // cabe neste PR.
 const ESPACO = Number(process.env.BOOT_ESPACO_MS || 120000);   // 2 min
-drenagem.daquiA(() => magalu.preAquecer(), 20 * 1000);
+// b659 - com a GOOD desligada por env, NENHUMA rotina dela e agendada (indices,
+// espreita, captura, datas de entrega, armazem de vinculos). Todo agendamento
+// de boot da GOOD passa por aqui; `drenagem` direto fica so pro `ligar()` do
+// servico (o teste freio-da-hospedeira acusa qualquer kick fora disto).
+const agendaGood = GOOD_DESLIGADA ? { daquiA() {}, intervalo() {} } : drenagem;
+agendaGood.daquiA(() => magalu.preAquecer(), 20 * 1000);
 // ⚠️ RESOLUCAO DO CONFLITO (b273) — os dois lados estavam certos sobre
 // coisas DIFERENTES, entao junto em vez de escolher:
 //
@@ -8939,15 +8971,15 @@ drenagem.daquiA(() => magalu.preAquecer(), 20 * 1000);
 //
 // Ordem final: magalu -> espreita -> nfNomes -> mlReturns(+aoSucesso).
 // O `aoSucesso` cobre o atraso do mlReturns ter ficado em 4o.
-drenagem.daquiA(() => nfNomes.preAquecer(0), 20 * 1000 + ESPACO);
-drenagem.daquiA(() => mlReturns.preAquecer(1, preAquecerEspreita), 20 * 1000 + ESPACO * 2);
+agendaGood.daquiA(() => nfNomes.preAquecer(0), 20 * 1000 + ESPACO);
+agendaGood.daquiA(() => mlReturns.preAquecer(1, preAquecerEspreita), 20 * 1000 + ESPACO * 2);
 // 29/10: vinculo da NF pela chave e PERMANENTE e mora no armazem privado — deploy nao apaga mais (1 leitura do
 // Storage, nao toca o Bling)
-drenagem.daquiA(() => vinculoCache.ligarArmazem('good', require('./lib/armazem-indices').criarArmazem({ obterSupabase: () => supabase, chave: 'good' }))
+agendaGood.daquiA(() => vinculoCache.ligarArmazem('good', require('./lib/armazem-indices').criarArmazem({ obterSupabase: () => supabase, chave: 'good' }))
   .then((r) => console.log('[VINCULO-NF] good: vinculos pela chave carregados do armazem:', r && r.carregados))
   .catch((e) => console.error('[VINCULO-NF] good: armazem', e.message)), 8000);
 // 29/10: notas de entrada (NF de devolucao feita a mao, prova do XML) — por ultimo, no ritmo de FUNDO do Bling
-drenagem.daquiA(() => nfEntradaGood.preAquecer(0), 20 * 1000 + ESPACO * 4);
+agendaGood.daquiA(() => nfEntradaGood.preAquecer(0), 20 * 1000 + ESPACO * 4);
 
 // b272 - ⚠️ DOIS PASSES: um CURTO logo, e o completo depois.
 //
@@ -8959,7 +8991,7 @@ drenagem.daquiA(() => nfEntradaGood.preAquecer(0), 20 * 1000 + ESPACO * 4);
 //
 // 📌 Isto so funciona porque o indice PUBLICA O PARCIAL (b268): sem
 // aquilo, um passe curto nao serviria pra nada.
-drenagem.daquiA(() => {
+agendaGood.daquiA(() => {
   // b277 - ⚠️ ERA 3 PAGINAS, E EU ERREI A CONTA POR 3,5x.
   //
   // Escrevi "3 paginas cobrem ~15 dias" estimando ~1.900 NFs em 120 dias.
@@ -8980,7 +9012,7 @@ drenagem.daquiA(() => {
   console.log(`[BOOT] passe curto do indice de nomes (${PAGINAS_PASSE_CURTO} paginas, ~17 dias)`);
 }, 45 * 1000);
 
-drenagem.daquiA(() => nfNomes.preAquecer(0), 20 * 1000 + ESPACO);
+agendaGood.daquiA(() => nfNomes.preAquecer(0), 20 * 1000 + ESPACO);
 // v4.04 - catalogo de produtos pre-aquecido (a busca do estoquista nunca espera)
 // b306 - ⚠️ revisao Codex #265 (P2): a conta "agenda em 5s" estava ERRADA.
 //
@@ -9011,7 +9043,7 @@ drenagem.daquiA(() => nfNomes.preAquecer(0), 20 * 1000 + ESPACO);
 // 📌 Passa pra 15s: ainda depois do pre-aquecimento imediato (0,3 min), mas
 // ANTES dos que levam minutos. A busca de produto e a tela de defeitos sao
 // das primeiras que o galpao abre.
-drenagem.daquiA(() => { tentarConstruirIndice('boot'); }, 15 * 1000);
+agendaGood.daquiA(() => { tentarConstruirIndice('boot'); }, 15 * 1000);
 // v4.20 - a busca da data REAL de entrega roda sozinha, em ciclo proprio.
 // Antes so era disparada quando alguem abria o painel - e como o indice do ML
 // zera a cada deploy e leva ~2 min pra montar, o cache nunca enchia e o alerta
@@ -9027,16 +9059,16 @@ function cicloDatasEntrega() {
     }
   } catch (e) { /* tenta de novo no proximo ciclo */ }
 }
-drenagem.daquiA(cicloDatasEntrega, 3 * 60 * 1000);
-drenagem.intervalo(cicloDatasEntrega, 5 * 60 * 1000);
+agendaGood.daquiA(cicloDatasEntrega, 3 * 60 * 1000);
+agendaGood.intervalo(cicloDatasEntrega, 5 * 60 * 1000);
 // ⚠️ a espreita e a que a TELA precisa (a estrela da busca por nome), entao
 // ela vem CEDO — logo depois do magalu, nao no fim da fila.
-drenagem.daquiA(() => { if (magalu.cfg.autorizado) espreita.preAquecer(); }, 20 * 1000 + Math.round(ESPACO / 2));
+agendaGood.daquiA(() => { if (magalu.cfg.autorizado) espreita.preAquecer(); }, 20 * 1000 + Math.round(ESPACO / 2));
 // b569 - a copia unica do Magalu tem o PROPRIO relogio de 30 min (criado uma vez no preAquecer do boot); chamar de
 // novo a cada 25 min so duplicaria as montagens. O boot (acima) basta.
-drenagem.intervalo(() => mlReturns.preAquecer(), 25 * 60 * 1000);
-drenagem.intervalo(() => nfNomes.preAquecer(0), 25 * 60 * 1000);
-drenagem.intervalo(() => { if (magalu.cfg.autorizado) espreita.preAquecer(); }, 25 * 60 * 1000);
+agendaGood.intervalo(() => mlReturns.preAquecer(), 25 * 60 * 1000);
+agendaGood.intervalo(() => nfNomes.preAquecer(0), 25 * 60 * 1000);
+agendaGood.intervalo(() => { if (magalu.cfg.autorizado) espreita.preAquecer(); }, 25 * 60 * 1000);
 
 // v4.51 - pre-aquece o RESULTADO FINAL do a espreita (o painel montado), pra
 // abrir instantaneo. 90s apos o boot (depois dos componentes) e a cada 3 min.
@@ -9050,8 +9082,8 @@ function preAquecerEspreita() {
     .catch(() => {})
     .finally(() => { ESP_MONTANDO = null; });
 }
-drenagem.daquiA(preAquecerEspreita, 90 * 1000);
-drenagem.intervalo(preAquecerEspreita, 3 * 60 * 1000);
+agendaGood.daquiA(preAquecerEspreita, 90 * 1000);
+agendaGood.intervalo(preAquecerEspreita, 3 * 60 * 1000);
 
 // ============================================================
 // v4.63 - CAPTURA DAS DEVOLUCOES  (ideia do dono, 29/08)
@@ -9242,6 +9274,7 @@ app.listen(PORT, () => {
   console.log(`Bling: ${blingClient.hasToken() ? 'OK' : 'FALTA'}`);
   console.log(`Render persist: ${((process.env.RENDER_API_KEY || process.env.RENDER_API_KEY_v2) && (process.env.RENDER_SERVICE_ID || process.env.RENDER_SERVICE_ID_v2)) ? 'OK' : 'FALTA'}`);
   console.log(`Supabase: ${supabase ? 'OK' : 'FALTA'}`);
+  console.log(`GOOD (hospedeira): ${GOOD_DESLIGADA ? 'DESATIVADA por env — raiz em 503, rotinas dela paradas' : 'ligada'}`);
   console.log(`Shopee proxy: ${shopee.cfg.ativo ? 'OK (loja ' + shopee.cfg.loja + ' via ' + shopee.cfg.url + ')' : 'AUSENTE - configure SHOPEE_PROXY_URL e SHOPEE_PROXY_KEY'}`);
   console.log(`QZ assinatura: ${((process.env.GOODBKP_QZ_CERT || process.env.QZ_CERT) && (process.env.GOODBKP_QZ_PRIVKEY || process.env.QZ_PRIVKEY)) ? 'OK (impressao sem popup)' : 'sem certificado (modo Allow) - configure GOODBKP_QZ_CERT e GOODBKP_QZ_PRIVKEY'}`);
   console.log(`Email: ${mailer ? 'OK (' + EMAIL_USER + ' -> ' + EMAIL_TO + ')' : 'FALTA'}`);

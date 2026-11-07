@@ -46,7 +46,7 @@ global.fetch = async (u) => (XMLS[u] ? { ok: true, status: 200, text: async () =
   ok(/require\('\.\/amb-devolucoes\/lib-AMB\/nf-entrada-AMB'\)\.criar\(\{\s*PREFIXO_ENV: 'GOOD_',\s*fiscal: FICHA_GOOD\.fiscal,/.test(srv), '  GOOD usa a MESMA peca da fabrica (nf-entrada-AMB) com a ficha fiscal dela');
   ok(/em_transito: marcarNfDevolucaoXml\(unificada, NF_DEV_XML_DEPS\)/.test(srv) && /nunca_bipadas: marcarNfDevolucaoXml\(nuncaBipadas, NF_DEV_XML_DEPS\)/.test(srv)
     && /entregues_recentes: marcarNfDevolucaoXml\(entreguesRecentes, NF_DEV_XML_DEPS\)/.test(srv), '⚠️ espreita da GOOD marca as tres listas (em transito, chegou e nao bipou, entregues recentes)');
-  ok(/drenagem\.daquiA\(\(\) => nfEntradaGood\.preAquecer\(0\)/.test(srv), '  o indice de notas de entrada da GOOD e agendado no boot');
+  ok(/(?:drenagem|agendaGood)\.daquiA\(\(\) => nfEntradaGood\.preAquecer\(0\)/.test(srv), '  o indice de notas de entrada da GOOD e agendado no boot');
   const painel = fs.readFileSync(path.join(__dirname, '..', 'amb-devolucoes', 'public-AMB', 'painel-AMB.html'), 'utf8');
   ok(/it\.nf_devolucao_xml/.test(painel), '  painel unico (o mesmo da GOOD) aceita a marca nf_devolucao_xml na baixa em massa');
   ok(/esp\.entregues_recentes/.test(painel), '⚠️ baixa em massa do painel tambem le entregues_recentes (GOOD: entregue < 5 dias)');

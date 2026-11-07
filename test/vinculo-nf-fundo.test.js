@@ -106,7 +106,7 @@ function armazemFalso(inicial, { leituraFalha } = {}) {
   // 5) quem usa
   const srv = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
   const fab = fs.readFileSync(path.join(__dirname, '..', 'amb-devolucoes', 'app-AMB.js'), 'utf8');
-  ok(/vinculoCache\.completarChaveEmFundo\(itens, empresa, buscarNFPelaChave\)/.test(srv) && /drenagem\.daquiA\(\(\) => vinculoCache\.ligarArmazem\('good'/.test(srv), '⚠️ GOOD: fila de segundo plano na rota e armazem ligado no boot');
+  ok(/vinculoCache\.completarChaveEmFundo\(itens, empresa, buscarNFPelaChave\)/.test(srv) && /(?:drenagem|agendaGood)\.daquiA\(\(\) => vinculoCache\.ligarArmazem\('good'/.test(srv), '⚠️ GOOD: fila de segundo plano na rota e armazem ligado no boot');
   ok(/vinculoCache\.completarChaveEmFundo\(itens, CHAVE_DADOS,/.test(fab) && /vinculoCache\.ligarArmazem\(CHAVE_DADOS, CFG_EMPRESA\.armazemNfNomes\)/.test(fab), '⚠️ Girassol/AMB: idem');
   const painel = fs.readFileSync(path.join(__dirname, '..', 'amb-devolucoes', 'public-AMB', 'painel-AMB.html'), 'utf8');
   ok(/x\.nf_vinculo_pendente\s*\?\s*'🔄 NF '/.test(painel), '  painel: card na fila diz "procurando no Bling", nao "nao localizada"');

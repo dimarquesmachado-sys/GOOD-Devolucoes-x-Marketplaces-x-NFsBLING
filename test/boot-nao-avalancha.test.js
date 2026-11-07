@@ -45,7 +45,7 @@ const srv = fs.readFileSync(path.join(RAIZ, 'server.js'), 'utf8');
   // e o dono passou o dia sem foto e com busca lenta por causa disso).
   //
   // Agora conto por ALVO: no maximo um por API antes de 90s.
-  const cedo = [...srv.matchAll(/drenagem\.daquiA\(([^,]{0,120}?),\s*(\d+)\s*\*\s*1000\)/gs)]
+  const cedo = [...srv.matchAll(/(?:drenagem|agendaGood)\.daquiA\(([^,]{0,120}?),\s*(\d+)\s*\*\s*1000\)/gs)]
     .map((m) => ({ alvo: m[1].replace(/\s+/g, ' '), seg: Number(m[2]) }))
     .filter((x) => x.seg < 90);
 
