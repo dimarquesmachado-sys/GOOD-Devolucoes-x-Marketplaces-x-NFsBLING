@@ -56,6 +56,28 @@ const DIR = path.join(RAIZ, 'amb-devolucoes', 'public-AMB');
   ok(nus.length === 0,
      '⚠️ nenhuma chamada `fetch(\'/api/...\')` SEM a base da empresa'
      + (nus.length ? ' (achei: ' + nus.join(', ') + ')' : ''));
+
+  // b667 - OS JS COMPARTILHADOS TAMBEM. A fabrica serve `public/js/<nome>` da GOOD
+  // pras instancias (JS_COMPARTILHADOS em app-AMB.js) e eles chamavam `/api/...`
+  // nu: so funcionava porque o base-amb.js EMBRULHA o fetch e prefixa a base por
+  // baixo. Agora a base e explicita em cada chamada (o embrulho segue como rede
+  // de seguranca e nao dobra o prefixo: `/girassol/api/...` nao comeca com `/api/`).
+  const appAmb = fs.readFileSync(path.join(RAIZ, 'amb-devolucoes', 'app-AMB.js'), 'utf8');
+  const mLista = appAmb.match(/const JS_COMPARTILHADOS = \[([\s\S]*?)\];/);
+  const compartilhados = mLista ? [...mLista[1].matchAll(/'([^']+\.js)'/g)].map((m) => m[1]) : [];
+  ok(compartilhados.length >= 10, '⚠️ a lista JS_COMPARTILHADOS existe no app-AMB (' + compartilhados.length + ' arquivos)');
+  const nusGood = [];
+  for (const nome of compartilhados) {
+    const abs = path.join(RAIZ, 'public', 'js', nome);
+    if (!fs.existsSync(abs)) continue;
+    const semCom = fs.readFileSync(abs, 'utf8').split('\n')
+      .filter((l) => !l.trim().startsWith('//') && !l.trim().startsWith('*')).join('\n');
+    const achados = [...semCom.matchAll(/fetch\(\s*[`'\"]\/api\//g)];
+    if (achados.length) nusGood.push(`${nome} (${achados.length})`);
+  }
+  ok(nusGood.length === 0,
+     '⚠️ nenhum JS COMPARTILHADO (public/js) chama `fetch(\'/api/...\')` sem a base'
+     + (nusGood.length ? ' (achei: ' + nusGood.join(', ') + ')' : ''));
 }
 
 // ── e a base existe pra ser usada ───────────────────────────────────

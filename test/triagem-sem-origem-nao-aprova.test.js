@@ -87,7 +87,8 @@ ok(ramos === 2, `  o ramo 422 existe nas 2 funcoes que postam em /aprovar (achei
   // trata o 422 sem toast, fechando modalProblema e devolvendo o foco
   ok(/fecharModal\('modalConfirmacaoParcial'\)/.test(bP) && /btn\.innerHTML = '✅ Sim, Encerrar'/.test(bP),
      '  encerrarParcial: fecha a confirmacao e restaura "Sim, Encerrar"');
-  const iC = front.indexOf("fetch('/api/triagem/consertado'");
+  // b667: a chamada leva a base da empresa explicita — o ancora e o caminho, nao a aspa
+  const iC = front.indexOf("'/api/triagem/consertado'");
   const bC = front.slice(iC, front.indexOf("toast('🔧 Consertado!", iC));
   ok(iC >= 0 && /rc\.status === 422 && dc\.sem_origem/.test(bC) && /fecharModal\('modalProblema'\)/.test(bC) &&
      /alert\('⚠️ NAO DA PRA APROVAR/.test(bC) && /inputCodigo\.focus\(\)/.test(bC),

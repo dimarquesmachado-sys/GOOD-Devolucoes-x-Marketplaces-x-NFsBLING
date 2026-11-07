@@ -22,7 +22,7 @@ async function conectarQZ() {
   // Resultado: impressao SILENCIOSA, sem popup de Allow.
   let certTxt = null;
   try {
-    const r = await fetch('/api/qz/cert');
+    const r = await fetch((window.APP_BASE || '') + '/api/qz/cert');
     if (r.ok) {
       const t = await r.text();
       if (t.includes('BEGIN CERTIFICATE')) certTxt = t;
@@ -34,7 +34,7 @@ async function conectarQZ() {
     try { qz.security.setSignatureAlgorithm('SHA512'); } catch (e) { /* qz antigo */ }
     qz.security.setSignaturePromise(function (toSign) {
       return function (resolve, reject) {
-        fetch('/api/qz/sign?request=' + encodeURIComponent(toSign))
+        fetch((window.APP_BASE || '') + '/api/qz/sign?request=' + encodeURIComponent(toSign))
           .then(function (r) {
             if (!r.ok) throw new Error('assinatura falhou (HTTP ' + r.status + ')');
             return r.text();
@@ -140,7 +140,7 @@ async function temQZLocal() {
 }
 
 async function enviarPraFila(zpl, resumo) {
-  const r = await fetch('/api/etiqueta/fila', {
+  const r = await fetch((window.APP_BASE || '') + '/api/etiqueta/fila', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ zpl, resumo }),
@@ -226,7 +226,7 @@ function badgeEstacao(texto) {
 async function loopEstacao() {
   while (_estacaoAtiva) {
     try {
-      const r = await fetch('/api/etiqueta/fila/proximo?espera=25');
+      const r = await fetch((window.APP_BASE || '') + '/api/etiqueta/fila/proximo?espera=25');
       const d = await r.json();
       if (d && d.job) {
         badgeEstacao('🖨️ Estacao: imprimindo... (' + (d.restam || 0) + ' na fila)');
@@ -261,7 +261,7 @@ async function iniciarEstacaoSePossivel() {
   try {
     // So auto-conecta quando ha certificado (conexao SILENCIOSA garantida
     // pelo QZ assinado) - sem cert, nao incomoda ninguem com popup no load.
-    const r = await fetch('/api/qz/cert');
+    const r = await fetch((window.APP_BASE || '') + '/api/qz/cert');
     const t = r.ok ? await r.text() : '';
     if (!t.includes('BEGIN CERTIFICATE')) return;
     if (!(await temQZLocal())) return; // celular / PC sem QZ: nao e estacao

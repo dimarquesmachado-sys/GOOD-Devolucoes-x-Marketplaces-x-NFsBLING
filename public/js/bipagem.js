@@ -21,7 +21,7 @@ async function buscarEansFaltantes() {
     if (!it.sku || it.sku === '-') return; // sem SKU nao tem como buscar
 
     try {
-      const r = await fetch(`/api/produto/ean-por-sku/${encodeURIComponent(it.sku)}`);
+      const r = await fetch(`${window.APP_BASE || ''}/api/produto/ean-por-sku/${encodeURIComponent(it.sku)}`);
       const d = await r.json();
       if (d.ok && d.encontrado && d.produto?.gtin) {
         it.ean = String(d.produto.gtin).trim();
