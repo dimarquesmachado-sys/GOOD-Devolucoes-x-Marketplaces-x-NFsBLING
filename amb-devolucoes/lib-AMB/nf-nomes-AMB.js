@@ -35,6 +35,7 @@
 // ============================================================
 
 'use strict';
+const { PREFIXO_SEM_EMPRESA } = require('../../lib/empresas');   // b662 - nunca ler as envs da AMB por fallback
 
 // b248 - FASE 3, passo 3 (ultimo antes do app): RECEBE a ficha.
 //
@@ -81,7 +82,7 @@ function criarNfNomes(cfg) {
   // Era `[AMB/...]` fixo. O Render junta o log das duas no MESMO
   // lugar: com a Girassol montada, um erro dela apareceria como
   // `[AMB/...]` e mandaria caçar no app errado.
-  const TAG_EMP = String((cfg && cfg.PREFIXO_ENV) || 'AMB_')
+  const TAG_EMP = String((cfg && cfg.PREFIXO_ENV) || PREFIXO_SEM_EMPRESA)
     .replace(/_$/, '');
   // ⚠️ b372: prefere o cliente Bling DESTA empresa
   const bling = blingDa(cfg);   // b377
@@ -353,7 +354,7 @@ async function construirIndiceInterno(opts = {}) {
   if (timerTeto.unref) timerTeto.unref();
 
   try {
-    const dias = opts.dias || Number(process.env[(cfg && cfg.PREFIXO_ENV || 'AMB_') + 'NF_JANELA_DIAS'] || 120);
+    const dias = opts.dias || Number(process.env[(cfg && cfg.PREFIXO_ENV || PREFIXO_SEM_EMPRESA) + 'NF_JANELA_DIAS'] || 120);
     // b579 - teto da montagem COMPLETA ajustavel por empresa (<PREFIXO>NF_NOMES_MAX_PAGINAS; a Girassol passa de 8.000
     // NFs em 120 dias). Padrao 80 (8.000 NFs). A montagem completa agora so roda no boot e de madrugada.
     const maxPaginas = paginasAlvo(opts);
@@ -723,7 +724,7 @@ function statusIndice() {
       construindo_ha_s: IDX.construindoDesde ? Math.round((Date.now() - IDX.construindoDesde) / 1000) : null,   // b556
     nomes_distintos: IDX.nomes,
     nomes_curtos: Object.keys(IDX.mapaCurto).length,
-    janela_dias: Number(process.env[(cfg && cfg.PREFIXO_ENV || 'AMB_') + 'NF_JANELA_DIAS'] || 120),
+    janela_dias: Number(process.env[(cfg && cfg.PREFIXO_ENV || PREFIXO_SEM_EMPRESA) + 'NF_JANELA_DIAS'] || 120),
     duracao_construcao_seg: IDX.duracaoSeg || null,
     erro: IDX.erro,
   };

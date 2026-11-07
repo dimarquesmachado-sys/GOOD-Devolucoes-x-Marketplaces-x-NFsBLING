@@ -613,7 +613,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.126.172 (b661: peca da fabrica criada sem a empresa nunca cai na AMB — fallback vira marcador visivel)',
+      version: '9.126.173 (b662: peca da fabrica sem prefixo de env le SEMEMPRESA_*, nunca as envs da AMB)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),

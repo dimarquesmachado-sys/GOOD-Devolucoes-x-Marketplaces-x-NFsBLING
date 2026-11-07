@@ -26,7 +26,8 @@
 // ⚠️ As envs com prefixo passam a vir da empresa, com `AMB_` de padrao —
 // a AMB le exatamente as mesmas de hoje.
 function criar(cfgEmpresa) {
-const _PREFIXO = String((cfgEmpresa && cfgEmpresa.PREFIXO_ENV) || 'AMB_');
+  const { PREFIXO_SEM_EMPRESA } = require('../../lib/empresas');   // b662 - nunca ler as envs da AMB por fallback
+const _PREFIXO = String((cfgEmpresa && cfgEmpresa.PREFIXO_ENV) || PREFIXO_SEM_EMPRESA);
 'use strict';
 
 const crypto = require('crypto');

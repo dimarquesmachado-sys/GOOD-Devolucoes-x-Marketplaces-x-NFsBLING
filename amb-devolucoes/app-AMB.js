@@ -151,7 +151,7 @@ const MANIFEST_AMB = require('./public-AMB/manifest-AMB.json');
 //
 // Quando a Girassol entrar (Fase 4), o unico passo aqui e trocar a chave.
 const { configDaEmpresa } = require('../lib/config-da-empresa');
-const { SEM_EMPRESA } = require('../lib/empresas');   // b661 - nunca cair na AMB (declarado ANTES do 1o uso, logo abaixo)
+const { SEM_EMPRESA, PREFIXO_SEM_EMPRESA } = require('../lib/empresas');   // b661 - nunca cair na AMB (declarado ANTES do 1o uso, logo abaixo)
 // ⚠️ b356 - PASSO 3, FATIA 4: A EMPRESA SAI DE DENTRO DO CODIGO.
 //
 // Era `configDaEmpresa('ambtotal')` — cravado. Trocar a string SUBSTITUIRIA
@@ -391,7 +391,7 @@ const NOME_EMPRESA = (FICHA_AMB && FICHA_AMB.nome) || 'AMBTotal';
 // O teste do b400 varria so os modulos de `lib-AMB` — estes 3 no app
 // ficaram de fora e continuavam dizendo `[AMB/...]` pra toda empresa.
 // Varredura que nao cobre um arquivo da a impressao de que ele esta limpo.
-const TAG_APP = String((CFG_EMPRESA && CFG_EMPRESA.PREFIXO_ENV) || 'AMB_')
+const TAG_APP = String((CFG_EMPRESA && CFG_EMPRESA.PREFIXO_ENV) || PREFIXO_SEM_EMPRESA)
   .replace(/_$/, '');
 
 // ⚠️ b403 (Codex) - O NOME DA ENV NOS TEXTOS DA TELA.
@@ -403,7 +403,7 @@ const TAG_APP = String((CFG_EMPRESA && CFG_EMPRESA.PREFIXO_ENV) || 'AMB_')
 // ⚠️ Quem estiver configurando a Girassol seguiria a instrucao e mexeria na
 // variavel DA AMB — quebrando a empresa que esta no ar pra tentar ligar a
 // nova. Nao mistura dado, mas manda a pessoa pro lugar errado.
-const PREFIXO_ENV_EMPRESA = String((CFG_EMPRESA && CFG_EMPRESA.PREFIXO_ENV) || 'AMB_');
+const PREFIXO_ENV_EMPRESA = String((CFG_EMPRESA && CFG_EMPRESA.PREFIXO_ENV) || PREFIXO_SEM_EMPRESA);
 
 // ⚠️ b405 - A PASTA DO CHECKOUT VEM DA FICHA, nao da chave.
 //
@@ -662,7 +662,7 @@ const registrarCicloDefeitos = require('../lib/defeitos-ciclo');
 // candidato ja desistido ainda batia no Bling depois de esperar numa pausa
 // de 429. Ver bling-AMB.js, nf-nomes-AMB.js e identificar-AMB.js.
 // 29/10: sem o 'AMB' na frente — a mesma peca serve Girassol, AMB e as proximas; a empresa vai no campo `empresa`
-const VERSAO = 'Devolucoes b661';
+const VERSAO = 'Devolucoes b662';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
