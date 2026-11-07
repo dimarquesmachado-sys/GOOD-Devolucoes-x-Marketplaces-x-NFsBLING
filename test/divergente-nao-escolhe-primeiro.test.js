@@ -54,12 +54,24 @@ const bling = require('../lib/bling');
   // ── 2. a rota do divergente: EAN pelo INDICE, ambiguidade recusa, Bling so exato ──
   const srv = fs.readFileSync(path.join(RAIZ, 'server.js'), 'utf8').split('\n').filter((l) => !l.trim().startsWith('//')).join('\n');
   const rota = srv.slice(srv.indexOf("app.get('/api/produto/ean-por-sku/:sku'"), srv.indexOf("app.get('/callback'"));
-  ok(rota.length > 200 && /pareceEan/.test(rota) && /IDX_PROD\.itens\.filter/.test(rota) && /it\.eans\)\s*&&\s*it\.eans\.includes\(soDigitos\)/.test(rota),
+  ok(rota.length > 200 && /pareceEan/.test(rota) && /itens\.filter\(\(it\) => it && \(\(Array\.isArray\(it\.eans\)/.test(rota) && /it\.eans\.includes\(soDigitos\)/.test(rota),
      '⚠️ EAN de 8-14 digitos e procurado no INDICE pelos EANs dos produtos antes do Bling');
   ok(/porEan\.length === 1/.test(rota) && /via: 'indice_ean'/.test(rota), '  UM produto com o EAN: e ele');
   ok(/porEan\.length > 1/.test(rota) && /ambiguo: true/.test(rota) && /encontrado: false/.test(rota) && /candidatos:/.test(rota),
      '  VARIOS com o mesmo EAN: recusa (encontrado:false, ambiguo) e lista os candidatos');
   ok(/motivo:/.test(rota), '  e quando nao acha diz o MOTIVO');
+  // r2 (Codex #536): (P2) a resolucao por EAN so com `?ean=1` — a bipagem manda SKU (numerico existe) e SKU e SKU;
+  // (P1) UM produto com o EAN so prova unicidade com o indice COMPLETO (paginacao sem erro + EANs de todos carregados)
+  ok(/const modoEan = String\(req\.query\.ean \|\| ''\) === '1'/.test(rota) && /if \(modoEan && pareceEan\)/.test(rota),
+     '⚠️ r2/P2: o caminho por EAN so liga com ?ean=1 (o divergente); sem o flag, SKU e SKU');
+  ok(/itens\.every\(\(it\) => !it\.id \|\| it\.eansCarregados\)/.test(rota) && /!IDX_PROD\.erro/.test(rota) && /indiceIncompleto/.test(rota),
+     '⚠️ r2/P1: "um so" vale apenas com o indice completo; incompleto = nao sei (bipe/digite o SKU), nunca "e ele"');
+  const triagemJs = fs.readFileSync(path.join(RAIZ, 'public', 'js', 'triagem.js'), 'utf8');
+  ok(/\$\{window\.APP_BASE \|\| ''\}\/api\/produto\/ean-por-sku\/\$\{encodeURIComponent\(codigo\)\}\?ean=1/.test(triagemJs),
+     '  o modal do divergente chama com ?ean=1 E com a base da empresa (nas instancias batia na raiz, 401 — nunca achava)');
+  const bipagemJs = fs.readFileSync(path.join(RAIZ, 'public', 'js', 'bipagem.js'), 'utf8');
+  ok(/ean-por-sku\/\$\{encodeURIComponent\(it\.sku\)\}`\)/.test(bipagemJs) && !/ean-por-sku[^\n]*ean=1/.test(bipagemJs),
+     '  a bipagem segue pedindo por SKU, sem o flag');
   const lib = fs.readFileSync(path.join(RAIZ, 'lib', 'bling.js'), 'utf8').split('\n').filter((l) => !l.trim().startsWith('//')).join('\n');
   ok(!/match = lista\[0\]/.test(lib), '⚠️ lib/bling: o fallback "pega o primeiro" saiu');
 

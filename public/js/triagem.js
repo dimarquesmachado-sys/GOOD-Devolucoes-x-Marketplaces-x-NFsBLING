@@ -579,7 +579,9 @@ async function buscarProdutoDivergente() {
 
   try {
     // Tenta buscar pelo codigo como SKU primeiro (mais rapido)
-    let r = await fetch(`/api/produto/ean-por-sku/${encodeURIComponent(codigo)}`);
+    // b666 r2: `?ean=1` diz ao servidor que o codigo bipado e um CODIGO DE BARRAS (resolve pelo indice de EANs;
+    // sem o flag, a mesma rota trata o codigo como SKU — e o que a bipagem usa)
+    let r = await fetch(`${window.APP_BASE || ''}/api/produto/ean-por-sku/${encodeURIComponent(codigo)}?ean=1`);
     let d = await r.json();
     let produto = d.encontrado ? d.produto : null;
 

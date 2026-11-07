@@ -2864,27 +2864,48 @@ app.get('/api/produto/ean-por-sku/:sku', requerLogin, async (req, res) => {
   // pelos EANs de cada produto. UM produto: e ele. VARIOS com o mesmo EAN:
   // recusa e lista (ambiguidade nao escolhe — regra do dono, 18/08). Nenhum:
   // segue pelo SKU, e o Bling so com match EXATO (sem "primeiro da lista").
+  // r2 (Codex #536, P2): a resolucao por EAN so vale quando o CHAMADOR diz que o
+  // codigo e um codigo de barras (`?ean=1`, o modal do divergente). A bipagem
+  // chama esta mesma rota com o SKU do item da NF pra descobrir o EAN dele — e
+  // SKU numerico existe (3933398010054); sem o flag, SKU e SKU, nunca EAN de
+  // outro produto.
+  const modoEan = String(req.query.ean || '') === '1';
   const soDigitos = sku.replace(/\D/g, '');
   const pareceEan = soDigitos.length >= 8 && soDigitos.length <= 14 && soDigitos === sku;
-  if (pareceEan && IDX_PROD.ts && Array.isArray(IDX_PROD.itens)) {
-    const porEan = IDX_PROD.itens.filter((it) => it && ((Array.isArray(it.eans) && it.eans.includes(soDigitos)) || String(it.ean || '').replace(/\D/g, '') === soDigitos));
-    if (porEan.length === 1) {
-      const it = porEan[0];
-      return res.json({ ok: true, encontrado: true, sku, via: 'indice_ean',
-        produto: { id: it.id || null, nome: it.nome || '', codigo: it.sku || '', gtin: soDigitos } });
-    }
-    if (porEan.length > 1) {
-      return res.json({ ok: true, encontrado: false, sku, ambiguo: true, via: 'indice_ean',
-        motivo: `EAN ${soDigitos} esta em ${porEan.length} produtos no Bling: ` + porEan.slice(0, 5).map((it) => it.sku).join(', ') + ' — bipe/digite o SKU',
-        candidatos: porEan.slice(0, 10).map((it) => ({ sku: it.sku, nome: it.nome })) });
+  let indiceIncompleto = null;
+  if (modoEan && pareceEan) {
+    // r2 (Codex #536, P1): UM produto com o EAN so prova unicidade com o indice
+    // COMPLETO — paginacao sem erro e os EANs de TODOS os produtos ja carregados.
+    // No aquecimento (ou apos falha de pagina) o 2o produto com o mesmo EAN ainda
+    // nao esta la, e "um so" seria o produto errado com cara de certo. Indice
+    // incompleto = "nao sei" (bipe/digite o SKU), nunca "e ele".
+    const itens = Array.isArray(IDX_PROD.itens) ? IDX_PROD.itens : [];
+    const completo = !!(IDX_PROD.ts && !IDX_PROD.erro && itens.length && itens.every((it) => !it.id || it.eansCarregados));
+    if (completo) {
+      const porEan = itens.filter((it) => it && ((Array.isArray(it.eans) && it.eans.includes(soDigitos)) || String(it.ean || '').replace(/\D/g, '') === soDigitos));
+      if (porEan.length === 1) {
+        const it = porEan[0];
+        return res.json({ ok: true, encontrado: true, sku, via: 'indice_ean',
+          produto: { id: it.id || null, nome: it.nome || '', codigo: it.sku || '', gtin: soDigitos } });
+      }
+      if (porEan.length > 1) {
+        return res.json({ ok: true, encontrado: false, sku, ambiguo: true, via: 'indice_ean',
+          motivo: `EAN ${soDigitos} esta em ${porEan.length} produtos no Bling: ` + porEan.slice(0, 5).map((it) => it.sku).join(', ') + ' — bipe/digite o SKU',
+          candidatos: porEan.slice(0, 10).map((it) => ({ sku: it.sku, nome: it.nome })) });
+      }
+    } else {
+      const feitos = itens.filter((it) => it && it.eansCarregados).length;
+      indiceIncompleto = IDX_PROD.erro ? `o indice de produtos falhou (${IDX_PROD.erro})` : `o indice de codigos de barras ainda esta carregando (${feitos} de ${itens.length} produtos)`;
     }
   }
+  // SKU: so match EXATO (o `?codigo=` do Bling e busca de parecidos; sem exato nao ha produto)
   const r = await buscarProdutoBlingPorSku(sku);
   if (!r.ok) return res.status(500).json(r);
   if (!r.produto) {
-    return res.json({ ok: true, encontrado: false, sku,
-      motivo: pareceEan ? `nenhum produto do indice tem o EAN ${soDigitos} e o Bling nao acha SKU igual a ele`
-        : `o Bling nao tem produto com o codigo exato ${sku}` + (r.candidatos ? ` (${r.candidatos} parecido(s) ignorados)` : '') });
+    const motivo = indiceIncompleto ? `${indiceIncompleto} — por enquanto bipe/digite o SKU`
+      : (modoEan && pareceEan) ? `nenhum produto tem o EAN ${soDigitos} no indice e o Bling nao acha SKU igual a ele`
+        : `o Bling nao tem produto com o codigo exato ${sku}` + (r.candidatos ? ` (${r.candidatos} parecido(s) ignorados)` : '');
+    return res.json({ ok: true, encontrado: false, sku, motivo });
   }
 
   // EAN pode estar em VARIOS campos no Bling - licao do projeto Localizacao Estoque
