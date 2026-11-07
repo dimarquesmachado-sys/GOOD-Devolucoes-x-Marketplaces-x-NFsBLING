@@ -66,6 +66,12 @@ const bling = require('../lib/bling');
      '⚠️ r2/P2: o caminho por EAN so liga com ?ean=1 (o divergente); sem o flag, SKU e SKU');
   ok(/itens\.every\(\(it\) => !it\.id \|\| it\.eansCarregados\)/.test(rota) && /!IDX_PROD\.erro/.test(rota) && /indiceIncompleto/.test(rota),
      '⚠️ r2/P1: "um so" vale apenas com o indice completo; incompleto = nao sei (bipe/digite o SKU), nunca "e ele"');
+  // r3 (Codex #536, P2): catalogo maior que o teto de 40 paginas ficava TRUNCADO sem erro — a unicidade exige
+  // que a paginacao tenha chegado ao FIM (ultima pagina com menos de 100), e o construtor registra isso
+  ok(/IDX_PROD\.paginacaoCompleta === true/.test(rota) && /TRUNCADO/.test(rota),
+     '⚠️ r3/P2: unicidade por EAN exige paginacao completa; truncado no teto = nao sei, com o motivo');
+  ok(/if \(lista\.length < 100\) \{ chegouAoFim = true; break; \}/.test(srv) && /IDX_PROD\.paginacaoCompleta = chegouAoFim/.test(srv),
+     '  o construtor do indice registra se chegou ao fim ou bateu no teto');
   const triagemJs = fs.readFileSync(path.join(RAIZ, 'public', 'js', 'triagem.js'), 'utf8');
   ok(/\$\{window\.APP_BASE \|\| ''\}\/api\/produto\/ean-por-sku\/\$\{encodeURIComponent\(codigo\)\}\?ean=1/.test(triagemJs),
      '  o modal do divergente chama com ?ean=1 E com a base da empresa (nas instancias batia na raiz, 401 — nunca achava)');

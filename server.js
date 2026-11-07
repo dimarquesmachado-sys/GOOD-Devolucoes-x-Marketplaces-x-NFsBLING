@@ -2880,7 +2880,7 @@ app.get('/api/produto/ean-por-sku/:sku', requerLogin, async (req, res) => {
     // nao esta la, e "um so" seria o produto errado com cara de certo. Indice
     // incompleto = "nao sei" (bipe/digite o SKU), nunca "e ele".
     const itens = Array.isArray(IDX_PROD.itens) ? IDX_PROD.itens : [];
-    const completo = !!(IDX_PROD.ts && !IDX_PROD.erro && itens.length && itens.every((it) => !it.id || it.eansCarregados));
+    const completo = !!(IDX_PROD.ts && !IDX_PROD.erro && IDX_PROD.paginacaoCompleta === true && itens.length && itens.every((it) => !it.id || it.eansCarregados));
     if (completo) {
       const porEan = itens.filter((it) => it && ((Array.isArray(it.eans) && it.eans.includes(soDigitos)) || String(it.ean || '').replace(/\D/g, '') === soDigitos));
       if (porEan.length === 1) {
@@ -2895,7 +2895,9 @@ app.get('/api/produto/ean-por-sku/:sku', requerLogin, async (req, res) => {
       }
     } else {
       const feitos = itens.filter((it) => it && it.eansCarregados).length;
-      indiceIncompleto = IDX_PROD.erro ? `o indice de produtos falhou (${IDX_PROD.erro})` : `o indice de codigos de barras ainda esta carregando (${feitos} de ${itens.length} produtos)`;
+      indiceIncompleto = IDX_PROD.erro ? `o indice de produtos falhou (${IDX_PROD.erro})`
+        : (IDX_PROD.ts && IDX_PROD.paginacaoCompleta !== true) ? `o indice de produtos esta TRUNCADO (teto de 40 paginas; ${itens.length} produtos lidos)`
+          : `o indice de codigos de barras ainda esta carregando (${feitos} de ${itens.length} produtos)`;
     }
   }
   // SKU: so match EXATO (o `?codigo=` do Bling e busca de parecidos; sem exato nao ha produto)
@@ -4616,6 +4618,10 @@ async function construirIndiceProdutos() {
     // requisicao muito seguida) e ainda apagava a mensagem de erro no fim -
     // o indice ficava com 1 pagina e dizia "erro: null". Agora insiste e
     // guarda o motivo real de cada falha.
+    // r3 (Codex #536, P2): registrar se a paginacao CHEGOU AO FIM (ultima pagina
+    // com menos de 100) ou bateu no teto de 40 paginas — catalogo maior que 4.000
+    // ficaria truncado sem erro, e "um so produto com o EAN" nao provaria nada.
+    let chegouAoFim = false;
     for (let pagina = 1; pagina <= 40; pagina++) {
       let r = null;
       for (let tent = 1; tent <= 3; tent++) {
@@ -4663,12 +4669,13 @@ async function construirIndiceProdutos() {
           busca: normProd(skuItem + ' ' + (p.nome || '') + ' ' + ((eansCache || []).join(' ') || p.gtin || '')),
         });
       }
-      if (lista.length < 100) break;
+      if (lista.length < 100) { chegouAoFim = true; break; }
       await new Promise(r2 => setTimeout(r2, 700));
     }
     IDX_PROD.itens = itens;
     IDX_PROD.ts = Date.now();
     IDX_PROD.paginas = paginasLidas;
+    IDX_PROD.paginacaoCompleta = chegouAoFim;   // r3 (Codex #536): false = truncado no teto de 40 paginas (ou parou por erro)
     IDX_PROD.falhas = falhas.slice(0, 8);
     if (itens.length === 0 && !IDX_PROD.erro) IDX_PROD.erro = 'catalogo vazio';
     console.log(`[PRODUTOS] indice: ${itens.length} produtos, ${paginasLidas} pagina(s), ${falhas.length} falha(s), em ${Math.round((Date.now() - t0) / 1000)}s`);
