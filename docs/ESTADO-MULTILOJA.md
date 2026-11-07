@@ -52,7 +52,8 @@ Além disso:
 - a PWA tem `id` e nome por empresa (senão as duas se instalam como um app só)
 - o segredo do cookie é por empresa, e **sem ele o boot cai** — de propósito
 - a Girassol esta **ATIVA e operando desde 30/09/2026** (64 NFs lancadas e 64 devolucoes emitidas; apps
-  proprios em Bling, ML e Shopee; Magalu usa o app compartilhado da GOOD, com token proprio por empresa)
+  proprios em Bling, ML e Shopee; Magalu com client PROPRIO da Girassol desde 30/09 — a AMB ganhou o dela em
+  04/10; so a GOOD usa o client sem prefixo, que e dela mesma. Contrato v15: `apps_por_servico`)
 
 ## Fechar uma empresa (inclusive a GOOD) — sem deploy (b659)
 
@@ -197,7 +198,7 @@ são **outros dois identificadores** no mesmo serviço.
 
 1. ~~A Girassol nunca rodou.~~ **PROVADO em 30/09/2026:** a Girassol opera com credencial, tabela e dado
    reais (64 NFs lancadas pelo "Lancar por NF" e 64 NFs de devolucao emitidas em massa; Bling, ML e Shopee
-   com apps PROPRIOS; Magalu com o app compartilhado da GOOD e token proprio).
+   com apps PROPRIOS; Magalu com client PROPRIO desde 30/09 — ver `apps_por_servico` no contrato v15).
 2. ~~O provisionamento nunca rodou no Supabase real.~~ **PROVADO:** as tabelas `*_girassol` existem em
    producao e ja receberam alteracoes (ex.: `itens_devolvidos`, colunas de estoque do Full, 02/10).
 3. **O rollback nunca foi testado** -- continua valendo: nenhuma empresa foi desativada pra ser revertida.
