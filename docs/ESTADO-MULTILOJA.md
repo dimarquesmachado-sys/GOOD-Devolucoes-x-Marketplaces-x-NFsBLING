@@ -10,6 +10,9 @@
 > **Por isso este arquivo diz COMO MEDIR, não só o que é verdade hoje.**
 > Documento que não acompanha o código vira armadilha: quem lê, age.
 
+> **Fusão GOOD → Girassol em 01/01/2027:** o plano de migrar o hospedeiro (o que morre com a conta da
+> GOOD, o que fazer antes, no dia e depois) está em `docs/FUSAO-GOOD-GIRASSOL.md`.
+
 ## Como medir, em vez de confiar nesta página
 
 ```
