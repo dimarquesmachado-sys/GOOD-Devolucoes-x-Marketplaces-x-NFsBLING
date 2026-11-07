@@ -613,7 +613,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.126.176 (b665: painel unico pede os ids fiscais com a empresa explicita — NF de devolucao volta a sair na GOOD)',
+      version: '9.126.177 (b666: produto do divergente nunca e o primeiro da lista — EAN pelo indice, SKU so exato)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -2857,9 +2857,35 @@ app.get('/api/produto/ean-por-sku/:sku', requerLogin, async (req, res) => {
   const sku = String(req.params.sku || '').trim();
   if (!sku) return res.status(400).json({ ok: false, erro: 'sku obrigatorio' });
 
+  // b666 - O CODIGO BIPADO NO DIVERGENTE E QUASE SEMPRE UM EAN (o estoquista
+  // le o codigo de barras da caixa que chegou). O Bling nao filtra por EAN
+  // (`?gtin=` e ignorado; `?codigo=<EAN>` devolve parecidos de outro produto),
+  // entao: EAN de 8-14 digitos -> o INDICE de produtos (que a bipagem ja usa),
+  // pelos EANs de cada produto. UM produto: e ele. VARIOS com o mesmo EAN:
+  // recusa e lista (ambiguidade nao escolhe — regra do dono, 18/08). Nenhum:
+  // segue pelo SKU, e o Bling so com match EXATO (sem "primeiro da lista").
+  const soDigitos = sku.replace(/\D/g, '');
+  const pareceEan = soDigitos.length >= 8 && soDigitos.length <= 14 && soDigitos === sku;
+  if (pareceEan && IDX_PROD.ts && Array.isArray(IDX_PROD.itens)) {
+    const porEan = IDX_PROD.itens.filter((it) => it && ((Array.isArray(it.eans) && it.eans.includes(soDigitos)) || String(it.ean || '').replace(/\D/g, '') === soDigitos));
+    if (porEan.length === 1) {
+      const it = porEan[0];
+      return res.json({ ok: true, encontrado: true, sku, via: 'indice_ean',
+        produto: { id: it.id || null, nome: it.nome || '', codigo: it.sku || '', gtin: soDigitos } });
+    }
+    if (porEan.length > 1) {
+      return res.json({ ok: true, encontrado: false, sku, ambiguo: true, via: 'indice_ean',
+        motivo: `EAN ${soDigitos} esta em ${porEan.length} produtos no Bling: ` + porEan.slice(0, 5).map((it) => it.sku).join(', ') + ' — bipe/digite o SKU',
+        candidatos: porEan.slice(0, 10).map((it) => ({ sku: it.sku, nome: it.nome })) });
+    }
+  }
   const r = await buscarProdutoBlingPorSku(sku);
   if (!r.ok) return res.status(500).json(r);
-  if (!r.produto) return res.json({ ok: true, encontrado: false, sku });
+  if (!r.produto) {
+    return res.json({ ok: true, encontrado: false, sku,
+      motivo: pareceEan ? `nenhum produto do indice tem o EAN ${soDigitos} e o Bling nao acha SKU igual a ele`
+        : `o Bling nao tem produto com o codigo exato ${sku}` + (r.candidatos ? ` (${r.candidatos} parecido(s) ignorados)` : '') });
+  }
 
   // EAN pode estar em VARIOS campos no Bling - licao do projeto Localizacao Estoque
   const p = r.produto;

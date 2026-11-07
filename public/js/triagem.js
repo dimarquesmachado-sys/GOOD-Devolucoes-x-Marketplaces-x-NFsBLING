@@ -593,6 +593,7 @@ async function buscarProdutoDivergente() {
       document.getElementById('divergenteResultado').style.borderColor = '#f57c00';
       document.getElementById('divergenteRecebidoInfo').innerHTML = `
         <span style="color:#e65100;">⚠️ Produto não encontrado no Bling pelo código <strong>${escapeHtml(codigo)}</strong></span><br>
+        ${d && d.motivo ? `<span style="font-size:11px; color:#8d4b00;">${escapeHtml(String(d.motivo))}</span><br>` : ''}
         <span style="font-size:11px; color:#666;">Vai ser registrado com o código bipado mesmo. Diego analisa depois.</span>
       `;
       divergenteEstado.produtoCorreto = {
