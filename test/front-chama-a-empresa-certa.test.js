@@ -74,5 +74,27 @@ const DIR = path.join(RAIZ, 'amb-devolucoes', 'public-AMB');
 }
 
 console.log('');
+// ── b665: os IDS FISCAIS vao com a EMPRESA EXPLICITA ────────────────
+//
+// A rota da raiz (GOOD) exige `?empresa=` de proposito (b295: assumir "good" por
+// omissao = nota na empresa errada). O painel unico chamava `/api/ids-fiscais`
+// sem o parametro: 400 "informe a empresa", trava de emissao armada e nenhuma
+// NF de devolucao saia na GOOD (caso real: NF 80932, 07/11). A empresa vem do
+// APP_EMPRESA que cada empresa preenche no base-amb.js.
+{
+  const painel = fs.readFileSync(path.join(DIR, 'painel-AMB.html'), 'utf8');
+  ok(/\/api\/ids-fiscais\?empresa=' \+ encodeURIComponent\(window\.APP_EMPRESA \|\| ''\)/.test(painel),
+     '⚠️ o painel pede os ids fiscais com ?empresa=<APP_EMPRESA> (a raiz da GOOD exige)');
+  ok(!/\/api\/ids-fiscais'\s*,\s*\{\s*credentials/.test(painel), '  e nao sobrou chamada sem a empresa');
+  const { montarPainelUnicoGood } = require('../lib/painel-unico');
+  const good = montarPainelUnicoGood(painel);
+  ok(/ids-fiscais\?empresa=' \+ encodeURIComponent\(window\.APP_EMPRESA/.test(good), '  o painel montado pra GOOD leva a mesma chamada');
+  const srv = fs.readFileSync(path.join(RAIZ, 'server.js'), 'utf8').split('\n').filter((l) => !l.trim().startsWith('//')).join('\n');
+  ok(/erro: 'informe a empresa: \/api\/ids-fiscais\?empresa=good'/.test(srv) && /if \(alvo === 'good'\)/.test(srv),
+     '  a raiz continua EXIGINDO a empresa (o conserto e no chamador, nao afrouxando o servidor)');
+  const base = fs.readFileSync(path.join(DIR, 'js-AMB', 'base-amb.js'), 'utf8');
+  ok(/window\.APP_EMPRESA = /.test(base), '  e APP_EMPRESA existe no base-amb (good na raiz; chaveDados nas instancias)');
+}
+
 console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
 process.exit(falhas ? 1 : 0);

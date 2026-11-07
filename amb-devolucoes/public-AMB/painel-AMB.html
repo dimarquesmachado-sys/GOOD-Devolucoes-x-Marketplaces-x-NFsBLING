@@ -2909,7 +2909,14 @@ async function carregarSemRetorno() {
 
     (async function carregarIdsFiscais() {
       try {
-        const r = await fetch((window.APP_BASE || '') + '/api/ids-fiscais', { credentials: 'same-origin' }).then((x) => x.json());
+        // b665 - A EMPRESA VAI EXPLICITA NA CHAMADA. Na GOOD (raiz) a rota exige
+        // `?empresa=` (b295: assumir "good" por omissao = nota na empresa errada), e o
+        // painel unico chamava sem — 400 "informe a empresa", trava de emissao armada,
+        // nenhuma NF saia na GOOD (NF 80932, 07/11). O nome vem do APP_EMPRESA que a
+        // propria empresa preenche no base-amb.js (good / amb / girassol...); nas
+        // instancias a rota e da empresa e ignora o parametro.
+        const r = await fetch((window.APP_BASE || '') + '/api/ids-fiscais?empresa=' + encodeURIComponent(window.APP_EMPRESA || ''),
+          { credentials: 'same-origin' }).then((x) => x.json());
         if (r && r.ok) {
           GOOD_BLING.idEmpresaControl = r.idEmpresaControl;
           GOOD_BLING.idNaturezaOperacao = r.idNaturezaOperacao;
