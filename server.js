@@ -613,7 +613,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.126.176 (b665: painel unico pede os ids fiscais com a empresa explicita — NF de devolucao volta a sair na GOOD)',
+      version: '9.126.177 (b666: produto do divergente nunca e o primeiro da lista — EAN pelo indice, SKU so exato)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -2857,9 +2857,58 @@ app.get('/api/produto/ean-por-sku/:sku', requerLogin, async (req, res) => {
   const sku = String(req.params.sku || '').trim();
   if (!sku) return res.status(400).json({ ok: false, erro: 'sku obrigatorio' });
 
+  // b666 - O CODIGO BIPADO NO DIVERGENTE E QUASE SEMPRE UM EAN (o estoquista
+  // le o codigo de barras da caixa que chegou). O Bling nao filtra por EAN
+  // (`?gtin=` e ignorado; `?codigo=<EAN>` devolve parecidos de outro produto),
+  // entao: EAN de 8-14 digitos -> o INDICE de produtos (que a bipagem ja usa),
+  // pelos EANs de cada produto. UM produto: e ele. VARIOS com o mesmo EAN:
+  // recusa e lista (ambiguidade nao escolhe — regra do dono, 18/08). Nenhum:
+  // segue pelo SKU, e o Bling so com match EXATO (sem "primeiro da lista").
+  // r2 (Codex #536, P2): a resolucao por EAN so vale quando o CHAMADOR diz que o
+  // codigo e um codigo de barras (`?ean=1`, o modal do divergente). A bipagem
+  // chama esta mesma rota com o SKU do item da NF pra descobrir o EAN dele — e
+  // SKU numerico existe (3933398010054); sem o flag, SKU e SKU, nunca EAN de
+  // outro produto.
+  const modoEan = String(req.query.ean || '') === '1';
+  const soDigitos = sku.replace(/\D/g, '');
+  const pareceEan = soDigitos.length >= 8 && soDigitos.length <= 14 && soDigitos === sku;
+  let indiceIncompleto = null;
+  if (modoEan && pareceEan) {
+    // r2 (Codex #536, P1): UM produto com o EAN so prova unicidade com o indice
+    // COMPLETO — paginacao sem erro e os EANs de TODOS os produtos ja carregados.
+    // No aquecimento (ou apos falha de pagina) o 2o produto com o mesmo EAN ainda
+    // nao esta la, e "um so" seria o produto errado com cara de certo. Indice
+    // incompleto = "nao sei" (bipe/digite o SKU), nunca "e ele".
+    const itens = Array.isArray(IDX_PROD.itens) ? IDX_PROD.itens : [];
+    const completo = !!(IDX_PROD.ts && !IDX_PROD.erro && IDX_PROD.paginacaoCompleta === true && itens.length && itens.every((it) => !it.id || it.eansCarregados));
+    if (completo) {
+      const porEan = itens.filter((it) => it && ((Array.isArray(it.eans) && it.eans.includes(soDigitos)) || String(it.ean || '').replace(/\D/g, '') === soDigitos));
+      if (porEan.length === 1) {
+        const it = porEan[0];
+        return res.json({ ok: true, encontrado: true, sku, via: 'indice_ean',
+          produto: { id: it.id || null, nome: it.nome || '', codigo: it.sku || '', gtin: soDigitos } });
+      }
+      if (porEan.length > 1) {
+        return res.json({ ok: true, encontrado: false, sku, ambiguo: true, via: 'indice_ean',
+          motivo: `EAN ${soDigitos} esta em ${porEan.length} produtos no Bling: ` + porEan.slice(0, 5).map((it) => it.sku).join(', ') + ' — bipe/digite o SKU',
+          candidatos: porEan.slice(0, 10).map((it) => ({ sku: it.sku, nome: it.nome })) });
+      }
+    } else {
+      const feitos = itens.filter((it) => it && it.eansCarregados).length;
+      indiceIncompleto = IDX_PROD.erro ? `o indice de produtos falhou (${IDX_PROD.erro})`
+        : (IDX_PROD.ts && IDX_PROD.paginacaoCompleta !== true) ? `o indice de produtos esta TRUNCADO (teto de 40 paginas; ${itens.length} produtos lidos)`
+          : `o indice de codigos de barras ainda esta carregando (${feitos} de ${itens.length} produtos)`;
+    }
+  }
+  // SKU: so match EXATO (o `?codigo=` do Bling e busca de parecidos; sem exato nao ha produto)
   const r = await buscarProdutoBlingPorSku(sku);
   if (!r.ok) return res.status(500).json(r);
-  if (!r.produto) return res.json({ ok: true, encontrado: false, sku });
+  if (!r.produto) {
+    const motivo = indiceIncompleto ? `${indiceIncompleto} — por enquanto bipe/digite o SKU`
+      : (modoEan && pareceEan) ? `nenhum produto tem o EAN ${soDigitos} no indice e o Bling nao acha SKU igual a ele`
+        : `o Bling nao tem produto com o codigo exato ${sku}` + (r.candidatos ? ` (${r.candidatos} parecido(s) ignorados)` : '');
+    return res.json({ ok: true, encontrado: false, sku, motivo });
+  }
 
   // EAN pode estar em VARIOS campos no Bling - licao do projeto Localizacao Estoque
   const p = r.produto;
@@ -4569,6 +4618,10 @@ async function construirIndiceProdutos() {
     // requisicao muito seguida) e ainda apagava a mensagem de erro no fim -
     // o indice ficava com 1 pagina e dizia "erro: null". Agora insiste e
     // guarda o motivo real de cada falha.
+    // r3 (Codex #536, P2): registrar se a paginacao CHEGOU AO FIM (ultima pagina
+    // com menos de 100) ou bateu no teto de 40 paginas — catalogo maior que 4.000
+    // ficaria truncado sem erro, e "um so produto com o EAN" nao provaria nada.
+    let chegouAoFim = false;
     for (let pagina = 1; pagina <= 40; pagina++) {
       let r = null;
       for (let tent = 1; tent <= 3; tent++) {
@@ -4616,12 +4669,13 @@ async function construirIndiceProdutos() {
           busca: normProd(skuItem + ' ' + (p.nome || '') + ' ' + ((eansCache || []).join(' ') || p.gtin || '')),
         });
       }
-      if (lista.length < 100) break;
+      if (lista.length < 100) { chegouAoFim = true; break; }
       await new Promise(r2 => setTimeout(r2, 700));
     }
     IDX_PROD.itens = itens;
     IDX_PROD.ts = Date.now();
     IDX_PROD.paginas = paginasLidas;
+    IDX_PROD.paginacaoCompleta = chegouAoFim;   // r3 (Codex #536): false = truncado no teto de 40 paginas (ou parou por erro)
     IDX_PROD.falhas = falhas.slice(0, 8);
     if (itens.length === 0 && !IDX_PROD.erro) IDX_PROD.erro = 'catalogo vazio';
     console.log(`[PRODUTOS] indice: ${itens.length} produtos, ${paginasLidas} pagina(s), ${falhas.length} falha(s), em ${Math.round((Date.now() - t0) / 1000)}s`);
