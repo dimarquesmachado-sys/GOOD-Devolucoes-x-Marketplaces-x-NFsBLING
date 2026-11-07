@@ -151,7 +151,7 @@ async function confirmarAprovar() {
       payload.bipagem_observacao = bipagemEstado.observacao;
     }
 
-    const r = await fetch('/api/triagem/aprovar', {
+    const r = await fetch((window.APP_BASE || '') + '/api/triagem/aprovar', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
@@ -337,7 +337,7 @@ async function consultarDefeitosMesmoSku() {
   } catch (e) { sku = null; }
   if (!sku) return;
   try {
-    var r = await fetch('/api/defeitos/por-sku?sku=' + encodeURIComponent(sku), { credentials: 'same-origin' });
+    var r = await fetch((window.APP_BASE || '') + '/api/defeitos/por-sku?sku=' + encodeURIComponent(sku), { credentials: 'same-origin' });
     var d = await r.json();
     if (!d.ok || !d.itens || d.itens.length === 0) return;
     window._defeitosMesmoSku = d.itens;
@@ -426,7 +426,7 @@ async function enviarProblema() {
       pc.peca = (document.getElementById('conPeca') || {}).value || '';
       pc.doador_id = (document.getElementById('conDoador') || {}).value || null;
       if (window._forcarTriagem) pc.forcar = true;
-      var rc = await fetch('/api/triagem/consertado', {
+      var rc = await fetch((window.APP_BASE || '') + '/api/triagem/consertado', {
         method: 'POST', credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(pc),
@@ -455,7 +455,7 @@ async function enviarProblema() {
       return;
     }
 
-    const r = await fetch('/api/triagem/problema', {
+    const r = await fetch((window.APP_BASE || '') + '/api/triagem/problema', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
@@ -725,7 +725,7 @@ async function encerrarDivergente() {
 
     if (window._forcarTriagem) payload.forcar = true;
 
-    const r = await fetch('/api/triagem/divergente', {
+    const r = await fetch((window.APP_BASE || '') + '/api/triagem/divergente', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
@@ -866,7 +866,7 @@ async function encerrarParcial() {
 
     if (window._forcarTriagem) payload.forcar = true;
 
-    const r = await fetch('/api/triagem/aprovar', {
+    const r = await fetch((window.APP_BASE || '') + '/api/triagem/aprovar', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),

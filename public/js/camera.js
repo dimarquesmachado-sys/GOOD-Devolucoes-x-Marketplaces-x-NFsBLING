@@ -133,7 +133,7 @@ function capturarFoto() {
     try {
       const formData = new FormData();
       formData.append('foto', blob, `foto-${Date.now()}.jpg`);
-      const r = await fetch('/api/triagem/upload-foto', {
+      const r = await fetch((window.APP_BASE || '') + '/api/triagem/upload-foto', {
         method: 'POST',
         body: formData,
       });
