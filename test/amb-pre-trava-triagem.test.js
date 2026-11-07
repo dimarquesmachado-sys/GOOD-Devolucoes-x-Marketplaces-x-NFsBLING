@@ -165,7 +165,7 @@ let routerAMB = null;
 try {
   const mod = require('../amb-devolucoes/app-AMB.js');
   routerAMB = (typeof mod === 'function') ? mod
-    : (mod && typeof mod.criar === 'function') ? mod.criar() : mod;
+    : (mod && typeof mod.criar === 'function') ? mod.criar('ambtotal') : mod;   // b661: a fabrica nao tem mais padrao — a empresa e explicita
 }
 catch (e) { console.log('(nao consegui montar o app-AMB: ' + (e.message || e) + ')'); }
 Module._load = originalLoad;

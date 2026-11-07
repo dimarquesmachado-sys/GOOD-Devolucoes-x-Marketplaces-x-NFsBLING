@@ -33,11 +33,12 @@ const axios = require('axios');
 // modulo multiempresa e pegadinha esperando alguem usar.
 
 function criarBling(cfg) {
+  const { SEM_EMPRESA } = require('../../lib/empresas');   // b661 - nunca cair na AMB
   // ⚠️ b424: a chave e a CANONICA do contrato (`ambtotal`), nao a curta
   // (`amb`). O leitor aceita QUALQUER string sem reclamar — errar aqui daria
   // `sombra` pra sempre, calado, e so apareceria no dia em que a Girassol
   // renovasse por conta propria e queimasse o token do dono.
-  const CHAVE_TOKEN = (cfg && cfg.CHAVE_REGISTRO) || 'ambtotal';
+  const CHAVE_TOKEN = (cfg && cfg.CHAVE_REGISTRO) || SEM_EMPRESA;   // b661: sem empresa = leitor diz 'desconhecida', nao o token da AMB
 
   // ⚠️ b442 - O RITMO, POR EMPRESA. Este cliente NAO passava por fila
   // nenhuma: batia direto, tomava 429, esperava 1,5s fixo e batia de novo.
@@ -588,7 +589,7 @@ const PREVENTIVA = registrarPreventiva({
   // literal. Com duas instancias, `empresa: 'ambtotal'` fixo faria as duas
   // competirem pelo MESMO carimbo de renovacao — uma renovaria o token e a
   // outra acharia que ja tinha renovado.
-  empresa: cfg.CHAVE_REGISTRO || 'ambtotal', integracao: 'bling',
+  empresa: cfg.CHAVE_REGISTRO || SEM_EMPRESA, integracao: 'bling',   // b661
   temRefresh: () => !!REFRESH_TOKEN,
   renovar: () => renovarToken(),
   persistiu: () => ultimaPersistenciaBling,

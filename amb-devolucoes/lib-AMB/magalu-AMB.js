@@ -40,6 +40,7 @@
 // `ligarRenovacaoPreventiva` continua sendo chamada UMA vez pelo app, e nao
 // dentro da fabrica.
 function criar(cfgEmpresa) {
+  const { SEM_EMPRESA } = require('../../lib/empresas');   // b661 - nunca cair na AMB
   // ⚠️ b400 - a etiqueta do log diz QUAL EMPRESA.
   //
   // Era `[AMB/...]` fixo: o Render junta o log das duas no MESMO lugar,
@@ -714,7 +715,7 @@ const PREVENTIVA = registrarPreventiva({
   // `empresa: 'ambtotal'` fixo faria as duas competirem pelo MESMO registro
   // de renovacao: a segunda substituiria o callback da primeira, e o
   // batimento so renovaria a empresa registrada por ultimo.
-  empresa: (cfgEmpresa && cfgEmpresa.CHAVE_REGISTRO) || 'ambtotal', integracao: 'magalu',
+  empresa: (cfgEmpresa && cfgEmpresa.CHAVE_REGISTRO) || SEM_EMPRESA, integracao: 'magalu',   // b661
   temRefresh: () => !!TOKENS.refresh,
   renovar: () => renovar(),
   persistiu: () => RENOV.ultimaPersistencia,

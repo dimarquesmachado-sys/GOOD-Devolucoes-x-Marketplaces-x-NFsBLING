@@ -133,7 +133,8 @@ function contarEstadoDoModulo(src) {
 // passo 1): `CFG_EMPRESA` e `FICHA_AMB` — esta usada direto em rotas
 // fiscais. Os dois saem da MESMA chave agora.
 {
-  ok(/empresaAlvo \|\| process\.env\.DEVOLUCOES_EMPRESA \|\| 'ambtotal'/.test(app),
+  // b661: o ultimo degrau deixou de ser 'ambtotal' — e o marcador SEM_EMPRESA (a fabrica recusa montar)
+  ok(/empresaAlvo \|\| process\.env\.DEVOLUCOES_EMPRESA \|\| SEM_EMPRESA/.test(app),
      '⚠️ a empresa vem do ARGUMENTO da fabrica, com a env de padrao');
   ok(/configDaEmpresa\(EMPRESA_DESTE_APP\)/.test(app),
      '  a config usa essa chave');
