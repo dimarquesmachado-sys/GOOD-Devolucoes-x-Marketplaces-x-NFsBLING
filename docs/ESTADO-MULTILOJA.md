@@ -60,7 +60,7 @@ Uma empresa que encerra some do serviço trocando **uma env** no Render do
 |---|---|---|
 | Girassol | `DEVOLUCOES_DESATIVAR_GIRASSOL=1` | não monta; `/girassol/...` responde 503 explicando; nenhuma rotina dela roda |
 | AMBTotal | `DEVOLUCOES_DESATIVAR_AMBTOTAL=1` | idem em `/amb/...` |
-| GOOD (a hospedeira, na raiz) | `DEVOLUCOES_DESATIVAR_GOOD=1` | nenhuma rotina dela é agendada (índices, espreita, captura, Shopee); a tela e a API da raiz respondem 503; `/health` mostra `good: desativada_por_env` |
+| GOOD (a hospedeira, na raiz) | `DEVOLUCOES_DESATIVAR_GOOD=1` | nenhuma rotina dela é agendada (índices, espreita, captura, Shopee) e a renovação preventiva dos tokens dela (Bling/ML/Magalu) não liga nem renova; a tela e a API da raiz respondem 503; `/health` mostra `good: desativada_por_env` |
 
 Com a GOOD fora, `DEVOLUCOES_RAIZ=/girassol` (opcional) faz a raiz `/`
 redirecionar pra empresa que ficou; sem ela, a raiz mostra uma página com os

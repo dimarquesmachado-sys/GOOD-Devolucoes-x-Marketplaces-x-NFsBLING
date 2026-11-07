@@ -73,6 +73,31 @@ const RAIZ = path.join(__dirname, '..');
   ok(d && d.estado === 'desativada_por_env' && d.rota === '/', '  registrarHospedeira entra no diagnostico do /health');
 }
 
+// ── 1b. a renovacao PREVENTIVA de token tambem obedece (Codex #527) ─────
+// A preventiva se agenda SOZINHA ao registrar (lib/token-preventiva: setTimeout +
+// batimento de 1 h), fora da drenagem. Com a empresa desativada por env ela nem
+// liga nem renova — e o `relatorio({forcar})` da rota de conferencia tambem nao.
+{
+  process.env.DEVOLUCOES_DESATIVAR_GOOD = '1';
+  const tp = require('../lib/token-preventiva');
+  let renovouGood = 0, renovouAmb = 0;
+  const g = tp.registrarPreventiva({ empresa: 'good', integracao: 'ml', temRefresh: () => true,
+    renovar: async () => { renovouGood++; return true; }, persistiu: () => true, carimboEnv: 'T_GOOD_C', diasEnv: 'T_GOOD_D' });
+  const a = tp.registrarPreventiva({ empresa: 'ambtotal', integracao: 'ml', temRefresh: () => true,
+    renovar: async () => { renovouAmb++; return true; }, persistiu: () => true, carimboEnv: 'T_AMB_C', diasEnv: 'T_AMB_D', autoLigar: false });
+  delete process.env.DEVOLUCOES_DESATIVAR_GOOD;
+  (async () => {
+    const rg = await g.preventiva({ forcar: true });
+    const ra = await a.preventiva({ forcar: true });
+    ok(rg && rg.pulou && rg.desativada && renovouGood === 0, '⚠️ GOOD desativada: a preventiva nem chama renovar (forcar=true tambem nao)');
+    ok(ra && ra.ok && ra.renovado && renovouAmb === 1, '  e a mesma lib renova a empresa ligada (o teste discrimina)');
+    const l = tp.listar();
+    ok(l.some((x) => x.empresa === 'good' && x.desativada === true) && l.some((x) => x.empresa === 'ambtotal' && x.desativada === false),
+       '  listar() expoe `desativada` por empresa (o /health e a conferencia enxergam)');
+    ok(tp.ligarPendentes() === 1, '  ligarPendentes() liga so a empresa viva');
+  })();
+}
+
 // ── 2. invariante de texto: nenhum agendamento da GOOD fora do interruptor ──
 {
   const srv = fs.readFileSync(path.join(RAIZ, 'server.js'), 'utf8');
@@ -109,7 +134,7 @@ async function boot(envExtra) {
   const porta = await portaLivre();
   const env = Object.assign({}, process.env, { ADMIN_KEY: 'x', PORT: String(porta) }, envExtra);
   const filho = spawn(process.execPath, ['-e',
-    "require('./server.js'); setTimeout(() => { console.log('TIMERS=' + require('./lib/drenagem').diagnostico().timers_registrados); }, 2500);"],
+    "require('./server.js'); setTimeout(() => { console.log('TIMERS=' + require('./lib/drenagem').diagnostico().timers_registrados); console.log('PREVENTIVA=' + JSON.stringify(require('./lib/token-preventiva').listar().filter((x) => x.empresa === 'good').map((x) => x.desativada))); }, 2500);"],
     { cwd: RAIZ, env, stdio: ['ignore', 'pipe', 'pipe'] });
   let saida = '';
   filho.stdout.on('data', (c) => { saida += c; });
@@ -127,7 +152,8 @@ async function boot(envExtra) {
     }
     return null;
   };
-  return { porta, filho, health, timers, log: () => saida, matar: () => { try { filho.kill('SIGKILL'); } catch (e) { /* ja morreu */ } } };
+  const preventivaGood = () => { const m = saida.match(/PREVENTIVA=(\[.*?\])/); return m ? JSON.parse(m[1]) : null; };
+  return { porta, filho, health, timers, preventivaGood, log: () => saida, matar: () => { try { filho.kill('SIGKILL'); } catch (e) { /* ja morreu */ } } };
 }
 
 (async () => {
@@ -139,6 +165,8 @@ async function boot(envExtra) {
   const raizOn = await pedir(on.porta, '/');
   ok(raizOn.status !== 503, `  raiz NAO e 503 com a GOOD ligada (veio ${raizOn.status})`);
   const timersOn = await on.timers();
+  const prevOn = on.preventivaGood();
+  ok(Array.isArray(prevOn) && prevOn.length >= 2 && prevOn.every((x) => x === false), `  preventivas da GOOD registradas e VIVAS com ela ligada (${JSON.stringify(prevOn)})`);
   on.matar();
 
   // desligada: tudo da GOOD fecha, o resto segue
@@ -158,6 +186,8 @@ async function boot(envExtra) {
   const amb = await pedir(off.porta, '/amb/');
   ok(amb.status !== 503 && amb.status !== 0 && !/foi desativada neste servico/.test(amb.corpo), `  a instancia /amb segue viva (veio ${amb.status})`);
   const timersOff = await off.timers();
+  const prevOff = off.preventivaGood();
+  ok(Array.isArray(prevOff) && prevOff.length >= 2 && prevOff.every((x) => x === true), `  preventivas da GOOD (bling/ml/magalu) DESATIVADAS: nao renovam nem falam com o marketplace (${JSON.stringify(prevOff)})`);
   off.matar();
   ok(timersOn != null && timersOff != null && timersOff < timersOn,
      `⚠️ com a GOOD desligada o processo agenda MENOS rotinas (${timersOff} contra ${timersOn} ligada)`);
