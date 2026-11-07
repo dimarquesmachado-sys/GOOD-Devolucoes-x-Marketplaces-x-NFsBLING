@@ -246,6 +246,35 @@ async function testeTokenAceitoDeVerdade() {
      '  e por linha de comando (sem montagem) diz que so olhou o contrato');
 }
 
+// ── b663: a HOSPEDEIRA (GOOD, prefixoRota '') nao esta no contrato como ativa ──
+// — ela e o servidor que monta as outras. A sonda dizia "ainda desativada -
+// ative ativa_em.devolucoes" pra empresa que esta no ar desde sempre. Agora o
+// estado dela vem da montagem (b659 registra a hospedeira no diagnostico).
+// Exercita a checagem de PRODUCAO nos 3 estados, com a montagem de verdade.
+{
+  const { CHECAGENS } = require('../scripts/sonda-empresa.js');
+  const c4 = CHECAGENS.find((x) => x.nome === 'estado no contrato');
+  const me = require('../lib/montagem-empresas');
+  const mudo = { log() {}, warn() {}, error() {} };
+  const zera = () => me.montarEmpresas({ app: { use() {} }, empresas: [], criarApp: () => ({}), logger: mudo });
+  (async () => {
+    zera();
+    const cli = await c4.fn('good');
+    ok(cli.ok === true && /hospedeira \(raiz\)/.test(cli.detalhe) && !/ainda desativada/.test(String(cli.aviso || '')),
+       '⚠️ GOOD por linha de comando: hospedeira, ativa por construcao — nunca "ainda desativada"');
+    zera(); me.registrarHospedeira({ chave: 'good', rota: '/', estado: 'montada' });
+    const ar = await c4.fn('good');
+    ok(ar.ok === true && /no ar/.test(ar.detalhe), '  GOOD montada no servidor: "hospedeira (raiz), no ar"');
+    zera(); me.registrarHospedeira({ chave: 'good', rota: '/', estado: 'desativada_por_env' });
+    const fr = await c4.fn('good');
+    ok(fr.ok === false && /FREADA por env/.test(fr.detalhe) && /DEVOLUCOES_DESATIVAR_GOOD=1/.test(fr.erro),
+       '  GOOD freada por env: reprova e diz a env (o freio da b659 aparece na sonda)');
+    zera();
+    const gi = await c4.fn('girassol');
+    ok(gi.ok === true && /ativa \(no contrato/.test(gi.detalhe), '  e as instancias seguem pelo contrato (girassol)');
+  })();
+}
+
 // ── ⚠️ e há ROTA, porque o dono não usa terminal ────────────────────
 //
 // A sonda por linha de comando não serve para quem está configurando pelo

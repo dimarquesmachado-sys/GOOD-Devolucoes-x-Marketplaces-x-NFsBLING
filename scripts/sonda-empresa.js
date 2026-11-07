@@ -438,7 +438,27 @@ registrar('estado no contrato', async (chave) => {
   // o estado real: montada / falhou / desativada_por_env. Cruzo os dois. Por
   // linha de comando (sem servidor) nao ha montagem, e fico so no contrato —
   // e digo isso.
-  const { empresasAtivasNoDevolucoes } = require('../lib/empresas');
+  const { empresasAtivasNoDevolucoes, obterEmpresa } = require('../lib/empresas');
+  let montagem = [];
+  try { montagem = require('../lib/montagem-empresas').diagnostico(); } catch (e) { montagem = []; }
+  const m = montagem.find((x) => x.chave === chave);
+  // b663 - A HOSPEDEIRA (a empresa da raiz, prefixoRota '') nao entra em
+  // `empresasAtivasNoDevolucoes` — ela e o servidor que monta as outras, nao
+  // uma instancia ativada pelo contrato. A sonda dizia "ainda desativada -
+  // ative ativa_em.devolucoes" pra GOOD, que esta no ar desde sempre. O estado
+  // dela vem da montagem (b659 registra a hospedeira no mesmo diagnostico):
+  // montada, ou desativada_por_env (DEVOLUCOES_DESATIVAR_<X>=1).
+  let hospedeira = false;
+  try { hospedeira = obterEmpresa(chave).prefixoRota === ''; } catch (e) { hospedeira = false; }
+  if (hospedeira) {
+    if (!m) return { ok: true, detalhe: 'hospedeira (raiz) — ativa por construcao; sem servidor pra conferir se esta no ar' };
+    if (m.estado === 'montada') return { ok: true, detalhe: 'hospedeira (raiz), no ar' };
+    if (m.estado === 'desativada_por_env') {
+      return { ok: false, detalhe: 'hospedeira (raiz) FREADA por env',
+        erro: `${require('../lib/montagem-empresas').nomeFreio(chave)}=1 esta ligada: a empresa NAO esta no ar (rotinas paradas, raiz em 503). Remova a env pra voltar.` };
+    }
+    return { ok: false, detalhe: 'hospedeira (raiz) em estado inesperado: ' + m.estado, erro: 'veja /health -> montagem_empresas e o log do boot' };
+  }
   const ativaNoContrato = empresasAtivasNoDevolucoes().some((x) => x.chave === chave);
   if (!ativaNoContrato) {
     return {
@@ -446,9 +466,6 @@ registrar('estado no contrato', async (chave) => {
       aviso: 'ainda desativada - ative `ativa_em.devolucoes` quando as outras checagens ficarem verdes',
     };
   }
-  let montagem = [];
-  try { montagem = require('../lib/montagem-empresas').diagnostico(); } catch (e) { montagem = []; }
-  const m = montagem.find((x) => x.chave === chave);
   if (!m) {
     // sem montagem = rodando fora do servidor (linha de comando)
     return { ok: true, detalhe: 'ativa (no contrato; sem servidor pra conferir se montou)' };
