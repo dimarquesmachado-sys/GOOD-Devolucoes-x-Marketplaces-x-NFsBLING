@@ -185,3 +185,9 @@ A ficha gerada já traz `tema` (cores) e `marca` (logo e ícone). Antes de ativa
 Sem isso a empresa funciona, mas a triagem e o painel saem com as cores e o logo da AMB — foi o que a Girassol mostrou
 até o b616.
 
+## TikTok (06/11/2026)
+
+A loja TikTok de cada empresa sai do registro (`lib/empresas.js`): é o `chaveDados` da ficha, ou
+`lojaTiktok` quando o nome da loja no Mover-Pedidos for outro. Uma 4ª empresa entra sem editar
+`lib/tiktok-ponte.js` (b660) — do lado do Mover-Pedidos, o mesmo nome precisa estar em `TIKTOK_LOJAS`
+e a loja precisa ser autorizada no `/tiktok/painel` de lá.
