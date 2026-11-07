@@ -71,6 +71,22 @@ const { sufixoDaFicha, provisionarEmpresa, SUFIXO_VALIDO, RESERVADOS } =
        'copia a estrutura da AMB (INCLUDING ALL), nao escreve colunas a mao');
     ok(/enable row level security/i.test(sql),
        '  e liga o RLS na tabela nova, como nas outras');
+    // b664 - tabela que ja existe ganha as colunas que faltam (so acrescenta).
+    // Provado em Postgres 16 local (06/11): 3 colunas acrescentadas com default,
+    // linhas preservadas, coluna so da empresa mantida, 2a rodada "colunas em dia",
+    // default com nextval entra SEM default, NOT NULL do molde entra anulavel.
+    const corpo = sql.split('\n').filter((l) => !l.trim().startsWith('--')).join('\n');
+    ok(!/nao mexi/.test(corpo), '⚠️ tabela ja existente NAO fica mais parada ("nao mexi" saiu do codigo)');
+    ok(/alter table public\.%I add column %I %s/.test(corpo) && /pg_attribute/.test(corpo) && /format_type\(/.test(corpo),
+       '  acrescenta as colunas que o molde tem e a tabela nao, com o tipo lido do catalogo');
+    ok(!/add column %I %s not null/i.test(corpo) && !/add column %I %s default %s not null/i.test(corpo),
+       '  nunca poe NOT NULL em coluna acrescentada (linha antiga nao tem o valor)');
+    ok(/nextval\(/.test(corpo) && /identidade/.test(corpo) && /SEM default/.test(corpo),
+       '  default de sequencia/identidade do molde NAO e copiado (seria a sequencia da AMB)');
+    ok(!/drop column/i.test(corpo) && !/alter column/i.test(corpo) && !/drop table/i.test(corpo),
+       '  e nunca apaga coluna, muda tipo nem derruba tabela');
+    ok(/colunas em dia/.test(corpo) && /linhas preservadas/.test(corpo) && /existe so nesta empresa/.test(corpo),
+       '  o resultado diz o que fez: em dia / N acrescentadas / coluna so da empresa');
     ok(/grant execute on function public\.provisionar_empresa\(text\) to service_role/.test(sql),
        'so a service_role pode chamar (a chave anon e publica)');
     ok(!/drop table|truncate|delete from/i.test(sql.split('COMO TESTAR')[0]),

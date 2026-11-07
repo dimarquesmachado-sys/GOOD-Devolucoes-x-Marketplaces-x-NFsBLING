@@ -23,6 +23,10 @@
 -- código (ou um parâmetro vindo de fora) poderia criar ou apagar coisa que
 -- ninguém pediu.
 --
+-- b664: tabela que já existe NÃO é recriada nem alterada no que tem — só
+-- ganha as colunas que faltam em relação ao molde (sem NOT NULL, sem
+-- sequência da AMB). Rodar de novo é seguro e idempotente.
+--
 -- Por isso ela SÓ aceita sufixo no formato `_[a-z0-9]{2,12}` e SÓ cria as
 -- cinco tabelas conhecidas, copiando de moldes fixos escritos aqui dentro.
 -- Não recebe nome de tabela, não recebe SQL, e não apaga nada.
@@ -87,9 +91,84 @@ begin
     end if;
 
     if to_regclass('public.' || nova) is not null then
-      tabela := nova;
-      resultado := 'ja existia (nao mexi)';
-      return next;
+      -- b664 - TABELA QUE JA EXISTE GANHA AS COLUNAS QUE LHE FALTAM.
+      -- Antes: "ja existia (nao mexi)". Quando o molde da AMB ganhava uma
+      -- coluna (como `marketplace`, `localizacao`, `conserto_info`...), a
+      -- empresa embarcada antes ficava para tras ate alguem lembrar de um
+      -- ALTER a mao — e o buraco aparecia so quando um card vinha vazio.
+      -- Regra: SO ACRESCENTA. Nunca apaga coluna, nunca muda tipo, nunca
+      -- poe NOT NULL (linha antiga nao tem o valor). O default do molde vem
+      -- junto, EXCETO quando e sequencia/identidade (seria a sequencia da
+      -- AMB: a empresa nova contaria no numerador da outra). Coluna que so
+      -- a empresa tem (e o molde nao) fica como esta, e e listada.
+      declare
+        col record;
+        n_add int := 0;
+      begin
+        for col in
+          select a.attname as nome,
+                 format_type(a.atttypid, a.atttypmod) as tipo,
+                 pg_get_expr(d.adbin, d.adrelid) as padrao,
+                 (a.attidentity <> '') as identidade
+            from pg_attribute a
+            join pg_class c on c.oid = a.attrelid
+            join pg_namespace ns on ns.oid = c.relnamespace
+            left join pg_attrdef d on d.adrelid = a.attrelid and d.adnum = a.attnum
+           where ns.nspname = 'public' and c.relname = molde
+             and a.attnum > 0 and not a.attisdropped
+             and not exists (
+               select 1
+                 from pg_attribute b
+                 join pg_class c2 on c2.oid = b.attrelid
+                 join pg_namespace ns2 on ns2.oid = c2.relnamespace
+                where ns2.nspname = 'public' and c2.relname = nova
+                  and b.attname = a.attname and b.attnum > 0 and not b.attisdropped)
+           order by a.attnum
+        loop
+          if col.identidade or (col.padrao is not null and col.padrao like '%nextval(%') then
+            execute format('alter table public.%I add column %I %s', nova, col.nome, col.tipo);
+            tabela := nova;
+            resultado := 'coluna ' || col.nome || ' (' || col.tipo || ') acrescentada SEM default: o molde usa sequencia/identidade propria';
+          elsif col.padrao is not null then
+            execute format('alter table public.%I add column %I %s default %s', nova, col.nome, col.tipo, col.padrao);
+            tabela := nova;
+            resultado := 'coluna ' || col.nome || ' (' || col.tipo || ', default ' || col.padrao || ') acrescentada';
+          else
+            execute format('alter table public.%I add column %I %s', nova, col.nome, col.tipo);
+            tabela := nova;
+            resultado := 'coluna ' || col.nome || ' (' || col.tipo || ') acrescentada';
+          end if;
+          return next;
+          n_add := n_add + 1;
+        end loop;
+
+        -- colunas que so a empresa tem: informa, nao toca
+        for col in
+          select b.attname as nome
+            from pg_attribute b
+            join pg_class c2 on c2.oid = b.attrelid
+            join pg_namespace ns2 on ns2.oid = c2.relnamespace
+           where ns2.nspname = 'public' and c2.relname = nova
+             and b.attnum > 0 and not b.attisdropped
+             and not exists (
+               select 1
+                 from pg_attribute a
+                 join pg_class c on c.oid = a.attrelid
+                 join pg_namespace ns on ns.oid = c.relnamespace
+                where ns.nspname = 'public' and c.relname = molde
+                  and a.attname = b.attname and a.attnum > 0 and not a.attisdropped)
+           order by b.attnum
+        loop
+          tabela := nova;
+          resultado := 'coluna ' || col.nome || ' existe so nesta empresa (o molde nao tem) — mantida';
+          return next;
+        end loop;
+
+        tabela := nova;
+        resultado := case when n_add = 0 then 'ja existia (colunas em dia)'
+                          else 'ja existia — ' || n_add || ' coluna(s) acrescentada(s), linhas preservadas' end;
+        return next;
+      end;
       continue;
     end if;
 
@@ -148,7 +227,7 @@ grant execute on function public.provisionar_empresa(text) to service_role;
 --   -- devolve 5 linhas "criada (copia de ...)"
 --
 --   select * from public.provisionar_empresa('_zz9');
---   -- devolve 5 linhas "ja existia (nao mexi)"  ← é idempotente
+--   -- devolve "ja existia (colunas em dia)" por tabela  ← é idempotente
 --
 -- E para limpar o teste (só o teste; a função não apaga nada):
 --   ⚠️ b374: as 2 de defeito entraram na lista — sem elas o rollback
