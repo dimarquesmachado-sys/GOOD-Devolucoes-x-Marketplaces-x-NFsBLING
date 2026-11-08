@@ -29,13 +29,21 @@ const compartilhados = mLista ? [...mLista[1].matchAll(/'([^']+\.js)'/g)].map((m
 ok(compartilhados.length >= 10, '⚠️ JS_COMPARTILHADOS lida do app-AMB (' + compartilhados.length + ' arquivos)');
 
 // 2. tudo que esse front chama em /api/...
-const chamadas = new Set();
+// r3: um literal que termina em '/' e PREFIXO (o front concatena o id depois) e pode
+// casar rota com :param ou *; um literal completo ('/api/defeitos/por-sku') so casa
+// rota EXATA — senao `/api/defeitos/:id` mascararia a falta do `/por-sku`.
+const chamadas = new Map();   // caminho -> ePrefixo
+function colher(texto) {
+  for (const re of [/['`]\/api\/([^'`?$\s]+)/g, /\}\/api\/([^'`?$\s]+)/g]) {
+    for (const m of texto.matchAll(re)) {
+      const lit = '/api/' + m[1]; const c = lit.replace(/\/$/, '');
+      chamadas.set(c, (chamadas.get(c) || false) || lit.endsWith('/'));
+    }
+  }
+}
 for (const nome of compartilhados) {
   const abs = path.join(RAIZ, 'public', 'js', nome);
-  if (!fs.existsSync(abs)) continue;
-  for (const m of semComentario(fs.readFileSync(abs, 'utf8')).matchAll(/['`]\/api\/([^'`?$\s]+)/g)) {
-    chamadas.add('/api/' + m[1].replace(/\/$/, ''));
-  }
+  if (fs.existsSync(abs)) colher(semComentario(fs.readFileSync(abs, 'utf8')));
 }
 ok(chamadas.size >= 10, '  o front compartilhado chama ' + chamadas.size + ' caminhos /api');
 
@@ -78,28 +86,28 @@ const fab = rotasDoLado(FABRICA);
 ok(good.size > 100 && fab.size > 100, `  rotas mapeadas: GOOD (raiz, sem a fabrica) ${good.size}, fabrica ${fab.size}`);
 ok(!good.has('/api/triagem/registrar') && fab.has('/api/triagem/registrar'), '  a rota so da fabrica NAO conta como rota da raiz (r2)');
 
-function atende(conjunto, caminho) {
+function atende(conjunto, caminho, ePrefixo) {
+  if (conjunto.has(caminho)) return true;
+  if (!ePrefixo) return false;   // literal completo: so a rota exata serve
   for (const r of conjunto) {
-    if (r === caminho) return true;
     const i = Math.min(...[r.indexOf('/:'), r.indexOf('/*')].filter((x) => x > 0));
-    if (Number.isFinite(i)) { const prefixo = r.slice(0, i); if (caminho === prefixo || caminho.startsWith(prefixo + '/')) return true; }
+    if (Number.isFinite(i) && r.slice(0, i) === caminho) return true;   // o id vem logo depois do prefixo
   }
   return false;
 }
-const faltaGood = [...chamadas].filter((c) => !atende(good, c)).sort();
-const faltaFab = [...chamadas].filter((c) => !atende(fab, c)).sort();
+const faltaGood = [...chamadas].filter(([c, p]) => !atende(good, c, p)).map(([c]) => c).sort();
+const faltaFab = [...chamadas].filter(([c, p]) => !atende(fab, c, p)).map(([c]) => c).sort();
 ok(faltaGood.length === 0, '⚠️ BIPE: toda rota que o front chama existe na GOOD (raiz)' + (faltaGood.length ? ' — faltam: ' + faltaGood.join(', ') : ''));
 ok(faltaFab.length === 0, '⚠️ BIPE: toda rota que o front chama existe na FABRICA (instancias)' + (faltaFab.length ? ' — faltam: ' + faltaFab.join(', ') : ''));
 
 // 4. o PAINEL UNICO (admin) tambem e um so pras 3 (painel-AMB.html; a GOOD serve o mesmo
 //    HTML adaptado no boot). Mesma regra: tudo que ele chama existe nos 2 lados.
-const painel = semComentario(rd('amb-devolucoes/public-AMB/painel-AMB.html'));
-const chamadasPainel = new Set();
-for (const m of painel.matchAll(/['`]\/api\/([^'`?$\s]+)/g)) chamadasPainel.add('/api/' + m[1].replace(/\/$/, ''));
-for (const m of painel.matchAll(/\}\/api\/([^'`?$\s]+)/g)) chamadasPainel.add('/api/' + m[1].replace(/\/$/, ''));
-ok(chamadasPainel.size >= 20, '  o painel unico chama ' + chamadasPainel.size + ' caminhos /api');
-const faltaGoodP = [...chamadasPainel].filter((c) => !atende(good, c)).sort();
-const faltaFabP = [...chamadasPainel].filter((c) => !atende(fab, c)).sort();
+const antes = new Set(chamadas.keys());
+colher(semComentario(rd('amb-devolucoes/public-AMB/painel-AMB.html')));
+const chamadasPainel = [...chamadas].filter(([c]) => !antes.has(c) || true);
+ok(chamadas.size - antes.size >= 20, '  o painel unico acrescenta ' + (chamadas.size - antes.size) + ' caminhos /api');
+const faltaGoodP = chamadasPainel.filter(([c, p]) => !atende(good, c, p)).map(([c]) => c).sort();
+const faltaFabP = chamadasPainel.filter(([c, p]) => !atende(fab, c, p)).map(([c]) => c).sort();
 ok(faltaGoodP.length === 0, '⚠️ PAINEL: toda rota que ele chama existe na GOOD' + (faltaGoodP.length ? ' — faltam: ' + faltaGoodP.join(', ') : ''));
 ok(faltaFabP.length === 0, '⚠️ PAINEL: toda rota que ele chama existe na FABRICA' + (faltaFabP.length ? ' — faltam: ' + faltaFabP.join(', ') : ''));
 
