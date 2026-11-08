@@ -437,9 +437,11 @@ registrar('ponte EAN com o Mover-Pedidos', async (chave) => {
   try { pasta = pastaDoCheckout(chave); } catch (e) { return { ok: false, detalhe: 'sem pasta', erro: 'ficha sem pastaCheckout/chaveDados: ' + String(e.message || e) }; }
   const r = await produtoPorEanNoMoverPedidos(chave, '0000000000000', { timeoutMs: 8000 });
   if (r.ok) return { ok: true, detalhe: `/${pasta}/buscar-produto responde (o EAN de teste ate achou produto: ${r.produto.codigo})` };
-  // ponte fora nao bloqueia a ativacao (a empresa opera sem isso) — e AVISO, com o efeito dito
-  if (r.ponte_fora) return { ok: true, detalhe: `/${pasta}/buscar-produto NAO respondeu`, aviso: r.motivo + ' — ate resolver, o divergente nao resolve codigo de barras nesta empresa (cai no SKU)' };
-  return { ok: true, detalhe: `/${pasta}/buscar-produto responde (${String(r.motivo || '').slice(0, 80)})` };
+  // r2 (Codex #544): SO o "nada encontrado" explicito prova a ponte; qualquer outra resposta
+  // (HTTP de erro, HTML, JSON sem produto, servico fora, sem env) e AVISO — nao bloqueia ativar
+  // (a empresa opera), mas diz o efeito.
+  if (r.nao_encontrado) return { ok: true, detalhe: `/${pasta}/buscar-produto responde (${String(r.motivo || '').slice(0, 80)})` };
+  return { ok: true, detalhe: `/${pasta}/buscar-produto NAO respondeu direito`, aviso: r.motivo + ' — ate resolver, o divergente nao resolve codigo de barras nesta empresa (cai no SKU)' };
 });
 
 registrar('estado no contrato', async (chave) => {

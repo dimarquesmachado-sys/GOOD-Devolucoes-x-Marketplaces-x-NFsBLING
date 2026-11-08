@@ -292,6 +292,8 @@ async function testeTokenAceitoDeVerdade() {
     const resp = (d, st = 200) => ({ data: d, status: st, statusText: 'OK', headers: {}, config: c });
     if (modo === 'guard') return resp({ error: 'not found' }, 404);
     if (modo === 'fora') throw new Error('ECONNREFUSED');
+    if (modo === '503') return resp({ ok: false, erro: 'servico indisponivel' }, 503);
+    if (modo === 'html') return resp('<html>login</html>', 200);
     return resp({ ok: false, erro: 'nada encontrado p/ "0000000000000"' });
   };
   (async () => {
@@ -302,6 +304,11 @@ async function testeTokenAceitoDeVerdade() {
     ok(r2.ok === true && /NAO respondeu/.test(r2.detalhe) && /404/.test(r2.aviso) && /nao resolve codigo de barras/.test(r2.aviso), '  404 do guard: AVISO com o efeito (nao bloqueia ativar)');
     modo = 'fora'; const r3 = await cp.fn('good');
     ok(r3.ok === true && /nao respondeu/i.test(r3.aviso), '  servico fora: AVISO');
+    // r2 (Codex #544): erro de aplicacao e HTML nao aprovam a ponte
+    modo = '503'; const r3b = await cp.fn('good');
+    ok(r3b.ok === true && r3b.aviso && /503/.test(r3b.aviso), '  HTTP 503 com JSON de erro: AVISO (nao aprova)');
+    modo = 'html'; const r3c = await cp.fn('good');
+    ok(r3c.ok === true && r3c.aviso && /sem JSON/.test(r3c.aviso), '  HTTP 200 com HTML: AVISO (nao aprova)');
     delete process.env.MOVER_PEDIDOS_URL; const r4 = await cp.fn('girassol');
     ok(r4.ok === true && /nao configurada/.test(r4.aviso), '  ponte sem env: AVISO');
     axios.defaults.adapter = adapterOrig;

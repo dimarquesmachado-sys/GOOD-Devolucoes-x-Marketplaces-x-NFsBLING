@@ -31,6 +31,9 @@ axios.defaults.adapter = async (config) => {
   if (modo === 'fora') { const e = new Error('ECONNREFUSED'); throw e; }
   if (modo === 'guard') return resp({ error: 'not found' }, 404);
   if (modo === 'nada') return resp({ ok: false, erro: 'nada encontrado p/ "7898680302865"' });
+  if (modo === '503json') return resp({ ok: false, erro: 'servico indisponivel' }, 503);
+  if (modo === 'html') return resp('<html><body>login</body></html>', 200);
+  if (modo === 'recusa') return resp({ ok: false, erro: 'busca vazia' });
   if (modo === 'sem_produto') return resp({ ok: true });
   return resp({ ok: true, produto: { id: 123, sku: 'SKUMF801S', nome: 'Luminaria Chao Piso 801s', ean: '7898680302865', estoque: 3 } });
 };
@@ -49,7 +52,17 @@ const { produtoPorEanNoMoverPedidos, pastaDoCheckout } = require('../lib/produto
      '  chamou /<pasta>/buscar-produto?q=<ean>&k=<MOVER_PEDIDOS_KEY> (' + chamadas[chamadas.length - 1] + ')');
   modo = 'nada';
   const r2 = await produtoPorEanNoMoverPedidos('ambtotal', '7898680302865');
-  ok(r2.ok === false && /nada encontrado/.test(r2.motivo) && !r2.ponte_fora, '  nada la: ok:false com o motivo do Mover-Pedidos (nao e "ponte fora")');
+  ok(r2.ok === false && /nada encontrado/.test(r2.motivo) && !r2.ponte_fora && r2.nao_encontrado === true, '  nada la: ok:false + nao_encontrado (o Mover-Pedidos olhou e NAO TEM — nao e "ponte fora")');
+  // r2 (Codex #544): erro de aplicacao e resposta malformada NAO sao "nada encontrado"
+  modo = '503json';
+  const r2b = await produtoPorEanNoMoverPedidos('ambtotal', '7898680302865');
+  ok(r2b.ok === false && r2b.ponte_fora === true && !r2b.nao_encontrado && /503/.test(r2b.motivo), '  HTTP 503 com JSON { ok:false }: ponte_fora, nao "nada encontrado"');
+  modo = 'html';
+  const r2c = await produtoPorEanNoMoverPedidos('ambtotal', '7898680302865');
+  ok(r2c.ok === false && r2c.ponte_fora === true && /sem JSON/.test(r2c.motivo), '  HTTP 200 com HTML (login/erro): ponte_fora');
+  modo = 'recusa';
+  const r2d = await produtoPorEanNoMoverPedidos('ambtotal', '7898680302865');
+  ok(r2d.ok === false && r2d.ponte_fora === true && !r2d.nao_encontrado, '  2xx com { ok:false } que NAO e "nada encontrado": ponte_fora');
   modo = 'guard';
   const r3 = await produtoPorEanNoMoverPedidos('ambtotal', '7898680302865');
   ok(r3.ok === false && r3.ponte_fora === true && /404/.test(r3.motivo), '  404 do guard (chave errada/rota ausente): ponte_fora, motivo diz');
@@ -58,7 +71,7 @@ const { produtoPorEanNoMoverPedidos, pastaDoCheckout } = require('../lib/produto
   ok(r4.ok === false && r4.ponte_fora === true && /nao respondeu/.test(r4.motivo), '  Mover-Pedidos fora: ponte_fora, nunca lanca');
   modo = 'sem_produto';
   const r5 = await produtoPorEanNoMoverPedidos('girassol', '7898680302865');
-  ok(r5.ok === false && /sem produto/.test(r5.motivo), '  resposta ok sem produto: ok:false (nao inventa)');
+  ok(r5.ok === false && /sem produto/.test(r5.motivo) && r5.ponte_fora === true, '  resposta ok sem produto: ok:false + ponte_fora (nao inventa, nao aprova)');
   modo = 'acha';
   const r6 = await produtoPorEanNoMoverPedidos('girassol', 'ABC123');
   ok(r6.ok === false && /invalido/.test(r6.motivo) && chamadas.filter((c) => /ABC123/.test(c)).length === 0, '  codigo que nao e EAN: recusa SEM chamar a ponte');
