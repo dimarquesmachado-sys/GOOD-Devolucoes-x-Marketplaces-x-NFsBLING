@@ -1,15 +1,23 @@
 'use strict';
-// b672 — CONTRATO DA TELA UNICA: o front compartilhado so pode chamar rota que
-// exista NOS DOIS LADOS.
+// b672/r4 — CONTRATO DA TELA UNICA: o front compartilhado so pode chamar rota que
+// exista NOS DOIS LADOS, com a MESMA FORMA de caminho.
 //
-// ⚠️ O QUE ESTE TESTE PROTEGE: a tela de bipe e uma so pras 3 empresas (os JS de
-// public/js sao servidos pela fabrica as instancias — JS_COMPARTILHADOS em
-// app-AMB.js). Cada `/api/...` que esse front chama precisa existir na GOOD (raiz:
-// server.js + libs que ela monta com `app.`) E na fabrica (instancias: app-AMB.js
-// + lib-AMB + lib, montadas com `router.`). Uma rota que so um lado tem vira
-// "funciona na GOOD, 404 na Girassol" — classe de regressao que o painel unico ja
-// sofreu (ids fiscais, #535). Rota com `:param` casa com o prefixo que o front
-// concatena.
+// ⚠️ O QUE ESTE TESTE PROTEGE: a tela de bipe (public/js, servida pela fabrica as
+// instancias — JS_COMPARTILHADOS) e o painel admin (painel-AMB.html, que a GOOD serve
+// adaptado) sao UM so pras 3 empresas. Cada chamada `/api/...` deles precisa existir na
+// GOOD (raiz: server.js + libs que ela monta direto) E na fabrica (instancias: app-AMB.js
+// + o que ela monta). Rota que so um lado tem vira "funciona na GOOD, 404 na Girassol"
+// (ids fiscais #535; fila de impressao #542).
+//
+// Como le o front: cada chamada vira uma FORMA — literal completo ('/api/defeitos/por-sku'),
+// prefixo + id ('/api/produto/imagem/' + x -> '/api/produto/imagem/:p') e id com sufixo
+// ('/api/admin/recado/' + id + '/remover' -> '/api/admin/recado/:p/remover'; template
+// `.../${id}/remover` idem). A forma casa a rota registrada com os :params na mesma posicao;
+// literal completo so casa rota exata (senao '/api/defeitos/:id' mascararia o por-sku sumido).
+//
+// Como le o servidor: rota registrada numa lib pertence ao lado que a MONTA (require
+// transitivo). A GOOD e mapeada SEM descer em app-AMB.js (a fabrica e montada sob prefixo;
+// suas rotas nao sao da raiz).
 //
 // Roda com: node test/tela-unica-contrato-api.test.js
 
@@ -21,39 +29,34 @@ const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o
 const RAIZ = path.join(__dirname, '..');
 const rd = (p) => fs.readFileSync(path.join(RAIZ, p), 'utf8');
 const semComentario = (s) => s.split('\n').filter((l) => !l.trim().startsWith('//') && !l.trim().startsWith('*')).join('\n');
+const FABRICA = 'amb-devolucoes/app-AMB.js';
 
-// 1. os JS compartilhados, pela lista da propria fabrica
-const appAmb = rd('amb-devolucoes/app-AMB.js');
-const mLista = appAmb.match(/const JS_COMPARTILHADOS = \[([\s\S]*?)\];/);
-const compartilhados = mLista ? [...mLista[1].matchAll(/'([^']+\.js)'/g)].map((m) => m[1]) : [];
-ok(compartilhados.length >= 10, '⚠️ JS_COMPARTILHADOS lida do app-AMB (' + compartilhados.length + ' arquivos)');
-
-// 2. tudo que esse front chama em /api/...
-// r3: um literal que termina em '/' e PREFIXO (o front concatena o id depois) e pode
-// casar rota com :param ou *; um literal completo ('/api/defeitos/por-sku') so casa
-// rota EXATA — senao `/api/defeitos/:id` mascararia a falta do `/por-sku`.
-const chamadas = new Map();   // caminho -> ePrefixo
-function colher(texto) {
-  for (const re of [/['`]\/api\/([^'`?$\s]+)/g, /\}\/api\/([^'`?$\s]+)/g]) {
-    for (const m of texto.matchAll(re)) {
-      const lit = '/api/' + m[1]; const c = lit.replace(/\/$/, '');
-      chamadas.set(c, (chamadas.get(c) || false) || lit.endsWith('/'));
-    }
+// ── formas das chamadas do front ────────────────────────────────────
+function formasDoTexto(texto) {
+  const formas = new Set();
+  const add = (f) => { f = f.split('?')[0].replace(/\/+$/, ''); if (f.startsWith('/api/')) formas.add(f); };
+  // template literal que COMECA no /api (depois de, no maximo, uma interpolacao de base):
+  // `${window.APP_BASE || ''}/api/x/${id}/remover` ou `/api/x/${id}`
+  for (const m of texto.matchAll(/`(?:\$\{[^}]*\})?(\/api\/[^`\n]*)`/g)) {
+    add(m[1].replace(/\$\{[^}]*\}/g, ':p').replace(/\/:p[^/]*/g, '/:p'));
   }
+  // concatenacao: '/api/x/' + id + '/remover' ...
+  for (const m of texto.matchAll(/'(\/api\/[^']*)'((?:\s*\+\s*(?:'[^']*'|[^'+;,)\n]+))*)/g)) {
+    let forma = m[1].split('?')[0];
+    for (const t of (m[2] || '').matchAll(/\s*\+\s*(?:'([^']*)'|([^'+;,)\n]+))/g)) {
+      if (t[1] !== undefined) forma += t[1].split('?')[0];
+      else if (forma.endsWith('/')) forma += ':p';   // expressao logo apos '/': e um id
+      // expressao colada no fim de um segmento (query, sufixo de string): nao muda a forma
+    }
+    add(forma);
+  }
+  return formas;
 }
-for (const nome of compartilhados) {
-  const abs = path.join(RAIZ, 'public', 'js', nome);
-  if (fs.existsSync(abs)) colher(semComentario(fs.readFileSync(abs, 'utf8')));
-}
-ok(chamadas.size >= 10, '  o front compartilhado chama ' + chamadas.size + ' caminhos /api');
 
-// 3. as rotas de cada lado — REGRA: rota registrada numa lib pertence ao lado que a
-//    MONTA (require transitivo a partir de server.js = GOOD; de app-AMB.js = fabrica),
-//    seja o objeto `app`, `router` ou `r`. Casa `/:param` e `/*` com o prefixo.
+// ── rotas de cada lado ──────────────────────────────────────────────
 function requiresDe(arquivo) {
   const out = new Set();
-  const s = semComentario(rd(arquivo));
-  for (const m of s.matchAll(/require\('(\.{1,2}\/[^']+)'\)/g)) {
+  for (const m of semComentario(rd(arquivo)).matchAll(/require\('(\.{1,2}\/[^']+)'\)/g)) {
     let alvo = path.normalize(path.join(path.dirname(arquivo), m[1]));
     if (!alvo.endsWith('.js')) alvo += '.js';
     if (fs.existsSync(path.join(RAIZ, alvo))) out.add(alvo);
@@ -65,11 +68,6 @@ function rotasDe(arquivo) {
   for (const m of semComentario(rd(arquivo)).matchAll(/\b(?:app|router|r)\.(get|post|put|delete)\(\s*'([^']+)'/g)) out.add(m[2]);
   return out;
 }
-// r2 (Codex #543): o server.js requer app-AMB.js pra MONTAR as instancias sob prefixo
-// (/amb, /girassol) — as rotas da fabrica NAO sao rotas da raiz. Ao mapear a GOOD, a
-// fabrica fica de fora (senao uma rota da raiz que sumisse seria mascarada pela
-// equivalente da fabrica); as libs que o server.js monta direto continuam contando.
-const FABRICA = 'amb-devolucoes/app-AMB.js';
 function rotasDoLado(raiz, excluir) {
   const vistos = new Set(excluir || []); const fila = [raiz]; const rotas = new Set();
   while (fila.length) {
@@ -81,35 +79,47 @@ function rotasDoLado(raiz, excluir) {
   }
   return rotas;
 }
-const good = rotasDoLado('server.js', [FABRICA]);
-const fab = rotasDoLado(FABRICA);
-ok(good.size > 100 && fab.size > 100, `  rotas mapeadas: GOOD (raiz, sem a fabrica) ${good.size}, fabrica ${fab.size}`);
-ok(!good.has('/api/triagem/registrar') && fab.has('/api/triagem/registrar'), '  a rota so da fabrica NAO conta como rota da raiz (r2)');
-
-function atende(conjunto, caminho, ePrefixo) {
-  if (conjunto.has(caminho)) return true;
-  if (!ePrefixo) return false;   // literal completo: so a rota exata serve
-  for (const r of conjunto) {
-    const i = Math.min(...[r.indexOf('/:'), r.indexOf('/*')].filter((x) => x > 0));
-    if (Number.isFinite(i) && r.slice(0, i) === caminho) return true;   // o id vem logo depois do prefixo
+// forma normalizada da rota: /:qualquer -> /:p ; /* -> /:p
+const formaDaRota = (r) => r.split('?')[0].replace(/\/:[^/]+/g, '/:p').replace(/\/\*$/, '/:p').replace(/\/+$/, '');
+function atende(rotas, forma) {
+  for (const r of rotas) {
+    const fr = formaDaRota(r);
+    if (fr === forma) return true;
+    if (r.endsWith('/*') && forma.startsWith(fr.replace(/\/:p$/, '') + '/')) return true;   // curinga engole o resto
   }
   return false;
 }
-const faltaGood = [...chamadas].filter(([c, p]) => !atende(good, c, p)).map(([c]) => c).sort();
-const faltaFab = [...chamadas].filter(([c, p]) => !atende(fab, c, p)).map(([c]) => c).sort();
-ok(faltaGood.length === 0, '⚠️ BIPE: toda rota que o front chama existe na GOOD (raiz)' + (faltaGood.length ? ' — faltam: ' + faltaGood.join(', ') : ''));
-ok(faltaFab.length === 0, '⚠️ BIPE: toda rota que o front chama existe na FABRICA (instancias)' + (faltaFab.length ? ' — faltam: ' + faltaFab.join(', ') : ''));
 
-// 4. o PAINEL UNICO (admin) tambem e um so pras 3 (painel-AMB.html; a GOOD serve o mesmo
-//    HTML adaptado no boot). Mesma regra: tudo que ele chama existe nos 2 lados.
-const antes = new Set(chamadas.keys());
-colher(semComentario(rd('amb-devolucoes/public-AMB/painel-AMB.html')));
-const chamadasPainel = [...chamadas].filter(([c]) => !antes.has(c) || true);
-ok(chamadas.size - antes.size >= 20, '  o painel unico acrescenta ' + (chamadas.size - antes.size) + ' caminhos /api');
-const faltaGoodP = chamadasPainel.filter(([c, p]) => !atende(good, c, p)).map(([c]) => c).sort();
-const faltaFabP = chamadasPainel.filter(([c, p]) => !atende(fab, c, p)).map(([c]) => c).sort();
-ok(faltaGoodP.length === 0, '⚠️ PAINEL: toda rota que ele chama existe na GOOD' + (faltaGoodP.length ? ' — faltam: ' + faltaGoodP.join(', ') : ''));
-ok(faltaFabP.length === 0, '⚠️ PAINEL: toda rota que ele chama existe na FABRICA' + (faltaFabP.length ? ' — faltam: ' + faltaFabP.join(', ') : ''));
+// ── 1. bipe ─────────────────────────────────────────────────────────
+const appAmb = rd(FABRICA);
+const mLista = appAmb.match(/const JS_COMPARTILHADOS = \[([\s\S]*?)\];/);
+const compartilhados = mLista ? [...mLista[1].matchAll(/'([^']+\.js)'/g)].map((m) => m[1]) : [];
+ok(compartilhados.length >= 10, '⚠️ JS_COMPARTILHADOS lida do app-AMB (' + compartilhados.length + ' arquivos)');
+const formasBipe = new Set();
+for (const nome of compartilhados) {
+  const abs = path.join(RAIZ, 'public', 'js', nome);
+  if (fs.existsSync(abs)) for (const f of formasDoTexto(semComentario(fs.readFileSync(abs, 'utf8')))) formasBipe.add(f);
+}
+ok(formasBipe.size >= 10, '  o bipe chama ' + formasBipe.size + ' formas de /api');
+
+const good = rotasDoLado('server.js', [FABRICA]);
+const fab = rotasDoLado(FABRICA);
+ok(good.size > 100 && fab.size > 100, `  rotas mapeadas: GOOD (raiz, sem a fabrica) ${good.size}, fabrica ${fab.size}`);
+ok(!good.has('/api/triagem/registrar') && fab.has('/api/triagem/registrar'), '  a rota so da fabrica NAO conta como rota da raiz');
+
+const faltaGood = [...formasBipe].filter((f) => !atende(good, f)).sort();
+const faltaFab = [...formasBipe].filter((f) => !atende(fab, f)).sort();
+ok(faltaGood.length === 0, '⚠️ BIPE: toda forma que o front chama existe na GOOD (raiz)' + (faltaGood.length ? ' — faltam: ' + faltaGood.join(', ') : ''));
+ok(faltaFab.length === 0, '⚠️ BIPE: toda forma que o front chama existe na FABRICA (instancias)' + (faltaFab.length ? ' — faltam: ' + faltaFab.join(', ') : ''));
+
+// ── 2. painel unico ─────────────────────────────────────────────────
+const formasPainel = formasDoTexto(semComentario(rd('amb-devolucoes/public-AMB/painel-AMB.html')));
+ok(formasPainel.size >= 25, '  o painel unico chama ' + formasPainel.size + ' formas de /api');
+ok(formasPainel.has('/api/admin/recado/:p/remover'), '  a forma com sufixo depois do id e capturada (recado/:p/remover)');
+const faltaGoodP = [...formasPainel].filter((f) => !atende(good, f)).sort();
+const faltaFabP = [...formasPainel].filter((f) => !atende(fab, f)).sort();
+ok(faltaGoodP.length === 0, '⚠️ PAINEL: toda forma que ele chama existe na GOOD' + (faltaGoodP.length ? ' — faltam: ' + faltaGoodP.join(', ') : ''));
+ok(faltaFabP.length === 0, '⚠️ PAINEL: toda forma que ele chama existe na FABRICA' + (faltaFabP.length ? ' — faltam: ' + faltaFabP.join(', ') : ''));
 
 console.log('');
 console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
