@@ -622,35 +622,42 @@ function renderizar(data, ok) {
   html += '<div class="secao-titulo">Comprador</div>';
   html += '<div class="item-grid">';
   html += `<div><div class="label">Nome</div><div class="valor">${escapeHtml(buyerNome)}</div></div>`;
-  html += `<div><div class="label">Nickname</div><div class="valor">${escapeHtml(buyerNick)}</div></div>`;
-  html += `<div><div class="label">ID</div><div class="valor">${buyerId}</div></div>`;
-  html += `<div><div class="label">Data da venda</div><div class="valor">${dataFmt(order.date_created)}</div></div>`;
+  // b670 - Nickname, ID do comprador, data da venda, status da venda e do pagamento
+  // sao dados do PEDIDO DO MERCADO LIVRE. Em pedido de outro canal (Amazon, NF so
+  // pelo numero...) eles nao existem e a tela mostrava cinco "-" em fila, com cara
+  // de dado faltando. Linha so aparece quando ha valor.
+  if (buyerNick !== '-') html += `<div><div class="label">Nickname</div><div class="valor">${escapeHtml(buyerNick)}</div></div>`;
+  if (buyerId !== '-') html += `<div><div class="label">ID</div><div class="valor">${buyerId}</div></div>`;
+  if (order.date_created) html += `<div><div class="label">Data da venda</div><div class="valor">${dataFmt(order.date_created)}</div></div>`;
   html += '</div>';
   html += '</div>';
 
   // ============ PEDIDO ============
-  html += '<div class="bloco">';
-  html += '<div class="secao-titulo">Pedido</div>';
-  html += '<div class="item-grid">';
-  // b74 - o rotulo era fixo "Order ID (ML)" e aparecia assim tambem em
-  // pedido Shopee/Magalu. Agora segue o canal identificado.
-  // b669 - o canal vem da resposta (`canal_pedido`, detector da casa no servidor):
-  // 702-2868620-1873028 e Amazon, nao "Order ID (ML)". Sem canal, o rotulo e so
-  // "Pedido" — nunca mais assume Mercado Livre. Pack ID so existe no ML: aparece
-  // quando ha.
-  const _NOMES_CANAL = { ml: 'Mercado Livre', shopee: 'Shopee', magalu: 'Magalu', amazon: 'Amazon', tiktok: 'TikTok Shop' };
-  const _canal = data.magalu ? 'magalu'
-    : (data.shopee || String(data.metodo || '').includes('shopee')) ? 'shopee'
-    : (data.canal_pedido && _NOMES_CANAL[data.canal_pedido]) ? data.canal_pedido
-    : null;
-  const _rotuloPedido = _canal ? 'Pedido ' + _NOMES_CANAL[_canal] : 'Pedido';
-  html += `<div><div class="label">${_rotuloPedido}</div><div class="valor">${order.id || '-'}</div></div>`;
-  if (order.pack_id) html += `<div><div class="label">Pack ID</div><div class="valor">${order.pack_id}</div></div>`;
-  html += `<div><div class="label">Status venda</div><div class="valor">${traduzirStatus(order.status)}</div></div>`;
-  html += `<div><div class="label">Status pagamento</div><div class="valor">${traduzirPagamento(payment.status)}${payment.transaction_amount_refunded ? ' (estornado: ' + moeda(payment.transaction_amount_refunded) + ')' : ''}</div></div>`;
-  html += '</div>';
-  html += '</div>';
-
+  // b670 - sem numero de pedido nem status (NF achada so pelo numero, sem pedido
+  // na loja), o bloco inteiro some em vez de mostrar "Pedido -".
+  if (order.id || order.status || payment.status) {
+    html += '<div class="bloco">';
+    html += '<div class="secao-titulo">Pedido</div>';
+    html += '<div class="item-grid">';
+    // b74 - o rotulo era fixo "Order ID (ML)" e aparecia assim tambem em
+    // pedido Shopee/Magalu. Agora segue o canal identificado.
+    // b669 - o canal vem da resposta (`canal_pedido`, detector da casa no servidor):
+    // 702-2868620-1873028 e Amazon, nao "Order ID (ML)". Sem canal, o rotulo e so
+    // "Pedido" — nunca mais assume Mercado Livre. Pack ID so existe no ML: aparece
+    // quando ha.
+    const _NOMES_CANAL = { ml: 'Mercado Livre', shopee: 'Shopee', magalu: 'Magalu', amazon: 'Amazon', tiktok: 'TikTok Shop' };
+    const _canal = data.magalu ? 'magalu'
+      : (data.shopee || String(data.metodo || '').includes('shopee')) ? 'shopee'
+      : (data.canal_pedido && _NOMES_CANAL[data.canal_pedido]) ? data.canal_pedido
+      : null;
+    const _rotuloPedido = _canal ? 'Pedido ' + _NOMES_CANAL[_canal] : 'Pedido';
+    html += `<div><div class="label">${_rotuloPedido}</div><div class="valor">${order.id || '-'}</div></div>`;
+    if (order.pack_id) html += `<div><div class="label">Pack ID</div><div class="valor">${order.pack_id}</div></div>`;
+    if (order.status) html += `<div><div class="label">Status venda</div><div class="valor">${traduzirStatus(order.status)}</div></div>`;
+    if (payment.status || payment.transaction_amount_refunded) html += `<div><div class="label">Status pagamento</div><div class="valor">${traduzirPagamento(payment.status)}${payment.transaction_amount_refunded ? ' (estornado: ' + moeda(payment.transaction_amount_refunded) + ')' : ''}</div></div>`;
+    html += '</div>';
+    html += '</div>';
+  }
   // ============ ENVIO ============
   if (shipment.id) {
     html += '<div class="bloco">';

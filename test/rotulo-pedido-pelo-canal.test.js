@@ -57,9 +57,18 @@ ok(!/Order ID \(ML\)/.test(semCom), '⚠️ busca.js: "Order ID (ML)" saiu');
 ok(/data\.canal_pedido && _NOMES_CANAL\[data\.canal_pedido\]/.test(semCom) && /'Pedido ' \+ _NOMES_CANAL\[_canal\] : 'Pedido'/.test(semCom),
    '  rotulo = "Pedido <canal>" pelo canal_pedido, ou so "Pedido"');
 ok(/if \(order\.pack_id\) html \+=/.test(semCom), '  Pack ID (so do ML) aparece quando existe');
+// b670 - os campos do pedido do ML (nickname, id do comprador, data da venda, status da venda e
+// do pagamento) so aparecem com valor; sem pedido nem status o bloco Pedido some
+ok(/if \(buyerNick !== '-'\) html \+=/.test(semCom) && /if \(buyerId !== '-'\) html \+=/.test(semCom) && /if \(order\.date_created\) html \+=/.test(semCom),
+   '⚠️ b670: nickname, ID e data da venda so aparecem quando ha valor (nada de "-" em fila)');
+ok(/if \(order\.status\) html \+=/.test(semCom) && /if \(payment\.status \|\| payment\.transaction_amount_refunded\) html \+=/.test(semCom),
+   '  status da venda e do pagamento idem');
+ok(/if \(order\.id \|\| order\.status \|\| payment\.status\) \{/.test(semCom), '  sem pedido nem status, o bloco Pedido inteiro some');
+ok(!/<div class="label">Nickname<\/div><div class="valor">\$\{escapeHtml\(buyerNick\)\}<\/div><\/div>`;\n/.test(semCom.replace(/if \(buyerNick !== '-'\) html \+= `[^\n]*\n/, '')),
+   '  nenhuma linha dessas sobrou incondicional');
 // ?v= bumpado nas duas telas (a GOOD numera 47xx; a AMB/Girassol b5xx+)
-ok(Number((fs.readFileSync(path.join(RAIZ, 'public', 'index.html'), 'utf8').match(/js\/busca\.js\?v=(\d+)/) || [])[1]) >= 4788, '  index.html (GOOD): ?v= do busca.js bumpado (>= 4788)');
-ok(/js-AMB\/busca\.js\?v=b669/.test(fs.readFileSync(path.join(RAIZ, 'amb-devolucoes', 'public-AMB', 'index-AMB.html'), 'utf8')), '  index-AMB.html: ?v= do busca.js bumpado (b669)');
+ok(Number((fs.readFileSync(path.join(RAIZ, 'public', 'index.html'), 'utf8').match(/js\/busca\.js\?v=(\d+)/) || [])[1]) >= 4789, '  index.html (GOOD): ?v= do busca.js bumpado (>= 4789)');
+ok(/js-AMB\/busca\.js\?v=b67\d/.test(fs.readFileSync(path.join(RAIZ, 'amb-devolucoes', 'public-AMB', 'index-AMB.html'), 'utf8')), '  index-AMB.html: ?v= do busca.js bumpado (b669)');
 
 console.log('');
 console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
