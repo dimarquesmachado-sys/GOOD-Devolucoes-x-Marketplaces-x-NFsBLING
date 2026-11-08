@@ -275,6 +275,41 @@ async function testeTokenAceitoDeVerdade() {
   })();
 }
 
+// ── b673: a checagem da PONTE EAN com o Mover-Pedidos (divergente, b671) ──
+// Pergunta de verdade (EAN inexistente): "nada encontrado" prova rota + chave; guard/fora/
+// sem env viram AVISO (nao bloqueiam ativar). Mover-Pedidos simulado pelo adapter do axios.
+{
+  const { CHECAGENS } = require('../scripts/sonda-empresa.js');
+  const cp = CHECAGENS.find((x) => x.nome === 'ponte EAN com o Mover-Pedidos');
+  ok(!!cp, '⚠️ a sonda tem a checagem da ponte EAN');
+  const axios = require('axios');
+  const adapterOrig = axios.defaults.adapter;
+  const envUrl = process.env.MOVER_PEDIDOS_URL, envKey = process.env.MOVER_PEDIDOS_KEY;
+  process.env.MOVER_PEDIDOS_URL = 'https://mp-teste.local'; process.env.MOVER_PEDIDOS_KEY = 'k';
+  let modo = 'nada'; const urls = [];
+  axios.defaults.adapter = async (c) => {
+    urls.push(String(c.url));
+    const resp = (d, st = 200) => ({ data: d, status: st, statusText: 'OK', headers: {}, config: c });
+    if (modo === 'guard') return resp({ error: 'not found' }, 404);
+    if (modo === 'fora') throw new Error('ECONNREFUSED');
+    return resp({ ok: false, erro: 'nada encontrado p/ "0000000000000"' });
+  };
+  (async () => {
+    const r1 = await cp.fn('girassol');
+    ok(r1.ok === true && /girassol-backup-offline\/buscar-produto responde/.test(r1.detalhe) && !r1.aviso, '  Mover-Pedidos responde "nada encontrado": ok, rota e chave provadas');
+    ok(/girassol-backup-offline\/buscar-produto\?q=0000000000000&k=k$/.test(urls[urls.length - 1]), '  perguntou na pasta da FICHA (girassol-backup-offline) com um EAN de teste');
+    modo = 'guard'; const r2 = await cp.fn('ambtotal');
+    ok(r2.ok === true && /NAO respondeu/.test(r2.detalhe) && /404/.test(r2.aviso) && /nao resolve codigo de barras/.test(r2.aviso), '  404 do guard: AVISO com o efeito (nao bloqueia ativar)');
+    modo = 'fora'; const r3 = await cp.fn('good');
+    ok(r3.ok === true && /nao respondeu/i.test(r3.aviso), '  servico fora: AVISO');
+    delete process.env.MOVER_PEDIDOS_URL; const r4 = await cp.fn('girassol');
+    ok(r4.ok === true && /nao configurada/.test(r4.aviso), '  ponte sem env: AVISO');
+    axios.defaults.adapter = adapterOrig;
+    if (envUrl !== undefined) process.env.MOVER_PEDIDOS_URL = envUrl; else delete process.env.MOVER_PEDIDOS_URL;
+    if (envKey !== undefined) process.env.MOVER_PEDIDOS_KEY = envKey; else delete process.env.MOVER_PEDIDOS_KEY;
+  })();
+}
+
 // ── ⚠️ e há ROTA, porque o dono não usa terminal ────────────────────
 //
 // A sonda por linha de comando não serve para quem está configurando pelo
