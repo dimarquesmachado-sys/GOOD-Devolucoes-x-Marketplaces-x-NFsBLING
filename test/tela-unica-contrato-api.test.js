@@ -57,8 +57,13 @@ function rotasDe(arquivo) {
   for (const m of semComentario(rd(arquivo)).matchAll(/\b(?:app|router|r)\.(get|post|put|delete)\(\s*'([^']+)'/g)) out.add(m[2]);
   return out;
 }
-function rotasDoLado(raiz) {
-  const vistos = new Set(); const fila = [raiz]; const rotas = new Set();
+// r2 (Codex #543): o server.js requer app-AMB.js pra MONTAR as instancias sob prefixo
+// (/amb, /girassol) — as rotas da fabrica NAO sao rotas da raiz. Ao mapear a GOOD, a
+// fabrica fica de fora (senao uma rota da raiz que sumisse seria mascarada pela
+// equivalente da fabrica); as libs que o server.js monta direto continuam contando.
+const FABRICA = 'amb-devolucoes/app-AMB.js';
+function rotasDoLado(raiz, excluir) {
+  const vistos = new Set(excluir || []); const fila = [raiz]; const rotas = new Set();
   while (fila.length) {
     const p = fila.pop();
     if (vistos.has(p)) continue;
@@ -68,9 +73,10 @@ function rotasDoLado(raiz) {
   }
   return rotas;
 }
-const good = rotasDoLado('server.js');
-const fab = rotasDoLado('amb-devolucoes/app-AMB.js');
-ok(good.size > 150 && fab.size > 100, `  rotas mapeadas: GOOD ${good.size}, fabrica ${fab.size}`);
+const good = rotasDoLado('server.js', [FABRICA]);
+const fab = rotasDoLado(FABRICA);
+ok(good.size > 100 && fab.size > 100, `  rotas mapeadas: GOOD (raiz, sem a fabrica) ${good.size}, fabrica ${fab.size}`);
+ok(!good.has('/api/triagem/registrar') && fab.has('/api/triagem/registrar'), '  a rota so da fabrica NAO conta como rota da raiz (r2)');
 
 function atende(conjunto, caminho) {
   for (const r of conjunto) {
