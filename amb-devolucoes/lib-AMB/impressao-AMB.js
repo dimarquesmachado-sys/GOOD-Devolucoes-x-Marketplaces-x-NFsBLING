@@ -112,62 +112,22 @@ function zplDefeito({ sku, defeito, localizacao, quem, quando, nf, id }) {
 
 /** Registra as rotas no router. Todas exigem login. */
 function registrarRotas(router, requerLogin) {
-  // Certificado pro QZ do navegador
-  router.get('/api/qz/cert', requerLogin, (req, res) => {
-    if (!QZ_CERT) return res.status(404).send('');
-    res.type('text/plain').send(QZ_CERT);
-  });
-
-  // Assinatura RSA-SHA512 de cada pedido de impressao
-  router.get('/api/qz/sign', requerLogin, (req, res) => {
-    try {
-      if (!QZ_PRIVKEY) return res.status(404).send('');
-      const toSign = String(req.query.request || '');
-      if (!toSign) return res.status(400).send('');
-      const signer = crypto.createSign('RSA-SHA512');
-      signer.update(toSign); signer.end();
-      res.type('text/plain').send(signer.sign(QZ_PRIVKEY, 'base64'));
-    } catch (e) {
-      res.status(500).send('erro: ' + e.message);
-    }
-  });
-
-  // O celular poe a etiqueta na fila
-  // ⚠️ b348 (Codex, P1) - A TROCA CEGA RENOMEOU A ROTA.
+  // b672 - A FILA/ESTACAO DE IMPRESSAO E A MESMA PECA DA GOOD (lib/rotas-impressao).
   //
-  // `/api/etiqueta/fila` virou `/api/etiqueta/IMPR.fila` — o `sed` nao sabe
-  // o que e codigo e o que e TEXTO. O front (`public/js/etiqueta.js`) chama
-  // a rota certa, entao a fila de impressao simplesmente parou de existir.
-  //
-  // ⚠️ E ISSO NAO DA ERRO NO BOOT: a rota sobe, com o nome errado. So
-  // quebra quando alguem manda imprimir — no galpao, com etiqueta na mao.
-
-  router.post('/api/etiqueta/fila', requerLogin, (req, res) => {
-    const b = req.body || {};
-    if (!b.sku) return res.status(400).json({ ok: false, erro: 'falta o sku' });
-    const zpl = zplDefeito({
-      sku: b.sku, defeito: b.defeito, localizacao: b.localizacao,
-      quem: req.usuario, nf: b.nf,
-    });
-    IMPR.fila.push({ id: Date.now() + '-' + Math.random().toString(36).slice(2, 7), zpl, criado: Date.now() });
-    if (IMPR.fila.length > 50) IMPR.fila.shift();
-    res.json({
-      ok: true,
-      na_fila: IMPR.fila.length,
-      estacao_ativa: (Date.now() - IMPR.ultimoPoll) < 20000,
-      aviso: (Date.now() - IMPR.ultimoPoll) >= 20000
-        ? 'nenhuma estacao de impressao ativa - abra o painel num computador com QZ Tray'
-        : null,
-    });
+  // A tela de bipe e unica (public/js/etiqueta.js serve as 3) e fala o contrato da
+  // GOOD: `POST /api/etiqueta/fila` com { zpl, resumo } e a estacao faz long-poll em
+  // `GET /api/etiqueta/fila/proximo?espera=25` esperando { job: { zpl, resumo, por } }.
+  // Aqui a fabrica tinha OUTRO contrato (POST com { sku } e GET /api/etiqueta/proxima),
+  // sem nenhum chamador: na Girassol/AMB o enfileirar dava 400 "falta o sku" e a
+  // estacao batia num 404 em loop — etiqueta so saia com a Zebra ligada no proprio PC
+  // do bipe. Nivelar por cima: monta a lib da GOOD neste router (o estado da fila e
+  // criado POR CHAMADA dentro dela — uma fila por empresa, nada vaza entre instancias)
+  // com o requerLogin desta empresa. cert/sign tambem vem de la (mesmo QZ_CERT/QZ_PRIVKEY
+  // do servico). Fica o preview do ZPL de defeito (conferencia).
+  require('../../lib/rotas-impressao')(router, {
+    requerEstoquista: requerLogin, crypto,
+    sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
   });
-
-  // A estacao (painel aberto num PC) busca a proxima
-  router.get('/api/etiqueta/proxima', requerLogin, (req, res) => {
-    IMPR.ultimoPoll = Date.now();
-    const prox = IMPR.fila.shift() || null;
-    res.json({ ok: true, etiqueta: prox, restam: IMPR.fila.length });
-  });
-
   // Preview do ZPL (debug / conferencia)
   router.get('/api/etiqueta/preview', requerLogin, (req, res) => {
     res.type('text/plain').send(zplDefeito({
@@ -177,18 +137,7 @@ function registrarRotas(router, requerLogin) {
       quem: req.usuario,
     }));
   });
-
-  router.get('/api/etiqueta/status', requerLogin, (req, res) => {
-    res.json({
-      ok: true,
-      qz_configurado: !!(QZ_CERT && QZ_PRIVKEY),
-      na_fila: IMPR.fila.length,
-      estacao_ativa: (Date.now() - IMPR.ultimoPoll) < 20000,
-    });
-  });
 }
-
-
 return { registrarRotas, zplDefeito, qzConfigurado: () => !!(QZ_CERT && QZ_PRIVKEY) };
 }
 
