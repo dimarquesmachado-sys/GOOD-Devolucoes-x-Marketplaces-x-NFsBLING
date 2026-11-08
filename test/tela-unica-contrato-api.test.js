@@ -54,12 +54,26 @@ function formasDoTexto(texto) {
 }
 
 // ── rotas de cada lado ──────────────────────────────────────────────
+// r5 (Codex #543): carregar um modulo NAO e montar as rotas dele. So conta o require cuja
+// peca e INVOCADA: `require('x')(…)` direto, `const N = require('x')` com `N(`/`N.algo(`
+// usado depois, ou `const { a, b } = require('x')` com `a(`/`b(` usado. Require solto
+// (so carrega) nao traz rota nenhuma.
 function requiresDe(arquivo) {
   const out = new Set();
-  for (const m of semComentario(rd(arquivo)).matchAll(/require\('(\.{1,2}\/[^']+)'\)/g)) {
-    let alvo = path.normalize(path.join(path.dirname(arquivo), m[1]));
+  const texto = semComentario(rd(arquivo));
+  for (const m of texto.matchAll(/(?:(const|let|var)\s+(\{[^}]*\}|[A-Za-z_$][\w$]*)\s*=\s*)?require\('(\.{1,2}\/[^']+)'\)(\s*\()?/g)) {
+    let alvo = path.normalize(path.join(path.dirname(arquivo), m[3]));
     if (!alvo.endsWith('.js')) alvo += '.js';
-    if (fs.existsSync(path.join(RAIZ, alvo))) out.add(alvo);
+    if (!fs.existsSync(path.join(RAIZ, alvo))) continue;
+    let invocado = !!m[4];   // require('x')(
+    if (!invocado && m[2]) {
+      const nomes = m[2].startsWith('{')
+        ? [...m[2].matchAll(/([A-Za-z_$][\w$]*)\s*(?:,|\}|:\s*([A-Za-z_$][\w$]*))/g)].map((x) => x[2] || x[1])
+        : [m[2]];
+      const resto = texto.slice(0, m.index) + texto.slice(m.index + m[0].length);
+      invocado = nomes.some((n) => new RegExp('\\b' + n.replace(/\$/g, '\\$') + '\\s*(?:\\(|\\.[A-Za-z_$][\\w$]*\\s*\\()').test(resto));
+    }
+    if (invocado) out.add(alvo);
   }
   return out;
 }
