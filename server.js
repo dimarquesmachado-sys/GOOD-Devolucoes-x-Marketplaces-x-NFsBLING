@@ -975,15 +975,7 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
   // numero do pedido (ml/amazon/shopee/magalu/tiktok, so com confianca alta ou
   // media; senao null). E so rotulo — a triagem continua gravando o canal pela
   // regra dela (ultimaBusca.marketplace / metodo).
-  const enviar = (r) => {
-    try {
-      if (r && typeof r === 'object' && r.canal_pedido === undefined) {
-        const idPedido = r.order && r.order.id != null ? String(r.order.id) : '';
-        r.canal_pedido = idPedido ? (require('./lib/marketplace-exibido').marketplacePeloPedido(idPedido) || null) : null;
-      }
-    } catch (e) { /* rotulo e enfeite: nunca derruba a resposta */ }
-    return res.json(r);
-  };
+  const enviar = (r) => res.json(require('./lib/marketplace-exibido').anexarCanalPedido(r));   // r2 (Codex #539): helper unico, a fabrica usa o mesmo
   // ⚠️ b475 - NOME PURO NAO E RASTREIO. Um texto SEM NENHUM DIGITO nunca e
   // etiqueta de ML, Correios (AD/AP...BR), Shopee (BR...Z), Magalu, TikTok
   // (18 digitos) nem chave/numero de NF. Mas o bipe por nome passava por

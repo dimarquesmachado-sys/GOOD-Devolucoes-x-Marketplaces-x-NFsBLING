@@ -32,26 +32,23 @@ const rota = srv.slice(ini, fim).split('\n').filter((l) => !l.trim().startsWith(
 ok(ini > 0 && fim > ini, '⚠️ achei a rota de identificacao');
 ok(!/res\.json\(resultado\)/.test(rota), '  nenhuma saida `res.json(resultado)` crua sobrou na rota');
 ok((rota.match(/enviar\(resultado\)/g) || []).length >= 5, '  as saidas passam por enviar(resultado) (' + (rota.match(/enviar\(resultado\)/g) || []).length + ')');
-ok(/r\.canal_pedido = idPedido \? \(require\('\.\/lib\/marketplace-exibido'\)\.marketplacePeloPedido\(idPedido\) \|\| null\) : null;/.test(rota),
-   '  enviar() anexa canal_pedido pelo detector da casa (null quando nao ha pedido/confianca)');
 
-// ── 2b. enviar() de verdade: extraio o helper e exercito com res falso ──
-const iniEnviar = rota.indexOf('const enviar = (r) => {');
-const fimEnviar = rota.indexOf('};', iniEnviar) + 2;
-const corpo = rota.slice(iniEnviar, fimEnviar);
-// eslint-disable-next-line no-new-func
-const fabrica = new Function('res', 'require', corpo + '\nreturn enviar;');
-const req2 = (m) => require(path.join(RAIZ, m.replace('./', '')));
-let enviado = null;
-const enviar = fabrica({ json: (x) => { enviado = x; return x; } }, req2);
-enviar({ ok: true, order: { id: '702-2868620-1873028' } });
-ok(enviado && enviado.canal_pedido === 'amazon', '⚠️ resposta com pedido Amazon sai com canal_pedido: amazon');
-enviar({ ok: true, order: { id: '2000012345678901' } });
-ok(enviado && enviado.canal_pedido === 'ml', '  pedido ML sai com canal_pedido: ml');
-enviar({ ok: true, order: {} });
-ok(enviado && enviado.canal_pedido === null, '  sem numero do pedido: null');
-enviar({ ok: false, erro: 'x' });
-ok(enviado && enviado.canal_pedido === null && enviado.ok === false, '  resposta de erro passa intacta (so ganha o campo)');
+// ── 2b. o helper de PRODUCAO (lib) — GOOD e fabrica usam o MESMO (Codex #539) ──
+const { anexarCanalPedido } = require('../lib/marketplace-exibido');
+ok(anexarCanalPedido({ ok: true, order: { id: '702-2868620-1873028' } }).canal_pedido === 'amazon', '⚠️ resposta com pedido Amazon sai com canal_pedido: amazon');
+ok(anexarCanalPedido({ ok: true, order: { id: '2000012345678901' } }).canal_pedido === 'ml', '  pedido ML sai com canal_pedido: ml');
+ok(anexarCanalPedido({ ok: true, order: {} }).canal_pedido === null, '  sem numero do pedido: null');
+const erroR = anexarCanalPedido({ ok: false, erro: 'x' });
+ok(erroR.canal_pedido === null && erroR.ok === false, '  resposta de erro passa intacta (so ganha o campo)');
+ok(anexarCanalPedido({ canal_pedido: 'shopee', order: { id: '2000012345678901' } }).canal_pedido === 'shopee', '  campo ja preenchido nao e sobrescrito');
+ok(/const enviar = \(r\) => res\.json\(require\('\.\/lib\/marketplace-exibido'\)\.anexarCanalPedido\(r\)\)/.test(rota),
+   '  a GOOD usa o helper da lib (nao uma copia)');
+const fab = fs.readFileSync(path.join(RAIZ, 'amb-devolucoes', 'lib-AMB', 'identificar-AMB.js'), 'utf8').split('\n').filter((l) => !l.trim().startsWith('//')).join('\n');
+ok(/return require\('\.\.\/\.\.\/lib\/marketplace-exibido'\)\.anexarCanalPedido\(resultado\);/.test(fab),
+   '⚠️ a FABRICA (AMB/Girassol) anexa o canal em comRecados — por onde passam todas as saidas');
+const saidasFab = (fab.match(/res\.json\(/g) || []).length;
+const saidasComRecados = (fab.match(/res\.json\(await comRecados\(resultado/g) || []).length;
+ok(saidasFab > 0 && saidasFab === saidasComRecados, `  todas as ${saidasFab} saidas da fabrica passam por comRecados (nenhuma crua)`);
 
 // ── 3. o front rotula pelo canal e nunca mais assume ML ──
 const front = fs.readFileSync(path.join(RAIZ, 'public', 'js', 'busca.js'), 'utf8');
