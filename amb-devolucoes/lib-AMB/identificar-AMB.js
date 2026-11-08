@@ -122,7 +122,10 @@ module.exports = function registrarIdentificar(app, deps) {
     } catch (e) {
       resultado.recados = [];   // recado e ajuda, nunca trava o bipe
     }
-    return resultado;
+    // b669 r2 (Codex #539): o canal do pedido vai na resposta aqui tambem — a
+    // tela de bipe e UNICA e rotula pelo `canal_pedido`; sem isto a Girassol/AMB
+    // mostrariam so "Pedido". Mesmo helper da GOOD (lib/marketplace-exibido).
+    return require('../../lib/marketplace-exibido').anexarCanalPedido(resultado);
   }
 
   // b523 - AUDITORIA (Codex, 04/10): antes de QUALQUER "nao encontrado" o bipe consulta a CAPTURA PERSISTENTE

@@ -613,7 +613,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.126.179 (b668: deteccao da Bridge/Toolbox nao perde a corrida do carregamento — Gerar NF volta a achar a extensao)',
+      version: '9.126.180 (b669: o rotulo do pedido no bipe segue o canal detectado — nunca mais Order ID (ML) em pedido Amazon)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -968,6 +968,14 @@ async function anexarCapturadas(resultado, ids) {
 }
 app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
   const codigoOriginal = String(req.params.codigo || '').trim();
+  // b669 - O CANAL DO PEDIDO VAI NA RESPOSTA, pelo detector da casa. A tela
+  // rotulava "Order ID (ML)" em pedido Amazon (702-2868620-1873028, NF 080932,
+  // 07/11): o front nao tem o detector, e a resposta nao dizia o canal. Toda
+  // saida desta rota passa por `enviar`, que anexa `canal_pedido` a partir do
+  // numero do pedido (ml/amazon/shopee/magalu/tiktok, so com confianca alta ou
+  // media; senao null). E so rotulo — a triagem continua gravando o canal pela
+  // regra dela (ultimaBusca.marketplace / metodo).
+  const enviar = (r) => res.json(require('./lib/marketplace-exibido').anexarCanalPedido(r));   // r2 (Codex #539): helper unico, a fabrica usa o mesmo
   // ⚠️ b475 - NOME PURO NAO E RASTREIO. Um texto SEM NENHUM DIGITO nunca e
   // etiqueta de ML, Correios (AD/AP...BR), Shopee (BR...Z), Magalu, TikTok
   // (18 digitos) nem chave/numero de NF. Mas o bipe por nome passava por
@@ -1427,7 +1435,7 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
         : `NF ${nfCh.numero} (serie ${nfCh.serie}) localizada pelo numero digitado`,
     });
     console.log(`[BUSCA] OK (${ehChaveNFe ? 'CHAVE' : 'NUMERO'}) | NF=${nfCh.numero} pedido=${nfCh.numeroPedidoLoja || '-'}`);
-    return res.json(resultado);
+    return enviar(resultado);
   }
 
   // ===== MAGALU: protocolo da etiqueta, reverse_code ou pedido =====
@@ -1563,7 +1571,7 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
         mensagem: `Devolucao MAGALU - protocolo ${devMag.protocolo}${devMag.status ? ' (' + devMag.status + ')' : ''}${nfMag ? ' - NF ' + nfMag.numero : ' - NF nao localizada no Bling'}`,
       });
       console.log(`[BUSCA] OK (MAGALU) | protocolo=${devMag.protocolo} pedido=${devMag.pedido} NF=${nfMag ? nfMag.numero : '-'}`);
-      res.json(resultado);
+      enviar(resultado);
       return true;
     }
     return false;
@@ -1649,7 +1657,7 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
           }
 
           console.log(`[BUSCA] TIKTOK: id=${d.id} pedido=${d.pedido} vai_chegar=${d.vai_chegar}`);
-          return res.json(resultado);
+          return enviar(resultado);
         }
       } catch (e) {
         resultado.tentativas.push({ tipo: 'tiktok_devolucao', codigo: codigoOriginal, ok: false, status: 500, erro: String(e.message || e).slice(0, 160) });
@@ -2030,7 +2038,7 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
     resultado.shopee = devShopee;
     resultado.nf = nfData;
     console.log(`[BUSCA] OK (SHOPEE) | NF=${nfData ? nfData.numero : 'nao'}`);
-    return res.json(resultado);
+    return enviar(resultado);
   }
 
   // ML: ORDER (3 caminhos)
@@ -2326,7 +2334,7 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
   resultado.nf = nfData;
 
   console.log(`[BUSCA] OK | Order=${!!order} | NF=${nfData ? 'sim' : 'nao'}`);
-  return res.json(resultado);
+  return enviar(resultado);
 });
 
 // ============================================================
