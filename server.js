@@ -613,7 +613,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.126.181 (b670: bipe sem campos vazios do ML em pedido de outro canal — linha so com valor, bloco Pedido so com pedido)',
+      version: '9.126.182 (b671: divergente resolve codigo de barras tambem na Girassol/AMB — pela ponte ao indice EAN do Mover-Pedidos)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -2906,6 +2906,12 @@ app.get('/api/produto/ean-por-sku/:sku', requerLogin, async (req, res) => {
       indiceIncompleto = IDX_PROD.erro ? `o indice de produtos falhou (${IDX_PROD.erro})`
         : (IDX_PROD.ts && IDX_PROD.paginacaoCompleta !== true) ? `o indice de produtos esta TRUNCADO (teto de 40 paginas; ${itens.length} produtos lidos)`
           : `o indice de codigos de barras ainda esta carregando (${feitos} de ${itens.length} produtos)`;
+      // b671 - indice sem condicao de responder: pergunta ao Mover-Pedidos (indice
+      // EAN->produto da GOOD em disco, la) antes de dizer "nao sei" — a mesma ponte
+      // que as instancias usam (lib/produto-por-ean-ponte).
+      const rp = await require('./lib/produto-por-ean-ponte').produtoPorEanNoMoverPedidos('good', soDigitos);
+      if (rp.ok) return res.json({ ok: true, encontrado: true, sku, via: rp.via, produto: rp.produto });
+      indiceIncompleto += `; e o Mover-Pedidos: ${rp.motivo}`;
     }
   }
   // SKU: so match EXATO (o `?codigo=` do Bling e busca de parecidos; sem exato nao ha produto)

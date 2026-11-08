@@ -1000,10 +1000,30 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
     const sku = String(req.params.sku || '').trim();
     if (!sku) return res.status(400).json({ ok: false, erro: 'sku obrigatorio' });
     try {
+      // b671 - PARIDADE COM A GOOD (b666): no divergente (`?ean=1`) o codigo e um
+      // codigo de barras. A GOOD resolve pelo indice dela; as instancias nao tem
+      // (nem devem ter) indice — perguntam ao Mover-Pedidos, que mantem o indice
+      // EAN->produto desta empresa em disco (lib/produto-por-ean-ponte). Sem o
+      // flag, SKU e SKU (a bipagem chama assim). Ponte fora/nada la: segue pro
+      // SKU exato e o motivo vai na resposta.
+      const modoEan = String(req.query.ean || '') === '1';
+      const soDigitos = sku.replace(/\D/g, '');
+      const pareceEan = soDigitos.length >= 8 && soDigitos.length <= 14 && soDigitos === sku;
+      let motivoPonte = null;
+      if (modoEan && pareceEan) {
+        const { produtoPorEanNoMoverPedidos } = require('../../lib/produto-por-ean-ponte');
+        const rp = await produtoPorEanNoMoverPedidos(cfgEmpresa.CHAVE_REGISTRO, soDigitos);
+        if (rp.ok) return res.json({ ok: true, encontrado: true, sku, via: rp.via, produto: rp.produto });
+        motivoPonte = rp.motivo || null;
+      }
       const r = await bling.buscarProdutoPorSku(sku);
       if (!r.ok) return res.status(200).json({ ok: false, erro: r.erro || 'falha no Bling' });
       const exato = r.exato;
-      if (!exato) return res.json({ ok: true, encontrado: false, sku });
+      if (!exato) {
+        return res.json({ ok: true, encontrado: false, sku,
+          motivo: motivoPonte ? `${motivoPonte} — e o Bling nao tem produto com o codigo exato ${sku}`
+            : `o Bling nao tem produto com o codigo exato ${sku}` });
+      }
 
       let ean = eanDoProduto(exato);
       let det = null;
