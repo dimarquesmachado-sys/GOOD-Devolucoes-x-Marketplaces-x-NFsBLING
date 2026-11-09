@@ -33,7 +33,8 @@ axios.defaults.adapter = async (config) => {
   if (modo === 'nada') return resp({ ok: false, erro: 'nada encontrado p/ "7898680302865"' });
   if (modo === '503json') return resp({ ok: false, erro: 'servico indisponivel' }, 503);
   if (modo === 'html') return resp('<html><body>login</body></html>', 200);
-  if (modo === 'recusa') return resp({ ok: false, erro: 'busca vazia' });
+  if (modo === 'recusa') return resp({ ok: false, erro: 'filtro invalido' });
+  if (modo === 'vazia') return resp({ ok: false, erro: 'busca vazia' });
   if (modo === 'sem_produto') return resp({ ok: true });
   return resp({ ok: true, produto: { id: 123, sku: 'SKUMF801S', nome: 'Luminaria Chao Piso 801s', ean: '7898680302865', estoque: 3 } });
 };
@@ -48,8 +49,8 @@ const { produtoPorEanNoMoverPedidos, pastaDoCheckout } = require('../lib/produto
   const r1 = await produtoPorEanNoMoverPedidos('girassol', '7898680302865');
   ok(r1.ok === true && r1.via === 'mover-pedidos' && r1.produto.codigo === 'SKUMF801S' && r1.produto.gtin === '7898680302865' && r1.produto.id === 123,
      '⚠️ EAN conhecido la: produto { id, nome, codigo, gtin } via mover-pedidos');
-  ok(/^\/girassol-backup-offline\/buscar-produto\?q=7898680302865&k=chave-de-teste$/.test(chamadas[chamadas.length - 1]),
-     '  chamou /<pasta>/buscar-produto?q=<ean>&k=<MOVER_PEDIDOS_KEY> (' + chamadas[chamadas.length - 1] + ')');
+  ok(/^\/girassol-backup-offline\/buscar-produto\?q=7898680302865&so_indice=1&k=chave-de-teste$/.test(chamadas[chamadas.length - 1]),
+     '  chamou /<pasta>/buscar-produto?q=<ean>&so_indice=1&k=<MOVER_PEDIDOS_KEY> — so indice, sem varrer o Bling (' + chamadas[chamadas.length - 1] + ')');
   modo = 'nada';
   const r2 = await produtoPorEanNoMoverPedidos('ambtotal', '7898680302865');
   ok(r2.ok === false && /nada encontrado/.test(r2.motivo) && !r2.ponte_fora && r2.nao_encontrado === true, '  nada la: ok:false + nao_encontrado (o Mover-Pedidos olhou e NAO TEM — nao e "ponte fora")');
@@ -81,6 +82,24 @@ const { produtoPorEanNoMoverPedidos, pastaDoCheckout } = require('../lib/produto
   const r8 = await produtoPorEanNoMoverPedidos('girassol', '7898680302865');
   ok(r8.ok === false && r8.ponte_fora === true && /nao configurada/.test(r8.motivo), '  ponte nao configurada: ponte_fora com motivo (nao derruba a rota)');
   process.env.MOVER_PEDIDOS_URL = guardaUrl;
+  // ── b674: pingPonte — prova rota + chave SEM gastar cota (q vazio -> "busca vazia") ──
+  const { pingPonte } = require('../lib/produto-por-ean-ponte');
+  modo = 'vazia';
+  const p1 = await pingPonte('girassol');
+  ok(p1.ok === true && p1.pasta === 'girassol-backup-offline' && /busca vazia/.test(p1.detalhe), '⚠️ ping: 200 { ok:false, erro:"busca vazia" } = rota e chave conferidas');
+  ok(/^\/girassol-backup-offline\/buscar-produto\?k=chave-de-teste$/.test(chamadas[chamadas.length - 1]), '  o ping vai SEM q (nenhuma consulta no Mover-Pedidos, zero Bling)');
+  modo = 'guard'; const p2 = await pingPonte('ambtotal');
+  ok(p2.ok === false && p2.ponte_fora === true && /404/.test(p2.motivo) && p2.pasta === 'amb-checkout-offline', '  ping com 404 do guard: ponte_fora, pasta informada');
+  modo = 'fora'; const p3 = await pingPonte('good');
+  ok(p3.ok === false && p3.ponte_fora === true, '  ping com servico fora: ponte_fora');
+  modo = 'html'; const p4 = await pingPonte('girassol');
+  ok(p4.ok === false && p4.ponte_fora === true && /inesperada/.test(p4.motivo), '  ping com HTML: inesperado = ponte_fora');
+  modo = 'acha'; const p5 = await pingPonte('girassol');
+  ok(p5.ok === false && /inesperada/.test(p5.motivo), '  ping respondido com produto (nao e o que o q vazio devolve): inesperado');
+  const p6 = await pingPonte('aurora');
+  ok(p6.ok === false && !p6.pasta && /fora do registro/.test(p6.motivo), '  empresa fora do registro: recusa sem chamar');
+  modo = 'acha';
+
   axios.defaults.adapter = adapterOrig;
 
   // ── as rotas usam a peca ──
