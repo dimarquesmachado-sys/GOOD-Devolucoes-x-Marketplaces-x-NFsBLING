@@ -613,7 +613,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.126.184 (b673: a sonda da empresa confere a ponte EAN com o Mover-Pedidos — checklist do CNPJ novo)',
+      version: '9.126.185 (b674: sonda fiel a producao — token do Bling pelo endpoint certo, batimento da captura das 3, ponte EAN sem gastar cota)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -2628,7 +2628,8 @@ app.get('/api/admin/sonda-empresa/:chave', async (req, res) => {
     const { sondar } = require('./scripts/sonda-empresa');
     const chave = String(req.params.chave || '').trim().toLowerCase();
     // b526 (Codex #433): o batimento da captura vive na memoria deste servidor (so a GOOD roda aqui)
-    const linhas = await sondar(chave, { capturaEstado: (emp) => (emp === 'good' ? CAPTURA_ESTADO : null) });
+    // b674 - antes so a GOOD tinha batimento aqui; agora qualquer empresa registrada (lib/batimento-captura)
+    const linhas = await sondar(chave, { capturaEstado: (emp) => require('./lib/batimento-captura').lerBatimento(emp) });
     const reprovadas = linhas.filter((l) => !l.ok).length;
     return res.json({
       ok: reprovadas === 0,
@@ -9175,6 +9176,8 @@ let CAPTURA_ULTIMA = 0;
 let CAPTURA_FALHOU = false;   // b518: falha de gravacao = nova tentativa em 5 min
 let CAPTURA_RODANDO = false;
 let CAPTURA_ESTADO = { ultima: null, gravadas: 0, erro: null };
+// b674 - a sonda le o batimento de QUALQUER empresa por aqui (a fabrica registra o dela)
+require('./lib/batimento-captura').registrarBatimento('good', () => CAPTURA_ESTADO);
 
 // b186 - quantas devolucoes do TikTok puxar por ciclo. 200 cobre o
 // corrente com folga; o forcar pode pedir mais pra carga historica.

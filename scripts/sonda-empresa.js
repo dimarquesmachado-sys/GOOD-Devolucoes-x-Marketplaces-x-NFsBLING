@@ -40,9 +40,9 @@ function papelDaChaveSupabase(key) {
 }
 
 /**
- * Testa um access token com UMA chamada real, de leitura, ao endpoint que
- * `lib/empresas.js:descobrirFicha` já usa pra descobrir a ficha (mesma rota,
- * mesmo formato de URL absoluta) — provado seguro em produção.
+ * Testa um access token com UMA chamada real, de leitura, a um endpoint que
+ * existe em toda conta do Bling v3 (`/situacoes/modulos`; o antigo `/situacoes`
+ * dava 404 e invalidava a prova).
  *
  * @returns {{aceito: true|false|null, motivo?: string}} `null` = rede/serviço
  * não confirmou nada (não é prova de token ruim, mas também não é "pode
@@ -50,7 +50,10 @@ function papelDaChaveSupabase(key) {
  */
 async function testarTokenBling(access, apiBase) {
   try {
-    const url = `${apiBase}/situacoes?limite=1&pagina=1`;
+    // b674 - `GET /situacoes` NAO existe na v3 (404 em producao, 09/11: a sonda dizia "nao consegui
+    // confirmar" e reprovava empresas que emitem NF todo dia). O que existe e barato e de leitura e
+    // `/situacoes/modulos` (lista os modulos que tem situacao; nenhum parametro; igual em toda conta).
+    const url = `${apiBase}/situacoes/modulos`;
     const r = await fetch(url, {
       headers: { Authorization: `Bearer ${access}`, Accept: 'application/json' },
       signal: AbortSignal.timeout(8000),
@@ -432,16 +435,14 @@ registrar('canais (Magalu, Shopee, TikTok)', async (chave) => {
 // encontrado" (prova rota + chave); 404 do guard, servico fora ou ponte sem env vira
 // AVISO (nao bloqueia ativar: a empresa opera; so o codigo de barras do divergente cai no SKU).
 registrar('ponte EAN com o Mover-Pedidos', async (chave) => {
-  const { produtoPorEanNoMoverPedidos, pastaDoCheckout } = require('../lib/produto-por-ean-ponte');
-  let pasta = null;
-  try { pasta = pastaDoCheckout(chave); } catch (e) { return { ok: false, detalhe: 'sem pasta', erro: 'ficha sem pastaCheckout/chaveDados: ' + String(e.message || e) }; }
-  const r = await produtoPorEanNoMoverPedidos(chave, '0000000000000', { timeoutMs: 8000 });
-  if (r.ok) return { ok: true, detalhe: `/${pasta}/buscar-produto responde (o EAN de teste ate achou produto: ${r.produto.codigo})` };
-  // r2 (Codex #544): SO o "nada encontrado" explicito prova a ponte; qualquer outra resposta
-  // (HTTP de erro, HTML, JSON sem produto, servico fora, sem env) e AVISO — nao bloqueia ativar
-  // (a empresa opera), mas diz o efeito.
-  if (r.nao_encontrado) return { ok: true, detalhe: `/${pasta}/buscar-produto responde (${String(r.motivo || '').slice(0, 80)})` };
-  return { ok: true, detalhe: `/${pasta}/buscar-produto NAO respondeu direito`, aviso: r.motivo + ' — ate resolver, o divergente nao resolve codigo de barras nesta empresa (cai no SKU)' };
+  // b674 - PING, nao busca: um EAN inexistente mandava o Mover-Pedidos varrer o Bling (~25 chamadas
+  // na cota da empresa) e estourava 8 s — a sonda reprovava uma ponte que funciona. O ping prova rota
+  // + chave sem consulta nenhuma; ponte fora e AVISO (nao bloqueia ativar), com o efeito dito.
+  const { pingPonte } = require('../lib/produto-por-ean-ponte');
+  const r = await pingPonte(chave, { timeoutMs: 8000 });
+  if (r.ok) return { ok: true, detalhe: `/${r.pasta}/buscar-produto: ${r.detalhe}` };
+  if (!r.pasta) return { ok: false, detalhe: 'sem pasta', erro: r.motivo };
+  return { ok: true, detalhe: `/${r.pasta}/buscar-produto NAO respondeu direito`, aviso: r.motivo + ' — ate resolver, o divergente nao resolve codigo de barras nesta empresa (cai no SKU)' };
 });
 
 registrar('estado no contrato', async (chave) => {

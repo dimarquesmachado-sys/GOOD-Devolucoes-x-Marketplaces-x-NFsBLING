@@ -294,12 +294,12 @@ async function testeTokenAceitoDeVerdade() {
     if (modo === 'fora') throw new Error('ECONNREFUSED');
     if (modo === '503') return resp({ ok: false, erro: 'servico indisponivel' }, 503);
     if (modo === 'html') return resp('<html>login</html>', 200);
-    return resp({ ok: false, erro: 'nada encontrado p/ "0000000000000"' });
+    return resp({ ok: false, erro: 'busca vazia' });   // b674: o ping vai sem q
   };
   (async () => {
     const r1 = await cp.fn('girassol');
-    ok(r1.ok === true && /girassol-backup-offline\/buscar-produto responde/.test(r1.detalhe) && !r1.aviso, '  Mover-Pedidos responde "nada encontrado": ok, rota e chave provadas');
-    ok(/girassol-backup-offline\/buscar-produto\?q=0000000000000&k=k$/.test(urls[urls.length - 1]), '  perguntou na pasta da FICHA (girassol-backup-offline) com um EAN de teste');
+    ok(r1.ok === true && /girassol-backup-offline\/buscar-produto: rota e chave conferidas/.test(r1.detalhe) && !r1.aviso, '  Mover-Pedidos responde "busca vazia" ao ping: ok, rota e chave provadas');
+    ok(/girassol-backup-offline\/buscar-produto\?k=k$/.test(urls[urls.length - 1]), '  b674: pingou na pasta da FICHA SEM q — nenhuma busca, zero cota do Bling');
     modo = 'guard'; const r2 = await cp.fn('ambtotal');
     ok(r2.ok === true && /NAO respondeu/.test(r2.detalhe) && /404/.test(r2.aviso) && /nao resolve codigo de barras/.test(r2.aviso), '  404 do guard: AVISO com o efeito (nao bloqueia ativar)');
     modo = 'fora'; const r3 = await cp.fn('good');
@@ -308,13 +308,32 @@ async function testeTokenAceitoDeVerdade() {
     modo = '503'; const r3b = await cp.fn('good');
     ok(r3b.ok === true && r3b.aviso && /503/.test(r3b.aviso), '  HTTP 503 com JSON de erro: AVISO (nao aprova)');
     modo = 'html'; const r3c = await cp.fn('good');
-    ok(r3c.ok === true && r3c.aviso && /sem JSON/.test(r3c.aviso), '  HTTP 200 com HTML: AVISO (nao aprova)');
+    ok(r3c.ok === true && r3c.aviso && /inesperada/.test(r3c.aviso), '  HTTP 200 com HTML: AVISO (resposta inesperada ao ping, nao aprova)');
     delete process.env.MOVER_PEDIDOS_URL; const r4 = await cp.fn('girassol');
     ok(r4.ok === true && /nao configurada/.test(r4.aviso), '  ponte sem env: AVISO');
     axios.defaults.adapter = adapterOrig;
     if (envUrl !== undefined) process.env.MOVER_PEDIDOS_URL = envUrl; else delete process.env.MOVER_PEDIDOS_URL;
     if (envKey !== undefined) process.env.MOVER_PEDIDOS_KEY = envKey; else delete process.env.MOVER_PEDIDOS_KEY;
   })();
+}
+
+// ── b674: o BATIMENTO da captura das 3 num registro so, lido pela rota da sonda ──
+{
+  const bat = require('../lib/batimento-captura');
+  let estado = { ultima: null, gravadas: 0, erro: null };
+  bat.registrarBatimento('teste-bat', () => estado);
+  ok(bat.lerBatimento('teste-bat') && bat.lerBatimento('TESTE-BAT').ultima === null, '⚠️ registrarBatimento/lerBatimento: getter por chaveDados (sem caixa)');
+  estado = { ultima: new Date().toISOString(), gravadas: 3, erro: null };
+  ok(bat.lerBatimento('teste-bat').gravadas === 3, '  e um getter: a troca inteira do estado (como a captura faz) aparece na leitura');
+  ok(bat.lerBatimento('nao-registrada') === null, '  empresa sem batimento: null (a checagem cai no caminho do banco)');
+  const _R = path.join(__dirname, '..');
+  const srv = fs.readFileSync(path.join(_R, 'server.js'), 'utf8');
+  const app = fs.readFileSync(path.join(_R, 'amb-devolucoes', 'app-AMB.js'), 'utf8');
+  ok(/registrarBatimento\('good', \(\) => CAPTURA_ESTADO\)/.test(srv), '  a GOOD registra o dela');
+  ok(/registrarBatimento\(CHAVE_DADOS, \(\) => CAPTURA\.estado\)/.test(app), '  cada instancia da fabrica registra o seu (chaveDados)');
+  ok(/capturaEstado: \(emp\) => require\('\.\/lib\/batimento-captura'\)\.lerBatimento\(emp\)/.test(srv), '  a rota /api/admin/sonda-empresa le qualquer empresa pelo registro (antes: so a GOOD)');
+  const sonda = fs.readFileSync(path.join(_R, 'scripts', 'sonda-empresa.js'), 'utf8');
+  ok(/\/situacoes\/modulos`/.test(sonda) && !/\/situacoes\?limite=1/.test(sonda), '⚠️ a prova do token do Bling usa /situacoes/modulos (o /situacoes dava 404 e reprovava empresa boa)');
 }
 
 // ── ⚠️ e há ROTA, porque o dono não usa terminal ────────────────────
