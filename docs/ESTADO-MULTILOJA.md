@@ -16,7 +16,7 @@
 ## Como medir, em vez de confiar nesta página
 
 ```
-node verifica.js                                   # 107 testes + boot real
+node verifica.js                                   # a bateria inteira (~250 testes) + boot real
 node test/duas-empresas-juntas.test.js             # o isolamento, e o que falta
 node -e "console.log(require('./lib/empresas').conferirEmpresa('girassol'))"
 ```
@@ -24,6 +24,24 @@ node -e "console.log(require('./lib/empresas').conferirEmpresa('girassol'))"
 O `duas-empresas-juntas` monta **duas empresas diferentes** no mesmo processo e
 prova que sessão, cache, tabela e fila não se cruzam. Ele também **lista** o que
 ainda estiver cravado na AMB, em cada forma conhecida.
+
+Testes que travam a **paridade GOOD × fábrica** (a tela de bipe e o painel admin
+são únicos pras três; cada um destes nasceu de uma regressão real — rodam todos
+no `verifica.js`):
+
+| teste | o que acusa |
+|---|---|
+| `tela-unica-contrato-api` | rota que o bipe ou o painel chama e só um lado (raiz ou fábrica) tem — inclusive `/:id/sufixo`, e só conta peça que é de fato montada |
+| `front-chama-a-empresa-certa` | chamada de API sem a base da empresa (no `public-AMB` e nos JS compartilhados) |
+| `fabrica-nao-rouba-rota` | rota da fábrica sombreando a da raiz |
+| `fabrica-nunca-cai-na-amb` | fallback de identidade (`'ambtotal'`) ou de prefixo de env (`'AMB_'`) numa peça criada sem a empresa |
+| `freio-da-hospedeira` | a GOOD ignorando `DEVOLUCOES_DESATIVAR_GOOD` (rotinas, tokens, raiz) |
+| `estacao-impressao-nas-instancias` | fila/estação de impressão com contrato diferente da GOOD, ou fila vazando entre empresas |
+| `divergente-nao-escolhe-primeiro` / `divergente-ean-pela-ponte` | código de barras do divergente virando "o primeiro da lista" do Bling; ponte EAN com o Mover-Pedidos respondendo errado |
+| `rotulo-pedido-pelo-canal` | rótulo/campos do pedido assumindo Mercado Livre em pedido de outro canal |
+
+Regra prática: **rota, contrato ou comportamento novo no bipe/painel entra nos dois
+lados ou não entra** — e um desses testes deve acusar o lado que faltou.
 
 ## O que está fechado no código
 
