@@ -199,8 +199,20 @@ async function testeTokenAceitoDeVerdade() {
   // nao vazio (a falha antiga), e ainda assim tinha que reprovar.
   global.fetch = async () => ({ ok: false, status: 401, json: async () => ({}) });
   const rLocalRuim = await chk.fn('girassol');
-  ok(rLocalRuim.ok === false && /RECUSOU/.test(rLocalRuim.detalhe || ''),
-     '⚠️ token nao-vazio mas RECUSADO pelo marketplace reprova (antes so olhava se veio string)');
+  // b675: fora do servidor a sonda nao pode renovar (refresh de uso unico) — um 401 com o access da
+  // sombra (vence em 6 h) NAO prova credencial ruim: e "nao confirmou", e manda confirmar pela rota
+  ok(rLocalRuim.ok === false && /n[aã]o consegui confirmar/.test(rLocalRuim.detalhe || '') && /401/.test(rLocalRuim.detalhe) && /sonda-empresa\/girassol/.test(rLocalRuim.detalhe),
+     '⚠️ 401 na prova crua (linha de comando): reprova como NAO CONFIRMADO (nao "recusado") e aponta a rota');
+  // b675: DENTRO do servidor a prova e pelo cliente vivo da empresa (ctx.provaBling)
+  const rVivoOk = await chk.fn('girassol', { provaBling: (emp) => (emp === 'girassol' ? async () => ({ ok: true, status: 200, data: {} }) : null) });
+  ok(rVivoOk.ok === true && /bling \(local\): aceitou numa chamada real pelo cliente vivo/.test(rVivoOk.detalhe || ''),
+     '⚠️ com o cliente vivo da empresa respondendo ok: aceito (sem tocar no access da sombra)');
+  const rVivo401 = await chk.fn('girassol', { provaBling: () => async () => ({ ok: false, status: 401, error: 'invalid_token' }) });
+  ok(rVivo401.ok === false && /RECUSOU/.test(rVivo401.detalhe || '') && /cliente vivo/.test(rVivo401.detalhe),
+     '  cliente vivo tomando 401 (depois da renovacao da propria cadeia): RECUSADO de verdade');
+  const rVivoErro = await chk.fn('girassol', { provaBling: () => async () => { throw new Error('ECONNRESET'); } });
+  ok(rVivoErro.ok === false && /n[aã]o consegui confirmar/.test(rVivoErro.detalhe || '') && /ECONNRESET/.test(rVivoErro.detalhe),
+     '  cliente vivo estourando: nao confirmou, com o motivo');
 
   // 3) `sombra` (o padrão) caindo no LOCAL por o dono nao estar configurado —
   // o caminho mais comum em producao — tambem é exercitado com o token real.
@@ -314,6 +326,26 @@ async function testeTokenAceitoDeVerdade() {
     axios.defaults.adapter = adapterOrig;
     if (envUrl !== undefined) process.env.MOVER_PEDIDOS_URL = envUrl; else delete process.env.MOVER_PEDIDOS_URL;
     if (envKey !== undefined) process.env.MOVER_PEDIDOS_KEY = envKey; else delete process.env.MOVER_PEDIDOS_KEY;
+  })();
+}
+
+// ── b675: "ainda nao rodou neste boot" logo depois do deploy e AVISO, nao reprova ──
+{
+  const cc = CHECAGENS.find((c) => c.nome === 'captura recente');
+  (async () => {
+    const semCiclo = { capturaEstado: () => ({ ultima: null, gravadas: 0, erro: null }) };
+    const r1 = await cc.fn('girassol', Object.assign({ uptimeMin: 12 }, semCiclo));
+    ok(r1.ok === true && /subiu ha 12 min/.test(r1.detalhe) && /1x\/hora/.test(r1.aviso || ''), '⚠️ servidor de pe ha 12 min sem ciclo: AVISO (nao sei != nao funciona)');
+    const r2 = await cc.fn('girassol', Object.assign({ uptimeMin: 300 }, semCiclo));
+    ok(r2.ok === false && /300 min/.test(r2.detalhe), '  de pe ha 5 h sem ciclo: ai e FALHA');
+    const r3 = await cc.fn('girassol', { capturaEstado: () => ({ ultima: new Date().toISOString(), gravadas: 1, erro: null }), uptimeMin: 5 });
+    ok(r3.ok === true && /CONFIRMADO/.test(r3.detalhe), '  com ciclo: confirmado como antes');
+    const srv2 = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
+    ok(/provaBling: \(emp\) => require\('\.\/lib\/batimento-captura'\)\.provaBling\(emp\)/.test(srv2) && /uptimeMin: process\.uptime\(\) \/ 60/.test(srv2),
+       '  a rota passa a prova viva e o uptime');
+    const app2 = fs.readFileSync(path.join(__dirname, '..', 'amb-devolucoes', 'app-AMB.js'), 'utf8');
+    ok(/registrarProvaBling\(CHAVE_DADOS, \(\) => bling\.chamarBling\('\/situacoes\/modulos'\)\)/.test(app2) && /registrarProvaBling\('good', \(\) => chamarBling\('https:\/\/api\.bling\.com\.br\/Api\/v3\/situacoes\/modulos'/.test(srv2),
+       '  GOOD e cada instancia registram a prova pelo cliente VIVO (nunca um cliente novo — refresh de uso unico)');
   })();
 }
 
