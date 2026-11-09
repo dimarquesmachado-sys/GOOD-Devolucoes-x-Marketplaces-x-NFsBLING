@@ -158,7 +158,16 @@ registrar('política de token', async (chave) => {
 });
 
 /* ── 3. o marketplace ACEITA o token que a produção vai usar ──────── */
-registrar('o dono entrega o token', async (chave) => {
+// b675 - classifica a resposta do cliente VIVO da empresa ({ ok, status, error }) no mesmo
+// vocabulario da prova por token cru: aceito / recusado / nao confirmou.
+function classificarProvaBling(r) {
+  if (r && r.ok) return { aceito: true };
+  const st = Number(r && r.status) || 0;
+  if (st === 401 || st === 403) return { aceito: false, motivo: `HTTP ${st} — recusado mesmo pelo cliente vivo (renovacao da propria cadeia incluida)` };
+  return { aceito: null, motivo: (r && (r.error || r.erro)) ? String(r.error || r.erro).slice(0, 120) : (st ? `HTTP ${st} — nao deu para confirmar` : 'sem resposta') };
+}
+
+registrar('o dono entrega o token', async (chave, ctx) => {
   const tokenLeitor = require('../lib/token-leitor');
   const { configDaEmpresa } = require('../lib/config-da-empresa');
 
@@ -223,7 +232,25 @@ registrar('o dono entrega o token', async (chave) => {
       continue;
     }
 
-    const r = await TESTAR[integracao](access, cfg[integracao].apiBase);
+    // b675 - BLING: dentro do servidor, a prova e pelo cliente VIVO da empresa (a mesma cadeia de
+    // renovacao da producao). O access da sombra vence em 6 h e dava "401 — RECUSADO" em empresa
+    // parada, com a producao renovando normalmente no primeiro 401; e a sonda nao pode renovar
+    // sozinha (refresh de uso unico). Sem cliente vivo (linha de comando), fica a prova crua — e um
+    // 401 nela vira "nao confirmou", nao "recusado".
+    let r;
+    const empresaDados = String((cfg && cfg.EMPRESA) || chave).toLowerCase();
+    const provaViva = (integracao === 'bling' && ctx && typeof ctx.provaBling === 'function') ? ctx.provaBling(empresaDados) : null;
+    if (provaViva) {
+      let resp = null;
+      try { resp = await provaViva(); } catch (err) { resp = { ok: false, error: (err && err.message) || String(err) }; }
+      r = classificarProvaBling(resp);
+      if (r.aceito === true) { partes.push(`bling (${politica}): aceitou numa chamada real pelo cliente vivo da empresa`); continue; }
+    } else {
+      r = await TESTAR[integracao](access, cfg[integracao].apiBase);
+      if (integracao === 'bling' && r.aceito === false && /HTTP 401/.test(String(r.motivo || ''))) {
+        r = { aceito: null, motivo: 'HTTP 401 com o access da sombra (vence em 6 h) — a producao renova no primeiro 401; confirme pela rota /api/admin/sonda-empresa/' + chave };
+      }
+    }
     if (r.aceito === false) {
       tudoOk = false;
       partes.push(`${integracao} (${politica}): o marketplace RECUSOU — ${r.motivo}`);
@@ -375,7 +402,18 @@ registrar('captura recente', async (chave, ctx) => {
   const estado = ctx && typeof ctx.capturaEstado === 'function' ? ctx.capturaEstado(emp) : null;
   if (estado) {
     if (estado.erro) return { ok: false, detalhe: 'FALHOU — ' + estado.erro, erro: 'o ultimo ciclo da captura falhou (veja /<empresa>/status -> captura)' };
-    if (!estado.ultima) return { ok: false, detalhe: 'NAO VERIFICADO — a captura ainda nao rodou neste boot', erro: 'sem ciclo concluido desde o boot do servidor' };
+    if (!estado.ultima) {
+      // b675 - a captura roda junto com a espreita (1x/hora, a primeira minutos depois do boot).
+      // Logo depois de um deploy "ainda nao rodou" e NAO SEI, nao FALHOU (regra: nao sei != nao
+      // funciona) — vira aviso com a idade do processo; so reprova se o servidor ja esta de pe ha
+      // mais de 2 h sem nenhum ciclo.
+      const up = ctx && Number.isFinite(ctx.uptimeMin) ? ctx.uptimeMin : null;
+      if (up != null && up < 120) {
+        return { ok: true, detalhe: `NAO VERIFICADO — servidor subiu ha ${Math.round(up)} min e a captura ainda nao rodou neste boot`,
+          aviso: 'a captura roda junto com a espreita (1x/hora); rode a sonda de novo em 1 h — se seguir sem ciclo, ai e falha' };
+      }
+      return { ok: false, detalhe: 'NAO VERIFICADO — a captura ainda nao rodou neste boot' + (up != null ? ` (servidor de pe ha ${Math.round(up)} min)` : ''), erro: 'sem ciclo concluido desde o boot do servidor' };
+    }
     const horas = (Date.now() - new Date(estado.ultima).getTime()) / 3600e3;
     if (horas > 6) return { ok: false, detalhe: 'FALHOU — ultimo ciclo ha ' + Math.round(horas) + ' h', erro: 'a captura roda 1x/hora: mais de 6 h sem ciclo e falha' };
     return { ok: true, detalhe: 'CONFIRMADO — ultimo ciclo ha ' + Math.round(horas * 60) + ' min (' + (estado.gravadas || 0) + ' gravada(s))' };
@@ -512,7 +550,7 @@ async function sondar(chave, ctx) {
   return linhas;
 }
 
-module.exports = { sondar, CHECAGENS };
+module.exports = { sondar, CHECAGENS, classificarProvaBling };
 
 /* ── linha de comando ──────────────────────────────────────── */
 if (require.main === module) {

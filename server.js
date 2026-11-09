@@ -613,7 +613,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.126.185 (b674: sonda fiel a producao — token do Bling pelo endpoint certo, batimento da captura das 3, ponte EAN sem gastar cota)',
+      version: '9.126.186 (b675: sonda prova o Bling pelo cliente vivo da empresa e nao reprova captura logo apos o boot)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -2629,7 +2629,11 @@ app.get('/api/admin/sonda-empresa/:chave', async (req, res) => {
     const chave = String(req.params.chave || '').trim().toLowerCase();
     // b526 (Codex #433): o batimento da captura vive na memoria deste servidor (so a GOOD roda aqui)
     // b674 - antes so a GOOD tinha batimento aqui; agora qualquer empresa registrada (lib/batimento-captura)
-    const linhas = await sondar(chave, { capturaEstado: (emp) => require('./lib/batimento-captura').lerBatimento(emp) });
+    const linhas = await sondar(chave, {
+      capturaEstado: (emp) => require('./lib/batimento-captura').lerBatimento(emp),
+      provaBling: (emp) => require('./lib/batimento-captura').provaBling(emp),   // b675: pelo cliente vivo, nao pela sombra do boot
+      uptimeMin: process.uptime() / 60,                                        // b675: "ainda nao rodou neste boot" so reprova depois de horas
+    });
     const reprovadas = linhas.filter((l) => !l.ok).length;
     return res.json({
       ok: reprovadas === 0,
@@ -9178,6 +9182,8 @@ let CAPTURA_RODANDO = false;
 let CAPTURA_ESTADO = { ultima: null, gravadas: 0, erro: null };
 // b674 - a sonda le o batimento de QUALQUER empresa por aqui (a fabrica registra o dela)
 require('./lib/batimento-captura').registrarBatimento('good', () => CAPTURA_ESTADO);
+// b675 - prova viva do Bling da GOOD: uma leitura pelo cliente vivo (renova pela cadeia certa se precisar)
+require('./lib/batimento-captura').registrarProvaBling('good', () => chamarBling('https://api.bling.com.br/Api/v3/situacoes/modulos', { method: 'GET' }));
 
 // b186 - quantas devolucoes do TikTok puxar por ciclo. 200 cobre o
 // corrente com folga; o forcar pode pedir mais pra carga historica.
