@@ -191,3 +191,12 @@ A loja TikTok de cada empresa sai do registro (`lib/empresas.js`): é o `chaveDa
 `lojaTiktok` quando o nome da loja no Mover-Pedidos for outro. Uma 4ª empresa entra sem editar
 `lib/tiktok-ponte.js` (b660) — do lado do Mover-Pedidos, o mesmo nome precisa estar em `TIKTOK_LOJAS`
 e a loja precisa ser autorizada no `/tiktok/painel` de lá.
+
+## Código de barras no divergente (08/11/2026)
+
+No "produto errado" o estoquista bipa o código de barras da caixa. A GOOD resolve pelo índice dela;
+as outras empresas perguntam ao Mover-Pedidos em `GET /<pastaCheckout>/buscar-produto?q=<ean>` (b671,
+`lib/produto-por-ean-ponte.js`, mesma `MOVER_PEDIDOS_URL`/`KEY` da ponte do TikTok). Empresa nova:
+a `pastaCheckout` da ficha precisa existir como painel no Mover-Pedidos; a sonda confere
+("ponte EAN com o Mover-Pedidos") e, sem isso, avisa — a empresa opera, só o código de barras do
+divergente cai no SKU.

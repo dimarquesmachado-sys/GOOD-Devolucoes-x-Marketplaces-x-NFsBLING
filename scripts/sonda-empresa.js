@@ -425,6 +425,25 @@ registrar('canais (Magalu, Shopee, TikTok)', async (chave) => {
   return { ok: !falhou, detalhe: partes.join(' | '), erro: falhou ? 'algum canal configurado pela metade' : null };
 });
 
+// b673 - A PONTE EAN COM O MOVER-PEDIDOS (divergente: codigo de barras -> produto, b671).
+// Uma empresa nova so resolve codigo de barras no "produto errado" se o Mover-Pedidos
+// tiver o painel dela (a pasta da ficha: pastaCheckout) e a chave da ponte bater. Esta
+// checagem pergunta de verdade, com um EAN que nao existe: a resposta certa e "nada
+// encontrado" (prova rota + chave); 404 do guard, servico fora ou ponte sem env vira
+// AVISO (nao bloqueia ativar: a empresa opera; so o codigo de barras do divergente cai no SKU).
+registrar('ponte EAN com o Mover-Pedidos', async (chave) => {
+  const { produtoPorEanNoMoverPedidos, pastaDoCheckout } = require('../lib/produto-por-ean-ponte');
+  let pasta = null;
+  try { pasta = pastaDoCheckout(chave); } catch (e) { return { ok: false, detalhe: 'sem pasta', erro: 'ficha sem pastaCheckout/chaveDados: ' + String(e.message || e) }; }
+  const r = await produtoPorEanNoMoverPedidos(chave, '0000000000000', { timeoutMs: 8000 });
+  if (r.ok) return { ok: true, detalhe: `/${pasta}/buscar-produto responde (o EAN de teste ate achou produto: ${r.produto.codigo})` };
+  // r2 (Codex #544): SO o "nada encontrado" explicito prova a ponte; qualquer outra resposta
+  // (HTTP de erro, HTML, JSON sem produto, servico fora, sem env) e AVISO — nao bloqueia ativar
+  // (a empresa opera), mas diz o efeito.
+  if (r.nao_encontrado) return { ok: true, detalhe: `/${pasta}/buscar-produto responde (${String(r.motivo || '').slice(0, 80)})` };
+  return { ok: true, detalhe: `/${pasta}/buscar-produto NAO respondeu direito`, aviso: r.motivo + ' — ate resolver, o divergente nao resolve codigo de barras nesta empresa (cai no SKU)' };
+});
+
 registrar('estado no contrato', async (chave) => {
   // 30/09 (Codex): esta checagem REPROVAVA a empresa ja ativa (b427), porque a
   // sonda nasceu pra PRE-ativacao. A Girassol esta no ar e a sonda virou
