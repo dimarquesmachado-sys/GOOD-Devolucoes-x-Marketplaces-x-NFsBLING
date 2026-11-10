@@ -1,4 +1,5 @@
 'use strict';
+require('./_fonte-painel');   // fatia 0 (docs/MODULARIZACAO.md): le o painel com os modulos js-AMB/painel-*.js embutidos
 // 29/10 — estornadas da GOOD: 16 de 25 notas da Magalu 'nao localizada no Bling', mas a nota EXISTE (serie 001,
 // propria). O vinculo era feito so na abertura (6s, ~3 cards) e guardado so na memoria (deploy apagava). Roda a peca
 // de PRODUCAO (lib/vinculo-nf-cache): vinculo pela chave permanente no armazem + fila de segundo plano.

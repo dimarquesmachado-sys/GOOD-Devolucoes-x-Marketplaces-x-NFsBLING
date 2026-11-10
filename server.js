@@ -613,7 +613,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.126.189 (b677 r4: a prova viva da Shopee na sonda exige lista em array — resposta malformada reprova)',
+      version: '9.126.190 (b678: fatia 0 da modularizacao — o chao pros modulos do painel, sem mudar comportamento)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -4082,6 +4082,17 @@ const FICHA_DEFEITOS_UNICA = path.join(__dirname, 'amb-devolucoes', 'public-AMB'
 app.get('/js/defeitos-ficha.js', (req, res) => {
   res.set('Cache-Control', 'no-cache, must-revalidate');
   res.type('application/javascript').sendFile(FICHA_DEFEITOS_UNICA);
+});
+// b678 - FATIA 0 da modularizacao (docs/MODULARIZACAO.md): os modulos do painel unico
+// (`public-AMB/js-AMB/painel-<tema>.js`) chegam tambem na raiz. Nas instancias o estatico
+// da fabrica ja serve a pasta; aqui a GOOD nao serve `public-AMB` — entao uma rota FECHADA:
+// so nomes `painel-<letras-numeros-hifen>.js`, sem caminho livre, sem cache. Ainda nao ha
+// modulo nenhum (404 pra todos): a rota existe pra a 1a fatia nao depender de deploy em dois tempos.
+app.get(/^\/js-AMB\/(painel-[a-z0-9-]+\.js)$/, (req, res) => {
+  const arq = path.join(__dirname, 'amb-devolucoes', 'public-AMB', 'js-AMB', req.params[0]);
+  if (!require('fs').existsSync(arq)) return res.status(404).type('text/plain').send('modulo do painel nao existe: ' + req.params[0]);
+  res.set('Cache-Control', 'no-cache, must-revalidate');
+  res.type('application/javascript').sendFile(arq);
 });
 app.get('/js-AMB/base-amb.js', (req, res) => {
   if (!BASE_AMB_JS_GOOD) return res.status(500).type('text/plain').send('base-amb indisponivel');

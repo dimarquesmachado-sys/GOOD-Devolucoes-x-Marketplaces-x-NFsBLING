@@ -1,4 +1,5 @@
 'use strict';
+require('./_fonte-painel');   // fatia 0 (docs/MODULARIZACAO.md): le o painel com os modulos js-AMB/painel-*.js embutidos
 // b591 — dono, 08/10 (NF 127013): card de kit diz KIT no topo e o bloco "Voltaram N produtos" so aparece na PARCIAL.
 const fs = require('fs'); const path = require('path'); const vm = require('vm');
 let falhas = 0;

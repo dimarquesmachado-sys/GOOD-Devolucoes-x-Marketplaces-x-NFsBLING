@@ -1,4 +1,5 @@
 'use strict';
+require('./_fonte-painel');   // fatia 0 (docs/MODULARIZACAO.md): le o painel com os modulos js-AMB/painel-*.js embutidos
 // b482 — devolucao do FULL no painel da AMB/Girassol: o card DIZ que a NF de devolucao e do
 // Mercado Livre (serie 2, nao se gera outra) e oferece LANCAR NO ESTOQUE com o deposito na mao
 // do dono (aprovada abre no GERAL, problema no DEFEITOS); a rota recusa lancar 2x e marca o card.

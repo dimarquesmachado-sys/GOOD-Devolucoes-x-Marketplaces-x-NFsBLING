@@ -1,4 +1,5 @@
 'use strict';
+require('./_fonte-painel');   // fatia 0 (docs/MODULARIZACAO.md): le o painel com os modulos js-AMB/painel-*.js embutidos
 // b519 — auditoria (Codex, 04/10): o card de aprovadas da GOOD le `funcionario` de reserva (paridade com a AMB).
 const fs = require('fs'); const path = require('path');
 let falhas = 0;

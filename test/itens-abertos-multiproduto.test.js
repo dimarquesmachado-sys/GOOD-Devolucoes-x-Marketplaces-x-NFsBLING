@@ -1,4 +1,5 @@
 'use strict';
+require('./_fonte-painel');   // fatia 0 (docs/MODULARIZACAO.md): le o painel com os modulos js-AMB/painel-*.js embutidos
 // b548 — dono, 05/10 (Girassol, NF 127261): em problemas/divergentes os itens da NF so abriam clicando, e a linha
 // do card dizia "CABOLATERAL · 3 un" numa NF de 3 produtos diferentes. Roda as funcoes de producao.
 const fs = require('fs'); const path = require('path'); const vm = require('vm');

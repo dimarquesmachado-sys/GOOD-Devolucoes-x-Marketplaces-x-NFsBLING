@@ -1,4 +1,5 @@
 'use strict';
+require('./_fonte-painel');   // fatia 0 (docs/MODULARIZACAO.md): le o painel com os modulos js-AMB/painel-*.js embutidos
 // ⚠️ O "LANÇAR POR NF" GRAVA NO MODELO DA AMB, NÃO NO DA GOOD.
 //
 // A rota foi portada da GOOD, onde a devolução tem `tipo: 'aprovado'` +

@@ -1,4 +1,5 @@
 'use strict';
+require('./_fonte-painel');   // fatia 0 (docs/MODULARIZACAO.md): le o painel com os modulos js-AMB/painel-*.js embutidos
 // ⚠️ DUAS EMPRESAS NO MESMO PROCESSO, SEM CRUZAR NADA.
 //
 // Este teste substitui o freio que o `server.js` tinha (recusar boot com mais

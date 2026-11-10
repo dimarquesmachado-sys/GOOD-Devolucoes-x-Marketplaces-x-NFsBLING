@@ -1,4 +1,5 @@
 'use strict';
+require('./_fonte-painel');   // fatia 0 (docs/MODULARIZACAO.md): le o painel com os modulos js-AMB/painel-*.js embutidos
 // b537 — unificacao do painel (passo de teste): a GOOD serve o painel UNICO em /painel-novo.html, com nome, cores e
 // empresa dela. Roda a montagem de producao (lib/painel-unico) no painel de verdade da AMB/Girassol.
 const fs = require('fs'); const path = require('path');

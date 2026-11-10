@@ -1,3 +1,4 @@
+require('./_fonte-painel');   // fatia 0 (docs/MODULARIZACAO.md): le o painel com os modulos js-AMB/painel-*.js embutidos
 // Roda com: node test/lancar-defeito-lib.test.js
 //
 // ⚠️ [stated 11/09] "me tirou da tela do painel ADMIN qdo cliquei pra

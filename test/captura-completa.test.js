@@ -1,4 +1,5 @@
 'use strict';
+require('./_fonte-painel');   // fatia 0 (docs/MODULARIZACAO.md): le o painel com os modulos js-AMB/painel-*.js embutidos
 // b521 — auditoria (Codex, 04/10): a captura recebe TODAS as devolucoes Shopee; Magalu com falha nao vira "sem devolucoes".
 const fs = require('fs'); const path = require('path');
 let falhas = 0;

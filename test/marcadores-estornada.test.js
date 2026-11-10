@@ -1,3 +1,4 @@
+require('./_fonte-painel');   // fatia 0 (docs/MODULARIZACAO.md): le o painel com os modulos js-AMB/painel-*.js embutidos
 // Roda com: node test/marcadores-estornada.test.js
 //
 // A CLASSE DE BUG QUE ISTO MATA: eu gravava um marcador na descricao e

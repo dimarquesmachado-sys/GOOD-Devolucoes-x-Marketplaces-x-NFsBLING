@@ -1,4 +1,5 @@
 'use strict';
+require('./_fonte-painel');   // fatia 0 (docs/MODULARIZACAO.md): le o painel com os modulos js-AMB/painel-*.js embutidos
 // ⚠️ O PAINEL MOSTRA QUEM BIPOU — na AMB e na Girassol, não só na GOOD.
 //
 // 30/09, Girassol: o dono triou logado como Diego e o card saiu "por ·", vazio.

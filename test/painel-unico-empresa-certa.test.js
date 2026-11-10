@@ -1,4 +1,5 @@
 'use strict';
+require('./_fonte-painel');   // fatia 0 (docs/MODULARIZACAO.md): le o painel com os modulos js-AMB/painel-*.js embutidos
 // b540 — revisao do painel unico: nada da AMB escrito a mao onde a empresa decide o resultado.
 const fs = require('fs'); const path = require('path'); const vm = require('vm');
 let falhas = 0;

@@ -1,4 +1,5 @@
 'use strict';
+require('./_fonte-painel');   // fatia 0 (docs/MODULARIZACAO.md): le o painel com os modulos js-AMB/painel-*.js embutidos
 // b542 — dono, 05/10, no celular: na triagem o "anexar etiqueta" saia da tela; no painel os blocos de emitir NF
 // tinham tamanhos diferentes e precisava de zoom. Confere as regras nos arquivos UNICOS (valem pras 3 empresas).
 const fs = require('fs'); const path = require('path');

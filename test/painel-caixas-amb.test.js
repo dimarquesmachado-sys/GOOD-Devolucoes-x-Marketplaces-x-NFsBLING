@@ -1,4 +1,5 @@
 'use strict';
+require('./_fonte-painel');   // fatia 0 (docs/MODULARIZACAO.md): le o painel com os modulos js-AMB/painel-*.js embutidos
 // b606/b607 — nivelar por cima: a lista da Girassol/AMB anota `parcial` (devolucao em VARIAS CAIXAS) como a GOOD, e o painel
 // unico mostra CAIXA 1/2. Roda a rota de producao da compat com banco falso.
 const path = require('path'); const fs = require('fs');

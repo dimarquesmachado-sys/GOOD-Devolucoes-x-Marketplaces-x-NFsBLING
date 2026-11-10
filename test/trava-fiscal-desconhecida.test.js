@@ -1,4 +1,5 @@
 'use strict';
+require('./_fonte-painel');   // fatia 0 (docs/MODULARIZACAO.md): le o painel com os modulos js-AMB/painel-*.js embutidos
 // b524 — auditoria (Codex, b520): parcial conhecida SEM as listas nao libera o emitir direto (3 telas);
 // o aviso de pendencia nao e trocado pelo sucesso.
 const fs = require('fs'); const path = require('path'); const vm = require('vm');

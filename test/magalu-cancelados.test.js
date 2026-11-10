@@ -1,3 +1,4 @@
+require('./_fonte-painel');   // fatia 0 (docs/MODULARIZACAO.md): le o painel com os modulos js-AMB/painel-*.js embutidos
 // Roda com: node test/magalu-cancelados.test.js
 //
 // [stated] Pedido do dono (30/08): "essa questao da NF e aqui. tipo o do

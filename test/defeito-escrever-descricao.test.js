@@ -1,4 +1,5 @@
 'use strict';
+require('./_fonte-painel');   // fatia 0 (docs/MODULARIZACAO.md): le o painel com os modulos js-AMB/painel-*.js embutidos
 // b549 — dono, 05/10: no estoque de defeitos, peca sem descricao (ex.: #113) — escrever direto da lista.
 const fs = require('fs'); const path = require('path');
 let falhas = 0;

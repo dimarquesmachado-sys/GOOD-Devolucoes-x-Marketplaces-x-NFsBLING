@@ -1,4 +1,5 @@
 'use strict';
+require('./_fonte-painel');   // fatia 0 (docs/MODULARIZACAO.md): le o painel com os modulos js-AMB/painel-*.js embutidos
 // b672/r4 — CONTRATO DA TELA UNICA: o front compartilhado so pode chamar rota que
 // exista NOS DOIS LADOS, com a MESMA FORMA de caminho.
 //

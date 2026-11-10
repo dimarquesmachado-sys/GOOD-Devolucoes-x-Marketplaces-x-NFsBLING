@@ -1,4 +1,5 @@
 'use strict';
+require('./_fonte-painel');   // fatia 0 (docs/MODULARIZACAO.md): le o painel com os modulos js-AMB/painel-*.js embutidos
 // ⚠️ O FRONT TEM QUE CHAMAR A API DA EMPRESA QUE ESTÁ LOGADA.
 //
 // O painel é COMPARTILHADO: a mesma tela serve a AMB e a Girassol, e a empresa

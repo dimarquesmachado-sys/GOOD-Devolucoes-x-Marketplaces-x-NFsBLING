@@ -1,4 +1,5 @@
 'use strict';
+require('./_fonte-painel');   // fatia 0 (docs/MODULARIZACAO.md): le o painel com os modulos js-AMB/painel-*.js embutidos
 // b599 — marketplaces sem API (Amazon, Leroy, Madeira...): anuncio pelo PEDIDO DE VENDA do Bling, como trafego de fundo.
 const path = require('path'); const fs = require('fs');
 let falhas = 0;

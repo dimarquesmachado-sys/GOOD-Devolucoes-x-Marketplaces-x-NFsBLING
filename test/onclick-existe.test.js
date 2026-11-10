@@ -1,3 +1,4 @@
+require('./_fonte-painel');   // fatia 0 (docs/MODULARIZACAO.md): le o painel com os modulos js-AMB/painel-*.js embutidos
 // Roda com: node test/onclick-existe.test.js
 //
 // A CLASSE DE BUG: botao chamando funcao que nao existe no HTML.

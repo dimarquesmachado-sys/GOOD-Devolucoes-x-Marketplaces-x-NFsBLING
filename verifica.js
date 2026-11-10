@@ -23,6 +23,8 @@
 const { execSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
+// fatia 0 (docs/MODULARIZACAO.md): o passo 2 compila o JS do painel COM os modulos js-AMB/painel-*.js embutidos
+require('./test/_fonte-painel');
 
 const RAIZ = __dirname;
 let falhou = false;

@@ -1,4 +1,5 @@
 'use strict';
+require('./_fonte-painel');   // fatia 0 (docs/MODULARIZACAO.md): le o painel com os modulos js-AMB/painel-*.js embutidos
 // b513 — auditoria multiloja (achado do Codex, conferido): o navegador NAO pode ter lista fechada de empresas.
 // Roda o base-amb.js DE PRODUCAO com URLs de varias empresas, inclusive uma que nao existe hoje (/loja4).
 const fs = require('fs'); const path = require('path'); const vm = require('vm');

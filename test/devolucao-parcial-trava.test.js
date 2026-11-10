@@ -1,4 +1,5 @@
 'use strict';
+require('./_fonte-painel');   // fatia 0 (docs/MODULARIZACAO.md): le o painel com os modulos js-AMB/painel-*.js embutidos
 // b500 — devolucao PARCIAL: a NF do Bling copia a NF original inteira; se voltou menos, so o rascunho.
 const fs = require('fs'); const path = require('path'); const vm = require('vm');
 let falhas = 0;

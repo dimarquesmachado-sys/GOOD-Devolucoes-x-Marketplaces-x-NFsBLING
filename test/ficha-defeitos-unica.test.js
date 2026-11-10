@@ -1,4 +1,5 @@
 'use strict';
+require('./_fonte-painel');   // fatia 0 (docs/MODULARIZACAO.md): le o painel com os modulos js-AMB/painel-*.js embutidos
 // 14/10 — FICHA DE DEFEITOS UNICA na Girassol/AMB (e nas proximas empresas): a juncao das duas copias tem o que cada uma
 // tinha a mais. Nivelar por cima — nenhuma loja perde nada.
 const fs = require('fs'); const path = require('path');
