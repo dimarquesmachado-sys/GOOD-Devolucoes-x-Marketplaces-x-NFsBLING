@@ -457,12 +457,16 @@ registrar('canais (Magalu, Shopee, TikTok)', async (chave, ctx) => {
   // servidor (linha de comando) fica como antes: configurado, nao verificado.
   const proxyCfg = !!(process.env.SHOPEE_PROXY_URL && process.env.SHOPEE_PROXY_KEY);
   const empresaDados = String(e.chaveDados || chave).toLowerCase();
+  const prazoMs = (ctx && ctx.prazoShopeeMs) || 8000;
   const provaShp = (ctx && typeof ctx.provaShopee === 'function') ? ctx.provaShopee(empresaDados) : null;
   if (!proxyCfg) {
     partes.push('Shopee: FALHOU (proxy sem SHOPEE_PROXY_URL/KEY)');
   } else if (provaShp) {
     try {
-      const lista = await provaShp();
+      // b677 - prazo proprio: o fetch do proxy nao tem abort, entao uma Shopee parada travaria a sonda inteira
+      let timer;
+      const prazo = new Promise((_, rej) => { timer = setTimeout(() => rej(new Error('proxy nao respondeu em ' + Math.round(prazoMs / 1000) + ' s')), prazoMs); });
+      const lista = await Promise.race([provaShp(), prazo]).finally(() => clearTimeout(timer));
       partes.push('Shopee: proxy respondeu pelo cliente vivo da empresa (' + (Array.isArray(lista) ? lista.length + ' devolucao(oes) na lista' : 'resposta sem lista') + ')');
     } catch (err) {
       partes.push('Shopee: FALHOU (' + String((err && err.message) || err).slice(0, 140) + ')');
