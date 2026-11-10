@@ -440,7 +440,7 @@ registrar('captura recente', async (chave, ctx) => {
 /* -- b525 - AUDITORIA: CANAIS (confirmado / falhou / nao aplicavel / nao verificado) ------------
    A sonda so testava Bling e ML. Aqui o estado de configuracao dos outros canais, sem chamar a API deles
    (Shopee vai pelo proxy; TikTok pela ponte com mapa FECHADO de lojas no Mover-Pedidos). */
-registrar('canais (Magalu, Shopee, TikTok)', async (chave) => {
+registrar('canais (Magalu, Shopee, TikTok)', async (chave, ctx) => {
   const e = require('../lib/empresas').obterEmpresa(chave) || {};
   // mesma resolucao da producao (prefixo + fallback legado), nao nomes de env montados a mao
   const mg = require('../lib/config-da-empresa').configDaEmpresa(chave).magalu;
@@ -452,7 +452,24 @@ registrar('canais (Magalu, Shopee, TikTok)', async (chave) => {
       + (tem(mg.clientId) ? ' · credencial propria' : ' · usa a credencial da GOOD'));
   } else partes.push('Magalu: NAO APLICAVEL (sem token da empresa)');
   // Shopee: proxy compartilhado (o servico multi-loja)
-  partes.push('Shopee: ' + ((process.env.SHOPEE_PROXY_URL && process.env.SHOPEE_PROXY_KEY) ? 'NAO VERIFICADO (proxy configurado; a loja e conferida no /' + chave + '/status)' : 'FALHOU (proxy sem SHOPEE_PROXY_URL/KEY)'));
+  // b676 - dentro do servidor a Shopee e PROVADA pelo cliente vivo da empresa (lista do proxy, cache
+  // de 5 min, loja da ficha + chave interna): URL, chave e loja cadastrada no shopee-nf-sync. Fora do
+  // servidor (linha de comando) fica como antes: configurado, nao verificado.
+  const proxyCfg = !!(process.env.SHOPEE_PROXY_URL && process.env.SHOPEE_PROXY_KEY);
+  const empresaDados = String(e.chaveDados || chave).toLowerCase();
+  const provaShp = (ctx && typeof ctx.provaShopee === 'function') ? ctx.provaShopee(empresaDados) : null;
+  if (!proxyCfg) {
+    partes.push('Shopee: FALHOU (proxy sem SHOPEE_PROXY_URL/KEY)');
+  } else if (provaShp) {
+    try {
+      const lista = await provaShp();
+      partes.push('Shopee: proxy respondeu pelo cliente vivo da empresa (' + (Array.isArray(lista) ? lista.length + ' devolucao(oes) na lista' : 'resposta sem lista') + ')');
+    } catch (err) {
+      partes.push('Shopee: FALHOU (' + String((err && err.message) || err).slice(0, 140) + ')');
+    }
+  } else {
+    partes.push('Shopee: NAO VERIFICADO (proxy configurado; a loja e conferida no /' + chave + '/status)');
+  }
   // TikTok: a ponte tem mapa fechado de lojas E precisa de URL/KEY, senao toda chamada falha
   let tiktok = 'NAO VERIFICADO';
   try {

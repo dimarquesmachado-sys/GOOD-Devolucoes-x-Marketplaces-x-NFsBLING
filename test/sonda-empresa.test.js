@@ -349,6 +349,31 @@ async function testeTokenAceitoDeVerdade() {
   })();
 }
 
+// ── b676: a Shopee e PROVADA pelo cliente vivo da empresa (nao fica mais NAO VERIFICADO) ──
+{
+  const cc = CHECAGENS.find((c) => c.nome.startsWith('canais'));
+  const envUrl = process.env.SHOPEE_PROXY_URL, envKey = process.env.SHOPEE_PROXY_KEY;
+  process.env.SHOPEE_PROXY_URL = 'https://proxy.local'; process.env.SHOPEE_PROXY_KEY = 'k';
+  (async () => {
+    const a = await cc.fn('girassol', { provaShopee: (emp) => (emp === 'girassol' ? async () => [{}, {}, {}] : null) });
+    ok(/Shopee: proxy respondeu pelo cliente vivo da empresa \(3 devolucao\(oes\) na lista\)/.test(a.detalhe), '⚠️ com o cliente vivo respondendo, a Shopee e PROVADA (lista do proxy, loja da ficha)');
+    const b = await cc.fn('girassol', { provaShopee: () => async () => { throw new Error('proxy shopee (loja girassol): loja desconhecida'); } });
+    ok(b.ok === false && /Shopee: FALHOU \(proxy shopee \(loja girassol\): loja desconhecida\)/.test(b.detalhe), '  proxy recusando a loja: FALHOU com o motivo (reprova)');
+    const d = await cc.fn('girassol', {});
+    ok(/Shopee: NAO VERIFICADO \(proxy configurado/.test(d.detalhe), '  sem cliente vivo (linha de comando): segue "nao verificado", nunca aprova no escuro');
+    const reg = require('../lib/batimento-captura');
+    reg.registrarProvaShopee('teste-shp', async () => []);
+    ok(typeof reg.provaShopee('TESTE-SHP') === 'function' && reg.provaShopee('nao-ha') === null, '  registro da prova por chaveDados (sem caixa); empresa sem prova: null');
+    const srv3 = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
+    const app3 = fs.readFileSync(path.join(__dirname, '..', 'amb-devolucoes', 'app-AMB.js'), 'utf8');
+    ok(/registrarProvaShopee\('good', \(\) => shopee\.buscarDevolucoesProxy\(false\)\)/.test(srv3) && /registrarProvaShopee\(CHAVE_DADOS, \(\) => shopee\.buscarDevolucoesProxy\(false\)\)/.test(app3),
+       '  GOOD e cada instancia registram a prova pelo cliente VIVO (lista do proxy, cache de 5 min)');
+    ok(/provaShopee: \(emp\) => require\('\.\/lib\/batimento-captura'\)\.provaShopee\(emp\)/.test(srv3), '  a rota passa a prova da Shopee');
+    if (envUrl !== undefined) process.env.SHOPEE_PROXY_URL = envUrl; else delete process.env.SHOPEE_PROXY_URL;
+    if (envKey !== undefined) process.env.SHOPEE_PROXY_KEY = envKey; else delete process.env.SHOPEE_PROXY_KEY;
+  })();
+}
+
 // ── b674: o BATIMENTO da captura das 3 num registro so, lido pela rota da sonda ──
 {
   const bat = require('../lib/batimento-captura');
