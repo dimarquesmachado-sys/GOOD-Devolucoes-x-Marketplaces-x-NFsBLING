@@ -1,4 +1,5 @@
 'use strict';
+require('./_fonte-painel');   // fatia 0 (docs/MODULARIZACAO.md): le o painel com os modulos js-AMB/painel-*.js embutidos
 // b572 — card de KIT mostra o anuncio vendido (titulo + SKU do marketplace). Roda a rota de producao com o ML falso.
 const path = require('path'); const fs = require('fs');
 let falhas = 0;

@@ -1,3 +1,4 @@
+require('./_fonte-painel');   // fatia 0 (docs/MODULARIZACAO.md): le o painel com os modulos js-AMB/painel-*.js embutidos
 // Roda com: node test/espreita-paridade-ramos.test.js
 //
 // A ESPREITA TEM DOIS RAMOS que montam card: `em_transito` (a caminho) e

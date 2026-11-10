@@ -1,4 +1,5 @@
 'use strict';
+require('./_fonte-painel');   // fatia 0 (docs/MODULARIZACAO.md): le o painel com os modulos js-AMB/painel-*.js embutidos
 // b492 — pedido do dono (02/10): os avisos do painel eram confirm()/toast (janela pequena, com cara de
 // erro e sem copiar). A esteira e o "Achar devolucao" usam a janela do painel, copiavel — nas 3 telas.
 const fs = require('fs'); const path = require('path');

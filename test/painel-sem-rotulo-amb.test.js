@@ -1,4 +1,5 @@
 'use strict';
+require('./_fonte-painel');   // fatia 0 (docs/MODULARIZACAO.md): le o painel com os modulos js-AMB/painel-*.js embutidos
 // 30/10 — o painel e UNICO das 3 empresas (GOOD serve o painel-AMB.html). O cabecalho tinha 'AMB b67' fixo e aparecia
 // na GOOD e na Girassol — mesmo caso do #502 ('AMB Devolucoes' na Girassol). Nenhum rotulo de empresa fixo no HTML.
 const fs = require('fs'); const path = require('path');

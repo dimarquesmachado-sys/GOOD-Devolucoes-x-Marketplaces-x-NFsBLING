@@ -1,4 +1,5 @@
 'use strict';
+require('./_fonte-painel');   // fatia 0 (docs/MODULARIZACAO.md): le o painel com os modulos js-AMB/painel-*.js embutidos
 // b490 — pedido do dono (02/10, card divergente da Girassol): o card de DIVERGENTE (envio errado)
 // tambem gera a NF de devolucao, com o deposito ja no DEFEITOS — nos 3 paineis (multiempresa).
 const fs = require('fs'); const path = require('path');

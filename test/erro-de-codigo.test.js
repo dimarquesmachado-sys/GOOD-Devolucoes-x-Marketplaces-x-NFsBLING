@@ -1,3 +1,4 @@
+require('./_fonte-painel');   // fatia 0 (docs/MODULARIZACAO.md): le o painel com os modulos js-AMB/painel-*.js embutidos
 // Roda com: node test/erro-de-codigo.test.js
 //
 // A HISTORIA: tres bugs identicos passaram despercebidos neste repo, e os

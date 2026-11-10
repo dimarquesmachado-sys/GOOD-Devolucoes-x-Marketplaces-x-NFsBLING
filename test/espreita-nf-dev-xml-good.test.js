@@ -1,4 +1,5 @@
 'use strict';
+require('./_fonte-painel');   // fatia 0 (docs/MODULARIZACAO.md): le o painel com os modulos js-AMB/painel-*.js embutidos
 // 29/10 — GOOD nivelada pelo #505: a espreita da GOOD marca nf_devolucao_xml (a marca que a baixa em massa do painel
 // unico aceita) quando a NF de venda do card tem NF de devolucao provada pelo XML. Roda a peca de PRODUCAO
 // (lib/espreita-nf-dev-xml) com a fabrica de PRODUCAO (nf-entrada-AMB) num Bling de mentira.

@@ -1,3 +1,4 @@
+require('./_fonte-painel');   // fatia 0 (docs/MODULARIZACAO.md): le o painel com os modulos js-AMB/painel-*.js embutidos
 // Roda com: node test/caminho-pedido.test.js
 // Guarda os bypasses que o Codex apontou no PR #85 pra nao voltarem.
 const { ehCaminhoProtegido } = require('../lib/caminho-pedido');

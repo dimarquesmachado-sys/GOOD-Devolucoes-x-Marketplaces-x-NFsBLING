@@ -1,3 +1,4 @@
+require('./_fonte-painel');   // fatia 0 (docs/MODULARIZACAO.md): le o painel com os modulos js-AMB/painel-*.js embutidos
 // Roda com: node test/cache-buster-alinhado.test.js
 //
 // ⚠️ ARMADILHA MEDIDA (11/09): `js/defeitos-ficha.js` é carregado por DUAS

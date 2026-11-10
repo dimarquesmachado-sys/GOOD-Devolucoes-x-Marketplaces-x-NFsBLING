@@ -1,4 +1,5 @@
 'use strict';
+require('./_fonte-painel');   // fatia 0 (docs/MODULARIZACAO.md): le o painel com os modulos js-AMB/painel-*.js embutidos
 // b668 — A DETECCAO DA BRIDGE NAO PODE PERDER A CORRIDA DO CARREGAMENTO.
 //
 // ⚠️ CASO REAL (GOOD, 07/11): Toolbox 2.1.8 instalada e o "Gerar NF" dizendo

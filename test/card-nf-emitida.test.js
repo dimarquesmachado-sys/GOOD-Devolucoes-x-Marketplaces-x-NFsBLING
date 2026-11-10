@@ -1,3 +1,4 @@
+require('./_fonte-painel');   // fatia 0 (docs/MODULARIZACAO.md): le o painel com os modulos js-AMB/painel-*.js embutidos
 // Roda com: node test/card-nf-emitida.test.js
 //
 // Pedido do dono (29/08): "quando eu gerar uma NF devolução, deixa o card

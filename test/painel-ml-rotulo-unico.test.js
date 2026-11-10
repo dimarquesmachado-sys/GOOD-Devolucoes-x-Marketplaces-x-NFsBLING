@@ -1,3 +1,4 @@
+require('./_fonte-painel');   // fatia 0 (docs/MODULARIZACAO.md): le o painel com os modulos js-AMB/painel-*.js embutidos
 // b656 - A LISTA do painel (as 3 empresas usam o painel unico) mostrava o
 // MESMO canal com dois rotulos: registros antigos gravados 'mercadolivre'
 // saiam crus (badge cinza "mercadolivre", sem link de vendas, fora da aba

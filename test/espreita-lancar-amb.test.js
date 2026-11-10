@@ -1,4 +1,5 @@
 'use strict';
+require('./_fonte-painel');   // fatia 0 (docs/MODULARIZACAO.md): le o painel com os modulos js-AMB/painel-*.js embutidos
 // b507 — auditoria multiempresa: "mandar da espreita para Aprovadas" na AMB/Girassol (antes so a GOOD).
 const fs = require('fs'); const path = require('path');
 let falhas = 0;

@@ -1,4 +1,5 @@
 'use strict';
+require('./_fonte-painel');   // fatia 0 (docs/MODULARIZACAO.md): le o painel com os modulos js-AMB/painel-*.js embutidos
 // b607 — nivelar por cima: o que o painel antigo da GOOD fazia com as ESTORNADAS sem retorno e o painel unico perdeu,
 // e a lista da Girassol/AMB decodificando os marcadores (so_rascunho, dep_sugerido) como a GOOD.
 const path = require('path'); const fs = require('fs');

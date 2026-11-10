@@ -1,3 +1,4 @@
+require('./_fonte-painel');   // fatia 0 (docs/MODULARIZACAO.md): le o painel com os modulos js-AMB/painel-*.js embutidos
 // Roda com: node test/devolucao-parcial.test.js
 //
 // O TikTok abre UMA solicitacao de devolucao por ITEM da nota, cada uma com

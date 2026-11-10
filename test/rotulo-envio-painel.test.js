@@ -1,4 +1,5 @@
 'use strict';
+require('./_fonte-painel');   // fatia 0 (docs/MODULARIZACAO.md): le o painel com os modulos js-AMB/painel-*.js embutidos
 // b533 — unificacao do painel: o rotulo do envio (porte da GOOD) no painel da AMB/Girassol. Roda a funcao de producao.
 const fs = require('fs'); const path = require('path'); const vm = require('vm');
 let falhas = 0;

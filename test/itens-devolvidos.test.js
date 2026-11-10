@@ -1,4 +1,5 @@
 'use strict';
+require('./_fonte-painel');   // fatia 0 (docs/MODULARIZACAO.md): le o painel com os modulos js-AMB/painel-*.js embutidos
 // b497 — devolucao com varios produtos na mesma NF (caso Cabo Lateral, 02/10): a AMB/Girassol grava a lista
 // do que voltou e os 3 paineis mostram item por item.
 const fs = require('fs'); const path = require('path'); const vm = require('vm');

@@ -1,4 +1,5 @@
 'use strict';
+require('./_fonte-painel');   // fatia 0 (docs/MODULARIZACAO.md): le o painel com os modulos js-AMB/painel-*.js embutidos
 // b574 — a emissao em lote diz o MOTIVO certo de cada card pulado (antes: sempre 'SEM NF').
 const fs = require('fs'); const path = require('path');
 let falhas = 0;

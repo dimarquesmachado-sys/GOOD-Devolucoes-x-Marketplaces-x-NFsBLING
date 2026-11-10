@@ -1,3 +1,4 @@
+require('./_fonte-painel');   // fatia 0 (docs/MODULARIZACAO.md): le o painel com os modulos js-AMB/painel-*.js embutidos
 // Roda com: node test/confrontar-nf.test.js
 //
 // [stated] "tipo uma 2a verificação o nome do cliente? se não, deixa as NFs

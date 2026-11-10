@@ -1,4 +1,5 @@
 'use strict';
+require('./_fonte-painel');   // fatia 0 (docs/MODULARIZACAO.md): le o painel com os modulos js-AMB/painel-*.js embutidos
 // b509 — de-para de SKU tambem na GOOD (biblioteca unica, empresa como parametro). Roda a lib DE PRODUCAO.
 const fs = require('fs'); const path = require('path');
 let falhas = 0;

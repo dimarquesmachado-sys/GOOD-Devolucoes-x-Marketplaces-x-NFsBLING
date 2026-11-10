@@ -1,3 +1,4 @@
+require('./_fonte-painel');   // fatia 0 (docs/MODULARIZACAO.md): le o painel com os modulos js-AMB/painel-*.js embutidos
 // Roda com: node test/emitir-do-card.test.js
 //
 // [stated] "se tá ali, pode até criar gerar automático esse registro. pq no

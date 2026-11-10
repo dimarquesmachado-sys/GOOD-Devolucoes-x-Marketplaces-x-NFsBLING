@@ -1,3 +1,4 @@
+require('./_fonte-painel');   // fatia 0 (docs/MODULARIZACAO.md): le o painel com os modulos js-AMB/painel-*.js embutidos
 // Roda com: node test/porte-amb-estornadas.test.js
 //
 // [stated] Pedido dele (30/08): "tinha q ser lib, pra não precisar portar né.

@@ -1,4 +1,5 @@
 'use strict';
+require('./_fonte-painel');   // fatia 0 (docs/MODULARIZACAO.md): le o painel com os modulos js-AMB/painel-*.js embutidos
 // b541 — dono, 05/10: no painel unico, o Gerar NF dos PROBLEMAS abria no deposito GERAL; e no celular tinha botao
 // saindo da tela. Roda a regra de producao do modal (ehProblema) com o que o card de problema manda.
 const fs = require('fs'); const path = require('path');

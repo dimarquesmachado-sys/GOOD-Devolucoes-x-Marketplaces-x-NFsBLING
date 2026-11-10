@@ -1,3 +1,4 @@
+require('./_fonte-painel');   // fatia 0 (docs/MODULARIZACAO.md): le o painel com os modulos js-AMB/painel-*.js embutidos
 // Roda com: node test/serie-da-nf.test.js
 //
 // O CASO REAL que o dono achou: a NF 637 do card e a NF 637 que a busca

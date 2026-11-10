@@ -1,3 +1,4 @@
+require('./_fonte-painel');   // fatia 0 (docs/MODULARIZACAO.md): le o painel com os modulos js-AMB/painel-*.js embutidos
 // Roda com: node test/link-marketplace.test.js
 //
 // [stated] "nos aprovados OK tem link pro marketplace. Já nos produtos com
