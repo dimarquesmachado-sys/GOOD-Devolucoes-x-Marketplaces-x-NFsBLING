@@ -17,8 +17,17 @@ const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o
 // b677 r2 - blocos async "soltos" corriam contra o process.exit do fim: parte das asserções nunca
 // rodava (vi 'ok' so da 1a linha do bloco da Shopee). Todo bloco async se registra aqui e o fim
 // do teste ESPERA todos antes do veredito.
+// r3: e rodam UM DE CADA VEZ, depois da cadeia principal — eles mexem em process.env e em
+// global.fetch; soltos em paralelo corriam entre si e contra o `sondar('girassol')` de baixo
+// (passava na minha maquina, falhou no CI: ordem de execucao diferente).
 const PENDENTES = [];
-const pendente = (p) => { PENDENTES.push(p.catch((e) => { falhas++; console.log('FALHA (bloco async estourou): ' + (e && e.stack || e)); })); return p; };
+const pendente = (bloco) => { PENDENTES.push(bloco); };
+async function rodarPendentes() {
+  for (const bloco of PENDENTES) {
+    try { await bloco(); }
+    catch (e) { falhas++; console.log('FALHA (bloco async estourou): ' + ((e && e.stack) || e)); }
+  }
+}
 
 const { sondar, CHECAGENS } = require('../scripts/sonda-empresa');
 
@@ -274,7 +283,7 @@ async function testeTokenAceitoDeVerdade() {
   const me = require('../lib/montagem-empresas');
   const mudo = { log() {}, warn() {}, error() {} };
   const zera = () => me.montarEmpresas({ app: { use() {} }, empresas: [], criarApp: () => ({}), logger: mudo });
-  pendente((async () => {
+  pendente(async () => {
     zera();
     const cli = await c4.fn('good');
     ok(cli.ok === true && /hospedeira \(raiz\)/.test(cli.detalhe) && !/ainda desativada/.test(String(cli.aviso || '')),
@@ -289,7 +298,7 @@ async function testeTokenAceitoDeVerdade() {
     zera();
     const gi = await c4.fn('girassol');
     ok(gi.ok === true && /ativa \(no contrato/.test(gi.detalhe), '  e as instancias seguem pelo contrato (girassol)');
-  })());
+  });
 }
 
 // ── b673: a checagem da PONTE EAN com o Mover-Pedidos (divergente, b671) ──
@@ -313,7 +322,7 @@ async function testeTokenAceitoDeVerdade() {
     if (modo === 'html') return resp('<html>login</html>', 200);
     return resp({ ok: false, erro: 'busca vazia' });   // b674: o ping vai sem q
   };
-  pendente((async () => {
+  pendente(async () => {
     const r1 = await cp.fn('girassol');
     ok(r1.ok === true && /girassol-backup-offline\/buscar-produto: rota e chave conferidas/.test(r1.detalhe) && !r1.aviso, '  Mover-Pedidos responde "busca vazia" ao ping: ok, rota e chave provadas');
     ok(/girassol-backup-offline\/buscar-produto\?k=k$/.test(urls[urls.length - 1]), '  b674: pingou na pasta da FICHA SEM q — nenhuma busca, zero cota do Bling');
@@ -331,13 +340,13 @@ async function testeTokenAceitoDeVerdade() {
     axios.defaults.adapter = adapterOrig;
     if (envUrl !== undefined) process.env.MOVER_PEDIDOS_URL = envUrl; else delete process.env.MOVER_PEDIDOS_URL;
     if (envKey !== undefined) process.env.MOVER_PEDIDOS_KEY = envKey; else delete process.env.MOVER_PEDIDOS_KEY;
-  })());
+  });
 }
 
 // ── b675: "ainda nao rodou neste boot" logo depois do deploy e AVISO, nao reprova ──
 {
   const cc = CHECAGENS.find((c) => c.nome === 'captura recente');
-  pendente((async () => {
+  pendente(async () => {
     const semCiclo = { capturaEstado: () => ({ ultima: null, gravadas: 0, erro: null }) };
     const r1 = await cc.fn('girassol', Object.assign({ uptimeMin: 12 }, semCiclo));
     ok(r1.ok === true && /subiu ha 12 min/.test(r1.detalhe) && /1x\/hora/.test(r1.aviso || ''), '⚠️ servidor de pe ha 12 min sem ciclo: AVISO (nao sei != nao funciona)');
@@ -351,7 +360,7 @@ async function testeTokenAceitoDeVerdade() {
     const app2 = fs.readFileSync(path.join(__dirname, '..', 'amb-devolucoes', 'app-AMB.js'), 'utf8');
     ok(/registrarProvaBling\(CHAVE_DADOS, \(\) => bling\.chamarBling\('\/situacoes\/modulos'\)\)/.test(app2) && /registrarProvaBling\('good', \(\) => chamarBling\('https:\/\/api\.bling\.com\.br\/Api\/v3\/situacoes\/modulos'/.test(srv2),
        '  GOOD e cada instancia registram a prova pelo cliente VIVO (nunca um cliente novo — refresh de uso unico)');
-  })());
+  });
 }
 
 // ── b676: a Shopee e PROVADA pelo cliente vivo da empresa (nao fica mais NAO VERIFICADO) ──
@@ -359,7 +368,7 @@ async function testeTokenAceitoDeVerdade() {
   const cc = CHECAGENS.find((c) => c.nome.startsWith('canais'));
   const envUrl = process.env.SHOPEE_PROXY_URL, envKey = process.env.SHOPEE_PROXY_KEY;
   process.env.SHOPEE_PROXY_URL = 'https://proxy.local'; process.env.SHOPEE_PROXY_KEY = 'k';
-  pendente((async () => {
+  pendente(async () => {
     const a = await cc.fn('girassol', { provaShopee: (emp) => (emp === 'girassol' ? async () => [{}, {}, {}] : null) });
     ok(/Shopee: proxy respondeu pelo cliente vivo da empresa \(3 devolucao\(oes\) na lista\)/.test(a.detalhe), '⚠️ com o cliente vivo respondendo, a Shopee e PROVADA (lista do proxy, loja da ficha)');
     const b = await cc.fn('girassol', { provaShopee: () => async () => { throw new Error('proxy shopee (loja girassol): loja desconhecida'); } });
@@ -394,7 +403,7 @@ async function testeTokenAceitoDeVerdade() {
     ok(/provaShopee: \(emp\) => require\('\.\/lib\/batimento-captura'\)\.provaShopee\(emp\)/.test(srv3), '  a rota passa a prova da Shopee');
     if (envUrl !== undefined) process.env.SHOPEE_PROXY_URL = envUrl; else delete process.env.SHOPEE_PROXY_URL;
     if (envKey !== undefined) process.env.SHOPEE_PROXY_KEY = envKey; else delete process.env.SHOPEE_PROXY_KEY;
-  })());
+  });
 }
 
 // ── b674: o BATIMENTO da captura das 3 num registro so, lido pela rota da sonda ──
@@ -464,7 +473,7 @@ async function testeTokenAceitoDeVerdade() {
       ok(l2.length === CHECAGENS.length, '  e as outras rodaram mesmo assim');
       CHECAGENS.pop();
 
-      return testeTabelasSegundaRodada().then(() => testeTokenAceitoDeVerdade()).then(() => Promise.all(PENDENTES)).then(() => {
+      return testeTabelasSegundaRodada().then(() => testeTokenAceitoDeVerdade()).then(() => rodarPendentes()).then(() => {
         console.log('');
         console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
         process.exit(falhas ? 1 : 0);
