@@ -6,6 +6,13 @@
 > fatia foi executada ainda. Quem for executar: **uma fatia por PR, só movimento,
 > sem melhoria junto.**
 
+## Andamento
+
+| fatia | o quê | build | painel (linhas) |
+|---|---|---|---|
+| 0 | o chão: helper dos testes, rota fechada na GOOD, meta-teste | b678 (#550) | 4.978 |
+| 1 | Bridge / extensão → `js-AMB/painel-bridge.js` (118 linhas movidas) | b679 | 4.860 |
+
 ## A medição
 
 | arquivo | linhas | o que é | mexer? |
