@@ -613,7 +613,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.126.188 (b677: a prova viva da Shopee na sonda tem prazo — proxy parado reprova em vez de travar)',
+      version: '9.126.189 (b677 r4: a prova viva da Shopee na sonda exige lista em array — resposta malformada reprova)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),

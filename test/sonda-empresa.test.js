@@ -373,6 +373,10 @@ async function testeTokenAceitoDeVerdade() {
     ok(/Shopee: proxy respondeu pelo cliente vivo da empresa \(3 devolucao\(oes\) na lista\)/.test(a.detalhe), '⚠️ com o cliente vivo respondendo, a Shopee e PROVADA (lista do proxy, loja da ficha)');
     const b = await cc.fn('girassol', { provaShopee: () => async () => { throw new Error('proxy shopee (loja girassol): loja desconhecida'); } });
     ok(b.ok === false && /Shopee: FALHOU \(proxy shopee \(loja girassol\): loja desconhecida\)/.test(b.detalhe), '  proxy recusando a loja: FALHOU com o motivo (reprova)');
+    for (const ruim of [{}, null, undefined, 'x']) {
+      const m = await cc.fn('girassol', { provaShopee: () => async () => ruim });
+      ok(m.ok === false && /Shopee: FALHOU \(proxy respondeu sem lista/.test(m.detalhe), '  resposta que nao e array (' + JSON.stringify(ruim) + '): FALHOU, nao confirma (Codex #548 r4)');
+    }
     const t0 = Date.now();
     const h = await cc.fn('girassol', { prazoShopeeMs: 50, provaShopee: () => () => new Promise(() => {}) });
     ok(h.ok === false && /Shopee: FALHOU \(proxy nao respondeu/.test(h.detalhe) && Date.now() - t0 < 2000, '  proxy parado (promessa que nunca resolve): FALHOU dentro do prazo, a sonda nao trava (Codex #548)');

@@ -476,7 +476,9 @@ registrar('canais (Magalu, Shopee, TikTok)', async (chave, ctx) => {
     try {
       // b677 - prazo proprio: o fetch do proxy nao tem abort, entao uma Shopee parada travaria a sonda inteira
       const lista = await comPrazo(provaShp, 'proxy', prazoMs);
-      partes.push('Shopee: proxy respondeu pelo cliente vivo da empresa (' + (Array.isArray(lista) ? lista.length + ' devolucao(oes) na lista' : 'resposta sem lista') + ')');
+      // b677 r4 (Codex #548): a producao faz lista.find(...); envelope ok com lista que nao e array quebra la
+      if (!Array.isArray(lista)) throw new Error('proxy respondeu sem lista de devolucoes (formato inesperado)');
+      partes.push('Shopee: proxy respondeu pelo cliente vivo da empresa (' + lista.length + ' devolucao(oes) na lista)');
     } catch (err) {
       partes.push('Shopee: FALHOU (' + String((err && err.message) || err).slice(0, 140) + ')');
     }
