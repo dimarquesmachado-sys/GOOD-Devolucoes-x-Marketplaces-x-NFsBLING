@@ -662,7 +662,7 @@ const registrarCicloDefeitos = require('../lib/defeitos-ciclo');
 // candidato ja desistido ainda batia no Bling depois de esperar numa pausa
 // de 429. Ver bling-AMB.js, nf-nomes-AMB.js e identificar-AMB.js.
 // 29/10: sem o 'AMB' na frente — a mesma peca serve Girassol, AMB e as proximas; a empresa vai no campo `empresa`
-const VERSAO = 'Devolucoes b675';
+const VERSAO = 'Devolucoes b677 r4';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -2060,6 +2060,8 @@ const CAPTURA = { ultima: 0, rodando: false, estado: { ultima: null, gravadas: 0
 require('../lib/batimento-captura').registrarBatimento(CHAVE_DADOS, () => CAPTURA.estado);
 // b675 - prova viva do Bling desta empresa: uma leitura pelo cliente vivo da instancia (renova pela cadeia dela se precisar)
 require('../lib/batimento-captura').registrarProvaBling(CHAVE_DADOS, () => bling.chamarBling('/situacoes/modulos'));
+// b676 - prova viva da Shopee desta empresa: a lista do proxy (cache 5 min) com a loja da ficha e a chave interna
+require('../lib/batimento-captura').registrarProvaShopee(CHAVE_DADOS, () => shopee.buscarDevolucoesProxy(false));
 const CAPTURA_INTERVALO_MS = 60 * 60 * 1000;
 const CAPTURA_LIMITE_TIKTOK = 300;
 function capturarDevolucoesEmpresa(emTransito, forcar) {

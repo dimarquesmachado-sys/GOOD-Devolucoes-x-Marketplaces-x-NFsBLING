@@ -158,6 +158,17 @@ registrar('política de token', async (chave) => {
 });
 
 /* ── 3. o marketplace ACEITA o token que a produção vai usar ──────── */
+// b677 r2 - toda prova pelo cliente VIVO tem PRAZO (o do bot cobria so a Shopee; o Bling e o mesmo
+// risco: a sonda roda em sequencia e a rota espera o fim). O prazo nao aborta a chamada por baixo
+// (a funcao registrada nao recebe sinal), mas devolve o veredito no tempo da sonda.
+const PRAZO_PROVA_MS = 8000;
+function comPrazo(promessa, rotulo, ms) {
+  const prazo = ms || PRAZO_PROVA_MS;
+  let timer = null;
+  const estouro = new Promise((_, rej) => { timer = setTimeout(() => rej(new Error(`${rotulo} nao respondeu em ${Math.round(prazo / 1000)} s`)), prazo); });
+  return Promise.race([Promise.resolve().then(() => promessa()), estouro]).finally(() => clearTimeout(timer));
+}
+
 // b675 - classifica a resposta do cliente VIVO da empresa ({ ok, status, error }) no mesmo
 // vocabulario da prova por token cru: aceito / recusado / nao confirmou.
 function classificarProvaBling(r) {
@@ -242,7 +253,7 @@ registrar('o dono entrega o token', async (chave, ctx) => {
     const provaViva = (integracao === 'bling' && ctx && typeof ctx.provaBling === 'function') ? ctx.provaBling(empresaDados) : null;
     if (provaViva) {
       let resp = null;
-      try { resp = await provaViva(); } catch (err) { resp = { ok: false, error: (err && err.message) || String(err) }; }
+      try { resp = await comPrazo(provaViva, 'o cliente Bling da empresa', ctx && ctx.prazoProvaMs); } catch (err) { resp = { ok: false, error: (err && err.message) || String(err) }; }
       r = classificarProvaBling(resp);
       if (r.aceito === true) { partes.push(`bling (${politica}): aceitou numa chamada real pelo cliente vivo da empresa`); continue; }
     } else {
@@ -440,7 +451,7 @@ registrar('captura recente', async (chave, ctx) => {
 /* -- b525 - AUDITORIA: CANAIS (confirmado / falhou / nao aplicavel / nao verificado) ------------
    A sonda so testava Bling e ML. Aqui o estado de configuracao dos outros canais, sem chamar a API deles
    (Shopee vai pelo proxy; TikTok pela ponte com mapa FECHADO de lojas no Mover-Pedidos). */
-registrar('canais (Magalu, Shopee, TikTok)', async (chave) => {
+registrar('canais (Magalu, Shopee, TikTok)', async (chave, ctx) => {
   const e = require('../lib/empresas').obterEmpresa(chave) || {};
   // mesma resolucao da producao (prefixo + fallback legado), nao nomes de env montados a mao
   const mg = require('../lib/config-da-empresa').configDaEmpresa(chave).magalu;
@@ -452,7 +463,28 @@ registrar('canais (Magalu, Shopee, TikTok)', async (chave) => {
       + (tem(mg.clientId) ? ' · credencial propria' : ' · usa a credencial da GOOD'));
   } else partes.push('Magalu: NAO APLICAVEL (sem token da empresa)');
   // Shopee: proxy compartilhado (o servico multi-loja)
-  partes.push('Shopee: ' + ((process.env.SHOPEE_PROXY_URL && process.env.SHOPEE_PROXY_KEY) ? 'NAO VERIFICADO (proxy configurado; a loja e conferida no /' + chave + '/status)' : 'FALHOU (proxy sem SHOPEE_PROXY_URL/KEY)'));
+  // b676 - dentro do servidor a Shopee e PROVADA pelo cliente vivo da empresa (lista do proxy, cache
+  // de 5 min, loja da ficha + chave interna): URL, chave e loja cadastrada no shopee-nf-sync. Fora do
+  // servidor (linha de comando) fica como antes: configurado, nao verificado.
+  const proxyCfg = !!(process.env.SHOPEE_PROXY_URL && process.env.SHOPEE_PROXY_KEY);
+  const empresaDados = String(e.chaveDados || chave).toLowerCase();
+  const prazoMs = (ctx && ctx.prazoShopeeMs) || 8000;
+  const provaShp = (ctx && typeof ctx.provaShopee === 'function') ? ctx.provaShopee(empresaDados) : null;
+  if (!proxyCfg) {
+    partes.push('Shopee: FALHOU (proxy sem SHOPEE_PROXY_URL/KEY)');
+  } else if (provaShp) {
+    try {
+      // b677 - prazo proprio: o fetch do proxy nao tem abort, entao uma Shopee parada travaria a sonda inteira
+      const lista = await comPrazo(provaShp, 'proxy', prazoMs);
+      // b677 r4 (Codex #548): a producao faz lista.find(...); envelope ok com lista que nao e array quebra la
+      if (!Array.isArray(lista)) throw new Error('proxy respondeu sem lista de devolucoes (formato inesperado)');
+      partes.push('Shopee: proxy respondeu pelo cliente vivo da empresa (' + lista.length + ' devolucao(oes) na lista)');
+    } catch (err) {
+      partes.push('Shopee: FALHOU (' + String((err && err.message) || err).slice(0, 140) + ')');
+    }
+  } else {
+    partes.push('Shopee: NAO VERIFICADO (proxy configurado; a loja e conferida no /' + chave + '/status)');
+  }
   // TikTok: a ponte tem mapa fechado de lojas E precisa de URL/KEY, senao toda chamada falha
   let tiktok = 'NAO VERIFICADO';
   try {
@@ -550,7 +582,7 @@ async function sondar(chave, ctx) {
   return linhas;
 }
 
-module.exports = { sondar, CHECAGENS, classificarProvaBling };
+module.exports = { sondar, CHECAGENS, classificarProvaBling, comPrazo };
 
 /* ── linha de comando ──────────────────────────────────────── */
 if (require.main === module) {
