@@ -13,6 +13,13 @@
 | 0 | o chão: helper dos testes, rota fechada na GOOD, meta-teste | b678 (#550) | 4.978 |
 | 1 | Bridge / extensão → `js-AMB/painel-bridge.js` (118 linhas movidas) | b679 | 4.860 |
 | 2 | Recados pro estoquista → `js-AMB/painel-recados.js` (334 linhas movidas, 2 blocos) | b680 | 4.526 |
+| 3 | Vendas estornadas sem retorno → `js-AMB/painel-sem-retorno.js` (539 linhas movidas) | b681 | 3.987 |
+
+⚠️ **O mapa por tema da seção "A medição" foi feito contando indentação e errou**: `espreitaOrdenar` tem 1 linha
+(não 543) — o bloco grande ali era o das estornadas (`carregarSemRetorno`, 386 linhas, na coluna 0). O mapa
+confiável sai do parser: a linha *i* é fronteira de topo quando o prefixo `[0..i)` do script compila. Com ele,
+o que resta no script principal, em blocos contíguos: Magalu/ML reclamação (518–633, 116), espreita em 4 pedaços
+(~375 no total, intercalados), índice de NF de devolução + de-para (~209), gerar NF/esteira (~900).
 
 Guarda de toda fatia: `test/painel-modulos-carregam.test.js` — cada módulo referenciado pelo painel carrega
 sozinho (sem depender do script principal na carga), vem antes dele com `?v=` e não repete nome de topo.

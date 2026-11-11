@@ -29,13 +29,26 @@ ok(!!mMain, '⚠️ achei o script principal do painel');
 const principal = mMain ? mMain[1] : '';
 const iMain = mMain ? cru.indexOf(mMain[0]) : -1;
 
-// nomes declarados no TOPO (4 espacos de indentacao no HTML e nos modulos, que sao movimento puro)
+// nomes declarados no TOPO — pelo PARSER, nao pela indentacao (b681: o bloco das estornadas esta na
+// coluna 0, com `let` aninhada a 2 espacos; contar espacos erra pros dois lados). A linha i e fronteira
+// de topo quando o prefixo [0..i) compila como programa completo; cada trecho entre fronteiras e uma
+// instrucao de topo, e o nome sai da 1a linha de codigo dela.
 function nomesDeTopo(src) {
+  const S = src.split('\n');
+  const compila = (txt) => { try { new Function(txt); return true; } catch (e) { return !(e instanceof SyntaxError); } };
   const nomes = new Set();
-  for (const l of src.split('\n')) {
-    let m = l.match(/^    (?:async\s+)?function\s+([A-Za-z0-9_$]+)\s*\(/); if (m) nomes.add(m[1]);
-    m = l.match(/^    (?:let|const|var)\s+([A-Za-z0-9_$]+)/); if (m) nomes.add(m[1]);
-    m = l.match(/^    window\.([A-Za-z0-9_$]+)\s*=\s*(?:async\s+)?function/); if (m) nomes.add('window.' + m[1]);
+  let ini = 0;
+  for (let i = 1; i <= S.length; i++) {
+    const ant = S[i - 1].trim();
+    // so vale perguntar ao parser onde a linha anterior PODE fechar uma instrucao
+    if (!(ant === '' || ant.startsWith('//') || /[;})\]]$/.test(ant) || /\*\/$/.test(ant))) continue;
+    if (!compila(S.slice(0, i).join('\n'))) continue;
+    const trecho = S.slice(ini, i); ini = i;
+    const primeira = trecho.find((l) => !/^\s*(\/\/.*)?$/.test(l));
+    if (!primeira) continue;
+    let m = primeira.match(/^\s*(?:async\s+)?function\s+([A-Za-z0-9_$]+)\s*\(/); if (m) { nomes.add(m[1]); continue; }
+    m = primeira.match(/^\s*(?:let|const|var)\s+([A-Za-z0-9_$]+)/); if (m) { nomes.add(m[1]); continue; }
+    m = primeira.match(/^\s*window\.([A-Za-z0-9_$]+)\s*=\s*(?:async\s+)?function/); if (m) nomes.add('window.' + m[1]);
   }
   return nomes;
 }
