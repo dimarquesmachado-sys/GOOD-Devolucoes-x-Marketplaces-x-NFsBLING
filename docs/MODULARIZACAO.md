@@ -12,6 +12,10 @@
 |---|---|---|---|
 | 0 | o chão: helper dos testes, rota fechada na GOOD, meta-teste | b678 (#550) | 4.978 |
 | 1 | Bridge / extensão → `js-AMB/painel-bridge.js` (118 linhas movidas) | b679 | 4.860 |
+| 2 | Recados pro estoquista → `js-AMB/painel-recados.js` (334 linhas movidas, 2 blocos) | b680 | 4.526 |
+
+Guarda de toda fatia: `test/painel-modulos-carregam.test.js` — cada módulo referenciado pelo painel carrega
+sozinho (sem depender do script principal na carga), vem antes dele com `?v=` e não repete nome de topo.
 
 ## A medição
 
