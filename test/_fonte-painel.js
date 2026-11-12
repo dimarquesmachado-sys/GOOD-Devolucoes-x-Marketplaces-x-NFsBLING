@@ -30,11 +30,47 @@ const TAG_MODULO = /<script src="js-AMB\/(painel-[a-z0-9-]+\.js)(?:\?v=[^"]*)?">
 // o leitor ORIGINAL, guardado antes de qualquer troca (um segundo require nao re-embrulha)
 const lerOriginal = fs.__lerOriginalFontePainel || fs.readFileSync;
 
+// b682 - A FONTE COMPOSTA REPRODUZ A ORDEM ORIGINAL DO PAINEL.
+//
+// A 1a versao embutia o modulo no lugar da TAG (no topo, antes do script principal). Os testes do
+// painel recortam texto entre dois marcos (`indexOf('function A')` ... `indexOf('function B', i)`);
+// com um bloco mudando de lugar no texto, um recorte que cruza a fronteira fica MAIOR sem ninguem
+// ver — o teste segue verde olhando pra mais codigo do que devia ("verde por nao achar mais o que
+// procurava"). Agora cada bloco deixa, no script principal, uma linha de marca no lugar de onde
+// saiu (`// @painel-modulo js-AMB/painel-x.js#secao`) e o modulo marca o comeco de cada secao
+// (`// @secao nome`): a fonte composta poe cada secao DE VOLTA no lugar e tira a tag. O texto que
+// o teste le e o do painel de antes das fatias. Modulo com tag e sem marca (nao deveria existir)
+// ainda e embutido no lugar da tag — nada some.
+const MARCA_MODULO = /^[ \t]*\/\/ @painel-modulo js-AMB\/(painel-[a-z0-9-]+\.js)#([A-Za-z0-9-]+)[ \t]*$/gm;
+
+function secoesDoModulo(js) {
+  const secoes = new Map();
+  let nome = null, linhas = [];
+  const fechar = () => { if (nome != null) { while (linhas.length && linhas[linhas.length - 1].trim() === '') linhas.pop(); secoes.set(nome, linhas.join('\n')); } };
+  for (const l of String(js).split('\n')) {
+    const m = l.match(/^\/\/ @secao ([A-Za-z0-9-]+)\s*$/);
+    if (m) { fechar(); nome = m[1]; linhas = []; continue; }
+    if (nome != null) linhas.push(l);
+  }
+  fechar();
+  return secoes;
+}
+
 function compor(html, lerModulo) {
-  return String(html).replace(TAG_MODULO, (tag, nome) => {
+  const noLugar = new Set();
+  let out = String(html).replace(MARCA_MODULO, (linha, nome, secao) => {
+    const js = lerModulo(nome);
+    const txt = js == null ? null : secoesDoModulo(js).get(secao);
+    if (txt == null) return linha;
+    noLugar.add(nome);
+    return '/* modulo: js-AMB/' + nome + '#' + secao + ' */\n' + txt;
+  });
+  out = out.replace(TAG_MODULO, (tag, nome) => {
+    if (noLugar.has(nome)) return '';                 // as secoes ja voltaram pro lugar
     const js = lerModulo(nome);
     return js == null ? tag : '<script>/* modulo: js-AMB/' + nome + ' */\n' + js + '\n</script>';
   });
+  return out;
 }
 
 function fonteCrua() { return lerOriginal.call(fs, PAINEL, 'utf8'); }
@@ -59,4 +95,4 @@ if (!fs.__lerOriginalFontePainel) {
   };
 }
 
-module.exports = { fontePainel, fonteCrua, compor, modulosDoPainel, PAINEL, DIR_JS, TAG_MODULO };
+module.exports = { fontePainel, fonteCrua, compor, secoesDoModulo, modulosDoPainel, PAINEL, DIR_JS, TAG_MODULO, MARCA_MODULO };

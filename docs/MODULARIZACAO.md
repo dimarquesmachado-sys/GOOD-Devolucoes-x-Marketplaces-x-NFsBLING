@@ -14,6 +14,7 @@
 | 1 | Bridge / extensão → `js-AMB/painel-bridge.js` (118 linhas movidas) | b679 | 4.860 |
 | 2 | Recados pro estoquista → `js-AMB/painel-recados.js` (334 linhas movidas, 2 blocos) | b680 | 4.526 |
 | 3 | Vendas estornadas sem retorno → `js-AMB/painel-sem-retorno.js` (539 linhas movidas) | b681 | 3.987 |
+| — | chão 2: a fonte dos testes volta a ter a **ordem original** (marca no lugar de onde o bloco saiu) | b682 | 3.991 |
 
 ⚠️ **O mapa por tema da seção "A medição" foi feito contando indentação e errou**: `espreitaOrdenar` tem 1 linha
 (não 543) — o bloco grande ali era o das estornadas (`carregarSemRetorno`, 386 linhas, na coluna 0). O mapa
@@ -23,6 +24,18 @@ o que resta no script principal, em blocos contíguos: Magalu/ML reclamação (5
 
 Guarda de toda fatia: `test/painel-modulos-carregam.test.js` — cada módulo referenciado pelo painel carrega
 sozinho (sem depender do script principal na carga), vem antes dele com `?v=` e não repete nome de topo.
+
+### Regra de toda fatia do painel, desde a b682: deixar a marca
+
+Os testes do painel recortam texto entre dois marcos. Se a fonte que eles leem tivesse os blocos fora de
+ordem (no topo, onde fica a tag), um recorte que cruzasse a fronteira ficaria maior sem ninguém ver. Por isso:
+
+1. no script principal, **no lugar de onde o bloco saiu**, fica uma linha
+   `// @painel-modulo js-AMB/painel-<tema>.js#<secao>`;
+2. no módulo, antes do bloco, uma linha `// @secao <secao>` (um módulo pode ter várias seções);
+3. `test/_fonte-painel.js` põe cada seção de volta no lugar da marca e tira a tag — o texto que os testes leem
+   é o do painel **de antes das fatias** (conferido na b682: idêntico ao original, ignorando linhas em branco);
+4. `test/painel-fonte-unica` acusa seção sem marca, marca sem seção e marca fora do script principal.
 
 ## A medição
 

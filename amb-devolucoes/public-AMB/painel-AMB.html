@@ -444,9 +444,9 @@
 
   <div class="toast" id="toast"></div>
 
-  <script src="js-AMB/painel-bridge.js?v=b679"></script>
-  <script src="js-AMB/painel-recados.js?v=b680"></script>
-  <script src="js-AMB/painel-sem-retorno.js?v=b681"></script>
+  <script src="js-AMB/painel-bridge.js?v=b682"></script>
+  <script src="js-AMB/painel-recados.js?v=b682"></script>
+  <script src="js-AMB/painel-sem-retorno.js?v=b682"></script>
   <script>
     let dados = { aprovadas: [], problemas: [] };
 
@@ -688,6 +688,7 @@
       carregarEspreita();
     }
 
+    // @painel-modulo js-AMB/painel-recados.js#A
     // v4.48 - carrega as NFs de devolucao do Bling e mostra numa tabela.
     // Modo diagnostico: mostra os campos crus + o detalhe de uma, pra o Diego
     // me dizer como a nota referencia o pedido (ai eu ligo o cruzamento auto).
@@ -897,6 +898,7 @@
       alternarDepara();
     }
 
+    // @painel-modulo js-AMB/painel-recados.js#B
     // v3.81 - filtro/ordenacao client-side (re-render sem novo fetch)
     window._espFiltro = 'todos';
     window._espBusca = '';
@@ -938,6 +940,7 @@
     function espreitaOrdenar() { window._espOrdem = (window._espOrdem === 'antigas') ? 'novas' : 'antigas'; if (window._espDados) renderEspreita(window._espDados); }
 
     // v3.77 - A ESPREITA UNIFICADA: Magalu + ML + Shopee (devolucoes a caminho)
+    // @painel-modulo js-AMB/painel-sem-retorno.js#sem-retorno
     async function carregarEspreita() {
       atualizarCacheRecados();
       try {
@@ -3903,6 +3906,7 @@
       return n.toFixed(10).replace('.', ',');
     }
 
+    // @painel-modulo js-AMB/painel-bridge.js#bridge
     // Pre-seta datas e carrega
     setarDatasPadrao();
     carregar();

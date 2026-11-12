@@ -9,6 +9,7 @@
 // Carregado por <script src> ANTES do script principal; na carga so toca em `window` (o cache e as duas
 // funcoes penduradas nele). O resto e chamado por clique ou pelo carregar() do painel, depois de tudo.
 
+// @secao A
     // v3.83 - recados pro estoquista
     // v4.46 - atalho: cria recado pro estoquista JA PRESO a esta venda, do card
     // v4.47 - cache dos recados, pra cada card saber se ja tem aviso pra ele
@@ -123,6 +124,7 @@
       carregarRecados();
     }
 
+// @secao B
     // b219 - edicao INLINE do recado (sem popup): abre um bloco com os dois
     // campos preenchidos; salvar recarrega a lista, cancelar so fecha.
     window.editarRecado = function (id) {

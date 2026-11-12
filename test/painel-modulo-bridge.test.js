@@ -59,7 +59,7 @@ ok(api && typeof api.verificarBridgeInstalada === 'function' && typeof api.chama
 
   // ── 3. a fonte composta (o que os 52 testes leem) tem o bloco no lugar da tag ──
   const composta = fonte.fontePainel();
-  ok(composta.includes('/* modulo: js-AMB/painel-bridge.js */') && /let bridgeInstaladaCache = null;/.test(composta) && !/<script src="js-AMB\/painel-bridge\.js/.test(composta),
+  ok(composta.includes('/* modulo: js-AMB/painel-bridge.js#bridge */') && /let bridgeInstaladaCache = null;/.test(composta) && !/<script src="js-AMB\/painel-bridge\.js/.test(composta),
      '⚠️ a fonte composta embute o modulo (os testes do painel continuam enxergando o codigo)');
   for (const m of composta.matchAll(/<script>([\s\S]*?)<\/script>/g)) { try { new Function(m[1]); } catch (e) { ok(false, '  script do painel composto compila: ' + e.message); } }
   ok(true, '  todos os <script> do painel composto compilam');

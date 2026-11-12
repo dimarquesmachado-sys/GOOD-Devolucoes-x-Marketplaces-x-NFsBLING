@@ -6,6 +6,7 @@
 // Carregado por <script src> ANTES do script principal; na carga so declara as duas `let`. As funcoes
 // sao chamadas por clique ou pelo carregar() do painel, depois de tudo carregado.
 
+// @secao sem-retorno
 let _gerandoEstornada = false;
 let _loteEstornadas = false;
 
