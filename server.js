@@ -613,7 +613,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.126.195 (b683: modularizacao do painel — fatia 4: esteira e geracao da NF em js-AMB/painel-gerar-nf.js, so movimento)',
+      version: '9.126.196 (b684: modularizacao do painel — fatia 5: indice de NF + de-para e reclamacao Magalu/ML em modulos; painel abaixo do teto)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),

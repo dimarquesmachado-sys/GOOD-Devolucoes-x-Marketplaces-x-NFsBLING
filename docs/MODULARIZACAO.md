@@ -16,6 +16,13 @@
 | 3 | Vendas estornadas sem retorno → `js-AMB/painel-sem-retorno.js` (539 linhas movidas) | b681 | 3.987 |
 | — | chão 2: a fonte dos testes volta a ter a **ordem original** (marca no lugar de onde o bloco saiu) | b682 | 3.991 |
 | 4 | Esteira + geração da NF + XML → `js-AMB/painel-gerar-nf.js` (715 linhas movidas) | b683 | 3.278 |
+| 5 | Índice de NF + de-para → `js-AMB/painel-nf-depara.js` (208) **e** reclamação Magalu/ML → `js-AMB/painel-reclamacao.js` (115) | b684 | **2.959** |
+
+**O painel está abaixo do teto de 3.000 linhas** (era 4.978). As duas da fatia 5 foram no mesmo PR de propósito:
+são os dois blocos contíguos que faltavam pro teto, mesmo método, e a prova cobre os dois de uma vez (a fonte
+composta ficou idêntica). O que ainda dá pra tirar, pra chegar na meta de 2.500 e ter folga: a espreita (4
+pedaços intercalados, ~375 linhas) e os avisos de NF de devolução (`_nfDev*`, ~150). Com folga, entra um teste
+do teto (painel ≤ 3.000, módulo ≤ 1.000) — hoje, com 41 linhas de margem, ele só serviria pra travar conserto urgente.
 
 ⚠️ **O mapa por tema da seção "A medição" foi feito contando indentação e errou**: `espreitaOrdenar` tem 1 linha
 (não 543) — o bloco grande ali era o das estornadas (`carregarSemRetorno`, 386 linhas, na coluna 0). O mapa
