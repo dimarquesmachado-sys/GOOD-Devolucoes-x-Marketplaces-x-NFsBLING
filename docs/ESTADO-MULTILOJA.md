@@ -39,6 +39,9 @@ no `verifica.js`):
 | `estacao-impressao-nas-instancias` | fila/estação de impressão com contrato diferente da GOOD, ou fila vazando entre empresas |
 | `divergente-nao-escolhe-primeiro` / `divergente-ean-pela-ponte` | código de barras do divergente virando "o primeiro da lista" do Bling; ponte EAN com o Mover-Pedidos respondendo errado |
 | `rotulo-pedido-pelo-canal` | rótulo/campos do pedido assumindo Mercado Livre em pedido de outro canal |
+| `teto-de-linhas` | arquivo de código acima de 3.000 linhas, ou módulo da modularização acima de 1.000 (isento, com o motivo: `server.js`) |
+| `painel-modulos-carregam` | o painel único **inteiro** (módulos `js-AMB/painel-*.js` + script principal) não carregando num contexto só — nome repetido entre scripts, dependência de carga |
+| `painel-fonte-unica` / `fabrica-fonte-unica` | bloco que saiu do painel ou da fábrica sem a marca no lugar; na fábrica, chamada que não passa as `DEPS` do módulo, ou nome da closure usado sem estar nelas (`docs/MODULARIZACAO.md`) |
 
 Regra prática: **rota, contrato ou comportamento novo no bipe/painel entra nos dois
 lados ou não entra** — e um desses testes deve acusar o lado que faltou.

@@ -81,11 +81,53 @@ function nomesDaClosure(src) {
 const closure = nomesDaClosure(composta);
 ok(closure.size > 100 && closure.has('router') && closure.has('db') && closure.has('bling') && closure.has('CHAVE_DADOS'), `  nomes de topo da closure da fabrica: ${closure.size} (router, db, bling, CHAVE_DADOS...)`);
 
-const semCodigoMorto = (t) => t
-  .replace(/\/\*[\s\S]*?\*\//g, ' ')
-  .replace(/(^|[^:'"`\\])\/\/[^\n]*/g, '$1 ')
-  .replace(/'(?:\\.|[^'\\\n])*'|"(?:\\.|[^"\\\n])*"/g, "''")
-  .replace(/`(?:\\.|\$\{[^}]*\}|[^`\\])*`/g, (tpl) => (tpl.match(/\$\{[^}]*\}/g) || []).join(' '));
+// So o CODIGO de um trecho: tira comentario e o miolo de string; de template literal (`...`) tira o
+// TEXTO e mantem as expressoes `${...}` (com template aninhado e chaves dentro). b688: a versao por regex
+// perdia o que estava em template aninhado — as paginas de OAuth sao quase so isso, e um nome da closure
+// usado ali dentro passaria sem ser visto.
+function soCodigo(src) {
+  let out = '', i = 0, ult = '';
+  const n = src.length, pilha = [];
+  const emit = (c) => { out += c; if (!/\s/.test(c)) ult = c; };
+  while (i < n) {
+    const c = src[i], d = src[i + 1], topo = pilha[pilha.length - 1];
+    if (topo === 'tpl') {
+      if (c === '\\') { i += 2; continue; }
+      if (c === '`') { pilha.pop(); emit('`'); i++; continue; }
+      if (c === '$' && d === '{') { pilha.push(0); emit(' '); i += 2; continue; }
+      if (c === '\n') out += '\n';
+      i++; continue;
+    }
+    if (c === '/' && d === '/') { while (i < n && src[i] !== '\n') i++; continue; }
+    if (c === '/' && d === '*') { i += 2; while (i < n && !(src[i] === '*' && src[i + 1] === '/')) { if (src[i] === '\n') out += '\n'; i++; } i += 2; continue; }
+    if (c === "'" || c === '"') { i++; while (i < n && src[i] !== c && src[i] !== '\n') { if (src[i] === '\\') i++; i++; } i++; emit(c); emit(c); continue; }
+    if (c === '`') { pilha.push('tpl'); emit('`'); i++; continue; }
+    if (c === '/' && (ult === '' || /[(,=:[!&|?{};]/.test(ult) || /\b(return|typeof|case)\s*$/.test(out.slice(-8)))) {
+      i++; let classe = false;
+      while (i < n && src[i] !== '\n' && (classe || src[i] !== '/')) { if (src[i] === '\\') i++; else if (src[i] === '[') classe = true; else if (src[i] === ']') classe = false; i++; }
+      i++; while (i < n && /[a-z]/.test(src[i])) i++;
+      emit('0'); continue;
+    }
+    if (typeof topo === 'number') {
+      if (c === '{') pilha[pilha.length - 1]++;
+      else if (c === '}') { if (topo === 0) { pilha.pop(); emit(' '); i++; continue; } pilha[pilha.length - 1]--; }
+    }
+    emit(c); i++;
+  }
+  return out;
+}
+// o nome aparece SOLTO no codigo? (nao como `.nome`, nem como chave de objeto `{ nome: ...}` / `, nome: ...`)
+function usaNome(codigo, nome) {
+  const rx = new RegExp('(?<![.\\w$])' + nome.replace(/\$/g, '\\$') + '(?![\\w$])', 'g');
+  let m;
+  while ((m = rx.exec(codigo))) {
+    const antes = codigo.slice(0, m.index).replace(/\s+$/, '').slice(-1);
+    const depois = codigo.slice(m.index + nome.length).replace(/^\s+/, '').slice(0, 1);
+    if (depois === ':' && (antes === '{' || antes === ',')) continue;   // chave de objeto
+    return true;
+  }
+  return false;
+}
 
 for (const arq of modulos) {
   const abs = path.join(fab.DIR_FABRICA, arq);
@@ -118,7 +160,7 @@ for (const arq of modulos) {
   ok(!erroReg && rotas.length >= 1, `  ${arq}: com as DEPS completas registra ${rotas.length} rota(s): ${rotas.slice(0, 4).join(', ')}` + (erroReg ? ' — ' + erroReg.message : ''));
 
   // 4. nenhum nome da closure usado no bloco sem estar em DEPS
-  const bloco = semCodigoMorto([...secoes.values()].join('\n'));
+  const bloco = soCodigo([...secoes.values()].join('\n'));
   // nomes que o PROPRIO bloco declara (sombra): const/let/var/function, parametro de catch, de funcao e de
   // arrow. E por NOME, nao por escopo: um nome declarado em qualquer ponto do bloco deixa de ser vigiado
   // nele inteiro — o preco de nao virar o detector generico cheio de `e`, `k`, `r` que ninguem le.
@@ -128,9 +170,9 @@ for (const arq of modulos) {
   for (const m of bloco.matchAll(/(?<![.\w$])([A-Za-z_$][\w$]*)\s*=>/g)) declaradosNoBloco.add(m[1]);
   for (const m of bloco.matchAll(/\b(?:const|let|var)\s+[{[]([^=]*?)[}\]]\s*=/g)) for (const parte of m[1].split(',')) { const n = parte.split(':').pop().trim().replace(/\s*=.*$/, '').replace(/^\.\.\./, ''); if (/^[A-Za-z_$][\w$]*$/.test(n)) declaradosNoBloco.add(n); }
   const permitidos = new Set(DEPS.concat(['router']));
-  const vazou = [...closure].filter((n) => !permitidos.has(n) && !declaradosNoBloco.has(n) && new RegExp('(?<![.\\w$])' + n.replace(/\$/g, '\\$') + '(?![\\w$])(?!\\s*:)').test(bloco));
+  const vazou = [...closure].filter((n) => !permitidos.has(n) && !declaradosNoBloco.has(n) && usaNome(bloco, n));
   ok(vazou.length === 0, `⚠️ ${arq}: nenhum nome da closure da fabrica e usado no bloco sem estar em DEPS` + (vazou.length ? ' — VAZOU: ' + vazou.join(', ') + ' (ponha em DEPS e na chamada, ou e ReferenceError em producao)' : ''));
-  const sobra = DEPS.filter((d) => !new RegExp('(?<![.\\w$])' + d + '(?![\\w$])').test(bloco));
+  const sobra = DEPS.filter((d) => !usaNome(bloco, d));
   ok(sobra.length === 0, `  ${arq}: toda DEP e usada no bloco` + (sobra.length ? ' — sobrando: ' + sobra.join(', ') : ''));
 }
 
