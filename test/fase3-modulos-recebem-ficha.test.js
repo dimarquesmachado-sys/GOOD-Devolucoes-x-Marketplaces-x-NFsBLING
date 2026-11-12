@@ -1,3 +1,4 @@
+require('./_fonte-fabrica');   // docs/MODULARIZACAO.md: le a fabrica (app-AMB.js) com os blocos de lib-AMB de volta no lugar
 // Roda com: node test/fase3-modulos-recebem-ficha.test.js
 //
 // FASE 3 do docs/PLUGAR-EMPRESA-NOVA.md: os módulos passam a RECEBER a

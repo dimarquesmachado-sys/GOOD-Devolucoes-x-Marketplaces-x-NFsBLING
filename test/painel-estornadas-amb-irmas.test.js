@@ -1,4 +1,5 @@
 'use strict';
+require('./_fonte-fabrica');   // docs/MODULARIZACAO.md: le a fabrica (app-AMB.js) com os blocos de lib-AMB de volta no lugar
 // b609 (Codex, #485): na Girassol/AMB as irmas CONCLUIDAS vem por PEDIDO ativo (nao pela janela global de 200 do
 // listarFila) e a espreita da AMB resolve pack -> pedidos como a GOOD.
 const path = require('path'); const fs = require('fs');

@@ -1,4 +1,5 @@
 'use strict';
+require('./_fonte-fabrica');   // docs/MODULARIZACAO.md: le a fabrica (app-AMB.js) com os blocos de lib-AMB de volta no lugar
 // Roda com: node test/amb-nao-registra-timer-sem-montar.test.js
 //
 // ⚠️ b422 (achado do Codex, P1) - QUANDO A EMPRESA NAO MONTA, ELA NAO PODE

@@ -1,4 +1,5 @@
 'use strict';
+require('./_fonte-fabrica');   // docs/MODULARIZACAO.md: le a fabrica (app-AMB.js) com os blocos de lib-AMB de volta no lugar
 // b595 — anuncio do pedido no MAGALU (formato real conferido no pedido 1575070106528392 da GOOD).
 const path = require('path');
 let falhas = 0;

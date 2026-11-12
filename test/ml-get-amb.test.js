@@ -1,4 +1,5 @@
 'use strict';
+require('./_fonte-fabrica');   // docs/MODULARIZACAO.md: le a fabrica (app-AMB.js) com os blocos de lib-AMB de volta no lugar
 // b502 — a AMB/Girassol tambem le o ML na conta dela (como a GOOD ja tinha), so admin, so GET.
 const fs = require('fs'); const path = require('path');
 let falhas = 0;

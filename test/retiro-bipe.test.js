@@ -1,4 +1,5 @@
 'use strict';
+require('./_fonte-fabrica');   // docs/MODULARIZACAO.md: le a fabrica (app-AMB.js) com os blocos de lib-AMB de volta no lugar
 // b504 — bipe que nao acha nada (etiqueta de RETIRADA do Full) mostra as pecas "vem pelo RETIRO" pra escolher.
 const fs = require('fs'); const path = require('path');
 let falhas = 0;

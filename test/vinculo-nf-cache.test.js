@@ -1,3 +1,4 @@
+require('./_fonte-fabrica');   // docs/MODULARIZACAO.md: le a fabrica (app-AMB.js) com os blocos de lib-AMB de volta no lugar
 // Roda com: node test/vinculo-nf-cache.test.js
 //
 // O PROBLEMA DE FUNDO: a rota re-buscava a NF de TODOS os casos a cada

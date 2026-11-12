@@ -1,4 +1,5 @@
 'use strict';
+require('./_fonte-fabrica');   // docs/MODULARIZACAO.md: le a fabrica (app-AMB.js) com os blocos de lib-AMB de volta no lugar
 // Roda com: node test/relatorio-vocabulario-empresa.test.js
 // b652 (Codex #522): AMB/Girassol usam `criado_em` e guardam o desfecho em
 // `status` (tipo sempre 'devolucao'). O relatorio compartilhado precisa

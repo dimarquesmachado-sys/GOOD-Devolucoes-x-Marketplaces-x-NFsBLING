@@ -1,4 +1,5 @@
 require('./_fonte-painel');   // fatia 0 (docs/MODULARIZACAO.md): le o painel com os modulos js-AMB/painel-*.js embutidos
+require('./_fonte-fabrica');   // docs/MODULARIZACAO.md: le a fabrica (app-AMB.js) com os blocos de lib-AMB de volta no lugar
 // Roda com: node test/confrontar-nf.test.js
 //
 // [stated] "tipo uma 2a verificação o nome do cliente? se não, deixa as NFs

@@ -1,4 +1,5 @@
 'use strict';
+require('./_fonte-fabrica');   // docs/MODULARIZACAO.md: le a fabrica (app-AMB.js) com os blocos de lib-AMB de volta no lugar
 // b518 — auditoria operacional (Codex, 04/10): os 3 furos da captura persistente, conferidos no codigo.
 const fs = require('fs'); const path = require('path');
 let falhas = 0;

@@ -1,4 +1,5 @@
 'use strict';
+require('./_fonte-fabrica');   // docs/MODULARIZACAO.md: le a fabrica (app-AMB.js) com os blocos de lib-AMB de volta no lugar
 // ⚠️ O PRÉ-AQUECIMENTO SATUROU A COTA E ATRASOU A EMISSÃO DE NF.
 //
 // O dono emitiu 2 NFs juntas e levou 3 minutos. O log mostrou o serviço

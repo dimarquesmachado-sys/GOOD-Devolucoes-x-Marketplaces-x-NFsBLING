@@ -1,5 +1,6 @@
 'use strict';
 require('./_fonte-painel');   // fatia 0 (docs/MODULARIZACAO.md): le o painel com os modulos js-AMB/painel-*.js embutidos
+require('./_fonte-fabrica');   // docs/MODULARIZACAO.md: le a fabrica (app-AMB.js) com os blocos de lib-AMB de volta no lugar
 // ⚠️ DUAS EMPRESAS NO MESMO PROCESSO, SEM CRUZAR NADA.
 //
 // Este teste substitui o freio que o `server.js` tinha (recusar boot com mais

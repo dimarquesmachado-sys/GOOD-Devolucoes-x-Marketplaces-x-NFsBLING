@@ -1,4 +1,5 @@
 'use strict';
+require('./_fonte-fabrica');   // docs/MODULARIZACAO.md: le a fabrica (app-AMB.js) com os blocos de lib-AMB de volta no lugar
 // b516 — tela de bipe UNICA: um busca.js so (public/js), servido a GOOD e a AMB/Girassol (JS_COMPARTILHADOS).
 const fs = require('fs'); const path = require('path');
 let falhas = 0;

@@ -1,4 +1,5 @@
 'use strict';
+require('./_fonte-fabrica');   // docs/MODULARIZACAO.md: le a fabrica (app-AMB.js) com os blocos de lib-AMB de volta no lugar
 // ⚠️ AS FONTES DE VERDADE NÃO PODEM DIVERGIR.
 //
 // Análise do Codex (16/09), confirmada no código. Três divergências, e as

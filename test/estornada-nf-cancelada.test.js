@@ -1,4 +1,5 @@
 'use strict';
+require('./_fonte-fabrica');   // docs/MODULARIZACAO.md: le a fabrica (app-AMB.js) com os blocos de lib-AMB de volta no lugar
 // 30/10 — estornadas sem retorno: 'casos resolvidos por CANCELAMENTO da NF de venda reaparecem aqui' (aviso da propria
 // rota), com o botao de gerar devolucao contra nota morta. E o vinculo permanente do #509 podia ter sido feito ANTES
 // do cancelamento. Roda a peca de PRODUCAO (lib/vinculo-nf-cache) e confere as duas rotas.

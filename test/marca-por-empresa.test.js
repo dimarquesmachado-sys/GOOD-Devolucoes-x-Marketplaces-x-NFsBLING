@@ -1,4 +1,5 @@
 'use strict';
+require('./_fonte-fabrica');   // docs/MODULARIZACAO.md: le a fabrica (app-AMB.js) com os blocos de lib-AMB de volta no lugar
 // 14/10 — logo e icone POR EMPRESA (a Girassol mostrava o logo e o icone da AMB na triagem e na aba do navegador).
 const fs = require('fs'); const path = require('path');
 let falhas = 0;

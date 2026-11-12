@@ -1,3 +1,4 @@
+require('./_fonte-fabrica');   // docs/MODULARIZACAO.md: le a fabrica (app-AMB.js) com os blocos de lib-AMB de volta no lugar
 // Roda com: node test/admin-key-header.test.js
 //
 // P0 nº3 da auditoria de 26/08, que o parecer de 09/09 pôs em PRIMEIRO

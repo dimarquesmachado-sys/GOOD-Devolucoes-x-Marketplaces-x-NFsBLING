@@ -1,4 +1,5 @@
 'use strict';
+require('./_fonte-fabrica');   // docs/MODULARIZACAO.md: le a fabrica (app-AMB.js) com os blocos de lib-AMB de volta no lugar
 // ⚠️ O LOG PRECISA DIZER DE QUAL EMPRESA É.
 //
 // O Render junta o log das duas no MESMO lugar — é um serviço só, com as

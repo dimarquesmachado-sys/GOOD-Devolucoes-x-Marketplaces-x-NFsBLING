@@ -1,3 +1,4 @@
+require('./_fonte-fabrica');   // docs/MODULARIZACAO.md: le a fabrica (app-AMB.js) com os blocos de lib-AMB de volta no lugar
 // Roda com: node test/busca-nome-espreita.test.js
 //
 // [stated] "quando ele pesquisar assim por nome, e vir mais de 1 resultado,

@@ -1,3 +1,4 @@
+require('./_fonte-fabrica');   // docs/MODULARIZACAO.md: le a fabrica (app-AMB.js) com os blocos de lib-AMB de volta no lugar
 // Roda com: node test/imports-existem.test.js
 //
 // A CLASSE DE BUG QUE ISTO MATA: usar um modulo que ninguem importou.
