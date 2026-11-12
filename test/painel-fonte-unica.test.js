@@ -66,8 +66,53 @@ if (mods.length === 0) {
 } else {
   for (const m of mods) {
     ok(fs.existsSync(path.join(fonte.DIR_JS, m)), `  modulo referenciado existe em js-AMB: ${m}`);
-    ok(fonte.fontePainel().includes('/* modulo: js-AMB/' + m + ' */'), `  e esta embutido na fonte composta: ${m}`);
+    ok(fonte.fontePainel().includes('/* modulo: js-AMB/' + m + '#'), `  e esta embutido na fonte composta, no lugar de origem: ${m}`);
   }
+}
+
+// ── 2c. b682: a fonte composta REPRODUZ A ORDEM ORIGINAL — cada secao volta pro lugar de onde saiu ──
+// (um recorte de teste entre dois marcos nao pode ficar maior porque um bloco mudou de lugar no texto)
+{
+  const HTML2 = [
+    '<script src="js-AMB/painel-a.js?v=b1"></script>',
+    '<script src="js-AMB/painel-solto.js?v=b1"></script>',
+    '<script>',
+    '    function antes() {}',
+    '    // @painel-modulo js-AMB/painel-a.js#um',
+    '    function meio() {}',
+    '    // @painel-modulo js-AMB/painel-a.js#dois',
+    '    // @painel-modulo js-AMB/painel-a.js#nao-existe',
+    '    function depois() {}',
+    '</script>',
+  ].join('\n');
+  const MODS = {
+    'painel-a.js': '// cabecalho\n\n// @secao um\n    function bloco1() {}\n\n// @secao dois\n    function bloco2() {}\n',
+    'painel-solto.js': 'function semMarca() {}',
+  };
+  const c = fonte.compor(HTML2, (n) => (n in MODS ? MODS[n] : null));
+  const ordem = ['function antes', 'function bloco1', 'function meio', 'function bloco2', 'function depois'].map((t) => c.indexOf(t));
+  ok(ordem.every((i) => i >= 0) && ordem.join(',') === ordem.slice().sort((a, b) => a - b).join(','),
+     '⚠️ cada secao volta pro LUGAR da marca: a ordem do texto e a do painel antes das fatias');
+  ok(!/<script src="js-AMB\/painel-a\.js/.test(c), '  a tag do modulo que voltou pro lugar some da fonte composta');
+  ok(/@painel-modulo js-AMB\/painel-a\.js#nao-existe/.test(c), '  marca de secao que nao existe FICA (o teste que depender dela acusa)');
+  ok(/<script>\/\* modulo: js-AMB\/painel-solto\.js \*\/\nfunction semMarca/.test(c), '  modulo com tag e SEM marca ainda e embutido no lugar da tag (nada some)');
+  ok(fonte.secoesDoModulo(MODS['painel-a.js']).size === 2 && fonte.secoesDoModulo(MODS['painel-a.js']).get('um') === '    function bloco1() {}', '  secoesDoModulo separa pelo `// @secao` e tira o branco do fim');
+
+  // o painel de verdade: toda secao de todo modulo tem UMA marca, toda marca resolve, nada sobra
+  const cru = fonte.fonteCrua();
+  const marcas = [...cru.matchAll(fonte.MARCA_MODULO)].map((m) => m[1] + '#' + m[2]);
+  const secoesReais = [];
+  for (const m of fonte.modulosDoPainel()) {
+    const secs = fonte.secoesDoModulo(fs.__lerOriginalFontePainel.call(fs, path.join(fonte.DIR_JS, m), 'utf8'));
+    ok(secs.size >= 1, `  ${m}: tem ${secs.size} secao(oes) marcada(s) com // @secao`);
+    for (const nome of secs.keys()) secoesReais.push(m + '#' + nome);
+  }
+  ok(marcas.length === new Set(marcas).size && marcas.slice().sort().join('|') === secoesReais.slice().sort().join('|'),
+     '⚠️ toda secao de todo modulo tem exatamente UMA marca no script principal, e toda marca aponta pra secao que existe (' + marcas.length + ')');
+  const composta = fonte.fontePainel();
+  ok(!/<script src="js-AMB\/painel-/.test(composta) && !/@painel-modulo/.test(composta), '  na fonte composta nao sobra tag de modulo nem marca');
+  const mainCru = (cru.match(/\n  <script>\n([\s\S]*?)\n  <\/script>/) || [])[1] || '';
+  ok([...mainCru.matchAll(fonte.MARCA_MODULO)].length === marcas.length, '  as marcas moram DENTRO do script principal (e la que o codigo estava)');
 }
 
 // ── 3. a GOOD serve os modulos por rota fechada ──

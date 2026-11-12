@@ -7,6 +7,7 @@
 // chamadas por clique (depois de tudo carregado). O estado de topo (`bridgeInstaladaCache`) mora aqui.
 // Nas instancias o estatico da fabrica serve este arquivo; na GOOD, a rota fechada /js-AMB/painel-*.js.
 
+// @secao bridge
     // ============================================================
     // v3.15.0 - Comunicacao com a Extensao "Devolucoes Bridge"
     // b323 - o nome tinha "GOOD" e confundia nas telas da AMB: e a MESMA
