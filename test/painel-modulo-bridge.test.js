@@ -54,7 +54,12 @@ ok(api && typeof api.verificarBridgeInstalada === 'function' && typeof api.chama
      '⚠️ o bloco SAIU do HTML (declarar a mesma `let` nos dois scripts derrubaria a pagina)');
   ok(/let bridgeInstaladaCache = null;/.test(js) && /function verificarBridgeInstalada\(/.test(js) && /function chamarBlingViaBridge\(/.test(js) && /GOOD_BRIDGE_PING/.test(js),
      '  e esta inteiro no modulo');
-  ok(/verificarBridgeInstalada\(\)/.test(cru) && /chamarBlingViaBridge\(\{/.test(cru), '  o script principal continua CHAMANDO as funcoes (por clique, depois de tudo carregado)');
+  // b683: quem chama a Bridge (rodarEsteira, confirmarGerarDevolucao...) saiu do HTML na fatia 4 e mora em
+  // js-AMB/painel-gerar-nf.js. O que importa e existir chamador FORA do proprio modulo da Bridge — no
+  // script principal ou em outro modulo.
+  const foraDaBridge = [cru].concat(fonte.modulosDoPainel().filter((m) => m !== 'painel-bridge.js')
+    .map((m) => fs.readFileSync(path.join(fonte.DIR_JS, m), 'utf8'))).join('\n');
+  ok(/verificarBridgeInstalada\(\)/.test(foraDaBridge) && /chamarBlingViaBridge\(\{/.test(foraDaBridge), '  as funcoes continuam sendo CHAMADAS de fora do modulo (por clique, depois de tudo carregado)');
   ok(/setarDatasPadrao\(\);\s*\n\s*carregar\(\);\s*\n\s*<\/script>/.test(cru), '  o arranque do painel (setarDatasPadrao + carregar) ficou no script principal');
 
   // ── 3. a fonte composta (o que os 52 testes leem) tem o bloco no lugar da tag ──

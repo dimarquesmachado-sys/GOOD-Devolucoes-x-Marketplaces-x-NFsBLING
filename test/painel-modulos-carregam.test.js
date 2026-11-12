@@ -98,6 +98,68 @@ for (const nome of modulos) {
   for (const n of meus) vistos.set(n, nome);
 }
 
+// (e) b683 - O PAINEL INTEIRO CARREGA NUM CONTEXTO SO, como no navegador: os modulos e o script
+// principal sao <script> classicos e dividem o MESMO ambiente global. Roda cada um, na ordem das
+// tags, num unico contexto (vm) com um DOM de mentira e a rede muda. Pega o que nenhuma checagem
+// por arquivo pega: `let` repetida ENTRE scripts (SyntaxError: o script inteiro nao roda), nome que
+// um script usa na carga e o outro ainda nao declarou, e funcao/estado que deveria ser visivel do
+// outro lado e nao e.
+{
+  const vm = require('vm');
+  const elemento = () => {
+    const p = new Proxy(function () {}, {
+      get(t, k) {
+        if (k === Symbol.iterator) return function* () {};
+        if (k === Symbol.toPrimitive) return () => '';
+        if (k === 'then') return undefined;
+        if (k === 'length') return 0;
+        if (k === 'style' || k === 'dataset') return {};
+        if (k === 'classList') return { add() {}, remove() {}, toggle() {}, contains: () => false };
+        if (k === 'value' || k === 'textContent' || k === 'innerHTML' || k === 'id' || k === 'className') return '';
+        if (k === 'checked' || k === 'disabled') return false;
+        if (['forEach', 'addEventListener', 'removeEventListener', 'appendChild', 'remove', 'focus', 'click', 'setAttribute'].includes(k)) return () => undefined;
+        if (k === 'querySelectorAll' || k === 'getElementsByClassName') return () => [];
+        if (k === 'querySelector' || k === 'getElementById' || k === 'closest') return () => null;
+        return p;
+      },
+      set: () => true, apply: () => p,
+    });
+    return p;
+  };
+  const sandbox = {
+    console: { log() {}, warn() {}, error() {}, info() {} },
+    setTimeout: () => 0, clearTimeout() {}, setInterval: () => 0, clearInterval() {},
+    fetch: () => new Promise(() => {}),   // rede que nunca responde: o que se testa e a CARGA
+    localStorage: { getItem: () => null, setItem() {}, removeItem() {} }, sessionStorage: { getItem: () => null, setItem() {} },
+    navigator: { userAgent: 'teste', clipboard: { writeText: async () => {} } },
+    location: { pathname: '/painel-AMB.html', search: '', href: 'https://x/painel-AMB.html', origin: 'https://x', reload() {} },
+    alert() {}, confirm: () => false, prompt: () => null,
+    URL, URLSearchParams, FormData: function () {}, Blob: function () {},
+    addEventListener() {}, removeEventListener() {}, postMessage() {},
+    APP_BASE: '', APP_EMPRESA: 'teste', APP_PASTA_CHECKOUT: 'teste-checkout-offline',
+  };
+  sandbox.window = sandbox; sandbox.self = sandbox; sandbox.globalThis = sandbox;
+  sandbox.document = { getElementById: () => elemento(), querySelector: () => elemento(), querySelectorAll: () => [], addEventListener() {}, createElement: () => elemento(), body: elemento(), readyState: 'complete', title: '' };
+  const ctx = vm.createContext(sandbox);
+  const rx = /<script src="js-AMB\/(painel-[a-z0-9-]+\.js)(?:\?v=[^"]*)?"><\/script>|\n  <script>\n([\s\S]*?)\n  <\/script>/g;
+  const errosCarga = []; let rodados = 0, mm;
+  while ((mm = rx.exec(cru))) {
+    const nome = mm[1] || '(script principal)';
+    const codigo = mm[1] ? fs.readFileSync(path.join(fonte.DIR_JS, mm[1]), 'utf8') : mm[2];
+    try { vm.runInContext(codigo, ctx, { filename: nome }); rodados++; } catch (e) { errosCarga.push(nome + ': ' + e.name + ': ' + e.message); }
+    if (!mm[1]) break;
+  }
+  ok(rodados === modulos.length + 1 && errosCarga.length === 0,
+     `⚠️ o painel INTEIRO carrega num contexto so (${rodados} scripts, na ordem das tags), sem erro` + (errosCarga.length ? ' — ' + errosCarga.join(' | ') : ''));
+  const tipo = (n) => { try { return vm.runInContext('typeof ' + n, ctx); } catch (e) { return 'erro: ' + e.message; } };
+  ok(tipo('carregar') === 'function' && tipo('renderizar') === 'function', '  as funcoes do script principal existem depois da carga');
+  for (const n of [...vistos.keys()].filter((x) => !x.startsWith('window.'))) {
+    const t = tipo(n);
+    if (t === 'undefined' || t.startsWith('erro')) ok(false, `  nome de topo do modulo ${vistos.get(n)} visivel no contexto compartilhado: ${n} (${t})`);
+  }
+  ok(true, `  os ${vistos.size} nomes de topo dos modulos sao visiveis pro script principal (e os dele, pros modulos)`);
+}
+
 // (d) o painel composto inteiro compila, script a script
 for (const m of fonte.fontePainel().matchAll(/<script>([\s\S]*?)<\/script>/g)) { try { new Function(m[1]); } catch (e) { ok(false, 'script do painel composto compila: ' + e.message); } }
 ok(true, 'todos os <script> do painel composto compilam');
