@@ -17,6 +17,12 @@
 | — | chão 2: a fonte dos testes volta a ter a **ordem original** (marca no lugar de onde o bloco saiu) | b682 | 3.991 |
 | 4 | Esteira + geração da NF + XML → `js-AMB/painel-gerar-nf.js` (715 linhas movidas) | b683 | 3.278 |
 | 5 | Índice de NF + de-para → `js-AMB/painel-nf-depara.js` (208) **e** reclamação Magalu/ML → `js-AMB/painel-reclamacao.js` (115) | b684 | **2.959** |
+| 6 | A espreita → `js-AMB/painel-espreita.js` (372 linhas, 3 seções: ações no card, filtro/busca/ordem, carregar+render) | b687 | **2.591** |
+
+**O teto virou teste (b687):** `test/teto-de-linhas.test.js` reprova qualquer `.js`/`.html` do repo acima de 3.000
+linhas e qualquer módulo da modularização acima de 1.000. Única isenção, com o motivo escrito: `server.js`
+(a fusão aposenta). Folga hoje: painel 408 linhas, fábrica 148. Quando faltar espaço, a saída é pôr o bloco
+novo num módulo — não subir o teto.
 
 **O painel está abaixo do teto de 3.000 linhas** (era 4.978). As duas da fatia 5 foram no mesmo PR de propósito:
 são os dois blocos contíguos que faltavam pro teto, mesmo método, e a prova cobre os dois de uma vez (a fonte
