@@ -1,4 +1,5 @@
 'use strict';
+require('./_fonte-fabrica');   // docs/MODULARIZACAO.md: le a fabrica (app-AMB.js) com os blocos de lib-AMB de volta no lugar
 // b598 — anuncio do pedido no TIKTOK (formato real conferido no pedido 586485718877832225 da Girassol).
 const path = require('path'); const fs = require('fs');
 let falhas = 0;

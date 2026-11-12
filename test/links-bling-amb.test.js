@@ -1,4 +1,5 @@
 'use strict';
+require('./_fonte-fabrica');   // docs/MODULARIZACAO.md: le a fabrica (app-AMB.js) com os blocos de lib-AMB de volta no lugar
 // b506 — auditoria multiempresa: o botao "buscar NF no Bling" da AMB/Girassol chamava a rota da GOOD.
 const fs = require('fs'); const path = require('path');
 let falhas = 0;

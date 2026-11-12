@@ -1,3 +1,4 @@
+require('./_fonte-fabrica');   // docs/MODULARIZACAO.md: le a fabrica (app-AMB.js) com os blocos de lib-AMB de volta no lugar
 // Roda com: node test/sem-copia-entre-empresas.test.js
 //
 // [stated 04/09] "tá tudo em lib? se conectar mais outra empresa, já ta

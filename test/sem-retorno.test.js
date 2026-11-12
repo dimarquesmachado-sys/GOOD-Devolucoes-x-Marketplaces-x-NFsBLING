@@ -1,4 +1,5 @@
 require('./_fonte-painel');   // fatia 0 (docs/MODULARIZACAO.md): le o painel com os modulos js-AMB/painel-*.js embutidos
+require('./_fonte-fabrica');   // docs/MODULARIZACAO.md: le a fabrica (app-AMB.js) com os blocos de lib-AMB de volta no lugar
 // Roda com: node test/sem-retorno.test.js
 //
 // Vendas que o marketplace reembolsou SEM devolucao fisica: o produto fica

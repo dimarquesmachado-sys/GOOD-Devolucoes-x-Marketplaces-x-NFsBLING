@@ -1,4 +1,5 @@
 'use strict';
+require('./_fonte-fabrica');   // docs/MODULARIZACAO.md: le a fabrica (app-AMB.js) com os blocos de lib-AMB de volta no lugar
 // CARD ORFAO x "A ESPREITA" — sugere de onde o pacote veio, casando pelo SKU.
 // 30/09, Girassol: 3 cards so com SKU e quantidade (codigo de barras do
 // produto bipado no lugar do rastreio). A informacao nunca entrou no card; o

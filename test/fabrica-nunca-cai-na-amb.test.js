@@ -1,4 +1,5 @@
 'use strict';
+require('./_fonte-fabrica');   // docs/MODULARIZACAO.md: le a fabrica (app-AMB.js) com os blocos de lib-AMB de volta no lugar
 // b661 — PECA DA FABRICA CRIADA SEM A EMPRESA NUNCA CAI NA AMB.
 //
 // ⚠️ O QUE ESTE TESTE PROTEGE: as pecas da fabrica recebem a empresa pela config

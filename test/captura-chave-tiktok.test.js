@@ -1,4 +1,5 @@
 'use strict';
+require('./_fonte-fabrica');   // docs/MODULARIZACAO.md: le a fabrica (app-AMB.js) com os blocos de lib-AMB de volta no lugar
 // b528 — auditoria (Codex, b520): chave FISCAL (44 digitos) no campo da NF da captura; TikTok com falha passageira tenta em 5 min.
 const fs = require('fs'); const path = require('path');
 let falhas = 0;

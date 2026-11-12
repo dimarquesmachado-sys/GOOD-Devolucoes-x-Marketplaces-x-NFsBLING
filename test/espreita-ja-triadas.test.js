@@ -1,4 +1,5 @@
 'use strict';
+require('./_fonte-fabrica');   // docs/MODULARIZACAO.md: le a fabrica (app-AMB.js) com os blocos de lib-AMB de volta no lugar
 // 30/10 — a espreita da fabrica (Girassol/AMB) nunca cruzava com as triagens: a tosquiadeira 2609069UWS4UFX, triada,
 // continuou no bloco 'chegou e ninguem bipou', e os cards 117/129 (triados) tambem. Roda a peca de PRODUCAO.
 const fs = require('fs'); const path = require('path');

@@ -1,3 +1,4 @@
+require('./_fonte-fabrica');   // docs/MODULARIZACAO.md: le a fabrica (app-AMB.js) com os blocos de lib-AMB de volta no lugar
 // Roda com: node test/empresas.test.js
 //
 // O ponto NAO e "o registro funciona" — e provar que ele devolve

@@ -1,4 +1,5 @@
 'use strict';
+require('./_fonte-fabrica');   // docs/MODULARIZACAO.md: le a fabrica (app-AMB.js) com os blocos de lib-AMB de volta no lugar
 // ⚠️ OS IDS FISCAIS SE DESCOBREM SOZINHOS — o que dá.
 //
 // O dono, ligando a Girassol: "descobre aí pegando direto do Bling, senão vai

@@ -1,4 +1,5 @@
 'use strict';
+require('./_fonte-fabrica');   // docs/MODULARIZACAO.md: le a fabrica (app-AMB.js) com os blocos de lib-AMB de volta no lugar
 // ⚠️ A CAPTURA PERSISTENTE VALE PRA AMB E GIRASSOL, NÃO SÓ PRA GOOD.
 //
 // Achado da auditoria do Codex (01/10): a GOOD grava o "à espreita" em

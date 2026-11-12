@@ -1,4 +1,5 @@
 'use strict';
+require('./_fonte-fabrica');   // docs/MODULARIZACAO.md: le a fabrica (app-AMB.js) com os blocos de lib-AMB de volta no lugar
 // A ESPREITA DA AMB/GIRASSOL MONTA SOZINHA (como na GOOD): o miolo da rota
 // virou funcao, a rota so a chama, e um relogio (90s apos o boot, depois a
 // cada 3 min) a mantem quente — a captura persistente (1x/hora) e o indice

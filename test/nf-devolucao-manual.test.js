@@ -1,5 +1,6 @@
 'use strict';
 require('./_fonte-painel');   // fatia 0 (docs/MODULARIZACAO.md): le o painel com os modulos js-AMB/painel-*.js embutidos
+require('./_fonte-fabrica');   // docs/MODULARIZACAO.md: le a fabrica (app-AMB.js) com os blocos de lib-AMB de volta no lugar
 // 29/10 — NF de devolucao feita A MAO no Bling (dono: tosquiadeira 2609069UWS4UFX, venda NF 126747). A espreita so
 // reconhecia pelo numero do pedido, que essas notas nao trazem (Girassol: pedidos_indexados 0). Agora: pela NF de
 // VENDA que a devolucao referencia no XML. Roda a fabrica de PRODUCAO (nf-entrada-AMB) com Bling e XML de mentira.

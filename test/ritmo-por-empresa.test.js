@@ -1,4 +1,5 @@
 'use strict';
+require('./_fonte-fabrica');   // docs/MODULARIZACAO.md: le a fabrica (app-AMB.js) com os blocos de lib-AMB de volta no lugar
 // ⚠️ O CLIENTE DO BLING DA AMB/GIRASSOL TEM QUE RESPEITAR A COTA.
 //
 // Ele NÃO passava por fila nenhuma: batia direto, tomava 429, esperava 1,5s

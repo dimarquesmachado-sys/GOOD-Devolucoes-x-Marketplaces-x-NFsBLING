@@ -1,4 +1,5 @@
 'use strict';
+require('./_fonte-fabrica');   // docs/MODULARIZACAO.md: le a fabrica (app-AMB.js) com os blocos de lib-AMB de volta no lugar
 // b597 — anuncio do pedido na SHOPEE, pelo servico da Shopee (/:loja/interno/anuncio-do-pedido).
 const path = require('path'); const fs = require('fs');
 let falhas = 0;

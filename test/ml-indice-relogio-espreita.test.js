@@ -1,4 +1,5 @@
 'use strict';
+require('./_fonte-fabrica');   // docs/MODULARIZACAO.md: le a fabrica (app-AMB.js) com os blocos de lib-AMB de volta no lugar
 // b586 — o indice do ML da AMB/Girassol se atualiza pelo relogio da espreita (3 min): com mais de 30 min, remonta.
 // Antes so o bipe religava (Girassol chegou a 321 min). Roda o resumoEspreita de producao com o ML falso.
 const path = require('path'); const fs = require('fs');

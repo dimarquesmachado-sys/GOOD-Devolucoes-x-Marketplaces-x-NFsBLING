@@ -1,4 +1,5 @@
 'use strict';
+require('./_fonte-fabrica');   // docs/MODULARIZACAO.md: le a fabrica (app-AMB.js) com os blocos de lib-AMB de volta no lugar
 // 29/10 — a NF de venda do card da espreita (Girassol/AMB) so vem de fonte FIRME. O palpite pelo nome do cliente
 // (acharNfPorNomeIndice) pegava a NF de OUTRA compra de quem comprou mais de uma vez (tosquiadeira 2609069UWS4UFX:
 // venda 126747, mostrada como 126807) e a captura guardada gravava isso como a NF da venda.

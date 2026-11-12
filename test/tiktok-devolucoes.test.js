@@ -1,3 +1,4 @@
+require('./_fonte-fabrica');   // docs/MODULARIZACAO.md: le a fabrica (app-AMB.js) com os blocos de lib-AMB de volta no lugar
 // Roda com: node test/tiktok-devolucoes.test.js
 //
 // Reconhecimento de devolucao do TikTok no bipe, e a distincao que o dono

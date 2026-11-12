@@ -1,4 +1,5 @@
 'use strict';
+require('./_fonte-fabrica');   // docs/MODULARIZACAO.md: le a fabrica (app-AMB.js) com os blocos de lib-AMB de volta no lugar
 // b678 — FATIA 0 da modularizacao do painel (docs/MODULARIZACAO.md): o chao.
 //
 // ⚠️ O QUE ESTE TESTE PROTEGE: o JS do painel unico vai sair do HTML para

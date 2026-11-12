@@ -1,3 +1,4 @@
+require('./_fonte-fabrica');   // docs/MODULARIZACAO.md: le a fabrica (app-AMB.js) com os blocos de lib-AMB de volta no lugar
 // b562 - COPIA do teste da GOOD rodando SOBRE a copia unica do indice: as regras 'GOOD:' valem para ela.
 // Roda com: node test/busca-nome-teto.test.js
 //

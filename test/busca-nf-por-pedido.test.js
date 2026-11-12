@@ -1,3 +1,4 @@
+require('./_fonte-fabrica');   // docs/MODULARIZACAO.md: le a fabrica (app-AMB.js) com os blocos de lib-AMB de volta no lugar
 // Roda com: node test/busca-nf-por-pedido.test.js
 //
 // O dono viu "sem NF vinculada" num caso cuja nota EXISTE no Bling. A rota

@@ -126,6 +126,38 @@ Meta: `painel-AMB.html` abaixo de 2.500 linhas; nenhum arquivo novo acima de 1.0
 
 ## Fatias da fábrica (`app-AMB.js`)
 
+### Andamento da fábrica
+
+| fatia | o quê | build | `app-AMB.js` (linhas) |
+|---|---|---|---|
+| F1 | Vendas estornadas sem retorno (3 rotas, 798 linhas) → `lib-AMB/sem-retorno-AMB.js` | b685 | 4.334 → **3.538** |
+
+### ⚠️ A fábrica NÃO é "só mudar de arquivo" — e o mapa de baixo estava errado
+
+`app-AMB.js` é **uma função** (`criarAppEmpresa`, ~4.170 linhas): tudo lá dentro enxerga a closure. Bloco que
+sai perde isso. O método que vale (b685):
+
+1. **Medir o escopo de verdade** antes de mover — com parser (acorn + eslint-scope, instalados fora do repo): o
+   que o bloco usa e não declara, se **escreve** em algum desses nomes, e o que ele declara que é usado fora.
+   Só sai bloco cujas dependências são `const` não reatribuídas e que não exporta nada (o `sem-retorno`: 10
+   dependências, todas `const`, zero escrita, zero exportação).
+2. O bloco vai **sem edição** pra `lib-AMB/<tema>-AMB.js`, dentro de `registrar(router, deps)`, entre
+   `// @secao` e `// @fim-secao`; as dependências chegam por `deps` **com o mesmo nome**. `'use strict'` como o
+   corpo da fábrica.
+3. Em `app-AMB.js`, no lugar do bloco: a marca `// @fabrica-modulo …#secao` e, na linha seguinte, a chamada
+   `require('./lib-AMB/…')(router, { …DEPS });   // @fabrica-chamada` — **no mesmo ponto**, pra ordem das rotas
+   não mudar.
+4. `test/_fonte-fabrica.js` devolve o bloco pro lugar pros **62 testes** que leem `app-AMB.js` como texto
+   (conferido: fonte composta idêntica ao arquivo de antes).
+5. `test/fabrica-fonte-unica` trava: marca/chamada/seção casam; a chamada passa exatamente as `DEPS`;
+   dependência esquecida **estoura no boot** (a instância aparece como `falhou` no `/health`); e **nenhum nome
+   declarado no topo da closure aparece no bloco sem estar em `DEPS`** — o erro que só explodiria na requisição.
+
+O mapa abaixo ("índice de NFs de devolução ~1.250 linhas") foi medido por indentação e está **errado**: o
+índice tem 118 linhas. Os blocos reais (parser), do maior pro menor: `GET /api/admin/sem-retorno` (601 — saiu
+na F1), `montarEspreitaAMB` (219), `/nf/entrada/naturezas` (212), `/api/triagem/identificar` (123),
+`montarIndiceNFDevolucaoAMB` (118), `/oauth/callback` (90). Faltam ~540 linhas pro teto.
+
 Mesmo método (peça em `lib-AMB/` ou `lib/`, recebendo dependências; rotas montadas
 pela peça). Guardas: `fabrica-nao-rouba-rota`, `tela-unica-contrato-api` (já segue
 `require` e só conta peça **invocada**), `duas-empresas-juntas`, boot real.
