@@ -15,6 +15,7 @@
 | 2 | Recados pro estoquista → `js-AMB/painel-recados.js` (334 linhas movidas, 2 blocos) | b680 | 4.526 |
 | 3 | Vendas estornadas sem retorno → `js-AMB/painel-sem-retorno.js` (539 linhas movidas) | b681 | 3.987 |
 | — | chão 2: a fonte dos testes volta a ter a **ordem original** (marca no lugar de onde o bloco saiu) | b682 | 3.991 |
+| 4 | Esteira + geração da NF + XML → `js-AMB/painel-gerar-nf.js` (715 linhas movidas) | b683 | 3.278 |
 
 ⚠️ **O mapa por tema da seção "A medição" foi feito contando indentação e errou**: `espreitaOrdenar` tem 1 linha
 (não 543) — o bloco grande ali era o das estornadas (`carregarSemRetorno`, 386 linhas, na coluna 0). O mapa
