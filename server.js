@@ -613,7 +613,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.126.197 (b685: modularizacao da fabrica — fatia F1: vendas estornadas sem retorno em lib-AMB/sem-retorno-AMB.js; texto do bloco intacto)',
+      version: '9.126.198 (b686: modularizacao da fabrica — fatia F2: diagnosticos admin, API de triagem e NF de entrada em lib-AMB; fabrica abaixo do teto)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),

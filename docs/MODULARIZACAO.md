@@ -131,6 +131,18 @@ Meta: `painel-AMB.html` abaixo de 2.500 linhas; nenhum arquivo novo acima de 1.0
 | fatia | o quê | build | `app-AMB.js` (linhas) |
 |---|---|---|---|
 | F1 | Vendas estornadas sem retorno (3 rotas, 798 linhas) → `lib-AMB/sem-retorno-AMB.js` | b685 | 4.334 → **3.538** |
+| F2 | Diagnósticos do admin (12 rotas, 233) → `lib-AMB/diagnostico-AMB.js` · API de triagem do bipe (7 rotas, 249) → `lib-AMB/triagem-api-AMB.js` · `GET /nf/entrada/naturezas` (211) → `lib-AMB/nf-entrada-naturezas-AMB.js` | b686 | 3.538 → **2.851** |
+
+**A fábrica está abaixo do teto de 3.000 linhas** (era 4.334). Os três blocos da F2 foram no mesmo PR: mesmo
+método, e o script que move **recusa** bloco que exporta nome, escreve em dependência, ou depende de `let` ou de
+`const` declarada depois dele. O que ficou de fora por isso, e por quê:
+
+- `/conectar`, `/oauth/iniciar`, `/oauth/callback` e `/status` (807–1024): o `/status` usa `CAPTURA`, declarada
+  ~1.000 linhas **depois** — passar por valor na chamada seria `ReferenceError` no boot; e o bloco declara
+  `jaPreAquecidoPeloOAuth`, usada lá embaixo no pré-aquecimento (exportaria nome).
+- A espreita (`montarEspreitaAMB` e vizinhas): funções chamadas de vários pontos — exportam nome.
+
+Esses pedem um desenho próprio (devolver valores do registrador, ou passar por função), não movimento.
 
 ### ⚠️ A fábrica NÃO é "só mudar de arquivo" — e o mapa de baixo estava errado
 
