@@ -71,10 +71,13 @@ const { registrarPreventiva } = require('../../lib/token-preventiva');   // b271
 // o 2o invalida o que o 1o acabou de gravar. Por isso o desenho eleito no
 // contrato e UM dono (o Mover-Pedidos) e os outros LEEM.
 //
-// 📌 A politica e POR EMPRESA E POR INTEGRACAO, e o padrao e `sombra`: le o
-// dono e MEDE, mas continua usando o token local. Ligar isto NAO muda o
-// comportamento da AMB — ela segue como hoje, com uma leitura a mais que nao
-// decide nada. So quem for posto em `remoto` muda.
+// 📌 A politica e POR EMPRESA E POR INTEGRACAO, e o padrao e `sombra`: USA o
+// access que o dono entregar e, se o dono falhar, cai no token local (que esta
+// instancia continua renovando). Em `remoto` a rede local some.
+// b689 - este comentario dizia que a sombra "le o dono e MEDE, mas continua
+// usando o token local". O codigo nunca fez isso: `resolverToken` devolve
+// `usar: 'remoto'` sempre que o dono responde, em sombra tambem — e a telemetria
+// do /health (girassol/ml: 1 leitura do dono + 279 do cache, zero local) mostra.
 const tokenLeitor = require('../../lib/token-leitor');
 // b272 (review do Codex) - ESTA DECLARACAO VOLTOU. Meu refactor da b271
 // apagou o bloco antigo levando junto o `let ultimaPersistenciaBling`, mas a
@@ -219,7 +222,7 @@ async function chamarBling(caminho, opcoes = {}) {
   // `falhar`  -> o dono nao respondeu e a politica proibe cair no local: a
   //              chamada morre com aviso, em vez de renovar escondido e
   //              queimar o refresh de uso unico
-  // `sombra`/`local` -> o token de sempre (a AMB de hoje)
+  // `local` (ou `sombra` com o dono fora do ar) -> o token local desta instancia
   //
   // 📌 Le a CADA chamada de proposito: o leitor tem cache proprio, e assim
   // uma invalidacao em 401 vale na chamada seguinte, sem reiniciar nada.

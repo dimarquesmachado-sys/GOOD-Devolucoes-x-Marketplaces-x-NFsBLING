@@ -222,7 +222,13 @@ são **outros dois identificadores** no mesmo serviço.
    com apps PROPRIOS; Magalu com client PROPRIO desde 30/09 — ver `apps_por_servico` no contrato v15).
 2. ~~O provisionamento nunca rodou no Supabase real.~~ **PROVADO:** as tabelas `*_girassol` existem em
    producao e ja receberam alteracoes (ex.: `itens_devolvidos`, colunas de estoque do Full, 02/10).
-3. **O rollback nunca foi testado** -- continua valendo: nenhuma empresa foi desativada pra ser revertida.
+3. ~~O rollback nunca foi testado.~~ **PROVADO em 12/11/2026 (b688), em producao, com a AMB:** o dono criou
+   `DEVOLUCOES_DESATIVAR_AMBTOTAL=1` no Render -> `/health` mostrou `ambtotal: desativada_por_env` com
+   `girassol` e `good` `montada`; `/amb/status` e `/amb/conectar` responderam 503 "empresa desativada
+   operacionalmente"; a Girassol subiu com Bling e ML conectados. Apagou a env -> a AMB voltou com Bling,
+   ML, Magalu e Shopee conectados e os indices carregados do armazem (5.776 NFs). E o mesmo gesto que o dia 1
+   da fusao pede pra GOOD (`DEVOLUCOES_DESATIVAR_GOOD=1`). Custo: dois reinicios do servico (fora do horario
+   do galpao).
 
 **b513 (03/10):** o navegador nao tem mais lista fechada de empresas (`base-amb.js`): a base e o 1o segmento
 da URL, entao uma 4a empresa NAO cai na raiz da GOOD. A ficha de defeitos (`defeitos-ficha.js`) so reconhecia
@@ -234,6 +240,11 @@ com /loja4).
 alvo, `lib/token-leitor.js` já implementa as políticas, mas o padrão segue
 `sombra` e a AMB ainda renova localmente. O corte é mudança operacional própria,
 com sobreposição curta — ML primeiro, Bling por último.
+
+Em `sombra`, as **três** empresas (GOOD, AMB e Girassol) já **usam o access que o dono entrega** e só caem no
+token local se ele falhar — a renovação local é que continua ligada até o corte. O `/health` mostra isso por
+eixo em `coordenacao.leitura_de_token.eixos`, derivado do que está montado e da política efetiva (b689: antes
+era uma tabela de setembro que dizia "AMB renova LOCAL" e "Girassol não ativa neste serviço").
 
 ⚠️ Voltar para `local` com refresh antigo pode falhar: o dono já pode tê-lo
 consumido.

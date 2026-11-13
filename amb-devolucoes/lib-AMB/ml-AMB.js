@@ -50,8 +50,9 @@ const { registrarPreventiva } = require('../../lib/token-preventiva');   // b271
 // do dono tinha `403 ... a rota ja renovou nesta janela, nao gasto outro
 // refresh (o do ML e de uso unico)`.
 //
-// 📌 Padrao `sombra`: le o dono e mede, mas usa o token local. A AMB segue
-// como hoje; so quem for posto em `remoto` muda.
+// 📌 Padrao `sombra`: USA o access que o dono entregar; se o dono falhar, cai no
+// token local. Em `remoto` a rede local some. (b689: o comentario dizia "mas usa o
+// token local" — o codigo nunca fez isso; ver a nota em bling-AMB.js.)
 const tokenLeitor = require('../../lib/token-leitor');
 // b272 (review do Codex) - ESTA DECLARACAO VOLTOU. Meu refactor da b271
 // apagou o bloco antigo levando junto o `let ultimaPersistencia`, mas a

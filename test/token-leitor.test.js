@@ -152,8 +152,11 @@ const carregar = () => {
        'os campos que afirmavam "pronto" sem evidencia foram REMOVIDOS');
     ok(typeof d.eixos === 'object' && /le do dono/.test(d.eixos['good/ml'] || ''),
        '`eixos` diz a FIACAO (quem consulta o dono)');
-    ok(/renova LOCAL/.test(d.eixos['ambtotal/ml'] || ''),
-       '  e que a AMB ainda renova local (nao pode ser cortada)');
+    // b689 - este teste TRAVAVA o texto velho ('ambtotal/ml': renova LOCAL). Desde a b424 a fabrica consulta
+    // o leitor e honra a politica por empresa; o /health passou a mentir e o teste segurava a mentira. Agora o
+    // eixo da AMB diz o que a politica EFETIVA faz (ver test/health-eixos-de-verdade.test.js).
+    ok(/^le do dono/.test(d.eixos['ambtotal/ml'] || '') && /^le do dono/.test(d.eixos['girassol/ml'] || ''),
+       '  e que a fabrica (AMB e Girassol) tambem le do dono em `sombra` — o texto sai da politica efetiva');
     ok(typeof d.pode_cortar === 'object' && 'pronto' in (d.pode_cortar['good/ml'] || {}),
        '`pode_cortar` da o VEREDITO (com evidencia)');
   }
