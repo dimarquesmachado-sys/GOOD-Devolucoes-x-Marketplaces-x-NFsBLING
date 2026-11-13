@@ -60,6 +60,9 @@ for (const e of ENVS) delete process.env[e];
   ok(Object.values(d.eixos).every((t) => /^le do dono; se o dono falhar, usa a rede local \(sombra\)$/.test(t)), '  padrao `sombra`: "le do dono; se o dono falhar, usa a rede local" — o que resolverToken faz');
   ok(d.politica['girassol/ml'] === 'sombra' && d.politica['ambtotal/bling'] === 'sombra' && d.politica['good/ml'] === 'sombra', '  `politica` lista os eixos das TRES empresas');
   ok(/fabrica/.test(d.politica._quem_honra || '') && d.politica._ambtotal === undefined, '  e diz quem honra — a nota "_ambtotal: NAO honra" saiu');
+  // b690: o veredito de corte cobre TODO eixo (era so `good/*`)
+  ok(Object.keys(d.pode_cortar).sort().join(',') === eixos && d.pode_cortar['girassol/ml'].pronto === false && /sem trafego medido/.test(d.pode_cortar['girassol/ml'].por_que),
+     '⚠️ `pode_cortar` da veredito pros 6 eixos — sem trafego, diz "sem trafego medido ainda" (nunca "pronto" no escuro)');
 
   process.env.TOKEN_POLITICA_AMBTOTAL_ML = 'local';
   process.env.TOKEN_POLITICA_GIRASSOL_BLING = 'remoto';
@@ -87,6 +90,8 @@ for (const e of ENVS) delete process.env[e];
   ok(/^empresa desativada_por_env neste servico/.test(d.eixos['ambtotal/ml']) && /^empresa desativada_por_env/.test(d.eixos['ambtotal/bling']),
      '⚠️ com a AMB desativada por env: os eixos dela dizem "empresa desativada_por_env neste servico" — ' + d.eixos['ambtotal/ml']);
   ok(/^le do dono/.test(d.eixos['girassol/ml']) && /^le do dono/.test(d.eixos['good/bling']), '  e as montadas seguem com o texto da politica');
+  ok(!('ambtotal/ml' in d.pode_cortar) && !('ambtotal/bling' in d.pode_cortar) && 'girassol/ml' in d.pode_cortar && 'good/bling' in d.pode_cortar,
+     '  e o veredito de corte nao lista eixo de empresa desativada (so das montadas)');
   delete require.cache[require.resolve('../lib/montagem-empresas')];
 }
 for (const e of ENVS) { if (guardadas[e] === undefined) delete process.env[e]; else process.env[e] = guardadas[e]; }
