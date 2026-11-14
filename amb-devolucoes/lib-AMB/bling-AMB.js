@@ -243,13 +243,19 @@ async function chamarBling(caminho, opcoes = {}) {
   };
 
   const url = caminho.startsWith('http') ? caminho : `${cfg.bling.apiBase}${caminho}`;
-  const fazer = async () => axios({
-    url,
-    method: opcoes.method || 'GET',
-    headers: { Authorization: `Bearer ${await tokenAgora()}`, ...(opcoes.headers || {}) },
-    data: opcoes.data,
-    timeout: opcoes.timeout || 30000,
-  });
+  // b694: o aceite (2xx) com o token DO DONO e o que explica uma recusa anterior do eixo — `anotarAceite` no leitor.
+  const fazer = async () => {
+    const envio = tokenLeitor.marcarEnvio();
+    const r = await axios({
+      url,
+      method: opcoes.method || 'GET',
+      headers: { Authorization: `Bearer ${await tokenAgora()}`, ...(opcoes.headers || {}) },
+      data: opcoes.data,
+      timeout: opcoes.timeout || 30000,
+    });
+    if (tokenDoDono) tokenLeitor.anotarAceite(CHAVE_TOKEN, 'bling', envio);
+    return r;
+  };
 
   let _ficha = null;   // 14/10: a ficha da ultima vez dada pelo porteiro — vai nos avisos de ok/429
   // ⚠️ b442: pede a VEZ antes de bater no Bling. `semRitmo` e pro proprio
@@ -298,7 +304,7 @@ async function chamarBling(caminho, opcoes = {}) {
       // Invalidar e barato: so limpa a memoria; nao gasta refresh nem chama ninguem.
       if (status === 401) {
         tokenLeitor.invalidar(CHAVE_TOKEN, 'bling');
-        tokenLeitor.anotarInvalidacao(CHAVE_TOKEN, 'bling', 401);
+        tokenLeitor.anotarInvalidacao(CHAVE_TOKEN, 'bling', 401, recusadoEraDoDono);
       }
       return { ok: false, status, error: (erro.response && erro.response.data) || erro.message };
     }
@@ -313,7 +319,7 @@ async function chamarBling(caminho, opcoes = {}) {
       // 📌 Vale nas 4 politicas: invalidar cache vazio nao custa nada, e
       // esquecer disto num `remoto` futuro custa uma tarde de diagnostico.
       tokenLeitor.invalidar(CHAVE_TOKEN, 'bling');
-      tokenLeitor.anotarInvalidacao(CHAVE_TOKEN, 'bling', 401);
+      tokenLeitor.anotarInvalidacao(CHAVE_TOKEN, 'bling', 401, recusadoEraDoDono);
 
       // b690 - EM `remoto` O RETRY VEM DO DONO (porte da GOOD: lib/bling.js, b258, Codex P1).
       //

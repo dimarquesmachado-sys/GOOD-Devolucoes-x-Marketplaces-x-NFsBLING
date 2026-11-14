@@ -613,7 +613,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.126.205 (b693: em sombra, token do dono recusado -> o retry vem do dono, sem renovar o token local a toa)',
+      version: '9.126.206 (b694: o veredito de corte separa recusa da rota de problema de token — recusa so bloqueia sem aceite depois)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),

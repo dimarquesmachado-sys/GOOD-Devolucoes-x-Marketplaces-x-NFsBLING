@@ -255,6 +255,22 @@ entra na janela de 10 min (sem a rajada de releituras que a GOOD faz); o resulta
 `pode_cortar` dá veredito pra todo eixo montado. Teste com as funções de produção: `test/fabrica-token-remoto`.
 O corte em si continua sendo decisão operacional — eixo por eixo, com o `/health` na mão.
 
+**b693 — em `sombra`, token do dono recusado → a repetição vem do dono.** Antes o cliente renovava o token
+*local* e repetia, mas a repetição relê o token do dono: a renovação local não ajudava e gastava refresh. Com
+isso, `sombra` com o dono no ar se comporta **igual** a `remoto` quando o marketplace recusa o token — a única
+diferença que sobra entre as duas políticas é o dono fora do ar (em `sombra` cai no local; em `remoto` falha).
+
+**b694 — como ler o `pode_cortar` quando há recusa.** Recusa (401/403) só reprova o eixo enquanto está **em
+aberto**: fica explicada quando uma chamada *enviada depois dela* é aceita (2xx) com o token do dono — ou a
+recusa era da rota (regra/permissão: `/returns` negado ao vendedor, 403 de política), ou o token foi trocado e
+o novo funciona. Sem aceite depois (dono entregando token morto: tudo recusado), o eixo fica "não pronto"; e um
+eixo já em `remoto` nessa situação deixa de dizer "cortado e funcionando". A recusa explicada não some: aparece
+no `por_que` como nota, com os números (`retry falhou Nx (status …)`). A conta fica em
+`telemetria.por_eixo[eixo].recusas` (`aceites`, `sem_aceite_depois`, `explicadas`). Teste com as funções de
+produção: `test/veredito-recusa-explicada`.
+⚠️ Os contadores são de memória: **todo deploy zera a janela**. Pra ter 24–48h de evidência antes de um corte,
+é preciso ficar esse tempo sem deploy no serviço.
+
 ⚠️ Voltar para `local` com refresh antigo pode falhar: o dono já pode tê-lo
 consumido.
 

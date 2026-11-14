@@ -230,13 +230,19 @@ async function chamarML(caminho, opcoes = {}) {
     return ACCESS_TOKEN;
   };
   const url = caminho.startsWith('http') ? caminho : `${cfg.ml.apiBase}${caminho}`;
-  const fazer = async () => axios({
-    url,
-    method: opcoes.method || 'GET',
-    headers: { Authorization: `Bearer ${await tokenAgora()}`, ...(opcoes.headers || {}) },
-    data: opcoes.data,
-    timeout: opcoes.timeout || 30000,
-  });
+  // b694: o aceite (2xx) com o token DO DONO e o que explica uma recusa anterior do eixo — `anotarAceite` no leitor.
+  const fazer = async () => {
+    const envio = tokenLeitor.marcarEnvio();
+    const r = await axios({
+      url,
+      method: opcoes.method || 'GET',
+      headers: { Authorization: `Bearer ${await tokenAgora()}`, ...(opcoes.headers || {}) },
+      data: opcoes.data,
+      timeout: opcoes.timeout || 30000,
+    });
+    if (tokenDoDono) tokenLeitor.anotarAceite(CHAVE_TOKEN, 'ml', envio);
+    return r;
+  };
 
   try {
     const r = await fazer();
@@ -249,7 +255,7 @@ async function chamarML(caminho, opcoes = {}) {
       // ⚠️ b424: invalida o cache do leitor — sem isto, em `remoto` a
       // tentativa seguinte receberia o MESMO token morto.
       tokenLeitor.invalidar(CHAVE_TOKEN, 'ml');
-      tokenLeitor.anotarInvalidacao(CHAVE_TOKEN, 'ml', 401);
+      tokenLeitor.anotarInvalidacao(CHAVE_TOKEN, 'ml', 401, recusadoEraDoDono);
 
       // b690 - EM `remoto` O RETRY VEM DO DONO (porte da GOOD: lib/ml.js, b258, Codex P1).
       //
@@ -291,7 +297,7 @@ async function chamarML(caminho, opcoes = {}) {
         return { ok: false, status: 403, error: (erro.response && erro.response.data) || erro.message, rota_ja_renovou: true };
       }
       tokenLeitor.invalidar(CHAVE_TOKEN, 'ml');
-      tokenLeitor.anotarInvalidacao(CHAVE_TOKEN, 'ml', 403);
+      tokenLeitor.anotarInvalidacao(CHAVE_TOKEN, 'ml', 403, recusadoEraDoDono);
 
       // b690 - em `remoto`, o 403 tambem tenta UMA vez com o token relido do dono (o ML responde 403 com
       // token vencido). Se der certo, era token: nada a marcar. Se falhar, e permissao — e ai a ROTA entra

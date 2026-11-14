@@ -11,6 +11,8 @@
 //
 // 📌 O veredito NÃO foi afrouxado: o bloqueio continua. O que muda é dizer
 // QUAL é o saldo, para a decisão ser informada em vez de adivinhada.
+// (b694: o bloqueio vale enquanto a recusa está EM ABERTO — sem aceite depois dela. Os casos daqui são todos
+// de recusa em aberto; a recusa explicada por aceite posterior está em test/veredito-recusa-explicada.test.js.)
 //
 // b329.1 (Codex, P2) - o "saldo" tem que ser por STATUS, não o total bruto
 // acumulado desde `DESDE`. Um 401 já resolvido por retry não pode impedir
