@@ -243,17 +243,27 @@ async function chamarBling(caminho, opcoes = {}) {
   };
 
   const url = caminho.startsWith('http') ? caminho : `${cfg.bling.apiBase}${caminho}`;
-  // b694: o aceite (2xx) com o token DO DONO e o que explica uma recusa anterior do eixo — `anotarAceite` no leitor.
+  // b694: TODA tentativa feita com o token DO DONO avisa o leitor do resultado — aceite (2xx) ou recusa (401/403).
+  // E o que separa, no veredito de corte, recusa da rota de problema de token (`anotarAceite` no leitor).
+  // O envio e marcado com o token JA resolvido, logo antes de a chamada sair (Codex, #566).
   const fazer = async () => {
+    const token = await tokenAgora();
+    const doDono = tokenDoDono;
     const envio = tokenLeitor.marcarEnvio();
-    const r = await axios({
-      url,
-      method: opcoes.method || 'GET',
-      headers: { Authorization: `Bearer ${await tokenAgora()}`, ...(opcoes.headers || {}) },
-      data: opcoes.data,
-      timeout: opcoes.timeout || 30000,
-    });
-    if (tokenDoDono) tokenLeitor.anotarAceite(CHAVE_TOKEN, 'bling', envio);
+    let r;
+    try {
+      r = await axios({
+        url,
+        method: opcoes.method || 'GET',
+        headers: { Authorization: `Bearer ${token}`, ...(opcoes.headers || {}) },
+        data: opcoes.data,
+        timeout: opcoes.timeout || 30000,
+      });
+    } catch (e) {
+      if (doDono) tokenLeitor.anotarRecusa(CHAVE_TOKEN, 'bling', e.response && e.response.status);
+      throw e;
+    }
+    if (doDono) tokenLeitor.anotarAceite(CHAVE_TOKEN, 'bling', envio);
     return r;
   };
 
@@ -304,7 +314,7 @@ async function chamarBling(caminho, opcoes = {}) {
       // Invalidar e barato: so limpa a memoria; nao gasta refresh nem chama ninguem.
       if (status === 401) {
         tokenLeitor.invalidar(CHAVE_TOKEN, 'bling');
-        tokenLeitor.anotarInvalidacao(CHAVE_TOKEN, 'bling', 401, recusadoEraDoDono);
+        tokenLeitor.anotarInvalidacao(CHAVE_TOKEN, 'bling', 401);
       }
       return { ok: false, status, error: (erro.response && erro.response.data) || erro.message };
     }
@@ -319,7 +329,7 @@ async function chamarBling(caminho, opcoes = {}) {
       // 📌 Vale nas 4 politicas: invalidar cache vazio nao custa nada, e
       // esquecer disto num `remoto` futuro custa uma tarde de diagnostico.
       tokenLeitor.invalidar(CHAVE_TOKEN, 'bling');
-      tokenLeitor.anotarInvalidacao(CHAVE_TOKEN, 'bling', 401, recusadoEraDoDono);
+      tokenLeitor.anotarInvalidacao(CHAVE_TOKEN, 'bling', 401);
 
       // b690 - EM `remoto` O RETRY VEM DO DONO (porte da GOOD: lib/bling.js, b258, Codex P1).
       //

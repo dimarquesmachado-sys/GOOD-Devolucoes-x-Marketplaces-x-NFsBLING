@@ -11,8 +11,9 @@
 //
 // 📌 O veredito NÃO foi afrouxado: o bloqueio continua. O que muda é dizer
 // QUAL é o saldo, para a decisão ser informada em vez de adivinhada.
-// (b694: o bloqueio vale enquanto a recusa está EM ABERTO — sem aceite depois dela. Os casos daqui são todos
-// de recusa em aberto; a recusa explicada por aceite posterior está em test/veredito-recusa-explicada.test.js.)
+// (b694: quem bloqueia é a recusa EM ABERTO — tentativa recusada sem nenhum aceite depois (`anotarRecusa`).
+// Os casos daqui conferem o TEXTO do saldo, que aparece junto do bloqueio ou como nota; a regra do aceite
+// posterior está em test/veredito-recusa-explicada.test.js.)
 //
 // b329.1 (Codex, P2) - o "saldo" tem que ser por STATUS, não o total bruto
 // acumulado desde `DESDE`. Um 401 já resolvido por retry não pode impedir
@@ -93,12 +94,15 @@ const porQue = (tl) => tl.vereditoDeCorte()['good/ml'].por_que || '';
      '  retry cobrindo as invalidacoes nao gera o motivo (' + q + ')');
 }
 
-// ── e continua BLOQUEANDO quando há saldo (não afrouxa o veredito) ──
+// ── e continua BLOQUEANDO quando há recusa em aberto (não afrouxa o veredito) ──
+// b694: a recusa entra pela tentativa (`anotarRecusa`, chamada pelo `fazer()` dos clientes).
 {
   const tl = carregar();
+  tl.anotarRecusa('good', 'ml', 401);
   tl.anotarInvalidacao('good', 'ml', 401);
   const v = tl.vereditoDeCorte()['good/ml'];
-  ok(v.pronto === false, '⚠️ invalidacao sem retry continua bloqueando o veredito');
+  ok(v.pronto === false && /1 recusa\(s\) do marketplace ainda sem aceite depois/.test(v.por_que || ''),
+     '⚠️ recusa sem aceite depois (invalidacao sem retry) continua bloqueando o veredito');
   ok(/sem retry conhecido/.test(v.por_que || ''), '  e o motivo aparece em `por_que`');
 }
 

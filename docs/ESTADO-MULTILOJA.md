@@ -265,9 +265,10 @@ aberto**: fica explicada quando uma chamada *enviada depois dela* é aceita (2xx
 recusa era da rota (regra/permissão: `/returns` negado ao vendedor, 403 de política), ou o token foi trocado e
 o novo funciona. Sem aceite depois (dono entregando token morto: tudo recusado), o eixo fica "não pronto"; e um
 eixo já em `remoto` nessa situação deixa de dizer "cortado e funcionando". A recusa explicada não some: aparece
-no `por_que` como nota, com os números (`retry falhou Nx (status …)`). A conta fica em
-`telemetria.por_eixo[eixo].recusas` (`aceites`, `sem_aceite_depois`, `explicadas`). Teste com as funções de
-produção: `test/veredito-recusa-explicada`.
+no `por_que` como nota, com os números (`retry falhou Nx (status …)`). A conta é por **tentativa** feita com o
+token do dono (a primeira, o retry, a repetição do 429) e fica em `telemetria.por_eixo[eixo].recusas`
+(`aceites`, `sem_aceite_depois`, `explicadas`). Teste com as funções de produção:
+`test/veredito-recusa-explicada`.
 ⚠️ Os contadores são de memória: **todo deploy zera a janela**. Pra ter 24–48h de evidência antes de um corte,
 é preciso ficar esse tempo sem deploy no serviço.
 

@@ -43,7 +43,10 @@ for (const [nome, arq, eixo] of [
   // 2. o token da chamada vem do leitor
   ok(new RegExp(`resolverToken\\(CHAVE_TOKEN, '${eixo}'\\)`).test(src),
      `⚠️ ${nome}: o token da chamada vem do leitor`);
-  ok(/Bearer \$\{await tokenAgora\(\)\}/.test(src),
+  // b694: o `fazer()` resolve o token ANTES de marcar o envio (`const token = await tokenAgora()`), e o header usa
+  // essa constante — o UNICO `Bearer` do arquivo. Antes era `Bearer ${await tokenAgora()}` na propria linha.
+  // (Com a rede simulada, quem prova que o token do header e o do leitor e test/fabrica-token-remoto.)
+  ok(/const token = await tokenAgora\(\);/.test(src) && /Bearer \$\{token\}/.test(src) && (src.match(/Bearer /g) || []).length === 1,
      `  ${nome}: e o header usa esse token (nao o local direto)`);
   ok(/e\.semToken = true/.test(src),
      `⚠️ ${nome}: em 'falhar' a chamada MORRE (nao cai no local escondido)`);
