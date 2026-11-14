@@ -226,8 +226,13 @@ async function chamarBling(caminho, opcoes = {}) {
   //
   // 📌 Le a CADA chamada de proposito: o leitor tem cache proprio, e assim
   // uma invalidacao em 401 vale na chamada seguinte, sem reiniciar nada.
+  //
+  // b693: de onde veio o token desta tentativa (dono x local) — se o RECUSADO era do dono, o retry vem do dono,
+  // em `sombra` tambem (renovar o local nao ajuda: o retry rele o do dono). A nota longa esta em ml-AMB.js.
+  let tokenDoDono = false;
   const tokenAgora = async () => {
     const d = await tokenLeitor.resolverToken(CHAVE_TOKEN, 'bling');
+    tokenDoDono = d.usar === 'remoto';
     if (d.usar === 'remoto') return d.access;
     if (d.usar === 'falhar') {
       const e = new Error('[token] ' + d.motivo);
@@ -265,6 +270,7 @@ async function chamarBling(caminho, opcoes = {}) {
     return { ok: true, data: r.data, status: r.status };
   } catch (erro) {
     const status = erro.response && erro.response.status;
+    const recusadoEraDoDono = tokenDoDono;   // b693: guarda ANTES do retry (o `fazer()` seguinte reescreve)
 
     // b187 (review do Codex no PR da GOOD) - quem tem PRAZO proprio pede
     // `semRetentativa`: sem isso o 401/429 dorme 1,5s e dispara OUTRA
@@ -317,7 +323,7 @@ async function chamarBling(caminho, opcoes = {}) {
       // (e mandando reautorizar AQUI, que em `remoto` nao conserta nada). A GOOD tem isto desde setembro;
       // a fabrica — que e o que sobra depois da fusao — nao tinha. O cache ja foi invalidado acima: este
       // `fazer()` rele do dono. E e OUTRA requisicao fisica: pede a vez de novo (b443).
-      if (tokenLeitor.politicaDe(CHAVE_TOKEN, 'bling') === 'remoto') {
+      if (recusadoEraDoDono || tokenLeitor.politicaDe(CHAVE_TOKEN, 'bling') === 'remoto') {   // b693: token do dono recusado -> retry do dono
         if (!opcoes.semRitmo) {
           try { _ficha = await ritmo.aguardarVez({ fundo: !!opcoes.fundo }); }
           catch (eFila) {

@@ -208,8 +208,19 @@ function registrarRenovacaoPor403(url) { ML_ULTIMA_RENOV_POR_ROTA.set(rotaDe(url
 
 async function chamarML(caminho, opcoes = {}) {
   // ⚠️ b424: de onde vem o token desta chamada (ver bling-AMB.js).
+  // b693 - DE ONDE VEIO O TOKEN DESTA TENTATIVA (dono x local).
+  //
+  // ⚠️ O dado (Girassol, 14/11, /health): `girassol/ml: retry falhou 4x (status do retry — 401: 3, 429: 1)`.
+  // Sao reclamacoes cujo /returns o ML nega POR REGRA (ml-returns-AMB, licao 4) — nada a ver com token. Mas em
+  // `sombra` cada uma custava: derrubar o cache, RENOVAR O TOKEN LOCAL e repetir. E a renovacao local nao
+  // servia de nada: o retry rele o token do DONO (que, no ML, confere o token no proprio ML antes de entregar),
+  // nao usa o local que acabou de ser renovado. Quatro refresh gastos em 12 min de servico no ar, pra nada.
+  // ✅ A regra: se o token RECUSADO veio do dono, o retry vem do dono — em `sombra` tambem, nao so em `remoto`.
+  // A renovacao local fica pra quando o token recusado era o LOCAL (dono fora do ar, ou politica `local`).
+  let tokenDoDono = false;
   const tokenAgora = async () => {
     const d = await tokenLeitor.resolverToken(CHAVE_TOKEN, 'ml');
+    tokenDoDono = d.usar === 'remoto';
     if (d.usar === 'remoto') return d.access;
     if (d.usar === 'falhar') {
       const e = new Error('[token] ' + d.motivo);
@@ -232,6 +243,7 @@ async function chamarML(caminho, opcoes = {}) {
     return { ok: true, data: r.data, status: r.status };
   } catch (erro) {
     const status = erro.response && erro.response.status;
+    const recusadoEraDoDono = tokenDoDono;   // b693: guarda ANTES do retry (o `fazer()` seguinte reescreve)
 
     if (status === 401) {
       // ⚠️ b424: invalida o cache do leitor — sem isto, em `remoto` a
@@ -247,7 +259,7 @@ async function chamarML(caminho, opcoes = {}) {
       // novo. E a mensagem mandava reautorizar AQUI, que em `remoto` nao conserta nada.
       // A GOOD tem isto desde setembro; a fabrica — que e o que sobra depois da fusao — nao tinha.
       // O cache ja foi invalidado acima: este `fazer()` rele do dono.
-      if (tokenLeitor.politicaDe(CHAVE_TOKEN, 'ml') === 'remoto') {
+      if (recusadoEraDoDono || tokenLeitor.politicaDe(CHAVE_TOKEN, 'ml') === 'remoto') {   // b693: token do dono recusado -> retry do dono
         try {
           const r = await fazer();
           tokenLeitor.anotarRetry(CHAVE_TOKEN, 'ml', true, 401);
@@ -287,7 +299,7 @@ async function chamarML(caminho, opcoes = {}) {
       // ⚠️ De proposito NAO e a regra da GOOD (que invalida e repete em TODO 403): o /health dela mostrou
       // 118 invalidacoes em 5 min numa rota restrita ao comprador. Aqui, 403 por desenho e rotina
       // (`/returns`), e seria uma releitura do dono + uma chamada em dobro a cada um.
-      if (tokenLeitor.politicaDe(CHAVE_TOKEN, 'ml') === 'remoto') {
+      if (recusadoEraDoDono || tokenLeitor.politicaDe(CHAVE_TOKEN, 'ml') === 'remoto') {   // b693: token do dono recusado -> retry do dono
         try {
           const r = await fazer();
           tokenLeitor.anotarRetry(CHAVE_TOKEN, 'ml', true, 403);
