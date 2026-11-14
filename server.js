@@ -613,7 +613,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.126.206 (b694: o veredito de corte separa recusa da rota de problema de token — recusa so bloqueia sem aceite depois)',
+      version: '9.126.207 (b695: o erro do indice do ML diz a causa conhecida do 403 de politica — a permissao do app — e o guia de empresa nova ganha o passo a passo)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),

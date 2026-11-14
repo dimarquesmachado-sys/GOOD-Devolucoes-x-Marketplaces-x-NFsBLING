@@ -272,6 +272,17 @@ token do dono (a primeira, o retry, a repetição do 429) e fica em `telemetria.
 ⚠️ Os contadores são de memória: **todo deploy zera a janela**. Pra ter 24–48h de evidência antes de um corte,
 é preciso ficar esse tempo sem deploy no serviço.
 
+**b695 — o app do DONO precisa das permissões do leitor (medido na GOOD em 14/11).** O ML negava toda busca de
+reclamações da GOOD (`PA_UNAUTHORIZED_RESULT_FROM_POLICIES`): o app de ML do Mover-Pedidos estava sem
+"Comunicações pré e pós-vendas". Ligada a permissão e reautorizada a conta, voltou na hora. Consequência pra
+trilha: antes de cortar um eixo de ML, o app do dono tem que poder tudo o que o Devoluções faz — a lista e o
+passo a passo estão em `docs/PLUGAR-EMPRESA-NOVA.md`. O veredito não pega isso sozinho (com outra rota aceita, a
+recusa fica "explicada"): quem mostra é o `erro` do índice e o `ml_403.por_rota` do `/health`.
+⚠️ A conferir: a GOOD tem **dois** apps de ML no DevCenter (um com o nome do Mover-Pedidos, outro com o do
+Devoluções). Se cada serviço usa o seu, o `risco_ativo.refresh_ml_uso_unico` do contrato não vale pra GOOD
+(apps diferentes não disputam refresh). Falta medir o `GOOD_ML_CLIENT_ID`/`ML_CLIENT_ID` deste serviço antes de
+mexer no contrato, que é espelhado com o Mover-Pedidos.
+
 ⚠️ Voltar para `local` com refresh antigo pode falhar: o dono já pode tê-lo
 consumido.
 

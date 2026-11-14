@@ -258,6 +258,24 @@ let reagendado = false;   // evita duas construcoes ao mesmo tempo
 //   - erro passageiro (5xx, 429, rede, excecao) -> tenta logo (2 min) e dobra a cada falha seguida, ate 30 min.
 // Vale pra quem remonta SOZINHO (espreita e bipe). Quem pede de proposito — a rota `/ml/indice/construir`, o
 // `?rebuild=1`, o pre-aquecimento do boot e o relogio da GOOD — chama `construirIndice()` direto e nao espera.
+// b695 - O 403 DE POLITICA NA BUSCA INTEIRA TEM CAUSA CONHECIDA: O ERRO PASSA A DIZER QUAL.
+//
+// ⚠️ O CASO (GOOD, 14/11/2026): tres horas pra descobrir por que o ML negava TODA busca de reclamacoes
+// (`PA_UNAUTHORIZED_RESULT_FROM_POLICIES`, ate numa janela sem nenhuma reclamacao). Nao era o filtro, nem o
+// token vencido, nem reclamacao especifica: o APLICATIVO do ML de onde vinha o token (o do Mover-Pedidos, porque
+// o eixo le do dono) estava sem a permissao "Comunicacoes pre e pos-vendas". Ligou a permissao no DevCenter,
+// AUTORIZOU DE NOVO (o token antigo nao ganha permissao sozinho — visto tambem na AMB em 14/08) e voltou na hora.
+// A mensagem do ML nao diz nada disso; a nossa agora diz, pra proxima empresa nao custar outra tarde.
+// So entra quando a resposta e mesmo a do PolicyAgent — outro 403 nao ganha um palpite que pode nao ser o dele.
+function dicaDoBloqueioDePolitica(erroDoMl) {
+  const cru = JSON.stringify(erroDoMl || '');
+  if (!/PolicyAgent|PA_UNAUTHORIZED/i.test(cru)) return '';
+  return ' ⇒ CONFIRA PRIMEIRO a permissao "Comunicacoes pre e pos-vendas" do APLICATIVO do ML de onde vem o token'
+    + ' (em `sombra`/`remoto`, o app do Mover-Pedidos): DevCenter > editar o app > Permissoes. Depois de ligar,'
+    + ' AUTORIZE DE NOVO — o token antigo nao ganha a permissao sozinho. Foi a causa na GOOD em 14/11/2026;'
+    + ' passo a passo em docs/PLUGAR-EMPRESA-NOVA.md';
+}
+
 const ESPERA_BLOQUEIO_MS = 30 * 60000;
 const ESPERA_PASSAGEIRA_MS = 2 * 60000;
 const TENT = { em: 0, falhas: 0, conclusiva: false };
@@ -420,7 +438,8 @@ async function construirIndiceInterno(opts = {}) {
             const doStatus = claims.filter((c) => c.status === st).length;
             erroBusca = `claims/search(${st}) pagina ${pg + 1} (offset ${pg * 30}, ${doStatus} desse status ja coletadas)`
               + ` HTTP 403 em TODAS as ${iso.bloqueadas} da faixa (uma por uma) — o status inteiro parece bloqueado pra este usuario`
-              + `: ${JSON.stringify(r.error || '').slice(0, 300)}`;
+              + `: ${JSON.stringify(r.error || '').slice(0, 300)}`
+              + dicaDoBloqueioDePolitica(r.error);
             statusNegados++;
             break;
           }
