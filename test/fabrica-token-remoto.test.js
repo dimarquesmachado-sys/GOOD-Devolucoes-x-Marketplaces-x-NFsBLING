@@ -109,6 +109,16 @@ const metrica = (leitor, eixo) => leitor.diagnostico().telemetria.por_eixo[eixo]
     ok(r.ok === true && rede.oauth.length === 1, '⚠️ ML `sombra` + 401: comportamento de sempre — renova LOCAL (1x) e repete');
     ok(m.retry_apos_invalidar.por_401.ok === 1, '  agora com o resultado do retry anotado');
   }
+  { // b691: sombra + 401, e o retry cai num 404 — o token foi ACEITO; o motivo tem que dizer isso
+    const t = instalar('sombra');
+    rede.respostas = [401, 404];
+    const r = await t.ml.chamarML('/orders/123456789');
+    const m = metrica(t.leitor, 'girassol/ml');
+    const v = t.leitor.vereditoDeCorte()['girassol/ml']; t.falar();
+    ok(r.ok === false && r.status === 404 && JSON.stringify(m.retry_apos_invalidar.por_401.falhou_com) === '{"404":1}',
+       '⚠️ ML: retry que cai num 404 fica anotado COM o 404 (o token foi aceito; quem falhou foi a chamada) — ' + JSON.stringify(m.retry_apos_invalidar.por_401));
+    ok(/retry falhou 1x \(status do retry — 404: 1\)/.test(v.por_que), '  e o veredito do eixo mostra o status — ' + v.por_que);
+  }
   { // local + 401: nem consulta o dono
     const t = instalar('local');
     rede.respostas = [401, 200];

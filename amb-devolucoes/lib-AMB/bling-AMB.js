@@ -330,7 +330,7 @@ async function chamarBling(caminho, opcoes = {}) {
           ritmo.avisarOk(opcoes.fundo ? 'fundo' : 'operacao', _ficha);
           return { ok: true, data: r.data, status: r.status };
         } catch (e2) {
-          tokenLeitor.anotarRetry(CHAVE_TOKEN, 'bling', false, 401);
+          tokenLeitor.anotarRetry(CHAVE_TOKEN, 'bling', false, 401, e2.response && e2.response.status);
           const st2 = e2.response && e2.response.status;
           if (st2 === 429) ritmo.avisar429(0, opcoes.fundo ? 'fundo' : 'operacao', _ficha);
           return { ok: false, status: st2, error: (e2.response && e2.response.data) || e2.message, semToken: e2.semToken };
@@ -352,7 +352,7 @@ async function chamarBling(caminho, opcoes = {}) {
           ritmo.avisarOk(opcoes.fundo ? 'fundo' : 'operacao', _ficha);
           return { ok: true, data: r.data, status: r.status };
         } catch (e2) {
-          tokenLeitor.anotarRetry(CHAVE_TOKEN, 'bling', false, 401);
+          tokenLeitor.anotarRetry(CHAVE_TOKEN, 'bling', false, 401, e2.response && e2.response.status);
           // e se ESSE tomar 429, avisa tambem — e o mesmo P1
           const st2 = e2.response && e2.response.status;
           if (st2 === 429) ritmo.avisar429(0, opcoes.fundo ? 'fundo' : 'operacao', _ficha);
