@@ -101,12 +101,12 @@ const metrica = (leitor, eixo) => leitor.diagnostico().telemetria.por_eixo[eixo]
     const v = t.leitor.vereditoDeCorte()['girassol/ml'];
     ok(v && v.cortado === true && v.pronto === false && /falhando/.test(v.por_que), '  e o veredito acusa: "JA CORTADO mas falhando" — ' + (v && v.por_que));
   }
-  { // sombra + 401: nada muda — renova local e repete
+  { // b693: sombra + 401 com o token do dono — o retry vem do dono; o refresh local nao e gasto
     const t = instalar('sombra');
     rede.respostas = [401, 200];
     const r = await t.ml.chamarML('/orders/123456789');
     const m = metrica(t.leitor, 'girassol/ml'); t.falar();
-    ok(r.ok === true && rede.oauth.length === 1, '⚠️ ML `sombra` + 401: comportamento de sempre — renova LOCAL (1x) e repete');
+    ok(r.ok === true && rede.oauth.length === 0 && rede.api.map((a) => a.token).join(',') === 'TOK-DONO-1,TOK-DONO-2', '⚠️ ML `sombra` + 401 (token do DONO recusado): repete com o token relido do dono, SEM renovar o local (b693) — ' + rede.api.map((a) => a.token).join(' -> ') + ', refresh locais: ' + rede.oauth.length);
     ok(m.retry_apos_invalidar.por_401.ok === 1, '  agora com o resultado do retry anotado');
   }
   { // b691: sombra + 401, e o retry cai num 404 — o token foi ACEITO; o motivo tem que dizer isso
@@ -118,6 +118,25 @@ const metrica = (leitor, eixo) => leitor.diagnostico().telemetria.por_eixo[eixo]
     ok(r.ok === false && r.status === 404 && JSON.stringify(m.retry_apos_invalidar.por_401.falhou_com) === '{"404":1}',
        '⚠️ ML: retry que cai num 404 fica anotado COM o 404 (o token foi aceito; quem falhou foi a chamada) — ' + JSON.stringify(m.retry_apos_invalidar.por_401));
     ok(/retry falhou 1x \(status do retry — 404: 1\)/.test(v.por_que), '  e o veredito do eixo mostra o status — ' + v.por_que);
+  }
+  { // b693: sombra com o DONO FORA DO AR — o token usado e o LOCAL; ai sim a renovacao local e o caminho
+    const t = instalar('sombra');
+    rede.respostas = [401, 200]; rede.donoCaiNaLeitura = 1;   // o dono nao responde desde a 1a leitura
+    const r = await t.ml.chamarML('/orders/123456789');
+    const m = metrica(t.leitor, 'girassol/ml'); t.falar();
+    ok(r.ok === true && rede.oauth.length === 1 && rede.api.map((a) => a.token).join(',') === 'TOK-LOCAL,TOK-LOCAL-NOVO',
+       '⚠️ ML `sombra` com o dono FORA + 401: o token recusado era o LOCAL -> renova local e repete (a rede local, intacta) — ' + rede.api.map((a) => a.token).join(' -> '));
+    ok(m.fonte.local >= 1 && m.retry_apos_invalidar.por_401.ok === 1, '  e o /health mostra que caiu no local (' + m.fonte.local + 'x)');
+  }
+  { // b693: o caso da Girassol — /returns negado POR REGRA (401 mesmo com token bom)
+    const t = instalar('sombra');
+    rede.respostas = [401, 401, 401, 401];
+    const r1 = await t.ml.chamarML('/post-purchase/v2/claims/5123456789/returns');
+    const r2 = await t.ml.chamarML('/post-purchase/v2/claims/5987654321/returns');
+    const m = metrica(t.leitor, 'girassol/ml'); t.falar();
+    ok(r1.ok === false && r1.status === 401 && r2.status === 401 && rede.oauth.length === 0,
+       '⚠️ ML `sombra`, /returns negado por regra (401 com token bom): 2 reclamacoes = ZERO refresh local (antes: 1 por reclamacao, a cada montagem do indice)');
+    ok(rede.api.length === 4 && JSON.stringify(m.retry_apos_invalidar.por_401.falhou_com) === '{"401":2}', '  a chamada ainda e repetida uma vez com o token relido (cobre vencimento de verdade) e o status fica anotado');
   }
   { // local + 401: nem consulta o dono
     const t = instalar('local');
@@ -155,12 +174,12 @@ const metrica = (leitor, eixo) => leitor.diagnostico().telemetria.por_eixo[eixo]
     ok(r1.ok === false && r1.semToken === true && !r2.rota_ja_renovou && rede.api.length === 3,
        '⚠️ ML `remoto` + 403 com o dono fora na releitura: "nao sei" NAO marca a rota — o 403 seguinte tenta de novo (e so entao, com 403 repetido, marca)');
   }
-  { // sombra + 403: como era (renova 1x por rota)
+  { // b693: sombra + 403 com o token do dono — mesma cadencia, sem o refresh local
     const t = instalar('sombra');
     rede.respostas = [403, 403, 403];
     await t.ml.chamarML('/post-purchase/v2/claims/5123456789/returns');
     const r2 = await t.ml.chamarML('/post-purchase/v2/claims/5987654321/returns'); t.falar();
-    ok(rede.oauth.length === 1 && r2.rota_ja_renovou === true && rede.api.length === 3, '  ML `sombra` + 403: como sempre — 1 refresh local por rota na janela, o 2o 403 nao repete');
+    ok(rede.oauth.length === 0 && r2.rota_ja_renovou === true && rede.api.length === 3 && rede.dono.length === 2, '⚠️ ML `sombra` + 403 (token do DONO recusado): uma tentativa com o token relido, a rota entra na janela, e ZERO refresh local (b693; antes: 1 por rota a cada 10 min)');
   }
 
   // ══ BLING ══
@@ -187,7 +206,7 @@ const metrica = (leitor, eixo) => leitor.diagnostico().telemetria.por_eixo[eixo]
     rede.respostas = [401, 200];
     const r = await t.bling.chamarBling('/nfe/1');
     const m = metrica(t.leitor, 'girassol/bling'); t.falar();
-    ok(r.ok === true && rede.oauth.length === 1 && m.retry_apos_invalidar.por_401.ok === 1, '⚠️ Bling `sombra` + 401: comportamento de sempre (renova local, repete) — agora com o retry anotado');
+    ok(r.ok === true && rede.oauth.length === 0 && m.retry_apos_invalidar.por_401.ok === 1 && rede.api.map((a) => a.token).join(',') === 'TOK-DONO-1,TOK-DONO-2', '⚠️ Bling `sombra` + 401 (token do DONO recusado): repete com o token relido do dono, SEM renovar o local (b693)');
   }
   { // semRetentativa: sai no 1o erro — mas o 401 invalida o cache (porte da GOOD)
     const t = instalar('sombra');
