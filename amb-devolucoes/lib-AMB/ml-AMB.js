@@ -253,7 +253,7 @@ async function chamarML(caminho, opcoes = {}) {
           tokenLeitor.anotarRetry(CHAVE_TOKEN, 'ml', true, 401);
           return { ok: true, data: r.data, status: r.status };
         } catch (e2) {
-          tokenLeitor.anotarRetry(CHAVE_TOKEN, 'ml', false, 401);
+          tokenLeitor.anotarRetry(CHAVE_TOKEN, 'ml', false, 401, e2.response && e2.response.status);
           return { ok: false, status: e2.response && e2.response.status, error: (e2.response && e2.response.data) || e2.message, semToken: e2.semToken };
         }
       }
@@ -264,7 +264,7 @@ async function chamarML(caminho, opcoes = {}) {
           tokenLeitor.anotarRetry(CHAVE_TOKEN, 'ml', true, 401);    // b690: o RESULTADO do retry e a evidencia do corte
           return { ok: true, data: r.data, status: r.status };
         } catch (e2) {
-          tokenLeitor.anotarRetry(CHAVE_TOKEN, 'ml', false, 401);
+          tokenLeitor.anotarRetry(CHAVE_TOKEN, 'ml', false, 401, e2.response && e2.response.status);
           return { ok: false, status: e2.response && e2.response.status, error: (e2.response && e2.response.data) || e2.message };
         }
       }
@@ -293,7 +293,7 @@ async function chamarML(caminho, opcoes = {}) {
           tokenLeitor.anotarRetry(CHAVE_TOKEN, 'ml', true, 403);
           return { ok: true, data: r.data, status: r.status };
         } catch (e2) {
-          tokenLeitor.anotarRetry(CHAVE_TOKEN, 'ml', false, 403);
+          tokenLeitor.anotarRetry(CHAVE_TOKEN, 'ml', false, 403, e2.response && e2.response.status);
           // so um 403 de NOVO e conclusivo (permissao). Dono fora, rede, 5xx: nao sei — a rota nao e marcada
           // e o proximo 403 dela tenta outra vez.
           if (e2.response && e2.response.status === 403) registrarRenovacaoPor403(url);
@@ -308,7 +308,7 @@ async function chamarML(caminho, opcoes = {}) {
           tokenLeitor.anotarRetry(CHAVE_TOKEN, 'ml', true, 403);
           return { ok: true, data: r.data, status: r.status };
         } catch (e2) {
-          tokenLeitor.anotarRetry(CHAVE_TOKEN, 'ml', false, 403);
+          tokenLeitor.anotarRetry(CHAVE_TOKEN, 'ml', false, 403, e2.response && e2.response.status);
           return { ok: false, status: e2.response && e2.response.status, error: (e2.response && e2.response.data) || e2.message };
         }
       }
