@@ -238,11 +238,33 @@ async function chamarML(caminho, opcoes = {}) {
       // tentativa seguinte receberia o MESMO token morto.
       tokenLeitor.invalidar(CHAVE_TOKEN, 'ml');
       tokenLeitor.anotarInvalidacao(CHAVE_TOKEN, 'ml', 401);
+
+      // b690 - EM `remoto` O RETRY VEM DO DONO (porte da GOOD: lib/ml.js, b258, Codex P1).
+      //
+      // A renovacao local e RECUSADA em `remoto` — certo, o dono e quem renova. Mas o retry daqui so
+      // acontecia SE ela devolvesse true: em `remoto`, a chamada que descobriu o token vencido morria
+      // com "token invalido e refresh falhou - reautorize pelo /conectar", com o dono ja tendo o token
+      // novo. E a mensagem mandava reautorizar AQUI, que em `remoto` nao conserta nada.
+      // A GOOD tem isto desde setembro; a fabrica — que e o que sobra depois da fusao — nao tinha.
+      // O cache ja foi invalidado acima: este `fazer()` rele do dono.
+      if (tokenLeitor.politicaDe(CHAVE_TOKEN, 'ml') === 'remoto') {
+        try {
+          const r = await fazer();
+          tokenLeitor.anotarRetry(CHAVE_TOKEN, 'ml', true, 401);
+          return { ok: true, data: r.data, status: r.status };
+        } catch (e2) {
+          tokenLeitor.anotarRetry(CHAVE_TOKEN, 'ml', false, 401);
+          return { ok: false, status: e2.response && e2.response.status, error: (e2.response && e2.response.data) || e2.message, semToken: e2.semToken };
+        }
+      }
+
       if (await renovarToken()) {
         try {
           const r = await fazer();
+          tokenLeitor.anotarRetry(CHAVE_TOKEN, 'ml', true, 401);    // b690: o RESULTADO do retry e a evidencia do corte
           return { ok: true, data: r.data, status: r.status };
         } catch (e2) {
+          tokenLeitor.anotarRetry(CHAVE_TOKEN, 'ml', false, 401);
           return { ok: false, status: e2.response && e2.response.status, error: (e2.response && e2.response.data) || e2.message };
         }
       }
@@ -258,12 +280,35 @@ async function chamarML(caminho, opcoes = {}) {
       }
       tokenLeitor.invalidar(CHAVE_TOKEN, 'ml');
       tokenLeitor.anotarInvalidacao(CHAVE_TOKEN, 'ml', 403);
+
+      // b690 - em `remoto`, o 403 tambem tenta UMA vez com o token relido do dono (o ML responde 403 com
+      // token vencido). Se der certo, era token: nada a marcar. Se falhar, e permissao — e ai a ROTA entra
+      // na janela de 10 min, pra o proximo 403 dela nao invalidar o cache nem repetir a chamada.
+      // ⚠️ De proposito NAO e a regra da GOOD (que invalida e repete em TODO 403): o /health dela mostrou
+      // 118 invalidacoes em 5 min numa rota restrita ao comprador. Aqui, 403 por desenho e rotina
+      // (`/returns`), e seria uma releitura do dono + uma chamada em dobro a cada um.
+      if (tokenLeitor.politicaDe(CHAVE_TOKEN, 'ml') === 'remoto') {
+        try {
+          const r = await fazer();
+          tokenLeitor.anotarRetry(CHAVE_TOKEN, 'ml', true, 403);
+          return { ok: true, data: r.data, status: r.status };
+        } catch (e2) {
+          tokenLeitor.anotarRetry(CHAVE_TOKEN, 'ml', false, 403);
+          // so um 403 de NOVO e conclusivo (permissao). Dono fora, rede, 5xx: nao sei — a rota nao e marcada
+          // e o proximo 403 dela tenta outra vez.
+          if (e2.response && e2.response.status === 403) registrarRenovacaoPor403(url);
+          return { ok: false, status: e2.response && e2.response.status, error: (e2.response && e2.response.data) || e2.message, semToken: e2.semToken };
+        }
+      }
+
       if (await renovarToken()) {
         registrarRenovacaoPor403(url);
         try {
           const r = await fazer();
+          tokenLeitor.anotarRetry(CHAVE_TOKEN, 'ml', true, 403);
           return { ok: true, data: r.data, status: r.status };
         } catch (e2) {
+          tokenLeitor.anotarRetry(CHAVE_TOKEN, 'ml', false, 403);
           return { ok: false, status: e2.response && e2.response.status, error: (e2.response && e2.response.data) || e2.message };
         }
       }

@@ -246,6 +246,15 @@ token local se ele falhar — a renovação local é que continua ligada até o 
 eixo em `coordenacao.leitura_de_token.eixos`, derivado do que está montado e da política efetiva (b689: antes
 era uma tabela de setembro que dizia "AMB renova LOCAL" e "Girassol não ativa neste serviço").
 
+**b690 — a fábrica ficou pronta pro `remoto`.** A GOOD já repetia a chamada com o token relido do dono quando
+um eixo em `remoto` tomava 401 (b258, setembro); os clientes da fábrica (`lib-AMB/ml-AMB.js`, `bling-AMB.js`)
+não — em `remoto` a chamada morria com "token invalido e refresh falhou - reautorize pelo /conectar". Ninguém
+via porque todo eixo está em `sombra`; apareceria no dia do corte, e é a fábrica que sobra depois da fusão.
+Agora: 401 em `remoto` repete com o token do dono; 403 em `remoto` tenta uma vez e, se for permissão, a rota
+entra na janela de 10 min (sem a rajada de releituras que a GOOD faz); o resultado de todo retry é anotado; e
+`pode_cortar` dá veredito pra todo eixo montado. Teste com as funções de produção: `test/fabrica-token-remoto`.
+O corte em si continua sendo decisão operacional — eixo por eixo, com o `/health` na mão.
+
 ⚠️ Voltar para `local` com refresh antigo pode falhar: o dono já pode tê-lo
 consumido.
 

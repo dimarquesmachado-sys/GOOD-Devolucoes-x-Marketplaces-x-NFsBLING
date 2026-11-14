@@ -286,6 +286,14 @@ async function chamarBling(caminho, opcoes = {}) {
       ritmo.avisar429(Number.isFinite(raSR) && raSR > 0 ? raSR : 0, opcoes.fundo ? 'fundo' : 'operacao', _ficha);
     }
     if (opcoes.semRetentativa) {
+      // b690 - porte da GOOD (lib/bling.js): quem sai sem repetir TAMBEM invalida o cache do leitor no 401.
+      // Sem isto, o token do dono que venceu ficava no cache ate o TTL (5 min) — e as chamadas em volume
+      // (detalhe de produto) tomavam 401 uma atras da outra ate uma chamada normal passar pelo ramo de baixo.
+      // Invalidar e barato: so limpa a memoria; nao gasta refresh nem chama ninguem.
+      if (status === 401) {
+        tokenLeitor.invalidar(CHAVE_TOKEN, 'bling');
+        tokenLeitor.anotarInvalidacao(CHAVE_TOKEN, 'bling', 401);
+      }
       return { ok: false, status, error: (erro.response && erro.response.data) || erro.message };
     }
 
@@ -300,6 +308,34 @@ async function chamarBling(caminho, opcoes = {}) {
       // esquecer disto num `remoto` futuro custa uma tarde de diagnostico.
       tokenLeitor.invalidar(CHAVE_TOKEN, 'bling');
       tokenLeitor.anotarInvalidacao(CHAVE_TOKEN, 'bling', 401);
+
+      // b690 - EM `remoto` O RETRY VEM DO DONO (porte da GOOD: lib/bling.js, b258, Codex P1).
+      //
+      // A renovacao local e RECUSADA em `remoto` — certo, o dono e quem renova. Mas o retry daqui so
+      // acontecia SE ela devolvesse true: em `remoto`, a chamada que descobriu o token vencido morria com
+      // "token invalido e refresh falhou - reautorize pelo /conectar", com o dono ja tendo o token novo
+      // (e mandando reautorizar AQUI, que em `remoto` nao conserta nada). A GOOD tem isto desde setembro;
+      // a fabrica — que e o que sobra depois da fusao — nao tinha. O cache ja foi invalidado acima: este
+      // `fazer()` rele do dono. E e OUTRA requisicao fisica: pede a vez de novo (b443).
+      if (tokenLeitor.politicaDe(CHAVE_TOKEN, 'bling') === 'remoto') {
+        if (!opcoes.semRitmo) {
+          try { _ficha = await ritmo.aguardarVez({ fundo: !!opcoes.fundo }); }
+          catch (eFila) {
+            return { ok: false, status: 0, error: eFila.message, filaEstourou: true };
+          }
+        } else _ficha = null;
+        try {
+          const r = await fazer();
+          tokenLeitor.anotarRetry(CHAVE_TOKEN, 'bling', true, 401);
+          ritmo.avisarOk(opcoes.fundo ? 'fundo' : 'operacao', _ficha);
+          return { ok: true, data: r.data, status: r.status };
+        } catch (e2) {
+          tokenLeitor.anotarRetry(CHAVE_TOKEN, 'bling', false, 401);
+          const st2 = e2.response && e2.response.status;
+          if (st2 === 429) ritmo.avisar429(0, opcoes.fundo ? 'fundo' : 'operacao', _ficha);
+          return { ok: false, status: st2, error: (e2.response && e2.response.data) || e2.message, semToken: e2.semToken };
+        }
+      }
       if (await renovarToken()) {
         // ⚠️ b443 (Codex, P1): o retry pos-401 tambem pede a VEZ. Antes
         // chamava `fazer()` direto — uma renovacao rapida punha a 4a chamada
@@ -312,9 +348,11 @@ async function chamarBling(caminho, opcoes = {}) {
         } else _ficha = null;   // 14/10: o retry e outra requisicao — nao reaproveita a ficha da 1a
         try {
           const r = await fazer();
+          tokenLeitor.anotarRetry(CHAVE_TOKEN, 'bling', true, 401);    // b690: o RESULTADO do retry e a evidencia do corte
           ritmo.avisarOk(opcoes.fundo ? 'fundo' : 'operacao', _ficha);
           return { ok: true, data: r.data, status: r.status };
         } catch (e2) {
+          tokenLeitor.anotarRetry(CHAVE_TOKEN, 'bling', false, 401);
           // e se ESSE tomar 429, avisa tambem — e o mesmo P1
           const st2 = e2.response && e2.response.status;
           if (st2 === 429) ritmo.avisar429(0, opcoes.fundo ? 'fundo' : 'operacao', _ficha);
