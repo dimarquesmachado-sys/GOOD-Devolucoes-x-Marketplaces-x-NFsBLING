@@ -50,6 +50,16 @@ function montar(responder) {
 const calado = async (fn) => { const c = { log: console.log, error: console.error, warn: console.warn }; console.log = console.error = console.warn = () => {}; try { return await fn(); } finally { Object.assign(console, c); } };
 
 (async () => {
+  // ══ b695) 403 que NAO e o do PolicyAgent nao ganha a dica da permissao (seria palpite) ══
+  {
+    const OUTRO403 = { ok: false, status: 403, error: { message: 'forbidden', error: 'forbidden', status: 403 } };
+    const { peca } = montar(async () => OUTRO403);
+    await calado(() => peca.construirIndice().catch(() => {}));
+    const s = peca.statusIndice();
+    ok(/status inteiro parece bloqueado/.test(String(s.erro)) && !/Comunicacoes pre e pos-vendas/.test(String(s.erro)),
+       '  403 sem a marca do PolicyAgent: o erro sai como antes, sem a dica da permissao');
+  }
+
   // ══ A) O CASO DA GOOD: o ML nega tudo ══
   {
     // o ML de mentira demora 12 ms por busca (o de verdade, ~250): a montagem negada leva ~0,75 s aqui e ~16 s la
@@ -59,6 +69,9 @@ const calado = async (fn) => { const c = { log: console.log, error: console.erro
     ok(porMontagem === 62, `a montagem que o ML nega inteira custa ${porMontagem} chamadas (2 status x [1 pagina + 30 uma a uma])`);
     const s0 = peca.statusIndice();
     ok(s0.quente === false && s0.claims_bloqueadas === 60 && /status inteiro parece bloqueado/.test(String(s0.erro)), '  estado igual ao que a GOOD mostrou: frio, 60 bloqueadas, "status inteiro parece bloqueado"');
+    // b695: a causa conhecida vai junto do erro (a mensagem do ML nao diz) — e sem engolir a resposta original
+    ok(/Comunicacoes pre e pos-vendas/.test(String(s0.erro)) && /AUTORIZE DE NOVO/.test(String(s0.erro)) && /PA_UNAUTHORIZED_RESULT_FROM_POLICIES/.test(String(s0.erro)),
+       '⚠️ o erro do bloqueio de politica diz ONDE olhar: a permissao do app do ML e a reautorizacao (b695)');
 
     const t0 = agoraReal();
     await calado(async () => {
