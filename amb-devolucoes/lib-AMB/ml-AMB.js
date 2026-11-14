@@ -230,13 +230,29 @@ async function chamarML(caminho, opcoes = {}) {
     return ACCESS_TOKEN;
   };
   const url = caminho.startsWith('http') ? caminho : `${cfg.ml.apiBase}${caminho}`;
-  const fazer = async () => axios({
-    url,
-    method: opcoes.method || 'GET',
-    headers: { Authorization: `Bearer ${await tokenAgora()}`, ...(opcoes.headers || {}) },
-    data: opcoes.data,
-    timeout: opcoes.timeout || 30000,
-  });
+  // b694: TODA tentativa feita com o token DO DONO avisa o leitor do resultado — aceite (2xx) ou recusa (401/403).
+  // E o que separa, no veredito de corte, recusa da rota de problema de token (`anotarAceite` no leitor).
+  // O envio e marcado com o token JA resolvido, logo antes de a chamada sair (Codex, #566).
+  const fazer = async () => {
+    const token = await tokenAgora();
+    const doDono = tokenDoDono;
+    const envio = tokenLeitor.marcarEnvio();
+    let r;
+    try {
+      r = await axios({
+        url,
+        method: opcoes.method || 'GET',
+        headers: { Authorization: `Bearer ${token}`, ...(opcoes.headers || {}) },
+        data: opcoes.data,
+        timeout: opcoes.timeout || 30000,
+      });
+    } catch (e) {
+      if (doDono) tokenLeitor.anotarRecusa(CHAVE_TOKEN, 'ml', e.response && e.response.status);
+      throw e;
+    }
+    if (doDono) tokenLeitor.anotarAceite(CHAVE_TOKEN, 'ml', envio);
+    return r;
+  };
 
   try {
     const r = await fazer();
