@@ -241,6 +241,40 @@ let construindo = false;
 // 📌 Justo no cenario que a fila existe pra evitar: o 429.
 let reagendado = false;   // evita duas construcoes ao mesmo tempo
 
+// b692 - QUEM FALHOU ESPERA ANTES DE TENTAR DE NOVO SOZINHO.
+//
+// ⚠️ O CASO (GOOD, 14/11/2026): o ML passou a negar TODAS as reclamacoes da conta (403 do PolicyAgent,
+// `PA_UNAUTHORIZED_RESULT_FROM_POLICIES`, nas abertas e nas encerradas). Cada montagem gasta 62 chamadas pra
+// descobrir isso e termina com `IDX.ts = 0` — e ai TODO mundo que passa por aqui mandava montar de novo:
+// `resumoEspreita` (a espreita, a cada passada) e `acharPorTracking` (o bipe e o laco que enriquece a
+// espreita — que ainda ESPERAVA a montagem, ~16 s por codigo). O /health mostrou 434 respostas 403 em 12 min
+// numa rota so (`/post-purchase/v1/claims/search`), ~36 por minuto sem parar, e cada uma ainda derruba o cache
+// do token (uma releitura no Mover-Pedidos, que la vira mais uma chamada ao ML).
+// A "autocura" (b29: indice frio se remonta sozinho) nao tinha freio: curava 429 de boot e virava rajada
+// quando a resposta do ML era um NAO.
+//
+// ✅ Duas esperas, porque "NAO SEI" nao e "NAO":
+//   - o ML NEGOU (so bloqueio de politica, faixa inteira) = resposta conclusiva -> so no ciclo normal (30 min);
+//   - erro passageiro (5xx, 429, rede, excecao) -> tenta logo (2 min) e dobra a cada falha seguida, ate 30 min.
+// Vale pra quem remonta SOZINHO (espreita e bipe). Quem pede de proposito — a rota `/ml/indice/construir`, o
+// `?rebuild=1`, o pre-aquecimento do boot e o relogio da GOOD — chama `construirIndice()` direto e nao espera.
+const ESPERA_BLOQUEIO_MS = 30 * 60000;
+const ESPERA_PASSAGEIRA_MS = 2 * 60000;
+const TENT = { em: 0, falhas: 0, conclusiva: false };
+function esperaAposFalhaMs() {
+  if (!TENT.falhas) return 0;
+  if (TENT.conclusiva) return ESPERA_BLOQUEIO_MS;
+  return Math.min(ESPERA_BLOQUEIO_MS, ESPERA_PASSAGEIRA_MS * Math.pow(2, Math.min(TENT.falhas - 1, 10)));
+}
+function podeRemontarSozinho() {
+  return !TENT.falhas || (Date.now() - TENT.em) >= esperaAposFalhaMs();
+}
+function anotarTentativa(falhou, conclusiva) {
+  TENT.em = Date.now();
+  TENT.falhas = falhou ? TENT.falhas + 1 : 0;
+  TENT.conclusiva = !!(falhou && conclusiva);
+}
+
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 const normTrack = (s) => String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
 
@@ -312,6 +346,7 @@ async function construirIndice(opts = {}) {
       console.log(`[ML-RETURNS-AMB] ${e.message} — indice NAO publicado`);
       return;
     }
+    anotarTentativa(true, false);   // b692: excecao = "nao sei" -> espera curta antes de remontar sozinho
     throw e;
   }
 }
@@ -336,6 +371,8 @@ async function construirIndiceInterno(opts = {}) {
     const claims = [];
     const vistos = new Set();
     let bloqueadasML = 0;   // 30/10: reclamacoes que o ML recusou mostrar (403 de politica), puladas uma a uma
+    // b692: o TIPO do erro decide a espera — status INTEIRO negado pela politica (conclusivo) x erro passageiro
+    let statusNegados = 0, errosPassageiros = 0;
     const guardarClaim = (c) => {
       if (!c || vistos.has(c.id)) return;
       vistos.add(c.id);
@@ -378,12 +415,13 @@ async function construirIndiceInterno(opts = {}) {
           // pula so as bloqueadas e segue. Se as 30 vierem bloqueadas, e o status inteiro: para como antes.
           const iso = await isolarPaginaBloqueada(st, pg);
           bloqueadasML += iso.bloqueadas;
-          if (iso.erro) { erroBusca = iso.erro; break; }
+          if (iso.erro) { erroBusca = iso.erro; errosPassageiros++; break; }
           if (iso.coletadas === 0 && iso.bloqueadas > 0) {
             const doStatus = claims.filter((c) => c.status === st).length;
             erroBusca = `claims/search(${st}) pagina ${pg + 1} (offset ${pg * 30}, ${doStatus} desse status ja coletadas)`
               + ` HTTP 403 em TODAS as ${iso.bloqueadas} da faixa (uma por uma) — o status inteiro parece bloqueado pra este usuario`
               + `: ${JSON.stringify(r.error || '').slice(0, 300)}`;
+            statusNegados++;
             break;
           }
           if (iso.fim) break;
@@ -397,6 +435,7 @@ async function construirIndiceInterno(opts = {}) {
           const doStatus = claims.filter((c) => c.status === st).length;
           erroBusca = `claims/search(${st}) pagina ${pg + 1} (offset ${pg * 30}, ${doStatus} desse status ja coletadas)`
             + ` HTTP ${r.status}: ${JSON.stringify(r.error || '').slice(0, 400)}`;
+          errosPassageiros++;
           break;
         }
         const lista = (r.data && r.data.data) || [];
@@ -474,6 +513,10 @@ async function construirIndiceInterno(opts = {}) {
     // b587 (Codex #472, P2) - com o relogio da espreita remontando sozinho, uma falha geral NAO pode apagar o indice
     // bom que ja existia: mantem o mapa e o `ts` antigos (continua velho, entao a proxima passada tenta de novo) e so
     // registra o erro. Sem indice anterior, publica o vazio frio de sempre (ts 0).
+    // b692: so bloqueio de politica (nenhum erro passageiro no meio) = o ML respondeu NAO. Retentar nao muda nada.
+    const soBloqueio = statusNegados > 0 && errosPassageiros === 0;
+    IDX.soBloqueio = !!erroBusca && soBloqueio;
+    anotarTentativa(falhouGeral, soBloqueio);
     if (falhouGeral && Object.keys(IDX.mapa).length > 0) {
       IDX.erro = erroBusca;
       IDX.duracaoSeg = Math.round((Date.now() - t0) / 1000);
@@ -528,6 +571,16 @@ function statusIndice() {
     janela_dias: cfg.ml.janelaDias,
     total_claims: IDX.totalClaims,
     claims_bloqueadas: IDX.bloqueadasML || 0,   // 30/10: o ML recusou mostrar (403 de politica) — puladas, o resto foi coletado
+    // b692: depois de uma montagem que falhou, quanto falta pra espreita/bipe remontarem sozinhos — e se o ML
+    // NEGOU (conclusivo) ou foi erro passageiro. null = nada falhou.
+    espera_apos_falha: TENT.falhas ? {
+      falhas_seguidas: TENT.falhas,
+      conclusiva: TENT.conclusiva,
+      motivo: TENT.conclusiva
+        ? 'o ML negou todas as reclamacoes (bloqueio de politica) — insistir nao muda a resposta; volta no ciclo normal'
+        : 'erro passageiro na ultima montagem — tenta de novo logo',
+      proxima_tentativa_em_s: Math.max(0, Math.round((TENT.em + esperaAposFalhaMs() - Date.now()) / 1000)),
+    } : null,
     com_tracking: IDX.comTracking,
     returns_com_falha_persistente: IDX.falhasReturns || 0,
     amostra_falhas: IDX.amostraFalhas || [],
@@ -542,9 +595,11 @@ async function acharPorTracking(codigo) {
   const trk = normTrack(codigo);
   if (!trk) return null;
   // Mesma regra do indice de nomes: so espera quando esta vazio.
+  // b692: dentro da espera pos-falha o bipe NAO manda montar — e nao fica ~16 s esperando uma montagem que o
+  // ML acabou de negar. Segue com o que o indice tem (nada, ou o anterior).
   if (!IDX.ts) {
-    try { await construirIndice(); } catch (e) { /* segue vazio */ }
-  } else if ((Date.now() - IDX.ts) > 30 * 60000) {
+    if (podeRemontarSozinho()) { try { await construirIndice(); } catch (e) { /* segue vazio */ } }
+  } else if ((Date.now() - IDX.ts) > 30 * 60000 && podeRemontarSozinho()) {
     construirIndice().catch(e => console.error(`[${TAG_EMP}/ML-RETURNS] atualizacao em background falhou:`, e.message));
   }
   const achado = IDX.mapa[trk] || null;
@@ -654,7 +709,8 @@ function resumoEspreita() {
   // 30 min, remonta em segundo plano. Antes so o BIPE religava um indice velho — com o galpao horas sem bipar ML, o
   // indice da Girassol chegou a 321 min, e o primeiro bipe usava o velho (devolucao nova = 'nao encontrado').
   // A GOOD tem relogio de 25 min (server.js). Sem indice nenhum, monta, como antes.
-  if (!construindo && (!IDX.ts || (Date.now() - IDX.ts) > 30 * 60000)) {
+  // b692: ...mas so se a ultima tentativa nao acabou de falhar (ver `podeRemontarSozinho`).
+  if (!construindo && podeRemontarSozinho() && (!IDX.ts || (Date.now() - IDX.ts) > 30 * 60000)) {
     construirIndice().catch(e => { IDX.erro = e.message; });
   }
 
@@ -759,6 +815,13 @@ function tentar(tentativa) {
   reagendado = false;   // b415
   construirIndice().then((idx) => {
     if (!idx) return; // cancelado pela drenagem - nem sucesso nem falha
+    // b692: se o erro foi SO bloqueio de politica do ML, a montagem nao falhou — o ML respondeu NAO. As 3
+    // tentativas do boot (b271) sao pra erro passageiro (o 429 que deixava o cache vazio); aqui seriam mais 2
+    // montagens inteiras em 90 s pra ouvir o mesmo NAO.
+    if (idx.erro && idx.soBloqueio) {
+      console.log(`[${TAG_EMP}/ML-RETURNS] pre-aquecimento: o ML negou as reclamacoes (bloqueio de politica) — sem retentativa; volta no ciclo normal`);
+      return;
+    }
     if (idx.erro) throw new Error(idx.erro);
   }).catch((e) => {
     // b271 - ⚠️ FALHOU, TENTA DE NOVO (a AMB tambem — regra da casa).

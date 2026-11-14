@@ -6,7 +6,9 @@ const path = require('path'); const fs = require('fs');
 let falhas = 0;
 const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o); };
 const A = fs.readFileSync(path.join(__dirname, '..', 'amb-devolucoes', 'lib-AMB', 'ml-returns-AMB.js'), 'utf8');
-ok(/if \(!construindo && \(!IDX\.ts \|\| \(Date\.now\(\) - IDX\.ts\) > 30 \* 60000\)\) \{\n\s+construirIndice\(\)/.test(A), '⚠️ o resumo da espreita (relogio de 3 min) remonta o indice do ML com mais de 30 min');
+// b692: a condicao ganhou `podeRemontarSozinho()` (espera depois de uma montagem que FALHOU — a rajada de 403 da GOOD).
+// A regra daqui nao muda: indice bom com mais de 30 min remonta. O comportamento esta em test/ml-indice-nao-martela (caso E).
+ok(/if \(!construindo && podeRemontarSozinho\(\) && \(!IDX\.ts \|\| \(Date\.now\(\) - IDX\.ts\) > 30 \* 60000\)\) \{\n\s+construirIndice\(\)/.test(A), '⚠️ o resumo da espreita (relogio de 3 min) remonta o indice do ML com mais de 30 min');
 const app = fs.readFileSync(path.join(__dirname, '..', 'amb-devolucoes', 'app-AMB.js'), 'utf8');
 ok(/drenagem\.intervalo\(\(\) => preAquecerEspreitaAMB\('relogio'\), 3 \* 60 \* 1000\);/.test(app) && /baseML = mlReturns\.resumoEspreita\(\);/.test(app), '  o relogio de 3 min da espreita passa pelo resumo do ML');
 console.log('');
