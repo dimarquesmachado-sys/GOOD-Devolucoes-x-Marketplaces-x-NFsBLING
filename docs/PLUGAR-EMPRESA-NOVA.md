@@ -200,3 +200,39 @@ as outras empresas perguntam ao Mover-Pedidos em `GET /<pastaCheckout>/buscar-pr
 a `pastaCheckout` da ficha precisa existir como painel no Mover-Pedidos; a sonda confere
 ("ponte EAN com o Mover-Pedidos") e, sem isso, avisa — a empresa opera, só o código de barras do
 divergente cai no SKU.
+
+## Permissões do aplicativo do Mercado Livre (14/11/2026)
+
+O token do ML que o Devoluções usa vem do **dono** (Mover-Pedidos) enquanto o eixo está em `sombra`/`remoto`.
+Então quem precisa das permissões é o **aplicativo do Mover-Pedidos** daquela empresa — não só o do Devoluções.
+Na GOOD são dois apps de ML (um por serviço), e faltava uma permissão justamente no do Mover-Pedidos.
+
+No DevCenter do ML (logado na conta da empresa), em *editar o app → Permissões*, esta é a configuração do app
+do Mover-Pedidos da GOOD **com que tudo funciona** (as demais permissões ficam "Sem acesso"):
+
+| Permissão | Acesso | O que se sabe |
+|---|---|---|
+| Usuários | Leitura e escrita | já estava assim |
+| Comunicações pré e pós-vendas | Leitura e escrita | **medido em 14/11**: sem ela a busca de reclamações (`/post-purchase/v1/claims/search`) dá 403 e o índice de devoluções não monta. Só "Leitura" não foi testado |
+| Faturamento de uma venda | Leitura e escrita | exigência do F3 do Mover-Pedidos (NF → ML), que também dava 403 do PolicyAgent sem ela |
+| Venda e envios de um produto | Leitura e escrita | já estava assim; pedidos, pacotes e envios respondiam |
+
+**Como falta de permissão aparece:** `403` com `blocked_by: PolicyAgent` e
+`code: PA_UNAUTHORIZED_RESULT_FROM_POLICIES`, em **toda** chamada daquela família — até numa busca que não
+devolveria nada. O token continua vivo (`/users/me` responde) e o resto do ML funciona. No Devoluções isso vira
+`claims_bloqueadas` no índice e o erro "o status inteiro parece bloqueado" — que desde o b695 já aponta a
+permissão.
+
+**Mudar a permissão não basta: tem que autorizar de novo.** O token antigo não ganha a permissão sozinho.
+No Mover-Pedidos, no navegador daquela empresa e logado no ML com a conta **dela** (autorizar logado em outra
+conta grava o token da empresa errada):
+
+1. `https://mover-pedidos-aguardando-x-atendido.onrender.com/<pastaCheckout>/setup-ml?k=<ADMIN_KEY do mover-pedidos>`
+   (`/good/setup-ml` e `/amb/setup-ml` respondem "not found" — o caminho que funciona é o do painel);
+2. autorizar no ML; se a página final não disser "Token ML obtido", copiar o `code=` da barra de endereço e
+   chamar `/<pastaCheckout>/ml-trocar-code?code=<code>&k=<ADMIN_KEY>`.
+
+**Como conferir daqui**, logado como admin: `/api/debug/ml-get?path=` com a busca de reclamações
+(`/post-purchase/v1/claims/search?status=opened&players.user_id=<id da conta>&players.role=respondent&limit=1`,
+com o `path` codificado) tem que voltar `200`. Depois de um 403, o primeiro clique pode ainda negar: ele só
+troca o token guardado; o segundo já usa o novo.
