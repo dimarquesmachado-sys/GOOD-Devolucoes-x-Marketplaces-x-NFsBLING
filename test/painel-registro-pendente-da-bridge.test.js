@@ -29,11 +29,9 @@ function montar(empresa, respostas) {
   const ctx = {
     window: { APP_EMPRESA: empresa, APP_BASE: empresa === 'good' ? '' : '/' + empresa, postMessage: (m) => log.posts.push(m) },
     alert: (t) => log.alerts.push(t), console: { log() {} }, String, Object, Array, JSON, Promise, encodeURIComponent,
-    // respostas[id]: true = grava; false = HTTP 401; 'ok:false' = HTTP 200 com { ok:false } (atualizarTriagem com erro de banco)
-    fetch: async (url) => {
-      log.puts.push(String(url)); const id = String(url).split('/').pop(); const v = respostas[id];
-      return { ok: v !== false, status: v === false ? 401 : 200, json: async () => (v === 'ok:false' ? { ok: false, erro: 'erro de banco' } : { ok: true }) };
-    },
+    // respostas[id]: true = 200 {ok:true}; false = 401; 'banco' = 200 {ok:false, erro} (a fabrica responde assim quando o banco falha)
+    fetch: async (url) => { log.puts.push(String(url)); const id = String(url).split('/').pop(); const v = respostas[id];
+      return { ok: v !== false, status: v === false ? 401 : 200, json: async () => (v === 'banco' ? { ok: false, erro: 'Registro nao encontrado' } : { ok: true }) }; },
   };
   vm.createContext(ctx);
   vm.runInContext(fonte(PB, 'chaveDaEmpresaDoPainel') + '\n' + fonte(PB, 'tratarFalhasDeRegistroDaBridge'), ctx);
@@ -56,42 +54,18 @@ const FALHAS = [
     const texto = t.log.alerts.join('\n');
     ok(/1 NF\(s\).*gravadas agora/.test(texto) && /43 → NF 128000/.test(texto) && /1 registro\(s\) de OUTRA empresa/.test(texto), '  o aviso diz: 1 gravada, a 43 continua sem gravar (com a NF), 1 de outra empresa');
   }
+  // Codex #590 (P1): 200 com { ok:false } (banco falhou na fabrica) NAO limpa a pendencia
+  {
+    const t = montar('girassol', { 42: 'banco', 43: true });
+    const r = await t.ctx.tratarFalhasDeRegistroDaBridge(FALHAS);
+    ok(r.gravadas.length === 1 && r.gravadas[0].devolucaoId === '43' && t.log.posts[0].chaves.join() === 'girassol:43', '⚠️ HTTP 200 com ok:false NAO conta como gravada: so a 43 vai no limpar');
+    ok(/42 → NF 127999 \(servidor: Registro nao encontrado\)/.test(t.log.alerts.join('\n')), '  e o aviso diz o motivo que o servidor deu');
+  }
   // painel da AMB chega como 'amb' (caminho da URL): resolve pra ambtotal
   {
     const t = montar('amb', { 9: true });
     const r = await t.ctx.tratarFalhasDeRegistroDaBridge(FALHAS);
     ok(t.log.puts.length === 1 && t.log.puts[0] === '/amb/api/admin/registrar-devolucao-gerada/9' && r.gravadas.length === 1, '  painel em /amb regrava a da ambtotal, e so ela');
-  }
-  // Codex: HTTP 200 com { ok:false } NAO e gravacao — nao pode mandar limpar a pendencia da extensao
-  {
-    const t = montar('girassol', { 42: 'ok:false', 43: true });
-    const r = await t.ctx.tratarFalhasDeRegistroDaBridge(FALHAS);
-    ok(r.gravadas.length === 1 && r.gravadas[0].devolucaoId === '43', '⚠️ 200 com ok:false nao conta como gravada (so a 43)');
-    ok(t.log.posts.length === 1 && t.log.posts[0].chaves.join() === 'girassol:43', '  e nao manda limpar a 42');
-    ok(/devolução 42 → NF 127999 \(erro de banco\)/.test(t.log.alerts.join('\n')), '  o aviso mostra o erro do corpo');
-  }
-  // Codex: gerarDevolucaoSilenciosa — 200 com ok:false vira erro, e o erro leva a emissao pra esteira lembrar do estoque
-  {
-    const PGN = fs.readFileSync(path.join(RAIZ, 'amb-devolucoes', 'public-AMB', 'js-AMB', 'painel-gerar-nf.js'), 'utf8');
-    const mk = (auto) => {
-      const ctx = {
-        window: { APP_EMPRESA: 'amb', APP_BASE: '/amb' }, DEPOSITOS_AMB: { geral: '1' }, String, JSON, encodeURIComponent, Error,
-        chamarBlingViaBridge: async () => ({ idNotaDevolucao: 777, numero: '1234', emitida: true, auto_registro: auto }),
-        fetch: async (url) => String(url).includes('resolver-id-nf')
-          ? { ok: true, json: async () => ({ ok: true, idBling: '5' }) }
-          : { ok: true, status: 200, json: async () => ({ ok: false, erro: 'erro de banco' }) },
-      };
-      vm.createContext(ctx);
-      vm.runInContext(fonte(PGN, 'gerarDevolucaoSilenciosa'), ctx);
-      return ctx;
-    };
-    let err = null;
-    try { await mk(null).gerarDevolucaoSilenciosa('42', '5', '10', '1', ''); } catch (e) { err = e; }
-    ok(err && /FOI CRIADA no Bling/.test(err.message), '⚠️ gerarDevolucaoSilenciosa: 200 com ok:false + sem auto_registro = erro');
-    ok(err && err.emissao && err.emissao.numero === '1234' && err.emissao.emitida === true, '  o erro carrega { numero, emitida } da NF ja emitida');
-    ok(/err\.emissao && err\.emissao\.emitida && manterAbertoProblemas\) lembretesEstoque\.push/.test(PGN), '  a esteira, no catch, empilha o lembrete de cancelar estoque desse numero');
-    const r2 = await mk({ ok: true }).gerarDevolucaoSilenciosa('42', '5', '10', '1', '');
-    ok(r2.numero === '1234' && r2.emitida === true, '  com a extensao tendo registrado (auto_registro.ok) segue sem erro');
   }
   // sem falhas: silencio
   {
@@ -104,6 +78,19 @@ const FALHAS = [
   const PG = fs.readFileSync(path.join(RAIZ, 'amb-devolucoes', 'public-AMB', 'js-AMB', 'painel-gerar-nf.js'), 'utf8');
   ok((PG.match(/FOI CRIADA no Bling, mas o sistema N[ÃA]O conseguiu registrar/g) || []).length === 2 && /result\.auto_registro && result\.auto_registro\.ok/.test(PG), '⚠️ painel-gerar-nf: as 2 chamadas avisam quando nem o painel nem a extensao (auto_registro) registraram');
   ok(!/\} catch \(e\) \{ \/\* extensao ja registrou sozinha \*\/ \}/.test(PG), '  o catch mudo "extensao ja registrou sozinha" sumiu');
+  // Codex #590: o JSON decide (registroConfirmado) e a esteira preserva o resultado quando o registro falha
+  {
+    const vm2 = require('vm'); const c = {}; vm2.createContext(c); vm2.runInContext(fonte(PG, 'registroConfirmado'), c);
+    const resp = (okHttp, j) => ({ ok: okHttp, json: async () => j });
+    const [a, b, d, e] = await Promise.all([c.registroConfirmado(resp(true, { ok: true })), c.registroConfirmado(resp(true, { ok: false, erro: 'x' })), c.registroConfirmado(resp(false, { ok: true })), c.registroConfirmado({ ok: true, json: async () => { throw new Error('nao e json'); } })]);
+    ok(a === true && b === false && d === false && e === false, '⚠️ registroConfirmado: so 200 + JSON ok:true conta (200 com ok:false, 4xx e nao-JSON = nao registrou)');
+    ok((PG.match(/registrou = await registroConfirmado\(rReg\)/g) || []).length === 2, '  as 2 chamadas usam registroConfirmado');
+    const gds = fonte(PG, 'gerarDevolucaoSilenciosa');
+    ok(/registro_falhou: !!erroRegistro, erro_registro: erroRegistro/.test(gds) && !/throw new Error\('A NF de devolu/.test(gds), '  gerarDevolucaoSilenciosa devolve o resultado com registro_falhou em vez de lancar (o numero sobrevive pro lembrete)');
+    const est = fonte(PG, 'rodarEsteira');
+    ok(/if \(r\.registro_falhou\) \{\s*falhas\+\+;/.test(est) && /if \(manterAbertoProblemas \|\| r\.registro_falhou\)/.test(est) && /if \(manterAbertoProblemas\) lembretesEstoque\.push/.test(est),
+       '  esteira: registro falhou = conta a falha, mantem o card ABERTO (nao conclui sem NF gravada) e o lembrete de estoque continua saindo');
+  }
   const PAINEL = require('./_fonte-painel').fonteCrua();
   for (const m of ['painel-bridge', 'painel-gerar-nf']) {
     const v = PAINEL.match(new RegExp(m + '\\.js\\?v=b(\\d+)'));

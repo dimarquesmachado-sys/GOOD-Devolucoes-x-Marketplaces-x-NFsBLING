@@ -145,10 +145,9 @@
             method: 'PUT', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ nf_devolucao_id_bling: String(f.idNotaDevolucao), nf_devolucao_numero: String(f.numero || '') }),
           });
-          // Codex: a rota pode devolver HTTP 200 com { ok:false } (erro de banco / registro inexistente) — so o corpo diz se gravou
-          var j = await r.json().catch(function () { return null; });
-          if (r.ok && j && j.ok) gravadas.push(f);
-          else sobraram.push(Object.assign({}, f, { erro: r.ok ? String((j && j.erro) || 'resposta sem ok') : 'HTTP ' + r.status }));
+          // Codex #590 (P1): na fabrica a falha do banco volta 200 com { ok:false } — so o JSON ok:true limpa a pendencia
+          var j = null; try { j = await r.json(); } catch (e) { j = null; }
+          if (r.ok && j && j.ok === true) gravadas.push(f); else sobraram.push(Object.assign({}, f, { erro: r.ok ? ('servidor: ' + ((j && j.erro) || 'resposta sem ok')) : 'HTTP ' + r.status }));
         } catch (e) { sobraram.push(Object.assign({}, f, { erro: String(e && e.message || e) })); }
       }
       if (gravadas.length) {
