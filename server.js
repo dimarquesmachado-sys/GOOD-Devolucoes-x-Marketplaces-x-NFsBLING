@@ -613,7 +613,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.126.208 (b696: o Mover-Pedidos fora do ar nao derruba quem ja tem o token dele — o leitor segue com o ultimo token ate o dono voltar)',
+      version: '9.126.209 (b697: contrato v16 — medido que cada servico tem app proprio de ML e Bling nas 3 empresas; nao ha disputa de refresh e o corte vira opcional)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
