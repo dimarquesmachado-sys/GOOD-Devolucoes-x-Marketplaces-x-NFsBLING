@@ -71,7 +71,8 @@ Segue as 12 etapas do Codex, com os itens de cada uma. A ordem dentro da etapa �
 - **Correção:** código e erro como texto codificado pro contexto; na fábrica, validar/consumir o state antes de qualquer resposta com dado do provedor.
 - **Aceite:** parâmetro malicioso nos callbacks das 3 empresas não produz elemento nem evento executável.
 
-### P1-03 ⬜ Autorizar a mesma recuperação de novo duplica estoque
+### P1-03 🔄 Autorizar a mesma recuperação de novo duplica estoque
+- **PR:** branch `dev/p1-03-reserva-estoque` (b713, sobre o b712). Marcador durável `defeito_pedidos*.estoque_operacao` (`LANCANDO <marca>` = reserva/incerto, `LANCADO <marca>` = confirmado, null = livre), gravado no **mesmo** update condicional da transição; `entradaNoEstoque` classifica *não aplicou* (4xx) × *incerto* (timeout/5xx/exceção); relançar respeita o marcador e só passa com `forcar` (confirmação humana na ficha), como compare-and-swap. ⚠️ **SQL pro dono:** `sql/2026-11-15-defeito-pedidos-estoque-operacao.sql` no projeto `sldnshulmhpmyjqrkstq` — sem a coluna, autorizar recuperada responde 503 com o SQL (descarte segue).
 - **Onde:** `lib/defeitos-ciclo.js` rota `POST /api/defeitos/pedido/:id/decidir` (~l.1337) — atualiza e chama a entrada no Bling sem exigir estado anterior nem respeitar movimentação já confirmada. Relançamento: ERP confirma, banco recusa o marcador, código responde sucesso.
 - **Correção:** reservar a operação no banco **antes** do efeito externo (update condicional `status = 'pendente'`, id de operação), estados `pendente / em_processamento / confirmado / incerto`; reaproveitar o padrão do FULL (reserva persistente, `estoque_lancado`).
 - **Aceite:** repetição sequencial, simultânea, resposta perdida e falha de persistência não geram entrada indevida; timeout depois do envio vira conciliação, nunca repetição cega.

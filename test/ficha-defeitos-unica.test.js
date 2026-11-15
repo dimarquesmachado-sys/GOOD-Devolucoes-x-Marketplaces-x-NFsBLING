@@ -27,7 +27,7 @@ const faltam = FUNCOES_DA_FICHA_GOOD.filter((n) => !fu.has(n) && n !== 'buscarFo
 ok(faltam.length === 0, '⚠️ nenhuma funcao da ficha da GOOD ficou de fora (' + (faltam.join(', ') || 'ok') + ')');
 // o painel da Girassol/AMB carrega a ficha unica + o Lancar defeito (com o prefixo da empresa); a GOOD troca o bloco
 const painel = fs.readFileSync(path.join(R, 'amb-devolucoes', 'public-AMB', 'painel-AMB.html'), 'utf8');
-ok(/<!-- ficha-defeitos:inicio[\s\S]*js-AMB\/defeitos-ficha\.js\?v=b623[\s\S]*js-AMB\/lancar-defeito\.js[\s\S]*LancarDefeito\.instalar\(\{ prefixo: window\.APP_BASE \|\| '' \}\)[\s\S]*<!-- ficha-defeitos:fim -->/.test(painel), '⚠️ painel da Girassol/AMB: ficha unica + Lancar defeito com o prefixo da empresa');
+ok(/<!-- ficha-defeitos:inicio[\s\S]*js-AMB\/defeitos-ficha\.js\?v=b\d+[\s\S]*js-AMB\/lancar-defeito\.js[\s\S]*LancarDefeito\.instalar\(\{ prefixo: window\.APP_BASE \|\| '' \}\)[\s\S]*<!-- ficha-defeitos:fim -->/.test(painel), '⚠️ painel da Girassol/AMB: ficha unica + Lancar defeito com o prefixo da empresa');
 const app = fs.readFileSync(path.join(R, 'amb-devolucoes', 'app-AMB.js'), 'utf8');
 ok(/router\.get\('\/js-AMB\/lancar-defeito\.js'/.test(app) && /'public', 'js', 'lancar-defeito\.js'/.test(app), '  o modulo do Lancar defeito e servido da peca da GOOD (sem copia)');
 const g = require(path.join(R, 'lib', 'painel-unico.js')).montarPainelUnicoGood(painel);
