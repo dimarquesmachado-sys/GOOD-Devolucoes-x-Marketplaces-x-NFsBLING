@@ -332,11 +332,10 @@ const {
   buscarIdMunicipioPorCep,
 } = nfp;
 
-// Multer pra receber uploads de fotos (em memoria, 6 MB max por foto)
-const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 6 * 1024 * 1024 },
-});
+// Multer pra receber uploads de fotos (em memoria). b711 (P1-10, auditoria do Codex): a configuracao, o limite, o tratador
+// de erro e a conferencia do conteudo vivem em lib/upload-foto.js — a mesma peca da fabrica (era 6 MB aqui e 12 MB la).
+const uploadFoto = require('./lib/upload-foto');
+const upload = uploadFoto.criarUploadDeFoto(multer);
 
 app.use(express.json({ limit: '12mb' }));
 // ⚠️ b358 - MONTA PELA FABRICA, e por EMPRESA ATIVA do registro.
@@ -614,7 +613,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.126.219 (b707: extensao do upload so com caracteres de URL; b706: P1-01 — foto e dado, nao codigo: painel e ficha sem onclick montado como texto; servidor so grava URL do upload (lib/fotos-referencia); b705: roteiro unico de liquidacao)',
+      version: '9.126.223 (b711: P1-10/P2-14 — Multer 2.x sem CVE, upload em peca unica (limite, 413/400 em JSON, tipo pelo conteudo); Node >=22 no manifesto)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -3690,7 +3689,7 @@ app.post('/api/triagem/aprovar', requerEstoquista, exigirFotosValidas, async (re
 
 // Upload de uma foto pro Supabase Storage
 // Retorna URL publica pra frontend acumular ate ter as 6+ fotos
-app.post('/api/triagem/upload-foto', requerEstoquista, upload.single('foto'), async (req, res) => {
+app.post('/api/triagem/upload-foto', requerEstoquista, upload.single('foto'), uploadFoto.tratarErroDeUpload, async (req, res) => {
   if (!supabase) {
     return res.status(500).json({ ok: false, erro: 'Supabase nao configurado' });
   }
@@ -3698,7 +3697,10 @@ app.post('/api/triagem/upload-foto', requerEstoquista, upload.single('foto'), as
     return res.status(400).json({ ok: false, erro: 'Foto nao enviada' });
   }
 
-  const ext = (req.file.originalname || 'foto.jpg').split('.').pop().toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg';   // b707: extensao tambem so com caracteres de URL
+  // b711 (P1-10) - o conteudo manda: tipo pelos primeiros bytes (nao pelo mimetype/nome que o cliente declarou)
+  const tipoReal = uploadFoto.tipoDaImagem(req.file.buffer);
+  if (!tipoReal) return res.status(400).json({ ok: false, erro: 'o arquivo nao e uma imagem (JPEG, PNG, WebP ou GIF)' });
+  const ext = uploadFoto.EXTENSAO[tipoReal];
   const ts = Date.now();
   const random = crypto.randomBytes(4).toString('hex');
   const filename = `${nomeDePastaSeguro(req.usuario)}/${ts}-${random}.${ext}`;   // b706 (Codex #577): pasta so com caracteres de URL
@@ -3707,7 +3709,7 @@ app.post('/api/triagem/upload-foto', requerEstoquista, upload.single('foto'), as
     const { error } = await supabase.storage
       .from('fotos-problema')
       .upload(filename, req.file.buffer, {
-        contentType: req.file.mimetype || 'image/jpeg',
+        contentType: tipoReal,   // b711: o tipo conferido, nao o declarado
         upsert: false,
       });
 
