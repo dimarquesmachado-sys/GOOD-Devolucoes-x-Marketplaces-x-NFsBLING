@@ -278,10 +278,7 @@ reclamações da GOOD (`PA_UNAUTHORIZED_RESULT_FROM_POLICIES`): o app de ML do M
 trilha: antes de cortar um eixo de ML, o app do dono tem que poder tudo o que o Devoluções faz — a lista e o
 passo a passo estão em `docs/PLUGAR-EMPRESA-NOVA.md`. O veredito não pega isso sozinho (com outra rota aceita, a
 recusa fica "explicada"): quem mostra é o `erro` do índice e o `ml_403.por_rota` do `/health`.
-⚠️ A conferir: a GOOD tem **dois** apps de ML no DevCenter (um com o nome do Mover-Pedidos, outro com o do
-Devoluções). Se cada serviço usa o seu, o `risco_ativo.refresh_ml_uso_unico` do contrato não vale pra GOOD
-(apps diferentes não disputam refresh). Falta medir o `GOOD_ML_CLIENT_ID`/`ML_CLIENT_ID` deste serviço antes de
-mexer no contrato, que é espelhado com o Mover-Pedidos.
+(A dúvida que ficou aqui — se a GOOD tinha um app de ML por serviço — foi medida no mesmo dia: ver o b697.)
 
 **b696 — o dono fora do ar não derruba quem já tem o token dele.** Passado o TTL de 5 min o leitor re-pede o
 token; se o Mover-Pedidos não respondia (deploy, reinício, rede, timeout), a leitura saía `indisponivel` mesmo
@@ -295,7 +292,32 @@ chave de leitura, integração inexistente) aparece como antes; token recusado p
 `ultima_falha` carimbada quando o dono falha. No `pode_cortar` isso **não bloqueia** (a chamada saiu com token
 do dono) mas fica dito: "o dono não respondeu em N leitura(s)". `caiu no local` continua bloqueando — agora
 significa "dono fora **e** nenhum token dele na memória". Teste: `test/token-leitor-dono-fora`.
-⚠️ Pendente: registrar isso no `cache_no_leitor` do contrato (PR gêmeo com o Mover-Pedidos).
+Registrado no contrato v16, em `cache_no_leitor.dono_fora_do_ar`.
+
+**b697 — MEDIDO: não existe disputa de refresh em nenhuma empresa (contrato v16).** A trilha inteira partia
+de uma frase do parecer de 07/09: "dois serviços renovando a mesma conta". Em 14/11 o dono conferiu, no Render
+dos dois serviços, o final do `client_id` de cada app:
+
+| Empresa | ML — Devoluções × Mover-Pedidos | Bling — Devoluções × Mover-Pedidos |
+|---|---|---|
+| GOOD | `ML_CLIENT_ID` …8241 × `GOOD_ML_CLIENT_ID` …9854 | `BLING_CLIENT_ID` …c67f × `GOOD_BLING_CLIENT_ID` …0148 |
+| AMB | `AMB_ML_CLIENT_ID` …1448 × `AMB_ML_CLIENT_ID` …3744 | `AMB_BLING_CLIENT_ID` …dd40 × `AMB_BLING_CLIENT_ID` …dc8a |
+| Girassol | `GIRASSOL_ML_CLIENT_ID` …3664 × `ML_CLIENT_ID` …1220 | `GIRASSOL_BLING_CLIENT_ID` …417b × `BLING_CLIENT_ID` …acd5 |
+
+Nenhum par é igual: a **conta** é a mesma, o **app** não, e refresh de apps diferentes não briga. Consequências:
+
+- o corte da renovação local (`remoto`) **deixou de ser obrigação**. Vira simplificação — um app por empresa em
+  vez de dois —, que dá para colher numa empresa nova (ela pode nascer lendo só do dono). Decisão do dono;
+- o estado de hoje (`sombra` nas três, Bling e ML) pode ficar: o Devoluções usa o token do Mover-Pedidos e
+  mantém o do app próprio de reserva. O que isso exige está acima: o app **do dono** com as permissões do
+  leitor (b695) e o leitor aguentando o dono fora do ar (b696);
+- o aviso "voltar pra `local` exige um refresh sabidamente vigente — pode já ter sido consumido pelo dono"
+  (no `/health`) só vale com app compartilhado. Com apps separados o dono não consome o refresh local;
+- ⚠️ os nomes das variáveis enganam (foi assim que um final saiu trocado na primeira leitura): `ML_CLIENT_ID` e
+  `BLING_CLIENT_ID` **sem prefixo** são da GOOD no Devoluções e da Girassol no Mover-Pedidos.
+
+O teste `test/contrato-empresas` passou a amarrar as duas fontes: dois donos em `dono_hoje` só com o app de
+cada serviço declarado em `apps_por_servico`, e o `risco_ativo.afeta` tem que concordar com esse mapa.
 
 ⚠️ Voltar para `local` com refresh antigo pode falhar: o dono já pode tê-lo
 consumido.

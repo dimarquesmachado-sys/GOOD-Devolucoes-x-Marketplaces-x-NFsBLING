@@ -468,6 +468,34 @@ const registro = require('../lib/empresas.js');
      + (parecemSegredo.length ? ' (SUSPEITO: ' + parecemSegredo.map((x) => x[0]).join(', ') + ')' : ''));
 }
 
+// ── v16: "ha disputa de refresh?" tem UMA resposta, e ela vem do APP medido ──────
+//
+// ⚠️ O CASO (14/11/2026): o contrato dizia que GOOD e AMB corriam o risco do refresh de uso unico "porque os
+// dois servicos renovam a mesma conta". Era suposicao do parecer de 07/09. Medido no Render dos dois lados:
+// nas tres empresas cada servico tem o SEU app (client_id diferente) — a conta e a mesma, o app nao, e
+// refresh de apps diferentes nao briga. A trilha inteira do corte foi priorizada em cima do que nao existia.
+// Daqui pra frente: dois donos numa integracao so ficam no contrato com o app de cada servico DECLARADO, e o
+// `risco_ativo.afeta` tem que concordar com o que `apps_por_servico` diz.
+{
+  const VOCAB = /^(proprio|compartilhado)\b/;
+  const emDisputa = [];
+  for (const [chave, e] of Object.entries(contrato.empresas)) {
+    for (const integ of ['bling', 'ml']) {
+      const donos = (e.dono_hoje && e.dono_hoje[integ]) || [];
+      if (donos.length < 2) continue;
+      const apps = e.apps_por_servico && e.apps_por_servico[integ];
+      ok(!!apps && donos.every((d) => VOCAB.test(String(apps[d] || ''))),
+         chave + '/' + integ + ': dois donos em `dono_hoje` -> `apps_por_servico` diz o app de CADA servico (proprio|compartilhado)');
+      if (apps && donos.some((d) => /^compartilhado\b/.test(String(apps[d] || '')))) emDisputa.push(chave + '/' + integ);
+    }
+  }
+  const afeta = String(contrato.risco_ativo.refresh_ml_uso_unico.afeta || '');
+  const mlEmDisputa = emDisputa.filter((x) => /\/ml$/.test(x));
+  ok(mlEmDisputa.length === 0 ? /^NINGU[ÉE]M\b/.test(afeta) : !/^NINGU[ÉE]M\b/.test(afeta),
+     'o `risco_ativo.refresh_ml_uso_unico.afeta` concorda com `apps_por_servico` (ML com app compartilhado: '
+     + (mlEmDisputa.join(', ') || 'nenhum') + ')');
+}
+
 // ── o banner do _leia_me tem que bater com `versao` (Codex, #388) ───
 {
   const banner = String(contrato._leia_me[0]);

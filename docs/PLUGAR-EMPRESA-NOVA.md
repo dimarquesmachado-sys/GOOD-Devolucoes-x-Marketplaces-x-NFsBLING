@@ -201,6 +201,20 @@ a `pastaCheckout` da ficha precisa existir como painel no Mover-Pedidos; a sonda
 ("ponte EAN com o Mover-Pedidos") e, sem isso, avisa — a empresa opera, só o código de barras do
 divergente cai no SKU.
 
+## De quem é cada variável de app — os nomes enganam (14/11/2026)
+
+O mesmo NOME de variável pode ser de uma empresa num serviço e de outra no outro. Antes de comparar ou copiar
+um `client_id`, confira nesta tabela (está também em `contrato-empresas.json`, `apps_por_servico`):
+
+| Empresa | Devoluções (este serviço) | Mover-Pedidos |
+|---|---|---|
+| GOOD | `ML_CLIENT_ID`, `BLING_CLIENT_ID` (**sem prefixo**) | `GOOD_ML_CLIENT_ID`, `GOOD_BLING_CLIENT_ID` |
+| AMB | `AMB_ML_CLIENT_ID`, `AMB_BLING_CLIENT_ID` | `AMB_ML_CLIENT_ID`, `AMB_BLING_CLIENT_ID` (mesmo nome, **outro app**) |
+| Girassol | `GIRASSOL_ML_CLIENT_ID`, `GIRASSOL_BLING_CLIENT_ID` | `ML_CLIENT_ID`, `BLING_CLIENT_ID` (**sem prefixo**) |
+
+Empresa nova: um app por serviço (como as três de hoje) não cria disputa de refresh. Se um dia os dois serviços
+usarem o MESMO `client_id`, aí sim só um deles pode renovar — o eixo tem que ir pra `remoto` aqui.
+
 ## Permissões do aplicativo do Mercado Livre (14/11/2026)
 
 O token do ML que o Devoluções usa vem do **dono** (Mover-Pedidos) enquanto o eixo está em `sombra`/`remoto`.
