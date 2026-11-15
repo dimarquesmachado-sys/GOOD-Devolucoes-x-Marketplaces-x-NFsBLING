@@ -686,6 +686,45 @@ async function main() {
     assert(i >= 0 && f > i); assert(/resolverSku: \(sku\) => skuDeparaGOOD\.resolverSku\(sku\),/.test(srv.slice(i, f)));
   });
 
+  // b715 — P2-02 (auditoria do Codex): QUANTIDADE INVALIDA E 400, NAO "1". Zero, negativo, NaN, Infinity, fracao e
+  // acima de 1000 param ANTES de qualquer escrita, na criacao do pedido e na autorizacao; ausente continua 1.
+  for (const chave of CHAVES) {
+    await caso(chave + ': quantidade invalida ao CRIAR o pedido e 400 sem gravar; ausente vira 1', async () => {
+      const e = criarEmpresa(chave); e.item(1);
+      for (const q of [0, -3, 'abc', 'Infinity', 1.5, 1001, '0', '2,5']) {
+        const r = await e.pedir('POST', '/api/defeitos/pedido', { body: { tipo: 'descarte', defeito_id: 1, quantidade: q } });
+        assert.equal(r.statusCode, 400, 'quantidade ' + JSON.stringify(q) + ' → 400 (veio ' + r.statusCode + ')');
+        assert(/quantidade invalida/.test(r.body.erro));
+      }
+      assert.equal(e.banco.tabelas[e.n.ped].length, 0, 'nada gravado');
+      const ok1 = await e.pedir('POST', '/api/defeitos/pedido', { body: { tipo: 'descarte', defeito_id: 1 } });
+      assert.equal(ok1.statusCode, 200); assert.equal(ok1.body.pedido.quantidade, 1);
+      const ok2 = await e.pedir('POST', '/api/defeitos/pedido', { body: { tipo: 'descarte', defeito_id: 1, quantidade: '12' } });
+      assert.equal(ok2.statusCode, 200); assert.equal(ok2.body.pedido.quantidade, 12);
+    });
+    await caso(chave + ': quantidade invalida ao AUTORIZAR e 400 antes de qualquer escrita (Infinity nao chega no Bling)', async () => {
+      const ch = []; const e = criarEmpresa(chave, criarBanco(), { deposito: '8100', chamarBling: blingDeEstoque(ch) });
+      const id = await pedidoRecuperado(e);
+      for (const q of ['Infinity', 0, -1, 'NaN', 2.5, 5000]) {
+        const r = await e.pedir('POST', '/api/defeitos/pedido/:id/decidir', { params: { id }, papel: 'admin', body: { acao: 'autorizar', sku: 'SKU-BOA', quantidade: q } });
+        assert.equal(r.statusCode, 400, 'quantidade ' + JSON.stringify(q) + ' → 400 (veio ' + r.statusCode + ')');
+      }
+      assert.equal(e.banco.tabelas[e.n.ped][0].status, 'pendente', 'o pedido continua pendente');
+      assert.equal(posts(ch), 0, 'nada foi pro Bling');
+      const r = await e.pedir('POST', '/api/defeitos/pedido/:id/decidir', { params: { id }, papel: 'admin', body: { acao: 'autorizar', sku: 'SKU-BOA', quantidade: '3' } });
+      assert.equal(r.statusCode, 200); assert.equal(posts(ch), 1);
+      assert.equal(ch.filter(c => c.opcoes && c.opcoes.method === 'POST')[0].opcoes.data.quantidade, 3);
+    });
+    await caso(chave + ': pedido antigo com quantidade torta no banco nao movimenta (a guarda vale dentro de entradaNoEstoque)', async () => {
+      const ch = []; const e = criarEmpresa(chave, criarBanco(), { deposito: '8100', chamarBling: blingDeEstoque(ch) });
+      e.item(1);
+      e.banco.tabelas[e.n.ped].push({ id: 1, defeito_id: 1, tipo: 'recuperado', status: 'autorizado', sku: 'SKU-BOA', quantidade: 0 });
+      const r = await e.pedir('POST', '/api/defeitos/pedido/:id/lancar-estoque', { params: { id: '1' }, papel: 'admin' });
+      assert.equal(r.statusCode, 200); assert.equal(r.body.ok, false); assert(/quantidade invalida/.test(r.body.erro));
+      assert.equal(posts(ch), 0);
+    });
+  }
+
   await caso('as três instâncias compartilham código/banco sem compartilhar linhas', async () => {
     const banco = criarBanco(); const empresas = CHAVES.map(k => criarEmpresa(k, banco));
     empresas.forEach(e => { e.item(1); e.item(2); });
