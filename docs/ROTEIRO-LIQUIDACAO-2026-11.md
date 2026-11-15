@@ -127,7 +127,7 @@ Segue as 12 etapas do Codex, com os itens de cada uma. A ordem dentro da etapa �
 | id | estado | ponto | onde / evidência | direção |
 |---|---|---|---|---|
 | P2-01 | ⬜ | Busca fora de ordem | `busca.js:35` (**dois** arquivos: `public/js/busca.js` e `js-AMB/busca.js`); A/B respondidos B/A → campo B, resultado A | identidade da solicitação; só a mais recente atualiza tela e payload |
-| P2-02 | ⬜ | Quantidade inválida | `defeitos-ciclo.js:1358`: 0/negativo/NaN viram 1, `Infinity` passa | rejeitar inválido; exigir finito, inteiro, limite |
+| P2-02 | 🔄 | Quantidade inválida (b715, `dev/p2-02-quantidade-valida` sobre o b714: `lerQuantidade` — inteiro 1..1000, ausente = 1, inválida = 400 antes de gravar; os `\|\| 1` que escondiam zero gravado saíram) | `defeitos-ciclo.js:1358`: 0/negativo/NaN viram 1, `Infinity` passa | rejeitar inválido; exigir finito, inteiro, limite |
 | P2-03 | ⬜ | Lista GOOD quebra em 150 pedidos | `defeitos-ciclo.js:510`: com 151 IDs registros `problema/delivered` somem da lista e seguem na contagem | consultar em lotes/páginas; testar 149/150/151/400 e formatos legados |
 | P2-04 | ⬜ | Tags sem atomicidade | `rotas-relatorios.js:448`: DELETE com erro responde ok; DELETE ok + INSERT falho perde tags | operação transacional (RPC) ou verificar cada resultado e repor |
 | P2-05 | ⬜ | Índice Magalu incompleto publicado | `magalu-AMB.js:423`: falha na 1ª página apaga o índice; falha depois publica parcial e limpa o erro | snapshot separado; publicar só completo; preservar último válido |
