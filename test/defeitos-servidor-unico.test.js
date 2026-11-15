@@ -691,7 +691,8 @@ async function main() {
   for (const chave of CHAVES) {
     await caso(chave + ': quantidade invalida ao CRIAR o pedido e 400 sem gravar; ausente vira 1', async () => {
       const e = criarEmpresa(chave); e.item(1);
-      for (const q of [0, -3, 'abc', 'Infinity', 1.5, 1001, '0', '2,5']) {
+      // Codex #586: objeto sem toString, lista e booleano tambem sao 400 (antes String(v) estourava fora do try)
+      for (const q of [0, -3, 'abc', 'Infinity', 1.5, 1001, '0', '2,5', { toString: null }, [2], true]) {
         const r = await e.pedir('POST', '/api/defeitos/pedido', { body: { tipo: 'descarte', defeito_id: 1, quantidade: q } });
         assert.equal(r.statusCode, 400, 'quantidade ' + JSON.stringify(q) + ' → 400 (veio ' + r.statusCode + ')');
         assert(/quantidade invalida/.test(r.body.erro));
