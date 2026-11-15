@@ -8817,6 +8817,7 @@ registrarRotasRelatorios(app, {
   // test/relatorio-peca-multiempresa.test.js.
   tabelas: { devolucoes: 'devolucoes', tags: 'tags', devolucaoTags: 'devolucao_tags' },
   buscarProdutos: produtosClient.buscarTextual,
+  resolverSku: (sku) => skuDeparaGOOD.resolverSku(sku),   // b721 (Codex #591): itens_devolvidos guardam o SKU da venda
 });
 
 // v3.44 - rotas admin-NF (mesmo ponto: todas as deps ja declaradas acima)

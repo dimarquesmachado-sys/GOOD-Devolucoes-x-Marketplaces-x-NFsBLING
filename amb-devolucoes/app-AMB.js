@@ -2190,6 +2190,7 @@ registrarRotasRelatorios(router, {
     devolucaoTags: db.tabelas.devolucaoTags,
   },
   buscarProdutos: null,
+  resolverSku: (sku) => db.resolverSku(sku),   // b721 (Codex #591): itens_devolvidos guardam o SKU da venda
   // b652 (Codex #522) - vocabulario da tabela da AMB/Girassol
   colunaData: 'criado_em',
   tipoNoStatus: true,
