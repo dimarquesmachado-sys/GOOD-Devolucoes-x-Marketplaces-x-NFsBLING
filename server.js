@@ -613,7 +613,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.126.211 (b699: a sonda nao reprova mais a hospedeira pelo que esta certo (tabelas sem sufixo, tenant padrao do Magalu) e diz o nome da env que falta)',
+      version: '9.126.212 (b700: a sonda e o provisionador conferem as 9 tabelas — as 2 de etiquetas do relatorio estavam fora da lista)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),

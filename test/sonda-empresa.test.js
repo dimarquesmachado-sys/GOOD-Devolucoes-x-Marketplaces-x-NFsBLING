@@ -67,9 +67,14 @@ const { sondar, CHECAGENS } = require('../scripts/sonda-empresa');
 // confere 5 de 7 e diz que está tudo certo.
 {
   const { TABELAS_ESPERADAS } = require('../lib/provisionar-empresa');
-  ok(TABELAS_ESPERADAS.length === 7, '⚠️ a lista canonica tem 7 tabelas');
+  // b700: eram 7. O b651 criou as 2 do relatorio (etiquetas) no SQL e na ficha e esqueceu desta lista —
+  // o mesmo erro do b426, ao contrario. `test/tabelas-canonicas` amarra as tres fontes.
+  ok(TABELAS_ESPERADAS.length === 9, '⚠️ a lista canonica tem 9 tabelas');
   for (const t of ['defeito_comentarios', 'defeito_pedidos']) {
     ok(TABELAS_ESPERADAS.includes(t), `  inclusive \`${t}\` (fora da ficha)`);
+  }
+  for (const t of ['tags', 'devolucao_tags']) {
+    ok(TABELAS_ESPERADAS.includes(t), `  e \`${t}\` (as do relatorio, b651)`);
   }
 
   const src2 = fs.readFileSync(
@@ -133,10 +138,14 @@ async function testeTabelasSegundaRodada() {
       json: async () => ({ code: 'PGRST205', message: 'Could not find the table in the schema cache' }) };
   };
   const r1 = await chk.fn('girassol');
-  ok(r1.ok === false && /faltam 2/.test(r1.detalhe || ''),
-     '⚠️ com service_role, acusa as 2 tabelas de defeito que a ficha nem declara');
+  // b700: eram "faltam 2" (so as de defeito). A rotina antiga de 5 tabelas tambem nao cria as 2 do relatorio
+  // (b651) — e a sonda nao olhava por elas. Com a lista em 9, as quatro aparecem.
+  ok(r1.ok === false && /faltam 4 de 9/.test(r1.detalhe || ''),
+     '⚠️ com service_role, acusa as 4 tabelas que a rotina antiga (de 5) nao cria');
   ok(/defeito_comentarios_girassol/.test(r1.detalhe) && /defeito_pedidos_girassol/.test(r1.detalhe),
-     '  nomeando exatamente as que faltam');
+     '  nomeando exatamente as que faltam: as 2 de defeito, que a ficha nem declara');
+  ok(/tags_girassol/.test(r1.detalhe) && /devolucao_tags_girassol/.test(r1.detalhe),
+     '  e as 2 do relatorio (etiquetas)');
 
   // ⚠️ 401 com corpo que NAO fala de relacao ausente nao pode virar "faltam"
   global.fetch = async () => ({ ok: false, status: 401,
@@ -154,8 +163,8 @@ async function testeTabelasSegundaRodada() {
 
   global.fetch = async () => ({ ok: true, json: async () => ({}) });
   const r3 = await chk.fn('girassol');
-  ok(r3.ok === true && /as 7 respondem/.test(r3.detalhe || ''),
-     'com as 7 tabelas presentes (e service_role), aprova');
+  ok(r3.ok === true && /as 9 respondem/.test(r3.detalhe || ''),
+     'com as 9 tabelas presentes (e service_role), aprova');
 
   global.fetch = fetchReal;
   if (urlAntes === undefined) delete process.env.GIRASSOL_SUPABASE_URL;

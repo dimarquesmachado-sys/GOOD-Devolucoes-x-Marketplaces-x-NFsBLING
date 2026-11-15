@@ -130,7 +130,8 @@ function jwtDeMentira(role) {
       if (nome === ausente) return { ok: false, status: 404, json: async () => ({ code: 'PGRST205', message: `Could not find the table 'public.${nome}' in the schema cache` }) };
       return { ok: true, status: 200, json: async () => [] };
     };
-    const banco = { SUPABASE_URL: 'http://sb.invalid', SUPABASE_KEY: jwtDeMentira('service_role'), GOOD_SUPABASE_URL: null, GOOD_SUPABASE_KEY: null, GIRASSOL_SUPABASE_URL: null, GIRASSOL_SUPABASE_KEY: null };
+    const banco = { SUPABASE_URL: 'http://sb.invalid', SUPABASE_KEY: jwtDeMentira('service_role'), GOOD_SUPABASE_URL: null, GOOD_SUPABASE_KEY: null, GIRASSOL_SUPABASE_URL: null, GIRASSOL_SUPABASE_KEY: null,
+      AMB_SUPABASE_URL: null, AMB_SUPABASE_KEY: null };
     try {
       await comEnv(banco, async () => {
         visto.urls = []; ausente = null;
@@ -152,6 +153,14 @@ function jwtDeMentira(role) {
         visto.urls = []; ausente = null;
         r = await tabelas('girassol');
         ok(r.ok === true && visto.urls.length === TABELAS_ESPERADAS.length && visto.urls.every((u) => /_girassol\?/.test(u)), '   e com tudo no lugar aprova, olhando as tabelas `_girassol`');
+
+        // b700: a AMB e o MOLDE — o provisionador RECUSA `_amb` ("sufixo reservado"). A dica nao pode mandar roda-lo.
+        visto.urls = []; ausente = 'tags_amb';
+        r = await tabelas('ambtotal');
+        ok(r.ok === false && r.detalhe === `faltam 1 de ${TABELAS_ESPERADAS.length}: tags_amb`, "⚠️ B4' AMB sem uma tabela: REPROVA e diz qual");
+        ok(!/provisionar_empresa\(/.test(r.dica || '') && /reservado/.test(r.dica || ''), '   sem mandar rodar o provisionador, que recusa o sufixo reservado `_amb`');
+        const sqlDasTags = (/sql\/[0-9a-z-]+tags[0-9a-z-]*\.sql/.exec(r.dica || '') || [])[0];
+        ok(!!sqlDasTags && require('fs').existsSync(path.join(RAIZ, sqlDasTags)), '   e o SQL das etiquetas que a dica aponta existe no repositorio (' + sqlDasTags + ')');
       });
       await comEnv(Object.assign({}, banco, { SUPABASE_KEY: jwtDeMentira('anon') }), async () => {
         visto.urls = [];

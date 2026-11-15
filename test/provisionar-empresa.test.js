@@ -133,7 +133,8 @@ const { sufixoDaFicha, provisionarEmpresa, SUFIXO_VALIDO, RESERVADOS } =
       {
         const provisionar = carregarComFichaFalsa();
         const existentes = new Set(['devolucoes_gira', 'espreita_notas_gira', 'recados_gira',
-          'pecas_retiradas_gira', 'sku_depara_gira', 'defeito_comentarios_gira', 'defeito_pedidos_gira']);
+          'pecas_retiradas_gira', 'sku_depara_gira', 'defeito_comentarios_gira', 'defeito_pedidos_gira',
+          'tags_gira', 'devolucao_tags_gira']);   // b700: as 2 do relatorio entram na conferencia
         const cliente = {
           rpc: async () => ({ data: [{ resultado: 'OK' }], error: null }),
           from: (nome) => ({
@@ -164,6 +165,24 @@ const { sufixoDaFicha, provisionarEmpresa, SUFIXO_VALIDO, RESERVADOS } =
         const r = await provisionar('girateste', cliente);
         ok(r.ok === false && (r.tabelas_faltando || []).length === 2,
            'acusa falta quando so o `code` (PGRST205) denuncia, sem a frase no `message`');
+      }
+
+      // 2b) b700 - a rotina instalada e a de 7 (anterior ao b651): as 2 do RELATORIO faltam. Antes a
+      //     conferencia so olhava 7 e dizia "ok" — o relatorio quebraria na primeira etiqueta.
+      {
+        const provisionar = carregarComFichaFalsa();
+        const cliente = {
+          rpc: async () => ({ data: [{ resultado: 'OK' }], error: null }),
+          from: (nome) => ({
+            select: async () => (/^(tags|devolucao_tags)_gira$/.test(nome)
+              ? { data: null, error: { message: `relation "${nome}" does not exist`, code: '42P01' } }
+              : { data: [], error: null }),
+          }),
+        };
+        const r = await provisionar('girateste', cliente);
+        ok(r.ok === false && JSON.stringify((r.tabelas_faltando || []).slice().sort()) === JSON.stringify(['devolucao_tags_gira', 'tags_gira']),
+           '⚠️ rotina de 7 tabelas no banco: acusa as 2 do relatorio (' + (r.tabelas_faltando || []).join(', ') + ')');
+        ok(/ANTIGA/.test(r.erro || '') && /provisionar-empresa\.sql/.test(r.erro || ''), '  e manda atualizar a rotina com o SQL atual');
       }
 
       // 3) ⚠️ (Codex, PR #323, P2, b377) - erro na sonda que NAO e "tabela
