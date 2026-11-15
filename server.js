@@ -614,7 +614,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.126.218 (b706: P1-01 — foto e dado, nao codigo: painel e ficha sem onclick montado como texto; servidor so grava URL do upload (lib/fotos-referencia); b705: roteiro unico de liquidacao)',
+      version: '9.126.219 (b707: extensao do upload so com caracteres de URL; b706: P1-01 — foto e dado, nao codigo: painel e ficha sem onclick montado como texto; servidor so grava URL do upload (lib/fotos-referencia); b705: roteiro unico de liquidacao)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -3698,7 +3698,7 @@ app.post('/api/triagem/upload-foto', requerEstoquista, upload.single('foto'), as
     return res.status(400).json({ ok: false, erro: 'Foto nao enviada' });
   }
 
-  const ext = (req.file.originalname || 'foto.jpg').split('.').pop().toLowerCase();
+  const ext = (req.file.originalname || 'foto.jpg').split('.').pop().toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg';   // b707: extensao tambem so com caracteres de URL
   const ts = Date.now();
   const random = crypto.randomBytes(4).toString('hex');
   const filename = `${nomeDePastaSeguro(req.usuario)}/${ts}-${random}.${ext}`;   // b706 (Codex #577): pasta so com caracteres de URL

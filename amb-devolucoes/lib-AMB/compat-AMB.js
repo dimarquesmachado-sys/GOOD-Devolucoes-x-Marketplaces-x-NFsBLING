@@ -1057,7 +1057,7 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
     if (!req.file) return res.status(400).json({ ok: false, erro: 'Foto nao enviada' });
 
     const bucket = process.env[_PREFIXO + 'FOTOS_BUCKET'] || 'fotos-problema';
-    const ext = String(req.file.originalname || 'foto.jpg').split('.').pop().toLowerCase();
+    const ext = String(req.file.originalname || 'foto.jpg').split('.').pop().toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg';   // b707: extensao tambem so com caracteres de URL
     const nome = `amb/${nomeDePastaSeguro(req.usuario)}/${Date.now()}-${crypto.randomBytes(4).toString('hex')}.${ext}`;   // b706 (Codex #577): pasta so com caracteres de URL
 
     try {
