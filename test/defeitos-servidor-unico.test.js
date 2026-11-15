@@ -618,6 +618,18 @@ async function main() {
     });
   }
 
+  await caso('a ficha (tela unica das 3) distingue INCERTO de recusa: nao manda lancar a mao quando o Bling pode ter lancado', async () => {
+    const fs = require('fs'); const path = require('path');
+    const src = fs.readFileSync(path.join(__dirname, '..', 'amb-devolucoes', 'public-AMB', 'js-AMB', 'defeitos-ficha.js'), 'utf8');
+    const i = src.indexOf('window.decidirPedido = async function'); const f = src.indexOf('abrirFilaPedidos();', i);
+    assert(i >= 0 && f > i, 'marcadores do decidirPedido existem');
+    const bloco = src.slice(i, f);
+    assert(/else if \(est\.incerto\)/.test(bloco), 'ha um ramo proprio pro incerto');
+    const ramoIncerto = bloco.slice(bloco.indexOf('else if (est.incerto)'), bloco.indexOf('} else {', bloco.indexOf('else if (est.incerto)')));
+    assert(/N[ÃA]O lance [àa] m[ãa]o/i.test(ramoIncerto) && /Confira o estoque/.test(ramoIncerto), 'o incerto manda CONFERIR, nao lancar a mao');
+    assert(/est\.aviso/.test(bloco), 'o aviso de "lancou mas nao gravou" aparece pro operador');
+  });
+
   await caso('as três instâncias compartilham código/banco sem compartilhar linhas', async () => {
     const banco = criarBanco(); const empresas = CHAVES.map(k => criarEmpresa(k, banco));
     empresas.forEach(e => { e.item(1); e.item(2); });

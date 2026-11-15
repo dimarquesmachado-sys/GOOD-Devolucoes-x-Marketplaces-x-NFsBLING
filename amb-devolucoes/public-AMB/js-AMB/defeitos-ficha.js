@@ -1931,12 +1931,21 @@
       if (est.ok) {
         alert('Liberado e lançado no Bling: ' + est.quantidade + ' un. no depósito Geral'
           + (est.custo ? ' · custo R$ ' + Number(est.custo).toFixed(2).replace('.', ',') + ' por unidade' : ' (SEM custo no cadastro do produto)')
-          + '.');
+          + '.'
+          // b713 (Codex #584) - lancou, mas a confirmacao nao gravou no pedido: avisa (o pedido fica "em andamento")
+          + (est.aviso ? '\n\n⚠️ ' + est.aviso : ''));
         // b164 - NAO abre mais a aba do Bling sozinho (pedido do Diego):
         // o link "conferir a entrada" fica no card, clica quem quiser.
+      } else if (est.incerto) {
+        // b713 (Codex #584, P1) - INCERTO nao e recusa: o Bling pode TER lancado e a resposta se perdeu. Mandar
+        // "lance a mao" aqui dobraria o estoque. O pedido ficou marcado "em andamento"; so relanca depois de conferir.
+        alert('Peça liberada, mas o Bling NÃO CONFIRMOU o lançamento:\n' + (est.erro || '')
+          + '\n\n⚠️ NÃO lance à mão ainda: a entrada PODE já existir. Confira o estoque do produto no Bling.'
+          + '\n• Se NÃO entrou: use "Lançar estoque no Bling" na ficha e confirme.'
+          + '\n• Se entrou: está tudo certo; o pedido fica marcado "em andamento" até alguém confirmar.');
       } else {
         alert('Peça liberada, MAS o Bling não aceitou o lançamento:\n' + (est.erro || '')
-          + '\n\nLance a entrada à mão no Bling. Ficou anotado no histórico da peça.');
+          + '\n\nLance a entrada à mão no Bling (ou use "Lançar estoque no Bling" na ficha). Ficou anotado no histórico da peça.');
       }
     }
     abrirFilaPedidos();
