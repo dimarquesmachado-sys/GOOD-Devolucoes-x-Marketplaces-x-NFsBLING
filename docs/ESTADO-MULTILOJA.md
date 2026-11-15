@@ -361,6 +361,13 @@ três fontes — a lista, os moldes do SQL e a ficha de cada empresa: quem cresc
 De carona, a dica da linha: pra AMB (o molde — a rotina recusa `_amb` como "sufixo reservado") a sonda mandava
 rodar o provisionador; agora aponta o SQL das etiquetas (`sql/2026-11-01-tags-relatorio-amb-girassol.sql`).
 
+**b701 — o aviso da "política de token" na sonda lê o contrato.** Com as três empresas inteiras verdes (15/11,
+GOOD inclusive, depois da env `GOOD_ML_USER_ID`), a linha ainda avisava "se o Mover-Pedidos também renova a
+mesma conta, os dois brigam" — frase anterior à medição do v16. Agora a sonda lê `dono_hoje` e
+`apps_por_servico`: app próprio nos dois serviços → "sem disputa de refresh", sem aviso; `compartilhado` → avisa
+o eixo e manda pôr em `remoto` ou separar o app; sem declaração → avisa "não sei" e pede a declaração. Mesma regra
+do `donosEmConflito` do Mover-Pedidos. Teste: `test/sonda-politica-apps`.
+
 ⚠️ Voltar para `local` com refresh antigo pode falhar: o dono já pode tê-lo
 consumido.
 

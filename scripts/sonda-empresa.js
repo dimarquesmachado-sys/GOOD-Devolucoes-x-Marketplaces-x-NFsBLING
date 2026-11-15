@@ -117,6 +117,30 @@ registrar('ficha e configuração', async (chave) => {
 });
 
 /* ── 2. a política de token, e o dono ────────────────────────────── */
+/**
+ * Pelo CONTRATO, em quais eixos (bling, ml) este serviço e o Mover-Pedidos renovam o MESMO app — ou não se
+ * sabe. Espelha a regra do `donosEmConflito` do Mover-Pedidos: declaração começando com `proprio` absolve;
+ * `compartilhado` acusa; sem declaração, assume-se o pior. Só olha eixos em que os DOIS são donos hoje.
+ * @returns {{eixo: string, motivo: 'compartilhado'|'sem declaração'}[]}
+ */
+function eixosQueDisputam(chave) {
+  const contrato = require('../contrato-empresas.json');
+  const emp = (contrato.empresas || {})[chave] || {};
+  const donos = emp.dono_hoje || {};
+  const apps = emp.apps_por_servico || {};
+  const saida = [];
+  for (const eixo of ['bling', 'ml']) {
+    const lista = Array.isArray(donos[eixo]) ? donos[eixo] : [];
+    if (!(lista.includes('devolucoes') && lista.includes('mover-pedidos'))) continue;
+    const decl = apps[eixo] || {};
+    const d1 = String(decl.devolucoes || ''), d2 = String(decl['mover-pedidos'] || '');
+    if (!d1 || !d2) { saida.push({ eixo, motivo: 'sem declaração' }); continue; }
+    if (/^proprio/.test(d1) && /^proprio/.test(d2)) continue;
+    saida.push({ eixo, motivo: 'compartilhado' });
+  }
+  return saida;
+}
+
 registrar('política de token', async (chave) => {
   const tokenLeitor = require('../lib/token-leitor');
   const eixos = ['bling', 'ml'].map((i) => `${i}=${tokenLeitor.politicaDe(chave, i)}`);
@@ -147,12 +171,26 @@ registrar('política de token', async (chave) => {
   }
 
   if (!algumRemoto) {
+    // b701 - O AVISO LIA O CONTRATO ERRADO: dizia "se o Mover-Pedidos também renova a mesma conta, os dois
+    // brigam" pra toda empresa — mas o contrato v16 (14/11) REGISTRA, por integração, qual app cada serviço
+    // usa (`apps_por_servico`). Refresh só briga com o MESMO app. Com app próprio nos dois lados, o aviso
+    // era alarme falso nas três empresas; o que resta avisar é só o que o contrato NÃO declara.
+    const disputam = eixosQueDisputam(chave);
+    const semDeclaracao = disputam.filter((d) => d.motivo === 'sem declaração').map((d) => d.eixo);
+    const mesmoApp = disputam.filter((d) => d.motivo === 'compartilhado').map((d) => d.eixo);
+    let aviso = null;
+    if (mesmoApp.length) {
+      aviso = `eixo(s) ${mesmoApp.join(' e ')} com o MESMO app nos dois serviços (contrato, apps_por_servico): `
+        + 'os dois renovam o mesmo refresh de uso único e brigam — ponha o eixo em `remoto` aqui, '
+        + 'ou dê a este serviço um app próprio.';
+    } else if (semDeclaracao.length) {
+      aviso = `eixo(s) ${semDeclaracao.join(' e ')} sem \`apps_por_servico\` no contrato: não sei se o `
+        + 'Mover-Pedidos renova com o mesmo app. Declare lá qual app cada serviço usa (proprio|compartilhado).';
+    }
     return {
       ok: true,
-      detalhe: eixos.join(', '),
-      aviso: 'nenhum eixo em `remoto`: esta empresa vai RENOVAR o token ela '
-        + 'mesma. Se o Mover-Pedidos também renova a mesma conta, os dois '
-        + 'brigam pelo refresh de uso único.',
+      detalhe: eixos.join(', ') + (aviso ? '' : ' · app próprio em cada serviço (contrato v16): sem disputa de refresh'),
+      aviso,
     };
   }
   if (!process.env.ADMIN_TOKEN_LEITURA_KEY) {
