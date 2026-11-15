@@ -26,6 +26,7 @@ const mlClient = require('./lib/ml');
 
 // v3.16.0 - Dashboard de relatorios
 const registrarRotasRelatorios = require('./lib/rotas-relatorios');
+const { escaparHtml } = require('./lib/html-texto');   // b707 (P1-02) - callbacks/setups: o que vem do provedor e texto
 // b650 - a peca virou multiempresa: a busca textual que ela usava por dentro
 // agora e injetada por quem registra (aqui, a da GOOD).
 const produtosClient = require('./lib/produtos-client');
@@ -613,7 +614,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.126.217 (b705: roteiro unico de liquidacao — auditoria do Codex de 15/11 + pendencias herdadas, docs/ROTEIRO-LIQUIDACAO-2026-11.md)',
+      version: '9.126.219 (b707: P1-02 — callbacks do OAuth devolvem texto, nao HTML do provedor; state conferido antes do ?error= (lib/html-texto))',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -2968,11 +2969,11 @@ app.get('/api/produto/ean-por-sku/:sku', requerLogin, async (req, res) => {
 
 // b299 - idem (fatia 2)
 app.get('/callback', (req, res) => {
-  res.send(`<h2>Callback ML recebido</h2><p>code: ${req.query.code || '(nenhum)'}</p>`);
+  res.send(`<h2>Callback ML recebido</h2><p>code: ${escaparHtml(req.query.code || '(nenhum)')}</p>`);   // b707 (P1-02): texto, nao HTML
 });
 
 app.get('/bling/callback', (req, res) => {
-  res.send(`<h2>Callback Bling recebido</h2><p>code: ${req.query.code || '(nenhum)'}</p>`);
+  res.send(`<h2>Callback Bling recebido</h2><p>code: ${escaparHtml(req.query.code || '(nenhum)')}</p>`);   // b707 (P1-02): texto, nao HTML
 });
 
 // v3.19 - Reconexao do app Bling (troca o code por token com os escopos novos)
@@ -2988,14 +2989,14 @@ app.get('/bling/setup', async (req, res) => {
     res.send(`
       <h2 style="color:#2e7d32;">✅ Bling reconectado com sucesso!</h2>
       <p><strong>Escopos ativos agora:</strong></p>
-      <pre style="background:#f5f5f5;padding:12px;border-radius:8px;white-space:pre-wrap;">${(data.scope || '(nao informado)')}</pre>
+      <pre style="background:#f5f5f5;padding:12px;border-radius:8px;white-space:pre-wrap;">${escaparHtml(data.scope || '(nao informado)')}</pre>
       <p>Token salvo. Pode fechar esta aba.</p>
     `);
   } catch (e) {
     const detalhe = e.response?.data ? JSON.stringify(e.response.data, null, 2) : (e.message || String(e));
     res.send(`
       <h2 style="color:#c62828;">❌ Erro ao reconectar</h2>
-      <pre style="background:#fff0f0;padding:12px;border-radius:8px;white-space:pre-wrap;">${detalhe}</pre>
+      <pre style="background:#fff0f0;padding:12px;border-radius:8px;white-space:pre-wrap;">${escaparHtml(detalhe)}</pre>
       <p><strong>Dica:</strong> o code expira em <strong>1 minuto</strong>. Se demorou, gere um novo (cole o link de convite de novo) e refaça rapidinho.</p>
     `);
   }
@@ -3034,7 +3035,7 @@ app.get('/ml/setup', async (req, res) => {
     const persist = await mlClient.definirTokensML(data.access_token, data.refresh_token);
     res.send(`
       <h2 style="color:#2e7d32;">✅ Mercado Livre reconectado!</h2>
-      <p><strong>User ID:</strong> ${data.user_id || '?'} · <strong>Escopo:</strong> ${data.scope || '?'}</p>
+      <p><strong>User ID:</strong> ${escaparHtml(data.user_id || '?')} · <strong>Escopo:</strong> ${escaparHtml(data.scope || '?')}</p>
       <p><strong>Cofre (Render):</strong> ${persist.persistiu
         ? 'tokens salvos ✅ (sobrevivem a redeploy)'
         : '⚠️ NÃO persistiu (' + (persist.erro || 'RENDER_API_KEY/RENDER_SERVICE_ID ausentes?') + ') — tokens ativos só na memória: funcionam AGORA, mas o próximo deploy apaga. Reponha as 2 vars e refaça o setup.'}</p>
@@ -3044,7 +3045,7 @@ app.get('/ml/setup', async (req, res) => {
     const detalhe = e.message || String(e);
     res.send(`
       <h2 style="color:#c62828;">❌ Erro ao reconectar o ML</h2>
-      <pre style="background:#fff0f0;padding:12px;border-radius:8px;white-space:pre-wrap;">${detalhe}</pre>
+      <pre style="background:#fff0f0;padding:12px;border-radius:8px;white-space:pre-wrap;">${escaparHtml(detalhe)}</pre>
       <p><strong>Dica:</strong> o code expira em ~1 minuto. Gere um novo (link de autorização) e refaça rapidinho.</p>
     `);
   }
