@@ -613,7 +613,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.126.225 (b713: P1-03 — entrada de estoque da recuperada com reserva duravel (estoque_operacao) antes do Bling; incerto fica marcado; relancar respeita; b712: maquina de estados)',
+      version: '9.126.226 (b714: P1-05 — EAN que aponta pra mais de um produto INTERROMPE a entrada de estoque (lista os candidatos); de-para antes do EAN, tambem na GOOD; b713: reserva duravel)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -8976,6 +8976,7 @@ require('./amb-devolucoes/lib-AMB/rotas-admin-AMB.js')(app, Object.assign({}, DE
 const registrarCicloDefeitos = require('./lib/defeitos-ciclo');
 registrarCicloDefeitos(app, {
   supabase, requerLogin, chamarBling, adminOk,
+  resolverSku: (sku) => skuDeparaGOOD.resolverSku(sku),   // b714 (P1-05): de-para no ciclo tambem na GOOD (a fabrica ja injetava)
   DEPOSITO_GERAL: FICHA_GOOD.fiscal.depositoGeral(),
   modelo: { ...FICHA_GOOD.defeitos, tabelas: FICHA_GOOD.tabelas },
   rotulo: FICHA_GOOD.nome,

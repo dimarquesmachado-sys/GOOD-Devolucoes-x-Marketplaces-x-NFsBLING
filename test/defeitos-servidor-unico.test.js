@@ -630,6 +630,62 @@ async function main() {
     assert(/est\.aviso/.test(bloco), 'o aviso de "lancou mas nao gravou" aparece pro operador');
   });
 
+  // b714 — P1-05 (auditoria do Codex): EAN AMBIGUO INTERROMPE; de-para e alternativa controlada. Nunca "o primeiro".
+  for (const chave of CHAVES) {
+    await caso(chave + ': EAN que aponta pra DOIS produtos no Bling NAO lanca — interrompe e lista os candidatos', async () => {
+      const ch = [];
+      const e = criarEmpresa(chave, criarBanco(), { deposito: '8100', chamarBling: async (url, opcoes) => {
+        ch.push({ url, opcoes });
+        if (url.includes('/produtos?codigo=')) return { ok: true, data: { data: [] } };   // SKU digitado nao existe
+        if (url.includes('/produtos?gtin=')) return { ok: true, data: { data: [{ id: 501, codigo: 'COMPONENTE-A', nome: 'cupula' }, { id: 502, codigo: 'KIT-COMPLETO', nome: 'luminaria' }] } };
+        throw new Error('rota Bling inesperada: ' + url);
+      } });
+      e.item(1);
+      const p = await e.pedir('POST', '/api/defeitos/pedido', { body: { tipo: 'recuperado', defeito_id: 1, sku: '7891234567890', quantidade: 1, so_conserto: true } });
+      const r = await e.pedir('POST', '/api/defeitos/pedido/:id/decidir', { params: { id: String(p.body.pedido.id) }, papel: 'admin', body: { acao: 'autorizar' } });
+      assert.equal(r.statusCode, 200);
+      const est = r.body.pedido.estoque_bling;
+      assert.equal(est.ok, false); assert.equal(est.ambiguo, true); assert.equal(est.naoAplicou, true);
+      assert.deepEqual(est.candidatos.map(c => c.codigo), ['COMPONENTE-A', 'KIT-COMPLETO']);
+      assert(/nao escolho sozinho/.test(est.erro));
+      assert.equal(ch.filter(c => c.opcoes && c.opcoes.method === 'POST').length, 0, '⚠️ NENHUMA entrada no Bling');
+      assert.equal(e.banco.tabelas[e.n.ped][0].estoque_operacao, null, 'a reserva foi devolvida (pode relancar com o SKU certo)');
+    });
+    await caso(chave + ': EAN com UM produto confirma pelo codigo exato; SKU renomeado resolve pelo de-para antes do EAN', async () => {
+      const ch = []; const deparas = [];
+      const e = criarEmpresa(chave, criarBanco(), { deposito: '8100',
+        resolverSku: async (sku) => { deparas.push(sku); return sku === 'SKU-ANTIGO' ? { trocado: true, sku: 'SKU-NOVO' } : { trocado: false }; },
+        chamarBling: async (url, opcoes) => {
+          ch.push({ url, opcoes });
+          if (url.includes('/produtos?codigo=SKU-NOVO')) return { ok: true, data: { data: [{ id: 601, codigo: 'SKU-NOVO' }] } };
+          if (url.includes('/produtos?codigo=UNICO')) return { ok: true, data: { data: [{ id: 701, codigo: 'UNICO' }] } };
+          if (url.includes('/produtos?codigo=')) return { ok: true, data: { data: [] } };
+          if (url.includes('/produtos?gtin=')) return { ok: true, data: { data: [{ id: 701, codigo: 'UNICO' }, { id: 701, codigo: 'UNICO' }] } };   // o MESMO produto 2x = um candidato
+          if (/\/produtos\/\d+$/.test(url)) return { ok: true, data: { data: { estoque: { precoCusto: 5 } } } };
+          if (url.endsWith('/estoques')) return { ok: true, data: { data: { id: 11 } } };
+          throw new Error('rota Bling inesperada: ' + url);
+        } });
+      e.item(1); e.item(2);
+      // de-para
+      let p = await e.pedir('POST', '/api/defeitos/pedido', { body: { tipo: 'recuperado', defeito_id: 1, sku: 'SKU-ANTIGO', quantidade: 1, so_conserto: true } });
+      let r = await e.pedir('POST', '/api/defeitos/pedido/:id/decidir', { params: { id: String(p.body.pedido.id) }, papel: 'admin', body: { acao: 'autorizar' } });
+      assert.equal(r.statusCode, 200); assert.equal(r.body.pedido.estoque_bling.ok, true); assert.equal(r.body.pedido.estoque_bling.produto_id, 601);
+      assert(deparas.includes('SKU-ANTIGO'), 'consultou o de-para da empresa');
+      // EAN unico
+      p = await e.pedir('POST', '/api/defeitos/pedido', { body: { tipo: 'recuperado', defeito_id: 2, sku: '7890000000001', quantidade: 1, so_conserto: true } });
+      r = await e.pedir('POST', '/api/defeitos/pedido/:id/decidir', { params: { id: String(p.body.pedido.id) }, papel: 'admin', body: { acao: 'autorizar' } });
+      assert.equal(r.statusCode, 200); assert.equal(r.body.pedido.estoque_bling.ok, true); assert.equal(r.body.pedido.estoque_bling.produto_id, 701);
+      assert.equal(ch.filter(c => c.opcoes && c.opcoes.method === 'POST').length, 2);
+    });
+  }
+
+  await caso('a GOOD injeta o de-para no ciclo (a fabrica ja injetava) — sem isso o SKU renomeado so resolvia na AMB/Girassol', async () => {
+    const fs = require('fs'); const path = require('path');
+    const srv = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
+    const i = srv.indexOf('registrarCicloDefeitos(app, {'); const f = srv.indexOf('});', i);
+    assert(i >= 0 && f > i); assert(/resolverSku: \(sku\) => skuDeparaGOOD\.resolverSku\(sku\),/.test(srv.slice(i, f)));
+  });
+
   await caso('as três instâncias compartilham código/banco sem compartilhar linhas', async () => {
     const banco = criarBanco(); const empresas = CHAVES.map(k => criarEmpresa(k, banco));
     empresas.forEach(e => { e.item(1); e.item(2); });
