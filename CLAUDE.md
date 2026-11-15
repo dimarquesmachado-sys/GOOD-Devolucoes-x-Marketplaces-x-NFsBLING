@@ -1,5 +1,8 @@
 # Manual de trabalho do Claude neste repositório
 
+> **O que fazer agora?** `docs/ROTEIRO-LIQUIDACAO-2026-11.md` é o único roteiro: auditoria do
+> Codex (15/11) + o que já estava em processo, um item por PR, na ordem de lá. Não desviar.
+>
 > **Mexendo no multiloja?** Leia
 > [`docs/ESTADO-MULTILOJA.md`](docs/ESTADO-MULTILOJA.md) — ele diz o que está
 > fechado, o que falta e, principalmente, **como medir** em vez de confiar na

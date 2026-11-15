@@ -10,6 +10,10 @@
 > **Por isso este arquivo diz COMO MEDIR, não só o que é verdade hoje.**
 > Documento que não acompanha o código vira armadilha: quem lê, age.
 
+> **Pendências abertas (15/11/2026):** estão todas em `docs/ROTEIRO-LIQUIDACAO-2026-11.md` — a auditoria do
+> Codex e o que já estava em processo (inclusive a última cópia, o cliente do Bling). Este arquivo registra o
+> que FECHOU e como medir; o roteiro registra o que FALTA.
+>
 > **Fusão GOOD → Girassol em 01/01/2027:** o plano de migrar o hospedeiro (o que morre com a conta da
 > GOOD, o que fazer antes, no dia e depois) está em `docs/FUSAO-GOOD-GIRASSOL.md`.
 
