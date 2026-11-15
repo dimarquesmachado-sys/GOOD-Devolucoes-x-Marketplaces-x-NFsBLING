@@ -76,7 +76,9 @@ por acaso se chamam igual.
 | ficha de defeitos (tela) | ✅ **peça única nas três empresas** — `js-AMB/defeitos-ficha.js` (#493/#495) |
 | porteiro da cota do Bling | ✅ por conta (`lib/ritmo-porteiro.js` → `criarPorteiro({ conta })`) |
 | `defeitos-ciclo` (servidor) | ✅ **peça única nas três empresas** — `lib/defeitos-ciclo.js`; diferenças de schema declaradas em `defeitos` na ficha |
-| `ml` / `ml-returns` · `bling` | ⏸ duas cópias por decisão — a GOOD tem dono de token próprio e as duas divergem nos dois sentidos |
+| `ml` (cliente) | ✅ **peça única nas três empresas** (b702, 15/11) — `amb-devolucoes/lib-AMB/ml-AMB.js`; `lib/ml.js` é um adaptador de 46 linhas que preserva a assinatura antiga do `server.js`. O que só a GOOD tinha veio pra fábrica (`ml_403.por_rota`, `/ml/setup` por tokens, preventiva que não tenta em `remoto`, gravação no nome histórico); o que só a fábrica tinha a GOOD ganhou (429, 403 de rota conhecida sem derrubar o cache) |
+| `ml-returns` | ✅ peça única desde o b510 |
+| `bling` | ⏸ duas cópias — `lib/bling.js` (1.480) carrega ~1.000 linhas de busca de NF/pedido que na fábrica vivem em outro lugar; unificar é entrega grande, em fatias, a medir antes |
 
 **Para um CNPJ novo nada disso trava:** ele entra pela fábrica (`amb-devolucoes/`), a mesma da Girassol e da AMB —
 `node scripts/nova-empresa.js <chave> "<Nome>"` gera a ficha (agora já com `tema`, `marca` e modelo de `defeitos`), o contrato e a lista de

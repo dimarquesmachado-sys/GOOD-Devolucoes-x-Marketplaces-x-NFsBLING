@@ -368,6 +368,18 @@ mesma conta, os dois brigam" — frase anterior à medição do v16. Agora a son
 o eixo e manda pôr em `remoto` ou separar o app; sem declaração → avisa "não sei" e pede a declaração. Mesma regra
 do `donosEmConflito` do Mover-Pedidos. Teste: `test/sonda-politica-apps`.
 
+**b702 — o cliente do Mercado Livre é peça única nas três.** `lib/ml.js` (556 linhas, a cópia da GOOD) virou um
+adaptador de 46 linhas sobre `ml-AMB.criar(configDaEmpresa('good'))` — o mesmo caminho das reclamações (b510) e do
+índice de nomes (b563). A decisão de 06/10 ("o ML da GOOD fica como está") caiu com o v16: o motivo era o dono do
+token, e os dois lados já leem o mesmo leitor. Nivelado por cima: a fábrica ganhou `diagnostico403` (o `ml_403.por_rota`
+do `/health`, agora por empresa), `definirTokens` (o `/ml/setup`), `buscarNFnoML`, `credenciais`, a preventiva que não
+tenta em `remoto`/`bloqueado` (b258) e a gravação do token também no nome histórico sem prefixo enquanto ele existir no
+Render (b250 — e o carimbo da preventiva segue em `ML_RENOVADO_EM` até `GOOD_ML_RENOVADO_EM` existir, senão o primeiro
+boot gastaria um refresh). A GOOD ganhou o retry de 429 e a regra do 403 em rota já conhecida sem derrubar o cache
+(b690). Os testes da GOOD que liam o fonte da cópia passaram a exercitar a peça única (`ml-403-permanente` virou
+comportamento; `migracao-prefixo` prova a gravação nos dois nomes num processo limpo). Próxima cópia: `bling` — medir
+antes (`docs/divida-copias-empresas.md`).
+
 ⚠️ Voltar para `local` com refresh antigo pode falhar: o dono já pode tê-lo
 consumido.
 

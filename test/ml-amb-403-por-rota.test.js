@@ -11,7 +11,8 @@ ok(f.podeRenovarPor403('https://api.mercadolibre.com/shipments/1234567') === tru
 f.registrarRenovacaoPor403('https://api.mercadolibre.com/shipments/1234567');
 ok(f.podeRenovarPor403('https://api.mercadolibre.com/shipments/7654321') === false, '⚠️ 2o 403 na MESMA rota em 10 min: nao gasta outro refresh (o do ML e de uso unico)');
 ok(f.podeRenovarPor403('https://api.mercadolibre.com/orders/1234567') === true, '  outra rota segue podendo');
-ok(/if \(status === 403\) \{\n\s+if \(!podeRenovarPor403\(url\)\)/.test(A) && /registrarRenovacaoPor403\(url\);/.test(A), '⚠️ chamarML trata o 403 (antes so o 401) e so marca a rota quando o refresh foi gasto');
+// b702: a contagem do 403 por rota (b691, porte da GOOD) entra logo apos o `if`, antes da trava
+ok(/if \(status === 403\) \{\n\s+contar403DaRota\(url\);[^\n]*\n\s+if \(!podeRenovarPor403\(url\)\)/.test(A) && /registrarRenovacaoPor403\(url\);/.test(A), '⚠️ chamarML trata o 403 (antes so o 401), conta a rota e so a marca quando o refresh foi gasto');
 ok(!/\(cfg && cfg\.PREFIXO_ENV\) \|\| 'AMB_'/.test(A) && !/\(cfg\.PREFIXO_ENV \|\| 'AMB_'\)/.test(A), '⚠️ prefixo vazio nao cai mais em AMB_ (empresa sem prefixo nao usaria o token da AMB)');
 console.log('');
 console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');

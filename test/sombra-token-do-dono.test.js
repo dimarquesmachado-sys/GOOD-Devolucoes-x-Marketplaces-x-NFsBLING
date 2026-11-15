@@ -84,7 +84,8 @@ const BUSCA = 'https://api.mercadolibre.com/post-purchase/v1/claims/search?statu
     ok(rede.oauth === 0, `⚠️ GOOD/ML em sombra, 403 de politica em serie: ZERO renovacao do token local (antes: 1 a cada 10 min por rota) — foram ${rede.oauth}`);
     ok(r1.ok === false && r1.status === 403 && apos1.api === 2 && rede.api.slice(0, 2).join(',') === 'TOK-DONO-1,TOK-DONO-2',
        '  o 1o 403 da rota ganha UMA tentativa com o token relido do dono (' + rede.api.slice(0, 2).join(' -> ') + ')');
-    ok(r2.renovacaoAdiada === true && r3.renovacaoAdiada === true && rede.api.length === 4, '  os seguintes, na janela da rota, nao repetem (mesma cadencia de antes: 4 chamadas pras 3 consultas)');
+    // b702: a GOOD usa a peca unica; o campo da rota ja renovada e o da fabrica (`rota_ja_renovou`, era `renovacaoAdiada`)
+    ok(r2.rota_ja_renovou === true && r3.rota_ja_renovou === true && rede.api.length === 4, '  os seguintes, na janela da rota, nao repetem (mesma cadencia de antes: 4 chamadas pras 3 consultas)');
     ok(m.retry_apos_invalidar.por_403.falhou === 1 && JSON.stringify(m.retry_apos_invalidar.por_403.falhou_com) === '{"403":1}' && m.fonte.local === 0,
        '  telemetria: 1 retry falho com 403, nenhuma queda no local');
   }
@@ -105,7 +106,7 @@ const BUSCA = 'https://api.mercadolibre.com/post-purchase/v1/claims/search?statu
     rede.respostas = [403, 403, 403];
     await t.ml.chamarML(BUSCA + '0&limit=30');
     const r2 = await t.ml.chamarML(BUSCA + '0&limit=1'); t.falar();
-    ok(rede.dono === 0 && rede.oauth === 1 && r2.renovacaoAdiada === true && rede.api.every((x) => /^TOK-LOCAL/.test(x)), '  GOOD/ML em `local` + 403: como sempre — nem consulta o dono; 1 refresh local por rota na janela');
+    ok(rede.dono === 0 && rede.oauth === 1 && r2.rota_ja_renovou === true && rede.api.every((x) => /^TOK-LOCAL/.test(x)), '  GOOD/ML em `local` + 403: como sempre — nem consulta o dono; 1 refresh local por rota na janela');
   }
   { // remoto: nada muda (o retry do dono a cada 403 e decisao antiga da GOOD, b267.1)
     const t = instalar('remoto');

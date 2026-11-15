@@ -1,7 +1,14 @@
 // ============================================================
 // amb-devolucoes/lib-AMB/ml-AMB.js             (AMB Devol. b2)
 // ------------------------------------------------------------
-// Cliente Mercado Livre da AMBTotal.
+// Cliente Mercado Livre — PECA UNICA das tres empresas (b702).
+//
+// ⚠️ b702 - A GOOD TAMBEM USA ESTA FABRICA. `lib/ml.js` virou um adaptador fino sobre `criar(configDaEmpresa('good'))`
+// que preserva a assinatura antiga do server.js. A copia da GOOD (556 linhas) divergia desta nos dois sentidos; o que
+// so ela tinha veio pra ca (nivelar por cima): `diagnostico403` (o `ml_403.por_rota` do /health, b691), `definirTokens`
+// (o /ml/setup), `buscarNFnoML`, `credenciais`, a preventiva que nao tenta em `remoto`/`bloqueado` (b258 P2) e a
+// gravacao do token tambem no nome historico sem prefixo (b250). O que so esta tinha a GOOD ganhou: retry de 429 e
+// a regra do 403 por rota ja conhecida sem invalidar o cache (b690 — medido: 118 invalidacoes em 5 min na GOOD).
 //
 // O access token do ML dura ~6 HORAS (o do Bling dura mais).
 // Por isso o refresh automatico aqui nao e luxo: sem ele, o
@@ -65,6 +72,32 @@ let ACCESS_TOKEN  = cfg.ml.accessToken;
 let REFRESH_TOKEN = cfg.ml.refreshToken;
 let USER_ID       = cfg.ml.userId;
 
+// b702 (porte de lib/ml.js, b250) - ONDE GRAVAR O TOKEN RENOVADO quando a empresa ainda vive no nome HISTORICO.
+//
+// A GOOD nasceu com `ML_ACCESS_TOKEN` (sem prefixo) e e lida por fallback (`envDaEmpresa` -> `nomeHistorico`). Se a
+// renovacao gravasse so em `GOOD_ML_ACCESS_TOKEN`, o nome antigo ficaria com o refresh JA CONSUMIDO — e qualquer volta
+// atras morreria no primeiro restart. Entao, enquanto o nome historico existir no ambiente, grava nos DOIS: o padrao
+// (`chaveAccess`) e o antigo. Empresa sem `nomeHistorico` (AMB, Girassol, as proximas) grava so o padrao, como sempre.
+const chavesDeGravacao = (chavePadrao, nomeBase) => {
+  const chaves = [chavePadrao];
+  const antigo = (cfg.ml.nomeHistorico && cfg.ml.nomeHistorico(nomeBase)) || null;
+  if (antigo && antigo !== chavePadrao && process.env[antigo] != null && process.env[antigo] !== '') chaves.push(antigo);
+  return chaves;
+};
+// b702 - o NOME da env de carimbo/dias da preventiva: o padrao com prefixo, salvo quando ele nao existe no ambiente e o
+// historico sem prefixo existe (a GOOD hoje: `ML_RENOVADO_EM`). Sem isto, a primeira montagem pela fabrica leria
+// `GOOD_ML_RENOVADO_EM` vazio, acharia que nunca renovou e gastaria um refresh a toa no primeiro batimento.
+const nomeEnvPreventiva = (nomeBase) => {
+  const padrao = ((cfg.PREFIXO_ENV != null) ? cfg.PREFIXO_ENV : PREFIXO_SEM_EMPRESA) + nomeBase;
+  const antigo = (cfg.ml.nomeHistorico && cfg.ml.nomeHistorico(nomeBase)) || null;
+  const tem = (k) => process.env[k] != null && process.env[k] !== '';
+  return (antigo && antigo !== padrao && !tem(padrao) && tem(antigo)) ? antigo : padrao;
+};
+const paresDeToken = () => [
+  ...chavesDeGravacao(cfg.ml.chaveAccess, 'ML_ACCESS_TOKEN').map((k) => ({ key: k, value: ACCESS_TOKEN })),
+  ...chavesDeGravacao(cfg.ml.chaveRefresh, 'ML_REFRESH_TOKEN').map((k) => ({ key: k, value: REFRESH_TOKEN })),
+];
+
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
 /**
@@ -106,14 +139,35 @@ async function trocarCodePorToken(code, redirectUri) {
   if (r.data.refresh_token) REFRESH_TOKEN = r.data.refresh_token;
   if (r.data.user_id) USER_ID = String(r.data.user_id);
 
-  const gravar = [
-    { key: cfg.ml.chaveAccess,  value: ACCESS_TOKEN },
-    { key: cfg.ml.chaveRefresh, value: REFRESH_TOKEN },
-  ];
+  const gravar = paresDeToken();
   if (USER_ID) gravar.push({ key: cfg.ml.chaveUserId, value: USER_ID });
-
+  // b702 (porte de lib/ml.js, b273) - CARIMBA TAMBEM AO AUTORIZAR: logo apos uma reautorizacao o carimbo estaria velho e
+  // o proximo batimento consumiria NA HORA o refresh recem-emitido.
+  if (PREVENTIVA.parEnvCarimbo()) gravar.push(PREVENTIVA.parEnvCarimbo());
   const persistiu = await atualizarTokensNoRender(gravar);
+  if (persistiu) PREVENTIVA.marcarRenovado();
   return { user_id: USER_ID, expira_em_s: r.data.expires_in, escopo: r.data.scope || null, persistiu };
+}
+
+/**
+ * b702 (porte de lib/ml.js, v3.40/b273/b274) - INJETA tokens ja trocados (o /ml/setup da GOOD troca o code ele
+ * mesmo) e persiste no Render, com o carimbo da preventiva. Se a persistencia falhar, NAO quebra: avisa, e os
+ * tokens ficam na memoria ate o proximo redeploy. O carimbo so e marcado se persistiu de fato (b274).
+ */
+async function definirTokens(accessToken, refreshToken) {
+  ACCESS_TOKEN = accessToken;
+  if (refreshToken) REFRESH_TOKEN = refreshToken;
+  try {
+    const gravar = paresDeToken();
+    if (PREVENTIVA.parEnvCarimbo()) gravar.push(PREVENTIVA.parEnvCarimbo());
+    const persistiu = await atualizarTokensNoRender(gravar);
+    if (persistiu) PREVENTIVA.marcarRenovado();
+    else console.warn(`[${TAG_EMP}/ML] tokens ativos na MEMORIA, mas nao persistidos no Render`);
+    return { persistiu: !!persistiu };
+  } catch (e) {
+    console.warn(`[${TAG_EMP}/ML] tokens ativos na MEMORIA, mas falhou persistir no Render:`, e.message || e);
+    return { persistiu: false, erro: e.message || String(e) };
+  }
 }
 
 // b267 (review do Codex) - UMA renovacao por vez NESTA integracao. Serializar
@@ -162,10 +216,7 @@ async function renovarTokenInterno() {
     if (r.data.refresh_token) REFRESH_TOKEN = r.data.refresh_token;
     if (r.data.user_id) USER_ID = String(r.data.user_id);
 
-    const gravar = [
-      { key: cfg.ml.chaveAccess,  value: ACCESS_TOKEN },
-      { key: cfg.ml.chaveRefresh, value: REFRESH_TOKEN },
-    ];
+    const gravar = paresDeToken();
     if (USER_ID) gravar.push({ key: cfg.ml.chaveUserId, value: USER_ID });
     // b269 - CARIMBO DA RENOVACAO, no MESMO write (zero escrita a mais).
     // Sem ele, `ultimaPreventiva` so vivia em memoria: todo restart zerava o
@@ -205,6 +256,39 @@ function rotaDe(url) {
 }
 function podeRenovarPor403(url) { return Date.now() - (ML_ULTIMA_RENOV_POR_ROTA.get(rotaDe(url)) || 0) >= ML_JANELA_RENOV_MS; }
 function registrarRenovacaoPor403(url) { ML_ULTIMA_RENOV_POR_ROTA.set(rotaDe(url), Date.now()); }
+
+// b702 (porte de lib/ml.js, b691) - QUAL ROTA esta tomando 403 — o padrao da rota, nunca o id.
+//
+// ⚠️ O /health da GOOD de 14/11 mostrava 1.146 invalidacoes por 403 em 33 min, numa rota so, e o painel nao dizia QUAL.
+// `rotaDe()` ja troca os ids por `{id}`: o que sai daqui e `/shipments/{id}/history`, nao o envio de ninguem. No
+// maximo 40 padroes guardados (teto pra memoria). Por INSTANCIA: cada empresa conta as suas.
+const ML_403_POR_ROTA = new Map();   // padrao da rota -> { vezes, ultima }
+function contar403DaRota(url) {
+  const rota = rotaDe(url);
+  const c = ML_403_POR_ROTA.get(rota) || { vezes: 0, ultima: 0 };
+  c.vezes++; c.ultima = Date.now();
+  ML_403_POR_ROTA.set(rota, c);
+  if (ML_403_POR_ROTA.size > 40) {
+    const maisVelha = [...ML_403_POR_ROTA.entries()].sort((a, b) => a[1].ultima - b[1].ultima)[0];
+    if (maisVelha) ML_403_POR_ROTA.delete(maisVelha[0]);
+  }
+}
+/** Pro /health — ⚠️ SO CONTAGEM, nunca os ids. */
+function diagnostico403() {
+  const agora = Date.now();
+  let emJanela = 0;
+  for (const t of ML_ULTIMA_RENOV_POR_ROTA.values()) if (agora - t < ML_JANELA_RENOV_MS) emJanela++;
+  const por_rota = [...ML_403_POR_ROTA.entries()]
+    .sort((a, b) => b[1].vezes - a[1].vezes).slice(0, 5)
+    .map(([rota, c]) => ({ rota, vezes: c.vezes, ultima_ha_s: Math.round((agora - c.ultima) / 1000) }));
+  return {
+    rotas_com_403_recente: emJanela,
+    por_rota,
+    janela_min: ML_JANELA_RENOV_MS / 60000,
+    _nota: '403 renova no maximo 1x por rota nesta janela — o refresh do ML e de uso unico e 403 de permissao nao '
+      + 'melhora com token novo. Em `por_rota` vai o PADRAO da rota (`/shipments/{id}`), nunca o id de pedido/envio.',
+  };
+}
 
 async function chamarML(caminho, opcoes = {}) {
   // ⚠️ b424: de onde vem o token desta chamada (ver bling-AMB.js).
@@ -303,6 +387,7 @@ async function chamarML(caminho, opcoes = {}) {
     // (o refresh do ML e de uso unico e 403 de permissao nao melhora com token novo); o relogio da rota so anda se o
     // refresh foi de fato gasto.
     if (status === 403) {
+      contar403DaRota(url);   // b702 (b691): qual padrao de rota (sem id) esta tomando 403
       if (!podeRenovarPor403(url)) {
         return { ok: false, status: 403, error: (erro.response && erro.response.data) || erro.message, rota_ja_renovou: true };
       }
@@ -356,8 +441,15 @@ async function chamarML(caminho, opcoes = {}) {
 
     // 403 no /returns e NORMAL: o ML nao libera esse recurso pra
     // todo mundo. Quem chama trata como "sem acesso por design".
-    return { ok: false, status, error: (erro.response && erro.response.data) || erro.message };
+    // b702 (porte de lib/ml.js, b258 Codex P1) - PRESERVA O `semToken`: "o dono nao entregou token e a politica e
+    // remoto" chegava a quem chamou como erro generico sem status — indistinguivel de falha de rede.
+    return { ok: false, status, semToken: erro.semToken || undefined, error: (erro.response && erro.response.data) || erro.message };
   }
+}
+
+/** b702 (porte de lib/ml.js) - shipment -> invoice_data (a NF que o ML tem do envio). */
+async function buscarNFnoML(shipmentId) {
+  return chamarML(`/shipments/${shipmentId}/invoice_data?siteId=MLB`);
 }
 
 /** Quem sou eu — confirma a conta e devolve o user_id. */
@@ -397,11 +489,18 @@ const PREVENTIVA = registrarPreventiva({
   // competirem pelo MESMO carimbo de renovacao — uma renovaria o token e a
   // outra acharia que ja tinha renovado.
   empresa: cfg.CHAVE_REGISTRO || SEM_EMPRESA, integracao: 'ml',   // b661
-  temRefresh: () => !!REFRESH_TOKEN,
+  // b702 (porte de lib/ml.js, b258 Codex P2) - EM `remoto`/`bloqueado` O PREVENTIVO NEM TENTA. A recusa nao avanca o
+  // carimbo, entao o timer voltava a cada hora, levava outra recusa e inflava o contador de recusas — que e
+  // justamente o numero que deveria PROVAR que nada mais renova. Telemetria poluida pela propria protecao.
+  temRefresh: () => {
+    const pol = tokenLeitor.politicaDe(CHAVE_TOKEN, 'ml');
+    if (pol === 'remoto' || pol === 'bloqueado') return false;
+    return !!REFRESH_TOKEN;
+  },
   renovar: () => renovarToken(),
   persistiu: () => ultimaPersistencia,
-  carimboEnv: ((cfg.PREFIXO_ENV != null) ? cfg.PREFIXO_ENV : PREFIXO_SEM_EMPRESA) + 'ML_RENOVADO_EM',
-  diasEnv: ((cfg.PREFIXO_ENV != null) ? cfg.PREFIXO_ENV : PREFIXO_SEM_EMPRESA) + 'ML_RENOVAR_DIAS',
+  carimboEnv: nomeEnvPreventiva('ML_RENOVADO_EM'),   // b702: historico sem prefixo enquanto so ele existir (GOOD)
+  diasEnv: nomeEnvPreventiva('ML_RENOVAR_DIAS'),
 });
 const renovacaoPreventiva = (op) => PREVENTIVA.preventiva(op);
 const ligarRenovacaoPreventiva = (op) => PREVENTIVA.ligar(op);
@@ -410,13 +509,18 @@ return {
   chamarML,
   urlAutorizacao,
   trocarCodePorToken,
+  definirTokens,            // b702
+  buscarNFnoML,             // b702
   renovarToken,
   renovacaoPreventiva, ligarRenovacaoPreventiva,   // b264
+  preventiva: PREVENTIVA,   // b702 (a GOOD expunha `preventivaML`)
+  diagnostico403,           // b702 (b691)
   quemSouEu,
   testeDeVida,
   userId: () => USER_ID,
   temToken: () => !!ACCESS_TOKEN,
   temCredenciais: () => !!(cfg.ml.clientId && cfg.ml.clientSecret),
+  credenciais: () => ({ clientId: cfg.ml.clientId, clientSecret: cfg.ml.clientSecret }),   // b702 (o /ml/setup)
 };
 }
 

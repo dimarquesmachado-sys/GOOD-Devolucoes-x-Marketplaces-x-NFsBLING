@@ -301,7 +301,8 @@ const registro = require('../lib/empresas.js');
       const fsq = require('fs');
       const semC = (t) => t.split('\n').filter((l) => !l.trim().startsWith('//')).join('\n');
       const bl = semC(fsq.readFileSync(path.join(RAIZ, 'lib', 'bling.js'), 'utf8'));
-      const mlSrc = semC(fsq.readFileSync(path.join(RAIZ, 'lib', 'ml.js'), 'utf8'));
+      // b702: a GOOD usa a peca unica — o gatilho do ML mora em ml-AMB.js (lib/ml.js e so o adaptador)
+      const mlSrc = semC(fsq.readFileSync(path.join(RAIZ, 'amb-devolucoes', 'lib-AMB', 'ml-AMB.js'), 'utf8'));
 
       // ⚠️ minha 1a versao usava janela de 500 chars ate o
       // `renovarTokenBling` e nao alcancava — entre o `if` e a renovacao ha
@@ -317,14 +318,11 @@ const registro = require('../lib/empresas.js');
          'lib/bling.js renova so em 401, como o contrato diz'
          + (gBling ? ' (achei ' + gBling[1] + ')' : ' (nao achei o gatilho)'));
 
-      // b267: o `if` ganhou `&& !rota403Conhecida`; busco so a parte dos status
-      const gMl = /if \(\(?(st === 401[^)]*)\)/.exec(mlSrc);
-      ok(!!gMl, 'achei o gatilho da renovacao no lib/ml.js');
-      if (gMl) {
-        ok(/403/.test(gMl[1]), '  e ele inclui 403, como o contrato diz');
-        ok(!/>=|<=|>|</.test(gMl[1]),
-           '  ⚠️ sem faixa: faixa pegaria 429 e 5xx por acidente');
-      }
+      // na fabrica o 401 e o 403 sao dois `if` separados (o 403 passa pela trava por rota); o que o contrato pede
+      // e que os DOIS existam e que nenhum seja faixa (faixa pegaria 429 e 5xx por acidente)
+      const gatilhos = [...mlSrc.matchAll(/if \(status === (\d{3})\) \{/g)].map((m) => m[1]);
+      ok(gatilhos.includes('401') && gatilhos.includes('403'), 'achei os gatilhos da renovacao do ML (401 e 403) na peca unica — ' + gatilhos.join(','));
+      ok(!/if \(status (>=|<=|>|<) \d{3}/.test(mlSrc), '  ⚠️ sem faixa: faixa pegaria 429 e 5xx por acidente');
     }
 
     // ⚠️ token vivo nao vai pra disco — reinicio tem que limpar

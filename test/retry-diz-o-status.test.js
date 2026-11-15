@@ -40,10 +40,10 @@ const abs = (p) => require.resolve(path.join(RAIZ, p));
      '  eixo sem retry falho nao ganha campo vazio (o formato de antes fica igual)');
 }
 
-// ── 2. os 4 clientes informam o status da SEGUNDA chamada ──
+// ── 2. os 3 clientes informam o status da SEGUNDA chamada (b702: o ML da GOOD e a peca unica ml-AMB.js) ──
 {
   const fs = require('fs');
-  for (const arq of ['lib/ml.js', 'lib/bling.js', 'amb-devolucoes/lib-AMB/ml-AMB.js', 'amb-devolucoes/lib-AMB/bling-AMB.js']) {
+  for (const arq of ['lib/bling.js', 'amb-devolucoes/lib-AMB/ml-AMB.js', 'amb-devolucoes/lib-AMB/bling-AMB.js']) {
     const src = fs.readFileSync(path.join(RAIZ, arq), 'utf8');
     const falhos = src.match(/tokenLeitor\.anotarRetry\([^;\n]*, false, [^;\n]*\);/g) || [];
     ok(falhos.length >= 2 && falhos.every((l) => /\.response && \w+\.response\.status\);$/.test(l)),
