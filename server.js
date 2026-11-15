@@ -613,7 +613,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.126.224 (b712: P1-04 — maquina de estados do pedido de defeito no servidor: concluir so de autorizado, autorizar/recusar so de pendente, update condicional (nenhuma escrita fora da transicao))',
+      version: '9.126.225 (b713: P1-03 — entrada de estoque da recuperada com reserva duravel (estoque_operacao) antes do Bling; incerto fica marcado; relancar respeita; b712: maquina de estados)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),

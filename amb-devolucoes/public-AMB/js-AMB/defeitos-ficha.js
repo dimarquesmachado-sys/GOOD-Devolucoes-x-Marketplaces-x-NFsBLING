@@ -124,11 +124,21 @@
     catch (e) { return String(v); }
   }
   // b161 - relanca a entrada de estoque de um pedido (botao da ficha)
-  window.relancarEstoque = async function (pedidoId, btn) {
+  window.relancarEstoque = async function (pedidoId, btn, forcar) {
     if (btn) { btn.disabled = true; btn.textContent = 'Lançando…'; }
     try {
       var r = await api('/api/defeitos/pedido/' + encodeURIComponent(pedidoId) + '/lancar-estoque',
-        { method: 'POST', body: '{}' });
+        { method: 'POST', body: JSON.stringify(forcar ? { forcar: true } : {}) });
+      // b713 (P1-03) - o servidor marcou "em andamento" (ou a chamada anterior ficou sem resposta): so relanca se o
+      // humano conferiu no Bling que NAO entrou — e a confirmacao vira `forcar: true`, que o servidor trata como
+      // compare-and-swap (dois cliques: so um passa)
+      if (r && r.ok === false && r.incerto && !forcar) {
+        if (btn) { btn.disabled = false; btn.textContent = '🔄 Lançar estoque no Bling'; }
+        if (confirm('⚠️ ' + (r.erro || 'ja ha um lancamento em andamento deste pedido') + '\n\nVoce CONFERIU no Bling que a entrada NAO existe? Clique OK pra lançar mesmo assim.')) {
+          return window.relancarEstoque(pedidoId, btn, true);
+        }
+        return;
+      }
       if (r && r.ok) {
         alert('✅ Entrada lançada no Bling!' + (r.ja_lancado ? ' (já estava lançada)' : '')
           + (r.link ? '\n\nConfira: ' + r.link : ''));

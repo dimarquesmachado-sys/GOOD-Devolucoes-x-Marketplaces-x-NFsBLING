@@ -96,6 +96,7 @@ function criarBanco() {
     datas[n.dev] = DADOS[chave].colunaData;
   }
   let erroCount = null;
+  const falhasUpdate = [];
   const client = {
     from(tabela) {
       assert(tabelas[tabela], 'acesso a tabela nao configurada: ' + tabela);
@@ -134,6 +135,10 @@ function criarBanco() {
               && ['defeito_excluido', 'recuperado', 'descartado'].includes(q.campos.tipo)) {
             return { data: null, error: { message: 'new row violates check constraint devolucoes_tipo_check' } };
           }
+          if (q.operacao === 'update') {
+            const f = falhasUpdate.find(x => x.tabela === tabela && x.vezes > 0 && x.quando(q.campos));
+            if (f) { f.vezes--; return { data: null, error: { message: f.msg } }; }
+          }
           let linhas = tabelas[tabela].filter(x => q.condicoes.every(f => f(x)));
           if (q.operacao === 'insert') {
             linhas = q.campos.map(x => ({ id: Math.max(0, ...tabelas[tabela].map(y => Number(y.id) || 0)) + 1, ...x }));
@@ -154,7 +159,9 @@ function criarBanco() {
     },
   };
   return { client, tabelas, chamadas, falharCount(msg) { erroCount = msg; },
-    recusarTipoTerminal(tabela) { recusaTipoTerminal.add(tabela); } };
+    recusarTipoTerminal(tabela) { recusaTipoTerminal.add(tabela); },
+    // b713: simula coluna ausente / update recusado — `quando(campos)` decide, `vezes` limita (padrao: sempre)
+    falharUpdate(tabela, quando, msg, vezes = Infinity) { falhasUpdate.push({ tabela, quando, msg, vezes }); } };
 }
 
 function criarEmpresa(chave, banco = criarBanco(), opcoes = {}) {
@@ -486,6 +493,98 @@ async function main() {
       const comentarios = e.banco.tabelas[e.n.com].length;
       const r3 = await e.pedir('POST', '/api/defeitos/pedido/:id/decidir', opts);
       assert.equal(r3.statusCode, 409); assert.equal(e.banco.tabelas[e.n.com].length, comentarios, 'repetir nao deixa rastro novo');
+    });
+  }
+
+  // b713 — P1-03 (auditoria do Codex): MOVIMENTACAO REPETIVEL COM SEGURANCA. Reserva duravel (estoque_operacao) ANTES
+  // do Bling, fechada conforme a resposta: confirmou / nao aplicou / incerto. Repeticao, concorrencia, resposta perdida
+  // e falha de persistencia NAO geram entrada em dobro; sem a coluna, a rota se recusa (503 com o SQL).
+  function blingDeEstoque(chamadas, respostaPost) {
+    return async (url, opcoes) => {
+      chamadas.push({ url, opcoes });
+      if (url.includes('/produtos?codigo=')) return { ok: true, data: { data: [{ id: 707, codigo: 'SKU-BOA' }] } };
+      if (url.endsWith('/produtos/707')) return { ok: true, data: { data: { estoque: { precoCusto: 10 } } } };
+      if (url.endsWith('/estoques')) return typeof respostaPost === 'function' ? respostaPost() : (respostaPost || { ok: true, data: { data: { id: 11 } } });
+      throw new Error('rota Bling inesperada: ' + url);
+    };
+  }
+  const posts = (chamadas) => chamadas.filter(c => c.opcoes && c.opcoes.method === 'POST').length;
+  async function pedidoRecuperado(e) {
+    e.item(1);
+    const p = await e.pedir('POST', '/api/defeitos/pedido', { body: { tipo: 'recuperado', defeito_id: 1, sku: 'SKU-BOA', quantidade: 1, so_conserto: true } });
+    assert.equal(p.statusCode, 200);
+    return String(p.body.pedido.id);
+  }
+  for (const chave of CHAVES) {
+    await caso(chave + ': autorizar recuperada confirma com LANCADO; relancar depois nao lanca de novo', async () => {
+      const ch = []; const e = criarEmpresa(chave, criarBanco(), { deposito: '8100', chamarBling: blingDeEstoque(ch) });
+      const id = await pedidoRecuperado(e);
+      const r = await e.pedir('POST', '/api/defeitos/pedido/:id/decidir', { params: { id }, papel: 'admin', body: { acao: 'autorizar' } });
+      assert.equal(r.statusCode, 200); assert.equal(r.body.pedido.estoque_bling.ok, true);
+      const ped = e.banco.tabelas[e.n.ped][0];
+      assert.equal(ped.status, 'concluido'); assert.equal(ped.estoque_produto_id, 707); assert(/^LANCADO /.test(ped.estoque_operacao));
+      const rl = await e.pedir('POST', '/api/defeitos/pedido/:id/lancar-estoque', { params: { id }, papel: 'admin' });
+      assert.equal(rl.statusCode, 200); assert.equal(rl.body.ja_lancado, true); assert.equal(posts(ch), 1);
+    });
+    await caso(chave + ': Bling SEM RESPOSTA = incerto: marca fica, relancar recusa (409) ate forcar', async () => {
+      const ch = []; let resposta = { ok: false, status: 0, error: { error: { message: 'timeout' } } };
+      const e = criarEmpresa(chave, criarBanco(), { deposito: '8100', chamarBling: blingDeEstoque(ch, () => resposta) });
+      const id = await pedidoRecuperado(e);
+      const r = await e.pedir('POST', '/api/defeitos/pedido/:id/decidir', { params: { id }, papel: 'admin', body: { acao: 'autorizar' } });
+      assert.equal(r.statusCode, 200); assert.equal(r.body.pedido.estoque_bling.ok, false); assert.equal(r.body.pedido.estoque_bling.incerto, true);
+      const ped = e.banco.tabelas[e.n.ped][0];
+      assert.equal(ped.status, 'autorizado'); assert(/^LANCANDO /.test(ped.estoque_operacao), 'a reserva FICA: ' + ped.estoque_operacao);
+      assert(e.banco.tabelas[e.n.com].some(c => /INCERTO/.test(c.texto)), 'o rastro diz INCERTO');
+      const rl = await e.pedir('POST', '/api/defeitos/pedido/:id/lancar-estoque', { params: { id }, papel: 'admin' });
+      assert.equal(rl.statusCode, 409); assert.equal(rl.body.incerto, true); assert.equal(posts(ch), 1, 'relancar sem forcar NAO chamou o Bling');
+      resposta = { ok: true, data: { data: { id: 11 } } };
+      const rf = await e.pedir('POST', '/api/defeitos/pedido/:id/lancar-estoque', { params: { id }, papel: 'admin', body: { forcar: true } });
+      assert.equal(rf.statusCode, 200); assert.equal(rf.body.ok, true); assert.equal(posts(ch), 2);
+      assert.equal(ped.status, 'concluido'); assert(/^LANCADO /.test(ped.estoque_operacao));
+    });
+    await caso(chave + ': Bling RECUSOU (4xx) = nao aplicou: marca volta a null e relancar funciona', async () => {
+      const ch = []; let resposta = { ok: false, status: 400, error: { error: { message: 'deposito invalido' } } };
+      const e = criarEmpresa(chave, criarBanco(), { deposito: '8100', chamarBling: blingDeEstoque(ch, () => resposta) });
+      const id = await pedidoRecuperado(e);
+      const r = await e.pedir('POST', '/api/defeitos/pedido/:id/decidir', { params: { id }, papel: 'admin', body: { acao: 'autorizar' } });
+      assert.equal(r.statusCode, 200); assert.equal(r.body.pedido.estoque_bling.naoAplicou, true);
+      const ped = e.banco.tabelas[e.n.ped][0];
+      assert.equal(ped.status, 'autorizado'); assert.equal(ped.estoque_operacao, null, 'a reserva foi devolvida');
+      resposta = { ok: true, data: { data: { id: 11 } } };
+      const rl = await e.pedir('POST', '/api/defeitos/pedido/:id/lancar-estoque', { params: { id }, papel: 'admin' });
+      assert.equal(rl.statusCode, 200); assert.equal(posts(ch), 2); assert.equal(ped.estoque_produto_id, 707);
+    });
+    await caso(chave + ': Bling confirmou mas o banco RECUSOU a confirmacao: pedido fica LANCANDO e relancar nao dobra', async () => {
+      const ch = []; const e = criarEmpresa(chave, criarBanco(), { deposito: '8100', chamarBling: blingDeEstoque(ch) });
+      const id = await pedidoRecuperado(e);
+      e.banco.falharUpdate(e.n.ped, campos => campos.estoque_produto_id === 707, 'connection reset', 1);
+      const r = await e.pedir('POST', '/api/defeitos/pedido/:id/decidir', { params: { id }, papel: 'admin', body: { acao: 'autorizar' } });
+      assert.equal(r.statusCode, 200); assert(r.body.pedido.estoque_bling.aviso && /em andamento/.test(r.body.pedido.estoque_bling.aviso), 'a resposta AVISA que a confirmacao nao gravou');
+      const ped = e.banco.tabelas[e.n.ped][0];
+      assert(/^LANCANDO /.test(ped.estoque_operacao)); assert.equal(ped.estoque_produto_id, undefined);
+      const rl = await e.pedir('POST', '/api/defeitos/pedido/:id/lancar-estoque', { params: { id }, papel: 'admin' });
+      assert.equal(rl.statusCode, 409); assert.equal(posts(ch), 1, '⚠️ o cenario do Codex: a repeticao NAO movimenta de novo');
+    });
+    await caso(chave + ': dois relancamentos ao MESMO tempo: um lanca, o outro 409, UM POST', async () => {
+      const ch = []; const e = criarEmpresa(chave, criarBanco(), { deposito: '8100', chamarBling: blingDeEstoque(ch) });
+      const id = await pedidoRecuperado(e);
+      e.banco.tabelas[e.n.ped][0].status = 'autorizado';   // autorizada sem lancamento (pedido antigo)
+      const [a, b] = await Promise.all([
+        e.pedir('POST', '/api/defeitos/pedido/:id/lancar-estoque', { params: { id }, papel: 'admin' }),
+        e.pedir('POST', '/api/defeitos/pedido/:id/lancar-estoque', { params: { id }, papel: 'admin' }),
+      ]);
+      assert.deepEqual([a.statusCode, b.statusCode].sort(), [200, 409]); assert.equal(posts(ch), 1);
+    });
+    await caso(chave + ': sem a coluna estoque_operacao a recuperada NAO e autorizada (503 com o SQL); descarte segue', async () => {
+      const ch = []; const e = criarEmpresa(chave, criarBanco(), { deposito: '8100', chamarBling: blingDeEstoque(ch) });
+      const id = await pedidoRecuperado(e);
+      e.banco.falharUpdate(e.n.ped, campos => 'estoque_operacao' in campos, "column " + e.n.ped + ".estoque_operacao does not exist");
+      const r = await e.pedir('POST', '/api/defeitos/pedido/:id/decidir', { params: { id }, papel: 'admin', body: { acao: 'autorizar' } });
+      assert.equal(r.statusCode, 503); assert.equal(r.body.falta_coluna, true); assert(/add column if not exists estoque_operacao/.test(r.body.sql));
+      assert.equal(e.banco.tabelas[e.n.ped][0].status, 'pendente'); assert.equal(posts(ch), 0, 'sem marcador, nao mexe no Bling');
+      e.item(2); e.banco.tabelas[e.n.ped].push({ id: 50, defeito_id: 2, tipo: 'descarte', status: 'pendente' });
+      const rd = await e.pedir('POST', '/api/defeitos/pedido/:id/decidir', { params: { id: '50' }, papel: 'admin', body: { acao: 'autorizar' } });
+      assert.equal(rd.statusCode, 200, 'descarte nao precisa da coluna');
     });
   }
 
