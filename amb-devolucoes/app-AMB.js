@@ -662,7 +662,7 @@ const registrarCicloDefeitos = require('../lib/defeitos-ciclo');
 // candidato ja desistido ainda batia no Bling depois de esperar numa pausa
 // de 429. Ver bling-AMB.js, nf-nomes-AMB.js e identificar-AMB.js.
 // 29/10: sem o 'AMB' na frente — a mesma peca serve Girassol, AMB e as proximas; a empresa vai no campo `empresa`
-const VERSAO = 'Devolucoes b707';
+const VERSAO = 'Devolucoes b710';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -2121,6 +2121,7 @@ registrarIdentificar(router, {
 
 registrarRotasAdminNF(router, {
   tabelaDevolucoes: db.tabelas.devolucoes,   // b144 - devolucoes_amb
+  supabaseUrl: CFG_EMPRESA.supabase.url,   // b710 (P1-09/P2-12): o proxy de fotos confere a dona e monta a URL publica com ISTO
   chamarMagalu: magalu.chamarMagalu,   // b595 - anuncio do pedido do Magalu (card de varios produtos)
   shopeeProxy: { url: shopee.cfg.url, loja: shopee.cfg.loja, key: process.env.SHOPEE_PROXY_KEY || '' },   // b597 - anuncio da Shopee
   tiktokPonte, tiktokLoja: tiktokPonte.lojaDaEmpresa(CFG_EMPRESA.CHAVE_REGISTRO || SEM_EMPRESA),   // b598 - anuncio do TikTok; b661: nunca a AMB

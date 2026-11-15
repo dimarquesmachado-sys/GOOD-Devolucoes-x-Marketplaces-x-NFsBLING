@@ -614,7 +614,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.126.219 (b707: extensao do upload so com caracteres de URL; b706: P1-01 — foto e dado, nao codigo: painel e ficha sem onclick montado como texto; servidor so grava URL do upload (lib/fotos-referencia); b705: roteiro unico de liquidacao)',
+      version: '9.126.222 (b710: P1-09/P2-12 — proxy de fotos so entrega foto vinculada a devolucao DESTA empresa; URL do Supabase injetada; foto nova na pasta da empresa)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -8960,6 +8960,7 @@ require('./amb-devolucoes/lib-AMB/rotas-admin-AMB.js')(app, Object.assign({}, DE
   chamarBling: (u, ...resto) => chamarBling(/^https?:/i.test(String(u)) ? u : 'https://api.bling.com.br/Api/v3' + u, ...resto),
   tabelaDevolucoes: 'devolucoes',
   colunaCriadoEm: 'created_at',
+  supabaseUrl: SUPABASE_URL,   // b710 (P1-09/P2-12): o proxy de fotos confere a dona e monta a URL publica com ISTO
   triagemNoTipo: true,   // b546 (Codex #449): na GOOD o resultado da triagem fica em `tipo` e o card aberto e status 'pendente'
   // b546: a copia unica chama o ML com caminho relativo ('/users/me'); o cliente da GOOD exige o endereco inteiro
   chamarML: (u, ...resto) => chamarML(/^https?:/i.test(String(u)) ? u : 'https://api.mercadolibre.com' + u, ...resto),

@@ -103,7 +103,8 @@ Segue as 12 etapas do Codex, com os itens de cada uma. A ordem dentro da etapa �
 - **Correção:** agregar por item efetivamente devolvido (id, qtd, preço); histórico sem evidência marcado como desconhecido/aproximado, não inventado.
 - **Aceite:** parcial, múltiplos SKUs e só-o-2º-produto dão valores e rankings corretos (A 1×R$10 + B 1×R$100 = R$110, A=1, B=1).
 
-### P1-09 ⬜ Proxy de fotos não autoriza o objeto pela empresa
+### P1-09 🔄 Proxy de fotos não autoriza o objeto pela empresa
+- **PR:** branch `dev/p1-09-proxy-foto-por-empresa` (b710), junto com P2-12 (mesma rota). Autoriza pelo vínculo `problema_fotos` na tabela da empresa; foto nova vai pra pasta da chave da empresa (`girassol/`, `ambtotal/`), as antigas em `amb/` seguem servidas pelo vínculo.
 - **Onde:** `amb-devolucoes/lib-AMB/rotas-admin-AMB.js` (~l.52) — exige admin, aceita qualquer chave do bucket; upload da fábrica ainda usa prefixo `amb/` pra AMB e Girassol.
 - **Correção:** autorizar empresa → devolução → foto; namespace por empresa com compatibilidade controlada pras imagens antigas.
 - **Aceite:** admin de A pedindo foto de B recebe 403/404 antes de qualquer download.
@@ -135,7 +136,7 @@ Segue as 12 etapas do Codex, com os itens de cada uma. A ordem dentro da etapa �
 | P2-09 | ⬜ | Logout sem revogação efetiva | assinatura validada antes do Map; limpar Map/cookie não invalida token capturado | política de revogação por sessão/usuário/empresa, inclusive após reinício e troca de papel |
 | P2-10 | ⬜ | Notificação vista compartilhada AMB/Girassol | chave fixa `amb_defeitos_visto_em` na mesma origem | empresa canônica na chave; decidir separação por usuário |
 | P2-11 | ⬜ | Download de erro anunciado como foto | `painel-AMB.html:1222`: 401 JSON virou `.jpg` + "sucesso" | conferir status/tipo; contar só downloads concluídos |
-| P2-12 | ⬜ | Fallback de foto com `SUPABASE_URL` não declarado | `rotas-admin-AMB.js:79` → ReferenceError na falha do Storage | injetar dependência; testar o caminho de erro |
+| P2-12 | 🔄 | Fallback de foto com `SUPABASE_URL` não declarado (b710, no PR do P1-09) | `rotas-admin-AMB.js:79` → ReferenceError na falha do Storage | injetar dependência; testar o caminho de erro |
 | P2-13 | ⬜ | Workflow verde sem operar | `.github/workflows/destrava-pr.yml`: sucesso com `fatal: not a git repository` | informar repositório; distinguir "nada a fazer" de erro |
 | P2-14 | ⬜ | Contrato Node incompatível | `package.json` `node >=18`; Supabase do lock exige 22; CI usa 22 | alinhar manifesto, Render e CI em 22 (junto com P1-10) |
 | P2-15 | ⬜ | Teste de boot aceita processo quebrado | teste do painel só checa ausência de frase; filho morto por SyntaxError passa | checar morte antecipada, `listening`, timeout e resposta HTTP real |

@@ -49,6 +49,25 @@ module.exports = function registrarRotasAdminNF(app, deps) {
   const TRIAGEM_NO_TIPO = !!deps.triagemNoTipo;
   const COL_RESULTADO = TRIAGEM_NO_TIPO ? 'tipo' : 'status';
 
+// b710 (P1-09, auditoria do Codex 15/11) - A FOTO TEM DONA. A rota exigia admin mas aceitava QUALQUER chave do bucket: um
+// admin da Girassol pedia `amb/...` e o handler baixava (o upload da fabrica usava o prefixo `amb/` pras duas). Agora, antes
+// de tocar no Storage, confere na tabela de devolucoes DESTA empresa se alguma linha referencia a foto em `problema_fotos`
+// (o que esta gravado la e a URL publica que o upload devolveu). Sem vinculo = 404; banco indisponivel = 500 — erro nunca
+// vira "pode". P2-12 na mesma rota: o fallback pela URL publica usava `SUPABASE_URL`, nome que nao existe neste modulo
+// (ReferenceError em toda falha do Storage); a URL vem por injecao (`supabaseUrl`), com o cliente como reserva.
+const SUPABASE_URL_BASE = String(deps.supabaseUrl || (supabase && supabase.supabaseUrl) || '').replace(/\/+$/, '');
+const BUCKET_FOTOS = 'fotos-problema';
+async function fotoPertenceAEstaEmpresa(arquivo) {
+  // a URL gravada e a que o getPublicUrl devolve: encodeURI(base/object/public/bucket/caminho)
+  const url = encodeURI(`${SUPABASE_URL_BASE}/storage/v1/object/public/${BUCKET_FOTOS}/${arquivo}`);
+  // `problema_fotos` pode ser text[] ou jsonb conforme a tabela; o operador `cs` serve pros dois, mas o VALOR muda de
+  // forma (lista → `{...}`; jsonb exige texto JSON). Tenta a forma de lista; se o PostgREST recusar, a JSON.
+  let r = await supabase.from(TAB).select('id').contains('problema_fotos', [url]).limit(1);
+  if (r.error) r = await supabase.from(TAB).select('id').contains('problema_fotos', JSON.stringify([url])).limit(1);
+  if (r.error) throw new Error('nao consegui conferir a dona da foto: ' + (r.error.message || r.error));
+  return Array.isArray(r.data) && r.data.length > 0;
+}
+
 app.get('/api/admin/foto/*', requerAdmin, async (req, res) => {
   try {
     if (!supabase) return res.status(500).send('Supabase nao configurado');
@@ -59,12 +78,22 @@ app.get('/api/admin/foto/*', requerAdmin, async (req, res) => {
       .replace(/[^a-zA-Z0-9._/-]/g, '');
     if (!arquivo) return res.status(400).send('arquivo invalido');
 
+    // b710 (P1-09) - a conferencia vem ANTES de qualquer download
+    let pertence = false;
+    try {
+      pertence = await fotoPertenceAEstaEmpresa(arquivo);
+    } catch (e) {
+      console.error('[FOTO] conferencia da dona falhou:', e.message || e);
+      return res.status(500).send('nao consegui conferir a foto agora, tente de novo');
+    }
+    if (!pertence) return res.status(404).send('foto nao encontrada nesta empresa');
+
     let buf = null;
     let tipo = null;
     let erroDownload = null;
 
     try {
-      const { data, error } = await supabase.storage.from('fotos-problema').download(arquivo);
+      const { data, error } = await supabase.storage.from(BUCKET_FOTOS).download(arquivo);
       if (!error && data) {
         buf = Buffer.from(await data.arrayBuffer());
         tipo = data.type || null;
@@ -76,7 +105,7 @@ app.get('/api/admin/foto/*', requerAdmin, async (req, res) => {
     }
 
     if (!buf) {
-      const urlPub = `${SUPABASE_URL}/storage/v1/object/public/fotos-problema/` +
+      const urlPub = `${SUPABASE_URL_BASE}/storage/v1/object/public/${BUCKET_FOTOS}/` +
         arquivo.split('/').map(encodeURIComponent).join('/');
       const r2 = await fetch(urlPub);
       if (r2.ok) {
