@@ -126,18 +126,23 @@ const carregar = () => {
   {
     const fs = require('fs');
     const RAIZ = path.join(__dirname, '..');
-    for (const [arq, eixo] of [['lib/bling.js', 'good/bling'], ['lib/ml.js', 'good/ml']]) {
+    // b702: o ML da GOOD e a peca unica (ml-AMB.js); a chave do eixo la e a da instancia (`CHAVE_TOKEN`), e a
+    // recusa e contada pelo leitor (`registrarRecusa`), que e quem o /health le — nao por um contador local.
+    for (const [arq, chave, contador] of [
+      ['lib/bling.js', "'good'", /renovacoesRecusadas\+\+/],
+      ['amb-devolucoes/lib-AMB/ml-AMB.js', 'CHAVE_TOKEN', /tokenLeitor\.registrarRecusa\(CHAVE_TOKEN, 'ml'\)/],
+    ]) {
       const src = fs.readFileSync(path.join(RAIZ, arq), 'utf8');
       // ⚠️ b259.2 (Codex, P2): eu casava a condicao do RETRY, nao a guarda
       // da renovacao — o mesmo texto aparece nos dois lugares. Agora leio
       // o corpo da funcao de renovacao e confiro la dentro.
       const iFn = src.search(/async function renovarToken\w*Interno\(\) \{/);
       const corpoRenov = src.slice(iFn, iFn + 1400);
-      ok(/politicaDe\('good', '(bling|ml)'\)/.test(corpoRenov),
+      ok(new RegExp("politicaDe\\(" + chave + ", '(bling|ml)'\\)").test(corpoRenov),
          arq + ': a GUARDA DA RENOVACAO checa a politica (nao so o retry)');
       ok(/=== 'remoto' \|\| \w+ === 'bloqueado'/.test(corpoRenov),
          '  e recusa nos DOIS estados (remoto e bloqueado)');
-      ok(/renovacoesRecusadas\+\+/.test(src),
+      ok(contador.test(corpoRenov),
          '  e CONTA a recusa (o numero prova o corte, em vez de "ninguem reclamou")');
     }
   }

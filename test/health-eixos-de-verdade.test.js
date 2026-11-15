@@ -45,9 +45,10 @@ for (const [arq, integ] of [['amb-devolucoes/lib-AMB/ml-AMB.js', 'ml'], ['amb-de
      `  e recusa a renovacao local quando o eixo esta em remoto/bloqueado`);
   ok(/const CHAVE_TOKEN = \(cfg && cfg\.CHAVE_REGISTRO\) \|\| SEM_EMPRESA;/.test(s), '  a chave do eixo e a da EMPRESA da instancia (nunca fixa)');
 }
-for (const [arq, integ] of [['lib/ml.js', 'ml'], ['lib/bling.js', 'bling']]) {
-  ok(new RegExp("tokenLeitor\\.resolverToken\\('good', '" + integ + "'\\)").test(rd(arq)), `  GOOD: ${arq} pede o token ao leitor`);
-}
+ok(/tokenLeitor\.resolverToken\('good', 'bling'\)/.test(rd('lib/bling.js')), '  GOOD: lib/bling.js pede o token ao leitor');
+// b702: o ML da GOOD e a peca unica, montada com a ficha da GOOD — o leitor e consultado la, com a chave da instancia
+ok(/criar\(configDaEmpresa\('good'\)\)/.test(rd('lib/ml.js')) && /tokenLeitor\.resolverToken\(CHAVE_TOKEN, 'ml'\)/.test(rd('amb-devolucoes/lib-AMB/ml-AMB.js')),
+   '  GOOD: lib/ml.js monta a peca unica com a ficha da GOOD, e ela pede o token ao leitor');
 
 // ── 3. o texto segue a politica efetiva e o estado da montagem ──
 const ENVS = ['TOKEN_POLITICA_AMBTOTAL_ML', 'TOKEN_POLITICA_GIRASSOL_BLING', 'TOKEN_POLITICA_GOOD_ML', 'TOKEN_POLITICA_PADRAO'];

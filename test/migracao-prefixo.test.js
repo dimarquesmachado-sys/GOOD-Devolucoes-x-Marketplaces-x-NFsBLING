@@ -64,7 +64,7 @@ function ler(empresa, nome, envs, tipo) {
 // teria efeito nenhum — e ele acharia que tinha migrado.
 {
   const fs2 = require('fs');
-  for (const arq of ['lib/bling.js', 'lib/ml.js']) {
+  for (const arq of ['lib/bling.js']) {
     const src = fs2.readFileSync(path.join(RAIZ, arq), 'utf8');
     const codigo = src.split('\n').filter((l) => !l.trim().startsWith('//')).join('\n');
 
@@ -80,6 +80,49 @@ function ler(empresa, nome, envs, tipo) {
     ok(/const chavesToken = /.test(codigo),
        '  e grava o token nos dois nomes enquanto migra');
   }
+}
+
+// ── b702: o ML da GOOD e a PECA UNICA (ml-AMB.js) — a migracao vale la, por COMPORTAMENTO ──
+//
+// `lib/ml.js` virou um adaptador sobre `criar(configDaEmpresa('good'))`: nao tem mais `envGood` nem `chavesToken`.
+// O que o bloco acima guardava continua valendo e e exercitado aqui de verdade, num processo limpo com env
+// controlada: a leitura pelo registro (GOOD_ primeiro, historico depois) e a GRAVACAO do token nos DOIS nomes enquanto
+// o historico existir — senao a primeira renovacao deixa `ML_REFRESH_TOKEN` com o refresh ja consumido e nao da pra
+// voltar atras. Empresa sem historico (a Girassol) grava so o nome dela.
+{
+  const roda = (empresa, envs) => {
+    const codigo = `
+      const path = require('path'); const RAIZ = ${JSON.stringify(RAIZ)};
+      const abs = (p) => require.resolve(path.join(RAIZ, p));
+      const gravados = [];
+      require.cache[abs('lib/render-tokens.js')] = { id: abs('lib/render-tokens.js'), filename: abs('lib/render-tokens.js'), loaded: true,
+        exports: { atualizarTokensNoRender: async (lista) => { gravados.push(...lista.map((x) => x.key)); return true; } } };
+      console.warn = () => {}; console.log = () => {};
+      const { configDaEmpresa } = require(abs('lib/config-da-empresa.js'));
+      const ml = require(abs('amb-devolucoes/lib-AMB/ml-AMB.js')).criar(configDaEmpresa(${JSON.stringify(empresa)}));
+      (async () => {
+        await ml.definirTokens('ACESSO-NOVO', 'REFRESH-NOVO');
+        process.stdout.write(JSON.stringify({ temToken: ml.temToken(), gravados: gravados.sort(), carimbo: ml.preventiva.parEnvCarimbo().key }));
+      })();`;
+    return JSON.parse(execFileSync(process.execPath, ['-e', codigo], { env: { PATH: process.env.PATH, ADMIN_TOKEN_LEITURA_KEY: 'k', ...envs } }).toString());
+  };
+
+  const t1 = roda('good', { ML_ACCESS_TOKEN: 'antigo', ML_REFRESH_TOKEN: 'r-antigo', ML_RENOVADO_EM: '1700000000000' });
+  ok(JSON.stringify(t1.gravados) === JSON.stringify(['GOOD_ML_ACCESS_TOKEN', 'GOOD_ML_REFRESH_TOKEN', 'ML_ACCESS_TOKEN', 'ML_REFRESH_TOKEN', 'ML_RENOVADO_EM']),
+     'TEMPO 1 (GOOD, so o nome antigo no Render): grava o token nos DOIS nomes — ' + t1.gravados.join(', '));
+  ok(t1.carimbo === 'ML_RENOVADO_EM', '  e o carimbo da preventiva segue no nome antigo enquanto so ele existir (senao gastaria um refresh no 1o boot)');
+
+  const t2 = roda('good', { ML_ACCESS_TOKEN: 'antigo', GOOD_ML_ACCESS_TOKEN: 'novo', GOOD_ML_REFRESH_TOKEN: 'r-novo', ML_REFRESH_TOKEN: 'r-antigo', GOOD_ML_RENOVADO_EM: '1700000000000' });
+  ok(t2.gravados.includes('GOOD_ML_ACCESS_TOKEN') && t2.gravados.includes('ML_ACCESS_TOKEN') && t2.carimbo === 'GOOD_ML_RENOVADO_EM',
+     'TEMPO 2 (os dois existem): grava nos dois, e o carimbo ja e o novo');
+
+  const t3 = roda('good', { GOOD_ML_ACCESS_TOKEN: 'novo', GOOD_ML_REFRESH_TOKEN: 'r-novo' });
+  ok(JSON.stringify(t3.gravados) === JSON.stringify(['GOOD_ML_ACCESS_TOKEN', 'GOOD_ML_REFRESH_TOKEN', 'GOOD_ML_RENOVADO_EM']) && t3.temToken === true,
+     'TEMPO 3 (so o novo): grava so no padrao — o nome antigo nao renasce');
+
+  const gira = roda('girassol', { GIRASSOL_ML_ACCESS_TOKEN: 'g', GIRASSOL_ML_REFRESH_TOKEN: 'rg', ML_ACCESS_TOKEN: 'da-good', ML_REFRESH_TOKEN: 'r-da-good' });
+  ok(JSON.stringify(gira.gravados) === JSON.stringify(['GIRASSOL_ML_ACCESS_TOKEN', 'GIRASSOL_ML_REFRESH_TOKEN', 'GIRASSOL_ML_RENOVADO_EM']),
+     '⚠️ empresa SEM historico (Girassol) grava so o nome dela — mesmo com `ML_*` da GOOD no ambiente');
 }
 
 // ── ⚠️ b250.2 (P1+P2): o SERVER tambem, nao so os modulos ───────────

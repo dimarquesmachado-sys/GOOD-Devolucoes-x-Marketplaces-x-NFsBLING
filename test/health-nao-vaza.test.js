@@ -47,7 +47,8 @@ const semComent = bloco.split('\n').filter((l) => !l.trim().startsWith('//')).jo
 {
   // ⚠️ o campo nasce em `lib/ml.js` (o /health so chama `diagnostico403()`),
   // entao confiro NA ORIGEM. Olhar so o server.js dava falso vermelho.
-  const ml = fs.readFileSync(path.join(RAIZ, 'lib', 'ml.js'), 'utf8');
+  // b702: `diagnostico403` mora na peca unica (ml-AMB.js); lib/ml.js so a reexporta
+  const ml = fs.readFileSync(path.join(RAIZ, 'amb-devolucoes', 'lib-AMB', 'ml-AMB.js'), 'utf8');
   const iD = ml.indexOf('function diagnostico403');
   const blocoML = ml.slice(iD, iD + 900);
   ok(/rotas_com_403_recente/.test(blocoML),

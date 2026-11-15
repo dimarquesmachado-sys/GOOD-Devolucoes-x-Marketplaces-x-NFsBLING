@@ -152,7 +152,15 @@ async function boot(envExtra) {
     }
     return null;
   };
-  const preventivaGood = () => { const m = saida.match(/PREVENTIVA=(\[.*?\])/); return m ? JSON.parse(m[1]) : null; };
+  // b702: espera a linha chegar, como `timers()` — ela sai no MESMO setTimeout do TIMERS=, mas em outro console.log, e o
+  // chunk podia ainda nao ter entrado em `saida` quando o teste lia (vermelho intermitente na bateria, 15/11)
+  const preventivaGood = async () => {
+    for (let i = 0; i < 20; i++) {
+      const m = saida.match(/PREVENTIVA=(\[.*?\])/); if (m) return JSON.parse(m[1]);
+      await new Promise((r) => setTimeout(r, 250));
+    }
+    return null;
+  };
   return { porta, filho, health, timers, preventivaGood, log: () => saida, matar: () => { try { filho.kill('SIGKILL'); } catch (e) { /* ja morreu */ } } };
 }
 
@@ -165,7 +173,7 @@ async function boot(envExtra) {
   const raizOn = await pedir(on.porta, '/');
   ok(raizOn.status !== 503, `  raiz NAO e 503 com a GOOD ligada (veio ${raizOn.status})`);
   const timersOn = await on.timers();
-  const prevOn = on.preventivaGood();
+  const prevOn = await on.preventivaGood();
   ok(Array.isArray(prevOn) && prevOn.length >= 2 && prevOn.every((x) => x === false), `  preventivas da GOOD registradas e VIVAS com ela ligada (${JSON.stringify(prevOn)})`);
   on.matar();
 
@@ -186,7 +194,7 @@ async function boot(envExtra) {
   const amb = await pedir(off.porta, '/amb/');
   ok(amb.status !== 503 && amb.status !== 0 && !/foi desativada neste servico/.test(amb.corpo), `  a instancia /amb segue viva (veio ${amb.status})`);
   const timersOff = await off.timers();
-  const prevOff = off.preventivaGood();
+  const prevOff = await off.preventivaGood();
   ok(Array.isArray(prevOff) && prevOff.length >= 2 && prevOff.every((x) => x === true), `  preventivas da GOOD (bling/ml/magalu) DESATIVADAS: nao renovam nem falam com o marketplace (${JSON.stringify(prevOff)})`);
   off.matar();
   ok(timersOn != null && timersOff != null && timersOff < timersOn,

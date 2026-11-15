@@ -244,9 +244,12 @@ const ate = async (cond) => { for (let i = 0; i < 200 && !cond(); i++) await uma
     const antes = veredito(t, 'good/ml');
     await t.ml.chamarML('https://api.mercadolibre.com/orders/2000012345678901');
     const depois = veredito(t, 'good/ml'); t.falar();
-    ok(antes.pronto === false && /4 recusa\(s\) do marketplace ainda sem aceite depois/.test(antes.por_que) && /TODAS por 403/.test(antes.por_que),
-       '⚠️ GOOD/ML: 403 de politica em serie, nada aceito ainda -> nao pronto — ' + antes.por_que);
-    ok(depois.pronto === true && /4 recusa\(s\) do marketplace ja explicada/.test(depois.por_que) && /2 invalidacao\(oes\) sem retry conhecido/.test(depois.por_que),
+    // b702: a GOOD passou a usar a peca unica, e com ela a regra do 403 da fabrica (b690): o 2o e o 3o 403 da MESMA
+    // rota, na janela de 10 min, voltam sem derrubar o cache nem repetir. Antes eram "2 invalidacao(oes) sem retry
+    // conhecido — TODAS por 403" (118 em 5 min no /health real); agora nao ha invalidacao sem retry nenhuma.
+    ok(antes.pronto === false && /4 recusa\(s\) do marketplace ainda sem aceite depois/.test(antes.por_que) && !/invalidacao\(oes\) sem retry conhecido/.test(antes.por_que),
+       '⚠️ GOOD/ML: 403 de politica em serie, nada aceito ainda -> nao pronto, e a rota conhecida nao derruba o cache de novo — ' + antes.por_que);
+    ok(depois.pronto === true && /4 recusa\(s\) do marketplace ja explicada/.test(depois.por_que) && /retry falhou 1x \(status do retry — 403: 1\)/.test(depois.por_que),
        '⚠️ GOOD/ML: outra rota aceita com o mesmo token do dono -> PRONTO, e o 403 da rota continua dito — ' + depois.por_que);
   }
   { // Bling da GOOD
