@@ -113,7 +113,8 @@ Segue as 12 etapas do Codex, com os itens de cada uma. A ordem dentro da etapa �
 - **Correção:** subir pra versão mantida sem advisory; revisar limites (tamanho, contagem); validar conteúdo real da imagem. **Não** `npm audit fix --force`. Junto com P2-14 (Node).
 - **Aceite:** upload válido, excessivo, malformado e interrompido nas 3 — processo segue atendendo.
 
-### P1-11 ⬜ OAuth Magalu da GOOD sem state de uso único
+### P1-11 🔄 OAuth Magalu da GOOD sem state de uso único
+- **PR:** branch `dev/p1-11-oauth-magalu-state` (b709): `lib/oauth-state.js` é a peça única (a fábrica passou a usá-la com a gaveta dela; a GOOD criou a sua); `/magalu/autorizar` gera state aleatório, `/magalu/callback` consome antes de ler o code. **Fica em aberto** neste item: confirmar a identidade da conta Magalu antes de persistir o token — não há endpoint conhecido de "quem sou" no ID Magalu sem tenant; medir antes de inventar.
 - **Onde:** `server.js` (~l.4301): `state='good'`, callback aceita code sem conferir estado/sessão; persiste tokens antes de confirmar a conta.
 - **Correção:** usar o fluxo da fábrica (state aleatório, validade curta, consumo único, empresa vinculada, identidade confirmada antes de gravar) — a GOOD vira adaptador, como no ML (b702).
 - **Aceite:** state ausente, expirado, repetido ou de outra empresa falha sem trocar nem gravar credencial.

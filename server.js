@@ -614,7 +614,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.126.219 (b707: extensao do upload so com caracteres de URL; b706: P1-01 — foto e dado, nao codigo: painel e ficha sem onclick montado como texto; servidor so grava URL do upload (lib/fotos-referencia); b705: roteiro unico de liquidacao)',
+      version: '9.126.221 (b709: P1-11 — OAuth Magalu da GOOD com state aleatorio de uso unico (lib/oauth-state, a mesma peca da fabrica); callback nao troca nem grava sem state)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -4292,6 +4292,12 @@ app.get('/politica-de-privacidade', (req, res) => {
   `));
 });
 
+// b709 (P1-11, auditoria do Codex 15/11) - STATE DE USO UNICO, como na fabrica. Ate o b708 o passo 1 mandava
+// `state='good'` fixo e o passo 2 nem olhava: qualquer code que chegasse no callback era trocado e GRAVADO no
+// Render — bastava um code valido do app pra trocar a conta conectada. Agora: state aleatorio, 10 min, consumido
+// uma vez, guardado so neste processo (um state da AMB/Girassol nao existe aqui); sem ele nada e trocado nem gravado.
+const oauthGood = require('./lib/oauth-state').criar();
+
 // Passo 1 do OAuth: manda o Diego (seller) pra tela de consentimento
 app.get('/magalu/autorizar', requerAdmin, (req, res) => {
   if (!magalu.cfg.ativo) {
@@ -4299,7 +4305,7 @@ app.get('/magalu/autorizar', requerAdmin, (req, res) => {
       <p>Defina no Render as envs <b>MAGALU_CLIENT_ID</b>, <b>MAGALU_CLIENT_SECRET</b>
       e <b>MAGALU_REDIRECT_URI</b> antes de autorizar.</p>`));
   }
-  return res.redirect(magalu.urlConsentimento('good'));
+  return res.redirect(magalu.urlConsentimento(oauthGood.novoState('magalu', { empresa: 'good' })));
 });
 
 // Passo 2 do OAuth: a Magalu devolve o ?code= aqui. Trocamos por tokens.
@@ -4307,6 +4313,13 @@ app.get('/magalu/autorizar', requerAdmin, (req, res) => {
 // sem cookie da nossa sessao). Ela so aceita um code valido de 10 min e de
 // uso unico - sem code valido, nao faz nada.
 app.get('/magalu/callback', async (req, res) => {
+  // b709 - o state vem ANTES de tudo (inclusive do code): sem state valido, nenhuma troca e nenhuma gravacao
+  const reg = oauthGood.consumirState(String(req.query.state || ''));
+  if (!reg || reg.servico !== 'magalu' || reg.empresa !== 'good') {
+    return res.status(400).type('html').send(_paginaLegal('Magalu - link invalido', `
+      <p><b>Link invalido ou expirado.</b> Este endereco so vale por 10 minutos depois de clicar em autorizar,
+      e uma vez so. Volte ao sistema e clique em autorizar de novo.</p>`));
+  }
   const code = String(req.query.code || '').trim();
   if (!code) {
     return res.status(400).type('html').send(_paginaLegal('Magalu', '<p>Callback sem <b>code</b>. Refaca a autorizacao.</p>'));
