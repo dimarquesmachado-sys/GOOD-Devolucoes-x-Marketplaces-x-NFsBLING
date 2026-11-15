@@ -35,7 +35,7 @@
 // a AMB le exatamente as mesmas de hoje.
 function criar(cfgEmpresa) {
   const { PREFIXO_SEM_EMPRESA } = require('../../lib/empresas');   // b662 - nunca ler as envs da AMB por fallback
-  const { exigirFotosValidas } = require('../../lib/fotos-referencia');   // b706 (P1-01) - so grava foto que veio do upload deste servidor
+  const { exigirFotosValidas, nomeDePastaSeguro } = require('../../lib/fotos-referencia');   // b706 (P1-01) - so grava foto que veio do upload deste servidor
   // ⚠️ b400 - a etiqueta do log diz QUAL EMPRESA.
   //
   // Era `[AMB/...]` fixo: o Render junta o log das duas no MESMO lugar,
@@ -1058,7 +1058,7 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
 
     const bucket = process.env[_PREFIXO + 'FOTOS_BUCKET'] || 'fotos-problema';
     const ext = String(req.file.originalname || 'foto.jpg').split('.').pop().toLowerCase();
-    const nome = `amb/${req.usuario}/${Date.now()}-${crypto.randomBytes(4).toString('hex')}.${ext}`;
+    const nome = `amb/${nomeDePastaSeguro(req.usuario)}/${Date.now()}-${crypto.randomBytes(4).toString('hex')}.${ext}`;   // b706 (Codex #577): pasta so com caracteres de URL
 
     try {
       const { error } = await cliente.storage.from(bucket).upload(nome, req.file.buffer, {

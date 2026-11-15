@@ -1179,10 +1179,15 @@
     // v3.33 - fotos servidas pelo PROPRIO servidor (imune a bucket
     // publico/privado no Supabase; protegidas pelo login do admin)
     function srcFoto(url) {
-      const partes = String(url || '').split('/fotos-problema/');
-      // b706 (P1-01, auditoria do Codex) - o que NAO e foto do bucket nao vira src: antes a string crua
-      // voltava inteira (um `javascript:` ou `<img ...>` gravado no banco ia direto pro atributo)
-      if (partes.length !== 2 || !/^https:\/\//.test(partes[0])) return '';
+      const u = String(url || '');
+      const partes = u.split('/fotos-problema/');
+      // b706 (P1-01, auditoria do Codex) - o que NAO e foto do Storage nao vira src: antes a string crua
+      // voltava inteira (um `javascript:` ou `<img ...>` gravado no banco ia direto pro atributo).
+      // Codex (#577): bucket configurado por *_FOTOS_BUCKET (outro nome) nao passa pelo proxy — que le so o
+      // fotos-problema — e continua indo direto pela URL publica, como sempre foi.
+      if (partes.length !== 2 || !/^https:\/\/[^/]+\/storage\/v1\/object\/public$/.test(partes[0])) {
+        return /^https:\/\/[^/"'<>\s]+\/storage\/v1\/object\/public\/[A-Za-z0-9._-]+\/[^"'<>\s]+$/.test(u) ? u : '';
+      }
       // Codex (revisão do PR #370, P2) - `<img src>` não passa pelo fetch()
       // que base-amb.js prefixa por empresa; sem o APP_BASE aqui, a Girassol
       // (e qualquer empresa fora da raiz) pedia a foto na raiz da GOOD sem a

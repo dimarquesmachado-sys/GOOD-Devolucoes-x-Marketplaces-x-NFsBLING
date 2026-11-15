@@ -26,7 +26,7 @@ const mlClient = require('./lib/ml');
 
 // v3.16.0 - Dashboard de relatorios
 const registrarRotasRelatorios = require('./lib/rotas-relatorios');
-const { exigirFotosValidas } = require('./lib/fotos-referencia');   // b706 (P1-01) - so grava foto que veio do upload deste servidor
+const { exigirFotosValidas, nomeDePastaSeguro } = require('./lib/fotos-referencia');   // b706 (P1-01) - so grava foto que veio do upload deste servidor
 // b650 - a peca virou multiempresa: a busca textual que ela usava por dentro
 // agora e injetada por quem registra (aqui, a da GOOD).
 const produtosClient = require('./lib/produtos-client');
@@ -3701,7 +3701,7 @@ app.post('/api/triagem/upload-foto', requerEstoquista, upload.single('foto'), as
   const ext = (req.file.originalname || 'foto.jpg').split('.').pop().toLowerCase();
   const ts = Date.now();
   const random = crypto.randomBytes(4).toString('hex');
-  const filename = `${req.usuario}/${ts}-${random}.${ext}`;
+  const filename = `${nomeDePastaSeguro(req.usuario)}/${ts}-${random}.${ext}`;   // b706 (Codex #577): pasta so com caracteres de URL
 
   try {
     const { error } = await supabase.storage

@@ -55,6 +55,17 @@ const RUINS = {
 };
 for (const [nome, v] of Object.entries(RUINS)) ok(ref.ehReferenciaDeFoto(v) === false, `  recusa: ${nome}`);
 
+// Codex #577 (P2): o nome do usuario e PASTA do upload; `getPublicUrl` nao codifica `+` nem `'`. A pasta sai saneada
+// nas duas pontas, entao a URL que o upload devolve e sempre aceita pelo validador.
+ok(ref.nomeDePastaSeguro('ana+estoque') === 'ana_estoque' && ref.nomeDePastaSeguro("d'avila") === 'd_avila' && ref.nomeDePastaSeguro('Diego.M@x-1') === 'Diego.M@x-1',
+   'nomeDePastaSeguro: troca o que nao e caractere de URL por _ e preserva . @ - _');
+ok(ref.nomeDePastaSeguro('') === 'usuario' && ref.nomeDePastaSeguro(null) === 'usuario' && ref.nomeDePastaSeguro('..') === '_', '  vazio/nulo vira "usuario"; ".." nao vira travessia');
+ok(ref.ehReferenciaDeFoto('https://sldnteste.supabase.co/storage/v1/object/public/fotos-problema/amb/' + ref.nomeDePastaSeguro("ana+d'avila") + '/1763200000000-ab12cd34.jpg') === true,
+   '  a URL de upload de um usuario com + e aspa passa no validador');
+for (const [arq, trecho] of [['server.js', 'const filename = `${nomeDePastaSeguro(req.usuario)}/'], ['amb-devolucoes/lib-AMB/compat-AMB.js', 'const nome = `amb/${nomeDePastaSeguro(req.usuario)}/']]) {
+  ok(fs.readFileSync(path.join(RAIZ, arq), 'utf8').includes(trecho), `  ${arq}: o upload usa nomeDePastaSeguro(req.usuario)`);
+}
+
 // o middleware, com req/res simulados, nos 4 nomes que a tela usa e no envelope `dados`
 function rodar(body) {
   const req = { body };
@@ -128,6 +139,11 @@ if (typeof ctx.blocoFotosHtml === 'function') {
   ok(ctx.srcFoto(RUINS['javascript:']) === '' && ctx.srcFoto(RUINS['tag']) === '' && ctx.srcFoto('') === '' && ctx.srcFoto(RUINS['http sem TLS']) === '',
      '⚠️ srcFoto: o que nao tem a forma https://…/fotos-problema/… vira src VAZIO (antes devolvia a string crua; o host quem confere e o servidor — P1-09)');
   ok(ctx.srcFoto(BOA) === '/girassol/api/admin/foto/amb/diego/1763200000000-ab12cd34.jpg', '  srcFoto da foto boa segue pelo proxy da empresa');
+  // Codex #577 (P2): bucket configurado por *_FOTOS_BUCKET nao passa pelo proxy (que le so o fotos-problema) — vai direto, como antes
+  const OUTRO = 'https://sldnteste.supabase.co/storage/v1/object/public/fotos-amb/amb/diego/1.jpg';
+  ok(ctx.srcFoto(OUTRO) === OUTRO, '  bucket configurado (outro nome): a URL publica vai como esta, nao vira vazio');
+  ok(ctx.srcFoto(OUTRO + '" onerror="x') === '' && ctx.srcFoto("https://s.supabase.co/storage/v1/object/public/b/a'b.jpg") === '',
+     '  mas com aspa, espaco ou tag no meio continua vazio');
 }
 // os 3 renderizadores usam o bloco; o padrao antigo sumiu do painel inteiro
 for (const r of ['itemHtmlAprovado', 'itemHtmlProblema', 'itemHtmlDivergente']) {
