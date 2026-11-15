@@ -145,7 +145,10 @@
             method: 'PUT', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ nf_devolucao_id_bling: String(f.idNotaDevolucao), nf_devolucao_numero: String(f.numero || '') }),
           });
-          if (r.ok) gravadas.push(f); else sobraram.push(Object.assign({}, f, { erro: 'HTTP ' + r.status }));
+          // Codex: a rota pode devolver HTTP 200 com { ok:false } (erro de banco / registro inexistente) — so o corpo diz se gravou
+          var j = await r.json().catch(function () { return null; });
+          if (r.ok && j && j.ok) gravadas.push(f);
+          else sobraram.push(Object.assign({}, f, { erro: r.ok ? String((j && j.erro) || 'resposta sem ok') : 'HTTP ' + r.status }));
         } catch (e) { sobraram.push(Object.assign({}, f, { erro: String(e && e.message || e) })); }
       }
       if (gravadas.length) {

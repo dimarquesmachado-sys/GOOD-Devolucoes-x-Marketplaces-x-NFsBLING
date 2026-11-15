@@ -29,7 +29,11 @@ function montar(empresa, respostas) {
   const ctx = {
     window: { APP_EMPRESA: empresa, APP_BASE: empresa === 'good' ? '' : '/' + empresa, postMessage: (m) => log.posts.push(m) },
     alert: (t) => log.alerts.push(t), console: { log() {} }, String, Object, Array, JSON, Promise, encodeURIComponent,
-    fetch: async (url) => { log.puts.push(String(url)); const id = String(url).split('/').pop(); return { ok: respostas[id] !== false, status: respostas[id] === false ? 401 : 200 }; },
+    // respostas[id]: true = grava; false = HTTP 401; 'ok:false' = HTTP 200 com { ok:false } (atualizarTriagem com erro de banco)
+    fetch: async (url) => {
+      log.puts.push(String(url)); const id = String(url).split('/').pop(); const v = respostas[id];
+      return { ok: v !== false, status: v === false ? 401 : 200, json: async () => (v === 'ok:false' ? { ok: false, erro: 'erro de banco' } : { ok: true }) };
+    },
   };
   vm.createContext(ctx);
   vm.runInContext(fonte(PB, 'chaveDaEmpresaDoPainel') + '\n' + fonte(PB, 'tratarFalhasDeRegistroDaBridge'), ctx);
@@ -57,6 +61,37 @@ const FALHAS = [
     const t = montar('amb', { 9: true });
     const r = await t.ctx.tratarFalhasDeRegistroDaBridge(FALHAS);
     ok(t.log.puts.length === 1 && t.log.puts[0] === '/amb/api/admin/registrar-devolucao-gerada/9' && r.gravadas.length === 1, '  painel em /amb regrava a da ambtotal, e so ela');
+  }
+  // Codex: HTTP 200 com { ok:false } NAO e gravacao — nao pode mandar limpar a pendencia da extensao
+  {
+    const t = montar('girassol', { 42: 'ok:false', 43: true });
+    const r = await t.ctx.tratarFalhasDeRegistroDaBridge(FALHAS);
+    ok(r.gravadas.length === 1 && r.gravadas[0].devolucaoId === '43', '⚠️ 200 com ok:false nao conta como gravada (so a 43)');
+    ok(t.log.posts.length === 1 && t.log.posts[0].chaves.join() === 'girassol:43', '  e nao manda limpar a 42');
+    ok(/devolução 42 → NF 127999 \(erro de banco\)/.test(t.log.alerts.join('\n')), '  o aviso mostra o erro do corpo');
+  }
+  // Codex: gerarDevolucaoSilenciosa — 200 com ok:false vira erro, e o erro leva a emissao pra esteira lembrar do estoque
+  {
+    const PGN = fs.readFileSync(path.join(RAIZ, 'amb-devolucoes', 'public-AMB', 'js-AMB', 'painel-gerar-nf.js'), 'utf8');
+    const mk = (auto) => {
+      const ctx = {
+        window: { APP_EMPRESA: 'amb', APP_BASE: '/amb' }, DEPOSITOS_AMB: { geral: '1' }, String, JSON, encodeURIComponent, Error,
+        chamarBlingViaBridge: async () => ({ idNotaDevolucao: 777, numero: '1234', emitida: true, auto_registro: auto }),
+        fetch: async (url) => String(url).includes('resolver-id-nf')
+          ? { ok: true, json: async () => ({ ok: true, idBling: '5' }) }
+          : { ok: true, status: 200, json: async () => ({ ok: false, erro: 'erro de banco' }) },
+      };
+      vm.createContext(ctx);
+      vm.runInContext(fonte(PGN, 'gerarDevolucaoSilenciosa'), ctx);
+      return ctx;
+    };
+    let err = null;
+    try { await mk(null).gerarDevolucaoSilenciosa('42', '5', '10', '1', ''); } catch (e) { err = e; }
+    ok(err && /FOI CRIADA no Bling/.test(err.message), '⚠️ gerarDevolucaoSilenciosa: 200 com ok:false + sem auto_registro = erro');
+    ok(err && err.emissao && err.emissao.numero === '1234' && err.emissao.emitida === true, '  o erro carrega { numero, emitida } da NF ja emitida');
+    ok(/err\.emissao && err\.emissao\.emitida && manterAbertoProblemas\) lembretesEstoque\.push/.test(PGN), '  a esteira, no catch, empilha o lembrete de cancelar estoque desse numero');
+    const r2 = await mk({ ok: true }).gerarDevolucaoSilenciosa('42', '5', '10', '1', '');
+    ok(r2.numero === '1234' && r2.emitida === true, '  com a extensao tendo registrado (auto_registro.ok) segue sem erro');
   }
   // sem falhas: silencio
   {

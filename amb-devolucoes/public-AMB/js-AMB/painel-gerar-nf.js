@@ -68,12 +68,17 @@
             nf_devolucao_numero: String(result.numero || ''),
           }),
         });
-        registrou = !!rReg.ok;
+        // Codex: a rota pode devolver HTTP 200 com { ok:false } — so o corpo diz se gravou
+        const jReg = await rReg.json().catch(() => null);
+        registrou = !!(rReg.ok && jReg && jReg.ok);
       } catch (e) { registrou = false; }
       const autoOk = !!(result.auto_registro && result.auto_registro.ok);
       if (!registrou && !autoOk) {
-        throw new Error('A NF de devolução ' + (result.numero || result.idNotaDevolucao) + ' FOI CRIADA no Bling, mas o sistema NÃO conseguiu registrar no card (nem este painel, nem a extensão'
+        const eReg = new Error('A NF de devolução ' + (result.numero || result.idNotaDevolucao) + ' FOI CRIADA no Bling, mas o sistema NÃO conseguiu registrar no card (nem este painel, nem a extensão'
           + (result.auto_registro && result.auto_registro.erro ? ': ' + result.auto_registro.erro : '') + '). Registre pelo card antes de gerar de novo.');
+        // Codex: a NF ja foi emitida — leva o resultado junto pra esteira ainda lembrar de cancelar o estoque
+        eReg.emissao = { numero: result.numero || '?', emitida: !!result.emitida };
+        throw eReg;
       }
 
       return { numero: result.numero || '?', emitida: !!result.emitida };
@@ -206,6 +211,8 @@
           }
         } catch (err) {
           const msg = String(err.message || err);
+          // Codex: emitiu mas nao registrou — o estoque Geral ja foi movido, o lembrete de cancelar vale igual
+          if (err.emissao && err.emissao.emitida && manterAbertoProblemas) lembretesEstoque.push(err.emissao.numero || item.nfnum);
           if (msg.toLowerCase().includes('ja possui devolucao')) {
             // Card órfão: acha e vincula em vez de falhar
             try {
@@ -548,7 +555,8 @@
               nf_devolucao_numero: String(numeroNF),
             }),
           });
-          registrou = !!rReg.ok;
+          const jReg = await rReg.json().catch(() => null);   // Codex: HTTP 200 pode trazer { ok:false }
+          registrou = !!(rReg.ok && jReg && jReg.ok);
         } catch (e) {
           console.warn('Falha ao registrar no Supabase:', e);
         }
