@@ -35,6 +35,7 @@
 // a AMB le exatamente as mesmas de hoje.
 function criar(cfgEmpresa) {
   const { PREFIXO_SEM_EMPRESA } = require('../../lib/empresas');   // b662 - nunca ler as envs da AMB por fallback
+  const { exigirFotosValidas } = require('../../lib/fotos-referencia');   // b706 (P1-01) - so grava foto que veio do upload deste servidor
   // ⚠️ b400 - a etiqueta do log diz QUAL EMPRESA.
   //
   // Era `[AMB/...]` fixo: o Render junta o log das duas no MESMO lugar,
@@ -1216,7 +1217,7 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
 
 
   /** Triagem OK: o que voltou confere com a NF. */
-  router.post('/api/triagem/aprovar', auth.requerLogin, async (req, res) => {
+  router.post('/api/triagem/aprovar', auth.requerLogin, exigirFotosValidas, async (req, res) => {
     const d = corpo(req);
     // ⚠️ b459 - SEM ORIGEM NAO APROVA. O estoquista da Girassol bipou o codigo
     // de barras do PRODUTO em vez do rastreio: 3 cards nasceram so com SKU e
@@ -1250,7 +1251,7 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
   /** Produto com problema: avisa por e-mail e responde se ha outras
    *  unidades do mesmo SKU em defeito (a tela usa pro alerta de
    *  canibalizacao) — mesmo comportamento do /api/triagem/registrar. */
-  router.post('/api/triagem/problema', auth.requerLogin, async (req, res) => {
+  router.post('/api/triagem/problema', auth.requerLogin, exigirFotosValidas, async (req, res) => {
     const d = comDescricao(corpo(req));
     let r = await db.registrarTriagem({ ...d, status: 'problema', funcionario: req.usuario });
     if (!r.ok) return res.json(r);
@@ -1267,7 +1268,7 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
   });
 
   /** Veio produto DIFERENTE do que a NF diz. */
-  router.post('/api/triagem/divergente', auth.requerLogin, async (req, res) => {
+  router.post('/api/triagem/divergente', auth.requerLogin, exigirFotosValidas, async (req, res) => {
     const d = descricaoDivergente(corpo(req), req.usuario);
     // b497 (Codex #411): a tela monta itens_devolvidos com os itens ESPERADOS da NF que foram bipados;
     // no divergente o que voltou e o produto_correto_*, entao a lista nao pode ser gravada (a GOOD tambem nao grava).
@@ -1279,7 +1280,7 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
   /** Chegou com defeito mas o estoquista CONSERTOU: entra como aprovado,
    *  com o registro do conserto na descricao. Se usou peca de outra
    *  unidade em defeito, marca a retirada (canibalizacao). */
-  router.post('/api/triagem/consertado', auth.requerLogin, async (req, res) => {
+  router.post('/api/triagem/consertado', auth.requerLogin, exigirFotosValidas, async (req, res) => {
     const d = corpo(req);
     // b461 (Codex, P2): o "Consertei" grava aprovado pelo mesmo caminho — mesma trava
     const origemC = require('../../lib/triagem-tem-origem').conferirOrigem(d);
@@ -1313,7 +1314,7 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
 
   /** Lancar produto com defeito no estoque (o "+ Lançar produto com
    *  defeito" da tela). Valida o SKU no Bling antes de gravar. */
-  router.post('/api/defeitos/adicionar', auth.requerLogin, async (req, res) => {
+  router.post('/api/defeitos/adicionar', auth.requerLogin, exigirFotosValidas, async (req, res) => {
     // ═══════════════════════════════════════════════════════════════════
     // b110 - A TELA MANDA OUTROS NOMES. Ela envia {defeito, qtd} e eu lia
     // {descricao, quantidade}: a descricao do defeito virava NULL e a

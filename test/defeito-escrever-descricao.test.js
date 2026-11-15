@@ -20,8 +20,11 @@ for (const arq of ['amb-devolucoes/public-AMB/js-AMB/defeitos-ficha.js', 'amb-de
   ok(b.indexOf('fecharFichaInline()') >= 0 && b.indexOf('fecharFichaInline()') < b.indexOf('abrirFichaDefeito(id)'), '⚠️ GOOD: fecha a ficha inline de OUTRO card antes de abrir em tela cheia');
   ok(/fichaAberta\.item\.id\) !== String\(id\)\) return;/.test(b), '  GOOD: ficha que nao carregou nao abre a edicao da peca anterior');
 }
-for (const [arq, v] of [['amb-devolucoes/public-AMB/index-AMB.html', 'b623'], ['amb-devolucoes/public-AMB/painel-AMB.html', 'b623'], ['public/index.html', 'b623'], ['lib/painel-unico.js', 'b623']]) {
-  ok(fs.readFileSync(path.join(R, arq), 'utf8').includes('defeitos-ficha.js?v=' + v), '  ' + arq + ': ?v= novo');
+// b706: ancorava no literal `b623` e quebrou no bump seguinte (CLAUDE.md §6: nunca ancore em valor que o conserto vai
+// mudar). Agora exige um ?v= igual ou posterior ao b623 — o do dia em que a ficha virou unica.
+for (const arq of ['amb-devolucoes/public-AMB/index-AMB.html', 'amb-devolucoes/public-AMB/painel-AMB.html', 'public/index.html', 'lib/painel-unico.js']) {
+  const m = fs.readFileSync(path.join(R, arq), 'utf8').match(/defeitos-ficha\.js\?v=b(\d+)/);
+  ok(m && Number(m[1]) >= 623, '  ' + arq + ': ?v= novo (b' + (m ? m[1] : '?') + ' >= b623)');
 }
 console.log('');
 console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
