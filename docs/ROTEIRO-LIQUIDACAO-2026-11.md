@@ -77,7 +77,8 @@ Segue as 12 etapas do Codex, com os itens de cada uma. A ordem dentro da etapa �
 - **Aceite:** repetição sequencial, simultânea, resposta perdida e falha de persistência não geram entrada indevida; timeout depois do envio vira conciliação, nunca repetição cega.
 - ⚠️ Pode pedir coluna nova → SQL explícito em `sql/`, compatível no deploy, **só com OK do dono**.
 
-### P1-04 ⬜ Estoquista conclui pedido pendente sem aprovação
+### P1-04 🔄 Estoquista conclui pedido pendente sem aprovação
+- **PR:** branch `dev/p1-04-maquina-de-estados` (b712). Update condicional ao estado anterior (`in('status', DE[acao])`): `autorizar`/`recusar` só de `pendente`, `concluir` só de `autorizado`; 0 linhas → 404 ou 409 `{de, para}` sem nenhuma escrita. Isso já fecha a **1ª metade do P1-03** (autorizar de novo não lança no Bling de novo); fica pro P1-03 a reserva antes do efeito externo, o estado `incerto` e o relançamento que ignora falha do marcador.
 - **Onde:** mesma rota, ~l.1345: `concluir` passa com `requerLogin` e não confere `status === 'autorizado'`. Confirmado no código em 15/11.
 - **Correção:** máquina de estados no servidor com permissão por transição: `autorizar/recusar` só admin e só de `pendente`; `concluir` só de `autorizado`. Negar = nenhuma escrita.
 - **Aceite:** estoquista não promove pendente/recusado a concluído; resposta 403/409 sem update.

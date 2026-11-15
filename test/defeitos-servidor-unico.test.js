@@ -437,6 +437,58 @@ async function main() {
     });
   }
 
+  // b712 — P1-04 do ROTEIRO-LIQUIDACAO-2026-11 (auditoria do Codex): A MAQUINA DE ESTADOS MORA NO SERVIDOR.
+  // pendente → autorizado → concluido, ou pendente → recusado. Fora disso: 409, e NADA e escrito (nem Bling, nem a
+  // peca, nem comentario). Vale pras 3 empresas pelo mesmo codigo.
+  for (const chave of CHAVES) {
+    await caso(chave + ': estoquista NAO conclui pedido pendente (409, sem escrita)', async () => {
+      const e = criarEmpresa(chave); e.item(1);
+      e.banco.tabelas[e.n.ped].push({ id: 1, defeito_id: 1, tipo: 'descarte', status: 'pendente' });
+      const antes = e.banco.chamadas.length;
+      const r = await e.pedir('POST', '/api/defeitos/pedido/:id/decidir', { params: { id: '1' }, body: { acao: 'concluir' } });
+      assert.equal(r.statusCode, 409); assert.equal(r.body.ok, false);
+      assert.equal(r.body.de, 'pendente'); assert.equal(r.body.para, 'concluido');
+      assert.equal(e.banco.tabelas[e.n.ped][0].status, 'pendente');
+      assert.equal(e.banco.tabelas[e.n.com].length, 0);
+      const escritas = e.banco.chamadas.slice(antes).filter(c => c.operacao !== 'select');
+      assert.equal(escritas.filter(c => c.tabela !== e.n.ped).length, 0, 'nenhuma escrita fora do update condicional');
+    });
+    await caso(chave + ': concluir so a partir de autorizado; recusar so a partir de pendente; inexistente 404', async () => {
+      const e = criarEmpresa(chave); e.item(1);
+      e.banco.tabelas[e.n.ped].push({ id: 1, defeito_id: 1, tipo: 'descarte', status: 'autorizado' });
+      let r = await e.pedir('POST', '/api/defeitos/pedido/:id/decidir', { params: { id: '1' }, papel: 'admin', body: { acao: 'recusar' } });
+      assert.equal(r.statusCode, 409); assert.equal(e.banco.tabelas[e.n.ped][0].status, 'autorizado');
+      r = await e.pedir('POST', '/api/defeitos/pedido/:id/decidir', { params: { id: '1' }, body: { acao: 'concluir' } });
+      assert.equal(r.statusCode, 200); assert.equal(e.banco.tabelas[e.n.ped][0].status, 'concluido');
+      r = await e.pedir('POST', '/api/defeitos/pedido/:id/decidir', { params: { id: '1' }, body: { acao: 'concluir' } });
+      assert.equal(r.statusCode, 409, 'concluir de novo nao e idempotente silencioso: diz que ja esta concluido');
+      r = await e.pedir('POST', '/api/defeitos/pedido/:id/decidir', { params: { id: '999' }, papel: 'admin', body: { acao: 'autorizar' } });
+      assert.equal(r.statusCode, 404);
+    });
+    await caso(chave + ': autorizar a MESMA recuperacao duas vezes lanca no Bling UMA vez (1a metade do P1-03)', async () => {
+      const chamadas = [];
+      const e = criarEmpresa(chave, criarBanco(), { deposito: '8100', chamarBling: async (url, opcoes) => {
+        chamadas.push({ url, opcoes });
+        if (url.includes('/produtos?codigo=')) return { ok: true, data: { data: [{ id: 707, codigo: 'SKU-BOA' }] } };
+        if (url.endsWith('/produtos/707')) return { ok: true, data: { data: { estoque: { precoCusto: 10 } } } };
+        if (url.endsWith('/estoques')) return { ok: true, data: { data: { id: 11 } } };
+        throw new Error('rota Bling inesperada: ' + url);
+      } });
+      e.item(1);
+      const p = await e.pedir('POST', '/api/defeitos/pedido', { body: { tipo: 'recuperado', defeito_id: 1, sku: 'SKU-BOA', quantidade: 1, so_conserto: true } });
+      const opts = { params: { id: String(p.body.pedido.id) }, papel: 'admin', body: { acao: 'autorizar' } };
+      const r1 = await e.pedir('POST', '/api/defeitos/pedido/:id/decidir', opts);
+      assert.equal(r1.statusCode, 200);
+      const r2 = await e.pedir('POST', '/api/defeitos/pedido/:id/decidir', opts);
+      assert.equal(r2.statusCode, 409, 'a 2a autorizacao e recusada');
+      const posts = chamadas.filter(c => c.opcoes && c.opcoes.method === 'POST');
+      assert.equal(posts.length, 1, 'UMA entrada no Bling, nao duas');
+      const comentarios = e.banco.tabelas[e.n.com].length;
+      const r3 = await e.pedir('POST', '/api/defeitos/pedido/:id/decidir', opts);
+      assert.equal(r3.statusCode, 409); assert.equal(e.banco.tabelas[e.n.com].length, comentarios, 'repetir nao deixa rastro novo');
+    });
+  }
+
   await caso('as três instâncias compartilham código/banco sem compartilhar linhas', async () => {
     const banco = criarBanco(); const empresas = CHAVES.map(k => criarEmpresa(k, banco));
     empresas.forEach(e => { e.item(1); e.item(2); });

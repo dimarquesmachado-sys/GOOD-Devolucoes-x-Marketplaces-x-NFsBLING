@@ -613,7 +613,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.126.217 (b705: roteiro unico de liquidacao — auditoria do Codex de 15/11 + pendencias herdadas, docs/ROTEIRO-LIQUIDACAO-2026-11.md)',
+      version: '9.126.224 (b712: P1-04 — maquina de estados do pedido de defeito no servidor: concluir so de autorizado, autorizar/recusar so de pendente, update condicional (nenhuma escrita fora da transicao))',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
