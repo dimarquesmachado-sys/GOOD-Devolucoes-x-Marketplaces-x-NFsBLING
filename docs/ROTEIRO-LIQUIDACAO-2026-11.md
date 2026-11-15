@@ -84,7 +84,8 @@ Segue as 12 etapas do Codex, com os itens de cada uma. A ordem dentro da etapa �
 - **Correção:** máquina de estados no servidor com permissão por transição: `autorizar/recusar` só admin e só de `pendente`; `concluir` só de `autorizado`. Negar = nenhuma escrita.
 - **Aceite:** estoquista não promove pendente/recusado a concluído; resposta 403/409 sem update.
 
-### P1-05 ⬜ Fallback por EAN escolhe o primeiro candidato
+### P1-05 🔄 Fallback por EAN escolhe o primeiro candidato
+- **PR:** branch `dev/p1-05-ean-ambiguo` (b714, sobre o b713). Ordem: código exato → de-para da empresa (`resolverSku`, agora injetado também na GOOD) → EAN **só com um** produto; mais de um interrompe (`ambiguo`, `candidatos`) e devolve a reserva.
 - **Onde:** `lib/defeitos-ciclo.js` (~l.93). Contraria `CLAUDE.md §5`: EAN não identifica produto neste catálogo.
 - **Correção:** `produto.id` confirmado → SKU → de-para (`sku_depara*`); ambiguidade no EAN **interrompe** com mensagem, nunca escolhe.
 - **Aceite:** dois produtos com o mesmo EAN jamais provocam escolha automática.
