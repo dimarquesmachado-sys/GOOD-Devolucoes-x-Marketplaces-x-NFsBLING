@@ -44,8 +44,7 @@ const RAIZ = path.join(__dirname, '..');
 
 // ── a busca filtra por serie ────────────────────────────────────────
 {
-  for (const [nome, rel] of [['GOOD', 'lib/bling.js'],
-                             ['AMB', 'amb-devolucoes/lib-AMB/admin-helpers-AMB.js']]) {
+  for (const [nome, rel] of [['peca unica (GOOD+AMB+Girassol)', 'lib/bling-buscas.js']]) {
     const src = fs.readFileSync(path.join(RAIZ, rel), 'utf8');
     const i = src.indexOf('async function buscarNFnoBlingPorNumero');
     const fn = src.slice(i, i + 5000);

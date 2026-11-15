@@ -101,7 +101,7 @@ function armazemFalso(inicial, { leituraFalha } = {}) {
   const falhou = await criarArmazem({ obterSupabase: () => sbCom({ message: 'fetch failed', statusCode: '500' }), chave: 'x' }).carregarComEstado('a');
   ok(nao.ok === true && nao.obj === null && falhou.ok === false, '  armazem: "arquivo nao existe" e diferente de "falhou a leitura"');
   // as duas buscas pela chave repassam o fundo
-  for (const arq of ['lib/bling.js', 'amb-devolucoes/lib-AMB/admin-helpers-AMB.js']) {
+  for (const arq of ['lib/bling-buscas.js']) {   // b703: as buscas sao UMA peca (GOOD, AMB e Girassol)
     const s = fs.readFileSync(path.join(__dirname, '..', arq), 'utf8');
     ok(/chamarBling\(url, opcoes\.fundo \? \{ fundo: true \} : \{\}\)/.test(s) && /buscarNFePorId\(lista\[0\]\.id, opcoes\.fundo \? \{ fundo: true \} : \{\}\)/.test(s), '  ' + arq + ': a busca pela chave repassa o modo fundo (lista e detalhe)');
   }

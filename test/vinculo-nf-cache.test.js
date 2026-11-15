@@ -150,8 +150,7 @@ const RAIZ = path.join(__dirname, '..');
   }
 
   // e a helper respeita o ritmo internamente (ate 3 requests por item)
-  for (const [nome, rel] of [['GOOD', 'lib/bling.js'],
-                             ['AMB', 'amb-devolucoes/lib-AMB/admin-helpers-AMB.js']]) {
+  for (const [nome, rel] of [['peca unica (GOOD+AMB+Girassol)', 'lib/bling-buscas.js']]) {
     const src = fs.readFileSync(path.join(RAIZ, rel), 'utf8');
     ok(/if \(feitas > 0\) await sleep\(350\)/.test(src),
        nome + ': a helper pausa entre as proprias chamadas (padded, limpo, varredura)');
@@ -207,8 +206,7 @@ const RAIZ = path.join(__dirname, '..');
        nome + ': a fase do PEDIDO corta em 8s — comia 14 e a da CHAVE nao rodava');
   }
 
-  for (const [nome, rel] of [['GOOD', 'lib/bling.js'],
-                             ['AMB', 'amb-devolucoes/lib-AMB/admin-helpers-AMB.js']]) {
+  for (const [nome, rel] of [['peca unica (GOOD+AMB+Girassol)', 'lib/bling-buscas.js']]) {
     const src = fs.readFileSync(path.join(RAIZ, rel), 'utf8');
     ok(/pausa ANTES de entrar na varredura/.test(src),
        nome + ': pausa antes da varredura — eram 4 requests numa janela de 1s');
@@ -233,8 +231,7 @@ const RAIZ = path.join(__dirname, '..');
 
 // ── b204.7: a varredura tambem descarta nota MORTA ──────────────────
 {
-  for (const [nome, rel] of [['GOOD', 'lib/bling.js'],
-                             ['AMB', 'amb-devolucoes/lib-AMB/admin-helpers-AMB.js']]) {
+  for (const [nome, rel] of [['peca unica (GOOD+AMB+Girassol)', 'lib/bling-buscas.js']]) {
     const src = fs.readFileSync(path.join(RAIZ, rel), 'utf8');
     const i = src.indexOf('async function buscarNFnoBlingPorNumero');
     const fn = src.slice(i, i + 13000);   // a funcao cresceu (b207)
@@ -282,8 +279,7 @@ const RAIZ = path.join(__dirname, '..');
   }
 
   // e a helper tenta as duas grafias mesmo achando so nota morta
-  for (const [nome, rel] of [['GOOD', 'lib/bling.js'],
-                             ['AMB', 'amb-devolucoes/lib-AMB/admin-helpers-AMB.js']]) {
+  for (const [nome, rel] of [['peca unica (GOOD+AMB+Girassol)', 'lib/bling-buscas.js']]) {
     const src = fs.readFileSync(path.join(RAIZ, rel), 'utf8');
     const i = src.indexOf('async function buscarNFnoBlingPorNumero');
     const fn = src.slice(i, i + 13000);

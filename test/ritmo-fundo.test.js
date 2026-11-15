@@ -15,7 +15,9 @@ let falhas = 0;
 const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o); };
 
 const RAIZ = path.join(__dirname, '..');
-const BLING = fs.readFileSync(path.join(RAIZ, 'lib', 'bling.js'), 'utf8');
+// b703: as buscas (blindada, por numero, por pedido) moram em lib/bling-buscas.js; o cliente segue em lib/bling.js.
+// A varredura "toda funcao que aceita opcoes repassa fundo" vale pros DOIS arquivos.
+const BLING = fs.readFileSync(path.join(RAIZ, 'lib', 'bling.js'), 'utf8') + '\n' + fs.readFileSync(path.join(RAIZ, 'lib', 'bling-buscas.js'), 'utf8');
 const NOMES = fs.readFileSync(path.join(RAIZ, 'amb-devolucoes', 'lib-AMB', 'nf-nomes-AMB.js'), 'utf8');
 
 // ── a prioridade funciona de verdade ────────────────────────────────

@@ -27,17 +27,18 @@ const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o
 const RAIZ = path.join(__dirname, '..');
 
 // nome -> (arquivo, funcao) onde ele PODE aparecer
+// b703: as buscas viraram a peca unica lib/bling-buscas.js (GOOD, AMB e Girassol) — as duas copias sumiram
 const VIGIADOS = [
-  ['acumuladas', 'lib/bling.js', 'buscarNFnoBlingPorNumero'],
-  ['acumuladas', 'amb-devolucoes/lib-AMB/admin-helpers-AMB.js', 'buscarNFnoBlingPorNumero'],
-  ['vivasVarredura', 'lib/bling.js', 'buscarNFnoBlingPorNumero'],
-  ['vivasVarredura', 'amb-devolucoes/lib-AMB/admin-helpers-AMB.js', 'buscarNFnoBlingPorNumero'],
-  ['todasAteAqui', 'lib/bling.js', 'buscarNFnoBlingPorNumero'],
-  ['todasAteAqui', 'amb-devolucoes/lib-AMB/admin-helpers-AMB.js', 'buscarNFnoBlingPorNumero'],
+  ['acumuladas', 'lib/bling-buscas.js', 'buscarNFnoBlingPorNumero'],
+  ['vivasVarredura', 'lib/bling-buscas.js', 'buscarNFnoBlingPorNumero'],
+  ['todasAteAqui', 'lib/bling-buscas.js', 'buscarNFnoBlingPorNumero'],
 ];
 
 for (const [nome, rel, funcaoDona] of VIGIADOS) {
   const s = fs.readFileSync(path.join(RAIZ, rel), 'utf8');
+  // ⚠️ um nome que nem existe mais passaria "por ausencia" — o teste exige que ele ESTEJA la (foi assim que esta
+  // vigilancia ficou cega por um dia quando os arquivos mudaram, b703)
+  ok(new RegExp('\\b' + nome + '\\b').test(s) && s.includes('async function ' + funcaoDona), rel.split('/').pop() + ': `' + nome + '` e `' + funcaoDona + '` existem (senao a vigilancia e vazia)');
   const fn = [...s.matchAll(/(?:async )?function (\w+)/g)].map((m) => ({ pos: m.index, f: m[1] }));
   const donaDe = (pos) => {
     const antes = fn.filter((x) => x.pos < pos);
@@ -55,17 +56,15 @@ for (const [nome, rel, funcaoDona] of VIGIADOS) {
 
 // e as funcoes que NAO podem depender do acumulador continuam limpas
 {
-  const amb = fs.readFileSync(path.join(RAIZ, 'amb-devolucoes', 'lib-AMB', 'admin-helpers-AMB.js'), 'utf8');
-  const i = amb.indexOf('async function varreduraFundo');
-  const j = amb.indexOf('async function ', i + 10);
-  ok(!/acumuladas\./.test(amb.slice(i, j)),
-     'a varreduraFundo da AMB nao usa `acumuladas` — nao tem um');
-
-  const good = fs.readFileSync(path.join(RAIZ, 'lib', 'bling.js'), 'utf8');
-  const a = good.indexOf('async function buscarNFnoBlingPorOrderId');
-  const b = good.indexOf('async function ', a + 10);
-  ok(!/acumuladas/.test(good.slice(a, b)),
-     'e a busca por PEDIDO da GOOD tambem nao');
+  // b703: a `varreduraFundo` local da fabrica saiu; a fase 3 da blindada usa `buscarNFnoBlingPorOrderId` da peca unica
+  const src = fs.readFileSync(path.join(RAIZ, 'lib', 'bling-buscas.js'), 'utf8');
+  const a = src.indexOf('async function buscarNFnoBlingPorOrderId');
+  const b = src.indexOf('async function ', a + 10);
+  ok(a >= 0 && b > a && !/acumuladas/.test(src.slice(a, b)),
+     'a busca por PEDIDO (fundo da blindada) nao usa `acumuladas` — nao tem um');
+  const c = src.indexOf('async function buscarNFBlindada');
+  ok(c >= 0 && !/acumuladas/.test(src.slice(c)),
+     'e a blindada tampouco');
 }
 
 console.log('');

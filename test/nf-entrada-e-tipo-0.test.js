@@ -67,7 +67,7 @@ const srv = fs.readFileSync(path.join(RAIZ, 'server.js'), 'utf8');
 //   - a busca por CHAVE precisa do 1: sem ele, a chave de uma nota de
 //     entrada casava e o id ia pro cache como se fosse a venda
 {
-  const bling = fs.readFileSync(path.join(RAIZ, 'lib', 'bling.js'), 'utf8');
+  const bling = fs.readFileSync(path.join(RAIZ, 'lib', 'bling-buscas.js'), 'utf8');   // b703: a busca pela chave mora na peca unica
   const iChave = bling.indexOf('nfe?limite=5&pagina=1&tipo=1&chave');
   ok(iChave > 0, 'a busca por CHAVE mantem tipo=1 (proposital)');
   ok(/tipo=1` = nota de SAIDA/.test(bling) || /`tipo=1` = nota de SAIDA/.test(bling),

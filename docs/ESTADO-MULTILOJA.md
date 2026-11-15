@@ -377,8 +377,17 @@ tenta em `remoto`/`bloqueado` (b258) e a gravação do token também no nome his
 Render (b250 — e o carimbo da preventiva segue em `ML_RENOVADO_EM` até `GOOD_ML_RENOVADO_EM` existir, senão o primeiro
 boot gastaria um refresh). A GOOD ganhou o retry de 429 e a regra do 403 em rota já conhecida sem derrubar o cache
 (b690). Os testes da GOOD que liam o fonte da cópia passaram a exercitar a peça única (`ml-403-permanente` virou
-comportamento; `migracao-prefixo` prova a gravação nos dois nomes num processo limpo). Próxima cópia: `bling` — medir
-antes (`docs/divida-copias-empresas.md`).
+comportamento; `migracao-prefixo` prova a gravação nos dois nomes num processo limpo).
+
+**b703 — as buscas de NF e pedido no Bling são peça única (`lib/bling-buscas.js`).** A medição mostrou três cópias
+no Bling, não duas: o cliente (GOOD × fábrica) e, separado, ~1.000 linhas de busca (`buscarNFBlindada`, `PelaChave`,
+`PorNumero`, `PorOrderId`, pedido por `numeroLoja`) em `lib/bling.js` **e** em `admin-helpers-AMB.js`, divergindo nos
+dois sentidos. Nivelado por cima: a fábrica ganhou `opcoes.fundo` descendo pra fila do Bling, a busca por order_id em
+fatias (b197) e o pedido por numeroLoja; a GOOD ganhou o `parar()` da blindada (quem desiste não gasta cota, b203.4) e
+a **NF viva mais recente** no filtro direto (b172 — a GOOD devolvia `lista[0]`, que podia ser a cancelada). A fase 2 da
+blindada recebe o detalhe do pedido por injeção (a fábrica chamava o Bling direto porque a função não existia lá). Os
+testes que liam as duas cópias apontam para a peça; `test/bling-buscas-peca-unica` exercita o nivelamento com Bling
+simulado. Falta a última cópia: o cliente do Bling (`lib/bling.js` × `bling-AMB.js`), pelo caminho do ML (b702).
 
 ⚠️ Voltar para `local` com refresh antigo pode falhar: o dono já pode tê-lo
 consumido.

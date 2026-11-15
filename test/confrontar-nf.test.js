@@ -198,8 +198,7 @@ const CHAVE_S3 = '35260864289091000100550030000006371448079669';   // serie 003,
      '  texto direto continua funcionando');
 
   // a varredura devolve TODAS as vivas, senao a escada nunca oferece escolha
-  for (const [nome, rel] of [['GOOD', 'lib/bling.js'],
-                             ['AMB', 'amb-devolucoes/lib-AMB/admin-helpers-AMB.js']]) {
+  for (const [nome, rel] of [['peca unica (GOOD+AMB+Girassol)', 'lib/bling-buscas.js']]) {
     const src = fs.readFileSync(path.join(RAIZ, rel), 'utf8');
     ok(/const vivasVarredura = candidatas/.test(src),
        nome + ': a varredura guarda todas as vivas');
@@ -222,8 +221,7 @@ const CHAVE_S3 = '35260864289091000100550030000006371448079669';   // serie 003,
 
 // ── b210.2: acumular entre paginas, e aprender sem chave ────────────
 {
-  for (const [nome, rel] of [['GOOD', 'lib/bling.js'],
-                             ['AMB', 'amb-devolucoes/lib-AMB/admin-helpers-AMB.js']]) {
+  for (const [nome, rel] of [['peca unica (GOOD+AMB+Girassol)', 'lib/bling-buscas.js']]) {
     const src = fs.readFileSync(path.join(RAIZ, rel), 'utf8');
     const i = src.indexOf('async function buscarNFnoBlingPorNumero');
     const fn = src.slice(i, i + 13000);
@@ -236,8 +234,7 @@ const CHAVE_S3 = '35260864289091000100550030000006371448079669';   // serie 003,
   }
 
   // b210.3: no limite de paginas, entrega o ACUMULADO (nao so a ultima)
-  for (const [nome, rel] of [['GOOD', 'lib/bling.js'],
-                             ['AMB', 'amb-devolucoes/lib-AMB/admin-helpers-AMB.js']]) {
+  for (const [nome, rel] of [['peca unica (GOOD+AMB+Girassol)', 'lib/bling-buscas.js']]) {
     const src = fs.readFileSync(path.join(RAIZ, rel), 'utf8');
     const i = src.indexOf('async function buscarNFnoBlingPorNumero');
     const fn = src.slice(i, i + 13000);
@@ -250,19 +247,20 @@ const CHAVE_S3 = '35260864289091000100550030000006371448079669';   // serie 003,
   // b210.3: a varreduraFundo da AMB NAO tem acumulador — meu retorno
   // acumulado entrou nela por engano e daria ReferenceError
   {
-    const src = fs.readFileSync(path.join(RAIZ, 'amb-devolucoes', 'lib-AMB', 'admin-helpers-AMB.js'), 'utf8');
-    const i = src.indexOf('async function varreduraFundo');
-    const j = src.indexOf('async function buscarNFnoBlingPorNumero');
+    // b703: a `varreduraFundo` local da fabrica SAIU — a fase 3 da blindada usa `buscarNFnoBlingPorOrderId`
+    // (a da GOOD, em fatias), que e quem tem que devolver o miss limpo e nao vazar `acumuladas`
+    const src = fs.readFileSync(path.join(RAIZ, 'lib', 'bling-buscas.js'), 'utf8');
+    const i = src.indexOf('async function buscarNFnoBlingPorOrderId');
+    const j = src.indexOf('v3.19 - BUSCA BLINDADA DE NF');
     const fundo = src.slice(i, j);
-    ok(!/const todas = acumuladas/.test(fundo),
-       'a varreduraFundo NAO usa `acumuladas` — daria ReferenceError');
-    ok(/return \{ ok: true, match: null, totalScanned/.test(fundo),
-       '  ela devolve um miss limpo, como antes');
+    ok(i >= 0 && j > i && !/const todas = acumuladas/.test(fundo) && !/acumuladas/.test(fundo),
+       'a varredura de fundo (buscarNFnoBlingPorOrderId) NAO usa `acumuladas` — daria ReferenceError');
+    ok(/match: null,\s*totalScanned/.test(fundo) && /buscarNFnoBlingPorOrderId\(oid, opts\.dataReferencia \|\| null/.test(src),
+       '  ela devolve um miss limpo, e e ela que a blindada chama na fase 3');
   }
 
   // b216.2: a saida final distingue "varri tudo" de "acabaram as paginas"
-  for (const [nome, rel] of [['GOOD', 'lib/bling.js'],
-                             ['AMB', 'amb-devolucoes/lib-AMB/admin-helpers-AMB.js']]) {
+  for (const [nome, rel] of [['peca unica (GOOD+AMB+Girassol)', 'lib/bling-buscas.js']]) {
     const src = fs.readFileSync(path.join(RAIZ, rel), 'utf8');
     const i = src.indexOf('async function buscarNFnoBlingPorNumero');
     const fn = src.slice(i, i + 12000);
@@ -291,8 +289,7 @@ const CHAVE_S3 = '35260864289091000100550030000006371448079669';   // serie 003,
   }
 
   // b210.4: NENHUM caminho de erro descarta o acumulado
-  for (const [nome, rel] of [['GOOD', 'lib/bling.js'],
-                             ['AMB', 'amb-devolucoes/lib-AMB/admin-helpers-AMB.js']]) {
+  for (const [nome, rel] of [['peca unica (GOOD+AMB+Girassol)', 'lib/bling-buscas.js']]) {
     const src = fs.readFileSync(path.join(RAIZ, rel), 'utf8');
     const i = src.indexOf('async function buscarNFnoBlingPorNumero');
     const fn = src.slice(i, i + 9800);

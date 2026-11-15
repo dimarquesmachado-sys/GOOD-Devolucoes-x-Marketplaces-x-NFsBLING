@@ -613,7 +613,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.126.214 (b702: o cliente do ML vira peca unica — a GOOD usa a fabrica (ml-AMB) por um adaptador fino; 403 por rota e /health iguais nas 3)',
+      version: '9.126.215 (b703: as buscas de NF/pedido no Bling viram peca unica (lib/bling-buscas) — GOOD e fabrica niveladas: fundo, parar() e NF viva mais recente)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
