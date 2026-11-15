@@ -45,7 +45,11 @@ const checagem = (re) => CHECAGENS.find((c) => re.test(c.nome));
   process.env.SHOPEE_PROXY_URL = 'x'; process.env.SHOPEE_PROXY_KEY = 'y';
   process.env.MAGALU_ACCESS_TOKEN = 'tok';   // legado, sem prefixo
   r = await can('good');
-  ok(/Magalu: FALHOU \(falta/.test(r.detalhe), '⚠️ Magalu legado (sem prefixo) da GOOD e visto: sem tenant FALHA, nao "NAO APLICAVEL"');
+  // b699: este caso esperava `Magalu: FALHOU (falta ...)`. O que ele guarda continua — o token legado, sem
+  // prefixo, e VISTO (nao vira "NAO APLICAVEL"). Mas "sem tenant = falha" era premissa errada pra GOOD: a raiz
+  // usa o tenant padrao do codigo quando a env nao existe (lib/magalu-espreita.js), e a sonda de producao
+  // reprovava a GOOD com o Magalu configurado (15/11). A fabrica segue exigindo a env — test/sonda-hospedeira.
+  ok(/Magalu: configurado \(tenant padrao do codigo/.test(r.detalhe) && !/NAO APLICAVEL/.test(r.detalhe), '⚠️ Magalu legado (sem prefixo) da GOOD e visto, com o tenant padrao da raiz — nao "NAO APLICAVEL" nem "FALHOU"');
   ok(/TikTok: FALHOU/.test(r.detalhe) && r.ok === false, '⚠️ ponte sem MOVER_PEDIDOS_URL/KEY reprova (nao "mapeado na ponte")');
   process.env.MOVER_PEDIDOS_URL = 'http://m.invalid'; process.env.MOVER_PEDIDOS_KEY = 'k'; process.env.MAGALU_TENANT_ID = 't';
   r = await can('good');

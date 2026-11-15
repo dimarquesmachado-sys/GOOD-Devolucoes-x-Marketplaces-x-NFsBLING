@@ -101,12 +101,17 @@ registrar('ficha e configuração', async (chave) => {
   }
   const c = conferirEmpresa(chave);
   const faltam = (c.envsFaltando || []).length + (c.fiscalSemValor || []).length;
+  // b699 - DIZ O NOME DO QUE FALTA. A rota respondia "1 env(s) faltando" e a dica era um comando de
+  // terminal — quem opera pelo navegador ficava sem saber QUAL (GOOD, 15/11). So nomes: valor nunca.
+  const nomes = (c.envsFaltando || []).map((n) => 'env ' + n)
+    .concat((c.fiscalSemValor || []).map((n) => 'campo fiscal ' + n));
   return {
     ok: faltam === 0,
     detalhe: faltam === 0
       ? 'nada faltando'
       : `${(c.envsFaltando || []).length} env(s) e `
         + `${(c.fiscalSemValor || []).length} campo(s) fiscal(is) faltando`,
+    erro: faltam ? 'falta: ' + nomes.join(' · ') : null,
     dica: faltam ? 'node scripts/plugar-empresa.js ' + chave : null,
   };
 });
@@ -433,9 +438,13 @@ registrar('tabelas no Supabase', async (chave) => {
   // (que não existe) e sugerir o sufixo RESERVADO `_good`. `sufixoDaFicha`
   // (a mesma função que `provisionarEmpresa` usa) lê o nome real da tabela
   // na ficha em vez de inventar.
+  // b699 - SEM SUFIXO NÃO É ERRO: é a hospedeira (a GOOD), que usa as tabelas originais. "Nada a criar" é a
+  // resposta certa pro provisionador e era a errada aqui — a sonda reprovava a GOOD sem olhar tabela
+  // nenhuma (15/11). As 7 são as mesmas, sem sufixo (o ciclo de defeitos da raiz usa `defeito_*` puro).
   const s = sufixoDaFicha(e);
-  if (!s.ok) return { ok: false, detalhe: s.erro };
-  const tabelas = TABELAS_ESPERADAS.map((base) => base + s.sufixo);
+  if (!s.ok && !s.semSufixo) return { ok: false, detalhe: s.erro };
+  const sufixo = s.ok ? s.sufixo : '';
+  const tabelas = TABELAS_ESPERADAS.map((base) => base + sufixo);
 
   const url = process.env[e.prefixoEnv + 'SUPABASE_URL'] || process.env.SUPABASE_URL;
   const key = process.env[e.prefixoEnv + 'SUPABASE_KEY'] || process.env.SUPABASE_KEY;
@@ -506,10 +515,13 @@ registrar('tabelas no Supabase', async (chave) => {
     detalhe: ausentes.length === 0
       ? `as ${tabelas.length} respondem`
       : `faltam ${ausentes.length} de ${tabelas.length}: ${ausentes.join(', ')}`,
-    dica: ausentes.length
-      ? 'cole sql/provisionar-empresa.sql no SQL Editor e rode '
-        + `select provisionar_empresa('${s.sufixo}');`
-      : null,
+    // a rotina do banco só cria tabela COM sufixo: pra hospedeira, mandar rodá-la seria mandar errar
+    dica: !ausentes.length ? null
+      : (sufixo
+        ? 'cole sql/provisionar-empresa.sql no SQL Editor e rode '
+          + `select provisionar_empresa('${sufixo}');`
+        : 'tabelas SEM sufixo são as originais da hospedeira — a rotina de provisionamento não as cria; '
+          + 'confira no Supabase se a tabela existe com esse nome'),
   };
 });
 
@@ -572,8 +584,14 @@ registrar('canais (Magalu, Shopee, TikTok)', async (chave, ctx) => {
   const tem = (v) => !!String(v || '').trim();
   const partes = [];
   // Magalu: token + tenant da empresa; credencial propria ou a da GOOD
+  // b699 - a HOSPEDEIRA (a raiz) tem tenant PADRAO no codigo (lib/magalu-espreita.js): sem a env o Magalu dela
+  // funciona, e a sonda dizia FALHOU (GOOD, 15/11). So a raiz tem padrao — a fabrica exige a env da empresa.
+  const tenantDaRaiz = e.prefixoRota === '' ? require('../lib/magalu-espreita').TENANT_PADRAO_DA_RAIZ : '';
   if (tem(mg.accessToken) || tem(mg.refreshToken)) {
-    partes.push('Magalu: ' + (tem(mg.tenantId) ? 'configurado' : 'FALHOU (falta ' + (e.prefixoEnv || '') + 'MAGALU_TENANT_ID)')
+    const tenant = tem(mg.tenantId) ? 'configurado'
+      : (tem(tenantDaRaiz) ? `configurado (tenant padrao do codigo: ${tenantDaRaiz})`
+        : 'FALHOU (falta ' + (e.prefixoEnv || '') + 'MAGALU_TENANT_ID)');
+    partes.push('Magalu: ' + tenant
       + (tem(mg.clientId) ? ' · credencial propria' : ' · usa a credencial da GOOD'));
   } else partes.push('Magalu: NAO APLICAVEL (sem token da empresa)');
   // Shopee: proxy compartilhado (o servico multi-loja)

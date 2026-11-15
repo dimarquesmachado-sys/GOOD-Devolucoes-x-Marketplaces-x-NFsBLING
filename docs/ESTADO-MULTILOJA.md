@@ -330,6 +330,29 @@ vira "falta permissão". A lista do que o serviço usa é uma só (`lib/ml-permi
 **medido** dos dois lados; a dica do índice (b695) passou a usar a mesma definição de bloqueio. Vale pras três
 e pra próxima: é a mesma sonda que diz `pode_ativar`. Teste: `test/sonda-permissoes-ml`.
 
+**b699 — a sonda para de reprovar a hospedeira pelo que está certo, e diz o nome do que falta.** Rodada em
+produção em 15/11, a sonda aprovou AMB e Girassol inteiras (permissões do ML liberadas nas três, com o token do
+Mover-Pedidos) e reprovou a GOOD em 4 linhas, com ela operando. Lidas uma a uma no código:
+
+- *tabelas* — "usa as tabelas SEM sufixo — nada a criar" é a resposta certa pro **provisionador** e a sonda a
+  tratava como reprovação, sem olhar tabela nenhuma. Agora confere as 7 sem sufixo; se faltar uma, diz qual e
+  **não** manda rodar o provisionador (ele só cria tabela com sufixo);
+- *Magalu* — "falta `GOOD_MAGALU_TENANT_ID`": a raiz usa um tenant **padrão do código** quando a env não existe
+  (`lib/magalu-espreita.js`, agora com nome: `TENANT_PADRAO_DA_RAIZ`). Só a raiz tem padrão; a fábrica segue
+  exigindo a env da empresa;
+- *ficha* — "1 env(s) faltando" sem dizer qual, com um comando de terminal de dica. A linha agora traz o
+  **nome** de cada env e campo fiscal que falta (nunca o valor). E o conferidor pedia `GOOD_SESSION_SECRET`,
+  que nenhum código lê: o segredo de sessão da raiz é `ADMIN_SESSION_SECRET` (ou o antigo `SESSION_SECRET`),
+  e é esse que ele confere agora na hospedeira. A fábrica segue com `<PREFIXO>SESSION_SECRET`;
+- *ML* — "conta NAO VERIFICADA — falta `GOOD_ML_USER_ID`": essa é de verdade (a env não existe no Render). A
+  conta da GOOD é a que o próprio `/users/me` respondeu na linha das permissões.
+
+A Shopee da GOOD não respondeu em 8 s naquela rodada — uma medição só, sem conclusão.
+
+⚠️ Ainda fora da sonda: ela confere as **7** tabelas de `TABELAS_ESPERADAS`; as 2 de etiquetas do relatório
+(`tags`, `devolucao_tags`, b651) estão no SQL de provisionamento e na ficha, mas não nessa lista — nem a sonda
+nem a conferência depois do provisionamento olham por elas. Teste: `test/sonda-hospedeira`.
+
 ⚠️ Voltar para `local` com refresh antigo pode falhar: o dono já pode tê-lo
 consumido.
 
