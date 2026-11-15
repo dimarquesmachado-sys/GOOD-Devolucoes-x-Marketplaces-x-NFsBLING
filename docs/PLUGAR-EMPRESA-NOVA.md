@@ -250,7 +250,18 @@ conta grava o token da empresa errada):
 2. autorizar no ML; se a página final não disser "Token ML obtido", copiar o `code=` da barra de endereço e
    chamar `/<pastaCheckout>/ml-trocar-code?code=<code>&k=<ADMIN_KEY>`.
 
-**Como conferir daqui**, logado como admin: `/api/debug/ml-get?path=` com a busca de reclamações
+**Como conferir (b698): a sonda da empresa pergunta sozinha.**
+`/api/admin/sonda-empresa/<chave>` (chaves: `good`, `ambtotal`, `girassol`; sessão de admin do painel da GOOD,
+ou a `ADMIN_KEY`) ganhou a checagem **"permissões do aplicativo do ML"**: uma leitura por permissão da tabela
+acima que o Devoluções usa (reclamações e anúncios — a lista vive em `lib/ml-permissoes.js`), com o **mesmo
+token** que a produção usaria. Só o `403` do PolicyAgent reprova como "falta permissão", e o erro diz **qual**
+ligar e em **qual aplicativo** — o do Mover-Pedidos, se o token veio do dono; o deste serviço, se era o local.
+Qualquer outra falha (401, 429, 5xx, rede, 403 de outra regra) sai como "não consegui confirmar". Empresa nova:
+rodar a sonda depois de autorizar o ML, antes do primeiro bipe.
+
+**À mão, numa rota só** — na GOOD (sessão de admin): `/api/debug/ml-get?path=`; na AMB/Girassol:
+`/<empresa>/api/debug/ml-get?path=...&k=<ADMIN_KEY>` (as rotas de diagnóstico da fábrica **não** usam o login do
+painel: sem a chave respondem `{"error":"not found"}` de propósito). Com a busca de reclamações
 (`/post-purchase/v1/claims/search?status=opened&players.user_id=<id da conta>&players.role=respondent&limit=1`,
 com o `path` codificado) tem que voltar `200`. Depois de um 403, o primeiro clique pode ainda negar: ele só
 troca o token guardado; o segundo já usa o novo.

@@ -319,6 +319,17 @@ Nenhum par é igual: a **conta** é a mesma, o **app** não, e refresh de apps d
 O teste `test/contrato-empresas` passou a amarrar as duas fontes: dois donos em `dono_hoje` só com o app de
 cada serviço declarado em `apps_por_servico`, e o `risco_ativo.afeta` tem que concordar com esse mapa.
 
+**b698 — a sonda da empresa confere as permissões do aplicativo do ML.** O b695 fez o erro do índice dizer qual
+permissão faltava; continuava sendo preciso o índice quebrar pra alguém ler. E conferir as outras duas empresas
+custou outra rodada de links (as reclamações da AMB e da Girassol estavam liberadas — `claims_bloqueadas: 0` nas
+duas em 15/11; a de anúncios nem dava pra conferir sem montar a consulta à mão). Agora
+`/api/admin/sonda-empresa/<chave>` tem a checagem "permissões do aplicativo do ML": uma leitura por permissão
+que o serviço usa, com o token que a produção usaria — logo, em `sombra`, o do Mover-Pedidos. Reprova com o
+**nome** da permissão e o **aplicativo** a corrigir; "não sei" (401, 429, 5xx, rede, 403 de outra regra) não
+vira "falta permissão". A lista do que o serviço usa é uma só (`lib/ml-permissoes.js`) e só tem o que foi
+**medido** dos dois lados; a dica do índice (b695) passou a usar a mesma definição de bloqueio. Vale pras três
+e pra próxima: é a mesma sonda que diz `pode_ativar`. Teste: `test/sonda-permissoes-ml`.
+
 ⚠️ Voltar para `local` com refresh antigo pode falhar: o dono já pode tê-lo
 consumido.
 
