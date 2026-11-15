@@ -35,6 +35,7 @@
 // a AMB le exatamente as mesmas de hoje.
 function criar(cfgEmpresa) {
   const { PREFIXO_SEM_EMPRESA } = require('../../lib/empresas');   // b662 - nunca ler as envs da AMB por fallback
+  const { SEM_EMPRESA } = require('../../lib/empresas');   // b710 - pasta das fotos sem chave de empresa
   // ⚠️ b400 - a etiqueta do log diz QUAL EMPRESA.
   //
   // Era `[AMB/...]` fixo: o Render junta o log das duas no MESMO lugar,
@@ -45,6 +46,10 @@ function criar(cfgEmpresa) {
   const _TAG = String((cfgEmpresa && cfgEmpresa.PREFIXO_ENV) || PREFIXO_SEM_EMPRESA)
     .replace(/_$/, '');
 const _PREFIXO = String((cfgEmpresa && cfgEmpresa.PREFIXO_ENV) || PREFIXO_SEM_EMPRESA);
+// b710 (P1-09, Codex) - a pasta da foto nova no bucket e a CHAVE DA EMPRESA (`ambtotal/`, `girassol/`), nao mais `amb/` pras
+// duas. As fotos antigas em `amb/` continuam sendo servidas: quem autoriza e o vinculo na tabela da empresa, nao o prefixo.
+// Sem chave nao cai na AMB (licao do b661): vai pra pasta `sem-empresa/`, que denuncia a ficha incompleta em vez de misturar.
+const PASTA_FOTOS = String((cfgEmpresa && cfgEmpresa.CHAVE_REGISTRO) || SEM_EMPRESA);
 'use strict';
 
 const crypto = require('crypto');
@@ -1057,7 +1062,7 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
 
     const bucket = process.env[_PREFIXO + 'FOTOS_BUCKET'] || 'fotos-problema';
     const ext = String(req.file.originalname || 'foto.jpg').split('.').pop().toLowerCase();
-    const nome = `amb/${req.usuario}/${Date.now()}-${crypto.randomBytes(4).toString('hex')}.${ext}`;
+    const nome = `${PASTA_FOTOS}/${req.usuario}/${Date.now()}-${crypto.randomBytes(4).toString('hex')}.${ext}`;
 
     try {
       const { error } = await cliente.storage.from(bucket).upload(nome, req.file.buffer, {
