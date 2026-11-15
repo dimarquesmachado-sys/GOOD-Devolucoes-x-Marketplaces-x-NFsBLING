@@ -78,7 +78,8 @@ por acaso se chamam igual.
 | `defeitos-ciclo` (servidor) | ✅ **peça única nas três empresas** — `lib/defeitos-ciclo.js`; diferenças de schema declaradas em `defeitos` na ficha |
 | `ml` (cliente) | ✅ **peça única nas três empresas** (b702, 15/11) — `amb-devolucoes/lib-AMB/ml-AMB.js`; `lib/ml.js` é um adaptador de 46 linhas que preserva a assinatura antiga do `server.js`. O que só a GOOD tinha veio pra fábrica (`ml_403.por_rota`, `/ml/setup` por tokens, preventiva que não tenta em `remoto`, gravação no nome histórico); o que só a fábrica tinha a GOOD ganhou (429, 403 de rota conhecida sem derrubar o cache) |
 | `ml-returns` | ✅ peça única desde o b510 |
-| `bling` | ⏸ duas cópias — `lib/bling.js` (1.480) carrega ~1.000 linhas de busca de NF/pedido que na fábrica vivem em outro lugar; unificar é entrega grande, em fatias, a medir antes |
+| buscas de NF/pedido no Bling | ✅ **peça única nas três** (b703, 15/11) — `lib/bling-buscas.js`; eram duas cópias (`lib/bling.js` da GOOD e `admin-helpers-AMB.js` da fábrica). Nivelada por cima: `fundo` e a busca por order_id em fatias (da GOOD) + `parar()` e a NF viva mais recente (da fábrica) |
+| `bling` (cliente) | ⏸ duas cópias — `lib/bling.js` (655 linhas, só o cliente agora) × `bling-AMB.js`; próxima fatia: a GOOD vira adaptador sobre a fábrica, como o ML (b702) |
 
 **Para um CNPJ novo nada disso trava:** ele entra pela fábrica (`amb-devolucoes/`), a mesma da Girassol e da AMB —
 `node scripts/nova-empresa.js <chave> "<Nome>"` gera a ficha (agora já com `tema`, `marca` e modelo de `defeitos`), o contrato e a lista de

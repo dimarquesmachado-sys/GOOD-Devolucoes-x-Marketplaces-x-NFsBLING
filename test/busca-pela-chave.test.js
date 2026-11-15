@@ -28,6 +28,7 @@ const CH = '35260332461988000182550010000701151290080214';   // a NF 70115, real
     chamarBling: async () => respostaLista,
     chamarML: async () => ({}),
     buscarNFePorId: async () => respostaDetalhe || { ok: false },
+    buscarPedidoPorId: async () => ({ ok: false }),   // b703: a blindada (fase 2) passa a receber por injecao
     sleep: async () => {},
   });
 
@@ -117,7 +118,7 @@ const CH = '35260332461988000182550010000701151290080214';   // a NF 70115, real
 
 // ── e e a FASE ZERO nas duas empresas ───────────────────────────────
 setTimeout(() => {
-  const GOOD = fs.readFileSync(path.join(RAIZ, 'lib', 'bling.js'), 'utf8');
+  const GOOD = fs.readFileSync(path.join(RAIZ, 'lib', 'bling-buscas.js'), 'utf8');   // b703: a GOOD usa a peca unica
   ok(/async function buscarNFPelaChave/.test(GOOD), 'a GOOD tem a funcao');
   ok(/buscarNFPelaChave,/.test(GOOD.slice(GOOD.indexOf('module.exports'))), '  e exporta');
   ok(/tipo=1&chaveAcesso=' \+ ch/.test(GOOD),

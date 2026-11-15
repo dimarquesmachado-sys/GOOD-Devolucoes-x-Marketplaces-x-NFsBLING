@@ -17,7 +17,7 @@ const path = require('path');
 let falhas = 0;
 const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o); };
 
-const BLING = fs.readFileSync(path.join(__dirname, '..', 'lib', 'bling.js'), 'utf8');
+const BLING = fs.readFileSync(path.join(__dirname, '..', 'lib', 'bling-buscas.js'), 'utf8');   // b703: as buscas moram na peca unica
 const i = BLING.indexOf('async function buscarNFnoBlingPorOrderId');
 const fn = BLING.slice(i, i + 14000);   // b210.1: so esta funcao (~12,7k), nao o modulo inteiro
 
@@ -182,11 +182,12 @@ const fn = BLING.slice(i, i + 14000);   // b210.1: so esta funcao (~12,7k), nao 
   ok(/const chaveBate/.test(AMB2), '  na AMB tambem');
 
   // e a AMB ganhou o filtro direto na helper dela
-  const HELP = fs.readFileSync(path.join(__dirname, '..', 'amb-devolucoes', 'lib-AMB', 'admin-helpers-AMB.js'), 'utf8');
+  const HELP = BLING;   // b703: a fabrica usa a MESMA peca — nao ha mais copia pra comparar
   ok(/'&numero=' \+ encodeURIComponent\(alvo\)/.test(HELP),
      'a helper da AMB tem o filtro direto por numero (so paginava antes)');
-  ok(/!\[2, 9\]\.includes\(Number\(nf && nf\.situacao\)\)/.test(HELP),
-     '  com a checagem de nota morta LOCAL — `nfeDescartavel` e da GOOD');
+  // b703: com a peca unica nao ha mais "checagem local" — `nfeDescartavel` e definida uma vez e usada por todas
+  ok(/\.filter\(\(nf\) => !nfeDescartavel\(nf\)\)/.test(HELP) && /const nfeDescartavel = /.test(HELP),
+     '  com a checagem de nota morta da peca unica (`nfeDescartavel`, definida UMA vez)');
 
   // ritmo: 3 req/s do Bling
   ok(/if \(buscadas > 0\) await new Promise/.test(rota2),

@@ -662,7 +662,7 @@ const registrarCicloDefeitos = require('../lib/defeitos-ciclo');
 // candidato ja desistido ainda batia no Bling depois de esperar numa pausa
 // de 429. Ver bling-AMB.js, nf-nomes-AMB.js e identificar-AMB.js.
 // 29/10: sem o 'AMB' na frente — a mesma peca serve Girassol, AMB e as proximas; a empresa vai no campo `empresa`
-const VERSAO = 'Devolucoes b702';
+const VERSAO = 'Devolucoes b704';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -2034,6 +2034,8 @@ const ajudantes = criarAdminHelpers({
   chamarBling: bling.chamarBling,
   chamarML: ml.chamarML,
   buscarNFePorId: nfePorIdCru,   // b73 - formato cru, como a GOOD espera
+  buscarPedidoPorId: (id, opcoes) => bling.chamarBling(`/pedidos/vendas/${id}`, opcoes),   // b703 - cru, pra blindada (fase 2)
+  rotulo: `${TAG_APP}/Bling`,   // b703 - a etiqueta do log diz qual empresa
   sleep: dorme,
 });
 // b71 - a rota /api/devolucao/identificar da GOOD, que a tela de bipe
