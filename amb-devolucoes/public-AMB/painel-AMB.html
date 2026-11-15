@@ -990,14 +990,7 @@
           <div style="font-size:12px;color:#e65100;font-weight:700;margin-bottom:6px;">
             📸 ${fotosParcial.length} fotos da devolução parcial (evidência)
           </div>
-          <div class="fotos-mini">
-            ${fotosParcial.map(url => `<img src="${srcFoto(url)}" onclick="abrirFoto('${url}')" alt="foto">`).join('')}
-          </div>
-          <div style="margin-top:8px;">
-            <button class="btn" style="background:#1565c0;color:white;font-size:11px;padding:6px 10px;" onclick='baixarTodasFotos(${JSON.stringify(fotosParcial)}, "${escapeHtml(d.nf_numero || d.order_id || d.id)}_parcial")'>
-              📥 Baixar todas (${fotosParcial.length})
-            </button>
-          </div>
+          ${blocoFotosHtml(fotosParcial, (d.nf_numero || d.order_id || d.id) + '_parcial', { compacto: true })}
         </div>
       ` : '';
 
@@ -1076,16 +1069,7 @@
             ${rotuloShipment(d.shipment_id)}
           </div>
           ${desc ? `<div class="descricao-problema">💬 ${escapeHtml(desc)}</div>` : ''}
-          ${fotos.length ? `
-            <div class="fotos-mini">
-              ${fotos.map(url => `<img src="${srcFoto(url)}" onclick="abrirFoto('${url}')" alt="foto">`).join('')}
-            </div>
-            <div style="margin-top:8px;">
-              <button class="btn" style="background:#1565c0;color:white;" onclick='baixarTodasFotos(${JSON.stringify(fotos)}, "${escapeHtml(d.nf_numero || d.order_id || d.id)}")'>
-                📥 Baixar todas as fotos (${fotos.length})
-              </button>
-            </div>
-          ` : ''}
+          ${blocoFotosHtml(fotos, d.nf_numero || d.order_id || d.id)}
           ${linhaItensDevolvidos(d)}
           ${concluido ? '' : `
             ${ehSerie2(d) ? avisoFullHtml(d) : ''}
@@ -1163,16 +1147,7 @@
 
           ${desc ? `<div class="descricao-problema" style="border-color:#c9b3e6;background:#fff;color:var(--marca-texto);">💬 ${escapeHtml(desc)}</div>` : ''}
 
-          ${fotos.length ? `
-            <div class="fotos-mini">
-              ${fotos.map(url => `<img src="${srcFoto(url)}" onclick="abrirFoto('${url}')" alt="foto">`).join('')}
-            </div>
-            <div style="margin-top:8px;">
-              <button class="btn" style="background:#1565c0;color:white;" onclick='baixarTodasFotos(${JSON.stringify(fotos)}, "${escapeHtml(d.nf_numero || d.order_id || d.id)}_divergente")'>
-                📥 Baixar todas as fotos (${fotos.length})
-              </button>
-            </div>
-          ` : ''}
+          ${blocoFotosHtml(fotos, (d.nf_numero || d.order_id || d.id) + '_divergente')}
 
           ${linhaItensDevolvidos(d)}
           ${concluido ? '' : `
@@ -1204,14 +1179,52 @@
     // v3.33 - fotos servidas pelo PROPRIO servidor (imune a bucket
     // publico/privado no Supabase; protegidas pelo login do admin)
     function srcFoto(url) {
-      const partes = String(url || '').split('/fotos-problema/');
-      if (partes.length !== 2) return url;
+      const u = String(url || '');
+      const partes = u.split('/fotos-problema/');
+      // b706 (P1-01, auditoria do Codex) - o que NAO e foto do Storage nao vira src: antes a string crua
+      // voltava inteira (um `javascript:` ou `<img ...>` gravado no banco ia direto pro atributo).
+      // Codex (#577): bucket configurado por *_FOTOS_BUCKET (outro nome) nao passa pelo proxy — que le so o
+      // fotos-problema — e continua indo direto pela URL publica, como sempre foi.
+      if (partes.length !== 2 || !/^https:\/\/[^/]+\/storage\/v1\/object\/public$/.test(partes[0])) {
+        return /^https:\/\/[^/"'<>\s]+\/storage\/v1\/object\/public\/[A-Za-z0-9._-]+\/[^"'<>\s]+$/.test(u) ? u : '';
+      }
       // Codex (revisão do PR #370, P2) - `<img src>` não passa pelo fetch()
       // que base-amb.js prefixa por empresa; sem o APP_BASE aqui, a Girassol
       // (e qualquer empresa fora da raiz) pedia a foto na raiz da GOOD sem a
       // sessão certa e levava 401.
       return (window.APP_BASE || '') + '/api/admin/foto/' + partes[1].split('/').map(encodeURIComponent).join('/');
     }
+
+    // b706 (P1-01, auditoria do Codex 15/11) - AS FOTOS SAO DADO, NAO CODIGO. Ate o b705 cada <img> saia com
+    // um onclick chamando abrirFoto('${url}') e o botao com um onclick chamando baixarTodasFotos(${JSON.stringify(fotos)}, ...):
+    // a URL do banco entrava crua em atributo HTML e dentro de JavaScript (escapar HTML e escapar JS sao
+    // coisas diferentes, e aqui nao se fazia nenhuma). Agora: tudo escapado, nenhum on*=, a URL vai em
+    // `data-foto` e o clique e por delegacao (abaixo) — a mesma string que quebraria o atributo e so texto.
+    function blocoFotosHtml(fotos, identificador, opcoes) {
+      const lista = Array.isArray(fotos) ? fotos.filter(Boolean) : [];
+      if (!lista.length) return '';
+      const compacto = !!(opcoes && opcoes.compacto);
+      const imgs = lista.map((url) => '<img src="' + escapeHtml(srcFoto(url)) + '" data-foto="' + escapeHtml(url) + '" alt="foto">').join('');
+      const estilo = compacto ? 'background:#1565c0;color:white;font-size:11px;padding:6px 10px;' : 'background:#1565c0;color:white;';
+      return '<div class="fotos-mini">' + imgs + '</div>'
+        + '<div style="margin-top:8px;">'
+        + '<button class="btn btn-baixar-fotos" style="' + estilo + '" data-ident="' + escapeHtml(identificador) + '">'
+        + '📥 Baixar todas' + (compacto ? '' : ' as fotos') + ' (' + lista.length + ')'
+        + '</button></div>';
+    }
+    document.addEventListener('click', function (ev) {
+      const alvo = ev.target;
+      if (!alvo || !alvo.closest) return;
+      const img = alvo.closest('.fotos-mini img[data-foto]');
+      if (img) { abrirFoto(img.dataset.foto); return; }
+      const btn = alvo.closest('.btn-baixar-fotos');
+      if (btn) {
+        const caixa = btn.parentElement && btn.parentElement.previousElementSibling;
+        const urls = caixa && caixa.classList && caixa.classList.contains('fotos-mini')
+          ? Array.from(caixa.querySelectorAll('img[data-foto]')).map((i) => i.dataset.foto) : [];
+        baixarTodasFotos(urls, btn.dataset.ident || 'fotos');
+      }
+    });
 
     function abrirFoto(url) {
       document.getElementById('modalFotoImg').src = srcFoto(url);

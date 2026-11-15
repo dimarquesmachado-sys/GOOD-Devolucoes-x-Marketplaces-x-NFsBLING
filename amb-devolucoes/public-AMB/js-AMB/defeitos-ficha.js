@@ -113,6 +113,12 @@
     return x ? x.charAt(0).toUpperCase() + x.slice(1) : x;
   }
 
+  // b706 (P1-01) - o que vai no src: pelo proxy da empresa quando o painel tem `srcFoto`; fora dele, so https
+  function srcSeguro(url) {
+    var u = String(url || '');
+    if (typeof window.srcFoto === 'function') return window.srcFoto(u);
+    return /^https:\/\//.test(u) ? u : '';
+  }
   function esc(s) {
     return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
       return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
@@ -390,8 +396,19 @@
   window.verFotoDefeito = function (url) {
     if (typeof window.abrirZoomProduto === 'function') return window.abrirZoomProduto(url);
     if (typeof window.abrirFoto === 'function') return window.abrirFoto(url);
-    window.open(url, '_blank', 'noopener');
+    // b706 (P1-01) - so abre endereco https: `window.open('javascript:…')` executaria o que estiver gravado
+    if (/^https:\/\//.test(String(url || ''))) window.open(url, '_blank', 'noopener');
   };
+  // b706 (P1-01, auditoria do Codex) - A FOTO E DADO. As miniaturas saiam com um onclick chamando
+  // verFotoDefeito('<url escapada em HTML>'): o parser HTML DESFAZ o escape antes de entregar ao JS, entao uma
+  // URL com aspa simples fechava a string e o resto virava codigo. Agora a URL vai em `data-foto-defeito`
+  // e o clique e por delegacao — nenhum JS montado como texto.
+  document.addEventListener('click', function (ev) {
+    var img = ev.target && ev.target.closest ? ev.target.closest('img[data-foto-defeito]') : null;
+    if (!img) return;
+    ev.stopPropagation();
+    window.verFotoDefeito(img.getAttribute('data-foto-defeito'));
+  });
 
   // b290 (review do Codex) - um TOKEN por abertura: fechar e reabrir rapido
   // disparava duas buscas pro mesmo lugar, e a PRIMEIRA (mais lenta, as vezes
@@ -432,10 +449,10 @@
                 // b291 (review do Codex) - no painel o bucket pode ser PRIVADO e
                 // todas as fotos passam por `srcFoto()`; sem isso a miniatura
                 // vinha quebrada so aqui.
-                var uf = (typeof window.srcFoto === 'function') ? window.srcFoto(f.url || f) : (f.url || f);
+                var uf = srcSeguro(f.url || f);
                 return '<img src="' + esc(uf) + '" style="width:74px;height:74px;object-fit:cover;'
                   + 'border-radius:8px;border:1px solid #e4dcf1;cursor:zoom-in;" '
-                  + 'onclick="event.stopPropagation();verFotoDefeito(\'' + esc(f.url || f) + '\')">';
+                  + 'data-foto-defeito="' + esc(f.url || f) + '">';
               }).join('') + '</div>'
           : '')
       + linha('Situação', esc(it.situacao || 'com defeito'))
@@ -1292,7 +1309,7 @@
       html += SUB('FOTOS (' + fotos.length + ')')
         + '<div style="display:flex;gap:7px;overflow-x:auto;padding-bottom:6px;margin-bottom:14px;">'
         + fotos.map(function (f) {
-            return '<img src="' + esc(f) + '" alt="" onclick="window.open(this.src,\'_blank\')" '
+            return '<img src="' + esc(srcSeguro(f)) + '" alt="" data-foto-defeito="' + esc(f) + '" '
               + 'style="width:96px;height:96px;flex:0 0 auto;object-fit:contain;background:#fff;border-radius:9px;'
               + 'border:1px solid #e4dcf1;cursor:zoom-in;">';
           }).join('') + '</div>';

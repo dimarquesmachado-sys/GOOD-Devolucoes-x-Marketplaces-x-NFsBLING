@@ -26,6 +26,7 @@ const mlClient = require('./lib/ml');
 
 // v3.16.0 - Dashboard de relatorios
 const registrarRotasRelatorios = require('./lib/rotas-relatorios');
+const { exigirFotosValidas, nomeDePastaSeguro } = require('./lib/fotos-referencia');   // b706 (P1-01) - so grava foto que veio do upload deste servidor
 // b650 - a peca virou multiempresa: a busca textual que ela usava por dentro
 // agora e injetada por quem registra (aqui, a da GOOD).
 const produtosClient = require('./lib/produtos-client');
@@ -3503,7 +3504,7 @@ async function enriquecerTriagem(registroId, dados) {
   }
 }
 
-app.post('/api/triagem/aprovar', requerEstoquista, async (req, res) => {
+app.post('/api/triagem/aprovar', requerEstoquista, exigirFotosValidas, async (req, res) => {
   {
     const pend = await recadoPendente(req.body?.dados || req.body);
     if (pend) return res.status(409).json({ ok: false, erro: (pend.varios > 1 ? pend.varios + ' RECADOS PENDENTES' : 'RECADO PENDENTE') + ': leia e clique em "OK, ciente" em cada um antes de triar. ("' + String(pend.texto).slice(0, 160) + '")' });
@@ -3697,10 +3698,10 @@ app.post('/api/triagem/upload-foto', requerEstoquista, upload.single('foto'), as
     return res.status(400).json({ ok: false, erro: 'Foto nao enviada' });
   }
 
-  const ext = (req.file.originalname || 'foto.jpg').split('.').pop().toLowerCase();
+  const ext = (req.file.originalname || 'foto.jpg').split('.').pop().toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg';   // b707: extensao tambem so com caracteres de URL
   const ts = Date.now();
   const random = crypto.randomBytes(4).toString('hex');
-  const filename = `${req.usuario}/${ts}-${random}.${ext}`;
+  const filename = `${nomeDePastaSeguro(req.usuario)}/${ts}-${random}.${ext}`;   // b706 (Codex #577): pasta so com caracteres de URL
 
   try {
     const { error } = await supabase.storage
@@ -3728,7 +3729,7 @@ app.post('/api/triagem/upload-foto', requerEstoquista, upload.single('foto'), as
 });
 
 // Caminho PROBLEMA - registra com fotos ja uploadadas + manda email
-app.post('/api/triagem/problema', requerEstoquista, async (req, res) => {
+app.post('/api/triagem/problema', requerEstoquista, exigirFotosValidas, async (req, res) => {
   {
     // v4.09 - localizacao obrigatoria (o produto vai ficar guardado em algum
     // lugar; sem isso ninguem acha depois). Nao se aplica ao fluxo de conserto,
@@ -3864,7 +3865,7 @@ app.post('/api/triagem/problema', requerEstoquista, async (req, res) => {
 // Diferenca pro APROVADO: SKU eh diferente, precisa de bipagem
 // do EAN do produto que voltou (B), nao do esperado (A).
 // ============================================================
-app.post('/api/triagem/divergente', requerEstoquista, async (req, res) => {
+app.post('/api/triagem/divergente', requerEstoquista, exigirFotosValidas, async (req, res) => {
   {
     const pend = await recadoPendente(req.body?.dados || req.body);
     if (pend) return res.status(409).json({ ok: false, erro: (pend.varios > 1 ? pend.varios + ' RECADOS PENDENTES' : 'RECADO PENDENTE') + ': leia e clique em "OK, ciente" em cada um antes de triar.' });
@@ -4406,7 +4407,7 @@ app.get('/api/defeitos/por-sku', requerEstoquista, async (req, res) => {
 // tirada de outra unidade em defeito). O item vai pra fila de APROVADAS - o
 // Diego emite a NF incluindo em estoque e ainda contesta o marketplace. O
 // item doador CONTINUA contando como defeito, so ganha a nota do que saiu.
-app.post('/api/triagem/consertado', requerEstoquista, async (req, res) => {
+app.post('/api/triagem/consertado', requerEstoquista, exigirFotosValidas, async (req, res) => {
   {
     const pend = await recadoPendente(req.body?.dados || req.body);
     if (pend) return res.status(409).json({ ok: false, erro: (pend.varios > 1 ? pend.varios + ' RECADOS PENDENTES' : 'RECADO PENDENTE') + ': leia e clique em "OK, ciente" em cada um antes de triar.' });
@@ -6054,7 +6055,7 @@ app.get('/api/admin/nfs-devolucao', requerAdmin, async (req, res) => {
 // v3.96 - LANCAR DEFEITO manualmente (produto que ja esta no galpao, sem
 // passar por devolucao). So aceita SKU que existe no Bling - assim a relacao
 // nunca fica com codigo inventado.
-app.post('/api/defeitos/adicionar', requerEstoquista, async (req, res) => {
+app.post('/api/defeitos/adicionar', requerEstoquista, exigirFotosValidas, async (req, res) => {
   const sku = String(req.body?.sku || '').trim();
   const defeito = String(req.body?.defeito || '').trim();
   const localizacao = String(req.body?.localizacao || '').trim();

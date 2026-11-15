@@ -60,7 +60,8 @@ Segue as 12 etapas do Codex, com os itens de cada uma. A ordem dentro da etapa �
 
 ## 3. P1 — segurança e corrupção operacional
 
-### P1-01 ⬜ Fotos podem injetar JavaScript no painel admin
+### P1-01 🔄 Fotos podem injetar JavaScript no painel admin
+- **PR:** branch `dev/p1-01-xss-fotos-painel` (b706). A ficha de defeitos (`js-AMB/defeitos-ficha.js`) tinha a mesma causa e entrou junto: `onclick="verFotoDefeito('<esc(url)>')"` (o parser HTML desfaz o `&#39;` antes do JS) e `window.open(this.src)`.
 - **Onde:** `amb-devolucoes/public-AMB/painel-AMB.html` (~l.1081); o painel é único (a GOOD recebe o mesmo via `lib/painel-unico.js`), então afeta as 3. Servidor aceita string arbitrária no array de fotos.
 - **Errado:** URL da foto interpolada em atributo HTML e em `onclick`. Escapar HTML ≠ escapar argumento JS.
 - **Correção:** montar elementos por propriedade (`img.src = …`) e `addEventListener`; retirar JS montado como string; validar no servidor que cada referência de foto é chave/URL do Storage esperado.
