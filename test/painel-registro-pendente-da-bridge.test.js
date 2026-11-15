@@ -47,7 +47,9 @@ const FALHAS = [
   // painel da Girassol: regrava as 2 dela (uma falha de novo), nao toca na da AMB, limpa a que gravou, avisa o resto
   {
     const t = montar('girassol', { 42: true, 43: false });
+    const recarregados = []; t.ctx.window.atualizarUmCard = async (id) => { recarregados.push(String(id)); };
     const r = await t.ctx.tratarFalhasDeRegistroDaBridge(FALHAS);
+    ok(recarregados.join() === '42', '  Codex #590: o card regravado e recarregado (atualizarUmCard) — deixa de oferecer "gerar" e ganha o link da NF');
     ok(t.log.puts.length === 2 && t.log.puts.every((u) => /^\/girassol\/api\/admin\/registrar-devolucao-gerada\/4[23]$/.test(u)), '⚠️ regrava SO as da Girassol, na area da Girassol (' + t.log.puts.join(', ') + ')');
     ok(r.gravadas.length === 1 && r.gravadas[0].devolucaoId === '42', '  a 42 gravou');
     ok(t.log.posts.length === 1 && t.log.posts[0].tipo === 'GOOD_BRIDGE_FALHAS_LIMPAR' && t.log.posts[0].chaves.join() === 'girassol:42', '  manda limpar SO a que gravou (girassol:42)');

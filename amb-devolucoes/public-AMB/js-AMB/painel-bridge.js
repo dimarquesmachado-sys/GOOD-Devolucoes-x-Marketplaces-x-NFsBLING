@@ -153,6 +153,11 @@
       if (gravadas.length) {
         window.postMessage({ tipo: 'GOOD_BRIDGE_FALHAS_LIMPAR', chaves: gravadas.map(function (f) { return f.empresa + ':' + f.devolucaoId; }) }, '*');
         console.log('[Bridge] registros pendentes regravados agora:', gravadas.length);
+        // Codex #590 (P2): o card ja pintado nao sabe que a NF foi gravada (ainda oferece "gerar") — recarrega so os
+        // cards tocados; se a tela ainda nao carregou, o carregar() que vem em seguida ja le o banco atualizado
+        if (typeof window.atualizarUmCard === 'function') {
+          for (var g = 0; g < gravadas.length; g++) { try { await window.atualizarUmCard(gravadas[g].devolucaoId); } catch (e) { /* o proximo carregar() corrige */ } }
+        }
       }
       var deAqui = sobraram.filter(function (f) { return String(f.empresa) === minha; });
       var texto = (gravadas.length ? '✅ ' + gravadas.length + ' NF(s) de devolução que a extensão não tinha conseguido registrar foram gravadas agora.\n\n' : '')
