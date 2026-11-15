@@ -138,6 +138,20 @@ const calar = () => { const c = { log: console.log }; console.log = () => {}; re
       ok(r.ok === true && r.match && r.match.id === 5 && r.via === 'filtro-numerosLojas' && chamadas[0].opcoes.fundo === true, '  pedido por numeroLoja: filtro direto, com fundo repassado');
     }
 
+    // ── 5b. Codex: a fatia AVANCA entre as chamadas (o indice nao pode zerar a cada volta) ──
+    {
+      const { b, chamadas } = bling((url) => {
+        const ini = (url.match(/dataEmissaoInicial=([\d-]+)/) || [])[1];
+        const fim = (url.match(/dataEmissaoFinal=([\d-]+)/) || [])[1];
+        if (ini && fim && ini <= '2026-10-10' && '2026-10-10' <= fim) return lista([{ id: 9, numero: '9', numeroPedidoLoja: 'ORD1', dataEmissao: '2026-10-10' }]);
+        return null;
+      });
+      const r = await b.buscarNFnoBlingPorOrderId('ORD1', '2026-09-01', { maxPaginas: 12 });
+      const faixas = new Set(chamadas.map(c => (c.url.match(/dataEmissaoInicial=[\d-]+&dataEmissaoFinal=[\d-]+/) || [''])[0]));
+      ok(r.ok === true && r.match && r.match.id === 9, 'varredura em fatias acha a NF de uma fatia posterior a primeira');
+      ok(faixas.size > 1, '  cada fatia vazia pede uma faixa de datas DIFERENTE (o indice persiste)');
+    }
+
     // ── 6. a peca nao aceita montagem pela metade (a fabrica chamava o Bling direto porque faltava a funcao, b203.3) ──
     {
       let erro = null;
