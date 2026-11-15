@@ -62,6 +62,7 @@ const { PREFIXO_SEM_EMPRESA } = require('../../lib/empresas');   // b662 - nunca
 // a varredura INTEIRA e pode renovar a credencial de uso unico junto com o
 // novo. Era a regra da casa que eu mesmo invoquei no commit e nao cumpri.
 const drenagem = require('../../lib/drenagem');
+const { ehBloqueioDePolitica } = require('../../lib/ml-permissoes');   // b698 - a assinatura do PolicyAgent tem UMA definicao
 
 // ⚠️ b377 - O CLIENTE VEM DA EMPRESA, nao a instancia padrao.
 //
@@ -268,8 +269,7 @@ let reagendado = false;   // evita duas construcoes ao mesmo tempo
 // A mensagem do ML nao diz nada disso; a nossa agora diz, pra proxima empresa nao custar outra tarde.
 // So entra quando a resposta e mesmo a do PolicyAgent — outro 403 nao ganha um palpite que pode nao ser o dele.
 function dicaDoBloqueioDePolitica(erroDoMl) {
-  const cru = JSON.stringify(erroDoMl || '');
-  if (!/PolicyAgent|PA_UNAUTHORIZED/i.test(cru)) return '';
+  if (!ehBloqueioDePolitica(erroDoMl)) return '';
   return ' ⇒ CONFIRA PRIMEIRO a permissao "Comunicacoes pre e pos-vendas" do APLICATIVO do ML de onde vem o token'
     + ' (em `sombra`/`remoto`, o app do Mover-Pedidos): DevCenter > editar o app > Permissoes. Depois de ligar,'
     + ' AUTORIZE DE NOVO — o token antigo nao ganha a permissao sozinho. Foi a causa na GOOD em 14/11/2026;'

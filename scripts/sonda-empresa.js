@@ -304,6 +304,120 @@ registrar('o dono entrega o token', async (chave, ctx) => {
   };
 });
 
+/* ── 3b. o APLICATIVO do ML tem as permissões que este serviço usa (b698) ── */
+//
+// ⚠️ TOKEN ACEITO NÃO PROVA PERMISSÃO. Na GOOD (14/11/2026) o `/users/me` respondia — a checagem de cima
+// passava — e o ML negava TODA busca de reclamação e de anúncio: o aplicativo de onde vinha o token (o do
+// Mover-Pedidos, porque o eixo lê do dono) estava sem duas permissões no DevCenter. Custou uma tarde.
+//
+// 📌 Uma leitura mínima por permissão que o serviço usa (a lista, medida, está em lib/ml-permissoes.js),
+// com o MESMO token que a produção usaria. Só o 403 do PolicyAgent reprova como "falta permissão" — e diz
+// QUAL, e em QUAL aplicativo (o do dono ou o local). Qualquer outra falha é "não consegui confirmar".
+
+/** GET de leitura no ML. Só lê o corpo quando precisa (erro, ou `querCorpo`): a sonda não guarda dado de cliente. */
+async function lerML(access, apiBase, caminho, querCorpo) {
+  try {
+    const r = await fetch(`${apiBase}${caminho}`, {
+      headers: { Authorization: `Bearer ${access}` },
+      signal: AbortSignal.timeout(8000),
+    });
+    let corpo = null;
+    if (!r.ok || querCorpo) { try { corpo = await r.json(); } catch (err) { corpo = null; } }
+    return { ok: !!r.ok, status: r.status, corpo };
+  } catch (err) {
+    return { ok: false, status: null, corpo: null, falha: (err && err.message) || String(err) };
+  }
+}
+
+registrar('permissões do aplicativo do ML', async (chave) => {
+  const tokenLeitor = require('../lib/token-leitor');
+  const { configDaEmpresa } = require('../lib/config-da-empresa');
+  const { PERMISSOES_USADAS, classificarResposta } = require('../lib/ml-permissoes');
+
+  if (tokenLeitor.politicaDe(chave, 'ml') === 'bloqueado') {
+    return { ok: true, detalhe: 'eixo ml `bloqueado` — nada pra testar aqui' };
+  }
+
+  // O mesmo caminho de credencial da checagem de cima (e da produção): o token do dono, se ele responde;
+  // senão o local. Sem invalidar de novo — ela acabou de reler, e quem entregou o token AGORA é quem
+  // responde pelas permissões dele.
+  const cfg = configDaEmpresa(chave);
+  let access = null;
+  let doDono = false;
+  let motivo = null;
+  try {
+    const d = await tokenLeitor.resolverToken(chave, 'ml');
+    if (d.usar === 'remoto') { access = d.access; doDono = true; }
+    else if (d.usar === 'local') access = cfg.ml.accessToken || null;
+    motivo = (d && d.motivo) || null;
+  } catch (err) {
+    motivo = (err && err.message) || String(err);
+  }
+  if (!access) {
+    return {
+      ok: false,
+      detalhe: `NAO VERIFICADO — sem token do ML pra perguntar (${motivo || 'nenhuma fonte devolveu credencial'})`,
+      erro: 'sem token não dá pra conferir permissão — resolva antes a checagem "o dono entrega o token"',
+    };
+  }
+  const deQuem = doDono ? 'token do dono (Mover-Pedidos)' : 'token local (app deste serviço)';
+  const semResposta = (r) => (r.status ? `HTTP ${r.status}` : (r.falha || 'sem resposta'));
+
+  // as consultas levam o id da conta DO TOKEN (não o da ficha): se forem contas diferentes, quem acusa é a
+  // checagem de cima — aqui a pergunta é só "este aplicativo pode?".
+  const eu = await lerML(access, cfg.ml.apiBase, '/users/me', true);
+  const conta = eu.ok && eu.corpo && eu.corpo.id != null ? String(eu.corpo.id) : null;
+  if (!conta) {
+    return {
+      ok: false,
+      detalhe: `NAO VERIFICADO — o /users/me não devolveu a conta do token (${semResposta(eu)}) · ${deQuem}`,
+      erro: 'sem o id da conta não dá pra montar as consultas — não é prova de permissão faltando',
+    };
+  }
+
+  const partes = [];
+  const negadas = [];
+  let inconclusivas = 0;
+  for (const p of PERMISSOES_USADAS) {
+    const r = await lerML(access, cfg.ml.apiBase, p.caminho(conta), false);
+    const veredito = classificarResposta(r);
+    if (veredito === 'liberada') {
+      partes.push(`${p.chave}: liberada`);
+    } else if (veredito === 'negada') {
+      negadas.push(p);
+      partes.push(`${p.chave}: NEGADA — falta "${p.nome}"`);
+    } else {
+      inconclusivas++;
+      partes.push(`${p.chave}: não consegui confirmar (${semResposta(r)})`);
+    }
+  }
+  const detalhe = `${partes.join(' | ')} · ${deQuem}, conta ${conta}`;
+
+  if (negadas.length) {
+    return {
+      ok: false,
+      detalhe,
+      erro: 'o ML negou por PERMISSÃO DO APLICATIVO (PolicyAgent). Falta no aplicativo do ML '
+        + (doDono
+          ? 'do MOVER-PEDIDOS desta empresa (o token desta sonda veio do dono)'
+          : 'DESTE serviço (o token desta sonda é o local)')
+        + ': ' + negadas.map((p) => `"${p.nome}" = ${p.acesso} (${p.pra_que})`).join('; ')
+        + '. No DevCenter do ML, logado na conta da empresa: editar o app > Permissões. '
+        + 'Depois AUTORIZE DE NOVO — o token antigo não ganha a permissão sozinho.',
+      dica: 'passo a passo em docs/PLUGAR-EMPRESA-NOVA.md ("Permissões do aplicativo do Mercado Livre")',
+    };
+  }
+  if (inconclusivas) {
+    return {
+      ok: false,
+      detalhe,
+      erro: 'ao menos uma consulta não teve resposta conclusiva do ML — NÃO é prova de permissão faltando '
+        + '(só o 403 do PolicyAgent é); rode a sonda de novo',
+    };
+  }
+  return { ok: true, detalhe };
+});
+
 /* ── 4. as tabelas existem no banco ──────────────────────────────── */
 registrar('tabelas no Supabase', async (chave) => {
   const { obterEmpresa } = require('../lib/empresas');
