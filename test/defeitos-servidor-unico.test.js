@@ -96,7 +96,7 @@ function criarBanco() {
     datas[n.dev] = DADOS[chave].colunaData;
   }
   let erroCount = null;
-  const falhasUpdate = [];
+  const falhasUpdate = []; const colunasAusentes = [];
   const client = {
     from(tabela) {
       assert(tabelas[tabela], 'acesso a tabela nao configurada: ' + tabela);
@@ -135,6 +135,12 @@ function criarBanco() {
               && ['defeito_excluido', 'recuperado', 'descartado'].includes(q.campos.tipo)) {
             return { data: null, error: { message: 'new row violates check constraint devolucoes_tipo_check' } };
           }
+          for (const c of colunasAusentes) {
+            if (c.tabela !== tabela) continue;
+            const nomeada = q.colunas !== '*' && q.colunas.split(',').map(x => x.trim()).includes(c.coluna);
+            const escrita = (q.operacao === 'update' || q.operacao === 'insert') && (Array.isArray(q.campos) ? q.campos : [q.campos]).some(x => x && c.coluna in x);
+            if (nomeada || escrita) return { data: null, error: { message: 'column ' + tabela + '.' + c.coluna + ' does not exist' } };
+          }
           if (q.operacao === 'update') {
             const f = falhasUpdate.find(x => x.tabela === tabela && x.vezes > 0 && x.quando(q.campos));
             if (f) { f.vezes--; return { data: null, error: { message: f.msg } }; }
@@ -161,7 +167,9 @@ function criarBanco() {
   return { client, tabelas, chamadas, falharCount(msg) { erroCount = msg; },
     recusarTipoTerminal(tabela) { recusaTipoTerminal.add(tabela); },
     // b713: simula coluna ausente / update recusado — `quando(campos)` decide, `vezes` limita (padrao: sempre)
-    falharUpdate(tabela, quando, msg, vezes = Infinity) { falhasUpdate.push({ tabela, quando, msg, vezes }); } };
+    falharUpdate(tabela, quando, msg, vezes = Infinity) { falhasUpdate.push({ tabela, quando, msg, vezes }); },
+    // b713 (Codex #584 P2): coluna ausente tambem derruba SELECT que a NOMEIA (select('*') passa)
+    semColuna(tabela, coluna) { colunasAusentes.push({ tabela, coluna }); } };
 }
 
 function criarEmpresa(chave, banco = criarBanco(), opcoes = {}) {
@@ -538,9 +546,31 @@ async function main() {
       const rl = await e.pedir('POST', '/api/defeitos/pedido/:id/lancar-estoque', { params: { id }, papel: 'admin' });
       assert.equal(rl.statusCode, 409); assert.equal(rl.body.incerto, true); assert.equal(posts(ch), 1, 'relancar sem forcar NAO chamou o Bling');
       resposta = { ok: true, data: { data: { id: 11 } } };
-      const rf = await e.pedir('POST', '/api/defeitos/pedido/:id/lancar-estoque', { params: { id }, papel: 'admin', body: { forcar: true } });
+      // Codex #584 (P1): `forcar: true` nao basta — tem que ser a MARCA conferida
+      const rTrue = await e.pedir('POST', '/api/defeitos/pedido/:id/lancar-estoque', { params: { id }, papel: 'admin', body: { forcar: true } });
+      assert.equal(rTrue.statusCode, 409); assert.equal(posts(ch), 1);
+      const rOutra = await e.pedir('POST', '/api/defeitos/pedido/:id/lancar-estoque', { params: { id }, papel: 'admin', body: { forcar: 'LANCANDO outra' } });
+      assert.equal(rOutra.statusCode, 409); assert(/marca mudou/.test(rOutra.body.erro)); assert.equal(posts(ch), 1);
+      const rf = await e.pedir('POST', '/api/defeitos/pedido/:id/lancar-estoque', { params: { id }, papel: 'admin', body: { forcar: rl.body.estoque_operacao } });
       assert.equal(rf.statusCode, 200); assert.equal(rf.body.ok, true); assert.equal(posts(ch), 2);
       assert.equal(ped.status, 'concluido'); assert(/^LANCADO /.test(ped.estoque_operacao));
+    });
+    await caso(chave + ': dois admins conferem o MESMO incerto e forcam em paralelo (1o POST pendurado): um lanca, outro 409, UM POST', async () => {
+      const ch = []; let soltar = null; let n = 0;
+      const e = criarEmpresa(chave, criarBanco(), { deposito: '8100', chamarBling: blingDeEstoque(ch, () => {
+        n++;
+        if (n === 1) return new Promise((r) => { soltar = () => r({ ok: true, data: { data: { id: 11 } } }); });
+        return { ok: true, data: { data: { id: 11 } } };
+      }) });
+      const id = await pedidoRecuperado(e);
+      const ped = e.banco.tabelas[e.n.ped][0];
+      ped.status = 'autorizado'; ped.estoque_operacao = 'LANCANDO incerto1';   // a chamada anterior ficou sem resposta
+      const p1 = e.pedir('POST', '/api/defeitos/pedido/:id/lancar-estoque', { params: { id }, papel: 'admin', body: { forcar: 'LANCANDO incerto1' } });
+      await new Promise((r) => setTimeout(r, 30));   // o 1o ja reservou (marca nova) e esta esperando o Bling
+      const r2 = await e.pedir('POST', '/api/defeitos/pedido/:id/lancar-estoque', { params: { id }, papel: 'admin', body: { forcar: 'LANCANDO incerto1' } });
+      assert.equal(r2.statusCode, 409, 'o 2o admin confirmou a marca ANTIGA; ela mudou → 409');
+      soltar(); const r1 = await p1;
+      assert.equal(r1.statusCode, 200); assert.equal(posts(ch), 1, '⚠️ Codex #584: UM POST, nao dois');
     });
     await caso(chave + ': Bling RECUSOU (4xx) = nao aplicou: marca volta a null e relancar funciona', async () => {
       const ch = []; let resposta = { ok: false, status: 400, error: { error: { message: 'deposito invalido' } } };
@@ -578,7 +608,7 @@ async function main() {
     await caso(chave + ': sem a coluna estoque_operacao a recuperada NAO e autorizada (503 com o SQL); descarte segue', async () => {
       const ch = []; const e = criarEmpresa(chave, criarBanco(), { deposito: '8100', chamarBling: blingDeEstoque(ch) });
       const id = await pedidoRecuperado(e);
-      e.banco.falharUpdate(e.n.ped, campos => 'estoque_operacao' in campos, "column " + e.n.ped + ".estoque_operacao does not exist");
+      e.banco.semColuna(e.n.ped, 'estoque_operacao');   // Codex #584 (P2): derruba select que NOMEIA a coluna e qualquer escrita nela
       const r = await e.pedir('POST', '/api/defeitos/pedido/:id/decidir', { params: { id }, papel: 'admin', body: { acao: 'autorizar' } });
       assert.equal(r.statusCode, 503); assert.equal(r.body.falta_coluna, true); assert(/add column if not exists estoque_operacao/.test(r.body.sql));
       assert.equal(e.banco.tabelas[e.n.ped][0].status, 'pendente'); assert.equal(posts(ch), 0, 'sem marcador, nao mexe no Bling');

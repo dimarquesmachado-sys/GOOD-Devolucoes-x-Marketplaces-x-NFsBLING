@@ -128,14 +128,14 @@
     if (btn) { btn.disabled = true; btn.textContent = 'Lançando…'; }
     try {
       var r = await api('/api/defeitos/pedido/' + encodeURIComponent(pedidoId) + '/lancar-estoque',
-        { method: 'POST', body: JSON.stringify(forcar ? { forcar: true } : {}) });
+        { method: 'POST', body: JSON.stringify(typeof forcar === 'string' ? { forcar: forcar } : {}) });
       // b713 (P1-03) - o servidor marcou "em andamento" (ou a chamada anterior ficou sem resposta): so relanca se o
-      // humano conferiu no Bling que NAO entrou — e a confirmacao vira `forcar: true`, que o servidor trata como
-      // compare-and-swap (dois cliques: so um passa)
-      if (r && r.ok === false && r.incerto && !forcar) {
+      // humano conferiu no Bling que NAO entrou — e a confirmacao leva a MARCA EXATA que ele viu (Codex #584): o
+      // servidor so passa se o pedido ainda estiver com essa marca (dois admins: so um passa)
+      if (r && r.ok === false && r.incerto && typeof forcar !== 'string' && r.estoque_operacao) {
         if (btn) { btn.disabled = false; btn.textContent = '🔄 Lançar estoque no Bling'; }
         if (confirm('⚠️ ' + (r.erro || 'ja ha um lancamento em andamento deste pedido') + '\n\nVoce CONFERIU no Bling que a entrada NAO existe? Clique OK pra lançar mesmo assim.')) {
-          return window.relancarEstoque(pedidoId, btn, true);
+          return window.relancarEstoque(pedidoId, btn, String(r.estoque_operacao));
         }
         return;
       }
