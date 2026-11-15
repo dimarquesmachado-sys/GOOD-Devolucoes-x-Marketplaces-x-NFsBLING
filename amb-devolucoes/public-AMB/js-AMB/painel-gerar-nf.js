@@ -56,8 +56,11 @@
         throw new Error('Bling não retornou ID da devolução: ' + JSON.stringify(result || {}).slice(0, 150));
       }
 
+      // b719 (P1-06) - o registro aqui e o da extensao sao DUAS tentativas; se as duas falharem, a NF existe no Bling e
+      // o card nao sabe — isso tem que aparecer, nao ficar num catch mudo.
+      let registrou = false;
       try {
-        await fetch(`${window.APP_BASE || ''}/api/admin/registrar-devolucao-gerada/${devolucaoId}`, {
+        const rReg = await fetch(`${window.APP_BASE || ''}/api/admin/registrar-devolucao-gerada/${devolucaoId}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -65,7 +68,13 @@
             nf_devolucao_numero: String(result.numero || ''),
           }),
         });
-      } catch (e) { /* extensao ja registrou sozinha */ }
+        registrou = !!rReg.ok;
+      } catch (e) { registrou = false; }
+      const autoOk = !!(result.auto_registro && result.auto_registro.ok);
+      if (!registrou && !autoOk) {
+        throw new Error('A NF de devolução ' + (result.numero || result.idNotaDevolucao) + ' FOI CRIADA no Bling, mas o sistema NÃO conseguiu registrar no card (nem este painel, nem a extensão'
+          + (result.auto_registro && result.auto_registro.erro ? ': ' + result.auto_registro.erro : '') + '). Registre pelo card antes de gerar de novo.');
+      }
 
       return { numero: result.numero || '?', emitida: !!result.emitida };
     }
@@ -528,8 +537,10 @@
 
         // Registra no Supabase pra nao gerar de novo (nao critico)
         document.getElementById('statusGerar').textContent = 'Registrando no sistema...';
+        // b719 (P1-06) - se este registro E o da extensao falharem, avisa: a NF existe no Bling e o card nao sabe
+        let registrou = false;
         try {
-          await fetch(`${window.APP_BASE || ''}/api/admin/registrar-devolucao-gerada/${devolucaoId}`, {
+          const rReg = await fetch(`${window.APP_BASE || ''}/api/admin/registrar-devolucao-gerada/${devolucaoId}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -537,8 +548,13 @@
               nf_devolucao_numero: String(numeroNF),
             }),
           });
+          registrou = !!rReg.ok;
         } catch (e) {
-          console.warn('Falha ao registrar no Supabase (nao critico):', e);
+          console.warn('Falha ao registrar no Supabase:', e);
+        }
+        if (!registrou && !(result.auto_registro && result.auto_registro.ok)) {
+          alert('⚠️ A NF de devolução ' + numeroNF + ' FOI CRIADA no Bling, mas o sistema NÃO conseguiu registrar no card (nem este painel, nem a extensão'
+            + (result.auto_registro && result.auto_registro.erro ? ': ' + result.auto_registro.erro : '') + '). Registre pelo card antes de gerar de novo.');
         }
 
         // Mostra sucesso (rascunho x emitida)

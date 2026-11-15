@@ -614,7 +614,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.126.219 (b707: extensao do upload so com caracteres de URL; b706: P1-01 — foto e dado, nao codigo: painel e ficha sem onclick montado como texto; servidor so grava URL do upload (lib/fotos-referencia); b705: roteiro unico de liquidacao)',
+      version: '9.126.231 (b719: P1-06 — painel regrava as pendencias de registro que a Toolbox 2.1.19 entrega (so as desta empresa) e avisa quando nem ele nem a extensao registraram a NF)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),

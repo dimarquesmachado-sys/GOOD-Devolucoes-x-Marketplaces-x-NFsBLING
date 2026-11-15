@@ -126,3 +126,43 @@
     verificarBridgeInstalada().then(instalada => {
       console.log('[GOOD Devolucoes] Extensao Bridge:', instalada ? 'INSTALADA ✅' : 'NAO instalada ❌');
     });
+
+    // b719 (P1-06, auditoria do Codex) - FALHA DE REGISTRO APARECE, MESMO COM O PAINEL QUE PEDIU JA FECHADO.
+    // A extensao (1.8.0+) guarda os registros que nao gravou e entrega a qualquer painel que abrir. Este painel
+    // regrava as DESTA empresa (a sessao admin daqui so vale aqui), manda limpar as que gravou e avisa o que sobrou.
+    function chaveDaEmpresaDoPainel() {
+      var e = String(window.APP_EMPRESA || '').trim().toLowerCase();
+      return (e === 'amb') ? 'ambtotal' : e;
+    }
+    async function tratarFalhasDeRegistroDaBridge(falhas) {
+      var minha = chaveDaEmpresaDoPainel();
+      var gravadas = [], sobraram = [];
+      for (var i = 0; i < (falhas || []).length; i++) {
+        var f = falhas[i];
+        if (!f || String(f.empresa) !== minha || !f.devolucaoId || !f.idNotaDevolucao) { if (f) sobraram.push(f); continue; }
+        try {
+          var r = await fetch((window.APP_BASE || '') + '/api/admin/registrar-devolucao-gerada/' + encodeURIComponent(f.devolucaoId), {
+            method: 'PUT', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ nf_devolucao_id_bling: String(f.idNotaDevolucao), nf_devolucao_numero: String(f.numero || '') }),
+          });
+          if (r.ok) gravadas.push(f); else sobraram.push(Object.assign({}, f, { erro: 'HTTP ' + r.status }));
+        } catch (e) { sobraram.push(Object.assign({}, f, { erro: String(e && e.message || e) })); }
+      }
+      if (gravadas.length) {
+        window.postMessage({ tipo: 'GOOD_BRIDGE_FALHAS_LIMPAR', chaves: gravadas.map(function (f) { return f.empresa + ':' + f.devolucaoId; }) }, '*');
+        console.log('[Bridge] registros pendentes regravados agora:', gravadas.length);
+      }
+      var deAqui = sobraram.filter(function (f) { return String(f.empresa) === minha; });
+      var texto = (gravadas.length ? '✅ ' + gravadas.length + ' NF(s) de devolução que a extensão não tinha conseguido registrar foram gravadas agora.\n\n' : '')
+        + (deAqui.length ? '⚠️ ' + deAqui.length + ' registro(s) desta empresa continuam SEM gravar (a NF existe no Bling):\n'
+          + deAqui.map(function (f) { return '• devolução ' + f.devolucaoId + ' → NF ' + (f.numero || f.idNotaDevolucao) + ' (' + (f.erro || 'sem detalhe') + ')'; }).join('\n') + '\n\nRegistre pelo card ou confira a sessão.' : '')
+        + (sobraram.length > deAqui.length ? '\n\nℹ️ ' + (sobraram.length - deAqui.length) + ' registro(s) de OUTRA empresa pendente(s) — abra o painel dela.' : '');
+      if (texto.trim()) alert(texto.trim());
+      return { gravadas: gravadas, sobraram: sobraram };
+    }
+    window.addEventListener('message', function (event) {
+      if (event.source !== window) return;
+      if (!event.data || event.data.tipo !== 'GOOD_BRIDGE_FALHAS_REGISTRO') return;
+      tratarFalhasDeRegistroDaBridge(event.data.falhas || []);
+    });
+    window.tratarFalhasDeRegistroDaBridge = tratarFalhasDeRegistroDaBridge;
