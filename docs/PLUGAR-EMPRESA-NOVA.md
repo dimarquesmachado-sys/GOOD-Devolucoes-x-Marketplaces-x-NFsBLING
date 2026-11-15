@@ -214,8 +214,12 @@ do Mover-Pedidos da GOOD **com que tudo funciona** (as demais permissões ficam 
 |---|---|---|
 | Usuários | Leitura e escrita | já estava assim |
 | Comunicações pré e pós-vendas | Leitura e escrita | **medido em 14/11**: sem ela a busca de reclamações (`/post-purchase/v1/claims/search`) dá 403 e o índice de devoluções não monta. Só "Leitura" não foi testado |
+| Publicação e sincronização | Leitura | **medido em 14/11**: sem ela a consulta de anúncio (`/items/{id}`, `/users/{id}/items/search`) dá 403 — é o que a linha do tempo do retiro do Full usa. Só leitura: o Devoluções não altera anúncio |
 | Faturamento de uma venda | Leitura e escrita | exigência do F3 do Mover-Pedidos (NF → ML), que também dava 403 do PolicyAgent sem ela |
 | Venda e envios de um produto | Leitura e escrita | já estava assim; pedidos, pacotes e envios respondiam |
+
+Com esse conjunto, todas as rotas do ML que o Devoluções chama responderam `200` na GOOD em 14/11 — inclusive o
+estoque do Full (`/stock/fulfillment/operations/search`).
 
 **Como falta de permissão aparece:** `403` com `blocked_by: PolicyAgent` e
 `code: PA_UNAUTHORIZED_RESULT_FROM_POLICIES`, em **toda** chamada daquela família — até numa busca que não

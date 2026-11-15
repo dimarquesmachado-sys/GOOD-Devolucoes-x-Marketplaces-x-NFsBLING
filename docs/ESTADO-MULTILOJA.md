@@ -283,6 +283,20 @@ Devoluções). Se cada serviço usa o seu, o `risco_ativo.refresh_ml_uso_unico` 
 (apps diferentes não disputam refresh). Falta medir o `GOOD_ML_CLIENT_ID`/`ML_CLIENT_ID` deste serviço antes de
 mexer no contrato, que é espelhado com o Mover-Pedidos.
 
+**b696 — o dono fora do ar não derruba quem já tem o token dele.** Passado o TTL de 5 min o leitor re-pede o
+token; se o Mover-Pedidos não respondia (deploy, reinício, rede, timeout), a leitura saía `indisponivel` mesmo
+com o último token dele na memória e ainda válido. Em `sombra` virava queda no local (e o veredito reprovava o
+eixo até o próximo reinício); em `remoto` viraria **chamada falhada** — cada reinício do Mover-Pedidos
+derrubaria o bipe por instantes. Agora, em falha **passageira** (rede/timeout, 502, 5xx, página do proxy), o
+leitor segue com o último token que o dono entregou, e por 30 s nem bate nele de novo (o timeout é de 8 s e
+quem espera é o estoquista). O que **não** muda: resposta do próprio dono dizendo que está errado (config,
+chave de leitura, integração inexistente) aparece como antes; token recusado pelo marketplace não volta (o
+401/403 apaga a entrada); tudo em memória. No `/health`: `fonte.velho`, estado `ok_velho`, `ultimo_velho`, e
+`ultima_falha` carimbada quando o dono falha. No `pode_cortar` isso **não bloqueia** (a chamada saiu com token
+do dono) mas fica dito: "o dono não respondeu em N leitura(s)". `caiu no local` continua bloqueando — agora
+significa "dono fora **e** nenhum token dele na memória". Teste: `test/token-leitor-dono-fora`.
+⚠️ Pendente: registrar isso no `cache_no_leitor` do contrato (PR gêmeo com o Mover-Pedidos).
+
 ⚠️ Voltar para `local` com refresh antigo pode falhar: o dono já pode tê-lo
 consumido.
 
