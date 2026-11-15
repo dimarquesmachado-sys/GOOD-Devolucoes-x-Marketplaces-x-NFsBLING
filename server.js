@@ -614,7 +614,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.126.219 (b707: extensao do upload so com caracteres de URL; b706: P1-01 — foto e dado, nao codigo: painel e ficha sem onclick montado como texto; servidor so grava URL do upload (lib/fotos-referencia); b705: roteiro unico de liquidacao)',
+      version: '9.126.233 (b721: P1-08 — relatorio financeiro agrega por item que voltou (itens_devolvidos com valor_unit); sem a lista, marca aproximado; item sem preco nao entra no valor)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),

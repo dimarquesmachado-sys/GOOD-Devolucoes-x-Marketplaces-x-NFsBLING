@@ -109,6 +109,14 @@ function renderizarCards(c) {
   document.getElementById('cardSKUsUnicos').textContent = c.totalSKUsUnicos || 0;
   document.getElementById('cardUnidades').textContent = c.totalUnidades || 0;
   document.getElementById('cardValor').textContent = fmtMoeda(c.valorTotal);
+  // b721 (P1-08): o valor e por item que voltou; quando parte dele e aproximada (triagem antiga, sem a lista do que
+  // voltou) ou desconhecida (item sem preco), o card DIZ — em vez de fingir precisao
+  const elValor = document.getElementById('cardValor');
+  const avisos = [];
+  if (c.valorAproximadoDevolucoes > 0) avisos.push(c.valorAproximadoDevolucoes + ' devolução(ões) antiga(s) com valor aproximado (sem a lista do que voltou)');
+  if (c.valorItensDesconhecidos > 0) avisos.push(c.valorItensDesconhecidos + ' item(ns) sem preço, fora da soma');
+  elValor.title = avisos.join(' · ');
+  if (avisos.length) elValor.textContent += ' ≈';
 }
 
 function renderizarRankings(skus, problemas) {

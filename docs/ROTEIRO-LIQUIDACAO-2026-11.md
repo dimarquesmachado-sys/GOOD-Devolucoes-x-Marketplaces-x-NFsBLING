@@ -98,7 +98,8 @@ Segue as 12 etapas do Codex, com os itens de cada uma. A ordem dentro da etapa �
 - **Correção:** ID estável por foto + geração/identidade por triagem; resposta antiga só atualiza o fluxo que a originou.
 - **Aceite:** inverter respostas, remover foto e trocar de pacote durante upload não mistura evidência nem deixa bloqueio permanente.
 
-### P1-08 ⬜ Relatório financeiro multiplica qtd total pelo preço de um produto
+### P1-08 🔄 Relatório financeiro multiplica qtd total pelo preço de um produto
+- **PR:** branch `dev/p1-08-relatorio-por-item` (b721). Relatório agrega por `itens_devolvidos` (agora com `valor_unit` do item da NF); item sem preço entra na quantidade e não no valor (`valorItensDesconhecidos`); triagem antiga sem a lista cai no cálculo legado e conta em `valorAproximadoDevolucoes` (o card mostra ≈ e explica no title). `produto_valor_unit` passa a ser do item que voltou, não do 1º order_item.
 - **Onde:** `lib/rotas-relatorios.js` (~l.208) — ignora `itens_devolvidos`; devolução só do 2º item ainda usa o 1º `order_item`. Ver `docs/ITENS-DEVOLVIDOS.md`.
 - **Correção:** agregar por item efetivamente devolvido (id, qtd, preço); histórico sem evidência marcado como desconhecido/aproximado, não inventado.
 - **Aceite:** parcial, múltiplos SKUs e só-o-2º-produto dão valores e rankings corretos (A 1×R$10 + B 1×R$100 = R$110, A=1, B=1).
