@@ -426,7 +426,7 @@ registrar('permissões do aplicativo do ML', async (chave) => {
 /* ── 4. as tabelas existem no banco ──────────────────────────────── */
 registrar('tabelas no Supabase', async (chave) => {
   const { obterEmpresa } = require('../lib/empresas');
-  const { sufixoDaFicha, TABELAS_ESPERADAS } = require('../lib/provisionar-empresa');
+  const { sufixoDaFicha, TABELAS_ESPERADAS, RESERVADOS } = require('../lib/provisionar-empresa');
   const e = obterEmpresa(chave);
 
   // ⚠️ (Codex, 2a rodada, P2) - O SUFIXO VEM DA FICHA, NÃO DE `chaveDados`.
@@ -440,7 +440,7 @@ registrar('tabelas no Supabase', async (chave) => {
   // na ficha em vez de inventar.
   // b699 - SEM SUFIXO NÃO É ERRO: é a hospedeira (a GOOD), que usa as tabelas originais. "Nada a criar" é a
   // resposta certa pro provisionador e era a errada aqui — a sonda reprovava a GOOD sem olhar tabela
-  // nenhuma (15/11). As 7 são as mesmas, sem sufixo (o ciclo de defeitos da raiz usa `defeito_*` puro).
+  // nenhuma (15/11). A lista é a mesma, sem sufixo (o ciclo de defeitos da raiz usa `defeito_*` puro).
   const s = sufixoDaFicha(e);
   if (!s.ok && !s.semSufixo) return { ok: false, detalhe: s.erro };
   const sufixo = s.ok ? s.sufixo : '';
@@ -515,13 +515,18 @@ registrar('tabelas no Supabase', async (chave) => {
     detalhe: ausentes.length === 0
       ? `as ${tabelas.length} respondem`
       : `faltam ${ausentes.length} de ${tabelas.length}: ${ausentes.join(', ')}`,
-    // a rotina do banco só cria tabela COM sufixo: pra hospedeira, mandar rodá-la seria mandar errar
+    // a rotina do banco só cria tabela COM sufixo, e RECUSA o sufixo reservado (o molde): mandar rodá-la
+    // pra hospedeira ou pra AMB seria mandar errar (b700: "sufixo reservado" era a resposta dela pro `_amb`)
     dica: !ausentes.length ? null
-      : (sufixo
-        ? 'cole sql/provisionar-empresa.sql no SQL Editor e rode '
-          + `select provisionar_empresa('${sufixo}');`
-        : 'tabelas SEM sufixo são as originais da hospedeira — a rotina de provisionamento não as cria; '
-          + 'confira no Supabase se a tabela existe com esse nome'),
+      : (!sufixo
+        ? 'tabelas SEM sufixo são as originais da hospedeira — a rotina de provisionamento não as cria; '
+          + 'confira no Supabase se a tabela existe com esse nome'
+        : (RESERVADOS.has(sufixo)
+          ? `o sufixo "${sufixo}" é reservado (são as tabelas-molde das outras empresas): a rotina de `
+            + 'provisionamento o recusa. Se forem as 2 de etiquetas, o SQL é '
+            + 'sql/2026-11-01-tags-relatorio-amb-girassol.sql; as demais, confira no Supabase'
+          : 'cole sql/provisionar-empresa.sql no SQL Editor e rode '
+            + `select provisionar_empresa('${sufixo}');`)),
   };
 });
 

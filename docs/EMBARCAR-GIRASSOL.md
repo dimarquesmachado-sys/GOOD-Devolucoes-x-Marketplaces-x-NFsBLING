@@ -7,7 +7,7 @@
 > SETE tabelas `*_girassol` provisionadas em producao. O texto abaixo e o HISTORICO do embarque (de 22/09) —
 > as instrucoes de "manter inativa" e a contagem de 5 tabelas valiam ANTES da ativacao.
 >
-> **Pra embarcar a PROXIMA empresa, use este documento como roteiro, com estas correcoes:** sao 7 tabelas
+> **Pra embarcar a PROXIMA empresa, use este documento como roteiro, com estas correcoes:** sao 9 tabelas
 > (rode o `sql/provisionar-empresa.sql` atual); a empresa nasce INATIVA no contrato e so e ativada depois da
 > sonda verde; o front recebe a empresa do servidor (b513) — nada a cadastrar no navegador; e cada CNPJ usa
 > apps PROPRIOS em todos os marketplaces, inclusive o Magalu (regra do dono: nenhuma dependencia entre

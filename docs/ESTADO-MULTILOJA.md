@@ -177,8 +177,9 @@ dela (via `descobrirFicha`). ⚠️ `idEmpresaControl` **não vem por API** —
 `GIRASSOL_ID_EMPRESA_CONTROL` com o valor que a própria Girassol informa. Sem
 padrão inventado, de propósito — NF com número errado é pior que NF ausente.
 
-**As 7 tabelas** no Supabase. ⚠️ A rotina `provisionar_empresa` instalada lá
-pode ser a **antiga, de 5 tabelas**: cole `sql/provisionar-empresa.sql` no SQL
+**As 9 tabelas** no Supabase (eram 7 até o b700: as 2 de etiquetas do relatório
+entraram na conta). ⚠️ A rotina `provisionar_empresa` instalada lá
+pode ser **antiga, de 5 ou de 7 tabelas**: cole `sql/provisionar-empresa.sql` no SQL
 Editor antes — isso só cria/atualiza a FUNÇÃO, não roda nada sozinho. Depois
 **execute a função**: `select * from public.provisionar_empresa('_girassol');`
 no mesmo SQL Editor. O `lib/provisionar-empresa.js` confere e avisa se
@@ -349,9 +350,16 @@ Mover-Pedidos) e reprovou a GOOD em 4 linhas, com ela operando. Lidas uma a uma 
 
 A Shopee da GOOD não respondeu em 8 s naquela rodada — uma medição só, sem conclusão.
 
-⚠️ Ainda fora da sonda: ela confere as **7** tabelas de `TABELAS_ESPERADAS`; as 2 de etiquetas do relatório
-(`tags`, `devolucao_tags`, b651) estão no SQL de provisionamento e na ficha, mas não nessa lista — nem a sonda
-nem a conferência depois do provisionamento olham por elas. Teste: `test/sonda-hospedeira`.
+Teste: `test/sonda-hospedeira`.
+
+**b700 — a lista de tabelas conferidas passa de 7 para 9.** O b651 pôs as 2 do relatório (`tags`,
+`devolucao_tags`) no SQL de provisionamento e na ficha, e a lista canônica (`TABELAS_ESPERADAS`) ficou nas 7:
+nem a sonda nem a conferência depois do provisionamento olhavam por elas — o erro do b426 ao contrário. Uma
+empresa criada com a rotina antiga do banco passaria "ok" e o relatório quebraria na primeira etiqueta. Agora
+a sonda responde "as 9 respondem" (ou diz qual falta), nas três empresas, e `test/tabelas-canonicas` amarra as
+três fontes — a lista, os moldes do SQL e a ficha de cada empresa: quem crescer uma sem as outras fica vermelho.
+De carona, a dica da linha: pra AMB (o molde — a rotina recusa `_amb` como "sufixo reservado") a sonda mandava
+rodar o provisionador; agora aponta o SQL das etiquetas (`sql/2026-11-01-tags-relatorio-amb-girassol.sql`).
 
 ⚠️ Voltar para `local` com refresh antigo pode falhar: o dono já pode tê-lo
 consumido.

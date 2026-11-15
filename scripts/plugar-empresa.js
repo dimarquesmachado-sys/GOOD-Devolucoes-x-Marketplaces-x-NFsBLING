@@ -215,8 +215,8 @@ if (require.main === module) {
     console.log('── o banco ──');
     console.log('');
     console.log('   1. cole `sql/provisionar-empresa.sql` no SQL Editor do Supabase');
-    console.log('      ⚠️ a rotina instalada pode ser a ANTIGA, de 5 tabelas — o ciclo');
-    console.log('      de defeitos precisa de 7');
+    console.log('      ⚠️ a rotina instalada pode ser ANTIGA (de 5 ou de 7 tabelas) — hoje sao 9:');
+    console.log('      o ciclo de defeitos precisa de 2 e o relatorio (etiquetas) de mais 2');
     console.log('   2. depois rode:');
     console.log('');
     console.log('      ' + r.sqlProvisionar);

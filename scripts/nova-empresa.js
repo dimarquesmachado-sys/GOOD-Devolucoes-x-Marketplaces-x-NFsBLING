@@ -229,9 +229,9 @@ if (require.main === module) {
   console.log('');
   console.log('════ 3. as tabelas no Supabase ════');
   console.log('');
-  console.log('   ⚠️ A rotina instalada no seu banco pode ser a ANTIGA, de 5 tabelas.');
+  console.log('   ⚠️ A rotina instalada no seu banco pode ser ANTIGA (de 5 ou de 7 tabelas).');
   console.log('   Cole `sql/provisionar-empresa.sql` no SQL Editor ANTES de provisionar —');
-  console.log('   o ciclo de defeitos precisa de 7.');
+  console.log('   hoje sao 9: o ciclo de defeitos precisa de 2 e o relatorio (etiquetas) de mais 2.');
   console.log('');
   console.log(`   select provisionar_empresa('_${r.suf}');`);
   console.log('');
