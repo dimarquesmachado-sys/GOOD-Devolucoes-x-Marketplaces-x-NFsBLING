@@ -22,7 +22,9 @@ function banco(inicial, falhas = {}) {
       delete() { q.op = 'delete'; return chain; },
       eq(col, v) { q.filtros.push((x) => String(x[col]) === String(v)); return chain; },
       in(col, vs) { q.filtros.push((x) => vs.map(String).includes(String(x[col]))); return chain; },
-      then(res) {
+      then(res0) {
+        // atrasoSelect: o SELECT responde so depois de N ms (deixa duas requisicoes lerem o mesmo retrato)
+        const res = (v) => (q.op === 'select' && falhas.atrasoSelect ? setTimeout(() => res0(v), falhas.atrasoSelect) : res0(v));
         ops.push(q.op);
         if (falhas[q.op]) return res({ data: null, error: { message: 'falhou ' + q.op, code: falhas[q.op] === true ? 'XX' : falhas[q.op] } });
         const bate = linhas.filter((x) => q.filtros.every((f) => f(x)));
@@ -100,6 +102,15 @@ const tagsDe = (b) => b.linhas.filter((x) => String(x.devolucao_id) === '77').ma
     ok(tagsDe(b).join() === 'B,C', '⚠️ (Codex #594) C entrou mesmo com o lote desfeito, e A saiu: banco = B,C. Veio: ' + tagsDe(b).join());
     const insercoes = b.ops.filter((o) => o === 'insert').length;
     ok(insercoes === 3, '  lote (1) + uma a uma (2)');
+  }
+  // dois admins na MESMA devolucao ao mesmo tempo (Codex #594): [A,B] + pedidos [A] e [B]. Sem fila, os dois leem
+  // [A,B], nenhum insere e cada um apaga o que o outro queria → zero tags. Com fila, o 2o le depois do 1o escrever.
+  {
+    const b = banco([{ devolucao_id: 77, tag_id: 'A' }, { devolucao_id: 77, tag_id: 'B' }], { atrasoSelect: 20 });
+    const f = rota(b);
+    const [r1, r2] = await Promise.all([f(['A']), f(['B'])]);
+    ok(r1.status === 200 && r2.status === 200, '  concorrentes: as duas respondem ok');
+    ok(tagsDe(b).join() === 'B', '⚠️ (Codex #594) a ultima a chegar vence e a devolucao NAO fica sem tags. Veio: [' + tagsDe(b).join() + ']');
   }
   console.log('');
   console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
