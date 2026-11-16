@@ -26,6 +26,7 @@ const mlClient = require('./lib/ml');
 
 // v3.16.0 - Dashboard de relatorios
 const registrarRotasRelatorios = require('./lib/rotas-relatorios');
+const { exigirFotosValidas, nomeDePastaSeguro } = require('./lib/fotos-referencia');   // b706 (P1-01) - so grava foto que veio do upload deste servidor
 const { escaparHtml } = require('./lib/html-texto');   // b707 (P1-02) - callbacks/setups: o que vem do provedor e texto
 // b650 - a peca virou multiempresa: a busca textual que ela usava por dentro
 // agora e injetada por quem registra (aqui, a da GOOD).
@@ -618,7 +619,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.126.233 (b721: P1-08 — relatorio financeiro agrega por item que voltou (itens_devolvidos com valor_unit); sem a lista, marca aproximado; item sem preco nao entra no valor)',
+      version: '9.126.235 (b723: lote P1-02/06/07/08/09/10/11 + P2-01/10 (PRs 578, 580, 581, 582, 587-591 somados num so, pra nao conflitar a cada merge); P1-08 — relatorio financeiro agrega por item que voltou (itens_devolvidos com valor_unit); sem a lista, marca aproximado; item sem preco nao entra no valor)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
