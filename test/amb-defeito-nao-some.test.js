@@ -44,9 +44,11 @@ async function main() {
       assert.equal(r.statusCode, 200); assert.equal(r.body.itens.length, 200);
       assert(r.body.itens.every(x => x.id > 400));
       assert.deepEqual(r.body.contagem, { defeito: 200, recuperado: 250, descartado: 150, excluido: 0 });
-      const pagina = e.banco.chamadas.find(c => c.tabela === e.n.dev && c.limites != null);
-      assert.equal(pagina.limites, 700);
-      assert(!pagina.expressoes.some(expr => expr.startsWith('id.not.in.(')), 'não monta URL com 400 IDs');
+      // b725 (P2-03): acima de 150 resolvidas a aba Com Defeito e PAGINADA (range de 300), nao mais "limite alargado"
+      const paginas = e.banco.chamadas.filter(c => c.tabela === e.n.dev && c.faixa);
+      assert(paginas.length >= 2, 'ATIVOS lidos em paginas: ' + paginas.length);
+      assert(paginas.every(c => c.faixa[1] - c.faixa[0] + 1 === 300), 'cada pagina tem 300 linhas');
+      assert(!paginas.some(c => c.expressoes.some(expr => expr.startsWith('id.not.in.('))), 'não monta URL com 400 IDs');
       assert(e.banco.chamadas.filter(c => c.opcoes.head).every(c => c.limites == null));
     });
     await caso(chave + ': mudar aba não zera nem altera os totais das outras abas', async () => {
@@ -65,8 +67,9 @@ async function main() {
       assert.equal(r.statusCode, 200); assert.equal(r.body.itens.length, 100);
       assert(r.body.itens.every(x => x.id > 900));
       assert.deepEqual(r.body.contagem, { defeito: 100, recuperado: 900, descartado: 0, excluido: 0 });
-      const pagina = e.banco.chamadas.find(c => c.tabela === e.n.dev && c.limites != null);
-      assert.equal(pagina.limites, 1000);
+      // b725 (P2-03): paginado — 900 resolvidas mais novas + 100 ativas = 4 paginas de 300, sem teto de 1000
+      const paginas = e.banco.chamadas.filter(c => c.tabela === e.n.dev && c.faixa);
+      assert.equal(paginas.length, 4, 'paginas lidas: ' + paginas.length);
       for (const consulta of e.banco.chamadas.filter(c => c.opcoes.head)) {
         assert.equal(consulta.limites, null);
         for (const expr of consulta.expressoes) for (const m of expr.matchAll(/\bid\.(?:not\.)?in\.\(([^)]*)\)/g)) {
