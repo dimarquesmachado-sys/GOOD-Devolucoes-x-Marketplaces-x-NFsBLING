@@ -30,6 +30,7 @@ require.cache[axiosPath] = {
   exports: () => {
     const proxima = respostasAxios.shift();
     if (!proxima) return Promise.resolve({ status: 200, data: { data: [] } });
+    if (proxima.lenta) return proxima.lenta;   // b731: resposta segurada pelo teste
     return proxima.erro ? Promise.reject(proxima.erro) : Promise.resolve(proxima.ok);
   },
 };
@@ -198,6 +199,48 @@ function erro429(retryAfter) {
     ok(r.ok === true, '⚠️ chamarBling se recupera sozinho depois de 1 429');
     ok(bling.estadoRitmo().pausas429 === 1,
        `⚠️ um 429 SO avisa o ritmo 1 vez (pausas429=${bling.estadoRitmo().pausas429}, era 2)`);
+  }
+
+  // ── b731 (P2-07, auditoria do Codex 15/11): SUCESSO ATRASADO NAO APAGA A PAUSA DO 429 ──
+  // A requisicao A sai, demora; B sai depois e toma 429 (pausa aberta); A responde 200 DEPOIS do 429. Ate o b730 o
+  // sucesso de A zerava a pausa e o degrau — a fila voltava a bater no Bling no meio do Retry-After.
+  {
+    const r = criarRitmo({ nome: 't-atrasado', limitePorSegundo: 10 });
+    const saiuA = Date.now();
+    await new Promise((x) => setTimeout(x, 5));
+    r.avisar429(0, 'operacao');                      // B tomou 429: pausa de 1s
+    const limpou = r.avisarOk('operacao', null, saiuA);   // A (que saiu ANTES do 429) responde ok
+    ok(limpou === false && r.estado().pausa_ativa === true && r.estado().seguidos_429 === 1, '⚠️ sucesso de requisicao que saiu ANTES do 429 NAO limpa a pausa nem o degrau');
+    ok(r.estado().sucessosAtrasados === 1, '  e e contado em sucessosAtrasados');
+    const limpou2 = r.avisarOk('operacao', null, Date.now());   // requisicao que saiu DEPOIS do 429 e deu certo: a cota voltou
+    ok(limpou2 === true && r.estado().pausa_ativa === false && r.estado().seguidos_429 === 0, '  sucesso de requisicao que saiu DEPOIS do 429 limpa (a cota de fato voltou)');
+    // pistas: 429 de FUNDO + sucesso velho de OPERACAO = a pausa de fundo fica; sucesso velho de FUNDO tambem nao limpa
+    r.avisar429(0, 'fundo');
+    const antes = Date.now() - 50;
+    r.avisarOk('operacao', null, antes);   // operacao velha: nao mexe no fundo de qualquer jeito
+    ok(r.estado().pausa_fundo_termina_em_s >= 1, '  429 de fundo: pausa de fundo fica apos sucesso velho de operacao');
+    ok(r.avisarOk('fundo', null, antes) === false && r.estado().pausa_fundo_termina_em_s >= 1, '  sucesso VELHO de fundo nao limpa a pausa de fundo');
+    ok(r.avisarOk('fundo', null, Date.now()) === true && r.estado().pausa_fundo_termina_em_s === 0, '  sucesso NOVO de fundo limpa');
+    ok(r.avisarOk('operacao') === true, '  sem saiuEm (chamador antigo): comportamento de sempre');
+  }
+  // ── o mesmo pelo chamarBling REAL da fabrica: A lenta + B com 429 ──
+  {
+    const bling = blingAMBFactory.criar(configAMB);
+    let liberarA; const respostaA = new Promise((x) => { liberarA = x; });
+    respostasAxios = [
+      { lenta: respostaA },            // A: so responde quando o teste liberar
+      { erro: erro429() },             // B: 429 na hora
+      { erro: erro429() },             // retry de B dentro do chamarBling: 429 de novo (fica pausado)
+    ];
+    const pA = bling.chamarBling('/lenta', { semRetentativa: true });
+    await new Promise((x) => setTimeout(x, 50));
+    const pB = bling.chamarBling('/rapida');
+    await new Promise((x) => setTimeout(x, 450));   // o ritmo espaca ~333ms entre vagas: B sai e toma o 429
+    ok(bling.estadoRitmo().pausa_ativa === true, '  B tomou 429: pausa aberta');
+    liberarA({ status: 200, data: { data: [] } });
+    const rA = await pA;
+    ok(rA.ok === true && bling.estadoRitmo().pausa_ativa === true, '⚠️ chamarBling: A (lenta, saiu antes do 429) responde 200 e a pausa CONTINUA (antes: zerava)');
+    await pB;
   }
 
   // ── e com `semRetentativa`, o 429 ainda avisa (o P1 original) ───────
