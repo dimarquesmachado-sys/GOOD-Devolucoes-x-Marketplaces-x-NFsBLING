@@ -26,8 +26,12 @@ function banco(inicial, falhas = {}) {
         ops.push(q.op);
         if (falhas[q.op]) return res({ data: null, error: { message: 'falhou ' + q.op, code: falhas[q.op] === true ? 'XX' : falhas[q.op] } });
         const bate = linhas.filter((x) => q.filtros.every((f) => f(x)));
-        if (q.op === 'select') return res({ data: bate.map((x) => ({ tag_id: x.tag_id })), error: null });
-        if (q.op === 'insert') { linhas.push(...q.campos); return res({ data: q.campos, error: null }); }
+        if (q.op === 'select') return res({ data: bate.filter((x) => !(falhas.ocultaNoSelect || []).includes(String(x.tag_id))).map((x) => ({ tag_id: x.tag_id })), error: null });
+        if (q.op === 'insert') {
+          // como o Postgres: chave repetida = 23505 e o LOTE INTEIRO e desfeito
+          if (q.campos.some((c) => linhas.some((x) => String(x.devolucao_id) === String(c.devolucao_id) && String(x.tag_id) === String(c.tag_id)))) return res({ data: null, error: { message: 'duplicate key', code: '23505' } });
+          linhas.push(...q.campos); return res({ data: q.campos, error: null });
+        }
         if (q.op === 'delete') { for (const x of bate) linhas.splice(linhas.indexOf(x), 1); return res({ data: null, error: null }); }
       },
     };
@@ -87,11 +91,15 @@ const tagsDe = (b) => b.linhas.filter((x) => String(x.devolucao_id) === '77').ma
     const inv = await f('x');
     ok(inv.status === 400, '  tag_ids que nao e array: 400');
   }
-  // 23505 (outro admin aplicou a mesma tag no meio) nao e erro
+  // 23505 (outro admin aplicou UMA das tags no meio): o lote inteiro e desfeito pelo Postgres — as outras tem que
+  // entrar mesmo assim, ANTES de apagar (Codex #594). Cena: tinha [A]; outro admin pos B depois do SELECT; pedimos [B,C]
   {
-    const b = banco([], { insert: '23505' });
-    const r = await rota(b)(['A']);
-    ok(r.status === 200 && r.corpo.ok, '  INSERT com 23505 (ja existia): segue ok');
+    const b = banco([{ devolucao_id: 77, tag_id: 'A' }, { devolucao_id: 77, tag_id: 'B' }], { ocultaNoSelect: ['B'] });
+    const r = await rota(b)(['B', 'C']);
+    ok(r.status === 200 && r.corpo.ok, '  lote com 23505: segue ok');
+    ok(tagsDe(b).join() === 'B,C', '⚠️ (Codex #594) C entrou mesmo com o lote desfeito, e A saiu: banco = B,C. Veio: ' + tagsDe(b).join());
+    const insercoes = b.ops.filter((o) => o === 'insert').length;
+    ok(insercoes === 3, '  lote (1) + uma a uma (2)');
   }
   console.log('');
   console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
