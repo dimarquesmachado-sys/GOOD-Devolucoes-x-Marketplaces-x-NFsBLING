@@ -93,7 +93,8 @@ Segue as 12 etapas do Codex, com os itens de cada uma. A ordem dentro da etapa �
 - **Correção:** a empresa validada define o destino de **todas** as etapas; confirmar a conta Bling da aba escolhida corresponde à empresa; falha de persistência visível mesmo com o painel fechado.
 - **Aceite:** mesmo ID nas 3 tabelas → só a empresa pedida muda. Ver H-05 (as duas Bridges divergem).
 
-### P1-07 ⬜ Fotos de um pacote contaminam o seguinte
+### P1-07 🔄 Fotos de um pacote contaminam o seguinte
+- **PR:** branch `dev/p1-07-fotos-por-triagem` (b716). `public/js/camera.js` é a peça única (a fábrica serve o mesmo em `js-AMB/camera.js`): cada foto é um objeto com id; a conclusão do upload acha a entrada por identidade na lista **corrente** — lista trocada ou foto removida = descartado.
 - **Onde:** `js-AMB/camera.js` (~l.128) — callback do upload escreve em índice numérico de array global; nova triagem troca o array com upload anterior em voo. Tela de bipe é única (js-AMB serve a GOOD).
 - **Correção:** ID estável por foto + geração/identidade por triagem; resposta antiga só atualiza o fluxo que a originou.
 - **Aceite:** inverter respostas, remover foto e trocar de pacote durante upload não mistura evidência nem deixa bloqueio permanente.
@@ -126,7 +127,7 @@ Segue as 12 etapas do Codex, com os itens de cada uma. A ordem dentro da etapa �
 
 | id | estado | ponto | onde / evidência | direção |
 |---|---|---|---|---|
-| P2-01 | ⬜ | Busca fora de ordem | `busca.js:35` (**dois** arquivos: `public/js/busca.js` e `js-AMB/busca.js`); A/B respondidos B/A → campo B, resultado A | identidade da solicitação; só a mais recente atualiza tela e payload |
+| P2-01 | ⬜ | Busca fora de ordem | `public/js/busca.js:35` (peça única desde o b516 — a fábrica serve o mesmo em `js-AMB/busca.js`); A/B respondidos B/A → campo B, resultado A | identidade da solicitação; só a mais recente atualiza tela e payload |
 | P2-02 | ⬜ | Quantidade inválida | `defeitos-ciclo.js:1358`: 0/negativo/NaN viram 1, `Infinity` passa | rejeitar inválido; exigir finito, inteiro, limite |
 | P2-03 | ⬜ | Lista GOOD quebra em 150 pedidos | `defeitos-ciclo.js:510`: com 151 IDs registros `problema/delivered` somem da lista e seguem na contagem | consultar em lotes/páginas; testar 149/150/151/400 e formatos legados |
 | P2-04 | ⬜ | Tags sem atomicidade | `rotas-relatorios.js:448`: DELETE com erro responde ok; DELETE ok + INSERT falho perde tags | operação transacional (RPC) ou verificar cada resultado e repor |

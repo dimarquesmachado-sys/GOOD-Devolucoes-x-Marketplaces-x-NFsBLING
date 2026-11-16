@@ -618,7 +618,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.126.223 (b711: P1-10/P2-14 — Multer 2.x sem CVE, upload em peca unica (limite, 413/400 em JSON, tipo pelo conteudo); Node >=22 no manifesto)',
+      version: '9.126.228 (b716: P1-07 — foto da camera tem identidade: resposta de upload de um pacote fechado e descartada, nao entra no pacote seguinte)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
