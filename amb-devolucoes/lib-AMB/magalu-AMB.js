@@ -423,14 +423,21 @@ async function _fase2ReverseCodes(abertos) {
 async function construirIndiceDevolucoes(opts = {}) {
   if (!temToken()) { TIDX.erro = 'sem token Magalu da AMB'; return TIDX; }
   const t0 = Date.now();
+  TIDX.tentativaEm = t0;   // b729: carimbo da tentativa (publicada ou nao) - acharDevolucao espaca as reconstrucoes
   const maxPaginas = opts.maxPaginas || 4;   // ate 400 tickets
   const mapa = {};
   let total = 0;
   const abertos = [];
 
+  // b729 (P2-05, auditoria do Codex 15/11) - O INDICE SO E PUBLICADO COMPLETO. Ate o b728 a falha na 1a pagina
+  // publicava um mapa VAZIO por cima do ultimo indice bom (o bipe parava de achar tudo), e a falha numa pagina
+  // seguinte publicava o parcial E limpava o erro (`total > 0`). Agora: qualquer pagina com falha = nada e
+  // publicado, o ultimo indice valido fica no ar e TIDX.erro diz qual pagina caiu; a proxima construcao
+  // (on-demand ou pelo relogio) tenta de novo.
+  let incompleto = null;
   for (let pg = 0; pg < maxPaginas; pg++) {
     const r = await listarTickets({ _limit: 100, _offset: pg * 100 });
-    if (!r.ok) { TIDX.erro = `listarTickets HTTP ${r.status}`; break; }
+    if (!r.ok) { incompleto = `listarTickets HTTP ${r.status} (pagina ${pg + 1})`; break; }
     const lista = (r.data && r.data.results) || [];
     if (lista.length === 0) break;
     for (const t of lista) {
@@ -474,12 +481,17 @@ async function construirIndiceDevolucoes(opts = {}) {
     await new Promise(s => setTimeout(s, 250));
   }
 
-  // FASE 1 pronta: protocolo e pedido ja resolvem. Publica o indice JA.
+  if (incompleto) {
+    TIDX.erro = incompleto;
+    console.log(`[${_TAG}/MAGALU] tickets: construcao INCOMPLETA (${incompleto}) - ${TIDX.ts ? 'fica o indice anterior (' + Math.round((Date.now() - TIDX.ts) / 60000) + ' min)' : 'sem indice ainda'}`);
+    return TIDX;
+  }
+  // FASE 1 pronta E completa: protocolo e pedido ja resolvem. Publica o indice JA.
   TIDX.ts = Date.now();
   TIDX.mapa = mapa;
   TIDX.total = total;
   TIDX.duracaoSeg = Math.round((Date.now() - t0) / 1000);
-  if (total > 0) TIDX.erro = null;
+  TIDX.erro = null;
   console.log(`[${_TAG}/MAGALU] tickets fase 1: ${total} (protocolo+pedido) em ${TIDX.duracaoSeg}s - ${abertos.length} p/ fase 2 (todos, fechados incluidos - b156)`);
   if (opts.reverseEmBackground) {
     setImmediate(() => _fase2ReverseCodes(abertos)); // nao segura o bipe
@@ -511,7 +523,10 @@ async function acharDevolucao(codigo) {
   const bruto = String(codigo || '').trim();
   const dig = soDigitos(bruto);
   if (!dig) return null;
-  if (temToken() && (!TIDX.ts || (Date.now() - TIDX.ts) > 30 * 60000)) {
+  // b729: como a construcao que falha NAO publica mais (o `ts` fica o do indice bom), sem esta trava cada bipe
+  // com o Magalu fora do ar tentaria reconstruir de novo (ate 4 paginas × 25s). Entre tentativas: 5 min.
+  const tentouHaPouco = TIDX.tentativaEm && (Date.now() - TIDX.tentativaEm) < 5 * 60000;
+  if (temToken() && (!TIDX.ts || (Date.now() - TIDX.ts) > 30 * 60000) && !tentouHaPouco) {
     // on-demand: so a fase 1 (1-2s); reverse_codes completam em background
     try { await construirIndiceDevolucoes({ reverseEmBackground: true }); } catch (e) { /* segue com o que tiver */ }
   }
