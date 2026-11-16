@@ -28,6 +28,13 @@
 
     // Mesmo fluxo do modal, mas sem DOM: resolve id/idLoja -> Bridge
     // (gerar + emitir) -> registra. Lança erro com a mensagem original.
+    // b719 (Codex #590, P1) - "registrou" e o JSON dizendo ok:true, nao o HTTP: na fabrica, falha do banco volta 200
+    // com { ok:false, erro }. Sem JSON legivel = nao registrou.
+    async function registroConfirmado(resp) {
+      if (!resp || !resp.ok) return false;
+      try { const j = await resp.json(); return !!(j && j.ok === true); } catch (e) { return false; }
+    }
+
     async function gerarDevolucaoSilenciosa(devolucaoId, idNFBling, nfNumero, idDeposito, chaveNF) {
       const qs = idNFBling
         ? `id=${encodeURIComponent(idNFBling)}`
@@ -56,8 +63,12 @@
         throw new Error('Bling não retornou ID da devolução: ' + JSON.stringify(result || {}).slice(0, 150));
       }
 
+      // b719 (P1-06) - o registro aqui e o da extensao sao DUAS tentativas; se as duas falharem, a NF existe no Bling e
+      // o card nao sabe — isso tem que aparecer, nao ficar num catch mudo.
+      // Codex #590 (P1): a rota da fabrica responde 200 com { ok: false } quando o banco falha — o JSON e que diz.
+      let registrou = false;
       try {
-        await fetch(`${window.APP_BASE || ''}/api/admin/registrar-devolucao-gerada/${devolucaoId}`, {
+        const rReg = await fetch(`${window.APP_BASE || ''}/api/admin/registrar-devolucao-gerada/${devolucaoId}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -65,9 +76,17 @@
             nf_devolucao_numero: String(result.numero || ''),
           }),
         });
-      } catch (e) { /* extensao ja registrou sozinha */ }
+        registrou = await registroConfirmado(rReg);
+      } catch (e) { registrou = false; }
+      const autoOk = !!(result.auto_registro && result.auto_registro.ok);
+      // Codex #590 (P2): NAO lanca — a NF existe (e, no Geral, ja moveu estoque); a esteira precisa do numero pro
+      // lembrete de cancelar estoque e pra NAO concluir um card que ficou sem registro. O erro vai junto no retorno.
+      const erroRegistro = (!registrou && !autoOk)
+        ? ('A NF de devolução ' + (result.numero || result.idNotaDevolucao) + ' FOI CRIADA no Bling, mas o sistema NÃO conseguiu registrar no card (nem este painel, nem a extensão'
+          + (result.auto_registro && result.auto_registro.erro ? ': ' + result.auto_registro.erro : '') + '). Registre pelo card antes de gerar de novo.')
+        : null;
 
-      return { numero: result.numero || '?', emitida: !!result.emitida };
+      return { numero: result.numero || '?', emitida: !!result.emitida, registro_falhou: !!erroRegistro, erro_registro: erroRegistro };
     }
 
     async function rodarEsteira(secao) {
@@ -182,11 +201,17 @@
         btn.textContent = `⏹ Parar · ${i + 1}/${fila.length} (✅${emitidas} 🔗${vinculadas} ❌${falhas})`;
         try {
           const r = await gerarDevolucaoSilenciosa(item.id, item.nfid, item.nfnum, idDeposito, item.chave);
+          // Codex #590 (P2): registro falhou mas a NF existe — conta como emitida/rascunho normalmente (lembrete de
+          // estoque incluso), NAO conclui o card (ficaria concluido sem a NF gravada) e entra na lista de erros
+          if (r.registro_falhou) {
+            falhas++;
+            erros.push(`NF ${item.nfnum || item.id}: ${String(r.erro_registro || 'registro falhou').slice(0, 160)}`);
+          }
           if (r.emitida) {
             emitidas++;
-            if (manterAbertoProblemas) {
-              lembretesEstoque.push(r.numero || item.nfnum);
-              console.log(`[Esteira] NF ${item.nfnum}: devolução ${r.numero} EMITIDA (estoque no Geral) — card ABERTO pra cancelar lançamento`);
+            if (manterAbertoProblemas || r.registro_falhou) {
+              if (manterAbertoProblemas) lembretesEstoque.push(r.numero || item.nfnum);
+              console.log(`[Esteira] NF ${item.nfnum}: devolução ${r.numero} EMITIDA (${r.registro_falhou ? 'SEM registro no card' : 'estoque no Geral'}) — card ABERTO`);
             } else {
               await concluirQuieto(item.id); // ciclo fechado = concluído
               console.log(`[Esteira] NF ${item.nfnum}: devolução ${r.numero} EMITIDA (depósito ${depNome}) + card concluído`);
@@ -528,8 +553,10 @@
 
         // Registra no Supabase pra nao gerar de novo (nao critico)
         document.getElementById('statusGerar').textContent = 'Registrando no sistema...';
+        // b719 (P1-06) - se este registro E o da extensao falharem, avisa: a NF existe no Bling e o card nao sabe
+        let registrou = false;
         try {
-          await fetch(`${window.APP_BASE || ''}/api/admin/registrar-devolucao-gerada/${devolucaoId}`, {
+          const rReg = await fetch(`${window.APP_BASE || ''}/api/admin/registrar-devolucao-gerada/${devolucaoId}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -537,8 +564,13 @@
               nf_devolucao_numero: String(numeroNF),
             }),
           });
+          registrou = await registroConfirmado(rReg);   // Codex #590 (P1): o JSON e que diz
         } catch (e) {
-          console.warn('Falha ao registrar no Supabase (nao critico):', e);
+          console.warn('Falha ao registrar no Supabase:', e);
+        }
+        if (!registrou && !(result.auto_registro && result.auto_registro.ok)) {
+          alert('⚠️ A NF de devolução ' + numeroNF + ' FOI CRIADA no Bling, mas o sistema NÃO conseguiu registrar no card (nem este painel, nem a extensão'
+            + (result.auto_registro && result.auto_registro.erro ? ': ' + result.auto_registro.erro : '') + '). Registre pelo card antes de gerar de novo.');
         }
 
         // Mostra sucesso (rascunho x emitida)
