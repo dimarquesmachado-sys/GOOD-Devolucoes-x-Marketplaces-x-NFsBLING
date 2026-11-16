@@ -110,12 +110,13 @@ function criarBanco() {
         update(campos) { q.operacao = 'update'; q.campos = copiar(campos); return chain; },
         delete() { q.operacao = 'delete'; return chain; },
         eq(coluna, valor) { q.condicoes.push(x => x[coluna] != null && String(x[coluna]) === String(valor)); return chain; },
-        in(coluna, valores) { q.expressoes.push(coluna + '.in.(' + valores.join(',') + ')'); q.condicoes.push(x => valores.map(String).includes(String(x[coluna]))); return chain; },
-        or(expr) { q.expressoes.push(expr); q.condicoes.push(x => separar(expr).some(e => filtro(e, x))); return chain; },
+        in(coluna, valores) { assert(valores.length <= 150, 'URL grande demais: id.in com ' + valores.length + ' ids'); q.expressoes.push(coluna + '.in.(' + valores.join(',') + ')'); q.condicoes.push(x => valores.map(String).includes(String(x[coluna]))); return chain; },
+        or(expr) { assert(expr.length <= 4000, 'URL grande demais: expressao or com ' + expr.length + ' chars'); q.expressoes.push(expr); q.condicoes.push(x => separar(expr).some(e => filtro(e, x))); return chain; },
         not(coluna, op, valor) { q.expressoes.push(coluna + '.not.' + op + '.' + valor); q.condicoes.push(x => filtro(coluna + '.not.' + op + '.' + valor, x)); return chain; },
         is(coluna, valor) { q.condicoes.push(x => valor == null ? x[coluna] == null : x[coluna] === valor); return chain; },
         order(coluna, opcoes = {}) { q.ordem = { coluna, asc: opcoes.ascending !== false }; return chain; },
         limit(n) { q.limites = n; return chain; },
+        range(de, ate) { q.faixa = [de, ate]; return chain; },   // b725 (P2-03): paginacao por range, como o PostgREST
         then(a, b) { return executar().then(a, b); },
         catch(b) { return executar().catch(b); },
       };
@@ -155,6 +156,7 @@ function criarBanco() {
           const count = linhas.length;
           if (q.ordem) linhas = [...linhas].sort((a, b) => String(a[q.ordem.coluna] || '').localeCompare(String(b[q.ordem.coluna] || '')) * (q.ordem.asc ? 1 : -1));
           if (q.limites != null) linhas = linhas.slice(0, q.limites);
+          if (q.faixa) linhas = linhas.slice(q.faixa[0], q.faixa[1] + 1);
           const data = q.opcoes.head ? null : linhas.map(x => q.colunas === '*' ? copiar(x)
             : Object.fromEntries(q.colunas.split(',').map(c => c.trim()).filter(c => c in x).map(c => [c, copiar(x[c])])));
           return { data, count: q.opcoes.count ? count : null, error: null };
@@ -282,6 +284,42 @@ async function main() {
       const recuperadas = await e.pedir('GET', '/api/defeitos/lista', { query: { estado: 'recuperado' } });
       assert.equal(recuperadas.statusCode, 200); assert.equal(recuperadas.body.itens.length, 300);
       assert.deepEqual(recuperadas.body.contagem, r.body.contagem);
+    });
+    // b725 — P2-03 (auditoria do Codex 15/11): ACIMA DE 150 IDS A LISTA NAO PODE VOLTAR AO "AMPLO". Peca resolvida POR
+    // PEDIDO cuja linha nao casa com ATIVOS/TERMINAIS/EXCLUIDOS (formato legado: problema/delivered) sumia da aba
+    // Recuperados a partir do 151o id — e seguia na contagem. 149/150/151/400 tem que dar a MESMA resposta.
+    for (const total of [149, 150, 151, 400]) {
+      await caso(chave + ': ' + total + ' recuperadas por pedido: as de formato legado (problema/delivered) aparecem na aba e batem com a contagem', async () => {
+        const e = criarEmpresa(chave);
+        for (let id = 1; id <= total; id++) {
+          const data = new Date(Date.UTC(2026, 0, 1) + id * 60000).toISOString();   // id maior = mais novo
+          e.item(id, Object.assign({ [DADOS[chave].colunaData]: data }, id % 7 === 0 ? { tipo: 'problema', status: 'delivered' } : {}));
+          e.banco.tabelas[e.n.ped].push({ id, defeito_id: id, tipo: 'recuperado', status: 'autorizado' });
+        }
+        const legados = Array.from({ length: total }, (_, i) => i + 1).filter(id => id % 7 === 0);
+        const r = await e.pedir('GET', '/api/defeitos/lista', { query: { estado: 'recuperado' } });
+        assert.equal(r.statusCode, 200);
+        const ids = r.body.itens.map(x => x.id);
+        assert.equal(r.body.contagem.recuperado, total, 'contagem');
+        assert.equal(ids.length, Math.min(total, 300), 'linhas na tela: ' + ids.length);
+        const legadosNaTela = legados.filter(id => ids.includes(id));
+        const esperados = legados.filter(id => id > total - 300);   // os 300 mais novos (id crescente = data crescente)
+        assert.equal(legadosNaTela.length, esperados.length, 'problema/delivered resolvidos por pedido aparecem (' + legadosNaTela.length + ' de ' + esperados.length + ')');
+        assert(r.body.itens.every(x => x.situacao === 'recuperado'), 'todos classificados recuperado');
+      });
+    }
+    await caso(chave + ': Com Defeito com 1.200 resolvidas por pedido mais novas: as 300 ativas antigas aparecem (paginado, nao limite 1000)', async () => {
+      const e = criarEmpresa(chave);
+      for (let id = 1; id <= 1200; id++) {
+        e.item(id, { [DADOS[chave].colunaData]: '2026-0' + (1 + (id % 9)) + '-01T00:00:00Z' });
+        e.banco.tabelas[e.n.ped].push({ id, defeito_id: id, tipo: 'recuperado', status: 'autorizado' });
+      }
+      for (let id = 1201; id <= 1500; id++) e.item(id, { [DADOS[chave].colunaData]: '2020-01-01T00:00:00Z' });
+      const r = await e.pedir('GET', '/api/defeitos/lista');
+      assert.equal(r.statusCode, 200);
+      assert.equal(r.body.itens.length, 300, 'as 300 ativas antigas: ' + r.body.itens.length);
+      assert(r.body.itens.every(x => x.id >= 1201), 'nenhuma resolvida por pedido na aba Com Defeito');
+      assert.equal(r.body.contagem.defeito, 300);
     });
     await caso(chave + ': lotes de pedidos preservam exclusões, prioridade do tipo e NULL sem dupla contagem', async () => {
       const e = criarEmpresa(chave); const registros = [];
