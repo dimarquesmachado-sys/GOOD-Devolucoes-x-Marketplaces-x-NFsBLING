@@ -16,6 +16,8 @@
 //   });
 // ============================================================
 
+const drenagem = require('../../lib/drenagem');   // b730 (P2-06): timers do retrofit param no SIGTERM; rodada para entre cards
+
 module.exports = function registrarRotasAdminNF(app, deps) {
   const {
     supabase, requerAdmin, adminOk, sleep,
@@ -199,6 +201,9 @@ async function retrofitItensPendentes() {
     if (!pendentes.length) return;
     let feitos = 0, falhasSeguidas = 0;
     for (const reg of pendentes) {
+      // b730 (P2-06): SIGTERM no meio da rodada — para ENTRE cards (o card em curso termina e grava; o proximo
+      // fica pra instancia nova). Antes a rodada seguia inteira no processo que ja devia estar quieto.
+      if (drenagem.estaDrenando()) { console.log('[RETRO-ITENS] drenando - paro entre cards (' + feitos + ' gravados)'); break; }
       try {
         let idBling = reg.nf_id_bling ? String(reg.nf_id_bling) : null;
         let idDescoberto = false;
@@ -232,8 +237,9 @@ async function retrofitItensPendentes() {
     RETRO_ITENS_RODANDO = false;
   }
 }
-setTimeout(retrofitItensPendentes, 4 * 60 * 1000);        // depois do pre-aquecimento
-setInterval(retrofitItensPendentes, 6 * 60 * 60 * 1000);  // e a cada 6 horas
+// b730 (P2-06): timers registrados na drenagem (param no SIGTERM); eram soltos. `retrofitAtrasoMs` so pros testes.
+drenagem.daquiA(retrofitItensPendentes, deps.retrofitAtrasoMs != null ? deps.retrofitAtrasoMs : 4 * 60 * 1000);   // depois do pre-aquecimento
+drenagem.intervalo(retrofitItensPendentes, 6 * 60 * 60 * 1000);  // e a cada 6 horas
 
 // ============================================================
 // v3.29 - Itens completos de uma NF (pro expansor "▼ itens da NF")
@@ -2231,6 +2237,7 @@ app.delete('/api/admin/devolucao/:id', requerAdmin, async (req, res) => {
       const fila = data.filter((d) => { const s = serie(d); return s && s !== '1' && aberto(d); })
         .filter((d) => { const t = _fullTentativas.get(String(d.id)); return !t || (!t.desistiu && t.prox <= agora); }).slice(0, 3);
       for (const d of fila) {
+        if (drenagem.estaDrenando()) { console.log('[FULL-AUTO] drenando - paro entre pedidos'); break; }   // b730 (P2-06)
         const out = await new Promise((resolve) => {
           const res = { _s: 200, status(s) { this._s = s; return this; }, json(o) { resolve({ status: this._s, corpo: o }); } };
           // Codex #410 (P1): varredura automatica = trafego de FUNDO (nao disputa com a bipagem)
@@ -2255,7 +2262,8 @@ app.delete('/api/admin/devolucao/:id', requerAdmin, async (req, res) => {
   }
   deps.varrerFullSemNF = _varrerFullSemNF;   // teste (e quem quiser disparar na mao)
   if (process.env.FULL_ACHAR_AUTO !== 'off' && !process.env.NODE_TEST_SEM_TIMERS) {
-    const t0 = setTimeout(() => { _varrerFullSemNF(); const t1 = setInterval(_varrerFullSemNF, 5 * 60 * 1000); if (t1.unref) t1.unref(); }, 3 * 60 * 1000);
+    // b730 (P2-06): registrados na drenagem (param no SIGTERM); eram setTimeout/setInterval soltos
+    const t0 = drenagem.daquiA(() => { _varrerFullSemNF(); const t1 = drenagem.intervalo(_varrerFullSemNF, 5 * 60 * 1000); if (t1.unref) t1.unref(); }, 3 * 60 * 1000);
     if (t0.unref) t0.unref();
   }
 };
