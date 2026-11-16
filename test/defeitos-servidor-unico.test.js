@@ -355,6 +355,18 @@ async function main() {
       assert.equal(r.body.itens.length, 300, 'a tela mostra 300');
       assert.equal(r.body.contagem.recuperado, 400, 'a contagem com termo diz 400: ' + r.body.contagem.recuperado);
     });
+    await caso(chave + ': contagem com termo: 151 recuperadas + 549 descartadas por pedido + 500 recuperadas por tipo, mesmo SKU = 651 (orcamento sobre TODOS os ids)', async () => {
+      const e = criarEmpresa(chave);
+      const data = (i) => new Date(Date.UTC(2026, 0, 1) + i * 60000).toISOString();
+      for (let id = 1; id <= 700; id++) {
+        e.item(id, { produto_sku: 'SKU-MESMO', [DADOS[chave].colunaData]: data(id <= 151 ? 2000 + id : id) });   // recuperadas mais novas
+        e.banco.tabelas[e.n.ped].push({ id, defeito_id: id, tipo: id <= 151 ? 'recuperado' : 'descarte', status: 'autorizado' });
+      }
+      for (let id = 701; id <= 1200; id++) e.item(id, { produto_sku: 'SKU-MESMO', tipo: 'recuperado', [DADOS[chave].colunaData]: data(3000 + id) });
+      const r = await e.pedir('GET', '/api/defeitos/lista', { query: { estado: 'recuperado', q: 'sku-mesmo' } });
+      assert.equal(r.statusCode, 200);
+      assert.equal(r.body.contagem.recuperado, 651, 'contagem com termo: ' + r.body.contagem.recuperado);
+    });
     await caso(chave + ': lotes de pedidos preservam exclusões, prioridade do tipo e NULL sem dupla contagem', async () => {
       const e = criarEmpresa(chave); const registros = [];
       for (let id = 1; id <= 400; id++) {
