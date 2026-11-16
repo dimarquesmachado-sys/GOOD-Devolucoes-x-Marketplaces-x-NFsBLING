@@ -27,6 +27,7 @@ const mlClient = require('./lib/ml');
 // v3.16.0 - Dashboard de relatorios
 const registrarRotasRelatorios = require('./lib/rotas-relatorios');
 const { exigirFotosValidas, nomeDePastaSeguro } = require('./lib/fotos-referencia');   // b706 (P1-01) - so grava foto que veio do upload deste servidor
+const { escaparHtml } = require('./lib/html-texto');   // b707 (P1-02) - callbacks/setups: o que vem do provedor e texto
 // b650 - a peca virou multiempresa: a busca textual que ela usava por dentro
 // agora e injetada por quem registra (aqui, a da GOOD).
 const produtosClient = require('./lib/produtos-client');
@@ -332,11 +333,10 @@ const {
   buscarIdMunicipioPorCep,
 } = nfp;
 
-// Multer pra receber uploads de fotos (em memoria, 6 MB max por foto)
-const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 6 * 1024 * 1024 },
-});
+// Multer pra receber uploads de fotos (em memoria). b711 (P1-10, auditoria do Codex): a configuracao, o limite, o tratador
+// de erro e a conferencia do conteudo vivem em lib/upload-foto.js — a mesma peca da fabrica (era 6 MB aqui e 12 MB la).
+const uploadFoto = require('./lib/upload-foto');
+const upload = uploadFoto.criarUploadDeFoto(multer);
 
 app.use(express.json({ limit: '12mb' }));
 // b708 (V-05, auditoria do Codex) - cabecalhos de seguranca pras 3 empresas (o servico e um so): o que nao quebra
@@ -619,7 +619,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.126.220 (b708: V-05 — cabecalhos de seguranca nas 3 empresas; CSP: o que nao quebra em vigor, a completa em modo relato medida no /health)',
+      version: '9.126.235 (b723: lote P1-02/06/07/08/09/10/11 + P2-01/10 (PRs 578, 580, 581, 582, 587-591 somados num so, pra nao conflitar a cada merge); P1-08 — relatorio financeiro agrega por item que voltou (itens_devolvidos com valor_unit); sem a lista, marca aproximado; item sem preco nao entra no valor)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -2975,11 +2975,11 @@ app.get('/api/produto/ean-por-sku/:sku', requerLogin, async (req, res) => {
 
 // b299 - idem (fatia 2)
 app.get('/callback', (req, res) => {
-  res.send(`<h2>Callback ML recebido</h2><p>code: ${req.query.code || '(nenhum)'}</p>`);
+  res.send(`<h2>Callback ML recebido</h2><p>code: ${escaparHtml(req.query.code || '(nenhum)')}</p>`);   // b707 (P1-02): texto, nao HTML
 });
 
 app.get('/bling/callback', (req, res) => {
-  res.send(`<h2>Callback Bling recebido</h2><p>code: ${req.query.code || '(nenhum)'}</p>`);
+  res.send(`<h2>Callback Bling recebido</h2><p>code: ${escaparHtml(req.query.code || '(nenhum)')}</p>`);   // b707 (P1-02): texto, nao HTML
 });
 
 // v3.19 - Reconexao do app Bling (troca o code por token com os escopos novos)
@@ -2995,14 +2995,14 @@ app.get('/bling/setup', async (req, res) => {
     res.send(`
       <h2 style="color:#2e7d32;">✅ Bling reconectado com sucesso!</h2>
       <p><strong>Escopos ativos agora:</strong></p>
-      <pre style="background:#f5f5f5;padding:12px;border-radius:8px;white-space:pre-wrap;">${(data.scope || '(nao informado)')}</pre>
+      <pre style="background:#f5f5f5;padding:12px;border-radius:8px;white-space:pre-wrap;">${escaparHtml(data.scope || '(nao informado)')}</pre>
       <p>Token salvo. Pode fechar esta aba.</p>
     `);
   } catch (e) {
     const detalhe = e.response?.data ? JSON.stringify(e.response.data, null, 2) : (e.message || String(e));
     res.send(`
       <h2 style="color:#c62828;">❌ Erro ao reconectar</h2>
-      <pre style="background:#fff0f0;padding:12px;border-radius:8px;white-space:pre-wrap;">${detalhe}</pre>
+      <pre style="background:#fff0f0;padding:12px;border-radius:8px;white-space:pre-wrap;">${escaparHtml(detalhe)}</pre>
       <p><strong>Dica:</strong> o code expira em <strong>1 minuto</strong>. Se demorou, gere um novo (cole o link de convite de novo) e refaça rapidinho.</p>
     `);
   }
@@ -3041,7 +3041,7 @@ app.get('/ml/setup', async (req, res) => {
     const persist = await mlClient.definirTokensML(data.access_token, data.refresh_token);
     res.send(`
       <h2 style="color:#2e7d32;">✅ Mercado Livre reconectado!</h2>
-      <p><strong>User ID:</strong> ${data.user_id || '?'} · <strong>Escopo:</strong> ${data.scope || '?'}</p>
+      <p><strong>User ID:</strong> ${escaparHtml(data.user_id || '?')} · <strong>Escopo:</strong> ${escaparHtml(data.scope || '?')}</p>
       <p><strong>Cofre (Render):</strong> ${persist.persistiu
         ? 'tokens salvos ✅ (sobrevivem a redeploy)'
         : '⚠️ NÃO persistiu (' + (persist.erro || 'RENDER_API_KEY/RENDER_SERVICE_ID ausentes?') + ') — tokens ativos só na memória: funcionam AGORA, mas o próximo deploy apaga. Reponha as 2 vars e refaça o setup.'}</p>
@@ -3051,7 +3051,7 @@ app.get('/ml/setup', async (req, res) => {
     const detalhe = e.message || String(e);
     res.send(`
       <h2 style="color:#c62828;">❌ Erro ao reconectar o ML</h2>
-      <pre style="background:#fff0f0;padding:12px;border-radius:8px;white-space:pre-wrap;">${detalhe}</pre>
+      <pre style="background:#fff0f0;padding:12px;border-radius:8px;white-space:pre-wrap;">${escaparHtml(detalhe)}</pre>
       <p><strong>Dica:</strong> o code expira em ~1 minuto. Gere um novo (link de autorização) e refaça rapidinho.</p>
     `);
   }
@@ -3696,7 +3696,7 @@ app.post('/api/triagem/aprovar', requerEstoquista, exigirFotosValidas, async (re
 
 // Upload de uma foto pro Supabase Storage
 // Retorna URL publica pra frontend acumular ate ter as 6+ fotos
-app.post('/api/triagem/upload-foto', requerEstoquista, upload.single('foto'), async (req, res) => {
+app.post('/api/triagem/upload-foto', requerEstoquista, upload.single('foto'), uploadFoto.tratarErroDeUpload, async (req, res) => {
   if (!supabase) {
     return res.status(500).json({ ok: false, erro: 'Supabase nao configurado' });
   }
@@ -3704,7 +3704,10 @@ app.post('/api/triagem/upload-foto', requerEstoquista, upload.single('foto'), as
     return res.status(400).json({ ok: false, erro: 'Foto nao enviada' });
   }
 
-  const ext = (req.file.originalname || 'foto.jpg').split('.').pop().toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg';   // b707: extensao tambem so com caracteres de URL
+  // b711 (P1-10) - o conteudo manda: tipo pelos primeiros bytes (nao pelo mimetype/nome que o cliente declarou)
+  const tipoReal = uploadFoto.tipoDaImagem(req.file.buffer);
+  if (!tipoReal) return res.status(400).json({ ok: false, erro: 'o arquivo nao e uma imagem (JPEG, PNG, WebP ou GIF)' });
+  const ext = uploadFoto.EXTENSAO[tipoReal];
   const ts = Date.now();
   const random = crypto.randomBytes(4).toString('hex');
   const filename = `${nomeDePastaSeguro(req.usuario)}/${ts}-${random}.${ext}`;   // b706 (Codex #577): pasta so com caracteres de URL
@@ -3713,7 +3716,7 @@ app.post('/api/triagem/upload-foto', requerEstoquista, upload.single('foto'), as
     const { error } = await supabase.storage
       .from('fotos-problema')
       .upload(filename, req.file.buffer, {
-        contentType: req.file.mimetype || 'image/jpeg',
+        contentType: tipoReal,   // b711: o tipo conferido, nao o declarado
         upsert: false,
       });
 
@@ -4298,6 +4301,12 @@ app.get('/politica-de-privacidade', (req, res) => {
   `));
 });
 
+// b709 (P1-11, auditoria do Codex 15/11) - STATE DE USO UNICO, como na fabrica. Ate o b708 o passo 1 mandava
+// `state='good'` fixo e o passo 2 nem olhava: qualquer code que chegasse no callback era trocado e GRAVADO no
+// Render — bastava um code valido do app pra trocar a conta conectada. Agora: state aleatorio, 10 min, consumido
+// uma vez, guardado so neste processo (um state da AMB/Girassol nao existe aqui); sem ele nada e trocado nem gravado.
+const oauthGood = require('./lib/oauth-state').criar();
+
 // Passo 1 do OAuth: manda o Diego (seller) pra tela de consentimento
 app.get('/magalu/autorizar', requerAdmin, (req, res) => {
   if (!magalu.cfg.ativo) {
@@ -4305,7 +4314,7 @@ app.get('/magalu/autorizar', requerAdmin, (req, res) => {
       <p>Defina no Render as envs <b>MAGALU_CLIENT_ID</b>, <b>MAGALU_CLIENT_SECRET</b>
       e <b>MAGALU_REDIRECT_URI</b> antes de autorizar.</p>`));
   }
-  return res.redirect(magalu.urlConsentimento('good'));
+  return res.redirect(magalu.urlConsentimento(oauthGood.novoState('magalu', { empresa: 'good' })));
 });
 
 // Passo 2 do OAuth: a Magalu devolve o ?code= aqui. Trocamos por tokens.
@@ -4313,6 +4322,13 @@ app.get('/magalu/autorizar', requerAdmin, (req, res) => {
 // sem cookie da nossa sessao). Ela so aceita um code valido de 10 min e de
 // uso unico - sem code valido, nao faz nada.
 app.get('/magalu/callback', async (req, res) => {
+  // b709 - o state vem ANTES de tudo (inclusive do code): sem state valido, nenhuma troca e nenhuma gravacao
+  const reg = oauthGood.consumirState(String(req.query.state || ''));
+  if (!reg || reg.servico !== 'magalu' || reg.empresa !== 'good') {
+    return res.status(400).type('html').send(_paginaLegal('Magalu - link invalido', `
+      <p><b>Link invalido ou expirado.</b> Este endereco so vale por 10 minutos depois de clicar em autorizar,
+      e uma vez so. Volte ao sistema e clique em autorizar de novo.</p>`));
+  }
   const code = String(req.query.code || '').trim();
   if (!code) {
     return res.status(400).type('html').send(_paginaLegal('Magalu', '<p>Callback sem <b>code</b>. Refaca a autorizacao.</p>'));
@@ -8823,6 +8839,7 @@ registrarRotasRelatorios(app, {
   // test/relatorio-peca-multiempresa.test.js.
   tabelas: { devolucoes: 'devolucoes', tags: 'tags', devolucaoTags: 'devolucao_tags' },
   buscarProdutos: produtosClient.buscarTextual,
+  resolverSku: (sku) => skuDeparaGOOD.resolverSku(sku),   // b721 (Codex #591): itens_devolvidos guardam o SKU da venda
 });
 
 // v3.44 - rotas admin-NF (mesmo ponto: todas as deps ja declaradas acima)
@@ -8966,6 +8983,7 @@ require('./amb-devolucoes/lib-AMB/rotas-admin-AMB.js')(app, Object.assign({}, DE
   chamarBling: (u, ...resto) => chamarBling(/^https?:/i.test(String(u)) ? u : 'https://api.bling.com.br/Api/v3' + u, ...resto),
   tabelaDevolucoes: 'devolucoes',
   colunaCriadoEm: 'created_at',
+  supabaseUrl: SUPABASE_URL,   // b710 (P1-09/P2-12): o proxy de fotos confere a dona e monta a URL publica com ISTO
   triagemNoTipo: true,   // b546 (Codex #449): na GOOD o resultado da triagem fica em `tipo` e o card aberto e status 'pendente'
   // b546: a copia unica chama o ML com caminho relativo ('/users/me'); o cliente da GOOD exige o endereco inteiro
   chamarML: (u, ...resto) => chamarML(/^https?:/i.test(String(u)) ? u : 'https://api.mercadolibre.com' + u, ...resto),

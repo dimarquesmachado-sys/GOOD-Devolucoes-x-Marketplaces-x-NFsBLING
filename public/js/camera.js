@@ -125,11 +125,16 @@ function capturarFoto() {
 
     // Garante array global
     window.fotosUploadadas = window.fotosUploadadas || [];
-    const idx = window.fotosUploadadas.length;
-    window.fotosUploadadas.push({ url: null, uploading: true, blob });
+    // b716 (P1-07, auditoria do Codex 15/11) - a foto e um OBJETO com identidade, nao uma POSICAO. O callback do upload
+    // escrevia o resultado na POSICAO idx do array: se o estoquista fechasse a triagem e abrisse outra enquanto a foto subia
+    // (o array e trocado em 9 pontos do triagem.js), a resposta antiga entrava no pacote NOVO — foto de A no card de B,
+    // e um upload fantasma que nunca saia de "subindo". Agora a resposta so atualiza a entrada que a originou, e so se
+    // ela ainda estiver na lista corrente.
+    const entrada = registrarFotoPendente(window.fotosUploadadas, blob);
     atualizarCameraUI();
 
     // Upload (em paralelo - usuario pode tirar mais fotos enquanto sobe)
+    let resultado = null;
     try {
       const formData = new FormData();
       formData.append('foto', blob, `foto-${Date.now()}.jpg`);
@@ -137,19 +142,36 @@ function capturarFoto() {
         method: 'POST',
         body: formData,
       });
-      const d = await r.json();
-      if (d.ok && d.url) {
-        window.fotosUploadadas[idx] = { url: d.url, uploading: false };
-      } else {
-        window.fotosUploadadas.splice(idx, 1);
-        toast('Erro ao subir foto: ' + (d.erro || 'falha'), 'err');
-      }
+      resultado = await r.json();
     } catch (err) {
-      window.fotosUploadadas.splice(idx, 1);
-      toast('Erro ao subir foto', 'err');
+      resultado = null;
     }
-    atualizarCameraUI();
+    const estado = concluirUploadDeFoto(entrada, resultado);
+    if (estado === 'falhou') toast('Erro ao subir foto' + (resultado && resultado.erro ? ': ' + resultado.erro : ''), 'err');
+    if (estado !== 'descartado') atualizarCameraUI();   // resposta de um fluxo que ja fechou nao redesenha o atual
   }, 'image/jpeg', 0.85);
+}
+
+// b716 (P1-07) - identidade das fotos: cada entrada tem um id proprio; a conclusao do upload acha a entrada por
+// IDENTIDADE na lista CORRENTE (window.fotosUploadadas). Lista trocada (outra triagem) ou foto removida enquanto
+// subia = 'descartado': nem grava, nem mexe no fluxo novo.
+let _seqFotoCamera = 0;
+function registrarFotoPendente(lista, blob) {
+  const entrada = { id: 'foto-' + (++_seqFotoCamera) + '-' + Date.now().toString(36), url: null, uploading: true, blob };
+  lista.push(entrada);
+  return entrada;
+}
+function concluirUploadDeFoto(entrada, resultado) {
+  const lista = window.fotosUploadadas || [];
+  const i = lista.indexOf(entrada);
+  if (i < 0) return 'descartado';
+  if (resultado && resultado.ok && resultado.url) {
+    entrada.url = resultado.url;
+    entrada.uploading = false;
+    return 'ok';
+  }
+  lista.splice(i, 1);
+  return 'falhou';
 }
 
 function removerFotoCamera(idx) {

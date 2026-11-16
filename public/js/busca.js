@@ -32,10 +32,18 @@ function blocoEventosCheckout() {
     + '<div style="margin-bottom:3px;"><b>📦 Registro do checkout offline</b></div>' + evs + '</div>';
 }
 
+// b717 (P2-01, auditoria do Codex 15/11) - CADA BUSCA TEM NUMERO; SO A MAIS RECENTE PINTA A TELA. O scanner e o Enter
+// disparam buscas em sequencia; se a de A demorava e a de B voltava antes, a resposta de A chegava DEPOIS e pintava por
+// cima: campo com B, resultado de A, e `ultimaBusca`/`_ultimaRespostaBipe` (o payload que a triagem grava) de A. Agora
+// a resposta so entra se ainda for a busca corrente; a atrasada e descartada inteira (tela, payload e loading).
+let _buscaSeq = 0;
+
 async function buscar() {
   const codigo = inputCodigo.value.trim();
   if (!codigo) { toast('Digite ou bipe um codigo', 'err'); return; }
   window._ultimoCodigoBusca = codigo;   // 29/10: a tela decide se sugere o retiro do ML (nao pra codigo da Shopee)
+  const minhaBusca = ++_buscaSeq;
+  const souACorrente = () => minhaBusca === _buscaSeq;
 
   divResultado.classList.remove('show');
   divResultado.innerHTML = '';
@@ -48,6 +56,7 @@ async function buscar() {
     // no deploy -> 502/503, ou pagina de erro). O dono viu "Unexpected token '<',
     // <!DOCTYPE ... is not valid JSON" logo apos um deploy e nao tinha como saber.
     // Agora o aviso diz o que foi e o que fazer, com o status HTTP.
+    if (!souACorrente()) return;   // b717: outra busca comecou enquanto esta esperava — descarta
     const tipo = String(resp.headers.get('content-type') || '');
     if (!/json/i.test(tipo)) {
       const reiniciando = resp.status === 502 || resp.status === 503 || resp.status === 504;
@@ -58,16 +67,20 @@ async function buscar() {
       return;
     }
     const data = await resp.json();
+    if (!souACorrente()) return;   // b717: idem — o json() tambem e assincrono
     window._ultimaRespostaBipe = data;   // ev2 - pro bloco do checkout
     ultimaBusca = data;
     renderizar(data, resp.ok);
   } catch (err) {
+    if (!souACorrente()) return;   // b717: erro de uma busca antiga nao apaga o resultado da nova
     renderizarErro('Erro de conexao: ' + err.message + ' — confira a internet e bipe de novo.');
   } finally {
-    divLoading.classList.remove('show');
-    btnBuscar.disabled = false;
-    // v3.14.8: select() da foco e abre teclado virtual no celular - so faz em desktop
-    if (!('ontouchstart' in window)) inputCodigo.select();
+    if (souACorrente()) {   // b717: o loading e o botao sao da busca corrente — a antiga nao os libera
+      divLoading.classList.remove('show');
+      btnBuscar.disabled = false;
+      // v3.14.8: select() da foco e abre teclado virtual no celular - so faz em desktop
+      if (!('ontouchstart' in window)) inputCodigo.select();
+    }
   }
 }
 

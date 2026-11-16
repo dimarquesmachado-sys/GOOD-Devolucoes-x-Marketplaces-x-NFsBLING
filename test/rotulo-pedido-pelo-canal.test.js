@@ -68,7 +68,11 @@ ok(!/<div class="label">Nickname<\/div><div class="valor">\$\{escapeHtml\(buyerN
    '  nenhuma linha dessas sobrou incondicional');
 // ?v= bumpado nas duas telas (a GOOD numera 47xx; a AMB/Girassol b5xx+)
 ok(Number((fs.readFileSync(path.join(RAIZ, 'public', 'index.html'), 'utf8').match(/js\/busca\.js\?v=(\d+)/) || [])[1]) >= 4789, '  index.html (GOOD): ?v= do busca.js bumpado (>= 4789)');
-ok(/js-AMB\/busca\.js\?v=b67\d/.test(fs.readFileSync(path.join(RAIZ, 'amb-devolucoes', 'public-AMB', 'index-AMB.html'), 'utf8')), '  index-AMB.html: ?v= do busca.js bumpado (b669)');
+// b717: ancorava em `b67\d` e quebrou no bump seguinte (CLAUDE.md §6) — agora "igual ou posterior ao b669"
+{
+  const mV = fs.readFileSync(path.join(RAIZ, 'amb-devolucoes', 'public-AMB', 'index-AMB.html'), 'utf8').match(/js-AMB\/busca\.js\?v=b(\d+)/);
+  ok(mV && Number(mV[1]) >= 669, '  index-AMB.html: ?v= do busca.js bumpado (b' + (mV ? mV[1] : '?') + ' >= b669)');
+}
 
 console.log('');
 console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');

@@ -36,6 +36,7 @@
 function criar(cfgEmpresa) {
   const { PREFIXO_SEM_EMPRESA } = require('../../lib/empresas');   // b662 - nunca ler as envs da AMB por fallback
   const { exigirFotosValidas, nomeDePastaSeguro } = require('../../lib/fotos-referencia');   // b706 (P1-01) - so grava foto que veio do upload deste servidor
+  const { SEM_EMPRESA } = require('../../lib/empresas');   // b710 - pasta das fotos sem chave de empresa
   // ⚠️ b400 - a etiqueta do log diz QUAL EMPRESA.
   //
   // Era `[AMB/...]` fixo: o Render junta o log das duas no MESMO lugar,
@@ -46,6 +47,10 @@ function criar(cfgEmpresa) {
   const _TAG = String((cfgEmpresa && cfgEmpresa.PREFIXO_ENV) || PREFIXO_SEM_EMPRESA)
     .replace(/_$/, '');
 const _PREFIXO = String((cfgEmpresa && cfgEmpresa.PREFIXO_ENV) || PREFIXO_SEM_EMPRESA);
+// b710 (P1-09, Codex) - a pasta da foto nova no bucket e a CHAVE DA EMPRESA (`ambtotal/`, `girassol/`), nao mais `amb/` pras
+// duas. As fotos antigas em `amb/` continuam sendo servidas: quem autoriza e o vinculo na tabela da empresa, nao o prefixo.
+// Sem chave nao cai na AMB (licao do b661): vai pra pasta `sem-empresa/`, que denuncia a ficha incompleta em vez de misturar.
+const PASTA_FOTOS = String((cfgEmpresa && cfgEmpresa.CHAVE_REGISTRO) || SEM_EMPRESA);
 'use strict';
 
 const crypto = require('crypto');
@@ -252,10 +257,10 @@ function montar(router, deps) {
 
   // upload em memoria: a foto vai direto pro Supabase, nao encosta no disco
   // (o servico nao tem disco persistente — ver licao do indice frio).
-  const upload = multer({
-    storage: multer.memoryStorage(),
-    limits: { fileSize: 12 * 1024 * 1024 },   // 12MB por foto
-  });
+  // b711 (P1-10, auditoria do Codex): configuracao, limite, tratador de erro e conferencia do conteudo em
+  // lib/upload-foto.js — a mesma peca da GOOD.
+  const uploadFoto = require('../../lib/upload-foto');
+  const upload = uploadFoto.criarUploadDeFoto(multer);
 
   // b180 - transforma a estrutura crua do Bling em [{sku, quantidade, nome}],
   // consultando o produto do componente quando so veio o id. Teto de 12,
@@ -1051,18 +1056,21 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
   // do Supabase, nao pro disco (o servico nao tem disco persistente).
   // Bucket: env AMB_FOTOS_BUCKET (padrao "fotos-problema").
   // ─────────────────────────────────────────────────────────────────────
-  router.post('/api/triagem/upload-foto', auth.requerLogin, upload.single('foto'), async (req, res) => {
+  router.post('/api/triagem/upload-foto', auth.requerLogin, upload.single('foto'), uploadFoto.tratarErroDeUpload, async (req, res) => {
     const cliente = db.conectar();
     if (!cliente) return res.status(500).json({ ok: false, erro: 'Supabase nao configurado' });
     if (!req.file) return res.status(400).json({ ok: false, erro: 'Foto nao enviada' });
 
+    // b711 (P1-10) - o conteudo manda: tipo pelos primeiros bytes (nao pelo mimetype/nome que o cliente declarou)
+    const tipoReal = uploadFoto.tipoDaImagem(req.file.buffer);
+    if (!tipoReal) return res.status(400).json({ ok: false, erro: 'o arquivo nao e uma imagem (JPEG, PNG, WebP ou GIF)' });
     const bucket = process.env[_PREFIXO + 'FOTOS_BUCKET'] || 'fotos-problema';
-    const ext = String(req.file.originalname || 'foto.jpg').split('.').pop().toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg';   // b707: extensao tambem so com caracteres de URL
-    const nome = `amb/${nomeDePastaSeguro(req.usuario)}/${Date.now()}-${crypto.randomBytes(4).toString('hex')}.${ext}`;   // b706 (Codex #577): pasta so com caracteres de URL
+    const ext = uploadFoto.EXTENSAO[tipoReal];   // b711: extensao pelo CONTEUDO, nao pelo nome
+    const nome = `${PASTA_FOTOS}/${nomeDePastaSeguro(req.usuario)}/${Date.now()}-${crypto.randomBytes(4).toString('hex')}.${ext}`;   // b706 (Codex #577): pasta so com caracteres de URL; b710: pasta DA EMPRESA
 
     try {
       const { error } = await cliente.storage.from(bucket).upload(nome, req.file.buffer, {
-        contentType: req.file.mimetype || 'image/jpeg',
+        contentType: tipoReal,   // b711: o tipo conferido, nao o declarado
         upsert: false,
       });
       if (error) {

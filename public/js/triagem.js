@@ -39,6 +39,7 @@ function abrirModalAprovar() {
       bipagemEstado.itensEsperados.push({
         titulo: it.titulo || '-',
         sku, ean, quantidade: qtd, bipados: 0,
+        valor: Number.isFinite(Number(it.valor)) && it.valor !== null && it.valor !== '' ? Number(it.valor) : null,   // b721 (P1-08): preco unitario DESTE item na NF
       });
       bipagemEstado.totalEsperado += qtd;
       itensHtml += `<div style="padding:6px 0;border-bottom:1px solid #eee;" data-item-idx="${i}">
@@ -59,6 +60,7 @@ function abrirModalAprovar() {
         sku: it.item?.seller_sku || '-',
         ean: '-',
         quantidade: qtd, bipados: 0,
+        valor: Number.isFinite(Number(it.unit_price)) && it.unit_price !== null ? Number(it.unit_price) : null,   // b721: preco DESTE order_item
       });
       bipagemEstado.totalEsperado += qtd;
       itensHtml += `<div style="padding:6px 0;border-bottom:1px solid #eee;" data-item-idx="${i}">
@@ -245,8 +247,10 @@ function montarPayloadTriagem() {
 
   // quando a nota tem varios itens e nem todos voltaram, registro a lista
   // completa do que foi bipado — pro admin ver sem depender do rotulo
+  // b721 (P1-08, auditoria do Codex) - cada item leva o SEU preco unitario (valor_unit, da NF ou do order_item): e por
+  // ele que o relatorio financeiro agrega, em vez de multiplicar a quantidade total pelo preco de um produto so
   const itensDevolvidos = bipadosDeVerdade.length > 0
-    ? bipadosDeVerdade.map((i) => ({ sku: i.sku || null, titulo: i.titulo || null, qtd: Number(i.bipados) || 0 }))
+    ? bipadosDeVerdade.map((i) => ({ sku: i.sku || null, titulo: i.titulo || null, qtd: Number(i.bipados) || 0, valor_unit: Number.isFinite(Number(i.valor)) && i.valor !== null ? Number(i.valor) : null }))
     : null;
 
   // b462 (achado do Codex, 01/10): a busca SABE o marketplace (shopee, tiktok,
@@ -280,7 +284,9 @@ function montarPayloadTriagem() {
     // O `produto_sku` continua sendo o rotulo principal (a tela usa), mas
     // agora quem precisa de precisao tem onde olhar.
     itens_devolvidos: itensDevolvidos,
-    produto_valor_unit: itemOrder?.unit_price,
+    // b721 (P1-08) - o preco e do item que VOLTOU (o 1o bipado, ou o 1o da NF), nao do 1o order_item do ML — numa nota
+    // com varios produtos eles divergem, e o 1o do pedido pode nem ter voltado
+    produto_valor_unit: (itemBling && Number.isFinite(Number(itemBling.valor)) && itemBling.valor !== null) ? Number(itemBling.valor) : (itemOrder?.unit_price ?? null),
     nf_numero: nf.numero,
     nf_serie: nf.serie,
     nf_chave: nf.chaveAcesso,
