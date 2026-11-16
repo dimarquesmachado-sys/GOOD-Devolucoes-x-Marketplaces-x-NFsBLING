@@ -1415,7 +1415,21 @@
     // vez que ele abriu o card. A marca de "ja vi" fica no navegador dele,
     // entao nao precisa de tabela nem de nada no servidor.
     (function () {
-      var CHAVE = 'amb_defeitos_visto_em';
+      // b718 (P2-10, auditoria do Codex 15/11) - A MARCA DE "JA VI" E POR EMPRESA. Era a chave fixa 'amb_defeitos_visto_em'
+      // pra AMB e Girassol na MESMA origem (o servico e um so): abrir os defeitos da AMB apagava o aviso da Girassol e
+      // vice-versa. Agora a chave leva a empresa canonica (window.APP_EMPRESA, da ficha). A marca antiga da AMB e lida
+      // como reserva uma vez, pra ninguem ganhar uma enxurrada de "novos" no primeiro acesso depois do deploy.
+      // (Separar por USUARIO no mesmo navegador e decisao do dono — hoje e por navegador, como sempre foi.)
+      var EMPRESA = String(window.APP_EMPRESA || '').trim() || 'sem-empresa';
+      var CHAVE = 'defeitos_visto_em:' + EMPRESA;
+      var CHAVE_ANTIGA = (EMPRESA === 'ambtotal' || EMPRESA === 'amb') ? 'amb_defeitos_visto_em' : null;
+      function lerVisto() {
+        try {
+          var v = localStorage.getItem(CHAVE);
+          if (!v && CHAVE_ANTIGA) v = localStorage.getItem(CHAVE_ANTIGA);
+          return v;
+        } catch (e) { return null; }
+      }
 
       window.marcarDefeitosVistos = function () {
         try { localStorage.setItem(CHAVE, new Date().toISOString()); } catch (e) {}
@@ -1445,8 +1459,7 @@
 
       async function conferir() {
         try {
-          var visto = null;
-          try { visto = localStorage.getItem(CHAVE); } catch (e) {}
+          var visto = lerVisto();
           var r = await fetch((window.APP_BASE || '') + '/api/defeitos/pedidos?arquivados=todos', { credentials: 'same-origin' });
           var d = await r.json();
           if (!d || !d.ok) return;

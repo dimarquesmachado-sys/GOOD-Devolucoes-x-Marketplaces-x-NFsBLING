@@ -136,7 +136,7 @@ Segue as 12 etapas do Codex, com os itens de cada uma. A ordem dentro da etapa �
 | P2-07 | ⬜ | Sucesso atrasado apaga pausa de 429 | `ritmo-por-empresa.js:168` | carimbar tentativa; sucesso antigo não cancela Retry-After posterior |
 | P2-08 | ⬜ | Modo remoto depende de access local | `temToken()` olha token local e controla pré-aquecimentos | separar "tem token local" de "integração operacional pela política"; testar remoto sem credencial local |
 | P2-09 | ⬜ | Logout sem revogação efetiva | assinatura validada antes do Map; limpar Map/cookie não invalida token capturado | política de revogação por sessão/usuário/empresa, inclusive após reinício e troca de papel |
-| P2-10 | ⬜ | Notificação vista compartilhada AMB/Girassol | chave fixa `amb_defeitos_visto_em` na mesma origem | empresa canônica na chave; decidir separação por usuário |
+| P2-10 | 🔄 | Notificação vista compartilhada AMB/Girassol (b718, `dev/p2-10-notificacao-por-empresa`: chave `defeitos_visto_em:<empresa>`, a antiga da AMB lida como reserva) | chave fixa `amb_defeitos_visto_em` na mesma origem | 🟡 **dono decide**: separar também por usuário no mesmo navegador? Hoje é por navegador, como sempre foi |
 | P2-11 | ⬜ | Download de erro anunciado como foto | `painel-AMB.html:1222`: 401 JSON virou `.jpg` + "sucesso" | conferir status/tipo; contar só downloads concluídos |
 | P2-12 | ⬜ | Fallback de foto com `SUPABASE_URL` não declarado | `rotas-admin-AMB.js:79` → ReferenceError na falha do Storage | injetar dependência; testar o caminho de erro |
 | P2-13 | ⬜ | Workflow verde sem operar | `.github/workflows/destrava-pr.yml`: sucesso com `fatal: not a git repository` | informar repositório; distinguir "nada a fazer" de erro |
