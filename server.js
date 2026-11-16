@@ -614,7 +614,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.126.227 (b715: P2-02 — quantidade do pedido de defeito e inteiro de 1 a 1000: invalida e 400 antes de gravar, zero gravado nao vira um; b714: EAN ambiguo interrompe)',
+      version: '9.126.228 (b722: relancar estoque aceita SKU/quantidade corrigidos apos recusa definitiva (Codex #583); b715: P2-02 — quantidade do pedido de defeito e inteiro de 1 a 1000: invalida e 400 antes de gravar, zero gravado nao vira um; b714: EAN ambiguo interrompe)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),

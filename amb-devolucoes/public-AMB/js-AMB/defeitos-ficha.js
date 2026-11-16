@@ -130,11 +130,13 @@
     catch (e) { return String(v); }
   }
   // b161 - relanca a entrada de estoque de um pedido (botao da ficha)
-  window.relancarEstoque = async function (pedidoId, btn, forcar) {
+  window.relancarEstoque = async function (pedidoId, btn, forcar, correcao) {
     if (btn) { btn.disabled = true; btn.textContent = 'Lançando…'; }
     try {
+      var corpoL = typeof forcar === 'string' ? { forcar: forcar } : {};
+      if (correcao && correcao.sku) corpoL.sku = correcao.sku;   // Codex #583: SKU corrigido pelo admin
       var r = await api('/api/defeitos/pedido/' + encodeURIComponent(pedidoId) + '/lancar-estoque',
-        { method: 'POST', body: JSON.stringify(typeof forcar === 'string' ? { forcar: forcar } : {}) });
+        { method: 'POST', body: JSON.stringify(corpoL) });
       // b713 (P1-03) - o servidor marcou "em andamento" (ou a chamada anterior ficou sem resposta): so relanca se o
       // humano conferiu no Bling que NAO entrou — e a confirmacao leva a MARCA EXATA que ele viu (Codex #584): o
       // servidor so passa se o pedido ainda estiver com essa marca (dois admins: so um passa)
@@ -149,6 +151,13 @@
         alert('✅ Entrada lançada no Bling!' + (r.ja_lancado ? ' (já estava lançada)' : '')
           + (r.link ? '\n\nConfira: ' + r.link : ''));
         if (r.defeito_id && typeof abrirFichaDefeito === 'function') abrirFichaDefeito(r.defeito_id);
+      } else if (r && r.corrigivel && r.sku_tentado) {
+        // Codex #583 - recusa DEFINITIVA (nada entrou): SKU errado ou EAN que aponta pra varios produtos. Aqui e o
+        // unico lugar pra informar o SKU certo — a autorizacao nao se repete (maquina de estados).
+        if (btn) { btn.disabled = false; btn.textContent = '🔄 Lançar estoque no Bling'; }
+        var dica = (r.candidatos && r.candidatos.length) ? '\n\nCandidatos no Bling: ' + r.candidatos.map(function (c) { return c.codigo + (c.nome ? ' (' + c.nome + ')' : ''); }).join(', ') : '';
+        var novo = prompt('❌ O Bling não aceitou "' + r.sku_tentado + '":\n' + (r.erro || '') + dica + '\n\nDigite o SKU CERTO pra lançar a entrada (ou cancele):', r.sku_tentado);
+        if (novo && novo.trim() && novo.trim() !== r.sku_tentado) return window.relancarEstoque(pedidoId, btn, forcar, { sku: novo.trim() });
       } else {
         alert('❌ O Bling recusou de novo:\n\n' + ((r && r.erro) || 'erro desconhecido')
           + '\n\nSe for limite de requisições, espere 1 minuto e clique de novo.');
@@ -1962,7 +1971,7 @@
           + '\n• Se entrou: está tudo certo; o pedido fica marcado "em andamento" até alguém confirmar.');
       } else {
         alert('Peça liberada, MAS o Bling não aceitou o lançamento:\n' + (est.erro || '')
-          + '\n\nLance a entrada à mão no Bling (ou use "Lançar estoque no Bling" na ficha). Ficou anotado no histórico da peça.');
+          + '\n\nUse "Lançar estoque no Bling" na ficha: lá dá pra corrigir o SKU. Ficou anotado no histórico da peça.');
       }
     }
     abrirFilaPedidos();
