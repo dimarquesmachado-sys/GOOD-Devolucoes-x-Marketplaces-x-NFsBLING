@@ -88,6 +88,7 @@ function nomes(ficha) {
 }
 
 function criarBanco() {
+  let maxRows = null;   // b728 (V-01): teto de linhas por consulta sem range, como o max-rows do PostgREST
   const tabelas = {}; const datas = {}; const chamadas = [];
   const recusaTipoTerminal = new Set(['devolucoes']);
   for (const chave of CHAVES) {
@@ -160,6 +161,7 @@ function criarBanco() {
           });
           if (q.limites != null) linhas = linhas.slice(0, q.limites);
           if (q.faixa) linhas = linhas.slice(q.faixa[0], q.faixa[1] + 1);
+          else if (maxRows) linhas = linhas.slice(0, maxRows);   // b728 (V-01): como o PostgREST, corta em max-rows SEM avisar
           const data = q.opcoes.head ? null : linhas.map(x => q.colunas === '*' ? copiar(x)
             : Object.fromEntries(q.colunas.split(',').map(c => c.trim()).filter(c => c in x).map(c => [c, copiar(x[c])])));
           return { data, count: q.opcoes.count ? count : null, error: null };
@@ -169,7 +171,7 @@ function criarBanco() {
       return chain;
     },
   };
-  return { client, tabelas, chamadas, falharCount(msg) { erroCount = msg; },
+  return { client, tabelas, chamadas, set maxRows(v) { maxRows = v; }, falharCount(msg) { erroCount = msg; },
     recusarTipoTerminal(tabela) { recusaTipoTerminal.add(tabela); },
     // b713: simula coluna ausente / update recusado — `quando(campos)` decide, `vezes` limita (padrao: sempre)
     falharUpdate(tabela, quando, msg, vezes = Infinity) { falhasUpdate.push({ tabela, quando, msg, vezes }); },
@@ -193,6 +195,7 @@ function criarEmpresa(chave, banco = criarBanco(), opcoes = {}) {
     adminOk: req => req.chaveAdmin === true,
     chamarBling: opcoes.chamarBling,
     resolverSku: opcoes.resolverSku,
+    tamanhoDaPagina: opcoes.tamanhoDaPagina,   // b728 (V-01): teto pequeno pra provar a 2a pagina
     DEPOSITO_GERAL: Object.hasOwn(opcoes, 'deposito') ? opcoes.deposito : ficha.fiscal.depositoGeral(),
     modelo: { ...ficha.defeitos, tabelas: ficha.tabelas },
   });
@@ -366,6 +369,21 @@ async function main() {
       const r = await e.pedir('GET', '/api/defeitos/lista', { query: { estado: 'recuperado', q: 'sku-mesmo' } });
       assert.equal(r.statusCode, 200);
       assert.equal(r.body.contagem.recuperado, 651, 'contagem com termo: ' + r.body.contagem.recuperado);
+    });
+    // b728 — V-01 (auditoria do Codex 15/11): o mapa de pedidos (defeito_pedidos) era lido numa consulta so; o PostgREST
+    // corta em max-rows (1000) com error: null → a 1001a recuperada voltava pra aba Com Defeito. O duble corta como o
+    // PostgREST; com teto 3 e 7 recuperadas, so a paginacao enxerga as 7.
+    await caso(chave + ': 7 recuperadas por pedido com teto de 3 linhas por consulta: o mapa le as paginas seguintes', async () => {
+      const banco = criarBanco(); banco.maxRows = 3;
+      const e = criarEmpresa(chave, banco, { tamanhoDaPagina: 3 });
+      for (let id = 1; id <= 7; id++) { e.item(id); e.banco.tabelas[e.n.ped].push({ id, defeito_id: id, tipo: 'recuperado', status: 'autorizado' }); }
+      e.item(8);
+      const r = await e.pedir('GET', '/api/defeitos/lista');
+      assert.equal(r.statusCode, 200);
+      assert.deepEqual(r.body.itens.map(x => x.id), [8], 'so a 8 esta Com Defeito: ' + JSON.stringify(r.body.itens.map(x => x.id)));
+      assert.equal(r.body.contagem.recuperado, 7);
+      const paginas = e.banco.chamadas.filter(c => c.tabela === e.n.ped && c.faixa);
+      assert.equal(paginas.length, 3, 'o mapa foi lido em 3 paginas (3+3+1): ' + paginas.length);
     });
     await caso(chave + ': lotes de pedidos preservam exclusões, prioridade do tipo e NULL sem dupla contagem', async () => {
       const e = criarEmpresa(chave); const registros = [];
