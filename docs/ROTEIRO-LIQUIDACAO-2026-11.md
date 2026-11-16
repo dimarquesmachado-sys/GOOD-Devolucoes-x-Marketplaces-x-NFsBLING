@@ -60,69 +60,69 @@ Segue as 12 etapas do Codex, com os itens de cada uma. A ordem dentro da etapa �
 
 ## 3. P1 — segurança e corrupção operacional
 
-### P1-01 🔄 Fotos podem injetar JavaScript no painel admin
+### P1-01 ✅ (#577 b706/b707) Fotos podem injetar JavaScript no painel admin
 - **PR:** branch `dev/p1-01-xss-fotos-painel` (b706). A ficha de defeitos (`js-AMB/defeitos-ficha.js`) tinha a mesma causa e entrou junto: `onclick="verFotoDefeito('<esc(url)>')"` (o parser HTML desfaz o `&#39;` antes do JS) e `window.open(this.src)`.
 - **Onde:** `amb-devolucoes/public-AMB/painel-AMB.html` (~l.1081); o painel é único (a GOOD recebe o mesmo via `lib/painel-unico.js`), então afeta as 3. Servidor aceita string arbitrária no array de fotos.
 - **Errado:** URL da foto interpolada em atributo HTML e em `onclick`. Escapar HTML ≠ escapar argumento JS.
 - **Correção:** montar elementos por propriedade (`img.src = …`) e `addEventListener`; retirar JS montado como string; validar no servidor que cada referência de foto é chave/URL do Storage esperado.
 - **Aceite:** foto, título, SKU e tag com aspas, entidades e atributos continuam dados; não criam evento nem executam ao renderizar ou clicar.
 
-### P1-02 🔄 Callbacks públicos devolvem conteúdo sem escape
+### P1-02 ✅ (#592 b707 (lote)) Callbacks públicos devolvem conteúdo sem escape
 - **PR:** branch `dev/p1-02-callbacks-escape` (b707). Entraram também `/bling/setup` e `/ml/setup` da GOOD (escopo, user_id e erro do provedor crus) e, na fábrica, conta/user_id/escopo/erro da troca — mesma causa.
 - **Onde:** `server.js` (~l.2970, `code` no HTML) e `amb-devolucoes/lib-AMB/oauth-callback-AMB.js` (~l.29, erro do provedor no HTML **antes** de validar o `state`).
 - **Correção:** código e erro como texto codificado pro contexto; na fábrica, validar/consumir o state antes de qualquer resposta com dado do provedor.
 - **Aceite:** parâmetro malicioso nos callbacks das 3 empresas não produz elemento nem evento executável.
 
-### P1-03 🔄 Autorizar a mesma recuperação de novo duplica estoque
+### P1-03 ✅ (#583 b713) Autorizar a mesma recuperação de novo duplica estoque
 - **PR:** branch `dev/p1-03-reserva-estoque` (b713, sobre o b712). Marcador durável `defeito_pedidos*.estoque_operacao` (`LANCANDO <marca>` = reserva/incerto, `LANCADO <marca>` = confirmado, null = livre), gravado no **mesmo** update condicional da transição; `entradaNoEstoque` classifica *não aplicou* (4xx) × *incerto* (timeout/5xx/exceção); relançar respeita o marcador e só passa com `forcar` (confirmação humana na ficha), como compare-and-swap. ⚠️ **SQL pro dono:** `sql/2026-11-15-defeito-pedidos-estoque-operacao.sql` no projeto `sldnshulmhpmyjqrkstq` — sem a coluna, autorizar recuperada responde 503 com o SQL (descarte segue).
 - **Onde:** `lib/defeitos-ciclo.js` rota `POST /api/defeitos/pedido/:id/decidir` (~l.1337) — atualiza e chama a entrada no Bling sem exigir estado anterior nem respeitar movimentação já confirmada. Relançamento: ERP confirma, banco recusa o marcador, código responde sucesso.
 - **Correção:** reservar a operação no banco **antes** do efeito externo (update condicional `status = 'pendente'`, id de operação), estados `pendente / em_processamento / confirmado / incerto`; reaproveitar o padrão do FULL (reserva persistente, `estoque_lancado`).
 - **Aceite:** repetição sequencial, simultânea, resposta perdida e falha de persistência não geram entrada indevida; timeout depois do envio vira conciliação, nunca repetição cega.
 - ⚠️ Pode pedir coluna nova → SQL explícito em `sql/`, compatível no deploy, **só com OK do dono**.
 
-### P1-04 🔄 Estoquista conclui pedido pendente sem aprovação
+### P1-04 ✅ (#583 b712) Estoquista conclui pedido pendente sem aprovação
 - **PR:** branch `dev/p1-04-maquina-de-estados` (b712). Update condicional ao estado anterior (`in('status', DE[acao])`): `autorizar`/`recusar` só de `pendente`, `concluir` só de `autorizado`; 0 linhas → 404 ou 409 `{de, para}` sem nenhuma escrita. Isso já fecha a **1ª metade do P1-03** (autorizar de novo não lança no Bling de novo); fica pro P1-03 a reserva antes do efeito externo, o estado `incerto` e o relançamento que ignora falha do marcador.
 - **Onde:** mesma rota, ~l.1345: `concluir` passa com `requerLogin` e não confere `status === 'autorizado'`. Confirmado no código em 15/11.
 - **Correção:** máquina de estados no servidor com permissão por transição: `autorizar/recusar` só admin e só de `pendente`; `concluir` só de `autorizado`. Negar = nenhuma escrita.
 - **Aceite:** estoquista não promove pendente/recusado a concluído; resposta 403/409 sem update.
 
-### P1-05 🔄 Fallback por EAN escolhe o primeiro candidato
+### P1-05 ✅ (#583 b714) Fallback por EAN escolhe o primeiro candidato
 - **PR:** branch `dev/p1-05-ean-ambiguo` (b714, sobre o b713). Ordem: código exato → de-para da empresa (`resolverSku`, agora injetado também na GOOD) → EAN **só com um** produto; mais de um interrompe (`ambiguo`, `candidatos`) e devolve a reserva.
 - **Onde:** `lib/defeitos-ciclo.js` (~l.93). Contraria `CLAUDE.md §5`: EAN não identifica produto neste catálogo.
 - **Correção:** `produto.id` confirmado → SKU → de-para (`sku_depara*`); ambiguidade no EAN **interrompe** com mensagem, nunca escolhe.
 - **Aceite:** dois produtos com o mesmo EAN jamais provocam escolha automática.
 
-### P1-06 🔄 Extensão vincula NF da Girassol/AMB a registro da GOOD
+### P1-06 ✅ (#592 b720 (lote)) Extensão vincula NF da Girassol/AMB a registro da GOOD
 - ⚠️ **O Codex auditou a cópia congelada** (`extensao-bridge/`, parada desde 28/08 — ver `LEIA-ME.txt`). A extensão viva é a **Toolbox** no Mover-Pedidos (`toolbox-extensao/bg-devolucoes.js`), e o bug é o mesmo lá: a Girassol caía na raiz. **PR do Mover-Pedidos #904** (Toolbox 2.1.19): prefixo por empresa nos 4 pontos, fila de pendências em todo caminho, identidade da conta logada, entrega das pendências ao painel. **Este repo** (`dev/p1-06-extensao-empresa`, b719): o painel regrava as pendências desta empresa e avisa quando nem ele nem a extensão registraram. Passo do dono: reinstalar a Toolbox 2.1.19 nos 3 navegadores. Fecha também H-05 pela metade: a `extensao-bridge/` congelada deveria **sair do repo** (item novo H-10).
 - **Onde:** `extensao-bridge/background.js` (~l.307): consulta ids fiscais pela empresa mas o auto-registro faz `PUT /api/admin/registrar-devolucao-gerada/:id` sempre na raiz.
 - **Correção:** a empresa validada define o destino de **todas** as etapas; confirmar a conta Bling da aba escolhida corresponde à empresa; falha de persistência visível mesmo com o painel fechado.
 - **Aceite:** mesmo ID nas 3 tabelas → só a empresa pedida muda. Ver H-05 (as duas Bridges divergem).
 
-### P1-07 🔄 Fotos de um pacote contaminam o seguinte
+### P1-07 ✅ (#592 b716 (lote)) Fotos de um pacote contaminam o seguinte
 - **PR:** branch `dev/p1-07-fotos-por-triagem` (b716). `public/js/camera.js` é a peça única (a fábrica serve o mesmo em `js-AMB/camera.js`): cada foto é um objeto com id; a conclusão do upload acha a entrada por identidade na lista **corrente** — lista trocada ou foto removida = descartado.
 - **Onde:** `js-AMB/camera.js` (~l.128) — callback do upload escreve em índice numérico de array global; nova triagem troca o array com upload anterior em voo. Tela de bipe é única (js-AMB serve a GOOD).
 - **Correção:** ID estável por foto + geração/identidade por triagem; resposta antiga só atualiza o fluxo que a originou.
 - **Aceite:** inverter respostas, remover foto e trocar de pacote durante upload não mistura evidência nem deixa bloqueio permanente.
 
-### P1-08 🔄 Relatório financeiro multiplica qtd total pelo preço de um produto
+### P1-08 ✅ (#592 b721 (lote)) Relatório financeiro multiplica qtd total pelo preço de um produto
 - **PR:** branch `dev/p1-08-relatorio-por-item` (b721). Relatório agrega por `itens_devolvidos` (agora com `valor_unit` do item da NF); item sem preço entra na quantidade e não no valor (`valorItensDesconhecidos`); triagem antiga sem a lista cai no cálculo legado e conta em `valorAproximadoDevolucoes` (o card mostra ≈ e explica no title). `produto_valor_unit` passa a ser do item que voltou, não do 1º order_item.
 - **Onde:** `lib/rotas-relatorios.js` (~l.208) — ignora `itens_devolvidos`; devolução só do 2º item ainda usa o 1º `order_item`. Ver `docs/ITENS-DEVOLVIDOS.md`.
 - **Correção:** agregar por item efetivamente devolvido (id, qtd, preço); histórico sem evidência marcado como desconhecido/aproximado, não inventado.
 - **Aceite:** parcial, múltiplos SKUs e só-o-2º-produto dão valores e rankings corretos (A 1×R$10 + B 1×R$100 = R$110, A=1, B=1).
 
-### P1-09 🔄 Proxy de fotos não autoriza o objeto pela empresa
+### P1-09 ✅ (#592 b710 (lote)) Proxy de fotos não autoriza o objeto pela empresa
 - **PR:** branch `dev/p1-09-proxy-foto-por-empresa` (b710), junto com P2-12 (mesma rota). Autoriza pelo vínculo `problema_fotos` na tabela da empresa; foto nova vai pra pasta da chave da empresa (`girassol/`, `ambtotal/`), as antigas em `amb/` seguem servidas pelo vínculo.
 - **Onde:** `amb-devolucoes/lib-AMB/rotas-admin-AMB.js` (~l.52) — exige admin, aceita qualquer chave do bucket; upload da fábrica ainda usa prefixo `amb/` pra AMB e Girassol.
 - **Correção:** autorizar empresa → devolução → foto; namespace por empresa com compatibilidade controlada pras imagens antigas.
 - **Aceite:** admin de A pedindo foto de B recebe 403/404 antes de qualquer download.
 
-### P1-10 🔄 Multer 1.4.5-lts.2 com CVE-2025-47944 e CVE-2026-2359
+### P1-10 ✅ (#592 b711 (lote)) Multer 1.4.5-lts.2 com CVE-2025-47944 e CVE-2026-2359
 - **PR:** branch `dev/p1-10-multer-node` (b711), junto com P2-14. Multer ^2.5.0 (audit: zero advisories no multer); `lib/upload-foto.js` é a peça das duas pontas: limite único (12 MB — era 6 na GOOD e 12 na fábrica), 1 arquivo, 413/400 em JSON, tipo pelos primeiros bytes (JPEG/PNG/WebP/GIF), extensão pelo tipo real. **O `npm audit` acusa outros pacotes** (express → body-parser/qs/proxy-addr; axios → follow-redirects; nodemailer) — virou P2-17, fora deste PR.
 - **Onde:** `package.json` `multer ^1.4.5-lts.1`, lock resolve lts.2; `memoryStorage`; rotas exigem sessão antes do parser.
 - **Correção:** subir pra versão mantida sem advisory; revisar limites (tamanho, contagem); validar conteúdo real da imagem. **Não** `npm audit fix --force`. Junto com P2-14 (Node).
 - **Aceite:** upload válido, excessivo, malformado e interrompido nas 3 — processo segue atendendo.
 
-### P1-11 🔄 OAuth Magalu da GOOD sem state de uso único
+### P1-11 ✅ (#592 b709 (lote)) OAuth Magalu da GOOD sem state de uso único
 - **PR:** branch `dev/p1-11-oauth-magalu-state` (b709): `lib/oauth-state.js` é a peça única (a fábrica passou a usá-la com a gaveta dela; a GOOD criou a sua); `/magalu/autorizar` gera state aleatório, `/magalu/callback` consome antes de ler o code. **Fica em aberto** neste item: confirmar a identidade da conta Magalu antes de persistir o token — não há endpoint conhecido de "quem sou" no ID Magalu sem tenant; medir antes de inventar.
 - **Onde:** `server.js` (~l.4301): `state='good'`, callback aceita code sem conferir estado/sessão; persiste tokens antes de confirmar a conta.
 - **Correção:** usar o fluxo da fábrica (state aleatório, validade curta, consumo único, empresa vinculada, identidade confirmada antes de gravar) — a GOOD vira adaptador, como no ML (b702).
@@ -134,20 +134,20 @@ Segue as 12 etapas do Codex, com os itens de cada uma. A ordem dentro da etapa �
 
 | id | estado | ponto | onde / evidência | direção |
 |---|---|---|---|---|
-| P2-01 | 🔄 | Busca fora de ordem (b717, `dev/p2-01-busca-em-ordem`: `_buscaSeq` — só a busca corrente renderiza, grava o payload e libera o loading) | `busca.js:35` (**dois** arquivos: `public/js/busca.js` e `js-AMB/busca.js`); A/B respondidos B/A → campo B, resultado A | identidade da solicitação; só a mais recente atualiza tela e payload |
-| P2-02 | 🔄 | Quantidade inválida (b715, `dev/p2-02-quantidade-valida` sobre o b714: `lerQuantidade` — inteiro 1..1000, ausente = 1, inválida = 400 antes de gravar; os `\|\| 1` que escondiam zero gravado saíram) | `defeitos-ciclo.js:1358`: 0/negativo/NaN viram 1, `Infinity` passa | rejeitar inválido; exigir finito, inteiro, limite |
-| P2-03 | ⬜ | Lista GOOD quebra em 150 pedidos | `defeitos-ciclo.js:510`: com 151 IDs registros `problema/delivered` somem da lista e seguem na contagem | consultar em lotes/páginas; testar 149/150/151/400 e formatos legados |
+| P2-01 | ✅ #592 b717 (lote) | Busca fora de ordem (b717, `dev/p2-01-busca-em-ordem`: `_buscaSeq` — só a busca corrente renderiza, grava o payload e libera o loading) | `busca.js:35` (**dois** arquivos: `public/js/busca.js` e `js-AMB/busca.js`); A/B respondidos B/A → campo B, resultado A | identidade da solicitação; só a mais recente atualiza tela e payload |
+| P2-02 | ✅ #583 b715 | Quantidade inválida (b715, `dev/p2-02-quantidade-valida` sobre o b714: `lerQuantidade` — inteiro 1..1000, ausente = 1, inválida = 400 antes de gravar; os `\|\| 1` que escondiam zero gravado saíram) | `defeitos-ciclo.js:1358`: 0/negativo/NaN viram 1, `Infinity` passa | rejeitar inválido; exigir finito, inteiro, limite |
+| P2-03 | 🔄 | Lista GOOD quebra em 150 pedidos (b725, `dev/p2-03-lista-por-lotes`: Recuperados/Descartados = consulta por tipo + ids em lotes de 150; Com Defeito = ATIVOS paginados por `range` descartando os resolvidos por pedido; nunca mais o "amplo") | `defeitos-ciclo.js:510`: com 151 IDs registros `problema/delivered` somem da lista e seguem na contagem | consultar em lotes/páginas; testar 149/150/151/400 e formatos legados |
 | P2-04 | ⬜ | Tags sem atomicidade | `rotas-relatorios.js:448`: DELETE com erro responde ok; DELETE ok + INSERT falho perde tags | operação transacional (RPC) ou verificar cada resultado e repor |
 | P2-05 | ⬜ | Índice Magalu incompleto publicado | `magalu-AMB.js:423`: falha na 1ª página apaga o índice; falha depois publica parcial e limpa o erro | snapshot separado; publicar só completo; preservar último válido |
 | P2-06 | ⬜ | Trabalho iniciado após SIGTERM | preventiva de tokens e retrofit com timers fora da drenagem | registrar timers na drenagem; checar antes de cada etapa; preservar o que está em voo |
 | P2-07 | ⬜ | Sucesso atrasado apaga pausa de 429 | `ritmo-por-empresa.js:168` | carimbar tentativa; sucesso antigo não cancela Retry-After posterior |
 | P2-08 | ⬜ | Modo remoto depende de access local | `temToken()` olha token local e controla pré-aquecimentos | separar "tem token local" de "integração operacional pela política"; testar remoto sem credencial local |
 | P2-09 | ⬜ | Logout sem revogação efetiva | assinatura validada antes do Map; limpar Map/cookie não invalida token capturado | política de revogação por sessão/usuário/empresa, inclusive após reinício e troca de papel |
-| P2-10 | 🔄 | Notificação vista compartilhada AMB/Girassol (b718, `dev/p2-10-notificacao-por-empresa`: chave `defeitos_visto_em:<empresa>`, a antiga da AMB lida como reserva) | chave fixa `amb_defeitos_visto_em` na mesma origem | 🟡 **dono decide**: separar também por usuário no mesmo navegador? Hoje é por navegador, como sempre foi |
+| P2-10 | ✅ #592 b718 (lote) | Notificação vista compartilhada AMB/Girassol (b718, `dev/p2-10-notificacao-por-empresa`: chave `defeitos_visto_em:<empresa>`, a antiga da AMB lida como reserva) | chave fixa `amb_defeitos_visto_em` na mesma origem | 🟡 **dono decide**: separar também por usuário no mesmo navegador? Hoje é por navegador, como sempre foi |
 | P2-11 | ⬜ | Download de erro anunciado como foto | `painel-AMB.html:1222`: 401 JSON virou `.jpg` + "sucesso" | conferir status/tipo; contar só downloads concluídos |
-| P2-12 | 🔄 | Fallback de foto com `SUPABASE_URL` não declarado (b710, no PR do P1-09) | `rotas-admin-AMB.js:79` → ReferenceError na falha do Storage | injetar dependência; testar o caminho de erro |
+| P2-12 | ✅ #592 b710 (lote) | Fallback de foto com `SUPABASE_URL` não declarado (b710, no PR do P1-09) | `rotas-admin-AMB.js:79` → ReferenceError na falha do Storage | injetar dependência; testar o caminho de erro |
 | P2-13 | ⬜ | Workflow verde sem operar | `.github/workflows/destrava-pr.yml`: sucesso com `fatal: not a git repository` | informar repositório; distinguir "nada a fazer" de erro |
-| P2-14 | 🔄 | Contrato Node incompatível (b711, no PR do P1-10: manifesto e lock em `>=22.0.0`; conferir no Render qual Node o serviço usa — `/health → node`) | `package.json` `node >=18`; Supabase do lock exige 22; CI usa 22 | alinhar manifesto, Render e CI em 22 (junto com P1-10) |
+| P2-14 | ✅ #592 b711 (lote) | Contrato Node incompatível (b711, no PR do P1-10: manifesto e lock em `>=22.0.0`; conferir no Render qual Node o serviço usa — `/health → node`) | `package.json` `node >=18`; Supabase do lock exige 22; CI usa 22 | alinhar manifesto, Render e CI em 22 (junto com P1-10) |
 | P2-15 | ⬜ | Teste de boot aceita processo quebrado | teste do painel só checa ausência de frase; filho morto por SyntaxError passa | checar morte antecipada, `listening`, timeout e resposta HTTP real |
 | P2-16 | ⬜ | Resolução de conversas por contagem | automação (`auto-merge-codex.yml`/scripts) resolve threads por quantidade; erro de consulta vira "zero problemas" | só resolver com prova de tratamento; erro de consulta bloqueia a decisão. Não reativar auto-merge antes disso |
 | P2-17 | ⬜ | Dependências com advisories além do Multer (achado ao rodar `npm audit` no b711) | `express@4` → `body-parser` <1.20.9, `qs`, `proxy-addr` (IP spoofing via IPv4-mapped IPv6 — importa pra `trust proxy`/rate limit); `axios` → `follow-redirects`; `nodemailer` ≤10.1.3 (injeção SMTP) | subir cada um no seu PR, lendo o changelog (express 4.x patch, axios 1.x, nodemailer 7/8 muda API de transporte?) — nunca `npm audit fix --force` |
@@ -162,7 +162,7 @@ Segue as 12 etapas do Codex, com os itens de cada uma. A ordem dentro da etapa �
 | V-02 | 🟡 | Matriz de permissões de recados GOOD × fábrica | divergência comprovada (aliases liberam ações ao estoquista); escrever a regra desejada, depois aplicar nas 3 | **dono** diz a regra |
 | V-03 | 🟡 | `?k=` em URLs | migrar uso humano pra sessão, serviço pra header; retirar o antigo; **rotacionar `ADMIN_KEY`** (Render, serviço `good-devolucoes-x-marketplaces-x-nfsbling`, e no `mover-pedidos` onde a ponte usa a mesma chave) | código + dono rotaciona |
 | V-04 | 🟡 | Backups e restore | runbook de restauração do Supabase (`sldnshulmhpmyjqrkstq`) e do Storage com RPO/RTO e ensaio registrado | dono confere o backup contratado |
-| V-05 | 🔄 | Configuração real de segurança | **b708** (`dev/v05-cabecalhos-csp`): nosniff/referrer/SAMEORIGIN + CSP em vigor só com o que nenhuma tela usa (`object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'`); a CSP completa em **Report-Only** com contagem em `/health → csp` — apertar fatia a fatia depois de ler o que ela bloquearia. Falta (dono): políticas dos buckets, acesso anônimo, RLS/constraints, cabeçalhos do Render, proteção da main | código (CSP) + **dono** (painéis) |
+| V-05 | ✅ #579 b708 (código; ler o relato Report-Only no /health antes de endurecer a CSP = operação) | Configuração real de segurança | **b708** (`dev/v05-cabecalhos-csp`): nosniff/referrer/SAMEORIGIN + CSP em vigor só com o que nenhuma tela usa (`object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'`); a CSP completa em **Report-Only** com contagem em `/health → csp` — apertar fatia a fatia depois de ler o que ela bloquearia. Falta (dono): políticas dos buckets, acesso anônimo, RLS/constraints, cabeçalhos do Render, proteção da main | código (CSP) + **dono** (painéis) |
 | V-06 | ⬜ | Escala horizontal | filas/locks são locais ao processo; antes de réplica: executor único ou coordenação durável. Registrar como regra em `ESTADO-MULTILOJA.md` | código/doc |
 | V-07 | ⬜ | Deadline nas chamadas Shopee do bipe | medir e limitar tempo total com resultado degradado claro | código |
 | V-08 | ⬜ | UI/acessibilidade | provas em navegador real (celular, modais, foco, teclado, upload, sessão longa); revogar blobs; `integrity` nas libs externas | código |
