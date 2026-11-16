@@ -21,23 +21,28 @@ module.exports = function registrarOauthCallback(router, deps) {
     if (!deps || deps[nome] === undefined) throw new Error('oauth-callback-AMB: a fabrica nao passou a dependencia `' + nome + '`');
   }
   const { BASE, bling, ml, mlReturns, magalu, NOME_EMPRESA, PREFIXO_ENV_EMPRESA, consumirState, redirectOAuth, pagina, jaPreAquecidoPeloOAuth } = deps;
+  const { escaparHtml: esc } = require('../../lib/html-texto');   // b707 (P1-02) - o que vem do provedor e texto
 
 // @secao oauth-callback
 router.get('/oauth/callback', async (req, res) => {
   const { code, state, error, error_description } = req.query;
 
-  if (error) {
-    return res.status(200).send(pagina('Autorizacao negada',
-      `<h1 class="erro">Autorizacao nao concluida</h1>
-       <div class="card">${String(error_description || error)}</div>`, '#da3633'));
-  }
-
+  // b707 (P1-02, auditoria do Codex 15/11) - O STATE VEM PRIMEIRO. Ate o b706 o `?error=` do provedor era
+  // respondido ANTES de conferir o state, e com `error_description` cru no HTML: qualquer um na internet montava
+  // uma pagina desta empresa com o conteudo que quisesse. Agora sem state valido e "link invalido" — e tudo o que
+  // vem do provedor (erro, escopo, conta, user_id, mensagem) passa pelo `esc()` e vira texto.
   const reg = consumirState(String(state || ''));
   if (!reg) {
     return res.status(400).send(pagina('Link invalido',
       `<h1 class="erro">Link invalido ou expirado</h1>
        <div class="card">Este endereco so vale por 10 minutos depois de voce clicar no botao.
        Volte para a tela de conexao e clique de novo.</div>`, '#da3633'));
+  }
+
+  if (error) {
+    return res.status(200).send(pagina('Autorizacao negada',
+      `<h1 class="erro">Autorizacao nao concluida</h1>
+       <div class="card">${esc(error_description || error)}</div>`, '#da3633'));
   }
 
   if (!code) {
@@ -54,7 +59,7 @@ router.get('/oauth/callback', async (req, res) => {
         <h1 class="ok">Bling da ${NOME_EMPRESA} conectado</h1>
         <div class="card"><table>
           <tr><td>Token gravado no Render</td><td>${r.persistiu ? 'sim' : 'NAO'}</td></tr>
-          <tr><td>Escopos</td><td>${(r.dados && r.dados.scope) || '-'}</td></tr>
+          <tr><td>Escopos</td><td>${esc((r.dados && r.dados.scope) || '-')}</td></tr>
           <tr><td>Teste de leitura</td><td>${teste.ok ? 'respondeu' : 'falhou'}</td></tr>
         </table></div>`));
     }
@@ -68,8 +73,8 @@ router.get('/oauth/callback', async (req, res) => {
       return res.send(pagina('Mercado Livre conectado', `
         <h1 class="ok">Mercado Livre da ${NOME_EMPRESA} conectado</h1>
         <div class="card"><table>
-          <tr><td>Conta</td><td>${teste.conta || '-'}</td></tr>
-          <tr><td>user_id descoberto</td><td>${r.user_id || '-'}</td></tr>
+          <tr><td>Conta</td><td>${esc(teste.conta || '-')}</td></tr>
+          <tr><td>user_id descoberto</td><td>${esc(r.user_id || '-')}</td></tr>
           <tr><td>Token gravado no Render</td><td>${r.persistiu ? 'sim' : 'NAO'}</td></tr>
           <tr><td>Validade do acesso</td><td>${r.expira_em_s ? Math.round(r.expira_em_s / 3600) + 'h (renova sozinho)' : '-'}</td></tr>
         </table></div>
@@ -109,7 +114,7 @@ router.get('/oauth/callback', async (req, res) => {
   } catch (erro) {
     const detalhe = (erro.response && JSON.stringify(erro.response.data)) || erro.message;
     res.status(200).send(pagina('Falhou',
-      `<h1 class="erro">Nao consegui concluir</h1><div class="card"><code>${detalhe}</code></div>`, '#da3633'));
+      `<h1 class="erro">Nao consegui concluir</h1><div class="card"><code>${esc(detalhe)}</code></div>`, '#da3633'));
   }
 });
 // @fim-secao

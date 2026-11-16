@@ -67,7 +67,8 @@ Segue as 12 etapas do Codex, com os itens de cada uma. A ordem dentro da etapa �
 - **Correção:** montar elementos por propriedade (`img.src = …`) e `addEventListener`; retirar JS montado como string; validar no servidor que cada referência de foto é chave/URL do Storage esperado.
 - **Aceite:** foto, título, SKU e tag com aspas, entidades e atributos continuam dados; não criam evento nem executam ao renderizar ou clicar.
 
-### P1-02 ⬜ Callbacks públicos devolvem conteúdo sem escape
+### P1-02 🔄 Callbacks públicos devolvem conteúdo sem escape
+- **PR:** branch `dev/p1-02-callbacks-escape` (b707). Entraram também `/bling/setup` e `/ml/setup` da GOOD (escopo, user_id e erro do provedor crus) e, na fábrica, conta/user_id/escopo/erro da troca — mesma causa.
 - **Onde:** `server.js` (~l.2970, `code` no HTML) e `amb-devolucoes/lib-AMB/oauth-callback-AMB.js` (~l.29, erro do provedor no HTML **antes** de validar o `state`).
 - **Correção:** código e erro como texto codificado pro contexto; na fábrica, validar/consumir o state antes de qualquer resposta com dado do provedor.
 - **Aceite:** parâmetro malicioso nos callbacks das 3 empresas não produz elemento nem evento executável.
