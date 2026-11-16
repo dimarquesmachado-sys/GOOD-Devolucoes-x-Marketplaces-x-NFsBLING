@@ -1,7 +1,7 @@
 # Roteiro de liquidação — auditoria do Codex (15/11/2026) + o que já estava em processo
 
 > **Este é o único roteiro.** Tudo o que está aberto no Devoluções vive aqui: os 11 P1 e os
-> 16 P2 da auditoria do Codex, os 10 pontos de validação/decisão, as 6 frentes de teste que
+> 16 P2 da auditoria do Codex (+1 achado no caminho), os 10 pontos de validação/decisão, as 6 frentes de teste que
 > ele pediu, e as 9 pendências que já estavam em andamento antes dela. Nada fica fora, nada
 > fica só na conversa.
 >
@@ -53,7 +53,7 @@ Segue as 12 etapas do Codex, com os itens de cada uma. A ordem dentro da etapa �
 | 8. Identidade dos fluxos da UI | P1-07, P2-01, P2-10 | resposta antiga não altera o pacote atual |
 | 9. Contrato da extensão | P1-06, H-05, V-09 | IDs iguais em empresas diferentes não cruzam |
 | 10. Relatórios e leituras completas | P1-08, V-01, P2-03, P2-04 | vários SKUs e históricos grandes batem com a origem |
-| 11. Resiliência e testes | P2-05, P2-06, P2-07, P2-08, P2-09, P2-11, P2-13, P2-15, P2-16, V-07, T-01..T-06 | falha intermediária preserva o último estado válido e aparece como falha |
+| 11. Resiliência e testes | P2-05, P2-06, P2-07, P2-08, P2-09, P2-11, P2-13, P2-15, P2-16, P2-17, V-07, T-01..T-06 | falha intermediária preserva o último estado válido e aparece como falha |
 | 12. Operação e evolução | V-02, V-03, V-04, V-06, V-08, V-10, H-01..H-04, H-06..H-09 | evidência de recuperação e de independência entre empresas |
 
 ---
@@ -108,7 +108,8 @@ Segue as 12 etapas do Codex, com os itens de cada uma. A ordem dentro da etapa �
 - **Correção:** autorizar empresa → devolução → foto; namespace por empresa com compatibilidade controlada pras imagens antigas.
 - **Aceite:** admin de A pedindo foto de B recebe 403/404 antes de qualquer download.
 
-### P1-10 ⬜ Multer 1.4.5-lts.2 com CVE-2025-47944 e CVE-2026-2359
+### P1-10 🔄 Multer 1.4.5-lts.2 com CVE-2025-47944 e CVE-2026-2359
+- **PR:** branch `dev/p1-10-multer-node` (b711), junto com P2-14. Multer ^2.5.0 (audit: zero advisories no multer); `lib/upload-foto.js` é a peça das duas pontas: limite único (12 MB — era 6 na GOOD e 12 na fábrica), 1 arquivo, 413/400 em JSON, tipo pelos primeiros bytes (JPEG/PNG/WebP/GIF), extensão pelo tipo real. **O `npm audit` acusa outros pacotes** (express → body-parser/qs/proxy-addr; axios → follow-redirects; nodemailer) — virou P2-17, fora deste PR.
 - **Onde:** `package.json` `multer ^1.4.5-lts.1`, lock resolve lts.2; `memoryStorage`; rotas exigem sessão antes do parser.
 - **Correção:** subir pra versão mantida sem advisory; revisar limites (tamanho, contagem); validar conteúdo real da imagem. **Não** `npm audit fix --force`. Junto com P2-14 (Node).
 - **Aceite:** upload válido, excessivo, malformado e interrompido nas 3 — processo segue atendendo.
@@ -138,9 +139,10 @@ Segue as 12 etapas do Codex, com os itens de cada uma. A ordem dentro da etapa �
 | P2-11 | ⬜ | Download de erro anunciado como foto | `painel-AMB.html:1222`: 401 JSON virou `.jpg` + "sucesso" | conferir status/tipo; contar só downloads concluídos |
 | P2-12 | ⬜ | Fallback de foto com `SUPABASE_URL` não declarado | `rotas-admin-AMB.js:79` → ReferenceError na falha do Storage | injetar dependência; testar o caminho de erro |
 | P2-13 | ⬜ | Workflow verde sem operar | `.github/workflows/destrava-pr.yml`: sucesso com `fatal: not a git repository` | informar repositório; distinguir "nada a fazer" de erro |
-| P2-14 | ⬜ | Contrato Node incompatível | `package.json` `node >=18`; Supabase do lock exige 22; CI usa 22 | alinhar manifesto, Render e CI em 22 (junto com P1-10) |
+| P2-14 | 🔄 | Contrato Node incompatível (b711, no PR do P1-10: manifesto e lock em `>=22.0.0`; conferir no Render qual Node o serviço usa — `/health → node`) | `package.json` `node >=18`; Supabase do lock exige 22; CI usa 22 | alinhar manifesto, Render e CI em 22 (junto com P1-10) |
 | P2-15 | ⬜ | Teste de boot aceita processo quebrado | teste do painel só checa ausência de frase; filho morto por SyntaxError passa | checar morte antecipada, `listening`, timeout e resposta HTTP real |
 | P2-16 | ⬜ | Resolução de conversas por contagem | automação (`auto-merge-codex.yml`/scripts) resolve threads por quantidade; erro de consulta vira "zero problemas" | só resolver com prova de tratamento; erro de consulta bloqueia a decisão. Não reativar auto-merge antes disso |
+| P2-17 | ⬜ | Dependências com advisories além do Multer (achado ao rodar `npm audit` no b711) | `express@4` → `body-parser` <1.20.9, `qs`, `proxy-addr` (IP spoofing via IPv4-mapped IPv6 — importa pra `trust proxy`/rate limit); `axios` → `follow-redirects`; `nodemailer` ≤10.1.3 (injeção SMTP) | subir cada um no seu PR, lendo o changelog (express 4.x patch, axios 1.x, nodemailer 7/8 muda API de transporte?) — nunca `npm audit fix --force` |
 
 ---
 

@@ -252,10 +252,10 @@ function montar(router, deps) {
 
   // upload em memoria: a foto vai direto pro Supabase, nao encosta no disco
   // (o servico nao tem disco persistente — ver licao do indice frio).
-  const upload = multer({
-    storage: multer.memoryStorage(),
-    limits: { fileSize: 12 * 1024 * 1024 },   // 12MB por foto
-  });
+  // b711 (P1-10, auditoria do Codex): configuracao, limite, tratador de erro e conferencia do conteudo em
+  // lib/upload-foto.js — a mesma peca da GOOD.
+  const uploadFoto = require('../../lib/upload-foto');
+  const upload = uploadFoto.criarUploadDeFoto(multer);
 
   // b180 - transforma a estrutura crua do Bling em [{sku, quantidade, nome}],
   // consultando o produto do componente quando so veio o id. Teto de 12,
@@ -1051,18 +1051,21 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
   // do Supabase, nao pro disco (o servico nao tem disco persistente).
   // Bucket: env AMB_FOTOS_BUCKET (padrao "fotos-problema").
   // ─────────────────────────────────────────────────────────────────────
-  router.post('/api/triagem/upload-foto', auth.requerLogin, upload.single('foto'), async (req, res) => {
+  router.post('/api/triagem/upload-foto', auth.requerLogin, upload.single('foto'), uploadFoto.tratarErroDeUpload, async (req, res) => {
     const cliente = db.conectar();
     if (!cliente) return res.status(500).json({ ok: false, erro: 'Supabase nao configurado' });
     if (!req.file) return res.status(400).json({ ok: false, erro: 'Foto nao enviada' });
 
+    // b711 (P1-10) - o conteudo manda: tipo pelos primeiros bytes (nao pelo mimetype/nome que o cliente declarou)
+    const tipoReal = uploadFoto.tipoDaImagem(req.file.buffer);
+    if (!tipoReal) return res.status(400).json({ ok: false, erro: 'o arquivo nao e uma imagem (JPEG, PNG, WebP ou GIF)' });
     const bucket = process.env[_PREFIXO + 'FOTOS_BUCKET'] || 'fotos-problema';
-    const ext = String(req.file.originalname || 'foto.jpg').split('.').pop().toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg';   // b707: extensao tambem so com caracteres de URL
+    const ext = uploadFoto.EXTENSAO[tipoReal];   // b711: extensao pelo CONTEUDO, nao pelo nome
     const nome = `amb/${nomeDePastaSeguro(req.usuario)}/${Date.now()}-${crypto.randomBytes(4).toString('hex')}.${ext}`;   // b706 (Codex #577): pasta so com caracteres de URL
 
     try {
       const { error } = await cliente.storage.from(bucket).upload(nome, req.file.buffer, {
-        contentType: req.file.mimetype || 'image/jpeg',
+        contentType: tipoReal,   // b711: o tipo conferido, nao o declarado
         upsert: false,
       });
       if (error) {
