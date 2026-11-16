@@ -33,7 +33,8 @@ axios.post = async (url, corpo, opts) => { pedidos.push({ url, params: (opts && 
   const amb = fs.readFileSync(path.join(__dirname, '..', 'amb-devolucoes', 'lib-AMB', 'bling-AMB.js'), 'utf8');
   // b690: +1 caminho — o retry do 401 em `remoto` (token relido do dono) tambem e uma requisicao fisica: pede a vez,
   // guarda a ficha e avisa ok/429 com ela, igual aos outros. Por isso 4 e 5 (eram 3 e 4).
-  ok((amb.match(/_ficha = await ritmo\.aguardarVez\(/g) || []).length === 4 && (amb.match(/ritmo\.avisarOk\(opcoes\.fundo \? 'fundo' : 'operacao', _ficha\)/g) || []).length === 4 && (amb.match(/opcoes\.fundo \? 'fundo' : 'operacao', _ficha\);/g) || []).length >= 5, '⚠️ o Bling da Girassol/AMB guarda a ficha e manda nos avisos (4 sucessos, 5 de 429)');
+  // b731 (P2-07): o avisarOk leva tambem `_saiuEm` (sucesso mais velho que o ultimo 429 nao limpa a pausa).
+  ok((amb.match(/_ficha = await ritmo\.aguardarVez\(/g) || []).length === 4 && (amb.match(/ritmo\.avisarOk\(opcoes\.fundo \? 'fundo' : 'operacao', _ficha, _saiuEm\)/g) || []).length === 4 && (amb.match(/opcoes\.fundo \? 'fundo' : 'operacao', _ficha(, _saiuEm)?\);/g) || []).length >= 5, '⚠️ o Bling da Girassol/AMB guarda a ficha e manda nos avisos (4 sucessos, 5 de 429)');
   const good = fs.readFileSync(path.join(__dirname, '..', 'lib', 'bling.js'), 'utf8');
   ok((good.match(/_ficha = await ritmo\.aguardarVez\(/g) || []).length === 1 && (good.match(/_ficha = opcoes\.semRitmo \? null : await ritmo\.aguardarVez\(/g) || []).length === 3 && /_ficha = opcoes\.ficha \|\| null/.test(good) && (good.match(/if \(_ficha\) porteiroRitmo\.avisarOk\(/g) || []).length === 4 && (good.match(/'operacao', _ficha\);/g) || []).length === 3, '⚠️ o Bling da GOOD tambem (agora avisa o sucesso com ficha — antes nem avisava)');
   const rb = fs.readFileSync(path.join(__dirname, '..', 'lib', 'ritmo-bling.js'), 'utf8');

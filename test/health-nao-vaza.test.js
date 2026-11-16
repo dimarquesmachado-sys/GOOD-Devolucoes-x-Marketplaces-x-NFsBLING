@@ -22,10 +22,11 @@ const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o
 const RAIZ = path.join(__dirname, '..');
 const srv = fs.readFileSync(path.join(RAIZ, 'server.js'), 'utf8');
 
-// recorta o bloco do /health (do `app.get('/health'` até o fim do handler)
-const iH = srv.indexOf("app.get('/health'");
-ok(iH > 0, 'achei o handler do /health');
-const bloco = srv.slice(iH, iH + 12000);
+// recorta o bloco do /health entre DOIS marcadores estaveis (CLAUDE.md §6: a janela fixa de 12000 chars
+// estourou no b731 — a linha de versao, que mora no /health, cresce a cada build e empurrou o fim do handler pra fora)
+const { entreMarcadores } = require('./_recorte');
+const bloco = entreMarcadores(srv, "app.get('/health'", "app.get('/api/keepalive'");
+ok(bloco.length > 0, 'achei o handler do /health');
 const semComent = bloco.split('\n').filter((l) => !l.trim().startsWith('//')).join('\n');
 
 // ── ⚠️ nada de listas de identificadores ────────────────────────────
