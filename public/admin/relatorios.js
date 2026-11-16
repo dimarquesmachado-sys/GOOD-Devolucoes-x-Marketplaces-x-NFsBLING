@@ -467,6 +467,7 @@ async function salvarTagsAplicadas() {
     const d = await r.json();
     if (!d.ok) {
       alert('Erro: ' + (d.erro || 'desconhecido'));
+      await carregar();   // b726 (P2-04): o servidor pode ter aplicado parte (as novas entraram, as antigas ficaram) — mostra o que esta la de fato
       return;
     }
     document.getElementById('modalAplicarTags').classList.remove('show');
