@@ -339,6 +339,11 @@ const upload = multer({
 });
 
 app.use(express.json({ limit: '12mb' }));
+// b708 (V-05, auditoria do Codex) - cabecalhos de seguranca pras 3 empresas (o servico e um so): o que nao quebra
+// nada ja em vigor; a CSP completa em MODO RELATO, medida em /health → `csp`, antes de apertar. Ver a peca.
+const seguranca = require('./lib/cabecalhos-seguranca').criar();
+app.use(seguranca.middleware);
+app.post(seguranca.ROTA_RELATO, express.json({ type: ['application/csp-report', 'application/reports+json', 'application/json'], limit: '20kb' }), seguranca.rotaRelato);
 // ⚠️ b358 - MONTA PELA FABRICA, e por EMPRESA ATIVA do registro.
 //
 // Era `app.use('/amb', require(...))` — um router pronto, cravado em /amb.
@@ -614,7 +619,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.126.219 (b707: extensao do upload so com caracteres de URL; b706: P1-01 — foto e dado, nao codigo: painel e ficha sem onclick montado como texto; servidor so grava URL do upload (lib/fotos-referencia); b705: roteiro unico de liquidacao)',
+      version: '9.126.220 (b708: V-05 — cabecalhos de seguranca nas 3 empresas; CSP: o que nao quebra em vigor, a completa em modo relato medida no /health)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -745,6 +750,7 @@ app.get('/health', (req, res) => {
       // b260 - ⚠️ SO CONTAGEM. O /health e publico, e os caminhos do ML
       // carregam id de pedido, envio e reclamacao — expor a lista seria
       // vazar dado de cliente pra quem alcancar o servico.
+      csp: seguranca.diagnostico(),   // b708 (V-05): o que a CSP em modo relato BLOQUEARIA, por diretiva e host
       ml_403: (() => {
         try { return require('./lib/ml').diagnostico403(); }
         catch (e) { return { erro: e.message }; }
