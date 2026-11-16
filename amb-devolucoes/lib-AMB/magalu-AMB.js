@@ -420,7 +420,22 @@ async function _fase2ReverseCodes(abertos) {
   } finally { INDICES.fase2Rodando = false; }
 }
 
+// b729 (Codex #596) - UMA construcao por vez, COMPARTILHADA: quem chega enquanto a fase 1 esta em voo espera a
+// MESMA fase 1 (nao dispara outra, nem le o indice velho/vazio). `TIDX.construcao.fase1` resolve quando o indice e
+// publicado (ou a construcao desiste); a fase 2 (reverse_codes) continua depois sem segurar ninguem.
 async function construirIndiceDevolucoes(opts = {}) {
+  if (TIDX.construcao) return TIDX.construcao.fase1;
+  let resolverFase1;
+  const fase1 = new Promise((r) => { resolverFase1 = r; });
+  TIDX.construcao = { fase1 };
+  try {
+    return await _construirIndiceDevolucoes(opts, () => resolverFase1(TIDX));
+  } finally {
+    TIDX.construcao = null;
+    resolverFase1(TIDX);   // garante que ninguem fica esperando se a construcao estourou
+  }
+}
+async function _construirIndiceDevolucoes(opts, fase1Pronta) {
   if (!temToken()) { TIDX.erro = 'sem token Magalu da AMB'; return TIDX; }
   const t0 = Date.now();
   TIDX.tentativaEm = t0;   // b729: carimbo da tentativa (publicada ou nao) - acharDevolucao espaca as reconstrucoes
@@ -493,6 +508,7 @@ async function construirIndiceDevolucoes(opts = {}) {
   TIDX.duracaoSeg = Math.round((Date.now() - t0) / 1000);
   TIDX.erro = null;
   console.log(`[${_TAG}/MAGALU] tickets fase 1: ${total} (protocolo+pedido) em ${TIDX.duracaoSeg}s - ${abertos.length} p/ fase 2 (todos, fechados incluidos - b156)`);
+  fase1Pronta();   // b729: quem esperava a fase 1 (bipes em paralelo) segue agora
   if (opts.reverseEmBackground) {
     setImmediate(() => _fase2ReverseCodes(abertos)); // nao segura o bipe
   } else {
@@ -526,7 +542,11 @@ async function acharDevolucao(codigo) {
   // b729: como a construcao que falha NAO publica mais (o `ts` fica o do indice bom), sem esta trava cada bipe
   // com o Magalu fora do ar tentaria reconstruir de novo (ate 4 paginas × 25s). Entre tentativas: 5 min.
   const tentouHaPouco = TIDX.tentativaEm && (Date.now() - TIDX.tentativaEm) < 5 * 60000;
-  if (temToken() && (!TIDX.ts || (Date.now() - TIDX.ts) > 30 * 60000) && !tentouHaPouco) {
+  if (TIDX.construcao) {
+    // Codex #596: ha uma fase 1 em voo (outro bipe ou o pre-aquecimento) — espera ELA, em vez de ler o indice
+    // velho/vazio; o espacamento acima so vale pra NAO disparar outra construcao
+    try { await TIDX.construcao.fase1; } catch (e) { /* segue com o que tiver */ }
+  } else if (temToken() && (!TIDX.ts || (Date.now() - TIDX.ts) > 30 * 60000) && !tentouHaPouco) {
     // on-demand: so a fase 1 (1-2s); reverse_codes completam em background
     try { await construirIndiceDevolucoes({ reverseEmBackground: true }); } catch (e) { /* segue com o que tiver */ }
   }

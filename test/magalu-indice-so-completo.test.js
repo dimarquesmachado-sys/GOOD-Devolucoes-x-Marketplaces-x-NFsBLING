@@ -18,15 +18,15 @@ axios.get = async (url) => {
     chamadas++;
     const offset = Number((url.match(/_offset=(\d+)/) || [0, 0])[1]);
     const pg = offset / 100;
-    const resp = cenario[pg];
+    const resp = await cenario[pg];   // pode ser uma promise (resposta segurada)
     if (resp === 'cai') return { status: 503, data: {} };   // chamarMagalu usa validateStatus: () => true
     return { status: 200, data: { results: resp || [] } };
   }
   throw new Error('url inesperada ' + url);
 };
 // protocolo NUMERICO de 16 digitos (o bipe procura so os digitos): prefixo A=1, B=2, C=3, D=4
-const pagina = (prefixo, n) => Array.from({ length: n }, (_, i) => ({ id: prefixo + i, protocol: '20261100000' + { A: 1, B: 2, C: 3, D: 4 }[prefixo] + String(i).padStart(4, '0'), order: { code: 'PED-' + prefixo + i } }));
-const proto = (prefixo, i) => '20261100000' + { A: 1, B: 2, C: 3, D: 4 }[prefixo] + String(i).padStart(4, '0');
+const pagina = (prefixo, n) => Array.from({ length: n }, (_, i) => ({ id: prefixo + i, protocol: '20261100000' + { A: 1, B: 2, C: 3, D: 4, E: 5 }[prefixo] + String(i).padStart(4, '0'), order: { code: 'PED-' + prefixo + i } }));
+const proto = (prefixo, i) => '20261100000' + { A: 1, B: 2, C: 3, D: 4, E: 5 }[prefixo] + String(i).padStart(4, '0');
 
 const { criar } = require('../amb-devolucoes/lib-AMB/magalu-AMB.js');
 const magalu = criar({ PREFIXO_ENV: 'AMB_' });
@@ -75,6 +75,22 @@ const magalu = criar({ PREFIXO_ENV: 'AMB_' });
     await magalu.acharDevolucao(proto('D', 2));
     ok(depoisDaPrimeira === 1 && chamadas === 1, '⚠️ indice frio + Magalu caido: 1 tentativa de reconstrucao, nao uma por bipe. Chamadas: ' + chamadas);
     ok((await magalu.acharDevolucao(proto('D', 2))) !== null, '  e o bipe segue achando pelo indice anterior');
+  }
+  // 7) Codex #596: dois bipes chegam com a fase 1 em voo (Magalu demorando): o 2o espera a MESMA construcao,
+  //    nao le o indice velho nem dispara outra
+  {
+    salto += 31 * 60000;   // frio de novo, e a ultima tentativa ja passou dos 5 min
+    chamadas = 0;
+    let liberar; const segurada = new Promise((r) => { liberar = r; });
+    cenario = { 0: segurada.then(() => pagina('E', 2)) };
+    const p1 = magalu.acharDevolucao(proto('E', 1));
+    await new Promise((r) => setTimeout(r, 10));
+    const p2 = magalu.acharDevolucao(proto('E', 1));
+    await new Promise((r) => setTimeout(r, 10));
+    ok(chamadas === 1, '  so UMA construcao em voo para os dois bipes. Chamadas: ' + chamadas);
+    liberar();
+    const [a, b] = await Promise.all([p1, p2]);
+    ok(a && a.ticket_id === 'E1' && b && b.ticket_id === 'E1', '⚠️ (Codex #596) o 2o bipe esperou a fase 1 e achou E1 (antes: null pelo indice velho). Veio: ' + JSON.stringify([a && a.ticket_id, b && b.ticket_id]));
   }
   console.log('');
   console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
