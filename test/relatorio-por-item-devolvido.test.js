@@ -103,6 +103,17 @@ const base = (x) => ({ id: 1, created_at: '2026-11-10T10:00:00Z', tipo: 'aprovad
     const skus = corpo.rankingSKUs.map((s) => s.sku);
     ok(skus.length === 1 && skus[0] === 'NEW' && corpo.rankingSKUs[0].num_devolucoes === 2 && corpo.rankingSKUs[0].qtde_total === 2, '⚠️ (Codex #591) item com SKU antigo OLD cai no SKU atual NEW (de-para da empresa): 1 SKU, 2 devolucoes. Veio: ' + JSON.stringify(skus));
     ok(chamadas.includes('OLD') && chamadas.filter((c) => c === 'NEW').length === 1, '  o de-para e consultado por SKU e cacheado dentro da requisicao');
+    // Codex #592 (P2): os SKUs distintos sao resolvidos em paralelo (lotes de 10), nao um a um em serie
+    {
+      let emVoo = 0, pico = 0;
+      const lento = (sku) => new Promise((res) => { emVoo++; pico = Math.max(pico, emVoo); setTimeout(() => { emVoo--; res({ sku, trocado: false }); }, 20); });
+      const linhas = Array.from({ length: 25 }, (_, i) => base({ id: 100 + i, produto_sku: 'S' + i, produto_qtd: 1, produto_valor_unit: 1, itens_devolvidos: [{ sku: 'S' + i, qtd: 1, valor_unit: 1 }] }));
+      const t0 = Date.now();
+      const rp = await relatorio(linhas, { resolverSku: lento }).rodar();
+      const ms = Date.now() - t0;
+      ok(rp.status === 200 && rp.corpo.rankingSKUs.length === 10 && rp.corpo.cards.totalSKUsUnicos === 25, '  25 SKUs distintos: relatorio inteiro');
+      ok(pico >= 5 && ms < 25 * 20, '⚠️ (Codex #592) de-para resolvido em paralelo: pico de ' + pico + ' em voo, ' + ms + 'ms (em serie seriam >= 500ms)');
+    }
     // de-para fora do ar nao derruba o relatorio
     const r2 = relatorio([base({ id: 12, produto_sku: 'A', produto_qtd: 1, produto_valor_unit: 5, itens_devolvidos: [{ sku: 'A', qtd: 1, valor_unit: 5 }] })], { resolverSku: async () => { throw new Error('banco caiu'); } });
     const x = await r2.rodar();
