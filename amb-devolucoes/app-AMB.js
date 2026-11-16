@@ -139,7 +139,7 @@ function criarAppEmpresa(empresaAlvo) {
 const express = require('express');
 const path = require('path');
 const fs = require('fs');
-const crypto = require('crypto');
+// b709: o unico uso de crypto aqui (o state do OAuth) foi pra lib/oauth-state.js
 const MANIFEST_AMB = require('./public-AMB/manifest-AMB.json');
 // b249 - FASE 3, passo 4: os modulos que ja sao FABRICA sao montados COM A
 // FICHA, em vez de vir prontos com o config da AMB embutido.
@@ -662,7 +662,7 @@ const registrarCicloDefeitos = require('../lib/defeitos-ciclo');
 // candidato ja desistido ainda batia no Bling depois de esperar numa pausa
 // de 429. Ver bling-AMB.js, nf-nomes-AMB.js e identificar-AMB.js.
 // 29/10: sem o 'AMB' na frente — a mesma peca serve Girassol, AMB e as proximas; a empresa vai no campo `empresa`
-const VERSAO = 'Devolucoes b722';
+const VERSAO = 'Devolucoes b723';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -737,24 +737,9 @@ function admin(req, res, next) {
 // POR EMPRESA. Hoje sao 3 objetos no escopo do modulo — que ainda vazariam
 // se houvesse duas empresas, mas agora sao 3 pontos a mudar em vez de 11.
 const TRIAGEM = GAVETAS.triagem;   // b353
-const VALIDADE_MS = 10 * 60 * 1000;
-
-function novoState(servico) {
-  const s = crypto.randomBytes(24).toString('hex');
-  TRIAGEM.pendentes.set(s, { servico, criado_em: Date.now() });
-  for (const [k, v] of TRIAGEM.pendentes) {
-    if (Date.now() - v.criado_em > VALIDADE_MS) TRIAGEM.pendentes.delete(k);
-  }
-  return s;
-}
-
-function consumirState(s) {
-  const reg = TRIAGEM.pendentes.get(s);
-  if (!reg) return null;
-  TRIAGEM.pendentes.delete(s);
-  if (Date.now() - reg.criado_em > VALIDADE_MS) return null;
-  return reg;
-}
+// b709 (P1-11) - o state virou peca unica (lib/oauth-state.js): mesmo codigo, mesma gaveta desta empresa; a GOOD
+// passou a usar a mesma peca em vez do `state='good'` fixo que o callback dela nem conferia.
+const { novoState, consumirState } = require('../lib/oauth-state').criar({ pendentes: TRIAGEM.pendentes });
 
 /** Reclamacao em 2 cliques: o link certo por marketplace. */
 function linksReclamacao(marketplace, d = {}) {
@@ -2121,6 +2106,7 @@ registrarIdentificar(router, {
 
 registrarRotasAdminNF(router, {
   tabelaDevolucoes: db.tabelas.devolucoes,   // b144 - devolucoes_amb
+  supabaseUrl: CFG_EMPRESA.supabase.url,   // b710 (P1-09/P2-12): o proxy de fotos confere a dona e monta a URL publica com ISTO
   chamarMagalu: magalu.chamarMagalu,   // b595 - anuncio do pedido do Magalu (card de varios produtos)
   shopeeProxy: { url: shopee.cfg.url, loja: shopee.cfg.loja, key: process.env.SHOPEE_PROXY_KEY || '' },   // b597 - anuncio da Shopee
   tiktokPonte, tiktokLoja: tiktokPonte.lojaDaEmpresa(CFG_EMPRESA.CHAVE_REGISTRO || SEM_EMPRESA),   // b598 - anuncio do TikTok; b661: nunca a AMB
@@ -2190,6 +2176,7 @@ registrarRotasRelatorios(router, {
     devolucaoTags: db.tabelas.devolucaoTags,
   },
   buscarProdutos: null,
+  resolverSku: (sku) => db.resolverSku(sku),   // b721 (Codex #591): itens_devolvidos guardam o SKU da venda
   // b652 (Codex #522) - vocabulario da tabela da AMB/Girassol
   colunaData: 'criado_em',
   tipoNoStatus: true,

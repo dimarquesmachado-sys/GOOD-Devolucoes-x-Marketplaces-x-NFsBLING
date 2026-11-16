@@ -62,7 +62,8 @@ ok(ref.nomeDePastaSeguro('ana+estoque') === 'ana_estoque' && ref.nomeDePastaSegu
 ok(ref.nomeDePastaSeguro('') === 'usuario' && ref.nomeDePastaSeguro(null) === 'usuario' && ref.nomeDePastaSeguro('..') === '_', '  vazio/nulo vira "usuario"; ".." nao vira travessia');
 ok(ref.ehReferenciaDeFoto('https://sldnteste.supabase.co/storage/v1/object/public/fotos-problema/amb/' + ref.nomeDePastaSeguro("ana+d'avila") + '/1763200000000-ab12cd34.jpg') === true,
    '  a URL de upload de um usuario com + e aspa passa no validador');
-for (const [arq, trecho] of [['server.js', 'const filename = `${nomeDePastaSeguro(req.usuario)}/'], ['amb-devolucoes/lib-AMB/compat-AMB.js', 'const nome = `amb/${nomeDePastaSeguro(req.usuario)}/']]) {
+// b710 (P1-09): na fabrica a pasta antes do usuario e a DA EMPRESA, nao mais `amb/` fixo — ancora no trecho estavel
+for (const [arq, trecho] of [['server.js', 'const filename = `${nomeDePastaSeguro(req.usuario)}/'], ['amb-devolucoes/lib-AMB/compat-AMB.js', '/${nomeDePastaSeguro(req.usuario)}/${Date.now()}']]) {
   ok(fs.readFileSync(path.join(RAIZ, arq), 'utf8').includes(trecho), `  ${arq}: o upload usa nomeDePastaSeguro(req.usuario)`);
 }
 
