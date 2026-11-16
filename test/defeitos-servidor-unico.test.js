@@ -114,7 +114,7 @@ function criarBanco() {
         or(expr) { assert(expr.length <= 4000, 'URL grande demais: expressao or com ' + expr.length + ' chars'); q.expressoes.push(expr); q.condicoes.push(x => separar(expr).some(e => filtro(e, x))); return chain; },
         not(coluna, op, valor) { q.expressoes.push(coluna + '.not.' + op + '.' + valor); q.condicoes.push(x => filtro(coluna + '.not.' + op + '.' + valor, x)); return chain; },
         is(coluna, valor) { q.condicoes.push(x => valor == null ? x[coluna] == null : x[coluna] === valor); return chain; },
-        order(coluna, opcoes = {}) { q.ordem = { coluna, asc: opcoes.ascending !== false }; return chain; },
+        order(coluna, opcoes = {}) { (q.ordens = q.ordens || []).push({ coluna, asc: opcoes.ascending !== false }); q.ordem = q.ordens[0]; return chain; },
         limit(n) { q.limites = n; return chain; },
         range(de, ate) { q.faixa = [de, ate]; return chain; },   // b725 (P2-03): paginacao por range, como o PostgREST
         then(a, b) { return executar().then(a, b); },
@@ -154,7 +154,10 @@ function criarBanco() {
           if (q.operacao === 'update') linhas.forEach(x => Object.assign(x, q.campos));
           if (q.operacao === 'delete') tabelas[tabela] = tabelas[tabela].filter(x => !linhas.includes(x));
           const count = linhas.length;
-          if (q.ordem) linhas = [...linhas].sort((a, b) => String(a[q.ordem.coluna] || '').localeCompare(String(b[q.ordem.coluna] || '')) * (q.ordem.asc ? 1 : -1));
+          if (q.ordens) linhas = [...linhas].sort((a, b) => {
+            for (const o of q.ordens) { const c = String(a[o.coluna] || '').localeCompare(String(b[o.coluna] || ''), undefined, { numeric: true }) * (o.asc ? 1 : -1); if (c) return c; }
+            return 0;
+          });
           if (q.limites != null) linhas = linhas.slice(0, q.limites);
           if (q.faixa) linhas = linhas.slice(q.faixa[0], q.faixa[1] + 1);
           const data = q.opcoes.head ? null : linhas.map(x => q.colunas === '*' ? copiar(x)
@@ -320,6 +323,37 @@ async function main() {
       assert.equal(r.body.itens.length, 300, 'as 300 ativas antigas: ' + r.body.itens.length);
       assert(r.body.itens.every(x => x.id >= 1201), 'nenhuma resolvida por pedido na aba Com Defeito');
       assert.equal(r.body.contagem.defeito, 300);
+    });
+    // Codex #593: o termo de busca entra DENTRO das paginas/lotes; a contagem com termo conserva o orcamento maior;
+    // a paginacao desempata por id
+    await caso(chave + ': 151 resolvidas + 400 ativas: buscar o SKU que so a 350a ativa tem ACHA a peca (termo dentro da paginacao)', async () => {
+      const e = criarEmpresa(chave);
+      for (let id = 1; id <= 151; id++) {
+        e.item(id, { [DADOS[chave].colunaData]: '2026-11-01T00:00:00Z' });
+        e.banco.tabelas[e.n.ped].push({ id, defeito_id: id, tipo: 'recuperado', status: 'autorizado' });
+      }
+      for (let i = 1; i <= 400; i++) {
+        const id = 151 + i;   // i = 1 e a mais nova
+        e.item(id, { [DADOS[chave].colunaData]: new Date(Date.UTC(2026, 9, 1) - i * 60000).toISOString(), produto_sku: i === 350 ? 'SKU-RARO' : chave + '-SKU' });
+      }
+      const r = await e.pedir('GET', '/api/defeitos/lista', { query: { q: 'sku-raro' } });
+      assert.equal(r.statusCode, 200);
+      assert.deepEqual(r.body.itens.map(x => x.id), [501], 'a 350a ativa aparece na busca: ' + JSON.stringify(r.body.itens.map(x => x.id)));
+      assert.equal(r.body.contagem.defeito, 1);
+      const paginas = e.banco.chamadas.filter(c => c.tabela === e.n.dev && c.faixa);
+      assert(paginas.every(c => c.ordens && c.ordens.length === 2 && c.ordens[1].coluna === 'id'), 'paginacao ordena por data E por id (desempate)');
+    });
+    await caso(chave + ': contagem com termo na aba Recuperados nao e cortada em 300 (151 por pedido + 249 por tipo, mesmo SKU = 400)', async () => {
+      const e = criarEmpresa(chave);
+      for (let id = 1; id <= 151; id++) {
+        e.item(id, { produto_sku: 'SKU-MESMO' });
+        e.banco.tabelas[e.n.ped].push({ id, defeito_id: id, tipo: 'recuperado', status: 'autorizado' });
+      }
+      for (let id = 152; id <= 400; id++) e.item(id, { produto_sku: 'SKU-MESMO', tipo: 'recuperado' });
+      const r = await e.pedir('GET', '/api/defeitos/lista', { query: { estado: 'recuperado', q: 'sku-mesmo' } });
+      assert.equal(r.statusCode, 200);
+      assert.equal(r.body.itens.length, 300, 'a tela mostra 300');
+      assert.equal(r.body.contagem.recuperado, 400, 'a contagem com termo diz 400: ' + r.body.contagem.recuperado);
     });
     await caso(chave + ': lotes de pedidos preservam exclusões, prioridade do tipo e NULL sem dupla contagem', async () => {
       const e = criarEmpresa(chave); const registros = [];
