@@ -2106,6 +2106,7 @@ registrarIdentificar(router, {
 
 registrarRotasAdminNF(router, {
   tabelaDevolucoes: db.tabelas.devolucoes,   // b144 - devolucoes_amb
+  supabaseUrl: CFG_EMPRESA.supabase.url,   // b710 (P1-09/P2-12): o proxy de fotos confere a dona e monta a URL publica com ISTO
   chamarMagalu: magalu.chamarMagalu,   // b595 - anuncio do pedido do Magalu (card de varios produtos)
   shopeeProxy: { url: shopee.cfg.url, loja: shopee.cfg.loja, key: process.env.SHOPEE_PROXY_KEY || '' },   // b597 - anuncio da Shopee
   tiktokPonte, tiktokLoja: tiktokPonte.lojaDaEmpresa(CFG_EMPRESA.CHAVE_REGISTRO || SEM_EMPRESA),   // b598 - anuncio do TikTok; b661: nunca a AMB

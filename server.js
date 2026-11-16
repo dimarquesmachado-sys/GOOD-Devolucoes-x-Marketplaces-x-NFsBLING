@@ -8982,6 +8982,7 @@ require('./amb-devolucoes/lib-AMB/rotas-admin-AMB.js')(app, Object.assign({}, DE
   chamarBling: (u, ...resto) => chamarBling(/^https?:/i.test(String(u)) ? u : 'https://api.bling.com.br/Api/v3' + u, ...resto),
   tabelaDevolucoes: 'devolucoes',
   colunaCriadoEm: 'created_at',
+  supabaseUrl: SUPABASE_URL,   // b710 (P1-09/P2-12): o proxy de fotos confere a dona e monta a URL publica com ISTO
   triagemNoTipo: true,   // b546 (Codex #449): na GOOD o resultado da triagem fica em `tipo` e o card aberto e status 'pendente'
   // b546: a copia unica chama o ML com caminho relativo ('/users/me'); o cliente da GOOD exige o endereco inteiro
   chamarML: (u, ...resto) => chamarML(/^https?:/i.test(String(u)) ? u : 'https://api.mercadolibre.com' + u, ...resto),

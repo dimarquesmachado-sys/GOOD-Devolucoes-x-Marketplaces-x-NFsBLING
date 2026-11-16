@@ -36,6 +36,7 @@
 function criar(cfgEmpresa) {
   const { PREFIXO_SEM_EMPRESA } = require('../../lib/empresas');   // b662 - nunca ler as envs da AMB por fallback
   const { exigirFotosValidas, nomeDePastaSeguro } = require('../../lib/fotos-referencia');   // b706 (P1-01) - so grava foto que veio do upload deste servidor
+  const { SEM_EMPRESA } = require('../../lib/empresas');   // b710 - pasta das fotos sem chave de empresa
   // ⚠️ b400 - a etiqueta do log diz QUAL EMPRESA.
   //
   // Era `[AMB/...]` fixo: o Render junta o log das duas no MESMO lugar,
@@ -46,6 +47,10 @@ function criar(cfgEmpresa) {
   const _TAG = String((cfgEmpresa && cfgEmpresa.PREFIXO_ENV) || PREFIXO_SEM_EMPRESA)
     .replace(/_$/, '');
 const _PREFIXO = String((cfgEmpresa && cfgEmpresa.PREFIXO_ENV) || PREFIXO_SEM_EMPRESA);
+// b710 (P1-09, Codex) - a pasta da foto nova no bucket e a CHAVE DA EMPRESA (`ambtotal/`, `girassol/`), nao mais `amb/` pras
+// duas. As fotos antigas em `amb/` continuam sendo servidas: quem autoriza e o vinculo na tabela da empresa, nao o prefixo.
+// Sem chave nao cai na AMB (licao do b661): vai pra pasta `sem-empresa/`, que denuncia a ficha incompleta em vez de misturar.
+const PASTA_FOTOS = String((cfgEmpresa && cfgEmpresa.CHAVE_REGISTRO) || SEM_EMPRESA);
 'use strict';
 
 const crypto = require('crypto');
@@ -1061,7 +1066,7 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
     if (!tipoReal) return res.status(400).json({ ok: false, erro: 'o arquivo nao e uma imagem (JPEG, PNG, WebP ou GIF)' });
     const bucket = process.env[_PREFIXO + 'FOTOS_BUCKET'] || 'fotos-problema';
     const ext = uploadFoto.EXTENSAO[tipoReal];   // b711: extensao pelo CONTEUDO, nao pelo nome
-    const nome = `amb/${nomeDePastaSeguro(req.usuario)}/${Date.now()}-${crypto.randomBytes(4).toString('hex')}.${ext}`;   // b706 (Codex #577): pasta so com caracteres de URL
+    const nome = `${PASTA_FOTOS}/${nomeDePastaSeguro(req.usuario)}/${Date.now()}-${crypto.randomBytes(4).toString('hex')}.${ext}`;   // b706 (Codex #577): pasta so com caracteres de URL; b710: pasta DA EMPRESA
 
     try {
       const { error } = await cliente.storage.from(bucket).upload(nome, req.file.buffer, {
