@@ -618,7 +618,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.126.232 (b720: P1-06 — ajustes do Codex: registro so conta com ok:true no corpo e emissao sem registro ainda gera lembrete de estoque; b719: painel regrava as pendencias de registro que a Toolbox 2.1.19 entrega (so as desta empresa) e avisa quando nem ele nem a extensao registraram a NF)',
+      version: '9.126.233 (b721: P1-08 — relatorio financeiro agrega por item que voltou (itens_devolvidos com valor_unit); sem a lista, marca aproximado; item sem preco nao entra no valor)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -8838,6 +8838,7 @@ registrarRotasRelatorios(app, {
   // test/relatorio-peca-multiempresa.test.js.
   tabelas: { devolucoes: 'devolucoes', tags: 'tags', devolucaoTags: 'devolucao_tags' },
   buscarProdutos: produtosClient.buscarTextual,
+  resolverSku: (sku) => skuDeparaGOOD.resolverSku(sku),   // b721 (Codex #591): itens_devolvidos guardam o SKU da venda
 });
 
 // v3.44 - rotas admin-NF (mesmo ponto: todas as deps ja declaradas acima)

@@ -109,6 +109,14 @@ function renderizarCards(c) {
   document.getElementById('cardSKUsUnicos').textContent = c.totalSKUsUnicos || 0;
   document.getElementById('cardUnidades').textContent = c.totalUnidades || 0;
   document.getElementById('cardValor').textContent = fmtMoeda(c.valorTotal);
+  // b721 (P1-08): o valor e por item que voltou; quando parte dele e aproximada (triagem antiga, sem a lista do que
+  // voltou) ou desconhecida (item sem preco), o card DIZ — em vez de fingir precisao
+  const elValor = document.getElementById('cardValor');
+  const avisos = [];
+  if (c.valorAproximadoDevolucoes > 0) avisos.push(c.valorAproximadoDevolucoes + ' devolução(ões) antiga(s) com valor aproximado (sem a lista do que voltou)');
+  if (c.valorItensDesconhecidos > 0) avisos.push(c.valorItensDesconhecidos + ' item(ns) sem preço, fora da soma');
+  elValor.title = avisos.join(' · ');
+  if (avisos.length) elValor.textContent += ' ≈';
 }
 
 function renderizarRankings(skus, problemas) {
@@ -176,6 +184,13 @@ function renderizarFuncionarios(lista) {
 // Padrao: maiores quantidades primeiro
 let ordenacaoAtual = { col: 'produto_qtd', dir: 'desc' };
 
+// b721 (Codex #591) - o valor de cada devolucao vem do servidor, somado POR ITEM que voltou (o mesmo numero dos cards
+// e do ranking). Ate o b720 a tabela e o Excel refaziam produto_valor_unit × produto_qtd — A R$10 + B R$100 dava R$20.
+function valorDaDevolucao(d) {
+  const v = Number(d && d.valor_devolvido);
+  return Number.isFinite(v) ? v : 0;
+}
+
 function ordenarLista(lista, col, dir) {
   const mult = dir === 'asc' ? 1 : -1;
   return [...lista].sort((a, b) => {
@@ -198,8 +213,8 @@ function ordenarLista(lista, col, dir) {
         vb = Number(b.produto_qtd || 0);
         break;
       case 'valor_total':
-        va = Number(a.produto_valor_unit || 0) * Number(a.produto_qtd || 1);
-        vb = Number(b.produto_valor_unit || 0) * Number(b.produto_qtd || 1);
+        va = valorDaDevolucao(a);
+        vb = valorDaDevolucao(b);
         break;
       case 'nf_numero':
         // NF é número, mas pode vir como string. Tenta converter.
@@ -286,9 +301,9 @@ function renderizarTabela(devolucoes) {
     ).join('');
 
     const qtde = d.produto_qtd || 1;
-    const valor = (d.produto_valor_unit || 0) * qtde;
+    const valor = valorDaDevolucao(d);
     totalQtde += qtde;
-    totalValor += isFinite(valor) ? valor : 0;
+    totalValor += valor;
 
     html += '<tr>';
     html += `<td>${fmtData(d.created_at)}</td>`;
@@ -296,7 +311,7 @@ function renderizarTabela(devolucoes) {
     html += `<td><strong>${escapeHtml(d.produto_sku || '—')}</strong></td>`;
     html += `<td class="produto-celula">${escapeHtml(d.produto_titulo || '—')}</td>`;
     html += `<td>${qtde}</td>`;
-    html += `<td>${fmtMoeda(valor)}</td>`;
+    html += `<td${d.valor_aproximado ? ' title="Valor aproximado: triagem antiga, sem o preço de cada item que voltou"' : ''}>${fmtMoeda(valor)}${d.valor_aproximado ? ' ≈' : ''}${d.itens_sem_preco > 0 ? ' <small title="' + d.itens_sem_preco + ' item(ns) sem preço, fora da soma">(+' + d.itens_sem_preco + ' s/ preço)</small>' : ''}</td>`;
     html += `<td>${d.nf_link_danfe ? `<a href="${escapeHtml(d.nf_link_danfe)}" target="_blank">${escapeHtml(d.nf_numero || '?')}</a>` : escapeHtml(d.nf_numero || '—')}</td>`;
     html += `<td>${escapeHtml(d.buyer_nome || '—')}${d.buyer_nickname ? `<br><small style="color:#666;">${escapeHtml(d.buyer_nickname)}</small>` : ''}</td>`;
     html += `<td>${escapeHtml(d.order_id || '—')}</td>`;
@@ -481,8 +496,9 @@ function exportarExcel() {
     'SKU': d.produto_sku || '',
     'Produto': d.produto_titulo || '',
     'Qtde': d.produto_qtd || 1,
-    'Valor unit.': Number(d.produto_valor_unit || 0),
-    'Valor total': Number((d.produto_valor_unit || 0) * (d.produto_qtd || 1)),
+    'Valor unit.': (Array.isArray(d.itens_devolvidos) && d.itens_devolvidos.length > 1) ? '' : Number(d.produto_valor_unit || 0),   // b721: com varios produtos nao ha UM preco unitario
+    'Valor total': valorDaDevolucao(d),
+    'Valor aproximado': d.valor_aproximado ? 'sim' : '',
     'NF número': d.nf_numero || '',
     'NF data': fmtDataCurta(d.nf_data_emissao),
     'Comprador': d.buyer_nome || '',

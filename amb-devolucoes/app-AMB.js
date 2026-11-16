@@ -662,7 +662,7 @@ const registrarCicloDefeitos = require('../lib/defeitos-ciclo');
 // candidato ja desistido ainda batia no Bling depois de esperar numa pausa
 // de 429. Ver bling-AMB.js, nf-nomes-AMB.js e identificar-AMB.js.
 // 29/10: sem o 'AMB' na frente — a mesma peca serve Girassol, AMB e as proximas; a empresa vai no campo `empresa`
-const VERSAO = 'Devolucoes b720';
+const VERSAO = 'Devolucoes b721';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -2175,6 +2175,7 @@ registrarRotasRelatorios(router, {
     devolucaoTags: db.tabelas.devolucaoTags,
   },
   buscarProdutos: null,
+  resolverSku: (sku) => db.resolverSku(sku),   // b721 (Codex #591): itens_devolvidos guardam o SKU da venda
   // b652 (Codex #522) - vocabulario da tabela da AMB/Girassol
   colunaData: 'criado_em',
   tipoNoStatus: true,
