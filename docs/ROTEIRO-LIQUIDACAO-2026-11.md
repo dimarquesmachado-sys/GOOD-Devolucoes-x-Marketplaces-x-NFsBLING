@@ -73,18 +73,21 @@ Segue as 12 etapas do Codex, com os itens de cada uma. A ordem dentro da etapa �
 - **Correção:** código e erro como texto codificado pro contexto; na fábrica, validar/consumir o state antes de qualquer resposta com dado do provedor.
 - **Aceite:** parâmetro malicioso nos callbacks das 3 empresas não produz elemento nem evento executável.
 
-### P1-03 ⬜ Autorizar a mesma recuperação de novo duplica estoque
+### P1-03 🔄 Autorizar a mesma recuperação de novo duplica estoque
+- **PR:** branch `dev/p1-03-reserva-estoque` (b713, sobre o b712). Marcador durável `defeito_pedidos*.estoque_operacao` (`LANCANDO <marca>` = reserva/incerto, `LANCADO <marca>` = confirmado, null = livre), gravado no **mesmo** update condicional da transição; `entradaNoEstoque` classifica *não aplicou* (4xx) × *incerto* (timeout/5xx/exceção); relançar respeita o marcador e só passa com `forcar` (confirmação humana na ficha), como compare-and-swap. ⚠️ **SQL pro dono:** `sql/2026-11-15-defeito-pedidos-estoque-operacao.sql` no projeto `sldnshulmhpmyjqrkstq` — sem a coluna, autorizar recuperada responde 503 com o SQL (descarte segue).
 - **Onde:** `lib/defeitos-ciclo.js` rota `POST /api/defeitos/pedido/:id/decidir` (~l.1337) — atualiza e chama a entrada no Bling sem exigir estado anterior nem respeitar movimentação já confirmada. Relançamento: ERP confirma, banco recusa o marcador, código responde sucesso.
 - **Correção:** reservar a operação no banco **antes** do efeito externo (update condicional `status = 'pendente'`, id de operação), estados `pendente / em_processamento / confirmado / incerto`; reaproveitar o padrão do FULL (reserva persistente, `estoque_lancado`).
 - **Aceite:** repetição sequencial, simultânea, resposta perdida e falha de persistência não geram entrada indevida; timeout depois do envio vira conciliação, nunca repetição cega.
 - ⚠️ Pode pedir coluna nova → SQL explícito em `sql/`, compatível no deploy, **só com OK do dono**.
 
-### P1-04 ⬜ Estoquista conclui pedido pendente sem aprovação
+### P1-04 🔄 Estoquista conclui pedido pendente sem aprovação
+- **PR:** branch `dev/p1-04-maquina-de-estados` (b712). Update condicional ao estado anterior (`in('status', DE[acao])`): `autorizar`/`recusar` só de `pendente`, `concluir` só de `autorizado`; 0 linhas → 404 ou 409 `{de, para}` sem nenhuma escrita. Isso já fecha a **1ª metade do P1-03** (autorizar de novo não lança no Bling de novo); fica pro P1-03 a reserva antes do efeito externo, o estado `incerto` e o relançamento que ignora falha do marcador.
 - **Onde:** mesma rota, ~l.1345: `concluir` passa com `requerLogin` e não confere `status === 'autorizado'`. Confirmado no código em 15/11.
 - **Correção:** máquina de estados no servidor com permissão por transição: `autorizar/recusar` só admin e só de `pendente`; `concluir` só de `autorizado`. Negar = nenhuma escrita.
 - **Aceite:** estoquista não promove pendente/recusado a concluído; resposta 403/409 sem update.
 
-### P1-05 ⬜ Fallback por EAN escolhe o primeiro candidato
+### P1-05 🔄 Fallback por EAN escolhe o primeiro candidato
+- **PR:** branch `dev/p1-05-ean-ambiguo` (b714, sobre o b713). Ordem: código exato → de-para da empresa (`resolverSku`, agora injetado também na GOOD) → EAN **só com um** produto; mais de um interrompe (`ambiguo`, `candidatos`) e devolve a reserva.
 - **Onde:** `lib/defeitos-ciclo.js` (~l.93). Contraria `CLAUDE.md §5`: EAN não identifica produto neste catálogo.
 - **Correção:** `produto.id` confirmado → SKU → de-para (`sku_depara*`); ambiguidade no EAN **interrompe** com mensagem, nunca escolhe.
 - **Aceite:** dois produtos com o mesmo EAN jamais provocam escolha automática.
@@ -132,7 +135,7 @@ Segue as 12 etapas do Codex, com os itens de cada uma. A ordem dentro da etapa �
 | id | estado | ponto | onde / evidência | direção |
 |---|---|---|---|---|
 | P2-01 | 🔄 | Busca fora de ordem (b717, `dev/p2-01-busca-em-ordem`: `_buscaSeq` — só a busca corrente renderiza, grava o payload e libera o loading) | `busca.js:35` (**dois** arquivos: `public/js/busca.js` e `js-AMB/busca.js`); A/B respondidos B/A → campo B, resultado A | identidade da solicitação; só a mais recente atualiza tela e payload |
-| P2-02 | ⬜ | Quantidade inválida | `defeitos-ciclo.js:1358`: 0/negativo/NaN viram 1, `Infinity` passa | rejeitar inválido; exigir finito, inteiro, limite |
+| P2-02 | 🔄 | Quantidade inválida (b715, `dev/p2-02-quantidade-valida` sobre o b714: `lerQuantidade` — inteiro 1..1000, ausente = 1, inválida = 400 antes de gravar; os `\|\| 1` que escondiam zero gravado saíram) | `defeitos-ciclo.js:1358`: 0/negativo/NaN viram 1, `Infinity` passa | rejeitar inválido; exigir finito, inteiro, limite |
 | P2-03 | ⬜ | Lista GOOD quebra em 150 pedidos | `defeitos-ciclo.js:510`: com 151 IDs registros `problema/delivered` somem da lista e seguem na contagem | consultar em lotes/páginas; testar 149/150/151/400 e formatos legados |
 | P2-04 | ⬜ | Tags sem atomicidade | `rotas-relatorios.js:448`: DELETE com erro responde ok; DELETE ok + INSERT falho perde tags | operação transacional (RPC) ou verificar cada resultado e repor |
 | P2-05 | ⬜ | Índice Magalu incompleto publicado | `magalu-AMB.js:423`: falha na 1ª página apaga o índice; falha depois publica parcial e limpa o erro | snapshot separado; publicar só completo; preservar último válido |

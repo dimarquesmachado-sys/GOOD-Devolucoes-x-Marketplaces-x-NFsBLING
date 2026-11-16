@@ -96,6 +96,7 @@ function criarBanco() {
     datas[n.dev] = DADOS[chave].colunaData;
   }
   let erroCount = null;
+  const falhasUpdate = []; const colunasAusentes = [];
   const client = {
     from(tabela) {
       assert(tabelas[tabela], 'acesso a tabela nao configurada: ' + tabela);
@@ -134,6 +135,16 @@ function criarBanco() {
               && ['defeito_excluido', 'recuperado', 'descartado'].includes(q.campos.tipo)) {
             return { data: null, error: { message: 'new row violates check constraint devolucoes_tipo_check' } };
           }
+          for (const c of colunasAusentes) {
+            if (c.tabela !== tabela) continue;
+            const nomeada = q.colunas !== '*' && q.colunas.split(',').map(x => x.trim()).includes(c.coluna);
+            const escrita = (q.operacao === 'update' || q.operacao === 'insert') && (Array.isArray(q.campos) ? q.campos : [q.campos]).some(x => x && c.coluna in x);
+            if (nomeada || escrita) return { data: null, error: { message: 'column ' + tabela + '.' + c.coluna + ' does not exist' } };
+          }
+          if (q.operacao === 'update') {
+            const f = falhasUpdate.find(x => x.tabela === tabela && x.vezes > 0 && x.quando(q.campos));
+            if (f) { f.vezes--; return { data: null, error: { message: f.msg } }; }
+          }
           let linhas = tabelas[tabela].filter(x => q.condicoes.every(f => f(x)));
           if (q.operacao === 'insert') {
             linhas = q.campos.map(x => ({ id: Math.max(0, ...tabelas[tabela].map(y => Number(y.id) || 0)) + 1, ...x }));
@@ -154,7 +165,11 @@ function criarBanco() {
     },
   };
   return { client, tabelas, chamadas, falharCount(msg) { erroCount = msg; },
-    recusarTipoTerminal(tabela) { recusaTipoTerminal.add(tabela); } };
+    recusarTipoTerminal(tabela) { recusaTipoTerminal.add(tabela); },
+    // b713: simula coluna ausente / update recusado — `quando(campos)` decide, `vezes` limita (padrao: sempre)
+    falharUpdate(tabela, quando, msg, vezes = Infinity) { falhasUpdate.push({ tabela, quando, msg, vezes }); },
+    // b713 (Codex #584 P2): coluna ausente tambem derruba SELECT que a NOMEIA (select('*') passa)
+    semColuna(tabela, coluna) { colunasAusentes.push({ tabela, coluna }); } };
 }
 
 function criarEmpresa(chave, banco = criarBanco(), opcoes = {}) {
@@ -434,6 +449,357 @@ async function main() {
       const tentativasStatus = e.banco.chamadas.filter(c => c.tabela === e.n.dev && c.operacao === 'update' && 'status' in c.campos);
       assert.equal(tentativasStatus.length, chave === 'good' ? 1 : 0);
       if (chave === 'good') assert.equal(tentativasStatus[0].campos.status, 'delivered');
+    });
+  }
+
+  // b712 — P1-04 do ROTEIRO-LIQUIDACAO-2026-11 (auditoria do Codex): A MAQUINA DE ESTADOS MORA NO SERVIDOR.
+  // pendente → autorizado → concluido, ou pendente → recusado. Fora disso: 409, e NADA e escrito (nem Bling, nem a
+  // peca, nem comentario). Vale pras 3 empresas pelo mesmo codigo.
+  for (const chave of CHAVES) {
+    await caso(chave + ': estoquista NAO conclui pedido pendente (409, sem escrita)', async () => {
+      const e = criarEmpresa(chave); e.item(1);
+      e.banco.tabelas[e.n.ped].push({ id: 1, defeito_id: 1, tipo: 'descarte', status: 'pendente' });
+      const antes = e.banco.chamadas.length;
+      const r = await e.pedir('POST', '/api/defeitos/pedido/:id/decidir', { params: { id: '1' }, body: { acao: 'concluir' } });
+      assert.equal(r.statusCode, 409); assert.equal(r.body.ok, false);
+      assert.equal(r.body.de, 'pendente'); assert.equal(r.body.para, 'concluido');
+      assert.equal(e.banco.tabelas[e.n.ped][0].status, 'pendente');
+      assert.equal(e.banco.tabelas[e.n.com].length, 0);
+      const escritas = e.banco.chamadas.slice(antes).filter(c => c.operacao !== 'select');
+      assert.equal(escritas.filter(c => c.tabela !== e.n.ped).length, 0, 'nenhuma escrita fora do update condicional');
+    });
+    await caso(chave + ': concluir so a partir de autorizado; recusar so a partir de pendente; inexistente 404', async () => {
+      const e = criarEmpresa(chave); e.item(1);
+      e.banco.tabelas[e.n.ped].push({ id: 1, defeito_id: 1, tipo: 'descarte', status: 'autorizado' });
+      let r = await e.pedir('POST', '/api/defeitos/pedido/:id/decidir', { params: { id: '1' }, papel: 'admin', body: { acao: 'recusar' } });
+      assert.equal(r.statusCode, 409); assert.equal(e.banco.tabelas[e.n.ped][0].status, 'autorizado');
+      r = await e.pedir('POST', '/api/defeitos/pedido/:id/decidir', { params: { id: '1' }, body: { acao: 'concluir' } });
+      assert.equal(r.statusCode, 200); assert.equal(e.banco.tabelas[e.n.ped][0].status, 'concluido');
+      r = await e.pedir('POST', '/api/defeitos/pedido/:id/decidir', { params: { id: '1' }, body: { acao: 'concluir' } });
+      assert.equal(r.statusCode, 409, 'concluir de novo nao e idempotente silencioso: diz que ja esta concluido');
+      r = await e.pedir('POST', '/api/defeitos/pedido/:id/decidir', { params: { id: '999' }, papel: 'admin', body: { acao: 'autorizar' } });
+      assert.equal(r.statusCode, 404);
+    });
+    await caso(chave + ': autorizar a MESMA recuperacao duas vezes lanca no Bling UMA vez (1a metade do P1-03)', async () => {
+      const chamadas = [];
+      const e = criarEmpresa(chave, criarBanco(), { deposito: '8100', chamarBling: async (url, opcoes) => {
+        chamadas.push({ url, opcoes });
+        if (url.includes('/produtos?codigo=')) return { ok: true, data: { data: [{ id: 707, codigo: 'SKU-BOA' }] } };
+        if (url.endsWith('/produtos/707')) return { ok: true, data: { data: { estoque: { precoCusto: 10 } } } };
+        if (url.endsWith('/estoques')) return { ok: true, data: { data: { id: 11 } } };
+        throw new Error('rota Bling inesperada: ' + url);
+      } });
+      e.item(1);
+      const p = await e.pedir('POST', '/api/defeitos/pedido', { body: { tipo: 'recuperado', defeito_id: 1, sku: 'SKU-BOA', quantidade: 1, so_conserto: true } });
+      const opts = { params: { id: String(p.body.pedido.id) }, papel: 'admin', body: { acao: 'autorizar' } };
+      const r1 = await e.pedir('POST', '/api/defeitos/pedido/:id/decidir', opts);
+      assert.equal(r1.statusCode, 200);
+      const r2 = await e.pedir('POST', '/api/defeitos/pedido/:id/decidir', opts);
+      assert.equal(r2.statusCode, 409, 'a 2a autorizacao e recusada');
+      const posts = chamadas.filter(c => c.opcoes && c.opcoes.method === 'POST');
+      assert.equal(posts.length, 1, 'UMA entrada no Bling, nao duas');
+      const comentarios = e.banco.tabelas[e.n.com].length;
+      const r3 = await e.pedir('POST', '/api/defeitos/pedido/:id/decidir', opts);
+      assert.equal(r3.statusCode, 409); assert.equal(e.banco.tabelas[e.n.com].length, comentarios, 'repetir nao deixa rastro novo');
+    });
+  }
+
+  // b713 — P1-03 (auditoria do Codex): MOVIMENTACAO REPETIVEL COM SEGURANCA. Reserva duravel (estoque_operacao) ANTES
+  // do Bling, fechada conforme a resposta: confirmou / nao aplicou / incerto. Repeticao, concorrencia, resposta perdida
+  // e falha de persistencia NAO geram entrada em dobro; sem a coluna, a rota se recusa (503 com o SQL).
+  function blingDeEstoque(chamadas, respostaPost) {
+    return async (url, opcoes) => {
+      chamadas.push({ url, opcoes });
+      if (url.includes('/produtos?codigo=')) return { ok: true, data: { data: [{ id: 707, codigo: 'SKU-BOA' }] } };
+      if (url.endsWith('/produtos/707')) return { ok: true, data: { data: { estoque: { precoCusto: 10 } } } };
+      if (url.endsWith('/estoques')) return typeof respostaPost === 'function' ? respostaPost() : (respostaPost || { ok: true, data: { data: { id: 11 } } });
+      throw new Error('rota Bling inesperada: ' + url);
+    };
+  }
+  const posts = (chamadas) => chamadas.filter(c => c.opcoes && c.opcoes.method === 'POST').length;
+  async function pedidoRecuperado(e) {
+    e.item(1);
+    const p = await e.pedir('POST', '/api/defeitos/pedido', { body: { tipo: 'recuperado', defeito_id: 1, sku: 'SKU-BOA', quantidade: 1, so_conserto: true } });
+    assert.equal(p.statusCode, 200);
+    return String(p.body.pedido.id);
+  }
+  for (const chave of CHAVES) {
+    await caso(chave + ': autorizar recuperada confirma com LANCADO; relancar depois nao lanca de novo', async () => {
+      const ch = []; const e = criarEmpresa(chave, criarBanco(), { deposito: '8100', chamarBling: blingDeEstoque(ch) });
+      const id = await pedidoRecuperado(e);
+      const r = await e.pedir('POST', '/api/defeitos/pedido/:id/decidir', { params: { id }, papel: 'admin', body: { acao: 'autorizar' } });
+      assert.equal(r.statusCode, 200); assert.equal(r.body.pedido.estoque_bling.ok, true);
+      const ped = e.banco.tabelas[e.n.ped][0];
+      assert.equal(ped.status, 'concluido'); assert.equal(ped.estoque_produto_id, 707); assert(/^LANCADO /.test(ped.estoque_operacao));
+      const rl = await e.pedir('POST', '/api/defeitos/pedido/:id/lancar-estoque', { params: { id }, papel: 'admin' });
+      assert.equal(rl.statusCode, 200); assert.equal(rl.body.ja_lancado, true); assert.equal(posts(ch), 1);
+    });
+    // Codex #583 - a autorizacao virou `autorizado` mas a entrada foi RECUSADA DE VEZ (SKU errado / EAN ambiguo): a
+    // maquina de estados nao deixa autorizar de novo, entao o relancamento e o unico lugar pra CORRIGIR o SKU
+    await caso(chave + ': entrada recusada por SKU errado: relancar com `sku` corrigido lanca e grava o SKU que entrou', async () => {
+      const ch = []; const e = criarEmpresa(chave, criarBanco(), { deposito: '8100', chamarBling: async (url, opcoes) => {
+        ch.push({ url, opcoes });
+        if (url.includes('/produtos?codigo=')) {
+          const cod = decodeURIComponent(url.split('codigo=')[1].split('&')[0]);
+          return { ok: true, data: { data: cod === 'SKU-CERTA' ? [{ id: 909, codigo: 'SKU-CERTA' }] : [] } };
+        }
+        if (url.endsWith('/produtos/909')) return { ok: true, data: { data: { estoque: { precoCusto: 10 } } } };
+        if (url.endsWith('/estoques')) return { ok: true, data: { data: { id: 12 } } };
+        throw new Error('rota Bling inesperada: ' + url);
+      } });
+      e.item(1);
+      const p = await e.pedir('POST', '/api/defeitos/pedido', { body: { tipo: 'recuperado', defeito_id: 1, sku: 'SKU-ERRADA', quantidade: 2, so_conserto: true } });
+      const id = String(p.body.pedido.id);
+      const r = await e.pedir('POST', '/api/defeitos/pedido/:id/decidir', { params: { id }, papel: 'admin', body: { acao: 'autorizar' } });
+      assert.equal(r.statusCode, 200); assert.equal(r.body.pedido.estoque_bling.ok, false); assert.notEqual(r.body.pedido.estoque_bling.incerto, true, 'recusa definitiva, nao incerto');
+      const ped = e.banco.tabelas[e.n.ped][0];
+      assert.equal(ped.status, 'autorizado'); assert.equal(ped.estoque_operacao, null, 'nada em andamento'); assert.equal(posts(ch), 0);
+      // autorizar de novo com o SKU certo nao e caminho: a maquina de estados barra
+      const r2 = await e.pedir('POST', '/api/defeitos/pedido/:id/decidir', { params: { id }, papel: 'admin', body: { acao: 'autorizar', sku: 'SKU-CERTA' } });
+      assert.equal(r2.statusCode, 409);
+      // relancar SEM correcao: recusa de novo e diz que da pra corrigir
+      const rl = await e.pedir('POST', '/api/defeitos/pedido/:id/lancar-estoque', { params: { id }, papel: 'admin' });
+      assert.equal(rl.statusCode, 200); assert.equal(rl.body.ok, false); assert.equal(rl.body.corrigivel, true); assert.equal(rl.body.sku_tentado, 'SKU-ERRADA'); assert.equal(posts(ch), 0);
+      // sku corrigido invalido = 400 sem tocar o Bling
+      const rInv = await e.pedir('POST', '/api/defeitos/pedido/:id/lancar-estoque', { params: { id }, papel: 'admin', body: { sku: { x: 1 } } });
+      assert.equal(rInv.statusCode, 400); assert.equal(posts(ch), 0);
+      // relancar COM o SKU certo: lanca, grava o que entrou, conclui
+      const rc = await e.pedir('POST', '/api/defeitos/pedido/:id/lancar-estoque', { params: { id }, papel: 'admin', body: { sku: 'SKU-CERTA', quantidade: 2 } });
+      assert.equal(rc.statusCode, 200); assert.equal(rc.body.ok, true); assert.equal(posts(ch), 1);
+      assert.equal(ped.estoque_sku, 'SKU-CERTA'); assert.equal(ped.estoque_qtd, 2); assert.equal(ped.estoque_produto_id, 909); assert.equal(ped.status, 'concluido');
+      // ja lancado: correcao e ignorada, nada entra de novo
+      const rDepois = await e.pedir('POST', '/api/defeitos/pedido/:id/lancar-estoque', { params: { id }, papel: 'admin', body: { sku: 'OUTRA' } });
+      assert.equal(rDepois.body.ja_lancado, true); assert.equal(posts(ch), 1); assert.equal(ped.estoque_sku, 'SKU-CERTA');
+    });
+    await caso(chave + ': correcao de SKU/qtd que fica INCERTA e preservada: o forcar repete a tentativa corrigida, nao a original', async () => {
+      const ch = []; let resposta = { ok: false, status: 0, error: { error: { message: 'timeout' } } };
+      const e = criarEmpresa(chave, criarBanco(), { deposito: '8100', chamarBling: async (url, opcoes) => {
+        ch.push({ url, opcoes });
+        if (url.includes('/produtos?codigo=')) {
+          const cod = decodeURIComponent(url.split('codigo=')[1].split('&')[0]);
+          return { ok: true, data: { data: cod === 'SKU-CERTA' ? [{ id: 909, codigo: 'SKU-CERTA' }] : [] } };
+        }
+        if (url.endsWith('/produtos/909')) return { ok: true, data: { data: { estoque: { precoCusto: 10 } } } };
+        if (url.endsWith('/estoques')) return resposta;
+        throw new Error('rota Bling inesperada: ' + url);
+      } });
+      e.item(1);
+      const p = await e.pedir('POST', '/api/defeitos/pedido', { body: { tipo: 'recuperado', defeito_id: 1, sku: 'SKU-ERRADA', quantidade: 1, so_conserto: true } });
+      const id = String(p.body.pedido.id);
+      await e.pedir('POST', '/api/defeitos/pedido/:id/decidir', { params: { id }, papel: 'admin', body: { acao: 'autorizar' } });   // recusa definitiva (SKU-ERRADA nao existe)
+      const ped = e.banco.tabelas[e.n.ped][0];
+      assert.equal(ped.estoque_operacao, null);
+      // corrigido pra SKU-CERTA x2, e o Bling nao responde: INCERTO, reserva fica
+      const rc = await e.pedir('POST', '/api/defeitos/pedido/:id/lancar-estoque', { params: { id }, papel: 'admin', body: { sku: 'SKU-CERTA', quantidade: 2 } });
+      assert.equal(rc.statusCode, 502); assert.equal(rc.body.incerto, true); assert(/^LANCANDO /.test(ped.estoque_operacao));
+      assert.equal(ped.estoque_sku, 'SKU-CERTA'); assert.equal(ped.estoque_qtd, 2);
+      // o admin confere no Bling que nao entrou e forca (a ficha so manda `forcar`): tem que repetir SKU-CERTA x2
+      resposta = { ok: true, data: { data: { id: 13 } } };
+      const rf = await e.pedir('POST', '/api/defeitos/pedido/:id/lancar-estoque', { params: { id }, papel: 'admin', body: { forcar: ped.estoque_operacao } });
+      assert.equal(rf.statusCode, 200); assert.equal(rf.body.ok, true);
+      const post = ch.filter(c => c.opcoes && c.opcoes.method === 'POST').pop();
+      const corpo = post.opcoes.data || {};
+      assert.equal(String(corpo.produto && corpo.produto.id), '909', 'o POST forcado e do produto CORRIGIDO: ' + JSON.stringify(corpo));
+      assert.equal(Number(corpo.quantidade), 2, 'com a quantidade corrigida');
+      assert.equal(ped.estoque_produto_id, 909); assert.equal(ped.estoque_sku, 'SKU-CERTA'); assert.equal(ped.estoque_qtd, 2);
+    });
+    await caso(chave + ': operacao INCERTA nao aceita correcao de SKU sem a marca conferida', async () => {
+      const ch = []; let resposta = { ok: false, status: 0, error: { error: { message: 'timeout' } } };
+      const e = criarEmpresa(chave, criarBanco(), { deposito: '8100', chamarBling: blingDeEstoque(ch, () => resposta) });
+      const id = await pedidoRecuperado(e);
+      await e.pedir('POST', '/api/defeitos/pedido/:id/decidir', { params: { id }, papel: 'admin', body: { acao: 'autorizar' } });
+      const rl = await e.pedir('POST', '/api/defeitos/pedido/:id/lancar-estoque', { params: { id }, papel: 'admin', body: { sku: 'SKU-BOA' } });
+      assert.equal(rl.statusCode, 409); assert.equal(rl.body.incerto, true); assert.equal(posts(ch), 1, 'o SKU corrigido NAO reabre operacao incerta');
+    });
+    await caso(chave + ': Bling SEM RESPOSTA = incerto: marca fica, relancar recusa (409) ate forcar', async () => {
+      const ch = []; let resposta = { ok: false, status: 0, error: { error: { message: 'timeout' } } };
+      const e = criarEmpresa(chave, criarBanco(), { deposito: '8100', chamarBling: blingDeEstoque(ch, () => resposta) });
+      const id = await pedidoRecuperado(e);
+      const r = await e.pedir('POST', '/api/defeitos/pedido/:id/decidir', { params: { id }, papel: 'admin', body: { acao: 'autorizar' } });
+      assert.equal(r.statusCode, 200); assert.equal(r.body.pedido.estoque_bling.ok, false); assert.equal(r.body.pedido.estoque_bling.incerto, true);
+      const ped = e.banco.tabelas[e.n.ped][0];
+      assert.equal(ped.status, 'autorizado'); assert(/^LANCANDO /.test(ped.estoque_operacao), 'a reserva FICA: ' + ped.estoque_operacao);
+      assert(e.banco.tabelas[e.n.com].some(c => /INCERTO/.test(c.texto)), 'o rastro diz INCERTO');
+      const rl = await e.pedir('POST', '/api/defeitos/pedido/:id/lancar-estoque', { params: { id }, papel: 'admin' });
+      assert.equal(rl.statusCode, 409); assert.equal(rl.body.incerto, true); assert.equal(posts(ch), 1, 'relancar sem forcar NAO chamou o Bling');
+      resposta = { ok: true, data: { data: { id: 11 } } };
+      // Codex #584 (P1): `forcar: true` nao basta — tem que ser a MARCA conferida
+      const rTrue = await e.pedir('POST', '/api/defeitos/pedido/:id/lancar-estoque', { params: { id }, papel: 'admin', body: { forcar: true } });
+      assert.equal(rTrue.statusCode, 409); assert.equal(posts(ch), 1);
+      const rOutra = await e.pedir('POST', '/api/defeitos/pedido/:id/lancar-estoque', { params: { id }, papel: 'admin', body: { forcar: 'LANCANDO outra' } });
+      assert.equal(rOutra.statusCode, 409); assert(/marca mudou/.test(rOutra.body.erro)); assert.equal(posts(ch), 1);
+      const rf = await e.pedir('POST', '/api/defeitos/pedido/:id/lancar-estoque', { params: { id }, papel: 'admin', body: { forcar: rl.body.estoque_operacao } });
+      assert.equal(rf.statusCode, 200); assert.equal(rf.body.ok, true); assert.equal(posts(ch), 2);
+      assert.equal(ped.status, 'concluido'); assert(/^LANCADO /.test(ped.estoque_operacao));
+    });
+    await caso(chave + ': dois admins conferem o MESMO incerto e forcam em paralelo (1o POST pendurado): um lanca, outro 409, UM POST', async () => {
+      const ch = []; let soltar = null; let n = 0;
+      const e = criarEmpresa(chave, criarBanco(), { deposito: '8100', chamarBling: blingDeEstoque(ch, () => {
+        n++;
+        if (n === 1) return new Promise((r) => { soltar = () => r({ ok: true, data: { data: { id: 11 } } }); });
+        return { ok: true, data: { data: { id: 11 } } };
+      }) });
+      const id = await pedidoRecuperado(e);
+      const ped = e.banco.tabelas[e.n.ped][0];
+      ped.status = 'autorizado'; ped.estoque_operacao = 'LANCANDO incerto1';   // a chamada anterior ficou sem resposta
+      const p1 = e.pedir('POST', '/api/defeitos/pedido/:id/lancar-estoque', { params: { id }, papel: 'admin', body: { forcar: 'LANCANDO incerto1' } });
+      await new Promise((r) => setTimeout(r, 30));   // o 1o ja reservou (marca nova) e esta esperando o Bling
+      const r2 = await e.pedir('POST', '/api/defeitos/pedido/:id/lancar-estoque', { params: { id }, papel: 'admin', body: { forcar: 'LANCANDO incerto1' } });
+      assert.equal(r2.statusCode, 409, 'o 2o admin confirmou a marca ANTIGA; ela mudou → 409');
+      soltar(); const r1 = await p1;
+      assert.equal(r1.statusCode, 200); assert.equal(posts(ch), 1, '⚠️ Codex #584: UM POST, nao dois');
+    });
+    await caso(chave + ': Bling RECUSOU (4xx) = nao aplicou: marca volta a null e relancar funciona', async () => {
+      const ch = []; let resposta = { ok: false, status: 400, error: { error: { message: 'deposito invalido' } } };
+      const e = criarEmpresa(chave, criarBanco(), { deposito: '8100', chamarBling: blingDeEstoque(ch, () => resposta) });
+      const id = await pedidoRecuperado(e);
+      const r = await e.pedir('POST', '/api/defeitos/pedido/:id/decidir', { params: { id }, papel: 'admin', body: { acao: 'autorizar' } });
+      assert.equal(r.statusCode, 200); assert.equal(r.body.pedido.estoque_bling.naoAplicou, true);
+      const ped = e.banco.tabelas[e.n.ped][0];
+      assert.equal(ped.status, 'autorizado'); assert.equal(ped.estoque_operacao, null, 'a reserva foi devolvida');
+      resposta = { ok: true, data: { data: { id: 11 } } };
+      const rl = await e.pedir('POST', '/api/defeitos/pedido/:id/lancar-estoque', { params: { id }, papel: 'admin' });
+      assert.equal(rl.statusCode, 200); assert.equal(posts(ch), 2); assert.equal(ped.estoque_produto_id, 707);
+    });
+    await caso(chave + ': Bling confirmou mas o banco RECUSOU a confirmacao: pedido fica LANCANDO e relancar nao dobra', async () => {
+      const ch = []; const e = criarEmpresa(chave, criarBanco(), { deposito: '8100', chamarBling: blingDeEstoque(ch) });
+      const id = await pedidoRecuperado(e);
+      e.banco.falharUpdate(e.n.ped, campos => campos.estoque_produto_id === 707, 'connection reset', 1);
+      const r = await e.pedir('POST', '/api/defeitos/pedido/:id/decidir', { params: { id }, papel: 'admin', body: { acao: 'autorizar' } });
+      assert.equal(r.statusCode, 200); assert(r.body.pedido.estoque_bling.aviso && /em andamento/.test(r.body.pedido.estoque_bling.aviso), 'a resposta AVISA que a confirmacao nao gravou');
+      const ped = e.banco.tabelas[e.n.ped][0];
+      assert(/^LANCANDO /.test(ped.estoque_operacao)); assert.equal(ped.estoque_produto_id, undefined);
+      const rl = await e.pedir('POST', '/api/defeitos/pedido/:id/lancar-estoque', { params: { id }, papel: 'admin' });
+      assert.equal(rl.statusCode, 409); assert.equal(posts(ch), 1, '⚠️ o cenario do Codex: a repeticao NAO movimenta de novo');
+    });
+    await caso(chave + ': dois relancamentos ao MESMO tempo: um lanca, o outro 409, UM POST', async () => {
+      const ch = []; const e = criarEmpresa(chave, criarBanco(), { deposito: '8100', chamarBling: blingDeEstoque(ch) });
+      const id = await pedidoRecuperado(e);
+      e.banco.tabelas[e.n.ped][0].status = 'autorizado';   // autorizada sem lancamento (pedido antigo)
+      const [a, b] = await Promise.all([
+        e.pedir('POST', '/api/defeitos/pedido/:id/lancar-estoque', { params: { id }, papel: 'admin' }),
+        e.pedir('POST', '/api/defeitos/pedido/:id/lancar-estoque', { params: { id }, papel: 'admin' }),
+      ]);
+      assert.deepEqual([a.statusCode, b.statusCode].sort(), [200, 409]); assert.equal(posts(ch), 1);
+    });
+    await caso(chave + ': sem a coluna estoque_operacao a recuperada NAO e autorizada (503 com o SQL); descarte segue', async () => {
+      const ch = []; const e = criarEmpresa(chave, criarBanco(), { deposito: '8100', chamarBling: blingDeEstoque(ch) });
+      const id = await pedidoRecuperado(e);
+      e.banco.semColuna(e.n.ped, 'estoque_operacao');   // Codex #584 (P2): derruba select que NOMEIA a coluna e qualquer escrita nela
+      const r = await e.pedir('POST', '/api/defeitos/pedido/:id/decidir', { params: { id }, papel: 'admin', body: { acao: 'autorizar' } });
+      assert.equal(r.statusCode, 503); assert.equal(r.body.falta_coluna, true); assert(/add column if not exists estoque_operacao/.test(r.body.sql));
+      assert.equal(e.banco.tabelas[e.n.ped][0].status, 'pendente'); assert.equal(posts(ch), 0, 'sem marcador, nao mexe no Bling');
+      e.item(2); e.banco.tabelas[e.n.ped].push({ id: 50, defeito_id: 2, tipo: 'descarte', status: 'pendente' });
+      const rd = await e.pedir('POST', '/api/defeitos/pedido/:id/decidir', { params: { id: '50' }, papel: 'admin', body: { acao: 'autorizar' } });
+      assert.equal(rd.statusCode, 200, 'descarte nao precisa da coluna');
+    });
+  }
+
+  await caso('a ficha (tela unica das 3) distingue INCERTO de recusa: nao manda lancar a mao quando o Bling pode ter lancado', async () => {
+    const fs = require('fs'); const path = require('path');
+    const src = fs.readFileSync(path.join(__dirname, '..', 'amb-devolucoes', 'public-AMB', 'js-AMB', 'defeitos-ficha.js'), 'utf8');
+    const i = src.indexOf('window.decidirPedido = async function'); const f = src.indexOf('abrirFilaPedidos();', i);
+    assert(i >= 0 && f > i, 'marcadores do decidirPedido existem');
+    const bloco = src.slice(i, f);
+    assert(/else if \(est\.incerto\)/.test(bloco), 'ha um ramo proprio pro incerto');
+    const ramoIncerto = bloco.slice(bloco.indexOf('else if (est.incerto)'), bloco.indexOf('} else {', bloco.indexOf('else if (est.incerto)')));
+    assert(/N[ÃA]O lance [àa] m[ãa]o/i.test(ramoIncerto) && /Confira o estoque/.test(ramoIncerto), 'o incerto manda CONFERIR, nao lancar a mao');
+    assert(/est\.aviso/.test(bloco), 'o aviso de "lancou mas nao gravou" aparece pro operador');
+  });
+
+  // b714 — P1-05 (auditoria do Codex): EAN AMBIGUO INTERROMPE; de-para e alternativa controlada. Nunca "o primeiro".
+  for (const chave of CHAVES) {
+    await caso(chave + ': EAN que aponta pra DOIS produtos no Bling NAO lanca — interrompe e lista os candidatos', async () => {
+      const ch = [];
+      const e = criarEmpresa(chave, criarBanco(), { deposito: '8100', chamarBling: async (url, opcoes) => {
+        ch.push({ url, opcoes });
+        if (url.includes('/produtos?codigo=')) return { ok: true, data: { data: [] } };   // SKU digitado nao existe
+        if (url.includes('/produtos?gtin=')) return { ok: true, data: { data: [{ id: 501, codigo: 'COMPONENTE-A', nome: 'cupula' }, { id: 502, codigo: 'KIT-COMPLETO', nome: 'luminaria' }] } };
+        throw new Error('rota Bling inesperada: ' + url);
+      } });
+      e.item(1);
+      const p = await e.pedir('POST', '/api/defeitos/pedido', { body: { tipo: 'recuperado', defeito_id: 1, sku: '7891234567890', quantidade: 1, so_conserto: true } });
+      const r = await e.pedir('POST', '/api/defeitos/pedido/:id/decidir', { params: { id: String(p.body.pedido.id) }, papel: 'admin', body: { acao: 'autorizar' } });
+      assert.equal(r.statusCode, 200);
+      const est = r.body.pedido.estoque_bling;
+      assert.equal(est.ok, false); assert.equal(est.ambiguo, true); assert.equal(est.naoAplicou, true);
+      assert.deepEqual(est.candidatos.map(c => c.codigo), ['COMPONENTE-A', 'KIT-COMPLETO']);
+      assert(/nao escolho sozinho/.test(est.erro));
+      assert.equal(ch.filter(c => c.opcoes && c.opcoes.method === 'POST').length, 0, '⚠️ NENHUMA entrada no Bling');
+      assert.equal(e.banco.tabelas[e.n.ped][0].estoque_operacao, null, 'a reserva foi devolvida (pode relancar com o SKU certo)');
+    });
+    await caso(chave + ': EAN com UM produto confirma pelo codigo exato; SKU renomeado resolve pelo de-para antes do EAN', async () => {
+      const ch = []; const deparas = [];
+      const e = criarEmpresa(chave, criarBanco(), { deposito: '8100',
+        resolverSku: async (sku) => { deparas.push(sku); return sku === 'SKU-ANTIGO' ? { trocado: true, sku: 'SKU-NOVO' } : { trocado: false }; },
+        chamarBling: async (url, opcoes) => {
+          ch.push({ url, opcoes });
+          if (url.includes('/produtos?codigo=SKU-NOVO')) return { ok: true, data: { data: [{ id: 601, codigo: 'SKU-NOVO' }] } };
+          if (url.includes('/produtos?codigo=UNICO')) return { ok: true, data: { data: [{ id: 701, codigo: 'UNICO' }] } };
+          if (url.includes('/produtos?codigo=')) return { ok: true, data: { data: [] } };
+          if (url.includes('/produtos?gtin=')) return { ok: true, data: { data: [{ id: 701, codigo: 'UNICO' }, { id: 701, codigo: 'UNICO' }] } };   // o MESMO produto 2x = um candidato
+          if (/\/produtos\/\d+$/.test(url)) return { ok: true, data: { data: { estoque: { precoCusto: 5 } } } };
+          if (url.endsWith('/estoques')) return { ok: true, data: { data: { id: 11 } } };
+          throw new Error('rota Bling inesperada: ' + url);
+        } });
+      e.item(1); e.item(2);
+      // de-para
+      let p = await e.pedir('POST', '/api/defeitos/pedido', { body: { tipo: 'recuperado', defeito_id: 1, sku: 'SKU-ANTIGO', quantidade: 1, so_conserto: true } });
+      let r = await e.pedir('POST', '/api/defeitos/pedido/:id/decidir', { params: { id: String(p.body.pedido.id) }, papel: 'admin', body: { acao: 'autorizar' } });
+      assert.equal(r.statusCode, 200); assert.equal(r.body.pedido.estoque_bling.ok, true); assert.equal(r.body.pedido.estoque_bling.produto_id, 601);
+      assert(deparas.includes('SKU-ANTIGO'), 'consultou o de-para da empresa');
+      // EAN unico
+      p = await e.pedir('POST', '/api/defeitos/pedido', { body: { tipo: 'recuperado', defeito_id: 2, sku: '7890000000001', quantidade: 1, so_conserto: true } });
+      r = await e.pedir('POST', '/api/defeitos/pedido/:id/decidir', { params: { id: String(p.body.pedido.id) }, papel: 'admin', body: { acao: 'autorizar' } });
+      assert.equal(r.statusCode, 200); assert.equal(r.body.pedido.estoque_bling.ok, true); assert.equal(r.body.pedido.estoque_bling.produto_id, 701);
+      assert.equal(ch.filter(c => c.opcoes && c.opcoes.method === 'POST').length, 2);
+    });
+  }
+
+  await caso('a GOOD injeta o de-para no ciclo (a fabrica ja injetava) — sem isso o SKU renomeado so resolvia na AMB/Girassol', async () => {
+    const fs = require('fs'); const path = require('path');
+    const srv = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
+    const i = srv.indexOf('registrarCicloDefeitos(app, {'); const f = srv.indexOf('});', i);
+    assert(i >= 0 && f > i); assert(/resolverSku: \(sku\) => skuDeparaGOOD\.resolverSku\(sku\),/.test(srv.slice(i, f)));
+  });
+
+  // b715 — P2-02 (auditoria do Codex): QUANTIDADE INVALIDA E 400, NAO "1". Zero, negativo, NaN, Infinity, fracao e
+  // acima de 1000 param ANTES de qualquer escrita, na criacao do pedido e na autorizacao; ausente continua 1.
+  for (const chave of CHAVES) {
+    await caso(chave + ': quantidade invalida ao CRIAR o pedido e 400 sem gravar; ausente vira 1', async () => {
+      const e = criarEmpresa(chave); e.item(1);
+      // Codex #586: objeto sem toString, lista e booleano tambem sao 400 (antes String(v) estourava fora do try)
+      for (const q of [0, -3, 'abc', 'Infinity', 1.5, 1001, '0', '2,5', { toString: null }, [2], true]) {
+        const r = await e.pedir('POST', '/api/defeitos/pedido', { body: { tipo: 'descarte', defeito_id: 1, quantidade: q } });
+        assert.equal(r.statusCode, 400, 'quantidade ' + JSON.stringify(q) + ' → 400 (veio ' + r.statusCode + ')');
+        assert(/quantidade invalida/.test(r.body.erro));
+      }
+      assert.equal(e.banco.tabelas[e.n.ped].length, 0, 'nada gravado');
+      const ok1 = await e.pedir('POST', '/api/defeitos/pedido', { body: { tipo: 'descarte', defeito_id: 1 } });
+      assert.equal(ok1.statusCode, 200); assert.equal(ok1.body.pedido.quantidade, 1);
+      const ok2 = await e.pedir('POST', '/api/defeitos/pedido', { body: { tipo: 'descarte', defeito_id: 1, quantidade: '12' } });
+      assert.equal(ok2.statusCode, 200); assert.equal(ok2.body.pedido.quantidade, 12);
+    });
+    await caso(chave + ': quantidade invalida ao AUTORIZAR e 400 antes de qualquer escrita (Infinity nao chega no Bling)', async () => {
+      const ch = []; const e = criarEmpresa(chave, criarBanco(), { deposito: '8100', chamarBling: blingDeEstoque(ch) });
+      const id = await pedidoRecuperado(e);
+      for (const q of ['Infinity', 0, -1, 'NaN', 2.5, 5000]) {
+        const r = await e.pedir('POST', '/api/defeitos/pedido/:id/decidir', { params: { id }, papel: 'admin', body: { acao: 'autorizar', sku: 'SKU-BOA', quantidade: q } });
+        assert.equal(r.statusCode, 400, 'quantidade ' + JSON.stringify(q) + ' → 400 (veio ' + r.statusCode + ')');
+      }
+      assert.equal(e.banco.tabelas[e.n.ped][0].status, 'pendente', 'o pedido continua pendente');
+      assert.equal(posts(ch), 0, 'nada foi pro Bling');
+      const r = await e.pedir('POST', '/api/defeitos/pedido/:id/decidir', { params: { id }, papel: 'admin', body: { acao: 'autorizar', sku: 'SKU-BOA', quantidade: '3' } });
+      assert.equal(r.statusCode, 200); assert.equal(posts(ch), 1);
+      assert.equal(ch.filter(c => c.opcoes && c.opcoes.method === 'POST')[0].opcoes.data.quantidade, 3);
+    });
+    await caso(chave + ': pedido antigo com quantidade torta no banco nao movimenta (a guarda vale dentro de entradaNoEstoque)', async () => {
+      const ch = []; const e = criarEmpresa(chave, criarBanco(), { deposito: '8100', chamarBling: blingDeEstoque(ch) });
+      e.item(1);
+      e.banco.tabelas[e.n.ped].push({ id: 1, defeito_id: 1, tipo: 'recuperado', status: 'autorizado', sku: 'SKU-BOA', quantidade: 0 });
+      const r = await e.pedir('POST', '/api/defeitos/pedido/:id/lancar-estoque', { params: { id: '1' }, papel: 'admin' });
+      assert.equal(r.statusCode, 200); assert.equal(r.body.ok, false); assert(/quantidade invalida/.test(r.body.erro));
+      assert.equal(posts(ch), 0);
     });
   }
 

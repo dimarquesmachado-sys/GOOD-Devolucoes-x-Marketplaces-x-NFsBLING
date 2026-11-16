@@ -619,7 +619,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.126.235 (b723: lote P1-02/06/07/08/09/10/11 + P2-01/10 (PRs 578, 580, 581, 582, 587-591 somados num so, pra nao conflitar a cada merge); P1-08 — relatorio financeiro agrega por item que voltou (itens_devolvidos com valor_unit); sem a lista, marca aproximado; item sem preco nao entra no valor)',
+      version: '9.126.236 (b724: P1-04 maquina de estados no servidor + P1-03 reserva duravel de estoque + P1-05 EAN ambiguo interrompe + P2-02 quantidade 1..1000 + relancar aceita SKU corrigido (Codex #583); b723: lote P1-02/06/07/08/09/10/11 + P2-01/10 (PRs 578, 580, 581, 582, 587-591 somados num so, pra nao conflitar a cada merge); P1-08 — relatorio financeiro agrega por item que voltou (itens_devolvidos com valor_unit); sem a lista, marca aproximado; item sem preco nao entra no valor)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -9001,6 +9001,7 @@ require('./amb-devolucoes/lib-AMB/rotas-admin-AMB.js')(app, Object.assign({}, DE
 const registrarCicloDefeitos = require('./lib/defeitos-ciclo');
 registrarCicloDefeitos(app, {
   supabase, requerLogin, chamarBling, adminOk,
+  resolverSku: (sku) => skuDeparaGOOD.resolverSku(sku),   // b714 (P1-05): de-para no ciclo tambem na GOOD (a fabrica ja injetava)
   DEPOSITO_GERAL: FICHA_GOOD.fiscal.depositoGeral(),
   modelo: { ...FICHA_GOOD.defeitos, tabelas: FICHA_GOOD.tabelas },
   rotulo: FICHA_GOOD.nome,

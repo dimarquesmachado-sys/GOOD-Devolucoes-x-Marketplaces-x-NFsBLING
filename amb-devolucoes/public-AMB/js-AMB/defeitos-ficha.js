@@ -130,15 +130,37 @@
     catch (e) { return String(v); }
   }
   // b161 - relanca a entrada de estoque de um pedido (botao da ficha)
-  window.relancarEstoque = async function (pedidoId, btn) {
+  window.relancarEstoque = async function (pedidoId, btn, forcar, correcao) {
     if (btn) { btn.disabled = true; btn.textContent = 'Lançando…'; }
     try {
+      var corpoL = typeof forcar === 'string' ? { forcar: forcar } : {};
+      if (correcao && correcao.sku) corpoL.sku = correcao.sku;   // Codex #583: SKU corrigido pelo admin
       var r = await api('/api/defeitos/pedido/' + encodeURIComponent(pedidoId) + '/lancar-estoque',
-        { method: 'POST', body: '{}' });
+        { method: 'POST', body: JSON.stringify(corpoL) });
+      // b713 (P1-03) - o servidor marcou "em andamento" (ou a chamada anterior ficou sem resposta): so relanca se o
+      // humano conferiu no Bling que NAO entrou — e a confirmacao leva a MARCA EXATA que ele viu (Codex #584): o
+      // servidor so passa se o pedido ainda estiver com essa marca (dois admins: so um passa)
+      if (r && r.ok === false && r.incerto && typeof forcar !== 'string' && r.estoque_operacao) {
+        if (btn) { btn.disabled = false; btn.textContent = '🔄 Lançar estoque no Bling'; }
+        if (confirm('⚠️ ' + (r.erro || 'ja ha um lancamento em andamento deste pedido') + '\n\nVoce CONFERIU no Bling que a entrada NAO existe? Clique OK pra lançar mesmo assim.')) {
+          return window.relancarEstoque(pedidoId, btn, String(r.estoque_operacao));
+        }
+        return;
+      }
       if (r && r.ok) {
         alert('✅ Entrada lançada no Bling!' + (r.ja_lancado ? ' (já estava lançada)' : '')
           + (r.link ? '\n\nConfira: ' + r.link : ''));
         if (r.defeito_id && typeof abrirFichaDefeito === 'function') abrirFichaDefeito(r.defeito_id);
+      } else if (r && r.corrigivel && r.sku_tentado) {
+        // Codex #583 - recusa DEFINITIVA (nada entrou): SKU errado ou EAN que aponta pra varios produtos. Aqui e o
+        // unico lugar pra informar o SKU certo — a autorizacao nao se repete (maquina de estados).
+        if (btn) { btn.disabled = false; btn.textContent = '🔄 Lançar estoque no Bling'; }
+        var dica = (r.candidatos && r.candidatos.length) ? '\n\nCandidatos no Bling: ' + r.candidatos.map(function (c) { return c.codigo + (c.nome ? ' (' + c.nome + ')' : ''); }).join(', ') : '';
+        var novo = prompt('❌ O Bling não aceitou "' + r.sku_tentado + '":\n' + (r.erro || '') + dica + '\n\nDigite o SKU CERTO pra lançar a entrada (ou cancele):', r.sku_tentado);
+        // Codex #583: a recusa definitiva ja CONSUMIU a marca (o servidor zerou estoque_operacao); mandar o `forcar`
+        // antigo de novo daria 409 "marca mudou" e a correcao nunca chegaria ao Bling. Se houver operacao nova em
+        // andamento, o servidor devolve o 409 incerto e o fluxo acima pede a conferencia de novo.
+        if (novo && novo.trim() && novo.trim() !== r.sku_tentado) return window.relancarEstoque(pedidoId, btn, undefined, { sku: novo.trim() });
       } else {
         alert('❌ O Bling recusou de novo:\n\n' + ((r && r.erro) || 'erro desconhecido')
           + '\n\nSe for limite de requisições, espere 1 minuto e clique de novo.');
@@ -1786,10 +1808,11 @@
           ? '<div style="font-size:14px;font-weight:600;margin:2px 0 6px;">' + esc(p.titulo) + '</div>'
           : '')
       + (p.localizacao ? '<div style="font-size:12px;color:#777;margin-bottom:5px;">📍 ' + esc(p.localizacao) + '</div>' : '')
-      // b192 (review do Codex) - o selo NAO depende mais de `estoque_qtd`
-      // (que so e gravado quando o pedido leva sku): quem nao distingue as
-      // cores precisa LER que houve lancamento. Sem quantidade, mostra sem ela.
-      + ((p.estoque_qtd || estoqueAuto)
+      // b192 (review do Codex) - quem nao distingue as cores precisa LER que houve lancamento.
+      // b724 (Codex #583) - a PROVA e estoque_produto_id (confirmacao do Bling), nunca `estoque_qtd`: desde o b724 a
+      // reserva grava a quantidade TENTADA antes do Bling responder — relancamento recusado ou incerto deixa
+      // estoque_qtd preenchido sem entrada nenhuma. Sem quantidade, mostra sem ela.
+      + (estoqueAuto
           ? '<div style="background:#e9f7ef;border:1.5px solid #0F6E56;border-radius:9px;padding:8px 12px;margin:4px 0 7px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">'
             + '<b style="color:#0F6E56;font-size:14px;letter-spacing:.3px;">'
             + ('📦 LANÇADO EM ESTOQUE' + (p.estoque_qtd ? ' · ' + esc(p.estoque_qtd) + ' un.' : ''))
@@ -1802,13 +1825,13 @@
           : '')
       // b192 - o AMBAR tambem se explica por escrito
       // b193 - o AMBAR so aparece quando a entrada AINDA E ESPERADA
-      + ((faltaLancar && !p.estoque_qtd)
+      + (faltaLancar
           ? '<div style="background:#FFF8E7;border:1.5px solid #B26A00;border-radius:9px;padding:7px 11px;margin:4px 0 7px;'
             + 'font-size:12.5px;color:#8a5200;font-weight:600;">⏳ AINDA SEM LANÇAMENTO NO ESTOQUE</div>'
           : '')
       // b193 - fechada SEM registro de entrada: diz exatamente isso, sem
       // afirmar que houve lancamento (o "Marcar Como Feito" nao prova nada)
-      + ((fechadaSemProva && !p.estoque_qtd)
+      + (fechadaSemProva
           ? '<div style="background:#F1F1F1;border:1.5px solid #9A9A9A;border-radius:9px;padding:7px 11px;margin:4px 0 7px;'
             + 'font-size:12.5px;color:#555;font-weight:600;">'
             + (p.status === 'recusado'
@@ -1938,12 +1961,21 @@
       if (est.ok) {
         alert('Liberado e lançado no Bling: ' + est.quantidade + ' un. no depósito Geral'
           + (est.custo ? ' · custo R$ ' + Number(est.custo).toFixed(2).replace('.', ',') + ' por unidade' : ' (SEM custo no cadastro do produto)')
-          + '.');
+          + '.'
+          // b713 (Codex #584) - lancou, mas a confirmacao nao gravou no pedido: avisa (o pedido fica "em andamento")
+          + (est.aviso ? '\n\n⚠️ ' + est.aviso : ''));
         // b164 - NAO abre mais a aba do Bling sozinho (pedido do Diego):
         // o link "conferir a entrada" fica no card, clica quem quiser.
+      } else if (est.incerto) {
+        // b713 (Codex #584, P1) - INCERTO nao e recusa: o Bling pode TER lancado e a resposta se perdeu. Mandar
+        // "lance a mao" aqui dobraria o estoque. O pedido ficou marcado "em andamento"; so relanca depois de conferir.
+        alert('Peça liberada, mas o Bling NÃO CONFIRMOU o lançamento:\n' + (est.erro || '')
+          + '\n\n⚠️ NÃO lance à mão ainda: a entrada PODE já existir. Confira o estoque do produto no Bling.'
+          + '\n• Se NÃO entrou: use "Lançar estoque no Bling" na ficha e confirme.'
+          + '\n• Se entrou: está tudo certo; o pedido fica marcado "em andamento" até alguém confirmar.');
       } else {
         alert('Peça liberada, MAS o Bling não aceitou o lançamento:\n' + (est.erro || '')
-          + '\n\nLance a entrada à mão no Bling. Ficou anotado no histórico da peça.');
+          + '\n\nUse "Lançar estoque no Bling" na ficha: lá dá pra corrigir o SKU. Ficou anotado no histórico da peça.');
       }
     }
     abrirFilaPedidos();
