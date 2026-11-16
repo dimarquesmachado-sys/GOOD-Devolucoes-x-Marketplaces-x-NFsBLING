@@ -618,7 +618,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.126.228 (b716: P1-07 — foto da camera tem identidade: resposta de upload de um pacote fechado e descartada, nao entra no pacote seguinte)',
+      version: '9.126.229 (b717: P2-01 — cada busca do bipe tem numero; resposta atrasada de busca antiga nao pinta a tela nem vira o payload da triagem)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),

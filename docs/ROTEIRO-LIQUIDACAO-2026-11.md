@@ -127,7 +127,7 @@ Segue as 12 etapas do Codex, com os itens de cada uma. A ordem dentro da etapa �
 
 | id | estado | ponto | onde / evidência | direção |
 |---|---|---|---|---|
-| P2-01 | ⬜ | Busca fora de ordem | `public/js/busca.js:35` (peça única desde o b516 — a fábrica serve o mesmo em `js-AMB/busca.js`); A/B respondidos B/A → campo B, resultado A | identidade da solicitação; só a mais recente atualiza tela e payload |
+| P2-01 | 🔄 | Busca fora de ordem (b717, `dev/p2-01-busca-em-ordem`: `_buscaSeq` — só a busca corrente renderiza, grava o payload e libera o loading) | `busca.js:35` (**dois** arquivos: `public/js/busca.js` e `js-AMB/busca.js`); A/B respondidos B/A → campo B, resultado A | identidade da solicitação; só a mais recente atualiza tela e payload |
 | P2-02 | ⬜ | Quantidade inválida | `defeitos-ciclo.js:1358`: 0/negativo/NaN viram 1, `Infinity` passa | rejeitar inválido; exigir finito, inteiro, limite |
 | P2-03 | ⬜ | Lista GOOD quebra em 150 pedidos | `defeitos-ciclo.js:510`: com 151 IDs registros `problema/delivered` somem da lista e seguem na contagem | consultar em lotes/páginas; testar 149/150/151/400 e formatos legados |
 | P2-04 | ⬜ | Tags sem atomicidade | `rotas-relatorios.js:448`: DELETE com erro responde ok; DELETE ok + INSERT falho perde tags | operação transacional (RPC) ou verificar cada resultado e repor |
