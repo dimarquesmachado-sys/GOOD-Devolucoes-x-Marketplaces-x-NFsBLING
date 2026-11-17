@@ -100,6 +100,7 @@ jobs:
             echo "ℹ️  nenhum PR aberto — nada a fazer (isso NAO e erro)"
             exit 0
           fi
+          ERROS=0
 
           for PR in $PRS; do
             echo "════════ PR #$PR ════════"
@@ -110,11 +111,21 @@ jobs:
             # apontou algo depois do ultimo push, ha TRABALHO PENDENTE —
             # resolver as threads aqui esconderia isso, e o PR seria
             # mergeado com apontamento por tratar.
+            # b739 (P2-16, auditoria do Codex 15/11): ERRO DE CONSULTA NAO E "ZERO APONTAMENTO". Antes
+            # `NOVOS=${NOVOS:-0}` transformava falha do gh (rate limit, permissao) em "nada novo" e o passo 4
+            # resolvia todas as threads por cima. Agora: consulta falhando = pula o PR com ::error::.
             ULT_COMMIT=$(gh pr view "$PR" --repo "$GH_REPO" --json commits \
-                          --jq '.commits[-1].committedDate' 2>/dev/null)
-            NOVOS=$(gh api "repos/${{ github.repository }}/pulls/$PR/comments?per_page=100" \
-                     --jq "[.[] | select(.user.login|startswith(\"chatgpt\")) | select(.created_at > \"$ULT_COMMIT\")] | length" 2>/dev/null)
-            NOVOS=${NOVOS:-0}
+                          --jq '.commits[-1].committedDate' 2>/tmp/erro-gh)
+            if [ $? -ne 0 ] || [ -z "$ULT_COMMIT" ]; then
+              echo "::error::PR #$PR: nao consegui ler o ultimo commit ($(cat /tmp/erro-gh)) — nao mexo"
+              ERROS=$((ERROS+1)); continue
+            fi
+            NOVOS=$(gh api "repos/$GH_REPO/pulls/$PR/comments?per_page=100" \
+                     --jq "[.[] | select(.user.login|startswith(\"chatgpt\")) | select(.created_at > \"$ULT_COMMIT\")] | length" 2>/tmp/erro-gh)
+            if [ $? -ne 0 ] || ! [ "$NOVOS" -ge 0 ] 2>/dev/null; then
+              echo "::error::PR #$PR: nao consegui ler os apontamentos ($(cat /tmp/erro-gh)) — nao mexo"
+              ERROS=$((ERROS+1)); continue
+            fi
 
             if [ "$NOVOS" -gt 0 ]; then
               echo "  ⏭️  $NOVOS apontamento(s) novo(s) sem tratar — NAO mexo."
@@ -149,30 +160,43 @@ jobs:
               continue
             fi
 
-            # ── 4) resolver as conversas ─────────────────────────────────
+            # ── 4) resolver SO as conversas COM PROVA de tratamento ──────
             #
-            # Chegou aqui = o Codex revisou, ZERO apontamento novo, e a
-            # branch esta em dia. As threads que sobraram sao de rodadas
-            # anteriores, ja tratadas.
-            IDS=$(gh api graphql -f query='
+            # b739 (P2-16): antes resolvia TODAS as abertas "por contagem" (zero apontamento novo = tudo
+            # tratado). Prova de tratamento de uma thread e: (a) alguem que NAO e o Codex respondeu nela
+            # DEPOIS do apontamento (o "Tratado em <sha>"), ou (b) a thread ficou `isOutdated` (o trecho
+            # apontado mudou num commit posterior). Thread aberta SEM prova fica aberta e e listada.
+            # Consulta falhando = nao resolve nada e marca erro.
+            THREADS=$(gh api graphql -f query='
               query($owner:String!,$repo:String!,$pr:Int!){
                 repository(owner:$owner,name:$repo){
                   pullRequest(number:$pr){
-                    reviewThreads(first:100){ nodes{ id isResolved } }
+                    reviewThreads(first:100){ nodes{ id isResolved isOutdated comments(first:50){ nodes{ author{ login } createdAt } } } }
                   }
                 }
-              }' -F owner="${{ github.repository_owner }}" \
-                 -F repo="${{ github.event.repository.name }}" \
+              }' -F owner="${GH_REPO%%/*}" \
+                 -F repo="${GH_REPO##*/}" \
                  -F pr="$PR" \
-                 --jq '.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved==false) | .id' 2>/dev/null)
+                 --jq '.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved==false)
+                       | (.comments.nodes[0].createdAt) as $t0
+                       | (.comments.nodes[0].author.login // "") as $autor
+                       | ([.comments.nodes[1:][] | select((.author.login // "") != $autor and (.author.login // "" | startswith("chatgpt") | not) and .createdAt > $t0)] | length) as $respostas
+                       | "\(.id) \(if (.isOutdated or $respostas > 0) then "prova" else "sem-prova" end)"' 2>/tmp/erro-gh)
+            if [ $? -ne 0 ]; then
+              echo "::error::PR #$PR: nao consegui ler as conversas ($(cat /tmp/erro-gh)) — nao resolvo nada"
+              ERROS=$((ERROS+1)); continue
+            fi
 
-            N=0
-            for ID in $IDS; do
+            N=0; SEM=0
+            while read -r ID PROVA; do
+              [ -z "$ID" ] && continue
+              if [ "$PROVA" != "prova" ]; then SEM=$((SEM+1)); echo "  ⏸️  conversa $ID aberta SEM prova de tratamento — fica aberta"; continue; fi
               gh api graphql -f query='
                 mutation($id:ID!){ resolveReviewThread(input:{threadId:$id}){ thread{ isResolved } } }' \
                 -F id="$ID" >/dev/null 2>&1 && N=$((N+1))
-            done
-            [ "$N" -gt 0 ] && echo "  ✅ $N conversa(s) resolvida(s)"
+            done <<< "$THREADS"
+            [ "$N" -gt 0 ] && echo "  ✅ $N conversa(s) resolvida(s) (com prova)"
+            [ "$SEM" -gt 0 ] && echo "  ⚠️ $SEM conversa(s) sem prova seguem abertas"
 
             # ── 4b) ⚠️ RE-DISPARA O CICLO QUANDO A MAIN MUDOU ───────────
             #
@@ -203,10 +227,17 @@ jobs:
             # ⚠️ So comenta se MUDOU alguma coisa — senao vira spam a cada
             # push, e aviso que sempre aparece para de ser lido.
             FINAL=$(gh pr view "$PR" --repo "$GH_REPO" --json mergeStateStatus --jq '.mergeStateStatus' 2>/dev/null)
-            if [ "$FINAL" = "CLEAN" ] && [ "$N" -gt 0 ]; then
-              gh pr comment "$PR" --repo "$GH_REPO" --body "✅ **Pronto pra merge.** Destravei o que era mecânico ($N conversa(s) de rodadas anteriores). Zero apontamento sem tratar." >/dev/null 2>&1
+            # Codex #604: "pronto" SO com ZERO conversa sem prova — `CLEAN` nao garante isso onde a resolucao de
+            # conversas nao e obrigatoria. Com sobra, o aviso e o oposto: diz quantas ficaram.
+            if [ "$FINAL" = "CLEAN" ] && [ "$N" -gt 0 ] && [ "$SEM" -eq 0 ]; then
+              gh pr comment "$PR" --repo "$GH_REPO" --body "✅ **Pronto pra merge.** Destravei o que era mecânico ($N conversa(s) de rodadas anteriores, cada uma com resposta ou trecho já alterado). Zero apontamento sem tratar." >/dev/null 2>&1
               echo "  🔔 PR #$PR pronto — avisado"
+            elif [ "$N" -gt 0 ] && [ "$SEM" -gt 0 ]; then
+              gh pr comment "$PR" --repo "$GH_REPO" --body "⏸️ Resolvi $N conversa(s) com prova de tratamento, mas **$SEM conversa(s) seguem abertas sem prova** (sem resposta e sem o trecho alterado). Não está pronto pra merge até alguém tratar ou responder." >/dev/null 2>&1
+              echo "  ⏸️ PR #$PR: $SEM conversa(s) sem prova — avisado que NAO esta pronto"
             fi
           done
 
+          # b739: consulta que falhou em algum PR = passo vermelho (o job segue continue-on-error: nao bloqueia)
+          if [ "${ERROS:-0}" -gt 0 ]; then echo "::error::$ERROS PR(s) com consulta falhando — nada foi decidido neles"; exit 1; fi
           exit 0
