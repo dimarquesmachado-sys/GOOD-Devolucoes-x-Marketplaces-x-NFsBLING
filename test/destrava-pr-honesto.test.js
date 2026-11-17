@@ -98,6 +98,12 @@ exit 0
   ok(r.codigo === 0 && resolvidas.join() === 'T-respondida,T-outdated', '⚠️ (P2-16) resolve so as 2 com prova; a sem prova NAO. Resolvidas: ' + resolvidas.join());
   ok(/conversa T-muda aberta SEM prova de tratamento — fica aberta/.test(r.saida) && /1 conversa\(s\) sem prova seguem abertas/.test(r.saida), '  a sem prova e nomeada no log');
   ok(/2 conversa\(s\) resolvida\(s\) \(com prova\)/.test(r.saida), '  e o log diz "com prova"');
+  // Codex #604: com sobra sem prova, o comentario NAO pode dizer "Pronto pra merge"
+  const comentarios = r.chamadas.filter((c) => /^pr comment/.test(c));
+  ok(comentarios.length === 1 && /seguem abertas sem prova/.test(comentarios[0]) && !/Pronto pra merge/.test(comentarios[0]), '⚠️ (Codex #604) com 1 sem prova: o aviso diz que NAO esta pronto, nunca "Pronto pra merge". Veio: ' + comentarios.join(' | ').slice(0, 160));
+  const r2 = rodar({ repo: 'dono/repo', prs: '12', threads: [{ id: 'T-a', prova: true }, { id: 'T-b', prova: true }] });
+  const c2 = r2.chamadas.filter((c) => /^pr comment/.test(c));
+  ok(c2.length === 1 && /Pronto pra merge/.test(c2[0]), '  todas com prova: ai sim "Pronto pra merge"');
 }
 // 8) o --jq da consulta real: prova = resposta de NAO-Codex depois do apontamento, ou isOutdated
 {

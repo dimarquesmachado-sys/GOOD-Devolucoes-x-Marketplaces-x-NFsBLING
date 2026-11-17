@@ -227,9 +227,14 @@ jobs:
             # ⚠️ So comenta se MUDOU alguma coisa — senao vira spam a cada
             # push, e aviso que sempre aparece para de ser lido.
             FINAL=$(gh pr view "$PR" --repo "$GH_REPO" --json mergeStateStatus --jq '.mergeStateStatus' 2>/dev/null)
-            if [ "$FINAL" = "CLEAN" ] && [ "$N" -gt 0 ]; then
+            # Codex #604: "pronto" SO com ZERO conversa sem prova — `CLEAN` nao garante isso onde a resolucao de
+            # conversas nao e obrigatoria. Com sobra, o aviso e o oposto: diz quantas ficaram.
+            if [ "$FINAL" = "CLEAN" ] && [ "$N" -gt 0 ] && [ "$SEM" -eq 0 ]; then
               gh pr comment "$PR" --repo "$GH_REPO" --body "✅ **Pronto pra merge.** Destravei o que era mecânico ($N conversa(s) de rodadas anteriores, cada uma com resposta ou trecho já alterado). Zero apontamento sem tratar." >/dev/null 2>&1
               echo "  🔔 PR #$PR pronto — avisado"
+            elif [ "$N" -gt 0 ] && [ "$SEM" -gt 0 ]; then
+              gh pr comment "$PR" --repo "$GH_REPO" --body "⏸️ Resolvi $N conversa(s) com prova de tratamento, mas **$SEM conversa(s) seguem abertas sem prova** (sem resposta e sem o trecho alterado). Não está pronto pra merge até alguém tratar ou responder." >/dev/null 2>&1
+              echo "  ⏸️ PR #$PR: $SEM conversa(s) sem prova — avisado que NAO esta pronto"
             fi
           done
 
