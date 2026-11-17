@@ -39,7 +39,7 @@ ok(/require\('\.\/montagem-empresas'\)\.diagnostico\(\)/.test(codigo), '  as emp
 // ── 2. a fiacao que o texto afirma EXISTE ──
 for (const [arq, integ] of [['amb-devolucoes/lib-AMB/ml-AMB.js', 'ml'], ['amb-devolucoes/lib-AMB/bling-AMB.js', 'bling']]) {
   const s = rd(arq);
-  ok(new RegExp("tokenLeitor\\.resolverToken\\(CHAVE_TOKEN, '" + integ + "'\\)").test(s) && /if \(d\.usar === 'remoto'\) return d\.access;/.test(s),
+  ok(new RegExp("tokenLeitor\\.resolverToken\\(CHAVE_TOKEN, '" + integ + "'\\)").test(s) && /if \(d\.usar === 'remoto'\) \{ REMOTO_VISTO = true; return d\.access; \}/.test(s),
      `⚠️ fabrica: ${path.basename(arq)} pede o token ao leitor PELA EMPRESA e usa o access do dono quando ele responde`);
   ok(new RegExp("tokenLeitor\\.politicaDe\\(CHAVE_TOKEN, '" + integ + "'\\)").test(s) && /polRenov === 'remoto' \|\| polRenov === 'bloqueado'/.test(s),
      `  e recusa a renovacao local quando o eixo esta em remoto/bloqueado`);
