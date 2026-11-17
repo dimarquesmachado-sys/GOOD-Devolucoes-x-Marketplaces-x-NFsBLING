@@ -1232,26 +1232,41 @@
     }
 
     // Baixa todas as fotos sequencialmente (sem zip - mais simples e funciona em todos navegadores)
+    // b735 (P2-11, auditoria do Codex 15/11): CONFERE status e tipo antes de salvar. Ate o b734 um 401/404 em JSON
+    // virava `..._foto_01.jpg` no disco e o toast dizia "✅ N fotos baixadas!". Agora: so resposta ok com
+    // Content-Type de imagem (image/...) vira arquivo (com a extensao do tipo real); o toast conta so o que baixou e diz o que falhou.
+    const EXTENSAO_POR_TIPO = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif', 'image/heic': 'heic' };
     async function baixarTodasFotos(urls, identificador) {
       if (!urls || urls.length === 0) return;
       toast(`Baixando ${urls.length} fotos...`, 'ok');
+      let baixadas = 0; const falhas = [];
       for (let i = 0; i < urls.length; i++) {
         try {
           const r = await fetch(srcFoto(urls[i]));
+          const tipo = String((r.headers && r.headers.get && r.headers.get('content-type')) || '').split(';')[0].trim().toLowerCase();
+          if (!r.ok || !tipo.startsWith('image/')) {
+            falhas.push('foto ' + (i + 1) + ': ' + (r.ok ? 'não é imagem (' + (tipo || 'sem tipo') + ')' : 'HTTP ' + r.status));
+            continue;
+          }
           const blob = await r.blob();
+          if (!blob || !blob.size) { falhas.push('foto ' + (i + 1) + ': vazia'); continue; }
           const link = document.createElement('a');
           link.href = URL.createObjectURL(blob);
-          link.download = `${identificador}_foto_${String(i + 1).padStart(2, '0')}.jpg`;
+          link.download = `${identificador}_foto_${String(i + 1).padStart(2, '0')}.${EXTENSAO_POR_TIPO[tipo] || 'jpg'}`;
           document.body.appendChild(link);
           link.click();
           document.body.removeChild(link);
           URL.revokeObjectURL(link.href);
+          baixadas++;
           await new Promise(resolve => setTimeout(resolve, 300));
         } catch (e) {
           console.error('Erro ao baixar foto', i + 1, e);
+          falhas.push('foto ' + (i + 1) + ': ' + (e && e.message || 'erro'));
         }
       }
-      toast(`✅ ${urls.length} fotos baixadas!`, 'ok');
+      if (!falhas.length) toast(`✅ ${baixadas} fotos baixadas!`, 'ok');
+      else toast(`⚠️ ${baixadas} de ${urls.length} fotos baixadas. Falhou: ${falhas.join('; ')}`, 'err');   // a classe de erro do toast e 'err'
+      return { baixadas, falhas };
     }
 
     function copiarNF(num) {
