@@ -69,17 +69,36 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Destravar o que for mecanico
-        continue-on-error: true
+        # b736 (P2-13, auditoria do Codex 15/11): o PASSO falha quando nao consegue nem perguntar ao GitHub
+        # (`exit 1` + ::error::), pra aparecer vermelho no log; o JOB segue `continue-on-error`, entao o PR
+        # nunca e bloqueado por este workflow. Antes: `gh pr list` sem repositorio (nao ha checkout) dava
+        # "fatal: not a git repository", a lista vinha vazia, o loop nao rodava e o job ficava VERDE sem operar.
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # ⚠️ nao ha `actions/checkout` aqui (de proposito: so chamadas de API) — entao TODO `gh` precisa saber
+          # o repositorio por este env, senao ele procura um .git que nao existe
+          GH_REPO: ${{ github.repository }}
         run: |
-          set +e   # nenhum passo aqui pode derrubar o job
+          set +e   # nenhum passo do LOOP pode derrubar o job; so a falta de acesso ao GitHub (abaixo) falha o passo
+
+          if [ -z "$GH_REPO" ]; then
+            echo "::error::GH_REPO vazio — nenhum gh funcionaria sem repositorio"
+            exit 1
+          fi
 
           ALVO="${{ github.event.pull_request.number || github.event.inputs.pr }}"
           if [ -n "$ALVO" ]; then
             PRS="$ALVO"
           else
-            PRS=$(gh pr list --state open --json number --jq '.[].number')
+            PRS=$(gh pr list --repo "$GH_REPO" --state open --json number --jq '.[].number' 2>/tmp/erro-gh)
+            if [ $? -ne 0 ]; then
+              echo "::error::nao consegui listar os PRs abertos: $(cat /tmp/erro-gh)"
+              exit 1
+            fi
+          fi
+          if [ -z "$PRS" ]; then
+            echo "ℹ️  nenhum PR aberto — nada a fazer (isso NAO e erro)"
+            exit 0
           fi
 
           for PR in $PRS; do
@@ -91,7 +110,7 @@ jobs:
             # apontou algo depois do ultimo push, ha TRABALHO PENDENTE —
             # resolver as threads aqui esconderia isso, e o PR seria
             # mergeado com apontamento por tratar.
-            ULT_COMMIT=$(gh pr view "$PR" --json commits \
+            ULT_COMMIT=$(gh pr view "$PR" --repo "$GH_REPO" --json commits \
                           --jq '.commits[-1].committedDate' 2>/dev/null)
             NOVOS=$(gh api "repos/${{ github.repository }}/pulls/$PR/comments?per_page=100" \
                      --jq "[.[] | select(.user.login|startswith(\"chatgpt\")) | select(.created_at > \"$ULT_COMMIT\")] | length" 2>/dev/null)
@@ -107,7 +126,7 @@ jobs:
             #
             # `update-branch` faz o merge da main na branch. Se der conflito
             # de CONTEUDO, o GitHub recusa — e ai e caso de gente.
-            ESTADO=$(gh pr view "$PR" --json mergeStateStatus --jq '.mergeStateStatus' 2>/dev/null)
+            ESTADO=$(gh pr view "$PR" --repo "$GH_REPO" --json mergeStateStatus --jq '.mergeStateStatus' 2>/dev/null)
             if [ "$ESTADO" = "BEHIND" ]; then
               echo "  🔄 branch atras da main — atualizando"
               gh api -X PUT "repos/${{ github.repository }}/pulls/$PR/update-branch" >/dev/null 2>&1 \
@@ -122,11 +141,11 @@ jobs:
             # outro — hoje mesmo o conflito era a linha de versao, e a
             # resolucao certa era JUNTAR as duas descricoes, nao escolher.
             # Isso e julgamento.
-            ESTADO=$(gh pr view "$PR" --json mergeStateStatus --jq '.mergeStateStatus' 2>/dev/null)
+            ESTADO=$(gh pr view "$PR" --repo "$GH_REPO" --json mergeStateStatus --jq '.mergeStateStatus' 2>/dev/null)
             if [ "$ESTADO" = "DIRTY" ]; then
               echo "  ⛔ CONFLITO DE CONTEUDO — isso precisa de gente"
-              gh pr edit "$PR" --add-label "conflito" >/dev/null 2>&1
-              gh pr comment "$PR" --body "⛔ **Conflito com a \`main\`.** Não resolvo automaticamente: escolher um lado apaga trabalho do outro. Precisa de revisão." >/dev/null 2>&1
+              gh pr edit "$PR" --repo "$GH_REPO" --add-label "conflito" >/dev/null 2>&1
+              gh pr comment "$PR" --repo "$GH_REPO" --body "⛔ **Conflito com a \`main\`.** Não resolvo automaticamente: escolher um lado apaga trabalho do outro. Precisa de revisão." >/dev/null 2>&1
               continue
             fi
 
@@ -174,7 +193,7 @@ jobs:
             # commit dispara `synchronize`, que re-dispara o ciclo.
             if [ "${{ github.event_name }}" = "push" ]; then
               echo "  🔄 a main mudou — re-disparo o ciclo neste PR"
-              gh workflow run auto-merge-codex.yml -f pr="$PR" >/dev/null 2>&1 \
+              gh workflow run auto-merge-codex.yml --repo "$GH_REPO" -f pr="$PR" >/dev/null 2>&1 \
                 && echo "     ✅ ciclo re-disparado" \
                 || echo "     ⚠️ nao consegui re-disparar (segue o fluxo normal)"
             fi
@@ -183,9 +202,9 @@ jobs:
             #
             # ⚠️ So comenta se MUDOU alguma coisa — senao vira spam a cada
             # push, e aviso que sempre aparece para de ser lido.
-            FINAL=$(gh pr view "$PR" --json mergeStateStatus --jq '.mergeStateStatus' 2>/dev/null)
+            FINAL=$(gh pr view "$PR" --repo "$GH_REPO" --json mergeStateStatus --jq '.mergeStateStatus' 2>/dev/null)
             if [ "$FINAL" = "CLEAN" ] && [ "$N" -gt 0 ]; then
-              gh pr comment "$PR" --body "✅ **Pronto pra merge.** Destravei o que era mecânico ($N conversa(s) de rodadas anteriores). Zero apontamento sem tratar." >/dev/null 2>&1
+              gh pr comment "$PR" --repo "$GH_REPO" --body "✅ **Pronto pra merge.** Destravei o que era mecânico ($N conversa(s) de rodadas anteriores). Zero apontamento sem tratar." >/dev/null 2>&1
               echo "  🔔 PR #$PR pronto — avisado"
             fi
           done
