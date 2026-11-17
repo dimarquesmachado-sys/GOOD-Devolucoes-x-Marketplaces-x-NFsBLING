@@ -49,9 +49,11 @@ function criarBling(cfg) {
     if (ACCESS_TOKEN) return true;
     try {
       const d = await tokenLeitor.resolverToken(CHAVE_TOKEN, 'bling');
-      if (d.usar === 'remoto' && d.access) { REMOTO_VISTO = true; return true; }
-    } catch (e) { /* leitor fora: nao e operacional agora */ }
-    return !!ACCESS_TOKEN;
+      // Codex #599: a disponibilidade lembrada acompanha a ULTIMA resolucao — sucesso liga, falha/leitor fora desliga.
+      REMOTO_VISTO = d.usar === 'remoto' && !!d.access;
+      return REMOTO_VISTO;
+    } catch (e) { REMOTO_VISTO = false; /* leitor fora: nao e operacional agora */ }
+    return false;
   }
 
   // ⚠️ b442 - O RITMO, POR EMPRESA. Este cliente NAO passava por fila
@@ -246,6 +248,7 @@ async function chamarBling(caminho, opcoes = {}) {
   const tokenAgora = async () => {
     const d = await tokenLeitor.resolverToken(CHAVE_TOKEN, 'bling');
     tokenDoDono = d.usar === 'remoto';
+    REMOTO_VISTO = tokenDoDono && !!d.access;   // Codex #599: 'falhar' apaga o que o sucesso anterior lembrou
     if (d.usar === 'remoto') { REMOTO_VISTO = true; return d.access; }
     if (d.usar === 'falhar') {
       const e = new Error('[token] ' + d.motivo);

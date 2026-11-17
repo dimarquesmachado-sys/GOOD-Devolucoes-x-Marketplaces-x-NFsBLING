@@ -35,6 +35,13 @@ for (const k of Object.keys(process.env)) if (k.startsWith('TESTE_REMOTO_')) del
     const mod2 = fabrica.criar(cfg);
     resposta = { usar: 'falhar', access: null, politica: 'remoto', motivo: 'dono fora' };
     ok(await mod2.operacional() === false && mod2.temToken() === false, '  ' + nome + ': remoto com dono fora do ar → nao operacional');
+    // Codex #599: MESMA instancia que ja viu o token do dono — falha depois do sucesso apaga o "visto"
+    ok(await mod.operacional() === false && mod.temToken() === false, '⚠️ ' + nome + ': sucesso seguido de falhar na MESMA instancia → temToken() volta a false');
+    resposta = { usar: 'remoto', access: 'TOKEN-DO-DONO', politica: 'remoto' };
+    ok(await mod.operacional() === true && mod.temToken() === true, '  ' + nome + ': e volta a true quando o dono volta');
+    tokenLeitor.resolverToken = async () => { throw new Error('leitor caiu'); };
+    ok(await mod.operacional() === false && mod.temToken() === false, '  ' + nome + ': leitor estourando depois de sucesso → temToken() false');
+    tokenLeitor.resolverToken = async () => { perguntas++; return resposta; };
     // politica local sem token local: nao operacional
     resposta = { usar: 'local', access: null, politica: 'local' };
     ok(await mod2.operacional() === false && mod2.temToken() === false, '  ' + nome + ': politica local sem token local → nao operacional');
