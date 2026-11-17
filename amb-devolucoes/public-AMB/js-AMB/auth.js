@@ -1,3 +1,13 @@
+// b744 - a linha `version` do /health carrega a descricao do build (e, por um tempo, a cadeia dos anteriores);
+// a tela do estoquista mostra so "9.126.258 (b744)". Exportada no window pro teste executar.
+function versaoCurta(v) {
+  const t = String(v || '').trim();
+  if (!t) return '?';
+  const m = t.match(/^([0-9][^\s(]*)\s*\(\s*(b\d+)/);
+  if (m) return m[1] + ' (' + m[2] + ')';
+  return t.split(/[(;]/)[0].trim().slice(0, 40) || '?';
+}
+if (typeof window !== 'undefined') window.versaoCurta = versaoCurta;
 // ============================================================
 // auth.js - login, logout, checagem de sessao
 // ============================================================
@@ -26,7 +36,8 @@ async function checarSessao() {
 
       fetch('/health').then(r => r.json()).then(d => {
         const span = document.getElementById('serverVersion');
-        if (span) span.textContent = `server v${d.version || '?'}`;
+        // b744 - so o NUMERO e o build na tela do estoquista; a descricao inteira do build fica no title (hover)
+        if (span) { span.textContent = `server v${versaoCurta(d.version)}`; span.title = String(d.version || ''); }
       }).catch(() => {});
       return true;
     }
