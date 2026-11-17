@@ -30,6 +30,9 @@ const RAIZ = path.join(__dirname, '..');
   ok(r.revogado('tok-d', { usuario: 'ana' }) === true, '  token sem `c` (de antes deste deploy) vale como antigo: cai');
   agora += 70000;   // passou a expiracao do tok-a e o intervalo de limpeza
   ok(r.tamanho().tokens === 0 && r.revogado('tok-a', { usuario: 'bia', criado: agora }) === false, '  token revogado que ja venceu sai da lista (nao cresce sem fim)');
+  r.revogarToken('tok-longe', 1e100);
+  agora += 25 * 3600 * 1000;
+  ok(r.tamanho().tokens === 0, '⚠️ Codex #600: validade absurda e limitada a 24h (nao prende a entrada)');
   ok(r.revogarToken('', 0) === false && r.revogarUsuario('', 0) === false, '  entradas vazias nao gravam');
 }
 // ── 2. a fabrica (auth-AMB real) ──
@@ -47,11 +50,21 @@ const RAIZ = path.join(__dirname, '..');
   ok(auth.validarSessao(t2, 'admin') !== null, '  a outra sessao do diego (outro aparelho) segue valida');
   const t1b = t1.split('.')[0] + '.' + t1.split('.')[1];
   ok(auth.validarSessao(t1b) === null, '  copia do token revogado tambem nao entra');
+  const tick2 = Date.now(); while (Date.now() === tick2) { /* 1 ms: sessao criada no MESMO ms do carimbo vale como nova (flaky sem isto) */ }
   auth.sairDeTodos('diego');
   ok(auth.validarSessao(t2) === null && auth.validarSessao(t3, 'estoquista') !== null, '⚠️ sairDeTodos(diego): todas as do diego caem; a do lucas segue');
+  const tick3 = Date.now(); while (Date.now() === tick3) { /* idem */ }
   const t4 = auth.novaSessao('diego', 'admin');
   ok(auth.validarSessao(t4, 'admin') !== null, '  login novo do diego depois do sairDeTodos vale');
   ok(auth.revogadas().tokens === 1 && auth.revogadas().usuarios === 1, '  diagnostico: 1 token e 1 usuario na lista');
+  // Codex #600: segmento extra nao escapa da revogacao; cookie forjado nao entra na lista
+  const t5 = auth.novaSessao('diego', 'admin'); auth.sair(t5);
+  ok(auth.validarSessao(t5 + '.bypass') === null, '⚠️ Codex #600 (fabrica): token revogado + ".bypass" e recusado');
+  const t6 = auth.novaSessao('lucas', 'estoquista');
+  ok(auth.validarSessao(t6 + '.x') === null, '  token valido + segmento extra nem entra (2 segmentos exatos)');
+  const antes = auth.revogadas().tokens;
+  for (let i = 0; i < 5; i++) auth.sair('forjado' + i + '.' + 'y'.repeat(43));
+  ok(auth.revogadas().tokens === antes, '⚠️ Codex #600 (fabrica): sair() com cookie forjado nao grava nada na lista');
 }
 // ── 3. a GOOD de verdade (server.js) ──
 function portaLivre() { return new Promise((r) => { const s = net.createServer(); s.listen(0, () => { const p = s.address().port; s.close(() => r(p)); }); }); }
@@ -85,6 +98,12 @@ function pedir(porta, caminho, { metodo = 'GET', cookie = null, corpo = null } =
     ok(out.status === 200, '  logout 200');
     const me2 = await pedir(porta, '/api/auth/me', { cookie });
     ok(/"ok":false/.test(me2.corpo), '⚠️ GOOD: o MESMO cookie depois do logout e recusado pelo /me (antes: continuava ok ate a meia-noite). Veio: ' + me2.corpo);
+    const me3 = await pedir(porta, '/api/auth/me', { cookie: cookie + '.bypass' });
+    ok(/"ok":false/.test(me3.corpo), '⚠️ Codex #600 (GOOD): cookie revogado + ".bypass" e recusado. Veio: ' + me3.corpo);
+    const login2 = await pedir(porta, '/api/auth/login', { metodo: 'POST', corpo: { usuario: 'diego', senha: 'senha123' } });
+    const cookie2 = (login2.setCookie.find((x) => x.startsWith('sessao=')) || '').split(';')[0];
+    const me4 = await pedir(porta, '/api/auth/me', { cookie: cookie2 + '.x' });
+    ok(/"ok":false/.test(me4.corpo), '  GOOD: token valido + segmento extra nao entra');
     const prot = await pedir(porta, '/api/ids-fiscais', { cookie });
     ok(prot.status === 401 || prot.status === 403, '  e uma rota protegida responde ' + prot.status);
   } else {

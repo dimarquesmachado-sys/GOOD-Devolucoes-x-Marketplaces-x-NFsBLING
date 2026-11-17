@@ -268,8 +268,9 @@ function criar(cfg) {
 
     // 1) token assinado (o formato novo) - nao depende de memoria nenhuma
     if (token.includes('.')) {
-      const [p, assinatura] = token.split('.');
-      if (p && assinatura) {
+      const partesTok = token.split('.');
+      const [p, assinatura] = partesTok;
+      if (partesTok.length === 2 && p && assinatura) {   // Codex #600: exatamente 2 segmentos (senao escapa do hash da revogacao)
         let esperada;
         // ⚠️ b346: valida com a chave DESTA empresa
         try { esperada = assinarCom(c.cookie, p); } catch (e) { esperada = null; }
@@ -338,6 +339,8 @@ function criar(cfg) {
     sair: (token) => {
       minhasSessoes.delete(token);
       if (!token) return false;
+      // Codex #600: so revoga token com assinatura valida (cookie forjado nao ocupa memoria nem escolhe a validade)
+      if (!meuValidar(token)) return false;
       const d = dadosDoToken(token);
       return revogadas.revogarToken(token, d && d.e);
     },
