@@ -29,12 +29,16 @@ const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o
 }
 
 // proxy local: /interno/devolucoes responde a lista; com ?refresh=1 TRAVA (ou nao), conforme o cenario
-let travarRefresh = false; let travarLista = false; const pedidos = [];
+let travarRefresh = false; let travarLista = false; let corpoLento = false; const pedidos = [];
 const proxy = http.createServer((req, res) => {
   pedidos.push(req.url);
   const trava = (travarLista && !/refresh=1|tracking=|pedido=/.test(req.url)) || (travarRefresh && /refresh=1/.test(req.url));
   if (trava) return;   // nunca responde (o cliente so sai pelo prazo)
   res.setHeader('content-type', 'application/json');
+  // cabecalhos saem logo, corpo atrasa 1500ms (apontamento Codex: o prazo precisa cobrir a leitura do corpo)
+  if (corpoLento && !/tracking=|pedido=/.test(req.url)) { res.flushHeaders(); return setTimeout(() => res.end(JSON.stringify({ ok: true, devolucoes: [] })), 1500); }
+  // indice de insucesso positivo (BR de insucesso so e achado por aqui)
+  if (/tracking=BRINSUCESSO/.test(req.url)) return res.end(JSON.stringify({ ok: true, encontrado: true, devolucao: { order_sn: '250202INSUCES1' } }));
   if (/tracking=|pedido=/.test(req.url)) return res.end(JSON.stringify({ ok: true, encontrado: false }));
   res.end(JSON.stringify({ ok: true, devolucoes: [{ order_sn: '250101ABCDEFG1', tracking_number: 'BR123456789XY', return_sn: '25010100ABCDEF' }] }));
 });
@@ -65,6 +69,18 @@ const proxy = http.createServer((req, res) => {
     travarRefresh = false; travarLista = true;
     if (nome === 'GOOD') { /* a GOOD ja tem cache quente; forca cache frio pelo modulo da fabrica abaixo */ }
     travarLista = false;
+    // refresh travado + BR de INSUCESSO (so o indice acha): tem que achar ANTES do refresh, nao degradar
+    travarRefresh = true; pedidos.length = 0;
+    const rI = await mod.acharDevolucao('BRINSUCESSO01');
+    ok(rI.hit && rI.hit.order_sn === '250202INSUCES1' && !rI.degradado && !pedidos.some((u) => /refresh=1/.test(u)), '⚠️ ' + nome + ': refresh lento + BR de insucesso → achou pelo indice ANTES do refresh (sem refresh)');
+    travarRefresh = false;
+    // cabecalhos rapidos, corpo da lista lento (1500ms > prazo 600ms): degrada, nao espera o corpo
+    corpoLento = true;
+    const frioCorpo = nome === 'GOOD' ? null : shopeeAMB.criar({ PREFIXO_ENV: 'TESTE_SHP3_', CHAVE_REGISTRO: 'teste3', EMPRESA: 'teste3', NOME_EMPRESA: 'T3', SIGLA_EMPRESA: 'T3' });
+    const tc = Date.now();
+    const rC = await (frioCorpo || mod).acharDevolucao('BR999999999ZZ');
+    ok(rC.degradado === true && Date.now() - tc < 1300, '⚠️ ' + nome + ': corpo JSON lento → degradado dentro do prazo (' + (Date.now() - tc) + 'ms), nao espera o corpo');
+    corpoLento = false;
   }
   // cache frio + lista travada (instancia nova da fabrica)
   travarLista = true;

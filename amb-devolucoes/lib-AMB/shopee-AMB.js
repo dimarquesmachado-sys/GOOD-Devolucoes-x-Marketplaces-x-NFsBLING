@@ -109,7 +109,7 @@ async function buscarDevolucoesProxy(forcar, prazo) {
   const url = `${URL_PROXY}/${LOJA}/interno/devolucoes${forcar ? '?refresh=1' : ''}`;
   const r = prazo ? await prazo.fetch(url, { headers: { 'x-internal-key': KEY_PROXY } }, forcar ? 'refresh' : 'lista')
                   : await fetch(url, { headers: { 'x-internal-key': KEY_PROXY } });
-  const d = await r.json().catch(() => null);
+  const d = prazo ? await prazo.json(r, forcar ? 'refresh' : 'lista') : await r.json().catch(() => null);
   if (!d || !d.ok) {
     throw new Error(`proxy shopee (loja ${LOJA}): ` + (d && d.erro ? d.erro : 'HTTP ' + r.status));
   }
@@ -225,7 +225,7 @@ async function consultarPedidoCancelado(codigo, prazo) {
     try {
       const r = prazo ? await prazo.fetch(`${URL_PROXY}/${LOJA}/interno/devolucoes?${qs}`, { headers: { 'x-internal-key': KEY_PROXY } }, 'pedido-cancelado:' + qs.split('=')[0])
                       : await fetch(`${URL_PROXY}/${LOJA}/interno/devolucoes?${qs}`, { headers: { 'x-internal-key': KEY_PROXY } });
-      const d = await r.json().catch(() => null);
+      const d = prazo ? await prazo.json(r, 'pedido-cancelado') : await r.json().catch(() => null);
       if (d && d.ok && d.encontrado && d.devolucao) {
         console.log(`[${_TAG}/SHOPEE] insucesso/cancelado achado via ${qs.split('=')[0]}: ${d.devolucao.order_sn}`);
         return d.devolucao;
@@ -272,6 +272,16 @@ async function _acharDevolucao(codigo, prazo) {
   let hit = lista.find(casa) || null;
   let usouRefresh = false;
 
+  // b743: token BR... que nao casou na lista pode ser INSUCESSO (nunca esta na lista de returns). Consulta o
+  // indice ANTES do refresh de 30-40s — senao o prazo total estoura no refresh e o pacote nunca e achado
+  // (mesma ordem da GOOD, v3.48).
+  let jaConsultouCancelado = false;
+  if (!hit && alvoTok) {
+    jaConsultouCancelado = true;
+    const cancelado = await consultarPedidoCancelado(codigo, prazo);
+    if (cancelado) return { hit: cancelado, qtd: (lista || []).length, usouRefresh, viaPedidoCancelado: true };
+  }
+
   // Nao achou na SHP.cache: forca uma leitura fresca antes de desistir —
   // a devolucao pode ter nascido nos ultimos minutos.
   if (!hit) {
@@ -285,7 +295,7 @@ async function _acharDevolucao(codigo, prazo) {
   // b53 - ULTIMA VIA: nao esta na lista de devolucoes SOLICITADAS. Pode ser
   // INSUCESSO DE ENTREGA (Shopee cancela o pedido, nao abre devolucao) —
   // pergunta direto pra Shopee pelo tracking da etiqueta ou pelo order_sn.
-  if (!hit) {
+  if (!hit && !jaConsultouCancelado) {
     const cancelado = await consultarPedidoCancelado(codigo, prazo);
     if (cancelado) return { hit: cancelado, qtd: (lista || []).length, usouRefresh, viaPedidoCancelado: true };
   }
