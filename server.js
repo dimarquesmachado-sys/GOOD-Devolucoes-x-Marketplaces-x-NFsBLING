@@ -175,6 +175,7 @@ const erroCodigo = require('./lib/erro-de-codigo');   // b205 - bug meu nao e fa
 const confrontar = require('./lib/confrontar-nf');   // b208 - escada de desempate da NF
 const vinculoCache = require('./lib/vinculo-nf-cache');   // b204 - vinculo NF ja achado
 const sessaoMeiaNoite = require('./lib/sessao-meia-noite');   // 31/10 - o login acaba na meia-noite (SP)
+const sessoesRevogadasGOOD = require('./lib/sessoes-revogadas').criar();   // b734 (P2-09) - o logout revoga o token assinado
 const marcadores = require('./lib/marcadores-estornada');   // b200 - peca unica dos marcadores
 // b201 - `magaluCancelados` NUNCA foi importado nesta empresa.
 //
@@ -619,7 +620,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.126.245 (b733: Codex #599 — REMOTO_VISTO acompanha a ultima resolucao do token (falha apaga); b732:P2-08 — ML/Bling da fabrica: operacional() pela politica (token do dono conta); pre-aquecimento nao depende de token local; b731: P2-07 — ritmo por empresa: sucesso de requisicao que saiu antes do ultimo 429 nao apaga a pausa nem o degrau; b730: P2-06 — preventiva de tokens, retrofit de itens e varredura Full com timers na drenagem; apos SIGTERM nao comeca trabalho novo, o em voo termina; b729: P2-05 — indice de tickets do Magalu so e publicado completo; falha em qualquer pagina preserva o anterior, 5 min entre tentativas; b728: V-01 — relatorio financeiro e mapa de pedidos do ciclo leem o PostgREST pagina a pagina (lib/ler-tudo.js), nunca so as 1000 primeiras; b727: Codex #594 — duas aplicacoes de tags na MESMA devolucao entram em fila (nenhuma apaga o que a outra queria manter); b726: P2-04 — aplicar tags na devolucao e um diff que nunca perde tag (le, insere o que falta, apaga so o que saiu, cada passo confere o erro); b725: P2-03 — lista de defeitos acima de 150 ids resolvidos por pedido consulta em lotes/paginas, nunca volta ao amplo; b724: P1-04 maquina de estados no servidor + P1-03 reserva duravel de estoque + P1-05 EAN ambiguo interrompe + P2-02 quantidade 1..1000 + relancar aceita SKU corrigido (Codex #583); b723: lote P1-02/06/07/08/09/10/11 + P2-01/10 (PRs 578, 580, 581, 582, 587-591 somados num so, pra nao conflitar a cada merge); P1-08 — relatorio financeiro agrega por item que voltou (itens_devolvidos com valor_unit); sem a lista, marca aproximado; item sem preco nao entra no valor)',
+      version: '9.126.245 (b735: Codex #600 — logout so revoga token de assinatura valida e token com segmento extra nao escapa da revogacao; b734: P2-09 — logout revoga o token assinado; b733: Codex #599 — REMOTO_VISTO acompanha a ultima resolucao do token (falha apaga); b732:P2-08 — ML/Bling da fabrica: operacional() pela politica (token do dono conta); pre-aquecimento nao depende de token local; b731: P2-07 — ritmo por empresa: sucesso de requisicao que saiu antes do ultimo 429 nao apaga a pausa nem o degrau; b730: P2-06 — preventiva de tokens, retrofit de itens e varredura Full com timers na drenagem; apos SIGTERM nao comeca trabalho novo, o em voo termina; b729: P2-05 — indice de tickets do Magalu so e publicado completo; falha em qualquer pagina preserva o anterior, 5 min entre tentativas; b728: V-01 — relatorio financeiro e mapa de pedidos do ciclo leem o PostgREST pagina a pagina (lib/ler-tudo.js), nunca so as 1000 primeiras; b727: Codex #594 — duas aplicacoes de tags na MESMA devolucao entram em fila (nenhuma apaga o que a outra queria manter); b726: P2-04 — aplicar tags na devolucao e um diff que nunca perde tag (le, insere o que falta, apaga so o que saiu, cada passo confere o erro); b725: P2-03 — lista de defeitos acima de 150 ids resolvidos por pedido consulta em lotes/paginas, nunca volta ao amplo; b724: P1-04 maquina de estados no servidor + P1-03 reserva duravel de estoque + P1-05 EAN ambiguo interrompe + P2-02 quantidade 1..1000 + relancar aceita SKU corrigido (Codex #583); b723: lote P1-02/06/07/08/09/10/11 + P2-01/10 (PRs 578, 580, 581, 582, 587-591 somados num so, pra nao conflitar a cada merge); P1-08 — relatorio financeiro agrega por item que voltou (itens_devolvidos com valor_unit); sem a lista, marca aproximado; item sem preco nao entra no valor)',
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -3240,9 +3241,13 @@ app.post('/api/auth/login', (req, res) => {
 });
 
 // Logout
+// b734 (P2-09): alem do Map e do cookie, o token assinado entra na lista de revogados — antes um token capturado
+// (print, log, extensao) continuava entrando ate a meia-noite
 app.post('/api/auth/logout', (req, res) => {
   const t = req.cookies?.sessao;
   if (t) sessoes.delete(t);
+  // Codex #600: so revoga token com assinatura valida (cookie forjado so e limpo, nao ocupa memoria)
+  if (t && validarSessaoAssinada(t)) sessoesRevogadasGOOD.revogarToken(t, dadosDaSessaoAssinada(t)?.e);
   res.clearCookie('sessao');
   return res.json({ ok: true });
 });
@@ -3319,7 +3324,9 @@ function novaSessaoAssinada(usuario, tipo, validadeMs) {
 }
 function validarSessaoAssinada(token) {
   if (!token || !token.includes('.')) return null;
-  const [p, assin] = token.split('.');
+  const partes = token.split('.');
+  if (partes.length !== 2) return null;   // Codex #600: `.algo` a mais nao pode escapar do hash da revogacao
+  const [p, assin] = partes;
   if (!p || !assin) return null;
   let esperada;
   try { esperada = _assinar(p); } catch (e) { return null; }
@@ -3333,8 +3340,12 @@ function validarSessaoAssinada(token) {
     // e a expiracao antiga menos as 12 h de entao.
     const criadoTok = d.c || (d.e ? d.e - 12 * 60 * 60 * 1000 : 0);
     if (criadoTok && sessaoMeiaNoite.venceu(criadoTok, 12 * 60 * 60 * 1000)) return null;
+    if (sessoesRevogadasGOOD.revogado(token, { usuario: d.u, criado: criadoTok })) return null;   // b734 (P2-09)
     return { usuario: d.u, tipo: d.t };
   } catch (e) { return null; }
+}
+function dadosDaSessaoAssinada(token) {   // b734: so o payload (sem validar) — pra saber ate quando guardar a revogacao
+  try { return JSON.parse(Buffer.from(String(token).split('.')[0].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString()); } catch (e) { return null; }
 }
 
 function requerLogin(req, res, next) {
