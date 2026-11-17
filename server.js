@@ -175,6 +175,7 @@ const erroCodigo = require('./lib/erro-de-codigo');   // b205 - bug meu nao e fa
 const confrontar = require('./lib/confrontar-nf');   // b208 - escada de desempate da NF
 const vinculoCache = require('./lib/vinculo-nf-cache');   // b204 - vinculo NF ja achado
 const sessaoMeiaNoite = require('./lib/sessao-meia-noite');   // 31/10 - o login acaba na meia-noite (SP)
+const sessoesRevogadasGOOD = require('./lib/sessoes-revogadas').criar();   // b734 (P2-09) - o logout revoga o token assinado
 const marcadores = require('./lib/marcadores-estornada');   // b200 - peca unica dos marcadores
 // b201 - `magaluCancelados` NUNCA foi importado nesta empresa.
 //
@@ -3240,9 +3241,12 @@ app.post('/api/auth/login', (req, res) => {
 });
 
 // Logout
+// b734 (P2-09): alem do Map e do cookie, o token assinado entra na lista de revogados — antes um token capturado
+// (print, log, extensao) continuava entrando ate a meia-noite
 app.post('/api/auth/logout', (req, res) => {
   const t = req.cookies?.sessao;
   if (t) sessoes.delete(t);
+  if (t) sessoesRevogadasGOOD.revogarToken(t, dadosDaSessaoAssinada(t)?.e);
   res.clearCookie('sessao');
   return res.json({ ok: true });
 });
@@ -3333,8 +3337,12 @@ function validarSessaoAssinada(token) {
     // e a expiracao antiga menos as 12 h de entao.
     const criadoTok = d.c || (d.e ? d.e - 12 * 60 * 60 * 1000 : 0);
     if (criadoTok && sessaoMeiaNoite.venceu(criadoTok, 12 * 60 * 60 * 1000)) return null;
+    if (sessoesRevogadasGOOD.revogado(token, { usuario: d.u, criado: criadoTok })) return null;   // b734 (P2-09)
     return { usuario: d.u, tipo: d.t };
   } catch (e) { return null; }
+}
+function dadosDaSessaoAssinada(token) {   // b734: so o payload (sem validar) — pra saber ate quando guardar a revogacao
+  try { return JSON.parse(Buffer.from(String(token).split('.')[0].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString()); } catch (e) { return null; }
 }
 
 function requerLogin(req, res, next) {

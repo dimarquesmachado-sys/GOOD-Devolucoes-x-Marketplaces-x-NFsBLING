@@ -58,6 +58,7 @@
 'use strict';
 const { PREFIXO_SEM_EMPRESA } = require('../../lib/empresas');   // b662 - nunca ler as envs da AMB por fallback
 const sessaoMeiaNoite = require('../../lib/sessao-meia-noite');   // 31/10 - o login acaba na meia-noite (SP)
+const sessoesRevogadas = require('../../lib/sessoes-revogadas');   // b734 (P2-09) - o logout revoga o token assinado
 
 const crypto = require('crypto');
 
@@ -253,6 +254,10 @@ function criar(cfg) {
   const users = parseUsers(process.env[c.envUsers] || '');
   const admins = parseAdmins(process.env[c.envAdmins] || '');
   const minhasSessoes = new Map();   // ⚠️ o mapa e DESTA empresa
+  const revogadas = sessoesRevogadas.criar();   // b734 (P2-09): lista de revogados DESTA empresa
+  const dadosDoToken = (token) => {
+    try { return JSON.parse(Buffer.from(String(token).split('.')[0].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString()); } catch (e) { return null; }
+  };
 
   // b130, restaurado (Codex P1, #295) - a fabrica tinha perdido a
   // assinatura HMAC e ficado so com o Map: um restart do processo (deploy
@@ -279,6 +284,9 @@ function criar(cfg) {
             // 31/10: passou da meia-noite (SP) desde o login -> acabou. Token de antes deste deploy nao traz `c`.
             const criadoTok = dados.c || ((dados.e || 0) - c.validadeMs);
             if (criadoTok > 0 && sessaoMeiaNoite.venceu(criadoTok, c.validadeMs)) return null;
+            // b734 (P2-09): a assinatura so prova que o token e nosso; se ele foi REVOGADO (logout, saida de todos
+            // os aparelhos do usuario), nao vale — antes um token capturado entrava ate a meia-noite
+            if (revogadas.revogado(token, { usuario: dados.u, criado: criadoTok })) return null;
             if (tipoExigido && dados.t !== tipoExigido) return null;
             return { usuario: dados.u, tipo: dados.t, criado: criadoTok };
           } catch (e) { return null; }
@@ -326,7 +334,18 @@ function criar(cfg) {
       return token;
     },
     validarSessao: meuValidar,
-    sair: (token) => minhasSessoes.delete(token),
+    // b734 (P2-09): sair REVOGA o token assinado (nao so o Map); sairDeTodos encerra todas as sessoes do usuario
+    sair: (token) => {
+      minhasSessoes.delete(token);
+      if (!token) return false;
+      const d = dadosDoToken(token);
+      return revogadas.revogarToken(token, d && d.e);
+    },
+    sairDeTodos: (usuario) => {
+      for (const [t, s] of minhasSessoes) if (String(s.usuario).toLowerCase() === String(usuario || '').toLowerCase()) minhasSessoes.delete(t);
+      return revogadas.revogarUsuario(usuario);
+    },
+    revogadas: () => revogadas.tamanho(),
     temUsuarios: () => Object.keys(users).length > 0,
 
     // ⚠️ as 5 abaixo sao COPIA do original, com o estado trocado pelo desta
