@@ -268,6 +268,7 @@ async function chamarBling(caminho, opcoes = {}) {
   };
 
   let _ficha = null;   // 14/10: a ficha da ultima vez dada pelo porteiro — vai nos avisos de ok/429
+  let _saiuEm = Date.now();   // b731 (P2-07): quando ESTA tentativa saiu — sucesso mais velho que um 429 nao limpa a pausa
   // ⚠️ b442: pede a VEZ antes de bater no Bling. `semRitmo` e pro proprio
   // refresh de token, que nao pode ficar preso atras da fila que ele vai
   // destravar (mesmo desenho da GOOD).
@@ -279,10 +280,11 @@ async function chamarBling(caminho, opcoes = {}) {
   } else {
     _ficha = opcoes.ficha || null;   // 14/10 (Codex): quem ja esperou a vez por fora entrega a ficha aqui
   }
+  _saiuEm = Date.now();
 
   try {
     const r = await fazer();
-    ritmo.avisarOk(opcoes.fundo ? 'fundo' : 'operacao', _ficha);
+    ritmo.avisarOk(opcoes.fundo ? 'fundo' : 'operacao', _ficha, _saiuEm);
     return { ok: true, data: r.data, status: r.status };
   } catch (erro) {
     const status = erro.response && erro.response.status;
@@ -346,10 +348,11 @@ async function chamarBling(caminho, opcoes = {}) {
             return { ok: false, status: 0, error: eFila.message, filaEstourou: true };
           }
         } else _ficha = null;
+        _saiuEm = Date.now();   // b731
         try {
           const r = await fazer();
           tokenLeitor.anotarRetry(CHAVE_TOKEN, 'bling', true, 401);
-          ritmo.avisarOk(opcoes.fundo ? 'fundo' : 'operacao', _ficha);
+          ritmo.avisarOk(opcoes.fundo ? 'fundo' : 'operacao', _ficha, _saiuEm);
           return { ok: true, data: r.data, status: r.status };
         } catch (e2) {
           tokenLeitor.anotarRetry(CHAVE_TOKEN, 'bling', false, 401, e2.response && e2.response.status);
@@ -368,10 +371,11 @@ async function chamarBling(caminho, opcoes = {}) {
             return { ok: false, status: 0, error: eFila.message, filaEstourou: true };
           }
         } else _ficha = null;   // 14/10: o retry e outra requisicao — nao reaproveita a ficha da 1a
+        _saiuEm = Date.now();   // b731
         try {
           const r = await fazer();
           tokenLeitor.anotarRetry(CHAVE_TOKEN, 'bling', true, 401);    // b690: o RESULTADO do retry e a evidencia do corte
-          ritmo.avisarOk(opcoes.fundo ? 'fundo' : 'operacao', _ficha);
+          ritmo.avisarOk(opcoes.fundo ? 'fundo' : 'operacao', _ficha, _saiuEm);
           return { ok: true, data: r.data, status: r.status };
         } catch (e2) {
           tokenLeitor.anotarRetry(CHAVE_TOKEN, 'bling', false, 401, e2.response && e2.response.status);
@@ -413,9 +417,10 @@ async function chamarBling(caminho, opcoes = {}) {
           return { ok: false, status: 0, error: eFila.message, filaEstourou: true };
         }
       } else _ficha = null;   // 14/10: idem
+      _saiuEm = Date.now();   // b731
       try {
         const r = await fazer();
-        ritmo.avisarOk(opcoes.fundo ? 'fundo' : 'operacao', _ficha);
+        ritmo.avisarOk(opcoes.fundo ? 'fundo' : 'operacao', _ficha, _saiuEm);
         return { ok: true, data: r.data, status: r.status };
       } catch (e2) {
         // ⚠️ b443 (Codex, P1): o 2o 429 seguido TAMBEM avisa. Sem isto a
