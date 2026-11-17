@@ -662,7 +662,7 @@ const registrarCicloDefeitos = require('../lib/defeitos-ciclo');
 // candidato ja desistido ainda batia no Bling depois de esperar numa pausa
 // de 429. Ver bling-AMB.js, nf-nomes-AMB.js e identificar-AMB.js.
 // 29/10: sem o 'AMB' na frente — a mesma peca serve Girassol, AMB e as proximas; a empresa vai no campo `empresa`
-const VERSAO = 'Devolucoes b731';
+const VERSAO = 'Devolucoes b733';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -2569,7 +2569,9 @@ async function esperarTerminar(nome, status, tetoMs = PREAQ_TETO_MS) {
   // o 1º atraso continua existindo: não competir com o boot da GOOD
   await new Promise((r) => setTimeout(r, Number(envAmb('PREAQUECER_MS') || 180000)));
 
-  if (ml.temToken()) {
+  // b732 (P2-08): "operacional" = token local OU token do dono pela politica (remoto/sombra). Antes `temToken()`
+  // olhava so o local e, em modo remoto sem credencial local, os indices nunca pre-aqueciam.
+  if (await ml.operacional()) {
     // ⚠️ b415 (Codex, P2): se o dono concluir o OAuth do ML DURANTE os 3
     // minutos de espera, o callback ja chama `preAquecer(5000)` — e esta fila
     // chamaria de novo ao acordar. Duas construcoes do mesmo indice, na mesma
@@ -2585,7 +2587,7 @@ async function esperarTerminar(nome, status, tetoMs = PREAQ_TETO_MS) {
     console.log('[amb-devolucoes] ML sem token - indice de devolucoes so apos conectar');
   }
 
-  if (bling.temToken()) {
+  if (await bling.operacional()) {   // b732 (P2-08)
     nfNomes.preAquecer(0);
     // Codex #470: a montagem do nf-nomes pode durar ate o proprio teto de construcao (15-30 min com 300 paginas);
     // com o teto padrao de 8 min a fila soltava o nf-entrada com o nf-nomes ainda varrendo o Bling.

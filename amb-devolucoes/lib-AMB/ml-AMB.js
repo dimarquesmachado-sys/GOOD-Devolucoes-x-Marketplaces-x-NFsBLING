@@ -41,6 +41,21 @@ function criarMl(cfg) {
   const { SEM_EMPRESA } = require('../../lib/empresas');   // b661 - nunca cair na AMB
   // ⚠️ b424: a canonica do contrato (`ambtotal`), nao a curta (`amb`).
   const CHAVE_TOKEN = (cfg && cfg.CHAVE_REGISTRO) || SEM_EMPRESA;   // b661: sem empresa = leitor diz 'desconhecida', nao o token da AMB
+  // b732 (P2-08, auditoria do Codex 15/11) - "TEM TOKEN LOCAL" NAO E "INTEGRACAO OPERACIONAL". Em politica
+  // remota/sombra o access vem do DONO a cada chamada e o local pode nem existir — mas temToken() olhava so o
+  // ACCESS_TOKEN local e, com ele vazio, o pre-aquecimento e as telas davam a integracao como desligada.
+  // REMOTO_VISTO liga quando o leitor entregou um token do dono; operacional() pergunta ao leitor sem gastar nada.
+  let REMOTO_VISTO = false;
+  async function operacional() {
+    if (ACCESS_TOKEN) return true;
+    try {
+      const d = await tokenLeitor.resolverToken(CHAVE_TOKEN, 'ml');
+      // Codex #599: a disponibilidade lembrada acompanha a ULTIMA resolucao — sucesso liga, falha/leitor fora desliga.
+      REMOTO_VISTO = d.usar === 'remoto' && !!d.access;
+      return REMOTO_VISTO;
+    } catch (e) { REMOTO_VISTO = false; /* leitor fora: nao e operacional agora */ }
+    return false;
+  }
   // ⚠️ b396 - A ETIQUETA DO LOG DIZ QUAL EMPRESA.
   //
   // Era `[AMB/...]` fixo. O Render junta o log das duas no MESMO
@@ -305,7 +320,8 @@ async function chamarML(caminho, opcoes = {}) {
   const tokenAgora = async () => {
     const d = await tokenLeitor.resolverToken(CHAVE_TOKEN, 'ml');
     tokenDoDono = d.usar === 'remoto';
-    if (d.usar === 'remoto') return d.access;
+    REMOTO_VISTO = tokenDoDono && !!d.access;   // Codex #599: 'falhar' apaga o que o sucesso anterior lembrou
+    if (d.usar === 'remoto') { REMOTO_VISTO = true; return d.access; }
     if (d.usar === 'falhar') {
       const e = new Error('[token] ' + d.motivo);
       e.semToken = true;
@@ -518,7 +534,8 @@ return {
   quemSouEu,
   testeDeVida,
   userId: () => USER_ID,
-  temToken: () => !!ACCESS_TOKEN,
+  temToken: () => !!ACCESS_TOKEN || REMOTO_VISTO,   // b732: operacional (local OU token do dono ja visto)
+  operacional,                                       // b732: pergunta ao leitor (async) — pro pre-aquecimento no boot
   temCredenciais: () => !!(cfg.ml.clientId && cfg.ml.clientSecret),
   credenciais: () => ({ clientId: cfg.ml.clientId, clientSecret: cfg.ml.clientSecret }),   // b702 (o /ml/setup)
 };
