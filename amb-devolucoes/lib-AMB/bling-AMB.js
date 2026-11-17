@@ -40,6 +40,19 @@ function criarBling(cfg) {
   // `sombra` pra sempre, calado, e so apareceria no dia em que a Girassol
   // renovasse por conta propria e queimasse o token do dono.
   const CHAVE_TOKEN = (cfg && cfg.CHAVE_REGISTRO) || SEM_EMPRESA;   // b661: sem empresa = leitor diz 'desconhecida', nao o token da AMB
+  // b732 (P2-08, auditoria do Codex 15/11) - "TEM TOKEN LOCAL" NAO E "INTEGRACAO OPERACIONAL". Em politica
+  // remota/sombra o access vem do DONO a cada chamada e o local pode nem existir — mas temToken() olhava so o
+  // ACCESS_TOKEN local e, com ele vazio, o pre-aquecimento e as telas davam a integracao como desligada.
+  // REMOTO_VISTO liga quando o leitor entregou um token do dono; operacional() pergunta ao leitor sem gastar nada.
+  let REMOTO_VISTO = false;
+  async function operacional() {
+    if (ACCESS_TOKEN) return true;
+    try {
+      const d = await tokenLeitor.resolverToken(CHAVE_TOKEN, 'bling');
+      if (d.usar === 'remoto' && d.access) { REMOTO_VISTO = true; return true; }
+    } catch (e) { /* leitor fora: nao e operacional agora */ }
+    return !!ACCESS_TOKEN;
+  }
 
   // ⚠️ b442 - O RITMO, POR EMPRESA. Este cliente NAO passava por fila
   // nenhuma: batia direto, tomava 429, esperava 1,5s fixo e batia de novo.
@@ -233,7 +246,7 @@ async function chamarBling(caminho, opcoes = {}) {
   const tokenAgora = async () => {
     const d = await tokenLeitor.resolverToken(CHAVE_TOKEN, 'bling');
     tokenDoDono = d.usar === 'remoto';
-    if (d.usar === 'remoto') return d.access;
+    if (d.usar === 'remoto') { REMOTO_VISTO = true; return d.access; }
     if (d.usar === 'falhar') {
       const e = new Error('[token] ' + d.motivo);
       e.semToken = true;
@@ -678,7 +691,8 @@ return {
   buscarPedidoPorId,
   buscarNFePorId,
   testeDeVida,
-  temToken: () => !!ACCESS_TOKEN,
+  temToken: () => !!ACCESS_TOKEN || REMOTO_VISTO,   // b732: operacional (local OU token do dono ja visto)
+  operacional,                                       // b732: pergunta ao leitor (async) — pro pre-aquecimento no boot
   temCredenciais: () => !!(cfg.bling.clientId && cfg.bling.clientSecret),
   estadoRitmo: () => ritmo.estado(),   // b442: quantos na fila, pausas por 429
   estadoPorteiro: () => ritmo.estadoPorteiro(),   // 09/10: quem consome a cota desta conta (porteiro central)
