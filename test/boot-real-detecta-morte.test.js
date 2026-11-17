@@ -25,6 +25,16 @@ const RAIZ = path.join(__dirname, '..');
   ok(!b.subiu && !b.morreuCedo && /nao respondeu 200/.test(b.motivo) && Date.now() - t0 < 6000, '  processo vivo que nunca responde: falha pelo teto, com motivo (' + b.motivo + ')');
   fs.unlinkSync(path.join(RAIZ, mudo));
 
+  // b738 (Codex #603): resposta com headers e corpo truncado (conexao cai antes do fim) tem que resolver, nao ficar pendente
+  const net = require('net');
+  const { pedir } = require('./_boot-real');
+  const srv = net.createServer((c) => { c.on('error', () => {}); c.once('data', () => { c.write('HTTP/1.1 200 OK\r\nContent-Length: 100\r\n\r\nabc'); c.end(); }); });
+  await new Promise((r) => srv.listen(0, r));
+  const t1 = Date.now();
+  const trunc = await Promise.race([pedir(srv.address().port, '/health', { timeoutMs: 3000 }), new Promise((r) => setTimeout(() => r('PENDENTE'), 6000))]);
+  srv.close();
+  ok(trunc !== 'PENDENTE' && trunc.status === 0 && Date.now() - t1 < 5000, '⚠️ resposta truncada resolve como falha (status 0) em vez de ficar pendente');
+
   console.log('');
   console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
   process.exit(falhas ? 1 : 0);

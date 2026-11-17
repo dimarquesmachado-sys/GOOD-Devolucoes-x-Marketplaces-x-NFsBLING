@@ -12,7 +12,7 @@ let falhas = 0;
 const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o); };
 
 (async () => {
-  const s = await subir({ env: { DEVOLUCOES_DESATIVAR_AMBTOTAL: '1', USERS: 'diego:senha123:Diego', ADMIN_USER: 'diego', SESSION_SECRET: 'segredo-de-teste-da-good-nao-usar' } });
+  const s = await subir({ env: { DEVOLUCOES_DESATIVAR_AMBTOTAL: '1', USERS: 'diego:senha123:Diego', ADMIN_USER: 'diego', GOOD_USERS: 'diego:senha123:Diego', GOOD_ADMIN_USER: 'diego', SESSION_SECRET: 'segredo-de-teste-da-good-nao-usar' } });
   ok(!s.morreuCedo, '⚠️ o server.js NAO morreu no boot' + (s.morreuCedo ? ' — ' + s.motivo + '\n' + s.fimDoLog() : ''));
   ok(s.subiu, '⚠️ o /health respondeu 200 de verdade' + (!s.subiu && !s.morreuCedo ? ' — ' + s.motivo + '\n' + s.fimDoLog() : ''));
   if (s.subiu) {

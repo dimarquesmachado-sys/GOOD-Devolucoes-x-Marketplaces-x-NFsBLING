@@ -17,11 +17,20 @@ function portaLivre() { return new Promise((r) => { const s = net.createServer()
 function pedir(porta, caminho, { metodo = 'GET', cookie = null, corpo = null, timeoutMs = 8000 } = {}) {
   return new Promise((resolve) => {
     const dados = corpo ? JSON.stringify(corpo) : null;
-    const req = http.request({ host: '127.0.0.1', port: porta, path: caminho, method: metodo, headers: Object.assign({}, cookie ? { Cookie: cookie } : {}, dados ? { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(dados) } : {}) }, (res) => {
-      let c = ''; res.on('data', (x) => { c += x; }); res.on('end', () => resolve({ status: res.statusCode, corpo: c, headers: res.headers }));
+    // b738 (Codex #603): todo caminho de falha resolve UMA vez — erro, inatividade do socket, resposta abortada/truncada
+    // (headers e depois queda, sem 'end') e prazo TOTAL da requisicao. Antes, a resposta truncada ficava pendente.
+    let resolvido = false; let prazo = null; let req = null;
+    const fim = (r) => { if (resolvido) return; resolvido = true; clearTimeout(prazo); resolve(r); };
+    const falha = () => { fim({ status: 0, corpo: '', headers: {} }); try { req.destroy(); } catch (e) { /* ja fechou */ } };
+    req = http.request({ host: '127.0.0.1', port: porta, path: caminho, method: metodo, headers: Object.assign({}, cookie ? { Cookie: cookie } : {}, dados ? { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(dados) } : {}) }, (res) => {
+      let c = ''; res.on('data', (x) => { c += x; });
+      res.on('end', () => fim({ status: res.statusCode, corpo: c, headers: res.headers }));
+      res.on('aborted', falha); res.on('error', falha);
+      res.on('close', () => { if (!res.complete) falha(); });
     });
-    req.on('error', () => resolve({ status: 0, corpo: '', headers: {} }));
-    req.setTimeout(timeoutMs, () => { req.destroy(); resolve({ status: 0, corpo: '', headers: {} }); });
+    prazo = setTimeout(falha, timeoutMs);
+    req.on('error', falha);
+    req.setTimeout(timeoutMs, falha);
     if (dados) req.write(dados);
     req.end();
   });
