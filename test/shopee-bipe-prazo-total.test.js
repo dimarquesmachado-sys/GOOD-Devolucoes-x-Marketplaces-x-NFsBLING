@@ -30,6 +30,7 @@ const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o
 
 // proxy local: /interno/devolucoes responde a lista; com ?refresh=1 TRAVA (ou nao), conforme o cenario
 let travarRefresh = false; let travarLista = false; let corpoLento = false; let corpoNuncaTermina = false; const pedidos = [];
+const socketsGotejando = new Set();   // conexoes do proxy cujo corpo nunca termina: o estouro tem que FECHA-LAS
 const proxy = http.createServer((req, res) => {
   pedidos.push(req.url);
   const trava = (travarLista && !/refresh=1|tracking=|pedido=/.test(req.url)) || (travarRefresh && /refresh=1/.test(req.url));
@@ -38,7 +39,7 @@ const proxy = http.createServer((req, res) => {
   // cabecalhos saem logo, corpo atrasa 1500ms (apontamento Codex: o prazo precisa cobrir a leitura do corpo)
   if (corpoLento && !/tracking=|pedido=/.test(req.url)) { res.flushHeaders(); return setTimeout(() => res.end(JSON.stringify({ ok: true, devolucoes: [] })), 1500); }
   // cabecalho 200 sai, o JSON comeca e NUNCA termina (proxy que goteja): so o prazo tira o cliente dali
-  if (corpoNuncaTermina && /refresh=1/.test(req.url)) { res.writeHead(200); res.write('{"ok":true,"devolucoes":['); return; }
+  if (corpoNuncaTermina && /refresh=1/.test(req.url)) { socketsGotejando.add(req.socket); req.socket.once('close', () => socketsGotejando.delete(req.socket)); res.writeHead(200); res.write('{"ok":true,"devolucoes":['); return; }
   // indice de insucesso positivo (BR de insucesso so e achado por aqui)
   if (/tracking=BRINSUCESSO/.test(req.url)) return res.end(JSON.stringify({ ok: true, encontrado: true, devolucao: { order_sn: '250202INSUCES1' } }));
   if (/tracking=|pedido=/.test(req.url)) return res.end(JSON.stringify({ ok: true, encontrado: false }));
@@ -88,6 +89,10 @@ const proxy = http.createServer((req, res) => {
     const tn = Date.now();
     const rN = await mod.acharDevolucao('BR888888888QQ');
     ok(rN.degradado === true && rN.etapa === 'refresh' && Date.now() - tn < 1300, '⚠️ ' + nome + ': corpo que nunca termina → degradado em ' + (Date.now() - tn) + 'ms (etapa ' + rN.etapa + ')');
+    // Codex #608 (3o): o estouro ABORTA a requisicao — a conexao gotejando no proxy fecha; antes ficava aberta pra sempre
+    const tf = Date.now();
+    while (socketsGotejando.size && Date.now() - tf < 1500) await new Promise((r) => setTimeout(r, 25));
+    ok(socketsGotejando.size === 0, '⚠️ ' + nome + ': a conexao do corpo que nunca termina foi FECHADA pelo estouro (' + socketsGotejando.size + ' aberta(s) apos ' + (Date.now() - tf) + 'ms)');
     corpoNuncaTermina = false;
   }
   // cache frio + lista travada (instancia nova da fabrica)
