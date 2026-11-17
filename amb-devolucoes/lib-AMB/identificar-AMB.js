@@ -312,7 +312,9 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
         resultado._shopeeDev = dev; // sinaliza pro bloco shopee abaixo pular a re-busca
       } else {
         resultado._shopeeJaTentado = true;
-        resultado.tentativas.push({ tipo: 'shopee_return', v: 'spx-first', codigo: codigoOriginal, ok: false, status: 404, lista_qtd: infoSPX ? infoSPX.qtd : null, nota: 'nao achou na Shopee - seguindo cascata ML (pode ser insucesso ML/Correios)' });
+        // b743 (V-07): prazo total estourado = 504 degradado (a cascata segue, mas a tela sabe que a Shopee nao respondeu)
+        if (infoSPX && infoSPX.degradado) { resultado.avisos.push({ tipo: 'shopee_degradada', mensagem: `⏱️ Shopee nao respondeu a tempo (${Math.round((infoSPX.decorridoMs || 0) / 1000)}s, etapa ${infoSPX.etapa}) - bipe de novo em instantes` }); }
+        resultado.tentativas.push({ tipo: 'shopee_return', v: 'spx-first', codigo: codigoOriginal, ok: false, status: (infoSPX && infoSPX.degradado) ? 504 : 404, lista_qtd: infoSPX ? infoSPX.qtd : null, degradado: (infoSPX && infoSPX.degradado) ? true : undefined, erro: (infoSPX && infoSPX.degradado) ? infoSPX.motivo : undefined, nota: 'nao achou na Shopee - seguindo cascata ML (pode ser insucesso ML/Correios)' });
       }
     } catch (e) {
       resultado.tentativas.push({ tipo: 'shopee_return', v: 'spx-first', codigo: codigoOriginal, ok: false, status: 500, erro: e.message || String(e) });
@@ -844,9 +846,12 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
         devShopee = infoShopee.hit;
         resultado.tentativas.push({
           tipo: 'shopee_return', v: '3.34.3', codigo: codigoOriginal,
-          ok: !!devShopee, status: devShopee ? 200 : 404,
+          // b743 (V-07): prazo total estourado = 504 DEGRADADO, nao 404 "nao e Shopee"
+          ok: !!devShopee, status: devShopee ? 200 : (infoShopee.degradado ? 504 : 404),
           lista_qtd: infoShopee.qtd, exemplo_tracking: infoShopee.exemplo,
+          erro: infoShopee.degradado ? infoShopee.motivo : undefined, degradado: infoShopee.degradado ? true : undefined,
         });
+        if (infoShopee.degradado) resultado.avisos.push({ tipo: 'shopee_degradada', mensagem: `⏱️ Shopee nao respondeu a tempo (${Math.round((infoShopee.decorridoMs || 0) / 1000)}s, etapa ${infoShopee.etapa}) - bipe de novo em instantes` });
       } catch (e) {
         resultado.tentativas.push({ tipo: 'shopee_return', v: '3.34.3', codigo: codigoOriginal, ok: false, status: 500, erro: e.message || String(e) });
         console.error('[BUSCA][shopee] proxy falhou:', e.message || e);

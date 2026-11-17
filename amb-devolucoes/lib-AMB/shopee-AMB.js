@@ -53,6 +53,8 @@ function criar(cfgEmpresa) {
 const _PREFIXO = String((cfgEmpresa && cfgEmpresa.PREFIXO_ENV) || PREFIXO_SEM_EMPRESA);
 'use strict';
 const { SEM_EMPRESA } = require('../../lib/empresas');   // b661 - nunca cair na AMB
+const { criarPrazo, PrazoEstourado } = require('../../lib/prazo-total');   // b743 (V-07): prazo TOTAL do bipe na Shopee
+const PRAZO_BIPE_MS = Number(process.env.SHOPEE_BIPE_PRAZO_MS) > 0 ? Number(process.env.SHOPEE_BIPE_PRAZO_MS) : 20000;
 
 const URL_PROXY = (process.env.SHOPEE_PROXY_URL || '').replace(/\/+$/, '');
 const KEY_PROXY = process.env.SHOPEE_PROXY_KEY || '';
@@ -98,13 +100,15 @@ const _EST = criarEstadoShopee();
 const SHP = _EST.shp;
 // (SHP.cache -> SHP.cache — b349)
 
-async function buscarDevolucoesProxy(forcar) {
+// b743: `prazo` (opcional) e o relogio unico do bipe — sem ele (pre-aquecimento, espreita) vale o fetch de sempre
+async function buscarDevolucoesProxy(forcar, prazo) {
   if (!cfg.ativo) return null;                     // integracao desligada
   const idade = Date.now() - SHP.cache.ts;
   if (!forcar && SHP.cache.ts > 0 && idade < 5 * 60 * 1000) return SHP.cache.dados;
 
   const url = `${URL_PROXY}/${LOJA}/interno/devolucoes${forcar ? '?refresh=1' : ''}`;
-  const r = await fetch(url, { headers: { 'x-internal-key': KEY_PROXY } });
+  const r = prazo ? await prazo.fetch(url, { headers: { 'x-internal-key': KEY_PROXY } }, forcar ? 'refresh' : 'lista')
+                  : await fetch(url, { headers: { 'x-internal-key': KEY_PROXY } });
   const d = await r.json().catch(() => null);
   if (!d || !d.ok) {
     throw new Error(`proxy shopee (loja ${LOJA}): ` + (d && d.erro ? d.erro : 'HTTP ' + r.status));
@@ -208,7 +212,7 @@ const norm = (s) => String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
  *   ?tracking=BR...   -> indice tracking->pedido dos cancelados (pre-aquecido)
  * Os dois devolvem no MESMO formato dos itens da lista, entao o card trata igual.
  */
-async function consultarPedidoCancelado(codigo) {
+async function consultarPedidoCancelado(codigo, prazo) {
   if (!cfg.ativo) return null;
   const cod = String(codigo || '').trim();
   if (!cod) return null;
@@ -219,19 +223,33 @@ async function consultarPedidoCancelado(codigo) {
     : [`pedido=${encodeURIComponent(cod)}`, `tracking=${encodeURIComponent(cod)}`];
   for (const qs of tentativas) {
     try {
-      const r = await fetch(`${URL_PROXY}/${LOJA}/interno/devolucoes?${qs}`,
-        { headers: { 'x-internal-key': KEY_PROXY } });
+      const r = prazo ? await prazo.fetch(`${URL_PROXY}/${LOJA}/interno/devolucoes?${qs}`, { headers: { 'x-internal-key': KEY_PROXY } }, 'pedido-cancelado:' + qs.split('=')[0])
+                      : await fetch(`${URL_PROXY}/${LOJA}/interno/devolucoes?${qs}`, { headers: { 'x-internal-key': KEY_PROXY } });
       const d = await r.json().catch(() => null);
       if (d && d.ok && d.encontrado && d.devolucao) {
         console.log(`[${_TAG}/SHOPEE] insucesso/cancelado achado via ${qs.split('=')[0]}: ${d.devolucao.order_sn}`);
         return d.devolucao;
       }
-    } catch (e) { /* tenta a proxima via */ }
+    } catch (e) { if (e instanceof PrazoEstourado) throw e; /* tenta a proxima via */ }
   }
   return null;
 }
 
-async function acharDevolucao(codigo) {
+// b743 (V-07): a sequencia inteira (lista → refresh → pedido cancelado) corre num PRAZO TOTAL (SHOPEE_BIPE_PRAZO_MS,
+// 20s). Estourou = resultado DEGRADADO { degradado: true, motivo, etapa } — "a Shopee nao respondeu a tempo" e
+// diferente de "nao e Shopee", e a tela precisa saber qual dos dois foi.
+async function acharDevolucao(codigo, opcoes = {}) {
+  const prazo = criarPrazo(opcoes.prazoMs || PRAZO_BIPE_MS);
+  try {
+    return await _acharDevolucao(codigo, prazo);
+  } catch (e) {
+    if (!(e instanceof PrazoEstourado)) throw e;
+    console.warn(`[${_TAG}/SHOPEE] bipe ${codigo}: ${e.message} - resultado degradado`);
+    return { hit: null, qtd: SHP.cache.ts ? SHP.cache.dados.length : 0, usouRefresh: e.etapa === 'refresh',
+             degradado: true, etapa: e.etapa, motivo: 'Shopee nao respondeu a tempo (' + e.message + ')', decorridoMs: e.decorridoMs };
+  }
+}
+async function _acharDevolucao(codigo, prazo) {
   const vazio = { hit: null, qtd: -1, usouRefresh: false };
   const alvo = norm(codigo);
   if (!alvo || alvo.length < 6) return vazio;
@@ -239,7 +257,7 @@ async function acharDevolucao(codigo) {
   const mTok = String(codigo).toUpperCase().match(/BR[A-Z0-9]{9,}/);
   const alvoTok = mTok ? mTok[0] : null;
 
-  let lista = await buscarDevolucoesProxy(false);
+  let lista = await buscarDevolucoesProxy(false, prazo);
   if (lista === null) return vazio;
 
   const casa = (d) => [d.tracking_number, d.return_sn, d.order_sn].some(v => {
@@ -258,17 +276,17 @@ async function acharDevolucao(codigo) {
   // a devolucao pode ter nascido nos ultimos minutos.
   if (!hit) {
     try {
-      lista = await buscarDevolucoesProxy(true);
+      lista = await buscarDevolucoesProxy(true, prazo);
       usouRefresh = true;
       hit = lista.find(casa) || null;
-    } catch (e) { /* fica com a SHP.cache */ }
+    } catch (e) { if (e instanceof PrazoEstourado) throw e; /* fica com a SHP.cache */ }
   }
 
   // b53 - ULTIMA VIA: nao esta na lista de devolucoes SOLICITADAS. Pode ser
   // INSUCESSO DE ENTREGA (Shopee cancela o pedido, nao abre devolucao) —
   // pergunta direto pra Shopee pelo tracking da etiqueta ou pelo order_sn.
   if (!hit) {
-    const cancelado = await consultarPedidoCancelado(codigo);
+    const cancelado = await consultarPedidoCancelado(codigo, prazo);
     if (cancelado) return { hit: cancelado, qtd: (lista || []).length, usouRefresh, viaPedidoCancelado: true };
   }
   // b263 - os campos novos da Shopee (validos a partir de 17/08/2026) viajam
