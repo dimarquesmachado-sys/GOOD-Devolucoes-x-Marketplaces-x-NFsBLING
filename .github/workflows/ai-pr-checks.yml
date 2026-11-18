@@ -78,14 +78,9 @@ jobs:
           fi
           exit $FALHOU
 
-      - name: Boot real
-        env:
-          ADMIN_KEY: teste
-          PORT: '0'
-        run: |
-          timeout 30 node -e "
-            try {
-              require('./server.js');
-              setTimeout(() => { console.log('BOOT OK'); process.exit(0); }, 5000);
-            } catch (e) { console.log('BOOT FALHOU:', e.message); process.exit(1); }
-          "
+      # b750 (T-06, auditoria do Codex 15/11): o "Boot real" dava require('./server.js') e esperava 5s sem pedir
+      # nada. Agora o smoke sobe o server.js num filho com as 3 empresas e faz requisicoes de verdade (pagina de
+      # entrada, cada script/estilo que ela referencia, login, painel) — ja roda na bateria; aqui fica como passo
+      # nomeado pra aparecer sozinho no log quando quebrar.
+      - name: Boot real (smoke com requisicoes)
+        run: node test/smoke-rotas-empresas.test.js
