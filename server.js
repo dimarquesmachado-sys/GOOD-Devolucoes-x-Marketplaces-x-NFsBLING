@@ -620,7 +620,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.126.268 (b754: V-06 — regra escrita: uma instancia por servico ate o estado sair do processo (ESTADO-MULTILOJA))',   // b744: SEM encadear os builds anteriores — a historia e do git, nao desta linha
+      version: '9.126.269 (b755: H-02 — doc da fusao: corte e do faturamento; contas vivem uma sobra; o que puxar antes de baixar)',   // b744: SEM encadear os builds anteriores — a historia e do git, nao desta linha
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
