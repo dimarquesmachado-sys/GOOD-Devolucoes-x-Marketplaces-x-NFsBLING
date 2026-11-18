@@ -1228,12 +1228,20 @@ async function recadoCiente(id, btn) {
   } catch (e) { btn.disabled = false; btn.textContent = '✓ OK, ciente'; }
 }
 
-function renderizarErro(mensagem, tentativas) {
+function renderizarErro(mensagem, tentativas, avisos) {
   let html = '<div class="card"><div class="erro-box"><strong>❌ ' + escapeHtml(mensagem) + '</strong></div>';
+  // b743 (V-07): uma integracao que NAO RESPONDEU A TEMPO (degradada) e diferente de "nao achei" — o estoquista
+  // precisa saber que vale bipar de novo em vez de concluir que o pacote nao e daquele marketplace
+  const degradadas = (tentativas || []).filter(t => t && t.degradado);
+  if (degradadas.length) {
+    html += '<div class="erro-box" style="margin-top:10px;background:#fff7e6;border-color:#f0a020;"><strong>⏱️ Resposta incompleta:</strong> '
+      + degradadas.map(t => escapeHtml(t.tipo) + ' nao respondeu a tempo').join('; ')
+      + '. O codigo pode SIM ser desse marketplace — bipe de novo em instantes.</div>';
+  }
   if (tentativas?.length) {
     html += '<div class="secao-titulo" style="margin-top:14px;">Tentativas</div><ul class="tentativas-list">';
     tentativas.forEach(t => {
-      html += `<li>${escapeHtml(t.tipo)}: <code>${escapeHtml(String(t.codigo))}</code> → status ${t.status}</li>`;
+      html += `<li>${escapeHtml(t.tipo)}: <code>${escapeHtml(String(t.codigo))}</code> → status ${t.status}${t.degradado ? ' ⏱️ (sem resposta a tempo)' : ''}</li>`;
     });
     html += '</ul>';
   }
