@@ -396,6 +396,37 @@ simulado. Falta a última cópia: o cliente do Bling (`lib/bling.js` × `bling-A
 ⚠️ Voltar para `local` com refresh antigo pode falhar: o dono já pode tê-lo
 consumido.
 
+## ⚠️ Regra: UMA instância por serviço (V-06, b754)
+
+**O Devoluções hoje é um processo só, e precisa continuar assim até que o estado abaixo saia do processo.**
+Não ligar réplica/autoscaling no Render, nem rodar duas cópias do `server.js` no mesmo banco. O
+que aguenta uma segunda instância sem conflito é só o que vive no banco (Supabase) — o resto está
+na memória do processo, e duas instâncias deixam de combinar entre si sem nenhum erro aparecer.
+
+O que é **local ao processo** hoje (medido no código em 18/11/2026, não na página):
+
+| peça | onde | o que acontece com 2 instâncias |
+|---|---|---|
+| filas e ritmo do Bling (`fila`, `filaInterativa`, `filaDeFundo`, pausa de 429, degraus) | `lib/ritmo-bling.js`, `lib/ritmo-por-empresa.js`, `lib/ritmo-porteiro.js` | cada instância acha que está sozinha dentro do limite do Bling: o dobro de chamadas, 429 em cascata, e a pausa de uma não vale pra outra |
+| renovação preventiva de tokens (`REGISTRO`) | `lib/token-preventiva.js` | duas renovam o mesmo refresh de uso único — a segunda queima o token (o parecer de 09/09 já apontava isto no deploy sobreposto; `lib/drenagem.js` cobre só a janela do deploy) |
+| sessões revogadas (`tokens`, `usuarios`) | `lib/sessoes-revogadas.js` (P2-09) | logout numa instância não derruba o cookie na outra; e já não sobrevive ao reinício — a saída é tabela no banco (DDL, decisão do dono) |
+| freio de login (tentativas por usuário/IP) | `app-AMB.js` e `server.js` (`loginBloqueado`, um por app) | o atacante ganha N× mais tentativas |
+| caches de marketplace (`SHP.cache` da Shopee, `TIDX` do Magalu, índices do ML) | `lib-AMB/shopee-AMB.js`, `lib-AMB/magalu-AMB.js`, `server.js` | cada instância refaz o pré-aquecimento inteiro (30–40 s de refresh da Shopee por instância) e as duas disputam o mesmo limite do marketplace |
+| timers de fundo (preventiva, retrofit, varredura Full) | `lib/drenagem.js` registra; cada módulo arma o seu | rodam em dobro; o que era idempotente só pelo banco (reserva `estoque_operacao`, P1-03) continua certo, o resto não |
+| reserva de estoque do ciclo (`estoque_operacao`) | **banco** (P1-03) | ✅ é a única coordenação já durável: update condicional no PostgREST, provada com concorrência (T-03) |
+
+**Antes de qualquer segunda instância, uma destas duas coisas, por peça:**
+
+1. **Executor único** — a rotina roda só em quem detém um *lease* durável (linha no banco com dono e
+   vencimento, renovada por quem a tem; as outras instâncias só servem HTTP). Vale pra timers, preventiva
+   de tokens e pré-aquecimento.
+2. **Coordenação durável** — o estado sai do `Map` e vai pro banco com escrita condicional, como a
+   reserva de estoque: ritmo/pausa do Bling por empresa numa linha (`ultimo_429_em`, `pausa_ate`),
+   sessões revogadas numa tabela, freio de login numa tabela com janela.
+
+Até lá, a réplica não é "mais capacidade": é duas verdades sobre o mesmo limite externo. **Quem for
+mexer em escala lê esta seção primeiro e marca aqui o que já saiu do processo.**
+
 ## O que aprendemos e custou caro
 
 **Fallback para o valor de outra empresa não é compatibilidade — é vazamento
