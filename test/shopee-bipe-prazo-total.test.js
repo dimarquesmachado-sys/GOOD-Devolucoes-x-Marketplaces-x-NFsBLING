@@ -29,11 +29,11 @@ const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o
 }
 
 // proxy local: /interno/devolucoes responde a lista; com ?refresh=1 TRAVA (ou nao), conforme o cenario
-let travarRefresh = false; let travarLista = false; let corpoLento = false; let corpoNuncaTermina = false; const pedidos = [];
+let travarRefresh = false; let travarLista = false; let corpoLento = false; let corpoNuncaTermina = false; let travarPedido = false; let listaVazia = false; const pedidos = [];
 const socketsGotejando = new Set();   // conexoes do proxy cujo corpo nunca termina: o estouro tem que FECHA-LAS
 const proxy = http.createServer((req, res) => {
   pedidos.push(req.url);
-  const trava = (travarLista && !/refresh=1|tracking=|pedido=/.test(req.url)) || (travarRefresh && /refresh=1/.test(req.url));
+  const trava = (travarLista && !/refresh=1|tracking=|pedido=/.test(req.url)) || (travarRefresh && /refresh=1/.test(req.url)) || (travarPedido && /pedido=/.test(req.url));
   if (trava) return;   // nunca responde (o cliente so sai pelo prazo)
   res.setHeader('content-type', 'application/json');
   // cabecalhos saem logo, corpo atrasa 1500ms (apontamento Codex: o prazo precisa cobrir a leitura do corpo)
@@ -43,6 +43,7 @@ const proxy = http.createServer((req, res) => {
   // indice de insucesso positivo (BR de insucesso so e achado por aqui)
   if (/tracking=BRINSUCESSO/.test(req.url)) return res.end(JSON.stringify({ ok: true, encontrado: true, devolucao: { order_sn: '250202INSUCES1' } }));
   if (/tracking=|pedido=/.test(req.url)) return res.end(JSON.stringify({ ok: true, encontrado: false }));
+  if (listaVazia && !/refresh=1/.test(req.url)) return res.end(JSON.stringify({ ok: true, devolucoes: [] }));
   res.end(JSON.stringify({ ok: true, devolucoes: [{ order_sn: '250101ABCDEFG1', tracking_number: 'BR123456789XY', return_sn: '25010100ABCDEF' }] }));
 });
 
@@ -94,6 +95,18 @@ const proxy = http.createServer((req, res) => {
     while (socketsGotejando.size && Date.now() - tf < 1500) await new Promise((r) => setTimeout(r, 25));
     ok(socketsGotejando.size === 0, '⚠️ ' + nome + ': a conexao do corpo que nunca termina foi FECHADA pelo estouro (' + socketsGotejando.size + ' aberta(s) apos ' + (Date.now() - tf) + 'ms)');
     corpoNuncaTermina = false;
+    // Codex #608 (4o): lista inicial VAZIA, indice tracking negativo, `?pedido=` TRAVADO, refresh imediato com a devolucao
+    // recem-criada: tem que achar pelo refresh — so o indice (barato) vai antes do refresh; o get_order_detail fica depois
+    {
+      listaVazia = true; travarPedido = true;
+      const frioP = nome === 'GOOD' ? mod : shopeeAMB.criar({ PREFIXO_ENV: 'TESTE_SHP4_', CHAVE_REGISTRO: 'teste4', EMPRESA: 'teste4', NOME_EMPRESA: 'T4', SIGLA_EMPRESA: 'T4' });
+      const desde = pedidos.length;
+      const rP = await frioP.acharDevolucao('BR123456789XY');
+      const deste = pedidos.slice(desde);
+      ok(rP.hit && rP.hit.order_sn === '250101ABCDEFG1' && !rP.degradado, '⚠️ ' + nome + ': lista vazia + pedido= travado → achou pelo REFRESH (' + (rP.degradado ? 'degradado em ' + rP.etapa : 'ok') + ')');
+      ok(!deste.some((u, i) => /pedido=/.test(u) && deste.slice(i + 1).some((v) => /refresh=1/.test(v))), '  nenhum ?pedido= antes do refresh (' + deste.map((u) => u.replace(/^.*\?/, '?')).join(' ') + ')');
+      listaVazia = false; travarPedido = false;
+    }
   }
   // cache frio + lista travada (instancia nova da fabrica)
   travarLista = true;

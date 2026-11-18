@@ -212,15 +212,16 @@ const norm = (s) => String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
  *   ?tracking=BR...   -> indice tracking->pedido dos cancelados (pre-aquecido)
  * Os dois devolvem no MESMO formato dos itens da lista, entao o card trata igual.
  */
-async function consultarPedidoCancelado(codigo, prazo) {
+// b746 (Codex #608): `vias` limita as consultas — `['tracking']` e o indice pre-aquecido (barato, vai ANTES do
+// refresh); `['pedido']` e o get_order_detail (pode travar: fica DEPOIS do refresh, como na GOOD). Sem `vias`, as duas.
+async function consultarPedidoCancelado(codigo, prazo, vias = ['tracking', 'pedido']) {
   if (!cfg.ativo) return null;
   const cod = String(codigo || '').trim();
   if (!cod) return null;
   // etiqueta de insucesso traz o BR do rastreio; codigo alfanumerico curto e order_sn
   const ehTracking = /^[A-Z]{2}[A-Z0-9]{8,}$/i.test(cod.replace(/[^A-Za-z0-9]/g, ''));
-  const tentativas = ehTracking
-    ? [`tracking=${encodeURIComponent(cod)}`, `pedido=${encodeURIComponent(cod)}`]
-    : [`pedido=${encodeURIComponent(cod)}`, `tracking=${encodeURIComponent(cod)}`];
+  const ordem = ehTracking ? ['tracking', 'pedido'] : ['pedido', 'tracking'];
+  const tentativas = ordem.filter((v) => vias.includes(v)).map((v) => `${v}=${encodeURIComponent(cod)}`);
   for (const qs of tentativas) {
     try {
       const r = prazo ? await prazo.fetch(`${URL_PROXY}/${LOJA}/interno/devolucoes?${qs}`, { headers: { 'x-internal-key': KEY_PROXY } }, 'pedido-cancelado:' + qs.split('=')[0])
@@ -274,11 +275,12 @@ async function _acharDevolucao(codigo, prazo) {
 
   // b743: token BR... que nao casou na lista pode ser INSUCESSO (nunca esta na lista de returns). Consulta o
   // indice ANTES do refresh de 30-40s — senao o prazo total estoura no refresh e o pacote nunca e achado
-  // (mesma ordem da GOOD, v3.48).
-  let jaConsultouCancelado = false;
+  // (mesma ordem da GOOD, v3.48). b746 (Codex #608): SO o indice de tracking vem antes — o `?pedido=`
+  // (get_order_detail) pode travar e comeria o prazo de um refresh que acharia a devolucao recem-criada.
+  let jaConsultouTracking = false;
   if (!hit && alvoTok) {
-    jaConsultouCancelado = true;
-    const cancelado = await consultarPedidoCancelado(codigo, prazo);
+    jaConsultouTracking = true;
+    const cancelado = await consultarPedidoCancelado(codigo, prazo, ['tracking']);
     if (cancelado) return { hit: cancelado, qtd: (lista || []).length, usouRefresh, viaPedidoCancelado: true };
   }
 
@@ -295,8 +297,8 @@ async function _acharDevolucao(codigo, prazo) {
   // b53 - ULTIMA VIA: nao esta na lista de devolucoes SOLICITADAS. Pode ser
   // INSUCESSO DE ENTREGA (Shopee cancela o pedido, nao abre devolucao) —
   // pergunta direto pra Shopee pelo tracking da etiqueta ou pelo order_sn.
-  if (!hit && !jaConsultouCancelado) {
-    const cancelado = await consultarPedidoCancelado(codigo, prazo);
+  if (!hit) {
+    const cancelado = await consultarPedidoCancelado(codigo, prazo, jaConsultouTracking ? ['pedido'] : ['tracking', 'pedido']);
     if (cancelado) return { hit: cancelado, qtd: (lista || []).length, usouRefresh, viaPedidoCancelado: true };
   }
   // b263 - os campos novos da Shopee (validos a partir de 17/08/2026) viajam
