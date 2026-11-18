@@ -662,7 +662,7 @@ const registrarCicloDefeitos = require('../lib/defeitos-ciclo');
 // candidato ja desistido ainda batia no Bling depois de esperar numa pausa
 // de 429. Ver bling-AMB.js, nf-nomes-AMB.js e identificar-AMB.js.
 // 29/10: sem o 'AMB' na frente — a mesma peca serve Girassol, AMB e as proximas; a empresa vai no campo `empresa`
-const VERSAO = 'Devolucoes b759';
+const VERSAO = 'Devolucoes b760';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -1359,7 +1359,9 @@ router.get('/debug/espreita', admin, async (req, res) => {
    Pra mapear com dado real a devolucao do FULL que volta pelo RETIRO (02/10, Marcos Vieira Lima:
    "revisado — solicite a retirada"; etiqueta da retirada sem NF, Ref. ID + codigo de barras) antes
    de programar o "vem pelo RETIRO" na fila e o bipe da etiqueta. So GET, so api.mercadolibre.com, admin. */
-router.get('/api/debug/ml-get', admin, async (req, res) => {
+// b760 (Codex #618): chamada ARBITRARIA ao ML com o token do servidor e /shopee/teste?refresh=1 (refresh de 30-40s no proxy)
+// — o que faz algo alem de ler fica so com a chave, como as outras
+router.get('/api/debug/ml-get', adminSoChave, async (req, res) => {
   const p = String(req.query.path || '').trim();
   if (!p.startsWith('/') || p.startsWith('//')) return res.status(400).json({ ok: false, erro: 'informe ?path=/... (ex.: /orders/2000017621674072)' });
   try {
@@ -1833,7 +1835,7 @@ router.post('/api/defeitos/peca', auth.requerLogin, async (req, res) => {
 });
 
 // ── SHOPEE / MAGALU / NF-ENTRADA (diagnostico e indices) ─────
-router.get('/shopee/teste', admin, async (req, res) => {
+router.get('/shopee/teste', adminSoChave, async (req, res) => {
   try {
     const lista = await shopee.buscarDevolucoesProxy(req.query.refresh === '1');
     res.json({ ok: true, versao: VERSAO, loja: shopee.cfg.loja, ativo: shopee.cfg.ativo,
