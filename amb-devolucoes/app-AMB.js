@@ -662,7 +662,7 @@ const registrarCicloDefeitos = require('../lib/defeitos-ciclo');
 // candidato ja desistido ainda batia no Bling depois de esperar numa pausa
 // de 429. Ver bling-AMB.js, nf-nomes-AMB.js e identificar-AMB.js.
 // 29/10: sem o 'AMB' na frente — a mesma peca serve Girassol, AMB e as proximas; a empresa vai no campo `empresa`
-const VERSAO = 'Devolucoes b756';
+const VERSAO = 'Devolucoes b757';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -712,13 +712,21 @@ const GAVETAS = criarGavetasDaEmpresa();
 
 const ACESSO = GAVETAS.acesso;
 
-function admin(req, res, next) {
+function admin(req, res, next) { return checarAdmin(req, res, next, true); }
+
+// b757 (review do Codex no #618) - ROTAS QUE MUTAM (GET com efeito: renovar token, reconstruir indice) ou que tocam
+// TODAS as empresas NAO aceitam a sessao: o cookie e SameSite=Lax, entao um link de outro site abriria a rota com a
+// sessao do admin logado (CSRF), e a sessao e DA EMPRESA, nao vale pra operacao global. Seguem so com a chave
+// (header ou ?k=), exatamente como eram antes do b756.
+function adminSoChave(req, res, next) { return checarAdmin(req, res, next, false); }
+
+function checarAdmin(req, res, next, aceitaSessao) {
   // b756 (V-03, auditoria do Codex 15/11) - SESSAO DE ADMIN DA EMPRESA VALE, como o adminOk da GOOD (b325) ja fazia:
   // quem esta logado como admin no painel abre /conectar, /config, /auth/diag... sem chave nenhuma na URL. E o
   // caminho humano; o header x-admin-key e o caminho de servico. A querystring segue contada (ACESSO) ate o dono
   // confirmar que nao usa mais link salvo — ai ela sai e a ADMIN_KEY e rotacionada (vazou em log por meses).
   try {
-    if (auth.validarSessao(auth.tokenDaRequisicao(req), 'admin')) return next();
+    if (aceitaSessao && auth.validarSessao(auth.tokenDaRequisicao(req), 'admin')) return next();
   } catch (e) { /* sem cookie ou sessao invalida: cai na chave */ }
   // b256 - ACEITA HEADER (ver a nota longa no server.js). A querystring
   // continua valendo durante a transicao: ele opera por links salvos, e
@@ -1835,7 +1843,7 @@ router.get('/magalu/status', admin, (req, res) => {
   res.json({ ok: true, versao: VERSAO, magalu: magalu.statusIndice() });
 });
 
-router.get('/magalu/indice/construir', admin, (req, res) => {
+router.get('/magalu/indice/construir', adminSoChave, (req, res) => {
   magalu.construirIndice().catch(e => console.error(`[${TAG_APP}/MAGALU]`, e.message));
   res.json({ ok: true, iniciado: true });
 });
@@ -1877,7 +1885,7 @@ router.get('/nf/entrada/indice', admin, (req, res) => {
   res.json({ ok: true, versao: VERSAO, indice: nfEntrada.statusIndice() });
 });
 
-router.get('/nf/entrada/indice/construir', admin, (req, res) => {
+router.get('/nf/entrada/indice/construir', adminSoChave, (req, res) => {
   nfEntrada.construirIndice().catch(e => console.error(`[${TAG_APP}/NF-ENTRADA]`, e.message));
   res.json({ ok: true, iniciado: true });
 });
@@ -1962,14 +1970,14 @@ router.get('/ml/teste', admin, async (req, res) => {
 })();
 
 // b264 - conferir/forcar na hora, sem esperar o timer
-router.get('/ml/token/preventiva', admin, async (req, res) => {
+router.get('/ml/token/preventiva', adminSoChave, async (req, res) => {
   res.json({ ok: true, versao: VERSAO, resultado: await ml.renovacaoPreventiva({ forcar: req.query.forcar === '1' }) });
 });
 
 // b271 - relatorio de TODAS as integracoes registradas, de TODAS as empresas
 // (a lib e quem sabe quem existe). Empresa nova aparece aqui sozinha, sem
 // mexer nesta rota.
-router.get('/tokens/preventiva', admin, async (req, res) => {
+router.get('/tokens/preventiva', adminSoChave, async (req, res) => {
   const { relatorio, listar } = require('../lib/token-preventiva');
   // b272 (review do Codex) - RENOVAR PRIMEIRO, listar DEPOIS. Em objeto
   // literal o `listar()` era avaliado ANTES do `await`, então com ?forcar=1 a
