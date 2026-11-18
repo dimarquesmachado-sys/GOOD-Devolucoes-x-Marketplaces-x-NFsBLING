@@ -194,7 +194,7 @@ Segue as 12 etapas do Codex, com os itens de cada uma. A ordem dentro da etapa �
 |---|---|---|---|
 | T-01 | 🔄 PR #610 b748 | Testes HTTP de papéis, empresa e estados (subir o servidor e bater nas rotas das 3) — `test/http-papeis-empresa-estados.test.js` sobe o `server.js` com GOOD+AMB+Girassol contra um PostgREST falso na porta (`test/_postgrest-falso.js`); V-02 (recados) entra quando o dono disser a regra | P1-04, P1-09, V-02 |
 | T-02 | ⬜ | PostgreSQL descartável com as migrations reais (constraints, FKs, RLS, update condicional) | P1-03, P2-04, H-03 |
-| T-03 | ⬜ | Repetição, concorrência e falha entre ERP e banco | P1-03 |
+| T-03 | 🔄 PR #613 b751 | Repetição, concorrência e falha entre ERP e banco — `test/erp-banco-repeticao-concorrencia.test.js`: supabase-js real contra o PostgREST falso (gancho `interceptar` falha uma escrita específica), rotas no express real, Bling falso contando POSTs; 7 cenários × 3 fichas | P1-03 |
 | T-04 | ⬜ | Navegador real (Playwright): busca, câmera, troca de pacote, painel | P1-01, P1-07, P2-01, V-08 |
 | T-05 | 🔄 PR #611 b749 | Instalação estrita pelo lockfile com Node alinhado (`npm ci`) — workflow `ai-pr-checks` com `npm ci` e `node-version-file: .nvmrc`; `test/lockfile-estrito.test.js` prova `npm ci --dry-run --offline` verde e vermelho com package.json fora do lock | P2-14 |
 | T-06 | 🔄 PR #612 b750 | Smoke que faz requisições reais ao servidor e às rotas de cada empresa — `test/smoke-rotas-empresas.test.js` (página de entrada, todo script/estilo referenciado, `/api/auth/me`, login, painel, nas 3); substitui o "Boot real" do CI que só dava `require` | P2-15 |

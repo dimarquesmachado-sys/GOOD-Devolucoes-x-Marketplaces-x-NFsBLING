@@ -116,6 +116,7 @@ async function subirPostgrest({ tabelas = {}, objetos = {} } = {}) {
   let proximoId = 1000;
   for (const [t, linhas] of Object.entries(tabelas)) dados[t] = linhas.map((l) => Object.assign({}, l));
   const pedidos = [];
+  const ganchos = { interceptar: null };
   const lerCorpo = (req) => new Promise((r) => { let c = ''; req.on('data', (x) => { c += x; }); req.on('end', () => r(c)); });
 
   const servidor = http.createServer(async (req, res) => {
@@ -137,6 +138,13 @@ async function subirPostgrest({ tabelas = {}, objetos = {} } = {}) {
     if (!m) return responder(404, { message: 'rota desconhecida no postgrest falso: ' + u.pathname });
     const tabela = m[1];
     pedidos.push({ metodo: req.method, tabela, query: u.search });
+    // b751 (T-03): `interceptar(pedido)` pode responder no lugar do banco — { status, corpo } (ex.: 500 numa escrita
+    // especifica) ou { atrasoMs } antes de seguir. E assim que se simula o banco falhando ENTRE o ERP e a gravacao.
+    if (typeof ganchos.interceptar === 'function') {
+      const decisao = await ganchos.interceptar({ metodo: req.method, tabela, query: u.search, params: u.searchParams });
+      if (decisao && decisao.status) return responder(decisao.status, decisao.corpo || { message: 'falha simulada', code: String(decisao.status) });
+      if (decisao && decisao.atrasoMs) await new Promise((r) => setTimeout(r, decisao.atrasoMs));
+    }
     if (!dados[tabela]) dados[tabela] = [];
     const linhas = dados[tabela];
     const prefer = String(req.headers.prefer || '');
@@ -214,6 +222,7 @@ async function subirPostgrest({ tabelas = {}, objetos = {} } = {}) {
     url: 'http://127.0.0.1:' + porta,
     porta,
     pedidos,
+    ganchos,   // ganchos.interceptar = async ({ metodo, tabela, query, params }) => null | { status, corpo } | { atrasoMs }
     tabela: (t) => { if (!dados[t]) dados[t] = []; return dados[t]; },   // cria ao tocar: da pra semear depois de subir
     parar: () => new Promise((r) => servidor.close(() => r())),
   };

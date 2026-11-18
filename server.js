@@ -620,7 +620,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.126.264 (b750: T-06 — smoke sobe o servidor com as 3 empresas e pede pagina, scripts, login e painel de cada uma)',   // b744: SEM encadear os builds anteriores — a historia e do git, nao desta linha
+      version: '9.126.265 (b751: T-03 — repeticao, concorrencia e falha ERP x banco pelo protocolo PostgREST real, nas 3 fichas)',   // b744: SEM encadear os builds anteriores — a historia e do git, nao desta linha
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
