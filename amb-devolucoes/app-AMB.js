@@ -662,7 +662,7 @@ const registrarCicloDefeitos = require('../lib/defeitos-ciclo');
 // candidato ja desistido ainda batia no Bling depois de esperar numa pausa
 // de 429. Ver bling-AMB.js, nf-nomes-AMB.js e identificar-AMB.js.
 // 29/10: sem o 'AMB' na frente — a mesma peca serve Girassol, AMB e as proximas; a empresa vai no campo `empresa`
-const VERSAO = 'Devolucoes b757';
+const VERSAO = 'Devolucoes b758';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -845,7 +845,7 @@ router.get('/status', (req, res) => {
 });
 
 // @fabrica-modulo lib-AMB/diagnostico-AMB.js#diagnostico
-require('./lib-AMB/diagnostico-AMB')(router, { cfg, BASE, bling, ml, mlReturns, nfNomes, tokens, shopee, emailAMB, NOME_EMPRESA, VERSAO, admin, TRIAGEM, redirectOAuth });   // @fabrica-chamada
+require('./lib-AMB/diagnostico-AMB')(router, { cfg, BASE, bling, ml, mlReturns, nfNomes, tokens, shopee, emailAMB, NOME_EMPRESA, VERSAO, admin, adminSoChave, TRIAGEM, redirectOAuth });   // @fabrica-chamada
 
 // ── A TELA DO GALPAO ─────────────────────────────────────────
 // O arquivo se chama index-AMB.html (e nao index.html) porque no

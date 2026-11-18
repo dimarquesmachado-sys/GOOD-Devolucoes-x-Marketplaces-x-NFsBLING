@@ -58,11 +58,11 @@ const CHAVE = 'chave-admin-de-teste-que-nao-e-a-de-producao';
       const linksK = (conectarK.corpo.match(/href="[^"]*[?&]k=[^"]*"/g) || []);
       ok(conectarK.status === 200 && linksK.length >= 6, '  /conectar por ?k= (link salvo) segue abrindo e mantem a chave nos links durante a transicao (' + linksK.length + ')');
       // b757 (review do Codex no #618): rota que muta ou e global NAO abre por sessao (CSRF via SameSite=Lax; sessao e da empresa)
-      for (const rotaSensivel of ['/tokens/preventiva?forcar=1', '/ml/token/preventiva?forcar=1', '/nf/entrada/indice/construir', '/magalu/indice/construir']) {
+      for (const rotaSensivel of ['/tokens/preventiva?forcar=1', '/ml/token/preventiva?forcar=1', '/nf/entrada/indice/construir', '/magalu/indice/construir', '/ml/indice/construir', '/nf/indice/construir']) {
         const porSessao = await s.pedir(e.rota + rotaSensivel, { cookie: dono });
         ok(porSessao.status === 404, '⚠️ ' + rotaSensivel + ' por SESSAO: 404, so a chave abre (' + porSessao.status + ')');
       }
-      const chaveErrada =await s.pedir(e.rota + '/auth/diag?k=errada');
+      const chaveErrada = await s.pedir(e.rota + '/auth/diag?k=errada');
       ok(chaveErrada.status === 404, '  chave errada: 404');
     }
     console.log('\n── entre empresas');
