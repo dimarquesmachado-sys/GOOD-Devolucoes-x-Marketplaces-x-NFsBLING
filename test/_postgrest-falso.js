@@ -108,7 +108,10 @@ function projetar(linha, select) {
   return fora;
 }
 
-async function subirPostgrest({ tabelas = {} } = {}) {
+// `objetos`: { 'bucket/caminho.jpg': Buffer } — um Storage minusculo, servido em /storage/v1/object/<bucket>/<caminho>
+// (download autenticado do supabase-js) e /storage/v1/object/public/<bucket>/<caminho> (URL publica). b748 (Codex #610):
+// e o que permite exigir 200 + bytes da foto da propria empresa, em vez de aceitar "qualquer coisa que nao seja 404".
+async function subirPostgrest({ tabelas = {}, objetos = {} } = {}) {
   const dados = {};
   let proximoId = 1000;
   for (const [t, linhas] of Object.entries(tabelas)) dados[t] = linhas.map((l) => Object.assign({}, l));
@@ -122,6 +125,15 @@ async function subirPostgrest({ tabelas = {} } = {}) {
       res.writeHead(status, Object.assign({ 'content-type': 'application/json' }, extra));
       res.end(corpo == null ? '' : JSON.stringify(corpo));
     };
+    const st = /^\/storage\/v1\/object\/(?:public\/)?(.+)$/.exec(u.pathname);
+    if (st) {
+      const chave = decodeURIComponent(st[1]);
+      pedidos.push({ metodo: req.method, tabela: 'storage:' + chave, query: u.search });
+      const obj = objetos[chave];
+      if (!obj) return responder(404, { statusCode: '404', error: 'not_found', message: 'Object not found' });
+      res.writeHead(200, { 'content-type': obj.tipo || 'application/octet-stream', 'content-length': obj.bytes.length });
+      return res.end(obj.bytes);
+    }
     if (!m) return responder(404, { message: 'rota desconhecida no postgrest falso: ' + u.pathname });
     const tabela = m[1];
     pedidos.push({ metodo: req.method, tabela, query: u.search });

@@ -25,7 +25,10 @@ const URL_FOTO = (pgUrl, chave) => `${pgUrl}/storage/v1/object/public/fotos-prob
 (async () => {
   // ── banco: um pedido pendente de DESCARTE por empresa (descarte nao toca o Bling) + a devolucao dona de uma foto ──
   const tabelas = {};
-  const pg = await subirPostgrest({ tabelas });
+  const objetos = {};   // Storage falso: a foto de cada empresa, com bytes proprios
+  const pg = await subirPostgrest({ tabelas, objetos });
+  const FOTO = (e) => `fotos-problema/${e.chaveDados}/foto-${e.nome}.jpg`;
+  for (const e of EMPRESAS) objetos[FOTO(e)] = { tipo: 'image/jpeg', bytes: Buffer.from('\xff\xd8\xff\xe0 JPEG-' + e.nome, 'latin1') };
   for (const e of EMPRESAS) {
     tabelas['defeito_pedidos' + e.sufixo] = [
       { id: 10, status: 'pendente', tipo: 'descarte', defeito_id: 100, sku: 'SKU-' + e.nome, quantidade: 1 },
@@ -53,9 +56,10 @@ const URL_FOTO = (pgUrl, chave) => `${pgUrl}/storage/v1/object/public/fotos-prob
     env[e.prefixo + 'SESSION_SECRET'] = 'segredo-da-' + e.chaveDados + '-so-pra-teste-0123456789';
   }
   const s = await subir({ env, tetoMs: 45000 });
+  try {
   ok(!s.morreuCedo, '⚠️ o server.js NAO morreu no boot com as 3 empresas' + (s.morreuCedo ? ' — ' + s.motivo + '\n' + s.fimDoLog() : ''));
   ok(s.subiu, '⚠️ /health 200' + (!s.subiu && !s.morreuCedo ? ' — ' + s.motivo + '\n' + s.fimDoLog() : ''));
-  if (!s.subiu) { s.matar(); await pg.parar(); console.log('=== 1 FALHA(S)'); process.exit(1); }
+  if (!s.subiu) throw new Error('o servidor nao subiu');
 
   const sessoes = {};   // nome -> { esto, dono } cookies
   async function login(e, usuario, senha) {
@@ -65,8 +69,10 @@ const URL_FOTO = (pgUrl, chave) => `${pgUrl}/storage/v1/object/public/fotos-prob
   }
   const decidir = (e, id, acao, cookie) => s.pedir(`${e.rota}/api/defeitos/pedido/${id}/decidir`, { metodo: 'POST', cookie, corpo: { acao } });
 
+  const janelas = {};   // nome -> [inicio, fim) no log de requisicoes do banco: so o que ESTA empresa provocou
   for (const e of EMPRESAS) {
     console.log('\n── ' + e.nome + ' (' + (e.rota || '/') + ', tabelas *' + (e.sufixo || '(sem sufixo)') + ')');
+    janelas[e.nome] = [pg.pedidos.length, null];
     const esto = await login(e, 'esto', 's1');
     const dono = await login(e, 'dono', 's2');
     ok(esto.status === 200 && esto.cookie && esto.tipo !== 'admin', '  login estoquista ok (tipo ' + esto.tipo + ', cookie ' + e.cookie + ')');
@@ -107,16 +113,19 @@ const URL_FOTO = (pgUrl, chave) => `${pgUrl}/storage/v1/object/public/fotos-prob
     ok((await decidir(e, 10, 'teleportar', dono.cookie)).status === 400, '  acao desconhecida = 400');
     const dev = pg.tabela('devolucoes' + e.sufixo).find((d) => d.id === 100);
     ok(/DESCARTE AUTORIZADO/.test(String(dev.estado_atual || '')), '  a devolucao dona do pedido recebeu a decisao (' + String(dev.estado_atual || '').slice(0, 30) + '…)');
+    janelas[e.nome][1] = pg.pedidos.length;
   }
 
   // ── empresa: cada uma so tocou a sua tabela ──
   console.log('\n── isolamento entre empresas');
+  // Codex #610: dentro da JANELA de cada empresa, TODA escrita nas tabelas do ciclo tem que ser na tabela dela —
+  // uma escrita fora (ex.: AMB comentando na `defeito_comentarios` da GOOD) e rejeitada, nao contada pra outra
   for (const e of EMPRESAS) {
-    const outras = EMPRESAS.filter((o) => o !== e);
-    // as escritas desta empresa (PATCH/POST em defeito_pedidos*/devolucoes*/defeito_comentarios*) foram so no sufixo dela
-    const escritas = pg.pedidos.filter((p) => (p.metodo === 'PATCH' || p.metodo === 'POST') && /^(defeito_pedidos|devolucoes|defeito_comentarios)/.test(p.tabela));
-    const daEmpresa = escritas.filter((p) => p.tabela.endsWith(e.sufixo) && !outras.some((o) => o.sufixo && p.tabela.endsWith(o.sufixo)));
-    ok(daEmpresa.length > 0, '  ' + e.nome + ' escreveu em tabelas *' + (e.sufixo || '(sem sufixo)') + ' (' + daEmpresa.length + ' escritas)');
+    const [ini, fim] = janelas[e.nome];
+    const escritas = pg.pedidos.slice(ini, fim).filter((p) => (p.metodo === 'PATCH' || p.metodo === 'POST' || p.metodo === 'DELETE') && /^(defeito_pedidos|devolucoes|defeito_comentarios|pecas_retiradas)/.test(p.tabela));
+    const minhas = (t) => new RegExp('^(defeito_pedidos|devolucoes|defeito_comentarios|pecas_retiradas)' + e.sufixo + '$').test(t);
+    const fora = escritas.filter((p) => !minhas(p.tabela));
+    ok(escritas.length > 0 && fora.length === 0, '⚠️ ' + e.nome + ': todas as ' + escritas.length + ' escritas da sua janela foram em tabelas *' + (e.sufixo || '(sem sufixo)') + (fora.length ? ' — FORA: ' + fora.map((p) => p.metodo + ' ' + p.tabela).join(', ') : ''));
   }
   for (const e of EMPRESAS) for (const o of EMPRESAS) {
     if (e === o) continue;
@@ -134,15 +143,20 @@ const URL_FOTO = (pgUrl, chave) => `${pgUrl}/storage/v1/object/public/fotos-prob
   for (const e of EMPRESAS.slice(1)) {
     const outra = EMPRESAS.find((o) => o !== e && o.rota);
     const minha = await s.pedir(`${e.rota}/api/admin/foto/${e.chaveDados}/foto-${e.nome}.jpg`, { cookie: sessoes[e.nome].dono });
-    ok(minha.status !== 404 || !/nesta empresa/.test(minha.corpo), '  ' + e.nome + ': foto da propria empresa passa na conferencia da dona (' + minha.status + ')');
+    // Codex #610: exige a ENTREGA — 200, image/jpeg e os bytes desta empresa (um 401/500/timeout nao passa por "nao e 404")
+    ok(minha.status === 200 && /image\/jpeg/.test(String(minha.headers['content-type'])) && minha.corpo.includes('JPEG-' + e.nome), '⚠️ ' + e.nome + ': foto da propria empresa = 200 image/jpeg com os bytes dela (' + minha.status + ', ' + String(minha.headers['content-type']) + ')');
     const alheia = await s.pedir(`${e.rota}/api/admin/foto/${outra.chaveDados}/foto-${outra.nome}.jpg`, { cookie: sessoes[e.nome].dono });
     ok(alheia.status === 404 && /nesta empresa/.test(alheia.corpo), '⚠️ ' + e.nome + ': foto da ' + outra.nome + ' = 404 "nao encontrada nesta empresa" (' + alheia.status + ')');
     const semAdmin = await s.pedir(`${e.rota}/api/admin/foto/${e.chaveDados}/foto-${e.nome}.jpg`, { cookie: sessoes[e.nome].esto });
     ok(semAdmin.status === 401, '  ' + e.nome + ': estoquista no proxy de fotos = 401 (' + semAdmin.status + ')');
   }
 
-  s.matar();
-  await pg.parar();
+  } finally {
+    // Codex #610: o filho (server.js real) e o banco falso morrem TAMBEM quando uma asserção estoura — senao o
+    // servidor ficava orfao, com listener e rotinas de fundo, depois do teste vermelho
+    s.matar();
+    await pg.parar();
+  }
   console.log('');
   console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
   process.exit(falhas ? 1 : 0);
