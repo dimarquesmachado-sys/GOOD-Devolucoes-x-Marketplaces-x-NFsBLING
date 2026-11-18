@@ -5,7 +5,8 @@ require('./_fonte-painel');   // fatia 0 (docs/MODULARIZACAO.md): le o painel co
 // que ela entrega a qualquer painel do Devolucoes que abrir (GOOD_BRIDGE_FALHAS_REGISTRO). Aqui o painel:
 //   - regrava as pendencias DESTA empresa (a sessao admin daqui so vale aqui), manda limpar as que gravou, avisa o resto;
 //   - ao gerar NF, se nem o painel nem a extensao registraram, AVISA que a NF existe no Bling (antes: catch mudo).
-// A extensao-bridge/ deste repo esta congelada desde 28/08 — nao se mexe nela.
+// A extensao-bridge/ deste repo (congelada desde 28/08) foi APAGADA no b753 (H-10): a extensao viva e a Toolbox do
+// Mover-Pedidos (good-toolbox-extensao/). Este teste le o PAINEL, que e o lado deste repo.
 // Roda com: node test/painel-registro-pendente-da-bridge.test.js
 
 const fs = require('fs');
@@ -98,7 +99,9 @@ const FALHAS = [
     const v = PAINEL.match(new RegExp(m + '\\.js\\?v=b(\\d+)'));
     ok(v && Number(v[1]) >= 719, `  ${m}.js?v=b${v ? v[1] : '?'} (>= b719)`);
   }
-  ok(!fs.existsSync(path.join(RAIZ, 'test', 'extensao-empresa-em-todas-as-etapas.test.js')), '  a extensao-bridge/ congelada nao foi mexida (sem teste pra ela aqui; a viva e a Toolbox)');
+  // b753 (H-10): a copia congelada saiu do repo — se voltar, alguem vai auditar codigo morto de novo (foi o que o Codex fez em 15/11)
+  ok(!fs.existsSync(path.join(RAIZ, 'extensao-bridge')), '⚠️ H-10: a extensao-bridge/ congelada NAO esta mais no repo (a extensao viva e a Toolbox do Mover-Pedidos)');
+  ok(!fs.existsSync(path.join(RAIZ, 'test', 'extensao-empresa-em-todas-as-etapas.test.js')), '  nenhum teste da extensao mora aqui (a viva e a Toolbox)');
 
   console.log('');
   console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
