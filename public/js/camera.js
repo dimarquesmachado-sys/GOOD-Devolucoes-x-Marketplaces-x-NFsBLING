@@ -157,11 +157,28 @@ function capturarFoto() {
 // subia = 'descartado': nem grava, nem mexe no fluxo novo.
 let _seqFotoCamera = 0;
 function registrarFotoPendente(lista, blob) {
-  const entrada = { id: 'foto-' + (++_seqFotoCamera) + '-' + Date.now().toString(36), url: null, uploading: true, blob };
+  const entrada = { id: 'foto-' + (++_seqFotoCamera) + '-' + Date.now().toString(36), url: null, uploading: true, blob, previewUrl: null };
   lista.push(entrada);
   return entrada;
 }
+// b761 (V-08): o preview da foto pendente e UM blob: URL por foto, criado uma vez e REVOGADO quando a foto deixa
+// de estar pendente (subiu, falhou, foi removida ou o fluxo trocou). Antes, cada redesenho da tira de miniaturas
+// criava um createObjectURL novo e nenhum era revogado — num turno de centenas de fotos o navegador do celular
+// segurava todos os blobs ate a aba fechar.
+function previewDaFotoPendente(entrada) {
+  if (!entrada.previewUrl) {
+    try { entrada.previewUrl = URL.createObjectURL(entrada.blob); } catch (e) { entrada.previewUrl = null; }
+  }
+  return entrada.previewUrl;
+}
+function soltarPreview(entrada) {
+  if (entrada && entrada.previewUrl) {
+    try { URL.revokeObjectURL(entrada.previewUrl); } catch (e) { /* ja revogado */ }
+    entrada.previewUrl = null;
+  }
+}
 function concluirUploadDeFoto(entrada, resultado) {
+  soltarPreview(entrada);   // subiu, falhou ou foi descartada: o blob local nao serve mais
   const lista = window.fotosUploadadas || [];
   const i = lista.indexOf(entrada);
   if (i < 0) return 'descartado';
@@ -176,7 +193,8 @@ function concluirUploadDeFoto(entrada, resultado) {
 
 function removerFotoCamera(idx) {
   if (!window.fotosUploadadas) return;
-  window.fotosUploadadas.splice(idx, 1);
+  const [removida] = window.fotosUploadadas.splice(idx, 1);
+  soltarPreview(removida);
   atualizarCameraUI();
 }
 
@@ -240,10 +258,8 @@ function atualizarCameraUI() {
     const delBtn = `<button class="del-thumb" onclick="removerFotoCamera(${i})">✕</button>`;
     if (f.uploading) {
       // Mostra placeholder durante upload (pode usar URL local do blob)
-      let preview = '';
-      try {
-        preview = `<img src="${URL.createObjectURL(f.blob)}" alt="">`;
-      } catch (e) {}
+      const urlPreview = previewDaFotoPendente(f);   // b761: um blob: por foto, nao um por redesenho
+      const preview = urlPreview ? `<img src="${urlPreview}" alt="">` : '';
       return `<div class="camera-thumb">
         ${preview}
         ${numHtml}

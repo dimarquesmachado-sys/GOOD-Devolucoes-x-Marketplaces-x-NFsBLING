@@ -26,9 +26,10 @@ function fonte(nome) {
   for (; k < SRC.length; k++) { if (SRC[k] === '{') p++; else if (SRC[k] === '}') { p--; if (p === 0) break; } }
   return SRC.slice(i, k + 1);
 }
-const ctx = { window: { fotosUploadadas: [] }, Date };
+const ctx = { window: { fotosUploadadas: [] }, Date, URL: { revokeObjectURL() {}, createObjectURL() { return 'blob:x'; } } };
 vm.createContext(ctx);
-vm.runInContext('let _seqFotoCamera = 0;\n' + fonte('registrarFotoPendente') + '\n' + fonte('concluirUploadDeFoto'), ctx);
+// b761 (V-08): concluirUploadDeFoto solta o preview (soltarPreview) — entra no contexto junto
+vm.runInContext('let _seqFotoCamera = 0;\n' + fonte('registrarFotoPendente') + '\n' + fonte('soltarPreview') + '\n' + fonte('concluirUploadDeFoto'), ctx);
 const { registrarFotoPendente, concluirUploadDeFoto } = ctx;
 ok(typeof registrarFotoPendente === 'function' && typeof concluirUploadDeFoto === 'function', 'camera.js tem registrarFotoPendente e concluirUploadDeFoto');
 

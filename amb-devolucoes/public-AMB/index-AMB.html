@@ -766,7 +766,7 @@
   <script src="js-AMB/helpers.js?v=b478"></script>
   <script src="js-AMB/auth.js?v=b744"></script>
   <script src="js-AMB/scanner.js?v=b478"></script>
-  <script src="js-AMB/camera.js?v=b716"></script>
+  <script src="js-AMB/camera.js?v=b761"></script>
   <script src="js-AMB/bipagem.js?v=b667"></script>
   <script src="js-AMB/busca.js?v=b743"></script>
   <script src="https://cdn.jsdelivr.net/npm/qz-tray@2.2.4/qz-tray.js"></script>
@@ -1013,6 +1013,7 @@
       for (var i = 0; i < inp.files.length && i < 8; i++) {
         var img = document.createElement('img');
         img.style.cssText = 'width:56px;height:56px;object-fit:cover;border-radius:7px;border:1px solid #ddd;';
+        img.onload = function () { URL.revokeObjectURL(this.src); };   // b761 (V-08): solta o blob assim que a miniatura pintou
         img.src = URL.createObjectURL(inp.files[i]);
         box.appendChild(img);
       }

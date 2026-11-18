@@ -400,6 +400,7 @@
     for (var i = 0; i < inp.files.length && i < 8; i++) {
       var img = document.createElement('img');
       img.style.cssText = 'width:56px;height:56px;object-fit:cover;border-radius:7px;border:1px solid #ddd;';
+      img.onload = function () { URL.revokeObjectURL(this.src); };   // b761 (V-08): solta o blob assim que a miniatura pintou
       img.src = URL.createObjectURL(inp.files[i]);
       box.appendChild(img);
     }
