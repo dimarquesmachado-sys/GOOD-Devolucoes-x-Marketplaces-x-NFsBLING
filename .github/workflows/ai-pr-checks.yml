@@ -48,6 +48,11 @@ jobs:
             }
           "
 
+      # b752 (T-04): o navegador do test/navegador-real.test.js. Pinado pelo lock (playwright 1.63.0 em devDependencies);
+      # so o binario do Chromium vem daqui. Sem ele o teste FALHA dizendo o que falta — nao pula.
+      - name: Chromium do Playwright
+        run: npx playwright install --with-deps chromium
+
       - name: Sintaxe
         run: |
           for f in server.js amb-devolucoes/app-AMB.js lib/*.js; do
