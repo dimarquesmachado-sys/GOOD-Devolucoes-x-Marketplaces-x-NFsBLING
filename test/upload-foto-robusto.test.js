@@ -35,7 +35,8 @@ const PKG = JSON.parse(fs.readFileSync(path.join(RAIZ, 'package.json'), 'utf8'))
 const LOCK = JSON.parse(fs.readFileSync(path.join(RAIZ, 'package-lock.json'), 'utf8'));
 ok(/^\^2\./.test(PKG.dependencies.multer) && /^2\./.test(LOCK.packages['node_modules/multer'].version), '  package.json pede ^2 e o lock resolve 2.x');
 ok(PKG.engines.node === '>=22.0.0' && LOCK.packages[''].engines.node === '>=22.0.0', '⚠️ P2-14: manifesto e lock dizem Node >=22 (o que o Supabase do lock exige e o CI usa)');
-ok(/node-version: '22'/.test(fs.readFileSync(path.join(RAIZ, '.github', 'workflows', 'ai-pr-checks.yml'), 'utf8')), '  CI em Node 22');
+// b749 (T-05): o CI le o Node do `.nvmrc` (node-version-file), nao crava o numero no workflow
+ok(/node-version-file:\s*['"]?\.nvmrc/.test(fs.readFileSync(path.join(RAIZ, '.github', 'workflows', 'ai-pr-checks.yml'), 'utf8')) && fs.readFileSync(path.join(RAIZ, '.nvmrc'), 'utf8').trim() === '22', '  CI em Node 22 (pelo .nvmrc)');
 
 // ── o servidor ──
 function multipart(partes, boundary = 'XxBOUNDARYxX') {

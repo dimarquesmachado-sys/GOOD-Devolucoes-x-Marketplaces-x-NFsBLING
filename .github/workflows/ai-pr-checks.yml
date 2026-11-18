@@ -23,24 +23,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # b749 (T-05, auditoria do Codex 15/11): a versao do Node vem do `.nvmrc` — o mesmo arquivo que o
+      # `test/lockfile-estrito.test.js` confere contra `engines` do package.json. Um lugar so.
       - uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version-file: '.nvmrc'
 
-      # b212: `npm install`, sem depender do package-lock.
-      #
-      # O `package-lock.json` NAO esta no repositorio (so existe na minha
-      # maquina), entao `npm ci` falha no runner com EUSAGE — e o passo
-      # seguia como se tivesse instalado. Resultado: 6 testes quebravam por
-      # falta de `axios`, e o log dizia so "FALHOU".
-      #
-      # `set -e` + `|| exit 1` pra falhar AQUI se a instalacao nao der certo,
-      # em vez de deixar o erro aparecer 6 passos adiante disfarcado de bug.
-      - name: Instalar as dependencias
+      # b212: `npm install`, sem depender do package-lock — o lock NAO estava no repositorio e `npm ci`
+      # falhava no runner com EUSAGE, com o passo seguindo como se tivesse instalado.
+      # b749 (T-05): o lock ESTA no repositorio (lockfileVersion 3, mantido nos P2-17a/b/c). Agora a instalacao e
+      # ESTRITA: `npm ci` instala exatamente o que o lock diz e falha se package.json e lock divergirem — assim o
+      # runner roda o que o dono roda, e nenhum pacote entra fora do lock (o `node-fetch@^2 --no-save` que vinha
+      # aqui nao e exigido por nenhum arquivo do repo; saiu).
+      - name: Instalar as dependencias (estrito pelo lockfile)
         run: |
           set -e
-          npm install --silent || { echo "npm install FALHOU"; exit 1; }
-          npm install node-fetch@^2 --no-save --silent
+          npm ci --no-audit --no-fund || { echo "npm ci FALHOU: package.json e package-lock.json divergem, ou o lock nao resolve"; exit 1; }
           echo "instalados:"
           node -e "
             const p = require('./package.json');
