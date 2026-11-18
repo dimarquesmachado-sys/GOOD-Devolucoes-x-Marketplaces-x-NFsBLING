@@ -62,6 +62,11 @@ const CHAVE = 'chave-admin-de-teste-que-nao-e-a-de-producao';
         const porSessao = await s.pedir(e.rota + rotaSensivel, { cookie: dono });
         ok(porSessao.status === 404, '⚠️ ' + rotaSensivel + ' por SESSAO: 404, so a chave abre (' + porSessao.status + ')');
       }
+      // b759 (Codex #618): ?coletar=1 dispara coleta na ponte TikTok — so com a chave; a leitura segue por sessao
+      const coletaSessao = await s.pedir(e.rota + '/api/debug/tiktok-devolucoes?coletar=1&dias=60', { cookie: dono });
+      ok(coletaSessao.status === 404, '⚠️ tiktok-devolucoes?coletar=1 por SESSAO: 404 (' + coletaSessao.status + ')');
+      const leituraSessao = await s.pedir(e.rota + '/api/debug/tiktok-devolucoes', { cookie: dono });
+      ok(leituraSessao.status !== 404, '  tiktok-devolucoes so leitura por sessao segue abrindo (' + leituraSessao.status + ')');
       const chaveErrada = await s.pedir(e.rota + '/auth/diag?k=errada');
       ok(chaveErrada.status === 404, '  chave errada: 404');
     }

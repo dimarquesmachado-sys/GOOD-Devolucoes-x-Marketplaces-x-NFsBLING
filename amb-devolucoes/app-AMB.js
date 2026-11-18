@@ -662,7 +662,7 @@ const registrarCicloDefeitos = require('../lib/defeitos-ciclo');
 // candidato ja desistido ainda batia no Bling depois de esperar numa pausa
 // de 429. Ver bling-AMB.js, nf-nomes-AMB.js e identificar-AMB.js.
 // 29/10: sem o 'AMB' na frente — a mesma peca serve Girassol, AMB e as proximas; a empresa vai no campo `empresa`
-const VERSAO = 'Devolucoes b758';
+const VERSAO = 'Devolucoes b759';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -1368,7 +1368,13 @@ router.get('/api/debug/ml-get', admin, async (req, res) => {
   } catch (e) { return res.status(502).json({ ok: false, erro: String((e && e.message) || e) }); }
 });
 
-router.get('/api/debug/tiktok-devolucoes', admin, async (req, res) => {
+// b759 (Codex #618) - ?coletar=1 DISPARA a coleta na ponte (efeito colateral num GET): so com a chave, como as outras
+// que mutam. A leitura (sem coletar) segue aceitando a sessao do admin.
+function adminTikTokDev(req, res, next) {
+  const { coletar } = req.query;
+  return checarAdmin(req, res, next, String(coletar) !== '1');
+}
+router.get('/api/debug/tiktok-devolucoes', adminTikTokDev, async (req, res) => {
   try {
     const r = await tiktokPonte.sondaDevolucoes(CFG_EMPRESA.CHAVE_REGISTRO || SEM_EMPRESA, req.query);   // b661
     res.status(r.ok ? 200 : 502).json(r);
