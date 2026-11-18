@@ -38,6 +38,11 @@ node scripts/backup-tabelas.js --empresas=girassol --saida=/tmp/bk
 ```
 
 - Tabela que falha **não vira arquivo vazio**: entra no manifesto como erro e o processo termina ≠ 0.
+- Cada rodada ganha **pasta própria** (carimbo com segundos; se já existir, `-2`, `-3`…) — nunca mistura
+  arquivos de tempos diferentes. `--pagina` vai no máximo a 1000 (teto do PostgREST; acima disso o
+  backup sairia truncado em silêncio — o script recusa).
+- Credenciais como o servidor resolve: `<PREFIXO>SUPABASE_URL/KEY` e, sem elas, as globais
+  `SUPABASE_URL/KEY` (hoje as 3 empresas dividem o projeto).
 - As tabelas são as da ficha (`lib/empresas.js` → `tabelas`) + `defeito_pedidos`/`defeito_comentarios`
   do mesmo sufixo. Empresa nova entra sozinha (lê a ficha).
 - Onde guardar: fora do Render e fora do Supabase — a pasta `backups/` local da máquina do dono ou um
@@ -47,14 +52,17 @@ node scripts/backup-tabelas.js --empresas=girassol --saida=/tmp/bk
 
 ## Restore lógico
 
-`scripts/restaurar-tabelas.js` lê a pasta de UMA empresa do backup e faz **upsert em lotes de 500 por
-`id`**: linha que existe é sobrescrita pelo backup, linha que não existe é criada, e o que está no
+`scripts/restaurar-tabelas.js` lê a pasta de UMA empresa do backup, **na ordem das dependências**
+(`devolucoes` e `tags` antes de `devolucao_tags`; `defeito_pedidos` antes de `defeito_comentarios` — as FKs
+do provisionador rejeitariam o filho antes do pai), e faz **upsert em lotes de 500 por `id`**: linha que existe é sobrescrita pelo backup, linha que não existe é criada, e o que está no
 banco e não no backup **fica** (restaurar não apaga — apagar é decisão humana, antes, no SQL Editor).
 
 ```bash
 node scripts/restaurar-tabelas.js --pasta=backups/2026-11-18T12-00/girassol --ensaio=1   # só conta, não grava
 node scripts/restaurar-tabelas.js --pasta=backups/2026-11-18T12-00/girassol --tabelas=recados_girassol
 ```
+
+Tabela pedida em `--tabelas=` que **não está no backup** (a rodada falhou nela) é erro, não silêncio.
 
 Ordem pra voltar uma tabela inteira a um ponto no tempo:
 1. `--ensaio=1` e conferir as contagens contra o manifesto;
@@ -77,7 +85,9 @@ Ordem pra voltar uma tabela inteira a um ponto no tempo:
   real (supabase-js → PostgREST) contra um banco descartável: backup das 3 empresas (27 tabelas), tabela
   de 7 linhas com página de 3 sai inteira e em ordem, tabela que falha vira erro no manifesto (sem
   arquivo vazio), restore num banco vazio devolve as 7 linhas em 3 lotes sem apagar o que já existia,
-  `--ensaio=1` não toca o banco, repetir o restore não duplica. Roda na bateria (`node verifica.js`).
+  `--ensaio=1` não toca o banco, repetir o restore não duplica, `devolucao_tags` entra depois de `devolucoes`/`tags`
+  contra FKs de verdade no banco descartável, tabela pedida sem arquivo é erro, pasta única por rodada,
+  página > 1000 recusada, credenciais globais aceitas. Roda na bateria (`node verifica.js`).
 - **Pendente (dono):** um ensaio contra o projeto real — rodar o backup com as service keys, conferir
   o manifesto contra as contagens do painel do Supabase, e um restore `--ensaio=1`. Anotar aqui a data
   e os números.

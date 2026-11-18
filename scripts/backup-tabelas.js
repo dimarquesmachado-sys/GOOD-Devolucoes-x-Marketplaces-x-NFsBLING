@@ -7,10 +7,10 @@
 // (uma linha por registro), que da pra restaurar uma tabela so, uma empresa so, ou um pedaco (scripts/restaurar-
 // tabelas.js). Le pagina a pagina (lib/ler-tudo.js), nunca so as 1000 primeiras.
 //
-// Uso:  node scripts/backup-tabelas.js [--empresas=good,ambtotal,girassol] [--saida=backups] [--pagina=1000]
+// Uso:  node scripts/backup-tabelas.js [--empresas=good,ambtotal,girassol] [--saida=backups] [--pagina=1000]  (pagina <= 1000)
 // Envs: as mesmas do servidor (<PREFIXO>SUPABASE_URL / <PREFIXO>SUPABASE_KEY por empresa; a GOOD aceita o nome
 //       historico SUPABASE_URL/SUPABASE_KEY). Precisa da service key (anon nao le com RLS).
-// Saida: <saida>/<AAAA-MM-DDTHH-MM>/<chave>/<tabela>.jsonl + manifesto.json (contagens, tempo, erros).
+// Saida: <saida>/<AAAA-MM-DDTHH-MM-SS>[-n]/<chave>/<tabela>.jsonl + manifesto.json (pasta unica por rodada).
 // Exportado pra teste: { rodar, tabelasDaEmpresa }.
 const fs = require('fs');
 const path = require('path');
@@ -25,18 +25,34 @@ function tabelasDaEmpresa(ficha) {
   return [...new Set(lista)];
 }
 
+// Credenciais como o SERVIDOR resolve (lib/config-da-empresa.js): `<PREFIXO>SUPABASE_URL/KEY`, e se nao houver, as
+// globais SUPABASE_URL/KEY — hoje as empresas dividem o mesmo projeto, separadas por sufixo de tabela (Codex #622).
+function credenciaisDaEmpresa(ficha) {
+  const url = envDaEmpresa(ficha, 'SUPABASE_URL') || process.env.SUPABASE_URL || '';
+  const key = envDaEmpresa(ficha, 'SUPABASE_KEY') || process.env.SUPABASE_KEY || '';
+  return (url && key) ? { url, key } : null;
+}
 function clienteDaEmpresa(ficha, criar = createClient) {
-  const url = envDaEmpresa(ficha, 'SUPABASE_URL');
-  const key = envDaEmpresa(ficha, 'SUPABASE_KEY');
-  if (!url || !key) return null;
-  return criar(url, key, { auth: { persistSession: false } });
+  const cred = credenciaisDaEmpresa(ficha);
+  return cred ? criar(cred.url, cred.key, { auth: { persistSession: false } }) : null;
+}
+// O PostgREST corta toda resposta em 1000 linhas (max-rows); pagina maior que isso faria o lerTudo achar que a
+// pagina cortada era a ultima e o backup sairia TRUNCADO em silencio (Codex #622). Teto fixo.
+const PAGINA_MAX = 1000;
+// Pasta UNICA por rodada: duas rodadas no mesmo minuto nao podem misturar arquivos de tempos diferentes (Codex #622)
+function pastaUnica(saida, carimbo) {
+  let raiz = path.join(saida, carimbo);
+  for (let n = 2; fs.existsSync(raiz); n++) raiz = path.join(saida, carimbo + '-' + n);
+  fs.mkdirSync(raiz, { recursive: true });
+  return raiz;
 }
 
 async function rodar({ empresas, saida = 'backups', pagina = 1000, criar = createClient, agora = () => new Date(), log = console.log } = {}) {
   const fichas = (empresas && empresas.length ? empresas.map(obterEmpresa) : listarEmpresas());
-  const carimbo = agora().toISOString().slice(0, 16).replace(/:/g, '-');
-  const raiz = path.join(saida, carimbo);
-  const manifesto = { carimbo, inicio: agora().toISOString(), empresas: {}, erros: [] };
+  if (!(pagina >= 1 && pagina <= PAGINA_MAX)) throw new Error('pagina tem que estar entre 1 e ' + PAGINA_MAX + ' (teto do PostgREST): ' + pagina);
+  const carimbo = agora().toISOString().slice(0, 19).replace(/:/g, '-');
+  const raiz = pastaUnica(saida, carimbo);
+  const manifesto = { carimbo, pasta: raiz, inicio: agora().toISOString(), pagina, empresas: {}, erros: [] };
   for (const ficha of fichas) {
     const sb = clienteDaEmpresa(ficha, criar);
     if (!sb) { manifesto.erros.push({ empresa: ficha.chave, erro: 'sem SUPABASE_URL/KEY no env' }); log(`[backup] ${ficha.chave}: sem credenciais, pulada`); continue; }
@@ -59,12 +75,11 @@ async function rodar({ empresas, saida = 'backups', pagina = 1000, criar = creat
     }
   }
   manifesto.fim = agora().toISOString();
-  fs.mkdirSync(raiz, { recursive: true });
   fs.writeFileSync(path.join(raiz, 'manifesto.json'), JSON.stringify(manifesto, null, 2));
   return { raiz, manifesto };
 }
 
-module.exports = { rodar, tabelasDaEmpresa, clienteDaEmpresa };
+module.exports = { rodar, tabelasDaEmpresa, clienteDaEmpresa, credenciaisDaEmpresa, PAGINA_MAX };
 
 if (require.main === module) {
   const arg = (n, p) => { const a = process.argv.find((x) => x.startsWith('--' + n + '=')); return a ? a.split('=')[1] : p; };
