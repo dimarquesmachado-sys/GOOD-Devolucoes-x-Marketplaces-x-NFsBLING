@@ -176,12 +176,17 @@ async function subirPostgrest({ tabelas = {}, objetos = {} } = {}) {
     if (req.method === 'GET' || req.method === 'HEAD') {
       resultado = linhas.filter(casa);
     } else if (req.method === 'POST') {
+      // upsert (Prefer: resolution=merge-duplicates, on_conflict=id): linha com o mesmo id e SUBSTITUIDA — b764 (V-04)
+      const upsert = /resolution=merge-duplicates/.test(prefer);
       const novos = (Array.isArray(corpoReq) ? corpoReq : [corpoReq]).map((l) => {
         const n = Object.assign({}, l);
         if (n.id == null) n.id = proximoId++;
         return n;
       });
-      for (const n of novos) linhas.push(n);
+      for (const n of novos) {
+        const i = upsert ? linhas.findIndex((l) => String(l.id) === String(n.id)) : -1;
+        if (i >= 0) linhas[i] = Object.assign({}, linhas[i], n); else linhas.push(n);
+      }
       resultado = novos;
     } else if (req.method === 'PATCH') {
       resultado = [];

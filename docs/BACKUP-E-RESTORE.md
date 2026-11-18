@@ -1,0 +1,89 @@
+# Backup e restore do Devoluções — runbook (V-04, b764)
+
+> O que este serviço guarda que não dá pra refazer: as tabelas do Supabase (devoluções, triagens,
+> espreita de notas, recados, peças retiradas, de-para de SKU, tags, ciclo de defeitos) e as fotos do
+> bucket `fotos-problema`. Tudo o resto (índices do ML/Magalu, caches, tokens) se reconstrói sozinho
+> ou se reautoriza.
+
+Projeto Supabase do Devoluções: `sldnshulmhpmyjqrkstq` (as 3 empresas no mesmo projeto, tabelas por
+sufixo: sem sufixo = GOOD, `_amb`, `_girassol`). Fotos: bucket `fotos-problema`, pasta por empresa
+(`good/…`, `amb/…`, `girassol/…`).
+
+## Objetivos
+
+| | alvo | como se cumpre |
+|---|---|---|
+| **RPO** (quanto se pode perder) | **1 dia** nas tabelas; **0** nas fotos | backup diário do Supabase (plano) + cópia lógica diária deste runbook; fotos ficam no Storage (replicado pelo Supabase) e **não** são apagadas por nenhum fluxo do sistema |
+| **RTO** (quanto tempo pra voltar) | **1 h** pra uma tabela/empresa; **meio dia** pro projeto inteiro | restore lógico por tabela (`scripts/restaurar-tabelas.js`); restore do projeto pelo painel do Supabase |
+
+## Camada 1 — o backup do Supabase (projeto inteiro)
+
+- Plano Pro: backup **diário** automático, guardado 7 dias; PITR (ponto no tempo) é add-on pago.
+- Restaurar por lá é **tudo ou nada**: o projeto inteiro volta ao ponto escolhido — as 3 empresas, todas
+  as tabelas. Serve pra desastre (projeto corrompido, tabela derrubada por DDL errado), não pra
+  "voltar só a triagem X".
+- Onde: Supabase → projeto → *Database* → *Backups*. Conferir **uma vez por mês** que o backup do dia
+  existe (a data mais recente tem que ser hoje ou ontem).
+
+## Camada 2 — cópia lógica por empresa e tabela (este repo)
+
+`scripts/backup-tabelas.js` lê cada tabela de cada empresa **página a página** (`lib/ler-tudo.js`,
+nunca só as 1000 primeiras) e grava um `.jsonl` por tabela + `manifesto.json` (contagens, tempo,
+erros). Precisa das mesmas envs do servidor (`<PREFIXO>SUPABASE_URL`/`_KEY` — service key; a GOOD
+aceita `SUPABASE_URL`/`SUPABASE_KEY`).
+
+```bash
+node scripts/backup-tabelas.js                                  # as 3 empresas
+node scripts/backup-tabelas.js --empresas=girassol --saida=/tmp/bk
+```
+
+- Tabela que falha **não vira arquivo vazio**: entra no manifesto como erro e o processo termina ≠ 0.
+- As tabelas são as da ficha (`lib/empresas.js` → `tabelas`) + `defeito_pedidos`/`defeito_comentarios`
+  do mesmo sufixo. Empresa nova entra sozinha (lê a ficha).
+- Onde guardar: fora do Render e fora do Supabase — a pasta `backups/` local da máquina do dono ou um
+  Drive. **Não** versionar no Git (tem dado de cliente).
+- Ritmo: diário é o alvo; até ter agendamento, rodar à mão **antes de qualquer DDL** (H-03, P2-09) e
+  antes do corte da fusão (01/01/2027).
+
+## Restore lógico
+
+`scripts/restaurar-tabelas.js` lê a pasta de UMA empresa do backup e faz **upsert em lotes de 500 por
+`id`**: linha que existe é sobrescrita pelo backup, linha que não existe é criada, e o que está no
+banco e não no backup **fica** (restaurar não apaga — apagar é decisão humana, antes, no SQL Editor).
+
+```bash
+node scripts/restaurar-tabelas.js --pasta=backups/2026-11-18T12-00/girassol --ensaio=1   # só conta, não grava
+node scripts/restaurar-tabelas.js --pasta=backups/2026-11-18T12-00/girassol --tabelas=recados_girassol
+```
+
+Ordem pra voltar uma tabela inteira a um ponto no tempo:
+1. `--ensaio=1` e conferir as contagens contra o manifesto;
+2. no SQL Editor, `delete from <tabela> where …` só do que precisa sair (ou `truncate` se for tudo);
+3. restore sem `--ensaio`; conferir `[restaurar] 0 erro(s)`;
+4. abrir o painel da empresa e conferir 2–3 registros conhecidos.
+
+## Fotos (Storage)
+
+- Nenhum fluxo do sistema apaga foto; o bucket é público de leitura (o proxy `/api/admin/foto/...`
+  confere a dona antes de servir). O Supabase replica o Storage — não há cópia local de rotina.
+- Cópia manual, se precisar: painel do Supabase → *Storage* → `fotos-problema` → pasta da empresa →
+  download; ou o botão "baixar todas as fotos" da ficha de defeito (P2-11), uma devolução por vez.
+- Restore de foto apagada por engano: re-upload na mesma chave (`<empresa>/<arquivo>`); a URL gravada
+  em `problema_fotos` volta a resolver.
+
+## Ensaio registrado
+
+- **18/11/2026 (b764)** — ensaio automatizado em `test/backup-restore-ensaio.test.js`, pelo protocolo
+  real (supabase-js → PostgREST) contra um banco descartável: backup das 3 empresas (27 tabelas), tabela
+  de 7 linhas com página de 3 sai inteira e em ordem, tabela que falha vira erro no manifesto (sem
+  arquivo vazio), restore num banco vazio devolve as 7 linhas em 3 lotes sem apagar o que já existia,
+  `--ensaio=1` não toca o banco, repetir o restore não duplica. Roda na bateria (`node verifica.js`).
+- **Pendente (dono):** um ensaio contra o projeto real — rodar o backup com as service keys, conferir
+  o manifesto contra as contagens do painel do Supabase, e um restore `--ensaio=1`. Anotar aqui a data
+  e os números.
+
+## O que ainda falta (decisões do dono)
+
+- Agendar o backup lógico (cron no Render ou na máquina dele) e definir onde a pasta fica.
+- PITR no Supabase, se o RPO de 1 dia for pouco pra triagem (cada hora de operação = dezenas de
+  triagens que não se refazem).
