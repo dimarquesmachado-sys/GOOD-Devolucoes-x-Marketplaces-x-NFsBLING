@@ -23,7 +23,44 @@ fala o modelo de dados da GOOD (`tipo/status/created_at`) e vai ser aposentado. 
    montagem das empresas + rotas do serviço. A Girassol continua instância em
    `/girassol` — os atalhos do galpão não mudam.
 
+## ⚠️ Correção do dono (15/11/2026): o corte é do FATURAMENTO, não das contas
+
+O que vale a partir de **01/01/2027**: **nada mais é faturado pelo CNPJ da GOOD.** Mas as
+contas da GOOD — marketplaces, Bling, banco, e-mail — **ficam vivas por uma sobra de
+tempo** pra puxar dados, e só depois são baixadas. Até o **fim de janeiro/2027** produtos e
+anúncios são recadastrados na Girassol.
+
+Isso muda a leitura de tudo abaixo: "morre com a conta" não é "some no dia 1" — é "vai
+sumir, e enquanto não sumiu é a última janela pra tirar o que precisa ficar". O Devoluções
+não emite mais nada pela GOOD a partir do dia 1 (`DEVOLUCOES_DESATIVAR_GOOD=1`), mas as
+credenciais dela continuam válidas por essa sobra, e dá pra religar por um dia pra puxar.
+
+### O que puxar enquanto as contas vivem (antes de baixar cada uma)
+
+| conta | o que tirar | como |
+|---|---|---|
+| **Bling (GOOD)** | NFs emitidas (PDF/XML), NFs de devolução/entrada, pedidos de venda, cadastro de produtos (SKU, EAN, `produto.id`), estoque por depósito | exportações do próprio Bling (Relatórios/Notas) **ou** religar a GOOD por um dia e usar a busca de NF do painel; XMLs são a prova fiscal — guardar fora do Bling |
+| **Mercado Livre (GOOD)** | claims/returns abertos ou recentes, mensagens, reputação (histórico), anúncios (pra recadastrar na Girassol) | enquanto o token da GOOD vale, o painel busca por pedido; anúncios: exportação do próprio ML ou recadastro manual até fim de jan |
+| **Shopee (GOOD)** | devoluções/reembolsos (`get_return_list` dos 120 dias), financeiro (repasses), pedidos cancelados por insucesso | pelo proxy `ambtotal-shopee-nf-sync-x-bling` enquanto a loja `good` existir lá; financeiro: Seller Centre |
+| **Magalu (GOOD)** | tickets/devoluções, financeiro (repasses) | Portal do Seller; o índice de tickets do Devoluções cobre o operacional, não o financeiro |
+| **TikTok (loja GOOD)** | pedidos e financeiro | Seller Center (app é da Girassol, só a loja some) |
+| **Supabase (tabelas sem sufixo)** | `devolucoes`, `espreita_notas`, `recados`, `pecas_retiradas`, `sku_depara`, `tags`, `devolucao_tags`, `defeito_*`, fotos no bucket `fotos-problema/good/…` | **não some** — é do serviço. Fica no banco; pra consultar, religar a GOOD por um dia (painel abre, sem Bling/ML dela não emite). Se quiser arquivo: CSV pelo SQL Editor + download das fotos pelo painel |
+| **E-mail (GOOD)** | histórico de envios (NF por e-mail) | nada a puxar; conferir se os SMTP da Girassol/AMB no Render **não** são do domínio da GOOD (pendência do dono) |
+
+**Ordem sugerida de baixa:** marketplaces por último dentro da sobra (são os que têm janela de
+devolução/reclamação ainda correndo); Bling depois de exportar os XMLs; e-mail só quando
+nenhum serviço mais usar o domínio.
+
+### Pendências que só o dono responde (ainda abertas em 18/11)
+
+- Em qual conta está o app de parceiro da Shopee (`ambtotal-shopee-nf-sync-x-bling`)? Se é da
+  GOOD, recriar na Girassol e reautorizar Girassol e AMB **dentro da sobra**.
+- Os SMTP da Girassol/AMB no Render são do domínio da GOOD?
+- Client Magalu próprio no Mover-Pedidos fica **por último** ("não vou mexer no magalu agora").
+
 ## O que morre com a conta da GOOD (medido no código, 06/11/2026)
+
+> Ler junto com a correção acima: "morre" = ao fim da sobra de tempo, não em 01/01.
 
 | onde | o quê | ação |
 |---|---|---|
