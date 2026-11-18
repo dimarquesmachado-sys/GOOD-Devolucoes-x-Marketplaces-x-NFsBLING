@@ -662,7 +662,7 @@ const registrarCicloDefeitos = require('../lib/defeitos-ciclo');
 // candidato ja desistido ainda batia no Bling depois de esperar numa pausa
 // de 429. Ver bling-AMB.js, nf-nomes-AMB.js e identificar-AMB.js.
 // 29/10: sem o 'AMB' na frente — a mesma peca serve Girassol, AMB e as proximas; a empresa vai no campo `empresa`
-const VERSAO = 'Devolucoes b755';
+const VERSAO = 'Devolucoes b756';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -713,6 +713,13 @@ const GAVETAS = criarGavetasDaEmpresa();
 const ACESSO = GAVETAS.acesso;
 
 function admin(req, res, next) {
+  // b756 (V-03, auditoria do Codex 15/11) - SESSAO DE ADMIN DA EMPRESA VALE, como o adminOk da GOOD (b325) ja fazia:
+  // quem esta logado como admin no painel abre /conectar, /config, /auth/diag... sem chave nenhuma na URL. E o
+  // caminho humano; o header x-admin-key e o caminho de servico. A querystring segue contada (ACESSO) ate o dono
+  // confirmar que nao usa mais link salvo — ai ela sai e a ADMIN_KEY e rotacionada (vazou em log por meses).
+  try {
+    if (auth.validarSessao(auth.tokenDaRequisicao(req), 'admin')) return next();
+  } catch (e) { /* sem cookie ou sessao invalida: cai na chave */ }
   // b256 - ACEITA HEADER (ver a nota longa no server.js). A querystring
   // continua valendo durante a transicao: ele opera por links salvos, e
   // corta-la hoje quebraria o acesso dele sem aviso.
