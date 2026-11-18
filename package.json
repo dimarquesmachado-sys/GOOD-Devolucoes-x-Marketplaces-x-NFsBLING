@@ -18,5 +18,8 @@
     "nodemailer": "^10.6.0",
     "multer": "^2.5.0",
     "cookie-parser": "^1.4.6"
+  },
+  "devDependencies": {
+    "playwright": "1.63.0"
   }
 }
