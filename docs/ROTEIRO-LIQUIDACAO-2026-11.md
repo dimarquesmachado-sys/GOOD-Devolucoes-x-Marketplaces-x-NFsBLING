@@ -192,7 +192,7 @@ Segue as 12 etapas do Codex, com os itens de cada uma. A ordem dentro da etapa �
 
 | id | estado | frente | entra em |
 |---|---|---|---|
-| T-01 | ⬜ | Testes HTTP de papéis, empresa e estados (subir o servidor e bater nas rotas das 3) | P1-04, P1-09, V-02 |
+| T-01 | 🔄 PR #610 b748 | Testes HTTP de papéis, empresa e estados (subir o servidor e bater nas rotas das 3) — `test/http-papeis-empresa-estados.test.js` sobe o `server.js` com GOOD+AMB+Girassol contra um PostgREST falso na porta (`test/_postgrest-falso.js`); V-02 (recados) entra quando o dono disser a regra | P1-04, P1-09, V-02 |
 | T-02 | ⬜ | PostgreSQL descartável com as migrations reais (constraints, FKs, RLS, update condicional) | P1-03, P2-04, H-03 |
 | T-03 | ⬜ | Repetição, concorrência e falha entre ERP e banco | P1-03 |
 | T-04 | ⬜ | Navegador real (Playwright): busca, câmera, troca de pacote, painel | P1-01, P1-07, P2-01, V-08 |
