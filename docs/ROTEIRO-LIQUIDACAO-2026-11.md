@@ -196,7 +196,7 @@ Segue as 12 etapas do Codex, com os itens de cada uma. A ordem dentro da etapa �
 | T-02 | ⬜ | PostgreSQL descartável com as migrations reais (constraints, FKs, RLS, update condicional) | P1-03, P2-04, H-03 |
 | T-03 | ⬜ | Repetição, concorrência e falha entre ERP e banco | P1-03 |
 | T-04 | ⬜ | Navegador real (Playwright): busca, câmera, troca de pacote, painel | P1-01, P1-07, P2-01, V-08 |
-| T-05 | 🔄 PR #? b749 | Instalação estrita pelo lockfile com Node alinhado (`npm ci`) — workflow `ai-pr-checks` com `npm ci` e `node-version-file: .nvmrc`; `test/lockfile-estrito.test.js` prova `npm ci --dry-run --offline` verde e vermelho com package.json fora do lock | P2-14 |
+| T-05 | 🔄 PR #611 b749 | Instalação estrita pelo lockfile com Node alinhado (`npm ci`) — workflow `ai-pr-checks` com `npm ci` e `node-version-file: .nvmrc`; `test/lockfile-estrito.test.js` prova `npm ci --dry-run --offline` verde e vermelho com package.json fora do lock | P2-14 |
 | T-06 | ⬜ | Smoke que faz requisições reais ao servidor e às rotas de cada empresa | P2-15 |
 
 Dos 263 testes, 217 leem fonte. Todo PR deste roteiro troca inspeção de fonte por execução onde
