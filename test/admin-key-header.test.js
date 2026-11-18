@@ -29,13 +29,15 @@ const amb = fs.readFileSync(path.join(RAIZ, 'amb-devolucoes', 'app-AMB.js'), 'ut
   ok(/req\.get\('x-admin-key'\)/.test(amb), 'app-AMB.js tambem');
 }
 
-// ── ⚠️ e a querystring CONTINUA valendo (por enquanto) ───────────────
+// ── b763 (V-03, 2a metade): a querystring NAO VALE MAIS ──────────────
 //
-// Cortar hoje quebraria o acesso dele sem aviso. A transição é medida,
-// não adivinhada.
+// O uso humano migrou pra sessao de admin (b756) e o servico que chamava com ?k= passou ao header
+// (Mover-Pedidos #945). `req.query.k` so pode aparecer pra CONTAR a tentativa rejeitada — nunca
+// como valor aceito. (A prova de comportamento esta em test/admin-por-sessao-na-fabrica.test.js.)
 {
-  ok(/req\.query\.k/.test(srv) && /req\.query\.k/.test(amb),
-     'a querystring AINDA vale — cortar hoje quebraria os links salvos dele');
+  ok(!/valor: String\(req\.query\.k\)/.test(srv), 'server.js nao devolve mais a querystring como chave');
+  ok(!/doHeader \|\| req\.query\.k/.test(amb) && !/req\.query\.k === process\.env\.ADMIN_KEY/.test(amb),
+     'app-AMB.js nao aceita mais a querystring (admin/adminSoChave/adminOk)');
 }
 
 // ── o uso do caminho velho é CONTADO ─────────────────────────────────
@@ -43,7 +45,7 @@ const amb = fs.readFileSync(path.join(RAIZ, 'amb-devolucoes', 'app-AMB.js'), 'ut
 // É o que permite decidir a remoção por dado: quando o contador ficar em
 // zero por um período, a querystring sai.
 {
-  ok(/usosPorQuerystring\+\+/.test(srv), 'cada uso da querystring e contado (server)');
+  ok(/usosPorQuerystring\+\+/.test(srv), 'cada tentativa por querystring e contada (server) — rejeitada, mas vista no /health');
   // ⚠️ b343: `usosQuerystringAMB` virou `ACESSO.usosQuerystring` (gaveta 2).
   // O comportamento guardado e o MESMO — cada uso da querystring e contado.
   ok(/ACESSO\.usosQuerystring\+\+/.test(amb),
@@ -59,7 +61,7 @@ const amb = fs.readFileSync(path.join(RAIZ, 'amb-devolucoes', 'app-AMB.js'), 'ut
 {
   ok(/!!ADMIN_KEY && valor === ADMIN_KEY/.test(srv),
      'sem ADMIN_KEY configurada, NADA passa (nem header vazio)');
-  ok(/!chave \|\| recebida !== chave/.test(amb),
+  ok(/!chave \|\| !doHeader \|\| doHeader !== chave/.test(amb),
      '  e no app-AMB tambem');
 }
 

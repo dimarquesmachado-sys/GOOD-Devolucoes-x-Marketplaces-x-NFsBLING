@@ -215,13 +215,16 @@ const ADMIN_KEY = process.env.ADMIN_KEY || '';
 let usosPorQuerystring = 0;
 let ultimoUsoQuerystring = null;
 
+// b763 (V-03, 2a metade): A QUERYSTRING NAO VALE MAIS. O uso humano migrou pra sessao de admin (adminOk/requerAdmin
+// na GOOD; admin() na fabrica desde o b756) e o unico servico que chamava com `?k=` (Mover-Pedidos, cruzar-cancelados)
+// passou a mandar o header (b43 de la, #945). Um `?k=` ainda e CONTADO — mas como tentativa rejeitada, pra aparecer no
+// /health quem ficou com link velho. Proximo passo do dono: rotacionar a ADMIN_KEY (a antiga passou meses em URL).
 function chaveDaRequisicao(req) {
   const doHeader = req.get('x-admin-key');
   if (doHeader) return { valor: doHeader, via: 'header' };
   if (req.query.k) {
     usosPorQuerystring++;
     ultimoUsoQuerystring = new Date().toISOString();
-    return { valor: String(req.query.k), via: 'querystring' };
   }
   return { valor: null, via: 'nenhuma' };
 }
@@ -255,11 +258,11 @@ function adminOk(req) {
 function diagnosticoAdminKey() {
   return {
     aceita_header: 'x-admin-key',
-    querystring_ainda_aceita: true,
+    querystring_ainda_aceita: false,
     usos_por_querystring: usosPorQuerystring,
     ultimo_uso_querystring: ultimoUsoQuerystring,
-    _nota: 'quando `usos_por_querystring` ficar em 0 por um periodo, a '
-      + 'querystring sai e a ADMIN_KEY deve ser ROTACIONADA (a antiga '
+    _nota: 'b763: a querystring NAO vale mais; `usos_por_querystring` conta tentativas REJEITADAS '
+      + '(quem ainda usa link velho). Falta: ROTACIONAR a ADMIN_KEY (a antiga '
       + 'vazou em logs de meses)',
   };
 }
@@ -620,7 +623,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.126.276 (b762: roteiro — etapa 11 fechada; T-02/V-02/V-04/V-10/H-03 esperam o dono; H-01 recomendacao: nao fazer)',   // b744: SEM encadear os builds anteriores — a historia e do git, nao desta linha
+      version: '9.126.277 (b763: V-03 2a metade — ?k= nao vale mais em rota nenhuma; sessao de admin ou header x-admin-key)',   // b744: SEM encadear os builds anteriores — a historia e do git, nao desta linha
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),

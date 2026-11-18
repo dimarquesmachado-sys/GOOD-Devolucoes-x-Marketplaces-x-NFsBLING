@@ -662,7 +662,7 @@ const registrarCicloDefeitos = require('../lib/defeitos-ciclo');
 // candidato ja desistido ainda batia no Bling depois de esperar numa pausa
 // de 429. Ver bling-AMB.js, nf-nomes-AMB.js e identificar-AMB.js.
 // 29/10: sem o 'AMB' na frente — a mesma peca serve Girassol, AMB e as proximas; a empresa vai no campo `empresa`
-const VERSAO = 'Devolucoes b762';
+const VERSAO = 'Devolucoes b763';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -733,13 +733,10 @@ function checarAdmin(req, res, next, aceitaSessao) {
   // corta-la hoje quebraria o acesso dele sem aviso.
   const chave = process.env.ADMIN_KEY;
   const doHeader = req.get('x-admin-key');
-  const recebida = doHeader || req.query.k;
-  if (doHeader) {
-    // marca que veio pelo caminho novo
-  } else if (req.query.k) {
-    ACESSO.usosQuerystring++;
-  }
-  if (!chave || recebida !== chave) {
+  // b763 (V-03, 2a metade): `?k=` NAO vale mais — so o header (servico) ou a sessao de admin (humano, acima).
+  // A tentativa por querystring e contada como REJEITADA, pra aparecer no /health quem ficou com link velho.
+  if (!doHeader && req.query.k) ACESSO.usosQuerystring++;
+  if (!chave || !doHeader || doHeader !== chave) {
     return res.status(404).json({ error: 'not found' });
   }
   next();
@@ -2136,8 +2133,9 @@ registrarRotasAdminNF(router, {
   supabase: db.conectar(),
   requerAdmin: auth.requerAdmin,
   // usado nas fotos: aceita sessao de admin OU a chave ?k=ADMIN_KEY
+  // b763 (V-03): sessao de admin ou header x-admin-key — `?k=` nao vale mais
   adminOk: (req) => !!auth.validarSessao(auth.tokenDaRequisicao(req), 'admin')
-    || !!(process.env.ADMIN_KEY && req.query.k === process.env.ADMIN_KEY),
+    || !!(process.env.ADMIN_KEY && req.get('x-admin-key') === process.env.ADMIN_KEY),
   sleep: dorme,
   chamarBling: bling.chamarBling,
   chamarML: ml.chamarML,
