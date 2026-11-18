@@ -38,6 +38,20 @@ const amb = fs.readFileSync(path.join(RAIZ, 'amb-devolucoes', 'app-AMB.js'), 'ut
   ok(!/valor: String\(req\.query\.k\)/.test(srv), 'server.js nao devolve mais a querystring como chave');
   ok(!/doHeader \|\| req\.query\.k/.test(amb) && !/req\.query\.k === process\.env\.ADMIN_KEY/.test(amb),
      'app-AMB.js nao aceita mais a querystring (admin/adminSoChave/adminOk)');
+  // b765 (Codex #621): porteiros INDEPENDENTES tambem — em nenhum .js do servidor `req.query.k` pode virar chave
+  // (comparado, devolvido como valor ou repassado em URL). So pode aparecer pra CONTAR a tentativa rejeitada.
+  const { execSync } = require('child_process');
+  const lista = execSync("grep -rln \"query\\.k\\b\" --include=*.js server.js lib amb-devolucoes scripts public", { cwd: RAIZ, encoding: 'utf8' }).split('\n').filter(Boolean);
+  const vazados = [];
+  for (const f of lista) {
+    const src = fs.readFileSync(path.join(RAIZ, f), 'utf8').split('\n');
+    src.forEach((l, i) => {
+      if (!/req\.query\.k\b/.test(l) || /^\s*\/\//.test(l)) return;
+      if (/usosPorQuerystring\+\+|usosQuerystring\+\+|if \(req\.query\.k\) \{$/.test(l)) return;   // os contadores
+      vazados.push(f + ':' + (i + 1) + ' ' + l.trim().slice(0, 90));
+    });
+  }
+  ok(vazados.length === 0, '⚠️ nenhum porteiro usa req.query.k como chave' + (vazados.length ? ' — ' + vazados.join(' | ') : ''));
 }
 
 // ── o uso do caminho velho é CONTADO ─────────────────────────────────

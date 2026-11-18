@@ -136,10 +136,10 @@ router.post('/api/admin/sem-retorno/registrar', auth.requerAdmin, async (req, re
 });
 
 router.get('/api/debug/achar-nf', (req, res, next) => {
-  // b203.1 (Codex): aceitar ?k=ADMIN_KEY, que e o que a doc da rota diz —
-  // e exigir ADMIN, nao qualquer login. Com `requerLogin` puro, a chave era
-  // ignorada e um estoquista logado veria dado de nota fiscal.
-  const chave = String(req.query.k || '').trim();
+  // b203.1 (Codex): exigir ADMIN, nao qualquer login — com `requerLogin` puro um estoquista logado veria dado de
+  // nota fiscal. b765 (Codex #621): a chave vale so pelo HEADER x-admin-key; `?k=` nao vale mais em rota nenhuma
+  // (V-03) — este porteiro era independente do checarAdmin e tinha ficado com a querystring.
+  const chave = String(req.get('x-admin-key') || '').trim();
   if (chave && process.env.ADMIN_KEY && chave === process.env.ADMIN_KEY) return next();
   return auth.requerAdmin ? auth.requerAdmin(req, res, next) : auth.requerLogin(req, res, next);
 }, async (req, res) => {

@@ -68,6 +68,11 @@ const CHAVE = 'chave-admin-de-teste-que-nao-e-a-de-producao';
       ok(coletaSessao.status === 404, '⚠️ tiktok-devolucoes?coletar=1 por SESSAO: 404 (' + coletaSessao.status + ')');
       const leituraSessao = await s.pedir(e.rota + '/api/debug/tiktok-devolucoes', { cookie: dono });
       ok(leituraSessao.status !== 404, '  tiktok-devolucoes so leitura por sessao segue abrindo (' + leituraSessao.status + ')');
+      // Codex #621: porteiro independente do checarAdmin (sem-retorno-AMB) — mesma regra
+      const acharK = await s.pedir(e.rota + '/api/debug/achar-nf?pedido=1&k=' + encodeURIComponent(CHAVE));
+      ok(acharK.status === 401 || acharK.status === 404, '⚠️ /api/debug/achar-nf?k=<chave certa> e recusado (' + acharK.status + ')');
+      const acharSessao = await s.pedir(e.rota + '/api/debug/achar-nf', { cookie: dono });
+      ok(acharSessao.status === 400 && /pedido/.test(acharSessao.corpo), '  /api/debug/achar-nf por sessao de admin passa da porta (' + acharSessao.status + ')');
       const chaveErrada = await s.pedir(e.rota + '/auth/diag?k=errada');
       ok(chaveErrada.status === 404, '  chave errada: 404');
     }
