@@ -23,7 +23,11 @@ module.exports = function registrarOauthPaginas(router, deps) {
 // @secao oauth-paginas
 // ── /amb/conectar ────────────────────────────────────────────
 router.get('/conectar', admin, (req, res) => {
-  const k = encodeURIComponent(req.query.k);
+  // b756 (V-03): quem chegou pela SESSAO de admin recebe links SEM chave (a chave na URL vaza em log/historico/referer);
+  // quem ainda veio por ?k= (link salvo) segue com a chave nos links, pra nao quebrar o fluxo antigo durante a transicao.
+  const k = req.query.k ? encodeURIComponent(req.query.k) : '';
+  const sufixoK = k ? '&k=' + k : '';      // em URL que ja tem ?servico=
+  const soK = k ? '?k=' + k : '';          // em URL sem querystring
   // Estado AO VIVO, perguntado aos modulos (nao a foto do config).
   const idx = mlReturns.statusIndice();
 
@@ -56,12 +60,12 @@ router.get('/conectar', admin, (req, res) => {
     </div>
 
     <div class="card">
-      <a class="btn" href="${BASE}/oauth/iniciar?servico=bling&k=${k}">Conectar o Bling da ${NOME_EMPRESA}</a>
-      <a class="btn" href="${BASE}/oauth/iniciar?servico=ml&k=${k}">Conectar o Mercado Livre da ${NOME_EMPRESA}</a>
-      <a class="btn" href="${BASE}/oauth/iniciar?servico=magalu&k=${k}">Conectar o Magalu da ${NOME_EMPRESA}</a>
-      <a class="btn cinza" href="${BASE}/ml/indice?k=${k}">Ver o indice de devolucoes</a>
-      <a class="btn cinza" href="${BASE}/nf/indice?k=${k}">Ver o indice de nomes</a>
-      <a class="btn cinza" href="${BASE}/config?k=${k}">Ver diagnostico completo</a>
+      <a class="btn" href="${BASE}/oauth/iniciar?servico=bling${sufixoK}">Conectar o Bling da ${NOME_EMPRESA}</a>
+      <a class="btn" href="${BASE}/oauth/iniciar?servico=ml${sufixoK}">Conectar o Mercado Livre da ${NOME_EMPRESA}</a>
+      <a class="btn" href="${BASE}/oauth/iniciar?servico=magalu${sufixoK}">Conectar o Magalu da ${NOME_EMPRESA}</a>
+      <a class="btn cinza" href="${BASE}/ml/indice${soK}">Ver o indice de devolucoes</a>
+      <a class="btn cinza" href="${BASE}/nf/indice${soK}">Ver o indice de nomes</a>
+      <a class="btn cinza" href="${BASE}/config${soK}">Ver diagnostico completo</a>
     </div>
 
     <div class="aviso">

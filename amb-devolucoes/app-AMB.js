@@ -662,7 +662,7 @@ const registrarCicloDefeitos = require('../lib/defeitos-ciclo');
 // candidato ja desistido ainda batia no Bling depois de esperar numa pausa
 // de 429. Ver bling-AMB.js, nf-nomes-AMB.js e identificar-AMB.js.
 // 29/10: sem o 'AMB' na frente — a mesma peca serve Girassol, AMB e as proximas; a empresa vai no campo `empresa`
-const VERSAO = 'Devolucoes b755';
+const VERSAO = 'Devolucoes b760';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -712,7 +712,22 @@ const GAVETAS = criarGavetasDaEmpresa();
 
 const ACESSO = GAVETAS.acesso;
 
-function admin(req, res, next) {
+function admin(req, res, next) { return checarAdmin(req, res, next, true); }
+
+// b757 (review do Codex no #618) - ROTAS QUE MUTAM (GET com efeito: renovar token, reconstruir indice) ou que tocam
+// TODAS as empresas NAO aceitam a sessao: o cookie e SameSite=Lax, entao um link de outro site abriria a rota com a
+// sessao do admin logado (CSRF), e a sessao e DA EMPRESA, nao vale pra operacao global. Seguem so com a chave
+// (header ou ?k=), exatamente como eram antes do b756.
+function adminSoChave(req, res, next) { return checarAdmin(req, res, next, false); }
+
+function checarAdmin(req, res, next, aceitaSessao) {
+  // b756 (V-03, auditoria do Codex 15/11) - SESSAO DE ADMIN DA EMPRESA VALE, como o adminOk da GOOD (b325) ja fazia:
+  // quem esta logado como admin no painel abre /conectar, /config, /auth/diag... sem chave nenhuma na URL. E o
+  // caminho humano; o header x-admin-key e o caminho de servico. A querystring segue contada (ACESSO) ate o dono
+  // confirmar que nao usa mais link salvo — ai ela sai e a ADMIN_KEY e rotacionada (vazou em log por meses).
+  try {
+    if (aceitaSessao && auth.validarSessao(auth.tokenDaRequisicao(req), 'admin')) return next();
+  } catch (e) { /* sem cookie ou sessao invalida: cai na chave */ }
   // b256 - ACEITA HEADER (ver a nota longa no server.js). A querystring
   // continua valendo durante a transicao: ele opera por links salvos, e
   // corta-la hoje quebraria o acesso dele sem aviso.
@@ -830,7 +845,7 @@ router.get('/status', (req, res) => {
 });
 
 // @fabrica-modulo lib-AMB/diagnostico-AMB.js#diagnostico
-require('./lib-AMB/diagnostico-AMB')(router, { cfg, BASE, bling, ml, mlReturns, nfNomes, tokens, shopee, emailAMB, NOME_EMPRESA, VERSAO, admin, TRIAGEM, redirectOAuth });   // @fabrica-chamada
+require('./lib-AMB/diagnostico-AMB')(router, { cfg, BASE, bling, ml, mlReturns, nfNomes, tokens, shopee, emailAMB, NOME_EMPRESA, VERSAO, admin, adminSoChave, TRIAGEM, redirectOAuth });   // @fabrica-chamada
 
 // ── A TELA DO GALPAO ─────────────────────────────────────────
 // O arquivo se chama index-AMB.html (e nao index.html) porque no
@@ -1344,7 +1359,9 @@ router.get('/debug/espreita', admin, async (req, res) => {
    Pra mapear com dado real a devolucao do FULL que volta pelo RETIRO (02/10, Marcos Vieira Lima:
    "revisado — solicite a retirada"; etiqueta da retirada sem NF, Ref. ID + codigo de barras) antes
    de programar o "vem pelo RETIRO" na fila e o bipe da etiqueta. So GET, so api.mercadolibre.com, admin. */
-router.get('/api/debug/ml-get', admin, async (req, res) => {
+// b760 (Codex #618): chamada ARBITRARIA ao ML com o token do servidor e /shopee/teste?refresh=1 (refresh de 30-40s no proxy)
+// — o que faz algo alem de ler fica so com a chave, como as outras
+router.get('/api/debug/ml-get', adminSoChave, async (req, res) => {
   const p = String(req.query.path || '').trim();
   if (!p.startsWith('/') || p.startsWith('//')) return res.status(400).json({ ok: false, erro: 'informe ?path=/... (ex.: /orders/2000017621674072)' });
   try {
@@ -1353,7 +1370,13 @@ router.get('/api/debug/ml-get', admin, async (req, res) => {
   } catch (e) { return res.status(502).json({ ok: false, erro: String((e && e.message) || e) }); }
 });
 
-router.get('/api/debug/tiktok-devolucoes', admin, async (req, res) => {
+// b759 (Codex #618) - ?coletar=1 DISPARA a coleta na ponte (efeito colateral num GET): so com a chave, como as outras
+// que mutam. A leitura (sem coletar) segue aceitando a sessao do admin.
+function adminTikTokDev(req, res, next) {
+  const { coletar } = req.query;
+  return checarAdmin(req, res, next, String(coletar) !== '1');
+}
+router.get('/api/debug/tiktok-devolucoes', adminTikTokDev, async (req, res) => {
   try {
     const r = await tiktokPonte.sondaDevolucoes(CFG_EMPRESA.CHAVE_REGISTRO || SEM_EMPRESA, req.query);   // b661
     res.status(r.ok ? 200 : 502).json(r);
@@ -1812,7 +1835,7 @@ router.post('/api/defeitos/peca', auth.requerLogin, async (req, res) => {
 });
 
 // ── SHOPEE / MAGALU / NF-ENTRADA (diagnostico e indices) ─────
-router.get('/shopee/teste', admin, async (req, res) => {
+router.get('/shopee/teste', adminSoChave, async (req, res) => {
   try {
     const lista = await shopee.buscarDevolucoesProxy(req.query.refresh === '1');
     res.json({ ok: true, versao: VERSAO, loja: shopee.cfg.loja, ativo: shopee.cfg.ativo,
@@ -1828,7 +1851,7 @@ router.get('/magalu/status', admin, (req, res) => {
   res.json({ ok: true, versao: VERSAO, magalu: magalu.statusIndice() });
 });
 
-router.get('/magalu/indice/construir', admin, (req, res) => {
+router.get('/magalu/indice/construir', adminSoChave, (req, res) => {
   magalu.construirIndice().catch(e => console.error(`[${TAG_APP}/MAGALU]`, e.message));
   res.json({ ok: true, iniciado: true });
 });
@@ -1870,7 +1893,7 @@ router.get('/nf/entrada/indice', admin, (req, res) => {
   res.json({ ok: true, versao: VERSAO, indice: nfEntrada.statusIndice() });
 });
 
-router.get('/nf/entrada/indice/construir', admin, (req, res) => {
+router.get('/nf/entrada/indice/construir', adminSoChave, (req, res) => {
   nfEntrada.construirIndice().catch(e => console.error(`[${TAG_APP}/NF-ENTRADA]`, e.message));
   res.json({ ok: true, iniciado: true });
 });
@@ -1955,14 +1978,14 @@ router.get('/ml/teste', admin, async (req, res) => {
 })();
 
 // b264 - conferir/forcar na hora, sem esperar o timer
-router.get('/ml/token/preventiva', admin, async (req, res) => {
+router.get('/ml/token/preventiva', adminSoChave, async (req, res) => {
   res.json({ ok: true, versao: VERSAO, resultado: await ml.renovacaoPreventiva({ forcar: req.query.forcar === '1' }) });
 });
 
 // b271 - relatorio de TODAS as integracoes registradas, de TODAS as empresas
 // (a lib e quem sabe quem existe). Empresa nova aparece aqui sozinha, sem
 // mexer nesta rota.
-router.get('/tokens/preventiva', admin, async (req, res) => {
+router.get('/tokens/preventiva', adminSoChave, async (req, res) => {
   const { relatorio, listar } = require('../lib/token-preventiva');
   // b272 (review do Codex) - RENOVAR PRIMEIRO, listar DEPOIS. Em objeto
   // literal o `listar()` era avaliado ANTES do `await`, então com ?forcar=1 a

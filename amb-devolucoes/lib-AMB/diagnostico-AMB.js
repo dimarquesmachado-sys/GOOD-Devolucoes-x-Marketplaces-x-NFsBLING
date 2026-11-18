@@ -13,13 +13,13 @@
 // que entrar em DEPS e na chamada em app-AMB.js — test/fabrica-fonte-unica acusa; e a falta de um nome
 // estoura no BOOT (a empresa aparece como `falhou` no /health), nao na requisicao.
 
-const DEPS = ['cfg', 'BASE', 'bling', 'ml', 'mlReturns', 'nfNomes', 'tokens', 'shopee', 'emailAMB', 'NOME_EMPRESA', 'VERSAO', 'admin', 'TRIAGEM', 'redirectOAuth'];
+const DEPS = ['cfg', 'BASE', 'bling', 'ml', 'mlReturns', 'nfNomes', 'tokens', 'shopee', 'emailAMB', 'NOME_EMPRESA', 'VERSAO', 'admin', 'adminSoChave', 'TRIAGEM', 'redirectOAuth'];
 
 module.exports = function registrarDiagnostico(router, deps) {
   for (const nome of DEPS) {
     if (!deps || deps[nome] === undefined) throw new Error('diagnostico-AMB: a fabrica nao passou a dependencia `' + nome + '`');
   }
-  const { cfg, BASE, bling, ml, mlReturns, nfNomes, tokens, shopee, emailAMB, NOME_EMPRESA, VERSAO, admin, TRIAGEM, redirectOAuth } = deps;
+  const { cfg, BASE, bling, ml, mlReturns, nfNomes, tokens, shopee, emailAMB, NOME_EMPRESA, VERSAO, admin, adminSoChave, TRIAGEM, redirectOAuth } = deps;
 
 // @secao diagnostico
 router.get('/config', admin, (req, res) => {
@@ -47,7 +47,8 @@ router.get('/ml/indice', admin, (req, res) => {
 });
 
 /** Forca a reconstrucao. Responde na hora e monta em background. */
-router.get('/ml/indice/construir', admin, (req, res) => {
+// b757 (Codex #618): reconstruir o indice e MUTACAO cara (120 dias no ML) — so com a chave, nunca pelo cookie (CSRF via SameSite=Lax)
+router.get('/ml/indice/construir', adminSoChave, (req, res) => {
   const st = mlReturns.statusIndice();
   if (st.construindo) {
     return res.json({ ok: true, ja_construindo: true, aviso: 'ja existe uma construcao em andamento' });
@@ -103,7 +104,7 @@ router.get('/nf/indice', admin, (req, res) => {
 });
 
 /** Forca a reconstrucao do indice de nomes. */
-router.get('/nf/indice/construir', admin, (req, res) => {
+router.get('/nf/indice/construir', adminSoChave, (req, res) => {
   const st = nfNomes.statusIndice();
   if (st.construindo) {
     return res.json({ ok: true, ja_construindo: true });
