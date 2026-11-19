@@ -265,3 +265,22 @@ painel: sem a chave respondem `{"error":"not found"}` de propósito). Com a busc
 (`/post-purchase/v1/claims/search?status=opened&players.user_id=<id da conta>&players.role=respondent&limit=1`,
 com o `path` codificado) tem que voltar `200`. Depois de um 403, o primeiro clique pode ainda negar: ele só
 troca o token guardado; o segundo já usa o novo.
+
+## Checklist de embarque — o que conferir além da ficha (V-09, 19/11/2026)
+
+A auditoria do Codex (15/11) apontou: "o onboarding confere só a ficha". Uma empresa nova só está embarcada
+quando **cada linha abaixo tem a prova ao lado**. A ordem é a ordem de dependência.
+
+| # | O quê | Onde | Como provar (não é "parece certo") |
+|---|---|---|---|
+| 1 | **Ficha** nos dois repos | `contrato-empresas.json` (byte a byte aqui e no Mover-Pedidos), `lib/empresas.js`, `lib/config-da-empresa.js` | `node test/contrato-empresas.test.js` verde nos **dois** repos; `/health` lista a empresa |
+| 2 | **Tabelas** com o sufixo dela | `sql/provisionar-empresa.sql` (`provisionar_empresa('<sufixo>')`) | o `backup-tabelas.js --empresas=<id>` lê todas as tabelas da ficha sem erro no manifesto (H-03: ele cria o que falta, **não** altera tabela que já existe) |
+| 3 | **Fotos**: pasta da empresa no bucket `fotos-problema` | Supabase → Storage | subir uma foto pela triagem e abrir pelo proxy `/<slug>/api/admin/foto/...` logado nela — e **404** logado em outra empresa (P2-12) |
+| 4 | **Apps dos provedores**: um app por serviço, nunca o `client_id` de outra empresa | Bling, ML (DevCenter), Shopee, Magalu — ver "De quem é cada variável de app" acima | `/<slug>/api/admin/ml-get?...` e o teste de refresh do Bling respondem 200 na conta **dela**; as permissões do ML conforme a tabela acima (403 `PolicyAgent` = falta permissão, não token) |
+| 5 | **Envs** no Render, com o prefixo da ficha | `<PREFIXO>USERS` (usuario:senha[:Nome]), `<PREFIXO>ADMIN_USER`, `<PREFIXO>SESSION_SECRET`, `<PREFIXO>SUPABASE_URL/KEY` (ou as globais), credenciais dos apps | boot sem `[config] faltando` da empresa; `test/smoke-rotas-empresas.test.js` passa com a ficha dela no ambiente |
+| 6 | **Permissões de gente**: quem é estoquista e quem é dono/admin | `<PREFIXO>USERS` + `<PREFIXO>ADMIN_USER` | `test/http-papeis-empresa-estados.test.js` (T-01): estoquista não conclui, admin conclui; sessão de uma empresa **não** abre a outra |
+| 7 | **Extensão (Toolbox)**: a empresa aparece no menu, na Central e na ponte de Devoluções | Mover-Pedidos `toolbox-extensao/tb-empresas.js` (**uma entrada** — 2.1.20; até migrar os `bg-*`/`ct-*`, também `ENDERECO_IDS`/`PREFIXO_REGISTRO` em `bg-devolucoes.js`) | `node scripts/teste-toolbox-ficha-empresas.js` lá (prova com uma 4ª empresa sintética); reinstalar a Toolbox no navegador da empresa e ver a versão no menu |
+| 8 | **Operação**: um pacote inteiro de ponta a ponta | painel da empresa | bipar um pedido real dela, triar com foto, concluir como admin, NF de devolução emitida **na conta dela** no Bling, item aparece em `itens_devolvidos` da tabela com o sufixo dela |
+| 9 | **Backup** antes de abrir pro galpão | `scripts/backup-tabelas.js --empresas=<id>` | manifesto com todas as tabelas e zero erro; guardar fora do Render/Supabase (`docs/BACKUP-E-RESTORE.md`) |
+
+Regra: **ficha sem as linhas 2–9 não é empresa embarcada** — é uma empresa que vai quebrar na primeira NF.
