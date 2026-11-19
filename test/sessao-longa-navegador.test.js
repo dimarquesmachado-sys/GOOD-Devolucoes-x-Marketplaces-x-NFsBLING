@@ -66,8 +66,11 @@ const payload = (codigo) => ({
       await page.route('**/api/triagem/upload-foto', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, url: 'https://x/f.jpg' }) }));
       const cdp = await ctx.newCDPSession(page); await cdp.send('Performance.enable');
       const medir = async () => {
-        await page.evaluate(() => { if (window.gc) window.gc(); });
-        await page.waitForTimeout(200);
+        // os nos do DOM so saem DEPOIS que os wrappers JS deles sao coletados — mais de um GC, com pausa, senao a medida
+        // conta o que ainda vai ser recolhido (com a foto subindo de verdade, a AMB deu 4 nos/ciclo numa rodada e 0 na outra)
+        for (let g = 0; g < 3; g++) { await page.evaluate(() => { if (window.gc) window.gc(); }); await page.waitForTimeout(250); }
+        await cdp.send('HeapProfiler.collectGarbage').catch(() => {});
+        await page.waitForTimeout(300);
         const m = (await cdp.send('Performance.getMetrics')).metrics.reduce((o, x) => (o[x.name] = x.value, o), {});
         const p = await page.evaluate(() => ({ listeners: window.__m.listeners, intervalos: window.__m.intervalos.size, blobs: window.__m.blobsVivos.size, resultadoFilhos: document.getElementById('resultado').querySelectorAll('*').length }));
         return { nos: m.Nodes, jsListeners: m.JSEventListeners, heapMB: Math.round(m.JSHeapUsedSize / 1048576 * 10) / 10, ...p };
