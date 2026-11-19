@@ -623,7 +623,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.126.283 (b769: V-09 — checklist de embarque de empresa nova em PLUGAR-EMPRESA-NOVA; roteiro atualizado)',   // b744: SEM encadear os builds anteriores — a historia e do git, nao desta linha
+      version: '9.126.284 (b770: V-09 — checklist de embarque conferido no codigo: USERS da fabrica, ml-get no header, DDL)',   // b744: SEM encadear os builds anteriores — a historia e do git, nao desta linha
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
