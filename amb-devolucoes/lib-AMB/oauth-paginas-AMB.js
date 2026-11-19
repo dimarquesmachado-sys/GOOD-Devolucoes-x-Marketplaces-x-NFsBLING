@@ -23,11 +23,10 @@ module.exports = function registrarOauthPaginas(router, deps) {
 // @secao oauth-paginas
 // ── /amb/conectar ────────────────────────────────────────────
 router.get('/conectar', admin, (req, res) => {
-  // b756 (V-03): quem chegou pela SESSAO de admin recebe links SEM chave (a chave na URL vaza em log/historico/referer);
-  // quem ainda veio por ?k= (link salvo) segue com a chave nos links, pra nao quebrar o fluxo antigo durante a transicao.
-  const k = req.query.k ? encodeURIComponent(req.query.k) : '';
-  const sufixoK = k ? '&k=' + k : '';      // em URL que ja tem ?servico=
-  const soK = k ? '?k=' + k : '';          // em URL sem querystring
+  // b756/b763 (V-03): esta pagina so abre por SESSAO de admin (ou header); os links nao levam chave nenhuma —
+  // chave na URL vaza em log/historico/referer, e `?k=` nao vale mais em rota nenhuma.
+  const sufixoK = '';
+  const soK = '';
   // Estado AO VIVO, perguntado aos modulos (nao a foto do config).
   const idx = mlReturns.statusIndice();
 

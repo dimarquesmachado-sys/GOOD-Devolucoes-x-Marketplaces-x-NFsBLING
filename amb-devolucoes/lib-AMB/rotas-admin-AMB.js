@@ -1038,7 +1038,7 @@ app.get('/api/admin/reconferir-vinculo', requerAdmin, async (req, res) => {
   if (!aplicar && resultados.some((x) => /VINCULO ERRADO/.test(x.resultado || ''))) {
     const qs = new URLSearchParams({ ids: ids.join(','), confirmar: '1', token: tokenResgate(ids, janela) });
     if (pedida) qs.set('reabrir', pedida);
-    if (req.query.k) qs.set('k', String(req.query.k));
+    // b765 (V-03): a URL de confirmacao nao carrega chave — quem abriu esta rota ja esta como admin (sessao ou header)
     resposta.confirmar_url = (req.baseUrl || '') + req.path + '?' + qs.toString();
   }
   return res.json(resposta);
