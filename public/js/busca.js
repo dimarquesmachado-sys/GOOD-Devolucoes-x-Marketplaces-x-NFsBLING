@@ -804,10 +804,18 @@ function renderizar(data, ok) {
  * Bling. Se nao vier foto, o 📦 fica e nada quebra.
  */
 let _passeFotosItens = 0;
+let _abortarFotosItens = null;
 async function buscarFotosItens(itens) {
   // b590.1 (Codex #473) - cada render abre um passe novo e o antigo para: os ids fotoitem-N se repetem entre pacotes,
   // e o passe do pacote A (itens 5+) nao pode pintar a foto dele no cartao do pacote B.
   const meuPasse = ++_passeFotosItens;
+  // b771 (V-08, sessao longa — medido no Chromium: 25 buscas deixavam 39 pedidos de foto PENDENTES e ~125 nos de DOM
+  // retidos por busca). O passe antigo so "parava" depois que a resposta chegava; enquanto o Bling demorava, o fetch
+  // ficava na fila do navegador (6 por host) e a funcao segurava o cartao antigo inteiro pelo `alvo`. Agora o passe
+  // novo ABORTA o anterior, e o alvo e procurado DEPOIS da resposta — nada do pacote anterior fica vivo.
+  if (_abortarFotosItens) { try { _abortarFotosItens.abort(); } catch (e) { /* ja abortado */ } }
+  const controle = (typeof AbortController === 'function') ? new AbortController() : null;
+  _abortarFotosItens = controle;
   if (!Array.isArray(itens) || !itens.length) return;
   // b590 - dono, 08/10 (Girassol, NF 127729 — kit de 6 itens): so os 4 primeiros pediam foto, e o prato e o pino (5o e
   // 6o) ficavam no 📦. Agora TODOS os itens (dono: 'pq so 12?' — nao havia motivo forte): uma foto por vez, como antes,
@@ -822,8 +830,7 @@ async function buscarFotosItens(itens) {
     if (!chave || chave === '-') {
       if (!pidItem) continue;
     }
-    const alvo = document.getElementById('fotoitem-' + i);
-    if (!alvo) continue;
+    if (!document.getElementById('fotoitem-' + i)) continue;
     try {
       // b225 - manda tambem o EAN que a tela ja mostra: quando o SKU do
       // anuncio nao casa com o codigo do Bling, e por ele que a foto vem.
@@ -831,9 +838,11 @@ async function buscarFotosItens(itens) {
       // e o vinculo que o Bling gravou na emissao. Vai na frente do SKU.
       const pid = pidItem;
       const r = await fetch((window.APP_BASE || '') + '/api/produto/imagem/' + encodeURIComponent(chave || pidItem)
-        + (pid ? '?produtoId=' + encodeURIComponent(pid) : ''), { credentials: 'same-origin' });
+        + (pid ? '?produtoId=' + encodeURIComponent(pid) : ''), Object.assign({ credentials: 'same-origin' }, controle ? { signal: controle.signal } : {}));
       const d = await r.json();
       if (meuPasse !== _passeFotosItens) return;
+      const alvo = document.getElementById('fotoitem-' + i);   // b771: procurado DEPOIS da resposta, no cartao corrente
+      if (!alvo) continue;
       if (d && d.ok && !d.imagem && d.motivo) console.info('[FOTO]', chave, '→', d.motivo);
       if (d && d.ok && d.imagem) {
         alvo.outerHTML = '<img class="dvi-f" src="' + escapeHtml(d.imagem) + '" alt=""'
