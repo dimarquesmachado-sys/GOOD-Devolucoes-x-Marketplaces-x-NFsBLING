@@ -10,7 +10,8 @@
 //   - P1-07 (fotos por pacote): abre a camera (dispositivo falso do Chromium), tira uma foto cujo upload demora, troca de
 //     pacote (abre o fluxo de problema do proximo, que zera a lista) — quando o upload responde, a lista corrente segue
 //     VAZIA (a foto nao contamina o proximo);
-//   - P1-01 (dados hostis): titulo/erro com <img onerror> vindos da API nao executam script na tela.
+//   - P1-01 (dados hostis): titulo/erro com <img onerror> vindos da API nao executam script na tela;
+//   - V-08 (b767): modal recebe o foco ao abrir, Tab circula dentro, Esc fecha e devolve o foco pra quem abriu.
 // Precisa do Chromium do Playwright: `npx playwright install chromium` uma vez. Sem ele, o teste FALHA dizendo isso.
 // Roda com: node test/navegador-real.test.js
 const { subir } = require('./_boot-real');
@@ -126,6 +127,72 @@ const payload = (codigo, titulo) => ({
       await page.waitForTimeout(400);
       const depois = await page.evaluate(() => JSON.stringify(window.fotosUploadadas || []));
       ok(depois === '[]', '⚠️ P1-07: a resposta tardia do upload NAO entrou na lista do fluxo novo (' + depois + ')');
+
+      // ── V-08 (b767): modais com teclado e foco ──
+      await page.evaluate(() => { fecharCamera(true); fecharModal('modalProblema'); });   // o P1-07 deixou o modal aberto
+      await page.focus('#codigo');
+      await page.evaluate(() => abrirModalProblema());
+      await page.waitForTimeout(100);
+      const dentro = await page.evaluate(() => { const m = document.getElementById('modalProblema'); return m.classList.contains('show') && m.contains(document.activeElement) && document.activeElement.tagName; });
+      ok(!!dentro, '⚠️ V-08: ao abrir o modal, o foco entra nele (' + dentro + ')');
+      // Tab a partir do ultimo focavel volta pro primeiro (nao escapa pra tela de tras)
+      const circulou = await page.evaluate(async () => {
+        const m = document.getElementById('modalProblema');
+        const lista = Array.from(m.querySelectorAll('a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])')).filter((el) => el.offsetParent !== null);
+        lista[lista.length - 1].focus();
+        return lista.length;
+      });
+      await page.keyboard.press('Tab');
+      const aposTab = await page.evaluate(() => document.getElementById('modalProblema').contains(document.activeElement));
+      ok(circulou > 1 && aposTab, '⚠️ V-08: Tab no ultimo campo circula dentro do modal (' + circulou + ' focaveis)');
+      await page.keyboard.press('Escape');
+      await page.waitForTimeout(100);
+      const aposEsc = await page.evaluate(() => ({ aberto: document.getElementById('modalProblema').classList.contains('show'), foco: document.activeElement && document.activeElement.id }));
+      ok(!aposEsc.aberto && aposEsc.foco === 'codigo', '⚠️ V-08: Esc fecha o modal e o foco volta pro campo de bipe (' + JSON.stringify(aposEsc) + ')');
+      // Esc com a camera aberta e uma foto pendente: fecharCamera confirma — a tela nao fecha sem perguntar
+      await page.evaluate(() => { abrirModalProblema(); return abrirCamera(); });
+      await page.waitForFunction(() => { const v = document.getElementById('cameraVideo'); return v && v.videoWidth >= 100; }, null, { timeout: 8000 }).catch(() => {});
+      await page.keyboard.press('Escape');
+      await page.waitForTimeout(150);
+      const cam = await page.evaluate(() => document.getElementById('cameraOverlay').classList.contains('show'));
+      ok(!cam, '  Esc fecha a camera (sem foto pendente, sem pergunta)');
+      await page.evaluate(() => { const m = document.getElementById('modalProblema'); if (m.classList.contains('show')) m.classList.remove('show'); });
+
+      // Codex #623: (1) leitor de EAN por cima do modal: Esc fecha o leitor, nao o modal de baixo; Tab nao vaza pra tras
+      const temScanner = await page.evaluate(() => !!document.getElementById('scannerOverlay') && !!document.getElementById('modalProblema') && typeof fecharCameraScanner === 'function');
+      if (temScanner) {
+        await page.evaluate(() => { abrirModalProblema(); document.getElementById('scannerOverlay').style.display = 'flex'; });
+        await page.waitForTimeout(100);
+        await page.keyboard.press('Tab');
+        const vazou = await page.evaluate(() => document.getElementById('modalProblema').contains(document.activeElement));
+        ok(!vazou, '⚠️ Codex #623: tab com o leitor aberto NAO caminha pelo modal escondido atras dele');
+        await page.keyboard.press('Escape');
+        await page.waitForTimeout(100);
+        const est = await page.evaluate(() => ({ scanner: document.getElementById('scannerOverlay').style.display, modal: document.getElementById('modalProblema').classList.contains('show') }));
+        ok(est.scanner === 'none' && est.modal, '⚠️ Codex #623: Esc fecha o leitor e deixa o modal de baixo aberto (' + JSON.stringify(est) + ')');
+        await page.evaluate(() => document.getElementById('modalProblema').classList.remove('show'));
+      }
+      // (2) o iframe da consulta de localizacao entra na navegacao por Tab
+      const temLoc = await page.evaluate(() => !!document.getElementById('frameLocalizacao') && typeof abrirLocalizacao === 'function');
+      if (temLoc) {
+        await page.evaluate(() => { document.getElementById('modalLocalizacao').classList.add('show'); });
+        await page.waitForTimeout(100);
+        await page.focus('#modalLocalizacao button');
+        await page.keyboard.press('Tab');
+        const noFrame = await page.evaluate(() => document.activeElement && document.activeElement.id);
+        ok(noFrame === 'frameLocalizacao', '⚠️ Codex #623: Tab chega no iframe da localizacao (' + noFrame + ')');
+        await page.evaluate(() => document.getElementById('modalLocalizacao').classList.remove('show'));
+      }
+      // (3) Esc no lancamento de defeito roda fecharModalDefeito (que cancela o kit em andamento)
+      const temDef = await page.evaluate(() => !!document.getElementById('modalDefeito') && typeof window.fecharModalDefeito === 'function');
+      if (temDef) {
+        await page.evaluate(() => { window.__fechouDef = 0; const o = window.fecharModalDefeito; window.fecharModalDefeito = function () { window.__fechouDef++; return o.apply(this, arguments); }; document.getElementById('modalDefeito').classList.add('show'); });
+        await page.waitForTimeout(100);
+        await page.keyboard.press('Escape');
+        await page.waitForTimeout(100);
+        const d = await page.evaluate(() => ({ n: window.__fechouDef, aberto: document.getElementById('modalDefeito').classList.contains('show') }));
+        ok(d.n === 1 && !d.aberto, '⚠️ Codex #623: Esc no modal de defeito passa por fecharModalDefeito (' + JSON.stringify(d) + ')');
+      }
 
       ok(errosJs.length === 0, '  nenhum erro de JS na pagina' + (errosJs.length ? ' — ' + errosJs.slice(0, 3).join(' | ') : ''));
       await ctx.close();

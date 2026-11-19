@@ -25,3 +25,65 @@ inputCodigo.addEventListener('keydown', (e) => {
 
 // Ao carregar a pagina, checa se ja tem sessao
 window.addEventListener('load', checarSessao);
+
+// ================ MODAIS: TECLADO E FOCO (b767, V-08) ================
+// Nenhum modal tratava Esc, o foco ficava atras do modal e o Tab saia dele. Uma peca so, pra TODOS os
+// `.modal-bg` e a `.camera-overlay` (triagem, defeito, cola-bipe, localizacao, camera): ao abrir (classe `show`), guarda quem
+// tinha o foco e foca o primeiro campo/botao do modal; Tab/Shift+Tab circulam dentro; Esc fecha o modal de cima
+// (o da camera pela propria fecharCamera, que confirma se ha foto pendente); ao fechar, o foco volta pra quem abriu.
+(function modaisAcessiveis() {
+  const FOCAVEIS = 'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"]), iframe';
+  const origem = new WeakMap();   // modal -> elemento que tinha o foco antes de abrir
+  const visiveis = (modal) => Array.from(modal.querySelectorAll(FOCAVEIS)).filter((el) => el.offsetParent !== null || el === document.activeElement);
+  const abertos = () => Array.from(document.querySelectorAll('.modal-bg.show, .camera-overlay.show'));
+  // O leitor de EAN (scannerOverlay) abre POR CIMA do modal sem usar a classe `show`: enquanto visivel, e ele o modal de cima.
+  const scanner = () => { const s = document.getElementById('scannerOverlay'); return s && s.style.display !== 'none' && s.style.display !== '' ? s : null; };
+  const deCima = () => { const s = scanner(); if (s) return s; const a = abertos(); return a.length ? a[a.length - 1] : null; };
+
+  function aoAbrir(modal) {
+    if (!origem.has(modal)) origem.set(modal, document.activeElement);
+    const alvo = visiveis(modal).find((el) => !/fechar|cancelar|close/i.test(el.textContent || '')) || visiveis(modal)[0];
+    if (alvo && !modal.contains(document.activeElement)) { try { alvo.focus({ preventScroll: true }); } catch (e) { /* sem foco possivel */ } }
+  }
+  function aoFechar(modal) {
+    const volta = origem.get(modal); origem.delete(modal);
+    if (volta && typeof volta.focus === 'function' && document.contains(volta) && !abertos().length) { try { volta.focus({ preventScroll: true }); } catch (e) { /* idem */ } }
+  }
+  function fecharDeCima(modal) {
+    if (modal.id === 'cameraOverlay' && typeof fecharCamera === 'function') return fecharCamera();
+    if (modal.id === 'scannerOverlay' && typeof fecharCameraScanner === 'function') return fecharCameraScanner();
+    if (modal.id === 'modalColaBipe' && typeof fecharColaBipe === 'function') return fecharColaBipe();
+    // mesma convencao do X do popup (index.html): modalDefeito/modalLocalizacao tem nome proprio; o resto e fechar<Id>.
+    // Assim o Esc roda a limpeza do botao (ex.: fecharModalDefeito cancela o lancamento de kit em andamento).
+    const proprias = { modalDefeito: 'fecharModalDefeito', modalLocalizacao: 'fecharLocalizacao' };
+    const nome = proprias[modal.id] || ('fechar' + modal.id.charAt(0).toUpperCase() + modal.id.slice(1));
+    if (typeof window[nome] === 'function') return window[nome]();
+    modal.classList.remove('show');
+  }
+
+  const observador = new MutationObserver((mutacoes) => {
+    for (const m of mutacoes) {
+      const el = m.target;
+      if (!(el instanceof Element) || !(el.classList.contains('modal-bg') || el.classList.contains('camera-overlay'))) continue;
+      const aberto = el.classList.contains('show');
+      const estava = /\bshow\b/.test(m.oldValue || '');
+      if (aberto && !estava) aoAbrir(el);
+      else if (!aberto && estava) aoFechar(el);
+    }
+  });
+  observador.observe(document.documentElement, { subtree: true, attributes: true, attributeFilter: ['class'], attributeOldValue: true });
+
+  document.addEventListener('keydown', (e) => {
+    const modal = deCima();
+    if (!modal) return;
+    if (e.key === 'Escape') { e.preventDefault(); fecharDeCima(modal); return; }
+    if (e.key !== 'Tab') return;
+    const lista = visiveis(modal);
+    if (!lista.length) { e.preventDefault(); return; }
+    const primeiro = lista[0]; const ultimo = lista[lista.length - 1];
+    if (!modal.contains(document.activeElement)) { e.preventDefault(); (e.shiftKey ? ultimo : primeiro).focus(); return; }
+    if (e.shiftKey && document.activeElement === primeiro) { e.preventDefault(); ultimo.focus(); }
+    else if (!e.shiftKey && document.activeElement === ultimo) { e.preventDefault(); primeiro.focus(); }
+  }, true);
+  window.__modaisAcessiveis = { abertos, deCima };   // pro teste de navegador
+})();
