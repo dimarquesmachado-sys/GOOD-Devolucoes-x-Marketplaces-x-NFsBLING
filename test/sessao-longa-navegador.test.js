@@ -78,8 +78,11 @@ const payload = (codigo) => ({
         await page.waitForFunction((c) => new RegExp('Produto ' + c).test(document.getElementById('resultado').textContent), codigo, { timeout: 8000 });
         await page.evaluate(() => { abrirModalProblema(); return abrirCamera(); });
         await page.waitForFunction(() => { const v = document.getElementById('cameraVideo'); return v && v.videoWidth >= 100; }, null, { timeout: 8000 });
-        await page.evaluate(() => capturarFoto());
-        await page.waitForFunction(() => Array.from(document.querySelectorAll('#cameraMiniaturas img, .mini img, #fotosPreview img')).length >= 0, null, { timeout: 4000 }).catch(() => {});
+        // sem debounce ativo (600 ms do ciclo anterior) e com a lista de fotos anotada: so assim a foto nova e identificavel
+        await page.waitForFunction(() => document.getElementById('cameraCapture').dataset.busy !== 'true', null, { timeout: 4000 });
+        await page.evaluate(() => { window.__fotosAntes = new Set(window.fotosUploadadas || []); capturarFoto(); });
+        // o ciclo so segue quando a foto NOVA terminou de subir com URL — senao mede upload pendente, nao memoria assentada
+        await page.waitForFunction(() => (window.fotosUploadadas || []).some((f) => !window.__fotosAntes.has(f) && f.uploading === false && f.url), null, { timeout: 8000 });
         await page.waitForTimeout(150);
         await page.evaluate(() => { try { fecharCamera(true); } catch (e) { fecharCamera(); } fecharModal('modalProblema'); });
         await page.waitForTimeout(50);
