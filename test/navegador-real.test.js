@@ -158,6 +158,42 @@ const payload = (codigo, titulo) => ({
       ok(!cam, '  Esc fecha a camera (sem foto pendente, sem pergunta)');
       await page.evaluate(() => { const m = document.getElementById('modalProblema'); if (m.classList.contains('show')) m.classList.remove('show'); });
 
+      // Codex #623: (1) leitor de EAN por cima do modal: Esc fecha o leitor, nao o modal de baixo; Tab nao vaza pra tras
+      const temScanner = await page.evaluate(() => !!document.getElementById('scannerOverlay') && !!document.getElementById('modalProblema') && typeof fecharCameraScanner === 'function');
+      if (temScanner) {
+        await page.evaluate(() => { abrirModalProblema(); document.getElementById('scannerOverlay').style.display = 'flex'; });
+        await page.waitForTimeout(100);
+        await page.keyboard.press('Tab');
+        const vazou = await page.evaluate(() => document.getElementById('modalProblema').contains(document.activeElement));
+        ok(!vazou, '⚠️ Codex #623: tab com o leitor aberto NAO caminha pelo modal escondido atras dele');
+        await page.keyboard.press('Escape');
+        await page.waitForTimeout(100);
+        const est = await page.evaluate(() => ({ scanner: document.getElementById('scannerOverlay').style.display, modal: document.getElementById('modalProblema').classList.contains('show') }));
+        ok(est.scanner === 'none' && est.modal, '⚠️ Codex #623: Esc fecha o leitor e deixa o modal de baixo aberto (' + JSON.stringify(est) + ')');
+        await page.evaluate(() => document.getElementById('modalProblema').classList.remove('show'));
+      }
+      // (2) o iframe da consulta de localizacao entra na navegacao por Tab
+      const temLoc = await page.evaluate(() => !!document.getElementById('frameLocalizacao') && typeof abrirLocalizacao === 'function');
+      if (temLoc) {
+        await page.evaluate(() => { document.getElementById('modalLocalizacao').classList.add('show'); });
+        await page.waitForTimeout(100);
+        await page.focus('#modalLocalizacao button');
+        await page.keyboard.press('Tab');
+        const noFrame = await page.evaluate(() => document.activeElement && document.activeElement.id);
+        ok(noFrame === 'frameLocalizacao', '⚠️ Codex #623: Tab chega no iframe da localizacao (' + noFrame + ')');
+        await page.evaluate(() => document.getElementById('modalLocalizacao').classList.remove('show'));
+      }
+      // (3) Esc no lancamento de defeito roda fecharModalDefeito (que cancela o kit em andamento)
+      const temDef = await page.evaluate(() => !!document.getElementById('modalDefeito') && typeof window.fecharModalDefeito === 'function');
+      if (temDef) {
+        await page.evaluate(() => { window.__fechouDef = 0; const o = window.fecharModalDefeito; window.fecharModalDefeito = function () { window.__fechouDef++; return o.apply(this, arguments); }; document.getElementById('modalDefeito').classList.add('show'); });
+        await page.waitForTimeout(100);
+        await page.keyboard.press('Escape');
+        await page.waitForTimeout(100);
+        const d = await page.evaluate(() => ({ n: window.__fechouDef, aberto: document.getElementById('modalDefeito').classList.contains('show') }));
+        ok(d.n === 1 && !d.aberto, '⚠️ Codex #623: Esc no modal de defeito passa por fecharModalDefeito (' + JSON.stringify(d) + ')');
+      }
+
       ok(errosJs.length === 0, '  nenhum erro de JS na pagina' + (errosJs.length ? ' — ' + errosJs.slice(0, 3).join(' | ') : ''));
       await ctx.close();
     }

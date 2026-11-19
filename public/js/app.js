@@ -32,11 +32,13 @@ window.addEventListener('load', checarSessao);
 // tinha o foco e foca o primeiro campo/botao do modal; Tab/Shift+Tab circulam dentro; Esc fecha o modal de cima
 // (o da camera pela propria fecharCamera, que confirma se ha foto pendente); ao fechar, o foco volta pra quem abriu.
 (function modaisAcessiveis() {
-  const FOCAVEIS = 'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+  const FOCAVEIS = 'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"]), iframe';
   const origem = new WeakMap();   // modal -> elemento que tinha o foco antes de abrir
   const visiveis = (modal) => Array.from(modal.querySelectorAll(FOCAVEIS)).filter((el) => el.offsetParent !== null || el === document.activeElement);
   const abertos = () => Array.from(document.querySelectorAll('.modal-bg.show, .camera-overlay.show'));
-  const deCima = () => { const a = abertos(); return a.length ? a[a.length - 1] : null; };
+  // O leitor de EAN (scannerOverlay) abre POR CIMA do modal sem usar a classe `show`: enquanto visivel, e ele o modal de cima.
+  const scanner = () => { const s = document.getElementById('scannerOverlay'); return s && s.style.display !== 'none' && s.style.display !== '' ? s : null; };
+  const deCima = () => { const s = scanner(); if (s) return s; const a = abertos(); return a.length ? a[a.length - 1] : null; };
 
   function aoAbrir(modal) {
     if (!origem.has(modal)) origem.set(modal, document.activeElement);
@@ -49,7 +51,13 @@ window.addEventListener('load', checarSessao);
   }
   function fecharDeCima(modal) {
     if (modal.id === 'cameraOverlay' && typeof fecharCamera === 'function') return fecharCamera();
+    if (modal.id === 'scannerOverlay' && typeof fecharCameraScanner === 'function') return fecharCameraScanner();
     if (modal.id === 'modalColaBipe' && typeof fecharColaBipe === 'function') return fecharColaBipe();
+    // mesma convencao do X do popup (index.html): modalDefeito/modalLocalizacao tem nome proprio; o resto e fechar<Id>.
+    // Assim o Esc roda a limpeza do botao (ex.: fecharModalDefeito cancela o lancamento de kit em andamento).
+    const proprias = { modalDefeito: 'fecharModalDefeito', modalLocalizacao: 'fecharLocalizacao' };
+    const nome = proprias[modal.id] || ('fechar' + modal.id.charAt(0).toUpperCase() + modal.id.slice(1));
+    if (typeof window[nome] === 'function') return window[nome]();
     modal.classList.remove('show');
   }
 
