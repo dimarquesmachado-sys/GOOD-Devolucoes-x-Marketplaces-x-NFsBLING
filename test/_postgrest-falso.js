@@ -111,7 +111,9 @@ function projetar(linha, select) {
 // `objetos`: { 'bucket/caminho.jpg': Buffer } — um Storage minusculo, servido em /storage/v1/object/<bucket>/<caminho>
 // (download autenticado do supabase-js) e /storage/v1/object/public/<bucket>/<caminho> (URL publica). b748 (Codex #610):
 // e o que permite exigir 200 + bytes da foto da propria empresa, em vez de aceitar "qualquer coisa que nao seja 404".
-async function subirPostgrest({ tabelas = {}, objetos = {} } = {}) {
+// `fks`: { tabela: { coluna: tabelaPai } } — POST/PATCH com valor sem pai responde 409 23503 (foreign key), como o
+// Postgres. Opcional; b764 (Codex #622) usa pra provar que o restore grava os pais antes dos filhos.
+async function subirPostgrest({ tabelas = {}, objetos = {}, fks = {} } = {}) {
   const dados = {};
   let proximoId = 1000;
   for (const [t, linhas] of Object.entries(tabelas)) dados[t] = linhas.map((l) => Object.assign({}, l));
@@ -172,16 +174,32 @@ async function subirPostgrest({ tabelas = {}, objetos = {} } = {}) {
       try { corpoReq = bruto ? JSON.parse(bruto) : null; } catch (e) { return responder(400, { message: 'JSON invalido' }); }
     }
 
+    // chaves estrangeiras (opcional)
+    if ((req.method === 'POST' || req.method === 'PATCH') && fks[tabela] && corpoReq) {
+      for (const l of (Array.isArray(corpoReq) ? corpoReq : [corpoReq])) {
+        for (const [col, pai] of Object.entries(fks[tabela])) {
+          if (l[col] == null) continue;
+          if (!(dados[pai] || []).some((p) => String(p.id) === String(l[col]))) {
+            return responder(409, { code: '23503', message: `insert or update on table "${tabela}" violates foreign key constraint`, details: `Key (${col})=(${l[col]}) is not present in table "${pai}".` });
+          }
+        }
+      }
+    }
     let resultado;
     if (req.method === 'GET' || req.method === 'HEAD') {
       resultado = linhas.filter(casa);
     } else if (req.method === 'POST') {
+      // upsert (Prefer: resolution=merge-duplicates, on_conflict=id): linha com o mesmo id e SUBSTITUIDA — b764 (V-04)
+      const upsert = /resolution=merge-duplicates/.test(prefer);
       const novos = (Array.isArray(corpoReq) ? corpoReq : [corpoReq]).map((l) => {
         const n = Object.assign({}, l);
         if (n.id == null) n.id = proximoId++;
         return n;
       });
-      for (const n of novos) linhas.push(n);
+      for (const n of novos) {
+        const i = upsert ? linhas.findIndex((l) => String(l.id) === String(n.id)) : -1;
+        if (i >= 0) linhas[i] = Object.assign({}, linhas[i], n); else linhas.push(n);
+      }
       resultado = novos;
     } else if (req.method === 'PATCH') {
       resultado = [];
