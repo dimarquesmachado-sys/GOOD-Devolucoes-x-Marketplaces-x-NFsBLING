@@ -113,7 +113,11 @@ function projetar(linha, select) {
 // e o que permite exigir 200 + bytes da foto da propria empresa, em vez de aceitar "qualquer coisa que nao seja 404".
 // `fks`: { tabela: { coluna: tabelaPai } } — POST/PATCH com valor sem pai responde 409 23503 (foreign key), como o
 // Postgres. Opcional; b764 (Codex #622) usa pra provar que o restore grava os pais antes dos filhos.
-async function subirPostgrest({ tabelas = {}, objetos = {}, fks = {} } = {}) {
+// b774 (V-04, ensaio real de 20/11): `colunas` — tabela SEM a coluna `id` (espreita_notas da GOOD, sku_depara,
+// devolucao_tags). Declarada, o falso responde como o PostgREST: order por coluna inexistente = 400 42703
+// "column <tabela>.<col> does not exist"; upsert casa pelas colunas de `on_conflict` (nao so por id); POST nao
+// inventa `id` numa tabela que nao o tem.
+async function subirPostgrest({ tabelas = {}, objetos = {}, fks = {}, colunas = {} } = {}) {
   const dados = {};
   let proximoId = 1000;
   for (const [t, linhas] of Object.entries(tabelas)) dados[t] = linhas.map((l) => Object.assign({}, l));
@@ -164,6 +168,10 @@ async function subirPostgrest({ tabelas = {}, objetos = {}, fks = {} } = {}) {
       else if (k === 'on_conflict' || k === 'columns') { /* ignorado */ }
       else fs.push(filtro(k, v));
     }
+    if (colunas[tabela]) {
+      const falta = order.find((o) => !colunas[tabela].includes(o.col));
+      if (falta) return responder(400, { code: '42703', message: `column ${tabela}.${falta.col} does not exist`, details: null, hint: null });
+    }
     const range = /^(\d+)-(\d+)$/.exec(String(req.headers.range || ''));
     if (range) { offset = Number(range[1]); limit = Number(range[2]) - Number(range[1]) + 1; }
     const casa = (l) => fs.every((f) => f(l));
@@ -191,13 +199,15 @@ async function subirPostgrest({ tabelas = {}, objetos = {}, fks = {} } = {}) {
     } else if (req.method === 'POST') {
       // upsert (Prefer: resolution=merge-duplicates, on_conflict=id): linha com o mesmo id e SUBSTITUIDA — b764 (V-04)
       const upsert = /resolution=merge-duplicates/.test(prefer);
+      const temId = !colunas[tabela] || colunas[tabela].includes('id');
+      const conflito = String(u.searchParams.get('on_conflict') || 'id').split(',').map((c) => c.trim()).filter(Boolean);
       const novos = (Array.isArray(corpoReq) ? corpoReq : [corpoReq]).map((l) => {
         const n = Object.assign({}, l);
-        if (n.id == null) n.id = proximoId++;
+        if (temId && n.id == null) n.id = proximoId++;
         return n;
       });
       for (const n of novos) {
-        const i = upsert ? linhas.findIndex((l) => String(l.id) === String(n.id)) : -1;
+        const i = upsert ? linhas.findIndex((l) => conflito.every((c) => String(l[c]) === String(n[c]))) : -1;
         if (i >= 0) linhas[i] = Object.assign({}, linhas[i], n); else linhas.push(n);
       }
       resultado = novos;
