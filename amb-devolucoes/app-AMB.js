@@ -662,7 +662,7 @@ const registrarCicloDefeitos = require('../lib/defeitos-ciclo');
 // candidato ja desistido ainda batia no Bling depois de esperar numa pausa
 // de 429. Ver bling-AMB.js, nf-nomes-AMB.js e identificar-AMB.js.
 // 29/10: sem o 'AMB' na frente — a mesma peca serve Girassol, AMB e as proximas; a empresa vai no campo `empresa`
-const VERSAO = 'Devolucoes b772';
+const VERSAO = 'Devolucoes b773';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -855,7 +855,9 @@ router.get('/', (req, res) => {
   res.type('html').send(INDEX_AMB_HTML);
 });
 
-router.get('/painel', auth.requerLogin, (req, res) => {
+// b773 (V-02, regra do dono 20/11: "a tela de admin, so admin entra; estoquista nao tem que ter acesso ao ADMIN do
+// Devolucoes"): a GOOD ja servia /painel-novo.html com requerAdmin; a fabrica deixava o estoquista abrir o painel.
+router.get('/painel', auth.requerAdmin, (req, res) => {
   res.set('Cache-Control', 'no-cache, must-revalidate');   // b19: tela nunca presa
   res.type('html').send(PAINEL_AMB_HTML);
 });
@@ -874,7 +876,7 @@ function exigirLoginNoPainelHtml(req, res, next) {
   const ehPainel = ehProtegidoAMB(req.path, {
     exatos: ['/painel-AMB.html', '/painel2-AMB.html'],
   });
-  if (ehPainel) return auth.requerLogin(req, res, next);
+  if (ehPainel) return auth.requerAdmin(req, res, next);   // b773: admin, como a rota /painel
   return next();
 }
 router.use(exigirLoginNoPainelHtml);
@@ -1759,11 +1761,13 @@ router.post('/api/espreita/nota', auth.requerLogin, async (req, res) => {
 });
 
 // ── RECADOS PRO ESTOQUISTA ───────────────────────────────────
-router.get('/api/recados', auth.requerLogin, async (req, res) => {
+// b773 (V-02): recado e coisa de admin — as rotas nativas seguem a mesma regra dos aliases do painel
+// (compat-AMB.js). O estoquista so da "ciente".
+router.get('/api/recados', auth.requerAdmin, async (req, res) => {
   res.json(await db.listarRecados({ resolvidos: req.query.resolvidos === '1' }));
 });
 
-router.post('/api/recados', auth.requerLogin, async (req, res) => {
+router.post('/api/recados', auth.requerAdmin, async (req, res) => {
   const { identificador, texto } = req.body || {};
   if (!identificador || !texto) {
     return res.status(400).json({ ok: false, erro: 'informe identificador e texto' });
@@ -1775,7 +1779,7 @@ router.post('/api/recados/:id/ciente', auth.requerLogin, async (req, res) => {
   res.json(await db.marcarCiente(req.params.id, req.usuario));
 });
 
-router.post('/api/recados/:id/resolver', auth.requerLogin, async (req, res) => {
+router.post('/api/recados/:id/resolver', auth.requerAdmin, async (req, res) => {
   res.json(await db.resolverRecado(req.params.id));
 });
 
@@ -2508,7 +2512,7 @@ router.get('/api/nf/buscar-links-bling/:orderId', auth.requerLogin, async (req, 
 // @fabrica-modulo lib-AMB/sem-retorno-AMB.js#sem-retorno
 require('./lib-AMB/sem-retorno-AMB')(router, { CHAVE_DADOS, auth, erroCodigo, confrontar, vinculoCache, marcadores, magaluCancelados, db, nfp, ajudantes });   // @fabrica-chamada
 
-router.get('/api/admin/indice-nf-devolucao', auth.requerLogin, async (req, res) => {
+router.get('/api/admin/indice-nf-devolucao', auth.requerAdmin, async (req, res) => {
   try {
     await montarIndiceNFDevolucaoAMB(Number(req.query.paginas || 5));
     const mapa = {};

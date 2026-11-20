@@ -1478,7 +1478,7 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
   // que se repita; esta rota ajuda com os que JA existem: casa o SKU do orfao
   // com as devolucoes que o sistema esperava e mostra o rastreio pra triar
   // de novo. E sugestao — quem decide e o dono. Ver lib/orfaos-sugerir-origem.
-  router.get('/api/admin/orfaos', auth.requerLogin, async (req, res) => {
+  router.get('/api/admin/orfaos', auth.requerAdmin, async (req, res) => {
     try {
       const { sugerirOrigem } = require('../../lib/orfaos-sugerir-origem');
       const [apr, prob, div, conc] = await Promise.all(
@@ -1499,7 +1499,7 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
     } catch (e) { res.status(500).json({ ok: false, erro: String(e.message || e) }); }
   });
 
-  router.get('/api/admin/devolucoes', auth.requerLogin, async (req, res) => {
+  router.get('/api/admin/devolucoes', auth.requerAdmin, async (req, res) => {
     try {
       // b658 - nivelar por cima (GOOD 31/10): canal pelo NUMERO DO PEDIDO.
       // Registro antigo 'mercadolivre' (ou sem canal) com pedido de outro
@@ -1556,7 +1556,7 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
 
   /** Recados: mesma coisa, so o nome muda (singular na GOOD). */
   // ═══ b245 - DE-PARA DE SKU (so admin cadastra; qualquer login consulta) ═══
-  router.get('/api/admin/sku-depara', auth.requerLogin, async (req, res) => {
+  router.get('/api/admin/sku-depara', auth.requerAdmin, async (req, res) => {
     res.json(await db.listarDepara());
   });
 
@@ -1593,15 +1593,16 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
     res.json(await db.apagarDepara(req.params.sku));
   });
 
-  router.get('/api/admin/recados', auth.requerLogin, async (req, res) => {
+  // b773 (V-02, regra do dono 20/11): RECADO E COISA DE ADMIN — criar, listar, editar e remover. O estoquista so
+  // marca "ciente" (rota /api/recado/:id/ciente). Antes, estes aliases do painel exigiam so login, e a GOOD
+  // exigia admin: a mesma tela com permissoes diferentes por empresa. Agora as 3 iguais, pelo lado mais fechado.
+  router.get('/api/admin/recados', auth.requerAdmin, async (req, res) => {
     res.json(await db.listarRecados({ resolvidos: req.query.resolvidos === '1' }));
   });
 
   // b219 - EDITAR um recado (texto e/ou identificador). Só admin: o aviso
   // trava a triagem, entao quem muda o texto muda a instrucao do galpao.
-  router.put('/api/admin/recado/:id', auth.requerLogin, async (req, res) => {
-    const s = auth.validarSessao(auth.tokenDaRequisicao(req), 'admin');
-    if (!s) return res.status(403).json({ ok: false, erro: 'so o admin edita recados' });
+  router.put('/api/admin/recado/:id', auth.requerAdmin, async (req, res) => {
     const b = corpo(req);
     const r = await db.editarRecado(req.params.id, {
       identificador: b.identificador || b.chave || null,
@@ -1610,7 +1611,7 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
     res.status(r.ok ? 200 : 400).json(r);
   });
 
-  router.post('/api/admin/recado', auth.requerLogin, async (req, res) => {
+  router.post('/api/admin/recado', auth.requerAdmin, async (req, res) => {
     const b = corpo(req);
     const identificador = b.identificador || b.chave || b.pedido || b.tracking || null;
     const texto = b.texto || b.recado || null;
@@ -1620,12 +1621,12 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
     res.json(await db.criarRecado({ identificador, texto, criadoPor: req.usuario }));
   });
 
-  router.post('/api/admin/recado/:id/remover', auth.requerLogin, async (req, res) => {
+  router.post('/api/admin/recado/:id/remover', auth.requerAdmin, async (req, res) => {
     res.json(await db.resolverRecado(req.params.id));
   });
 
   /** A espreita e a mesma - o painel so a chama por outro caminho. */
-  router.get('/api/admin/espreita', auth.requerLogin, (req, res) => {
+  router.get('/api/admin/espreita', auth.requerAdmin, (req, res) => {
     const qs = req.originalUrl.includes('?') ? req.originalUrl.slice(req.originalUrl.indexOf('?')) : '';
     // ⚠️ b370 - REDIRECT INTERNO CRAVADO NA AMB.
     //
@@ -1638,7 +1639,7 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
     res.redirect(307, (req.baseUrl || '') + '/api/espreita' + qs);
   });
 
-  router.post('/api/admin/espreita/nota', auth.requerLogin, (req, res) => {
+  router.post('/api/admin/espreita/nota', auth.requerAdmin, (req, res) => {
     // ⚠️ b371 (Codex, P1) - O POST IRMAO, QUE EU PERDI.
     //
     // Corrigi o GET logo acima e parei nele. Este POST continuava mandando
