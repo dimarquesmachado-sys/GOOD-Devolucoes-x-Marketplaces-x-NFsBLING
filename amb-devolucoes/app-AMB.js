@@ -662,7 +662,7 @@ const registrarCicloDefeitos = require('../lib/defeitos-ciclo');
 // candidato ja desistido ainda batia no Bling depois de esperar numa pausa
 // de 429. Ver bling-AMB.js, nf-nomes-AMB.js e identificar-AMB.js.
 // 29/10: sem o 'AMB' na frente — a mesma peca serve Girassol, AMB e as proximas; a empresa vai no campo `empresa`
-const VERSAO = 'Devolucoes b772';
+const VERSAO = 'Devolucoes b773';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -1759,11 +1759,13 @@ router.post('/api/espreita/nota', auth.requerLogin, async (req, res) => {
 });
 
 // ── RECADOS PRO ESTOQUISTA ───────────────────────────────────
-router.get('/api/recados', auth.requerLogin, async (req, res) => {
+// b773 (V-02): recado e coisa de admin — as rotas nativas seguem a mesma regra dos aliases do painel
+// (compat-AMB.js). O estoquista so da "ciente".
+router.get('/api/recados', auth.requerAdmin, async (req, res) => {
   res.json(await db.listarRecados({ resolvidos: req.query.resolvidos === '1' }));
 });
 
-router.post('/api/recados', auth.requerLogin, async (req, res) => {
+router.post('/api/recados', auth.requerAdmin, async (req, res) => {
   const { identificador, texto } = req.body || {};
   if (!identificador || !texto) {
     return res.status(400).json({ ok: false, erro: 'informe identificador e texto' });
@@ -1775,7 +1777,7 @@ router.post('/api/recados/:id/ciente', auth.requerLogin, async (req, res) => {
   res.json(await db.marcarCiente(req.params.id, req.usuario));
 });
 
-router.post('/api/recados/:id/resolver', auth.requerLogin, async (req, res) => {
+router.post('/api/recados/:id/resolver', auth.requerAdmin, async (req, res) => {
   res.json(await db.resolverRecado(req.params.id));
 });
 
