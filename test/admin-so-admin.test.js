@@ -1,13 +1,18 @@
 'use strict';
-// b773 — V-02 (auditoria do Codex 15/11; regra do dono 20/11: "estoquista nao tem acesso ao admin, nao deve ter").
-// RECADO PRO ESTOQUISTA e coisa de admin: criar, listar, editar e remover/resolver. O estoquista so marca "ciente".
-// Antes, a GOOD ja era assim e a fabrica (AMB/Girassol) deixava o estoquista criar, listar e resolver pelos
-// aliases do painel E pelas rotas nativas /api/recados* — a mesma tela com permissoes diferentes por empresa.
-// Aqui o server.js de verdade sobe com as 3 empresas (PostgREST falso atras) e a matriz e provada por HTTP:
-//   estoquista: criar/listar/editar/remover = 401 ou 403; ciente = 200
-//   admin:      criar/listar/remover = 200 (e o recado vai pra tabela DESTA empresa)
-//   sem sessao: tudo 401
-// Roda com: node test/recados-so-admin.test.js
+// b773 — V-02 (auditoria do Codex 15/11; regra do dono 20/11: "a tela de admin, so admin entra; estoquista nao tem
+// que ter acesso ao ADMIN do Devolucoes"). Duas provas, nas 3 empresas, no server.js de verdade (PostgREST falso atras):
+//   1. RECADO PRO ESTOQUISTA e coisa de admin: criar, listar, editar e remover/resolver. O estoquista so marca "ciente".
+//      Antes, a GOOD ja era assim e a fabrica (AMB/Girassol) deixava o estoquista criar, listar e resolver pelos
+//      aliases do painel E pelas rotas nativas /api/recados*.
+//   2. O PAINEL ADMIN E TODA ROTA /api/admin/* fecham pro estoquista (401/403) — a GOOD servia /painel-novo.html com
+//      requerAdmin; a fabrica deixava o estoquista abrir /painel e sete rotas de leitura do painel (orfaos, devolucoes,
+//      sku-depara, espreita, espreita/nota, indice-nf-devolucao, sem-retorno) com login comum. Aqui o teste VARRE as
+//      rotas /api/admin/* registradas na fabrica (lendo o fonte) e bate em cada uma com o cookie do estoquista: toda
+//      resposta tem que ser 401/403 — rota nova com requerLogin cai aqui.
+// Roda com: node test/admin-so-admin.test.js
+const fs = require('fs');
+const path = require('path');
+require('./_fonte-painel'); require('./_fonte-fabrica');   // o teste le o app-AMB.js e cita o painel-AMB.html: le a fonte COMPOSTA (fatias de volta no lugar)
 const { subir } = require('./_boot-real');
 const { subirPostgrest } = require('./_postgrest-falso');
 let falhas = 0;
@@ -94,6 +99,31 @@ const EMPRESAS = [
       const aRemover = await s.pedir(e.rota + e.remover(idRecado), { metodo: 'POST', cookie: dono });
       ok(aRemover.status === 200, '  admin remove: ' + aRemover.status);
     }
+    // ── 2. o painel e TODAS as rotas /api/admin/* da fabrica, com o cookie do estoquista ──
+    const fontes = ['amb-devolucoes/app-AMB.js', 'amb-devolucoes/lib-AMB/compat-AMB.js', 'amb-devolucoes/lib-AMB/rotas-admin-AMB.js', 'amb-devolucoes/lib-AMB/sem-retorno-AMB.js']
+      .map((f) => fs.readFileSync(path.join(__dirname, '..', f), 'utf8')).join('\n');
+    const rotasAdmin = [...fontes.matchAll(/(?:router|app)\.(get|post|put|delete)\('(\/api\/admin\/[^']*)'/g)]
+      .map((m) => ({ metodo: m[1].toUpperCase(), rota: m[2].replace(/:[a-zA-Z_]+/g, '1') }));
+    const vistas = new Set();
+    ok(rotasAdmin.length >= 20, '  ' + rotasAdmin.length + ' rotas /api/admin/* registradas na fabrica (lidas do fonte)');
+    for (const e of EMPRESAS.slice(1)) {
+      console.log('\n── ' + e.nome + ': painel e /api/admin/* com o cookie do estoquista');
+      const esto = await login(e, 'esto', 's1'), dono = await login(e, 'dono', 's2');
+      for (const rota of ['/painel', '/painel-AMB.html']) {
+        const r = await s.pedir(e.rota + rota, { cookie: esto });
+        ok(negado(r.status), '⚠️ estoquista NAO abre o painel admin ' + rota + ': ' + r.status);
+        const a = await s.pedir(e.rota + rota, { cookie: dono });
+        ok(a.status === 200 && /<html/i.test(String(a.corpo)), '  admin abre ' + rota + ': ' + a.status);
+      }
+      let abertas = [];
+      for (const { metodo, rota } of rotasAdmin) {
+        const chave = metodo + ' ' + rota; if (vistas.has(e.nome + chave)) continue; vistas.add(e.nome + chave);
+        const r = await s.pedir(e.rota + rota, { metodo, cookie: esto, corpo: {} });
+        if (!negado(r.status)) abertas.push(chave + ' → ' + r.status);
+      }
+      ok(abertas.length === 0, '⚠️ nenhuma rota /api/admin/* responde ao estoquista com outra coisa que 401/403' + (abertas.length ? ':\n      ' + abertas.join('\n      ') : ' (' + rotasAdmin.length + ' rotas)'));
+    }
+
     // isolamento: cada empresa gravou SO na sua tabela
     for (const e of EMPRESAS) ok(pg.tabela('recados' + e.sufixo).length === 1, '  recados' + e.sufixo + ' tem exatamente o recado da ' + e.nome + ' (' + pg.tabela('recados' + e.sufixo).length + ')');
   } catch (err) {

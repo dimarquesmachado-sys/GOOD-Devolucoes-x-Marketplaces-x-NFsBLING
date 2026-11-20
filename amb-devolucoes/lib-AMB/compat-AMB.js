@@ -1478,7 +1478,7 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
   // que se repita; esta rota ajuda com os que JA existem: casa o SKU do orfao
   // com as devolucoes que o sistema esperava e mostra o rastreio pra triar
   // de novo. E sugestao — quem decide e o dono. Ver lib/orfaos-sugerir-origem.
-  router.get('/api/admin/orfaos', auth.requerLogin, async (req, res) => {
+  router.get('/api/admin/orfaos', auth.requerAdmin, async (req, res) => {
     try {
       const { sugerirOrigem } = require('../../lib/orfaos-sugerir-origem');
       const [apr, prob, div, conc] = await Promise.all(
@@ -1499,7 +1499,7 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
     } catch (e) { res.status(500).json({ ok: false, erro: String(e.message || e) }); }
   });
 
-  router.get('/api/admin/devolucoes', auth.requerLogin, async (req, res) => {
+  router.get('/api/admin/devolucoes', auth.requerAdmin, async (req, res) => {
     try {
       // b658 - nivelar por cima (GOOD 31/10): canal pelo NUMERO DO PEDIDO.
       // Registro antigo 'mercadolivre' (ou sem canal) com pedido de outro
@@ -1556,7 +1556,7 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
 
   /** Recados: mesma coisa, so o nome muda (singular na GOOD). */
   // ═══ b245 - DE-PARA DE SKU (so admin cadastra; qualquer login consulta) ═══
-  router.get('/api/admin/sku-depara', auth.requerLogin, async (req, res) => {
+  router.get('/api/admin/sku-depara', auth.requerAdmin, async (req, res) => {
     res.json(await db.listarDepara());
   });
 
@@ -1626,7 +1626,7 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
   });
 
   /** A espreita e a mesma - o painel so a chama por outro caminho. */
-  router.get('/api/admin/espreita', auth.requerLogin, (req, res) => {
+  router.get('/api/admin/espreita', auth.requerAdmin, (req, res) => {
     const qs = req.originalUrl.includes('?') ? req.originalUrl.slice(req.originalUrl.indexOf('?')) : '';
     // ⚠️ b370 - REDIRECT INTERNO CRAVADO NA AMB.
     //
@@ -1639,7 +1639,7 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
     res.redirect(307, (req.baseUrl || '') + '/api/espreita' + qs);
   });
 
-  router.post('/api/admin/espreita/nota', auth.requerLogin, (req, res) => {
+  router.post('/api/admin/espreita/nota', auth.requerAdmin, (req, res) => {
     // ⚠️ b371 (Codex, P1) - O POST IRMAO, QUE EU PERDI.
     //
     // Corrigi o GET logo acima e parei nele. Este POST continuava mandando

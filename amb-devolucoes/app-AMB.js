@@ -855,7 +855,9 @@ router.get('/', (req, res) => {
   res.type('html').send(INDEX_AMB_HTML);
 });
 
-router.get('/painel', auth.requerLogin, (req, res) => {
+// b773 (V-02, regra do dono 20/11: "a tela de admin, so admin entra; estoquista nao tem que ter acesso ao ADMIN do
+// Devolucoes"): a GOOD ja servia /painel-novo.html com requerAdmin; a fabrica deixava o estoquista abrir o painel.
+router.get('/painel', auth.requerAdmin, (req, res) => {
   res.set('Cache-Control', 'no-cache, must-revalidate');   // b19: tela nunca presa
   res.type('html').send(PAINEL_AMB_HTML);
 });
@@ -874,7 +876,7 @@ function exigirLoginNoPainelHtml(req, res, next) {
   const ehPainel = ehProtegidoAMB(req.path, {
     exatos: ['/painel-AMB.html', '/painel2-AMB.html'],
   });
-  if (ehPainel) return auth.requerLogin(req, res, next);
+  if (ehPainel) return auth.requerAdmin(req, res, next);   // b773: admin, como a rota /painel
   return next();
 }
 router.use(exigirLoginNoPainelHtml);
@@ -2510,7 +2512,7 @@ router.get('/api/nf/buscar-links-bling/:orderId', auth.requerLogin, async (req, 
 // @fabrica-modulo lib-AMB/sem-retorno-AMB.js#sem-retorno
 require('./lib-AMB/sem-retorno-AMB')(router, { CHAVE_DADOS, auth, erroCodigo, confrontar, vinculoCache, marcadores, magaluCancelados, db, nfp, ajudantes });   // @fabrica-chamada
 
-router.get('/api/admin/indice-nf-devolucao', auth.requerLogin, async (req, res) => {
+router.get('/api/admin/indice-nf-devolucao', auth.requerAdmin, async (req, res) => {
   try {
     await montarIndiceNFDevolucaoAMB(Number(req.query.paginas || 5));
     const mapa = {};

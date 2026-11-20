@@ -220,7 +220,7 @@ router.get('/api/debug/achar-nf', (req, res, next) => {
   }
 });
 
-router.get('/api/admin/sem-retorno', auth.requerLogin, async (req, res) => {
+router.get('/api/admin/sem-retorno', auth.requerAdmin, async (req, res) => {
   try {
     const sb = db.cliente();
     if (!sb) return res.status(503).json({ ok: false, erro: 'Supabase nao configurado' });
