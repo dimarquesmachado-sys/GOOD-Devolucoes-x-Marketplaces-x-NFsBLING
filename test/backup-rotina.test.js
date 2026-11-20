@@ -141,6 +141,18 @@ function storageFalso({ falharUpload } = {}) {
     ok(rodadas7 === 0 && rot7.diagnostico().ultimo_dia === '2026-11-24', '⚠️ reinicio: ja existe backup completo de hoje no Storage — NAO roda de novo');
     ok(rot7.tick() === false, '  e o tick seguinte nem consulta mais');
 
+    // ── 7b. Storage FORA na checagem de "ja fiz hoje" = nao sei: nao roda as cegas, tenta no proximo tick ──
+    const st7b = storageFalso(); let fora7 = true; const from7 = st7b.api.storage.from;
+    st7b.api.storage.from = (b) => { const f = from7(b); const listReal = f.list; return Object.assign(f, { list: async (...a) => (fora7 ? { data: null, error: { statusCode: '500', message: 'fora' } } : listReal(...a)) }); };
+    let rodadas7b = 0;
+    const rot7b = criarRotina({ rodarBackup: async (o) => { rodadas7b++; return rodar(Object.assign({ empresas: CHAVES, criar: createClient }, o)); }, obterSupabase: () => st7b.api, bucket: 'bk7b', hora: '03:30', agora: () => relogio, log: silencio });
+    relogio = new Date('2026-11-25T06:30:00Z');
+    ok(rot7b.tick() === true, '  dispara'); await new Promise((r) => setTimeout(r, 300));
+    ok(rodadas7b === 0 && rot7b.diagnostico().ultimo_dia === null && /fora/.test((rot7b.diagnostico().ultimo || {}).erro || ''), '⚠️ Storage fora na checagem: NAO roda as cegas, falha registrada, dia nao marcado');
+    fora7 = false; st7b.buckets.add('bk7b');
+    ok(rot7b.tick() === true, '  proximo tick tenta de novo'); await new Promise((r) => setTimeout(r, 1500));
+    ok(rodadas7b === 1 && rot7b.diagnostico().ultimo_dia === '2026-11-25', '  Storage voltou: rodou 1x e marcou o dia');
+
     // ── 8. (Codex #628) pasta sem manifesto nao conta na retencao e e apagada ──
     const st8 = storageFalso(); st8.buckets.add('bk8');
     st8.objetos.set('bk8/2026-11-01T03-30-00/manifesto.json', Buffer.from('{}')); st8.objetos.set('bk8/2026-11-01T03-30-00/good/d.jsonl.gz', Buffer.from('x'));

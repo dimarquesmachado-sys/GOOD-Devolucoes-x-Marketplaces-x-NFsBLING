@@ -32,7 +32,11 @@ sufixo: sem sufixo = GOOD, `_amb`, `_girassol`). Fotos: bucket `fotos-problema`,
 `lib/backup-rotina.js` roda o **mesmo** `scripts/backup-tabelas.js` todo dia às **03:30 (Brasília)** — fora do
 horário do galpão — e guarda o resultado no Supabase Storage, bucket **privado** `backups-privados`, pasta
 `<carimbo>/<empresa>/<tabela>.jsonl.gz` + `<carimbo>/manifesto.json`. Mantém os **últimos 14 dias** e apaga os mais
-velhos. Se o servidor estava fora às 03:30, roda assim que voltar (uma vez por dia, nunca duas).
+velhos. Se o servidor estava fora às 03:30, roda assim que voltar (uma vez por dia, nunca duas — o "já fiz hoje"
+é lido do próprio bucket — existe pasta completa com o carimbo de hoje? — então sobrevive a reinício/deploy; se o
+Storage não responder nessa checagem, a rotina **não** roda às cegas: registra a falha e tenta no minuto seguinte). Pasta **completa** = tem `manifesto.json`
+(é o último arquivo enviado); só as completas contam pros 14 dias — pasta de rodada que morreu no meio é apagada
+na rodada seguinte.
 
 - **Ver o estado / último resultado** (logado como admin no navegador):
   https://good-devolucoes-x-marketplaces-x-nfsbling.onrender.com/api/admin/backup
