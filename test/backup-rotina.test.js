@@ -1,0 +1,140 @@
+'use strict';
+// b775 — V-04: o backup logico passa a ser DIARIO e PELO SISTEMA (lib/backup-rotina.js), com o resultado no Storage.
+// Aqui a rotina de producao roda com o scripts/backup-tabelas.js DE VERDADE contra o PostgREST falso (as 3 empresas,
+// tabelas com e sem coluna id) e um Storage de mentira que registra bucket, uploads, listagens e remocoes. Prova:
+//   1. uma rodada: cria o bucket privado, manda <carimbo>/<empresa>/<tabela>.jsonl.gz de cada tabela + manifesto.json,
+//      e o .gz abre de volta nas MESMAS linhas; estado ok, tabelas/linhas contadas; pasta temporaria apagada;
+//   2. tabela que falha = rodada FALHA (nada vai pro Storage; o erro diz qual tabela) — nunca "ok parcial";
+//   3. duas rodadas ao mesmo tempo: a segunda e recusada;
+//   4. retencao: com 16 carimbos no bucket e reter=14, as 2 mais velhas sao apagadas (arquivo a arquivo), as 14 ficam;
+//   5. o relogio: o tick so dispara uma vez por dia, na hora (Brasilia), ou depois se o servidor estava fora; nunca
+//      antes, nunca duas vezes no mesmo dia, e no dia seguinte dispara de novo;
+//   6. upload que falha = rodada FALHA com o motivo.
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+const zlib = require('zlib');
+const { createClient } = require('@supabase/supabase-js');
+const { subirPostgrest } = require('./_postgrest-falso');
+const { obterEmpresa } = require('../lib/empresas');
+const CHAVES = ['good', 'ambtotal', 'girassol'];
+const { rodar } = require('../scripts/backup-tabelas');
+const { criarRotina } = require('../lib/backup-rotina');
+let falhas = 0;
+const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o); };
+
+/* Storage de mentira: o que a rotina usa do supabase-js (createBucket, upload, list, remove) */
+function storageFalso({ falharUpload } = {}) {
+  const objetos = new Map(); const chamadas = { createBucket: 0, upload: 0, remove: [] }; const buckets = new Set();
+  const api = {
+    storage: {
+      async createBucket(nome) { chamadas.createBucket++; if (buckets.has(nome)) return { error: { statusCode: '409', message: 'The resource already exists' } }; buckets.add(nome); return { data: { name: nome }, error: null }; },
+      from(bucket) {
+        return {
+          async upload(caminho, buf) { chamadas.upload++; if (falharUpload && falharUpload(caminho)) return { error: { message: 'simulado: sem espaco' } }; objetos.set(bucket + '/' + caminho, Buffer.from(buf)); return { data: { path: caminho }, error: null }; },
+          async list(prefixo) {
+            const p = prefixo ? prefixo.replace(/\/$/, '') + '/' : '';
+            const vistos = new Map();
+            for (const k of objetos.keys()) {
+              if (!k.startsWith(bucket + '/' + p)) continue;
+              const resto = k.slice((bucket + '/' + p).length); const primeiro = resto.split('/')[0];
+              if (!vistos.has(primeiro)) vistos.set(primeiro, resto.includes('/') ? { name: primeiro, id: null } : { name: primeiro, id: 'obj-' + primeiro });
+            }
+            return { data: [...vistos.values()], error: null };
+          },
+          async remove(caminhos) { for (const c of caminhos) { chamadas.remove.push(c); objetos.delete(bucket + '/' + c); } return { data: caminhos.map((c) => ({ name: c })), error: null }; },
+        };
+      },
+    },
+  };
+  return { api, objetos, chamadas, buckets };
+}
+
+(async () => {
+  const colunas = {};
+  for (const k of CHAVES) { const f = obterEmpresa(k); colunas[f.tabelas.skuDepara] = ['sku_antigo', 'sku_atual']; colunas[f.tabelas.devolucaoTags] = ['devolucao_id', 'tag_id']; }
+  const pg = await subirPostgrest({ colunas });
+  for (const k of CHAVES) {
+    const f = obterEmpresa(k);
+    for (let i = 1; i <= 5; i++) pg.tabela(f.tabelas.devolucoes).push({ id: i, codigo: k.toUpperCase() + '-' + i, status: 'triada' });
+    pg.tabela(f.tabelas.skuDepara).push({ sku_antigo: 'V-' + k, sku_atual: 'N-' + k });
+  }
+  const env = { SUPABASE_URL: pg.url, SUPABASE_KEY: 'k' };
+  for (const k of CHAVES) { const p = obterEmpresa(k).prefixoEnv; env[p + 'SUPABASE_URL'] = pg.url; env[p + 'SUPABASE_KEY'] = 'k-' + k; }
+  const antigo = {}; for (const [k, v] of Object.entries(env)) { antigo[k] = process.env[k]; process.env[k] = v; }
+  const restaurarEnv = () => { for (const k of Object.keys(env)) { if (antigo[k] === undefined) delete process.env[k]; else process.env[k] = antigo[k]; } };
+  const silencio = () => {};
+  const tmpAntes = fs.readdirSync(os.tmpdir()).filter((n) => n.startsWith('backup-devolucoes-')).length;
+  try {
+    // ── 1. uma rodada de verdade ──
+    let relogio = new Date('2026-11-21T06:31:00Z');   // 03:31 em Brasilia
+    const st = storageFalso();
+    const rot = criarRotina({ rodarBackup: (o) => rodar(Object.assign({ empresas: CHAVES, criar: createClient }, o)), obterSupabase: () => st.api, bucket: 'bk-teste', hora: '03:30', reter: 14, agora: () => relogio, log: silencio });
+    const r1 = await rot.executar({ motivo: 'manual' });
+    ok(r1.ok === true && r1.erro === null, '⚠️ a rodada termina ok (' + JSON.stringify({ ok: r1.ok, erro: r1.erro, erros: r1.erros }) + ')');
+    ok(st.buckets.has('bk-teste') && st.chamadas.createBucket === 1, '  bucket privado criado na 1a rodada');
+    ok(/^\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}$/.test(r1.carimbo), '  carimbo da rodada: ' + r1.carimbo);
+    const chaves = [...st.objetos.keys()];
+    const esperadoTabelas = CHAVES.reduce((n, k) => n + Object.keys(obterEmpresa(k).tabelas).length + 2, 0);   // + defeito_pedidos/defeito_comentarios
+    ok(r1.tabelas === esperadoTabelas && r1.linhas === CHAVES.length * 6, '  ' + r1.tabelas + ' tabelas (esperado ' + esperadoTabelas + '), ' + r1.linhas + ' linhas');
+    ok(r1.enviados === esperadoTabelas + 1 && chaves.length === r1.enviados, '  ' + r1.enviados + ' arquivos no Storage (tabelas + manifesto)');
+        const gz = st.objetos.get('bk-teste/' + r1.carimbo + '/good/' + obterEmpresa('good').tabelas.devolucoes + '.jsonl.gz');
+    const linhas = gz ? zlib.gunzipSync(gz).toString('utf8').trim().split('\n').map((l) => JSON.parse(l)) : [];
+    ok(linhas.length === 5 && linhas[4].codigo === 'GOOD-5', '⚠️ o .gz da GOOD/devolucoes abre nas mesmas 5 linhas (' + linhas.length + ')');
+    const man = st.objetos.get('bk-teste/' + r1.carimbo + '/manifesto.json');
+    ok(man && JSON.parse(man.toString()).erros.length === 0, '  manifesto.json no Storage, sem erros');
+    ok(st.objetos.has('bk-teste/' + r1.carimbo + '/girassol/' + obterEmpresa('girassol').tabelas.skuDepara + '.jsonl.gz'), '  tabela SEM id (sku_depara) tambem foi');
+    ok(fs.readdirSync(os.tmpdir()).filter((n) => n.startsWith('backup-devolucoes-')).length === tmpAntes, '  pasta temporaria apagada');
+    ok(rot.diagnostico().ultimo_dia === '2026-11-21' && rot.diagnostico().rodando === false, '  diagnostico: ultimo_dia marcado, nao esta rodando');
+
+    // ── 2. tabela que falha = rodada FALHA, nada no Storage ──
+    const st2 = storageFalso();
+    pg.ganchos.interceptar = (req) => (req.tabela === 'devolucoes_amb' ? { status: 500, corpo: { message: 'simulado' } } : null);
+    const rot2 = criarRotina({ rodarBackup: (o) => rodar(Object.assign({ empresas: CHAVES, criar: createClient }, o)), obterSupabase: () => st2.api, bucket: 'bk2', agora: () => relogio, log: silencio });
+    const r2 = await rot2.executar({ motivo: 'manual' });
+    pg.ganchos.interceptar = null;
+    ok(r2.ok === false && /devolucoes_amb/.test(r2.erro) && r2.erros.length === 1, '⚠️ tabela que falha = rodada FALHA dizendo qual (' + r2.erro + ')');
+    ok(st2.objetos.size === 0 && st2.chamadas.upload === 0, '  e NADA foi pro Storage (sem "ok parcial")');
+    ok(rot2.diagnostico().ultimo_dia === null, '  dia nao e marcado como feito — o tick tenta de novo');
+
+    // ── 3. duas ao mesmo tempo ──
+    const st3 = storageFalso();
+    const rot3 = criarRotina({ rodarBackup: (o) => rodar(Object.assign({ empresas: CHAVES, criar: createClient }, o)), obterSupabase: () => st3.api, bucket: 'bk3', agora: () => relogio, log: silencio });
+    const [a, b] = await Promise.all([rot3.executar({ motivo: 'manual' }), rot3.executar({ motivo: 'manual' })]);
+    ok(a.ok === true && b.ok === false && /ja esta rodando/.test(b.erro), '⚠️ segunda rodada simultanea e recusada (' + b.erro + ')');
+
+    // ── 4. retencao ──
+    const st4 = storageFalso(); st4.buckets.add('bk4');
+    for (let i = 1; i <= 16; i++) { const c = '2026-11-' + String(i).padStart(2, '0') + 'T03-30-00'; st4.objetos.set('bk4/' + c + '/manifesto.json', Buffer.from('{}')); st4.objetos.set('bk4/' + c + '/good/devolucoes.jsonl.gz', Buffer.from('x')); }
+    st4.objetos.set('bk4/outra-coisa.txt', Buffer.from('nao e carimbo'));
+    const rot4 = criarRotina({ rodarBackup: (o) => rodar(Object.assign({ empresas: CHAVES, criar: createClient }, o)), obterSupabase: () => st4.api, bucket: 'bk4', reter: 14, agora: () => relogio, log: silencio });
+    const r4 = await rot4.executar({ motivo: 'manual' });
+    ok(r4.ok && r4.retencao.apagados === 3 && r4.retencao.mantidos === 14, '⚠️ retencao: 16 velhas + a nova, reter 14 → 3 apagadas, 14 mantidas (' + JSON.stringify(r4.retencao) + ')');
+    ok(!st4.objetos.has('bk4/2026-11-01T03-30-00/manifesto.json') && !st4.objetos.has('bk4/2026-11-03T03-30-00/good/devolucoes.jsonl.gz') && st4.objetos.has('bk4/2026-11-04T03-30-00/manifesto.json'), '  as 3 mais velhas sumiram arquivo a arquivo, a 4a ficou');
+    ok(st4.objetos.has('bk4/outra-coisa.txt'), '  o que nao e carimbo nao e tocado');
+
+    // ── 5. o relogio ──
+    const st5 = storageFalso(); let rodadas = 0;
+    const rot5 = criarRotina({ rodarBackup: async (o) => { rodadas++; return rodar(Object.assign({ empresas: CHAVES, criar: createClient }, o)); }, obterSupabase: () => st5.api, bucket: 'bk5', hora: '03:30', agora: () => relogio, log: silencio });
+    relogio = new Date('2026-11-22T06:29:00Z'); ok(rot5.tick() === false && rodadas === 0, '  03:29 — ainda nao');
+    relogio = new Date('2026-11-22T06:30:00Z'); ok(rot5.tick() === true, '⚠️ 03:30 — dispara'); await new Promise((r) => setTimeout(r, 1500));
+    ok(rodadas === 1 && rot5.diagnostico().ultimo_dia === '2026-11-22', '  rodou 1x e marcou o dia');
+    relogio = new Date('2026-11-22T06:31:00Z'); ok(rot5.tick() === false, '  03:31 do mesmo dia — nao repete');
+    relogio = new Date('2026-11-22T23:59:00Z'); ok(rot5.tick() === false && rodadas === 1, '  23:59 do mesmo dia — nao repete');
+    relogio = new Date('2026-11-23T13:10:00Z'); ok(rot5.tick() === true, '⚠️ dia seguinte, servidor so acordou as 10:10 — dispara atrasado (nao pula o dia)'); await new Promise((r) => setTimeout(r, 1500));
+    ok(rodadas === 2, '  rodou de novo (' + rodadas + ')');
+
+    // ── 6. upload que falha ──
+    const st6 = storageFalso({ falharUpload: (c) => /manifesto/.test(c) });
+    const rot6 = criarRotina({ rodarBackup: (o) => rodar(Object.assign({ empresas: CHAVES, criar: createClient }, o)), obterSupabase: () => st6.api, bucket: 'bk6', agora: () => relogio, log: silencio });
+    const r6 = await rot6.executar({ motivo: 'manual' });
+    ok(r6.ok === false && /upload manifesto: simulado/.test(r6.erro), '⚠️ upload que falha = rodada FALHA com o motivo (' + r6.erro + ')');
+    ok(rot6.diagnostico().ultimo_dia === null, '  e o dia nao conta como feito');
+  } catch (err) {
+    falhas++; console.log('FALHA ' + (err && err.stack || err));
+  } finally {
+    restaurarEnv(); await pg.parar();
+  }
+  console.log(falhas ? '=== ' + falhas + ' FALHA(S)' : '=== todos passaram');
+  process.exit(falhas ? 1 : 0);
+})();

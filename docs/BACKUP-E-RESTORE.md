@@ -27,6 +27,25 @@ sufixo: sem sufixo = GOOD, `_amb`, `_girassol`). Fotos: bucket `fotos-problema`,
 
 ## Camada 2 — cópia lógica por empresa e tabela (este repo)
 
+### Diária, pelo sistema (b775)
+
+`lib/backup-rotina.js` roda o **mesmo** `scripts/backup-tabelas.js` todo dia às **03:30 (Brasília)** — fora do
+horário do galpão — e guarda o resultado no Supabase Storage, bucket **privado** `backups-privados`, pasta
+`<carimbo>/<empresa>/<tabela>.jsonl.gz` + `<carimbo>/manifesto.json`. Mantém os **últimos 14 dias** e apaga os mais
+velhos. Se o servidor estava fora às 03:30, roda assim que voltar (uma vez por dia, nunca duas).
+
+- **Ver o estado / último resultado** (logado como admin no navegador):
+  https://good-devolucoes-x-marketplaces-x-nfsbling.onrender.com/api/admin/backup
+  (também aparece em `/health` → `coordenacao.backup`). `ultimo.ok:false` + `ultimo.erro` = a rodada falhou — uma
+  tabela que falha derruba a rodada inteira, nada vai pro Storage, e o dia **não** conta como feito.
+- **Rodar agora** (sem Shell): a mesma URL com `?rodar=1`; recarregar sem o `?rodar=1` mostra o resultado.
+- Envs (opcionais): `BACKUP_HORA` (`HH:MM`, Brasília), `BACKUP_BUCKET`, `BACKUP_RETER` (dias).
+- **O que cobre:** DDL errado, delete errado, tabela derrubada — restore pelo `scripts/restaurar-tabelas.js` a partir
+  do dia anterior (baixar a pasta do carimbo no painel do Supabase → Storage → `backups-privados`, descompactar os
+  `.gz`). **O que não cobre:** perder o projeto do Supabase inteiro — o bucket mora nele; isso é a camada 1.
+
+### À mão (Shell do Render ou máquina do dono)
+
 `scripts/backup-tabelas.js` lê cada tabela de cada empresa **página a página** (`lib/ler-tudo.js`,
 nunca só as 1000 primeiras) e grava um `.jsonl` por tabela + `manifesto.json` (contagens, tempo,
 erros). Precisa das mesmas envs do servidor (`<PREFIXO>SUPABASE_URL`/`_KEY` — service key; a GOOD
@@ -104,6 +123,7 @@ Ordem pra voltar uma tabela inteira a um ponto no tempo:
 
 ## O que ainda falta (decisões do dono)
 
-- Agendar o backup lógico (cron no Render ou na máquina dele) e definir onde a pasta fica.
+- ~~Agendar o backup lógico e definir onde a pasta fica~~ — feito no b775 (diário, 03:30, Storage privado, 14 dias).
+- Uma cópia **fora** do projeto do Supabase (Drive do dono, outro bucket) — hoje o diário mora no mesmo projeto.
 - PITR no Supabase, se o RPO de 1 dia for pouco pra triagem (cada hora de operação = dezenas de
   triagens que não se refazem).
