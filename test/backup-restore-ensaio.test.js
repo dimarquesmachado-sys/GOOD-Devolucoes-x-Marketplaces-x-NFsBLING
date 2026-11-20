@@ -24,7 +24,15 @@ const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o
 const CHAVES = ['good', 'ambtotal', 'girassol'];
 
 (async () => {
-  const pg = await subirPostgrest();
+  // b774 (ensaio real de 20/11): espreita_notas da GOOD, sku_depara e devolucao_tags NAO tem coluna id — o falso sabe
+  const colunas = {};
+  for (const k of CHAVES) {
+    const f = obterEmpresa(k);
+    colunas[f.tabelas.skuDepara] = ['sku_antigo', 'sku_atual', 'produto_id', 'criado_por', 'criado_em'];
+    colunas[f.tabelas.devolucaoTags] = ['devolucao_id', 'tag_id'];
+  }
+  colunas.espreita_notas = ['chave', 'baixado', 'comentario', 'ticket'];   // so a da GOOD (as da fabrica nasceram do molde, com id)
+  const pg = await subirPostgrest({ colunas });
   for (const k of CHAVES) {
     const f = obterEmpresa(k);
     process.env[f.prefixoEnv + 'SUPABASE_URL'] = pg.url; process.env[f.prefixoEnv + 'SUPABASE_KEY'] = 'k-' + k;
@@ -34,15 +42,19 @@ const CHAVES = ['good', 'ambtotal', 'girassol'];
     pg.tabela(f.tabelas.recados).push({ id: 1, texto: 'recado ' + k }, { id: 2, texto: 'outro ' + k });
     // tags + devolucao_tags (FKs pra tags e devolucoes): e o que prova a ordem do restore
     pg.tabela(f.tabelas.tags).push({ id: 1, nome: 'frete' }, { id: 2, nome: 'avaria' });
-    pg.tabela(f.tabelas.devolucaoTags).push({ id: 1, devolucao_id: 3, tag_id: 1 }, { id: 2, devolucao_id: 7, tag_id: 2 });
+    pg.tabela(f.tabelas.devolucaoTags).push({ devolucao_id: 3, tag_id: 1 }, { devolucao_id: 7, tag_id: 2 });
+    pg.tabela(f.tabelas.skuDepara).push({ sku_antigo: 'VELHO-' + k, sku_atual: 'NOVO-' + k, produto_id: null, criado_por: 'dono', criado_em: '2026-11-01T00:00:00Z' });
   }
+  pg.tabela('espreita_notas').push({ chave: 'NF-1', baixado: true, comentario: null, ticket: null }, { chave: 'NF-2', baixado: false, comentario: 'x', ticket: null });
   process.env.SUPABASE_URL = pg.url; process.env.SUPABASE_KEY = 'k-good';
   const saida = fs.mkdtempSync(path.join(os.tmpdir(), 'bk-'));
   const silencio = () => {};
 
   // ── backup ──
   const { raiz, manifesto } = await rodar({ saida, pagina: 3, log: silencio, agora: () => new Date('2026-11-18T12:00:00Z') });
-  ok(manifesto.erros.length === 0, '  backup sem erro (' + JSON.stringify(manifesto.erros) + ')');
+  ok(manifesto.erros.length === 0, '⚠️ backup sem erro — inclusive nas tabelas SEM coluna id (' + JSON.stringify(manifesto.erros) + ')');
+  ok(manifesto.empresas.good.espreita_notas && manifesto.empresas.good.espreita_notas.linhas === 2 && manifesto.empresas.good.sku_depara.linhas === 1 && manifesto.empresas.good.devolucao_tags.linhas === 2,
+    '⚠️ espreita_notas (2), sku_depara (1) e devolucao_tags (2) da GOOD saem no backup (' + JSON.stringify([manifesto.empresas.good.espreita_notas, manifesto.empresas.good.sku_depara, manifesto.empresas.good.devolucao_tags]) + ')');
   // Codex #622: duas rodadas no mesmo segundo NAO dividem pasta
   const segunda = await rodar({ empresas: ['good'], saida, pagina: 3, log: silencio, agora: () => new Date('2026-11-18T12:00:00Z') });
   ok(segunda.raiz !== raiz && fs.existsSync(path.join(segunda.raiz, 'manifesto.json')) && fs.existsSync(path.join(raiz, 'manifesto.json')), '⚠️ rodada no mesmo carimbo ganha pasta propria (' + path.basename(segunda.raiz) + ')');
@@ -78,7 +90,7 @@ const CHAVES = ['good', 'ambtotal', 'girassol'];
   ok(fs.existsSync(path.join(r2.raiz, 'ambtotal', 'devolucoes_amb.jsonl')), '  as outras tabelas da rodada saem normalmente');
 
   // ── restore num banco vazio, COM as FKs do provisionador (devolucao_tags -> tags, devolucoes) ──
-  const pg2 = await subirPostgrest({ fks: { devolucao_tags_girassol: { tag_id: 'tags_girassol', devolucao_id: 'devolucoes_girassol' } } });
+  const pg2 = await subirPostgrest({ fks: { devolucao_tags_girassol: { tag_id: 'tags_girassol', devolucao_id: 'devolucoes_girassol' } }, colunas: { devolucao_tags_girassol: ['devolucao_id', 'tag_id'], sku_depara_girassol: colunas.sku_depara_girassol } });
   for (const k of CHAVES) { const f = obterEmpresa(k); process.env[f.prefixoEnv + 'SUPABASE_URL'] = pg2.url; }
   process.env.SUPABASE_URL = pg2.url;
   pg2.tabela('devolucoes_girassol').push({ id: 99, sku: 'JA-EXISTIA', status: 'problema' });   // o restore nao pode apagar
@@ -94,6 +106,12 @@ const CHAVES = ['good', 'ambtotal', 'girassol'];
   ok(iFilho > ordemPosts.lastIndexOf('devolucoes_girassol') && iFilho > ordemPosts.lastIndexOf('tags_girassol') && real.tabelas.devolucao_tags_girassol.gravadas === 2 && pg2.tabela('devolucao_tags_girassol').length === 2, '⚠️ devolucao_tags restaurada DEPOIS de devolucoes e tags, sem 23503 (' + JSON.stringify(real.tabelas.devolucao_tags_girassol) + ')');
   const dev2 = pg2.tabela('devolucoes_girassol');
   ok(dev2.filter((d) => d.id >= 1 && d.id <= 7).length === 7 && dev2.find((d) => d.id === 99), '⚠️ o banco tem as 7 do backup E a 99 que ja existia (restore nao apaga)');
+  // b774: tabelas sem id voltam pela PROPRIA chave e repetir nao duplica (upsert por devolucao_id+tag_id / sku_antigo)
+  const deNovo = await restaurar({ pasta: path.join(raiz, 'girassol'), tabelas: ['devolucao_tags_girassol', 'sku_depara_girassol'], log: silencio });
+  ok(deNovo.erros.length === 0 && pg2.tabela('devolucao_tags_girassol').length === 2 && pg2.tabela('sku_depara_girassol').length === 1,
+    '⚠️ devolucao_tags (chave composta) e sku_depara (sku_antigo) restauram e, repetidos, nao duplicam (' + pg2.tabela('devolucao_tags_girassol').length + '/' + pg2.tabela('sku_depara_girassol').length + ') ' + JSON.stringify(deNovo.erros));
+  const postsChave = pg2.pedidos.filter((p) => p.metodo === 'POST' && p.tabela === 'sku_depara_girassol').map((p) => decodeURIComponent(p.query));
+  ok(postsChave.length >= 1 && postsChave.every((q) => /on_conflict=sku_antigo/.test(q)), '  o upsert do sku_depara vai com on_conflict=sku_antigo (' + (postsChave[0] || '') + ')');
   ok(dev2.find((d) => d.id === 4).sku === 'SKU-girassol-4', '  conteudo integro apos ida e volta');
   // Codex #622: tabela pedida que nao esta no backup e ERRO, nao silencio
   const faltando = await restaurar({ pasta: path.join(raiz, 'girassol'), tabelas: ['recados_girassol', 'nao_existe_girassol'], ensaio: true, log: silencio });

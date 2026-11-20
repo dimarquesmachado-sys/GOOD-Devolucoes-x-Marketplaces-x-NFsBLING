@@ -54,7 +54,8 @@ node scripts/backup-tabelas.js --empresas=girassol --saida=/tmp/bk
 
 `scripts/restaurar-tabelas.js` lê a pasta de UMA empresa do backup, **na ordem das dependências**
 (`devolucoes` e `tags` antes de `devolucao_tags`; `defeito_pedidos` antes de `defeito_comentarios` — as FKs
-do provisionador rejeitariam o filho antes do pai), e faz **upsert em lotes de 500 por `id`**: linha que existe é sobrescrita pelo backup, linha que não existe é criada, e o que está no
+do provisionador rejeitariam o filho antes do pai), e faz **upsert em lotes de 500 pela chave da tabela** (`id` na
+maioria; `espreita_notas` por `chave`, `sku_depara` por `sku_antigo`, `devolucao_tags` por `devolucao_id`+`tag_id`): linha que existe é sobrescrita pelo backup, linha que não existe é criada, e o que está no
 banco e não no backup **fica** (restaurar não apaga — apagar é decisão humana, antes, no SQL Editor).
 
 ```bash
@@ -88,9 +89,18 @@ Ordem pra voltar uma tabela inteira a um ponto no tempo:
   `--ensaio=1` não toca o banco, repetir o restore não duplica, `devolucao_tags` entra depois de `devolucoes`/`tags`
   contra FKs de verdade no banco descartável, tabela pedida sem arquivo é erro, pasta única por rodada,
   página > 1000 recusada, credenciais globais aceitas. Roda na bateria (`node verifica.js`).
-- **Pendente (dono):** um ensaio contra o projeto real — rodar o backup com as service keys, conferir
-  o manifesto contra as contagens do painel do Supabase, e um restore `--ensaio=1`. Anotar aqui a data
-  e os números.
+- **20/11/2026 (b774) — ensaio contra o PROJETO REAL**, pelo Shell do Render (serviço
+  `good-devolucoes-x-marketplaces-x-nfsbling`, `node scripts/backup-tabelas.js --saida=/tmp/bk`): 20 de 27
+  tabelas saíram; **7 falharam** com `column X.id does not exist` — `espreita_notas` (a da GOOD), `sku_depara` e
+  `devolucao_tags` (as 3 empresas) **não têm coluna `id`**. O ensaio existia exatamente pra isso. Conserto no
+  b774: cada tabela ordena/restaura pela **própria chave** (`chaveDaTabela` em `scripts/backup-tabelas.js`:
+  `espreita_notas` → `chave`, `sku_depara` → `sku_antigo`, `devolucao_tags` → `devolucao_id`+`tag_id`; o resto
+  `id` — as mesmas chaves que o código usa no upsert), e o ensaio automatizado passou a ter tabelas sem `id`.
+  Contagens vistas (20/11 14:24 UTC): GOOD `devolucoes` 555, `recados` 11; AMB `devolucoes_amb` 16,
+  `recados_amb` 14, `pecas_retiradas_amb` 2, `defeito_pedidos_amb` 3, `defeito_comentarios_amb` 19; Girassol
+  `devolucoes_girassol` 141, `recados_girassol` 1. Tempo total ≈ 10 s.
+- **Pendente (dono):** repetir o ensaio depois do b774 (tem que sair `0 erro(s)` e 27 tabelas), conferir 2–3
+  contagens contra o painel do Supabase e um restore `--ensaio=1`.
 
 ## O que ainda falta (decisões do dono)
 

@@ -2,7 +2,7 @@
 'use strict';
 // b764 — V-04: RESTAURA UMA TABELA (ou todas de uma empresa) A PARTIR DO BACKUP de scripts/backup-tabelas.js.
 //
-// Upsert em lotes de 500 pela chave `id` (onConflict) — linha que ja existe e sobrescrita pelo backup, linha que
+// Upsert em lotes de 500 pela CHAVE DA TABELA (onConflict: `id` na maioria; ver chaveDaTabela em backup-tabelas.js) — linha que ja existe e sobrescrita pelo backup, linha que
 // nao existe e criada; o que existe no banco e NAO esta no backup fica como esta (restaurar nao apaga). Pra voltar
 // uma tabela inteira a um ponto no tempo, apague antes (decisao humana, fora deste script).
 //
@@ -13,7 +13,7 @@ const fs = require('fs');
 const path = require('path');
 const { createClient } = require('@supabase/supabase-js');
 const { obterEmpresa } = require('../lib/empresas');
-const { credenciaisDaEmpresa } = require('./backup-tabelas');
+const { credenciaisDaEmpresa, chaveDaTabela } = require('./backup-tabelas');
 
 // ORDEM DE RESTORE: pais antes dos filhos (Codex #622). `devolucao_tags` tem FK pra `devolucoes` e `tags`
 // (sql/provisionar-empresa.sql); `defeito_comentarios` aponta pra devolucao. A ordem do readdir nao serve.
@@ -42,7 +42,8 @@ async function restaurar({ pasta, tabelas, ensaio = false, lote = 500, criar = c
     try {
       if (!ensaio) {
         for (let i = 0; i < linhas.length; i += lote) {
-          const { error } = await sb.from(tabela).upsert(linhas.slice(i, i + lote), { onConflict: 'id' });
+          // b774: pela chave DA tabela (espreita_notas=chave, sku_depara=sku_antigo, devolucao_tags=devolucao_id+tag_id; o resto id)
+          const { error } = await sb.from(tabela).upsert(linhas.slice(i, i + lote), { onConflict: chaveDaTabela(tabela).join(',') });
           if (error) throw new Error(error.message || JSON.stringify(error));
           gravadas += Math.min(lote, linhas.length - i);
         }

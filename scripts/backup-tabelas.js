@@ -47,6 +47,16 @@ function pastaUnica(saida, carimbo) {
   return raiz;
 }
 
+// b774 — ENSAIO REAL (20/11, Shell do Render): 7 das 27 tabelas falharam com "column X.id does not exist" —
+// `espreita_notas` (a da GOOD), `sku_depara` e `devolucao_tags` (as 3) NAO tem coluna `id`. A chave de cada uma e a
+// que o proprio codigo usa no upsert (server.js/supabase-AMB `onConflict: 'chave'`, lib/sku-depara `'sku_antigo'`,
+// rotas-relatorios: unique em (devolucao_id, tag_id), 23505). O backup ordena por ela; o restore faz o upsert por ela.
+const CHAVES = { espreita_notas: ['chave'], sku_depara: ['sku_antigo'], devolucao_tags: ['devolucao_id', 'tag_id'] };
+function chaveDaTabela(tabela) {
+  const base = Object.keys(CHAVES).find((b) => tabela === b || tabela.startsWith(b + '_'));
+  return base ? CHAVES[base].slice() : ['id'];
+}
+
 async function rodar({ empresas, saida = 'backups', pagina = 1000, criar = createClient, agora = () => new Date(), log = console.log } = {}) {
   const fichas = (empresas && empresas.length ? empresas.map(obterEmpresa) : listarEmpresas());
   if (!(pagina >= 1 && pagina <= PAGINA_MAX)) throw new Error('pagina tem que estar entre 1 e ' + PAGINA_MAX + ' (teto do PostgREST): ' + pagina);
@@ -62,7 +72,7 @@ async function rodar({ empresas, saida = 'backups', pagina = 1000, criar = creat
     for (const tabela of tabelasDaEmpresa(ficha)) {
       const t0 = Date.now();
       try {
-        const linhas = await lerTudo(() => sb.from(tabela).select('*').order('id', { ascending: true }), { tamanho: pagina, maximo: 2000000 });
+        const linhas = await lerTudo(() => chaveDaTabela(tabela).reduce((q, c) => q.order(c, { ascending: true }), sb.from(tabela).select('*')), { tamanho: pagina, maximo: 2000000 });
         const arquivo = path.join(pasta, tabela + '.jsonl');
         fs.writeFileSync(arquivo, linhas.map((l) => JSON.stringify(l)).join('\n') + (linhas.length ? '\n' : ''));
         manifesto.empresas[ficha.chave][tabela] = { linhas: linhas.length, ms: Date.now() - t0 };
@@ -79,7 +89,7 @@ async function rodar({ empresas, saida = 'backups', pagina = 1000, criar = creat
   return { raiz, manifesto };
 }
 
-module.exports = { rodar, tabelasDaEmpresa, clienteDaEmpresa, credenciaisDaEmpresa, PAGINA_MAX };
+module.exports = { rodar, tabelasDaEmpresa, clienteDaEmpresa, credenciaisDaEmpresa, chaveDaTabela, CHAVES, PAGINA_MAX };
 
 if (require.main === module) {
   const arg = (n, p) => { const a = process.argv.find((x) => x.startsWith('--' + n + '=')); return a ? a.split('=')[1] : p; };

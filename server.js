@@ -623,7 +623,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.126.287 (b773: V-02 — admin so admin nas 3: painel da fabrica, 7 rotas /api/admin e recados; estoquista so da ciente)',   // b744: SEM encadear os builds anteriores — a historia e do git, nao desta linha
+      version: '9.126.288 (b774: V-04 — ensaio real do backup: tabelas sem coluna id (espreita, depara, tags) pela propria chave)',   // b744: SEM encadear os builds anteriores — a historia e do git, nao desta linha
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
