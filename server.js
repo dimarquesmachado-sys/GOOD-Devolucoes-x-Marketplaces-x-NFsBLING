@@ -427,7 +427,7 @@ app.post(seguranca.ROTA_RELATO, express.json({ type: ['application/csp-report', 
       chave: 'good',
       rotasAtivas: ativas.map((e) => e.rota),
       caminhosDoServico: ['/health', '/api/keepalive', '/api/interno', '/api/admin/eventos-checkout',
-        '/api/admin/sonda-empresa', '/politica-de-privacidade', '/termos-de-uso'],
+        '/api/admin/sonda-empresa', '/api/admin/backup', '/politica-de-privacidade', '/termos-de-uso'],
       raiz: String(process.env.DEVOLUCOES_RAIZ || '').trim(),
     }));
   }
@@ -623,7 +623,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.126.289 (b775: V-04 — backup logico diario pelo sistema: 03:30, Storage privado, 14 dias; GET /api/admin/backup)',   // b744: SEM encadear os builds anteriores — a historia e do git, nao desta linha
+      version: '9.126.290 (b776: V-04 — backup diario: retencao so de rodada completa, dia lido do Storage)',   // b744: SEM encadear os builds anteriores — a historia e do git, nao desta linha
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -2645,7 +2645,11 @@ app.get('/api/espreita/casa-nf/:nf', requerLogin, async (req, res) => {
 // desligada (H-08). Disparo manual: GET /api/admin/backup?rodar=1 (sessao de admin ou header); estado sem ?rodar.
 const backupRotina = require('./lib/backup-rotina').criarRotina({
   rodarBackup: (o) => require('./scripts/backup-tabelas').rodar(o),
-  obterSupabase: () => supabase,
+  obterSupabase: () => {   // credencial como o backup resolve (<PREFIXO>SUPABASE_* por empresa, ou as globais), nao so as globais (Codex #628)
+    const bk = require('./scripts/backup-tabelas');
+    for (const ficha of require('./lib/empresas').listarEmpresas()) { const c = bk.clienteDaEmpresa(ficha); if (c) return c; }
+    return supabase;
+  },
   log: console.log,
 });
 backupRotina.ligar(drenagem);

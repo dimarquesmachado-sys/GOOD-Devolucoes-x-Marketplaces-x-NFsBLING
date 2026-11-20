@@ -130,6 +130,33 @@ function storageFalso({ falharUpload } = {}) {
     const r6 = await rot6.executar({ motivo: 'manual' });
     ok(r6.ok === false && /upload manifesto: simulado/.test(r6.erro), '⚠️ upload que falha = rodada FALHA com o motivo (' + r6.erro + ')');
     ok(rot6.diagnostico().ultimo_dia === null, '  e o dia nao conta como feito');
+
+    // ── 7. (Codex #628) reinicio depois das 03:30: o Storage lembra que hoje ja foi feito ──
+    const st7 = storageFalso(); st7.buckets.add('bk7');
+    st7.objetos.set('bk7/2026-11-24T06-30-00/manifesto.json', Buffer.from('{}'));   // 03:30 de Brasilia do dia 24
+    let rodadas7 = 0;
+    const rot7 = criarRotina({ rodarBackup: async () => { rodadas7++; throw new Error('nao devia rodar'); }, obterSupabase: () => st7.api, bucket: 'bk7', hora: '03:30', agora: () => relogio, log: silencio });
+    relogio = new Date('2026-11-24T15:00:00Z');
+    ok(rot7.tick() === true, '  processo novo as 12:00 — o tick dispara a checagem'); await new Promise((r) => setTimeout(r, 300));
+    ok(rodadas7 === 0 && rot7.diagnostico().ultimo_dia === '2026-11-24', '⚠️ reinicio: ja existe backup completo de hoje no Storage — NAO roda de novo');
+    ok(rot7.tick() === false, '  e o tick seguinte nem consulta mais');
+
+    // ── 8. (Codex #628) pasta sem manifesto nao conta na retencao e e apagada ──
+    const st8 = storageFalso(); st8.buckets.add('bk8');
+    st8.objetos.set('bk8/2026-11-01T03-30-00/manifesto.json', Buffer.from('{}')); st8.objetos.set('bk8/2026-11-01T03-30-00/good/d.jsonl.gz', Buffer.from('x'));
+    for (let i = 2; i <= 15; i++) st8.objetos.set('bk8/2026-11-' + String(i).padStart(2, '0') + 'T03-30-00/good/d.jsonl.gz', Buffer.from('x'));   // 14 uploads que morreram antes do manifesto
+    relogio = new Date('2026-11-21T06:31:00Z');
+    const rot8 = criarRotina({ rodarBackup: (o) => rodar(Object.assign({ empresas: CHAVES, criar: createClient }, o)), obterSupabase: () => st8.api, bucket: 'bk8', reter: 14, agora: () => relogio, log: silencio });
+    const r8 = await rot8.executar({ motivo: 'manual' });
+    ok(r8.ok && r8.retencao.mantidos === 2 && r8.retencao.incompletas_apagadas === 14, '⚠️ so conta rodada completa: 2 mantidas, 14 incompletas apagadas (' + JSON.stringify(r8.retencao) + ')');
+    ok(st8.objetos.has('bk8/2026-11-01T03-30-00/manifesto.json') && ![...st8.objetos.keys()].some((k) => k.startsWith('bk8/2026-11-05T')), '  o backup valido antigo sobreviveu; o lixo sumiu');
+
+    // ── 9. (Codex #628) mkdtemp falhando: nao fica "rodando" pra sempre nem derruba o processo ──
+    const st9 = storageFalso();
+    const rot9 = criarRotina({ rodarBackup: async () => { throw new Error('nao chega'); }, obterSupabase: () => st9.api, bucket: 'bk9', hora: '03:30', agora: () => relogio, log: silencio });
+    const mk = fs.mkdtempSync; fs.mkdtempSync = () => { const e = new Error('ENOSPC: simulado'); e.code = 'ENOSPC'; throw e; };
+    let r9; try { r9 = await rot9.executar({ motivo: 'manual' }); } finally { fs.mkdtempSync = mk; }
+    ok(r9.ok === false && /ENOSPC/.test(r9.erro) && rot9.diagnostico().rodando === false, '⚠️ mkdtemp falha = rodada FALHA registrada e rodando=false (' + r9.erro + ')');
   } catch (err) {
     falhas++; console.log('FALHA ' + (err && err.stack || err));
   } finally {
