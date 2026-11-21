@@ -328,9 +328,33 @@ function abrirModalProblema() {
   if (bc) bc.style.display = 'none';
   if (document.getElementById('conPeca')) document.getElementById('conPeca').value = '';
   window._defeitosMesmoSku = [];
+  // b778 - "Sem fotos" (so admin): desmarcado a cada abertura; a caixa so aparece pra sessao de admin
+  var semF = document.getElementById('chkSemFotos');
+  if (semF) semF.checked = false;
+  var boxSemF = document.getElementById('boxSemFotos');
+  if (boxSemF) boxSemF.style.display = window.__ehAdmin ? 'block' : 'none';
+  toggleSemFotos();
 
   document.getElementById('modalProblema').classList.add('show');
   consultarDefeitosMesmoSku();
+}
+
+// b778 (pedido do dono 21/11) - o ADMIN pode reportar problema SEM as 6 fotos. So vale com a sessao de admin
+// (window.__ehAdmin, vindo do /api/auth/me) e o servidor confere de novo: estoquista que mandar sem_fotos leva 403.
+function semFotosMarcado() {
+  var c = document.getElementById('chkSemFotos');
+  return !!(window.__ehAdmin && c && c.checked);
+}
+function toggleSemFotos() {
+  var b = document.getElementById('btnProblemaAcao');
+  if (!b) return;
+  if (!b.dataset.rotuloCamera) b.dataset.rotuloCamera = b.textContent.trim();
+  b.textContent = semFotosMarcado() ? '📤 Enviar sem fotos' : b.dataset.rotuloCamera;
+}
+// o botao do modal: com "Sem fotos" marcado (admin) envia direto; senao abre a camera, como sempre
+function acaoProblema() {
+  if (semFotosMarcado()) return enviarProblema();   // vai com as fotos que ja tiver subido (0 a 5), sem exigir 6
+  return abrirCamera();
 }
 
 // v3.99 - mostra ao estoquista o que ja existe em defeito deste SKU, com
@@ -381,7 +405,8 @@ function toggleConserto() {
 async function enviarProblema() {
   const fotos = window.fotosUploadadas || [];
   const fotosOk = fotos.filter(f => !f.uploading && f.url).map(f => f.url);
-  if (fotosOk.length < 6) {
+  const semFotos = semFotosMarcado();   // b778: so admin
+  if (!semFotos && fotosOk.length < 6) {
     toast(`Minimo 6 fotos obrigatorias (atual: ${fotosOk.length})`, 'err');
     return;
   }
@@ -417,6 +442,7 @@ async function enviarProblema() {
     const payload = montarPayloadTriagem();
     payload.descricao = descricao;
     payload.fotos = fotosOk;
+    if (semFotos) payload.sem_fotos = true;
     payload.localizacao = localizacao || null;
     payload.defeito_qtd = defeitoQtd;
     if (window._forcarTriagem) payload.forcar = true;
@@ -450,6 +476,7 @@ async function enviarProblema() {
         toast(dc.erro || 'falhou', 'err');
         return;
       }
+      if (semFotos) fecharModal('modalProblema');   // b778: sem camera, o modal ainda esta aberto
       toast('🔧 Consertado! Vai pro estoque.', 'ok');
       window.fotosUploadadas = [];
       mostrarSucesso('🔧 Produto consertado!', 'Foi pra fila de aprovadas — o Diego emite a NF e inclui no estoque.');
@@ -468,6 +495,7 @@ async function enviarProblema() {
     });
     const d = await r.json();
     if (d.ok) {
+      if (semFotos) fecharModal('modalProblema');   // b778: sem camera, o modal ainda esta aberto
       toast('Problema enviado!', 'ok');
       window.fotosUploadadas = [];
       var etq = {
