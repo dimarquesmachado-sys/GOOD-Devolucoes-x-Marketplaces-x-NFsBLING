@@ -18,8 +18,11 @@ const ovSecoes = h.indexOf('.secoes { grid-template-columns: minmax(0, 1fr); }')
 const ovLabel = h.indexOf('.filtros label { white-space: normal; }', baseLabel);
 ok(baseSecoes >= 0 && ovSecoes > baseSecoes, '⚠️ painel: .secoes minmax(0,1fr) vem DEPOIS da regra base (blocos com a largura da tela)');
 ok(baseLabel >= 0 && ovLabel > baseLabel, '⚠️ painel: .filtros label quebra linha no celular (vem DEPOIS do nowrap base)');
-for (const [arq, re] of [['public/index.html', /js\/colar-imagem\.js\?v=4631/], ['amb-devolucoes/public-AMB/index-AMB.html', /js-AMB\/colar-imagem\.js\?v=b542/]]) {
-  ok(re.test(fs.readFileSync(path.join(R, arq), 'utf8')), '  ' + arq + ': ?v= bumpado (celular pega o arquivo novo)');
+// b789: era o numero EXATO (4631 / b542) — quebrava em toda entrega que mexe no arquivo, sem nada estar errado (a licao
+// de 29/08, anotada no leitor-etiqueta.test.js). O que importa e nao ter voltado pra antes do conserto do celular.
+for (const [arq, re, minimo] of [['public/index.html', /js\/colar-imagem\.js\?v=(\d+)/, 4631], ['amb-devolucoes/public-AMB/index-AMB.html', /js-AMB\/colar-imagem\.js\?v=b(\d+)/, 542]]) {
+  const v = Number((fs.readFileSync(path.join(R, arq), 'utf8').match(re) || [])[1]) || 0;
+  ok(v >= minimo, '  ' + arq + ': ?v= bumpado (celular pega o arquivo novo) — ' + v + ' >= ' + minimo);
 }
 console.log('');
 console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');

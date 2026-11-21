@@ -156,6 +156,7 @@ function renderizar(data, ok) {
     // 29/10: a retirada do Full e do ML — nao sugerir pra codigo que e claramente da Shopee (pedido ou rastreio SPX)
     const _cod = String(window._ultimoCodigoBusca || '').trim();
     const _ehShopee = /^\d{6}(?=[A-Z0-9]{8}$)[A-Z0-9]*[A-Z][A-Z0-9]*$/i.test(_cod) || /^BR\d{11,}[A-Z]$/i.test(_cod);
+    if (!_ehShopee) sugerirRefId(data);   // b789: etiqueta do ML sem cliente ("pacote MELI") — o numero que acha e o Ref. ID
     if (!_ehShopee) sugerirRetiro();   // b504
     mostrarCapturadas(data.capturadas);   // b523
     return;
@@ -733,6 +734,7 @@ function renderizar(data, ok) {
 
   divResultado.innerHTML = html + blocoEventosCheckout();   // ev2
   divResultado.classList.add('show');
+  avisoRefIdDaFoto(String(window._ultimoCodigoBusca || '').trim(), data);   // b789: achou por um Ref. ID LIDO DA FOTO? mostra o numero lido pra conferir
   buscarFotosItens(itensRender);   // b78 - fotos dos itens (nao bloqueia)
 
   // Apos render, verifica triagem existente (nao bloqueia o render).
@@ -1257,6 +1259,86 @@ function renderizarErro(mensagem, tentativas, avisos) {
   html += '</div>';
   divResultado.innerHTML = html + blocoEventosCheckout();   // ev2
   divResultado.classList.add('show');
+}
+
+// b789 - "PACOTE MELI": ETIQUETA DE VOLTA DO MERCADO LIVRE SEM NOME DE CLIENTE (venda que NAO FOI ENTREGUE e voltou).
+// Caso da AMB (21/11): o remetente e "MELI #0", o destinatario e a propria empresa, e nao ha cliente nem NF. O codigo de
+// barras e o QR dessa etiqueta sao o envio DE VOLTA: o ML responde 404 e nem o app dele acha a venda por esse numero.
+// O numero que acha e o "Ref. ID" impresso no alto dela (o envio ORIGINAL) — digitado na busca, a venda aparece (medido
+// pelo dono). So que o estoquista nao tinha como saber: a tela mandava "bipe o codigo de barras" ou "digite o Pack ID",
+// e essa etiqueta nem Pack ID tem.
+//  - quando o ML diz que o envio bipado NAO EXISTE (404), a tela explica e ja oferece o campo do Ref. ID (teclado numerico);
+//  - o botao "📦 pacote MELI" (pedido do dono: "um botao pra clicar e marcar que e pacote MELI") abre o mesmo cartao sem
+//    precisar bipar antes;
+//  - e a foto: o colar-imagem.js le o Ref. ID impresso na etiqueta e busca sozinho.
+function cartaoRefId() {
+  return '<div class="card" id="cartaoRefId" style="border:2px solid #1565c0;margin-top:10px;">'
+    + '<div style="font-weight:700;color:#0d47a1;margin-bottom:6px;">📦 Pacote MELI — etiqueta do Mercado Livre SEM nome de cliente?</div>'
+    + '<div style="font-size:13.5px;color:#1c3a63;line-height:1.45;">É uma venda que <b>não foi entregue</b> e voltou: o remetente é <b>MELI</b> e o destinatário é a sua empresa. '
+    + 'O código de barras e o QR dessa etiqueta <b>não acham a venda</b>. O número que acha é o <b>Ref. ID</b>, impresso no alto dela, embaixo do endereço do MELI.</div>'
+    + '<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;">'
+    + '<input type="text" id="inputRefId" inputmode="numeric" autocomplete="off" maxlength="20" placeholder="Ref. ID (só números)" '
+    + 'style="flex:1 1 150px;min-width:0;padding:11px;border:1px solid #90caf9;border-radius:8px;font-size:16px;" '
+    + 'onkeydown="if(event.key===\'Enter\'){event.preventDefault();buscarPeloRefId();}">'
+    + '<button type="button" id="btnBuscarRefId" onclick="buscarPeloRefId()" style="flex:0 0 auto;padding:11px 14px;background:#1565c0;color:#fff;border:none;border-radius:8px;font-weight:700;font-size:14px;cursor:pointer;">Buscar pelo Ref. ID</button>'
+    + '</div>'
+    + (typeof window.lerRefIdDaFoto === 'function'
+      ? '<button type="button" id="btnFotoRefId" onclick="lerRefIdDaFoto()" style="margin-top:8px;width:100%;padding:10px;background:transparent;color:#0d47a1;border:1px solid #90caf9;border-radius:8px;font-size:13.5px;cursor:pointer;">📷 Ou mande a foto da etiqueta — eu leio o Ref. ID</button>'
+      : '')
+    + '<div id="statusRefId" style="display:none;margin-top:8px;font-size:12.5px;color:#0d47a1;"></div>'
+    + '</div>';
+}
+
+// O "nao encontrado" so oferece o Ref. ID quando o ML RESPONDEU que aquele envio nao existe (404). Recusa (403), limite
+// (429) e falta de resposta nao sao "nao existe" — sao "nao sei", e ali o conselho e outro (esta na mensagem do erro).
+function sugerirRefId(data) {
+  try {
+    const tent = Array.isArray(data && data.tentativas) ? data.tentativas : [];
+    const envio = tent.find((t) => t && t.tipo === 'shipment_id');
+    if (!envio || envio.status !== 404 || !divResultado) return;
+    divResultado.insertAdjacentHTML('beforeend', cartaoRefId());
+    // a busca que falhou veio de uma FOTO? entao o Ref. ID esta nela: o leitor de imagem le e busca sozinho
+    if (typeof window.tentarRefIdDaEtiqueta === 'function') window.tentarRefIdDaEtiqueta(String(window._ultimoCodigoBusca || ''), String((data && data.codigo_limpo) || ''));
+  } catch (e) { /* sugestao extra: falhar aqui nao muda o erro que ja esta na tela */ }
+}
+
+// O Ref. ID LIDO DA FOTO pode ter um digito trocado (e leitura de texto; e numero de envio nao tem digito verificador) —
+// e um numero vizinho pode ser OUTRA venda da mesma conta. Entao, quando a busca por um numero que o leitor tirou da
+// foto ACHA uma venda, a tela mostra o numero lido, grande, pra bater com o impresso na etiqueta antes de triar.
+// `window._refIdsLidosDaFoto` = os candidatos da ultima leitura (colar-imagem.js). Vale ate achar; digitado nao avisa.
+function avisoRefIdDaFoto(codigo, data) {
+  try {
+    const lidos = window._refIdsLidosDaFoto;
+    if (!data || !data.encontrado || !Array.isArray(lidos) || lidos.indexOf(String(codigo)) === -1 || !divResultado) return;
+    window._refIdsLidosDaFoto = null;
+    divResultado.insertAdjacentHTML('afterbegin', '<div id="avisoRefIdLido" style="margin-bottom:10px;padding:10px 12px;background:#e3f2fd;border:2px solid #1565c0;border-radius:10px;color:#0d47a1;font-size:13.5px;line-height:1.45;">'
+      + '🔎 Esta venda foi achada pelo Ref. ID <b>lido da foto</b>: <b style="font-family:ui-monospace,monospace;font-size:17px;letter-spacing:1px;">' + escapeHtml(String(codigo)) + '</b>'
+      + '<br>Confira com o <b>Ref. ID impresso na etiqueta</b> antes de triar — o leitor pode trocar um número.</div>');
+  } catch (e) { /* aviso extra: falhar aqui nao muda o resultado que ja esta na tela */ }
+}
+
+// o botao "📦 pacote MELI": abre o cartao sem bipar
+function abrirPacoteMeli() {
+  ++_buscaSeq;   // P2-01: a resposta (e a lista do retiro) de um bipe anterior nao entra nesta tela
+  divLoading.classList.remove('show');
+  btnBuscar.disabled = false;
+  divResultado.innerHTML = cartaoRefId();
+  divResultado.classList.add('show');
+  const campo = document.getElementById('inputRefId');
+  if (campo) campo.focus();
+}
+
+function buscarPeloRefId() {
+  const campo = document.getElementById('inputRefId');
+  const ref = String((campo && campo.value) || '').replace(/\D/g, '');
+  // o numero de um envio do ML: a rota de busca so tenta o envio com 10 a 13 digitos (hoje sao 11)
+  if (ref.length < 10 || ref.length > 13) {
+    toast('O Ref. ID tem 11 números — confira na etiqueta', 'err');
+    if (campo) campo.focus();
+    return;
+  }
+  inputCodigo.value = ref;
+  buscar();
 }
 
 // b504 - bipe da ETIQUETA DE RETIRADA do Full: o codigo dela nao existe na API do ML. Quando o bipe nao acha

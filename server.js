@@ -622,7 +622,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.126.302 (b788: V-13 — sonda da etiqueta de volta do ML, 2a rodada do Codex #637: dado pessoal)',   // b744: SEM encadear os builds anteriores — a historia e do git, nao desta linha
+      version: '9.126.305 (b791: V-13 — pacote MELI: numero lido pela metade vira pergunta; digitando no cartao, a leitura nao atropela)',   // b744: SEM encadear os builds anteriores — a historia e do git, nao desta linha
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -1228,7 +1228,9 @@ app.get('/api/devolucao/identificar/:codigo', requerLogin, async (req, res) => {
     if (stShip === 403) {
       resultado.erro = `QR do ML lido (shipment ${codigoLimpo}) mas a API RECUSOU o acesso (403). Duas causas possíveis: token do ML expirado (teste com um shipment antigo — se também der 403, avise o Diego) OU devolução recém-criada que o ML ainda não liberou (tente de novo em algumas horas). Enquanto isso: digite o Pack ID impresso na etiqueta (2000...).`;
     } else {
-      resultado.erro = `QR do ML lido (shipment ${codigoLimpo}) mas a API não achou esse envio. Na MESMA etiqueta: (1) bipe o CÓDIGO DE BARRAS grande, ou (2) digite o Pack ID impresso (2000...). Se for devolução FULL (endereçada ao CD do ML), use a chave da DANFE ou ➕ Lançar por NF.`;
+      // b789: a etiqueta de volta SEM cliente ("pacote MELI", venda nao entregue) cai aqui — e nela o codigo de barras e o MESMO
+      // envio do QR (nao acha) e nao ha Pack ID. O que acha e o Ref. ID impresso; a tela oferece o campo dele (busca.js).
+      resultado.erro = `QR do ML lido (shipment ${codigoLimpo}) mas a API não achou esse envio. Etiqueta SEM nome de cliente (remetente MELI)? O código de barras dela também não acha: use o Ref. ID impresso no alto da etiqueta. Nas outras, na MESMA etiqueta: (1) bipe o CÓDIGO DE BARRAS grande, ou (2) digite o Pack ID impresso (2000...). Se for devolução FULL (endereçada ao CD do ML), use a chave da DANFE ou ➕ Lançar por NF.`;
     }
     resultado.qr_ml_sem_shipment = true;
     return res.status(404).json(await anexarCapturadas(resultado, [req.params.codigo, codigoLimpo]));
