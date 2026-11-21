@@ -18,8 +18,8 @@
 //   const pg = await subirPostgres();
 //   const rest = await subirPostgrestReal(pg);   // { url, chave(papel), pedidos, parar }
 //   env.SUPABASE_URL = rest.url; env.SUPABASE_KEY = rest.chave('service_role');
-// ⚠️ A versao do PostgREST de producao nao foi medida (o Supabase atualiza sozinho); a 12.2 e a linha que o Supabase
-// usa desde 2024. Ao medir (o `Server:` da resposta do projeto diz), trocar VERSAO + SHA256 aqui.
+// A versao e a do PROJETO (medida — ver VERSAO). Como medir de novo: no SQL Editor,
+//   select distinct application_name from pg_stat_activity where application_name ilike '%postgrest%';
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -28,9 +28,11 @@ const net = require('net');
 const crypto = require('crypto');
 const { spawn, execFileSync } = require('child_process');
 
-const VERSAO = 'v12.2.3';
-const URL_BIN = 'https://github.com/PostgREST/postgrest/releases/download/' + VERSAO + '/postgrest-' + VERSAO + '-linux-static-x64.tar.xz';
-const SHA256 = '9f71269e61ac3a940281e93ff415760f5957e430e475ba4c3889f3ede7d5527c';
+// b784: a versao do PROJETO, medida pelo dono em 21/11 (SQL Editor: `pg_stat_activity.application_name` = "PostgREST 14.5").
+// Era 12.2.3 no b782 (chute documentado). Ao o Supabase atualizar, medir de novo e trocar as 3 linhas.
+const VERSAO = 'v14.5';
+const URL_BIN = 'https://github.com/PostgREST/postgrest/releases/download/' + VERSAO + '/postgrest-' + VERSAO + '-linux-static-x86-64.tar.xz';
+const SHA256 = 'ab5cc7e974d4940447991804588cfb8b3f7b2c57b691f0905df04d51ede69470';
 const CACHE = path.join(os.tmpdir(), 'postgrest-cache-' + VERSAO);
 
 function portaLivre() {
