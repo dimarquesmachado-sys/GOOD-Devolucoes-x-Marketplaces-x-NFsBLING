@@ -113,7 +113,7 @@ const semPausa = { pausaMs: 0 };
     ok(r.leitura.busca_de_vendas_pelo_ref_id === 'respeitado (1 de 5000)' && r.leitura.busca_de_vendas_pelo_codigo_de_barras === 'respeitado (0 de 5000)',
       '  busca de vendas: acha pelo Ref. ID (1) e nao acha pelo codigo de barras (0)');
     ok(r.leitura.listar_nao_entregues.por_tag === 'respeitado (37 de 5000)', '⚠️ listar os nao entregues por TAG: respeitado (37 de 5000)');
-    ok(/^IGNORADO/.test(r.leitura.listar_nao_entregues.por_status_do_envio), '⚠️ filtro que o ML ignora (mesmo total do controle) sai como IGNORADO — nao como "5000 nao entregues"');
+    ok(/^INCONCLUSIVO/.test(r.leitura.listar_nao_entregues.por_status_do_envio) && !/IGNORADO/.test(r.leitura.listar_nao_entregues.por_status_do_envio), '⚠️ total igual ao do controle sai como INCONCLUSIVO (pode ser filtro ignorado OU todas as vendas casarem) — nem "5000 nao entregues" nem "ignorado"');
     ok(/^nao sei \(HTTP 429\)/.test(r.leitura.listar_nao_entregues.cancelados) && r.leitura.consultas_que_nao_responderam.includes('vendas_canceladas'),
       '⚠️ "nao sei" != "nao existe": consulta com 429 sai como "nao sei" e na lista das que nao responderam');
     ok(PESSOAL.every((p) => !texto.includes(p)), '⚠️ NENHUM dado pessoal do comprador no relatorio (nome, endereco, telefone, CEP, apelido, e-mail, documento)' + (PESSOAL.filter((p) => texto.includes(p)).length ? ' — VAZOU: ' + PESSOAL.filter((p) => texto.includes(p)).join(', ') : ''));
@@ -180,6 +180,36 @@ const semPausa = { pausaMs: 0 };
     const puladas = Object.keys(r2.consultas).filter((n) => r2.consultas[n].pulada);
     ok(r2.ok && puladas.length > 5 && ml2.chamadas.length <= 6 && puladas.every((n) => r2.leitura.consultas_que_nao_responderam.includes(n)),
       '  teto de tempo: o que nao coube sai como "pulada" (' + puladas.length + ') e NAO como "sem ligacao"');
+  }
+
+  { // 401/403 nas consultas diretas: NAO SEI, nunca NAO
+    const ml = mlFalso();
+    const get403 = async (c, h) => (/^\/shipments\/\d{9,13}(\/(history|items|orders))?$/.test(c) && c.includes(BARRAS)) ? { ok: false, status: 403, error: { message: 'forbidden' } } : ml.get(c, h);
+    const r = await sondarEtiquetaDeVolta(Object.assign({ get: get403, vendedor: () => CONTA, barras: BARRAS, ref: REF }, semPausa));
+    ok(/^NAO SEI/.test(r.leitura.codigo_de_barras_consultavel) && r.leitura.consultas_que_nao_responderam.includes('volta_envio_formato_novo') && r.leitura.consultas_que_nao_responderam.includes('volta_itens'),
+      '⚠️ 403 em todas as consultas diretas: "NAO SEI" e elas entram na lista das que nao responderam (' + r.leitura.codigo_de_barras_consultavel.slice(0, 30) + ')');
+  }
+
+  { // reclamacao que SO a busca achou: a devolucao dela tambem e consultada (e o id e validado)
+    const ml = mlFalso({ ligacao: true });
+    const get = async (c, h) => {
+      if (c.startsWith('/post-purchase/v1/claims/search?status=opened')) return { ok: true, status: 200, data: { paging: { total: 3 }, data: [{ id: 5009999999, status: 'opened' }, { id: 5001234567 }, { id: '../x' }] } };
+      if (c === '/post-purchase/v2/claims/5009999999/returns') return { ok: true, status: 200, data: { id: 1, shipments: [{ shipment_id: Number(BARRAS) }] } };
+      return ml.get(c, h);
+    };
+    const r = await sondarEtiquetaDeVolta(Object.assign({ get, vendedor: () => CONTA, barras: BARRAS, ref: REF }, semPausa));
+    ok(r.consultas.devolucao_da_reclamacao_5009999999 && r.consultas.devolucao_da_reclamacao_5009999999.http === 200
+      && r.leitura.onde_o_codigo_de_barras_aparece.some((x) => x.consulta === 'devolucao_da_reclamacao_5009999999'), '⚠️ claim achada so pela busca: a devolucao dela e consultada e o numero e achado la');
+    ok(!Object.keys(r.consultas).some((n) => /\.\./.test(n)), '  id hostil da busca nao vira consulta');
+  }
+
+  { // a ROTA: query com objeto/lista (?barras[toString]=x) = 400, sem lancar e sem chamar a sonda
+    let chamou = 0; const rota = criarRotaDaSonda({ obterMl: () => ({ chamarML: async () => ({ ok: false }) }), versao: 'v', empresa: 'T', sondar: async () => { chamou++; return { ok: true }; } });
+    for (const query of [{ barras: { toString: 'x' } }, { barras: [BARRAS, REF] }, { ref: { a: 1 } }]) {
+      let st = null, corpo = null; const res = { status(n) { st = n; return this; }, json(b) { corpo = b; return this; } };
+      let lancou = false; try { await rota({ query }, res); } catch (e) { lancou = true; }
+      ok(!lancou && st === 400 && corpo && corpo.ok === false && chamou === 0, '⚠️ rota: query nao-texto (' + JSON.stringify(query) + ') = 400, sem excecao e sem chamar a sonda');
+    }
   }
 
   // as duas buscas no JSON, isoladas
