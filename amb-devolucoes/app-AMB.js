@@ -1374,7 +1374,7 @@ router.get('/api/debug/ml-get', adminSoChave, async (req, res) => {
    responde 404 nele) e o "Ref. ID" impresso e o envio ORIGINAL. A sonda mede o que o ML expoe sobre os dois numeros
    (e ONDE um aponta o outro), pra decidir a solucao com dado. So GET, caminhos FIXOS com os numeros validados — nao e
    a consulta livre do /api/debug/ml-get (que segue so com a chave); por isso aceita a sessao do admin, com limite.
-   Ex.: /amb/api/debug/etiqueta-volta?barras=48133297953&ref=48126024340 */
+   Uso (com o prefixo da empresa na frente): /api/debug/etiqueta-volta?barras=48133297953&ref=48126024340 */
 router.get('/api/debug/etiqueta-volta', admin, require('../lib/sonda-etiqueta-volta').criarRotaDaSonda({
   obterMl: () => ml, versao: VERSAO, empresa: CFG_EMPRESA.CHAVE_REGISTRO || null,
 }));
