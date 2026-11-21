@@ -9,7 +9,9 @@ for (const arq of ['amb-devolucoes/lib-AMB/ml-returns-AMB.js']   /* b511: a GOOD
   ok(/&date_from=' \+ de/.test(s) && /rr\.data && rr\.data\.date_created/.test(s), '⚠️ ' + arq + ': so operacoes DEPOIS da abertura desta devolucao (o anuncio pode ter outras retiradas)');
   ok(/quando\('WITHDRAWAL_RESERVATION'\)/.test(s) && /quando\('WITHDRAWAL_DELIVERY'\)/.test(s), '  ' + arq + ': reservada e saiu do CD');
   ok(/saiu do CD em/.test(s) && /retirada reservada em/.test(s), '  ' + arq + ': o status do card mostra a etapa');
-  ok(/catch \(e\) \{ \/\* linha do tempo e extra \*\/ \}/.test(s) && /REVISAO_CD\.set\(id, reg\);/.test(s), '  ' + arq + ': sem a linha do tempo (cota do ML), o card continua no retiro');
+  // b780: o catch passou a registrar o MOTIVO (linha_do_tempo.motivo) e segue sem relancar — provado executando em
+  // test/retiro-lista-completa.test.js (operacoes estourando → a peca continua no retiro, com 'erro: ...')
+  ok(/catch \(e\) \{ [^{}\n]*\/\* linha do tempo e extra \*\/ \}/.test(s) && /REVISAO_CD\.set\(id, reg\);/.test(s), '  ' + arq + ': sem a linha do tempo (cota do ML), o card continua no retiro');
 }
 console.log('');
 console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');

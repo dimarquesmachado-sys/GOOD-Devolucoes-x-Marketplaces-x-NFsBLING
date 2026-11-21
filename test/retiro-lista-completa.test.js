@@ -20,7 +20,7 @@ const { itemDoRetiro, casaComEtiqueta, condicaoML } = require('../lib/retiro-bip
 let falhas = 0;
 const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o); };
 
-const PED_A = '2000018239001602', PED_B = '2000019243159482';
+const PED_A = '2000018239001602', PED_B = '2000019243159482', PED_C = '2000019060853696';
 const dia = (n) => new Date(Date.now() - n * 864e5).toISOString();
 const chamadas = [];
 const ml = {
@@ -32,23 +32,26 @@ const ml = {
       return { ok: true, data: { data: [
         { id: 71, resource: 'order', resource_id: PED_A, status: 'closed', stage: 'claim', date_created: dia(50) },
         { id: 72, resource: 'order', resource_id: PED_B, status: 'closed', stage: 'claim', date_created: dia(20) },
+        { id: 73, resource: 'order', resource_id: PED_C, status: 'closed', stage: 'claim', date_created: dia(30) },
       ] } };
     }
     const mRet = /\/post-purchase\/v2\/claims\/(\d+)\/returns/.exec(url);
     if (mRet) {
-      const a = mRet[1] === '71';
+      const k = { 71: ['551', PED_A, 'MLB111', 'TRKA1', 49], 72: ['552', PED_B, 'MLB222', 'TRKB2', 19], 73: ['553', PED_C, 'MLB333', 'TRKC3', 29] }[mRet[1]];
       return { ok: true, data: {
-        id: a ? 551 : 552, date_created: a ? dia(49) : dia(19),
-        orders: [{ order_id: a ? PED_A : PED_B, item_id: a ? 'MLB111' : 'MLB222' }],
-        shipments: [{ tracking_number: a ? 'TRKA1' : 'TRKB2', shipment_id: a ? 501 : 502, status: 'delivered', destination: { name: 'warehouse' } }],
+        id: k[0], date_created: dia(k[4]),
+        orders: [{ order_id: k[1], item_id: k[2] }],
+        shipments: [{ tracking_number: k[3], shipment_id: 500 + Number(mRet[1]), status: 'delivered', destination: { name: 'warehouse' } }],
       } };
     }
-    if (/\/post-purchase\/v1\/returns\/55[12]\/reviews/.test(url)) {
+    if (/\/post-purchase\/v1\/returns\/55[123]\/reviews/.test(url)) {
       const a = url.includes('/551/');
       return { ok: true, data: { reviews: [{ resource_reviews: [{ product_destination: 'seller', product_condition: a ? 'saleable' : 'unsaleable', reason_id: 'damaged' }] }] } };
     }
     if (url.startsWith('/items/MLB111')) return { ok: true, data: { inventory_id: 'INVA', seller_id: 1 } };
     if (url.startsWith('/items/MLB222')) return { ok: false, status: 403, error: { blocked_by: 'PolicyAgent' } };
+    if (url.startsWith('/items/MLB333')) return { ok: true, data: { inventory_id: 'INVC', seller_id: 1 } };
+    if (url.startsWith('/stock/fulfillment/operations/search') && url.includes('inventory_id=INVC')) throw new Error('socket hang up');
     if (url.startsWith('/stock/fulfillment/operations/search') && url.includes('inventory_id=INVA')) {
       return { ok: true, data: { results: [
         { id: 900001, type: 'INBOUND_RECEPTION', date_created: dia(200), external_references: [{ type: 'inbound_id', value: '77777777' }] },
@@ -89,9 +92,9 @@ const ml = {
     const base = r.resumoEspreita() || {};
     lista = (base.em_transito || []).filter((x) => x && x.vem_pelo_retiro);
     const prontas = lista.filter((x) => x.retiro && x.retiro.linha_do_tempo && (x.itens || []).length);
-    if (prontas.length === 2) break;
+    if (prontas.length === 3) break;
   }
-  ok(lista.length === 2, '  as 2 pecas que o CD mandou pro vendedor estao no retiro (' + lista.length + ')');
+  ok(lista.length === 3, '  as 3 pecas que o CD mandou pro vendedor estao no retiro (' + lista.length + ')');
   const A = itemDoRetiro(lista.find((x) => String(x.pedido) === PED_A) || {}, '48133297953');
   const B = itemDoRetiro(lista.find((x) => String(x.pedido) === PED_B) || {}, '48133297953');
   console.log('     linha A: ' + JSON.stringify(A).slice(0, 600));
@@ -120,6 +123,9 @@ const ml = {
     '⚠️ anuncio negado pelo PolicyAgent (403) → a lista diz qual permissao falta, em vez de ficar sem data calada (' + JSON.stringify(B.linha_do_tempo) + ')');
   ok(B.condicao === 'inservível' && B.produtos[0] && B.produtos[0].sku === 'MAC-2T' && !B.saiu_cd_em, '  e o resto da linha vem igual (produto, condicao), so sem as datas do CD');
   ok(!chamadas.some((u) => u.startsWith('/stock/fulfillment/operations/search') && u.includes('INVB')), '  sem inventory, nao consulta operacoes');
+  const C = itemDoRetiro(lista.find((x) => String(x.pedido) === PED_C) || {}, '48133297953');
+  ok(C.pedido === PED_C && C.linha_do_tempo && /^erro: socket hang up/.test(C.linha_do_tempo.motivo || '') && C.casa_etiqueta === null,
+    '⚠️ a consulta das operacoes ESTOURA → a peca continua no retiro, com o motivo, sem casar nada (' + JSON.stringify(C.linha_do_tempo) + ')');
 
   console.log('');
   console.log(falhas === 0 ? '=== todos passaram' : '=== ' + falhas + ' FALHA(S)');
