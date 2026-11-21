@@ -71,7 +71,6 @@ async function buscar() {
     window._ultimaRespostaBipe = data;   // ev2 - pro bloco do checkout
     ultimaBusca = data;
     renderizar(data, resp.ok);
-    avisoRefIdDaFoto(codigo, data, resp.ok);   // b789: o Ref. ID veio do leitor de texto? mostra o numero lido pra conferir
   } catch (err) {
     if (!souACorrente()) return;   // b717: erro de uma busca antiga nao apaga o resultado da nova
     renderizarErro('Erro de conexao: ' + err.message + ' — confira a internet e bipe de novo.');
@@ -735,6 +734,7 @@ function renderizar(data, ok) {
 
   divResultado.innerHTML = html + blocoEventosCheckout();   // ev2
   divResultado.classList.add('show');
+  avisoRefIdDaFoto(String(window._ultimoCodigoBusca || '').trim(), data);   // b789: achou por um Ref. ID LIDO DA FOTO? mostra o numero lido pra conferir
   buscarFotosItens(itensRender);   // b78 - fotos dos itens (nao bloqueia)
 
   // Apos render, verifica triagem existente (nao bloqueia o render).
@@ -1306,10 +1306,10 @@ function sugerirRefId(data) {
 // e um numero vizinho pode ser OUTRA venda da mesma conta. Entao, quando a busca por um numero que o leitor tirou da
 // foto ACHA uma venda, a tela mostra o numero lido, grande, pra bater com o impresso na etiqueta antes de triar.
 // `window._refIdsLidosDaFoto` = os candidatos da ultima leitura (colar-imagem.js). Vale ate achar; digitado nao avisa.
-function avisoRefIdDaFoto(codigo, data, ok) {
+function avisoRefIdDaFoto(codigo, data) {
   try {
     const lidos = window._refIdsLidosDaFoto;
-    if (!ok || !data || !data.encontrado || !Array.isArray(lidos) || lidos.indexOf(String(codigo)) === -1 || !divResultado) return;
+    if (!data || !data.encontrado || !Array.isArray(lidos) || lidos.indexOf(String(codigo)) === -1 || !divResultado) return;
     window._refIdsLidosDaFoto = null;
     divResultado.insertAdjacentHTML('afterbegin', '<div id="avisoRefIdLido" style="margin-bottom:10px;padding:10px 12px;background:#e3f2fd;border:2px solid #1565c0;border-radius:10px;color:#0d47a1;font-size:13.5px;line-height:1.45;">'
       + '🔎 Esta venda foi achada pelo Ref. ID <b>lido da foto</b>: <b style="font-family:ui-monospace,monospace;font-size:17px;letter-spacing:1px;">' + escapeHtml(String(codigo)) + '</b>'
