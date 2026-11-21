@@ -662,7 +662,7 @@ const registrarCicloDefeitos = require('../lib/defeitos-ciclo');
 // candidato ja desistido ainda batia no Bling depois de esperar numa pausa
 // de 429. Ver bling-AMB.js, nf-nomes-AMB.js e identificar-AMB.js.
 // 29/10: sem o 'AMB' na frente — a mesma peca serve Girassol, AMB e as proximas; a empresa vai no campo `empresa`
-const VERSAO = 'Devolucoes b779';
+const VERSAO = 'Devolucoes b780';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -1735,11 +1735,12 @@ router.get('/api/espreita', auth.requerLogin, async (req, res) => {
    existe na API do ML — provado com os dados do caso Marcos). Esta rota leve, pra tela do galpao (login de
    funcionario), lista SO as pecas que a espreita marcou "vem pelo RETIRO" (#414): o bipe mostra essas pra
    escolher quando o codigo nao e encontrado. */
+const { itemDoRetiro } = require('../lib/retiro-bipe');   // b780 - a linha da lista do retiro e a MESMA nas 3 empresas
 router.get('/api/espreita/retiro', auth.requerLogin, (req, res) => {
   try {
     const base = mlReturns.resumoEspreita() || {};
     const itens = (base.em_transito || []).filter((x) => x && x.vem_pelo_retiro)
-      .map((x) => ({ pedido: x.pedido, status: x.status, tracking: x.tracking || null, dias: x.dias_em_transito || null }));
+      .map((x) => itemDoRetiro(x, req.query.codigo));   // b780: + produto/SKU, cliente, NF, datas; e marca a que casa com o codigo bipado
     return res.json({ ok: true, itens });
   } catch (e) { return res.json({ ok: false, itens: [], erro: String((e && e.message) || e) }); }
 });

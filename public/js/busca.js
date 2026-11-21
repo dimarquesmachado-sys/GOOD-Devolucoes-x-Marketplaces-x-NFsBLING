@@ -1263,14 +1263,46 @@ function renderizarErro(mensagem, tentativas, avisos) {
 // nada e ha pecas "vem pelo RETIRO", mostra essas pra escolher — um toque busca pelo numero do pedido.
 async function sugerirRetiro() {
   try {
-    const r = await fetch((window.APP_BASE || '') + '/api/espreita/retiro');
+    // b780: manda o codigo bipado — o servidor marca a peca cuja retirada tem esse numero (codigo de barras ou Ref. ID)
+    const codigo = String(window._ultimoCodigoBusca || '').trim();
+    const minha = _buscaSeq;   // P2-01: resposta de um bipe antigo nao entra na tela do bipe seguinte
+    const r = await fetch((window.APP_BASE || '') + '/api/espreita/retiro?codigo=' + encodeURIComponent(codigo));
     const d = await r.json();
+    if (minha !== _buscaSeq) return;
     const itens = (d && d.ok && Array.isArray(d.itens)) ? d.itens : [];
     if (!itens.length || !divResultado) return;
-    let html = '<div class="card" style="border:2px solid #6a1b9a;margin-top:10px;"><div style="font-weight:700;color:#6a1b9a;margin-bottom:6px;">🔁 Pode ser uma etiqueta de RETIRADA do Full — estas peças estão vindo pelo retiro:</div>';
-    itens.forEach((it) => {
-      html += '<div style="padding:7px 9px;margin:5px 0;background:#f3e5f5;border-radius:8px;cursor:pointer;" onclick="buscarPedidoRetiro(\'' + escapeHtml(String(it.pedido || '')) + '\')">' +
-        '📦 Pedido <b>' + escapeHtml(String(it.pedido || '?')) + '</b> — ' + escapeHtml(String(it.status || '')) + '</div>';
+    // b780 (pedido do dono 21/11: 23 pecas so com o numero do pedido — "como sei agora qual e?!"): a etiqueta da
+    // retirada nao traz cliente nem produto, entao cada linha mostra TUDO que o sistema tem do pedido — produto
+    // (titulo, SKU, qtd), cliente, NF, pedido/pack, rastreio e as datas (saiu do CD / retirada reservada / devolucao
+    // aberta) — pra bater com a caixa e com a data da etiqueta. A que casa com o numero da etiqueta vem primeiro, em
+    // verde; o resto, mais recente primeiro.
+    const dm = (iso) => (iso && /^\d{4}-\d{2}-\d{2}/.test(String(iso))) ? String(iso).slice(8, 10) + '/' + String(iso).slice(5, 7) : '';
+    const quando = (it) => String(it.saiu_cd_em || it.reservada_em || it.devolucao_em || '');
+    const ordem = itens.slice().sort((a, b) => (b.casa_etiqueta ? 1 : 0) - (a.casa_etiqueta ? 1 : 0) || quando(b).localeCompare(quando(a)));
+    const casou = ordem.filter((it) => it.casa_etiqueta).length;
+    let html = '<div class="card" style="border:2px solid #6a1b9a;margin-top:10px;"><div style="font-weight:700;color:#6a1b9a;margin-bottom:6px;">🔁 Pode ser uma etiqueta de RETIRADA do Full — '
+      + (casou ? 'o número desta etiqueta aparece na retirada do pedido em verde. Confira o produto e toque nele:' : 'confira o PRODUTO com a caixa e toque no certo (mais recentes primeiro):') + '</div>';
+    ordem.forEach((it) => {
+      const prods = Array.isArray(it.produtos) ? it.produtos : [];
+      const linhaProd = prods.length
+        ? prods.map((p) => '<b>' + escapeHtml(String(p.qtd || 1)) + '× ' + escapeHtml(String(p.titulo || '(sem título)')) + '</b>' + (p.sku ? ' <span style="color:#555;">· SKU ' + escapeHtml(String(p.sku)) + '</span>' : '')).join('<br>')
+        : '<i>produto ainda não carregado — toque pra abrir o pedido</i>';
+      const linhas = [
+        [it.cliente, it.apelido ? '(' + it.apelido + ')' : ''].filter(Boolean).join(' '),
+        it.nf_numero ? 'NF ' + it.nf_numero + (it.nf_serie ? '-' + it.nf_serie : '') : '',
+        'Pedido ' + (it.pedido || '?') + (it.pack_id && String(it.pack_id) !== String(it.pedido) ? ' · Pack ' + it.pack_id : ''),
+        it.tracking ? 'Rastreio ' + it.tracking : '',
+        [it.saiu_cd_em ? 'saiu do CD ' + dm(it.saiu_cd_em) : (it.reservada_em ? 'retirada reservada ' + dm(it.reservada_em) : ''),
+          it.devolucao_em ? 'devolução aberta ' + dm(it.devolucao_em) : ''].filter(Boolean).join(' · '),
+        // sem data do CD, diz por que (permissao do app, nao e Full...) — o dono decide o que fazer
+        (!it.saiu_cd_em && !it.reservada_em && it.linha_do_tempo && it.linha_do_tempo.motivo) ? 'sem data do CD: ' + it.linha_do_tempo.motivo : '',
+        it.condicao ? 'ML: ' + it.condicao + (it.embalagem_danificada ? ' (embalagem danificada)' : '') : '',
+      ].filter(Boolean);
+      const verde = !!it.casa_etiqueta;
+      html += '<div data-retiro-pedido="' + escapeHtml(String(it.pedido || '')) + '" style="padding:7px 9px;margin:5px 0;background:' + (verde ? '#e8f5e9;border:2px solid #2e7d32' : '#f3e5f5') + ';border-radius:8px;cursor:pointer;" onclick="buscarPedidoRetiro(\'' + escapeHtml(String(it.pedido || '')) + '\')">' +
+        (verde ? '<div style="font-weight:700;color:#2e7d32;margin-bottom:3px;">✅ O número desta etiqueta aparece neste pedido</div>' : '') +
+        '📦 ' + linhaProd +
+        '<div style="font-size:12px;color:#4a148c;margin-top:3px;">' + linhas.map((l) => escapeHtml(l)).join('<br>') + '</div></div>';
     });
     divResultado.insertAdjacentHTML('beforeend', html + '</div>');
   } catch (e) { /* sugestao extra: falhar aqui nao muda o erro que ja esta na tela */ }
