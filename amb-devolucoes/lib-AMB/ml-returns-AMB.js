@@ -708,12 +708,22 @@ async function processarRevisoesCD() {
               const ate = new Date(Date.now() + 864e5).toISOString().slice(0, 10);
               const op = await ((p) => ml.chamarML(p))('/stock/fulfillment/operations/search?seller_id=' + sel + '&inventory_id=' + inv + '&date_from=' + de + '&date_to=' + ate);
               reg.linha_do_tempo.operacoes_http = op ? (op.ok ? 200 : (op.status || null)) : null;
+              reg.inventario = String(inv);   // Codex #632: os numeros abaixo sao do ANUNCIO (inventario), nao do pedido
               const ops = (op && op.ok && op.data && Array.isArray(op.data.results)) ? op.data.results : [];
-              reg.linha_do_tempo.operacoes = ops.length;
+              reg.linha_do_tempo.operacoes = (op && op.ok) ? ops.length : null;
               const quando = (t) => { const o = ops.filter((x) => String(x.type || '').toUpperCase() === t).sort((a, b) => String(b.date_created || '').localeCompare(String(a.date_created || '')))[0]; return o ? o.date_created : null; };
               reg.reservada_em = quando('WITHDRAWAL_RESERVATION');
               reg.saiu_cd_em = quando('WITHDRAWAL_DELIVERY');
               reg.numeros_retirada = numerosDasRetiradas(ops);
+              /* Codex #632: falha das operacoes (429, 5xx, 403) NAO pode virar "lista vazia" calada na tela — sem data,
+                 a linha diz por que. E resposta OK sem nenhuma retirada tambem se explica (o ML ainda nao registrou). */
+              if (!op || !op.ok) {
+                reg.linha_do_tempo.motivo = (op && Number(op.status) === 403 && ehBloqueioDePolitica(op.error))
+                  ? 'operacoes do Full negadas pelo ML (permissao do app)'
+                  : 'operacoes do Full nao responderam (HTTP ' + ((op && op.status) || '-') + ') — nova tentativa em ate 24 h';
+              } else if (!ops.some((o) => /^WITHDRAWAL/i.test(String((o && o.type) || '')))) {
+                reg.linha_do_tempo.motivo = 'o ML ainda nao registrou a retirada desta peca no Full';
+              }
             } else {
               reg.linha_do_tempo.motivo = !ped || !ped.item_id ? 'devolucao sem item_id'
                 : (it && !it.ok && Number(it.status) === 403 && ehBloqueioDePolitica(it.error)) ? 'anuncio negado pelo ML: falta a permissao "Publicação e sincronização" no app'
@@ -755,7 +765,7 @@ function retiroDoCard(d) {
   const r = REVISAO_CD.get(String((d && d.claim_id) || ''));
   if (!r || r.destino !== 'seller') return null;
   return { condicao: r.condicao || null, motivo: r.motivo || null, reservada_em: r.reservada_em || null, saiu_cd_em: r.saiu_cd_em || null,
-    numeros: r.numeros_retirada || [], linha_do_tempo: r.linha_do_tempo || null };
+    numeros: r.numeros_retirada || [], inventario: r.inventario || null, linha_do_tempo: r.linha_do_tempo || null };
 }
 
 function resumoEspreita() {

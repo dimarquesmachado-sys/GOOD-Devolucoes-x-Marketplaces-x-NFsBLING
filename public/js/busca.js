@@ -1274,14 +1274,21 @@ async function sugerirRetiro() {
     // b780 (pedido do dono 21/11: 23 pecas so com o numero do pedido — "como sei agora qual e?!"): a etiqueta da
     // retirada nao traz cliente nem produto, entao cada linha mostra TUDO que o sistema tem do pedido — produto
     // (titulo, SKU, qtd), cliente, NF, pedido/pack, rastreio e as datas (saiu do CD / retirada reservada / devolucao
-    // aberta) — pra bater com a caixa e com a data da etiqueta. A que casa com o numero da etiqueta vem primeiro, em
+    // aberta) — pra bater com a caixa e com a data da etiqueta. As que casam com o numero da etiqueta vem primeiro, em
     // verde; o resto, mais recente primeiro.
+    // ⚠️ Codex #632: casar por numero de RETIRADA prova o PRODUTO (anuncio), nao o pedido — dois pedidos do mesmo
+    // anuncio trazem a mesma retirada. Entao a tela so diz "e deste pedido" quando bate o pedido/pack/rastreio; pela
+    // retirada, diz que e o mesmo produto e manda conferir (e conta quantos pedidos dividem essa retirada).
     const dm = (iso) => (iso && /^\d{4}-\d{2}-\d{2}/.test(String(iso))) ? String(iso).slice(8, 10) + '/' + String(iso).slice(5, 7) : '';
     const quando = (it) => String(it.saiu_cd_em || it.reservada_em || it.devolucao_em || '');
-    const ordem = itens.slice().sort((a, b) => (b.casa_etiqueta ? 1 : 0) - (a.casa_etiqueta ? 1 : 0) || quando(b).localeCompare(quando(a)));
-    const casou = ordem.filter((it) => it.casa_etiqueta).length;
+    const peso = (it) => (it.casa_etiqueta ? (it.casa_etiqueta.nivel === 'pedido' ? 2 : 1) : 0);
+    const ordem = itens.slice().sort((a, b) => peso(b) - peso(a) || quando(b).localeCompare(quando(a)));
+    const doPedido = ordem.filter((it) => peso(it) === 2).length;
+    const doAnuncio = ordem.filter((it) => peso(it) === 1).length;
     let html = '<div class="card" style="border:2px solid #6a1b9a;margin-top:10px;"><div style="font-weight:700;color:#6a1b9a;margin-bottom:6px;">🔁 Pode ser uma etiqueta de RETIRADA do Full — '
-      + (casou ? 'o número desta etiqueta aparece na retirada do pedido em verde. Confira o produto e toque nele:' : 'confira o PRODUTO com a caixa e toque no certo (mais recentes primeiro):') + '</div>';
+      + (doPedido ? 'o número desta etiqueta é do pedido em verde. Confira o produto e toque nele:'
+        : doAnuncio ? 'o número desta etiqueta está numa retirada do MESMO PRODUTO ' + (doAnuncio > 1 ? 'destes ' + doAnuncio + ' pedidos' : 'deste pedido') + ' (em verde) — confira cliente e data antes de tocar:'
+        : 'confira o PRODUTO com a caixa e toque no certo (mais recentes primeiro):') + '</div>';
     ordem.forEach((it) => {
       const prods = Array.isArray(it.produtos) ? it.produtos : [];
       const linhaProd = prods.length
@@ -1298,9 +1305,11 @@ async function sugerirRetiro() {
         (!it.saiu_cd_em && !it.reservada_em && it.linha_do_tempo && it.linha_do_tempo.motivo) ? 'sem data do CD: ' + it.linha_do_tempo.motivo : '',
         it.condicao ? 'ML: ' + it.condicao + (it.embalagem_danificada ? ' (embalagem danificada)' : '') : '',
       ].filter(Boolean);
-      const verde = !!it.casa_etiqueta;
+      const verde = peso(it) > 0;
+      const selo = peso(it) === 2 ? '✅ O número desta etiqueta é deste pedido'
+        : peso(it) === 1 ? '🟢 O número desta etiqueta está numa retirada do Full deste PRODUTO' + (doAnuncio > 1 ? ' — ' + doAnuncio + ' pedidos com a mesma retirada: confira cliente e data' : ' — confira o produto') : '';
       html += '<div data-retiro-pedido="' + escapeHtml(String(it.pedido || '')) + '" style="padding:7px 9px;margin:5px 0;background:' + (verde ? '#e8f5e9;border:2px solid #2e7d32' : '#f3e5f5') + ';border-radius:8px;cursor:pointer;" onclick="buscarPedidoRetiro(\'' + escapeHtml(String(it.pedido || '')) + '\')">' +
-        (verde ? '<div style="font-weight:700;color:#2e7d32;margin-bottom:3px;">✅ O número desta etiqueta aparece neste pedido</div>' : '') +
+        (selo ? '<div style="font-weight:700;color:#2e7d32;margin-bottom:3px;">' + escapeHtml(selo) + '</div>' : '') +
         '📦 ' + linhaProd +
         '<div style="font-size:12px;color:#4a148c;margin-top:3px;">' + linhas.map((l) => escapeHtml(l)).join('<br>') + '</div></div>';
     });

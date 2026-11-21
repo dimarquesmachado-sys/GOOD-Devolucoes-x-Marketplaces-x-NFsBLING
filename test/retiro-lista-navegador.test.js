@@ -30,6 +30,11 @@ const ESPREITA = [
     cliente_ml: 'Joao Silva', nickname: 'JOAOSILVA77', nf_ml_numero: '12345', nf_ml_serie: '1',
     retiro: { condicao: 'unsaleable', motivo: 'damaged', reservada_em: '2026-09-28T10:00:00Z', saiu_cd_em: '2026-10-01T10:00:00Z',
       numeros: [{ campo: 'WITHDRAWAL_DELIVERY.detail.shipment', valor: ETIQUETA }], linha_do_tempo: { anuncio_http: 200, operacoes_http: 200, operacoes: 3 } } },
+  // Codex #632: D e do MESMO anuncio de A — a retirada do anuncio traz os mesmos numeros
+  { pedido: '2000018338961088', tracking: 'TRKD4', vem_pelo_retiro: true, desde: '2026-09-15T10:00:00Z',
+    itens: [{ titulo: 'Cavalete Automotivo 3 Toneladas Par', sku: 'CAV-3T', qtd: 1 }], cliente_ml: 'Pedro Dias', nickname: 'PDIAS',
+    retiro: { condicao: 'saleable', reservada_em: '2026-09-28T10:00:00Z', saiu_cd_em: '2026-10-01T10:00:00Z', inventario: 'INVA',
+      numeros: [{ campo: 'WITHDRAWAL_DELIVERY.detail.shipment', valor: ETIQUETA }], linha_do_tempo: { anuncio_http: 200, operacoes_http: 200, operacoes: 3, motivo: null } } },
   { pedido: '2000019243159482', tracking: 'TRKNOVO', vem_pelo_retiro: true, desde: '2026-11-01T10:00:00Z',
     itens: [{ titulo: 'Macaco Jacare 2T', sku: 'MAC-2T', qtd: 1 }], cliente_ml: 'Maria Borges', nickname: 'MARIAB',
     retiro: { condicao: 'saleable', reservada_em: '2026-11-10T10:00:00Z', saiu_cd_em: null, numeros: [], linha_do_tempo: { anuncio_http: 200, operacoes_http: 200, operacoes: 1 } } },
@@ -73,18 +78,29 @@ const ESPREITA = [
       await page.waitForSelector('[data-retiro-pedido]', { timeout: 8000 });
       ok(codigosPedidos[codigosPedidos.length - 1] === ETIQUETA, '⚠️ a tela manda o codigo bipado pra rota (?codigo=' + codigosPedidos[codigosPedidos.length - 1] + ')');
       const linhas = await page.$$eval('[data-retiro-pedido]', (els) => els.map((el) => ({ pedido: el.getAttribute('data-retiro-pedido'), texto: el.innerText, verde: /e8f5e9|232, 245, 233/.test(el.getAttribute('style') || '') })));
-      ok(linhas.length === 3, '  3 pecas na lista (' + linhas.length + ')');
-      const A = linhas[0] || { texto: '' };
-      ok(A.pedido === '2000018239001602' && A.verde && /O número desta etiqueta aparece neste pedido/.test(A.texto), '⚠️ a peca cuja retirada tem o numero da etiqueta vem PRIMEIRO, em verde');
+      ok(linhas.length === 4, '  4 pecas na lista (' + linhas.length + ')');
+      const A = linhas.find((l) => l.pedido === '2000018239001602') || { texto: '' };
+      const D = linhas.find((l) => l.pedido === '2000018338961088') || { texto: '' };
+      ok(linhas.slice(0, 2).every((l) => l.verde) && A.verde && D.verde, '⚠️ as pecas cuja retirada tem o numero da etiqueta vem PRIMEIRO, em verde');
+      // Codex #632: o numero da retirada prova o PRODUTO, nao o pedido — com 2 pedidos do mesmo anuncio, a tela NAO afirma "e deste pedido"
+      ok(!/é deste pedido/.test(A.texto + D.texto) && /numa retirada do Full deste PRODUTO — 2 pedidos com a mesma retirada: confira cliente e data/.test(A.texto),
+        '⚠️ Codex #632: pela retirada, a tela diz "mesmo PRODUTO — 2 pedidos, confira cliente e data", nunca "e deste pedido"');
+      ok(/retirada do MESMO PRODUTO destes 2 pedidos/.test(await page.$eval('[data-retiro-pedido]', (el) => el.parentElement.innerText)), '  e o cabecalho avisa que sao 2 pedidos do mesmo produto');
       ok(/2× Cavalete Automotivo 3 Toneladas Par/.test(A.texto) && /SKU CAV-3T/.test(A.texto), '⚠️ produto com quantidade, titulo e SKU');
       ok(/Joao Silva \(JOAOSILVA77\)/.test(A.texto) && /NF 12345-1/.test(A.texto), '⚠️ cliente (apelido) e NF');
       ok(/Pedido 2000018239001602 · Pack 2000009999000001/.test(A.texto) && /Rastreio TRKA1/.test(A.texto), '  pedido + pack e rastreio');
       ok(/saiu do CD 01\/10/.test(A.texto) && /devolução aberta 20\/09/.test(A.texto) && /ML: inservível \(embalagem danificada\)/.test(A.texto), '  datas e condicao do ML em portugues');
-      ok(linhas[1] && linhas[1].pedido === '2000019243159482' && /retirada reservada 10\/11/.test(linhas[1].texto) && /ML: vendável/.test(linhas[1].texto) && !linhas[1].verde,
+      ok(linhas[2] && linhas[2].pedido === '2000019243159482' && /retirada reservada 10\/11/.test(linhas[2].texto) && /ML: vendável/.test(linhas[2].texto) && !linhas[2].verde,
         '  o resto: mais recente primeiro (retirada reservada 10/11), sem verde');
-      ok(linhas[2] && /sem data do CD: anuncio negado pelo ML: falta a permissao "Publicação e sincronização" no app/.test(linhas[2].texto),
+      ok(linhas[3] && /sem data do CD: anuncio negado pelo ML: falta a permissao "Publicação e sincronização" no app/.test(linhas[3].texto),
         '  sem data do CD, a linha diz por que');
       ok(!(await page.evaluate(() => window.__xss === 1)), '  titulo hostil nao executa (escapado)');
+
+      // o numero do PROPRIO pedido (ou pack/rastreio) prova o pedido
+      await page.fill('#codigo', '2000019243159482'); await page.press('#codigo', 'Enter');
+      await page.waitForSelector('[data-retiro-pedido]', { timeout: 8000 });
+      const prim = await page.$eval('[data-retiro-pedido]', (el) => ({ pedido: el.getAttribute('data-retiro-pedido'), texto: el.innerText }));
+      ok(prim.pedido === '2000019243159482' && /O número desta etiqueta é deste pedido/.test(prim.texto), '  numero do proprio pedido → "e deste pedido", primeiro');
 
       // P2-01: bipe novo antes da lista do anterior chegar
       atrasarRetiro = 1500;

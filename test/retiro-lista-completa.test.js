@@ -21,6 +21,8 @@ let falhas = 0;
 const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o); };
 
 const PED_A = '2000018239001602', PED_B = '2000019243159482', PED_C = '2000019060853696';
+// Codex #632: D e do MESMO anuncio de A (inventario INVA); E: operacoes respondem 429; F: operacoes OK sem retirada
+const PED_D = '2000018338961088', PED_E = '2000018499724320', PED_F = '2000018551005224';
 const dia = (n) => new Date(Date.now() - n * 864e5).toISOString();
 const chamadas = [];
 const ml = {
@@ -33,24 +35,35 @@ const ml = {
         { id: 71, resource: 'order', resource_id: PED_A, status: 'closed', stage: 'claim', date_created: dia(50) },
         { id: 72, resource: 'order', resource_id: PED_B, status: 'closed', stage: 'claim', date_created: dia(20) },
         { id: 73, resource: 'order', resource_id: PED_C, status: 'closed', stage: 'claim', date_created: dia(30) },
+        { id: 74, resource: 'order', resource_id: PED_D, status: 'closed', stage: 'claim', date_created: dia(52) },
+        { id: 75, resource: 'order', resource_id: PED_E, status: 'closed', stage: 'claim', date_created: dia(25) },
+        { id: 76, resource: 'order', resource_id: PED_F, status: 'closed', stage: 'claim', date_created: dia(26) },
       ] } };
     }
     const mRet = /\/post-purchase\/v2\/claims\/(\d+)\/returns/.exec(url);
     if (mRet) {
-      const k = { 71: ['551', PED_A, 'MLB111', 'TRKA1', 49], 72: ['552', PED_B, 'MLB222', 'TRKB2', 19], 73: ['553', PED_C, 'MLB333', 'TRKC3', 29] }[mRet[1]];
+      const k = { 71: ['551', PED_A, 'MLB111', 'TRKA1', 49], 72: ['552', PED_B, 'MLB222', 'TRKB2', 19], 73: ['553', PED_C, 'MLB333', 'TRKC3', 29],
+        74: ['554', PED_D, 'MLB444', 'TRKD4', 51], 75: ['555', PED_E, 'MLB555', 'TRKE5', 24], 76: ['556', PED_F, 'MLB666', 'TRKF6', 25] }[mRet[1]];
       return { ok: true, data: {
         id: k[0], date_created: dia(k[4]),
         orders: [{ order_id: k[1], item_id: k[2] }],
         shipments: [{ tracking_number: k[3], shipment_id: 500 + Number(mRet[1]), status: 'delivered', destination: { name: 'warehouse' } }],
       } };
     }
-    if (/\/post-purchase\/v1\/returns\/55[123]\/reviews/.test(url)) {
+    if (/\/post-purchase\/v1\/returns\/55[1-6]\/reviews/.test(url)) {
       const a = url.includes('/551/');
       return { ok: true, data: { reviews: [{ resource_reviews: [{ product_destination: 'seller', product_condition: a ? 'saleable' : 'unsaleable', reason_id: 'damaged' }] }] } };
     }
     if (url.startsWith('/items/MLB111')) return { ok: true, data: { inventory_id: 'INVA', seller_id: 1 } };
     if (url.startsWith('/items/MLB222')) return { ok: false, status: 403, error: { blocked_by: 'PolicyAgent' } };
     if (url.startsWith('/items/MLB333')) return { ok: true, data: { inventory_id: 'INVC', seller_id: 1 } };
+    if (url.startsWith('/items/MLB444')) return { ok: true, data: { inventory_id: 'INVA', seller_id: 1 } };   // mesmo anuncio de A
+    if (url.startsWith('/items/MLB555')) return { ok: true, data: { inventory_id: 'INVE', seller_id: 1 } };
+    if (url.startsWith('/items/MLB666')) return { ok: true, data: { inventory_id: 'INVF', seller_id: 1 } };
+    if (url.startsWith('/stock/fulfillment/operations/search') && url.includes('inventory_id=INVE')) return { ok: false, status: 429, error: 'too_many_requests' };
+    if (url.startsWith('/stock/fulfillment/operations/search') && url.includes('inventory_id=INVF')) {
+      return { ok: true, data: { results: [{ id: 900009, type: 'INBOUND_RECEPTION', date_created: dia(10), external_references: [{ type: 'inbound_id', value: '66666666' }] }] } };
+    }
     if (url.startsWith('/stock/fulfillment/operations/search') && url.includes('inventory_id=INVC')) throw new Error('socket hang up');
     if (url.startsWith('/stock/fulfillment/operations/search') && url.includes('inventory_id=INVA')) {
       return { ok: true, data: { results: [
@@ -92,9 +105,9 @@ const ml = {
     const base = r.resumoEspreita() || {};
     lista = (base.em_transito || []).filter((x) => x && x.vem_pelo_retiro);
     const prontas = lista.filter((x) => x.retiro && x.retiro.linha_do_tempo && (x.itens || []).length);
-    if (prontas.length === 3) break;
+    if (prontas.length === 6) break;
   }
-  ok(lista.length === 3, '  as 3 pecas que o CD mandou pro vendedor estao no retiro (' + lista.length + ')');
+  ok(lista.length === 6, '  as 6 pecas que o CD mandou pro vendedor estao no retiro (' + lista.length + ')');
   const A = itemDoRetiro(lista.find((x) => String(x.pedido) === PED_A) || {}, '48133297953');
   const B = itemDoRetiro(lista.find((x) => String(x.pedido) === PED_B) || {}, '48133297953');
   console.log('     linha A: ' + JSON.stringify(A).slice(0, 600));
@@ -111,11 +124,13 @@ const ml = {
     '  linha do tempo: anuncio e operacoes responderam (3 operacoes)');
 
   // 2. o numero da etiqueta
-  ok(!!A.casa_etiqueta && /WITHDRAWAL_DELIVERY/.test(A.casa_etiqueta), '⚠️ o codigo de barras bipado aparece na retirada do pedido A → marcado (' + A.casa_etiqueta + ')');
+  ok(!!A.casa_etiqueta && A.casa_etiqueta.nivel === 'anuncio' && /WITHDRAWAL_DELIVERY/.test(A.casa_etiqueta.via),
+    '⚠️ o codigo de barras bipado aparece na retirada do anuncio de A → marcado, nivel ANUNCIO (prova o produto, nao o pedido) (' + JSON.stringify(A.casa_etiqueta) + ')');
   ok(!!casaComEtiqueta(A, '48126024340'), '⚠️ o Ref. ID tambem casa (outra operacao de retirada, outro campo)');
   ok(!casaComEtiqueta(A, '77777777'), '  numero de OUTRA operacao (entrada no Full) NAO casa');
   ok(!casaComEtiqueta(A, '4813329795') && !casaComEtiqueta(A, '481332979530') && !!casaComEtiqueta(A, ' 48133297953 '), '  pedaco ou numero maior NAO casa (so igualdade exata); espaco em volta e ignorado');
-  ok(casaComEtiqueta(A, PED_A) === 'pedido', '  digitar o numero do pedido tambem marca');
+  ok(JSON.stringify(casaComEtiqueta(A, PED_A)) === '{"nivel":"pedido","via":"pedido"}' && casaComEtiqueta(A, 'TRKA1') === null && casaComEtiqueta(A, '2000009999000001').nivel === 'pedido',
+    '  numero do pedido ou do pack → nivel PEDIDO (rastreio com letra nao vira numero)');
   ok(B.casa_etiqueta === null, '  a outra peca nao e marcada');
 
   // 3. sem linha do tempo, a lista diz por que
@@ -126,6 +141,18 @@ const ml = {
   const C = itemDoRetiro(lista.find((x) => String(x.pedido) === PED_C) || {}, '48133297953');
   ok(C.pedido === PED_C && C.linha_do_tempo && /^erro: socket hang up/.test(C.linha_do_tempo.motivo || '') && C.casa_etiqueta === null,
     '⚠️ a consulta das operacoes ESTOURA → a peca continua no retiro, com o motivo, sem casar nada (' + JSON.stringify(C.linha_do_tempo) + ')');
+  // Codex #632 (P2): dois pedidos do MESMO anuncio trazem as mesmas retiradas → os dois casam, mas so no nivel ANUNCIO
+  const D = itemDoRetiro(lista.find((x) => String(x.pedido) === PED_D) || {}, '48133297953');
+  ok(D.casa_etiqueta && D.casa_etiqueta.nivel === 'anuncio' && A.casa_etiqueta.nivel === 'anuncio' && D.inventario === 'INVA' && A.inventario === 'INVA',
+    '⚠️ Codex #632: pedido D, do mesmo anuncio (INVA), casa com a mesma retirada — e por isso o casamento e nivel ANUNCIO, nunca "e deste pedido"');
+  // Codex #632 (P2): falha das operacoes nao vira lista vazia calada
+  const E = itemDoRetiro(lista.find((x) => String(x.pedido) === PED_E) || {}, '48133297953');
+  ok(E.linha_do_tempo && E.linha_do_tempo.operacoes_http === 429 && E.linha_do_tempo.operacoes === null && /nao responderam \(HTTP 429\)/.test(E.linha_do_tempo.motivo || '') && !E.saiu_cd_em,
+    '⚠️ Codex #632: operacoes com 429 → motivo na linha (nao "0 operacoes" calado) (' + JSON.stringify(E.linha_do_tempo) + ')');
+  const F = itemDoRetiro(lista.find((x) => String(x.pedido) === PED_F) || {}, '66666666');
+  ok(F.linha_do_tempo && F.linha_do_tempo.operacoes === 1 && /ainda nao registrou a retirada/.test(F.linha_do_tempo.motivo || '') && F.casa_etiqueta === null,
+    '  operacoes OK sem nenhuma retirada → motivo "ainda nao registrou"; numero de entrada no Full nao casa (' + JSON.stringify(F.linha_do_tempo) + ')');
+  ok(A.linha_do_tempo.motivo === null && B.linha_do_tempo.motivo && C.linha_do_tempo.motivo, '  toda linha SEM data do CD tem motivo; a que tem data nao tem');
 
   console.log('');
   console.log(falhas === 0 ? '=== todos passaram' : '=== ' + falhas + ' FALHA(S)');
