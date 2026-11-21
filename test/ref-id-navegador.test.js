@@ -1,0 +1,321 @@
+'use strict';
+// b789 — "PACOTE MELI" NA TELA, com o Chromium de verdade e o server.js (3 empresas; busca.js e colar-imagem.js sao um so).
+//
+// O caso (AMB, 21/11): etiqueta de volta do ML de venda NAO ENTREGUE — remetente "MELI #0", sem cliente e sem NF. O
+// codigo de barras e o QR ({"id":"48133297953","t":"lm"}) sao o envio DE VOLTA: o ML responde 404. O numero que acha a
+// venda e o "Ref. ID" impresso (48126024340). O dono: "tenta descobrir como solucionar... pra nossa triagem" e "ou ate um
+// botao pra clicar e marcar que e pacote MELI".
+//
+// Prova, na tela:
+//   1. bipou o codigo de barras e o ML disse 404 → o cartao explica e traz o campo do Ref. ID; digitou → acha a venda;
+//   2. o cartao SO aparece quando o ML respondeu 404 pro envio (403/sem resposta nao; codigo da Shopee nao; nome nao);
+//   3. o botao "📦 pacote MELI" abre o cartao sem bipar; numero curto nao busca; a resposta atrasada de um bipe anterior
+//      (e a lista do retiro dele) nao entra por cima;
+//   4. FOTO: o QR nao acha → o Ref. ID e lido da MESMA foto e a busca refeita sozinha → venda. Uma tentativa so (sem laco);
+//      se o estoquista seguiu pra outra caixa, ou mandou outra foto, a leitura velha e descartada;
+//   5. a foto pedida pelo cartao vai DIRETO ao Ref. ID (nem tenta o QR); sem Ref. ID legivel, diz e manda digitar; com dois
+//      numeros, pergunta;
+//   6. etiqueta comum do ML (QR que acha) continua sem leitura de texto nenhuma — o caminho do dia a dia nao ficou mais lento;
+//   7. venda achada por um Ref. ID LIDO DA FOTO mostra o numero lido pra conferir com a etiqueta (o leitor pode trocar um
+//      digito, e o numero vizinho pode ser outra venda); digitado, ou achado pelo QR, nao mostra.
+//
+// O leitor de QR (jsQR) e o de texto (Tesseract) vem de fora (CDN): aqui sao trocados por dubles que devolvem o que o
+// teste manda — o TEXTO e o que o leitor de verdade devolveu pra foto real (ver test/ref-id-pacote-meli.test.js).
+// A rota de busca e simulada no formato que o servidor manda (tentativas[].tipo/status, codigo_limpo, qr_ml_sem_shipment).
+// Roda com: node test/ref-id-navegador.test.js     (CAPTURA_REF_ID=<pasta> salva as capturas de tela)
+const { subir } = require('./_boot-real');
+let falhas = 0;
+const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o); };
+let chromium;
+try { ({ chromium } = require('playwright')); } catch (e) { console.log('FALHA Playwright nao instalado: ' + e.message); process.exit(1); }
+
+const EMPRESAS = [{ nome: 'GOOD', rota: '' }, { nome: 'AMB', rota: '/amb', prefixo: 'AMB_' }, { nome: 'Girassol', rota: '/girassol', prefixo: 'GIRASSOL_' }];
+const BARRAS = '48133297953', REF = '48126024340';
+const QR = '{"id":"' + BARRAS + '","t":"lm"}';
+// o texto que o leitor de VERDADE devolveu pra foto da etiqueta da AMB (sem as linhas de endereco)
+const OCR_REAL = 'G MELI AO\nR. 1D: 48126024340\nXSP16\n481332 97953\nJE SSP57 -- 7\nXSP16  SSP57 49 7\nSEX 02/10/2026 NF:';
+const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
+const CAPTURA = process.env.CAPTURA_REF_ID || '';
+
+const venda = (codigo) => ({
+  ok: true, encontrado: true, codigo,
+  order: { id: '2000018696282248', date_created: '2026-09-29T08:17:00Z', buyer: { nickname: 'CLIENTE' }, payments: [{ transaction_amount: 10 }],
+    order_items: [{ item: { id: 'MLB1', title: 'Produto ' + codigo, seller_sku: 'KC6' }, quantity: 2, unit_price: 10 }] },
+  shipment: { id: codigo, shipping_items: [{ id: 'MLB1', description: 'Produto ' + codigo, quantity: 2 }] },
+  nf: { numero: '777', itens: [{ titulo: 'Produto ' + codigo, sku: 'KC6', ean: '-', quantidade: 2 }] },
+  claim: null, avisos: [], tentativas: [],
+});
+
+(async () => {
+  const env = {
+    USERS: 'esto:s1:Esto,dono:s2:Dono', ADMIN_USER: 'dono', GOOD_USERS: 'esto:s1:Esto,dono:s2:Dono', GOOD_ADMIN_USER: 'dono',
+    SESSION_SECRET: 'segredo-da-good-so-pra-teste-0123456789', ADMIN_SESSION_SECRET: 'segredo-fixo-de-teste-com-40-caracteres!!',
+  };
+  for (const e of EMPRESAS.slice(1)) { env[e.prefixo + 'USERS'] = 'esto:s1,dono:s2'; env[e.prefixo + 'ADMIN_USER'] = 'dono'; env[e.prefixo + 'SESSION_SECRET'] = 'segredo-da-' + e.nome.toLowerCase() + '-so-pra-teste-0123456789'; }
+  const s = await subir({ env, tetoMs: 45000 });
+  let navegador = null;
+  try {
+    ok(s.subiu, '⚠️ o server.js subiu' + (!s.subiu ? ' — ' + s.motivo + '\n' + s.fimDoLog() : ''));
+    if (!s.subiu) throw new Error('nao subiu');
+    navegador = await chromium.launch();
+    for (const e of EMPRESAS) {
+      console.log('\n── ' + e.nome);
+      const ctx = await navegador.newContext({ viewport: { width: 412, height: 915 }, isMobile: true, hasTouch: true, deviceScaleFactor: CAPTURA ? 2 : 1 });
+      // os dubles dos dois leitores de fora (entram antes de qualquer script da pagina; a CDN e cortada logo abaixo)
+      await ctx.addInitScript(() => {
+        window.__qr = null; window.__ocr = ''; window.__ocrMs = 0; window.__n = { qr: 0, ocr: 0 };
+        try { delete window.BarcodeDetector; } catch (err) { /* no Linux nem existe */ }
+        window.jsQR = function () { window.__n.qr++; return window.__qr ? { data: window.__qr } : null; };
+        window.Tesseract = { createWorker: async function () {
+          return {
+            setParameters: async function () {},
+            recognize: async function () { window.__n.ocr++; const texto = window.__ocr; if (window.__ocrMs) await new Promise((r) => setTimeout(r, window.__ocrMs)); return { data: { text: texto } }; },
+            terminate: async function () {},
+          };
+        } };
+      });
+      const page = await ctx.newPage();
+      const errosJs = []; page.on('pageerror', (err) => errosJs.push(String(err && err.message || err)));
+      await page.route('https://cdn.jsdelivr.net/**', (route) => route.abort());
+
+      // ── a rota de busca, no formato que o servidor manda ──
+      const buscados = []; const acha = new Set(); const statusDoEnvio = {}; const atraso = {}; let atrasoRetiro = 0; let retiroPedidos = 0;
+      await page.route('**/api/devolucao/identificar/**', async (route) => {
+        const codigo = decodeURIComponent(new URL(route.request().url()).pathname.split('/api/devolucao/identificar/')[1] || '');
+        buscados.push(codigo);
+        const doQr = (codigo.match(/"id"\s*:\s*"(\d+)"/) || [])[1];
+        const limpo = doQr || codigo.replace(/\D/g, '');
+        if (atraso[limpo]) await new Promise((r) => setTimeout(r, atraso[limpo]));
+        if (acha.has(limpo)) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(venda(limpo)) });
+        const tentativas = [];
+        if (limpo.length >= 10 && limpo.length <= 13) {   // a rota so tenta o envio do ML com 10 a 13 digitos
+          const st = statusDoEnvio[limpo] || 404;
+          tentativas.push(Object.assign({ tipo: 'shipment_id', codigo: limpo, ok: false, status: st }, st === 504 ? { degradado: true } : {}));
+          if (limpo.length === 11) tentativas.push({ tipo: 'pack_id', codigo: '20000' + limpo, ok: false, status: 404 });
+        } else tentativas.push({ tipo: 'nf_por_nome', codigo, ok: false, status: 404, qtd: 0 });
+        return route.fulfill({ status: 404, contentType: 'application/json', body: JSON.stringify(Object.assign({
+          ok: false, encontrado: false, codigo_buscado: codigo, codigo_limpo: limpo, avisos: [], tentativas,
+          erro: doQr ? 'QR do ML lido (shipment ' + limpo + ') mas a API não achou esse envio. Etiqueta SEM nome de cliente (remetente MELI)? O código de barras dela também não acha: use o Ref. ID impresso no alto da etiqueta.'
+            : 'Codigo nao encontrado em shipments/packs do ML nem nas devolucoes Shopee.',
+        }, doQr ? { qr_ml_sem_shipment: true } : {})) });
+      });
+      await page.route('**/api/espreita/retiro**', async (route) => {
+        retiroPedidos++;
+        if (atrasoRetiro) await new Promise((r) => setTimeout(r, atrasoRetiro));
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, itens: atrasoRetiro ? [{ pedido: '2000018239001602', produtos: [{ titulo: 'Peca do retiro', sku: 'X', qtd: 1 }] }] : [] }) });
+      });
+      await page.route('**/api/triagem/status/**', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, registros: [] }) }));
+      await page.route('**/api/produto/imagem/**', (route) => route.fulfill({ status: 404, contentType: 'application/json', body: JSON.stringify({ ok: false }) }));
+
+      await page.goto('http://127.0.0.1:' + s.porta + e.rota + '/', { waitUntil: 'load' });
+      await page.fill('#loginUser', 'esto'); await page.fill('#loginPass', 's1');
+      await Promise.all([page.waitForResponse((r) => /\/api\/auth\/login/.test(r.url())), page.click('#btnLogin')]);
+      await page.waitForSelector('#btnPacoteMeli', { timeout: 8000 });
+
+      const bipar = async (codigo) => { await page.fill('#codigo', codigo); await page.press('#codigo', 'Enter'); };
+      const resultado = () => page.$eval('#resultado', (el) => el.innerText);
+      const esperarVenda = (codigo) => page.waitForFunction((t) => document.getElementById('resultado').innerText.includes(t), 'Produto ' + codigo, { timeout: 8000 });
+      const esperarErro = () => page.waitForSelector('#resultado .erro-box', { timeout: 8000 });
+      const temCartao = async () => (await page.$$('#cartaoRefId')).length;
+      const avisoLido = async () => ((await page.$$('#avisoRefIdLido')).length ? page.$eval('#avisoRefIdLido', (el) => el.innerText) : '');
+      const soltarFoto = () => page.evaluate((b64) => {
+        const bin = atob(b64); const u8 = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+        const dt = new DataTransfer(); dt.items.add(new File([u8], 'etiqueta.png', { type: 'image/png' }));
+        document.dispatchEvent(new DragEvent('drop', { dataTransfer: dt, bubbles: true, cancelable: true }));
+      }, PNG.toString('base64'));
+      const leitores = (campos) => page.evaluate((c) => { Object.assign(window, c); return Object.assign({}, window.__n); }, campos || {});
+
+      // ══ 1. bipou o codigo de barras: o ML diz 404 → o cartao; digitou o Ref. ID → a venda ══
+      acha.add(REF);
+      await bipar(BARRAS);
+      await page.waitForSelector('#cartaoRefId', { timeout: 8000 });
+      const cartao = await page.$eval('#cartaoRefId', (el) => el.innerText);
+      ok(/Pacote MELI/.test(cartao) && /SEM nome de cliente/.test(cartao) && /não acham a venda/.test(cartao) && /Ref\. ID/.test(cartao) && /impresso no alto/.test(cartao),
+        '⚠️ o ML respondeu 404 pro envio bipado: a tela explica o pacote MELI e aponta o Ref. ID');
+      ok(await page.$eval('#resultado', (el) => { const erro = el.querySelector('.erro-box'); const c = el.querySelector('#cartaoRefId'); return !!erro && !!c && !!(erro.compareDocumentPosition(c) & Node.DOCUMENT_POSITION_FOLLOWING); }),
+        '  o cartao vem logo DEPOIS do erro (que continua na tela, com as tentativas)');
+      ok(await page.$eval('#inputRefId', (el) => el.getAttribute('inputmode') === 'numeric' && parseFloat(getComputedStyle(el).fontSize) >= 16), '  campo com teclado numerico e letra de 16px (o celular nao da zoom ao tocar)');
+      ok(await page.$eval('#cartaoRefId', (el) => { const r = el.getBoundingClientRect(); return r.left >= 0 && r.right <= window.innerWidth + 1; }), '  o cartao cabe na largura do celular');
+      if (CAPTURA) await page.screenshot({ path: CAPTURA + '/ref-id-' + e.nome + '-cartao.png', fullPage: true });
+      await page.fill('#inputRefId', ' 481260 24340 '); await page.press('#inputRefId', 'Enter');
+      await esperarVenda(REF);
+      ok(buscados[buscados.length - 1] === REF && (await page.inputValue('#codigo')) === REF, '⚠️ digitou o Ref. ID no cartao (com espacos) + Enter: busca pelo numero limpo e a VENDA aparece');
+      ok((await temCartao()) === 0, '  com a venda na tela, o cartao some');
+      ok((await avisoLido()) === '', '  Ref. ID DIGITADO: sem o aviso de "lido da foto"');
+      if (CAPTURA) await page.screenshot({ path: CAPTURA + '/ref-id-' + e.nome + '-venda.png', fullPage: true });
+
+      // ══ 2. quando o cartao NAO aparece ══
+      statusDoEnvio['48133297000'] = 403; statusDoEnvio['48133297001'] = 504;
+      await bipar('48133297000'); await esperarErro();
+      ok((await temCartao()) === 0, '⚠️ o ML RECUSOU a consulta do envio (403): nao e "nao existe" — sem cartao do Ref. ID');
+      await bipar('48133297001'); await esperarErro();
+      ok((await temCartao()) === 0 && /sem resposta a tempo/.test(await resultado()), '⚠️ envio sem resposta a tempo (degradado): sem cartao — vale bipar de novo');
+      await bipar('BR1234567890123X'); await esperarErro();
+      ok((await temCartao()) === 0 && /shipment_id/.test(await resultado()), '⚠️ rastreio da Shopee (13 digitos: o servidor ate tenta o envio do ML e leva 404): sem cartao');
+      await bipar('RENATONEVES'); await esperarErro();
+      ok((await temCartao()) === 0, '  busca por nome que nao achou: sem cartao');
+      await bipar('48133297002'); await page.waitForSelector('#cartaoRefId', { timeout: 8000 });
+      await page.fill('#inputRefId', '48133297003'); await page.click('#btnBuscarRefId');
+      await page.waitForFunction(() => /48133297003/.test(document.getElementById('resultado').innerText), null, { timeout: 8000 });
+      ok((await temCartao()) === 1 && (await page.inputValue('#inputRefId')) === '', '  Ref. ID digitado errado (404 tambem): o cartao volta, vazio, pra tentar de novo');
+
+      // ══ 3. o botao "pacote MELI" ══
+      const antesBotao = buscados.length;
+      await page.click('#btnPacoteMeli');
+      ok((await temCartao()) === 1 && (await page.$$('#resultado .erro-box')).length === 0 && await page.$eval('#resultado', (el) => el.classList.contains('show')) && buscados.length === antesBotao,
+        '⚠️ o botao "pacote MELI" abre o cartao sem bipar (e sem erro na tela)');
+      ok(await page.evaluate(() => document.activeElement && document.activeElement.id === 'inputRefId'), '  com o cursor ja no campo do Ref. ID');
+      ok(await page.$eval('#btnPacoteMeli', (el) => { const r = el.getBoundingClientRect(); return r.width > 40 && r.left >= 0 && r.right <= window.innerWidth + 1; }), '  o botao cabe na tela do celular');
+      await page.fill('#inputRefId', '12345'); await page.click('#btnBuscarRefId');
+      await page.waitForTimeout(250);
+      ok(buscados.length === antesBotao && /Ref\. ID tem 11/.test(await page.$eval('#toast', (el) => el.textContent)) && (await temCartao()) === 1, '⚠️ numero curto demais: avisa e NAO busca');
+      await page.fill('#inputRefId', REF); await page.click('#btnBuscarRefId');
+      await esperarVenda(REF);
+      ok(buscados.length === antesBotao + 1 && buscados[buscados.length - 1] === REF, '  numero certo: busca e acha');
+      if (CAPTURA) { await page.click('#btnPacoteMeli'); await page.screenshot({ path: CAPTURA + '/ref-id-' + e.nome + '-botao.png' }); }
+      // P2-01: bipe lento em andamento + botao → a resposta atrasada (e a lista do retiro dela) NAO entra por cima do cartao
+      atraso['48133297004'] = 1200;
+      await bipar('48133297004'); await page.waitForTimeout(150);
+      await page.click('#btnPacoteMeli');
+      ok(await page.evaluate(() => !document.getElementById('loading').classList.contains('show') && !document.getElementById('btnBuscar').disabled), '⚠️ botao com um bipe lento em andamento: o "buscando" some e o Buscar volta a funcionar');
+      await page.waitForTimeout(1600);
+      ok((await temCartao()) === 1 && (await page.$$('#resultado .erro-box')).length === 0, '⚠️ a resposta atrasada do bipe anterior NAO pinta por cima do cartao');
+      atrasoRetiro = 1200;
+      await bipar('48133297005'); await page.waitForSelector('#cartaoRefId', { timeout: 8000 });
+      await page.click('#btnPacoteMeli'); await page.waitForTimeout(1700);
+      ok((await page.$$('[data-retiro-pedido]')).length === 0 && (await temCartao()) === 1, '⚠️ nem a lista do retiro do bipe anterior (que chegou depois)');
+      atrasoRetiro = 0;
+
+      // ══ 4. FOTO: o QR nao acha → le o Ref. ID da MESMA foto e busca sozinho ══
+      let de = buscados.length; let n0 = await leitores({ __qr: QR, __ocr: OCR_REAL, __ocrMs: 0 });
+      await soltarFoto();
+      await esperarVenda(REF);
+      let n1 = await leitores();
+      ok(JSON.stringify(buscados.slice(de)) === JSON.stringify([QR, REF]), '⚠️ foto do pacote MELI: buscou o QR (404) e, SOZINHO, o Ref. ID lido da mesma foto → venda (' + buscados.slice(de).map((x) => x.slice(0, 14)).join(' → ') + ')');
+      ok(n1.ocr - n0.ocr === 1, '  uma leitura de texto so');
+      const aviso = await avisoLido();
+      ok(/lido da foto/.test(aviso) && aviso.includes(REF) && /Confira com o Ref\. ID impresso na etiqueta/.test(aviso), '⚠️ a venda achada pelo Ref. ID LIDO DA FOTO mostra o numero lido pra conferir com a etiqueta (o leitor pode trocar um digito)');
+      ok(await page.$eval('#resultado', (el) => el.firstElementChild && el.firstElementChild.id === 'avisoRefIdLido'), '  o aviso vem ANTES da venda (em cima)');
+      if (CAPTURA) await page.screenshot({ path: CAPTURA + '/ref-id-' + e.nome + '-foto-venda.png', fullPage: true });
+      await bipar(REF); await esperarVenda(REF);
+      ok((await avisoLido()) === '', '  o mesmo numero bipado na mao depois: sem o aviso (ele vale pra busca que veio da foto)');
+      // sem laco: o Ref. ID tambem nao acha → para ali, com o cartao pra digitar
+      acha.delete(REF);
+      de = buscados.length; n0 = await leitores();
+      await soltarFoto();
+      await page.waitForFunction((r) => document.getElementById('codigo').value === r && !!document.getElementById('cartaoRefId'), REF, { timeout: 8000 });
+      await page.waitForTimeout(900);
+      n1 = await leitores();
+      ok(JSON.stringify(buscados.slice(de)) === JSON.stringify([QR, REF]) && n1.ocr - n0.ocr === 1 && (await temCartao()) === 1, '⚠️ SEM LACO: se o Ref. ID tambem nao achar, para (2 buscas, 1 leitura) e deixa o cartao pra digitar');
+      acha.add(REF);
+      // o estoquista seguiu pra outra caixa enquanto a foto era lida: a leitura velha e descartada
+      de = buscados.length; await leitores({ __ocrMs: 900 });
+      await soltarFoto();
+      await page.waitForSelector('#cartaoRefId', { timeout: 8000 });
+      await bipar('RENATONEVES'); await esperarErro();
+      await page.waitForTimeout(1300);
+      ok(JSON.stringify(buscados.slice(de)) === JSON.stringify([QR, 'RENATONEVES']) && (await page.inputValue('#codigo')) === 'RENATONEVES', '⚠️ bipou outra coisa durante a leitura: o Ref. ID da foto antiga NAO e buscado por cima');
+      // outra FOTO durante a leitura: vale a nova. A leitura da nova e mais LENTA que o resto da antiga — quando a antiga
+      // termina, o campo de busca ainda mostra o codigo dela: so o "veio outra imagem" impede a busca errada.
+      de = buscados.length; await leitores({ __qr: QR, __ocr: OCR_REAL, __ocrMs: 900 });
+      await soltarFoto();
+      await page.waitForSelector('#cartaoRefId', { timeout: 8000 });
+      await leitores({ __qr: null, __ocr: 'CORREIOS AD123456789BR', __ocrMs: 1600 });
+      await soltarFoto();
+      await page.waitForTimeout(1200);
+      ok(JSON.stringify(buscados.slice(de)) === JSON.stringify([QR]), '⚠️ mandou OUTRA foto durante a leitura: o Ref. ID da antiga NAO e buscado (a nova ainda esta sendo lida)');
+      await page.waitForFunction(() => document.getElementById('codigo').value === 'AD123456789BR', null, { timeout: 8000 });
+      await page.waitForTimeout(300);
+      ok(JSON.stringify(buscados.slice(de)) === JSON.stringify([QR, 'AD123456789BR']), '  e vale a nova: buscou o que ela trouxe');
+      // a leitura demorada nao perde o aviso: o "some em 1,5 s" da busca que falhou nao apaga a leitura do Ref. ID no meio
+      de = buscados.length; await leitores({ __qr: QR, __ocr: OCR_REAL, __ocrMs: 2300 });
+      await soltarFoto();
+      await page.waitForSelector('#cartaoRefId', { timeout: 8000 });
+      await page.waitForTimeout(1800);
+      ok(await page.evaluate(() => { const z = document.getElementById('zonaColar'); return !!z && z.style.display === 'flex' && /lendo o texto/.test(document.getElementById('zonaColarStatus').textContent) && /Lendo o Ref\. ID/.test((document.getElementById('statusRefId') || {}).textContent || ''); }),
+        '⚠️ leitura demorada: o aviso "lendo..." continua na tela (o sumico da busca anterior nao o apaga) e o cartao diz que esta lendo a foto');
+      await esperarVenda(REF);
+      ok(JSON.stringify(buscados.slice(de)) === JSON.stringify([QR, REF]), '  e, quando termina, busca o Ref. ID');
+      // a foto que ja teve a leitura feita nao e lida de novo num bipe do MESMO codigo
+      await leitores({ __qr: QR, __ocr: OCR_REAL, __ocrMs: 0 });
+      acha.delete(REF); await soltarFoto();
+      await page.waitForFunction((r) => document.getElementById('codigo').value === r, REF, { timeout: 8000 });
+      await page.waitForTimeout(400);
+      de = buscados.length; n0 = await leitores();
+      await bipar(QR); await page.waitForSelector('#cartaoRefId', { timeout: 8000 }); await page.waitForTimeout(500);
+      n1 = await leitores();
+      ok(n1.ocr === n0.ocr && buscados.length === de + 1, '  o mesmo codigo bipado de novo depois: a foto que ja foi lida uma vez nao e lida outra');
+      acha.add(REF);
+
+      // ══ 5. a foto pedida pelo CARTAO vai direto ao Ref. ID ══
+      await page.click('#btnPacoteMeli');
+      de = buscados.length; n0 = await leitores({ __qr: QR, __ocr: OCR_REAL, __ocrMs: 0 });
+      const [escolha] = await Promise.all([page.waitForEvent('filechooser', { timeout: 8000 }), page.click('#btnFotoRefId')]);
+      await escolha.setFiles({ name: 'etiqueta.png', mimeType: 'image/png', buffer: PNG });
+      await esperarVenda(REF);
+      n1 = await leitores();
+      ok(JSON.stringify(buscados.slice(de)) === JSON.stringify([REF]) && n1.qr === n0.qr && n1.ocr - n0.ocr === 1, '⚠️ foto pelo cartao: vai DIRETO ao Ref. ID — nem tenta o QR (1 busca, que acha)');
+      ok((await avisoLido()).includes(REF), '  e a venda vem com o aviso do numero lido da foto');
+      // a foto do cartao sendo lida e o estoquista manda OUTRA imagem (uma etiqueta comum): a leitura velha nao busca por cima
+      await page.click('#btnPacoteMeli');
+      de = buscados.length; await leitores({ __qr: QR, __ocr: OCR_REAL, __ocrMs: 900 });
+      await page.setInputFiles('#arquivoRefId', { name: 'etiqueta.png', mimeType: 'image/png', buffer: PNG });
+      await page.waitForTimeout(200);
+      acha.add('47416667999');
+      await leitores({ __qr: '{"id":"47416667999","t":"l"}', __ocrMs: 0 });
+      await soltarFoto();
+      await esperarVenda('47416667999');
+      await page.waitForTimeout(1100);
+      ok(JSON.stringify(buscados.slice(de)) === JSON.stringify(['{"id":"47416667999","t":"l"}']) && /Produto 47416667999/.test(await resultado()), '⚠️ foto do cartao em leitura + outra imagem: a leitura velha e descartada (a venda da nova fica na tela)');
+      await leitores({ __qr: QR, __ocr: OCR_REAL, __ocrMs: 0 });
+      // a MESMA foto de novo dispara outra leitura
+      await page.click('#btnPacoteMeli');
+      de = buscados.length;
+      await page.setInputFiles('#arquivoRefId', { name: 'etiqueta.png', mimeType: 'image/png', buffer: PNG });
+      await esperarVenda(REF);
+      ok(buscados.length === de + 1, '  a mesma foto escolhida de novo e lida de novo');
+      // sem Ref. ID legivel
+      await page.click('#btnPacoteMeli');
+      de = buscados.length; await leitores({ __ocr: 'G MELI AO\nXSP16\nSEX 02/10/2026 NF:' });
+      await page.setInputFiles('#arquivoRefId', { name: 'borrada.png', mimeType: 'image/png', buffer: PNG });
+      await page.waitForFunction(() => /Não consegui ler o Ref\. ID/.test((document.getElementById('statusRefId') || {}).textContent || ''), null, { timeout: 8000 });
+      ok(buscados.length === de && /não consegui ler o Ref\. ID/.test(await page.$eval('#zonaColarStatus', (el) => el.textContent)) && (await temCartao()) === 1, '⚠️ foto sem Ref. ID legivel: diz que nao leu, NAO busca nada, e o campo continua ali pra digitar');
+      // dois numeros e nenhum rotulo: pergunta
+      await leitores({ __ocr: 'G MELI AO\n48126024340\n48133297958\nXSP16' });
+      await page.setInputFiles('#arquivoRefId', { name: 'duvida.png', mimeType: 'image/png', buffer: PNG });
+      await page.waitForSelector('#zonaColarOpcoes button', { timeout: 8000 });
+      const opcoes = await page.$$eval('#zonaColarOpcoes button', (els) => els.map((el) => el.innerText));
+      ok(opcoes.length === 2 && buscados.length === de && /mais de um número/.test(await page.$eval('#statusRefId', (el) => el.textContent)), '⚠️ dois numeros e nenhum rotulo: PERGUNTA qual e o Ref. ID (' + opcoes.length + ' opcoes), nao chuta');
+      await page.waitForTimeout(6500);
+      ok((await page.$$('#zonaColarOpcoes button')).length === 2, '  e as opcoes ficam na tela (nao somem sozinhas enquanto ele escolhe)');
+      await page.click('#zonaColarOpcoes button');
+      await esperarVenda(REF);
+      ok(buscados[buscados.length - 1] === REF && (await avisoLido()).includes(REF), '  tocou no numero: busca por ele (e a venda vem com o aviso do numero lido)');
+
+      // ══ 6. o caminho do dia a dia nao mudou ══
+      acha.add('47416667668');
+      de = buscados.length; n0 = await leitores({ __qr: '{"id":"47416667668","t":"l"}', __ocr: OCR_REAL, __ocrMs: 0 });
+      await soltarFoto();
+      await esperarVenda('47416667668');
+      await page.waitForTimeout(400);
+      n1 = await leitores();
+      ok(buscados.length === de + 1 && n1.ocr === n0.ocr, '⚠️ etiqueta comum do ML (o QR acha a venda): UMA busca e NENHUMA leitura de texto — nada ficou mais lento');
+      ok((await avisoLido()) === '', '  e sem aviso de "lido da foto" (o QR e exato)');
+      await leitores({ __qr: null, __ocr: OCR_REAL });
+      de = buscados.length;
+      await soltarFoto();
+      await esperarVenda(REF);
+      ok(JSON.stringify(buscados.slice(de)) === JSON.stringify([REF]) && (await avisoLido()).includes(REF), '⚠️ foto do pacote MELI SEM QR legivel (pelo "anexar imagem"): o Ref. ID lido do texto ja e a busca — e a venda vem com o aviso');
+      ok(errosJs.length === 0, '  sem erro de JS' + (errosJs.length ? ': ' + errosJs.slice(0, 3).join(' | ') : ''));
+      ok(retiroPedidos > 0, '  (a lista do retiro continuou sendo consultada nos "nao encontrado": ' + retiroPedidos + ')');
+      await ctx.close();
+    }
+  } catch (err) {
+    falhas++; console.log('FALHA ' + (err && err.stack || err));
+  } finally {
+    if (navegador) await navegador.close().catch(() => {});
+    await s.matar();
+  }
+  console.log(falhas ? '=== ' + falhas + ' FALHA(S)' : '=== todos passaram');
+  process.exit(falhas ? 1 : 0);
+})();

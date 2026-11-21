@@ -13,6 +13,13 @@
 //
 //  Agora: uma AREA VISIVEL na busca, tres jeitos de mandar a imagem
 //  (colar, arrastar, escolher arquivo) e o status escrito em cada passo.
+//
+//  b789 - PACOTE MELI (etiqueta do ML sem nome de cliente: venda que nao foi
+//  entregue e voltou). O codigo de barras e o QR dela sao o envio DE VOLTA,
+//  que nao acha a venda; o que acha e o "Ref. ID" impresso. Entao: o botao
+//  "pacote MELI", a leitura do Ref. ID na foto, e — quando a busca pelo
+//  codigo de uma foto nao acha — a nova tentativa, sozinha, pelo Ref. ID
+//  da mesma foto.
 // ════════════════════════════════════════════════════════════════════════
 
 (function () {
@@ -84,11 +91,83 @@
       out.push({ valor: v, tipo: p.nome, peso: p.peso });
     });
 
+    // b789 - o "Ref. ID" do pacote MELI (so quando o ROTULO foi lido; numero solto, aqui, nao diz nada). A etiqueta
+    // Magalu nao tem. Usa o texto ORIGINAL: o numero do Ref. ID nao continua na linha de baixo.
+    if (!et) {
+      candidatosRefId(texto, '').forEach(function (c) {
+        if (!c.rotulado || visto[c.valor]) return;
+        visto[c.valor] = 1;
+        out.push(c);
+      });
+    }
+
     return out.sort(function (a, b) { return b.peso - a.peso; });
   }
 
+  /**
+   * b789 - O "Ref. ID" DA ETIQUETA DE VOLTA DO MERCADO LIVRE ("pacote MELI": venda que nao foi entregue e voltou, sem
+   * nome de cliente). O codigo de barras e o QR dessa etiqueta sao o envio DE VOLTA, que o ML nao deixa consultar; o
+   * numero que acha a venda e o "Ref. ID" impresso no alto dela.
+   *
+   * Texto MEDIDO na foto da AMB (21/11), com este mesmo leitor e esta mesma lista de caracteres (so maiusculas e
+   * numeros): "Ref. ID: 48126024340" saiu "R. 1D: 48126024340" — as minusculas somem e o I vira 1. Por isso o ROTULO e
+   * reconhecido frouxo (R + ate 2 letras, depois I/1/L e D/0/O) — mas com ALGO separando o "R" do "ID" (ponto/espaco)
+   * ou com os dois pontos depois, senao "RIO 21999998888" passaria por Ref. ID. E o NUMERO, firme: 10 a 13 digitos NA
+   * MESMA LINHA (a etiqueta imprime o fim do numero em negrito, e o leitor as vezes o parte em dois — junta so os dois
+   * primeiros pedacos).
+   *
+   * Devolve candidatos no formato de `candidatos`:
+   *  - leu o rotulo → SO ele (rotulado: true);
+   *  - nao leu o rotulo → os numeros soltos de 10 a 13 digitos que NAO sao o codigo ja tentado (`jaTentado`): quem chama
+   *    decide (um so = e ele; mais de um = a tela pergunta).
+   */
+  function candidatosRefId(texto, jaTentado) {
+    var linhas = String(texto || '').toUpperCase().split(/\r?\n/);
+    var fora = String(jaTentado || '').replace(/\D/g, '');
+    for (var i = 0; i < linhas.length; i++) {
+      var m = linhas[i].match(/\bR[A-Z]{0,2}(?:[ .]{1,3}[I1L][D0O][ .:]{0,3}|[I1L][D0O][ .]{0,2}:[ .]{0,2})(\d[\d ]{8,16}\d)/);
+      if (!m) continue;
+      var partes = m[1].trim().split(/ +/);
+      var num = /^\d{10,13}$/.test(partes[0]) ? partes[0]
+        : (partes.length > 1 && /^\d{10,13}$/.test(partes[0] + partes[1]) ? partes[0] + partes[1] : null);
+      if (num && num !== fora) return [{ valor: num, tipo: 'Ref. ID (Mercado Livre)', peso: 9, rotulado: true }];
+    }
+    var visto = {}, out = [];
+    linhas.forEach(function (l) {
+      (l.match(/(^|[^0-9])\d{10,13}(?![0-9])/g) || []).forEach(function (pedaco) {
+        var n = pedaco.replace(/\D/g, '');
+        if (n === fora || visto[n]) return;
+        visto[n] = 1;
+        out.push({ valor: n, tipo: 'número da etiqueta (pode ser o Ref. ID)', peso: 5, rotulado: false });
+      });
+    });
+    return out;
+  }
+
   // ── a area visivel, criada por JS (nao precisa mexer no index) ──
-  var zona, statusEl, previaEl, opcoesEl, inputArquivo;
+  var zona, statusEl, previaEl, opcoesEl, inputArquivo, inputArquivoRef;
+
+  // b789 - estado da leitura do Ref. ID (pacote MELI)
+  var ultimaEtiqueta = null;   // { dataUrl, codigo, tentou }: a ultima imagem cujo codigo foi pra busca
+  var vez = 0;                 // cada imagem nova invalida a leitura em andamento da anterior
+  // O "some depois" e UM so e cancelavel. A leitura do Ref. ID comeca logo depois de uma busca que falhou, e o
+  // "some em 1,5 s" daquela busca apagava o aviso desta no meio da leitura. Trabalho novo cancela o sumico pendente;
+  // entre dois pedidos de sumir vale o que vence primeiro (como era com os dois setTimeout soltos).
+  var somTimer = null, somQuando = 0;
+  function sumirEm(ms) {
+    var quando = Date.now() + ms;
+    if (somTimer && somQuando <= quando) return;
+    clearTimeout(somTimer);
+    somQuando = quando;
+    somTimer = setTimeout(function () { somTimer = null; trabalhando(false); }, ms);
+  }
+  // o recado dentro do cartao "pacote MELI" da tela (busca.js), quando ele esta aberto
+  function avisoNoCartao(txt) {
+    var el = document.getElementById('statusRefId');
+    if (!el) return;
+    el.textContent = txt || '';
+    el.style.display = txt ? 'block' : 'none';
+  }
 
   function montarZona() {
     if (document.getElementById('btnAnexarEtiqueta')) return;
@@ -113,6 +192,17 @@
     linha.style.flexWrap = 'wrap';
     btn.style.maxWidth = '100%';
     linha.appendChild(btn);
+
+    // b789 - "pacote MELI" (pedido do dono, 21/11: "um botao pra clicar e marcar que e pacote MELI"): a etiqueta do ML
+    // sem nome de cliente. Abre o cartao do Ref. ID (busca.js) sem precisar bipar antes. Mesmo desenho do botao ao lado.
+    var meli = document.createElement('button');
+    meli.id = 'btnPacoteMeli';
+    meli.type = 'button';
+    meli.title = 'etiqueta do Mercado Livre SEM nome de cliente (remetente MELI): busca pelo Ref. ID impresso nela';
+    meli.style.cssText = btn.style.cssText;
+    meli.innerHTML = '\u{1F4E6}<br>pacote MELI';
+    meli.addEventListener('click', function () { if (typeof abrirPacoteMeli === 'function') abrirPacoteMeli(); });
+    linha.appendChild(meli);
 
     zona = document.createElement('div');
     zona.id = 'zonaColar';
@@ -140,9 +230,24 @@
       if (inputArquivo.files && inputArquivo.files[0]) processar(inputArquivo.files[0]);
     });
     btn.addEventListener('click', function () { inputArquivo.click(); });
+
+    // b789 - a foto pedida pelo cartao "pacote MELI" tem entrada propria: ela vai DIRETO ao Ref. ID (sem modo guardado
+    // numa variavel, que ficaria valendo pra proxima foto se o estoquista desistisse desta)
+    inputArquivoRef = document.createElement('input');
+    inputArquivoRef.id = 'arquivoRefId';
+    inputArquivoRef.type = 'file';
+    inputArquivoRef.accept = 'image/*';
+    inputArquivoRef.style.display = 'none';
+    document.body.appendChild(inputArquivoRef);
+    inputArquivoRef.addEventListener('change', function () {
+      var arq = inputArquivoRef.files && inputArquivoRef.files[0];
+      inputArquivoRef.value = '';   // a MESMA foto de novo tem que disparar outra leitura
+      if (arq) processar(arq, true);
+    });
   }
 
   function trabalhando(sim) {
+    if (sim) { clearTimeout(somTimer); somTimer = null; }   // b789: trabalho novo cancela o sumico pendente
     if (!zona) return;
     zona.style.display = sim ? 'flex' : 'none';
     if (!sim) { status(''); if (opcoesEl) opcoesEl.innerHTML = ''; if (previaEl) previaEl.style.display = 'none'; }
@@ -156,14 +261,17 @@
     status('achei ' + valor + ' — buscando...');
     if (opcoesEl) opcoesEl.innerHTML = '';
     if (typeof buscar === 'function') buscar();
-    setTimeout(function () { trabalhando(false); }, 1500);   // v3 - o aviso some
+    sumirEm(1500);   // v3 - o aviso some
   }
   window.usarCodigoColado = usar;
 
-  function oferecer(lista) {
+  function oferecer(lista, semNada) {
+    // b789: os candidatos a Ref. ID desta leitura (os que vieram de `candidatosRefId`). Se a busca por um deles ACHAR
+    // uma venda, a tela mostra o numero lido pra conferir com a etiqueta (busca.js) — leitura de texto troca digito.
+    window._refIdsLidosDaFoto = lista.filter(function (c) { return typeof c.rotulado === 'boolean'; }).map(function (c) { return c.valor; });
     if (!opcoesEl) return;
     if (!lista.length) {
-      status('não achei código nem texto reconhecível nessa imagem — tente uma foto mais nítida ou digite o código.');
+      status(semNada || 'não achei código nem texto reconhecível nessa imagem — tente uma foto mais nítida ou digite o código.');
       return;
     }
     if (lista.length === 1) { usar(lista[0].valor); return; }
@@ -403,8 +511,9 @@
     } catch (e) { return dataUrl; }
   }
 
-  async function processar(blob) {
+  async function processar(blob, soRefId) {
     montarZona();
+    var minha = ++vez;   // b789: imagem nova — a leitura do Ref. ID em andamento na anterior nao mexe mais na tela
     if (opcoesEl) opcoesEl.innerHTML = '';
     var dataUrl = await new Promise(function (res) {
       var fr = new FileReader();
@@ -413,6 +522,17 @@
     });
     trabalhando(true);
     if (previaEl) { previaEl.src = dataUrl; previaEl.style.display = ''; }
+
+    // b789 - a foto pedida pelo cartao "pacote MELI": o codigo de barras e o QR dessa etiqueta sao o envio DE VOLTA, que
+    // nao acha a venda — nem tenta. Le o texto e vai direto ao Ref. ID impresso.
+    if (soRefId) {
+      status('imagem recebida, procurando o Ref. ID impresso na etiqueta...');
+      avisoNoCartao('\u{1F50E} Lendo o Ref. ID na foto…');
+      var listaRef = candidatosRefId(await lerTexto(dataUrl), '');
+      if (minha !== vez) return;   // veio outra imagem nesse meio tempo
+      mostrarRefId(listaRef);
+      return;
+    }
     status('imagem recebida, procurando o código de barras...');
 
     var img = new Image();
@@ -461,6 +581,8 @@
             document.dispatchEvent(new CustomEvent('qr-magalu-lido', { detail: window.ULTIMO_QR_MAGALU }));
           } catch (e) {}
         }
+        // b789: se a busca por este codigo nao achar (pacote MELI), o Ref. ID esta nesta mesma imagem
+        ultimaEtiqueta = { dataUrl: dataUrl, codigo: String(lido.valor).trim(), tentou: false };
         usar(lido.valor);
         return;
       }
@@ -468,6 +590,7 @@
       // codigo de BARRAS, ele e a resposta desta etiqueta — usa antes do OCR.
       if (reservaBarras) {
         status('o QR nao serviu — usando o codigo de barras da etiqueta');
+        ultimaEtiqueta = { dataUrl: dataUrl, codigo: String(reservaBarras).trim(), tentou: false };   // b789
         usar(reservaBarras);
         return;
       }
@@ -476,8 +599,52 @@
     }
 
     oferecer(candidatos(await lerTexto(dataUrl)));
-    setTimeout(function () { trabalhando(false); }, 6000);
+    sumirEm(6000);
   }
+
+  // b789 - o que fazer com o que a leitura do Ref. ID achou: um so → busca; varios → pergunta (e o aviso NAO some
+  // sozinho, pra dar tempo de escolher); nenhum → diz, e manda digitar no cartao.
+  function mostrarRefId(lista) {
+    if (!lista.length) {
+      avisoNoCartao('Não consegui ler o Ref. ID nessa foto — digite os números dele aqui em cima.');
+      sumirEm(6000);
+    } else if (lista.length > 1) {
+      avisoNoCartao('Achei mais de um número na foto — toque no Ref. ID na lista lá em cima, ou digite aqui.');
+    }
+    oferecer(lista, 'não consegui ler o Ref. ID nessa foto — tente uma foto mais nítida ou digite os números dele.');
+  }
+
+  /**
+   * b789 - A BUSCA QUE FALHOU VEIO DE UMA FOTO? O Ref. ID ESTA NELA.
+   * A tela (busca.js) chama isto quando o ML responde que o envio buscado nao existe. Se esse codigo saiu da ULTIMA
+   * imagem mandada (o QR/codigo de barras de um pacote MELI e o envio DE VOLTA), le o texto da mesma imagem, pega o
+   * "Ref. ID" impresso e busca por ele — sem o estoquista fazer nada.
+   * UMA tentativa por imagem (se o Ref. ID tambem nao achar, nao entra em laco), e a leitura e DESCARTADA se nesse meio
+   * tempo veio outra imagem ou o campo de busca mudou (o estoquista seguiu pra outra caixa).
+   * `digitos` = o numero que o servidor de fato buscou (o id de dentro do QR), pra nao oferecer ele mesmo de novo.
+   */
+  window.tentarRefIdDaEtiqueta = async function (codigoBuscado, digitos) {
+    try {
+      var e = ultimaEtiqueta;
+      if (!e || e.tentou || String(codigoBuscado || '').trim() !== e.codigo) return false;
+      e.tentou = true;
+      var minha = ++vez;
+      montarZona();
+      trabalhando(true);
+      if (previaEl) { previaEl.src = e.dataUrl; previaEl.style.display = ''; }
+      avisoNoCartao('\u{1F50E} Lendo o Ref. ID na foto que você mandou…');
+      var texto = await lerTexto(e.dataUrl);
+      if (minha !== vez) return false;
+      var campo = document.getElementById('codigo');
+      if (!campo || String(campo.value || '').trim() !== e.codigo) { trabalhando(false); return false; }
+      var lista = candidatosRefId(texto, digitos || e.codigo);
+      mostrarRefId(lista);
+      return lista.length > 0;
+    } catch (err) { return false; }
+  };
+
+  // b789 - o botao de foto do cartao "pacote MELI"
+  window.lerRefIdDaFoto = function () { montarZona(); if (inputArquivoRef) inputArquivoRef.click(); };
 
   function imagemDe(dt) {
     if (!dt) return null;
