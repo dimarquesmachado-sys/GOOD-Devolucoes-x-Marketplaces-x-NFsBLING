@@ -501,7 +501,9 @@
   </div>
 
   <!-- SheetJS pra Excel -->
-  <script src="https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js"></script>
+  <!-- b779 (V-08): integrity — o navegador recusa o arquivo se o CDN entregar outro byte. Conferido contra o CDN no CI
+       (test/scripts-externos-integridade.test.js); a versao ja e exata (xlsx-0.20.0). -->
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js" integrity="sha384-7hwyYzxURfZMLwHgvEKrYEmM5tX+1DVWK5iDR4R69bOQeY90Q8B8n9Cobuyqybhw" crossorigin="anonymous"></script>
   <script src="relatorios.js?v=b726"></script>
 </body>
 </html>

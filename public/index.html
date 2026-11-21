@@ -656,12 +656,13 @@
   <script>window.APP_BASE = ''; window.APP_EMPRESA = 'good'; window.APP_PASTA_CHECKOUT = 'good-checkout-offline';</script>
   <style>:root { --marca: #561A9E; --sobre-marca: #fff; --escuro: #4a148c; --marca-claro: #7B3FC4; --marca-texto: #561A9E; }</style>   <!-- 14/10: + as 2 cores que a ficha de defeitos unica usa -->
   <script src="js/busca.js?v=4792"></script>
-  <script src="https://cdn.jsdelivr.net/npm/qz-tray@2.2.4/qz-tray.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/qz-tray@2.2.4/qz-tray.js" integrity="sha384-eMCJjoa43DLpNZRyAjocYkZuahMjTlfLpm5i5MD/QGBM8dBbMG0xtjp50LA4vyhe" crossorigin="anonymous"></script>
   <script src="js/etiqueta.js?v=b667"></script>
   <script src="js/triagem.js?v=b721"></script>
-  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+  <!-- b779 (V-08): versao EXATA + integrity — o navegador recusa o arquivo se o CDN entregar outro byte (o `@5` mudava sozinho a cada versao nova). Hash conferido por test/scripts-externos-integridade.test.js -->
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js" integrity="sha384-GJqSu7vueQ9qN0E9yLPb3Wtpd7OrgK8KmYzC8T1IysG1bcvxvIO4qtYR/D3A991F" crossorigin="anonymous"></script>
   <!-- v5 - le QR code no COMPUTADOR (o BarcodeDetector so existe no Android) -->
-  <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js" integrity="sha384-b5Ya4Bq3qCyz39m2ISh+4DxjAIljdeFwK/BsXLuj9gugaNwAcj/ia15fxNZL9Nlx" crossorigin="anonymous"></script>
   <script src="js/ocr.js?v=4560"></script>
   <script src="js/app.js?v=4562"></script>
   <!-- v4.34 - colar/arrastar imagem da etiqueta na busca -->
