@@ -623,7 +623,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.126.293 (b779: V-08 — integrity sha384 + versao exata nas 4 bibliotecas de CDN; conferido no CI)',   // b744: SEM encadear os builds anteriores — a historia e do git, nao desta linha
+      version: '9.126.295 (b781: V-12 — Codex #632: retirada prova o produto, nao o pedido; falha das operacoes vira motivo)',   // b744: SEM encadear os builds anteriores — a historia e do git, nao desta linha
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -2483,11 +2483,12 @@ app.post('/api/admin/renovar-token-bling', async (req, res) => {
    existe na API do ML — provado com os dados do caso Marcos). Esta rota leve, pra tela do galpao (login de
    funcionario), lista SO as pecas que a espreita marcou "vem pelo RETIRO" (#414): o bipe mostra essas pra
    escolher quando o codigo nao e encontrado. */
+const { itemDoRetiro } = require('./lib/retiro-bipe');   // b780 - a linha da lista do retiro e a MESMA nas 3 empresas
 app.get('/api/espreita/retiro', requerLogin, (req, res) => {
   try {
     const base = mlReturns.resumoEspreita() || {};
     const itens = (base.em_transito || []).filter((x) => x && x.vem_pelo_retiro)
-      .map((x) => ({ pedido: x.pedido, status: x.status, tracking: x.tracking || null, dias: x.dias_em_transito || null }));
+      .map((x) => itemDoRetiro(x, req.query.codigo));   // b780: + produto/SKU, cliente, NF, datas; e marca a que casa com o codigo bipado
     return res.json({ ok: true, itens });
   } catch (e) { return res.json({ ok: false, itens: [], erro: String((e && e.message) || e) }); }
 });

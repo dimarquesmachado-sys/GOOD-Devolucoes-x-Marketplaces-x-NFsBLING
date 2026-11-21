@@ -63,6 +63,7 @@ const { PREFIXO_SEM_EMPRESA } = require('../../lib/empresas');   // b662 - nunca
 // novo. Era a regra da casa que eu mesmo invoquei no commit e nao cumpri.
 const drenagem = require('../../lib/drenagem');
 const { ehBloqueioDePolitica } = require('../../lib/ml-permissoes');   // b698 - a assinatura do PolicyAgent tem UMA definicao
+const { condicaoML } = require('../../lib/retiro-bipe');   // b780 - 'saleable' aparecia cru na tela (vira 'vendável')
 
 // ⚠️ b377 - O CLIENTE VEM DA EMPRESA, nao a instancia padrao.
 //
@@ -649,6 +650,24 @@ function ultimaBuscaTracking() { return ULTIMA_BUSCA; }
    "vem pelo RETIRO"; ainda nao consultou ou deu erro = fica ("nao sei" != "nao vem"); revisao sem destino
    'seller' = sai, como antes. So reclamacoes dos ultimos 90 dias; uma consulta por vez, com pausa. */
 const REVISAO_CD = new Map();   // claim_id -> { destino, condicao, motivo, erro, em }
+/* b780 - todo numero com cara de identificador (6 a 20 digitos, texto ou numero) que aparece nas operacoes de
+   RETIRADA (WITHDRAWAL_*), com o caminho do campo — so pra casar com o codigo bipado e pra medir o formato. */
+function numerosDasRetiradas(ops) {
+  const achados = [];
+  const andar = (v, caminho, prof) => {
+    if (achados.length >= 40 || prof > 5 || v == null) return;
+    if (typeof v === 'number' || typeof v === 'string') {
+      const t = String(v).trim();
+      if (/^\d{6,20}$/.test(t)) achados.push({ campo: caminho, valor: t });
+      return;
+    }
+    if (Array.isArray(v)) { v.slice(0, 10).forEach((x, i) => andar(x, caminho + '[' + i + ']', prof + 1)); return; }
+    if (typeof v === 'object') for (const k of Object.keys(v).slice(0, 30)) andar(v[k], caminho ? caminho + '.' + k : k, prof + 1);
+  };
+  (ops || []).filter((o) => /^WITHDRAWAL/i.test(String((o && o.type) || ''))).slice(0, 5)
+    .forEach((o) => andar(o, String(o.type || '').toUpperCase(), 0));
+  return achados;
+}
 const REVISAO_FILA = new Set();
 let REVISAO_RODANDO = false;
 async function processarRevisoesCD() {
@@ -673,21 +692,45 @@ async function processarRevisoesCD() {
            devolucao (o mesmo anuncio pode ter outras retiradas). A cota dessa rota do ML e baixissima: uma vez
            por dia por card (o registro vale 24 h) e falha = sem linha do tempo, o card continua no retiro. */
         if (reg.destino === 'seller') {
+          /* b780 - o que a linha do tempo conseguiu (ou por que nao): no bipe de 21/11 (AMB) as 23 pecas do retiro vieram
+             SEM data nenhuma, e sem isto nao da pra saber se o anuncio negou (permissao), se nao e Full ou se o ML nao
+             tem operacao. E os NUMEROS das operacoes de retirada: a etiqueta traz codigo de barras + Ref. ID — se um
+             deles aparece na retirada de um pedido, a etiqueta e daquele pedido (o bipe destaca; nada e escolhido sozinho). */
+          reg.linha_do_tempo = { anuncio_http: null, operacoes_http: null, operacoes: null, motivo: null };
           try {
             const ped = rr.data && Array.isArray(rr.data.orders) ? rr.data.orders[0] : null;
             const it = ped && ped.item_id ? await ((p) => ml.chamarML(p))('/items/' + ped.item_id + '?attributes=inventory_id,seller_id') : null;
+            reg.linha_do_tempo.anuncio_http = it ? (it.ok ? 200 : (it.status || null)) : null;
             const inv = it && it.ok && it.data && it.data.inventory_id;
             const sel = it && it.ok && it.data && it.data.seller_id;
             const de = String((rr.data && rr.data.date_created) || '').slice(0, 10);
             if (inv && sel && /^\d{4}-\d{2}-\d{2}$/.test(de)) {
               const ate = new Date(Date.now() + 864e5).toISOString().slice(0, 10);
               const op = await ((p) => ml.chamarML(p))('/stock/fulfillment/operations/search?seller_id=' + sel + '&inventory_id=' + inv + '&date_from=' + de + '&date_to=' + ate);
+              reg.linha_do_tempo.operacoes_http = op ? (op.ok ? 200 : (op.status || null)) : null;
+              reg.inventario = String(inv);   // Codex #632: os numeros abaixo sao do ANUNCIO (inventario), nao do pedido
               const ops = (op && op.ok && op.data && Array.isArray(op.data.results)) ? op.data.results : [];
+              reg.linha_do_tempo.operacoes = (op && op.ok) ? ops.length : null;
               const quando = (t) => { const o = ops.filter((x) => String(x.type || '').toUpperCase() === t).sort((a, b) => String(b.date_created || '').localeCompare(String(a.date_created || '')))[0]; return o ? o.date_created : null; };
               reg.reservada_em = quando('WITHDRAWAL_RESERVATION');
               reg.saiu_cd_em = quando('WITHDRAWAL_DELIVERY');
+              reg.numeros_retirada = numerosDasRetiradas(ops);
+              /* Codex #632: falha das operacoes (429, 5xx, 403) NAO pode virar "lista vazia" calada na tela — sem data,
+                 a linha diz por que. E resposta OK sem nenhuma retirada tambem se explica (o ML ainda nao registrou). */
+              if (!op || !op.ok) {
+                reg.linha_do_tempo.motivo = (op && Number(op.status) === 403 && ehBloqueioDePolitica(op.error))
+                  ? 'operacoes do Full negadas pelo ML (permissao do app)'
+                  : 'operacoes do Full nao responderam (HTTP ' + ((op && op.status) || '-') + ') — nova tentativa em ate 24 h';
+              } else if (!ops.some((o) => /^WITHDRAWAL/i.test(String((o && o.type) || '')))) {
+                reg.linha_do_tempo.motivo = 'o ML ainda nao registrou a retirada desta peca no Full';
+              }
+            } else {
+              reg.linha_do_tempo.motivo = !ped || !ped.item_id ? 'devolucao sem item_id'
+                : (it && !it.ok && Number(it.status) === 403 && ehBloqueioDePolitica(it.error)) ? 'anuncio negado pelo ML: falta a permissao "Publicação e sincronização" no app'
+                : (!it || !it.ok) ? 'anuncio nao respondeu (HTTP ' + ((it && it.status) || '-') + ')'
+                : !inv ? 'anuncio sem inventory_id (nao e Full?)' : !sel ? 'anuncio sem seller_id' : 'devolucao sem data';
             }
-          } catch (e) { /* linha do tempo e extra */ }
+          } catch (e) { reg.linha_do_tempo.motivo = 'erro: ' + String((e && e.message) || e).slice(0, 80); /* linha do tempo e extra */ }
         }
         REVISAO_CD.set(id, reg);
       } catch (e) { REVISAO_CD.set(id, { erro: true, em: Date.now() }); }
@@ -712,9 +755,17 @@ function segueVindoPeloRetiro(d) {
 function statusCD(d, padrao) {
   if (String(d.status_claim || '').toLowerCase() !== 'closed') return padrao;
   const r = REVISAO_CD.get(String(d.claim_id || ''));
-  if (r && r.destino === 'seller') return '🔁 vem pelo RETIRO — ML: ' + (r.condicao === 'unsaleable' ? 'inservível' : (r.condicao || 'revisado')) + (r.motivo === 'damaged' ? ' (embalagem danificada)' : '') +
+  if (r && r.destino === 'seller') return '🔁 vem pelo RETIRO — ML: ' + (condicaoML(r.condicao) || 'revisado') + (r.motivo === 'damaged' ? ' (embalagem danificada)' : '') +
       (r.saiu_cd_em ? ' · saiu do CD em ' + String(r.saiu_cd_em).slice(8, 10) + '/' + String(r.saiu_cd_em).slice(5, 7) + ' — a caminho do galpão' : (r.reservada_em ? ' · retirada reservada em ' + String(r.reservada_em).slice(8, 10) + '/' + String(r.reservada_em).slice(5, 7) : ''));
   return 'no CD do ML — conferindo a revisão';
+}
+/* b780 - a lista do bipe (etiqueta de RETIRADA) precisa da linha do tempo da retirada em CAMPOS, nao so no texto do
+   status: so pras pecas que o CD mandou pro vendedor (o resto devolve null). */
+function retiroDoCard(d) {
+  const r = REVISAO_CD.get(String((d && d.claim_id) || ''));
+  if (!r || r.destino !== 'seller') return null;
+  return { condicao: r.condicao || null, motivo: r.motivo || null, reservada_em: r.reservada_em || null, saiu_cd_em: r.saiu_cd_em || null,
+    numeros: r.numeros_retirada || [], inventario: r.inventario || null, linha_do_tempo: r.linha_do_tempo || null };
 }
 
 function resumoEspreita() {
@@ -749,7 +800,7 @@ function resumoEspreita() {
       if (d.destino === 'warehouse') {
         emTransito.push({
           marketplace: 'ml', pedido: d.order_id, tracking: d.tracking,
-          status: statusCD(d, 'em revisão no CD do ML'), vem_pelo_retiro: (REVISAO_CD.get(String(d.claim_id || '')) || {}).destino === 'seller', dias_em_transito: dias(d.claim_date),
+          status: statusCD(d, 'em revisão no CD do ML'), vem_pelo_retiro: (REVISAO_CD.get(String(d.claim_id || '')) || {}).destino === 'seller', retiro: retiroDoCard(d), dias_em_transito: dias(d.claim_date),
           claim_id: d.claim_id, status_money: d.status_money || null, no_cd_ml: true,
           chegou_cd: true,                          // b51 - ENTREGUE no CD (constatado pelo ML)
           desde: d.claim_date || null,
