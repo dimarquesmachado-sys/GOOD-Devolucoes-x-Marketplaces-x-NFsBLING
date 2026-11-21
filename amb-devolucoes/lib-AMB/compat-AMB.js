@@ -1259,7 +1259,19 @@ let imagem = null;   // b200   // b196/v4.80 - motivo DESTE componente
   /** Produto com problema: avisa por e-mail e responde se ha outras
    *  unidades do mesmo SKU em defeito (a tela usa pro alerta de
    *  canibalizacao) — mesmo comportamento do /api/triagem/registrar. */
-  router.post('/api/triagem/problema', auth.requerLogin, exigirFotosValidas, async (req, res) => {
+  // b778 (pedido do dono 21/11): MINIMO DE 6 FOTOS no servidor, como a GOOD — so o ADMIN pode mandar sem, marcando
+  // "Sem fotos" na tela (sem_fotos:true). Antes a fabrica so conferia na tela: com o "Sem fotos" existindo, a regra
+  // "so admin" precisa valer aqui tambem, senao qualquer sessao mandaria sem foto.
+  function minimoDeFotosNoProblema(req, res, next) {
+    const b = corpo(req);
+    const fotos = Array.isArray(b.fotos) ? b.fotos : (Array.isArray(b.problema_fotos) ? b.problema_fotos : []);
+    if (fotos.length >= 6) return next();
+    const pedeSemFotos = b.sem_fotos === true;
+    if (pedeSemFotos && !auth.validarSessao(auth.tokenDaRequisicao(req), 'admin')) return res.status(403).json({ ok: false, erro: 'reportar problema sem fotos e so pro admin' });
+    if (!pedeSemFotos) return res.status(400).json({ ok: false, erro: 'Minimo 6 fotos obrigatorias (recebido: ' + fotos.length + ')' });
+    return next();
+  }
+  router.post('/api/triagem/problema', auth.requerLogin, exigirFotosValidas, minimoDeFotosNoProblema, async (req, res) => {
     const d = comDescricao(corpo(req));
     let r = await db.registrarTriagem({ ...d, status: 'problema', funcionario: req.usuario });
     if (!r.ok) return res.json(r);

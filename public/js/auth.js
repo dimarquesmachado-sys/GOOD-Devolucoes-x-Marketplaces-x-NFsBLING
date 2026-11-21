@@ -22,6 +22,8 @@ async function checarSessao() {
       // Tanto admin quanto estoquista vao pra mesma tela
       // Admin so ve um botao extra "Painel Admin"
       usuarioLogado = d.usuario;
+      // b778 - a tela de triagem mostra o "Sem fotos" do reportar problema SO pro admin (o servidor confere de novo)
+      window.__ehAdmin = (d.tipo === 'admin');
       document.getElementById('userNome').textContent = d.usuario;
 
       // Mostra botao Admin se for admin
