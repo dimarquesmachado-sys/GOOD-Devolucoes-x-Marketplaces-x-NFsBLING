@@ -218,7 +218,7 @@ let ultimoUsoQuerystring = null;
 // b763 (V-03, 2a metade): A QUERYSTRING NAO VALE MAIS. O uso humano migrou pra sessao de admin (adminOk/requerAdmin
 // na GOOD; admin() na fabrica desde o b756) e o unico servico que chamava com `?k=` (Mover-Pedidos, cruzar-cancelados)
 // passou a mandar o header (b43 de la, #945). Um `?k=` ainda e CONTADO — mas como tentativa rejeitada, pra aparecer no
-// /health quem ficou com link velho. Proximo passo do dono: rotacionar a ADMIN_KEY (a antiga passou meses em URL).
+// /health quem ficou com link velho. A ADMIN_KEY foi rotacionada pelo dono em 20/11 (a antiga passou meses em URL).
 function chaveDaRequisicao(req) {
   const doHeader = req.get('x-admin-key');
   if (doHeader) return { valor: doHeader, via: 'header' };
@@ -262,8 +262,7 @@ function diagnosticoAdminKey() {
     usos_por_querystring: usosPorQuerystring,
     ultimo_uso_querystring: ultimoUsoQuerystring,
     _nota: 'b763: a querystring NAO vale mais; `usos_por_querystring` conta tentativas REJEITADAS '
-      + '(quem ainda usa link velho). Falta: ROTACIONAR a ADMIN_KEY (a antiga '
-      + 'vazou em logs de meses)',
+      + '(quem ainda usa link velho). ADMIN_KEY rotacionada pelo dono em 20/11 (b783: V-03 fechado)',
   };
 }
 
@@ -623,7 +622,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.126.296 (b782: T-02 — o app contra o PostgREST real; UPDATE sem .limit (PGRST109 no PostgREST 12))',   // b744: SEM encadear os builds anteriores — a historia e do git, nao desta linha
+      version: '9.126.297 (b783: roteiro — V-08, V-12 e T-02 fechados; /health sem o "falta rotacionar")',   // b744: SEM encadear os builds anteriores — a historia e do git, nao desta linha
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
