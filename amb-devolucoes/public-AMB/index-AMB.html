@@ -114,6 +114,8 @@
         border-radius: 9px; font-size: 19px; line-height: 1; cursor: pointer;
       }
       /* o cracha e os links saem da faixa e vao pro menu */
+      /* ⚠️ b792: estas duas NUNCA valeram — as regras-base do cracha e dos links vem depois no arquivo e ganham. O topo
+         do celular e decidido no ultimo bloco do cabecalho (procure "b792"). */
       header .user-badge { display: none; }
       .links-defeitos { display: none; }
       #menuTopo.aberto {
@@ -157,10 +159,31 @@
        a faixa pra fora; quando nao cabem ao lado do titulo, descem inteiros pra linha de baixo, encostados a direita
        (a triagem da GOOD ja quebrava assim). */
     .links-defeitos { display: flex; gap: 6px; flex: 0 1 auto; flex-wrap: wrap; justify-content: flex-end; min-width: 0; margin-left: auto; }
+    /* b792: a cor do texto e a do cabecalho (`--sobre-marca`, regra do b447) — estava branco cravado, e na Girassol
+       (marca clara, texto escuro) os quatro links ficavam brancos sobre o amarelo, quase invisiveis. Na AMB nao muda. */
     .links-defeitos a {
-      background: rgba(255,255,255,.16); color: #fff; text-decoration: none;
+      background: rgba(255,255,255,.16); color: var(--sobre-marca, #fff); text-decoration: none;
       padding: 5px 11px; border-radius: 9px; font-size: 12px; font-weight: 500;
       white-space: nowrap;
+    }
+
+    /* b792 (dono, 21/11, print do celular: "olha como fica desajustado no topo") — O TOPO NO CELULAR, ALINHADO.
+       O que ele via: os 4 links encostados a direita com um sozinho na linha de baixo, a faixa do usuario no meio e o
+       botao ⋮ largado embaixo, a esquerda. Causa: tres geracoes de regra brigando. A do b93 (la em cima) mandava o
+       celular ESCONDER os links e o cracha e mostrar so o ⋮ — mas ela vem ANTES das regras-base (`header .user-badge
+       { display:flex }`, `.links-defeitos { display:flex }`), que por virem depois ganham: os links e o cracha nunca
+       sumiram, e o ⋮ apareceu junto. E a regra de 14/10 (links a direita, pro computador) valia tambem no celular.
+       Regra de celular so vale se vier DEPOIS da regra-base (a mesma licao do painel, #447) — por isso este bloco e o
+       ULTIMO do cabecalho. O desenho: tudo continua a vista (o link Defeitos leva o aviso de pendencia), em grade
+       2 x 2 da largura da faixa, e o ⋮ desligado — ele so repetia Painel / O que bipar / Sair, que ja estao na tela.
+       (O HTML e o script do ⋮ ficam: pra religar basta tirar a ultima linha daqui. O usuario ja ficava centrado
+       embaixo: a regra dele, la em cima, vem depois da base e sempre valeu.) */
+    @media (max-width: 600px) {
+      /* grade 2 x 2 da largura da faixa, com as fileiras da MESMA altura (o "+" grande do Lancar Defeito deixava a dele 3px mais alta) */
+      .links-defeitos { display: grid; grid-template-columns: 1fr 1fr; grid-auto-rows: 1fr; flex: 1 1 100%; }
+      /* o conteudo no meio do botao, e o botao alto o bastante pro dedo (o `gap` repoe o espaco entre o "+" e o texto, que o flex come) */
+      .links-defeitos a { display: flex; align-items: center; justify-content: center; gap: 5px; padding: 9px 6px; font-size: 13px; }
+      #btnMenuTopo { display: none; }
     }
 
     /* ── b157: COLINHA "o que bipar" — virou BOTAO no cabecalho que abre
@@ -232,7 +255,7 @@
         </div>
         <div class="user-badge">
           👤 <span id="userNome">-</span>
-          <a href="painel" id="btnPainelAdmin" style="display:none;">👑 Painel<span id="avisoPainel"></span></a>
+          <a href="painel" id="btnPainelAdmin" style="display:none;">👑 Painel Admin<span id="avisoPainel"></span></a>
           <a href="#" onclick="fazerLogout(event)">sair</a>
         </div>
         <!-- b93 - no CELULAR o cracha e os links viram este menu, pra a
