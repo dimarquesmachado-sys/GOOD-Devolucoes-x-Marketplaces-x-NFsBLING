@@ -29,8 +29,11 @@ const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o
 
 const BARRAS = '48133297953', REF = '48126024340', PEDIDO = '2000018696282248', CONTA = '123456';
 // dado pessoal de mentira: NADA disto pode aparecer no relatorio
-const PESSOAL = ['Fulano de Tal', 'Rua Secreta 123', '11999990000', '01234000', 'DANDARO4X4', 'comprador@exemplo.com', 'COMPRADORZE', '12345678900'];
-const endereco = () => ({ address_line: 'Rua Secreta 123', street_name: 'Rua Secreta', street_number: '123', zip_code: '01234000', city: { name: 'Sao Paulo' }, receiver_name: 'Fulano de Tal', receiver_phone: '11999990000' });
+const PESSOAL = ['Fulano de Tal', 'Rua Secreta 123', '11999990000', '01234000', 'DANDARO4X4', 'comprador@exemplo.com', 'COMPRADORZE', '12345678900',
+  // Codex #637: campo com NOME de ligacao (reference, related...) DENTRO de um bloco pessoal, e texto livre em volta do numero
+  'ao lado da farmacia', 'portao azul', 'vizinha Beltrana', 'Sicrano', 'recebido por', 'apto 42'];
+const endereco = () => ({ address_line: 'Rua Secreta 123', street_name: 'Rua Secreta', street_number: '123', zip_code: '01234000', city: { name: 'Sao Paulo' }, receiver_name: 'Fulano de Tal', receiver_phone: '11999990000',
+  reference: 'Casa de Fulano de Tal ao lado da farmacia', references: 'portao azul', apartment: 'apto 42', related_contacts: [{ parent_note: 'vizinha Beltrana recebe' }], return_instructions: 'entregar pra vizinha Beltrana' });
 
 /** um ML de mentira. `opcoes` muda o cenario; devolve { get, chamadas, emVoo } */
 function mlFalso(opcoes = {}) {
@@ -65,7 +68,7 @@ function mlFalso(opcoes = {}) {
       return novo ? sim({ id: Number(BARRAS), status: 'delivered', logistic: { direction: 'return', mode: 'me2', type: 'cross_docking' }, destination: { type: 'selling_address', receiver_name: 'Fulano de Tal', shipping_address: endereco() } })
         : sim({ id: Number(BARRAS), status: 'delivered', type: 'return', order_id: Number(PEDIDO), sibling: { sibling_id: Number(REF), reason: 'not_delivered' }, receiver_address: endereco() });
     }
-    if (caminho.startsWith('/shipments/' + BARRAS + '/')) return nao(404, { message: 'Shipment not found', error: 'not_found_shipping', status: 404 });
+    if (caminho.startsWith('/shipments/' + BARRAS + '/')) return nao(404, { message: 'Shipment not found', error: 'not_found_shipping', status: 404, receiver_name: 'Fulano de Tal', cause: [{ contact: 'Sicrano' }] });
     // ── o envio original ──
     if (caminho === '/shipments/' + REF) {
       if (novo) return sim({ id: Number(REF), status: 'not_delivered', substatus: 'returned', date_created: '2026-09-29T08:17:00Z', last_updated: '2026-10-01T10:00:00Z', tracking_number: 'MEL' + REF + 'FMXDF01',
@@ -80,7 +83,9 @@ function mlFalso(opcoes = {}) {
         status_history: { date_shipped: '2026-09-29T12:00:00Z', date_returned: '2026-10-01T10:00:00Z', date_not_delivered: '2026-09-30T18:00:00Z' },
         receiver_address: endereco(), sender_address: endereco(), receiver_id: 999 });
     }
-    if (caminho === '/shipments/' + REF + '/history') return sim([{ status: 'shipped', substatus: null, date: '2026-09-29T12:00:00Z' }, { status: 'not_delivered', substatus: 'returning_to_sender', date: '2026-09-30T18:00:00Z' }]);
+    if (caminho === '/shipments/' + REF + '/history') return sim([{ status: 'shipped', substatus: null, date: '2026-09-29T12:00:00Z', tracking: { checkpoint: 'CP1', description: 'Objeto recebido por Sicrano na unidade' } },
+      { status: 'not_delivered', substatus: 'returning_to_sender', date: '2026-09-30T18:00:00Z', tracking: { checkpoint: 'CP2', description: 'Destinatario ausente' } },
+      { status: 'returned', date: '2026-10-01T10:00:00Z', note: o.ligacao ? 'pacote MEL' + BARRAS + 'FMXDR01 recebido por Sicrano' : 'pacote recebido por Sicrano' }]);
     if (caminho === '/shipments/' + REF + '/items') return sim(o.originalSemPedido ? [] : [{ order_id: Number(PEDIDO), item_id: 'MLB1', quantity: 1, description: '2 Cavaletes 6t' }]);
     if (caminho === '/orders/' + PEDIDO && o.pedidoHttp) return nao(o.pedidoHttp, { message: 'forbidden', status: o.pedidoHttp });
     if (caminho === '/orders/' + PEDIDO) return sim({ id: Number(PEDIDO), status: 'cancelled', status_detail: null, tags: ['not_delivered', 'cancelled'], pack_id: null, date_created: '2026-09-29T08:17:00Z',
@@ -162,6 +167,19 @@ const semPausa = { pausaMs: 0 };
     ok(/^nao sei \(HTTP 429/.test(r.leitura.listar_nao_entregues.cancelados) && r.leitura.consultas_sem_conclusao.some((x) => x.consulta === 'vendas_canceladas' && /429/.test(x.motivo)),
       '⚠️ "nao sei" != "nao existe": consulta com 429 sai como "nao sei" e na lista das sem conclusao, com o motivo');
     ok(PESSOAL.every((p) => !texto.includes(p)), '⚠️ NENHUM dado pessoal do comprador no relatorio (nome, endereco, telefone, CEP, apelido, e-mail, documento)' + (PESSOAL.filter((p) => texto.includes(p)).length ? ' — VAZOU: ' + PESSOAL.filter((p) => texto.includes(p)).join(', ') : ''));
+    // Codex #637 (P2): campo com NOME de ligacao dentro de bloco pessoal — `receiver_address.reference` saia inteiro
+    const ligs = ['original_envio_formato_novo', 'original_envio_formato_antigo', 'pedido'].map((n) => r.consultas[n].ligacao);
+    ok(ligs.every((l) => !l.preenchidos.concat(l.vazios.map((c) => ({ caminho: c }))).some((x) => /address|receiver|buyer|destination\.shipping/.test(x.caminho))),
+      '⚠️ Codex #637: campos de ligacao NAO sao catados dentro de bloco pessoal (endereco, destinatario, comprador) — nem pelo caminho');
+    ok(r.consultas.original_envio_formato_antigo.ligacao.preenchidos.some((x) => x.caminho === 'sibling') && r.consultas.original_envio_formato_antigo.ligacao.preenchidos.some((x) => x.caminho === 'return_tracking_number'),
+      '  e os campos de ligacao de verdade (sibling, return_tracking_number) continuam saindo');
+    // a mesma classe: texto livre da transportadora, texto em volta do numero, e o corpo do erro do ML
+    ok(r.consultas.original_historico.eventos.length === 3 && r.consultas.original_historico.eventos.every((ev) => !('tracking.description' in ev)) && r.consultas.original_historico.eventos[0]['tracking.checkpoint'] === 'CP1',
+      '⚠️ (mesma classe) o historico sai sem o texto livre do rastreio ("recebido por Fulano") — so status, datas e o codigo do ponto');
+    const noTexto = r.leitura.onde_o_codigo_de_barras_aparece.find((x) => x.consulta === 'original_historico');
+    ok(noTexto && noTexto.caminho === '[2].note' && noTexto.valor === 'MEL' + BARRAS + 'FMXDR01', '⚠️ (mesma classe) numero achado no meio de um texto livre: mostra SO o pedaco do numero, nao o texto em volta (' + JSON.stringify(noTexto) + ')');
+    ok(/not_found_shipping/.test(r.consultas.volta_itens.erro_ml) && /"receiver_name":"\[omitido\]"/.test(r.consultas.volta_itens.erro_ml) && /"contact":"\[omitido\]"/.test(r.consultas.volta_itens.erro_ml),
+      '⚠️ (mesma classe) o corpo do erro do ML tambem passa pelo redator');
     ok(texto.length < 14000, '  relatorio enxuto pra colar numa conversa (' + texto.length + ' caracteres)');
     // as chamadas: so GET nos caminhos previstos, uma por vez, header so no formato novo
     const permitido = /^\/(users\/me$|shipments\/\d{9,13}(\/(history|items|orders))?$|orders\/\d{12,20}$|orders\/search\?seller=\d+&|post-purchase\/v1\/claims\/\d+$|post-purchase\/v2\/claims\/\d+\/returns$|post-purchase\/v1\/claims\/search\?status=(opened|closed)&resource=order&resource_id=\d+&limit=5$)/;
@@ -313,6 +331,18 @@ const semPausa = { pausaMs: 0 };
   const cl = camposDeLigacao({ return_details: { shipment_id: 9, receiver_name: 'Fulano de Tal' }, claim_id: null, x: { related_ids: [] }, receiver_reference: 'casa' });
   ok(cl.preenchidos.length === 1 && cl.preenchidos[0].caminho === 'return_details' && !/Fulano/.test(cl.preenchidos[0].valor) && cl.vazios.join(',') === 'claim_id,x.related_ids',
     '  camposDeLigacao: valor redigido, vazios listados, campo pessoal fora (' + JSON.stringify(cl) + ')');
+  // Codex #637: o exemplo do apontamento, e as variacoes da mesma classe
+  const cl2 = camposDeLigacao({
+    receiver_address: { reference: 'Casa de Fulano ao lado da farmacia', related_contacts: [{ parent_note: 'vizinha Beltrana' }], return_instructions: null },
+    destination: { shipping_address: { references: 'portao azul', original_address: { reference: 'fundos' } }, related_shipment: 77 },
+    lista: [{ buyer: { claim_note: 'reclamou o Sicrano' } }, { claim_id: 5 }],
+    reference: 'ponto de referencia solto', external_reference: 'PED-9', return_details: { reference: 'casa do Sicrano', shipment_id: 9 },
+  });
+  ok(JSON.stringify(cl2.preenchidos.map((x) => x.caminho)) === JSON.stringify(['destination.related_shipment', 'lista[1].claim_id', 'external_reference', 'return_details']) && cl2.vazios.length === 0,
+    '⚠️ Codex #637 camposDeLigacao: nada de dentro de receiver_address / shipping_address / buyer (nem nos vazios); o que e ligacao de verdade fica (' + cl2.preenchidos.map((x) => x.caminho).join(', ') + ')');
+  ok(!/Fulano|farmacia|Beltrana|portao|fundos|Sicrano|ponto de referencia/.test(JSON.stringify(cl2)), '⚠️ e nenhum dos textos pessoais aparece — inclusive o `reference` (ponto de referencia) solto ou dentro de um campo de ligacao');
+  ok(JSON.stringify(ondeAparece({ nota: 'pacote 48133297953 recebido por Fulano', codigo: 48133297953 }, BARRAS)) === JSON.stringify([{ caminho: 'nota', valor: '48133297953' }, { caminho: 'codigo', valor: '48133297953' }]),
+    '  ondeAparece: numero no meio de um texto → so o pedaco do numero');
 
   // ══ 2. a ROTA, pelo cliente de PRODUCAO do ML (rede simulada) ══
   console.log('\n── 2. a rota, pelo cliente de producao do ML');
