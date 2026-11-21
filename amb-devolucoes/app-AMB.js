@@ -662,7 +662,7 @@ const registrarCicloDefeitos = require('../lib/defeitos-ciclo');
 // candidato ja desistido ainda batia no Bling depois de esperar numa pausa
 // de 429. Ver bling-AMB.js, nf-nomes-AMB.js e identificar-AMB.js.
 // 29/10: sem o 'AMB' na frente — a mesma peca serve Girassol, AMB e as proximas; a empresa vai no campo `empresa`
-const VERSAO = 'Devolucoes b785';
+const VERSAO = 'Devolucoes b788';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -1368,6 +1368,16 @@ router.get('/api/debug/ml-get', adminSoChave, async (req, res) => {
     return res.status(r.ok ? 200 : (r.status || 502)).json({ ok: !!r.ok, status: r.status, data: r.ok ? r.data : r.error });
   } catch (e) { return res.status(502).json({ ok: false, erro: String((e && e.message) || e) }); }
 });
+
+/* b786 - SONDA DA ETIQUETA DE VOLTA DO ML (lib/sonda-etiqueta-volta.js, a mesma peca das 3 empresas). Caso da AMB
+   (21/11): caixa de venda NAO ENTREGUE volta com etiqueta sem cliente — o codigo de barras e o envio DE VOLTA (o ML
+   responde 404 nele) e o "Ref. ID" impresso e o envio ORIGINAL. A sonda mede o que o ML expoe sobre os dois numeros
+   (e ONDE um aponta o outro), pra decidir a solucao com dado. So GET, caminhos FIXOS com os numeros validados — nao e
+   a consulta livre do /api/debug/ml-get (que segue so com a chave); por isso aceita a sessao do admin, com limite.
+   Uso (com o prefixo da empresa na frente): /api/debug/etiqueta-volta?barras=48133297953&ref=48126024340 */
+router.get('/api/debug/etiqueta-volta', admin, require('../lib/sonda-etiqueta-volta').criarRotaDaSonda({
+  obterMl: () => ml, versao: VERSAO, empresa: CFG_EMPRESA.CHAVE_REGISTRO || null,
+}));
 
 // b759 (Codex #618) - ?coletar=1 DISPARA a coleta na ponte (efeito colateral num GET): so com a chave, como as outras
 // que mutam. A leitura (sem coletar) segue aceitando a sessao do admin.
