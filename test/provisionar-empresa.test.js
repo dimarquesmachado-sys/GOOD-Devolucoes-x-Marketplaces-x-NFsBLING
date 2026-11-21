@@ -83,8 +83,13 @@ const { sufixoDaFicha, provisionarEmpresa, SUFIXO_VALIDO, RESERVADOS } =
        '  nunca poe NOT NULL em coluna acrescentada (linha antiga nao tem o valor)');
     ok(/nextval\(/.test(corpo) && /identidade/.test(corpo) && /SEM default/.test(corpo),
        '  default de sequencia/identidade do molde NAO e copiado (seria a sequencia da AMB)');
-    ok(!/drop column/i.test(corpo) && !/alter column/i.test(corpo) && !/drop table/i.test(corpo),
-       '  e nunca apaga coluna, muda tipo nem derruba tabela');
+    // b777: o unico `alter column` permitido e trocar o DEFAULT pra sequencia PROPRIA da tabela (a emprestada da AMB
+    // morria junto com a tabela da AMB — provado no Postgres real em test/provisionar-postgres-real.test.js). Tipo,
+    // NOT NULL e drop continuam proibidos.
+    const alterCols = corpo.match(/alter column[^;']*/gi) || [];
+    ok(!/drop column/i.test(corpo) && !/drop table/i.test(corpo)
+       && alterCols.every((a) => /^alter column %I set default nextval\(%L::regclass\)/i.test(a)),
+       '  e nunca apaga coluna, muda tipo nem derruba tabela (unico alter column: default -> sequencia propria) ' + JSON.stringify(alterCols));
     ok(/colunas em dia/.test(corpo) && /linhas preservadas/.test(corpo) && /existe so nesta empresa/.test(corpo),
        '  o resultado diz o que fez: em dia / N acrescentadas / coluna so da empresa');
     ok(/grant execute on function public\.provisionar_empresa\(text\) to service_role/.test(sql),
