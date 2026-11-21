@@ -12,6 +12,11 @@ const cookieParser = require('cookie-parser');
 const crypto = require('crypto');
 
 const app = express();
+// b794 (V-14) - HANDLER `async` QUE ESTOURA NAO DERRUBA MAIS O PROCESSO: a rejeicao vira `next(err)` (aqui) e o tratador
+// final (la embaixo, logo antes do `app.listen`) responde 500. Medido em 21/11: `?campo[toString]=x` derrubava o processo
+// em 46 rotas, duas delas sem sessao. Vale pras 3 empresas (o servico e um so). Ver lib/rota-segura.js.
+const rotaSegura = require('./lib/rota-segura');
+rotaSegura.instalar();
 // seg1.2 - no Render a aplicacao roda atras do proxy da plataforma. Sem
 // isto, req.ip seria o IP do proxy (todo mundo igual) e o freio do login
 // nao distinguiria clientes; com 1 salto confiavel, req.ip e o endereco
@@ -622,7 +627,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.126.307 (b793: triagem da fabrica — o link do admin no topo diz "Painel Admin" (pedido do dono ao ver o b792))',   // b744: SEM encadear os builds anteriores — a historia e do git, nao desta linha
+      version: '9.126.308 (b794: V-14 — handler async que estoura nao derruba mais o processo (46 rotas, 2 delas publicas))',   // b744: SEM encadear os builds anteriores — a historia e do git, nao desta linha
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -9434,6 +9439,10 @@ app.get('/api/admin/eventos-checkout', async (req, res) => {
 
 _segredoSessao();
 
+
+// b794 (V-14) - o ULTIMO middleware: o erro que nenhuma rota tratou vira resposta curta em JSON (sem pilha). Tem que
+// ficar DEPOIS de todas as rotas e das empresas montadas — por isso aqui, colado no `app.listen`.
+app.use(rotaSegura.erroFinal());
 
 app.listen(PORT, () => {
   console.log('============================================');
