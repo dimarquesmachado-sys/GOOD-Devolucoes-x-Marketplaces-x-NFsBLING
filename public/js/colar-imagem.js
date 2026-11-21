@@ -20,6 +20,10 @@
 //  "pacote MELI", a leitura do Ref. ID na foto, e — quando a busca pelo
 //  codigo de uma foto nao acha — a nova tentativa, sozinha, pelo Ref. ID
 //  da mesma foto.
+//
+//  b790 (Codex #638) - ler demora, e o estoquista nao espera: toda leitura
+//  (colar/anexar, a foto do cartao e a tentativa automatica) so mexe na tela
+//  se, quando termina, a tela ainda e a de quando comecou (`aindaVale`).
 // ════════════════════════════════════════════════════════════════════════
 
 (function () {
@@ -148,8 +152,24 @@
   var zona, statusEl, previaEl, opcoesEl, inputArquivo, inputArquivoRef;
 
   // b789 - estado da leitura do Ref. ID (pacote MELI)
-  var ultimaEtiqueta = null;   // { dataUrl, codigo, tentou }: a ultima imagem cujo codigo foi pra busca
+  var ultimaEtiqueta = null;   // { dataUrl, codigo, vez, tentou }: a ultima imagem cujo codigo foi pra busca
   var vez = 0;                 // cada imagem nova invalida a leitura em andamento da anterior
+
+  // b790 (Codex #638) - LEITURA QUE TERMINA DEPOIS DE O ESTOQUISTA TER SEGUIDO ADIANTE NAO MEXE NA TELA.
+  // Ler uma imagem demora (o texto leva de 5 a 20 s). Nesse meio tempo ele pode bipar a caixa seguinte, buscar um Ref. ID
+  // na mao, abrir o cartao do pacote MELI, comecar a digitar outro codigo ou mandar outra imagem — e a leitura velha, ao
+  // terminar, escrevia no campo e disparava uma busca POR CIMA do que ele estava vendo (a venda de outra caixa na tela).
+  // Toda leitura tira um RETRATO da tela quando comeca e so mexe nela se, ao terminar, nada disso mudou:
+  //   vez   — chegou outra imagem depois desta;
+  //   busca — a geracao da tela (`_buscaSeq`, do busca.js): sobe a cada busca e quando o cartao do pacote MELI e aberto;
+  //   campo — o que esta escrito no campo de busca (ele pode estar digitando, sem ter buscado ainda).
+  function geracaoDaBusca() { return typeof _buscaSeq === 'number' ? _buscaSeq : 0; }
+  function campoDeBusca() { var c = document.getElementById('codigo'); return c ? String(c.value || '').trim() : ''; }
+  function retrato() { return { vez: vez, busca: geracaoDaBusca(), campo: campoDeBusca() }; }
+  function aindaVale(t) { return t.vez === vez && t.busca === geracaoDaBusca() && t.campo === campoDeBusca(); }
+  // A leitura foi atropelada. Se a area de leitura ainda e DELA (nao chegou outra imagem), some com ela e com o "lendo..."
+  // do cartao — senao ficariam na tela prometendo um resultado que nao vem.
+  function largar(t) { if (t.vez === vez) { avisoNoCartao(''); trabalhando(false); } }
   // O "some depois" e UM so e cancelavel. A leitura do Ref. ID comeca logo depois de uma busca que falhou, e o
   // "some em 1,5 s" daquela busca apagava o aviso desta no meio da leitura. Trabalho novo cancela o sumico pendente;
   // entre dois pedidos de sumir vale o que vence primeiro (como era com os dois setTimeout soltos).
@@ -513,7 +533,9 @@
 
   async function processar(blob, soRefId) {
     montarZona();
-    var minha = ++vez;   // b789: imagem nova — a leitura do Ref. ID em andamento na anterior nao mexe mais na tela
+    ++vez;                // b789: imagem nova — a leitura em andamento na anterior nao mexe mais na tela
+    var t = retrato();    // b790: ...e esta so mexe se, ao terminar, a tela ainda for a de agora
+    avisoNoCartao('');    // b790: o "lendo o Ref. ID..." que uma leitura anterior deixou no cartao ja nao vale
     if (opcoesEl) opcoesEl.innerHTML = '';
     var dataUrl = await new Promise(function (res) {
       var fr = new FileReader();
@@ -529,7 +551,7 @@
       status('imagem recebida, procurando o Ref. ID impresso na etiqueta...');
       avisoNoCartao('\u{1F50E} Lendo o Ref. ID na foto…');
       var listaRef = candidatosRefId(await lerTexto(dataUrl), '');
-      if (minha !== vez) return;   // veio outra imagem nesse meio tempo
+      if (!aindaVale(t)) { largar(t); return; }   // b790: outra imagem, outra busca, o cartao reaberto ou o campo mexido
       mostrarRefId(listaRef);
       return;
     }
@@ -558,6 +580,9 @@
       var doCanvas = await lerQrNoCanvas(img);
       if (doCanvas) codigo = doCanvas;
     }
+    // b790: ele seguiu adiante enquanto o codigo era lido? entao esta imagem nao escreve no campo, nao busca e nem gasta
+    // os segundos da leitura de texto. (Daqui ate a leitura de texto nao ha espera: este e o unico ponto.)
+    if (!aindaVale(t)) { largar(t); return; }
 
     if (codigo) {
       var lido = interpretarQr(codigo);
@@ -582,7 +607,7 @@
           } catch (e) {}
         }
         // b789: se a busca por este codigo nao achar (pacote MELI), o Ref. ID esta nesta mesma imagem
-        ultimaEtiqueta = { dataUrl: dataUrl, codigo: String(lido.valor).trim(), tentou: false };
+        ultimaEtiqueta = { dataUrl: dataUrl, codigo: String(lido.valor).trim(), vez: t.vez, tentou: false };
         usar(lido.valor);
         return;
       }
@@ -590,7 +615,7 @@
       // codigo de BARRAS, ele e a resposta desta etiqueta — usa antes do OCR.
       if (reservaBarras) {
         status('o QR nao serviu — usando o codigo de barras da etiqueta');
-        ultimaEtiqueta = { dataUrl: dataUrl, codigo: String(reservaBarras).trim(), tentou: false };   // b789
+        ultimaEtiqueta = { dataUrl: dataUrl, codigo: String(reservaBarras).trim(), vez: t.vez, tentou: false };   // b789
         usar(reservaBarras);
         return;
       }
@@ -598,7 +623,9 @@
       status('o QR tem um formato que eu nao conheco — vou ler o texto da etiqueta');
     }
 
-    oferecer(candidatos(await lerTexto(dataUrl)));
+    var textoLido = await lerTexto(dataUrl);
+    if (!aindaVale(t)) { largar(t); return; }   // b790: idem — a leitura de texto e a etapa demorada
+    oferecer(candidatos(textoLido));
     sumirEm(6000);
   }
 
@@ -624,24 +651,30 @@
    * A tela (busca.js) chama isto quando o ML responde que o envio buscado nao existe. Se esse codigo saiu da ULTIMA
    * imagem mandada (o QR/codigo de barras de um pacote MELI e o envio DE VOLTA), le o texto da mesma imagem, pega o
    * "Ref. ID" impresso e busca por ele — sem o estoquista fazer nada.
-   * UMA tentativa por imagem (se o Ref. ID tambem nao achar, nao entra em laco), e a leitura e DESCARTADA se nesse meio
-   * tempo veio outra imagem ou o campo de busca mudou (o estoquista seguiu pra outra caixa).
+   * O resultado e usado UMA vez por imagem (se o Ref. ID tambem nao achar, nao entra em laco), e a leitura e LARGADA se
+   * nesse meio tempo o estoquista seguiu adiante (regra do `aindaVale`, la em cima).
+   * b790: so comeca se a imagem ainda e a ULTIMA que chegou — se ele ja mandou outra, a da vez e a nova, e esta leitura
+   * nao pode passar na frente dela. E a leitura (a parte demorada) e UMA por imagem: se a busca do MESMO codigo se
+   * repetir enquanto ela anda (apertou Buscar de novo — e a mesma caixa), a busca mais nova espera a mesma leitura e e
+   * ela quem decide o que fazer com o resultado.
    * `digitos` = o numero que o servidor de fato buscou (o id de dentro do QR), pra nao oferecer ele mesmo de novo.
    */
   window.tentarRefIdDaEtiqueta = async function (codigoBuscado, digitos) {
     try {
       var e = ultimaEtiqueta;
-      if (!e || e.tentou || String(codigoBuscado || '').trim() !== e.codigo) return false;
-      e.tentou = true;
-      var minha = ++vez;
+      if (!e || e.tentou || e.vez !== vez || String(codigoBuscado || '').trim() !== e.codigo) return false;
+      var t = retrato();
+      t.campo = e.codigo;   // esta leitura e DO codigo que falhou: so vale com ele (ainda) no campo de busca
+      e.t = t;              // a busca mais nova deste codigo e quem decide
       montarZona();
       trabalhando(true);
       if (previaEl) { previaEl.src = e.dataUrl; previaEl.style.display = ''; }
       avisoNoCartao('\u{1F50E} Lendo o Ref. ID na foto que você mandou…');
-      var texto = await lerTexto(e.dataUrl);
-      if (minha !== vez) return false;
-      var campo = document.getElementById('codigo');
-      if (!campo || String(campo.value || '').trim() !== e.codigo) { trabalhando(false); return false; }
+      if (!e.lendo) e.lendo = lerTexto(e.dataUrl);
+      var texto = await e.lendo;
+      if (e.t !== t) return false;                      // uma busca mais nova do mesmo codigo assumiu esta leitura
+      if (!aindaVale(t)) { largar(t); return false; }
+      e.tentou = true;
       var lista = candidatosRefId(texto, digitos || e.codigo);
       mostrarRefId(lista, true);
       return lista.length > 0;
