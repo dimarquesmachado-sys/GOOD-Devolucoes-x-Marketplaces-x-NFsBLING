@@ -1368,12 +1368,15 @@ function desenharNaoEntregues() {
       ? prods.map((p) => '<b>' + escapeHtml(String(p.qtd || 1)) + '× ' + escapeHtml(String(p.titulo || '(sem título)')) + '</b>' + (p.sku ? ' <span style="color:#555;">· SKU ' + escapeHtml(String(p.sku)) + '</span>' : '')).join('<br>')
       : '<i>o Mercado Livre não mandou o produto desta venda — toque pra abrir</i>';
     const pedidos = Array.isArray(it.pedidos) ? it.pedidos : [];
-    html += '<div data-ref-id="' + escapeHtml(String(it.ref_id)) + '" style="padding:8px 10px;margin:5px 0;background:' + (it.ja_triado ? '#eceff1' : '#e3f2fd') + ';border-radius:8px;cursor:pointer;" onclick="buscarPedidoRetiro(\'' + escapeHtml(String(it.ref_id)) + '\')">'
-      + '<div style="color:#0d47a1;">Ref. ID <b style="font-family:ui-monospace,monospace;font-size:16px;letter-spacing:.5px;">' + escapeHtml(String(it.ref_id)) + '</b>'
-      + (dm(it.data) ? ' <span style="font-size:12px;">· venda de ' + dm(it.data) + '</span>' : '')
-      + (it.ja_triado ? ' <span style="font-size:12px;font-weight:700;color:#455a64;">· ✔ já triada</span>' : '') + '</div>'
+    // b798 (dono, 21/11: "deixar o símbolo de já triada algo similar à outra comunicação") — a ja triada tem a cara do
+    // aviso "ESTA DEVOLUÇÃO JÁ FOI TRIADA" (renderizarTriagemDuplicata): ⛔ e o vermelho de "pare", na linha dela.
+    // Era "· ✔ já triada" cinza no fim da linha do Ref. ID (no celular quebrava no meio: "✔ já / triada").
+    html += '<div data-ref-id="' + escapeHtml(String(it.ref_id)) + '" style="padding:8px 10px;margin:5px 0;' + (it.ja_triado ? 'background:#ffebee;border:2px solid #c62828;' : 'background:#e3f2fd;') + 'border-radius:8px;cursor:pointer;" onclick="buscarPedidoRetiro(\'' + escapeHtml(String(it.ref_id)) + '\')">'
+      + (it.ja_triado ? '<div data-marca="ja-triada" style="font-size:13px;font-weight:800;color:#b71c1c;margin-bottom:2px;">⛔ JÁ TRIADA</div>' : '')
+      + '<div style="color:' + (it.ja_triado ? '#4e342e' : '#0d47a1') + ';">Ref. ID <b style="font-family:ui-monospace,monospace;font-size:16px;letter-spacing:.5px;">' + escapeHtml(String(it.ref_id)) + '</b>'
+      + (dm(it.data) ? ' <span style="font-size:12px;">· venda de ' + dm(it.data) + '</span>' : '') + '</div>'
       + '<div style="font-size:13px;margin-top:2px;">📦 ' + linhaProd + '</div>'
-      + (pedidos.length ? '<div style="font-size:12px;color:#1c3a63;margin-top:2px;">Pedido ' + pedidos.map((p) => escapeHtml(String(p))).join(' + ') + '</div>' : '')
+      + (pedidos.length ? '<div style="font-size:12px;color:' + (it.ja_triado ? '#4e342e' : '#1c3a63') + ';margin-top:2px;">Pedido ' + pedidos.map((p) => escapeHtml(String(p))).join(' + ') + '</div>' : '')
       + '</div>';
   });
   const notas = [];

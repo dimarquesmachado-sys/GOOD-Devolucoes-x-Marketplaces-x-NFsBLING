@@ -161,10 +161,49 @@ const venda = (codigo) => ({
       await digitarNoCartao('4340');
       ls = await linhas();
       ok(ls.length === 1 && ls[0].ref === REF && /“4340”/.test(await texto('#naoEntreguesTitulo')), '⚠️ digitou o FIM do Ref. ID ("4340"): sobra so a venda dele — ' + ls.map((l) => l.ref).join());
+      ok((await page.$$('#listaNaoEntregues [data-marca="ja-triada"]')).length === 0 && !/TRIADA/.test(ls[0].txt), '  a venda que AINDA NAO foi triada nao leva a marca de ja triada');
+      const comum = await page.$eval('#listaNaoEntregues [data-ref-id="' + REF + '"]', (el) => { const c = getComputedStyle(el); return [c.backgroundColor, parseFloat(c.borderTopWidth), getComputedStyle(el.firstElementChild).color, getComputedStyle(el.lastElementChild).color]; });
+      ok(JSON.stringify(comum) === JSON.stringify(['rgb(227, 242, 253)', 0, 'rgb(13, 71, 161)', 'rgb(28, 58, 99)']), '  e a linha dela continua como era (azul, sem borda) — ' + JSON.stringify(comum));
       await captura('2-filtrada');
       await digitarNoCartao('0577');
       ls = await linhas();
-      ok(ls.length === 1 && ls[0].ref === '48349640577' && /já triada/.test(ls[0].txt) && ls[0].fundo !== (real.fundo || 'x'), '⚠️ o numero digitado e de uma venda JA TRIADA: ela aparece, marcada "já triada" (em vez de "nao achei")');
+      ok(ls.length === 1 && ls[0].ref === '48349640577' && /⛔ JÁ TRIADA/.test(ls[0].txt) && ls[0].fundo !== (real.fundo || 'x'), '⚠️ o numero digitado e de uma venda JA TRIADA: ela aparece, marcada "⛔ JÁ TRIADA" (em vez de "nao achei")');
+      // b798 (dono, 21/11: "deixar o símbolo de já triada algo similar à outra comunicação") — a marca tem a cara do aviso
+      // "ESTA DEVOLUÇÃO JÁ FOI TRIADA". Medido contra o aviso DE VERDADE, desenhado pela funcao de producao num lugar so dele.
+      const cara = await page.evaluate(() => {
+        const cs = (el) => getComputedStyle(el);
+        const linha = document.querySelector('#listaNaoEntregues [data-ref-id="48349640577"]');
+        const marca = linha && linha.querySelector('[data-marca="ja-triada"]');
+        const deAntes = document.getElementById('triagemConteudo');
+        if (deAntes) deAntes.id = 'triagemConteudoDeAntes';
+        const palco = document.createElement('div'); palco.id = 'triagemConteudo'; document.body.appendChild(palco);
+        let aviso = null;
+        try {
+          renderizarTriagemDuplicata({ tipo: 'aprovado', status: 'pendente', created_at: '2026-10-01T12:00:00Z', funcionario: 'Fulano' });
+          const caixa = palco.firstElementChild;
+          const titulo = caixa && Array.from(caixa.querySelectorAll('div')).find((d) => !d.children.length && /JÁ FOI TRIADA/.test(d.textContent));
+          const icone = caixa && caixa.firstElementChild;
+          if (caixa && titulo && icone && titulo.nextElementSibling) aviso = { fundo: cs(caixa).backgroundColor, borda: cs(caixa).borderTopColor, cor: cs(titulo).color, icone: icone.textContent.trim(), texto: cs(titulo.nextElementSibling).color };
+        } finally {
+          palco.remove();
+          if (deAntes) deAntes.id = 'triagemConteudo';
+        }
+        if (!linha || !marca) return { aviso, lista: null };
+        const umaLinhaSo = (() => { const r = document.createRange(); r.selectNodeContents(marca); return new Set(Array.from(r.getClientRects()).map((q) => Math.round(q.top))).size === 1; })();
+        return { aviso, lista: { fundo: cs(linha).backgroundColor, borda: cs(linha).borderTopColor, bordaLargura: parseFloat(cs(linha).borderTopWidth), cor: cs(marca).color, peso: Number(cs(marca).fontWeight), texto: marca.textContent.trim(), umaLinhaSo,
+          corDoRefId: cs(marca.nextElementSibling).color, corDoPedido: cs(linha.lastElementChild).color, largura: document.documentElement.scrollWidth <= window.innerWidth + 1 } };
+      });
+      ok(!!cara.aviso && cara.aviso.icone === '⛔', '  o aviso "ESTA DEVOLUÇÃO JÁ FOI TRIADA" de verdade foi desenhado pra comparar (icone "' + (cara.aviso && cara.aviso.icone) + '")');
+      ok(!!cara.lista && !!cara.aviso && cara.lista.texto.indexOf(cara.aviso.icone) === 0 && /JÁ TRIADA$/.test(cara.lista.texto),
+        '⚠️ a marca da lista usa o MESMO simbolo do aviso da triagem — "' + (cara.lista && cara.lista.texto) + '"');
+      ok(!!cara.lista && !!cara.aviso && cara.lista.cor === cara.aviso.cor && cara.lista.peso >= 700,
+        '⚠️ a marca tem o mesmo vermelho do titulo do aviso, em negrito — ' + JSON.stringify([cara.lista && cara.lista.cor, cara.aviso && cara.aviso.cor]));
+      ok(!!cara.lista && !!cara.aviso && cara.lista.fundo === cara.aviso.fundo && cara.lista.borda === cara.aviso.borda && cara.lista.bordaLargura >= 2,
+        '⚠️ a linha da ja triada tem o fundo e a borda do aviso — ' + JSON.stringify(cara.lista && [cara.lista.fundo, cara.lista.borda, cara.lista.bordaLargura]));
+      ok(!!cara.lista && !!cara.aviso && cara.lista.corDoRefId === cara.aviso.texto && cara.lista.corDoPedido === cara.aviso.texto,
+        '  o Ref. ID e o pedido da ja triada saem na cor do texto do aviso (azul em cima do vermelho brigava) — ' + JSON.stringify(cara.lista && [cara.lista.corDoRefId, cara.lista.corDoPedido, cara.aviso && cara.aviso.texto]));
+      ok(!!cara.lista && cara.lista.umaLinhaSo && cara.lista.largura, '  no celular a marca cabe numa linha so (era "✔ já / triada", quebrada no meio) e a lista nao estoura a largura');
+      await captura('2b-ja-triada');
       await digitarNoCartao('999999');
       ok((await linhas()).length === 0 && /Nenhuma venda não entregue com “999999”/.test(await texto('#naoEntreguesTitulo')) && /Buscar procura do mesmo jeito/.test(await texto('#naoEntreguesTitulo')),
         '⚠️ numero que nao esta na lista: a tela diz, e avisa que o Buscar procura do mesmo jeito');
