@@ -117,6 +117,9 @@ const venda = (codigo) => ({
         await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, itens: atrasoRetiro ? [{ pedido: '2000018239001602', produtos: [{ titulo: 'Peca do retiro', sku: 'X', qtd: 1 }] }] : [] }) });
       });
       await page.route('**/api/triagem/status/**', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, registros: [] }) }));
+      // b796: o cartao tambem pede a lista das vendas nao entregues — aqui ela vem VAZIA (a lista tem o teste dela:
+      // test/pacote-meli-lista-navegador.test.js); sem isto o pedido iria pra rota de verdade, que consulta o ML
+      await page.route('**/api/pacote-meli/nao-entregues**', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, itens: [], total_no_ml: 0, cortada: false, triagem_conferida: true, idade_s: 0 }) }));
       await page.route('**/api/produto/imagem/**', (route) => route.fulfill({ status: 404, contentType: 'application/json', body: JSON.stringify({ ok: false }) }));
 
       await page.goto('http://127.0.0.1:' + s.porta + e.rota + '/', { waitUntil: 'load' });

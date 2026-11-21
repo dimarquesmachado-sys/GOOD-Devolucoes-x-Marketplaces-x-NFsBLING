@@ -627,7 +627,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.126.309 (b795: V-13 — sonda: o eco da busca nao e ligacao (caso real da AMB) e o resultado medido)',   // b744: SEM encadear os builds anteriores — a historia e do git, nao desta linha
+      version: '9.126.310 (b796: V-13 — pacote MELI: lista das vendas nao entregues no cartao; a foto e conferida com ela)',   // b744: SEM encadear os builds anteriores — a historia e do git, nao desta linha
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
@@ -2498,6 +2498,15 @@ app.get('/api/espreita/retiro', requerLogin, (req, res) => {
     return res.json({ ok: true, itens });
   } catch (e) { return res.json({ ok: false, itens: [], erro: String((e && e.message) || e) }); }
 });
+
+/* b796 (V-13) - a lista das vendas do ML que NAO FORAM ENTREGUES, pro cartao "pacote MELI" da triagem: o estoquista
+   toca na venda em vez de digitar o Ref. ID, e o numero lido da foto e conferido contra ela. A peca
+   (lib/pacote-meli-nao-entregues.js) e a mesma que a fabrica registra pra AMB/Girassol. A tabela da GOOD so tem
+   `shipment_id` como coluna de envio (nao tem `tracking`). */
+app.get('/api/pacote-meli/nao-entregues', requerLogin, require('./lib/pacote-meli-nao-entregues').criarRotaNaoEntregues({
+  obterMl: () => (mlClient && mlClient.instancia) || null,
+  obterBanco: () => ({ sb: supabase, tabela: 'devolucoes', colunasDoEnvio: ['shipment_id'] }),
+}));
 
 app.get('/api/espreita/casa-nf/:nf', requerLogin, async (req, res) => {
   const nfAlvo = String(req.params.nf || '').replace(/^0+/, '');

@@ -662,7 +662,7 @@ const registrarCicloDefeitos = require('../lib/defeitos-ciclo');
 // candidato ja desistido ainda batia no Bling depois de esperar numa pausa
 // de 429. Ver bling-AMB.js, nf-nomes-AMB.js e identificar-AMB.js.
 // 29/10: sem o 'AMB' na frente — a mesma peca serve Girassol, AMB e as proximas; a empresa vai no campo `empresa`
-const VERSAO = 'Devolucoes b795';
+const VERSAO = 'Devolucoes b796';
 const SUBIU_EM = new Date().toISOString();
 
 const router = express.Router();
@@ -1754,6 +1754,14 @@ router.get('/api/espreita/retiro', auth.requerLogin, (req, res) => {
     return res.json({ ok: true, itens });
   } catch (e) { return res.json({ ok: false, itens: [], erro: String((e && e.message) || e) }); }
 });
+
+/* b796 (V-13) - a lista das vendas do ML que NAO FORAM ENTREGUES, pro cartao "pacote MELI" da triagem: o estoquista
+   toca na venda em vez de digitar o Ref. ID, e o numero lido da foto e conferido contra ela. A peca
+   (lib/pacote-meli-nao-entregues.js) e a mesma da GOOD. */
+router.get('/api/pacote-meli/nao-entregues', auth.requerLogin, require('../lib/pacote-meli-nao-entregues').criarRotaNaoEntregues({
+  obterMl: () => ml,
+  obterBanco: () => ({ sb: db.cliente(), tabela: db.tabelas && db.tabelas.devolucoes }),
+}));
 
 
 function preAquecerEspreitaAMB(motivo) {

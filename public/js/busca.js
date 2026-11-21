@@ -1279,14 +1279,117 @@ function cartaoRefId() {
     + '<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;">'
     + '<input type="text" id="inputRefId" inputmode="numeric" autocomplete="off" maxlength="20" placeholder="Ref. ID (só números)" '
     + 'style="flex:1 1 150px;min-width:0;padding:11px;border:1px solid #90caf9;border-radius:8px;font-size:16px;" '
-    + 'onkeydown="if(event.key===\'Enter\'){event.preventDefault();buscarPeloRefId();}">'
+    + 'oninput="desenharNaoEntregues()" onkeydown="if(event.key===\'Enter\'){event.preventDefault();buscarPeloRefId();}">'
     + '<button type="button" id="btnBuscarRefId" onclick="buscarPeloRefId()" style="flex:0 0 auto;padding:11px 14px;background:#1565c0;color:#fff;border:none;border-radius:8px;font-weight:700;font-size:14px;cursor:pointer;">Buscar pelo Ref. ID</button>'
     + '</div>'
     + (typeof window.lerRefIdDaFoto === 'function'
       ? '<button type="button" id="btnFotoRefId" onclick="lerRefIdDaFoto()" style="margin-top:8px;width:100%;padding:10px;background:transparent;color:#0d47a1;border:1px solid #90caf9;border-radius:8px;font-size:13.5px;cursor:pointer;">📷 Ou mande a foto da etiqueta — eu leio o Ref. ID</button>'
       : '')
     + '<div id="statusRefId" style="display:none;margin-top:8px;font-size:12.5px;color:#0d47a1;"></div>'
+    + '<div id="listaNaoEntregues" style="margin-top:10px;"></div>'   // b796: carregarNaoEntregues() preenche
     + '</div>';
+}
+
+// b796 - A LISTA DAS VENDAS NAO ENTREGUES, DENTRO DO CARTAO DO PACOTE MELI.
+// O Ref. ID da etiqueta e o numero do envio de uma venda que o ML deu como nao entregue — e o servidor sabe listar
+// essas vendas (lib/pacote-meli-nao-entregues.js; medido em producao pela sonda: 36 na AMB). Com a lista na tela o
+// estoquista acha o Ref. ID da etiqueta e TOCA, em vez de digitar os 11 numeros; digitando so o FIM do numero (a
+// etiqueta imprime o fim em negrito) a lista encolhe ate sobrar a venda. E o numero lido da FOTO e conferido contra
+// ela (colar-imagem.js, `refIdNaListaDosNaoEntregues`).
+// A lista e uma AJUDA: se ela nao vier, a tela DIZ que nao veio (nao some calada) e o campo do Ref. ID funciona igual.
+// ⚠️ O cartao tambem aparece SOZINHO, quando o ML responde 404 pro codigo bipado — e nessa hora a etiqueta pode ser a de
+// RETIRADA do Full, cuja lista (sugerirRetiro, b504) vem logo abaixo do cartao. Entao ali a lista comeca FECHADA (uma
+// linha, que abre no toque ou ao digitar): 30 vendas nao podem empurrar a lista do retiro pra fora da tela. Pelo botao
+// "📦 pacote MELI" (o estoquista disse o que tem na mao) ela ja vem aberta.
+let _naoEntregues = null;   // a ultima lista que o servidor entregou: { itens, total_no_ml, cortada, triagem_conferida }
+let _naoEntreguesAberta = false;
+let _naoEntreguesPedido = 0;
+const NAO_ENTREGUES_NA_TELA = 30;
+
+async function carregarNaoEntregues() {
+  // Cada cartao novo faz um pedido novo, e so a resposta do pedido MAIS NOVO mexe na tela e na lista guardada: a de um
+  // cartao que ja saiu da tela (outra busca, outro bipe) chega e nao encontra onde entrar.
+  const pedido = ++_naoEntreguesPedido;
+  const caixa = document.getElementById('listaNaoEntregues');
+  if (!caixa) return;
+  const naoVeio = (motivo) => {
+    _naoEntregues = null;   // a lista de antes nao fica valendo (nem na tela, nem pra conferir a foto) depois de um pedido que falhou
+    const c = document.getElementById('listaNaoEntregues');
+    if (!c) return;
+    c.innerHTML = '<div id="naoEntreguesFalhou" style="font-size:12.5px;color:#8a4b00;background:#fff7e6;border:1px solid #f0c36d;border-radius:8px;padding:8px 10px;">'
+      + '⚠️ Não consegui carregar a lista das vendas não entregues' + (motivo ? ' — ' + escapeHtml(String(motivo).slice(0, 160)) : '')
+      + '. O campo do Ref. ID aqui em cima funciona do mesmo jeito.</div>';
+  };
+  if (_naoEntregues) desenharNaoEntregues();   // a de antes aparece na hora; a nova troca quando chegar
+  else caixa.innerHTML = '<div style="font-size:12.5px;color:#5b6b7f;">Carregando as vendas não entregues…</div>';
+  let d = null;
+  try {
+    const r = await fetch((window.APP_BASE || '') + '/api/pacote-meli/nao-entregues');
+    d = await r.json();
+  } catch (e) { d = null; }
+  if (pedido !== _naoEntreguesPedido) return;
+  if (!d || d.ok !== true || !Array.isArray(d.itens)) { naoVeio(d && d.erro); return; }
+  _naoEntregues = d;
+  desenharNaoEntregues();
+}
+
+function desenharNaoEntregues() {
+  const caixa = document.getElementById('listaNaoEntregues');
+  const d = _naoEntregues;
+  if (!caixa || !d || !Array.isArray(d.itens)) return;
+  const campo = document.getElementById('inputRefId');
+  const digitado = String((campo && campo.value) || '').replace(/\D/g, '');
+  const validos = d.itens.filter((it) => it && /^\d{9,13}$/.test(String(it.ref_id)));
+  const esperando = validos.filter((it) => !it.ja_triado);
+  // sem nada digitado: as que ESPERAM triagem. Digitando: as que tem esses numeros no Ref. ID — inclusive a ja triada,
+  // pra tela dizer que ela ja foi (em vez de "nao achei").
+  const linhas = digitado ? validos.filter((it) => String(it.ref_id).indexOf(digitado) !== -1) : esperando;
+  const dm = (iso) => (iso && /^\d{4}-\d{2}-\d{2}/.test(String(iso))) ? String(iso).slice(8, 10) + '/' + String(iso).slice(5, 7) : '';
+  if (!digitado && !_naoEntreguesAberta && esperando.length) {
+    caixa.innerHTML = '<button type="button" id="btnVerNaoEntregues" onclick="abrirNaoEntregues()" style="width:100%;padding:10px;background:#e3f2fd;color:#0d47a1;border:1px solid #90caf9;border-radius:8px;font-size:13.5px;font-weight:700;cursor:pointer;">'
+      + (esperando.length === 1 ? '📋 Ver a venda não entregue ainda não triada (1)' : '📋 Ver as vendas não entregues ainda não triadas (' + esperando.length + ')') + '</button>';
+    return;
+  }
+  let html = '<div id="naoEntreguesTitulo" style="font-weight:700;color:#0d47a1;font-size:13.5px;margin-bottom:4px;">';
+  if (digitado) {
+    html += linhas.length ? '📋 Vendas não entregues com “' + escapeHtml(digitado) + '” no Ref. ID — toque na da etiqueta:'
+      : 'Nenhuma venda não entregue com “' + escapeHtml(digitado) + '” no Ref. ID — confira o número na etiqueta. O botão Buscar procura do mesmo jeito.';
+  } else {
+    // "ainda nao triadas", e nao "esperando": o ML diz que a venda nao foi entregue — nao diz se a caixa vai voltar
+    html += esperando.length ? '📋 Vendas não entregues ainda não triadas (' + esperando.length + ') — ache o Ref. ID da etiqueta e toque, ou digite o fim dele aqui em cima pra encurtar a lista:'
+      : validos.length === 1 ? 'A única venda não entregue que o Mercado Livre lista já foi triada.'
+        : validos.length ? 'As ' + validos.length + ' vendas não entregues que o Mercado Livre lista já foram triadas.'
+          : 'O Mercado Livre não lista nenhuma venda não entregue desta conta.';
+  }
+  html += '</div>';
+  linhas.slice(0, NAO_ENTREGUES_NA_TELA).forEach((it) => {
+    const prods = Array.isArray(it.produtos) ? it.produtos : [];
+    const linhaProd = prods.length
+      ? prods.map((p) => '<b>' + escapeHtml(String(p.qtd || 1)) + '× ' + escapeHtml(String(p.titulo || '(sem título)')) + '</b>' + (p.sku ? ' <span style="color:#555;">· SKU ' + escapeHtml(String(p.sku)) + '</span>' : '')).join('<br>')
+      : '<i>o Mercado Livre não mandou o produto desta venda — toque pra abrir</i>';
+    const pedidos = Array.isArray(it.pedidos) ? it.pedidos : [];
+    html += '<div data-ref-id="' + escapeHtml(String(it.ref_id)) + '" style="padding:8px 10px;margin:5px 0;background:' + (it.ja_triado ? '#eceff1' : '#e3f2fd') + ';border-radius:8px;cursor:pointer;" onclick="buscarPedidoRetiro(\'' + escapeHtml(String(it.ref_id)) + '\')">'
+      + '<div style="color:#0d47a1;">Ref. ID <b style="font-family:ui-monospace,monospace;font-size:16px;letter-spacing:.5px;">' + escapeHtml(String(it.ref_id)) + '</b>'
+      + (dm(it.data) ? ' <span style="font-size:12px;">· venda de ' + dm(it.data) + '</span>' : '')
+      + (it.ja_triado ? ' <span style="font-size:12px;font-weight:700;color:#455a64;">· ✔ já triada</span>' : '') + '</div>'
+      + '<div style="font-size:13px;margin-top:2px;">📦 ' + linhaProd + '</div>'
+      + (pedidos.length ? '<div style="font-size:12px;color:#1c3a63;margin-top:2px;">Pedido ' + pedidos.map((p) => escapeHtml(String(p))).join(' + ') + '</div>' : '')
+      + '</div>';
+  });
+  const notas = [];
+  if (linhas.length > NAO_ENTREGUES_NA_TELA) notas.push('… e mais ' + (linhas.length - NAO_ENTREGUES_NA_TELA) + ' — digite o fim do Ref. ID aqui em cima pra achar.');
+  if (d.cortada) notas.push('O Mercado Livre tem ' + (d.total_no_ml != null ? escapeHtml(String(d.total_no_ml)) + ' ' : 'mais ') + 'vendas não entregues; aqui estão as ' + validos.length + ' mais recentes. A que não estiver na lista continua sendo achada pelo Ref. ID digitado.');
+  if (d.triagem_conferida === false) notas.push('⚠️ Não consegui conferir quais já foram triadas — a lista pode trazer venda já triada.');
+  if (notas.length) html += '<div id="naoEntreguesNotas" style="font-size:12px;color:#5b6b7f;margin-top:4px;line-height:1.4;">' + notas.join('<br>') + '</div>';
+  caixa.innerHTML = html;
+}
+
+function abrirNaoEntregues() { _naoEntreguesAberta = true; desenharNaoEntregues(); }
+
+// o numero e o envio de uma venda NAO ENTREGUE desta empresa (triada ou nao)? — o leitor de imagem pergunta isto
+function refIdNaListaDosNaoEntregues(numero) {
+  const d = _naoEntregues;
+  return !!(d && Array.isArray(d.itens) && d.itens.some((it) => it && String(it.ref_id) === String(numero)));
 }
 
 // O "nao encontrado" so oferece o Ref. ID quando o ML RESPONDEU que aquele envio nao existe (404). Recusa (403), limite
@@ -1297,6 +1400,7 @@ function sugerirRefId(data) {
     const envio = tent.find((t) => t && t.tipo === 'shipment_id');
     if (!envio || envio.status !== 404 || !divResultado) return;
     divResultado.insertAdjacentHTML('beforeend', cartaoRefId());
+    _naoEntreguesAberta = false; carregarNaoEntregues();   // b796: aqui a lista vem fechada (a do retiro vem logo abaixo)
     // a busca que falhou veio de uma FOTO? entao o Ref. ID esta nela: o leitor de imagem le e busca sozinho
     if (typeof window.tentarRefIdDaEtiqueta === 'function') window.tentarRefIdDaEtiqueta(String(window._ultimoCodigoBusca || ''), String((data && data.codigo_limpo) || ''));
   } catch (e) { /* sugestao extra: falhar aqui nao muda o erro que ja esta na tela */ }
@@ -1324,6 +1428,7 @@ function abrirPacoteMeli() {
   btnBuscar.disabled = false;
   divResultado.innerHTML = cartaoRefId();
   divResultado.classList.add('show');
+  _naoEntreguesAberta = true; carregarNaoEntregues();   // b796: ele disse que e pacote MELI — a lista ja vem aberta
   const campo = document.getElementById('inputRefId');
   if (campo) campo.focus();
 }
