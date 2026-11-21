@@ -28,10 +28,17 @@ const PED_G = '2000018475557724';
 let opsE429 = true;   // depois vira 200: prova que o 429 e consultado de novo em ~30 min
 const dia = (n) => new Date(Date.now() - n * 864e5).toISOString();
 const chamadas = [];
+// b785: a fila da revisao do CD e UMA consulta por vez, com pausa — medido aqui (inicio de cada /reviews e quantas em voo)
+const inicioDasRevisoes = []; let revisoesEmVoo = 0, maxRevisoesEmVoo = 0;
 const ml = {
   userId: () => '1',
   chamarML: async (url) => {
     chamadas.push(url);
+    if (/\/reviews$/.test(url)) {
+      inicioDasRevisoes.push({ ret: (url.match(/returns\/(\d+)\/reviews/) || [])[1], t: Date.now() }); revisoesEmVoo++; maxRevisoesEmVoo = Math.max(maxRevisoesEmVoo, revisoesEmVoo);
+      await new Promise((ok2) => setTimeout(ok2, 15));
+      revisoesEmVoo--;
+    }
     if (url.includes('/claims/search')) {
       if (!/status=closed/.test(url)) return { ok: true, data: { data: [] } };
       return { ok: true, data: { data: [
@@ -105,7 +112,7 @@ const ml = {
 
   // ── a fabrica de producao, com o ML falso ──
   const mod = require(path.join(__dirname, '..', 'amb-devolucoes', 'lib-AMB', 'ml-returns-AMB.js'));
-  const r = mod.criar({ clienteMl: ml, ml: { janelaDias: 120 }, PREFIXO_ENV: 'AMB_', pausaApos429Ms: 0 });
+  const r = mod.criar({ clienteMl: ml, ml: { janelaDias: 120 }, PREFIXO_ENV: 'AMB_', pausaApos429Ms: 1600 });   // em producao 5 s
   await r.construirIndice();
   r.resumoEspreita();   // dispara a consulta da revisao do CD (fila, uma por vez, com pausa)
   let lista = [];
@@ -120,6 +127,16 @@ const ml = {
   const A = itemDoRetiro(lista.find((x) => String(x.pedido) === PED_A) || {}, '48133297953');
   const B = itemDoRetiro(lista.find((x) => String(x.pedido) === PED_B) || {}, '48133297953');
   console.log('     linha A: ' + JSON.stringify(A).slice(0, 600));
+
+  // 0. a fila: uma por vez, com pausa (cota do ML)
+  // intervalo ate a consulta SEGUINTE, por devolucao (555 = a que levou 429 nas operacoes)
+  const intervalos = inicioDasRevisoes.slice(0, -1).map((x, i) => ({ ret: x.ret, ms: inicioDasRevisoes[i + 1].t - x.t }));
+  const normais = intervalos.filter((x) => x.ret !== '555').map((x) => x.ms);
+  const depoisDo429 = (intervalos.find((x) => x.ret === '555') || {}).ms;
+  ok(inicioDasRevisoes.length === 7 && maxRevisoesEmVoo === 1, '⚠️ a revisao do CD e consultada UMA por vez (' + inicioDasRevisoes.length + ' consultas, no maximo ' + maxRevisoesEmVoo + ' em voo)');
+  ok(normais.length >= 5 && Math.min(...normais) >= 650 && Math.max(...normais) < 1500, '  com pausa entre uma e outra (' + Math.min(...normais) + '–' + Math.max(...normais) + ' ms; a pausa e 700)');
+  ok(depoisDo429 == null || depoisDo429 >= 1550, '⚠️ b785: depois de um 429 a fila espera MAIS antes da proxima consulta (' + depoisDo429 + ' ms; o teste configura 1600, producao 5 s)');
+  ok(depoisDo429 != null, '  (a devolucao do 429 nao foi a ultima da fila — o intervalo depois dela foi medido)');
 
   // 1. tudo que o sistema tem do pedido
   ok(A.produtos.length === 1 && A.produtos[0].titulo === 'Cavalete Automotivo 3 Toneladas Par' && A.produtos[0].sku === 'CAV-3T' && A.produtos[0].qtd === 2,
