@@ -627,7 +627,7 @@ app.get('/health', (req, res) => {
       // era checado ANTES de entrar na fila da empresa, nao antes de sair —
       // um candidato "desistido" ainda batia no Bling depois de esperar
       // numa pausa de 429. Este arquivo so acompanha o numero do build.
-      version: '9.126.308 (b794: V-14 — handler async que estoura nao derruba mais o processo (46 rotas, 2 delas publicas))',   // b744: SEM encadear os builds anteriores — a historia e do git, nao desta linha
+      version: '9.126.309 (b795: V-13 — sonda: o eco da busca nao e ligacao (caso real da AMB) e o resultado medido)',   // b744: SEM encadear os builds anteriores — a historia e do git, nao desta linha
     server_js_sha1: HASH_SERVER,
     boot_em: BOOT_EM,
     uptime_min: Math.round(process.uptime() / 60),
