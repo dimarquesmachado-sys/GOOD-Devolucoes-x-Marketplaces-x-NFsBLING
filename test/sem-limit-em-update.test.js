@@ -1,9 +1,9 @@
 'use strict';
-// b782 — T-02 (parte 2) achou, com o PostgREST DE VERDADE (test/postgrest-real-triagem.test.js): UPDATE com `.limit()`
-// e sem `.order()` e RECUSADO pelo PostgREST 12 — PGRST109 "A 'limit' was applied without an explicit 'order'". Na
-// fabrica isso derrubava o "OK, ciente" do recado (o estoquista ficaria travado na triagem), a edicao do recado, as
-// fotos/itens gravados depois da triagem (atualizarTriagem) e, na peca de defeitos (as 3), editar defeito/comentario e
-// as transicoes dos pedidos de recuperado/descarte. Todos filtram por id (unico): o `.limit(1)` nao fazia nada.
+// b782 — T-02 (parte 2) achou, com o PostgREST DE VERDADE: UPDATE com `.limit()` e sem `.order()` e RECUSADO pelo
+// PostgREST 12 — PGRST109 "A 'limit' was applied without an explicit 'order'" (ciente/edicao de recado e fotos da
+// triagem na fabrica, defeitos-ciclo nas 3). b784: o projeto roda a 14.5, que ACEITA (medido) — em producao nao quebrava.
+// A trava fica por PORTABILIDADE: todos filtram por id (unico), o `.limit(1)` nao faz nada, e uma versao/projeto que
+// recuse derrubaria o ciente do recado (o estoquista travaria na triagem).
 //
 // O teste de comportamento cobre os caminhos que ele executa (triagem, recados); esta trava cobre a CLASSE no codigo
 // todo do servidor: nenhuma chamada `.update(` / `.delete(` do supabase-js com `.limit(` na mesma instrucao.
