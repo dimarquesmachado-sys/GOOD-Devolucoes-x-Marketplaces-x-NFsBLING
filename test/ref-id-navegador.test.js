@@ -64,12 +64,18 @@ const venda = (codigo) => ({
       // os dubles dos dois leitores de fora (entram antes de qualquer script da pagina; a CDN e cortada logo abaixo)
       await ctx.addInitScript(() => {
         window.__qr = null; window.__ocr = ''; window.__ocrMs = 0; window.__n = { qr: 0, ocr: 0 };
+        window.__ocrManual = false; window.__ocrFila = [];   // modo manual: a leitura fica PENDENTE ate o teste soltar (sem corrida com o relogio)
         try { delete window.BarcodeDetector; } catch (err) { /* no Linux nem existe */ }
         window.jsQR = function () { window.__n.qr++; return window.__qr ? { data: window.__qr } : null; };
         window.Tesseract = { createWorker: async function () {
           return {
             setParameters: async function () {},
-            recognize: async function () { window.__n.ocr++; const texto = window.__ocr; if (window.__ocrMs) await new Promise((r) => setTimeout(r, window.__ocrMs)); return { data: { text: texto } }; },
+            recognize: async function () {
+              window.__n.ocr++; const texto = window.__ocr;
+              if (window.__ocrManual) await new Promise((r) => window.__ocrFila.push(r));
+              else if (window.__ocrMs) await new Promise((r) => setTimeout(r, window.__ocrMs));
+              return { data: { text: texto } };
+            },
             terminate: async function () {},
           };
         } };
@@ -208,6 +214,18 @@ const venda = (codigo) => ({
       n1 = await leitores();
       ok(JSON.stringify(buscados.slice(de)) === JSON.stringify([QR, REF]) && n1.ocr - n0.ocr === 1 && (await temCartao()) === 1, '⚠️ SEM LACO: se o Ref. ID tambem nao achar, para (2 buscas, 1 leitura) e deixa o cartao pra digitar');
       acha.add(REF);
+      // rotulo ilegivel e UM numero solto: na tentativa automatica ninguem disse que e pacote MELI — pergunta, nao busca sozinho.
+      // (o numero do codigo de barras aparece INTEIRO no texto: como ele e o que acabou de falhar, nao volta como opcao)
+      de = buscados.length; await leitores({ __qr: QR, __ocr: 'G MELI AO\n48126024340\nXSP16\n48133297953', __ocrMs: 0 });
+      await soltarFoto();
+      await page.waitForSelector('#zonaColarOpcoes button', { timeout: 8000 });
+      await page.waitForTimeout(500);
+      ok(JSON.stringify(buscados.slice(de)) === JSON.stringify([QR]) && (await page.$$('#zonaColarOpcoes button')).length === 1 && /não li o rótulo/.test(await page.$eval('#statusRefId', (el) => el.textContent)),
+        '⚠️ tentativa automatica SEM o rotulo "Ref. ID": o numero solto (pode ser telefone/CPF de outra etiqueta) NAO e buscado sozinho — vira pergunta, e so com ELE (o codigo que acabou de falhar nao volta como opcao)');
+      await page.click('#zonaColarOpcoes button');
+      await esperarVenda(REF);
+      ok(buscados[buscados.length - 1] === REF && (await avisoLido()).includes(REF), '  tocou nele: busca e acha (com o aviso do numero lido)');
+      await leitores({ __qr: QR, __ocr: OCR_REAL, __ocrMs: 0 });
       // o estoquista seguiu pra outra caixa enquanto a foto era lida: a leitura velha e descartada
       de = buscados.length; await leitores({ __ocrMs: 900 });
       await soltarFoto();
@@ -215,27 +233,32 @@ const venda = (codigo) => ({
       await bipar('RENATONEVES'); await esperarErro();
       await page.waitForTimeout(1300);
       ok(JSON.stringify(buscados.slice(de)) === JSON.stringify([QR, 'RENATONEVES']) && (await page.inputValue('#codigo')) === 'RENATONEVES', '⚠️ bipou outra coisa durante a leitura: o Ref. ID da foto antiga NAO e buscado por cima');
-      // outra FOTO durante a leitura: vale a nova. A leitura da nova e mais LENTA que o resto da antiga — quando a antiga
-      // termina, o campo de busca ainda mostra o codigo dela: so o "veio outra imagem" impede a busca errada.
-      de = buscados.length; await leitores({ __qr: QR, __ocr: OCR_REAL, __ocrMs: 900 });
+      // outra FOTO durante a leitura: vale a nova. As duas leituras ficam PENDENTES e a da foto antiga termina primeiro —
+      // nessa hora o campo de busca ainda mostra o codigo dela: so o "veio outra imagem" impede a busca errada.
+      de = buscados.length; await leitores({ __qr: QR, __ocr: OCR_REAL, __ocrMs: 0, __ocrManual: true, __ocrFila: [] });
       await soltarFoto();
-      await page.waitForSelector('#cartaoRefId', { timeout: 8000 });
-      await leitores({ __qr: null, __ocr: 'CORREIOS AD123456789BR', __ocrMs: 1600 });
+      await page.waitForFunction(() => window.__ocrFila.length === 1, null, { timeout: 8000 });
+      await leitores({ __qr: null, __ocr: 'CORREIOS AD123456789BR' });
       await soltarFoto();
-      await page.waitForTimeout(1200);
+      await page.waitForFunction(() => window.__ocrFila.length === 2, null, { timeout: 8000 });
+      await page.evaluate(() => window.__ocrFila[0]());
+      await page.waitForTimeout(400);
       ok(JSON.stringify(buscados.slice(de)) === JSON.stringify([QR]), '⚠️ mandou OUTRA foto durante a leitura: o Ref. ID da antiga NAO e buscado (a nova ainda esta sendo lida)');
+      await page.evaluate(() => window.__ocrFila[1]());
       await page.waitForFunction(() => document.getElementById('codigo').value === 'AD123456789BR', null, { timeout: 8000 });
       await page.waitForTimeout(300);
       ok(JSON.stringify(buscados.slice(de)) === JSON.stringify([QR, 'AD123456789BR']), '  e vale a nova: buscou o que ela trouxe');
       // a leitura demorada nao perde o aviso: o "some em 1,5 s" da busca que falhou nao apaga a leitura do Ref. ID no meio
-      de = buscados.length; await leitores({ __qr: QR, __ocr: OCR_REAL, __ocrMs: 2300 });
+      de = buscados.length; await leitores({ __qr: QR, __ocr: OCR_REAL, __ocrFila: [] });
       await soltarFoto();
-      await page.waitForSelector('#cartaoRefId', { timeout: 8000 });
-      await page.waitForTimeout(1800);
+      await page.waitForFunction(() => window.__ocrFila.length === 1, null, { timeout: 8000 });
+      await page.waitForTimeout(1900);   // o sumico de 1,5 s da busca que falhou ja teria vencido
       ok(await page.evaluate(() => { const z = document.getElementById('zonaColar'); return !!z && z.style.display === 'flex' && /lendo o texto/.test(document.getElementById('zonaColarStatus').textContent) && /Lendo o Ref\. ID/.test((document.getElementById('statusRefId') || {}).textContent || ''); }),
         '⚠️ leitura demorada: o aviso "lendo..." continua na tela (o sumico da busca anterior nao o apaga) e o cartao diz que esta lendo a foto');
+      await page.evaluate(() => window.__ocrFila[0]());
       await esperarVenda(REF);
       ok(JSON.stringify(buscados.slice(de)) === JSON.stringify([QR, REF]), '  e, quando termina, busca o Ref. ID');
+      await leitores({ __ocrManual: false, __ocrFila: [] });
       // a foto que ja teve a leitura feita nao e lida de novo num bipe do MESMO codigo
       await leitores({ __qr: QR, __ocr: OCR_REAL, __ocrMs: 0 });
       acha.delete(REF); await soltarFoto();
@@ -274,6 +297,12 @@ const venda = (codigo) => ({
       await page.setInputFiles('#arquivoRefId', { name: 'etiqueta.png', mimeType: 'image/png', buffer: PNG });
       await esperarVenda(REF);
       ok(buscados.length === de + 1, '  a mesma foto escolhida de novo e lida de novo');
+      // pelo CARTAO (ele ja disse que e pacote MELI): rotulo ilegivel e um numero so → e ele, busca direto
+      await page.click('#btnPacoteMeli');
+      de = buscados.length; await leitores({ __ocr: 'G MELI AO\n48126024340\nXSP16\n481332 97953' });
+      await page.setInputFiles('#arquivoRefId', { name: 'semrotulo.png', mimeType: 'image/png', buffer: PNG });
+      await esperarVenda(REF);
+      ok(JSON.stringify(buscados.slice(de)) === JSON.stringify([REF]), '  pelo cartao, rotulo ilegivel e UM numero de envio: busca direto (ele ja disse que e pacote MELI)');
       // sem Ref. ID legivel
       await page.click('#btnPacoteMeli');
       de = buscados.length; await leitores({ __ocr: 'G MELI AO\nXSP16\nSEX 02/10/2026 NF:' });

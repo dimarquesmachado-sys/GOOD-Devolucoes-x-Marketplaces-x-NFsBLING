@@ -265,7 +265,7 @@
   }
   window.usarCodigoColado = usar;
 
-  function oferecer(lista, semNada) {
+  function oferecer(lista, semNada, perguntar) {
     // b789: os candidatos a Ref. ID desta leitura (os que vieram de `candidatosRefId`). Se a busca por um deles ACHAR
     // uma venda, a tela mostra o numero lido pra conferir com a etiqueta (busca.js) — leitura de texto troca digito.
     window._refIdsLidosDaFoto = lista.filter(function (c) { return typeof c.rotulado === 'boolean'; }).map(function (c) { return c.valor; });
@@ -274,8 +274,8 @@
       status(semNada || 'não achei código nem texto reconhecível nessa imagem — tente uma foto mais nítida ou digite o código.');
       return;
     }
-    if (lista.length === 1) { usar(lista[0].valor); return; }
-    status('achei mais de um código — qual é o certo?');
+    if (lista.length === 1 && !perguntar) { usar(lista[0].valor); return; }
+    status(lista.length === 1 ? 'achei este número na etiqueta — é o Ref. ID? toque nele pra buscar.' : 'achei mais de um código — qual é o certo?');
     opcoesEl.innerHTML = lista.slice(0, 4).map(function (c) {
       return '<button type="button" onclick="usarCodigoColado(\'' + c.valor + '\')" '
         + 'style="display:block;width:100%;text-align:left;margin-bottom:4px;background:#fff;'
@@ -604,14 +604,19 @@
 
   // b789 - o que fazer com o que a leitura do Ref. ID achou: um so → busca; varios → pergunta (e o aviso NAO some
   // sozinho, pra dar tempo de escolher); nenhum → diz, e manda digitar no cartao.
-  function mostrarRefId(lista) {
+  // `soRotulado`: na tentativa AUTOMATICA ninguem disse que a etiqueta e um pacote MELI — entao so o numero que veio com
+  // o ROTULO "Ref. ID" e buscado sozinho. Numero solto de 11 digitos pode ser telefone ou CPF de uma etiqueta que nem e
+  // do ML: nao vai pra busca (nem pro registro do servidor) sem alguem tocar nele.
+  function mostrarRefId(lista, soRotulado) {
+    var perguntar = lista.length > 1 || (lista.length === 1 && !!soRotulado && !lista[0].rotulado);
     if (!lista.length) {
       avisoNoCartao('Não consegui ler o Ref. ID nessa foto — digite os números dele aqui em cima.');
       sumirEm(6000);
-    } else if (lista.length > 1) {
-      avisoNoCartao('Achei mais de um número na foto — toque no Ref. ID na lista lá em cima, ou digite aqui.');
+    } else if (perguntar) {
+      avisoNoCartao(lista.length > 1 ? 'Achei mais de um número na foto — toque no Ref. ID na lista lá em cima, ou digite aqui.'
+        : 'Achei um número na foto, mas não li o rótulo "Ref. ID" — se for ele, toque nele lá em cima; senão, digite aqui.');
     }
-    oferecer(lista, 'não consegui ler o Ref. ID nessa foto — tente uma foto mais nítida ou digite os números dele.');
+    oferecer(lista, 'não consegui ler o Ref. ID nessa foto — tente uma foto mais nítida ou digite os números dele.', perguntar);
   }
 
   /**
@@ -638,7 +643,7 @@
       var campo = document.getElementById('codigo');
       if (!campo || String(campo.value || '').trim() !== e.codigo) { trabalhando(false); return false; }
       var lista = candidatosRefId(texto, digitos || e.codigo);
-      mostrarRefId(lista);
+      mostrarRefId(lista, true);
       return lista.length > 0;
     } catch (err) { return false; }
   };
