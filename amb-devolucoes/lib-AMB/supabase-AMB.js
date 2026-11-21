@@ -498,7 +498,7 @@ async function editarRecado(id, { identificador, texto } = {}) {
     // b225.1 (Codex): EDITOU = precisa ser lido de novo
     campos.ciente_em = null;
     campos.ciente_por = null;
-    const r = await dbc.from(T.recados).update(campos).eq('id', id).select().limit(1);
+    const r = await dbc.from(T.recados).update(campos).eq('id', id).select();   // b782 (T-02): sem .limit — PostgREST 12 recusa UPDATE com limit sem order (PGRST109); o filtro por id ja e unico
     if (r.error) return { ok: false, erro: r.error.message };
     const linha = (r.data || [])[0] || null;
     if (!linha) return { ok: false, erro: 'recado nao encontrado' };
@@ -512,7 +512,7 @@ async function marcarCiente(id, quem) {
   try {
     const r = await dbc.from(T.recados)
       .update({ ciente_por: quem, ciente_em: new Date().toISOString() })
-      .eq('id', id).select().limit(1);
+      .eq('id', id).select();   // b782 (T-02): sem .limit — PostgREST 12 recusa UPDATE com limit sem order (PGRST109); o filtro por id ja e unico
     if (r.error) return { ok: false, erro: r.error.message };
     return { ok: true, recado: (r.data || [])[0] || null };
   } catch (e) { return { ok: false, erro: e.message }; }
@@ -1009,7 +1009,7 @@ async function atualizarTriagem(id, campos) {
   if (!dbc) return { ok: false, erro: erroInicial };
   try {
     const r = await dbc.from(T.devolucoes)
-      .update(campos).eq('id', id).select().limit(1);
+      .update(campos).eq('id', id).select();   // b782 (T-02): sem .limit — PostgREST 12 recusa UPDATE com limit sem order (PGRST109); o filtro por id ja e unico
     if (r.error) return { ok: false, erro: r.error.message };
     if (!r.data || !r.data.length) return { ok: false, erro: 'triagem nao encontrada' };
     return { ok: true, registro: r.data[0] };
