@@ -23,12 +23,22 @@ const ok = (c, o) => { if (!c) falhas++; console.log((c ? 'ok  ' : 'FALHA ') + o
 const PED_A = '2000018239001602', PED_B = '2000019243159482', PED_C = '2000019060853696';
 // Codex #632: D e do MESMO anuncio de A (inventario INVA); E: operacoes respondem 429; F: operacoes OK sem retirada
 const PED_D = '2000018338961088', PED_E = '2000018499724320', PED_F = '2000018551005224';
+// b785: G — as operacoes respondem 400 (conclusivo) com a mensagem do ML
+const PED_G = '2000018475557724';
+let opsE429 = true;   // depois vira 200: prova que o 429 e consultado de novo em ~30 min
 const dia = (n) => new Date(Date.now() - n * 864e5).toISOString();
 const chamadas = [];
+// b785: a fila da revisao do CD e UMA consulta por vez, com pausa — medido aqui (inicio de cada /reviews e quantas em voo)
+const inicioDasRevisoes = []; let revisoesEmVoo = 0, maxRevisoesEmVoo = 0;
 const ml = {
   userId: () => '1',
   chamarML: async (url) => {
     chamadas.push(url);
+    if (/\/reviews$/.test(url)) {
+      inicioDasRevisoes.push({ ret: (url.match(/returns\/(\d+)\/reviews/) || [])[1], t: Date.now() }); revisoesEmVoo++; maxRevisoesEmVoo = Math.max(maxRevisoesEmVoo, revisoesEmVoo);
+      await new Promise((ok2) => setTimeout(ok2, 15));
+      revisoesEmVoo--;
+    }
     if (url.includes('/claims/search')) {
       if (!/status=closed/.test(url)) return { ok: true, data: { data: [] } };
       return { ok: true, data: { data: [
@@ -38,19 +48,20 @@ const ml = {
         { id: 74, resource: 'order', resource_id: PED_D, status: 'closed', stage: 'claim', date_created: dia(52) },
         { id: 75, resource: 'order', resource_id: PED_E, status: 'closed', stage: 'claim', date_created: dia(25) },
         { id: 76, resource: 'order', resource_id: PED_F, status: 'closed', stage: 'claim', date_created: dia(26) },
+        { id: 77, resource: 'order', resource_id: PED_G, status: 'closed', stage: 'claim', date_created: dia(62) },
       ] } };
     }
     const mRet = /\/post-purchase\/v2\/claims\/(\d+)\/returns/.exec(url);
     if (mRet) {
       const k = { 71: ['551', PED_A, 'MLB111', 'TRKA1', 49], 72: ['552', PED_B, 'MLB222', 'TRKB2', 19], 73: ['553', PED_C, 'MLB333', 'TRKC3', 29],
-        74: ['554', PED_D, 'MLB444', 'TRKD4', 51], 75: ['555', PED_E, 'MLB555', 'TRKE5', 24], 76: ['556', PED_F, 'MLB666', 'TRKF6', 25] }[mRet[1]];
+        74: ['554', PED_D, 'MLB444', 'TRKD4', 51], 75: ['555', PED_E, 'MLB555', 'TRKE5', 24], 76: ['556', PED_F, 'MLB666', 'TRKF6', 25], 77: ['557', PED_G, 'MLB777', 'TRKG7', 62] }[mRet[1]];
       return { ok: true, data: {
         id: k[0], date_created: dia(k[4]),
         orders: [{ order_id: k[1], item_id: k[2] }],
         shipments: [{ tracking_number: k[3], shipment_id: 500 + Number(mRet[1]), status: 'delivered', destination: { name: 'warehouse' } }],
       } };
     }
-    if (/\/post-purchase\/v1\/returns\/55[1-6]\/reviews/.test(url)) {
+    if (/\/post-purchase\/v1\/returns\/55[1-7]\/reviews/.test(url)) {
       const a = url.includes('/551/');
       return { ok: true, data: { reviews: [{ resource_reviews: [{ product_destination: 'seller', product_condition: a ? 'saleable' : 'unsaleable', reason_id: 'damaged' }] }] } };
     }
@@ -60,7 +71,12 @@ const ml = {
     if (url.startsWith('/items/MLB444')) return { ok: true, data: { inventory_id: 'INVA', seller_id: 1 } };   // mesmo anuncio de A
     if (url.startsWith('/items/MLB555')) return { ok: true, data: { inventory_id: 'INVE', seller_id: 1 } };
     if (url.startsWith('/items/MLB666')) return { ok: true, data: { inventory_id: 'INVF', seller_id: 1 } };
-    if (url.startsWith('/stock/fulfillment/operations/search') && url.includes('inventory_id=INVE')) return { ok: false, status: 429, error: 'too_many_requests' };
+    if (url.startsWith('/items/MLB777')) return { ok: true, data: { inventory_id: 'INVG', seller_id: 1 } };
+    if (url.startsWith('/stock/fulfillment/operations/search') && url.includes('inventory_id=INVG')) return { ok: false, status: 400, error: { message: 'date_from out of range', error: 'bad_request' } };
+    if (url.startsWith('/stock/fulfillment/operations/search') && url.includes('inventory_id=INVE')) {
+      if (opsE429) return { ok: false, status: 429, error: 'too_many_requests' };
+      return { ok: true, data: { results: [{ id: 900020, type: 'WITHDRAWAL_DELIVERY', date_created: dia(3), detail: { shipment: 49999999999 } }] } };
+    }
     if (url.startsWith('/stock/fulfillment/operations/search') && url.includes('inventory_id=INVF')) {
       return { ok: true, data: { results: [{ id: 900009, type: 'INBOUND_RECEPTION', date_created: dia(10), external_references: [{ type: 'inbound_id', value: '66666666' }] }] } };
     }
@@ -96,7 +112,7 @@ const ml = {
 
   // ── a fabrica de producao, com o ML falso ──
   const mod = require(path.join(__dirname, '..', 'amb-devolucoes', 'lib-AMB', 'ml-returns-AMB.js'));
-  const r = mod.criar({ clienteMl: ml, ml: { janelaDias: 120 }, PREFIXO_ENV: 'AMB_' });
+  const r = mod.criar({ clienteMl: ml, ml: { janelaDias: 120 }, PREFIXO_ENV: 'AMB_', pausaApos429Ms: 1600 });   // em producao 5 s
   await r.construirIndice();
   r.resumoEspreita();   // dispara a consulta da revisao do CD (fila, uma por vez, com pausa)
   let lista = [];
@@ -105,12 +121,22 @@ const ml = {
     const base = r.resumoEspreita() || {};
     lista = (base.em_transito || []).filter((x) => x && x.vem_pelo_retiro);
     const prontas = lista.filter((x) => x.retiro && x.retiro.linha_do_tempo && (x.itens || []).length);
-    if (prontas.length === 6) break;
+    if (prontas.length === 7) break;
   }
-  ok(lista.length === 6, '  as 6 pecas que o CD mandou pro vendedor estao no retiro (' + lista.length + ')');
+  ok(lista.length === 7, '  as 7 pecas que o CD mandou pro vendedor estao no retiro (' + lista.length + ')');
   const A = itemDoRetiro(lista.find((x) => String(x.pedido) === PED_A) || {}, '48133297953');
   const B = itemDoRetiro(lista.find((x) => String(x.pedido) === PED_B) || {}, '48133297953');
   console.log('     linha A: ' + JSON.stringify(A).slice(0, 600));
+
+  // 0. a fila: uma por vez, com pausa (cota do ML)
+  // intervalo ate a consulta SEGUINTE, por devolucao (555 = a que levou 429 nas operacoes)
+  const intervalos = inicioDasRevisoes.slice(0, -1).map((x, i) => ({ ret: x.ret, ms: inicioDasRevisoes[i + 1].t - x.t }));
+  const normais = intervalos.filter((x) => x.ret !== '555').map((x) => x.ms);
+  const depoisDo429 = (intervalos.find((x) => x.ret === '555') || {}).ms;
+  ok(inicioDasRevisoes.length === 7 && maxRevisoesEmVoo === 1, '⚠️ a revisao do CD e consultada UMA por vez (' + inicioDasRevisoes.length + ' consultas, no maximo ' + maxRevisoesEmVoo + ' em voo)');
+  ok(normais.length >= 5 && Math.min(...normais) >= 650 && Math.max(...normais) < 1500, '  com pausa entre uma e outra (' + Math.min(...normais) + '–' + Math.max(...normais) + ' ms; a pausa e 700)');
+  ok(depoisDo429 == null || depoisDo429 >= 1550, '⚠️ b785: depois de um 429 a fila espera MAIS antes da proxima consulta (' + depoisDo429 + ' ms; o teste configura 1600, producao 5 s)');
+  ok(depoisDo429 != null, '  (a devolucao do 429 nao foi a ultima da fila — o intervalo depois dela foi medido)');
 
   // 1. tudo que o sistema tem do pedido
   ok(A.produtos.length === 1 && A.produtos[0].titulo === 'Cavalete Automotivo 3 Toneladas Par' && A.produtos[0].sku === 'CAV-3T' && A.produtos[0].qtd === 2,
@@ -147,12 +173,39 @@ const ml = {
     '⚠️ Codex #632: pedido D, do mesmo anuncio (INVA), casa com a mesma retirada — e por isso o casamento e nivel ANUNCIO, nunca "e deste pedido"');
   // Codex #632 (P2): falha das operacoes nao vira lista vazia calada
   const E = itemDoRetiro(lista.find((x) => String(x.pedido) === PED_E) || {}, '48133297953');
-  ok(E.linha_do_tempo && E.linha_do_tempo.operacoes_http === 429 && E.linha_do_tempo.operacoes === null && /nao responderam \(HTTP 429\)/.test(E.linha_do_tempo.motivo || '') && !E.saiu_cd_em,
+  ok(E.linha_do_tempo && E.linha_do_tempo.operacoes_http === 429 && E.linha_do_tempo.operacoes === null && /nao responderam \(HTTP 429\) — nova tentativa em ~30 min/.test(E.linha_do_tempo.motivo || '') && E.linha_do_tempo.tentar_de_novo === true && !E.saiu_cd_em,
     '⚠️ Codex #632: operacoes com 429 → motivo na linha (nao "0 operacoes" calado) (' + JSON.stringify(E.linha_do_tempo) + ')');
   const F = itemDoRetiro(lista.find((x) => String(x.pedido) === PED_F) || {}, '66666666');
   ok(F.linha_do_tempo && F.linha_do_tempo.operacoes === 1 && /ainda nao registrou a retirada/.test(F.linha_do_tempo.motivo || '') && F.casa_etiqueta === null,
     '  operacoes OK sem nenhuma retirada → motivo "ainda nao registrou"; numero de entrada no Full nao casa (' + JSON.stringify(F.linha_do_tempo) + ')');
   ok(A.linha_do_tempo.motivo === null && B.linha_do_tempo.motivo && C.linha_do_tempo.motivo, '  toda linha SEM data do CD tem motivo; a que tem data nao tem');
+  // b785: 400 e CONCLUSIVO — diz a mensagem do ML e nao volta a consultar em 30 min
+  const G = itemDoRetiro(lista.find((x) => String(x.pedido) === PED_G) || {}, '');
+  ok(G.linha_do_tempo && /recusaram a consulta \(HTTP 400: .*date_from out of range/.test(G.linha_do_tempo.motivo || '') && G.linha_do_tempo.tentar_de_novo === false,
+    '⚠️ b785: 400 → a linha diz o que o ML respondeu (nao so o numero), e nao e passageiro (' + JSON.stringify(G.linha_do_tempo) + ')');
+  ok(C.linha_do_tempo.tentar_de_novo === true && /nova tentativa em ~30 min/.test(C.linha_do_tempo.motivo || ''), '  excecao tambem e passageira (~30 min)');
+
+  // b785: passados 31 min, SO as passageiras (429 e excecao) sao consultadas de novo; a 429 agora responde e ganha data
+  const conta = (inv) => chamadas.filter((u) => u.startsWith('/stock/fulfillment/operations/search') && u.includes('inventory_id=' + inv)).length;
+  const antes = { A: conta('INVA'), E: conta('INVE'), G: conta('INVG'), F: conta('INVF') };
+  opsE429 = false;
+  const agoraReal = Date.now; const pulo = 31 * 60e3;
+  Date.now = () => agoraReal() + pulo;
+  try {
+    r.resumoEspreita();
+    let E2 = null;
+    for (let t = 0; t < 40; t++) {
+      await new Promise((ok2) => setTimeout(ok2, 250));
+      const x = ((r.resumoEspreita() || {}).em_transito || []).find((y) => String(y.pedido) === PED_E);
+      E2 = x ? itemDoRetiro(x, '') : null;
+      if (E2 && E2.saiu_cd_em) break;
+    }
+    ok(E2 && E2.saiu_cd_em && E2.linha_do_tempo.motivo === null && E2.linha_do_tempo.tentar_de_novo === false,
+      '⚠️ b785: a peca do 429 foi consultada de novo depois de ~30 min e ganhou a data (' + JSON.stringify(E2 && E2.linha_do_tempo) + ')');
+    ok(conta('INVE') === antes.E + 1, '  a 429 consultou as operacoes de novo (1 vez)');
+    ok(conta('INVA') === antes.A && conta('INVG') === antes.G && conta('INVF') === antes.F,
+      '  as conclusivas (ok, 400, sem retirada) NAO foram consultadas de novo em 31 min (A ' + antes.A + '→' + conta('INVA') + ', G ' + antes.G + '→' + conta('INVG') + ')');
+  } finally { Date.now = agoraReal; }
 
   console.log('');
   console.log(falhas === 0 ? '=== todos passaram' : '=== ' + falhas + ' FALHA(S)');

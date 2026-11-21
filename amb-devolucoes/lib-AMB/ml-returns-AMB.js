@@ -669,6 +669,7 @@ function numerosDasRetiradas(ops) {
   return achados;
 }
 const REVISAO_FILA = new Set();
+const PAUSA_APOS_429_MS = Number((cfg && cfg.pausaApos429Ms) != null ? cfg.pausaApos429Ms : 5000);   // b785 (o teste usa 0)
 let REVISAO_RODANDO = false;
 async function processarRevisoesCD() {
   if (REVISAO_RODANDO) return;
@@ -696,11 +697,17 @@ async function processarRevisoesCD() {
              SEM data nenhuma, e sem isto nao da pra saber se o anuncio negou (permissao), se nao e Full ou se o ML nao
              tem operacao. E os NUMEROS das operacoes de retirada: a etiqueta traz codigo de barras + Ref. ID — se um
              deles aparece na retirada de um pedido, a etiqueta e daquele pedido (o bipe destaca; nada e escolhido sozinho). */
-          reg.linha_do_tempo = { anuncio_http: null, operacoes_http: null, operacoes: null, motivo: null };
+          reg.linha_do_tempo = { anuncio_http: null, operacoes_http: null, operacoes: null, motivo: null, tentar_de_novo: false };
+          /* b785 (regra da casa: "NAO SEI" != "NAO FUNCIONA"): 429, 5xx, rede e excecao sao passageiros — a linha do tempo
+             e consultada de novo em ~30 min (era 24 h: no bipe de 21/11, depois do deploy, 8 pecas ficaram sem data por
+             429 de rajada). So resposta CONCLUSIVA (ok, 400, 403...) vale 24 h. */
+          const passageiro = (resp) => !resp || (!resp.ok && (resp.status == null || Number(resp.status) === 429 || Number(resp.status) >= 500));
+          const erroMl = (resp) => { try { return JSON.stringify((resp && resp.error) || '').slice(0, 160); } catch (e) { return ''; } };
           try {
             const ped = rr.data && Array.isArray(rr.data.orders) ? rr.data.orders[0] : null;
             const it = ped && ped.item_id ? await ((p) => ml.chamarML(p))('/items/' + ped.item_id + '?attributes=inventory_id,seller_id') : null;
             reg.linha_do_tempo.anuncio_http = it ? (it.ok ? 200 : (it.status || null)) : null;
+            if (it && passageiro(it)) reg.linha_do_tempo.tentar_de_novo = true;
             const inv = it && it.ok && it.data && it.data.inventory_id;
             const sel = it && it.ok && it.data && it.data.seller_id;
             const de = String((rr.data && rr.data.date_created) || '').slice(0, 10);
@@ -718,30 +725,40 @@ async function processarRevisoesCD() {
               /* Codex #632: falha das operacoes (429, 5xx, 403) NAO pode virar "lista vazia" calada na tela — sem data,
                  a linha diz por que. E resposta OK sem nenhuma retirada tambem se explica (o ML ainda nao registrou). */
               if (!op || !op.ok) {
-                reg.linha_do_tempo.motivo = (op && Number(op.status) === 403 && ehBloqueioDePolitica(op.error))
-                  ? 'operacoes do Full negadas pelo ML (permissao do app)'
-                  : 'operacoes do Full nao responderam (HTTP ' + ((op && op.status) || '-') + ') — nova tentativa em ate 24 h';
+                if (passageiro(op)) {
+                  reg.linha_do_tempo.tentar_de_novo = true;
+                  reg.linha_do_tempo.motivo = 'operacoes do Full nao responderam (HTTP ' + ((op && op.status) || '-') + ') — nova tentativa em ~30 min';
+                } else {
+                  // conclusivo: diz o que o ML respondeu (no 21/11 vieram 400 sem a mensagem — nao dava pra saber o porque)
+                  reg.linha_do_tempo.motivo = (Number(op.status) === 403 && ehBloqueioDePolitica(op.error))
+                    ? 'operacoes do Full negadas pelo ML (permissao do app)'
+                    : 'operacoes do Full recusaram a consulta (HTTP ' + (op.status || '-') + (erroMl(op) ? ': ' + erroMl(op) : '') + ')';
+                }
               } else if (!ops.some((o) => /^WITHDRAWAL/i.test(String((o && o.type) || '')))) {
                 reg.linha_do_tempo.motivo = 'o ML ainda nao registrou a retirada desta peca no Full';
               }
             } else {
               reg.linha_do_tempo.motivo = !ped || !ped.item_id ? 'devolucao sem item_id'
                 : (it && !it.ok && Number(it.status) === 403 && ehBloqueioDePolitica(it.error)) ? 'anuncio negado pelo ML: falta a permissao "Publicação e sincronização" no app'
-                : (!it || !it.ok) ? 'anuncio nao respondeu (HTTP ' + ((it && it.status) || '-') + ')'
+                : (!it || !it.ok) ? 'anuncio nao respondeu (HTTP ' + ((it && it.status) || '-') + ')' + (passageiro(it) ? ' — nova tentativa em ~30 min' : '')
                 : !inv ? 'anuncio sem inventory_id (nao e Full?)' : !sel ? 'anuncio sem seller_id' : 'devolucao sem data';
             }
-          } catch (e) { reg.linha_do_tempo.motivo = 'erro: ' + String((e && e.message) || e).slice(0, 80); /* linha do tempo e extra */ }
+          } catch (e) { reg.linha_do_tempo.tentar_de_novo = true; reg.linha_do_tempo.motivo = 'erro: ' + String((e && e.message) || e).slice(0, 80) + ' — nova tentativa em ~30 min'; /* linha do tempo e extra */ }
         }
         REVISAO_CD.set(id, reg);
       } catch (e) { REVISAO_CD.set(id, { erro: true, em: Date.now() }); }
-      await new Promise((ok) => setTimeout(ok, 700));
+      // b785: depois de um 429 o ML pediu calma — a proxima consulta espera mais (a rajada do boot e o que provocou o 429)
+      const ultimo = REVISAO_CD.get(id);
+      const levouLimite = ultimo && ultimo.linha_do_tempo && (Number(ultimo.linha_do_tempo.operacoes_http) === 429 || Number(ultimo.linha_do_tempo.anuncio_http) === 429);
+      await new Promise((ok) => setTimeout(ok, levouLimite ? PAUSA_APOS_429_MS : 700));
     }
   } finally { REVISAO_RODANDO = false; }
 }
 function revisaoCD(claimId) {
   const id = String(claimId || ''); if (!id) return null;
   const r = REVISAO_CD.get(id);
-  const valida = r && (Date.now() - r.em) < (r.erro ? 30 * 60e3 : 24 * 3600e3);
+  const passageira = r && (r.erro || (r.linha_do_tempo && r.linha_do_tempo.tentar_de_novo));   // b785: 429/5xx/excecao → ~30 min
+  const valida = r && (Date.now() - r.em) < (passageira ? 30 * 60e3 : 24 * 3600e3);
   if (!valida && !REVISAO_FILA.has(id)) { REVISAO_FILA.add(id); setTimeout(processarRevisoesCD, 0); }
   return r || null;
 }

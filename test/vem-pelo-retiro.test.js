@@ -10,7 +10,9 @@ for (const arq of ['amb-devolucoes/lib-AMB/ml-returns-AMB.js']   /* b511: a GOOD
   ok(/post-purchase\/v2\/claims\/' \+ id \+ '\/returns/.test(s) && /post-purchase\/v1\/returns\/' \+ retId \+ '\/reviews/.test(s), '  ' + arq + ': consulta a revisao do CD (claim -> return -> reviews)');
   ok(/90 \* 864e5/.test(s), '  ' + arq + ': so reclamacoes dos ultimos 90 dias (as antigas seguem a regra de antes)');
   ok(/status: statusCD\(d, '/.test(s) && /vem pelo RETIRO/.test(s), '  ' + arq + ': o card mostra "vem pelo RETIRO" com o motivo do ML');
-  ok(/setTimeout\(ok, 700\)/.test(s) && /REVISAO_RODANDO/.test(s), '  ' + arq + ': uma consulta por vez, com pausa (cota do ML)');
+  // b785: a pausa continua 700 ms e fica MAIOR depois de um 429 (o ML pediu calma). Uma por vez + pausa minima tambem
+  // sao medidas executando a fabrica em test/retiro-lista-completa.test.js (concorrencia maxima 1, intervalo >= 700 ms).
+  ok(/setTimeout\(ok, levouLimite \? PAUSA_APOS_429_MS : 700\)/.test(s) && /REVISAO_RODANDO/.test(s), '  ' + arq + ': uma consulta por vez, com pausa (cota do ML)');
 }
 console.log('');
 console.log(falhas === 0 ? '=== TODOS OS CASOS PASSARAM' : '=== ' + falhas + ' FALHA(S)');
